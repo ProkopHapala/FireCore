@@ -136,6 +136,11 @@ float3 rotate_by_omega_taylor(float3 p, float3 w){
 
 float3 rotate_by_omega(float3 p, float3 w){
     float r2 = dot(w,w);
+    if(r2 < 1.0e-12f){
+        float3 wxp  = cross(w, p);
+        float3 wwxp = cross(w, wxp);
+        return p + wxp + 0.5f * wwxp;
+    }
     float r = sqrt(r2);
     float s = sin(r) / r;
     float c = (1.0f - cos(r)) / r2;    // equals (1-cos r)/r^2
@@ -931,22 +936,22 @@ __kernel void getMMFFf4_rot(
     const float4 par = apars[ian];     // (xy=s0_ss,z=ssK,w=piC0 ) forcefield parameters for current atom
 
     if((iG==iGdbg)&&(iS==iSdbg)){ printf("GPU getMMFFf4_rot(): natoms %3i nnode %3i nSys %3i \n", nAtoms, nnode, get_global_size(1) ); }
-    // if((iG==iGdbg)&&(iS==iSdbg)){
-    //     printf("OCL::getMMFFf4(): natoms %3i nnode %3i \n", nAtoms, nnode );
-    //     for(int ia=0; ia<nnode; ia++){
-    //         int4   ng=neighs[iaa+ia];
-    //         float4 pi=apos[iav+ia];
-    //         float4 bk=bLs[ian];
-    //         float4 bK=bKs[ian];
-    //         float4 Ks=Ksp[ian];
-    //         float4 Kp=Kpp[ian];
-    //         float4 apar=apars[ian];
-    //         //printf("OCL::getMMFFf4(): ia %3i: pos=(%10.5f,%10.5f,%10.5f) ngs=(%3i,%3i,%3i,%3i) bLs=(%10.5f,%10.5f,%10.5f,%10.5f) bKs=(%10.5f,%10.5f,%10.5f,%10.5f) Ks=(%10.5f,%10.5f,%10.5f,%10.5f) Kp=(%10.5f,%10.5f,%10.5f,%10.5f) apar=(%10.5f,%10.5f,%10.5f,%10.5f)\n", 
-    //         //   ia, pi.x, pi.y, pi.z, ng.x, ng.y, ng.z, ng.w, bk.x, bk.y, bk.z, bk.w, bK.x, bK.y, bK.z, bK.w, Ks.x, Ks.y, Ks.z, Ks.w, Kp.x, Kp.y, Kp.z, Kp.w, apar.x, apar.y, apar.z, apar.w );
-    //         printf("OCL::getMMFFf4(): ia %3i: pos=(%10.5f,%10.5f,%10.5f) ngs=(%3i,%3i,%3i,%3i) bLs=(%10.5f,%10.5f,%10.5f,%10.5f) bKs=(%10.5f,%10.5f,%10.5f,%10.5f) apar=(%10.5f,%10.5f,%10.5f,%10.5f)\n", 
-    //            ia, pi.x, pi.y, pi.z, ng.x, ng.y, ng.z, ng.w, bk.x, bk.y, bk.z, bk.w, bK.x, bK.y, bK.z, bK.w, apar.x, apar.y, apar.z, apar.w );
-    //     } 
-    // }
+    if((iG==iGdbg)&&(iS==iSdbg)){
+        printf("OCL::getMMFFf4(): natoms %3i nnode %3i \n", nAtoms, nnode );
+        for(int ia=0; ia<nnode; ia++){
+            int4   ng=neighs[iaa+ia];
+            float4 pi=apos[iav+ia];
+            float4 bk=bLs[ian];
+            float4 bK=bKs[ian];
+            float4 Ks=Ksp[ian];
+            float4 Kp=Kpp[ian];
+            float4 apar=apars[ian];
+            printf("OCL::getMMFFf4(): ia %3i: pos=(%10.5f,%10.5f,%10.5f) ngs=(%3i,%3i,%3i,%3i) bLs=(%10.5f,%10.5f,%10.5f,%10.5f) bKs=(%10.5f,%10.5f,%10.5f,%10.5f) Ks=(%10.5f,%10.5f,%10.5f,%10.5f) Kp=(%10.5f,%10.5f,%10.5f,%10.5f) apar=(%10.5f,%10.5f,%10.5f,%10.5f)\n", 
+               ia, pi.x, pi.y, pi.z, ng.x, ng.y, ng.z, ng.w, bk.x, bk.y, bk.z, bk.w, bK.x, bK.y, bK.z, bK.w, Ks.x, Ks.y, Ks.z, Ks.w, Kp.x, Kp.y, Kp.z, Kp.w, apar.x, apar.y, apar.z, apar.w );
+            //printf("OCL::getMMFFf4(): ia %3i: pos=(%10.5f,%10.5f,%10.5f) ngs=(%3i,%3i,%3i,%3i) bLs=(%10.5f,%10.5f,%10.5f,%10.5f) bKs=(%10.5f,%10.5f,%10.5f,%10.5f) apar=(%10.5f,%10.5f,%10.5f,%10.5f)\n", 
+            //   ia, pi.x, pi.y, pi.z, ng.x, ng.y, ng.z, ng.w, bk.x, bk.y, bk.z, bk.w, bK.x, bK.y, bK.z, bK.w, apar.x, apar.y, apar.z, apar.w );
+        } 
+    }
 
     // Temp Arrays
     const int*   ings  = (int*  )&ng; // neighboring atoms, we cast it to int[] to be index it in for loop
@@ -1003,16 +1008,16 @@ __kernel void getMMFFf4_rot(
                 //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): bond-length:    iG %3i ing %3i elb %10.5f f(%10.5f,%10.5f,%10.5f) l %10.5f bL %10.5f bK %10.5f \n", iG, ing, elb, f1.x, f1.y, f1.z, l, bL[i], bK[i] ); }
 
                 // pi-pi alignment interaction            
-                // float kpp = Kppi[i];
-                // if( (ing<nnode) && (kpp>1.e-6f) ){   // Only node atoms have pi-pi alignemnt interaction
-                //     float3 hpj = apos[ingv+nAtoms].xyz;
-                //     float epp = evalPiAling( hpi, hpj, kpp,  &f1, &f2 );    //   pi-alignment(konjugation), fpi is force on pi-orbital, fps[i] is recoil force on i-th neighbor's pi-orbital                               
-                //     fpi   +=cross(hpi.xyz, f1);  
-                //     fps[i]-=cross(hpj.xyz, f2);    //   for rotational dynamics
-                //     E+=epp; 
-                //     printf("OCL::getMMFFf4(): pi-pi:     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp );
-                //     //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): cos(pi,pi):     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp ); }
-                // }
+                float kpp = Kppi[i];
+                if( (ing<nnode) && (kpp>1.e-6f) ){   // Only node atoms have pi-pi alignemnt interaction
+                    float3 hpj = apos[ingv+nAtoms].xyz;
+                    float epp = evalPiAling( hpi, hpj, kpp,  &f1, &f2 );    //   pi-alignment(konjugation), fpi is force on pi-orbital, fps[i] is recoil force on i-th neighbor's pi-orbital                               
+                    fpi   +=cross(hpi.xyz, f1);  
+                    fps[i]+=cross(hpj.xyz, f2);    //   for rotational dynamics
+                    E+=epp; 
+                    printf("OCL::getMMFFf4(): pi-pi:     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp );
+                    //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): cos(pi,pi):     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp ); }
+                }
             } 
 
             // pi-sigma othogonalization interaction

@@ -32,9 +32,16 @@ def build_program(ctx: cl.Context, kernel_path: Path) -> cl.Program:
     src = kernel_path.read_text()
     return cl.Program(ctx, src).build()
 
+def urot( ang, i1=0, i2=1 ):
+    c= np.cos(ang) 
+    s=-np.sin(ang)
+    arr = np.array([0.,0.,0.], dtype=np.float32)
+    arr[i1] = c
+    arr[i2] = s
+    return arr
 
-def urot( ang ):
-    return np.array([ np.cos(ang), -np.sin(ang), 0.0], dtype=np.float32)
+def normalized( arr ):
+    return arr / np.linalg.norm(arr)
 
 def run_kernel(
     prg: cl.Program,
@@ -52,8 +59,11 @@ def run_kernel(
 
     pa = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
     pb = np.array([bL0, 0.0, 0.0, 0.0], dtype=np.float32)
-    ha3 = urot(np.pi/2+0.2)
-    hb3 = urot(np.pi/2-0.3)
+    # ha3 = urot(np.pi/2+0.2, 1, 2)
+    # hb3 = urot(np.pi/2-0.3, 1, 2)
+
+    ha3 = normalized(np.array([0.1,1.0, 0.15], dtype=np.float32))
+    hb3 = normalized(np.array([0.2,1.0,-0.10], dtype=np.float32))
     ha = np.zeros(4, dtype=np.float32)
     hb = np.zeros(4, dtype=np.float32)
     ha[:3] = ha3

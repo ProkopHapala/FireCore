@@ -52,6 +52,12 @@ Examples (omit defaults):
 - Scan energy/force
   python test_MMFFsp3_pyOCL.py --scan 1 --scan-atom 0 --scan-axis x --scan-nsamp 21
   python test_MMFFsp3_pyOCL.py --scan 1
+
+- Minimal 2-node pi system (matches doc/py/pi_dynamics/pipi_dynamics.py)
+  python test_MMFFsp3_pyOCL.py --two-node --steps 200 --rot-dyn 1 --monitor 1 --monitor-plot 1
+  python test_MMFFsp3_pyOCL.py --two-node --steps 200 --rot-dyn 1 --two-node-ksp 2.0 --two-node-kpp 2.0
+  python test_MMFFsp3_pyOCL.py --two-node --steps 200 --record  1 --monitor 1 --monitor-plot 1 --print-stat 1
+
 """
 
 if __name__ == '__main__':
@@ -79,9 +85,9 @@ if __name__ == '__main__':
     ap.add_argument('--plot-labels',  type=str,   default='number', choices=['none','number','type'], help='Annotate atoms when plotting trajectories')
     ap.add_argument('--print-params', type=int,   default=1, help='Dump neighbor and bonded parameter arrays before GPU upload')
     ap.add_argument('--monitor',      type=int,   default=1, help='Collect invariant diagnostics each step')
-    ap.add_argument('--monitor-props', type=str,  default=','.join(DEFAULT_MONITOR_PROPS), help='Comma separated invariants to track (or all/none)')
-    ap.add_argument('--monitor-plot',  type=int,  default=1, help='Plot monitored invariants at the end')
-    ap.add_argument('--distort',      type=float, default=0.2, help='Apply random per-axis distortion of this amplitude (Å) to atoms and pi vectors before MD')
+    ap.add_argument('--monitor-props',type=str,   default=','.join(DEFAULT_MONITOR_PROPS), help='Comma separated invariants to track (or all/none)')
+    ap.add_argument('--monitor-plot', type=int,   default=1, help='Plot monitored invariants at the end')
+    ap.add_argument('--distort',      type=float, default=0.0, help='Apply random per-axis distortion of this amplitude (Å) to atoms and pi vectors before MD')
     ap.add_argument('--distort-seed', type=int,   default=154,   help='Random seed for geometry distortion')
     ap.add_argument('--dump-fneigh',  type=int,   default=1, help='Dump fneigh buffer (atom and pi recoil forces) after MD run')
     ap.add_argument('--use-real-mass', type=int,  default=0, help='Use tabulated atomic masses (default: uniform mass=1)')
@@ -94,22 +100,66 @@ if __name__ == '__main__':
     ap.add_argument('--scan-nsamp',   type=int,   default=1001, help='Number of displacement samples (odd)')
     ap.add_argument('--scan-show',    type=int,   default=1, help='Show scan plot if enabled')
     ap.add_argument('--scan-save',    type=str,   default=None, help='Optional path to save scan plot (png)')
+    ap.add_argument('--two-node',     action='store_true', help='Use built-in 2-node pi system instead of loading a molecule file')
+    ap.add_argument('--two-node-bL0', type=float, default=1.5, help='Equilibrium bond length for two-node builder (Å)')
+    ap.add_argument('--two-node-kbl', type=float, default=10.0, help='Bond stiffness for two-node builder')
+    ap.add_argument('--two-node-ksp', type=float, default=1.0, help='Sigma-pi orthogonalization stiffness for two-node builder')
+    ap.add_argument('--two-node-kpp', type=float, default=1.0, help='Pi-pi alignment stiffness for two-node builder')
     args = ap.parse_args()
 
-    mol_path = args.molecule
+    builder_fn = build_2node_system if args.two_node else build_mmff_from_mol
+    mol_path = None if args.two_node else args.molecule
+
+    if args.scan and args.two_node:
+        raise ValueError("--scan is not supported together with --two-node setup")
 
     monitor_props = parse_monitor_props(args.monitor_props)
 
     axis_map = {'x':0, 'y':1, 'z':2}
 
     if args.scan:
-        mol, mm, md = configure_md( mol_path, args.dt,args.damp, args.flim,  bool(args.subtract_vdw),  args.drive_temp, args.drive_gamma, args.drive_seed, print_params=bool(args.print_params), )
+        mol, mm, md = configure_md( mol_path, args.dt,args.damp, args.flim,  bool(args.subtract_vdw),  args.drive_temp, args.drive_gamma, args.drive_seed, builder=builder_fn, print_params=bool(args.print_params), )
         scan = scan_energy_force(mm, md, atom_index=args.scan_atom, axis=axis_map[args.scan_axis], dx=args.scan_dx, nsamp=args.scan_nsamp, restore=True, do_nb=bool(args.do_nb))
         print(f"Scan stats: energy[{stats['energy_min']:.6e}, {stats['energy_max']:.6e}] force[{stats['force_min']:.6e}, {stats['force_max']:.6e}] diff_min={stats['diff_min']:.6e} diff_max={stats['diff_max']:.6e} diff_rms={stats['diff_rms']:.6e}")
         plot_energy_force_scan(scan, axis_label=f"{args.scan_axis}-displacement", show=bool(args.scan_show), save_path=args.scan_save)
         sys.exit(0)
 
-    mol, mm, md = configure_md( mol_path,args.dt, args.damp, args.flim, bool(args.subtract_vdw), args.drive_temp,args.drive_gamma,args.drive_seed, print_params=bool(args.print_params), )
+    mol, mm, md = configure_md( mol_path,args.dt, args.damp, args.flim, bool(args.subtract_vdw), args.drive_temp,args.drive_gamma,args.drive_seed, builder=builder_fn, print_params=bool(args.print_params), )
+
+    if args.two_node and mm.nnode > 0:
+        bL0 = np.float32(args.two_node_bL0)
+        kBL = np.float32(args.two_node_kbl)
+        kSP = np.float32(args.two_node_ksp)
+        kPP = np.float32(args.two_node_kpp)
+
+        mm.apos[:2, :3] = np.array([[0.0, 0.0, 0.0], [bL0, 0.0, 0.0]], dtype=np.float32)
+        orient = mm.apos[mm.natoms:mm.natoms + mm.nnode, :3]
+        norms = np.linalg.norm(orient, axis=1, keepdims=True)
+        norms[norms == 0.0] = 1.0
+        orient = orient / norms
+        mm.pipos[:mm.nnode, :] = orient
+        mm.apos[mm.natoms:mm.natoms + mm.nnode, :3] = orient
+
+        node_neighs = mm.neighs[:mm.nnode, :]
+        mask = node_neighs >= 0
+        mm.bLs[:mm.nnode, :] = 0.0
+        mm.bKs[:mm.nnode, :] = 0.0
+        mm.Ksp[:mm.nnode, :] = 0.0
+        mm.Kpp[:mm.nnode, :] = 0.0
+
+        mm.bLs[:mm.nnode, :][mask] = bL0
+        mm.bKs[:mm.nnode, :][mask] = kBL
+        mm.Ksp[:mm.nnode, :][mask] = kSP
+        mm.Kpp[:mm.nnode, :][mask] = kPP
+
+        upload_mmff_positions(mm, md, mm.apos)
+        md.pack_system(0, mm)
+
+        if args.print_params:
+            print("Two-node overrides applied:")
+            print(f"  bond length bL0 = {bL0}")
+            print(f"  Ksp =\n{mm.Ksp[:mm.nnode, :]}")
+            print(f"  Kpp =\n{mm.Kpp[:mm.nnode, :]}")
 
     if args.distort > 0.0:
         rng = np.random.default_rng(args.distort_seed)
@@ -144,7 +194,7 @@ if __name__ == '__main__':
     dump_buffers(buf, print_stats=args.print_stats, print_arrays=args.print_arrays)
     report_conservation(totals_hist, args.steps, args.record)
     mode_label = "rotational" if args.rot_dyn else "basic"
-    mol_label = os.path.basename(mol_path)
+    mol_label = os.path.basename(args.molecule) if mol_path else "two_node"
     plot_title = f"{mol_label} – {mode_label} dynamics"
     trj_arr = None
     if args.record and trj:
@@ -168,8 +218,12 @@ if __name__ == '__main__':
     elif args.plot or args.save_trj or args.save_plot:   print("No trajectory recorded; skipping plot/trajectory export.")
 
     if args.save_xyz and trj_arr is not None:
-        symbols = mol.enames[:mm.natoms]
-        write_xyz_trajectory(args.save_xyz, trj_arr[:, :mm.natoms, :], symbols)
+        base_symbols = list(mol.enames[:mm.natoms])
+        if mm.nnode > 0:
+            symbols = base_symbols + ["Pi"] * mm.nnode
+        else:
+            symbols = base_symbols
+        write_xyz_trajectory(args.save_xyz, trj_arr, symbols)
     if args.dump_fneigh:
         fneigh = buf['fneigh'].reshape(md.nSystems, -1, 4)[0]
         nnode = mm.nnode

@@ -254,6 +254,58 @@ def build_mmff_from_mol(mol2_path):
     return mol, mm
 
 
+def build_2node_system(params_dict=None):
+    """Create minimal 2-atom system with pi orbitals matching pipi_dynamics.py.
+    
+    Args:
+        params_dict: optional dict or str (ignored if str to match mol2_path signature).
+                     If dict, may contain 'bL0', 'ha', 'hb' keys.
+    
+    Returns:
+        mol: AtomicSystem with 2 carbon atoms
+        mm: MMFF object with force field populated
+    """
+    from .AtomicSystem import AtomicSystem
+    
+    if isinstance(params_dict, str):
+        params_dict = None
+    params = params_dict if params_dict is not None else {}
+    
+    bL0 = params.get('bL0', 1.5)
+    kBL = np.float32(params.get('kBL', 10.0))
+    kSP = np.float32(params.get('kSP', 1.0))
+    kPP = np.float32(params.get('kPP', 1.0))
+    ha_init = params.get('ha', None)
+    hb_init = params.get('hb', None)
+    
+    if ha_init is None:
+        ha_init = np.array([0.1, 1.0, 0.15], dtype=np.float32)
+        ha_init /= np.linalg.norm(ha_init)
+    if hb_init is None:
+        hb_init = np.array([0.2, 1.0, -0.10], dtype=np.float32)
+        hb_init /= np.linalg.norm(hb_init)
+    
+    apos = np.array([[0.0, 0.0, 0.0], [bL0, 0.0, 0.0]], dtype=np.float64)
+    enames = ['C', 'C']
+    atypes = np.array([6, 6], dtype=np.int32)
+    qs = np.array([0.0, 0.0], dtype=np.float64)
+    bonds = [(0, 1, 1.0)]
+    
+    mol = AtomicSystem(apos=apos, atypes=atypes, enames=enames, qs=qs, bonds=bonds)
+    mol.neighs()
+    
+    mm = MMFF(bTorsion=False, verbosity=1)
+    mm.toMMFFsp3_loc(mol=mol, atom_types=mm.atom_types, bRealloc=True, bEPairs=False, bUFF=False)
+    
+    if mm.nnode == 2:
+        mm.pipos[0, :] = ha_init.astype(np.float32)
+        mm.pipos[1, :] = hb_init.astype(np.float32)
+        mm.apos[mm.natoms, :3] = ha_init.astype(np.float32)
+        mm.apos[mm.natoms+1, :3] = hb_init.astype(np.float32)
+    
+    return mol, mm
+
+
 def stats(name, arr):
     A = np.asarray(arr)
     finite = np.isfinite(A)
@@ -475,7 +527,17 @@ def collect_diagnostics(md, mm, masses, record, monitor_enabled, monitor_props, 
     if totals_hist is not None:
         totals_hist.append(totals)
     if record:
-        trj.append(apos_step)
+        if mm.nnode > 0:
+            host_nodes = apos_step[:mm.nnode, :]
+            pi_vecs = buf['apos'][mm.natoms:mm.natoms + mm.nnode, :3].copy()
+            norms = np.linalg.norm(pi_vecs, axis=1, keepdims=True)
+            norms[norms == 0.0] = 1.0
+            pi_offsets = pi_vecs / norms
+            pi_positions = host_nodes + pi_offsets
+            frame = np.concatenate((apos_step, pi_positions.astype(np.float32)), axis=0)
+        else:
+            frame = apos_step
+        trj.append(frame)
     if monitor_enabled and monitor_data is not None:
         for name in monitor_props:
             val = totals.get(name)
