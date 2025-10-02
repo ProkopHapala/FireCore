@@ -118,17 +118,33 @@ float3 rotate_by_omega_taylor(float3 p, float3 w){
                      p.z + wxp.z*sc.x + wwxp.z*sc.y };
 }
 
+
+// ======== Probably wrong
+// float3 rotate_by_omega(float3 p, float3 w){
+//     float r2    = dot(w,w);
+//     float  r    = sqrt(r2); 
+//     float2 sc   = (float2){cos(r), sin(r)}; // sc.x = s, sc.y = c
+//     float3 wxp  = cross(w, p);
+//     float3 wwxp = cross(w, wxp);
+//     // p' = p + s*(w x p) + c*(w x (w x p))
+//     return (float3){ p.x + wxp.x*sc.x + wwxp.x*sc.y,
+//                      p.y + wxp.y*sc.x + wwxp.y*sc.y,
+//                      p.z + wxp.z*sc.x + wwxp.z*sc.y };
+// }
+
+
+
 float3 rotate_by_omega(float3 p, float3 w){
-    float r2    = dot(w,w);
-    float  r    = sqrt(r2); 
-    float2 sc   = (float2){cos(r), sin(r)}; // sc.x = s, sc.y = c
+    float r2 = dot(w,w);
+    float r = sqrt(r2);
+    float s = sin(r) / r;
+    float c = (1.0f - cos(r)) / r2;    // equals (1-cos r)/r^2
     float3 wxp  = cross(w, p);
     float3 wwxp = cross(w, wxp);
-    // p' = p + s*(w x p) + c*(w x (w x p))
-    return (float3){ p.x + wxp.x*sc.x + wwxp.x*sc.y,
-                     p.y + wxp.y*sc.x + wwxp.y*sc.y,
-                     p.z + wxp.z*sc.x + wwxp.z*sc.y };
+    return p + wxp * s + wwxp * c;
 }
+
+
 
 
 // evaluate angular force and energy using cos(angle) formulation,    - faster, but not good for angles > 90 deg
@@ -991,7 +1007,7 @@ __kernel void getMMFFf4_rot(
                 // if( (ing<nnode) && (kpp>1.e-6f) ){   // Only node atoms have pi-pi alignemnt interaction
                 //     float3 hpj = apos[ingv+nAtoms].xyz;
                 //     float epp = evalPiAling( hpi, hpj, kpp,  &f1, &f2 );    //   pi-alignment(konjugation), fpi is force on pi-orbital, fps[i] is recoil force on i-th neighbor's pi-orbital                               
-                //     fpi   -=cross(hpi.xyz, f1);  
+                //     fpi   +=cross(hpi.xyz, f1);  
                 //     fps[i]+=cross(hpj.xyz, f2);    //   for rotational dynamics
                 //     E+=epp; 
                 //     //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): cos(pi,pi):     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp ); }
@@ -1756,9 +1772,9 @@ __kernel void updateAtomsMMFFf4(
     if(ngs.w>=0){ fe += fneigh[ngs.w]; }
 
     // ---- Limit Forces - WARRNING : Github_Copilot says: this is not the best way to limit forces, because it can lead to drift, better is to limit forces in the first forcefield run (best is NBFF) 
-    float Flimit = 10.0f;
-    float fr2 = dot(fe.xyz,fe.xyz);  // squared force
-    if( fr2 > (Flimit*Flimit) ){  fe.xyz*=(Flimit/sqrt(fr2)); }  // if force is too big, we scale it down to Flimit
+    // float Flimit = 10.0f;
+    // float fr2 = dot(fe.xyz,fe.xyz);  // squared force
+    // if( fr2 > (Flimit*Flimit) ){  fe.xyz*=(Flimit/sqrt(fr2)); }  // if force is too big, we scale it down to Flimit
 
     // =============== FORCE DONE
     aforce[iav] = fe;           // store force before limit
@@ -1940,9 +1956,9 @@ __kernel void updateAtomsMMFFf4_RATTLE(
     if(ngs.w>=0){ fe += fneigh[ngs.w]; }
 
     // ---- Limit Forces - WARRNING : Github_Copilot says: this is not the best way to limit forces, because it can lead to drift, better is to limit forces in the first forcefield run (best is NBFF) 
-    float Flimit = 10.0f;
-    float fr2 = dot(fe.xyz,fe.xyz);  // squared force
-    if( fr2 > (Flimit*Flimit) ){  fe.xyz*=(Flimit/sqrt(fr2)); }  // if force is too big, we scale it down to Flimit
+    // float Flimit = 10.0f;
+    // float fr2 = dot(fe.xyz,fe.xyz);  // squared force
+    // if( fr2 > (Flimit*Flimit) ){  fe.xyz*=(Flimit/sqrt(fr2)); }  // if force is too big, we scale it down to Flimit
 
     // =============== FORCE DONE
     //aforce[iav] = fe;           // store force before limit

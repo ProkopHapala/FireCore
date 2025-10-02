@@ -58,7 +58,7 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--rot-dyn',      type=int,   default=1, help='Use rotational dynamics for pi-orbitals (updateAtomsMMFFf4_rot and getMMFFf4_rot)')
     ap.add_argument('--molecule',                 default=DATA_MOL)
-    ap.add_argument('--steps',        type=int,   default=100)
+    ap.add_argument('--steps',        type=int,   default=1000)
     ap.add_argument('--dt',           type=float, default=0.01)
     ap.add_argument('--damp',         type=float, default=1.0)
     ap.add_argument('--flim',         type=float, default=10.0)

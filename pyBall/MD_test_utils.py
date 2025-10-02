@@ -316,10 +316,14 @@ def write_xyz_trajectory(path, trj_atoms, symbols):
             for sym, (x, y, z) in zip(symbols, coords):
                 fh.write(f"{sym} {x:.6f} {y:.6f} {z:.6f}\n")
 
-def compute_totals(apos_atoms, avel_atoms, aforce_atoms, masses=None, origin=None):
+def compute_totals(apos_atoms, avel_atoms, aforce_atoms, masses=None, origin=None, pi_omega=None, pi_inertia=None):
     """
     Compute global conservation diagnostics for a single frame.
     Returns dict with keys: F, T, P, L, Rcm, Vcm, Fcm, Tcm.
+
+    `pi_omega` can be provided to include rotational angular momentum from
+    pi-orbital degrees of freedom. If `pi_inertia` is None a unit inertia is
+    assumed, otherwise it can be scalar or array broadcastable to `pi_omega`.
     """
     r = np.asarray(apos_atoms, dtype=np.float32)
     v = np.asarray(avel_atoms, dtype=np.float32)
@@ -343,7 +347,25 @@ def compute_totals(apos_atoms, avel_atoms, aforce_atoms, masses=None, origin=Non
     r0 = np.zeros(3, dtype=np.float32) if origin is None else np.asarray(origin, dtype=np.float32)
     rrel = r - r0
     Ttot = np.cross(rrel, f).sum(axis=0)
-    L    = np.cross(rrel, (m * v)).sum(axis=0)
+    L_atoms = np.cross(rrel, (m * v)).sum(axis=0)
+
+    L_rot = np.zeros(3, dtype=np.float32)
+    if pi_omega is not None:
+        omega = np.asarray(pi_omega, dtype=np.float32)
+        if omega.ndim != 2 or omega.shape[1] != 3:
+            raise ValueError("pi_omega must have shape (n_pi, 3)")
+        if pi_inertia is None:
+            L_rot = omega.sum(axis=0)
+        else:
+            I = np.asarray(pi_inertia, dtype=np.float32)
+            if I.ndim == 0:
+                L_rot = (I * omega).sum(axis=0)
+            else:
+                I = I.reshape(-1, 1)
+                if I.shape[0] != omega.shape[0]:
+                    raise ValueError("pi_inertia length does not match pi_omega")
+                L_rot = (I * omega).sum(axis=0)
+    L = L_atoms + L_rot
 
     Fcm = Ftot.copy()
     Tcm = np.cross(rcm - r0, Ftot)
@@ -443,7 +465,12 @@ def collect_diagnostics(md, mm, masses, record, monitor_enabled, monitor_props, 
     avel_step = avel_all[:mm.natoms, :3].copy()
     afor_step = buf['afor_atoms'].copy()
     afor_full_step = buf['afor_atoms_full'].copy()
-    totals = compute_totals(apos_step, avel_step, afor_step, masses=masses)
+    pi_slice = slice(mm.natoms, mm.natoms + mm.nnode)
+    pi_omega = None
+    if mm.nnode > 0:
+        pi_omega = avel_all[pi_slice, :3].copy()
+    pi_inertia = getattr(mm, 'pi_inertia', None)
+    totals = compute_totals(apos_step, avel_step, afor_step, masses=masses, pi_omega=pi_omega, pi_inertia=pi_inertia)
     totals.update(compute_energies(avel_all, mm.natoms, masses, afor_full_step))
     if totals_hist is not None:
         totals_hist.append(totals)
