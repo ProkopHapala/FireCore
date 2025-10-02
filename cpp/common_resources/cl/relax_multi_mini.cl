@@ -939,15 +939,16 @@ __kernel void getMMFFf4_rot(
     if((iG==iGdbg)&&(iS==iSdbg)){
         printf("OCL::getMMFFf4(): natoms %3i nnode %3i \n", nAtoms, nnode );
         for(int ia=0; ia<nnode; ia++){
-            int4   ng=neighs[iaa+ia];
-            float4 pi=apos[iav+ia];
-            float4 bk=bLs[ian];
-            float4 bK=bKs[ian];
-            float4 Ks=Ksp[ian];
-            float4 Kp=Kpp[ian];
-            float4 apar=apars[ian];
-            printf("OCL::getMMFFf4(): ia %3i: pos=(%10.5f,%10.5f,%10.5f) ngs=(%3i,%3i,%3i,%3i) bLs=(%10.5f,%10.5f,%10.5f,%10.5f) bKs=(%10.5f,%10.5f,%10.5f,%10.5f) Ks=(%10.5f,%10.5f,%10.5f,%10.5f) Kp=(%10.5f,%10.5f,%10.5f,%10.5f) apar=(%10.5f,%10.5f,%10.5f,%10.5f)\n", 
-               ia, pi.x, pi.y, pi.z, ng.x, ng.y, ng.z, ng.w, bk.x, bk.y, bk.z, bk.w, bK.x, bK.y, bK.z, bK.w, Ks.x, Ks.y, Ks.z, Ks.w, Kp.x, Kp.y, Kp.z, Kp.w, apar.x, apar.y, apar.z, apar.w );
+            int4   ng  =neighs[i0a+ia];
+            float4 pi   =apos [i0v+ia];
+            float4 hpi =apos [i0v+ia+nAtoms];
+            float4 bk  =bLs   [i0n+ia];
+            float4 bK  =bKs   [i0n+ia];
+            float4 Ks  =Ksp   [i0n+ia];
+            float4 Kp  =Kpp   [i0n+ia];
+            float4 apar=apars [i0n+ia];
+            printf("OCL::getMMFFf4(): ia %3i: pos(%10.5f,%10.5f,%10.5f) hpi(%10.5f,%10.5f,%10.5f) ngs(%3i,%3i,%3i,%3i) bLs(%10.5f,%10.5f,%10.5f,%10.5f) bKs(%10.5f,%10.5f,%10.5f,%10.5f) Ks(%10.5f,%10.5f,%10.5f,%10.5f) Kp(%10.5f,%10.5f,%10.5f,%10.5f) apar(%10.5f,%10.5f,%10.5f,%10.5f)\n", 
+               ia, pi.x, pi.y, pi.z, hpi.x, hpi.y, hpi.z, ng.x, ng.y, ng.z, ng.w, bk.x, bk.y, bk.z, bk.w, bK.x, bK.y, bK.z, bK.w, Ks.x, Ks.y, Ks.z, Ks.w, Kp.x, Kp.y, Kp.z, Kp.w, apar.x, apar.y, apar.z, apar.w );
             //printf("OCL::getMMFFf4(): ia %3i: pos=(%10.5f,%10.5f,%10.5f) ngs=(%3i,%3i,%3i,%3i) bLs=(%10.5f,%10.5f,%10.5f,%10.5f) bKs=(%10.5f,%10.5f,%10.5f,%10.5f) apar=(%10.5f,%10.5f,%10.5f,%10.5f)\n", 
             //   ia, pi.x, pi.y, pi.z, ng.x, ng.y, ng.z, ng.w, bk.x, bk.y, bk.z, bk.w, bK.x, bK.y, bK.z, bK.w, apar.x, apar.y, apar.z, apar.w );
         } 
@@ -1015,7 +1016,8 @@ __kernel void getMMFFf4_rot(
                     fpi   +=cross(hpi.xyz, f1);  
                     fps[i]+=cross(hpj.xyz, f2);    //   for rotational dynamics
                     E+=epp; 
-                    printf("OCL::getMMFFf4(): pi-pi:     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp );
+                    //printf("OCL::getMMFFf4(): pi-pi:     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp );
+                    printf("OCL::getMMFFf4(): pi-pi:     iG %3i ing %3i epp %10.5f kpp %10.5f hpi(%10.5f,%10.5f,%10.5f) hpj(%10.5f,%10.5f,%10.5f)               f1(%10.5f,%10.5f,%10.5f) f2(%10.5f,%10.5f,%10.5f) \n", iG, ing, epp, kpp,  hpi.x,hpi.y,hpi.z,  hpj.x,hpj.y,hpj.z,  f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z );
                     //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): cos(pi,pi):     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp ); }
                 }
             } 
@@ -1027,6 +1029,8 @@ __kernel void getMMFFf4_rot(
                 fa-=f2;  fbs[i]+=f2; E+=esp;    
                 fpi+=cross(hpi.xyz, f1);  //  torq on pi-oribtal
                 //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::etMMFFf4(): cos(pi,sigma):      iG %3i ing %3i esp %10.5f f1(%10.5f,%10.5f,%10.5f) c %10.5f ksp %10.5f par.w %10.5f \n", iG, ing, esp, f1.x, f1.y, f1.z, dot(hpi.xyz,h.xyz), ksp, par.w ); }
+                    //printf("OCL::getMMFFf4(): pi-sigma:  iG %3i ing %3i esp %10.5f f1(%10.5f,%10.5f,%10.5f) c %10.5f ksp %10.5f par.w %10.5f \n", iG, ing, esp, f1.x, f1.y, f1.z, dot(hpi.xyz,h.xyz), ksp, par.w );
+                    printf("OCL::getMMFFf4(): pi-sigma:  iG %3i ing %3i esp %10.5f ksp %10.5f hpi(%10.5f,%10.5f,%10.5f) h  (%10.5f,%10.5f,%10.5f|l:%10.5f|) f1(%10.5f,%10.5f,%10.5f) f2(%10.5f,%10.5f,%10.5f) \n", iG, ing, esp, ksp,  hpi.x,hpi.y,hpi.z,  h.x,h.y,h.z,l,  f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z );
             }
             
         }
@@ -1999,10 +2003,15 @@ cvf[iav] += (float4){ dot(fe.xyz,fe.xyz), dot(ve.xyz,ve.xyz), dot(fe.xyz,ve.xyz)
 if (bPi){   // ROTATIONAL DYNAMICS FOR PI-ORBITAL
     float inv_I  = 1.0;    // Moment of inertia I
     //ve.xyz *= MDpars.z;   // Apply damping (optional, but good for relaxation)
+    printf("OCL::updateAtomsMMFFf4_rot(): pi  iG %3i  fe(%10.5f,%10.5f,%10.5f)  pe(%10.5f,%10.5f,%10.5f)  ve(%10.5f,%10.5f,%10.5f) \n", iG, fe.x, fe.y, fe.z, pe.xyz.x, pe.xyz.y, pe.xyz.z, ve.xyz.x, ve.xyz.y, ve.xyz.z);
     ve.xyz += (fe.xyz* inv_I) * MDpars.x; // ω += (τ/I) * dt
     pe.xyz  = rotate_by_omega( pe.xyz, ve.xyz*dt);  // rotate p by omega*dt
     //pe.xyz  = rotate_by_omega_taylor( pe.xyz, ve.xyz*dt); 
     pe.xyz  = normalize(pe.xyz); // Normalize to correct for numerical drift
+
+
+    
+
     //printf( "GPU updateAtomsMMFFf4_rot() omega[iS=%3i,iG=%3i] ve(%12.4e,%12.4e,%12.4e | %12.4e)  fe(%12.4e,%12.4e,%12.4e | %12.4e) \n", iS, iG, ve.x,ve.y,ve.z, length(ve.xyz), fe.x, fe.y, fe.z,  length(fe.xyz) );
 }else{// ------ Integrate (Leap-Frog style you already use)
     //ve.xyz *= MDpars.z;           // damping (note: breaks strict momentum conservation)

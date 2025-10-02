@@ -2,6 +2,8 @@
 // ===========================  MINIMAL PI-PI ALIGNMENT TEST KERNEL  =============================
 // ===============================================================================================
 
+const float3 float3Zero = (float3)(0.0f, 0.0f, 0.0f);
+
 inline float3 normalize_safe( const float3 v, const float3 fallback ){
     const float n2 = dot(v,v);
     if(n2 < 1.0e-12f) return fallback;
@@ -89,34 +91,24 @@ __kernel void simulate_pi_pi_rot(
 
     for(int istep=0; istep<nSteps; istep++){
 
-        float3 dab = pb - pa;
-        float  rab = length(dab);
-        float inv_rab = 1.0f / rab;
-        float3 h   = dab * inv_rab;
+        printf("OCL::simulate_pipi(): step %i dt %f ========= \n", istep, dt );
+
+        float3 d = pb - pa;
+        float  l = length(d);
+        float inv_l = 1.0f/l;
+        float3 h   = d * inv_l;
         //float3 h   = (rab > 1.0e-8f) ? dab * (1.0f / rab) : fallback_axis;
-        float4 hbnd = (float4){ h.x, h.y, h.z, inv_rab };
+        float4 hbnd = (float4){ h.x, h.y, h.z, inv_l };
+
+        // ====== Forcefield
 
         // ----- bond
         float3 fbond;
-        float  Ebl = evalBond( hbnd, rab - bL0, kBL, &fbond );
+        float  Ebl = evalBond( hbnd, l - bL0, kBL, &fbond );
         float3 fA  =  fbond;
         float3 fB  = -fbond;
 
-        float3 tqA, tqB;
-
-        // ----- sigma-pi orthogonalization (each pi vs. bond axis)
-        float3 fpa_sig, fbondA;
-        float  EspA = evalAngCos( (float4){ha.x, ha.y, ha.z, 1.0f}, hbnd, kSP, 0.0f, &fpa_sig, &fbondA );
-        tqA  = cross(ha, fpa_sig);
-        fA  -= fbondA;
-        fB  += fbondA;
-
-        float3 fpb_sig, fbondB;
-        const float4 hbnd_rev = (float4){ -hbnd.x, -hbnd.y, -hbnd.z, hbnd.w };
-        float  EspB = evalAngCos( (float4){hb.x, hb.y, hb.z, 1.0f}, hbnd_rev, kSP, 0.0f, &fpb_sig, &fbondB );
-        tqB  = cross(hb, fpb_sig);
-        fB  -= fbondB;
-        fA  += fbondB;
+        float3 tqA = float3Zero, tqB = float3Zero;
 
         float Epp = 0.0f;
         //----- pi-pi align
@@ -124,6 +116,32 @@ __kernel void simulate_pi_pi_rot(
         Epp = evalPiAlign( ha, hb, kPP, &fpa, &fpb );
         tqA += cross(ha, fpa);
         tqB += cross(hb, fpb);
+        //printf("OCL::simulate_pipi(): pi-pi:     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", 0, 4, Epp, fpa.x, fpa.y, fpa.z, dot(ha,h.xyz), kPP );
+        printf("OCL::simu_pipi(): pi-pi:     iG %3i ing %3i epp %10.5f kpp %10.5f hpi(%10.5f,%10.5f,%10.5f) hpj(%10.5f,%10.5f,%10.5f)               f1(%10.5f,%10.5f,%10.5f) f2(%10.5f,%10.5f,%10.5f) \n", 0, 4, Epp, kPP,  ha.x,ha.y,ha.z,  hb.x,hb.y,hb.z,  fpa.x,fpa.y,fpa.z,  fpb.x,fpb.y,fpb.z );
+
+        // ----- sigma-pi orthogonalization (each pi vs. bond axis)
+        float3 f1, f2;
+        float  EspA = evalAngCos( (float4){ha.x, ha.y, ha.z, 1.0f}, hbnd, kSP, 0.0f, &f1, &f2 );
+        tqA += cross(ha, f1);
+        fA  -= f2;
+        fB  += f2;
+        //printf("OCL::simulate_pipi(): pi-sigma:  iG %3i ing %3i esp %10.5f f1(%10.5f,%10.5f,%10.5f) c %10.5f ksp %10.5f \n", 0, 0, EspA, fpa_sig.x, fpa_sig.y, fpa_sig.z, dot(ha,h.xyz), kSP );
+        printf("OCL::simu_pipi(): pi-sigma:  iG %3i ing %3i esp %10.5f ksp %10.5f hpi(%10.5f,%10.5f,%10.5f) h  (%10.5f,%10.5f,%10.5f|l:%10.5f|) f1(%10.5f,%10.5f,%10.5f) f2(%10.5f,%10.5f,%10.5f) \n", 0, 0, EspA, kSP,  ha.x,ha.y,ha.z,  h.x,h.y,h.z,l,  f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z );
+
+
+        const float4 hbnd_rev = (float4){ -hbnd.x, -hbnd.y, -hbnd.z, hbnd.w };
+        float  EspB = evalAngCos( (float4){hb.x, hb.y, hb.z, 1.0f}, hbnd_rev, kSP, 0.0f, &f1, &f2 );
+        tqB += cross(hb, f1);
+        fB  -= f2;
+        fA  += f2;
+        //printf("OCL::simulate_pipi(): pi-sigma:  iG %3i ing %3i esp %10.5f f1(%10.5f,%10.5f,%10.5f) c %10.5f ksp %10.5f \n", 1, 0, EspB, fpb_sig.x, fpb_sig.y, fpb_sig.z, dot(hb,h.xyz), kSP );
+        printf("OCL::simu_pipi(): pi-sigma:  iG %3i ing %3i esp %10.5f ksp %10.5f hpi(%10.5f,%10.5f,%10.5f) h  (%10.5f,%10.5f,%10.5f|l:%10.5f|) f1(%10.5f,%10.5f,%10.5f) f2(%10.5f,%10.5f,%10.5f) \n", 1, 0, EspB, kSP,  hb.x,hb.y,hb.z,  h.x,h.y,h.z,l,   f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z );
+
+
+        // ====== Propagation
+
+        printf("OCL::simulate_pipi():         pi  iG %3i  fe(%10.5f,%10.5f,%10.5f)  pe(%10.5f,%10.5f,%10.5f)  ve(%10.5f,%10.5f,%10.5f) \n", 2, tqA.x,tqA.y,tqA.z, ha.x,ha.y,ha.z, wa.x,wa.y,wa.z );
+        printf("OCL::simulate_pipi():         pi  iG %3i  fe(%10.5f,%10.5f,%10.5f)  pe(%10.5f,%10.5f,%10.5f)  ve(%10.5f,%10.5f,%10.5f) \n", 3, tqB.x,tqB.y,tqB.z, hb.x,hb.y,hb.z, wb.x,wb.y,wb.z );
 
         va += (fA * iM_A) * dt;
         vb += (fB * iM_B) * dt;

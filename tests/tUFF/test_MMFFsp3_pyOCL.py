@@ -64,7 +64,7 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--rot-dyn',      type=int,   default=1, help='Use rotational dynamics for pi-orbitals (updateAtomsMMFFf4_rot and getMMFFf4_rot)')
     ap.add_argument('--molecule',                 default=DATA_MOL)
-    ap.add_argument('--steps',        type=int,   default=1000)
+    ap.add_argument('--steps',        type=int,   default=5)
     ap.add_argument('--dt',           type=float, default=0.01)
     ap.add_argument('--damp',         type=float, default=1.0)
     ap.add_argument('--flim',         type=float, default=10.0)
@@ -146,6 +146,7 @@ if __name__ == '__main__':
         mm.bKs[:mm.nnode, :] = 0.0
         mm.Ksp[:mm.nnode, :] = 0.0
         mm.Kpp[:mm.nnode, :] = 0.0
+        mm.apars[:mm.nnode, 3] = 0.0
 
         mm.bLs[:mm.nnode, :][mask] = bL0
         mm.bKs[:mm.nnode, :][mask] = kBL

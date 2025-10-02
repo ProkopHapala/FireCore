@@ -229,13 +229,28 @@ def report_extrema(pos: np.ndarray, vel: np.ndarray, force: np.ndarray) -> None:
         print(f"{label} velocity min {v_min} max {v_max}")
         print(f"{label} force    min {f_min} max {f_max}")
 
+def write_xyz(path: Path, pos: np.ndarray) -> None:
+    with path.open("w") as fh:
+        for frame in pos:
+            pa = frame[0, :3]
+            pb = frame[1, :3]
+            tip_a = pa + frame[2, :3]
+            tip_b = pb + frame[3, :3]
 
-def main() -> None:
+            fh.write("4\n")
+            fh.write("pi-pi test frame\n")
+            fh.write(f"C {pa[0]:.6f} {pa[1]:.6f} {pa[2]:.6f}\n")
+            fh.write(f"C {pb[0]:.6f} {pb[1]:.6f} {pb[2]:.6f}\n")
+            fh.write(f"E {tip_a[0]:.6f} {tip_a[1]:.6f} {tip_a[2]:.6f}\n")
+            fh.write(f"E {tip_b[0]:.6f} {tip_b[1]:.6f} {tip_b[2]:.6f}\n")
+
+
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run pi–pi alignment OpenCL test and plot results.")
-    parser.add_argument("--steps", type=int, default=10000, help="Number of integration steps")
-    parser.add_argument("--dt", type=float, default=0.01, help="Integration time step")
-    parser.add_argument("--damp", type=float, default=1.0, help="Damping factor applied each step")
-    parser.add_argument("--xyz", type=Path, default=Path("pipi_trj.xyz"), help="XYZ trajectory output path (set to empty to skip)")
+    parser.add_argument("--steps", type=int,   default=5, help="Number of integration steps")
+    parser.add_argument("--dt",    type=float, default=0.01, help="Integration time step")
+    parser.add_argument("--damp",  type=float, default=1.0, help="Damping factor applied each step")
+    parser.add_argument("--xyz",   type=Path,  default=Path("pipi_trj.xyz"), help="XYZ trajectory output path (set to empty to skip)")
     args = parser.parse_args()
 
     kernel_path = Path(__file__).with_name("pipi_dynamics.cl")
@@ -257,23 +272,3 @@ def main() -> None:
     plot_results(pos_hist, vel_hist, force_hist, args.dt, invariants)
     plt.savefig("pipi_dynamics.png")
     plt.show()
-
-
-def write_xyz(path: Path, pos: np.ndarray) -> None:
-    with path.open("w") as fh:
-        for frame in pos:
-            pa = frame[0, :3]
-            pb = frame[1, :3]
-            tip_a = pa + frame[2, :3]
-            tip_b = pb + frame[3, :3]
-
-            fh.write("4\n")
-            fh.write("pi-pi test frame\n")
-            fh.write(f"C {pa[0]:.6f} {pa[1]:.6f} {pa[2]:.6f}\n")
-            fh.write(f"C {pb[0]:.6f} {pb[1]:.6f} {pb[2]:.6f}\n")
-            fh.write(f"E {tip_a[0]:.6f} {tip_a[1]:.6f} {tip_a[2]:.6f}\n")
-            fh.write(f"E {tip_b[0]:.6f} {tip_b[1]:.6f} {tip_b[2]:.6f}\n")
-
-
-if __name__ == "__main__":
-    main()
