@@ -114,12 +114,12 @@ class MolecularDynamics(OpenCLBase):
         mf = cl.mem_flags
         
         # Dynamical variables
-        self.create_buffer('apos',     nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
-        self.create_buffer('aforce',   nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('apos',       nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('aforce',     nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
         self.create_buffer('aforce_old', nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
-        self.create_buffer('avel',     nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
-        self.create_buffer('fneigh',   nSystems * nnode * 4 * 2 * float_size, mf.READ_WRITE)
-        self.create_buffer('cvf',      nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('avel',       nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('fneigh',     nSystems * nnode * 4 * 2 * float_size, mf.READ_WRITE)
+        self.create_buffer('cvf',        nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
         # Neighbor lists
         self.create_buffer('neighs',    nSystems * natoms * 4 * int_size, mf.READ_ONLY)
         self.create_buffer('neighCell', nSystems * natoms * 4 * int_size, mf.READ_ONLY)
@@ -286,7 +286,7 @@ class MolecularDynamics(OpenCLBase):
         self.kernel_args_updateAtomsMMFFf4 = self.generate_kernel_args("updateAtomsMMFFf4")
         # New propagator variants
         self.kernel_args_updateAtomsMMFFf4_rot    = self.generate_kernel_args("updateAtomsMMFFf4_rot")
-        self.kernel_args_updateAtomsMMFFf4_RATTLE = self.generate_kernel_args("updateAtomsMMFFf4_RATTLE")
+        #self.kernel_args_updateAtomsMMFFf4_RATTLE = self.generate_kernel_args("updateAtomsMMFFf4_RATTLE")
         self.kernel_args_cleanForceMMFFf4  = self.generate_kernel_args("cleanForceMMFFf4")
         self.kernel_args_runMD             = self.generate_kernel_args("runMD")
 

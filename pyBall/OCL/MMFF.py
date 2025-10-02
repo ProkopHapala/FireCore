@@ -136,17 +136,26 @@ class MMFF:
     def make_back_neighs(self, b_cap_neighs=True):
         """Populate back-neighbor indices similar to `MMFFsp3_loc::makeBackNeighs()`."""
         self.back_neighs = np.full((self.nvecs, 4), -1, dtype=np.int32)
-        # Node atoms contribute entries for their sigma bonds.
+        # Node atoms contribute entries for their sigma bonds and associated pi recoils.
+        pi_offset = self.nnode * 4
         for ia in range(self.nnode):
             for ib_idx in range(4):
                 ja = int(self.neighs[ia, ib_idx])
                 if ja < 0 or ja >= self.natoms:
                     continue
-                # store packed index ia*4+ib_idx like CPU version
+                packed = ia * 4 + ib_idx
+
                 empty = np.where(self.back_neighs[ja] < 0)[0]
                 if empty.size == 0:
                     raise ValueError(f"Atom {ja} has >4 back-neighbors when adding {ia}")
-                self.back_neighs[ja, empty[0]] = ia * 4 + ib_idx
+                self.back_neighs[ja, empty[0]] = packed
+
+                if ja < self.nnode:
+                    pi_idx = self.natoms + ja
+                    empty_pi = np.where(self.back_neighs[pi_idx] < 0)[0]
+                    if empty_pi.size == 0:
+                        raise ValueError(f"Pi orbital {ja} has >4 back-neighbors when adding {ia}")
+                    self.back_neighs[pi_idx, empty_pi[0]] = packed + pi_offset
         if b_cap_neighs:
             for ia in range(self.nnode, self.natoms):
                 if self.back_neighs[ia, 0] < 0:

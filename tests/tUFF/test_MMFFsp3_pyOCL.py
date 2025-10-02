@@ -81,6 +81,9 @@ if __name__ == '__main__':
     ap.add_argument('--monitor',      type=int,   default=1, help='Collect invariant diagnostics each step')
     ap.add_argument('--monitor-props', type=str,  default=','.join(DEFAULT_MONITOR_PROPS), help='Comma separated invariants to track (or all/none)')
     ap.add_argument('--monitor-plot',  type=int,  default=1, help='Plot monitored invariants at the end')
+    ap.add_argument('--distort',      type=float, default=0.2, help='Apply random per-axis distortion of this amplitude (Å) to atoms and pi vectors before MD')
+    ap.add_argument('--distort-seed', type=int,   default=154,   help='Random seed for geometry distortion')
+    ap.add_argument('--dump-fneigh',  type=int,   default=1, help='Dump fneigh buffer (atom and pi recoil forces) after MD run')
     ap.add_argument('--use-real-mass', type=int,  default=0, help='Use tabulated atomic masses (default: uniform mass=1)')
     ap.add_argument('--save-monitor',  type=str,  default=None, help='Path to save monitor plot (png)')
     ap.add_argument('--save-monitor-data', type=str, default=None, help='Path to save monitor data (npz)')
@@ -102,12 +105,30 @@ if __name__ == '__main__':
     if args.scan:
         mol, mm, md = configure_md( mol_path, args.dt,args.damp, args.flim,  bool(args.subtract_vdw),  args.drive_temp, args.drive_gamma, args.drive_seed, print_params=bool(args.print_params), )
         scan = scan_energy_force(mm, md, atom_index=args.scan_atom, axis=axis_map[args.scan_axis], dx=args.scan_dx, nsamp=args.scan_nsamp, restore=True, do_nb=bool(args.do_nb))
-        stats = scan['diff_stats']
         print(f"Scan stats: energy[{stats['energy_min']:.6e}, {stats['energy_max']:.6e}] force[{stats['force_min']:.6e}, {stats['force_max']:.6e}] diff_min={stats['diff_min']:.6e} diff_max={stats['diff_max']:.6e} diff_rms={stats['diff_rms']:.6e}")
         plot_energy_force_scan(scan, axis_label=f"{args.scan_axis}-displacement", show=bool(args.scan_show), save_path=args.scan_save)
         sys.exit(0)
 
     mol, mm, md = configure_md( mol_path,args.dt, args.damp, args.flim, bool(args.subtract_vdw), args.drive_temp,args.drive_gamma,args.drive_seed, print_params=bool(args.print_params), )
+
+    if args.distort > 0.0:
+        rng = np.random.default_rng(args.distort_seed)
+        # Distort atomic positions
+        atom_disp = rng.uniform(-args.distort, args.distort, size=(mm.natoms, 3)).astype(np.float32)
+        mm.apos[:mm.natoms, :3] += atom_disp
+
+        # Distort pi vectors and re-normalize
+        if mm.nnode > 0:
+            pi_disp = rng.uniform(-args.distort, args.distort, size=(mm.nnode, 3)).astype(np.float32)
+            pi_vecs = mm.apos[mm.natoms:mm.natoms + mm.nnode, :3]
+            pi_vecs += pi_disp
+            norms = np.linalg.norm(pi_vecs, axis=1, keepdims=True)
+            norms[norms == 0.0] = 1.0
+            mm.apos[mm.natoms:mm.natoms + mm.nnode, :3] = pi_vecs / norms
+
+        upload_mmff_positions(mm, md, mm.apos)
+        print(f"Applied random distortion with amplitude {args.distort:.3f} Å (seed={args.distort_seed}).")
+
     masses = get_atom_masses(mol, use_real=args.use_real_mass)
     monitor_props, monitor_enabled, totals_hist, monitor_data, trj = init_observers(args.record, args.monitor, monitor_props)
 
@@ -149,6 +170,18 @@ if __name__ == '__main__':
     if args.save_xyz and trj_arr is not None:
         symbols = mol.enames[:mm.natoms]
         write_xyz_trajectory(args.save_xyz, trj_arr[:, :mm.natoms, :], symbols)
+    if args.dump_fneigh:
+        fneigh = buf['fneigh'].reshape(md.nSystems, -1, 4)[0]
+        nnode = mm.nnode
+        atom_block = fneigh[:nnode*4]
+        pi_block   = fneigh[nnode*4:nnode*8]
+        print("fneigh atoms block (first 16 entries):")
+        print(atom_block[:16])
+        if pi_block.size:
+            print("fneigh pi block (first 16 entries):")
+            print(pi_block[:16])
+        else:
+            print("fneigh pi block empty (nnode=0)")
     finalize_monitoring(monitor_enabled, monitor_data, monitor_props, args.save_monitor_data, args.monitor_plot, args.save_monitor)
 
     apos, aforce = buf['apos'], buf['aforce']

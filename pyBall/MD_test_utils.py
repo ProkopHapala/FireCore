@@ -282,9 +282,9 @@ def zero_dynamic_buffers(md):
 def fetch_arrays(md, mm):
     """Download common arrays. Returns dict with atoms-only slices for convenience."""
     apos, aforce = md.download_results()
-    avel  = md.download_buf('avel').reshape(md.nSystems, md.nvecs, 4)
-    fng   = md.download_buf('fneigh').reshape(md.nSystems, md.nnode, 8)
-    cvf   = md.download_buf('cvf').reshape(md.nSystems, md.nvecs, 4)
+    avel  = md.download_buf('avel')  .reshape(md.nSystems, md.nvecs, 4)
+    fng   = md.download_buf('fneigh', dtype=np.float32).reshape(md.nSystems, md.nnode, 8)
+    cvf   = md.download_buf('cvf')   .reshape(md.nSystems, md.nvecs, 4)
     # Atoms-only views from system 0
     atoms = {
         'apos_atoms':      apos[:mm.natoms, :3],

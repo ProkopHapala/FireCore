@@ -1002,14 +1002,15 @@ __kernel void getMMFFf4_rot(
                 //if( (ing>=nnode) || (iG<ing) ){ E+=elb; }
                 //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): bond-length:    iG %3i ing %3i elb %10.5f f(%10.5f,%10.5f,%10.5f) l %10.5f bL %10.5f bK %10.5f \n", iG, ing, elb, f1.x, f1.y, f1.z, l, bL[i], bK[i] ); }
 
-                // // pi-pi alignment interaction            
+                // pi-pi alignment interaction            
                 // float kpp = Kppi[i];
                 // if( (ing<nnode) && (kpp>1.e-6f) ){   // Only node atoms have pi-pi alignemnt interaction
                 //     float3 hpj = apos[ingv+nAtoms].xyz;
                 //     float epp = evalPiAling( hpi, hpj, kpp,  &f1, &f2 );    //   pi-alignment(konjugation), fpi is force on pi-orbital, fps[i] is recoil force on i-th neighbor's pi-orbital                               
                 //     fpi   +=cross(hpi.xyz, f1);  
-                //     fps[i]+=cross(hpj.xyz, f2);    //   for rotational dynamics
+                //     fps[i]-=cross(hpj.xyz, f2);    //   for rotational dynamics
                 //     E+=epp; 
+                //     printf("OCL::getMMFFf4(): pi-pi:     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp );
                 //     //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): cos(pi,pi):     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp ); }
                 // }
             } 
@@ -1899,148 +1900,6 @@ __kernel void updateAtomsMMFFf4(
 // see: https://chatgpt.com/share/68da54e3-91bc-8003-a904-c590d6c5a35e
 // /doc/DevNotes/MMFFsp3_pi_angular_momentum_problem.md
 
-__kernel void updateAtomsMMFFf4_RATTLE(    
-    const int4        nDOFs,            // 1 // (natoms,nnode) dimensions of the system
-    __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
-    __global float4*  avel,         // 3 // velocities of atoms 
-    __global float4*  aforce,       // 4 // forces on atoms
-    __global float4*  cvf,          // 5 // damping coefficients for velocity and force
-    __global float4*  fneigh,       // 6 // recoil forces on neighbors (and pi-orbitals)
-    __global int4*    bkNeighs,     // 7 // back neighbors indices (for recoil forces)
-    __global float4*  constr,       // 8 // constraints (x,y,z,K) for each atom
-    __global float4*  constrK,      // 9 // constraints stiffness (kx,ky,kz,?) for each atom
-    __global float4*  MDparams,     // 10 // MD parameters (dt,damp,Flimit)
-    __global float4*  TDrives,      // 11 // Thermal driving (T,gamma_damp,seed,?)
-    __global cl_Mat3* bboxes,       // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
-    __global int*     sysneighs,    // 13 // // for each system contains array int[nMaxSysNeighs] of nearby other systems
-    __global float4*  sysbonds,     // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
-    __global float4*  aforce_old    // 15 // // previous step forces for velocity Verlet
-){
-    const int natoms=nDOFs.x;           // number of atoms
-    const int nnode =nDOFs.y;           // number of node atoms
-    const int nMaxSysNeighs = nDOFs.z;  // max number of inter-system interactions; if <0 shwitch inter system interactions off
-    const int nvec  = natoms+nnode; // number of vectors (atoms+node atoms)
-    const int iG = get_global_id  (0); // index of atom
-
-    if(iG>=nvec) return;
-
-    const int iS = get_global_id  (1); // index of system
-    const int nG = get_global_size(0); // number of atoms
-    const int nS = get_global_size(1); // number of systems
-
-    //const int ian = iG + iS*nnode; 
-    const int iaa = iG + iS*natoms;  // index of atom in atoms array
-    const int iav = iG + iS*nvec;    // index of atom in vectors array
-
-    const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
-    const float4 TDrive = TDrives[iS];
-
-    if(iG>=(natoms+nnode)) return; // make sure we are not out of bounds of current system
-
-    //aforce[iav] = float4Zero;
-
-    float4 fe      = aforce[iav]; // force on atom or pi-orbital
-    const bool bPi = iG>=natoms;  // is it pi-orbital ?
-    
-    // ------ Gather Forces from back-neighbors
-
-    int4 ngs = bkNeighs[ iav ]; // back neighbors indices
-
-    //if(iS==5)printf( "iG,iS %i %i ngs %i,%i,%i,%i \n", iG, iS, ngs.x,ngs.y,ngs.z,ngs.w );
-    //if( (iS==0)&&(iG==0) ){ printf( "GPU:fe.1[iS=%i,iG=%i](%g,%g,%g,%g) \n", fe.x,fe.y,fe.z,fe.w ); }
-
-    // sum all recoil forces from back neighbors   - WARRNING : bkNeighs must be properly shifted on CPU by adding offset of system iS*nvec*4
-    if(ngs.x>=0){ fe += fneigh[ngs.x]; } // if neighbor index is negative it means that there is no neighbor, so we skip it
-    if(ngs.y>=0){ fe += fneigh[ngs.y]; }
-    if(ngs.z>=0){ fe += fneigh[ngs.z]; }
-    if(ngs.w>=0){ fe += fneigh[ngs.w]; }
-
-    // ---- Limit Forces - WARRNING : Github_Copilot says: this is not the best way to limit forces, because it can lead to drift, better is to limit forces in the first forcefield run (best is NBFF) 
-    // float Flimit = 10.0f;
-    // float fr2 = dot(fe.xyz,fe.xyz);  // squared force
-    // if( fr2 > (Flimit*Flimit) ){  fe.xyz*=(Flimit/sqrt(fr2)); }  // if force is too big, we scale it down to Flimit
-
-    // =============== FORCE DONE
-    //aforce[iav] = fe;           // store force before limit
-    //aforce[iav] = float4Zero;   // clean force   : This can be done in the first forcefield run (best is NBFF)
-    //if((iG==iGdbg)&&(iS==iSdbg)){ printf( "OCL updateAtomsMMFFf4() fe[iS=%3i,iG=%3i](%16.8f,%16.8f,%16.8f|%16.8f) \n", iS,iG, fe.x,fe.y,fe.z,fe.w ); }
-
-    // =============== DYNAMICS
-
-    float4 ve = avel[iav]; // velocity of atom or pi-orbital
-    float4 pe = apos[iav]; // position of atom or pi-orbital
-    
-    const bool bDrive = TDrive.y > 0.0f;
-
-const float dt = MDpars.x;
-
-float3 u_old = pe.xyz;
-if (bPi) {
-    // --- 1) Project force to tangent and add centripetal term (as you already do)
-    float fpar  = dot(u_old, fe.xyz);
-    fe.xyz      = fe.xyz - u_old * fpar;      // fe <- (I - u u^T) fe
-    float v2    = dot(ve.xyz, ve.xyz);
-    fe.xyz     -= u_old * v2;                // centripetal correction: -|v|^2 u
-}
-
-// diagnostics
-cvf[iav] += (float4){ dot(fe.xyz,fe.xyz), dot(ve.xyz,ve.xyz), dot(fe.xyz,ve.xyz), 0.0f };
-
-// ------ Integrate (Leap-Frog style you already use)
-ve.xyz *= MDpars.z;           // damping (note: breaks strict momentum conservation)
-ve.xyz += fe.xyz * dt;        // v' = v + a dt
-float3 qprime = pe.xyz + ve.xyz * dt; // provisional position/orientation
-
-if (bPi) { // --- 2) Position-level RATTLE correction: find scalar lambda so that |q' + lambda * u_old|^2 = 1
-    // Solve quadratic: lambda^2 + 2(u_old·qprime) lambda + (|qprime|^2 - 1) = 0
-    float s         = dot(u_old, qprime);
-    float q2        = dot(qprime, qprime);
-    float disc      = s*s - (q2 - 1.0f);  if (disc < 0.0f) disc = 0.0f; // numerical safety
-    float sqrt_disc = sqrt(disc);
-    float lambda    = -s + sqrt_disc;     // choose root that is small for small dt: lambda = -s + sqrt_disc
-    float3 qcorr    = qprime + u_old * lambda;   // apply position correction along old u:
-    float3 u_new    = qcorr;      // set new orientation - should be unit length (within roundoff); no renormalize required
-    u_new           = normalize(u_new);    // small numerical renormalization is OK
-    // --- 3) Velocity-level RATTLE correction: ensure u_new·v_new = 0
-    // v' is provisional velocity (before correction)
-    float vpar = dot(u_new, ve.xyz);    // radial component relative to new orientation
-    if (vpar*vpar > 1e-12f ) {
-        // remove radial component from pi velocity
-        float3 delta_v_pi = u_new * vpar;  // amount to subtract from pi
-        ve.xyz           -= delta_v_pi;    // now ve is tangent to u_new  - transfer opposite impulse to host atom velocity (conserve linear momentum)
-        // compute host local index for this pi (adapt if your layout differs)
-        int hostLocal   = iG - natoms;     // <-- ADAPT THIS if mapping is different
-        int hostAa      = hostLocal + iS * natoms; // global index for host atom in avel/aforce arrays
-        // If masses are not 1: delta_host = - delta_pi * (m_pi/m_host). For m=1 skip scale.
-        
-        // For now, we skip propagating the opposite impulse to the host atom to avoid races and build issues.
-        // TODO: implement a proper reduction buffer or use scalar arrays for velocities if strict conservation is required.
-        //float4 vhost    = avel[ hostAa ];
-        //vhost.xyz      += delta_v_pi;      // opposite impulse (delta_host = -delta_pi => add -(-) -> +)
-        
-        // NOTE: OpenCL forbids taking address of vector components for atomics on many drivers.
-        // atomic_add( (__global int*)&avel[hostAa].x, as_int(delta_v_pi.x) );
-        // atomic_add( (__global int*)&avel[hostAa].y, as_int(delta_v_pi.y) );
-        // atomic_add( (__global int*)&avel[hostAa].z, as_int(delta_v_pi.z) );
-        //avel[ hostAa ]  = vhost;           // WARNING: potential race if multiple work-items write hostAa
-        // Optionally update aforce for bookkeeping (impulse->force estimate)
-        // aforce[ hostAa ].xyz += delta_v_pi / dt; // optional
-    }
-
-    // write back corrected orientation and velocity
-    pe.xyz = u_new;
-} else {
-    // not a pi: write provisional
-    pe.xyz = qprime;
-}
-
-pe.w = 0.0f; ve.w = 0.0f;
-avel[iav] = ve;   // store corrected velocity
-apos[iav] = (float4){ pe.xyz, 0.0f }; // store corrected orientation
-    
-}
-
-
 __kernel void updateAtomsMMFFf4_rot(    
     const int4        nDOFs,            // 1 // (natoms,nnode) dimensions of the system
     __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
@@ -2094,6 +1953,18 @@ __kernel void updateAtomsMMFFf4_rot(
     //if( (iS==0)&&(iG==0) ){ printf( "GPU updateAtomsMMFFf4_rot() GPU:fe.1[iS=%i,iG=%i](%g,%g,%g,%g) \n", fe.x,fe.y,fe.z,fe.w ); }
 
     // sum all recoil forces from back neighbors   - WARRNING : bkNeighs must be properly shifted on CPU by adding offset of system iS*nvec*4
+
+
+    if(bPi){ 
+       for(int i=0;i<4;i++){
+           int ngIdx = ((int*)&ngs)[i];
+           if(ngIdx>=0){
+                float3 fng = fneigh[ngIdx].xyz; 
+                if(dot(fng,fng)>1e-12f){ printf("GPU --- updateAtomsMMFFf4_rot() GPU:fe.1[iS=%3i,iG=%3i]  pi-neigh[%3i|%3i]  (%12.4e,%12.4e,%12.4e) \n", iS,iG, i, ngIdx, fng.x,fng.y,fng.z ); }
+                fe.xyz += fng;
+           }
+       }
+    }
     if(ngs.x>=0){ fe += fneigh[ngs.x]; } // if neighbor index is negative it means that there is no neighbor, so we skip it
     if(ngs.y>=0){ fe += fneigh[ngs.y]; }
     if(ngs.z>=0){ fe += fneigh[ngs.z]; }
