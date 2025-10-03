@@ -124,10 +124,10 @@ def compute_energies(avel_all, natoms, masses, aforce_atoms_full):
     omega = np.asarray(avel_all[natoms:, :3], dtype=np.float32)
     if omega.size:
         omega_sq = (omega * omega).sum(axis=1)
-        if np.allclose(omega_sq, 0.0):
-            print(f"DEBUG Ekin_rot zero: max |omega|={float(np.max(np.abs(omega))):.3e} n_pi={omega.shape[0]}")
-        else:
-            print(f"DEBUG Ekin_rot stats: max |omega|={float(np.max(np.sqrt(omega_sq))):.3e} min |omega|={float(np.min(np.sqrt(omega_sq))):.3e} sum |omega|^2={float(np.sum(omega_sq)):.3e}")
+        # if np.allclose(omega_sq, 0.0):
+        #     print(f"DEBUG Ekin_rot zero: max |omega|={float(np.max(np.abs(omega))):.3e} n_pi={omega.shape[0]}")
+        # else:
+        #     print(f"DEBUG Ekin_rot stats: max |omega|={float(np.max(np.sqrt(omega_sq))):.3e} min |omega|={float(np.min(np.sqrt(omega_sq))):.3e} sum |omega|^2={float(np.sum(omega_sq)):.3e}")
         Ekin_rot = 0.5 * float(np.sum(omega_sq))
         Ekin += Ekin_rot
     else:
