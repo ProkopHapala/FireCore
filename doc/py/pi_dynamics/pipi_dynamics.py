@@ -146,8 +146,11 @@ def summarize_invariants(invars: dict[str, np.ndarray]) -> None:
         print(f"{key} drift {float(np.max(np.abs(series - series[0]))):.3e}")
 
 
-def plot_results(pos: np.ndarray, vel: np.ndarray, force: np.ndarray, dt: float, invariants: dict[str, np.ndarray]) -> None:
+def plot_results(pos: np.ndarray, vel: np.ndarray, force: np.ndarray, dt: float, invariants: dict[str, np.ndarray], *, damping: float | None = None) -> None:
     steps = np.arange(pos.shape[0]) * dt
+    meta = f"pi_dynamics.py | steps={pos.shape[0]} dt={dt:.4f}"
+    if damping is not None:
+        meta += f" damp={damping:.3f}"
 
     energy = pos[:, 0, 3]
     torqueA = force[:, 2, :3]
@@ -188,7 +191,8 @@ def plot_results(pos: np.ndarray, vel: np.ndarray, force: np.ndarray, dt: float,
     axes[3].set_ylabel("Energy / Torque")
     axes[3].legend(loc="upper right")
 
-    fig_dofs.tight_layout()
+    fig_dofs.suptitle(meta)
+    fig_dofs.tight_layout(rect=[0, 0, 1, 0.94])
 
     fig_inv, inv_axes = plt.subplots(3, 1, figsize=(8, 10), sharex=True)
 
@@ -211,7 +215,8 @@ def plot_results(pos: np.ndarray, vel: np.ndarray, force: np.ndarray, dt: float,
     inv_axes[2].set_ylabel("Angular mom.")
     inv_axes[2].legend(loc="upper right")
 
-    fig_inv.tight_layout()
+    fig_inv.suptitle(meta)
+    fig_inv.tight_layout(rect=[0, 0, 1, 0.94])
 
 
 def report_extrema(pos: np.ndarray, vel: np.ndarray, force: np.ndarray) -> None:
@@ -269,6 +274,6 @@ if __name__ == "__main__":
         write_xyz(args.xyz, pos_hist)
         print(f"Trajectory written to {args.xyz}")
 
-    plot_results(pos_hist, vel_hist, force_hist, args.dt, invariants)
+    plot_results(pos_hist, vel_hist, force_hist, args.dt, invariants, damping=args.damp)
     plt.savefig("pipi_dynamics.png")
     plt.show()

@@ -785,19 +785,19 @@ __kernel void getMMFFf4(
                 float elb = evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1; E+=elb;  // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor, 
                 //if( (ing>=nnode) || (iG<ing) ){ E+=elb; }
                 //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): bond-length:    iG %3i ing %3i elb %10.5f f(%10.5f,%10.5f,%10.5f) l %10.5f bL %10.5f bK %10.5f \n", iG, ing, elb, f1.x, f1.y, f1.z, l, bL[i], bK[i] ); }
-
-                // pi-pi alignment interaction            
-                float kpp = Kppi[i];
-                if( (ing<nnode) && (kpp>1.e-6f) ){   // Only node atoms have pi-pi alignemnt interaction
-                    float3 hpj = apos[ingv+nAtoms].xyz;
-                    float epp = evalPiAling( hpi, hpj, kpp,  &f1, &f2 );    //   pi-alignment(konjugation), fpi is force on pi-orbital, fps[i] is recoil force on i-th neighbor's pi-orbital
-                    fpi+=f1;  fps[i]+=f2;                                 
-                    //fpi+=cross(hpi.xyz, f1);  fpi+=cross(hpj.xyz, f2);    //   for rotational dynamics
-                     E+=epp; 
-                    //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): cos(pi,pi):     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp ); }
-                }
             } 
 
+            // pi-pi alignment interaction            
+            float kpp = Kppi[i];
+            if( (ing<nnode) && (kpp>1.e-6f) ){   // Only node atoms have pi-pi alignemnt interaction
+                float3 hpj = apos[ingv+nAtoms].xyz;
+                float epp = evalPiAling( hpi, hpj, kpp,  &f1, &f2 );    //   pi-alignment(konjugation), fpi is force on pi-orbital, fps[i] is recoil force on i-th neighbor's pi-orbital
+                fpi+=f1;  
+                //fps[i]+=f2;   // -- NOTE: we do not need to store pi-pi recoils since we computed both i-j and j-i for pi-pi alignment                               
+                //fpi+=cross(hpi.xyz, f1);  fpi+=cross(hpj.xyz, f2);    //   for rotational dynamics
+                E+=epp*0.5; // prevent double couinting as we compute both i-j and j-i 
+                //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): cos(pi,pi):     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp ); }
+            }
        
             // pi-sigma othogonalization interaction
             float ksp = Kspi[i];
@@ -812,9 +812,7 @@ __kernel void getMMFFf4(
 
         // --- Store Pi-forces                      we store pi-forces here because we don't use them in the angular force evaluation
         const int i4p=(iG + iS*nnode*2 )*4 + nnode*4; // index of first pi-force for current atom
-        for(int i=0; i<NNEIGH; i++){
-            fneigh[i4p+i] = (float4){fps[i],0}; // store recoil pi-force on i-th neighbor
-        }
+        for(int i=0; i<NNEIGH; i++){ fneigh[i4p+i] = (float4){fps[i],0};  } // store recoil pi-force on i-th neighbor
         aforce[iav+nAtoms]  = (float4){fpi,0};  // store pi-force on pi-orbital of current atom
 
     }
@@ -1007,20 +1005,20 @@ __kernel void getMMFFf4_rot(
                 float elb = evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1; E+=elb;  // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor, 
                 //if( (ing>=nnode) || (iG<ing) ){ E+=elb; }
                 //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): bond-length:    iG %3i ing %3i elb %10.5f f(%10.5f,%10.5f,%10.5f) l %10.5f bL %10.5f bK %10.5f \n", iG, ing, elb, f1.x, f1.y, f1.z, l, bL[i], bK[i] ); }
-
-                // pi-pi alignment interaction            
-                float kpp = Kppi[i];
-                if( (ing<nnode) && (kpp>1.e-6f) ){   // Only node atoms have pi-pi alignemnt interaction
-                    float3 hpj = apos[ingv+nAtoms].xyz;
-                    float epp = evalPiAling( hpi, hpj, kpp,  &f1, &f2 );    //   pi-alignment(konjugation), fpi is force on pi-orbital, fps[i] is recoil force on i-th neighbor's pi-orbital                               
-                    fpi   +=cross(hpi.xyz, f1);  
-                    fps[i]+=cross(hpj.xyz, f2);    //   for rotational dynamics
-                    E+=epp; 
-                    //printf("OCL::getMMFFf4(): pi-pi:     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp );
-                    printf("OCL::getMMFFf4(): pi-pi:     iG %3i ing %3i epp %10.5f kpp %10.5f hpi(%10.5f,%10.5f,%10.5f) hpj(%10.5f,%10.5f,%10.5f)               f1(%10.5f,%10.5f,%10.5f) f2(%10.5f,%10.5f,%10.5f) \n", iG, ing, epp, kpp,  hpi.x,hpi.y,hpi.z,  hpj.x,hpj.y,hpj.z,  f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z );
-                    //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): cos(pi,pi):     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp ); }
-                }
             } 
+
+            // pi-pi alignment interaction            
+            float kpp = Kppi[i];
+            if( (ing<nnode) && (kpp>1.e-6f) ){   // Only node atoms have pi-pi alignemnt interaction
+                float3 hpj = apos[ingv+nAtoms].xyz;
+                float epp = evalPiAling( hpi, hpj, kpp,  &f1, &f2 );    //   pi-alignment(konjugation), fpi is force on pi-orbital, fps[i] is recoil force on i-th neighbor's pi-orbital                               
+                fpi   +=cross(hpi.xyz, f1);      //  torq  for rotational dynamics
+                //fps[i]+=cross(hpj.xyz, f2);    // fps[i] is recoil force on i-th neighbor's pi-orbital // No recoil for pi-orbitals, we are doing both i-j and j-i
+                E+=epp*0.5; // prevent double counting as we compute both i-j and j-i 
+                //printf("OCL::getMMFFf4(): pi-pi:     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp );
+                printf("OCL::getMMFFf4(): pi-pi:     iG %3i ing %3i epp %10.5f kpp %10.5f hpi(%10.5f,%10.5f,%10.5f) hpj(%10.5f,%10.5f,%10.5f)               f1(%10.5f,%10.5f,%10.5f) f2(%10.5f,%10.5f,%10.5f) \n", iG, ing, epp, kpp,  hpi.x,hpi.y,hpi.z,  hpj.x,hpj.y,hpj.z,  f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z );
+                //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): cos(pi,pi):     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp ); }
+            }
 
             // pi-sigma othogonalization interaction
             float ksp = Kspi[i];
@@ -1037,9 +1035,7 @@ __kernel void getMMFFf4_rot(
 
         // --- Store Pi-forces                      we store pi-forces here because we don't use them in the angular force evaluation
         const int i4p=(iG + iS*nnode*2 )*4 + nnode*4; // index of first pi-force for current atom
-        for(int i=0; i<NNEIGH; i++){
-            fneigh[i4p+i] = (float4){fps[i],0}; // store recoil pi-force on i-th neighbor
-        }
+        //for(int i=0; i<NNEIGH; i++){ fneigh[i4p+i] = (float4){fps[i],0}; } // store recoil pi-force on i-th neighbor // No recoils for pi-orbitals
         aforce[iav+nAtoms]  = (float4){fpi,0};  // store pi-force on pi-orbital of current atom
 
     }
@@ -1974,11 +1970,13 @@ __kernel void updateAtomsMMFFf4_rot(
            }
        }
     }
-    if(ngs.x>=0){ fe += fneigh[ngs.x]; } // if neighbor index is negative it means that there is no neighbor, so we skip it
-    if(ngs.y>=0){ fe += fneigh[ngs.y]; }
-    if(ngs.z>=0){ fe += fneigh[ngs.z]; }
-    if(ngs.w>=0){ fe += fneigh[ngs.w]; }
 
+    if(!bPi){ // pi-recoils are just for pi-pi interaction, but pi-pi interaction are done for node-atoms only, and we do it both for i-j and j-i so we do not need store recoils
+        if(ngs.x>=0){ fe += fneigh[ngs.x]; } // if neighbor index is negative it means that there is no neighbor, so we skip it
+        if(ngs.y>=0){ fe += fneigh[ngs.y]; }
+        if(ngs.z>=0){ fe += fneigh[ngs.z]; }
+        if(ngs.w>=0){ fe += fneigh[ngs.w]; }
+    }
     // ---- Limit Forces - WARRNING : Github_Copilot says: this is not the best way to limit forces, because it can lead to drift, better is to limit forces in the first forcefield run (best is NBFF) 
     float Flimit = 10.0f;
     float fr2 = dot(fe.xyz,fe.xyz);  // squared force
@@ -2008,10 +2006,6 @@ if (bPi){   // ROTATIONAL DYNAMICS FOR PI-ORBITAL
     pe.xyz  = rotate_by_omega( pe.xyz, ve.xyz*dt);  // rotate p by omega*dt
     //pe.xyz  = rotate_by_omega_taylor( pe.xyz, ve.xyz*dt); 
     pe.xyz  = normalize(pe.xyz); // Normalize to correct for numerical drift
-
-
-    
-
     //printf( "GPU updateAtomsMMFFf4_rot() omega[iS=%3i,iG=%3i] ve(%12.4e,%12.4e,%12.4e | %12.4e)  fe(%12.4e,%12.4e,%12.4e | %12.4e) \n", iS, iG, ve.x,ve.y,ve.z, length(ve.xyz), fe.x, fe.y, fe.z,  length(fe.xyz) );
 }else{// ------ Integrate (Leap-Frog style you already use)
     //ve.xyz *= MDpars.z;           // damping (note: breaks strict momentum conservation)
