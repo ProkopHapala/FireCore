@@ -192,3 +192,17 @@ python opt_2D_new.py --verbosity 3 --mode model  # Verbose output for debugging
 ```
 
 This tutorial covers all features of `opt_2D_new.py`. For questions about the underlying FitREQ model, see `FitREQ.h` and the main tutorial.
+
+## Addendum: Multi-file Workflow (`opt_2D_multi.py`)
+
+- **Location**: `tests/tFitREQ/opt_2D_multi.py` fits multiple XYZ movies sequentially using the same DOF selection.
+- **Invocation**: supply several inputs via `--inputs` (defaults in `defalt_inputs`); the script always performs a fit, then generates per-system plots under `--plot-dir` and data dumps under `--data-dir`.
+- **Shared options**: `--kMorse`, `--Lepairs`, `--soft_clamp`, `--epairs`, `--line`, `--kcal`, `--save-fmt` behave as in the single-file driver. `--out-xyz` defaults to 0 to avoid overwriting when iterating.
+- **Weighting**: when `--user_weights 1`, reference energies from all systems are concatenated before `fit.split_and_weight_curves()`. `n_before` is set internally to 100 (Morse) or 5 (LJ).
+- **Trajectory output**: a single optimization trajectory plot is saved as `plots/trajectory_<dof-selection>.png` after `fit.run()`.
+
+### Debug Lab Notes (2025-10-10)
+
+- Observed NaNs in per-system plots occurred because `sample_counts` stored cumulative totals from repeated `fit.loadXYZ(..., bAppend=True)` calls.
+- Fix: compute per-file deltas (`n_delta = n_total - previous_total`) before slicing `E_models`. Implemented in `tests/tFitREQ/opt_2D_multi.py`.
+- Validation: running `python opt_2D_multi.py` now reports `sample_counts [703, 604, 703]`, and `plot_compare()` logs finite min/max for every system.

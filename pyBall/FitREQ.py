@@ -272,10 +272,17 @@ lib.getIBuff.argtypes = [c_char_p]
 lib.getIBuff.restype  = c_int_p
 def getIBuff(name,sh):
     if not isinstance(sh, tuple): sh=(sh,)
-    name=name.encode('utf8')
-    ptr = lib.getIBuff(name)
+    name_bytes=name.encode('utf8')
+    ptr = lib.getIBuff(name_bytes)
     if(ptr):
-        return np.ctypeslib.as_array(ptr, shape=sh)
+        arr = np.ctypeslib.as_array(ptr, shape=sh)
+        if arr.size:
+            amin = arr.min()
+            amax = arr.max()
+        else:
+            amin = amax = None
+        print(f"getIBuff('{name}') shape={arr.shape} min={amin} max={amax}")
+        return arr
     else:
         return None
     
@@ -284,10 +291,21 @@ lib.getBuff.argtypes = [c_char_p]
 lib.getBuff.restype  = c_double_p 
 def getBuff(name,sh):
     if not isinstance(sh, tuple): sh=(sh,)
-    name=name.encode('utf8')
-    ptr = lib.getBuff(name)
+    name_bytes=name.encode('utf8')
+    ptr = lib.getBuff(name_bytes)
     if(ptr):
-        return np.ctypeslib.as_array(ptr, shape=sh)
+        arr = np.ctypeslib.as_array(ptr, shape=sh)
+        if arr.size:
+            finite = arr[np.isfinite(arr)]
+            if finite.size:
+                amin = float(np.min(finite))
+                amax = float(np.max(finite))
+            else:
+                amin = amax = None
+        else:
+            amin = amax = None
+        print(f"getBuff('{name}') shape={arr.shape} min={amin} max={amax}")
+        return arr
     else:
         return None
 

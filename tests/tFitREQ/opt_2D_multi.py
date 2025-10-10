@@ -23,7 +23,7 @@ defalt_inputs=[
     #"H2O-A1_HF-D1-y.xyz",    # sample in-plane plane epairs of O_3 atom in H2O with HF probe
     
     #"CH2O-A1_H2O-D1-z.xyz",      # sample in-plane plane epairs of O_2 atom in CH2O with H2O probe
-    #"CH2O-A1_HCN-D1-z.xyz",      # sample in-plane plane epairs of O_2 atom in CH2O with HCN  probe
+    "CH2O-A1_HCN-D1-z.xyz",      # sample in-plane plane epairs of O_2 atom in CH2O with HCN  probe
     #"CH2O-A1_HF-D1-z.xyz",       # sample in-plane plane epairs of O_2 atom in CH2O with HF   probe
     
     #"HCN-A1_HCN-D1-z.xyz", 
@@ -31,7 +31,7 @@ defalt_inputs=[
     #"NH3-A1_HCN-D1-z.xyz",
 
     #"HF-A1_H2O-D1-z.xyz",        # sample in-plane plane epairs of F atom in HF with H2O   probe
-    #"HF-A1_HCN-D1-z.xyz",        # sample in-plane plane epairs of F atom in HF with HCN   probe
+    "HF-A1_HCN-D1-z.xyz",        # sample in-plane plane epairs of F atom in HF with HCN   probe
     #"HF-A1_HF-D1-z.xyz",         # sample in-plane plane epairs of F atom in HF with HF    probe
 ]
 
@@ -52,7 +52,7 @@ if __name__ == "__main__":
     #parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_HF_HCN.dat", help="DOF selection file")
 
     parser.add_argument("--verbosity", type=int,   default=2,    help="Verbosity for FitREQ")
-    parser.add_argument("--nstep",     type=int,   default=1000,   help="Fitting steps")
+    parser.add_argument("--nstep",     type=int,   default=10,   help="Fitting steps")
     parser.add_argument("--fmax",      type=float, default=1e-8, help="Target force max for fitting")
     parser.add_argument("--dt",        type=float, default=0.01, help="Integrator dt")
     parser.add_argument("--max-step",  type=float, default=0.05, help="Max step")
@@ -104,14 +104,20 @@ if __name__ == "__main__":
 
     # --- Batch Loading
     sample_counts = []
+    total_loaded = 0
     all_Erefs = []
     all_x0s = []
     for i, f in enumerate(args.inputs):
         fname = os.path.join(args.dir, f)
         print(f"Loading {fname}")
         bAppend = (i > 0)
-        n = fit.loadXYZ(fname, bAddEpairs=(args.epairs == 1), bAppend=bAppend)
-        sample_counts.append(n)
+        n_total = fit.loadXYZ(fname, bAddEpairs=(args.epairs == 1), bAppend=bAppend)
+        n_delta = n_total - total_loaded
+        if n_delta < 0:
+            print(f"Warning: loadXYZ returned decreasing total count ({n_total} < {total_loaded}); forcing delta=0")
+            n_delta = 0
+        sample_counts.append(n_delta)
+        total_loaded = n_total
         if args.user_weights:
             Erefs, x0s = fit.read_xyz_data(fname)
             all_Erefs.append(Erefs)
@@ -143,8 +149,16 @@ if __name__ == "__main__":
 
     Eerr, E_models, _ = fit.getEs( bDOFtoTypes=True, bEs=True )
 
-    #print(Eerr.shape)
-    print(E_models.shape)
+    if E_models is None:
+        print("fit.getEs() returned Es=None")
+    else:
+        nan_total = int(np.isnan(E_models).sum())
+        finite = E_models[np.isfinite(E_models)]
+        if finite.size:
+            print(f"E_models shape={E_models.shape} nan={nan_total} min={finite.min():.6f} max={finite.max():.6f}")
+        else:
+            print(f"E_models shape={E_models.shape} all values are NaN")
+
     print("sample_counts ", sample_counts, np.sum(sample_counts))
     
     istart = 0
@@ -156,6 +170,7 @@ if __name__ == "__main__":
         
         # Get grid mapping
         Gref, seq, axis, distances, angles = fit.parse_xyz_mapping(fname)
+        print(f"parse_xyz_mapping[{base}] seq_len={len(seq)} grid_shape={Gref.shape} axis={axis}")
         Es_slice = E_models[istart:iend]
         
         # Map to grid with NaN padding
@@ -164,6 +179,25 @@ if __name__ == "__main__":
         for k in range(nmap):
             idist, iang = seq[k]
             Gmodel[idist, iang] = Es_slice[k]
+        if Es_slice.size:
+            nan_slice = int(np.isnan(Es_slice).sum())
+            finite_slice = Es_slice[np.isfinite(Es_slice)]
+            if finite_slice.size:
+                print(f"Es_slice[{base}] size={Es_slice.size} nan={nan_slice} min={finite_slice.min():.6f} max={finite_slice.max():.6f}")
+            else:
+                print(f"Es_slice[{base}] size={Es_slice.size} all NaN")
+        else:
+            print(f"Es_slice[{base}] is empty")
+        finite_model = Gmodel[np.isfinite(Gmodel)]
+        if finite_model.size:
+            print(f"Gmodel[{base}] finite min={finite_model.min():.6f} max={finite_model.max():.6f}")
+        else:
+            print(f"Gmodel[{base}] has no finite values (shape={Gmodel.shape})")
+        finite_ref = Gref[np.isfinite(Gref)]
+        if finite_ref.size:
+            print(f"Gref[{base}] finite min={finite_ref.min():.6f} max={finite_ref.max():.6f}")
+        else:
+            print(f"Gref[{base}] has no finite values (shape={Gref.shape})")
         plot_path = os.path.join(args.plot_dir, f"{base}.png")
         data_base = os.path.join(args.data_dir, base)
         fit.plot_compare(
