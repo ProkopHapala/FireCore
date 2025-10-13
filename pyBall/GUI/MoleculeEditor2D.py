@@ -63,6 +63,7 @@ DEFAULT_ELEMENTS = ["H", "C", "N", "O", "F"]
 MODE_DRAW = "draw"
 MODE_MOVE = "move"
 MODE_BOND = "bond"
+MODE_ROTATE = "rotate"
 
 GRID_MODE_NONE = "none"
 GRID_MODE_TRI_XY = "tri_xy"
@@ -359,6 +360,28 @@ class MoleculeDocument:
             arr[idx, 0] = snapped[:, 0]
             arr[idx, 1] = snapped[:, 1]
 
+    def selection_center(self):
+        if not self.selected_atoms:
+            return None
+        idx = np.fromiter(self.selected_atoms, dtype=int)
+        if idx.size == 0:
+            return None
+        coords = self.system.apos[idx]
+        return coords.mean(axis=0)
+
+    def rotate_selected_atoms(self, angle_deg, pivot=None):
+        if not self.selected_atoms:
+            return
+        idx = np.fromiter(self.selected_atoms, dtype=int)
+        if idx.size == 0:
+            return
+        if pivot is None:
+            pivot = self.selection_center()
+            if pivot is None:
+                return
+        angle_rad = np.deg2rad(angle_deg)
+        self.system.rotate_subset(idx, angle_rad, pivot=pivot)
+
     def change_element(self, index, element):
         self._ensure_mutable_lists()
         element = canonical_element(element)
@@ -445,6 +468,9 @@ class MoleculeCanvas(FigureCanvasQTAgg):
         self.grid_spacing = 1.42
         self.grid_visible = False
         self.grid_mode = GRID_MODE_TRI_XY
+        self.rotation_pivot = None
+        self.rotation_pivot_manual = False
+        self.rotation_step_deg = 5.0
         self._connect_events()
         self.autoscale_view(refresh=False)
         self.refresh()
@@ -459,6 +485,15 @@ class MoleculeCanvas(FigureCanvasQTAgg):
         self.pending_atom = None
         self.dragging_atom = None
         self.last_mouse = None
+        if mode != MODE_MOVE:
+            self.drag_select_start = None
+            self.selection_rect = None
+        if mode == MODE_ROTATE:
+            self.rotation_pivot_manual = False
+            self._auto_rotation_pivot()
+        else:
+            if not self.rotation_pivot_manual:
+                self.rotation_pivot = None
 
     def set_element(self, element):
         self.current_element = element
@@ -471,6 +506,15 @@ class MoleculeCanvas(FigureCanvasQTAgg):
         self.ax.set_position([0.0, 0.0, 1.0, 1.0])
         self.ax.set_aspect("equal")
         self.ax.set_axis_off()
+        doc = self.document
+        if self.mode == MODE_ROTATE:
+            if doc.selected_atoms:
+                if not self.rotation_pivot_manual:
+                    self._auto_rotation_pivot()
+            elif not self.rotation_pivot_manual:
+                self.rotation_pivot = None
+        elif not self.rotation_pivot_manual:
+            self.rotation_pivot = None
         doc = self.document
         apos = doc.positions
         if apos.shape[0] > 0:
@@ -523,9 +567,42 @@ class MoleculeCanvas(FigureCanvasQTAgg):
         if self.selection_rect is not None:
             if self.selection_rect not in self.ax.patches:
                 self.ax.add_patch(self.selection_rect)
+        if self.rotation_pivot is not None and self.mode == MODE_ROTATE:
+            pivot_xy = self.rotation_pivot[:2]
+            self.ax.scatter(
+                [pivot_xy[0]],
+                [pivot_xy[1]],
+                marker="+",
+                c="#ff5500",
+                s=150.0,
+                linewidths=2.0,
+                zorder=5,
+            )
         if self.grid_visible and self.grid_mode != GRID_MODE_NONE:
             self._draw_grid()
         self.figure.canvas.draw_idle()
+
+    def _auto_rotation_pivot(self):
+        center = self.document.selection_center()
+        if center is None:
+            self.rotation_pivot = None
+            return
+        pivot = np.array(center, dtype=np.float64)
+        self.rotation_pivot = pivot
+
+    def _rotate_selected(self, angle_deg):
+        if not self.document.selected_atoms:
+            return
+        if self.rotation_pivot is None:
+            pivot = self.document.selection_center()
+        else:
+            pivot = self.rotation_pivot
+        if pivot is None:
+            return
+        self.document.rotate_selected_atoms(angle_deg, pivot=pivot)
+        if not self.rotation_pivot_manual:
+            self.rotation_pivot = np.array(pivot, dtype=np.float64)
+        self.refresh()
 
     def hit_atom(self, pos, pixel_tol=10):
         if pos is None:
@@ -621,6 +698,21 @@ class MoleculeCanvas(FigureCanvasQTAgg):
         add_mode, subtract_mode = self._modifier_state(event)
         doc = self.document
         if event.button == 1:
+            if self.mode == MODE_ROTATE:
+                if not inside or pos[0] is None or pos[1] is None:
+                    return
+                xy = np.array([pos[0], pos[1]], dtype=np.float64)
+                if self.grid_enabled:
+                    xy = self.snap_point(xy)
+                pivot = np.zeros(3, dtype=np.float64)
+                pivot[:2] = xy
+                center = doc.selection_center()
+                if center is not None:
+                    pivot[2] = center[2]
+                self.rotation_pivot = pivot
+                self.rotation_pivot_manual = True
+                self.refresh()
+                return
             if not inside:
                 return
             if self.mode == MODE_MOVE:
@@ -689,6 +781,7 @@ class MoleculeCanvas(FigureCanvasQTAgg):
                 doc.selected_bonds.clear()
                 self.pending_atom = None
                 self.dragging_atom = None
+                self.rotation_pivot_manual = False
                 self.refresh()
                 return
             self._begin_rect_selection(pos, add_mode, subtract_mode)
@@ -764,6 +857,14 @@ class MoleculeCanvas(FigureCanvasQTAgg):
                 doc.move_atoms(doc.selected_atoms, delta)
                 self.refresh()
             return
+        if key == Qt.Key_PageUp:
+            if self.mode == MODE_ROTATE:
+                self._rotate_selected(self.rotation_step_deg)
+            return
+        if key == Qt.Key_PageDown:
+            if self.mode == MODE_ROTATE:
+                self._rotate_selected(-self.rotation_step_deg)
+            return
         if key in (Qt.Key_Plus, Qt.Key_Equal, Qt.Key_Plus + Qt.KeypadModifier):
             self.set_view_zoom(self.view_zoom * 1.1)
             return
@@ -790,6 +891,12 @@ class MoleculeCanvas(FigureCanvasQTAgg):
             self.autobond_rvdw = value
         if self.tool_panel is not None:
             self.tool_panel.sync_autobond_controls()
+
+    def set_rotation_step(self, degrees):
+        value = float(degrees)
+        if value <= 0.0:
+            raise ValueError("rotation step must be positive")
+        self.rotation_step_deg = value
 
     def set_view_center(self, x=None, y=None, update_controls=True):
         changed = False
@@ -1094,16 +1201,22 @@ class ToolPanel(QWidget):
         move_button.setText("Move")
         move_button.setCheckable(True)
         move_button.setProperty("mode", MODE_MOVE)
+        rotate_button = QToolButton()
+        rotate_button.setText("Rotate")
+        rotate_button.setCheckable(True)
+        rotate_button.setProperty("mode", MODE_ROTATE)
         self.mode_group = QButtonGroup(self)
         self.mode_group.setExclusive(True)
         self.mode_group.addButton(draw_button)
         self.mode_group.addButton(bond_button)
         self.mode_group.addButton(move_button)
+        self.mode_group.addButton(rotate_button)
         draw_button.setChecked(True)
         self.mode_group.buttonClicked.connect(self._mode_changed)
         mode_layout.addWidget(draw_button)
         mode_layout.addWidget(bond_button)
         mode_layout.addWidget(move_button)
+        mode_layout.addWidget(rotate_button)
         mode_box.setLayout(mode_layout)
         main_layout.addWidget(mode_box)
 
@@ -1166,6 +1279,14 @@ class ToolPanel(QWidget):
         self.pick_radius_spin.setValue(self.canvas.pick_radius_scale)
         self.pick_radius_spin.valueChanged.connect(self._pick_radius_changed)
         selection_form.addRow("Pick radius", self.pick_radius_spin)
+
+        self.rotation_step_spin = QDoubleSpinBox()
+        self.rotation_step_spin.setDecimals(1)
+        self.rotation_step_spin.setRange(0.1, 45.0)
+        self.rotation_step_spin.setSingleStep(0.5)
+        self.rotation_step_spin.setValue(self.canvas.rotation_step_deg)
+        self.rotation_step_spin.valueChanged.connect(self._rotation_step_changed)
+        selection_form.addRow("Rotate step°", self.rotation_step_spin)
         selection_box.setLayout(selection_form)
         main_layout.addWidget(selection_box)
 
@@ -1265,6 +1386,9 @@ class ToolPanel(QWidget):
 
     def _pick_radius_changed(self, value):
         self.canvas.set_pick_radius_scale(value)
+
+    def _rotation_step_changed(self, value):
+        self.canvas.set_rotation_step(value)
 
     def _autobond_rcut_changed(self, value):
         self.canvas.set_autobond_params(Rcut=value)

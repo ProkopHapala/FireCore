@@ -341,6 +341,18 @@ class AtomicSystem( ):
         au.mulpos( self.apos, rot )
         if p0  is not None: self.apos[:,:]+=p0[None,:]
 
+    def rotate_subset(self, indices, ang, ax=(0,1), pivot=None):
+        idx = np.asarray(list(indices), dtype=int)
+        if idx.size == 0:
+            return
+        if pivot is None:
+            pivot = self.apos[idx].mean(axis=0)
+        else:
+            pivot = np.asarray(pivot, dtype=np.float64)
+        rot = au.makeRotMatAng(ang, ax=ax)
+        shifted = (self.apos[idx] - pivot[None, :])
+        self.apos[idx] = (rot @ shifted.T).T + pivot[None, :]
+
     def delete_atoms(self, lst ):
         st = set(lst)
         if( self.apos   is not None ): self.apos   =  np.delete( self.apos,   lst, axis=0 )
