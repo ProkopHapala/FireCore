@@ -17,26 +17,30 @@ from math import sqrt
 from pathlib import Path
 
 import numpy as np
-from PyQt5.QtCore import QSize
+from PyQt5.QtCore import QSize, Qt
 from PyQt5.QtWidgets import (
     QApplication,
     QMainWindow,
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
+    QFormLayout,
+    QGroupBox,
     QLabel,
     QPushButton,
     QComboBox,
     QFileDialog,
     QListWidget,
     QListWidgetItem,
+    QDoubleSpinBox,
     QToolButton,
     QButtonGroup,
     QFrame,
 )
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from matplotlib.collections import LineCollection
+from matplotlib.patches import Rectangle
 
 if __package__ in {None, ""}:
     package_root = Path(__file__).resolve().parents[1]
@@ -57,6 +61,7 @@ INDEX_VALENCE = elements.index_val_elec
 DEFAULT_ELEMENTS = ["H", "C", "N", "O", "F"]
 MODE_DRAW = "draw"
 MODE_MOVE = "move"
+MODE_BOND = "bond"
 
 
 def canonical_element(name):
@@ -193,7 +198,11 @@ class MoleculeDocument:
             aux = aux[:n]
         self.system.aux_labels = aux
 
-    def auto_bonds(self, Rcut=3.0, RvdwCut=0.6):
+    def auto_bonds(self, Rcut=None, RvdwCut=None):
+        if Rcut is None:
+            Rcut = self.autobond_rcut
+        if RvdwCut is None:
+            RvdwCut = self.autobond_rvdw
         atypes = self.system.atypes
         natoms = self.atom_count()
         if atypes is None or len(atypes) != natoms:
@@ -316,6 +325,18 @@ class MoleculeDocument:
         self.system.apos[index, 0] = xy[0]
         self.system.apos[index, 1] = xy[1]
 
+    def move_atoms(self, indices, delta):
+        if not indices:
+            return
+        arr = self.system.apos
+        if arr.shape[0] == 0:
+            return
+        idx = np.array(list(indices), dtype=int)
+        if idx.size == 0:
+            return
+        arr[idx, 0] += delta[0]
+        arr[idx, 1] += delta[1]
+
     def change_element(self, index, element):
         self._ensure_mutable_lists()
         element = canonical_element(element)
@@ -364,15 +385,21 @@ class MoleculeDocument:
         raise ValueError(f"Unsupported file format: {ext}")
 
 
-class MoleculeCanvas(FigureCanvas):
+class MoleculeCanvas(FigureCanvasQTAgg):
     def __init__(self, document, parent=None):
         self.document = document
         self.figure = Figure(figsize=(5, 5))
         super().__init__(self.figure)
         self.setParent(parent)
         self.ax = self.figure.add_subplot(111)
+        self.figure.subplots_adjust(left=0.0, right=1.0, bottom=0.0, top=1.0)
+        self.ax.set_position([0.0, 0.0, 1.0, 1.0])
         self.ax.set_aspect("equal")
         self.ax.set_axis_off()
+        for spine in self.ax.spines.values():
+            spine.set_visible(True)
+            spine.set_color("#999999")
+            spine.set_linewidth(1.0)
         self.atom_artist = None
         self.selection_artist = None
         self.bond_collection = None
@@ -382,7 +409,18 @@ class MoleculeCanvas(FigureCanvas):
         self.pending_atom = None
         self.dragging_atom = None
         self.last_mouse = None
+        self.drag_select_start = None
+        self.selection_rect = None
+        self.selection_mode = "replace"
+        self.arrow_step = 0.1
+        self.pick_radius_scale = 0.6
+        self.autobond_rcut = 3.0
+        self.autobond_rvdw = 1.2
+        self.view_center = np.zeros(2, dtype=np.float64)
+        self.view_zoom = 1.0
+        self.tool_panel = None
         self._connect_events()
+        self.autoscale_view(refresh=False)
         self.refresh()
 
     def _connect_events(self):
@@ -394,6 +432,7 @@ class MoleculeCanvas(FigureCanvas):
         self.mode = mode
         self.pending_atom = None
         self.dragging_atom = None
+        self.last_mouse = None
 
     def set_element(self, element):
         self.current_element = element
@@ -403,6 +442,7 @@ class MoleculeCanvas(FigureCanvas):
 
     def refresh(self):
         self.ax.clear()
+        self.ax.set_position([0.0, 0.0, 1.0, 1.0])
         self.ax.set_aspect("equal")
         self.ax.set_axis_off()
         doc = self.document
@@ -422,7 +462,21 @@ class MoleculeCanvas(FigureCanvas):
                 doc.selected_atoms = set(sel_idx)
                 if sel_idx:
                     sel_xy = xy[sel_idx]
-                    self.selection_artist = self.ax.scatter(sel_xy[:, 0], sel_xy[:, 1], facecolors="none", edgecolors="yellow", s=np.ones(len(sel_idx)) * 700, linewidths=2, zorder=4)
+                    sel_sizes = np.ones(len(sel_idx)) * 900.0
+                    self.selection_artist = self.ax.scatter(
+                        sel_xy[:, 0],
+                        sel_xy[:, 1],
+                        s=sel_sizes,
+                        c="yellow",
+                        edgecolors="black",
+                        linewidths=1.5,
+                        zorder=4,
+                    )
+                    self.selection_artist.set_alpha(0.6)
+                else:
+                    self.selection_artist = None
+            else:
+                self.selection_artist = None
         bonds = doc.system.bonds
         if bonds.shape[0] > 0 and apos.shape[0] > 0:
             segments = []
@@ -435,6 +489,14 @@ class MoleculeCanvas(FigureCanvas):
             self.ax.add_collection(self.bond_collection)
             if doc.selected_bonds:
                 doc.selected_bonds = {ib for ib in doc.selected_bonds if 0 <= ib < len(segments)}
+        scale = max(0.1, float(self.view_zoom))
+        cx, cy = self.view_center
+        half_size = 5.0 / scale
+        self.ax.set_xlim(cx - half_size, cx + half_size)
+        self.ax.set_ylim(cy - half_size, cy + half_size)
+        if self.selection_rect is not None:
+            if self.selection_rect not in self.ax.patches:
+                self.ax.add_patch(self.selection_rect)
         self.figure.canvas.draw_idle()
 
     def hit_atom(self, pos, pixel_tol=10):
@@ -449,9 +511,21 @@ class MoleculeCanvas(FigureCanvas):
         d2 = dx * dx + dy * dy
         if d2.size == 0:
             return None
-        tol = (pixel_tol / 100.0) ** 2
         idx = int(np.argmin(d2))
-        if d2[idx] < tol:
+        doc = self.document
+        radii = getattr(doc.system, "Rs", None)
+        if radii is None or len(radii) != xy.shape[0]:
+            radii = np.array([
+                ELEMENT_DICT[canonical_element(e)][INDEX_Rvdw]
+                for e in doc.system.enames[: xy.shape[0]]
+            ], dtype=np.float64)
+        else:
+            radii = np.asarray(radii, dtype=np.float64)
+        if radii.size == 0:
+            limit = self.pick_radius_scale
+        else:
+            limit = max(0.01, self.pick_radius_scale * radii[idx])
+        if d2[idx] <= limit * limit:
             return idx
         return None
 
@@ -476,11 +550,25 @@ class MoleculeCanvas(FigureCanvas):
                 return ib
         return None
 
-    def select_atom(self, index, additive=False):
-        if not additive:
+    def _cycle_bond_order(self, bond_idx):
+        if bond_idx is None or bond_idx < 0:
+            return
+        doc = self.document
+        if bond_idx >= len(doc.bond_orders):
+            return
+        current = int(doc.bond_orders[bond_idx]) if len(doc.bond_orders) else 1
+        new_order = 1 if current >= 3 else current + 1
+        doc.bond_orders[bond_idx] = new_order
+        self.refresh()
+
+    def select_atom(self, index, additive=False, subtract=False):
+        if not additive and not subtract:
             self.document.selected_atoms.clear()
         if index is not None:
-            self.document.selected_atoms.add(index)
+            if subtract:
+                self.document.selected_atoms.discard(index)
+            else:
+                self.document.selected_atoms.add(index)
         self.document.selected_bonds.clear()
         self.refresh()
 
@@ -492,53 +580,102 @@ class MoleculeCanvas(FigureCanvas):
             self.document.selected_bonds.clear()
         self.refresh()
 
+    def _in_axes(self, pos):
+        if pos[0] is None or pos[1] is None:
+            return False
+        xlim = self.ax.get_xlim()
+        ylim = self.ax.get_ylim()
+        return (xlim[0] <= pos[0] <= xlim[1]) and (ylim[0] <= pos[1] <= ylim[1])
+
     def on_mouse_press(self, event):
-        if event.inaxes != self.ax:
-            return
         pos = (event.xdata, event.ydata)
+        inside = (event.inaxes == self.ax) and self._in_axes(pos)
+        add_mode, subtract_mode = self._modifier_state(event)
         doc = self.document
         if event.button == 1:
+            if not inside:
+                return
+            if self.mode == MODE_MOVE:
+                idx = self.hit_atom(pos)
+                if idx is not None:
+                    self.dragging_atom = idx
+                    self.last_mouse = pos
+                return
+            bond_idx = self.hit_bond(pos)
+            if bond_idx is not None:
+                self._cycle_bond_order(bond_idx)
+                return
             if self.mode == MODE_DRAW:
                 idx = self.hit_atom(pos)
                 if idx is None:
                     new_idx = doc.add_atom(pos, self.current_element)
                     doc.selected_atoms = {new_idx}
                     doc.selected_bonds.clear()
-                    self.pending_atom = new_idx
                     self.refresh()
                 else:
-                    if self.pending_atom is None:
-                        self.pending_atom = idx
-                        self.select_atom(idx)
-                    else:
-                        other = idx
-                        doc.set_bond(self.pending_atom, other, self.current_bond_order)
-                        doc.selected_bonds = {doc.find_bond_index(self.pending_atom, other)}
+                    # allow tapping atom to prepare for bond placement
+                    self.pending_atom = idx
+                    self.select_atom(idx, additive=False, subtract=False)
+            elif self.mode == MODE_BOND:
+                idx = self.hit_atom(pos)
+                if idx is None:
+                    return
+                if self.pending_atom is None:
+                    self.pending_atom = idx
+                    self.select_atom(idx)
+                else:
+                    other = idx
+                    if other != self.pending_atom:
+                        ib = doc.set_bond(self.pending_atom, other, self.current_bond_order)
+                        if ib >= 0:
+                            doc.selected_bonds = {ib}
                         doc.selected_atoms.clear()
-                        self.pending_atom = None
-                        self.refresh()
-            else:  # move mode
+                    self.pending_atom = None
+                    self.refresh()
+        elif event.button == 3:
+            if not inside:
+                return
+            if self.mode == MODE_MOVE:
                 idx = self.hit_atom(pos)
                 if idx is not None:
-                    self.dragging_atom = idx
-                    self.select_atom(idx)
-                    self.last_mouse = pos
-        elif event.button == 3:
-            idx = self.hit_atom(pos)
-            if idx is not None:
-                doc.delete_atom(idx)
-                self.pending_atom = None
-                self.dragging_atom = None
-                self.refresh()
+                    self.select_atom(idx, additive=add_mode, subtract=subtract_mode)
+                    return
+                bond_idx = self.hit_bond(pos)
+                if bond_idx is not None:
+                    self.select_bond(bond_idx)
+                    return
+                self._begin_rect_selection(pos, add_mode, subtract_mode)
                 return
             bond_idx = self.hit_bond(pos)
             if bond_idx is not None:
                 i, j = doc.system.bonds[bond_idx]
                 doc.delete_bond(int(i), int(j))
+                doc.selected_bonds.clear()
+                doc.selected_atoms.clear()
                 self.refresh()
+                return
+            idx = self.hit_atom(pos)
+            if idx is not None:
+                doc.delete_atom(idx)
+                doc.selected_atoms.clear()
+                doc.selected_bonds.clear()
+                self.pending_atom = None
+                self.dragging_atom = None
+                self.refresh()
+                return
+            self._begin_rect_selection(pos, add_mode, subtract_mode)
 
     def on_mouse_release(self, event):
+        if event.button == 3:
+            if self.drag_select_start is not None:
+                pos = (event.xdata, event.ydata)
+                self._finalize_rect_selection(pos)
+            return
         if event.button != 1:
+            return
+        if self.drag_select_start is not None:
+            pos = (event.xdata, event.ydata)
+            self._finalize_rect_selection(pos)
             return
         self.dragging_atom = None
         self.last_mouse = None
@@ -546,12 +683,220 @@ class MoleculeCanvas(FigureCanvas):
     def on_mouse_move(self, event):
         if event.inaxes != self.ax:
             return
+        pos = (event.xdata, event.ydata)
+        if self.drag_select_start is not None:
+            if pos[0] is None or pos[1] is None:
+                return
+            self._update_rect_selection(pos)
+            return
         if self.dragging_atom is None:
             return
-        pos = (event.xdata, event.ydata)
+        anchor = self.last_mouse
+        if anchor is None or pos[0] is None or pos[1] is None:
+            return
+        dx = pos[0] - anchor[0]
+        dy = pos[1] - anchor[1]
+        if dx == 0 and dy == 0:
+            return
+        target_indices = list(self.document.selected_atoms)
+        if target_indices and self.dragging_atom in target_indices:
+            self.document.move_atoms(target_indices, (dx, dy))
+        else:
+            self.document.move_atom(self.dragging_atom, pos)
+        self.last_mouse = pos
+        self.refresh()
+
+    def keyPressEvent(self, event):
+        key = event.key()
+        doc = self.document
+        if key in (Qt.Key_Delete, Qt.Key_Backspace):
+            removed = sorted(doc.selected_atoms)
+            for idx in reversed(removed):
+                doc.delete_atom(idx)
+            if doc.selected_bonds:
+                for ib in sorted(doc.selected_bonds, reverse=True):
+                    i, j = doc.system.bonds[ib]
+                    doc.delete_bond(int(i), int(j))
+            doc.selected_atoms.clear()
+            doc.selected_bonds.clear()
+            self.refresh()
+            return
+        step = float(self.arrow_step)
+        delta = None
+        if key == Qt.Key_Left:
+            delta = (-step, 0.0)
+        elif key == Qt.Key_Right:
+            delta = (step, 0.0)
+        elif key == Qt.Key_Up:
+            delta = (0.0, step)
+        elif key == Qt.Key_Down:
+            delta = (0.0, -step)
+        if delta is not None:
+            if doc.selected_atoms:
+                doc.move_atoms(doc.selected_atoms, delta)
+                self.refresh()
+            return
+        if key in (Qt.Key_Plus, Qt.Key_Equal, Qt.Key_Plus + Qt.KeypadModifier):
+            self.set_view_zoom(self.view_zoom * 1.1)
+            return
+        if key in (Qt.Key_Minus, Qt.Key_Minus + Qt.KeypadModifier):
+            self.set_view_zoom(self.view_zoom / 1.1)
+            return
+
+    def set_pick_radius_scale(self, scale):
+        value = float(scale)
+        if value <= 0.0:
+            raise ValueError("pick radius scale must be positive")
+        self.pick_radius_scale = value
+
+    def set_autobond_params(self, Rcut=None, Rvdw=None):
+        if Rcut is not None:
+            value = float(Rcut)
+            if value <= 0.0:
+                raise ValueError("Rcut must be positive")
+            self.autobond_rcut = value
+        if Rvdw is not None:
+            value = float(Rvdw)
+            if value <= 0.0:
+                raise ValueError("Rvdw multiplier must be positive")
+            self.autobond_rvdw = value
+        if self.tool_panel is not None:
+            self.tool_panel.sync_autobond_controls()
+
+    def set_view_center(self, x=None, y=None, update_controls=True):
+        changed = False
+        if x is not None:
+            self.view_center[0] = float(x)
+            changed = True
+        if y is not None:
+            self.view_center[1] = float(y)
+            changed = True
+        if changed:
+            if update_controls and self.tool_panel is not None:
+                self.tool_panel.sync_view_controls()
+            self.refresh()
+
+    def set_view_zoom(self, zoom, update_controls=True):
+        value = float(zoom)
+        if value <= 0.0:
+            raise ValueError("zoom must be positive")
+        self.view_zoom = np.clip(value, 0.1, 10.0)
+        if update_controls and self.tool_panel is not None:
+            self.tool_panel.sync_view_controls()
+        self.refresh()
+
+    def autoscale_view(self, refresh=True, margin=0.2):
+        doc = self.document
+        apos = doc.positions
+        if apos.shape[0] == 0:
+            self.view_center[:] = 0.0
+            self.view_zoom = 1.0
+        else:
+            xy = apos[:, :2]
+            min_xy = xy.min(axis=0)
+            max_xy = xy.max(axis=0)
+            span = max_xy - min_xy
+            extent = float(np.max(span))
+            if extent < 1e-3:
+                extent = 1.0
+            width = extent * (1.0 + margin)
+            zoom = 10.0 / width
+            self.view_center[:] = 0.5 * (min_xy + max_xy)
+            self.view_zoom = np.clip(zoom, 0.1, 10.0)
+        if self.tool_panel is not None:
+            self.tool_panel.sync_view_controls()
+        if refresh:
+            self.refresh()
+
+    def _modifier_state(self, event):
+        qevent = getattr(event, "guiEvent", None)
+        if qevent is None:
+            return False, False
+        modifiers = qevent.modifiers()
+        add_mode = bool(modifiers & Qt.ShiftModifier)
+        subtract_mode = bool(modifiers & Qt.ControlModifier)
+        return add_mode, subtract_mode
+
+    def _begin_rect_selection(self, pos, add_mode, subtract_mode):
         if pos[0] is None or pos[1] is None:
             return
-        self.document.move_atom(self.dragging_atom, pos)
+        self.drag_select_start = pos
+        if self.selection_rect is None:
+            self.selection_rect = Rectangle(
+                (pos[0], pos[1]),
+                0.0,
+                0.0,
+                facecolor="yellow",
+                edgecolor="orange",
+                alpha=0.2,
+                linewidth=1.0,
+                zorder=1,
+            )
+        else:
+            self.selection_rect.set_xy((pos[0], pos[1]))
+            self.selection_rect.set_width(0.0)
+            self.selection_rect.set_height(0.0)
+        self.selection_mode = "replace"
+        if add_mode:
+            self.selection_mode = "add"
+        elif subtract_mode:
+            self.selection_mode = "subtract"
+        if self.selection_rect not in self.ax.patches:
+            self.ax.add_patch(self.selection_rect)
+        self.figure.canvas.draw_idle()
+
+    def _update_rect_selection(self, pos):
+        if self.selection_rect is None or self.drag_select_start is None:
+            return
+        x0, y0 = self.drag_select_start
+        if pos[0] is None or pos[1] is None:
+            return
+        min_x = min(x0, pos[0])
+        min_y = min(y0, pos[1])
+        width = abs(pos[0] - x0)
+        height = abs(pos[1] - y0)
+        self.selection_rect.set_xy((min_x, min_y))
+        self.selection_rect.set_width(width)
+        self.selection_rect.set_height(height)
+        self.figure.canvas.draw_idle()
+
+    def _finalize_rect_selection(self, pos):
+        if self.drag_select_start is None:
+            return
+        if pos[0] is None or pos[1] is None:
+            pos = self.drag_select_start
+        x0, y0 = self.drag_select_start
+        min_x = min(x0, pos[0])
+        max_x = max(x0, pos[0])
+        min_y = min(y0, pos[1])
+        max_y = max(y0, pos[1])
+        indices = []
+        if self.document.atom_count() > 0:
+            xy = self.document.positions[:, :2]
+            mask = (
+                (xy[:, 0] >= min_x)
+                & (xy[:, 0] <= max_x)
+                & (xy[:, 1] >= min_y)
+                & (xy[:, 1] <= max_y)
+            )
+            indices = np.where(mask)[0].tolist()
+        if self.selection_mode == "replace":
+            self.document.selected_atoms = set(indices)
+        elif self.selection_mode == "add":
+            self.document.selected_atoms.update(indices)
+        elif self.selection_mode == "subtract":
+            for idx in indices:
+                self.document.selected_atoms.discard(idx)
+        self.document.selected_bonds.clear()
+        self.drag_select_start = None
+        if self.selection_rect is not None:
+            self.selection_rect.set_width(0.0)
+            self.selection_rect.set_height(0.0)
+            self.selection_rect.set_xy((0.0, 0.0))
+            if self.selection_rect in self.ax.patches:
+                self.selection_rect.remove()
+            self.selection_rect = None
+        self.figure.canvas.draw_idle()
         self.refresh()
 
 
@@ -559,54 +904,146 @@ class ToolPanel(QWidget):
     def __init__(self, canvas):
         super().__init__(canvas)
         self.canvas = canvas
-        layout = QVBoxLayout()
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(6)
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(4, 4, 4, 4)
+        main_layout.setSpacing(8)
 
-        layout.addWidget(QLabel("Mode"))
-        mode_row = QHBoxLayout()
+        mode_box = QGroupBox("Mode")
+        mode_layout = QHBoxLayout()
         draw_button = QToolButton()
         draw_button.setText("Draw")
         draw_button.setCheckable(True)
+        draw_button.setProperty("mode", MODE_DRAW)
+        bond_button = QToolButton()
+        bond_button.setText("Bond")
+        bond_button.setCheckable(True)
+        bond_button.setProperty("mode", MODE_BOND)
         move_button = QToolButton()
         move_button.setText("Move")
         move_button.setCheckable(True)
+        move_button.setProperty("mode", MODE_MOVE)
         self.mode_group = QButtonGroup(self)
         self.mode_group.setExclusive(True)
         self.mode_group.addButton(draw_button)
+        self.mode_group.addButton(bond_button)
         self.mode_group.addButton(move_button)
         draw_button.setChecked(True)
         self.mode_group.buttonClicked.connect(self._mode_changed)
-        mode_row.addWidget(draw_button)
-        mode_row.addWidget(move_button)
-        layout.addLayout(mode_row)
+        mode_layout.addWidget(draw_button)
+        mode_layout.addWidget(bond_button)
+        mode_layout.addWidget(move_button)
+        mode_box.setLayout(mode_layout)
+        main_layout.addWidget(mode_box)
 
-        layout.addWidget(QLabel("Elements"))
+        elements_box = QGroupBox("Elements")
+        elements_layout = QVBoxLayout()
         self.element_list = QListWidget()
         for sym in DEFAULT_ELEMENTS:
             item = QListWidgetItem(sym)
             item.setSizeHint(QSize(40, 24))
             self.element_list.addItem(item)
         self.element_list.setCurrentRow(1)
-        self.element_list.currentTextChanged.connect(canvas.set_element)
-        layout.addWidget(self.element_list)
+        self.element_list.itemSelectionChanged.connect(self._element_changed)
+        elements_layout.addWidget(self.element_list)
+        elements_box.setLayout(elements_layout)
+        main_layout.addWidget(elements_box)
 
-        layout.addWidget(QLabel("Bond order"))
+        bond_box = QGroupBox("Bond settings")
+        bond_form = QFormLayout()
         self.bond_combo = QComboBox()
         self.bond_combo.addItems(["1", "2", "3"])
         self.bond_combo.currentTextChanged.connect(self._bond_changed)
-        layout.addWidget(self.bond_combo)
+        bond_form.addRow("Bond order", self.bond_combo)
+
+        self.autobond_rcut_spin = QDoubleSpinBox()
+        self.autobond_rcut_spin.setDecimals(2)
+        self.autobond_rcut_spin.setRange(0.5, 10.0)
+        self.autobond_rcut_spin.setSingleStep(0.1)
+        self.autobond_rcut_spin.setValue(self.canvas.autobond_rcut)
+        self.autobond_rcut_spin.valueChanged.connect(self._autobond_rcut_changed)
+        bond_form.addRow("Rcut (Å)", self.autobond_rcut_spin)
+
+        self.autobond_rvdw_spin = QDoubleSpinBox()
+        self.autobond_rvdw_spin.setDecimals(2)
+        self.autobond_rvdw_spin.setRange(0.1, 2.0)
+        self.autobond_rvdw_spin.setSingleStep(0.05)
+        self.autobond_rvdw_spin.setValue(self.canvas.autobond_rvdw)
+        self.autobond_rvdw_spin.valueChanged.connect(self._autobond_rvdw_changed)
+        bond_form.addRow("Rvdw ×", self.autobond_rvdw_spin)
 
         auto_button = QPushButton("Auto bonds")
         auto_button.clicked.connect(self._auto_bonds)
-        layout.addWidget(auto_button)
+        bond_form.addRow(auto_button)
+        bond_box.setLayout(bond_form)
+        main_layout.addWidget(bond_box)
 
-        layout.addStretch(1)
-        self.setLayout(layout)
+        selection_box = QGroupBox("Selection & move")
+        selection_form = QFormLayout()
+        self.move_step = QDoubleSpinBox()
+        self.move_step.setDecimals(2)
+        self.move_step.setRange(0.01, 10.0)
+        self.move_step.setSingleStep(0.05)
+        self.move_step.setValue(self.canvas.arrow_step)
+        self.move_step.valueChanged.connect(self._move_step_changed)
+        selection_form.addRow("Arrow step", self.move_step)
+
+        self.pick_radius_spin = QDoubleSpinBox()
+        self.pick_radius_spin.setDecimals(2)
+        self.pick_radius_spin.setRange(0.05, 5.0)
+        self.pick_radius_spin.setSingleStep(0.05)
+        self.pick_radius_spin.setValue(self.canvas.pick_radius_scale)
+        self.pick_radius_spin.valueChanged.connect(self._pick_radius_changed)
+        selection_form.addRow("Pick radius", self.pick_radius_spin)
+        selection_box.setLayout(selection_form)
+        main_layout.addWidget(selection_box)
+
+        view_box = QGroupBox("View")
+        view_form = QFormLayout()
+        self.view_zoom_spin = QDoubleSpinBox()
+        self.view_zoom_spin.setDecimals(2)
+        self.view_zoom_spin.setRange(0.1, 10.0)
+        self.view_zoom_spin.setSingleStep(0.1)
+        self.view_zoom_spin.setValue(self.canvas.view_zoom)
+        self.view_zoom_spin.valueChanged.connect(self._view_zoom_changed)
+        view_form.addRow("Zoom", self.view_zoom_spin)
+
+        self.view_center_x_spin = QDoubleSpinBox()
+        self.view_center_x_spin.setDecimals(2)
+        self.view_center_x_spin.setRange(-1000.0, 1000.0)
+        self.view_center_x_spin.setSingleStep(0.1)
+        self.view_center_x_spin.setValue(self.canvas.view_center[0])
+        self.view_center_x_spin.valueChanged.connect(self._view_center_x_changed)
+        view_form.addRow("Center X", self.view_center_x_spin)
+
+        self.view_center_y_spin = QDoubleSpinBox()
+        self.view_center_y_spin.setDecimals(2)
+        self.view_center_y_spin.setRange(-1000.0, 1000.0)
+        self.view_center_y_spin.setSingleStep(0.1)
+        self.view_center_y_spin.setValue(self.canvas.view_center[1])
+        self.view_center_y_spin.valueChanged.connect(self._view_center_y_changed)
+        view_form.addRow("Center Y", self.view_center_y_spin)
+
+        autoscale_button = QPushButton("Autoscale view")
+        autoscale_button.clicked.connect(self._autoscale_view)
+        view_form.addRow(autoscale_button)
+        view_box.setLayout(view_form)
+        main_layout.addWidget(view_box)
+
+        main_layout.addStretch(1)
+        self.setLayout(main_layout)
+        self.canvas.tool_panel = self
+        self.sync_autobond_controls()
+        self.sync_view_controls()
 
     def _mode_changed(self, button):
-        mode = MODE_DRAW if button.text().lower() == "draw" else MODE_MOVE
+        mode = button.property("mode") or MODE_DRAW
         self.canvas.set_mode(mode)
+
+    def _element_changed(self):
+        items = self.element_list.selectedItems()
+        if not items:
+            return
+        self.canvas.set_element(items[0].text())
 
     def _bond_changed(self, text):
         try:
@@ -615,17 +1052,66 @@ class ToolPanel(QWidget):
             order = 1
         self.canvas.set_bond_order(order)
 
+    def _move_step_changed(self, value):
+        self.canvas.arrow_step = float(value)
+
+    def _pick_radius_changed(self, value):
+        self.canvas.set_pick_radius_scale(value)
+
+    def _autobond_rcut_changed(self, value):
+        self.canvas.set_autobond_params(Rcut=value)
+
+    def _autobond_rvdw_changed(self, value):
+        self.canvas.set_autobond_params(Rvdw=value)
+
+    def _view_zoom_changed(self, value):
+        self.canvas.set_view_zoom(value, update_controls=False)
+
+    def _view_center_x_changed(self, value):
+        self.canvas.set_view_center(x=value, update_controls=False)
+
+    def _view_center_y_changed(self, value):
+        self.canvas.set_view_center(y=value, update_controls=False)
+
+    def _autoscale_view(self):
+        self.canvas.autoscale_view()
+
     def _auto_bonds(self):
-        self.canvas.document.auto_bonds()
+        self.canvas.document.auto_bonds(
+            Rcut=self.canvas.autobond_rcut,
+            RvdwCut=self.canvas.autobond_rvdw,
+        )
         self.canvas.refresh()
 
+    def sync_autobond_controls(self):
+        self.autobond_rcut_spin.blockSignals(True)
+        self.autobond_rcut_spin.setValue(self.canvas.autobond_rcut)
+        self.autobond_rcut_spin.blockSignals(False)
+        self.autobond_rvdw_spin.blockSignals(True)
+        self.autobond_rvdw_spin.setValue(self.canvas.autobond_rvdw)
+        self.autobond_rvdw_spin.blockSignals(False)
 
-class MoleculeEditorWindow(QMainWindow):
-    def __init__(self, document):
-        super().__init__()
+    def sync_view_controls(self):
+        self.view_zoom_spin.blockSignals(True)
+        self.view_zoom_spin.setValue(self.canvas.view_zoom)
+        self.view_zoom_spin.blockSignals(False)
+        self.view_center_x_spin.blockSignals(True)
+        self.view_center_x_spin.setValue(self.canvas.view_center[0])
+        self.view_center_x_spin.blockSignals(False)
+        self.view_center_y_spin.blockSignals(True)
+        self.view_center_y_spin.setValue(self.canvas.view_center[1])
+        self.view_center_y_spin.blockSignals(False)
+
+
+class MoleculeEditor(QMainWindow):
+    def __init__(self, document=None, parent=None):
+        super().__init__(parent)
         self.setWindowTitle("Molecule Editor 2D")
+        self.resize(1000, 800)
         self.document = document
-        self.canvas = MoleculeCanvas(document, self)
+        self.canvas = MoleculeCanvas(self.document)
+        self.canvas.setFocusPolicy(Qt.StrongFocus)
+        self.canvas.setFocus()
         self.tool_panel = ToolPanel(self.canvas)
 
         central = QWidget()
@@ -640,8 +1126,10 @@ class MoleculeEditorWindow(QMainWindow):
         side_layout.addWidget(self.tool_panel)
         side_layout.addStretch(1)
         layout.addWidget(side_frame)
-
+        central.setLayout(layout)
         self.setCentralWidget(central)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.canvas.setFocusProxy(self)
         self._build_menu()
 
     def _build_menu(self):
@@ -672,12 +1160,18 @@ class MoleculeEditorWindow(QMainWindow):
             return
         self.document.save(path)
 
+    def keyPressEvent(self, event):
+        if self.canvas is not None:
+            self.canvas.keyPressEvent(event)
+
 def launch_editor(path=None):
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication(sys.argv)
     doc = MoleculeDocument()
-    if path:
+    if path is not None:
         doc.load(path)
-    app = QApplication.instance() or QApplication(sys.argv)
-    win = MoleculeEditorWindow(doc)
+    win = MoleculeEditor(doc)
     win.resize(1000, 700)
     win.show()
     return app.exec_()

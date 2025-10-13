@@ -342,54 +342,13 @@ class AtomicSystem( ):
         if p0  is not None: self.apos[:,:]+=p0[None,:]
 
     def delete_atoms(self, lst ):
-        if lst is None:
-            return
-        if not isinstance(lst, (list, tuple, np.ndarray, set)):
-            lst = [int(lst)]
-        indices = sorted(set(int(i) for i in lst))
-        if len(indices) == 0:
-            return
-        np_indices = np.array(indices, dtype=int)
-        mask = None
-        # core arrays
-        if self.apos is not None:
-            self.apos = np.delete(self.apos, np_indices, axis=0)
-        if self.atypes is not None:
-            self.atypes = np.delete(self.atypes, np_indices)
-        if self.qs is not None:
-            self.qs = np.delete(self.qs, np_indices)
-        if self.Rs is not None:
-            self.Rs = np.delete(self.Rs, np_indices)
-        if self.enames is not None:
-            try:
-                self.enames = np.delete(self.enames, np_indices)
-            except TypeError:
-                self.enames = [e for i, e in enumerate(self.enames) if i not in indices]
-        if self.aux_labels is not None:
-            try:
-                self.aux_labels = np.delete(self.aux_labels, np_indices)
-            except TypeError:
-                self.aux_labels = [v for i, v in enumerate(self.aux_labels) if i not in indices]
-        removed = set(indices)
-        # bonds
-        if self.bonds is not None and self.bonds.size:
-            mask = np.ones(len(self.bonds), dtype=bool)
-            remap = {}
-            new_idx = 0
-            total = len(self.apos) + len(indices)
-            for old in range(total):
-                if old in removed:
-                    continue
-                remap[old] = new_idx
-                new_idx += 1
-            for ib, (a, b) in enumerate(self.bonds):
-                if a in removed or b in removed:
-                    mask[ib] = False
-            self.bonds = self.bonds[mask]
-            if self.bonds.size:
-                for ib in range(len(self.bonds)):
-                    self.bonds[ib, 0] = remap[self.bonds[ib, 0]]
-                    self.bonds[ib, 1] = remap[self.bonds[ib, 1]]
+        st = set(lst)
+        if( self.apos   is not None ): self.apos   =  np.delete( self.apos,   lst, axis=0 )
+        if( self.atypes is not None ): self.atypes =  np.delete( self.atypes, lst )
+        if( self.qs     is not None ): self.qs     =  np.delete( self.qs,     lst )
+        if( self.Rs     is not None ): self.Rs     =  np.delete( self.Rs,     lst )
+        if( self.enames is not None ): self.enames =  np.delete( self.enames, lst )
+        if( self.aux_labels is not None ): self.aux_labels = [ v for i,v in enumerate(self.aux_labels) if i not in st ] 
 
 
     def preinitialize_atomic_properties(self):
@@ -759,50 +718,17 @@ class AtomicSystem( ):
         return R, X_b, A2
 
     def delete_atoms(self, to_remove):
-        if to_remove is None:
-            return
-        if not isinstance(to_remove, (list, tuple, np.ndarray, set)):
-            to_remove = [int(to_remove)]
-        indices = sorted(set(int(i) for i in to_remove))
-        if not indices:
-            return
-        n_before = len(self.apos) if self.apos is not None else 0
-        arr_idx = np.array(indices, dtype=int)
-        if self.apos is not None:
-            self.apos = np.delete(self.apos, arr_idx, axis=0)
-        if self.atypes is not None:
-            self.atypes = np.delete(self.atypes, arr_idx)
-        if self.enames is not None:
-            try:
-                self.enames = np.delete(self.enames, arr_idx)
-            except TypeError:
-                self.enames = [e for i, e in enumerate(self.enames) if i not in indices]
-        if self.qs is not None:
-            self.qs = np.delete(self.qs, arr_idx)
-        if self.Rs is not None:
-            self.Rs = np.delete(self.Rs, arr_idx)
-        if self.aux_labels is not None:
-            try:
-                self.aux_labels = np.delete(self.aux_labels, arr_idx)
-            except TypeError:
-                self.aux_labels = [v for i, v in enumerate(self.aux_labels) if i not in indices]
-        removed = set(indices)
-        if self.bonds is not None and self.bonds.size:
-            mask = np.ones(len(self.bonds), dtype=bool)
-            for ib, (a, b) in enumerate(self.bonds):
-                if a in removed or b in removed:
-                    mask[ib] = False
-            self.bonds = self.bonds[mask]
-            if self.bonds.size:
-                remap = np.full(n_before, -1, dtype=int)
-                new_idx = 0
-                for old in range(n_before):
-                    if old in removed:
-                        continue
-                    remap[old] = new_idx
-                    new_idx += 1
-                self.bonds = remap[self.bonds]
-        self.ngs = None
+            rem = sorted(to_remove, reverse=True)
+            for idx in rem:
+                self.apos   = np.delete(self.apos,   idx, axis=0)
+                self.atypes = np.delete(self.atypes, idx)
+                self.enames = np.delete(self.enames, idx)
+                if self.qs is not None:
+                    self.qs = np.delete(self.qs, idx)
+                if self.Rs is not None:
+                    self.Rs = np.delete(self.Rs, idx)
+                if self.aux_labels is not None:
+                    self.aux_labels = np.delete(self.aux_labels, idx)
 
     def attach_group_by_marker(self, G, markerX="Xe", markerY="He", _0=1):
         """Attach an end–group G to this backbone using marker atoms and connectivity.
