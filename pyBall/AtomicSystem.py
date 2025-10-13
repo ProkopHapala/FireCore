@@ -294,6 +294,79 @@ class AtomicSystem( ):
         outs = [ i for i in range(na) if (i not in s) ] 
         return ins,outs
 
+    def _bond_adjacency(self):
+        bonds = self.bonds
+        if bonds is None or len(bonds) == 0:
+            return {}
+        adj = {}
+        for a, b in bonds:
+            ia = int(a)
+            ib = int(b)
+            adj.setdefault(ia, set()).add(ib)
+            adj.setdefault(ib, set()).add(ia)
+        return adj
+
+    def grow_selection(self, selection):
+        selected = {int(i) for i in selection}
+        if not selected:
+            return selected
+        adj = self._bond_adjacency()
+        if not adj:
+            return selected
+        seeds = tuple(selected)
+        to_add = set()
+        for ia in seeds:
+            neighbors = adj.get(ia)
+            if not neighbors:
+                continue
+            for ib in neighbors:
+                if ib not in selected:
+                    to_add.add(ib)
+        if not to_add:
+            return selected
+        return selected | to_add
+
+    def shrink_selection(self, selection):
+        selected = {int(i) for i in selection}
+        if not selected:
+            return selected
+        adj = self._bond_adjacency()
+        if not adj:
+            return selected
+        seeds = tuple(selected)
+        to_remove = set()
+        for ia in seeds:
+            neighbors = adj.get(ia)
+            if not neighbors:
+                continue
+            for ib in neighbors:
+                if ib not in selected:
+                    to_remove.add(ia)
+                    break
+        if not to_remove:
+            return selected
+        return selected - to_remove
+
+    def select_all_connected(self, selection):
+        selected = {int(i) for i in selection}
+        if not selected:
+            return selected
+        adj = self._bond_adjacency()
+        if not adj:
+            return selected
+        visited = set(selected)
+        frontier = list(selected)
+        while frontier:
+            ia = frontier.pop()
+            neighbors = adj.get(ia)
+            if not neighbors:
+                continue
+            for ib in neighbors:
+                if ib not in visited:
+                    visited.add(ib)
+                    frontier.append(ib)
+        return visited
+
     def makeRotMat( self, ip1, ip2, _0=1 ):
         fw  = self.apos[ip1[1]-_0]-self.apos[ip1[0]-_0]
         up  = self.apos[ip2[1]-_0]-self.apos[ip2[0]-_0]

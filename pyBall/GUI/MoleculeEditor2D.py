@@ -382,6 +382,36 @@ class MoleculeDocument:
         angle_rad = np.deg2rad(angle_deg)
         self.system.rotate_subset(idx, angle_rad, pivot=pivot)
 
+    def grow_selection(self):
+        if not self.selected_atoms:
+            return False
+        prev = set(self.selected_atoms)
+        new_sel = self.system.grow_selection(prev)
+        if new_sel == prev:
+            return False
+        self.selected_atoms = new_sel
+        return True
+
+    def shrink_selection(self):
+        if not self.selected_atoms:
+            return False
+        prev = set(self.selected_atoms)
+        new_sel = self.system.shrink_selection(prev)
+        if new_sel == prev:
+            return False
+        self.selected_atoms = new_sel
+        return True
+
+    def expand_selection_full(self):
+        if not self.selected_atoms:
+            return False
+        prev = set(self.selected_atoms)
+        new_sel = self.system.select_all_connected(prev)
+        if new_sel == prev:
+            return False
+        self.selected_atoms = new_sel
+        return True
+
     def change_element(self, index, element):
         self._ensure_mutable_lists()
         element = canonical_element(element)
@@ -1289,6 +1319,17 @@ class ToolPanel(QWidget):
         selection_form.addRow("Rotate step°", self.rotation_step_spin)
         selection_box.setLayout(selection_form)
         main_layout.addWidget(selection_box)
+        selection_buttons = QHBoxLayout()
+        self.btn_grow = QPushButton("Grow")
+        self.btn_shrink = QPushButton("Shrink")
+        self.btn_expand = QPushButton("Expand full")
+        self.btn_grow.clicked.connect(self._grow_selection_clicked)
+        self.btn_shrink.clicked.connect(self._shrink_selection_clicked)
+        self.btn_expand.clicked.connect(self._expand_selection_clicked)
+        selection_buttons.addWidget(self.btn_grow)
+        selection_buttons.addWidget(self.btn_shrink)
+        selection_buttons.addWidget(self.btn_expand)
+        main_layout.addLayout(selection_buttons)
 
         view_box = QGroupBox("View")
         view_form = QFormLayout()
@@ -1389,6 +1430,18 @@ class ToolPanel(QWidget):
 
     def _rotation_step_changed(self, value):
         self.canvas.set_rotation_step(value)
+
+    def _grow_selection_clicked(self):
+        if self.canvas.document.grow_selection():
+            self.canvas.refresh()
+
+    def _shrink_selection_clicked(self):
+        if self.canvas.document.shrink_selection():
+            self.canvas.refresh()
+
+    def _expand_selection_clicked(self):
+        if self.canvas.document.expand_selection_full():
+            self.canvas.refresh()
 
     def _autobond_rcut_changed(self, value):
         self.canvas.set_autobond_params(Rcut=value)
