@@ -20,8 +20,8 @@ from pyBall.AtomicSystem import AtomicSystem
 
 
 def parse_args(argv=None):
-    p = argparse.ArgumentParser(description="Launch MoleculeEditor2D with preloaded systems.")
-    src_group = p.add_mutually_exclusive_group(required=True)
+    p = argparse.ArgumentParser(description="Launch MoleculeEditor2D with optional preloaded systems.")
+    src_group = p.add_mutually_exclusive_group(required=False)
     src_group.add_argument("--molecule", type=Path, help="Single molecule file (.xyz/.mol/.mol2)")
     src_group.add_argument("--backbone", type=Path, help="Backbone molecule file")
     p.add_argument("--endgroup", type=Path, action="append", default=[], help="Endgroup molecule file (repeatable)")
@@ -41,20 +41,23 @@ def make_document(args) -> MoleculeDocument:
         doc.load(args.molecule)
         return doc
 
-    backbone = load_system(args.backbone)
-    for eg_path in args.endgroup:
-        endgroup = load_system(eg_path)
-        backbone.attach_group_by_marker(endgroup, markerX="Se", markerY="Cl", _0=1)
-    if args.out:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        suffix = args.out.suffix.lower()
-        if suffix == ".mol2":
-            backbone.save_mol2(str(args.out))
-        elif suffix == ".xyz":
-            backbone.saveXYZ(str(args.out))
-        else:
-            raise ValueError(f"Unsupported --out extension: {suffix}")
-    return MoleculeDocument(system=backbone)
+    if args.backbone:
+        backbone = load_system(args.backbone)
+        for eg_path in args.endgroup:
+            endgroup = load_system(eg_path)
+            backbone.attach_group_by_marker(endgroup, markerX="Se", markerY="Cl", _0=1)
+        if args.out:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            suffix = args.out.suffix.lower()
+            if suffix == ".mol2":
+                backbone.save_mol2(str(args.out))
+            elif suffix == ".xyz":
+                backbone.saveXYZ(str(args.out))
+            else:
+                raise ValueError(f"Unsupported --out extension: {suffix}")
+        return MoleculeDocument(system=backbone)
+
+    return MoleculeDocument()
 
 
 def main(argv=None):
@@ -62,7 +65,7 @@ def main(argv=None):
     doc = make_document(args)
     if args.molecule:
         sys.exit(launch_editor(str(args.molecule)))
-    if args.out:
+    if args.backbone and args.out:
         doc.save(str(args.out))
         sys.exit(launch_editor(str(args.out)))
     sys.exit(launch_editor())

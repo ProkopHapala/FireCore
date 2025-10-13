@@ -33,6 +33,7 @@ from PyQt5.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QDoubleSpinBox,
+    QCheckBox,
     QToolButton,
     QButtonGroup,
     QFrame,
@@ -62,6 +63,17 @@ DEFAULT_ELEMENTS = ["H", "C", "N", "O", "F"]
 MODE_DRAW = "draw"
 MODE_MOVE = "move"
 MODE_BOND = "bond"
+
+GRID_MODE_NONE = "none"
+GRID_MODE_TRI_XY = "tri_xy"
+GRID_MODE_TRI_YX = "tri_yx"
+GRID_MODE_SQUARE = "square"
+GRID_MODE_LABELS = {
+    GRID_MODE_TRI_XY: "Triangular XY",
+    GRID_MODE_TRI_YX: "Triangular YX",
+    GRID_MODE_SQUARE: "Square",
+    GRID_MODE_NONE: "None",
+}
 
 
 def canonical_element(name):
@@ -127,6 +139,7 @@ class MoleculeDocument:
             self.bond_orders = np.ones(system.bonds.shape[0], dtype=np.int8)
         self.selected_atoms = set()
         self.selected_bonds = set()
+        self.canvas = None
 
     @property
     def positions(self):
@@ -222,6 +235,8 @@ class MoleculeDocument:
         self._ensure_aux_labels()
 
     def add_atom(self, xy, element, z_height=0.0):
+        if self.canvas and self.canvas.grid_enabled:
+            xy = self.canvas.snap_point(xy)
         self._ensure_mutable_lists()
         self._ensure_numeric_arrays()
         self._ensure_aux_labels()
@@ -322,6 +337,8 @@ class MoleculeDocument:
         self._ensure_numeric_arrays()
 
     def move_atom(self, index, xy):
+        if self.canvas and self.canvas.grid_enabled:
+            xy = self.canvas.snap_point(xy)
         self.system.apos[index, 0] = xy[0]
         self.system.apos[index, 1] = xy[1]
 
@@ -336,6 +353,11 @@ class MoleculeDocument:
             return
         arr[idx, 0] += delta[0]
         arr[idx, 1] += delta[1]
+        if self.canvas and self.canvas.grid_enabled:
+            snapped = np.column_stack([arr[idx, 0], arr[idx, 1]])
+            snapped = np.apply_along_axis(self.canvas.snap_point, 1, snapped)
+            arr[idx, 0] = snapped[:, 0]
+            arr[idx, 1] = snapped[:, 1]
 
     def change_element(self, index, element):
         self._ensure_mutable_lists()
@@ -419,6 +441,10 @@ class MoleculeCanvas(FigureCanvasQTAgg):
         self.view_center = np.zeros(2, dtype=np.float64)
         self.view_zoom = 1.0
         self.tool_panel = None
+        self.grid_enabled = False
+        self.grid_spacing = 1.42
+        self.grid_visible = False
+        self.grid_mode = GRID_MODE_TRI_XY
         self._connect_events()
         self.autoscale_view(refresh=False)
         self.refresh()
@@ -497,6 +523,8 @@ class MoleculeCanvas(FigureCanvasQTAgg):
         if self.selection_rect is not None:
             if self.selection_rect not in self.ax.patches:
                 self.ax.add_patch(self.selection_rect)
+        if self.grid_visible and self.grid_mode != GRID_MODE_NONE:
+            self._draw_grid()
         self.figure.canvas.draw_idle()
 
     def hit_atom(self, pos, pixel_tol=10):
@@ -785,6 +813,150 @@ class MoleculeCanvas(FigureCanvasQTAgg):
             self.tool_panel.sync_view_controls()
         self.refresh()
 
+    def set_grid_options(self, enabled=None, spacing=None, visible=None, mode=None, update_controls=True):
+        changed = False
+        if enabled is not None:
+            enabled_flag = bool(enabled)
+            if self.grid_enabled != enabled_flag:
+                self.grid_enabled = enabled_flag
+                changed = True
+        if spacing is not None:
+            value = float(spacing)
+            if value <= 0.0:
+                raise ValueError("grid spacing must be positive")
+            if not np.isclose(self.grid_spacing, value):
+                self.grid_spacing = value
+                changed = True
+        if visible is not None:
+            visible_flag = bool(visible)
+            if self.grid_visible != visible_flag:
+                self.grid_visible = visible_flag
+                changed = True
+        if mode is not None:
+            if mode not in GRID_MODE_LABELS:
+                raise ValueError(f"unknown grid mode: {mode}")
+            if self.grid_mode != mode:
+                self.grid_mode = mode
+                changed = True
+                if self.grid_mode == GRID_MODE_NONE and self.grid_enabled:
+                    self.grid_enabled = False
+        if update_controls and self.tool_panel is not None:
+            self.tool_panel.sync_grid_controls()
+        if changed:
+            self.refresh()
+
+    def snap_point(self, xy):
+        if not self.grid_enabled or self.grid_mode == GRID_MODE_NONE:
+            return np.array(xy, dtype=np.float64)
+        a = float(self.grid_spacing)
+        if a <= 0.0:
+            raise ValueError("grid spacing must be positive")
+        p = np.asarray(xy, dtype=np.float64)
+        if self.grid_mode == GRID_MODE_SQUARE:
+            return self._snap_square(p, a)
+        swap_axes = self.grid_mode == GRID_MODE_TRI_YX
+        return self._snap_triangular(p, a, swap_axes=swap_axes)
+
+    @staticmethod
+    def _snap_square(point, a):
+        coords = np.round(point / a) * a
+        return coords
+
+    def _snap_triangular(self, point, a, swap_axes=False):
+        base_e1 = np.array([a, 0.0], dtype=np.float64)
+        base_e2 = np.array([0.5 * a, 0.5 * a * np.sqrt(3.0)], dtype=np.float64)
+        if swap_axes:
+            rot = np.array([[0.0, -1.0], [1.0, 0.0]])
+            e1 = rot @ base_e1
+            e2 = rot @ base_e2
+        else:
+            e1 = base_e1
+            e2 = base_e2
+        M = np.column_stack((e1, e2))
+        coords = np.linalg.solve(M, point)
+        r = np.round(coords)
+        snapped = M @ r
+        return snapped
+
+    def _draw_grid(self):
+        if self.grid_mode == GRID_MODE_SQUARE:
+            self._draw_square_grid()
+        elif self.grid_mode in {GRID_MODE_TRI_XY, GRID_MODE_TRI_YX}:
+            self._draw_tri_grid(swap_axes=self.grid_mode == GRID_MODE_TRI_YX)
+
+    def _draw_square_grid(self):
+        a = float(self.grid_spacing)
+        if a <= 0.0:
+            return
+        xlim = self.ax.get_xlim()
+        ylim = self.ax.get_ylim()
+        width = xlim[1] - xlim[0]
+        height = ylim[1] - ylim[0]
+        if width <= 0.0 or height <= 0.0:
+            return
+        x_start = np.floor(xlim[0] / a) - 1
+        x_end = np.ceil(xlim[1] / a) + 1
+        y_start = np.floor(ylim[0] / a) - 1
+        y_end = np.ceil(ylim[1] / a) + 1
+        xs = np.arange(x_start, x_end + 1) * a
+        ys = np.arange(y_start, y_end + 1) * a
+        for x in xs:
+            self.ax.plot([x, x], [ylim[0], ylim[1]], color="#dddddd", linewidth=0.5, zorder=1)
+        for y in ys:
+            self.ax.plot([xlim[0], xlim[1]], [y, y], color="#dddddd", linewidth=0.5, zorder=1)
+
+    def _draw_tri_grid(self, swap_axes=False):
+        a = float(self.grid_spacing)
+        if a <= 0.0:
+            return
+        xlim = self.ax.get_xlim()
+        ylim = self.ax.get_ylim()
+        width = xlim[1] - xlim[0]
+        height = ylim[1] - ylim[0]
+        if width <= 0.0 or height <= 0.0:
+            return
+        base_e1 = np.array([a, 0.0], dtype=np.float64)
+        base_e2 = np.array([0.5 * a, 0.5 * a * np.sqrt(3.0)], dtype=np.float64)
+        if swap_axes:
+            rot = np.array([[0.0, -1.0], [1.0, 0.0]])
+            e1 = rot @ base_e1
+            e2 = rot @ base_e2
+        else:
+            e1 = base_e1
+            e2 = base_e2
+        # limits in lattice coordinates
+        M = np.column_stack((e1, e2))
+        Minv = np.linalg.inv(M)
+        corners = np.array([[xlim[0], ylim[0]], [xlim[1], ylim[0]], [xlim[0], ylim[1]], [xlim[1], ylim[1]]])
+        coords = (Minv @ corners.T).T
+        u_min = np.floor(coords[:, 0].min()) - 1
+        u_max = np.ceil(coords[:, 0].max()) + 1
+        v_min = np.floor(coords[:, 1].min()) - 1
+        v_max = np.ceil(coords[:, 1].max()) + 1
+        # lines parallel to e1 (vary v)
+        line_color = "#dddddd"
+        for v in np.arange(v_min, v_max + 1):
+            p0 = M @ np.array([u_min, v], dtype=np.float64)
+            p1 = M @ np.array([u_max, v], dtype=np.float64)
+            self.ax.plot([p0[0], p1[0]], [p0[1], p1[1]], color=line_color, linewidth=0.5, zorder=1)
+        # lines parallel to e2 (vary u)
+        for u in np.arange(u_min, u_max + 1):
+            q0 = M @ np.array([u, v_min], dtype=np.float64)
+            q1 = M @ np.array([u, v_max], dtype=np.float64)
+            self.ax.plot([q0[0], q1[0]], [q0[1], q1[1]], color=line_color, linewidth=0.5, zorder=1)
+        # lines parallel to e3 = e2 - e1
+        sums = coords[:, 0] + coords[:, 1]
+        s_min = np.floor(sums.min()) - 1
+        s_max = np.ceil(sums.max()) + 1
+        for s in np.arange(s_min, s_max + 1):
+            a_low = max(u_min, s - v_max)
+            a_high = min(u_max, s - v_min)
+            if a_low > a_high:
+                continue
+            p0 = M @ np.array([a_low, s - a_low], dtype=np.float64)
+            p1 = M @ np.array([a_high, s - a_high], dtype=np.float64)
+            self.ax.plot([p0[0], p1[0]], [p0[1], p1[1]], color=line_color, linewidth=0.5, zorder=1)
+
     def autoscale_view(self, refresh=True, margin=0.2):
         doc = self.document
         apos = doc.positions
@@ -1029,11 +1201,47 @@ class ToolPanel(QWidget):
         view_box.setLayout(view_form)
         main_layout.addWidget(view_box)
 
+        grid_box = QGroupBox("Snapping grid")
+        grid_form = QFormLayout()
+        self.grid_enable_check = QCheckBox("Enable snapping")
+        self.grid_enable_check.setChecked(self.canvas.grid_enabled)
+        self.grid_enable_check.stateChanged.connect(self._grid_enable_changed)
+        grid_form.addRow(self.grid_enable_check)
+
+        self.grid_mode_combo = QComboBox()
+        self._grid_mode_items = [
+            (GRID_MODE_TRI_XY, GRID_MODE_LABELS[GRID_MODE_TRI_XY]),
+            (GRID_MODE_TRI_YX, GRID_MODE_LABELS[GRID_MODE_TRI_YX]),
+            (GRID_MODE_SQUARE, GRID_MODE_LABELS[GRID_MODE_SQUARE]),
+            (GRID_MODE_NONE, GRID_MODE_LABELS[GRID_MODE_NONE]),
+        ]
+        for _, label in self._grid_mode_items:
+            self.grid_mode_combo.addItem(label)
+        self.grid_mode_combo.currentIndexChanged.connect(self._grid_mode_changed)
+        grid_form.addRow("Pattern", self.grid_mode_combo)
+
+        self.grid_spacing_spin = QDoubleSpinBox()
+        self.grid_spacing_spin.setDecimals(2)
+        self.grid_spacing_spin.setRange(0.1, 10.0)
+        self.grid_spacing_spin.setSingleStep(0.05)
+        self.grid_spacing_spin.setValue(self.canvas.grid_spacing)
+        self.grid_spacing_spin.valueChanged.connect(self._grid_spacing_changed)
+        grid_form.addRow("Spacing", self.grid_spacing_spin)
+
+        self.grid_show_check = QCheckBox("Show grid overlay")
+        self.grid_show_check.setChecked(self.canvas.grid_visible)
+        self.grid_show_check.stateChanged.connect(self._grid_visible_changed)
+        grid_form.addRow(self.grid_show_check)
+
+        grid_box.setLayout(grid_form)
+        main_layout.addWidget(grid_box)
+
         main_layout.addStretch(1)
         self.setLayout(main_layout)
         self.canvas.tool_panel = self
         self.sync_autobond_controls()
         self.sync_view_controls()
+        self.sync_grid_controls()
 
     def _mode_changed(self, button):
         mode = button.property("mode") or MODE_DRAW
@@ -1102,6 +1310,38 @@ class ToolPanel(QWidget):
         self.view_center_y_spin.setValue(self.canvas.view_center[1])
         self.view_center_y_spin.blockSignals(False)
 
+    def sync_grid_controls(self):
+        self.grid_enable_check.blockSignals(True)
+        self.grid_enable_check.setChecked(self.canvas.grid_enabled)
+        self.grid_enable_check.blockSignals(False)
+        self.grid_spacing_spin.blockSignals(True)
+        self.grid_spacing_spin.setValue(self.canvas.grid_spacing)
+        self.grid_spacing_spin.blockSignals(False)
+        self.grid_show_check.blockSignals(True)
+        self.grid_show_check.setChecked(self.canvas.grid_visible)
+        self.grid_show_check.blockSignals(False)
+        self.grid_mode_combo.blockSignals(True)
+        mode_index = 0
+        for idx, (mode_value, _) in enumerate(self._grid_mode_items):
+            if mode_value == self.canvas.grid_mode:
+                mode_index = idx
+                break
+        self.grid_mode_combo.setCurrentIndex(mode_index)
+        self.grid_mode_combo.blockSignals(False)
+
+    def _grid_enable_changed(self, state):
+        self.canvas.set_grid_options(enabled=bool(state), update_controls=False)
+
+    def _grid_spacing_changed(self, value):
+        self.canvas.set_grid_options(spacing=value, update_controls=False)
+
+    def _grid_visible_changed(self, state):
+        self.canvas.set_grid_options(visible=bool(state), update_controls=False)
+
+    def _grid_mode_changed(self, index):
+        mode_value = self._grid_mode_items[index][0]
+        self.canvas.set_grid_options(mode=mode_value, update_controls=False)
+
 
 class MoleculeEditor(QMainWindow):
     def __init__(self, document=None, parent=None):
@@ -1110,6 +1350,7 @@ class MoleculeEditor(QMainWindow):
         self.resize(1000, 800)
         self.document = document
         self.canvas = MoleculeCanvas(self.document)
+        self.document.canvas = self.canvas
         self.canvas.setFocusPolicy(Qt.StrongFocus)
         self.canvas.setFocus()
         self.tool_panel = ToolPanel(self.canvas)
