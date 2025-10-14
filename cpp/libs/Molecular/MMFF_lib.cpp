@@ -20,6 +20,42 @@ GridShape grid;
 double* grid_data=0;
 
 extern "C"{
+void get_gridFF_info( int* int_data, double* float_data ){
+    int_data[0]=W.gridFF.natoms;
+    // int_data[1]=W.gridFF.natoms.size();
+    // Add debug print here
+    // printf("DEBUG: W.gridFF.shift0 = (%g, %g, %g)\n", W.gridFF.shift0.x, W.gridFF.shift0.y, W.gridFF.shift0.z);
+    // printf("DEBUG: W.gridFF.grid.pos0 = (%g, %g, %g)\n", W.gridFF.grid.cell.ax, W.gridFF.grid.cell.ay, W.gridFF.grid.cell.az);
+    // printf("DEBUG: W.gridFF.grid.new_voxels = (%g, %g, %g)\n", W.gridFF.grid.new_voxels.x, W.gridFF.grid.new_voxels.y, W.gridFF.grid.new_voxels.z);
+
+    *((Vec3d*)(float_data  ))=W.gridFF.shift0;
+    *((Vec3d*)(float_data+3))=W.gridFF.grid.pos0;
+    *((Mat3d*)(float_data + 6))=W.gridFF.grid.cell;
+    *((Mat3d*)(float_data + 15)) =W.gridFF.grid.dCell;
+    
+
+}
+void get_atom_positions(double* apos_substrate, double* apos_molecule) {
+    // Substrate atom positions
+    if (apos_substrate != nullptr) {
+        for (int i = 0; i < W.surf.natoms; ++i) {
+            ((Vec3d*)apos_substrate)[i] = W.surf.apos[i];
+        }
+    }
+
+    // Molecule atom positions
+    if (apos_molecule != nullptr) {
+        for (int i = 0; i < W.nbmol.natoms; ++i) {
+            ((Vec3d*)apos_molecule)[i] = W.nbmol.apos[i];
+        }
+    }
+
+    
+}
+
+int get_molecule_natoms() {
+    return W.nbmol.natoms;
+}
 
 void init_buffers_UFF(){
     printf( "init_buffers_UFF() \n" );
@@ -254,6 +290,8 @@ int    run( int nstepMax, double dt, double Fconv, int ialg, double damping, dou
 }
 
 void  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, double* aposs, bool omp, bool bRelax, int niter_max, double dt, double Fconv, double Flim ){
+    // Add debug print here
+    // printf("DEBUG: scan() function using shift0 = (%g, %g, %g)\n", W.gridFF.shift0.x, W.gridFF.shift0.y, W.gridFF.shift0.z);
     if(bRelax){
         if(omp){ printf("ERROR: scan_relaxed() not implemented witht OMP\n"); exit(0); } 
         else   { W.scan_relaxed( nconf, (Vec3d*)poss, (Mat3d*)rots, Es, (Vec3d*)aforces, (Vec3d*)aposs, omp, niter_max, dt, Fconv, Flim );  }

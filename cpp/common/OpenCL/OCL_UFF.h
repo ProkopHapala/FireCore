@@ -24,7 +24,7 @@ public:
     int nDihedrals  = 0;
     int nInversions = 0;
     int  npbc       = 0;
-    int4 nPBC       = {0,0,0,0};
+    int4 nPBC       = {1,1,0,0};
     int nAtomsTot   = 0;
     int nA2F        = 0;
 
@@ -172,7 +172,8 @@ public:
     }
 
     OCLtask* getSurfMorse(  Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0, int na_s=0, float4* atoms_s=0, float4* REQs_s=0,  bool bRun=true, OCLtask* task=0 ){
-        v2i4( nPBC_, nPBC );
+        //v2i4( nPBC_, nPBC );
+        nPBC=(int4){1,2,0,0};
         int err=0;
         err |= finishRaw();       OCL_checkError(err, "getSurfMorse().imgAlloc" );
         nDOFs.x = nAtoms;
@@ -215,8 +216,8 @@ public:
         // Create tasks for each kernel
         // TODO: The local work-group sizes (e.g., 32) are hardcoded for now. They should be tuned for optimal performance based on the device and kernel characteristics.
         //                                name                  program  nL nG
-        newTask("clear_fapos_UFF",        program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
-        newTask("clear_fint_UFF",         program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
+        newTask("clear_fapos_UFF",        program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
+        newTask("clear_fint_UFF",         program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         newTask("evalBondsAndHNeigh_UFF", program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         newTask("evalAngles_UFF",         program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         newTask("evalDihedrals_UFF",      program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
@@ -533,9 +534,9 @@ public:
     OCLtask* setup_getNonBond_GridFF_Bspline(int na, Vec3i nPBC_, OCLtask* task = nullptr) {
         if (!task) task = getTask("getNonBond_GridFF_Bspline");
         int nloc = 32;
-        task->local.x = nloc;
+        task->local.x = nloc;        
+        task->local.y = 1; 
         task->global.x = na + nloc - (na % nloc);
-        task->local.y = 1;  
         task->global.y = nSystems;
         grid_shift0_p0 = grid_p0;
         useKernel(task->ikernel);
@@ -615,7 +616,7 @@ public:
     }
 
     void eval(bool bClearForce = true) {
-        printf("OCL_UFF::eval() bClearForce=%i bUFF_bonds=%i bUFF_angles=%i bUFF_dihedrals=%i bUFF_inversions=%i bUFF_assemble=%i\n", bClearForce, bUFF_bonds, bUFF_angles, bUFF_dihedrals, bUFF_inversions, bUFF_assemble);
+        if(idebug>0)printf("OCL_UFF::eval() bClearForce=%i bUFF_bonds=%i bUFF_angles=%i bUFF_dihedrals=%i bUFF_inversions=%i bUFF_assemble=%i\n", bClearForce, bUFF_bonds, bUFF_angles, bUFF_dihedrals, bUFF_inversions, bUFF_assemble);
         // bUFF_bonds      &= nBonds>0;
         // bUFF_angles     &= nAngles>0;
         // bUFF_dihedrals  &= nDihedrals>0;

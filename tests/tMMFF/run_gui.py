@@ -12,10 +12,12 @@ from pyBall import MolGUI as gui
 #======== Body
 
 mmff.setVerbosity( verbosity=1, idebug=0 )
-#mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_sum-center" )                             # all
-W=mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_sym-center", bMMFF=False  )              # without MMFF
+W=mmff.init( xyz_name="data/xyz/pyridine", surf_name="data/xyz/NaCl_sym-center" )                             # all
 
-#mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_sym-center", bMMFF=False, gridStep=-1 )  # without gridFF
+# W=mmff.init( xyz_name="data/xyz/pyridine", surf_name="data/xyz/NaCl_sym-center", bMMFF=False  )              # without MMFF
+
+# W=mmff.init( xyz_name="data/xyz/pyridine", surf_name="data/xyz/NaCl_sym-center", bMMFF=False, gridStep=-1 )  # without gridFF
+
 mmff.getBuffs()
 mmff.eval()
 

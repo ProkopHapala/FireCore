@@ -7,7 +7,7 @@ sys.path.append("../../")
 from pyBall import atomicUtils as au
 from pyBall import MMFF as mmff
 
-mmff.init( xyz_name="data/H2O", surf_name="data/NaCl_1x1_L2", bMMFF=False )
+mmff.init( xyz_name="data/xyz/H2O", surf_name="data/xyz/NaCl_1x1_L1", bMMFF=False )
 
 
 # ======= Setup

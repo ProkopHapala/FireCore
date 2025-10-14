@@ -219,7 +219,6 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     const char* uploadPopName=0;
 
     bool bMILAN = false;
-    bool bSaveToDatabase=false;
 
     // For deferred GridFF initialization
     bool bGridFF_pending = false;
@@ -234,6 +233,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     bool gridFF_bRefine = true;
 
     MolecularDatabase* database = 0;
+
     long nStepConvSum = 0;
     long nStepNonConvSum = 0;
     long nStepExplorSum = 0;
@@ -241,6 +241,9 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     int  nbNonConverged=0;
     int  nbEvaluation=0;
     int  nExploring=0;
+
+    bool bOnlyRelax = false;
+    bool* isSystemRelaxed=0;
 
 virtual int getMolWorldVersion() const override { return (int)MolWorldVersion::GPU; };
 
@@ -262,7 +265,7 @@ void realloc( int nSystems_ ){
         int nInversions = ffu.ninversions;
         // The size of the atom-to-force mapping array is the total number of force components
         int nA2F        = ffu.nf;
-        uff_ocl->realloc( nSystems, ffu.natoms, ffu.nbonds, ffu.nangles, ffu.ndihedrals, ffu.ninversions, 0, nA2F );
+        uff_ocl->realloc( nSystems, ffu.natoms, ffu.nbonds, ffu.nangles, ffu.ndihedrals, ffu.ninversions, npbc, nA2F );
         // Allocate host-side arrays
         host_bon_atoms    .resize(nSystems * ffu.nbonds);
         host_bon_params   .resize(nSystems * ffu.nbonds);
@@ -285,8 +288,9 @@ void realloc( int nSystems_ ){
         _realloc ( atoms,     uff_ocl->nAtomsTot  );
         _realloc0( aforces,   uff_ocl->nAtomsTot  , Quat4fZero );
         _realloc0( avel,      uff_ocl->nAtomsTot  , Quat4fZero );
+        _realloc0( cvfs,      uff_ocl->nAtomsTot  , Quat4fZero );
         _realloc( REQs,       uff_ocl->nAtomsTot );
-        _realloc( pbcshifts, uff_ocl->nSystems * (npbc+1) ); // npbc is from MolWorld_sp3
+        _realloc( pbcshifts, uff_ocl->nSystems * ((uff_ocl->npbc>0)?uff_ocl->npbc:1) ); // use UFF OCL npbc for host buffer
     }else{
         printf( "MolWorld_sp3_multi::realloc() MMFF Systems %i nAtoms %i nnode %i \n", nSystems, ffl.natoms,  ffl.nnode );
         ocl.initAtomsForces( nSystems, ffl.natoms,  ffl.nnode, npbc+1 );
@@ -325,6 +329,8 @@ void initMultiCPU(int nSys){
     _realloc( opts, nSys );
     _realloc( ffls, nSys );
     _realloc( gopts,nSys );
+    _realloc( isSystemRelaxed, nSys );
+
     double dtopt=ff.optimalTimeStep();
     for(int isys=0; isys<nSys; isys++){
         ffls[isys].clone( ffl, true, true );
@@ -337,12 +343,15 @@ void initMultiCPU(int nSys){
         opts[isys].initOpt( dtopt );
         opts[isys].cleanVel();
         gopts[isys].copy( go );
+        if(bGopt)   gopts[isys].bExploring = true;
+        else        gopts[isys].bExploring = false;
         //gopts[isys].startExploring();
-        gopts[isys].bExploring = false;
         //gopts[isys].print();
         //gopts[isys].constrs.printSizes();  // Debug
         //gopts[isys].constrs.printDrives( );
-        gopts[isys].nExplore = 1000/nPerVFs;
+        gopts[isys].nExplore = go.nExplore;
+        gopts[isys].nRelax   = go.nRelax;
+        isSystemRelaxed[isys] = false;
     }
 }
 
@@ -405,17 +414,17 @@ virtual void init() override {
         printf("MolWorld_sp3_multi::init() - Loading surface %s after OpenCL initialization\n", original_surf_name);
         loadSurf(original_surf_name, true, false, NAN);
     }
-
     // ----- init systems
     realloc( nSystems );
     // Prepare UFF kernels after sizes are known
-    if(bUFF && uff_ocl){uff_ocl->setup_kernels( ffu.Rdamp, ffu.FmaxNonBonded, ffu.SubNBTorsionFactor); }
+    if(bUFF && uff_ocl){uff_ocl->setup_kernels( ffu.Rdamp, ffu.FmaxNonBonded, ffu.SubNBTorsionFactor); printf("UFF kernels setup done \n"); }
+
     //if(bGridFF) evalCheckGridFF_ocl();  // this must be after we make buffers but before we fill them
     float random_init = 0.5;
 
     fire_setup.setup(opt.dt_max,opt.damp_max);
     for(int i=0; i<nSystems; i++){
-        if(bUFF) pack_uff_system( i, ffu, true, false, true, true ); else pack_system( i, ffl, true, false, true, true, random_init );
+        if(bUFF) pack_uff_system( i, ffu, true, false, false, true ); else pack_system( i, ffl, true, false, true, true, random_init );
         fire[i].bind_params( &fire_setup );
         fire[i].id=i;
     }
@@ -427,7 +436,7 @@ virtual void init() override {
     //bOcl   =true;
 
     // Complete GridFF initialization if it was deferred
-    if(bGridFF_pending){
+    if(bGridFF_pending && bGridFF){
         completeGridFFInit();
     }
     //setup_MMFFf4_ocl();
@@ -442,16 +451,23 @@ virtual void init() override {
     //iParalel=3;
     //iParalel=iParalelMax;
 
-    if(database)
     if(!database){
         database = new MolecularDatabase();
         database->setDescriptors();
     }
+    if(bUFF){
+            setup_UFF_ocl();
+            if(!uff_ocl->bKernelPrepared)uff_ocl->setup_kernels( (float)ffu.Rdamp, (float)ffu.FmaxNonBonded, (float)ffu.SubNBTorsionFactor );
+            for(int isys=0; isys<nSystems; ++isys){ pack_uff_system( isys, ffu, true, false, false, true ); }
+            upload_uff( true, false, false, true );
+            memset( avel, 0, uff_ocl->nAtomsTot * sizeof(Quat4f) );
+            uff_ocl->upload( uff_ocl->ibuff_avel, (float*)avel );
+            printf("UFF setup done \n"); }
+    printf( "uploadPopName @ %li\n", uploadPopName );
+    if( uploadPopName ){   printf( "!!!!!!!!!!!!\n UPLOADING POPULATION FROM FILE (%s)\n", uploadPopName );  upload_pop( uploadPopName ); }
 
-    printf( "uploadPopName @ %li", uploadPopName );
-    if( uploadPopName ){   printf( "!!!!!!!!!!!!\n UPLOADING POPULATION FROM FILE (%s)", uploadPopName );  upload_pop( uploadPopName ); }
 
-    printf("# ========== MolWorld_sp3_multi::init() DONE\n");
+    printf("# ========== MolWorld_sp3_multi::init() DONE\n\n");
 }
 
 
@@ -545,6 +561,38 @@ int init_groups(){
     return err;
 }
 
+void spread_replicas_grid(int x_nb, int y_nb, double x_grig, double y_grid){
+    printf("MolWorld_sp3_multi::spread_replicas(%i,%i,%g,%g)\n", x_nb, y_nb, x_grig, y_grid );
+    for(int x=0; x<x_nb; x++){
+        for(int y=0; y<y_nb; y++){
+            int isys = y + x*x_nb;
+            printf( "spread_replicas() isys=%i nSystems=%i x*x_grig=%g y*y_grid=%g\n", isys, nSystems, x*x_grig, y*y_grid );
+            if(isys>=nSystems)return;
+            for(int ia=0; ia<ffls[isys].natoms; ia++){
+                ffls[isys].apos[ia].add(x*x_grig, y*y_grid, 0);
+            }
+            pack_system(isys, ffls[isys], true, false, false, true);
+            ffls[isys].print();
+            
+        }
+    }
+    upload();
+}
+void spread_replicas_random(double x_grig, double y_grid){
+    for(int isys=0; isys<nSystems; isys++){
+            if(isys>=nSystems)return;
+            Vec3d shift = Vec3d{ randf(-x_grig,x_grig),randf(-y_grid,y_grid),0.0 };
+            for(int ia=0; ia<ffls[isys].natoms; ia++){
+                ffls[isys].apos[ia] += shift;
+            }
+            pack_system(isys, ffls[isys], true, false, false, true);
+            ffls[isys].print();
+    }
+    upload();
+}
+
+
+
 virtual void pre_loop() override {
     printf("MolWorld_sp3_multi::pre_loop()\n" );
     init_groups();
@@ -558,6 +606,8 @@ virtual void pre_loop() override {
             //if(isys==0){    printf( "pre_loop() ffl[ia=%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g) \n", isys, ia, ffl.constr[ia].x,ffl.constr[ia].y,ffl.constr[ia].z,ffl.constr[ia].w, ffl.constrK[ia].x,ffl.constrK[ia].y,ffl.constrK[ia].z ); }
         }
     }
+    //spread_replicas_grid(10,10, 5, 5 );
+    spread_replicas_random(5, 5 );
     //printConstrains();
     // for(int ic : constrain_list ){
     //     for(int isys=0; isys<nSystems; isys++){
@@ -567,7 +617,8 @@ virtual void pre_loop() override {
     //     }
     // }
     // ocl.upload( ocl.ibuff_constr, constr );     //OCL_checkError(err, "init_groups.upload(constr)");
-    print("MolWorld_sp3_multi::pre_loop() DONE\n");
+
+    printf("MolWorld_sp3_multi::pre_loop() DONE\n" );
 }
 
 // ==================================
@@ -773,7 +824,7 @@ void download_mmff( bool bForces, bool bVel ){
 
 
 void pack_uff_system( int isys, const UFF& ff, bool bParams=false, bool bForces=false, bool bVel=false, bool blvec=true ){
-    printf("MolWorld_sp3_multi::pack_uff_system(isys=%i) nAtoms=%i nsystems=%i uff.nAtoms=%i\n", isys, ff.natoms, nSystems, ff.natoms);
+    //printf("MolWorld_sp3_multi::pack_uff_system(isys=%i) nAtoms=%i nsystems=%i uff.nAtoms=%i\n", isys, ff.natoms, nSystems, ff.natoms);
     int nAtoms      = ff.natoms;
     int i0a = isys * nAtoms;
 
@@ -861,7 +912,7 @@ void upload_uff_sys( int isys, bool bParams, bool bForces, bool bVel, bool blvec
     if(blvec){
         err|= uff_ocl->upload( uff_ocl->ibuff_lvecs, lvecs+isys, 1 );
         // Upload at least one PBC shift record even if npbc==0 (buffer was allocated with safe size 1)
-        int nPBC_safe = (npbc>0)? npbc : 1;
+        int nPBC_safe = (uff_ocl->npbc>0)? uff_ocl->npbc : 1;
         int i0pbc = isys * nPBC_safe;
         err|= uff_ocl->upload( uff_ocl->ibuff_pbcshifts, pbcshifts + i0pbc, nPBC_safe );
     }
@@ -1039,17 +1090,18 @@ void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring
     fire.ff=cvf.y;
     fire.vf=cvf.z;
     fire.update_params();
-    // if(bExploring){
-    //     MDpar.x = fire.par->dt_max;
-    //     MDpar.y = 1.0;
-    //     MDpar.z = 1.0;
-    //     MDpar.w = 0.0;
-    // }else{
+    if(bExploring){
+        //MDpar.x = fire.par->dt_max;
         MDpar.x = fire.dt;
-        MDpar.y = 1 - fire.damping;
+        MDpar.y = 10000.0;
+        MDpar.z = 1.0;
+        MDpar.w = 0.0;
+    }else{
+        MDpar.x = fire.dt;
+        MDpar.y = 10000.0;
         MDpar.z = fire.cv;
         MDpar.w = fire.cf;
-    //}
+    }
 }
 
 
@@ -1059,15 +1111,14 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
     bool bGroupUpdate=false;
     bool bExploring = false;
 
-    int nMaxSteps = 10000/nPerVFs;
-
     for(int isys=0; isys<nSystems; isys++){
         int i0v = isys * ocl.nvecs;
         double f2 = fire[isys].ff;
         // -------- Global Optimization
         if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){            // Start Exploring
             nbConverged++;
-            nStepConvSum+=gopts[isys].istep*nPerVFs;
+            nStepConvSum+=gopts[isys].istep;  
+
             gopts[isys].startExploring();
             if(bGroups){
                 bGroupUpdate=true;
@@ -1081,29 +1132,32 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
                 }   // Shift driver
             }
         }
-        else if( ( gopts[isys].istep > nMaxSteps ) && (!gopts[isys].bExploring)){
+        else if( ( gopts[isys].istep > gopts[isys].nRelax ) && (!gopts[isys].bExploring)){
+            //printf("(1) Entering non-converged branch for isys=%d, istep=%d\n", isys, gopts[isys].istep);
+            download_uff( true, false );
+            err |= uff_ocl->finishRaw();  OCL_checkError(err, "evalVFs().UFF.download");
             nbNonConverged++;
-            nStepNonConvSum+=gopts[isys].istep*nPerVFs;
+            nStepNonConvSum+=gopts[isys].istep;            
             gopts[isys].startExploring();
             if(bGroups){ bGroupUpdate=true; }
-            database->convergedStructure.push_back(false);
 
             int i0v = isys * ocl.nvecs;
-            unpack( ffls[isys].nvecs,  ffls[isys].apos, atoms+i0v);
-            if(database->addIfNewDescriptor(&ffls[isys])==-1){
-                sprintf(tmpstr,"# %i E %g |F| %g istep=%i", database->getNMembers(), ffls[isys].Etot, sqrt(ffl.cvf.z), gopts[isys].istep );
-                saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
-                database->convergedStructure.push_back(false);
+            if(bUFF){
+                    unpack_uff_system( isys, ffu, true, false );
+                    if(database && database->addIfNewDescriptor(&ffu)==-1){
+                        sprintf(tmpstr,"# %i E %g |F| %g istep=%i", database->getNMembers(), ffu.Etot, sqrt(ffu.cvf.z), gopts[isys].istep );
+                        //saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
+                        database->convergedStructure.push_back(false);
+                }
+                if(bGroups)for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0}, {tsc,0.0,0.0} ); }
             }
-
-            for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0}, {tsc,0.0,0.0} ); }   // Shift driver
         }
-        if( gopts[isys].update() ){ // Stop Exploring
-            bGroupUpdate=true;
+        if( gopts[isys].update(nPerVFs) ){ // Stop Exploring
+            if(bGroups)bGroupUpdate=true;
             nExploring++;
-            nStepExplorSum+=gopts[isys].nExplore*nPerVFs;
+            nStepExplorSum+=gopts[isys].nExplore;
             //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
-            for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, Vec3fZero ); }
+            if(bGroups)for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, Vec3fZero ); }
         };
         bExploring |= gopts[isys].bExploring;
         //printf("gopts[%i].bExploring=%i\n", isys, gopts[isys].bExploring );
@@ -1124,79 +1178,134 @@ double evalVFs( double Fconv=1e-6 ){
     double F2conv = Fconv*Fconv;
     //printf("MolWorld_sp3_multi::evalVFs()\n");
     int err=0;
-    //ocl.download( ocl.ibuff_aforces , aforces );
-    //ocl.download( ocl.ibuff_avel    , avel    );
-    ocl.download( ocl.ibuff_cvf    , cvfs  );
-    err |= ocl.finishRaw();  OCL_checkError(err, "evalVFs().1");
-    //printf("MolWorld_sp3_multi::evalVFs(%i) \n", isys);
     double F2max = 0;
-    iSysFMax=-1;
-    bool bGroupUpdate=false;
-    for(int isys=0; isys<nSystems; isys++){
-        nbEvaluation++;
-        int i0v = isys * ocl.nvecs;
-        //evalVF( ocl.nvecs, aforces+i0v, avel   +i0v, fire[isys], MDpars[isys] );
-        evalVF_new( ocl.nvecs, cvfs+i0v, fire[isys], MDpars[isys], gopts[isys].bExploring );
-        double f2 = fire[isys].ff;
-        if(f2>F2max){ F2max=f2; iSysFMax=isys; }
-        // -------- Global Optimization
-        if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){            // Start Exploring
-            int i0v = isys * ocl.nvecs;
-            unpack( ffls[isys].nvecs,  ffls[isys].apos, atoms+i0v);
+    // UFF path: use uff_ocl buffers and sizes; handle minima-hopping here
+    if(bUFF){
+        int errUF=0;
+        uff_ocl->download( uff_ocl->ibuff_cvf, cvfs );
+        errUF |= uff_ocl->finishRaw();  OCL_checkError(errUF, "evalVFs().UFF.download");
+        iSysFMax=-1;
+        for(int isys=0; isys<nSystems; isys++){
 
-            if(bMILAN){
-                int sameMember = database->addIfNewDescriptor(&ffls[isys]);
-                if(sameMember==-1){
-                    std::vector<double> theta;
-                    for(auto g : groups.groups){
-                        theta.push_back( g.fw.dot(Vec3dZ)/g.fw.norm()/2/M_PI*360 );
+            nbEvaluation += nPerVFs;
+            int i0a = isys * uff_ocl->nAtoms;
+            evalVF_new( uff_ocl->nAtoms, cvfs+i0a, fire[isys], MDpars[isys], gopts[isys].bExploring );
+            double f2 = fire[isys].ff;
+            if(f2>F2max){ F2max=f2; iSysFMax=isys; }
+            if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){
+                uff_ocl->download( uff_ocl->ibuff_apos, (float*)atoms );
+                uff_ocl->finishRaw();
+                unpack_uff_system( isys, ffu, true, false );
+                isSystemRelaxed[isys]=true;
+                // save
+                if(0*bSaveToDatabase){
+                    int sameMember = database->addIfNewDescriptor(&ffu);
+                    if(sameMember==-1){
+                        sprintf(tmpstr,"# %i E %g |F| %g istep=%i isys=%i,", database->getNMembers(), 0.5*fire[isys].vv, sqrt(f2), gopts[isys].istep, isys );
+                        nbmol.copyOf( ffu );
+                        Vec3d cog = nbmol.getBBcog();
+                        for(int i=0; i<nbmol.natoms; i++){
+                            nbmol.apos[i].sub( cog );
+                        }
+                        saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
+                        database->convergedStructure.push_back(true);
                     }
-                    sprintf(tmpstr,"# %i E %g |F| %g istep=%i isys=%i,", database->getNMembers(), 0.5*fire[isys].vv, sqrt(f2), gopts[isys].istep, isys );
-                    nbmol.copyOf( ffls[isys] );
-                    Vec3d cog = nbmol.getBBcog();
-                    for(int i=0; i<nbmol.natoms; i++){
-                        nbmol.apos[i].sub( cog );
-                    }
-                    saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
-                    database->convergedStructure.push_back(true);
                 }
             }
 
-            // //printf( "evalVFs() iSys=%i CONVERGED |F|=%g \n", isys, sqrt(f2) );
-            // gopts[isys].startExploring();
-            // bGroupUpdate=true;
-            // //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Start Exploring \n", isys );
-            // //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0} ); }   // Shift driver
-            // for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, {tsc,0.0,0.0} ); }   // group rotate driver
+
+            // Set thermostat & map MDpars for UFF kernel
+            if( gopts[isys].bExploring && !bOnlyRelax ){
+                TDrive[isys].x = go.T_target;
+                TDrive[isys].y = go.gamma_damp;
+                TDrive[isys].z = 0.0f;
+                TDrive[isys].w = randf(-1.0,1.0);           // force limit for kernel
+            }else{
+                TDrive[isys].y = -1.0f;                 // disable Langevin
+            }
         }
-        // if( gopts[isys].update() ){ // Stop Exploring
-        //     bGroupUpdate=true;
-        //     //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
-        //     for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, Vec3fZero ); }
-        // };
-        // if( gopts[isys].bExploring ){
-        //     TDrive[isys].x = 1000;  // Temperature [K]
-        //     TDrive[isys].y = 0.1;  // gamma_damp
-        //     TDrive[isys].z = 0;    // ?
-        //     TDrive[isys].w = randf(-1.0,1.0);
-        // }else{
-        //     TDrive[isys].y = -1.0; // gamma_damp
-        // }
-        //printf( "evalVFs()[iSys=%i]  bExploring=%i (%i/%i)  |F|=%g \n", isys, gopts[isys].bExploring,   gopts[isys].istep, gopts[isys].nExplore,  sqrt(f2) );
-        //printf( "evalF2[sys=%i] |f|=%g MDpars(dt=%g,damp=%g,cv=%g,cf=%g)\n", isys, sqrt(f2), MDpars[isys].x, MDpars[isys].y, MDpars[isys].z, MDpars[isys].w );
-        //F2max = fmax( F2max, fire[isys].ff );
+
+        errUF |= uff_ocl->upload( uff_ocl->ibuff_MDpars, MDpars );
+        errUF |= uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
+        errUF |= uff_ocl->upload( uff_ocl->ibuff_cvf   , cvfs   );
+        OCL_checkError(errUF, "evalVFs().UFF.upload");
     }
-    //printf( "MDpars{%g,%g,%g,%g}\n", MDpars[0].x,MDpars[0].y,MDpars[0].z,MDpars[0].w );
-    err |= ocl.upload( ocl.ibuff_MDpars, MDpars );
-    // err |= ocl.upload( ocl.ibuff_TDrive, TDrive );
-    err |= ocl.upload( ocl.ibuff_cvf   , cvfs   );
-    // //printf("MolWorld_sp3_multi::evalVFs() bGroupUpdate=%i \n", bGroupUpdate );
-    // if(bGroupUpdate){
-    //     //printf("MolWorld_sp3_multi::evalVFs() bGroupUpdate=%i \n", bGroupUpdate );
-    //     err |= ocl.upload( ocl.ibuff_gforces, gforces );
-    //     err |= ocl.upload( ocl.ibuff_gtorqs , gtorqs  );
-    // }
-    //err |= ocl.finishRaw();
+    else{
+        //ocl.download( ocl.ibuff_aforces , aforces );
+        //ocl.download( ocl.ibuff_avel    , avel    );
+        ocl.download( ocl.ibuff_cvf    , cvfs  );
+        err |= ocl.finishRaw();  OCL_checkError(err, "evalVFs().1");
+        //printf("MolWorld_sp3_multi::evalVFs(%i) \n", isys);
+        iSysFMax=-1;
+        bool bGroupUpdate=false;
+        for(int isys=0; isys<nSystems; isys++){
+            nbEvaluation+=nPerVFs;
+            int i0v = isys * ocl.nvecs;
+            //evalVF( ocl.nvecs, aforces+i0v, avel   +i0v, fire[isys], MDpars[isys] );
+            evalVF_new( ocl.nvecs, cvfs+i0v, fire[isys], MDpars[isys], gopts[isys].bExploring );
+            double f2 = fire[isys].ff;
+            if(f2>F2max){ F2max=f2; iSysFMax=isys; }
+            // -------- Global Optimization
+            if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){
+                int i0v = isys * ocl.nvecs;
+                unpack( ffls[isys].nvecs,  ffls[isys].apos, atoms+i0v);
+                isSystemRelaxed[isys]=true;
+
+
+                if(bSaveToDatabase){
+                    int sameMember = database->addIfNewDescriptor(&ffls[isys]);
+                    if(sameMember==-1){
+                        std::vector<double> theta;
+                        for(auto g : groups.groups){
+                            theta.push_back( g.fw.dot(Vec3dZ)/g.fw.norm()/2/M_PI*360 );
+                        }
+                        sprintf(tmpstr,"# %i E %g |F| %g istep=%i isys=%i,", database->getNMembers(), 0.5*fire[isys].vv, sqrt(f2), gopts[isys].istep, isys );
+                        nbmol.copyOf( ffls[isys] );
+                        Vec3d cog = nbmol.getBBcog();
+                        for(int i=0; i<nbmol.natoms; i++){
+                            nbmol.apos[i].sub( cog );
+                        }
+                        saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
+                        database->convergedStructure.push_back(true);
+                    }
+                }
+
+                // //printf( "evalVFs() iSys=%i CONVERGED |F|=%g \n", isys, sqrt(f2) );
+                // gopts[isys].startExploring();
+                // bGroupUpdate=true;
+                // //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Start Exploring \n", isys );
+                // //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0} ); }   // Shift driver
+                // for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, {tsc,0.0,0.0} ); }   // group rotate driver
+            }
+            // if( gopts[isys].update() ){ // Stop Exploring
+            //     bGroupUpdate=true;
+            //     //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
+            //     for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, Vec3fZero ); }
+            // };
+            if( gopts[isys].bExploring && !bOnlyRelax ){
+                TDrive[isys].x = go.T_target;  // Temperature [K]
+                TDrive[isys].y = go.gamma_damp;  // gamma_damp
+                TDrive[isys].z = 0;    // ?
+                TDrive[isys].w = randf(-1.0,1.0);
+            }else{
+                TDrive[isys].y = -1.0; // gamma_damp
+            }
+            //printf( "evalVFs()[iSys=%i]  bExploring=%i (%i/%i)  |F|=%g \n", isys, gopts[isys].bExploring,   gopts[isys].istep, gopts[isys].nExplore,  sqrt(f2) );
+            //printf( "evalF2[sys=%i] |f|=%g MDpars(dt=%g,damp=%g,cv=%g,cf=%g)\n", isys, sqrt(f2), MDpars[isys].x, MDpars[isys].y, MDpars[isys].z, MDpars[isys].w );
+            //F2max = fmax( F2max, fire[isys].ff );
+        }
+        //printf( "MDpars{%g,%g,%g,%g}\n", MDpars[0].x,MDpars[0].y,MDpars[0].z,MDpars[0].w );
+        err |= ocl.upload( ocl.ibuff_MDpars, MDpars );
+        err |= ocl.upload( ocl.ibuff_TDrive, TDrive );
+        err |= ocl.upload( ocl.ibuff_cvf   , cvfs   );
+        // //printf("MolWorld_sp3_multi::evalVFs() bGroupUpdate=%i \n", bGroupUpdate );
+        // if(bGroupUpdate){
+        //     //printf("MolWorld_sp3_multi::evalVFs() bGroupUpdate=%i \n", bGroupUpdate );
+        //     err |= ocl.upload( ocl.ibuff_gforces, gforces );
+        //     err |= ocl.upload( ocl.ibuff_gtorqs , gtorqs  );
+        // }
+        //err |= ocl.finishRaw();
+    }
     OCL_checkError(err, "evalVFs().2");
     return F2max;
 }
@@ -1366,18 +1475,26 @@ void setup_UFF_ocl(){
     }
 
     Vec3i nPBC_ = nPBC; if(!bPBC) nPBC_ = Vec3iZero;
-
-    if(bGridFF){
-        if(!uff_ocl->task_NBFF_Grid_Bspline){
-            printf("MolWorld_sp3_multi::setup_UFF_ocl() for UFF GridFF\n");
-            // UFF should set grid parameters directly from GridFF object, not copy from MMFF context
-            // Set grid parameters directly from GridFF object
-            uff_ocl->setGridShape(gridFF.grid);
-            uff_ocl->bNonBond=bNonBonded;
-            printf("DEBUG setup_UFF_ocl: uff_ocl->ibuff_BsplinePLQ=%d (should be 41)\n", uff_ocl->ibuff_BsplinePLQ);
-            uff_ocl->task_NBFF_Grid_Bspline = uff_ocl->setup_getNonBond_GridFF_Bspline(ffu.natoms, nPBC_);
+    if(bSurfAtoms){
+        if(bGridFF){
+            if(!uff_ocl->task_NBFF_Grid_Bspline){
+                printf("MolWorld_sp3_multi::setup_UFF_ocl() for UFF GridFF\n");
+                // UFF should set grid parameters directly from GridFF object, not copy from MMFF context
+                // Set grid parameters directly from GridFF object
+                uff_ocl->setGridShape(gridFF.grid);
+                uff_ocl->bNonBond=bNonBonded;
+                printf("DEBUG setup_UFF_ocl: uff_ocl->ibuff_BsplinePLQ=%d (should be 41)\n", uff_ocl->ibuff_BsplinePLQ);
+                uff_ocl->task_NBFF_Grid_Bspline = uff_ocl->setup_getNonBond_GridFF_Bspline(ffu.natoms, nPBC_);
+            }
         }
-    } else if(bNonBonded){
+        else{
+            if(!uff_ocl->task_SurfAtoms){
+                printf("MolWorld_sp3_multi::setup_UFF_ocl() for UFF SurfAtoms\n");
+                uff_ocl->task_SurfAtoms = uff_ocl->getSurfMorse( nPBC_ );
+            }
+        }
+    }
+    if(bNonBonded && !bGridFF){
         if(!uff_ocl->task_NBFF){
             printf("MolWorld_sp3_multi::setup_UFF_ocl() for UFF NonBonded\n");
             uff_ocl->task_NBFF = uff_ocl->setup_getNonBond(ffu.natoms, nPBC_);
@@ -1569,7 +1686,65 @@ virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
     gopt.lattice_scan_2d_multi( n1, dlvec, initMode, "lattice_scan_2d_multi.xyz" );
 }
 
-int saveSysXYZ( int isys, const char* fname, const char* comment="#comment", bool bNodeOnly=false, const char* mode="w", Vec3i nPBC=Vec3i{1,1,1} ){
+
+virtual void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, Vec3d* dirs, double* Es, Vec3d* aforces, Vec3d* aposs, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000, int ipicked=0 ){
+    if(verbosity>1)printf("MolWorld_sp3_multi::scan_relaxed(nconf=%i,omp=%i) @poss=%li @rots=%li @Es=%li @aforces=%li @aposs=%li \n", nconf, omp, (long)poss, (long)rots, (long)Es, (long)aforces, (long)aposs);
+    bOnlyRelax=true;
+    Atoms original_atoms;
+    original_atoms.copyOf( ffl );
+    int* conf2sys = 0;
+    _realloc( conf2sys, nconf*sizeof(int) );
+    for(int i=0; i<nconf+nSystems; ){
+        Vec3d pos = poss ? poss[i] : Vec3dZero;
+        Mat3d rot = rots ? rots[i] : Mat3dIdentity;
+
+        int err=0;
+        ocl.download( ocl.ibuff_atoms, atoms );
+        err |= ocl.finishRaw();  OCL_checkError(err, "scan_relaxed().1");
+
+        for (int isys=0; isys<nSystems; isys++){
+            //store energy
+            if(isSystemRelaxed[isys] && i>=nSystems){
+                int i0v = isys * ocl.nvecs;
+                unpack( ffls[isys].nvecs, ffls[isys].apos, atoms+i0v);
+
+                ffl.copyOf( ffls[isys] );
+                double E = eval_no_omp();
+                if(Es){ 
+                    Es[conf2sys[isys]]=E; 
+                }
+                if(aforces){ ffl.copyForcesTo( aforces + conf2sys[isys]*ffl.natoms ); }
+                if(aposs  ){ ffl.copyPosTo   ( aposs   + conf2sys[isys]*ffl.natoms ); }
+            }
+            //move with system
+            if(isSystemRelaxed[isys]){
+                if(i<nconf){
+                    ffls[isys].copyOf(original_atoms);
+                    ffls[isys].setFromRef( ffls[isys].apos, ffls[isys].pipos, poss[i], rot );
+                    iSystemCur = isys;
+                    int i0a = ocl.nAtoms*iSystemCur;
+                    constr [i0a + ipicked].f.set((Vec3f)poss[i]);
+                    constr [i0a + ipicked].w = 1.0;
+                    constrK[i0a + ipicked] = Quat4fOnes;
+
+                    conf2sys[isys] = i;
+                }
+                isSystemRelaxed[isys] = false;
+
+                i++; 
+            }            
+        }
+
+        ocl.upload( ocl.ibuff_atoms, atoms );
+        ocl.upload( ocl.ibuff_constr,  constr  );
+        ocl.upload( ocl.ibuff_constrK, constrK );
+        int niterdone = run_ocl_opt( niter_max, Fconv);
+    }
+    if(verbosity>1)printf("MolWorld_sp3_multi::scan_relaxed() done \n");
+}
+
+int saveSysXYZ( int isys, const char* fname, const char* comment="#comment", bool bNodeOnly=false, const char* mode="w", Vec3i nPBC=Vec3i{1,1,1} ){ 
+
     char str_tmp[1024];
     MMFFsp3_loc& ffl = ffls[isys];
     if(bPBC){ sprintf( str_tmp, "lvs %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f %s", ffl.lvec.a.x, ffl.lvec.a.y, ffl.lvec.a.z, ffl.lvec.b.x, ffl.lvec.b.y, ffl.lvec.b.z, ffl.lvec.c.x, ffl.lvec.c.y, ffl.lvec.c.z, comment ); }
@@ -1578,7 +1753,7 @@ int saveSysXYZ( int isys, const char* fname, const char* comment="#comment", boo
 }
 
 int saveXYZ_system(int isys, const char* fname, const char* comment="#comment", const char* mode="w"){
-    printf("MolWorld_sp3_multi::saveXYZ_system(isys=%i, fname=%s, mode=%s, comment=%s)\n", isys, fname, mode, comment);
+    if(verbosity>1)printf("MolWorld_sp3_multi::saveXYZ_system(isys=%i, fname=%s, mode=%s, comment=%s)\n", isys, fname, mode, comment);
     if(isys < 0 || isys >= nSystems) return -1;
     if(bUFF){
         unpack_uff_system(isys, ffu, true, false);
@@ -1932,48 +2107,161 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
     return niterdone;
 }
 
-// Minimal UFF GPU relaxation loop analogous to run_ocl_opt
+// Timing variables for run_uff_ocl
+bool initial = true;
+double time_integrated_run_uff_ocl = 0.0;  // integrated time in seconds
+long   time_T0_run_uff_ocl = 0;            // start time of current call
+bool   time_saved_run_uff_ocl = false;     // flag to save only once at t>10s
+// Detailed timing accumulators
+double time_updateMultiExploring = 0.0;
+double time_loop_total = 0.0;
+double time_loop_bonding = 0.0;
+double time_loop_gridff = 0.0;
+double time_loop_surfatoms = 0.0;
+double time_loop_nonbonded = 0.0;
+double time_loop_updateAtoms = 0.0;
+double time_loop_trajSave = 0.0;
+double time_evalVFs = 0.0;
+int    count_updateMultiExploring = 0;
+int    count_loop_iterations = 0;
+int    count_evalVFs = 0;
+
 int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim ){
+    printf("bBonding=%i bSurfAtoms=%i bGridFF=%i bNonBonded=%i\n", ffu.bDoBond, bSurfAtoms, bGridFF, bNonBonded );
+    long T0 = getCPUticks();  // Start timing this call
     if(!bUFF){ printf("MolWorld_sp3_multi::run_uff_ocl(): bUFF=false\n"); return 0; }
     if(!uff_ocl){ printf("MolWorld_sp3_multi::run_uff_ocl(): uff_ocl==nullptr\n"); return 0; } // This should not happen, uff_ocl is initialized in init()
-    printf("MolWorld_sp3_multi::run_uff_ocl(  bGridFF=%i, bNonBonded=%i | niter=%i, dt=%f, damping=%f, Fconv=%f, Flim=%f) \n",bGridFF, bNonBonded,  niter, dt, damping, Fconv, Flim);
-    // --- Prepare MD parameters for all systems, matching the kernel's expectation
-    // UFF.cl -> updateAtomsMMFFf4 -> const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
-    // The kernel uses MDpars.z as a multiplicative velocity damping factor. CPU uses (1.0-damping).
-    for(int i=0; i<nSystems; i++){
-        MDpars[i].x = dt;               // dt
-        MDpars[i].y = Flim;             // Flimit
-        MDpars[i].z = 1.0f - damping;   // velocity damping factor (1.0 - damping)
-        MDpars[i].w = 0.0f;             // unused
-        TDrive[i]   = (Quat4f){0.0f,0.0f,0.0f,0.0f}; // No thermal drive for relaxation
+    //printf("MolWorld_sp3_multi::run_uff_ocl(  bGridFF=%i, bNonBonded=%i | niter=%i, dt=%f, damping=%f, Fconv=%f, Flim=%f) \n",bGridFF, bNonBonded,  niter, dt, damping, Fconv, Flim);
+    if(initial){
+        for(int i=0; i<nSystems; i++){
+            MDpars[i].x = dt;               // dt
+            MDpars[i].y = Flim;             // Flimit
+            MDpars[i].z = 1.0f-damping;   // velocity damping factor (1.0 - damping)
+            fire[i].dt = dt;
+            fire[i].damping = damping;
+            MDpars[i].w = 0.0f;             // unused
+            TDrive[i]   = (Quat4f){(float)go.T_target,(float)go.gamma_damp,0.0f,randf(-1.0f,1.0f)}; // if starting with exploration
+            //TDrive[i]   = (Quat4f){0.0f,-1.0f,0.0f,randf(-1.0f,1.0f)};
+            if(TDrive[i].y<0){ gopts[i].bExploring = false; }
+            else{ gopts[i].bExploring = true; }
+        }
+        uff_ocl->upload( uff_ocl->ibuff_MDpars, MDpars );
+        uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
+
+        uff_ocl->setup_updateAtomsMMFFf4( uff_ocl->nAtoms, 0 ); // nNode==0 for UFF
+
+        // Initialize dynamic buffers
+        uff_ocl->upload( uff_ocl->ibuff_avel, avel );   // zero initial velocities
+        uff_ocl->upload( uff_ocl->ibuff_cvf , cvfs );   // clear accumulators
+
+        // Clear timing file and write header
+        FILE* f = fopen("times_run_uff_ocl.dat", "w");
+        if(f){
+            fprintf(f, "# Timing data for run_uff_ocl (all times in seconds)\n");
+            fprintf(f, "# %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n",
+                "t_total", "t_updateME", "t_bonding", "t_gridff", "t_surfatoms", "t_nonbond", "t_updateAt", "t_trajSave", "t_evalVFs", "nloop");
+            fclose(f);
+        }
+
+        initial = false;
     }
-    uff_ocl->upload( uff_ocl->ibuff_MDpars, MDpars );
-    uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
-    // --- Setup atom update kernel once before the loop
-    // The user has corrected OCL_UFF.h, this signature is now correct.
-    uff_ocl->setup_updateAtomsMMFFf4( uff_ocl->nAtoms, 0 ); // For UFF, nNode is 0
-    // --- Run relaxation loop
     bBonding = ffu.bDoBond;
-    for(int i=0; i<niter; i++){
-        if     (bBonding)  { uff_ocl->eval(false);                     }
-        else               { uff_ocl->task_clear_fapos->enque();       }
-        if     (bGridFF   ){ uff_ocl->task_NBFF_Grid_Bspline->enque(); }
-        else if(bNonBonded){ uff_ocl->task_NBFF             ->enque(); }
-        uff_ocl->task_updateAtoms->enque(); 
-        // --- Save current frame if trajectory is requested
-        if((savePerNsteps>0) && (i%savePerNsteps==0) && (trj_fname)){
-            download_uff( true, false ); // download positions for this step
-            for(int isys=0; isys<nSystems; ++isys){
-                char fname[256];
-                sprintf(fname, "%s_%03i.xyz", trj_fname, isys);
+    nPerVFs = _min(10,niter);
+    const int nVFs = (nPerVFs>0)? (niter/nPerVFs) : 0;
+    int nloop = 0;
+    long T_1 = getCPUticks();
+    long Nticks_updateMultiExploring = 0;
+    long Nticks_loop_bonding = 0;
+    long Nticks_loop_gridff = 0;
+    long Nticks_loop_surfatoms = 0;
+    long Nticks_loop_nonbonded = 0;
+    long Nticks_loop_updateAtoms = 0;
+    long Nticks_loop_trajSave = 0;
+    long Nticks_evalVFs = 0;
+    for(int iVF=0; iVF<nVFs; iVF++){
+        long T_2 = getCPUticks();
+        if(iVF>0)updateMultiExploring( Fconv );
+        Nticks_updateMultiExploring += (getCPUticks()-T_2);
+
+        // Inner MD steps between VF evaluations
+        for(int iPer=0; iPer<nPerVFs; iPer++){
+            if     (bBonding)  { T_2 = getCPUticks(); uff_ocl->eval(false);                         Nticks_loop_bonding   += (getCPUticks()-T_2); }
+            else               { T_2 = getCPUticks(); uff_ocl->task_clear_fapos      ->enque();      Nticks_loop_bonding   += (getCPUticks()-T_2); }
+
+            if(bSurfAtoms){
+                if     (bGridFF   ){ T_2 = getCPUticks(); uff_ocl->task_NBFF_Grid_Bspline->enque();     Nticks_loop_gridff    += (getCPUticks()-T_2); }
+                else { T_2 = getCPUticks();  uff_ocl->task_SurfAtoms->enque();  Nticks_loop_surfatoms += (getCPUticks()-T_2);  }
+            }
+            if(bNonBonded && !bGridFF){ T_2 = getCPUticks(); uff_ocl->task_NBFF             ->enque();     Nticks_loop_nonbonded += (getCPUticks()-T_2); }
+            T_2 = getCPUticks();
+            if(bMoving) uff_ocl->task_updateAtoms->enque();
+            Nticks_loop_updateAtoms += (getCPUticks()-T_2);
+
+            T_2 = getCPUticks();
+            // Trajectory saving
+            if((savePerNsteps>0) && trj_fname && ((nloop % savePerNsteps)==0)){
+                download_uff( true, false );
+                int isys=0;
+                char fname[256]; sprintf(fname, "%s_%03i.xyz", trj_fname, isys);
                 unpack_uff_system( isys, ffu, true, false );
                 char comment[256];
-                sprintf(comment, "# step %d", i+1);
-                saveXYZ_system(isys, fname, comment, "a"); // Append frame
+                if(gopts[isys].bExploring) sprintf(comment, "# step %d EXPLORING", nloop+1);
+                else                      sprintf(comment, "# step %d RELAXING",  nloop+1);
+                // sprintf(comment, "# step %d", nloop+1);
+                saveXYZ_system(isys, fname, comment, "a");
             }
+            Nticks_loop_trajSave += (getCPUticks()-T_2);
+            nloop++;
+            niter--;
+            if(niter<=0)break;
         }
+        T_2 = getCPUticks();
+       double F2=evalVFs(Fconv);
+       Nticks_evalVFs += (getCPUticks()-T_2);
     }
-    return niter;
+
+    // Update integrated time and accumulate timing data
+    double dt_call = (getCPUticks()-T0)*tick2second;  // time of this call in seconds
+    time_integrated_run_uff_ocl += dt_call;
+
+    // Accumulate times from this call
+    time_updateMultiExploring += Nticks_updateMultiExploring * tick2second;
+    time_loop_bonding         += Nticks_loop_bonding         * tick2second;
+    time_loop_gridff          += Nticks_loop_gridff          * tick2second;
+    time_loop_surfatoms       += Nticks_loop_surfatoms       * tick2second;
+    time_loop_nonbonded       += Nticks_loop_nonbonded       * tick2second;
+    time_loop_updateAtoms     += Nticks_loop_updateAtoms     * tick2second;
+    time_loop_trajSave        += Nticks_loop_trajSave        * tick2second;
+    time_evalVFs              += Nticks_evalVFs              * tick2second;
+
+    printf("run_uff_ocl() time=%7.3f[ms] nloop=%i time_integrated=%7.3f[s]\n", dt_call*1000, nloop, time_integrated_run_uff_ocl);
+
+    // Append timing data to file
+    FILE* f = fopen("times_run_uff_ocl.dat", "a");
+    if(f){
+        fprintf(f, "  %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12d\n",
+            time_integrated_run_uff_ocl,
+            time_updateMultiExploring,
+            time_loop_bonding,
+            time_loop_gridff,
+            time_loop_surfatoms,
+            time_loop_nonbonded,
+            time_loop_updateAtoms,
+            time_loop_trajSave,
+            time_evalVFs,
+            nloop);
+        fclose(f);
+    }else{
+        printf("ERROR: Could not open times_run_uff_ocl.dat for appending\n");
+    }
+
+    // Mark as saved when t>=10s
+    if(!time_saved_run_uff_ocl && time_integrated_run_uff_ocl >= 10.0){
+        printf(">>> Timing data saved to times_run_uff_ocl.dat at t=%.3f[s]\n", time_integrated_run_uff_ocl);
+        time_saved_run_uff_ocl = true;
+    }
+
+    return nloop;
 }
 
 int run_ocl_loc( int niter, double Fconv=1e-6 , int iVersion=1 ){
@@ -1982,7 +2270,7 @@ int run_ocl_loc( int niter, double Fconv=1e-6 , int iVersion=1 ){
     picked2GPU( ipicked,  1.0 );
     int err=0;
     if( task_MMFF==0)setup_MMFFf4_ocl();
-    int nPerVFs = _min(10,niter);
+    if(nPerVFs<=0){ nPerVFs = _min(10,niter); }
     int nVFs    = niter/nPerVFs;
     int niterdone=0;
     double F2=0;
@@ -2038,12 +2326,23 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     //printf("MolWorld_sp3_multi::run_ocl_opt() niter=%i bGroups=%i ocl.nGroupTot=%i \n", niter, bGroups, ocl.nGroupTot );
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
     //debug_eval(); return 0;
-
+if(initial){
+            // Clear timing file and write header
+        FILE* f = fopen("times_run_mmff_ocl.dat", "w");
+        if(f){
+            fprintf(f, "# Timing data for run_uff_ocl (all times in seconds)\n");
+            fprintf(f, "# %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n",
+                "t_total", "t_updateME", "t_bonding", "t_gridff", "t_nonbond", "t_updateAt", "t_trajSave", "t_evalVFs", "nloop");
+            fclose(f);
+            initial = false;
+        }
+}
     double F2conv = Fconv*Fconv;
     picked2GPU( ipicked,  1.0 );
 
     int err=0;
     if( task_MMFF==0)setup_MMFFf4_ocl();
+    if( task_NBFF==0)setup_NBFF_ocl();
 
     //int nPerVFs = 1;
     nPerVFs = _min(10,niter);
@@ -2053,14 +2352,23 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     int niterdone=0;
     double F2=0;
 
-    bool dovdW=true;
+
+    bool bGroupDrive = false;
     //bool dovdW=false;
     ocl.bSubtractVdW=dovdW;
 
     if(ocl.nGroupTot<=0){ bGroups = false; };
     bool bExplore = false;
     //for(int isys=0; isys<nSystems; isys++){ if(gopts[isys].bExploring) bExplore = true; }
-    bool bBspline = (gridFF.mode==GridFFmod::BsplineFloat) || (gridFF.mode==GridFFmod::BsplineDouble);
+    bool bBspline = (gridFF.mode==GridFFmod::BsplineFloat) || (gridFF.mode==GridFFmod::BsplineDouble);        
+    long T_1 = getCPUticks();        
+    long Nticks_updateMultiExploring = 0;
+    long Nticks_loop_bonding = 0;
+    long Nticks_loop_gridff = 0;
+    long Nticks_loop_nonbonded = 0;
+    long Nticks_loop_updateAtoms = 0;
+    long Nticks_loop_trajSave = 0;
+    long Nticks_evalVFs = 0;
     for(int i=0; i<nVFs; i++){
 
         if(bGroups){
@@ -2068,17 +2376,21 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             ocl.upload( ocl.ibuff_gforces, gforces );
         }
 
-        bExplore = false;
-        for(int isys=0; isys<nSystems; isys++){
-            if(gopts[isys].bExploring) bExplore = true;
+
+        if (bGopt){
+            //printf("MolWorld_sp3_multi::run_ocl_opt() bGopt=%i bGroups=%i \n", bGopt, bGroups );
+            bExplore = false;
+            for (int isys = 0; isys < nSystems; isys++){
+                if (gopts[isys].bExploring)
+                    bExplore = true;
+            }
+            T_1 = getCPUticks();
+            bExplore = updateMultiExploring(Fconv);
+            Nticks_updateMultiExploring += (getCPUticks()-T_1);
+            bGroupDrive = bGroups && bExplore;
         }
 
-        if(bAnimManipulation){ animate(); }
-        if(bMILAN){
-            bExplore = updateMultiExploring( Fconv );
-        }
-        bool bGroupDrive = bGroups && bExplore;
-        //bGroupDrive = false;
+        if(bAnimManipulation){ animate(); }                
 
         //printf( "CPU::bbox(%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", bbox.a.x,bbox.a.y,bbox.a.z,   bbox.b.x,bbox.b.y,bbox.b.z,   bbox.c.x,bbox.c.y,bbox.c.z );
         //for(int ia=0; ia<ffl.natoms; ia++){      if( ffl.constr[ia].w > 0 ) printf( "CPU:atom[%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g|%g)\n", ia, ffl.constr[ia].x,ffl.constr[ia].y,ffl.constr[ia].z,ffl.constr[ia].w,   ffl.constrK[ia].x,ffl.constrK[ia].y,ffl.constrK[ia].z,ffl.constrK[ia].w  ); }
@@ -2092,7 +2404,9 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         //     //for(int ig=0; ig<ocl.nGroupTot; ig++){ printf( "CPU:gtorqs[%i](%g,%g,%g,%g)\n", ig, gtorqs[ig].x,gtorqs[ig].y,gtorqs[ig].z,gtorqs[ig].w );     }
         // }
 
+
         for(int j=0; j<nPerVFs; j++){
+            long T_2 = getCPUticks();
             //printf("run_ocl_opt[i=%i,j=%i]\n",  i, j );
             //if(bGroupDrive)printf( "bGroupDrive==true\n" );
             {
@@ -2105,7 +2419,9 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
                                 if( ocl.bUseTexture ){
                                     err |= task_NBFF_Grid_Bspline_tex ->enque_raw(); //OCL_checkError(err, "task_NBFF_Grid->enque_raw(); ");
                                 }else{
+                                    T_2 = getCPUticks();
                                     err |= task_NBFF_Grid_Bspline ->enque_raw(); //OCL_checkError(err, "task_NBFF_Grid->enque_raw(); ");
+                                    Nticks_loop_gridff += (getCPUticks()-T_2);
                                 }
                             }else{
                                 err |= task_NBFF_Grid ->enque_raw();   //OCL_checkError(err, "task_NBFF_Grid->enque_raw(); ");
@@ -2119,17 +2435,22 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
                         err |= task_NBFF      ->enque_raw();     //OCL_checkError(err, "task_NBFF->enque_raw();");
                     }
                 }
-                err |= task_MMFF->enque_raw();    //OCL_checkError(err, "task_MMFF->enque_raw()");
+                T_2 = getCPUticks();
+                err |= task_MMFF->enque_raw();   Nticks_loop_bonding += (getCPUticks()-T_2); //OCL_checkError(err, "task_MMFF->enque_raw()"); 
 
                 if( bGroupDrive ) err |= task_GroupForce->enque_raw();
+                T_2 = getCPUticks();
                 err |= task_move->enque_raw();    //OCL_checkError(err, "task_move->enque_raw()");
+                Nticks_loop_updateAtoms += (getCPUticks()-T_2);
             }
             niterdone++;
             nloop++;
         }
         //ocl.download( ocl.ibuff_atoms,    atoms   );
         //ocl.download( ocl.ibuff_aforces,  aforces );
+        T_1 = getCPUticks();
         F2 = evalVFs( Fconv );
+        Nticks_evalVFs += (getCPUticks()-T_1);
         // if(bGroups){ // Check Groups
         //     printf("MolWorld_sp3_multi::eval_MMFFf4_ocl()[niterdone=%i/%i]\n", niterdone, niter );
         //     ocl.download( ocl.ibuff_gcenters, gcenters );
@@ -2163,8 +2484,8 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             double t=(getCPUticks()-T0)*tick2second;
             //printf( "run_omp_ocl(nSys=%i|iPara=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", nSystems, iParalel, itr,niter_max, sqrt(F2max), T1*1000 );
             if(verbosity>0)
-            printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bGridFF=%i,bUseTexture=%i,bExplore=%i,) CONVERGED in %i/%i steps, |F|(%g)<%g time %g [ms]( %g [us/step]) bGridFF=%i \n", nSystems, iParalel, bSurfAtoms, bGridFF, ocl.bUseTexture, bExplore, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF );
-            return niterdone;
+            printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bGridFF=%i,bExplore=%i,bGroups=%i) CONVERGED in %i/%i steps, |F|(%g)<%g time %g [ms]( %g [us/step]) \n", nSystems, iParalel, bSurfAtoms, bGridFF, bExplore, bGroups, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone); 
+            return niterdone; 
         }
     }
 
@@ -2181,11 +2502,46 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
 
     if(bMILAN){ checkBordersOfBbox(); }
     double t=(getCPUticks()-T0)*tick2second;
-    if(verbosity>0)printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bGridFF=%i,bExplore=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g [ms]( %g [us/step]) bGridFF=%i iSysFMax=%i dovdW=%i \n", nSystems, iParalel, bSurfAtoms, bGridFF, bExplore,  niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF, iSysFMax, dovdW );
+    if(verbosity>0)printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bGridFF=%i,bExplore=%i,bGroups=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g [ms]( %g [us/step]) iSysFMax=%i dovdW=%i \n", nSystems, iParalel, bSurfAtoms, bGridFF, bExplore, bGroups, niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, iSysFMax, dovdW ); 
     //if(database->getNMembers()>0)    printf("%i  converged: %s\n", database->getNMembers(), database->convergedStructure.back() ? "true" : "false");
     //err |= ocl.finishRaw();
     //printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
+    double dt_call = (getCPUticks()-T0)*tick2second;  // time of this call in seconds
+    time_integrated_run_uff_ocl += dt_call;
 
+    // Accumulate times from this call
+    time_updateMultiExploring += Nticks_updateMultiExploring * tick2second;
+    time_loop_bonding         += Nticks_loop_bonding         * tick2second;
+    time_loop_gridff          += Nticks_loop_gridff          * tick2second;
+    time_loop_nonbonded       += Nticks_loop_nonbonded       * tick2second;
+    time_loop_updateAtoms     += Nticks_loop_updateAtoms     * tick2second;
+    time_loop_trajSave        += Nticks_loop_trajSave        * tick2second;
+    time_evalVFs              += Nticks_evalVFs              * tick2second;
+
+    printf("run_uff_ocl() time=%7.3f[ms] nloop=%i time_integrated=%7.3f[s]\n", dt_call*1000, nloop, time_integrated_run_uff_ocl);
+
+    FILE* f = fopen("times_run_mmff_ocl.dat", "a");
+    if(f){
+        fprintf(f, "  %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12d\n",
+            time_integrated_run_uff_ocl,
+            time_updateMultiExploring,
+            time_loop_bonding,
+            time_loop_gridff,
+            time_loop_nonbonded,
+            time_loop_updateAtoms,
+            time_loop_trajSave,
+            time_evalVFs,
+            nloop);
+        fclose(f);
+    }else{
+        printf("ERROR: Could not open times_run_uff_ocl.dat for appending\n");
+    }
+
+    // Mark as saved when t>=10s
+    if(!time_saved_run_uff_ocl && time_integrated_run_uff_ocl >= 10.0){
+        printf(">>> Timing data saved to times_run_mmff_ocl.dat at t=%.3f[s]\n", time_integrated_run_uff_ocl);
+        time_saved_run_uff_ocl = true;
+    }
     return niterdone;
 }
 
@@ -2554,6 +2910,7 @@ virtual char* getStatusString( char* s, int nmax ) override {
     return s;
 }
 
+bool written_in_this_frame=false;
 bool first=true;
 uint64_t zeroT=0;
 
@@ -2563,34 +2920,44 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
     if(Ftol<0)  Ftol = Ftol_default;
     //printf( "MolWorld_sp3_multi::MDloop(%i) bGridFF %i bOcl %i bMMFF %i iParalel=%i \n", nIter, bGridFF, bOcl, bMMFF, iParalel );
     //bMMFF=false;
-    if(first){ zeroT = getCPUticks(); first=false; }
+    if(first){ zeroT = getCPUticks(); first=false;
+        if(bUFF){
+            setup_UFF_ocl();
+            if(!uff_ocl->bKernelPrepared)uff_ocl->setup_kernels( (float)ffu.Rdamp, (float)ffu.FmaxNonBonded, (float)ffu.SubNBTorsionFactor );
+            for(int isys=0; isys<nSystems; ++isys){ pack_uff_system( isys, ffu, true, false, false, true ); }
+            upload_uff( true, false, false, true );
+            // Zero velocities on host and upload to GPU to ensure a clean start for each batch
+            memset( avel, 0, uff_ocl->nAtomsTot * sizeof(Quat4f) );
+            uff_ocl->upload( uff_ocl->ibuff_avel, (float*)avel );
+            Vec3i nPBCv = { uff_ocl->nPBC.x, uff_ocl->nPBC.y, uff_ocl->nPBC.z };
+            printf("UFF setup done \n");
+        }
+    }
 
     // if(bAnimManipulation){
     //     float dir_sign = ((nloop/10000)%2)*2 - 1 ; //printf("AnimManipulation dir_sign=%f \n", dir_sign);
     //     move_MultiConstrain( Vec3d{ 0.2*dir_sign, 0.0, 0.0}, Vec3dZero );
     // }
 
-    // //run_omp_ocl( 1 );
-    // run_omp_ocl( 50 );
-    // //run_omp_ocl( 100 );
-    // return;
-
     nIter=iterPerFrame;
-    //bOcl=iParalel>0;
     int nitrdione=0;
-    switch(iParalel){
-        case -1: bOcl=false;  nitrdione = run_multi_serial(nIter,Ftol);  break;
-        case  0: bOcl=false;  nitrdione = MolWorld_sp3::run_no_omp( nIter, Ftol ); break;
-        case  1: bOcl=false;  nitrdione = run_omp_ocl( nIter, Ftol    ); break;
-        case  2: bOcl=true;   nitrdione = run_omp_ocl( nIter, Ftol    ); break;
-        case  3: bOcl=true;   nitrdione = run_ocl_opt( nIter, Ftol    ); break;
-        //case  3: bOcl=true; nitrdione = run_ocl_loc( nIter, Ftol, 1 ); break;
-        //case  4: bOcl=true; nitrdione = run_ocl_loc( nIter, Ftol, 2 ); break;
-        default:
-            eval_NBFF_ocl_debug();
+    if(bUFF){
+        nitrdione = run_uff_ocl( nIter, dt_default, 0.1, Ftol, 1000 );
+    }else{
+        //bOcl=iParalel>0;
+        switch(iParalel){
+            case -1: bOcl=false;  nitrdione = run_multi_serial(nIter,Ftol);  break;
+            case  0: bOcl=false;  nitrdione = MolWorld_sp3::run_no_omp( nIter, Ftol ); break;
+            case  1: bOcl=false;  nitrdione = run_omp_ocl( nIter, Ftol    ); break;
+            case  2: bOcl=true;   nitrdione = run_omp_ocl( nIter, Ftol    ); break;
+            case  3: bOcl=true;   nitrdione = run_ocl_opt( nIter, Ftol    ); break;
+            //case  3: bOcl=true; nitrdione = run_ocl_loc( nIter, Ftol, 1 ); break;
+            //case  4: bOcl=true; nitrdione = run_ocl_loc( nIter, Ftol, 2 ); break;
+            default:
+                eval_NBFF_ocl_debug();
+        }
+        unpack_system( iSystemCur, ffl, true, true );
     }
-
-    unpack_system( iSystemCur, ffl, true, true );
 
     /*
     if( bOcl ){
@@ -2632,18 +2999,54 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
     icurIter+=nitrdione;
     bChargeUpdated=false;
 
-    if( bMILAN && bSaveToDatabase  ){ // Milan
-        std::ofstream file("minima.dat", std::ios::app);
-        if(icurIter%1000 < 200){
+
+    if( verbosity>=0 && bSaveToDatabase){ // Milan
+        FILE* file = fopen("minima.dat", "a"); 
+        if((icurIter%1000==0 || icurIter%1000 < 200) && !written_in_this_frame){
+            written_in_this_frame=true;
             if(icurIter<1000) {
-                printf("%15s %20s %20s %20s %20s %20s %20s %20s %20s %20s\n", "Nb Iteration", "Totally", "Unique converged", "Time", "nbConverged", "nbEvaluation", "nStepConvAvg", "nStepNonConvAvg", "nStepExploringAvg", "total evaluation");
-                file << "Iterations" << " " << "Totally" << " " << "Unique" << " " << "Time"  << "\n";
+                // Print headers to both console and file
+                const char* header_fmt = "%15s %20s %20s %20s %20s %20s %20s %20s %20s %20s\n";
+                printf(header_fmt, 
+                    "[1]Nb Iteration", "[2]Totally (conv+nonconv)", "[3]Unique conv", "[4]Time",
+                    "[5]Totally (conv)", "[6]nbEvaluation", "[7]nStepConvAvg", "[8]nStepNonConvAvg",
+                    "[9]nStepExploringAvg", "[10]total evaluation");
+                fprintf(file, header_fmt,
+                    "[1]Nb Iteration", "[2]Totally (conv+nonconv)", "[3]Unique conv", "[4]Time",
+                    "[5]Totally (conv)", "[6]nbEvaluation", "[7]nStepConvAvg", "[8]nStepNonConvAvg",
+                    "[9]nStepExploringAvg", "[10]total evaluation");
             }
-            // /((double)(nbConverged+nbNonConverged))"nStepSaveAvg",
-            printf("%15d %20d %20d %20g %20d %20d %20g %20g %20g %20d \n", icurIter, database->totalEntries, database->getNMembers(), (getCPUticks()-zeroT)*tick2second, nbConverged, nbEvaluation*nPerVFs, (nStepNonConvSum+nStepConvSum)/(double)(nbConverged+nbNonConverged), nStepNonConvSum/((double)nbNonConverged), nStepExplorSum/((double)nExploring), (nStepConvSum+nStepNonConvSum+nStepExplorSum) );
-            file << icurIter << " " << database->totalEntries << " " << database->getNMembers() << " " <<  (getCPUticks()-zeroT)*tick2second << "\n";
+            
+            // Print data to both console and file
+            const char* data_fmt = "%15d %20d %20d %20g %20d %20d %20g %20g %20g %20d\n";
+            printf(data_fmt, 
+                icurIter, database->totalEntries,
+                std::accumulate(database->convergedStructure.begin(), database->convergedStructure.end(), 0),
+                (getCPUticks()-zeroT)*tick2second,
+                nbConverged, nbEvaluation,
+                (nStepNonConvSum+nStepConvSum)/(double)(nbConverged+nbNonConverged),
+                nStepNonConvSum/((double)nbNonConverged),
+                nStepExplorSum/((double)nExploring),
+                (nStepConvSum+nStepNonConvSum+nStepExplorSum));
+            fprintf(file, data_fmt,
+                icurIter, database->totalEntries,
+                std::accumulate(database->convergedStructure.begin(), database->convergedStructure.end(), 0),
+                (getCPUticks()-zeroT)*tick2second,
+                nbConverged, nbEvaluation,
+                (nStepNonConvSum+nStepConvSum)/(double)(nbConverged+nbNonConverged),
+                nStepNonConvSum/((double)nbNonConverged),
+                nStepExplorSum/((double)nExploring),
+                (nStepConvSum+nStepNonConvSum+nStepExplorSum));
+            if((getCPUticks()-zeroT)*tick2second > 9.5){
+                fclose(file);
+                database->print();
+                exit(0);
+            }
         }
-        file.close();  // zavření souboru
+        else{
+            written_in_this_frame=false;
+        }
+        fclose(file);
     }
 }
 

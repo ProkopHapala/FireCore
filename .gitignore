@@ -9,6 +9,8 @@
 *_backup
 *_tmp
 *.bak
+*.idx
+*.dat
 
 *.out
 *.log
@@ -31,3 +33,9 @@ tests/*/common_resources/
 tests/*/data/
 .aider*
 .env
+
+*.pdf
+*.png
+*.html
+*.svg
+*.csv

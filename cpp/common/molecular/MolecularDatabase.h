@@ -240,7 +240,7 @@ class MolecularDatabase : public MetaData
 {
 private:
     Descriptor *descriptors = nullptr;
-    Atoms *atoms = nullptr;
+    ForceField *atoms = nullptr;
     int nMembers = 0;
     int nMaxCell = 0;
     MolecularDatabaseDescriptor *usedDescriptors = nullptr;
@@ -273,13 +273,13 @@ public:
     {
         this->nMembers = 0;
         this->nMaxCell = n;
-        this->atoms = new Atoms[n];
-        this->descriptors = new Descriptor[n];
+        _alloc(atoms, n);
+        _alloc(descriptors, n);
     };
     void realloc(int n)
     {
 
-        Atoms *temp = new Atoms[n];
+        ForceField *temp = new ForceField[n];
         for (int i = 0; i < nMembers; i++)
         {
             temp[i].copyOf(this->atoms[i]);
@@ -314,7 +314,7 @@ public:
 
     // ================= Accessors ================= //
 
-    Atoms *GetAtoms(int i)
+    ForceField *GetAtoms(int i)
     {
         if (i < nMembers && i >= 0)
         {
@@ -360,12 +360,15 @@ public:
 
     // ================= Editing members of database ================= //
 
-    void loadAtoms(int i, Atoms *a)
+    void loadAtoms(int i, ForceField *a)
     {
         if (!atoms || i > nMembers || i < 0)
             return;
-        a->realloc(atoms[i].natoms);
+        if(atoms[i].natoms != a->natoms)
+            a->realloc(atoms[i].natoms);
         a->copyOf(atoms[i]);
+        atoms[i].copyVelocityTo(a->vapos);
+        atoms[i].copyForcesTo(a->fapos);
     };
 
     // User can choose desriptors to use by writing it in the usedDescriptor array (chosen order is important):
@@ -398,7 +401,7 @@ public:
         }
     };
 
-    void addMember(Atoms *a, Descriptor *descriptor = 0, MMFFparams *params = 0)
+    void addMember(ForceField *a, Descriptor *descriptor = 0, MMFFparams *params = 0)
     {
         if (nMembers >= nMaxCell)
         {
@@ -413,6 +416,10 @@ public:
             descriptors[nMembers].copyOf(*descriptor);
 
         atoms[nMembers].copyOf(*a);
+        _realloc(atoms[nMembers].vapos, atoms[nMembers].natoms);
+        a->copyVelocityTo(atoms[nMembers].vapos);
+        _realloc(atoms[nMembers].fapos, atoms[nMembers].natoms);
+        a->copyForcesTo(atoms[nMembers].fapos);
         if (nMembers == 0)
             dimensionOfDescriptorSpace = descriptors[nMembers].dimensionOfDescriptorSpace;
         this->nMembers++;
@@ -420,7 +427,7 @@ public:
     };
 
 
-    int addIfNewDescriptor(Atoms *a, MMFFparams *params = 0)
+    int addIfNewDescriptor(ForceField *a, Mat3d* lat_vec = 0, MMFFparams *params = 0)
     {
         totalEntries++;
         Descriptor d;
@@ -434,11 +441,20 @@ public:
         {
             if (d.compareDescriptors(&descriptors[i]) < 5)
             {
-                if (computeDistance(a, &atoms[i])/a->natoms < 0.1)
-                {
-                    //printf("computeDistance: %lf\n", computeDistance(a, &atoms[i]));
-                    sameDescriptor = i;
-                    break;
+                if(!lat_vec){
+                    if (computeDistance(a, &atoms[i])/a->natoms < 0.2)
+                    {
+                        //printf("computeDistance: %lf\n", computeDistance(a, &atoms[i]));
+                        sameDescriptor = i;
+                        break;
+                    }
+                }
+                else{
+                    if(computeDistanceOnSurf(a, &atoms[i], lat_vec)/a->natoms < 0.1)
+                    {
+                        sameDescriptor = i;
+                        break;
+                    }
                 }
             }
         }
@@ -461,12 +477,14 @@ public:
         return 0;
     };
 
-    void replace(Atoms *a, int i, MMFFparams *params = 0)
+    void replace(ForceField *a, int i, MMFFparams *params = 0)
     {
         if (i < nMembers && i >= 0)
         {
             atoms[i].realloc(a->natoms);
             atoms[i].copyOf(*a);
+            a->copyVelocityTo(atoms[i].vapos);
+            a->copyForcesTo(atoms[i].fapos);
 
             descriptors[i].dealloc();
             for (int j = 0; j < nbOfusedDescriptors; j++)
@@ -541,7 +559,7 @@ public:
         }
 
         Mat3d rot;
-        rot = superimposer(atoms_h, atoms_i, atoms_h->natoms);
+        rot = superimposer(atoms_h->apos, atoms_i->apos, atoms_h->natoms);
         orient(Vec3dZero, rot.c, rot.b, atoms_h);
 
         AtomicConfiguration ac, ac2;
@@ -566,16 +584,144 @@ public:
         return dist;
     }
 
+    Vec3d shift_to_elementary_cell(ForceField *atoms, Mat3d *lat_vec, bool Surf=0)
+    {
+        Mat3d A;
+        Vec3d shift = Vec3dZero;
+        Vec3d sh;
+        lat_vec->invert_to(A);
+        shift = A.dot(atoms->apos[0]);
+        for (int k = 0; k < 2; k++)
+        {
+            if (floor(abs(shift.array[k]) < 1))
+            {
+                continue;
+            }
+            for (int j = 0; j < atoms->natoms; j++)
+            {
+                sh.set_mul(lat_vec->vecs[k], floor(shift.array[k]));
+                // printf("floor(shift.array[k] + 1e-4): %g\n", floor(shift.array[k] + 1e-4));
+                atoms->apos[j].sub(sh);
+            }
+        }
+        return shift;
+    }
+
+    void symmetry4mm(Atoms *atoms, int symmetry_ind){
+        if(symmetry_ind < 0 || symmetry_ind > 7){
+            printf("Symmetry index out of range\n");
+            return;
+        }
+        Mat3d A[8] = {
+            Mat3dIdentity,
+
+            // mirror (-x,-y)
+            {-1,0,0,
+            0,-1,0,
+            0,0,1},
+
+            // rotation 90 degrees
+            {0,-1,0,
+            1,0,0,
+            0,0,1},
+
+            {0,1,0,
+            -1,0,0,
+            0,0,1},
+
+            {-1,0,0,
+            0,1,0,
+            0,0,1},
+
+            {1,0,0,
+            0,-1,0,
+            0,0,1},
+
+            {0,1,0,
+            1,0,0,
+            0,0,1},
+
+            {0,-1,0,
+            -1,0,0,
+            0,0,1}
+        };
+        for (int j = 0; j < atoms->natoms; j++)
+        {
+            A[symmetry_ind].dot_to(atoms->apos[j], atoms->apos[j]);
+        }
+    }
+
+    double computeDistanceOnSurf(int h, int i, Mat3d* lat_vec){
+        return computeDistanceOnSurf(&atoms[h], &atoms[i], lat_vec);
+    }
+
+    double computeDistanceOnSurf(ForceField *atoms_h, ForceField *atoms_i, Mat3d* lat_vec){
+        // move both apos[0] into elementary cell
+        Mat3d A;
+        int n = atoms_h->natoms;
+        Vec3d shift_h = shift_to_elementary_cell(atoms_h, lat_vec);
+        Vec3d shift_i = shift_to_elementary_cell(atoms_i, lat_vec);
+
+        // try all symmetries to find the smallest RMSD
+        AtomicConfiguration ac, ac2;
+        double dist = __DBL_MAX__;
+        ForceField a_h, a_i;
+        for(int sym = 0; sym < 8; sym++){
+            a_h.copyOf(*atoms_h);
+            a_i.copyOf(*atoms_i);
+            symmetry4mm(&a_h, sym); //TODO: all point groups should be implemented
+            ac.natoms = a_h.natoms;
+            ac.types = a_h.atypes;
+            ac.pos = a_h.apos;
+
+            ac2.natoms = a_i.natoms;
+            ac2.types = a_i.atypes;
+            ac2.pos = a_i.apos;
+
+            if(ac.dist(ac2) < dist){
+                dist = ac.dist(ac2);
+            }
+        }
+        dist = sqrt(dist);
+
+        //revert back to original positions
+        for (int k = 0; k < 2; k++)
+        {
+            if (floor(abs(shift_h.array[k]) < 1))
+            {
+                continue;
+            }
+            for (int j = 0; j < n; j++)
+            {
+                Vec3d sh;
+                sh.set_mul(lat_vec->vecs[k], floor(shift_h.array[k]));
+                atoms_h->apos[j].add(sh);
+            }
+        }
+        for (int k = 0; k < 2; k++)
+        {
+            if (floor(abs(shift_i.array[k]) < 1))
+            {
+                continue;
+            }
+            for (int j = 0; j < n; j++)
+            {
+                Vec3d sh;
+                sh.set_mul(lat_vec->vecs[k], floor(shift_i.array[k]));
+                atoms_i->apos[j].add(sh);
+            }
+        }
+        return dist;
+    }
+
     /*
     Transformed code from https://github.com/willhooper/superpose/tree/master
     Works similar as Kabsch algorithm
     Aligns two sets of coordinates by symetrizing matrix from Kabsch algorithm
     Symmetric matrix is already diagonal, but in diferent orthogonal basis
     */
-    Mat3d superimposer(Atoms *coord0_, Atoms *coord1_, unsigned int natm)
+    Mat3d superimposer(Vec3d *coord0, Vec3d *coord1, unsigned int natm)
     {
-        Vec3d *coord0 = coord0_->apos;
-        Vec3d *coord1 = coord1_->apos;
 
         float tolerance = 0.0001;
 

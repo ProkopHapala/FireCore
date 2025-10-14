@@ -818,13 +818,14 @@ class MMFFparams{ public:
         //if(bHB) REQ.w = atypes[ityp].Hb; // Hbond Correction
     }
 
-    void assignREs( int n, int * itypes, Quat4d * REQs, bool bSqrtE=true, bool bQ0=false )const{
+    void assignREs( int n, int * itypes, Quat4d * REQs, bool bSqrtE=true, bool bQ0=false, bool bHB0=true )const{
         printf( "MMFFparams::assignREs(%i) @itypes=%li \n", n, (long)itypes );
         for(int i=0; i<n; i++){
             const int ityp = itypes[i];
             //printf( " assignREs[%i] %i RE(%g,%g) name=%s\n", i, ityp, atypes[ityp].RvdW, atypes[ityp].EvdW, atypes[ityp].name );
             assignRE( ityp, REQs[i], bSqrtE );
-            if(bQ0) REQs[i].z=0;
+            if(bQ0 ) REQs[i].z=0;
+            if(bHB0) REQs[i].w=0;
         }
     }
 
@@ -987,7 +988,7 @@ class MMFFparams{ public:
     }
 
     int saveXYZ( const char * fname, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Quat4d* REQs=0, const char* mode="w", bool just_Element=true, Vec3i nPBC=Vec3i{1,1,1}, Mat3d lvec=Mat3dIdentity ){
-        printf( "MMFFparams::saveXYZ(%s) \n", fname );
+        if(verbosity>5)printf( "MMFFparams::saveXYZ(%s) \n", fname );
         FILE* pfile = fopen(fname, mode );
         if( pfile == NULL ) return -1;
         writeXYZ( pfile, n, atyps, apos, comment, REQs, just_Element, 0, nPBC, lvec );

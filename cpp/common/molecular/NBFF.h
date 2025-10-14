@@ -3,6 +3,8 @@
 /// @file NBFF.h  @brief Non-Bonded Force-Field, implements n-body interactions between particles using non-covalent poentials such as Lenard-Jones / Morse and Coulomb potential
 /// @ingroup Classical_Molecular_Mechanics
 
+#include <unordered_set>
+
 #include "fastmath.h"
 //#include "Vec2.h"
 #include "Vec3.h"
@@ -170,27 +172,28 @@ class NBFF: public ForceField{ public:
 
     // pre-calculates PLQs from REQs (for faster evaluation in factorized form, especially when using grid)
     void evalPLQs(double K){
-        //printf( "NBFF::evalPLQs() \n" );
+        printf( "NBFF::evalPLQs() natoms %i K %g @PLQs=%p \n", natoms, K, PLQs );
         if(PLQs==0){ _realloc(PLQs,natoms);  }
         for(int i=0; i<natoms; i++){
-            //printf( "makePLQs[%i] \n", i );
-            //printf( "makePLQs[%i] REQ(%g,%g,%g) \n", i, REQs[i].x,REQs[i].y,REQs[i].z);
+            //printf( "evalPLQs[%i] \n", i );
+            //printf( "evalPLQs[%i] REQ(%g,%g,%g) \n", i, REQs[i].x,REQs[i].y,REQs[i].z);
             PLQs[i]=REQ2PLQ( REQs[i], K );
-            //printf( "makePLQs[%i] REQ(%g,%g,%g) PLQ(%g,%g,%g)\n", i, REQs[i].x,REQs[i].y,REQs[i].z,  PLQs[i].x,PLQs[i].y,PLQs[i].z );
+            printf( "evalPLQs[%i] REQ(%g,%g,%g) PLQ(%g,%g,%g)\n", i, REQs[i].x,REQs[i].y,REQs[i].z,  PLQs[i].x,PLQs[i].y,PLQs[i].z );
         }
-        //printf("NBFF::makePLQs() DONE => exit(0) \,"); exit(0);
+        //printf("NBFF::evalPLQs() DONE => exit(0) \,"); exit(0);
     }
     void makePLQs(double K){
         _realloc(PLQs,natoms);
         evalPLQs(K);
     }
 
-
     // pre-calculates PLQs from REQs (for faster evaluation in factorized form, especially when using grid)
     void evalPLQd(double K){
+        printf( "NBFF::evalPLQd() natoms %i K %g @PLQd=%p \n", natoms, K, PLQd );
         if(PLQd==0){ _realloc(PLQd,natoms);  }
         for(int i=0; i<natoms; i++){
             PLQd[i]=REQ2PLQ_d( REQs[i], K );
+            printf( "evalPLQd[%i] REQ(%g,%g,%g) PLQ(%g,%g,%g)\n", i, REQs[i].x,REQs[i].y,REQs[i].z,  PLQd[i].x,PLQd[i].y,PLQd[i].z );
         }
     }
     void makePLQd(double K){

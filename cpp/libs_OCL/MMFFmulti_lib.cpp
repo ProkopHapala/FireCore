@@ -6,6 +6,9 @@
 //#include "MolWorld_sp3.h"
 #include "MolWorld_sp3_multi.h"
 
+#include <thread>
+#include <chrono>
+
 // ============ Global Variables
 
 MolWorld_sp3_multi W;
@@ -140,25 +143,46 @@ void print_setup(){
 
 // int loadmol(char* fname_mol ){ return W.loadmol(fname_mol ); }
 
-void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, bool bUFF, bool b141, bool bSimple, bool bConj, bool bCumulene, int* nPBC, double gridStep, char* sElementTypes, char* sAtomTypes, char* sBondTypes, char* sAngleTypes, char* sDihedralTypes ){
-    printf( "MMFFmulti_lib::init() nSys=%i xyz_name(%s) surf_name(%s) bMMFF=%i bEpairs=%i bUFF=%i \n", nSys, xyz_name, surf_name, bMMFF, bEpairs, bUFF );
-	W.smile_name = smile_name;
-	W.xyz_name   = xyz_name;
-	W.surf_name  = surf_name;
-	W.bMMFF      = bMMFF;
+void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, bool bUFF, bool b141, bool bSimple, bool bConj, bool bCumulene, int* nPBC, int* grid_nPBC, double gridStep, char* sElementTypes, char* sAtomTypes, char* sBondTypes, char* sAngleTypes,  char* sDihedralTypes, double T, double gamma, int nExplore, int nRelax, double pos_kick, double vel_kick, int GridFF ){
+    printf( "MMFFmulti_lib::init() nSys=%i xyz_name(%s) surf_name(%s) bMMFF=%i bEpairs=%i bUFF=%i T=%g gamma=%g nExplore=%i nRelax=%i pos_kick=%g vel_kick=%g \n", nSys, xyz_name, surf_name, bMMFF, bEpairs, bUFF, T, gamma, nExplore, nRelax, pos_kick, vel_kick );
+    W.smile_name = smile_name;
+    W.xyz_name   = xyz_name;
+    W.surf_name  = surf_name;
+    W.bMMFF      = bMMFF;
     W.bUFF       = bUFF;
     W.bEpairs    = bEpairs;
     W.gridStep   = gridStep;
     W.nPBC       = *(Vec3i*)nPBC;
-    // unbuffered printf()
+    W.gridFF.nPBC= *(Vec3i*)grid_nPBC;
     setbuf(stdout, NULL);
     setbuf(stderr, NULL);
     W.params.init( sElementTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
 	W.builder.bindParams(&W.params);
     W.nSystems=nSys;
-    bool bGrid = gridStep>0;
-    W.bGridFF = bGrid;
+    bool bGrid = GridFF>0;
+//
+    W.bGopt = true;
+    W.go.T_target = T;
+    W.go.gamma_damp = gamma;
+    W.go.nExplore = nExplore;
+    W.go.nRelax = nRelax;
+    W.go.pos_kick = pos_kick;
+    W.go.vel_kick = vel_kick;
+
+    long T0=getCPUticks();
+    float nseconds = 0.1;
+    std::this_thread::sleep_for(std::chrono::milliseconds((int)(1000*0.1)) );
+    tick2second = nseconds/(getCPUticks()-T0);
+
+    if(surf_name){
+        printf("surf_name(%s)\n", surf_name);
+    }
+    else{
+        printf("No surface file specified\n");
+    }
     W.init();
+    W.bGridFF = bGrid;
+    printf("GridFF=%i\n", W.bGridFF);
     //init_buffers();
     return &W;
 }
@@ -185,9 +209,16 @@ void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeigh
     #undef _setbool
 }
 
+void MDloop( int perframe, double Ftol = -1, int iParalel = 3, int perVF = 100 ){
+    W.iParalel = iParalel;
+    W.nPerVFs = perVF;
+    W.iterPerFrame = perframe;
+    W.MDloop( perframe, Ftol );
+}
 
 void setSwitchesUFF( int DoBond, int DoAngle, int DoDihedral, int DoInversion, int DoAssemble, int SubtractBondNonBond, int ClampNonBonded ){
     #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
+    //printf("SubtractBondNonBond=%i ClampNonBonded=%i\n", SubtractBondNonBond, ClampNonBonded );
     if(W.uff_ocl){
         _setbool( W.uff_ocl->bUFF_bonds,      DoBond );
         _setbool( W.uff_ocl->bUFF_angles,     DoAngle );
@@ -209,13 +240,15 @@ void setSwitchesUFF( int DoBond, int DoAngle, int DoDihedral, int DoInversion, i
     _setbool( W.ffu.bDoAssemble,          DoAssemble );
     _setbool( W.ffu.bSubtractBondNonBond, SubtractBondNonBond );
     _setbool( W.ffu.bClampNonBonded,      ClampNonBonded );
-    // Sync UFF non-bond master switch from world; ForceField::setNonBondStrategy() depends on this
+   // Sync UFF non-bond master switch from world; ForceField::setNonBondStrategy() depends on this
     W.ffu.bNonBonded = W.bNonBonded;
     // Enforce a consistent non-bond strategy on CPU to avoid UFF::run() flipping flags implicitly
     // Map: SubtractBondNonBond==1 -> imode<0 (no neighbor culling, subtract+clamp)
     //      SubtractBondNonBond==0 -> imode>0 (neighbor-based, no subtract, no clamp)
     W.ffu.setNonBondStrategy( !W.ffu.bSubtractBondNonBond );
     // Propagate the final CPU flags to GPU so kernels match CPU behavior
+    printf("bSubtractBondNonBond=%i bClampNonBonded=%i\n", W.ffu.bSubtractBondNonBond, W.ffu.bClampNonBonded ); 
+ 
     W.uff_ocl->bSubtractNB        = W.ffu.bSubtractBondNonBond && W.ffu.bNonBonded;
     W.uff_ocl->bSubtractNB_angle  = W.ffu.bSubtractAngleNonBond && W.ffu.bNonBonded;
     W.uff_ocl->bClampNonBonded    = W.ffu.bClampNonBonded    && W.ffu.bNonBonded;
@@ -288,6 +321,7 @@ int scan( int nConf, double* confs_, double* outF_, int iParalel ){
     auto outF  = (Vec3d*)outF_;
     int nDone = 0;
     const int dbg_sys = 0;
+    W.bMoving = false;
 
     if( (iParalel==2) && W.uff_ocl ){
         if(!W.uff_ocl->bKernelPrepared){ W.uff_ocl->setup_kernels( (float)W.ffu.Rdamp, (float)W.ffu.FmaxNonBonded, (float)W.ffu.SubNBTorsionFactor ); }
@@ -304,7 +338,8 @@ int scan( int nConf, double* confs_, double* outF_, int iParalel ){
                 W.pack_uff_system( isys, W.ffu, false, false, false, false );
             }
             W.upload_uff( false, false, false, false );
-            W.eval_UFF_ocl( 1 );
+            //W.eval_UFF_ocl( 1 );
+            W.run_uff_ocl( 1, W.dt_default, 0.0, 1000.0, 1000.0 );
             W.download_uff( true, false );
             for(int i=0;i<nBatch;i++){
                 int isys = i;
@@ -546,5 +581,22 @@ void optimizeLattice_2d_multi( double* dlvec, int nstesp, int initMode, double t
     //Mat3d dlvec = Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  };
     W.gopt.lattice_scan_2d_multi( nstesp, *(Mat3d*)dlvec, initMode, "lattice_scan_2d_multi.xyz" );
 }
+
+
+void setSwitches_multi( int CheckInvariants, int PBC, int NonBonded, int MMFF, int Angles, int PiSigma, int PiPiI, int dovdW, int bSaveToDatabase ){
+    #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
+    _setbool( W.bCheckInvariants, CheckInvariants  );
+    _setbool( W.bPBC         , PBC       );
+    _setbool( W.bNonBonded   , NonBonded );
+    _setbool( W.bMMFF        , MMFF      );
+    _setbool( W.ffl.doAngles , Angles    );
+    _setbool( W.ffl.doPiSigma, PiSigma   );
+    _setbool( W.ffl.doPiPiI  , PiPiI     );
+    _setbool( W.dovdW, dovdW );
+    _setbool( W.bSaveToDatabase, bSaveToDatabase );
+    W.ffl.bSubtractAngleNonBond = W.bNonBonded;
+    #undef _setbool
+}
+
 
 } // extern "C"

@@ -353,13 +353,23 @@ inline float addForce_HHermit( const Vec3d& p, const Quat4d& PLQ, Vec3d& f, bool
 
 __attribute__((hot))  
 inline Quat4d getForce_Bspline( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) const {
-    //printf( "GridFF::getForce_Bspline() p(%8.4f,%8.4f,%8.4f) PLQH(%8.4f,%8.4f,%8.4f,%8.4f)\n", p.x,p.y,p.z, PLQH.x,PLQH.y,PLQH.z,PLQH.w );
+    // printf( "GridFF::getForce_Bspline() p(%8.4f,%8.4f,%8.4f) PLQH(%8.4f,%8.4f,%8.4f,%8.4f)\n", p.x,p.y,p.z, PLQH.x,PLQH.y,PLQH.z,PLQH.w );
+    
     Vec3d t;
     //p.sub(shift0);
+    Vec3d adjust {0.0,0.0,1.5};
+    // p.sub(adjust);
     p.sub(grid.pos0);
+    // p.sub(grid.pos0+adjust);
+    // p.add(adjust);
+    // p.add(grid.pos0);
+    // p.add(grid.pos0+adjust);
+    // p.add(grid.pos0+shift0);
+    
     grid.diCell.dot_to( p, t );
     Vec3d inv_dg2{ -grid.diCell.xx, -grid.diCell.yy, -grid.diCell.zz };
 
+    if(verbosity>1)printf("DEBUG: Bspline | Grid pos0=%.3f,%.3f,%.3f | Atom pos=%.3f,%.3f,%.3f \n", grid.pos0.x,grid.pos0.y,grid.pos0.z, p.x,p.y,p.z);
     //Quat4d fe = Quat4dZero;
     
     Quat4d fe = Bspline::fe3d_pbc_comb3( t, grid.n, Bspline_PLQ, PLQH.f, cubic_xqis, cubic_yqis );
@@ -383,11 +393,11 @@ inline Quat4d getForce_Bspline( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) c
     //Quat4d fe = Bspline::fe3d( t, gridN, Bspline_Coulomb );
     //Quat4d fe = Bspline::fe3d( Vec3d{t.z,t.y,t.x}, Vec3i{gridN.z,gridN.y,gridN.x}, Bspline_Coulomb );
 
-    //int i = ((int)t.z) + grid.n.z*( ((int)t.y) + ((int)t.x)*grid.n.y );
-    //fe.w = Bspline_PLQ[i].dot( PLQH.f );
-    //printf( "GridFF::getForce_Bspline() p(%8.4f,%8.4f,%8.4f) ixyz(%4i,%4i,%4i,%8i) BsplinePLQ(%g,%g,%g)\n", p.x,p.y,p.z,  ((int)t.z), ((int)t.y), ((int)t.x), i,    Bspline_PLQ[i].x,Bspline_PLQ[i].y,Bspline_PLQ[i].z  );
-    //fe.w = Bspline_Coulomb[i];
-    //printf( "GridFF::getForce_Bspline() p(%g,%g,%g) t(%g,%g,%g) Gs[%i]=%g \n", p.x,p.y,p.z,  t.x,t.y,t.z,  i, fe.w );
+    // int i = ((int)t.z) + grid.n.z*( ((int)t.y) + ((int)t.x)*grid.n.y );
+    // fe.w = Bspline_PLQ[i].dot( PLQH.f );
+    // printf( "GridFF::getForce_Bspline() p(%8.4f,%8.4f,%8.4f) ixyz(%4i,%4i,%4i,%8i) BsplinePLQ(%g,%g,%g)\n", p.x,p.y,p.z,  ((int)t.z), ((int)t.y), ((int)t.x), i,    Bspline_PLQ[i].x,Bspline_PLQ[i].y,Bspline_PLQ[i].z  );
+    // fe.w = Bspline_Coulomb[i];
+    // printf( "GridFF::getForce_Bspline() p(%g,%g,%g) t(%g,%g,%g) Gs[%i]=%g \n", p.x,p.y,p.z,  t.x,t.y,t.z,  i, fe.w );
 
     fe.f.mul(inv_dg2);
     
@@ -417,6 +427,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
     //printf( "GridFF::addForce() \n" );
     //printf( "GridFF::addForce() pointers(%li,%li,%li)\n", FFPaul, FFLond, FFelec );
     Vec3f gpos; grid.cartesian2grid(pos, gpos);
+    // printf("DEBUG: Grid pos0.z=%.3f | Atom pos.z=%.3f\n", grid.pos0.z, pos.z);
     //printf( "pos: (%g,%g,%g) PLQ: (%g,%g,%g) pointers(%li,%li,%li)\n", pos.x, pos.y, pos.z,  PLQ.x, PLQ.y, PLQ.z, FFPaul, FFLond, FFelec );
     Quat4f fp=interpolate3DvecWrap( FFPaul,  grid.n, gpos );   fe.add_mul( fp, PLQ.x );
     Quat4f fl=interpolate3DvecWrap( FFLond,  grid.n, gpos );   fe.add_mul( fl, PLQ.y );
@@ -458,13 +469,15 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         Quat4d fed;
         switch( mode ){
             // void evalGridFFPoint( int natoms_, const Vec3d * apos_, const Quat4d * REQs_, Vec3d pos, Quat4d& qp, Quat4d& ql, Quat4d& qe )const{
-            case GridFFmod::Direct       :{ Quat4d qp,ql,qe; evalGridFFPoint( apos_.size(), apos_.data(), REQs_.data(), pos, qp, ql, qe ); fed = qp*PLQ.x + ql*PLQ.y + qe*PLQ.z;
+            // case GridFFmod::Direct       :{ Quat4d qp,ql,qe; evalGridFFPoint( apos.size(), apos.data(), REQs_.data(), pos, qp, ql, qe ); fed = qp*PLQ.x + ql*PLQ.y + qe*PLQ.z;
+            case GridFFmod::Direct       :{ Quat4d qp,ql,qe; evalGridFFPoint( apos_.size(), apos_.data(), REQs_.data(), pos, qp, ql, qe ); fed = qp*PLQ.x + ql*PLQ.y + qe*PLQ.z; 
                 //printf( "GridFF::addAtom( E(%g,%g,%g|%g)  PLQ(%g,%g,%g)  pos(%g,%g,%g) \n", qp.e, ql.e, qe.e, fed.e,  PLQ.x,PLQ.y,PLQ.z, pos.x,pos.y,pos.z  );
             } break;
             case GridFFmod::LinearFloat  :{ fed=(Quat4d)getForce( pos, (Quat4f)PLQ ); }break;
             case GridFFmod::LinearDouble :{ fed=getForce_d      ( pos, PLQ);          }break;
             case GridFFmod::HermiteDouble:{ fed=getForce_HHermit( pos, PLQ );         }break;
             case GridFFmod::BsplineDouble:{ fed=getForce_Bspline( pos, PLQ );         }break;
+                // printf( "@@@@@@@@@@GridFF::addAtom( E(%g,%g,%g|%g)  PLQ(%g,%g,%g)  pos(%g,%g,%g) \n", qp.e, ql.e, qe.e, fed.e,  PLQ.x,PLQ.y,PLQ.z, pos.x,pos.y,pos.z );
             //case GridFFmod::HermiteFloat:  { }break;
             //cast GridFFmod::BSplineFloat:  { }break;
             default: { printf("ERROR GridFF::eval() mode=%i NOT IMPLEMENTED !!! \n", mode); exit(0); }
@@ -552,7 +565,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         qe = Quat4dZero;
         //#pragma omp for simd
         for(int ia=0; ia<natoms_; ia++){
-            const Vec3d dp0   = pos - apos_[ia];
+            const Vec3d dp0   = pos - apos_[ia]+shift0;
             const Quat4d REQi = REQs_[ia];
             //if( (ibuff==0) ){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", ia,apos_[ia].x, apos_[ia].y, apos[ia].z, REQi.z ); }              
             for(int ipbc=0; ipbc<npbc; ipbc++ ){
@@ -592,9 +605,9 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         
         //#pragma omp for simd
         for(int ia=0; ia<natoms_; ia++){
-            const Vec3d dp0   = pos - apos_[ia];
+            const Vec3d dp0   = pos - apos_[ia]+shift0; 
             const Quat4d REQi = REQs_[ia];
-            //if( (ibuff==0) ){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", ia,apos_[ia].x, apos_[ia].y, apos[ia].z, REQi.z ); }              
+            // if( (ibuff==0) ){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", ia,apos_[ia].x, apos_[ia].y, apos[ia].z, REQi.z ); }              
             for(int ipbc=0; ipbc<npbc; ipbc++ ){
                 const Vec3d  dp = dp0 + shifts[ipbc];
                 //Vec3d  dp = dp0;
@@ -621,7 +634,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         Quat4d qe     = Quat4dZero;
         //#pragma omp for simd
         for(int ia=0; ia<natoms_; ia++){
-            const Vec3d dp0   = pos - apos_[ia];
+            const Vec3d dp0   = pos - apos_[ia]+shift0;
             const Quat4d REQi = REQs_[ia];
             //if( (ibuff==0) ){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", ia,apos_[ia].x, apos_[ia].y, apos[ia].z, REQi.z ); }              
             for(int ipbc=0; ipbc<npbc; ipbc++ ){
@@ -644,7 +657,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         Quat4d qe     = Quat4dZero;
         //#pragma omp for simd
         for(int ia=0; ia<natoms_; ia++){
-            const Vec3d dp0   = pos - apos_[ia];
+            const Vec3d dp0   = pos - apos_[ia]+shift0;
             Quat4d REQ; combineREQ( REQ, REQs_[ia], REQ );
             //if( (ibuff==0) ){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", ia,apos_[ia].x, apos_[ia].y, apos[ia].z, REQi.z ); }              
             for(int ipbc=0; ipbc<npbc; ipbc++ ){
@@ -1025,7 +1038,11 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
 
     void makeCoulombEwald(  int natoms_, Vec3d * apos_, Quat4d * REQs_, double* VCoul=0 ){
         std::vector<double> qs(natoms_); 
-        for( int i=0; i<natoms_; i++ ){ qs[i] = REQs_[i].z; }
+        std::vector<Vec3d> apos(natoms_);
+        for( int i=0; i<natoms_; i++ ){
+             qs[i] = REQs_[i].z; 
+             apos[i] = apos_[i]+shift0;
+        }
         ewald->copy( grid );
         ewald->enlarge( Vec3d{0.0,0.0,20.0} ); // add 20A of Vaccuum to simulated slabe (not periodic in z direction)
         ewald->potential_of_atoms( grid.n.z, VCoul, natoms_, apos_, qs.data() );
@@ -1235,7 +1252,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         if( (shifts==0) || (npbc==0) ){ printf("ERROR in GridFF::evalMorsePBC() pbc_shift not intitalized !\n"); };     
         for(int j=0; j<natoms; j ++ ){    // atom-atom
             Vec3d fij = Vec3dZero;
-            Vec3d dp0 = pi - apos[j] - shift0;
+            Vec3d dp0 = pi - apos[j] + shift0;
             Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
             //printf( "GridFF::evalMorsePBC() j %i/%i \n", j,natoms );
             for(int ipbc=0; ipbc<npbc; ipbc++ ){
@@ -1251,7 +1268,8 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         //printf( "CPU[iG=0,iS=0] fe(%10.6f,%10.6f,%10.6f)\n", fi.x,fi.y,fi.z );
         return E;
     }
-    double evalMorsePBC_sym     (         Vec3d  pi, Quat4d  REQi, Vec3d& fi     ){ return evalMorsePBC( pi, REQi, fi, apos_.size(), &apos_[0], &REQs_[0] ); }
+    double evalMorsePBC_sym     (         Vec3d  pi, Quat4d  REQi, Vec3d& fi     ){ return evalMorsePBC( pi, REQi, fi, natoms, &apos[0], &REQs[0] ); }
+    // double evalMorsePBC_sym     (         Vec3d  pi, Quat4d  REQi, Vec3d& fi     ){ return evalMorsePBC( pi, REQi, fi, apos_.size(), &apos_[0], &REQs_[0] ); }
     double evalMorsePBCatoms_sym( int na, Vec3d* ps, Quat4d* REQs, Vec3d* forces ){
         double E = 0;
         for(int ia=0; ia<na; ia++){ evalMorsePBC_sym( ps[ia], REQs[ia], forces[ia] ); };
@@ -1522,8 +1540,8 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
     bool bGridDouble = (mode == GridFFmod::LinearDouble) || (mode == GridFFmod::HermiteDouble) || (mode == GridFFmod::BsplineDouble); 
     allocateFFs( bGridDouble );
     //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,0}, bSaveDebugXSFs );
-    nPBC=Vec3i{1,1,0};
-    if(bAutoNPBC){ autoNPBC( grid.cell, nPBC, 20.0 ); }   //printf( "GridFF::initGridFF() nPBC(%i,%i,%i)\n", nPBC.x, nPBC.y, nPBC.z );
+//    nPBC=Vec3i{1,1,0};
+    if(bAutoNPBC){ autoNPBC( grid.cell, nPBC, 20.0 ); }   printf( "GridFF::initGridFF() nPBC(%i,%i,%i)\n", nPBC.x, nPBC.y, nPBC.z );
     lvec = grid.cell;     // ToDo: We should unify this
     makePBCshifts( nPBC, lvec );
     if(bSymetrize)setAtomsSymetrized( natoms, atypes, apos, REQs, 0.1 );

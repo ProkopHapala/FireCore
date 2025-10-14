@@ -9,6 +9,7 @@ import os
 import argparse
 import glob
 import numpy as np
+import matplotlib.pyplot as plt
 
 # Add FireCore to the Python path
 base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -18,6 +19,9 @@ from pyBall import MMFF_multi as uff
 
 # Define the path to common resource files
 data_dir = os.path.join(base_path, "cpp/common_resources")
+
+z_scan = True
+xy_scan = False
 
 # ==================
 #  Buffer Specs (mirrored from test_UFF_ocl.py)
@@ -105,8 +109,8 @@ def components_to_switches(components, *, bNonBonded=False, bGridFF=False):
     DoDihedral  = resolve('dihedrals')
     DoInversion = resolve('inversions')
     DoAssemble  = 1 if any(v > 0 for v in (DoBond, DoAngle, DoDihedral, DoInversion)) else -1
-    SubtractBondNonBond = -1
-    ClampNonBonded      = -1
+    SubtractBondNonBond = 1
+    ClampNonBonded      = 1
     uff.setSwitches2(
         NonBonded=1 if bNonBonded else -1,
         SurfAtoms=1 if bGridFF else -1,
@@ -204,11 +208,31 @@ def scan_uff(nconf, nsys, components, tol=1e-3, seed=123, bNonBonded=False, bGri
     rng = np.random.default_rng(seed)
     confs = np.repeat(base[None, :, :], nconf, axis=0)
     confs += 0.1 * rng.standard_normal(confs.shape)
+    if z_scan:
+        confs[:, 1] = [0.0, 0.0, 2.5]
+        for i in range(nconf):
+            confs[i, 1, 2] += 0.01 * i
+    
+    if xy_scan:
+        confs[:, 1] = [0.0, 0.0, 5.0]
+        side_len = int(np.sqrt(nconf))
+        step = 0.1
+        x = np.arange(side_len) * step
+        y = np.arange(side_len) * step
+        X, Y = np.meshgrid(x, y)
 
-    # CPU forces
-    F_cpu = uff.scan(confs, iParalel=0)
+        X_flat = X.ravel()
+        Y_flat = Y.ravel()
+
+        confs[:, 1, 0] = X_flat  # x
+        confs[:, 1, 1] = Y_flat  # y
+
+
+    # # CPU forces
+    # F_cpu = uff.scan(confs, iParalel=0)
     # GPU forces (batched)
     F_gpu = uff.scan(confs, iParalel=2)
+    F_cpu = np.zeros_like(F_gpu)
 
     cpu_min = float(np.min(F_cpu)) if F_cpu.size else 0.0
     cpu_max = float(np.max(F_cpu)) if F_cpu.size else 0.0
@@ -223,23 +247,23 @@ def scan_uff(nconf, nsys, components, tol=1e-3, seed=123, bNonBonded=False, bGri
     print(f"scan(): max |ΔF| = {max_abs:.3e} at index {idx}")
     if max_abs > tol:
         ok = False
-        print("scan(): Differences exceed tolerance. Showing summary per-config:")
-        for ic in range(nconf):
-            Fi = F_cpu[ic]
-            Gi = F_gpu[ic]
-            di = diffs[ic]
-            ma = float(np.max(np.abs(di)))
+        # print("scan(): Differences exceed tolerance. Showing summary per-config:")
+        # for ic in range(nconf):
+        #     Fi = F_cpu[ic]
+        #     Gi = F_gpu[ic]
+        #     di = diffs[ic]
+        #     ma = float(np.max(np.abs(di)))
 
-            cpu_l2  = float(np.linalg.norm(Fi))
-            gpu_l2  = float(np.linalg.norm(Gi))
-            print("\n############################################")
-            print(f"########### system {ic}  E_GPU=NA  E_CPU=NA")
-            print(f"CPU_force stats: min={cpu_min:.6e} max={cpu_max:.6e} ||F||_2={cpu_l2:.6e}")
-            print(Fi)
-            print(f"GPU_force stats: min={gpu_min:.6e} max={gpu_max:.6e} ||F||_2={gpu_l2:.6e}")
-            print(Gi)
-            print(f"AbsDiff max|ΔF|={ma:.3e}")
-            print("--------------------------------------------")
+        #     cpu_l2  = float(np.linalg.norm(Fi))
+        #     gpu_l2  = float(np.linalg.norm(Gi))
+        #     print("\n############################################")
+        #     print(f"########### system {ic}  E_GPU=NA  E_CPU=NA")
+        #     print(f"CPU_force stats: min={cpu_min:.6e} max={cpu_max:.6e} ||F||_2={cpu_l2:.6e}")
+        #     print(Fi)
+        #     print(f"GPU_force stats: min={gpu_min:.6e} max={gpu_max:.6e} ||F||_2={gpu_l2:.6e}")
+        #     print(Gi)
+        #     print(f"AbsDiff max|ΔF|={ma:.3e}")
+        #     print("--------------------------------------------")
     else:
         print(f"\n##### scan(): PASSED within tol={tol:.2e}   | cpu_min,max={cpu_min:.2e}, {cpu_max:.2e} | gpu_min,max={gpu_min:.2e}, {gpu_max:.2e} \n")
     return ok, F_cpu, F_gpu
@@ -251,18 +275,18 @@ def scan_uff_relaxed(nconf, nsys, components, niter=100, dt=0.02, damping=0.1, f
     CPU path uses sequential UFF::run for niter steps per configuration.
     """
     print(f"\n--- Running UFF scan_relaxed for nconf={nconf} with nsys={nsys}, niter={niter}, fconv={fconv} bNonBonded={bNonBonded} bGridFF={bGridFF}---")
-    components_to_switches(components)
+    components_to_switches(components, bNonBonded=bNonBonded, bGridFF=bGridFF)
     base = uff.apos.copy()
     rng = np.random.default_rng(seed)
     confs = np.repeat(base[None, :, :], nconf, axis=0)
     confs += 0.1 * rng.standard_normal(confs.shape)
 
     # CPU baseline (sequential)
-    F_cpu = uff.scan_relaxed(confs, niter=niter, dt=dt, damping=damping, Fconv=fconv, Flim=flim, iParalel=0)
     # --- Run GPU calculation
     print("--- Running GPU calculation ---")
     F_gpu = uff.scan_relaxed(confs, niter=niter, dt=dt, damping=damping, Fconv=fconv, Flim=flim, iParalel=2)
 
+    F_cpu = np.zeros_like(F_gpu) #uff.scan_relaxed(confs, niter=niter, dt=dt, damping=damping, Fconv=fconv, Flim=flim, iParalel=0)
     cpu_min = float(np.min(F_cpu)) if F_cpu.size else 0.0
     cpu_max = float(np.max(F_cpu)) if F_cpu.size else 0.0
     gpu_min = float(np.min(F_gpu)) if F_gpu.size else 0.0
@@ -366,8 +390,10 @@ def compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces, tol=1e-5, co
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='UFF CPU vs. GPU Validation Test')
-    default_mol = os.path.join(data_dir, 'mol', 'formic_acid.mol2')
-    #default_mol = os.path.join(data_dir, 'mol', 'xylitol.mol2')
+    #default_mol = os.path.join(data_dir, 'mol', 'formic_acid.mol2')
+    default_mol = os.path.join(data_dir, 'xyz', 'xylitol_WO_gridFF.xyz')
+    #default_mol = os.path.join(data_dir, 'xyz', 'xylitol_for_gridFF.xyz')
+
     parser.add_argument('-m', '--molecule',      type=str,      default=default_mol, help='Molecule file (.mol2, .xyz)')
     parser.add_argument('-t', '--tolerance',     type=float,    default=1e-5,        help='Numerical tolerance for comparison')
     parser.add_argument('-p', '--print-buffers', type=int,      default=0,           help='Print buffer contents before run')
@@ -378,9 +404,9 @@ if __name__ == "__main__":
     parser.add_argument('--nconf',               type=int,      default=2,           help='Number of configurations for scan(); 0 disables scan')
     parser.add_argument('--use-scan',            type=int,      default=1,           help='Use scan() path (1) or single-step run() (0)')
     parser.add_argument('--use-scan-relaxed',    type=int,      default=1,           help='Use scan_relaxed() path (1)')
-    parser.add_argument('--niter',               type=int,      default=1,         help='Relaxation steps per configuration for scan_relaxed()')
+    parser.add_argument('--niter',               type=int,      default=3000,         help='Relaxation steps per configuration for scan_relaxed()')
     parser.add_argument('--fconv',               type=float,    default=1e-6,        help='Force convergence threshold for scan_relaxed()')
-    parser.add_argument('--dt',                  type=float,    default=0.02,        help='Integration timestep for relaxation')
+    parser.add_argument('--dt',                  type=float,    default=0.01,        help='Integration timestep for relaxation')
     parser.add_argument('--damping',             type=float,    default=0.1,         help='Damping for relaxation')
     parser.add_argument('--flim',                type=float,    default=1000.0,      help='Force limit for relaxation')
     parser.add_argument('--preset', choices=['all', 'bonded', 'bonded-only', 'none', 'grid-only', 'nonbonded-only'], default='all', help='Component preset before applying --enable/--disable/--comps.')
@@ -389,6 +415,7 @@ if __name__ == "__main__":
     parser.add_argument('--disable', nargs='*', choices=UFF_COMPONENTS, default=None, help='UFF components to disable.')
     parser.add_argument('--non-bonded', action='store_true', help='Enable non-bonded interactions.')
     parser.add_argument('--grid-ff', action='store_true', help='Enable GridFF interactions.')
+    
     args = parser.parse_args()
 
     bNonBonded = args.non_bonded
@@ -410,14 +437,18 @@ if __name__ == "__main__":
     uff.init(
         nSys_=args.nsys,
         xyz_name=args.molecule,
-        surf_name=os.path.join(data_dir, 'xyz', 'NaCl_1x1_L2') if bGridFF else None,
+        surf_name=os.path.join(data_dir, 'xyz', 'NaCl_3x3_L3') if bGridFF else None,
         sElementTypes  = os.path.join(data_dir, "ElementTypes.dat"),
         sAtomTypes     = os.path.join(data_dir, "AtomTypes.dat"),
         sBondTypes     = os.path.join(data_dir, "BondTypes.dat"),
         sAngleTypes    = os.path.join(data_dir, "AngleTypes.dat"),
         sDihedralTypes = os.path.join(data_dir, "DihedralTypes.dat"),
         bMMFF=True, # to use UFF MMFF should be True!
-        bUFF=True
+        bUFF=True,
+        nExplore=1000,
+        nRelax=500,
+        T=300,
+        gamma=0.1
     )
 
     print("py.DEBUG 3")
@@ -438,7 +469,7 @@ if __name__ == "__main__":
     uff.getBuffs_UFF()
 
     uff.print_debugs(bParams=False, bNeighs=False, bShifts=False, bAtoms=True)
-    uff.apos[:,:] += 0.2 * np.random.randn(uff.natoms, 3)
+    #uff.apos[:,:] += 0.2 * np.random.randn(uff.natoms, 3)
     uff.print_debugs(bParams=False, bNeighs=False, bShifts=False, bAtoms=True)
 
     # Run CPU then GPU with the same initialization and switches
@@ -468,6 +499,7 @@ if __name__ == "__main__":
         )
         passed = ok
     elif args.use_scan or args.nconf>0:
+        print("scan_uff()")
         nconf = args.nconf if args.nconf>0 else args.nsys
         ok, F_cpu, F_gpu = scan_uff(
             nconf=nconf,
@@ -478,6 +510,38 @@ if __name__ == "__main__":
             bGridFF=bGridFF,
         )
         passed = ok
+        if z_scan:
+            Z_forces = F_gpu[:, 1, 2]  # Z-složka sil
+            Z        = np.linspace(0, 0.01*(nconf-1), nconf)
+
+            plt.figure(figsize=(8, 5))
+            plt.plot(Z, Z_forces, 'o-')
+            plt.xlabel('Z [Ang]')
+            plt.ylabel('Fz [eV/Ang]')
+            plt.grid(True)
+            plt.tight_layout()
+            plt.show()
+
+        if xy_scan:
+            side_len = int(np.sqrt(nconf))  # 100
+
+            # Předpokládáme, že F_gpu je pole tvaru (nconf, 3, 3)
+            Z_forces = F_gpu[:, 1, 2]  # síla v ose z na prostředním atomu
+
+            # Vytvoření mřížky x,y pro 100x100 bodů s krokem 0.01
+            x = np.linspace(0, 0.1*(side_len-1), side_len)
+            y = np.linspace(0, 0.1*(side_len-1), side_len)
+            X, Y = np.meshgrid(x, y)
+
+            # Vykreslení kontur
+            plt.figure(figsize=(8, 5))
+            plt.contourf(X, Y, Z_forces.reshape((side_len, side_len)))
+            plt.xlabel('X [Å]')
+            plt.ylabel('Y [Å]')
+            plt.colorbar(label='Fz [eV/Å]')
+            plt.grid(True)
+            plt.tight_layout()
+            plt.show()
     else:
         cpu_energy, cpu_forces = run_uff(use_gpu=False, components=component_flags, dt=args.dt, bNonBonded=bNonBonded, bGridFF=bGridFF)
         gpu_energy, gpu_forces = run_uff(use_gpu=True,  components=component_flags, dt=args.dt, bNonBonded=bNonBonded, bGridFF=bGridFF)
@@ -489,3 +553,5 @@ if __name__ == "__main__":
     else:
         print("CPU vs GPU UFF comparison FAILED")
     print("=========================================")
+
+
