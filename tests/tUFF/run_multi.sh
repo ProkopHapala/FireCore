@@ -41,6 +41,9 @@ lscpu
 #python3 -u test_UFF_multi.py --preset bonded --grid-ff                           2>&1 | tee OUT-UFF-multi-bonded-grid
 #python3 -u test_UFF_multi.py --preset none   --non-bonded                        2>&1 | tee OUT-UFF-multi-nonbonded
 
-python3 -u test_UFF_multi.py --preset grid-only --grid-ff                        2>&1 | tee OUT-UFF-multi-gridff
+#python3 run_throughput_UFF.py --xyz_name data/xyz/xylitol.xyz --nSys 1 --bUFF 0 --bGridFF 1 --gridnPBC "(1,1,0)" --loops 10 --perframe 500 --perVF 100 --Fconv 1e-4
+python3 run_throughput_UFF.py --xyz_name data/xyz/xylitol.xyz --nSys 1 --bUFF 1 --bGridFF 1 --gridnPBC "(1,1,0)" --loops 10 --perframe 500 --perVF 100 --Fconv 1e-4
+
+#python3 -u test_UFF_multi.py --preset grid-only --grid-ff                        2>&1 | tee OUT-UFF-multi-gridff
 #python3 -u test_UFF_multi.py --preset none   --non-bonded --grid-ff              2>&1 | tee OUT-UFF-multi-nb-grid
 #python3 -u test_UFF_multi.py --preset bonded --non-bonded                        2>&1 | tee OUT-UFF-multi-bonded-nb

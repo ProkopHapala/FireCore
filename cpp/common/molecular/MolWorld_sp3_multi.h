@@ -164,6 +164,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     std::vector<int>     host_a2f_offsets;
     std::vector<int>     host_a2f_counts;
     std::vector<int>     host_a2f_indices;
+    std::vector<Quat4f>  host_REQs_UFF;
 
 
     // ---- Groups of atoms
@@ -285,11 +286,12 @@ void realloc( int nSystems_ ){
         host_a2f_offsets  .resize(nSystems * (nAtoms+1));
         host_a2f_counts   .resize(nSystems * nAtoms);
         host_a2f_indices  .resize(nSystems * nA2F);
+        host_REQs_UFF     .resize(nSystems * nAtoms);
         _realloc ( atoms,     uff_ocl->nAtomsTot  );
         _realloc0( aforces,   uff_ocl->nAtomsTot  , Quat4fZero );
         _realloc0( avel,      uff_ocl->nAtomsTot  , Quat4fZero );
         _realloc0( cvfs,      uff_ocl->nAtomsTot  , Quat4fZero );
-        _realloc( REQs,       uff_ocl->nAtomsTot );
+        //_realloc( REQs,       uff_ocl->nAtomsTot );
         _realloc( pbcshifts, uff_ocl->nSystems * ((uff_ocl->npbc>0)?uff_ocl->npbc:1) ); // use UFF OCL npbc for host buffer
     }else{
         printf( "MolWorld_sp3_multi::realloc() MMFF Systems %i nAtoms %i nnode %i \n", nSystems, ffl.natoms,  ffl.nnode );
@@ -850,12 +852,12 @@ void pack_uff_system( int isys, const UFF& ff, bool bParams=false, bool bForces=
 
         // Pack REQs
         for(int i=0; i<nAtoms; ++i){
-            REQs [i0a + i] = (Quat4f){(float)ff.REQs[i].x, (float)ff.REQs[i].y, (float)ff.REQs[i].z, (float)ff.REQs[i].w};
+            host_REQs_UFF[i0a + i] = (Quat4f){(float)ff.REQs[i].x, (float)ff.REQs[i].y, (float)ff.REQs[i].z, (float)ff.REQs[i].w};
         }
 
         if(isys == 0 || isys == 1){ // DEBUG: Print REQs for first two systems
             printf("MolWorld_sp3_multi::pack_uff_system(isys=%d).REQs:\n", isys);
-            for(int i=0; i<nAtoms; ++i){ Quat4f req = REQs[i0a + i];  printf("REQ [s=%d,a=%d]: %g %g %g %g\n", isys, i, req.x, req.y, req.z, req.w); }
+            for(int i=0; i<nAtoms; ++i){ Quat4f req = host_REQs_UFF[i0a + i];  printf("REQ [s=%d,a=%d]: %g %g %g %g\n", isys, i, req.x, req.y, req.z, req.w); }
         }
 
         // Pack per-atom topology used by UFF kernels
@@ -965,8 +967,8 @@ void upload_uff( bool bParams, bool bForces, bool bVel, bool blvec, bool bPrint=
     int nInversionsTot = uff_ocl->nSystems * uff_ocl->nInversions;
     int nA2FTot        = uff_ocl->nSystems * uff_ocl->nA2F;
     if(bPrint)printf("MolWorld_sp3_multi::upload_uff() nAtomsTot=%i nBondsTot=%i nAnglesTot=%i nDihedralsTot=%i nInversionsTot=%i nA2FTot=%i \n", nAtomsTot, nBondsTot, nAnglesTot, nDihedralsTot, nInversionsTot, nA2FTot);
-    err|=             uff_ocl->upload( uff_ocl->ibuff_apos,  (float*)atoms, nAtomsTot );
-    err|=             uff_ocl->upload( uff_ocl->ibuff_REQs,  (float*)REQs,  nAtomsTot );
+    err|=             uff_ocl->upload( uff_ocl->ibuff_apos,  (float*)atoms,               nAtomsTot );
+    err|=             uff_ocl->upload( uff_ocl->ibuff_REQs,  (float*)host_REQs_UFF.data(), nAtomsTot );
     if(bForces) err|= uff_ocl->upload( uff_ocl->ibuff_fapos, (float*)aforces );
     if(blvec){
         err|= uff_ocl->upload( uff_ocl->ibuff_lvecs,     lvecs );

@@ -1000,23 +1000,22 @@ void printPBCshifts(){
     }
 
     void initNBmol( NBFF* ff, bool bCleanCharge=true ){
-        if(verbosity>0)printf( "MolWorld_sp3::initNBmol() na %i \n", ff->natoms  );
+        //if(verbosity>0)
+        printf( "MolWorld_sp3::initNBmol() na %i \n", ff->natoms  );
         //void bindOrRealloc(int n_, Vec3d* apos_, Vec3d* fapos_, Quat4d* REQs_, int* atypes_ ){
-        DEBUG
         nbmol.bindOrRealloc( ff->natoms, ff->apos, ff->fapos, ff->REQs, ff->atypes );
+        //if(bUFF) memcpy( nbmol.REQs, ff->REQs, ff->natoms * sizeof(Quat4d) ); // NO, We do not want to allocate anythong
+
+
         //nbmol.bindOrRealloc( na, apos, fapos, 0, 0 );
         //builder.export_atypes( nbmol.atypes );
         //builder.export_REQs( nbmol.REQs   );       ff->REQs=nbmol.REQs;
         //printf("DEBUG initNBmol 1 nbmol.print_nonbonded(); \n"); nbmol.print_nonbonded();
-        DEBUG
         nbmol  .makePLQs   ( gridFF.alphaMorse );  ff->PLQs=nbmol.PLQs;
-        DEBUG
         nbmol  .makePLQd   ( gridFF.alphaMorse );  ff->PLQd=nbmol.PLQd;
-        DEBUG
         //nbmol.print_nonbonded();
         if(bCleanCharge)for(int i=builder.atoms.size(); i<ff->natoms; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge
         params.assignREs( nbmol.natoms, nbmol.atypes, nbmol.REQs, true, false  );
-        DEBUG
         //printf("DEBUG initNBmol 1 nbmol.print_nonbonded(); \n"); nbmol.print_nonbonded();
         //nbmol.print_nonbonded();
         if(verbosity>1)nbmol.print();
@@ -1352,7 +1351,6 @@ void printPBCshifts(){
             printf("ERROR some bonds are not in atom neighbors => exit"); 
             exit(0); 
         };
-        DEBUG
         // reshuffling atoms in order to have non-capping first
         builder.numberAtoms();
         builder.sortConfAtomsFirst();
@@ -1364,22 +1362,23 @@ void printPBCshifts(){
             uff_builder.assignUFFtypes( 0, bCumulene, true, b141, bSimple, bConj); 
             uff_builder.assignUFFparams( 0, true );
             uff_builder.toUFF( ffu, true );
+            // After building the UFF topology, we must also export the REQ parameters from the builder
+            // to the ffu object, as this is not done by default in toUFF. This ensures that when
+            // initNBmol(&ffu) is called later, it binds to a correctly populated REQs array.
+            builder.export_REQs( ffu.REQs ); 
+            printf("ffu.REQs 1: \n"); ffu.print_REQs();
         }else{      // according to MMFF
             builder.assignTypes();
             if( ffl.bTorsion ){ builder.assignTorsions( true, true ); }  //exit(0);
-
             builder.printAtomConfs();
             builder.printBonds();
-            DEBUG
             builder.toMMFFsp3_loc( ffl, true, bEpairs, bUFF );   
             //ffl.printAtomParams();
             if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
             if(ffl.bEachAngle){ builder.assignAnglesMMFFsp3  ( ffl, false      ); ffl.printAngles();   }  //exit(0);
             //builder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
-            DEBUG
             builder.toMMFFsp3    ( ff , true, bEpairs );
             ffl.flipPis( Vec3dOne );
-            DEBUG
             ffl.printNeighs();
             //ff4.flipPis( Vec3fOne );
 
@@ -1396,18 +1395,15 @@ void printPBCshifts(){
                 //ffu.makeNeighCells( nPBC );      
                 ffu.makeNeighCells( npbc, pbc_shifts ); 
             }else{
-                DEBUG
                 ff.bPBCbyLvec = true;
                 ff .setLvec( builder.lvec);
                 ffl.setLvec( builder.lvec);
                 //ff4.setLvec((Mat3f)builder.lvec);
                 npbc = makePBCshifts( nPBC, builder.lvec );
-                DEBUG
                 ffl.bindShifts(npbc,pbc_shifts);
                 //ff4.makeNeighCells  ( nPBC );
                 //ffl.makeNeighCells( nPBC );
                 ffl.makeNeighCells( npbc, pbc_shifts );
-                DEBUG
             }
         }
 
@@ -1428,13 +1424,24 @@ void printPBCshifts(){
         // Initialize bounding boxes from atom groups if available
 
         if ( bUFF ){
+
+            printf("ffu.REQs 2: \n"); ffu.print_REQs();
             initNBmol( &ffu );
             setNonBond( bNonBonded );
+            { // check UFF buffers
+                double frange=100.0;
+                bool berr=false;
+                int nat=ffu.natoms;
+                Quat4d REQ_min{ 1.0, -1.0, -2.0, -2.0};
+                Quat4d REQ_max{ 2.0,  1.0,  2.0,  2.0};
+                berr|= ckeckRange_2( nat, 4, (double*)ffu.REQs,  (double*)&REQ_min, (double*)&REQ_max, "ffu.REQs",  true , true);
+                //berr|= ckeckRange_2( nat, 4, (double*)ffu.PLQd,  -frange, frange, "ffu.PLQd",  true );
+                //if(berr){ printf( "ERROR MolWorld_sp3::makeFFs() outOfRange(%g) in UFF buffers => Exit() \n", frange ); exit(0); }
+                // berr=false;
+                // berr|= ckeckNaN_d( nat, 3, (double*)ffu.apos,  "ffu.apos",  true );
+                //if(berr){ printf( "ERROR MolWorld_sp3::makeFFs() NaNs in UFF buffers => Exit() \n" ); exit(0); }
+            }
             ffu.go = &go;
-            nbmol.evalPLQs(gridFF.alphaMorse);
-            // Ensure UFF has REQs allocated and filled from builder (needed for multi/OCL pack)
-            if(ffu.REQs==0){ _realloc(ffu.REQs, ffu.natoms); }
-            builder.export_REQs( ffu.REQs );
 
             ffu.atomForceFunc = [&](int ia,const Vec3d p,Vec3d& f)->double{
                 //printf( "ffu.atomForceFunc() ia=%i \n", ia  );
@@ -1476,6 +1483,7 @@ void printPBCshifts(){
                 setOptimizer( ffu.natoms*3, (double*)ffu.apos, (double*)ffu.fapos );
                 ffu.vapos = (Vec3d*)opt.vel;
             }
+
         }else{
             DEBUG
             //ffl.realloc( builder.atoms.size() );

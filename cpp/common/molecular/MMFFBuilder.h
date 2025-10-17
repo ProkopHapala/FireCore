@@ -2472,12 +2472,13 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     inline void nang_def (int& n,int i0)const{ if(n<0){ n=angles.size()-i0; }; }
     inline void ndih_def (int& n,int i0)const{ if(n<0){ n=dihedrals.size()-i0; }; }
 
-    void export_REQs(Quat4d* REQs, int i0=0, int n=-1)const{
+    void export_REQs(Quat4d*& REQs, int i0=0, int n=-1)const{
+        printf("Builder::export_REQs() REQs=%p\n", REQs);
         natom_def(n,i0);
-        //_allocIfNull(REQs,n);
+        _allocIfNull(REQs,n);
         //printf( "export_REQs n %i @REQs=%li \n", n, (long)REQs );
         for(int i=0; i<n; i++){ 
-            //printf( "export_REQs[%i] REQ(%g,%g,%g,%g)\n", i, atoms[i0+i].REQ.x,atoms[i0+i].REQ.y,atoms[i0+i].REQ.z,atoms[i0+i].REQ.w  );
+            printf( "export_REQs[%i] REQ(%g,%g,%g,%g)\n", i, atoms[i0+i].REQ.x,atoms[i0+i].REQ.y,atoms[i0+i].REQ.z,atoms[i0+i].REQ.w  );
             REQs[i]= atoms[i0+i].REQ; }
     }
 
