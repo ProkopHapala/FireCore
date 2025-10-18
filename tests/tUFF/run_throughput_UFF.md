@@ -40,8 +40,10 @@ python tests/tUFF/run_throughput_UFF.py  --nSys 512 --xyz_name data_UFF/xyz/HHO-
 - **`--bSaveToDatabase`** placeholder for database logging; `-1` keeps default off.
 
 ## Enabling GridFF
-- **CLI flag**: set `--bGridFF 1` to engage lattice-based force accumulation.
-- **Periodic images**: adjust `--gridnPBC "(1,1,0)"` as needed; values propagate to `OCL_UFF::nPBC`.
+- **dovdW**: set `--dovdW 1` to enable non-bonded interactions (currently it is important only for labeling the simulation)
+- **doSurfaceAtoms**: set `--doSurfAtoms 1` if surface should be computed
+- **CLI flag**: set `--bGridFF 6` number 6 must be to choose bSpline mode, if negative GridFF is disabled
+- **Periodic images**: adjust `--gridnPBC "(1,1,0)"` it is for adjusting periodic surfaces imporatnt for surfaces calculated with full atom
 - **Surface data**: provide `--surf_name data_UFF/surf/YourSurface` if coupling molecules to surfaces.
 - **Kernel path**: GridFF kernels are compiled from [OCL_UFF::makeKernels("common_resources/cl")](cci:1://file:///home/prokophapala/git/prokop_and_master/FireCore/cpp/common/OpenCL/OCL_UFF.h:207:4-230:5), so ensure matching grid assets under `tests/tUFF/common_resources/`.
 

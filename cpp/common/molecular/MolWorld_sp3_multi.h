@@ -457,6 +457,9 @@ virtual void init() override {
         database = new MolecularDatabase();
         database->setDescriptors();
     }
+    else{
+        database->setDescriptors();
+    }
     if(bUFF){
             setup_UFF_ocl();
             if(!uff_ocl->bKernelPrepared)uff_ocl->setup_kernels( (float)ffu.Rdamp, (float)ffu.FmaxNonBonded, (float)ffu.SubNBTorsionFactor );
@@ -1088,8 +1091,8 @@ void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring
         cvf.add( cvfs[i].f );
         cvfs[i] = Quat4fZero;
     }
-    fire.vv=cvf.x;
-    fire.ff=cvf.y;
+    fire.ff=cvf.x;
+    fire.vv=cvf.y;
     fire.vf=cvf.z;
     fire.update_params();
     if(bExploring){
@@ -1200,7 +1203,7 @@ double evalVFs( double Fconv=1e-6 ){
                 unpack_uff_system( isys, ffu, true, false );
                 isSystemRelaxed[isys]=true;
                 // save
-                if(0*bSaveToDatabase){
+                if(0*bSaveToDatabase){  // use it for evaluation_vs_time, do not use for nb_evale_vs_surf_size
                     int sameMember = database->addIfNewDescriptor(&ffu);
                     if(sameMember==-1){
                         sprintf(tmpstr,"# %i E %g |F| %g istep=%i isys=%i,", database->getNMembers(), 0.5*fire[isys].vv, sqrt(f2), gopts[isys].istep, isys );
@@ -3039,7 +3042,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
                 nStepNonConvSum/((double)nbNonConverged),
                 nStepExplorSum/((double)nExploring),
                 (nStepConvSum+nStepNonConvSum+nStepExplorSum));
-            if((getCPUticks()-zeroT)*tick2second > 9.5){
+            if((getCPUticks()-zeroT)*tick2second > 9.5){ // reduce the time of simulation 9.5 was used to create nb_evale_vs_surf_size; 59.5 was used to create evaluation_vs_time
                 fclose(file);
                 database->print();
                 exit(0);

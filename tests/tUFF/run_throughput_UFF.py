@@ -27,13 +27,13 @@ parser.add_argument("--surf_name",       type=str,   default="data/xyz/NaCl_1x1_
 parser.add_argument("--nSys",            type=int,   default=1,         help="Number of systems")
 parser.add_argument("--dovdW",           type=int,   default=1,         help="dovdW flag")
 parser.add_argument("--doSurfAtoms",     type=int,   default=0,         help="doSurfAtoms flag")
-parser.add_argument("--bSaveToDatabase", type=int,   default=-1,        help="bSaveToDatabase flag")
+parser.add_argument("--bSaveToDatabase", type=int,   default=-1,        help="bSaveToDatabase flag") # DO NOT CHANGE (but has no effect)
 parser.add_argument("--bGridFF",         type=int,   default=-1,        help="bGridFF flag")
 parser.add_argument("--bUFF",            type=int,   default=1,         help="bUFF flag")
 parser.add_argument("--Fconv",           type=float, default=1e-4,      help="Force convergence")
 parser.add_argument("--perframe",        type=int,   default=10,      help="Steps per frame (MDloop nIter)")
 parser.add_argument("--perVF",           type=int,   default=10,       help="Vector-field evals inside kernels")
-parser.add_argument("--loops",           type=int,   default=5,       help="How many times to call MDloop in a row")
+parser.add_argument("--loops",           type=int,   default=5,       help="How many times to call MDloop in a row") #should be set to large number, the duration is set internaly in Molworld_sp3_multi::MDLoop function
 parser.add_argument("--gridnPBC",        type=str,   default="(1,1,0)", help="gridnPBC")
 parser.add_argument("--bNonBonded",      type=int,   default=1,         help="bNonBonded flag")
 parser.add_argument("--T",               type=float, default=1500.0,    help="Thermostat target temperature [K] during exploring")
@@ -110,12 +110,12 @@ for _f in glob.glob("traj_UFF_*.xyz"):
         pass
 
 # Set trajectory output (per-system files: traj_UFF_000.xyz, ...)
+# set savePerNsteps to change the frequency of saving (negative to disable)
 uff.setTrjName(trj_fname_="traj_UFF", savePerNsteps=1000, bDel=True)
 
 # Throughput loop: call MDloop repeatedly
 for i in range(loops):
-    # iParalel: 2 or 3 uses GPU path on multi; perVF propagates to kernels
-    uff.MDloop(perframe=perframe, Ftol=Fconv, iParalel=3, perVF=perVF)
+    uff.MDloop(perframe=perframe, Ftol=Fconv, perVF=perVF)
     # Optionally print simple progress every so often
     if (i+1) % 50 == 0:
         print(f"[UFF] MDloop {i+1}/{loops} done")
