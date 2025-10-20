@@ -159,9 +159,9 @@ class HubbardSolver(OpenCLBase):
         """
         (Re-)allocate GPU buffers for the 2-phase MC solver.
         """
-        sz_f  = np.nbytes[np.float32]
-        sz_i  = np.nbytes[np.int32]
-        sz_ui = np.nbytes[np.uint32]
+        sz_f  = np.dtype(np.float32).itemsize
+        sz_i  = np.dtype(np.int32).itemsize
+        sz_ui = np.dtype(np.uint32).itemsize
 
         buffs = {
             # --- System Data ---

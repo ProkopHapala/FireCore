@@ -200,3 +200,81 @@ The `HubbardSolver.py` module provides Python wrappers and utility functions to 
 
 *   The Python wrapper must correctly pass the image width `nx` to the kernel for the "Load Neighbor's Best" strategy.
 *   Before the first run, the `E_best` buffer should be initialized to infinity (`np.inf`) to ensure the first result is always accepted. For subsequent runs (continuation), this buffer should be preserved.
+
+## 6. CLI Tutorial: `tests/tIsing/run_hubbard_cli.py`
+
+### 6.1. Overview
+
+The script `tests/tIsing/run_hubbard_cli.py` wraps `run_Hubbard.demo_local_update()` with an `argparse` CLI, making all relevant simulation parameters configurable from the command line. Matplotlib is forced to use the `Agg` backend so the script can run on headless servers while still producing figure files.
+
+### 6.2. Required Environment
+
+- **Python path** Ensure the repository root is added to `PYTHONPATH`, e.g. `export PYTHONPATH=/path/to/FireCore:$PYTHONPATH`.
+- **OpenCL device** The default constructor selects the first available GPU. Override with `--device-index` if multiple devices exist.
+- **Working directory** Run from anywhere; figures are written relative to the provided `--fig-dir` (default `./figs`).
+
+### 6.3. CLI Parameters
+
+- **`--nxy-sites NX NY`** Grid of lattice sites used for `make_grid_sites()`.
+- **`--avec AX AY`**, **`--bvec BX BY`** In-plane lattice vectors (Å).
+- **`--nxy-scan NX NY`** Resolution of tip scan (number of tip positions along x/y).
+- **`--extent XMIN XMAX YMIN YMAX`** Scan window (Å) fed to `generate_xy_scan()`.
+- **`--E0`** Baseline on-site energy shifted into `posE` (eV).
+- **`--z-tip`** Tip height above the lattice plane (Å).
+- **`--vbias`** Tip bias voltage (V).
+- **`--cutoff`**, **`--W-amplitude`** Parameters for the screened Coulomb interaction passed to `make_sparse_W_pbc()`.
+- **`--temperature`**, **`--n-iter`**, **`--solver-mode`** Monte Carlo settings forwarded to `demo_local_update()`.
+- **`--efermi`** Uniform shift added to `Esite` after precalculation.
+- **`--fig-dir`** Directory where plots generated inside `demo_local_update()` are stored.
+- **`--device-index`**, **`--nloc`**, **`--nloc-mc`** Optional overrides forwarded to `HubbardSolver()` constructor.
+- **`--two-phase`** Runs the exploratory + refinement Monte Carlo phases (default CLI run performs only the refinement pass).
+- **`--no-show`** Forces the non-interactive Matplotlib backend so the script only saves figures; omit to get interactive windows.
+
+All arguments fall back to the defaults hard-coded in `run_Hubbard.demo_local_update()`, ensuring backwards-compatible behavior.
+
+### 6.4. Example Usage
+
+1. **Quick smoke test** (small scan):
+
+   ```bash
+   python tests/tIsing/run_hubbard_cli.py \
+       --nxy-scan 10 10 \
+       --extent -10 10 -10 10 \
+       --n-iter 1000 \
+       --fig-dir ./figs_test
+   ```
+
+   This runs a low-resolution 10×10 scan to validate your OpenCL environment. Figures appear in `figs_test/`.
+
+2. **High-resolution STM map** (defaults):
+
+   ```bash
+   python tests/tIsing/run_hubbard_cli.py
+   ```
+
+   The defaults reproduce the heavier 200×200 scan shown in `run_Hubbard.demo_local_update()`. Expect longer runtimes and large output maps in `./figs`.
+
+3. **Custom lattice**:
+
+   ```bash
+   python tests/tIsing/run_hubbard_cli.py \
+       --nxy-sites 6 4 \
+       --avec 8.0 0.0 \
+       --bvec 0.0 6.5 \
+       --vbias 0.3 \
+       --temperature 5.0
+   ```
+
+   Adjusts lattice geometry, bias, and thermal settings to explore different physical regimes.
+
+### 6.5. Output Artifacts
+
+- **Console logs** Mirror the verbose diagnostics from `demo_local_update()` (number of tips, energy ranges, etc.).
+- **Figure files** PNG snapshots saved into `--fig-dir` showcasing energy, charge, and tunneling maps. Each save call prints the absolute path used.
+- **Intermediate data** The CLI relies entirely on the existing solver; no extra data files are created.
+
+### 6.6. Troubleshooting
+
+- **OpenCL errors**: Use `--device-index` or `--nloc`/`--nloc-mc` to match the capabilities of your device. Ensure drivers are installed.
+- **Memory pressure**: Reduce `--nxy-scan` or `--nxy-sites` for smaller buffers.
+- **Runtime length**: Decrease `--n-iter`, `--temperature`, or `--nxy-scan` when experimenting; restore defaults for production-quality maps.

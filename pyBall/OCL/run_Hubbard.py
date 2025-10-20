@@ -553,6 +553,8 @@ def demo_local_update(
         Efermi=0.0,
         #fig_dir=None,
         fig_dir="./figs",
+        two_phase=True,
+        show_plots=True,
     ):
     """
     Demonstrates the usage of the solve_local_updates kernel by running a 2D scan with Monte Carlo optimization.
@@ -675,9 +677,14 @@ def demo_local_update(
 
     # solve_mc_2phase(self, W_sparse, Esite, Tsite, nTips, nSite, nx, nGlobalSteps=100, nLocalIter=100, prob_params=(0.1, 0.6, 0.3), # (p_best, p_neighbor, p_random), bAlloc=True, bFinalize=True):
     # phase 1 - exploration
-    solver                              .solve_mc_2phase(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nx=nxy_scan[0], nGlobalSteps=nGlobalSteps, nLocalIter=50,  prob_params=( 0.1, 0.0, 0.9, 0.0), bAlloc=True, bFinalize=False )
-    # phase 2 - exploitation
-    energy, current, occupation = solver.solve_mc_2phase(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nx=nxy_scan[0], nGlobalSteps=nGlobalSteps, nLocalIter=150, prob_params=( 0.1, 0.5, 0.5, 0.0), bAlloc=False, bFinalize=True )
+    prob_phase1 = (0.1, 0.0, 0.9, 0.0)
+    prob_phase2 = (0.1, 0.5, 0.5, 0.0)
+
+    if two_phase:
+        solver.solve_mc_2phase(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nx=nxy_scan[0], nGlobalSteps=nGlobalSteps, nLocalIter=50,  prob_params=prob_phase1, bAlloc=True,  bFinalize=False)
+        energy, current, occupation = solver.solve_mc_2phase(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nx=nxy_scan[0], nGlobalSteps=nGlobalSteps, nLocalIter=150, prob_params=prob_phase2, bAlloc=False, bFinalize=True )
+    else:
+        energy, current, occupation = solver.solve_mc_2phase(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nx=nxy_scan[0], nGlobalSteps=nGlobalSteps, nLocalIter=150, prob_params=prob_phase2, bAlloc=True,  bFinalize=True)
 
     print( "demo_local_update() energy.shape: ", energy.shape )
     #print( "demo_local_update() current.shape: ", current.shape )
@@ -739,7 +746,9 @@ def demo_local_update(
     axs = plot_sites_maps_imshow( Esite, Tsite, bits, tip_indices=spec_inds, pTips=pTips, posE=posE, nxy_sites=nxy_sites, nSingle=nSingle )
     axs[0,0].plot( spec_sites[:,0], spec_sites[:,1], '+g', ms=10 )
     plt.suptitle("Property maps for 5 closest tip-on-site configurations")
-    plt.savefig(os.path.join(fig_dir, f"site_maps_imshow_V{Vbias:.2f}.png"))
+    fname_maps = os.path.join(fig_dir, f"site_maps_imshow_V{Vbias:.2f}.png")
+    plt.savefig(fname_maps)
+    print(f"Saved figure: {fname_maps}")
     #plt.close()
 
     # Calculate total charge for each tip position by summing only the relevant bits
@@ -767,10 +776,15 @@ def demo_local_update(
     plot2d(current_map_unoc.T, extent=extent, title="Current (unoccupied sites)",      ax=axs[1, 1], cmap=cmap, ps=posE )
     
     plt.tight_layout(rect=[0, 0, 1, 0.95])
-    plt.savefig(os.path.join(fig_dir, f"monte_carlo_results_V{Vbias:.2f}.png"))
+    fname_summary = os.path.join(fig_dir, f"monte_carlo_results_V{Vbias:.2f}.png")
+    plt.savefig(fname_summary)
+    print(f"Saved figure: {fname_summary}")
     #plt.close()
 
-    plt.show()
+    if show_plots:
+        plt.show()
+    else:
+        plt.close('all')
 
 
 if __name__ == "__main__":

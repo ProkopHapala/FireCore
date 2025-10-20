@@ -51,27 +51,27 @@ fi
 #./$name -x common_resources/xyz/PTCDA           -g common_resources/xyz/NaCl_1x1_L3       -iParalel 1
 #./$name -x common_resources/xyz/PTCDA           -g common_resources/xyz/NaCl_8x8_L3_step  -iParalel 1
 
-./$name -x common_resources/xyz/guanine          -g common_resources/xyz/NaCl_1x1_L3         -iParalel 0
+#./$name -x common_resources/xyz/guanine          -g common_resources/xyz/NaCl_1x1_L3         -iParalel 0
 #./$name -x common_resources/xyz/guanine          -g common_resources/xyz/NaCl_8x8_L3_step    -iParalel 1
 
-#./$name -x common_resources/xyz/uracil           -g common_resources/xyz/NaCl_1x1_L3         -iParalel 1
+./$name -x common_resources/xyz/uracil           -g common_resources/xyz/NaCl_1x1_L3         -iParalel 1
 #./$name -x common_resources/xyz/uracil           -g common_resources/xyz/NaCl_8x8_L3_step    -iParalel 1
-#./$name -x common_resources/xyz/uracil           -g common_resources/xyz/NaCl_8x8_L3_step -e -iParalel 1
+#./$name -x common_resources/xyz/uracil           -g common_resources/xyz/NaCl_8x8_L3_step    -iParalel 0;
 
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3         -iParalel 1
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_8x8_L3_step    -iParalel 1
 
-# ====== Polymers @ Surface
+# ====== Polymers @ Surfacef
+
+#./$name  -x common_resources/xyz/polymer-2_new      -g common_resources/xyz/NaCl_1x1_L3   -iParalel 1 
+#./$name  -x common_resources/xyz/polymer-2_new-OH   -g common_resources/xyz/NaCl_1x1_L3   -iParalel 1 
 #./$name  -x common_resources/xyz/polymer-2_new      -g common_resources/xyz/NaCl_8x8_L3_step   -iParalel 1 
 #./$name  -x common_resources/xyz/polymer-2_new-OH   -g common_resources/xyz/NaCl_8x8_L3_step   -iParalel 1 
 
-#./$name  -x common_resources/xyz/polymer-2_new      -g common_resources/xyz/NaCl_8x8_L3   -iParalel 1 
-#./$name  -x common_resources/xyz/polymer-2_new-OH   -g common_resources/xyz/NaCl_8x8_L3   -iParalel 1 
-
-#./$name -x tAttach/PNA_CG_poly-.mol2                -g common_resources/xyz/NaCl_8x8_L3                        -iParalel 1 
-#./$name -x tAttach/PNA_CG_poly-.mol2   -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0     -iParalel 1
-#./$name -x tAttach/DANA_CG_poly-.mol2  -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0    -iParalel 1
-#./$name -x tAttach/TNA_CG_poly-.mol2   -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0     -iParalel 1
+#./$name -x tAttach/PNA_CG_poly-.mol2                -g common_resources/xyz/NaCl_1x1_L3                        -iParalel 1 
+#./$name -x tAttach/PNA_CG_poly-.mol2   -nPBC 1,3,0  -g common_resources/xyz/NaCl_1x1_L3 -shift 0.0,0.0,2.0     -iParalel 1
+#./$name -x tAttach/DANA_CG_poly-.mol2  -nPBC 1,3,0  -g common_resources/xyz/NaCl_1x1_L3 -shift 0.0,0.0,2.0    -iParalel 1
+#./$name -x tAttach/TNA_CG_poly-.mol2   -nPBC 1,3,0  -g common_resources/xyz/NaCl_1x1_L3 -shift 0.0,0.0,2.0     -iParalel 1
 
 
 
