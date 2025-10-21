@@ -865,7 +865,8 @@ __kernel void updateAtomsMMFFf4(
     __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
     __global float4*  avel,         // 3 // velocities of atoms
     __global float4*  aforce,       // 4 // forces on atoms
-    __global float4*  cvfs,         // 5 // damping coefficients for velocity and force
+    //__global float4*  cvfs,         // 5 // damping coefficients for velocity and force
+    __global double4*  cvfs,         // 5 // damping coefficients for velocity and force
     __global float4*  constr,       // 8 // constraints (x,y,z,K) for each atom
     __global float4*  constrK,      // 9 // constraints stiffness (kx,ky,kz,?) for each atom
     __global float4*  MDparams,     // 10 // MD parameters (dt,damp,Flimit)
@@ -966,7 +967,8 @@ __kernel void updateAtomsMMFFf4(
         fe.xyz    += rnd.xyz * sqrt( 2*const_kB*TDrive.x*TDrive.y/MDpars.x );
     }
 
-    float4 cvf = (float4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel
+    //float4 cvf = (float4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel
+    double4 cvf = (double4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel
     cvfs[iaa] += cvf;
     //if(!bDrive){ ve.xyz *= MDpars.z; } // friction, velocity damping
 

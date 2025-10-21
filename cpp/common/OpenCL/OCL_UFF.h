@@ -299,7 +299,8 @@ public:
         // --- Allocate MD/update related buffers (sizes available now)
         // Note: For UFF we do not use pi orbitals; vectors count equals atoms count per system
         ibuff_avel     = newBuffer("avel",      nAtomsTot, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
-        ibuff_cvf      = newBuffer("cvf",       nAtomsTot, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
+        //ibuff_cvf      = newBuffer("cvf",       nAtomsTot, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
+        ibuff_cvf      = newBuffer("cvf",       nAtomsTot, sizeof(cl_double4), 0, CL_MEM_READ_WRITE);
         ibuff_constr   = newBuffer("constr",    nAtomsTot, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
         ibuff_constrK  = newBuffer("constrK",   nAtomsTot, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
         ibuff_MDpars   = newBuffer("MDpars",    nSystems,  sizeof(cl_float4), 0, CL_MEM_READ_ONLY );

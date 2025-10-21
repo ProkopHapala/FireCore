@@ -121,7 +121,8 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     Quat4f* atoms      =0;
     Quat4f* aforces    =0;
     Quat4f* avel       =0;
-    Quat4f* cvfs       =0;
+    //Quat4f* cvfs       =0;
+    Quat4d* cvfs       =0;
 
     FIRE*   fire       =0;  // FIRE-relaxation state
     Quat4f* MDpars     =0;  // Molecular dynamics params
@@ -290,7 +291,8 @@ void realloc( int nSystems_ ){
         _realloc ( atoms,     uff_ocl->nAtomsTot  );
         _realloc0( aforces,   uff_ocl->nAtomsTot  , Quat4fZero );
         _realloc0( avel,      uff_ocl->nAtomsTot  , Quat4fZero );
-        _realloc0( cvfs,      uff_ocl->nAtomsTot  , Quat4fZero );
+        //_realloc0( cvfs,      uff_ocl->nAtomsTot  , Quat4fZero );
+        _realloc0( cvfs,      uff_ocl->nAtomsTot  , Quat4dZero );
         //_realloc( REQs,       uff_ocl->nAtomsTot );
         _realloc( pbcshifts, uff_ocl->nSystems * ((uff_ocl->npbc>0)?uff_ocl->npbc:1) ); // use UFF OCL npbc for host buffer
     }else{
@@ -1084,12 +1086,15 @@ void evalVF( int n, Quat4f* fs, Quat4f* vs, FIRE& fire, Quat4f& MDpar ){
     MDpar.w = fire.cf;
 }
 
-void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring ){
+//void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring ){
+void evalVF_new( int n, Quat4d* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring ){
     //printf("evalVF() fire[%i]\n", fire.id );
-    Vec3f cvf=Vec3fZero;
+    //Vec3f cvf=Vec3fZero;
+    Vec3d cvf=Vec3dZero;
     for(int i=0; i<n; i++){
         cvf.add( cvfs[i].f );
-        cvfs[i] = Quat4fZero;
+        cvfs[i] = Quat4dZero;
+        //cvfs[i] = Quat4fZero;
     }
     fire.ff=cvf.x;
     fire.vv=cvf.y;
@@ -1196,6 +1201,15 @@ double evalVFs( double Fconv=1e-6 ){
             int i0a = isys * uff_ocl->nAtoms;
             evalVF_new( uff_ocl->nAtoms, cvfs+i0a, fire[isys], MDpars[isys], gopts[isys].bExploring );
             double f2 = fire[isys].ff;
+            
+            // *** ADD DIAGNOSTIC OUTPUT ***
+            if(isys == 0 && (nbEvaluation % 100 == 0)){  // Print every 100 evaluations for system 0
+                printf("DEBUG: isys=%i nbEval=%i |F|=%g (target=%g) F2=%g (F2conv=%g) converged=%s\n", 
+               isys, nbEvaluation, sqrt(f2), Fconv, f2, F2conv, 
+               (f2 < F2conv) ? "YES" : "NO");
+                }
+            // *** END DIAGNOSTIC ***
+            
             if(f2>F2max){ F2max=f2; iSysFMax=isys; }
             if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){
                 uff_ocl->download( uff_ocl->ibuff_apos, (float*)atoms );
