@@ -31,6 +31,7 @@ parser.add_argument("--bSaveToDatabase", type=int,   default=-1,        help="bS
 parser.add_argument("--bGridFF",         type=int,   default=-1,        help="bGridFF flag")
 parser.add_argument("--bUFF",            type=int,   default=1,         help="bUFF flag")
 parser.add_argument("--Fconv",           type=float, default=1e-4,      help="Force convergence")
+parser.add_argument("--dt",              type=float, default=0.05,     help="Time step for FIRE optimizer (reduce for light molecules like H2O)")
 parser.add_argument("--perframe",        type=int,   default=10,      help="Steps per frame (MDloop nIter)")
 parser.add_argument("--perVF",           type=int,   default=10,       help="Vector-field evals inside kernels")
 parser.add_argument("--loops",           type=int,   default=5,       help="How many times to call MDloop in a row") #should be set to large number, the duration is set internaly in Molworld_sp3_multi::MDLoop function
@@ -88,6 +89,9 @@ uff.init(
     GridFF=bGridFF, gridnPBC=gridnPBC,
     T=T, gamma=gamma, nExplore=nExplore, nRelax=nRelax
 )
+# Set time step (reduce for light molecules like H2O)
+uff.set_dt_default(args.dt)
+
 # First set core switches (enables NonBonded), then UFF component/clamp flags
 uff.setSwitches2(
         NonBonded=bNonBonded,

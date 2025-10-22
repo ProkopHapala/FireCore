@@ -42,7 +42,21 @@ lscpu
 #python3 -u test_UFF_multi.py --preset none   --non-bonded                        2>&1 | tee OUT-UFF-multi-nonbonded
 
 #python3 run_throughput_UFF.py --xyz_name data/xyz/xylitol.xyz --nSys 1 --bUFF 0 --bGridFF 1 --gridnPBC "(1,1,0)" --loops 10 --perframe 500 --perVF 100 --Fconv 1e-4
-python3 run_throughput_UFF.py --xyz_name data/xyz/xylitol.xyz --nSys 1 --bUFF 1 --bGridFF 1 --gridnPBC "(1,1,0)" --loops 10 --perframe 500 --perVF 100 --Fconv 1e-4
+# Test xylitol convergence with double precision UFF - target: converge below 1e-4 eV/Å
+# python3 run_throughput_UFF.py --xyz_name data/xyz/xylitol.xyz --nSys 1 --bUFF 1 --bGridFF 1 --gridnPBC "(1,1,0)" --loops 200 --perframe 500 --perVF 100 --Fconv 1e-6 --dt 0.05
+
+# Configuration for convergence test
+MOLECULE="H2O"
+LOGFILE="log_${MOLECULE}_convergence.txt"
+
+python3 run_throughput_UFF.py --xyz_name data/xyz/${MOLECULE}.xyz --nSys 1 --bUFF 1 --bGridFF 1 --gridnPBC "(1,1,0)" --loops 1 --perframe 10000 --perVF 100 --Fconv 1e-6 --dt 0.001 2>&1 | tee ${LOGFILE}
+
+# Automatically analyze and plot results
+echo ""
+echo "=========================================="
+echo "Analyzing convergence data..."
+echo "=========================================="
+python3 analyze_and_plot.py ${LOGFILE} ${MOLECULE}
 
 #python3 -u test_UFF_multi.py --preset grid-only --grid-ff                        2>&1 | tee OUT-UFF-multi-gridff
 #python3 -u test_UFF_multi.py --preset none   --non-bonded --grid-ff              2>&1 | tee OUT-UFF-multi-nb-grid

@@ -418,6 +418,11 @@ int scan_relaxed( int nConf, double* confs_, double* outF_, int niter, double dt
     return nDone;
 }
 
+void set_dt_default( double dt ){
+    W.dt_default = dt;
+    printf("set_dt_default(%g)\n", dt);
+}
+
 void set_opt(
         double dt_max,  double dt_min, double damp_max,
         double finc,    double fdec,   double falpha, int minLastNeg,

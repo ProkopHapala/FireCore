@@ -511,6 +511,12 @@ lib.checkInvariants.restype   =  c_bool
 def checkInvariants(maxVcog=1e-9, maxFcog=1e-9, maxTg=1e-1):
     return lib.checkInvariants(maxVcog, maxFcog, maxTg)
 
+#  void set_dt_default( double dt ){
+lib.set_dt_default.argtypes  = [c_double] 
+lib.set_dt_default.restype   =  None
+def set_dt_default( dt=0.05 ):
+    return lib.set_dt_default(dt)
+
 #  void set_opt( double dt_max,  double dt_min, double damp_max, double finc,    double fdec,   double falpha, int minLastNeg, double cvf_min, double cvf_max){
 lib.set_opt.argtypes  = [c_double, c_double, c_double, c_double, c_double, c_double, c_int, c_double, c_double] 
 lib.set_opt.restype   =  None

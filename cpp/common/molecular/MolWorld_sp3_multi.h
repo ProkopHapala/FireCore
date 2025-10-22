@@ -43,19 +43,19 @@ struct FIRE_setup{
 };
 
 struct FIRE{
-    constexpr static float ff_safety = 1.e-32f;
+    constexpr static double ff_safety = 1.e-32;
     FIRE_setup* par=0;
 
     int   lastNeg;
-    float ff,vv,vf;
-    float cos_vf;
-    float renorm_vf;
-    float cf,cv;
+    double ff,vv,vf;  // Changed to double for UFF precision
+    double cos_vf;
+    double renorm_vf;
+    double cf,cv;
     float dt;
     float damping;
     int id;
 
-    float damp_func_FIRE( float c, float& cv ){ // Original FIRE damping
+    double damp_func_FIRE( double c, double& cv ){ // Original FIRE damping
         double cf;
         if( c < 0.0 ){
             cv = par->cv_kill;
@@ -70,8 +70,8 @@ struct FIRE{
     }
 
     void update_params(){
-        float f_len = sqrt(ff);
-        float v_len = sqrt(vv);
+        double f_len = sqrt(ff);
+        double v_len = sqrt(vv);
         cos_vf      = vf    / ( f_len*v_len + ff_safety );
         //renorm_vf   = v_len / ( f_len       + ff_safety );
         renorm_vf   = v_len / ( f_len       + v_len );
@@ -121,8 +121,8 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     Quat4f* atoms      =0;
     Quat4f* aforces    =0;
     Quat4f* avel       =0;
-    //Quat4f* cvfs       =0;
-    Quat4d* cvfs       =0;
+    Quat4f* cvfs       =0;  // MMFF uses float precision
+    Quat4d* cvfs_d     =0;  // UFF uses double precision
 
     FIRE*   fire       =0;  // FIRE-relaxation state
     Quat4f* MDpars     =0;  // Molecular dynamics params
@@ -291,8 +291,7 @@ void realloc( int nSystems_ ){
         _realloc ( atoms,     uff_ocl->nAtomsTot  );
         _realloc0( aforces,   uff_ocl->nAtomsTot  , Quat4fZero );
         _realloc0( avel,      uff_ocl->nAtomsTot  , Quat4fZero );
-        //_realloc0( cvfs,      uff_ocl->nAtomsTot  , Quat4fZero );
-        _realloc0( cvfs,      uff_ocl->nAtomsTot  , Quat4dZero );
+        _realloc0( cvfs_d,    uff_ocl->nAtomsTot  , Quat4dZero );  // UFF uses double precision
         //_realloc( REQs,       uff_ocl->nAtomsTot );
         _realloc( pbcshifts, uff_ocl->nSystems * ((uff_ocl->npbc>0)?uff_ocl->npbc:1) ); // use UFF OCL npbc for host buffer
     }else{
@@ -301,7 +300,7 @@ void realloc( int nSystems_ ){
         _realloc ( atoms,     ocl.nvecs*nSystems  );
         _realloc0( aforces,   ocl.nvecs*nSystems  , Quat4fZero );
         _realloc0( avel,      ocl.nvecs*nSystems  , Quat4fZero );
-        _realloc0( cvfs,      ocl.nvecs*nSystems  , Quat4fZero );
+        _realloc0( cvfs,      ocl.nvecs*nSystems  , Quat4fZero );  // MMFF uses float precision
         _realloc0( constr,    ocl.nAtoms*nSystems , Quat4fOnes*-1. );
         _realloc0( constrK,   ocl.nAtoms*nSystems , Quat4fOnes*-1. );
         _realloc( neighs,    ocl.nAtoms*nSystems );
@@ -1086,7 +1085,23 @@ void evalVF( int n, Quat4f* fs, Quat4f* vs, FIRE& fire, Quat4f& MDpar ){
     MDpar.w = fire.cf;
 }
 
-//void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring ){
+// Float version for MMFF
+void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring ){
+    Vec3f cvf=Vec3fZero;
+    for(int i=0; i<n; i++){
+        cvf.add( cvfs[i].f );
+    }
+    fire.vv = cvf.x;
+    fire.ff = cvf.y;
+    fire.vf = cvf.z;
+    fire.update_params();  // MMFF version doesn't use bExploring parameter
+    MDpar.x = fire.dt;
+    MDpar.y = 1 - fire.damping;
+    MDpar.z = fire.cv;
+    MDpar.w = fire.cf;
+}
+
+// Double version for UFF
 void evalVF_new( int n, Quat4d* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring ){
     //printf("evalVF() fire[%i]\n", fire.id );
     //Vec3f cvf=Vec3fZero;
@@ -1192,14 +1207,14 @@ double evalVFs( double Fconv=1e-6 ){
     // UFF path: use uff_ocl buffers and sizes; handle minima-hopping here
     if(bUFF){
         int errUF=0;
-        uff_ocl->download( uff_ocl->ibuff_cvf, cvfs );
+        uff_ocl->download( uff_ocl->ibuff_cvf, cvfs_d );  // UFF uses double precision buffer
         errUF |= uff_ocl->finishRaw();  OCL_checkError(errUF, "evalVFs().UFF.download");
         iSysFMax=-1;
         for(int isys=0; isys<nSystems; isys++){
 
             nbEvaluation += nPerVFs;
             int i0a = isys * uff_ocl->nAtoms;
-            evalVF_new( uff_ocl->nAtoms, cvfs+i0a, fire[isys], MDpars[isys], gopts[isys].bExploring );
+            evalVF_new( uff_ocl->nAtoms, cvfs_d+i0a, fire[isys], MDpars[isys], gopts[isys].bExploring );  // UFF uses double precision
             double f2 = fire[isys].ff;
             
             // *** ADD DIAGNOSTIC OUTPUT ***
@@ -1246,7 +1261,7 @@ double evalVFs( double Fconv=1e-6 ){
 
         errUF |= uff_ocl->upload( uff_ocl->ibuff_MDpars, MDpars );
         errUF |= uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
-        errUF |= uff_ocl->upload( uff_ocl->ibuff_cvf   , cvfs   );
+        errUF |= uff_ocl->upload( uff_ocl->ibuff_cvf   , cvfs_d );  // UFF uses double precision buffer
         OCL_checkError(errUF, "evalVFs().UFF.upload");
     }
     else{
@@ -2171,7 +2186,7 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
 
         // Initialize dynamic buffers
         uff_ocl->upload( uff_ocl->ibuff_avel, avel );   // zero initial velocities
-        uff_ocl->upload( uff_ocl->ibuff_cvf , cvfs );   // clear accumulators
+        uff_ocl->upload( uff_ocl->ibuff_cvf , cvfs_d );   // clear accumulators (UFF double precision)
 
         // Clear timing file and write header
         FILE* f = fopen("times_run_uff_ocl.dat", "w");
