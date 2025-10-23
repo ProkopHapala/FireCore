@@ -43,7 +43,7 @@ def print_statistics(steps, forces, molecule):
     print(f"\n{'='*60}")
     print("  Convergence Milestones")
     print(f"{'='*60}\n")
-    milestones = [1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6]
+    milestones = [1e-1, 1e-3, 1e-4, 1e-5]
     for threshold in milestones:
         idx = np.where(forces < threshold)[0]
         if len(idx) > 0:

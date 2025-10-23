@@ -1219,10 +1219,8 @@ double evalVFs( double Fconv=1e-6 ){
             
             // *** ADD DIAGNOSTIC OUTPUT ***
             if(isys == 0 && (nbEvaluation % 100 == 0)){  // Print every 100 evaluations for system 0
-                printf("DEBUG: isys=%i nbEval=%i |F|=%g (target=%g) F2=%g (F2conv=%g) converged=%s\n", 
-               isys, nbEvaluation, sqrt(f2), Fconv, f2, F2conv, 
-               (f2 < F2conv) ? "YES" : "NO");
-                }
+                printf("evalVFs() DEBUG: isys=%i nbEval=%i |F|=%g (target=%g) F2=%g (F2conv=%g) converged=%s\n",  isys, nbEvaluation, sqrt(f2), Fconv, f2, F2conv, (f2 < F2conv) ? "YES" : "NO");
+            }
             // *** END DIAGNOSTIC ***
             
             if(f2>F2max){ F2max=f2; iSysFMax=isys; }
@@ -2064,7 +2062,7 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
             task_MMFFloc_test->enque_raw();
         }
         double t = ( getCPUticks()-T0 )*tick2second;
-        err |= ocl.finishRaw(); OCL_checkError(err, "eval_MMFFf4_ocl.test.finish");
+        err |= ocl.finishRaw(); OCL_checkError(err, "MolWorld_sp3_multi::eval_MMFFf4_ocl.test.finish");
         printf("eval_MMFFf4_ocl.test(itest=%i) time=%7.3f[ms] %7.3f[us/iter] niter=%i na=%i \n", itest, t*1000, t*1e+6, niter, ocl.nAtoms );
         return niter;
         //exit(0);
@@ -2120,8 +2118,8 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
         //fire[iSystemCur].print();
     }
     this->download(false,false);
-    err |= ocl.finishRaw(); OCL_checkError(err, "eval_MMFFf4_ocl.finish");
-    printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
+    err |= ocl.finishRaw(); OCL_checkError(err, "MolWorld_sp3_multi::eval_MMFFf4_ocl.finish");
+    printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
     }
 
     // ===============================================================================================================================================================================
@@ -2161,7 +2159,7 @@ int    count_loop_iterations = 0;
 int    count_evalVFs = 0;
 
 int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim ){
-    printf("bBonding=%i bSurfAtoms=%i bGridFF=%i bNonBonded=%i\n", ffu.bDoBond, bSurfAtoms, bGridFF, bNonBonded );
+    printf("MolWorld_sp3_multi::run_uff_ocl() bBonding=%i bSurfAtoms=%i bGridFF=%i bNonBonded=%i  dt=%10g \n", ffu.bDoBond, bSurfAtoms, bGridFF, bNonBonded, dt );
     long T0 = getCPUticks();  // Start timing this call
     if(!bUFF){ printf("MolWorld_sp3_multi::run_uff_ocl(): bUFF=false\n"); return 0; }
     if(!uff_ocl){ printf("MolWorld_sp3_multi::run_uff_ocl(): uff_ocl==nullptr\n"); return 0; } // This should not happen, uff_ocl is initialized in init()
@@ -2181,7 +2179,6 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
         }
         uff_ocl->upload( uff_ocl->ibuff_MDpars, MDpars );
         uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
-
         uff_ocl->setup_updateAtomsMMFFf4( uff_ocl->nAtoms, 0 ); // nNode==0 for UFF
 
         // Initialize dynamic buffers
@@ -2192,8 +2189,7 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
         FILE* f = fopen("times_run_uff_ocl.dat", "w");
         if(f){
             fprintf(f, "# Timing data for run_uff_ocl (all times in seconds)\n");
-            fprintf(f, "# %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n",
-                "t_total", "t_updateME", "t_bonding", "t_gridff", "t_surfatoms", "t_nonbond", "t_updateAt", "t_trajSave", "t_evalVFs", "nloop");
+            fprintf(f, "# %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n", "t_total", "t_updateME", "t_bonding", "t_gridff", "t_surfatoms", "t_nonbond", "t_updateAt", "t_trajSave", "t_evalVFs", "nloop");
             fclose(f);
         }
 
@@ -2268,7 +2264,7 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
     time_loop_trajSave        += Nticks_loop_trajSave        * tick2second;
     time_evalVFs              += Nticks_evalVFs              * tick2second;
 
-    printf("run_uff_ocl() time=%7.3f[ms] nloop=%i time_integrated=%7.3f[s]\n", dt_call*1000, nloop, time_integrated_run_uff_ocl);
+    printf("MolWorld_sp3_multi::run_uff_ocl() time=%7.3f[ms] nloop=%i time_integrated=%7.3f[s]\n", dt_call*1000, nloop, time_integrated_run_uff_ocl);
 
     // Append timing data to file
     FILE* f = fopen("times_run_uff_ocl.dat", "a");
@@ -3052,8 +3048,10 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
             }
             
             // Print data to both console and file
-            const char* data_fmt = "%15d %20d %20d %20g %20d %20d %20g %20g %20g %20d\n";
-            printf(data_fmt, 
+            //const char* data_fmt = "%15d %20d %20d %20g %20d %20d %20g %20g %20g %20d\n";
+            // 1iter 2ntot 3nNew 4Time 5Totally 6nbEvaluation 7itConvAvg 8itNonConvAv 9nStepExploringAvg 10evalTot "
+            printf( "MDloop   1iter %8i 2ntot %8i 3nNew %8i 4Time %10g 5Totally %8i 6nbEvaluation %8i 7itConvAvg %10g 8itNonConvAv %10g 9nStepExploringAvg %10g 10evalTot %8i\n", 
+            //printf( "MDloop %15d %20d %20d %20g %20d %20d %20g %20g %20g %20d" ,data_fmt, 
                 icurIter, database->totalEntries,
                 std::accumulate(database->convergedStructure.begin(), database->convergedStructure.end(), 0),
                 (getCPUticks()-zeroT)*tick2second,
@@ -3062,7 +3060,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
                 nStepNonConvSum/((double)nbNonConverged),
                 nStepExplorSum/((double)nExploring),
                 (nStepConvSum+nStepNonConvSum+nStepExplorSum));
-            fprintf(file, data_fmt,
+            fprintf(file, "%15d %20d %20d %20g %20d %20d %20g %20g %20g %20d",
                 icurIter, database->totalEntries,
                 std::accumulate(database->convergedStructure.begin(), database->convergedStructure.end(), 0),
                 (getCPUticks()-zeroT)*tick2second,
