@@ -17,9 +17,14 @@ def extract_convergence_data(logfile):
     
     with open(logfile, 'r') as f:
         for line in f:
+            if 'evalVFs() DEBUG' in line:
+                match = re.search(r'evalVFs\(\)\s+DEBUG:\s+isys=\s*(\d+)\s+nbEval=\s*(\d+)\s+\|F\|=([\d.eE+-]+)', line)
+                if match:
+                    steps.append(int(match.group(2)))
+                    forces.append(float(match.group(3)))
+                    continue
             if 'DEBUG: isys=0 nbEval=' in line:
-                # Extract step and force
-                match = re.search(r'nbEval=(\d+).*\|F\|=([\d.e+-]+)', line)
+                match = re.search(r'nbEval=(\d+).*\|F\|=([\d.eE+-]+)', line)
                 if match:
                     steps.append(int(match.group(1)))
                     forces.append(float(match.group(2)))
