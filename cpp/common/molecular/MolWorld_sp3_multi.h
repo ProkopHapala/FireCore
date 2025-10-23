@@ -1219,7 +1219,7 @@ double evalVFs( double Fconv=1e-6 ){
             
             // *** ADD DIAGNOSTIC OUTPUT ***
             if(isys == 0 && (nbEvaluation % 100 == 0)){  // Print every 100 evaluations for system 0
-                printf("evalVFs() DEBUG: isys=%i nbEval=%i |F|=%g (target=%g) F2=%g (F2conv=%g) converged=%s\n",  isys, nbEvaluation, sqrt(f2), Fconv, f2, F2conv, (f2 < F2conv) ? "YES" : "NO");
+                printf("evalVFs() DEBUG: isys=%3i nbEval=%5i |F|=%6e (Fconv=%6e) converged?=%i bExploring=%i TDrives(x=T=%6g,y=gamma=%4g,w=seed=%8g)\n",  isys, nbEvaluation, sqrt(f2), Fconv, (f2<F2conv), gopts[isys].bExploring, TDrive[isys].x,TDrive[isys].y,TDrive[isys].w );
             }
             // *** END DIAGNOSTIC ***
             
@@ -2158,9 +2158,25 @@ int    count_updateMultiExploring = 0;
 int    count_loop_iterations = 0;
 int    count_evalVFs = 0;
 
+int save_trj_uff_ocl( int isys, int step, double Fconv ){
+    download_uff( true, false );
+    char fname[256]; sprintf(fname, "%s_%03i.xyz", trj_fname, isys);
+    unpack_uff_system( isys, ffu, true, false );
+    char comment[1024];
+    int converged = (fire[isys].ff < (Fconv*Fconv)) && (!gopts[isys].bExploring);
+    const char* mode = gopts[isys].bExploring ? "EXPLOR" : "RELAX ";
+    sprintf( comment,"# step %6i %s |F|=%9.3e(Fconv=%9.3e) conv=%6i nbEval=%6i FIRE(dt=%8.2e,damp=%8.2e,cos=%+7.3f,cv=%+7.3f,cf=%+7.3f) TDrive(T=%6.1f,gamma=%6.3f,seed=%+7.3f)",
+        step,  mode, sqrt(fire[isys].ff), Fconv, converged, nbEvaluation,
+        fire[isys].dt, fire[isys].damping, fire[isys].cos_vf, fire[isys].cv,  fire[isys].cf,
+        (double)TDrive[isys].x,(double)TDrive[isys].y, (double)TDrive[isys].w
+    );
+    return saveXYZ_system(isys, fname, comment, "a");
+}
+
 int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim ){
     printf("MolWorld_sp3_multi::run_uff_ocl() bBonding=%i bSurfAtoms=%i bGridFF=%i bNonBonded=%i  dt=%10g \n", ffu.bDoBond, bSurfAtoms, bGridFF, bNonBonded, dt );
     long T0 = getCPUticks();  // Start timing this call
+    double F2conv = Fconv*Fconv;
     if(!bUFF){ printf("MolWorld_sp3_multi::run_uff_ocl(): bUFF=false\n"); return 0; }
     if(!uff_ocl){ printf("MolWorld_sp3_multi::run_uff_ocl(): uff_ocl==nullptr\n"); return 0; } // This should not happen, uff_ocl is initialized in init()
     //printf("MolWorld_sp3_multi::run_uff_ocl(  bGridFF=%i, bNonBonded=%i | niter=%i, dt=%f, damping=%f, Fconv=%f, Flim=%f) \n",bGridFF, bNonBonded,  niter, dt, damping, Fconv, Flim);
@@ -2215,31 +2231,19 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
 
         // Inner MD steps between VF evaluations
         for(int iPer=0; iPer<nPerVFs; iPer++){
-            if     (bBonding)  { T_2 = getCPUticks(); uff_ocl->eval(false);                         Nticks_loop_bonding   += (getCPUticks()-T_2); }
-            else               { T_2 = getCPUticks(); uff_ocl->task_clear_fapos      ->enque();      Nticks_loop_bonding   += (getCPUticks()-T_2); }
-
+            if     (bBonding)   { T_2 = getCPUticks(); uff_ocl->eval(false);                      Nticks_loop_bonding   += (getCPUticks()-T_2); }
+            else                { T_2 = getCPUticks(); uff_ocl->task_clear_fapos      ->enque();  Nticks_loop_bonding   += (getCPUticks()-T_2); }
             if(bSurfAtoms){
-                if     (bGridFF   ){ T_2 = getCPUticks(); uff_ocl->task_NBFF_Grid_Bspline->enque();     Nticks_loop_gridff    += (getCPUticks()-T_2); }
-                else { T_2 = getCPUticks();  uff_ocl->task_SurfAtoms->enque();  Nticks_loop_surfatoms += (getCPUticks()-T_2);  }
+                if     (bGridFF){ T_2 = getCPUticks(); uff_ocl->task_NBFF_Grid_Bspline->enque();  Nticks_loop_gridff    += (getCPUticks()-T_2); }
+                else            { T_2 = getCPUticks(); uff_ocl->task_SurfAtoms        ->enque();  Nticks_loop_surfatoms += (getCPUticks()-T_2); }
             }
-            if(bNonBonded && !bGridFF){ T_2 = getCPUticks(); uff_ocl->task_NBFF             ->enque();     Nticks_loop_nonbonded += (getCPUticks()-T_2); }
+            if(bNonBonded && !bGridFF){ T_2 = getCPUticks(); uff_ocl->task_NBFF       ->enque();  Nticks_loop_nonbonded += (getCPUticks()-T_2); }
             T_2 = getCPUticks();
             if(bMoving) uff_ocl->task_updateAtoms->enque();
             Nticks_loop_updateAtoms += (getCPUticks()-T_2);
-
             T_2 = getCPUticks();
-            // Trajectory saving
-            if((savePerNsteps>0) && trj_fname && ((nloop % savePerNsteps)==0)){
-                download_uff( true, false );
-                int isys=0;
-                char fname[256]; sprintf(fname, "%s_%03i.xyz", trj_fname, isys);
-                unpack_uff_system( isys, ffu, true, false );
-                char comment[256];
-                if(gopts[isys].bExploring) sprintf(comment, "# step %d EXPLORING", nloop+1);
-                else                      sprintf(comment, "# step %d RELAXING",  nloop+1);
-                // sprintf(comment, "# step %d", nloop+1);
-                saveXYZ_system(isys, fname, comment, "a");
-            }
+
+            if((savePerNsteps>0) && trj_fname && ((nloop % savePerNsteps)==0)){ save_trj_uff_ocl(0, nloop+1, Fconv); }
             Nticks_loop_trajSave += (getCPUticks()-T_2);
             nloop++;
             niter--;

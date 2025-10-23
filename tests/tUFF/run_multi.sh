@@ -50,7 +50,7 @@ MOLECULE="H2O"
 #LOGFILE="log_${MOLECULE}_convergence.txt"
 LOGFILE="log_convergence.txt"
 
-python3 run_throughput_UFF.py --xyz_name data/xyz/${MOLECULE}.xyz --nSys 1 --bUFF 1 --bGridFF 1 --gridnPBC "(1,1,0)" --loops 1 --perframe 10000 --perVF 100 --Fconv 1e-6 --dt 0.02 2>&1 | tee ${LOGFILE}
+python3 run_throughput_UFF.py --xyz_name data/xyz/${MOLECULE}.xyz --nSys 1 --bUFF 1 --bGridFF 0 --gridnPBC "(1,1,0)" --loops 1 --perframe 10000 --perVF 100 --Fconv 1e-6 --dt 0.02 2>&1 | tee ${LOGFILE}
 
 # Automatically analyze and plot results
 echo ""
