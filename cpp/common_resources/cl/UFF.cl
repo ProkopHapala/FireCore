@@ -1382,18 +1382,26 @@ __kernel void getNonBond_GridFF_Bspline(
     // if((iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond_GridFF_Bspline() grid_p0(%12.4f,%12.4f,%12.4f) grid_invStep(%12.4f,%12.4f,%12.4f) \n", grid_p0.x,grid_p0.y,grid_p0.z, grid_invStep.x, grid_invStep.y,grid_invStep.z ); }
     //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); }
     // if((iG==iG_DBG)&&(iS==iS_DBG)) printf( "GPU::getNonBond_GridFF_Bspline() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
-    if(( DBG_UFF>0 ) && (iG==iG_DBG) && (iS==iS_DBG)){
-        // printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL );
+    //if(( DBG_UFF>0 ) && 
+    if((iG==iG_DBG) && (iS==iS_DBG)){
+        printf( "GPU::getNonBond_GridFF_Bspline() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL );
         // for(int i=0; i<nS*nG; i++){
         //     int ia = i%nS;
         //     int is = i/nS;
         //     if(ia==0){ cl_Mat3 lvec = lvecs[is];  printf( "GPU[%i] lvec(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f) \n", is, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z  ); }
         //     //printf( "GPU[%i,%i] \n", is,ia,  );
         // }
-        for(int ia=0; ia<natoms; ia++){
-            float4 pos = atoms[ia+i0a];
-            float4 req = REQKs[ia+i0a];
-            printf( "GPU[%3i,%3i] pos(%12.4f,%12.4f,%12.4f) req(%12.4f,%12.4f,%12.4f,%12.4f) \n", iS,ia, pos.x,pos.y,pos.z, req.x,req.y,req.z,req.w );
+        // for(int ia=0; ia<natoms; ia++){
+        //     float4 pos = atoms[ia+i0a];
+        //     float4 req = REQKs[ia+i0a];
+        //     printf( "GPU[%3i,%3i] pos(%12.4f,%12.4f,%12.4f) req(%12.4f,%12.4f,%12.4f,%12.4f) \n", iS,ia, pos.x,pos.y,pos.z, req.x,req.y,req.z,req.w );
+        // }
+
+        for(int is=0; is<nS; is++){
+            int i0a_ = is*natoms;
+            float4 pos = atoms[iG_DBG+i0a_];
+            float4 req = REQKs[iG_DBG+i0a_];
+            printf( "GPU[%3i,%3i] pos(%12.4f,%12.4f,%12.4f) req(%12.4f,%12.4f,%12.4f,%12.4f) \n", is,iG_DBG, pos.x,pos.y,pos.z, req.x,req.y,req.z,req.w );
         }
     }
 

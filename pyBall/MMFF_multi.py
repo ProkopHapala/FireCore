@@ -505,6 +505,13 @@ lib.setSwitchesUFF.restype   =  None
 def setSwitchesUFF( DoBond=0, DoAngle=0, DoDihedral=0, DoInversion=0, DoAssemble=0, SubtractBondNonBond=0, ClampNonBonded=0):
     return lib.setSwitchesUFF(DoBond, DoAngle, DoDihedral, DoInversion, DoAssemble, SubtractBondNonBond, ClampNonBonded)
 
+lib.get_uff_energy.argtypes = [c_double_p, c_int, c_bool]
+lib.get_uff_energy.restype  = c_double
+def get_uff_energy(out=None, isys_choice=-1, download=True):
+    if out is None:
+        out = np.zeros(nSys, dtype=np.double)
+    return lib.get_uff_energy(_np_as(out, c_double_p), int(isys_choice), download)
+
 #  bool checkInvariants( double maxVcog, double maxFcog, double maxTg )
 lib.checkInvariants.argtypes  = [c_double, c_double, c_double] 
 lib.checkInvariants.restype   =  c_bool

@@ -1028,8 +1028,9 @@ void download_uff_sys( int isys, bool bForces, bool bVel ){
 
 
 void download_uff( bool bForces, bool bVel ){
-    uff_ocl->download_results( (float*)aforces, 0 ); // energies not handled yet
-    uff_ocl->download( uff_ocl->ibuff_apos, (float*)atoms );
+    //uff_ocl->download_results( (float*)aforces ); // energies not handled yet
+    uff_ocl->download( uff_ocl->ibuff_fapos, (float*)aforces);
+    uff_ocl->download( uff_ocl->ibuff_apos,  (float*)atoms );
     uff_ocl->finishRaw();
 }
 
@@ -1488,13 +1489,32 @@ virtual void setConstrains(bool bClear=true, double Kfix=1.0 ){
     //exit(0);
 }
 
-
-
-
-
 virtual int paralel_size( )override{ return nSystems; }
 
-double eval_UFF_ocl( int niter=1 ){
+double get_uff_energy( double* Energies=0, int isys_choice=0, bool bDownload=true ){
+    if(bDownload){ 
+        uff_ocl->download( uff_ocl->ibuff_fapos, aforces );
+        uff_ocl->finishRaw();
+    }
+    int nSys= uff_ocl->nSystems;
+    int na  = uff_ocl->nAtoms;
+    double E_choice=0;
+    for(int isys=0; isys<nSystems; isys++){
+        int i0a   = isys*na;
+        bool choosen= isys_choice==isys;
+        if((Energies!=0) || choosen){
+            double E = 0.0;
+            for(int ia=0; ia<na; ia++){
+                E += aforces[i0a+ia].w;
+            }
+            if(Energies ){ Energies[isys] += E; }
+            if(choosen  ){ E_choice       += E; }
+        }
+    }
+    return E_choice;
+}
+
+double eval_UFF_ocl( int niter=1, double* Energies=0, int isys_choice=0 ){
     printf("MolWorld_sp3_multi::eval_UFF_ocl()\n");
     if(!bUFF) return 0.0;
     if(!uff_ocl->bKernelPrepared) uff_ocl->setup_kernels( ffu.Rdamp, ffu.FmaxNonBonded, ffu.SubNBTorsionFactor ); // setup kernels if not done yet
@@ -1502,10 +1522,7 @@ double eval_UFF_ocl( int niter=1 ){
         uff_ocl->eval();
     }
     uff_ocl->finishRaw();
-    std::vector<float> energies( nSystems * 5 );
-    uff_ocl->download( uff_ocl->ibuff_energies, energies.data() );
-    uff_ocl->finishRaw();
-    return energies[4]; // E_tot for system 0
+    return get_uff_energy(Energies,isys_choice);
 }
 
 void setup_UFF_ocl(){
@@ -1809,6 +1826,24 @@ int saveXYZ_system(int isys, const char* fname, const char* comment="#comment", 
         return params.saveXYZ( fname, ffls[isys].natoms, ffls[isys].atypes, ffls[isys].apos, comment, ffls[isys].REQs, mode, true );
     }
     return 0;
+}
+
+int save_replicas_xyz_uff( const char* fname ){
+    if(!bUFF){ printf("save_replicas_xyz_uff() called but bUFF==false\n"); return -1; }
+    download_uff( true, false );
+    std::vector<double> energies(nSystems, 0.0);
+    get_uff_energy( energies.data(), -1, false );
+    int err = 0;
+    for(int isys=0; isys<nSystems; isys++){
+        unpack_uff_system(isys, ffu, true, true);
+        double Etot = energies[isys];
+        double Fmag = sqrt(fire[isys].ff);
+        char comment[256];
+        sprintf(comment, "# isys=%i Etot=%12.6e |F|=%12.6e", isys, Etot, Fmag);
+        const char* mode = (isys==0) ? "w" : "a";
+        err |= params.saveXYZ( fname, ffu.natoms, ffu.atypes, ffu.apos, comment, ffu.REQs, mode, true );
+    }
+    return err;
 }
 
 virtual void setSystemReplica (int i){

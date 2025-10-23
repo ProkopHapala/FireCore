@@ -90,7 +90,7 @@ public:
     int ibuff_pbcshifts = -1; // PBC shift vectors
     int ibuff_lvecs     = -1; // Lattice vectors for each system
     int ibuff_ilvecs    = -1; // Inverse lattice vectors for each system (optional, kept for parity)
-    int ibuff_energies  = -1; // Buffer to store computed energies
+    //int ibuff_energies  = -1; // Buffer to store computed energies  // DEPRECATED
 
     // --- GridFF Buffers and Parameters (copied from OCL_MM)
     int itex_BsplinePLQH = -1;
@@ -289,7 +289,7 @@ public:
         ibuff_pbcshifts   = newBuffer("pbcshifts",   nSystems * nPBC_safe,        sizeof(cl_float4), 0, CL_MEM_READ_ONLY);
         ibuff_lvecs       = newBuffer("lvecs",       nSystems,                    sizeof(cl_Mat3),   0, CL_MEM_READ_ONLY);
         ibuff_ilvecs      = newBuffer("ilvecs",      nSystems,                    sizeof(cl_Mat3),   0, CL_MEM_READ_ONLY);
-        ibuff_energies    = newBuffer("energies",    nSystems * 5,                sizeof(cl_float),  0, CL_MEM_WRITE_ONLY); // E_b, E_a, E_d, E_i, E_tot
+        //ibuff_energies    = newBuffer("energies",    nSystems * 5,                sizeof(cl_float),  0, CL_MEM_WRITE_ONLY); // E_b, E_a, E_d, E_i, E_tot // Deprecated
 
         // Optional energy contributions per interaction
         if(nAngles_>0)    ibuff_Ea = newBuffer("Ea_contrib", nSystems * nAngles_,    sizeof(cl_float), 0, CL_MEM_WRITE_ONLY);
@@ -637,12 +637,10 @@ public:
         //printf("OCL_UFF::eval() DONE\n");
     }
 
-    void download_results(float* fapos_host, float* energies_host = nullptr) {
-        download(ibuff_fapos, fapos_host);
-        if (energies_host) {
-            download(ibuff_energies, energies_host);
-        }
-    }
+    // void download_results(float* fapos_host) {
+    //     download(ibuff_fapos, fapos_host);
+    //     //if (energies_host) {download(ibuff_energies, energies_host);}
+    // }
 };
 
 #endif

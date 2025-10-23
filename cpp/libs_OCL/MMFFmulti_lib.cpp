@@ -280,6 +280,11 @@ void setSwitchesUFF( int DoBond, int DoAngle, int DoDihedral, int DoInversion, i
     #undef _setbool
 }
 
+double get_uff_energy( double* energies, int isys_choice, bool bDownload ){
+    if(!W.bUFF){ return 0.0; }
+    return W.get_uff_energy( energies, isys_choice, bDownload );
+}
+
 //int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF, int iParalel ){
 int run( int nstepMax, double dt, double Fconv, int ialg, double damping, double* outE, double* outF, double* outV, double* outVF, int iParalel ){
     W.bOcl= iParalel > 0;
