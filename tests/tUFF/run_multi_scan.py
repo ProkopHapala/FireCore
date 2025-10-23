@@ -114,8 +114,11 @@ def main() -> None:
 
     uff.download(bForces=False, bVel=False)
     uff.getBuffs_UFF()
-    atoms = uff.gpu_atoms
     natoms = uff.natoms
+    gpu_atoms = getattr(uff, "gpu_atoms", None)
+    if gpu_atoms is None:
+        gpu_atoms = uff.getfBuff("gpu_atoms", (args.nSys, natoms, 4))
+    atoms = gpu_atoms
     if atoms.shape[0] != args.nSys:
         raise RuntimeError(f"gpu_atoms first dimension {atoms.shape[0]} != nSys {args.nSys}")
     base_positions = atoms[0, :natoms, :3].copy()

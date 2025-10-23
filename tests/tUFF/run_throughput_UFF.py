@@ -39,7 +39,7 @@ parser.add_argument("--gridnPBC",        type=str,   default="(1,1,0)", help="gr
 parser.add_argument("--bNonBonded",      type=int,   default=1,         help="bNonBonded flag")
 parser.add_argument("--T",               type=float, default=1500.0,    help="Thermostat target temperature [K] during exploring")
 parser.add_argument("--gamma",           type=float, default=0.1,       help="Langevin damping [1/ps, in internal units]")
-parser.add_argument("--nExplore",        type=int,   default=0,       help="Exploring duration in MD steps (perVF steps accumulate)")
+parser.add_argument("--nExplore",        type=int,   default=500,       help="Exploring duration in MD steps (perVF steps accumulate)")
 parser.add_argument("--nRelax",          type=int,   default=100000,    help="Relaxation duration in MD steps before forcing exploring if not converged")
 args = parser.parse_args()
 

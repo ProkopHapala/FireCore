@@ -99,8 +99,21 @@ void init_buffers_UFF(){
         ibuffers.insert( { "dihNgs",    (int*)W.ffu.dihNgs    } );
         ibuffers.insert( { "invNgs",    (int*)W.ffu.invNgs    } );
 
+        fbuffers.insert( { "gpu_atoms",    (float*)W.atoms   } );
+        fbuffers.insert( { "gpu_aforces",  (float*)W.aforces } );
+        fbuffers.insert( { "gpu_avel",     (float*)W.avel    } );
+        fbuffers.insert( { "gpu_constr",   (float*)W.constr  } );
 
-        // ---- TODO: GPU buffers for UFF
+        fbuffers.insert( { "gpu_REQs",     (float*)W.REQs    } );
+        fbuffers.insert( { "gpu_MMpars",   (float*)W.MMpars  } );
+        fbuffers.insert( { "gpu_BLs",      (float*)W.BLs     } );
+        fbuffers.insert( { "gpu_BKs",      (float*)W.BKs     } );
+        fbuffers.insert( { "gpu_Ksp",      (float*)W.Ksp     } );
+        fbuffers.insert( { "gpu_Kpp",      (float*)W.Kpp     } );
+
+        fbuffers.insert( { "gpu_lvecs",    (float*)W.lvecs   } );
+        fbuffers.insert( { "gpu_ilvecs",   (float*)W.ilvecs  } );
+        fbuffers.insert( { "gpu_pbcshifts",(float*)W.pbcshifts } );
 
     }
     // UFF-specific dimensions

@@ -1139,51 +1139,57 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
     for(int isys=0; isys<nSystems; isys++){
         int i0v = isys * ocl.nvecs;
         double f2 = fire[isys].ff;
-        // -------- Global Optimization
-        if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){            // Start Exploring
-            nbConverged++;
-            nStepConvSum+=gopts[isys].istep;  
+        bool allowExplore = (!bOnlyRelax) && (gopts[isys].nExplore > 0);
+        if(!allowExplore){
+            gopts[isys].bExploring = false;
+            gopts[isys].istep = 0;
+        }else{
+            // -------- Global Optimization
+            if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){            // Start Exploring
+                nbConverged++;
+                nStepConvSum+=gopts[isys].istep;  
 
-            gopts[isys].startExploring();
-            if(bGroups){
-                bGroupUpdate=true;
-                //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Start Exploring \n", isys );
-                //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0} ); }   // Shift driver
-                //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, {tsc,0.0,0.0} ); }   // group rotate driver
-                for(int ig=0; ig<ocl.nGroup; ig++){
-                    Vec2f fDrive = groups.groups[ig].fDrive;
-                    setGroupDrive(isys, ig, {fDrive.x,fDrive.x,0.0}, {fDrive.y,0.0,0.0} );
-                    //setGroupDrive(isys, ig, {fsc,fsc,0.0}, {tsc,0.0,0.0} );
-                }   // Shift driver
-            }
-        }
-        else if( ( gopts[isys].istep > gopts[isys].nRelax ) && (!gopts[isys].bExploring)){
-            //printf("(1) Entering non-converged branch for isys=%d, istep=%d\n", isys, gopts[isys].istep);
-            download_uff( true, false );
-            err |= uff_ocl->finishRaw();  OCL_checkError(err, "evalVFs().UFF.download");
-            nbNonConverged++;
-            nStepNonConvSum+=gopts[isys].istep;            
-            gopts[isys].startExploring();
-            if(bGroups){ bGroupUpdate=true; }
-
-            int i0v = isys * ocl.nvecs;
-            if(bUFF){
-                    unpack_uff_system( isys, ffu, true, false );
-                    if(database && database->addIfNewDescriptor(&ffu)==-1){
-                        sprintf(tmpstr,"# %i E %g |F| %g istep=%i", database->getNMembers(), ffu.Etot, sqrt(ffu.cvf.z), gopts[isys].istep );
-                        //saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
-                        database->convergedStructure.push_back(false);
+                gopts[isys].startExploring();
+                if(bGroups){
+                    bGroupUpdate=true;
+                    //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Start Exploring \n", isys );
+                    //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0} ); }   // Shift driver
+                    //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, {tsc,0.0,0.0} ); }   // group rotate driver
+                    for(int ig=0; ig<ocl.nGroup; ig++){
+                        Vec2f fDrive = groups.groups[ig].fDrive;
+                        setGroupDrive(isys, ig, {fDrive.x,fDrive.x,0.0}, {fDrive.y,0.0,0.0} );
+                        //setGroupDrive(isys, ig, {fsc,fsc,0.0}, {tsc,0.0,0.0} );
+                    }   // Shift driver
                 }
-                if(bGroups)for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0}, {tsc,0.0,0.0} ); }
             }
+            else if( ( gopts[isys].istep > gopts[isys].nRelax ) && (!gopts[isys].bExploring)){
+                //printf("(1) Entering non-converged branch for isys=%d, istep=%d\n", isys, gopts[isys].istep);
+                download_uff( true, false );
+                err |= uff_ocl->finishRaw();  OCL_checkError(err, "evalVFs().UFF.download");
+                nbNonConverged++;
+                nStepNonConvSum+=gopts[isys].istep;            
+                gopts[isys].startExploring();
+                if(bGroups){ bGroupUpdate=true; }
+
+                int i0v = isys * ocl.nvecs;
+                if(bUFF){
+                        unpack_uff_system( isys, ffu, true, false );
+                        if(database && database->addIfNewDescriptor(&ffu)==-1){
+                            sprintf(tmpstr,"# %i E %g |F| %g istep=%i", database->getNMembers(), ffu.Etot, sqrt(ffu.cvf.z), gopts[isys].istep );
+                            //saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
+                            database->convergedStructure.push_back(false);
+                    }
+                    if(bGroups)for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0}, {tsc,0.0,0.0} ); }
+                }
+            }
+            if( gopts[isys].update(nPerVFs) ){ // Stop Exploring
+                if(bGroups)bGroupUpdate=true;
+                nExploring++;
+                nStepExplorSum+=gopts[isys].nExplore;
+                //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
+                if(bGroups)for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, Vec3fZero ); }
+            };
         }
-        if( gopts[isys].update(nPerVFs) ){ // Stop Exploring
-            if(bGroups)bGroupUpdate=true;
-            nExploring++;
-            nStepExplorSum+=gopts[isys].nExplore;
-            //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
-            if(bGroups)for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, Vec3fZero ); }
-        };
         bExploring |= gopts[isys].bExploring;
         //printf("gopts[%i].bExploring=%i\n", isys, gopts[isys].bExploring );
     }
@@ -1247,13 +1253,17 @@ double evalVFs( double Fconv=1e-6 ){
 
 
             // Set thermostat & map MDpars for UFF kernel
-            if( gopts[isys].bExploring && !bOnlyRelax ){
-                TDrive[isys].x = go.T_target;
-                TDrive[isys].y = go.gamma_damp;
+            bool allowExplore = gopts[isys].bExploring && (gopts[isys].nExplore > 0) && !bOnlyRelax;
+            if( allowExplore ){
+                TDrive[isys].x = (float)go.T_target;
+                TDrive[isys].y = (float)go.gamma_damp;
                 TDrive[isys].z = 0.0f;
-                TDrive[isys].w = randf(-1.0,1.0);           // force limit for kernel
+                TDrive[isys].w = randf(-1.0f,1.0f);           // force limit for kernel
             }else{
+                TDrive[isys].x = 0.0f;
                 TDrive[isys].y = -1.0f;                 // disable Langevin
+                TDrive[isys].z = 0.0f;
+                TDrive[isys].w = 0.0f;
             }
         }
 
@@ -1314,13 +1324,17 @@ double evalVFs( double Fconv=1e-6 ){
             //     //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
             //     for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, Vec3fZero ); }
             // };
-            if( gopts[isys].bExploring && !bOnlyRelax ){
-                TDrive[isys].x = go.T_target;  // Temperature [K]
-                TDrive[isys].y = go.gamma_damp;  // gamma_damp
+            bool allowExplore = gopts[isys].bExploring && (gopts[isys].nExplore > 0) && !bOnlyRelax;
+            if( allowExplore ){
+                TDrive[isys].x = (float)go.T_target;  // Temperature [K]
+                TDrive[isys].y = (float)go.gamma_damp;  // gamma_damp
                 TDrive[isys].z = 0;    // ?
-                TDrive[isys].w = randf(-1.0,1.0);
+                TDrive[isys].w = randf(-1.0f,1.0f);
             }else{
+                TDrive[isys].x = 0.0f;
                 TDrive[isys].y = -1.0; // gamma_damp
+                TDrive[isys].z = 0.0f;
+                TDrive[isys].w = 0.0f;
             }
             //printf( "evalVFs()[iSys=%i]  bExploring=%i (%i/%i)  |F|=%g \n", isys, gopts[isys].bExploring,   gopts[isys].istep, gopts[isys].nExplore,  sqrt(f2) );
             //printf( "evalF2[sys=%i] |f|=%g MDpars(dt=%g,damp=%g,cv=%g,cf=%g)\n", isys, sqrt(f2), MDpars[isys].x, MDpars[isys].y, MDpars[isys].z, MDpars[isys].w );
@@ -2187,12 +2201,23 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
             MDpars[i].z = 1.0f-damping;   // velocity damping factor (1.0 - damping)
             fire[i].dt = dt;
             fire[i].damping = damping;
-            MDpars[i].w = 0.0f;             // unused
-            TDrive[i]   = (Quat4f){(float)go.T_target,(float)go.gamma_damp,0.0f,randf(-1.0f,1.0f)}; // if starting with exploration
-            //TDrive[i]   = (Quat4f){0.0f,-1.0f,0.0f,randf(-1.0f,1.0f)};
-            if(TDrive[i].y<0){ gopts[i].bExploring = false; }
-            else{ gopts[i].bExploring = true; }
+            MDpars[i].w = 0.0f;     
+            // Only start exploring if nExplore is actually greater than 0
+            bool allowExplore = (!bOnlyRelax) && (gopts[i].nExplore > 0);
+            float temp = allowExplore ? (float)go.T_target : 0.0f;
+            float gamma = allowExplore ? (float)go.gamma_damp : -1.0f;
+            float seed = allowExplore ? randf(-1.0f,1.0f) : 0.0f;
+            TDrive[i]   = (Quat4f){temp,gamma,0.0f,seed};
+            if(!allowExplore){
+                gopts[i].bExploring = false;
+                gopts[i].istep = 0;
+            }else{
+                gopts[i].bExploring = true;
+            }
         }
+
+
+
         uff_ocl->upload( uff_ocl->ibuff_MDpars, MDpars );
         uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
         uff_ocl->setup_updateAtomsMMFFf4( uff_ocl->nAtoms, 0 ); // nNode==0 for UFF
