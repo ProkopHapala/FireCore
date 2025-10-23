@@ -46,7 +46,10 @@ lscpu
 # python3 run_throughput_UFF.py --xyz_name data/xyz/xylitol.xyz --nSys 1 --bUFF 1 --bGridFF 1 --gridnPBC "(1,1,0)" --loops 200 --perframe 500 --perVF 100 --Fconv 1e-6 --dt 0.05
 
 # Configuration for convergence test
-MOLECULE="H2O"
+#MOLECULE="H2O"
+
+MOLECULE="HF"
+
 #LOGFILE="log_${MOLECULE}_convergence.txt"
 LOGFILE="log_convergence.txt"
 
