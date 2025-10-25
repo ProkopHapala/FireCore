@@ -24,6 +24,15 @@ inline float4 quat_mult(float4 q1, float4 q2) {
     );
 }
 
+inline float4 make_rot_quad(float3 omega){
+    float angle = length(omega);
+    float3 axis = omega / angle;
+    float s = sin(0.5f * angle);
+    float c = cos(0.5f * angle);
+    return (float4)(axis * s, c);
+}
+
+
 // Rotates a vector by a matrix, using the cl_Mat3 structure.
 inline float4 rotate_vec_by_matrix(const float4 v, __local const cl_Mat3* R) {
     return (float4)(
@@ -34,14 +43,16 @@ inline float4 rotate_vec_by_matrix(const float4 v, __local const cl_Mat3* R) {
     );
 }
 
-// if (lid == 0) R.a = (float4)(1.0f - (yy + zz), xy - wz,           xz + wy,          0.0f);
-// if (lid == 1) R.b = (float4)(xy + wz,          1.0f - (xx + zz), yz - wx,          0.0f);
-// if (lid == 2) R.c = (float4)(xz - wy,          yz + wx,          1.0f - (xx + yy), 0.0f);
-inline float3 quat_to_a( float4 q ){  return(float3)(1.0f - (q.y*q.y + q.z*q.z), q.x*q.y - q.z*q.w,           q.x*q.z + q.y*q.w         );}
-inline float3 quat_to_b( float4 q ){  return(float3)(q.x*q.y + q.z*q.w,          1.0f - (q.x*q.x + q.z*q.z), q.y*q.z - q.x*q.w          );}
-inline float3 quat_to_c( float4 q ){  return(float3)(q.x*q.z - q.y*q.w,          q.y*q.z + q.x*q.w,          1.0f - (q.x*q.x + q.y*q.y) );}
+inline float4 rotate_vec_by_matrix_T(const float4 v, __local const cl_Mat3* R) {
+    return R->a*v.x + R->b*v.y + R->c*v.z;
+}
 
-
+// if (lid == 0) R.a = (float4)(1.0f - (yy + zz),         xy - wz,          xz + wy,     0.0f);
+// if (lid == 1) R.b = (float4)(        xy + wz,  1.0f - (xx + zz),         yz - wx,     0.0f);
+// if (lid == 2) R.c = (float4)(        xz - wy,          yz + wx,  1.0f - (xx + yy),    0.0f);
+inline float3 quat_to_a( float4 q ){  return(float3)(1.0f - (q.y*q.y+ q.z*q.z),          q.x*q.y - q.z*q.w,          q.x*q.z + q.y*q.w  );}
+inline float3 quat_to_b( float4 q ){  return(float3)(        q.x*q.y + q.z*q.w,  1.0f - (q.x*q.x + q.z*q.z),         q.y*q.z - q.x*q.w  );}
+inline float3 quat_to_c( float4 q ){  return(float3)(        q.x*q.z - q.y*q.w,          q.y*q.z + q.x*q.w,  1.0f - (q.x*q.x + q.y*q.y) );}
 
 
 // Assume the struct and helpers above are in the same file.
@@ -98,6 +109,7 @@ void rigid_body_dynamics_kernel(
         //printf("GPU gid=%d pos(%6e,%6e,%6e,%6e) qrot(%6e,%6e,%6e,%6e)|%6e| vpos(%6e,%6e,%6e,%6e) vrot(%6e,%6e,%6e,%6e)\n", 
         //    gid, pos.x, pos.y, pos.z, pos.w, qrot.x, qrot.y, qrot.z, qrot.w, length(qrot), vpos.x, vpos.y, vpos.z, vpos.w, vrot.x, vrot.y, vrot.z, vrot.w);
         printf("GPU gid=%d pos(%6e,%6e,%6e,%6e) qrot(%6e,%6e,%6e,%6e)|%6e| \n", gid, pos.x, pos.y, pos.z, pos.w, qrot.x, qrot.y, qrot.z, qrot.w, length(qrot));
+
     }
 
     // All threads cooperate to load the body-space atomic positions.
@@ -127,7 +139,8 @@ void rigid_body_dynamics_kernel(
             int atom_idx = lid+i*lsize;
             if(atom_idx >= na){ break; }
             // 1. Update world position of this atom relative to center of mass
-            float4 r_world = rotate_vec_by_matrix(private_pos[i], &R);
+            //float4 r_world = rotate_vec_by_matrix(private_pos[i], &R);
+            float4 r_world = rotate_vec_by_matrix_T(private_pos[i], &R);
             float4 p_world = pos + r_world;
             // 2. ==========================================================
             //    == YOUR FORCE CALCULATION LOGIC GOES HERE ==
@@ -161,26 +174,28 @@ void rigid_body_dynamics_kernel(
             pos.xyz   += vpos.xyz * inv_mass * dt;
         }else if ( lid ==1  ){
             float4 tq      = Ltorq[0]+Ltorq[stride]+Ltorq[stride*2]+Ltorq[stride*3];
-            //vrot.xyz      += tq.xyz   * dt;
-            float3 omega   = vrot.xyz * dt*0.1; // Placeholder! You need ω = I⁻¹L
-            // float3 omega3 = (float3)(
-            //     dot(Iinv_body.a.xyz, vrot.xyz),
-            //     dot(Iinv_body.b.xyz, vrot.xyz),
-            //     dot(Iinv_body.c.xyz, vrot.xyz)
-            // );
-            //float4 dq     = quat_mult(qrot, (float4)(omega.x, omega.y, omega.z, 0.0f));
-            //qrot          += 0.5f * dt * dq;
-            qrot    = quat_mult(qrot, (float4)(omega.x, omega.y, omega.z, 0.0f));
-            qrot    = normalize(qrot);
+            //vrot.xyz      += tq.xyz   * dt; // for now we want to keep vrot constant
+            float4 dq = make_rot_quad( vrot.xyz * dt*0.1f); // Placeholder! You need ω = I⁻¹L
+            qrot      = quat_mult(qrot, dq );
+            //qrot    = normalize(qrot);
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
+
+
+
+    if (lid == 0) R.a = (float4){ quat_to_a(qrot), 0.f };
+    if (lid == 1) R.b = (float4){ quat_to_b(qrot), 0.f };
+    if (lid == 2) R.c = (float4){ quat_to_c(qrot), 0.f };
+    barrier(CLK_LOCAL_MEM_FENCE);
+    if(lid==0){ printf("GPU gid=%d R.a(%6e,%6e,%6e) R.b(%6e,%6e,%6e) R.c(%6e,%6e,%6e) \n",   gid, R.a.x, R.a.y, R.a.z, R.b.x, R.b.y, R.b.z, R.c.x, R.c.y, R.c.z); }
 
     // --- store output atom positions (if needed) ---
     for (int i=0; i<ATOMS_PER_THREAD; i++) {
         int atom_idx = lid+i*lsize;
         if(atom_idx >= na){ break; }
-        float4 r_world = rotate_vec_by_matrix(private_pos[i], &R);
+        //float4 r_world = rotate_vec_by_matrix(private_pos[i], &R);
+        float4 r_world = rotate_vec_by_matrix_T(private_pos[i], &R);
         float4 p_world = pos + r_world;
         apos_world[i0 + atom_idx] = p_world;
     }
