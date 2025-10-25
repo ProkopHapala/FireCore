@@ -53,26 +53,18 @@ inline float3 quat_to_c( float4 q ){  return(float3)(q.x*q.z - q.y*q.w,         
 __kernel
 void rigid_body_dynamics_kernel(
     // --- Inputs ---
-    __global const float4*  pos_in,              // Center of mass positions
-    __global const float4*  quats_in,            // Orientations (quaternions)
-    __global const float4*  lin_mom_in,          // Linear momenta
-    __global const float4*  ang_mom_in,          // Angular momenta
-    __global const float*   mass,                 // Mass of each body
-    __global const float*   inv_mass,             // Inverse mass of each body
-    __global const cl_Mat3* I_body_inv,         // Body-space inverse inertia tensor
-    __global const float4*  all_atom_pos_body,   // Body-space positions of atoms
-
-    // --- Outputs ---
-    __global float4* pos_out,
-    __global float4* quats_out,
-    __global float4* lin_mom_out,
-    __global float4* ang_mom_out,
-    __global float4* all_atom_pos_world,        // Final world-space positions of atoms
-
+    __global const int*      mols,        // [nworkgroups] {i0} starting index of first atom in each molecule in the bbuffer
+    __global       float4*   poss,        // [nworkgroups] {x,y,z,q} Center of mass positions, q used for evaluation of forces
+    __global       float4*   qrots,       // [nworkgroups] Orientations (quaternions)
+    __global       float4*   vposs,       // [nworkgroups] Linear  momenta
+    __global       float4*   vrots,       // [nworkgroups] Angular momenta
+    __global const cl_Mat3*  I_body_inv,  // [nworkgroups] Body-space inverse inertia tensor
+    __global const float4*   apos_body,   // [natomsTot] Body-space positions of atoms
+    __global       float4*   apos_world,  // [natomsTot] World  Final world-space positions of atoms
     // --- Parameters ---
-    const int num_atoms,
-    const int num_integration_steps,
-    const float dt
+    const int   natoms, // number of atoms in the system
+    const int   niter,  // number of integration steps
+    const float dt      // time step
 ) {
     // --- 1. Initialization and Data Loading ---
 
@@ -81,41 +73,49 @@ void rigid_body_dynamics_kernel(
     const int lsize = get_local_size(0);
 
     // Local memory for the state of the single rigid body this workgroup processes.
-    __local float4 local_pos;
-    __local float4 local_quat;
-    __local float4 local_lin_mom;
-    __local float4 local_ang_mom;
-    __local float  local_inv_mass;
-    
+    __local float4 pos;
+    __local float4 qrot;
+    __local float4 vpos;
+    __local float4 vrot;
+    __local float  inv_mass;
     __local cl_Mat3 R; // World-space rotation matrix
-    __local float4 local_torque[WORKGROUP_SIZE];
-    __local float4 local_force [WORKGROUP_SIZE];
+    __local cl_Mat3 Iinv_body; // Body-space inverse inertia tensor
+    __local float4 Ltorq [WORKGROUP_SIZE];
+    __local float4 Lforce[WORKGROUP_SIZE];
 
     __private float4 private_pos[ATOMS_PER_THREAD];
 
     // Thread 0 loads the rigid body's state into fast local memory.
     if (lid == 0) {
-        local_pos     = pos_in    [gid];
-        local_quat    = quats_in  [gid];
-        local_lin_mom = lin_mom_in[gid];
-        local_ang_mom = ang_mom_in[gid];
-        local_inv_mass = inv_mass [gid];
+        pos      = poss   [gid];
+        qrot     = qrots  [gid];
+        vpos     = vposs  [gid];
+        vrot     = vrots  [gid];
+        inv_mass = 1.0f;
+        Iinv_body.a = I_body_inv[gid].a;
+        Iinv_body.b = I_body_inv[gid].b;
+        Iinv_body.c = I_body_inv[gid].c;
+        //printf("GPU gid=%d pos(%6e,%6e,%6e,%6e) qrot(%6e,%6e,%6e,%6e)|%6e| vpos(%6e,%6e,%6e,%6e) vrot(%6e,%6e,%6e,%6e)\n", 
+        //    gid, pos.x, pos.y, pos.z, pos.w, qrot.x, qrot.y, qrot.z, qrot.w, length(qrot), vpos.x, vpos.y, vpos.z, vpos.w, vrot.x, vrot.y, vrot.z, vrot.w);
+        printf("GPU gid=%d pos(%6e,%6e,%6e,%6e) qrot(%6e,%6e,%6e,%6e)|%6e| \n", gid, pos.x, pos.y, pos.z, pos.w, qrot.x, qrot.y, qrot.z, qrot.w, length(qrot));
     }
 
     // All threads cooperate to load the body-space atomic positions.
     //for (int i = lid; i < num_atoms; i += lsize) {local_atom_pos_body[i] = all_atom_pos_body[gid * MAX_ATOMS_PER_BODY + i];}
 
+    const int i0 = mols[gid];
+    const int na = mols[gid+1]-i0;
     for (int i=0; i<ATOMS_PER_THREAD; i++) {
         int atom_idx = lid+i*lsize;
-        if(atom_idx < num_atoms){ private_pos[i] = all_atom_pos_body[ gid*MAX_ATOMS_PER_BODY + atom_idx]; }
+        if(atom_idx < na){ private_pos[i] = apos_body[ i0 + atom_idx]; }
     }
 
     // --- 2. Main Integration Loop ---
-    for (int step = 0; step < num_integration_steps; ++step) {
+    for (int step = 0; step < niter; ++step) {
         // --- initialized the rotation matrix
-        if (lid == 0) R.a = (float4){ quat_to_a(local_quat), 0.f };
-        if (lid == 1) R.b = (float4){ quat_to_b(local_quat), 0.f };
-        if (lid == 2) R.c = (float4){ quat_to_c(local_quat), 0.f };
+        if (lid == 0) R.a = (float4){ quat_to_a(qrot), 0.f };
+        if (lid == 1) R.b = (float4){ quat_to_b(qrot), 0.f };
+        if (lid == 2) R.c = (float4){ quat_to_c(qrot), 0.f };
         barrier(CLK_LOCAL_MEM_FENCE);
 
         // --- Step C: Update atom positions and calculate forces/torques ---
@@ -123,66 +123,72 @@ void rigid_body_dynamics_kernel(
         float4 total_force  = (float4)(0.0f); // If you were also calculating this
 
         // --- evaluate position dependent forces on atoms in world coordinates
-        for (int i=0; i<ATOMS_PER_THREAD; i+=lsize) {
+        for (int i=0; i<ATOMS_PER_THREAD; i++) {
             int atom_idx = lid+i*lsize;
-            if(atom_idx >= num_atoms){ break; }
+            if(atom_idx >= na){ break; }
             // 1. Update world position of this atom relative to center of mass
             float4 r_world = rotate_vec_by_matrix(private_pos[i], &R);
-            float4 p_world = local_pos + r_world;
+            float4 p_world = pos + r_world;
             // 2. ==========================================================
             //    == YOUR FORCE CALCULATION LOGIC GOES HERE ==
             //    Calculate the force 'f' acting on the atom at p_world.
             // ==========================================================
-            float4 f = (float4)(0.1f * r_world.y, 0.0f, 0.0f, 0.0f); // Placeholder spinning force
+            float4 f = (float4)(0.0f, 0.0f, 0.0f, 0.0f); // Placeholder spinning force
             total_torque += cross(r_world, f);
             total_force  += f;
         }
 
         // --- Step D: Reduce torque and force across the workgroup ---
-        local_torque[lid] = total_torque;
-        local_force [lid] = total_force;
+        Ltorq [lid] = total_torque;
+        Lforce[lid] = total_force;
         const int stride = WORKGROUP_SIZE/4;
         barrier(CLK_LOCAL_MEM_FENCE);
         const int lid_ = lid & (stride-1);
         if ( lid_==0 ){ // threads divisible by stride
-            float4 tq = local_torque[lid+1];
-            for(int i=2; i<stride; i++){ tq+=local_torque[lid+i]; }
-            local_torque[lid]+=tq;
+            float4 tq = Ltorq[lid+1];
+            for(int i=2; i<stride; i++){ tq+=Ltorq[lid+i]; }
+            Ltorq[lid]+=tq;
         }else if ( lid_==1 ) {
-            float4 f = local_force[lid+1];
-            for(int i=2; i<stride; i++){ f+=local_force[lid+i]; }
-            local_force[lid]+=f;
+            float4 f = Lforce[lid+1];
+            for(int i=2; i<stride; i++){ f+=Lforce[lid+i]; }
+            Lforce[lid]+=f;
         }
         barrier(CLK_LOCAL_MEM_FENCE);
         // --- Step E: Update momenta (final part of leapfrog) ---
         if       ( lid == 0 ){
-            float4 final_force = local_force[0]  +local_force[stride]+local_force[stride*2]+local_force[stride*3]; 
-            local_lin_mom += final_force * dt;
-            local_pos += local_lin_mom * local_inv_mass * dt;
+            float4 f   = Lforce[0]  +Lforce[stride]+Lforce[stride*2]+Lforce[stride*3]; 
+            vpos.xyz  += f.xyz * dt;
+            pos.xyz   += vpos.xyz * inv_mass * dt;
         }else if ( lid ==1  ){
-            float4 final_torque = local_torque[0]+local_torque[stride]+local_torque[stride*2]+local_torque[stride*3];
-            local_ang_mom  += final_torque * dt;
-            float4 omega    = local_ang_mom; // Placeholder! You need ω = I⁻¹L
-            float4 q_deriv  = quat_mult(local_quat, (float4)(omega.x, omega.y, omega.z, 0.0f));
-            local_quat     += 0.5f * dt * q_deriv;
-            local_quat      = normalize(local_quat);
+            float4 tq      = Ltorq[0]+Ltorq[stride]+Ltorq[stride*2]+Ltorq[stride*3];
+            //vrot.xyz      += tq.xyz   * dt;
+            float3 omega   = vrot.xyz * dt*0.1; // Placeholder! You need ω = I⁻¹L
+            // float3 omega3 = (float3)(
+            //     dot(Iinv_body.a.xyz, vrot.xyz),
+            //     dot(Iinv_body.b.xyz, vrot.xyz),
+            //     dot(Iinv_body.c.xyz, vrot.xyz)
+            // );
+            //float4 dq     = quat_mult(qrot, (float4)(omega.x, omega.y, omega.z, 0.0f));
+            //qrot          += 0.5f * dt * dq;
+            qrot    = quat_mult(qrot, (float4)(omega.x, omega.y, omega.z, 0.0f));
+            qrot    = normalize(qrot);
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
 
     // --- store output atom positions (if needed) ---
-    for (int i=0; i<ATOMS_PER_THREAD; i+=lsize) {
+    for (int i=0; i<ATOMS_PER_THREAD; i++) {
         int atom_idx = lid+i*lsize;
-        if(atom_idx >= num_atoms){ break; }
+        if(atom_idx >= na){ break; }
         float4 r_world = rotate_vec_by_matrix(private_pos[i], &R);
-        float4 p_world = local_pos + r_world;
-        all_atom_pos_world[gid * MAX_ATOMS_PER_BODY + atom_idx] = p_world;
+        float4 p_world = pos + r_world;
+        apos_world[i0 + atom_idx] = p_world;
     }
     // --- store output body state ---
     if (lid == 0) {
-        pos_out    [gid] = local_pos;
-        quats_out  [gid] = local_quat;
-        lin_mom_out[gid] = local_lin_mom;
-        ang_mom_out[gid] = local_ang_mom;
+        poss   [gid] = pos;
+        qrots  [gid] = qrot;
+        vposs  [gid] = vpos;
+        vrots  [gid] = vrot;
     }
 }
