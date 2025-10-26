@@ -175,7 +175,7 @@ void rigid_body_dynamics_kernel(
             //float4 r_world = rotate_vec_by_matrix(private_pos[i], &R);
             //float4 r_world = rotate_vec_by_matrix_T(private_pos[i], &R);        // Using private memory? We test it later
             float4 p_body  = apos_body[ia0+atom_idx];
-            float3 p_world = pos.xyz + rotate_vec_by_matrix_T(p_body.xyz, &R); 
+            float3 p_world = pos.xyz + rotate_vec_by_matrix(p_body.xyz, &R); 
 
             // ------ Force evaluation ------
             float4 f = (float4)(0.0f, 0.0f, 0.0f, 0.0f); // Placeholder spinning force
@@ -187,11 +187,13 @@ void rigid_body_dynamics_kernel(
                 float3 d  = p_world.xyz - anchor.xyz;
                 float3 fa = d * -anchor.w;
                 f.xyz    += fa;
+                printf("ia %3i l_anchor=%8e fa(%8e,%8e,%8e)  anchor(%8e,%8e,%8e|%8e)\n", atom_idx, length(d), fa.x,fa.y,fa.z, anchor.x,anchor.y,anchor.z,anchor.w);
             }
 
             // ---- Project force to rigid body
-            //if(dot(f.xyz,f.xyz) > 1.e-16 ){ printf("ia %3i force(%8e,%8e,%8e)\n", atom_idx, f.x,f.y,f.z); }
-            total_torque.xyz  += cross(p_world.xyz, f.xyz);
+            float3 tq = cross(p_world.xyz, f.xyz);
+            //if(dot(f.xyz,f.xyz) > 1.e-16 ){ printf("ia %3i f(%8e,%8e,%8e) tq(%8e,%8e,%8e) l_anchor=%8e anchor(%8e,%8e,%8e|%8e)\n", atom_idx, f.x,f.y,f.z, tq.x,tq.y,tq.z, anchor.x,anchor.y,anchor.z,anchor.w); }
+            total_torque.xyz += tq;
             total_force .xyz += f.xyz;
         }
 
@@ -217,14 +219,15 @@ void rigid_body_dynamics_kernel(
         if       ( lid == 0 ){
             float4 f   = Lforce[0]+Lforce[stride]+Lforce[stride*2]+Lforce[stride*3]; 
             vpos.xyz*=0.9f;
-            vpos.xyz  += f.xyz * dt;
+            vpos.xyz  += f.xyz               * dt;
             pos.xyz   += vpos.xyz * inv_mass * dt;
         //}else if ( lid ==1  ){
             float4 tq  = Ltorq[0]+Ltorq[stride]+Ltorq[stride*2]+Ltorq[stride*3];
-            printf( "force(%8e,%8e,%8e) tq(%8e,%8e,%8e)\n", f.x,f.y,f.z, tq.x,tq.y,tq.z );
+            //printf( "force(%8e,%8e,%8e) tq(%8e,%8e,%8e)\n", f.x,f.y,f.z, tq.x,tq.y,tq.z );
             vrot.xyz*=0.9f;
-            vrot.xyz   += tq.xyz  *dt; // for now we want to keep vrot constant
-            float3 ot   = vrot.xyz*dt;        // Placeholder! You need ω = I⁻¹L
+            float      Iinv = 1.f/25.f;
+            vrot.xyz   += tq.xyz  *dt*Iinv; // for now we want to keep vrot constant
+            float3 ot   = vrot.xyz*dt;      // Placeholder! You need ω = I⁻¹L
             //float4 dq_= make_qrot       ( ot ); 
             float4 dq   = make_qrot_taylor( ot ); 
             //printf( "w*dt(%8e,%8e,%8e) dq_sincos(%8e,%8e,%8e,%8e) dq_taylor(%8e,%8e,%8e,%8e) \n", ot.x,ot.y,ot.z, dq_.x,dq_.y,dq_.z, dq_.w, dq.x,dq.y,dq.z,dq.w );
@@ -248,7 +251,7 @@ void rigid_body_dynamics_kernel(
         //float4 r_world = rotate_vec_by_matrix_T(private_pos[i], &R);
         int ia = ia0+atom_idx;
         float4 p_body  = apos_body[ia];
-        float3 p_world = pos.xyz + rotate_vec_by_matrix_T(p_body.xyz, &R); 
+        float3 p_world = pos.xyz + rotate_vec_by_matrix(p_body.xyz, &R); 
         apos_world[ia] = (float4){p_world, 0.f};
     }
     // --- store output body state ---

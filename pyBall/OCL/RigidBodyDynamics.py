@@ -166,21 +166,28 @@ void rigid_body_dynamics_kernel(
         self.toGPU('vrots', ang_in)
         self.toGPU('I_body_inv', inertia_inv)
         self.toGPU('apos_body', atoms_body)
-        if anchors is None:
-            anchors = np.zeros((self.total_atoms, 4), dtype=np.float32)
-        anchors = _ensure_float4(anchors)
-        if anchors.shape[0] != self.total_atoms:
-            raise ValueError(f"anchors array length {anchors.shape[0]} does not match total atoms {self.total_atoms}")
-        self.toGPU('anchors', anchors)
 
         # initialize world positions consistent with current state
         atoms  = atoms_body.reshape(self.n_bodies, self.num_atoms, 4)
         world_atoms = np.zeros_like(atoms)
-        # for ib in range(self.n_bodies):
-        #     world_atoms[ib, :, :3] = atoms[ib, :, :3] @ _quat_to_matrix_np(quats_in[ib]).T + pos_in[ib, :3]
-        #     world_atoms[ib, :, 3]  = atoms[ib, :, 3]
-        # world_atoms = world_atoms.reshape(self.total_atoms, 4)
-        self.toGPU('apos_world', world_atoms)
+        for ib in range(self.n_bodies):
+            rot = _quat_to_matrix_np(quats_in[ib])
+            world_atoms[ib, :, :3] = atoms[ib, :, :3] @ rot.T + pos_in[ib, :3]
+            world_atoms[ib, :, 3]  = atoms[ib, :, 3]
+        world_atoms_flat = world_atoms.reshape(self.total_atoms, 4)
+
+        if anchors is None:
+            anchors = np.zeros_like(world_atoms_flat)
+            anchors[:, 3] = -1.0
+        else:
+            anchors = _ensure_float4(anchors, w_value=-1.0)
+            if anchors.shape[0] != self.total_atoms:
+                raise ValueError(f"anchors array length {anchors.shape[0]} does not match total atoms {self.total_atoms}")
+            anchors = anchors.copy()
+        anchors[:, :3] = world_atoms_flat[:, :3]
+        self.toGPU('anchors', anchors)
+
+        self.toGPU('apos_world', world_atoms_flat)
         self.queue.finish()
 
     def run(self, num_steps, dt, efield=None):

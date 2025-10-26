@@ -169,18 +169,18 @@ python3 -u -m pyBall.OCL.run_rigid_body --xyz tests/tDFT/data/xyz/PTCDA.xyz --dt
 """
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run rigid-body dynamics on a single molecule using OpenCL")
-    parser.add_argument("--xyz",        type=str,   default="tests/tDFT/data/xyz/PTCDA.xyz",           help="Path to input XYZ file")
+    parser.add_argument("--xyz",        type=str,   default="tests/tDFT/data/xyz/PTCDA_dipol.xyz",           help="Path to input XYZ file")
     parser.add_argument("--traj",       type=str,   default="rigid_body_traj.xyz",    help="Output XYZ trajectory path")
-    parser.add_argument("--dt",         type=float, default=0.2,                    help="Integration timestep")
+    parser.add_argument("--dt",         type=float, default=0.1,                     help="Integration timestep")
     parser.add_argument("--steps",      type=int,   default=1,                        help="Number of integration steps per kernel launch")
-    parser.add_argument("--iterations", type=int,   default=100,                       help="Number of kernel launches to perform")
+    parser.add_argument("--iterations", type=int,   default=500,                      help="Number of kernel launches to perform")
     parser.add_argument("--mass-scale", type=float, default=1.0,                      help="Uniform atomic mass scale (amu)")
     parser.add_argument("--verbose",    type=int,   default=0,                        help="Print per-iteration summaries")
     parser.add_argument("--vlin",       type=float, nargs=3, default=[0.0, 0.0, 0.0], help="Initial linear velocity vector (vx vy vz)")
     parser.add_argument("--omega",      type=float, nargs=3, default=[0.0, 0.0, 0.0], help="Initial angular velocity magnitude about z-axis")
     parser.add_argument("--efield",     type=float, nargs=3, default=[0.0, 0.0, 1.0], help="Homogeneous electric field vector")
     parser.add_argument("--anchor-k",   type=float, default=1.0,                      help="Anchor stiffness constant (0 disables anchors)")
-    parser.add_argument("--anchor-indices", type=int, nargs='*', default=[27],         help="Atom indices to define the anchor point (default: all atoms)")
+    parser.add_argument("--anchor-indices", type=int, nargs='*', default=[25,26],     help="Atom indices to define the anchor point (default: all atoms)")
     args = parser.parse_args()
     run_simulation(
         xyz_path=args.xyz,
