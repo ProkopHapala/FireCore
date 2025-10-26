@@ -18,13 +18,15 @@ class MMFFL(MMFF):
     with extra bonds and optional pi dummy atoms.
     """
 
-    def __init__(self, *, L_pi=1.0, two_pi_dummies=False, Kang=0.0, Kpi_host=0.0, Kpi_orth=0.0, verbosity=1):
+    def __init__(self, *, L_pi=1.0, two_pi_dummies=False, Kang=0.0, Kpi_host=0.0, Kpi_orth=0.0, verbosity=1, lone_pairs_pi=False, align_pi_vectors=False):
         super().__init__(bTorsion=False, verbosity=verbosity)
         self.L_pi = float(L_pi)
         self.two_pi_dummies = bool(two_pi_dummies)
         self.K_ang = float(Kang)
         self.K_pi_host = float(Kpi_host)
         self.K_pi_orth = float(Kpi_orth)
+        self.lone_pairs_pi = bool(lone_pairs_pi)
+        self.align_pi_vectors = bool(align_pi_vectors)
         self.linear_bonds = []      # [(i, j, l0, k, tag)]
         self.pi_dummies = []        # [{'index': idx, 'host': ia, 'sign': +/-1.0}]
         self._dummy_start = 0
@@ -49,7 +51,15 @@ class MMFFL(MMFF):
         mol.nep_list = nep_list
         mol.isNode = is_node
 
-        super().toMMFFsp3_loc(mol=mol, atom_types=atom_types, bRealloc=True, bEPairs=False, bUFF=bUFF)
+        super().toMMFFsp3_loc(
+            mol=mol,
+            atom_types=atom_types,
+            bRealloc=True,
+            bEPairs=False,
+            bUFF=bUFF,
+            lone_pairs_pi=self.lone_pairs_pi,
+            align_pi_vectors=self.align_pi_vectors,
+        )
         self.reset_linearization_state()
         self._build_angle_bonds(mol, atom_types)
         host_npi = getattr(mol, "npi_list", npi_list)

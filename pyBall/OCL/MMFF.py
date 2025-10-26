@@ -264,7 +264,7 @@ class MMFF:
 
         return npi_list, nep_list, is_node
 
-    def toMMFFsp3_loc(self, mol, atom_types, bRealloc=True, bEPairs=False, bUFF=False):
+    def toMMFFsp3_loc(self, mol, atom_types, bRealloc=True, bEPairs=False, bUFF=False, *, lone_pairs_pi=False, align_pi_vectors=False):
         """
         Converts an AtomicSystem to the MMFFsp3_loc representation.
 
@@ -322,6 +322,26 @@ class MMFF:
                 npi_calc = 2
             npi_list[ia] = int(npi_calc)
             nep_list[ia] = conf_ne
+
+        if lone_pairs_pi:
+            augmented = np.array(npi_list, dtype=np.int32)
+            for ia in range(natom):
+                if augmented[ia] > 0:
+                    continue
+                if int(nep_list[ia]) <= 0:
+                    continue
+                neigh_container = ngs[ia]
+                if isinstance(neigh_container, dict):
+                    neigh_ids = list(neigh_container.keys())
+                else:
+                    neigh_ids = [int(nb) for nb in neigh_container if int(nb) >= 0]
+                for ja in neigh_ids:
+                    if ja < 0 or ja >= natom:
+                        continue
+                    if augmented[ja] > 0:
+                        augmented[ia] = 1
+                        break
+            npi_list = augmented.tolist()
 
         
         npi_total = sum(npi_list) 
@@ -500,6 +520,8 @@ class MMFF:
         mol.nep_list = [int(x) for x in nep_list]
 
         self._propagate_pi_dirs(mol, npi_list)
+        if align_pi_vectors:
+            self._align_pi_signs(mol, npi_list)
 
         # Normalize pi-orbital vectors and provide a safe fallback if zero
         if self.pipos is not None:
@@ -564,6 +586,44 @@ class MMFF:
                     print(f"DEBUG MMFF: propagate pi_vec ia={ia} -> {self.pipos[ia]} using neighbors {neigh_ids}")
                     updated = True
             if not updated:
+                break
+
+
+    def _align_pi_signs(self, mol, npi_list, *, max_iter=6):
+        if self.pipos is None:
+            return
+        ngs = getattr(mol, 'ngs', None)
+        if ngs is None:
+            return
+        nnode = min(self.nnode, len(npi_list))
+        for _ in range(max_iter):
+            flipped = False
+            for ia in range(nnode):
+                if npi_list[ia] <= 0:
+                    continue
+                v_host = self.pipos[ia]
+                host_norm = np.linalg.norm(v_host)
+                if host_norm < 1e-6:
+                    continue
+                neigh_container = ngs[ia] if ia < len(ngs) else []
+                if isinstance(neigh_container, dict):
+                    neigh_ids = list(neigh_container.keys())
+                else:
+                    neigh_ids = [int(nb) for nb in neigh_container if int(nb) >= 0]
+                baseline = None
+                for ja in neigh_ids:
+                    if ja < 0 or ja >= nnode or npi_list[ja] <= 0:
+                        continue
+                    vj = self.pipos[ja]
+                    norm_j = np.linalg.norm(vj)
+                    if norm_j < 1e-6:
+                        continue
+                    baseline = (vj / norm_j).astype(np.float32)
+                    if np.dot(v_host, baseline) < 0.0:
+                        self.pipos[ia] = -v_host
+                        flipped = True
+                    break
+            if not flipped:
                 break
 
 

@@ -74,10 +74,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate linearized MMFF topology with pi dummies.")
     #parser.add_argument("--input",     type=Path,  default="cpp/common_resources/mol/formaldehyde.mol2", help="Input molecule file (mol2/mol/xyz).")
     #parser.add_argument("--input",     type=Path,  default="cpp/common_resources/xyz/HCOOH.xyz", help="Input molecule file (mol2/mol/xyz).")
-    #parser.add_argument("--input",     type=Path,  default="cpp/common_resources/xyz/oxalate.xyz", help="Input molecule file (mol2/mol/xyz).")
+    parser.add_argument("--input",     type=Path,  default="cpp/common_resources/xyz/oxalate.xyz", help="Input molecule file (mol2/mol/xyz).")
     #parser.add_argument("--input",     type=Path,  default="cpp/common_resources/xyz/pyrrol.xyz", help="Input molecule file (mol2/mol/xyz).")
     #parser.add_argument("--input",     type=Path,  default="cpp/common_resources/xyz/pyridine.xyz", help="Input molecule file (mol2/mol/xyz).")
-    parser.add_argument("--input",     type=Path,  default="cpp/common_resources/xyz/uracil.xyz", help="Input molecule file (mol2/mol/xyz).")
+    #parser.add_argument("--input",     type=Path,  default="cpp/common_resources/xyz/uracil.xyz", help="Input molecule file (mol2/mol/xyz).")
 
     parser.add_argument("--output",    type=Path,  default="linearized.mol2",  help="Output MOL2 path for linearized topology.")
     parser.add_argument("--Lpi",       type=float, default=1.0,   help="Distance for pi dummy atoms (default 1.0).")
@@ -88,6 +88,8 @@ if __name__ == "__main__":
     parser.add_argument("--useuff",    type=int,   default=0,     help="Use UFF bond parameters when available.")
     parser.add_argument("--comment",   type=str,   default="",    help="Header comment stored in the output mol2.")
     parser.add_argument("--verbosity", type=int,   default=0,   help="Verbosity forwarded to MMFFL constructor.")
+    parser.add_argument("--lonepairs", type=int,   default=1,   help="Enable lone-pair driven pi orbitals (0/1).")
+    parser.add_argument("--alignpi",   type=int,   default=1,   help="Align neighboring pi vectors by sign flipping (0/1).")
     args = parser.parse_args()
 
     input_path = args.input.resolve()
@@ -114,6 +116,8 @@ if __name__ == "__main__":
         Kpi_host=float(args.KpiA),
         Kpi_orth=float(args.KpiB),
         verbosity=args.verbosity,
+        lone_pairs_pi=bool(args.lonepairs),
+        align_pi_vectors=bool(args.alignpi),
     )
 
     use_uff = bool(args.useuff)
