@@ -9,16 +9,6 @@ from .. import atomicUtils as au
 from .MMFFL import MMFFL
 
 
-# def _default_input() -> Path:
-#     base = Path(__file__).resolve().parents[2]
-#     return base / "tests" / "tDFT" / "data" / "mol" / "formaldehyde.mol2"
-
-
-def _derive_output(input_path: Path, suffix: str = "_linearized") -> Path:
-    stem = input_path.stem + suffix
-    return input_path.with_name(stem + input_path.suffix)
-
-
 def _collect_bonds(mol, mmffl) -> list[tuple[int, int]]:
     bond_set = set()
     if mol.bonds is not None:
@@ -29,20 +19,52 @@ def _collect_bonds(mol, mmffl) -> list[tuple[int, int]]:
     bonds = sorted(bond_set)
     return bonds
 
-
 def _build_linearized(mmffl: MMFFL, mol: AtomicSystem):
     apos = np.asarray(mmffl.apos[:mmffl.natoms, :3], dtype=float)
     orig_natoms = int(mol.apos.shape[0])
     extra = int(mmffl.natoms - orig_natoms)
 
-    base_names = [str(e) for e in mol.enames]
-    if len(base_names) < orig_natoms:
-        base_names = list(base_names) + ["X"] * (orig_natoms - len(base_names))
-    for _ in range(extra):
-        base_names.append("Du")
+    perm = getattr(mol, "perm_nodes_first", None)
+    if perm is None or len(perm) != orig_natoms:
+        base_names = [str(e) for e in mol.enames]
+        if len(base_names) < orig_natoms:
+            base_names = list(base_names) + ["X"] * (orig_natoms - len(base_names))
+        for _ in range(extra):
+            base_names.append("Du")
+        bonds = _collect_bonds(mol, mmffl)
+        return apos, base_names, bonds, extra
 
-    bonds = _collect_bonds(mol, mmffl)
-    return apos, base_names, bonds, extra
+    perm = list(perm)
+    inv_perm = getattr(mol, "perm_inverse", None)
+    if inv_perm is None:
+        inv_perm = [0] * len(perm)
+        for new_idx, orig_idx in enumerate(perm):
+            inv_perm[orig_idx] = new_idx
+
+    orig_positions = np.zeros((orig_natoms, 3), dtype=float)
+    orig_names = [None] * orig_natoms
+    for new_idx, orig_idx in enumerate(perm):
+        orig_positions[orig_idx] = apos[new_idx]
+        orig_names[orig_idx] = str(mol.enames[new_idx])
+
+    if extra > 0:
+        final_positions = np.vstack([orig_positions, apos[orig_natoms:]])
+    else:
+        final_positions = orig_positions
+
+    base_names = orig_names + ["Du"] * extra
+
+    index_map = {new_idx: perm[new_idx] for new_idx in range(orig_natoms)}
+    for new_idx in range(orig_natoms, mmffl.natoms):
+        index_map[new_idx] = new_idx
+
+    bonds = []
+    for i, j in _collect_bonds(mol, mmffl):
+        mapped = tuple(sorted((index_map[i], index_map[j])))
+        bonds.append(mapped)
+    bonds = sorted(set(bonds))
+
+    return final_positions, base_names, bonds, extra
 
 '''
 #python -m pyBall.OCL.mmffl_export --input tests/tDFT/data/mol/formaldehyde.mol2 --output formaldehyde_linearized.mol2 --two-pi-dummies --L-pi 1.2
@@ -50,8 +72,14 @@ python -m pyBall.OCL.mmffl_export
 '''
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate linearized MMFF topology with pi dummies.")
-    parser.add_argument("--input",     type=Path,  default="data/mol/formaldehyde.mol2", help="Input molecule file (mol2/mol/xyz).")
-    parser.add_argument("--output",    type=Path,  default=None,  help="Output MOL2 path for linearized topology.")
+    #parser.add_argument("--input",     type=Path,  default="cpp/common_resources/mol/formaldehyde.mol2", help="Input molecule file (mol2/mol/xyz).")
+    #parser.add_argument("--input",     type=Path,  default="cpp/common_resources/xyz/HCOOH.xyz", help="Input molecule file (mol2/mol/xyz).")
+    #parser.add_argument("--input",     type=Path,  default="cpp/common_resources/xyz/oxalate.xyz", help="Input molecule file (mol2/mol/xyz).")
+    #parser.add_argument("--input",     type=Path,  default="cpp/common_resources/xyz/pyrrol.xyz", help="Input molecule file (mol2/mol/xyz).")
+    #parser.add_argument("--input",     type=Path,  default="cpp/common_resources/xyz/pyridine.xyz", help="Input molecule file (mol2/mol/xyz).")
+    parser.add_argument("--input",     type=Path,  default="cpp/common_resources/xyz/uracil.xyz", help="Input molecule file (mol2/mol/xyz).")
+
+    parser.add_argument("--output",    type=Path,  default="linearized.mol2",  help="Output MOL2 path for linearized topology.")
     parser.add_argument("--Lpi",       type=float, default=1.0,   help="Distance for pi dummy atoms (default 1.0).")
     parser.add_argument("--twopi",     type=int,   default=0,       help="Place pi dummies on both sides (default off).")
     parser.add_argument("--Kang",      type=float, default=0.0,    help="Stiffness for angle-replacement bonds.")

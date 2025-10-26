@@ -198,6 +198,72 @@ class MMFF:
         arr[mask] = self.back_neighs[mask] // 4
         return arr
 
+    def _ensure_node_first(self, mol, atom_types):
+        natoms = mol.apos.shape[0]
+        perm_existing = getattr(mol, "perm_nodes_first", None)
+        if perm_existing is not None and len(perm_existing) == natoms:
+            npi_list = getattr(mol, "npi_list", None)
+            nep_list = getattr(mol, "nep_list", None)
+            is_node = getattr(mol, "isNode", None)
+            if npi_list is None or len(npi_list) != natoms or nep_list is None or len(nep_list) != natoms or is_node is None or len(is_node) != natoms:
+                npi_list, nep_list, is_node = initAtomProperties(mol, atom_types, self.capping_atoms, bPrint=False)
+                mol.npi_list = list(npi_list)
+                mol.nep_list = list(nep_list)
+                mol.isNode = list(is_node)
+            if mol.ngs is None:
+                mol.neighs()
+            return list(mol.npi_list), list(mol.nep_list), list(mol.isNode)
+
+        npi_raw, nep_raw, is_node_raw = initAtomProperties(mol, atom_types, self.capping_atoms, bPrint=False)
+        node_indices = [i for i, flag in enumerate(is_node_raw) if flag > 0]
+        cap_indices = [i for i, flag in enumerate(is_node_raw) if flag <= 0]
+        perm = node_indices + cap_indices
+
+        if perm == list(range(natoms)):
+            mol.perm_nodes_first = perm
+            mol.perm_inverse = list(range(natoms))
+            mol.npi_list = list(int(x) for x in npi_raw)
+            mol.nep_list = list(int(x) for x in nep_raw)
+            mol.isNode = list(int(x) for x in is_node_raw)
+            if mol.ngs is None:
+                mol.neighs()
+            return list(mol.npi_list), list(mol.nep_list), list(mol.isNode)
+
+        perm_arr = np.array(perm, dtype=np.int32)
+        inv_perm = np.empty_like(perm_arr)
+        inv_perm[perm_arr] = np.arange(natoms, dtype=np.int32)
+
+        mol.apos = mol.apos[perm_arr].copy()
+        if mol.atypes is not None:
+            mol.atypes = mol.atypes[perm_arr].copy()
+        if mol.qs is not None:
+            mol.qs = mol.qs[perm_arr].copy()
+        if mol.Rs is not None:
+            mol.Rs = mol.Rs[perm_arr].copy()
+        if mol.enames is not None:
+            mol.enames = [mol.enames[i] for i in perm_arr]
+
+        if mol.bonds is not None:
+            remapped_bonds = []
+            for a, b in mol.bonds:
+                remapped_bonds.append((int(inv_perm[int(a)]), int(inv_perm[int(b)])))
+            mol.bonds = remapped_bonds
+
+        npi_list = np.asarray(npi_raw, dtype=np.int32)[perm_arr].tolist()
+        nep_list = np.asarray(nep_raw, dtype=np.int32)[perm_arr].tolist()
+        is_node = np.asarray(is_node_raw, dtype=np.int32)[perm_arr].tolist()
+
+        mol.npi_list = npi_list
+        mol.nep_list = nep_list
+        mol.isNode = is_node
+        mol.perm_nodes_first = perm_arr.tolist()
+        mol.perm_inverse = inv_perm.tolist()
+
+        mol.ngs = None
+        mol.neighs()
+
+        return npi_list, nep_list, is_node
+
     def toMMFFsp3_loc(self, mol, atom_types, bRealloc=True, bEPairs=False, bUFF=False):
         """
         Converts an AtomicSystem to the MMFFsp3_loc representation.
@@ -211,9 +277,7 @@ class MMFF:
         """
         ang0s = [109.5 * np.pi / 180.0, 120.0 * np.pi / 180.0, 180.0 * np.pi / 180.0]  # in radians
 
-        npi_list = getattr(mol, 'npi_list', [atom_types[name].npi for name in mol.enames    ])
-        nep_list = getattr(mol, 'nep_list', [atom_types[name].nepair for name in mol.enames ]) 
-        isNode   = getattr(mol, 'isNode', [0 if atom_types[name].element_name in self.capping_atoms else 1 for name in mol.enames])
+        npi_list, nep_list, isNode = self._ensure_node_first(mol, atom_types)
         REQs     = getattr(mol, 'REQs', MMparams.generate_REQs_from_atom_types(mol, atom_types))
         #self.REQs[:,:] = REQs[:,:] # self.REQs not yet allocated
 
@@ -236,6 +300,28 @@ class MMFF:
                     ngs_[ia,i] = k # neigh atom
                     i += 1
             ngs = ngs_
+        else:
+            for ia, row in enumerate(ngs):
+                if isinstance(row, dict):
+                    nngs[ia] = len(row)
+                else:
+                    nngs[ia] = sum(1 for nb in row if nb >= 0)
+
+        for ia in range(natom):
+            at_name = mol.enames[ia]
+            at_type = atom_types.get(at_name)
+            if at_type is None:
+                continue
+            nbond = int(nngs[ia])
+            conf_ne = int(getattr(at_type, 'nepair', 0))
+            val_total = int(getattr(at_type, 'valence', 4)) + conf_ne
+            npi_calc = val_total - nbond - conf_ne
+            if npi_calc < 0:
+                npi_calc = 0
+            if npi_calc > 2:
+                npi_calc = 2
+            npi_list[ia] = int(npi_calc)
+            nep_list[ia] = conf_ne
 
         
         npi_total = sum(npi_list) 
@@ -290,8 +376,16 @@ class MMFF:
                 # Assign parameters
                 conf_index = 0  # Default configuration index, no longer using iconf
                 # Try to get neighbors for this atom, if available
-                conf_npi = atom_type.npi
-                conf_ne  = atom_type.nepair
+                conf_npi = max(int(getattr(atom_type, 'npi', 0)), int(npi_list[ia]))
+                conf_ne  = int(nep_list[ia])
+                if conf_npi <= 0:
+                    val_total = int(getattr(atom_type, 'valence', 4)) + conf_ne
+                    npi_calc = val_total - nbond - conf_ne
+                    if npi_calc < 0:
+                        npi_calc = 0
+                    if npi_calc > 2:
+                        npi_calc = 2
+                    conf_npi = npi_calc
 
                 if conf_npi > 2:
                     print(f"ERROR in MM::Builder::toMMFFsp3_loc(): atom[{ia}].conf.npi({conf_npi}) > 2 => exit()")
@@ -363,15 +457,24 @@ class MMFF:
                         self.Kpp[ia, k] = 0.0
 
                 # Setup configuration geometry based on bonds
+                if nbond <= 1:
+                    self.pipos[ia] = np.array([0.0, 0.0, 0.0], dtype=np.float32)
                 
                 hs_filled = self.makeConfGeom(nb=nbond, npi=conf_npi)
-                # hs_filled is a (4,3) array; assign pi-orbital orientations
                 if nbond < 4:
-                    # Fill remaining hs with existing directions
                     for idx in range(nbond, 4):
-                        hs_filled[idx] = hs[idx]  # Existing bond directions or zeros
-                self.pipos[ia] = hs_filled[3]  # Assign the fourth direction as pi orientation
-                print(f"DEBUG MMFF: ia={ia} pi_vec={self.pipos[ia]} from hs_filled[3]={hs_filled[3]}")
+                        hs_filled[idx] = hs[idx]
+                if conf_npi > 0 and hasattr(mol, 'get_atomi_pi_direction'):
+                    pi_vec = mol.get_atomi_pi_direction(ia)
+                else:
+                    pi_vec = hs_filled[3]
+                norm_pi = np.linalg.norm(pi_vec)
+                if norm_pi >= 1e-6:
+                    pi_vec = (pi_vec / norm_pi).astype(np.float32)
+                else:
+                    pi_vec = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+                self.pipos[ia] = pi_vec
+                print(f"DEBUG MMFF: init pi_vec ia={ia} -> {self.pipos[ia]} (raw={hs_filled[3]})")
 
                 if bEPairs:
                     # Generate electron pairs
@@ -392,16 +495,24 @@ class MMFF:
                             self.Ksp[ia, k] = atom_type.Ksp
                         else:
                             self.Ksp[ia, k] = 0.0
-        
+
+        mol.npi_list = [int(x) for x in npi_list]
+        mol.nep_list = [int(x) for x in nep_list]
+
+        self._propagate_pi_dirs(mol, npi_list)
+
         # Normalize pi-orbital vectors and provide a safe fallback if zero
         if self.pipos is not None:
             for i in range(self.nnode):
                 v = self.pipos[i]
                 n = np.linalg.norm(v)
                 if not np.isfinite(n) or n < 1e-8:
-                    self.pipos[i] = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+                    print(f"WARNING MMFF: pi_dir unresolved for node {i}, leaving zero vector")
+                    self.pipos[i] = np.array([0.0, 0.0, 0.0], dtype=np.float32)
                 else:
                     self.pipos[i] = (v / n).astype(np.float32)
+                if npi_list[i] > 0:
+                    print(f"DEBUG MMFF: final pi_vec ia={i} -> {self.pipos[i]} (norm={n})")
 
         # Write pi-orbital unit vectors into the tail of apos (indices natoms : natoms+nnode)
         # This matches kernels expecting apos[iav + nAtoms] to hold pi orientation for each node atom
@@ -411,6 +522,50 @@ class MMFF:
 
         # Prepare simple back-neighbor placeholder (atom indices). GPU expects indices into fneigh; left for future mapping.
         self.make_back_neighs()
+
+    def _propagate_pi_dirs(self, mol, npi_list, *, min_norm=0.7, max_iter=4):
+        if self.pipos is None:
+            return
+        ngs = getattr(mol, 'ngs', None)
+        if ngs is None:
+            return
+        nnode = min(self.nnode, len(npi_list))
+        for _ in range(max_iter):
+            updated = False
+            for ia in range(nnode):
+                if npi_list[ia] <= 0:
+                    continue
+                v_host = self.pipos[ia]
+                host_norm = np.linalg.norm(v_host)
+                if host_norm >= min_norm:
+                    continue
+                acc = np.zeros(3, dtype=np.float32)
+                neigh_container = ngs[ia] if ia < len(ngs) else []
+                if isinstance(neigh_container, dict):
+                    neigh_ids = list(neigh_container.keys())
+                else:
+                    neigh_ids = [int(nb) for nb in neigh_container if int(nb) >= 0]
+                for ja in neigh_ids:
+                    if ja < 0 or ja >= nnode:
+                        continue
+                    vj = self.pipos[ja]
+                    norm_j = np.linalg.norm(vj)
+                    if norm_j < 1e-6:
+                        continue
+                    vj_unit = (vj / norm_j).astype(np.float32)
+                    if host_norm > 1e-6 and np.dot(v_host, vj_unit) < 0.0:
+                        vj_unit = -vj_unit
+                    elif np.linalg.norm(acc) > 1e-6 and np.dot(acc, vj_unit) < 0.0:
+                        vj_unit = -vj_unit
+                    acc += vj_unit
+                acc_norm = np.linalg.norm(acc)
+                if acc_norm >= min_norm:
+                    self.pipos[ia] = (acc / acc_norm).astype(np.float32)
+                    print(f"DEBUG MMFF: propagate pi_vec ia={ia} -> {self.pipos[ia]} using neighbors {neigh_ids}")
+                    updated = True
+            if not updated:
+                break
+
 
     def assignBondParamsSimple(self, ia, ja, mol, atom_types ):
         ti = atom_types[mol.enames[ia]]

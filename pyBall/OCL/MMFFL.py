@@ -52,7 +52,11 @@ class MMFFL(MMFF):
         super().toMMFFsp3_loc(mol=mol, atom_types=atom_types, bRealloc=True, bEPairs=False, bUFF=bUFF)
         self.reset_linearization_state()
         self._build_angle_bonds(mol, atom_types)
-        self._build_pi_dummies(atom_types, npi_list)
+        host_npi = getattr(mol, "npi_list", npi_list)
+        if isinstance(host_npi, np.ndarray):
+            host_npi = host_npi.tolist()
+        host_npi = [int(x) for x in host_npi]
+        self._build_pi_dummies(atom_types, host_npi)
         self._sync_pi_block()
         return self
 
