@@ -131,7 +131,7 @@ class MMFFL(MMFF):
         old_vecs = self.nvecs
         new_atoms = old_atoms + n_extra
         new_vecs = new_atoms + self.nnode
-        old_pi_block = self.apos[old_atoms:old_atoms + self.nnode].copy()
+        old_pi_block = self.apos[old_atoms:old_atoms + self.nnode, :3].copy()
         old_pi_force = self.fapos[old_atoms:old_atoms + self.nnode].copy()
         self.apos = self._grow_matrix(self.apos, (new_vecs, 4), fill=0.0)
         self.fapos = self._grow_matrix(self.fapos, (new_vecs, 4), fill=0.0)

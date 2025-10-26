@@ -10,7 +10,17 @@ deg2rad = np.pi / 180.0
 
 verbosity = 0
 
-def initAtomProperties(mol, atom_types, capping_atoms={'H'}):
+PI_HINTS = {
+    # Carbon families
+    "C_2": 1, "C_R": 1, "C_ene": 1, "C_ald": 1, "C_COO": 1,
+    "C_1": 2, "C_yne": 2,
+    # Oxygen families
+    "O_2": 1, "O_R": 1, "O_ald": 1, "O_pCOO": 1,
+    # Nitrogen families
+    "N_2": 1, "N_R": 1, "N_1": 2,
+}
+
+def initAtomProperties(mol, atom_types, capping_atoms={'H'}, bPrint=True):
     """Initialize atom properties (npi, nep, isNode) based on atom types.
     
     Args:
@@ -28,9 +38,25 @@ def initAtomProperties(mol, atom_types, capping_atoms={'H'}):
             at = atom_types[atom_name]
             npi_list[i] = at.npi
             nep_list[i] = at.nepair
-            # Mark as capping if element is in capping set
+            if bPrint:
+                if npi_list[i] > 0:
+                    print(f"DEBUG initAtomProperties: atom {i} {atom_name} npi={npi_list[i]} nep={nep_list[i]}")
+                else:
+                    hinted = PI_HINTS.get(atom_name, 0)
+                    if hinted > 0:
+                        npi_list[i] = hinted
+                        print(f"DEBUG initAtomProperties: atom {i} {atom_name} using hint npi={hinted}")
+        # Mark as capping if element is in capping set
+        if atom_name in capping_atoms:
+            isNode[i] = 0
+        elif atom_name in atom_types:
+            at = atom_types[atom_name]
             if at.element_name in capping_atoms:
                 isNode[i] = 0
+            elif bPrint:
+                print(f"DEBUG initAtomProperties: atom {i} {atom_name} element={at.element_name} marked node")
+        elif bPrint:
+            print(f"DEBUG initAtomProperties: atom {i} {atom_name} not in atom_types -> treated as node")
     return npi_list, nep_list, isNode
 
 class MMFF:
@@ -284,6 +310,7 @@ class MMFF:
                 if verbosity > 0: print( "nbond", nbond )
                 # Setup neighbors - ngs is already populated above
                 hs = np.zeros((4, 3), dtype=np.float32)
+                print(f"DEBUG MMFF: ia={ia} {A_ename} nbond={nbond} conf_npi={conf_npi} conf_ne={conf_ne}")
                 for k in range(nbond):
                     ja = ngi[k]  # ja is the atom index of the neighbor
                     if verbosity > 2: print( "ia,ja", ia,ja )
@@ -344,6 +371,7 @@ class MMFF:
                     for idx in range(nbond, 4):
                         hs_filled[idx] = hs[idx]  # Existing bond directions or zeros
                 self.pipos[ia] = hs_filled[3]  # Assign the fourth direction as pi orientation
+                print(f"DEBUG MMFF: ia={ia} pi_vec={self.pipos[ia]} from hs_filled[3]={hs_filled[3]}")
 
                 if bEPairs:
                     # Generate electron pairs
