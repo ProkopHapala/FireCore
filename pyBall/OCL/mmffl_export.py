@@ -9,9 +9,9 @@ from .. import atomicUtils as au
 from .MMFFL import MMFFL
 
 
-def _default_input() -> Path:
-    base = Path(__file__).resolve().parents[2]
-    return base / "tests" / "tDFT" / "data" / "mol" / "formaldehyde.mol2"
+# def _default_input() -> Path:
+#     base = Path(__file__).resolve().parents[2]
+#     return base / "tests" / "tDFT" / "data" / "mol" / "formaldehyde.mol2"
 
 
 def _derive_output(input_path: Path, suffix: str = "_linearized") -> Path:
@@ -50,7 +50,7 @@ python -m pyBall.OCL.mmffl_export
 '''
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate linearized MMFF topology with pi dummies.")
-    parser.add_argument("--input",     type=Path,  default=_default_input(), help="Input molecule file (mol2/mol/xyz).")
+    parser.add_argument("--input",     type=Path,  default="data/mol/formaldehyde.mol2", help="Input molecule file (mol2/mol/xyz).")
     parser.add_argument("--output",    type=Path,  default=None,  help="Output MOL2 path for linearized topology.")
     parser.add_argument("--Lpi",       type=float, default=1.0,   help="Distance for pi dummy atoms (default 1.0).")
     parser.add_argument("--twopi",     type=int,   default=0,       help="Place pi dummies on both sides (default off).")
