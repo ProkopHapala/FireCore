@@ -9,6 +9,15 @@ DEFAULT_WORKGROUP_SIZE = 32
 DEFAULT_MAX_ATOMS_PER_BODY = 128
 
 
+def _pack_float3(arr):
+    vec = np.asarray(arr, dtype=np.float32)
+    if vec.shape != (3,):
+        raise ValueError(f"Expected array of shape (3,) for float3, got {vec.shape}")
+    out = np.zeros(4, dtype=np.float32)
+    out[:3] = vec
+    return out
+
+
 def _ensure_float4(arr, w_value=0.0):
     arr = np.asarray(arr, dtype=np.float32)
     if arr.ndim != 2:
@@ -75,16 +84,18 @@ class RigidBodyDynamics(OpenCLBase):
             "rigid_body_dynamics_kernel": """__kernel
 void rigid_body_dynamics_kernel(
     __global const int*      mols,
-    __global const float4*   poss,
-    __global const float4*   qrots,
-    __global const float4*   vposs,
-    __global const float4*   vrots,
+    __global float4*         poss,
+    __global float4*         qrots,
+    __global float4*         vposs,
+    __global float4*         vrots,
     __global const cl_Mat3*  I_body_inv,
     __global const float4*   apos_body,
     __global float4*         apos_world,
+    __global const float4*   anchors,
     const int   natoms,
     const int   niter,
-    const float dt
+    const float dt,
+    const float3  Efield
 )"""
         }
 
@@ -111,6 +122,7 @@ void rigid_body_dynamics_kernel(
         self.create_buffer('vposs',  self.n_bodies * bytes_per_body, mf.READ_WRITE)
         self.create_buffer('vrots',  self.n_bodies * bytes_per_body, mf.READ_WRITE)
         self.create_buffer('I_body_inv', self.n_bodies * mat3_size,      mf.READ_ONLY)
+        self.create_buffer('anchors', self.total_atoms * 4 * float_size, mf.READ_ONLY)
 
         total_atom_bytes = self.total_atoms * 4 * float_size
         self.create_buffer('apos_body',  total_atom_bytes, mf.READ_ONLY)
@@ -120,10 +132,11 @@ void rigid_body_dynamics_kernel(
             'natoms': np.int32(self.total_atoms),
             'niter': np.int32(1),
             'dt': np.float32(0.01),
+            'Efield': np.zeros(4, dtype=np.float32),
         }
         self.kernel_args = self.generate_kernel_args("rigid_body_dynamics_kernel")
 
-    def upload_state(self, pos, quats, lin_mom, ang_mom, mass, inv_mass, inertia_inv, atom_pos_body):
+    def upload_state(self, pos, quats, lin_mom, ang_mom, mass, inv_mass, inertia_inv, atom_pos_body, anchors=None):
         if self.n_bodies == 0:
             raise RuntimeError("Call realloc() before uploading state")
 
@@ -153,21 +166,31 @@ void rigid_body_dynamics_kernel(
         self.toGPU('vrots', ang_in)
         self.toGPU('I_body_inv', inertia_inv)
         self.toGPU('apos_body', atoms_body)
+        if anchors is None:
+            anchors = np.zeros((self.total_atoms, 4), dtype=np.float32)
+        anchors = _ensure_float4(anchors)
+        if anchors.shape[0] != self.total_atoms:
+            raise ValueError(f"anchors array length {anchors.shape[0]} does not match total atoms {self.total_atoms}")
+        self.toGPU('anchors', anchors)
 
         # initialize world positions consistent with current state
+        atoms  = atoms_body.reshape(self.n_bodies, self.num_atoms, 4)
         world_atoms = np.zeros_like(atoms)
-        for ib in range(self.n_bodies):
-            world_atoms[ib, :, :3] = atoms[ib, :, :3] @ _quat_to_matrix_np(quats_in[ib]).T + pos_in[ib, :3]
-        world_atoms = world_atoms.reshape(self.total_atoms, 4)
+        # for ib in range(self.n_bodies):
+        #     world_atoms[ib, :, :3] = atoms[ib, :, :3] @ _quat_to_matrix_np(quats_in[ib]).T + pos_in[ib, :3]
+        #     world_atoms[ib, :, 3]  = atoms[ib, :, 3]
+        # world_atoms = world_atoms.reshape(self.total_atoms, 4)
         self.toGPU('apos_world', world_atoms)
         self.queue.finish()
 
-    def run(self, num_steps, dt):
+    def run(self, num_steps, dt, efield=None):
         if self.kernel_args is None:
             raise RuntimeError("Kernel arguments not initialized; call realloc() first")
 
         self.kernel_params['niter'] = np.int32(num_steps)
         self.kernel_params['dt'] = np.float32(dt)
+        if efield is not None:
+            self.kernel_params['Efield'] = _pack_float3(efield)
         self.kernel_args = self.generate_kernel_args("rigid_body_dynamics_kernel")
 
         global_size = (self.roundUpGlobalSize(self.n_bodies * self.nloc),)
