@@ -73,7 +73,7 @@ def read_simulation(fileToReadPath):
         flexVar.append(flex_line)
         variance.append(var_line)
         allEtot.append(etot_line)
-
+        
         i += 3  # advance by 3 lines per block
 
     return angleArr, distArr, flexVar, variance, allEtot, minTheta
@@ -137,8 +137,8 @@ def minVal():
     if os.path.exists(fileToSaveProcess):
         os.remove(fileToSaveProcess) # deleting useless information
     
-    KRSrho = np.array([1.125, 0.9, -0.2])
-    KRSrho = np.array([ 1.07161943,  0.83937069, -0.20645425])
+    # KRSrho = np.array([1.125, 0.9, -0.2])
+    # KRSrho = np.array([ 1.07161943,  0.83937069, -0.20645425])
     eff.setTrjName(fileToSaveProcess, savePerNsteps=1)
     eff.setVerbosity(0,0)
     eff.setFixedAtoms(fixedAtoms)
