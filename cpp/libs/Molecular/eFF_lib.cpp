@@ -234,6 +234,7 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
             break;
         }
         if( (trj_fname) && (itr%savePerNsteps==0) )  ff.save_xyz( trj_fname, "a" );
+
     }
     if(verbosity>1){ printf("run() %s in %6i iterations Etot[eV] %16.8f |F|[eV/A] %16.8f (Fconv=%g) \n", *bConv ? "    CONVERGED" : "NOT-CONVERGED", itr, Etot, sqrt(F2), Fconv ); };
     //printShortestBondLengths();
@@ -272,7 +273,7 @@ void relaxed_scan( int nconf, int nfix, double* fixed_poss, int* fixed_inds_, do
     ff.realloc_fixed(nfix);
     for(int iconf=0; iconf<nconf; iconf++){
         //if((verbosity>0)&&(nstepMax>0))printf( "relaxed_scan() iconf %3i \n", iconf );
-        if(verbosity>0)printf( "--- relaxed_scan() iconf %3i \n", iconf );
+        if(verbosity>0)printf( "--- relaxed_scan() iconf %3i \n", iconf ); 
         if( nfix>0 ){ set_constrains( nfix, ((Quat4d*)fixed_poss)+iconf*nfix, fixed_inds, false ); }
         if( nstepMax > 0 ){
             run( nstepMax, dt, Fconv, ialg, 0, 0 );
@@ -731,7 +732,7 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
 
 
 // This functions takes .xyz file with full electron description
-int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int optAlg=2, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo", int* convSum=0){
+int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* fapos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int optAlg=2, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo", int* convSum=0){
     printf("processXYZ_e(%s)\n", fname);
     //double8* apars = ff.atom_params2;
     FILE* fin = fopen(fname, "r");
@@ -783,11 +784,12 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* e
                 }
             }  
             ff.eval();
-            ff.copyEnergies         (         outEs, iconf );
-            ff.copyAtomPositions    ((Vec3d* )apos_, iconf );
-            ff.copyElectronPositions((Quat4d*)epos_, iconf );
+            ff.copyEnergies         (         outEs,  iconf );
+            ff.copyAtomPositions    ((Vec3d* )apos_,  iconf );
+            ff.copyAtomForces       ((Vec3d* )fapos_, iconf );
+            ff.copyElectronPositions((Quat4d*)epos_,  iconf );
             if(verbosity>0) printf(" processXYZ_e() iconf: %3i na: %3i ne: %3i Etot: %16.8f\n", iconf, na, ne, ff.Etot);
-            if(xyz_out) ff.save_xyz(xyz_out, "a");
+            if(xyz_out) save_xyz(xyz_out, 1);
             il = 0;
             ia = 0;
             ie = 0;

@@ -734,6 +734,7 @@ double evalAE_MultiGauss(){
             if( aPar.z>1e-8 ){ // is there a core electron?
                 // tady spocitat prekryv gaussianu 
                 if (bEvalAEPauli) {
+                    // dEaePaul = addPauliGauss_New( dR, aPar.y, sj, f, fsj, fs_junk, 0, KRSrho, qj*aPar.z*0.5 );
                     dEaePaul = addPauliMultiGauss( dR, paramsSi, sj, eConst, f, fs_junk, fsj); // spin=0 means both -1 and +1  
                 }
                 if(bCoreCoul   ){ dEee     = addCoulombGauss  ( dR, aPar.y, sj, f, fsj, fs_junk,            qj*aPar.z     ); 
@@ -928,6 +929,8 @@ double eval(){
         // printf("\n bUseECPs: %i, bMultiGauss: %i \n", bUseECPs, bMultiGauss);
         if(bUseECPs){ Etot+= evalAE_ECP(); }
         else if (bMultiGauss) {Etot += evalAE_MultiGauss();}
+        // else if (bMultiGauss) {Etot += evalAE();}
+
         else        { Etot+= evalAE();     }
     }
     if(bEvalAA         ) Etot+= evalAA();
@@ -1197,6 +1200,7 @@ void setCoreMode(char coreMode_){
             bCoreCoul = true;
             //bCoreCoul = false;
             bUseECPs  = false;
+            bMultiGauss = false;
             break;
         case 'e': // ECP: Enhanced Core pseudo-Potential
             //bCoreCoul = true;
@@ -1427,6 +1431,13 @@ inline void analyse_angles(const Vec3i* triples,int nTriples,double* out){
         if(apos_out){
             Vec3d* apos = apos_out + iconf*na;
             for(int j=0; j<na; j++){ apos[j] = this->apos[j]; }
+        }
+    }
+
+    void copyAtomForces(Vec3d* fapos_out, int iconf=0) const {
+        if(fapos_out){
+            Vec3d* fapos = fapos_out + iconf*na;
+            for(int j=0; j<na; j++){ fapos[j] = this->aforce[j]; }
         }
     }
 

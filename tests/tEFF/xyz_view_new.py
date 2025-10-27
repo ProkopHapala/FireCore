@@ -237,19 +237,15 @@ class MolViewer(AppWindow):
 if __name__ == '__main__':
     from pyBall import atomicUtils as au
     #app = QApplication(sys.argv)
-    print("1")
     parser = argparse.ArgumentParser(description="Modern OpenGL Molecular Viewer")
     parser.add_argument("-f", "--file", type=str, help="Path to the XYZ trajectory file", default=None) # Default to None
     args = parser.parse_args()
     print(args)
 
     trj = au.load_xyz_movie(args.file)
-    print("2.1")
     trj = au.trj_to_ename(trj)
-    print("2.2")
     trj = au.trj_fill_radius(trj, bVdw=True, rFactor=0.001, rmin=0.05) # Adjusted rFactor for visibility
     #trj = au.trj_fill_radius(trj, bVdw=False, rFactor=1.0)
-    print("3")
 
     print( "trj.enames", trj[0])
     print("4")

@@ -10,11 +10,11 @@ sys.path.append("../../")
 from pyBall import eFF as eff
 elementPath = "export/scan_data/angdistscan_CH4.xyz"
 elementPath_e = "export/scan_data/angdistscan_CH4_ee.xyz"
-fileToReadPath = "results/AI/result_dual_anneal.txt"
+fileToReadPath = "results/AI/result_dual_anneal_CH4_4par.txt"
 fileToSaveProcess = "processXYZ.xyz"
 maxBars = 20
 fixedAtoms = True
-
+# ConvSumArr = []
 
 def plot_energy_landscape( Xs, Ys, Es, Espan=None):
     """Plot energy landscape from XYZ file using imshow (simple and robust)."""
@@ -40,10 +40,26 @@ def plot_energy_landscape( Xs, Ys, Es, Espan=None):
     #plt.title('Potential Energy Surface')     
 
 def read_min_theta(fileToReadPath):
-    with open(fileToReadPath, "r") as f:
-        lines = f.readlines()
-    minTheta = np.array([float(x) for x in lines[0].split()])
-    return minTheta
+    angleArr, distArr, flexVar, variance, allEtot, minTheta, ConvSumArr = read_simulation(fileToReadPath)
+    variance = np.array(variance, dtype=float)
+    print(ConvSumArr[0])
+    print("--------------------------")    
+    print(ConvSumArr[1])
+
+    mask = (np.char.strip(ConvSumArr) == '[400]')
+    print("mask: ", mask)
+    # print("nConvSum: ", ConvSumArr)
+    if np.any(mask):
+        idx_candidates = np.where(mask)[0]
+        idx_min = idx_candidates[np.argmin(variance[idx_candidates])]
+        print("index (0-based):", idx_min)
+    # sorted = np.unique(variance)
+    # lowest = sorted[0]
+        return flexVar[idx_min]
+    else:
+        return flexVar[np.argmin(variance)]
+
+
 
 
 def read_simulation(fileToReadPath):
@@ -61,22 +77,24 @@ def read_simulation(fileToReadPath):
     # The rest are blocks of 3 lines each: flexVar, variance, allEtot
     flexVar = []
     variance = []
-    allEtot = []
+    nOfFunc = []
+    nConvSum = []
 
     # Start after angle and dist (which were at line 0 and 1)
-    i = 3
+    i = 0 
     while i < len(lines):
-        flex_line = np.array([float(x) for x in lines[i].split()])
-        var_line = np.array([float(x) for x in lines[i + 1].split()])
-        etot_line = np.array([float(x) for x in lines[i + 2].split()])
+        n_line = np.array([float(x) for x in lines[i].split()])
+        flex_line = np.array([float(x) for x in lines[i+1].split()])
+        var_line = np.array([float(x) for x in lines[i + 2].split()])
+        nConvSum.append(lines[i+3])
 
         flexVar.append(flex_line)
         variance.append(var_line)
-        allEtot.append(etot_line)
+        nOfFunc.append(n_line)
 
-        i += 3  # advance by 3 lines per block
+        i += 4  # advance by 3 lines per block
 
-    return angleArr, distArr, flexVar, variance, allEtot, minTheta
+    return angleArr, distArr, flexVar, variance, nOfFunc, minTheta, nConvSum
 
 def extract_blocks(xyz_file):
     """Extract parameters from XYZ file comments (lines starting with #)
@@ -133,13 +151,16 @@ def allVal():
 def minVal():
     print("#=========== RUN /home/gabriel/git/FireCore/tests/tEFF/AI_angdist_show.py, all values")
     print(f"Loading from file {fileToReadPath}")
-    theta = read_min_theta(fileToReadPath) 
+    # theta = read_min_theta(fileToReadPath) 
     if os.path.exists(fileToSaveProcess):
         os.remove(fileToSaveProcess) # deleting useless information
     
     # theta = np.array([450.8817785 , 521.35019532 ,167.2525531,  594.19675996]) # Small loss function
-    theta = np.array([452.43155209, 521.0722547 , 162.6148738,  593.99594424]) # Big loss function
-
+    # theta = np.array([452.43155209, 521.0722547 , 162.6148738,  593.99594424]) # Big loss function
+    # # HUGE variance [765.96558711 330.41125944 130.31719022 954.02260112]33333333333333333333333
+    theta = np.array([276.79203223, 650.67447073, 275.4180208,  254.06163771])
+    theta = read_min_theta(fileToReadPath)
+    print(theta)
     eff.setTrjName(fileToSaveProcess, savePerNsteps=1)
     eff.setVerbosity(0,0)
     eff.setFixedAtoms(fixedAtoms)
@@ -161,7 +182,7 @@ def minVal():
     eff.setAtomParams( atomParams )
     params, nrec = extract_blocks("export/scan_data/angdistscan_CH4.xyz")
     plot_energy_landscape( params['ang'], params['dist'], params['Etot'], Espan=5.0 )
-    plt.title("Before relaxetion")
+    plt.title("DFT simulation")
     plt.savefig("map2D_referece.png")
     print("plt.savefig")
     outEs = np.zeros((nrec,5))
@@ -190,7 +211,8 @@ def minVal():
     print("processXYZ")
 
     plot_energy_landscape( params['ang'], params['dist'], outEs[:,0] )
-    plt.title("After relaxetion")
+    pualiSizesFormated = ", ".join(f"{val:.3f} Å" for val in theta)
+    plt.title(f"EC = {theta[0]} eV; \n" + "Pauli Gaussian sizes: " + pualiSizesFormated)
     plt.savefig("map2d_eFF.png")
     print("convSum: ", convSum[0])
     print("#=========== DONE /home/gabriel/git/FireCore/tests/tEFF/AI_angdist_show.py, all values")

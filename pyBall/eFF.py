@@ -364,9 +364,9 @@ def preAllocateXYZ(fname, Rfac=-0.5, bCoreElectrons=True):
     """Pre-initialize eFF from a single-config XYZ without dynamics"""
     return lib.preAllocateXYZ(cstr(fname), Rfac, bCoreElectrons)
 
-lib.processXYZ_e.argtypes  = [c_char_p, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_char_p, c_char_p, c_int_p ]
+lib.processXYZ_e.argtypes  = [c_char_p, c_double_p, c_double_p, c_double_p, c_double_p,  c_int, c_double, c_double, c_int, c_char_p, c_char_p, c_int_p ]
 lib.processXYZ_e.restype   =  c_int
-def processXYZ_e( fname, outEs=None, apos=None, epos=None, nstepMax=0, dt=0.001, Fconv=1e-3, optAlg=2, xyz_out="processXYZ.xyz", fgo_out="processXYZ.fgo", bOutputs=(0,0,0), convSum=[0] ):
+def processXYZ_e( fname, outEs=None, apos=None, fapos=None, epos=None, nstepMax=0, dt=0.001, Fconv=1e-3, optAlg=2, xyz_out="processXYZ.xyz", fgo_out="processXYZ.fgo", bOutputs=(0,0,0,0), convSum=[0] ):
     """
     Process XYZ file with electrons
     Returns: outEs, apos, epos
@@ -385,9 +385,10 @@ def processXYZ_e( fname, outEs=None, apos=None, epos=None, nstepMax=0, dt=0.001,
                 if len(ws) == 1: nconf += 1
     if bOutputs[0] and outEs is None: outEs = np.zeros( (nconf,5) )
     if bOutputs[1] and apos  is None: apos  = np.zeros( (nconf, na, 3) )
+    if bOutputs[3] and apos  is None: fapos = np.zeros( (nconf, na, 3) )
     if bOutputs[2] and epos  is None: epos  = np.zeros( (nconf, ne, 4) )
     convSumC = ctypes.c_int(0)
-    lib.processXYZ_e( cstr(fname), _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, optAlg, cstr(xyz_out), cstr(fgo_out), convSumC)
+    lib.processXYZ_e( cstr(fname), _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(fapos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, optAlg, cstr(xyz_out), cstr(fgo_out), convSumC)
     convSum[0] = convSumC.value
     return outEs, apos, epos
 
