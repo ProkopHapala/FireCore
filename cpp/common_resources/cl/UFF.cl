@@ -5,7 +5,7 @@
 // Debug Controls (compile-time macros)
 // ======================================================
 // Enable concise debug prints without changing C++ host interface.
-#define DBG_UFF 1         // 0/1 master switch
+#define DBG_UFF 0         // 0/1 master switch
 #define IDBG_ATOM  (1)    // atom index to trace
 #define IDBG_BOND  (0)    // bond index to trace (global bond id), -1 disables
 #define IDBG_ANGLE (0)    // angle index to trace
@@ -1036,8 +1036,8 @@ __kernel void getNonBond(
     const int i0a = iS*natoms;  // index of first atom in atoms array
     const int iaa = iG + i0a; // index of atom in atoms array
 
-    if((iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL ); }
-    if((iG==IDBG_ATOM)&&(iS==IDBG_SYS)){
+    if((DBG_UFF!=0) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL ); }
+    if((DBG_UFF!=0) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){
        printf( "GPU::getNonBond() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL );
        for(int is=0; is<nS; is++){
             cl_Mat3 lvec = lvecs[is];
@@ -1373,7 +1373,7 @@ __kernel void getNonBond_GridFF_Bspline(
 
     const cl_Mat3 lvec = lvecs[iS]; // lattice vectors of the system
 
-    if((iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond_GridFF_Bspline() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL ); }
+    if((DBG_UFF!=0) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond_GridFF_Bspline() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL ); }
     //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); }
     //if((iG==iG_DBG)&&(iS==iS_DBG)) printf( "GPU::getNonBond_GridFF_Bspline() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
     // if((iG==iG_DBG)&&(iS==iS_DBG)){
