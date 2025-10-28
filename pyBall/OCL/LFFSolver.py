@@ -48,7 +48,7 @@ class LFFParams:
 
 
 class LFFSolver(OpenCLBase):
-    """pyOpenCL wrapper around the `lff_projective_jacobi` kernel."""
+    """pyOpenCL wrapper around the bonded (lff_jacobi) and non-bonded (lff_nb_jacobi) kernels."""
 
     def __init__(self, *, workgroup_size: int = DEFAULT_WORKGROUP_SIZE, max_neighbors: int = MAX_NEIGHBORS):
         if workgroup_size <= 0 or (workgroup_size & (workgroup_size - 1)) != 0:
@@ -65,11 +65,11 @@ class LFFSolver(OpenCLBase):
             raise ValueError(f"Kernel compiled with MAX_NEIGHBORS={MAX_NEIGHBORS}, got {self.max_neighbors}")
 
         self.kernelheaders = {
-            "lff_projective_jacobi": """__kernel
-void lff_projective_jacobi(
+            "lff_jacobi": """__kernel
+void lff_jacobi(
     __global const int*    mols,
-    __global float4*       pos,
-    __global float4*       vel,
+    __global float4*       apos,
+    __global float4*       avel,
     __global const int*    neighs,
     __global const float2* KLs,
     __global const int*    fixed_mask,
@@ -78,21 +78,38 @@ void lff_projective_jacobi(
     const int              nOuter,
     const int              nInner,
     const float            bMix
-)"""
+)""",
+            "lff_nb_jacobi": """__kernel
+void lff_nb_jacobi(
+    __global const int*    mols,
+    __global float4*       apos,
+    __global float4*       avel,
+    __global float4*       REQHs,
+    __global const int*    neighs,
+    __global const float2* KLs,
+    __global const int*    fixed_mask,
+    const float3           Efield,
+    const float            dt,
+    const int              nOuter,
+    const int              nInner,
+    const float            bMix
+)""",
         }
 
         self.n_mols = 0
         self.nAtomTot = 0
+        self.n_systems = 1
         self.mol_offsets = None
         self.params = LFFParams()
         self.kernel_params = {
-            'Efield': _pack_float3((0.0, 0.0, 0.0)),
-            'dt': np.float32(self.params.dt),
-            'nOuter': np.int32(self.params.n_outer),
-            'nInner': np.int32(self.params.n_inner),
-            'bMix': np.float32(self.params.bmix),
+            'Efield': _pack_float3(self.params.efield),
+            'dt':     np.float32(self.params.dt),
+            'nOuter': np.int32  (self.params.n_outer),
+            'nInner': np.int32  (self.params.n_inner),
+            'bMix':   np.float32(self.params.bmix),
         }
-        self.kernel_args = None
+        self.kernel_args: dict[str, tuple] = {}
+        self.has_reqhs = False
 
     # ------------------------------------------------------------------
     # Allocation helpers
@@ -114,19 +131,21 @@ void lff_projective_jacobi(
 
         # Allocate buffers
         self.create_buffer('mols', (self.n_mols + 1) * int_size, mf.READ_ONLY)
-        self.create_buffer('pos',        self.nAtomTot * 4 * float_size, mf.READ_WRITE)
-        self.create_buffer('vel',        self.nAtomTot * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('apos',       self.nAtomTot * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('avel',       self.nAtomTot * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('REQHs',      self.nAtomTot * 4 * float_size, mf.READ_ONLY)
         self.create_buffer('neighs',     self.nAtomTot * neigh_stride * int_size, mf.READ_ONLY)
         self.create_buffer('KLs',        self.nAtomTot * neigh_stride * 2 * float_size, mf.READ_ONLY)
         self.create_buffer('fixed_mask', self.nAtomTot * int_size, mf.READ_ONLY)
 
-        self.kernel_args = self.generate_kernel_args("lff_projective_jacobi")
+        self.kernel_args.clear()
         self.toGPU('mols', self.mol_offsets)
+        self.has_reqhs = False
 
     # ------------------------------------------------------------------
     # Upload helpers
     # ------------------------------------------------------------------
-    def upload_state(self, *, pos, vel, neighs, KLs, fixed_mask=None):
+    def upload_state(self, *, pos, vel, neighs, KLs, fixed_mask=None, REQHs=None):
         if self.nAtomTot == 0: raise RuntimeError("Call realloc(atom_counts) before uploading state")
 
         pos_dev = _ensure_float4(pos)
@@ -150,11 +169,17 @@ void lff_projective_jacobi(
             fixed_arr = np.ascontiguousarray(fixed_mask, dtype=np.int32)
             if fixed_arr.size != self.nAtomTot: raise ValueError(f"fixed_mask length {fixed_arr.size} does not match total atoms {self.nAtomTot}")
 
-        self.toGPU('pos',    pos_dev)
-        self.toGPU('vel',    vel_dev)
+        self.toGPU('apos',   pos_dev)
+        self.toGPU('avel',   vel_dev)
         self.toGPU('neighs', neigh_arr)
         self.toGPU('KLs',    KLs_arr)
         self.toGPU('fixed_mask', fixed_arr)
+        if REQHs is not None:
+            req_dev = _ensure_float4(REQHs)
+            if req_dev.shape[0] != self.nAtomTot:
+                raise ValueError(f"REQHs length {req_dev.shape[0]} does not match total atoms {self.nAtomTot}")
+            self.toGPU('REQHs', req_dev)
+            self.has_reqhs = True
         self.queue.finish()
 
     # ------------------------------------------------------------------
@@ -167,25 +192,50 @@ void lff_projective_jacobi(
         if efield  is not None: self.params.efield = tuple(float(x) for x in efield)
         if bmix    is not None: self.params.bmix = float(bmix)
 
+        self.kernel_params['Efield'] = _pack_float3(self.params.efield)
+        self.kernel_params['dt']     = np.float32(self.params.dt)
+        self.kernel_params['nOuter'] = np.int32  (self.params.n_outer)
+        self.kernel_params['nInner'] = np.int32  (self.params.n_inner)
+        self.kernel_params['bMix']   = np.float32(self.params.bmix)
+
     # ------------------------------------------------------------------
     # Execution
     # ------------------------------------------------------------------
-    def run(self):
-        #if self.kernel_args is None:   raise RuntimeError("Kernel arguments not initialized; call realloc() first")
-        #if self.nAtomTot == 0: return
+    def _build_common_overrides(self) -> dict[str, np.ndarray | np.float32 | np.int32]:
         params = self.params
-        arg_values = {
+        return {
             'Efield': _pack_float3(params.efield),
             'dt':     np.float32(params.dt),
             'nOuter': np.int32  (params.n_outer),
             'nInner': np.int32  (params.n_inner),
             'bMix':   np.float32(params.bmix),
         }
-        self.kernel_args = self.generate_kernel_args("lff_projective_jacobi", overrides=arg_values)
+
+    def run_jacobi(self):
+        if self.n_mols == 0: raise RuntimeError("Call realloc(atom_counts) before running the kernel")
+        overrides = self._build_common_overrides()
+        self.kernel_args['lff_jacobi'] = self.generate_kernel_args("lff_jacobi", overrides=overrides)
         global_size = (self.roundUpGlobalSize(self.n_mols * self.nloc),)
         local_size = (self.nloc,)
-        self.prg.lff_projective_jacobi(self.queue, global_size, local_size, *self.kernel_args)
+        self.prg.lff_jacobi(self.queue, global_size, local_size, *self.kernel_args['lff_jacobi'])
         self.queue.finish()
+
+    def run_nb_jacobi(self):
+        if self.n_mols == 0: raise RuntimeError("Call realloc(atom_counts) before running the kernel")
+        if not self.has_reqhs:
+            raise RuntimeError("Upload REQHs parameters (via upload_state(..., REQHs=...)) before calling run_nb_jacobi()")
+        overrides = self._build_common_overrides()
+        self.kernel_args['lff_nb_jacobi'] = self.generate_kernel_args("lff_nb_jacobi", overrides=overrides)
+        global_size = (self.roundUpGlobalSize(self.n_mols * self.nloc),)
+        local_size = (self.nloc,)
+        self.prg.lff_nb_jacobi(self.queue, global_size, local_size, *self.kernel_args['lff_nb_jacobi'])
+        self.queue.finish()
+
+    def run(self, *, include_nonbonded: bool = False):
+        if include_nonbonded:
+            self.run_nb_jacobi()
+        else:
+            self.run_jacobi()
 
     # ------------------------------------------------------------------
     # Download helpers
@@ -194,8 +244,8 @@ void lff_projective_jacobi(
         #if self.nAtomTot == 0: return {'pos': np.empty((0, 4), dtype=np.float32), 'vel': np.empty((0, 4), dtype=np.float32)}
         pos_host = np.empty((self.nAtomTot, 4), dtype=np.float32)
         vel_host = np.empty((self.nAtomTot, 4), dtype=np.float32)
-        self.fromGPU('pos', pos_host)
-        self.fromGPU('vel', vel_host)
+        self.fromGPU('apos', pos_host)
+        self.fromGPU('avel', vel_host)
         self.queue.finish()
         return {'pos': pos_host, 'vel': vel_host}
 
