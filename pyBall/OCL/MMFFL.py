@@ -18,8 +18,8 @@ class MMFFL(MMFF):
     with extra bonds and optional pi dummy atoms.
     """
 
-    def __init__(self, *, L_pi=1.0, two_pi_dummies=False, Kang=0.0, Kpi_host=0.0, Kpi_orth=0.0, verbosity=1, lone_pairs_pi=False, align_pi_vectors=False):
-        super().__init__(bTorsion=False, verbosity=verbosity)
+    def __init__(self, *, L_pi=1.0, two_pi_dummies=False, Kang=0.0, Kpi_host=0.0, Kpi_orth=0.0, verbosity=1, lone_pairs_pi=False, align_pi_vectors=False, reorder_nodes_first=True):
+        super().__init__(bTorsion=False, verbosity=verbosity, reorder_nodes_first=reorder_nodes_first)
         self.L_pi = float(L_pi)
         self.two_pi_dummies = bool(two_pi_dummies)
         self.K_ang = float(Kang)
@@ -154,6 +154,12 @@ class MMFFL(MMFF):
         self.neighs = self._grow_matrix(self.neighs, (new_atoms, 4), fill=-1, dtype=np.int32)
         self.neighCell = self._grow_matrix(self.neighCell, (new_atoms, 4), fill=0, dtype=np.int32)
         self.REQs = self._grow_matrix(self.REQs, (new_atoms, 4), fill=0.0)
+        self.apars = self._grow_matrix(self.apars, (new_atoms, 4), fill=0.0)
+        self.bLs = self._grow_matrix(self.bLs, (new_atoms, 4), fill=0.0)
+        self.bKs = self._grow_matrix(self.bKs, (new_atoms, 4), fill=0.0)
+        self.Ksp = self._grow_matrix(self.Ksp, (new_atoms, 4), fill=0.0)
+        self.Kpp = self._grow_matrix(self.Kpp, (new_atoms, 4), fill=0.0)
+        self.angles = self._grow_tensor(self.angles, (new_atoms, 6, 3), fill=0.0)
         self.pipos = self._grow_matrix(self.pipos, (new_atoms, 3), fill=0.0)
         if hasattr(self, 'back_neighs') and self.back_neighs is not None:
             self.back_neighs = self._grow_matrix(self.back_neighs, (new_vecs, 4), fill=-1, dtype=np.int32)
@@ -171,6 +177,13 @@ class MMFFL(MMFF):
         sh0 = min(src.shape[0], shape[0])
         sh1 = min(src.shape[1], shape[1])
         out[:sh0, :sh1] = src[:sh0, :sh1]
+        return out
+
+    @staticmethod
+    def _grow_tensor(src, shape, *, fill=0.0, dtype=None):
+        out = np.full(shape, fill, dtype=dtype or src.dtype)
+        slices = tuple(slice(0, min(src.shape[i], shape[i])) for i in range(len(shape)))
+        out[slices] = src[slices]
         return out
 
     @staticmethod

@@ -195,7 +195,8 @@ if __name__ == "__main__":
     parser.add_argument("--Kang",      type=float, default=0.0,  help="Override stiffness for angle replacement bonds")
     parser.add_argument("--KpiA",      type=float, default=0.0,  help="Stiffness for host-pi bonds")
     parser.add_argument("--KpiB",      type=float, default=0.0,  help="Stiffness for pi-orthogonality bonds")
-    parser.add_argument("--no-linear", type=int,   default=1,    help="Disable extra linearized bonds (angles, pi dummies)")
+    parser.add_argument("--no-linear", type=int,   default=0,    help="Disable extra linearized bonds (angles, pi dummies)")
+    parser.add_argument("--no-reorder", type=int,  default=1,    help="Disable node-first reordering in MMFF preprocessing")
     parser.add_argument("--mass",      type=float, default=1.0,  help="Default mass assigned to every site (vel.w)")
     parser.add_argument("--randamp",   type=float, default=0.2,  help="Uniform random displacement amplitude applied to initial positions")
     parser.add_argument("--seed",      type=int,   default=3254, help="Random seed for initial displacement (None = nondeterministic)")
@@ -221,6 +222,7 @@ if __name__ == "__main__":
         verbosity=int(args.verbosity),
         lone_pairs_pi=True,
         align_pi_vectors=True,
+        reorder_nodes_first=not bool(args.no_reorder),
     )
     include_linear = not bool(args.no_linear)
     mmffl.build_linearized(mol, bUFF=False, include_linear=include_linear)

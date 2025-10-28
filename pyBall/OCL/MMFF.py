@@ -63,7 +63,7 @@ class MMFF:
     """
     Represents the MMFF (Merck Molecular Force Field) parameters and configurations.
     """
-    def __init__(self, bTorsion=False, verbosity=1):
+    def __init__(self, bTorsion=False, verbosity=1, *, reorder_nodes_first: bool = True):
         """
         Initializes the MMFF instance.
 
@@ -109,6 +109,7 @@ class MMFF:
         self.npbc = None
 
         self.capping_atoms = {'H'}
+        self.reorder_nodes_first = bool(reorder_nodes_first)
         
         self.dt     = 0.01
         self.damp   = 0.1
@@ -277,11 +278,23 @@ class MMFF:
         """
         ang0s = [109.5 * np.pi / 180.0, 120.0 * np.pi / 180.0, 180.0 * np.pi / 180.0]  # in radians
 
-        npi_list, nep_list, isNode = self._ensure_node_first(mol, atom_types)
+        natom  = len(mol.apos)
+
+        if self.reorder_nodes_first:
+            npi_list, nep_list, isNode = self._ensure_node_first(mol, atom_types)
+        else:
+            npi_list, nep_list, isNode = initAtomProperties(mol, atom_types, self.capping_atoms, bPrint=False)
+            if isinstance(npi_list, np.ndarray): npi_list = npi_list.tolist()
+            if isinstance(nep_list, np.ndarray): nep_list = nep_list.tolist()
+            if isinstance(isNode, np.ndarray): isNode = isNode.tolist()
+            mol.npi_list = list(npi_list)
+            mol.nep_list = list(nep_list)
+            mol.isNode_original = list(int(x) for x in isNode)
+            isNode = [1] * natom
+            mol.isNode = list(isNode)
         REQs     = getattr(mol, 'REQs', MMparams.generate_REQs_from_atom_types(mol, atom_types))
         #self.REQs[:,:] = REQs[:,:] # self.REQs not yet allocated
 
-        natom  = len(mol.apos)
         nCmax  = len(mol.ngs)  # Assuming 'ngs' is a list of neighbor lists per atom
         ngs    = mol.ngs
         nngs   = np.zeros(len(ngs), dtype=np.int32)
@@ -350,8 +363,12 @@ class MMFF:
             ne_total = 0
         
         # count isNode > 0
-        nnode = isNode.count(1)
-        ncap  = natom - nnode
+        if self.reorder_nodes_first:
+            nnode = isNode.count(1)
+            ncap  = natom - nnode
+        else:
+            nnode = natom
+            ncap  = 0
         nb    = len(mol.bonds)
         
         if verbosity > 0:
