@@ -1,22 +1,24 @@
 // Linearized Force-Field (LFF) OpenCL kernel
 // Jacobi iterations with Chebyshev/heavy-ball mixing performed entirely on local data.
 
-#define LFF_MAX_VERTS   512
+//#define LFF_MAX_VERTS   512
+//#define LFF_MAX_VERTS   512
+
+#define LFF_WG_SIZE    32
 #define MAX_NEIGHBORS   8
 
 __kernel void lff_projective_jacobi(
-    __global const int*    mols,        // [nworkgroups] {i0} starting index of first atom in each molecule in the bbuffer
-    __global       float4* pos,            // [nSystems * nverts] positions  (xyz | charge )
-    __global       float4* vel,            // [nSystems * nverts] velocities (xyz | mass   )
-    __global const int*    neighs,         // [nSystems * nverts * LFF_MAX_NEIGHBORS] neighbor indices
-    __global const float*  kngs,           // [nSystems * nverts * LFF_MAX_NEIGHBORS] spring stiffness per neighbor
-    __global const float*  l0ngs,          // [nSystems * nverts * LFF_MAX_NEIGHBORS] rest lengths per neighbor
-    __global const int*    fixed_mask,     // optional 0/1 mask
-    const float3           Efield,         // global external electric field
-    const float            dt,
-    const int              nOuter,
-    const int              nInner,
-    const float            bMix           // momentum mixing parameter
+    __global const int*    mols,       // 1  [nworkgroups] {i0} starting index of first atom in each molecule in the bbuffer
+    __global       float4* pos,        // 2  [nSystems * nverts] positions  (xyz | charge )
+    __global       float4* vel,        // 3  [nSystems * nverts] velocities (xyz | mass   )
+    __global const int*    neighs,     // 4  [nSystems * nverts * LFF_MAX_NEIGHBORS] neighbor indices
+    __global const float2* KLs,        // 5  [nSystems * nverts * LFF_MAX_NEIGHBORS] {K,l0} bond params per neighbor, K is stiffness, l0 is rest length
+    __global const int*    fixed_mask, // 6  optional 0/1 mask of fixed vertices
+    const float3           Efield,     // 7  global external electric field
+    const float            dt,         // 8  global time step
+    const int              nOuter,     // 9  number of outer iterations
+    const int              nInner,     // 10 number of inner iterations
+    const float            bMix        // 11 momentum mixing parameter
 ){
     const int isys = get_group_id(0);
     const int lid  = get_local_id(0);
@@ -31,7 +33,7 @@ __kernel void lff_projective_jacobi(
     const int idx        = ia0 + lid;          // vertex index in global buffers
     const int neigh_base = idx * MAX_NEIGHBORS;
 
-    __local float4 lpos[LFF_MAX_VERTS];  // xyz: y, w: diag mass term
+    __local float4 lpos[LFF_WG_SIZE];  // xyz: y, w: diag mass term
     float3 pi = pos[idx].xyz;
     float3 vi = vel[idx].xyz;
     float  mi = vel[idx].w;
@@ -42,22 +44,34 @@ __kernel void lff_projective_jacobi(
     const float  inv_dt   = 1.0f/dt;
     const float  inv_dt2  = inv_dt*inv_dt;
     const float  Ii       = mi*inv_dt2;
-
     const int is_fixed = fixed_mask[idx] != 0;
-
     barrier(CLK_LOCAL_MEM_FENCE);
 
+    // --- debug if neighbor params are correct
+    if(lid == 0){
+        printf("GPU: lff_projective_jacobi() dt=%f bMix=%f nOuter=%i nInner=%i Efield=(%f,%f,%f)\n", dt, bMix, nOuter, nInner, Efield.x, Efield.y, Efield.z);
+        for(int i=0; i<nverts; i++){
+            int ing0 = i * MAX_NEIGHBORS;
+            printf("GPU: atom %3i (%6.4f,%6.4f,%6.4f|%6.4f) neigs:", i, pos[i].x, pos[i].y, pos[i].z, pos[i].w) ;
+            for (int jj = 0; jj < MAX_NEIGHBORS; jj++) {
+                int j     = neighs[ing0 + jj];
+                float2 kl = KLs   [ing0 + jj];
+                if (j < 0) break;
+                printf(" (%3i,%6.4f,%6.4f)", j, kl.y, kl.x);
+            }
+            printf("\n");
+        }
+    }
+
     // --- private copy of neighbor data
-    int   ng_idx[MAX_NEIGHBORS];
-    float ng_k  [MAX_NEIGHBORS];
-    float ng_l0 [MAX_NEIGHBORS];
+    int    ng_idx[MAX_NEIGHBORS];
+    float2 ng_KLs[MAX_NEIGHBORS];
     int nneigh = 0;
     
     for (int jj = 0; jj < MAX_NEIGHBORS; ++jj) {
         const int j = neighs[neigh_base + jj];
         ng_idx[jj]  = j; // make sure j is local (in-molecule, in-group index)
-        ng_k  [jj]  = kngs [neigh_base + jj];
-        ng_l0 [jj]  = l0ngs[neigh_base + jj];
+        ng_KLs[jj]  = KLs [neigh_base + jj];
         if (j < 0) break;
         ++nneigh;
     }
@@ -68,8 +82,13 @@ __kernel void lff_projective_jacobi(
         if(is_fixed) continue;
 
         // --- external force
-        const float3 fex    = Efield * Qi;
+        float3 fex    = Efield * Qi;
         // TODO: non-covalent forces can be accumulated between outer iterations.
+
+
+        // DEBUG - turn of dynamics
+        //fex    = (float3)(0.0f, 0.0f, 0.0f);
+        //vi     = (float3)(0.0f, 0.0f, 0.0f);
 
         // --- Leapfrog predictor
         float3 pi_old = pi;
@@ -80,6 +99,7 @@ __kernel void lff_projective_jacobi(
         // ---- Jacobi-fly Linear Constraint Solver loop
         float3 mom_vec  = (float3)(0.0f, 0.0f, 0.0f);        
         for (int iter = 0; iter < nInner; ++iter) {
+            if(lid==0)printf( "GPU iter %i\n", iter );
             barrier(CLK_LOCAL_MEM_FENCE);
             //const float  mi = lpos[lid].w;
             // inertial contribution: M_i/dt^2 * p_i
@@ -91,23 +111,24 @@ __kernel void lff_projective_jacobi(
                 int j      = ng_idx[jj];
                 if (j < 0) break;
                 // load parameters (float)
-                float  k   = ng_k[jj];
-                float  l0  = ng_l0[jj];
+                float2  kl = ng_KLs[jj];
                 float3 pj  = lpos[j].xyz; // make sure j is local (in-molecule, in-group index)
                 float3 dij = pi - pj;   
                 float len  = length(dij);
-                float c    = k * ( l0/len - 1.0f );
-                bi  += dij * c;      //  b_i    +=  \sum_j ( K_{ij} d_{ij} )   
-                bi  += pj  * k;      //  s_j    +=  \sum_j ( K_{ij} p_j    )
-                Aii += k;            //  A_{ii} +=  \sum_j   K_{ij} 
+                if(lid==0)printf( "GPU bond (%3i,%3i) l: %6.4f l0: %6.4f K: %6.4f\n", lid, j, len, kl.y, kl.x );
+                float inv_len = len > 1e-8f ? 1.0f/len : 0.0f;
+                float3 rest_pos = pj + dij * (kl.y * inv_len);
+                bi  += rest_pos * kl.x;   // accumulate projected target
+                Aii += kl.x;              // accumulate diagonal weight
             }
             const float   invA   = 1.0f / Aii;
             const float3  pi_new = bi * invA;
 
             // momentum acceleration
-            const float3  pi_    = pi_new + mom_vec * bMix;
-            mom_vec              = pi_ - pi;
-            pi                   = pi_;
+            // const float3  pi_    = pi_new + mom_vec * bMix;
+            // mom_vec              = pi_ - pi;
+            // pi                   = pi_;
+            pi = pi_new;
             
             barrier(CLK_LOCAL_MEM_FENCE);
             lpos[lid]            = (float4)(pi, mi);

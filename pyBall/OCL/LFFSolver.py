@@ -6,9 +6,8 @@ import pyopencl as cl
 
 from .OpenCLBase import OpenCLBase
 
-DEFAULT_WORKGROUP_SIZE = 64
-LFF_MAX_VERTS = 512
-MAX_NEIGHBORS = 8
+DEFAULT_WORKGROUP_SIZE = 32
+MAX_NEIGHBORS          = 8
 
 
 def _ensure_float4(arr: np.ndarray, *, w_default: float = 0.0) -> np.ndarray:
@@ -54,8 +53,6 @@ class LFFSolver(OpenCLBase):
     def __init__(self, *, workgroup_size: int = DEFAULT_WORKGROUP_SIZE, max_neighbors: int = MAX_NEIGHBORS):
         if workgroup_size <= 0 or (workgroup_size & (workgroup_size - 1)) != 0:
             raise ValueError("workgroup_size must be a positive power of two")
-        if workgroup_size > LFF_MAX_VERTS:
-            raise ValueError(f"workgroup_size={workgroup_size} exceeds kernel limit {LFF_MAX_VERTS}")
         super().__init__(nloc=workgroup_size, device_index=0)
 
         base_path = os.path.dirname(os.path.abspath(__file__))
@@ -74,8 +71,7 @@ void lff_projective_jacobi(
     __global float4*       pos,
     __global float4*       vel,
     __global const int*    neighs,
-    __global const float*  kngs,
-    __global const float*  l0ngs,
+    __global const float2* KLs,
     __global const int*    fixed_mask,
     const float3           Efield,
     const float            dt,
@@ -89,6 +85,13 @@ void lff_projective_jacobi(
         self.nAtomTot = 0
         self.mol_offsets = None
         self.params = LFFParams()
+        self.kernel_params = {
+            'Efield': _pack_float3((0.0, 0.0, 0.0)),
+            'dt': np.float32(self.params.dt),
+            'nOuter': np.int32(self.params.n_outer),
+            'nInner': np.int32(self.params.n_inner),
+            'bMix': np.float32(self.params.bmix),
+        }
         self.kernel_args = None
 
     # ------------------------------------------------------------------
@@ -114,8 +117,7 @@ void lff_projective_jacobi(
         self.create_buffer('pos',        self.nAtomTot * 4 * float_size, mf.READ_WRITE)
         self.create_buffer('vel',        self.nAtomTot * 4 * float_size, mf.READ_WRITE)
         self.create_buffer('neighs',     self.nAtomTot * neigh_stride * int_size, mf.READ_ONLY)
-        self.create_buffer('kngs',       self.nAtomTot * neigh_stride * float_size, mf.READ_ONLY)
-        self.create_buffer('l0ngs',      self.nAtomTot * neigh_stride * float_size, mf.READ_ONLY)
+        self.create_buffer('KLs',        self.nAtomTot * neigh_stride * 2 * float_size, mf.READ_ONLY)
         self.create_buffer('fixed_mask', self.nAtomTot * int_size, mf.READ_ONLY)
 
         self.kernel_args = self.generate_kernel_args("lff_projective_jacobi")
@@ -124,7 +126,7 @@ void lff_projective_jacobi(
     # ------------------------------------------------------------------
     # Upload helpers
     # ------------------------------------------------------------------
-    def upload_state(self, *, pos, vel, neighs, kngs, l0ngs, fixed_mask=None):
+    def upload_state(self, *, pos, vel, neighs, KLs, fixed_mask=None):
         if self.nAtomTot == 0: raise RuntimeError("Call realloc(atom_counts) before uploading state")
 
         pos_dev = _ensure_float4(pos)
@@ -134,11 +136,13 @@ void lff_projective_jacobi(
         if vel_dev.shape[0] != self.nAtomTot: raise ValueError(f"vel length {vel_dev.shape[0]} does not match total atoms {self.nAtomTot}")
 
         neigh_arr = np.ascontiguousarray(neighs, dtype=np.int32)
-        kngs_arr = np.ascontiguousarray(kngs, dtype=np.float32)
-        l0_arr   = np.ascontiguousarray(l0ngs, dtype=np.float32)
-        expected_shape = (self.nAtomTot, self.max_neighbors)
-        for name, arr in ("neighs", neigh_arr), ("kngs", kngs_arr), ("l0ngs", l0_arr):
-            if arr.shape != expected_shape:raise ValueError(f"{name} expected shape {expected_shape}, got {arr.shape}")
+        KLs_arr   = np.ascontiguousarray(KLs, dtype=np.float32)
+        expected_neigh_shape = (self.nAtomTot, self.max_neighbors)
+        if neigh_arr.shape != expected_neigh_shape:
+            raise ValueError(f"neighs expected shape {expected_neigh_shape}, got {neigh_arr.shape}")
+        expected_KLs_shape = expected_neigh_shape + (2,)
+        if KLs_arr.shape != expected_KLs_shape:
+            raise ValueError(f"KLs expected shape {expected_KLs_shape}, got {KLs_arr.shape}")
 
         if fixed_mask is None:
             fixed_arr = np.zeros(self.nAtomTot, dtype=np.int32)
@@ -149,8 +153,7 @@ void lff_projective_jacobi(
         self.toGPU('pos',    pos_dev)
         self.toGPU('vel',    vel_dev)
         self.toGPU('neighs', neigh_arr)
-        self.toGPU('kngs',   kngs_arr)
-        self.toGPU('l0ngs',  l0_arr)
+        self.toGPU('KLs',    KLs_arr)
         self.toGPU('fixed_mask', fixed_arr)
         self.queue.finish()
 

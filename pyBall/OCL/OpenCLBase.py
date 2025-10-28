@@ -382,7 +382,7 @@ class OpenCLBase:
         
         return args
     
-    def generate_kernel_args(self, kname, bPrint=False):
+    def generate_kernel_args(self, kname, overrides=None, bPrint=False):
         """
         Generate argument list for a kernel based on its header definition.
         
@@ -410,12 +410,17 @@ class OpenCLBase:
             for i,arg in enumerate(args_names): print("    ", i, arg)
 
         args = []
+        overrides = overrides or {}
+
         try:
             for aname, typ in args_names:
                 if typ == 0:
                     args.append(self.buffer_dict[aname])
                 else:
-                    args.append(self.kernel_params[aname])
+                    if aname in overrides:
+                        args.append(overrides[aname])
+                    else:
+                        args.append(self.kernel_params[aname])
         except KeyError as e:
             print ( "kernel_header ", kernel_header )
             print(f"OpenCLBase::generate_kernel_args() KeyError: {e}")

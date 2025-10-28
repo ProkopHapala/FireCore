@@ -38,7 +38,7 @@ class MMFFL(MMFF):
         self._dummy_start = self.natoms
         self._next_dummy = self.natoms
 
-    def build_linearized(self, mol, atom_types=None, *, bUFF=False):
+    def build_linearized(self, mol, atom_types=None, *, bUFF=False, include_linear=True):
         if atom_types is None:
             atom_types = self.atom_types
         if mol.ngs is None:
@@ -61,12 +61,13 @@ class MMFFL(MMFF):
             align_pi_vectors=self.align_pi_vectors,
         )
         self.reset_linearization_state()
-        self._build_angle_bonds(mol, atom_types)
-        host_npi = getattr(mol, "npi_list", npi_list)
-        if isinstance(host_npi, np.ndarray):
-            host_npi = host_npi.tolist()
-        host_npi = [int(x) for x in host_npi]
-        self._build_pi_dummies(atom_types, host_npi)
+        if include_linear:
+            self._build_angle_bonds(mol, atom_types)
+            host_npi = getattr(mol, "npi_list", npi_list)
+            if isinstance(host_npi, np.ndarray):
+                host_npi = host_npi.tolist()
+            host_npi = [int(x) for x in host_npi]
+            self._build_pi_dummies(atom_types, host_npi)
         self._sync_pi_block()
         return self
 
