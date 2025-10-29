@@ -226,6 +226,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bWhichAtomNotConv = false; // 22
     bool bCheckInit        = true; // 23
     bool bBondInitialized  = false; // 24
+    bool bExclusion2       = false; // 25 // use second neighbor exclusion (bonds 1-2 and angles 1-3)
 
     Vec3d anim_vec;
     float anim_speed;

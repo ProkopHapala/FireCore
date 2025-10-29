@@ -1801,6 +1801,124 @@ __kernel void getNonBond(
 
 
 
+
+#define EXCL_MAX 16
+
+// Calculate non-bonded forces on atoms (icluding both node atoms and capping atoms), cosidering periodic boundary conditions
+// It calculate Lenard-Jones, Coulomb and Hydrogen-bond forces between all atoms in the system
+// it can be run in parallel for multiple systems, in order to efficiently use number of GPU cores (for small systems with <100 this is essential to get good performance)
+// This is the most time consuming part of the forcefield evaluation, especially for large systems when nPBC>1
+//void func_getNonBond(
+__kernel void getNonBond_ex2(
+    const int4        nDOFs,        // 1 // (natoms,nnode) dimensions of the system
+    // Dynamical
+    __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
+    __global float4*  aforce,       // 3 // forces on atoms
+    // Parameters
+    __global float4*  REQs,         // 4 // non-bonded parameters (RvdW,EvdW,QvdW,Hbond)
+    __global int*     excl,         // 5 // packed sorted exclusion list ()   
+    __global cl_Mat3* lvecs,        // 6 // lattice vectors for each system
+    const int4        nPBC,         // 7 // number of PBC images in each direction (x,y,z)
+    const float4      GFFParams
+){
+    __local float4 LATOMS[32];   // local buffer for atom positions
+    __local float4 LCLJS [32];   // local buffer for atom parameters
+
+    const int iG = get_global_id  (0); // index of atom
+    const int nG = get_global_size(0); // number of atoms
+    const int iS = get_global_id  (1); // index of system
+    const int nS = get_global_size(1); // number of systems
+    const int iL = get_local_id   (0); // index of atom in local memory
+    const int nL = get_local_size (0); // number of atoms in local memory
+
+    const int natoms=nDOFs.x;  // number of atoms
+    const int nnode =nDOFs.y;  // number of node atoms
+    const int nvec  =natoms+nnode; // number of vectors (atoms+node atoms)
+    const int i0a = iS*natoms;  // index of first atom in atoms array
+    const int i0v = iS*nvec;    // index of first atom in vectors array
+    const int iaa = iG + i0a; // index of atom in atoms array
+    const int iav = iG + i0v; // index of atom in vectors array
+    
+    //if(iG<natoms){
+    //const bool   bNode = iG<nnode;   // All atoms need to have neighbors !!!!
+    const bool   bPBC  = (nPBC.x+nPBC.y+nPBC.z)>0;  // PBC is used if any of the PBC dimensions is >0
+    //const bool bPBC=false;
+
+    const float4 REQKi  = REQs     [iaa];  // non-bonded parameters
+    const float3 posi   = apos     [iav].xyz; // position of atom
+    const float  R2damp = GFFParams.x*GFFParams.x; // squared damping radius
+    float4 fe           = float4Zero;  // force on atom
+
+    const cl_Mat3 lvec   = lvecs[iS]; // lattice vectors for this system
+    const float3 shift0  = lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;   // shift of PBC image 0
+    const float3 shift_a = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);                      // shift of PBC image in the inner loop
+    const float3 shift_b = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);                      // shift of PBC image in the outer loop
+
+    //const int excl_base = iaa*EXCL_MAX;
+    int iex             = iaa*EXCL_MAX;
+    const int iex_end   = iex + EXCL_MAX-1;
+    int jex             = excl[iex];
+
+    // ========= Atom-to-Atom interaction ( N-body problem ), we do it in chunks of size of local memory, in order to reuse data and reduce number of reads from global memory  
+    //barrier(CLK_LOCAL_MEM_FENCE);
+    for (int j0=0; j0<nG; j0+=nL){     // loop over all atoms in the system, by chunks of size of local memory
+        const int i=j0+iL;             // index of atom in local memory
+        if(i<natoms){                  // j0*nL may be larger than natoms, so we need to check if we are not reading from invalid address
+            LATOMS[iL] = apos [i+i0v]; // read atom position to local memory 
+            LCLJS [iL] = REQs [i+i0a]; // read atom parameters to local memory
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);   // wait until all atoms are read to local memory
+        for (int jl=0; jl<nL; jl++){    // loop over all atoms in local memory (like 32 atoms)
+            const int ja=j0+jl;         // index of atom in global memory
+            if( (ja!=iG) && (ja<natoms) ){   // if atom is not the same as current atom and it is not out of range,  // ToDo: Should atom interact with himself in PBC ?
+                const float4 aj = LATOMS[jl];    // read atom position   from local memory
+                float4 REQK     = LCLJS [jl];    // read atom parameters from local memory
+                float3 dp       = aj.xyz - posi; // vector between atoms
+                //if((iG==44)&&(iS==0))printf( "[i=%i,ja=%i/%i,j0=%i,jl=%i/%i][iG/nG/na %i/%i/%i] aj(%g,%g,%g,%g) REQ(%g,%g,%g,%g)\n", i,ja,nG,j0,jl,nL,   iG,nG,natoms,   aj.x,aj.y,aj.z,aj.w,  REQK.x,REQK.y,REQK.z,REQK.w  );
+                REQK.x  +=REQKi.x;   // mixing rules for vdW Radius
+                REQK.yz *=REQKi.yz;  // mixing rules for vdW Energy
+
+                if(jex!=-1){
+                   if( (iex<iex_end) && ((jex&0xFFFFFF)<ja) ){ iex++; }
+                   jex = excl[iex]; 
+                }
+
+                if(bPBC){         // ===== if PBC is used, we need to loop over all PBC images of the atom
+                    int ipbc=0;   // index of PBC image
+                    dp += shift0; // shift to PBC image 0
+                    // Fixed PBC size
+                    for(int iy=0; iy<3; iy++){
+                        for(int ix=0; ix<3; ix++){
+                            int jac = (ipbc<<24) | ja;
+                            if(jex!=jac){
+                                float4 fij = getLJQH( dp, REQK, R2damp );  // calculate non-bonded force between atoms using LJQH potential
+                                fe += fij;
+                            }
+                            ipbc++; 
+                            dp    += lvec.a.xyz; 
+                        }
+                        dp    += shift_a;
+                    }
+                }else {
+                    if(jex!=ja){                                              // ===== if PBC is not used, it is much simpler
+                        float4 fij = getLJQH( dp, REQK, R2damp ); 
+                        fe += fij;
+                    }
+                }
+            }
+        }
+        //barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    
+    if(iG<natoms){
+        //if(iS==0){ printf( "OCL::getNonBond(iG=%i) fe(%g,%g,%g,%g)\n", iG, fe.x,fe.y,fe.z,fe.w ); }
+        aforce[iav] = fe;           // If we do    run it as first forcefield, we can just store force (non need to clean it before in that case)
+        //aforce[iav] += fe;        // If we don't run it as first forcefield, we need to add force to existing force
+        //aforce[iav] = fe*(-1.f);
+    }
+}
+
+
 // ======================================================================
 // ======================================================================
 //                           GridFF

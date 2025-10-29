@@ -14,6 +14,8 @@
 #include "Forces.h"
 #include "ForceField.h"
 
+#include "arrayAlgs.h"
+
 #include "simd.h"
 
 #include <unordered_set> // Do we really need it here ? used only in initBBsFromGroups(){  std::unordered_set<int> uniqueGroups; }
@@ -103,6 +105,9 @@ class NBFF: public ForceField{ public:
     Quat4d   *REQs  __attribute__((aligned(64))) =0; // non-bonding interaction paramenters (R: van dew Waals radius, E: van dew Waals energy of minimum, Q: Charge, H: Hydrogen Bond pseudo-charge )
     Quat4i   *neighs   =0; // list of neighbors (4 per atom)
     Quat4i   *neighCell=0; // list of neighbors (4 per atom)
+
+    //constexpr static int EXCL_MAX=16; // moved to globals.h
+    int       *excl=0; // [natoms*EXCL_MAX] list of second neighbors for each atom  (exclusions of bond[1-2] and angles[1-3])
 
     //  --- Use this to speed-up short range interaction (just repulsion no L-J or Coulomb)
     //       * there can be additional hydrogen bonds just for selected pairs of atoms
@@ -196,6 +201,31 @@ class NBFF: public ForceField{ public:
     void makePLQd(double K){
         _realloc(PLQd,natoms);
         evalPLQd(K);
+    }
+
+    // build list of second neighbors (exclusions) for each atom
+    void makeSecondNeighs(){
+        _realloc(excl,natoms*EXCL_MAX);
+        for(int ia=0; ia<natoms; ia++){
+            int i0 = ia*EXCL_MAX;
+            int* excli = excl+i0;
+            for(int k=0; k<EXCL_MAX; k++){ excli[k]=-1; }
+            int n=0;
+            for(int an=0; an<4; an++){
+                int ja = neighs[ia].array[an];
+                if(ja<0) continue;
+                const Quat4i& nj = neighs[ja];
+                for(int bn=0; bn<4; bn++){
+                    int jb = nj.array[bn];
+                    if(jb<0 || jb==ia) continue;
+                    bool dup=false;
+                    for(int m=0; m<n; m++){ if(excli[m]==jb){ dup=true; break; } }
+                    if(dup) continue;
+                    if(n<EXCL_MAX) excli[n++] = jb;
+                }
+            }
+            insertSort<int>(n,excli);
+        }
     }
 
     void initBBsFromGroups(int natom_, const int* atom2group, bool bUpdateBB=true){

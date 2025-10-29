@@ -133,6 +133,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
 
     Quat4i* neighs     =0;
     Quat4i* neighCell  =0;
+    int*    excl       =0;
     Quat4i* bkNeighs   =0;
     Quat4i* bkNeighs_new=0;
     //Quat4f* neighForce =0;
@@ -187,6 +188,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
 
     OCLtask* task_cleanF=0;
     OCLtask* task_NBFF=0;
+    OCLtask* task_NBFF_ex2=0;
     OCLtask* task_NBFF_Grid=0;
     OCLtask* task_NBFF_Grid_Bspline=0;
     OCLtask* task_NBFF_Grid_Bspline_tex=0;
@@ -298,6 +300,7 @@ void realloc( int nSystems_ ){
         _realloc0( constrK,   ocl.nAtoms*nSystems , Quat4fOnes*-1. );
         _realloc( neighs,    ocl.nAtoms*nSystems );
         _realloc( neighCell, ocl.nAtoms*nSystems );
+        _realloc( excl,      ocl.nAtoms*nSystems*EXCL_MAX );
         _realloc( bkNeighs,    ocl.nvecs*nSystems );
         _realloc( bkNeighs_new,ocl.nvecs*nSystems );
         _realloc( REQs,      ocl.nAtoms*nSystems );
@@ -634,6 +637,7 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=false,
 
         copy    ( ff.natoms, ff.neighCell, neighCell+i0a );
         copy    ( ff.natoms, ff.neighs,    neighs   +i0a );
+        copy    ( ff.natoms*EXCL_MAX, ff.excl, excl + i0a*EXCL_MAX );
         //copy_add( ff.natoms, ff.neighs,    neighs   +i0a,           0      );
         copy    ( ff.natoms, ff.bkneighs,  bkNeighs_new +i0v           );
         copy    ( ff.nnode,  ff.bkneighs,  bkNeighs_new +i0v+ff.natoms );
@@ -697,6 +701,7 @@ void upload_sys( int isys, bool bParams=false, bool bForces=0, bool bVel=true, b
         int i0bk  = isys * ocl.nbkng;
         err|= ocl.upload( ocl.ibuff_neighs,    neighs    , ocl.nAtoms, i0a  );
         err|= ocl.upload( ocl.ibuff_neighCell, neighCell , ocl.nAtoms, i0a  );
+        err|= ocl.upload( ocl.ibuff_excl,      excl      , ocl.nAtoms*EXCL_MAX, i0a*EXCL_MAX  );
         err|= ocl.upload( ocl.ibuff_bkNeighs,  bkNeighs  , ocl.nbkng, i0bk  );
         err|= ocl.upload( ocl.ibuff_bkNeighs_new, bkNeighs_new, ocl.nbkng, i0bk  );
         //err|= ocl.upload( ocl.ibuff_neighForce, neighForce  );
@@ -728,6 +733,7 @@ void upload_mmff(  bool bParams, bool bForces, bool bVel, bool blvec ){
     if(bParams){
         err|= ocl.upload( ocl.ibuff_neighs,     neighs    );
         err|= ocl.upload( ocl.ibuff_neighCell,  neighCell );
+        err|= ocl.upload( ocl.ibuff_excl,       excl      );
         err|= ocl.upload( ocl.ibuff_bkNeighs,   bkNeighs  );
         err|= ocl.upload( ocl.ibuff_bkNeighs_new,   bkNeighs_new  );
         //err|= ocl.upload( ocl.ibuff_neighForce, neighForce  );
@@ -1752,7 +1758,8 @@ void setup_MMFFf4_ocl(){
         default: { printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() GridFFmod::%i not implemented \n", gridFF.mode ); } break;
     }
 
-    if(!task_NBFF  ){  task_NBFF      = ocl.setup_getNonBond       ( ffl.natoms, ffl.nnode, nPBC_ );  }
+    if(!task_NBFF    ){  task_NBFF      = ocl.setup_getNonBond    ( ffl.natoms, ffl.nnode, nPBC_ );  }
+    if(!task_NBFF_ex2){  task_NBFF_ex2  = ocl.setup_getNonBond_ex2( ffl.natoms, ffl.nnode, nPBC_ );  }
 
     // OCLtask* getSurfMorse(  Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0, int na_s=0, float4* atoms_s=0, float4* REQs_s=0,  bool bRun=true, OCLtask* task=0 ){
     if(!task_SurfAtoms && bSurfAtoms ){
@@ -2116,7 +2123,11 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
                             err |= task_SurfAtoms->enque_raw();  //OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_SurfAtoms()" );
                         }
                     }else{
-                        err |= task_NBFF      ->enque_raw();     //OCL_checkError(err, "task_NBFF->enque_raw();");
+                        if(bExclusion2){
+                            err |= task_NBFF_ex2->enque_raw();
+                        }else{
+                            err |= task_NBFF      ->enque_raw();     //OCL_checkError(err, "task_NBFF->enque_raw();");
+                        }
                     }
                 }
                 err |= task_MMFF->enque_raw();    //OCL_checkError(err, "task_MMFF->enque_raw()");
