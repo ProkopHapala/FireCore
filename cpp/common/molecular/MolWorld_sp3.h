@@ -1455,6 +1455,8 @@ void printPBCshifts(){
                 ffl.chargeToEpairs( QEpair, etyp ); 
             }
             nbmol.evalPLQs(gridFF.alphaMorse);
+            ffl.makeSecondNeighs();
+            ffl.printSecondNeighs();
 
             if(bCheckInit){
                 idebug=1;

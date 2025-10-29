@@ -62,6 +62,7 @@ fi
 
 
 #./$name -x common_resources/xyz/C2H4          -iParalel 0
+./$name -x common_resources/xyz/CH4          -iParalel 0
 
 #./$name -x common_resources/xyz/H2O       -uff  -iParalel 0  -verb 2   -perframe 1 -dt 0.0001
 #./$name -x common_resources/xyz/H2O       -uff  -iParalel 0  -verb 2   -perframe 1 -dt 0.01
@@ -297,7 +298,7 @@ fi
 #./$name  -x common_resources/xyz/polymer-2_new-COOH  -g common_resources/xyz/NaCl_1x1_L3   -iParalel 1   #crash
 
 #./$name  -x common_resources/xyz/polymer-2_new       -g common_resources/xyz/NaCl_8x8_L3_step   -iParalel 1  #OK
-./$name  -x common_resources/xyz/polymer-2_new-OH    -g common_resources/xyz/NaCl_8x8_L3_step   -iParalel 1  #OK
+#./$name  -x common_resources/xyz/polymer-2_new-OH    -g common_resources/xyz/NaCl_8x8_L3_step   -iParalel 1  #OK
 
 
 #./$name  -x common_resources/xyz/polymer-2_new   -g common_resources/xyz/NaCl_1x1_L2   -Ftol 1e-12 -iParalel 0 -perframe 10  -group  9,20,17,1,9  0,1,9,17,15,7,21,27,28,25,26,36 -group 12,19,16,3,12 2,3,6,12,14,16,18,24,30,29,35

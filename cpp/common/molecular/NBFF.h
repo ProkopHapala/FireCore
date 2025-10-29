@@ -207,24 +207,45 @@ class NBFF: public ForceField{ public:
     void makeSecondNeighs(){
         _realloc(excl,natoms*EXCL_MAX);
         for(int ia=0; ia<natoms; ia++){
-            int i0 = ia*EXCL_MAX;
-            int* excli = excl+i0;
+            int* excli = excl + ia*EXCL_MAX;
             for(int k=0; k<EXCL_MAX; k++){ excli[k]=-1; }
             int n=0;
+            auto addExcl = [&](int jb){
+                if(jb<0) return;
+                if(jb==ia) return;
+                if(jb>=natoms) return;
+                for(int m=0; m<n; m++){ if(excli[m]==jb){ return; } }
+                if(n<EXCL_MAX){ excli[n++] = jb; }
+                else{ printf("ERROR in NBFF::makeSecondNeighs() ia=%i n(%i)>=EXCL_MAX(%i)\n", ia, n, EXCL_MAX); exit(0); }
+            };
+            const Quat4i& neigh = neighs[ia];
+            for(int an=0; an<4; an++){ addExcl( neigh.array[an] ); }
             for(int an=0; an<4; an++){
-                int ja = neighs[ia].array[an];
-                if(ja<0) continue;
+                int ja = neigh.array[an];
+                //if(ja<0 || ja>=natoms) continue;
                 const Quat4i& nj = neighs[ja];
-                for(int bn=0; bn<4; bn++){
-                    int jb = nj.array[bn];
-                    if(jb<0 || jb==ia) continue;
-                    bool dup=false;
-                    for(int m=0; m<n; m++){ if(excli[m]==jb){ dup=true; break; } }
-                    if(dup) continue;
-                    if(n<EXCL_MAX) excli[n++] = jb;
-                }
+                for(int bn=0; bn<4; bn++){ addExcl( nj.array[bn] ); }
             }
-            insertSort<int>(n,excli);
+            insertSort<int>(n, excli);
+        }
+    }
+
+    void printSecondNeighs( int mode=1 ) const{
+        printf("NBFF::printSecondNeighs()\n"); 
+        if(excl==0){ printf("NBFF::printSecondNeighs() excl not built\n");  return; }
+        for(int ia=0; ia<natoms; ia++){
+            printf("excl[%3i] ", ia);
+            const int* lst = excl + ia*EXCL_MAX;
+            for(int k=0; k<EXCL_MAX; k++){
+                const int v = lst[k];
+                if(v<0){ printf(" -1"); continue; }
+                int cell = (v>>24)&0xFF;
+                int atom = v&0x00FFFFFF;
+                if     (mode==3 ){ printf("  %02X:%06X", cell, atom); }
+                else if(mode==2 ){ printf("  %3i",       cell);       }
+                else             { printf("  %3i", atom);             }
+            }
+            printf("\n");
         }
     }
 
@@ -446,6 +467,35 @@ class NBFF: public ForceField{ public:
             fi.add(fij);
         }
         fapos[ia].add(fi);           // global write fapos[ia]
+        return E;
+    }
+
+    __attribute__((hot))
+    double evalLJQs_ex2_atom( int ia ){
+        const double R2damp = Rdamp*Rdamp;
+        const Vec3d  pi     = apos[ia];
+        const Quat4d REQi   = REQs[ia];
+        Vec3d        fi     = Vec3dZero;
+        double       E      = 0.0;
+        const int i0_ex     = ia*EXCL_MAX;
+        int       iex       = i0_ex;
+        const int iex_end   = i0_ex + EXCL_MAX - 1;
+        int       jex       = excl ? excl[iex] : -1;
+        for(int ja=0; ja<natoms; ja++){
+            if(ja==ia) continue;
+            if(jex!=-1){
+                if( (iex<iex_end) && ((jex & 0xFFFFFF) < ja) ){ iex++; }
+                jex = excl[iex];
+            }
+            if(jex==ja) continue;
+            Vec3d fij          = Vec3dZero;
+            const Vec3d  pj    = apos[ja];
+            const Quat4d REQj  = REQs[ja];
+            Quat4d REQij; combineREQ( REQj, REQi, REQij );
+            E += getLJQH( pj-pi, fij, REQij, R2damp );
+            fi.add(fij);
+        }
+        fapos[ia].add(fi);
         return E;
     }
 
