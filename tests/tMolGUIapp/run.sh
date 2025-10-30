@@ -62,7 +62,31 @@ fi
 
 
 #./$name -x common_resources/xyz/C2H4          -iParalel 0
-./$name -x common_resources/xyz/CH4          -iParalel 0
+#./$name -x common_resources/xyz/CH4          -iParalel 0
+#./$name -x common_resources/xyz/CH4          -iParalel 0 -ex2 
+#./$name -x common_resources/xyz/CH4          -iParalel 0 -ex2 -uff
+#./$name -x common_resources/xyz/CH4          -iParalel 1 -ex2 -uff
+#./$name -x common_resources/xyz/CH4          -iParalel 0 -uff
+#./$name -x common_resources/xyz/CH4          -iParalel 1 -uff
+
+#./$name -x common_resources/xyz/CH4          -iParalel 0 -ex2 -dt 0.01 -perframe 1
+
+
+#./$name -x common_resources/xyz/HCOOH         -iParalel 0 -ex2
+#./$name -x common_resources/xyz/HCOOH      -iParalel 1 -ex2
+
+#./$name -x common_resources/xyz/pyridine -iParalel 0 -ex2
+
+#./$name -x common_resources/xyz/NH3     -iParalel 0 -ex2
+
+#./$name -x common_resources/xyz/uracil  -iParalel 0 -ex2
+./$name -x common_resources/xyz/uracil  -iParalel 0 -ex2 -uff
+
+#./$name -x common_resources/xyz/nHexadecan_dicarboxylic -iParalel 0 -ex2
+#./$name -x common_resources/xyz/CG -iParalel 0  -ex2
+#./$name -x common_resources/xyz/CG -iParalel 0 
+
+
 
 #./$name -x common_resources/xyz/H2O       -uff  -iParalel 0  -verb 2   -perframe 1 -dt 0.0001
 #./$name -x common_resources/xyz/H2O       -uff  -iParalel 0  -verb 2   -perframe 1 -dt 0.01

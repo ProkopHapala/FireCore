@@ -151,6 +151,7 @@ class ForceField: public Atoms{ public:
     bool  bSubtractBondNonBond  = true;  // if true we subtract bond energy from non-bonded energy
     bool  bSubtractAngleNonBond = true;  // if true we subtract angle energy from non-bonded energy
     bool  bClampNonBonded       = true;  // if true we clamp non-bonded energy to zero
+    bool  bExclusion2           = false; // if true we use exclusion2
     double  FmaxNonBonded       = 10.0;  // if bClampNonBonded>0 then we clamp non-bonded forces to this value
     std::function<double(int,const Vec3d,Vec3d&)>                           atomForceFunc   = nullptr; // this is called for every atom in every MDstep of run()
     std::function<double(const Vec3d cvf, int itr, int natoms, Vec3d* apos, Vec3d* fapos, Vec3d* vapos)> perStepCallback = nullptr; // this is called for every MDstep of run()
@@ -160,7 +161,7 @@ class ForceField: public Atoms{ public:
 
     // ==================== Functions
 
-    inline void setNonBondStrategy( int imode=0 ){
+    inline void setNonBondStrategy( int imode=0, bool bExclude2=false ){
         if      ( imode>0 ){ bNonBondNeighs = true;  }
         else if ( imode<0 ){ bNonBondNeighs = false; }
         if( !bNonBonded ){
@@ -175,6 +176,7 @@ class ForceField: public Atoms{ public:
             bSubtractBondNonBond  = true;
             bClampNonBonded       = true;
         }
+        if(bExclude2){ bSubtractAngleNonBond = false; bSubtractBondNonBond=false; }
         //printf( "ForceField::setNonBondStrategy() imode=%i bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", imode, bNonBonded, bNonBondNeighs, bSubtractBondNonBond, bSubtractAngleNonBond, bClampNonBonded );
     }
 

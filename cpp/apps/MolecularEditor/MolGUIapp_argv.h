@@ -46,6 +46,7 @@
 
     funcs["-e"]={0,[&](const char** ss){ W->bEpairs=true; }}; // add explicit electron pair
     funcs["-EachAngle"]={0,[&](const char** ss){ W->ffl.bEachAngle=true;                          }};
+    funcs["-ex2"]={0,[&](const char** ss){ W->bExclusion2=true;                                   }};
     funcs["-torsions"]={0,[&](const char** ss){ W->ffl.bTorsion=true; W->ffl.doPiPiI=false;  }};
     
     funcs["-substr_iso"]={1,[&](const char** ss){ sscanf( ss[0], "%lf", &app->subs_iso ); }};

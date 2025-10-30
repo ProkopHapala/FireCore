@@ -222,7 +222,7 @@ class NBFF: public ForceField{ public:
             for(int an=0; an<4; an++){ addExcl( neigh.array[an] ); }
             for(int an=0; an<4; an++){
                 int ja = neigh.array[an];
-                //if(ja<0 || ja>=natoms) continue;
+                if(ja<0 || ja>=natoms) continue; // this must be here, I tried to comment it out and molecule ware flying arround due to uncompensated forces
                 const Quat4i& nj = neighs[ja];
                 for(int bn=0; bn<4; bn++){ addExcl( nj.array[bn] ); }
             }
@@ -469,9 +469,24 @@ class NBFF: public ForceField{ public:
         fapos[ia].add(fi);           // global write fapos[ia]
         return E;
     }
+    // evaluate all non-bonding interactions excluding bonded atoms, with OpenMP parallelization
+    __attribute__((hot))
+    double evalLJQs_ng4_omp( ){
+        //printf( "NBFF::evalLJQs_ng4_omp() \n" );
+        double E =0;
+        //#pragma omp parallel for reduction(+:E) shared(neighs,R2damp) schedule(dynamic,1)
+        for(int ia=0; ia<natoms; ia++){
+           //printf("omp_get_num_threads=%i\n", omp_get_num_threads() );
+           //printf("eval_atoms(%i) @cpu[%d/%d]\n", i, omp_get_thread_num(), omp_get_num_threads() );
+           E += evalLJQs_ng4_atom( ia );
+        }
+
+        return E;
+    }
 
     __attribute__((hot))
     double evalLJQs_ex2_atom( int ia ){
+        //if(ia==0){ printf("evalLJQs_ex2_atom() ia=%li bExclusion2=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i \n", ia, bExclusion2, bNonBondNeighs, bSubtractBondNonBond, bSubtractAngleNonBond, bClampNonBonded); }
         const double R2damp = Rdamp*Rdamp;
         const Vec3d  pi     = apos[ia];
         const Quat4d REQi   = REQs[ia];
@@ -487,7 +502,10 @@ class NBFF: public ForceField{ public:
                 if( (iex<iex_end) && ((jex & 0xFFFFFF) < ja) ){ iex++; }
                 jex = excl[iex];
             }
-            if(jex==ja) continue;
+            if(jex==ja){ 
+                //printf("evalLJQs_ex2_atom() EXCLUDE: ia=%li ja=%li jex=%li \n", ia, ja, jex );   
+                continue;
+            }
             Vec3d fij          = Vec3dZero;
             const Vec3d  pj    = apos[ja];
             const Quat4d REQj  = REQs[ja];
@@ -498,21 +516,15 @@ class NBFF: public ForceField{ public:
         fapos[ia].add(fi);
         return E;
     }
+    // __attribute__((hot))
+    // double evalLJQs_ex2_omp( ){
+    //     //printf( "NBFF::evalLJQs_ex2_omp() \n" );
+    //     double E =0;
+    //     //#pragma omp parallel for reduction(+:E) shared(neighs,R2damp) schedule(dynamic,1)
+    //     for(int ia=0; ia<natoms; ia++){ E += evalLJQs_ex2_atom( ia ); }
+    //     return E;
+    // }
 
-    // evaluate all non-bonding interactions excluding bonded atoms, with OpenMP parallelization
-    __attribute__((hot))
-    double evalLJQs_ng4_omp( ){
-        //printf( "NBFF::evalLJQs_ng4_omp() \n" );
-        double E =0;
-        //#pragma omp parallel for reduction(+:E) shared(neighs,R2damp) schedule(dynamic,1)
-        for(int ia=0; ia<natoms; ia++){
-           //printf("omp_get_num_threads=%i\n", omp_get_num_threads() );
-           //printf("eval_atoms(%i) @cpu[%d/%d]\n", i, omp_get_thread_num(), omp_get_num_threads() );
-           E += evalLJQs_ng4_atom( ia );
-        }
-
-        return E;
-    }
 
     // evaluate all non-bonding interactions excluding bonded atoms (assume max 4 bonds per atom), single-threaded version
     __attribute__((hot))
@@ -624,13 +636,11 @@ class NBFF: public ForceField{ public:
                 // --- We calculate non-bonding interaction every time (most atom pairs are not bonded)
                 const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi
                 double eij      = getLJQH( dpc, fij, REQij, R2damp );
-
                 // Debug print for pairwise interaction
-                if((idebug>3) && (id_DBG==ia)){ // Print all interactions for atom 0
-                    printf("CPU_NB[%i,%i] dpc(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQj(% .6e,% .6e,% .6e) fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e) \n",
-                           ia, j, dpc.x, dpc.y, dpc.z, dpc.norm(), REQi.x, REQi.y, REQi.z, REQj.x, REQj.y, REQj.z, fij.x, fij.y, fij.z, eij, REQij.x, REQij.y, REQij.z);
-                }
-
+                // if((idebug>3) && (id_DBG==ia)){ // Print all interactions for atom 0
+                //     printf("CPU_NB[%i,%i] dpc(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQj(% .6e,% .6e,% .6e) fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e) \n",
+                //            ia, j, dpc.x, dpc.y, dpc.z, dpc.norm(), REQi.x, REQi.y, REQi.z, REQj.x, REQj.y, REQj.z, fij.x, fij.y, fij.z, eij, REQij.x, REQij.y, REQij.z);
+                // }
                 if(bClampNonBonded)[[likely]]{ clampForce( fij, Fmax2 ); }
                 //printf( "getLJQs_PBC_omp[%i] dp(%6.3f,%6.3f,%6.3f) REQ(%g,%g,%g,%g) \n", eij, dp.x,dp.y,dp.z, REQij.x,REQij.y,REQij.z,REQij.w );
                 E +=eij;
@@ -660,14 +670,12 @@ class NBFF: public ForceField{ public:
     double evalLJQs_ng4_PBC_atom_omp(const int ia ){
         //printf("DEBUG 1 id=%i ia=%i REQs=%li \n", id, ia, REQs );
         //printf("NBFF::evalLJQs_ng4_PBC_atom_omp(ia=%3i)\n", ia );
-
-        if((idebug>3) && (id_DBG==ia)){
-            printf( "NBFF::evalLJQs_ng4_PBC_atom_omp(%i)   apos %p REQs %p neighs %p neighCell %p \n", ia,  apos, REQs, neighs, neighCell );
-            for(int i=0; i<natoms; i++){
-                printf( "CPU atom [is:0,ia:%i] p(% .3f,% .3f,% .3f) REQ(% .3f,% .3f,% .3f,% .3f) neighs{%3i,%3i,%3i,%3i} \n", i, apos[i].x,apos[i].y,apos[i].z, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w );
-            }
-        }
-
+        // if((idebug>3) && (id_DBG==ia)){
+        //     printf( "NBFF::evalLJQs_ng4_PBC_atom_omp(%i)   apos %p REQs %p neighs %p neighCell %p \n", ia,  apos, REQs, neighs, neighCell );
+        //     for(int i=0; i<natoms; i++){
+        //         printf( "CPU atom [is:0,ia:%i] p(% .3f,% .3f,% .3f) REQ(% .3f,% .3f,% .3f,% .3f) neighs{%3i,%3i,%3i,%3i} \n", i, apos[i].x,apos[i].y,apos[i].z, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w );
+        //     }
+        // }
         const double R2damp = Rdamp*Rdamp;
         const Vec3d  pi   = apos     [ia];
         const Quat4d REQi = REQs    [ia];
@@ -689,7 +697,6 @@ class NBFF: public ForceField{ public:
                 // --- We calculate non-bonding interaction every time (most atom pairs are not bonded)
                 const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi
                 double eij      = getLJQH( dpc, fij, REQij, R2damp );
-
                 // --- If atoms are bonded we don't use the computed non-bonding interaction energy and force
                 if(bBonded) [[unlikely]]  {
                     if(   ((j==ng.x)&&(ipbc==ngC.x))
@@ -700,12 +707,11 @@ class NBFF: public ForceField{ public:
                         continue;
                     }
                 }
-
                 // Debug print for pairwise interaction (PBC ng4 case, matching GPU format)
-                if((idebug>3) && (id_DBG==ia)){ // Print all non-bonded interactions for atom 0 (like GPU does)
-                    printf("CPU fij [%i,%i] dpc(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQj(% .6e,% .6e,% .6e) fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e)\n",
-                                       ia, j, dpc.x, dpc.y, dpc.z, dpc.norm(), REQi.x, REQi.y, REQi.z, REQj.x, REQj.y, REQj.z,  fij.x, fij.y, fij.z, eij, REQij.x, REQij.y, REQij.z);
-                }
+                // if((idebug>3) && (id_DBG==ia)){ // Print all non-bonded interactions for atom 0 (like GPU does)
+                //     printf("CPU fij [%i,%i] dpc(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQj(% .6e,% .6e,% .6e) fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e)\n",
+                //                        ia, j, dpc.x, dpc.y, dpc.z, dpc.norm(), REQi.x, REQi.y, REQi.z, REQj.x, REQj.y, REQj.z,  fij.x, fij.y, fij.z, eij, REQij.x, REQij.y, REQij.z);
+                // }
                 E +=eij;
                 fx+=fij.x;
                 fy+=fij.y;
@@ -744,14 +750,12 @@ class NBFF: public ForceField{ public:
             const Vec3d dp      = apos[j]-pi;
             Vec3d fij           = Vec3dZero;
             double eij = getLJQH( dp, fij, REQij, R2damp );
-
             // Debug print for pairwise interaction (matching GPU format)
             // Print for atom 0 interactions to match GPU debug pattern
-            if((idebug>3) && (id_DBG==ia)){  // Print all interactions for atom 0 (like GPU does)
-                printf("CPU fij [i:%3i,j:%3i|isys:%i] dp(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQj(% .6e,% .6e,% .6e) fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e) \n",
-                       ia, j,0, dp.x, dp.y, dp.z, dp.norm(), REQi.x, REQi.y, REQi.z, REQj.x, REQj.y, REQj.z, fij.x, fij.y, fij.z, eij, REQij.x, REQij.y, REQij.z);
-            }
-
+            // if((idebug>3) && (id_DBG==ia)){  // Print all interactions for atom 0 (like GPU does)
+            //     printf("CPU fij [i:%3i,j:%3i|isys:%i] dp(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQj(% .6e,% .6e,% .6e) fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e) \n",
+            //            ia, j,0, dp.x, dp.y, dp.z, dp.norm(), REQi.x, REQi.y, REQi.z, REQj.x, REQj.y, REQj.z, fij.x, fij.y, fij.z, eij, REQij.x, REQij.y, REQij.z);
+            // }
             if(bClampNonBonded)[[likely]]{ clampForce( fij, Fmax2 ); }
             E +=eij;
             fx+=fij.x;
@@ -780,14 +784,10 @@ class NBFF: public ForceField{ public:
         const Quat4i ng   = neighs   [ia];
         Vec3d fi = Vec3dZero;
         double E=0,fx=0,fy=0,fz=0;
-
-        if((idebug>3) && (id_DBG==ia)){
-            printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
-            for(int i=0; i<natoms; i++){
-                printf( "CPU atom [is:0,ia:%i] p(% .3f,% .3f,% .3f) REQ(% .3f,% .3f,% .3f,% .3f) neighs{%3i,%3i,%3i,%3i} \n", i, apos[i].x,apos[i].y,apos[i].z, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w );
-            }
-        }
-
+        // if((idebug>3) && (id_DBG==ia)){
+        //     printf( "NBFF::evalLJQs_ng4_PBC_atom(%i)   apos %li REQs %li neighs %li neighCell %li \n", ia,  apos, REQs, neighs, neighCell );
+        //     for(int i=0; i<natoms; i++){  printf( "CPU atom [is:0,ia:%i] p(% .3f,% .3f,% .3f) REQ(% .3f,% .3f,% .3f,% .3f) neighs{%3i,%3i,%3i,%3i} \n", i, apos[i].x,apos[i].y,apos[i].z, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w );}
+        // }
         #pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){
             if( (ia==j)  || (j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w) ) [[unlikely]]  { continue; }
@@ -796,13 +796,7 @@ class NBFF: public ForceField{ public:
             const Vec3d dp      = apos[j]-pi;
             Vec3d fij           = Vec3dZero;
             double eij = getLJQH( dp, fij, REQij, R2damp );
-
-            // Debug print for pairwise interaction (ng4 case, matching GPU format)
-            if((idebug>3) && (id_DBG==ia)){ // Print all interactions for all atoms (like GPU does)
-                printf("CPU fij [i:%3i,j:%3i|isys:%i] dp(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQj(% .6e,% .6e,% .6e) fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e) \n",
-                                   ia, j, 0, dp.x, dp.y, dp.z, dp.norm(), REQi.x, REQi.y, REQi.z, REQj.x, REQj.y, REQj.z, fij.x, fij.y, fij.z, eij, REQij.x, REQij.y, REQij.z);
-            }
-
+            // if((idebug>3) && (id_DBG==ia)){ printf("CPU fij [i:%3i,j:%3i|isys:%i] dp(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQj(% .6e,% .6e,% .6e) fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e) \n", ia, j, 0, dp.x, dp.y, dp.z, dp.norm(), REQi.x, REQi.y, REQi.z, REQj.x, REQj.y, REQj.z, fij.x, fij.y, fij.z, eij, REQij.x, REQij.y, REQij.z); }
             E +=eij;
             fx+=fij.x;
             fy+=fij.y;
