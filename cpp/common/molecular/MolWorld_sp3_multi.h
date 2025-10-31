@@ -333,6 +333,10 @@ void initMultiCPU(int nSys){
         ffls[isys].clone( ffl, true, true );
         ffls[isys].makePBCshifts( nPBC, true );
         ffls[isys].id=isys;
+        ffls[isys].bNonBonded     = bNonBonded;
+        ffls[isys].bNonBondNeighs = bNonBondNeighs;
+        ffls[isys].bExclusion2    = bExclusion2;
+        ffls[isys].setNonBondStrategy( bNonBondNeighs*2-1, bExclusion2 );
         ffls[isys].PLQs = ffl.PLQs;  // WARNING : maybe we should make own copy of PLQs for each system because we have own copy of REQs for each system
         // ----- optimizer
         opts[isys].bindOrAlloc( ffls[isys].nDOFs, ffls[isys].DOFs, 0, ffls[isys].fDOFs, 0 );
@@ -637,7 +641,16 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=false,
 
         copy    ( ff.natoms, ff.neighCell, neighCell+i0a );
         copy    ( ff.natoms, ff.neighs,    neighs   +i0a );
-        copy    ( ff.natoms*EXCL_MAX, ff.excl, excl + i0a*EXCL_MAX );
+        if(bExclusion2 && ff.excl){
+            copy( ff.natoms*EXCL_MAX, ff.excl, excl + i0a*EXCL_MAX );
+        }else{
+            int* dst = excl + i0a*EXCL_MAX;
+            const int nrow = ff.natoms;
+            for(int ia=0; ia<nrow; ia++){
+                int* row = dst + ia*EXCL_MAX;
+                for(int k=0; k<EXCL_MAX; k++){ row[k] = -1; }
+            }
+        }
         //copy_add( ff.natoms, ff.neighs,    neighs   +i0a,           0      );
         copy    ( ff.natoms, ff.bkneighs,  bkNeighs_new +i0v           );
         copy    ( ff.nnode,  ff.bkneighs,  bkNeighs_new +i0v+ff.natoms );
@@ -701,7 +714,9 @@ void upload_sys( int isys, bool bParams=false, bool bForces=0, bool bVel=true, b
         int i0bk  = isys * ocl.nbkng;
         err|= ocl.upload( ocl.ibuff_neighs,    neighs    , ocl.nAtoms, i0a  );
         err|= ocl.upload( ocl.ibuff_neighCell, neighCell , ocl.nAtoms, i0a  );
-        err|= ocl.upload( ocl.ibuff_excl,      excl      , ocl.nAtoms*EXCL_MAX, i0a*EXCL_MAX  );
+        if(bExclusion2){
+            err|= ocl.upload( ocl.ibuff_excl,      excl      , ocl.nAtoms*EXCL_MAX, i0a*EXCL_MAX  );
+        }
         err|= ocl.upload( ocl.ibuff_bkNeighs,  bkNeighs  , ocl.nbkng, i0bk  );
         err|= ocl.upload( ocl.ibuff_bkNeighs_new, bkNeighs_new, ocl.nbkng, i0bk  );
         //err|= ocl.upload( ocl.ibuff_neighForce, neighForce  );
@@ -733,7 +748,9 @@ void upload_mmff(  bool bParams, bool bForces, bool bVel, bool blvec ){
     if(bParams){
         err|= ocl.upload( ocl.ibuff_neighs,     neighs    );
         err|= ocl.upload( ocl.ibuff_neighCell,  neighCell );
-        err|= ocl.upload( ocl.ibuff_excl,       excl      );
+        if(bExclusion2){
+            err|= ocl.upload( ocl.ibuff_excl,       excl      );
+        }
         err|= ocl.upload( ocl.ibuff_bkNeighs,   bkNeighs  );
         err|= ocl.upload( ocl.ibuff_bkNeighs_new,   bkNeighs_new  );
         //err|= ocl.upload( ocl.ibuff_neighForce, neighForce  );
@@ -2062,7 +2079,12 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
 
     bool dovdW=true;
     //bool dovdW=false;
-    ocl.bSubtractVdW=dovdW;
+    ocl.bSubtractVdW = (!bExclusion2);
+    if(task_MMFF){
+        //printf("run_ocl_opt() clSetKernelArg bSubtractVdW=%i\n", ocl.bSubtractVdW);
+        int err_set = clSetKernelArg( ocl.kernels[task_MMFF->ikernel], 16, sizeof(int), &ocl.bSubtractVdW );
+        OCL_checkError(err_set, "run_ocl_opt.set_bSubtractVdW");
+    }
 
     if(ocl.nGroupTot<=0){ bGroups = false; };
     bool bExplore = false;
@@ -2174,7 +2196,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             double t=(getCPUticks()-T0)*tick2second;
             //printf( "run_omp_ocl(nSys=%i|iPara=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", nSystems, iParalel, itr,niter_max, sqrt(F2max), T1*1000 );
             if(verbosity>0)
-            printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bGridFF=%i,bUseTexture=%i,bExplore=%i,) CONVERGED in %i/%i steps, |F|(%g)<%g time %g [ms]( %g [us/step]) bGridFF=%i \n", nSystems, iParalel, bSurfAtoms, bGridFF, ocl.bUseTexture, bExplore, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF );
+            printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bExclusion2=%i,bGridFF=%i,bUseTexture=%i,bExplore=%i,) CONVERGED in %i/%i steps, |F|(%g)<%g time %g [ms]( %g [us/step]) bGridFF=%i \n", nSystems, iParalel, bSurfAtoms, bExclusion2, bGridFF, ocl.bUseTexture, bExplore, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF );
             return niterdone;
         }
     }

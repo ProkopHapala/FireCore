@@ -251,9 +251,9 @@ __kernel void getMMFFf4(
     __global float4*  Kpp,          // 11 [nnode]  stiffness of pi-planarization for each neighbor (only node atoms have pi-pi alignemnt interaction)
     __global cl_Mat3* lvecs,        // 12 lattice vectors         for each system
     __global cl_Mat3* ilvecs,       // 13 inverse lattice vectors for each system
-    __global float4*  pbc_shifts,
-    const int npbc,
-    const int bSubtractVdW
+    __global float4*  pbc_shifts,   // 14 pbc shifts for each system
+    const int npbc,                 // 15 number of pbc shifts
+    const int bSubtractVdW          // 16 subtract vdW energy
 ){
 
     const int iG = get_global_id (0);   // intex of atom   (iG<nAtoms)
@@ -299,6 +299,10 @@ __kernel void getMMFFf4(
     for(int i=0; i<NNEIGH; i++){ fbs[i]=float3Zero; fps[i]=float3Zero; }   // clear recoil forces on neighbors
 
     float3 f1,f2;         // working forces
+
+    if((iG==0)&&(iS==0)){
+        printf( "getMMFFf4() iG %i, iS %i, iaa %i bSubtractVdW %i\n", iG, iS, iaa, bSubtractVdW );
+    }
 
     { // ========= BONDS - here we evaluate pairwise interactions of node atoms with its 4 neighbors
 
@@ -386,7 +390,7 @@ __kernel void getMMFFf4(
                 E += evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );    // evaluate angular force and energy using cos(angle/2) formulation
                 fa    -= f1+f2;
 
-                //if(bSubtractVdW)
+                if(bSubtractVdW)
                 { // Remove non-bonded interactions from atoms that are bonded to common neighbor
                     float4 REQi=REQKs[inga];   // non-bonding parameters of i-th neighbor
                     float4 REQj=REQKs[jnga];   // non-bonding parameters of j-th neighbor
@@ -1736,7 +1740,9 @@ __kernel void getNonBond(
         }
     }
     */
-
+    if((iG==0)&&(iS==0)){
+        printf( "getNonBond() iG %i, iS %i, iaa %i\n", iG, iS, iaa );
+    }
     // ========= Atom-to-Atom interaction ( N-body problem ), we do it in chunks of size of local memory, in order to reuse data and reduce number of reads from global memory
     //barrier(CLK_LOCAL_MEM_FENCE);
     for (int j0=0; j0<nG; j0+=nL){      // loop over all atoms in the system, by chunks of size of local memory
@@ -1858,6 +1864,10 @@ __kernel void getNonBond_ex2(
     int iex             = iaa*EXCL_MAX;
     const int iex_end   = iex + EXCL_MAX-1;
     int jex             = excl[iex];
+
+    if((iG==0)&&(iS==0)){
+        printf( "getNonBond_ex2() iG %i, iS %i, iaa %i, iex %i, iex_end %i, jex %i\n", iG, iS, iaa, iex, iex_end, jex );
+    }
 
     // ========= Atom-to-Atom interaction ( N-body problem ), we do it in chunks of size of local memory, in order to reuse data and reduce number of reads from global memory  
     //barrier(CLK_LOCAL_MEM_FENCE);

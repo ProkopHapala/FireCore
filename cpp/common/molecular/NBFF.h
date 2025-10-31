@@ -495,7 +495,7 @@ class NBFF: public ForceField{ public:
         const int i0_ex     = ia*EXCL_MAX;
         int       iex       = i0_ex;
         const int iex_end   = i0_ex + EXCL_MAX - 1;
-        int       jex       = excl ? excl[iex] : -1;
+        int       jex       = excl[iex];
         for(int ja=0; ja<natoms; ja++){
             if(ja==ia) continue;
             if(jex!=-1){

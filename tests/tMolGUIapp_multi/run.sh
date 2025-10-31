@@ -48,6 +48,9 @@ touch minima.dat
 #./$name -m 10 -x common_resources/xyz/pyridine
 #./$name -m 10 -x common_resources/xyz/propandiol
 
+#./$name -m 1 -x common_resources/xyz/CH4  
+./$name -m 1 -x common_resources/xyz/CH4 -ex2 
+
 #./$name       -x common_resources/xyz/nHexadecan_dicarboxylic  -T 100 0.01
 #./$name       -x common_resources/xyz/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -T 100 0.01
 #./$name       -x common_resources/xyz/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -perframe 1000 -gopt 1000,1000 0.25,1.0
@@ -118,7 +121,7 @@ touch minima.dat
 #./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel -1
 #./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 0 -verb 3
 
-./$name -m $nsys -x common_resources/xyz/PTCDA_SAM     -g common_resources/xyz/NaCl_1x1_L2
+#./$name -m $nsys -x common_resources/xyz/PTCDA_SAM     -g common_resources/xyz/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/xyz/BPBA          -g common_resources/xyz/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/xyz/BPBA          -g common_resources/xyz/NaCl_1x1_L2 -e
 

@@ -631,8 +631,8 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_lvecs  );     // 12
         err |= useArgBuff( ibuff_ilvecs );     // 13
         err |= useArgBuff( ibuff_pbcshifts );  // 13
-        err |= _useArg   ( npbc         );  
-        err |= _useArg   ( bSubtractVdW ); 
+        err |= _useArg   ( npbc         );     // 14
+        err |= _useArg   ( bSubtractVdW );     // 15
         
 
         //err |= _useArg( cl_lvec    );        // 12
