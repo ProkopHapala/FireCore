@@ -120,6 +120,7 @@ Before running the workflow, ensure the following assets and conventions are in 
 - **OpenCL sources:** `init()` and `initPP()` expect the `cl_src_dir` argument to point at `/cpp/common_resources/cl/`. The shared library loads `myprog.cl`, `GridFF.cl`, and `relax.cl` relative to this directory.
 - **FFT buffers:** Density grids are stored as complex single-precision arrays (`float2`), matching the interfaces of `poisson()`, `convolve()`, and `gradient()`. Upload/download helpers automatically convert between double precision NumPy arrays and these GPU buffers (`upload_d`, `download`).
 - **Grid descriptors:** Grid shape is defined by `pos0`, `dA`, `dB`, and `dC` vectors (stored as `float4`). Keep these consistent between `setGridShape` and the Python metadata (`setGridShape_dCell`) so that interpolation and relaxation kernels sample the same lattice.
+- **Fireball grid sizing/order:** `FireCore.setupGrid` snaps requested cell sizes onto FFT-friendly dimensions (e.g. a nominal `50×50×50` request might return `48×52×52`). Persist the returned `ngrid` without modification and pass it to downstream GPU code. Because the Fortran side stores grids in column-major layout, reverse the tuple (`ngrid[::-1]`) or allocate NumPy arrays with `order="F"` so that the fastest axis remains `z` when analysing or plotting densities.
 - **Probe/force textures:** `evalLJC_QZs` outputs into `float4` buffers where `.xyz` stores force components and `.w` stores the potential energy. Relaxation and visualization code rely on this layout.
 
 ---

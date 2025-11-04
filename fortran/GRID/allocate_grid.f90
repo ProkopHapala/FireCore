@@ -56,7 +56,8 @@
     use grid
     use options, only : verbosity
     implicit none
- 
+    logical :: need_realloc
+
 ! Argument Declaration and Description
 ! ===========================================================================
 ! Inputinitcharges_ks_
@@ -74,9 +75,14 @@
  
 ! Procedure
 ! ===========================================================================
-
+    !write(*,*) "subroutine reallocate_grid() verbosity",verbosity
     if(verbosity.gt.0) write(*,*) "subroutine reallocate_grid() "
-    
+    need_realloc = allocated(mesh_wf)
+    if (need_realloc) then
+        if (verbosity.gt.0) write(*,*) "WARNING allocate_grid(): freeing existing grid buffers"
+        call deallocate_grid()
+    end if
+
 ! wave function part
     allocate (mesh_wf (nsh_max, nspecies))
     allocate (drr_wf (nsh_max, nspecies))
@@ -101,3 +107,32 @@
  
     return
   end subroutine allocate_grid
+
+  subroutine deallocate_grid()
+    use configuration, only: natoms, nspecies
+    use wavefunction
+    use vnneutral
+    use interactions
+    use grid
+    use options, only : verbosity
+    implicit none
+
+    if(verbosity.gt.0) write(*,*) "deallocate_grid()"
+
+! wave function part
+    if (allocated(mesh_wf))       deallocate(mesh_wf)
+    if (allocated(drr_wf))        deallocate(drr_wf)
+    if (allocated(rmax_wf))       deallocate(rmax_wf)
+    if (allocated(rr_wf))         deallocate(rr_wf)
+    if (allocated(wf_spline))     deallocate(wf_spline)
+    if (allocated(wf))            deallocate(wf)
+
+! vneutral part
+    if (allocated(mesh_na))       deallocate(mesh_na)
+    if (allocated(rmax_na))       deallocate(rmax_na)
+    if (allocated(drr_na))        deallocate(drr_na)
+    if (allocated(rr_na))         deallocate(rr_na)
+    if (allocated(vnna_spline))   deallocate(vnna_spline)
+    if (allocated(vnna))          deallocate(vnna)
+
+  end subroutine deallocate_grid
