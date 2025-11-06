@@ -289,6 +289,9 @@ void realloc( int nSystems_ ){
         _realloc0( avel,      uff_ocl->nAtomsTot  , Quat4fZero );
         _realloc( REQs,       uff_ocl->nAtomsTot );
         _realloc( pbcshifts, uff_ocl->nSystems * (npbc+1) ); // npbc is from MolWorld_sp3
+        // Allocate constraint buffers for UFF (shared with MMFF)
+        _realloc0( constr,    uff_ocl->nAtomsTot , Quat4fOnes*-1. );
+        _realloc0( constrK,   uff_ocl->nAtomsTot , Quat4fOnes*-1. );
     }else{
         printf( "MolWorld_sp3_multi::realloc() MMFF Systems %i nAtoms %i nnode %i \n", nSystems, ffl.natoms,  ffl.nnode );
         ocl.initAtomsForces( nSystems, ffl.natoms,  ffl.nnode, npbc+1 );
@@ -1806,33 +1809,53 @@ void setup_NBFF_ocl(){
     if(!task_NBFF   )task_NBFF   = ocl.setup_getNonBond       ( ffl.natoms, ffl.nnode, nPBC  );
 }
 
-void picked2GPU( int ipick,  float K ){
-    //printf( "MolWorld_sp3_multi::picked2GPU() ipick %i iSystemCur %i \n", ipick, iSystemCur );
-    int i0a = ocl.nAtoms*iSystemCur;
-    int i0v = ocl.nvecs *iSystemCur;
-    if(ipick>=0){
-        Quat4f& acon  = constr [i0a + ipick];
-        Quat4f& aconK = constrK[i0a + ipick];
-        Vec3f hray   = (Vec3f)pick_hray;
-        Vec3f ray0   = (Vec3f)pick_ray0;
-        const Quat4f& atom = atoms [i0v + ipick];
+void picked2GPU(int ipick, float K){
+    //printf( "MolWorld_sp3_multi::picked2GPU(ipick=%i,K=%g)\n", ipick, K );
+    if(bUFF){
+        int i0a = uff_ocl->nAtoms*iSystemCur;
+        if(ipick>=0){
+            Quat4f& acon  = constr [i0a + ipick];
+            Quat4f& aconK = constrK[i0a + ipick];
+            Vec3f hray   = (Vec3f)pick_hray;
+            Vec3f ray0   = (Vec3f)pick_ray0;
+            const Quat4f& atom = atoms [i0a + ipick];
+            float c = hray.dot( atom.f ) - hray.dot( ray0 );
+            acon.f = ray0 + hray*c;
+            acon.w = K;
+            aconK = Quat4f{K,K,K,K};
+        }else{
+            for(int i=0; i<uff_ocl->nAtoms; i++){ constr[i0a + i].w=-1.0;  };
+            for(int i=0; i<uff_ocl->nAtoms; i++){ constrK[i0a + i]=Quat4fZero; };
+        }
+        uff_ocl->upload( uff_ocl->ibuff_constr,  constr  );
+        uff_ocl->upload( uff_ocl->ibuff_constrK, constrK );
+    }else{
+        int i0a = ocl.nAtoms*iSystemCur;
+        int i0v = ocl.nvecs *iSystemCur;
+        if(ipick>=0){
+            Quat4f& acon  = constr [i0a + ipick];
+            Quat4f& aconK = constrK[i0a + ipick];
+            Vec3f hray   = (Vec3f)pick_hray;
+            Vec3f ray0   = (Vec3f)pick_ray0;
+            const Quat4f& atom = atoms [i0v + ipick];
         float c = hray.dot( atom.f ) - hray.dot( ray0 );
         acon.f = ray0 + hray*c;
-        acon.w = K;
-        aconK = Quat4f{K,K,K,K};
-    }else{
-        for(int i=0; i<ocl.nAtoms; i++){ constr[i0a + i].w=-1.0;  };
-        for(int i=0; i<ocl.nAtoms; i++){ constrK[i0a + i]=Quat4fZero; };
-        //for(int i: constrain_list     ){ constr[i0a + i].w=Kfix;  };
-        for(int ia=0; ia<ocl.nAtoms; ia++){
-            int iaa = i0a + ia;
-            constr [iaa]=(Quat4f)ffls[iSystemCur].constr [ia];
-            constrK[iaa]=(Quat4f)ffls[iSystemCur].constrK[ia];
-        };
+            acon.w = K;
+            aconK = Quat4f{K,K,K,K};
+        }else{
+            for(int i=0; i<ocl.nAtoms; i++){ constr[i0a + i].w=-1.0;  };
+            for(int i=0; i<ocl.nAtoms; i++){ constrK[i0a + i]=Quat4fZero; };
+            //for(int i: constrain_list     ){ constr[i0a + i].w=Kfix;  };
+            for(int ia=0; ia<ocl.nAtoms; ia++){
+                int iaa = i0a + ia;
+                constr [iaa]=(Quat4f)ffls[iSystemCur].constr [ia];
+                constrK[iaa]=(Quat4f)ffls[iSystemCur].constrK[ia];
+            };
+        }
+        //for(int i=0; i<ocl.nAtoms; i++){ printf( "CPU:constr[%i](%7.3f,%7.3f,%7.3f |K= %7.3f) \n", i, constr[i0a+i].x,constr[i0a+i].y,constr[i0a+i].z,  constr[i0a+i].w   ); }
+        ocl.upload( ocl.ibuff_constr,  constr  );   // ToDo: instead of updating the whole buffer we may update just relevant part?
+        ocl.upload( ocl.ibuff_constrK, constrK );
     }
-    //for(int i=0; i<ocl.nAtoms; i++){ printf( "CPU:constr[%i](%7.3f,%7.3f,%7.3f |K= %7.3f) \n", i, constr[i0a+i].x,constr[i0a+i].y,constr[i0a+i].z,  constr[i0a+i].w   ); }
-    ocl.upload( ocl.ibuff_constr,  constr  );   // ToDo: instead of updating the whole buffer we may update just relevant part?
-    ocl.upload( ocl.ibuff_constrK, constrK );
 }
 
 // ==================================
@@ -1957,6 +1980,7 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
     if(!uff_ocl){ printf("MolWorld_sp3_multi::run_uff_ocl(): uff_ocl==nullptr\n"); return 0; } // This should not happen, uff_ocl is initialized in init()
     if(!uff_ocl->bSetUp){ setup_UFF_ocl(); }
     printf("MolWorld_sp3_multi::run_uff_ocl(  bBonding=%i, bGridFF=%i, bNonBonded=%i, bExclusion2=%i | niter=%i, dt=%f, damping=%f, Fconv=%f, Flim=%f) \n", bBonding, bGridFF, bNonBonded, bExclusion2, niter, dt, damping, Fconv, Flim);
+    picked2GPU( ipicked, 1.0f );
     // --- Prepare MD parameters for all systems, matching the kernel's expectation
     // UFF.cl -> updateAtomsMMFFf4 -> const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
     // The kernel uses MDpars.z as a multiplicative velocity damping factor. CPU uses (1.0-damping).
@@ -1969,43 +1993,38 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
     }
     uff_ocl->upload( uff_ocl->ibuff_MDpars, MDpars );
     uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
+    // Upload constraints before relaxation loop
+    uff_ocl->upload( uff_ocl->ibuff_constr,  constr  );
+    uff_ocl->upload( uff_ocl->ibuff_constrK, constrK );
     // --- Setup atom update kernel once before the loop
     // The user has corrected OCL_UFF.h, this signature is now correct.
     uff_ocl->setup_updateAtomsMMFFf4( uff_ocl->nAtoms, 0 ); // For UFF, nNode is 0
     // --- Run relaxation loop
     bBonding = ffu.bDoBond;
     for(int i=0; i<niter; i++){
-        DEBUG
         if     (bBonding)  { uff_ocl->eval(false);                     }
         else               { uff_ocl->task_clear_fapos->enque();       }
-        DEBUG
         if(bNonBonded){
             if(bGridFF && bSurfAtoms){
                 if(bExclusion2){
-                    if(!uff_ocl->task_NBFF_Grid_Bspline_ex2){ printf("ERROR: task_NBFF_Grid_Bspline_ex2 not prepared\n"); exit(0); }
-                    DEBUG
+                    //if(!uff_ocl->task_NBFF_Grid_Bspline_ex2){ printf("ERROR: task_NBFF_Grid_Bspline_ex2 not prepared\n"); exit(0); }
                     uff_ocl->task_NBFF_Grid_Bspline_ex2->enque();
                 }else{
-                    if(!uff_ocl->task_NBFF_Grid_Bspline){ printf("ERROR: task_NBFF_Grid_Bspline not prepared\n"); exit(0); }
-                    DEBUG
+                    //if(!uff_ocl->task_NBFF_Grid_Bspline){ printf("ERROR: task_NBFF_Grid_Bspline not prepared\n"); exit(0); }
                     uff_ocl->task_NBFF_Grid_Bspline->enque();
                 }
             }else{
                 if(bExclusion2){
-                    if(!uff_ocl->task_NBFF_ex2){ printf("ERROR: task_NBFF_ex2 not prepared\n"); exit(0); }
-                    DEBUG
+                    //if(!uff_ocl->task_NBFF_ex2){ printf("ERROR: task_NBFF_ex2 not prepared\n"); exit(0); }
                     uff_ocl->task_NBFF_ex2->enque();
                 }else{
-                    if(!uff_ocl->task_NBFF){ printf("ERROR: task_NBFF not prepared\n"); exit(0); }
-                    DEBUG
+                    //if(!uff_ocl->task_NBFF){ printf("ERROR: task_NBFF not prepared\n"); exit(0); }
                     uff_ocl->task_NBFF->enque();
                 }
             }
         }
-        DEBUG
         uff_ocl->task_updateAtoms->enque(); 
         // --- Save current frame if trajectory is requested
-        DEBUG
         if((savePerNsteps>0) && (i%savePerNsteps==0) && (trj_fname)){
             download_uff( true, false ); // download positions for this step
             for(int isys=0; isys<nSystems; ++isys){
@@ -2018,6 +2037,7 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
             }
         }
     }
+    download_uff( true, false );
     return niter;
 }
 

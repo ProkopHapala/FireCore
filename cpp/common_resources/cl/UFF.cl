@@ -5,8 +5,8 @@
 // Debug Controls (compile-time macros)
 // ======================================================
 // Enable concise debug prints without changing C++ host interface.
-#define DBG_UFF 0         // 0/1 master switch
-#define IDBG_ATOM  (1)    // atom index to trace
+#define DBG_UFF 1         // 0/1 master switch
+#define IDBG_ATOM  (0)    // atom index to trace
 #define IDBG_BOND  (0)    // bond index to trace (global bond id), -1 disables
 #define IDBG_ANGLE (0)    // angle index to trace
 #define IDBG_DIH   (0)    // dihedral index to trace
@@ -151,7 +151,8 @@ __kernel void evalBondsAndHNeigh_UFF(
     int i0a = isys * natoms;          // atoms per system (base index)
     int i0h = isys * (natoms*4);      // hneigh per system (base index)
     // Header print by a single work-item to avoid async interleaving (selected system only)
-    if ((DBG_UFF!=0) && ia==IDBG_ATOM && (isys==IDBG_SYS)){
+    if ((DBG_UFF>0) && ia==IDBG_ATOM && (isys==IDBG_SYS)){ printf("GPU evalBondsAndHNeigh_UFF() natoms=%d npbc=%d i0bon=%d Rdamp=% .6e Fmax=% .6e bSubtractBondNonBond=%d iDBG=%d isys=%d\n", natoms, npbc, i0bon, Rdamp, FmaxNonBonded, bSubtractBondNonBond, IDBG_ATOM, isys); }
+    if ((DBG_UFF>1) && ia==IDBG_ATOM && (isys==IDBG_SYS)){
         printf("GPU evalBondsAndHNeigh_UFF() natoms=%d npbc=%d i0bon=%d Rdamp=% .6e Fmax=% .6e bSubtractBondNonBond=%d iDBG=%d isys=%d\n", natoms, npbc, i0bon, Rdamp, FmaxNonBonded, bSubtractBondNonBond, IDBG_ATOM, isys);
         // Print first 64 bond parameter rows on one line per bond (safe upper bound without host arg)
         printf("GPU BOND-TABLE  ib   ia   ja           K           l0\n");
@@ -259,7 +260,7 @@ __kernel void evalBondsAndHNeigh_UFF(
         }
 
         // Per-DOF concise, aligned debug print: only for selected bond index
-        if ((DBG_UFF!=0) && (isys==IDBG_SYS)){
+        if ((DBG_UFF>2) && (isys==IDBG_SYS)){
             int ib_dbg = inbs[in];
             if (ib_dbg == IDBG_BOND){
                 int2 aij = bonAtoms[ib_dbg];
@@ -331,7 +332,9 @@ __kernel void evalAngles_UFF(
     int isys = get_global_id(1);
     int i0A = isys * nangles;       // per-system base for angle arrays
     int i0f = isys * nf_per_system; // per-system base for fint
-    if ((DBG_UFF!=0) && iang==IDBG_ANGLE && (isys==IDBG_SYS)){
+
+    if ((DBG_UFF>0) && iang==IDBG_ANGLE && (isys==IDBG_SYS)){ printf("GPU evalAngles_UFF() nangles=%3i i0ang=%3i Rdamp=% .4e Fmax=% .4e bSubtractAngleNonBond=%d iDBG=%d isys=%d\n", nangles, i0ang, Rdamp, FmaxNonBonded, bSubtractAngleNonBond, IDBG_ANGLE, isys); }
+    if ((DBG_UFF>1) && iang==IDBG_ANGLE && (isys==IDBG_SYS)){
         printf("GPU evalAngles_UFF() nangles=%3i i0ang=%3i Rdamp=% .4e Fmax=% .4e bSubtractAngleNonBond=%d iDBG=%d isys=%d\n", nangles, i0ang, Rdamp, FmaxNonBonded, bSubtractAngleNonBond, IDBG_ANGLE, isys);
         printf("GPU ANG-TABLE  id   ia   ja   ka            K          c0          c1          c2          c3\n");
         int N = (nangles<64)?nangles:64;
@@ -414,7 +417,7 @@ __kernel void evalAngles_UFF(
         fpj = (fk - fic) * qij.xyz + (fi - fkc) * qkj.xyz;
     }
 
-    if ((DBG_UFF!=0) && iang==IDBG_ANGLE && (isys==IDBG_SYS)){
+    if ((DBG_UFF>10) && iang==IDBG_ANGLE && (isys==IDBG_SYS)){
         int4 a_dbg = angAtoms[iang];
         int ia0=a_dbg.x, ja0=a_dbg.y, ka0=a_dbg.z;
         float theta = acos(clamp(dot(qij.xyz,qkj.xyz),-1.0f,1.0f));
@@ -507,7 +510,7 @@ __kernel void evalDihedrals_UFF(
     int isys = get_global_id(1);
     int i0D = isys * ndihedrals;    // per-system base for dihedral arrays
     int i0f = isys * nf_per_system; // per-system base for fint
-    if ((DBG_UFF!=0) && id==IDBG_DIH && (isys==IDBG_SYS)){
+    if ((DBG_UFF>1) && id==IDBG_DIH && (isys==IDBG_SYS)){
         printf("GPU evalDihedrals_UFF() ndihedrals=%d i0dih=%d Rdamp=% .6e Fmax=% .6e SubNBTorsionFactor=% .6e iDBG=%d isys=%d\n", ndihedrals, i0dih, Rdamp, FmaxNonBonded, SubNBTorsionFactor, IDBG_DIH, isys);
         printf("GPU DIH-TABLE  ia   ja   ka   la            V           d           n\n");
         int N=(ndihedrals<64)?ndihedrals:64;
@@ -579,7 +582,7 @@ __kernel void evalDihedrals_UFF(
         }
     }
 
-    if ((DBG_UFF!=0) && id==IDBG_DIH && (isys==IDBG_SYS)){
+    if ((DBG_UFF>1) && id==IDBG_DIH && (isys==IDBG_SYS)){
         int ia0=dihAtoms[(i0D+id)*4+0], ja0=dihAtoms[(i0D+id)*4+1], ka0=dihAtoms[(i0D+id)*4+2], la0=dihAtoms[(i0D+id)*4+3];
         // Recompute phi exactly as CPU Prokop path
         float3 h12d = convert_float3(q12.xyz); float3 h32d = convert_float3(q32.xyz); float3 h43d = convert_float3(q43.xyz);
@@ -666,7 +669,7 @@ __kernel void evalInversions_UFF(
     int isys = get_global_id(1);
     int i0I = isys * ninversions;    // per-system base for inversion arrays
     int i0f = isys * nf_per_system;  // per-system base for fint
-    if ((DBG_UFF!=0) && ii==IDBG_INV && (isys==IDBG_SYS)){
+    if ((DBG_UFF>1) && ii==IDBG_INV && (isys==IDBG_SYS)){
         printf("GPU INV  ninversions=%d i0inv=%d iDBG=%d isys=%d\n", ninversions, i0inv, IDBG_INV, isys);
         printf("GPU INV-TABLE  ia   ja   ka   la            K          c0          c1          c2\n");
         int N=(ninversions<64)?ninversions:64;
@@ -744,7 +747,7 @@ __kernel void evalInversions_UFF(
         fp1 = -(fp2 + fp3 + fp4);                 // Force on central atom i(1)
     } // End of inlined evalInversionUFF block
 
-    if ((DBG_UFF!=0) && ii==IDBG_INV && (isys==IDBG_SYS)){
+    if ((DBG_UFF>1) && ii==IDBG_INV && (isys==IDBG_SYS)){
         int ia0=invAtoms[(i0I+ii)*4+0], ja0=invAtoms[(i0I+ii)*4+1], ka0=invAtoms[(i0I+ii)*4+2], la0=invAtoms[(i0I+ii)*4+3];
         float3 n123_dbg = cross(-q21.xyz, -q31.xyz);
         float n1 = length(n123_dbg);
@@ -802,7 +805,7 @@ __kernel void assembleForces_UFF(
     int i0f      = isys * nf_per_system;   // per-system base for fint
     // NOTE: a2f_indices values are per-system local indices into fint; add i0f below if needed
     // Debug dump by a single thread to avoid interleaved prints (selected system only)
-    if ( (DBG_UFF!=0) &&  (ia == 0) && (isys==IDBG_SYS) ){
+    if ( (DBG_UFF>1) &&  (ia == 0) && (isys==IDBG_SYS) ){
         printf("GPU assembleForces_UFF() ia=%3d natoms=%3d isys=%d\n", ia, natoms, isys);
         printf("GPU A2F TABLE natoms=%3d\n", natoms);
         for (int ia0 = 0; ia0 < natoms; ++ia0) {
@@ -888,16 +891,17 @@ __kernel void updateAtomsMMFFf4(
     const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
     const float4 TDrive = TDrives[iS];
 
-    if((DBG_UFF>0) && (iS==IDBG_SYS)&&(iG==IDBG_ATOM)){
-        printf("GPU updateAtomsMMFFf4[isys=%i]: MDpars(dt=%g,Flim=%g,vel_damp_factor=%g,?= %g) \n", iS, MDpars.x,MDpars.y,MDpars.z,MDpars.w);
-        // for(int is=0; is<nS; is++){
-        //     //printf( "GPU::TDrives[%i](%g,%g,%g,%g)\n", i, TDrives[i].x,TDrives[i].y,TDrives[i].z,TDrives[i].w );
-        //     //printf( "GPU::bboxes[%i](%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", is, bboxes[is].a.x,bboxes[is].a.y,bboxes[is].a.z,   bboxes[is].b.x,bboxes[is].b.y,bboxes[is].b.z,   bboxes[is].c.x,bboxes[is].c.y,bboxes[is].c.z );
-        //     for(int ia=0; ia<natoms; ia++){
-        //         int ic = ia+is*natoms;
-        //         if(constr[ia+is*natoms].w>0) printf( "GPU:sys[%i]atom[%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g|%g)\n", is, ia, constr[ic].x,constr[ic].y,constr[ic].z,constr[ic].w,   constrK[ic].x,constrK[ic].y,constrK[ic].z,constrK[ic].w  );
-        //     }
-        // }
+    if((DBG_UFF>1) && (iS==IDBG_SYS)&&(iG==IDBG_ATOM)){
+        printf("GPU updateAtomsMMFFf4[isys=%i]: MDpars(dt=%g,Flim=%g,vel_damp_factor=%g,?= %g) natoms=%i nS=%i\n", iS, MDpars.x,MDpars.y,MDpars.z,MDpars.w, natoms, nS );
+        for(int is=0; is<nS; is++){
+            //printf( "GPU::TDrives[%i](%g,%g,%g,%g)\n", i, TDrives[i].x,TDrives[i].y,TDrives[i].z,TDrives[i].w );
+            //printf( "GPU::bboxes[%i](%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", is, bboxes[is].a.x,bboxes[is].a.y,bboxes[is].a.z,   bboxes[is].b.x,bboxes[is].b.y,bboxes[is].b.z,   bboxes[is].c.x,bboxes[is].c.y,bboxes[is].c.z );
+            for(int ia=0; ia<natoms; ia++){
+                int ic = ia+is*natoms;
+                //if(constr[ia+is*natoms].w>0) 
+                printf( "GPU:sys[%i]atom[%i]  apos(%g,%g,%g) constr(%g,%g,%g|%g) constrK(%g,%g,%g|%g)\n", is, ia, apos[ic].x,apos[ic].y,apos[ic].z, constr[ic].x,constr[ic].y,constr[ic].z,constr[ic].w,   constrK[ic].x,constrK[ic].y,constrK[ic].z,constrK[ic].w  );
+            }
+        }
     }
 
     const int iS_DBG = 5; // debug system
@@ -934,20 +938,20 @@ __kernel void updateAtomsMMFFf4(
     float4 pe = apos[iaa]; // position of atom or pi-orbital
 
     // -------- Fixed Atoms and Bounding Box
-    // if(iG<natoms){                  // only atoms have constraints, not pi-orbitals
-    //     // ------- bboxes
-    //     // const cl_Mat3 B = bboxes[iS];
-    //     // if(B.c.z>0.0f){ if(pe.z<B.a.z){ fe.z+=(B.a.z-pe.z)*B.c.z; }else if(pe.z>B.b.z){ fe.z+=(B.b.z-pe.z)*B.c.z; }; }
-    //     // ------- constrains
-    //     float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
-    //     if( cons.w>0.f ){            // if stiffness is positive, we have constraint
-    //         float4 cK = constrK[ iaa ];
-    //         cK = max( cK, (float4){0.0f,0.0f,0.0f,0.0f} );
-    //         const float3 fc = (cons.xyz - pe.xyz)*cK.xyz;
-    //         fe.xyz += fc; // add constraint force
-    //         if(iS==0){printf( "GPU::constr[ia=%i|iS=%i] (%g,%g,%g|K=%g) fc(%g,%g,%g) cK(%g,%g,%g)\n", iG, iS, cons.x,cons.y,cons.z,cons.w, fc.x,fc.y,fc.z , cK.x, cK.y, cK.z ); }
-    //     }
-    // }
+    if(iG<natoms){                  // only atoms have constraints, not pi-orbitals
+        // ------- bboxes
+        // const cl_Mat3 B = bboxes[iS];
+        // if(B.c.z>0.0f){ if(pe.z<B.a.z){ fe.z+=(B.a.z-pe.z)*B.c.z; }else if(pe.z>B.b.z){ fe.z+=(B.b.z-pe.z)*B.c.z; }; }
+        // ------- constrains
+        float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
+        if( cons.w>0.f ){            // if stiffness is positive, we have constraint
+            float4 cK = constrK[ iaa ];
+            cK = max( cK, (float4){0.0f,0.0f,0.0f,0.0f} );
+            const float3 fc = (cons.xyz - pe.xyz)*cK.xyz;
+            fe.xyz += fc; // add constraint force
+            if(iS==0){printf( "GPU::constr[ia=%i|iS=%i] (%g,%g,%g|K=%g) fc(%g,%g,%g) cK(%g,%g,%g)\n", iG, iS, cons.x,cons.y,cons.z,cons.w, fc.x,fc.y,fc.z , cK.x, cK.y, cK.z ); }
+        }
+    }
 
     // Thermal driving  - Langevin thermostat, see C++ MMFFsp3_loc::move_atom_Langevin()
     if( TDrive.y > 0.0f ){ // if gamma>0
@@ -971,7 +975,7 @@ __kernel void updateAtomsMMFFf4(
     cvfs[iaa] += cvf;
     //if(!bDrive){ ve.xyz *= MDpars.z; } // friction, velocity damping
 
-    if ((DBG_UFF>0) && (iS==IDBG_SYS) && (iG==IDBG_ATOM)){
+    if ((DBG_UFF>1) && (iS==IDBG_SYS) && (iG==IDBG_ATOM)){
         printf( "GPU isys=%i iG=%i pos(%10.4e,%10.4e,%10.4e) vel(%10.4e,%10.4e,%10.4e) fe(%10.4e,%10.4e,%10.4e) cvf(%10.4e,%10.4e,%10.4e) \n", iS, iG, pe.x,pe.y,pe.z, ve.x,ve.y,ve.z, fe.x,fe.y,fe.z, cvf.x,cvf.y,cvf.z );
     }
 
@@ -1038,8 +1042,8 @@ __kernel void getNonBond(
     const int i0a = iS*natoms;  // index of first atom in atoms array
     const int iaa = iG + i0a; // index of atom in atoms array
 
-    if((DBG_UFF!=0) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL ); }
-    if((DBG_UFF!=0) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){
+    if((DBG_UFF>1) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL ); }
+    if((DBG_UFF>1) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){
        printf( "GPU::getNonBond() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL );
        for(int is=0; is<nS; is++){
             cl_Mat3 lvec = lvecs[is];
@@ -1144,7 +1148,7 @@ __kernel void getNonBond(
                                 //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); }
 
                                 // Debug print for force calculation - print all interactions for atom 0
-                                if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){ printf("GPU fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e) bBonded %i bPBC %i\n", fij.x, fij.y, fij.z, fij.w, REQK.x, REQK.y, REQK.z, bBonded, bPBC);  }
+                                if((DBG_UFF>3) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){ printf("GPU fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e) bBonded %i bPBC %i\n", fij.x, fij.y, fij.z, fij.w, REQK.x, REQK.y, REQK.z, bBonded, bPBC);  }
 
                                 fe += fij;
                             }
@@ -1158,7 +1162,7 @@ __kernel void getNonBond(
                     float4 fij = getLJQH( dp, REQK, R2damp );  // calculate non-bonded force between atoms using LJQH potential
 
                     // Debug print for force calculation (non-PBC case) - print all interactions for atom 0
-                    if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
+                    if((DBG_UFF>2) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
                         printf("GPU fij [i:%3i,j:%3i|isys:%i] dp(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQij(% .6e,% .6e,% .6e) fij(% .6e,% .6e,% .6e) E % .6e bBonded %i bPBC %i\n", iG, ja, iS, dp.x, dp.y, dp.z, length(dp),  REQKi.x, REQKi.y, REQKi.z, REQK.x, REQK.y, REQK.z,  fij.x, fij.y, fij.z, fij.w, bBonded, bPBC );
                     }
 
@@ -1218,8 +1222,8 @@ __kernel void getNonBond_ex2(
     const int i0a = iS*natoms;  // index of first atom in atoms array
     const int iaa = iG + i0a; // index of atom in atoms array
 
-    if((DBG_UFF!=0) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL ); }
-    if((DBG_UFF!=0) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){
+    if((DBG_UFF>1) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL ); }
+    if((DBG_UFF>1) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){
        printf( "GPU::getNonBond() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL );
        for(int is=0; is<nS; is++){
             cl_Mat3 lvec = lvecs[is];
@@ -1281,7 +1285,7 @@ __kernel void getNonBond_ex2(
     const int iex_end   = iex + EXCL_MAX-1;
     int jex             = excl[iex];
 
-    if((iG==0)&&(iS==0)){
+    if( (DBG_UFF>1) && (iG==0) && (iS==0) ){
         printf( "getNonBond_ex2() iG %i, iS %i, iaa %i, iex %i, iex_end %i, jex %i\n", iG, iS, iaa, iex, iex_end, jex );
     }
 
@@ -1541,7 +1545,7 @@ __kernel void getNonBond_GridFF_Bspline(
 
     const cl_Mat3 lvec = lvecs[iS]; // lattice vectors of the system
 
-    if((DBG_UFF!=0) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond_GridFF_Bspline() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL ); }
+    if((DBG_UFF>1) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond_GridFF_Bspline() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL ); }
     //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); }
     //if((iG==iG_DBG)&&(iS==iS_DBG)) printf( "GPU::getNonBond_GridFF_Bspline() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
     // if((iG==iG_DBG)&&(iS==iS_DBG)){
@@ -1659,7 +1663,7 @@ __kernel void getNonBond_GridFF_Bspline(
         float4 fg = fe3d_pbc_comb(u, grid_ns.xyz, BsplinePLQ, PLQH, xqs, yqs);
 
         // GridFF-specific debug prints for test atom
-        if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
+        if((DBG_UFF>1) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
             printf("GPU GridFF [i:%3i|isys:%i] posi(% .6e,% .6e,% .6e) u(% .6e,% .6e,% .6e) PLQH(% .6e,% .6e,% .6e,% .6e) fg_raw(% .6e,% .6e,% .6e,% .6e)\n",
                    iG, iS, posi.x, posi.y, posi.z, u.x, u.y, u.z, PLQH.x, PLQH.y, PLQH.z, PLQH.w, fg.x, fg.y, fg.z, fg.w);
         }
@@ -1669,7 +1673,7 @@ __kernel void getNonBond_GridFF_Bspline(
         fg.xyz *= -grid_invStep.xyz;
         
         // Debug print for final GridFF force after scaling
-        if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
+        if((DBG_UFF>1) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
             printf("GPU GridFF scaled [i:%3i|isys:%i] fg_scaled(% .6e,% .6e,% .6e,% .6e) grid_invStep(% .6e,% .6e,% .6e)\n",
                    iG, iS, fg.x, fg.y, fg.z, fg.w, grid_invStep.x, grid_invStep.y, grid_invStep.z);
         }
@@ -1734,7 +1738,7 @@ __kernel void getNonBond_GridFF_Bspline_ex2(
 
     const cl_Mat3 lvec = lvecs[iS]; // lattice vectors of the system
 
-    if((DBG_UFF!=0) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond_GridFF_Bspline_ex2() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL ); }
+    if((DBG_UFF>1) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond_GridFF_Bspline_ex2() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL ); }
     //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); }
     //if((iG==iG_DBG)&&(iS==iS_DBG)) printf( "GPU::getNonBond_GridFF_Bspline() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
     // if((iG==iG_DBG)&&(iS==iS_DBG)){
@@ -1764,7 +1768,7 @@ __kernel void getNonBond_GridFF_Bspline_ex2(
     const int iex_end   = iex + EXCL_MAX-1;
     int jex             = excl[iex];
 
-    if((iG==0)&&(iS==0)){
+    if( (DBG_UFF>1) && (iG==0) && (iS==0) ){
         printf( "getNonBond_GridFF_Bspline_ex2() iG %i, iS %i, iaa %i, iex %i, iex_end %i, jex %i\n", iG, iS, iaa, iex, iex_end, jex );
     }
 
@@ -1846,7 +1850,7 @@ __kernel void getNonBond_GridFF_Bspline_ex2(
         float4 fg = fe3d_pbc_comb(u, grid_ns.xyz, BsplinePLQ, PLQH, xqs, yqs);
 
         // GridFF-specific debug prints for test atom
-        if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
+        if((DBG_UFF>1) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
             printf("GPU GridFF [i:%3i|isys:%i] posi(% .6e,% .6e,% .6e) u(% .6e,% .6e,% .6e) PLQH(% .6e,% .6e,% .6e,% .6e) fg_raw(% .6e,% .6e,% .6e,% .6e)\n",
                    iG, iS, posi.x, posi.y, posi.z, u.x, u.y, u.z, PLQH.x, PLQH.y, PLQH.z, PLQH.w, fg.x, fg.y, fg.z, fg.w);
         }
@@ -1856,7 +1860,7 @@ __kernel void getNonBond_GridFF_Bspline_ex2(
         fg.xyz *= -grid_invStep.xyz;
         
         // Debug print for final GridFF force after scaling
-        if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
+        if((DBG_UFF>1) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
             printf("GPU GridFF scaled [i:%3i|isys:%i] fg_scaled(% .6e,% .6e,% .6e,% .6e) grid_invStep(% .6e,% .6e,% .6e)\n",
                    iG, iS, fg.x, fg.y, fg.z, fg.w, grid_invStep.x, grid_invStep.y, grid_invStep.z);
         }
