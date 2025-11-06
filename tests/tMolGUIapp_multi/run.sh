@@ -49,7 +49,8 @@ touch minima.dat
 #./$name -m 10 -x common_resources/xyz/propandiol
 
 #./$name -m 1 -x common_resources/xyz/CH4  
-./$name -m 1 -x common_resources/xyz/CH4 -ex2 
+#./$name -m 1 -x common_resources/xyz/CH4 -ex2 
+./$name -m 1 -x common_resources/xyz/CH4 -uff 
 
 #./$name       -x common_resources/xyz/nHexadecan_dicarboxylic  -T 100 0.01
 #./$name       -x common_resources/xyz/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -T 100 0.01

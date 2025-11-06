@@ -54,6 +54,7 @@ public:
     // Topology buffers
     int ibuff_neighs    = -1; // Neighbor atom indices
     int ibuff_neighCell = -1; // Neighbor cell indices for PBC
+    int ibuff_excl      = -1; // Second-neighbor exclusion table
     int ibuff_neighBs   = -1; // Neighbor bond indices
 
     // Bond buffers
@@ -134,7 +135,9 @@ public:
     OCLtask* task_clear_fapos   = nullptr;
     OCLtask* task_clear_fint    = nullptr;
     OCLtask* task_NBFF = nullptr;
+    OCLtask* task_NBFF_ex2 = nullptr;
     OCLtask* task_NBFF_Grid_Bspline = nullptr;
+    OCLtask* task_NBFF_Grid_Bspline_ex2 = nullptr;
     OCLtask* task_SurfAtoms   = nullptr;
     bool bKernelPrepared = false;
 
@@ -210,7 +213,7 @@ public:
         // Build with debug flags enabled for pairwise interaction comparison
         // Print interactions for atom 0 with all other atoms
         char build_options[256];
-        sprintf(build_options, "-I. -cl-std=CL2.0 -DDBG_UFF=1 -DIDBG_ATOM=0 -DIDBG_SYS=1");
+        sprintf(build_options, "-I. -cl-std=CL2.0 ");
         buildProgram(srcpath, build_options); // Assuming 'program' is the member from OCL base class
         // Create tasks for each kernel
         // TODO: The local work-group sizes (e.g., 32) are hardcoded for now. They should be tuned for optimal performance based on the device and kernel characteristics.
@@ -224,7 +227,9 @@ public:
         newTask("assembleForces_UFF",     program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         newTask("updateAtomsMMFFf4",      program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         newTask("getNonBond",             program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1});
+        newTask("getNonBond_ex2",         program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1});
         newTask("getNonBond_GridFF_Bspline", program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1});
+        newTask("getNonBond_GridFF_Bspline_ex2", program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1});
         newTask("getSurfMorse",           program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1});
         bKernelPrepared = false;
     }
@@ -265,6 +270,7 @@ public:
         ibuff_fint        = newBuffer("fint",        nSystems * nf_per_system,    sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
         ibuff_neighs      = newBuffer("neighs",      nAtomsTot,                   sizeof(cl_int4),   0, CL_MEM_READ_ONLY);
         ibuff_neighCell   = newBuffer("neighCell",   nAtomsTot,                   sizeof(cl_int4),   0, CL_MEM_READ_ONLY);
+        ibuff_excl        = newBuffer("excl",        nAtomsTot*EXCL_MAX,          sizeof(cl_int ),   0, CL_MEM_READ_ONLY);
         ibuff_neighBs     = newBuffer("neighBs",     nAtomsTot,                   sizeof(cl_int4),   0, CL_MEM_READ_ONLY);
         ibuff_bonAtoms    = newBuffer("bonAtoms",    safeN(nBondsTot),            sizeof(cl_int2),   0, CL_MEM_READ_ONLY);
         ibuff_bonParams   = newBuffer("bonParams",   safeN(nBondsTot),            sizeof(cl_float2), 0, CL_MEM_READ_ONLY);
@@ -341,6 +347,10 @@ public:
         task_clear_fapos    = getTask("clear_fapos_UFF");
         task_clear_fint     = getTask("clear_fint_UFF");
         task_updateAtoms     = getTask("updateAtomsMMFFf4");
+        task_NBFF           = getTask("getNonBond");
+        task_NBFF_ex2       = getTask("getNonBond_ex2");
+        task_NBFF_Grid_Bspline = getTask("getNonBond_GridFF_Bspline");
+        task_NBFF_Grid_Bspline_ex2 = getTask("getNonBond_GridFF_Bspline_ex2");
 
         // --- evalBondsAndHNeigh_UFF ---
         if(task_evalBonds && nBonds > 0){
@@ -499,6 +509,18 @@ public:
             err |= useArgBuff( ibuff_fint ); OCL_checkError(err, "clear_fint.arg2 fint");
         }
 
+        // if(task_NBFF && bNonBond && (nAtoms>0)){
+        //     task_NBFF = setup_getNonBond(nAtoms, Vec3i{nPBC.x,nPBC.y,nPBC.z}, task_NBFF);
+        // }
+        // if(task_NBFF_ex2 && bNonBond && (nAtoms>0)){
+        //     task_NBFF_ex2 = setup_getNonBond_ex2(nAtoms, Vec3i{nPBC.x,nPBC.y,nPBC.z}, task_NBFF_ex2);
+        // }
+        // if(task_NBFF_Grid_Bspline && bGridFF && (nAtoms>0)){
+        //     task_NBFF_Grid_Bspline = setup_getNonBond_GridFF_Bspline(nAtoms, Vec3i{nPBC.x,nPBC.y,nPBC.z}, task_NBFF_Grid_Bspline);
+        // }
+        // if(task_NBFF_Grid_Bspline_ex2 && bGridFF && (nAtoms>0)){
+        //     task_NBFF_Grid_Bspline_ex2 = setup_getNonBond_GridFF_Bspline_ex2(nAtoms, Vec3i{nPBC.x,nPBC.y,nPBC.z}, task_NBFF_Grid_Bspline_ex2);
+        // }
         bKernelPrepared = true;
     }
 
@@ -527,6 +549,33 @@ public:
         err |= _useArg(npbc_int4);                 OCL_checkError(err, "setup_getNonBond.arg 8");      // 9
         err |= _useArg(GFFparams);                 OCL_checkError(err, "setup_getNonBond.arg 9");      // 10
         OCL_checkError(err, "setup_getNonBond_UFF");
+        return task;
+    }
+
+    OCLtask* setup_getNonBond_ex2(int na, Vec3i nPBC_, OCLtask* task = nullptr) {
+        if (!task) task = getTask("getNonBond_ex2");
+        int nloc = 32;
+        task->local.x = nloc;
+        task->local.y = 1;  // CRITICAL FIX: Set local size for systems dimension to 1
+        task->global.x = na + nloc - (na % nloc);
+        task->global.y = nSystems;
+        useKernel(task->ikernel);
+        nDOFs = (int4){na,0,0,0};
+        // nDOFs.y = 0; // nNode is 0 for UFF
+        // nDOFs.z = 0; // nNode is 0 for UFF
+        // nDOFs.w = 0; // nNode is 0 for UFF
+        int4 npbc_int4;
+        v2i4(nPBC_, npbc_int4);
+        int err = 0;
+        err |= _useArg(nDOFs);                     OCL_checkError(err, "setup_getNonBond_ex2.arg 1");      // 1
+        err |= useArgBuff(ibuff_apos);             OCL_checkError(err, "setup_getNonBond_ex2.arg 2");      // 2
+        err |= useArgBuff(ibuff_fapos);            OCL_checkError(err, "setup_getNonBond_ex2.arg 3");      // 3
+        err |= useArgBuff(ibuff_REQs);             OCL_checkError(err, "setup_getNonBond_ex2.arg 4");      // 4
+        err |= useArgBuff(ibuff_excl);             OCL_checkError(err, "setup_getNonBond_ex2.arg 5");      // 5
+        err |= useArgBuff(ibuff_lvecs);            OCL_checkError(err, "setup_getNonBond_ex2.arg 6");      // 6
+        err |= _useArg(npbc_int4);                 OCL_checkError(err, "setup_getNonBond_ex2.arg 7");      // 7
+        err |= _useArg(GFFparams);                 OCL_checkError(err, "setup_getNonBond_ex2.arg 8");      // 8
+        OCL_checkError(err, "setup_getNonBond_ex2_UFF");
         return task;
     }
 
@@ -577,6 +626,40 @@ public:
         return task;
     }
 
+    OCLtask* setup_getNonBond_GridFF_Bspline_ex2(int na, Vec3i nPBC_, OCLtask* task = nullptr) {
+        if (!task) task = getTask("getNonBond_GridFF_Bspline_ex2");
+        int nloc = 32;
+        task->local.x = nloc;
+        task->global.x = na + nloc - (na % nloc);
+        task->local.y = 1;  
+        task->global.y = nSystems;
+        grid_shift0_p0 = grid_p0;
+        useKernel(task->ikernel);
+        nDOFs = (int4){na,0,0,bNonBond?0:-1};
+        int4 npbc_int4;
+        v2i4(nPBC_, npbc_int4);
+        int err = 0;
+
+        if(ibuff_BsplinePLQ < 0) {
+            printf("ERROR: ibuff_BsplinePLQ not initialized (%d)\n", ibuff_BsplinePLQ);
+            exit(1);
+        }
+
+        err |= _useArg(nDOFs);                    OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_ex2.arg 1");       // 1
+        err |= useArgBuff(ibuff_apos);            OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_ex2.arg 2");       // 2
+        err |= useArgBuff(ibuff_fapos);           OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_ex2.arg 3");       // 3
+        err |= useArgBuff(ibuff_REQs);            OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_ex2.arg 4");       // 4
+        err |= useArgBuff(ibuff_excl);            OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_ex2.arg 5");       // 5
+        err |= useArgBuff(ibuff_lvecs);           OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_ex2.arg 6");       // 6
+        err |= _useArg(npbc_int4);                OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_ex2.arg 7");       // 7
+        err |= _useArg(GFFparams);                OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_ex2.arg 8");       // 8
+        err |= useArgBuff(ibuff_BsplinePLQ);      OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_ex2.arg 9");       // 9
+        err |= _useArg(grid_n);                   OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_ex2.arg 10");      // 10
+        err |= _useArg(grid_invStep);             OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_ex2.arg 11");      // 11
+        err |= _useArg(grid_p0);                  OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_ex2.arg 12");      // 12
+        OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_ex2_UFF");
+        return task;
+    }
 
     // Setup and bind arguments for updateAtomsMMFFf4 (UFF)
     // Must match UFF.cl::updateAtomsMMFFf4 signature exactly:

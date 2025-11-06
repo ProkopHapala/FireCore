@@ -174,6 +174,7 @@ class OCL_MM: public OCLsystem { public:
         newTask( "getNonBond_ex2"         ,program_relax, 2);
         newTask( "getNonBond_GridFF"      ,program_relax, 2);
         newTask( "getNonBond_GridFF_Bspline",program_relax, 2);
+        newTask( "getNonBond_GridFF_Bspline_ex2",program_relax, 2);
         newTask( "getNonBond_GridFF_Bspline_tex",program_relax, 2);
         newTask( "getMMFFf4"              ,program_relax, 2);
         newTask( "cleanForceMMFFf4"       ,program_relax, 2);
@@ -541,6 +542,35 @@ class OCL_MM: public OCLsystem { public:
         // const float4   grid_p0          // 13 // origin of the grid
     }
 
+
+    OCLtask* setup_getNonBond_GridFF_Bspline_ex2( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
+        printf("setup_getNonBond_GridFF_Bspline_ex2(na=%i,nnode=%i) ibuff_BsplinePLQ=%i\n", na, nNode, ibuff_BsplinePLQ );
+        if(ibuff_BsplinePLQ<0){ printf( "ERROR in setup_getNonBond_GridFF_Bspline_ex2() GridFF buffer not initialized( ibuff_BsplinePLQ=%i ) => Exit() \n", ibuff_BsplinePLQ ); exit(0); }
+        if(task==0) task = getTask("getNonBond_GridFF_Bspline_ex2");        
+        const int nloc = 32;
+        task->local.x  = nloc;
+        task->global.x = na + ((na % nloc) ? (nloc - (na % nloc)) : 0);
+        task->global.y = nSystems;
+        useKernel( task->ikernel );
+        nDOFs.x=na;
+        nDOFs.y=nNode;
+        v2i4( nPBC_, nPBC );
+        int err=0;
+        err |= _useArg   ( nDOFs      ); // 1
+        err |= useArgBuff( ibuff_atoms   ); // 2
+        err |= useArgBuff( ibuff_aforces ); // 3
+        err |= useArgBuff( ibuff_REQs    ); // 4
+        err |= useArgBuff( ibuff_excl    ); // 5
+        err |= useArgBuff( ibuff_lvecs   ); // 6
+        err |= _useArg   ( nPBC          ); // 7
+        err |= _useArg   ( GFFparams     ); // 8
+        err |= useArgBuff( ibuff_BsplinePLQ ); // 10
+        err |= _useArg   ( grid_n        ); // 11
+        err |= _useArg   ( grid_invStep  ); // 12
+        err |= _useArg   ( grid_shift0_p0 ); // 13
+        OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_ex2");
+        return task;
+    }
 
     OCLtask* setup_getNonBond_GridFF_Bspline_tex( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
         printf("setup_getNonBond_GridFF_Bspline_tex(na=%i,nnode=%i) itex_BsplinePLQH=%i\n", na, nNode, itex_BsplinePLQH );

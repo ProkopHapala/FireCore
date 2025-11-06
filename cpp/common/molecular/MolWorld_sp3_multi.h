@@ -1377,7 +1377,7 @@ double eval_UFF_ocl( int niter=1 ){
 }
 
 void setup_UFF_ocl(){
-    printf("MolWorld_sp3_multi::setup_UFF_ocl()\n");
+    printf("MolWorld_sp3_multi::setup_UFF_ocl() bGridFF=%i bSurfAtoms=%i bNonBonded=%i\n", bGridFF, bSurfAtoms, bNonBonded);
     if(!uff_ocl){ printf("ERROR: setup_UFF_ocl() called but uff_ocl is null!\n"); return; }
 
     // Ensure kernels are prepared if they haven't been already.
@@ -1389,8 +1389,7 @@ void setup_UFF_ocl(){
     }
 
     Vec3i nPBC_ = nPBC; if(!bPBC) nPBC_ = Vec3iZero;
-
-    if(bGridFF){
+    if(bGridFF  && bSurfAtoms ){
         if(!uff_ocl->task_NBFF_Grid_Bspline){
             printf("MolWorld_sp3_multi::setup_UFF_ocl() for UFF GridFF\n");
             // UFF should set grid parameters directly from GridFF object, not copy from MMFF context
