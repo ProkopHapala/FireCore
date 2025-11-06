@@ -140,6 +140,7 @@ public:
     OCLtask* task_NBFF_Grid_Bspline_ex2 = nullptr;
     OCLtask* task_SurfAtoms   = nullptr;
     bool bKernelPrepared = false;
+    bool bSetUp = false;
 
     // ====================== Functions
 

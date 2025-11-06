@@ -1379,7 +1379,6 @@ double eval_UFF_ocl( int niter=1 ){
 void setup_UFF_ocl(){
     printf("MolWorld_sp3_multi::setup_UFF_ocl() bGridFF=%i bSurfAtoms=%i bNonBonded=%i\n", bGridFF, bSurfAtoms, bNonBonded);
     if(!uff_ocl){ printf("ERROR: setup_UFF_ocl() called but uff_ocl is null!\n"); return; }
-
     // Ensure kernels are prepared if they haven't been already.
     if(!uff_ocl->bKernelPrepared){
         float Rdamp        = (float)ffu.Rdamp;
@@ -1387,25 +1386,22 @@ void setup_UFF_ocl(){
         float SubNBTorsion = (float)ffu.SubNBTorsionFactor;
         uff_ocl->setup_kernels(Rdamp, FmaxNB, SubNBTorsion);
     }
-
     Vec3i nPBC_ = nPBC; if(!bPBC) nPBC_ = Vec3iZero;
-    if(bGridFF  && bSurfAtoms ){
-        if(!uff_ocl->task_NBFF_Grid_Bspline){
-            printf("MolWorld_sp3_multi::setup_UFF_ocl() for UFF GridFF\n");
-            // UFF should set grid parameters directly from GridFF object, not copy from MMFF context
-            // Set grid parameters directly from GridFF object
-            uff_ocl->setGridShape(gridFF.grid);
-            uff_ocl->bNonBond=bNonBonded;
-            printf("DEBUG setup_UFF_ocl: uff_ocl->ibuff_BsplinePLQ=%d (should be 41)\n", uff_ocl->ibuff_BsplinePLQ);
-            uff_ocl->task_NBFF_Grid_Bspline = uff_ocl->setup_getNonBond_GridFF_Bspline(ffu.natoms, nPBC_);
-        }
-    } else if(bNonBonded){
-        if(!uff_ocl->task_NBFF){
-            printf("MolWorld_sp3_multi::setup_UFF_ocl() for UFF NonBonded\n");
-            uff_ocl->task_NBFF = uff_ocl->setup_getNonBond(ffu.natoms, nPBC_);
-        }
+    uff_ocl->bNonBond = bNonBonded;
+
+    if(bGridFF && bSurfAtoms){
+        uff_ocl->setGridShape(gridFF.grid);
+        printf("MolWorld_sp3_multi::setup_UFF_ocl() for UFF GridFF\n");
+        printf("DEBUG setup_UFF_ocl: uff_ocl->ibuff_BsplinePLQ=%d (should be 41)\n", uff_ocl->ibuff_BsplinePLQ);
+        uff_ocl->task_NBFF_Grid_Bspline     = uff_ocl->setup_getNonBond_GridFF_Bspline    (ffu.natoms, nPBC_, uff_ocl->task_NBFF_Grid_Bspline    );
+        uff_ocl->task_NBFF_Grid_Bspline_ex2 = uff_ocl->setup_getNonBond_GridFF_Bspline_ex2(ffu.natoms, nPBC_, uff_ocl->task_NBFF_Grid_Bspline_ex2);
+    }else if(bNonBonded){
+        printf("MolWorld_sp3_multi::setup_UFF_ocl() for UFF NonBonded\n");
+        uff_ocl->task_NBFF     = uff_ocl->setup_getNonBond    (ffu.natoms, nPBC_, uff_ocl->task_NBFF    );
+        uff_ocl->task_NBFF_ex2 = uff_ocl->setup_getNonBond_ex2(ffu.natoms, nPBC_, uff_ocl->task_NBFF_ex2);
     }
     if(!uff_ocl->task_updateAtoms) uff_ocl->setup_updateAtomsMMFFf4( ffu.natoms, 0 );
+    uff_ocl->bSetUp = true;
 }
 
 virtual double solve_multi ( int nmax, double tol )override{
@@ -1959,7 +1955,8 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
 int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim ){
     if(!bUFF){ printf("MolWorld_sp3_multi::run_uff_ocl(): bUFF=false\n"); return 0; }
     if(!uff_ocl){ printf("MolWorld_sp3_multi::run_uff_ocl(): uff_ocl==nullptr\n"); return 0; } // This should not happen, uff_ocl is initialized in init()
-    printf("MolWorld_sp3_multi::run_uff_ocl(  bGridFF=%i, bNonBonded=%i | niter=%i, dt=%f, damping=%f, Fconv=%f, Flim=%f) \n",bGridFF, bNonBonded,  niter, dt, damping, Fconv, Flim);
+    if(!uff_ocl->bSetUp){ setup_UFF_ocl(); }
+    printf("MolWorld_sp3_multi::run_uff_ocl(  bBonding=%i, bGridFF=%i, bNonBonded=%i, bExclusion2=%i | niter=%i, dt=%f, damping=%f, Fconv=%f, Flim=%f) \n", bBonding, bGridFF, bNonBonded, bExclusion2, niter, dt, damping, Fconv, Flim);
     // --- Prepare MD parameters for all systems, matching the kernel's expectation
     // UFF.cl -> updateAtomsMMFFf4 -> const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
     // The kernel uses MDpars.z as a multiplicative velocity damping factor. CPU uses (1.0-damping).
@@ -1978,12 +1975,37 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
     // --- Run relaxation loop
     bBonding = ffu.bDoBond;
     for(int i=0; i<niter; i++){
+        DEBUG
         if     (bBonding)  { uff_ocl->eval(false);                     }
         else               { uff_ocl->task_clear_fapos->enque();       }
-        if     (bGridFF   ){ uff_ocl->task_NBFF_Grid_Bspline->enque(); }
-        else if(bNonBonded){ uff_ocl->task_NBFF             ->enque(); }
+        DEBUG
+        if(bNonBonded){
+            if(bGridFF && bSurfAtoms){
+                if(bExclusion2){
+                    if(!uff_ocl->task_NBFF_Grid_Bspline_ex2){ printf("ERROR: task_NBFF_Grid_Bspline_ex2 not prepared\n"); exit(0); }
+                    DEBUG
+                    uff_ocl->task_NBFF_Grid_Bspline_ex2->enque();
+                }else{
+                    if(!uff_ocl->task_NBFF_Grid_Bspline){ printf("ERROR: task_NBFF_Grid_Bspline not prepared\n"); exit(0); }
+                    DEBUG
+                    uff_ocl->task_NBFF_Grid_Bspline->enque();
+                }
+            }else{
+                if(bExclusion2){
+                    if(!uff_ocl->task_NBFF_ex2){ printf("ERROR: task_NBFF_ex2 not prepared\n"); exit(0); }
+                    DEBUG
+                    uff_ocl->task_NBFF_ex2->enque();
+                }else{
+                    if(!uff_ocl->task_NBFF){ printf("ERROR: task_NBFF not prepared\n"); exit(0); }
+                    DEBUG
+                    uff_ocl->task_NBFF->enque();
+                }
+            }
+        }
+        DEBUG
         uff_ocl->task_updateAtoms->enque(); 
         // --- Save current frame if trajectory is requested
+        DEBUG
         if((savePerNsteps>0) && (i%savePerNsteps==0) && (trj_fname)){
             download_uff( true, false ); // download positions for this step
             for(int isys=0; isys<nSystems; ++isys){
@@ -2593,7 +2615,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
     if(iParalel<-100){ iParalel=iParalel_default; };
 
     if(Ftol<0)  Ftol = Ftol_default;
-    //printf( "MolWorld_sp3_multi::MDloop(%i) bGridFF %i bOcl %i bMMFF %i iParalel=%i \n", nIter, bGridFF, bOcl, bMMFF, iParalel );
+    printf( "MolWorld_sp3_multi::MDloop(%i) bGridFF %i bOcl %i bMMFF %i iParalel=%i \n", nIter, bGridFF, bOcl, bMMFF, iParalel );
     //bMMFF=false;
     if(first){ zeroT = getCPUticks(); first=false; }
 
@@ -2610,19 +2632,36 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
     nIter=iterPerFrame;
     //bOcl=iParalel>0;
     int nitrdione=0;
-    switch(iParalel){
-        case -1: bOcl=false;  nitrdione = run_multi_serial(nIter,Ftol);  break;
-        case  0: bOcl=false;  nitrdione = MolWorld_sp3::run_no_omp( nIter, Ftol ); break;
-        case  1: bOcl=false;  nitrdione = run_omp_ocl( nIter, Ftol    ); break;
-        case  2: bOcl=true;   nitrdione = run_omp_ocl( nIter, Ftol    ); break;
-        case  3: bOcl=true;   nitrdione = run_ocl_opt( nIter, Ftol    ); break;
-        //case  3: bOcl=true; nitrdione = run_ocl_loc( nIter, Ftol, 1 ); break;
-        //case  4: bOcl=true; nitrdione = run_ocl_loc( nIter, Ftol, 2 ); break;
-        default:
-            eval_NBFF_ocl_debug();
-    }
 
-    unpack_system( iSystemCur, ffl, true, true );
+    if(bUFF){
+        ffu.bNonBonded     = bNonBonded;
+        ffu.bNonBondNeighs = bNonBondNeighs;
+        ffu.bExclusion2    = bExclusion2;
+        switch(iParalel){
+            case -1:
+            case  0:nitrdione = ffu.run        ( nIter, dt_default, Ftol, 1000.0 ); break;
+            case  1:nitrdione = ffu.run_omp    ( nIter, dt_default, Ftol, 1000.0 ); break;
+            case  2:nitrdione =     run_omp_ocl( nIter,             Ftol         ); break;
+            case  3:nitrdione =     run_uff_ocl( nIter, dt_default, opt.damping, Ftol, 1000.0 );  break;
+            default:
+                printf( "ERROR: MolWorld_sp3_multi::MDloop() iParalel(%i) not implemented for UFF (use 0=run, 1=run_omp, 2=run_omp_ocl, 3=run_uff_ocl)\n", iParalel );
+                exit(0);
+        }
+        unpack_uff_system( iSystemCur, ffu, true, true );
+    }else{
+        switch(iParalel){
+            case -1: bOcl=false;  nitrdione = run_multi_serial(nIter,Ftol);  break;
+            case  0: bOcl=false;  nitrdione = MolWorld_sp3::run_no_omp( nIter, Ftol ); break;
+            case  1: bOcl=false;  nitrdione = run_omp_ocl( nIter, Ftol    ); break;
+            case  2: bOcl=true;   nitrdione = run_omp_ocl( nIter, Ftol    ); break;
+            case  3: bOcl=true;   nitrdione = run_ocl_opt( nIter, Ftol    ); break;
+            //case  3: bOcl=true; nitrdione = run_ocl_loc( nIter, Ftol, 1 ); break;
+            //case  4: bOcl=true; nitrdione = run_ocl_loc( nIter, Ftol, 2 ); break;
+            default:
+                eval_NBFF_ocl_debug();
+        }
+        unpack_system( iSystemCur, ffl, true, true );
+    }
 
     /*
     if( bOcl ){
@@ -3068,11 +3107,33 @@ virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5
 
 
 virtual int getMultiSystemPointers( int*& M_neighs,  int*& M_neighCell, Quat4f*& M_apos, int& nvec ) override {
-    nvec        = ocl.nvecs;
-    M_neighs    = (int*)neighs;
-    M_neighCell = (int*)neighCell;
-    M_apos      = atoms;
-    return nSystems;
+    if(bUFF){
+        if(host_neighs_UFF.empty() || host_neighCell_UFF.empty() || (atoms==nullptr)){
+            M_neighs = nullptr;
+            M_neighCell = nullptr;
+            M_apos = nullptr;
+            nvec = 0;
+            return 0;
+        }
+        nvec        = ffu.natoms;             // UFF uses atom-only stride per system
+        M_neighs    = (int*)host_neighs_UFF.data();
+        M_neighCell = (int*)host_neighCell_UFF.data();
+        M_apos      = atoms;                   // positions packed per system in `atoms`
+        return nSystems;
+    }else{
+        if((neighs==nullptr) || (neighCell==nullptr) || (atoms==nullptr)){
+            M_neighs = nullptr;
+            M_neighCell = nullptr;
+            M_apos = nullptr;
+            nvec = 0;
+            return 0;
+        }
+        nvec        = ocl.nvecs;
+        M_neighs    = (int*)neighs;
+        M_neighCell = (int*)neighCell;
+        M_apos      = atoms;
+        return nSystems;
+    }
 }
 
 // ##############################################################
