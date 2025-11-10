@@ -19,10 +19,10 @@ np.set_printoptions(linewidth=300)
 
 defalt_inputs=[
     #"H2O-A1_H2O-D1-y.xyz",   # sample out-of   plane epairs of O_3 atom in H2O with H2O probe
-    "H2O-A1_HCN-D1-y.xyz",   # sample in-plane plane epairs of O_3 atom in H2O with HCN probe
+    #"H2O-A1_HCN-D1-y.xyz",   # sample in-plane plane epairs of O_3 atom in H2O with HCN probe
     #"H2O-A1_HF-D1-y.xyz",    # sample in-plane plane epairs of O_3 atom in H2O with HF probe
     
-    #"CH2O-A1_H2O-D1-z.xyz",      # sample in-plane plane epairs of O_2 atom in CH2O with H2O probe
+    "CH2O-A1_H2O-D1-z.xyz",      # sample in-plane plane epairs of O_2 atom in CH2O with H2O probe
     #"CH2O-A1_HCN-D1-z.xyz",      # sample in-plane plane epairs of O_2 atom in CH2O with HCN  probe
     #"CH2O-A1_HF-D1-z.xyz",       # sample in-plane plane epairs of O_2 atom in CH2O with HF   probe
     
@@ -39,14 +39,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot and compare 2D energy surfaces from multiple .xyz files")
     parser.add_argument("-i", "--inputs", nargs='*', default=None, help="List of input .xyz files (single movie). If empty, uses default set")
     #parser.add_argument("--dir", type=str, default='/home/prokophapala/Desktop/CARBSIS/wb97m-split/', help="Directory where input files are located")
-    parser.add_argument("--dir", type=str, default="/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/HbondFit_small_mols_2025_08_15/confs/wb97m-split/", help="Directory where input files are located")
-    #parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O_CH2O.dat", help="DOF selection file")
+    #parser.add_argument("--dir", type=str, default="/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/HbondFit_small_mols_2025_08_15/confs/wb97m-split/", help="Directory where input files are located")
+    parser.add_argument("--dir", type=str, default="/home/niko/work/HBOND/REFERENCE/2-pairs_small_small/4-to_firecore/confs_wb97m/", help="Directory where input files are located")
+    parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O_CH2O.dat", help="DOF selection file")
     
     #parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O_CH2O_HF_HCN.dat", help="DOF selection file")
 
     #parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O_CH2O_HF_HCN-fix2.dat", help="DOF selection file")
 
-    parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O_CH2O_HF_HCN-fix.dat", help="DOF selection file")
+    #parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O_CH2O_HF_HCN-fix.dat", help="DOF selection file")
     #parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_nofit_H2O_CH2O_HF_HCN.dat", help="DOF selection file")
 
     #parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_HF_HCN.dat", help="DOF selection file")
