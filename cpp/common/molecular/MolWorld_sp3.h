@@ -310,7 +310,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         //params.verbosity=verbosity;
         //printf(  "MolWorld_sp3:init() params.verbosity = %i \n", params.verbosity );
         printf("params.atypes.size() %i\n", params.atypes.size() );
-        if( params.atypes.size() == 0 ){
+        if( params.atypes.size() == 0 ){// TODO: move this to MMFFparams?
             initParams( "common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat", "common_resources/DihedralTypes.dat" );
         }
         // initialization global optimizer
@@ -332,10 +332,10 @@ class MolWorld_sp3 : public SolverInterface { public:
             double z0 = NAN;   // This makes inconsistency with python API i.e. MMFF.py
             loadSurf( surf_name, bGridFF, idebug>0, z0 );
         }
-        if ( smile_name ){               
-            insertSMILES( smile_name );    
-            builder.addAllCapTopo();       
-            builder.randomizeAtomPos(1.0); 
+        if ( smile_name ){
+            insertSMILES( smile_name );
+            builder.addAllCapTopo();
+            builder.randomizeAtomPos(1.0);
             bMMFF=true;
         }else if ( xyz_name ){
             if( bMMFF ){ 
@@ -348,13 +348,13 @@ class MolWorld_sp3 : public SolverInterface { public:
             }
         }
         builder.randomFragmentCollors();
-        if(bMMFF){     
+        if(bMMFF){
             makeFFs();
             if(bCheckStuck)apos_bak = new Vec3d[ffl.natoms];
         }
         if(!bUFF){ builder.setup_atom_permut( true ); }
         if(constr_name ){ constrs.loadBonds( constr_name, &builder.atom_permut[0], 0 );  }
-        if(dlvec       ){ add_to_lvec(*dlvec);    }  // modify lattice after initialization - it helps to build constrained systems 
+        if(dlvec       ){ add_to_lvec(*dlvec);    }  // modify lattice after initialization - it helps to build constrained systems
         //builder.printAtoms();
         //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
         //ffl.printNeighs();
@@ -367,7 +367,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         printf( "MolWorld_sp3::init() ffl.lvec     \n" ); printMat(ffl.lvec);
         
         
-        if(verbosity>0) 
+        if(verbosity>0)
         printf( "#### MolWorld_sp3::init() DONE\n\n");
 
 
@@ -1047,7 +1047,7 @@ void printPBCshifts(){
  */
     bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} ){
         char fname[256];
-        sprintf(fname, "%s.xyz", name );
+        snprintf(fname, 256, "%s.xyz", name );
         int ret = params.loadXYZ( fname, surf.natoms, &surf.apos, &surf.REQs, &surf.atypes, 0, &gridFF.grid.cell );
         if     ( ret<0 ){ getcwd(tmpstr,1024); printf("ERROR in MolWorld_sp3::loadSurf() file(%s) not found in path(%s)=> Exit() \n", fname, tmpstr ); exit(0); }
         if     ( ret==0){ printf("ERROR in MolWorld_sp3::loadSurf() no lattice vectors in (%s) => Exit() \n", fname ); exit(0); }
@@ -1078,7 +1078,7 @@ void printPBCshifts(){
                 /// TODO: if we add just a fragment, we initialize bond for this fragment, not for the whole system
             } else {
                 char tmpstr[256];
-                sprintf(tmpstr, "%s.xyz", fname );
+                snprintf(tmpstr, 256, "%s.xyz", fname );
                 iret = builder.loadXYZ_Atoms( tmpstr, &params, -1, false, pos, rot );
             }
         }

@@ -642,21 +642,6 @@ void MolGUI::initWiggets(){
     ylay.step(3);
     GUI2Node* slider = gui2.addNode(new GUI2TextSliderf({0, 0, 0, 0}, {5, ylay.x0}, {110, 20}, 1, 100, &zoom, "Zoom: $value%.2f", nullptr));
 
-    // ------ DropDownList(   "Pick Mode:"  )
-
-    ylay.step(3); 
-    ((DropDownList*)gui.addPanel( new DropDownList("Pick Mode:",5,ylay.x0,5+100, 3 ) ) )
-        ->addItem("pick_atoms")
-        ->addItem("pick_bonds")
-        ->addItem("pick_angles");
-
-
-    // ------ DropDownList(   "Fragments:" )
-
-    ylay.step(3); 
-    panel_Frags = ((DropDownList*)gui.addPanel( new DropDownList("Fragments:",5,ylay.x0,5+100, 3 ) ) );
-    panel_Frags->setCommand( [&](GUIAbstractPanel* me_){ int i=((DropDownList*)me_)->iSelected; printf( "panel_Frags %02i \n", i );  W->selectFragment(i); return 0; } );   
-
     // ------ DropDownList(   "View Side"  )
 
     ylay.step(6); 
@@ -2605,6 +2590,20 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_SEMICOLON:    afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
                 //case SDLK_QUOTE:        afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
 
+                case SDLK_TAB:
+                    {
+                        puts("attempting to load another molecule...");
+                        const char* xyz_name = "common_resources/xyz/PTCDA";
+                        if( W->bMMFF ){ 
+                            printf("buildMolecule_xyz( %s )\n", xyz_name);
+                            W->buildMolecule_xyz( xyz_name );
+                        }else{
+                            printf("MolWorld_sp3::init() loading %s\n", xyz_name);
+                            W->loadNBmol( xyz_name );
+                            if(W->bRigid)W->initRigid();
+                        }
+                        puts("AAAA"); break;
+                    }  
                 //case SDLK_0:            afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
                 //case SDLK_9:            afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
 

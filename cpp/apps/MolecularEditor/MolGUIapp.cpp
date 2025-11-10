@@ -71,10 +71,6 @@ int main(int argc, char *argv[]){
     W   = new MolWorld_sp3();
     app = new MolGUI( junk, DM.w-100, DM.h-100, W );
 
-    //printf( "WE ARE HERE %s \n", _CODE_LOCATION ); 
-    //printf( "WE ARE HERE %s \n", __FUNCTION__ ); 
-    //exit(0);
-
     #include "MolGUIapp_argv.h"
 
     funcs["-prelat"]={2,[&](const char** ss){ 

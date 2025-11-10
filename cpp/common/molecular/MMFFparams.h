@@ -808,7 +808,7 @@ class MMFFparams{ public:
         int ret=0;
         if(lvec){ if( cellFromString( buff, *lvec ) ){ ret=1; }else{ printf("WARNING: lvec not read from %s \n", fname ); } }
         char at_name[8];
-        double junk; 
+        double junk;
         int npi;
         double Q,H;
         //printf("MMFFparams::loadXYZ() natoms=%i \n", natoms ); 
