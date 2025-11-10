@@ -35,12 +35,12 @@ lscpu
 #python3 run.py
 
 # === UFF CPU/GPU validation presets =========================================
-#python3 -u test_UFF_multi.py --preset bonded --non-bonded --grid-ff              2>&1 | tee OUT-UFF-multi-all
+python3 -u test_UFF_multi.py --preset bonded --non-bonded --grid-ff --use-scan-relaxed 0   --nconf 10000          2>&1 | tee OUT-UFF-multi-all
 #python3 -u test_UFF_multi.py --preset bonded                                     2>&1 | tee OUT-UFF-multi-bonded
 #python3 -u test_UFF_multi.py --preset bonded --non-bonded                        2>&1 | tee OUT-UFF-multi-bonded-nb
 #python3 -u test_UFF_multi.py --preset bonded --grid-ff                           2>&1 | tee OUT-UFF-multi-bonded-grid
 #python3 -u test_UFF_multi.py --preset none   --non-bonded                        2>&1 | tee OUT-UFF-multi-nonbonded
 
-python3 -u test_UFF_multi.py --preset grid-only --grid-ff                        2>&1 | tee OUT-UFF-multi-gridff
+#python3 -u test_UFF_multi.py --preset grid-only --grid-ff                        2>&1 | tee OUT-UFF-multi-gridff
 #python3 -u test_UFF_multi.py --preset none   --non-bonded --grid-ff              2>&1 | tee OUT-UFF-multi-nb-grid
 #python3 -u test_UFF_multi.py --preset bonded --non-bonded                        2>&1 | tee OUT-UFF-multi-bonded-nb

@@ -52,7 +52,7 @@ class Atoms{ public:
         if(lvec  !=p.lvec  ){ lvec=new Mat3d; *lvec=*(p.lvec); }
         memcpy( atypes, p.atypes, sizeof(int)  *natoms );
         memcpy( apos,   p.apos,   sizeof(Vec3d)*natoms );
-        if(charge){ memcpy( charge, p.charge, sizeof(double)*natoms ); }
+        // if(charge){ memcpy( charge, p.charge, sizeof(double)*natoms ); } MolecularDatabase falls with this
         
     }
 

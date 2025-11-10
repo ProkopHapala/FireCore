@@ -28,8 +28,8 @@ mkdir -p results/all
 
 # Setup parameters
 dovdW=1
-doSurfAtoms=-1
-bGridFF=-6   # 1 for linear, 5or6 for bSpline=1 (works only 6)
+doSurfAtoms=1
+bGridFF=6   # 1 for linear, 5or6 for bSpline=1 (works only 6)
 if (( bGridFF == 1 )); then
     bSpline=0
 elif (( bGridFF == 5 || bGridFF == 6 )); then
@@ -118,7 +118,7 @@ for nPBC in "${nPBC[@]}"; do
                                             
                                             Ns=(16) # (1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16)
                                             for N in "${Ns[@]}"; do
-                                                surf_name="data/xyz/surfaces_for_throughput/NaCl_${N}x${N}_L3"
+                                                surf_name="data/xyz/surfaces_for_throughput/NaCl_${N}x${N}_Cl_hole"
                                                 python3 run_throughput_MD.py \
                                                     --nSys "$nSys" \
                                                     --xyz_name "$xyz_name" \

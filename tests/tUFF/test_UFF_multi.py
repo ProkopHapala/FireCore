@@ -209,12 +209,12 @@ def scan_uff(nconf, nsys, components, tol=1e-3, seed=123, bNonBonded=False, bGri
     confs = np.repeat(base[None, :, :], nconf, axis=0)
     confs += 0.1 * rng.standard_normal(confs.shape)
     if z_scan:
-        confs[:, 1] = [0.0, 0.0, 2.5]
+        confs[:, 5] = [0.0, 0.0, -8.0]
         for i in range(nconf):
-            confs[i, 1, 2] += 0.01 * i
+            confs[i, 5, 2] += 0.01 * i
     
     if xy_scan:
-        confs[:, 1] = [0.0, 0.0, 5.0]
+        confs[:, 5] = [0.0, 0.0, 10.0]
         side_len = int(np.sqrt(nconf))
         step = 0.1
         x = np.arange(side_len) * step
@@ -224,10 +224,10 @@ def scan_uff(nconf, nsys, components, tol=1e-3, seed=123, bNonBonded=False, bGri
         X_flat = X.ravel()
         Y_flat = Y.ravel()
 
-        confs[:, 1, 0] = X_flat  # x
-        confs[:, 1, 1] = Y_flat  # y
+        confs[:, 5, 0] = X_flat  # x
+        confs[:, 5, 1] = Y_flat  # y
 
-
+    print(confs[:, 5, :])
     # # CPU forces
     # F_cpu = uff.scan(confs, iParalel=0)
     # GPU forces (batched)
@@ -390,6 +390,7 @@ def compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces, tol=1e-5, co
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='UFF CPU vs. GPU Validation Test')
+    #default_mol = os.path.join(data_dir, 'xyz', 'H2O.xyz')
     #default_mol = os.path.join(data_dir, 'mol', 'formic_acid.mol2')
     default_mol = os.path.join(data_dir, 'xyz', 'xylitol_WO_gridFF.xyz')
     #default_mol = os.path.join(data_dir, 'xyz', 'xylitol_for_gridFF.xyz')
@@ -400,8 +401,8 @@ if __name__ == "__main__":
     parser.add_argument('-v', '--verbose',       type=int,      default=0,           help='Verbose output')
     #parser.add_argument('--nsys',               type=int,      default=2,           help='Number of GPU replicas (systems)')
     #parser.add_argument('--nconf',              type=int,      default=2,           help='Number of configurations for scan(); 0 disables scan')
-    parser.add_argument('--nsys',                type=int,      default=2,           help='Number of GPU replicas (systems)')
-    parser.add_argument('--nconf',               type=int,      default=2,           help='Number of configurations for scan(); 0 disables scan')
+    parser.add_argument('--nsys',                type=int,      default=1,           help='Number of GPU replicas (systems)')
+    parser.add_argument('--nconf',               type=int,      default=10000,           help='Number of configurations for scan(); 0 disables scan')
     parser.add_argument('--use-scan',            type=int,      default=1,           help='Use scan() path (1) or single-step run() (0)')
     parser.add_argument('--use-scan-relaxed',    type=int,      default=1,           help='Use scan_relaxed() path (1)')
     parser.add_argument('--niter',               type=int,      default=3000,         help='Relaxation steps per configuration for scan_relaxed()')
@@ -434,10 +435,12 @@ if __name__ == "__main__":
 
     # --- Initialize the library once ---
     print("--- Initializing MMFF_multi library ---")
+    print(os.path.join(data_dir, 'xyz/surfaces_for_throughput', 'NaCl_6x6_L3'))
+    exit(0)
     uff.init(
         nSys_=args.nsys,
         xyz_name=args.molecule,
-        surf_name=os.path.join(data_dir, 'xyz', 'NaCl_3x3_L3') if bGridFF else None,
+        surf_name=os.path.join(data_dir, 'xyz/surfaces_for_throughput', 'NaCl_6x6_L3') if bGridFF else None,
         sElementTypes  = os.path.join(data_dir, "ElementTypes.dat"),
         sAtomTypes     = os.path.join(data_dir, "AtomTypes.dat"),
         sBondTypes     = os.path.join(data_dir, "BondTypes.dat"),
@@ -511,7 +514,7 @@ if __name__ == "__main__":
         )
         passed = ok
         if z_scan:
-            Z_forces = F_gpu[:, 1, 2]  # Z-složka sil
+            Z_forces = F_gpu[:, 5, 2]  # Z-složka sil
             Z        = np.linspace(0, 0.01*(nconf-1), nconf)
 
             plt.figure(figsize=(8, 5))
@@ -526,7 +529,7 @@ if __name__ == "__main__":
             side_len = int(np.sqrt(nconf))  # 100
 
             # Předpokládáme, že F_gpu je pole tvaru (nconf, 3, 3)
-            Z_forces = F_gpu[:, 1, 2]  # síla v ose z na prostředním atomu
+            Z_forces = F_gpu[:, 5, 2]  # síla v ose z na prostředním atomu
 
             # Vytvoření mřížky x,y pro 100x100 bodů s krokem 0.01
             x = np.linspace(0, 0.1*(side_len-1), side_len)

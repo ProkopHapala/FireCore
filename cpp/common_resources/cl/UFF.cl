@@ -5,8 +5,8 @@
 // Debug Controls (compile-time macros)
 // ======================================================
 // Enable concise debug prints without changing C++ host interface.
-#define DBG_UFF 1         // 0/1 master switch
-#define IDBG_ATOM  (1)    // atom index to trace
+#define DBG_UFF    0         // 0/1 master switch
+#define IDBG_ATOM  (-5)    // atom index to trace
 #define IDBG_BOND  (0)    // bond index to trace (global bond id), -1 disables
 #define IDBG_ANGLE (0)    // angle index to trace
 #define IDBG_DIH   (0)    // dihedral index to trace
@@ -240,7 +240,7 @@ __kernel void evalBondsAndHNeigh_UFF(
 
         float Enb = 0.0f;
         // --- Subtract Non-Bonded Interaction ---
-        if (bSubtractBondNonBond != 0) {
+        if (0*bSubtractBondNonBond != 0) {
             float4 REQj = REQs[i0a + ing];
             float4 REQij = mixREQ_arithmetic(REQi, REQj); // Use correct mixing rule
             //printf("GPU: REQi=(%g,%g,%g) REQj=(%g,%g,%g) REQij=(%g,%g,%g)\n", REQi.x,REQi.y,REQi.z,  REQj.x,REQj.y,REQj.z,  REQij.x,REQij.y,REQij.z );
@@ -427,7 +427,7 @@ __kernel void evalAngles_UFF(
     //            (E-Enb), isys);
     // }
     // --- Subtract 1-3 Non-Bonded Interaction ---
-    if (bSubtractAngleNonBond != 0) {
+    if (0*bSubtractAngleNonBond != 0) {
         // Needs REQs, apos, pbc_shifts, neighs, neighCell passed
         float4 REQi = REQs[ia];
         float4 REQk = REQs[ka];
@@ -1037,18 +1037,18 @@ __kernel void getNonBond(
     const int i0a = iS*natoms;  // index of first atom in atoms array
     const int iaa = iG + i0a; // index of atom in atoms array
 
-    if((iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL ); }
-    if((iG==IDBG_ATOM)&&(iS==IDBG_SYS)){
-       printf( "GPU::getNonBond() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL );
-       for(int is=0; is<nS; is++){
-            cl_Mat3 lvec = lvecs[is];
-            printf( "GPU[is:%i]   lvec(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f) \n", is, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z  );
-            for(int ia=0; ia<natoms; ia++){
-                int i = ia+is*natoms;
-                printf( "GPU atom [is:%i,ia:%i] p(% .3f,% .3f,% .3f,% .3f) REQ(% .3f,% .3f,% .3f,% .3f) neighs{%3i,%3i,%3i,%3i} \n", is,ia, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w, REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w );
-            }
-       }
-    }
+    // if((iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL ); }
+    // if((iG==IDBG_ATOM)&&(iS==IDBG_SYS)){
+    //    printf( "GPU::getNonBond() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL );
+    //    for(int is=0; is<nS; is++){
+    //         cl_Mat3 lvec = lvecs[is];
+    //         printf( "GPU[is:%i]   lvec(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f) \n", is, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z  );
+    //         for(int ia=0; ia<natoms; ia++){
+    //             int i = ia+is*natoms;
+    //             printf( "GPU atom [is:%i,ia:%i] p(% .3f,% .3f,% .3f,% .3f) REQ(% .3f,% .3f,% .3f,% .3f) neighs{%3i,%3i,%3i,%3i} \n", is,ia, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w, REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w );
+    //         }
+    //    }
+    // }
 
 
     //if( iL==0 ){ for(int i=0; i<nL; i++){  LATOMS[i]=(float4){ 10000.0, (float)i,(float)iG,(float)iS }; LCLJS[i]=(float4){ 20000.0, (float)i,(float)iG,(float)iS }; } }
@@ -1143,7 +1143,7 @@ __kernel void getNonBond(
                                 //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); }
 
                                 // Debug print for force calculation - print all interactions for atom 0
-                                if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){ printf("GPU fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e) bBonded %i bPBC %i\n", fij.x, fij.y, fij.z, fij.w, REQK.x, REQK.y, REQK.z, bBonded, bPBC);  }
+                                // if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){ printf("GPU fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e) bBonded %i bPBC %i\n", fij.x, fij.y, fij.z, fij.w, REQK.x, REQK.y, REQK.z, bBonded, bPBC);  }
 
                                 fe += fij;
                             }
@@ -1157,9 +1157,9 @@ __kernel void getNonBond(
                     float4 fij = getLJQH( dp, REQK, R2damp );  // calculate non-bonded force between atoms using LJQH potential
 
                     // Debug print for force calculation (non-PBC case) - print all interactions for atom 0
-                    if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
-                        printf("GPU fij [i:%3i,j:%3i|isys:%i] dp(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQij(% .6e,% .6e,% .6e) fij(% .6e,% .6e,% .6e) E % .6e bBonded %i bPBC %i\n", iG, ja, iS, dp.x, dp.y, dp.z, length(dp),  REQKi.x, REQKi.y, REQKi.z, REQK.x, REQK.y, REQK.z,  fij.x, fij.y, fij.z, fij.w, bBonded, bPBC );
-                    }
+                    // if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
+                    //     printf("GPU fij [i:%3i,j:%3i|isys:%i] dp(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQij(% .6e,% .6e,% .6e) fij(% .6e,% .6e,% .6e) E % .6e bBonded %i bPBC %i\n", iG, ja, iS, dp.x, dp.y, dp.z, length(dp),  REQKi.x, REQKi.y, REQKi.z, REQK.x, REQK.y, REQK.z,  fij.x, fij.y, fij.z, fij.w, bBonded, bPBC );
+                    // }
 
                     fe += fij;
                 }  // if atoms are not bonded, we calculate non-bonded interaction between them
@@ -1315,7 +1315,9 @@ inline float4 fe3d_pbc_comb(const float3 u, const int3 n, __global const float4*
     );
 }
 
-
+inline int gridIndex(int ix, int iy, int iz, int3 nxyz) {
+    return iz + nxyz.z * (iy + nxyz.y * ix);
+}
 
 // ======================================================================
 //                           getNonBond_GridFF_Bspline()
@@ -1364,8 +1366,6 @@ __kernel void getNonBond_GridFF_Bspline(
     const float3 posi  = atoms    [iaa].xyz;       // position of the atom
     float4 fe          = float4Zero;              // forces on the atom
 
-    const int iS_DBG = 0;
-    const int iG_DBG = 0;
 
     // =================== Non-Bonded interaction ( molecule-molecule )
 
@@ -1374,11 +1374,19 @@ __kernel void getNonBond_GridFF_Bspline(
 
     const cl_Mat3 lvec = lvecs[iS]; // lattice vectors of the system
 
-    // if((iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond_GridFF_Bspline() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL ); }
-    // if((iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond_GridFF_Bspline() grid_p0(%12.4f,%12.4f,%12.4f) grid_invStep(%12.4f,%12.4f,%12.4f) \n", grid_p0.x,grid_p0.y,grid_p0.z, grid_invStep.x, grid_invStep.y,grid_invStep.z ); }
-    //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); }
-    // if((iG==iG_DBG)&&(iS==iS_DBG)) printf( "GPU::getNonBond_GridFF_Bspline() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
-    if((iG==iG_DBG)&&(iS==iS_DBG)){
+    // if((iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  }
+    // if((iG==IDBG_ATOM)&&(iS==IDBG_SYS)){   }
+    // if((iG==iG_DBG)&&(iS==iS_DBG)){  }
+    // if((iG==iG_DBG)&&(iS==iS_DBG)) 
+    if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
+        printf( "GPU::getNonBond_GridFF_Bspline() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL );
+        printf( "GPU::getNonBond_GridFF_Bspline() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
+        printf( "GPU::getNonBond_GridFF_Bspline() grid_p0(%12.4f,%12.4f,%12.4f) grid_invStep(%12.4f,%12.4f,%12.4f) \n", grid_p0.x,grid_p0.y,grid_p0.z, grid_invStep.x, grid_invStep.y,grid_invStep.z );
+        printf( "GPU::getNonBond_GridFF_Bspline() grid_ns(%4i,%4i,%4i|%6i) GFFParams(%12.4f,%12.4f,%12.4f,%12.4f) \n", grid_ns.x,grid_ns.y,grid_ns.z,grid_ns.w, GFFParams.x,GFFParams.y,GFFParams.z,GFFParams.w );
+        float4 gp;
+        gp=BsplinePLQ[gridIndex( 0, 0, 0, grid_ns.xyz)]; printf( "GPU:BsplinePLQ[0,0,0] (%12.4f,%12.4f,%12.4f,%12.4f) \n", gp.x,gp.y,gp.z,gp.w );
+        gp=BsplinePLQ[gridIndex( 0,10,10, grid_ns.xyz)]; printf( "GPU:BsplinePLQ[1,1,1] (%12.4f,%12.4f,%12.4f,%12.4f) \n", gp.x,gp.y,gp.z,gp.w );
+        gp=BsplinePLQ[gridIndex(10,10,10, grid_ns.xyz)]; printf( "GPU:BsplinePLQ[2,2,2] (%12.4f,%12.4f,%12.4f,%12.4f) \n", gp.x,gp.y,gp.z,gp.w ); 
         // printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL );
         // for(int i=0; i<nS*nG; i++){
         //     int ia = i%nS;
@@ -1389,9 +1397,8 @@ __kernel void getNonBond_GridFF_Bspline(
         for(int ia=0; ia<natoms; ia++){
             float4 pos = atoms[ia+i0a];
             float4 req = REQKs[ia+i0a];
-            printf( "GPU[%3i,%3i] pos(%12.4f,%12.4f,%12.4f) req(%12.4f,%12.4f,%12.4f,%12.4f) \n", iS,ia, pos.x,pos.y,pos.z, req.x,req.y,req.z,req.w );
+             printf( "GPU[%3i,%3i] pos(%12.4f,%12.4f,%12.4f) REQ(%12.4f,%12.4f,%12.4f,%12.4f) \n", iS,ia, pos.x,pos.y,pos.z, req.x,req.y,req.z,req.w );
         }
-
     }
 
     //if(iG>=natoms) return;
@@ -1475,8 +1482,6 @@ __kernel void getNonBond_GridFF_Bspline(
     } // insulate nbff
 
     if(iG>=natoms) return; // natoms <= nG, because nG must be multiple of nL (loccal kernel size). We cannot put this check at the beginning of the kernel, because it will break reading of atoms to local memory
-//    if(iG!=1) return; // ToDo: remove this line, it is just for testing
-    // ========== Molecule-Grid interaction with GridFF using tricubic Bspline ================== (see. kernel sample3D_comb() in GridFF.cl
 
     __local int4 xqs[4];
     __local int4 yqs[4];
@@ -1499,10 +1504,10 @@ __kernel void getNonBond_GridFF_Bspline(
         float4 fg = fe3d_pbc_comb(u, grid_ns.xyz, BsplinePLQ, PLQH, xqs, yqs);
 
         // GridFF-specific debug prints for test atom
-//        if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
-            // printf("GPU GridFF [i:%3i|isys:%i] posi(% .6e,% .6e,% .6e) u(% .6e,% .6e,% .6e) PLQH(% .6e,% .6e,% .6e,% .6e) fg_raw(% .6e,% .6e,% .6e,% .6e)\n",
-            //        iG, iS, posi.x, posi.y, posi.z, u.x, u.y, u.z, PLQH.x, PLQH.y, PLQH.z, PLQH.w, fg.x, fg.y, fg.z, fg.w);
-//        }
+    //    if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
+    //         printf("GPU GridFF [i:%3i|isys:%i] posi(% .6e,% .6e,% .6e) u(% .6e,% .6e,% .6e) PLQH(% .6e,% .6e,% .6e,% .6e) fg_raw(% .6e,% .6e,% .6e,% .6e)\n",
+    //                iG, iS, posi.x, posi.y, posi.z, u.x, u.y, u.z, PLQH.x, PLQH.y, PLQH.z, PLQH.w, fg.x, fg.y, fg.z, fg.w);
+    //    }
 
         // for(int ia=0; ia<natoms; ia++){
         //     float4 pos = atoms[ia+i0a];
@@ -1515,10 +1520,10 @@ __kernel void getNonBond_GridFF_Bspline(
         fg.xyz *= -grid_invStep.xyz;
         
         // Debug print for final GridFF force after scaling
-        if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
-            printf("GPU GridFF scaled [i:%3i|isys:%i] fg_scaled(% .6e,% .6e,% .6e,% .6e) grid_invStep(% .6e,% .6e,% .6e)\n",
-                   iG, iS, fg.x, fg.y, fg.z, fg.w, grid_invStep.x, grid_invStep.y, grid_invStep.z);
-        }
+        // if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
+        //     printf("GPU GridFF scaled [i:%3i|isys:%i] fg_scaled(% .6e,% .6e,% .6e,% .6e) grid_invStep(% .6e,% .6e,% .6e)\n",
+        //            iG, iS, fg.x, fg.y, fg.z, fg.w, grid_invStep.x, grid_invStep.y, grid_invStep.z);
+        // }
         
         fe += fg;
         //fes[iG] = fe;
@@ -1611,7 +1616,7 @@ __kernel void getSurfMorse(
 
 
     const float  K          = -GFFParams.y;
-    const float  R2damp     =  GFFParams.x*GFFParams.x;
+    const float  R2damp     =  1e-30;
     const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
     const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz)
 

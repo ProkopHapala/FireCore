@@ -16,7 +16,7 @@ parser.add_argument("--bGridFF", type=int, default=-1, help="bGridFF flag")
 parser.add_argument("--Fconv", type=float, default=1e-4, help="Force convergence")
 parser.add_argument("--perframe", type=int, default=1000, help="Steps per frame (MDloop nIter)")
 parser.add_argument("--perVF", type=int, default=100, help="Vector-field evals inside kernels")
-parser.add_argument("--loops", type=int, default=500, help="How many times to call MDloop in a row")
+parser.add_argument("--loops", type=int, default=50000, help="How many times to call MDloop in a row")
 parser.add_argument("--gridnPBC", type=str, default="(1,1,0)", help="gridnPBC")
 parser.add_argument("--bNonBonded", type=int, default=1, help="bNonBonded flag")
 # Exploring (minima hopping) controls
@@ -94,7 +94,7 @@ for _f in glob.glob("traj_UFF_*.xyz"):
         pass
 
 # Set trajectory output (per-system files: traj_UFF_000.xyz, ...)
-uff.setTrjName(trj_fname_="traj_UFF", savePerNsteps=1000, bDel=True)
+uff.setTrjName(trj_fname_="traj_UFF", savePerNsteps=10, bDel=True)
 
 # Throughput loop: call MDloop repeatedly
 for i in range(loops):

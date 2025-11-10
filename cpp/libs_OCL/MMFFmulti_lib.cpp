@@ -324,6 +324,7 @@ int scan( int nConf, double* confs_, double* outF_, int iParalel ){
     W.bMoving = false;
 
     if( (iParalel==2) && W.uff_ocl ){
+        W.setup_UFF_ocl();
         if(!W.uff_ocl->bKernelPrepared){ W.uff_ocl->setup_kernels( (float)W.ffu.Rdamp, (float)W.ffu.FmaxNonBonded, (float)W.ffu.SubNBTorsionFactor ); }
         for(int isys=0; isys<W.nSystems; ++isys){ W.pack_uff_system( isys, W.ffu, true, false, false, true ); }
         W.upload_uff( true, false, false, true );

@@ -55,7 +55,13 @@ const float4   grid_p0
 
 */
 
-
+// ======================================================
+// Debug Controls (compile-time macros)
+// ======================================================
+// Enable concise debug prints without changing C++ host interface.
+#define DBG_UFF 0         // 0/1 master switch
+#define IDBG_ATOM  (-5)    // atom index to trace
+#define IDBG_SYS   (0)    // system index to trace
 
 // ======================================================================
 // ======================================================================
@@ -2303,7 +2309,9 @@ inline float4 fe3d_pbc_comb(const float3 u, const int3 n, __global const float4*
         dot(bx, (float4)(E1.z, E2.z, E3.z, E4.z))
     );
 }
-
+inline int gridIndex(int ix, int iy, int iz, int3 nxyz) {
+    return iz + nxyz.z * (iy + nxyz.y * ix);
+}
 
 // ======================================================================
 //                           getNonBond_GridFF_Bspline()
@@ -2365,17 +2373,28 @@ __kernel void getNonBond_GridFF_Bspline(
 
     const cl_Mat3 lvec = lvecs[iS]; // lattice vectors of the system
 
-    //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); }
-    //if((iG==iG_DBG)&&(iS==iS_DBG)) printf( "GPU::getNonBond_GridFF_Bspline() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
-    // if((iG==iG_DBG)&&(iS==iS_DBG)){
-    //     printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL );
-    //     for(int i=0; i<nS*nG; i++){
-    //         int ia = i%nS;
-    //         int is = i/nS;
-    //         if(ia==0){ cl_Mat3 lvec = lvecs[is];  printf( "GPU[%i] lvec(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f) \n", is, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z  ); }
-    //         //printf( "GPU[%i,%i] \n", is,ia,  );
-    //     }
-    // }
+    if((DBG_UFF!=0) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){
+        printf( "GPU::getNonBond_GridFF_Bspline() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL );
+        printf( "GPU::getNonBond_GridFF_Bspline() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
+        printf( "GPU::getNonBond_GridFF_Bspline() grid_p0(%12.4f,%12.4f,%12.4f) grid_invStep(%12.4f,%12.4f,%12.4f) \n", grid_p0.x,grid_p0.y,grid_p0.z, grid_invStep.x, grid_invStep.y,grid_invStep.z );
+        printf( "GPU::getNonBond_GridFF_Bspline() grid_ns(%4i,%4i,%4i|%6i) GFFParams(%12.4f,%12.4f,%12.4f,%12.4f) \n", grid_ns.x,grid_ns.y,grid_ns.z,grid_ns.w, GFFParams.x,GFFParams.y,GFFParams.z,GFFParams.w );
+        float4 gp;
+        gp=BsplinePLQ[gridIndex( 0, 0, 0, grid_ns.xyz)]; printf( "GPU:BsplinePLQ[0,0,0] (%12.4f,%12.4f,%12.4f,%12.4f) \n", gp.x,gp.y,gp.z,gp.w );
+        gp=BsplinePLQ[gridIndex( 0,10,10, grid_ns.xyz)]; printf( "GPU:BsplinePLQ[1,1,1] (%12.4f,%12.4f,%12.4f,%12.4f) \n", gp.x,gp.y,gp.z,gp.w );
+        gp=BsplinePLQ[gridIndex(10,10,10, grid_ns.xyz)]; printf( "GPU:BsplinePLQ[2,2,2] (%12.4f,%12.4f,%12.4f,%12.4f) \n", gp.x,gp.y,gp.z,gp.w ); 
+        // printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL );
+        // for(int i=0; i<nS*nG; i++){
+        //     int ia = i%nS;
+        //     int is = i/nS;
+        //     if(ia==0){ cl_Mat3 lvec = lvecs[is];  printf( "GPU[%i] lvec(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f) \n", is, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z  ); }
+        //     //printf( "GPU[%i,%i] \n", is,ia,  );
+        // }
+        for(int ia=0; ia<natoms; ia++){
+            float4 pos = atoms[ia+i0a];
+            float4 req = REQKs[ia+i0a];
+             printf( "GPU[%3i,%3i] pos(%12.4f,%12.4f,%12.4f) REQ(%12.4f,%12.4f,%12.4f,%12.4f) \n", iS,ia, pos.x,pos.y,pos.z, req.x,req.y,req.z,req.w );
+        }
+    }
 
     //if(iG>=natoms) return;
 
@@ -3109,6 +3128,7 @@ __kernel void getSurfMorse(
     //     printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) \n", nG,nS, nL, ns.x,ns.y,ns.z  );
     //     //printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) nPBC(%i,%i,%i)\n", nG,nS, nL, ns.x,ns.y,ns.z,  nPBC.x,nPBC.y,nPBC.z  );
     //     //for(int i=0; i<ns.x; i++){ printf( "forces[%i] (%g,%g,%g) \n", i, forces[i].x,forces[i].y,forces[i].z );   }
+    //     for(int i = 0; i < natoms; i++){ printf( "GPU.atoms[%i](%g,%g,%g) \n", i, atoms[i].x,atoms[i].y,atoms[i].z );   }
     //     for(int i=0; i<na_surf; i++){ printf( "GPU.atoms_s[%i](%g,%g,%g) \n", i, atoms_s[i].x,atoms_s[i].y,atoms_s[i].z );   }
     // }
     float4 fe   = (float4){0.0f,0.0f,0.0f,0.0f};
@@ -3171,12 +3191,12 @@ __kernel void getSurfMorse(
                         for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
                             const float4 fej = getMorseQH( dp,  REQH, K, R2damp );
                             fe -= fej;
-                            if( (iG==0) && (iS==0) && (iz==0)&&(iy==0)&&(ix==0)){
+                            //if( (iG==0) && (iS==0) && (iz==0)&&(iy==0)&&(ix==0)){
                             //if( (iG==0) && (iS==0) && (jl==0) ){
                             // if( (iG==0) && (jl==0)   && (iz==0)&&(iy==0)&&(ix==0)  ){
-                             //   printf( "GPU[%3i|%3i/%3i] dp(%10.6f,%10.6f,%10.6f) LATOMS[%i](%10.6f,%10.6f,%10.6f) pos(%10.6f,%10.6f,%10.6f) pos0(%10.6f,%10.6f,%10.6f)  \n", ja,0,0,   dp.x,dp.y,dp.z,  jl,  LATOMS[jl].x,LATOMS[jl].y,LATOMS[jl].z,   pos.x,pos.y,pos.z,  pos0.x,pos0.y,pos0.z );
+                            //    printf( "GPU[%3i|%3i/%3i] dp(%10.6f,%10.6f,%10.6f) LATOMS[%i](%10.6f,%10.6f,%10.6f) pos(%10.6f,%10.6f,%10.6f) pos0(%10.6f,%10.6f,%10.6f)  \n", ja,0,0,   dp.x,dp.y,dp.z,  jl,  LATOMS[jl].x,LATOMS[jl].y,LATOMS[jl].z,   pos.x,pos.y,pos.z,  pos0.x,pos0.y,pos0.z );
                             //    //printf( "GPU[%3i(%3i,%3i,%3i)] K,R2damp(%10.6f,%10.6f) l=%10.6f dp(%10.6f,%10.6f,%10.6f) REQij(%10.6f,%10.6f,%10.6f,%10.6f) fij(%10.6f,%10.6f,%10.6f) \n", ja, ix,iy,iz,  K,R2damp, length(dp), dp.x,dp.y,dp.z,  REQH.x, REQH.y, REQH.z, REQH.w,  fej.x,fej.y,fej.z );
-                            }
+                            //}
                             dp   +=lvec.a.xyz;
                             //shift+=lvec.a.xyz;
                         }

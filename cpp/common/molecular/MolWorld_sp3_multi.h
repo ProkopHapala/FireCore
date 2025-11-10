@@ -232,7 +232,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     bool gridFF_bFit = true;
     bool gridFF_bRefine = true;
 
-    MolecularDatabase* database = 0;
+    //MolecularDatabase* database = 0;
 
     long nStepConvSum = 0;
     long nStepNonConvSum = 0;
@@ -453,7 +453,11 @@ virtual void init() override {
 
     if(!database){
         database = new MolecularDatabase();
-        database->setDescriptors();
+        database->setDescriptors(&ffu);
+        printf("database created \n"); exit(0);
+    }
+    else{
+        database->setDescriptors(&ffu);
     }
     if(bUFF){
             setup_UFF_ocl();
@@ -1086,8 +1090,8 @@ void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring
         cvf.add( cvfs[i].f );
         cvfs[i] = Quat4fZero;
     }
-    fire.vv=cvf.x;
-    fire.ff=cvf.y;
+    fire.vv=cvf.y;
+    fire.ff=cvf.x;
     fire.vf=cvf.z;
     fire.update_params();
     if(bExploring){
@@ -1118,6 +1122,9 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
         if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){            // Start Exploring
             nbConverged++;
             nStepConvSum+=gopts[isys].istep;  
+            // if(gopts[isys].istep < 1000){
+            //     saveXYZ_system(isys, "fast_converged.xyz", "# CONVERGED", "w");
+            // }
 
             gopts[isys].startExploring();
             if(bGroups){
@@ -1189,7 +1196,9 @@ double evalVFs( double Fconv=1e-6 ){
 
             nbEvaluation += nPerVFs;
             int i0a = isys * uff_ocl->nAtoms;
+            //if(isys==15){printf("evalVFs() isys=%i cvf[15] %g %g %g\n", isys, cvfs[i0a].x, cvfs[i0a].y, cvfs[i0a].z );}
             evalVF_new( uff_ocl->nAtoms, cvfs+i0a, fire[isys], MDpars[isys], gopts[isys].bExploring );
+            //if(isys==15){printf("%i %g\n", isys, fire[isys].ff ); if(fire[isys].ff<1e-8){printf("Zkonvergovalo to\n");exit(0);} }
             double f2 = fire[isys].ff;
             if(f2>F2max){ F2max=f2; iSysFMax=isys; }
             if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){
@@ -1198,8 +1207,8 @@ double evalVFs( double Fconv=1e-6 ){
                 unpack_uff_system( isys, ffu, true, false );
                 isSystemRelaxed[isys]=true;
                 // save
-                if(0*bSaveToDatabase){
-                    int sameMember = database->addIfNewDescriptor(&ffu);
+                if(bSaveToDatabase){
+                    int sameMember = database->addIfNewDescriptor(&ffu, &ffu.lvec);
                     if(sameMember==-1){
                         sprintf(tmpstr,"# %i E %g |F| %g istep=%i isys=%i,", database->getNMembers(), 0.5*fire[isys].vv, sqrt(f2), gopts[isys].istep, isys );
                         nbmol.copyOf( ffu );
@@ -1490,7 +1499,7 @@ void setup_UFF_ocl(){
         else{
             if(!uff_ocl->task_SurfAtoms){
                 printf("MolWorld_sp3_multi::setup_UFF_ocl() for UFF SurfAtoms\n");
-                uff_ocl->task_SurfAtoms = uff_ocl->getSurfMorse( nPBC_ );
+                uff_ocl->task_SurfAtoms = uff_ocl->getSurfMorse( gridFF.nPBC );
             }
         }
     }
@@ -1757,7 +1766,17 @@ int saveXYZ_system(int isys, const char* fname, const char* comment="#comment", 
     if(isys < 0 || isys >= nSystems) return -1;
     if(bUFF){
         unpack_uff_system(isys, ffu, true, false);
-        return params.saveXYZ( fname, ffu.natoms, ffu.atypes, ffu.apos, comment, ffu.REQs, mode, true );
+        //return params.saveXYZ( fname, ffu.natoms, ffu.atypes, ffu.apos, comment, ffu.REQs, mode, true );
+        int* atypes;
+        Vec3d* apos;
+        _alloc( atypes, (ffu.natoms+gridFF.natoms)*sizeof(int) );
+        _alloc( apos,  (ffu.natoms+gridFF.natoms)*sizeof(Vec3d) );
+        for(int i=0; i<ffu.natoms; i++){ atypes[i] = ffu.atypes[i]; apos[i] = ffu.apos[i]; }
+        for(int i=0; i<gridFF.natoms; i++){ atypes[ffu.natoms+i] = gridFF.atypes[i]; apos[ffu.natoms+i] = gridFF.apos[i]; }
+        int ret = params.saveXYZ( fname, ffu.natoms+gridFF.natoms, atypes, apos, comment, 0, mode, true );
+        _dealloc( atypes );
+        _dealloc( apos   );
+        return ret;
     }else{
         unpack_system(isys, ffls[isys], true, false);
         return params.saveXYZ( fname, ffls[isys].natoms, ffls[isys].atypes, ffls[isys].apos, comment, ffls[isys].REQs, mode, true );
@@ -2127,11 +2146,10 @@ int    count_loop_iterations = 0;
 int    count_evalVFs = 0;
 
 int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim ){
-    printf("bBonding=%i bSurfAtoms=%i bGridFF=%i bNonBonded=%i\n", ffu.bDoBond, bSurfAtoms, bGridFF, bNonBonded );
     long T0 = getCPUticks();  // Start timing this call
     if(!bUFF){ printf("MolWorld_sp3_multi::run_uff_ocl(): bUFF=false\n"); return 0; }
     if(!uff_ocl){ printf("MolWorld_sp3_multi::run_uff_ocl(): uff_ocl==nullptr\n"); return 0; } // This should not happen, uff_ocl is initialized in init()
-    //printf("MolWorld_sp3_multi::run_uff_ocl(  bGridFF=%i, bNonBonded=%i | niter=%i, dt=%f, damping=%f, Fconv=%f, Flim=%f) \n",bGridFF, bNonBonded,  niter, dt, damping, Fconv, Flim);
+    if(verbosity>0)printf("MolWorld_sp3_multi::run_uff_ocl( bSurfAtoms=%i,  bGridFF=%i, bNonBonded=%i | niter=%i, dt=%f, damping=%f, Fconv=%f, Flim=%f) \n",bSurfAtoms, bGridFF, bNonBonded,  niter, dt, damping, Fconv, Flim);
     if(initial){
         for(int i=0; i<nSystems; i++){
             MDpars[i].x = dt;               // dt
@@ -2166,7 +2184,8 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
         initial = false;
     }
     bBonding = ffu.bDoBond;
-    nPerVFs = _min(10,niter);
+    //nPerVFs = _min(10,niter);
+    if(nPerVFs>niter)nPerVFs=niter;
     const int nVFs = (nPerVFs>0)? (niter/nPerVFs) : 0;
     int nloop = 0;
     long T_1 = getCPUticks();
@@ -2178,6 +2197,7 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
     long Nticks_loop_updateAtoms = 0;
     long Nticks_loop_trajSave = 0;
     long Nticks_evalVFs = 0;
+    //printf("run_uff_ocl() nVFs %i nPerVFs %i niter %i \n", nVFs, nPerVFs, niter);
     for(int iVF=0; iVF<nVFs; iVF++){
         long T_2 = getCPUticks();
         if(iVF>0)updateMultiExploring( Fconv );
@@ -2234,12 +2254,12 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
     time_loop_trajSave        += Nticks_loop_trajSave        * tick2second;
     time_evalVFs              += Nticks_evalVFs              * tick2second;
 
-    printf("run_uff_ocl() time=%7.3f[ms] nloop=%i time_integrated=%7.3f[s]\n", dt_call*1000, nloop, time_integrated_run_uff_ocl);
+    //printf("run_uff_ocl() time=%7.3f[ms] nloop=%i time_integrated=%7.3f[s]\n", dt_call*1000, nloop, time_integrated_run_uff_ocl);
 
     // Append timing data to file
     FILE* f = fopen("times_run_uff_ocl.dat", "a");
     if(f){
-        fprintf(f, "  %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12d\n",
+        fprintf(f, "  %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12f\n",
             time_integrated_run_uff_ocl,
             time_updateMultiExploring,
             time_loop_bonding,
@@ -2248,8 +2268,7 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
             time_loop_nonbonded,
             time_loop_updateAtoms,
             time_loop_trajSave,
-            time_evalVFs,
-            nloop);
+            time_evalVFs);
         fclose(f);
     }else{
         printf("ERROR: Could not open times_run_uff_ocl.dat for appending\n");
@@ -2518,7 +2537,6 @@ if(initial){
     time_loop_trajSave        += Nticks_loop_trajSave        * tick2second;
     time_evalVFs              += Nticks_evalVFs              * tick2second;
 
-    printf("run_uff_ocl() time=%7.3f[ms] nloop=%i time_integrated=%7.3f[s]\n", dt_call*1000, nloop, time_integrated_run_uff_ocl);
 
     FILE* f = fopen("times_run_mmff_ocl.dat", "a");
     if(f){
@@ -3039,7 +3057,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
                 (nStepConvSum+nStepNonConvSum+nStepExplorSum));
             if((getCPUticks()-zeroT)*tick2second > 9.5){
                 fclose(file);
-                database->print();
+                //database->print();
                 exit(0);
             }
         }

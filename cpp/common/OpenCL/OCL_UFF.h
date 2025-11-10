@@ -172,8 +172,7 @@ public:
     }
 
     OCLtask* getSurfMorse(  Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0, int na_s=0, float4* atoms_s=0, float4* REQs_s=0,  bool bRun=true, OCLtask* task=0 ){
-        //v2i4( nPBC_, nPBC );
-        nPBC=(int4){1,2,0,0};
+        v2i4( nPBC_, nPBC );
         int err=0;
         err |= finishRaw();       OCL_checkError(err, "getSurfMorse().imgAlloc" );
         nDOFs.x = nAtoms;
@@ -186,7 +185,7 @@ public:
         task->local.y = 1;
         task->global.y = nSystems;
         useKernel( task->ikernel );
-
+        Quat4f pos0 = {0.f,0.f,0.f,0.f};
         err |= _useArg   ( nDOFs );
         err |= useArgBuff( ibuff_apos      );
         err |= useArgBuff( ibuff_REQs       );
@@ -195,7 +194,7 @@ public:
         err |= useArgBuff( ibuff_REQs_surf  );
         err |= _useArg( nPBC        );
         err |= _useArg( cl_grid_lvec    );
-        err |= _useArg( grid_shift0     );
+        err |= _useArg( pos0    );
         err |= _useArg( GFFparams       );
         OCL_checkError(err, "getSurfMorse().setup");
         if(bRun){

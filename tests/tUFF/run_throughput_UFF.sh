@@ -37,7 +37,7 @@ elif (( bGridFF == 5 || bGridFF == 6 )); then
 fi
 bTex=0
 bSaveToDatabase=-1
-xyz_name="common_resources/xyz/xylitol_WO_gridFF"
+# xyz_name="common_resources/xyz/xylitol_WO_gridFF"
 
 # Generate bit number from flags
 dovdW_bit=$(( dovdW > 0 ? 1 : 0 ))
@@ -52,8 +52,8 @@ Fconv=1e-4
 
 # Arrays of parameter values to test
 replicas=(2) # (1000 5000) # (1000 2000 3000 4000 5000)
-perframes=(100) # (20 500) # (100 500)
-perVF=(100) # (20 50) # (50 100)
+perframes=(100) # (20 500) # (100 500) #niter
+perVF=(1) # (20 50) # (50 100) #nPerVFs
 
 # Arrays of local memory parameters to test for UFF
 nlocNBFFs=("--") # (1 2 4 8 16 32 64 128)
@@ -101,9 +101,14 @@ for nPBC in "${nPBC[@]}"; do
                                 rm -f minima.dat gopt.xyz
                                 touch minima.dat
 
-                                Ns=3 # (3 4 5 6 7 8 9 10 11 12 13 14 15 16)
-                                for N in "${Ns[@]}"; do
-                                    surf_name="common_resources/xyz/surfaces_for_throughput/NaCl_${N}x${N}_L3"
+                                Ns=(3) # (3 4 5 6 7 8 9 10 11 12 13 14 15 16)
+                                for N in "${Ns[@]}"; do    
+                                    if [ $bGridFF -lt 0 ]; then
+                                        xyz_name="common_resources/xyz/molecules_for_throughput/xylitol_${N}x${N}"
+                                    else
+                                        xyz_name="common_resources/xyz/molecules_for_throughput/xylitol_${N}x${N}_grid"
+                                    fi
+                                    surf_name="common_resources/xyz/surfaces_for_throughput/NaCl_${N}x${N}_Cl_hole"
 
                                     # Run UFF simulation
                                     python3 run_throughput_UFF.py \
@@ -119,7 +124,7 @@ for nPBC in "${nPBC[@]}"; do
                                         --gridnPBC "$nPBC"
 
                                     # Generate name for the result file
-                                    name="minima_$(printf '%04d' $(echo "obase=2;$flags_bitnum" | bc))_surf:_NaCl_${N}x${N}_nPBC_${nPBC}_nloc:_NBFF_${nlocNBFF}_surf_${nlocSurf}_gridFFbSpline_${nlocGridFFbSpline}___replica:_${nSys}_perframe:_${perframe}_perVF:_${pvf}"
+                                    name="minima__$(printf '%04d' $(echo "obase=2;$flags_bitnum" | bc))_surf:_NaCl_${N}x${N}_nPBC_${nPBC}_nloc:_NBFF_${nlocNBFF}_surf_${nlocSurf}_gridFFbSpline_${nlocGridFFbSpline}___replica:_${nSys}_perframe:_${perframe}_perVF:_${pvf}"
 
                                     # Move minima file to results/all directory
                                     mv minima.dat results/all/${name}.dat
@@ -155,6 +160,7 @@ for nPBC in "${nPBC[@]}"; do
                                 rm -f minima.dat gopt.xyz
                                 touch minima.dat
                                 N=0
+                                xyz_name="common_resources/xyz/molecules_for_throughput/xylitol_1x1"
 
                                 # Run UFF simulation without surface
                                 python3 run_throughput_UFF.py \
