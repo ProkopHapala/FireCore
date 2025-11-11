@@ -2342,7 +2342,7 @@ int debug_eval(){
 }
 
 int run_ocl_opt( int niter, double Fconv=1e-6 ){
-    //printf("MolWorld_sp3_multi::run_ocl_opt() niter=%i bGroups=%i ocl.nGroupTot=%i \n", niter, bGroups, ocl.nGroupTot );
+    printf("MolWorld_sp3_multi::run_ocl_opt() niter=%i bGroups=%i ocl.nGroupTot=%i \n", niter, bGroups, ocl.nGroupTot );
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
     //debug_eval(); return 0;
 if(initial){
@@ -2379,7 +2379,8 @@ if(initial){
     if(ocl.nGroupTot<=0){ bGroups = false; };
     bool bExplore = false;
     //for(int isys=0; isys<nSystems; isys++){ if(gopts[isys].bExploring) bExplore = true; }
-    bool bBspline = (gridFF.mode==GridFFmod::BsplineFloat) || (gridFF.mode==GridFFmod::BsplineDouble);        
+    bool bBspline = (gridFF.mode==GridFFmod::BsplineFloat) || (gridFF.mode==GridFFmod::BsplineDouble);     
+    bBonding = ffl.doBonds;
     long T_1 = getCPUticks();        
     long Nticks_updateMultiExploring = 0;
     long Nticks_loop_bonding = 0;
@@ -2455,11 +2456,11 @@ if(initial){
                     }
                 }
                 T_2 = getCPUticks();
-                err |= task_MMFF->enque_raw();   Nticks_loop_bonding += (getCPUticks()-T_2); //OCL_checkError(err, "task_MMFF->enque_raw()"); 
+                if(bBonding) err |= task_MMFF->enque_raw();   Nticks_loop_bonding += (getCPUticks()-T_2); //OCL_checkError(err, "task_MMFF->enque_raw()"); 
 
                 if( bGroupDrive ) err |= task_GroupForce->enque_raw();
                 T_2 = getCPUticks();
-                err |= task_move->enque_raw();    //OCL_checkError(err, "task_move->enque_raw()");
+                if(bMoving) err |= task_move->enque_raw();    //OCL_checkError(err, "task_move->enque_raw()");
                 Nticks_loop_updateAtoms += (getCPUticks()-T_2);
             }
             niterdone++;
