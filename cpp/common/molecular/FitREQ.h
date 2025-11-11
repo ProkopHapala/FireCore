@@ -434,7 +434,7 @@ class FitREQ{ public:
     //double kMorse          = 1.6;
     //double kMorse          = 1.7;
     double kMorse            = 1.8;
-    double Lepairs           = 1.0;
+    //double Lepairs           = 1.0;
     
 
     // check pairwise repulsion betwee atoms within one sample
@@ -468,6 +468,13 @@ class FitREQ{ public:
     double clamp_y1    = 3.0;   // start clamping when y>y1
     double clamp_y2    = 6.0;   // asymptote towards y2 as y->infty
     int    clamp_mode  = 1;     // 1=soft, 2=smooth, 3=soft_neg, 4=smooth_neg
+    
+    // PN
+    int    ivdW      = 1;    // 0=no vdW, 1=LJ, 2=LJr8, 3=LJr9, 4=Morse, 5=Buck
+    int    iCoul     = 1;    // 0=no Coul, 1=point charges, 2=soft clamping, 10-14=Boys clamping, 10=exact erf/r, 11=cubic C1, 12=quintic C2, 13=quartic even C1, 14=sextic even C2
+    int    iHbond    = 0;    // 0=no HBond correction, 1=H1 correction, 2=H2 correction
+    int    iEpairs   = 0;    // 0=no interaction, 1=SR interaction, 2=SR2 interaction
+    double Lepairs   = 1.0;  // Ang, distance host atom-Epair
 
 // =================================
 // =========== Functions ===========
@@ -503,7 +510,6 @@ void initDOFs(){
 void realloc_sample_fdofs(){
     _realloc0( sample_fdofs, nDOFs*samples.size(), 0.0 );
 }
-
 
 void initTypeParamsFromDOFs() {
     //printf("FitREQ::initTypeParamsFromDOFs() typesPresent.size()=%i @DOFcount=%p\n", typesPresent.size(), DOFcount);
@@ -1189,6 +1195,169 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
 }
 
 __attribute__((hot)) 
+double evalSample_PN( int isamp, const Atoms* atoms, double wi, Quat4d* fREQs ) const {
+    //double wi   = (weights)? weights[isamp] : 1.0; 
+    const AddedData* adata = (const AddedData*)(atoms->userData);
+    alignas(32) double Qs  [atoms->natoms];
+    alignas(32) Vec3d  apos[atoms->natoms];   // atomic positions
+    fillTempArrays( atoms, apos, Qs );
+    int     nj = atoms->n0;
+    int     j0 = 0; 
+    int     ni = atoms->natoms - atoms->n0;
+    int     i0 = atoms->n0;
+    for(int i=0; i<atoms->natoms; i++){ fREQs[i]=Quat4dZero; }
+    double E=0.0;
+    E = evalEnergyDerivs    ( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, adata->host, fREQs );
+    return E;
+}
+
+__attribute__((hot)) 
+double evalEnergyDerivs ( int i0, int ni, int j0, int nj, int*  types, Vec3d* ps, Quat4d* typeREQs, double* Qs, int* host, Quat4d* dEdREQs )const{
+    double Etot = 0.0;
+    //const double alpha   = kMorse;
+    for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system1
+        const int     i     = i0+ii;
+        const int     ih    = host[i];
+        const bool    bEpi  = ih>=0;
+        const Vec3d&  pi    = ps      [i ]; 
+        const double  Qi    = Qs      [i ]; 
+        const int     ti    = types   [i ];
+        const Quat4d& REQi  = typeREQs[ti];
+        Quat4d        fREQi = Quat4dZero;
+
+        
+        for(int jj=0; jj<nj; jj++){ // loop over all atoms[j] in system2
+            const int     j    = j0+jj;
+            const int     jh   = host[j];
+            const bool    bEpj = jh>=0;
+            const double  Qj   = Qs[j];
+            const Vec3d   dij  = ps[j] - pi;
+            const int     tj   = types[j];
+            const Quat4d& REQj = typeREQs[tj];
+            const double  R0   = REQi.x + REQj.x;
+            const double  E0   = REQi.y * REQj.y; 
+            const double  Q    = Qi     * Qj    ;
+            double        H    = REQi.w * REQj.w;
+            const double  sH   = (H<0.0) ? 1.0 : 0.0; 
+            const double  r    = dij.norm();
+
+            double E_Coul = 0.0, E_vdW = 0.0, E_H1 = 0.0, E_H2 = 0.0, E_Epairs = 0.0;
+            double dE_dR0 = 0.0, dE_dE0 = 0.0, dE_dQ = 0.0, dE_dH = 0.0;
+            double fR = 0.0, fA = 0.0, fH1 = 0.0, fH2 = 0.0, fR0 = 0.0;
+
+            if( bEpi ){  
+                if(bEpj) continue; // dummy atoms should not interact with each other
+                // --- Electron pair interaction
+                double dE_dR = 0.0;
+                if(iEpairs==1){ 
+                    E_Epairs = getSR( r, H, REQi.x, dE_dH, dE_dR );
+                }else if(iEpairs==2){ 
+                    E_Epairs = getSR2( r, H, REQi.x, dE_dH, dE_dR );
+                }
+                dEdREQs[i].x += -dE_dR;
+            }else if( bEpj ){
+                // --- Electron pair interaction
+                double dE_dR = 0.0;
+                if(iEpairs==1){ 
+                    E_Epairs = getSR( r, H, REQj.x, dE_dH, dE_dR );
+                }else if(iEpairs==2){ 
+                    E_Epairs = getSR2( r, H, REQj.x, dE_dH, dE_dR );
+                }
+                dEdREQs[j].x += -dE_dR;
+            }else{
+                // --- Electrostatic
+                if(iCoul==1){ // point charges
+                    dE_dQ = 1.0 / r * COULOMB_CONST;
+                }else if(iCoul==2){ // point charges with softclamp
+                    dE_dQ = dampCoulomb_SoftClamp(r, clamp_y1, clamp_y2) * COULOMB_CONST;
+                }else if(iCoul>9){ // Boys clamping with different approximations
+                    dE_dQ = dampCoulomb_Boys(r, boys_rmin, iCoul-10) * COULOMB_CONST;
+                }
+                E_Coul = Q * dE_dQ;                
+                // --- van der Waals
+                if(ivdW==1){ // Lennard-Jones 12-6
+                    const double u  = R0 / r;
+                    const double u3 = u * u * u;
+                    fA              = u3 * u3;
+                    fR              = fA * fA;
+                    fH1             = 1.0;
+                    fH2             = 2.0;
+                    fR0             = 12.0 / R0;
+                }else if(ivdW==2){ // Lennard-Jones 8-6
+                    const double u  = R0 / r;
+                    const double u2 = u * u;
+                    fA              = u2 * u2 * u2;
+                    fR              = fA * u2;
+                    fH1             = 3.0;
+                    fH2             = 4.0;
+                    fR0             = 24.0 / R0;
+                }else if(ivdW==3){ // Lennard-Jones 9-6
+                    const double u  = R0 / r;
+                    const double u3 = u * u * u;
+                    fA              = u3 * u3;
+                    fR              = fA * u3;
+                    fH1             = 2.0;
+                    fH2             = 3.0;
+                    fR0             = 18.0 / R0;
+                }else if(ivdW==4){ // Morse
+                    const double alpha = 6.0 / R0;
+                    fA                 = exp( -alpha * ( r - R0 ) );
+                    fR                 = fA * fA;
+                    fH1                = 1.0;
+                    fH2                = 2.0;
+                    fR0                = 2.0 * alpha;
+                }else if(ivdW==5){ // Buckingham
+                    const double u     = R0 / r;
+                    const double u3    = u * u * u;
+                    const double alpha = 6.0 / R0;
+                    const double e     = exp( -alpha * ( r - R0 ) );
+                    fA                 = u3 * u3;
+                    fR                 = e * e;
+                    fH1                = 1.0;
+                    fH2                = 2.0;
+                    fR0                = 2.0 * alpha;
+                }
+                dE_dE0 = fH1 * fR - fH2 * fA;
+                dE_dR0 = E0 * fR0 * ( fR - fA );
+                E_vdW  = E0 * dE_dE0;
+                // --- hydrogen-bond corrections
+                if(sH>0.0){
+                    if(iHbond==1||iHbond==3){
+                        const double f = fH1 * fR;
+                        dE_dE0        += H * f;
+                        dE_dR0        += H * E0 * fR0 * fR;
+                        dE_dH          = E0 * f;
+                        E_H1           = E0 * dE_dE0;
+                    }
+                    if(iHbond==2||iHbond==3){
+                        const double f = fH2 * fA;
+                        dE_dE0        += H * f;
+                        dE_dR0        += H * E0 * fR0 * fA;
+                        dE_dH         += E0 * f;
+                        E_H2           = E0 * dE_dE0;
+                    }
+                }
+            }
+
+            double Eij = E_Coul + E_vdW + E_H1 + E_H2 + E_Epairs;
+
+            dEdREQs[j].add( Quat4d{ -dE_dR0, -dE_dE0 * REQi.y, -dE_dQ * Qi, -dE_dH   * REQi.w } );
+
+            // --- Energy and forces
+            Etot    +=  Eij;
+            fREQi.x += -dE_dR0;              // dEtot/dR0_i
+            fREQi.y += -dE_dE0  * REQj.y;    // dEtot/dE0_i
+            fREQi.z += -dE_dQ   * Qj;        // dEtot/dQ_i
+            fREQi.w += -dE_dH   * REQj.w;    // dEtot/dH2i
+        }
+
+        dEdREQs[i].add(fREQi);
+    }
+
+    return Etot;
+}
+
+__attribute__((hot)) 
 double evalSample( int isamp, const Atoms* atoms, double wi, Quat4d* fREQs ) const {
     //double wi   = (weights)? weights[isamp] : 1.0; 
     const AddedData* adata = (const AddedData*)(atoms->userData);
@@ -1344,7 +1513,8 @@ double evalSampleError( int isamp, double& E ){
     if(wi<-1e-300) return 0;
     alignas(32) Quat4d fREQs [atoms->natoms];
     alignas(32) double fDOFs_[nDOFs];
-    E = evalSample( isamp, atoms, wi, fREQs );
+//    E = evalSample( isamp, atoms, wi, fREQs );
+    E = evalSample_PN( isamp, atoms, wi, fREQs );
     //if(verbosity>3)
     //printf( "evalSampleError() isamp: %3i Emodel: %20.6f Eref: %20.6f bBroadcastFDOFs=%i @sample_fdofs=%p \n", isamp, E, atoms->Energy, bBroadcastFDOFs, sample_fdofs );
     // if( E>EmodelCutStart ){ 
@@ -1356,7 +1526,7 @@ double evalSampleError( int isamp, double& E ){
     if( bSaveSampleToXYZ ){
         char comment[256];
         sprintf(comment, "# %4i Eref: %+10.4e Emodel: %+10.4e wi: %+10.4e", isamp, atoms->Energy, E, wi );
-        printf( "evalSampleError() saving %s comment: %s \n", xyz_out, comment );
+        //printf( "evalSampleError() saving %s comment: %s \n", xyz_out, comment );
         saveDebugXYZ( 0, atoms->natoms, atoms->atypes, atoms->apos, xyz_out, comment );
     }
     double Eref       = atoms->Energy;
@@ -1446,7 +1616,7 @@ double evalSamples_noOmp( double* Eout=0 ){
             Eout[isamp]=E;
         }
     }
-    if(bListOverRepulsive){ printOverRepulsiveList(); }
+    if(bPrintOverRepulsive){ printOverRepulsiveList(); }
     return Error;
 }
 
@@ -1456,7 +1626,7 @@ double evalSamples_omp( double* Eout=0 ){
     bBroadcastFDOFs    = true; 
     double Error       = 0.0;
     int nsamp = samples.size();
-    printf( "evalSamples_omp() nsamp=%i\n", nsamp );
+    //printf( "evalSamples_omp() nsamp=%i\n", nsamp );
     #pragma omp parallel for reduction(+:Error)
     for(int isamp=0; isamp<nsamp; isamp++){
        double E; 
@@ -1477,7 +1647,7 @@ double evalSamples_corr( double* Eout=0 ){
         Error+=evalSampleError_corr( isamp, E );
         if(Eout){ Eout[isamp]=E;}
     }
-    if(bListOverRepulsive){ printOverRepulsiveList(); }
+    if(bPrintOverRepulsive){ printOverRepulsiveList(); }
     return Error;
 }
 
@@ -1577,7 +1747,6 @@ void acumHostDerivs( int nepair, Vec2i* epairAndHostIndex, int* types, double dE
     }
 }
 
-
 __attribute__((hot)) 
 void acumDerivs_corr( int n, int* aInd, int* types, int* host, double dEw, Quat4d* fREQs, double* fDOFs ){
     for(int i=0; i<n; i++){
@@ -1597,8 +1766,6 @@ void acumDerivs_corr( int n, int* aInd, int* types, int* host, double dEw, Quat4
     }
 }
 
-
-
 /**
  * Calculates the correction to the electrostatic energy and its derivative with respect to the charge.
  */
@@ -1614,7 +1781,6 @@ double corr_elec( double ir, double ir2, double Q, Vec3d d, Vec3d* dirs, int i, 
     }
     return dE_dr;
 }
-
 
 void printAtomsParams( int i0, int n, int* types, Vec3d* ps, Quat4d* typeREQs, double* Qs ){
     printf("printAtomsParams()\n");
@@ -1887,7 +2053,6 @@ double evalExampleDerivs_MorseQ_SR_softclamp( int i0, int ni, int j0, int nj, in
     }
     return Etot;
 }
-
 
 // Optimized versions of evaluation functions
 __attribute__((hot)) 
@@ -2371,7 +2536,6 @@ double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* __restrict_
     return Etot;
 }
 
-
 __attribute__((hot)) 
 double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restrict__ types, Vec3d* __restrict__ ps, Quat4d* __restrict__ typeREQs, double* __restrict__ Qs, Quat4d* __restrict__ dEdREQs )const{
     double Etot = 0.0;
@@ -2537,7 +2701,7 @@ void saveTrajectory(int itr, double Err, double F2){
 
 __attribute__((hot)) 
 double run( int ialg, int nstep, double Fmax, double dt, double max_step, double damping, bool bClamp, bool bOMP ){
-    bSaveSampleToXYZ=false; 
+    bSaveSampleToXYZ=true; 
     if( verbosity>1){ printf( "FitREQ::run() imodel %i ialg %i nstep %i Fmax %g dt %g max_step %g \n", imodel, ialg, nstep, Fmax, dt, max_step ); }
     if(weights){updateWeightsSum();}
     double Err=0;
@@ -2646,7 +2810,6 @@ void noiseToDOFs(double d){
     for(int i=0; i<nDOFs; i++){ DOFs[i]+=randf(-d,d); }
 }
 
-
 // New regularization function operating per-DOF
 __attribute__((hot)) 
 double regularizeDOFs(){
@@ -2668,8 +2831,6 @@ void limitDOFs(){
     //printf("limitDOFs() DOFs: "); for(int i=0;i<nDOFs;i++){ printf("%8.2e ", DOFlimits[i].x); };printf("\n");
     //printf("limitDOFs() DOFs: "); for(int i=0;i<nDOFs;i++){  printf("%8.2e ", DOFlimits[i].y); };printf("\n");
 }
-
-
 
 /**
  * This function limits the time step based on the maximum step size and the actual maximum force magnitude in the fDOFs array. It is used in the gradient descent and molecular dynamics optimization algorithms to make sure it is stable.

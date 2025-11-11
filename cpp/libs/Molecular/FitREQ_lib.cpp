@@ -58,7 +58,7 @@ void sample_funcEF( int n, double* xs, double* EFs_, int kind, double* params ){
     }
 }
 
-void setVerbosity( int verbosity_, int idebug_, int PrintDOFs, int PrintfDOFs, int PrintBeforReg, int PrintAfterReg ){
+void setVerbosity( int verbosity_, int idebug_, int PrintDOFs, int PrintfDOFs, int PrintBeforReg, int PrintAfterReg, int PrintOverRepulsive ){
     verbosity = verbosity_;
     idebug    = idebug_;
     // no buffering
@@ -69,9 +69,21 @@ void setVerbosity( int verbosity_, int idebug_, int PrintDOFs, int PrintfDOFs, i
     _setbool( PrintfDOFs    );
     _setbool( PrintBeforReg );
     _setbool( PrintAfterReg );
+    _setbool( PrintOverRepulsive );
     #undef _setbool
     printf( "setVerbosity() verbosity %i idebug %i \n", verbosity, idebug );
-    printf( "setVerbosity() PrintDOFs %i PrintfDOFs %i PrintBeforReg %i PrintAfterReg %i \n", W.bPrintDOFs, W.bPrintfDOFs, W.bPrintBeforReg, W.bPrintAfterReg );
+    printf( "setVerbosity() PrintDOFs %i PrintfDOFs %i PrintBeforReg %i PrintAfterReg %i PrintOverRepulsive %i \n", W.bPrintDOFs, W.bPrintfDOFs, W.bPrintBeforReg, W.bPrintAfterReg, W.bPrintOverRepulsive );
+}
+
+void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double kMorse, double Lepairs ){
+    W.ivdW    = ivdW;
+    W.iCoul   = iCoul;
+    W.iHbond  = iHbond;
+    if(Epairs>0){W.bEpairs=true;}else if(Epairs<0){W.bEpairs=false;}
+    W.iEpairs = iEpairs;
+    W.kMorse  = kMorse;
+    W.Lepairs = Lepairs;
+    printf( "setModel() ivdW %i iCoul %i iHbond %i iEpairs %i kMorse %f Lepairs %f \n", W.ivdW, W.iCoul, W.iHbond, W.iEpairs, W.kMorse, W.Lepairs );
 }
 
 // bool  bEvalJ          = false;    // Should we evaluate variational derivatives on Fregment J 
@@ -138,7 +150,6 @@ void setFilter( double EmodelCut, double EmodelCutStart, int iWeightModel, int L
     { printf( "setFilter() weight samples:\n #i     E            weight \n" ); int n=10; for(int i=0; i<=n; i++){  double wi,E=W.EmodelCutStart+i*(W.EmodelCut-W.EmodelCutStart)/n; W.smoothWeight( E, wi ); printf( "%3i %16.8e %16.8e \n", i, E, wi ); } }
 }
 
-
 int loadDOFSelection( const char* fname ){
     return W.loadDOFSelection( fname );
 }
@@ -166,7 +177,6 @@ void setWeights( int n, double* weights ){
 
 int export_Erefs( double* Erefs ){ return W.export_Erefs( Erefs ); }
 
-
 void setTrjBuffs( double* trj_E, double* trj_F, double* trj_DOFs, double* trj_fDOFs){
     W.trj_E = trj_E;
     W.trj_F = trj_F;
@@ -192,6 +202,7 @@ static double evalFitError( int n, double * Xs ){
     for(int i=0; i<W.nDOFs; i++) { W.DOFs[i] = Xs[i]; }
     return W.evalFitError( -1, W.iparallel>0 );
 };
+
 double optimize_random(int nstep, double stepSize=0.1) {
     ropt.getEnergy = evalFitError;
     ropt.realloc(W.nDOFs, W.DOFs);
@@ -201,6 +212,7 @@ double optimize_random(int nstep, double stepSize=0.1) {
 }
 
 void setTypeToDOFs  (int i, double* REQ ){ W.setTypeToDOFs  ( i, *(Quat4d*)REQ ); }
+
 void getTypeFromDOFs(int i, double* REQ ){ W.getTypeFromDOFs( i, *(Quat4d*)REQ ); }
 
 double getEs( double* Es, double* Fs, bool bOmp, bool bDOFtoTypes, char* xyz_name){

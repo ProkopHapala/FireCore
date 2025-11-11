@@ -64,10 +64,15 @@ def cstr( s ):
     return s.encode('utf8')
 
 #  void setVerbosity( int verbosity_, int idebug_, int PrintDOFs, int PrintfDOFs, int PrintBeforReg, int PrintAfterReg ){
-lib.setVerbosity.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int]
+lib.setVerbosity.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int, c_int]
 lib.setVerbosity.restype   =  None
-def setVerbosity(verbosity=1, idebug=0, PrintDOFs=0, PrintfDOFs=0, PrintBeforReg=0, PrintAfterReg=0):
-    return lib.setVerbosity(verbosity, idebug, PrintDOFs, PrintfDOFs, PrintBeforReg, PrintAfterReg)
+def setVerbosity(verbosity=1, idebug=0, PrintDOFs=0, PrintfDOFs=0, PrintBeforReg=0, PrintAfterReg=0, PrintOverRepulsive=0):
+    return lib.setVerbosity(verbosity, idebug, PrintDOFs, PrintfDOFs, PrintBeforReg, PrintAfterReg, PrintOverRepulsive)
+
+lib.setModel.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_double, c_double]
+lib.setModel.restype   =  None
+def setModel(ivdW=1, iCoul=1, iHbond=0, Epairs=0, iEpairs=0, kMorse=1.8, Lepairs=0.5):
+    return lib.setModel(ivdW, iCoul, iHbond, Epairs, iEpairs, kMorse, Lepairs)
 
 # void setGlobalParams( double kMorse, double Lepairs, double EijMax, double softClamp_start, double softClamp_max ){
 lib.setGlobalParams.argtypes  = [c_double, c_double, c_double, c_double, c_double]
@@ -345,8 +350,6 @@ def EnergyFromXYZ(fname):
     xs = np.array(xs)
     return Es,xs
 
-
-
 def check_array_difference(arr1, arr2, name, max_error=1e-8, err_message="arrays differs" ):
     dmax = (arr1-arr2).max()
     print(f"{name} dmax={dmax}")
@@ -496,7 +499,6 @@ def add_epair_types(types):
     # add to set
     types.update(epair_types)
     return types
-
 
 def comment_non_matching_lines( type_names, fname_in, bWriteAsComment=False, fname_out="dofSelection.dat"):
     with open(fname_in, 'r') as file:
@@ -735,7 +737,6 @@ def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans
     plt.grid()
 
     plt.suptitle( title )
-
 
 def checkDOFderiv( iDOF, x0=0.5, d=0.001, bEvalSamples=True ):
         xs = np.array([x0-d,x0,x0+d])
@@ -1041,7 +1042,6 @@ def plot_energy_2d_from_xyz(
         plt.savefig(save_path, dpi=200, bbox_inches='tight')
     return GS
 
-
 def parse_xyz_mapping(xyz_path, distances=None, angles=None):
     """Parse .xyz to build:
     - ref_grid (angles x distances) filled with Etot where present, NaN otherwise
@@ -1110,7 +1110,6 @@ def parse_xyz_mapping(xyz_path, distances=None, angles=None):
                 _ = f.readline()
     return Gref, seq, axis, distances, angles
 
-
 def compute_model_grid(xyz_path, seq, shape, do_fit=False, bAddEpairs=True, run_params=None, bOutXYZ=False):
     """Load the .xyz into FitREQ, optionally run fitting, compute model energies for each frame and map to grid.
     - seq: list of (iy, ix) in file order from parse_xyz_mapping
@@ -1131,7 +1130,6 @@ def compute_model_grid(xyz_path, seq, shape, do_fit=False, bAddEpairs=True, run_
         Gm[idist, iang] = Es[i]
     return Gm
 
-
 def shift_grid(G):
     import numpy as _np
     if G.size == 0:
@@ -1142,7 +1140,6 @@ def shift_grid(G):
     mloc = float(np.nanmin(GS)) if np.any(np.isfinite(GS)) else 0.0
     if np.isfinite(mloc) and mloc > 0: mloc = 0.0
     return GS, ref, mloc
-
 
 def extract_min_curves(angles, distances, G, rmax=None):
     nA = len(angles)
@@ -1158,7 +1155,6 @@ def extract_min_curves(angles, distances, G, rmax=None):
                 rmin[j] = np.nan; emin[j] = np.nan
     return rmin, emin
 
-
 def save_grid_npz(angles, distances, grid, filepath):
     """Save 2D map to NPZ with keys a, d, g."""
     folder = os.path.dirname(filepath)
@@ -1167,7 +1163,6 @@ def save_grid_npz(angles, distances, grid, filepath):
         except Exception: pass
     print("save_grid_npz(): saving to", filepath)
     np.savez_compressed(filepath, a=np.asarray(angles), d=np.asarray(distances), g=np.asarray(grid))
-
 
 def save_grid_gnuplot(angles, distances, grid, filepath):
     """Save 2D map as gnuplot-friendly triplets: angle distance energy per row. NaNs -> 'nan'."""
@@ -1187,14 +1182,12 @@ def save_grid_gnuplot(angles, distances, grid, filepath):
                     f.write(f"{a:<12.6g} {d:<12.6g} {e:<12.12g}\n")
             f.write(f"\n")
 
-
 def save_min_lines_npz(angles, rmin, emin, filepath):
     folder = os.path.dirname(filepath)
     if folder:
         try: os.makedirs(folder, exist_ok=True)
         except Exception: pass
     np.savez_compressed(filepath, a=np.asarray(angles), r=np.asarray(rmin), e=np.asarray(emin))
-
 
 def save_min_lines_gnuplot(angles, rmin, emin, filepath):
     folder = os.path.dirname(filepath)
@@ -1207,7 +1200,6 @@ def save_min_lines_gnuplot(angles, rmin, emin, filepath):
             rs = "nan" if (r is None or not np.isfinite(r)) else f"{r:.12g}"
             es = "nan" if (e is None or not np.isfinite(e)) else f"{e:.12g}"
             f.write(f"{a:.6g} {rs} {es}\n")
-
 
 def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=None, vmax=None, line=False, kcal=False, save_data_prefix=None, save_fmt="both"):
     import matplotlib.pyplot as plt
@@ -1317,7 +1309,6 @@ def _distances_from_Xpanel(Xpanel):
             dists[j] = col[np.where(mask)[0][0]]
     return dists
 
-
 def compute_min_lines_from_panel(Epanel, Xpanel, angles, rmax=None, do_shift=True):
     """Compute Rmin(angle) and Emin(angle) from panel-shaped data.
 
@@ -1338,7 +1329,6 @@ def compute_min_lines_from_panel(Epanel, Xpanel, angles, rmax=None, do_shift=Tru
         G, _, _ = shift_grid(G)
     rmin, emin = extract_min_curves(angles=np.asarray(angles), distances=distances, G=G, rmax=rmax)
     return rmin, emin
-
 
 def plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save_path=None, to_kcal=False, ms=2, lw=0.5, save_data_prefix=None, save_fmt="both"):
     """Plot Rmin(angle) and Emin(angle) lines for a ref/model pair using panel-shaped inputs.
@@ -1390,7 +1380,6 @@ def plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save
         print(f"Warning: failed saving lines: {e}")
     return fig
 
-
 def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None, save_path=None):
     """Plot trajectories of DOFs over optimization iterations.
 
@@ -1423,3 +1412,90 @@ def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None, save
         print("Saving plot to:", save_path)
         fig.savefig(save_path, bbox_inches='tight')
     return fig
+
+def save_trj_dofs(trj_DOFs, DOFnames=None, folder=None):
+    """
+    Save each DOF trajectory as a separate .dat file in a folder.
+
+    Each file will contain two columns:
+        iteration_index   DOF_value
+
+    Example output file (for DOF_0.dat):
+        # iter   DOF_0
+        0  0.12345
+        1  0.12789
+        2  0.13001
+    """
+    if trj_DOFs is None or folder is None:
+        return
+
+    niter, nDOFs_ = trj_DOFs.shape
+    if DOFnames is None:
+        DOFnames = [f"DOF_{i}" for i in range(nDOFs_)]
+
+    # Ensure the folder exists
+    try:
+        os.makedirs(folder, exist_ok=True)
+    except Exception:
+        pass
+
+    # Iteration indices for first column
+    iters = np.arange(niter)
+
+    # Write each DOF file
+    for i in range(nDOFs_):
+        filename = os.path.join(folder, f"{DOFnames[i]}.dat")
+        data = np.column_stack((iters, trj_DOFs[:, i]))
+        header = f"# iter  {DOFnames[i]}"
+        np.savetxt(filename, data, header=header, comments="", fmt="%.12g")
+    print(f"Saved {nDOFs_} trajectory files with iteration indices to: {folder}")
+
+def save_data(Gref, Gmodel, angles, distances, save_data_prefix=None, save_fmt="both", kcal=False, line=False):
+
+    # Shift each by its own baseline and determine symmetric limits from reference
+    GRS, refR, mlocR = shift_grid(Gref)
+    GMS = None
+    if Gmodel is not None: 
+        GMS, refM, mlocM = shift_grid(Gmodel)
+        print( "save_data() Gmodel min,max", Gmodel.min(), Gmodel.max() )
+        print( "save_data() GMS    min,max", GMS.min(), GMS.max() )
+
+    if kcal:
+        if GRS is not None: GRS *= ev2kcal
+        if GMS is not None: GMS *= ev2kcal
+
+    if save_data_prefix is None:
+        print("No save_data_prefix specified, nothing written.")
+        return
+
+    # Ensure output folder exists
+    folder = os.path.dirname(save_data_prefix)
+    if folder:
+        os.makedirs(folder, exist_ok=True)
+
+    if GRS is not None:
+        if save_fmt in ("both", "npz"):     save_grid_npz(angles, distances, GRS, save_data_prefix + "__ref.npz")
+        if save_fmt in ("both", "gnuplot"): save_grid_gnuplot(angles, distances, GRS, save_data_prefix + "__ref.dat")
+    if GMS is not None:
+        if save_fmt in ("both", "npz"):     save_grid_npz(angles, distances, GMS, save_data_prefix + "__model.npz")
+        if save_fmt in ("both", "gnuplot"): save_grid_gnuplot(angles, distances, GMS, save_data_prefix + "__model.dat")
+        D = GMS - GRS
+        if save_fmt in ("both", "npz"):     save_grid_npz(angles, distances, D, save_data_prefix + "__diff.npz")
+        if save_fmt in ("both", "gnuplot"): save_grid_gnuplot(angles, distances, D, save_data_prefix + "__diff.dat")
+
+    if line:
+        # Reuse plot_min_lines_pair by building panel-shaped inputs (angles x distances)
+        Epanel_ref = GRS.T
+        if GMS is not None:
+            Epanel_mod = GMS.T 
+        # Xpanel: replicate distances across all angles
+        Xpanel = np.tile(np.asarray(distances, dtype=float), (len(angles), 1))
+        rR, eR = compute_min_lines_from_panel(Epanel_ref, Xpanel, angles)
+        if GMS is not None:
+            rM, eM = compute_min_lines_from_panel(Epanel_mod, Xpanel, angles)
+        if save_fmt in ("both","npz"):         save_min_lines_npz(angles, rR, eR, save_data_prefix + "__ref_lines.npz")
+        if save_fmt in ("both","gnuplot"):     save_min_lines_gnuplot(angles, rR, eR, save_data_prefix + "__ref_lines.dat")
+        if GMS is not None:
+            if save_fmt in ("both","npz"):     save_min_lines_npz(angles, rM, eM, save_data_prefix + "__model_lines.npz")
+            if save_fmt in ("both","gnuplot"): save_min_lines_gnuplot(angles, rM, eM, save_data_prefix + "__model_lines.dat")
+
