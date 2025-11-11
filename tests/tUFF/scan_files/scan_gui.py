@@ -87,7 +87,7 @@ class ScanGUI:
         self.fig = plt.figure(figsize=(16, 10))
         
         # Create subplots
-        gs = self.fig.add_gridspec(3, 3, left=0.05, right=0.95, top=0.95, bottom=0.35, hspace=0.3, wspace=0.3)
+        gs = self.fig.add_gridspec(3, 3, left=0.05, right=0.95, top=0.95, bottom=0.45, hspace=0.3, wspace=0.3)
         self.ax_z = self.fig.add_subplot(gs[0, 0])
         self.ax_xy = self.fig.add_subplot(gs[0, 1])
         self.ax_3d = self.fig.add_subplot(gs[0, 2], projection='3d')
@@ -96,40 +96,34 @@ class ScanGUI:
         self.ax_info = self.fig.add_subplot(gs[1, :])
         self.ax_info.axis('off')
         
-        # Sliders area (4 columns for all sliders)
-        # Create two separate areas for Z-scan and XY-scan controls
-        # Z-scan controls (left box)
-        z_control_area = self.fig.add_gridspec(4, 10, left=0.05, right=0.48, top=0.2, bottom=0.05, hspace=0.3, wspace=0.02)
-        # XY-scan controls (right box)
-        xy_control_area = self.fig.add_gridspec(4, 10, left=0.52, right=0.95, top=0.2, bottom=0.05, hspace=0.3, wspace=0.02)
+        # Control areas
+        control_gs_kw = dict(top=0.35, bottom=0.05, hspace=1.0, wspace=0.1)
+        z_control_area = self.fig.add_gridspec(5, 10, left=0.05, right=0.48, **control_gs_kw)
+        xy_control_area = self.fig.add_gridspec(5, 10, left=0.52, right=0.95, **control_gs_kw)
 
-        
         # === Z-SCAN CONTROLS ===
-        # Z start
         ax_z_start = self.fig.add_subplot(z_control_area[0, 0:8])
         ax_z_start_txt = self.fig.add_subplot(z_control_area[0, 8:10])
-        # Z end
         ax_z_end = self.fig.add_subplot(z_control_area[1, 0:8])
         ax_z_end_txt = self.fig.add_subplot(z_control_area[1, 8:10])
-        # Z-scan X position
         ax_scan_x = self.fig.add_subplot(z_control_area[2, 0:8])
         ax_scan_x_txt = self.fig.add_subplot(z_control_area[2, 8:10])
-        # Z-scan Y position
         ax_scan_y = self.fig.add_subplot(z_control_area[3, 0:8])
         ax_scan_y_txt = self.fig.add_subplot(z_control_area[3, 8:10])
+        ax_z_step_label = self.fig.add_subplot(z_control_area[4, 0:8])
+        ax_z_step_txt = self.fig.add_subplot(z_control_area[4, 8:10])
 
         # === XY-SCAN CONTROLS ===
-        # XY start
         ax_xy_start = self.fig.add_subplot(xy_control_area[0, 0:8])
         ax_xy_start_txt = self.fig.add_subplot(xy_control_area[0, 8:10])
-        # XY end
         ax_xy_end = self.fig.add_subplot(xy_control_area[1, 0:8])
         ax_xy_end_txt = self.fig.add_subplot(xy_control_area[1, 8:10])
-        # XY-scan Z height
         ax_scan_z = self.fig.add_subplot(xy_control_area[2, 0:8])
         ax_scan_z_txt = self.fig.add_subplot(xy_control_area[2, 8:10])
+        ax_xy_step_label = self.fig.add_subplot(xy_control_area[4, 0:8])
+        ax_xy_step_txt = self.fig.add_subplot(xy_control_area[4, 8:10])
 
-        # Create sliders (without labels - we'll add them separately inside the boxes)
+        # Create sliders
         self.slider_z_start = Slider(ax_z_start, '', -5.0, 15.0, valinit=self.z_start, valstep=0.1)
         self.slider_z_end = Slider(ax_z_end, '', -5.0, 15.0, valinit=self.z_end, valstep=0.1)
         self.slider_scan_x = Slider(ax_scan_x, '', -10.0, 20.0, valinit=self.scan_x, valstep=0.5)
@@ -138,63 +132,62 @@ class ScanGUI:
         self.slider_xy_end = Slider(ax_xy_end, '', -10.0, 20.0, valinit=self.xy_end, valstep=0.5)
         self.slider_scan_z = Slider(ax_scan_z, '', -5.0, 15.0, valinit=self.scan_z, valstep=0.1)
 
-        # Add slider labels inside the boxes
-        ax_z_start.text(0.02, 1.3, 'Z start [Å]', transform=ax_z_start.transAxes, fontsize=9, va='top')
-        ax_z_end.text(0.02, 1.3, 'Z end [Å]', transform=ax_z_end.transAxes, fontsize=9, va='top')
-        ax_scan_x.text(0.02, 1.3, 'Z-scan X [Å]', transform=ax_scan_x.transAxes, fontsize=9, va='top')
-        ax_scan_y.text(0.02, 1.3, 'Z-scan Y [Å]', transform=ax_scan_y.transAxes, fontsize=9, va='top')
-        ax_xy_start.text(0.02, 1.3, 'XY start [Å]', transform=ax_xy_start.transAxes, fontsize=9, va='top')
-        ax_xy_end.text(0.02, 1.3, 'XY end [Å]', transform=ax_xy_end.transAxes, fontsize=9, va='top')
-        ax_scan_z.text(0.02, 1.3, 'XY-scan Z [Å]', transform=ax_scan_z.transAxes, fontsize=9, va='top')
-
-        # Create textboxes for direct value input
-        self.textbox_z_start = TextBox(ax_z_start_txt, '', initial=str(self.z_start))
-        self.textbox_z_end = TextBox(ax_z_end_txt, '', initial=str(self.z_end))
-        self.textbox_scan_x = TextBox(ax_scan_x_txt, '', initial=str(self.scan_x))
-        self.textbox_scan_y = TextBox(ax_scan_y_txt, '', initial=str(self.scan_y))
-        self.textbox_xy_start = TextBox(ax_xy_start_txt, '', initial=str(self.xy_start))
-        self.textbox_xy_end = TextBox(ax_xy_end_txt, '', initial=str(self.xy_end))
-        self.textbox_scan_z = TextBox(ax_scan_z_txt, '', initial=str(self.scan_z))
-
-        # Add visual boxes around control areas
-        import matplotlib.patches as mpatches
-        # Z-scan box
-        z_box = mpatches.FancyBboxPatch((0.04, 0.04), 0.45, 0.22, 
-                                         boxstyle="round,pad=0.01", 
-                                         edgecolor="blue", facecolor="none", 
-                                         linewidth=2, transform=self.fig.transFigure, zorder=0)
-        self.fig.patches.append(z_box)
-        # XY-scan box
-        xy_box = mpatches.FancyBboxPatch((0.51, 0.04), 0.45, 0.22, 
-                                          boxstyle="round,pad=0.01", 
-                                          edgecolor="green", facecolor="none", 
-                                          linewidth=2, transform=self.fig.transFigure, zorder=0)
-        self.fig.patches.append(xy_box)
         # Add labels
-        self.fig.text(0.06, 0.24, "Z-SCAN CONTROLS", fontsize=10, weight="bold", color="blue")
-        self.fig.text(0.53, 0.24, "XY-SCAN CONTROLS", fontsize=10, weight="bold", color="green")
+        label_kw = dict(fontsize=9, va='top')
+        ax_z_start.text(0.02, 1.5, 'Z start [Å]', transform=ax_z_start.transAxes, **label_kw)
+        ax_z_end.text(0.02, 1.5, 'Z end [Å]', transform=ax_z_end.transAxes, **label_kw)
+        ax_scan_x.text(0.02, 1.5, 'Z-scan X [Å]', transform=ax_scan_x.transAxes, **label_kw)
+        ax_scan_y.text(0.02, 1.5, 'Z-scan Y [Å]', transform=ax_scan_y.transAxes, **label_kw)
+        ax_z_step_label.text(0.98, 0.5, 'Z step [Å]:', transform=ax_z_step_label.transAxes, ha='right', va='center', fontsize=9)
+        ax_z_step_label.axis('off')
         
-        # Connect sliders to update function
-        self.slider_z_start.on_changed(self.on_slider_change)
-        self.slider_z_end.on_changed(self.on_slider_change)
-        self.slider_scan_x.on_changed(self.on_slider_change)
-        self.slider_scan_y.on_changed(self.on_slider_change)
-        self.slider_xy_start.on_changed(self.on_slider_change)
-        self.slider_xy_end.on_changed(self.on_slider_change)
-        self.slider_scan_z.on_changed(self.on_slider_change)
+        ax_xy_start.text(0.02, 1.5, 'XY start [Å]', transform=ax_xy_start.transAxes, **label_kw)
+        ax_xy_end.text(0.02, 1.5, 'XY end [Å]', transform=ax_xy_end.transAxes, **label_kw)
+        ax_scan_z.text(0.02, 1.5, 'XY-scan Z [Å]', transform=ax_scan_z.transAxes, **label_kw)
+        ax_xy_step_label.text(0.98, 0.5, 'XY step [Å]:', transform=ax_xy_step_label.transAxes, ha='right', va='center', fontsize=9)
+        ax_xy_step_label.axis('off')
 
-        # Connect textboxes to update function
+        # Create textboxes
+        self.textbox_z_start = TextBox(ax_z_start_txt, '', initial=f"{self.z_start:.2f}")
+        self.textbox_z_end = TextBox(ax_z_end_txt, '', initial=f"{self.z_end:.2f}")
+        self.textbox_scan_x = TextBox(ax_scan_x_txt, '', initial=f"{self.scan_x:.2f}")
+        self.textbox_scan_y = TextBox(ax_scan_y_txt, '', initial=f"{self.scan_y:.2f}")
+        self.textbox_z_step = TextBox(ax_z_step_txt, '', initial=f"{self.z_step:.3f}")
+
+        self.textbox_xy_start = TextBox(ax_xy_start_txt, '', initial=f"{self.xy_start:.2f}")
+        self.textbox_xy_end = TextBox(ax_xy_end_txt, '', initial=f"{self.xy_end:.2f}")
+        self.textbox_scan_z = TextBox(ax_scan_z_txt, '', initial=f"{self.scan_z:.2f}")
+        self.textbox_xy_step = TextBox(ax_xy_step_txt, '', initial=f"{self.xy_step:.3f}")
+
+        # Add visual boxes
+        import matplotlib.patches as mpatches
+        box_kw = dict(boxstyle="round,pad=0.01", facecolor="none", linewidth=2, transform=self.fig.transFigure, zorder=0)
+        z_box = mpatches.FancyBboxPatch((0.04, 0.04), 0.45, 0.35, **box_kw, edgecolor="blue")
+        self.fig.patches.append(z_box)
+        xy_box = mpatches.FancyBboxPatch((0.51, 0.04), 0.45, 0.35, **box_kw, edgecolor="green")
+        self.fig.patches.append(xy_box)
+        self.fig.text(0.06, 0.38, "Z-SCAN CONTROLS", fontsize=10, weight="bold", color="blue")
+        self.fig.text(0.53, 0.38, "XY-SCAN CONTROLS", fontsize=10, weight="bold", color="green")
+        
+        # Connect sliders
+        for slider in [self.slider_z_start, self.slider_z_end, self.slider_scan_x, self.slider_scan_y, self.slider_xy_start, self.slider_xy_end, self.slider_scan_z]:
+            slider.on_changed(self.on_slider_change)
+
+        # Connect textboxes
         self.textbox_z_start.on_submit(lambda text: self.on_textbox_change('z_start', text))
         self.textbox_z_end.on_submit(lambda text: self.on_textbox_change('z_end', text))
         self.textbox_scan_x.on_submit(lambda text: self.on_textbox_change('scan_x', text))
         self.textbox_scan_y.on_submit(lambda text: self.on_textbox_change('scan_y', text))
+        self.textbox_z_step.on_submit(lambda text: self.on_textbox_change('z_step', text))
+        
         self.textbox_xy_start.on_submit(lambda text: self.on_textbox_change('xy_start', text))
         self.textbox_xy_end.on_submit(lambda text: self.on_textbox_change('xy_end', text))
         self.textbox_scan_z.on_submit(lambda text: self.on_textbox_change('scan_z', text))
+        self.textbox_xy_step.on_submit(lambda text: self.on_textbox_change('xy_step', text))
         
-        # Atom selector buttons (simple prev/next for now)
-        ax_prev = plt.axes([0.35, 0.28, 0.08, 0.03])
-        ax_next = plt.axes([0.45, 0.28, 0.08, 0.03])
+        # Atom selector buttons
+        ax_prev = plt.axes([0.4, 0.6, 0.08, 0.03])
+        ax_next = plt.axes([0.5, 0.6, 0.08, 0.03])
         self.btn_prev = Button(ax_prev, 'Prev Atom')
         self.btn_next = Button(ax_next, 'Next Atom')
         self.btn_prev.on_clicked(self.prev_atom)
@@ -204,7 +197,7 @@ class ScanGUI:
     
     def on_slider_change(self, val):
         """Called when any slider changes."""
-        """Called when any slider changes."""
+        # Update parameters from sliders
         self.z_start = self.slider_z_start.val
         self.z_end = self.slider_z_end.val
         self.scan_x = self.slider_scan_x.val
@@ -212,6 +205,16 @@ class ScanGUI:
         self.xy_start = self.slider_xy_start.val
         self.xy_end = self.slider_xy_end.val
         self.scan_z = self.slider_scan_z.val
+
+        # Update textboxes to reflect slider changes
+        self.textbox_z_start.set_val(f"{self.z_start:.2f}")
+        self.textbox_z_end.set_val(f"{self.z_end:.2f}")
+        self.textbox_scan_x.set_val(f"{self.scan_x:.2f}")
+        self.textbox_scan_y.set_val(f"{self.scan_y:.2f}")
+        self.textbox_xy_start.set_val(f"{self.xy_start:.2f}")
+        self.textbox_xy_end.set_val(f"{self.xy_end:.2f}")
+        self.textbox_scan_z.set_val(f"{self.scan_z:.2f}")
+
         self.update_scans()
     
 
@@ -242,8 +245,13 @@ class ScanGUI:
             elif param_name == 'scan_z':
                 self.scan_z = value
                 self.slider_scan_z.set_val(value)
+            elif param_name == 'z_step':
+                self.z_step = value
+            elif param_name == 'xy_step':
+                self.xy_step = value
             
-            # Update plots (slider will trigger on_slider_change)
+            # Manually trigger update
+            self.update_scans()
         except ValueError:
             print(f"Invalid value for {param_name}: {text}")
 
@@ -296,7 +304,12 @@ class ScanGUI:
     def plot_z_scan(self, F):
         """Plot Z-scan results."""
         self.ax_z.clear()
+        if self.z_step <= 0:
+            self.ax_z.text(0.5, 0.5, "Z-step must be > 0", ha='center', va='center')
+            return
         Z = np.arange(self.z_start, self.z_end, self.z_step)
+        if len(Z) == 0:
+            return
         Fz = F[:len(Z), self.scan_atom, 2]
         self.ax_z.plot(Z, Fz, '-', linewidth=1.5, markersize=2)  # Smaller markers
         self.ax_z.set_xlabel('Z [Å]', fontsize=10)
@@ -307,6 +320,9 @@ class ScanGUI:
     def plot_xy_scan(self, F):
         """Plot XY-scan results."""
         self.ax_xy.clear()
+        if self.xy_step <= 0:
+            self.ax_xy.text(0.5, 0.5, "XY-step must be > 0", ha='center', va='center')
+            return
         x_values = np.arange(self.xy_start, self.xy_end, self.xy_step)
         y_values = np.arange(self.xy_start, self.xy_end, self.xy_step)
         if len(x_values) == 0 or len(y_values) == 0:
