@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""
-Interactive GUI for UFF scanning.
-Allows real-time adjustment of scan parameters and visualization of results.
-"""
+
 import sys
 import os
 import argparse
@@ -17,9 +14,11 @@ sys.path.append(base_path)
 
 from pyBall import MMFF_multi as uff
 from functions import *
+from export import export_scan_data
 
 # Define the path to common resource files
 data_dir = os.path.join(base_path, "cpp/common_resources")
+bUFF = True
 
 class ScanGUI:
     def __init__(self, args):
@@ -53,6 +52,10 @@ class ScanGUI:
         self.bNonBonded = args.non_bonded
         self.bGridFF = args.grid_ff
         
+        # Data storage for export
+        self.z_scan_Z, self.z_scan_Fz = None, None
+        self.xy_scan_X, self.xy_scan_Y, self.xy_scan_Fz_grid = None, None, None
+        
         # Create GUI
         self.create_gui()
         
@@ -74,7 +77,7 @@ class ScanGUI:
             sAngleTypes=os.path.join(self.data_dir, "AngleTypes.dat"),
             sDihedralTypes=os.path.join(self.data_dir, "DihedralTypes.dat"),
             bMMFF=True,
-            bUFF=True,
+            bUFF=bUFF,
             nExplore=1000,
             nRelax=500,
             T=300,
@@ -193,7 +196,51 @@ class ScanGUI:
         self.btn_prev.on_clicked(self.prev_atom)
         self.btn_next.on_clicked(self.next_atom)
         
+        # Export button
+        ax_export = plt.axes([0.6, 0.6, 0.08, 0.03])
+        self.btn_export = Button(ax_export, 'Export')
+        self.btn_export.on_clicked(self.export_data)
+        
         plt.show(block=False)
+    
+    def export_data(self, event):
+        """Export the current scan data to files."""
+        print("Exporting data...")
+        
+        scan_atom_info = {
+            'index': self.scan_atom,
+            'type': self.atom_types[self.scan_atom],
+            'charge': self.atom_charges[self.scan_atom],
+            'pos': self.apos[self.scan_atom]
+        }
+        
+        z_scan_params = {
+            'start': self.z_start,
+            'end': self.z_end,
+            'step': self.z_step,
+            'scan_x': self.scan_x,
+            'scan_y': self.scan_y
+        }
+        
+        xy_scan_params = {
+            'start': self.xy_start,
+            'end': self.xy_end,
+            'step': self.xy_step,
+            'scan_z': self.scan_z
+        }
+        
+        output_dir = os.path.join(os.path.dirname(__file__), 'results')
+        
+        export_scan_data(
+            output_dir=output_dir,
+            bUFF=bUFF,
+            scan_atom_info=scan_atom_info,
+            z_scan_params=z_scan_params,
+            z_scan_data=(self.z_scan_Z, self.z_scan_Fz),
+            xy_scan_params=xy_scan_params,
+            xy_scan_data=(self.xy_scan_X, self.xy_scan_Y, self.xy_scan_Fz_grid),
+            surface_name=os.path.basename(self.args.surf) if self.args.surf else 'None'
+        )
     
     def on_slider_change(self, val):
         """Called when any slider changes."""
@@ -309,6 +356,7 @@ class ScanGUI:
             return
         Z = np.arange(self.z_start, self.z_end, self.z_step)
         if len(Z) == 0:
+            self.z_scan_Z, self.z_scan_Fz = None, None
             return
         Fz = F[:len(Z), self.scan_atom, 2]
         self.ax_z.plot(Z, Fz, '-', linewidth=1.5, markersize=2)  # Smaller markers
@@ -316,16 +364,22 @@ class ScanGUI:
         self.ax_z.set_ylabel('Fz [eV/Å]', fontsize=10)
         self.ax_z.set_title(f'Z-scan at X={self.scan_x:.1f}, Y={self.scan_y:.1f}', fontsize=11)
         self.ax_z.grid(True, alpha=0.3)
+        
+        # Store data for export
+        self.z_scan_Z = Z
+        self.z_scan_Fz = Fz
     
     def plot_xy_scan(self, F):
         """Plot XY-scan results."""
         self.ax_xy.clear()
         if self.xy_step <= 0:
             self.ax_xy.text(0.5, 0.5, "XY-step must be > 0", ha='center', va='center')
+            self.xy_scan_X, self.xy_scan_Y, self.xy_scan_Fz_grid = None, None, None
             return
         x_values = np.arange(self.xy_start, self.xy_end, self.xy_step)
         y_values = np.arange(self.xy_start, self.xy_end, self.xy_step)
         if len(x_values) == 0 or len(y_values) == 0:
+            self.xy_scan_X, self.xy_scan_Y, self.xy_scan_Fz_grid = None, None, None
             return
         X, Y = np.meshgrid(x_values, y_values)
         Fz = F[:len(x_values)*len(y_values), self.scan_atom, 2]
@@ -339,6 +393,11 @@ class ScanGUI:
             self.cbar_xy = self.fig.colorbar(im, ax=self.ax_xy, label='Fz [eV/Å]')
         else:
             self.cbar_xy.update_normal(im)
+        
+        # Store data for export
+        self.xy_scan_X = X
+        self.xy_scan_Y = Y
+        self.xy_scan_Fz_grid = Fz_grid
     
     def plot_3d_view(self):
         """Plot 3D view of molecule and scan atom."""
