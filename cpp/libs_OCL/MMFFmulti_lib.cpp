@@ -316,7 +316,7 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double damping, double
 // iParalel: CPU serial/OMP uses same mapping as run(); GPU==2 uses OpenCL UFF batched over W.nSystems replicas
 int scan( int nConf, double* confs_, double* outF_, int iParalel ){
     //if(!W.bUFF){ printf("scan(): ERROR bUFF=false; only UFF supported for now\n"); return 0; }
-    const int natoms = W.ffu._natoms;
+    const int natoms = W.bUFF ? W.ffu._natoms : W.ffl.natoms;
     auto confs = (Vec3d*)confs_;
     auto outF  = (Vec3d*)outF_;
     int nDone = 0;
@@ -352,26 +352,23 @@ int scan( int nConf, double* confs_, double* outF_, int iParalel ){
         }
     }
     else if( (iParalel==3) ){
-        printf("MMFFscan() spravne Milane\n");
         for(int ib=0; ib<nConf; ){
             int nBatch = W.nSystems; if(ib+nBatch>nConf) nBatch = nConf-ib;
             for(int i=0;i<nBatch;i++){
                 int isys = i;
-                idebug = (isys==dbg_sys) ? 4 : 0;
-                Vec3d* apos = W.ffl.apos;
+                Vec3d* apos = W.ffls[isys].apos;
                 for(int ia=0; ia<natoms; ia++){ apos[ia] = confs[(ib+i)*natoms + ia]; }
-                W.pack_system( isys, W.ffls[i], false, false, false, false );
-                printf("packed system %i with config %i\n", isys, (ib+i));
+                W.pack_system( isys, W.ffls[isys], false, false, false, false );
             }
-            // W.upload_mmff( false, false, false, false );
-            // W.run_ocl_opt( 1 );
-            // W.download_mmff( true, false );
-            // for(int i=0;i<nBatch;i++){
-            //     int isys = i;
-            //     W.unpack_uff_system( isys, W.ffu, true, false );
-            //     Vec3d* fapos = W.ffls[i].fapos;
-            //     for(int ia=0; ia<natoms; ia++){ outF[(ib+i)*natoms + ia] = fapos[ia]; }
-            // }
+            W.upload_mmff( false, false, false, false );
+            W.run_ocl_opt( 1 );
+            W.download_mmff( true, false );
+            for(int i=0;i<nBatch;i++){
+                int isys = i;
+                W.unpack_system( isys, W.ffls[isys], true, false );
+                Vec3d* fapos = W.ffls[i].fapos;
+                for(int ia=0; ia<natoms; ia++){ outF[(ib+i)*natoms + ia] = fapos[ia]; }
+            }
             ib += nBatch; nDone += nBatch;
         }
     }
