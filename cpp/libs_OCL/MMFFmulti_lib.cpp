@@ -182,7 +182,6 @@ void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bM
     }
     W.init();
     W.bGridFF = bGrid;
-    printf("GridFF=%i\n", W.bGridFF);
     //init_buffers();
     return &W;
 }
@@ -315,6 +314,7 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double damping, double
 // outF : [nConf, natoms, 3]
 // iParalel: CPU serial/OMP uses same mapping as run(); GPU==2 uses OpenCL UFF batched over W.nSystems replicas
 int scan( int nConf, double* confs_, double* outF_, int iParalel ){
+    if(verbosity>0)printf("MMFFmulti_lib::scan() nConf=%i iParalel=%i\n", nConf, iParalel);
     //if(!W.bUFF){ printf("scan(): ERROR bUFF=false; only UFF supported for now\n"); return 0; }
     const int natoms = W.bUFF ? W.ffu._natoms : W.ffl.natoms;
     auto confs = (Vec3d*)confs_;

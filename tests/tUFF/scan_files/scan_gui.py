@@ -18,30 +18,37 @@ from export import export_scan_data
 
 # Define the path to common resource files
 data_dir = os.path.join(base_path, "cpp/common_resources")
-bUFF = True
+
 
 class ScanGUI:
     def __init__(self, args):
         self.args = args
         self.data_dir = data_dir
-        
+
+        # Force field type (must be set before init_uff)
+        self.is_uff = args.force_field == 'UFF'
+
         # Initialize UFF library
         self.init_uff()
-        
+
         # Get atom information
         self.natoms = uff.natoms
         self.apos = uff.apos.copy()
         self.atom_types = [uff.getTypeName(i, fromFF=True) for i in range(self.natoms)]
         # REQs columns: [R=radius, E=epsilon, Q=charge, H=?]
-        self.atom_charges = uff.REQs[:, 2].copy()  # Q is the 3rd column (index 2)
-        
+        # Get atom charges (different buffers for UFF vs MMFF)
+        if self.is_uff:
+            self.atom_charges = uff.REQs[:, 2].copy()  # Q is the 3rd column (index 2) in UFF
+        else:
+            self.atom_charges = uff.gpu_REQs[0, :, 2].copy()  # Q is the 3rd column in MMFF (first system)
+
         # Scan parameters
         self.scan_atom = args.scan_atom
         self.z_start, self.z_end, self.z_step = 0.0, 10.0, 0.02  # Very fine Z-scan (500 points)
         self.xy_start, self.xy_end, self.xy_step = 0.0, 10.0, 0.02
         self.scan_x, self.scan_y = 0.0, 0.0  # for z-scan
         self.scan_z = 2.0  # for xy-scan
-        
+
         # Component flags
         self.component_flags = build_component_flags(
             base_components=None if args.comps is None else list(args.comps),
@@ -64,7 +71,7 @@ class ScanGUI:
     
     def init_uff(self):
         """Initialize the UFF library."""
-        print("--- Initializing MMFF_multi library ---")
+        print(f"--- Initializing MMFF_multi library for {'UFF' if self.is_uff else 'MMFF'} ---")
         surf_name = os.path.join(self.data_dir, self.args.surf) if self.args.surf else None
         
         uff.init(
@@ -77,13 +84,27 @@ class ScanGUI:
             sAngleTypes=os.path.join(self.data_dir, "AngleTypes.dat"),
             sDihedralTypes=os.path.join(self.data_dir, "DihedralTypes.dat"),
             bMMFF=True,
-            bUFF=bUFF,
+            bUFF=self.is_uff,
             nExplore=1000,
             nRelax=500,
             T=300,
             gamma=0.1
         )
-        uff.getBuffs_UFF()
+        if self.is_uff:
+            uff.getBuffs_UFF()
+        else:
+            uff.getBuffs()
+        
+        # Update atom information after re-initialization
+        self.natoms = uff.natoms
+        self.apos = uff.apos.copy()
+        self.atom_types = [uff.getTypeName(i, fromFF=True) for i in range(self.natoms)]
+
+        # Get atom charges (different buffers for UFF vs MMFF)
+        if self.is_uff:
+            self.atom_charges = uff.REQs[:, 2].copy()  # Q is the 3rd column (index 2) in UFF
+        else:
+            self.atom_charges =  uff.gpu_REQs[0, :, 2].copy()
     
     def create_gui(self):
         """Create the GUI layout."""
@@ -200,7 +221,7 @@ class ScanGUI:
         ax_export = plt.axes([0.6, 0.6, 0.08, 0.03])
         self.btn_export = Button(ax_export, 'Export')
         self.btn_export.on_clicked(self.export_data)
-        
+
         plt.show(block=False)
     
     def export_data(self, event):
@@ -233,7 +254,7 @@ class ScanGUI:
         
         export_scan_data(
             output_dir=output_dir,
-            bUFF=bUFF,
+            bUFF=self.is_uff,
             scan_atom_info=scan_atom_info,
             z_scan_params=z_scan_params,
             z_scan_data=(self.z_scan_Z, self.z_scan_Fz),
@@ -343,10 +364,51 @@ class ScanGUI:
         self.fig.canvas.draw_idle()
     
     def scan_uff(self, confs):
-        """Run UFF scan on configurations."""
-        components_to_switches(self.component_flags, bNonBonded=self.bNonBonded, bGridFF=self.bGridFF)
-        F_gpu = uff.scan(confs, iParalel=2)
+        """Run UFF/MMFF scan on configurations."""
+        self._set_component_switches(self.component_flags, bNonBonded=self.bNonBonded, bGridFF=self.bGridFF)
+        # iParalel: 2 = GPU (OpenCL UFF), 3 = GPU (OpenCL MMFF)
+        iParalel = 2 if self.is_uff else 3
+        F_gpu = uff.scan(confs, iParalel=iParalel)
         return F_gpu
+    
+    def _set_component_switches(self, components, *, bNonBonded=False, bGridFF=False):
+        """Set UFF/MMFF component switches based on the current force field."""
+        def resolve(name: str) -> int:
+            val = components.get(name, -1)
+            if val is None:
+                return -1
+            return int(val)
+        
+        DoBond = resolve('bonds')
+        DoAngle = resolve('angles')
+        DoDihedral = resolve('dihedrals')
+        DoInversion = resolve('inversions')
+        DoAssemble = 1 if any(v > 0 for v in (DoBond, DoAngle, DoDihedral, DoInversion)) else -1
+        SubtractBondNonBond = 1
+        ClampNonBonded = 1
+        uff.setSwitches2(
+            NonBonded=1 if bNonBonded else -1,
+            SurfAtoms=1 if bGridFF else -1,
+            GridFF=1 if bGridFF else -1,
+            MMFF=1 if not self.is_uff else -1,  # Enable MMFF mode for MMFF, disable for UFF
+        )
+        if self.is_uff:
+            uff.setSwitchesUFF(
+                DoBond=1 if DoBond > 0 else -1,
+                DoAngle=DoAngle,
+                DoDihedral=DoDihedral,
+                DoInversion=DoInversion,
+                DoAssemble=DoAssemble,
+                SubtractBondNonBond=SubtractBondNonBond,
+                ClampNonBonded=ClampNonBonded
+            )
+        else:
+            uff.setSwitches(
+                doAngles=DoAngle,
+                doPiPiI=DoDihedral,
+                doPiSigma=DoInversion,
+                doBonded=DoBond
+            )
     
     def plot_z_scan(self, F):
         """Plot Z-scan results."""
@@ -444,41 +506,10 @@ class ScanGUI:
         self.ax_info.text(0.5, 0.5, info_text, ha='center', va='center', fontsize=12, family='monospace',
                          bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
 
-
-def components_to_switches(components, *, bNonBonded=False, bGridFF=False):
-    """Set UFF component switches."""
-    def resolve(name: str) -> int:
-        val = components.get(name, -1)
-        if val is None:
-            return -1
-        return int(val)
-    
-    DoBond = resolve('bonds')
-    DoAngle = resolve('angles')
-    DoDihedral = resolve('dihedrals')
-    DoInversion = resolve('inversions')
-    DoAssemble = 1 if any(v > 0 for v in (DoBond, DoAngle, DoDihedral, DoInversion)) else -1
-    SubtractBondNonBond = 1
-    ClampNonBonded = 1
-    uff.setSwitches2(
-        NonBonded=1 if bNonBonded else -1,
-        SurfAtoms=1 if bGridFF else -1,
-        GridFF=1 if bGridFF else -1,
-    )
-    uff.setSwitchesUFF(
-        DoBond=1 if DoBond > 0 else -1,
-        DoAngle=DoAngle,
-        DoDihedral=DoDihedral,
-        DoInversion=DoInversion,
-        DoAssemble=DoAssemble,
-        SubtractBondNonBond=SubtractBondNonBond,
-        ClampNonBonded=ClampNonBonded
-    )
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Interactive UFF Scanning GUI')
     default_mol = os.path.join(data_dir, 'xyz', 'xylitol_WO_gridFF.xyz')
-    
+
     parser.add_argument('-m', '--molecule', type=str, default=default_mol, help='Molecule file (.mol2, .xyz)')
     parser.add_argument('--nsys', type=int, default=100, help='Number of GPU replicas (systems)')
     parser.add_argument('--scan_atom', type=int, default=5, help='Initial atom to scan')
@@ -489,12 +520,34 @@ if __name__ == "__main__":
     parser.add_argument('--non-bonded', action='store_true', help='Enable non-bonded interactions')
     parser.add_argument('--grid-ff', action='store_true', default=True, help='Enable GridFF interactions')
     parser.add_argument('--surf', type=str, required=True, help='Surface file (.xyz)')
-    
+    parser.add_argument('--force-field', type=str, choices=['UFF', 'MMFF'], default=None, help='Force field to use (UFF or MMFF)')
+
     args = parser.parse_args()
-    
+
+    # If force field not specified via command line, ask user
+    if args.force_field is None:
+        print("\n=== Force Field Selection ===\n")
+        print("Choose force field:")
+        print("1) UFF  (Universal Force Field)")
+        print("2) MMFF (Merck Molecular Force Field)")
+        print()
+
+        while True:
+            choice = input("Enter choice [1-2]: ").strip()
+            if choice == '1':
+                args.force_field = 'UFF'
+                break
+            elif choice == '2':
+                args.force_field = 'MMFF'
+                break
+            else:
+                print("Invalid choice. Please enter 1 or 2.")
+
+    print(f"\n--- Using {args.force_field} force field ---\n")
+
     # Cleanup old files
     cleanup_xyz_files(["scan_relaxed_cpu_*.xyz", "scan_relaxed_gpu_*.xyz", "trj_multi.xyz", "relaxed_gpu_*.xyz"])
-    
+
     # Create and run GUI
     gui = ScanGUI(args)
     plt.show()
