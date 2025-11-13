@@ -2208,9 +2208,7 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
 
 // Timing variables for run_uff_ocl
 bool initial = true;
-double time_integrated_run_uff_ocl = 0.0;  // integrated time in seconds
-long   time_T0_run_uff_ocl = 0;            // start time of current call
-bool   time_saved_run_uff_ocl = false;     // flag to save only once at t>10s
+double time_integrated = 0.0;  // integrated time in seconds          // start time of current call
 // Detailed timing accumulators
 double time_updateMultiExploring = 0.0;
 double time_loop_total = 0.0;
@@ -2221,9 +2219,6 @@ double time_loop_nonbonded = 0.0;
 double time_loop_updateAtoms = 0.0;
 double time_loop_trajSave = 0.0;
 double time_evalVFs = 0.0;
-int    count_updateMultiExploring = 0;
-int    count_loop_iterations = 0;
-int    count_evalVFs = 0;
 
 int save_trj_uff_ocl( int isys, int step, double Fconv ){
     download_uff( true, false );
@@ -2241,7 +2236,7 @@ int save_trj_uff_ocl( int isys, int step, double Fconv ){
 }
 
 int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim ){
-    printf("MolWorld_sp3_multi::run_uff_ocl() bBonding=%i bSurfAtoms=%i bGridFF=%i bNonBonded=%i  dt=%10g \n", ffu.bDoBond, bSurfAtoms, bGridFF, bNonBonded, dt );
+    if(verbosity>0)printf("MolWorld_sp3_multi::run_uff_ocl() bBonding=%i bSurfAtoms=%i bGridFF=%i bNonBonded=%i  dt=%10g \n", ffu.bDoBond, bSurfAtoms, bGridFF, bNonBonded, dt );
 
     long T0 = getCPUticks();  // Start timing this call
     double F2conv = Fconv*Fconv;
@@ -2331,13 +2326,13 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
             if(niter<=0)break;
         }
         T_2 = getCPUticks();
-       double F2=evalVFs(Fconv);
-       Nticks_evalVFs += (getCPUticks()-T_2);
+        double F2=evalVFs(Fconv);
+        Nticks_evalVFs += (getCPUticks()-T_2);
     }
 
     // Update integrated time and accumulate timing data
     double dt_call = (getCPUticks()-T0)*tick2second;  // time of this call in seconds
-    time_integrated_run_uff_ocl += dt_call;
+    time_integrated += dt_call;
 
     // Accumulate times from this call
     time_updateMultiExploring += Nticks_updateMultiExploring * tick2second;
@@ -2354,7 +2349,7 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
     FILE* f = fopen("times_run_uff_ocl.dat", "a");
     if(f){
         fprintf(f, "  %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12f\n",
-            time_integrated_run_uff_ocl,
+            time_integrated,
             time_updateMultiExploring,
             time_loop_bonding,
             time_loop_gridff,
@@ -2366,14 +2361,7 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
         fclose(f);
     }else{
         printf("ERROR: Could not open times_run_uff_ocl.dat for appending\n");
-    }
-
-    // Mark as saved when t>=10s
-    if(!time_saved_run_uff_ocl && time_integrated_run_uff_ocl >= 10.0){
-        printf(">>> Timing data saved to times_run_uff_ocl.dat at t=%.3f[s]\n", time_integrated_run_uff_ocl);
-        time_saved_run_uff_ocl = true;
-    }
-
+    }    
     return nloop;
 }
 
@@ -2443,7 +2431,7 @@ if(initial){
             // Clear timing file and write header
         FILE* f = fopen("times_run_mmff_ocl.dat", "w");
         if(f){
-            fprintf(f, "# Timing data for run_uff_ocl (all times in seconds)\n");
+            fprintf(f, "# Timing data for run_ocl_opt (all times in seconds)\n");
             fprintf(f, "# %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n",
                 "t_total", "t_updateME", "t_bonding", "t_gridff", "t_nonbond", "t_updateAt", "t_trajSave", "t_evalVFs", "nloop");
             fclose(f);
@@ -2621,7 +2609,7 @@ if(initial){
     //err |= ocl.finishRaw();
     //printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
     double dt_call = (getCPUticks()-T0)*tick2second;  // time of this call in seconds
-    time_integrated_run_uff_ocl += dt_call;
+    time_integrated += dt_call;
 
     // Accumulate times from this call
     time_updateMultiExploring += Nticks_updateMultiExploring * tick2second;
@@ -2632,12 +2620,10 @@ if(initial){
     time_loop_trajSave        += Nticks_loop_trajSave        * tick2second;
     time_evalVFs              += Nticks_evalVFs              * tick2second;
 
-    // printf("run_ocl_opt() time=%7.3f[ms] nloop=%i time_integrated=%7.3f[s]\n", dt_call*1000, nloop, time_integrated_run_uff_ocl);
-
-    FILE* f = fopen("times_run_mmff_ocl.dat", "a");
+    FILE* f = fopen("times_run_ocl_opt.dat", "a");
     if(f){
         fprintf(f, "  %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12d\n",
-            time_integrated_run_uff_ocl,
+            time_integrated,
             time_updateMultiExploring,
             time_loop_bonding,
             time_loop_gridff,
@@ -2648,14 +2634,8 @@ if(initial){
             nloop);
         fclose(f);
     }else{
-        printf("ERROR: Could not open times_run_uff_ocl.dat for appending\n");
+        printf("ERROR: Could not open times_run_ocl_opt.dat for appending\n");
     }
-
-    // Mark as saved when t>=10s
-    // if(!time_saved_run_uff_ocl && time_integrated_run_uff_ocl >= 10.0){
-    //     printf(">>> Timing data saved to times_run_mmff_ocl.dat at t=%.3f[s]\n", time_integrated_run_uff_ocl);
-    //     time_saved_run_uff_ocl = true;
-    // }
     return niterdone;
 }
 

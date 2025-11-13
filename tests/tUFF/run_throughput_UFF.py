@@ -34,7 +34,7 @@ parser.add_argument("--Fconv",           type=float, default=1e-4,      help="Fo
 parser.add_argument("--dt",              type=float, default=0.05,     help="Time step for FIRE optimizer (reduce for light molecules like H2O)")
 parser.add_argument("--perframe",        type=int,   default=10,      help="Steps per frame (MDloop nIter)")
 parser.add_argument("--perVF",           type=int,   default=10,       help="Vector-field evals inside kernels")
-parser.add_argument("--loops",           type=int,   default=5,       help="How many times to call MDloop in a row") #should be set to large number, the duration is set internaly in Molworld_sp3_multi::MDLoop function
+parser.add_argument("--loops",           type=int,   default=50000,       help="How many times to call MDloop in a row") #should be set to large number, the duration is set internaly in Molworld_sp3_multi::MDLoop function
 parser.add_argument("--gridnPBC",        type=str,   default="(1,1,0)", help="gridnPBC")
 parser.add_argument("--bNonBonded",      type=int,   default=1,         help="bNonBonded flag")
 parser.add_argument("--T",               type=float, default=1500.0,    help="Thermostat target temperature [K] during exploring")
