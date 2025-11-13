@@ -505,11 +505,24 @@ lib.setSwitchesUFF.restype   =  None
 def setSwitchesUFF( DoBond=0, DoAngle=0, DoDihedral=0, DoInversion=0, DoAssemble=0, SubtractBondNonBond=0, ClampNonBonded=0):
     return lib.setSwitchesUFF(DoBond, DoAngle, DoDihedral, DoInversion, DoAssemble, SubtractBondNonBond, ClampNonBonded)
 
+lib.get_uff_energy.argtypes = [c_double_p, c_int, c_bool]
+lib.get_uff_energy.restype  = c_double
+def get_uff_energy(out=None, isys_choice=-1, download=True):
+    if out is None:
+        out = np.zeros(nSys, dtype=np.double)
+    return lib.get_uff_energy(_np_as(out, c_double_p), int(isys_choice), download)
+
 #  bool checkInvariants( double maxVcog, double maxFcog, double maxTg )
 lib.checkInvariants.argtypes  = [c_double, c_double, c_double] 
 lib.checkInvariants.restype   =  c_bool
 def checkInvariants(maxVcog=1e-9, maxFcog=1e-9, maxTg=1e-1):
     return lib.checkInvariants(maxVcog, maxFcog, maxTg)
+
+#  void set_dt_default( double dt ){
+lib.set_dt_default.argtypes  = [c_double] 
+lib.set_dt_default.restype   =  None
+def set_dt_default( dt=0.05 ):
+    return lib.set_dt_default(dt)
 
 #  void set_opt( double dt_max,  double dt_min, double damp_max, double finc,    double fdec,   double falpha, int minLastNeg, double cvf_min, double cvf_max){
 lib.set_opt.argtypes  = [c_double, c_double, c_double, c_double, c_double, c_double, c_int, c_double, c_double] 

@@ -57,7 +57,7 @@ flags_bitnum=$(( (dovdW_bit << 4) | (doSurfAtoms_bit << 3) | (bGridFF_bit << 2) 
 Fconv=1e-4
 
 # Arrays of parameter values to test
-replicas=(1000) # (1000 5000) # (1000 2000 3000 4000 5000)
+replicas=(5000) # (1000 5000) # (1000 2000 3000 4000 5000)
 perframes=(100) # (20 500) # (100 500)
 perVF=(100) # (20 50) # (50 100)
 

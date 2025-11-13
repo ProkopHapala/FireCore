@@ -27,9 +27,9 @@ mkdir -p results/best
 mkdir -p results/all
 
 # Setup parameters for UFF
-dovdW=1
-doSurfAtoms=1
-bGridFF=-6   # 1 for linear, 5or6 for bSpline=1 (works only 6)
+dovdW=1 # DO NOT CHANGE (but has no effect)
+doSurfAtoms=1 # negative for no surface, 1 for surface
+bGridFF=6   # negative for no GridFF, 6 for bSpline (other values are not tested)
 if (( bGridFF == 1 )); then
     bSpline=0
 elif (( bGridFF == 5 || bGridFF == 6 )); then
@@ -39,7 +39,7 @@ bTex=0
 bSaveToDatabase=-1
 # xyz_name="common_resources/xyz/xylitol_WO_gridFF"
 
-# Generate bit number from flags
+# Generate bit number from flags DO NOT CHANGE
 dovdW_bit=$(( dovdW > 0 ? 1 : 0 ))
 doSurfAtoms_bit=$(( doSurfAtoms > 0 ? 1 : 0 ))
 bGridFF_bit=$(( bGridFF > 0 ? 1 : 0 ))
@@ -50,16 +50,17 @@ flags_bitnum=$(( (dovdW_bit << 4) | (doSurfAtoms_bit << 3) | (bGridFF_bit << 2) 
 # Set force convergence criteria
 Fconv=1e-4
 
-# Arrays of parameter values to test
+# Arrays of parameter values to test (for article we used replicas=(5000), perframes=(100, 20), perVF=(100, 20))
 replicas=(2) # (1000 5000) # (1000 2000 3000 4000 5000)
 perframes=(100) # (20 500) # (100 500) #niter
 perVF=(1) # (20 50) # (50 100) #nPerVFs
 
-# Arrays of local memory parameters to test for UFF
+# Arrays of local memory parameters DO NOT CHANGE
 nlocNBFFs=("--") # (1 2 4 8 16 32 64 128)
 nlocSurfs=("--") # (1 2 4 8 16 32 64 128)
 nlocGridFFbSplines=(32) # (1 2 4 8 16 32 64 128)
 
+# Set nPBC for surface
 nPBC=("(1,1,0)") # ("(1,1,0)" "(2,2,0)" "(3,3,0)" "(4,4,0)" "(5,5,0)")
 
 
@@ -91,12 +92,11 @@ for nPBC in "${nPBC[@]}"; do
                             rm -f libMMFFmulti_lib.so
                             make MMFFmulti_lib
                             cd $wd
-                            if (( pvf > perframe )); then continue; fi
-                            # Run simulation with the current parameters
-                            if (( doSurfAtoms > 0 )); then
-                                echo "======================================================="
-                                echo "Testing UFF with GridFF: nSys=$nSys, perframe=$perframe, perVF=$pvf"
 
+                            # Skip if perVF is greater than perframe
+                            if (( pvf > perframe )); then continue; fi
+
+                            if (( doSurfAtoms > 0 )); then
                                 # Remove previous results
                                 rm -f minima.dat gopt.xyz
                                 touch minima.dat
@@ -128,14 +128,8 @@ for nPBC in "${nPBC[@]}"; do
 
                                     # Move minima file to results/all directory
                                     mv minima.dat results/all/${name}.dat
-                                    
-                                    # Extract the last line from the results file
                                     last_line=$(tail -n 1 results/all/${name}.dat)
-                                    
-                                    # Append results to the all results file
                                     echo "$name $last_line" >> results/all/results.dat
-                                    
-                                    # Extract value from column 6 (assuming space-separated columns and 0-based indexing)
                                     current_value=$(echo "$last_line" | awk '{print $6}')
                                     
                                     echo "Current value: $current_value, Best so far: $best_value"
@@ -152,13 +146,12 @@ for nPBC in "${nPBC[@]}"; do
                                         echo "New best result found: $best_value with nSys=$nSys, perframe=$perframe, perVF=$pvf"
                                     fi
                                 done
-                            else
-                                echo "======================================================="
-                                echo "Testing UFF without GridFF: nSys=$nSys, perframe=$perframe, perVF=$pvf"
-
+                            else # doSurfAtoms=0
                                 # Remove previous results
                                 rm -f minima.dat gopt.xyz
                                 touch minima.dat
+
+                                # Define surface size as 0 for no surface
                                 N=0
                                 xyz_name="common_resources/xyz/molecules_for_throughput/xylitol_1x1"
 
@@ -174,17 +167,9 @@ for nPBC in "${nPBC[@]}"; do
 
                                 # Generate name for the result file
                                 name="minima__$(printf '%04d' $(echo "obase=2;$flags_bitnum" | bc))_surf:_NaCl_${N}x${N}_nPBC_${nPBC}_nloc:_NBFF_${nlocNBFF}_surf_${nlocSurf}_gridFFbSpline_${nlocGridFFbSpline}___replica:_${nSys}_perframe:_${perframe}_perVF:_${pvf}"
-
-                                # Move minima file to results/all directory
                                 mv minima.dat results/all/${name}.dat
-                                
-                                # Extract the last line from the results file
                                 last_line=$(tail -n 1 results/all/${name}.dat)
-                                
-                                # Append results to the all results file
                                 echo "$name $last_line" >> results/all/results.dat
-                                
-                                # Extract value from column 6 (assuming space-separated columns and 0-based indexing)
                                 current_value=$(echo "$last_line" | awk '{print $6}')
                                 
                                 echo "Current value: $current_value, Best so far: $best_value"

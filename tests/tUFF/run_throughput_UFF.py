@@ -1,3 +1,18 @@
+"""
+
+Key files: 
+- `run_throughput_UFF.py` : driver
+- `pyBall/MMFF_multi.py` : ctypes interface to C/C++ library 
+- `cpp/libs_OCL/MMFFmulti_lib.cpp` : C/C++ library
+- `cpp/common/molecular/MolWorld_sp3_multi.h` : molecular world used in C/C++ library 
+- `cpp/common/OpenCL/OCL_UFF.h` : OpenCL driver used in MolWorld_sp3_multi.h
+- `cpp/common_resources/cl/UFF.cl` : kernels used in OCL_UFF.h
+
+GridFF single-system run: 
+python run_throughput_UFF.py --nSys 1 --xyz_name data_UFF/xyz/HHO-h.xyz --bGridFF 1 --gridnPBC "(1,1,0)" --loops 10 --perframe 500 --perVF 100 --Fconv 1e-4
+
+"""
+
 import sys
 import numpy as np
 import argparse
@@ -5,26 +20,27 @@ import argparse
 sys.path.append("../../")
 from pyBall import MMFF_multi as uff
 
-parser = argparse.ArgumentParser(description="Run UFF throughput MD with configurable parameters.")
-parser.add_argument("--nSys", type=int, default=1000, help="Number of systems")
-parser.add_argument("--xyz_name", type=str, default="data_UFF/xyz/HHO-h.xyz", help="Path to xyz file (without .xyz suffix)")
-parser.add_argument("--surf_name", type=str, default=None, help="Path to surface file (without .xyz suffix)")
-parser.add_argument("--dovdW", type=int, default=1, help="dovdW flag")
-parser.add_argument("--doSurfAtoms", type=int, default=0, help="doSurfAtoms flag")
-parser.add_argument("--bSaveToDatabase", type=int, default=-1, help="bSaveToDatabase flag")
-parser.add_argument("--bGridFF", type=int, default=-1, help="bGridFF flag")
-parser.add_argument("--Fconv", type=float, default=1e-4, help="Force convergence")
-parser.add_argument("--perframe", type=int, default=1000, help="Steps per frame (MDloop nIter)")
-parser.add_argument("--perVF", type=int, default=100, help="Vector-field evals inside kernels")
-parser.add_argument("--loops", type=int, default=50000, help="How many times to call MDloop in a row")
-parser.add_argument("--gridnPBC", type=str, default="(1,1,0)", help="gridnPBC")
-parser.add_argument("--bNonBonded", type=int, default=1, help="bNonBonded flag")
 # Exploring (minima hopping) controls
-parser.add_argument("--T", type=float, default=1500.0, help="Thermostat target temperature [K] during exploring")
-parser.add_argument("--gamma", type=float, default=0.1, help="Langevin damping [1/ps, in internal units]")
-parser.add_argument("--nExplore", type=int, default=700, help="Exploring duration in MD steps (perVF steps accumulate)")
-parser.add_argument("--nRelax", type=int, default=100000, help="Relaxation duration in MD steps before forcing exploring if not converged")
-
+parser = argparse.ArgumentParser(description="Run UFF throughput MD with configurable parameters.")
+parser.add_argument("--xyz_name",        type=str,   default="data/xyz/xylitol.xyz", help="Path to xyz file (without .xyz suffix)")
+parser.add_argument("--surf_name",       type=str,   default="data/xyz/NaCl_1x1_L3",            help="Path to surface file (without .xyz suffix)")
+parser.add_argument("--nSys",            type=int,   default=1,         help="Number of systems")
+parser.add_argument("--dovdW",           type=int,   default=1,         help="dovdW flag")
+parser.add_argument("--doSurfAtoms",     type=int,   default=0,         help="doSurfAtoms flag")
+parser.add_argument("--bSaveToDatabase", type=int,   default=-1,        help="bSaveToDatabase flag") # DO NOT CHANGE (but has no effect)
+parser.add_argument("--bGridFF",         type=int,   default=-1,        help="bGridFF flag")
+parser.add_argument("--bUFF",            type=int,   default=1,         help="bUFF flag")
+parser.add_argument("--Fconv",           type=float, default=1e-4,      help="Force convergence")
+parser.add_argument("--dt",              type=float, default=0.05,     help="Time step for FIRE optimizer (reduce for light molecules like H2O)")
+parser.add_argument("--perframe",        type=int,   default=10,      help="Steps per frame (MDloop nIter)")
+parser.add_argument("--perVF",           type=int,   default=10,       help="Vector-field evals inside kernels")
+parser.add_argument("--loops",           type=int,   default=5,       help="How many times to call MDloop in a row") #should be set to large number, the duration is set internaly in Molworld_sp3_multi::MDLoop function
+parser.add_argument("--gridnPBC",        type=str,   default="(1,1,0)", help="gridnPBC")
+parser.add_argument("--bNonBonded",      type=int,   default=1,         help="bNonBonded flag")
+parser.add_argument("--T",               type=float, default=1500.0,    help="Thermostat target temperature [K] during exploring")
+parser.add_argument("--gamma",           type=float, default=0.1,       help="Langevin damping [1/ps, in internal units]")
+parser.add_argument("--nExplore",        type=int,   default=500,       help="Exploring duration in MD steps (perVF steps accumulate)")
+parser.add_argument("--nRelax",          type=int,   default=100000,    help="Relaxation duration in MD steps before forcing exploring if not converged")
 args = parser.parse_args()
 
 nSys = args.nSys
@@ -68,22 +84,26 @@ uff.init(
     sBondTypes=sBondTypes,
     sAngleTypes=sAngleTypes,
     sDihedralTypes=sDihedralTypes,
-    bMMFF=True,
-    bUFF=True,
+    bMMFF=True, # this must be true for both UFF and MMFF
+    bUFF=args.bUFF,  # if this is false, we use MMFF
     GridFF=bGridFF, gridnPBC=gridnPBC,
     T=T, gamma=gamma, nExplore=nExplore, nRelax=nRelax
 )
+# Set time step (reduce for light molecules like H2O)
+uff.set_dt_default(args.dt)
+
 # First set core switches (enables NonBonded), then UFF component/clamp flags
 uff.setSwitches2(
         NonBonded=bNonBonded,
         SurfAtoms=doSurfAtoms,
         GridFF=bGridFF,
     )
-uff.setSwitchesUFF(
-    DoBond=1, DoAngle=1, DoDihedral=1, DoInversion=1, DoAssemble=1,
-    SubtractBondNonBond = -1 if bNonBonded else -1,
-    ClampNonBonded      = -1 if bNonBonded else -1
-)
+if args.bUFF:
+    uff.setSwitchesUFF(
+        DoBond=1, DoAngle=1, DoDihedral=1, DoInversion=1, DoAssemble=1,
+        SubtractBondNonBond = -1 if bNonBonded else -1,
+        ClampNonBonded      = -1 if bNonBonded else -1
+    )
 
 
 # Remove old trajectories
@@ -98,8 +118,7 @@ uff.setTrjName(trj_fname_="traj_UFF", savePerNsteps=10, bDel=True)
 
 # Throughput loop: call MDloop repeatedly
 for i in range(loops):
-    # iParalel: 2 or 3 uses GPU path on multi; perVF propagates to kernels
-    uff.MDloop(perframe=perframe, Ftol=Fconv, iParalel=3, perVF=perVF)
+    uff.MDloop(perframe=perframe, Ftol=Fconv, perVF=perVF)
     # Optionally print simple progress every so often
     if (i+1) % 50 == 0:
         print(f"[UFF] MDloop {i+1}/{loops} done")

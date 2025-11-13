@@ -53,7 +53,7 @@ class Atoms{ public:
         memcpy( atypes, p.atypes, sizeof(int)  *natoms );
         memcpy( apos,   p.apos,   sizeof(Vec3d)*natoms );
         // if(charge){ memcpy( charge, p.charge, sizeof(double)*natoms ); } MolecularDatabase falls with this
-        
+     
     }
 
     Atoms() = default;

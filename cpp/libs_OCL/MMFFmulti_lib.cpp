@@ -99,8 +99,21 @@ void init_buffers_UFF(){
         ibuffers.insert( { "dihNgs",    (int*)W.ffu.dihNgs    } );
         ibuffers.insert( { "invNgs",    (int*)W.ffu.invNgs    } );
 
+        fbuffers.insert( { "gpu_atoms",    (float*)W.atoms   } );
+        fbuffers.insert( { "gpu_aforces",  (float*)W.aforces } );
+        fbuffers.insert( { "gpu_avel",     (float*)W.avel    } );
+        fbuffers.insert( { "gpu_constr",   (float*)W.constr  } );
 
-        // ---- TODO: GPU buffers for UFF
+        fbuffers.insert( { "gpu_REQs",     (float*)W.REQs    } );
+        fbuffers.insert( { "gpu_MMpars",   (float*)W.MMpars  } );
+        fbuffers.insert( { "gpu_BLs",      (float*)W.BLs     } );
+        fbuffers.insert( { "gpu_BKs",      (float*)W.BKs     } );
+        fbuffers.insert( { "gpu_Ksp",      (float*)W.Ksp     } );
+        fbuffers.insert( { "gpu_Kpp",      (float*)W.Kpp     } );
+
+        fbuffers.insert( { "gpu_lvecs",    (float*)W.lvecs   } );
+        fbuffers.insert( { "gpu_ilvecs",   (float*)W.ilvecs  } );
+        fbuffers.insert( { "gpu_pbcshifts",(float*)W.pbcshifts } );
 
     }
     // UFF-specific dimensions
@@ -264,6 +277,11 @@ void setSwitchesUFF( int DoBond, int DoAngle, int DoDihedral, int DoInversion, i
         W.uff_ocl->setup_kernels( Rdamp, FmaxNB, SubNBTorsion );
     }
     #undef _setbool
+}
+
+double get_uff_energy( double* energies, int isys_choice, bool bDownload ){
+    if(!W.bUFF){ return 0.0; }
+    return W.get_uff_energy( energies, isys_choice, bDownload );
 }
 
 //int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF, int iParalel ){
@@ -439,6 +457,11 @@ int scan_relaxed( int nConf, double* confs_, double* outF_, int niter, double dt
         }
     }
     return nDone;
+}
+
+void set_dt_default( double dt ){
+    W.dt_default = dt;
+    printf("set_dt_default(%g)\n", dt);
 }
 
 void set_opt(

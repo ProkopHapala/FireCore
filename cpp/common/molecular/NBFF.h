@@ -1201,8 +1201,17 @@ class NBFF: public ForceField{ public:
         return npbc;
     }
 
+
+    void print_REQs(){
+        printf("NBFF::print_REQs(n=%i) @REQs=%p atypes=%p\n", natoms, REQs, atypes );
+        for(int i=0; i<natoms; i++){
+            if(atypes){ printf("nb_atom[%i] REQ(%7.3f,%g,%g,%g) pos(%7.3f,%7.3f,%7.3f) atyp %i \n", i, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w,  apos[i].x,apos[i].y,apos[i].z, atypes[i] ); }
+            else      { printf("nb_atom[%i] REQ(%7.3f,%g,%g,%g) pos(%7.3f,%7.3f,%7.3f) \n",         i, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w,  apos[i].x,apos[i].y,apos[i].z            ); }
+        }
+    }
+
     void print_nonbonded(){
-        printf("NBFF::print_nonbonded(n=%i)\n", natoms );
+        printf("NBFF::print_nonbonded(n=%i) @REQs=%p @atypes=%p @PLQd=%p\n", natoms, REQs, atypes, PLQd);
         for(int i=0; i<natoms; i++){
             Quat4d PLQ = Quat4dNAN;
             if(PLQd){PLQ = PLQd[i];}

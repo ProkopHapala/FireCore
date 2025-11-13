@@ -43,19 +43,19 @@ struct FIRE_setup{
 };
 
 struct FIRE{
-    constexpr static float ff_safety = 1.e-32f;
+    constexpr static double ff_safety = 1.e-32;
     FIRE_setup* par=0;
 
     int   lastNeg;
-    float ff,vv,vf;
-    float cos_vf;
-    float renorm_vf;
-    float cf,cv;
+    double ff,vv,vf;  // Changed to double for UFF precision
+    double cos_vf;
+    double renorm_vf;
+    double cf,cv;
     float dt;
     float damping;
     int id;
 
-    float damp_func_FIRE( float c, float& cv ){ // Original FIRE damping
+    double damp_func_FIRE( double c, double& cv ){ // Original FIRE damping
         double cf;
         if( c < 0.0 ){
             cv = par->cv_kill;
@@ -70,8 +70,8 @@ struct FIRE{
     }
 
     void update_params(){
-        float f_len = sqrt(ff);
-        float v_len = sqrt(vv);
+        double f_len = sqrt(ff);
+        double v_len = sqrt(vv);
         cos_vf      = vf    / ( f_len*v_len + ff_safety );
         //renorm_vf   = v_len / ( f_len       + ff_safety );
         renorm_vf   = v_len / ( f_len       + v_len );
@@ -121,7 +121,8 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     Quat4f* atoms      =0;
     Quat4f* aforces    =0;
     Quat4f* avel       =0;
-    Quat4f* cvfs       =0;
+    Quat4f* cvfs       =0;  // MMFF uses float precision
+    Quat4d* cvfs_d     =0;  // UFF uses double precision
 
     FIRE*   fire       =0;  // FIRE-relaxation state
     Quat4f* MDpars     =0;  // Molecular dynamics params
@@ -164,6 +165,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     std::vector<int>     host_a2f_offsets;
     std::vector<int>     host_a2f_counts;
     std::vector<int>     host_a2f_indices;
+    std::vector<Quat4f>  host_REQs_UFF;
 
 
     // ---- Groups of atoms
@@ -285,11 +287,12 @@ void realloc( int nSystems_ ){
         host_a2f_offsets  .resize(nSystems * (nAtoms+1));
         host_a2f_counts   .resize(nSystems * nAtoms);
         host_a2f_indices  .resize(nSystems * nA2F);
+        host_REQs_UFF     .resize(nSystems * nAtoms);
         _realloc ( atoms,     uff_ocl->nAtomsTot  );
         _realloc0( aforces,   uff_ocl->nAtomsTot  , Quat4fZero );
         _realloc0( avel,      uff_ocl->nAtomsTot  , Quat4fZero );
-        _realloc0( cvfs,      uff_ocl->nAtomsTot  , Quat4fZero );
-        _realloc( REQs,       uff_ocl->nAtomsTot );
+        _realloc0( cvfs_d,    uff_ocl->nAtomsTot  , Quat4dZero );  // UFF uses double precision
+        //_realloc( REQs,       uff_ocl->nAtomsTot );
         _realloc( pbcshifts, uff_ocl->nSystems * ((uff_ocl->npbc>0)?uff_ocl->npbc:1) ); // use UFF OCL npbc for host buffer
     }else{
         printf( "MolWorld_sp3_multi::realloc() MMFF Systems %i nAtoms %i nnode %i \n", nSystems, ffl.natoms,  ffl.nnode );
@@ -297,7 +300,7 @@ void realloc( int nSystems_ ){
         _realloc ( atoms,     ocl.nvecs*nSystems  );
         _realloc0( aforces,   ocl.nvecs*nSystems  , Quat4fZero );
         _realloc0( avel,      ocl.nvecs*nSystems  , Quat4fZero );
-        _realloc0( cvfs,      ocl.nvecs*nSystems  , Quat4fZero );
+        _realloc0( cvfs,      ocl.nvecs*nSystems  , Quat4fZero );  // MMFF uses float precision
         _realloc0( constr,    ocl.nAtoms*nSystems , Quat4fOnes*-1. );
         _realloc0( constrK,   ocl.nAtoms*nSystems , Quat4fOnes*-1. );
         _realloc( neighs,    ocl.nAtoms*nSystems );
@@ -453,12 +456,9 @@ virtual void init() override {
 
     if(!database){
         database = new MolecularDatabase();
-        database->setDescriptors(&ffu);
-        printf("database created \n"); exit(0);
     }
-    else{
-        database->setDescriptors(&ffu);
-    }
+    if(bUFF){database->setDescriptors(&ffu);}else{database->setDescriptors(&ffl);}
+
     if(bUFF){
             setup_UFF_ocl();
             if(!uff_ocl->bKernelPrepared)uff_ocl->setup_kernels( (float)ffu.Rdamp, (float)ffu.FmaxNonBonded, (float)ffu.SubNBTorsionFactor );
@@ -854,12 +854,12 @@ void pack_uff_system( int isys, const UFF& ff, bool bParams=false, bool bForces=
 
         // Pack REQs
         for(int i=0; i<nAtoms; ++i){
-            REQs [i0a + i] = (Quat4f){(float)ff.REQs[i].x, (float)ff.REQs[i].y, (float)ff.REQs[i].z, (float)ff.REQs[i].w};
+            host_REQs_UFF[i0a + i] = (Quat4f){(float)ff.REQs[i].x, (float)ff.REQs[i].y, (float)ff.REQs[i].z, (float)ff.REQs[i].w};
         }
 
         if(isys == 0 || isys == 1){ // DEBUG: Print REQs for first two systems
             printf("MolWorld_sp3_multi::pack_uff_system(isys=%d).REQs:\n", isys);
-            for(int i=0; i<nAtoms; ++i){ Quat4f req = REQs[i0a + i];  printf("REQ [s=%d,a=%d]: %g %g %g %g\n", isys, i, req.x, req.y, req.z, req.w); }
+            for(int i=0; i<nAtoms; ++i){ Quat4f req = host_REQs_UFF[i0a + i];  printf("REQ [s=%d,a=%d]: %g %g %g %g\n", isys, i, req.x, req.y, req.z, req.w); }
         }
 
         // Pack per-atom topology used by UFF kernels
@@ -969,8 +969,8 @@ void upload_uff( bool bParams, bool bForces, bool bVel, bool blvec, bool bPrint=
     int nInversionsTot = uff_ocl->nSystems * uff_ocl->nInversions;
     int nA2FTot        = uff_ocl->nSystems * uff_ocl->nA2F;
     if(bPrint)printf("MolWorld_sp3_multi::upload_uff() nAtomsTot=%i nBondsTot=%i nAnglesTot=%i nDihedralsTot=%i nInversionsTot=%i nA2FTot=%i \n", nAtomsTot, nBondsTot, nAnglesTot, nDihedralsTot, nInversionsTot, nA2FTot);
-    err|=             uff_ocl->upload( uff_ocl->ibuff_apos,  (float*)atoms, nAtomsTot );
-    err|=             uff_ocl->upload( uff_ocl->ibuff_REQs,  (float*)REQs,  nAtomsTot );
+    err|=             uff_ocl->upload( uff_ocl->ibuff_apos,  (float*)atoms,               nAtomsTot );
+    err|=             uff_ocl->upload( uff_ocl->ibuff_REQs,  (float*)host_REQs_UFF.data(), nAtomsTot );
     if(bForces) err|= uff_ocl->upload( uff_ocl->ibuff_fapos, (float*)aforces );
     if(blvec){
         err|= uff_ocl->upload( uff_ocl->ibuff_lvecs,     lvecs );
@@ -1026,8 +1026,9 @@ void download_uff_sys( int isys, bool bForces, bool bVel ){
 
 
 void download_uff( bool bForces, bool bVel ){
-    uff_ocl->download_results( (float*)aforces, 0 ); // energies not handled yet
-    uff_ocl->download( uff_ocl->ibuff_apos, (float*)atoms );
+    //uff_ocl->download_results( (float*)aforces ); // energies not handled yet
+    uff_ocl->download( uff_ocl->ibuff_fapos, (float*)aforces);
+    uff_ocl->download( uff_ocl->ibuff_apos,  (float*)atoms );
     uff_ocl->finishRaw();
 }
 
@@ -1083,6 +1084,7 @@ void evalVF( int n, Quat4f* fs, Quat4f* vs, FIRE& fire, Quat4f& MDpar ){
     MDpar.w = fire.cf;
 }
 
+// Float version for MMFF
 void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring ){
     //printf("evalVF() fire[%i]\n", fire.id );
     Vec3f cvf=Vec3fZero;
@@ -1092,6 +1094,34 @@ void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring
     }
     fire.vv=cvf.y;
     fire.ff=cvf.x;
+    fire.vf=cvf.z;
+    fire.update_params();
+    if(bExploring){
+        //MDpar.x = fire.par->dt_max;
+        MDpar.x = fire.dt;
+        MDpar.y = 10000.0;
+        MDpar.z = 1.0;
+        MDpar.w = 0.0;
+    }else{
+        MDpar.x = fire.dt;
+        MDpar.y = 10000.0;
+        MDpar.z = fire.cv;
+        MDpar.w = fire.cf;
+    }
+}
+
+// Double version for UFF
+void evalVF_new( int n, Quat4d* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring ){
+    //printf("evalVF() fire[%i]\n", fire.id );
+    //Vec3f cvf=Vec3fZero;
+    Vec3d cvf=Vec3dZero;
+    for(int i=0; i<n; i++){
+        cvf.add( cvfs[i].f );
+        cvfs[i] = Quat4dZero;
+        //cvfs[i] = Quat4fZero;
+    }
+    fire.ff=cvf.x;
+    fire.vv=cvf.y;
     fire.vf=cvf.z;
     fire.update_params();
     if(bExploring){
@@ -1118,54 +1148,57 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
     for(int isys=0; isys<nSystems; isys++){
         int i0v = isys * ocl.nvecs;
         double f2 = fire[isys].ff;
-        // -------- Global Optimization
-        if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){            // Start Exploring
-            nbConverged++;
-            nStepConvSum+=gopts[isys].istep;  
-            // if(gopts[isys].istep < 1000){
-            //     saveXYZ_system(isys, "fast_converged.xyz", "# CONVERGED", "w");
-            // }
+        bool allowExplore = (!bOnlyRelax) && (gopts[isys].nExplore > 0);
+        if(!allowExplore){
+            gopts[isys].bExploring = false;
+            gopts[isys].istep = 0;
+        }else{
+            // -------- Global Optimization
+            if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){            // Start Exploring
+                nbConverged++;
+                nStepConvSum+=gopts[isys].istep;  
 
-            gopts[isys].startExploring();
-            if(bGroups){
-                bGroupUpdate=true;
-                //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Start Exploring \n", isys );
-                //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0} ); }   // Shift driver
-                //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, {tsc,0.0,0.0} ); }   // group rotate driver
-                for(int ig=0; ig<ocl.nGroup; ig++){
-                    Vec2f fDrive = groups.groups[ig].fDrive;
-                    setGroupDrive(isys, ig, {fDrive.x,fDrive.x,0.0}, {fDrive.y,0.0,0.0} );
-                    //setGroupDrive(isys, ig, {fsc,fsc,0.0}, {tsc,0.0,0.0} );
-                }   // Shift driver
-            }
-        }
-        else if( ( gopts[isys].istep > gopts[isys].nRelax ) && (!gopts[isys].bExploring)){
-            //printf("(1) Entering non-converged branch for isys=%d, istep=%d\n", isys, gopts[isys].istep);
-            download_uff( true, false );
-            err |= uff_ocl->finishRaw();  OCL_checkError(err, "evalVFs().UFF.download");
-            nbNonConverged++;
-            nStepNonConvSum+=gopts[isys].istep;            
-            gopts[isys].startExploring();
-            if(bGroups){ bGroupUpdate=true; }
-
-            int i0v = isys * ocl.nvecs;
-            if(bUFF){
-                    unpack_uff_system( isys, ffu, true, false );
-                    if(database && database->addIfNewDescriptor(&ffu)==-1){
-                        sprintf(tmpstr,"# %i E %g |F| %g istep=%i", database->getNMembers(), ffu.Etot, sqrt(ffu.cvf.z), gopts[isys].istep );
-                        //saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
-                        database->convergedStructure.push_back(false);
+                gopts[isys].startExploring();
+                if(bGroups){
+                    bGroupUpdate=true;
+                    //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Start Exploring \n", isys );
+                    //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0} ); }   // Shift driver
+                    //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, {tsc,0.0,0.0} ); }   // group rotate driver
+                    for(int ig=0; ig<ocl.nGroup; ig++){
+                        Vec2f fDrive = groups.groups[ig].fDrive;
+                        setGroupDrive(isys, ig, {fDrive.x,fDrive.x,0.0}, {fDrive.y,0.0,0.0} );
+                        //setGroupDrive(isys, ig, {fsc,fsc,0.0}, {tsc,0.0,0.0} );
+                    }   // Shift driver
                 }
-                if(bGroups)for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0}, {tsc,0.0,0.0} ); }
             }
+            else if( ( gopts[isys].istep > gopts[isys].nRelax ) && (!gopts[isys].bExploring)){
+                //printf("(1) Entering non-converged branch for isys=%d, istep=%d\n", isys, gopts[isys].istep);
+                download_uff( true, false );
+                err |= uff_ocl->finishRaw();  OCL_checkError(err, "evalVFs().UFF.download");
+                nbNonConverged++;
+                nStepNonConvSum+=gopts[isys].istep;            
+                gopts[isys].startExploring();
+                if(bGroups){ bGroupUpdate=true; }
+
+                int i0v = isys * ocl.nvecs;
+                if(bUFF){
+                        unpack_uff_system( isys, ffu, true, false );
+                        if(database && database->addIfNewDescriptor(&ffu)==-1){
+                            sprintf(tmpstr,"# %i E %g |F| %g istep=%i", database->getNMembers(), ffu.Etot, sqrt(ffu.cvf.z), gopts[isys].istep );
+                            //saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
+                            database->convergedStructure.push_back(false);
+                    }
+                    if(bGroups)for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0}, {tsc,0.0,0.0} ); }
+                }
+            }
+            if( gopts[isys].update(nPerVFs) ){ // Stop Exploring
+                if(bGroups)bGroupUpdate=true;
+                nExploring++;
+                nStepExplorSum+=gopts[isys].nExplore;
+                //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
+                if(bGroups)for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, Vec3fZero ); }
+            };
         }
-        if( gopts[isys].update(nPerVFs) ){ // Stop Exploring
-            if(bGroups)bGroupUpdate=true;
-            nExploring++;
-            nStepExplorSum+=gopts[isys].nExplore;
-            //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
-            if(bGroups)for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, Vec3fZero ); }
-        };
         bExploring |= gopts[isys].bExploring;
         //printf("gopts[%i].bExploring=%i\n", isys, gopts[isys].bExploring );
     }
@@ -1189,17 +1222,22 @@ double evalVFs( double Fconv=1e-6 ){
     // UFF path: use uff_ocl buffers and sizes; handle minima-hopping here
     if(bUFF){
         int errUF=0;
-        uff_ocl->download( uff_ocl->ibuff_cvf, cvfs );
+        uff_ocl->download( uff_ocl->ibuff_cvf, cvfs_d );  // UFF uses double precision buffer
         errUF |= uff_ocl->finishRaw();  OCL_checkError(errUF, "evalVFs().UFF.download");
         iSysFMax=-1;
         for(int isys=0; isys<nSystems; isys++){
 
             nbEvaluation += nPerVFs;
             int i0a = isys * uff_ocl->nAtoms;
-            //if(isys==15){printf("evalVFs() isys=%i cvf[15] %g %g %g\n", isys, cvfs[i0a].x, cvfs[i0a].y, cvfs[i0a].z );}
-            evalVF_new( uff_ocl->nAtoms, cvfs+i0a, fire[isys], MDpars[isys], gopts[isys].bExploring );
-            //if(isys==15){printf("%i %g\n", isys, fire[isys].ff ); if(fire[isys].ff<1e-8){printf("Zkonvergovalo to\n");exit(0);} }
+            evalVF_new( uff_ocl->nAtoms, cvfs_d+i0a, fire[isys], MDpars[isys], gopts[isys].bExploring );  // UFF uses double precision
             double f2 = fire[isys].ff;
+            
+            // *** ADD DIAGNOSTIC OUTPUT ***
+            if(isys == 0 && (nbEvaluation % 100 == 0)){  // Print every 100 evaluations for system 0
+                printf("evalVFs() DEBUG: isys=%3i nbEval=%5i |F|=%6e (Fconv=%6e) converged?=%i bExploring=%i TDrives(x=T=%6g,y=gamma=%4g,w=seed=%8g)\n",  isys, nbEvaluation, sqrt(f2), Fconv, (f2<F2conv), gopts[isys].bExploring, TDrive[isys].x,TDrive[isys].y,TDrive[isys].w );
+            }
+            // *** END DIAGNOSTIC ***
+            
             if(f2>F2max){ F2max=f2; iSysFMax=isys; }
             if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){
                 uff_ocl->download( uff_ocl->ibuff_apos, (float*)atoms );
@@ -1224,19 +1262,23 @@ double evalVFs( double Fconv=1e-6 ){
 
 
             // Set thermostat & map MDpars for UFF kernel
-            if( gopts[isys].bExploring && !bOnlyRelax ){
-                TDrive[isys].x = go.T_target;
-                TDrive[isys].y = go.gamma_damp;
+            bool allowExplore = gopts[isys].bExploring && (gopts[isys].nExplore > 0) && !bOnlyRelax;
+            if( allowExplore ){
+                TDrive[isys].x = (float)go.T_target;
+                TDrive[isys].y = (float)go.gamma_damp;
                 TDrive[isys].z = 0.0f;
-                TDrive[isys].w = randf(-1.0,1.0);           // force limit for kernel
+                TDrive[isys].w = randf(-1.0f,1.0f);           // force limit for kernel
             }else{
+                TDrive[isys].x = 0.0f;
                 TDrive[isys].y = -1.0f;                 // disable Langevin
+                TDrive[isys].z = 0.0f;
+                TDrive[isys].w = 0.0f;
             }
         }
 
         errUF |= uff_ocl->upload( uff_ocl->ibuff_MDpars, MDpars );
         errUF |= uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
-        errUF |= uff_ocl->upload( uff_ocl->ibuff_cvf   , cvfs   );
+        errUF |= uff_ocl->upload( uff_ocl->ibuff_cvf   , cvfs_d );  // UFF uses double precision buffer
         OCL_checkError(errUF, "evalVFs().UFF.upload");
     }
     else{
@@ -1291,13 +1333,17 @@ double evalVFs( double Fconv=1e-6 ){
             //     //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
             //     for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, Vec3fZero ); }
             // };
-            if( gopts[isys].bExploring && !bOnlyRelax ){
-                TDrive[isys].x = go.T_target;  // Temperature [K]
-                TDrive[isys].y = go.gamma_damp;  // gamma_damp
+            bool allowExplore = gopts[isys].bExploring && (gopts[isys].nExplore > 0) && !bOnlyRelax;
+            if( allowExplore ){
+                TDrive[isys].x = (float)go.T_target;  // Temperature [K]
+                TDrive[isys].y = (float)go.gamma_damp;  // gamma_damp
                 TDrive[isys].z = 0;    // ?
-                TDrive[isys].w = randf(-1.0,1.0);
+                TDrive[isys].w = randf(-1.0f,1.0f);
             }else{
+                TDrive[isys].x = 0.0f;
                 TDrive[isys].y = -1.0; // gamma_damp
+                TDrive[isys].z = 0.0f;
+                TDrive[isys].w = 0.0f;
             }
             //printf( "evalVFs()[iSys=%i]  bExploring=%i (%i/%i)  |F|=%g \n", isys, gopts[isys].bExploring,   gopts[isys].istep, gopts[isys].nExplore,  sqrt(f2) );
             //printf( "evalF2[sys=%i] |f|=%g MDpars(dt=%g,damp=%g,cv=%g,cf=%g)\n", isys, sqrt(f2), MDpars[isys].x, MDpars[isys].y, MDpars[isys].z, MDpars[isys].w );
@@ -1451,13 +1497,32 @@ virtual void setConstrains(bool bClear=true, double Kfix=1.0 ){
     //exit(0);
 }
 
-
-
-
-
 virtual int paralel_size( )override{ return nSystems; }
 
-double eval_UFF_ocl( int niter=1 ){
+double get_uff_energy( double* Energies=0, int isys_choice=0, bool bDownload=true ){
+    if(bDownload){ 
+        uff_ocl->download( uff_ocl->ibuff_fapos, aforces );
+        uff_ocl->finishRaw();
+    }
+    int nSys= uff_ocl->nSystems;
+    int na  = uff_ocl->nAtoms;
+    double E_choice=0;
+    for(int isys=0; isys<nSystems; isys++){
+        int i0a   = isys*na;
+        bool choosen= isys_choice==isys;
+        if((Energies!=0) || choosen){
+            double E = 0.0;
+            for(int ia=0; ia<na; ia++){
+                E += aforces[i0a+ia].w;
+            }
+            if(Energies ){ Energies[isys] += E; }
+            if(choosen  ){ E_choice       += E; }
+        }
+    }
+    return E_choice;
+}
+
+double eval_UFF_ocl( int niter=1, double* Energies=0, int isys_choice=0 ){
     printf("MolWorld_sp3_multi::eval_UFF_ocl()\n");
     if(!bUFF) return 0.0;
     if(!uff_ocl->bKernelPrepared) uff_ocl->setup_kernels( ffu.Rdamp, ffu.FmaxNonBonded, ffu.SubNBTorsionFactor ); // setup kernels if not done yet
@@ -1465,10 +1530,7 @@ double eval_UFF_ocl( int niter=1 ){
         uff_ocl->eval();
     }
     uff_ocl->finishRaw();
-    std::vector<float> energies( nSystems * 5 );
-    uff_ocl->download( uff_ocl->ibuff_energies, energies.data() );
-    uff_ocl->finishRaw();
-    return energies[4]; // E_tot for system 0
+    return get_uff_energy(Energies,isys_choice);
 }
 
 void setup_UFF_ocl(){
@@ -1784,6 +1846,24 @@ int saveXYZ_system(int isys, const char* fname, const char* comment="#comment", 
     return 0;
 }
 
+int save_replicas_xyz_uff( const char* fname ){
+    if(!bUFF){ printf("save_replicas_xyz_uff() called but bUFF==false\n"); return -1; }
+    download_uff( true, false );
+    std::vector<double> energies(nSystems, 0.0);
+    get_uff_energy( energies.data(), -1, false );
+    int err = 0;
+    for(int isys=0; isys<nSystems; isys++){
+        unpack_uff_system(isys, ffu, true, true);
+        double Etot = energies[isys];
+        double Fmag = sqrt(fire[isys].ff);
+        char comment[256];
+        sprintf(comment, "# isys=%i Etot=%12.6e |F|=%12.6e", isys, Etot, Fmag);
+        const char* mode = (isys==0) ? "w" : "a";
+        err |= params.saveXYZ( fname, ffu.natoms, ffu.atypes, ffu.apos, comment, ffu.REQs, mode, true );
+    }
+    return err;
+}
+
 virtual void setSystemReplica (int i){
     int err=0;
     iSystemCur = i;
@@ -2049,7 +2129,7 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
             task_MMFFloc_test->enque_raw();
         }
         double t = ( getCPUticks()-T0 )*tick2second;
-        err |= ocl.finishRaw(); OCL_checkError(err, "eval_MMFFf4_ocl.test.finish");
+        err |= ocl.finishRaw(); OCL_checkError(err, "MolWorld_sp3_multi::eval_MMFFf4_ocl.test.finish");
         printf("eval_MMFFf4_ocl.test(itest=%i) time=%7.3f[ms] %7.3f[us/iter] niter=%i na=%i \n", itest, t*1000, t*1e+6, niter, ocl.nAtoms );
         return niter;
         //exit(0);
@@ -2105,8 +2185,8 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
         //fire[iSystemCur].print();
     }
     this->download(false,false);
-    err |= ocl.finishRaw(); OCL_checkError(err, "eval_MMFFf4_ocl.finish");
-    printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
+    err |= ocl.finishRaw(); OCL_checkError(err, "MolWorld_sp3_multi::eval_MMFFf4_ocl.finish");
+    printf("MolWorld_sp3_multi::eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
     }
 
     // ===============================================================================================================================================================================
@@ -2145,8 +2225,26 @@ int    count_updateMultiExploring = 0;
 int    count_loop_iterations = 0;
 int    count_evalVFs = 0;
 
+int save_trj_uff_ocl( int isys, int step, double Fconv ){
+    download_uff( true, false );
+    char fname[256]; sprintf(fname, "%s_%03i.xyz", trj_fname, isys);
+    unpack_uff_system( isys, ffu, true, false );
+    char comment[1024];
+    int converged = (fire[isys].ff < (Fconv*Fconv)) && (!gopts[isys].bExploring);
+    const char* mode = gopts[isys].bExploring ? "EXPLOR" : "RELAX ";
+    sprintf( comment,"# step %6i %s |F|=%9.3e(Fconv=%9.3e) conv=%6i nbEval=%6i FIRE(dt=%8.2e,damp=%8.2e,cos=%+7.3f,cv=%+7.3f,cf=%+7.3f) TDrive(T=%6.1f,gamma=%6.3f,seed=%+7.3f)",
+        step,  mode, sqrt(fire[isys].ff), Fconv, converged, nbEvaluation,
+        fire[isys].dt, fire[isys].damping, fire[isys].cos_vf, fire[isys].cv,  fire[isys].cf,
+        (double)TDrive[isys].x,(double)TDrive[isys].y, (double)TDrive[isys].w
+    );
+    return saveXYZ_system(isys, fname, comment, "a");
+}
+
 int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim ){
+    printf("MolWorld_sp3_multi::run_uff_ocl() bBonding=%i bSurfAtoms=%i bGridFF=%i bNonBonded=%i  dt=%10g \n", ffu.bDoBond, bSurfAtoms, bGridFF, bNonBonded, dt );
+
     long T0 = getCPUticks();  // Start timing this call
+    double F2conv = Fconv*Fconv;
     if(!bUFF){ printf("MolWorld_sp3_multi::run_uff_ocl(): bUFF=false\n"); return 0; }
     if(!uff_ocl){ printf("MolWorld_sp3_multi::run_uff_ocl(): uff_ocl==nullptr\n"); return 0; } // This should not happen, uff_ocl is initialized in init()
     if(verbosity>0)printf("MolWorld_sp3_multi::run_uff_ocl( bSurfAtoms=%i,  bGridFF=%i, bNonBonded=%i | niter=%i, dt=%f, damping=%f, Fconv=%f, Flim=%f) \n",bSurfAtoms, bGridFF, bNonBonded,  niter, dt, damping, Fconv, Flim);
@@ -2157,27 +2255,36 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
             MDpars[i].z = 1.0f-damping;   // velocity damping factor (1.0 - damping)
             fire[i].dt = dt;
             fire[i].damping = damping;
-            MDpars[i].w = 0.0f;             // unused
-            TDrive[i]   = (Quat4f){(float)go.T_target,(float)go.gamma_damp,0.0f,randf(-1.0f,1.0f)}; // if starting with exploration
-            //TDrive[i]   = (Quat4f){0.0f,-1.0f,0.0f,randf(-1.0f,1.0f)};
-            if(TDrive[i].y<0){ gopts[i].bExploring = false; }
-            else{ gopts[i].bExploring = true; }
+            MDpars[i].w = 0.0f;     
+            // Only start exploring if nExplore is actually greater than 0
+            bool allowExplore = (!bOnlyRelax) && (gopts[i].nExplore > 0);
+            float temp = allowExplore ? (float)go.T_target : 0.0f;
+            float gamma = allowExplore ? (float)go.gamma_damp : -1.0f;
+            float seed = allowExplore ? randf(-1.0f,1.0f) : 0.0f;
+            TDrive[i]   = (Quat4f){temp,gamma,0.0f,seed};
+            if(!allowExplore){
+                gopts[i].bExploring = false;
+                gopts[i].istep = 0;
+            }else{
+                gopts[i].bExploring = true;
+            }
         }
+
+
+
         uff_ocl->upload( uff_ocl->ibuff_MDpars, MDpars );
         uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
-
         uff_ocl->setup_updateAtomsMMFFf4( uff_ocl->nAtoms, 0 ); // nNode==0 for UFF
 
         // Initialize dynamic buffers
         uff_ocl->upload( uff_ocl->ibuff_avel, avel );   // zero initial velocities
-        uff_ocl->upload( uff_ocl->ibuff_cvf , cvfs );   // clear accumulators
+        uff_ocl->upload( uff_ocl->ibuff_cvf , cvfs_d );   // clear accumulators (UFF double precision)
 
         // Clear timing file and write header
         FILE* f = fopen("times_run_uff_ocl.dat", "w");
         if(f){
             fprintf(f, "# Timing data for run_uff_ocl (all times in seconds)\n");
-            fprintf(f, "# %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n",
-                "t_total", "t_updateME", "t_bonding", "t_gridff", "t_surfatoms", "t_nonbond", "t_updateAt", "t_trajSave", "t_evalVFs", "nloop");
+            fprintf(f, "# %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n", "t_total", "t_updateME", "t_bonding", "t_gridff", "t_surfatoms", "t_nonbond", "t_updateAt", "t_trajSave", "t_evalVFs", "nloop");
             fclose(f);
         }
 
@@ -2205,31 +2312,19 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
 
         // Inner MD steps between VF evaluations
         for(int iPer=0; iPer<nPerVFs; iPer++){
-            if     (bBonding)  { T_2 = getCPUticks(); uff_ocl->eval(false);                         Nticks_loop_bonding   += (getCPUticks()-T_2); }
-            else               { T_2 = getCPUticks(); uff_ocl->task_clear_fapos      ->enque();      Nticks_loop_bonding   += (getCPUticks()-T_2); }
-
+            if     (bBonding)   { T_2 = getCPUticks(); uff_ocl->eval(false);                      Nticks_loop_bonding   += (getCPUticks()-T_2); }
+            else                { T_2 = getCPUticks(); uff_ocl->task_clear_fapos      ->enque();  Nticks_loop_bonding   += (getCPUticks()-T_2); }
             if(bSurfAtoms){
-                if     (bGridFF   ){ T_2 = getCPUticks(); uff_ocl->task_NBFF_Grid_Bspline->enque();     Nticks_loop_gridff    += (getCPUticks()-T_2); }
-                else { T_2 = getCPUticks();  uff_ocl->task_SurfAtoms->enque();  Nticks_loop_surfatoms += (getCPUticks()-T_2);  }
+                if     (bGridFF){ T_2 = getCPUticks(); uff_ocl->task_NBFF_Grid_Bspline->enque();  Nticks_loop_gridff    += (getCPUticks()-T_2); }
+                else            { T_2 = getCPUticks(); uff_ocl->task_SurfAtoms        ->enque();  Nticks_loop_surfatoms += (getCPUticks()-T_2); }
             }
-            if(bNonBonded && !bGridFF){ T_2 = getCPUticks(); uff_ocl->task_NBFF             ->enque();     Nticks_loop_nonbonded += (getCPUticks()-T_2); }
+            if(bNonBonded && !bGridFF){ T_2 = getCPUticks(); uff_ocl->task_NBFF       ->enque();  Nticks_loop_nonbonded += (getCPUticks()-T_2); }
             T_2 = getCPUticks();
             if(bMoving) uff_ocl->task_updateAtoms->enque();
             Nticks_loop_updateAtoms += (getCPUticks()-T_2);
-
             T_2 = getCPUticks();
-            // Trajectory saving
-            if((savePerNsteps>0) && trj_fname && ((nloop % savePerNsteps)==0)){
-                download_uff( true, false );
-                int isys=0;
-                char fname[256]; sprintf(fname, "%s_%03i.xyz", trj_fname, isys);
-                unpack_uff_system( isys, ffu, true, false );
-                char comment[256];
-                if(gopts[isys].bExploring) sprintf(comment, "# step %d EXPLORING", nloop+1);
-                else                      sprintf(comment, "# step %d RELAXING",  nloop+1);
-                // sprintf(comment, "# step %d", nloop+1);
-                saveXYZ_system(isys, fname, comment, "a");
-            }
+
+            if((savePerNsteps>0) && trj_fname && ((nloop % savePerNsteps)==0)){ save_trj_uff_ocl(0, nloop+1, Fconv); }
             Nticks_loop_trajSave += (getCPUticks()-T_2);
             nloop++;
             niter--;
@@ -2255,7 +2350,6 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
     time_evalVFs              += Nticks_evalVFs              * tick2second;
 
     //printf("run_uff_ocl() time=%7.3f[ms] nloop=%i time_integrated=%7.3f[s]\n", dt_call*1000, nloop, time_integrated_run_uff_ocl);
-
     // Append timing data to file
     FILE* f = fopen("times_run_uff_ocl.dat", "a");
     if(f){
@@ -2538,6 +2632,7 @@ if(initial){
     time_loop_trajSave        += Nticks_loop_trajSave        * tick2second;
     time_evalVFs              += Nticks_evalVFs              * tick2second;
 
+    // printf("run_ocl_opt() time=%7.3f[ms] nloop=%i time_integrated=%7.3f[s]\n", dt_call*1000, nloop, time_integrated_run_uff_ocl);
 
     FILE* f = fopen("times_run_mmff_ocl.dat", "a");
     if(f){
@@ -2557,10 +2652,10 @@ if(initial){
     }
 
     // Mark as saved when t>=10s
-    if(!time_saved_run_uff_ocl && time_integrated_run_uff_ocl >= 10.0){
-        printf(">>> Timing data saved to times_run_mmff_ocl.dat at t=%.3f[s]\n", time_integrated_run_uff_ocl);
-        time_saved_run_uff_ocl = true;
-    }
+    // if(!time_saved_run_uff_ocl && time_integrated_run_uff_ocl >= 10.0){
+    //     printf(">>> Timing data saved to times_run_mmff_ocl.dat at t=%.3f[s]\n", time_integrated_run_uff_ocl);
+    //     time_saved_run_uff_ocl = true;
+    // }
     return niterdone;
 }
 
@@ -3037,6 +3132,9 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
             }
             
             // Print data to both console and file
+            //const char* data_fmt = "%15d %20d %20d %20g %20d %20d %20g %20g %20g %20d\n";
+            // 1iter 2ntot 3nNew 4Time 5Totally 6nbEvaluation 7itConvAvg 8itNonConvAv 9nStepExploringAvg 10evalTot "
+            //printf( "MDloop   1iter %8i 2ntot %8i 3nNew %8i 4Time %10g 5Totally %8i 6nbEvaluation %8i 7itConvAvg %10g 8itNonConvAv %10g 9nStepExploringAvg %10g 10evalTot %8i\n", 
             const char* data_fmt = "%15d %20d %20d %20g %20d %20d %20g %20g %20g %20d\n";
             printf(data_fmt, 
                 icurIter, database->totalEntries,
@@ -3056,7 +3154,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
                 nStepNonConvSum/((double)nbNonConverged),
                 nStepExplorSum/((double)nExploring),
                 (nStepConvSum+nStepNonConvSum+nStepExplorSum));
-            if((getCPUticks()-zeroT)*tick2second > 9.5){
+            if((getCPUticks()-zeroT)*tick2second > 9.5){ // reduce the time of simulation 9.5 was used to create nb_evale_vs_surf_size; 59.5 was used to create evaluation_vs_time
                 fclose(file);
                 //database->print();
                 exit(0);

@@ -39,3 +39,8 @@ tests/*/data/
 *.html
 *.svg
 *.csv
+
+
+!uff_data.dat
+!minima__11000_surf:_NaCl-Cl-hole_16x16_nPBC_(1,1,0)_nloc:_MMFF_32_move_32_NBFF_32_surf_32_gridFF_--_gridFFbSpline_--___replica:_1000_perframe:_100_perVF:_20_EXAMPLE.dat
+!minima__11110_surf:_NaCl-Cl-hole_16x16_nPBC_(1,1,0)_nloc:_MMFF_32_move_32_NBFF_--_surf_--_gridFF_--_gridFFbSpline_32___replica:_1000_perframe:_100_perVF:_20_EXAMPLE.dat
