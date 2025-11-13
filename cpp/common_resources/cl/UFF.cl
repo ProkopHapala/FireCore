@@ -6,7 +6,7 @@
 // ======================================================
 // Enable concise debug prints without changing C++ host interface.
 #define DBG_UFF 0         // 0/1 master switch
-#define IDBG_ATOM  (1)    // atom index to trace
+#define IDBG_ATOM  (-1)    // atom index to trace
 #define IDBG_BOND  (0)    // bond index to trace (global bond id), -1 disables
 #define IDBG_ANGLE (0)    // angle index to trace
 #define IDBG_DIH   (0)    // dihedral index to trace
@@ -1383,25 +1383,26 @@ __kernel void getNonBond_GridFF_Bspline(
     //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); }
     // if((iG==iG_DBG)&&(iS==iS_DBG)) printf( "GPU::getNonBond_GridFF_Bspline() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
     //if(( DBG_UFF>0 ) && 
-    if((iG==iG_DBG) && (iS==iS_DBG)){
+    if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
         printf( "GPU::getNonBond_GridFF_Bspline() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL );
+        printf( "GPU::getNonBond_GridFF_Bspline() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
+        printf( "GPU::getNonBond_GridFF_Bspline() grid_p0(%12.4f,%12.4f,%12.4f) grid_invStep(%12.4f,%12.4f,%12.4f) \n", grid_p0.x,grid_p0.y,grid_p0.z, grid_invStep.x, grid_invStep.y,grid_invStep.z );
+        printf( "GPU::getNonBond_GridFF_Bspline() grid_ns(%4i,%4i,%4i|%6i) GFFParams(%12.4f,%12.4f,%12.4f,%12.4f) \n", grid_ns.x,grid_ns.y,grid_ns.z,grid_ns.w, GFFParams.x,GFFParams.y,GFFParams.z,GFFParams.w );
+        float4 gp;
+        gp=BsplinePLQ[gridIndex( 0, 0, 0, grid_ns.xyz)]; printf( "GPU:BsplinePLQ[0,0,0] (%12.4f,%12.4f,%12.4f,%12.4f) \n", gp.x,gp.y,gp.z,gp.w );
+        gp=BsplinePLQ[gridIndex( 0,10,10, grid_ns.xyz)]; printf( "GPU:BsplinePLQ[1,1,1] (%12.4f,%12.4f,%12.4f,%12.4f) \n", gp.x,gp.y,gp.z,gp.w );
+        gp=BsplinePLQ[gridIndex(10,10,10, grid_ns.xyz)]; printf( "GPU:BsplinePLQ[2,2,2] (%12.4f,%12.4f,%12.4f,%12.4f) \n", gp.x,gp.y,gp.z,gp.w ); 
+        // printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL );
         // for(int i=0; i<nS*nG; i++){
         //     int ia = i%nS;
         //     int is = i/nS;
         //     if(ia==0){ cl_Mat3 lvec = lvecs[is];  printf( "GPU[%i] lvec(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f) \n", is, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z  ); }
         //     //printf( "GPU[%i,%i] \n", is,ia,  );
         // }
-        // for(int ia=0; ia<natoms; ia++){
-        //     float4 pos = atoms[ia+i0a];
-        //     float4 req = REQKs[ia+i0a];
-        //     printf( "GPU[%3i,%3i] pos(%12.4f,%12.4f,%12.4f) req(%12.4f,%12.4f,%12.4f,%12.4f) \n", iS,ia, pos.x,pos.y,pos.z, req.x,req.y,req.z,req.w );
-        // }
-
-        for(int is=0; is<nS; is++){
-            int i0a_ = is*natoms;
-            float4 pos = atoms[iG_DBG+i0a_];
-            float4 req = REQKs[iG_DBG+i0a_];
-            printf( "GPU[%3i,%3i] pos(%12.4f,%12.4f,%12.4f) req(%12.4f,%12.4f,%12.4f,%12.4f) \n", is,iG_DBG, pos.x,pos.y,pos.z, req.x,req.y,req.z,req.w );
+        for(int ia=0; ia<natoms; ia++){
+            float4 pos = atoms[ia+i0a];
+            float4 req = REQKs[ia+i0a];
+             printf( "GPU[%3i,%3i] pos(%12.4f,%12.4f,%12.4f) REQ(%12.4f,%12.4f,%12.4f,%12.4f) \n", iS,ia, pos.x,pos.y,pos.z, req.x,req.y,req.z,req.w );
         }
     }
 

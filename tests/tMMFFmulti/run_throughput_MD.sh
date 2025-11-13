@@ -28,8 +28,8 @@ mkdir -p results/all
 
 # Setup parameters
 dovdW=1
-doSurfAtoms=-1
-bGridFF=-6   # 1 for linear, 5or6 for bSpline=1 (works only 6)
+doSurfAtoms=1
+bGridFF=6   # 1 for linear, 5or6 for bSpline=1 (works only 6)
 if (( bGridFF == 1 )); then
     bSpline=0
 elif (( bGridFF == 5 || bGridFF == 6 )); then
@@ -57,7 +57,7 @@ flags_bitnum=$(( (dovdW_bit << 4) | (doSurfAtoms_bit << 3) | (bGridFF_bit << 2) 
 Fconv=1e-4
 
 # Arrays of parameter values to test
-replicas=(1000) # (1000 5000) # (1000 2000 3000 4000 5000)
+replicas=(5000) # (1000 5000) # (1000 2000 3000 4000 5000)
 perframes=(100) # (20 500) # (100 500)
 perVF=(100) # (20 50) # (50 100)
 
@@ -118,7 +118,7 @@ for nPBC in "${nPBC[@]}"; do
                                             
                                             Ns=(16) # (1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16)
                                             for N in "${Ns[@]}"; do
-                                                surf_name="data/xyz/surfaces_for_throughput/NaCl_${N}x${N}_L3"
+                                                surf_name="data/xyz/surfaces_for_throughput/NaCl_${N}x${N}_Cl_hole"
                                                 python3 run_throughput_MD.py \
                                                     --nSys "$nSys" \
                                                     --xyz_name "$xyz_name" \

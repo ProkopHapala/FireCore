@@ -456,10 +456,10 @@ virtual void init() override {
 
     if(!database){
         database = new MolecularDatabase();
-        database->setDescriptors();
+        if(bUFF){database->setDescriptors(&ffu);}else{database->setDescriptors(&ffl);}
     }
     else{
-        database->setDescriptors();
+        if(bUFF){database->setDescriptors(&ffu);}else{database->setDescriptors(&ffl);}
     }
     if(bUFF){
             setup_UFF_ocl();
@@ -1088,18 +1088,28 @@ void evalVF( int n, Quat4f* fs, Quat4f* vs, FIRE& fire, Quat4f& MDpar ){
 
 // Float version for MMFF
 void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring ){
+    //printf("evalVF() fire[%i]\n", fire.id );
     Vec3f cvf=Vec3fZero;
     for(int i=0; i<n; i++){
         cvf.add( cvfs[i].f );
+        cvfs[i] = Quat4fZero;
     }
-    fire.vv = cvf.x;
-    fire.ff = cvf.y;
-    fire.vf = cvf.z;
-    fire.update_params();  // MMFF version doesn't use bExploring parameter
-    MDpar.x = fire.dt;
-    MDpar.y = 1 - fire.damping;
-    MDpar.z = fire.cv;
-    MDpar.w = fire.cf;
+    fire.vv=cvf.x;
+    fire.ff=cvf.y;
+    fire.vf=cvf.z;
+    fire.update_params();
+    if(bExploring){
+        //MDpar.x = fire.par->dt_max;
+        MDpar.x = fire.dt;
+        MDpar.y = 10000.0;
+        MDpar.z = 1.0;
+        MDpar.w = 0.0;
+    }else{
+        MDpar.x = fire.dt;
+        MDpar.y = 10000.0;
+        MDpar.z = fire.cv;
+        MDpar.w = fire.cf;
+    }
 }
 
 // Double version for UFF
@@ -1237,7 +1247,7 @@ double evalVFs( double Fconv=1e-6 ){
                 unpack_uff_system( isys, ffu, true, false );
                 isSystemRelaxed[isys]=true;
                 // save
-                if(0*bSaveToDatabase){  // use it for evaluation_vs_time, do not use for nb_evale_vs_surf_size
+                if(bSaveToDatabase){  // use it for evaluation_vs_time, do not use for nb_evale_vs_surf_size
                     int sameMember = database->addIfNewDescriptor(&ffu);
                     if(sameMember==-1){
                         sprintf(tmpstr,"# %i E %g |F| %g istep=%i isys=%i,", database->getNMembers(), 0.5*fire[isys].vv, sqrt(f2), gopts[isys].istep, isys );
@@ -2612,7 +2622,7 @@ if(initial){
     time_loop_trajSave        += Nticks_loop_trajSave        * tick2second;
     time_evalVFs              += Nticks_evalVFs              * tick2second;
 
-    printf("run_uff_ocl() time=%7.3f[ms] nloop=%i time_integrated=%7.3f[s]\n", dt_call*1000, nloop, time_integrated_run_uff_ocl);
+    // printf("run_ocl_opt() time=%7.3f[ms] nloop=%i time_integrated=%7.3f[s]\n", dt_call*1000, nloop, time_integrated_run_uff_ocl);
 
     FILE* f = fopen("times_run_mmff_ocl.dat", "a");
     if(f){
@@ -2632,10 +2642,10 @@ if(initial){
     }
 
     // Mark as saved when t>=10s
-    if(!time_saved_run_uff_ocl && time_integrated_run_uff_ocl >= 10.0){
-        printf(">>> Timing data saved to times_run_mmff_ocl.dat at t=%.3f[s]\n", time_integrated_run_uff_ocl);
-        time_saved_run_uff_ocl = true;
-    }
+    // if(!time_saved_run_uff_ocl && time_integrated_run_uff_ocl >= 10.0){
+    //     printf(">>> Timing data saved to times_run_mmff_ocl.dat at t=%.3f[s]\n", time_integrated_run_uff_ocl);
+    //     time_saved_run_uff_ocl = true;
+    // }
     return niterdone;
 }
 
@@ -3114,8 +3124,9 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
             // Print data to both console and file
             //const char* data_fmt = "%15d %20d %20d %20g %20d %20d %20g %20g %20g %20d\n";
             // 1iter 2ntot 3nNew 4Time 5Totally 6nbEvaluation 7itConvAvg 8itNonConvAv 9nStepExploringAvg 10evalTot "
-            printf( "MDloop   1iter %8i 2ntot %8i 3nNew %8i 4Time %10g 5Totally %8i 6nbEvaluation %8i 7itConvAvg %10g 8itNonConvAv %10g 9nStepExploringAvg %10g 10evalTot %8i\n", 
-            //printf( "MDloop %15d %20d %20d %20g %20d %20d %20g %20g %20g %20d" ,data_fmt, 
+            //printf( "MDloop   1iter %8i 2ntot %8i 3nNew %8i 4Time %10g 5Totally %8i 6nbEvaluation %8i 7itConvAvg %10g 8itNonConvAv %10g 9nStepExploringAvg %10g 10evalTot %8i\n", 
+            const char* data_fmt = "%15d %20d %20d %20g %20d %20d %20g %20g %20g %20d\n";
+            printf(data_fmt, 
                 icurIter, database->totalEntries,
                 std::accumulate(database->convergedStructure.begin(), database->convergedStructure.end(), 0),
                 (getCPUticks()-zeroT)*tick2second,
@@ -3124,7 +3135,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
                 nStepNonConvSum/((double)nbNonConverged),
                 nStepExplorSum/((double)nExploring),
                 (nStepConvSum+nStepNonConvSum+nStepExplorSum));
-            fprintf(file, "%15d %20d %20d %20g %20d %20d %20g %20g %20g %20d",
+            fprintf(file, data_fmt,
                 icurIter, database->totalEntries,
                 std::accumulate(database->convergedStructure.begin(), database->convergedStructure.end(), 0),
                 (getCPUticks()-zeroT)*tick2second,
