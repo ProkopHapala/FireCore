@@ -2831,8 +2831,8 @@ int selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
     Tp0.z=-1e+300;
     Tp1.z=+1e+300;
     selection.clear();
-    for(int i=0; i<ff.natoms; i++ ){
-        rot.dot_to(ff.apos[i],Tp);
+    for(int i=0; i<nbmol.natoms; i++ ){
+        rot.dot_to(nbmol.apos[i],Tp);
         if( Tp.isBetween(Tp0,Tp1) ){
             selection.push_back( i );
         }
