@@ -53,11 +53,12 @@ class MolecularDynamics(OpenCLBase):
             exit(1)
         
         # Initialize other attributes that will be set in realloc
-        self.nSystems       = 0
-        self.mmff_list      = []
-        self.MD_event_batch = None
-        self.perBatch       = perBatch
-        self.nstep          = 1
+        self.nSystems         = 0
+        self.mmff_list        = []
+        self.MD_event_batch   = None
+        self.perBatch         = perBatch
+        self.nstep            = 1
+        self.bPrintPackSystem = False
 
     def realloc(self, mmff, nSystems=1 ):
         """
@@ -73,6 +74,7 @@ class MolecularDynamics(OpenCLBase):
     def allocate_host_buffers(self):
         self.atoms  = np.zeros((self.nSystems, self.nvecs, 4), dtype=np.float32)
         self.aforce = np.zeros((self.nSystems, self.nvecs, 4), dtype=np.float32)
+        self.aforce_old = np.zeros((self.nSystems, self.nvecs, 4), dtype=np.float32)
 
     def allocate_cl_buffers(self, mmff):
         """
@@ -112,17 +114,16 @@ class MolecularDynamics(OpenCLBase):
         mf = cl.mem_flags
         
         # Dynamical variables
-        self.create_buffer('apos',     nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
-        self.create_buffer('aforce',   nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
-        self.create_buffer('avel',     nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
-        self.create_buffer('fneigh',   nSystems * nnode * 4 * 2 * float_size, mf.READ_WRITE)
-        self.create_buffer('cvf',      nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
-        
+        self.create_buffer('apos',       nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('aforce',     nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('aforce_old', nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('avel',       nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('fneigh',     nSystems * nnode * 4 * 2 * float_size, mf.READ_WRITE)
+        self.create_buffer('cvf',        nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
         # Neighbor lists
         self.create_buffer('neighs',    nSystems * natoms * 4 * int_size, mf.READ_ONLY)
         self.create_buffer('neighCell', nSystems * natoms * 4 * int_size, mf.READ_ONLY)
-        self.create_buffer('bkNeighs',  nSystems * nbkng * 4 * int_size, mf.READ_ONLY)
-        
+        self.create_buffer('bkNeighs',  nSystems * nvecs  * 4 * int_size, mf.READ_ONLY)
         # Force field parameters
         self.create_buffer('REQs',     nSystems * natoms * 4 * float_size, mf.READ_ONLY)
         self.create_buffer('apars',    nSystems * nnode * 4 * float_size, mf.READ_ONLY)
@@ -130,18 +131,15 @@ class MolecularDynamics(OpenCLBase):
         self.create_buffer('bKs',      nSystems * nnode * 4 * float_size, mf.READ_ONLY)
         self.create_buffer('Ksp',      nSystems * nnode * 4 * float_size, mf.READ_ONLY)
         self.create_buffer('Kpp',      nSystems * nnode * 4 * float_size, mf.READ_ONLY)
-        
         # System parameters
         self.create_buffer('lvecs',    nSystems * mat3_size, mf.READ_ONLY)
         self.create_buffer('ilvecs',   nSystems * mat3_size, mf.READ_ONLY)
         self.create_buffer('pbc_shifts', nSystems * npbc * 4 * float_size, mf.READ_ONLY)
-        
         # MD parameters and constraints
         self.create_buffer('constr',   nSystems * natoms * 4 * float_size, mf.READ_WRITE)
         self.create_buffer('constrK',  nSystems * natoms * 4 * float_size, mf.READ_WRITE)
         self.create_buffer('MDparams', nSystems * 4 * float_size, mf.READ_ONLY)
         self.create_buffer('TDrives',  nSystems * 4 * float_size, mf.READ_ONLY)
-        
         # System interactions
         self.create_buffer('bboxes',   nSystems * mat3_size, mf.READ_ONLY)
         self.create_buffer('sysneighs',nSystems * int_size, mf.READ_ONLY)
@@ -151,35 +149,63 @@ class MolecularDynamics(OpenCLBase):
         # self.kernel_params['GFFParams'] = np.zeros(4, dtype=np.float32)
         # self.kernel_params['bSubtractVdW'] = np.int32(0)
 
+    def set_pack_system_debug(self, enabled=True):
+        """Enable/disable detailed parameter printing inside `pack_system()`."""
+        self.bPrintPackSystem = bool(enabled)
+
+    def _print_pack_system_params(self, iSys, mmff):
+        print(f"[pack_system dbg] system={iSys}")
+        print(f"  apos shape={mmff.apos.shape}\n{mmff.apos}")
+        print(f"  fapos shape={getattr(mmff, 'fapos', None).shape if hasattr(mmff, 'fapos') else 'N/A'}")
+        print(f"  REQs shape={mmff.REQs.shape}\n{mmff.REQs}")
+        print(f"  apars shape={mmff.apars.shape}\n{mmff.apars}")
+        print(f"  bLs shape={mmff.bLs.shape}\n{mmff.bLs}")
+        print(f"  bKs shape={mmff.bKs.shape}\n{mmff.bKs}")
+        print(f"  Ksp shape={mmff.Ksp.shape}\n{mmff.Ksp}")
+        print(f"  Kpp shape={mmff.Kpp.shape}\n{mmff.Kpp}")
+        print(f"  neighs shape={mmff.neighs.shape}\n{mmff.neighs}")
+        print(f"  neighCell shape={mmff.neighCell.shape}\n{mmff.neighCell}")
+        print(f"  back_neighs shape={mmff.back_neighs.shape}\n{mmff.back_neighs}")
+
     def pack_system(self, iSys, mmff):
         """Packs data from an MMFF instance into GPU buffers for a specific system index."""
         #print("pack_system() iSys=%d" % iSys)
-        nvecs   = mmff.nvecs
-        natoms  = mmff.natoms
-        nnode   = mmff.nnode
+        nvecs       = mmff.nvecs
+        natoms      = mmff.natoms
+        nnode       = mmff.nnode
         float4_size = 4 * np.float32().itemsize
         int4_size   = 4 * np.int32().itemsize
 
-        offset_atoms = iSys * nvecs * float4_size
-        self.toGPU('apos',      mmff.apos.astype(np.float32).flatten(), byte_offset=offset_atoms)
-        self.toGPU('aforce',    mmff.fapos.astype(np.float32).flatten(), byte_offset=offset_atoms)
+        if self.bPrintPackSystem:
+            self._print_pack_system_params(iSys, mmff)
 
-        offset_REQs = iSys * natoms * float4_size
-        self.toGPU('REQs',      mmff.REQs.astype(np.float32).flatten(), byte_offset=offset_REQs)
-        
+        # Back-neighbor indices per vector (atoms + pi) for recoil force accumulation; default to -1 if not provided
+        bk = np.full((nvecs, 4), -1, dtype=np.int32)
+        if hasattr(mmff, 'back_neighs') and (mmff.back_neighs is not None):
+            ncopy = min(mmff.back_neighs.shape[0], nvecs)
+            bk[:ncopy, :] = mmff.back_neighs[:ncopy, :].astype(np.int32)
+        offset_bk     = iSys * nvecs * int4_size
+        offset_atoms  = iSys * nvecs  * float4_size
+        offset_REQs   = iSys * natoms * float4_size
         offset_neighs = iSys * natoms * int4_size
-        self.toGPU('neighs',    mmff.neighs.astype(np.int32).flatten(), byte_offset=offset_neighs)
-        self.toGPU('neighCell', mmff.neighCell.astype(np.int32).flatten(), byte_offset=offset_neighs)
-        
-        offset_apars = iSys * nnode * float4_size
-        self.toGPU('apars',     mmff.apars.astype(np.float32).flatten(), byte_offset=offset_apars)
-        self.toGPU('bLs',       mmff.bLs.astype(np.float32).flatten(), byte_offset=offset_apars)
-        self.toGPU('bKs',       mmff.bKs.astype(np.float32).flatten(), byte_offset=offset_apars)
-        self.toGPU('Ksp',       mmff.Ksp.astype(np.float32).flatten(), byte_offset=offset_apars)
-        self.toGPU('Kpp',       mmff.Kpp.astype(np.float32).flatten(), byte_offset=offset_apars)
+        offset_apars  = iSys * nnode  * float4_size
+        self.toGPU('apos',      self._flat32(mmff.apos),    byte_offset=offset_atoms)
+        self.toGPU('aforce',    self._flat32(mmff.fapos),   byte_offset=offset_atoms)
+        self.toGPU('aforce_old', self._flat32(mmff.fapos),  byte_offset=offset_atoms)
+        self.toGPU('REQs',      self._flat32(mmff.REQs),    byte_offset=offset_REQs)
+        self.toGPU('neighs',    self._int32 (mmff.neighs),    byte_offset=offset_neighs)
+        self.toGPU('neighCell', self._int32 (mmff.neighCell), byte_offset=offset_neighs)
+        self.toGPU('bkNeighs',  bk,                         byte_offset=offset_bk)
+        self.toGPU('apars',     self._flat32(mmff.apars),   byte_offset=offset_apars)
+        self.toGPU('bLs',       self._flat32(mmff.bLs),     byte_offset=offset_apars)
+        self.toGPU('bKs',       self._flat32(mmff.bKs),     byte_offset=offset_apars)
+        self.toGPU('Ksp',       self._flat32(mmff.Ksp),     byte_offset=offset_apars)
+        self.toGPU('Kpp',       self._flat32(mmff.Kpp),     byte_offset=offset_apars)
         #print("pack_system() iSys=%d" % iSys, "offset_atoms=%d" % offset_atoms, "offset_REQs=%d" % offset_REQs, "offset_neighs=%d" % offset_neighs, "offset_apars=%d" % offset_apars)
         #print("pack_system() iSys=%d" % iSys, "atoms.nbytes=%d" % mmff.apos.nbytes, "REQs.nbytes=%d" % mmff.REQs.nbytes, "neighs.nbytes=%d" % mmff.neighs.nbytes, "apars.nbytes=%d" % mmff.apars.nbytes)
-        self.toGPU('MDparams',  np.array([mmff.dt, mmff.damp, mmff.Flimit], dtype=np.float32), byte_offset=iSys*float4_size)
+        # MDparams layout expected by kernels: (dt, damp, friction)
+        # Note: kernels currently hardcode Flimit; third component is used as velocity multiplier
+        self.toGPU('MDparams',  np.array([mmff.dt, mmff.damp, mmff.damp], dtype=np.float32), byte_offset=iSys*float4_size)
 
 
     def init_with_atoms(self, na=None, atoms=None, REQs=None, REQ_default=REQ_DEFAULT):
@@ -252,11 +278,15 @@ class MolecularDynamics(OpenCLBase):
                 
         # Generate kernel arguments
         self.kernel_args_getMMFFf4         = self.generate_kernel_args("getMMFFf4")
+        self.kernel_args_getMMFFf4_rot     = self.generate_kernel_args("getMMFFf4_rot")
         self.kernel_args_getNonBond        = self.generate_kernel_args("getNonBond")
         # --- NOTE: grid-kernels are intialized in initGridFF()
         #self.kernel_args_getNonBond_GridFF_Bspline = self.generate_kernel_args("getNonBond_GridFF_Bspline")
         #self.kernel_args_getNonBond_GridFF_Bspline_tex = self.generate_kernel_args("getNonBond_GridFF_Bspline_tex")
         self.kernel_args_updateAtomsMMFFf4 = self.generate_kernel_args("updateAtomsMMFFf4")
+        # New propagator variants
+        self.kernel_args_updateAtomsMMFFf4_rot    = self.generate_kernel_args("updateAtomsMMFFf4_rot")
+        #self.kernel_args_updateAtomsMMFFf4_RATTLE = self.generate_kernel_args("updateAtomsMMFFf4_RATTLE")
         self.kernel_args_cleanForceMMFFf4  = self.generate_kernel_args("cleanForceMMFFf4")
         self.kernel_args_runMD             = self.generate_kernel_args("runMD")
 
@@ -325,8 +355,20 @@ class MolecularDynamics(OpenCLBase):
         self.prg.getMMFFf4(self.queue, self.sz_node, self.sz_loc, *self.kernel_args_getMMFFf4)
         self.queue.finish()
     
+    def run_getMMFFf4_rot(self):
+        self.prg.getMMFFf4_rot(self.queue, self.sz_node, self.sz_loc, *self.kernel_args_getMMFFf4_rot)
+        self.queue.finish()
+    
     def run_updateAtomsMMFFf4(self):
         self.prg.updateAtomsMMFFf4(self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_updateAtomsMMFFf4)
+        self.queue.finish()
+    
+    def run_updateAtomsMMFFf4_rot(self):
+        self.prg.updateAtomsMMFFf4_rot(self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_updateAtomsMMFFf4_rot)
+        self.queue.finish()
+    
+    def run_updateAtomsMMFFf4_RATTLE(self):
+        self.prg.updateAtomsMMFFf4_RATTLE(self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_updateAtomsMMFFf4_RATTLE)
         self.queue.finish()
     
     def run_cleanForceMMFFf4(self):
@@ -364,6 +406,33 @@ class MolecularDynamics(OpenCLBase):
         self.fromGPU('aforce', self.aforce)
         self.queue.finish()
         return self.atoms.reshape(-1, 4), self.aforce.reshape(-1, 4)
+    
+    def run_step_basic(self, do_nb=False ):
+        """Run a single MD step using basic (non-rotational) force kernels."""
+        if do_nb: 
+            self.prg.getNonBond      (self.queue, self.sz_na,   self.sz_loc, *self.kernel_args_getNonBond)
+        else:
+            self.prg.cleanForceMMFFf4(self.queue, self.sz_na,   self.sz_loc, *self.kernel_args_cleanForceMMFFf4)
+        self.prg.getMMFFf4           (self.queue, self.sz_node, self.sz_loc, *self.kernel_args_getMMFFf4)
+        self.prg.updateAtomsMMFFf4   (self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_updateAtomsMMFFf4)
+        self.queue.finish()
+
+    def run_step_rot(self, do_nb=False):
+        """Run a single MD step using rotational force and update kernels."""
+        if do_nb: 
+            self.prg.getNonBond       (self.queue, self.sz_na,   self.sz_loc, *self.kernel_args_getNonBond)
+        else:
+            self.prg.cleanForceMMFFf4 (self.queue, self.sz_na,   self.sz_loc, *self.kernel_args_cleanForceMMFFf4)
+        self.prg.getMMFFf4_rot        (self.queue, self.sz_node, self.sz_loc, *self.kernel_args_getMMFFf4_rot)
+        self.prg.updateAtomsMMFFf4_rot(self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_updateAtomsMMFFf4_rot)
+        self.queue.finish()
+
+    def run_MD_step(self, do_clean=True, do_nb=False, do_mmff=True, use_rot=False, force_kernel='basic'):
+        """Backward-compatible wrapper for previous API (deprecated)."""
+        if use_rot:
+            self.run_step_rot(do_clean=do_clean, do_nb=do_nb, do_mmff=do_mmff, integrator=force_kernel)
+        else:
+            self.run_step_basic(do_clean=do_clean, do_nb=do_nb, do_mmff=do_mmff, integrator=force_kernel)
 
     def download_results(self):
         self.fromGPU('apos',   self.atoms)

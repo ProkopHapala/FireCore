@@ -11,6 +11,7 @@ Non-covalent with rigid substrate (Pauli repulsion, London dispersion, and Coulo
 
 //#include "OCL_DFT.h"
 #include "OCL.h"
+//#include "NBFF.h"
 
 // coversions between OpenCL and C++ types
 void v2f4  ( const Vec3d& v, float4& f4 ){ f4.x=(float)v.x; f4.y=(float)v.y; f4.z=(float)v.z; };                      // pack Vec3d to float4
@@ -76,7 +77,7 @@ class OCL_MM: public OCLsystem { public:
     cl_Mat3 cl_invLvec;   // inverse lattice vectors - DEPRECATED: but we do not need them anymore, we use arrays of lattice vectors for each system
 
     // OpenCL buffers and textures ids
-    int ibuff_atoms=-1,ibuff_aforces=-1,ibuff_neighs=-1,ibuff_neighCell=-1;
+    int ibuff_atoms=-1,ibuff_aforces=-1,ibuff_neighs=-1,ibuff_neighCell=-1,ibuff_excl=-1;
     int ibuff_avel=-1,ibuff_cvf=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1, ibuff_bkNeighs_new=-1;
     int ibuff_REQs=-1, ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
     int ibuff_lvecs=-1, ibuff_ilvecs=-1,ibuff_MDpars=-1,ibuff_TDrive=-1, ibuff_pbcshifts=-1; 
@@ -170,8 +171,10 @@ class OCL_MM: public OCLsystem { public:
         sprintf( srcpath, "%s/relax_multi.cl", cl_src_dir );     
         buildProgram( srcpath, program_relax );
         newTask( "getNonBond"             ,program_relax, 2);
+        newTask( "getNonBond_ex2"         ,program_relax, 2);
         newTask( "getNonBond_GridFF"      ,program_relax, 2);
         newTask( "getNonBond_GridFF_Bspline",program_relax, 2);
+        newTask( "getNonBond_GridFF_Bspline_ex2",program_relax, 2);
         newTask( "getNonBond_GridFF_Bspline_tex",program_relax, 2);
         newTask( "getMMFFf4"              ,program_relax, 2);
         newTask( "cleanForceMMFFf4"       ,program_relax, 2);
@@ -215,6 +218,7 @@ class OCL_MM: public OCLsystem { public:
         ibuff_REQs       = newBuffer( "REQs",       nSystems*nAtoms, sizeof(float4), 0, CL_MEM_READ_ONLY  ); // atoms parameters {R0,E0,Q}
         ibuff_neighs     = newBuffer( "neighs",     nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
         ibuff_neighCell  = newBuffer( "neighCell" , nSystems*nAtoms, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );
+        ibuff_excl       = newBuffer( "excl",       nSystems*nAtoms*EXCL_MAX, sizeof(int   ), 0, CL_MEM_READ_ONLY  );
 
         ibuff_constr     = newBuffer( "constr",     nSystems*nAtoms , sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_constrK    = newBuffer( "constrK",    nSystems*nAtoms , sizeof(float4), 0, CL_MEM_READ_WRITE );
@@ -398,6 +402,32 @@ class OCL_MM: public OCLsystem { public:
         // float R2damp                    // 9
     }
 
+    OCLtask* setup_getNonBond_ex2( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
+        printf("setup_getNonBond_ex2(na=%i,nnode=%i) \n", na, nNode);
+        if(task==0) task = getTask("getNonBond_ex2");
+        const int nloc = 32;
+        task->local.x  = nloc;
+        task->global.x = na + ((na % nloc) ? (nloc - (na % nloc)) : 0);
+        task->global.y = nSystems;
+
+        useKernel( task->ikernel );
+        nDOFs.x=na;
+        nDOFs.y=nNode;
+        v2i4( nPBC_, nPBC );
+
+        int err=0;
+        err |= _useArg   ( nDOFs      ); // 1
+        err |= useArgBuff( ibuff_atoms   ); // 2
+        err |= useArgBuff( ibuff_aforces ); // 3
+        err |= useArgBuff( ibuff_REQs    ); // 4
+        err |= useArgBuff( ibuff_excl    ); // 5
+        err |= useArgBuff( ibuff_lvecs   ); // 6
+        err |= _useArg   ( nPBC          ); // 7
+        err |= _useArg   ( GFFparams     ); // 8
+        OCL_checkError(err, "setup_getNonBond_ex2");
+        return task;
+    }
+
     OCLtask* setup_getNonBond_GridFF( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
         printf("setup_getNonBond_GridFF(na=%i,nnode=%i) itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i\n", na, nNode,  itex_FE_Paul,itex_FE_Lond,itex_FE_Coul );
         if((itex_FE_Paul<0)||(itex_FE_Paul<=0)||(itex_FE_Paul<=0)){ printf( "ERROR in setup_getNonBond_GridFF() GridFF textures not initialized(itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i) => Exit() \n", itex_FE_Paul,itex_FE_Lond,itex_FE_Coul ); exit(0); }
@@ -514,6 +544,35 @@ class OCL_MM: public OCLsystem { public:
     }
 
 
+    OCLtask* setup_getNonBond_GridFF_Bspline_ex2( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
+        printf("setup_getNonBond_GridFF_Bspline_ex2(na=%i,nnode=%i) ibuff_BsplinePLQ=%i\n", na, nNode, ibuff_BsplinePLQ );
+        if(ibuff_BsplinePLQ<0){ printf( "ERROR in setup_getNonBond_GridFF_Bspline_ex2() GridFF buffer not initialized( ibuff_BsplinePLQ=%i ) => Exit() \n", ibuff_BsplinePLQ ); exit(0); }
+        if(task==0) task = getTask("getNonBond_GridFF_Bspline_ex2");        
+        const int nloc = 32;
+        task->local.x  = nloc;
+        task->global.x = na + ((na % nloc) ? (nloc - (na % nloc)) : 0);
+        task->global.y = nSystems;
+        useKernel( task->ikernel );
+        nDOFs.x=na;
+        nDOFs.y=nNode;
+        v2i4( nPBC_, nPBC );
+        int err=0;
+        err |= _useArg   ( nDOFs      ); // 1
+        err |= useArgBuff( ibuff_atoms   ); // 2
+        err |= useArgBuff( ibuff_aforces ); // 3
+        err |= useArgBuff( ibuff_REQs    ); // 4
+        err |= useArgBuff( ibuff_excl    ); // 5
+        err |= useArgBuff( ibuff_lvecs   ); // 6
+        err |= _useArg   ( nPBC          ); // 7
+        err |= _useArg   ( GFFparams     ); // 8
+        err |= useArgBuff( ibuff_BsplinePLQ ); // 10
+        err |= _useArg   ( grid_n        ); // 11
+        err |= _useArg   ( grid_invStep  ); // 12
+        err |= _useArg   ( grid_shift0_p0 ); // 13
+        OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_ex2");
+        return task;
+    }
+
     OCLtask* setup_getNonBond_GridFF_Bspline_tex( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
         printf("setup_getNonBond_GridFF_Bspline_tex(na=%i,nnode=%i) itex_BsplinePLQH=%i\n", na, nNode, itex_BsplinePLQH );
         if(itex_BsplinePLQH<0){ printf( "ERROR in setup_getNonBond_GridFF_Bspline_tex() GridFF texture not initialized( itex_BsplinePLQH=%i ) => Exit() \n", itex_BsplinePLQH ); exit(0); }
@@ -603,8 +662,8 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_lvecs  );     // 12
         err |= useArgBuff( ibuff_ilvecs );     // 13
         err |= useArgBuff( ibuff_pbcshifts );  // 13
-        err |= _useArg   ( npbc         );  
-        err |= _useArg   ( bSubtractVdW ); 
+        err |= _useArg   ( npbc         );     // 14
+        err |= _useArg   ( bSubtractVdW );     // 15
         
 
         //err |= _useArg( cl_lvec    );        // 12

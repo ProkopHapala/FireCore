@@ -7,6 +7,7 @@ static int  verbosity = 1;
 static int  idebug    = 0;
 static int  id_DBG    = 1;
 
+constexpr static const int EXCL_MAX = 16;
 constexpr static const int ntmpstr=1024;
 static char tmpstr[ntmpstr];
 

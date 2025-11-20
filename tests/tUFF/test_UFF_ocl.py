@@ -15,6 +15,7 @@ import numpy as np
 from pyBall.AtomicSystem import AtomicSystem
 from pyBall import     MMFF as uff_cpp
 from pyBall.OCL import UFF  as uff_ocl
+from pyBall.MD_test_utils import scan_energy_force, plot_energy_force_scan
 
 # ==================
 #  Buffer Specs
@@ -293,31 +294,19 @@ if __name__ == "__main__":
     parser.add_argument('-t','--tolerance',     type=float,   default=1e-6,                  help='Energy comparison tolerance' )
     args = parser.parse_args()
 
-    # --- we skip this for the moment
-    cpu_energy, cpu_forces, uff_cpp = run_uff_cpp(args)  # DEBUG: uncomment this when GPU runs without error
+    cpu_energy, cpu_forces, uff_instance = run_uff_cpp(args)
 
-
-    exit()
-
-    if args.gpu:
-        gpu_energy, gpu_forces, uff_cl = run_uff_ocl(args)
-
-
-        #exit() # DEBUG: comment this when GPU runs without error
-        compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces)
-
-        # New two-phase comparison
-        cpu_topo_bufs = get_cpu_bufs(uff_cpp, TOPOLOGY_SPECS)
-        gpu_topo_bufs = get_gpu_bufs(uff_cl,  TOPOLOGY_SPECS)
-
-        # First, compare topology
-        if compare_bufs(cpu_topo_bufs, gpu_topo_bufs, buf_type='Topology'):
-            # If topology matches, compare parameters
-            cpu_param_bufs = get_cpu_bufs(uff_cpp, PARAMS_SPECS)
-            gpu_param_bufs = get_gpu_bufs(uff_cl,  PARAMS_SPECS)
-            compare_bufs(cpu_param_bufs, gpu_param_bufs, buf_type='Parameters', tol=args.tolerance)
-    else:
-        print(f"CPU Energy: {cpu_energy}")
-        print(f"CPU Forces:\n{cpu_forces}")
+    scan = scan_energy_force(
+        uff_instance,
+        atom_index=0,
+        axis=0,
+        dx=1e-3,
+        nsamp=21,
+        restore=True,
+    )
+    print("Energy range:", scan['diff_stats']['energy_min'], scan['diff_stats']['energy_max'])
+    print("Force range:", scan['diff_stats']['force_min'], scan['diff_stats']['force_max'])
+    print("Force diff stats:", scan['diff_stats'])
+    plot_energy_force_scan(scan, axis_label='dx [Å]', show=True)
 
     print("=========\nALL DONE")

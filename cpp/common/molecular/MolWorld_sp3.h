@@ -222,10 +222,11 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bRelaxPi          = false; // 18
     bool bChargeUpdated    = false; // 19
     bool bAnimManipulation = false; // 20
-    bool bNonBondNeighs    = false; // 21
+    bool bNonBondNeighs    = true;  // 21
     bool bWhichAtomNotConv = false; // 22
-    bool bCheckInit        = true; // 23
-    bool bBondInitialized  = false; // 24    
+    bool bCheckInit        = true; // 23    
+    bool bBondInitialized  = false; // 24
+    bool bExclusion2       = false; // 25 // use second neighbor exclusion (bonds 1-2 and angles 1-3)
     bool dovdW=true;
     bool bMoving=true;
 
@@ -1443,6 +1444,11 @@ void printPBCshifts(){
             }
             ffu.go = &go;
 
+            nbmol.evalPLQs(gridFF.alphaMorse);
+            if(bExclusion2){
+                ffu.makeSecondNeighs();
+                ffu.printSecondNeighs();
+            }
             ffu.atomForceFunc = [&](int ia,const Vec3d p,Vec3d& f)->double{
                 //printf( "ffu.atomForceFunc() ia=%i \n", ia  );
                 double E=0;
@@ -1504,10 +1510,18 @@ void printPBCshifts(){
                 ffl.chargeToEpairs( QEpair, etyp );
                 DEBUG
             }
-            DEBUG
-            ffl.evalPLQs(gridFF.alphaMorse);
-            ffl.evalPLQd(gridFF.alphaMorse);
-            DEBUG
+// <<<<<<< HEAD
+//             DEBUG
+//             ffl.evalPLQs(gridFF.alphaMorse);
+//             ffl.evalPLQd(gridFF.alphaMorse);
+//             DEBUG
+// =======
+            nbmol.evalPLQs(gridFF.alphaMorse);
+            if(bExclusion2){
+                ffl.makeSecondNeighs();
+                ffl.printSecondNeighs();
+            }
+// >>>>>>> prokop
             if(bCheckInit){
                 idebug=1;
                 ffl.checkREQlimits();
@@ -2085,6 +2099,7 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
         if(Ftol<0)Ftol=Ftol_default;
         ffu.bNonBonded     = bNonBonded;
         ffu.bNonBondNeighs = bNonBondNeighs;
+        ffu.bExclusion2    = bExclusion2;
         long T0 = getCPUticks();
         int nitr=0;
         if(bUFF){
@@ -2117,7 +2132,8 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
             double titer =  ( t*1e+6/nitr );
             if( (time_per_iter>(titer*2))||(time_per_iter<(titer*0.5)) ) time_per_iter=titer;
             time_per_iter = time_per_iter*(1-c_smooth) + titer*c_smooth;
-            printf( "MolWorld_sp3::MDloop()  (bUFF=%i,iParalel=%i,bSurfAtoms=%i,bGridFF=%i,GridFF.mode=%i,GridFF.npbc=%i,npbc=%i,bPBC=%i,bNonBonded=%ibNonBondNeighs=%i,go.bExploring=%i,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter] tick2second=%g)\n", bUFF,iParalel,bSurfAtoms,bGridFF,(int)gridFF.mode,gridFF.npbc,npbc,bPBC,bNonBonded,bNonBondNeighs,go.bExploring,dt_default,nitr, t*1e+3,nitr, time_per_iter, tick2second );
+            printf( "MolWorld_sp3::MDloop()  (bUFF=%i,iParalel=%i,bSurfAtoms=%i,bGridFF=%i,GridFF.mode=%i,GridFF.npbc=%i,npbc=%i,bPBC=%i,bNonBonded=%i,bNonBondNeighs=%i,bExclusion2=%i,bSubtractBondNonBond=%i,bSubtractAngleNonBond=%i,go.bExploring=%i,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter] tick2second=%g)\n", bUFF,iParalel,bSurfAtoms,bGridFF,(int)gridFF.mode,gridFF.npbc,npbc,bPBC,bNonBonded,bNonBondNeighs,bExclusion2,ffl.bSubtractBondNonBond,ffl.bSubtractAngleNonBond,go.bExploring,dt_default,nitr, t*1e+3,nitr, time_per_iter, tick2second );
+            //printf( "MolWorld_sp3::MDloop()  (bUFF=%i,iParalel=%i,bSurfAtoms=%i,bGridFF=%i,GridFF.mode=%i,GridFF.npbc=%i,npbc=%i,bPBC=%i,bNonBonded=%i,bNonBondNeighs=%i,bExclusion2=%i, bSubtractBondNonBond go.bExploring=%i,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter] tick2second=%g)\n", bUFF,iParalel,bSurfAtoms,bGridFF,(int)gridFF.mode,gridFF.npbc,npbc,bPBC,bNonBonded,bNonBondNeighs,bExclusion2,go.bExploring,dt_default,nitr, t*1e+3,nitr, time_per_iter, tick2second );
         }
 
         //run( nIter );
@@ -2168,7 +2184,7 @@ double eval_no_omp(){
     __attribute__((hot))
     int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double damping=-1.0, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
         //printf( "MolWorld_sp3::run_no_omp() niter_max %i dt %g Fconv %g Flim %g damping %g out{E,vv,ff,vf}(%li,%li,%li,%li) \n", niter_max, dt, Fconv, Flim, damping, (long)outE, (long)outF, (long)outV, (long)outVF );
-        //printf( "MolWorld_sp3::run_no_omp() ffl.natoms=%i \n", ffl.natoms );
+        if(verbosity>1)printf( "MolWorld_sp3::run_no_omp() ffl.natoms=%i \n", ffl.natoms, bExclusion2 );
         nloop++;
         if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
         //if(verbosity>1)[[unlikely]]{ printf( "MolWorld_sp3::run_no_omp() niter_max %i dt %g Fconv %g Flim %g damping %g out{E,vv,ff,vf}(%li,%li,%li,%li) \n", niter_max, dt, Fconv, Flim, damping, (long)outE, (long)outF, (long)outV, (long)outVF ); }
@@ -2183,7 +2199,7 @@ double eval_no_omp(){
         // if(damping>0){ cdamp = 1-damping; if(cdamp<0)cdamp=0;}
         double F2max = ffl.FmaxNonBonded*ffl.FmaxNonBonded;
 
-        ffl.bNonBonded=bNonBonded; ffl.setNonBondStrategy( bNonBondNeighs*2-1 );
+        ffl.bNonBonded=bNonBonded; ffl.setNonBondStrategy( bNonBondNeighs*2-1, bExclusion2 );
 
         //printf( "MolWorld_sp3::run_no_omp(itr=%i/%i) gridFF.mode=%i bGridFF=%i bSurfAtoms=%i   gridFF.Bspline_PLQ=%li  FFPaul_d=%li FFLond_d=%li FFelec_d=%li \n", itr,niter_max, gridFF.mode, bGridFF, bSurfAtoms, (long)gridFF.Bspline_PLQ, (long)gridFF.FFPaul_d, (long)gridFF.FFLond_d, (long)gridFF.FFelec_d );
 
@@ -2221,7 +2237,10 @@ double eval_no_omp(){
                 if(bNonBonded){
                     if(bNonBondNeighs)[[likely]]{
                         if(bPBC)[[likely]]{ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
-                        else              { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); }
+                        else              { 
+                            if(bExclusion2){ E+=ffl.evalLJQs_ex2_atom    ( ia ); }
+                            else           { E+=ffl.evalLJQs_ng4_atom_omp( ia ); }
+                        } 
                     }else{
                         if(bPBC)[[likely]]{ E+=ffl.evalLJQs_PBC_atom_omp( ia, F2max ); }
                         else              { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); }
@@ -2347,6 +2366,7 @@ double eval_no_omp(){
                 if( bCheckStuck )[[unlikely]] { handleStuckAtom(itr, ffl.cvf ); }
                 if(verbosity>3)  [[unlikely]] { printf( "MolWorld_sp3::run_no_omp(itr=%i/%i) E=%g |F|=%g |v|=%g cos(v,f)=%g dt=%g cdamp=%g\n", itr,niter_max, E, sqrt(ffl.cvf.z), sqrt(ffl.cvf.y), ffl.cvf.x/sqrt(ffl.cvf.z*ffl.cvf.y+1e-32), dt, cdamp ); }
             }
+            //printf("DEBUG MolWorld_sp3::run_no_omp() manual exit(0);\n"); exit(0);
         }
         double ticks = (getCPUticks() - T0);
         double t = ticks*tick2second;
@@ -2388,7 +2408,7 @@ double eval_no_omp(){
         // if(damping>0){ cdamp = 1-damping; if(cdamp<0)cdamp=0;}
         double F2max = ffl.FmaxNonBonded*ffl.FmaxNonBonded;
 
-        ffl.bNonBonded=bNonBonded; ffl.setNonBondStrategy( bNonBondNeighs*2-1 );
+        ffl.bNonBonded=bNonBonded; ffl.setNonBondStrategy( bNonBondNeighs*2-1, bExclusion2 );
         //printf( "MolWorld_sp3::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", bNonBonded, bNonBondNeighs, ffl.bSubtractBondNonBond, ffl.bSubtractAngleNonBond, ffl.bClampNonBonded );
 
 
@@ -2424,7 +2444,10 @@ double eval_no_omp(){
                 if(bNonBonded){
                     if(bNonBondNeighs)[[likely]]{
                         if(bPBC)[[likely]]{ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
-                        else              { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); }
+                        else { 
+                            if(bExclusion2){ E+=ffl.evalLJQs_ex2_atom    ( ia ); }
+                            else           { E+=ffl.evalLJQs_ng4_atom_omp( ia ); }
+                        } 
                     }else{
                         if(bPBC)[[likely]]{ E+=ffl.evalLJQs_PBC_atom_omp( ia, F2max ); }
                         else              { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); }

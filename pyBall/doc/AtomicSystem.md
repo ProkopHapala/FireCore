@@ -95,6 +95,9 @@ These methods provide ways to inspect and retrieve information about the atomic 
     Calculates the center of geometry (COG) for a given set of positions `apos`. Internally uses `atomicUtils.findCOG`.
 - **`projectAlongBondDir(i0, i1)`:**
     Projects atomic positions along the direction defined by the bond between atoms `i0` and `i1`. Internally uses `atomicUtils.projectAlongBondDir`.
+- **`selectBondedCluster(s)`**: Selects a bonded cluster of atoms starting from a seed set and returns indices for inside/outside splits.
+- **`grow_selection(indices)`** / **`shrink_selection(indices)`**: Helper routines for expanding or contracting a set of atoms based on bond connectivity. `grow_selection` adds any atom bonded to the current set, while `shrink_selection` removes atoms whose neighbors leave the set. These power the editor operations exposed via `MoleculeDocument.grow_selection()` / `shrink_selection()`.
+- **`select_all_connected(indices)`**: Breadth-first expansion over `bonds`, returning all atoms within the connected component seeded by `indices`. Used by the editor’s "Expand full" action.
 - **`store_bond_lengths()`:**
     Calculates and stores the current lengths of all bonds in `self.bond_lengths`.
 - **`restore_bond_length(ij, L=None)`:**

@@ -1546,7 +1546,7 @@ class UFF : public NBFF { public:
         // SubNBTorsionFactor   = -1.0;
         //printf( "UFF::run() cdamp=%g \n", cdamp );
 
-        ForceField::setNonBondStrategy( bNonBondNeighs*2-1 );
+        ForceField::setNonBondStrategy( bNonBondNeighs*2-1, bExclusion2 );
         //printf( "UFF::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", bNonBonded, bNonBondNeighs, bSubtractBondNonBond, bSubtractAngleNonBond, bClampNonBonded );
         const bool bExploring = go->bExploring;
         int    itr=0;
@@ -1570,7 +1570,10 @@ class UFF : public NBFF { public:
                 if(bNonBonded){
                     if(bNonBondNeighs){
                         if(bPBC){ Eb+=evalLJQs_ng4_PBC_atom_omp( ia ); }
-                        else    { Eb+=evalLJQs_ng4_atom_omp    ( ia ); }
+                        else    { 
+                            if(bExclusion2){Eb+=evalLJQs_ex2_atom( ia );     }
+                            else           {Eb+=evalLJQs_ng4_atom_omp( ia ); }
+                        }
                     }else{
                         if(bPBC){ Eb+=evalLJQs_PBC_atom_omp( ia, Fmax2 ); }
                         else    { Eb+=evalLJQs_atom_omp    ( ia, Fmax2 ); }
@@ -1715,6 +1718,7 @@ class UFF : public NBFF { public:
         const double R2damp    = Rdamp*Rdamp;
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
         const bool bSubNonBond = SubNBTorsionFactor>0;
+        ForceField::setNonBondStrategy( bNonBondNeighs*2-1, bExclusion2);
         int    itr=0;
         #pragma omp parallel shared( Enb, Eb, Ea, Ed, Ei, ff,vv,vf ) private(itr)
         for(itr=0; itr<niter; itr++){
@@ -1727,7 +1731,10 @@ class UFF : public NBFF { public:
                 fapos[ia]=Vec3dZero;
                 Eb           +=evalAtomBonds        ( ia, R2damp, Fmax2 );
                 if(bPBC){ Enb+=evalLJQs_PBC_atom_omp( ia, Fmax2 ); }
-                else    { Enb+=evalLJQs_atom_omp    ( ia, Fmax2 ); }
+                else    { 
+                    if(bExclusion2){ Enb+=evalLJQs_ex2_atom( ia        ); }
+                    else           { Enb+=evalLJQs_atom_omp( ia, Fmax2 ); }
+                }
                 // // if(bPBC){ Enb+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
                 // // else    { Enb+=ffl.evalLJQs_ng4_atom_omp    ( ia ); }
             }
@@ -1750,8 +1757,8 @@ class UFF : public NBFF { public:
             #pragma omp for reduction(+:Enb,  ff,vv,vf )
             for(int ia=0; ia<natoms; ia++){
                 assembleAtomForce( ia );
-                if(bPBC){ Enb+=evalLJQs_ng4_PBC_atom_omp( ia ); }
-                else    { Enb+=evalLJQs_ng4_atom_omp    ( ia ); }
+                //if(bPBC){ Enb+=evalLJQs_ng4_PBC_atom_omp( ia ); }
+                //else    { Enb+=evalLJQs_ng4_atom_omp    ( ia ); }
                 if( atomForceFunc ) atomForceFunc( ia, apos[ia], fapos[ia] );
                 const Vec3d cvf_ = move_atom_MD( ia, dt, Flim, cdamp );
                 ff += cvf_.x; vv += cvf_.y; vf += cvf_.z;

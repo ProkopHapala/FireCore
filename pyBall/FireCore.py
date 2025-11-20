@@ -265,7 +265,7 @@ def getGridMO(iMO, ewfaux=None, ngrid=None):
 #lib.firecore_getGridDens.restype   =  None
 argDict["firecore_getGridDens"]=( None, [ array3d, c_double, c_double ] )
 def getGridDens(ewfaux=None, ngrid=None, Cden = 1.0, Cden0 = 0.0 ):
-    #ngrid=ngrid[::-1]
+    ngrid=ngrid[::-1]
     print( " getGridDens() ngrid ", ngrid ); #exit(0)
     if ewfaux is None:
         ewfaux = np.zeros(ngrid)

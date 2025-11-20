@@ -62,6 +62,31 @@ fi
 
 
 #./$name -x common_resources/xyz/C2H4          -iParalel 0
+#./$name -x common_resources/xyz/CH4          -iParalel 0
+#./$name -x common_resources/xyz/CH4          -iParalel 0 -ex2 
+#./$name -x common_resources/xyz/CH4          -iParalel 0 -ex2 -uff
+#./$name -x common_resources/xyz/CH4          -iParalel 1 -ex2 -uff
+#./$name -x common_resources/xyz/CH4          -iParalel 0 -uff
+#./$name -x common_resources/xyz/CH4          -iParalel 1 -uff
+
+#./$name -x common_resources/xyz/CH4          -iParalel 0 -ex2 -dt 0.01 -perframe 1
+
+
+#./$name -x common_resources/xyz/HCOOH         -iParalel 0 -ex2
+#./$name -x common_resources/xyz/HCOOH      -iParalel 1 -ex2
+
+#./$name -x common_resources/xyz/pyridine -iParalel 0 -ex2
+
+#./$name -x common_resources/xyz/NH3     -iParalel 0 -ex2
+
+#./$name -x common_resources/xyz/uracil  -iParalel 0 -ex2
+./$name -x common_resources/xyz/uracil  -iParalel 0 -ex2 -uff
+
+#./$name -x common_resources/xyz/nHexadecan_dicarboxylic -iParalel 0 -ex2
+#./$name -x common_resources/xyz/CG -iParalel 0  -ex2
+#./$name -x common_resources/xyz/CG -iParalel 0 
+
+
 
 #./$name -x common_resources/xyz/H2O       -uff  -iParalel 0  -verb 2   -perframe 1 -dt 0.0001
 #./$name -x common_resources/xyz/H2O       -uff  -iParalel 0  -verb 2   -perframe 1 -dt 0.01
@@ -198,8 +223,12 @@ fi
 
 
 
-#./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0
-./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0 
+#./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 1
+
+
+#./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 1
+#./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_8x8_L3_step -iParalel 1
+
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0 -uff  -dt 0.001
 
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0 -e
@@ -207,6 +236,9 @@ fi
 
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0 -uff -dt 0.01  -nPBC 0,0,0
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0  -dt 0.01 -nPBC 0,0,0
+
+
+
 
 
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L2 -lua test_add_mols.lua
@@ -218,6 +250,7 @@ fi
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaHole   -nPBC 0,0,0 -e -nPBC 2,2,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_ClHole   -nPBC 0,0,0
+#./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_step   -nPBC 0,0,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaClHole -nPBC 0,0,0
 
 
@@ -286,7 +319,14 @@ fi
 
 #./$name  -x common_resources/xyz/polymer-2_new-OH                                                -Ftol 1e-4 -iParalel 0 -perframe 1
 #./$name  -x common_resources/xyz/polymer-2_new-OH    -g common_resources/xyz/NaCl_1x1_L2   -Ftol 1e-4 -iParalel 0 -perframe 200  -verb 2 -e
-#./$name  -x common_resources/xyz/polymer-2_new-COOH  -g common_resources/xyz/NaCl_1x1_L2   -Ftol 1e-4 -iParalel 0 -perframe 10
+
+#./$name  -x common_resources/xyz/polymer-2           -g common_resources/xyz/NaCl_1x1_L3   -iParalel 1  #crash
+#./$name  -x common_resources/xyz/polymer-2_new       -g common_resources/xyz/NaCl_1x1_L3   -iParalel 1   #OK
+#./$name  -x common_resources/xyz/polymer-2_new-OH    -g common_resources/xyz/NaCl_1x1_L3   -iParalel 1  #OK
+#./$name  -x common_resources/xyz/polymer-2_new-COOH  -g common_resources/xyz/NaCl_1x1_L3   -iParalel 1   #crash
+
+#./$name  -x common_resources/xyz/polymer-2_new       -g common_resources/xyz/NaCl_8x8_L3_step   -iParalel 1  #OK
+#./$name  -x common_resources/xyz/polymer-2_new-OH    -g common_resources/xyz/NaCl_8x8_L3_step   -iParalel 1  #OK
 
 
 #./$name  -x common_resources/xyz/polymer-2_new   -g common_resources/xyz/NaCl_1x1_L2   -Ftol 1e-12 -iParalel 0 -perframe 10  -group  9,20,17,1,9  0,1,9,17,15,7,21,27,28,25,26,36 -group 12,19,16,3,12 2,3,6,12,14,16,18,24,30,29,35

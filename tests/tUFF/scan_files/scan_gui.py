@@ -366,9 +366,7 @@ class ScanGUI:
     def scan_uff(self, confs):
         """Run UFF/MMFF scan on configurations."""
         self._set_component_switches(self.component_flags, bNonBonded=self.bNonBonded, bGridFF=self.bGridFF)
-        # iParalel: 2 = GPU (OpenCL UFF), 3 = GPU (OpenCL MMFF)
-        iParalel = 2 if self.is_uff else 3
-        F_gpu = uff.scan(confs, iParalel=iParalel)
+        F_gpu = uff.scan(confs, iParalel=3)
         return F_gpu
     
     def _set_component_switches(self, components, *, bNonBonded=False, bGridFF=False):
@@ -529,7 +527,7 @@ if __name__ == "__main__":
         print("\n=== Force Field Selection ===\n")
         print("Choose force field:")
         print("1) UFF  (Universal Force Field)")
-        print("2) MMFF (Merck Molecular Force Field)")
+        print("2) MMFF")
         print()
 
         while True:

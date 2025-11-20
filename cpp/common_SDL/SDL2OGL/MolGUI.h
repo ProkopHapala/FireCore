@@ -797,9 +797,11 @@ void MolGUI::initWiggets(){
     }
 
     MolGUI::nonBondGUI();
+    printf( "MolGUI::initWiggets() DONE\n" );
 }
 
 void MolGUI::nonBondGUI(){
+    printf( "MolGUI::nonBondGUI()\n" );
     GUI_stepper gx(100,6);
     //bDrawNonBond = true;
     // ---- NonBond plot Options
@@ -856,6 +858,7 @@ void MolGUI::nonBondGUI(){
     mp->addPanel( "Charge: ", {-0.5,0.5, 0.0    },  1,0,0,1,0 );
     mp->addPanel( "Hbond : ", {-1.0,1.0, 0.0    },  1,0,0,1,0 );
 
+    printf( "MolGUI::nonBondGUI() DONE\n" );
 }
 
 void MolGUI::plotNonBondLines(){
@@ -1438,6 +1441,7 @@ void MolGUI::draw(){
             glCallList( ogl_surfatoms );
         }
     }
+    //DEBUG
 
     // ----- Visualization of the Groups of Atoms
     if( W->bGroups ){
@@ -1508,7 +1512,7 @@ void MolGUI::draw(){
         }
 
     }
-
+    //DEBUG
     //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 1., 0. );
     //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} ); }
     //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
@@ -1545,7 +1549,7 @@ void MolGUI::draw(){
             glCallList(ogl_MO); 
         glPopMatrix();
     }
-
+    //DEBUG
     // Draw the actual system ( molecules : atoms, bonds etc. )
     if(bDoMM){
         if( bViewBuilder ){ drawBuilder(); }   // Draw Builder 
@@ -1605,7 +1609,7 @@ void MolGUI::draw(){
             glEnd();
         }
     }
-
+    //DEBUG
     glColor3f(0.0f,0.5f,0.0f); showBonds();
 
     //visual_FF_test();
@@ -1650,6 +1654,7 @@ void MolGUI::draw(){
         glColor3f( 0.f,1.f,0.f ); 
         for(int ia : W->selection         ){ Draw3D::drawSphereOctLines( 8, 0.5, W->nbmol.apos[ia]        ); } 
     }
+    //DEBUG
 
     // --- Drawing Population of geometies overlay
     if(frameCount>=1){ 
@@ -1689,13 +1694,15 @@ void MolGUI::draw(){
             glPopAttrib();
         } 
     }
-
+    //DEBUG
     //if(iangPicked>=0){
     //    glColor3f(0.,1.,0.);      Draw3D::angle( W->ff.ang2atom[iangPicked], W->ff.ang_cs0[iangPicked], W->ff.apos, fontTex3D );
     //}
     if(useGizmo){ gizmo.draw(); }
     if(bHexDrawing)drawingHex(5.0);
     if(bViewAxis){ glLineWidth(3);  Draw3D::drawAxis(1.0); glLineWidth(1); }
+
+    //DEBUG
 
 };
 
@@ -1798,9 +1805,11 @@ Vec3d MolGUI::showNonBond( char* s, Vec2i b, bool bDraw ){
 }
 
 void MolGUI::drawHUD(){
+    //DEBUG
     glDisable ( GL_LIGHTING );
     gui.draw();
 
+    //DEBUG
     glPushMatrix();
     if(W->bCheckInvariants){
         glTranslatef( 10.0,HEIGHT-20.0,0.0 );
@@ -1817,6 +1826,7 @@ void MolGUI::drawHUD(){
         W->getStatusString( tmpstr, ntmpstr );
         Draw::drawText( tmpstr, fontTex, fontSizeDef, {100,20} );
     }
+    //DEBUG
     if(bWriteOptimizerState){
         double T = W->evalEkTemp();   //printf( "T_kinetic=%g[K] \n", T );
         glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
@@ -1832,7 +1842,7 @@ void MolGUI::drawHUD(){
         Draw::drawText( W->info_str(tmpstr), fontTex, fontSizeDef, {100,20} );
     }
     glPopMatrix();
-
+    //DEBUG
 
     if( W->getMolWorldVersion() == (int)MolWorldVersion::GPU ){
         glPushMatrix();
@@ -1848,6 +1858,7 @@ void MolGUI::drawHUD(){
         };
         glPopMatrix();
     }
+    //DEBUG
 
     /*
     glTranslatef( 0.0,fontSizeDef*-2*2,0.0 );
@@ -1869,8 +1880,9 @@ void MolGUI::drawHUD(){
 
     mouse_pix = ((Vec2f){ 2*mouseX/float(HEIGHT) - ASPECT_RATIO,
                           2*mouseY/float(HEIGHT) - 1      });// *(1/zoom);
-
+    //DEBUG
     if(bConsole) console.draw();
+    //DEBUG
 }
 
 void MolGUI::drawingHex(double z0){

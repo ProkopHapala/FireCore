@@ -48,6 +48,10 @@ touch minima.dat
 #./$name -m 10 -x common_resources/xyz/pyridine
 #./$name -m 10 -x common_resources/xyz/propandiol
 
+#./$name -m 1 -x common_resources/xyz/CH4  
+#./$name -m 1 -x common_resources/xyz/CH4 -ex2 
+# ./$name -m 10 -x common_resources/xyz/CH4 -uff -verb 4 -dt 0.005
+
 #./$name       -x common_resources/xyz/nHexadecan_dicarboxylic  -T 100 0.01
 #./$name       -x common_resources/xyz/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -T 100 0.01
 #./$name       -x common_resources/xyz/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -perframe 1000 -gopt 1000,1000 0.25,1.0
@@ -112,6 +116,9 @@ touch minima.dat
 
 #./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 3  -verb 4 -perframe 1
 #./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 3  -verb 4
+#./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 3
+#./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 3 -tex 1
+
 
 #./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 3
 #./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 3 -tex 1
@@ -209,5 +216,5 @@ touch minima.dat
 #./$name -m 300   -x common_resources/xyz/nHexadecan_dicarboxylic -g common_resources/xyz/NaCl_8x8_L3    -iParalel 3 -T 1000 0.02 -gopt 1000,1000 0.25,1.0   -verb 0 -perframe 100 
 
 
-./$name -m 100    -x common_resources/xyz/xylitol_WO_gridFF       -g common_resources/xyz/surfaces_for_throughput/NaCl_3x3_Cl_hole         -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 -grid_nPBC 2,2,0  -nogridff
+./$name -m 100    -x common_resources/xyz/xylitol_WO_gridFF     -g common_resources/xyz/surfaces_for_throughput/NaCl_3x3_Cl_hole         -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 
 #./$name -m 2000    -x common_resources/xyz/xylitol_WO_gridFF                 -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 -grid_nPBC 2,2,0 # -nogridff

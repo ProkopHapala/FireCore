@@ -813,9 +813,9 @@ class MMFFparams{ public:
     inline void assignRE( int ityp, Quat4d& REQ, bool bSqrtE=true, bool bHB=true )const{
         REQ.x    = atypes[ityp].RvdW;
         double e = atypes[ityp].EvdW;
-        if(bSqrtE) e=sqrt(e);
+        if(bSqrtE) e=sqrt(e); // This is correct, EvdW in tables is energy, but we often use sqrt(E) in formulas for numerical efficiency of mixing (Eij=Ei*Ej instead of Eij=sqrt(Eii*Ejj))
         REQ.y = e;
-        //if(bHB) REQ.w = atypes[ityp].Hb; // Hbond Correction
+        if(bHB) REQ.w = atypes[ityp].Hb; // Hbond Correction
     }
 
     void assignREs( int n, int * itypes, Quat4d * REQs, bool bSqrtE=true, bool bQ0=false, bool bHB0=true )const{

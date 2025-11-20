@@ -134,6 +134,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
 
     Quat4i* neighs     =0;
     Quat4i* neighCell  =0;
+    int*    excl       =0;
     Quat4i* bkNeighs   =0;
     Quat4i* bkNeighs_new=0;
     //Quat4f* neighForce =0;
@@ -189,6 +190,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
 
     OCLtask* task_cleanF=0;
     OCLtask* task_NBFF=0;
+    OCLtask* task_NBFF_ex2=0;
     OCLtask* task_NBFF_Grid=0;
     OCLtask* task_NBFF_Grid_Bspline=0;
     OCLtask* task_NBFF_Grid_Bspline_tex=0;
@@ -292,8 +294,11 @@ void realloc( int nSystems_ ){
         _realloc0( aforces,   uff_ocl->nAtomsTot  , Quat4fZero );
         _realloc0( avel,      uff_ocl->nAtomsTot  , Quat4fZero );
         _realloc0( cvfs_d,    uff_ocl->nAtomsTot  , Quat4dZero );  // UFF uses double precision
-        //_realloc( REQs,       uff_ocl->nAtomsTot );
-        _realloc( pbcshifts, uff_ocl->nSystems * ((uff_ocl->npbc>0)?uff_ocl->npbc:1) ); // use UFF OCL npbc for host buffer
+        _realloc( REQs,       uff_ocl->nAtomsTot );
+        _realloc( pbcshifts, uff_ocl->nSystems * (npbc+1) ); // npbc is from MolWorld_sp3
+        // Allocate constraint buffers for UFF (shared with MMFF)
+        _realloc0( constr,    uff_ocl->nAtomsTot , Quat4fOnes*-1. );
+        _realloc0( constrK,   uff_ocl->nAtomsTot , Quat4fOnes*-1. );
     }else{
         printf( "MolWorld_sp3_multi::realloc() MMFF Systems %i nAtoms %i nnode %i \n", nSystems, ffl.natoms,  ffl.nnode );
         ocl.initAtomsForces( nSystems, ffl.natoms,  ffl.nnode, npbc+1 );
@@ -305,6 +310,7 @@ void realloc( int nSystems_ ){
         _realloc0( constrK,   ocl.nAtoms*nSystems , Quat4fOnes*-1. );
         _realloc( neighs,    ocl.nAtoms*nSystems );
         _realloc( neighCell, ocl.nAtoms*nSystems );
+        _realloc( excl,      ocl.nAtoms*nSystems*EXCL_MAX );
         _realloc( bkNeighs,    ocl.nvecs*nSystems );
         _realloc( bkNeighs_new,ocl.nvecs*nSystems );
         _realloc( REQs,      ocl.nAtoms*nSystems );
@@ -339,6 +345,10 @@ void initMultiCPU(int nSys){
         ffls[isys].clone( ffl, true, true );
         ffls[isys].makePBCshifts( nPBC, true );
         ffls[isys].id=isys;
+        ffls[isys].bNonBonded     = bNonBonded;
+        ffls[isys].bNonBondNeighs = bNonBondNeighs;
+        ffls[isys].bExclusion2    = bExclusion2;
+        ffls[isys].setNonBondStrategy( bNonBondNeighs*2-1, bExclusion2 );
         ffls[isys].PLQs = ffl.PLQs;  // WARNING : maybe we should make own copy of PLQs for each system because we have own copy of REQs for each system
         // ----- optimizer
         opts[isys].bindOrAlloc( ffls[isys].nDOFs, ffls[isys].DOFs, 0, ffls[isys].fDOFs, 0 );
@@ -460,13 +470,15 @@ virtual void init() override {
     if(bUFF){database->setDescriptors(&ffu);}else{database->setDescriptors(&ffl);}
 
     if(bUFF){
-            setup_UFF_ocl();
-            if(!uff_ocl->bKernelPrepared)uff_ocl->setup_kernels( (float)ffu.Rdamp, (float)ffu.FmaxNonBonded, (float)ffu.SubNBTorsionFactor );
-            for(int isys=0; isys<nSystems; ++isys){ pack_uff_system( isys, ffu, true, false, false, true ); }
-            upload_uff( true, false, false, true );
-            memset( avel, 0, uff_ocl->nAtomsTot * sizeof(Quat4f) );
-            uff_ocl->upload( uff_ocl->ibuff_avel, (float*)avel );
-            printf("UFF setup done \n"); }
+        setup_UFF_ocl();
+        if(!uff_ocl->bKernelPrepared)uff_ocl->setup_kernels( (float)ffu.Rdamp, (float)ffu.FmaxNonBonded, (float)ffu.SubNBTorsionFactor );
+        for(int isys=0; isys<nSystems; ++isys){ pack_uff_system( isys, ffu, true, false, false, true ); }
+        upload_uff( true, false, false, true );
+        memset( avel, 0, uff_ocl->nAtomsTot * sizeof(Quat4f) );
+        uff_ocl->upload( uff_ocl->ibuff_avel, (float*)avel );
+        printf("UFF setup done \n"); 
+    }
+
     printf( "uploadPopName @ %li\n", uploadPopName );
     if( uploadPopName ){   printf( "!!!!!!!!!!!!\n UPLOADING POPULATION FROM FILE (%s)\n", uploadPopName );  upload_pop( uploadPopName ); }
 
@@ -689,6 +701,16 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=false,
 
         copy    ( ff.natoms, ff.neighCell, neighCell+i0a );
         copy    ( ff.natoms, ff.neighs,    neighs   +i0a );
+        if(bExclusion2 && ff.excl){
+            copy( ff.natoms*EXCL_MAX, ff.excl, excl + i0a*EXCL_MAX );
+        }else{
+            int* dst = excl + i0a*EXCL_MAX;
+            const int nrow = ff.natoms;
+            for(int ia=0; ia<nrow; ia++){
+                int* row = dst + ia*EXCL_MAX;
+                for(int k=0; k<EXCL_MAX; k++){ row[k] = -1; }
+            }
+        }
         //copy_add( ff.natoms, ff.neighs,    neighs   +i0a,           0      );
         copy    ( ff.natoms, ff.bkneighs,  bkNeighs_new +i0v           );
         copy    ( ff.nnode,  ff.bkneighs,  bkNeighs_new +i0v+ff.natoms );
@@ -699,7 +721,7 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=false,
         pack    ( ff.nnode , ff.bKs,        BKs      +i0n );
         pack    ( ff.nnode , ff.Ksp,        Ksp      +i0n );
         pack    ( ff.nnode , ff.Kpp,        Kpp      +i0n );
-        pack    ( nbmol.natoms, nbmol.REQs, REQs     +i0a );
+        pack    ( ff.natoms, ff.REQs, REQs     +i0a );
     }
 
     //if(isys==5)
@@ -752,6 +774,9 @@ void upload_sys( int isys, bool bParams=false, bool bForces=0, bool bVel=true, b
         int i0bk  = isys * ocl.nbkng;
         err|= ocl.upload( ocl.ibuff_neighs,    neighs    , ocl.nAtoms, i0a  );
         err|= ocl.upload( ocl.ibuff_neighCell, neighCell , ocl.nAtoms, i0a  );
+        if(bExclusion2){
+            err|= ocl.upload( ocl.ibuff_excl,      excl      , ocl.nAtoms*EXCL_MAX, i0a*EXCL_MAX  );
+        }
         err|= ocl.upload( ocl.ibuff_bkNeighs,  bkNeighs  , ocl.nbkng, i0bk  );
         err|= ocl.upload( ocl.ibuff_bkNeighs_new, bkNeighs_new, ocl.nbkng, i0bk  );
         //err|= ocl.upload( ocl.ibuff_neighForce, neighForce  );
@@ -783,6 +808,9 @@ void upload_mmff(  bool bParams, bool bForces, bool bVel, bool blvec ){
     if(bParams){
         err|= ocl.upload( ocl.ibuff_neighs,     neighs    );
         err|= ocl.upload( ocl.ibuff_neighCell,  neighCell );
+        if(bExclusion2){
+            err|= ocl.upload( ocl.ibuff_excl,       excl      );
+        }
         err|= ocl.upload( ocl.ibuff_bkNeighs,   bkNeighs  );
         err|= ocl.upload( ocl.ibuff_bkNeighs_new,   bkNeighs_new  );
         //err|= ocl.upload( ocl.ibuff_neighForce, neighForce  );
@@ -1284,7 +1312,13 @@ double evalVFs( double Fconv=1e-6 ){
     else{
         //ocl.download( ocl.ibuff_aforces , aforces );
         //ocl.download( ocl.ibuff_avel    , avel    );
-        ocl.download( ocl.ibuff_cvf    , cvfs  );
+        // Safe download of cvfs (handling potential double precision on GPU)
+        static std::vector<Quat4d> tmp_cvfs;
+        tmp_cvfs.resize(ocl.nvecs * nSystems);
+        ocl.download( ocl.ibuff_cvf, tmp_cvfs.data() );
+        for(int i=0; i<tmp_cvfs.size(); i++){
+            cvfs[i].set( (float)tmp_cvfs[i].x, (float)tmp_cvfs[i].y, (float)tmp_cvfs[i].z, (float)tmp_cvfs[i].w );
+        }
         err |= ocl.finishRaw();  OCL_checkError(err, "evalVFs().1");
         //printf("MolWorld_sp3_multi::evalVFs(%i) \n", isys);
         iSysFMax=-1;
@@ -1534,7 +1568,7 @@ double eval_UFF_ocl( int niter=1, double* Energies=0, int isys_choice=0 ){
 }
 
 void setup_UFF_ocl(){
-    printf("MolWorld_sp3_multi::setup_UFF_ocl()\n");
+    printf("MolWorld_sp3_multi::setup_UFF_ocl() bGridFF=%i bSurfAtoms=%i bNonBonded=%i\n", bGridFF, bSurfAtoms, bNonBonded);
     if(!uff_ocl){ printf("ERROR: setup_UFF_ocl() called but uff_ocl is null!\n"); return; }
 
     // Ensure kernels are prepared if they haven't been already.
@@ -1544,34 +1578,36 @@ void setup_UFF_ocl(){
         float SubNBTorsion = (float)ffu.SubNBTorsionFactor;
         uff_ocl->setup_kernels(Rdamp, FmaxNB, SubNBTorsion);
     }
-
     Vec3i nPBC_ = nPBC; if(!bPBC) nPBC_ = Vec3iZero;
     if(bSurfAtoms){
         if(bGridFF){
-            if(!uff_ocl->task_NBFF_Grid_Bspline){
+            //if(!uff_ocl->task_NBFF_Grid_Bspline){
                 printf("MolWorld_sp3_multi::setup_UFF_ocl() for UFF GridFF\n");
                 // UFF should set grid parameters directly from GridFF object, not copy from MMFF context
                 // Set grid parameters directly from GridFF object
                 uff_ocl->setGridShape(gridFF.grid);
                 uff_ocl->bNonBond=bNonBonded;
                 printf("DEBUG setup_UFF_ocl: uff_ocl->ibuff_BsplinePLQ=%d (should be 41)\n", uff_ocl->ibuff_BsplinePLQ);
-                uff_ocl->task_NBFF_Grid_Bspline = uff_ocl->setup_getNonBond_GridFF_Bspline(ffu.natoms, nPBC_);
-            }
+                uff_ocl->task_NBFF_Grid_Bspline     = uff_ocl->setup_getNonBond_GridFF_Bspline    (ffu.natoms, nPBC_, uff_ocl->task_NBFF_Grid_Bspline    );
+                uff_ocl->task_NBFF_Grid_Bspline_ex2 = uff_ocl->setup_getNonBond_GridFF_Bspline_ex2(ffu.natoms, nPBC_, uff_ocl->task_NBFF_Grid_Bspline_ex2);
+            //}
         }
         else{
-            if(!uff_ocl->task_SurfAtoms){
+            //if(!uff_ocl->task_SurfAtoms){
                 printf("MolWorld_sp3_multi::setup_UFF_ocl() for UFF SurfAtoms\n");
                 uff_ocl->task_SurfAtoms = uff_ocl->getSurfMorse( gridFF.nPBC );
-            }
+            //}
         }
     }
     if(bNonBonded && !bGridFF){
-        if(!uff_ocl->task_NBFF){
+        //if(!uff_ocl->task_NBFF){
             printf("MolWorld_sp3_multi::setup_UFF_ocl() for UFF NonBonded\n");
-            uff_ocl->task_NBFF = uff_ocl->setup_getNonBond(ffu.natoms, nPBC_);
-        }
+            uff_ocl->task_NBFF     = uff_ocl->setup_getNonBond    (ffu.natoms, nPBC_, uff_ocl->task_NBFF    );
+            uff_ocl->task_NBFF_ex2 = uff_ocl->setup_getNonBond_ex2(ffu.natoms, nPBC_, uff_ocl->task_NBFF_ex2);
+        //}
     }
     if(!uff_ocl->task_updateAtoms) uff_ocl->setup_updateAtomsMMFFf4( ffu.natoms, 0 );
+    uff_ocl->bSetUp = true;
 }
 
 virtual double solve_multi ( int nmax, double tol )override{
@@ -2026,7 +2062,8 @@ void setup_MMFFf4_ocl(){
         default: { printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() GridFFmod::%i not implemented \n", gridFF.mode ); } break;
     }
 
-    if(!task_NBFF  ){  task_NBFF      = ocl.setup_getNonBond       ( ffl.natoms, ffl.nnode, nPBC_ );  }
+    if(!task_NBFF    ){  task_NBFF      = ocl.setup_getNonBond    ( ffl.natoms, ffl.nnode, nPBC_ );  }
+    if(!task_NBFF_ex2){  task_NBFF_ex2  = ocl.setup_getNonBond_ex2( ffl.natoms, ffl.nnode, nPBC_ );  }
 
     // OCLtask* getSurfMorse(  Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0, int na_s=0, float4* atoms_s=0, float4* REQs_s=0,  bool bRun=true, OCLtask* task=0 ){
     if(!task_SurfAtoms && bSurfAtoms ){
@@ -2061,33 +2098,53 @@ void setup_NBFF_ocl(){
     if(!task_NBFF   )task_NBFF   = ocl.setup_getNonBond       ( ffl.natoms, ffl.nnode, nPBC  );
 }
 
-void picked2GPU( int ipick,  float K ){
-    //printf( "MolWorld_sp3_multi::picked2GPU() ipick %i iSystemCur %i \n", ipick, iSystemCur );
-    int i0a = ocl.nAtoms*iSystemCur;
-    int i0v = ocl.nvecs *iSystemCur;
-    if(ipick>=0){
-        Quat4f& acon  = constr [i0a + ipick];
-        Quat4f& aconK = constrK[i0a + ipick];
-        Vec3f hray   = (Vec3f)pick_hray;
-        Vec3f ray0   = (Vec3f)pick_ray0;
-        const Quat4f& atom = atoms [i0v + ipick];
+void picked2GPU(int ipick, float K){
+    //printf( "MolWorld_sp3_multi::picked2GPU(ipick=%i,K=%g)\n", ipick, K );
+    if(bUFF){
+        int i0a = uff_ocl->nAtoms*iSystemCur;
+        if(ipick>=0){
+            Quat4f& acon  = constr [i0a + ipick];
+            Quat4f& aconK = constrK[i0a + ipick];
+            Vec3f hray   = (Vec3f)pick_hray;
+            Vec3f ray0   = (Vec3f)pick_ray0;
+            const Quat4f& atom = atoms [i0a + ipick];
+            float c = hray.dot( atom.f ) - hray.dot( ray0 );
+            acon.f = ray0 + hray*c;
+            acon.w = K;
+            aconK = Quat4f{K,K,K,K};
+        }else{
+            for(int i=0; i<uff_ocl->nAtoms; i++){ constr[i0a + i].w=-1.0;  };
+            for(int i=0; i<uff_ocl->nAtoms; i++){ constrK[i0a + i]=Quat4fZero; };
+        }
+        uff_ocl->upload( uff_ocl->ibuff_constr,  constr  );
+        uff_ocl->upload( uff_ocl->ibuff_constrK, constrK );
+    }else{
+        int i0a = ocl.nAtoms*iSystemCur;
+        int i0v = ocl.nvecs *iSystemCur;
+        if(ipick>=0){
+            Quat4f& acon  = constr [i0a + ipick];
+            Quat4f& aconK = constrK[i0a + ipick];
+            Vec3f hray   = (Vec3f)pick_hray;
+            Vec3f ray0   = (Vec3f)pick_ray0;
+            const Quat4f& atom = atoms [i0v + ipick];
         float c = hray.dot( atom.f ) - hray.dot( ray0 );
         acon.f = ray0 + hray*c;
-        acon.w = K;
-        aconK = Quat4f{K,K,K,K};
-    }else{
-        for(int i=0; i<ocl.nAtoms; i++){ constr[i0a + i].w=-1.0;  };
-        for(int i=0; i<ocl.nAtoms; i++){ constrK[i0a + i]=Quat4fZero; };
-        //for(int i: constrain_list     ){ constr[i0a + i].w=Kfix;  };
-        for(int ia=0; ia<ocl.nAtoms; ia++){
-            int iaa = i0a + ia;
-            constr [iaa]=(Quat4f)ffls[iSystemCur].constr [ia];
-            constrK[iaa]=(Quat4f)ffls[iSystemCur].constrK[ia];
-        };
+            acon.w = K;
+            aconK = Quat4f{K,K,K,K};
+        }else{
+            for(int i=0; i<ocl.nAtoms; i++){ constr[i0a + i].w=-1.0;  };
+            for(int i=0; i<ocl.nAtoms; i++){ constrK[i0a + i]=Quat4fZero; };
+            //for(int i: constrain_list     ){ constr[i0a + i].w=Kfix;  };
+            for(int ia=0; ia<ocl.nAtoms; ia++){
+                int iaa = i0a + ia;
+                constr [iaa]=(Quat4f)ffls[iSystemCur].constr [ia];
+                constrK[iaa]=(Quat4f)ffls[iSystemCur].constrK[ia];
+            };
+        }
+        //for(int i=0; i<ocl.nAtoms; i++){ printf( "CPU:constr[%i](%7.3f,%7.3f,%7.3f |K= %7.3f) \n", i, constr[i0a+i].x,constr[i0a+i].y,constr[i0a+i].z,  constr[i0a+i].w   ); }
+        ocl.upload( ocl.ibuff_constr,  constr  );   // ToDo: instead of updating the whole buffer we may update just relevant part?
+        ocl.upload( ocl.ibuff_constrK, constrK );
     }
-    //for(int i=0; i<ocl.nAtoms; i++){ printf( "CPU:constr[%i](%7.3f,%7.3f,%7.3f |K= %7.3f) \n", i, constr[i0a+i].x,constr[i0a+i].y,constr[i0a+i].z,  constr[i0a+i].w   ); }
-    ocl.upload( ocl.ibuff_constr,  constr  );   // ToDo: instead of updating the whole buffer we may update just relevant part?
-    ocl.upload( ocl.ibuff_constrK, constrK );
 }
 
 // ==================================
@@ -2236,13 +2293,12 @@ int save_trj_uff_ocl( int isys, int step, double Fconv ){
 }
 
 int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim ){
-    if(verbosity>0)printf("MolWorld_sp3_multi::run_uff_ocl() bBonding=%i bSurfAtoms=%i bGridFF=%i bNonBonded=%i  dt=%10g \n", ffu.bDoBond, bSurfAtoms, bGridFF, bNonBonded, dt );
-
     long T0 = getCPUticks();  // Start timing this call
     double F2conv = Fconv*Fconv;
     if(!bUFF){ printf("MolWorld_sp3_multi::run_uff_ocl(): bUFF=false\n"); return 0; }
     if(!uff_ocl){ printf("MolWorld_sp3_multi::run_uff_ocl(): uff_ocl==nullptr\n"); return 0; } // This should not happen, uff_ocl is initialized in init()
     if(verbosity>0)printf("MolWorld_sp3_multi::run_uff_ocl( bSurfAtoms=%i,  bGridFF=%i, bNonBonded=%i | niter=%i, dt=%f, damping=%f, Fconv=%f, Flim=%f) \n",bSurfAtoms, bGridFF, bNonBonded,  niter, dt, damping, Fconv, Flim);
+    picked2GPU( ipicked, 1.0f );
     if(initial){
         for(int i=0; i<nSystems; i++){
             MDpars[i].x = dt;               // dt
@@ -2265,8 +2321,6 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
             }
         }
 
-
-
         uff_ocl->upload( uff_ocl->ibuff_MDpars, MDpars );
         uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
         uff_ocl->setup_updateAtomsMMFFf4( uff_ocl->nAtoms, 0 ); // nNode==0 for UFF
@@ -2285,6 +2339,7 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
 
         initial = false;
     }
+
     bBonding = ffu.bDoBond;
     //nPerVFs = _min(10,niter);
     if(nPerVFs>niter)nPerVFs=niter;
@@ -2299,7 +2354,7 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
     long Nticks_loop_updateAtoms = 0;
     long Nticks_loop_trajSave = 0;
     long Nticks_evalVFs = 0;
-    //printf("run_uff_ocl() nVFs %i nPerVFs %i niter %i \n", nVFs, nPerVFs, niter);
+    //printf("run_uff_ocl() main loop nVFs %i nPerVFs %i niter %i \n", nVFs, nPerVFs, niter);
     for(int iVF=0; iVF<nVFs; iVF++){
         long T_2 = getCPUticks();
         if(iVF>0)updateMultiExploring( Fconv );
@@ -2310,10 +2365,16 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
             if     (bBonding)   { T_2 = getCPUticks(); uff_ocl->eval(false);                      Nticks_loop_bonding   += (getCPUticks()-T_2); }
             else                { T_2 = getCPUticks(); uff_ocl->task_clear_fapos      ->enque();  Nticks_loop_bonding   += (getCPUticks()-T_2); }
             if(bSurfAtoms){
-                if     (bGridFF){ T_2 = getCPUticks(); uff_ocl->task_NBFF_Grid_Bspline->enque();  Nticks_loop_gridff    += (getCPUticks()-T_2); }
-                else            { T_2 = getCPUticks(); uff_ocl->task_SurfAtoms        ->enque();  Nticks_loop_surfatoms += (getCPUticks()-T_2); }
+                if     (bGridFF){
+                    if(bExclusion2){ T_2 = getCPUticks(); uff_ocl->task_NBFF_Grid_Bspline_ex2->enque();  Nticks_loop_gridff    += (getCPUticks()-T_2); }
+                    else           { T_2 = getCPUticks(); uff_ocl->task_NBFF_Grid_Bspline->enque();      Nticks_loop_gridff    += (getCPUticks()-T_2); }
+                }
+                else               { T_2 = getCPUticks(); uff_ocl->task_SurfAtoms        ->enque();      Nticks_loop_surfatoms += (getCPUticks()-T_2); }
             }
-            if(bNonBonded && !bGridFF){ T_2 = getCPUticks(); uff_ocl->task_NBFF       ->enque();  Nticks_loop_nonbonded += (getCPUticks()-T_2); }
+            if(bNonBonded && !bGridFF){ 
+                if(bExclusion2){ T_2 = getCPUticks(); uff_ocl->task_NBFF_ex2->enque();  Nticks_loop_nonbonded += (getCPUticks()-T_2); }
+                else           { T_2 = getCPUticks(); uff_ocl->task_NBFF    ->enque();  Nticks_loop_nonbonded += (getCPUticks()-T_2); }
+            }
             T_2 = getCPUticks();
             if(bMoving) uff_ocl->task_updateAtoms->enque();
             Nticks_loop_updateAtoms += (getCPUticks()-T_2);
@@ -2423,6 +2484,7 @@ int debug_eval(){
     exit(0);
 }
 
+
 int run_ocl_opt( int niter, double Fconv=1e-6 ){
     printf("MolWorld_sp3_multi::run_ocl_opt() niter=%i bGroups=%i ocl.nGroupTot=%i \n", niter, bGroups, ocl.nGroupTot );
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
@@ -2456,7 +2518,12 @@ if(initial){
 
     bool bGroupDrive = false;
     //bool dovdW=false;
-    ocl.bSubtractVdW=dovdW;
+    ocl.bSubtractVdW = (!bExclusion2);
+    if(task_MMFF){
+        //printf("run_ocl_opt() clSetKernelArg bSubtractVdW=%i\n", ocl.bSubtractVdW);
+        int err_set = clSetKernelArg( ocl.kernels[task_MMFF->ikernel], 16, sizeof(int), &ocl.bSubtractVdW );
+        OCL_checkError(err_set, "run_ocl_opt.set_bSubtractVdW");
+    }
 
     if(ocl.nGroupTot<=0){ bGroups = false; };
     bool bExplore = false;
@@ -2534,10 +2601,13 @@ if(initial){
                             err |= task_SurfAtoms->enque_raw();  //OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_SurfAtoms()" );
                         }
                     }else{
-                        err |= task_NBFF      ->enque_raw();     //OCL_checkError(err, "task_NBFF->enque_raw();");
+                        if(bExclusion2){
+                            err |= task_NBFF_ex2->enque_raw();
+                        }else{
+                            err |= task_NBFF      ->enque_raw();     //OCL_checkError(err, "task_NBFF->enque_raw();");
+                        }
                     }
                 }
-                T_2 = getCPUticks();
                 if(bBonding) err |= task_MMFF->enque_raw();   Nticks_loop_bonding += (getCPUticks()-T_2); //OCL_checkError(err, "task_MMFF->enque_raw()"); 
 
                 if( bGroupDrive ) err |= task_GroupForce->enque_raw();
@@ -2586,8 +2656,8 @@ if(initial){
             double t=(getCPUticks()-T0)*tick2second;
             //printf( "run_omp_ocl(nSys=%i|iPara=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", nSystems, iParalel, itr,niter_max, sqrt(F2max), T1*1000 );
             if(verbosity>0)
-            printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bGridFF=%i,bExplore=%i,bGroups=%i) CONVERGED in %i/%i steps, |F|(%g)<%g time %g [ms]( %g [us/step]) \n", nSystems, iParalel, bSurfAtoms, bGridFF, bExplore, bGroups, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone); 
-            return niterdone; 
+                printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bExclusion2=%i,bGridFF=%i,bUseTexture=%i,bExplore=%i,) CONVERGED in %i/%i steps, |F|(%g)<%g time %g [ms]( %g [us/step]) bGridFF=%i \n", nSystems, iParalel, bSurfAtoms, bExclusion2, bGridFF, ocl.bUseTexture, bExplore, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF );
+            return niterdone;
         }
     }
 
@@ -3012,7 +3082,8 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
     if(iParalel<-100){ iParalel=iParalel_default; };
 
     if(Ftol<0)  Ftol = Ftol_default;
-    //printf( "MolWorld_sp3_multi::MDloop(%i) bGridFF %i bOcl %i bMMFF %i iParalel=%i \n", nIter, bGridFF, bOcl, bMMFF, iParalel );
+    printf( "MolWorld_sp3_multi::MDloop(%i) bGridFF %i bOcl %i bMMFF %i bUFF %i iParalel=%i \n", nIter, bGridFF, bOcl, bMMFF, bUFF, iParalel );
+
     //bMMFF=false;
     if(first){ zeroT = getCPUticks(); first=false;
         if(bUFF){
@@ -3036,9 +3107,21 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
     nIter=iterPerFrame;
     int nitrdione=0;
     if(bUFF){
-        nitrdione = run_uff_ocl( nIter, dt_default, 0.1, Ftol, 1000 );
+        ffu.bNonBonded     = bNonBonded;
+        ffu.bNonBondNeighs = bNonBondNeighs;
+        ffu.bExclusion2    = bExclusion2;
+        switch(iParalel){
+            case -1:
+            case  0: bOcl=false;  nitrdione = ffu.run        ( nIter, dt_default, Ftol, 1000.0 ); break;
+            case  1: bOcl=false;  nitrdione = ffu.run_omp    ( nIter, dt_default, Ftol, 1000.0 ); break;
+            case  2: bOcl=true;   nitrdione =     run_omp_ocl( nIter,             Ftol         ); break;
+            case  3: bOcl=true;   nitrdione =     run_uff_ocl( nIter, dt_default, opt.damping, Ftol, 1000.0 );  break;
+            default:
+                printf( "ERROR: MolWorld_sp3_multi::MDloop() iParalel(%i) not implemented for UFF (use 0=run, 1=run_omp, 2=run_omp_ocl, 3=run_uff_ocl)\n", iParalel );
+                exit(0);
+        }
+        unpack_uff_system( iSystemCur, ffu, true, true );
     }else{
-        //bOcl=iParalel>0;
         switch(iParalel){
             case -1: bOcl=false;  nitrdione = run_multi_serial(nIter,Ftol);  break;
             case  0: bOcl=false;  nitrdione = MolWorld_sp3::run_no_omp( nIter, Ftol ); break;
@@ -3134,7 +3217,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
                 nStepNonConvSum/((double)nbNonConverged),
                 nStepExplorSum/((double)nExploring),
                 (nStepConvSum+nStepNonConvSum+nStepExplorSum));
-            if((getCPUticks()-zeroT)*tick2second > 9.5){ // reduce the time of simulation 9.5 was used to create nb_evale_vs_surf_size; 59.5 was used to create evaluation_vs_time
+            if((getCPUticks()-zeroT)*tick2second > 99999.5){ // reduce the time of simulation 9.5 was used to create nb_evale_vs_surf_size; 59.5 was used to create evaluation_vs_time
                 fclose(file);
                 //database->print();
                 exit(0);
@@ -3536,11 +3619,33 @@ virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5
 
 
 virtual int getMultiSystemPointers( int*& M_neighs,  int*& M_neighCell, Quat4f*& M_apos, int& nvec ) override {
-    nvec        = ocl.nvecs;
-    M_neighs    = (int*)neighs;
-    M_neighCell = (int*)neighCell;
-    M_apos      = atoms;
-    return nSystems;
+    if(bUFF){
+        if(host_neighs_UFF.empty() || host_neighCell_UFF.empty() || (atoms==nullptr)){
+            M_neighs = nullptr;
+            M_neighCell = nullptr;
+            M_apos = nullptr;
+            nvec = 0;
+            return 0;
+        }
+        nvec        = ffu.natoms;             // UFF uses atom-only stride per system
+        M_neighs    = (int*)host_neighs_UFF.data();
+        M_neighCell = (int*)host_neighCell_UFF.data();
+        M_apos      = atoms;                   // positions packed per system in `atoms`
+        return nSystems;
+    }else{
+        if((neighs==nullptr) || (neighCell==nullptr) || (atoms==nullptr)){
+            M_neighs = nullptr;
+            M_neighCell = nullptr;
+            M_apos = nullptr;
+            nvec = 0;
+            return 0;
+        }
+        nvec        = ocl.nvecs;
+        M_neighs    = (int*)neighs;
+        M_neighCell = (int*)neighCell;
+        M_apos      = atoms;
+        return nSystems;
+    }
 }
 
 // ##############################################################

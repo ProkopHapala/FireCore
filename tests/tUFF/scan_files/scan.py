@@ -59,7 +59,7 @@ def print_bufs(bufs, title="Buffers"):
 
 def scan_uff(confs, components, bNonBonded=False, bGridFF=False):
     components_to_switches(components, bNonBonded=bNonBonded, bGridFF=bGridFF)
-    F_gpu = uff.scan(confs, iParalel=2)
+    F_gpu = uff.scan(confs, iParalel=3)
     return F_gpu
 
 if __name__ == "__main__":
