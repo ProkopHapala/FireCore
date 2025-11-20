@@ -59,7 +59,7 @@ const float4   grid_p0
 // Debug Controls (compile-time macros)
 // ======================================================
 // Enable concise debug prints without changing C++ host interface.
-#define DBG_MMFF    0     // 0/1 master switch
+#define DBG_MMFF    1     // 0/1 master switch
 #define IDBG_ATOM  (1)    // atom index to trace
 #define IDBG_SYS   (0)    // system index to trace
 
@@ -2460,8 +2460,7 @@ __kernel void getNonBond_GridFF_Bspline(
     __global float4*  REQKs,        // 4 // parameters of Lenard-Jones potential, Coulomb and Hydrogen Bond (RvdW,EvdW,Q,H)
     __global int4*    neighs,       // 5 // indexes neighbors of atoms
     __global int4*    neighCell,    // 6 // indexes of cells of neighbor atoms
-
-    __global cl_Mat3*  lvecs,        // 7 // lattice vectors of the system
+    __global cl_Mat3* lvecs,        // 7 // lattice vectors of the system
     const int4 nPBC,                // 8 // number of PBC images in each direction
     const float4  GFFParams,        // 9 // parameters of Grid-Force-Field (GFF) (RvdW,EvdW,Q,H)
     // GridFF
@@ -3430,13 +3429,13 @@ __kernel void getSurfMorse(
     const int iaa = iG + i0a;      // index of the atom in the system
     const int iav = iG + i0v;      // index of the vector (atom or pi-orbital) in the system
 
-    // if( (iG==0) && (iS==0) ){
-    //     printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) \n", nG,nS, nL, ns.x,ns.y,ns.z  );
-    //     //printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) nPBC(%i,%i,%i)\n", nG,nS, nL, ns.x,ns.y,ns.z,  nPBC.x,nPBC.y,nPBC.z  );
-    //     //for(int i=0; i<ns.x; i++){ printf( "forces[%i] (%g,%g,%g) \n", i, forces[i].x,forces[i].y,forces[i].z );   }
-    //     for(int i = 0; i < natoms; i++){ printf( "GPU.atoms[%i](%g,%g,%g) \n", i, atoms[i].x,atoms[i].y,atoms[i].z );   }
-    //     for(int i=0; i<na_surf; i++){ printf( "GPU.atoms_s[%i](%g,%g,%g) \n", i, atoms_s[i].x,atoms_s[i].y,atoms_s[i].z );   }
-    // }
+    if( (DBG_MMFF>0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS) ){
+        printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) \n", nG,nS, nL, ns.x,ns.y,ns.z  );
+        //printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) nPBC(%i,%i,%i)\n", nG,nS, nL, ns.x,ns.y,ns.z,  nPBC.x,nPBC.y,nPBC.z  );
+        //for(int i=0; i<ns.x; i++){ printf( "forces[%i] (%g,%g,%g) \n", i, forces[i].x,forces[i].y,forces[i].z );   }
+        for(int i = 0; i < natoms; i++){ printf( "GPU.atoms[%i](%g,%g,%g) REQs(%g,%g,%g)  \n", i, atoms[i].x,atoms[i].y,atoms[i].z, REQs[i].x,REQs[i].y,REQs[i].z );  }
+        for(int i=0; i<na_surf; i++){ printf( "GPU.atoms_s[%i](%g,%g,%g) \n", i, atoms_s[i].x,atoms_s[i].y,atoms_s[i].z );   }
+    }
     float4 fe   = (float4){0.0f,0.0f,0.0f,0.0f};
 
     // ========== BEGIN test loading atoms to local memory

@@ -1313,12 +1313,7 @@ double evalVFs( double Fconv=1e-6 ){
         //ocl.download( ocl.ibuff_aforces , aforces );
         //ocl.download( ocl.ibuff_avel    , avel    );
         // Safe download of cvfs (handling potential double precision on GPU)
-        static std::vector<Quat4d> tmp_cvfs;
-        tmp_cvfs.resize(ocl.nvecs * nSystems);
-        ocl.download( ocl.ibuff_cvf, tmp_cvfs.data() );
-        for(int i=0; i<tmp_cvfs.size(); i++){
-            cvfs[i].set( (float)tmp_cvfs[i].x, (float)tmp_cvfs[i].y, (float)tmp_cvfs[i].z, (float)tmp_cvfs[i].w );
-        }
+        ocl.download( ocl.ibuff_cvf, cvfs );
         err |= ocl.finishRaw();  OCL_checkError(err, "evalVFs().1");
         //printf("MolWorld_sp3_multi::evalVFs(%i) \n", isys);
         iSysFMax=-1;

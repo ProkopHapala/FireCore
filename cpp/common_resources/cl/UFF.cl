@@ -5,7 +5,7 @@
 // Debug Controls (compile-time macros)
 // ======================================================
 // Enable concise debug prints without changing C++ host interface.
-#define DBG_UFF -2         // 0/1 master switch
+#define DBG_UFF 1         // 0/1 master switch
 #define IDBG_ATOM  (0)    // atom index to trace
 #define IDBG_BOND  (0)    // bond index to trace (global bond id), -1 disables
 #define IDBG_ANGLE (0)    // angle index to trace
@@ -151,12 +151,12 @@ __kernel void evalBondsAndHNeigh_UFF(
     int i0a = isys * natoms;          // atoms per system (base index)
     int i0h = isys * (natoms*4);      // hneigh per system (base index)
     // Header print by a single work-item to avoid async interleaving (selected system only)
-    if ((DBG_UFF>0) && ia==IDBG_ATOM && (isys==IDBG_SYS)){ printf("GPU evalBondsAndHNeigh_UFF() natoms=%d npbc=%d i0bon=%d Rdamp=% .6e Fmax=% .6e bSubtractBondNonBond=%d iDBG=%d isys=%d\n", natoms, npbc, i0bon, Rdamp, FmaxNonBonded, bSubtractBondNonBond, IDBG_ATOM, isys); }
-    if ((DBG_UFF>1) && ia==IDBG_ATOM && (isys==IDBG_SYS)){
-        printf("GPU evalBondsAndHNeigh_UFF() natoms=%d npbc=%d i0bon=%d Rdamp=% .6e Fmax=% .6e bSubtractBondNonBond=%d iDBG=%d isys=%d\n", natoms, npbc, i0bon, Rdamp, FmaxNonBonded, bSubtractBondNonBond, IDBG_ATOM, isys);
-        // Print first 64 bond parameter rows on one line per bond (safe upper bound without host arg)
-        printf("GPU BOND-TABLE  ib   ia   ja           K           l0\n");
-    }
+    // if ((DBG_UFF>0) && ia==IDBG_ATOM && (isys==IDBG_SYS)){ printf("GPU evalBondsAndHNeigh_UFF() natoms=%d npbc=%d i0bon=%d Rdamp=% .6e Fmax=% .6e bSubtractBondNonBond=%d iDBG=%d isys=%d\n", natoms, npbc, i0bon, Rdamp, FmaxNonBonded, bSubtractBondNonBond, IDBG_ATOM, isys); }
+    // if ((DBG_UFF>1) && ia==IDBG_ATOM && (isys==IDBG_SYS)){
+    //     printf("GPU evalBondsAndHNeigh_UFF() natoms=%d npbc=%d i0bon=%d Rdamp=% .6e Fmax=% .6e bSubtractBondNonBond=%d iDBG=%d isys=%d\n", natoms, npbc, i0bon, Rdamp, FmaxNonBonded, bSubtractBondNonBond, IDBG_ATOM, isys);
+    //     // Print first 64 bond parameter rows on one line per bond (safe upper bound without host arg)
+    //     printf("GPU BOND-TABLE  ib   ia   ja           K           l0\n");
+    // }
 
     //     // this is loop over bonds, but we should loop over bonds of atoms instead
     //     // for(int ib=0; ib<N; ++ib){
@@ -335,18 +335,18 @@ __kernel void evalAngles_UFF(
     int i0A = isys * nangles;       // per-system base for angle arrays
     int i0f = isys * nf_per_system; // per-system base for fint
 
-    if ((DBG_UFF>0) && iang==IDBG_ANGLE && (isys==IDBG_SYS)){ printf("GPU evalAngles_UFF() nangles=%3i i0ang=%3i Rdamp=% .4e Fmax=% .4e bSubtractAngleNonBond=%d iDBG=%d isys=%d\n", nangles, i0ang, Rdamp, FmaxNonBonded, bSubtractAngleNonBond, IDBG_ANGLE, isys); }
-    if ((DBG_UFF>1) && iang==IDBG_ANGLE && (isys==IDBG_SYS)){
-        printf("GPU evalAngles_UFF() nangles=%3i i0ang=%3i Rdamp=% .4e Fmax=% .4e bSubtractAngleNonBond=%d iDBG=%d isys=%d\n", nangles, i0ang, Rdamp, FmaxNonBonded, bSubtractAngleNonBond, IDBG_ANGLE, isys);
-        printf("GPU ANG-TABLE  id   ia   ja   ka            K          c0          c1          c2          c3\n");
-        int N = (nangles<64)?nangles:64;
-        for(int i=0;i<N;i++){
-            int4 a = angAtoms[i0A + i]; int ia0=a.x, ja0=a.y, ka0=a.z;
-            float4 cs=angParams1[i0A + i]; float K=angParams2_w[i0A + i];
-            printf("GPU ANG %3i : ia=%3i ja=%3i ka=%3i  K=% .4e c0=% .4e c1=% .4e c2=% .4e c3=% .4e\n", i, ia0,ja0,ka0,K,cs.x,cs.y,cs.z,cs.w);
-        }
-        printf("evalAngles_UFF().eval\n");
-    }
+    // if ((DBG_UFF>0) && iang==IDBG_ANGLE && (isys==IDBG_SYS)){ printf("GPU evalAngles_UFF() nangles=%3i i0ang=%3i Rdamp=% .4e Fmax=% .4e bSubtractAngleNonBond=%d iDBG=%d isys=%d\n", nangles, i0ang, Rdamp, FmaxNonBonded, bSubtractAngleNonBond, IDBG_ANGLE, isys); }
+    // if ((DBG_UFF>1) && iang==IDBG_ANGLE && (isys==IDBG_SYS)){
+    //     printf("GPU evalAngles_UFF() nangles=%3i i0ang=%3i Rdamp=% .4e Fmax=% .4e bSubtractAngleNonBond=%d iDBG=%d isys=%d\n", nangles, i0ang, Rdamp, FmaxNonBonded, bSubtractAngleNonBond, IDBG_ANGLE, isys);
+    //     printf("GPU ANG-TABLE  id   ia   ja   ka            K          c0          c1          c2          c3\n");
+    //     int N = (nangles<64)?nangles:64;
+    //     for(int i=0;i<N;i++){
+    //         int4 a = angAtoms[i0A + i]; int ia0=a.x, ja0=a.y, ka0=a.z;
+    //         float4 cs=angParams1[i0A + i]; float K=angParams2_w[i0A + i];
+    //         printf("GPU ANG %3i : ia=%3i ja=%3i ka=%3i  K=% .4e c0=% .4e c1=% .4e c2=% .4e c3=% .4e\n", i, ia0,ja0,ka0,K,cs.x,cs.y,cs.z,cs.w);
+    //     }
+    //     printf("evalAngles_UFF().eval\n");
+    // }
     if (iang >= nangles) return;
 
     // --- Get Data ---

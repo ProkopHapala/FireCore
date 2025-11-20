@@ -230,7 +230,7 @@ class OCL_MM: public OCLsystem { public:
         ibuff_bkNeighs_new = newBuffer( "bkNeighs_new", nSystems*nvecs, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );   
         ibuff_avel       = newBuffer( "avel",       nSystems*nvecs,     sizeof(float4), 0, CL_MEM_READ_WRITE );     // atoms velocities (x,y,z,m)
         //ibuff_cvf        = newBuffer( "cvf",        nSystems*nvecs ,    sizeof(float4), 0, CL_MEM_READ_WRITE );
-        ibuff_cvf        = newBuffer( "cvf",        nSystems*nvecs ,    sizeof(double4), 0, CL_MEM_READ_WRITE );
+        ibuff_cvf        = newBuffer( "cvf",        nSystems*nvecs ,    sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_neighForce = newBuffer( "neighForce", nSystems*nbkng,     sizeof(float4), 0, CL_MEM_READ_WRITE );
 
         ibuff_MMpars     = newBuffer( "MMpars",     nSystems*nnode,  sizeof(int4),   0, CL_MEM_READ_ONLY  );
