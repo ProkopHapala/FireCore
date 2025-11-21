@@ -41,13 +41,15 @@ class MolGUIApp {
         this.scene.background = new THREE.Color(0x222222);
 
         // 2. Camera
-        const aspect = window.innerWidth / window.innerHeight;
-        const frustumSize = 20;
+        const width = this.container.clientWidth;
+        const height = this.container.clientHeight;
+        const aspect = width / height;
+        this.frustumSize = 20;
         this.camera = new THREE.OrthographicCamera(
-            frustumSize * aspect / -2,
-            frustumSize * aspect / 2,
-            frustumSize / 2,
-            frustumSize / -2,
+            this.frustumSize * aspect / -2,
+            this.frustumSize * aspect / 2,
+            this.frustumSize / 2,
+            this.frustumSize / -2,
             0.1,
             1000
         );
@@ -59,7 +61,7 @@ class MolGUIApp {
             antialias: true,
             powerPreference: "high-performance"
         });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setSize(width, height);
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.container.appendChild(this.renderer.domElement);
 
@@ -100,8 +102,12 @@ class MolGUIApp {
         // 5. Molecule System
         this.system = new MoleculeSystem();
 
-        // 6. Molecule Renderer (Pass loaded shaders)
-        this.molRenderer = new MoleculeRenderer(this.scene, this.system, this.shaders);
+        // 5. MMParams (Load resources)
+        this.mmParams = new MMParams();
+        await this.mmParams.loadResources('common_resources/ElementTypes.dat', 'common_resources/AtomTypes.dat');
+
+        // 6. Molecule Renderer (Pass loaded shaders and mmParams)
+        this.molRenderer = new MoleculeRenderer(this.scene, this.system, this.shaders, this.mmParams);
 
         // 7. IO
         this.io = new IO(this.system, this.molRenderer);
@@ -175,9 +181,17 @@ class MolGUIApp {
     }
 
     onWindowResize() {
-        this.camera.aspect = window.innerWidth / window.innerHeight;
+        const width = this.container.clientWidth;
+        const height = this.container.clientHeight;
+        const aspect = width / height;
+
+        this.camera.left = -this.frustumSize * aspect / 2;
+        this.camera.right = this.frustumSize * aspect / 2;
+        this.camera.top = this.frustumSize / 2;
+        this.camera.bottom = -this.frustumSize / 2;
+
         this.camera.updateProjectionMatrix();
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setSize(width, height);
     }
 
     animate() {

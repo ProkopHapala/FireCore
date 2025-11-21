@@ -63,7 +63,7 @@ class Editor {
         // But we attach to document/window, while Gizmo attaches to canvas.
         // If we use capture: false (bubbling), Gizmo (on canvas) fires first, then bubble to document.
         // So removing capture: true is correct.
-        document.addEventListener('pointerdown', this.onMouseDown.bind(this));
+        canvas.addEventListener('pointerdown', this.onMouseDown.bind(this));
         window.addEventListener('pointermove', this.onMouseMove.bind(this));
         window.addEventListener('pointerup', this.onMouseUp.bind(this));
 

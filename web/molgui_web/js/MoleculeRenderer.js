@@ -1,29 +1,19 @@
-
 class MoleculeRenderer {
-    constructor(scene, system, shaders) {
+    constructor(scene, system, shaders, mmParams) {
         this.scene = scene;
         this.system = system;
-        this.shaders = shaders; // Expected to contain { atom: {vertex, fragment}, bond: {vertex, fragment}, selection: {vertex, fragment} }
+        this.shaders = shaders;
+        this.mmParams = mmParams;
 
         this.atomMesh = null;
         this.bondLines = null;
         this.selectionMesh = null;
+        this.axesHelper = null;
 
         this.posTexture = null;
         this.posData = null; // Float32Array for texture
-        this.texSize = 1024; // Fixed width for simplicity
+        this.texSize = 64; // Power of 2
         this.texHeight = 0;
-
-        // CPK Colors (Simple map)
-        this.colors = {
-            1: [1.0, 1.0, 1.0], // H
-            6: [0.2, 0.2, 0.2], // C
-            7: [0.1, 0.3, 1.0], // N
-            8: [1.0, 0.1, 0.1], // O
-            16: [1.0, 1.0, 0.3], // S
-            // Default
-            0: [1.0, 0.0, 1.0]
-        };
 
         this.init();
     }
@@ -47,6 +37,7 @@ class MoleculeRenderer {
         );
         this.posTexture.minFilter = THREE.NearestFilter;
         this.posTexture.magFilter = THREE.NearestFilter;
+        this.posTexture.generateMipmaps = false;
         this.posTexture.needsUpdate = true;
 
         const commonUniforms = {
@@ -64,9 +55,13 @@ class MoleculeRenderer {
             commonUniforms
         );
 
-        // Add extra attributes for color and scale
+        // Initialize instance colors and scales
         const colors = new Float32Array(this.system.capacity * 3);
         const scales = new Float32Array(this.system.capacity);
+        for (let i = 0; i < this.system.capacity; i++) {
+            colors[i * 3] = 1; colors[i * 3 + 1] = 1; colors[i * 3 + 2] = 1;
+            scales[i] = 0.0; // Hidden by default
+        }
         this.atomMesh.geometry.setAttribute('instanceColor', new THREE.InstancedBufferAttribute(colors, 3));
         this.atomMesh.geometry.setAttribute('instanceScale', new THREE.InstancedBufferAttribute(scales, 1));
 
@@ -138,15 +133,22 @@ class MoleculeRenderer {
         for (let i = 0; i < nAtoms; i++) {
             // Color & Scale
             const type = this.system.types[i];
-            let col = this.colors[type] || this.colors[0];
+
+            // Use MMParams
+            let col = [1, 0, 1]; // Default magenta
+            let radius = 1.0;
+
+            if (this.mmParams) {
+                col = this.mmParams.getColor(type);
+                // Scale: RvdW is usually around 1.5-2.0. 
+                // For ball-and-stick, we usually want smaller, e.g. 0.25 * RvdW or fixed fraction.
+                // Let's use a factor. The user didn't specify, but typical ball-and-stick is ~0.3-0.5 radius.
+                // Let's try 0.4 * RvdW.
+                radius = this.mmParams.getRadius(type) * 0.4;
+            }
+
             colorAttr.setXYZ(i, col[0], col[1], col[2]);
-
-            let scale = 1.0;
-            if (type === 1) scale = 0.6;
-            else if (type === 6) scale = 1.4;
-            else if (type === 8) scale = 1.3;
-
-            scaleAttr.setX(i, scale);
+            scaleAttr.setX(i, radius);
         }
         colorAttr.needsUpdate = true;
         scaleAttr.needsUpdate = true;
@@ -181,6 +183,14 @@ class MoleculeRenderer {
             idAttr.setX(i, selectedIDs[i]);
         }
         idAttr.needsUpdate = true;
+    }
+
+    toggleAxes(visible) {
+        if (!this.axesHelper) {
+            this.axesHelper = new THREE.AxesHelper(5); // 5 units length
+            this.scene.add(this.axesHelper);
+        }
+        this.axesHelper.visible = visible;
     }
 }
 

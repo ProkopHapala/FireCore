@@ -10,49 +10,45 @@ class GUI {
         sidebar.id = 'gui-sidebar';
         document.body.appendChild(sidebar);
 
-        // --- Section: File ---
-        this.createSection(sidebar, 'File', (container) => {
-            // Load
-            const btnLoad = document.createElement('button');
-            btnLoad.textContent = 'Load XYZ';
-            btnLoad.className = 'gui-btn';
-            container.appendChild(btnLoad);
+        // Create Resizer
+        const resizer = document.createElement('div');
+        resizer.id = 'gui-resizer';
+        document.body.appendChild(resizer);
 
-            const fileInput = document.createElement('input');
-            fileInput.type = 'file';
-            fileInput.accept = '.xyz';
-            fileInput.style.display = 'none';
-            document.body.appendChild(fileInput);
+        // Resizer Logic
+        let isResizing = false;
+        resizer.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            document.body.style.cursor = 'col-resize';
+            e.preventDefault(); // Prevent selection
+        });
 
-            btnLoad.onclick = () => fileInput.click();
-            fileInput.onchange = (e) => {
-                if (e.target.files.length > 0) {
-                    this.io.loadXYZ(e.target.files[0]);
-                    fileInput.value = '';
-                }
-            };
+        window.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            const newWidth = e.clientX;
+            if (newWidth < 150 || newWidth > 600) return; // Limits
 
-            // Save
-            const btnSave = document.createElement('button');
-            btnSave.textContent = 'Save XYZ';
-            btnSave.className = 'gui-btn';
-            btnSave.onclick = () => this.io.saveFile();
-            container.appendChild(btnSave);
+            sidebar.style.width = `${newWidth}px`;
+            resizer.style.left = `${newWidth}px`;
 
-            // Clear
-            const btnClear = document.createElement('button');
-            btnClear.textContent = 'Clear Scene';
-            btnClear.className = 'gui-btn';
-            btnClear.onclick = () => {
-                this.io.system.clear();
-                this.io.renderer.update();
-                // We need to clear editor selection too, but we don't have direct ref to editor here easily.
-                // But system.clear() clears data. Editor updateGizmo checks selection size.
-                // Ideally we should trigger a global "SceneCleared" event.
-                // For now, let's rely on the fact that system is empty.
-                window.logger.info("Scene cleared.");
-            };
-            container.appendChild(btnClear);
+            const canvasContainer = document.getElementById('canvas-container');
+            if (canvasContainer) {
+                const resizerWidth = 5;
+                canvasContainer.style.left = `${newWidth + resizerWidth}px`;
+                canvasContainer.style.width = `calc(100vw - ${newWidth + resizerWidth}px)`;
+            }
+
+            // Trigger Resize for Renderer
+            if (window.app) {
+                window.app.onWindowResize();
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (isResizing) {
+                isResizing = false;
+                document.body.style.cursor = 'default';
+            }
         });
 
         // --- Section: Selection ---
@@ -79,6 +75,75 @@ class GUI {
             this.inpSelection.placeholder = 'IDs (e.g. 1,5)';
             this.inpSelection.onchange = (e) => this.onSelectionInputChange(e.target.value);
             container.appendChild(this.inpSelection);
+        });
+
+        // --- Section: View ---
+        this.createSection(sidebar, 'View', (container) => {
+            // Zoom Slider
+            const zoomRow = document.createElement('div');
+            zoomRow.className = 'gui-row';
+            zoomRow.style.flexDirection = 'column';
+            zoomRow.style.alignItems = 'flex-start';
+
+            const zoomLabel = document.createElement('label');
+            zoomLabel.textContent = 'Zoom Level (Log10)';
+            zoomLabel.style.fontSize = '0.9em';
+            zoomRow.appendChild(zoomLabel);
+
+            const zoomSlider = document.createElement('input');
+            zoomSlider.type = 'range';
+            zoomSlider.min = '-2.0';
+            zoomSlider.max = '3.0';
+            zoomSlider.step = '0.1';
+            zoomSlider.value = '1.0'; // Default
+            zoomSlider.style.width = '100%';
+            zoomSlider.oninput = (e) => {
+                const val = parseFloat(e.target.value);
+                this.setZoom(Math.pow(10, val));
+            };
+            zoomRow.appendChild(zoomSlider);
+            container.appendChild(zoomRow);
+
+            // View Buttons
+            const viewRow = document.createElement('div');
+            viewRow.className = 'gui-row';
+            viewRow.style.marginTop = '10px';
+
+            const views = [
+                { name: 'XY', pos: [0, 0, 20], up: [0, 1, 0] },
+                { name: 'XZ', pos: [0, 20, 0], up: [0, 0, -1] },
+                { name: 'YZ', pos: [20, 0, 0], up: [0, 1, 0] }
+            ];
+
+            views.forEach(v => {
+                const btn = document.createElement('button');
+                btn.textContent = v.name;
+                btn.className = 'gui-btn';
+                btn.style.marginRight = '2px';
+                btn.onclick = () => this.setView(v.pos, v.up);
+                viewRow.appendChild(btn);
+            });
+            container.appendChild(viewRow);
+
+            // Axis Toggle
+            const axisRow = document.createElement('div');
+            axisRow.className = 'gui-row';
+            axisRow.style.marginTop = '10px';
+
+            const axisLabel = document.createElement('label');
+            axisLabel.className = 'gui-checkbox-label';
+            const axisChk = document.createElement('input');
+            axisChk.type = 'checkbox';
+            axisChk.checked = false;
+            axisChk.onchange = (e) => {
+                if (window.app && window.app.molRenderer) {
+                    window.app.molRenderer.toggleAxes(e.target.checked);
+                }
+            };
+            axisLabel.appendChild(axisChk);
+            axisLabel.appendChild(document.createTextNode('Show Axes'));
+            axisRow.appendChild(axisLabel);
+            container.appendChild(axisRow);
         });
 
         // --- Section: Gizmo ---
@@ -143,24 +208,126 @@ class GUI {
             container.appendChild(modeContainer);
         });
 
-        // --- Section: View ---
-        this.createSection(sidebar, 'View', (container) => {
-            const row = document.createElement('div');
-            row.className = 'gui-row';
+        // --- Section: Geometry ---
+        this.createSection(sidebar, 'Geometry', (container) => {
+            // Load
+            const btnLoad = document.createElement('button');
+            btnLoad.textContent = 'Load XYZ File...';
+            btnLoad.className = 'gui-btn';
+            container.appendChild(btnLoad);
 
-            const btnZoomIn = document.createElement('button');
-            btnZoomIn.textContent = 'Zoom In (+)';
-            btnZoomIn.className = 'gui-btn';
-            btnZoomIn.onclick = () => this.zoomCamera(-1);
-            row.appendChild(btnZoomIn);
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = '.xyz';
+            fileInput.style.display = 'none';
+            document.body.appendChild(fileInput);
 
-            const btnZoomOut = document.createElement('button');
-            btnZoomOut.textContent = 'Zoom Out (-)';
-            btnZoomOut.className = 'gui-btn';
-            btnZoomOut.onclick = () => this.zoomCamera(1);
-            row.appendChild(btnZoomOut);
+            btnLoad.onclick = () => fileInput.click();
+            fileInput.onchange = (e) => {
+                if (e.target.files.length > 0) {
+                    this.io.loadXYZ(e.target.files[0]);
+                    fileInput.value = '';
+                }
+            };
 
-            container.appendChild(row);
+            // Save
+            const btnSave = document.createElement('button');
+            btnSave.textContent = 'Save XYZ';
+            btnSave.className = 'gui-btn';
+            btnSave.style.marginTop = '5px';
+            btnSave.onclick = () => this.io.saveFile();
+            container.appendChild(btnSave);
+
+            // Clear
+            const btnClear = document.createElement('button');
+            btnClear.textContent = 'Clear Scene';
+            btnClear.className = 'gui-btn';
+            btnClear.style.marginTop = '5px';
+            btnClear.onclick = () => {
+                this.io.system.clear();
+                this.io.renderer.update();
+                window.logger.info("Scene cleared.");
+            };
+            container.appendChild(btnClear);
+
+            // Separator
+            const hr = document.createElement('hr');
+            hr.style.borderColor = '#444';
+            hr.style.margin = '10px 0';
+            container.appendChild(hr);
+
+            // Manual Edit
+            const btnToggle = document.createElement('button');
+            btnToggle.textContent = 'Edit XYZ Manually';
+            btnToggle.className = 'gui-btn';
+            container.appendChild(btnToggle);
+
+            const textArea = document.createElement('textarea');
+            textArea.className = 'gui-textarea';
+            textArea.style.display = 'none';
+            textArea.style.height = '150px';
+            textArea.style.width = '100%';
+            textArea.style.marginTop = '5px';
+            textArea.style.fontSize = '0.8em';
+            textArea.style.fontFamily = 'monospace';
+            textArea.placeholder = 'Paste XYZ content here...';
+            container.appendChild(textArea);
+
+            btnToggle.onclick = () => {
+                const isHidden = textArea.style.display === 'none';
+                textArea.style.display = isHidden ? 'block' : 'none';
+                if (isHidden) {
+                    // Populate with current system state if showing
+                    textArea.value = this.io.generateXYZ();
+                }
+            };
+
+            const btnApply = document.createElement('button');
+            btnApply.textContent = 'Apply XYZ';
+            btnApply.className = 'gui-btn';
+            btnApply.style.marginTop = '5px';
+            btnApply.onclick = () => {
+                if (textArea.value.trim()) {
+                    this.io.loadXYZString(textArea.value);
+                }
+            };
+            container.appendChild(btnApply);
+        });
+
+        // --- Section: Parameters ---
+        this.createSection(sidebar, 'Parameters', (container) => {
+            // Element Types
+            this.createParamControl(container, 'Element Types', 'common_resources/ElementTypes.dat',
+                (content) => {
+                    if (window.app && window.app.mmParams) {
+                        window.app.mmParams.parseElementTypes(content);
+                        window.app.molRenderer.updateStructure();
+                    }
+                }
+            );
+
+            // Atom Types
+            this.createParamControl(container, 'Atom Types', 'common_resources/AtomTypes.dat',
+                (content) => {
+                    if (window.app && window.app.mmParams) {
+                        window.app.mmParams.parseAtomTypes(content);
+                        // Atom types might not affect rendering directly yet (unless we use them for something)
+                        // But good to update.
+                    }
+                }
+            );
+        });
+
+        // --- Section: Help ---
+        this.createSection(sidebar, 'Help', (container) => {
+            const btnHelp = document.createElement('button');
+            btnHelp.textContent = 'Show Controls (?)';
+            btnHelp.className = 'gui-btn';
+            btnHelp.onclick = () => {
+                const help = document.getElementById('help-overlay');
+                help.style.display = help.style.display === 'none' ? 'block' : 'none';
+            };
+            container.appendChild(btnHelp);
         });
 
         // --- Section: System Log ---
@@ -206,18 +373,6 @@ class GUI {
 
             if (window.logger) window.logger.setContainer(logOut);
         });
-
-        // --- Section: Help ---
-        this.createSection(sidebar, 'Help', (container) => {
-            const btnHelp = document.createElement('button');
-            btnHelp.textContent = 'Show Controls (?)';
-            btnHelp.className = 'gui-btn';
-            btnHelp.onclick = () => {
-                const help = document.getElementById('help-overlay');
-                help.style.display = help.style.display === 'none' ? 'block' : 'none';
-            };
-            container.appendChild(btnHelp);
-        });
     }
 
     createSection(parent, title, contentFn) {
@@ -261,24 +416,102 @@ class GUI {
         window.logger.info(`Selection set from input: ${count} atoms.`);
     }
 
-    zoomCamera(delta) {
+    setZoom(zoomValue) {
         if (window.app && window.app.camera) {
             const cam = window.app.camera;
-            // Move camera along its view vector
-            const dir = new THREE.Vector3();
-            cam.getWorldDirection(dir);
-            cam.position.addScaledVector(dir, -delta * 2); // Reverse delta because moving forward is negative? No, addScaledVector(dir, dist). 
-            // Actually, let's just use OrbitControls dolly if available, or simple translate.
-            // Simple translate:
-            // cam.translateZ(delta * 2); 
-            // But OrbitControls might fight this.
+            // For OrthographicCamera, zoom is controlled by 'zoom' property
+            cam.zoom = zoomValue;
+            cam.updateProjectionMatrix();
+        }
+    }
 
-            // Better: Update OrbitControls target distance?
-            // Or just let OrbitControls handle it via dollyIn/dollyOut if accessible.
-            // But they are internal.
+    createParamControl(container, label, defaultPath, onApply) {
+        const wrapper = document.createElement('div');
+        wrapper.style.marginBottom = '10px';
+        wrapper.style.borderBottom = '1px solid #444';
+        wrapper.style.paddingBottom = '5px';
 
-            // Let's just move the camera and let OrbitControls re-sync on next update.
-            cam.translateZ(delta * 2);
+        const btnToggle = document.createElement('button');
+        btnToggle.textContent = `Show/Hide ${label}`;
+        btnToggle.className = 'gui-btn';
+        wrapper.appendChild(btnToggle);
+
+        const textArea = document.createElement('textarea');
+        textArea.className = 'gui-textarea';
+        textArea.style.display = 'none';
+        textArea.style.height = '100px';
+        textArea.style.width = '100%';
+        textArea.style.marginTop = '5px';
+        textArea.style.fontSize = '0.8em';
+        textArea.style.fontFamily = 'monospace';
+        textArea.placeholder = `Paste ${label} content here...`;
+        wrapper.appendChild(textArea);
+
+        // Load Default (Fetch)
+        btnToggle.onclick = async () => {
+            const isHidden = textArea.style.display === 'none';
+            textArea.style.display = isHidden ? 'block' : 'none';
+            if (isHidden && !textArea.value) {
+                try {
+                    const res = await fetch(defaultPath);
+                    if (res.ok) {
+                        textArea.value = await res.text();
+                    }
+                } catch (e) {
+                    console.warn("Failed to fetch default params:", e);
+                }
+            }
+        };
+
+        // Load File Button
+        const btnLoad = document.createElement('button');
+        btnLoad.textContent = 'Load File...';
+        btnLoad.className = 'gui-btn';
+        btnLoad.style.marginTop = '5px';
+        wrapper.appendChild(btnLoad);
+
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.style.display = 'none';
+        wrapper.appendChild(fileInput);
+
+        btnLoad.onclick = () => fileInput.click();
+        fileInput.onchange = (e) => {
+            if (e.target.files.length > 0) {
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    textArea.value = ev.target.result;
+                    textArea.style.display = 'block'; // Show it
+                };
+                reader.readAsText(e.target.files[0]);
+                fileInput.value = '';
+            }
+        };
+
+        // Apply Button
+        const btnApply = document.createElement('button');
+        btnApply.textContent = 'Apply';
+        btnApply.className = 'gui-btn';
+        btnApply.style.marginTop = '5px';
+        btnApply.onclick = () => {
+            if (textArea.value.trim()) {
+                onApply(textArea.value);
+                window.logger.info(`${label} updated.`);
+            }
+        };
+        wrapper.appendChild(btnApply);
+
+        container.appendChild(wrapper);
+    }
+
+    setView(pos, up) {
+        if (window.app && window.app.camera && window.app.controls) {
+            const cam = window.app.camera;
+            cam.position.set(pos[0], pos[1], pos[2]);
+            cam.up.set(up[0], up[1], up[2]);
+            cam.lookAt(0, 0, 0);
+            cam.updateProjectionMatrix();
+            window.app.controls.update();
         }
     }
 }

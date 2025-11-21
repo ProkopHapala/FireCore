@@ -447,6 +447,10 @@ This keeps the code simple and the UX clean.
     - [x] Proxy Object for Group Manipulation
     - [x] Update Loop (Gizmo -> Data -> Renderer)
 
+- [ ] **Phase 6: Advanced Visualization (Future)**
+    - [ ] Implement Atomic Labels (Text Sprites or SDF Font)
+    - [ ] Show Element Name or Atomic Number
+
 ---
 
 ## User 4: Refactoring & Optimization (Shared Buffer Architecture)

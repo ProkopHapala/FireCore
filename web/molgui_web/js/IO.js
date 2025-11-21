@@ -77,27 +77,30 @@ class IO {
     loadXYZ(file) {
         const reader = new FileReader();
         reader.onload = (e) => {
-            const content = e.target.result;
-            const atoms = this.parseXYZ(content);
-
-            window.logger.info(`Parsed ${atoms.length} atoms.`);
-
-            this.system.clear();
-            for (const atom of atoms) {
-                this.system.addAtom(atom.x, atom.y, atom.z, atom.type);
-            }
-
-            // Rebuild simple bonds (Distance based? Or just none?)
-            // XYZ doesn't have bonds. We should probably infer them or leave empty.
-            // For now, let's infer simple bonds based on distance < 1.6 (very crude)
-            // Or just leave them empty as requested "first thing is load/save".
-            // Let's leave bonds empty for now to keep it pure I/O.
-            // User might want a "Calculate Bonds" feature later.
-
-            this.renderer.update();
-            window.logger.info("Scene updated.");
+            this.loadXYZString(e.target.result);
         };
         reader.readAsText(file);
+    }
+
+    loadXYZString(content) {
+        const atoms = this.parseXYZ(content);
+
+        window.logger.info(`Parsed ${atoms.length} atoms.`);
+
+        this.system.clear();
+        for (const atom of atoms) {
+            this.system.addAtom(atom.x, atom.y, atom.z, atom.type);
+        }
+
+        // Rebuild simple bonds (Distance based? Or just none?)
+        // XYZ doesn't have bonds. We should probably infer them or leave empty.
+        // For now, let's infer simple bonds based on distance < 1.6 (very crude)
+        // Or just leave them empty as requested "first thing is load/save".
+        // Let's leave bonds empty for now to keep it pure I/O.
+        // User might want a "Calculate Bonds" feature later.
+
+        this.renderer.update();
+        window.logger.info("Scene updated.");
     }
 
     // --- Save File ---
