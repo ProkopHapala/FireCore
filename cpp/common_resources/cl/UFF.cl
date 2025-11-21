@@ -1942,7 +1942,7 @@ __kernel void getSurfMorse(
 
     // ========== BEGIN test loading atoms to local memory
 
-    if((iG>nL) || (iS>0)) return;
+    if((iG>nL)) return;
 
     // for (int j0=0; j0<na_surf; j0+= nL ){
     //     const int i = j0 + iL;

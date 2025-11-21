@@ -2418,6 +2418,7 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
     }else{
         printf("ERROR: Could not open times_run_uff_ocl.dat for appending\n");
     }    
+    download_uff(true, false);
     return nloop;
 }
 
