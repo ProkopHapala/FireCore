@@ -15,8 +15,18 @@ class MolGUIApp {
         this.scene.background = new THREE.Color(0x222222);
 
         // 2. Camera
-        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        this.camera.position.set(5, 5, 5);
+        const aspect = window.innerWidth / window.innerHeight;
+        const frustumSize = 20;
+        this.camera = new THREE.OrthographicCamera(
+            frustumSize * aspect / -2,
+            frustumSize * aspect / 2,
+            frustumSize / 2,
+            frustumSize / -2,
+            0.1,
+            1000
+        );
+        this.camera.position.set(10, 10, 10);
+        this.camera.lookAt(0, 0, 0);
 
         // 3. Renderer
         this.renderer = new THREE.WebGLRenderer({
@@ -63,9 +73,11 @@ class MolGUIApp {
 
         // 5. Molecule System
         this.system = new MoleculeSystem();
+
+        // 6. Molecule Renderer
         this.molRenderer = new MoleculeRenderer(this.scene, this.system);
 
-        // 6. I/O and GUI
+        // 7. IO
         this.io = new IO(this.system, this.molRenderer);
         this.gui = new GUI(this.io);
 
