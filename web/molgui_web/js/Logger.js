@@ -1,19 +1,19 @@
+// Global Verbosity Level
+window.VERBOSITY_LEVEL = 3; // Default: INFO
+
 class Logger {
+    static NONE = 0;
+    static ERROR = 1;
+    static WARN = 2;
+    static INFO = 3;
+    static DEBUG = 4;
+
     constructor() {
         this.domElement = null; // Will be set by GUI
-        this.level = 1; // 0: DEBUG, 1: INFO, 2: WARN, 3: ERROR
-        this.levels = { 'DEBUG': 0, 'INFO': 1, 'WARN': 2, 'ERROR': 3 };
     }
 
     setContainer(element) {
         this.domElement = element;
-    }
-
-    setLevel(levelStr) {
-        if (this.levels.hasOwnProperty(levelStr)) {
-            this.level = this.levels[levelStr];
-            this.info(`Log Level set to ${levelStr}`);
-        }
     }
 
     clear() {
@@ -22,35 +22,41 @@ class Logger {
         }
     }
 
-    log(message, level = 'INFO') {
-        const lvl = this.levels[level] !== undefined ? this.levels[level] : 1;
-        if (lvl < this.level) return;
+    log(message, level = Logger.INFO) {
+        if (level > window.VERBOSITY_LEVEL) return;
 
         const timestamp = new Date().toLocaleTimeString();
-        const formattedMsg = `[${timestamp}] [${level}] ${message}`;
+
+        // Map level to string for display
+        let levelStr = 'INFO';
+        let color = '#ffffff';
+
+        if (level === Logger.ERROR) { levelStr = 'ERROR'; color = '#ff5555'; }
+        else if (level === Logger.WARN) { levelStr = 'WARN'; color = '#ffaa00'; }
+        else if (level === Logger.DEBUG) { levelStr = 'DEBUG'; color = '#55ff55'; }
+
+        const formattedMsg = `[${timestamp}] [${levelStr}] ${message}`;
 
         // Console
-        if (level === 'ERROR') console.error(formattedMsg);
-        else if (level === 'WARN') console.warn(formattedMsg);
+        if (level === Logger.ERROR) console.error(formattedMsg);
+        else if (level === Logger.WARN) console.warn(formattedMsg);
         else console.log(formattedMsg);
 
         // DOM
         if (this.domElement) {
             const line = document.createElement('div');
             line.textContent = formattedMsg;
-            if (level === 'ERROR') line.style.color = '#ff5555';
-            else if (level === 'WARN') line.style.color = '#ffaa00';
-            else if (level === 'DEBUG') line.style.color = '#55ff55';
+            line.style.color = color;
 
             this.domElement.appendChild(line);
             this.domElement.scrollTop = this.domElement.scrollHeight;
         }
     }
 
-    debug(msg) { this.log(msg, 'DEBUG'); }
-    info(msg) { this.log(msg, 'INFO'); }
-    warn(msg) { this.log(msg, 'WARN'); }
-    error(msg) { this.log(msg, 'ERROR'); }
+    debug(msg) { this.log(msg, Logger.DEBUG); }
+    info(msg) { this.log(msg, Logger.INFO); }
+    warn(msg) { this.log(msg, Logger.WARN); }
+    error(msg) { this.log(msg, Logger.ERROR); }
 }
 
 // Global instance

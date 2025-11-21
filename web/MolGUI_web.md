@@ -442,9 +442,65 @@ This keeps the code simple and the UX clean.
     - [x] Box/Marquee Selection (Projected Bounds)
     - [x] Selection State Management (Set<ID>)
 
-- [ ] **Phase 5: Gizmo & Manipulation**
-    - [ ] Integration of `THREE.TransformControls`
-    - [ ] Proxy Object for Group Manipulation
-    - [ ] Update Loop (Gizmo -> Data -> Renderer)
+- [x] **Phase 5: Gizmo & Manipulation**
+    - [x] Integration of `THREE.TransformControls`
+    - [x] Proxy Object for Group Manipulation
+    - [x] Update Loop (Gizmo -> Data -> Renderer)
 
+---
 
+## User 4: Refactoring & Optimization (Shared Buffer Architecture)
+
+We have successfully implemented a highly optimized rendering architecture that solves the data synchronization problem between Atoms, Bonds, and Selection.
+
+### The "Shared Buffer" Architecture (Texture Fetching)
+
+Instead of updating multiple vertex buffers (one for atoms, one for bonds, one for selection) every time an atom moves, we now use a **Single Source of Truth** on the GPU.
+
+#### How it works:
+1.  **DataTexture (`uPosTex`):**
+    *   All atomic positions (x, y, z) are stored in a floating-point texture (`THREE.DataTexture`).
+    *   This texture is the *only* thing that gets updated when atoms move.
+2.  **Vertex Pulling (Texture Fetch):**
+    *   **Atoms:** Rendered as `InstancedMesh`. Each instance has an ID (`aAtomID`). The vertex shader reads `texture2D(uPosTex, id)` to get the position.
+    *   **Bonds:** Rendered as `LineSegments`. Each vertex has an ID (`aAtomID`). The vertex shader reads the position of the atom it belongs to.
+    *   **Selection:** Rendered as `LineSegments` (Instanced). Each instance (ring) has an ID. The vertex shader reads the center position from the texture.
+
+#### Benefits:
+*   **Zero CPU Overhead for Sync:** When moving 10,000 atoms with the Gizmo, we only upload one texture. We do *not* need to iterate through bond arrays or selection arrays to update their positions.
+*   **Perfect Synchronization:** Atoms, Bonds, and Selection rings always move together instantly because they read from the same memory address on the GPU.
+*   **Memory Efficient:** We don't duplicate position data across multiple geometry buffers.
+
+#### Insights & Takeaways:
+*   **`InstancedMesh` vs `LineSegments`:** `InstancedMesh` is great for solids (spheres), but for lines (selection rings), it forces `GL_TRIANGLES`, which causes artifacts. Using `THREE.LineSegments` with `THREE.InstancedBufferGeometry` allows us to use instancing logic but render proper lines.
+*   **Shader Complexity:** Moving logic to the shader (Vertex Pulling) simplifies the JavaScript code significantly. The `MoleculeRenderer` no longer needs complex update loops for bonds; it just updates the texture.
+
+---
+
+## User 5: Performance & Design Principles
+
+**Core Philosophy:**
+Performance is paramount. The system must be designed to handle large molecular systems (thousands to millions of atoms) efficiently. When adding a feature, ask: "Will this scale to 100,000 atoms?" If no, redesign.
+
+### 1. Critical Optimization Rules
+*   **Tight Loops:**
+    *   **No Allocations:** Never use `new THREE.Vector3()`, `new Float32Array()`, or similar inside loops (e.g., `boxSelect`, `render`). Reuse pre-allocated temporary objects (`this.tempVec`).
+    *   **Minimize Function Calls:** In extremely tight loops, inline logic if function overhead is significant (though modern JIT is good, be cautious).
+    *   **No Complex Math:** Avoid heavy operations like `Math.sin/cos` inside loops if they can be pre-calculated or computed incrementally (recurrence relations).
+*   **Memory Management:**
+    *   **Avoid GC Pressure:** Garbage Collection pauses cause frame drops. Reuse objects. Use object pools if necessary.
+    *   **TypedArrays:** Use `Float32Array` and other typed arrays for all bulk data.
+*   **String Operations:**
+    *   **Avoid:** String manipulation is slow and generates garbage. Never do it in `onMouseMove` or render loops 
+       * avoid also constructing CSS strings `style.left = x + 'px'` in hot loops or callbacks if possible
+
+### 2. Architectural Insights
+*   **Refactor for General Utility:**
+    *   **Philosophy:** Always consider if a chunk of code or pattern (e.g., creating an instanced mesh from a texture) can be refactored into a generic helper.
+    *   **Implementation:** We moved specific mesh creation logic from `MoleculeRenderer` to `Draw3D.js` as generic functions (`createTextureBasedInstancedMesh`, etc.). This allows us to reuse these high-performance rendering patterns for other systems (particles, trusses) in the future.
+*   **Keep it Simple:** Do not over-engineer.
+    *   *Example:* `ShaderLoader.js` was removed because it added file complexity without adding any reusable non-trival utility, so it was better to inline the fetch logic for a small project.
+*   **Modular vs. Performant:**
+    *   *Example:* Refactoring `boxSelect` to use lambdas improved readability and reduced code duplication. While function calls add theoretical overhead, the trade-off for maintainability was deemed acceptable here. However, for *rendering* loops, raw loops are preferred.
+*   **CSS Transforms:**
+    *   Use `transform: translate(x, y)` instead of `top/left` for moving UI elements (like selection boxes) to avoid layout thrashing (reflows).

@@ -170,25 +170,23 @@ class GUI {
             row.className = 'gui-row';
 
             const lbl = document.createElement('span');
-            lbl.textContent = 'Level: ';
+            lbl.textContent = 'Verbosity: ';
             lbl.style.fontSize = '0.9em';
             row.appendChild(lbl);
 
-            const sel = document.createElement('select');
-            sel.className = 'gui-input';
-            sel.style.width = 'auto';
-            sel.style.flexGrow = '1';
-            ['DEBUG', 'INFO', 'WARN', 'ERROR'].forEach(l => {
-                const opt = document.createElement('option');
-                opt.value = l;
-                opt.textContent = l;
-                if (l === 'INFO') opt.selected = true;
-                sel.appendChild(opt);
-            });
-            sel.onchange = (e) => {
-                if (window.logger) window.logger.setLevel(e.target.value);
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.className = 'gui-input';
+            input.style.width = '50px';
+            input.style.flexGrow = '0';
+            input.value = window.VERBOSITY_LEVEL;
+            input.min = 0;
+            input.max = 4;
+            input.onchange = (e) => {
+                window.VERBOSITY_LEVEL = parseInt(e.target.value);
+                window.logger.info(`Verbosity set to ${window.VERBOSITY_LEVEL}`);
             };
-            row.appendChild(sel);
+            row.appendChild(input);
 
             const btnClear = document.createElement('button');
             btnClear.textContent = 'Clear';

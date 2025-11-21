@@ -1,14 +1,18 @@
 class Editor {
-    constructor(scene, camera, renderer, system, molRenderer, selectionRenderer) {
+    constructor(scene, camera, renderer, system, molRenderer) {
         this.scene = scene;
         this.camera = camera;
         this.renderer = renderer;
         this.system = system;
         this.molRenderer = molRenderer;
-        this.selectionRenderer = selectionRenderer; // Store ref
 
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
+
+        // Reusable objects for performance
+        this.tempVec = new THREE.Vector3();
+        this.rayOrigin = new THREE.Vector3();
+        this.rayDir = new THREE.Vector3();
 
         this.isDragging = false;
         this.startPos = { x: 0, y: 0 };
@@ -53,7 +57,7 @@ class Editor {
 
     initEvents() {
         const canvas = this.renderer.domElement;
-        console.log(`[Editor] InitEvents. Window Size: ${window.innerWidth}x${window.innerHeight}`);
+        // console.log(`[Editor] InitEvents. Window Size: ${window.innerWidth}x${window.innerHeight}`);
 
         // Removed capture: true to allow Gizmo (TransformControls) to handle events first if possible
         // But we attach to document/window, while Gizmo attaches to canvas.
@@ -91,7 +95,7 @@ class Editor {
         this.system.clearSelection();
         this.initialAtomStates = null; // Fix: Clear gizmo state
         this.molRenderer.update();
-        if (this.selectionRenderer) this.selectionRenderer.update(); // Update selection visual
+        this.molRenderer.update();
         this.updateGizmo();
         if (this.onSelectionChange) this.onSelectionChange();
         window.logger.info("Selection Cleared");
@@ -169,11 +173,11 @@ class Editor {
 
         this.system.isDirty = true;
         this.molRenderer.update();
-        if (this.selectionRenderer) this.selectionRenderer.update(); // Update selection visual (rings follow atoms)
+        this.molRenderer.update();
     }
 
     onMouseDown(e) {
-        console.log(`[Editor] MouseDown: Button=${e.button} Client=(${e.clientX}, ${e.clientY})`);
+        // console.log(`[Editor] MouseDown: Button=${e.button} Client=(${e.clientX}, ${e.clientY})`);
         window.lastMouseDownEvent = {
             button: e.button,
             clientX: e.clientX,
@@ -209,20 +213,27 @@ class Editor {
 
         // If moved enough, show box (Marquee)
         if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
-            this.selectionBox.style.display = 'block';
+            if (this.selectionBox.style.display !== 'block') {
+                this.selectionBox.style.display = 'block';
+            }
 
             const x = dx < 0 ? e.clientX : this.startPos.x;
             const y = dy < 0 ? e.clientY : this.startPos.y;
+            const w = Math.abs(dx);
+            const h = Math.abs(dy);
 
-            this.selectionBox.style.left = x + 'px';
-            this.selectionBox.style.top = y + 'px';
-            this.selectionBox.style.width = Math.abs(dx) + 'px';
-            this.selectionBox.style.height = Math.abs(dy) + 'px';
+            // Use transform for position to avoid layout thrashing
+            // We still need to set width/height for the box size (unless we use scale, but that scales borders)
+            // Setting width/height is okay if we don't read back layout properties immediately.
+
+            this.selectionBox.style.transform = `translate(${x}px, ${y}px)`;
+            this.selectionBox.style.width = `${w}px`;
+            this.selectionBox.style.height = `${h}px`;
         }
     }
 
     onMouseUp(e) {
-        console.log(`[Editor] MouseUp: Button=${e.button} Dragging=${this.isDragging}`);
+        // console.log(`[Editor] MouseUp: Button=${e.button} Dragging=${this.isDragging}`);
         window.lastMouseUpEvent = {
             button: e.button,
             clientX: e.clientX,
@@ -244,11 +255,11 @@ class Editor {
 
         if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
             // Click (Single Pick)
-            console.log("[Editor] Click detected. Calling pick()...");
+            // console.log("[Editor] Click detected. Calling pick()...");
             this.pick(e.clientX, e.clientY, mode);
         } else {
             // Drag (Box Select)
-            console.log("[Editor] Drag detected. Calling boxSelect()...");
+            // console.log("[Editor] Drag detected. Calling boxSelect()...");
             this.boxSelect(this.startPos.x, this.startPos.y, e.clientX, e.clientY, mode);
         }
     }
@@ -260,15 +271,18 @@ class Editor {
         this.initialAtomStates = null;
 
         // Get Ray from camera
-        const ray = this.getRay(x, y);
-        const rayOrigin = ray.origin;
-        const rayDir = ray.direction;
+        this.updateRay(x, y); // Updates this.rayOrigin and this.rayDir
 
         // DEBUG LOGGING
-        let debugLog = "--- PICK DEBUG ---\n";
-        debugLog += `Mouse: (${x}, ${y})\n`;
-        debugLog += `Ray Origin: ${rayOrigin.x.toFixed(3)}, ${rayOrigin.y.toFixed(3)}, ${rayOrigin.z.toFixed(3)}\n`;
-        debugLog += `Ray Dir:    ${rayDir.x.toFixed(3)}, ${rayDir.y.toFixed(3)}, ${rayDir.z.toFixed(3)}\n`;
+        let debugLog = "";
+        const debug = window.VERBOSITY_LEVEL >= Logger.DEBUG;
+
+        if (debug) {
+            debugLog = "--- PICK DEBUG ---\n";
+            debugLog += `Mouse: (${x}, ${y})\n`;
+            debugLog += `Ray Origin: ${this.rayOrigin.x.toFixed(3)}, ${this.rayOrigin.y.toFixed(3)}, ${this.rayOrigin.z.toFixed(3)}\n`;
+            debugLog += `Ray Dir:    ${this.rayDir.x.toFixed(3)}, ${this.rayDir.y.toFixed(3)}, ${this.rayDir.z.toFixed(3)}\n`;
+        }
 
         let minT = Infinity;
         let pickedId = -1;
@@ -278,26 +292,27 @@ class Editor {
             const ax = this.system.pos[i * 3];
             const ay = this.system.pos[i * 3 + 1];
             const az = this.system.pos[i * 3 + 2];
-            const center = new THREE.Vector3(ax, ay, az);
+            // Reuse tempVec for center
+            this.tempVec.set(ax, ay, az);
 
             const radius = 0.5;
 
-            const t = this.raySphere(rayOrigin, rayDir, center, radius);
+            const t = this.raySphere(this.rayOrigin, this.rayDir, this.tempVec, radius);
 
             if (t < minT && t > 0) {
                 minT = t;
                 pickedId = i;
             }
         }
-        debugLog += `Picked ID: ${pickedId}, minT: ${minT}\n`;
 
-        // Log to system logger
-        window.logger.debug(debugLog);
+        if (debug) {
+            debugLog += `Picked ID: ${pickedId}, minT: ${minT}\n`;
+            window.logger.debug(debugLog);
+        }
 
         if (pickedId !== -1) {
             this.system.select(pickedId, mode);
             this.molRenderer.update();
-            if (this.selectionRenderer) this.selectionRenderer.update(); // Update selection visual
             this.updateGizmo(); // Update Gizmo Position
             if (this.onSelectionChange) this.onSelectionChange();
             window.logger.info(`Selected Atom ${pickedId} (t=${minT.toFixed(2)})`);
@@ -308,40 +323,43 @@ class Editor {
         if (mode === 'replace') {
             this.system.clearSelection();
             this.molRenderer.update();
-            if (this.selectionRenderer) this.selectionRenderer.update(); // Update selection visual
             this.updateGizmo(); // Update Gizmo Position
             if (this.onSelectionChange) this.onSelectionChange();
         }
     }
 
-    getRay(x, y) {
+    updateRay(x, y) {
         // Normalize mouse coordinates relative to canvas
         const rect = this.renderer.domElement.getBoundingClientRect();
         const ndcX = ((x - rect.left) / rect.width) * 2 - 1;
         const ndcY = -((y - rect.top) / rect.height) * 2 + 1;
 
-        const rayOrigin = new THREE.Vector3();
-        const rayDir = new THREE.Vector3();
-
         if (this.camera.isPerspectiveCamera) {
-            rayOrigin.setFromMatrixPosition(this.camera.matrixWorld);
-            rayDir.set(ndcX, ndcY, 0.5).unproject(this.camera).sub(rayOrigin).normalize();
+            this.rayOrigin.setFromMatrixPosition(this.camera.matrixWorld);
+            this.rayDir.set(ndcX, ndcY, 0.5).unproject(this.camera).sub(this.rayOrigin).normalize();
         } else if (this.camera.isOrthographicCamera) {
-            rayOrigin.set(ndcX, ndcY, -1).unproject(this.camera);
-            rayDir.set(0, 0, -1).transformDirection(this.camera.matrixWorld);
+            this.rayOrigin.set(ndcX, ndcY, -1).unproject(this.camera);
+            this.rayDir.set(0, 0, -1).transformDirection(this.camera.matrixWorld);
         }
-
-        return { origin: rayOrigin, direction: rayDir };
     }
 
     // Custom Ray-Sphere Intersection (Geometric)
     // Returns distance t, or Infinity if no hit
     raySphere(rayOrigin, rayDir, center, radius) {
-        const oc = new THREE.Vector3().subVectors(center, rayOrigin);
-        const tca = oc.dot(rayDir);
+        // oc = center - rayOrigin
+        // Use tempVec for oc? No, center is passed in.
+        // We need a temp vector for calculation. Let's create one more or just use local vars if possible.
+        // Vector3 operations modify in place or return new.
+        // Let's use a local clone or just math.
+
+        const cx = center.x - rayOrigin.x;
+        const cy = center.y - rayOrigin.y;
+        const cz = center.z - rayOrigin.z;
+
+        const tca = cx * rayDir.x + cy * rayDir.y + cz * rayDir.z;
         if (tca < 0) return Infinity; // Behind ray
 
-        const d2 = oc.dot(oc) - tca * tca;
+        const d2 = (cx * cx + cy * cy + cz * cz) - tca * tca;
         const r2 = radius * radius;
 
         if (d2 > r2) return Infinity; // Miss
@@ -368,39 +386,59 @@ class Editor {
         const width = rect.width;
         const height = rect.height;
 
-        if (mode === 'replace') this.system.clearSelection();
+        if (mode === 'replace') {
+            this.system.clearSelection();
+            // After clearing, replace behaves like add
+            mode = 'add';
+        }
 
         let count = 0;
-        const vec = new THREE.Vector3();
+        // Reuse tempVec
 
-        for (let i = 0; i < this.system.nAtoms; i++) {
-            vec.set(
-                this.system.pos[i * 3],
-                this.system.pos[i * 3 + 1],
-                this.system.pos[i * 3 + 2]
-            );
+        // Optimization: Define action function outside loop or use separate loops
+        // Separate loops is faster as it avoids function call overhead or condition check per atom
 
-            // Project to screen
-            vec.project(this.camera);
+        if (mode === 'subtract') {
+            for (let i = 0; i < this.system.nAtoms; i++) {
+                this.tempVec.set(
+                    this.system.pos[i * 3],
+                    this.system.pos[i * 3 + 1],
+                    this.system.pos[i * 3 + 2]
+                );
+                this.tempVec.project(this.camera);
+                const sx = (this.tempVec.x * 0.5 + 0.5) * width + rect.left;
+                const sy = (-(this.tempVec.y * 0.5) + 0.5) * height + rect.top;
 
-            // Map to pixels (relative to canvas, then add offset)
-            const sx = (vec.x * 0.5 + 0.5) * width + rect.left;
-            const sy = (-(vec.y * 0.5) + 0.5) * height + rect.top;
+                if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) {
+                    if (this.tempVec.z < 1.0) {
+                        this.system.selection.delete(i);
+                        count++;
+                    }
+                }
+            }
+        } else { // add (and replace which was converted to add)
+            for (let i = 0; i < this.system.nAtoms; i++) {
+                this.tempVec.set(
+                    this.system.pos[i * 3],
+                    this.system.pos[i * 3 + 1],
+                    this.system.pos[i * 3 + 2]
+                );
+                this.tempVec.project(this.camera);
+                const sx = (this.tempVec.x * 0.5 + 0.5) * width + rect.left;
+                const sy = (-(this.tempVec.y * 0.5) + 0.5) * height + rect.top;
 
-            // Check bounds
-            if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) {
-                // Check Z to ensure it's in front of camera? (optional, usually project handles it but check z < 1)
-                if (vec.z < 1.0) {
-                    if (mode === 'subtract') this.system.selection.delete(i);
-                    else this.system.selection.add(i);
-                    count++;
+                if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) {
+                    if (this.tempVec.z < 1.0) {
+                        this.system.selection.add(i);
+                        count++;
+                    }
                 }
             }
         }
 
         this.system.isDirty = true;
         this.molRenderer.update();
-        if (this.selectionRenderer) this.selectionRenderer.update(); // Update selection visual
+        this.molRenderer.update();
         this.updateGizmo(); // Update Gizmo Position
         if (this.onSelectionChange) this.onSelectionChange();
         window.logger.info(`Box Selected ${count} atoms.`);

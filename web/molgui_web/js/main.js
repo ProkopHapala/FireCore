@@ -7,8 +7,34 @@ class MolGUIApp {
         this.controls = null;
     }
 
-    init() {
+    async init() {
         window.logger.info("Initializing MolGUI...");
+
+        // Load Shaders first
+        try {
+            const vPromise = fetch('shaders/atom.glslv').then(r => r.text());
+            const fPromise = fetch('shaders/atom.glslf').then(r => r.text());
+
+            const bvPromise = fetch('shaders/bond.glslv').then(r => r.text());
+            const svPromise = fetch('shaders/selection.glslv').then(r => r.text());
+
+            // Generic color fragment shader
+            const cfPromise = fetch('shaders/color.glslf').then(r => r.text());
+
+            const [vertex, fragment, bVertex, sVertex, colorFrag] = await Promise.all([
+                vPromise, fPromise, bvPromise, svPromise, cfPromise
+            ]);
+
+            this.shaders = {
+                atom: { vertex, fragment },
+                bond: { vertex: bVertex, fragment: colorFrag },
+                selection: { vertex: sVertex, fragment: colorFrag }
+            };
+            window.logger.info("Shaders loaded.");
+        } catch (e) {
+            window.logger.error("Failed to load shaders: " + e);
+            return;
+        }
 
         // 1. Scene
         this.scene = new THREE.Scene();
@@ -74,20 +100,22 @@ class MolGUIApp {
         // 5. Molecule System
         this.system = new MoleculeSystem();
 
-        // 6. Molecule Renderer
-        this.molRenderer = new MoleculeRenderer(this.scene, this.system);
+        // 6. Molecule Renderer (Pass loaded shaders)
+        this.molRenderer = new MoleculeRenderer(this.scene, this.system, this.shaders);
 
         // 7. IO
         this.io = new IO(this.system, this.molRenderer);
         this.gui = new GUI(this.io);
 
-        // 8. Selection Renderer
-        this.selectionRenderer = new SelectionRenderer(this.scene, this.system);
-
         // 7. Editor (Selection, Gizmo)
-        this.editor = new Editor(this.scene, this.camera, this.renderer, this.system, this.molRenderer, this.selectionRenderer);
+        this.editor = new Editor(this.scene, this.camera, this.renderer, this.system, this.molRenderer);
+
+        // 8. Selection Rendering (Centralized in MoleculeRenderer)
+        // No extra code needed here, MoleculeRenderer handles it.
+
         this.editor.onSelectionChange = () => {
             this.gui.updateSelectionCount();
+            this.molRenderer.updateSelection();
         };
 
         // 9. Shortcut Manager
@@ -98,14 +126,12 @@ class MolGUIApp {
         // For now, let's monkey-patch the renderer update or just call it in animate loop?
         // Better: Pass it to Editor? Or make Editor call a global update?
         // Let's make Editor call it.
-        this.editor.onSelectionChange = () => {
-            this.selectionRenderer.update();
-            this.gui.updateSelectionCount();
-        };
+        // this.editor.onSelectionChange is already set above.
 
         // Also hook GUI input back to renderer
+        // Also hook GUI input back to renderer
         this.gui.onSelectionChanged = () => {
-            this.selectionRenderer.update();
+            this.molRenderer.updateSelection();
         };
 
         // Create Test Molecule (Water: H-O-H)
