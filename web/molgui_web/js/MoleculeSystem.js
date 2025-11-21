@@ -15,6 +15,10 @@ class MoleculeSystem {
 
         // Selection
         this.selection = new Set();
+
+        // Neighbor List (Adjacency List)
+        // Array of Set<int> or Array<int>
+        this.neighborList = [];
     }
 
     select(id, mode = 'replace') {
@@ -45,6 +49,13 @@ class MoleculeSystem {
         this.pos[i * 3 + 2] = z;
         this.types[i] = type;
 
+        // Initialize neighbor list for new atom
+        if (this.neighborList.length <= i) {
+            this.neighborList.push([]);
+        } else {
+            this.neighborList[i] = [];
+        }
+
         this.nAtoms++;
         this.isDirty = true;
         return i;
@@ -52,7 +63,99 @@ class MoleculeSystem {
 
     addBond(id1, id2) {
         this.bonds.push([id1, id2]);
+
+        // Update neighbor list
+        if (this.neighborList[id1]) this.neighborList[id1].push(id2);
+        if (this.neighborList[id2]) this.neighborList[id2].push(id1);
+
         this.isDirty = true;
+    }
+
+    updateNeighborList() {
+        this.neighborList = new Array(this.nAtoms).fill(null).map(() => []);
+        for (const [id1, id2] of this.bonds) {
+            if (id1 < this.nAtoms && id2 < this.nAtoms) {
+                this.neighborList[id1].push(id2);
+                this.neighborList[id2].push(id1);
+            }
+        }
+    }
+
+    recalculateBonds(Rcut = 1.6) { // Default ~1.6 Angstroms for typical bonds
+        this.bonds = [];
+        const Rcut2 = Rcut * Rcut;
+
+        // Naive O(N^2) for now - optimize with Spatial Hash if N > 1000
+        for (let i = 0; i < this.nAtoms; i++) {
+            for (let j = i + 1; j < this.nAtoms; j++) {
+                const dx = this.pos[i * 3] - this.pos[j * 3];
+                const dy = this.pos[i * 3 + 1] - this.pos[j * 3 + 1];
+                const dz = this.pos[i * 3 + 2] - this.pos[j * 3 + 2];
+
+                const dist2 = dx * dx + dy * dy + dz * dz;
+                if (dist2 < Rcut2) {
+                    this.bonds.push([i, j]);
+                }
+            }
+        }
+        this.updateNeighborList();
+        this.isDirty = true;
+        window.logger.info(`Recalculated bonds. Found ${this.bonds.length} bonds.`);
+    }
+
+    deleteSelectedAtoms() {
+        if (this.selection.size === 0) return;
+
+        const toDelete = Array.from(this.selection).sort((a, b) => b - a); // Delete from end to avoid index shift issues? 
+        // Actually, swap-remove changes indices, so we need to be careful.
+        // Better strategy: 
+        // 1. Mark atoms to keep.
+        // 2. Rebuild arrays.
+        // 3. Re-map selection (clear it).
+
+        const oldToNew = new Int32Array(this.nAtoms).fill(-1);
+        let newCount = 0;
+
+        // 1. Calculate new indices
+        for (let i = 0; i < this.nAtoms; i++) {
+            if (!this.selection.has(i)) {
+                oldToNew[i] = newCount;
+                newCount++;
+            }
+        }
+
+        // 2. Compact Arrays
+        const newPos = new Float32Array(this.capacity * 3);
+        const newTypes = new Uint8Array(this.capacity);
+
+        for (let i = 0; i < this.nAtoms; i++) {
+            if (oldToNew[i] !== -1) {
+                const newIdx = oldToNew[i];
+                newPos[newIdx * 3] = this.pos[i * 3];
+                newPos[newIdx * 3 + 1] = this.pos[i * 3 + 1];
+                newPos[newIdx * 3 + 2] = this.pos[i * 3 + 2];
+                newTypes[newIdx] = this.types[i];
+            }
+        }
+
+        this.pos = newPos;
+        this.types = newTypes;
+
+        // 3. Rebuild Bonds
+        const newBonds = [];
+        for (const [id1, id2] of this.bonds) {
+            if (oldToNew[id1] !== -1 && oldToNew[id2] !== -1) {
+                newBonds.push([oldToNew[id1], oldToNew[id2]]);
+            }
+        }
+        this.bonds = newBonds;
+
+        this.nAtoms = newCount;
+        this.selection.clear();
+        this.updateNeighborList();
+        this.isDirty = true;
+
+        window.logger.info(`Deleted atoms. New count: ${this.nAtoms}`);
     }
 
     resize(newCapacity) {

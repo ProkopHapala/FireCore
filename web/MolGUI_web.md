@@ -508,3 +508,54 @@ Performance is paramount. The system must be designed to handle large molecular 
     *   *Example:* Refactoring `boxSelect` to use lambdas improved readability and reduced code duplication. While function calls add theoretical overhead, the trade-off for maintainability was deemed acceptable here. However, for *rendering* loops, raw loops are preferred.
 *   **CSS Transforms:**
     *   Use `transform: translate(x, y)` instead of `top/left` for moving UI elements (like selection boxes) to avoid layout thrashing (reflows).
+
+---
+
+## User 6: Molecule Editor Extensions Plan
+
+We are extending the viewer with editing capabilities.
+
+### Reference Implementation Mapping
+We will port logic from `pyBall` to Javascript.
+
+| Feature | Python Reference (`pyBall`) | JS Implementation (`MoleculeSystem`) |
+| :--- | :--- | :--- |
+| **Auto Bonds** | `AtomicSystem.findBonds` / `atomicUtils.findBondsNP` | `recalculateBonds()` |
+| **Neighbor List** | `AtomicSystem.neighs` / `atomicUtils.neigh_atoms` | `updateNeighborList()` |
+| **Add Atom** | N/A (Basic list op) | `addAtom(type, pos)` |
+| **Delete Atom** | `AtomicSystem.selectSubset` (filtering) | `deleteSelectedAtoms()` |
+| **Find Groups** | `AtomicSystem.find_groups` | `findConnectedComponents()` |
+| **Cycles/Rings** | `atomicUtils.find_cycles` | `findRings()` |
+
+### Step 1: Basic Editing Features
+**Goal:** Enable structural modification of the molecule.
+
+1.  **Data Structure Update:**
+    *   Implement a robust `NeighborList` (Adjacency List) in `MoleculeSystem`.
+    *   Ensure `addAtom` and `deleteAtom` update this list efficiently (or mark it dirty).
+
+2.  **Auto-Bonds:**
+    *   Implement `findBonds(Rcut)`: Iterate pairs (optimized with spatial hash or naive for small N), check distance, add bond if $r < R_{cut}$.
+    *   *Reference:* `atomicUtils.findBondsNP`.
+
+3.  **Add/Delete Operations:**
+    *   **Delete:** Remove selected atoms.
+        *   *Challenge:* Re-indexing bonds. If we use swap-remove for atoms, we must update all bond indices that pointed to the moved atom.
+        *   *Alternative:* Mark as "deleted" (gap buffer) and compact later, or just rebuild bonds.
+    *   **Add:** Place atom at cursor or bonded to selected atom.
+
+### Step 2: Advanced Topology Operations
+**Goal:** Smart editing and chemical awareness.
+
+1.  **Graph Algorithms:**
+    *   **Find Connected Components:** Identify distinct molecules/fragments.
+    *   **Find Bridges:** Detect bonds that, if cut, split the molecule.
+    *   **Find Cycles:** Detect rings (Benzene, etc.). *Reference:* `atomicUtils.find_cycles`.
+
+2.  **Group Substitution:**
+    *   Select a group (e.g., Hydrogen) and replace with a functional group (e.g., Methyl).
+    *   Requires `orient` logic: Align the new group's bond with the old bond. *Reference:* `AtomicSystem.orient`.
+
+3.  **Electron Pairs / Valence:**
+    *   Estimate hybridization and add lone pairs. *Reference:* `AtomicSystem.getValenceElectrons`.
+

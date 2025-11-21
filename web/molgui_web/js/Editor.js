@@ -101,6 +101,64 @@ class Editor {
         window.logger.info("Selection Cleared");
     }
 
+    deleteSelection() {
+        if (window.VERBOSITY_LEVEL >= Logger.DEBUG) {
+            window.logger.debug(`[Editor] deleteSelection called. Selection size: ${this.system.selection.size}, Locked: ${this.selectionLocked}`);
+        }
+
+        if (this.selectionLocked) {
+            window.logger.warn("[Editor] Cannot delete: Selection is locked.");
+            return;
+        }
+        if (this.system.selection.size === 0) {
+            window.logger.warn("[Editor] Cannot delete: Nothing selected.");
+            return;
+        }
+
+        this.system.deleteSelectedAtoms();
+        this.initialAtomStates = null;
+        this.molRenderer.update();
+        this.molRenderer.update(); // Double update to ensure buffers are swapped/cleared if needed
+        this.updateGizmo();
+        if (this.onSelectionChange) this.onSelectionChange();
+    }
+
+    recalculateBonds() {
+        this.system.recalculateBonds();
+        this.molRenderer.update();
+        window.logger.info("Bonds Recalculated");
+    }
+
+    addAtom() {
+        if (this.selectionLocked) return;
+
+        let x = 0, y = 0, z = 0;
+        let type = 6; // Carbon by default
+
+        if (this.system.selection.size > 0) {
+            // Attach to first selected atom
+            const id = this.system.selection.values().next().value;
+            x = this.system.pos[id * 3] + 1.5; // Offset by 1.5 A
+            y = this.system.pos[id * 3 + 1];
+            z = this.system.pos[id * 3 + 2];
+        }
+
+        const newId = this.system.addAtom(x, y, z, type);
+
+        // If we attached to an atom, add a bond
+        if (this.system.selection.size > 0) {
+            const id = this.system.selection.values().next().value;
+            this.system.addBond(id, newId);
+        }
+
+        // Select the new atom
+        this.system.select(newId, 'replace');
+
+        this.molRenderer.update();
+        this.updateGizmo();
+        window.logger.info(`Added Atom ${newId}`);
+    }
+
     // --- Internal Logic ---
 
     updateGizmo() {

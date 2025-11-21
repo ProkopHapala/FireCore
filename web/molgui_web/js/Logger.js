@@ -1,5 +1,5 @@
 // Global Verbosity Level
-window.VERBOSITY_LEVEL = 3; // Default: INFO
+window.VERBOSITY_LEVEL = 4; // Default: DEBUG for now
 
 class Logger {
     static NONE = 0;
