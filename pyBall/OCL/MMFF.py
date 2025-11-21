@@ -87,34 +87,31 @@ class MMFF:
             self.atom_types = MMparams.read_atom_types(os.path.join(data_path, 'AtomTypes.dat'), self.element_types)
 
         # Initialize arrays
-        self.apos = None          # [nvecs,  4 ] Positions
-        self.fapos = None         # [nvecs,  4 ] Forces
-        self.atypes = None        # [natoms    ]  Atom types 
-        self.neighs = None        # [natoms, 4 ]  Neighbor indices 
-        self.neighCell = None     # [natoms, 4 ] Neighbor cell indices
-        self.REQs = None          # [natoms, 4 ] Non-covalent parameters
-        self.apars = None         # [nnode,  4 ] Angle parameters
-        self.bLs = None           # [nnode,  4 ] Bond lengths
-        self.bKs = None           # [nnode,  4 ] Bond stiffness
-        self.Ksp = None           # [nnode,  4 ] Pi-sigma stiffness
-        self.Kpp = None           # [nnode,  4 ] Pi-pi stiffness
-        self.angles = None        # [nnode, 6, 3 ] Angles between bonds
+        self.apos      = None       # [nvecs,  4 ] Positions
+        self.fapos     = None       # [nvecs,  4 ] Forces
+        self.atypes    = None       # [natoms    ]  Atom types 
+        self.neighs    = None       # [natoms, 4 ]  Neighbor indices 
+        self.neighCell = None       # [natoms, 4 ] Neighbor cell indices
+        self.REQs      = None       # [natoms, 4 ] Non-covalent parameters
+        self.apars     = None       # [nnode,  4 ] Angle parameters
+        self.bLs       = None       # [nnode,  4 ] Bond lengths
+        self.bKs       = None       # [nnode,  4 ] Bond stiffness
+        self.Ksp       = None       # [nnode,  4 ] Pi-sigma stiffness
+        self.Kpp       = None       # [nnode,  4 ] Pi-pi stiffness
+        self.angles    = None       # [nnode, 6, 3 ] Angles between bonds
         # self.tors2atom = None     # [ntors]        Torsion atom indices
         # self.torsParams = None    # [ntors, 4    ] Torsion parameters
         # self.constr = None        # [natoms, 4   ] Constraints
         # self.constrK = None       # [natoms, 4   ] Constraint stiffness
-        self.invLvec = None       # [nSystems, 9 ] Inverse lattice vectors
-        self.pbc_shifts = None    # [nSystems, 3 ] PBC shifts
-        self.nPBC = None
-        self.npbc = None
-
+        self.invLvec    = None      # [nSystems, 9 ] Inverse lattice vectors
+        self.pbc_shifts = None      # [nSystems, 3 ] PBC shifts
+        self.nPBC       = None
+        self.npbc       = None
         self.capping_atoms = {'H'}
         self.reorder_nodes_first = bool(reorder_nodes_first)
-        
-        self.dt     = 0.01
-        self.damp   = 0.1
-        self.Flimit = 10.0
-
+        self.dt         = 0.01
+        self.damp       = 0.1
+        self.Flimit     = 10.0
         # Pi-orbitals and electron pairs
         self.pipos = None         # [natoms, 3] Pi-orbital orientations
 
@@ -127,15 +124,14 @@ class MMFF:
         - ncap (int): Number of capping atoms.
         - ntors (int): Number of torsions.
         """
-        self.npbc = (nPBC[0]*2+1)*(nPBC[1]*2+1)*(nPBC[2]*2+1)
-        self.nPBC = nPBC
+        self.npbc   = (nPBC[0]*2+1)*(nPBC[1]*2+1)*(nPBC[2]*2+1)
+        self.nPBC   = nPBC
         self.nnode  = nnode
         self.ncap   = ncap
         self.natoms = nnode + ncap
         self.nvecs  = self.natoms + nnode  # Including pi-orbitals
         self.ntors  = ntors
         self.nDOFs  = self.nvecs * 3
-
         if verbosity > 0:
             print(f"MMFF::realloc() natoms {self.natoms} nnode {self.nnode} ncap {self.ncap} nvecs {self.nvecs} ntors {self.ntors} nDOFs {self.nDOFs} nPBC {self.nPBC} npbc {self.npbc}")
 
@@ -168,32 +164,25 @@ class MMFF:
         for ia in range(self.nnode):
             for ib_idx in range(4):
                 ja = int(self.neighs[ia, ib_idx])
-                if ja < 0 or ja >= self.natoms:
-                    continue
+                if ja < 0 or ja >= self.natoms: continue
                 packed = ia * 4 + ib_idx
-
                 empty = np.where(self.back_neighs[ja] < 0)[0]
-                if empty.size == 0:
-                    raise ValueError(f"Atom {ja} has >4 back-neighbors when adding {ia}")
+                if empty.size == 0: raise ValueError(f"Atom {ja} has >4 back-neighbors when adding {ia}")
                 self.back_neighs[ja, empty[0]] = packed
-
                 if ja < self.nnode:
                     pi_idx = self.natoms + ja
                     empty_pi = np.where(self.back_neighs[pi_idx] < 0)[0]
-                    if empty_pi.size == 0:
-                        raise ValueError(f"Pi orbital {ja} has >4 back-neighbors when adding {ia}")
+                    if empty_pi.size == 0: raise ValueError(f"Pi orbital {ja} has >4 back-neighbors when adding {ia}")
                     self.back_neighs[pi_idx, empty_pi[0]] = packed + pi_offset
         if b_cap_neighs:
             for ia in range(self.nnode, self.natoms):
-                if self.back_neighs[ia, 0] < 0:
-                    raise ValueError(f"Capping atom {ia} missing back-neighbor")
+                if self.back_neighs[ia, 0] < 0: raise ValueError(f"Capping atom {ia} missing back-neighbor")
                 # mirror CPU behavior: set first neighbor to bonded node index
                 self.neighs[ia, :] = -1
                 self.neighs[ia, 0] = self.back_neighs[ia, 0] // 4
 
     def back_neighs_as_atoms(self):
-        if not hasattr(self, 'back_neighs'):
-            return None
+        if not hasattr(self, 'back_neighs'): return None
         arr = np.full_like(self.back_neighs, -1)
         mask = self.back_neighs >= 0
         arr[mask] = self.back_neighs[mask] // 4
@@ -205,29 +194,27 @@ class MMFF:
         if perm_existing is not None and len(perm_existing) == natoms:
             npi_list = getattr(mol, "npi_list", None)
             nep_list = getattr(mol, "nep_list", None)
-            is_node = getattr(mol, "isNode", None)
+            is_node  = getattr(mol, "isNode", None)
             if npi_list is None or len(npi_list) != natoms or nep_list is None or len(nep_list) != natoms or is_node is None or len(is_node) != natoms:
                 npi_list, nep_list, is_node = initAtomProperties(mol, atom_types, self.capping_atoms, bPrint=False)
                 mol.npi_list = list(npi_list)
                 mol.nep_list = list(nep_list)
-                mol.isNode = list(is_node)
-            if mol.ngs is None:
-                mol.neighs()
+                mol.isNode   = list(is_node)
+            if mol.ngs is None: mol.neighs()
             return list(mol.npi_list), list(mol.nep_list), list(mol.isNode)
 
         npi_raw, nep_raw, is_node_raw = initAtomProperties(mol, atom_types, self.capping_atoms, bPrint=False)
         node_indices = [i for i, flag in enumerate(is_node_raw) if flag > 0]
-        cap_indices = [i for i, flag in enumerate(is_node_raw) if flag <= 0]
-        perm = node_indices + cap_indices
+        cap_indices  = [i for i, flag in enumerate(is_node_raw) if flag <= 0]
+        perm         = node_indices + cap_indices
 
         if perm == list(range(natoms)):
             mol.perm_nodes_first = perm
             mol.perm_inverse = list(range(natoms))
-            mol.npi_list = list(int(x) for x in npi_raw)
-            mol.nep_list = list(int(x) for x in nep_raw)
-            mol.isNode = list(int(x) for x in is_node_raw)
-            if mol.ngs is None:
-                mol.neighs()
+            mol.npi_list     = list(int(x) for x in npi_raw)
+            mol.nep_list     = list(int(x) for x in nep_raw)
+            mol.isNode       = list(int(x) for x in is_node_raw)
+            if mol.ngs is None:  mol.neighs()
             return list(mol.npi_list), list(mol.nep_list), list(mol.isNode)
 
         perm_arr = np.array(perm, dtype=np.int32)
@@ -235,34 +222,24 @@ class MMFF:
         inv_perm[perm_arr] = np.arange(natoms, dtype=np.int32)
 
         mol.apos = mol.apos[perm_arr].copy()
-        if mol.atypes is not None:
-            mol.atypes = mol.atypes[perm_arr].copy()
-        if mol.qs is not None:
-            mol.qs = mol.qs[perm_arr].copy()
-        if mol.Rs is not None:
-            mol.Rs = mol.Rs[perm_arr].copy()
-        if mol.enames is not None:
-            mol.enames = [mol.enames[i] for i in perm_arr]
-
-        if mol.bonds is not None:
+        if mol.atypes is not None: mol.atypes = mol.atypes[perm_arr].copy()
+        if mol.qs     is not None: mol.qs     = mol.qs[perm_arr].copy()
+        if mol.Rs     is not None: mol.Rs     = mol.Rs[perm_arr].copy()
+        if mol.enames is not None: mol.enames = [mol.enames[i] for i in perm_arr]
+        if mol.bonds  is not None:
             remapped_bonds = []
-            for a, b in mol.bonds:
-                remapped_bonds.append((int(inv_perm[int(a)]), int(inv_perm[int(b)])))
+            for a, b in mol.bonds: remapped_bonds.append((int(inv_perm[int(a)]), int(inv_perm[int(b)])))
             mol.bonds = remapped_bonds
-
-        npi_list = np.asarray(npi_raw, dtype=np.int32)[perm_arr].tolist()
-        nep_list = np.asarray(nep_raw, dtype=np.int32)[perm_arr].tolist()
-        is_node = np.asarray(is_node_raw, dtype=np.int32)[perm_arr].tolist()
-
+        npi_list     = np.asarray(npi_raw, dtype=np.int32)[perm_arr].tolist()
+        nep_list     = np.asarray(nep_raw, dtype=np.int32)[perm_arr].tolist()
+        is_node      = np.asarray(is_node_raw, dtype=np.int32)[perm_arr].tolist()
         mol.npi_list = npi_list
         mol.nep_list = nep_list
-        mol.isNode = is_node
+        mol.isNode   = is_node
         mol.perm_nodes_first = perm_arr.tolist()
         mol.perm_inverse = inv_perm.tolist()
-
         mol.ngs = None
         mol.neighs()
-
         return npi_list, nep_list, is_node
 
     def toMMFFsp3_loc(self, mol, atom_types, bRealloc=True, bEPairs=False, bUFF=False, *, lone_pairs_pi=False, align_pi_vectors=False):

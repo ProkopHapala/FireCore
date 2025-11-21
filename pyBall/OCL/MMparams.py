@@ -96,45 +96,26 @@ def read_element_types(filepath):
     element_types = {}
     with open(filepath, 'r') as f:
         lines = f.readlines()
-
         for line in lines:
             line = line.strip()
             # Skip comments and empty lines
-            if line.startswith('#') or not line:
-                continue
-
+            if line.startswith('#') or not line: continue
             parts = line.split()
-            if not parts:
-                continue
-
             name = parts[0]
             et = ElementType(name=name)
-
-            # Parse required parameters (minimum 12 values as per C++ code)
             try:
-                if len(parts) >= 2:
-                    et.iZ = int(parts[1])
-                if len(parts) >= 3:
-                    et.neval = int(parts[2])
-                if len(parts) >= 4:
-                    et.valence = int(parts[3])
-                if len(parts) >= 5:
-                    et.piMax = int(parts[4])
-                if len(parts) >= 6:
-                    et.color = int(parts[5], 16) if parts[5].startswith('0x') else int(parts[5])
-                if len(parts) >= 7:
-                    et.Rcov = float(parts[6])
-                if len(parts) >= 8:
-                    et.RvdW = float(parts[7])
-                if len(parts) >= 9:
-                    et.EvdW = float(parts[8])
-                if len(parts) >= 10:
-                    et.Quff = float(parts[9])
-                if len(parts) >= 11:
-                    et.Uuff = float(parts[10])
-                if len(parts) >= 12:
-                    et.Vuff = float(parts[11])
-
+                et.iZ = int(parts[1])
+                et.neval = int(parts[2])
+                et.valence = int(parts[3])
+                et.piMax = int(parts[4])
+                et.color = int(parts[5], 16) if parts[5].startswith('0x') else int(parts[5])
+                et.Rcov = float(parts[6])
+                et.RvdW = float(parts[7])
+                et.EvdW = float(parts[8])
+                et.Quff = float(parts[9])
+                et.Uuff = float(parts[10])
+                et.Vuff = float(parts[11])
+                et.Vuff = float(parts[11])
                 # Parse optional QEq parameters
                 if len(parts) >= 16:
                     et.bQEq = True
@@ -146,9 +127,7 @@ def read_element_types(filepath):
                 print(f"Error parsing line: {line}")
                 print(f"Error: {e}")
                 continue
-
             element_types[name] = et
-
     return element_types
 
 def read_atom_types(filepath, element_types=None):
@@ -163,54 +142,29 @@ def read_atom_types(filepath, element_types=None):
     - dict: Dictionary mapping atom type names to AtomType objects
     """
     atom_types = {}
-
     with open(filepath, 'r') as f:
         lines = f.readlines()
-
         # First pass: Create atom types with basic parameters
         for line in lines:
             line = line.strip()
-            # Skip comments and empty lines
-            if line.startswith('#') or not line:
-                continue
-
+            if line.startswith('#') or not line:continue
             parts = line.split()
-            if not parts or len(parts) < 5:  # Need at least name, parent, element, epair, valence
-                continue
-
+            if not parts or len(parts) < 5: 
+                print(f"Error parsing line: {line}")
+                exit(0)
             name = parts[0]
-            parent_name = parts[1]
-            element_name = parts[2]
-            epair_name = parts[3]
-
-            at = AtomType(
-                name=name,
-                parent_name=parent_name,
-                element_name=element_name,
-                epair_name=epair_name
-            )
-
+            at = AtomType( name=name, parent_name=parts[1], element_name=parts[2], epair_name=parts[3] )
             # Parse the rest of the parameters
             try:
-                if len(parts) >= 5:
-                    at.valence = int(parts[4])
-                if len(parts) >= 6:
-                    at.nepair = int(parts[5])
-                if len(parts) >= 7:
-                    at.npi = int(parts[6])
-                if len(parts) >= 8:
-                    at.sym = int(parts[7])
-                if len(parts) >= 9:
-                    at.Ruff = float(parts[8])
-                if len(parts) >= 10:
-                    at.RvdW = float(parts[9])
-                if len(parts) >= 11:
-                    at.EvdW = float(parts[10])
-                if len(parts) >= 12:
-                    at.Qbase = float(parts[11])
-                if len(parts) >= 13:
-                    at.Hb = float(parts[12])
-
+                at.valence = int(parts[4])
+                at.nepair  = int(parts[5])
+                at.npi     = int(parts[6])
+                at.sym     = int(parts[7])
+                at.Ruff    = float(parts[8])
+                at.RvdW    = float(parts[9])
+                at.EvdW    = float(parts[10])
+                at.Qbase   = float(parts[11])
+                at.Hb      = float(parts[12])
                 # MMFF parameters (optional)
                 if len(parts) >= 19:
                     at.bMMFF = True
@@ -270,42 +224,37 @@ def generate_REQs_from_atom_types(mol, atom_types):
 
     for ia in range(natom):
         atom_name = mol.enames[ia]
-        if mol.qs is not None:
-            q=mol.qs[ia]
-        else:
-            q=0
+        q=0
+        if mol.qs is not None: q=mol.qs[ia]
         if atom_name in atom_types:
-            at = atom_types[atom_name]
-            REQs[ia, 0] = at.RvdW
-            REQs[ia, 1] = at.EvdW
+            at          = atom_types[atom_name]
+            REQs[ia, 0] = float(at.RvdW)
+            REQs[ia, 1] = math.sqrt( float(at.EvdW) )
             REQs[ia, 2] = q
-            REQs[ia, 3] = at.Hb   # H-bond correction
+            REQs[ia, 3] = float(at.Hb)   # H-bond correction
         else:
-            print(f"Warning: Atom type {atom_name} not found in atom_types")
-            # Set default values
-            REQs[ia, 0] = 1.0  # Default radius
-            REQs[ia, 1] = 0.01  # Default energy
-            REQs[ia, 2] = q
-            REQs[ia, 3] = 0.0   # H-bond correction
-
+            print(f"ERROR: Atom type {atom_name} not found in atom_types")
+            exit()
+            # # Set default values
+            # REQs[ia, 0] = 1.0  # Default radius
+            # REQs[ia, 1] = math.sqrt(0.01)  # Default energy (stored as sqrt)
+            # REQs[ia, 2] = q
+            # REQs[ia, 3] = 0.0   # H-bond correction
     return REQs
 
 class MMFFparams:
     def __init__(self, path, felement_types='ElementTypes.dat', fatom_types='AtomTypes.dat'):
         self.element_types_map, self.atom_types_map = read_AtomAndElementTypes(path, felement_types, fatom_types)
-
-        self.atypes = list(self.atom_types_map.values())
-        self.atom_type_names = list(self.atom_types_map.keys())
-        self.atom_type_dict = {name: i for i, name in enumerate(self.atom_type_names)}
-
-        self.element_types = list(self.element_types_map.values())
+        self.atypes             = list(self.atom_types_map.values())
+        self.atom_type_names    = list(self.atom_types_map.keys())
+        self.atom_type_dict     = {name: i for i, name in enumerate(self.atom_type_names)}
+        self.element_types      = list(self.element_types_map.values())
         self.element_type_names = list(self.element_types_map.keys())
-        self.element_type_dict = {name: i for i, name in enumerate(self.element_type_names)}
+        self.element_type_dict  = {name: i for i, name in enumerate(self.element_type_names)}
 
     def getAtomType(self, name, bErr=True):
         idx = self.atom_type_dict.get(name, -1)
-        if bErr and idx == -1:
-            raise ValueError(f"Atom type '{name}' not found.")
+        if bErr and idx == -1: raise ValueError(f"Atom type '{name}' not found.")
         return idx
 
     def elementOfAtomType(self, it):
@@ -316,8 +265,7 @@ def assignRE(self, ityp, REQ, bSqrtE=True):
     atype = self.atypes[ityp]
     REQ[0] = atype.RvdW
     e = atype.EvdW
-    if bSqrtE:
-        e = math.sqrt(e)
+    if bSqrtE: e = math.sqrt(e)
     REQ[1] = e
     REQ[2] = atype.Qbase
     REQ[3] = atype.Hb

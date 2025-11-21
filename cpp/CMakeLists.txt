@@ -153,6 +153,27 @@ endif()
 
 ### this is for compile_commands.json   (it should help various IDEs and other tool to understand the project)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
+    set(_COMPILE_COMMANDS_SRC "${CMAKE_BINARY_DIR}/compile_commands.json")
+    set(_COMPILE_COMMANDS_DST "${CMAKE_SOURCE_DIR}/compile_commands.json")
+    if(EXISTS ${_COMPILE_COMMANDS_DST} OR IS_SYMLINK ${_COMPILE_COMMANDS_DST})
+        # TODO: revisit if we ever need to preserve a manually curated compilation database
+        file(REMOVE ${_COMPILE_COMMANDS_DST})
+    endif()
+    #execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ${_COMPILE_COMMANDS_SRC} ${_COMPILE_COMMANDS_DST}) # DEBUG kept for reference
+    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ${_COMPILE_COMMANDS_SRC} ${_COMPILE_COMMANDS_DST})
+    message(STATUS "DEBUG clangd compile_commands.json -> ${_COMPILE_COMMANDS_DST}")
+    get_filename_component(_COMPILE_COMMANDS_PARENT ${CMAKE_SOURCE_DIR} DIRECTORY)
+    if(_COMPILE_COMMANDS_PARENT)
+        set(_COMPILE_COMMANDS_PARENT_DST "${_COMPILE_COMMANDS_PARENT}/compile_commands.json")
+        if(EXISTS ${_COMPILE_COMMANDS_PARENT_DST} OR IS_SYMLINK ${_COMPILE_COMMANDS_PARENT_DST})
+            # DEBUG removing previous top-level compile_commands.json before recreating symlink
+            file(REMOVE ${_COMPILE_COMMANDS_PARENT_DST})
+        endif()
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ${_COMPILE_COMMANDS_SRC} ${_COMPILE_COMMANDS_PARENT_DST})
+        message(STATUS "DEBUG clangd compile_commands.json -> ${_COMPILE_COMMANDS_PARENT_DST}")
+    endif()
+endif()
 
 # ==============================
 # ==== Functions

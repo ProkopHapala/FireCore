@@ -253,6 +253,7 @@ Here is the implementation plan divided into **5 Logical Phases**.
 | **4** | **Select** | `Raycaster`, `vector.project`, `Set` | Click/Drag -> Atoms change color. |
 | **5** | **Edit** | `TransformControls`, Dummy Object Proxy | Drag Gizmo -> Atoms move, Bonds stretch. |
 
+
 ### Code Structure Suggestion (Files)
 *   `index.html`
 *   `main.js` (Entry point)
@@ -263,4 +264,187 @@ Here is the implementation plan divided into **5 Logical Phases**.
 *   `IO.js` (Load/Save utils)
 
 This plan ensures that we solve the "Security/IO" issue early, establish the "High Perf Rendering" immediately, but fall back to standard "Easy Math" for the interaction logic until optimization is strictly necessary.
+
+
+---
+
+## User 3
+
+One thing we should decide for controls is what key and mouse button should do what.
+for example we should avoid situation where while selecting or moving atoms the viewport rotate. We should clerarly define this using available mouse buttons (left, right, middle should be used only rarely, maybe rather ignore it for now), and modifiers like ctrl, shift, alt. What you recomand? Can you review constro systels in other molecular editors and 3D programs and give me few alternative systems to choose from ?
+
+---
+
+This is a classic UX conflict in 3D software: **Navigation vs. Manipulation**.
+
+In a browser environment, we have an extra constraint: **Context Menus**. By default, Right-Click opens a browser menu. We can block this (`preventDefault`), but it’s something to keep in mind. We also want to avoid the Middle Mouse Button (MMB) because many laptop users (trackpads) find it difficult to simulate.
+
+Here is an analysis of industry standards and three proposed schemes for your editor.
+
+### Industry Analysis
+
+1.  **Blender (Modern default)**
+    *   **Selection:** Left Click.
+    *   **Rotate Cam:** Middle Click.
+    *   **Context:** Right Click.
+    *   *Verdict:* Great for mouse users, **terrible for trackpads/web** (requires MMB).
+
+2.  **PyMOL / VMD (Classic Chemo-informatics)**
+    *   **Rotate Cam:** Left Click.
+    *   **Selection:** specialized mode or specific modifier (e.g., Clicking specific atom menus).
+    *   *Verdict:* Great for viewing, **clunky for editing**. It makes Gizmo manipulation hard because you might accidentally rotate the view.
+
+3.  **Unity / Unreal Engine (Game Editors)**
+    *   **Selection/Gizmo:** Left Click.
+    *   **Rotate Cam:** Right Click (Hold).
+    *   **Pan:** Middle or Right+Shift.
+    *   *Verdict:* **Best for editing.** It separates "Doing" (Left) from "Looking" (Right).
+
+---
+
+### Recommended Scheme: "The Modern Web Editor" (Unity Style)
+
+I strongly recommend this scheme. It prioritizes **Interaction** (Left Click is always for touching atoms/gizmos) and moves **Navigation** to the Right Click. This prevents the accidental "I tried to move the atom but rotated the camera" error.
+
+**Basic Mouse Map:**
+*   **Left Mouse Button (LMB):** Primary Action.
+    *   *On Atom:* Pick / Select.
+    *   *On Background:* Start Box Selection (Marquee).
+    *   *On Gizmo:* Manipulate (Move/Rotate).
+*   **Right Mouse Button (RMB):** Camera Navigation.
+    *   *Drag:* Orbit/Rotate Camera.
+    *   *Shift + Drag:* Pan Camera (Move Up/Down/Left/Right).
+*   **Scroll Wheel:** Zoom In/Out.
+
+**Keyboard Modifiers (Selection Logic):**
+When using **LMB** to click or drag-box:
+*   **No Key:** **Replace** selection (Clear old, select new).
+*   **Shift:** **Add** to selection (Union).
+*   **Ctrl:** **Toggle** or **Subtract** selection.
+    *   *Note:* I suggest "Toggle" (XOR) for single clicks and "Subtract" for Box selection. This is standard in many vector tools.
+
+**Summary Table for Recommendation:**
+
+| Action | Trigger |
+| :--- | :--- |
+| **Select / Box** | `LMB` |
+| **Add to Selection** | `Shift` + `LMB` |
+| **Remove Selection** | `Ctrl` + `LMB` |
+| **Gizmo Drag** | `LMB` (on Gizmo handle) |
+| **Rotate View** | `RMB` Drag |
+| **Pan View** | `Shift` + `RMB` Drag |
+| **Zoom** | Mouse Wheel |
+
+---
+
+### Alternative Scheme: "The Spacebar Operator" (Adobe/Maya Style)
+
+If you want to preserve Right Click for Context Menus (e.g., "Delete Atom", "Change Element Type"), you cannot use RMB for navigation. You can use a "Clutch Key" (usually Space or Alt).
+
+*   **Navigation (Clutch):**
+    *   **Space + LMB:** Pan.
+    *   **Space + RMB:** Rotate (or `Space + Shift + LMB`).
+*   **Selection/Action:**
+    *   **LMB:** Select / Box / Gizmo.
+*   **Context:**
+    *   **RMB:** Open Menu.
+
+*Pros:* Allows for complex context menus on atoms.
+*Cons:* Requires two hands constantly. If the user is just looking around, they still need to hold a key.
+
+---
+
+### Alternative Scheme: "The Tool State" (SketchUp Style)
+
+This uses "Modes". You are either in "Select Mode" or "Orbit Mode".
+
+*   **Select Mode:** LMB selects. LMB drags Gizmo. You cannot rotate.
+*   **Orbit Mode:** LMB rotates. You cannot select.
+
+*Pros:* Very simple for beginners. Zero conflicts.
+*Cons:* **Extremely tedious.** Users hate switching tools just to rotate the view slightly to see an atom better. **Do not use this** unless you have a very specific reason.
+
+---
+
+### Implementation Detail for Three.js `OrbitControls`
+
+To implement the **Recommended Scheme (Unity Style)** in Three.js, you configure the controls like this:
+
+```javascript
+// EditorController.js configuration idea
+
+// 1. Configure OrbitControls for Navigation
+controls.mouseButtons = {
+	LEFT: THREE.MOUSE.PAN, // Optional: or MOUSE.NONE if you want to strictly separate
+	MIDDLE: THREE.MOUSE.DOLLY,
+	RIGHT: THREE.MOUSE.ROTATE
+};
+
+// Actually, for the Unity style (Right = Rotate, Shift+Right = Pan), 
+// Three.js OrbitControls natively supports:
+controls.mouseButtons = {
+	LEFT: null,   // We will handle picking manually
+	MIDDLE: THREE.MOUSE.DOLLY,
+	RIGHT: THREE.MOUSE.ROTATE
+};
+
+// We need to listen to Shift keys to toggle Pan vs Rotate on Right click, 
+// OR we map Pan to Middle Mouse. 
+// Three.js defaults: Left=Rotate, Right=Pan. We want to swap them.
+controls.mouseButtons = {
+	LEFT: null, // Disable camera on Left Click (It is for selection)
+	MIDDLE: THREE.MOUSE.DOLLY, 
+	RIGHT: THREE.MOUSE.ROTATE
+};
+
+// To get Shift+Right = Pan, OrbitControls handles keys differently.
+// Usually, it's easier to leave Pan on Middle Mouse or Shift+Left.
+// However, since we blocked Left for selection, the best config is:
+
+controls.mouseButtons = {
+    LEFT: null,             // Reserved for Selection/Gizmo
+    MIDDLE: THREE.MOUSE.PAN,
+    RIGHT: THREE.MOUSE.ROTATE
+}
+// AND allow Shift+Right to Pan via custom event listener logic if needed, 
+// but standardizing on Middle-Click Pan (or Shift-Left-Click Pan) is safer.
+```
+
+**Revised Recommendation for Three.js ease of use:**
+
+1.  **LMB:** Select / Gizmo / Box.
+2.  **RMB:** Rotate Camera.
+3.  **MMB:** Pan Camera.
+4.  **Shift + RMB:** Pan Camera (If user has no MMB).
+
+This keeps the code simple and the UX clean.
+
+---
+
+## Implementation Checklist
+
+- [x] **Phase 1: Infrastructure & Logging**
+    - [x] HTML Skeleton & Canvas
+    - [x] Logger Class (Console + Overlay)
+    - [x] Three.js Boilerplate
+
+- [x] **Phase 2: Data Structure & Renderer**
+    - [x] `MoleculeSystem` (Float32Array Data)
+    - [x] `MoleculeRenderer` (InstancedMesh + Impostor Shaders)
+    - [x] Bond Rendering (LineSegments)
+
+- [x] **Phase 3: Input / Output (I/O)**
+    - [x] Load XYZ Files (FileReader)
+    - [x] Save XYZ Files (Blob/Download)
+
+- [x] **Phase 4: Selection System**
+    - [x] Single Atom Picking (Raycaster)
+    - [x] Box/Marquee Selection (Projected Bounds)
+    - [x] Selection State Management (Set<ID>)
+
+- [ ] **Phase 5: Gizmo & Manipulation**
+    - [ ] Integration of `THREE.TransformControls`
+    - [ ] Proxy Object for Group Manipulation
+    - [ ] Update Loop (Gizmo -> Data -> Renderer)
+
 

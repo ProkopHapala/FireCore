@@ -1,49 +1,56 @@
 class Logger {
-    static LEVEL_DEBUG = 0;
-    static LEVEL_INFO = 1;
-    static LEVEL_WARN = 2;
-    static LEVEL_ERROR = 3;
-
     constructor() {
-        this.domElement = document.getElementById('log-content');
-        this.level = Logger.LEVEL_DEBUG;
+        this.domElement = null; // Will be set by GUI
+        this.level = 1; // 0: DEBUG, 1: INFO, 2: WARN, 3: ERROR
+        this.levels = { 'DEBUG': 0, 'INFO': 1, 'WARN': 2, 'ERROR': 3 };
     }
 
-    log(level, message) {
-        if (level < this.level) return;
+    setContainer(element) {
+        this.domElement = element;
+    }
+
+    setLevel(levelStr) {
+        if (this.levels.hasOwnProperty(levelStr)) {
+            this.level = this.levels[levelStr];
+            this.info(`Log Level set to ${levelStr}`);
+        }
+    }
+
+    clear() {
+        if (this.domElement) {
+            this.domElement.textContent = '';
+        }
+    }
+
+    log(message, level = 'INFO') {
+        const lvl = this.levels[level] !== undefined ? this.levels[level] : 1;
+        if (lvl < this.level) return;
 
         const timestamp = new Date().toLocaleTimeString();
-        const msg = `[${timestamp}] ${message}`;
+        const formattedMsg = `[${timestamp}] [${level}] ${message}`;
 
-        // Console output
-        switch(level) {
-            case Logger.LEVEL_ERROR: console.error(msg); break;
-            case Logger.LEVEL_WARN: console.warn(msg); break;
-            case Logger.LEVEL_INFO: console.info(msg); break;
-            default: console.log(msg);
-        }
+        // Console
+        if (level === 'ERROR') console.error(formattedMsg);
+        else if (level === 'WARN') console.warn(formattedMsg);
+        else console.log(formattedMsg);
 
-        // DOM output
+        // DOM
         if (this.domElement) {
             const line = document.createElement('div');
-            line.textContent = msg;
-            
-            switch(level) {
-                case Logger.LEVEL_ERROR: line.className = 'log-error'; break;
-                case Logger.LEVEL_WARN: line.className = 'log-warn'; break;
-                case Logger.LEVEL_INFO: line.className = 'log-info'; break;
-                default: line.className = 'log-debug';
-            }
-            
+            line.textContent = formattedMsg;
+            if (level === 'ERROR') line.style.color = '#ff5555';
+            else if (level === 'WARN') line.style.color = '#ffaa00';
+            else if (level === 'DEBUG') line.style.color = '#55ff55';
+
             this.domElement.appendChild(line);
             this.domElement.scrollTop = this.domElement.scrollHeight;
         }
     }
 
-    debug(msg) { this.log(Logger.LEVEL_DEBUG, msg); }
-    info(msg) { this.log(Logger.LEVEL_INFO, msg); }
-    warn(msg) { this.log(Logger.LEVEL_WARN, msg); }
-    error(msg) { this.log(Logger.LEVEL_ERROR, msg); }
+    debug(msg) { this.log(msg, 'DEBUG'); }
+    info(msg) { this.log(msg, 'INFO'); }
+    warn(msg) { this.log(msg, 'WARN'); }
+    error(msg) { this.log(msg, 'ERROR'); }
 }
 
 // Global instance

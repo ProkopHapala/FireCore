@@ -6,11 +6,7 @@ body {
     font-family: sans-serif;
 }
 
-#canvas-container {
-    width: 100vw;
-    height: 100vh;
-    display: block;
-}
+
 
 #log-overlay {
     position: absolute;
@@ -65,29 +61,64 @@ body {
 }
 
 /* GUI Menu */
-#gui-menu {
+/* GUI Sidebar */
+#gui-sidebar {
     position: absolute;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 40px;
-    background-color: rgba(30, 30, 30, 0.9);
+    width: 250px;
+    height: 100vh;
+    background-color: rgba(30, 30, 30, 0.95);
+    border-right: 1px solid #444;
+    padding: 10px;
+    box-sizing: border-box;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    z-index: 10;
+}
+
+#canvas-container {
+    position: absolute;
+    top: 0;
+    left: 250px;
+    width: calc(100vw - 250px);
+    height: 100vh;
+    display: block;
+}
+
+.gui-section {
+    margin-bottom: 15px;
+    padding-bottom: 10px;
     border-bottom: 1px solid #444;
+}
+
+.gui-section-title {
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #aaa;
+    font-size: 0.85em;
+    text-transform: uppercase;
+}
+
+.gui-row {
     display: flex;
     align-items: center;
-    padding: 0 10px;
-    box-sizing: border-box;
+    margin-bottom: 5px;
 }
 
 .gui-btn {
     background: #444;
     color: #eee;
     border: 1px solid #555;
-    padding: 5px 15px;
-    margin-right: 10px;
+    padding: 6px 12px;
+    margin-right: 5px;
+    margin-bottom: 5px;
     cursor: pointer;
     font-size: 0.9em;
     border-radius: 3px;
+    flex-grow: 1;
+    text-align: center;
 }
 
 .gui-btn:hover {
@@ -96,6 +127,41 @@ body {
 
 .gui-btn:active {
     background: #333;
+}
+
+.gui-input {
+    background: #333;
+    color: #eee;
+    border: 1px solid #555;
+    padding: 5px;
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 0.9em;
+}
+
+.gui-checkbox-label {
+    display: flex;
+    align-items: center;
+    font-size: 0.9em;
+    cursor: pointer;
+}
+
+.gui-checkbox-label input {
+    margin-right: 8px;
+}
+
+.gui-log-output {
+    background: #111;
+    color: #0f0;
+    font-family: monospace;
+    font-size: 0.8em;
+    height: 150px;
+    overflow-y: auto;
+    padding: 5px;
+    border: 1px solid #444;
+    margin-top: 5px;
+    white-space: pre-wrap;
+    word-break: break-all;
 }
 
 /* Selection Box */

@@ -1,10 +1,11 @@
 class Editor {
-    constructor(scene, camera, renderer, system, molRenderer) {
+    constructor(scene, camera, renderer, system, molRenderer, selectionRenderer) {
         this.scene = scene;
         this.camera = camera;
         this.renderer = renderer;
         this.system = system;
         this.molRenderer = molRenderer;
+        this.selectionRenderer = selectionRenderer; // Store ref
 
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
@@ -15,6 +16,37 @@ class Editor {
         this.selectionBox.className = 'selection-box';
         document.body.appendChild(this.selectionBox);
 
+        // Gizmo Setup
+        this.gizmo = null;
+        this.gizmoUserEnabled = true; // User preference
+        this.selectionLocked = false; // Selection Lock flag
+
+        this.proxyObject = new THREE.Object3D();
+        this.scene.add(this.proxyObject);
+
+        if (THREE.TransformControls) {
+            this.gizmo = new THREE.TransformControls(this.camera, this.renderer.domElement);
+            this.gizmo.addEventListener('change', () => this.onGizmoDragUpdate());
+            this.gizmo.addEventListener('dragging-changed', (event) => {
+                const isDragging = event.value;
+                // Disable OrbitControls when dragging gizmo
+                if (window.app && window.app.controls) {
+                    window.app.controls.enabled = !isDragging;
+                }
+
+                if (isDragging) {
+                    this.onGizmoDragStart();
+                } else {
+                    this.initialAtomStates = null; // Clear state on drag end
+                }
+            });
+            this.scene.add(this.gizmo);
+            this.gizmo.attach(this.proxyObject);
+            this.gizmo.visible = false; // Hidden by default until selection
+        } else {
+            console.error("THREE.TransformControls not found!");
+        }
+
         window.editorInitialized = true;
         this.initEvents();
     }
@@ -23,15 +55,121 @@ class Editor {
         const canvas = this.renderer.domElement;
         console.log(`[Editor] InitEvents. Window Size: ${window.innerWidth}x${window.innerHeight}`);
 
-        // Use capture: true for ALL events to ensure we intercept them before OrbitControls/Canvas
-        // We attach to window for move/up to handle dragging outside canvas
-        // Also attach mousedown to window to be absolutely sure
-        // Use POINTER events to be more robust
-        document.addEventListener('pointerdown', this.onMouseDown.bind(this), { capture: true });
-        window.addEventListener('pointermove', this.onMouseMove.bind(this), { capture: true });
-        window.addEventListener('pointerup', this.onMouseUp.bind(this), { capture: true });
+        // Removed capture: true to allow Gizmo (TransformControls) to handle events first if possible
+        // But we attach to document/window, while Gizmo attaches to canvas.
+        // If we use capture: false (bubbling), Gizmo (on canvas) fires first, then bubble to document.
+        // So removing capture: true is correct.
+        document.addEventListener('pointerdown', this.onMouseDown.bind(this));
+        window.addEventListener('pointermove', this.onMouseMove.bind(this));
+        window.addEventListener('pointerup', this.onMouseUp.bind(this));
 
         window.editorEventsAttached = true;
+    }
+
+    // --- Gizmo / Shortcut API ---
+
+    toggleGizmo(state) {
+        if (!this.gizmo) return;
+        // If state is provided, use it, otherwise toggle
+        if (state !== undefined) {
+            this.gizmoUserEnabled = state;
+        } else {
+            this.gizmoUserEnabled = !this.gizmoUserEnabled;
+        }
+        this.updateGizmo();
+        window.logger.info(`Gizmo ${this.gizmoUserEnabled ? 'Enabled' : 'Disabled'}`);
+    }
+
+    setGizmoMode(mode) {
+        if (!this.gizmo) return;
+        this.gizmo.setMode(mode);
+        window.logger.info(`Gizmo Mode: ${mode}`);
+    }
+
+    clearSelection() {
+        if (this.selectionLocked) return; // Respect lock
+        this.system.clearSelection();
+        this.initialAtomStates = null; // Fix: Clear gizmo state
+        this.molRenderer.update();
+        if (this.selectionRenderer) this.selectionRenderer.update(); // Update selection visual
+        this.updateGizmo();
+        if (this.onSelectionChange) this.onSelectionChange();
+        window.logger.info("Selection Cleared");
+    }
+
+    // --- Internal Logic ---
+
+    updateGizmo() {
+        if (!this.gizmo) return;
+
+        // Only show if user enabled AND selection exists
+        if (!this.gizmoUserEnabled || this.system.selection.size === 0) {
+            this.gizmo.visible = false;
+            this.gizmo.enabled = false;
+            return;
+        }
+
+        // Calculate Centroid
+        let cx = 0, cy = 0, cz = 0;
+        let count = 0;
+        for (const id of this.system.selection) {
+            cx += this.system.pos[id * 3];
+            cy += this.system.pos[id * 3 + 1];
+            cz += this.system.pos[id * 3 + 2];
+            count++;
+        }
+
+        if (count > 0) {
+            cx /= count;
+            cy /= count;
+            cz /= count;
+
+            this.proxyObject.position.set(cx, cy, cz);
+            this.proxyObject.rotation.set(0, 0, 0);
+            this.proxyObject.scale.set(1, 1, 1);
+            this.proxyObject.updateMatrixWorld();
+
+            this.gizmo.visible = true;
+            this.gizmo.enabled = true;
+        }
+    }
+
+    onGizmoDragStart() {
+        // Capture relative positions
+        this.initialAtomStates = [];
+        const inverseProxy = new THREE.Matrix4().copy(this.proxyObject.matrixWorld).invert();
+
+        for (const id of this.system.selection) {
+            const vec = new THREE.Vector3(
+                this.system.pos[id * 3],
+                this.system.pos[id * 3 + 1],
+                this.system.pos[id * 3 + 2]
+            );
+            // Store local position relative to proxy
+            vec.applyMatrix4(inverseProxy);
+            this.initialAtomStates.push({ id: id, localPos: vec });
+        }
+    }
+
+    onGizmoDragUpdate() {
+        if (!this.initialAtomStates) return;
+
+        const proxyMatrix = this.proxyObject.matrixWorld;
+        const vec = new THREE.Vector3();
+
+        for (const state of this.initialAtomStates) {
+            vec.copy(state.localPos);
+            vec.applyMatrix4(proxyMatrix);
+
+            const i = state.id;
+            this.system.pos[i * 3] = vec.x;
+            this.system.pos[i * 3 + 1] = vec.y;
+            this.system.pos[i * 3 + 2] = vec.z;
+        }
+
+        this.system.isDirty = true;
+        this.molRenderer.update();
+        if (this.selectionRenderer) this.selectionRenderer.update(); // Update selection visual (rings follow atoms)
     }
 
     onMouseDown(e) {
@@ -43,7 +181,15 @@ class Editor {
             time: Date.now(),
             target: e.target.tagName
         };
-        // if (e.button !== 0) return; // ALLOW ALL BUTTONS FOR DEBUGGING
+
+        // ONLY Allow Left Mouse Button (0) for Selection/Editor
+        if (e.button !== 0) return;
+
+        // Fix: Do not start selection if dragging gizmo
+        if (this.gizmo && this.gizmo.dragging) return;
+
+        // Fix: Check Selection Lock
+        if (this.selectionLocked) return;
 
         this.isDragging = true;
         this.startPos.x = e.clientX;
@@ -108,6 +254,11 @@ class Editor {
     }
 
     pick(x, y, mode) {
+        if (this.selectionLocked) return;
+
+        // Fix: Clear gizmo state before picking
+        this.initialAtomStates = null;
+
         // Get Ray from camera
         const ray = this.getRay(x, y);
         const rayOrigin = ray.origin;
@@ -118,12 +269,6 @@ class Editor {
         debugLog += `Mouse: (${x}, ${y})\n`;
         debugLog += `Ray Origin: ${rayOrigin.x.toFixed(3)}, ${rayOrigin.y.toFixed(3)}, ${rayOrigin.z.toFixed(3)}\n`;
         debugLog += `Ray Dir:    ${rayDir.x.toFixed(3)}, ${rayDir.y.toFixed(3)}, ${rayDir.z.toFixed(3)}\n`;
-        debugLog += `Camera Pos: ${this.camera.position.x.toFixed(3)}, ${this.camera.position.y.toFixed(3)}, ${this.camera.position.z.toFixed(3)}\n`;
-        debugLog += `Camera Zoom: ${this.camera.zoom}\n`;
-
-        // Log matrices (first few elements)
-        const mw = this.camera.matrixWorld.elements;
-        debugLog += `MatWorld: [${mw[0].toFixed(2)}, ${mw[1].toFixed(2)}, ..., ${mw[12].toFixed(2)}, ${mw[13].toFixed(2)}, ${mw[14].toFixed(2)}]\n`;
 
         let minT = Infinity;
         let pickedId = -1;
@@ -139,24 +284,21 @@ class Editor {
 
             const t = this.raySphere(rayOrigin, rayDir, center, radius);
 
-            debugLog += `Atom ${i}: Pos(${ax.toFixed(3)}, ${ay.toFixed(3)}, ${az.toFixed(3)}) t=${t.toFixed(3)}\n`;
-
             if (t < minT && t > 0) {
                 minT = t;
                 pickedId = i;
             }
         }
         debugLog += `Picked ID: ${pickedId}, minT: ${minT}\n`;
-        debugLog += "------------------";
 
-        console.log(debugLog);
-        window.lastPickDebug = debugLog;
-        const debugEl = document.getElementById('debug-output');
-        if (debugEl) debugEl.innerText = debugLog;
+        // Log to system logger
+        window.logger.debug(debugLog);
 
         if (pickedId !== -1) {
             this.system.select(pickedId, mode);
             this.molRenderer.update();
+            if (this.selectionRenderer) this.selectionRenderer.update(); // Update selection visual
+            this.updateGizmo(); // Update Gizmo Position
             if (this.onSelectionChange) this.onSelectionChange();
             window.logger.info(`Selected Atom ${pickedId} (t=${minT.toFixed(2)})`);
             return;
@@ -166,14 +308,17 @@ class Editor {
         if (mode === 'replace') {
             this.system.clearSelection();
             this.molRenderer.update();
+            if (this.selectionRenderer) this.selectionRenderer.update(); // Update selection visual
+            this.updateGizmo(); // Update Gizmo Position
             if (this.onSelectionChange) this.onSelectionChange();
         }
     }
 
     getRay(x, y) {
-        // Normalize mouse coordinates
-        const ndcX = (x / window.innerWidth) * 2 - 1;
-        const ndcY = -(y / window.innerHeight) * 2 + 1;
+        // Normalize mouse coordinates relative to canvas
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        const ndcX = ((x - rect.left) / rect.width) * 2 - 1;
+        const ndcY = -((y - rect.top) / rect.height) * 2 + 1;
 
         const rayOrigin = new THREE.Vector3();
         const rayDir = new THREE.Vector3();
@@ -209,13 +354,19 @@ class Editor {
     }
 
     boxSelect(x1, y1, x2, y2, mode) {
+        if (this.selectionLocked) return;
+
+        // Fix: Clear gizmo state
+        this.initialAtomStates = null;
+
         const minX = Math.min(x1, x2);
         const maxX = Math.max(x1, x2);
         const minY = Math.min(y1, y2);
         const maxY = Math.max(y1, y2);
 
-        const width = window.innerWidth;
-        const height = window.innerHeight;
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        const width = rect.width;
+        const height = rect.height;
 
         if (mode === 'replace') this.system.clearSelection();
 
@@ -232,9 +383,9 @@ class Editor {
             // Project to screen
             vec.project(this.camera);
 
-            // Map to pixels
-            const sx = (vec.x * 0.5 + 0.5) * width;
-            const sy = (-(vec.y * 0.5) + 0.5) * height;
+            // Map to pixels (relative to canvas, then add offset)
+            const sx = (vec.x * 0.5 + 0.5) * width + rect.left;
+            const sy = (-(vec.y * 0.5) + 0.5) * height + rect.top;
 
             // Check bounds
             if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) {
@@ -249,6 +400,8 @@ class Editor {
 
         this.system.isDirty = true;
         this.molRenderer.update();
+        if (this.selectionRenderer) this.selectionRenderer.update(); // Update selection visual
+        this.updateGizmo(); // Update Gizmo Position
         if (this.onSelectionChange) this.onSelectionChange();
         window.logger.info(`Box Selected ${count} atoms.`);
     }

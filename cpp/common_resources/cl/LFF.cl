@@ -224,17 +224,17 @@ __kernel void lff_nb_jacobi(
     barrier(CLK_LOCAL_MEM_FENCE);
 
     // --- debug if neighbor params are correct
-    if(lid == 0){
+    if( (lid==0)&&(imol==0)){
         printf("GPU: lff_projective_jacobi() dt=%f bMix=%f nOuter=%i nInner=%i Efield=(%f,%f,%f)\n", dt, bMix, nOuter, nInner, Efield.x, Efield.y, Efield.z);
         for(int i=0; i<natoms; i++){
             const int ig = ia0 + i;
             int ing0 = ig * MAX_NEIGHBORS;
-            printf("GPU: atom %3i (%6.4f,%6.4f,%6.4f|%6.4f) neigs:", ig, apos[ig].x, apos[ig].y, apos[ig].z, apos[ig].w) ;
+            printf("GPU: atom %3i (%+6.4f,%+6.4f,%+6.4f|%+6.4f) REQH(%+6.4f,%+6.4f,%+6.4f,%+6.4f) ing0: %3i neigs:", ig, apos[ig].x, apos[ig].y, apos[ig].z, apos[ig].w, REQHs[ig].x, REQHs[ig].y, REQHs[ig].z, REQHs[ig].w, ing0 ) ;
             for (int jj = 0; jj < MAX_NEIGHBORS; jj++) {
                 int j     = neighs[ing0 + jj];
                 float2 kl = KLs   [ing0 + jj];
                 if (j < 0) break;
-                printf(" (%3i,%6.4f,%6.4f)", j, kl.y, kl.x);
+                printf(" (%3i,%+6.4f,%+6.4f)", j, kl.y, kl.x);
             }
             printf("\n");
         }
@@ -293,9 +293,7 @@ __kernel void lff_nb_jacobi(
         }
         barrier(CLK_LOCAL_MEM_FENCE);
 
-        
-        
-        lpos[lid]=(float4){pi,mi};  // recover lpos
+        lpos[lid]=(float4){pi,mi};  // recover lpos (to store atoms inside molecule=workgroup)
         barrier(CLK_LOCAL_MEM_FENCE);
 
         // --- Leapfrog predictor
@@ -307,7 +305,7 @@ __kernel void lff_nb_jacobi(
         // ---- Jacobi-fly Linear Constraint Solver loop
         float3 mom_vec  = (float3)(0.0f, 0.0f, 0.0f);        
         for (int iter = 0; iter < nInner; ++iter) {
-            if(lid==0)printf( "GPU iter %i\n", iter );
+            //if(lid==0)printf( "GPU iter %i\n", iter );
             barrier(CLK_LOCAL_MEM_FENCE);
             //const float  mi = lpos[lid].w;
             // inertial contribution: M_i/dt^2 * p_i
@@ -320,10 +318,10 @@ __kernel void lff_nb_jacobi(
                 if (j < 0) break;
                 // load parameters (float)
                 float2  kl = ng_KLs[jj];
-                float3 pj  = lpos[j].xyz; // make sure j is local (in-molecule, in-group index)
+                float3 pj  = lpos[j-ia0].xyz; // make sure j is local (in-molecule, in-group index)
                 float3 dij = pi - pj;   
                 float len  = length(dij);
-                if(lid==0)printf( "GPU bond (%3i,%3i) l: %6.4f l0: %6.4f K: %6.4f\n", lid, j, len, kl.y, kl.x );
+                //if(lid==0)printf( "GPU bond (%3i,%3i) l: %6.4f l0: %6.4f K: %6.4f\n", lid, j, len, kl.y, kl.x );
                 float inv_len = len > 1e-8f ? 1.0f/len : 0.0f;
                 float3 rest_pos = pj + dij * (kl.y * inv_len);
                 bi  += rest_pos * kl.x;   // accumulate projected target

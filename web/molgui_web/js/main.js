@@ -32,6 +32,31 @@ class MolGUIApp {
             this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
             this.controls.enableDamping = false; // Disable inertia for raw performance feel
             this.controls.dampingFactor = 0.05;
+
+            // Unity Style Controls:
+            // LMB: Selection (Handled by Editor) -> Set to NULL here
+            // MMB: Zoom/Dolly (Standard)
+            // RMB: Rotate (Standard)
+            // Shift + RMB: Pan (Custom)
+
+            this.controls.mouseButtons = {
+                LEFT: null, // Disable Left Click for Camera
+                MIDDLE: THREE.MOUSE.DOLLY,
+                RIGHT: THREE.MOUSE.ROTATE
+            };
+
+            // Listen for Shift Key to toggle Pan Mode on RMB
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Shift') {
+                    this.controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                if (e.key === 'Shift') {
+                    this.controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+                }
+            });
         } else {
             window.logger.error("OrbitControls not loaded!");
         }
@@ -44,11 +69,17 @@ class MolGUIApp {
         this.io = new IO(this.system, this.molRenderer);
         this.gui = new GUI(this.io);
 
-        // 7. Editor (Interaction)
-        this.editor = new Editor(this.scene, this.camera, this.renderer, this.system, this.molRenderer);
-
         // 8. Selection Renderer
         this.selectionRenderer = new SelectionRenderer(this.scene, this.system);
+
+        // 7. Editor (Selection, Gizmo)
+        this.editor = new Editor(this.scene, this.camera, this.renderer, this.system, this.molRenderer, this.selectionRenderer);
+        this.editor.onSelectionChange = () => {
+            this.gui.updateSelectionCount();
+        };
+
+        // 9. Shortcut Manager
+        this.shortcuts = new ShortcutManager(this.editor);
 
         // Hook into Editor or System updates?
         // Ideally System should dispatch events, but we can just patch the update method or call it manually.
