@@ -588,8 +588,6 @@ void spread_replicas_grid(int x_nb, int y_nb, double x_grig, double y_grid){
                 ffls[isys].apos[ia].add(x*x_grig, y*y_grid, 0);
             }
             pack_system(isys, ffls[isys], true, false, false, true);
-            ffls[isys].print();
-            
         }
     }
     upload();
@@ -602,7 +600,6 @@ void spread_replicas_random(double x_grig, double y_grid){
                 ffls[isys].apos[ia] += shift;
             }
             pack_system(isys, ffls[isys], true, false, false, true);
-            ffls[isys].print();
     }
     upload();
 }
@@ -1201,8 +1198,10 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
             }
             else if( ( gopts[isys].istep > gopts[isys].nRelax ) && (!gopts[isys].bExploring)){
                 //printf("(1) Entering non-converged branch for isys=%d, istep=%d\n", isys, gopts[isys].istep);
+                if(bUFF){
                 download_uff( true, false );
                 err |= uff_ocl->finishRaw();  OCL_checkError(err, "evalVFs().UFF.download");
+                }
                 nbNonConverged++;
                 nStepNonConvSum+=gopts[isys].istep;            
                 gopts[isys].startExploring();
@@ -1247,6 +1246,7 @@ double evalVFs( double Fconv=1e-6 ){
     //printf("MolWorld_sp3_multi::evalVFs()\n");
     int err=0;
     double F2max = 0;
+    bool downloaded_buffers=false;
     // UFF path: use uff_ocl buffers and sizes; handle minima-hopping here
     if(bUFF){
         int errUF=0;
@@ -1260,16 +1260,15 @@ double evalVFs( double Fconv=1e-6 ){
             evalVF_new( uff_ocl->nAtoms, cvfs_d+i0a, fire[isys], MDpars[isys], gopts[isys].bExploring );  // UFF uses double precision
             double f2 = fire[isys].ff;
             
-            // *** ADD DIAGNOSTIC OUTPUT ***
-            if(isys == 0 && (nbEvaluation % 100 == 0)){  // Print every 100 evaluations for system 0
-                printf("evalVFs() DEBUG: isys=%3i nbEval=%5i |F|=%6e (Fconv=%6e) converged?=%i bExploring=%i TDrives(x=T=%6g,y=gamma=%4g,w=seed=%8g)\n",  isys, nbEvaluation, sqrt(f2), Fconv, (f2<F2conv), gopts[isys].bExploring, TDrive[isys].x,TDrive[isys].y,TDrive[isys].w );
-            }
-            // *** END DIAGNOSTIC ***
-            
             if(f2>F2max){ F2max=f2; iSysFMax=isys; }
             if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){
-                uff_ocl->download( uff_ocl->ibuff_apos, (float*)atoms );
+                //printf("UFF Before Download: atoms[0]=(%10.8e,%10.8e,%10.8e)\n", atoms[0+i0a].x, atoms[0+i0a].y, atoms[0+i0a].z);
+                if(!downloaded_buffers){
+                    uff_ocl->download( uff_ocl->ibuff_apos, (float*)atoms);
                 uff_ocl->finishRaw();
+                    downloaded_buffers=true;
+                }
+                //printf("UFF After Download: atoms[0]=(%10.8e,%10.8e,%10.8e)\n", atoms[0+i0a].x, atoms[0+i0a].y, atoms[0+i0a].z);
                 unpack_uff_system( isys, ffu, true, false );
                 isSystemRelaxed[isys]=true;
                 // save
@@ -1312,7 +1311,6 @@ double evalVFs( double Fconv=1e-6 ){
     else{
         //ocl.download( ocl.ibuff_aforces , aforces );
         //ocl.download( ocl.ibuff_avel    , avel    );
-        // Safe download of cvfs (handling potential double precision on GPU)
         ocl.download( ocl.ibuff_cvf, cvfs );
         err |= ocl.finishRaw();  OCL_checkError(err, "evalVFs().1");
         //printf("MolWorld_sp3_multi::evalVFs(%i) \n", isys);
@@ -1327,6 +1325,12 @@ double evalVFs( double Fconv=1e-6 ){
             if(f2>F2max){ F2max=f2; iSysFMax=isys; }
             // -------- Global Optimization
             if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){
+                //printf("MMFF Before Download: atoms[%i]=(%10.8e,%10.8e,%10.8e)\n", 0+i0v, atoms[0+i0v].x, atoms[0+i0v].y, atoms[0+i0v].z);
+                if(!downloaded_buffers){
+                    ocl.download( ocl.ibuff_atoms, atoms );
+                    err |= ocl.finishRaw();  OCL_checkError(err, "download atoms");
+                    downloaded_buffers=true;
+                }
                 int i0v = isys * ocl.nvecs;
                 unpack( ffls[isys].nvecs,  ffls[isys].apos, atoms+i0v);
                 isSystemRelaxed[isys]=true;

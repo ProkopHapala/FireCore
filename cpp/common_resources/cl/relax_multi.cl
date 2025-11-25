@@ -60,7 +60,7 @@ const float4   grid_p0
 // ======================================================
 // Enable concise debug prints without changing C++ host interface.
 #define DBG_MMFF    1     // 0/1 master switch
-#define IDBG_ATOM  (1)    // atom index to trace
+#define IDBG_ATOM  (0)    // atom index to trace
 #define IDBG_SYS   (0)    // system index to trace
 
 // ======================================================================
@@ -1192,7 +1192,10 @@ __kernel void getNonBond(
             fe.xyz    += rnd.xyz * sqrt( 2*const_kB*TDrive.x*TDrive.y/MDpars.x );
         }
     }
-    cvf[iav] += (float4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel
+    cvf[iav] = (float4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel
+    // if( DBG_MMFF>-1 && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
+    //     printf( "GPU::updateAtomsMMFF() iaa=%i isys=%i iG=%i pos(%10.8e, %10.8e, %10.8e) cvf(%10.4e,%10.4e,%10.4e) \n", iaa, iS, iG, pe.x,pe.y,pe.z, cvf[iav].x,cvf[iav].y,cvf[iav].z );
+    // }
     //if(!bDrive){ ve.xyz *= MDpars.z; } // friction, velocity damping
     ve.xyz *= MDpars.z;             // friction, velocity damping
     ve.xyz += fe.xyz*MDpars.x;      // acceleration

@@ -911,12 +911,8 @@ __kernel void updateAtomsMMFFf4(
         }
     }
 
-    const int iS_DBG = 5; // debug system
-    //const int iG_DBG = 0;
-    const int iG_DBG = 1; // debug atom
-
-    //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "updateAtomsMMFFf4() natoms=%i nnode=%i nvec=%i nG %i iS %i/%i  dt=%g damp=%g Flimit=%g \n", natoms,nnode, nvec, iS, nG, nS, MDpars.x, MDpars.y, MDpars.z );
-    // if((iG==iG_DBG)&&(iS==iS_DBG)){
+    // if((DBG_UFF>1) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS))printf( "updateAtomsMMFFf4() natoms=%i nG %i iS %i/%i  dt=%g damp=%g Flimit=%g \n", natoms, nG, iS,nS, MDpars.x, MDpars.y, MDpars.z );
+    // if((DBG_UFF>1) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){
     //     int i0a = iS*natoms;
     //     for(int i=0; i<natoms; i++){
     //         printf( "GPU:constr[%i](%7.3f,%7.3f,%7.3f |K= %7.3f) \n", i, constr[i0a+i].x,constr[i0a+i].y,constr[i0a+i].z,  constr[i0a+i].w   );
@@ -979,13 +975,14 @@ __kernel void updateAtomsMMFFf4(
     }
 
     //float4 cvf = (float4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel
-    double4 cvf = (double4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel
-    cvfs[iaa] += cvf;
+    double4 cvf = (double4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel 
+    cvfs[iaa] = cvf;    //accumulating is done outside of the kernel
     //if(!bDrive){ ve.xyz *= MDpars.z; } // friction, velocity damping
 
-    if ((DBG_UFF>1) && (iS==IDBG_SYS) && (iG==IDBG_ATOM)){
-        printf( "GPU isys=%i iG=%i pos(%10.4e,%10.4e,%10.4e) vel(%10.4e,%10.4e,%10.4e) fe(%10.4e,%10.4e,%10.4e) cvf(%10.4e,%10.4e,%10.4e) \n", iS, iG, pe.x,pe.y,pe.z, ve.x,ve.y,ve.z, fe.x,fe.y,fe.z, cvf.x,cvf.y,cvf.z );
-    }
+    // if ((DBG_UFF>1) && (iS==IDBG_SYS) && (iG==IDBG_ATOM)){
+    //     printf( "GPU isys=%i iG=%i pos(%10.8e,%10.8e,%10.8e) vel(%10.4e,%10.4e,%10.4e) fe(%10.4e,%10.4e,%10.4e) cvf(%10.4e,%10.4e,%10.4e) \n", iS, iG, pe.x,pe.y,pe.z, ve.x,ve.y,ve.z, fe.x,fe.y,fe.z, cvf.x,cvf.y,cvf.z );
+    //     //printf( "GPU::updateAtomsUFF() iaa=%i isys=%i iG=%i cvf(%10.4e,%10.4e,%10.4e) \n", iaa, iS, iG, cvf.x,cvf.y,cvf.z );
+    // }
 
     ve.xyz *=        MDpars.z;      // friction, velocity damping
     ve.xyz += fe.xyz*MDpars.x;      // acceleration
