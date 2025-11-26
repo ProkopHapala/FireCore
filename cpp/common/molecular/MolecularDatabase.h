@@ -442,7 +442,7 @@ public:
             if (d.compareDescriptors(&descriptors[i]) < 5)
             {
                 if(!lat_vec){
-                    if (computeDistance(a, &atoms[i])/a->natoms < 0.2)
+                    if (computeDistance(a, &atoms[i])/a->natoms < 0.1)
                     {
                         //printf("computeDistance: %lf\n", computeDistance(a, &atoms[i]));
                         sameDescriptor = i;

@@ -192,9 +192,11 @@ void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bM
     }
     else{
         printf("No surface file specified\n");
-    }
+    }    
     W.init();
-    W.bGridFF = bGrid;
+    W.bGridFF = bGrid; //must be done after W.init()
+
+
     //init_buffers();
     return &W;
 }

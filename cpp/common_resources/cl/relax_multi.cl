@@ -3432,13 +3432,13 @@ __kernel void getSurfMorse(
     const int iaa = iG + i0a;      // index of the atom in the system
     const int iav = iG + i0v;      // index of the vector (atom or pi-orbital) in the system
 
-    if( (DBG_MMFF>0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS) ){
-        printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) \n", nG,nS, nL, ns.x,ns.y,ns.z  );
-        //printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) nPBC(%i,%i,%i)\n", nG,nS, nL, ns.x,ns.y,ns.z,  nPBC.x,nPBC.y,nPBC.z  );
-        //for(int i=0; i<ns.x; i++){ printf( "forces[%i] (%g,%g,%g) \n", i, forces[i].x,forces[i].y,forces[i].z );   }
-        for(int i = 0; i < natoms; i++){ printf( "GPU.atoms[%i](%g,%g,%g) REQs(%g,%g,%g)  \n", i, atoms[i].x,atoms[i].y,atoms[i].z, REQs[i].x,REQs[i].y,REQs[i].z );  }
-        for(int i=0; i<na_surf; i++){ printf( "GPU.atoms_s[%i](%g,%g,%g) \n", i, atoms_s[i].x,atoms_s[i].y,atoms_s[i].z );   }
-    }
+    // if( (DBG_MMFF>0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS) ){
+    //     printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) \n", nG,nS, nL, ns.x,ns.y,ns.z  );
+    //     //printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) nPBC(%i,%i,%i)\n", nG,nS, nL, ns.x,ns.y,ns.z,  nPBC.x,nPBC.y,nPBC.z  );
+    //     //for(int i=0; i<ns.x; i++){ printf( "forces[%i] (%g,%g,%g) \n", i, forces[i].x,forces[i].y,forces[i].z );   }
+    //     for(int i = 0; i < natoms; i++){ printf( "GPU.atoms[%i](%g,%g,%g) REQs(%g,%g,%g)  \n", i, atoms[i].x,atoms[i].y,atoms[i].z, REQs[i].x,REQs[i].y,REQs[i].z );  }
+    //     for(int i=0; i<na_surf; i++){ printf( "GPU.atoms_s[%i](%g,%g,%g) \n", i, atoms_s[i].x,atoms_s[i].y,atoms_s[i].z );   }
+    // }
     float4 fe   = (float4){0.0f,0.0f,0.0f,0.0f};
 
     // ========== BEGIN test loading atoms to local memory

@@ -898,18 +898,18 @@ __kernel void updateAtomsMMFFf4(
     const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
     const float4 TDrive = TDrives[iS];
 
-    if((DBG_UFF>1) && (iS==IDBG_SYS)&&(iG==IDBG_ATOM)){
-        printf("GPU updateAtomsMMFFf4[isys=%i]: MDpars(dt=%g,Flim=%g,vel_damp_factor=%g,?= %g) natoms=%i nS=%i\n", iS, MDpars.x,MDpars.y,MDpars.z,MDpars.w, natoms, nS );
-        for(int is=0; is<nS; is++){
-            //printf( "GPU::TDrives[%i](%g,%g,%g,%g)\n", i, TDrives[i].x,TDrives[i].y,TDrives[i].z,TDrives[i].w );
-            //printf( "GPU::bboxes[%i](%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", is, bboxes[is].a.x,bboxes[is].a.y,bboxes[is].a.z,   bboxes[is].b.x,bboxes[is].b.y,bboxes[is].b.z,   bboxes[is].c.x,bboxes[is].c.y,bboxes[is].c.z );
-            for(int ia=0; ia<natoms; ia++){
-                int ic = ia+is*natoms;
-                //if(constr[ia+is*natoms].w>0) 
-                printf( "GPU:sys[%i]atom[%i]  apos(%g,%g,%g) constr(%g,%g,%g|%g) constrK(%g,%g,%g|%g)\n", is, ia, apos[ic].x,apos[ic].y,apos[ic].z, constr[ic].x,constr[ic].y,constr[ic].z,constr[ic].w,   constrK[ic].x,constrK[ic].y,constrK[ic].z,constrK[ic].w  );
-            }
-        }
-    }
+    // if((DBG_UFF>1) && (iS==IDBG_SYS)&&(iG==IDBG_ATOM)){
+    //     printf("GPU updateAtomsMMFFf4[isys=%i]: MDpars(dt=%g,Flim=%g,vel_damp_factor=%g,?= %g) natoms=%i nS=%i\n", iS, MDpars.x,MDpars.y,MDpars.z,MDpars.w, natoms, nS );
+    //     for(int is=0; is<nS; is++){
+    //         //printf( "GPU::TDrives[%i](%g,%g,%g,%g)\n", i, TDrives[i].x,TDrives[i].y,TDrives[i].z,TDrives[i].w );
+    //         //printf( "GPU::bboxes[%i](%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", is, bboxes[is].a.x,bboxes[is].a.y,bboxes[is].a.z,   bboxes[is].b.x,bboxes[is].b.y,bboxes[is].b.z,   bboxes[is].c.x,bboxes[is].c.y,bboxes[is].c.z );
+    //         for(int ia=0; ia<natoms; ia++){
+    //             int ic = ia+is*natoms;
+    //             //if(constr[ia+is*natoms].w>0) 
+    //             printf( "GPU:sys[%i]atom[%i]  apos(%g,%g,%g) constr(%g,%g,%g|%g) constrK(%g,%g,%g|%g)\n", is, ia, apos[ic].x,apos[ic].y,apos[ic].z, constr[ic].x,constr[ic].y,constr[ic].z,constr[ic].w,   constrK[ic].x,constrK[ic].y,constrK[ic].z,constrK[ic].w  );
+    //         }
+    //     }
+    // }
 
     // if((DBG_UFF>1) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS))printf( "updateAtomsMMFFf4() natoms=%i nG %i iS %i/%i  dt=%g damp=%g Flimit=%g \n", natoms, nG, iS,nS, MDpars.x, MDpars.y, MDpars.z );
     // if((DBG_UFF>1) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){
@@ -952,7 +952,7 @@ __kernel void updateAtomsMMFFf4(
             cK = max( cK, (float4){0.0f,0.0f,0.0f,0.0f} );
             const float3 fc = (cons.xyz - pe.xyz)*cK.xyz;
             fe.xyz += fc; // add constraint force
-            if(iS==0){printf( "GPU::constr[ia=%i|iS=%i] (%g,%g,%g|K=%g) fc(%g,%g,%g) cK(%g,%g,%g)\n", iG, iS, cons.x,cons.y,cons.z,cons.w, fc.x,fc.y,fc.z , cK.x, cK.y, cK.z ); }
+            //if(iS==0){printf( "GPU::constr[ia=%i|iS=%i] (%g,%g,%g|K=%g) fc(%g,%g,%g) cK(%g,%g,%g)\n", iG, iS, cons.x,cons.y,cons.z,cons.w, fc.x,fc.y,fc.z , cK.x, cK.y, cK.z ); }
         }
     }
 
@@ -1925,16 +1925,16 @@ __kernel void getSurfMorse(
     const int iaa = iG + i0a;      // index of the atom in the system
     const int iav = iG + i0v;      // index of the vector (atom or pi-orbital) in the system
 
-    if( (DBG_UFF>1) && (iG==IDBG_ATOM) && (iS==IDBG_SYS) ){
-        printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) \n", nG,nS, nL, ns.x,ns.y,ns.z  );
-        printf("GPU::lvec.a=(%g,%g,%g) lvec.b=(%g,%g,%g) lvec.c=(%g,%g,%g)\n", lvec.a.x, lvec.a.y, lvec.a.z, lvec.b.x, lvec.b.y, lvec.b.z, lvec.c.x, lvec.c.y, lvec.c.z);
-        printf("GPU::pos0=(%g,%g,%g) \n", pos0.x, pos0.y, pos0.z);
-        printf("GPU::GFFParams=(%g,%g,%g,%g) \n", GFFParams.x, GFFParams.y, GFFParams.z, GFFParams.w);
-        printf("GPU::nPBC=(%i,%i,%i) \n", nPBC.x, nPBC.y, nPBC.z);
-        //printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) nPBC(%i,%i,%i)\n", nG,nS, nL, ns.x,ns.y,ns.z,  nPBC.x,nPBC.y,nPBC.z  );
-        //for(int i=0; i<ns.x; i++){ printf( "forces[%i] (%g,%g,%g) \n", i, forces[i].x,forces[i].y,forces[i].z );   }
-        for(int i=0; i<na_surf; i++){ printf( "GPU.atoms_s[%i](%g,%g,%g) REQs[%i](%g,%g,%g,%g) \n", i, atoms_s[i].x,atoms_s[i].y,atoms_s[i].z, i, REQ_s[i].x,REQ_s[i].y,REQ_s[i].z,REQ_s[i].w );   }
-    }
+    // if( (DBG_UFF>1) && (iG==IDBG_ATOM) && (iS==IDBG_SYS) ){
+    //     printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) \n", nG,nS, nL, ns.x,ns.y,ns.z  );
+    //     printf("GPU::lvec.a=(%g,%g,%g) lvec.b=(%g,%g,%g) lvec.c=(%g,%g,%g)\n", lvec.a.x, lvec.a.y, lvec.a.z, lvec.b.x, lvec.b.y, lvec.b.z, lvec.c.x, lvec.c.y, lvec.c.z);
+    //     printf("GPU::pos0=(%g,%g,%g) \n", pos0.x, pos0.y, pos0.z);
+    //     printf("GPU::GFFParams=(%g,%g,%g,%g) \n", GFFParams.x, GFFParams.y, GFFParams.z, GFFParams.w);
+    //     printf("GPU::nPBC=(%i,%i,%i) \n", nPBC.x, nPBC.y, nPBC.z);
+    //     //printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) nPBC(%i,%i,%i)\n", nG,nS, nL, ns.x,ns.y,ns.z,  nPBC.x,nPBC.y,nPBC.z  );
+    //     //for(int i=0; i<ns.x; i++){ printf( "forces[%i] (%g,%g,%g) \n", i, forces[i].x,forces[i].y,forces[i].z );   }
+    //     for(int i=0; i<na_surf; i++){ printf( "GPU.atoms_s[%i](%g,%g,%g) REQs[%i](%g,%g,%g,%g) \n", i, atoms_s[i].x,atoms_s[i].y,atoms_s[i].z, i, REQ_s[i].x,REQ_s[i].y,REQ_s[i].z,REQ_s[i].w );   }
+    // }
     float4 fe   = (float4){0.0f,0.0f,0.0f,0.0f};
 
     // ========== BEGIN test loading atoms to local memory

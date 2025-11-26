@@ -449,9 +449,11 @@ virtual void init() override {
     //bOcl   =true;
 
     // Complete GridFF initialization if it was deferred
-    if(bGridFF_pending && bGridFF){
+    if(bGridFF_pending){
         completeGridFFInit();
     }
+    bGridFF = bGridFF_pending;
+
     //setup_MMFFf4_ocl();
     int4 mask{1,1,0,0};
     //ocl.printOnGPU( 0,mask );
@@ -2305,6 +2307,7 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
             MDpars[i].z = 1.0f-damping;   // velocity damping factor (1.0 - damping)
             fire[i].dt = dt;
             fire[i].damping = damping;
+            fire[i].ff=1e300;
             MDpars[i].w = 0.0f;     
             // Only start exploring if nExplore is actually greater than 0
             bool allowExplore = (!bOnlyRelax) && (gopts[i].nExplore > 0);
@@ -2356,7 +2359,7 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
     //printf("run_uff_ocl() main loop nVFs %i nPerVFs %i niter %i \n", nVFs, nPerVFs, niter);
     for(int iVF=0; iVF<nVFs; iVF++){
         long T_2 = getCPUticks();
-        if(iVF>0)updateMultiExploring( Fconv );
+        updateMultiExploring( Fconv );
         Nticks_updateMultiExploring += (getCPUticks()-T_2);
 
         // Inner MD steps between VF evaluations
@@ -2385,9 +2388,11 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
             niter--;
             if(niter<=0)break;
         }
+        if(iVF<=nVFs-1){
         T_2 = getCPUticks();
         double F2=evalVFs(Fconv);
         Nticks_evalVFs += (getCPUticks()-T_2);
+        }
     }
 
     // Update integrated time and accumulate timing data
@@ -2491,11 +2496,11 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     //debug_eval(); return 0;
 if(initial){
             // Clear timing file and write header
-        FILE* f = fopen("times_run_mmff_ocl.dat", "w");
+        FILE* f = fopen("times_run_ocl_opt.dat", "w");
         if(f){
             fprintf(f, "# Timing data for run_ocl_opt (all times in seconds)\n");
-            fprintf(f, "# %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n",
-                "t_total", "t_updateME", "t_bonding", "t_gridff", "t_nonbond", "t_updateAt", "t_trajSave", "t_evalVFs", "nloop");
+            fprintf(f, "# %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n",
+                "t_total", "t_updateME", "t_bonding", "t_gridff", "t_nonbond", "t_surfatoms", "t_updateAt", "t_trajSave", "t_evalVFs", "nloop");
             fclose(f);
             initial = false;
         }
@@ -2535,6 +2540,7 @@ if(initial){
     long Nticks_loop_bonding = 0;
     long Nticks_loop_gridff = 0;
     long Nticks_loop_nonbonded = 0;
+    long Nticks_loop_surfatoms = 0;
     long Nticks_loop_updateAtoms = 0;
     long Nticks_loop_trajSave = 0;
     long Nticks_evalVFs = 0;
@@ -2597,8 +2603,12 @@ if(initial){
                             }
                         }else {
                             //printf( "task_NBFF(), task_SurfAtoms() \n" );
+                            T_2 = getCPUticks();
                             err |= task_NBFF     ->enque_raw();  //OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_NBFF()" );
+                            Nticks_loop_nonbonded += (getCPUticks()-T_2);
+                            T_2 = getCPUticks();
                             err |= task_SurfAtoms->enque_raw();  //OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_SurfAtoms()" );
+                            Nticks_loop_surfatoms += (getCPUticks()-T_2);
                         }
                     }else{
                         if(bExclusion2){
@@ -2608,6 +2618,7 @@ if(initial){
                         }
                     }
                 }
+                T_2 = getCPUticks();
                 if(bBonding) err |= task_MMFF->enque_raw();   Nticks_loop_bonding += (getCPUticks()-T_2); //OCL_checkError(err, "task_MMFF->enque_raw()"); 
 
                 if( bGroupDrive ) err |= task_GroupForce->enque_raw();
@@ -2685,6 +2696,7 @@ if(initial){
     time_updateMultiExploring += Nticks_updateMultiExploring * tick2second;
     time_loop_bonding         += Nticks_loop_bonding         * tick2second;
     time_loop_gridff          += Nticks_loop_gridff          * tick2second;
+    time_loop_surfatoms       += Nticks_loop_surfatoms       * tick2second;
     time_loop_nonbonded       += Nticks_loop_nonbonded       * tick2second;
     time_loop_updateAtoms     += Nticks_loop_updateAtoms     * tick2second;
     time_loop_trajSave        += Nticks_loop_trajSave        * tick2second;
@@ -2698,6 +2710,7 @@ if(initial){
             time_loop_bonding,
             time_loop_gridff,
             time_loop_nonbonded,
+            time_loop_surfatoms,
             time_loop_updateAtoms,
             time_loop_trajSave,
             time_evalVFs,
@@ -3217,7 +3230,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
                 nStepNonConvSum/((double)nbNonConverged),
                 nStepExplorSum/((double)nExploring),
                 (nStepConvSum+nStepNonConvSum+nStepExplorSum));
-            if((getCPUticks()-zeroT)*tick2second > 99999.5){ // reduce the time of simulation 9.5 was used to create nb_evale_vs_surf_size; 59.5 was used to create evaluation_vs_time
+            if((getCPUticks()-zeroT)*tick2second > 9.5){ // reduce the time of simulation 9.5 was used to create nb_evale_vs_surf_size; 59.5 was used to create evaluation_vs_time
                 fclose(file);
                 //database->print();
                 exit(0);
@@ -3411,7 +3424,7 @@ void completeGridFFInit(){
         surf2ocl(gridFF.nPBC);
     }
 
-    bGridFF_pending = false;
+    //bGridFF_pending = false;
 }
 
 // Override loadSurf to handle deferred GridFF initialization

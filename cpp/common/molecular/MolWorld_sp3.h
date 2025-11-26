@@ -204,7 +204,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bGroups           = false; // 3
     bool bConstrains       = false; // 4
 	bool bSurfAtoms        = false; // 5
-    bool bGridFF           = false; // 6
+    bool bGridFF           = true;  // 6 // initial choise is to compute with GridFF
     bool bTricubic         = false; // 7
 	bool bPlaneSurfForce   = false; // 7
     bool bBonding          = true;
