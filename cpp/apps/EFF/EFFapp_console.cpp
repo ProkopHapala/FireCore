@@ -253,6 +253,21 @@ extern "C" EXPORT_API void unitySetElectronPosition(int electronIndex, float x, 
     eff.setElectronPosition(electronIndex, x, y, z, size);
 }
 
+extern "C" EXPORT_API int* unityGetProtonNumbers() {
+    int* protonNumbers = new int[eff.ff.na];
+
+    for(int i = 0; i < eff.ff.na; i++) {
+        protonNumbers[i] = static_cast<int>(eff.ff.aPars[i].x);
+    }
+
+    return protonNumbers;
+}
+
+// Add cleanup function for proton numbers to prevent memory leaks
+extern "C" EXPORT_API void cleanupProtonNumbers(int* protonNumbers) {
+    delete[] protonNumbers;
+}
+
 // Add cleanup function for unityInit return value to prevent memory leaks
 extern "C" EXPORT_API void cleanupInitData(int* data) {
     delete[] data;

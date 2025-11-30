@@ -74,6 +74,7 @@ public class Electron : MonoBehaviour, IParticle
         inst.Id = electronCount++;
         inst.Spin = spin;
         inst.Style = RenderingStyle.FOG_AND_POINT;
+        GameController.main.electrons[inst.Id] = inst;
         return inst;
     }
 

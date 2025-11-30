@@ -1,10 +1,14 @@
 using System;
+using System.Numerics;
 using NUnit.Framework;
+using particles;
 using TMPro;
 using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.InputSystem.iOS;
 using UnityEngine.Networking;
+using Quaternion = UnityEngine.Quaternion;
+using Vector3 = UnityEngine.Vector3;
 
 public class Atom : MonoBehaviour, IParticle
 {
@@ -14,15 +18,27 @@ public class Atom : MonoBehaviour, IParticle
 
     [SerializeField]
     private GameObject sphere;
+    
+    public GameObject Sphere { get => sphere; }
 
     [SerializeField]
     private GameObject spritePrefab;
 
+    [SerializeField] 
+    private GameObject labelPrefab;
+    
+    private GameObject label;
+    private RectTransform labelRect;
+
+
     private GameObject sprite;
+    private RectTransform spriteRect;
 
     private Transform canvas;
 
     private Outline outline;
+    
+
 
     private RenderingStyle _style;
     public RenderingStyle Style {get => _style; 
@@ -42,17 +58,37 @@ public class Atom : MonoBehaviour, IParticle
             default: break;
         }
     }}
+    
+    private int _protonNumber = 0;
+    public int ProtonNumber {
+        get => _protonNumber;
+        set {
+            if (_protonNumber == 0) {
+                _protonNumber = value;
+                label.GetComponent<TextMeshProUGUI>().SetText(AtomVisualParams.Get(value).label);
+                label.SetActive(true);
+            }
+        }
+    }
 
 
     private int _id = -1;
     public int Id { get => _id; set {_id = _id == -1 ? value : _id;} }
+
+    private void Start() {
+        mainCamera = Camera.main;
+        labelRect = label.GetComponent<RectTransform>();
+        spriteRect = sprite.GetComponent<RectTransform>();
+    }
 
     public static Atom CreateNew() {
         Atom atom = Instantiate(GameController.main.atomPrefab, Vector3.zero, Quaternion.identity).GetComponent<Atom>();
         atom.outline = atom.sphere.GetComponent<Outline>();
         atom.canvas = Camera.main.transform.GetChild(0);
         atom.sprite = Instantiate(atom.spritePrefab, atom.canvas.transform);
-        atom.Style = RenderingStyle.FOG_AND_POINT;
+        atom.label = Instantiate(atom.labelPrefab, atom.canvas.transform);
+        atom.label.SetActive(false);
+        atom.Style = RenderingStyle.SPHERICAL;
         atom.Id = atomCount++;
         atom.sprite.GetComponentInChildren<TextMeshProUGUI>().SetText(atom.Id.ToString());
         GameController.main.atoms[atom.Id] = atom;
@@ -69,6 +105,16 @@ public class Atom : MonoBehaviour, IParticle
     // }
 
     public void UpdateSpritePositions() {
+        // double d = Math.Sqrt(Math.Pow(transform.position.x - mainCamera.transform.position.x, 2) + Math.Pow(transform.position.y - mainCamera.transform.position.y, 2) + Math.Pow(transform.position.z - mainCamera.transform.position.z, 2));;
+        // double d = Vector3.Distance(transform.position, mainCamera.transform.position);
+        // double l = Math.Sqrt(d * d - sphere.transform.localScale.x * sphere.transform.localScale.x);
+        // double t = Math.Asin(sphere.transform.localScale.x / d);
+        // double rc = l * Math.Sin(t);
+        
+        // labelRect.position = mainCamera.WorldToScreenPoint(transform.position) + ((float)rc * 100 * Vector3.down);
+        labelRect.position = mainCamera.WorldToScreenPoint(transform.position) + 25 * Vector3.down;
+
+        
         if(_style == RenderingStyle.SPHERICAL) {
             return;
         }
@@ -80,11 +126,13 @@ public class Atom : MonoBehaviour, IParticle
         // Vector2 viewportPosition = Camera.main.WorldToViewportPoint(transform.position);
         // sprite.GetComponent<RectTransform>().position = new Vector2(viewportPosition.x * 1920, viewportPosition.y * 1080);
 
-        sprite.GetComponent<RectTransform>().position = Camera.main.WorldToScreenPoint(transform.position);
+        spriteRect.position = mainCamera.WorldToScreenPoint(transform.position);
     }
 
     private delegate void outlineSetter(bool value, Outline outline);
     private outlineSetter _SetOutline = _SetOutlineSphere;
+    private Camera mainCamera;
+
     private static void _SetOutlineSphere(bool value, Outline outline) {
         outline.OutlineMode = value ? Outline.Mode.OutlineAndSilhouette : Outline.Mode.OutlineHidden;
     }
@@ -98,7 +146,7 @@ public class Atom : MonoBehaviour, IParticle
 
     public override string ToString()
     {
-        return $"Atom: (id: {_id}, pos: {_position}, style: {Style})";
+        return $"Atom: (id: {_id}, pos: {_position}, style: {Style}, Z: {ProtonNumber})";
     }
 
     public static void Clear()

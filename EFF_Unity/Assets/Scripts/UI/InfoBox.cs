@@ -63,11 +63,11 @@ public class InfoBox : MonoBehaviour {
             if(Input.GetKeyDown(KeyCode.S)) {
                 if(IsFixed) {
                     if(Type == ObjectType.ATOM){
-                        GameController.unfixAtom(id);
+                        SimulationManager.unfixAtom(id);
                         Debug.Log("Unfixed atom " + id);
                     }
                     else {
-                        GameController.unfixElectron(id);
+                        SimulationManager.unfixElectron(id);
                         Debug.Log("Unfixed electron " + id);
                     }
                     objText.SetText(objText.text[..^4]);
@@ -75,11 +75,11 @@ public class InfoBox : MonoBehaviour {
                 }
                 else {
                     if(Type == ObjectType.ATOM){
-                        GameController.fixAtom(id);
+                        SimulationManager.fixAtom(id);
                         Debug.Log("Fixed atom " + id);
                     }
                     else {
-                        GameController.fixElectron(id);
+                        SimulationManager.fixElectron(id);
                         Debug.Log("fixed electron " + id);
                     }
                     objText.SetText(objText.text + " [S]");
@@ -152,7 +152,9 @@ public class InfoBox : MonoBehaviour {
         else {
             inputFields.SetDefault(particle.Position, (particle as Electron).Size);
         }
-        inputFields.Spawn(Type, particle, GetComponent<RectTransform>().anchoredPosition + new Vector2(350, 0));
+
+        // Vector3 screenPoint = Camera.main.WorldToScreenPoint(transform.position);
+        inputFields.Spawn(Type, particle, new Vector2(transform.position.x, transform.position.y) + new Vector2(350, -550));
 
     }
 

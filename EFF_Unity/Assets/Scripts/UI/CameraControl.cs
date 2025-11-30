@@ -56,6 +56,8 @@ public class CameraControl : MonoBehaviour
 
             pivotPoint += moveVector;
             transform.position += moveVector;
+            
+            Array.ForEach(GameController.main.atoms, a => a.UpdateSpritePositions());
             return;
         }
 

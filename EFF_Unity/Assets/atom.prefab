@@ -47,6 +47,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   sphere: {fileID: 8110118090894327169}
   spritePrefab: {fileID: 8376306120129155780, guid: 6e3e3d5fe85df20ddb5954efa9f796df, type: 3}
+  labelPrefab: {fileID: 5374543251123524656, guid: 9ff9ed6bfd1940df5b49fcd016fb4c9c, type: 3}
 --- !u!1001 &2287815513861471353
 PrefabInstance:
   m_ObjectHideFlags: 0
