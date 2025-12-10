@@ -131,37 +131,75 @@ def compute_potential(dens, dg, bInternals=False):
         internals = None
     return V, internals
 
-def plot1Dcut(apos, qs, Vg, i0, dg, Ls, iax=0, nPBC=[10,10,10], vmax=5.0, scErr=100.0, Vref=None, mmff=None ):
-    #ix, iy, iz = i0  # unpack voxel through which we plot the debug cuts
-    lvec=np.array( [[Ls[0],0.0,0.0], [0.0,Ls[1],0.0], [0.0,0.0,Ls[2]] ]) # lattice vectors, cubic grid
-    Vgl = select_cut_1d( Vg, iax, i0 )
+# def plot1Dcut(apos, qs, Vg, i0, dg, Ls, iax=0, nPBC=[10,10,10], vmax=5.0, scErr=100.0, Vref=None, mmff=None ):
+#     #ix, iy, iz = i0  # unpack voxel through which we plot the debug cuts
+#     lvec=np.array( [[Ls[0],0.0,0.0], [0.0,Ls[1],0.0], [0.0,0.0,Ls[2]] ]) # lattice vectors, cubic grid
+#     Vgl = select_cut_1d( Vg, iax, i0 )
 
-    #ns = Vg.shape[::-1]  # grid is ordered  [x,y,z], so ns=(nx,ny,nz)
+#     #ns = Vg.shape[::-1]  # grid is ordered  [x,y,z], so ns=(nx,ny,nz)
+#     nt = Vgl.size
+
+#     dt = dg[iax]
+#     Lt = nt*dt
+
+#     # Sampling points at which we calculate potential reference using direct sum in real space
+#     ts = np.linspace( -0.5*Lt, 0.5*Lt, nt, endpoint=False)
+#     ps = np.zeros((nt, 3))
+#     ps[:, iax] = ts  # Only vary along the chosen axis
+
+#     # Calculate reference potentials using the direct (real space) sum
+#     if Vref is None:
+#         fe  = mmff.sampleCoulombPBC(ps, apos, qs, lvec=lvec, nPBC=nPBC)
+#         Vref = fe[:, 3]
+#     else:
+#         Vref = select_cut_1d( Vref, iax, i0)
+
+#     vd_vg = Vref/ Vgl  # Ratio of direct potential (reference) to Ewald potential
+#     factor = np.average(vd_vg[0:nt//3])  # Average in a safe distance from charges
+#     #print("plot1Dcut() iax=", iax, " nt ", nt, " dt ", dt, "Lt ", Lt, " factor ", factor)
+#     # Plotting
+#     plt.plot(ts, Vgl,   '-k', label="V ewald")
+#     plt.plot(ts, vd_vg, '-',  label="ref/ewald")
+#     plt.plot(ts, Vref,  '--', label="Vref " + str(nPBC))
+#     plt.title("cut1D iax=" + str(iax) + " n=" + str(len(ts)) + " tmax=" + str(ts.max()))
+#     plt.ylim(-vmax, vmax )
+#     plt.legend()
+#     plt.grid()
+
+### To syc the cut orgin for the reference potential with the calculated Ewald potential # It is working Fine now 
+def plot1Dcut(apos, qs, Vg, i0, dg, Ls, pos0, iax=0, nPBC=[10,10,10], vmax=5.0, scErr=100.0, Vref=None, mmff=None):
+    # Convert voxel indices to real-space positions
+    ix, iy, iz = i0
+    lvec = np.array([[Ls[0], 0.0, 0.0], [0.0, Ls[1], 0.0], [0.0, 0.0, Ls[2]]])
+    Vgl = select_cut_1d(Vg, iax, i0)
+
     nt = Vgl.size
+    ts = pos0[iax] + np.arange(nt) * dg[iax]  # Correctly generate positions along iax
 
-    dt = dg[iax]
-    Lt = nt*dt
-
-    # Sampling points at which we calculate potential reference using direct sum in real space
-    ts = np.linspace( -0.5*Lt, 0.5*Lt, nt, endpoint=False)
     ps = np.zeros((nt, 3))
-    ps[:, iax] = ts  # Only vary along the chosen axis
+    for axis in range(3):
+        if axis == iax:
+            ps[:, axis] = ts
+        else:
+            # Calculate fixed positions based on voxel index and grid origin
+            fixed_pos = pos0[axis] + i0[axis] * dg[axis]
+            ps[:, axis] = fixed_pos
 
-    # Calculate reference potentials using the direct (real space) sum
+    # Calculate reference potential using corrected sampling points
     if Vref is None:
-        fe  = mmff.sampleCoulombPBC(ps, apos, qs, lvec=lvec, nPBC=nPBC)
+        fe = mmff.sampleCoulombPBC(ps, apos, qs, lvec=lvec, nPBC=nPBC)
         Vref = fe[:, 3]
     else:
-        Vref = select_cut_1d( Vref, iax, i0)
+        Vref = select_cut_1d(Vref, iax, i0)
 
-    vd_vg = Vref/ Vgl  # Ratio of direct potential (reference) to Ewald potential
-    factor = np.average(vd_vg[0:nt//3])  # Average in a safe distance from charges
-    #print("plot1Dcut() iax=", iax, " nt ", nt, " dt ", dt, "Lt ", Lt, " factor ", factor)
-    # Plotting
-    plt.plot(ts, Vgl,   '-k', label="V ewald")
-    plt.plot(ts, vd_vg, '-',  label="ref/ewald")
-    plt.plot(ts, Vref,  '--', label="Vref " + str(nPBC))
-    plt.title("cut1D iax=" + str(iax) + " n=" + str(len(ts)) + " tmax=" + str(ts.max()))
-    plt.ylim(-vmax, vmax )
+    # Rest of the plotting code remains the same
+    vd_vg = Vref / Vgl
+    factor = np.average(vd_vg[0:nt//3])
+    plt.plot(ts, Vgl, '-k', label="V ewald")
+    plt.plot(ts, vd_vg, '-', label="ref/ewald")
+    plt.plot(ts, (Vref-Vgl)*scErr, '-', label="ref/ewald")
+    plt.plot(ts, Vref, '--', label="Vref " + str(nPBC))
+    plt.title(f"cut1D iax={iax} n={nt} tmax={ts[-1]:.2f}")
+    plt.ylim(-vmax, vmax)
     plt.legend()
     plt.grid()
