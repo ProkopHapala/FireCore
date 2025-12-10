@@ -1263,7 +1263,7 @@ double evalVFs( double Fconv=1e-6 ){
             double f2 = fire[isys].ff;
             
             if(f2>F2max){ F2max=f2; iSysFMax=isys; }
-            if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){
+            if(0* ( f2 < F2conv ) && (!gopts[isys].bExploring) ){
                 //printf("UFF Before Download: atoms[0]=(%10.8e,%10.8e,%10.8e)\n", atoms[0+i0a].x, atoms[0+i0a].y, atoms[0+i0a].z);
                 if(!downloaded_buffers){
                     uff_ocl->download( uff_ocl->ibuff_apos, (float*)atoms);
@@ -1326,7 +1326,7 @@ double evalVFs( double Fconv=1e-6 ){
             double f2 = fire[isys].ff;
             if(f2>F2max){ F2max=f2; iSysFMax=isys; }
             // -------- Global Optimization
-            if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){
+            if(0* ( f2 < F2conv ) && (!gopts[isys].bExploring) ){
                 //printf("MMFF Before Download: atoms[%i]=(%10.8e,%10.8e,%10.8e)\n", 0+i0v, atoms[0+i0v].x, atoms[0+i0v].y, atoms[0+i0v].z);
                 if(!downloaded_buffers){
                     ocl.download( ocl.ibuff_atoms, atoms );
@@ -2499,8 +2499,8 @@ if(initial){
         FILE* f = fopen("times_run_ocl_opt.dat", "w");
         if(f){
             fprintf(f, "# Timing data for run_ocl_opt (all times in seconds)\n");
-            fprintf(f, "# %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n",
-                "t_total", "t_updateME", "t_bonding", "t_gridff", "t_nonbond", "t_surfatoms", "t_updateAt", "t_trajSave", "t_evalVFs", "nloop");
+            fprintf(f, "# %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n",
+                "t_total", "t_updateME", "t_bonding", "t_gridff", "t_nonbond", "t_surfatoms", "t_updateAt", "t_trajSave", "t_evalVFs");
             fclose(f);
             initial = false;
         }
@@ -2704,7 +2704,7 @@ if(initial){
 
     FILE* f = fopen("times_run_ocl_opt.dat", "a");
     if(f){
-        fprintf(f, "  %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12d\n",
+        fprintf(f, "  %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f %-12.6f\n",
             time_integrated,
             time_updateMultiExploring,
             time_loop_bonding,
@@ -2713,8 +2713,8 @@ if(initial){
             time_loop_surfatoms,
             time_loop_updateAtoms,
             time_loop_trajSave,
-            time_evalVFs,
-            nloop);
+            time_evalVFs
+        );
         fclose(f);
     }else{
         printf("ERROR: Could not open times_run_ocl_opt.dat for appending\n");
@@ -3230,7 +3230,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
                 nStepNonConvSum/((double)nbNonConverged),
                 nStepExplorSum/((double)nExploring),
                 (nStepConvSum+nStepNonConvSum+nStepExplorSum));
-            if((getCPUticks()-zeroT)*tick2second > 9.5){ // reduce the time of simulation 9.5 was used to create nb_evale_vs_surf_size; 59.5 was used to create evaluation_vs_time
+            if((getCPUticks()-zeroT)*tick2second > 999999.5){ // reduce the time of simulation 9.5 was used to create nb_evale_vs_surf_size; 59.5 was used to create evaluation_vs_time
                 fclose(file);
                 //database->print();
                 exit(0);
