@@ -3,8 +3,6 @@
 /// @file NBFF.h  @brief Non-Bonded Force-Field, implements n-body interactions between particles using non-covalent poentials such as Lenard-Jones / Morse and Coulomb potential
 /// @ingroup Classical_Molecular_Mechanics
 
-#include <unordered_set>
-
 #include "fastmath.h"
 //#include "Vec2.h"
 #include "Vec3.h"
@@ -128,11 +126,12 @@ class NBFF: public ForceField{ public:
     Mat3d   lvec __attribute__((aligned(64)));  // lattice vectors
     Vec3i   nPBC{0,0,0};  // number of periodic images in each direction 
     bool    bPBC=false; // periodic boundary conditions ?
+    //Vec3i   nPBC{1,1,0};  // number of periodic images in each direction 
+    //bool    bPBC=true; // periodic boundary conditions ?
 
     int    npbc   =0;  // total number of periodic images
     Vec3d* shifts __attribute__((aligned(64))) =0;  // array of bond vectors shifts in periodic boundary conditions
     Quat4f *PLQs  __attribute__((aligned(64))) =0;  // non-bonding interaction paramenters in PLQ format form (P: Pauli strenght, L: London strenght, Q: Charge ), for faster evaluation in factorized form, especially when using grid
-
     Quat4d *PLQd  __attribute__((aligned(64))) =0; 
 
     Vec3d  shift0 __attribute__((aligned(64))) =Vec3dZero; 
@@ -533,7 +532,7 @@ class NBFF: public ForceField{ public:
         const Quat4d  REQi    = REQs[ia];
         const double  R2damp = Rdamp*Rdamp;
         double E=0,fx=0,fy=0,fz=0;
-        //#pragma omp simd reduction(+:E,fx,fy,fz)
+        #pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
             //if(ia==j)continue;   ToDo: Maybe we can keep there some ignore list ?
             if(ia==j)[[unlikely]]{continue;}
@@ -556,8 +555,7 @@ class NBFF: public ForceField{ public:
             }
         }
         fapos[ia].add( Vec3d{fx,fy,fz} );
-        //exit(0);
-        return E;
+        return 0.5*E;
     }
     __attribute__((hot))  
     double evalLJQs_PBC_simd(){
@@ -616,7 +614,7 @@ class NBFF: public ForceField{ public:
         }
         //printf("DEBUG 3 id=%i ia=%i \n", id, ia );
         fapos[ia].add( Vec3d{fx,fy,fz} );
-        return E;
+        return 0.5*E;
     }
     __attribute__((hot))  
     double evalLJQs_ng4_PBC_simd(){
@@ -636,7 +634,7 @@ class NBFF: public ForceField{ public:
         const Quat4d REQi = REQs     [ia];
         Vec3d fi = Vec3dZero;
         double E=0,fx=0,fy=0,fz=0;
-        //#pragma omp simd reduction(+:E,fx,fy,fz)
+        #pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
             if(ia==j)[[unlikely]]{continue;}
             const Quat4d& REQj  = REQs[j];
@@ -652,7 +650,7 @@ class NBFF: public ForceField{ public:
             //fi+=fij; 
         }
         fapos[ia].add( Vec3d{fx,fy,fz} );
-        return E;
+        return 0.5*E;
     }
     __attribute__((hot))  
     double evalLJQs_simd(){
@@ -672,7 +670,6 @@ class NBFF: public ForceField{ public:
         const Quat4i ng   = neighs   [ia];
         Vec3d fi = Vec3dZero;
         double E=0,fx=0,fy=0,fz=0;
-
         #pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
             if( (ia==j)  || (j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w) ) [[unlikely]]  { continue; }
@@ -688,7 +685,7 @@ class NBFF: public ForceField{ public:
             //fi+=fij; 
         }
         fapos[ia].add( Vec3d{fx,fy,fz} );
-        return E;
+        return 0.5*E;
     }
     __attribute__((hot))  
     double evalLJQs_ng4_simd(){

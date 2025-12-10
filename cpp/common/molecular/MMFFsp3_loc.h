@@ -136,7 +136,7 @@ void realloc( int nnode_, int ncap_, int ntors_=0 ){
     natoms= nnode + ncap; 
     nvecs = natoms+nnode;  // each atom as also pi-orientiation (like up-vector)
     nDOFs = nvecs*3;
-    //printf( "MMFFsp3::realloc() natom(%i,nnode=%i,ncap=%i), npi=%i, nbond=%i \n", natoms, nnode, ncap, npi, nbonds );
+    // printf( "MMFFsp3::realloc() natom(%i,nnode=%i,ncap=%i), npi=%i, nbond=%i \n", natoms, nnode, ncap, npi, nbonds );
     int ipi0=natoms;
     
     _realloc0(  DOFs    , nDOFs , (double)NAN );
@@ -248,7 +248,7 @@ double optimalTimeStep(double m=1.0){
 // evaluate energy and forces for single atom (ia) depending on its neighbors
 __attribute__((hot))   
 double eval_atom(const int ia){
-    //printf( "MMFFsp3_loc::eval_atom(%i) bSubtractBondNonBond=%i \n", ia, bSubtractBondNonBond );
+    // printf( "MMFFsp3_loc::eval_atom(%i) bSubtractBondNonBond=%i \n", ia, bSubtractBondNonBond );
     double E=0;
     const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
     const double R2damp = Rdamp*Rdamp;
@@ -354,7 +354,7 @@ double eval_atom(const int ia){
         //continue; 
 
         //if(ia==ia_DBG) printf( "ffl:h[%i|%i=%i] l %g h(%g,%g,%g) pj(%g,%g,%g) pa(%g,%g,%g) \n", ia,i,ing, l, h.x,h.y,h.z, apos[ing].x,apos[ing].y,apos[ing].z, pa.x,pa.y,pa.z );
-
+        // DEBUG
         if(ia<ing){     // we should avoid double counting because otherwise node atoms would be computed 2x, but capping only once
             if(doBonds)[[likely]]{  
 
@@ -462,7 +462,7 @@ double eval_atom(const int ia){
     // {
     //     doAngles = false; // DEBUG
     // }
-
+    // DEBUG
     if(doAngles){
 
     double  ssK,ssC0;
@@ -570,6 +570,12 @@ double eval_atom(const int ia){
     //printf( "MYOUTPUT atom %i Ebond= %g Eangle= %g Edihed= %g Eimpr = %g Etot=%g\n", ia+1, Eb, Ea, EppI, Eps, E );
     //fprintf( file, "atom %i Ebond= %g Eangle= %g Edihed= %g Eimpr= %g Etot=%g \n", ia+1, Eb, Ea, EppI, Eps, E );
     
+
+    // for(int i=0; i<4; i++){ 
+    //     printf( "eval_atom[%i] fneigh[%i](%g,%g,%g)\n", ia, i, fneigh[i].x, fneigh[i].y, fneigh[i].z );
+    // }
+
+
 
     return E;
 }
@@ -999,11 +1005,13 @@ void assemble_atom(int ia){
     Vec3d fa=Vec3dZero,fp=Vec3dZero;
     const int* ings = bkneighs[ia].array;
     bool bpi = ia<nnode; // if this is node atom, it has pi-orbital
+    
     for(int i=0; i<4; i++){
         int j = ings[i];
         if(j<0) break;
         //if(j>=(nnode*4)){ printf("ERROR bkngs[%i|%i] %i>=4*nnode(%i)\n", ia, i, j, nnode*4 ); exit(0); }
-        fa.add(fneigh  [j]);
+        fa.add(fneigh  [j]);  
+        // printf( "assemble[%i,%i|%i] fng(%g,%g,%g) \n", ia,i,j, fneigh[j].x,fneigh[j].y,fneigh[j].z );
         if(bpi){
             //printf( "assemble[%i,%i|%i] pi(%g,%g,%g) fp(%g,%g,%g) fpng(%g,%g,%g) \n", ia,i,j, pipos[ia].x,pipos[ia].y,pipos[ia].z, fpipos[ia].x,fpipos[ia].y,fpipos[ia].z, fneighpi[j].x,fneighpi[j].y,fneighpi[j].z );
             fp.add(fneighpi[j]);
@@ -1011,7 +1019,6 @@ void assemble_atom(int ia){
         }
     }
     fapos [ia].add( fa ); 
-    
     if(bpi){ // if this is node atom, apply recoil to pi-orbital as well
         //if( pipos[ia].norm2()>1.5 ){ printf("pipos[%i](%g,%g,%g) not normalized !!! (assemble.iteration=%i) => Exit() \n", ia, pipos[ia].x,pipos[ia].y,pipos[ia].z, itr_DBG ); exit(0); };
         fpipos[ia].add( fp );
@@ -1445,6 +1452,20 @@ void printBKneighs  (      ){ printf("MMFFsp3_loc::printBKneighs()\n"   ); for(i
 void print_pipos    (      ){ printf("MMFFsp3_loc::print_pipos()\n"     ); for(int i=0; i<nnode;  i++){ printf( "pipos[%i](%g,%g,%g) r=%g\n", i, pipos[i].x,pipos[i].y,pipos[i].z, pipos[i].norm() ); } }
 void print_apos     (      ){ printf("MMFFsp3_loc::print_apos()\n"      ); for(int i=0; i<natoms; i++){ printf( "apos [%i](%g,%g,%g)\n",      i, apos[i].x ,apos[i].y ,apos[i].z                   ); } }
 void print_pbc_shifts(     ){ printf("MMFFsp3_loc::print_pbc_shifts()\n"); for(int i=0; i<npbc;   i++){ printf( "pbc_shifts[%i](%g,%g,%g)\n", i, shifts[i].x,shifts[i].y,shifts[i].z                   ); } }
+
+void print_fneigh(){
+    printf("MMFFsp3_loc::print_fneigh()\n" );
+    for(int i=0; i<natoms; i++){  int i4=i*4; printf( "fneigh[%3i] neigh{%3i,%3i,%3i,%3i}",  i, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w );
+        for(int j=0; j<4; j++){ 
+            int ing = neighs[i].array[j];
+            if(ing<0) continue;
+            int ij = i4+j;
+            printf( "f[%i](%10.5f,%10.5f,%10.5f)", j, fneigh[ij].x,fneigh[ij].y,fneigh[ij].z ); 
+        }
+        printf( "\n" );
+    }
+}
+
 
 void print_constrains(){ printf("MMFFsp3_loc::print_constrains()\n"   );    for(int i=0; i<natoms;   i++){ if(constr[i].w>0)printf( "constr[%3i](%8.5f,%8.5f,%8.5f|%g)K(%8.5f,%8.5f,%8.5f|%8.5f)\n", i, constr[i].x,constr[i].y,constr[i].z,constr[i].w,  constrK[i].x,constrK[i].y,constrK[i].z,constrK[i].w   ); }  }
 
