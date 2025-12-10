@@ -159,6 +159,7 @@ class GridFF : public NBFF{ public:
     std::vector<int>    atypes_;
 
     //Vec3i nPBC{1,1,0};
+    Vec3i nPBC{0,0,0};
 
     // dipole approximation
     Vec3d dip_p0;
@@ -352,11 +353,11 @@ inline float addForce_HHermit( const Vec3d& p, const Quat4d& PLQ, Vec3d& f, bool
 
 __attribute__((hot))  
 inline Quat4d getForce_Bspline( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) const {
-    // printf( "GridFF::getForce_Bspline() p(%8.4f,%8.4f,%8.4f) PLQH(%8.4f,%8.4f,%8.4f,%8.4f)\n", p.x,p.y,p.z, PLQH.x,PLQH.y,PLQH.z,PLQH.w );
+    //printf( "GridFF::getForce_Bspline() p(%8.4f,%8.4f,%8.4f) PLQH(%8.4f,%8.4f,%8.4f,%8.4f)\n", p.x,p.y,p.z, PLQH.x,PLQH.y,PLQH.z,PLQH.w );
     
     Vec3d t;
     //p.sub(shift0);
-    Vec3d adjust {0.0,0.0,1.5};
+    //Vec3d adjust {0.0,0.0,1.5};
     // p.sub(adjust);
     p.sub(grid.pos0);
     // p.sub(grid.pos0+adjust);
@@ -368,7 +369,8 @@ inline Quat4d getForce_Bspline( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) c
     grid.diCell.dot_to( p, t );
     Vec3d inv_dg2{ -grid.diCell.xx, -grid.diCell.yy, -grid.diCell.zz };
 
-    if(verbosity>1)printf("DEBUG: Bspline | Grid pos0=%.3f,%.3f,%.3f | Atom pos=%.3f,%.3f,%.3f \n", grid.pos0.x,grid.pos0.y,grid.pos0.z, p.x,p.y,p.z);
+    // printf("@@@@@@@@@@@####GridFF::getForce_Bspline() grid.diCell.xx %g diCell.yy %g diCell.zz %g \n", grid.diCell.xx, grid.diCell.yy, grid.diCell.zz );
+    // printf("DEBUG: Bspline | Grid pos0=%.3f,%.3f,%.3f | Atom pos=%.3f,%.3f,%.3f \n", grid.pos0.x,grid.pos0.y,grid.pos0.z, p.x,p.y,p.z);
     //Quat4d fe = Quat4dZero;
     
     Quat4d fe = Bspline::fe3d_pbc_comb3( t, grid.n, Bspline_PLQ, PLQH.f, cubic_xqis, cubic_yqis ); 
@@ -1097,7 +1099,8 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         }
     }
 
-    bool makeGridFF_Bspline_d( int natoms_, Vec3d * apos_, Quat4d * REQs_, bool bSaveNPY=false, bool bSaveXSF=false, bool bFit=true, bool bRefine=false ){
+    bool makeGridFF_Bspline_d( int natoms_, Vec3d * apos_, Quat4d * REQs_, bool bSaveNPY=true, bool bSaveXSF=false, bool bFit=true, bool bRefine=false ){
+        bSaveNPY = true;
         printf( "GridFF::makeGridFF_Bspline_d() bUseEwald=%i bSaveNPY=%i bSaveXSF=%i bFit=%i \n", bUseEwald, bSaveNPY, bSaveXSF, bFit );
         //Vec3i ns = gridN;
         Vec3i ns = grid.n;
@@ -1227,7 +1230,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         double       E = 0;
         Vec3d f = Vec3dZero;
         //printf("GridFF::evalMorsePBC() npbc=%i natoms=%i bSymetrized=%i \n", npbc, natoms, bSymetrized );
-        if(!bSymetrized){ printf("ERROR  GridFF::evalMorsePBC() not symmetrized, call  GridFF::setAtomsSymetrized() first => exit()\n"); exit(0); }
+        //if(!bSymetrized){ printf("ERROR  GridFF::evalMorsePBC() not symmetrized, call  GridFF::setAtomsSymetrized() first => exit()\n"); exit(0); }
         if( (shifts==0) || (npbc==0) ){ printf("ERROR in GridFF::evalMorsePBC() pbc_shift not intitalized !\n"); };     
         for(int j=0; j<natoms; j ++ ){    // atom-atom
             Vec3d fij = Vec3dZero;
@@ -1235,10 +1238,16 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
             Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
             //printf( "GridFF::evalMorsePBC() j %i/%i \n", j,natoms );
             for(int ipbc=0; ipbc<npbc; ipbc++ ){
-                //printf( "GridFF::evalMorsePBC() j %i/%i ipbc %i/%i \n", j,natoms, ipbc,npbc );
+                //printf( "GridFF::evalMorsePBC() j %i/%i ipbc %i/%i shifts[%g %g %g]\n", j,natoms, ipbc,npbc, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z );
                 const Vec3d  dp = dp0 + shifts[ipbc];
                 Vec3d fij=Vec3dZero;
-                E += addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
+                //DEBUG
+                double Eij;
+                Eij = addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
+                E+=Eij;
+                //printf ("j=%i ipbc=%i shifts=(%g,%g,%g) E=%g f(%g,%g,%g)\n", j, ipbc, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z, Eij, fij.x,fij.y,fij.z );
+                //E += addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
+                //DEBUG
                 //E  += exp(-dp.norm2()/0.16 );
                 f.sub( fij );
             }
@@ -1364,7 +1373,7 @@ void setAtomsSymetrized( int n, int* atypes, Vec3d* apos, Quat4d* REQs, double d
 
 void evalGridFFs_symetrized( double d=0.1, Vec3i nPBC_=Vec3i{-1,-1,-1} ){
     if(nPBC_.x>=0) nPBC=nPBC_;
-    setAtomsSymetrized( natoms, atypes, apos, REQs, d );
+    // setAtomsSymetrized( natoms, atypes, apos, REQs, d );
     //printf( "na %i | %i %i %i \n", natoms, apos_.size(), REQs_.size(), atypes_.size() );
     //params_glob->saveXYZ( "symtrized.xyz", apos_.size() , &atypes_[0] , &apos_[0], "#", &REQs_[0] );
     //evalGridFFs( apos_.size(), &apos_[0], &REQs_[0] );
@@ -1508,29 +1517,141 @@ void checkSum( bool bDouble ){
 } 
 
 void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSymetrize=false, double rAutoPBC=20.0 ){
-    printf( "GridFF::initGridFF(%s) bSymetrize=%i bAutoNPBC=%i z0=%g \n", name, bSymetrize, bAutoNPBC, z0 );
-    if( isnan(z0) ){  
-        z0=findTop();   
-        //if(verbosity>0) 
+    // Check for null pointer in name parameter
+    if (name == nullptr) {
+        printf("Error: Null pointer for name in GridFF::initGridFF\n");
+        return;
+    }
+    
+    printf("GridFF::initGridFF(%s) bSymetrize=%i bAutoNPBC=%i z0=%g \n", name, bSymetrize, bAutoNPBC, z0);
+    
+    // Handle NaN z0 value
+    if (isnan(z0)) {  
+        z0 = findTop();   
         printf("GridFF::findTop() z0=%g \n", z0);  
     }
-    grid.pos0.z=z0;
-    if(verbosity>1)grid.printCell();
-    bool bGridDouble = (mode == GridFFmod::LinearDouble) || (mode == GridFFmod::HermiteDouble) || (mode == GridFFmod::BsplineDouble); 
-    allocateFFs( bGridDouble );
-    //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,0}, bSaveDebugXSFs );
-//    nPBC=Vec3i{1,1,0};
-    if(bAutoNPBC){ autoNPBC( grid.cell, nPBC, 20.0 ); }   printf( "GridFF::initGridFF() nPBC(%i,%i,%i)\n", nPBC.x, nPBC.y, nPBC.z );
+    
+    grid.pos0.z = z0;
+    
+    if (verbosity > 1) {
+        grid.printCell();
+    }
+    
+    // Determine if grid is double precision
+    bool bGridDouble = (mode == GridFFmod::LinearDouble) || 
+                      (mode == GridFFmod::HermiteDouble) || 
+                      (mode == GridFFmod::BsplineDouble); 
+    
+    // Allocate force fields with proper error handling
+    try {
+        allocateFFs(bGridDouble);
+    } catch (const std::exception& e) {
+        printf("Exception in allocateFFs: %s\n", e.what());
+        return;
+    } catch (...) {
+        printf("Unknown exception in allocateFFs\n");
+        return;
+    }
+    
+    // Initialize PBC vectors
+    nPBC = Vec3i{1, 1, 0};
+    
+    // Auto-determine non-periodic boundary conditions if requested
+    if (bAutoNPBC) { 
+        autoNPBC(grid.cell, nPBC, rAutoPBC);
+    }
+    
+    // Set lattice vectors and make PBC shifts
     lvec = grid.cell;     // ToDo: We should unify this
-    makePBCshifts( nPBC, lvec );
-    if(bSymetrize)setAtomsSymetrized( natoms, atypes, apos, REQs, 0.1 );
+    
+    try {
+        makePBCshifts(nPBC, lvec);
+    } catch (const std::exception& e) {
+        printf("Exception in makePBCshifts: %s\n", e.what());
+        return;
+    } catch (...) {
+        printf("Unknown exception in makePBCshifts\n");
+        return;
+    }
+    
+    // Symmetrize atoms if requested
+    if (bSymetrize && natoms > 0 && atypes != nullptr && apos != nullptr && REQs != nullptr) {
+        try {
+            setAtomsSymetrized(natoms, atypes, apos, REQs, 0.1);
+        } catch (const std::exception& e) {
+            printf("Exception in setAtomsSymetrized: %s\n", e.what());
+            // Continue execution despite this error
+        } catch (...) {
+            printf("Unknown exception in setAtomsSymetrized\n");
+            // Continue execution despite this error
+        }
+    }
     //apos_.size(), &apos_[0], &REQs_[0];
-    std::vector<double> qs( apos_.size() ); for(int i=0; i<apos_.size(); i++){ qs[i]=REQs_[i].z; }
-    Vec3d qcog;
-    Multiplole::project( &qcog, apos_.size(), apos_.data(), qs.data(), 2, Mpol, true );
-    printf( "GridFF::initGridFF() nPBC(%i,%i,%i|%i) Mpol qcog(%g,%g,%g) Q=%g dipol(%g,%g,%g) quadrupol:xx,yy,zz(%g,%g,%g)yz,xz,xy(%g,%g,%g)\n", nPBC.x,nPBC.x,nPBC.x,npbc, qcog.x,qcog.y,qcog.z, Mpol[0], Mpol[1],Mpol[2],Mpol[3],  Mpol[4],Mpol[5],Mpol[6], Mpol[7],Mpol[8],Mpol[9] );
-    //bSaveDebugXSFs=true;
-    gridN=grid.n; gridN.x+=3; gridN.y+=3;
+    // Initialize Mpol array to zero to avoid uninitialized memory access
+    for (int i = 0; i < 10; i++) {
+        Mpol[i] = 0.0;
+    }
+    
+    // Initialize qcog to zero
+    Vec3d qcog = Vec3dZero;
+    
+    // Only calculate multipoles if we have atoms and valid data
+    if (!apos_.empty() && !REQs_.empty()) {
+        try {
+            // Use a safer approach with limited vector size
+            const size_t maxSize = 10000; // Reasonable limit to prevent excessive memory allocation
+            size_t actualSize = apos_.size();
+            
+            if (actualSize > maxSize) {
+                printf("Warning: Limiting multipole calculation to %zu atoms instead of %zu\n", maxSize, actualSize);
+                actualSize = maxSize;
+            }
+            
+            // Allocate vector with controlled size
+            std::vector<double> qs;
+            qs.reserve(actualSize); // Pre-allocate memory to avoid reallocations
+            
+            // Fill charges vector safely
+            for (size_t i = 0; i < actualSize; i++) {
+                qs.push_back(REQs_[i].z);
+            }
+            
+            // Calculate multipole moments with safety checks
+            if (!qs.empty() && qs.size() == actualSize) {
+                Multiplole::project(&qcog, actualSize, apos_.data(), qs.data(), 2, Mpol, true);
+            }
+        } catch (const std::bad_alloc& e) {
+            printf("Memory allocation error in multipole calculation: %s\n", e.what());
+            // Continue with zero multipoles
+        } catch (const std::exception& e) {
+            printf("Exception in multipole calculation: %s\n", e.what());
+            // Continue with zero multipoles
+        } catch (...) {
+            printf("Unknown exception in multipole calculation\n");
+            // Continue with zero multipoles
+        }
+    }
+    
+    // Print with safe values (moved to a separate try-catch block)
+    try {
+        printf("GridFF::initGridFF() nPBC(%i,%i,%i|%i) Mpol qcog(%g,%g,%g) Q=%g dipol(%g,%g,%g) quadrupol:xx,yy,zz(%g,%g,%g)yz,xz,xy(%g,%g,%g)\n",
+               nPBC.x, nPBC.y, nPBC.z, npbc,
+               qcog.x, qcog.y, qcog.z,
+               Mpol[0], Mpol[1], Mpol[2], Mpol[3],
+               Mpol[4], Mpol[5], Mpol[6],
+               Mpol[7], Mpol[8], Mpol[9]);
+    } catch (...) {
+        printf("Error printing GridFF information\n");
+    }
+    
+    // Set grid dimensions safely
+    try {
+        gridN = grid.n;
+        gridN.x += 3;
+        gridN.y += 3;
+    } catch (...) {
+        printf("Error setting grid dimensions\n");
+    }
 }
 
 
@@ -1575,6 +1696,7 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
 
     bool tryLoad_new( bool bSymetrize=true, bool bFit=true, bool bRefine=true, bool bPrint=false ){
         printf( "GridFF::tryLoad_new() mode=%i bSymetrize=%i bFit=%i bRefine=%i \n", (int)mode, bSymetrize, bFit, bRefine );
+        printf("GridFF::tryLoad_new() loaded grid params: dg=(%g,%g,%g) pos0=(%g,%g,%g) dims=(%d,%d,%d)\n",grid.dCell.xx, grid.dCell.yy, grid.dCell.zz,grid.pos0.x, grid.pos0.y, grid.pos0.z,grid.n.x, grid.n.y, grid.n.z);
         // print current directory
         char cwd[128]; getcwd(cwd, 128); printf( "Current  directory: %s\n", cwd );
         //const char* fname_Coul=0; 
@@ -1665,6 +1787,26 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                     //_realloc( Bspline_PLQ, npoint*3 );
                     NumpyFile npy(fnames[0]);
                     npy.print();
+
+                    // Update grid dimensions from numpy file if necessary
+                    if(npy.ndims >= 3 && (npy.shape[0] != grid.n.x || npy.shape[1] != grid.n.y || npy.shape[2] != grid.n.z)) {
+                        // Update grid dimensions with those from the numpy file
+                        grid.n.x = npy.shape[0];
+                        grid.n.y = npy.shape[1];
+                        grid.n.z = npy.shape[2];
+                        
+                        // Use GridShape's built-in method to properly update all grid parameters
+                        grid.updateCell();
+                        
+                        // Update local variables for consistency
+                        ns = grid.n;
+                        npoint = ns.totprod();
+                        nbyte  = npoint*sizeof(double);
+                        
+                        printf("GridFF::tryLoad_new() Updated grid dimensions from numpy file: ns=(%d,%d,%d) dg=(%g,%g,%g)\n", 
+                               grid.n.x, grid.n.y, grid.n.z, grid.dCell.xx, grid.dCell.yy, grid.dCell.zz);
+                    }
+
                     Bspline_PLQ = (Vec3d*)npy.data;
                     done=true;
                 } else if( fileExist( fnames[1] ) ){

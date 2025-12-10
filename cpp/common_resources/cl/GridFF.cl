@@ -731,25 +731,36 @@ __kernel void make_MorseFF(
     const float3 shift_b = lvec_b.xyz + lvec_a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
     const float3 shift_c = lvec_c.xyz + lvec_b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
     
-    //if( (ia==0)&&(ib==0)&&(ic==0) ){  
+    //// Very important print to check the morse parameters of substrate ATOMS used for GPU grid 
+    // if( (ia==0)&&(ib==0)&&(ic==0) ){  
     //     printf(  "GPU nAtoms %i alphaMorse(%g) R2damp(%g) \n", nAtoms, alphaMorse, R2damp );
-    //       for(int ia=0; ia<nAtoms; ia++){printf(  "GPU atom[%i] pos(%8.4f,%8.4f,%8.4f|%8.4f) REQs (%16.8f,%16.8f,%16.8f,%16.8f) R2damp(%g) \n", ic,    atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w,    REQs[ia].x, REQs[ia].y, REQs[ia].z, REQs[ia].w );}
-    //     for (int iz=0; iz<nGrid.z; iz++ ){
-    //         const float3 pos    = grid_p0.xyz  + dGrid_a.xyz*ia      + dGrid_b.xyz*ib      + dGrid_c.xyz*iz;          // +  lvec_a.xyz*-nPBC.x + lvec_b.xyz*-nPBC.y + lvec_c.xyz*-nPBC.z;  // most negative PBC-cell
-    //         int    ia   = 0;
-    //         float4 REQK = REQs[ia];
-    //         float3 dp   = pos - atoms[ia].xyz;
-    //         float  r2  = dot(dp,dp);
-    //         float  r   = sqrt(r2+1e-32 );
-    //         // ---- Morse ( Pauli + Dispersion )
-    //         float    e = exp( -alphaMorse*(r-REQK.x) );
-    //         float   eM = REQK.y*e;
-    //         //fe_Paul += eM * e;
-    //         //fe_Lond += eM * -2.0f;
-    //         printf( "GPU pos(%8.4f,%8.4f,%8.4f) iz=%i dp(%8.4f,%8.4f,%8.4f|r=%8.4f) e=%g EPaul=%g ELond=%g alphaMorse=%g R0=%g E0=%g \n", pos.x,pos.y,pos.z,  iz, dp.x,dp.y,dp.z, r, e, eM*e, eM*-2.0f,  alphaMorse, REQK.x, REQK.y );
-    //     }
-    //}
+    //       for(int ia=0; ia<nAtoms; ia++){printf(  "GPU atom[%i] pos(%8.4f,%8.4f,%8.4f|%8.4f) REQs (%16.8f,%16.8f,%16.8f,%16.8f) R2damp(%g) \n", ia,    atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w,    REQs[ia].x, REQs[ia].y, REQs[ia].z, REQs[ia].w );}
+    // //     for (int iz=0; iz<nGrid.z; iz++ ){
+    // //         const float3 pos    = grid_p0.xyz  + dGrid_a.xyz*ia      + dGrid_b.xyz*ib      + dGrid_c.xyz*iz;          // +  lvec_a.xyz*-nPBC.x + lvec_b.xyz*-nPBC.y + lvec_c.xyz*-nPBC.z;  // most negative PBC-cell
+    // //         int    ia   = 0;
+    // //         float4 REQK = REQs[ia];
+    // //         float3 dp   = pos - atoms[ia].xyz;
+    // //         float  r2  = dot(dp,dp);
+    // //         float  r   = sqrt(r2+1e-32 );
+    // //         // ---- Morse ( Pauli + Dispersion )
+    // //         float    e = exp( -alphaMorse*(r-REQK.x) );
+    // //         float   eM = REQK.y*e;
+    // //         //fe_Paul += eM * e;
+    // //         //fe_Lond += eM * -2.0f;
+    // //         printf( "GPU pos(%8.4f,%8.4f,%8.4f) iz=%i dp(%8.4f,%8.4f,%8.4f|r=%8.4f) e=%g EPaul=%g ELond=%g alphaMorse=%g R0=%g E0=%g \n", pos.x,pos.y,pos.z,  iz, dp.x,dp.y,dp.z, r, e, eM*e, eM*-2.0f,  alphaMorse, REQK.x, REQK.y );
+    // //     }
+    // }
+
     //if( (ia==0)&&(ib==0) ){  printf(  "GPU ic %i nGrid(%i,%i,%i)\n", ic, nGrid.x,nGrid.y,nGrid.z );}
+
+    // if( (ia==0)&&(ib==0)&&(ic==0) ){
+    //     if(iG < 10) {
+    //     // Note: this requires OpenCL 1.2 or later and device support
+    //     printf("@@@@@@@@###########Hey Atom[%d]: (%f, %f, %f)\\n", iG, atoms[iG].x, atoms[iG].y, atoms[iG].z);
+    // }
+    // }
+
+    
 
     const int nMax = nab*nGrid.z;
     if(iG>=nMax) return;
@@ -1362,6 +1373,17 @@ __kernel void poissonW(
     const float ky = ((iy <= ny2) ? iy : iy - ny) * freq_y;
     const float kz = ((iz <= nz2) ? iz : iz - nz) * freq_z;
 
+    // Print two consecutive points
+    if (iz == nz2 && ix == nx2) {
+        if (iy == 100) {
+            printf("GPU poissonW() freq(%d,%g,%g) \n", iG, ky, kz);
+            // printf("k-point at iz=%d: kx=%f, ky=%f, kz=%f\n", iz, kx, ky, kz);
+        }
+        // if (iy == 101) {
+        //     printf("k-point at iz=%d: kx=%f, ky=%f, kz=%f\n", iz, kx, ky, kz);
+        // }
+    }
+
     const float k2 = kx * kx + ky * ky + kz * kz;
 
     const float f = (k2 > 1e-32) ? ( coefs.w / k2) : 0.0f;
@@ -1436,6 +1458,9 @@ __kernel void slabPotential(
     const int iy = get_global_id(1);
     const int iz = get_global_id(2);
     if( (ix>=ng.x) || (iy>=ng.y) || (iz>=ng.w) ) return;
+    if(  (iz==0) && (iy==0) && (ix==0) ){
+        printf( "GPU slabPotential() ng(%i,%i,%i,%i) ixyz(%i,%i,%i|%i)) dz=%g dVcor=%g Vcor0=%g  \n ",  (int)ng.x, (int)ng.y, (int)ng.z, (int)ng.w, ix,iy,iz, ((ix>=ng.x) || (iy>=ng.y) || (iz>=ng.w)) ,  params.x, params.z, params.w );
+    }
 
     const float dz    = params.x;
     const float dVcor = params.z;
@@ -1443,12 +1468,19 @@ __kernel void slabPotential(
     const float Vcor_z = Vcor0 + dVcor * (iz*dz);
 
     const int nz_ = ng[2] + ng[3];
-    //const int j = ix + ng.x*(iy + ng.y*(nz_-iz) );   // We found that the potential is inverted in z-direction ( maybe also x,y ? )
-    const int j = (ng[0]-ix-1) + ng.x*( (ng[1]-iy-1) + ng.y*(nz_-iz-1) );  // maybe is is inverted also x,y ?
-
-    const int i = ix + ng.x*(iy + ng.y*iz);
+    // const int j = ix + ng.x*(iy + ng.y*(nz_-iz) );   // We found that the potential is inverted in z-direction ( maybe also x,y ? )
+    // const int j = (ng[0]-ix-1) + ng.x*( (ng[1]-iy-1) + ng.y*(nz_-iz-1) );  // maybe is is inverted also x,y ?
+    // const int z_offset = (int)(5.656854 / dz);  // Convert physical offset to grid points
+    // // Apply z_offset to the mirroring calculation
+    // int mirror_iz = iz + z_offset;
+    // if(mirror_iz >= nz_) mirror_iz = nz_ - 1;  // Clamp to prevent out-of-bounds
+    // const int j = (ng[0]-ix-1) + ng.x*( (ng[1]-iy-1) + ng.y*(nz_-mirror_iz-1) );
+    const int j = ix + ng.x*(iy + ng.y*iz);
+    const int i = j;
+    // const int i = ix + ng.x*(iy + ng.y*iz);
 
     Vout[i] = Vin[j] + Vcor_z;
+    // Vout[i] = Vin[j] ;
     //Vout[i] = Vin[i] + Vcor_z;
 }
 
@@ -1463,20 +1495,57 @@ __kernel void slabPotential_zyx(
     const int ix = get_global_id(0);
     const int iy = get_global_id(1);
     const int iz = get_global_id(2);
-    if( (ix>=ng.x) || (iy>=ng.y) || (iz>=ng.w) ) return;
-
+    const int nz_ = ng[2] + ng[3];
+ 
+    if( (ix >= ng.x) || (iy >= ng.y) || (iz >= ng.z) ) return;
+    
     const float dz    = params.x;
     const float dVcor = params.z;
     const float Vcor0 = params.w;
     const float Vcor_z = Vcor0 + dVcor * (iz*dz);
 
-    const int nz_ = ng[2] + ng[3];
-    //const int j = ix + ng.x*(iy + ng.y*(nz_-iz) );   // We found that the potential is inverted in z-direction ( maybe also x,y ? )
+
     const int j = (ng[0]-ix-1) + ng.x*( (ng[1]-iy-1) + ng.y*(nz_-iz-1) );  // maybe is is inverted also x,y ?
 
-    //const int i = ix + ng.x*(iy + ng.y*iz);
-    const int i = iz + ng.z*(iy + ng.y*ix);
+    const int i = ix + ng.x*(iy + ng.y*iz);
 
     Vout[i] = Vin[j] + Vcor_z;
-    //Vout[i] = Vin[i] + Vcor_z;
+    // Vout[i] = Vin[j] ;
+    // Vout[i] = Vin[i] + Vcor_z;
 }
+
+
+
+// __kernel void slabPotential_zyx( 
+//     int4 ng,                     // original grid dimensions; here ng.z is used for Vin
+//     __global const float* Vin,   // input potential computed on the full grid
+//     __global float* Vout,        // output potential buffer (to contain only nz_out slices)
+//     float4 params,               // parameters: (dz, Vol, dVcor, Vcor0)
+//     const int nz_out=ng.w            // new parameter: number of z-slices for Vout (e.g., 400)
+// ){
+//     // Get the current thread indices
+//     const int ix = get_global_id(0);
+//     const int iy = get_global_id(1);
+//     const int iz = get_global_id(2);
+    
+//     // Only write into output if we are within the desired z extent.
+//     if ((ix >= ng.x) || (iy >= ng.y) || (iz >= nz_out))
+//         return;
+    
+//     const float dz    = params.x;
+//     const float dVcor = params.z;
+//     const float Vcor0 = params.w;
+    
+//     // Compute the z-dependent correction for this output slice.
+//     const float Vcor_z = Vcor0 + dVcor * (iz * dz);
+    
+//     // Depending on your Vout layout, compute a linear output index using nz_out as the z-dimension.
+//     // For example, if you expect Vout to be of size [ng.x, ng.y, nz_out]:
+//     const int i_out = iz + nz_out * (iy + ng.y * ix);
+    
+//     // If Vin is computed on the full grid (or you wish to select the first nz_out slices) use:
+//     const int i_in = ix + ng.x * (iy + ng.y * iz);
+    
+//     // Write the corrected potential into the output.
+//     Vout[i_out] = Vin[i_in] + Vcor_z;
+// }
