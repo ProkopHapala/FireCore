@@ -327,23 +327,24 @@ subroutine project_orb_points(iband,ikpoint, npoints, points,ewfaux)
     real, dimension (3,5)          :: dpsiL
   
 
-    do iatom = 1, natoms
-        in1    = imass(iatom)
-        imu = 1
-        write (*,'(A,i3,A)', advance='no') "iatom ",iatom,":"
-        do issh = 1,nssh(in1)
-            l = lssh(issh,in1)	
-            do lmu = 1, (2*l+1)
-                mmu = imu + degelec(iatom)
-                dens = bbnkre(mmu,iband,ikpoint)
-               ! write (*,*) "iatom,issh,lmu,coef ",i,""
-                write(*,'(F10.5)', advance='no')  dens
-                imu = imu + 1
-            enddo ! do lmu
-            write (*,'(A)', advance='no') " | "
-        enddo ! do issh
-        write (*,*) ""
-    end do ! do iatom
+    ! DEBUG ?
+    ! do iatom = 1, natoms
+    !     in1    = imass(iatom)
+    !     imu = 1
+    !     write (*,'(A,i3,A)', advance='no') "iatom ",iatom,":"
+    !     do issh = 1,nssh(in1)
+    !         l = lssh(issh,in1)	
+    !         do lmu = 1, (2*l+1)
+    !             mmu = imu + degelec(iatom)
+    !             dens = bbnkre(mmu,iband,ikpoint)
+    !            ! write (*,*) "iatom,issh,lmu,coef ",i,""
+    !             write(*,'(F10.5)', advance='no')  dens
+    !             imu = imu + 1
+    !         enddo ! do lmu
+    !         write (*,'(A)', advance='no') " | "
+    !     enddo ! do issh
+    !     write (*,*) ""
+    ! end do ! do iatom
 
 
 

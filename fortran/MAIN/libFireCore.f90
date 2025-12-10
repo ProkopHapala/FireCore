@@ -718,18 +718,18 @@ end subroutine
 
 subroutine firecore_get_HS_dims( &
     natoms_out, norbitals_out, nspecies_out, neigh_max_out, numorb_max_out, &
-    nsh_max_out, ME2c_max_out, max_mu_dim1_out, max_mu_dim2_out, max_mu_dim3_out, mbeta_max_out, nspecies_fdata_out &
+    nsh_max_out, ME2c_max_out, max_mu_dim1_out, max_mu_dim2_out, max_mu_dim3_out, mbeta_max_out, nspecies_fdata_out, nelec_out &
   ) bind(c, name='firecore_get_HS_dims')
     use iso_c_binding
     use configuration, only: natoms, nspecies, xl ! nspecies here is for distinct species in current system
     use interactions,  only: norbitals, numorb_max, nsh_max, ME2c_max, mu
     use neighbor_map,  only: neigh_max
-    use charges, only: nzx  ! This nzx is dimensioned by total species in info.dat
-    use options, only: verbosity
+    use charges,       only: nzx, ztot  ! nzx: species from Fdata; ztot: total electron count
+    use options,       only: verbosity
     implicit none
     integer(c_int), intent(out) :: natoms_out, norbitals_out, nspecies_out, neigh_max_out, numorb_max_out
     integer(c_int), intent(out) :: nsh_max_out, ME2c_max_out
-    integer(c_int), intent(out) :: max_mu_dim1_out, max_mu_dim2_out, max_mu_dim3_out, mbeta_max_out, nspecies_fdata_out
+    integer(c_int), intent(out) :: max_mu_dim1_out, max_mu_dim2_out, max_mu_dim3_out, mbeta_max_out, nspecies_fdata_out, nelec_out
 
     write (*,*) "firecore_get_HS_dims() verbosity=", verbosity
 
@@ -779,6 +779,9 @@ subroutine firecore_get_HS_dims( &
     else
         nspecies_fdata_out = 0
     end if
+
+    ! Export total electron count as integer approximation of ztot
+    nelec_out = nint(ztot)
 end subroutine firecore_get_HS_dims
 
 subroutine firecore_get_HS_sparse( &
@@ -871,6 +874,17 @@ subroutine firecore_get_HS_sparse( &
     if(allocated(xl))      xl_out      = xl
 
 end subroutine firecore_get_HS_sparse
+
+subroutine firecore_get_eigen( ikpoint, eigen_out ) bind(c, name='firecore_get_eigen')
+    use iso_c_binding
+    use interactions, only: norbitals
+    use density,      only: eigen_k
+    implicit none
+    integer(c_int), value                :: ikpoint
+    real(c_double), dimension(norbitals), intent(out) :: eigen_out
+
+    eigen_out(:) = eigen_k(1:norbitals, ikpoint)
+end subroutine firecore_get_eigen
 
 subroutine firecore_get_HS_k(kpoint_vec, Hk_out, Sk_out) bind(c, name='firecore_get_HS_k')
     use iso_c_binding

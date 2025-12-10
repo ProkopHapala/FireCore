@@ -49,10 +49,11 @@ header_strings = [
 "void firecore_getpsi( int in1, int issh, int n, double x0, double dx, double ys )",
 "void firecore_MOtoXSF( int iMO )",
 "void firecore_orb2points( int iband, int ikpoint, int npoints, double* points, double* ewfaux )",
-"void firecore_get_HS_dims( int* natoms_out, int* norbitals_out, int* nspecies_out, int* neigh_max_out, int* numorb_max_out, int* nsh_max_out, int* ME2c_max_out, int* max_mu_dim1_out, int* max_mu_dim2_out, int* max_mu_dim3_out, int* mbeta_max_out, int* nspecies_fdata_out)",
+"void firecore_get_HS_dims( int* natoms_out, int* norbitals_out, int* nspecies_out, int* neigh_max_out, int* numorb_max_out, int* nsh_max_out, int* ME2c_max_out, int* max_mu_dim1_out, int* max_mu_dim2_out, int* max_mu_dim3_out, int* mbeta_max_out, int* nspecies_fdata_out, int* nelec_out)",
 "void firecore_get_HS_sparse( double* h_mat_out, double* s_mat_out, int* num_orb_out, int* degelec_out, int* iatyp_out, int* lssh_out, int* mu_out, int* nu_out, int* mvalue_out, int* nssh_out, int* nzx_out, int* neighn_out, int* neigh_j_out, int* neigh_b_out, double* xl_out )",
 "void firecore_get_HS_k( double* kpoint_vec, void* Hk_out, void* Sk_out )",
 "void firecore_get_nspecies( int* nspecies_out )",
+"void firecore_get_eigen( int ikp, double* eigen_out )",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -330,12 +331,23 @@ def dens2points( points, f_den=1.0, f_den0=0.0, ewfaux_out=None ):
     lib.firecore_dens2points( n, points, f_den, f_den0, ewfaux_out )
     return ewfaux_out
 
+# eigenvalues export: firecore_get_eigen( int ikp, double* eigen_out )
+argDict["firecore_get_eigen"]=( None, [c_int, array1d] )
+def get_eigen( ikp=1, norb=None ):
+    """Return array of orbital energies eigen_k(:, ikp) for given k-point index (1-based)."""
+    if norb is None:
+        dims = get_HS_dims()
+        norb = dims.norbitals
+    eigen = np.zeros(norb, dtype=np.float64)
+    lib.firecore_get_eigen( ikp, eigen )
+    return eigen
+
 # --- Export H and S matrices ---
 
 # Define classes to hold the structured data
 class FireballDims:
     def __init__(self, natoms, norbitals, nspecies, neigh_max, numorb_max, nsh_max, ME2c_max,
-                 max_mu_dim1, max_mu_dim2, max_mu_dim3, mbeta_max, nspecies_fdata):
+                 max_mu_dim1, max_mu_dim2, max_mu_dim3, mbeta_max, nspecies_fdata, nelec):
         self.natoms = natoms
         self.norbitals = norbitals
         self.nspecies = nspecies  # Distinct species in current calculation
@@ -348,6 +360,7 @@ class FireballDims:
         self.max_mu_dim3 = max_mu_dim3
         self.mbeta_max = mbeta_max
         self.nspecies_fdata = nspecies_fdata # Total species in info.dat
+        self.nelec = nelec  # Total electron count (from ztot)
 
 class FireballData:
     def __init__(self, dims: FireballDims):
@@ -376,8 +389,8 @@ class FireballData:
         # Fortran: xl(3, mbeta_max) -> Python: xl[mbeta_max, 3]
         self.xl      = np.zeros((dims.mbeta_max, 3), dtype=np.float64)
 
-# void firecore_get_HS_dims( int* natoms_out, int* norbitals_out, int* nspecies_out, int* neigh_max_out, int* numorb_max_out, int* nsh_max_out, int* ME2c_max_out, int* max_mu_dim1_out, int* max_mu_dim2_out, int* max_mu_dim3_out, int* mbeta_max_out, int* nspecies_fdata_out)
-argDict["firecore_get_HS_dims"]=( None, [c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p] ) # Matches 12 args
+# void firecore_get_HS_dims( int* natoms_out, int* norbitals_out, int* nspecies_out, int* neigh_max_out, int* numorb_max_out, int* nsh_max_out, int* ME2c_max_out, int* max_mu_dim1_out, int* max_mu_dim2_out, int* max_mu_dim3_out, int* mbeta_max_out, int* nspecies_fdata_out, int* nelec_out)
+argDict["firecore_get_HS_dims"]=( None, [c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p] ) # 13 args
 def get_HS_dims():
     natoms_c         = ct.c_int()
     norbitals_c      = ct.c_int()
@@ -391,12 +404,13 @@ def get_HS_dims():
     max_mu_dim3_c    = ct.c_int()
     mbeta_max_c      = ct.c_int()
     nspecies_fdata_c = ct.c_int()
+    nelec_c          = ct.c_int()
     lib.firecore_get_HS_dims(
         ct.byref(natoms_c), ct.byref(norbitals_c), ct.byref(nspecies_c),
         ct.byref(neigh_max_c), ct.byref(numorb_max_c),
         ct.byref(nsh_max_c), ct.byref(ME2c_max_c),
         ct.byref(max_mu_dim1_c), ct.byref(max_mu_dim2_c), ct.byref(max_mu_dim3_c),
-        ct.byref(mbeta_max_c), ct.byref(nspecies_fdata_c)
+        ct.byref(mbeta_max_c), ct.byref(nspecies_fdata_c), ct.byref(nelec_c)
     )
     return FireballDims(
         natoms_c.value, norbitals_c.value,
@@ -404,7 +418,7 @@ def get_HS_dims():
         neigh_max_c.value, numorb_max_c.value,
         nsh_max_c.value, ME2c_max_c.value,
         max_mu_dim1_c.value, max_mu_dim2_c.value, max_mu_dim3_c.value,
-        mbeta_max_c.value, nspecies_fdata_c.value
+        mbeta_max_c.value, nspecies_fdata_c.value, nelec_c.value
     )
 
 # void firecore_get_HS_sparse( double* h_mat_out, double* s_mat_out, int* num_orb_out, int* degelec_out, int* iatyp_out, int* lssh_out, int* mu_out, int* nu_out, int* mvalue_out, int* nssh_out, int* nzx_out, int* neighn_out, int* neigh_j_out, int* neigh_b_out, double* xl_out )
