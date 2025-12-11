@@ -1,0 +1,309 @@
+# MolGUI Web – Design & TODO
+
+This document is a **clean design + TODO** summary for the MolGUI web editor.
+The older `MolGUI_web.md` file contains the original Gemini discussion and is
+kept for reference only.
+
+## 1. High‑Level TODO Checklist
+
+### 1.1 Core Viewer/Editor (Implemented)
+
+- [x] **Infrastructure & Logging**
+- [x] **Data & Renderer** – `MoleculeSystem` + `MeshRenderer` (instanced impostors, shared position texture)
+- [x] **Input / Output (XYZ)** – load/save + inline editor
+- [x] **Selection** – click + box, additive/subtractive, highlight
+- [x] **Gizmo & Manipulation** – `THREE.TransformControls` on proxy object
+- [x] **Labels** – instanced text labels (ID / element / type placeholder)
+- [x] **MM Parameters** – `ElementTypes.dat` + `AtomTypes.dat` integration
+
+### 1.2 Topology / Chemistry (Planned or Partial)
+
+- [ ] **Connected Components / Fragments**
+    - Compute connected components on the bond graph (`findConnectedComponents`).
+    - Expose operations: select / hide / delete fragment.
+- [ ] **Ring / Cycle Detection**
+    - Port `atomicUtils.find_cycles` → JS.
+    - Optional visualization of rings.
+- [ ] **Bridges / Cut Bonds**
+    - Detect bonds whose removal splits a component.
+    - Optional highlighting.
+- [ ] **Group Substitution / Functional Groups**
+- [ ] **Valence / Electron‑Pair Aids**
+
+### 1.3 Interaction & Editing Features (Planned)
+
+- [ ] **Selection Modes: Atom / Molecule / Group**
+    - Use connected‑components result to define "molecule" selections.
+    - Mode switch: single atom vs whole molecule vs named group.
+- [ ] **Soft Selection / Falloff Editing**
+- [ ] **Explicit Pivot Control**
+- [ ] **Axis‑Based Alignment (by 2–4 picked atoms)**
+- [ ] **PCA / Inertia‑Tensor Alignment**
+- [ ] **Savable Selections / Groups**
+
+### 1.4 Polymer-on-Surface Editor (Planned)
+
+- [ ] **Crystallography Engine** – unit cell import, surface cleavage, step/terrace generator.
+- [ ] **Lattice Matcher** – commensurability solver and visual debugger along chosen surface directions.
+- [ ] **Monomer Library & Sequencer** – monomer prefabs with head/tail/up anchors, sequence editor for heterogeneous chains.
+- [ ] **Curve & Frame System** – spline paths + robust frame transport along curves/step edges.
+- [ ] **Polymer Assembler** – place and orient monomers along path (twist/tilt controls, instancing for performance).
+
+## 2. Current Architecture Overview
+
+### 2.1 HTML & Entry Point
+
+- `web/molgui_web/index.html`
+  - Declares `#canvas-container`, help overlay, loads Three.js + controls.
+  - Single ES module entrypoint: `js/main.js`.
+
+- `web/molgui_web/js/main.js`
+  - Sets up scene, orthographic camera, renderer, `OrbitControls`.
+  - Loads shaders from `../common_resources/shaders/` (atoms, bonds, selection, labels).
+  - Instantiates:
+    - `MoleculeSystem`
+    - `MeshRenderer` (via `MoleculeRenderer` wrapper)
+    - `Editor` (selection + gizmo)
+    - `IO` (XYZ I/O)
+    - `GUI` (sidebar)
+    - `ShortcutManager`
+
+### 2.1.1 Controls / UX (Target Scheme)
+
+- **Mouse**
+  - **LMB**: selection and gizmo interaction (no camera on left click).
+  - **RMB**: rotate camera (OrbitControls RIGHT = ROTATE).
+  - **MMB**: pan camera (OrbitControls MIDDLE = PAN), with optional Shift+RMB pan fallback.
+  - **Wheel**: zoom.
+- **Selection modifiers**
+  - No modifier: replace selection.
+  - Shift: add to selection.
+  - Ctrl/Alt: subtract or toggle.
+- **Keyboard shortcuts** (current and planned)
+  - `G`: toggle gizmo, `T/R/S`: gizmo mode (translate/rotate/scale).
+  - `Esc`: clear selection, `Del/Backspace`: delete selection.
+  - `B`: recalc bonds, `A`: add atom.
+  - Future: keys to cycle selection mode (atom/molecule/group), toggle soft selection, store/recall groups.
+
+### 2.2 Shared JS Modules (`web/common_js`)
+
+- `Logger.js`
+  - Global `logger` with console + DOM output.
+
+- `Draw3D.js`
+  - Generic GPU helpers:
+    - Create instanced impostor meshes (`createTextureBasedInstancedMesh`).
+    - Create line segments driven by position texture.
+    - Label system: font atlas, instanced label mesh, `updateLabelBuffers`.
+
+- `MeshRenderer.js`
+  - Generic renderer that owns:
+    - Position texture (`uPosTex`) as **single source of truth**.
+    - Atom mesh (instanced quads, sphere impostor shaders).
+    - Selection mesh (instanced highlights).
+    - Bond lines (texture‑driven line segments).
+    - Label mesh (instanced glyph quads).
+  - API:
+    - `updatePositions(posArray, count)`
+    - `updateParticles(count, colorGetter, scaleGetter)`
+    - `updateSelection(indices)`
+    - `updateBonds(pairs)`
+    - `updateLabels(stringGetter, count)`
+    - `setLabelStyle`, `setNodeScale`, `setSelectionScale`, visibility toggles.
+
+- `Selection.js`
+  - Generic selection containers (`Selection`, `SelectionBanks`) used for sets of indices.
+
+- `GUIutils.js`, `MeshesUV.js`, `SDfuncs.js`, `Vec3.js`
+  - Utility math / mesh helpers (available for future extensions).
+
+### 2.3 MolGUI‑Specific JS (`web/molgui_web/js`)
+
+- `MoleculeSystem.js`
+  - SoA storage: `pos: Float32Array`, `types: Uint8Array`.
+  - `bonds: [i,j]` array + `neighborList` (adjacency).
+  - Selection state: `selection: Set<int>`.
+  - Key methods:
+    - `addAtom(x,y,z,type)`
+    - `addBond(i,j)`
+    - `updateNeighborList()`
+    - `recalculateBonds(mmParams)` – distance cutoffs from MM covalent radii.
+    - `deleteSelectedAtoms()` – rebuilds arrays and bond indices.
+
+- `MoleculeRenderer.js`
+  - Thin wrapper around `MeshRenderer` for molecules.
+  - Maps atom types → colors/radii using `MMParams`.
+  - Controls label mode (ID / element / type).
+
+- `MMParams.js`
+  - Parses `ElementTypes.dat` and `AtomTypes.dat` from `common_resources`.
+  - Builds lookups:
+    - `elementTypes` (by name), `byAtomicNumber[iZ]`, `atomTypes`.
+
+- `Editor.js`
+  - Handles pointer events for:
+    - Click picking (ray–sphere intersection per atom).
+    - Box selection (project to screen, test in rectangle).
+    - Managing `TransformControls` gizmo (centroid pivot, drag updates positions).
+  - Coordinates with `MoleculeSystem` + `MoleculeRenderer`.
+
+- `IO.js`
+  - `parseXYZ`, `loadXYZString`, `loadXYZ(file)` and `saveFile()`.
+
+- `GUI.js`
+  - Builds sidebar:
+    - Selection info, view controls, gizmo toggles, structure controls, geometry load/save, parameter editors, log panel.
+
+- `ShortcutManager.js`
+  - Global keyboard shortcuts (gizmo toggle/mode, delete, add atom, recalc bonds).
+
+## 3. Planned Topology / Chemistry Features (Details)
+
+This section expands 1.2 with more implementation hints.
+
+### 3.1 Connected Components / Fragments
+
+- Core algorithm: graph traversal (DFS/BFS) over `bonds` to label components.
+- Store component ID per atom; cache until bonds change.
+- Integrate with selection:
+  - In "molecule" selection mode, clicking any atom/bond selects all atoms with the same component ID.
+
+### 3.2 Rings, Bridges, Groups, Valence
+
+- **Rings:** port `atomicUtils.find_cycles`.
+- **Bridges:** use graph algorithms on the bond graph (edge‑connectivity).
+- **Groups / substitution:** define templates and use alignment utilities (see 4.3) to place them.
+- **Valence aids:** quick check of coordination vs expected valence (from `VALENCE_DICT` etc.).
+
+## 4. Planned Interaction Features (Details)
+
+### 4.1 Selection Modes & Savable Groups
+
+- Mode flag in editor: `mode = 'atom' | 'molecule' | 'group'`.
+- **Atom mode:** current behavior.
+- **Molecule mode:**
+  - Require connected‑components (3.1).
+  - Picking atom/bond → replace selection with that component.
+- **Group mode:**
+  - Named groups: maps `name -> Set<atomID>`.
+  - GUI list for creating / renaming / deleting groups.
+  - Operations: select group, add/remove current selection to group.
+
+### 4.2 Soft Selection / Falloff
+
+- Weight function `w(i)` based on:
+  - Geometric distance from pivot atom, or
+  - Graph distance (number of bond steps).
+- During gizmo drag, apply weighted displacement/rotation.
+- GUI parameters:
+  - Radius / max graph distance.
+  - Falloff curve (e.g. Gaussian / linear).
+
+### 4.3 Pivot & Alignment
+
+- **Pivot:**
+  - Maintain explicit pivot object (separate from selection centroid).
+  - UI to set pivot to: atom, bond midpoint, arbitrary coordinates.
+
+- **Axis alignment by atoms:**
+  - User picks: origin atom, forward pair, up pair.
+  - Build orthonormal basis and transform selection.
+
+- **PCA alignment:**
+  - Compute covariance of selected atom positions.
+  - Eigenvectors = principal axes.
+  - Rotate so axes align with global XYZ; use XY for planar molecules.
+
+## 5. Polymer-on-Surface Editor Features (Details)
+
+These features extend the editor towards polymer assembly along crystalline surfaces and step edges.
+For full derivations and pseudocode see:
+
+- `doc/Editor_for_Polymers_on_Surfaces_and_Edges.md`
+
+### 5.1 Crystallography Engine
+
+- Unit cell import (`.cif`, `.xyz`): lattice vectors and basis atoms.
+- Surface cleavage by Miller indices `(h,k,l)` to generate slabs.
+- Step & terrace (vicinal) surface generator:
+  - User controls terrace width and step height in unit cells.
+  - Output keeps semantic info (terrace, step edge, lower terrace) for later selection.
+
+### 5.2 Lattice Matcher (Commensurability)
+
+- User picks a substrate direction vector along a surface/step.
+- Compute integer pairs `(N, M)` such that `N * |V_sub| ≈ M * L_mono` within strain tolerance.
+- Provide a simple visual debugger:
+  - Ruler along the chosen direction.
+  - Tick marks for repeating positions, ghost preview of monomer backbone.
+  - For algorithmic details, see existing 2D lattice matching tools:
+    - `cpp/common/molecular/LatticeMatch2D.h`
+    - `cpp/libs/Molecular/Lattice2D_lib.cpp`
+    - `pyBall/Lattice2D.py`
+    - `tests/tLattice2D/run.py`
+
+### 5.3 Monomer Library & Sequencer
+
+- Define monomer prefabs with:
+  - Head (entry) anchor, tail (exit) anchor, and up vector.
+- Sequence editor UI for heterogeneous chains (e.g. `A-A-A-B-A`), independent of biopolymer conventions.
+
+### 5.4 Curve & Frame System
+
+- User defines control points along step edges or arbitrary paths.
+- Generate smooth curves (Catmull–Rom / cubic Bézier).
+- Robust frame transport along the curve:
+  - Avoid unstable Frenet frames; use rotation-minimizing (parallel transport) or user-up interpolation.
+  - Output a transform (position + rotation) per sample along the path.
+
+### 5.5 Polymer Assembler
+
+- Iterate along the curve and sequence:
+  - Fetch monomer prefab for each position.
+  - Align monomer head→tail vector to curve tangent.
+  - Align monomer up vector to curve/surface normal.
+  - Apply user twist/tilt controls per monomer or globally.
+- Use instanced rendering when repeating many monomers for performance.
+
+## 6. Performance & Coding Guidelines
+
+These are the key rules to keep the implementation scalable while remaining debuggable:
+
+- **No allocations in hot loops**
+  - Avoid `new THREE.Vector3()`, `new Float32Array()`, string building, etc. inside per-frame or per-atom loops.
+  - Reuse temporaries (`this.tempVec`, shared arrays) and update in place.
+
+- **TypedArrays everywhere for bulk data**
+  - Atom positions, types, and other large arrays should live in `Float32Array` / `Uint8Array` buffers.
+  - Use SoA layout and resize strategies similar to C++ `std::vector` (double capacity on overflow).
+
+- **Single source of truth on GPU**
+  - Keep atomic positions in a single DataTexture (`uPosTex`).
+  - Atoms, bonds, selection, labels all fetch from this texture instead of duplicating position buffers.
+
+- **Dirty flags and minimal updates**
+  - Use a dirty flag on `MoleculeSystem` to decide when to push data to GPU.
+  - For small edits, update the minimal range; avoid full rebuilds unless bonds/topology change.
+
+- **String / DOM work off hot paths**
+  - Logger and GUI updates should not run in tight loops over atoms.
+  - Use `Logger` with verbosity controls to disable heavy debug output in production.
+
+## 7. Python Reference Toolset (pyBall)
+
+Many topology and editing operations already exist in Python and should be **ported or mirrored**, not re‑invented:
+
+- `pyBall/atomicUtils.py`
+- `pyBall/AtomicSystem.py`
+
+Key areas to mirror:
+
+- Bond finding (`findBondsNP`, etc.).
+- Neighbor lists and graph utilities.
+- Group / fragment detection.
+- Cycle/ring detection.
+- Orientation and alignment helpers.
+- Valence and electron‑pair heuristics.
+
+Keeping MolGUI Web aligned with these tools makes it easier to share workflows
+between Python (desktop) and the browser version.

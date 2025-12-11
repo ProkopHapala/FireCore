@@ -1,4 +1,4 @@
-class MoleculeSystem {
+export class MoleculeSystem {
     constructor(capacity = 1000) {
         this.capacity = capacity;
         this.nAtoms = 0;
@@ -81,19 +81,41 @@ class MoleculeSystem {
         }
     }
 
-    recalculateBonds(Rcut = 1.6) { // Default ~1.6 Angstroms for typical bonds
+    recalculateBonds(mmParams = null) {
         this.bonds = [];
-        const Rcut2 = Rcut * Rcut;
 
-        // Naive O(N^2) for now - optimize with Spatial Hash if N > 1000
+        // Optimization: Use Spatial Hash if N > 1000 (TODO)
+
+        const defaultRcut = 1.6;
+        const defaultRcut2 = defaultRcut * defaultRcut;
+        const bondFactor = 1.3; // Tolerance factor for covalent bonds
+
         for (let i = 0; i < this.nAtoms; i++) {
+            const type1 = this.types[i];
+            let r1 = 0.7; // Default ~Carbon
+            if (mmParams && mmParams.byAtomicNumber[type1]) {
+                r1 = mmParams.byAtomicNumber[type1].Rcov;
+            }
+
             for (let j = i + 1; j < this.nAtoms; j++) {
+                const type2 = this.types[j];
+                let r2 = 0.7;
+                let rCut2 = defaultRcut2;
+
+                if (mmParams) {
+                    if (mmParams.byAtomicNumber[type2]) {
+                        r2 = mmParams.byAtomicNumber[type2].Rcov;
+                    }
+                    const rSum = (r1 + r2) * bondFactor;
+                    rCut2 = rSum * rSum;
+                }
+
                 const dx = this.pos[i * 3] - this.pos[j * 3];
                 const dy = this.pos[i * 3 + 1] - this.pos[j * 3 + 1];
                 const dz = this.pos[i * 3 + 2] - this.pos[j * 3 + 2];
 
                 const dist2 = dx * dx + dy * dy + dz * dz;
-                if (dist2 < Rcut2) {
+                if (dist2 < rCut2) {
                     this.bonds.push([i, j]);
                 }
             }

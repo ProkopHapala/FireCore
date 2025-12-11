@@ -5,12 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MolGUI Web</title>
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="style.css">
 
-    <!-- Three.js (r128 to match reference) -->
+    <!-- Three.js (r128 to match reference) as classic scripts providing global THREE and controls -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- OrbitControls (usually separate in older versions, but often included in min or via CDN examples) -->
-    <!-- For r128, OrbitControls is not in the main bundle. We need to fetch it from examples. -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
 </head>
@@ -42,22 +40,22 @@
             <li><kbd>S</kbd>: Scale Mode</li>
             <li><kbd>Esc</kbd>: Clear Selection</li>
         </ul>
+        <hr>
+        <p style="font-size:11px; line-height:1.3; color:#ccc; max-width:260px;">
+            <strong>Usage &amp; links</strong><br/>
+            MolGUI Web is a browser prototype of a molecular editor/viewer intended as a front-end
+            to on-surface force-field and QM/MM tools (GridFF / FireCore).<br/>
+            Code: <a href="https://github.com/ProkopHapala/FireCore" target="_blank" rel="noopener">github.com/ProkopHapala/FireCore</a>.<br/>
+            Mal, I. et al., <em>"GridFF: Efficient Simulation of Organic Molecules on Rigid Substrates"</em>,
+            J. Chem. Theory Comput. 21, 12214d12226 (2025),
+            <a href="https://doi.org/10.1021/acs.jctc.5c01223" target="_blank" rel="noopener">doi:10.1021/acs.jctc.5c01223</a>.<br/>
+            Hapala, P. et al., <em>"Polymer templates for nanofabrication"</em>, ACS Nano (2024),
+            <a href="https://doi.org/10.1021/acsnano.3c10575" target="_blank" rel="noopener">doi:10.1021/acsnano.3c10575</a>.
+        </p>
     </div>
 
-
-
-    <script src="js/Logger.js?v=3"></script>
-    <script src="js/MMParams.js?v=3"></script>
-    <script src="js/MoleculeSystem.js?v=3"></script>
-    <!-- <script src="js/Shaders.js?v=3"></script> -->
-    <script src="js/Draw3D.js?v=3"></script>
-    <script src="js/MoleculeRenderer.js?v=3"></script>
-    <script src="js/IO.js?v=3"></script>
-    <script src="js/ShortcutManager.js?v=3"></script>
-    <script src="js/GUI.js?v=3"></script>
-    <script src="js/Editor.js?v=3"></script>
-
-    <script src="js/main.js?v=3"></script>
+    <!-- Single ES module entrypoint -->
+    <script type="module" src="js/main.js?v=5"></script>
 </body>
 
 </html>

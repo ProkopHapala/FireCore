@@ -447,9 +447,9 @@ This keeps the code simple and the UX clean.
     - [x] Proxy Object for Group Manipulation
     - [x] Update Loop (Gizmo -> Data -> Renderer)
 
-- [ ] **Phase 6: Advanced Visualization (Future)**
-    - [ ] Implement Atomic Labels (Text Sprites or SDF Font)
-    - [ ] Show Element Name or Atomic Number
+- [x] **Phase 6: Advanced Visualization (Labels)**
+    - [x] Implement Atomic Labels via instanced label sprites with font atlas
+    - [x] Show Element Name or Atomic Number (label modes: ID / element / type placeholder)
 
 ---
 
@@ -559,3 +559,105 @@ We will port logic from `pyBall` to Javascript.
 3.  **Electron Pairs / Valence:**
     *   Estimate hybridization and add lone pairs. *Reference:* `AtomicSystem.getValenceElectrons`.
 
+---
+
+## Current Implementation Extras (Beyond Initial Phases)
+
+- [x] **Sidebar GUI & Layout**
+    - [x] Resizable sidebar with sections for Selection, View, Gizmo, Structure, Geometry, Parameters, Help, and System Log.
+    - [x] Automatic adjustment of canvas area and renderer resize when dragging the sidebar splitter.
+
+- [x] **MM Parameters Integration**
+    - [x] `MMParams` loads `ElementTypes.dat` / `AtomTypes.dat` from shared `common_resources` and exposes radii and colors per atomic number.
+    - [x] Atom radii and colors in `MoleculeRenderer` are driven by MM parameters (van der Waals / covalent radii + color table).
+
+- [x] **Automatic Bond Guessing from MM Radii**
+    - [x] `MoleculeSystem.recalculateBonds(mmParams)` uses covalent radii + tolerance to guess bonds after loading or editing.
+    - [x] GUI button and shortcut (`b`) to trigger bond recalculation.
+
+- [x] **Interactive Structure Editing**
+    - [x] Add atoms with configurable element/type (GUI dropdowns wired to `Editor.selectedElement` / `selectedAtomType`).
+    - [x] Delete selected atoms with automatic compaction of arrays and bond re-mapping.
+    - [x] Maintain neighbor lists (`neighborList`) in sync with bonds.
+
+- [x] **Enhanced XYZ I/O & Manual Editing**
+    - [x] Load XYZ via file dialog and regenerate bonds, fully wired to the renderer.
+    - [x] Generate and save XYZ from the current system as a download.
+    - [x] Inline text-area editor for manual XYZ edits ("Edit XYZ Manually" section in GUI) with "Apply" to reload from text.
+
+- [x] **Shared Rendering Utilities**
+    - [x] Shared `common_js` module set (`Draw3D`, `MeshRenderer`, `Selection`, `Logger`, etc.) reused across web tools.
+    - [x] Shared shader set under `common_resources/shaders` (atoms, bonds, selection, labels) used by the generic `MeshRenderer`.
+
+---
+
+## Planned Advanced Topology / Chemistry Features
+
+These are sketched in the "User 6" section and only partially implemented in the current JS code.
+
+- [ ] **Connected Components & Fragments**
+    - [ ] Implement `findConnectedComponents()` on the bond graph to identify separate molecules / fragments.
+    - [ ] GUI support to select, hide, or delete whole fragments.
+
+- [ ] **Ring / Cycle Detection**
+    - [ ] Port `atomicUtils.find_cycles` logic to JS to detect simple and fused rings.
+    - [ ] Visual ring highlighting / labeling (e.g. mark aromatic rings).
+
+- [ ] **Bridges and Cut Bonds**
+    - [ ] Detect bonds whose removal splits a connected component (bridges in the graph).
+    - [ ] Optional visualization of such critical bonds (thicker or colored differently).
+
+- [ ] **Group Substitution / Functional Groups**
+    - [ ] Define reusable functional group templates (e.g. methyl, phenyl) in a small library.
+    - [ ] Implement substitution operations that replace a selected atom or group with a template, with proper orientation (analog of `AtomicSystem.orient`).
+
+- [ ] **Valence / Electron-Pair Aids**
+    - [ ] Port basic valence estimation and lone-pair suggestions from `AtomicSystem.getValenceElectrons`.
+    - [ ] Optional display of simple valence diagnostics (under/over-coordinated atoms) in the GUI.
+
+These bullets serve as a live roadmap on top of the already implemented viewer/editor core and can be checked off incrementally as the JS port of the topology tools progresses.
+
+---
+
+## Planned Interaction / Editing Features
+
+These items extend the core selection + gizmo system towards more powerful editing workflows.
+
+- [ ] **Selection Modes: Atom / Molecule / Group**
+    - [ ] Add selectable modes for picking a single atom, a whole molecule (all atoms in a connected component), or user-defined groups.
+    - [ ] When clicking a bond in "molecule" mode, automatically select all atoms connected by the bond graph.
+
+- [ ] **Soft Selection / Falloff Editing**
+    - [ ] Implement a distance- or connectivity-based weight mask (by geometric distance or graph distance) around the picked atom.
+    - [ ] When moving the gizmo on a single atom, propagate deformations to neighbors with weights given by this mask ("rubber" behavior).
+    - [ ] Expose falloff parameters and connectivity vs distance weighting via GUI controls / checkboxes.
+
+- [ ] **Explicit Pivot Control**
+    - [ ] Allow the user to define or move the pivot independently of the current selection centroid.
+    - [ ] Provide GUI / shortcut operations to set pivot to a selected atom, bond midpoint, or user-specified point in space.
+
+- [ ] **Axis-Based Alignment**
+    - [ ] For a given selection (typically one molecule or fragment), allow picking atoms (or atom pairs) to define origin, forward axis, and up vector.
+    - [ ] Construct a rotation matrix from these vectors and apply it so the selection is aligned with the global coordinate axes.
+
+- [ ] **PCA / Inertia-Tensor Alignment**
+    - [ ] Implement PCA / SVD-based computation of principal axes (equivalent to inertia tensor eigenvectors).
+    - [ ] Provide an operation to "unrotate" a selection by aligning principal axes with the global axes (useful for planar molecules into the XY plane).
+
+- [ ] **Savable Selections / Groups**
+    - [ ] Implement named selection groups (sets of atom or bond indices) that can be saved, recalled, and edited.
+    - [ ] Add a GUI list of defined groups with operations: select, add/remove current selection, delete group.
+
+---
+
+## Python Reference Toolset (pyBall)
+
+Many of the planned topology and editing operations already exist in the Python codebase and should be **ported or mirrored**, not re-invented:
+
+- `pyBall/atomicUtils.py`
+- `pyBall/AtomicSystem.py`
+
+The long-term plan is to:
+
+- Reuse the same algorithms and conventions (bond finding, neighbor lists, groups, cycles, orientation, valence aids) in the JS implementation.
+- Keep the MolGUI web editor conceptually aligned with the Python tools so workflows transfer easily between desktop (Python) and browser.

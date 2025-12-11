@@ -1,3 +1,12 @@
+import { logger } from '../../common_js/Logger.js';
+import { MoleculeSystem } from './MoleculeSystem.js';
+import { MMParams } from './MMParams.js';
+import { MoleculeRenderer } from './MoleculeRenderer.js';
+import { IO } from './IO.js';
+import { GUI } from './GUI.js';
+import { Editor } from './Editor.js';
+import { ShortcutManager } from './ShortcutManager.js';
+
 class MolGUIApp {
     constructor() {
         this.container = document.getElementById('canvas-container');
@@ -8,27 +17,28 @@ class MolGUIApp {
     }
 
     async init() {
-        window.logger.info("Initializing MolGUI...");
+        logger.info("Initializing MolGUI...");
 
         // Load Shaders first
         try {
-            const vPromise = fetch('shaders/atom.glslv').then(r => r.text());
-            const fPromise = fetch('shaders/atom.glslf').then(r => r.text());
+            const vPromise  = fetch('../common_resources/shaders/atom.glslv').then(r => r.text());
+            const fPromise  = fetch('../common_resources/shaders/atom.glslf').then(r => r.text());
+            const bvPromise = fetch('../common_resources/shaders/bond.glslv').then(r => r.text());
+            const svPromise = fetch('../common_resources/shaders/selection.glslv').then(r => r.text());
+            const bfPromise = fetch('../common_resources/shaders/bond_color.glslf').then(r => r.text());
+            const cfPromise = fetch('../common_resources/shaders/color.glslf').then(r => r.text());
+            const lvPromise = fetch('../common_resources/shaders/label.glslv').then(r => r.text());
+            const lfPromise = fetch('../common_resources/shaders/label.glslf').then(r => r.text());
 
-            const bvPromise = fetch('shaders/bond.glslv').then(r => r.text());
-            const svPromise = fetch('shaders/selection.glslv').then(r => r.text());
-
-            // Generic color fragment shader
-            const cfPromise = fetch('shaders/color.glslf').then(r => r.text());
-
-            const [vertex, fragment, bVertex, sVertex, colorFrag] = await Promise.all([
-                vPromise, fPromise, bvPromise, svPromise, cfPromise
+            const [vertex, fragment, bVertex, sVertex, bondFrag, colorFrag, lVertex, lFragment] = await Promise.all([
+                vPromise, fPromise, bvPromise, svPromise, bfPromise, cfPromise, lvPromise, lfPromise
             ]);
 
             this.shaders = {
-                atom: { vertex, fragment },
-                bond: { vertex: bVertex, fragment: colorFrag },
-                selection: { vertex: sVertex, fragment: colorFrag }
+                atom:      { vertex,      fragment },
+                bond:      { vertex: bVertex, fragment: bondFrag },   // bond_color.glslf (uses vColor)
+                selection: { vertex: sVertex, fragment: colorFrag },  // color.glslf (uses uColor)
+                label:     { vertex: lVertex, fragment: lFragment }
             };
             window.logger.info("Shaders loaded.");
         } catch (e) {
@@ -104,7 +114,7 @@ class MolGUIApp {
 
         // 5. MMParams (Load resources)
         this.mmParams = new MMParams();
-        await this.mmParams.loadResources('common_resources/ElementTypes.dat', 'common_resources/AtomTypes.dat');
+        await this.mmParams.loadResources('../common_resources/ElementTypes.dat', '../common_resources/AtomTypes.dat');
 
         // 6. Molecule Renderer (Pass loaded shaders and mmParams)
         this.molRenderer = new MoleculeRenderer(this.scene, this.system, this.shaders, this.mmParams);

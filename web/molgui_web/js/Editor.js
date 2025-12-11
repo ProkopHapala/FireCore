@@ -1,4 +1,6 @@
-class Editor {
+import { Logger } from '../../common_js/Logger.js';
+
+export class Editor {
     constructor(scene, camera, renderer, system, molRenderer) {
         this.scene = scene;
         this.camera = camera;
@@ -22,8 +24,13 @@ class Editor {
 
         // Gizmo Setup
         this.gizmo = null;
-        this.gizmoUserEnabled = true; // User preference
-        this.selectionLocked = false; // Selection Lock flag
+        this.gizmoMode = 'translate'; // translate, rotate, scale
+        this.selectionLocked = false;
+
+        this.selectedElement = 6; // Default Carbon
+        this.selectedAtomType = 'C';
+
+        // Gizmo Visualsection Lock flag
 
         this.proxyObject = new THREE.Object3D();
         this.scene.add(this.proxyObject);
@@ -131,32 +138,29 @@ class Editor {
 
     addAtom() {
         if (this.selectionLocked) return;
+        // Add atom at origin or near selection?
+        // Let's add at 0,0,0 for now, or center of view?
+        // Center of view is better.
 
-        let x = 0, y = 0, z = 0;
-        let type = 6; // Carbon by default
+        // For now, fixed position + offset to avoid overlap
+        const x = (Math.random() - 0.5) * 2;
+        const y = (Math.random() - 0.5) * 2;
+        const z = (Math.random() - 0.5) * 2;
 
-        if (this.system.selection.size > 0) {
-            // Attach to first selected atom
-            const id = this.system.selection.values().next().value;
-            x = this.system.pos[id * 3] + 1.5; // Offset by 1.5 A
-            y = this.system.pos[id * 3 + 1];
-            z = this.system.pos[id * 3 + 2];
-        }
+        const type = this.selectedElement || 6; // Use selected element
 
-        const newId = this.system.addAtom(x, y, z, type);
+        const id = this.system.addAtom(x, y, z, type);
 
-        // If we attached to an atom, add a bond
-        if (this.system.selection.size > 0) {
-            const id = this.system.selection.values().next().value;
-            this.system.addBond(id, newId);
-        }
+        // Auto-bond to neighbors?
+        // this.system.recalculateBonds(); // Maybe too expensive to do globally?
+        // Just add single atom.
 
         // Select the new atom
-        this.system.select(newId, 'replace');
-
-        this.molRenderer.update();
+        this.system.select(id, 'replace');
         this.updateGizmo();
-        window.logger.info(`Added Atom ${newId}`);
+        this.molRenderer.update();
+
+        window.logger.info(`Added atom ${id} (Type: ${type})`);
     }
 
     // --- Internal Logic ---

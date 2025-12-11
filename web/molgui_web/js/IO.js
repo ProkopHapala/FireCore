@@ -1,4 +1,4 @@
-class IO {
+export class IO {
     constructor(system, renderer) {
         this.system = system;
         this.renderer = renderer;
@@ -92,12 +92,12 @@ class IO {
             this.system.addAtom(atom.x, atom.y, atom.z, atom.type);
         }
 
-        // Rebuild simple bonds (Distance based? Or just none?)
-        // XYZ doesn't have bonds. We should probably infer them or leave empty.
-        // For now, let's infer simple bonds based on distance < 1.6 (very crude)
-        // Or just leave them empty as requested "first thing is load/save".
-        // Let's leave bonds empty for now to keep it pure I/O.
-        // User might want a "Calculate Bonds" feature later.
+        // Rebuild bonds using MMParams
+        if (window.app && window.app.mmParams) {
+            this.system.recalculateBonds(window.app.mmParams);
+        } else {
+            this.system.recalculateBonds(); // Fallback to default
+        }
 
         this.renderer.update();
         window.logger.info("Scene updated.");
