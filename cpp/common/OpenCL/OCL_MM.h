@@ -354,7 +354,7 @@ class OCL_MM: public OCLsystem { public:
         //int nloc = 4;
         //int nloc = 8;
         //int nloc = 16;
-        int nloc = 32; //nlocNBFF
+        int nloc = 32;
         //int nloc = 64;
         task->local.x  = nloc;
         task->global.x = na + nloc-(na%nloc); // round up to multiple of nloc
@@ -401,7 +401,7 @@ class OCL_MM: public OCLsystem { public:
         //int nloc = 1;
         //int nloc = 4;
         //int nloc = 8;
-        int nloc = 32; //nlocGridFF
+        int nloc = 32;
         //int nloc = 64;
         task->local.x  = nloc;
         task->global.x = na + nloc-(na%nloc);
@@ -460,7 +460,7 @@ class OCL_MM: public OCLsystem { public:
         //int nloc = 1;
         //int nloc = 4;
         //int nloc = 8;
-        int nloc =   32; //nlocGridFFbSpline
+        int nloc = 32;
         //int nloc = 64;
         task->local.x  = nloc;
         task->global.x = na + nloc-(na%nloc);
@@ -512,7 +512,7 @@ class OCL_MM: public OCLsystem { public:
     OCLtask* setup_getMMFFf4( int na, int nNode, bool bPBC=false, OCLtask* task=0){
         printf("setup_getMMFFf4(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getMMFFf4");
-        int nloc = 32; //nlocMMFF
+        int nloc = 32;
         task->local.x  = nloc;
         task->global.x = nNode + nloc-(nNode%nloc); // round up to multiple of nloc
         //task->global.x = nNode;
@@ -570,7 +570,7 @@ class OCL_MM: public OCLsystem { public:
         if(task==0) task = getTask("updateAtomsMMFFf4");
         int nvec = na+nNode;
         //task->local .x = 1;
-        int nloc=32; //nlocmove
+        int nloc=32;
         task->local.x   = nloc;
         task->global.x  = nvec + nloc-(nvec%nloc);
         //task->global.x = nvec;
@@ -848,7 +848,7 @@ class OCL_MM: public OCLsystem { public:
         //int nloc = 1;
         //int nloc = 4;
         //int nloc = 8;
-        int nloc = 32; //nlocSurf
+        int nloc  = 32;
         //int nloc = 64;
         task->local.x = nloc;
         task->global.x = nAtoms + nloc-(nAtoms%nloc);
@@ -860,29 +860,29 @@ class OCL_MM: public OCLsystem { public:
         //if(REQs ){ err |= upload( ibuff_REQs_surf , REQs , na ); OCL_checkError(err, "getSurfMorse().upload(REQs )" ); }
         useKernel( task->ikernel );
 
-        // err |= _useArg   ( nDOFs );            // 1
-        // err |= useArgBuff( ibuff_atoms      ); // 2
-        // err |= useArgBuff( ibuff_REQs       ); // 3
-        // err |= useArgBuff( ibuff_aforces    ); // 4
-        // //   Still good - no segfault
-        // err |= useArgBuff( ibuff_atoms_surf ); // 5
-        // err |= useArgBuff( ibuff_REQs_surf  ); // 6
-        // err |= _useArg( nPBC            );     // 7       
-        // err |= _useArg( cl_grid_lvec    );     // 8
-        // err |= _useArg( grid_p0         );     // 9
-        // //err |= _useArg( grid_shift0     );     // 9
-        // err |= _useArg( GFFparams       );     // 10
+        err |= _useArg   ( nDOFs );            // 1
+        err |= useArgBuff( ibuff_atoms      ); // 2
+        err |= useArgBuff( ibuff_REQs       ); // 3
+        err |= useArgBuff( ibuff_aforces    ); // 4
+        //   Still good - no segfault
+        err |= useArgBuff( ibuff_atoms_surf ); // 5
+        err |= useArgBuff( ibuff_REQs_surf  ); // 6
+        err |= _useArg( nPBC            );     // 7       
+        err |= _useArg( cl_grid_lvec    );     // 8
+        //err |= _useArg( grid_p0         );     // 9
+        err |= _useArg( grid_shift0     );     // 9
+        err |= _useArg( GFFparams       );     // 10
 
-        err |= _useArg   ( nDOFs );            OCL_checkError(err, "arg[1]: " );  // 1
-        err |= useArgBuff( ibuff_atoms      ); OCL_checkError(err, "arg[2]: " );// 2
-        err |= useArgBuff( ibuff_REQs       ); OCL_checkError(err, "arg[3]: " );// 3
-        err |= useArgBuff( ibuff_aforces    ); OCL_checkError(err, "arg[4]: " );// 4
-        err |= useArgBuff( ibuff_atoms_surf ); OCL_checkError(err, "arg[5]: " );// 5
-        err |= useArgBuff( ibuff_REQs_surf  ); OCL_checkError(err, "arg[6]: " );// 6
-        err |= _useArg( nPBC            );     OCL_checkError(err, "arg[7]: " );// 7       
-        err |= _useArg( cl_grid_lvec    );     OCL_checkError(err, "arg[8]: " );// 8
-        err |= _useArg( grid_p0         );     OCL_checkError(err, "arg[9]: " );// 9
-        err |= _useArg( GFFparams       );     OCL_checkError(err, "arg[10]: " );// 10
+        // err |= _useArg   ( nDOFs );            OCL_checkError(err, "arg[1]: " );  // 1
+        // err |= useArgBuff( ibuff_atoms      ); OCL_checkError(err, "arg[2]: " );// 2
+        // err |= useArgBuff( ibuff_REQs       ); OCL_checkError(err, "arg[3]: " );// 3
+        // err |= useArgBuff( ibuff_aforces    ); OCL_checkError(err, "arg[4]: " );// 4
+        // err |= useArgBuff( ibuff_atoms_surf ); OCL_checkError(err, "arg[5]: " );// 5
+        // err |= useArgBuff( ibuff_REQs_surf  ); OCL_checkError(err, "arg[6]: " );// 6
+        // err |= _useArg( nPBC            );     OCL_checkError(err, "arg[7]: " );// 7       
+        // err |= _useArg( cl_grid_lvec    );     OCL_checkError(err, "arg[8]: " );// 8
+        // err |= _useArg( grid_p0         );     OCL_checkError(err, "arg[9]: " );// 9
+        // err |= _useArg( GFFparams       );     OCL_checkError(err, "arg[10]: " );// 10
         OCL_checkError(err, "getSurfMorse().setup");
         if(bRun){
             err |= task->enque_raw(); OCL_checkError(err, "getSurfMorse().enque"  );

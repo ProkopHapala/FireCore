@@ -892,8 +892,7 @@ unsigned int hash_wang(unsigned int bits) {
 
 float hashf_wang( float val, float xmin, float xmax) {
     //return ( (float)(bits)*(2147483647.0f );
-    //return (((float)( hash_wang(  __float_as_int(val) ) )) * 4.6566129e-10 )  *(xmax-xmin)+ xmin; // NVIDIA specific
-    return (((float)( hash_wang(  as_int(val) ) )) * 4.6566129e-10 )  *(xmax-xmin)+ xmin; // avoid vendor-specific syntax
+    return (((float)( hash_wang(  __float_as_int(val) ) )) * 4.6566129e-10 )  *(xmax-xmin)+ xmin;
 }
 
 // Assemble recoil forces from neighbors and  update atoms positions and velocities 
@@ -1005,7 +1004,7 @@ __kernel void updateAtomsMMFFf4(
             cK = max( cK, (float4){0.0f,0.0f,0.0f,0.0f} );
             const float3 fc = (cons.xyz - pe.xyz)*cK.xyz;
             fe.xyz += fc; // add constraint force
-            //if(iS==0){printf( "GPU::constr[ia=%i|iS=%i] (%g,%g,%g|K=%g) fc(%g,%g,%g) cK(%g,%g,%g)\n", iG, iS, cons.x,cons.y,cons.z,cons.w, fc.x,fc.y,fc.z , cK.x, cK.y, cK.z ); }
+            if(iS==0){printf( "GPU::constr[ia=%i|iS=%i] (%g,%g,%g|K=%g) fc(%g,%g,%g) cK(%g,%g,%g)\n", iG, iS, cons.x,cons.y,cons.z,cons.w, fc.x,fc.y,fc.z , cK.x, cK.y, cK.z ); }
         }
     }
 
@@ -1050,9 +1049,7 @@ __kernel void updateAtomsMMFFf4(
         pe.xyz=normalize(pe.xyz);                   // normalize pi-orobitals
     }
     pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
-    avel[iav] = ve;
-}
-//__attribute__((reqd_work_group_size(32,1,1)))
+    avel[iav] = ve;__attribute__((reqd_work_group_size(32,1,1)))
 __kernel void getNonBond(
     const int4 ns,                  // 1
     // Dynamical
@@ -1182,14 +1179,6 @@ __kernel void getNonBond(
     ve.xyz *= MDpars.z;             // friction, velocity damping
     ve.xyz += fe.xyz*MDpars.x;      // acceleration
     pe.xyz += ve.xyz*MDpars.x;      // move
-    // if(iG<natoms){                  // only atoms have constraints, not pi-orbitals
-    //     // ------- constrains
-    //     float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
-    //     if( cons.w>0.f ){            // if stiffness is positive, we have constraint
-    //         pe.xyz = cons.xyz;
-    //         //if(iS==0){printf( "GPU::constr[ia=%i|iS=%i] (%g,%g,%g|K=%g) fc(%g,%g,%g) cK(%g,%g,%g)\n", iG, iS, cons.x,cons.y,cons.z,cons.w, fc.x,fc.y,fc.z , cK.x, cK.y, cK.z ); }
-    //     }
-    // }
     //ve     *= 0.99f;              // friction, velocity damping
     //ve.xyz += fe.xyz*0.1f;        // acceleration
     //pe.xyz += ve.xyz*0.1f;        // move
@@ -1639,7 +1628,7 @@ __kernel void sortAtomsToBucketOverlaps(
 // It calculate Lenard-Jones, Coulomb and Hydrogen-bond forces between all atoms in the system
 // it can be run in parallel for multiple systems, in order to efficiently use number of GPU cores (for small systems with <100 this is essential to get good performance)
 // This is the most time consuming part of the forcefield evaluation, especially for large systems when nPBC>1
-//__attribute__((reqd_work_group_size(32,1,1)))
+__attribute__((reqd_work_group_size(32,1,1)))
 __kernel void getNonBond(
     const int4 ns,                  // 1 // (natoms,nnode) dimensions of the system
     // Dynamical
@@ -1655,9 +1644,20 @@ __kernel void getNonBond(
 ){
 
     // we use local memory to store atomic position and parameters to speed up calculation, the size of local buffers should be equal to local workgroup size
+    //__local float4 LATOMS[2];
+    //__local float4 LCLJS [2];
+    //__local float4 LATOMS[4];
+    //__local float4 LCLJS [4];
+    //__local float4 LATOMS[8];
+    //__local float4 LCLJS [8];
+    //__local float4 LATOMS[16];
+    //__local float4 LCLJS [16];
     __local float4 LATOMS[32];   // local buffer for atom positions
     __local float4 LCLJS [32];   // local buffer for atom parameters
-
+    //__local float4 LATOMS[64];
+    //__local float4 LCLJS [64];
+    //__local float4 LATOMS[128];
+    //__local float4 LCLJS [128];
 
     const int iG = get_global_id  (0); // index of atom
     const int nG = get_global_size(0); // number of atoms
@@ -1974,7 +1974,7 @@ float4 interpFE_prec( float3 pos, float3 dinvA, float3 dinvB, float3 dinvC, __re
 // it can be run in parallel for multiple systems, in order to efficiently use number of GPU cores (for small systems with <100 this is essential to get good performance)
 // This is the most time consuming part of the forcefield evaluation, especially for large systems when nPBC>1
 // NOTE: this modified version of getNonBond() just by including Grid-Force-Field (GFF) forces
-//__attribute__((reqd_work_group_size(32,1,1)))
+__attribute__((reqd_work_group_size(32,1,1)))
 __kernel void getNonBond_GridFF(
     const int4 ns,                  // 1 // dimensions of the system (natoms,nnode,nvec)
     // Dynamical
@@ -1995,8 +1995,8 @@ __kernel void getNonBond_GridFF(
     const float4   grid_p0          // 14 // origin of the grid
     //__global cl_Mat3* bboxes      // 15 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
 ){
-    __local float4 LATOMS[16];         // local memory chumk of positions of atoms 
-    __local float4 LCLJS [16];         // local memory chumk of atom parameters
+    __local float4 LATOMS[32];         // local memory chumk of positions of atoms 
+    __local float4 LCLJS [32];         // local memory chumk of atom parameters
     const int iG = get_global_id  (0); // index of atom in the system
     const int iS = get_global_id  (1); // index of system
     const int iL = get_local_id   (0); // index of atom in the local memory chunk
@@ -2313,7 +2313,7 @@ inline float4 fe3d_pbc_comb(const float3 u, const int3 n, __global const float4*
 // it can be run in parallel for multiple systems, in order to efficiently use number of GPU cores (for small systems with <100 this is essential to get good performance)
 // This is the most time consuming part of the forcefield evaluation, especially for large systems when nPBC>1
 // NOTE: this modified version of getNonBond() just by including Grid-Force-Field (GFF) forces
-//__attribute__((reqd_work_group_size(32,1,1)))
+__attribute__((reqd_work_group_size(32,1,1)))
 __kernel void getNonBond_GridFF_Bspline(
     const int4 ns,                  // 1 // dimensions of the system (natoms,nnode,nvec)
     // Dynamical
@@ -2403,7 +2403,6 @@ __kernel void getNonBond_GridFF_Bspline(
             if( (ja!=iG) && (ja<natoms) ){ // atom should not interact with himself, and should be in the system ( j0*nL+iL may be out of range of natoms )   
                 const float4 aj   = LATOMS[jl]; // position of the atom
                 float4       REQK = LCLJS [jl]; // parameters of the atom
-// if((iG==iG_DBG)&&(iS==iS_DBG))printf("REQK[%i].z=%g\n", jl, REQK.z );
                 float3 dp   = aj.xyz - posi;    // vector between atoms
                 REQK.x  +=REQKi.x;              // mixing of RvdW radii
                 REQK.yz *=REQKi.yz;             // mixing of EvdW and Q
@@ -2775,36 +2774,15 @@ __kernel void getSurfMorse(
     const int iaa = iG + i0a;      // index of the atom in the system
     const int iav = iG + i0v;      // index of the vector (atom or pi-orbital) in the system
 
-     if( (iG==0) && (iS==0) ){  
-        //printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) \n", nG,nS, nL, ns.x,ns.y,ns.z  ); 
+    // if( (iG==0) && (iS==0) ){  
+    //     printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) \n", nG,nS, nL, ns.x,ns.y,ns.z  ); 
     //     //printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) nPBC(%i,%i,%i)\n", nG,nS, nL, ns.x,ns.y,ns.z,  nPBC.x,nPBC.y,nPBC.z  ); 
     //     //for(int i=0; i<ns.x; i++){ printf( "forces[%i] (%g,%g,%g) \n", i, forces[i].x,forces[i].y,forces[i].z );   }
     //     for(int i=0; i<na_surf; i++){ printf( "GPU.atoms_s[%i](%g,%g,%g) \n", i, atoms_s[i].x,atoms_s[i].y,atoms_s[i].z );   }
-     }
+    // }
     float4 fe   = (float4){0.0f,0.0f,0.0f,0.0f};
 
-    // ========== BEGIN test loading atoms to local memory
-
-    // if((iG>nL) || (iS>0)) return;
-
-    // for (int j0=0; j0<na_surf; j0+= nL ){
-    //     const int i = j0 + iL;
-    //     LATOMS[iL] = atoms_s[i];
-    //     LCLJS [iL] = REQ_s  [i];
-    //     barrier(CLK_LOCAL_MEM_FENCE);
-    //     if(iG==0){
-    //         for(int j=0; j<nL; j++){
-    //             int ji = j0 + j;
-    //             printf("j: %i i: %i , LATOMS = (%16.6f,%16.6f,%16.6f), atoms_s = (%16.6f,%16.6f,%16.6f)\n", j, ji, LATOMS[j].x, LATOMS[j].y, LATOMS[j].z, atoms_s[ji].x, atoms_s[ji].y, atoms_s[ji].z);
-    //         }
-    //         //printf("iL = %i, LATOMS = (%16.6f,%16.6f,%16.6f), atoms_s = (%16.6f,%16.6f,%16.6f)\n", iL, LATOMS[iL].x, LATOMS[iL].y, LATOMS[iL].z, atoms_s[i].x, atoms_s[i].y, atoms_s[i].z);
-    //     }
-    
-    // }
-
-
-    // ========== END test loading atoms to local memory
-
+    if(iG>=nAtoms) return;
 
     const float  K          = -GFFParams.y;
     const float  R2damp     =  GFFParams.x*GFFParams.x;
@@ -2813,23 +2791,17 @@ __kernel void getSurfMorse(
 
     const float3 pos  = atoms[iav].xyz - pos0.xyz +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
     const float4 REQi = REQs [iaa];
-// if((iaa<22)&&(iS==0)) printf("REQi[%i].z = %f\n", iaa, REQi.z);
+
     // ToDo: perhaps it is efficient to share surface along isys direction ( all system operate with the same surface atoms )
-    // for (int j0 = 0; j0 < na_surf; j0 ++) {
-    //     LATOMS[j0   ] = atoms_s[j0];
-    //     LCLJS[j0] = REQ_s[j0];
-    // }
+
     for (int j0=0; j0<na_surf; j0+= nL ){
         const int i = j0 + iL;
         LATOMS[iL] = atoms_s[i];
         LCLJS [iL] = REQ_s  [i];
-//        if(iS==0 && iL > 21)printf("iL = %i, LATOMS = (%f,%f,%f), atoms_s = (%f,%f,%f)\n", iL, LATOMS[iL].x, LATOMS[iL].y, LATOMS[iL].z, atoms_s[i].x, atoms_s[i].y, atoms_s[i].z);
         barrier(CLK_LOCAL_MEM_FENCE);
-        if(iG>=nAtoms) continue;
         for (int jl=0; jl<nL; jl++){
             const int ja=jl+j0;
             if( ja<na_surf ){ 
-                //if(iG==0 && iS==0) printf("jl: %i ja: %i , LATOMS = (%16.6f,%16.6f,%16.6f), atoms_s = (%16.6f,%16.6f,%16.6f)\n", jl, ja, LATOMS[jl].x, LATOMS[jl].y, LATOMS[jl].z, atoms_s[ja].x, atoms_s[ja].y, atoms_s[ja].z);
                 float4 REQH =       LCLJS [jl];
                 float3 dp   = pos - LATOMS[jl].xyz;
                 REQH.x   += REQi.x;
@@ -2842,12 +2814,12 @@ __kernel void getSurfMorse(
                         for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
                             const float4 fej = getMorseQH( dp,  REQH, K, R2damp );
                             fe -= fej;
-                            if( (iG==0) && (iS==0) && (iz==0)&&(iy==0)&&(ix==0)){
+                            //if( (iG==0) && (iS==0) && (iz==0)&&(iy==0)&&(ix==0)){
                             //if( (iG==0) && (iS==0) && (jl==0) ){
                             // if( (iG==0) && (jl==0)   && (iz==0)&&(iy==0)&&(ix==0)  ){
-                             //   printf( "GPU[%3i|%3i/%3i] dp(%10.6f,%10.6f,%10.6f) LATOMS[%i](%10.6f,%10.6f,%10.6f) pos(%10.6f,%10.6f,%10.6f) pos0(%10.6f,%10.6f,%10.6f)  \n", ja,0,0,   dp.x,dp.y,dp.z,  jl,  LATOMS[jl].x,LATOMS[jl].y,LATOMS[jl].z,   pos.x,pos.y,pos.z,  pos0.x,pos0.y,pos0.z );
+                            //    printf( "GPU[%3i|%3i/%3i] dp(%10.6f,%10.6f,%10.6f) LATOMS[%i](%10.6f,%10.6f,%10.6f) pos(%10.6f,%10.6f,%10.6f) pos0(%10.6f,%10.6f,%10.6f)  \n", ja,0,0,   dp.x,dp.y,dp.z,  jl,  LATOMS[jl].x,LATOMS[jl].y,LATOMS[jl].z,   pos.x,pos.y,pos.z,  pos0.x,pos0.y,pos0.z );
                             //    //printf( "GPU[%3i(%3i,%3i,%3i)] K,R2damp(%10.6f,%10.6f) l=%10.6f dp(%10.6f,%10.6f,%10.6f) REQij(%10.6f,%10.6f,%10.6f,%10.6f) fij(%10.6f,%10.6f,%10.6f) \n", ja, ix,iy,iz,  K,R2damp, length(dp), dp.x,dp.y,dp.z,  REQH.x, REQH.y, REQH.z, REQH.w,  fej.x,fej.y,fej.z );
-                            }
+                            // }
                             dp   +=lvec.a.xyz;
                             //shift+=lvec.a.xyz;
                         }
@@ -2863,7 +2835,7 @@ __kernel void getSurfMorse(
                 }
             }
         }
-        //barrier(CLK_LOCAL_MEM_FENCE);
+        barrier(CLK_LOCAL_MEM_FENCE);
     }
     // if( (iG==0) && (iS==0) ){
     //      printf( "GPU[iG=%i,iS=%i] fe(%10.6f,%10.6f,%10.6f)\n", iG,iS, fe.x,fe.y,fe.z );
@@ -2872,8 +2844,7 @@ __kernel void getSurfMorse(
     // if( (iG==0) ){
     //       printf( "GPU[iG=%i,iS=%i] fe(%10.6f,%10.6f,%10.6f)\n", iG,iS, fe.x,fe.y,fe.z );
     // }
-
-    if(iG<nAtoms) forces[iav] += fe;  
+    forces[iav] += fe;  
 
 }
 

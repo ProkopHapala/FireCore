@@ -237,7 +237,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     // ---- small balls and sticks for debugging
     // double ForceViewScale = 100.0;
-    double mm_Rsc            = 0.2;
+    double mm_Rsc            = 0.1;
     double mm_Rsub           = 0.0;
 
     bool bBuilderChanged     = false;
@@ -271,8 +271,6 @@ class MolGUI : public AppSDL2OGL_3D { public:
     Mat3d dlvec { 0.1,0.0,0.0,   0.0,0.0,0.0,  0.0,0.0,0.0 };
     Mat3d dlvec2{ 0.0,0.1,0.0,   0.0,0.0,0.0,  0.0,0.0,0.0 };
     Vec2f mouse_pix;
-
-    float opacityOfReplica = 0.2f; // Adjust transparency level (0.0=transparent, 1.0=opaque)
 
     // ----- Visualization Arrays - allows to switch between forcefields, and make it forcefield independnet
     int    natoms=0,nnode=0,nbonds=0;
@@ -1572,39 +1570,20 @@ void MolGUI::draw(){
     if(frameCount>=1){ 
         if(frameCount==1){
             nsys=W->getMultiSystemPointers( M_neighs, M_neighCell, M_apos, nvec); 
+            //for(int i=0;i<nsys; i++){ printMSystem(i, 4, natoms, nvec ); }
         }
+        //printf( "nsys %i \n", nsys );
         if(nsys>0){ 
-            // Save current state
-            glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT);
-            
-            // Enable opacityOfReplica blending and disable depth test
-            glEnable(GL_BLEND);
-            glDisable(GL_DEPTH_TEST);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  // Standard opacityOfReplica blending
-            
             float dt = 2.*M_PI/nsys;
             float shift = 2.0*M_PI/3.;
-
-            
-            for(int isys=1; isys<nsys; isys++){
-                int icol = isys + hash_Wang(isys*154+45457); // if icol == isys there is rainbow in the replicas
-                float r = cos(dt*icol           )*0.5 + 0.2;
-                float g = cos(dt*icol + shift   )*0.5 + 0.2;
-                float b = cos(dt*icol + shift*2 )*0.5 + 0.2;
-                
-                // Use 4-component color with opacityOfReplica
-                glColor4f( r, g, b, opacityOfReplica );
-                
-                glLineWidth(5); //set width of lines in the replicas
-                Draw3D::neighs_multi(natoms, 4,M_neighs,    M_neighCell,M_apos, W->pbc_shifts, isys, nvec );
-                glLineWidth(1);
-                // spheres in the replicas
-                // Draw3D::atoms       ( natoms,  M_apos+isys*nvec, atypes, W->params, ogl_sph, opacityOfReplica, mm_Rsc*0.5, mm_Rsub ); 
-            }
-            
-            // Restore original state
-            glPopAttrib();
-        } 
+            for(int isys=0; isys<nsys; isys++){
+            float r = cos(dt*isys           )*0.5 + 0.5;
+            float g = cos(dt*isys + shift   )*0.5 + 0.5;
+            float b = cos(dt*isys + shift*2 )*0.5 + 0.5;
+            glColor3f( r, g, b );
+            //printf( "#=========== isys= %i \n", isys );
+            Draw3D::neighs_multi(natoms,4,M_neighs,M_neighCell,M_apos, W->pbc_shifts, isys, nvec ); 
+        } } 
     }
 
     //if(iangPicked>=0){
@@ -1884,7 +1863,7 @@ void MolGUI::renderGridFF_new( double isoVal, int isoSurfRenderType, double colo
     glEnable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
     //glDisable(GL_LIGHTING);
-    Vec2d zrange{-5.0,5.0};
+    Vec2d zrange{-5.0,15.0};
     //{  W->gridFF.getEFprofileToFile( "gridFF_EFprofile_render.log", 200, Vec3d{0.0,0.0,zrange.x}, Vec3d{0.0,0.0,zrange.y}, Quat4d{REQ.x,REQ.y,0.0,0.0} );  }  // Debug: save gridFF z-profile to file of atom[0] to "gridFF_EFprofile_render.log"
     //int nvert = renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, +isoVal, sign, colorSclae ); 
     //W->gridFF.findIso( isoVal, Vec3d{0.0,0.0,zrange.x}, Vec3d{0.0,0.0,zrange.y}, Quat4d{PLQ.x,PLQ.y,0.0,0.0}, 0.02 );
@@ -2251,7 +2230,7 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     //printf( "bOrig %i ixyz(%i,%i,%i)\n", bOrig, ixyz.x,ixyz.y,ixyz.z );
     //printf( "MolGUI::drawSystem() bViewMolCharges %i W->nbmol.REQs %li\n", bViewMolCharges, W->nbmol.REQs );
     //printf("MolGUI::drawSystem()  bOrig %i W->bMMFF %i mm_bAtoms %i bViewAtomSpheres %i bViewAtomForces %i bViewMolCharges %i \n", bOrig, W->bMMFF, mm_bAtoms, bViewAtomSpheres, bViewAtomForces, bViewMolCharges  );
-    if( neighs && (!bViewBL) ){  glColor3f(0.0f,0.0f,0.0f);  glLineWidth(10.0); Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts ); glLineWidth(1.0);  }
+    if( neighs && (!bViewBL) ){  glColor3f(0.0f,0.0f,0.0f);  glLineWidth(1.0); Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts ); glLineWidth(1.0);  }
 
 
 

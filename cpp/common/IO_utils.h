@@ -431,8 +431,11 @@ inline int save_npy(const char *fname, int ndims, int* shape, const char *data, 
 class NumpyFile{ public:
     int ndims; 
     int shape[8]; 
-    int ntot;
-    int nBytePerElement;
+    //int ntot;
+    //int nBytePerElement;
+   // char dtype[8];
+    long long ntot;
+    long long nBytePerElement;
     char dtype[8];
     char* data=0;
 

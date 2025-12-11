@@ -2402,10 +2402,8 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         return true;
     }
 
-
     void permutAtoms(int* permut, bool doBonds=false, bool bGroups=true ){
         bGroups &= (atom2group.size()>0);
-
         std::vector<int> atom2group_;
         if(bGroups){
             if(atom2group.size()>0){
@@ -4186,7 +4184,6 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
             const Atom& A =  atoms[ia];
             ff.apos  [ia] = A.pos;
             ff.atypes[ia] = A.type;
-            ff.REQs  [ia] = A.REQ;
             AtomType& atyp = params->atypes[A.type];
 
             if(A.iconf>=0){
@@ -5533,6 +5530,14 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
 
         // exception for amide groups
         assignUFFtypes_amide( neighs, &BOs[0] );
+
+//DEBUG
+for(int ia=0; ia<atoms.size(); ia++){
+    Atom& A = atoms[ia];
+    printf("MMFFBuilder::assignUFFtypes(%i) %s\n", ia, params->atypes[A.type].name );
+}
+//DEBUG
+//exit(0);
 
         // store bond orders
         for(int ib=0; ib<bonds.size(); ib++){

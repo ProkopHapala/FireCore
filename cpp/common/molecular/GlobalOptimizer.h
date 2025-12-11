@@ -1,3 +1,4 @@
+﻿
 #ifndef GlobalOptimizer_h
 #define GlobalOptimizer_h
 
@@ -359,21 +360,14 @@ class GlobalOptimizer{ public:
 
 
     bool bExploring = false;
-    bool DO = false;
 
     std::vector<double> x_opt;
     double F_opt    = __DBL_MAX__;
+
     int neval       = 0;
-
-    int index_mut   = -1;
-    std::vector<double> par_mut;
-
     int bShow       = 0;  // 0 - no output, 1 - only better, 2 - all
     int bSave       = 0;  // 0 - no output, 1 - only better, 2 - all
     int bDatabase   = 0;  // 0 - no output, 1 - only better, 2 - all
-
-    double* outF    = 0;
-    int* outNevals  = 0;
 
     std::vector<double> currentStructure;
     Atoms* currentAtoms;
@@ -394,10 +388,8 @@ bool containsNaN(const std::vector<double>& vec) {
 
 
     void init_heur(Atoms* _atoms, MMFFparams* _params, int _Findex, std::vector<double>* _a=0, std::vector<double>* _b=0, std::vector<int>* _boundaryRules=0,
-     double _Fstar=-__DBL_MAX__, int _maxeval=0, int _nRelax=500, int _nExploring=__INT_MAX__, int _index_mut=-1, std::vector<double>* _par_mut=0, int _bShow=1,
-     int _bSave=1, int _bDatabase=0, double* _outF=0, int* _outNevals=0)
+     double _Fstar=-__DBL_MAX__, int _maxeval=0, int _nRelax=500, int _nExploring=__INT_MAX__, int _bShow=1, int _bSave=1, int _bDatabase=0)
     {
-        if(verbosity>1)printf("GlobalOptimizer::init_heur\n");
         currentAtoms    = _atoms;
         params          = _params;
         Findex          = _Findex;
@@ -412,60 +404,50 @@ bool containsNaN(const std::vector<double>& vec) {
         nRelax          = _nRelax;
         nExploring      = _nExploring;
         nExplore        = _nExploring;
-
-        index_mut       = _index_mut;
-        if(_par_mut){par_mut = (*_par_mut);}
+        printf("nExplore %i\n", nExplore);
 
         
         bShow           = _bShow;
         bSave           = _bSave;
         bDatabase       = _bDatabase;
 
-        if(_outF){outF = _outF;}
-        if(_outNevals){outNevals = _outNevals;}
-
         DoF             = a.size();
         for(int i=0; i<DoF; i++) x_opt.push_back(NAN);
         F_opt           = __DBL_MAX__;
         bExploring      = true;
-        DO              = true;
         neval           = 0;
         
         structureToVector(_atoms);
-        //srand(time(NULL));
+        srand(time(NULL));
     }
 
-    void randomBrutal(){
+    void randomBrutal(int index_mut=-1, std::vector<double>* par_mut=0, std::vector<double>* par_alg=0){
             printf("randomBrutal\n");
             //init_heur(_atoms, _params, _Findex, _a, _b, _boundaryRules, _Fstar, _maxeval, _bShow);
-            while(DO){
-                mutate(&currentStructure);
+            while(bExploring){
+                mutate(&currentStructure, index_mut, par_mut);
                 double F_new = evaluate(&currentStructure);
             }
         }
 
 // needs par_alg repeater (nb of steps before giving up on a mutation)
-    void randomDescent(std::vector<double>* par_alg=0){
+    void randomDescent(int index_mut=-1, std::vector<double>* par_mut=0, std::vector<double>* par_alg=0){
             printf("randomDescent\n");
             if(!par_alg){
                 par_alg = new std::vector<double>();
                 (*par_alg).push_back(1);
             }
             int repeater = (int)(*par_alg)[0];
-            int old_index_mut = index_mut;
-            std::vector<double> x_new(DoF, 0.0);
+            std::vector<double> x_new;
             double F_new, F;
-            while(DO){
-                index_mut = -1;
-                mutate(&currentStructure);
+            while(bExploring){
+                mutate(&currentStructure, -1, nullptr);
                 F = evaluate(&currentStructure);
-                index_mut = old_index_mut;
-                x_new = currentStructure;
-                while (DO)
+                while (bExploring)
                 {
                     int i = 0;
                     for(; i<repeater; i++){
-                        mutate(&x_new);
+                        mutate(&x_new, index_mut, par_mut);
                         F_new = evaluate(&x_new);
                         if(F_new < F){
                             F = F_new;
@@ -481,89 +463,73 @@ bool containsNaN(const std::vector<double>& vec) {
             results();
         }
 
-    void gradSPSA(std::vector<double>* grad, std::vector<double>* x, double ck){
-
+    std::vector<double>* gradSPSA(std::vector<double>* x, double ck){
+        std::vector<double>* grad = new std::vector<double>();
         std::vector<double> delta, x_plus, x_minus;
         double F_plus, F_minus, slope;
-
-        int old_Findex = Findex;
-        Findex=0;
-
-        for(int i=0; i<DoF; i++){
-            x_plus.push_back((*x)[i]);
-            x_minus.push_back((*x)[i]);
-
-        }
-        
+        x_plus = (*x);
+        x_minus = (*x);
         for(int i=0; i<DoF; i++){
             if(randf(0, 1) > 0.5){
                 delta.push_back(1.0);
             }else{
-                delta.push_back(-1.0);
-            }
+                delta.push_back(-1.0);}
             x_plus[i] += ck*delta[i];
             x_minus[i] -= ck*delta[i];
         }
-
         F_plus = evaluate(&x_plus);
         F_minus = evaluate(&x_minus);
-
         slope = (F_plus-F_minus)/(2*ck);
-        
         for(int i=0; i<DoF; i++){
-            (*grad)[i] = (slope*delta[i]);
+            (*grad).push_back(slope*delta[i]);
         }
-
-        Findex = old_Findex;
+        return grad;
     }
-    void SPSA(std::vector<double>* par_alg=0){
-            if(verbosity>1)printf("SPSA\n");
-
+    void SPSA(int index_mut=-1, std::vector<double>* par_mut=0, std::vector<double>* par_alg=0){
+            printf("SPSA\n");
+            printf("DoF %i\n", DoF);
             if(!par_alg){
                 par_alg = new std::vector<double>();
                 (*par_alg).push_back(0.602);
                 (*par_alg).push_back(0.101);
                 (*par_alg).push_back(maxeval);
             }
-
             double alpha = (*par_alg)[0];
             double gamma = (*par_alg)[1];
-            double N = (*par_alg)[2]/3;
-
+            double N = (*par_alg)[2];
+            std::vector<double> grad;
+            mutate(&currentStructure, 2, par_mut);
             double F_new, F;
             double A = N*0.1;
             double c = 1e-2;
-            std::vector<double> grad;
-            for(int i=0; i<DoF; i++)
-                grad.push_back(0);
-
-            int old_index_mut = index_mut;
-            index_mut = -1;
-            mutate(&currentStructure);
-            index_mut = old_index_mut;
-
-            gradSPSA(&grad, &currentStructure, c);
+            grad = (*gradSPSA(&currentStructure, c));
             double magnitude_g0 = std::reduce(grad.begin(), grad.end())/grad.size();
             magnitude_g0 = abs(magnitude_g0);
             double a = 2*pow(A+1, alpha)/magnitude_g0;
             double ak, ck;
-
-            for (int k = 0; k < N && DO; k++){
-
+            //printf("beggining of iteration\n");
+            for (int k = 0; k < N; k++){
                 ak = a/pow(k+A+1, alpha);
                 ck = c/pow(k+1, gamma);
-             
-                gradSPSA(&grad, &currentStructure, ck);
-
+if (containsNaN(currentStructure)) {
+    std::cout << "Vector contains NaN values. Before grad\n";exit(1);
+}                 
+                grad = (*gradSPSA(&currentStructure, ck));
+if (containsNaN(grad)) {
+    std::cout << "Vector contains NaN values. After grad\n";exit(1);
+}
                 for(int i=0; i<DoF; i++){
                     currentStructure[i] -= ak*grad[i];
                 }
-
+if (containsNaN(currentStructure)) {
+    std::cout << "Vector contains NaN values. Before checkBorders\n";exit(1);
+} 
                 checkBorders(&currentStructure);
-
-                F=evaluate(&currentStructure);
+if (containsNaN(currentStructure)) {
+    std::cout << "Vector contains NaN values. After checkBorders\n";exit(1);
+} 
             }
-            results();
+
     }
 
     // void simpleLevyFlights(int index_mut=3, std::vector<double>* par_mut=0, std::vector<double>* par_alg=0){
@@ -613,12 +579,11 @@ bool containsNaN(const std::vector<double>& vec) {
 
     double evaluate(std::vector<double>* x){
         //printf("evaluate\n");
-        // printf("neval %i DO %i\n", neval, DO);
-        if(neval>=maxeval || !DO){
-            DO = false;
+        if(neval>=maxeval || !bExploring){
+            bExploring = false;
             return __DBL_MAX__;
         }
-        
+
         
         if(nExplore<=0){        // maybe this should be done differently, but for this exploration it works
             Findex = 1;
@@ -636,8 +601,7 @@ bool containsNaN(const std::vector<double>& vec) {
             x_opt = (*x);
             if (F <= Fstar)
             {
-                printf("F=%f <= Fstar=%f\n", F, Fstar);
-                DO = false;
+                bExploring = false;
             }
         }       
         return F;
@@ -675,7 +639,7 @@ bool containsNaN(const std::vector<double>& vec) {
     }
 
 
-    void mutate(std::vector<double>* x){
+    void mutate(std::vector<double>* x, int index_mut, std::vector<double>* par_mut=0){
         //printf("mutate\n");
         if ((*x).size() == 0)
         {
@@ -693,13 +657,13 @@ bool containsNaN(const std::vector<double>& vec) {
         case 0: // L1 mutation
             for (int i = 0; i < DoF; i++)
             {
-                x_new.push_back(randf((*x)[i]-par_mut[0], (*x)[i]+par_mut[0]));
+                x_new.push_back(randf((*x)[i]-(*par_mut)[0], (*x)[i]+(*par_mut)[0]));
                 l += fabs((*x)[i]-x_new[i]);
             }
             
             for (int i = 0; i < DoF; i++)
             {
-                (*x)[i] += (x_new[i]-(*x)[i])/l*rndf*par_mut[0];
+                (*x)[i] += (x_new[i]-(*x)[i])/l*rndf*(*par_mut)[0];
             }
             break;
         case 1: // Hamming mutation
@@ -715,7 +679,7 @@ bool containsNaN(const std::vector<double>& vec) {
             for (int i = 0; i < DoF; i++)
             {
                 rnd = d->generateRandom();
-                (*x)[i] += par_mut[0]*rnd;
+                (*x)[i] += (*par_mut)[0]*rnd;
             }
             break;
         case 3: // Student mutation
@@ -728,7 +692,7 @@ bool containsNaN(const std::vector<double>& vec) {
 
             d->randomPointOnNdimSphere(x_new, DoF);
             for(int i=0; i<DoF; i++){
-                (*x)[i] += par_mut[0]*x_new[i]*l;
+                (*x)[i] += (*par_mut)[0]*x_new[i]*l;
             }
             break; 
         default:
@@ -743,18 +707,14 @@ bool containsNaN(const std::vector<double>& vec) {
     }
 
     void results(){
-        // printf("Results\n");
-        // printf("neval %i\n", neval);
-        // printf("F_opt %f\n", F_opt);
-        // printf("x_opt\n");
-        // for(int i=0; i<DoF; i++){
-        //     printf("%f ", x_opt[i]);
-        // }
-        // printf("\n");
+        printf("Results\n");
+        printf("F_opt %f\n", F_opt);
+        printf("x_opt\n");
+        for(int i=0; i<DoF; i++){
+            printf("%f ", x_opt[i]);
+        }
+        printf("\n");
         vectorToStructure(&x_opt);
-
-        if(outF){*outF = F_opt;}
-        if(outNevals){*outNevals = neval;}
     }
 
 
@@ -810,9 +770,8 @@ bool containsNaN(const std::vector<double>& vec) {
     }
 
     void structureToVector(Atoms* atoms=0){ // missing lvec DoF
-        if(verbosity>1) printf("GlobalOptimizer::structureToVector\n");
         bool notAtoms = false;
-        Vec3d* apos = new Vec3d[DoF/3];
+        Vec3d* apos = new Vec3d[currentStructure.size()/3];
         Mat3d lvec=Mat3dIdentity;
         if(!atoms){
             notAtoms = true;
@@ -869,7 +828,6 @@ bool containsNaN(const std::vector<double>& vec) {
         switch (Findex)
         {
         case -1: // debugging "energy" only a 3D function with one minimum
-            neval += 1;
             return function(x);
             break;
         case 0: // evaluate the energy of the current structure
@@ -926,8 +884,8 @@ bool containsNaN(const std::vector<double>& vec) {
             database = new MolecularDatabase();
             database->setDescriptors();
         }
-        ForceField* atoms = new ForceField(DoF/3); 
-        atoms->Energy=solver->getGeom( atoms->apos,  &atoms->lvec );
+        Atoms* atoms = new Atoms(DoF/3); 
+        atoms->Energy=solver->getGeom( atoms->apos,  atoms->lvec );
         if (fname)
         {
             //loadNBmol(fname);
