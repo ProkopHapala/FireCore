@@ -22,6 +22,35 @@ export class MeshRenderer {
         }
     }
 
+    ensureCapacity(newCapacity) {
+        const cap = newCapacity | 0;
+        if (!(cap > 0)) throw new Error(`MeshRenderer.ensureCapacity: invalid newCapacity=${newCapacity}`);
+        if (cap <= this.capacity) return;
+
+        const removeDispose = (obj) => {
+            if (!obj) return;
+            if (this.scene) this.scene.remove(obj);
+            if (obj.geometry && obj.geometry.dispose) obj.geometry.dispose();
+            if (obj.material && obj.material.dispose) obj.material.dispose();
+        };
+
+        removeDispose(this.atomMesh);
+        removeDispose(this.selectionMesh);
+        removeDispose(this.bondLines);
+        removeDispose(this.labelMesh);
+
+        this.atomMesh = null;
+        this.selectionMesh = null;
+        this.bondLines = null;
+        this.labelMesh = null;
+
+        this.posTexture = null;
+        this.posData = null;
+
+        this.capacity = cap;
+        this.init();
+    }
+
     init() {
         // --- 1. Position Texture ---
         this.texHeight = Math.ceil(this.capacity / this.texSize);
@@ -149,6 +178,7 @@ export class MeshRenderer {
         // Update Texture
         // posArray is expected to be flat [x, y, z, ...]
         // count is number of items
+        if ((count | 0) > (this.capacity | 0)) throw new Error(`MeshRenderer.updatePositions: count=${count} exceeds capacity=${this.capacity}`);
         for (let i = 0; i < count; i++) {
             this.posData[i * 4] = posArray[i * 3];
             this.posData[i * 4 + 1] = posArray[i * 3 + 1];
@@ -160,6 +190,8 @@ export class MeshRenderer {
 
     updateParticles(count, colorGetter, scaleGetter) {
         if (!this.atomMesh) return;
+
+        if ((count | 0) > (this.capacity | 0)) throw new Error(`MeshRenderer.updateParticles: count=${count} exceeds capacity=${this.capacity}`);
 
         this.atomMesh.count = count;
         const colorAttr = this.atomMesh.geometry.getAttribute('instanceColor');

@@ -8,31 +8,18 @@ export class MoleculeRenderer extends MeshRenderer {
         this.system = system;
         this.mmParams = mmParams;
 
-        this.selectionMesh = null;
         this.axesHelper = null;
 
         this.labelMode = 'none';
 
-        this.initSelection();
-    }
-
-    initSelection() {
-        // --- Selection (InstancedMesh - Rings) ---
-        this.selectionBaseGeo = Draw3D.createOctSphereGeometry(16, 1.0);
-        this.selectionMesh = Draw3D.createTextureBasedSelectionLines(
-            this.capacity,
-            this.selectionBaseGeo,
-            this.shaders.selection,
-            {
-                ...this.commonUniforms,
-                uColor: { value: new THREE.Vector4(1.0, 1.0, 0.0, 0.8) } // Yellow
-            }
-        );
-        this.scene.add(this.selectionMesh);
+        // selection is handled by MeshRenderer
     }
 
     update() {
         // Main update loop
+        if (this.system && (this.system.capacity | 0) > (this.capacity | 0)) {
+            this.ensureCapacity(this.system.capacity);
+        }
         if (this.system.isDirty) {
             this.updateStructure();
             this.updatePositions(); // Structure change implies position update too
@@ -82,16 +69,7 @@ export class MoleculeRenderer extends MeshRenderer {
 
     updateSelection() {
         const selectedIDs = Array.from(this.system.selection);
-        const count = selectedIDs.length;
-
-        // Update instance count for InstancedBufferGeometry
-        this.selectionMesh.geometry.instanceCount = count;
-
-        const idAttr = this.selectionMesh.geometry.getAttribute('aAtomID');
-        for (let i = 0; i < count; i++) {
-            idAttr.setX(i, selectedIDs[i]);
-        }
-        idAttr.needsUpdate = true;
+        super.updateSelection(selectedIDs);
     }
 
     updateLabelsContent() {

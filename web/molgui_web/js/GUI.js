@@ -1,6 +1,11 @@
+import { MoleculeSystem } from './MoleculeSystem.js';
+
 export class GUI {
     constructor(io) {
         this.io = io;
+        this.monomerLib = null;
+        this.monomerGeoms = new Map();
+        this.endGroupParsed = null;
         this.init();
     }
 
@@ -427,6 +432,518 @@ export class GUI {
             container.appendChild(btnApply);
         });
 
+        // --- Section: Builder - Crystal/Substrate ---
+        this.createSection(sidebar, 'Builder: Substrate', (container) => {
+            const rowPreset = document.createElement('div');
+            rowPreset.className = 'gui-row';
+            const lblPreset = document.createElement('span');
+            lblPreset.textContent = 'Preset: ';
+            rowPreset.appendChild(lblPreset);
+            const selPreset = document.createElement('select');
+            selPreset.className = 'gui-select';
+            selPreset.style.flexGrow = '1';
+            ['NaCl(step)', 'NaCl(rocksalt)', 'KBr(rocksalt)', 'MgO(rocksalt)', 'CaF2(fluorite)', 'CaCO3(todo)'].forEach(name => {
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                selPreset.appendChild(opt);
+            });
+            rowPreset.appendChild(selPreset);
+            container.appendChild(rowPreset);
+
+            const rowA = document.createElement('div');
+            rowA.className = 'gui-row';
+            const lblA = document.createElement('span');
+            lblA.textContent = 'a(Å): ';
+            rowA.appendChild(lblA);
+            const inpA = document.createElement('input');
+            inpA.type = 'number';
+            inpA.step = '0.01';
+            inpA.value = '2.82';
+            inpA.className = 'gui-input';
+            inpA.style.width = '70px';
+            inpA.style.flexGrow = '0';
+            rowA.appendChild(inpA);
+            container.appendChild(rowA);
+
+            const PRESETS = {
+                'NaCl(step)':       { a0: 5.6413 / 2 },
+                'NaCl(rocksalt)':   { a0: 5.6413 },
+                'KBr(rocksalt)':    { a0: 6.60 },
+                'MgO(rocksalt)':    { a0: 4.212 },
+                'CaF2(fluorite)':   { a0: 5.4623 },
+                'CaCO3(todo)':      { a0: 4.99 }
+            };
+
+            const updatePresetDefaults = () => {
+                const p = PRESETS[selPreset.value];
+                if (p && (p.a0 !== undefined)) inpA.value = String(p.a0);
+            };
+            selPreset.onchange = () => { updatePresetDefaults(); };
+            updatePresetDefaults();
+
+            const rowN = document.createElement('div');
+            rowN.className = 'gui-row';
+            const mkInt = (label, val) => {
+                const sp = document.createElement('span');
+                sp.textContent = label;
+                sp.style.marginRight = '2px';
+                const inp = document.createElement('input');
+                inp.type = 'number';
+                inp.step = '1';
+                inp.value = String(val);
+                inp.className = 'gui-input';
+                inp.style.width = '44px';
+                inp.style.flexGrow = '0';
+                rowN.appendChild(sp);
+                rowN.appendChild(inp);
+                return inp;
+            };
+            const inpNx = mkInt('nx', 10);
+            const inpNy = mkInt('ny', 10);
+            const inpNz = mkInt('nz', 3);
+            container.appendChild(rowN);
+
+            const chkMillerLbl = document.createElement('label');
+            chkMillerLbl.className = 'gui-checkbox-label';
+            chkMillerLbl.style.marginTop = '6px';
+            const chkMiller = document.createElement('input');
+            chkMiller.type = 'checkbox';
+            chkMiller.checked = false;
+            chkMillerLbl.appendChild(chkMiller);
+            chkMillerLbl.appendChild(document.createTextNode('Orient by Miller (h k l) -> z'));
+            container.appendChild(chkMillerLbl);
+
+            const rowHKL = document.createElement('div');
+            rowHKL.className = 'gui-row';
+            rowHKL.style.marginTop = '4px';
+            const mkIntHKL = (label, val) => {
+                const sp = document.createElement('span');
+                sp.textContent = label;
+                sp.style.marginRight = '2px';
+                const inp = document.createElement('input');
+                inp.type = 'number';
+                inp.step = '1';
+                inp.value = String(val);
+                inp.className = 'gui-input';
+                inp.style.width = '44px';
+                inp.style.flexGrow = '0';
+                rowHKL.appendChild(sp);
+                rowHKL.appendChild(inp);
+                return inp;
+            };
+            const inpH = mkIntHKL('h', 1);
+            const inpK = mkIntHKL('k', 0);
+            const inpL = mkIntHKL('l', 0);
+            container.appendChild(rowHKL);
+
+            const btnRow = document.createElement('div');
+            btnRow.className = 'gui-row';
+            btnRow.style.marginTop = '6px';
+            const btnReplace = document.createElement('button');
+            btnReplace.textContent = 'Generate (Replace)';
+            btnReplace.className = 'gui-btn';
+            const btnAppend = document.createElement('button');
+            btnAppend.textContent = 'Generate (Append)';
+            btnAppend.className = 'gui-btn';
+            btnAppend.style.marginLeft = '4px';
+            btnRow.appendChild(btnReplace);
+            btnRow.appendChild(btnAppend);
+            container.appendChild(btnRow);
+
+            const getHKL = () => [parseInt(inpH.value), parseInt(inpK.value), parseInt(inpL.value)];
+
+            const applyMiller = (data) => {
+                if (!chkMiller.checked) return data;
+                const [h, k, l] = getHKL();
+                if ((h | 0) === 0 && (k | 0) === 0 && (l | 0) === 0) throw new Error('HKL cannot be (0,0,0)');
+                if (!data.lvec) throw new Error('applyMiller: missing lvec');
+                const b = MoleculeSystem.reciprocalLattice(data.lvec);
+                const n = [h * b[0][0] + k * b[1][0] + l * b[2][0], h * b[0][1] + k * b[1][1] + l * b[2][1], h * b[0][2] + k * b[1][2] + l * b[2][2]];
+                const R = MoleculeSystem.rotationAlignVectorToZ(n);
+                const pos = MoleculeSystem.rotatePosArray(data.pos, R);
+                const lvec = MoleculeSystem.rotateLvec(data.lvec, R);
+                return { ...data, pos, lvec };
+            };
+
+            const buildData = () => {
+                const preset = selPreset.value;
+                const a = +inpA.value;
+                const nx = parseInt(inpNx.value) | 0;
+                const ny = parseInt(inpNy.value) | 0;
+                const nz = parseInt(inpNz.value) | 0;
+                if (!(a > 0)) throw new Error('a must be >0');
+                if (nx <= 0 || ny <= 0 || nz <= 0) throw new Error('nx,ny,nz must be >0');
+                let data = null;
+                if (preset === 'NaCl(step)') {
+                    data = MoleculeSystem.genNaClStep({ a, nx, ny, nz, Q0: 0.7 });
+                } else if (preset.endsWith('(rocksalt)')) {
+                    const zA = (preset.startsWith('NaCl')) ? 11 : (preset.startsWith('KBr') ? 19 : 12);
+                    const zB = (preset.startsWith('NaCl')) ? 17 : (preset.startsWith('KBr') ? 35 : 8);
+                    const lvec = [[a, 0, 0], [0, a, 0], [0, 0, a]];
+                    const basis = [
+                        [0, 0, 0, zA], [0.5 * a, 0.5 * a, 0, zA], [0.5 * a, 0, 0.5 * a, zA], [0, 0.5 * a, 0.5 * a, zA],
+                        [0.5 * a, 0, 0, zB], [0, 0.5 * a, 0, zB], [0, 0, 0.5 * a, zB], [0.5 * a, 0.5 * a, 0.5 * a, zB]
+                    ];
+                    const basisPos = new Float32Array(basis.length * 3);
+                    const basisTypes = new Uint8Array(basis.length);
+                    for (let i = 0; i < basis.length; i++) {
+                        basisPos[i * 3] = basis[i][0];
+                        basisPos[i * 3 + 1] = basis[i][1];
+                        basisPos[i * 3 + 2] = basis[i][2];
+                        basisTypes[i] = basis[i][3];
+                    }
+                    data = MoleculeSystem.genReplicatedCell({ lvec, basisPos, basisTypes, nRep: [nx, ny, nz] });
+                } else if (preset === 'CaF2(fluorite)') {
+                    const zCa = 20;
+                    const zF = 9;
+                    const lvec = [[a, 0, 0], [0, a, 0], [0, 0, a]];
+                    const basis = [
+                        [0, 0, 0, zCa], [0, 0.5 * a, 0.5 * a, zCa], [0.5 * a, 0, 0.5 * a, zCa], [0.5 * a, 0.5 * a, 0, zCa],
+                        [0.25 * a, 0.25 * a, 0.25 * a, zF], [0.25 * a, 0.75 * a, 0.75 * a, zF], [0.75 * a, 0.25 * a, 0.75 * a, zF], [0.75 * a, 0.75 * a, 0.25 * a, zF],
+                        [0.75 * a, 0.75 * a, 0.75 * a, zF], [0.75 * a, 0.25 * a, 0.25 * a, zF], [0.25 * a, 0.75 * a, 0.25 * a, zF], [0.25 * a, 0.25 * a, 0.75 * a, zF]
+                    ];
+                    const basisPos = new Float32Array(basis.length * 3);
+                    const basisTypes = new Uint8Array(basis.length);
+                    for (let i = 0; i < basis.length; i++) {
+                        basisPos[i * 3] = basis[i][0];
+                        basisPos[i * 3 + 1] = basis[i][1];
+                        basisPos[i * 3 + 2] = basis[i][2];
+                        basisTypes[i] = basis[i][3];
+                    }
+                    data = MoleculeSystem.genReplicatedCell({ lvec, basisPos, basisTypes, nRep: [nx, ny, nz] });
+                } else if (preset === 'CaCO3(todo)') {
+                    throw new Error('CaCO3 preset not implemented yet (non-trivial basis). Use a custom unit cell (e.g. extended XYZ with Lattice=...) once supported.');
+                } else {
+                    throw new Error(`Preset not implemented: ${preset}`);
+                }
+                return applyMiller(data);
+            };
+
+            const applyToScene = (data, mode) => {
+                if (mode === 'replace') this.io.system.clear();
+                const offset = this.io.system.nAtoms;
+                this.io.system.addAtomsFromArrays(data.pos, data.types);
+                if (data.bonds && data.bonds.length) {
+                    for (const [a0, b0] of data.bonds) this.io.system.bonds.push([a0 + offset, b0 + offset]);
+                    this.io.system.updateNeighborList();
+                }
+                this.io.renderer.update();
+                window.logger.info(`Substrate generated: atoms=${this.io.system.nAtoms}`);
+            };
+
+            btnReplace.onclick = () => {
+                try { applyToScene(buildData(), 'replace'); } catch (e) { window.logger.error(String(e)); throw e; }
+            };
+            btnAppend.onclick = () => {
+                try { applyToScene(buildData(), 'append'); } catch (e) { window.logger.error(String(e)); throw e; }
+            };
+        }, { collapsible: true, open: false });
+
+        // --- Section: Builder - Polymers / Attachment ---
+        this.createSection(sidebar, 'Builder: Polymers', (container) => {
+            const mkLbl = (t) => { const d = document.createElement('div'); d.textContent = t; d.style.marginTop = '4px'; d.style.fontSize = '0.9em'; d.style.color = '#ccc'; return d; };
+
+            container.appendChild(mkLbl('Monomer library (JSON + mol2 files)'));
+
+            const btnLoadLib = document.createElement('button');
+            btnLoadLib.textContent = 'Load Library JSON...';
+            btnLoadLib.className = 'gui-btn';
+            container.appendChild(btnLoadLib);
+
+            const inpLib = document.createElement('input');
+            inpLib.type = 'file';
+            inpLib.accept = '.json,application/json';
+            inpLib.style.display = 'none';
+            container.appendChild(inpLib);
+
+            const lblLib = document.createElement('div');
+            lblLib.textContent = 'No library loaded';
+            lblLib.style.fontSize = '0.85em';
+            lblLib.style.color = '#aaa';
+            lblLib.style.marginTop = '2px';
+            container.appendChild(lblLib);
+
+            btnLoadLib.onclick = () => inpLib.click();
+            inpLib.onchange = async (e) => {
+                if (e.target.files.length <= 0) return;
+                const file = e.target.files[0];
+                const txt = await this.readFileText(file);
+                this.monomerLib = JSON.parse(txt);
+                if (!this.monomerLib || !this.monomerLib.monomers) throw new Error('Library JSON missing monomers[]');
+                lblLib.textContent = `Library: ${this.monomerLib.name || file.name} (monomers=${this.monomerLib.monomers.length})`;
+                window.logger.info(`Loaded library JSON: ${file.name}`);
+                inpLib.value = '';
+            };
+
+            const btnLoadMol2 = document.createElement('button');
+            btnLoadMol2.textContent = 'Load mol2 geometries...';
+            btnLoadMol2.className = 'gui-btn';
+            btnLoadMol2.style.marginTop = '4px';
+            container.appendChild(btnLoadMol2);
+
+            const inpMol2 = document.createElement('input');
+            inpMol2.type = 'file';
+            inpMol2.accept = '.mol2';
+            inpMol2.multiple = true;
+            inpMol2.style.display = 'none';
+            container.appendChild(inpMol2);
+
+            const lblMol2 = document.createElement('div');
+            lblMol2.textContent = 'mol2 loaded: 0';
+            lblMol2.style.fontSize = '0.85em';
+            lblMol2.style.color = '#aaa';
+            lblMol2.style.marginTop = '2px';
+            container.appendChild(lblMol2);
+
+            btnLoadMol2.onclick = () => inpMol2.click();
+            inpMol2.onchange = async (e) => {
+                if (e.target.files.length <= 0) return;
+                for (const file of e.target.files) {
+                    const txt = await this.readFileText(file);
+                    const parsed = MoleculeSystem.parseMol2(txt);
+                    this.monomerGeoms.set(file.name, parsed);
+                }
+                lblMol2.textContent = `mol2 loaded: ${this.monomerGeoms.size}`;
+                window.logger.info(`Loaded mol2 geometries: ${e.target.files.length}`);
+                inpMol2.value = '';
+            };
+
+            container.appendChild(mkLbl('Sequence'));
+
+            const inpSeq = document.createElement('input');
+            inpSeq.type = 'text';
+            inpSeq.className = 'gui-input';
+            inpSeq.placeholder = 'e.g. D3Gly6A';
+            container.appendChild(inpSeq);
+
+            const rowSeqBtn = document.createElement('div');
+            rowSeqBtn.className = 'gui-row';
+            rowSeqBtn.style.marginTop = '4px';
+            const btnSeqReplace = document.createElement('button');
+            btnSeqReplace.textContent = 'Build (Replace)';
+            btnSeqReplace.className = 'gui-btn';
+            const btnSeqAppend = document.createElement('button');
+            btnSeqAppend.textContent = 'Build (Append)';
+            btnSeqAppend.className = 'gui-btn';
+            btnSeqAppend.style.marginLeft = '4px';
+            rowSeqBtn.appendChild(btnSeqReplace);
+            rowSeqBtn.appendChild(btnSeqAppend);
+            container.appendChild(rowSeqBtn);
+
+            const buildMonomerMap = () => {
+                if (!this.monomerLib) throw new Error('No monomer library loaded');
+                const map = {};
+                for (const m of this.monomerLib.monomers) {
+                    if (!m.id) throw new Error('Monomer missing id');
+                    if (!m.file) throw new Error(`Monomer '${m.id}' missing file`);
+                    const parsed = this.monomerGeoms.get(m.file);
+                    if (!parsed) throw new Error(`Monomer '${m.id}' missing loaded geometry file '${m.file}'`);
+                    if (!m.anchors || !m.anchors.head || !m.anchors.tail) throw new Error(`Monomer '${m.id}' missing anchors.head/tail`);
+                    if (m.anchors.head.type !== 'index' || m.anchors.tail.type !== 'index') throw new Error(`Monomer '${m.id}': only anchors type='index' supported (v0)`);
+                    map[m.id] = { parsed, anchors: [m.anchors.head.value, m.anchors.tail.value] };
+                    if (m.aliases) for (const a of m.aliases) map[a] = map[m.id];
+                }
+                return map;
+            };
+
+            const applyPolymerToScene = (poly, mode) => {
+                const n = poly.nAtoms;
+                const pos = poly.pos.subarray(0, n * 3);
+                const types = poly.types.subarray(0, n);
+                const parsed = { pos, types, bonds: poly.bonds };
+                if (mode === 'replace') this.io.system.clear();
+                const off = this.io.system.appendParsedSystem(parsed);
+                if (off !== 0) this.io.system.updateNeighborList();
+                this.io.renderer.update();
+                window.logger.info(`Polymer built: atoms=${n} bonds=${poly.bonds.length}`);
+            };
+
+            const doBuildSeq = (mode) => {
+                const seq = inpSeq.value.trim();
+                if (!seq) throw new Error('Empty sequence');
+                const tokens = this.parseSequenceTokens(seq);
+                const monomers = buildMonomerMap();
+                const poly = MoleculeSystem.assemblePolymerFromTokens(tokens, monomers, { _0: 1, capacity: 200000 });
+                applyPolymerToScene(poly, mode);
+            };
+
+            btnSeqReplace.onclick = () => { try { doBuildSeq('replace'); } catch (e) { window.logger.error(String(e)); throw e; } };
+            btnSeqAppend.onclick = () => { try { doBuildSeq('append'); } catch (e) { window.logger.error(String(e)); throw e; } };
+
+            const hr = document.createElement('hr');
+            hr.style.borderColor = '#444';
+            hr.style.margin = '8px 0';
+            container.appendChild(hr);
+
+            container.appendChild(mkLbl('End-group attachment'));
+
+            const btnLoadEnd = document.createElement('button');
+            btnLoadEnd.textContent = 'Load Endgroup mol2...';
+            btnLoadEnd.className = 'gui-btn';
+            container.appendChild(btnLoadEnd);
+
+            const inpEnd = document.createElement('input');
+            inpEnd.type = 'file';
+            inpEnd.accept = '.mol2';
+            inpEnd.style.display = 'none';
+            container.appendChild(inpEnd);
+
+            const lblEnd = document.createElement('div');
+            lblEnd.textContent = 'No endgroup loaded';
+            lblEnd.style.fontSize = '0.85em';
+            lblEnd.style.color = '#aaa';
+            lblEnd.style.marginTop = '2px';
+            container.appendChild(lblEnd);
+
+            btnLoadEnd.onclick = () => inpEnd.click();
+            inpEnd.onchange = async (e) => {
+                if (e.target.files.length <= 0) return;
+                const file = e.target.files[0];
+                const txt = await this.readFileText(file);
+                this.endGroupParsed = MoleculeSystem.parseMol2(txt);
+                lblEnd.textContent = `Endgroup: ${file.name} (atoms=${this.endGroupParsed.types.length})`;
+                window.logger.info(`Loaded endgroup mol2: ${file.name}`);
+                inpEnd.value = '';
+            };
+
+            const rowMarker = document.createElement('div');
+            rowMarker.className = 'gui-row';
+            rowMarker.style.marginTop = '4px';
+            const mkSmall = (lab, val) => {
+                const sp = document.createElement('span');
+                sp.textContent = lab;
+                const inp = document.createElement('input');
+                inp.type = 'text';
+                inp.value = val;
+                inp.className = 'gui-input';
+                inp.style.width = '48px';
+                inp.style.flexGrow = '0';
+                inp.style.marginLeft = '2px';
+                rowMarker.appendChild(sp);
+                rowMarker.appendChild(inp);
+                return inp;
+            };
+            const inpMX = mkSmall('X', 'Se');
+            const inpMY = mkSmall('Y', 'Cl');
+            container.appendChild(rowMarker);
+
+            const btnAttachMarker = document.createElement('button');
+            btnAttachMarker.textContent = 'Attach by markers (all sites)';
+            btnAttachMarker.className = 'gui-btn';
+            btnAttachMarker.style.marginTop = '4px';
+            btnAttachMarker.onclick = () => {
+                if (!this.endGroupParsed) throw new Error('No endgroup loaded');
+                this.io.system.attachGroupByMarker(this.endGroupParsed, inpMX.value.trim(), inpMY.value.trim());
+                this.io.renderer.update();
+            };
+            container.appendChild(btnAttachMarker);
+
+            const hr2 = document.createElement('hr');
+            hr2.style.borderColor = '#444';
+            hr2.style.margin = '8px 0';
+            container.appendChild(hr2);
+
+            container.appendChild(mkLbl('Attach by picked direction (cap atom)'));
+
+            const rowIds = document.createElement('div');
+            rowIds.className = 'gui-row';
+            const inpCap = document.createElement('input');
+            inpCap.type = 'number';
+            inpCap.className = 'gui-input';
+            inpCap.placeholder = 'cap id';
+            inpCap.style.width = '56px';
+            inpCap.style.flexGrow = '0';
+            const inpBack = document.createElement('input');
+            inpBack.type = 'number';
+            inpBack.className = 'gui-input';
+            inpBack.placeholder = 'back id';
+            inpBack.style.width = '56px';
+            inpBack.style.flexGrow = '0';
+            rowIds.appendChild(document.createTextNode('cap '));
+            rowIds.appendChild(inpCap);
+            rowIds.appendChild(document.createTextNode(' back '));
+            rowIds.appendChild(inpBack);
+            container.appendChild(rowIds);
+
+            const btnUseSel = document.createElement('button');
+            btnUseSel.textContent = 'Use selection -> cap/back';
+            btnUseSel.className = 'gui-btn';
+            btnUseSel.style.marginTop = '4px';
+            btnUseSel.onclick = () => {
+                const ids = Array.from(this.io.system.selection).sort((a, b) => a - b);
+                if (ids.length <= 0) throw new Error('Nothing selected');
+                inpCap.value = String(ids[0]);
+                inpBack.value = (ids.length > 1) ? String(ids[1]) : '';
+            };
+            container.appendChild(btnUseSel);
+
+            const rowGeom = document.createElement('div');
+            rowGeom.className = 'gui-row';
+            rowGeom.style.marginTop = '4px';
+            const inpBond = document.createElement('input');
+            inpBond.type = 'number';
+            inpBond.step = '0.01';
+            inpBond.value = '1.50';
+            inpBond.className = 'gui-input';
+            inpBond.style.width = '62px';
+            inpBond.style.flexGrow = '0';
+            const inpTw = document.createElement('input');
+            inpTw.type = 'number';
+            inpTw.step = '1';
+            inpTw.value = '0';
+            inpTw.className = 'gui-input';
+            inpTw.style.width = '62px';
+            inpTw.style.flexGrow = '0';
+            rowGeom.appendChild(document.createTextNode('bond '));
+            rowGeom.appendChild(inpBond);
+            rowGeom.appendChild(document.createTextNode(' twist° '));
+            rowGeom.appendChild(inpTw);
+            container.appendChild(rowGeom);
+
+            const rowUp = document.createElement('div');
+            rowUp.className = 'gui-row';
+            rowUp.style.marginTop = '4px';
+            const mkF = (val) => { const i = document.createElement('input'); i.type = 'number'; i.step = '0.1'; i.value = String(val); i.className = 'gui-input'; i.style.width = '44px'; i.style.flexGrow = '0'; return i; };
+            const upx = mkF(0); const upy = mkF(0); const upz = mkF(1);
+            rowUp.appendChild(document.createTextNode('up '));
+            rowUp.appendChild(upx); rowUp.appendChild(upy); rowUp.appendChild(upz);
+            container.appendChild(rowUp);
+
+            const rowRefs = document.createElement('div');
+            rowRefs.className = 'gui-row';
+            rowRefs.style.marginTop = '4px';
+            const mkInt = (lbl, val) => { rowRefs.appendChild(document.createTextNode(lbl + ' ')); const i = document.createElement('input'); i.type = 'number'; i.step = '1'; i.value = String(val); i.className = 'gui-input'; i.style.width = '44px'; i.style.flexGrow = '0'; rowRefs.appendChild(i); return i; };
+            const gA = mkInt('gA', 1);
+            const gF = mkInt('gF', 2);
+            const gU = mkInt('gU', 0);
+            container.appendChild(rowRefs);
+
+            const btnAttachDir = document.createElement('button');
+            btnAttachDir.textContent = 'Attach (direction)';
+            btnAttachDir.className = 'gui-btn';
+            btnAttachDir.style.marginTop = '4px';
+            btnAttachDir.onclick = () => {
+                if (!this.endGroupParsed) throw new Error('No endgroup loaded');
+                const cap = parseInt(inpCap.value);
+                if (!(cap >= 0)) throw new Error('cap id missing');
+                const back = inpBack.value.trim() ? parseInt(inpBack.value) : undefined;
+                const up = [parseFloat(upx.value), parseFloat(upy.value), parseFloat(upz.value)];
+                const params = {
+                    backAtom: (back !== undefined) ? back : undefined,
+                    bondLen: parseFloat(inpBond.value),
+                    up,
+                    twistDeg: parseFloat(inpTw.value),
+                    groupAnchor: parseInt(gA.value),
+                    groupForwardRef: parseInt(gF.value),
+                    groupUpRef: parseInt(gU.value)
+                };
+                this.io.system.attachParsedByDirection(cap, this.endGroupParsed, params);
+                this.io.renderer.update();
+            };
+            container.appendChild(btnAttachDir);
+        }, { collapsible: true, open: false });
+
         // --- Section: Parameters ---
         this.createSection(sidebar, 'Parameters', (container) => {
             // Element Types
@@ -520,7 +1037,7 @@ export class GUI {
         });
     }
 
-    createSection(parent, title, contentFn) {
+    createSection(parent, title, contentFn, opts = null) {
         const section = document.createElement('div');
         section.className = 'gui-section';
 
@@ -529,16 +1046,29 @@ export class GUI {
         titleEl.textContent = title;
         section.appendChild(titleEl);
 
-        contentFn(section);
+        const content = document.createElement('div');
+        section.appendChild(content);
+
+        const collapsible = opts && opts.collapsible;
+        const openDefault = !(opts && (opts.open === false));
+        if (collapsible) {
+            titleEl.style.cursor = 'pointer';
+            content.style.display = openDefault ? 'block' : 'none';
+            titleEl.onclick = () => {
+                const isOpen = content.style.display !== 'none';
+                content.style.display = isOpen ? 'none' : 'block';
+            };
+        }
+
         parent.appendChild(section);
+        contentFn(content);
+        return { section, content, titleEl };
     }
 
     updateSelectionCount() {
-        const count = this.io.system.selection.size;
-        const ids = Array.from(this.io.system.selection).sort((a, b) => a - b).join(', ');
-        if (this.lblCount) this.lblCount.textContent = count;
-        if (this.inpSelection) this.inpSelection.value = ids;
-        window.logger.info(`Selection Updated: ${count} atoms`);
+        if (!this.lblCount) return;
+        const n = (this.io && this.io.system && this.io.system.selection) ? this.io.system.selection.size : 0;
+        this.lblCount.textContent = String(n);
     }
 
     onSelectionInputChange(value) {
