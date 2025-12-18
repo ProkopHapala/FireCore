@@ -131,7 +131,8 @@ export class Editor {
     }
 
     recalculateBonds() {
-        this.system.recalculateBonds();
+        const mm = (window.app && window.app.mmParams) ? window.app.mmParams : null;
+        this.system.recalculateBonds(mm);
         this.molRenderer.update();
         window.logger.info("Bonds Recalculated");
     }
@@ -179,9 +180,10 @@ export class Editor {
         let cx = 0, cy = 0, cz = 0;
         let count = 0;
         for (const id of this.system.selection) {
-            cx += this.system.pos[id * 3];
-            cy += this.system.pos[id * 3 + 1];
-            cz += this.system.pos[id * 3 + 2];
+            const i = this.system.getAtomIndex(id);
+            if (i < 0) continue;
+            const p = this.system.atoms[i].pos;
+            cx += p.x; cy += p.y; cz += p.z;
             count++;
         }
 
@@ -206,11 +208,10 @@ export class Editor {
         const inverseProxy = new THREE.Matrix4().copy(this.proxyObject.matrixWorld).invert();
 
         for (const id of this.system.selection) {
-            const vec = new THREE.Vector3(
-                this.system.pos[id * 3],
-                this.system.pos[id * 3 + 1],
-                this.system.pos[id * 3 + 2]
-            );
+            const i = this.system.getAtomIndex(id);
+            if (i < 0) continue;
+            const p = this.system.atoms[i].pos;
+            const vec = new THREE.Vector3(p.x, p.y, p.z);
             // Store local position relative to proxy
             vec.applyMatrix4(inverseProxy);
             this.initialAtomStates.push({ id: id, localPos: vec });
@@ -227,13 +228,9 @@ export class Editor {
             vec.copy(state.localPos);
             vec.applyMatrix4(proxyMatrix);
 
-            const i = state.id;
-            this.system.pos[i * 3] = vec.x;
-            this.system.pos[i * 3 + 1] = vec.y;
-            this.system.pos[i * 3 + 2] = vec.z;
+            this.system.setAtomPosById(state.id, vec.x, vec.y, vec.z);
         }
 
-        this.system.isDirty = true;
         this.molRenderer.update();
         this.molRenderer.update();
     }
@@ -350,12 +347,10 @@ export class Editor {
         let pickedId = -1;
 
         // Loop through all atoms
-        for (let i = 0; i < this.system.nAtoms; i++) {
-            const ax = this.system.pos[i * 3];
-            const ay = this.system.pos[i * 3 + 1];
-            const az = this.system.pos[i * 3 + 2];
-            // Reuse tempVec for center
-            this.tempVec.set(ax, ay, az);
+        const nAtoms = this.system.nAtoms | 0;
+        for (let i = 0; i < nAtoms; i++) {
+            const p = this.system.atoms[i].pos;
+            this.tempVec.set(p.x, p.y, p.z);
 
             const radius = 0.5;
 
@@ -363,7 +358,7 @@ export class Editor {
 
             if (t < minT && t > 0) {
                 minT = t;
-                pickedId = i;
+                pickedId = this.system.atoms[i].id;
             }
         }
 
@@ -460,45 +455,42 @@ export class Editor {
         // Optimization: Define action function outside loop or use separate loops
         // Separate loops is faster as it avoids function call overhead or condition check per atom
 
+        const nAtoms = this.system.nAtoms | 0;
         if (mode === 'subtract') {
-            for (let i = 0; i < this.system.nAtoms; i++) {
-                this.tempVec.set(
-                    this.system.pos[i * 3],
-                    this.system.pos[i * 3 + 1],
-                    this.system.pos[i * 3 + 2]
-                );
+            for (let i = 0; i < nAtoms; i++) {
+                const a = this.system.atoms[i];
+                const p = a.pos;
+                this.tempVec.set(p.x, p.y, p.z);
                 this.tempVec.project(this.camera);
                 const sx = (this.tempVec.x * 0.5 + 0.5) * width + rect.left;
                 const sy = (-(this.tempVec.y * 0.5) + 0.5) * height + rect.top;
 
                 if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) {
                     if (this.tempVec.z < 1.0) {
-                        this.system.selection.delete(i);
+                        this.system.selection.delete(a.id);
                         count++;
                     }
                 }
             }
         } else { // add (and replace which was converted to add)
-            for (let i = 0; i < this.system.nAtoms; i++) {
-                this.tempVec.set(
-                    this.system.pos[i * 3],
-                    this.system.pos[i * 3 + 1],
-                    this.system.pos[i * 3 + 2]
-                );
+            for (let i = 0; i < nAtoms; i++) {
+                const a = this.system.atoms[i];
+                const p = a.pos;
+                this.tempVec.set(p.x, p.y, p.z);
                 this.tempVec.project(this.camera);
                 const sx = (this.tempVec.x * 0.5 + 0.5) * width + rect.left;
                 const sy = (-(this.tempVec.y * 0.5) + 0.5) * height + rect.top;
 
                 if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) {
                     if (this.tempVec.z < 1.0) {
-                        this.system.selection.add(i);
+                        this.system.selection.add(a.id);
                         count++;
                     }
                 }
             }
         }
 
-        this.system.isDirty = true;
+        this.system.dirtyExport = true;
         this.molRenderer.update();
         this.molRenderer.update();
         this.updateGizmo(); // Update Gizmo Position

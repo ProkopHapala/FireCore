@@ -1,5 +1,6 @@
 import { logger } from '../../common_js/Logger.js';
 import { MoleculeSystem } from './MoleculeSystem.js';
+import { EditableMolecule } from './EditableMolecule.js';
 import { MMParams } from './MMParams.js';
 import { MoleculeRenderer } from './MoleculeRenderer.js';
 import { IO } from './IO.js';
@@ -109,15 +110,16 @@ class MolGUIApp {
             window.logger.error("OrbitControls not loaded!");
         }
 
-        // 5. Molecule System
-        this.system = new MoleculeSystem();
+        // 5. Molecule System (authoritative editable model) + packed buffer for renderer
+        this.system = new EditableMolecule();
+        this.packedSystem = new MoleculeSystem();
 
         // 5. MMParams (Load resources)
         this.mmParams = new MMParams();
         await this.mmParams.loadResources('../common_resources/ElementTypes.dat', '../common_resources/AtomTypes.dat');
 
-        // 6. Molecule Renderer (Pass loaded shaders and mmParams)
-        this.molRenderer = new MoleculeRenderer(this.scene, this.system, this.shaders, this.mmParams);
+        // 6. Molecule Renderer (renders packedSystem; syncs from EditableMolecule)
+        this.molRenderer = new MoleculeRenderer(this.scene, this.packedSystem, this.shaders, this.mmParams, this.system);
 
         // 7. IO
         this.io = new IO(this.system, this.molRenderer);
@@ -151,23 +153,17 @@ class MolGUIApp {
         };
 
         // Create Test Molecule (Water: H-O-H)
-        // O at 0,0,0
-        const o = this.system.addAtom(0, 0, 0, 8);
-        // H at 0.8, 0.6, 0
-        const h1 = this.system.addAtom(0.8, 0.6, 0, 1);
-        // H at -0.8, 0.6, 0
-        const h2 = this.system.addAtom(-0.8, 0.6, 0, 1);
-
+        const o  = this.system.addAtomZ(8, 0, 0, 0);
+        const h1 = this.system.addAtomZ(1, 0.8, 0.6, 0);
+        const h2 = this.system.addAtomZ(1, -0.8, 0.6, 0);
         this.system.addBond(o, h1);
         this.system.addBond(o, h2);
 
-        // Add some more atoms to test performance/visuals
         // Methane-like structure nearby
-        const c = this.system.addAtom(3, 0, 0, 6);
-        const h3 = this.system.addAtom(3, 1, 0, 1);
-        const h4 = this.system.addAtom(3, -0.5, 0.8, 1);
-        const h5 = this.system.addAtom(3, -0.5, -0.8, 1);
-
+        const c  = this.system.addAtomZ(6, 3, 0, 0);
+        const h3 = this.system.addAtomZ(1, 3, 1, 0);
+        const h4 = this.system.addAtomZ(1, 3, -0.5, 0.8);
+        const h5 = this.system.addAtomZ(1, 3, -0.5, -0.8);
         this.system.addBond(c, h3);
         this.system.addBond(c, h4);
         this.system.addBond(c, h5);

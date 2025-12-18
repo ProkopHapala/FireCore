@@ -622,11 +622,9 @@ export class GUI {
 
             const applyToScene = (data, mode) => {
                 if (mode === 'replace') this.io.system.clear();
-                const offset = this.io.system.nAtoms;
-                this.io.system.addAtomsFromArrays(data.pos, data.types);
+                const ids = this.io.system.addAtomsFromArrays(data.pos, data.types);
                 if (data.bonds && data.bonds.length) {
-                    for (const [a0, b0] of data.bonds) this.io.system.bonds.push([a0 + offset, b0 + offset]);
-                    this.io.system.updateNeighborList();
+                    for (const [a0, b0] of data.bonds) this.io.system.addBond(ids[a0 | 0], ids[b0 | 0]);
                 }
                 this.io.renderer.update();
                 window.logger.info(`Substrate generated: atoms=${this.io.system.nAtoms}`);
@@ -753,8 +751,7 @@ export class GUI {
                 const types = poly.types.subarray(0, n);
                 const parsed = { pos, types, bonds: poly.bonds };
                 if (mode === 'replace') this.io.system.clear();
-                const off = this.io.system.appendParsedSystem(parsed);
-                if (off !== 0) this.io.system.updateNeighborList();
+                this.io.system.appendParsedSystem(parsed);
                 this.io.renderer.update();
                 window.logger.info(`Polymer built: atoms=${n} bonds=${poly.bonds.length}`);
             };

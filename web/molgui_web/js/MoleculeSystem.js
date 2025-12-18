@@ -4,7 +4,7 @@ export class MoleculeSystem {
         this.nAtoms = 0;
 
         // Structure of Arrays (SoA)
-        this.pos = new Float32Array(this.capacity * 3); // x, y, z
+        this.pos   = new Float32Array(this.capacity * 3); // x, y, z
         this.types = new Uint8Array(this.capacity);     // element type (atomic number)
 
         // Bonds (Simple list for now, can be optimized later)
@@ -15,6 +15,11 @@ export class MoleculeSystem {
 
         // Selection
         this.selection = new Set();
+
+        // Optional stable atom IDs (for integration with EditableMolecule)
+        // If present, atomIds[i] is the stable ID of atom at index i.
+        this.atomIds = null;
+        this._nextAtomId = 1;
 
         // Neighbor List (Adjacency List)
         // Array of Set<int> or Array<int>
@@ -54,6 +59,11 @@ export class MoleculeSystem {
         this.pos[i * 3 + 1] = y;
         this.pos[i * 3 + 2] = z;
         this.types[i] = type;
+
+        if (this.atomIds) {
+            this.atomIds[i] = this._nextAtomId | 0;
+            this._nextAtomId = (this._nextAtomId + 1) | 0;
+        }
 
         // Initialize neighbor list for new atom
         if (this.neighborList.length <= i) {
@@ -116,7 +126,7 @@ export class MoleculeSystem {
                     rCut2 = rSum * rSum;
                 }
 
-                const dx = this.pos[i * 3] - this.pos[j * 3];
+                const dx = this.pos[i * 3    ] - this.pos[j * 3    ];
                 const dy = this.pos[i * 3 + 1] - this.pos[j * 3 + 1];
                 const dz = this.pos[i * 3 + 2] - this.pos[j * 3 + 2];
 
@@ -155,6 +165,7 @@ export class MoleculeSystem {
         // 2. Compact Arrays
         const newPos = new Float32Array(this.capacity * 3);
         const newTypes = new Uint8Array(this.capacity);
+        const newAtomIds = this.atomIds ? new Int32Array(this.capacity) : null;
 
         for (let i = 0; i < this.nAtoms; i++) {
             if (oldToNew[i] !== -1) {
@@ -163,11 +174,13 @@ export class MoleculeSystem {
                 newPos[newIdx * 3 + 1] = this.pos[i * 3 + 1];
                 newPos[newIdx * 3 + 2] = this.pos[i * 3 + 2];
                 newTypes[newIdx] = this.types[i];
+                if (newAtomIds) newAtomIds[newIdx] = this.atomIds[i];
             }
         }
 
         this.pos = newPos;
         this.types = newTypes;
+        if (newAtomIds) this.atomIds = newAtomIds;
 
         // 3. Rebuild Bonds
         const newBonds = [];
@@ -201,15 +214,17 @@ export class MoleculeSystem {
         }
         const newPos = new Float32Array(this.capacity * 3);
         const newTypes = new Uint8Array(this.capacity);
+        const newAtomIds = this.atomIds ? new Int32Array(this.capacity) : null;
         for (let i = 0; i < this.nAtoms; i++) {
             const j = oldToNew[i];
             if (j < 0) continue;
             const i3 = i * 3;
             const j3 = j * 3;
-            newPos[j3] = this.pos[i3];
+            newPos[j3    ] = this.pos[i3];
             newPos[j3 + 1] = this.pos[i3 + 1];
             newPos[j3 + 2] = this.pos[i3 + 2];
             newTypes[j] = this.types[i];
+            if (newAtomIds) newAtomIds[j] = this.atomIds[i];
         }
         const newBonds = [];
         for (const [a, b] of this.bonds) {
@@ -219,6 +234,7 @@ export class MoleculeSystem {
         }
         this.pos = newPos;
         this.types = newTypes;
+        if (newAtomIds) this.atomIds = newAtomIds;
         this.bonds = newBonds;
         this.nAtoms = newCount;
         const newSel = new Set();
@@ -236,12 +252,15 @@ export class MoleculeSystem {
         MoleculeSystem._log('info', `Resizing MoleculeSystem to ${newCapacity}`);
         const newPos = new Float32Array(newCapacity * 3);
         const newTypes = new Uint8Array(newCapacity);
+        const newAtomIds = this.atomIds ? new Int32Array(newCapacity) : null;
 
         newPos.set(this.pos);
         newTypes.set(this.types);
+        if (newAtomIds) newAtomIds.set(this.atomIds);
 
         this.pos = newPos;
         this.types = newTypes;
+        if (newAtomIds) this.atomIds = newAtomIds;
         this.capacity = newCapacity;
     }
 
@@ -249,6 +268,9 @@ export class MoleculeSystem {
         this.nAtoms = 0;
         this.bonds = [];
         this.isDirty = true;
+        if (this.atomIds) {
+            this._nextAtomId = 1;
+        }
     }
 
     static _log(level, msg) {

@@ -3,9 +3,10 @@ import { Draw3D } from '../../common_js/Draw3D.js';
 import { Logger } from '../../common_js/Logger.js';
 
 export class MoleculeRenderer extends MeshRenderer {
-    constructor(scene, system, shaders, mmParams) {
+    constructor(scene, system, shaders, mmParams, source = null) {
         super(scene, shaders, system.capacity);
         this.system = system;
+        this.source = source;
         this.mmParams = mmParams;
 
         this.axesHelper = null;
@@ -17,6 +18,9 @@ export class MoleculeRenderer extends MeshRenderer {
 
     update() {
         // Main update loop
+        if (this.source && (this.source.dirtyExport || this.source.dirtyTopo || this.source.dirtyGeom)) {
+            this.source.exportToMoleculeSystem(this.system);
+        }
         if (this.system && (this.system.capacity | 0) > (this.capacity | 0)) {
             this.ensureCapacity(this.system.capacity);
         }
@@ -68,6 +72,9 @@ export class MoleculeRenderer extends MeshRenderer {
     }
 
     updateSelection() {
+        if (this.source && this.source.dirtyExport) {
+            this.source.exportToMoleculeSystem(this.system);
+        }
         const selectedIDs = Array.from(this.system.selection);
         super.updateSelection(selectedIDs);
     }
