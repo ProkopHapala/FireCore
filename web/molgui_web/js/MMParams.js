@@ -61,9 +61,10 @@ export class MMParams {
         this.elementTypes = {}; // name -> ElementType
         this.atomTypes = {};    // name -> AtomType
         this.byAtomicNumber = {}; // iZ -> ElementType
+        this.bondTypes = {};    // key -> { l0, k, order, a, b }
     }
 
-    async loadResources(elementPath, atomPath) {
+    async loadResources(elementPath, atomPath, bondPath = null) {
         try {
             const eRes = await fetch(elementPath);
             const eText = await eRes.text();
@@ -72,6 +73,12 @@ export class MMParams {
             const aRes = await fetch(atomPath);
             const aText = await aRes.text();
             this.parseAtomTypes(aText);
+
+            if (bondPath) {
+                const bRes = await fetch(bondPath);
+                const bText = await bRes.text();
+                this.parseBondTypes(bText);
+            }
 
             window.logger.info("MMParams loaded successfully.");
         } catch (e) {
@@ -204,6 +211,55 @@ export class MMParams {
 
         window.logger.info(`Parsed ${Object.keys(this.atomTypes).length} atom types.`);
         return this.atomTypes;
+    }
+
+    parseBondTypes(content) {
+        const lines = String(content).replace(/\r/g, '').split('\n');
+        this.bondTypes = {};
+        let nOk = 0;
+        for (let line of lines) {
+            line = line.trim();
+            if (!line || line.startsWith('#')) continue;
+            const parts = line.split(/\s+/);
+            if (parts.length < 5) continue;
+            const a = parts[0];
+            const b = parts[1];
+            const order = parseInt(parts[2]) | 0;
+            const l0 = parseFloat(parts[3]);
+            const k = parseFloat(parts[4]);
+            if (!(order > 0) || !(l0 > 0)) continue;
+
+            const za = this.atomTypes[a] ? (this.atomTypes[a].iZ | 0) : 0;
+            const zb = this.atomTypes[b] ? (this.atomTypes[b].iZ | 0) : 0;
+            if (!(za > 0) || !(zb > 0)) continue;
+
+            const z1 = Math.min(za, zb) | 0;
+            const z2 = Math.max(za, zb) | 0;
+            const key = `${z1}|${z2}|${order}`;
+            const prev = this.bondTypes[key];
+            if (!prev || l0 < prev.l0) {
+                this.bondTypes[key] = { l0, k, order, a, b, z1, z2 };
+            }
+            nOk++;
+        }
+        window.logger.info(`Parsed ${Object.keys(this.bondTypes).length} bond types (from ${nOk} lines).`);
+        return this.bondTypes;
+    }
+
+    getBondL0(zA, zB) {
+        const z1 = Math.min(zA | 0, zB | 0) | 0;
+        const z2 = Math.max(zA | 0, zB | 0) | 0;
+        if (!(z1 > 0) || !(z2 > 0)) return null;
+        let best = null;
+        for (const key in this.bondTypes) {
+            const bt = this.bondTypes[key];
+            if ((bt.z1 | 0) !== z1 || (bt.z2 | 0) !== z2) continue;
+            if (!best) best = bt;
+            else if ((bt.order | 0) === 1 && (best.order | 0) !== 1) best = bt;
+            else if ((bt.order | 0) === (best.order | 0) && bt.l0 < best.l0) best = bt;
+            else if ((best.order | 0) !== 1 && bt.l0 < best.l0) best = bt;
+        }
+        return best ? best : null;
     }
 
     // --- Helpers for Renderer ---

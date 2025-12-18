@@ -1,5 +1,5 @@
 import { Vec3 } from "../../common_js/Vec3.js";
-import { MoleculeSystem } from "./MoleculeSystem.js";
+import { Mat3 } from "../../common_js/Mat3.js";
 
 export class Atom {
     constructor(id, i, Z = 6, x = 0, y = 0, z = 0) {
@@ -354,90 +354,42 @@ export class EditableMolecule {
 
     updateNeighborList() { /* adjacency is maintained incrementally in atoms[].bonds */ }
 
-    importFromMoleculeSystem(ms) {
-        this._assertUnlocked('importFromMoleculeSystem');
-        if (!ms || !ms.pos || !ms.types) throw new Error('importFromMoleculeSystem: ms.pos/types required');
-        const n = ms.nAtoms | 0;
-
-        this.atoms.length = 0;
-        this.bonds.length = 0;
-        this.fragments.length = 0;
-        this.id2atom.clear();
-        this.id2bond.clear();
-        this.selection.clear();
-
-        let maxId = this.lastAtomId | 0;
-        for (let i = 0; i < n; i++) {
-            const i3 = i * 3;
-            const Z = ms.types[i] | 0;
-            const id = (ms.atomIds && (ms.atomIds[i] | 0) > 0) ? (ms.atomIds[i] | 0) : (++this.lastAtomId);
-            if (id > maxId) maxId = id;
-            const a = new Atom(id, i, Z, ms.pos[i3], ms.pos[i3 + 1], ms.pos[i3 + 2]);
-            this.atoms.push(a);
-            this.id2atom.set(id, i);
-        }
-        this.lastAtomId = maxId;
-
-        for (let i = 0; i < ms.bonds.length; i++) {
-            const [ia, ib] = ms.bonds[i];
-            const a = this.atoms[ia];
-            const b = this.atoms[ib];
-            if (!a || !b) continue;
-            this.addBond(a.id, b.id);
-        }
-
-        if (ms.selection && ms.atomIds) {
-            for (const i of ms.selection) {
-                const id = ms.atomIds[i] | 0;
-                if (id > 0) this.selection.add(id);
-            }
-        }
-
-        this.dirtyTopo = false;
-        this.dirtyGeom = false;
-        this.dirtyFrags = true;
-        this.dirtyExport = true;
-    }
-
-    _runLegacyOnPacked(fn) {
-        const ms = new MoleculeSystem(Math.max(1024, this.atoms.length * 2));
-        this.exportToMoleculeSystem(ms);
-        fn(ms);
-        this.importFromMoleculeSystem(ms);
-    }
-
-    attachGroupByMarker(groupParsed, markerX = 'Xe', markerY = 'He', opts = {}) {
-        this._assertUnlocked('attachGroupByMarker');
-        this._runLegacyOnPacked((ms) => ms.attachGroupByMarker(groupParsed, markerX, markerY, opts));
-    }
-
-    attachParsedByDirection(capAtomId, groupParsed, params = {}) {
-        this._assertUnlocked('attachParsedByDirection');
-        this._runLegacyOnPacked((ms) => {
-            const iCap = ms.atomIds ? ms.atomIds.findIndex((id) => (id | 0) === (capAtomId | 0)) : -1;
-            if (iCap < 0) throw new Error(`attachParsedByDirection: capAtomId not found ${capAtomId}`);
-            ms.attachParsedByDirection(iCap, groupParsed, params);
-        });
-    }
+    attachGroupByMarker() { throw new Error('EditableMolecule.attachGroupByMarker(): not implemented yet (needs port from legacy MoleculeSystem)'); }
+    attachParsedByDirection() { throw new Error('EditableMolecule.attachParsedByDirection(): not implemented yet (needs port from legacy MoleculeSystem)'); }
 
     appendParsedSystem(other, opts = {}) {
         if (!other || !other.pos || !other.types) throw new Error('appendParsedSystem: other must have pos/types');
         const n = other.types.length | 0;
-        const pos = (opts.pos !== undefined) ? opts.pos : [0, 0, 0];
-        const rot = (opts.rot !== undefined) ? opts.rot : null; // 3x3 row-major
+        const pos = (opts.pos !== undefined) ? opts.pos : new Vec3(0, 0, 0);
+        const rot = (opts.rot !== undefined) ? opts.rot : null;
+        const bPosVec = (pos instanceof Vec3);
+        if (!bPosVec && !(Array.isArray(pos) && pos.length >= 3)) throw new Error('appendParsedSystem: opts.pos must be Vec3 or [x,y,z]');
+        const px = bPosVec ? pos.x : pos[0];
+        const py = bPosVec ? pos.y : pos[1];
+        const pz = bPosVec ? pos.z : pos[2];
+
+        const bRotMat3 = (rot instanceof Mat3);
+        const bRotFlat = (!!rot && !bRotMat3 && (rot.length === 9));
+        if (rot && !bRotMat3 && !bRotFlat) throw new Error('appendParsedSystem: opts.rot must be Mat3 or flat[9]');
+        const tmp = new Vec3();
+        const tmp2 = new Vec3();
         const ids = new Array(n);
         for (let i = 0; i < n; i++) {
             const i3 = i * 3;
             let x = other.pos[i3];
             let y = other.pos[i3 + 1];
             let z = other.pos[i3 + 2];
-            if (rot) {
+            if (bRotMat3) {
+                tmp.set(x, y, z);
+                rot.mulVec(tmp, tmp2);
+                x = tmp2.x; y = tmp2.y; z = tmp2.z;
+            } else if (bRotFlat) {
                 const rx = rot[0] * x + rot[1] * y + rot[2] * z;
                 const ry = rot[3] * x + rot[4] * y + rot[5] * z;
                 const rz = rot[6] * x + rot[7] * y + rot[8] * z;
                 x = rx; y = ry; z = rz;
             }
-            ids[i] = this.addAtom(x + pos[0], y + pos[1], z + pos[2], other.types[i]);
+            ids[i] = this.addAtom(x + px, y + py, z + pz, other.types[i]);
         }
         if (other.bonds && other.bonds.length) {
             for (const [a0, b0] of other.bonds) {
@@ -526,4 +478,132 @@ export class EditableMolecule {
         this.dirtyGeom = false;
         this.dirtyExport = false;
     }
+
+    toXYZString(opts = {}) {
+        const qs = opts.qs || null;
+        const bQ = !!qs;
+        const lvec = (opts.lvec !== undefined) ? opts.lvec : (this.lvec || null);
+        const out = [];
+        out.push(String(this.atoms.length));
+        if (lvec && lvec.length === 3) {
+            const a = lvec[0], b = lvec[1], c = lvec[2];
+            out.push(`lvs ${a.x} ${a.y} ${a.z}   ${b.x} ${b.y} ${b.z}   ${c.x} ${c.y} ${c.z}`);
+        } else {
+            out.push('Generated by EditableMolecule');
+        }
+        for (let i = 0; i < this.atoms.length; i++) {
+            const at = this.atoms[i];
+            const sym = EditableMolecule.Z_TO_SYMBOL[at.Z] || 'X';
+            const x = at.pos.x.toFixed(6);
+            const y = at.pos.y.toFixed(6);
+            const z = at.pos.z.toFixed(6);
+            if (bQ) out.push(`${sym} ${x} ${y} ${z} ${(qs[i] !== undefined) ? qs[i] : 0.0}`);
+            else out.push(`${sym} ${x} ${y} ${z}`);
+        }
+        return out.join('\n') + '\n';
+    }
+
+    static normalizeSymbol(s) {
+        if (!s) return s;
+        const a = s.trim();
+        if (a.length === 1) return a.toUpperCase();
+        return a[0].toUpperCase() + a.slice(1).toLowerCase();
+    }
+
+    static symbolToZ(sym) {
+        const s = EditableMolecule.normalizeSymbol(sym);
+        const z = EditableMolecule.SYMBOL_TO_Z[s];
+        if (!z) throw new Error(`symbolToZ: unknown symbol '${sym}'`);
+        return z;
+    }
+
+    static asZ(x) {
+        if (typeof x === 'number') return x | 0;
+        if (typeof x !== 'string') throw new Error(`asZ: unsupported type ${typeof x}`);
+        return EditableMolecule.symbolToZ(x);
+    }
+
+    static parseMol2(text) {
+        const lines = text.split(/\r?\n/);
+        let mode = '';
+        let lvec = null;
+        const apos = [];
+        const types = [];
+        const bonds = [];
+        for (let il = 0; il < lines.length; il++) {
+            const line = lines[il].trim();
+            if (!line) continue;
+            if (line.startsWith('@lvs')) {
+                const p = line.split(/\s+/).slice(1).map(parseFloat);
+                if (p.length >= 9) {
+                    lvec = [
+                        new Vec3(p[0], p[1], p[2]),
+                        new Vec3(p[3], p[4], p[5]),
+                        new Vec3(p[6], p[7], p[8])
+                    ];
+                }
+                continue;
+            }
+            if (line.startsWith('@<TRIPOS>ATOM')) { mode = 'ATOM'; continue; }
+            if (line.startsWith('@<TRIPOS>BOND')) { mode = 'BOND'; continue; }
+            if (line.startsWith('@<TRIPOS>')) { mode = ''; continue; }
+            if (mode === 'ATOM') {
+                const parts = line.split(/\s+/);
+                if (parts.length < 6) continue;
+                const sym = EditableMolecule.normalizeSymbol(parts[1].replace(/[^A-Za-z].*$/, ''));
+                const x = parseFloat(parts[2]);
+                const y = parseFloat(parts[3]);
+                const z = parseFloat(parts[4]);
+                const Z = EditableMolecule.symbolToZ(sym);
+                apos.push(x, y, z);
+                types.push(Z);
+            } else if (mode === 'BOND') {
+                const parts = line.split(/\s+/);
+                if (parts.length < 4) continue;
+                const a = (parseInt(parts[1]) | 0) - 1;
+                const b = (parseInt(parts[2]) | 0) - 1;
+                if (a >= 0 && b >= 0) bonds.push([a, b]);
+            }
+        }
+        return {
+            pos: new Float32Array(apos),
+            types: new Uint8Array(types),
+            bonds,
+            lvec
+        };
+    }
+
+    static parseXYZ(text) {
+        const lines = text.split(/\r?\n/);
+        let i0 = 0;
+        if (lines.length >= 2) i0 = 2;
+        const pos = [];
+        const types = [];
+        for (let i = i0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+            const parts = line.split(/\s+/);
+            if (parts.length < 4) continue;
+            const sym = parts[0];
+            const x = parseFloat(parts[1]);
+            const y = parseFloat(parts[2]);
+            const z = parseFloat(parts[3]);
+            if (!isFinite(x) || !isFinite(y) || !isFinite(z)) continue;
+            const Z = EditableMolecule.asZ(sym);
+            pos.push(x, y, z);
+            types.push(Z);
+        }
+        return { pos: new Float32Array(pos), types: new Uint8Array(types), bonds: [], lvec: null };
+    }
+
+    // These are intentionally small; expand only when needed.
+    static SYMBOL_TO_Z = {
+        H: 1, He: 2, C: 6, N: 7, O: 8, F: 9, Na: 11, Mg: 12, Al: 13, Si: 14, P: 15, S: 16, Cl: 17, K: 19, Ca: 20,
+        Fe: 26, Cu: 29, Zn: 30, Se: 34, Br: 35, I: 53, Xe: 54
+    };
+
+    static Z_TO_SYMBOL = {
+        1: 'H', 2: 'He', 6: 'C', 7: 'N', 8: 'O', 9: 'F', 11: 'Na', 12: 'Mg', 13: 'Al', 14: 'Si', 15: 'P', 16: 'S', 17: 'Cl',
+        19: 'K', 20: 'Ca', 26: 'Fe', 29: 'Cu', 30: 'Zn', 34: 'Se', 35: 'Br', 53: 'I', 54: 'Xe'
+    };
 }

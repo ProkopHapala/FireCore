@@ -26,6 +26,8 @@ export class Editor {
         this.gizmo = null;
         this.gizmoMode = 'translate'; // translate, rotate, scale
         this.selectionLocked = false;
+        this.gizmoUserEnabled = true;
+        this.gizmoPointerActive = false;
 
         this.selectedElement = 6; // Default Carbon
         this.selectedAtomType = 'C';
@@ -37,9 +39,14 @@ export class Editor {
 
         if (THREE.TransformControls) {
             this.gizmo = new THREE.TransformControls(this.camera, this.renderer.domElement);
-            this.gizmo.addEventListener('change', () => this.onGizmoDragUpdate());
+            if (this.gizmo.setSize) this.gizmo.setSize(0.5);
+            this.gizmo.addEventListener('change', () => {
+                this.onGizmoDragUpdate();
+                if (window.app && window.app.requestRender) window.app.requestRender();
+            });
             this.gizmo.addEventListener('dragging-changed', (event) => {
                 const isDragging = event.value;
+                this.gizmoPointerActive = isDragging;
                 // Disable OrbitControls when dragging gizmo
                 if (window.app && window.app.controls) {
                     window.app.controls.enabled = !isDragging;
@@ -50,6 +57,9 @@ export class Editor {
                 } else {
                     this.initialAtomStates = null; // Clear state on drag end
                 }
+
+                // Render-on-demand needs an explicit redraw on drag start/end
+                if (window.app && window.app.requestRender) window.app.requestRender();
             });
             this.scene.add(this.gizmo);
             this.gizmo.attach(this.proxyObject);
@@ -62,6 +72,27 @@ export class Editor {
         this.initEvents();
     }
 
+    isPointerOnGizmo(e) {
+        if (!this.gizmo || !this.gizmo.visible || !this.gizmo.enabled) return false;
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        this.mouse.set(ndcX, ndcY);
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+        const hits = this.raycaster.intersectObject(this.gizmo, true);
+        if (!hits || hits.length === 0) return false;
+
+        // TransformControls contains large helper / interaction planes that can be hit
+        // even when user is not aiming at the gizmo. Only treat it as "on gizmo" if
+        // we hit an actual axis/plane handle.
+        const HANDLE_NAMES = new Set(['X', 'Y', 'Z', 'XY', 'YZ', 'XZ', 'XYZ', 'E']);
+        for (let i = 0; i < hits.length; i++) {
+            const n = hits[i].object && hits[i].object.name;
+            if (n && HANDLE_NAMES.has(n)) return true;
+        }
+        return false;
+    }
+
     initEvents() {
         const canvas = this.renderer.domElement;
         // console.log(`[Editor] InitEvents. Window Size: ${window.innerWidth}x${window.innerHeight}`);
@@ -70,7 +101,8 @@ export class Editor {
         // But we attach to document/window, while Gizmo attaches to canvas.
         // If we use capture: false (bubbling), Gizmo (on canvas) fires first, then bubble to document.
         // So removing capture: true is correct.
-        canvas.addEventListener('pointerdown', this.onMouseDown.bind(this));
+        // Use capture so TransformControls cannot swallow pointerdown before selection logic sees it.
+        canvas.addEventListener('pointerdown', this.onMouseDown.bind(this), { capture: true });
         window.addEventListener('pointermove', this.onMouseMove.bind(this));
         window.addEventListener('pointerup', this.onMouseUp.bind(this));
 
@@ -106,6 +138,7 @@ export class Editor {
         this.updateGizmo();
         if (this.onSelectionChange) this.onSelectionChange();
         window.logger.info("Selection Cleared");
+        if (window.app && window.app.requestRender) window.app.requestRender();
     }
 
     deleteSelection() {
@@ -128,6 +161,7 @@ export class Editor {
         this.molRenderer.update(); // Double update to ensure buffers are swapped/cleared if needed
         this.updateGizmo();
         if (this.onSelectionChange) this.onSelectionChange();
+        if (window.app && window.app.requestRender) window.app.requestRender();
     }
 
     recalculateBonds() {
@@ -135,6 +169,7 @@ export class Editor {
         this.system.recalculateBonds(mm);
         this.molRenderer.update();
         window.logger.info("Bonds Recalculated");
+        if (window.app && window.app.requestRender) window.app.requestRender();
     }
 
     addAtom() {
@@ -160,6 +195,8 @@ export class Editor {
         this.system.select(id, 'replace');
         this.updateGizmo();
         this.molRenderer.update();
+
+        if (window.app && window.app.requestRender) window.app.requestRender();
 
         window.logger.info(`Added atom ${id} (Type: ${type})`);
     }
@@ -248,8 +285,19 @@ export class Editor {
         // ONLY Allow Left Mouse Button (0) for Selection/Editor
         if (e.button !== 0) return;
 
-        // Fix: Do not start selection if dragging gizmo
-        if (this.gizmo && this.gizmo.dragging) return;
+        // Default: any normal click should re-enable selection handling
+        // (avoid getting stuck in gizmoPointerActive due to missed events).
+        this.gizmoPointerActive = false;
+
+        // If clicking on TransformControls gizmo, do NOT start selection/box-drag.
+        // TransformControls needs to own the pointer stream.
+        if (this.isPointerOnGizmo(e)) {
+            this.gizmoPointerActive = true;
+            return;
+        }
+
+        // If gizmo is currently active, don't start selection
+        if (this.gizmoPointerActive) return;
 
         // Fix: Check Selection Lock
         if (this.selectionLocked) return;
@@ -265,6 +313,7 @@ export class Editor {
     }
 
     onMouseMove(e) {
+        if (this.gizmoPointerActive) return;
         if (!this.isDragging) return;
 
         const dx = e.clientX - this.startPos.x;
@@ -293,6 +342,12 @@ export class Editor {
 
     onMouseUp(e) {
         // console.log(`[Editor] MouseUp: Button=${e.button} Dragging=${this.isDragging}`);
+        if (this.gizmoPointerActive) {
+            // If TransformControls was active for this pointer sequence, let it finish.
+            // Clear here to avoid getting stuck if we missed dragging-changed.
+            this.gizmoPointerActive = false;
+            return;
+        }
         window.lastMouseUpEvent = {
             button: e.button,
             clientX: e.clientX,
@@ -303,6 +358,9 @@ export class Editor {
         if (!this.isDragging) return;
         this.isDragging = false;
         this.selectionBox.style.display = 'none';
+
+        // Ensure gizmo state cannot block subsequent selection
+        this.gizmoPointerActive = false;
 
         const dx = e.clientX - this.startPos.x;
         const dy = e.clientY - this.startPos.y;

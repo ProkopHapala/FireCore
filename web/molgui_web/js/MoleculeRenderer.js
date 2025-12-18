@@ -2,6 +2,40 @@ import { MeshRenderer } from '../../common_js/MeshRenderer.js';
 import { Draw3D } from '../../common_js/Draw3D.js';
 import { Logger } from '../../common_js/Logger.js';
 
+export class PackedMolecule {
+    constructor(capacity = 1024) {
+        this.capacity = capacity | 0;
+        this.nAtoms = 0;
+        this.pos = new Float32Array(this.capacity * 3);
+        this.types = new Uint8Array(this.capacity);
+        this.bonds = [];
+        this.selection = new Set();
+        this.atomIds = new Int32Array(this.capacity);
+        this.isDirty = true;
+    }
+
+    resize(newCapacity) {
+        newCapacity = newCapacity | 0;
+        if (newCapacity <= (this.capacity | 0)) return;
+        const newPos = new Float32Array(newCapacity * 3);
+        const newTypes = new Uint8Array(newCapacity);
+        const newAtomIds = new Int32Array(newCapacity);
+        newPos.set(this.pos);
+        newTypes.set(this.types);
+        newAtomIds.set(this.atomIds);
+        this.pos = newPos;
+        this.types = newTypes;
+        this.atomIds = newAtomIds;
+        this.capacity = newCapacity;
+        this.isDirty = true;
+    }
+
+    setBonds(bonds) {
+        this.bonds = bonds || [];
+        this.isDirty = true;
+    }
+}
+
 export class MoleculeRenderer extends MeshRenderer {
     constructor(scene, system, shaders, mmParams, source = null) {
         super(scene, shaders, system.capacity);

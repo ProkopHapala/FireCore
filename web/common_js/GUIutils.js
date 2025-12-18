@@ -4,6 +4,87 @@
 
 export const GUIutils = {
 
+    el: function(parent, tag, props = null, style = null) {
+        const el = document.createElement(tag);
+        if (props) {
+            if (props.className !== undefined) el.className = props.className;
+            if (props.text !== undefined) el.textContent = props.text;
+            if (props.html !== undefined) el.innerHTML = props.html;
+            if (props.type !== undefined) el.type = props.type;
+            if (props.value !== undefined) el.value = props.value;
+            if (props.placeholder !== undefined) el.placeholder = props.placeholder;
+            if (props.checked !== undefined) el.checked = props.checked;
+            if (props.min !== undefined) el.min = props.min;
+            if (props.max !== undefined) el.max = props.max;
+            if (props.step !== undefined) el.step = props.step;
+            if (props.attrs) for (const k in props.attrs) el.setAttribute(k, props.attrs[k]);
+            if (props.onchange) el.onchange = props.onchange;
+            if (props.oninput) el.oninput = props.oninput;
+            if (props.onclick) el.onclick = props.onclick;
+        }
+        if (style) for (const k in style) el.style[k] = style[k];
+        if (parent) parent.appendChild(el);
+        return el;
+    },
+
+    div: function(parent, className = null, style = null) { return this.el(parent, 'div', className ? { className } : null, style); },
+    row: function(parent, style = null) { return this.el(parent, 'div', { className: 'gui-row' }, style); },
+    span: function(parent, text = '', style = null) { return this.el(parent, 'span', { text }, style); },
+    btn: function(parent, text, onclick = null, style = null, className = 'gui-btn') { return this.el(parent, 'button', { className, text, onclick }, style); },
+    input: function(parent, opts = null, style = null) { return this.el(parent, 'input', opts, style); },
+    num: function(parent, value, opts = null, style = null) {
+        const o = opts ? { ...opts } : {};
+        o.type = 'number';
+        if (value !== undefined) o.value = String(value);
+        if (!o.className) o.className = 'gui-input';
+        return this.el(parent, 'input', o, style);
+    },
+    textInput: function(parent, value, opts = null, style = null) {
+        const o = opts ? { ...opts } : {};
+        o.type = 'text';
+        if (value !== undefined) o.value = String(value);
+        if (!o.className) o.className = 'gui-input';
+        return this.el(parent, 'input', o, style);
+    },
+    range: function(parent, value, min, max, step, oninput = null, style = null) {
+        return this.el(parent, 'input', { type: 'range', className: 'gui-input', value: String(value), min: String(min), max: String(max), step: String(step), oninput }, style);
+    },
+    selectList: function(parent, items, selected = null, onchange = null, style = null, className = 'gui-select') {
+        const sel = this.el(parent, 'select', { className, onchange }, style);
+        for (const it of items) {
+            const opt = document.createElement('option');
+            opt.value = it;
+            opt.textContent = it;
+            if (selected !== null && it === selected) opt.selected = true;
+            sel.appendChild(opt);
+        }
+        return sel;
+    },
+
+    setSelectOptions: function(sel, items, opts = null) {
+        sel.innerHTML = '';
+        const selectedValue = opts && (opts.selectedValue !== undefined) ? opts.selectedValue : undefined;
+        const selectFirst = opts && opts.selectFirst;
+        let didSelect = false;
+        for (let i = 0; i < items.length; i++) {
+            const it = items[i];
+            const opt = document.createElement('option');
+            opt.value = (it && (it.value !== undefined)) ? it.value : String(it);
+            opt.textContent = (it && (it.text !== undefined)) ? it.text : String(it);
+            const shouldSelect = (it && it.selected) || (selectedValue !== undefined && opt.value == selectedValue);
+            if (shouldSelect && !didSelect) { opt.selected = true; didSelect = true; }
+            sel.appendChild(opt);
+        }
+        if (!didSelect && selectFirst && sel.options.length > 0) sel.options[0].selected = true;
+        return sel;
+    },
+    labelCheck: function(parent, text, checked = false, onchange = null, style = null, className = 'gui-checkbox-label') {
+        const lbl = this.el(parent, 'label', { className }, style);
+        const chk = this.el(lbl, 'input', { type: 'checkbox', checked, onchange });
+        lbl.appendChild(document.createTextNode(text));
+        return { label: lbl, input: chk };
+    },
+
     /**
      * Create a container div with flex layout
      */
@@ -49,6 +130,24 @@ export const GUIutils = {
 
         if (parent) parent.appendChild(input);
         return input;
+    },
+
+    /**
+     * Create a textarea with reasonable defaults
+     */
+    textArea: function(parent, value = '', opts = null) {
+        const ta = document.createElement('textarea');
+        ta.value = value;
+        ta.className = (opts && opts.className) ? opts.className : 'gui-textarea';
+        ta.style.display = (opts && (opts.display !== undefined)) ? opts.display : 'none';
+        ta.style.height = (opts && opts.height) ? opts.height : '100px';
+        ta.style.width = (opts && opts.width) ? opts.width : '100%';
+        ta.style.marginTop = (opts && (opts.marginTop !== undefined)) ? opts.marginTop : '5px';
+        ta.style.fontSize = (opts && opts.fontSize) ? opts.fontSize : '0.8em';
+        ta.style.fontFamily = (opts && opts.fontFamily) ? opts.fontFamily : 'monospace';
+        if (opts && opts.placeholder) ta.placeholder = opts.placeholder;
+        if (parent) parent.appendChild(ta);
+        return ta;
     },
 
     /**

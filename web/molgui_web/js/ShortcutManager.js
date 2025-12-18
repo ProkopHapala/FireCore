@@ -1,13 +1,11 @@
 export class ShortcutManager {
     constructor(editor) {
-        console.log("[ShortcutManager] Constructor called");
         this.editor = editor;
         this.shortcuts = {};
         this.init();
     }
 
     init() {
-        console.log("[ShortcutManager] Init called - attaching listener");
         window.addEventListener('keydown', this.onKeyDown.bind(this));
 
         // Define default shortcuts
@@ -27,18 +25,22 @@ export class ShortcutManager {
     }
 
     onKeyDown(e) {
-        // Ignore if typing in an input field
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        // Ignore only when user is actively typing/editing text.
+        // Using document.activeElement is more robust than event target,
+        // because listeners are on window.
+        const ae = document.activeElement;
+        const tag = ae ? ae.tagName : '';
+        const isEditable = (ae && (ae.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'));
+        if (isEditable) return;
 
         const key = e.key.toLowerCase();
-
-        // Emergency Debug
-        console.log(`[ShortcutManager] RAW KEYDOWN: ${e.key}`);
 
         window.logger.debug(`[ShortcutManager] Key pressed: '${e.key}' (mapped to '${key}')`);
 
         if (this.shortcuts[key]) {
             window.logger.info(`[ShortcutManager] Executing action: ${this.shortcuts[key].description}`);
+            // Prevent browser default actions (esp. Backspace navigation)
+            if (key === 'delete' || key === 'backspace') e.preventDefault();
             this.shortcuts[key].action();
         } else {
             window.logger.debug(`[ShortcutManager] No shortcut found for '${key}'`);

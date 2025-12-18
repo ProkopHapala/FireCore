@@ -84,7 +84,7 @@ export class MeshRenderer {
 
             // Per-mesh uniform blocks so we can scale atoms and selection
             // independently while still sharing common texture uniforms.
-            const atomUniforms = { ...this.commonUniforms, uPointScale: { value: 1.0 } };
+            const atomUniforms = { ...this.commonUniforms, uPointScale: { value: 1.0 }, uAlpha: { value: 1.0 } };
 
             // Main atom mesh: uses atomGeo
             this.atomMesh = Draw3D.createTextureBasedInstancedMesh(
@@ -109,7 +109,7 @@ export class MeshRenderer {
             // Selection mesh: reuse same shaders but its OWN cloned quad geometry
             // and its own uniform block, so its uPointScale and instance
             // attributes are fully independent from the main atom mesh.
-            const selUniforms = { ...this.commonUniforms, uPointScale: { value: 1.2 } };
+            const selUniforms = { ...this.commonUniforms, uPointScale: { value: 1.08 }, uAlpha: { value: 0.22 } };
             const selGeo = atomGeo.clone();
             this.selectionMesh = Draw3D.createTextureBasedInstancedMesh(
                 this.capacity,
@@ -121,16 +121,19 @@ export class MeshRenderer {
             const selColors = new Float32Array(this.capacity * 3);
             const selScales = new Float32Array(this.capacity);
             for (let i = 0; i < this.capacity; i++) {
-                // Bright yellow for selection
-                selColors[i * 3] = 1.0;
-                selColors[i * 3 + 1] = 1.0;
-                selColors[i * 3 + 2] = 0.0;
+                // Light gray/white overlay for selection
+                selColors[i * 3] = 0.95;
+                selColors[i * 3 + 1] = 0.95;
+                selColors[i * 3 + 2] = 0.95;
                 selScales[i] = 0.0; // Hidden until selected
             }
             this.selectionMesh.geometry.setAttribute('instanceColor', new THREE.InstancedBufferAttribute(selColors, 3));
             this.selectionMesh.geometry.setAttribute('instanceScale', new THREE.InstancedBufferAttribute(selScales, 1));
             this.selectionMesh.renderOrder = 998; // Draw above atoms but below labels
             this.selectionMesh.visible = true;
+            this.selectionMesh.material.transparent = true;
+            this.selectionMesh.material.depthWrite = false;
+            this.selectionMesh.material.depthTest = true;
             this.scene.add(this.selectionMesh);
         }
 

@@ -44,6 +44,14 @@ kept for reference only.
 ### 1.4 Polymer-on-Surface Editor (Planned)
 
 - [ ] **Crystallography Engine** – unit cell import, surface cleavage, step/terrace generator.
+    - [x] Unit cell import from CIF (preset + file load)
+    - [x] Optional symmetry expansion (CIF `_symmetry_equiv_pos_as_xyz`)
+    - [x] Periodic crystal replication (nx,ny,nz) + optional Miller alignment `(h,k,l)->z`
+    - [x] Periodic bonds from `BondTypes.dat` for full crystals (basis + 26 neighbor images)
+    - [x] Miller slab cut by `cmin/cmax` in Å (cell-overlap pruning)
+    - [ ] Slab bonds (slab cut currently disables bond generation)
+    - [ ] Optional in-plane twist control ("up" vector) after aligning normal to Z
+    - [ ] Bond order/type propagation from `BondTypes.dat`
 - [ ] **Lattice Matcher** – commensurability solver and visual debugger along chosen surface directions.
 - [ ] **Monomer Library & Sequencer** – monomer prefabs with head/tail/up anchors, sequence editor for heterogeneous chains.
 - [ ] **Curve & Frame System** – spline paths + robust frame transport along curves/step edges.
@@ -61,10 +69,9 @@ kept for reference only.
   - Sets up scene, orthographic camera, renderer, `OrbitControls`.
   - Loads shaders from `../common_resources/shaders/` (atoms, bonds, selection, labels).
   - Instantiates:
-    - `MoleculeSystem`
-    - `MeshRenderer` (via `MoleculeRenderer` wrapper)
+    - `EditableMolecule` (authoritative model)
+    - `PackedMolecule` + `MeshRenderer` (via `MoleculeRenderer` wrapper)
     - `Editor` (selection + gizmo)
-    - `IO` (XYZ I/O)
     - `GUI` (sidebar)
     - `ShortcutManager`
 
@@ -136,9 +143,10 @@ kept for reference only.
   - Controls label mode (ID / element / type).
 
 - `MMParams.js`
-  - Parses `ElementTypes.dat` and `AtomTypes.dat` from `common_resources`.
+  - Parses `ElementTypes.dat`, `AtomTypes.dat`, and `BondTypes.dat` from `common_resources`.
   - Builds lookups:
     - `elementTypes` (by name), `byAtomicNumber[iZ]`, `atomTypes`.
+  - Provides bond-length lookup from `BondTypes.dat` (used for crystal bond building).
 
 - `Editor.js`
   - Handles pointer events for:
@@ -148,7 +156,7 @@ kept for reference only.
   - Coordinates with `MoleculeSystem` + `MoleculeRenderer`.
 
 - `IO.js`
-  - `parseXYZ`, `loadXYZString`, `loadXYZ(file)` and `saveFile()`.
+  - Deprecated (XYZ parsing/export lives in `EditableMolecule.js`).
 
 - `GUI.js`
   - Builds sidebar:
@@ -224,7 +232,10 @@ For full derivations and pseudocode see:
 ### 5.1 Crystallography Engine
 
 - Unit cell import (`.cif`, `.xyz`): lattice vectors and basis atoms.
+  - CIF: preset + file load (symmetry optional)
 - Surface cleavage by Miller indices `(h,k,l)` to generate slabs.
+  - Current implementation: slab cut by `cmin/cmax` in Å along `nHat` (from reciprocal lattice)
+  - Current limitation: slab cut cannot build bonds yet
 - Step & terrace (vicinal) surface generator:
   - User controls terrace width and step height in unit cells.
   - Output keeps semantic info (terrace, step edge, lower terrace) for later selection.

@@ -1,9 +1,7 @@
 import { logger } from '../../common_js/Logger.js';
-import { MoleculeSystem } from './MoleculeSystem.js';
 import { EditableMolecule } from './EditableMolecule.js';
 import { MMParams } from './MMParams.js';
-import { MoleculeRenderer } from './MoleculeRenderer.js';
-import { IO } from './IO.js';
+import { MoleculeRenderer, PackedMolecule } from './MoleculeRenderer.js';
 import { GUI } from './GUI.js';
 import { Editor } from './Editor.js';
 import { ShortcutManager } from './ShortcutManager.js';
@@ -15,6 +13,41 @@ class MolGUIApp {
         this.camera = null;
         this.renderer = null;
         this.controls = null;
+        this._rafPending = false;
+        this._rafLoopActive = false;
+        this.continuousRender = false;
+    }
+
+    requestRender() {
+        if (this._rafPending) return;
+        this._rafPending = true;
+        requestAnimationFrame(() => {
+            this._rafPending = false;
+            if (this.molRenderer) this.molRenderer.update();
+            if (this.renderer && this.scene && this.camera) this.renderer.render(this.scene, this.camera);
+        });
+    }
+
+    setContinuousRender(enabled) {
+        enabled = !!enabled;
+        if (this.continuousRender === enabled) return;
+        this.continuousRender = enabled;
+        if (enabled) {
+            this._startLoop();
+        } else {
+            this._stopLoop();
+            this.requestRender();
+        }
+    }
+
+    _startLoop() {
+        if (this._rafLoopActive) return;
+        this._rafLoopActive = true;
+        this.animate();
+    }
+
+    _stopLoop() {
+        this._rafLoopActive = false;
     }
 
     async init() {
@@ -61,8 +94,8 @@ class MolGUIApp {
             this.frustumSize * aspect / 2,
             this.frustumSize / 2,
             this.frustumSize / -2,
-            0.1,
-            1000
+            -1000.,
+             1000.
         );
         this.camera.position.set(10, 10, 10);
         this.camera.lookAt(0, 0, 0);
@@ -74,6 +107,12 @@ class MolGUIApp {
         });
         this.renderer.setSize(width, height);
         this.renderer.setPixelRatio(window.devicePixelRatio);
+        // Make canvas focusable so keyboard shortcuts work when user clicks viewport
+        this.renderer.domElement.tabIndex = 0;
+        this.renderer.domElement.style.outline = 'none';
+        this.renderer.domElement.addEventListener('pointerdown', () => {
+            this.renderer.domElement.focus();
+        });
         this.container.appendChild(this.renderer.domElement);
 
         // 4. Controls
@@ -81,6 +120,9 @@ class MolGUIApp {
             this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
             this.controls.enableDamping = false; // Disable inertia for raw performance feel
             this.controls.dampingFactor = 0.05;
+
+            // Render only when something changes
+            this.controls.addEventListener('change', () => this.requestRender());
 
             // Unity Style Controls:
             // LMB: Selection (Handled by Editor) -> Set to NULL here
@@ -112,18 +154,17 @@ class MolGUIApp {
 
         // 5. Molecule System (authoritative editable model) + packed buffer for renderer
         this.system = new EditableMolecule();
-        this.packedSystem = new MoleculeSystem();
+        this.packedSystem = new PackedMolecule();
 
         // 5. MMParams (Load resources)
         this.mmParams = new MMParams();
-        await this.mmParams.loadResources('../common_resources/ElementTypes.dat', '../common_resources/AtomTypes.dat');
+        await this.mmParams.loadResources('../common_resources/ElementTypes.dat', '../common_resources/AtomTypes.dat', '../common_resources/BondTypes.dat');
 
         // 6. Molecule Renderer (renders packedSystem; syncs from EditableMolecule)
         this.molRenderer = new MoleculeRenderer(this.scene, this.packedSystem, this.shaders, this.mmParams, this.system);
 
-        // 7. IO
-        this.io = new IO(this.system, this.molRenderer);
-        this.gui = new GUI(this.io);
+        // 7. GUI
+        this.gui = new GUI(this.system, this.molRenderer);
 
         // 7. Editor (Selection, Gizmo)
         this.editor = new Editor(this.scene, this.camera, this.renderer, this.system, this.molRenderer);
@@ -132,8 +173,9 @@ class MolGUIApp {
         // No extra code needed here, MoleculeRenderer handles it.
 
         this.editor.onSelectionChange = () => {
-            this.gui.updateSelectionCount();
+            this.gui.updateSelectionUI();
             this.molRenderer.updateSelection();
+            this.requestRender();
         };
 
         // 9. Shortcut Manager
@@ -180,8 +222,8 @@ class MolGUIApp {
         // Events
         window.addEventListener('resize', this.onWindowResize.bind(this));
 
-        // Start Loop
-        this.animate();
+        // Initial render
+        this.requestRender();
 
         window.logger.info("Initialization Complete.");
     }
@@ -198,14 +240,16 @@ class MolGUIApp {
 
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(width, height);
+        this.requestRender();
     }
 
     animate() {
+        if (!this._rafLoopActive) return;
         requestAnimationFrame(this.animate.bind(this));
-
+        if (!this.continuousRender) return;
         if (this.controls) this.controls.update();
-
-        this.renderer.render(this.scene, this.camera);
+        if (this.molRenderer) this.molRenderer.update();
+        if (this.renderer && this.scene && this.camera) this.renderer.render(this.scene, this.camera);
     }
 }
 

@@ -1,12 +1,56 @@
-import { MoleculeSystem } from './MoleculeSystem.js';
+import * as CrystalUtils from './CrystalUtils.js';
+import * as PolymerUtils from './PolymerUtils.js';
+import { Vec3 } from '../../common_js/Vec3.js';
+import { GUIutils } from '../../common_js/GUIutils.js';
+import { EditableMolecule } from './EditableMolecule.js';
+import { BuildersGUI } from './BuildersGUI.js';
 
 export class GUI {
-    constructor(io) {
-        this.io = io;
+    constructor(system, renderer) {
+        this.system = system;
+        this.renderer = renderer;
         this.monomerLib = null;
         this.monomerGeoms = new Map();
         this.endGroupParsed = null;
+        this.buildersGUI = new BuildersGUI(this);
         this.init();
+    }
+
+    async readFileText(file) {
+        if (!file) throw new Error('readFileText: file is null');
+        return await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => resolve(ev.target.result);
+            reader.onerror = (e) => reject(e);
+            reader.readAsText(file);
+        });
+    }
+
+    requestRender() {
+        if (window.app && window.app.requestRender) window.app.requestRender();
+    }
+
+    saveXYZFile(filename = 'molecule.xyz') {
+        const content = this.system.toXYZString();
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        window.logger.info(`Saved ${filename}`);
+    }
+
+    loadXYZString(content) {
+        const parsed = EditableMolecule.parseXYZ(content);
+        this.system.clear();
+        this.system.appendParsedSystem(parsed);
+        const mm = (window.app && window.app.mmParams) ? window.app.mmParams : null;
+        this.system.recalculateBonds(mm);
+        this.renderer.update();
+        this.requestRender();
+        window.logger.info(`Loaded XYZ: atoms=${parsed.types.length}`);
     }
 
     init() {
@@ -58,61 +102,21 @@ export class GUI {
 
         // --- Section: Selection ---
         this.createSection(sidebar, 'Selection', (container) => {
-            const row = document.createElement('div');
-            row.className = 'gui-row';
-
-            const lbl = document.createElement('span');
-            lbl.textContent       = 'Count: ';
-            lbl.style.fontSize    = '0.9em';
-            lbl.style.marginRight = '5px';
-            row.appendChild(lbl);
-
-            this.lblCount = document.createElement('span');
-            this.lblCount.textContent      = '0';
-            this.lblCount.style.fontWeight = 'bold';
-            row.appendChild(this.lblCount);
-
-            container.appendChild(row);
-
-            this.inpSelection = document.createElement('input');
-            this.inpSelection.type        = 'text';
-            this.inpSelection.className   = 'gui-input';
-            this.inpSelection.placeholder = 'IDs (e.g. 1,5)';
-            this.inpSelection.onchange    = (e) => this.onSelectionInputChange(e.target.value);
-            container.appendChild(this.inpSelection);
+            const row = GUIutils.row(container);
+            GUIutils.span(row, 'Count: ', { fontSize: '0.9em', marginRight: '5px' });
+            this.lblCount = GUIutils.span(row, '0', { fontWeight: 'bold' });
+            this.inpSelection = GUIutils.textInput(container, '', { placeholder: 'IDs (e.g. 1,5)', onchange: (e) => this.onSelectionInputChange(e.target.value) });
         });
 
         // --- Section: View ---
         this.createSection(sidebar, 'View', (container) => {
             // Zoom Slider
-            const zoomRow = document.createElement('div');
-            zoomRow.className           = 'gui-row';
-            zoomRow.style.flexDirection = 'column';
-            zoomRow.style.alignItems    = 'flex-start';
-
-            const zoomLabel = document.createElement('label');
-            zoomLabel.textContent   = 'Zoom Level (Log10)';
-            zoomLabel.style.fontSize  = '0.9em';
-            zoomRow.appendChild(zoomLabel);
-
-            const zoomSlider = document.createElement('input');
-            zoomSlider.type  = 'range';
-            zoomSlider.min   = '-2.0';
-            zoomSlider.max   = '3.0';
-            zoomSlider.step  = '0.1';
-            zoomSlider.value = '1.0'; // Default
-            zoomSlider.style.width = '100%';
-            zoomSlider.oninput = (e) => {
-                const val = parseFloat(e.target.value);
-                this.setZoom(Math.pow(10, val));
-            };
-            zoomRow.appendChild(zoomSlider);
-            container.appendChild(zoomRow);
+            const zoomRow = GUIutils.row(container, { flexDirection: 'column', alignItems: 'flex-start' });
+            GUIutils.el(zoomRow, 'label', { text: 'Zoom Level (Log10)' }, { fontSize: '0.9em' });
+            GUIutils.range(zoomRow, 1.0, -2.0, 3.0, 0.1, (e) => { const val = parseFloat(e.target.value); this.setZoom(Math.pow(10, val)); }, { width: '100%' });
 
             // View Buttons
-            const viewRow           = document.createElement('div');
-            viewRow.className       = 'gui-row';
-            viewRow.style.marginTop = '10px';
+            const viewRow = GUIutils.row(container, { marginTop: '10px' });
 
             const views = [
                 { name: 'XY', pos: [0, 0, 20], up: [0, 1, 0] },
@@ -121,47 +125,26 @@ export class GUI {
             ];
 
             views.forEach(v => {
-                const btn = document.createElement('button');
-                btn.textContent       = v.name;
-                btn.className         = 'gui-btn';
-                btn.style.marginRight = '2px';
-                btn.onclick           = () => this.setView(v.pos, v.up);
-                viewRow.appendChild(btn);
+                GUIutils.btn(viewRow, v.name, () => this.setView(v.pos, v.up), { marginRight: '2px' });
             });
-            container.appendChild(viewRow);
 
             // Axis Toggle
-            const axisRow = document.createElement('div');
-            axisRow.className = 'gui-row';
-            axisRow.style.marginTop = '10px';
+            const axisRow = GUIutils.row(container, { marginTop: '10px' });
+            GUIutils.labelCheck(axisRow, 'Show Axes', false, (e) => { if (window.app && window.app.molRenderer) window.app.molRenderer.toggleAxes(e.target.checked); this.requestRender(); });
 
-            const axisLabel = document.createElement('label');
-            axisLabel.className = 'gui-checkbox-label';
-            const axisChk       = document.createElement('input');
-            axisChk.type        = 'checkbox';
-            axisChk.checked     = false;
-            axisChk.onchange    = (e) => {
-                if (window.app && window.app.molRenderer) {
-                    window.app.molRenderer.toggleAxes(e.target.checked);
-                }
-            };
-            axisLabel.appendChild(axisChk);
-            axisLabel.appendChild(document.createTextNode('Show Axes'));
-            axisRow.appendChild(axisLabel);
-            container.appendChild(axisRow);
+            const renderRow = GUIutils.row(container, { marginTop: '6px' });
+            GUIutils.labelCheck(renderRow, 'Continuous Render (Animate)', false, (e) => {
+                if (window.app && window.app.setContinuousRender) window.app.setContinuousRender(e.target.checked);
+                this.requestRender();
+            });
+
+            // Make on-demand the explicit default (checkbox unchecked)
+            if (window.app && window.app.setContinuousRender) window.app.setContinuousRender(false);
 
             // Label Mode Dropdown
-            const labelRow = document.createElement('div');
-            labelRow.className = 'gui-row';
-            labelRow.style.marginTop = '10px';
-
-            const labelLbl = document.createElement('span');
-            labelLbl.textContent = 'Labels: ';
-            labelRow.appendChild(labelLbl);
-
-            const labelSel = document.createElement('select');
-            labelSel.className = 'gui-select';
-            labelSel.style.flexGrow = '1';
+            const labelRow = GUIutils.row(container, { marginTop: '10px' });
+            GUIutils.span(labelRow, 'Labels: ');
+            const labelSel = GUIutils.el(labelRow, 'select', { className: 'gui-select' }, { flexGrow: '1' });
 
             const modes = [
                 { value: 'none',    text: 'None'      },
@@ -170,177 +153,81 @@ export class GUI {
                 { value: 'type',    text: 'Atom Type' }
             ];
 
-            modes.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m.value;
-                opt.textContent = m.text;
-                labelSel.appendChild(opt);
-            });
+            GUIutils.setSelectOptions(labelSel, modes, { selectedValue: 'none', selectFirst: true });
 
             labelSel.onchange = (e) => {
                 if (window.app && window.app.molRenderer) {
                     window.app.molRenderer.setLabelMode(e.target.value);
                 }
+                this.requestRender();
             };
-            labelRow.appendChild(labelSel);
-            container.appendChild(labelRow);
 
             // Label Color & Size
-            const styleRow = document.createElement('div');
-            styleRow.className = 'gui-row';
-            styleRow.style.marginTop = '5px';
-
-            const colorLbl = document.createElement('span');
-            colorLbl.textContent = 'Color: ';
-            styleRow.appendChild(colorLbl);
-
-            const colorInput = document.createElement('input');
-            colorInput.type = 'color';
-            colorInput.value = '#ffffff';
-            colorInput.style.flexGrow = '0';
-            colorInput.style.width = '40px';
-            styleRow.appendChild(colorInput);
-
-            const sizeLbl = document.createElement('span');
-            sizeLbl.textContent = ' Size: ';
-            sizeLbl.style.marginLeft = '10px';
-            styleRow.appendChild(sizeLbl);
-
-            const sizeInput = document.createElement('input');
-            sizeInput.type = 'number';
-            sizeInput.value = '0.5';
-            sizeInput.step = '0.1';
-            sizeInput.min = '0.1';
-            sizeInput.style.width = '50px';
-            styleRow.appendChild(sizeInput);
+            const styleRow = GUIutils.row(container, { marginTop: '5px' });
+            GUIutils.span(styleRow, 'Color: ');
+            const colorInput = GUIutils.input(styleRow, { type: 'color', value: '#ffffff' }, { flexGrow: '0', width: '40px' });
+            GUIutils.span(styleRow, ' Size: ', { marginLeft: '10px' });
+            const sizeInput = GUIutils.num(styleRow, 0.5, { step: '0.1', min: '0.1' }, { width: '50px' });
 
             const updateLabelStyle = () => {
                 if (window.app && window.app.molRenderer) {
                     window.app.molRenderer.setLabelStyle(colorInput.value, sizeInput.value);
                 }
+                this.requestRender();
             };
 
             colorInput.oninput = updateLabelStyle;
             sizeInput.oninput = updateLabelStyle;
 
-            container.appendChild(styleRow);
         });
 
         // --- Section: Gizmo ---
         this.createSection(sidebar, 'Gizmo', (container) => {
             // Enable Checkbox
-            const label = document.createElement('label');
-            label.className = 'gui-checkbox-label';
-            const chk = document.createElement('input');
-            chk.type = 'checkbox';
-            chk.checked = true; // Default on
-            chk.onchange = (e) => {
-                if (window.app && window.app.editor) {
-                    window.app.editor.toggleGizmo(e.target.checked);
-                }
-            };
-            label.appendChild(chk);
-            label.appendChild(document.createTextNode('Enable Gizmo'));
-            container.appendChild(label);
+            GUIutils.labelCheck(container, 'Enable Gizmo', true, (e) => {
+                if (window.app && window.app.editor) window.app.editor.toggleGizmo(e.target.checked);
+            });
 
             // Lock Selection Checkbox
-            const labelLock = document.createElement('label');
-            labelLock.className = 'gui-checkbox-label';
-            labelLock.style.marginTop = '5px';
-            const chkLock = document.createElement('input');
-            chkLock.type = 'checkbox';
-            chkLock.checked = false;
-            chkLock.onchange = (e) => {
+            GUIutils.labelCheck(container, 'Lock Selection', false, (e) => {
                 if (window.app && window.app.editor) {
                     window.app.editor.selectionLocked = e.target.checked;
                     window.logger.info(`Selection ${e.target.checked ? 'Locked' : 'Unlocked'}`);
                 }
-            };
-            labelLock.appendChild(chkLock);
-            labelLock.appendChild(document.createTextNode('Lock Selection'));
-            container.appendChild(labelLock);
+            }, { marginTop: '5px' });
 
             // Modes
             const modes = ['translate', 'rotate', 'scale'];
-            const modeContainer = document.createElement('div');
-            modeContainer.style.marginTop = '10px';
+            const modeContainer = GUIutils.div(container, null, { marginTop: '10px' });
 
             modes.forEach(mode => {
-                const mLabel = document.createElement('label');
-                mLabel.className = 'gui-checkbox-label';
-                mLabel.style.marginBottom = '5px';
-
-                const radio = document.createElement('input');
-                radio.type = 'radio';
-                radio.name = 'gizmo-mode';
-                radio.value = mode;
+                const mLabel = GUIutils.el(modeContainer, 'label', { className: 'gui-checkbox-label' }, { marginBottom: '5px' });
+                const radio = GUIutils.el(mLabel, 'input', { type: 'radio', attrs: { name: 'gizmo-mode' }, value: mode });
                 radio.checked = (mode === 'translate');
-                radio.onchange = () => {
-                    if (window.app && window.app.editor) {
-                        window.app.editor.setGizmoMode(mode);
-                    }
-                };
-
-                mLabel.appendChild(radio);
-                mLabel.appendChild(document.createTextNode(mode.charAt(0).toUpperCase() + mode.slice(1)));
-                modeContainer.appendChild(mLabel);
+                radio.onchange = () => { if (window.app && window.app.editor) window.app.editor.setGizmoMode(mode); };
+                GUIutils.span(mLabel, mode.charAt(0).toUpperCase() + mode.slice(1));
             });
-            container.appendChild(modeContainer);
         });
 
         // --- Section: Structure ---
         this.createSection(sidebar, 'Structure', (container) => {
             // Recalculate Bonds
-            const btnRecalc = document.createElement('button');
-            btnRecalc.textContent = 'Recalculate Bonds';
-            btnRecalc.className = 'gui-btn';
-            btnRecalc.onclick = () => {
-                if (window.app && window.app.editor) {
-                    window.app.editor.recalculateBonds();
-                }
-            };
-            container.appendChild(btnRecalc);
+            GUIutils.btn(container, 'Recalculate Bonds', () => { if (window.app && window.app.editor) window.app.editor.recalculateBonds(); });
 
-            const hr = document.createElement('hr');
-            hr.style.borderColor = '#444';
-            hr.style.margin = '10px 0';
-            container.appendChild(hr);
+            GUIutils.el(container, 'hr', null, { borderColor: '#444', margin: '10px 0' });
 
             // Add Atom Controls
-            const lblAdd = document.createElement('div');
-            lblAdd.textContent = 'Add Atom Settings:';
-            lblAdd.style.fontSize = '0.9em';
-            lblAdd.style.marginBottom = '5px';
-            container.appendChild(lblAdd);
+            GUIutils.div(container, null, { fontSize: '0.9em', marginBottom: '5px' }).textContent = 'Add Atom Settings:';
 
             // Element Dropdown
-            const rowEl = document.createElement('div');
-            rowEl.className = 'gui-row';
-            const lblEl = document.createElement('span');
-            lblEl.textContent = 'Element: ';
-            rowEl.appendChild(lblEl);
-
-            this.selElement = document.createElement('select');
-            this.selElement.className = 'gui-select';
-            this.selElement.style.flexGrow = '1';
-            this.selElement.onchange = (e) => this.onElementChange(e.target.value);
-            rowEl.appendChild(this.selElement);
-            container.appendChild(rowEl);
+            const rowEl = GUIutils.row(container);
+            GUIutils.span(rowEl, 'Element: ');
+            this.selElement = GUIutils.el(rowEl, 'select', { className: 'gui-select', onchange: (e) => this.onElementChange(e.target.value) }, { flexGrow: '1' });
 
             // Atom Type Dropdown
-            const rowType = document.createElement('div');
-            rowType.className = 'gui-row';
-            rowType.style.marginTop = '5px';
-            const lblType = document.createElement('span');
-            lblType.textContent = 'Type: ';
-            rowType.appendChild(lblType);
-
-            this.selAtomType = document.createElement('select');
-            this.selAtomType.className = 'gui-select';
-            this.selAtomType.style.flexGrow = '1';
-            this.selAtomType.onchange = (e) => this.onAtomTypeChange(e.target.value);
-            rowType.appendChild(this.selAtomType);
-            container.appendChild(rowType);
+            const rowType = GUIutils.row(container, { marginTop: '5px' });
+            GUIutils.span(rowType, 'Type: ');
+            this.selAtomType = GUIutils.el(rowType, 'select', { className: 'gui-select', onchange: (e) => this.onAtomTypeChange(e.target.value) }, { flexGrow: '1' });
 
             // Populate initially (delayed to ensure MMParams loaded)
             setTimeout(() => this.populateStructureControls(), 1000);
@@ -349,597 +236,51 @@ export class GUI {
         // --- Section: Geometry ---
         this.createSection(sidebar, 'Geometry', (container) => {
             // Load
-            const btnLoad = document.createElement('button');
-            btnLoad.textContent = 'Load XYZ File...';
-            btnLoad.className = 'gui-btn';
-            container.appendChild(btnLoad);
-
-            const fileInput = document.createElement('input');
-            fileInput.type = 'file';
-            fileInput.accept = '.xyz';
-            fileInput.style.display = 'none';
-            document.body.appendChild(fileInput);
-
+            const btnLoad = GUIutils.btn(container, 'Load XYZ File...');
+            const fileInput = GUIutils.input(document.body, { type: 'file', attrs: { accept: '.xyz' } }, { display: 'none' });
             btnLoad.onclick = () => fileInput.click();
             fileInput.onchange = (e) => {
                 if (e.target.files.length > 0) {
-                    this.io.loadXYZ(e.target.files[0]);
+                    const file = e.target.files[0];
+                    const reader = new FileReader();
+                    reader.onload = (ev) => this.loadXYZString(ev.target.result);
+                    reader.readAsText(file);
                     fileInput.value = '';
                 }
             };
 
             // Save
-            const btnSave = document.createElement('button');
-            btnSave.textContent = 'Save XYZ';
-            btnSave.className = 'gui-btn';
-            btnSave.style.marginTop = '5px';
-            btnSave.onclick = () => this.io.saveFile();
-            container.appendChild(btnSave);
+            GUIutils.btn(container, 'Save XYZ', () => this.saveXYZFile(), { marginTop: '5px' });
 
             // Clear
-            const btnClear = document.createElement('button');
-            btnClear.textContent = 'Clear Scene';
-            btnClear.className = 'gui-btn';
-            btnClear.style.marginTop = '5px';
-            btnClear.onclick = () => {
-                this.io.system.clear();
-                this.io.renderer.update();
+            GUIutils.btn(container, 'Clear Scene', () => {
+                this.system.clear();
+                this.renderer.update();
+                this.requestRender();
                 window.logger.info("Scene cleared.");
-            };
-            container.appendChild(btnClear);
-
+            }, { marginTop: '5px' });
             // Separator
-            const hr = document.createElement('hr');
-            hr.style.borderColor = '#444';
-            hr.style.margin = '10px 0';
-            container.appendChild(hr);
+            GUIutils.el(container, 'hr', null, { borderColor: '#444', margin: '10px 0' });
+        });
 
-            // Manual Edit
-            const btnToggle = document.createElement('button');
-            btnToggle.textContent = 'Edit XYZ Manually';
-            btnToggle.className = 'gui-btn';
-            container.appendChild(btnToggle);
-
-            const textArea = document.createElement('textarea');
-            textArea.className = 'gui-textarea';
-            textArea.style.display = 'none';
-            textArea.style.height = '150px';
-            textArea.style.width = '100%';
-            textArea.style.marginTop = '5px';
-            textArea.style.fontSize = '0.8em';
-            textArea.style.fontFamily = 'monospace';
-            textArea.placeholder = 'Paste XYZ content here...';
-            container.appendChild(textArea);
+        this.createSection(sidebar, 'XYZ (Edit)', (container) => {
+            const btnToggle = GUIutils.btn(container, 'Show/Hide XYZ');
+            const textArea = GUIutils.textArea(container, '', { height: '150px', placeholder: 'Paste XYZ content here...' });
 
             btnToggle.onclick = () => {
                 const isHidden = textArea.style.display === 'none';
                 textArea.style.display = isHidden ? 'block' : 'none';
                 if (isHidden) {
                     // Populate with current system state if showing
-                    textArea.value = this.io.generateXYZ();
+                    textArea.value = this.system.toXYZString();
                 }
             };
 
-            const btnApply = document.createElement('button');
-            btnApply.textContent = 'Apply XYZ';
-            btnApply.className = 'gui-btn';
-            btnApply.style.marginTop = '5px';
-            btnApply.onclick = () => {
-                if (textArea.value.trim()) {
-                    this.io.loadXYZString(textArea.value);
-                }
-            };
-            container.appendChild(btnApply);
+            GUIutils.btn(container, 'Apply XYZ', () => { if (textArea.value.trim()) this.loadXYZString(textArea.value); }, { marginTop: '5px' });
         });
 
-        // --- Section: Builder - Crystal/Substrate ---
-        this.createSection(sidebar, 'Builder: Substrate', (container) => {
-            const rowPreset = document.createElement('div');
-            rowPreset.className = 'gui-row';
-            const lblPreset = document.createElement('span');
-            lblPreset.textContent = 'Preset: ';
-            rowPreset.appendChild(lblPreset);
-            const selPreset = document.createElement('select');
-            selPreset.className = 'gui-select';
-            selPreset.style.flexGrow = '1';
-            ['NaCl(step)', 'NaCl(rocksalt)', 'KBr(rocksalt)', 'MgO(rocksalt)', 'CaF2(fluorite)', 'CaCO3(todo)'].forEach(name => {
-                const opt = document.createElement('option');
-                opt.value = name;
-                opt.textContent = name;
-                selPreset.appendChild(opt);
-            });
-            rowPreset.appendChild(selPreset);
-            container.appendChild(rowPreset);
-
-            const rowA = document.createElement('div');
-            rowA.className = 'gui-row';
-            const lblA = document.createElement('span');
-            lblA.textContent = 'a(Å): ';
-            rowA.appendChild(lblA);
-            const inpA = document.createElement('input');
-            inpA.type = 'number';
-            inpA.step = '0.01';
-            inpA.value = '2.82';
-            inpA.className = 'gui-input';
-            inpA.style.width = '70px';
-            inpA.style.flexGrow = '0';
-            rowA.appendChild(inpA);
-            container.appendChild(rowA);
-
-            const PRESETS = {
-                'NaCl(step)':       { a0: 5.6413 / 2 },
-                'NaCl(rocksalt)':   { a0: 5.6413 },
-                'KBr(rocksalt)':    { a0: 6.60 },
-                'MgO(rocksalt)':    { a0: 4.212 },
-                'CaF2(fluorite)':   { a0: 5.4623 },
-                'CaCO3(todo)':      { a0: 4.99 }
-            };
-
-            const updatePresetDefaults = () => {
-                const p = PRESETS[selPreset.value];
-                if (p && (p.a0 !== undefined)) inpA.value = String(p.a0);
-            };
-            selPreset.onchange = () => { updatePresetDefaults(); };
-            updatePresetDefaults();
-
-            const rowN = document.createElement('div');
-            rowN.className = 'gui-row';
-            const mkInt = (label, val) => {
-                const sp = document.createElement('span');
-                sp.textContent = label;
-                sp.style.marginRight = '2px';
-                const inp = document.createElement('input');
-                inp.type = 'number';
-                inp.step = '1';
-                inp.value = String(val);
-                inp.className = 'gui-input';
-                inp.style.width = '44px';
-                inp.style.flexGrow = '0';
-                rowN.appendChild(sp);
-                rowN.appendChild(inp);
-                return inp;
-            };
-            const inpNx = mkInt('nx', 10);
-            const inpNy = mkInt('ny', 10);
-            const inpNz = mkInt('nz', 3);
-            container.appendChild(rowN);
-
-            const chkMillerLbl = document.createElement('label');
-            chkMillerLbl.className = 'gui-checkbox-label';
-            chkMillerLbl.style.marginTop = '6px';
-            const chkMiller = document.createElement('input');
-            chkMiller.type = 'checkbox';
-            chkMiller.checked = false;
-            chkMillerLbl.appendChild(chkMiller);
-            chkMillerLbl.appendChild(document.createTextNode('Orient by Miller (h k l) -> z'));
-            container.appendChild(chkMillerLbl);
-
-            const rowHKL = document.createElement('div');
-            rowHKL.className = 'gui-row';
-            rowHKL.style.marginTop = '4px';
-            const mkIntHKL = (label, val) => {
-                const sp = document.createElement('span');
-                sp.textContent = label;
-                sp.style.marginRight = '2px';
-                const inp = document.createElement('input');
-                inp.type = 'number';
-                inp.step = '1';
-                inp.value = String(val);
-                inp.className = 'gui-input';
-                inp.style.width = '44px';
-                inp.style.flexGrow = '0';
-                rowHKL.appendChild(sp);
-                rowHKL.appendChild(inp);
-                return inp;
-            };
-            const inpH = mkIntHKL('h', 1);
-            const inpK = mkIntHKL('k', 0);
-            const inpL = mkIntHKL('l', 0);
-            container.appendChild(rowHKL);
-
-            const btnRow = document.createElement('div');
-            btnRow.className = 'gui-row';
-            btnRow.style.marginTop = '6px';
-            const btnReplace = document.createElement('button');
-            btnReplace.textContent = 'Generate (Replace)';
-            btnReplace.className = 'gui-btn';
-            const btnAppend = document.createElement('button');
-            btnAppend.textContent = 'Generate (Append)';
-            btnAppend.className = 'gui-btn';
-            btnAppend.style.marginLeft = '4px';
-            btnRow.appendChild(btnReplace);
-            btnRow.appendChild(btnAppend);
-            container.appendChild(btnRow);
-
-            const getHKL = () => [parseInt(inpH.value), parseInt(inpK.value), parseInt(inpL.value)];
-
-            const applyMiller = (data) => {
-                if (!chkMiller.checked) return data;
-                const [h, k, l] = getHKL();
-                if ((h | 0) === 0 && (k | 0) === 0 && (l | 0) === 0) throw new Error('HKL cannot be (0,0,0)');
-                if (!data.lvec) throw new Error('applyMiller: missing lvec');
-                const b = MoleculeSystem.reciprocalLattice(data.lvec);
-                const n = [h * b[0][0] + k * b[1][0] + l * b[2][0], h * b[0][1] + k * b[1][1] + l * b[2][1], h * b[0][2] + k * b[1][2] + l * b[2][2]];
-                const R = MoleculeSystem.rotationAlignVectorToZ(n);
-                const pos = MoleculeSystem.rotatePosArray(data.pos, R);
-                const lvec = MoleculeSystem.rotateLvec(data.lvec, R);
-                return { ...data, pos, lvec };
-            };
-
-            const buildData = () => {
-                const preset = selPreset.value;
-                const a = +inpA.value;
-                const nx = parseInt(inpNx.value) | 0;
-                const ny = parseInt(inpNy.value) | 0;
-                const nz = parseInt(inpNz.value) | 0;
-                if (!(a > 0)) throw new Error('a must be >0');
-                if (nx <= 0 || ny <= 0 || nz <= 0) throw new Error('nx,ny,nz must be >0');
-                let data = null;
-                if (preset === 'NaCl(step)') {
-                    data = MoleculeSystem.genNaClStep({ a, nx, ny, nz, Q0: 0.7 });
-                } else if (preset.endsWith('(rocksalt)')) {
-                    const zA = (preset.startsWith('NaCl')) ? 11 : (preset.startsWith('KBr') ? 19 : 12);
-                    const zB = (preset.startsWith('NaCl')) ? 17 : (preset.startsWith('KBr') ? 35 : 8);
-                    const lvec = [[a, 0, 0], [0, a, 0], [0, 0, a]];
-                    const basis = [
-                        [0, 0, 0, zA], [0.5 * a, 0.5 * a, 0, zA], [0.5 * a, 0, 0.5 * a, zA], [0, 0.5 * a, 0.5 * a, zA],
-                        [0.5 * a, 0, 0, zB], [0, 0.5 * a, 0, zB], [0, 0, 0.5 * a, zB], [0.5 * a, 0.5 * a, 0.5 * a, zB]
-                    ];
-                    const basisPos = new Float32Array(basis.length * 3);
-                    const basisTypes = new Uint8Array(basis.length);
-                    for (let i = 0; i < basis.length; i++) {
-                        basisPos[i * 3] = basis[i][0];
-                        basisPos[i * 3 + 1] = basis[i][1];
-                        basisPos[i * 3 + 2] = basis[i][2];
-                        basisTypes[i] = basis[i][3];
-                    }
-                    data = MoleculeSystem.genReplicatedCell({ lvec, basisPos, basisTypes, nRep: [nx, ny, nz] });
-                } else if (preset === 'CaF2(fluorite)') {
-                    const zCa = 20;
-                    const zF = 9;
-                    const lvec = [[a, 0, 0], [0, a, 0], [0, 0, a]];
-                    const basis = [
-                        [0, 0, 0, zCa], [0, 0.5 * a, 0.5 * a, zCa], [0.5 * a, 0, 0.5 * a, zCa], [0.5 * a, 0.5 * a, 0, zCa],
-                        [0.25 * a, 0.25 * a, 0.25 * a, zF], [0.25 * a, 0.75 * a, 0.75 * a, zF], [0.75 * a, 0.25 * a, 0.75 * a, zF], [0.75 * a, 0.75 * a, 0.25 * a, zF],
-                        [0.75 * a, 0.75 * a, 0.75 * a, zF], [0.75 * a, 0.25 * a, 0.25 * a, zF], [0.25 * a, 0.75 * a, 0.25 * a, zF], [0.25 * a, 0.25 * a, 0.75 * a, zF]
-                    ];
-                    const basisPos = new Float32Array(basis.length * 3);
-                    const basisTypes = new Uint8Array(basis.length);
-                    for (let i = 0; i < basis.length; i++) {
-                        basisPos[i * 3] = basis[i][0];
-                        basisPos[i * 3 + 1] = basis[i][1];
-                        basisPos[i * 3 + 2] = basis[i][2];
-                        basisTypes[i] = basis[i][3];
-                    }
-                    data = MoleculeSystem.genReplicatedCell({ lvec, basisPos, basisTypes, nRep: [nx, ny, nz] });
-                } else if (preset === 'CaCO3(todo)') {
-                    throw new Error('CaCO3 preset not implemented yet (non-trivial basis). Use a custom unit cell (e.g. extended XYZ with Lattice=...) once supported.');
-                } else {
-                    throw new Error(`Preset not implemented: ${preset}`);
-                }
-                return applyMiller(data);
-            };
-
-            const applyToScene = (data, mode) => {
-                if (mode === 'replace') this.io.system.clear();
-                const ids = this.io.system.addAtomsFromArrays(data.pos, data.types);
-                if (data.bonds && data.bonds.length) {
-                    for (const [a0, b0] of data.bonds) this.io.system.addBond(ids[a0 | 0], ids[b0 | 0]);
-                }
-                this.io.renderer.update();
-                window.logger.info(`Substrate generated: atoms=${this.io.system.nAtoms}`);
-            };
-
-            btnReplace.onclick = () => {
-                try { applyToScene(buildData(), 'replace'); } catch (e) { window.logger.error(String(e)); throw e; }
-            };
-            btnAppend.onclick = () => {
-                try { applyToScene(buildData(), 'append'); } catch (e) { window.logger.error(String(e)); throw e; }
-            };
-        }, { collapsible: true, open: false });
-
-        // --- Section: Builder - Polymers / Attachment ---
-        this.createSection(sidebar, 'Builder: Polymers', (container) => {
-            const mkLbl = (t) => { const d = document.createElement('div'); d.textContent = t; d.style.marginTop = '4px'; d.style.fontSize = '0.9em'; d.style.color = '#ccc'; return d; };
-
-            container.appendChild(mkLbl('Monomer library (JSON + mol2 files)'));
-
-            const btnLoadLib = document.createElement('button');
-            btnLoadLib.textContent = 'Load Library JSON...';
-            btnLoadLib.className = 'gui-btn';
-            container.appendChild(btnLoadLib);
-
-            const inpLib = document.createElement('input');
-            inpLib.type = 'file';
-            inpLib.accept = '.json,application/json';
-            inpLib.style.display = 'none';
-            container.appendChild(inpLib);
-
-            const lblLib = document.createElement('div');
-            lblLib.textContent = 'No library loaded';
-            lblLib.style.fontSize = '0.85em';
-            lblLib.style.color = '#aaa';
-            lblLib.style.marginTop = '2px';
-            container.appendChild(lblLib);
-
-            btnLoadLib.onclick = () => inpLib.click();
-            inpLib.onchange = async (e) => {
-                if (e.target.files.length <= 0) return;
-                const file = e.target.files[0];
-                const txt = await this.readFileText(file);
-                this.monomerLib = JSON.parse(txt);
-                if (!this.monomerLib || !this.monomerLib.monomers) throw new Error('Library JSON missing monomers[]');
-                lblLib.textContent = `Library: ${this.monomerLib.name || file.name} (monomers=${this.monomerLib.monomers.length})`;
-                window.logger.info(`Loaded library JSON: ${file.name}`);
-                inpLib.value = '';
-            };
-
-            const btnLoadMol2 = document.createElement('button');
-            btnLoadMol2.textContent = 'Load mol2 geometries...';
-            btnLoadMol2.className = 'gui-btn';
-            btnLoadMol2.style.marginTop = '4px';
-            container.appendChild(btnLoadMol2);
-
-            const inpMol2 = document.createElement('input');
-            inpMol2.type = 'file';
-            inpMol2.accept = '.mol2';
-            inpMol2.multiple = true;
-            inpMol2.style.display = 'none';
-            container.appendChild(inpMol2);
-
-            const lblMol2 = document.createElement('div');
-            lblMol2.textContent = 'mol2 loaded: 0';
-            lblMol2.style.fontSize = '0.85em';
-            lblMol2.style.color = '#aaa';
-            lblMol2.style.marginTop = '2px';
-            container.appendChild(lblMol2);
-
-            btnLoadMol2.onclick = () => inpMol2.click();
-            inpMol2.onchange = async (e) => {
-                if (e.target.files.length <= 0) return;
-                for (const file of e.target.files) {
-                    const txt = await this.readFileText(file);
-                    const parsed = MoleculeSystem.parseMol2(txt);
-                    this.monomerGeoms.set(file.name, parsed);
-                }
-                lblMol2.textContent = `mol2 loaded: ${this.monomerGeoms.size}`;
-                window.logger.info(`Loaded mol2 geometries: ${e.target.files.length}`);
-                inpMol2.value = '';
-            };
-
-            container.appendChild(mkLbl('Sequence'));
-
-            const inpSeq = document.createElement('input');
-            inpSeq.type = 'text';
-            inpSeq.className = 'gui-input';
-            inpSeq.placeholder = 'e.g. D3Gly6A';
-            container.appendChild(inpSeq);
-
-            const rowSeqBtn = document.createElement('div');
-            rowSeqBtn.className = 'gui-row';
-            rowSeqBtn.style.marginTop = '4px';
-            const btnSeqReplace = document.createElement('button');
-            btnSeqReplace.textContent = 'Build (Replace)';
-            btnSeqReplace.className = 'gui-btn';
-            const btnSeqAppend = document.createElement('button');
-            btnSeqAppend.textContent = 'Build (Append)';
-            btnSeqAppend.className = 'gui-btn';
-            btnSeqAppend.style.marginLeft = '4px';
-            rowSeqBtn.appendChild(btnSeqReplace);
-            rowSeqBtn.appendChild(btnSeqAppend);
-            container.appendChild(rowSeqBtn);
-
-            const buildMonomerMap = () => {
-                if (!this.monomerLib) throw new Error('No monomer library loaded');
-                const map = {};
-                for (const m of this.monomerLib.monomers) {
-                    if (!m.id) throw new Error('Monomer missing id');
-                    if (!m.file) throw new Error(`Monomer '${m.id}' missing file`);
-                    const parsed = this.monomerGeoms.get(m.file);
-                    if (!parsed) throw new Error(`Monomer '${m.id}' missing loaded geometry file '${m.file}'`);
-                    if (!m.anchors || !m.anchors.head || !m.anchors.tail) throw new Error(`Monomer '${m.id}' missing anchors.head/tail`);
-                    if (m.anchors.head.type !== 'index' || m.anchors.tail.type !== 'index') throw new Error(`Monomer '${m.id}': only anchors type='index' supported (v0)`);
-                    map[m.id] = { parsed, anchors: [m.anchors.head.value, m.anchors.tail.value] };
-                    if (m.aliases) for (const a of m.aliases) map[a] = map[m.id];
-                }
-                return map;
-            };
-
-            const applyPolymerToScene = (poly, mode) => {
-                const n = poly.nAtoms;
-                const pos = poly.pos.subarray(0, n * 3);
-                const types = poly.types.subarray(0, n);
-                const parsed = { pos, types, bonds: poly.bonds };
-                if (mode === 'replace') this.io.system.clear();
-                this.io.system.appendParsedSystem(parsed);
-                this.io.renderer.update();
-                window.logger.info(`Polymer built: atoms=${n} bonds=${poly.bonds.length}`);
-            };
-
-            const doBuildSeq = (mode) => {
-                const seq = inpSeq.value.trim();
-                if (!seq) throw new Error('Empty sequence');
-                const tokens = this.parseSequenceTokens(seq);
-                const monomers = buildMonomerMap();
-                const poly = MoleculeSystem.assemblePolymerFromTokens(tokens, monomers, { _0: 1, capacity: 200000 });
-                applyPolymerToScene(poly, mode);
-            };
-
-            btnSeqReplace.onclick = () => { try { doBuildSeq('replace'); } catch (e) { window.logger.error(String(e)); throw e; } };
-            btnSeqAppend.onclick = () => { try { doBuildSeq('append'); } catch (e) { window.logger.error(String(e)); throw e; } };
-
-            const hr = document.createElement('hr');
-            hr.style.borderColor = '#444';
-            hr.style.margin = '8px 0';
-            container.appendChild(hr);
-
-            container.appendChild(mkLbl('End-group attachment'));
-
-            const btnLoadEnd = document.createElement('button');
-            btnLoadEnd.textContent = 'Load Endgroup mol2...';
-            btnLoadEnd.className = 'gui-btn';
-            container.appendChild(btnLoadEnd);
-
-            const inpEnd = document.createElement('input');
-            inpEnd.type = 'file';
-            inpEnd.accept = '.mol2';
-            inpEnd.style.display = 'none';
-            container.appendChild(inpEnd);
-
-            const lblEnd = document.createElement('div');
-            lblEnd.textContent = 'No endgroup loaded';
-            lblEnd.style.fontSize = '0.85em';
-            lblEnd.style.color = '#aaa';
-            lblEnd.style.marginTop = '2px';
-            container.appendChild(lblEnd);
-
-            btnLoadEnd.onclick = () => inpEnd.click();
-            inpEnd.onchange = async (e) => {
-                if (e.target.files.length <= 0) return;
-                const file = e.target.files[0];
-                const txt = await this.readFileText(file);
-                this.endGroupParsed = MoleculeSystem.parseMol2(txt);
-                lblEnd.textContent = `Endgroup: ${file.name} (atoms=${this.endGroupParsed.types.length})`;
-                window.logger.info(`Loaded endgroup mol2: ${file.name}`);
-                inpEnd.value = '';
-            };
-
-            const rowMarker = document.createElement('div');
-            rowMarker.className = 'gui-row';
-            rowMarker.style.marginTop = '4px';
-            const mkSmall = (lab, val) => {
-                const sp = document.createElement('span');
-                sp.textContent = lab;
-                const inp = document.createElement('input');
-                inp.type = 'text';
-                inp.value = val;
-                inp.className = 'gui-input';
-                inp.style.width = '48px';
-                inp.style.flexGrow = '0';
-                inp.style.marginLeft = '2px';
-                rowMarker.appendChild(sp);
-                rowMarker.appendChild(inp);
-                return inp;
-            };
-            const inpMX = mkSmall('X', 'Se');
-            const inpMY = mkSmall('Y', 'Cl');
-            container.appendChild(rowMarker);
-
-            const btnAttachMarker = document.createElement('button');
-            btnAttachMarker.textContent = 'Attach by markers (all sites)';
-            btnAttachMarker.className = 'gui-btn';
-            btnAttachMarker.style.marginTop = '4px';
-            btnAttachMarker.onclick = () => {
-                if (!this.endGroupParsed) throw new Error('No endgroup loaded');
-                this.io.system.attachGroupByMarker(this.endGroupParsed, inpMX.value.trim(), inpMY.value.trim());
-                this.io.renderer.update();
-            };
-            container.appendChild(btnAttachMarker);
-
-            const hr2 = document.createElement('hr');
-            hr2.style.borderColor = '#444';
-            hr2.style.margin = '8px 0';
-            container.appendChild(hr2);
-
-            container.appendChild(mkLbl('Attach by picked direction (cap atom)'));
-
-            const rowIds = document.createElement('div');
-            rowIds.className = 'gui-row';
-            const inpCap = document.createElement('input');
-            inpCap.type = 'number';
-            inpCap.className = 'gui-input';
-            inpCap.placeholder = 'cap id';
-            inpCap.style.width = '56px';
-            inpCap.style.flexGrow = '0';
-            const inpBack = document.createElement('input');
-            inpBack.type = 'number';
-            inpBack.className = 'gui-input';
-            inpBack.placeholder = 'back id';
-            inpBack.style.width = '56px';
-            inpBack.style.flexGrow = '0';
-            rowIds.appendChild(document.createTextNode('cap '));
-            rowIds.appendChild(inpCap);
-            rowIds.appendChild(document.createTextNode(' back '));
-            rowIds.appendChild(inpBack);
-            container.appendChild(rowIds);
-
-            const btnUseSel = document.createElement('button');
-            btnUseSel.textContent = 'Use selection -> cap/back';
-            btnUseSel.className = 'gui-btn';
-            btnUseSel.style.marginTop = '4px';
-            btnUseSel.onclick = () => {
-                const ids = Array.from(this.io.system.selection).sort((a, b) => a - b);
-                if (ids.length <= 0) throw new Error('Nothing selected');
-                inpCap.value = String(ids[0]);
-                inpBack.value = (ids.length > 1) ? String(ids[1]) : '';
-            };
-            container.appendChild(btnUseSel);
-
-            const rowGeom = document.createElement('div');
-            rowGeom.className = 'gui-row';
-            rowGeom.style.marginTop = '4px';
-            const inpBond = document.createElement('input');
-            inpBond.type = 'number';
-            inpBond.step = '0.01';
-            inpBond.value = '1.50';
-            inpBond.className = 'gui-input';
-            inpBond.style.width = '62px';
-            inpBond.style.flexGrow = '0';
-            const inpTw = document.createElement('input');
-            inpTw.type = 'number';
-            inpTw.step = '1';
-            inpTw.value = '0';
-            inpTw.className = 'gui-input';
-            inpTw.style.width = '62px';
-            inpTw.style.flexGrow = '0';
-            rowGeom.appendChild(document.createTextNode('bond '));
-            rowGeom.appendChild(inpBond);
-            rowGeom.appendChild(document.createTextNode(' twist° '));
-            rowGeom.appendChild(inpTw);
-            container.appendChild(rowGeom);
-
-            const rowUp = document.createElement('div');
-            rowUp.className = 'gui-row';
-            rowUp.style.marginTop = '4px';
-            const mkF = (val) => { const i = document.createElement('input'); i.type = 'number'; i.step = '0.1'; i.value = String(val); i.className = 'gui-input'; i.style.width = '44px'; i.style.flexGrow = '0'; return i; };
-            const upx = mkF(0); const upy = mkF(0); const upz = mkF(1);
-            rowUp.appendChild(document.createTextNode('up '));
-            rowUp.appendChild(upx); rowUp.appendChild(upy); rowUp.appendChild(upz);
-            container.appendChild(rowUp);
-
-            const rowRefs = document.createElement('div');
-            rowRefs.className = 'gui-row';
-            rowRefs.style.marginTop = '4px';
-            const mkInt = (lbl, val) => { rowRefs.appendChild(document.createTextNode(lbl + ' ')); const i = document.createElement('input'); i.type = 'number'; i.step = '1'; i.value = String(val); i.className = 'gui-input'; i.style.width = '44px'; i.style.flexGrow = '0'; rowRefs.appendChild(i); return i; };
-            const gA = mkInt('gA', 1);
-            const gF = mkInt('gF', 2);
-            const gU = mkInt('gU', 0);
-            container.appendChild(rowRefs);
-
-            const btnAttachDir = document.createElement('button');
-            btnAttachDir.textContent = 'Attach (direction)';
-            btnAttachDir.className = 'gui-btn';
-            btnAttachDir.style.marginTop = '4px';
-            btnAttachDir.onclick = () => {
-                if (!this.endGroupParsed) throw new Error('No endgroup loaded');
-                const cap = parseInt(inpCap.value);
-                if (!(cap >= 0)) throw new Error('cap id missing');
-                const back = inpBack.value.trim() ? parseInt(inpBack.value) : undefined;
-                const up = [parseFloat(upx.value), parseFloat(upy.value), parseFloat(upz.value)];
-                const params = {
-                    backAtom: (back !== undefined) ? back : undefined,
-                    bondLen: parseFloat(inpBond.value),
-                    up,
-                    twistDeg: parseFloat(inpTw.value),
-                    groupAnchor: parseInt(gA.value),
-                    groupForwardRef: parseInt(gF.value),
-                    groupUpRef: parseInt(gU.value)
-                };
-                this.io.system.attachParsedByDirection(cap, this.endGroupParsed, params);
-                this.io.renderer.update();
-            };
-            container.appendChild(btnAttachDir);
-        }, { collapsible: true, open: false });
+        this.buildersGUI.addSubstrateSection(sidebar);
+        this.buildersGUI.addPolymersSection(sidebar);
 
         // --- Section: Parameters ---
         this.createSection(sidebar, 'Parameters', (container) => {
@@ -958,8 +299,6 @@ export class GUI {
                 (content) => {
                     if (window.app && window.app.mmParams) {
                         window.app.mmParams.parseAtomTypes(content);
-                        // Atom types might not affect rendering directly yet (unless we use them for something)
-                        // But good to update.
                     }
                 }
             );
@@ -967,23 +306,13 @@ export class GUI {
 
         // --- Section: Help ---
         this.createSection(sidebar, 'Help', (container) => {
-            const label = document.createElement('label');
-            label.className = 'gui-checkbox-label';
-
-            const chk = document.createElement('input');
-            chk.type = 'checkbox';
-            chk.checked = true; // Help visible by default
-
             const toggleHelp = () => {
                 const help = document.getElementById('help-overlay');
                 if (!help) return;
-                help.style.display = chk.checked ? 'block' : 'none';
+                help.style.display = chk.input.checked ? 'block' : 'none';
             };
 
-            chk.onchange = toggleHelp;
-            label.appendChild(chk);
-            label.appendChild(document.createTextNode('Show Help'));
-            container.appendChild(label);
+            const chk = GUIutils.labelCheck(container, 'Show Help', true, toggleHelp);
 
             // Initialize on first load
             toggleHelp();
@@ -992,59 +321,29 @@ export class GUI {
         // --- Section: System Log ---
         this.createSection(sidebar, 'System Log', (container) => {
             // Verbosity
-            const row = document.createElement('div');
-            row.className = 'gui-row';
-
-            const lbl = document.createElement('span');
-            lbl.textContent = 'Verbosity: ';
-            lbl.style.fontSize = '0.9em';
-            row.appendChild(lbl);
-
-            const input = document.createElement('input');
-            input.type = 'number';
-            input.className = 'gui-input';
-            input.style.width = '50px';
-            input.style.flexGrow = '0';
-            input.value = window.VERBOSITY_LEVEL;
-            input.min = 0;
-            input.max = 4;
-            input.onchange = (e) => {
+            const row = GUIutils.row(container);
+            GUIutils.span(row, 'Verbosity: ', { fontSize: '0.9em' });
+            const input = GUIutils.num(row, window.VERBOSITY_LEVEL, { min: 0, max: 4, step: '1', onchange: (e) => {
                 window.VERBOSITY_LEVEL = parseInt(e.target.value);
                 window.logger.info(`Verbosity set to ${window.VERBOSITY_LEVEL}`);
-            };
-            row.appendChild(input);
+            } }, { width: '50px', flexGrow: '0' });
 
-            const btnClear = document.createElement('button');
-            btnClear.textContent = 'Clear';
-            btnClear.className = 'gui-btn';
-            btnClear.style.marginLeft = '5px';
-            btnClear.style.flexGrow = '0';
-            btnClear.onclick = () => {
-                if (window.logger) window.logger.clear();
-            };
-            row.appendChild(btnClear);
-            container.appendChild(row);
+            GUIutils.btn(row, 'Clear', () => { if (window.logger) window.logger.clear(); }, { marginLeft: '5px', flexGrow: '0' });
 
             // Log Output
-            const logOut = document.createElement('div');
-            logOut.className = 'gui-log-output';
-            container.appendChild(logOut);
+            const logOut = GUIutils.div(container, 'gui-log-output');
 
             if (window.logger) window.logger.setContainer(logOut);
         });
     }
 
     createSection(parent, title, contentFn, opts = null) {
-        const section = document.createElement('div');
-        section.className = 'gui-section';
+        const section = GUIutils.div(null, 'gui-section');
 
-        const titleEl = document.createElement('div');
-        titleEl.className = 'gui-section-title';
+        const titleEl = GUIutils.div(section, 'gui-section-title');
         titleEl.textContent = title;
-        section.appendChild(titleEl);
 
-        const content = document.createElement('div');
-        section.appendChild(content);
+        const content = GUIutils.div(section);
 
         const collapsible = opts && opts.collapsible;
         const openDefault = !(opts && (opts.open === false));
@@ -1064,23 +363,34 @@ export class GUI {
 
     updateSelectionCount() {
         if (!this.lblCount) return;
-        const n = (this.io && this.io.system && this.io.system.selection) ? this.io.system.selection.size : 0;
+        const n = (this.system && this.system.selection) ? this.system.selection.size : 0;
         this.lblCount.textContent = String(n);
+    }
+
+    updateSelectionUI() {
+        this.updateSelectionCount();
+        if (this.inpSelection && this.system && this.system.selection) {
+            const ids = Array.from(this.system.selection);
+            ids.sort((a, b) => a - b);
+            this.inpSelection.value = ids.join(',');
+        }
     }
 
     onSelectionInputChange(value) {
         const parts = value.split(',');
-        this.io.system.clearSelection();
+        this.system.clearSelection();
         let count = 0;
         for (const part of parts) {
             const id = parseInt(part.trim());
-            if (!isNaN(id) && id >= 0 && id < this.io.system.nAtoms) {
-                this.io.system.select(id, 'add');
+            if (!isNaN(id) && id >= 0 && id < this.system.nAtoms) {
+                this.system.select(id, 'add');
                 count++;
             }
         }
-        this.io.renderer.update();
+        this.renderer.update();
+        this.requestRender();
         if (this.onSelectionChanged) this.onSelectionChanged();
+        this.updateSelectionUI();
         // Also update editor gizmo if possible
         if (window.app && window.app.editor) {
             window.app.editor.updateGizmo();
@@ -1088,36 +398,20 @@ export class GUI {
         window.logger.info(`Selection set from input: ${count} atoms.`);
     }
 
-    setZoom(zoomValue) {
-        if (window.app && window.app.camera) {
-            const cam = window.app.camera;
-            // For OrthographicCamera, zoom is controlled by 'zoom' property
-            cam.zoom = zoomValue;
-            cam.updateProjectionMatrix();
-        }
+    setZoom(zoom) {
+        if (!(window.app && window.app.camera && window.app.controls)) return;
+        const cam = window.app.camera;
+        cam.zoom = zoom;
+        cam.updateProjectionMatrix();
+        window.app.controls.update();
     }
 
     createParamControl(container, label, defaultPath, onApply) {
-        const wrapper = document.createElement('div');
-        wrapper.style.marginBottom = '10px';
-        wrapper.style.borderBottom = '1px solid #444';
-        wrapper.style.paddingBottom = '5px';
+        const wrapper = GUIutils.div(null, null, { marginBottom: '10px', borderBottom: '1px solid #444', paddingBottom: '5px' });
 
-        const btnToggle = document.createElement('button');
-        btnToggle.textContent = `Show/Hide ${label}`;
-        btnToggle.className = 'gui-btn';
-        wrapper.appendChild(btnToggle);
+        const btnToggle = GUIutils.btn(wrapper, `Show/Hide ${label}`);
 
-        const textArea = document.createElement('textarea');
-        textArea.className = 'gui-textarea';
-        textArea.style.display = 'none';
-        textArea.style.height = '100px';
-        textArea.style.width = '100%';
-        textArea.style.marginTop = '5px';
-        textArea.style.fontSize = '0.8em';
-        textArea.style.fontFamily = 'monospace';
-        textArea.placeholder = `Paste ${label} content here...`;
-        wrapper.appendChild(textArea);
+        const textArea = GUIutils.textArea(wrapper, '', { placeholder: `Paste ${label} content here...` });
 
         // Load Default (Fetch)
         btnToggle.onclick = async () => {
@@ -1136,16 +430,9 @@ export class GUI {
         };
 
         // Load File Button
-        const btnLoad = document.createElement('button');
-        btnLoad.textContent = 'Load File...';
-        btnLoad.className = 'gui-btn';
-        btnLoad.style.marginTop = '5px';
-        wrapper.appendChild(btnLoad);
+        const btnLoad = GUIutils.btn(wrapper, 'Load File...', null, { marginTop: '5px' });
 
-        const fileInput = document.createElement('input');
-        fileInput.type = 'file';
-        fileInput.style.display = 'none';
-        wrapper.appendChild(fileInput);
+        const fileInput = GUIutils.input(wrapper, { type: 'file' }, { display: 'none' });
 
         btnLoad.onclick = () => fileInput.click();
         fileInput.onchange = (e) => {
@@ -1161,17 +448,12 @@ export class GUI {
         };
 
         // Apply Button
-        const btnApply = document.createElement('button');
-        btnApply.textContent = 'Apply';
-        btnApply.className = 'gui-btn';
-        btnApply.style.marginTop = '5px';
-        btnApply.onclick = () => {
+        GUIutils.btn(wrapper, 'Apply', () => {
             if (textArea.value.trim()) {
                 onApply(textArea.value);
                 window.logger.info(`${label} updated.`);
             }
-        };
-        wrapper.appendChild(btnApply);
+        }, { marginTop: '5px' });
 
         container.appendChild(wrapper);
     }
@@ -1184,6 +466,7 @@ export class GUI {
             cam.lookAt(0, 0, 0);
             cam.updateProjectionMatrix();
             window.app.controls.update();
+            this.requestRender();
         }
     }
 
@@ -1192,17 +475,9 @@ export class GUI {
         const params = window.app.mmParams;
 
         // Populate Elements
-        this.selElement.innerHTML = '';
         const elements = Object.values(params.elementTypes).sort((a, b) => a.iZ - b.iZ);
 
-        // Add common ones first if needed, or just all
-        for (const el of elements) {
-            const opt = document.createElement('option');
-            opt.value = el.iZ;
-            opt.textContent = `${el.name} (${el.iZ})`;
-            if (el.name === 'C') opt.selected = true;
-            this.selElement.appendChild(opt);
-        }
+        GUIutils.setSelectOptions(this.selElement, elements.map(el => ({ value: el.iZ, text: `${el.name} (${el.iZ})`, selected: (el.name === 'C') })), { selectFirst: true });
 
         // Trigger update for Atom Types
         this.onElementChange(this.selElement.value);
@@ -1227,18 +502,9 @@ export class GUI {
         const types = Object.values(params.atomTypes).filter(t => t.element_name === elName);
 
         if (types.length === 0) {
-            // Fallback if no specific types
-            const opt = document.createElement('option');
-            opt.value = elName;
-            opt.textContent = elName;
-            this.selAtomType.appendChild(opt);
+            GUIutils.setSelectOptions(this.selAtomType, [{ value: elName, text: elName, selected: true }], { selectFirst: true });
         } else {
-            for (const t of types) {
-                const opt = document.createElement('option');
-                opt.value = t.name;
-                opt.textContent = t.name;
-                this.selAtomType.appendChild(opt);
-            }
+            GUIutils.setSelectOptions(this.selAtomType, types.map(t => ({ value: t.name, text: t.name })), { selectFirst: true });
         }
 
         // Trigger Atom Type Update
@@ -1253,4 +519,5 @@ export class GUI {
             window.logger.info(`Selected Atom Type: ${typeName}`);
         }
     }
+
 }

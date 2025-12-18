@@ -3,6 +3,8 @@ varying vec2 vUv;
 varying vec3 vViewPosition;
 varying float vRadius;
 
+uniform float uAlpha;
+
 void main() {
     // 1. Calculate distance from center (0.5, 0.5)
     vec2 uvOffset = vUv - 0.5;
@@ -35,5 +37,5 @@ void main() {
     // Combine
     vec3 finalColor = vColor * (ambient + diffuse) + specular;
 
-    gl_FragColor = vec4(finalColor, 1.0);
+    gl_FragColor = vec4(finalColor, uAlpha);
 }
