@@ -3,9 +3,36 @@
 
 - [x] Use **explicit hydrogens** as normal atoms (with neighbors etc.).
 - [x] Selection/reference policy: store **atom IDs** everywhere; only use indices as transient dense-array slots.
-- [ ] Implement `EditableMolecule` core (Atom/Bond/Fragment/Bounds) with swap-remove and stable IDs.
-- [ ] Implement **direct export** `EditableMolecule.exportToMoleculeSystem(ms)` to fill existing `MoleculeSystem` (pos/types/bonds/neighborList).
-- [ ] Wire editor/GUI operations to mutate `EditableMolecule`, then export to `MoleculeSystem` for rendering/simulation.
+- [x] Implement `EditableMolecule` core (Atom/Bond/Fragment/Bounds) with swap-remove and stable IDs.
+- [x] Implement **direct export** `EditableMolecule.exportToMoleculeSystem(ms)` to fill existing packed render system (pos/types/bonds/selection).
+- [x] Wire editor/GUI operations to mutate `EditableMolecule`, then export to packed system for rendering.
+
+---
+
+# Status update (Dec 2025)
+
+## What was implemented
+
+- `EditableMolecule` is now the authoritative topology/geometry model:
+  - stable atom IDs + swap-remove deletion
+  - bonds store `aId/bId` as source of truth with cached indices via `topoVersion`
+- Export boundary exists and is used by renderer:
+  - `EditableMolecule.exportToMoleculeSystem(ms)` feeds the packed renderer buffer
+- Attachment and polymer assembly (ported from `tests/tAttach`):
+  - marker attach: `EditableMolecule.attachGroupByMarker(...)`
+    - supports distinct marker pairs on backbone vs group (`groupMarkerX/groupMarkerY`)
+  - direction attach: `EditableMolecule.attachParsedByDirection(...)`
+  - polymer builder: `PolymerUtils.assemblePolymerFromTokens(...)`
+    - repeat-vector sign is chosen (±`lvec[1]`) to minimize head↔tail distance (prevents long wrap-around join bonds)
+- IO/debug support:
+  - `EditableMolecule.parseMol2/parseXYZ`
+  - `EditableMolecule.toXYZString/toMol2String` + GUI download buttons
+
+## Still missing / planned next
+
+- Connected components / fragments computation (beyond the current `Fragment` scaffolding)
+- Ring/cycle detection + bridge detection
+- Group/functional substitution beyond marker-based anchors (chemically-aware replacement, valence checks)
 
 # Best design (after reading the ring/chain editor doc + [MMFFBuilderBase.h](cci:7://file:///home/prokop/git/FireCore/cpp/common/molecular/MMFFBuilderBase.h:0:0-0:0))
 

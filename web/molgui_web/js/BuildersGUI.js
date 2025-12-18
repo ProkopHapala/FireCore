@@ -322,6 +322,219 @@ export class BuildersGUI {
                 return d;
             };
 
+            mkLbl('Examples (from tests/tAttach)');
+
+            const EXAMPLES = {
+                backbones: {
+                    'PorhQuad_4SeCl': '../../tests/tAttach/porphironoids/PorhQuad_4SeCl.mol2',
+                    'PorhQuad_4SeCl_20deg': '../../tests/tAttach/porphironoids/PorhQuad_4SeCl_20deg.mol2',
+                    'PorhQuad_4SeCl_30deg': '../../tests/tAttach/porphironoids/PorhQuad_4SeCl_30deg.mol2',
+                    'diphenatroline_CO_subs': '../../tests/tAttach/porphironoids/diphenatroline_CO_subs.mol2',
+                    'diphenatroline_NH_subs': '../../tests/tAttach/porphironoids/diphenatroline_NH_subs.mol2',
+                    'porphirin_3sites_subs': '../../tests/tAttach/porphironoids/porphirin_3sites_subs.mol2',
+                    'porphirin_subs2': '../../tests/tAttach/porphironoids/porphirin_subs2.mol2',
+                    'tisite_subs': '../../tests/tAttach/porphironoids/tisite_subs.mol2',
+                },
+                endgroups: {
+                    'guanine-SeCl': { path: '../../tests/tAttach/endgroups/guanine-SeCl.mol2', markers: { X: 'Se', Y: 'Cl' } },
+                    'guanine-AlCl': { path: '../../tests/tAttach/endgroups/guanine-AlCl.mol2', markers: { X: 'Al', Y: 'Cl' } },
+                    'guanine-SF': { path: '../../tests/tAttach/endgroups/guanine-SF.mol2', markers: { X: 'S', Y: 'F' } },
+                },
+                monomers: {
+                    D: { file: '../../tests/tAttach/backbones/DANA_CG_2inv.mol2', anchors: [1, 4] },
+                    T: { file: '../../tests/tAttach/TNA_CG-.mol2', anchors: [6, 5] },
+                    P: { file: '../../tests/tAttach/PNA_CG.mol2', anchors: [2, 19] },
+                },
+                sequences: {
+                    'DDDD_DDDD': 'DDDD_DDDD',
+                    'PPPPPPP': 'PPPPPPP',
+                    'TPTTDD': 'TPTTDD',
+                },
+                // Default marker pair used only if a preset does not specify its own.
+                markers: { X: 'Se', Y: 'Cl' },
+            };
+
+            const rowEx0 = GUIutils.row(container);
+            GUIutils.span(rowEx0, 'Backbone: ');
+            const selBackbone = GUIutils.selectList(rowEx0, Object.keys(EXAMPLES.backbones), null, null, { flexGrow: '1' });
+            const btnLoadBackbone = GUIutils.btn(rowEx0, 'Load', null, { marginLeft: '4px', flexGrow: '0' });
+
+            const rowEx1 = GUIutils.row(container, { marginTop: '4px' });
+            GUIutils.span(rowEx1, 'Endgroup: ');
+            const selEnd = GUIutils.selectList(rowEx1, Object.keys(EXAMPLES.endgroups), null, null, { flexGrow: '1' });
+            const btnLoadEnd = GUIutils.btn(rowEx1, 'Load', null, { marginLeft: '4px', flexGrow: '0' });
+
+            const rowEx2 = GUIutils.row(container, { marginTop: '4px' });
+            const btnRunMarkerExample = GUIutils.btn(rowEx2, 'Run marker-attach example', null, { flexGrow: '1' });
+
+            const rowEx3 = GUIutils.row(container, { marginTop: '6px' });
+            GUIutils.span(rowEx3, 'Seq: ');
+            const selSeq = GUIutils.selectList(rowEx3, Object.keys(EXAMPLES.sequences), null, null, { flexGrow: '1' });
+            const btnLoadMonoSet = GUIutils.btn(rowEx3, 'Load monomers', null, { marginLeft: '4px', flexGrow: '0' });
+            const btnBuildSeq = GUIutils.btn(rowEx3, 'Build', null, { marginLeft: '4px', flexGrow: '0' });
+
+            const rowDbg = GUIutils.row(container, { marginTop: '4px' });
+            const btnSaveMol2 = GUIutils.btn(rowDbg, 'Save MOL2', null, { flexGrow: '0' });
+            const btnLogBonds = GUIutils.btn(rowDbg, 'Log longest bonds', null, { marginLeft: '4px', flexGrow: '0' });
+
+            const fetchMol2 = async (path) => {
+                const res = await fetch(path);
+                if (!res.ok) throw new Error(`Failed to fetch ${path} (HTTP ${res.status})`);
+                const txt = await res.text();
+                return EditableMolecule.parseMol2(txt);
+            };
+
+            const applyParsedReplace = (parsed) => {
+                gui.system.clear();
+                gui.system.appendParsedSystem(parsed);
+                gui.renderer.update();
+                gui.requestRender();
+            };
+
+            btnSaveMol2.onclick = () => {
+                try {
+                    gui.saveMol2File('molgui_export.mol2');
+                } catch (e) { window.logger.error(String(e)); throw e; }
+            };
+
+            btnLogBonds.onclick = () => {
+                try {
+                    const mol = gui.system;
+                    const out = [];
+                    for (let ib = 0; ib < mol.bonds.length; ib++) {
+                        const b = mol.bonds[ib];
+                        b.ensureIndices(mol);
+                        const a = mol.atoms[b.a];
+                        const c = mol.atoms[b.b];
+                        const dx = a.pos.x - c.pos.x;
+                        const dy = a.pos.y - c.pos.y;
+                        const dz = a.pos.z - c.pos.z;
+                        const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                        out.push({ r, ib, aId: a.id, bId: c.id, aZ: a.Z, bZ: c.Z, ax: a.pos.x, ay: a.pos.y, az: a.pos.z, bx: c.pos.x, by: c.pos.y, bz: c.pos.z });
+                    }
+                    out.sort((u, v) => v.r - u.r);
+                    const n = Math.min(20, out.length);
+                    window.logger.info(`Longest bonds (top ${n} of ${out.length}):`);
+                    for (let i = 0; i < n; i++) {
+                        const e = out[i];
+                        window.logger.info(`#${i} ib=${e.ib} r=${e.r.toFixed(3)} aId=${e.aId}(Z=${e.aZ}) bId=${e.bId}(Z=${e.bZ}) A=(${e.ax.toFixed(3)},${e.ay.toFixed(3)},${e.az.toFixed(3)}) B=(${e.bx.toFixed(3)},${e.by.toFixed(3)},${e.bz.toFixed(3)})`);
+                    }
+                } catch (e) { window.logger.error(String(e)); throw e; }
+            };
+
+            btnLoadBackbone.onclick = async () => {
+                try {
+                    const key = selBackbone.value;
+                    const path = EXAMPLES.backbones[key];
+                    if (!path) throw new Error('Backbone preset missing path');
+                    const parsed = await fetchMol2(path);
+                    applyParsedReplace(parsed);
+                    window.logger.info(`Loaded backbone preset '${key}' atoms=${parsed.types.length}`);
+                } catch (e) { window.logger.error(String(e)); throw e; }
+            };
+
+            btnLoadEnd.onclick = async () => {
+                try {
+                    const key = selEnd.value;
+                    const rec = EXAMPLES.endgroups[key];
+                    const path = (typeof rec === 'string') ? rec : (rec ? rec.path : null);
+                    if (!path) throw new Error('Endgroup preset missing path');
+                    gui.endGroupParsed = await fetchMol2(path);
+                    window.logger.info(`Loaded endgroup preset '${key}' atoms=${gui.endGroupParsed.types.length}`);
+                } catch (e) { window.logger.error(String(e)); throw e; }
+            };
+
+            btnRunMarkerExample.onclick = async () => {
+                try {
+                    const backKey = selBackbone.value;
+                    const endKey = selEnd.value;
+                    const backPath = EXAMPLES.backbones[backKey];
+                    const endRec = EXAMPLES.endgroups[endKey];
+                    const endPath = (typeof endRec === 'string') ? endRec : (endRec ? endRec.path : null);
+                    if (!backPath || !endPath) throw new Error('Example selection missing path');
+                    const backbone = await fetchMol2(backPath);
+                    const endg = await fetchMol2(endPath);
+                    applyParsedReplace(backbone);
+                    gui.endGroupParsed = endg;
+                    const mkBack = EXAMPLES.markers;
+                    const mkGroup = (endRec && typeof endRec === 'object' && endRec.markers) ? endRec.markers : EXAMPLES.markers;
+                    if (!mkBack || !mkBack.X || !mkBack.Y) throw new Error('Example preset missing backbone markers');
+                    if (!mkGroup || !mkGroup.X || !mkGroup.Y) throw new Error('Example preset missing endgroup markers');
+                    try {
+                        const same = (mkBack.X === mkGroup.X) && (mkBack.Y === mkGroup.Y);
+                        if (same) gui.system.attachGroupByMarker(gui.endGroupParsed, mkBack.X, mkBack.Y);
+                        else gui.system.attachGroupByMarker(gui.endGroupParsed, mkBack.X, mkBack.Y, { groupMarkerX: mkGroup.X, groupMarkerY: mkGroup.Y });
+                    } catch (err) {
+                        const msg = String(err);
+                        if (msg.includes('group must have exactly one marker pair, got 0')) {
+                            throw new Error(`Marker attach failed: endgroup '${endKey}' does not contain marker pair X='${mkGroup.X}' Y='${mkGroup.Y}'`);
+                        }
+                        throw err;
+                    }
+                    gui.renderer.update();
+                    gui.requestRender();
+                    window.logger.info(`Marker-attach example done: backbone='${backKey}' endgroup='${endKey}'`);
+                } catch (e) { window.logger.error(String(e)); throw e; }
+            };
+
+            btnLoadMonoSet.onclick = async () => {
+                try {
+                    gui.monomerLib = { name: 'tAttach polymerize.py', monomers: [] };
+                    gui.monomerGeoms.clear();
+                    for (const [id, rec] of Object.entries(EXAMPLES.monomers)) {
+                        const parsed = await fetchMol2(rec.file);
+                        const fname = rec.file.split('/').slice(-1)[0];
+                        gui.monomerGeoms.set(fname, parsed);
+                        gui.monomerLib.monomers.push({
+                            id,
+                            file: fname,
+                            anchors: { head: { type: 'index', value: rec.anchors[0] }, tail: { type: 'index', value: rec.anchors[1] } }
+                        });
+                    }
+                    window.logger.info(`Loaded monomer preset set: monomers=${gui.monomerLib.monomers.length} mol2=${gui.monomerGeoms.size}`);
+                } catch (e) { window.logger.error(String(e)); throw e; }
+            };
+
+            btnBuildSeq.onclick = async () => {
+                try {
+                    const seq = EXAMPLES.sequences[selSeq.value];
+                    if (!seq) throw new Error('Sequence preset missing');
+
+                    if (!gui.monomerLib) await btnLoadMonoSet.onclick();
+
+                    const tokens = gui.parseSequenceTokens(seq);
+                    const monomers = (() => {
+                        if (!gui.monomerLib) throw new Error('No monomer library loaded');
+                        const map = {};
+                        for (const m of gui.monomerLib.monomers) {
+                            const parsed = gui.monomerGeoms.get(m.file);
+                            if (!parsed) throw new Error(`Missing geometry for '${m.id}' file='${m.file}'`);
+                            map[m.id] = { parsed, anchors: [m.anchors.head.value, m.anchors.tail.value] };
+                        }
+                        return map;
+                    })();
+
+                    const poly = PolymerUtils.assemblePolymerFromTokens(tokens, monomers, { _0: 1 });
+                    gui.system.clear();
+                    const idsNew = new Map();
+                    for (const a of poly.atoms) {
+                        const id = gui.system.addAtom(a.pos.x, a.pos.y, a.pos.z, a.Z);
+                        idsNew.set(a.id, id);
+                    }
+                    for (const b of poly.bonds) {
+                        const aId = idsNew.get(b.aId);
+                        const cId = idsNew.get(b.bId);
+                        if (aId === undefined || cId === undefined) throw new Error('btnBuildSeq: bond endpoint missing after copy');
+                        gui.system.addBond(aId, cId);
+                    }
+                    gui.renderer.update();
+                    gui.requestRender();
+                    window.logger.info(`Built polymer preset sequence '${seq}' atoms=${gui.system.nAtoms}`);
+                } catch (e) { window.logger.error(String(e)); throw e; }
+            };
+
+            GUIutils.el(container, 'hr', null, { borderColor: '#444', margin: '8px 0' });
+
             mkLbl('Monomer library (JSON + mol2 files)');
 
             const btnLoadLib = GUIutils.btn(container, 'Load Library JSON...');
@@ -421,14 +634,14 @@ export class BuildersGUI {
 
             mkLbl('End-group attachment');
 
-            const btnLoadEnd = GUIutils.btn(container, 'Load Endgroup mol2...');
+            const btnLoadEndFile = GUIutils.btn(container, 'Load Endgroup mol2...');
 
             const inpEnd = GUIutils.input(container, { type: 'file', attrs: { accept: '.mol2' } }, { display: 'none' });
 
             const lblEnd = GUIutils.div(container, null, { fontSize: '0.85em', color: '#aaa', marginTop: '2px' });
             lblEnd.textContent = 'No endgroup loaded';
 
-            btnLoadEnd.onclick = () => inpEnd.click();
+            btnLoadEndFile.onclick = () => inpEnd.click();
             inpEnd.onchange = async (e) => {
                 if (e.target.files.length <= 0) return;
                 const file = e.target.files[0];

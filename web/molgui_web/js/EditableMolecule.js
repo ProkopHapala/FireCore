@@ -354,8 +354,248 @@ export class EditableMolecule {
 
     updateNeighborList() { /* adjacency is maintained incrementally in atoms[].bonds */ }
 
-    attachGroupByMarker() { throw new Error('EditableMolecule.attachGroupByMarker(): not implemented yet (needs port from legacy MoleculeSystem)'); }
-    attachParsedByDirection() { throw new Error('EditableMolecule.attachParsedByDirection(): not implemented yet (needs port from legacy MoleculeSystem)'); }
+    attachGroupByMarker(groupParsed, markerX = 'Xe', markerY = 'He', opts = {}) {
+        const maxIter = (opts.maxIter !== undefined) ? (opts.maxIter | 0) : 10000;
+        const zX = EditableMolecule.asZ(markerX);
+        const zY = EditableMolecule.asZ(markerY);
+        const groupMarkerX = (opts.groupMarkerX !== undefined) ? opts.groupMarkerX : markerX;
+        const groupMarkerY = (opts.groupMarkerY !== undefined) ? opts.groupMarkerY : markerY;
+        const zGX = EditableMolecule.asZ(groupMarkerX);
+        const zGY = EditableMolecule.asZ(groupMarkerY);
+        if (!groupParsed || !groupParsed.pos || !groupParsed.types || !groupParsed.bonds) throw new Error('attachGroupByMarker: groupParsed must have pos/types/bonds');
+        const gPairs = EditableMolecule._findMarkerPairsParsed(groupParsed, zGX, zGY);
+        if (gPairs.length !== 1) throw new Error(`attachGroupByMarker: group must have exactly one marker pair, got ${gPairs.length}`);
+        const gind = gPairs[0]; // [iX, iY, iA] in groupParsed local indices
+
+        const pairs0 = EditableMolecule._findMarkerPairsMol(this, zX, zY);
+        if (pairs0.length === 0) throw new Error(`attachGroupByMarker: backbone has no marker pairs X='${markerX}' Y='${markerY}'`);
+
+        let it = 0;
+        while (it < maxIter) {
+            it++;
+            const pairs = EditableMolecule._findMarkerPairsMol(this, zX, zY);
+            if (pairs.length === 0) break;
+
+            const bind = pairs[0]; // {xId, yId, aId}
+            const R = EditableMolecule._computeMarkerAttachRotation(this, groupParsed, bind, gind, zX, zY, zGX, zGY);
+
+            const Xb = this.atoms[this.getAtomIndex(bind.xId)].pos;
+            const A2 = EditableMolecule._getParsedPos(groupParsed.pos, gind[2]);
+            const tr = EditableMolecule._transformParsed(groupParsed, R, Xb, A2);
+            const removed = EditableMolecule._removeAtomsFromParsed(tr, new Set([gind[0], gind[1]]));
+            const idxAnchorGroup = removed.oldToNew[gind[2]];
+            if (idxAnchorGroup < 0) throw new Error('attachGroupByMarker: group anchor unexpectedly removed');
+
+            const ids = this.appendParsedSystem(removed, { pos: new Vec3(0, 0, 0) });
+            const groupAnchorId = ids[idxAnchorGroup];
+            if (groupAnchorId === undefined) throw new Error('attachGroupByMarker: groupAnchorId missing after append');
+            this.addBond(bind.aId, groupAnchorId);
+
+            // delete backbone marker atoms (order does not matter when deleting by ID)
+            this.removeAtomById(bind.xId);
+            this.removeAtomById(bind.yId);
+        }
+        if (it >= maxIter) throw new Error(`attachGroupByMarker: exceeded maxIter=${maxIter}`);
+    }
+
+    attachParsedByDirection(capAtom, groupParsed, params = {}) {
+        const capId = capAtom | 0;
+        const iCap = this.getAtomIndex(capId);
+        if (iCap < 0) throw new Error(`attachParsedByDirection: capAtom not found id=${capAtom}`);
+        if (!groupParsed || !groupParsed.pos || !groupParsed.types || !groupParsed.bonds) throw new Error('attachParsedByDirection: groupParsed must have pos/types/bonds');
+
+        const cap = this.atoms[iCap];
+        if (!cap.bonds || cap.bonds.length === 0) throw new Error('attachParsedByDirection: capAtom has no neighbors');
+
+        const backId = (params.backAtom !== undefined) ? (params.backAtom | 0) : (() => {
+            const ib = cap.bonds[0];
+            const b = this.bonds[ib];
+            b.ensureIndices(this);
+            return this.atoms[b.other(iCap)].id;
+        })();
+        const iBack = this.getAtomIndex(backId);
+        if (iBack < 0) throw new Error(`attachParsedByDirection: backAtom not found id=${backId}`);
+
+        const bondLen = (params.bondLen !== undefined) ? +params.bondLen : 1.5;
+        const upArr = (params.up !== undefined) ? params.up : [0, 0, 1];
+        const up = new Vec3(+upArr[0], +upArr[1], +upArr[2]);
+        const twistDeg = (params.twistDeg !== undefined) ? +params.twistDeg : 0.0;
+
+        const iGa = (params.groupAnchor !== undefined) ? ((params.groupAnchor | 0) - 1) : 0;
+        const iGf = (params.groupForwardRef !== undefined) ? ((params.groupForwardRef | 0) - 1) : 1;
+        const iGu = (params.groupUpRef !== undefined) ? ((params.groupUpRef | 0) - 1) : -1;
+        if (iGa < 0 || iGa >= groupParsed.types.length) throw new Error(`attachParsedByDirection: groupAnchor out of range ${iGa}`);
+        if (iGf < 0 || iGf >= groupParsed.types.length) throw new Error(`attachParsedByDirection: groupForwardRef out of range ${iGf}`);
+        if (iGu >= groupParsed.types.length) throw new Error(`attachParsedByDirection: groupUpRef out of range ${iGu}`);
+
+        const Xb = this.atoms[iBack].pos;
+        const Xcap = cap.pos;
+        const f = new Vec3().setSub(Xcap, Xb);
+        if (f.normalize() < 1e-12) throw new Error('attachParsedByDirection: cap-back vector is zero');
+
+        const Mb0 = EditableMolecule._buildFrame(f, up);
+        const Mb = (Math.abs(twistDeg) > 1e-9) ? EditableMolecule._rotateFrameAroundForward(Mb0, twistDeg * Math.PI / 180.0) : Mb0;
+
+        const Xg = EditableMolecule._getParsedPos(groupParsed.pos, iGa);
+        const PgF = EditableMolecule._getParsedPos(groupParsed.pos, iGf);
+        const fg = new Vec3().setSub(PgF, Xg);
+
+        let ug = null;
+        if (iGu >= 0) {
+            const PgU = EditableMolecule._getParsedPos(groupParsed.pos, iGu);
+            ug = new Vec3().setSub(PgU, Xg);
+        } else {
+            ug = new Vec3(0, 0, 1);
+        }
+
+        const Mg = EditableMolecule._buildFrame(fg, ug);
+        const R = Mat3.mul(Mb, Mg.clone().transpose());
+
+        const Xattach = Xb.clone().addMul(f, bondLen);
+        const tr = EditableMolecule._transformParsed(groupParsed, R, Xattach, Xg);
+        const ids = this.appendParsedSystem(tr);
+        const groupAnchorId = ids[iGa];
+        if (groupAnchorId === undefined) throw new Error('attachParsedByDirection: groupAnchorId missing after append');
+        this.addBond(backId, groupAnchorId);
+        this.removeAtomById(capId);
+    }
+
+    static _getParsedPos(pos3, i) {
+        const i3 = (i | 0) * 3;
+        return new Vec3(pos3[i3], pos3[i3 + 1], pos3[i3 + 2]);
+    }
+
+    static _findMarkerPairsMol(mol, zX, zY) {
+        const out = [];
+        for (let i = 0; i < mol.atoms.length; i++) {
+            const aX = mol.atoms[i];
+            if (aX.Z !== zX) continue;
+            let yId = -1;
+            let aId = -1;
+            for (const ib of aX.bonds) {
+                const b = mol.bonds[ib];
+                b.ensureIndices(mol);
+                const j = b.other(i);
+                const aj = mol.atoms[j];
+                if (aj.Z === zY) yId = aj.id;
+                else if (aj.Z !== zX) aId = aj.id;
+            }
+            if (yId >= 0 && aId >= 0) out.push({ xId: aX.id, yId, aId });
+        }
+        return out;
+    }
+
+    static _findMarkerPairsParsed(parsed, zX, zY) {
+        const n = parsed.types.length | 0;
+        const ngs = new Array(n).fill(null).map(() => []);
+        for (const [a, b] of parsed.bonds) { ngs[a | 0].push(b | 0); ngs[b | 0].push(a | 0); }
+        const out = [];
+        for (let i = 0; i < n; i++) {
+            if (parsed.types[i] !== zX) continue;
+            let iY = -1;
+            let iA = -1;
+            for (const j of ngs[i]) {
+                const tj = parsed.types[j];
+                if (tj === zY) iY = j;
+                else if (tj !== zX) iA = j;
+            }
+            if (iY >= 0 && iA >= 0) out.push([i, iY, iA]);
+        }
+        return out;
+    }
+
+    static _buildFrame(forward, up) {
+        const f = forward.clone();
+        if (f.normalize() < 1e-12) throw new Error('_buildFrame: zero forward');
+        const u = up.clone();
+        u.makeOrthoU(f);
+        if (u.normalize() < 1e-12) throw new Error('_buildFrame: up parallel to forward');
+        const l = new Vec3().setCross(u, f);
+        if (l.normalize() < 1e-12) throw new Error('_buildFrame: failed to build left');
+        return new Mat3(f, u, l);
+    }
+
+    static _rotateFrameAroundForward(M, phi) {
+        const f = M.a.clone();
+        const u = M.b.clone();
+        const l = M.c.clone();
+        const c = Math.cos(phi);
+        const s = Math.sin(phi);
+        const u2 = u.clone().mulScalar(c).addMul(l, s);
+        const l2 = l.clone().mulScalar(c).addMul(u, -s);
+        return new Mat3(f, u2, l2);
+    }
+
+    static _computeMarkerAttachRotation(backboneMol, groupParsed, bind, gind, zBX, zBY, zGX, zGY) {
+        const iXb = backboneMol.getAtomIndex(bind.xId);
+        const iYb = backboneMol.getAtomIndex(bind.yId);
+        const iAb = backboneMol.getAtomIndex(bind.aId);
+        if (iXb < 0 || iYb < 0 || iAb < 0) throw new Error('_computeMarkerAttachRotation: backbone indices missing');
+        const Xb = backboneMol.atoms[iXb].pos;
+        const Yb = backboneMol.atoms[iYb].pos;
+        const Ab = backboneMol.atoms[iAb].pos;
+
+        const fb = new Vec3().setSub(Ab, Xb);
+        const ub = new Vec3().setSub(Yb, Xb);
+        const Mb = EditableMolecule._buildFrame(fb, ub);
+
+        const Xg = EditableMolecule._getParsedPos(groupParsed.pos, gind[0]);
+        const Yg = EditableMolecule._getParsedPos(groupParsed.pos, gind[1]);
+        const Ag = EditableMolecule._getParsedPos(groupParsed.pos, gind[2]);
+
+        const fg0 = new Vec3().setSub(Ag, Xg);
+        if (fg0.normalize() < 1e-12) throw new Error('_computeMarkerAttachRotation: group forward is zero');
+        const fg = fg0.mulScalar(-1.0);
+        const ug = new Vec3().setSub(Yg, Xg);
+        const Mg = EditableMolecule._buildFrame(fg, ug);
+
+        return Mat3.mul(Mb, Mg.clone().transpose());
+    }
+
+    static _transformParsed(parsed, R, Xb, A2) {
+        const n = parsed.types.length | 0;
+        const pos = new Float32Array(n * 3);
+        const tmp = new Vec3();
+        const tmp2 = new Vec3();
+        for (let i = 0; i < n; i++) {
+            const i3 = i * 3;
+            tmp.set(parsed.pos[i3] - A2.x, parsed.pos[i3 + 1] - A2.y, parsed.pos[i3 + 2] - A2.z);
+            R.mulVec(tmp, tmp2);
+            tmp2.add(Xb);
+            pos[i3] = tmp2.x;
+            pos[i3 + 1] = tmp2.y;
+            pos[i3 + 2] = tmp2.z;
+        }
+        return { ...parsed, pos };
+    }
+
+    static _removeAtomsFromParsed(parsed, toRemoveSet) {
+        const n = parsed.types.length | 0;
+        const oldToNew = new Int32Array(n).fill(-1);
+        let nNew = 0;
+        for (let i = 0; i < n; i++) {
+            if (!toRemoveSet.has(i)) { oldToNew[i] = nNew; nNew++; }
+        }
+        const pos = new Float32Array(nNew * 3);
+        const types = new Uint8Array(nNew);
+        for (let i = 0; i < n; i++) {
+            const j = oldToNew[i];
+            if (j < 0) continue;
+            const i3 = i * 3;
+            const j3 = j * 3;
+            pos[j3] = parsed.pos[i3];
+            pos[j3 + 1] = parsed.pos[i3 + 1];
+            pos[j3 + 2] = parsed.pos[i3 + 2];
+            types[j] = parsed.types[i];
+        }
+        const bonds = [];
+        for (const [a, b] of parsed.bonds) {
+            const na = oldToNew[a | 0];
+            const nb = oldToNew[b | 0];
+            if (na >= 0 && nb >= 0) bonds.push([na, nb]);
+        }
+        return { pos, types, bonds, lvec: parsed.lvec, oldToNew };
+    }
 
     appendParsedSystem(other, opts = {}) {
         if (!other || !other.pos || !other.types) throw new Error('appendParsedSystem: other must have pos/types');
@@ -500,6 +740,44 @@ export class EditableMolecule {
             if (bQ) out.push(`${sym} ${x} ${y} ${z} ${(qs[i] !== undefined) ? qs[i] : 0.0}`);
             else out.push(`${sym} ${x} ${y} ${z}`);
         }
+        return out.join('\n') + '\n';
+    }
+
+    toMol2String(opts = {}) {
+        const lvec = (opts.lvec !== undefined) ? opts.lvec : (this.lvec || null);
+        const name = (opts.name !== undefined) ? String(opts.name) : 'EditableMolecule';
+        const out = [];
+        out.push('@<TRIPOS>MOLECULE');
+        out.push(name);
+        out.push(` ${this.atoms.length} ${this.bonds.length} 0 0 0`);
+        out.push('SMALL');
+        out.push('GASTEIGER');
+        if (lvec && lvec.length === 3) {
+            const a = lvec[0], b = lvec[1], c = lvec[2];
+            out.push(`@lvs ${a.x} ${a.y} ${a.z}    ${b.x} ${b.y} ${b.z}   ${c.x} ${c.y} ${c.z}`);
+        }
+        out.push('');
+        out.push('@<TRIPOS>ATOM');
+        for (let i = 0; i < this.atoms.length; i++) {
+            const at = this.atoms[i];
+            const sym = EditableMolecule.Z_TO_SYMBOL[at.Z] || 'X';
+            const aname = `${sym}${i + 1}`;
+            const x = at.pos.x.toFixed(4);
+            const y = at.pos.y.toFixed(4);
+            const z = at.pos.z.toFixed(4);
+            const q = (at.charge !== undefined && at.charge !== null) ? (+at.charge).toFixed(4) : '0.0000';
+            out.push(`${String(i + 1).padStart(7)} ${aname.padEnd(6)} ${x.padStart(10)} ${y.padStart(10)} ${z.padStart(10)} ${sym.padEnd(5)} 1  UNL1  ${q.padStart(10)}`);
+        }
+        out.push('@<TRIPOS>BOND');
+        for (let i = 0; i < this.bonds.length; i++) {
+            const b = this.bonds[i];
+            b.ensureIndices(this);
+            const a = b.a + 1;
+            const c = b.b + 1;
+            const ord = (b.order !== undefined && b.order !== null) ? String(b.order) : '1';
+            out.push(`${String(i + 1).padStart(6)} ${String(a).padStart(5)} ${String(c).padStart(5)} ${ord}`);
+        }
+        out.push('');
         return out.join('\n') + '\n';
     }
 

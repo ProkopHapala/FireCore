@@ -54,8 +54,20 @@ kept for reference only.
     - [ ] Bond order/type propagation from `BondTypes.dat`
 - [ ] **Lattice Matcher** – commensurability solver and visual debugger along chosen surface directions.
 - [ ] **Monomer Library & Sequencer** – monomer prefabs with head/tail/up anchors, sequence editor for heterogeneous chains.
+    - [x] Example monomer preset set (from `tests/tAttach/polymerize.py`) + sequence parser/tokenizer
+    - [x] Polymer sequence build (append monomers + join bonds)
+    - [x] Repeat-vector sign auto-selection (choose ±`lvec[1]` to minimize head↔tail distance; fixes long wrap-around join bonds)
+    - [x] Debug helpers in GUI: save MOL2 + log longest bonds
+    - [ ] Full monomer/endgroup/backbone library JSON workflow (curated, not only presets)
 - [ ] **Curve & Frame System** – spline paths + robust frame transport along curves/step edges.
 - [ ] **Polymer Assembler** – place and orient monomers along path (twist/tilt controls, instancing for performance).
+
+### 1.5 Polymer attachment / substitution (Implemented for MVP)
+
+- [x] **Marker-based group attachment** (ported from legacy, implemented in `EditableMolecule.attachGroupByMarker`)
+    - supports distinct marker pairs for backbone vs group (e.g. `Se/Cl` backbone + `Al/Cl` group)
+- [x] **Direction-based attachment** (cap+back atom with up-vector + twist) via `EditableMolecule.attachParsedByDirection`
+- [x] **Examples UI** (from `tests/tAttach/*`) to load backbones/endgroups and run marker attach in one click
 
 ## 2. Current Architecture Overview
 
@@ -161,6 +173,17 @@ kept for reference only.
 - `GUI.js`
   - Builds sidebar:
     - Selection info, view controls, gizmo toggles, structure controls, geometry load/save, parameter editors, log panel.
+
+## 2.4 Recent changes (Dec 2025)
+
+- **Attachment functions migrated to `EditableMolecule`**
+  - marker attach + direction attach implemented (Vec3/Mat3, stable atom IDs)
+- **Polymer builder stabilized**
+  - sequence parsing fixed (`DDDD_DDDD` expands to letters; `PNA10` works)
+  - repeat translation sign auto-chosen by head↔tail distance (fixes wrong long join bonds)
+- **Debuggability improved**
+  - added MOL2 export
+  - added “log longest bonds” helper to detect topology mistakes
 
 - `ShortcutManager.js`
   - Global keyboard shortcuts (gizmo toggle/mode, delete, add atom, recalc bonds).

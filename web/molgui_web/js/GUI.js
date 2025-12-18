@@ -30,8 +30,67 @@ export class GUI {
         if (window.app && window.app.requestRender) window.app.requestRender();
     }
 
+    parseSequenceTokens(seq) {
+        const s = (seq !== undefined && seq !== null) ? String(seq) : '';
+        const tokens = [];
+        let i = 0;
+        while (i < s.length) {
+            const c = s[i];
+            if (c === '_' || c === '-' || c === ' ' || c === '\t' || c === '\n' || c === '\r') { i++; continue; }
+            if (!(c >= 'A' && c <= 'Z')) throw new Error(`parseSequenceTokens: expected token starting with [A-Z] at i=${i}, got '${c}'`);
+            let j = i + 1;
+            while (j < s.length) {
+                const cj = s[j];
+                const isAlpha = ((cj >= 'A' && cj <= 'Z') || (cj >= 'a' && cj <= 'z'));
+                if (!isAlpha) break;
+                j++;
+            }
+            const tok0 = s.slice(i, j);
+            i = j;
+            let k = i;
+            while (k < s.length) {
+                const ck = s[k];
+                if (!(ck >= '0' && ck <= '9')) break;
+                k++;
+            }
+            let n = 1;
+            if (k > i) {
+                n = parseInt(s.slice(i, k), 10) | 0;
+                if (!(n > 0)) throw new Error(`parseSequenceTokens: invalid repeat count for token '${tok0}'`);
+                i = k;
+            }
+
+            // If token is ALL-UPPERCASE and has no explicit count, interpret it as
+            // a sequence of single-letter tokens (so DDDD_DDDD works).
+            // If it HAS a count, keep it intact (so PNA10 works).
+            let bAllUpper = true;
+            for (let ii = 0; ii < tok0.length; ii++) {
+                const ch = tok0[ii];
+                if (!(ch >= 'A' && ch <= 'Z')) { bAllUpper = false; break; }
+            }
+            if (bAllUpper && n === 1 && tok0.length > 1) {
+                for (let ii = 0; ii < tok0.length; ii++) tokens.push(tok0[ii]);
+            } else {
+                for (let rep = 0; rep < n; rep++) tokens.push(tok0);
+            }
+        }
+        return tokens;
+    }
+
     saveXYZFile(filename = 'molecule.xyz') {
         const content = this.system.toXYZString();
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        window.logger.info(`Saved ${filename}`);
+    }
+
+    saveMol2File(filename = 'molecule.mol2') {
+        const content = this.system.toMol2String({ name: filename.replace(/\.mol2$/i, '') });
         const blob = new Blob([content], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');

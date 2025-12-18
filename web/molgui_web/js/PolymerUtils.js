@@ -12,6 +12,11 @@ export function assemblePolymerFromTokens(tokens, monomers, opts = {}) {
     let prev = null;
     let prevTailId = -1;
 
+    const _getParsedPos = (parsed, i) => {
+        const i3 = (i | 0) * 3;
+        return new Vec3(parsed.pos[i3], parsed.pos[i3 + 1], parsed.pos[i3 + 2]);
+    };
+
     for (let i = 0; i < tokens.length; i++) {
         const key = tokens[i];
         if (!key) continue;
@@ -29,7 +34,18 @@ export function assemblePolymerFromTokens(tokens, monomers, opts = {}) {
             const lv = (rec.parsed.lvec && rec.parsed.lvec[1]) ? rec.parsed.lvec[1] : null;
             if (lv) {
                 if (!(lv instanceof Vec3)) throw new Error('assemblePolymerFromTokens: parsed.lvec must be Vec3[3]');
-                pos.add(lv);
+                const iHead = ((rec.anchors[0] | 0) - _0);
+                if (iHead < 0 || iHead >= rec.parsed.types.length) throw new Error(`assemblePolymerFromTokens: head anchor out of range for '${key}' iHead=${iHead}`);
+                const iPrevTail = mol.getAtomIndex(prevTailId);
+                if (iPrevTail < 0) throw new Error('assemblePolymerFromTokens: prevTailId not found');
+                const pTail = mol.atoms[iPrevTail].pos;
+                const pHeadLocal = _getParsedPos(rec.parsed, iHead);
+                const pHeadPlus = pHeadLocal.clone().add(pos).add(lv);
+                const pHeadMinus = pHeadLocal.clone().add(pos).sub(lv);
+                const dPlus = pTail.dist2(pHeadPlus);
+                const dMinus = pTail.dist2(pHeadMinus);
+                if (dMinus < dPlus) pos.sub(lv);
+                else pos.add(lv);
             }
             const ids = mol.appendParsedSystem(rec.parsed, { pos });
             const iHead = ((rec.anchors[0] | 0) - _0);

@@ -33,6 +33,39 @@
   out of [GUI.js](cci:7://file:///home/prokop/git/FireCore/web/molgui_web/js/GUI.js:0:0-0:0).
 - [GUI.js](cci:7://file:///home/prokop/git/FireCore/web/molgui_web/js/GUI.js:0:0-0:0) delegates to [this.buildersGUI.addSubstrateSection(sidebar)](cci:1://file:///home/prokop/git/FireCore/web/molgui_web/js/BuildersGUI.js:11:4-149:5) and [addPolymersSection(sidebar)](cci:1://file:///home/prokop/git/FireCore/web/molgui_web/js/BuildersGUI.js:151:4-382:5).
 
+### 5b) **Polymer + attachment tooling (ported from tests/tAttach)**
+
+- Added an **Examples** block in `Builder: Polymers` to mirror the Python scripts:
+  - load backbone `.mol2`
+  - load endgroup `.mol2`
+  - run marker-attach example
+  - load monomer preset set + build preset sequences
+- Implemented **missing sequence parsing** (`GUI.parseSequenceTokens`) to support:
+  - `DDDD_DDDD` (expands to letters)
+  - `PNA10` (multi-letter token with count)
+
+### 5c) **Attachment functions completed in EditableMolecule**
+
+- Implemented:
+  - `EditableMolecule.attachGroupByMarker(...)`
+  - `EditableMolecule.attachParsedByDirection(...)`
+- Marker attach now supports **different marker pairs on backbone vs group** via:
+  - `attachGroupByMarker(groupParsed, backboneX, backboneY, { groupMarkerX, groupMarkerY })`
+  - this enables using `Se/Cl` backbone sites with `Al/Cl` or `S/F` endgroups
+
+### 5d) **Polymer sequence assembly bug fixes**
+
+- Fixed wrong long join bonds (wrap-around) by choosing **±repeat vector** (`±lvec[1]`) per step to minimize head↔tail distance.
+- Fixed copying of built polymers into the live system: bonds must be remapped by `oldId -> newId`.
+
+### 5e) **Debuggability improvements**
+
+- Implemented MOL2 export:
+  - `EditableMolecule.toMol2String()`
+  - `GUI.saveMol2File()`
+  - GUI button **Save MOL2**
+- Added GUI button **Log longest bonds** to quickly spot bad join topology.
+
 ### 6) **Rendering + CPU performance: on-demand rendering**
 - The continuous [animate()](cci:1://file:///home/prokop/git/FireCore/web/molgui_web/js/main.js:239:4-246:5) loop was replaced by a **render-on-demand mechanism**:
   - [MolGUIApp.requestRender()](cci:1://file:///home/prokop/git/FireCore/web/molgui_web/js/main.js:20:4-28:5) schedules one RAF and renders once.
@@ -149,11 +182,10 @@ This is working well:
 
 ## High priority (next session)
 
-- **[EditableMolecule integration completion]** (`id: 21`, in_progress)
-  - implement missing legacy attachment functions currently stubbed in `EditableMolecule.js`:
-    - `attachGroupByMarker(...)`
-    - `attachParsedByDirection(...)`
-  - confirm all Editor/GUI workflows are fully on `EditableMolecule` (no old model assumptions).
+- **[Library curation + schema]**
+  - unify the ad-hoc “examples” and user-loaded monomer JSON into a consistent library format
+  - include backbones + endgroups + monomers in one JSON with explicit marker/anchor metadata
+  - add validation helpers (e.g. ensure marker pair exists exactly once)
 
 - **Rendering mode switch (on-demand default)** (`id: 43`, done)
   - explicit GUI checkbox exists: **“Continuous Render (Animate)”**
