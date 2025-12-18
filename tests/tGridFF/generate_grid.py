@@ -37,10 +37,12 @@ def parse_arguments():
 def main():
     args = parse_arguments()
     
-    # Process input filename
-    input_path = Path(args.fname)
-    if input_path.suffix != '.xyz':
-        input_path = input_path.with_suffix('.xyz')
+    # Process input filename - handle filenames with dots (e.g., Na_0.9_Cl_-0.9_Cl_hole_3)
+    fname = args.fname
+    if not fname.endswith('.xyz'):
+        fname = fname + '.xyz'
+    
+    input_path = Path(fname)
     
     if not input_path.exists():
         # Check in xyz directory if file not found in current directory
