@@ -251,8 +251,17 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
     xyzq[:,:3] += shift0[None,:]
     atoms.apos = xyzq[:,:3].copy()
 
-    # Use a consistent method to determine z0 based on the topmost atom
-    # The grid should start from the highest z-coordinate (topmost atom)
+    # Determine z0 (grid origin z-coordinate) if not explicitly provided
+    # 
+    # HISTORY OF z0 ALGORITHM:
+    # - Original (Indranil, June 2025): z0 = xyzq[:,2].max() 
+    #   Used maximum z-value of all atoms (topmost atom)
+    # 
+    # - Updated (Milan Kočí, August 2025, commit b68be3ac): 
+    #   Find the most populated z-plane and use its highest z-value.
+    #   This is more robust for surfaces with defects/holes where a few atoms
+    #   may protrude above the main surface layer.
+    #
     if np.isnan(z0):
         # Group atoms by their z-coordinate and find the most populated z-plane
         z_coords = xyzq[:, 2]
