@@ -171,6 +171,30 @@ export class GUI {
             GUIutils.div(container, null, { fontSize: '0.9em', marginBottom: '5px' }).textContent = 'Selection Query:';
             this.inpSelQuery = GUIutils.textInput(container, '', { placeholder: 'e.g. N|C n{F|Br|Cl}={1,2}' });
 
+            const rowQEx = GUIutils.row(container, { marginTop: '5px' });
+            GUIutils.span(rowQEx, 'Examples: ', { fontSize: '0.9em', marginRight: '5px' });
+            const selQEx = GUIutils.el(rowQEx, 'select', { className: 'gui-select' }, { flexGrow: '1' });
+            const qExamples = [
+                { value: '', text: '-- pick example --' },
+                { value: 'C', text: 'All carbon (C)' },
+                { value: 'O', text: 'All oxygen (O)' },
+                { value: 'H', text: 'All hydrogen (H)' },
+                { value: 'C|N|O', text: 'Backbone (C,N,O)' },
+                { value: 'C deg={4}', text: 'sp3-like carbon: C with degree 4' },
+                { value: 'N deg={3}', text: 'Nitrogen degree 3' },
+                { value: 'O deg={1}', text: 'Terminal oxygen: O degree 1' },
+                { value: 'C n{H}={3}', text: 'Methyl carbon: C with 3 H neighbors' },
+                { value: 'N n{H}={2}', text: 'Amine-like N: N with 2 H neighbors' },
+                { value: 'N|O n{C}={1}', text: 'Hetero attached to one carbon' },
+                { value: 'C n{F|Cl|Br|I}={1,2,3}', text: 'Halogenated carbon (1-3 halogens)' }
+            ];
+            GUIutils.setSelectOptions(selQEx, qExamples, { selectedValue: '', selectFirst: true });
+            selQEx.onchange = (e) => {
+                const v = (e && e.target) ? String(e.target.value) : '';
+                if (!v) return;
+                if (this.inpSelQuery) this.inpSelQuery.value = v;
+            };
+
             const rowQBtns = GUIutils.row(container, { marginTop: '5px' });
             const applyQ = (mode) => {
                 if (!(window.app && window.app.mmParams)) throw new Error('Selection Query: window.app.mmParams is missing');

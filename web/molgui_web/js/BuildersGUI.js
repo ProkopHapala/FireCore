@@ -17,51 +17,33 @@ export class BuildersGUI {
             const rowPreset = GUIutils.row(container);
             GUIutils.span(rowPreset, 'Preset: ');
             const selPreset = GUIutils.selectList(rowPreset, ['NaCl(step)', 'NaCl(rocksalt)', 'KBr(rocksalt)', 'MgO(rocksalt)', 'CaF2(fluorite)', 'CaCO3(todo)'], null, null, { flexGrow: '1' });
+            rowPreset.style.display = 'none';
 
             const rowA = GUIutils.row(container);
             GUIutils.span(rowA, 'a(Å): ');
             const inpA = GUIutils.num(rowA, 2.82, { step: '0.01' }, { width: '70px', flexGrow: '0' });
 
-            const MP_PREPARED_CRYSTALS = {
-                'C(diamond) mp-66':      { path: '../../cpp/common_resources/crystals/C_diamant_mp-66.json', lattice: { a: 3.567, b: 3.567, c: 3.567, alpha: 90, beta: 90, gamma: 90 } },
-                'Si(diamond) mp-149':    { path: '../../cpp/common_resources/crystals/Si_diamond_mp-149.json', lattice: { a: 5.431, b: 5.431, c: 5.431, alpha: 90, beta: 90, gamma: 90 } },
-                'CaF2(fluorite) mp-2741': { path: '../../cpp/common_resources/crystals/CaF2_mp-2741.json', lattice: { a: 5.4623, b: 5.4623, c: 5.4623, alpha: 90, beta: 90, gamma: 90 } },
-                'CaCO3(calcite) mp-3953 (todo)': { path: '../../cpp/common_resources/crystals/CaCO3_mp-3953.json', lattice: { a: 4.989, b: 4.989, c: 17.062, alpha: 90, beta: 90, gamma: 120 } },
-                'CaF2(Pnma) mp-10464 (todo)': { path: '../../cpp/common_resources/crystals/CaF2_mp-10464.json', lattice: null },
-            };
+            // const PRESETS = {
+            //     'NaCl(step)':       { a0: 5.6413 / 2 },
+            //     'NaCl(rocksalt)':   { a0: 5.6413 },
+            //     'KBr(rocksalt)':    { a0: 6.60 },
+            //     'MgO(rocksalt)':    { a0: 4.212 },
+            //     'CaF2(fluorite)':   { a0: 5.4623 },
+            //     'CaCO3(todo)':      { a0: 4.99 }
+            // };
 
-            const PRESETS = {
-                'NaCl(step)':       { a0: 5.6413 / 2 },
-                'NaCl(rocksalt)':   { a0: 5.6413 },
-                'KBr(rocksalt)':    { a0: 6.60 },
-                'MgO(rocksalt)':    { a0: 4.212 },
-                'CaF2(fluorite)':   { a0: 5.4623 },
-                'CaCO3(todo)':      { a0: 4.99 }
-            };
-
-            const updatePresetDefaults = () => {
-                const p = PRESETS[selPreset.value];
-                if (p && (p.a0 !== undefined)) inpA.value = String(p.a0);
-            };
-            selPreset.onchange = () => { updatePresetDefaults(); };
-            updatePresetDefaults();
+            // const updatePresetDefaults = () => {
+            //     const p = PRESETS[selPreset.value];
+            //     if (p && (p.a0 !== undefined)) inpA.value = String(p.a0);
+            // };
+            // selPreset.onchange = () => { updatePresetDefaults(); };
+            // updatePresetDefaults();
 
             const rowN = GUIutils.row(container);
             const mkInt = (row, label, val) => (GUIutils.span(row, label, { marginRight: '2px' }), GUIutils.num(row, val, { step: '1' }, { width: '44px', flexGrow: '0' }));
             const inpNx = mkInt(rowN, 'nx', 10);
             const inpNy = mkInt(rowN, 'ny', 10);
             const inpNz = mkInt(rowN, 'nz', 3);
-
-            GUIutils.el(container, 'hr', null, { borderColor: '#444', margin: '8px 0' });
-
-            const rowMP = GUIutils.row(container);
-            GUIutils.span(rowMP, 'MP JSON: ');
-            const mpKeys = Object.keys(MP_PREPARED_CRYSTALS);
-            const selMP = GUIutils.selectList(rowMP, ['(none)', ...mpKeys], null, null, { flexGrow: '1' });
-            const btnLoadMP = GUIutils.btn(rowMP, 'Load', null, { marginLeft: '4px', flexGrow: '0' });
-
-            const btnFileMP = GUIutils.btn(container, 'Load crystal JSON file...', null, { marginTop: '4px' });
-            const inpFileMP = GUIutils.input(container, { type: 'file', attrs: { accept: '.json,application/json' } }, { display: 'none' });
 
             GUIutils.el(container, 'hr', null, { borderColor: '#444', margin: '8px 0' });
 
@@ -91,15 +73,6 @@ export class BuildersGUI {
             const inpDedupTol = GUIutils.num(rowDedupTol, 0.1, { step: '0.01' }, { width: '70px', flexGrow: '0' });
             GUIutils.span(rowDedupTol, 'Å', { marginLeft: '4px', color: '#aaa' });
             const chkBonds = GUIutils.labelCheck(container, 'bonds', false, null, { marginTop: '4px' }).input;
-
-            // UI cleanup: hide old preset + MP JSON widgets (kept for now, but redundant with unit-cell editor)
-            rowPreset.style.display = 'none';
-            rowA.style.display = '';
-            rowMP.style.display = 'none';
-            btnFileMP.style.display = 'none';
-            btnLoadMP.style.display = 'none';
-            selMP.style.display = 'none';
-            inpFileMP.style.display = 'none';
 
             GUIutils.el(container, 'hr', null, { borderColor: '#444', margin: '8px 0' });
 
@@ -696,50 +669,6 @@ export class BuildersGUI {
 
             btnReplace.onclick = () => { try { applyToScene(buildData(), 'replace'); } catch (e) { window.logger.error(String(e)); throw e; } };
             btnAppend.onclick = () => { try { applyToScene(buildData(), 'append'); } catch (e) { window.logger.error(String(e)); throw e; } };
-
-            const buildFromMPJson = (mpJson) => {
-                const nx = parseInt(inpNx.value) | 0;
-                const ny = parseInt(inpNy.value) | 0;
-                const nz = parseInt(inpNz.value) | 0;
-                const dedupTol = +inpDedupTol.value;
-                if (!(dedupTol > 0)) throw new Error('Dedup tol must be >0');
-                if (nx <= 0 || ny <= 0 || nz <= 0) throw new Error('nx,ny,nz must be >0');
-                const slab = getSlab();
-                const mm = (window.app && window.app.mmParams) ? window.app.mmParams : null;
-                if (slab && chkBonds.checked) throw new Error('Build bonds is not supported with slab cut');
-                if (chkBonds.checked && !mm) throw new Error('Build bonds requested but window.app.mmParams is not available');
-                const sel = selMP.value;
-                const preset = (sel && sel !== '(none)') ? MP_PREPARED_CRYSTALS[sel] : null;
-                const lat = preset ? preset.lattice : null;
-                if (!lat) throw new Error('MP JSON: missing lattice params for this structure; add to MP_PREPARED_CRYSTALS (BuildersGUI) or supply lattice UI');
-                const data0 = CrystalUtils.genCrystalFromMPJson(mpJson, { lattice: lat, nRep: [nx, ny, nz], origin: new Vec3(0, 0, 0), buildBonds: chkBonds.checked, mmParams: mm, slab, dedupReplicate: chkDedupRep.checked, dedupTol });
-                return applyMiller(data0);
-            };
-
-            btnLoadMP.onclick = async () => {
-                try {
-                    const key = selMP.value;
-                    if (!key || key === '(none)') throw new Error('Select a prepared structure');
-                    const preset = MP_PREPARED_CRYSTALS[key];
-                    if (!preset || !preset.path) throw new Error('Bad preset');
-                    const res = await fetch(preset.path);
-                    if (!res.ok) throw new Error(`Failed to fetch ${preset.path} (HTTP ${res.status})`);
-                    const mpJson = await res.json();
-                    applyToScene(buildFromMPJson(mpJson), 'replace');
-                } catch (e) { window.logger.error(String(e)); throw e; }
-            };
-
-            btnFileMP.onclick = () => inpFileMP.click();
-            inpFileMP.onchange = async (e) => {
-                try {
-                    if (e.target.files.length <= 0) return;
-                    const file = e.target.files[0];
-                    const txt = await gui.readFileText(file);
-                    const mpJson = JSON.parse(txt);
-                    applyToScene(buildFromMPJson(mpJson), 'replace');
-                    inpFileMP.value = '';
-                } catch (err) { window.logger.error(String(err)); throw err; }
-            };
 
             const buildFromCIFText = (cifText) => {
                 const nx = parseInt(inpNx.value) | 0;
