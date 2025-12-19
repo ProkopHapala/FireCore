@@ -185,6 +185,47 @@ kept for reference only.
   - added MOL2 export
   - added “log longest bonds” helper to detect topology mistakes
 
+- **Faster bond rebuild via spatial buckets (with robust topology handling)**
+  - bond modes: `brute`, `bucketNeighbors`, `bucketAllPairsAABB` (GUI: Structure → Bond mode)
+  - bucket graph lives in `window.app.lastBucketGraph` (built by crystal/substrate generators)
+  - bucket debug overlay:
+    - boxes + atom→bucket-center lines (GUI toggles in Structure)
+    - auto-update after topology changes (e.g. deletion)
+  - robust storage across swap-remove deletions:
+    - bucket graph supports flipping atom storage between indices and stable atom IDs: `BucketGraph.toIds(mol)` / `BucketGraph.toInds(mol)`
+    - after deletions, empty buckets are removed: `BucketGraph.pruneEmptyBuckets()`
+    - bounds are recomputed for visualization: `BucketGraph.recalcBounds(mol)`
+  - bond rebuild logs now include `nAtoms` and `nBuckets`
+  - key files:
+    - `web/common_js/Buckets.js` (`BucketGraph`)
+    - `web/molgui_web/js/Editor.js` (deleteSelection + recalcBonds integration)
+    - `web/molgui_web/js/main.js` (bucket overlay + refreshBucketDebug)
+
+- **Valence-based passivation (caps + explicit electron pairs)**
+  - `EditableMolecule.addCappingAtoms(mmParams, cap='H', opts)`
+    - adds missing sigma-bond caps based on `AtomTypes.dat` valence (`at.valence`) and current coordination
+    - robust with explicit epair dummy atoms (`Z==200`): epairs count as geometry domains but do not consume sigma valence for capping
+  - `EditableMolecule.addExplicitEPairs(mmParams, opts)`
+    - inserts explicit lone-pair dummy atoms using `at.nepair` and `at.epair_name`
+  - GUI: Structure → Passivation (Cap type textbox + buttons Add Caps / Add EPairs)
+  - key file: `web/molgui_web/js/EditableMolecule.js`
+  - design justification:
+    - keep chemistry metadata in `MMParams` (`ElementTypes.dat`, `AtomTypes.dat`), avoid hardcoded valence tables
+    - keep edits in the authoritative graph model (`EditableMolecule`) and re-export to renderer
+
+- **Selection by chemical environment (AND-only query language)**
+  - compiled query (parse once) + fast apply over existing per-atom bond lists
+  - API:
+    - `EditableMolecule.compileSelectQuery(q, mmParams)`
+    - `EditableMolecule.applySelectQuery(compiled, {mode:'replace'|'add'|'subtract'})`
+  - syntax:
+    - atom set: `N|C` (elements) or `C_3|O_OH` (atom types, `_` implies atom-type)
+    - neighbor counts: `n{F|Br|Cl}={1,2}` and wildcard `n{*}={1,2}`
+    - shorthand: `deg={1,2}`
+  - GUI: Selection → Selection Query (Replace/Add/Subtract)
+  - design justification:
+    - no separate neighbor list is needed: `Atom.bonds[]` already encodes adjacency; we only compile the string into predicates once
+
 - `ShortcutManager.js`
   - Global keyboard shortcuts (gizmo toggle/mode, delete, add atom, recalc bonds).
 

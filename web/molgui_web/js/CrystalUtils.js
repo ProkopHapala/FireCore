@@ -130,6 +130,76 @@ export function dedupFracSitesByTolA(sites, lvec, tolA = 0.1) {
     return out;
 }
 
+export function dedupMolAtomsByTolA(mol, tolA = 0.1, opts = {}) {
+    const tol = +tolA;
+    if (!(tol > 0)) throw new Error('dedupMolAtomsByTolA: tolA must be >0');
+    if (!mol || !mol.atoms || !mol.removeAtomById) throw new Error('dedupMolAtomsByTolA: mol must be EditableMolecule-like');
+    const bPrint = !!opts.bPrint;
+    const bError = !!opts.bError;
+    const tol2 = tol * tol;
+    const h = tol;
+    const buckets = new Map();
+    const removeIds = [];
+    const dupToKeep = new Map();
+
+    const atoms = mol.atoms;
+    for (let i = 0; i < atoms.length; i++) {
+        const a = atoms[i];
+        if (!a) continue;
+        if (dupToKeep.has(a.id)) continue;
+
+        const p = a.pos;
+        const ix = Math.floor(p.x / h) | 0;
+        const iy = Math.floor(p.y / h) | 0;
+        const iz = Math.floor(p.z / h) | 0;
+        let keep = -1;
+        let bestR2 = 1e300;
+
+        for (let dz = -1; dz <= 1; dz++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const key = _gridKey(ix + dx, iy + dy, iz + dz);
+                    const list = buckets.get(key);
+                    if (!list) continue;
+                    for (let k = 0; k < list.length; k++) {
+                        const j = list[k] | 0;
+                        const b = atoms[j];
+                        if (!b) continue;
+                        if ((b.Z | 0) !== (a.Z | 0)) continue;
+                        const dx0 = b.pos.x - p.x;
+                        const dy0 = b.pos.y - p.y;
+                        const dz0 = b.pos.z - p.z;
+                        const r2 = dx0 * dx0 + dy0 * dy0 + dz0 * dz0;
+                        if (r2 > tol2) continue;
+                        const aq = (a.charge !== undefined) ? +a.charge : 0.0;
+                        const bq = (b.charge !== undefined) ? +b.charge : 0.0;
+                        if (Math.abs(aq - bq) > 1e-6) throw new Error(`dedupMolAtomsByTolA: collapsing atoms with different charges q=${aq} vs qKeep=${bq} (Z=${a.Z})`);
+                        if (r2 < bestR2) { bestR2 = r2; keep = j; }
+                    }
+                }
+            }
+        }
+
+        if (keep >= 0) {
+            const keepAtom = atoms[keep];
+            if (!keepAtom) throw new Error('dedupMolAtomsByTolA: internal error (keep atom missing)');
+            dupToKeep.set(a.id, keepAtom.id);
+            removeIds.push(a.id);
+            if (bPrint) console.log(`dedupMolAtomsByTolA dup id=${a.id} keepId=${keepAtom.id} i=${i} keepI=${keep} Z=${a.Z} r=${Math.sqrt(bestR2)}`);
+            if (bError) throw new Error(`dedupMolAtomsByTolA: found duplicate atoms id=${a.id} keepId=${keepAtom.id} r=${Math.sqrt(bestR2)}`);
+            continue;
+        }
+
+        const key0 = _gridKey(ix, iy, iz);
+        let list0 = buckets.get(key0);
+        if (!list0) { list0 = []; buckets.set(key0, list0); }
+        list0.push(i);
+    }
+
+    for (let k = 0; k < removeIds.length; k++) mol.removeAtomById(removeIds[k]);
+    return { nRemoved: removeIds.length, dupToKeep };
+}
+
 export function latticeVectorsFromParams(params) {
     if (!params) throw new Error('latticeVectorsFromParams: params required');
     const a = +params.a;
@@ -964,6 +1034,7 @@ export function genReplicatedCell(params = {}) {
     for (let iz = 0; iz < nc; iz++) {
         for (let iy = 0; iy < nb; iy++) {
             for (let ix = 0; ix < na; ix++) {
+                const icell = ((iz * nb + iy) * na + ix) | 0;
                 s.setV(origin);
                 s.addMul(a, ix);
                 s.addMul(b, iy);
@@ -985,7 +1056,7 @@ export function genReplicatedCell(params = {}) {
                         const fnAdd = (Z_) => {
                             const id_ = mol.addAtom(pos.x, pos.y, pos.z, Z_);
                             const ia = mol.getAtomIndex(id_);
-                            if (ia >= 0) mol.atoms[ia].charge = q;
+                            if (ia >= 0) { mol.atoms[ia].charge = q; mol.atoms[ia].cellIndex = icell; }
                             return id_;
                         };
                         const r = _dedupInsertOrGet(pos, Z, q, buckets, mol.atoms, tol2, h, fnAdd);
@@ -994,7 +1065,7 @@ export function genReplicatedCell(params = {}) {
                     } else {
                         id = mol.addAtom(s.x + x, s.y + y, s.z + z, Z);
                         const ia = mol.getAtomIndex(id);
-                        if (ia >= 0) mol.atoms[ia].charge = q;
+                        if (ia >= 0) { mol.atoms[ia].charge = q; mol.atoms[ia].cellIndex = icell; }
                     }
                     if (ids) {
                         const ic = ((iz * nb + iy) * na + ix) * nBasis + ib;

@@ -5,6 +5,8 @@ import { MoleculeRenderer, PackedMolecule } from './MoleculeRenderer.js';
 import { GUI } from './GUI.js';
 import { Editor } from './Editor.js';
 import { ShortcutManager } from './ShortcutManager.js';
+import { Vec3 } from '../../common_js/Vec3.js';
+import { buildWireframeCellVerts, buildWireframeAABBVerts } from '../../common_js/Buckets.js';
 
 class MolGUIApp {
     constructor() {
@@ -163,11 +165,128 @@ class MolGUIApp {
         // 6. Molecule Renderer (renders packedSystem; syncs from EditableMolecule)
         this.molRenderer = new MoleculeRenderer(this.scene, this.packedSystem, this.shaders, this.mmParams, this.system);
 
+        // --- Bucket overlay (debug visualization) ---
+        this.bucketOverlay = null;
+        {
+            const geom = new THREE.BufferGeometry();
+            geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+            const mat = new THREE.LineBasicMaterial({ color: 0xff8844, transparent: true, opacity: 0.6 });
+            this.bucketOverlay = new THREE.LineSegments(geom, mat);
+            this.bucketOverlay.renderOrder = 12;
+            this.bucketOverlay.visible = false;
+            this.scene.add(this.bucketOverlay);
+        }
+
+        // --- Bucket atom->center lines (debug visualization) ---
+        this.bucketAtomLines = null;
+        {
+            const geom = new THREE.BufferGeometry();
+            geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+            const mat = new THREE.LineBasicMaterial({ color: 0x55ccff, transparent: true, opacity: 0.6 });
+            this.bucketAtomLines = new THREE.LineSegments(geom, mat);
+            this.bucketAtomLines.renderOrder = 13;
+            this.bucketAtomLines.visible = false;
+            this.scene.add(this.bucketAtomLines);
+        }
+
         // 7. GUI
         this.gui = new GUI(this.system, this.molRenderer);
 
         // 7. Editor (Selection, Gizmo)
         this.editor = new Editor(this.scene, this.camera, this.renderer, this.system, this.molRenderer);
+
+        // defaults / shared state
+        this.bondRecalcMode = this.bondRecalcMode ? String(this.bondRecalcMode) : 'brute';
+        this.showBucketBoxes = !!this.showBucketBoxes;
+        this.autoUpdateBuckets = (this.autoUpdateBuckets !== undefined) ? !!this.autoUpdateBuckets : true;
+        this.showBucketAtomLines = !!this.showBucketAtomLines;
+
+        this.refreshBucketDebug = () => {
+            const bg = this.lastBucketGraph;
+            if (!bg) return;
+            if (typeof bg.toInds === 'function') bg.toInds(this.system);
+            if (typeof bg.pruneEmptyBuckets === 'function') bg.pruneEmptyBuckets();
+            if (typeof bg.recalcBounds === 'function') bg.recalcBounds(this.system);
+            if (typeof this.updateBucketOverlay === 'function') this.updateBucketOverlay();
+            if (!this.bucketAtomLines) return;
+            const showLines = !!this.showBucketAtomLines;
+            if (!showLines || !bg.buckets || bg.buckets.length === 0) {
+                this.bucketAtomLines.visible = false;
+                this.bucketAtomLines.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+                this.bucketAtomLines.geometry.computeBoundingSphere();
+                this.requestRender();
+                return;
+            }
+            let nPairs = 0;
+            for (let ib = 0; ib < bg.buckets.length; ib++) nPairs += (bg.buckets[ib].atoms.length | 0);
+            const verts = new Float32Array(nPairs * 2 * 3);
+            let k = 0;
+            const c = new Vec3();
+            for (let ib = 0; ib < bg.buckets.length; ib++) {
+                bg.getBucketCenterFromBounds(ib, c);
+                const bs = bg.buckets[ib].atoms;
+                for (let i = 0; i < bs.length; i++) {
+                    const ia = bs[i] | 0;
+                    const a = this.system.atoms[ia];
+                    if (!a) continue;
+                    const p = a.pos;
+                    verts[k++] = p.x; verts[k++] = p.y; verts[k++] = p.z;
+                    verts[k++] = c.x; verts[k++] = c.y; verts[k++] = c.z;
+                }
+            }
+            const v2 = (k === (verts.length | 0)) ? verts : verts.subarray(0, k);
+            this.bucketAtomLines.visible = true;
+            this.bucketAtomLines.geometry.setAttribute('position', new THREE.BufferAttribute(v2, 3));
+            this.bucketAtomLines.geometry.computeBoundingSphere();
+            this.requestRender();
+        };
+
+        this.updateBucketOverlay = () => {
+            if (!this.bucketOverlay) return;
+            const show = !!this.showBucketBoxes;
+            const bg = this.lastBucketGraph;
+            if (!show || !bg || !bg.buckets || bg.buckets.length === 0) {
+                this.bucketOverlay.visible = false;
+                this.bucketOverlay.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+                this.bucketOverlay.geometry.computeBoundingSphere();
+                this.requestRender();
+                return;
+            }
+            const bs = bg.buckets;
+            let verts = new Float32Array(0);
+            let n3 = 0;
+            if (bg.meta && bg.meta.kind === 'crystal_cells' && bg.meta.lvec && bg.meta.origin) {
+                const A = bg.meta.lvec[0], B = bg.meta.lvec[1], C = bg.meta.lvec[2];
+                const o0 = bg.meta.origin;
+                const per = 24 * 3;
+                verts = new Float32Array(bs.length * per);
+                const O = new Vec3();
+                for (let ib = 0; ib < bs.length; ib++) {
+                    const m = bs[ib].meta;
+                    O.setV(o0);
+                    if (m) {
+                        if (m.ix) O.addMul(A, m.ix);
+                        if (m.iy) O.addMul(B, m.iy);
+                        if (m.iz) O.addMul(C, m.iz);
+                    }
+                    buildWireframeCellVerts(A, B, C, O, verts, n3);
+                    n3 += per;
+                }
+            } else {
+                const per = 12 * 2 * 3;
+                verts = new Float32Array(bs.length * per);
+                for (let ib = 0; ib < bs.length; ib++) {
+                    const b = bs[ib];
+                    buildWireframeAABBVerts(b.pmin, b.pmax, verts, n3);
+                    n3 += per;
+                }
+            }
+            const v2 = (n3 === (verts.length | 0)) ? verts : verts.subarray(0, n3);
+            this.bucketOverlay.visible = true;
+            this.bucketOverlay.geometry.setAttribute('position', new THREE.BufferAttribute(v2, 3));
+            this.bucketOverlay.geometry.computeBoundingSphere();
+            this.requestRender();
+        };
 
         // 8. Selection Rendering (Centralized in MoleculeRenderer)
         // No extra code needed here, MoleculeRenderer handles it.

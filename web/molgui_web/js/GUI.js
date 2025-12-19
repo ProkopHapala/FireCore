@@ -165,6 +165,28 @@ export class GUI {
             GUIutils.span(row, 'Count: ', { fontSize: '0.9em', marginRight: '5px' });
             this.lblCount = GUIutils.span(row, '0', { fontWeight: 'bold' });
             this.inpSelection = GUIutils.textInput(container, '', { placeholder: 'IDs (e.g. 1,5)', onchange: (e) => this.onSelectionInputChange(e.target.value) });
+
+            GUIutils.el(container, 'hr', null, { borderColor: '#444', margin: '10px 0' });
+
+            GUIutils.div(container, null, { fontSize: '0.9em', marginBottom: '5px' }).textContent = 'Selection Query:';
+            this.inpSelQuery = GUIutils.textInput(container, '', { placeholder: 'e.g. N|C n{F|Br|Cl}={1,2}' });
+
+            const rowQBtns = GUIutils.row(container, { marginTop: '5px' });
+            const applyQ = (mode) => {
+                if (!(window.app && window.app.mmParams)) throw new Error('Selection Query: window.app.mmParams is missing');
+                const q = (this.inpSelQuery && this.inpSelQuery.value) ? String(this.inpSelQuery.value).trim() : '';
+                if (!q) throw new Error('Selection Query: query is empty');
+                const cq = EditableMolecule.compileSelectQuery(q, window.app.mmParams);
+                this.system.applySelectQuery(cq, { mode });
+                this.updateSelectionUI();
+                if (window.app && window.app.editor) window.app.editor.updateGizmo();
+                if (window.app && window.app.molRenderer) window.app.molRenderer.updateSelection();
+                this.renderer.update();
+                this.requestRender();
+            };
+            GUIutils.btn(rowQBtns, 'Replace', () => applyQ('replace'), { marginRight: '4px' });
+            GUIutils.btn(rowQBtns, 'Add', () => applyQ('add'), { marginRight: '4px' });
+            GUIutils.btn(rowQBtns, 'Subtract', () => applyQ('subtract') );
         });
 
         // --- Section: View ---
@@ -272,6 +294,80 @@ export class GUI {
         this.createSection(sidebar, 'Structure', (container) => {
             // Recalculate Bonds
             GUIutils.btn(container, 'Recalculate Bonds', () => { if (window.app && window.app.editor) window.app.editor.recalculateBonds(); });
+
+            const rowBondMode = GUIutils.row(container, { marginTop: '6px' });
+            GUIutils.span(rowBondMode, 'Bond mode: ', { marginRight: '4px', fontSize: '0.9em' });
+            const selBondMode = GUIutils.selectList(rowBondMode, ['brute', 'bucketNeighbors', 'bucketAllPairsAABB'], null, null, { flexGrow: '1' });
+            selBondMode.value = (window.app && window.app.bondRecalcMode) ? String(window.app.bondRecalcMode) : 'brute';
+            selBondMode.onchange = () => {
+                if (window.app) window.app.bondRecalcMode = String(selBondMode.value);
+            };
+
+            const rowBuckets = GUIutils.row(container, { marginTop: '4px' });
+            const chkBuckets = GUIutils.labelCheck(rowBuckets, 'Show buckets', false, null).input;
+            chkBuckets.checked = !!(window.app && window.app.showBucketBoxes);
+            chkBuckets.onchange = () => {
+                if (window.app) {
+                    window.app.showBucketBoxes = !!chkBuckets.checked;
+                    if (typeof window.app.updateBucketOverlay === 'function') window.app.updateBucketOverlay();
+                }
+            };
+
+            const rowBucketAuto = GUIutils.row(container, { marginTop: '4px' });
+            const chkBucketAuto = GUIutils.labelCheck(rowBucketAuto, 'Auto-update buckets', true, null).input;
+            chkBucketAuto.checked = (window.app && window.app.autoUpdateBuckets !== undefined) ? !!window.app.autoUpdateBuckets : true;
+            chkBucketAuto.onchange = () => {
+                if (window.app) window.app.autoUpdateBuckets = !!chkBucketAuto.checked;
+            };
+
+            const rowBucketLines = GUIutils.row(container, { marginTop: '4px' });
+            const chkBucketLines = GUIutils.labelCheck(rowBucketLines, 'Show atom→bucket lines', false, null).input;
+            chkBucketLines.checked = !!(window.app && window.app.showBucketAtomLines);
+            chkBucketLines.onchange = () => {
+                if (window.app) {
+                    window.app.showBucketAtomLines = !!chkBucketLines.checked;
+                    if (typeof window.app.refreshBucketDebug === 'function') window.app.refreshBucketDebug();
+                    else if (typeof window.app.updateBucketOverlay === 'function') window.app.updateBucketOverlay();
+                }
+            };
+
+            GUIutils.el(container, 'hr', null, { borderColor: '#444', margin: '10px 0' });
+
+            // Passivation
+            GUIutils.div(container, null, { fontSize: '0.9em', marginBottom: '5px' }).textContent = 'Passivation:';
+            const rowCapType = GUIutils.row(container);
+            GUIutils.span(rowCapType, 'Cap type: ', { marginRight: '4px', fontSize: '0.9em' });
+            this.inpCapType = GUIutils.textInput(rowCapType, 'H', { placeholder: 'H or atom type (e.g. C_3)' });
+            this.inpCapType.style.flexGrow = '1';
+
+            const rowPassivBtns = GUIutils.row(container, { marginTop: '5px' });
+            GUIutils.btn(rowPassivBtns, 'Add Caps', () => {
+                if (!(window.app && window.app.mmParams)) throw new Error('Add Caps: window.app.mmParams is missing');
+                const onlySelection = (this.system && this.system.selection && this.system.selection.size > 0);
+                const cap = (this.inpCapType && this.inpCapType.value) ? String(this.inpCapType.value).trim() : 'H';
+                if (!cap) throw new Error('Add Caps: cap type is empty');
+                try {
+                    this.system.addCappingAtoms(window.app.mmParams, cap, { onlySelection, bBond: true });
+                } catch (e) {
+                    if (window.logger && window.logger.error) window.logger.error(String(e && e.stack ? e.stack : e));
+                    throw e;
+                }
+                this.renderer.update();
+                this.requestRender();
+            }, { marginRight: '4px' });
+
+            GUIutils.btn(rowPassivBtns, 'Add EPairs', () => {
+                if (!(window.app && window.app.mmParams)) throw new Error('Add EPairs: window.app.mmParams is missing');
+                const onlySelection = (this.system && this.system.selection && this.system.selection.size > 0);
+                try {
+                    this.system.addExplicitEPairs(window.app.mmParams, { onlySelection, bBond: true });
+                } catch (e) {
+                    if (window.logger && window.logger.error) window.logger.error(String(e && e.stack ? e.stack : e));
+                    throw e;
+                }
+                this.renderer.update();
+                this.requestRender();
+            });
 
             GUIutils.el(container, 'hr', null, { borderColor: '#444', margin: '10px 0' });
 

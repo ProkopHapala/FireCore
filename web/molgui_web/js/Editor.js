@@ -155,7 +155,16 @@ export class Editor {
             return;
         }
 
+        const bg = (window.app && window.app.lastBucketGraph) ? window.app.lastBucketGraph : null;
+        if (bg && typeof bg.toIds === 'function') bg.toIds(this.system);
+
         this.system.deleteSelectedAtoms();
+
+        if (bg && typeof bg.toInds === 'function') bg.toInds(this.system);
+        if (window.app && window.app.autoUpdateBuckets && bg) {
+            if (typeof window.app.refreshBucketDebug === 'function') window.app.refreshBucketDebug();
+            else if (typeof window.app.updateBucketOverlay === 'function') window.app.updateBucketOverlay();
+        }
         this.initialAtomStates = null;
         this.molRenderer.update();
         this.molRenderer.update(); // Double update to ensure buffers are swapped/cleared if needed
@@ -166,9 +175,25 @@ export class Editor {
 
     recalculateBonds() {
         const mm = (window.app && window.app.mmParams) ? window.app.mmParams : null;
-        this.system.recalculateBonds(mm);
+        const mode = (window.app && window.app.bondRecalcMode) ? String(window.app.bondRecalcMode) : 'brute';
+        const stats = { mode, nBondCut2: 0, nRcovCutoff: 0, nDefaultCutoff: 0, nAtomPairs: 0, nDist2: 0, nBondsAdded: 0, nBucketPairs: 0, nAABBTests: 0, timeMs: 0 };
+        if (mode === 'bucketNeighbors') {
+            const bg = (window.app && window.app.lastBucketGraph) ? window.app.lastBucketGraph : null;
+            if (!bg) throw new Error('Bucket bond mode requires window.app.lastBucketGraph (generate a crystal with buckets, or switch to brute)');
+            if (typeof bg.toInds === 'function') bg.toInds(this.system);
+            this.system.recalculateBondsBucketNeighbors(mm, bg, { stats });
+        } else if (mode === 'bucketAllPairsAABB') {
+            const bg = (window.app && window.app.lastBucketGraph) ? window.app.lastBucketGraph : null;
+            if (!bg) throw new Error('Bucket bond mode requires window.app.lastBucketGraph (generate a crystal with buckets, or switch to brute)');
+            if (typeof bg.toInds === 'function') bg.toInds(this.system);
+            this.system.recalculateBondsBucketAllPairsAABB(mm, bg, { stats });
+        } else {
+            this.system.recalculateBonds(mm, { stats });
+        }
         this.molRenderer.update();
-        window.logger.info("Bonds Recalculated");
+        const nBuckets = (window.app && window.app.lastBucketGraph && window.app.lastBucketGraph.buckets) ? window.app.lastBucketGraph.buckets.length : 0;
+        window.logger.info(`Bonds Recalculated mode=${stats.mode} time=${(stats.timeMs || 0).toFixed(2)}ms nAtoms=${this.system.nAtoms} nBuckets=${nBuckets} pairs=${stats.nAtomPairs} cut2=${stats.nBondCut2} dist2=${stats.nDist2} bonds=${stats.nBondsAdded} bucketPairs=${stats.nBucketPairs} aabbTests=${stats.nAABBTests}`);
+        if (window.app) window.app.lastBondStats = stats;
         if (window.app && window.app.requestRender) window.app.requestRender();
     }
 

@@ -148,6 +148,55 @@ Here is a step-by-step logic for your "Graphene Flake Generation" scenario:
 
 Is this the systematic structure you were looking for? I can expand on the specific code/logic for the "Bridge Finding" or "Ring Merging" if you wish.
 
+---
+
+## Status update (Dec 2025): what is implemented in MolGUI Web now
+
+These are concrete improvements already implemented in the live JS editor core (they directly support the long-term ring/chain/bridge editor vision).
+
+### 1) Faster bond search (spatial subdivision buckets)
+
+- Bond rebuild supports bucket-based modes (in addition to brute force), which makes bond finding scalable for large crystal slabs/substrates.
+- Buckets are implemented as a reusable `BucketGraph` which can hold atom references either as dense indices (fast loops) or stable atom IDs (robust across swap-remove deletion).
+- Key APIs:
+  - `BucketGraph.toIds(mol)` / `BucketGraph.toInds(mol)`
+  - `BucketGraph.pruneEmptyBuckets()`
+  - `BucketGraph.recalcBounds(mol)`
+- Integration points:
+  - `web/common_js/Buckets.js`
+  - `web/molgui_web/js/Editor.js` (deletion wraps bucket ID/index conversion)
+  - `web/molgui_web/js/main.js` (bucket debug overlays)
+
+Design justification:
+- This keeps the speed of index-based loops during heavy bond rebuilds, but remains correct under dynamic edits by temporarily switching bucket storage to stable IDs.
+
+### 2) Automatic passivation: caps + explicit electron pairs
+
+- `EditableMolecule.addCappingAtoms(mmParams, cap='H', opts)`
+  - Adds missing sigma-bond caps based on `AtomTypes.dat` valence (no hardcoded chemistry tables).
+  - Works with explicit epair dummy atoms (`Z==200`) as normal geometry domains (VSEPR-like completion).
+- `EditableMolecule.addExplicitEPairs(mmParams, opts)`
+  - Adds explicit lone-pair dummy atoms using `at.nepair` and `at.epair_name`.
+- File: `web/molgui_web/js/EditableMolecule.js`.
+
+Design justification:
+- Keeping epairs as explicit atoms makes many later topology algorithms simpler (rings/chains/bridges can treat them as ordinary nodes if desired).
+
+### 3) Selection by chemical environment (neighborhood predicates)
+
+- MolGUI now supports selecting atoms by local chemical neighborhood using a compact AND-only query language.
+- Queries are compiled once and applied efficiently by iterating existing adjacency (`Atom.bonds[]`).
+- API:
+  - `EditableMolecule.compileSelectQuery(q, mmParams)`
+  - `EditableMolecule.applySelectQuery(compiled, {mode:'replace'|'add'|'subtract'})`
+- Example queries:
+  - `Si|C deg={1,2}`
+  - `O|C n{H}={1,2}`
+  - `N|C n{F|Br|Cl}={2}`
+
+Design justification:
+- This is a practical stepping stone towards subgraph/ring selection and bridge-based editing, without introducing full SMARTS/SSSR complexity yet.
+
 
 ---
 

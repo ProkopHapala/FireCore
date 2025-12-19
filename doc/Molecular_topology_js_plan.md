@@ -28,6 +28,35 @@
   - `EditableMolecule.parseMol2/parseXYZ`
   - `EditableMolecule.toXYZString/toMol2String` + GUI download buttons
 
+- Faster bond finding / rebuild using spatial buckets (for large crystals/substrates)
+  - bucket graph can store atom refs as indices or stable IDs to survive swap-remove deletions
+  - key API (see `web/common_js/Buckets.js`):
+    - `BucketGraph.toIds(mol)` / `BucketGraph.toInds(mol)`
+    - `BucketGraph.pruneEmptyBuckets()`
+    - `BucketGraph.recalcBounds(mol)`
+  - MolGUI integration:
+    - `Editor.deleteSelection()` converts bucket storage to IDs before deletion and back to indices after
+    - bond rebuild stats include `nAtoms` and `nBuckets`
+
+- Valence-based passivation helpers (explicit caps and explicit lone pairs)
+  - `EditableMolecule.addCappingAtoms(mmParams, cap='H', opts)`
+    - missing sigma bonds computed from `AtomTypes.dat` valence vs real neighbor count
+    - explicit epair dummy atoms (`Z==200`) are treated as normal geometry domains; they do not consume sigma valence for capping
+  - `EditableMolecule.addExplicitEPairs(mmParams, opts)`
+    - uses `at.nepair` and `at.epair_name`
+  - these functions are UI-wired in `GUI.js` under Structure → Passivation
+
+- Selection by chemical environment (AND-only query)
+  - compiled once, applied fast using existing `Atom.bonds[]` adjacency
+  - API in `EditableMolecule.js`:
+    - `EditableMolecule.compileSelectQuery(q, mmParams)`
+    - `EditableMolecule.applySelectQuery(compiled, {mode})`
+  - query examples:
+    - `Si|C deg={1,2}`
+    - `O|C n{H}={1,2}`
+    - `N|C n{F|Br|Cl}={1,2}`
+  - wired in `GUI.js` under Selection → Selection Query (Replace/Add/Subtract)
+
 ## Still missing / planned next
 
 - Connected components / fragments computation (beyond the current `Fragment` scaffolding)
@@ -215,6 +244,11 @@ Export can be:
 - Editing workloads are dominated by **small-degree graph operations**, not bulk numeric loops.
 - When you *do* need bulk loops (rendering, WebGL forcefield), you pack once and run on packed buffers (or GPU).
 - You avoid the slow pattern you hated: `Float32Array stride` + creating [Vec3](cci:2://file:///home/prokop/git/FireCore/web/common_js/Vec3.js:0:0-197:1) for every operation.
+
+Additional design notes (from recent work):
+
+- Selection queries: avoid rebuilding neighbor lists. `Atom.bonds[]` is the adjacency list; we only compile the query string once into predicates.
+- Buckets: keep the performance benefit of index-based loops for bond finding, but allow flipping to stable atom IDs to remain correct under swap-remove edits.
 
 ## Precision
 - Internal geometry is `number` (double).

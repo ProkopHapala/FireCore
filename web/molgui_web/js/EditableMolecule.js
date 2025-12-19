@@ -1,11 +1,43 @@
 import { Vec3 } from "../../common_js/Vec3.js";
 import { Mat3 } from "../../common_js/Mat3.js";
 
+function _bondCut2(z1, z2, mmParams, defaultRcut2, bondFactor, stats) {
+    if (stats) stats.nBondCut2 = (stats.nBondCut2 | 0) + 1;
+    let r1 = 0.7;
+    let r2 = 0.7;
+    if (mmParams && mmParams.byAtomicNumber) {
+        const e1 = mmParams.byAtomicNumber[z1 | 0];
+        const e2 = mmParams.byAtomicNumber[z2 | 0];
+        if (e1 && (e1.Rcov > 0)) r1 = e1.Rcov;
+        if (e2 && (e2.Rcov > 0)) r2 = e2.Rcov;
+        if (e1 && e2) {
+            const rSum = (r1 + r2) * bondFactor;
+            if (stats) stats.nRcovCutoff = (stats.nRcovCutoff | 0) + 1;
+            return rSum * rSum;
+        }
+    }
+    if (stats) stats.nDefaultCutoff = (stats.nDefaultCutoff | 0) + 1;
+    return defaultRcut2;
+}
+
+function _maxRcovFromMolAtoms(atoms, mmParams, fallback = 0.7) {
+    let r = +fallback;
+    if (mmParams && mmParams.byAtomicNumber) {
+        for (let i = 0; i < atoms.length; i++) {
+            const z = atoms[i].Z | 0;
+            const et = mmParams.byAtomicNumber[z];
+            if (et && (et.Rcov > r)) r = et.Rcov;
+        }
+    }
+    return r;
+}
+
 export class Atom {
     constructor(id, i, Z = 6, x = 0, y = 0, z = 0) {
         this.id = id;
         this.i = i;
         this.Z = Z;
+        this.atype = -1;
         this.charge = 0;
         this.flags = 0;
         this.pos = new Vec3(x, y, z);
@@ -13,6 +45,284 @@ export class Atom {
         this.frag = -1;
         this.fragSlot = -1;
     }
+}
+
+function _ensureMMTypeIndex(mmParams) {
+    if (!mmParams || !mmParams.atomTypes) throw new Error('_ensureMMTypeIndex: mmParams with atomTypes required');
+    if (mmParams._atomTypeNameToIndex && mmParams._atomTypeIndexToName) return;
+    const names = Object.keys(mmParams.atomTypes);
+    names.sort();
+    const n2i = {};
+    const i2n = names.slice();
+    for (let i = 0; i < i2n.length; i++) n2i[i2n[i]] = i;
+    mmParams._atomTypeNameToIndex = n2i;
+    mmParams._atomTypeIndexToName = i2n;
+}
+
+function _atomTypeNameToIndex(mmParams, name) {
+    _ensureMMTypeIndex(mmParams);
+    const i = mmParams._atomTypeNameToIndex[name];
+    return (i === undefined) ? -1 : (i | 0);
+}
+
+function _atomTypeIndexToName(mmParams, i) {
+    _ensureMMTypeIndex(mmParams);
+    const n = mmParams._atomTypeIndexToName[i | 0];
+    return n ? n : null;
+}
+
+function _resolveTypeOrElementToAtomType(mmParams, nameOrEl) {
+    if (!mmParams) throw new Error('_resolveTypeOrElementToAtomType: mmParams required');
+    const s = String(nameOrEl || '').trim();
+    if (!s) throw new Error('_resolveTypeOrElementToAtomType: empty type');
+    if (mmParams.atomTypes && mmParams.atomTypes[s]) {
+        const at = mmParams.atomTypes[s];
+        return { name: s, atype: _atomTypeNameToIndex(mmParams, s), iZ: at.iZ | 0 };
+    }
+    if (mmParams.elementTypes && mmParams.elementTypes[s]) {
+        const el = mmParams.elementTypes[s];
+        const iZ = el.iZ | 0;
+        if (mmParams.atomTypes && mmParams.atomTypes[s]) {
+            const at = mmParams.atomTypes[s];
+            return { name: s, atype: _atomTypeNameToIndex(mmParams, s), iZ: at.iZ | 0 };
+        }
+        if (mmParams.atomTypes) {
+            for (const k in mmParams.atomTypes) {
+                const at = mmParams.atomTypes[k];
+                if (at && at.element_name === s) return { name: k, atype: _atomTypeNameToIndex(mmParams, k), iZ };
+            }
+        }
+        return { name: s, atype: -1, iZ };
+    }
+    throw new Error(`Unknown cap type/element '${s}'`);
+}
+
+function _parseCountSet(s) {
+    const t = String(s || '').trim();
+    if (!t.startsWith('{') || !t.endsWith('}')) throw new Error(`selectQuery: expected count set {..}, got '${t}'`);
+    const inner = t.slice(1, -1).trim();
+    if (!inner) return new Set();
+    const parts = inner.split(',');
+    const out = new Set();
+    for (let i = 0; i < parts.length; i++) {
+        const x = parseInt(parts[i].trim(), 10);
+        if (!isFinite(x)) throw new Error(`selectQuery: invalid count '${parts[i]}'`);
+        out.add(x | 0);
+    }
+    return out;
+}
+
+function _compileTokenSetToMatcher(mmParams, tokSetStr) {
+    const s = String(tokSetStr || '').trim();
+    if (!s) throw new Error('selectQuery: empty token set');
+    if (s === '*') return { bAny: true, zSet: null, tSet: null, fnMatch: (_a) => true };
+    const toks = s.split('|').map(x => x.trim()).filter(x => x.length > 0);
+    if (toks.length === 0) throw new Error('selectQuery: empty token set');
+    const zSet = new Set();
+    const tSet = new Set();
+    for (let i = 0; i < toks.length; i++) {
+        const tok = toks[i];
+        if (tok === '*') return { bAny: true, zSet: null, tSet: null, fnMatch: (_a) => true };
+        if (tok.indexOf('_') >= 0) {
+            const it = _atomTypeNameToIndex(mmParams, tok);
+            if (it < 0) throw new Error(`selectQuery: unknown atom type '${tok}'`);
+            tSet.add(it | 0);
+        } else {
+            const z = EditableMolecule.asZ(tok);
+            if (!(z > 0)) throw new Error(`selectQuery: invalid element '${tok}'`);
+            zSet.add(z | 0);
+        }
+    }
+    const fnMatch = (a) => {
+        if (!a) return false;
+        const iz = a.Z | 0;
+        if (zSet.size && zSet.has(iz)) return true;
+        const it = (a.atype !== undefined) ? (a.atype | 0) : -1;
+        if (tSet.size && it >= 0 && tSet.has(it)) return true;
+        return false;
+    };
+    return { bAny: false, zSet, tSet, fnMatch };
+}
+
+function _compileSelectQuery(mmParams, q) {
+    const s = String(q || '').trim();
+    if (!s) throw new Error('selectQuery: empty query');
+    const parts = s.split(/\s+/).filter(x => x.length > 0);
+    if (parts.length === 0) throw new Error('selectQuery: empty query');
+    const atomTok = parts[0];
+    const atomMatcher = _compileTokenSetToMatcher(mmParams, atomTok);
+    const constraints = [];
+    for (let i = 1; i < parts.length; i++) {
+        const p = parts[i];
+        if (!p) continue;
+        if (p.startsWith('n{')) {
+            const j = p.indexOf('}');
+            if (j < 0) throw new Error(`selectQuery: missing '}' in '${p}'`);
+            const neiSetStr = p.slice(2, j + 1);
+            const rest = p.slice(j + 1);
+            if (!rest.startsWith('={')) throw new Error(`selectQuery: expected '={' after n{..}, got '${p}'`);
+            const cntSetStr = rest.slice(1);
+            const cntSet = _parseCountSet(cntSetStr);
+            const neiInner = neiSetStr.slice(2, -1).trim();
+            const neiMatcher = _compileTokenSetToMatcher(mmParams, neiInner || '*');
+            constraints.push({ neiMatcher, cntSet, src: p });
+            continue;
+        }
+        if (p.startsWith('deg')) {
+            const rest = p.slice(3);
+            if (!rest.startsWith('={')) throw new Error(`selectQuery: expected deg={..}, got '${p}'`);
+            const cntSet = _parseCountSet(rest.slice(1));
+            const neiMatcher = _compileTokenSetToMatcher(mmParams, '*');
+            constraints.push({ neiMatcher, cntSet, src: p });
+            continue;
+        }
+        throw new Error(`selectQuery: cannot parse token '${p}'`);
+    }
+    return { q: s, atomMatcher, constraints };
+}
+
+function _getAtomTypeForAtom(mmParams, atom) {
+    if (!mmParams) throw new Error('_getAtomTypeForAtom: mmParams required');
+    if (!atom) throw new Error('_getAtomTypeForAtom: atom required');
+    if (atom.atype !== undefined && (atom.atype | 0) >= 0) {
+        const name = _atomTypeIndexToName(mmParams, atom.atype | 0);
+        if (name && mmParams.atomTypes && mmParams.atomTypes[name]) return mmParams.atomTypes[name];
+    }
+    if (mmParams.byAtomicNumber) {
+        const et = mmParams.byAtomicNumber[atom.Z | 0];
+        if (et && mmParams.atomTypes && mmParams.atomTypes[et.name]) return mmParams.atomTypes[et.name];
+    }
+    if (mmParams.atomTypes && mmParams.atomTypes['*']) return mmParams.atomTypes['*'];
+    throw new Error(`_getAtomTypeForAtom: cannot resolve atom type for Z=${atom.Z}`);
+}
+
+function _bondLengthEst(zA, zB, mmParams, bondFactor = 1.1, fallback = 1.0) {
+    if (mmParams && mmParams.byAtomicNumber) {
+        const e1 = mmParams.byAtomicNumber[zA | 0];
+        const e2 = mmParams.byAtomicNumber[zB | 0];
+        const r1 = (e1 && (e1.Rcov > 0)) ? e1.Rcov : 0.0;
+        const r2 = (e2 && (e2.Rcov > 0)) ? e2.Rcov : 0.0;
+        if (r1 > 0 && r2 > 0) return (r1 + r2) * bondFactor;
+    }
+    return +fallback;
+}
+
+function _orthonormalBasisFromDir(dir, outU, outV) {
+    const a = Math.abs(dir.x), b = Math.abs(dir.y), c = Math.abs(dir.z);
+    const tmp = (a < 0.9) ? new Vec3(1, 0, 0) : ((b < 0.9) ? new Vec3(0, 1, 0) : new Vec3(0, 0, 1));
+    outU.setV(tmp);
+    outU.subMul(dir, outU.dot(dir));
+    if (!(outU.normalize() > 0)) throw new Error('_orthonormalBasisFromDir: failed to build basis');
+    outV.setCross(dir, outU);
+    if (!(outV.normalize() > 0)) throw new Error('_orthonormalBasisFromDir: failed to build basis (v)');
+}
+
+function _missingDirsVSEPR(vs, nMissing, totalDomains, outDirs) {
+    outDirs.length = 0;
+    const nb = vs.length | 0;
+    if (nMissing <= 0) return outDirs;
+    if (nb === 0) {
+        if (totalDomains === 4) {
+            const a = 0.57735026919;
+            outDirs.push(new Vec3( a, a, a));
+            outDirs.push(new Vec3( a,-a,-a));
+            outDirs.push(new Vec3(-a, a,-a));
+            outDirs.push(new Vec3(-a,-a, a));
+        } else if (totalDomains === 3) {
+            outDirs.push(new Vec3(1, 0, 0));
+            outDirs.push(new Vec3(-0.5, 0.86602540378, 0));
+            outDirs.push(new Vec3(-0.5, -0.86602540378, 0));
+        } else if (totalDomains === 2) {
+            outDirs.push(new Vec3(1, 0, 0));
+            outDirs.push(new Vec3(-1, 0, 0));
+        } else {
+            throw new Error(`_missingDirsVSEPR: unsupported totalDomains=${totalDomains} for nb=0`);
+        }
+        while (outDirs.length > nMissing) outDirs.pop();
+        return outDirs;
+    }
+
+    if (totalDomains === 2) {
+        if (nb !== 1 || nMissing !== 1) throw new Error(`_missingDirsVSEPR: linear expects nb=1,nMissing=1 got nb=${nb} nMissing=${nMissing}`);
+        outDirs.push(vs[0].clone().mulScalar(-1));
+        return outDirs;
+    }
+
+    if (totalDomains === 3) {
+        if (nb === 2 && nMissing === 1) {
+            const m = vs[0].clone().add(vs[1]);
+            if (!(m.normalize() > 0)) throw new Error('_missingDirsVSEPR: nb=2 planar but v1+v2 is zero');
+            outDirs.push(m.mulScalar(-1));
+            return outDirs;
+        }
+        if (nb === 1 && nMissing === 2) {
+            const axis = vs[0].clone().mulScalar(-1);
+            if (!(axis.normalize() > 0)) throw new Error('_missingDirsVSEPR: nb=1 planar axis zero');
+            const u = new Vec3();
+            const v = new Vec3();
+            _orthonormalBasisFromDir(axis, u, v);
+            const ca = -0.5;
+            const sa = 0.86602540378;
+            outDirs.push(axis.clone().mulScalar(ca).addMul(u, sa));
+            outDirs.push(axis.clone().mulScalar(ca).addMul(u, -sa));
+            return outDirs;
+        }
+        throw new Error(`_missingDirsVSEPR: unsupported planar nb=${nb} nMissing=${nMissing}`);
+    }
+
+    if (totalDomains === 4) {
+        if (nb === 3 && nMissing === 1) {
+            const m = vs[0].clone().add(vs[1]).add(vs[2]);
+            if (!(m.normalize() > 0)) throw new Error('_missingDirsVSEPR: nb=3 tetra but sum is zero');
+            outDirs.push(m.mulScalar(-1));
+            return outDirs;
+        }
+        if (nb === 2 && nMissing === 2) {
+            const m_c = vs[0].clone().add(vs[1]);
+            if (!(m_c.normalize() > 0)) throw new Error('_missingDirsVSEPR: nb=2 tetra but v1+v2 is zero');
+            const m_b = new Vec3().setCross(vs[0], vs[1]);
+            if (!(m_b.normalize() > 0)) {
+                const u = new Vec3();
+                const v = new Vec3();
+                _orthonormalBasisFromDir(m_c, u, v);
+                m_b.setV(u);
+            }
+            const cc = 0.57735026919;
+            const cb = 0.81649658092;
+            outDirs.push(m_c.clone().mulScalar(-cc).addMul(m_b, cb).normalize() ? m_c.clone().mulScalar(-cc).addMul(m_b, cb).normalize() : null);
+            outDirs.pop();
+            const d1 = m_c.clone().mulScalar(-cc).addMul(m_b, cb);
+            if (!(d1.normalize() > 0)) throw new Error('_missingDirsVSEPR: failed normalize tetra dir1');
+            const d2 = m_c.clone().mulScalar(-cc).addMul(m_b, -cb);
+            if (!(d2.normalize() > 0)) throw new Error('_missingDirsVSEPR: failed normalize tetra dir2');
+            outDirs.push(d1);
+            outDirs.push(d2);
+            return outDirs;
+        }
+        if (nb === 1 && nMissing === 3) {
+            const v1 = vs[0];
+            const u = new Vec3();
+            const v = new Vec3();
+            _orthonormalBasisFromDir(v1, u, v);
+            const a = -1.0 / 3.0;
+            const b = Math.sqrt(8.0 / 9.0);
+            const c120 = -0.5;
+            const s120 = 0.86602540378;
+            const u2 = u.clone().mulScalar(c120).addMul(v, s120);
+            const u3 = u.clone().mulScalar(c120).addMul(v, -s120);
+            const d1 = v1.clone().mulScalar(a).addMul(u, b);
+            const d2 = v1.clone().mulScalar(a).addMul(u2, b);
+            const d3 = v1.clone().mulScalar(a).addMul(u3, b);
+            if (!(d1.normalize() > 0 && d2.normalize() > 0 && d3.normalize() > 0)) throw new Error('_missingDirsVSEPR: failed normalize tetra nb=1');
+            outDirs.push(d1);
+            outDirs.push(d2);
+            outDirs.push(d3);
+            return outDirs;
+        }
+        throw new Error(`_missingDirsVSEPR: unsupported tetra nb=${nb} nMissing=${nMissing}`);
+    }
+
+    throw new Error(`_missingDirsVSEPR: unsupported totalDomains=${totalDomains}`);
 }
 
 export class Bond {
@@ -196,6 +506,164 @@ export class EditableMolecule {
         return id;
     }
 
+    setAtomTypeByName(id, typeName, mmParams) {
+        const ia = this.getAtomIndex(id);
+        if (ia < 0) throw new Error(`setAtomTypeByName: atom not found id=${id}`);
+        const t = _resolveTypeOrElementToAtomType(mmParams, typeName);
+        const a = this.atoms[ia];
+        a.atype = t.atype;
+        if (t.iZ > 0) a.Z = t.iZ;
+        this._touchTopo();
+        return t;
+    }
+
+    addCappingAtoms(mmParams, cap = 'H', opts = {}) {
+        const bBond = (opts.bBond !== undefined) ? !!opts.bBond : true;
+        const onlySelection = (opts.onlySelection !== undefined) ? !!opts.onlySelection : true;
+        const bondFactor = (opts.bondFactor !== undefined) ? +opts.bondFactor : 1.1;
+        const bPrint = !!opts.bPrint;
+        const sel = Array.from(this.selection);
+        if (onlySelection && sel.length === 0) throw new Error('addCappingAtoms: selection is empty');
+        const ids = onlySelection ? sel : this.atoms.map(a => a.id);
+        const capT = _resolveTypeOrElementToAtomType(mmParams, cap);
+        const out = { nAdded: 0, capIds: [] };
+
+        const vs = [];
+        const dirs = [];
+        const tmp = new Vec3();
+        for (let ii = 0; ii < ids.length; ii++) {
+            const id = ids[ii];
+            const ia = this.getAtomIndex(id);
+            if (ia < 0) continue;
+            const a = this.atoms[ia];
+            const at = _getAtomTypeForAtom(mmParams, a);
+            const sigmaMax = (at.valence | 0);
+            if (sigmaMax < 0) throw new Error(`addCappingAtoms: valence<0 for type='${at.name || '?'}' Z=${a.Z}`);
+            let nbReal = 0;
+            let nEp = 0;
+            for (let k = 0; k < a.bonds.length; k++) {
+                const ib = a.bonds[k] | 0;
+                const bnd = this.bonds[ib];
+                if (!bnd) continue;
+                bnd.ensureIndices(this);
+                const jb = bnd.other(ia);
+                if (jb < 0) continue;
+                const z = this.atoms[jb].Z | 0;
+                if (z === 200) nEp++; else nbReal++;
+            }
+            const nDang = sigmaMax - nbReal;
+            const nbAll = (nbReal + nEp) | 0;
+            const totalDomains = (nbAll + nDang) | 0;
+            if (bPrint) {
+                const tname = (at && at.name) ? at.name : '?';
+                console.log(`addCappingAtoms id=${a.id} i=${ia} Z=${a.Z} type=${tname} valence=${at.valence|0} nepair=${at.nepair|0} npi=${at.npi|0} nbReal=${nbReal} nbAll=${nbAll} nEp=${nEp} nDang=${nDang} totalDomains=${totalDomains} onlySelection=${onlySelection}`);
+            }
+            if (nDang <= 0) continue;
+
+            if (totalDomains !== 4 && totalDomains !== 3 && totalDomains !== 2) {
+                throw new Error(`addCappingAtoms: unsupported totalDomains=${totalDomains} (id=${a.id} Z=${a.Z} type='${at.name || '?'}' nbReal=${nbReal} nbAll=${nbAll} nDang=${nDang})`);
+            }
+
+            vs.length = 0;
+            for (let k = 0; k < a.bonds.length; k++) {
+                const ib = a.bonds[k] | 0;
+                const bnd = this.bonds[ib];
+                if (!bnd) continue;
+                bnd.ensureIndices(this);
+                const jb = bnd.other(ia);
+                if (jb < 0) continue;
+                tmp.setV(this.atoms[jb].pos);
+                tmp.sub(a.pos);
+                if (!(tmp.normalize() > 0)) continue;
+                vs.push(tmp.clone());
+            }
+
+            _missingDirsVSEPR(vs, nDang, totalDomains, dirs);
+            const r = _bondLengthEst(a.Z | 0, capT.iZ | 0, mmParams, bondFactor, 1.0);
+            for (let j = 0; j < dirs.length; j++) {
+                const d = dirs[j];
+                const p = a.pos;
+                const capId = this.addAtom(p.x + d.x * r, p.y + d.y * r, p.z + d.z * r, capT.iZ | 0);
+                const iCap = this.getAtomIndex(capId);
+                if (iCap < 0) throw new Error('addCappingAtoms: internal error (cap missing)');
+                this.atoms[iCap].atype = capT.atype;
+                out.capIds.push(capId);
+                out.nAdded++;
+                if (bBond) this.addBond(a.id, capId, 1, 1);
+            }
+        }
+        return out;
+    }
+
+    addExplicitEPairs(mmParams, opts = {}) {
+        const bBond = (opts.bBond !== undefined) ? !!opts.bBond : true;
+        const onlySelection = (opts.onlySelection !== undefined) ? !!opts.onlySelection : true;
+        const bondFactor = (opts.bondFactor !== undefined) ? +opts.bondFactor : 1.0;
+        const sel = Array.from(this.selection);
+        if (onlySelection && sel.length === 0) throw new Error('addExplicitEPairs: selection is empty');
+        const ids = onlySelection ? sel : this.atoms.map(a => a.id);
+        const out = { nAdded: 0, epairIds: [] };
+
+        const vs = [];
+        const dirs = [];
+        const tmp = new Vec3();
+        for (let ii = 0; ii < ids.length; ii++) {
+            const id = ids[ii];
+            const ia = this.getAtomIndex(id);
+            if (ia < 0) continue;
+            const a = this.atoms[ia];
+            const at = _getAtomTypeForAtom(mmParams, a);
+            const ne = (at.nepair | 0);
+            if (ne <= 0) continue;
+
+            let nHave = 0;
+            for (let k = 0; k < a.bonds.length; k++) {
+                const ib = a.bonds[k] | 0;
+                const bnd = this.bonds[ib];
+                if (!bnd) continue;
+                bnd.ensureIndices(this);
+                const jb = bnd.other(ia);
+                if (jb < 0) continue;
+                if ((this.atoms[jb].Z | 0) === 200) nHave++;
+            }
+            const nAdd = ne - nHave;
+            if (nAdd <= 0) continue;
+
+            vs.length = 0;
+            for (let k = 0; k < a.bonds.length; k++) {
+                const ib = a.bonds[k] | 0;
+                const bnd = this.bonds[ib];
+                if (!bnd) continue;
+                bnd.ensureIndices(this);
+                const jb = bnd.other(ia);
+                if (jb < 0) continue;
+                tmp.setV(this.atoms[jb].pos);
+                tmp.sub(a.pos);
+                if (!(tmp.normalize() > 0)) continue;
+                vs.push(tmp.clone());
+            }
+
+            const totalDomains = ((at.valence | 0) + (at.nepair | 0) + (at.npi | 0)) | 0;
+            _missingDirsVSEPR(vs, nAdd, totalDomains, dirs);
+
+            const epName = (at.epair_name && at.epair_name !== '*') ? at.epair_name : 'E';
+            const epT = _resolveTypeOrElementToAtomType(mmParams, epName);
+            const r = _bondLengthEst(a.Z | 0, epT.iZ | 0, mmParams, bondFactor, 0.5);
+            for (let j = 0; j < dirs.length; j++) {
+                const d = dirs[j];
+                const p = a.pos;
+                const eId = this.addAtom(p.x + d.x * r, p.y + d.y * r, p.z + d.z * r, epT.iZ | 0);
+                const iE = this.getAtomIndex(eId);
+                if (iE < 0) throw new Error('addExplicitEPairs: internal error (epair missing)');
+                this.atoms[iE].atype = epT.atype;
+                out.epairIds.push(eId);
+                out.nAdded++;
+                if (bBond) this.addBond(a.id, eId, 1, 1);
+            }
+        }
+        return out;
+    }
+
     addAtomZ(Z = 6, x = 0, y = 0, z = 0) { return this.addAtom(x, y, z, Z); }
 
     setAtomPosById(id, x, y, z) {
@@ -244,6 +712,57 @@ export class EditableMolecule {
     }
 
     clearSelection() { this.selection.clear(); this.dirtyExport = true; }
+
+    static compileSelectQuery(q, mmParams) {
+        if (!mmParams) throw new Error('compileSelectQuery: mmParams required');
+        return _compileSelectQuery(mmParams, q);
+    }
+
+    applySelectQuery(compiled, opts = {}) {
+        const mode = (opts.mode !== undefined) ? String(opts.mode) : 'replace';
+        const bPrint = !!opts.bPrint;
+        if (!compiled || !compiled.atomMatcher || !compiled.constraints) throw new Error('applySelectQuery: invalid compiled query');
+        const atomMatch = compiled.atomMatcher.fnMatch;
+        const constraints = compiled.constraints;
+        const sel = this.selection;
+        if (mode === 'replace') sel.clear();
+        const nAtoms = this.atoms.length | 0;
+        const counts = new Int32Array(constraints.length | 0);
+        let nHit = 0;
+        for (let ia = 0; ia < nAtoms; ia++) {
+            const a = this.atoms[ia];
+            if (!a) continue;
+            if (!atomMatch(a)) continue;
+            for (let k = 0; k < counts.length; k++) counts[k] = 0;
+            const bs = a.bonds;
+            for (let ib0 = 0; ib0 < bs.length; ib0++) {
+                const ib = bs[ib0] | 0;
+                const bnd = this.bonds[ib];
+                if (!bnd) continue;
+                bnd.ensureIndices(this);
+                const jb = bnd.other(ia);
+                if (jb < 0) continue;
+                const nb = this.atoms[jb];
+                if (!nb) continue;
+                for (let ic = 0; ic < constraints.length; ic++) {
+                    if (constraints[ic].neiMatcher.fnMatch(nb)) counts[ic]++;
+                }
+            }
+            let ok = true;
+            for (let ic = 0; ic < constraints.length; ic++) {
+                const cs = constraints[ic].cntSet;
+                if (cs.size && !cs.has(counts[ic] | 0)) { ok = false; break; }
+            }
+            if (!ok) continue;
+            const id = a.id;
+            if (mode === 'subtract') sel.delete(id);
+            else sel.add(id);
+            nHit++;
+            if (bPrint) console.log(`selectQuery hit id=${id} i=${ia} Z=${a.Z}`);
+        }
+        this.dirtyExport = true;
+        return { nHit };
+    }
 
     deleteSelectedAtoms() {
         this._assertUnlocked('deleteSelectedAtoms');
@@ -642,42 +1161,139 @@ export class EditableMolecule {
         return ids;
     }
 
-    recalculateBonds(mmParams = null) {
+    recalculateBonds(mmParams = null, opts = {}) {
         this._assertUnlocked('recalculateBonds');
         // remove all bonds
         while (this.bonds.length > 0) this.removeBondByIndex(this.bonds.length - 1);
 
-        const defaultRcut = 1.6;
+        const defaultRcut = (opts.defaultRcut !== undefined) ? +opts.defaultRcut : 1.6;
         const defaultRcut2 = defaultRcut * defaultRcut;
-        const bondFactor = 1.3;
+        const bondFactor = (opts.bondFactor !== undefined) ? +opts.bondFactor : 1.3;
+        const stats = opts.stats ? opts.stats : null;
 
+        const t0 = (opts.time !== false && typeof performance !== 'undefined') ? performance.now() : 0;
         const n = this.atoms.length;
         for (let i = 0; i < n; i++) {
             const ai = this.atoms[i];
-            const zi = ai.Z;
-            let r1 = 0.7;
-            if (mmParams && mmParams.byAtomicNumber && mmParams.byAtomicNumber[zi]) {
-                r1 = mmParams.byAtomicNumber[zi].Rcov;
-            }
             const xi = ai.pos.x, yi = ai.pos.y, zi0 = ai.pos.z;
             for (let j = i + 1; j < n; j++) {
                 const aj = this.atoms[j];
-                const zj = aj.Z;
-                let rCut2 = defaultRcut2;
-                if (mmParams && mmParams.byAtomicNumber && mmParams.byAtomicNumber[zj]) {
-                    const r2 = mmParams.byAtomicNumber[zj].Rcov;
-                    const rSum = (r1 + r2) * bondFactor;
-                    rCut2 = rSum * rSum;
-                }
+                const rCut2 = _bondCut2(ai.Z, aj.Z, mmParams, defaultRcut2, bondFactor, stats);
+                if (stats) stats.nAtomPairs = (stats.nAtomPairs | 0) + 1;
                 const dx = xi - aj.pos.x;
                 const dy = yi - aj.pos.y;
                 const dz = zi0 - aj.pos.z;
                 const dist2 = dx * dx + dy * dy + dz * dz;
+                if (stats) stats.nDist2 = (stats.nDist2 | 0) + 1;
                 if (dist2 < rCut2) {
                     this.addBond(ai.id, aj.id);
+                    if (stats) stats.nBondsAdded = (stats.nBondsAdded | 0) + 1;
                 }
             }
         }
+        if (opts.time !== false && typeof performance !== 'undefined' && stats) stats.timeMs = (performance.now() - t0);
+        return stats;
+    }
+
+    recalculateBondsBucketNeighbors(mmParams, buckets, opts = {}) {
+        this._assertUnlocked('recalculateBondsBucketNeighbors');
+        if (!buckets || !buckets.buckets) throw new Error('recalculateBondsBucketNeighbors: buckets (BucketGraph) required');
+
+        while (this.bonds.length > 0) this.removeBondByIndex(this.bonds.length - 1);
+
+        const defaultRcut = (opts.defaultRcut !== undefined) ? +opts.defaultRcut : 1.6;
+        const defaultRcut2 = defaultRcut * defaultRcut;
+        const bondFactor = (opts.bondFactor !== undefined) ? +opts.bondFactor : 1.3;
+        const stats = opts.stats ? opts.stats : null;
+        const t0 = (opts.time !== false && typeof performance !== 'undefined') ? performance.now() : 0;
+
+        const bs = buckets.buckets;
+        for (let ib = 0; ib < bs.length; ib++) {
+            const bi = bs[ib];
+            const as = bi.atoms;
+            const neigh = bi.neigh;
+            for (let kk = 0; kk < neigh.length; kk++) {
+                const jb = neigh[kk] | 0;
+                const bj = bs[jb];
+                const bsj = bj.atoms;
+                if (stats) stats.nBucketPairs = (stats.nBucketPairs | 0) + 1;
+                for (let ia0 = 0; ia0 < as.length; ia0++) {
+                    const ia = as[ia0] | 0;
+                    const ai = this.atoms[ia];
+                    const xi = ai.pos.x, yi = ai.pos.y, zi0 = ai.pos.z;
+                    const j0 = (jb === ib) ? (ia0 + 1) : 0;
+                    for (let jb0 = j0; jb0 < bsj.length; jb0++) {
+                        const ja = bsj[jb0] | 0;
+                        const aj = this.atoms[ja];
+                        const rCut2 = _bondCut2(ai.Z, aj.Z, mmParams, defaultRcut2, bondFactor, stats);
+                        if (stats) stats.nAtomPairs = (stats.nAtomPairs | 0) + 1;
+                        const dx = xi - aj.pos.x;
+                        const dy = yi - aj.pos.y;
+                        const dz = zi0 - aj.pos.z;
+                        const dist2 = dx * dx + dy * dy + dz * dz;
+                        if (stats) stats.nDist2 = (stats.nDist2 | 0) + 1;
+                        if (dist2 < rCut2) {
+                            this.addBond(ai.id, aj.id);
+                            if (stats) stats.nBondsAdded = (stats.nBondsAdded | 0) + 1;
+                        }
+                    }
+                }
+            }
+        }
+        if (opts.time !== false && typeof performance !== 'undefined' && stats) stats.timeMs = (performance.now() - t0);
+        return stats;
+    }
+
+    recalculateBondsBucketAllPairsAABB(mmParams, buckets, opts = {}) {
+        this._assertUnlocked('recalculateBondsBucketAllPairsAABB');
+        if (!buckets || !buckets.buckets) throw new Error('recalculateBondsBucketAllPairsAABB: buckets (BucketGraph) required');
+
+        while (this.bonds.length > 0) this.removeBondByIndex(this.bonds.length - 1);
+
+        const defaultRcut = (opts.defaultRcut !== undefined) ? +opts.defaultRcut : 1.6;
+        const defaultRcut2 = defaultRcut * defaultRcut;
+        const bondFactor = (opts.bondFactor !== undefined) ? +opts.bondFactor : 1.3;
+        const stats = opts.stats ? opts.stats : null;
+        const t0 = (opts.time !== false && typeof performance !== 'undefined') ? performance.now() : 0;
+
+        const maxR = _maxRcovFromMolAtoms(this.atoms, mmParams, 0.7);
+        const margin = (opts.margin !== undefined) ? +opts.margin : ((2.0 * maxR) * bondFactor);
+
+        const bs = buckets.buckets;
+        for (let ib = 0; ib < bs.length; ib++) {
+            const bi = bs[ib];
+            const as = bi.atoms;
+            for (let jb = 0; jb <= ib; jb++) {
+                const bj = bs[jb];
+                if (stats) stats.nAABBTests = (stats.nAABBTests | 0) + 1;
+                if (!bj.overlapAABB(bi, margin)) continue;
+                if (stats) stats.nBucketPairs = (stats.nBucketPairs | 0) + 1;
+                const bsj = bj.atoms;
+                for (let ia0 = 0; ia0 < as.length; ia0++) {
+                    const ia = as[ia0] | 0;
+                    const ai = this.atoms[ia];
+                    const xi = ai.pos.x, yi = ai.pos.y, zi0 = ai.pos.z;
+                    const j0 = (jb === ib) ? (ia0 + 1) : 0;
+                    for (let jb0 = j0; jb0 < bsj.length; jb0++) {
+                        const ja = bsj[jb0] | 0;
+                        const aj = this.atoms[ja];
+                        const rCut2 = _bondCut2(ai.Z, aj.Z, mmParams, defaultRcut2, bondFactor, stats);
+                        if (stats) stats.nAtomPairs = (stats.nAtomPairs | 0) + 1;
+                        const dx = xi - aj.pos.x;
+                        const dy = yi - aj.pos.y;
+                        const dz = zi0 - aj.pos.z;
+                        const dist2 = dx * dx + dy * dy + dz * dz;
+                        if (stats) stats.nDist2 = (stats.nDist2 | 0) + 1;
+                        if (dist2 < rCut2) {
+                            this.addBond(ai.id, aj.id);
+                            if (stats) stats.nBondsAdded = (stats.nBondsAdded | 0) + 1;
+                        }
+                    }
+                }
+            }
+        }
+        if (opts.time !== false && typeof performance !== 'undefined' && stats) stats.timeMs = (performance.now() - t0);
+        return stats;
     }
 
     exportToMoleculeSystem(ms) {

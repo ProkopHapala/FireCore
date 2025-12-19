@@ -3,6 +3,7 @@ import * as PolymerUtils from './PolymerUtils.js';
 import { Vec3 } from '../../common_js/Vec3.js';
 import { EditableMolecule } from './EditableMolecule.js';
 import { MoleculeRenderer, PackedMolecule } from './MoleculeRenderer.js';
+import { buildCrystalCellBucketsFromMol } from '../../common_js/Buckets.js';
 import { GUIutils } from '../../common_js/GUIutils.js';
 
 export class BuildersGUI {
@@ -449,7 +450,7 @@ export class BuildersGUI {
                 lblCellStatus.textContent = `${lblCellStatus.textContent} | atoms=${mol.atoms.length} | Q=${qTot}`;
                 if (Math.abs(qTot) > 1e-3) window.logger.error(`Total charge not neutral: Q=${qTot}`);
                 else window.logger.info(`Total charge Q=${qTot}`);
-                const data0 = { mol, lvec: mol.lvec || null };
+                const data0 = { mol, lvec: mol.lvec || null, bucketCells: { na: nx, nb: ny, nc: nz, lvecCell: cell.lvec } };
                 applyToScene(applyMiller(data0), mode);
             };
 
@@ -503,7 +504,9 @@ export class BuildersGUI {
                 const b = CrystalUtils.reciprocalLattice(data.lvec);
                 const n = new Vec3().setLincomb3(h, b[0], k, b[1], l, b[2]);
                 const R = CrystalUtils.rotationAlignVectorToZ(n);
-                return { ...data, Rmiller: R, lvec: CrystalUtils.rotateLvec(data.lvec, R) };
+                const out = { ...data, Rmiller: R, lvec: CrystalUtils.rotateLvec(data.lvec, R) };
+                if (data.bucketCells && data.bucketCells.lvecCell) out.bucketCells = { ...data.bucketCells, lvecCell: CrystalUtils.rotateLvec(data.bucketCells.lvecCell, R) };
+                return out;
             };
 
             const getSlab = () => {
@@ -663,6 +666,8 @@ export class BuildersGUI {
                 for (const a of mol.atoms) {
                     const id = gui.system.addAtom(a.pos.x, a.pos.y, a.pos.z, a.Z);
                     idsNew.set(a.id, id);
+                    const ia = gui.system.getAtomIndex(id);
+                    if (ia >= 0 && (a.cellIndex !== undefined && a.cellIndex !== null)) gui.system.atoms[ia].cellIndex = a.cellIndex | 0;
                 }
                 if (mol.bonds && mol.bonds.length) {
                     for (const b of mol.bonds) {
@@ -672,6 +677,18 @@ export class BuildersGUI {
                         gui.system.addBond(aId, cId);
                     }
                 }
+
+                if (data.bucketCells && data.bucketCells.lvecCell) {
+                    try {
+                        const bg = buildCrystalCellBucketsFromMol(gui.system, data.bucketCells.na | 0, data.bucketCells.nb | 0, data.bucketCells.nc | 0, data.bucketCells.lvecCell, new Vec3(0, 0, 0));
+                        if (window.app) window.app.lastBucketGraph = bg;
+                        if (window.app && typeof window.app.updateBucketOverlay === 'function') window.app.updateBucketOverlay();
+                    } catch (e) {
+                        window.logger.error(`Failed to build bucket graph: ${String(e)}`);
+                        throw e;
+                    }
+                }
+
                 gui.renderer.update();
                 gui.requestRender();
                 window.logger.info(`Substrate generated: atoms=${gui.system.nAtoms}`);
