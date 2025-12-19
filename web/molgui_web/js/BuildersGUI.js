@@ -2,6 +2,7 @@ import * as CrystalUtils from './CrystalUtils.js';
 import * as PolymerUtils from './PolymerUtils.js';
 import { Vec3 } from '../../common_js/Vec3.js';
 import { EditableMolecule } from './EditableMolecule.js';
+import { MoleculeRenderer, PackedMolecule } from './MoleculeRenderer.js';
 import { GUIutils } from '../../common_js/GUIutils.js';
 
 export class BuildersGUI {
@@ -78,12 +79,382 @@ export class BuildersGUI {
             GUIutils.span(rowCIF, 'CIF: ');
             const cifKeys = Object.keys(CIF_PREPARED);
             const selCIF = GUIutils.selectList(rowCIF, ['(none)', ...cifKeys], null, null, { flexGrow: '1' });
-            const btnLoadCIF = GUIutils.btn(rowCIF, 'Load', null, { marginLeft: '4px', flexGrow: '0' });
-
-            const chkSym = GUIutils.labelCheck(container, 'Apply symmetry ops', false, null, { marginTop: '4px' }).input;
-            const chkBonds = GUIutils.labelCheck(container, 'Build bonds (BondTypes)', false, null, { marginTop: '4px' }).input;
-            const btnFileCIF = GUIutils.btn(container, 'Load CIF file...', null, { marginTop: '4px' });
+            const btnFileCIF = GUIutils.btn(rowCIF, 'Load CIF', null, { marginLeft: '4px', flexGrow: '0' });
             const inpFileCIF = GUIutils.input(container, { type: 'file', attrs: { accept: '.cif,.CIF,text/plain' } }, { display: 'none' });
+
+            const chkSym = GUIutils.labelCheck(container, 'sym', false, null, { marginTop: '4px' }).input;
+            const chkDedupSym = GUIutils.labelCheck(container, 'dedup sym', true, null, { marginTop: '4px' }).input;
+            const chkDedupRep = GUIutils.labelCheck(container, 'dedup rep', true, null, { marginTop: '4px' }).input;
+            const rowDedupTol = GUIutils.row(container, { marginTop: '4px' });
+            GUIutils.span(rowDedupTol, 'dedup tol', { marginRight: '4px' });
+            const inpDedupTol = GUIutils.num(rowDedupTol, 0.1, { step: '0.01' }, { width: '70px', flexGrow: '0' });
+            GUIutils.span(rowDedupTol, 'Å', { marginLeft: '4px', color: '#aaa' });
+            const chkBonds = GUIutils.labelCheck(container, 'bonds', false, null, { marginTop: '4px' }).input;
+
+            // UI cleanup: hide old preset + MP JSON widgets (kept for now, but redundant with unit-cell editor)
+            rowPreset.style.display = 'none';
+            rowA.style.display = '';
+            rowMP.style.display = 'none';
+            btnFileMP.style.display = 'none';
+            btnLoadMP.style.display = 'none';
+            selMP.style.display = 'none';
+            inpFileMP.style.display = 'none';
+
+            GUIutils.el(container, 'hr', null, { borderColor: '#444', margin: '8px 0' });
+
+            const rowCellMode = GUIutils.row(container);
+            GUIutils.span(rowCellMode, 'Cell coords: ', { marginRight: '4px' });
+            const selCellMode = GUIutils.selectList(rowCellMode, ['fractional', 'cartesian'], 'fractional', null, { flexGrow: '1' });
+            let _cellModePrev = 'fractional';
+            const chkPreview = GUIutils.labelCheck(container, 'Preview', true, null, { marginTop: '4px' }).input;
+            const chkAutoSync = GUIutils.labelCheck(container, 'Auto-sync', true, null, { marginTop: '4px' }).input;
+
+            const taLat = GUIutils.textArea(container, '', { display: 'block', height: '72px', marginTop: '4px', placeholder: 'Lattice vectors (3 lines):\nax ay az\nbx by bz\ncx cy cz' });
+            const taAtoms = GUIutils.textArea(container, '', { display: 'block', height: '140px', marginTop: '4px', placeholder: 'Atoms in unit cell (XYZ-like):\nEl x y z\n...' });
+            const taSym = GUIutils.textArea(container, '', { display: 'block', height: '90px', marginTop: '4px', placeholder: 'Symmetry operations (one per line):\nx,y,z\n-x,-y,-z\n...' });
+
+            const rowCellBtns = GUIutils.row(container, { marginTop: '6px' });
+            const btnCellPreview = GUIutils.btn(rowCellBtns, 'Preview cell', null, { flexGrow: '1' });
+            const btnCellGenerateReplace = GUIutils.btn(rowCellBtns, 'Generate from cell (Replace)', null, { marginLeft: '4px', flexGrow: '1' });
+            const btnCellGenerateAppend = GUIutils.btn(rowCellBtns, '... Append', null, { marginLeft: '4px', flexGrow: '0' });
+
+            const lblCellStatus = GUIutils.div(container, null, { marginTop: '4px', fontSize: '0.85em', color: '#aaa' });
+            lblCellStatus.textContent = '';
+
+            // --- Unit-cell preview renderer (non-editable) ---
+            let previewMol = null;
+            let previewPacked = null;
+            let previewRenderer = null;
+            let previewPlanes = null;
+            let previewCellBox = null;
+            const ensurePreview = () => {
+                if (previewRenderer) return;
+                if (!window.app || !window.app.scene || !window.app.shaders || !window.app.mmParams) throw new Error('Unit-cell preview requires window.app.scene/shaders/mmParams');
+                previewMol = new EditableMolecule();
+                previewPacked = new PackedMolecule(1024);
+                previewRenderer = new MoleculeRenderer(window.app.scene, previewPacked, window.app.shaders, window.app.mmParams, previewMol);
+                if (previewRenderer.atomMesh) previewRenderer.atomMesh.renderOrder = 10;
+                if (previewRenderer.bondLines) previewRenderer.bondLines.renderOrder = 9;
+            };
+
+            const ensurePreviewPlanes = () => {
+                if (previewPlanes) return;
+                if (!window.app || !window.app.scene) throw new Error('Preview planes require window.app.scene');
+                const THREE = window.THREE;
+                if (!THREE) throw new Error('Preview planes require window.THREE');
+                const geom = new THREE.BufferGeometry();
+                geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+                const mat = new THREE.LineBasicMaterial({ color: 0x44ff88, transparent: true, opacity: 0.9 });
+                previewPlanes = new THREE.LineSegments(geom, mat);
+                previewPlanes.renderOrder = 11;
+                window.app.scene.add(previewPlanes);
+            };
+
+            const ensurePreviewCellBox = () => {
+                if (previewCellBox) return;
+                if (!window.app || !window.app.scene) throw new Error('Preview cell box requires window.app.scene');
+                const THREE = window.THREE;
+                if (!THREE) throw new Error('Preview cell box requires window.THREE');
+                const geom = new THREE.BufferGeometry();
+                geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+                const mat = new THREE.LineBasicMaterial({ color: 0x4488ff, transparent: true, opacity: 0.7 });
+                previewCellBox = new THREE.LineSegments(geom, mat);
+                previewCellBox.renderOrder = 8;
+                window.app.scene.add(previewCellBox);
+            };
+
+            const setPreviewVisible = (b) => {
+                const v = !!b;
+                if (previewRenderer) {
+                    if (previewRenderer.atomMesh) previewRenderer.atomMesh.visible = v;
+                    if (previewRenderer.bondLines) previewRenderer.bondLines.visible = v;
+                }
+                if (previewPlanes) previewPlanes.visible = v;
+                if (previewCellBox) previewCellBox.visible = v;
+                gui.requestRender();
+            };
+
+            const fillCellTextAreasFromCIF = (cifText) => {
+                const crystal = CrystalUtils.cifToCrystalData(cifText);
+                const lvec = CrystalUtils.latticeVectorsFromParams(crystal.lattice);
+                inpA.value = String(+crystal.lattice.a);
+                const a0 = +inpA.value;
+                if (!(a0 > 0)) throw new Error('CIF: invalid a');
+                const lvecN = [lvec[0].clone().mulScalar(1.0 / a0), lvec[1].clone().mulScalar(1.0 / a0), lvec[2].clone().mulScalar(1.0 / a0)];
+                taLat.value = CrystalUtils.formatLatticeText(lvecN);
+                taSym.value = CrystalUtils.formatSymOpsText(crystal.symOpStrs || []);
+                if (selCellMode.value === 'cartesian') {
+                    taAtoms.value = CrystalUtils.formatSitesTextXYZCart(crystal.sites, lvec);
+                } else {
+                    taAtoms.value = CrystalUtils.formatSitesTextXYZFrac(crystal.sites);
+                }
+                lblCellStatus.textContent = `Loaded cell: sites=${crystal.sites.length} symOps=${(crystal.symOpStrs || []).length}`;
+                if (chkPreview.checked) updatePreviewFromEditor();
+            };
+
+            const parseUnitCellEditor = () => {
+                const dedupTol = +inpDedupTol.value;
+                if (!(dedupTol > 0)) throw new Error('Dedup tol must be >0');
+                const a0 = +inpA.value;
+                if (!(a0 > 0)) throw new Error('a must be >0');
+                let lvecN = null;
+                try {
+                    lvecN = CrystalUtils.parseLatticeText(taLat.value);
+                } catch (e) {
+                    const s = (taLat.value || '').trim();
+                    if (s.length === 0) {
+                        taLat.value = '1 0 0\n0 1 0\n0 0 1\n';
+                        lvecN = CrystalUtils.parseLatticeText(taLat.value);
+                    } else {
+                        throw e;
+                    }
+                }
+                const lvec = [lvecN[0].clone().mulScalar(a0), lvecN[1].clone().mulScalar(a0), lvecN[2].clone().mulScalar(a0)];
+                const mode = selCellMode.value;
+                const atomsTxt = CrystalUtils.parseSitesTextXYZ(taAtoms.value, mode);
+                const sitesFrac = [];
+                const p = new Vec3();
+                const f = [0, 0, 0];
+                if (mode === 'cartesian') {
+                    for (const a of atomsTxt) {
+                        p.set(+a.x, +a.y, +a.z);
+                        CrystalUtils.cartToFrac(p, lvec, f);
+                        sitesFrac.push({ element: a.element, x: f[0], y: f[1], z: f[2], q: +a.q });
+                    }
+                } else {
+                    for (const a of atomsTxt) sitesFrac.push({ element: a.element, x: +a.x, y: +a.y, z: +a.z, q: +a.q });
+                }
+
+                let sites = sitesFrac;
+                const symOps = CrystalUtils.parseSymOpsText(taSym.value);
+                if (chkSym.checked) {
+                    if (!symOps || symOps.length === 0) throw new Error('Apply symmetry ops enabled but no sym ops provided');
+                    sites = CrystalUtils.applySymmetryOpsFracSites(sites, symOps, { tol: 1e-6 });
+                }
+                if (chkDedupSym.checked) {
+                    sites = CrystalUtils.dedupFracSitesByTolA(sites, lvec, dedupTol);
+                }
+
+                const cell = CrystalUtils.cellDataFromFracSites(lvec, sites);
+                return { lvec, sitesFrac: sites, cell };
+            };
+
+            const updatePreviewPlanesFromEditor = () => {
+                if (!chkPreview.checked) return;
+                ensurePreviewPlanes();
+                const THREE = window.THREE;
+                const { cell } = parseUnitCellEditor();
+                const planes = getPlanes();
+                const slab = planes ? null : getSlab();
+
+                const pls = [];
+                const b = CrystalUtils.reciprocalLattice(cell.lvec);
+                if (planes) {
+                    for (const p of planes.planes) {
+                        const n = new Vec3().setLincomb3(p.h, b[0], p.k, b[1], p.l, b[2]);
+                        pls.push({ n, cmin: p.cmin, cmax: p.cmax, mode: planes.planeMode });
+                    }
+                } else if (slab) {
+                    const n = new Vec3().setLincomb3(slab.hkl[0] | 0, b[0], slab.hkl[1] | 0, b[1], slab.hkl[2] | 0, b[2]);
+                    pls.push({ n, cmin: slab.cmin, cmax: slab.cmax, mode: 'ang' });
+                }
+
+                if (pls.length === 0) {
+                    previewPlanes.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+                    previewPlanes.geometry.computeBoundingSphere();
+                    return;
+                }
+
+                const L = Math.max(cell.lvec[0].norm(), cell.lvec[1].norm(), cell.lvec[2].norm());
+                const R = 0.6 * L;
+                const verts = [];
+                const tmp = new Vec3();
+                for (const pl of pls) {
+                    const n = pl.n.clone();
+                    if (pl.mode === 'ang') n.normalize();
+                    const aN = Math.abs(n.x), bN = Math.abs(n.y), cN = Math.abs(n.z);
+                    const ref = (aN < 0.9) ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
+                    const u = new Vec3().setCross(n, ref);
+                    const lu = u.normalize();
+                    if (!(lu > 0)) continue;
+                    const v = new Vec3().setCross(n, u);
+                    v.normalize();
+                    for (const d0 of [pl.cmin, pl.cmax]) {
+                        const c0 = tmp.setV(n).mulScalar(d0);
+                        const p00 = new Vec3().setV(c0).addMul(u, +R).addMul(v, +R);
+                        const p10 = new Vec3().setV(c0).addMul(u, -R).addMul(v, +R);
+                        const p11 = new Vec3().setV(c0).addMul(u, -R).addMul(v, -R);
+                        const p01 = new Vec3().setV(c0).addMul(u, +R).addMul(v, -R);
+                        const ps = [p00, p10, p11, p01];
+                        for (let i = 0; i < 4; i++) {
+                            const a = ps[i];
+                            const b = ps[(i + 1) & 3];
+                            verts.push(a.x, a.y, a.z, b.x, b.y, b.z);
+                        }
+                    }
+                }
+                previewPlanes.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
+                previewPlanes.geometry.computeBoundingSphere();
+            };
+
+            const updatePreviewCellBoxFromEditor = () => {
+                if (!chkPreview.checked) return;
+                ensurePreviewCellBox();
+                const THREE = window.THREE;
+                const { cell } = parseUnitCellEditor();
+                const a = cell.lvec[0], b = cell.lvec[1], c = cell.lvec[2];
+                const o = new Vec3(0, 0, 0);
+                const p100 = new Vec3().setV(a);
+                const p010 = new Vec3().setV(b);
+                const p001 = new Vec3().setV(c);
+                const p110 = new Vec3().setV(a).add(b);
+                const p101 = new Vec3().setV(a).add(c);
+                const p011 = new Vec3().setV(b).add(c);
+                const p111 = new Vec3().setV(a).add(b).add(c);
+                const edges = [
+                    o, p100, o, p010, o, p001,
+                    p100, p110, p100, p101,
+                    p010, p110, p010, p011,
+                    p001, p101, p001, p011,
+                    p110, p111, p101, p111, p011, p111,
+                ];
+                const verts = new Float32Array(edges.length * 3);
+                for (let i = 0; i < edges.length; i++) {
+                    const v = edges[i];
+                    const i3 = i * 3;
+                    verts[i3] = v.x; verts[i3 + 1] = v.y; verts[i3 + 2] = v.z;
+                }
+                previewCellBox.geometry.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+                previewCellBox.geometry.computeBoundingSphere();
+            };
+
+            const updatePreviewFromEditor = () => {
+                if (!chkPreview.checked) return;
+                ensurePreview();
+                const { cell, sitesFrac } = parseUnitCellEditor();
+                previewMol.clear();
+                const n = cell.basisTypes.length | 0;
+                for (let i = 0; i < n; i++) {
+                    const i3 = i * 3;
+                    const id = previewMol.addAtom(cell.basisPos[i3], cell.basisPos[i3 + 1], cell.basisPos[i3 + 2], cell.basisTypes[i]);
+                    const ia = previewMol.getAtomIndex(id);
+                    if (ia >= 0 && cell.basisCharges) previewMol.atoms[ia].charge = +cell.basisCharges[i];
+                }
+                previewMol.lvec = cell.lvec;
+                previewRenderer.update();
+                gui.renderer.update();
+                gui.requestRender();
+                lblCellStatus.textContent = `Preview: atoms=${n} (sites=${sitesFrac.length})`;
+                updatePreviewPlanesFromEditor();
+                updatePreviewCellBoxFromEditor();
+            };
+
+            let _syncTimer = null;
+            const scheduleAutoSync = () => {
+                if (!chkPreview.checked) return;
+                if (!chkAutoSync.checked) return;
+                if (_syncTimer) clearTimeout(_syncTimer);
+                _syncTimer = setTimeout(() => {
+                    _syncTimer = null;
+                    try { updatePreviewFromEditor(); } catch (e) { lblCellStatus.textContent = String(e); throw e; }
+                }, 250);
+            };
+
+            chkPreview.onchange = () => {
+                try {
+                    if (chkPreview.checked) {
+                        ensurePreview();
+                        ensurePreviewPlanes();
+                        ensurePreviewCellBox();
+                        setPreviewVisible(true);
+                        updatePreviewFromEditor();
+                    } else {
+                        setPreviewVisible(false);
+                    }
+                } catch (e) { lblCellStatus.textContent = String(e); throw e; }
+            };
+
+            taLat.oninput = () => scheduleAutoSync();
+            taAtoms.oninput = () => scheduleAutoSync();
+            taSym.oninput = () => scheduleAutoSync();
+            chkSym.onchange = () => scheduleAutoSync();
+            chkDedupSym.onchange = () => scheduleAutoSync();
+            selCellMode.onchange = () => {
+                try {
+                    const lvec = CrystalUtils.parseLatticeText(taLat.value);
+                    const modeNew = selCellMode.value;
+                    const modeOld = _cellModePrev;
+                    const sites = CrystalUtils.parseSitesTextXYZ(taAtoms.value, modeOld);
+                    if (selCellMode.value === 'cartesian') {
+                        // switch frac->cart for display
+                        const sitesFrac = sites.map(a => ({ element: a.element, x: +a.x, y: +a.y, z: +a.z }));
+                        taAtoms.value = CrystalUtils.formatSitesTextXYZCart(sitesFrac, lvec);
+                    } else {
+                        // switch cart->frac for display
+                        const sitesFrac = [];
+                        const p = new Vec3();
+                        const f = [0, 0, 0];
+                        for (const a of sites) {
+                            p.set(+a.x, +a.y, +a.z);
+                            CrystalUtils.cartToFrac(p, lvec, f);
+                            sitesFrac.push({ element: a.element, x: f[0], y: f[1], z: f[2] });
+                        }
+                        taAtoms.value = CrystalUtils.formatSitesTextXYZFrac(sitesFrac);
+                    }
+                    _cellModePrev = modeNew;
+                } catch (e) { lblCellStatus.textContent = String(e); throw e; }
+                scheduleAutoSync();
+            };
+
+            btnCellPreview.onclick = () => { try { chkPreview.checked = true; updatePreviewFromEditor(); } catch (e) { window.logger.error(String(e)); throw e; } };
+
+            const buildFromUnitCellEditor = (mode) => {
+                const nx = parseInt(inpNx.value) | 0;
+                const ny = parseInt(inpNy.value) | 0;
+                const nz = parseInt(inpNz.value) | 0;
+                const dedupTol = +inpDedupTol.value;
+                if (!(dedupTol > 0)) throw new Error('Dedup tol must be >0');
+                if (nx <= 0 || ny <= 0 || nz <= 0) throw new Error('nx,ny,nz must be >0');
+                const planes = getPlanes();
+                const slab = planes ? null : getSlab();
+                if ((slab || planes) && chkBonds.checked) throw new Error('Build bonds is not supported with cut planes');
+                if (planes) lblCellStatus.textContent = `Cut planes: n=${planes.planes.length} mode=${planes.planeMode} centered=${planes.centered}`;
+                else lblCellStatus.textContent = slab ? `Slab: HKL=(${slab.hkl[0]},${slab.hkl[1]},${slab.hkl[2]}) c=[${slab.cmin},${slab.cmax}]` : 'Bulk replication';
+
+                const mm = (window.app && window.app.mmParams) ? window.app.mmParams : null;
+                if (chkBonds.checked && !mm) throw new Error('Build bonds requested but window.app.mmParams is not available');
+
+                const { cell } = parseUnitCellEditor();
+                let mol = null;
+                if (planes) {
+                    const b = CrystalUtils.reciprocalLattice(cell.lvec);
+                    const pls = [];
+                    for (const p of planes.planes) {
+                        const n = new Vec3().setLincomb3(p.h, b[0], p.k, b[1], p.l, b[2]);
+                        pls.push({ n, cmin: p.cmin, cmax: p.cmax });
+                    }
+                    mol = CrystalUtils.genReplicatedCellCutPlanes({ lvec: cell.lvec, basisPos: cell.basisPos, basisTypes: cell.basisTypes, basisCharges: cell.basisCharges, nRep: [nx, ny, nz], origin: new Vec3(0, 0, 0), planes: pls, planeMode: planes.planeMode, centered: planes.centered, dedup: chkDedupRep.checked, dedupTol });
+                } else if (slab) {
+                    const b = CrystalUtils.reciprocalLattice(cell.lvec);
+                    const n = new Vec3().setLincomb3(slab.hkl[0] | 0, b[0], slab.hkl[1] | 0, b[1], slab.hkl[2] | 0, b[2]);
+                    const ln = n.normalize();
+                    if (!(ln > 0)) throw new Error('Slab normal is zero');
+                    mol = CrystalUtils.genReplicatedCellSlab({ lvec: cell.lvec, basisPos: cell.basisPos, basisTypes: cell.basisTypes, basisCharges: cell.basisCharges, nRep: [nx, ny, nz], origin: new Vec3(0, 0, 0), nHat: n, cmin: slab.cmin, cmax: slab.cmax, dedup: chkDedupRep.checked, dedupTol });
+                } else {
+                    mol = CrystalUtils.genReplicatedCell({ lvec: cell.lvec, basisPos: cell.basisPos, basisTypes: cell.basisTypes, basisCharges: cell.basisCharges, nRep: [nx, ny, nz], origin: new Vec3(0, 0, 0), buildBonds: chkBonds.checked, mmParams: mm, dedup: chkDedupRep.checked, dedupTol });
+                }
+                // Charge neutrality report
+                let qTot = 0.0;
+                for (const a of mol.atoms) qTot += (a.charge !== undefined && a.charge !== null) ? +a.charge : 0.0;
+                lblCellStatus.textContent = `${lblCellStatus.textContent} | atoms=${mol.atoms.length} | Q=${qTot}`;
+                if (Math.abs(qTot) > 1e-3) window.logger.error(`Total charge not neutral: Q=${qTot}`);
+                else window.logger.info(`Total charge Q=${qTot}`);
+                const data0 = { mol, lvec: mol.lvec || null };
+                applyToScene(applyMiller(data0), mode);
+            };
+
+            btnCellGenerateReplace.onclick = () => { try { buildFromUnitCellEditor('replace'); } catch (e) { window.logger.error(String(e)); throw e; } };
+            btnCellGenerateAppend.onclick = () => { try { buildFromUnitCellEditor('append'); } catch (e) { window.logger.error(String(e)); throw e; } };
 
             const chkMiller = GUIutils.labelCheck(container, 'Orient by Miller (h k l) -> z', false, null, { marginTop: '6px' }).input;
 
@@ -100,9 +471,27 @@ export class BuildersGUI {
             const inpCmax = GUIutils.num(rowSlab, 10.0, { step: '0.1' }, { width: '70px', flexGrow: '0' });
             GUIutils.span(rowSlab, 'Å', { marginLeft: '4px', color: '#aaa' });
 
+            const chkPlanes = GUIutils.labelCheck(container, 'Cut by planes', false, null, { marginTop: '6px' }).input;
+            const rowPlanesOpts = GUIutils.row(container, { marginTop: '4px' });
+            const chkPlaneFrac = GUIutils.labelCheck(rowPlanesOpts, 'c fractional', false, null, { marginRight: '8px' }).input;
+            const chkCentered = GUIutils.labelCheck(rowPlanesOpts, 'centered rep', true, null).input;
+            const rowPlaneBtns = GUIutils.row(container, { marginTop: '4px' });
+            const btnAdd100 = GUIutils.btn(rowPlaneBtns, '+{100}', null, { flexGrow: '1' });
+            const btnAdd110 = GUIutils.btn(rowPlaneBtns, '+{110}', null, { marginLeft: '4px', flexGrow: '1' });
+            const btnAdd111 = GUIutils.btn(rowPlaneBtns, '+{111}', null, { marginLeft: '4px', flexGrow: '1' });
+            const taPlanes = GUIutils.textArea(container, '', { display: 'block', height: '90px', marginTop: '4px', placeholder: 'Planes (per line):\nh k l cmin cmax\n(or) h k l c  => symmetric [-c,+c]' });
+
+            taPlanes.oninput = () => scheduleAutoSync();
+            chkSlab.onchange = () => scheduleAutoSync();
+            chkPlanes.onchange = () => scheduleAutoSync();
+            chkPlaneFrac.onchange = () => scheduleAutoSync();
+            chkCentered.onchange = () => scheduleAutoSync();
+
             const btnRow = GUIutils.row(container, { marginTop: '6px' });
             const btnReplace = GUIutils.btn(btnRow, 'Generate (Replace)');
             const btnAppend = GUIutils.btn(btnRow, 'Generate (Append)', null, { marginLeft: '4px' });
+            // UI cleanup: hide old generation buttons (generation should go through unit-cell editor)
+            btnRow.style.display = 'none';
 
             const getHKL = () => [parseInt(inpH.value), parseInt(inpK.value), parseInt(inpL.value)];
 
@@ -122,8 +511,73 @@ export class BuildersGUI {
                 const cmin = +inpCmin.value;
                 const cmax = +inpCmax.value;
                 if (!(cmax > cmin)) throw new Error('Slab cut requires cmax>cmin');
-                return { hkl: getHKL(), cmin, cmax };
+                const hkl = getHKL();
+                if (!Number.isFinite(hkl[0]) || !Number.isFinite(hkl[1]) || !Number.isFinite(hkl[2])) throw new Error('Slab cut requires integer HKL');
+                if (((hkl[0] | 0) === 0) && ((hkl[1] | 0) === 0) && ((hkl[2] | 0) === 0)) throw new Error('Slab cut requires non-zero HKL');
+                return { hkl, cmin, cmax };
             };
+
+            const getPlanes = () => {
+                if (!chkPlanes.checked) return null;
+                const lines = (taPlanes.value || '').split(/\r?\n/);
+                const out = [];
+                for (const ln of lines) {
+                    const s = ln.trim();
+                    if (!s) continue;
+                    const ws = s.split(/\s+/);
+                    if (ws.length !== 4 && ws.length !== 5) throw new Error(`Planes: expected 4 or 5 columns, got '${ln}'`);
+                    const h = +ws[0], k = +ws[1], l = +ws[2];
+                    if (!Number.isFinite(h) || !Number.isFinite(k) || !Number.isFinite(l)) throw new Error(`Planes: invalid hkl in '${ln}'`);
+                    let cmin = 0.0, cmax = 0.0;
+                    if (ws.length === 4) {
+                        const c = +ws[3];
+                        if (!Number.isFinite(c)) throw new Error(`Planes: invalid c in '${ln}'`);
+                        cmin = -c; cmax = +c;
+                    } else {
+                        cmin = +ws[3]; cmax = +ws[4];
+                        if (!Number.isFinite(cmin) || !Number.isFinite(cmax)) throw new Error(`Planes: invalid cmin/cmax in '${ln}'`);
+                    }
+                    if (!(cmax > cmin)) throw new Error(`Planes: requires cmax>cmin in '${ln}'`);
+                    out.push({ h, k, l, cmin, cmax });
+                }
+                if (out.length === 0) throw new Error('Planes: no planes specified');
+                return { planes: out, planeMode: chkPlaneFrac.checked ? 'frac' : 'ang', centered: !!chkCentered.checked };
+            };
+
+            const _appendPlaneFamily = (hkls) => {
+                chkPlanes.checked = true;
+                const c = +inpCmax.value;
+                if (!(c > 0)) throw new Error('Planes: set cmax>0 (used as symmetric c)');
+                const existing = new Set();
+                const lines0 = (taPlanes.value || '').split(/\r?\n/);
+                for (const ln of lines0) {
+                    const s = ln.trim();
+                    if (!s) continue;
+                    const ws = s.split(/\s+/);
+                    if (ws.length < 3) continue;
+                    const h = +ws[0], k = +ws[1], l = +ws[2];
+                    if (!Number.isFinite(h) || !Number.isFinite(k) || !Number.isFinite(l)) continue;
+                    let hs = h, ks = k, ls = l;
+                    if (hs < 0 || (hs === 0 && ks < 0) || (hs === 0 && ks === 0 && ls < 0)) { hs = -hs; ks = -ks; ls = -ls; }
+                    existing.add(`${hs},${ks},${ls}`);
+                }
+                const out = [];
+                for (const v of hkls) {
+                    let h = v[0], k = v[1], l = v[2];
+                    if (h < 0 || (h === 0 && k < 0) || (h === 0 && k === 0 && l < 0)) { h = -h; k = -k; l = -l; }
+                    const key = `${h},${k},${l}`;
+                    if (existing.has(key)) continue;
+                    existing.add(key);
+                    out.push(`${h} ${k} ${l} ${c}`);
+                }
+                if (out.length === 0) return;
+                const sep = (taPlanes.value && taPlanes.value.trim().length > 0) ? '\n' : '';
+                taPlanes.value = `${taPlanes.value}${sep}${out.join('\n')}\n`;
+            };
+
+            btnAdd100.onclick = () => { try { _appendPlaneFamily([[1, 0, 0], [0, 1, 0], [0, 0, 1]]); } catch (e) { window.logger.error(String(e)); throw e; } };
+            btnAdd110.onclick = () => { try { _appendPlaneFamily([[1, 1, 0], [1, 0, 1], [0, 1, 1], [1, -1, 0], [1, 0, -1], [0, 1, -1]]); } catch (e) { window.logger.error(String(e)); throw e; } };
+            btnAdd111.onclick = () => { try { _appendPlaneFamily([[1, 1, 1], [1, 1, -1], [1, -1, 1], [-1, 1, 1]]); } catch (e) { window.logger.error(String(e)); throw e; } };
 
             const buildData = () => {
                 const preset = selPreset.value;
@@ -131,6 +585,8 @@ export class BuildersGUI {
                 const nx = parseInt(inpNx.value) | 0;
                 const ny = parseInt(inpNy.value) | 0;
                 const nz = parseInt(inpNz.value) | 0;
+                const dedupTol = +inpDedupTol.value;
+                if (!(dedupTol > 0)) throw new Error('Dedup tol must be >0');
                 if (!(a > 0)) throw new Error('a must be >0');
                 if (nx <= 0 || ny <= 0 || nz <= 0) throw new Error('nx,ny,nz must be >0');
                 const slab = getSlab();
@@ -160,9 +616,9 @@ export class BuildersGUI {
                         const n = new Vec3().setLincomb3(slab.hkl[0] | 0, b[0], slab.hkl[1] | 0, b[1], slab.hkl[2] | 0, b[2]);
                         const ln = n.normalize();
                         if (!(ln > 0)) throw new Error('Slab normal is zero');
-                        data = { mol: CrystalUtils.genReplicatedCellSlab({ lvec, basisPos, basisTypes, nRep: [nx, ny, nz], origin: new Vec3(0, 0, 0), nHat: n, cmin: slab.cmin, cmax: slab.cmax }), lvec };
+                        data = { mol: CrystalUtils.genReplicatedCellSlab({ lvec, basisPos, basisTypes, nRep: [nx, ny, nz], origin: new Vec3(0, 0, 0), nHat: n, cmin: slab.cmin, cmax: slab.cmax, dedup: chkDedupRep.checked, dedupTol }), lvec };
                     } else {
-                        data = { mol: CrystalUtils.genReplicatedCell({ lvec, basisPos, basisTypes, nRep: [nx, ny, nz], origin: new Vec3(0, 0, 0) }), lvec };
+                        data = { mol: CrystalUtils.genReplicatedCell({ lvec, basisPos, basisTypes, nRep: [nx, ny, nz], origin: new Vec3(0, 0, 0), dedup: chkDedupRep.checked, dedupTol }), lvec };
                     }
                 } else if (preset === 'CaF2(fluorite)') {
                     const zCa = 20;
@@ -186,9 +642,9 @@ export class BuildersGUI {
                         const n = new Vec3().setLincomb3(slab.hkl[0] | 0, b[0], slab.hkl[1] | 0, b[1], slab.hkl[2] | 0, b[2]);
                         const ln = n.normalize();
                         if (!(ln > 0)) throw new Error('Slab normal is zero');
-                        data = { mol: CrystalUtils.genReplicatedCellSlab({ lvec, basisPos, basisTypes, nRep: [nx, ny, nz], origin: new Vec3(0, 0, 0), nHat: n, cmin: slab.cmin, cmax: slab.cmax }), lvec };
+                        data = { mol: CrystalUtils.genReplicatedCellSlab({ lvec, basisPos, basisTypes, nRep: [nx, ny, nz], origin: new Vec3(0, 0, 0), nHat: n, cmin: slab.cmin, cmax: slab.cmax, dedup: chkDedupRep.checked, dedupTol }), lvec };
                     } else {
-                        data = { mol: CrystalUtils.genReplicatedCell({ lvec, basisPos, basisTypes, nRep: [nx, ny, nz], origin: new Vec3(0, 0, 0) }), lvec };
+                        data = { mol: CrystalUtils.genReplicatedCell({ lvec, basisPos, basisTypes, nRep: [nx, ny, nz], origin: new Vec3(0, 0, 0), dedup: chkDedupRep.checked, dedupTol }), lvec };
                     }
                 } else if (preset === 'CaCO3(todo)') {
                     throw new Error('CaCO3 preset not implemented yet (non-trivial basis). Use a custom unit cell (e.g. extended XYZ with Lattice=...) once supported.');
@@ -228,6 +684,8 @@ export class BuildersGUI {
                 const nx = parseInt(inpNx.value) | 0;
                 const ny = parseInt(inpNy.value) | 0;
                 const nz = parseInt(inpNz.value) | 0;
+                const dedupTol = +inpDedupTol.value;
+                if (!(dedupTol > 0)) throw new Error('Dedup tol must be >0');
                 if (nx <= 0 || ny <= 0 || nz <= 0) throw new Error('nx,ny,nz must be >0');
                 const slab = getSlab();
                 const mm = (window.app && window.app.mmParams) ? window.app.mmParams : null;
@@ -237,7 +695,7 @@ export class BuildersGUI {
                 const preset = (sel && sel !== '(none)') ? MP_PREPARED_CRYSTALS[sel] : null;
                 const lat = preset ? preset.lattice : null;
                 if (!lat) throw new Error('MP JSON: missing lattice params for this structure; add to MP_PREPARED_CRYSTALS (BuildersGUI) or supply lattice UI');
-                const data0 = CrystalUtils.genCrystalFromMPJson(mpJson, { lattice: lat, nRep: [nx, ny, nz], origin: new Vec3(0, 0, 0), buildBonds: chkBonds.checked, mmParams: mm, slab });
+                const data0 = CrystalUtils.genCrystalFromMPJson(mpJson, { lattice: lat, nRep: [nx, ny, nz], origin: new Vec3(0, 0, 0), buildBonds: chkBonds.checked, mmParams: mm, slab, dedupReplicate: chkDedupRep.checked, dedupTol });
                 return applyMiller(data0);
             };
 
@@ -270,12 +728,14 @@ export class BuildersGUI {
                 const nx = parseInt(inpNx.value) | 0;
                 const ny = parseInt(inpNy.value) | 0;
                 const nz = parseInt(inpNz.value) | 0;
+                const dedupTol = +inpDedupTol.value;
+                if (!(dedupTol > 0)) throw new Error('Dedup tol must be >0');
                 if (nx <= 0 || ny <= 0 || nz <= 0) throw new Error('nx,ny,nz must be >0');
                 const slab = getSlab();
                 const mm = (window.app && window.app.mmParams) ? window.app.mmParams : null;
                 if (slab && chkBonds.checked) throw new Error('Build bonds is not supported with slab cut');
                 if (chkBonds.checked && !mm) throw new Error('Build bonds requested but window.app.mmParams is not available');
-                const data0 = CrystalUtils.genCrystalFromCIF(cifText, { applySymmetry: chkSym.checked, nRep: [nx, ny, nz], origin: new Vec3(0, 0, 0), buildBonds: chkBonds.checked, mmParams: mm, slab });
+                const data0 = CrystalUtils.genCrystalFromCIF(cifText, { applySymmetry: chkSym.checked, dedupSymmetry: chkDedupSym.checked, dedupReplicate: chkDedupRep.checked, dedupTol, nRep: [nx, ny, nz], origin: new Vec3(0, 0, 0), buildBonds: chkBonds.checked, mmParams: mm, slab });
                 return applyMiller(data0);
             };
 
@@ -284,19 +744,20 @@ export class BuildersGUI {
                 const p = (key && key !== '(none)') ? CIF_PREPARED[key] : null;
                 if (p) chkSym.checked = !!p.defaultApplySymmetry;
             };
-            selCIF.onchange = () => updateCIFDefaults();
             updateCIFDefaults();
 
-            btnLoadCIF.onclick = async () => {
+            selCIF.onchange = async () => {
                 try {
+                    updateCIFDefaults();
                     const key = selCIF.value;
-                    if (!key || key === '(none)') throw new Error('Select a prepared CIF');
+                    if (!key || key === '(none)') return;
                     const preset = CIF_PREPARED[key];
                     if (!preset || !preset.path) throw new Error('Bad CIF preset');
                     const res = await fetch(preset.path);
                     if (!res.ok) throw new Error(`Failed to fetch ${preset.path} (HTTP ${res.status})`);
                     const txt = await res.text();
-                    applyToScene(buildFromCIFText(txt), 'replace');
+                    fillCellTextAreasFromCIF(txt);
+                    if (chkAutoSync.checked) updatePreviewFromEditor();
                 } catch (e) { window.logger.error(String(e)); throw e; }
             };
 
@@ -306,7 +767,8 @@ export class BuildersGUI {
                     if (e.target.files.length <= 0) return;
                     const file = e.target.files[0];
                     const txt = await gui.readFileText(file);
-                    applyToScene(buildFromCIFText(txt), 'replace');
+                    fillCellTextAreasFromCIF(txt);
+                    if (chkAutoSync.checked) updatePreviewFromEditor();
                     inpFileCIF.value = '';
                 } catch (err) { window.logger.error(String(err)); throw err; }
             };
