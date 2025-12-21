@@ -54,6 +54,7 @@ header_strings = [
 "void firecore_get_HS_k( double* kpoint_vec, void* Hk_out, void* Sk_out )",
 "void firecore_get_nspecies( int* nspecies_out )",
 "void firecore_get_eigen( int ikp, double* eigen_out )",
+"void firecore_set_options( int ioff_S, int ioff_T, int ioff_Vna, int ioff_Vnl, int ioff_Vxc, int ioff_Vca, int ioff_Vxc_ca )",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -461,6 +462,9 @@ def run_nonSCF( atomType, atomPos ):
     solveH()
     sigma=updateCharges(); #print( sigma )
     return norb, sigma
+
+def set_options(ioff_S=1, ioff_T=1, ioff_Vna=1, ioff_Vnl=1, ioff_Vxc=1, ioff_Vca=1, ioff_Vxc_ca=1):
+    lib.firecore_set_options(ioff_S, ioff_T, ioff_Vna, ioff_Vnl, ioff_Vxc, ioff_Vca, ioff_Vxc_ca)
 
 def initialize( atomType=None, atomPos=None, verbosity=1 ):
     global norb

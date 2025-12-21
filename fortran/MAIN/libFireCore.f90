@@ -98,7 +98,7 @@ subroutine firecore_preinit( )  bind(c, name='firecore_preinit' )
     iparam_file = 0
     call initconstants ! (sigma, sigmaold, scf_achieved)
     scf_achieved = .true.
-    call diagnostics (ioff2c, ioff3c, itestrange, testrange)    ! IF_DEF_DIAGNOSTICS
+    call diagnostics (ioff2c, ioff3c, itestrange, testrange, ioff_S, ioff_T, ioff_Vna, ioff_Vnl, ioff_Vxc, ioff_Vca, ioff_Vxc_ca)    ! IF_DEF_DIAGNOSTICS
     !call readparam ()
     call set_default_params ()
     igrid = 1
@@ -874,6 +874,27 @@ subroutine firecore_get_HS_sparse( &
     if(allocated(xl))      xl_out      = xl
 
 end subroutine firecore_get_HS_sparse
+
+subroutine firecore_set_options( ioff_S_, ioff_T_, ioff_Vna_, ioff_Vnl_, ioff_Vxc_, ioff_Vca_, ioff_Vxc_ca_ ) bind(c, name='firecore_set_options')
+    use iso_c_binding
+    use options
+    implicit none
+    integer(c_int), intent(in), value :: ioff_S_
+    integer(c_int), intent(in), value :: ioff_T_
+    integer(c_int), intent(in), value :: ioff_Vna_
+    integer(c_int), intent(in), value :: ioff_Vnl_
+    integer(c_int), intent(in), value :: ioff_Vxc_
+    integer(c_int), intent(in), value :: ioff_Vca_
+    integer(c_int), intent(in), value :: ioff_Vxc_ca_
+    ioff_S    = ioff_S_
+    ioff_T    = ioff_T_
+    ioff_Vna  = ioff_Vna_
+    ioff_Vnl  = ioff_Vnl_
+    ioff_Vxc  = ioff_Vxc_
+    ioff_Vca  = ioff_Vca_
+    ioff_Vxc_ca = ioff_Vxc_ca_
+    return
+end subroutine
 
 subroutine firecore_get_eigen( ikpoint, eigen_out ) bind(c, name='firecore_get_eigen')
     use iso_c_binding
