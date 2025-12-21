@@ -87,13 +87,17 @@ class FdataParser:
         for line in lines[idx:]:
             all_values.extend([float(x.replace('D', 'E')) for x in line.split()])
         
-        # Reshape into [numz, num_nonzero]
-        if len(all_values) < numz * num_nonzero:
-            # Maybe it's a special interaction (like interaction 12 coulomb)?
-            # In read_2c.f90, some have different num_nonzero.
-            # But overlapping, kinetic, vna usually follow index_max2c.
-            pass
-            
+        total = len(all_values)
+        expected = numz * num_nonzero
+        if total < expected:
+            # DEBUG: fall back to inferred num_nonzero from file length
+            if total % numz == 0:
+                inferred = total // numz
+                print(f"[WARN] read_2c: values short for {fname}, expected {expected} got {total}; "
+                      f"using inferred num_nonzero={inferred}")
+                num_nonzero = inferred
+            else:
+                raise ValueError(f"read_2c: cannot reshape {total} values into ({numz}, {num_nonzero}) for {fname}")
         data = np.array(all_values[:numz * num_nonzero]).reshape(numz, num_nonzero)
         
         return {
@@ -220,32 +224,24 @@ class FdataParser:
         with open(fname, 'r') as f:
             lines = f.readlines()
             
-        # 10 header lines
+        # Parse header exactly like readheader_3c.f90
+        # - skip 10 lines
+        # - read: nphi2 nr ntheta
+        # - read: ymax numy
+        # - read: xmax numx
+        # - skip 1 line
+        # - read 3 lines: nucZ rc
+        # - skip 1 line
         idx = 10
-        while idx < len(lines) and not lines[idx].strip(): idx += 1
-        parts_n = lines[idx].split()
-        nphi2 = int(parts_n[0])
-        nr = int(parts_n[1])
-        ntheta_in = int(parts_n[2])
+        parts_n = lines[idx].split(); nphi2 = int(parts_n[0]); nr = int(parts_n[1]); ntheta_in = int(parts_n[2]); idx += 1
+        parts_y = lines[idx].split(); ymax = self._try_float(parts_y[0]); numy = int(parts_y[1]); idx += 1
+        parts_x = lines[idx].split(); xmax = self._try_float(parts_x[0]); numx = int(parts_x[1]); idx += 1
+        # skip decorative line
         idx += 1
-        
-        while idx < len(lines) and not lines[idx].strip(): idx += 1
-        parts_y = lines[idx].split()
-        ymax = self._try_float(parts_y[0])
-        numy = int(parts_y[1])
+        # read 3 charge lines (we don't use values here)
+        idx += 3
+        # skip decorative line
         idx += 1
-        
-        while idx < len(lines) and not lines[idx].strip(): idx += 1
-        parts_x = lines[idx].split()
-        xmax = self._try_float(parts_x[0])
-        numx = int(parts_x[1])
-        idx += 1
-        
-        # Skip decorative and charge lines
-        while idx < len(lines) and "===" not in lines[idx]: idx += 1
-        idx += 1 # skip first ===
-        while idx < len(lines) and "===" not in lines[idx]: idx += 1
-        idx += 1 # skip second ===
         
         all_values = []
         for line in lines[idx:]:
@@ -259,6 +255,11 @@ class FdataParser:
             # Handle potential mismatch or truncated files
             pass
             
+        # Fortran file read loops (readdata_3c.f90):
+        #   do jpoint=1,numy
+        #     do ipoint=1,numx
+        #       read ... (integral=1,num_nonzero)
+        # So the natural C-order reshape is [y,x,integral].
         data = np.array(all_values[:total_points * num_nonzero]).reshape(numy, numx, num_nonzero)
         
         return {
@@ -283,6 +284,9 @@ class FdataParser:
         Loads all relevant Fdata for a list of species nuclear charges.
         species_nz: list of unique nuclear charges in the system.
         """
+        if not hasattr(self, 'species_info'):
+            self.parse_info()
+        
         data_2c = {}
         for nz1 in species_nz:
             for nz2 in species_nz:
@@ -290,9 +294,28 @@ class FdataParser:
                     path = self.find_2c(root, nz1, nz2)
                     if os.path.exists(path):
                         data_2c[(root, nz1, nz2)] = self.read_2c(path)
-                # Fallback: if vna exists as vna_atom_00, map it to 'vna' for simplicity if needed
-                if ('vna_atom_00', nz1, nz2) in data_2c and ('vna', nz1, nz2) not in data_2c:
-                    data_2c[('vna', nz1, nz2)] = data_2c[('vna_atom_00', nz1, nz2)]
+
+                # For vna we also need all shell-resolved files like vna_atom_XX, vna_ontopl_XX, vna_ontopr_XX
+                nssh1 = self.species_info.get(nz1, {}).get('nssh', 0)
+                nssh2 = self.species_info.get(nz2, {}).get('nssh', 0)
+                # atom case uses shells of atom 2 (matches read_2c logic: interaction 4 uses nssh(in2))
+                for isorp in range(nssh2 + 1):
+                    root = f"vna_atom_{isorp:02d}"
+                    path = self.find_2c(root, nz1, nz2)
+                    if os.path.exists(path):
+                        data_2c[(root, nz1, nz2)] = self.read_2c(path)
+                # ontop left uses shells of atom 1 (interaction 2 uses nssh(in1))
+                for isorp in range(nssh1 + 1):
+                    root = f"vna_ontopl_{isorp:02d}"
+                    path = self.find_2c(root, nz1, nz2)
+                    if os.path.exists(path):
+                        data_2c[(root, nz1, nz2)] = self.read_2c(path)
+                # ontop right uses shells of atom 2 (interaction 3 uses nssh(in2))
+                for isorp in range(nssh2 + 1):
+                    root = f"vna_ontopr_{isorp:02d}"
+                    path = self.find_2c(root, nz1, nz2)
+                    if os.path.exists(path):
+                        data_2c[(root, nz1, nz2)] = self.read_2c(path)
         
         # 3-center data (example for den3)
         data_3c = {}

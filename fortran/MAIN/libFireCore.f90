@@ -1,4 +1,9 @@
 
+module firecore_options
+    implicit none
+    integer :: ioff_S=1, ioff_T=1, ioff_Vna=1, ioff_Vnl=1, ioff_Vxc=1, ioff_Vca=1, ioff_Vxc_ca=1
+end module firecore_options
+
 ! ==================================================
 ! ============ subroutine firecore_init
 ! ==================================================
@@ -91,6 +96,7 @@ subroutine firecore_preinit( )  bind(c, name='firecore_preinit' )
     use loops
     use charges
     use integrals !, only : fdataLocation
+    use firecore_options
     implicit none
     ! ========= body
     !write(*,*) "DEBUG firecore_preinit() verbosity=", verbosity
@@ -878,6 +884,7 @@ end subroutine firecore_get_HS_sparse
 subroutine firecore_set_options( ioff_S_, ioff_T_, ioff_Vna_, ioff_Vnl_, ioff_Vxc_, ioff_Vca_, ioff_Vxc_ca_ ) bind(c, name='firecore_set_options')
     use iso_c_binding
     use options
+    use firecore_options
     implicit none
     integer(c_int), intent(in), value :: ioff_S_
     integer(c_int), intent(in), value :: ioff_T_
@@ -954,3 +961,373 @@ subroutine firecore_get_ME2c_max(ME2c_max_out) bind(c, name='firecore_get_ME2c_m
     integer(c_int), intent(out) :: ME2c_max_out
     ME2c_max_out = ME2c_max
 end subroutine firecore_get_ME2c_max
+
+subroutine firecore_scanHamPiece2c( interaction, isub, in1, in2, in3, dR, applyRotation, sx_out ) bind(c, name='firecore_scanHamPiece2c')
+    use iso_c_binding
+    use interactions, only : numorb_max
+    implicit none
+    integer(c_int), intent(in), value :: interaction, isub, in1, in2, in3
+    real(c_double), dimension(3), intent(in) :: dR
+    integer(c_int), intent(in), value :: applyRotation
+    real(c_double), dimension(numorb_max, numorb_max), intent(out) :: sx_out
+    
+    real distance
+    real(c_double), dimension(3,3) :: eps
+    real(c_double), dimension(3,3,3) :: deps
+    real(c_double), dimension(numorb_max, numorb_max) :: sx, spx
+    integer iforce, i, j
+    
+    iforce = 0
+    distance = sqrt(sum(dR**2))
+    
+    if( applyRotation .ne. 0 ) then
+        call epsilon( (/0.0,0.0,0.0/), real(dR), eps )
+    else
+        eps = 0.0
+        do i=1,3
+            eps(i,i) = 1.0
+        end do
+    endif
+    
+    call doscentros (interaction, isub, iforce, in1, in2, in3, distance, eps, deps, sx, spx)
+    sx_out(:,:) = sx(:,:)
+end subroutine
+
+subroutine firecore_scanHamPiece2c_batch( interaction, isub, in1, in2, in3, npoints, dRs, applyRotation, sx_out ) bind(c, name='firecore_scanHamPiece2c_batch')
+    use iso_c_binding
+    use interactions, only : numorb_max
+    implicit none
+    integer(c_int), intent(in), value :: interaction, isub, in1, in2, in3
+    integer(c_int), intent(in), value :: npoints
+    real(c_double), intent(in)  :: dRs(3, npoints)
+    integer(c_int), intent(in), value :: applyRotation
+    real(c_double), intent(out) :: sx_out(numorb_max, numorb_max, npoints)
+    
+    real(c_double) :: distance
+    real(c_double), dimension(3,3) :: eps
+    real(c_double), dimension(3,3,3) :: deps
+    real(c_double), dimension(numorb_max, numorb_max) :: sx, spx
+    real(c_double), dimension(3) :: dR
+    integer :: iforce, i, ip
+    
+    do ip = 1, npoints
+        iforce = 0
+        dR(:) = dRs(:, ip)
+        distance = sqrt(sum(dR**2))
+        
+        if( applyRotation .ne. 0 ) then
+            call epsilon( (/0.0,0.0,0.0/), real(dR), eps )
+        else
+            eps = 0.0
+            do i=1,3
+                eps(i,i) = 1.0
+            end do
+        endif
+        deps = 0.0
+        call doscentros (interaction, isub, iforce, in1, in2, in3, distance, eps, deps, sx, spx)
+        sx_out(:,:,ip) = sx(:,:)
+    end do
+end subroutine firecore_scanHamPiece2c_batch
+
+subroutine firecore_scanHamPiece3c( interaction, isorp, in1, in2, indna, dRj, dRk, applyRotation, bcnax_out ) bind(c, name='firecore_scanHamPiece3c')
+    use iso_c_binding
+    use interactions, only : numorb_max
+    use configuration, only : nspecies
+    implicit none
+    integer(c_int), intent(in), value :: interaction, isorp, in1, in2, indna
+    real(c_double), dimension(3), intent(in) :: dRj, dRk
+    integer(c_int), intent(in), value :: applyRotation
+    real(c_double), dimension(numorb_max, numorb_max), intent(out) :: bcnax_out
+    
+    real(c_double), dimension(3) :: r1, r2, rna, r21, rnabc, rhat, sighat
+    real x, y, cost
+    real(c_double), dimension(3,3) :: eps
+    real(c_double), dimension(numorb_max, numorb_max) :: bcnax
+    integer i, j, maxtype
+    
+    ! Basis 1 at (0,0,0), Basis 2 at dRj, Potential at dRk
+    rna = dRk
+    r1  = (/0.0,0.0,0.0/)
+    r2  = dRj
+    
+    r21 = r2 - r1
+    y   = sqrt(sum(r21**2))
+    rnabc = rna - (r1 + r2)*0.5
+    x = sqrt(sum(rnabc**2))
+    
+    if (y .gt. 1.0d-05) then
+        sighat = r21 / y
+    else
+        sighat = (/0.0, 0.0, 1.0/)
+    endif
+    
+    if (x .gt. 1.0d-05) then
+        rhat = rnabc / x
+    else
+        rhat = (/0.0, 0.0, 0.0/)
+    endif
+    
+    cost = sum(sighat * rhat)
+    
+    if( applyRotation .ne. 0 ) then
+        call epsilon ( real(rhat), real(sighat), eps)
+    else
+        eps = 0.0
+        do i=1,3
+            eps(i,i) = 1.0
+        end do
+    endif
+    
+    maxtype = nspecies
+    call trescentros (interaction, isorp, maxtype, in1, in2, indna, x, y, cost, eps, bcnax, nspecies)
+    bcnax_out(:,:) = bcnax(:,:)
+end subroutine
+
+! Raw 3c interpolation (no Legendre sum, no mvalue*sint, no recover_3c, no rotate)
+subroutine firecore_scanHamPiece3c_raw( interaction, isorp, in1, in2, indna, dRj, dRk, bcnalist_out ) bind(c, name='firecore_scanHamPiece3c_raw')
+    use iso_c_binding
+    use interactions
+    use integrals
+    use timing, only : interaction_glob
+    use options, only : verbosity
+    implicit none
+    integer(c_int), intent(in), value :: interaction, isorp, in1, in2, indna
+    real(c_double), dimension(3), intent(in) :: dRj, dRk
+    real(c_double), dimension(5, ME3c_max), intent(out) :: bcnalist_out
+    
+    real(c_double), dimension(3) :: r1, r2, rna, r21, rnabc
+    real x, y
+    integer iME, index, nx, ny
+    real hx, hy, xxmax, yymax
+    real Q_L, dQ_Ldx, dQ_Ldy
+    external :: interpolate_2d
+    integer, save :: debug_count = 0
+    integer, parameter :: debug_limit = 64
+    ! ensure interaction_glob is set for interpolate_2d counters
+    interaction_glob = interaction
+    
+    bcnalist_out = 0.0d0
+    
+    ! geometry (same as firecore_scanHamPiece3c)
+    rna = dRk
+    r1  = (/0.0d0,0.0d0,0.0d0/)
+    r2  = dRj
+    r21 = r2 - r1
+    y   = sqrt(sum(r21**2))
+    rnabc = rna - (r1 + r2)*0.5d0
+    x = sqrt(sum(rnabc**2))
+    
+    if (interaction .ne. 1) return
+    
+    index = icon3c(in1,in2,indna)
+    hx = hx_bcna(isorp,index)
+    hy = hy_bcna(isorp,index)
+    nx = numx3c_bcna(isorp,index)
+    ny = numy3c_bcna(isorp,index)
+    xxmax = x3cmax_bcna(isorp,index)
+    yymax = y3cmax_bcna(isorp,index)
+    if (verbosity >= 3 .and. debug_count < debug_limit) then
+        debug_count = debug_count + 1
+        write(*,'(A,I5,2X,2F12.6,2X,2F10.6,2X,2I5)') '[DBG-RAW] ip=', 1, x, y, hx, hy, nx, ny
+    end if
+    if (x .gt. xxmax .or. y .gt. yymax .or. x .lt. 0 .or. y .lt. 0) return
+    
+    do iME = 1, index_max3c(in1,in2)
+        call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_01(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+        bcnalist_out(1,iME) = Q_L
+        call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_02(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+        bcnalist_out(2,iME) = Q_L
+        call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_03(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+        bcnalist_out(3,iME) = Q_L
+        call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_04(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+        bcnalist_out(4,iME) = Q_L
+        call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_05(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+        bcnalist_out(5,iME) = Q_L
+    end do
+end subroutine firecore_scanHamPiece3c_raw
+
+subroutine firecore_scanHamPiece3c_raw_batch( interaction, isorp, in1, in2, indna, npoints, dRjs, dRks, bcnalist_out ) bind(c, name='firecore_scanHamPiece3c_raw_batch')
+    use iso_c_binding
+    use interactions
+    use integrals
+    use timing, only : interaction_glob
+    use options, only : verbosity
+    implicit none
+    integer(c_int), intent(in), value :: interaction, isorp, in1, in2, indna
+    integer(c_int), intent(in), value :: npoints
+    real(c_double), intent(in)  :: dRjs(3, npoints)
+    real(c_double), intent(in)  :: dRks(3, npoints)
+    real(c_double), intent(out) :: bcnalist_out(5, ME3c_max, npoints)
+    
+    real(c_double), dimension(3) :: r1, r2, rna, r21, rnabc
+    real x, y
+    integer iME, ip, index, nx, ny
+    real hx, hy, xxmax, yymax
+    real Q_L, dQ_Ldx, dQ_Ldy
+    external :: interpolate_2d
+    integer, save :: debug_count = 0
+    integer, parameter :: debug_limit = 64
+    
+    bcnalist_out = 0.0d0
+    
+    if (interaction .ne. 1) return
+    
+    do ip = 1, npoints
+        interaction_glob = interaction
+        
+        rna = dRks(:, ip)
+        r1  = (/0.0d0,0.0d0,0.0d0/)
+        r2  = dRjs(:, ip)
+        r21 = r2 - r1
+        y   = sqrt(sum(r21**2))
+        rnabc = rna - (r1 + r2)*0.5d0
+        x = sqrt(sum(rnabc**2))
+        
+        index = icon3c(in1,in2,indna)
+        hx = hx_bcna(isorp,index)
+        hy = hy_bcna(isorp,index)
+        nx = numx3c_bcna(isorp,index)
+        ny = numy3c_bcna(isorp,index)
+        xxmax = x3cmax_bcna(isorp,index)
+        yymax = y3cmax_bcna(isorp,index)
+        if (verbosity >= 3 .and. debug_count < debug_limit) then
+            debug_count = debug_count + 1
+            write(*,'(A,I5,2X,2F12.6,2X,2F10.6,2X,2I5)') '[scanHamPiece3c_raw_batch] ip=', ip, x, y, hx, hy, nx, ny
+        end if
+        if (x .gt. xxmax .or. y .gt. yymax .or. x .lt. 0 .or. y .lt. 0) cycle
+        
+        do iME = 1, index_max3c(in1,in2)
+            call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_01(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+            bcnalist_out(1,iME,ip) = Q_L
+            call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_02(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+            bcnalist_out(2,iME,ip) = Q_L
+            call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_03(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+            bcnalist_out(3,iME,ip) = Q_L
+            call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_04(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+            bcnalist_out(4,iME,ip) = Q_L
+            call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_05(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+            bcnalist_out(5,iME,ip) = Q_L
+        end do
+    end do
+end subroutine firecore_scanHamPiece3c_raw_batch
+
+! Export raw 3c table (bcna_0theta) for a given element pair / dn atom.
+! Data are returned in Fortran (x-major, then y) order flattened into buffer.
+subroutine firecore_export_bcna_table( interaction, isorp, in1, in2, indna, itheta, iME, maxsize, nx_out, ny_out, hx_out, hy_out, buffer, status ) bind(c, name='firecore_export_bcna_table')
+    use iso_c_binding
+    use interactions
+    use integrals
+    implicit none
+    
+    integer(c_int), intent(in), value :: interaction, isorp, in1, in2, indna, itheta, iME, maxsize
+    integer(c_int), intent(out) :: nx_out, ny_out, status
+
+    real(c_double), intent(out) :: hx_out, hy_out
+    real(c_double), intent(out) :: buffer(maxsize)
+    integer :: index, nx, ny, ix, iy, idx
+    
+    status = 0
+    buffer = 0.0d0
+    nx_out = 0; ny_out = 0
+    hx_out = 0.0d0; hy_out = 0.0d0
+    
+    !if (interaction .ne. 1) then
+    !    status = 1; return
+    !end if
+    
+    index = icon3c(in1, in2, indna)
+    nx = numx3c_bcna(isorp,index)
+    ny = numy3c_bcna(isorp,index)
+    hx_out = hx_bcna(isorp,index)
+    hy_out = hy_bcna(isorp,index)
+    
+    if (iME < 1 .or. iME > index_max3c(in1,in2)) then
+        status = 2; return
+    end if
+    if (itheta < 1 .or. itheta > 5) then
+        status = 3; return
+    end if
+    if (maxsize < nx*ny) then
+        status = 4; return
+    end if
+    
+    nx_out = nx
+    ny_out = ny
+    
+
+        do iy = 1, ny
+            do ix = 1, nx
+                idx = (iy-1)*nx + ix
+                select case(itheta)
+                case(1)
+                    buffer(idx) = bcna_01(ix,iy,iME,isorp,index)
+                case(2)
+                    buffer(idx) = bcna_02(ix,iy,iME,isorp,index)
+                case(3)
+                    buffer(idx) = bcna_03(ix,iy,iME,isorp,index)
+                case(4)
+                    buffer(idx) = bcna_04(ix,iy,iME,isorp,index)
+                case(5)
+                    buffer(idx) = bcna_05(ix,iy,iME,isorp,index)
+                end select
+            end do
+        end do
+
+end subroutine firecore_export_bcna_table
+
+subroutine firecore_scanHamPiece3c_batch( interaction, isorp, in1, in2, indna, npoints, dRjs, dRks, applyRotation, bcnax_out ) bind(c, name='firecore_scanHamPiece3c_batch')
+    use iso_c_binding
+    use interactions, only : numorb_max
+    use configuration, only : nspecies
+    implicit none
+    integer(c_int), intent(in), value :: interaction, isorp, in1, in2, indna
+    integer(c_int), intent(in), value :: npoints
+    real(c_double), intent(in)  :: dRjs(3, npoints)
+    real(c_double), intent(in)  :: dRks(3, npoints)
+    integer(c_int), intent(in), value :: applyRotation
+    real(c_double), intent(out) :: bcnax_out(numorb_max, numorb_max, npoints)
+    
+    real(c_double), dimension(3) :: r1, r2, rna, r21, rnabc, rhat, sighat
+    real x, y, cost
+    real(c_double), dimension(3,3) :: eps
+    real(c_double), dimension(numorb_max, numorb_max) :: bcnax
+    integer i, ip, maxtype
+    
+    maxtype = nspecies
+    do ip = 1, npoints
+        rna = dRks(:, ip)
+        r1  = (/0.0,0.0,0.0/)
+        r2  = dRjs(:, ip)
+        
+        r21 = r2 - r1
+        y   = sqrt(sum(r21**2))
+        rnabc = rna - (r1 + r2)*0.5
+        x = sqrt(sum(rnabc**2))
+        
+        if (y .gt. 1.0d-05) then
+            sighat = r21 / y
+        else
+            sighat = (/0.0, 0.0, 1.0/)
+        endif
+        
+        if (x .gt. 1.0d-05) then
+            rhat = rnabc / x
+        else
+            rhat = (/0.0, 0.0, 0.0/)
+        endif
+        
+        cost = sum(sighat * rhat)
+        
+        if( applyRotation .ne. 0 ) then
+            call epsilon ( real(rhat), real(sighat), eps)
+        else
+            eps = 0.0
+            do i=1,3
+                eps(i,i) = 1.0
+            end do
+        endif
+        
+        call trescentros (interaction, isorp, maxtype, in1, in2, indna, x, y, cost, eps, bcnax, nspecies)
+        bcnax_out(:,:,ip) = bcnax(:,:)
+    end do
+end subroutine firecore_scanHamPiece3c_batch

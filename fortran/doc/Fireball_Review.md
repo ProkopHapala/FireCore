@@ -6,9 +6,12 @@ specifically I'm interested in codes like Fireball and SIESTA
 
 I'm myself developer of Fireball, but I have rather superficial knowledge of this, and I think it is time to get deeper, because I'm thinking about how to reimplement it. I knwo that SIESTA use real space grid to do 3-center interactions right? We implemented something like that in Fireball. But I'm more insterested in the cheaper approximation like McWEDA, sankey nicklevsky, Harris etc. Need to make order in these.
 
+https://deepwiki.com/fireball-QMD/progs
+https://deepwiki.com/fireball-QMD/progs/3-fortran-computational-core
+
 ---
 
-there are some references from Fireball, I hope you can fined more relevant about SEASTA
+there are some references from Fireball, I hope you can find more relevant about SEASTA
 
 * [The SIESTA method for ab initio order- N materials simulation](https://doi.org/10.1088/0953-8984/14/11/302)
 * [Simplified method for calculating the energy of weakly interacting fragments](https://doi.org/10.1103/PhysRevB.31.1770)

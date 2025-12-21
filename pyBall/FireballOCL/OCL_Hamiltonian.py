@@ -18,7 +18,29 @@ class OCL_Hamiltonian:
         kernel_path = os.path.join(os.path.dirname(__file__), "cl/hamiltonian.cl")
         with open(kernel_path, 'r') as f:
             self.kernel_src = f.read()
-        self.prg = cl.Program(self.ctx, self.kernel_src).build()
+        build_opts = []
+        if os.environ.get("DEBUG_INTERP", "0") == "1":
+            build_opts.append("-DDEBUG_INTERP=1")
+        opts = " ".join(build_opts) if build_opts else None
+        if opts:
+            self.prg = cl.Program(self.ctx, self.kernel_src).build(options=[opts])
+        else:
+            self.prg = cl.Program(self.ctx, self.kernel_src).build()
+
+    def _resolve_pair_type(self, root, nz1, nz2):
+        """
+        Resolve pair type with vna fallback. DEBUG prints to track missing data.
+        """
+        key = (root, nz1, nz2)
+        pt = self.species_pair_map.get(key)
+        # DEBUG: if vna missing, try atom/ontop variants
+        if pt is None and root == 'vna':
+            for alt in ('vna_atom_00', 'vna_ontopl_00', 'vna_ontopr_00'):
+                pt = self.species_pair_map.get((alt, nz1, nz2))
+                if pt is not None:
+                    print(f"[DEBUG] vna missing for ({nz1},{nz2}), using {alt}")
+                    return pt
+        return pt
 
     def prepare_splines(self, species_nz):
         """Prepares spline data for GPU."""
@@ -50,9 +72,24 @@ class OCL_Hamiltonian:
                 spline_data[i, :v['numz'], j, 1] = spline[1, :]
                 spline_data[i, :v['numz'], j, 2] = spline[2, :]
                 spline_data[i, :v['numz'], j, 3] = spline[3, :]
+
+        # Alias bare vna to neutral-atom tables if only those exist (Fortran interaction 4 uses vna_atom)
+        for (root, nz1, nz2), idx in list(self.species_pair_map.items()):
+            if root.startswith('vna_atom_'):
+                bare = ('vna', nz1, nz2)
+                if bare not in self.species_pair_map:
+                    self.species_pair_map[bare] = idx
                 
         self.d_splines = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=spline_data)
         self.d_h_grids = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=h_grids)
+
+    def _is_s_only(self, nz):
+        """Returns True if species nz has only s-shell (l=0) as per info.dat."""
+        if not hasattr(self.parser, 'species_info'):
+            self.parser.parse_info()
+        info = self.parser.species_info.get(nz, {})
+        lssh = info.get('lssh', [])
+        return len(lssh) == 1 and lssh[0] == 0
 
     def prepare_data_3c(self, species_nz):
         """Prepares 3-center data for GPU."""
@@ -61,7 +98,8 @@ class OCL_Hamiltonian:
         if not d3c: return
         
         # d3c: {(root, it, isorp, nz1, nz2, nz3): data}
-        # data: [numy, numx, n_nz]
+        # FdataParser.read_3c returns data in file/read order:
+        #   data: [numy, numx, n_nz] (y,x) which matches OpenCL buffer packing.
         
         numx_max = 0
         numy_max = 0
@@ -129,6 +167,142 @@ class OCL_Hamiltonian:
         cl.enqueue_copy(self.queue, blocks, d_blocks)
         return blocks
 
+    def assemble_3c(self, ratoms, triplets):
+        """
+        Runs the assemble_3c kernel.
+        ratoms: [natoms, 3]
+        triplets: [n_triplets, 4] (i, j, k, type_idx)
+        """
+        n_triplets = len(triplets)
+        ratoms4 = np.zeros((ratoms.shape[0], 4), dtype=np.float32)
+        ratoms4[:, :3] = ratoms
+        
+        d_ratoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=ratoms4)
+        d_triplets = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=triplets.astype(np.int32))
+        
+        # Output: [n_triplets, n_nz_3c_max]
+        d_results = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, n_triplets * self.n_nz_3c_max * 4)
+        
+        self.prg.assemble_3c(self.queue, (n_triplets,), None,
+                           np.int32(n_triplets), np.int32(self.n_nz_3c_max),
+                           np.int32(self.numx_3c), np.int32(self.numy_3c),
+                           d_ratoms, d_triplets, self.d_data_3c, self.d_h_grids_3c, d_results)
+        
+        results = np.zeros((n_triplets, self.n_nz_3c_max), dtype=np.float32)
+        cl.enqueue_copy(self.queue, results, d_results)
+        return results
+
+    def scanHamPiece2c(self, root, nz1, nz2, dR, applyRotation=True):
+        """Probes a 2-center piece for verification."""
+        ratoms = np.array([[0,0,0], dR], dtype=np.float32)
+        neighbors = np.array([[0, 1]], dtype=np.int32)
+        pair_type = self._resolve_pair_type(root, nz1, nz2)
+        if pair_type is None:
+            print(f"[WARN] scanHamPiece2c missing pair_type for {root} ({nz1},{nz2}); returning None")
+            return None
+        
+        if applyRotation:
+            blocks = self.assemble_2c(ratoms, neighbors, np.array([pair_type]))
+        else:
+            # Move along Z to avoid rotation
+            r = np.linalg.norm(dR)
+            ratoms_z = np.array([[0,0,0], [0,0,r]], dtype=np.float32)
+            blocks = self.assemble_2c(ratoms_z, neighbors, np.array([pair_type]))
+        return blocks[0]
+
+    def scanHamPiece2c_batch(self, root, nz1, nz2, dRs, applyRotation=True):
+        """Batch probe of 2-center pieces; one work-item per point."""
+        pair_type = self._resolve_pair_type(root, nz1, nz2)
+        if pair_type is None:
+            print(f"[WARN] scanHamPiece2c_batch missing pair_type for {root} ({nz1},{nz2}); returning None")
+            return None
+        dRs_np = np.ascontiguousarray(dRs, dtype=np.float32)
+        npoints = dRs_np.shape[0]
+        # outputs [npoints,4,4]
+        d_in = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=dRs_np)
+        d_out = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, npoints * 16 * 4)
+        self.prg.scan_2c_points(
+            self.queue, (npoints,), None,
+            np.int32(npoints), np.int32(self.n_nz_max), np.int32(self.numz_max),
+            np.int32(pair_type), np.int32(int(applyRotation)),
+            d_in, self.d_splines, self.d_h_grids, d_out
+        )
+        blocks = np.zeros((npoints, 4, 4), dtype=np.float32)
+        cl.enqueue_copy(self.queue, blocks, d_out)
+        return blocks
+
+    def scanHamPiece3c(self, root, nz1, nz2, nz3, dRj, dRk, applyRotation=True):
+        """Probes a 3-center piece for verification."""
+        # Basis 1 at (0,0,0), Basis 2 at dRj, Potential at dRk
+        ratoms = np.array([[0,0,0], dRj, dRk], dtype=np.float32)
+        triplets = np.array([[0, 1, 2, 0]], dtype=np.int32) # triplet index 0
+        
+        type_idx = self.species_triplet_map.get((root, nz1, nz2, nz3))
+        if type_idx is None: return None
+        triplets[0, 3] = type_idx
+        
+        # Currently assemble_3c only returns hlist (Legendre coeffs sum)
+        # and doesn't rotate. Verification should match this or we add rotation.
+        # FireCore's scanHamPiece3c returns bcnax (rotated).
+        # To match, we need orbital mapping and rotation in OpenCL.
+        # For now, let's just return the hlist result.
+        results = self.assemble_3c(ratoms, triplets)
+
+        # Special-case recovery for s-only species (e.g., H-H s-s vna): map hlist[0] to (0,0)
+        if self._is_s_only(nz1) and self._is_s_only(nz2):
+            mat = np.zeros((1,1), dtype=np.float32)
+            mat[0,0] = results[0,0]
+            return mat
+
+        return results[0]
+
+    def scanHamPiece3c_batch(self, root, nz1, nz2, nz3, dRjs, dRks, applyRotation=True):
+        """Batch probe of 3-center pieces; one work-item per point."""
+        type_idx = self.species_triplet_map.get((root, nz1, nz2, nz3))
+        if type_idx is None: return None
+        dRjs_np = np.ascontiguousarray(dRjs, dtype=np.float32)
+        dRks_np = np.ascontiguousarray(dRks, dtype=np.float32)
+        npoints = dRjs_np.shape[0]
+        d_j = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=dRjs_np)
+        d_k = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=dRks_np)
+        d_out = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, npoints * self.n_nz_3c_max * 4)
+        self.prg.scan_3c_points(
+            self.queue, (npoints,), None,
+            np.int32(npoints), np.int32(self.n_nz_3c_max),
+            np.int32(self.numx_3c), np.int32(self.numy_3c),
+            np.int32(type_idx),
+            d_j, d_k,
+            self.d_data_3c, self.d_h_grids_3c, d_out
+        )
+        results = np.zeros((npoints, self.n_nz_3c_max), dtype=np.float32)
+        cl.enqueue_copy(self.queue, results, d_out)
+        return results
+
+    def scanHamPiece3c_raw_batch(self, root, nz1, nz2, nz3, dRjs, dRks):
+        """OpenCL analog of firecore_scanHamPiece3c_raw_batch (no rotation/Legendre)."""
+        type_idx = self.species_triplet_map.get((root, nz1, nz2, nz3))
+        if type_idx is None:
+            print(f"[WARN] scanHamPiece3c_raw_batch missing triplet {root} ({nz1},{nz2},{nz3})")
+            return None
+        dRjs_np = np.ascontiguousarray(dRjs, dtype=np.float32)
+        dRks_np = np.ascontiguousarray(dRks, dtype=np.float32)
+        npoints = dRjs_np.shape[0]
+        d_j = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=dRjs_np)
+        d_k = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=dRks_np)
+        out_size = npoints * 5 * self.n_nz_3c_max * 4
+        d_out = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, out_size)
+        self.prg.scan_3c_raw_points(
+            self.queue, (npoints,), None,
+            np.int32(npoints), np.int32(self.n_nz_3c_max),
+            np.int32(self.numx_3c), np.int32(self.numy_3c),
+            np.int32(type_idx),
+            d_j, d_k,
+            self.d_data_3c, self.d_h_grids_3c, d_out
+        )
+        results = np.zeros((npoints, 5, self.n_nz_3c_max), dtype=np.float32)
+        cl.enqueue_copy(self.queue, results, d_out)
+        return results
+
     def assemble_full(self, ratoms, species, neighbors):
         """
         Assembles full H and S matrices.
@@ -160,10 +334,23 @@ class OCL_Hamiltonian:
                 full_res[p[3]] = res[idx]
             return full_res
 
+        EQ2 = 14.39975
         S_blocks = run_2c(pairs_S)
         T_blocks = run_2c(pairs_T)
-        Vna_blocks = run_2c(pairs_Vna)
         
+        # Aggregate all potential Vna 2-center components
+        Vna_total = np.zeros((n_pairs, 4, 4), dtype=np.float32)
+        vna_roots = ['vna', 'vna_atom_00', 'vna_ontopl_00', 'vna_ontopr_00']
+        for root in vna_roots:
+            pairs_v = []
+            for idx, (i, j) in enumerate(neighbors):
+                t = self.species_pair_map.get((root, species[i], species[j]))
+                if t is not None:
+                    pairs_v.append((i, j, t, idx))
+            if pairs_v:
+                Vna_total += run_2c(pairs_v)
+        
+        Vna_blocks = Vna_total * EQ2
         H_blocks = T_blocks + Vna_blocks
         
         return H_blocks, S_blocks

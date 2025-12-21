@@ -1,7 +1,10 @@
-
 from ast import arg
 import numpy as np
-from   ctypes import c_int, c_double, c_bool, c_float, c_char_p, c_bool, c_void_p, c_char_p
+from ctypes import *
+
+# needed for export_bcna_table wrapper
+from ctypes import byref
+c_int, c_double, c_bool, c_float, c_char_p, c_bool, c_void_p, c_char_p
 import ctypes as ct
 import os
 import sys
@@ -55,6 +58,8 @@ header_strings = [
 "void firecore_get_nspecies( int* nspecies_out )",
 "void firecore_get_eigen( int ikp, double* eigen_out )",
 "void firecore_set_options( int ioff_S, int ioff_T, int ioff_Vna, int ioff_Vnl, int ioff_Vxc, int ioff_Vca, int ioff_Vxc_ca )",
+"void firecore_scanHamPiece2c( int interaction, int isub, int in1, int in2, int in3, double* dR, int applyRotation, double* sx_out )",
+"void firecore_scanHamPiece3c( int interaction, int isorp, int in1, int in2, int indna, double* dRj, double* dRk, int applyRotation, double* bcnax_out )",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -455,6 +460,18 @@ cpp_utils.set_args_dict(lib, argDict)
 # ========= Python Functions
 #===================================
 
+_cached_norb = None
+_cached_dims = None
+
+def _get_norb(norb=None):
+    global _cached_norb
+    if norb is not None:
+        _cached_norb = norb
+        return norb
+    if _cached_norb is None:
+        _cached_norb = get_HS_dims().numorb_max
+    return _cached_norb
+
 def run_nonSCF( atomType, atomPos ):
     preinit()
     norb = init( atomType, atomPos )
@@ -463,8 +480,148 @@ def run_nonSCF( atomType, atomPos ):
     sigma=updateCharges(); #print( sigma )
     return norb, sigma
 
+def _load_HS_dims():
+    natoms_c         = ct.c_int()
+    norbitals_c      = ct.c_int()
+    nspecies_c       = ct.c_int()
+    neigh_max_c      = ct.c_int()
+    numorb_max_c     = ct.c_int()
+    nsh_max_c        = ct.c_int()
+    ME2c_max_c       = ct.c_int()
+    max_mu_dim1_c    = ct.c_int()
+    max_mu_dim2_c    = ct.c_int()
+    max_mu_dim3_c    = ct.c_int()
+    mbeta_max_c      = ct.c_int()
+    nspecies_fdata_c = ct.c_int()
+    nelec_c          = ct.c_int()
+    lib.firecore_get_HS_dims(
+        ct.byref(natoms_c), ct.byref(norbitals_c), ct.byref(nspecies_c),
+        ct.byref(neigh_max_c), ct.byref(numorb_max_c),
+        ct.byref(nsh_max_c), ct.byref(ME2c_max_c),
+        ct.byref(max_mu_dim1_c), ct.byref(max_mu_dim2_c), ct.byref(max_mu_dim3_c),
+        ct.byref(mbeta_max_c), ct.byref(nspecies_fdata_c), ct.byref(nelec_c)
+    )
+    return FireballDims(
+        natoms_c.value, norbitals_c.value,
+        nspecies_c.value,
+        neigh_max_c.value, numorb_max_c.value,
+        nsh_max_c.value, ME2c_max_c.value,
+        max_mu_dim1_c.value, max_mu_dim2_c.value, max_mu_dim3_c.value,
+        mbeta_max_c.value, nspecies_fdata_c.value, nelec_c.value
+    )
+
+def get_HS_dims(force_refresh=False):
+    global _cached_dims
+    if force_refresh or (_cached_dims is None):
+        _cached_dims = _load_HS_dims()
+    return _cached_dims
+
+
 def set_options(ioff_S=1, ioff_T=1, ioff_Vna=1, ioff_Vnl=1, ioff_Vxc=1, ioff_Vca=1, ioff_Vxc_ca=1):
     lib.firecore_set_options(ioff_S, ioff_T, ioff_Vna, ioff_Vnl, ioff_Vxc, ioff_Vca, ioff_Vxc_ca)
+
+# void firecore_scanHamPiece2c( int interaction, int isub, int in1, int in2, int in3, double* dR, int applyRotation, double* sx_out )
+argDict["firecore_scanHamPiece2c"]=( None, [c_int, c_int, c_int, c_int, c_int, c_double_p, c_int, c_double_p] )
+argDict["firecore_scanHamPiece2c_batch"]=( None, [c_int, c_int, c_int, c_int, c_int, c_int, c_double_p, c_int, c_double_p] )
+def scanHamPiece2c( interaction, isub, in1, in2, in3, dR, applyRotation=True, norb=None, sx_out=None ):
+    if sx_out is None:
+        norb = _get_norb(norb)
+        sx_out = np.zeros( (norb, norb) )
+    lib.firecore_scanHamPiece2c( interaction, isub, in1, in2, in3, _np_as(dR,c_double_p), int(applyRotation), _np_as(sx_out,c_double_p) )
+    return sx_out
+
+def scanHamPiece2c_batch( interaction, isub, in1, in2, in3, dRs, applyRotation=True, norb=None, sx_out=None ):
+    dRs_np = np.ascontiguousarray(dRs, dtype=np.float64)
+    npoints = dRs_np.shape[0]
+    if sx_out is None:
+        norb = _get_norb(norb)
+        sx_out = np.zeros( (npoints, norb, norb) )
+    lib.firecore_scanHamPiece2c_batch( interaction, isub, in1, in2, in3, npoints, _np_as(dRs_np.ravel(), c_double_p), int(applyRotation), _np_as(sx_out, c_double_p) )
+    return sx_out
+
+# void firecore_scanHamPiece3c( int interaction, int isorp, int in1, int in2, int indna, double* dRj, double* dRk, int applyRotation, double* bcnax_out )
+argDict["firecore_scanHamPiece3c"]=( None, [c_int, c_int, c_int, c_int, c_int, c_double_p, c_double_p, c_int, c_double_p] )
+argDict["firecore_scanHamPiece3c_batch"]=( None, [c_int, c_int, c_int, c_int, c_int, c_int, c_double_p, c_double_p, c_int, c_double_p] )
+# raw 3c (no Legendre/recover/rotate)
+argDict["firecore_scanHamPiece3c_raw"]=( None, [c_int, c_int, c_int, c_int, c_int, c_double_p, c_double_p, c_double_p] )
+argDict["firecore_scanHamPiece3c_raw_batch"]=( None, [c_int, c_int, c_int, c_int, c_int, c_int, c_double_p, c_double_p, c_double_p] )
+# export raw bcna table (itheta 1..5), flattened x-major (ix fastest) then y
+argDict["firecore_export_bcna_table"]=( None, [c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int_p, c_int_p, c_double_p, c_double_p, c_double_p, c_int_p] )
+def scanHamPiece3c( interaction, isorp, in1, in2, indna, dRj, dRk, applyRotation=True, norb=None, bcnax_out=None ):
+    if bcnax_out is None:
+        norb = _get_norb(norb)
+        bcnax_out = np.zeros( (norb, norb) )
+    lib.firecore_scanHamPiece3c( interaction, isorp, in1, in2, indna, _np_as(dRj,c_double_p), _np_as(dRk,c_double_p), int(applyRotation), _np_as(bcnax_out,c_double_p) )
+    return bcnax_out
+
+def scanHamPiece3c_raw( interaction, isorp, in1, in2, indna, dRj, dRk, out=None ):
+    """
+    Raw bcna interpolation: no Legendre, no mvalue*sint, no recover_3c, no rotate.
+    Returns array shape (5, max_mu_dim3).
+    """
+    dims = get_HS_dims()
+    max_me = dims.max_mu_dim3
+    dRj_c = _np_as(dRj, c_double_p)
+    dRk_c = _np_as(dRk, c_double_p)
+    if out is None:
+        out = np.zeros((5, max_me), dtype=np.float64, order='F')
+    lib.firecore_scanHamPiece3c_raw(
+        c_int(interaction), c_int(isorp), c_int(in1), c_int(in2), c_int(indna),
+        dRj_c, dRk_c, _np_as(out, c_double_p)
+    )
+    return out
+
+def scanHamPiece3c_raw_batch( interaction, isorp, in1, in2, indna, dRjs, dRks ):
+    """
+    Batched raw bcna interpolation over an array of geometries.
+    Returns array shape (npoints, 5, max_mu_dim3).
+    """
+    dims = get_HS_dims()
+    max_me = dims.max_mu_dim3
+    dRjs_np = np.ascontiguousarray(dRjs, dtype=np.float64)
+    dRks_np = np.ascontiguousarray(dRks, dtype=np.float64)
+    npoints = dRjs_np.shape[0]
+    if dRks_np.shape[0] != npoints:
+        raise ValueError("dRjs and dRks must have the same length")
+    dRjs_c = _np_as(dRjs_np.ravel(), c_double_p)
+    dRks_c = _np_as(dRks_np.ravel(), c_double_p)
+    out_raw = np.zeros((5, max_me, npoints), dtype=np.float64, order='F')
+    lib.firecore_scanHamPiece3c_raw_batch(
+        c_int(interaction), c_int(isorp), c_int(in1), c_int(in2), c_int(indna),
+        c_int(npoints), dRjs_c, dRks_c, _np_as(out_raw, c_double_p)
+    )
+    return np.moveaxis(out_raw, 2, 0)
+
+def export_bcna_table( interaction, isorp, in1, in2, indna, itheta, iME, maxsize ):
+    """
+    Export raw bcna_0{itheta} table from Fortran; returns (arr[ny,nx], hx, hy, status).
+    Data layout in arr is [y,x] because Fortran filled buffer with ix fastest, then iy.
+    """
+    buf = np.zeros(maxsize, dtype=np.float64, order='C')
+    nx_out = c_int(0); ny_out = c_int(0)
+    hx_out = c_double(0.0); hy_out = c_double(0.0)
+    status = c_int(0)
+    lib.firecore_export_bcna_table(
+        c_int(interaction), c_int(isorp), c_int(in1), c_int(in2), c_int(indna),
+        c_int(itheta), c_int(iME), c_int(maxsize),
+        byref(nx_out), byref(ny_out), byref(hx_out), byref(hy_out),
+        _np_as(buf, c_double_p), byref(status)
+    )
+    if status.value != 0:
+        raise RuntimeError(f"firecore_export_bcna_table failed: status={status.value}")
+    nxy = nx_out.value * ny_out.value
+    arr = buf[:nxy].reshape((ny_out.value, nx_out.value))
+    return arr, float(hx_out.value), float(hy_out.value), status.value
+
+def scanHamPiece3c_batch( interaction, isorp, in1, in2, indna, dRjs, dRks, applyRotation=True, norb=None, bcnax_out=None ):
+    dRjs_np = np.ascontiguousarray(dRjs, dtype=np.float64)
+    dRks_np = np.ascontiguousarray(dRks, dtype=np.float64)
+    npoints = dRjs_np.shape[0]
+    if bcnax_out is None:
+        norb = _get_norb(norb)
+        bcnax_out = np.zeros( (npoints, norb, norb) )
+    lib.firecore_scanHamPiece3c_batch( interaction, isorp, in1, in2, indna, npoints, _np_as(dRjs_np.ravel(), c_double_p), _np_as(dRks_np.ravel(), c_double_p), int(applyRotation), _np_as(bcnax_out,c_double_p) )
+    return bcnax_out
 
 def initialize( atomType=None, atomPos=None, verbosity=1 ):
     global norb
@@ -472,6 +629,7 @@ def initialize( atomType=None, atomPos=None, verbosity=1 ):
     setVerbosity(verbosity=verbosity)  # NOTE: verbosity must be set here, because previous values would be overwritten by preinit()
     preinit()
     norb = init( atomType, atomPos )
+    _get_norb(norb)
     return norb
 
 

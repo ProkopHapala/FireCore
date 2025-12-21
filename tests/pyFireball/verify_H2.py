@@ -95,21 +95,11 @@ def run_verification():
     # --- Test 3: Vna ---
     print("\nTesting Vna...")
     H_f, S_f = get_fortran_HS([0, 0, 1, 0, 0, 0, 0])
-    # For Vna, the Fortran side sums ontopl, ontopr, and atom contributions.
-    # Our OCL currently only has one 'vna' interaction type per pair.
-    # Let's try to match by summing OCL components if they exist.
+    H_o_blocks, _ = ham.assemble_full(atomPos, atomTypes_Z, neighbors)
     V_o = np.zeros((2, 2))
-    for root in ['vna_atom_00', 'vna_ontopl_00', 'vna_ontopr_00', 'vna']:
-        t = ham.species_pair_map.get((root, 1, 1))
-        if t is not None:
-            print(f"  Adding OCL component: {root}")
-            pairs = [(i, j, t) for i, j in neighbors]
-            blocks = ham.assemble_2c(atomPos, np.array([p[:2] for p in pairs]), np.array([p[2:] for p in pairs]))
-            for idx, (i, j) in enumerate(neighbors):
-                V_o[i, j] += blocks[idx, 0, 0]
+    for idx, (i, j) in enumerate(neighbors):
+        V_o[i, j] = H_o_blocks[idx, 0, 0]
     
-    # Firecore might have a huge diagonal due to sum_j <i | v_j | i>
-    # but verify against what it exports.
     res_Vna = compare_matrices("Vna", H_f, V_o)
 
     print("\n" + "="*40)
