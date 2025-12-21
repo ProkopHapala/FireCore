@@ -797,13 +797,14 @@ subroutine firecore_get_HS_sparse( &
     neighn_out, neigh_j_out, neigh_b_out, xl_out &
   ) bind(c, name='firecore_get_HS_sparse')
     use iso_c_binding
+    use iso_fortran_env, only: output_unit
     use configuration, only: natoms, xl, nspecies ! nspecies is from configuration
-    use interactions,  only: h_mat, s_mat, num_orb, degelec, iatyp, lssh, mu, nu, mvalue, nssh, numorb_max, nsh_max
+    use interactions,  only: h_mat, s_mat, t_mat, vna, vxc, vca, vxc_ca, vnl, num_orb, degelec, iatyp, lssh, mu, nu, mvalue, nssh, numorb_max, nsh_max
     use neighbor_map,  only: neighn, neigh_j, neigh_b, neigh_max
-    use charges, only: nzx
-    use options, only: verbosity
-    use debug, only: debug_writeBlockedMat
-    use, intrinsic :: iso_fortran_env 
+    use charges,       only: nzx
+    use options,       only: verbosity
+    use debug
+    use firecore_options
     implicit none
     ! Output arrays (pointers to pre-allocated memory from C/Python)
     real(c_double), dimension(numorb_max, numorb_max, neigh_max, natoms), intent(out) :: h_mat_out
@@ -855,11 +856,29 @@ subroutine firecore_get_HS_sparse( &
         write(*,"(A,I0,A,I0,A,I0,1X,I0)")                       "Fortran DIMS: neigh_b_out(",neigh_max,",",natoms,") vs src neigh_b ",shape(neigh_b)
         write(*,"(A,I0,A,I0,1X,I0)")                            "Fortran DIMS: xl_out(3,",size(xl,2),") vs src xl ",shape(xl)
     end if
-    h_mat_out = h_mat
+    ! Export selection: by default export full h_mat/s_mat. For verification we allow exporting individual components.
+    ! NOTE: This does NOT change physics/assembly, it only selects what is copied out.
+    if( (ioff_T.eq.1) .and. (ioff_Vna.eq.0) .and. (ioff_Vnl.eq.0) .and. (ioff_Vxc.eq.0) .and. (ioff_Vca.eq.0) .and. (ioff_Vxc_ca.eq.0) ) then
+        h_mat_out = t_mat
+    else if( (ioff_T.eq.0) .and. (ioff_Vna.eq.1) .and. (ioff_Vnl.eq.0) .and. (ioff_Vxc.eq.0) .and. (ioff_Vca.eq.0) .and. (ioff_Vxc_ca.eq.0) ) then
+        h_mat_out = vna
+    else if( (ioff_T.eq.0) .and. (ioff_Vna.eq.0) .and. (ioff_Vnl.eq.0) .and. (ioff_Vxc.eq.1) .and. (ioff_Vca.eq.0) .and. (ioff_Vxc_ca.eq.0) ) then
+        h_mat_out = vxc
+    else if( (ioff_T.eq.0) .and. (ioff_Vna.eq.0) .and. (ioff_Vnl.eq.0) .and. (ioff_Vxc.eq.0) .and. (ioff_Vca.eq.1) .and. (ioff_Vxc_ca.eq.0) ) then
+        h_mat_out = vca
+    else if( (ioff_T.eq.0) .and. (ioff_Vna.eq.0) .and. (ioff_Vnl.eq.0) .and. (ioff_Vxc.eq.0) .and. (ioff_Vca.eq.0) .and. (ioff_Vxc_ca.eq.1) ) then
+        h_mat_out = vxc_ca
+    else if( (ioff_T.eq.0) .and. (ioff_Vna.eq.0) .and. (ioff_Vnl.eq.1) .and. (ioff_Vxc.eq.0) .and. (ioff_Vca.eq.0) .and. (ioff_Vxc_ca.eq.0) ) then
+        h_mat_out = vnl
+    else
+        h_mat_out = h_mat
+    end if
     s_mat_out = s_mat
 
-    write(*,*) " ==== firecore_get_HS_sparse() print h_mat"
+    write(*,*) " ==== firecore_get_HS_sparse() print h_mat (full)"
     call debug_writeBlockedMat( "h_mat.log", h_mat, OUTPUT_UNIT )
+    write(*,*) " ==== firecore_get_HS_sparse() print h_mat_out (exported)"
+    call debug_writeBlockedMat( "h_mat_out.log", h_mat_out, OUTPUT_UNIT )
     write(*,*) " ==== firecore_get_HS_sparse() print s_mat"
     call debug_writeBlockedMat( "s_mat.log", s_mat, OUTPUT_UNIT )
 

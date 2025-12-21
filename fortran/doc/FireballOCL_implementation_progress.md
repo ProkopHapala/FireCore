@@ -6,18 +6,21 @@
   - Generic `vna` requests are satisfied via the `vna_atom_*` tables (matching Fortran interaction 4 usage).  
   - Sign conventions for py/pz rotation in OpenCL kernels match Fortran.  
   - `verify_scan_2c.py` compares Fortran vs PyOpenCL and matches (no NaNs, diffs within threshold).
+  - **H2 parity achieved (S, T, Vna):** `verify_H2.py` now passes; the missing +14.759 eV diagonal in Vna was traced to skipped `vna_atom` on self neighbors (`i==j`) and missing accumulation into `neigh_self`. OpenCL now evaluates `vna_atom_00` for both `i!=j` and `i==j` and accumulates into the `(i,i)` block exactly as Fortran `assemble_2c` does.
+  - Kernel/host alignment fixes applied earlier: added `type_idx` arg to 3c kernels; propagated `isorp` dimension in packing and kernel indexing; fixed printf formats to avoid `cl_khr_fp64`; ensured neighbor/self blocks are present for on-site terms.
 
 - **3-center (in progress)**  
   - **Data parity achieved:** Added `firecore_export_bcna_table` (Fortran) and `export_bcna_table` (ctypes) + `verify_Fdata_read_3c.py` plots; Fortran vs Python tables match bitwise for H bcna_01..05 (max|diff|=0).  
   - **Remaining issue:** OpenCL raw scan still mismatches Fortran on L0 (bcna_01) despite identical tables; likely a host/kernel mapping/stride bug (component selection or triplet index). L1/L2 etc. match to ~1e-9.  
   - `verify_scan_3c.py --mode raw` highlights this gap; interpolation kernel logic itself matches Fortran (off-by-one fixed), so focus is on the bcna component selection in the OpenCL path.
+  - **Kernel/host fixes done:** Added missing `type_idx` arg to 3c kernels, propagated `isorp` stride through packing and kernel indexing, and fixed off-by-one in 3c interpolation grid access. These bring all components except L0 into agreement (~1e-9).
   - **Data-loading bugs fixed:**  
     - 3c header parsing in Python skipped wrong lines (charge lines with `<===`), causing wrong reshapes; fixed by matching Fortran `readheader_3c`.  
     - `num_nonzero` for 3c now uses the 3c-specific count (not 2c).  
     - Verification script `tests/pyFireball/verify_Fdata_read_3c.py` visualizes Fortran vs Python grids (5×3 subplot: Fortran/Python/Diff) and prints min/max/diff; confirms tables load identically.
 
-- **Problem root cause fixed**  
-  - PyOpenCL was previously missing shell-resolved vna files and inventing ad-hoc names; Fortran is ground truth. Loader now follows Fortran naming exactly; no extra names are introduced.
+  - **Problem root cause fixed**  
+    - PyOpenCL was previously missing shell-resolved vna files and inventing ad-hoc names; Fortran is ground truth. Loader now follows Fortran naming exactly; no extra names are introduced.
 
 - **Next steps**  
   - Fix OpenCL bcna L0 mismatch: verify type_idx/theta/i_nz mapping in `scan_3c_raw_points` vs host packing, then re-run `verify_scan_3c.py --mode raw`.  

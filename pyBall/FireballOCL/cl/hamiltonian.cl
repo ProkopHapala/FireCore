@@ -61,11 +61,17 @@ __kernel void assemble_3c(
     const int n_triplets_work,
     const int n_nz_max,
     const int nx_max, const int ny_max,
+    const int n_isorp_max, const int isorp_idx,
     const __global float3* ratoms,    // [natoms]
     const __global int4* triplets,    // [n_triplets_work] (i, j, k, type_idx)
-    const __global float* data_3c,    // [n_species_triplets, 5, ny, nx, n_nz]
-    const __global float2* h_grids_3c, // [n_species_triplets] (hx, hy)
+    const __global float* data_3c,    // [n_triplets, n_isorp, 5, ny, nx, n_nz]
+    const __global float2* h_grids_3c,// [n_triplets, n_isorp] (hx, hy)
+    const __global int2* dims_3c,     // [n_triplets, n_isorp] (numx, numy)
     __global float* results           // [n_triplets_work, n_nz_max]
+    // TODO: mvalue for bcna (when needed)
+    // TODO: rotation of hlist into matrix elements
+    // TODO: ensure n_nz_max matches index_max3c(in1,in2)
+    // TODO: match Fortran interpolation clamping and bounds
 ) {
     int idx = get_global_id(0);
     if (idx >= n_triplets_work) return;
@@ -89,9 +95,13 @@ __kernel void assemble_3c(
     float cost2 = cost * cost;
     float sint = sqrt(max(0.0f, 1.0f - cost2));
 
-    float2 h = h_grids_3c[type_idx];
+    int grid_idx = type_idx * n_isorp_max + isorp_idx;
+    float2 h = h_grids_3c[grid_idx];
     float hx = h.x;
     float hy = h.y;
+    int2 dims = dims_3c[grid_idx];
+    int nx_use = dims.x;
+    int ny_use = dims.y;
 
     float p[5];
     p[0] = 1.0f;
@@ -100,14 +110,15 @@ __kernel void assemble_3c(
     p[3] = (5.0f * cost2 * cost - 3.0f * cost) * 0.5f;
     p[4] = (35.0f * cost2 * cost2 - 30.0f * cost2 + 3.0f) * 0.125f;
 
-    int triplet_stride = 5 * ny_max * nx_max * n_nz_max;
+    int triplet_stride = n_isorp_max * 5 * ny_max * nx_max * n_nz_max;
+    int isorp_stride = 5 * ny_max * nx_max * n_nz_max;
     int theta_stride = ny_max * nx_max * n_nz_max;
 
     for (int i_nz = 0; i_nz < n_nz_max; i_nz++) {
         float hlist = 0.0f;
         for (int it = 0; it < 5; it++) {
-            const __global float* subdata = &data_3c[type_idx * triplet_stride + it * theta_stride];
-            float val = interpolate_2d(x, y, nx_max, ny_max, hx, hy, subdata, i_nz, n_nz_max);
+            const __global float* subdata = &data_3c[type_idx * triplet_stride + isorp_idx * isorp_stride + it * theta_stride];
+            float val = interpolate_2d(x, y, nx_use, ny_use, hx, hy, subdata, i_nz, n_nz_max);
             hlist += p[it] * val;
         }
         // Simplified: Fireball checks mvalue here. Assume m=0 for den3.
@@ -121,11 +132,13 @@ __kernel void scan_3c_points(
     const int npoints,
     const int n_nz_max,
     const int nx_max, const int ny_max,
+    const int n_isorp_max, const int isorp_idx,
     const int type_idx,
     const __global float* dRjs,   // [npoints,3]
     const __global float* dRks,   // [npoints,3]
     const __global float* data_3c,
     const __global float2* h_grids_3c,
+    const __global int2* dims_3c,
     __global float* results        // [npoints, n_nz_max]
 ) {
     int idx = get_global_id(0);
@@ -153,9 +166,13 @@ __kernel void scan_3c_points(
     if (cost > 1.0f) cost = 1.0f; else if (cost < -1.0f) cost = -1.0f;
     float cost2 = cost * cost;
 
-    float2 h = h_grids_3c[type_idx];
+    int grid_idx = type_idx * n_isorp_max + isorp_idx;
+    float2 h = h_grids_3c[grid_idx];
     float hx = h.x;
     float hy = h.y;
+    int2 dims = dims_3c[grid_idx];
+    int nx_use = dims.x;
+    int ny_use = dims.y;
 
     float p[5];
     p[0] = 1.0f;
@@ -164,14 +181,15 @@ __kernel void scan_3c_points(
     p[3] = (5.0f * cost2 * cost - 3.0f * cost) * 0.5f;
     p[4] = (35.0f * cost2 * cost2 - 30.0f * cost2 + 3.0f) * 0.125f;
 
-    int triplet_stride = 5 * ny_max * nx_max * n_nz_max;
+    int triplet_stride = n_isorp_max * 5 * ny_max * nx_max * n_nz_max;
+    int isorp_stride = 5 * ny_max * nx_max * n_nz_max;
     int theta_stride = ny_max * nx_max * n_nz_max;
 
     for (int i_nz = 0; i_nz < n_nz_max; i_nz++) {
         float hlist = 0.0f;
         for (int it = 0; it < 5; it++) {
-            const __global float* subdata = &data_3c[type_idx * triplet_stride + it * theta_stride];
-            float val = interpolate_2d(x, y, nx_max, ny_max, hx, hy, subdata, i_nz, n_nz_max);
+            const __global float* subdata = &data_3c[type_idx * triplet_stride + isorp_idx * isorp_stride + it * theta_stride];
+            float val = interpolate_2d(x, y, nx_use, ny_use, hx, hy, subdata, i_nz, n_nz_max);
             hlist += p[it] * val;
         }
         results[idx * n_nz_max + i_nz] = hlist;
@@ -183,11 +201,13 @@ __kernel void scan_3c_raw_points(
     const int npoints,
     const int n_nz_max,
     const int nx_max, const int ny_max,
+    const int n_isorp_max, const int isorp_idx,
     const int type_idx,
     const __global float* dRjs,   // [npoints,3]
     const __global float* dRks,   // [npoints,3]
     const __global float* data_3c,
     const __global float2* h_grids_3c,
+    const __global int2* dims_3c,
     __global float* results        // [npoints, 5, n_nz_max]
 ) {
     int idx = get_global_id(0);
@@ -208,25 +228,31 @@ __kernel void scan_3c_raw_points(
     float3 rnabc = r_k - 0.5f*(r_i + r_j);
     float x = length(rnabc);
 
-    float2 h = h_grids_3c[type_idx];
+    int grid_idx = type_idx * n_isorp_max + isorp_idx;
+    float2 h = h_grids_3c[grid_idx];
     float hx = h.x;
     float hy = h.y;
+    int2 dims = dims_3c[grid_idx];
+    int nx_use = dims.x;
+    int ny_use = dims.y;
 
-    int triplet_stride = 5 * ny_max * nx_max * n_nz_max;
+    int triplet_stride = n_isorp_max * 5 * ny_max * nx_max * n_nz_max;
+    int isorp_stride = 5 * ny_max * nx_max * n_nz_max;
     int theta_stride = ny_max * nx_max * n_nz_max;
-    const __global float* triplet_base = data_3c + type_idx * triplet_stride;
+    const __global float* triplet_base = data_3c + type_idx * triplet_stride + isorp_idx * isorp_stride;
 
     if (idx < debug_limit) {
         // Match Fortran format (fields + 1-based ip)
         // Fortran prints: [scanHamPiece3c_raw_batch] ip=   NN      x    y    hx  hy   nx  ny
-        printf("[OCL::scan_3c_raw_points] ip=%5d  %12.6f %12.6f  %9.6f %9.6f  %5d %5d\n", idx+1, x, y, hx, hy, nx_max, ny_max);
+        printf("[OCL::scan_3c_raw_points] ip=%5d  %12.6f %12.6f  %9.6f %9.6f  %5d %5d\n",
+               idx+1, x, y, hx, hy, nx_use, ny_use);
     }
     
 
     for (int it = 0; it < 5; it++) {
         const __global float* subdata = triplet_base + it * theta_stride;
         for (int i_nz = 0; i_nz < n_nz_max; i_nz++) {
-            float val = interpolate_2d(x, y, nx_max, ny_max, hx, hy, subdata, i_nz, n_nz_max);
+            float val = interpolate_2d(x, y, nx_use, ny_use, hx, hy, subdata, i_nz, n_nz_max);
             results[(idx * 5 + it) * n_nz_max + i_nz] = val;
         }
     }

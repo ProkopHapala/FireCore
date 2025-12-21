@@ -116,29 +116,49 @@ class OCL_Hamiltonian:
         # ntheta is always 5 for den3/bcna
         self.ntheta_3c = 5
         
-        # We need to map (root, nz1, nz2, nz3) to an index
+        # We need to map (root, nz1, nz2, nz3, isorp) to an index pair (triplet_idx, isorp_idx)
+        # so we do not lose the isorp dimension (Fortran chooses grids per isorp).
         self.species_triplet_map = {}
+        self.species_triplet_isorp_map = {}
         triplets = sorted(list(set((k[0], k[3], k[4], k[5]) for k in d3c.keys())))
         for i, t in enumerate(triplets):
             self.species_triplet_map[t] = i
-            
+        # Collect isorp lists per triplet
+        isorp_lists = {t: set() for t in triplets}
+        for k in d3c.keys():
+            t = (k[0], k[3], k[4], k[5])
+            isorp_lists[t].add(k[2])
+        # Stable order for isorp slots
+        isorp_slots = {t: sorted(list(v)) for t, v in isorp_lists.items()}
+        self.n_isorp_3c = max(len(v) for v in isorp_slots.values()) if isorp_slots else 0
         n_triplets = len(triplets)
-        # Pack into [n_triplets, ntheta, numy, numx, n_nz]
+        # Pack into [n_triplets, n_isorp_max, ntheta, numy, numx, n_nz]
         # For simplicity, we use float (no splines for 3-center in Fireball, just grid)
-        data_3c = np.zeros((n_triplets, self.ntheta_3c, numy_max, numx_max, n_nz_max), dtype=np.float32)
-        h_grids_3c = np.zeros((n_triplets, 2), dtype=np.float32) # [hx, hy]
+        data_3c = np.zeros((n_triplets, self.n_isorp_3c, self.ntheta_3c, numy_max, numx_max, n_nz_max), dtype=np.float32)
+        h_grids_3c = np.zeros((n_triplets, self.n_isorp_3c, 2), dtype=np.float32) # [hx, hy]
+        dims_3c = np.zeros((n_triplets, self.n_isorp_3c, 2), dtype=np.int32)     # [numx, numy]
         
         for k, v in d3c.items():
             t = (k[0], k[3], k[4], k[5])
             i_triplet = self.species_triplet_map[t]
+            isorp = k[2]
+            try:
+                i_isorp = isorp_slots[t].index(isorp)
+            except ValueError:
+                # Should not happen; keep loud
+                raise RuntimeError(f"Missing isorp slot for {t} isorp={isorp}")
+            self.species_triplet_isorp_map[(k[0], k[3], k[4], k[5], isorp)] = (i_triplet, i_isorp)
             i_theta = k[1] - 1 # itheta=1..5
             
-            data_3c[i_triplet, i_theta, :v['numy'], :v['numx'], :v['num_nonzero']] = v['data']
-            h_grids_3c[i_triplet, 0] = v['xmax'] / (v['numx'] - 1)
-            h_grids_3c[i_triplet, 1] = v['ymax'] / (v['numy'] - 1)
+            data_3c[i_triplet, i_isorp, i_theta, :v['numy'], :v['numx'], :v['num_nonzero']] = v['data']
+            h_grids_3c[i_triplet, i_isorp, 0] = v['xmax'] / (v['numx'] - 1)
+            h_grids_3c[i_triplet, i_isorp, 1] = v['ymax'] / (v['numy'] - 1)
+            dims_3c[i_triplet, i_isorp, 0] = v['numx']
+            dims_3c[i_triplet, i_isorp, 1] = v['numy']
             
         self.d_data_3c = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=data_3c)
         self.d_h_grids_3c = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=h_grids_3c)
+        self.d_dims_3c = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=dims_3c)
         
     def assemble_2c(self, ratoms, neighbors, pair_types):
         """
@@ -167,7 +187,7 @@ class OCL_Hamiltonian:
         cl.enqueue_copy(self.queue, blocks, d_blocks)
         return blocks
 
-    def assemble_3c(self, ratoms, triplets):
+    def assemble_3c(self, ratoms, triplets, isorp=0):
         """
         Runs the assemble_3c kernel.
         ratoms: [natoms, 3]
@@ -186,7 +206,8 @@ class OCL_Hamiltonian:
         self.prg.assemble_3c(self.queue, (n_triplets,), None,
                            np.int32(n_triplets), np.int32(self.n_nz_3c_max),
                            np.int32(self.numx_3c), np.int32(self.numy_3c),
-                           d_ratoms, d_triplets, self.d_data_3c, self.d_h_grids_3c, d_results)
+                           np.int32(self.n_isorp_3c), np.int32(isorp),
+                           d_ratoms, d_triplets, self.d_data_3c, self.d_h_grids_3c, self.d_dims_3c, d_results)
         
         results = np.zeros((n_triplets, self.n_nz_3c_max), dtype=np.float32)
         cl.enqueue_copy(self.queue, results, d_results)
@@ -231,7 +252,7 @@ class OCL_Hamiltonian:
         cl.enqueue_copy(self.queue, blocks, d_out)
         return blocks
 
-    def scanHamPiece3c(self, root, nz1, nz2, nz3, dRj, dRk, applyRotation=True):
+    def scanHamPiece3c(self, root, nz1, nz2, nz3, dRj, dRk, applyRotation=True, isorp=0):
         """Probes a 3-center piece for verification."""
         # Basis 1 at (0,0,0), Basis 2 at dRj, Potential at dRk
         ratoms = np.array([[0,0,0], dRj, dRk], dtype=np.float32)
@@ -240,13 +261,14 @@ class OCL_Hamiltonian:
         type_idx = self.species_triplet_map.get((root, nz1, nz2, nz3))
         if type_idx is None: return None
         triplets[0, 3] = type_idx
+        isorp_idx = self.species_triplet_isorp_map.get((root, nz1, nz2, nz3, isorp), (type_idx, 0))[1]
         
         # Currently assemble_3c only returns hlist (Legendre coeffs sum)
         # and doesn't rotate. Verification should match this or we add rotation.
         # FireCore's scanHamPiece3c returns bcnax (rotated).
         # To match, we need orbital mapping and rotation in OpenCL.
         # For now, let's just return the hlist result.
-        results = self.assemble_3c(ratoms, triplets)
+        results = self.assemble_3c(ratoms, triplets, isorp=isorp_idx)
 
         # Special-case recovery for s-only species (e.g., H-H s-s vna): map hlist[0] to (0,0)
         if self._is_s_only(nz1) and self._is_s_only(nz2):
@@ -256,10 +278,11 @@ class OCL_Hamiltonian:
 
         return results[0]
 
-    def scanHamPiece3c_batch(self, root, nz1, nz2, nz3, dRjs, dRks, applyRotation=True):
+    def scanHamPiece3c_batch(self, root, nz1, nz2, nz3, dRjs, dRks, applyRotation=True, isorp=0):
         """Batch probe of 3-center pieces; one work-item per point."""
         type_idx = self.species_triplet_map.get((root, nz1, nz2, nz3))
         if type_idx is None: return None
+        isorp_idx = self.species_triplet_isorp_map.get((root, nz1, nz2, nz3, isorp), (type_idx, 0))[1]
         dRjs_np = np.ascontiguousarray(dRjs, dtype=np.float32)
         dRks_np = np.ascontiguousarray(dRks, dtype=np.float32)
         npoints = dRjs_np.shape[0]
@@ -270,20 +293,26 @@ class OCL_Hamiltonian:
             self.queue, (npoints,), None,
             np.int32(npoints), np.int32(self.n_nz_3c_max),
             np.int32(self.numx_3c), np.int32(self.numy_3c),
-            np.int32(type_idx),
+            np.int32(self.n_isorp_3c), np.int32(isorp_idx), np.int32(type_idx),
             d_j, d_k,
-            self.d_data_3c, self.d_h_grids_3c, d_out
+            self.d_data_3c, self.d_h_grids_3c, self.d_dims_3c, d_out
         )
         results = np.zeros((npoints, self.n_nz_3c_max), dtype=np.float32)
         cl.enqueue_copy(self.queue, results, d_out)
         return results
 
-    def scanHamPiece3c_raw_batch(self, root, nz1, nz2, nz3, dRjs, dRks):
+    def scanHamPiece3c_raw_batch(self, root, nz1, nz2, nz3, dRjs, dRks, isorp=0):
         """OpenCL analog of firecore_scanHamPiece3c_raw_batch (no rotation/Legendre)."""
         type_idx = self.species_triplet_map.get((root, nz1, nz2, nz3))
         if type_idx is None:
             print(f"[WARN] scanHamPiece3c_raw_batch missing triplet {root} ({nz1},{nz2},{nz3})")
             return None
+        key_is = (root, nz1, nz2, nz3, isorp)
+        if key_is not in self.species_triplet_isorp_map:
+            print(f"[WARN] scanHamPiece3c_raw_batch missing isorp={isorp} for {root} ({nz1},{nz2},{nz3}); using isorp=0")
+            isorp_idx = 0
+        else:
+            _, isorp_idx = self.species_triplet_isorp_map[key_is]
         dRjs_np = np.ascontiguousarray(dRjs, dtype=np.float32)
         dRks_np = np.ascontiguousarray(dRks, dtype=np.float32)
         npoints = dRjs_np.shape[0]
@@ -295,21 +324,29 @@ class OCL_Hamiltonian:
             self.queue, (npoints,), None,
             np.int32(npoints), np.int32(self.n_nz_3c_max),
             np.int32(self.numx_3c), np.int32(self.numy_3c),
+            np.int32(self.n_isorp_3c), np.int32(isorp_idx),
             np.int32(type_idx),
             d_j, d_k,
-            self.d_data_3c, self.d_h_grids_3c, d_out
+            self.d_data_3c, self.d_h_grids_3c, self.d_dims_3c, d_out
         )
         results = np.zeros((npoints, 5, self.n_nz_3c_max), dtype=np.float32)
         cl.enqueue_copy(self.queue, results, d_out)
         return results
 
-    def assemble_full(self, ratoms, species, neighbors):
+    def assemble_full(self, ratoms, species, neighbors, include_T=True, include_Vna=True):
         """
         Assembles full H and S matrices.
         species: list of nuclear charges for each atom [natoms]
-        neighbors: list of (i, j) for 2-center
+        neighbors: list of (i, j) for 2-center. Self edges (i,i) will be inserted if missing
+        include_T/include_Vna: allow selecting components (used by verification scripts)
         """
         n_atoms = len(species)
+        n_pairs = len(neighbors)
+        # Ensure self edges exist for on-site accumulations (vna_atom)
+        neighbor_set = set(neighbors)
+        for a in range(n_atoms):
+            if (a, a) not in neighbor_set:
+                neighbors.append((a, a))
         n_pairs = len(neighbors)
         
         # 1. 2-center components
@@ -336,21 +373,82 @@ class OCL_Hamiltonian:
 
         EQ2 = 14.39975
         S_blocks = run_2c(pairs_S)
-        T_blocks = run_2c(pairs_T)
+        T_blocks = run_2c(pairs_T) if include_T else np.zeros((n_pairs, 4, 4), dtype=np.float32)
         
         # Aggregate all potential Vna 2-center components
         Vna_total = np.zeros((n_pairs, 4, 4), dtype=np.float32)
-        vna_roots = ['vna', 'vna_atom_00', 'vna_ontopl_00', 'vna_ontopr_00']
-        for root in vna_roots:
-            pairs_v = []
+        if include_Vna:
+            # NOTE: Fortran assemble_2c.f90 semantics:
+            # - vna_ontopl (interaction=2) and vna_ontopr (interaction=3) contribute to the (i,j) neighbor block
+            # - vna_atom  (interaction=4) contributes to the *on-site* (i,i) block via neigh_self(iatom)
+            # Our Fdata roots follow file naming; we mirror Fortran by:
+            # - off-diagonal: sum vna_ontopl_00 + vna_ontopr_00
+            # - on-site: add vna_atom_00 from every neighbor j into diagonal block (i,i)
+            #
+            # Old (incorrect) approach (kept for reference): it mixed vna + vna_atom into off-diagonal blocks.
+            # vna_roots = ['vna', 'vna_atom_00', 'vna_ontopl_00', 'vna_ontopr_00']
+            # for root in vna_roots:
+            #     pairs_v = []
+            #     for idx, (i, j) in enumerate(neighbors):
+            #         t = self.species_pair_map.get((root, species[i], species[j]))
+            #         if t is not None:
+            #             pairs_v.append((i, j, t, idx))
+            #     if pairs_v:
+            #         Vna_total += run_2c(pairs_v)
+
+            # Build map from (i,j) to pair-index in the output array
+            pair_index = {ij: idx for idx, ij in enumerate(neighbors)}
+
+            # Off-diagonal (i,j): ontop L + ontop R
+            for root in ('vna_ontopl_00', 'vna_ontopr_00'):
+                pairs_v = []
+                for idx, (i, j) in enumerate(neighbors):
+                    if i == j:   # skip self; Fortran ontop is only for i!=j
+                        continue
+                    t = self.species_pair_map.get((root, species[i], species[j]))
+                    if t is not None:
+                        pairs_v.append((i, j, t, idx))
+                if pairs_v:
+                    Vna_total += run_2c(pairs_v)
+
+            # On-site (i,i): sum over neighbors j of vna_atom_00(i,j) accumulated into the self block (i,i)
+            # Fortran does this via neigh_self(i):
+            #   vna(imu,inu,neigh_self(i),i) += <i|v(j)|i> * EQ2
+            # which means contributions are computed for (i,j) geometry but stored into (i,i) block.
+            root = 'vna_atom_00'
+            pairs_atom_to_self = []
             for idx, (i, j) in enumerate(neighbors):
+                idx_self = pair_index.get((i, i), None)
+                if idx_self is None:
+                    continue
                 t = self.species_pair_map.get((root, species[i], species[j]))
-                if t is not None:
-                    pairs_v.append((i, j, t, idx))
-            if pairs_v:
-                Vna_total += run_2c(pairs_v)
-        
-        Vna_blocks = Vna_total * EQ2
+                if t is None:
+                    continue
+                # Evaluate geometry (i,j) but store into self-block index
+                pairs_atom_to_self.append((i, j, t, idx_self))
+
+            # If neighbor list lacks self blocks, we still need to add vna_atom onto diagonal.
+            # We evaluate each (i,j) atom contribution and add into the (i,i) block manually.
+            for (i, j, t, idx_self) in pairs_atom_to_self:
+                # Single-pair evaluation
+                neigh_arr = np.array([[i, j]], dtype=np.int32)
+                type_arr = np.array([t], dtype=np.int32)
+                res = self.assemble_2c(ratoms, neigh_arr, type_arr)
+                Vna_total[idx_self] += res[0]
+
+            # Previous incomplete on-site handling (kept for reference):
+            # it only added vna_atom_00 evaluated at (i,i), which is NOT what Fortran does.
+            # root = 'vna_atom_00'
+            # pairs_v = []
+            # for idx, (i, j) in enumerate(neighbors):
+            #     if i != j:
+            #         continue
+            #     t = self.species_pair_map.get((root, species[i], species[j]))
+            #     if t is not None:
+            #         pairs_v.append((i, j, t, idx))
+            # if pairs_v:
+            #     Vna_total += run_2c(pairs_v)
+        Vna_blocks = Vna_total * EQ2 if include_Vna else np.zeros((n_pairs, 4, 4), dtype=np.float32)
         H_blocks = T_blocks + Vna_blocks
         
         return H_blocks, S_blocks

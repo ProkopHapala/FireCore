@@ -16,13 +16,15 @@ def compare_matrices(name, fortran_mat, ocl_mat, tol=1e-5):
     diff = np.abs(fortran_mat - ocl_mat)
     max_diff = np.max(diff)
     print(f"Max difference: {max_diff:.2e}")
+    print("Fortran Matrix:")
+    print(fortran_mat)
+    print("PyOpenCL Matrix:")
+    print(ocl_mat)
+    print("Abs Diff:")
+    print(diff)
     
     if max_diff > tol:
         print(f"WARNING: {name} discrepancy exceeds tolerance!")
-        print("Fortran Matrix:")
-        print(fortran_mat)
-        print("PyOpenCL Matrix:")
-        print(ocl_mat)
         return False
     else:
         print(f"SUCCESS: {name} matches.")
@@ -48,10 +50,7 @@ def run_verification():
     ham = ocl(fdata_dir)
     ham.prepare_splines(atomTypes_Z)
     
-    # Define neighbors for H2
-    neighbors = [(0, 1), (1, 0), (0, 0), (1, 1)] # include on-site
-    
-    # Helper to get Fortran H/S
+    # Helper to get Fortran H/S and neighbor list from sparse output
     def get_fortran_HS(ioffs):
         # ioffs: [S, T, Vna, Vnl, Vxc, Vca, Vxc_ca]
         fc.set_options(*ioffs)
@@ -65,18 +64,21 @@ def run_verification():
         
         # Reconstrcut from sparse
         # neigh_j is [natoms, max_neigh]
+        neighbors = []
         for i in range(2):
             for inigh in range(sparse_data.neighn[i]):
                 j = sparse_data.neigh_j[i, inigh] - 1
-                if j < 2:
-                    S[i, j] = sparse_data.s_mat[i, inigh, 0, 0]
-                    H[i, j] = sparse_data.h_mat[i, inigh, 0, 0]
-        return H, S
+                if j < 0 or j >= 2:
+                    continue
+                neighbors.append((i, j))
+                S[i, j] = sparse_data.s_mat[i, inigh, 0, 0]
+                H[i, j] = sparse_data.h_mat[i, inigh, 0, 0]
+        return H, S, neighbors
 
     # --- Test 1: Overlap S ---
     print("\nTesting Overlap S...")
-    H_f, S_f = get_fortran_HS([1, 0, 0, 0, 0, 0, 0])
-    _, S_o_blocks = ham.assemble_full(atomPos, atomTypes_Z, neighbors)
+    H_f, S_f, neighbors = get_fortran_HS([1, 0, 0, 0, 0, 0, 0])
+    _, S_o_blocks = ham.assemble_full(atomPos, atomTypes_Z, neighbors, include_T=False, include_Vna=False)
     S_o = np.zeros((2, 2))
     for idx, (i, j) in enumerate(neighbors):
         S_o[i, j] = S_o_blocks[idx, 0, 0]
@@ -84,9 +86,11 @@ def run_verification():
 
     # --- Test 2: Kinetic T ---
     print("\nTesting Kinetic T...")
-    H_f, S_f = get_fortran_HS([0, 1, 0, 0, 0, 0, 0])
+    H_f, S_f, neighbors = get_fortran_HS([0, 1, 0, 0, 0, 0, 0])
     pairs_T = [(i, j, ham.species_pair_map[('kinetic', 1, 1)]) for i, j in neighbors]
-    T_o_blocks = ham.assemble_2c(atomPos, np.array([p[:2] for p in pairs_T]), np.array([p[2:] for p in pairs_T]))
+    neigh_arr = np.array([p[:2] for p in pairs_T], dtype=np.int32)
+    type_arr = np.array([p[2] for p in pairs_T], dtype=np.int32)
+    T_o_blocks = ham.assemble_2c(atomPos, neigh_arr, type_arr)
     T_o = np.zeros((2, 2))
     for idx, (i, j) in enumerate(neighbors):
         T_o[i, j] = T_o_blocks[idx, 0, 0]
@@ -94,8 +98,8 @@ def run_verification():
 
     # --- Test 3: Vna ---
     print("\nTesting Vna...")
-    H_f, S_f = get_fortran_HS([0, 0, 1, 0, 0, 0, 0])
-    H_o_blocks, _ = ham.assemble_full(atomPos, atomTypes_Z, neighbors)
+    H_f, S_f, neighbors = get_fortran_HS([0, 0, 1, 0, 0, 0, 0])
+    H_o_blocks, _ = ham.assemble_full(atomPos, atomTypes_Z, neighbors, include_T=False, include_Vna=True)
     V_o = np.zeros((2, 2))
     for idx, (i, j) in enumerate(neighbors):
         V_o[i, j] = H_o_blocks[idx, 0, 0]
