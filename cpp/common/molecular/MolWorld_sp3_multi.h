@@ -192,7 +192,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     const char* uploadPopName=0;
 
     bool bMILAN = false;
-    bool bSaveToDatabase=false;
+    bool bSaveToDatabase=true;
 
     MolecularDatabase* database = 0;
     long nStepConvSum = 0;
@@ -315,10 +315,13 @@ virtual void init() override {
         pack_system( i, ffl, true, false, random_init );
         fire[i].bind_params( &fire_setup );
         fire[i].id=i;
+        fire[i].ff=1e300;
+        MDpars[i].w = 0.0f;
     }
     initMultiCPU(nSystems);
     //for(int i=0;i<nSystems; i++){ printMSystem(i); }
     upload( true, false );
+    if( surf_name ) surf2ocl( gridFF.nPBC );
     //bGridFF=false;
     bOcl   =false;
     //bOcl   =true;
@@ -334,7 +337,6 @@ virtual void init() override {
     //iParalel=3;
     //iParalel=iParalelMax;
 
-    if(database)
     if(!database){
         database = new MolecularDatabase();
         database->setDescriptors();
@@ -711,31 +713,32 @@ void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring
         cvf.add( cvfs[i].f ); 
         cvfs[i] = Quat4fZero; 
     }
-    fire.vv=cvf.x;
-    fire.ff=cvf.y;
+    fire.ff=cvf.x;
+    fire.vv=cvf.y;
     fire.vf=cvf.z;
     fire.update_params();
-    // if(bExploring){
-    //     MDpar.x = fire.par->dt_max;
-    //     MDpar.y = 1.0;
-    //     MDpar.z = 1.0;
-    //     MDpar.w = 0.0;
-    // }else{
+    if(bExploring){
+        MDpar.x = fire.par->dt_max;
+        MDpar.y = 1000.0;
+        MDpar.z = 1.0;
+        MDpar.w = 0.0;
+    }else{
         MDpar.x = fire.dt;
         MDpar.y = 1 - fire.damping;
         MDpar.z = fire.cv;
         MDpar.w = fire.cf;
-    //}
+    }
 }
 
 
 bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 ){
+    // printf("MolWorld_sp3_multi::updateMultiExploring()\n");
     int err=0;
     double F2conv = Fconv*Fconv;
     bool bGroupUpdate=false;
     bool bExploring = false;
 
-    int nMaxSteps = 10000/nPerVFs;
+    int nMaxSteps = 100000/nPerVFs;
 
     for(int isys=0; isys<nSystems; isys++){
         int i0v = isys * ocl.nvecs;
@@ -775,7 +778,7 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
             for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0}, {tsc,0.0,0.0} ); }   // Shift driver
         }
         if( gopts[isys].update() ){ // Stop Exploring
-            bGroupUpdate=true;
+            // bGroupUpdate=true;
             nExploring++;
             nStepExplorSum+=gopts[isys].nExplore*nPerVFs;
             //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
@@ -785,9 +788,9 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
         //printf("gopts[%i].bExploring=%i\n", isys, gopts[isys].bExploring );
     }
     //err |= ocl.upload( ocl.ibuff_TDrive, TDrive );
-    //printf("MolWorld_sp3_multi::evalVFs() bGroupUpdate=%i \n", bGroupUpdate );
+    // printf("MolWorld_sp3_multi::updateMultiExploring() bGroupUpdate=%i bGroup=%i\n", bGroupUpdate, bGroups );
     if(bGroupUpdate){
-        //printf("MolWorld_sp3_multi::evalVFs() bGroupUpdate=%i \n", bGroupUpdate );
+        // printf("MolWorld_sp3_multi::evalVFs() bGroupUpdate=%i \n", bGroupUpdate );
         err |= ocl.upload( ocl.ibuff_gforces, gforces );
         err |= ocl.upload( ocl.ibuff_gtorqs , gtorqs  );
     }
@@ -798,7 +801,7 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
 
 double evalVFs( double Fconv=1e-6 ){
     double F2conv = Fconv*Fconv;
-    //printf("MolWorld_sp3_multi::evalVFs()\n");
+    // printf("MolWorld_sp3_multi::evalVFs()\n");
     int err=0;
     //ocl.download( ocl.ibuff_aforces , aforces );
     //ocl.download( ocl.ibuff_avel    , avel    );
@@ -809,18 +812,21 @@ double evalVFs( double Fconv=1e-6 ){
     iSysFMax=-1;
     bool bGroupUpdate=false;
     for(int isys=0; isys<nSystems; isys++){
-        nbEvaluation++;
+        nbEvaluation+=nPerVFs;
         int i0v = isys * ocl.nvecs;
         //evalVF( ocl.nvecs, aforces+i0v, avel   +i0v, fire[isys], MDpars[isys] );
         evalVF_new( ocl.nvecs, cvfs+i0v, fire[isys], MDpars[isys], gopts[isys].bExploring );
         double f2 = fire[isys].ff;
+        //printf("%d: f2=%g, cvfs+i0v=(%g,%g,%g) \n", isys, f2, cvfs[i0v].x, cvfs[i0v].y, cvfs[i0v].z );
         if(f2>F2max){ F2max=f2; iSysFMax=isys; }
         // -------- Global Optimization
         if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){            // Start Exploring
+            nbConverged++;
+            nStepConvSum+=gopts[isys].istep*nPerVFs;
             int i0v = isys * ocl.nvecs;
             unpack( ffls[isys].nvecs,  ffls[isys].apos, atoms+i0v);
             
-            if(bMILAN){
+            if(bSaveToDatabase && database){
                 int sameMember = database->addIfNewDescriptor(&ffls[isys]);
                 if(sameMember==-1){
                     std::vector<double> theta;
@@ -839,8 +845,8 @@ double evalVFs( double Fconv=1e-6 ){
             }
             
             // //printf( "evalVFs() iSys=%i CONVERGED |F|=%g \n", isys, sqrt(f2) );
-            // gopts[isys].startExploring();
-            // bGroupUpdate=true;
+            gopts[isys].startExploring();
+//             bGroupUpdate=true;
             // //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Start Exploring \n", isys );
             // //for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0} ); }   // Shift driver
             // for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, {tsc,0.0,0.0} ); }   // group rotate driver
@@ -850,21 +856,21 @@ double evalVFs( double Fconv=1e-6 ){
         //     //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
         //     for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, Vec3fZero ); }
         // };
-        // if( gopts[isys].bExploring ){
-        //     TDrive[isys].x = 1000;  // Temperature [K]
-        //     TDrive[isys].y = 0.1;  // gamma_damp
-        //     TDrive[isys].z = 0;    // ?
-        //     TDrive[isys].w = randf(-1.0,1.0); 
-        // }else{
-        //     TDrive[isys].y = -1.0; // gamma_damp
-        // }
-        //printf( "evalVFs()[iSys=%i]  bExploring=%i (%i/%i)  |F|=%g \n", isys, gopts[isys].bExploring,   gopts[isys].istep, gopts[isys].nExplore,  sqrt(f2) );
-        //printf( "evalF2[sys=%i] |f|=%g MDpars(dt=%g,damp=%g,cv=%g,cf=%g)\n", isys, sqrt(f2), MDpars[isys].x, MDpars[isys].y, MDpars[isys].z, MDpars[isys].w );
+        if( gopts[isys].bExploring ){
+            TDrive[isys].x = go.T_target;  // Temperature [K]
+            TDrive[isys].y = go.gamma_damp;  // gamma_damp
+            TDrive[isys].z = 0;    // ?
+            TDrive[isys].w = randf(-1.0,1.0); 
+        }else{
+            TDrive[isys].y = -1.0; // gamma_damp
+        }
+        // printf( "evalVFs()[iSys=%i]  bExploring=%i (%i/%i)  |F|=%g \n", isys, gopts[isys].bExploring,   gopts[isys].istep, gopts[isys].nExplore,  sqrt(f2) );
+        // printf( "evalF2[sys=%i] |f|=%g MDpars(dt=%g,damp=%g,cv=%g,cf=%g)\n", isys, sqrt(f2), MDpars[isys].x, MDpars[isys].y, MDpars[isys].z, MDpars[isys].w );
         //F2max = fmax( F2max, fire[isys].ff );
     }
     //printf( "MDpars{%g,%g,%g,%g}\n", MDpars[0].x,MDpars[0].y,MDpars[0].z,MDpars[0].w );
     err |= ocl.upload( ocl.ibuff_MDpars, MDpars );
-    // err |= ocl.upload( ocl.ibuff_TDrive, TDrive );
+    err |= ocl.upload( ocl.ibuff_TDrive, TDrive );
     err |= ocl.upload( ocl.ibuff_cvf   , cvfs   );
     // //printf("MolWorld_sp3_multi::evalVFs() bGroupUpdate=%i \n", bGroupUpdate );
     // if(bGroupUpdate){
@@ -1594,11 +1600,22 @@ int debug_eval(){
     }
     exit(0);
 }
-
+bool initial = true;
 int run_ocl_opt( int niter, double Fconv=1e-6 ){ 
     //printf("MolWorld_sp3_multi::run_ocl_opt() niter=%i bGroups=%i ocl.nGroupTot=%i \n", niter, bGroups, ocl.nGroupTot );
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
     //debug_eval(); return 0;
+
+    if(initial){
+        for(int isys=0; isys<nSystems; isys++){
+            TDrive[isys].x = go.T_target;  // Temperature [K]
+            TDrive[isys].y = go.gamma_damp;  // gamma_damp
+            TDrive[isys].z = 0;    // ?
+            TDrive[isys].w = randf(-1.0,1.0); // ?
+            gopts[isys].bExploring = true;
+        }
+        initial=false;
+    }
 
     double F2conv = Fconv*Fconv;
     picked2GPU( ipicked,  1.0 );
@@ -1614,7 +1631,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     int niterdone=0;
     double F2=0;
 
-    bool dovdW=true;
+
     //bool dovdW=false;
     ocl.bSubtractVdW=dovdW;
 
@@ -1635,7 +1652,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         }
 
         if(bAnimManipulation){ animate(); }
-        if(bMILAN){
+        if(bSaveToDatabase){
             bExplore = updateMultiExploring( Fconv );
         }
         bool bGroupDrive = bGroups && bExplore;
@@ -2111,6 +2128,7 @@ virtual char* getStatusString( char* s, int nmax ) override {
     return s;
 }
 bool first=true;
+bool written_in_this_frame=false;
 uint64_t zeroT=0;
 virtual void MDloop( int nIter, double Ftol = -1 ) override {
     if(iParalel<-100){ iParalel=iParalel_default; };
@@ -2118,7 +2136,21 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
     if(Ftol<0)  Ftol = Ftol_default;
     //printf( "MolWorld_sp3_ocl::MDloop(%i) bGridFF %i bOcl %i bMMFF %i iParalel=%i \n", nIter, bGridFF, bOcl, bMMFF, iParalel );
     //bMMFF=false;
-    if(first){ zeroT = getCPUticks(); first=false; }
+    if(first){ 
+        zeroT = getCPUticks(); 
+        first=false; 
+        nbConverged=0;
+        nbNonConverged=0;
+        nbEvaluation=0;
+        nExploring=0;
+        nStepConvSum=0;
+        nStepNonConvSum=0;
+        nStepExplorSum=0;
+
+        for(int i= 0; i<nSystems; i++){
+            fire[i].ff = 1e+300;
+        }
+    }
 
     // if(bAnimManipulation){
     //     float dir_sign = ((nloop/10000)%2)*2 - 1 ; //printf("AnimManipulation dir_sign=%f \n", dir_sign);
@@ -2187,18 +2219,53 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
     icurIter+=nitrdione;
     bChargeUpdated=false;
 
-    if( bMILAN && bSaveToDatabase  ){ // Milan
-        std::ofstream file("minima.dat", std::ios::app); 
-        if(icurIter%1000 < 200){
+
+    if( verbosity>=0 && bSaveToDatabase){ // Milan
+        FILE* file = fopen("minima.dat", "a"); 
+        if((icurIter%1000==0 || icurIter%1000 < 200) && !written_in_this_frame){
+            written_in_this_frame=true;
             if(icurIter<1000) {
-                printf("%15s %20s %20s %20s %20s %20s %20s %20s %20s %20s\n", "Nb Iteration", "Totally", "Unique converged", "Time", "nbConverged", "nbEvaluation", "nStepConvAvg", "nStepNonConvAvg", "nStepExploringAvg", "total evaluation");
-                file << "Iterations" << " " << "Totally" << " " << "Unique" << " " << "Time"  << "\n";
+                // Print headers to both console and file
+                const char* header_fmt = "%15s %20s %20s %20s %20s %20s %20s %20s %20s %20s\n";
+                printf(header_fmt, 
+                    "[1]Nb Iteration", "[2]Totally (conv+nonconv)", "[3]Unique conv", "[4]Time",
+                    "[5]Totally (conv)", "[6]nbEvaluation", "[7]nStepConvAvg", "[8]nStepNonConvAvg",
+                    "[9]nStepExploringAvg", "[10]total evaluation");
+                fprintf(file, header_fmt,
+                    "[1]Nb Iteration", "[2]Totally (conv+nonconv)", "[3]Unique conv", "[4]Time",
+                    "[5]Totally (conv)", "[6]nbEvaluation", "[7]nStepConvAvg", "[8]nStepNonConvAvg",
+                    "[9]nStepExploringAvg", "[10]total evaluation");
             }
-            // /((double)(nbConverged+nbNonConverged))"nStepSaveAvg",
-            printf("%15d %20d %20d %20g %20d %20d %20g %20g %20g %20d \n", icurIter, database->totalEntries, database->getNMembers(), (getCPUticks()-zeroT)*tick2second, nbConverged, nbEvaluation*nPerVFs, (nStepNonConvSum+nStepConvSum)/(double)(nbConverged+nbNonConverged), nStepNonConvSum/((double)nbNonConverged), nStepExplorSum/((double)nExploring), (nStepConvSum+nStepNonConvSum+nStepExplorSum) );
-            file << icurIter << " " << database->totalEntries << " " << database->getNMembers() << " " <<  (getCPUticks()-zeroT)*tick2second << "\n";
+            
+            // Print data to both console and file
+            const char* data_fmt = "%15d %20d %20d %20g %20d %20d %20g %20g %20g %20d\n";
+            printf(data_fmt, 
+                icurIter, database->totalEntries,
+                std::accumulate(database->convergedStructure.begin(), database->convergedStructure.end(), 0),
+                (getCPUticks()-zeroT)*tick2second,
+                nbConverged, nbEvaluation,
+                (nStepNonConvSum+nStepConvSum)/(double)(nbConverged+nbNonConverged),
+                nStepNonConvSum/((double)nbNonConverged),
+                nStepExplorSum/((double)nExploring),
+                (nStepConvSum+nStepNonConvSum+nStepExplorSum));
+            fprintf(file, data_fmt,
+                icurIter, database->totalEntries,
+                std::accumulate(database->convergedStructure.begin(), database->convergedStructure.end(), 0),
+                (getCPUticks()-zeroT)*tick2second,
+                nbConverged, nbEvaluation,
+                (nStepNonConvSum+nStepConvSum)/(double)(nbConverged+nbNonConverged),
+                nStepNonConvSum/((double)nbNonConverged),
+                nStepExplorSum/((double)nExploring),
+                (nStepConvSum+nStepNonConvSum+nStepExplorSum));
+            if((getCPUticks()-zeroT)*tick2second > 9.5){
+                fclose(file);
+                exit(0);
+            }
         }
-        file.close();  // zavření souboru
+        else{
+            written_in_this_frame=false;
+        }
+        fclose(file);
     }
 }
 

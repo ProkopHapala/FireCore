@@ -202,10 +202,10 @@ class MolWorld_sp3 : public SolverInterface { public:
 	bool bNonBonded        = true;  // 2
     bool bGroups           = false; // 3
     bool bConstrains       = false; // 4
-	bool bSurfAtoms        = false; // 5
-    bool bGridFF           = false; // 6
+    bool bSurfAtoms        = false; // 5
+    bool bGridFF           = true;  // 6
     bool bTricubic         = false; // 7
-	bool bPlaneSurfForce   = false; // 7
+    bool bPlaneSurfForce   = false; // 7
     bool bMMFF             = true;  // 8
     bool bUFF              = false; // 9
     // TBD b141, bSimple, bConj and bCumulene are relevant only when you build up the force field, not sure they sould be defined here globally...
@@ -226,6 +226,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bCheckInit        = false; // 23
     bool bBondInitialized  = false; // 24
     bool bHardConstrs      = false; // 25
+    bool dovdW             = true;
+    bool bSaveToDatabase   = false;
 
 
     Vec3d anim_vec;

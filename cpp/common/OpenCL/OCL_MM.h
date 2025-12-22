@@ -899,7 +899,7 @@ class OCL_MM: public OCLsystem { public:
         // const cl_Mat3     lvec,       // 8
         // const float4      pos0,       // 9
         // const float4      GFFParams   // 10
-        exit(0);
+        //exit(0);
     }
 
     void surf2ocl( const GridShape& grid, Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0 ){

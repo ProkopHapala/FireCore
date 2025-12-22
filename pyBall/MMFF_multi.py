@@ -273,8 +273,29 @@ lib.setVerbosity.restype   =  None
 def setVerbosity( verbosity=1, idebug=0 ):
     return lib.setVerbosity( verbosity, idebug )
 
-#  void init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF=false, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
-lib.init.argtypes  = [ c_int, c_char_p, c_char_p, c_char_p, c_bool, c_bool, array1i, c_double, c_char_p, c_char_p, c_char_p, c_char_p] 
+#  void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes, double T, double gamma, int nExplore, int nRelax, double pos_kick, double vel_kick ){
+lib.init.argtypes = [
+    c_int,        # nSys
+    c_char_p,     # xyz_name
+    c_char_p,     # surf_name
+    c_char_p,     # smile_name
+    c_bool,       # bMMFF
+    c_bool,       # bEpairs
+    array1i,      # nPBC
+    array1i,      # grid_nPBC
+    c_double,     # gridStep
+    c_char_p,     # sElementTypes
+    c_char_p,     # sAtomTypes
+    c_char_p,     # sBondTypes
+    c_char_p,     # sAngleTypes
+    c_double,     # T
+    c_double,     # gamma
+    c_int,        # nExplore
+    c_int,        # nRelax
+    c_double,     # pos_kick
+    c_double,      # vel_kick
+    c_int         # GridFF
+]
 lib.init.restype   =  c_void_p
 def init(
         nSys_=10,
@@ -282,16 +303,21 @@ def init(
         surf_name =None, 
         smile_name=None, 
         sElementTypes = "data/ElementTypes.dat",
-        sAtomTypes = "data/AtomTypes.dat", 
-        sBondTypes = "data/BondTypes.dat", 
+        sAtomTypes = "data/AtomTypes.dat",
+        sBondTypes = "data/BondTypes.dat",
         sAngleTypes= "data/AngleTypes.dat",
-        bMMFF=True, bEpairs=False, nPBC=(1,1,0), gridStep=0.1 
+        bMMFF=True, bEpairs=False, nPBC=(1,1,0), gridnPBC=(1,1,0), gridStep=0.1,
+        T = -1, gamma = -1,
+        nExplore=0, nRelax=0, pos_kick=0.0, vel_kick=0.0,
+        GridFF=5
     ):
     global glob_bMMFF, nSys
     nSys=nSys_
     glob_bMMFF = bMMFF
-    nPBC=np.array(nPBC,dtype=np.int32)
-    return lib.init( nSys, cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, nPBC, gridStep, cstr(sElementTypes),  cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes) )
+    # Convert integer tuples to numpy arrays for C compatibility
+    nPBC = np.array(nPBC, dtype=np.int32)
+    gridnPBC = np.array(gridnPBC, dtype=np.int32)
+    return lib.init( nSys, cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, nPBC, gridnPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), T, gamma, nExplore, nRelax, pos_kick, vel_kick, GridFF )
 
 def tryInit():
     if not isInitialized:
@@ -305,11 +331,17 @@ def insertSMILES(s ):
     s = s.encode('utf8')
     return lib.insertSMILES(s)
 
-#  void setSwitches( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants )
-lib.setSwitches.argtypes  = [c_int, c_int, c_int , c_int, c_int, c_int, c_int] 
-lib.setSwitches.restype   =  None
-def setSwitches(doAngles=0, doPiPiT=0, doPiSigma=0, doPiPiI=0, doBonded=0, PBC=0, CheckInvariants=0):
-    return lib.setSwitches(doAngles, doPiPiT, doPiSigma, doPiPiI, doBonded, PBC, CheckInvariants)
+# #  void setSwitches( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants )
+# lib.setSwitches.argtypes  = [c_int, c_int, c_int , c_int, c_int, c_int, c_int] 
+# lib.setSwitches.restype   =  None
+# def setSwitches(doAngles=0, doPiPiT=0, doPiSigma=0, doPiPiI=0, doBonded=0, PBC=0, CheckInvariants=0):
+#     return lib.setSwitches(doAngles, doPiPiT, doPiSigma, doPiPiI, doBonded, PBC, CheckInvariants)
+
+#  void setSwitches_multi( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants )
+lib.setSwitches_multi.argtypes  = [c_int, c_int, c_int , c_int, c_int, c_int, c_int, c_int, c_int] 
+lib.setSwitches_multi.restype   =  None
+def setSwitches(doAngles=0, doPiPiT=0, doPiSigma=0, doPiPiI=0, doBonded=0, PBC=0, CheckInvariants=0, dovdW=0, bSaveToDatabase=0):
+    return lib.setSwitches_multi(doAngles, doPiPiT, doPiSigma, doPiPiI, doBonded, PBC, CheckInvariants, dovdW, bSaveToDatabase)
 
 #  bool checkInvariants( double maxVcog, double maxFcog, double maxTg )
 lib.checkInvariants.argtypes  = [c_double, c_double, c_double] 
@@ -369,6 +401,12 @@ lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p, 
 lib. run.restype   =  c_int
 def  run(nstepMax=1000, dt=-1, Fconv=1e-3, ialg=2, outE=None, outF=None, iParalel=1 ):
     return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p), iParalel )
+
+# void MDloop( int nIter, double Ftol = -1, int iParalel = 3 )
+lib.MDloop.argtypes  = [c_int, c_double, c_int, c_int ] 
+lib.MDloop.restype   =  None
+def MDloop( perframe=100, Ftol=-1, iParalel=3,  perVF=100 ):
+    return lib.MDloop( perframe, Ftol, iParalel, perVF )
 
 # ========= GPU Replicas management
 
