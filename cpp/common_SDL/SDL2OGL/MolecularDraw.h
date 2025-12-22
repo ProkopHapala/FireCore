@@ -230,6 +230,15 @@ int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double 
 
 int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d PLQ, double sclr, bool bErrNan=false ){
     printf( "renderSubstrate_new() gff.mode=%i @gff.Bspline_PLQ=%li \n", gff.mode, (long)gff.Bspline_PLQ );
+    // Safety check: if Bspline_PLQ is null and mode requires it, return early to avoid crash
+    if( gff.mode == GridFFmod::BsplineDouble && gff.Bspline_PLQ == nullptr ){
+        printf( "WARNING: renderSubstrate_new() Bspline_PLQ is null, cannot render. Generate grid data first.\n" );
+        return 0;
+    }
+    if( gff.mode == GridFFmod::BsplineFloat && gff.Bspline_PLQf == nullptr ){
+        printf( "WARNING: renderSubstrate_new() Bspline_PLQf is null, cannot render. Generate grid data first.\n" );
+        return 0;
+    }
     Quat4d PL{PLQ.x,PLQ.y,0.0,0.0};
     Quat4d Q {0.0,0.0,PLQ.y,0.0};
     Vec3i gn = gff.grid.n;
