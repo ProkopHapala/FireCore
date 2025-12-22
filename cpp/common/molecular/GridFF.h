@@ -354,7 +354,10 @@ inline float addForce_HHermit( const Vec3d& p, const Quat4d& PLQ, Vec3d& f, bool
 __attribute__((hot))  
 inline Quat4d getForce_Bspline( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) const {
     //printf( "GridFF::getForce_Bspline() p(%8.4f,%8.4f,%8.4f) PLQH(%8.4f,%8.4f,%8.4f,%8.4f)\n", p.x,p.y,p.z, PLQH.x,PLQH.y,PLQH.z,PLQH.w );
-    
+    if( Bspline_PLQ == nullptr ){
+        printf( "ERROR: GridFF::getForce_Bspline() Bspline_PLQ is null! Grid data not loaded.\n" );
+        return Quat4dZero;
+    }
     Vec3d t;
     //p.sub(shift0);
     //Vec3d adjust {0.0,0.0,1.5};

@@ -327,7 +327,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         }
         if(surf_name ){
 // PN - hard-coded change            
-//            bGridFF = true;
+           bGridFF = true;
             //double z0 = 0.0;   // This is how we have it in python API i.e. MMFF.py
             double z0 = NAN;   // This makes inconsistency with python API i.e. MMFF.py
             loadSurf( surf_name, bGridFF, idebug>0, z0 );
