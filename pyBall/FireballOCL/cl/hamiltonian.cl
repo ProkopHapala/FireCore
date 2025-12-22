@@ -264,6 +264,111 @@ typedef struct {
     float4 a, b, c, d; // Spline coefficients for one point
 } SplineCoeffs;
 
+// ---------------------------
+// PP rotation utilities (epsilon + twister p-matrix)
+// ---------------------------
+
+inline void epsilon_fb(float3 r1, float3 r2, __private float spe[3][3]){
+    // Fortran epsilon(R1,R2,spe)
+    // Here: r1 = r2 (absolute position of atom2), r2 = sighat (bond direction)
+    float r1mag = length(r1);
+    float r2mag = length(r2);
+    // unit matrix if r2==0
+    if(r2mag < 1e-4f){
+        spe[0][0]=1.0f; spe[0][1]=0.0f; spe[0][2]=0.0f;
+        spe[1][0]=0.0f; spe[1][1]=1.0f; spe[1][2]=0.0f;
+        spe[2][0]=0.0f; spe[2][1]=0.0f; spe[2][2]=1.0f;
+        return;
+    }
+
+    float3 zphat = r2 / r2mag;
+    float3 yphat;
+    float ypmag;
+
+    // yphat = zphat x r1hat (cross with r1hat)
+    if(r1mag > 1e-4f){
+        float3 r1hat = r1 / r1mag;
+        yphat = cross(zphat, r1hat);
+        ypmag = length(yphat);
+        if(ypmag > 1e-6f){
+            yphat /= ypmag;
+            float3 xphat = cross(yphat, zphat);
+            // spe(ix,1)=xphat(ix), spe(ix,2)=yphat(ix), spe(ix,3)=zphat(ix) (Fortran 1-based)
+            spe[0][0]=xphat.x; spe[0][1]=yphat.x; spe[0][2]=zphat.x;
+            spe[1][0]=xphat.y; spe[1][1]=yphat.y; spe[1][2]=zphat.y;
+            spe[2][0]=xphat.z; spe[2][1]=yphat.z; spe[2][2]=zphat.z;
+            return;
+        }
+    }
+
+    // fallback if colinear
+    if(fabs(zphat.x) > 1e-4f){
+        yphat = (float3)(-(zphat.y+zphat.z)/zphat.x, 1.0f, 1.0f);
+    }else if(fabs(zphat.y) > 1e-4f){
+        yphat = (float3)(1.0f, -(zphat.x+zphat.z)/zphat.y, 1.0f);
+    }else{
+        yphat = (float3)(1.0f, 1.0f, -(zphat.x+zphat.y)/zphat.z);
+    }
+    ypmag = length(yphat);
+    yphat /= ypmag;
+    float3 xphat = cross(yphat, zphat);
+    spe[0][0]=xphat.x; spe[0][1]=yphat.x; spe[0][2]=zphat.x;
+    spe[1][0]=xphat.y; spe[1][1]=yphat.y; spe[1][2]=zphat.y;
+    spe[2][0]=xphat.z; spe[2][1]=yphat.z; spe[2][2]=zphat.z;
+}
+
+inline void twister_pmat(const __private float eps[3][3], __private float pmat[3][3]){
+    // Fortran twister: pmat - y,z,x ordering
+    pmat[0][0] = eps[1][1];
+    pmat[0][1] = eps[1][2];
+    pmat[0][2] = eps[1][0];
+
+    pmat[1][0] = eps[2][1];
+    pmat[1][1] = eps[2][2];
+    pmat[1][2] = eps[2][0];
+
+    pmat[2][0] = eps[0][1];
+    pmat[2][1] = eps[0][2];
+    pmat[2][2] = eps[0][0];
+}
+
+inline void rotatePP_sp(
+    const __private float pmat[3][3],
+    const __private float sm[4][4],
+    __private float sx[4][4]
+){
+    // s+p only, Ortega order (s,py,pz,px)
+    // L = diag(1, pmat) ; R = diag(1, pmat)
+    // sx = L * sm * R^T
+    float L[4][4];
+    float R[4][4];
+    for(int i=0;i<4;i++){ for(int j=0;j<4;j++){ L[i][j]=0.0f; R[i][j]=0.0f; } }
+    L[0][0]=1.0f; R[0][0]=1.0f;
+    for(int i=0;i<3;i++){
+        for(int j=0;j<3;j++){
+            L[1+i][1+j] = pmat[i][j];
+            R[1+i][1+j] = pmat[i][j];
+        }
+    }
+    // temp = L*sm
+    float tmp[4][4];
+    for(int i=0;i<4;i++){
+        for(int j=0;j<4;j++){
+            float s=0.0f;
+            for(int k=0;k<4;k++) s += L[i][k]*sm[k][j];
+            tmp[i][j]=s;
+        }
+    }
+    // sx = tmp * R^T
+    for(int i=0;i<4;i++){
+        for(int j=0;j<4;j++){
+            float s=0.0f;
+            for(int k=0;k<4;k++) s += tmp[i][k]*R[j][k];
+            sx[i][j]=s;
+        }
+    }
+}
+
 // Batch probe of 2c blocks; one work-item per point (for verification / scanning)
 __kernel void scan_2c_points(
     const int npoints,
@@ -310,8 +415,8 @@ __kernel void scan_2c_points(
     float pp_sig = (n_nonzero_max > 4) ? comps[4] : 0.0f;
 
     float ezx = ez.x;
-    float ezy = -ez.y; // match Fortran sign convention (py)
-    float ezz = -ez.z; // match Fortran sign convention (pz)
+    float ezy = -ez.y;
+    float ezz = -ez.z;
     __global float* b = &blocks[idx * 16];
 
     b[0*4 + 0] = ss_sig;
@@ -337,6 +442,83 @@ __kernel void scan_2c_points(
     b[3*4 + 3] = diff * ezx * ezx + pp_pi;
 }
 
+// PP projector overlap (sVNL) assembly: Fortran doscentrosPP + recover_PP + rotatePP (s+p only)
+__kernel void assemble_pp(
+    const int n_pairs,
+    const int n_nonzero_max,
+    const int numz,
+    const __global float3* ratoms,
+    const __global int2* neighbors,
+    const __global float* splines,
+    const __global int* pair_types,
+    const __global float* h_grids,
+    const __global short* muPP_map,   // [n_species_pairs, n_nonzero_max] 1-based indices
+    const __global short* nuPP_map,   // [n_species_pairs, n_nonzero_max] 1-based indices
+    __global float* blocks            // [n_pairs, 4, 4]
+) {
+    int i_pair = get_global_id(0);
+    if (i_pair >= n_pairs) return;
+
+    // Safety: this kernel currently assumes n_nonzero_max <= 16
+    if (n_nonzero_max > 16) return;
+
+    int2 ij = neighbors[i_pair];
+    float3 r_i = ratoms[ij.x];
+    float3 r_j = ratoms[ij.y];
+    float3 dR = r_j - r_i;
+    float r = length(dR);
+    float3 ez = (r > 1e-10f) ? dR / r : (float3)(0.0f,0.0f,1.0f);
+    float3 sighat = ez;
+
+    int spec_pair = pair_types[i_pair];
+    float h_grid = h_grids[spec_pair];
+    int i_z = (int)(r / h_grid);
+    if (i_z < 0) i_z = 0;
+    if (i_z >= numz - 1) i_z = numz - 2;
+    float dr = r - i_z * h_grid;
+
+    int pair_stride = numz * n_nonzero_max * 4;
+    int z_stride = n_nonzero_max * 4;
+
+    // Interpolate pplist(index)
+    float vals[16];
+    for (int i_nz = 0; i_nz < n_nonzero_max; i_nz++) {
+        int base = spec_pair * pair_stride + i_z * z_stride + i_nz * 4;
+        vals[i_nz] = splines[base + 0] + dr*(splines[base + 1] + dr*(splines[base + 2] + dr*splines[base + 3]));
+    }
+
+    // recover_PP into sm (molecular)
+    float sm[4][4];
+    for(int a=0;a<4;a++){ for(int b=0;b<4;b++){ sm[a][b]=0.0f; } }
+    int mbase = spec_pair * n_nonzero_max;
+    for (int idx = 0; idx < n_nonzero_max; idx++) {
+        short imu1 = muPP_map[mbase + idx];
+        short inu1 = nuPP_map[mbase + idx];
+        if(imu1 <= 0 || inu1 <= 0) continue;
+        int imu = (int)imu1 - 1;
+        int inu = (int)inu1 - 1;
+        if(imu < 4 && inu < 4) sm[imu][inu] = vals[idx];
+    }
+
+    // rotatePP (s+p)
+    // Fortran assemble_sVNL uses epsilon(r2, sighat, eps) with r2 = absolute neighbor position
+    float eps[3][3];
+    epsilon_fb(r_j, sighat, eps);
+    float pmat[3][3];
+    twister_pmat(eps, pmat);
+    float sx[4][4];
+    rotatePP_sp(pmat, sm, sx);
+
+    __global float* b = &blocks[i_pair * 16];
+    for(int a=0;a<4;a++){
+        for(int c=0;c<4;c++){
+            // Match assemble_2c convention: store as (inu,imu)
+            // so that Python's dense reconstruction (which transposes blocks) works consistently.
+            b[c*4 + a] = sx[a][c];
+        }
+    }
+}
+
 // Batch probe of 2c blocks; one work-item per pair (for assembly)
 __kernel void assemble_2c(
     const int n_pairs,
@@ -347,6 +529,7 @@ __kernel void assemble_2c(
     const __global float* splines,  // [n_species_pairs, numz, n_nonzero_max, 4]
     const __global int* pair_types, // [n_pairs] species pair index
     const __global float* h_grids,  // [n_species_pairs]
+    const __global int* is_vna_pair, // [n_species_pairs] 1 if Vna pair
     __global float* blocks          // [n_pairs, 4, 4] block-sparse matrix
 ) {
     int i_pair = get_global_id(0);
@@ -386,20 +569,51 @@ __kernel void assemble_2c(
         comps[i_nz] = splines[base + 0] + dr*(splines[base + 1] + dr*(splines[base + 2] + dr*splines[base + 3]));
     }
     
+    int is_vna = is_vna_pair[spec_pair];
+    
     // Map components to local matrix (s, py, pz, px order)
     // 1: ss_sig, 2: sp_sig, 3: ps_sig, 4: pp_pi, 5: pp_sig, 6: pp_pi
     float ss_sig = comps[0];
-    float sp_sig = (n_nonzero_max > 1) ? comps[1] : 0.0f;
+    float sp_sig = comps[1];
     float ps_sig = (n_nonzero_max > 2) ? comps[2] : 0.0f;
     float pp_pi  = (n_nonzero_max > 3) ? comps[3] : 0.0f;
     float pp_sig = (n_nonzero_max > 4) ? comps[4] : 0.0f;
+
+    // Fortran vna_atom path (interaction=4) uses epsilon(r2, sighat, eps) with r2=absolute neighbor position.
+    // That makes the x/y axes depend on absolute r_j, not only on dR. This matters for sign/parity.
+    // We implement that strictly for vna_atom pairs (flagged in is_vna_pair buffer).
+    if(is_vna != 0){
+        // local (bond-frame) matrix sm in Ortega order (s,py,pz,px) where pz is along bond
+        float sm[4][4];
+        for(int a=0;a<4;a++){ for(int c=0;c<4;c++){ sm[a][c]=0.0f; } }
+        sm[0][0] = ss_sig;
+        sm[0][2] = sp_sig;
+        sm[2][0] = ps_sig;
+        sm[1][1] = pp_pi;
+        sm[2][2] = pp_sig;
+        sm[3][3] = pp_pi;
+
+        float eps[3][3];
+        epsilon_fb(r_j, ez, eps);
+        float pmat[3][3];
+        twister_pmat(eps, pmat);
+        float sx[4][4];
+        rotatePP_sp(pmat, sm, sx);
+
+        __global float* b = &blocks[i_pair * 16];
+        for(int a=0;a<4;a++){
+            for(int c=0;c<4;c++){
+                b[a*4 + c] = sx[a][c];
+            }
+        }
+        return;
+    }
     
     // Rotation assembly (Slater-Koster)
     // Orbital indices: 0:s, 1:py, 2:pz, 3:px
-    // NOTE: Fortran reference uses opposite sign convention for pz; flip ez.z to match.
-    float ezx = ez.x;
-    float ezy = -ez.y; // DEBUG: align py sign with Fortran epsilon convention
-    float ezz = -ez.z; // DEBUG: match Fortran pz sign
+    float ezx = -ez.x;
+    float ezy = -ez.y;
+    float ezz = -ez.z;
     __global float* b = &blocks[i_pair * 16];
     
     // s-s

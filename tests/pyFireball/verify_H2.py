@@ -11,10 +11,11 @@ from pyBall.FireballOCL import OCL_Hamiltonian as ocl
 # Set print options to show full matrices
 np.set_printoptions(precision=6, suppress=True, linewidth=np.inf)
 
-def compare_matrices(name, fortran_mat, ocl_mat, tol=1e-5):
+def compare_matrices(name, fortran_mat, ocl_mat, tol=1e-5, require_nonzero=False):
     print(f"\n--- Comparing {name} ---")
     diff = np.abs(fortran_mat - ocl_mat)
     max_diff = np.max(diff)
+    max_val = max(np.max(np.abs(fortran_mat)), np.max(np.abs(ocl_mat)))
     print(f"Max difference: {max_diff:.2e}")
     print("Fortran Matrix:")
     print(fortran_mat)
@@ -23,12 +24,14 @@ def compare_matrices(name, fortran_mat, ocl_mat, tol=1e-5):
     print("Abs Diff:")
     print(diff)
     
+    if require_nonzero and max_val < tol:
+        print(f"WARNING: {name} is (near) zero for both; treating as failure.")
+        return False
     if max_diff > tol:
         print(f"WARNING: {name} discrepancy exceeds tolerance!")
         return False
-    else:
-        print(f"SUCCESS: {name} matches.")
-        return True
+    print(f"SUCCESS: {name} matches.")
+    return True
 
 def run_verification():
     # 1. Setup H2 molecule
@@ -106,11 +109,23 @@ def run_verification():
     
     res_Vna = compare_matrices("Vna", H_f, V_o)
 
+    # --- Test 4: Vnl ---
+    print("\nTesting Vnl...")
+    H_f, S_f, neighbors = get_fortran_HS([0, 0, 0, 1, 0, 0, 0])
+    H_o_blocks, _ = ham.assemble_full(atomPos, atomTypes_Z, neighbors, include_T=False, include_Vna=False, include_Vnl=True)
+    Vnl_o = np.zeros((2, 2))
+    for idx, (i, j) in enumerate(neighbors):
+        Vnl_o[i, j] = H_o_blocks[idx, 0, 0]
+    # Only require nonzero if the Fortran reference is nonzero. For H2/H PP, Vnl may legitimately be zero.
+    require_nz = np.max(np.abs(H_f)) > 1e-5
+    res_Vnl = compare_matrices("Vnl", H_f, Vnl_o, require_nonzero=require_nz)
+
     print("\n" + "="*40)
     print("VERIFICATION SUMMARY")
     print(f"Overlap S: {'PASSED' if res_S else 'FAILED'}")
     print(f"Kinetic T: {'PASSED' if res_T else 'FAILED'}")
     print(f"Vna:       {'PASSED' if res_Vna else 'FAILED'}")
+    print(f"Vnl:       {'PASSED' if res_Vnl else 'FAILED'}")
     print("="*40)
 
 if __name__ == "__main__":

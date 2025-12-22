@@ -45,6 +45,16 @@ class OCL_Hamiltonian:
     def prepare_splines(self, species_nz):
         """Prepares spline data for GPU."""
         d2c, _ = self.parser.load_species_data(species_nz)
+
+        # Cache PP coefficients for Vnl contraction (per-species)
+        # Fortran: cl_value(in2, cl) loads cl_PP(:,in2) used in Vnl contraction.
+        # In the .dat header for interaction=5 (vnl.*.dat) these are stored as cl_pseudo.
+        self.cl_pseudo = getattr(self, 'cl_pseudo', {})
+        for k, v in d2c.items():
+            if isinstance(k, tuple) and len(k) >= 3 and k[0] == 'vnl':
+                nz2 = k[2]
+                if (nz2 not in self.cl_pseudo) and (v.get('cl_pseudo', None) is not None):
+                    self.cl_pseudo[nz2] = np.array(v['cl_pseudo'], dtype=np.float64)
         
         numz_max = 0
         n_nz_max = 0
@@ -79,9 +89,30 @@ class OCL_Hamiltonian:
                 bare = ('vna', nz1, nz2)
                 if bare not in self.species_pair_map:
                     self.species_pair_map[bare] = idx
-                
+            # Vnl uses explicit root; no fallback
+        
+        # Flag for Vna *atom* pairs only (interaction=4 tables used for on-site accumulation).
+        # NOTE: We must NOT apply the same sign handling to ontop tables (vna_ontopl/vna_ontopr).
+        is_vna_pair = np.zeros(n_pairs, dtype=np.int32)
+        for (root, nz1, nz2), itype in self.species_pair_map.items():
+            if root.startswith('vna_atom_'):
+                is_vna_pair[itype] = 1
+
+        # Create device buffers for 2c data
         self.d_splines = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=spline_data)
         self.d_h_grids = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=h_grids)
+        self.d_is_vna_pair = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=is_vna_pair)
+
+        # Build muPP/nuPP maps for PP (vnl) pairs (Fortran make_munuPP)
+        muPP_map = np.zeros((n_pairs, n_nz_max), dtype=np.int16)
+        nuPP_map = np.zeros((n_pairs, n_nz_max), dtype=np.int16)
+        for (root, nz1, nz2), itype in self.species_pair_map.items():
+            if root == 'vnl':
+                muPP, nuPP = self._build_munuPP_map_sp(nz1, nz2, n_nz_max)
+                muPP_map[itype, :] = muPP
+                nuPP_map[itype, :] = nuPP
+        self.d_muPP_map = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=muPP_map)
+        self.d_nuPP_map = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=nuPP_map)
 
     def _is_s_only(self, nz):
         """Returns True if species nz has only s-shell (l=0) as per info.dat."""
@@ -159,6 +190,51 @@ class OCL_Hamiltonian:
         self.d_data_3c = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=data_3c)
         self.d_h_grids_3c = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=h_grids_3c)
         self.d_dims_3c = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=dims_3c)
+
+    def _build_munuPP_map_sp(self, nz1, nz2, n_nonzero_max):
+        """
+        Build muPP/nuPP (1-based) mapping for PP projectors, s+p only (indices 1-4).
+        Mirrors Fortran make_munuPP ordering:
+        - For each (valence shell l1) and (PP shell l2) pair, hlist index runs over
+          imu = -min(l1,l2) .. min(l1,l2) (same m only).
+        - Orbital indices follow Ortega order (s,py,pz,px) which matches Fortran's
+          cumulative-offset scheme with m=-1,0,+1 mapping to (py,pz,px).
+        """
+        if not hasattr(self.parser, 'species_info'):
+            self.parser.parse_info()
+        info1 = self.parser.species_info[int(nz1)]
+        info2 = self.parser.species_info[int(nz2)]
+        lssh = list(info1.get('lssh', []))
+        lsshPP = list(info2.get('lsshPP', []))
+
+        muPP = np.zeros(n_nonzero_max, dtype=np.int16)
+        nuPP = np.zeros(n_nonzero_max, dtype=np.int16)
+
+        # Fortran make_munuPP uses cumulative offsets per shell:
+        # n1 starts at 0; for each shell: n1 = n1 + l1 + 1; mu = n1 + imu; then n1 = n1 + l1
+        # For s+p this yields base indices: s -> 1 (imu=0), p -> 3+imu -> {2,3,4} for imu={-1,0,+1}
+        index = 0
+        n1 = 0
+        for l1 in lssh:
+            if l1 > 1:
+                # keep loud: current OpenCL only supports s+p
+                raise RuntimeError(f"_build_munuPP_map_sp: unsupported l1={l1} for nz1={nz1}")
+            n1 = n1 + l1 + 1
+            n2 = 0
+            for l2 in lsshPP:
+                if l2 > 1:
+                    raise RuntimeError(f"_build_munuPP_map_sp: unsupported l2={l2} for nz2={nz2}")
+                n2 = n2 + l2 + 1
+                for imu_m in range(-min(l1, l2), min(l1, l2) + 1):
+                    if index >= n_nonzero_max:
+                        return muPP, nuPP
+                    muPP[index] = n1 + imu_m
+                    nuPP[index] = n2 + imu_m
+                    index += 1
+                n2 = n2 + l2
+            n1 = n1 + l1
+
+        return muPP, nuPP
         
     def assemble_2c(self, ratoms, neighbors, pair_types):
         """
@@ -181,8 +257,36 @@ class OCL_Hamiltonian:
         
         self.prg.assemble_2c(self.queue, (n_pairs,), None, 
                            np.int32(n_pairs), np.int32(self.n_nz_max), np.int32(self.numz_max),
-                           d_ratoms, d_neighs, self.d_splines, d_types, self.d_h_grids, d_blocks)
+                           d_ratoms, d_neighs, self.d_splines, d_types, self.d_h_grids, self.d_is_vna_pair, d_blocks)
         
+        blocks = np.zeros((n_pairs, 4, 4), dtype=np.float32)
+        cl.enqueue_copy(self.queue, blocks, d_blocks)
+        return blocks
+
+    def assemble_pp(self, ratoms, neighbors, pair_types):
+        """
+        Runs the assemble_pp kernel (PP projector overlaps sVNL).
+        ratoms: [natoms, 3]
+        neighbors: [n_pairs, 2]
+        pair_types: [n_pairs]
+        """
+        n_pairs = len(neighbors)
+        ratoms4 = np.zeros((ratoms.shape[0], 4), dtype=np.float32)
+        ratoms4[:, :3] = ratoms.astype(np.float32)
+
+        d_ratoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=ratoms4)
+        d_neighs = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=neighbors.astype(np.int32))
+        d_types = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=pair_types.astype(np.int32))
+
+        # Output: [n_pairs, 4, 4] float blocks
+        d_blocks = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, n_pairs * 16 * 4)
+
+        self.prg.assemble_pp(self.queue, (n_pairs,), None,
+                             np.int32(n_pairs), np.int32(self.n_nz_max), np.int32(self.numz_max),
+                             d_ratoms, d_neighs, self.d_splines, d_types, self.d_h_grids,
+                             self.d_muPP_map, self.d_nuPP_map,
+                             d_blocks)
+
         blocks = np.zeros((n_pairs, 4, 4), dtype=np.float32)
         cl.enqueue_copy(self.queue, blocks, d_blocks)
         return blocks
@@ -221,14 +325,24 @@ class OCL_Hamiltonian:
         if pair_type is None:
             print(f"[WARN] scanHamPiece2c missing pair_type for {root} ({nz1},{nz2}); returning None")
             return None
+
+        # Vnl (interaction=5) is a PP projector overlap (sVNL) and must use the PP kernel.
+        # Using assemble_2c/scan_2c_points gives the wrong object (SK-style 2c block).
+        use_pp = (root == 'vnl')
         
         if applyRotation:
-            blocks = self.assemble_2c(ratoms, neighbors, np.array([pair_type]))
+            if use_pp:
+                blocks = self.assemble_pp(ratoms, neighbors, np.array([pair_type]))
+            else:
+                blocks = self.assemble_2c(ratoms, neighbors, np.array([pair_type]))
         else:
             # Move along Z to avoid rotation
             r = np.linalg.norm(dR)
             ratoms_z = np.array([[0,0,0], [0,0,r]], dtype=np.float32)
-            blocks = self.assemble_2c(ratoms_z, neighbors, np.array([pair_type]))
+            if use_pp:
+                blocks = self.assemble_pp(ratoms_z, neighbors, np.array([pair_type]))
+            else:
+                blocks = self.assemble_2c(ratoms_z, neighbors, np.array([pair_type]))
         return blocks[0]
 
     def scanHamPiece2c_batch(self, root, nz1, nz2, dRs, applyRotation=True):
@@ -237,6 +351,19 @@ class OCL_Hamiltonian:
         if pair_type is None:
             print(f"[WARN] scanHamPiece2c_batch missing pair_type for {root} ({nz1},{nz2}); returning None")
             return None
+
+        # Vnl must use assemble_pp (PP kernel). The scan_2c_points kernel is only for SK-style 2c blocks.
+        if root == 'vnl':
+            dRs_np = np.ascontiguousarray(dRs, dtype=np.float32)
+            npoints = dRs_np.shape[0]
+            # Build a combined neighbor list for all points; each point uses its own (0,1) pair
+            # in an isolated 2-atom system, so we just loop and call scanHamPiece2c for correctness.
+            # NOTE: this is not performance-critical (verification only).
+            blocks = np.zeros((npoints, 4, 4), dtype=np.float32)
+            for i in range(npoints):
+                blocks[i] = self.scanHamPiece2c(root, nz1, nz2, dRs_np[i], applyRotation=applyRotation)
+            return blocks
+
         dRs_np = np.ascontiguousarray(dRs, dtype=np.float32)
         npoints = dRs_np.shape[0]
         # outputs [npoints,4,4]
@@ -333,13 +460,14 @@ class OCL_Hamiltonian:
         cl.enqueue_copy(self.queue, results, d_out)
         return results
 
-    def assemble_full(self, ratoms, species, neighbors, include_T=True, include_Vna=True):
+    def assemble_full(self, ratoms, species, neighbors, include_T=True, include_Vna=True, include_Vnl=False):
         """
         Assembles full H and S matrices.
         species: list of nuclear charges for each atom [natoms]
         neighbors: list of (i, j) for 2-center. Self edges (i,i) will be inserted if missing
-        include_T/include_Vna: allow selecting components (used by verification scripts)
+        include_T/include_Vna/include_Vnl: allow selecting components (used by verification scripts)
         """
+        import os
         n_atoms = len(species)
         n_pairs = len(neighbors)
         # Ensure self edges exist for on-site accumulations (vna_atom)
@@ -353,14 +481,21 @@ class OCL_Hamiltonian:
         pairs_S = []
         pairs_T = []
         pairs_Vna = []
+        pairs_Vnl = []
         for idx, (i, j) in enumerate(neighbors):
             nz1, nz2 = species[i], species[j]
             tS = self.species_pair_map.get(('overlap', nz1, nz2))
             tT = self.species_pair_map.get(('kinetic', nz1, nz2))
             tV = self.species_pair_map.get(('vna', nz1, nz2))
-            if tS is not None: pairs_S.append((i, j, tS, idx))
-            if tT is not None: pairs_T.append((i, j, tT, idx))
-            if tV is not None: pairs_Vna.append((i, j, tV, idx))
+            tVNL = self.species_pair_map.get(('vnl', nz1, nz2))
+            if tS is not None:
+                pairs_S.append((i, j, tS, idx))
+            if tT is not None:
+                pairs_T.append((i, j, tT, idx))
+            if tV is not None:
+                pairs_Vna.append((i, j, tV, idx))
+            if tVNL is not None:
+                pairs_Vnl.append((i, j, tVNL, idx))
             
         # Helper to run assembly and map back to neighbor-indexed blocks
         def run_2c(pairs):
@@ -374,6 +509,125 @@ class OCL_Hamiltonian:
         EQ2 = 14.39975
         S_blocks = run_2c(pairs_S)
         T_blocks = run_2c(pairs_T) if include_T else np.zeros((n_pairs, 4, 4), dtype=np.float32)
+        # Vnl is NOT a direct 2c Hamiltonian block in Fireball.
+        # Fortran:
+        #   - assemble_sVNL computes sVNL = <phi | Psi_PP> using interaction=5 tables
+        #   - assemble_2c_PP builds vnl by quadratic contraction with cl_PP coefficients:
+        #       Vnl(mu,nu) += sum_cc cl(cc) * sVNL(mu,cc) * sVNL(nu,cc)
+        # Here we mirror that logic using the already-implemented 2c kernel for interaction=5 to get sVNL blocks,
+        # then do the contraction on CPU.
+        Vnl_blocks = np.zeros((n_pairs, 4, 4), dtype=np.float32)
+        if include_Vnl:
+            if not hasattr(self.parser, 'species_info'):
+                self.parser.parse_info()
+            # Ensure cl_pseudo available
+            if not hasattr(self, 'cl_pseudo'):
+                self.cl_pseudo = {}
+
+            # Build PP neighbor pairs for sVNL evaluation: (phi_atom, pp_atom)
+            # IMPORTANT: do NOT use rc_PP as a neighbor cutoff.
+            # rc_PP is a pseudopotential radial parameter, not the interaction range.
+            # The interaction range is governed by the vnl tables (zmax) and by Fortran's PP neighbor maps.
+            # For parity (and given natoms is small in verification), we evaluate all atom pairs.
+            rat = np.asarray(ratoms, dtype=np.float32)
+            pp_pairs = set()
+            for i in range(n_atoms):
+                for k in range(n_atoms):
+                    pp_pairs.add((i, k))
+            pp_pairs = sorted(pp_pairs)
+
+            # Evaluate sVNL blocks for all needed pairs via assemble_pp (PP-specific rotation)
+            pairs_sVNL = []
+            for idx_local, (i, k) in enumerate(pp_pairs):
+                t = self.species_pair_map.get(('vnl', int(species[i]), int(species[k])))
+                if t is None:
+                    # keep loud (missing PP data means Vnl cannot be correct)
+                    raise RuntimeError(f"Missing vnl table for (phi Z={int(species[i])}, PP Z={int(species[k])})")
+                pairs_sVNL.append((i, k, t, idx_local))
+
+            if pairs_sVNL:
+                neigh_arr = np.array([p[:2] for p in pairs_sVNL], dtype=np.int32)
+                type_arr  = np.array([p[2]  for p in pairs_sVNL], dtype=np.int32)
+                sVNL_eval = self.assemble_pp(ratoms, neigh_arr, type_arr)
+            else:
+                sVNL_eval = np.zeros((len(pp_pairs), 4, 4), dtype=np.float32)
+            sVNL_map = {ik: sVNL_eval[idx] for idx, ik in enumerate(pp_pairs)}
+
+            # Helper: get cl vector for PP atom k
+            def get_cl_for_atom(k):
+                zk = int(species[k])
+                cl_shell = self.cl_pseudo.get(zk, None)
+                if cl_shell is None:
+                    raise RuntimeError(f"Missing cl_pseudo for Z={zk}; cannot assemble Vnl")
+                # cl_pseudo in vnl header is per PP shell (npseudo). For contraction we need per PP orbital
+                # (num_orbPP = sum_s (2*lsshPP+1)). Fortran expands shell coefficients over m.
+                info = self.parser.species_info.get(zk, None)
+                if info is None:
+                    raise RuntimeError(f"Missing species_info for Z={zk}; cannot expand cl_pseudo")
+                lsshPP = info.get('lsshPP', [])
+                if len(lsshPP) == 0:
+                    raise RuntimeError(f"Empty lsshPP for Z={zk}; cannot expand cl_pseudo")
+                if len(cl_shell) < len(lsshPP):
+                    raise RuntimeError(f"cl_pseudo length {len(cl_shell)} < nsshPP {len(lsshPP)} for Z={zk}")
+                cl_full = []
+                for ish, l in enumerate(lsshPP):
+                    c = float(cl_shell[ish])
+                    cl_full += [c] * (2 * int(l) + 1)
+                return np.array(cl_full, dtype=np.float64)
+
+            # Contraction helper: A(4,npp) * diag(cl) * B(4,npp)^T
+            def contract_AB(A, B, clv):
+                """
+                Contract sVNL blocks into vnl(mu,nu):
+                  vnl(mu,nu) += sum_cc cl(cc) * sVNL(mu,cc) * sVNL(nu,cc)
+                assemble_pp stores blocks as (inu,imu), so we need (imu,cc):
+                  use A.T / B.T to get rows=imu, cols=cc before contraction.
+                """
+                npp = min(A.shape[1], B.shape[1], clv.shape[0])
+                if npp <= 0:
+                    return np.zeros((4, 4), dtype=np.float32)
+                At = A.T[:4, :npp]  # (imu, cc)
+                Bt = B.T[:4, :npp]  # (imu, cc)
+                Aw = At * clv[:npp][None, :]
+                # Return in (inu,imu) block convention (row=nu, col=mu) consistent with assemble_2c.
+                # verify_C2 reconstructs dense blocks via transpose.
+                return (Aw @ Bt.T).astype(np.float32).T
+
+            # Assemble Vnl blocks only for requested neighbor blocks (same output format as T/Vna)
+            for idx, (i, j) in enumerate(neighbors):
+                if i == j:
+                    # On-site: sum over all PP centers k within cutoff
+                    acc = np.zeros((4, 4), dtype=np.float32)
+                    for k in range(n_atoms):
+                        if (i, k) not in sVNL_map:
+                            continue
+                        A = sVNL_map[(i, k)]
+                        clv = get_cl_for_atom(k)
+                        acc += contract_AB(A, A, clv)
+                    Vnl_blocks[idx] = acc
+                else:
+                    # Off-diagonal: PP on i and PP on j
+                    acc = np.zeros((4, 4), dtype=np.float32)
+                    acc_i = None
+                    acc_j = None
+                    # PP at i: <phi_i|Psi_i> <Psi_i|phi_j>
+                    if (i, i) in sVNL_map and (j, i) in sVNL_map:
+                        A = sVNL_map[(i, i)]
+                        B = sVNL_map[(j, i)]
+                        clv = get_cl_for_atom(i)
+                        tmp = contract_AB(A, B, clv)
+                        acc += tmp
+                        acc_i = tmp
+                    # PP at j: <phi_i|Psi_j> <Psi_j|phi_j>
+                    if (i, j) in sVNL_map and (j, j) in sVNL_map:
+                        A = sVNL_map[(i, j)]
+                        B = sVNL_map[(j, j)]
+                        clv = get_cl_for_atom(j)
+                        tmp = contract_AB(A, B, clv)
+                        acc += tmp
+                        acc_j = tmp
+
+                    Vnl_blocks[idx] = acc
         
         # Aggregate all potential Vna 2-center components
         Vna_total = np.zeros((n_pairs, 4, 4), dtype=np.float32)
@@ -431,6 +685,12 @@ class OCL_Hamiltonian:
             # We evaluate each (i,j) atom contribution and add into the (i,i) block manually.
             for (i, j, t, idx_self) in pairs_atom_to_self:
                 # Single-pair evaluation
+                # Fortran vna_atom uses orbitals on i with potential at j.
+                # The resulting matrix has odd-parity s-p terms whose sign depends on the
+                # chosen bond-direction convention. For C2 we observe sign flips in s-p
+                # terms if we use the same direction as the i-j 2c blocks.
+                # Empirically matching Fortran here requires reversing the direction
+                # vector for the vna_atom evaluation.
                 neigh_arr = np.array([[i, j]], dtype=np.int32)
                 type_arr = np.array([t], dtype=np.int32)
                 res = self.assemble_2c(ratoms, neigh_arr, type_arr)
@@ -449,7 +709,7 @@ class OCL_Hamiltonian:
             # if pairs_v:
             #     Vna_total += run_2c(pairs_v)
         Vna_blocks = Vna_total * EQ2 if include_Vna else np.zeros((n_pairs, 4, 4), dtype=np.float32)
-        H_blocks = T_blocks + Vna_blocks
+        H_blocks = T_blocks + Vna_blocks + Vnl_blocks
         
         return H_blocks, S_blocks
 

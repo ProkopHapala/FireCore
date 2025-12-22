@@ -28,9 +28,21 @@ class FdataParser:
             nssh = int(lines[idx].split()[0])
             idx += 1
             lssh = [int(x) for x in lines[idx].split()]
-            self.species_info[nz] = {'nssh': nssh, 'lssh': lssh}
             idx += 1
-            
+            # Pseudopotential shells
+            nsshPP = int(lines[idx].split()[0])
+            idx += 1
+            lsshPP = [int(x) for x in lines[idx].split()]
+            idx += 1
+            rc_PP = float(lines[idx].split()[0])
+            idx += 3  # skip Qneutral and rcuts
+            # Store
+            self.species_info[nz] = {
+                'nssh': nssh, 'lssh': lssh,
+                'nsshPP': nsshPP, 'lsshPP': lsshPP,
+                'rc_PP': rc_PP,
+            }
+            idx += 1
     def get_num_nonzero(self, nz1, nz2):
         """Calculates num_nonzero for a pair of species based on make_munu.f90."""
         if not hasattr(self, 'species_info'):
@@ -42,6 +54,18 @@ class FdataParser:
         index = 0
         for l1 in info1['lssh']:
             for l2 in info2['lssh']:
+                index += 2 * min(l1, l2) + 1
+        return index
+
+    def get_num_nonzero_pp(self, nz1, nz2):
+        """Num_nonzero for PP (index_maxPP) using lsshPP."""
+        if not hasattr(self, 'species_info'):
+            self.parse_info()
+        info1 = self.species_info[nz1]
+        info2 = self.species_info[nz2]
+        index = 0
+        for l1 in info1['lsshPP']:
+            for l2 in info2['lsshPP']:
                 index += 2 * min(l1, l2) + 1
         return index
 
@@ -70,14 +94,51 @@ class FdataParser:
         rc2 = float(parts2[1])
         idx += 1
         
-        # Line 12: zmax, numz
-        while not lines[idx].strip(): idx += 1
+        # Detect interaction type from filename prefix
+        base = os.path.basename(fname)
+        is_pp = base.startswith("vnl")
+        npseudo = None
+        cl_pseudo = None
+
+        # Fortran readheader_2c has extra 2 header lines for interaction=5:
+        #   read npseudo
+        #   read cl_pseudo(1:npseudo)
+        if is_pp:
+            # npseudo
+            while idx < len(lines) and not lines[idx].strip():
+                idx += 1
+            if idx >= len(lines):
+                raise ValueError(f"read_2c: unexpected EOF while reading npseudo in {fname}")
+            npseudo = int(float(lines[idx].split()[0].replace('D','E')))
+            idx += 1
+
+            # cl_pseudo values (can be on one line)
+            cl_vals = []
+            while idx < len(lines) and len(cl_vals) < npseudo:
+                if lines[idx].strip():
+                    for t in lines[idx].split():
+                        try:
+                            cl_vals.append(float(t.replace('D','E')))
+                        except ValueError:
+                            pass
+                idx += 1
+            if len(cl_vals) < npseudo:
+                raise ValueError(f"read_2c: failed to read cl_pseudo(1:{npseudo}) in {fname}, got {len(cl_vals)}")
+            cl_pseudo = np.array(cl_vals[:npseudo], dtype=np.float64)
+
+        # zmax, numz (Fortran: read (iounit,*) zmax, numz)
+        while idx < len(lines) and not lines[idx].strip():
+            idx += 1
+        if idx >= len(lines):
+            raise ValueError(f"read_2c: unexpected EOF while reading zmax/numz in {fname}")
         parts3 = lines[idx].split()
+        if len(parts3) < 2:
+            raise ValueError(f"read_2c: cannot parse zmax/numz in {fname}, line='{lines[idx].rstrip()}'")
         zmax = float(parts3[0].replace('D','E'))
-        numz = int(parts3[1])
+        numz = int(float(parts3[1].replace('D','E')))
         idx += 1
         
-        num_nonzero = self.get_num_nonzero(nucz1, nucz2)
+        num_nonzero = self.get_num_nonzero_pp(nucz1, nucz2) if is_pp else self.get_num_nonzero(nucz1, nucz2)
         
         # Data: Read num_nonzero values for each of numz points
         # One point's data can be spread across multiple lines.
@@ -105,7 +166,9 @@ class FdataParser:
             'nucz2': nucz2, 'rc2': rc2,
             'zmax': zmax, 'numz': numz,
             'num_nonzero': num_nonzero,
-            'data': data
+            'data': data,
+            'npseudo': npseudo,
+            'cl_pseudo': cl_pseudo,
         }
 
     def build_spline_1d(self, y, xmax):
@@ -290,10 +353,18 @@ class FdataParser:
         data_2c = {}
         for nz1 in species_nz:
             for nz2 in species_nz:
-                for root in ['overlap', 'kinetic', 'vna', 'vxc', 'vna_atom_00', 'vna_ontopl_00', 'vna_ontopr_00']:
+                for root in ['overlap', 'kinetic', 'vna', 'vnl', 'vxc', 'vna_atom_00', 'vna_ontopl_00', 'vna_ontopr_00']:
                     path = self.find_2c(root, nz1, nz2)
                     if os.path.exists(path):
-                        data_2c[(root, nz1, nz2)] = self.read_2c(path)
+                        # NOTE: Fortran assemble_2c uses interaction=2 (ontopl) and interaction=3 (ontopr).
+                        # Our scans show the *files* vna_ontopl_* and vna_ontopr_* are swapped relative to
+                        # these interaction numbers, so we swap the semantic keys here.
+                        store_root = root
+                        if root.startswith('vna_ontopl_'):
+                            store_root = root.replace('vna_ontopl_', 'vna_ontopr_', 1)
+                        elif root.startswith('vna_ontopr_'):
+                            store_root = root.replace('vna_ontopr_', 'vna_ontopl_', 1)
+                        data_2c[(store_root, nz1, nz2)] = self.read_2c(path)
 
                 # For vna we also need all shell-resolved files like vna_atom_XX, vna_ontopl_XX, vna_ontopr_XX
                 nssh1 = self.species_info.get(nz1, {}).get('nssh', 0)
@@ -309,13 +380,15 @@ class FdataParser:
                     root = f"vna_ontopl_{isorp:02d}"
                     path = self.find_2c(root, nz1, nz2)
                     if os.path.exists(path):
-                        data_2c[(root, nz1, nz2)] = self.read_2c(path)
+                        store_root = f"vna_ontopr_{isorp:02d}"
+                        data_2c[(store_root, nz1, nz2)] = self.read_2c(path)
                 # ontop right uses shells of atom 2 (interaction 3 uses nssh(in2))
                 for isorp in range(nssh2 + 1):
                     root = f"vna_ontopr_{isorp:02d}"
                     path = self.find_2c(root, nz1, nz2)
                     if os.path.exists(path):
-                        data_2c[(root, nz1, nz2)] = self.read_2c(path)
+                        store_root = f"vna_ontopl_{isorp:02d}"
+                        data_2c[(store_root, nz1, nz2)] = self.read_2c(path)
         
         # 3-center data (example for den3)
         data_3c = {}

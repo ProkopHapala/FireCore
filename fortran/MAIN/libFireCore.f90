@@ -806,6 +806,7 @@ subroutine firecore_get_HS_sparse( &
     use debug
     use firecore_options
     implicit none
+    integer :: ncopy
     ! Output arrays (pointers to pre-allocated memory from C/Python)
     real(c_double), dimension(numorb_max, numorb_max, neigh_max, natoms), intent(out) :: h_mat_out
     real(c_double), dimension(numorb_max, numorb_max, neigh_max, natoms), intent(out) :: s_mat_out
@@ -862,6 +863,11 @@ subroutine firecore_get_HS_sparse( &
         h_mat_out = t_mat
     else if( (ioff_T.eq.0) .and. (ioff_Vna.eq.1) .and. (ioff_Vnl.eq.0) .and. (ioff_Vxc.eq.0) .and. (ioff_Vca.eq.0) .and. (ioff_Vxc_ca.eq.0) ) then
         h_mat_out = vna
+    else if( (ioff_T.eq.0) .and. (ioff_Vna.eq.0) .and. (ioff_Vnl.eq.1) .and. (ioff_Vxc.eq.0) .and. (ioff_Vca.eq.0) .and. (ioff_Vxc_ca.eq.0) ) then
+        h_mat_out = 0.0d0
+        ! vnl has dimension (numorb_max,numorb_max,neighPP_max**2,natoms); h_mat_out uses neigh_max in dim3
+        ncopy = min(size(h_mat_out,3), size(vnl,3))
+        h_mat_out(:,:,:ncopy,:) = vnl(:,:,:ncopy,:)
     else if( (ioff_T.eq.0) .and. (ioff_Vna.eq.0) .and. (ioff_Vnl.eq.0) .and. (ioff_Vxc.eq.1) .and. (ioff_Vca.eq.0) .and. (ioff_Vxc_ca.eq.0) ) then
         h_mat_out = vxc
     else if( (ioff_T.eq.0) .and. (ioff_Vna.eq.0) .and. (ioff_Vnl.eq.0) .and. (ioff_Vxc.eq.0) .and. (ioff_Vca.eq.1) .and. (ioff_Vxc_ca.eq.0) ) then
