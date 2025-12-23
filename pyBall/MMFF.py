@@ -891,8 +891,8 @@ def get_gridFF_info():
     gff_dCell = float_data[15:24].reshape((3, 3))     # Reshape to 3x3 matrix
     gff_natoms = int_data[0]
     gff_natoms_ = int_data[1]
-    print("GridFF info -> shift0:", gff_shift0, " pos0:", gff_pos0,
-          " substrate natoms:", gff_natoms, " atoms_.size:", gff_natoms_)
+    # print("GridFF info -> shift0:", gff_shift0, " pos0:", gff_pos0,
+        #   " substrate natoms:", gff_natoms, " atoms_.size:", gff_natoms_)
     return gff_shift0, gff_pos0,gff_cell,gff_dCell, gff_natoms, gff_natoms_
 
 
