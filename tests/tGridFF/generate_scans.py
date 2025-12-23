@@ -34,6 +34,9 @@ def generate_scan(molecule, substrate, output_dir, scan_type='total', scan_param
     
     Returns:
         bool: True if scan completed successfully
+
+    One typical use case: 
+    python generate_scans.py --molecule data/xyz/old_mol_old_sub_PTCDA  --substrate data/xyz/Na_0.9_Cl_-0.9 --relaxed --cons-atom 26 --scan-types total --nscan 201 --span-min 1.3 --span-max 21.4 --scan-dir1 "0.0,0.0,1.0"
     """
     # global mmff
     
