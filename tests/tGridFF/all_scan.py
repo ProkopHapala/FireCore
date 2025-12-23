@@ -187,7 +187,9 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
     contrs[:,:,3] = 1.0 # stiffness
     # print(f"contrs: {contrs.shape}", contrs )
     # print(f"iconstr: {iconstr.shape}", iconstr )
-    with open( "scan_constr.xyz","w") as f: f.write("") # delete the file content to  old data
+    # Disabled automatic XYZ dump to keep directory clean
+    # with open("scan_constr.xyz", "w") as f:
+    #     f.write("")
 
  
     Es, Fs, Ps = mmff.scan_constr( iconstr, contrs, bHardConstr=True, bF=True, bP=True, niter_max=niter_max, dt=dt, Fconv=Fconv)
