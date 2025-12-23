@@ -947,12 +947,12 @@ class GridFF_cl:
         cl.enqueue_copy(self.queue, V_after_poisson_laplace, Vin_buff)
         
         # Debug before slabPotential
-        print("\nDebug before slabPotential:")
+        # print("\nDebug before slabPotential:")
         if hasattr(self, 'V_Coul_buff'):
             debug_before = np.empty(self.gsh.ns[::-1], dtype=np.float32)
             cl.enqueue_copy(self.queue, debug_before, self.V_Coul_buff)
-            print(f"V_Coul_buff exists with shape: {debug_before.shape}")
-            print(f"Range: {debug_before.min():.3f} to {debug_before.max():.3f}")
+            # print(f"V_Coul_buff exists with shape: {debug_before.shape}")
+            # print(f"Range: {debug_before.min():.3f} to {debug_before.max():.3f}")
         else:
             print("V_Coul_buff does not exist yet")
 
