@@ -128,7 +128,7 @@ def next_nice(n, allowed_factors={2, 3, 5}):
     original = n
     while not is_nice(n, allowed_factors):
         n += 1
-    print(f"next_nice: for raw value {original} -> adjusted to {n}")
+    # print(f"next_nice: for raw value {original} -> adjusted to {n}")
     return n
 
 def adjust_dimensions(dim_vector, desired_voxel=0.1, allowed_factors={2, 3, 5}):
