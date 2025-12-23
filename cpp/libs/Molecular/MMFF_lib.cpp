@@ -136,7 +136,7 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
     W.bGridFF=bGrid;
     W.bUFF   =bUFF;
     W.init();
-    printf("DEBUG: After W.init(): natoms=%d, nDOFs=%d\n", W.nbmol.natoms, W.ff.nDOFs);
+    // printf("DEBUG: After W.init(): natoms=%d, nDOFs=%d\n", W.nbmol.natoms, W.ff.nDOFs);
     init_buffers();
     return &W;
 }
