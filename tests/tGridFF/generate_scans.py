@@ -79,15 +79,22 @@ def plot_multiple_comparisons(data_pairs, titles, output_filename, x_range=None,
         ax1 = fig.add_subplot(1, n_plots, i+1)
         
         # Load data
-        lammps_data = np.loadtxt(lammps_file)
+        lammps_data  = np.loadtxt(lammps_file)
         firecore_data = np.loadtxt(firecore_file)
-        
+
+        # If grids differ, interpolate FireCore to LAMMPS grid
+        if firecore_data.shape[0] != lammps_data.shape[0]:
+            interp_e = np.interp(lammps_data[:,0], firecore_data[:,0], firecore_data[:,1])
+            fire_z, fire_e = lammps_data[:,0], interp_e
+        else:
+            fire_z, fire_e = firecore_data[:,0], firecore_data[:,1]
+
         # Calculate difference
-        difference_data = firecore_data[:, 1] - lammps_data[:, 1]
+        difference_data = fire_e - lammps_data[:,1]
         
         # Plot on primary axis
-        ax1.plot(lammps_data[:, 0], lammps_data[:, 1], linewidth=2, label='LAMMPS')
-        ax1.plot(firecore_data[:, 0], firecore_data[:, 1], marker='o', markersize=8, 
+        ax1.plot(lammps_data[:,0], lammps_data[:,1], linewidth=2, label='LAMMPS')
+        ax1.plot(fire_z, fire_e, marker='o', markersize=6,
                 linestyle='', label='FireCore', markerfacecolor='none')
         
         # Set labels and title
@@ -104,7 +111,7 @@ def plot_multiple_comparisons(data_pairs, titles, output_filename, x_range=None,
         
         # Secondary axis for difference data
         ax2 = ax1.twinx()
-        ax2.plot(firecore_data[:, 0], difference_data, marker='*', markersize=5, 
+        ax2.plot(fire_z, difference_data, marker='*', markersize=5, 
                 linestyle='', color='r', label='Difference')
         
         # Set secondary y-axis label only for the last subplot
@@ -260,23 +267,27 @@ def compare_with_lammps(molecule, lammps_dir, firecore_dir, output_dir):
     # Extract molecule name for file naming
     mol_name = os.path.basename(molecule)
     
-    # Define data pairs for Z-direction scan
-    data_pairs = [
-        (f'{lammps_dir}/morse.dat', f'{firecore_dir}/{mol_name}_morse.dat'),
-        (f'{lammps_dir}/coul.dat', f'{firecore_dir}/{mol_name}_coul.dat'),
-        (f'{lammps_dir}/total.dat', f'{firecore_dir}/{mol_name}_total.dat')
+    # Build list only from files that exist
+    labels_templates = [
+        ("Morse",   "morse"),
+        ("Coulomb", "coul"),
+        ("Total",   "total"),
     ]
+    data_pairs, titles = [], []
+    for tlabel, base in labels_templates:
+        l_file = os.path.join(lammps_dir,  f"{base}.dat")
+        f_file = os.path.join(firecore_dir, f"{mol_name}_{base}.dat")
+        if os.path.isfile(l_file) and os.path.isfile(f_file):
+            data_pairs.append((l_file, f_file))
+            titles.append(f"{tlabel} Potential")
 
-    # Plot titles
-    titles = [
-        "Morse Potential",
-        "Coulomb Potential",
-        "Total Potential"
-    ]
+    if not data_pairs:
+        print("No matching FireCore/LAMMPS files – skipping comparison")
+        return False
 
     # Create and save the comparison figure
-    fig = plot_multiple_comparisons(data_pairs, titles, 
-                                   f"{output_dir}/{mol_name}_comparison.png")
+    plot_multiple_comparisons(data_pairs, titles,
+                              f"{output_dir}/{mol_name}_comparison.png")
     
     # Display the figure
     plt.show()
