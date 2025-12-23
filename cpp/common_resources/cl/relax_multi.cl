@@ -2782,15 +2782,36 @@ __kernel void getSurfMorse(
     const int iaa = iG + i0a;      // index of the atom in the system
     const int iav = iG + i0v;      // index of the vector (atom or pi-orbital) in the system
 
-    // if( (iG==0) && (iS==0) ){  
-    //     printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) \n", nG,nS, nL, ns.x,ns.y,ns.z  ); 
+     if( (iG==0) && (iS==0) ){  
+        //printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) \n", nG,nS, nL, ns.x,ns.y,ns.z  ); 
     //     //printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) nPBC(%i,%i,%i)\n", nG,nS, nL, ns.x,ns.y,ns.z,  nPBC.x,nPBC.y,nPBC.z  ); 
     //     //for(int i=0; i<ns.x; i++){ printf( "forces[%i] (%g,%g,%g) \n", i, forces[i].x,forces[i].y,forces[i].z );   }
     //     for(int i=0; i<na_surf; i++){ printf( "GPU.atoms_s[%i](%g,%g,%g) \n", i, atoms_s[i].x,atoms_s[i].y,atoms_s[i].z );   }
-    // }
+     }
     float4 fe   = (float4){0.0f,0.0f,0.0f,0.0f};
 
-    if(iG>=nAtoms) return;
+    // ========== BEGIN test loading atoms to local memory
+
+    // if((iG>nL) || (iS>0)) return;
+
+    // for (int j0=0; j0<na_surf; j0+= nL ){
+    //     const int i = j0 + iL;
+    //     LATOMS[iL] = atoms_s[i];
+    //     LCLJS [iL] = REQ_s  [i];
+    //     barrier(CLK_LOCAL_MEM_FENCE);
+    //     if(iG==0){
+    //         for(int j=0; j<nL; j++){
+    //             int ji = j0 + j;
+    //             printf("j: %i i: %i , LATOMS = (%16.6f,%16.6f,%16.6f), atoms_s = (%16.6f,%16.6f,%16.6f)\n", j, ji, LATOMS[j].x, LATOMS[j].y, LATOMS[j].z, atoms_s[ji].x, atoms_s[ji].y, atoms_s[ji].z);
+    //         }
+    //         //printf("iL = %i, LATOMS = (%16.6f,%16.6f,%16.6f), atoms_s = (%16.6f,%16.6f,%16.6f)\n", iL, LATOMS[iL].x, LATOMS[iL].y, LATOMS[iL].z, atoms_s[i].x, atoms_s[i].y, atoms_s[i].z);
+    //     }
+    
+    // }
+
+
+    // ========== END test loading atoms to local memory
+
 
     const float  K          = -GFFParams.y;
     const float  R2damp     =  GFFParams.x*GFFParams.x;
@@ -2799,17 +2820,23 @@ __kernel void getSurfMorse(
 
     const float3 pos  = atoms[iav].xyz - pos0.xyz +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
     const float4 REQi = REQs [iaa];
-
+// if((iaa<22)&&(iS==0)) printf("REQi[%i].z = %f\n", iaa, REQi.z);
     // ToDo: perhaps it is efficient to share surface along isys direction ( all system operate with the same surface atoms )
-
+    // for (int j0 = 0; j0 < na_surf; j0 ++) {
+    //     LATOMS[j0   ] = atoms_s[j0];
+    //     LCLJS[j0] = REQ_s[j0];
+    // }
     for (int j0=0; j0<na_surf; j0+= nL ){
         const int i = j0 + iL;
         LATOMS[iL] = atoms_s[i];
         LCLJS [iL] = REQ_s  [i];
+//        if(iS==0 && iL > 21)printf("iL = %i, LATOMS = (%f,%f,%f), atoms_s = (%f,%f,%f)\n", iL, LATOMS[iL].x, LATOMS[iL].y, LATOMS[iL].z, atoms_s[i].x, atoms_s[i].y, atoms_s[i].z);
         barrier(CLK_LOCAL_MEM_FENCE);
+        if(iG>=nAtoms) continue;
         for (int jl=0; jl<nL; jl++){
             const int ja=jl+j0;
             if( ja<na_surf ){ 
+                //if(iG==0 && iS==0) printf("jl: %i ja: %i , LATOMS = (%16.6f,%16.6f,%16.6f), atoms_s = (%16.6f,%16.6f,%16.6f)\n", jl, ja, LATOMS[jl].x, LATOMS[jl].y, LATOMS[jl].z, atoms_s[ja].x, atoms_s[ja].y, atoms_s[ja].z);
                 float4 REQH =       LCLJS [jl];
                 float3 dp   = pos - LATOMS[jl].xyz;
                 REQH.x   += REQi.x;
@@ -2822,12 +2849,12 @@ __kernel void getSurfMorse(
                         for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
                             const float4 fej = getMorseQH( dp,  REQH, K, R2damp );
                             fe -= fej;
-                            //if( (iG==0) && (iS==0) && (iz==0)&&(iy==0)&&(ix==0)){
+                            if( (iG==0) && (iS==0) && (iz==0)&&(iy==0)&&(ix==0)){
                             //if( (iG==0) && (iS==0) && (jl==0) ){
                             // if( (iG==0) && (jl==0)   && (iz==0)&&(iy==0)&&(ix==0)  ){
-                            //    printf( "GPU[%3i|%3i/%3i] dp(%10.6f,%10.6f,%10.6f) LATOMS[%i](%10.6f,%10.6f,%10.6f) pos(%10.6f,%10.6f,%10.6f) pos0(%10.6f,%10.6f,%10.6f)  \n", ja,0,0,   dp.x,dp.y,dp.z,  jl,  LATOMS[jl].x,LATOMS[jl].y,LATOMS[jl].z,   pos.x,pos.y,pos.z,  pos0.x,pos0.y,pos0.z );
+                             //   printf( "GPU[%3i|%3i/%3i] dp(%10.6f,%10.6f,%10.6f) LATOMS[%i](%10.6f,%10.6f,%10.6f) pos(%10.6f,%10.6f,%10.6f) pos0(%10.6f,%10.6f,%10.6f)  \n", ja,0,0,   dp.x,dp.y,dp.z,  jl,  LATOMS[jl].x,LATOMS[jl].y,LATOMS[jl].z,   pos.x,pos.y,pos.z,  pos0.x,pos0.y,pos0.z );
                             //    //printf( "GPU[%3i(%3i,%3i,%3i)] K,R2damp(%10.6f,%10.6f) l=%10.6f dp(%10.6f,%10.6f,%10.6f) REQij(%10.6f,%10.6f,%10.6f,%10.6f) fij(%10.6f,%10.6f,%10.6f) \n", ja, ix,iy,iz,  K,R2damp, length(dp), dp.x,dp.y,dp.z,  REQH.x, REQH.y, REQH.z, REQH.w,  fej.x,fej.y,fej.z );
-                            // }
+                            }
                             dp   +=lvec.a.xyz;
                             //shift+=lvec.a.xyz;
                         }
@@ -2843,7 +2870,7 @@ __kernel void getSurfMorse(
                 }
             }
         }
-        barrier(CLK_LOCAL_MEM_FENCE);
+        //barrier(CLK_LOCAL_MEM_FENCE);
     }
     // if( (iG==0) && (iS==0) ){
     //      printf( "GPU[iG=%i,iS=%i] fe(%10.6f,%10.6f,%10.6f)\n", iG,iS, fe.x,fe.y,fe.z );
@@ -2852,7 +2879,8 @@ __kernel void getSurfMorse(
     // if( (iG==0) ){
     //       printf( "GPU[iG=%i,iS=%i] fe(%10.6f,%10.6f,%10.6f)\n", iG,iS, fe.x,fe.y,fe.z );
     // }
-    forces[iav] += fe;  
+
+    if(iG<nAtoms) forces[iav] += fe;  
 
 }
 
