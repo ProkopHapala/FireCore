@@ -27,13 +27,13 @@ export OMP_NUM_THREADS
 
 #rm *.bin
 
-# ------- asan (Memory Sanitizer)
-LD_PRELOAD=$(g++ -print-file-name=libasan.so)
-LD_PRELOAD=$LD_PRELOAD  $(g++ -print-file-name=libfftw3.so)
-echo   $LD_PRELOAD
-export LD_PRELOAD
-# --- ignore memory leaks in ASAM
-export LSAN_OPTIONS=detect_leaks=0
+# # ------- asan (Memory Sanitizer)
+# LD_PRELOAD=$(g++ -print-file-name=libasan.so)
+# LD_PRELOAD=$LD_PRELOAD  $(g++ -print-file-name=libfftw3.so)
+# echo   $LD_PRELOAD
+# export LD_PRELOAD
+# # --- ignore memory leaks in ASAM
+# export LSAN_OPTIONS=detect_leaks=0
 
 #python3 run.py
 #python3 run_gui.py
