@@ -114,7 +114,7 @@ class GridShape{ public:
         while (!is_nice(n)) {
             n += 1;
         }
-        printf("next_nice: for raw value %d -> adjusted to %d\n", original, n);
+        // printf("next_nice: for raw value %d -> adjusted to %d\n", original, n);
         return n;
     }
 
