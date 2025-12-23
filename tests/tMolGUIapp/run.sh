@@ -208,7 +208,8 @@ fi
 
 
 
-./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3          -nPBC 0,0,0
+./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/Na_0.9_Cl_-0.9_Cl_hole_3_indranil        -iParalel 0 -uff -dt 0.03  -nPBC 0,0,0
+
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0 
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaHole   -nPBC 0,0,0 -e -nPBC 2,2,0
