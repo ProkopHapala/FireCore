@@ -197,8 +197,8 @@ def coulomb_brute_1D( atoms, kind='z', p0=[0.0,0.0,2.0], bPlot=False, nPBC=(60,6
 def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Element_Types_name="./data/ElementTypes.dat", bSqrtEvdw=True ): 
     if atoms is None:
         atoms = au.AtomicSystem( fname=fname )
-        print("Raw atom types:", atoms.atypes)
-        print("Raw atom charges:", atoms.qs)
+        # print("Raw atom types:", atoms.atypes)
+        # print("Raw atom charges:", atoms.qs)
     if bSymetrize:
         na_before = len(atoms.atypes)
         atoms, ws = atoms.symmetrized()
@@ -404,12 +404,12 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         path = "./data/" + os.path.splitext( path )[0]
         print( "test_gridFF_ocl() path = ", path )
         os.makedirs(path, exist_ok=True)
-        np.save(path + "/V_Paul_gpu_before.npy", temp_paul)
-        np.save(path + "/V_Lond_gpu_before.npy", temp_lond)
-        np.save(path + "/V_Coul_gpu_before.npy", temp_before)
-        np.save(path + "/V_Paul_gpu_after.npy", V_Paul)
-        np.save(path + "/V_Lond_gpu_after.npy", V_Lond)
-        np.save(path + "/V_Coul_gpu_after.npy", VcoulB)
+        # np.save(path + "/V_Paul_gpu_before.npy", temp_paul)
+        # np.save(path + "/V_Lond_gpu_before.npy", temp_lond)
+        # np.save(path + "/V_Coul_gpu_before.npy", temp_before)
+        # np.save(path + "/V_Paul_gpu_after.npy", V_Paul)
+        # np.save(path + "/V_Lond_gpu_after.npy", V_Lond)
+        # np.save(path + "/V_Coul_gpu_after.npy", VcoulB)
     
         # np.save(path + "trj_paul.npy", trj_paul)
         # np.save(path + "trj_lond.npy", trj_lond)
