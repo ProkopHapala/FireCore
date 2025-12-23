@@ -1756,13 +1756,13 @@ class UFF : public NBFF { public:
     
         // Buckets a2f; // mapping from atoms to force pieces (bonds, angles, dihedrals, inversions) for fast force assembling 
 
-        printf("UFF::printPointers(): apos=%p, vapos=%p, fapos=%p, constr=%p\n", apos, vapos, fapos, constr);
-        printf("UFF::printPointers(): neighs=%p, neighBs=%p, neighCell=%p\n", neighs, neighBs, neighCell);
-        printf("UFF::printPointers(): atypes=%p, REQs=%p \n", atypes, REQs );
-        printf("UFF::printPointers(): bonAtoms=%p, bonParams=%p, angAtoms=%p, angParams=%p\n", bonAtoms, bonParams, angAtoms, angParams);
-        printf("UFF::printPointers(): dihAtoms=%p, dihParams=%p, invAtoms=%p, invParams=%p\n", dihAtoms, dihParams, invAtoms, invParams);
-        printf("UFF::printPointers(): angNgs=%p, dihNgs=%p, invNgs=%p\n", angNgs, dihNgs, invNgs);
-        printf("UFF::printPointers(): constr=%p, constrK=%p\n", constr, constrK);
+        // printf("UFF::printPointers(): apos=%p, vapos=%p, fapos=%p, constr=%p\n", apos, vapos, fapos, constr);
+        // printf("UFF::printPointers(): neighs=%p, neighBs=%p, neighCell=%p\n", neighs, neighBs, neighCell);
+        // printf("UFF::printPointers(): atypes=%p, REQs=%p \n", atypes, REQs );
+        // printf("UFF::printPointers(): bonAtoms=%p, bonParams=%p, angAtoms=%p, angParams=%p\n", bonAtoms, bonParams, angAtoms, angParams);
+        // printf("UFF::printPointers(): dihAtoms=%p, dihParams=%p, invAtoms=%p, invParams=%p\n", dihAtoms, dihParams, invAtoms, invParams);
+        // printf("UFF::printPointers(): angNgs=%p, dihNgs=%p, invNgs=%p\n", angNgs, dihNgs, invNgs);
+        // printf("UFF::printPointers(): constr=%p, constrK=%p\n", constr, constrK);
         //printf("UFF::printPointers(): fneigh=%p, fneighpi=%p\n", fneigh, fneighpi);
 
 
