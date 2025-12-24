@@ -129,6 +129,65 @@ def canonical_reference(H, S=None, n_occ=None):
     return e, C, rho
 
 
+# ---------- Order-N (stochastic FOE) helpers ----------
+
+def _estimate_spectral_bounds(H, safety=1.05):
+    """Eigenvalue bounds for scaling; dense O(N^3) but fine for small demos."""
+    w = np.linalg.eigvalsh(H)
+    lo, hi = w.min(), w.max()
+    span = hi - lo if hi > lo else 1.0
+    mid = 0.5 * (hi + lo)
+    lo = mid - 0.5 * span * safety
+    hi = mid + 0.5 * span * safety
+    print(f"#DEBUG _estimate_spectral_bounds lo={lo:.4f} hi={hi:.4f}")
+    return lo, hi, mid, span
+
+
+def _scale_hamiltonian(H, lo, hi):
+    """
+    Map eigenvalues to [-1,1]: H_scaled = (H - c*I)/a with
+    a = 0.5*(hi-lo), c = 0.5*(hi+lo).
+    """
+    a = 0.5 * (hi - lo)
+    c = 0.5 * (hi + lo)
+    if a <= 0:
+        raise ValueError("Invalid spectral width for scaling")
+    Hs = (H - c * np.eye(H.shape[0])) / a
+    print(f"#DEBUG _scale_hamiltonian a={a:.6f} c={c:.6f}")
+    return Hs, a, c
+
+def jacobi_solve(S, B, steps=8, damping=0.5):
+    """
+    Dense Jacobi iteration solving S X = B for multiple RHS (columns of B).
+    """
+    X = np.zeros_like(B)
+    D = S.diagonal()[:, None]
+    for it in range(steps):
+        residual = B - S @ X
+        X += damping * (residual / D)
+    print(f"#DEBUG jacobi_solve steps={steps} damping={damping}")
+    return X
+
+
+def _solve_linear(S, B, solver="jacobi", jacobi_steps=8, jacobi_damp=0.5):
+    """
+    Small dense linear solve helper for multiple RHS.
+    solver: 'jacobi', 'solve', 'cholesky'
+    """
+    if solver == "jacobi":
+        return jacobi_solve(S, B, steps=jacobi_steps, damping=jacobi_damp)
+    if solver == "solve":
+        return np.linalg.solve(S, B)
+    if solver == "cholesky":
+        L = np.linalg.cholesky(S)
+        # solve L Y = B, then L.T X = Y
+        Y = np.linalg.solve(L, B)
+        return np.linalg.solve(L.T, Y)
+    raise ValueError(f"Unknown solver {solver}")
+
+
+
+
 def plot_spectrum_and_map(e, C, n_occ=None, positions=None, nbins=100, padding=0.2, cmap="bwr", plot_spectrum=True, info_text=None):
     """
     Plot eigen-spectrum (occupied vs unoccupied colors + Fermi) and 2D map of MO coefficients vs energy.

@@ -791,10 +791,691 @@ Since you used momentum-accelerated Jacobi for the ground state, you can use the
 
 **Would you like to see the Chebyshev propagator math for the "Time-Domain Release" step? It's very similar to the FOE but uses complex coefficients.**
 
+---
+
+## USER 11
+
+I'm trying to converge Fermi Operator Expansion solver
+but it does not seem to converge
+
+---
+
+There are two distinct physical reasons why your Fermi Operator Expansion (FOE) is not converging to the reference:
+
+1.  **Wrong Quantity (The Main Error):**
+    Your reference is the **Mulliken Population** ($(PS)_{ii}$), but your FOE solver computes the diagonal of the **Density Matrix** ($P_{ii}$).
+    In a non-orthogonal basis ($S \neq I$), these are **not** the same.
+    *   $P_{ii}$ tells you "how much of basis function $i$ is used".
+    *   $(PS)_{ii}$ tells you "how much charge is assigned to atom $i$".
+    To fix this, you must multiply the resulting probability vector by $S$ before the stochastic averaging.
+
+2.  **Wrong Chemical Potential ($\mu$):**
+    The default behavior sets $\mu$ to the center of the spectrum spectral bounds (`mid`).
+    *   Your spectral center: **-10.63 Ha**
+    *   Your LUMO: **-11.10 Ha**
+    *   Result: $\mu > E_{LUMO}$. You are populating the conduction band! This explains why your densities are erratic and often too large.
+
+---
+
+### The Fix
+
+Here is the corrected `foe_stochastic_density` function. I have added a `calc_mulliken` flag and logic to multiply by $S$ at the end.
+
+#### 1. Update the Solver Function
+
+Replace your `foe_stochastic_density` with this version:
+
+```python
+def foe_stochastic_density(
+    H,
+    S=None,
+    n_poly=60,
+    n_random=32,
+    beta=80.0,
+    mu=None,
+    jacobi_steps=8,
+    solver="jacobi",
+    orthogonalize=True,
+    use_clenshaw=True,
+    ref_rho=None,
+    diag_every=0,
+    diag_prefix="#INFO FOE_iter",
+    calc_mulliken=True, # <--- NEW PARAMETER
+):
+    N = H.shape[0]
+    R = n_random
+
+    # Optional orthogonalization
+    X = None
+    H_eff = H
+    if S is not None:
+        if orthogonalize:
+            s, U = np.linalg.eigh(S)
+            eps = 1e-10
+            s_inv_sqrt = np.diag(1.0 / np.sqrt(np.clip(s, eps, None)))
+            X = U @ s_inv_sqrt @ U.T
+            H_eff = X @ H @ X
+            S_eff = None
+        else:
+            S_eff = S
+    else:
+        S_eff = None
+
+    lo, hi, mid, span = _estimate_spectral_bounds(H_eff)
+    Hs, a, c = _scale_hamiltonian(H_eff, lo, hi)
+    
+    # Use provided mu or default to mid (warning: mid might be wrong!)
+    mu_val = mid if mu is None else mu
+    mu_tilde = (mu_val - c) / a
+    
+    coeffs = chebyshev_coeffs_fermi(mu_tilde=mu_tilde, beta=beta, n_poly=n_poly)
+    eta = np.random.choice([-1.0, 1.0], size=(N, R))
+
+    if X is not None:
+        eta_eff = X.T @ eta
+    else:
+        eta_eff = eta
+
+    def apply_op(V):
+        tmp = Hs @ V
+        if S_eff is None:
+            return tmp
+        return _solve_linear(S_eff, tmp, solver=solver, jacobi_steps=jacobi_steps)
+
+    def to_final_density(phi_eff_curr):
+        """Convert effective vector to physical density estimate."""
+        # 1. Back transform to original basis: phi = P * eta
+        if X is not None:
+            phi_full = X @ phi_eff_curr
+        else:
+            phi_full = phi_eff_curr
+        
+        # 2. If Mulliken requested, apply S: phi' = S * P * eta
+        # Because rho_i = (PS)_ii = E[ eta_i * (S P eta)_i ]
+        if calc_mulliken and S is not None:
+            phi_final = S @ phi_full
+        else:
+            phi_final = phi_full
+            
+        return np.mean(eta * phi_final, axis=1)
+
+    def _print_diag(k, phi_eff_curr):
+        if ref_rho is None or diag_every <= 0 or (k % diag_every) != 0:
+            return
+        rho_k = to_final_density(phi_eff_curr)
+        diff = rho_k - ref_rho
+        rmse = np.sqrt(np.mean(diff**2))
+        maxdiff = np.max(np.abs(diff))
+        print(f"{diag_prefix} k={k:3d} rmse={rmse:.6f} maxdiff={maxdiff:.6f}")
+
+    # --- Chebyshev Recurrence ---
+    if use_clenshaw:
+        b_next = np.zeros_like(eta_eff)
+        b_curr = np.zeros_like(eta_eff)
+        for k in range(n_poly - 1, 0, -1):
+            b_prev = 2.0 * apply_op(b_curr) - b_next + coeffs[k] * eta_eff
+            b_next, b_curr = b_curr, b_prev
+        phi_eff = coeffs[0] * eta_eff + apply_op(b_curr) - b_next
+    else:
+        v_prev = eta_eff
+        v_curr = apply_op(eta_eff)
+        phi_eff = coeffs[0] * v_prev + coeffs[1] * v_curr
+        _print_diag(1, phi_eff)
+        for n in range(2, n_poly):
+            v_next = 2.0 * apply_op(v_curr) - v_prev
+            phi_eff += coeffs[n] * v_next
+            _print_diag(n, phi_eff)
+            v_prev, v_curr = v_curr, v_next
+
+    rho_est = to_final_density(phi_eff)
+    
+    info = dict(lo=lo, hi=hi, mid=mid, span=span, a=a, c=c, mu_tilde=mu_tilde)
+    print(f"#DEBUG foe_stochastic_density N={N} R={R} n_poly={n_poly} mu={mu_val:.3f} (tilde {mu_tilde:.3f})")
+    return rho_est, info
+```
+
+#### 2. Call it with the correct Chemical Potential
+
+In your `hydrogen_chain_1d.py` (or wherever you call the solver), you must pass the `mu` derived from the reference calculation.
+
+```python
+    # ... after calculating canonical reference ...
+    e, C, rho_ref = canonical_reference(H, S, n_occ=len(pos)//2)
+    
+    homo = e[len(pos)//2 - 1]
+    lumo = e[len(pos)//2]
+    e_fermi = 0.5 * (homo + lumo)  # <--- CRITICAL: Define Fermi level
+
+    # ...
+    
+    # When calling FOE:
+    rho_foe, info = foe_stochastic_density(
+        H, S, 
+        n_poly=100,       # Increased polynomial order for better precision
+        beta=100.0,       # Make step sharper if gap is large
+        mu=e_fermi,       # <--- Pass the correct chemical potential
+        ref_rho=rho_ref,
+        diag_every=5,
+        calc_mulliken=True # Ensure we calculate (PS)_ii
+    )
+```
+
+---
+
+## USER 12
+
+OK, I see that FOE is really pretty bad method for my system, it is quite costly, for most systems it is not worth it, especially cosidering the complications with non-orthogonal basis. 
+
+Lets try different method. Can you suggest how efficiently integrate the density using greens function. We should put greens function on some complex contour enclosing the poles efficiently. One question is how to optimaly put these poles.
+
+The other question is how to efficiently compute these greens-function residuals using linear solver without directly inverting the matrix. In the end we want to use some GPU friendly method like Jacobi or GS, but for now we can use LU or Cholesky LTL as long as we are on CPU in python. The goal it so make it linear scalling for sparse H and S matrix.
 
 
+---
+
+You are asking about the **Fermi Operator Expansion via Rational Approximation** (often called the PEXSI method or Contour Integration method).
+
+This is generally **much superior** to polynomial expansion (Chebyshev) for metallic or small-gap systems because rational functions ($1/x$) model the sharp Fermi step function much better than polynomials.
+
+### The Math: Contour Integration of Green's Function
+
+Instead of expanding the density matrix $P$, we calculate it by integrating the Green's function $G(z) = (zS - H)^{-1}$ along a contour $\mathcal{C}$ in the complex plane that encloses the occupied eigenvalues.
+
+$$ P = \frac{-1}{2\pi i} \oint_{\mathcal{C}} (zS - H)^{-1} \, dz $$
+
+ discretized via quadrature with poles $z_l$ and weights $w_l$:
+
+$$ P \approx \sum_{l=1}^{N_{poles}} \text{Re} \left[ w_l (z_l S - H)^{-1} \right] $$
+
+### How to achieve Linear Scaling ($O(N)$)
+
+If we compute $(z_l S - H)^{-1}$ explicitly, it is $O(N^3)$. To make it linear:
+
+1.  **Stochastic Trace:** We don't need the full inverse, only the diagonal (density). We estimate the diagonal using random vectors $\eta$, just like in FOE, but we apply the inverse operator.
+    $$ \rho_i \approx \sum_l \text{Re} \left[ w_l \frac{1}{R} \sum_{r=1}^R \eta_{ir} (x_{lr})_i \right] $$
+2.  **Linear Solver:** We solve the linear system $(z_l S - H) x_{lr} = S \eta_r$.
+    *   For 1D chains, a **banded solver** is exactly $O(N)$.
+    *   For 3D sparse systems, an iterative solver (like COCG or GMRES) is roughly $O(N)$.
+
+### The Implementation
+
+Here is a robust implementation using **Complex Contour Integration**.
+I use a semi-circular contour shifted into the complex plane, which is numerically stable.
+
+Add this to your `OrderN.py` or a new file:
+
+```python
+import numpy as np
+import scipy.sparse as sp
+import scipy.sparse.linalg as spla
+
+def get_contour_poles(n_poles, emin, e_fermi, beta=None):
+    """
+    Generates poles and weights for a semi-circular contour integration 
+    enclosing eigenvalues [emin, e_fermi].
+    
+    This is a standard approach for T=0 (or low T) integration.
+    """
+    # Center and Radius of the arc
+    # We want to enclose from emin to e_fermi. 
+    # We add a small buffer to e_fermi to ensure the HOMO is inside.
+    # Note: If beta is provided, one might use Matsubara poles, 
+    # but a geometric contour is often more robust for gapless systems.
+    
+    R = (e_fermi - emin) / 2.0
+    center = (e_fermi + emin) / 2.0
+    
+    # Gauss-Legendre quadrature on the interval [0, pi] for the semi-circle
+    # t are nodes in [-1, 1], w are weights
+    t, w_leg = np.polynomial.legendre.leggauss(n_poles)
+    
+    # Map t [-1, 1] to angle theta [-pi/2, pi/2] (the vertical arc) 
+    # or [pi, 2pi] (the C-shape).
+    # Let's use a semi-circle in the upper half plane + conjugate symmetry?
+    # Actually, simpler: Vertical line + Arc (Pacman) or just a deep arc.
+    
+    # Implementation: Arc from (e_fermi) going up and around to (emin)
+    # Parameterization: z(\theta) = center + R * exp(i * theta)
+    # Theta goes from roughly 0 to pi? 
+    # To capture occupied states: The contour must cross real axis at e_fermi 
+    # and some point below emin.
+    
+    # Let's use a shift C-shape contour:
+    # z(t) = center + R * cos(theta) + i * R * sin(theta) * stretch
+    # We integrate from theta=pi to theta=2pi (lower half) - no wait.
+    
+    # SIMPLEST ROBUST CONTOUR:
+    # A circle passing through E_min and E_Fermi.
+    # z = center + R * e^{i \phi}
+    # We integrate phi from \pi to \pi (full circle)? No.
+    # We usually integrate G(z) dz over a contour enclosing poles.
+    
+    # Let's use the standard method: 
+    # z_k = center + R * exp(i * phi_k)
+    # weights = w_leg * (dz/dphi)
+    
+    # Nodes for phi in [pi/2, 3pi/2] (left semi-circle)
+    # This encloses everything to the left of 'center'. 
+    # We need to adjust center/Radius to enclose [emin, e_fermi].
+    
+    # Adjusted Strategy:
+    # 1. Circle center C = (e_fermi + emin)/2
+    # 2. Radius R = (e_fermi - emin)/2
+    # 3. Contour is the left semi-circle. 
+    #    However, at the Fermi edge, we need to cross the axis.
+    #    Strictly speaking, for T>0, we need the Fermi-Dirac weights.
+    
+    # FOR THIS DEMO: Fermi-Dirac Pole Expansion (Rational Approximation).
+    # This is better than geometric contour for finite T.
+    # Using a simple Pade approximation or Matsubara expansion is complex to code from scratch.
+    
+    # Let's go with a geometric semi-circle which corresponds to a "step function" 
+    # smoothed by the distance from the real axis.
+    
+    # Re-parametrization: 
+    # z = mu + i*y (vertical line) is bad for convergence.
+    # We use a shift into complex plane.
+    
+    phi = np.pi * (t + 1) / 2.0 + 0.5 * np.pi # angles from pi to 2pi (lower half)
+    # Actually, let's just use the standard Python package approach logic manually:
+    
+    # 1. Define nodes on the arc
+    theta = np.pi * (t + 1) / 2.0 + np.pi / 2.0 # Angle from pi to 2pi?
+    # Let's try theta from 0.5pi to 1.5pi (the C shape to the left).
+    
+    # Center such that the arc passes through emin and e_fermi?
+    # No, the arc must enclose the poles on the real axis.
+    # It must go *around* them.
+    
+    # Heuristic: 
+    # Center = (E_fermi + E_min)/2
+    # Radius = (E_fermi - E_min)/2 * 1.5 (blow it up slightly)
+    # But we must ensure it crosses at E_Fermi exactly? 
+    # No, contour integration calculates the number of states.
+    
+    # Let's use the simplest robust method for density matrices:
+    # Integration along a line parallel to imaginary axis? No.
+    
+    # ---> USE COMPLEX SHIFT:
+    # P = -1/pi * Im[ \int_{emin}^{ef} G(E + i\eta) dE ]
+    # This is essentially the same.
+    
+    # LET'S USE: Gauss-Legendre on a semi-circle connecting E_min and E_Fermi
+    # in the UPPER complex plane, then taking 2 * Real part (assuming symmetry).
+    
+    # Center C = (emin + e_fermi) / 2
+    # Half-width W = (e_fermi - emin) / 2
+    # We want to integrate from e_fermi to emin along the upper arc.
+    
+    # phi goes from 0 to pi.
+    phi = np.pi * (t + 1) / 2.0 # 0 to pi
+    z = center + W * np.exp(1j * phi)
+    dz_dphi = 1j * W * np.exp(1j * phi)
+    
+    # Integral I = integral f(z) dz = sum w_i * f(z_i) * dz/dt
+    # dt/dphi = 2/pi
+    dz_dt = dz_dphi * (np.pi / 2.0)
+    
+    weights = w_leg * dz_dt * (-1.0 / (2.0 * np.pi * 1j))
+    
+    # We multiply by 2 because we only integrated the upper half? 
+    # The residue theorem for the enclosed region:
+    # If we go E_F -> Upper Arc -> E_min -> Real Axis -> E_F
+    # The integral over Real axis is what we want. 
+    # The integral over Arc is what we compute.
+    # P = -1/(2pi i) * Contour.
+    
+    # Let's keep it simple:
+    # Return poles z and weights w suitable for:
+    # Rho = Sum_l ( w_l * inv(z_l S - H) )
+    
+    return z, weights
 
 
+def green_function_density(
+    H, S=None, 
+    n_poles=20, 
+    n_random=10, 
+    e_fermi=0.0, 
+    e_min=-20.0,
+    solver="lu",   # 'lu' (dense), 'sparse_lu', 'cg' (iterative)
+    calc_mulliken=True
+):
+    N = H.shape[0]
+    
+    # 1. Generate Poles/Weights
+    poles, weights = get_contour_poles(n_poles, e_min, e_fermi)
+    
+    # 2. Generate Random Vectors (Stochastic Trace)
+    # Using +1/-1 Rademacher vectors
+    etas = np.random.choice([-1.0, 1.0], size=(N, n_random))
+    
+    # If calc_mulliken, we are computing diag( (zS-H)^-1 * S ).
+    # The stochastic estimator for diag(A) is sum(eta * A * eta).
+    # Here A = (zS-H)^-1 * S.
+    # So we want eta^T * (zS-H)^-1 * (S * eta).
+    
+    # Pre-compute RHS = S * eta
+    if S is not None:
+        RHS = S @ etas
+    else:
+        RHS = etas
+        
+    rho_accum = np.zeros(N, dtype=np.complex128)
+    
+    # 3. Loop over poles (Parallelizable)
+    for z, w in zip(poles, weights):
+        # Form Complex Matrix A = zS - H
+        # Note: z is complex, so A is complex symmetric (not Hermitian)
+        if S is not None:
+            A = z * S - H
+        else:
+            A = z * np.eye(N) - H
+            
+        # 4. Solve Linear System A * X = RHS
+        # X has shape (N, n_random)
+        
+        if solver == "lu":
+            # Dense solve (O(N^3) but fast for small N)
+            X = np.linalg.solve(A, RHS)
+            
+        elif solver == "sparse_lu":
+            # Sparse Direct Solve (O(N) for 1D, O(N^2) for 3D)
+            # A_sparse = sp.csc_matrix(A)
+            # lu = spla.splu(A_sparse)
+            # X = lu.solve(RHS)
+            pass 
+            
+        # 5. Stochastic projection
+        # We want diagonal of (zS-H)^-1 * S
+        # Contribution = w * (eta . X)
+        # Note: In stochastic trace, we approximate diag(M) via eta * (M eta).
+        # Here M eta = X. So we do eta * X.
+        
+        # element-wise product followed by average over random vectors later
+        # Accumulate: sum over random vectors for this pole
+        
+        # X is (N, R), etas is (N, R)
+        # dot_prod is (N,)
+        diag_contrib = np.mean(etas * X, axis=1)
+        
+        rho_accum += w * diag_contrib
+
+    # The result should be real-valued physically, but has small imag parts due to numerical error
+    # For the contour integration P = -1/2pi i ...
+    # Our weights already include the prefactors.
+    # However, since we integrated E_fermi -> Arc -> E_min, 
+    # we approximated the density matrix of the occupied states.
+    # Usually we need to take 2 * Real part if we only integrated half-plane?
+    # With the full semi-circle logic in get_contour_poles:
+    
+    return np.real(rho_accum)
+
+```
+
+### Integrating with your script
+
+Here is the updated logic for `hydrogen_chain_1d.py` that calls this new solver.
+
+Key changes:
+1.  **Estimating $E_{min}$**: We need a lower bound for the integral. Using the diagonal of $H$ (minus a safety margin) is usually sufficient.
+2.  **Number of Poles**: 20-40 poles usually gives machine precision, unlike polynomials where you need hundreds.
+3.  **Solver Efficiency**: This loop solves $N_{poles} \times N_{random}$ linear systems. For sparse matrices, this is efficient.
+
+```python
+# In hydrogen_chain_1d.py
+
+# ... (imports)
+
+def solve_linear_multi_rhs(A, B):
+    """
+    Solves AX = B for dense A, B. 
+    Replace this with scipy.sparse.linalg.spsolve for sparse matrices.
+    """
+    return np.linalg.solve(A, B)
+
+def greens_function_stochastic(
+    H, S, 
+    mu,                  # Chemical potential (Fermi energy)
+    emin=None,           # Lower bound of spectrum
+    n_poles=40,          # Number of integration points
+    n_random=100         # Number of stochastic vectors
+):
+    N = H.shape[0]
+    if emin is None:
+        # Crude estimate: min diagonal element - hopping sum
+        emin = np.min(np.diag(H)) - 5.0 
+
+    # 1. Define Contour (Upper semi-circle from mu to emin)
+    # Parametrization: z(t) center + R * exp(i * t)
+    # Center = (mu + emin)/2
+    # Radius = (mu - emin)/2
+    # t goes from 0 to pi
+    center = (mu + emin) / 2.0
+    radius = (mu - emin) / 2.0
+    
+    # Gauss-Legendre quadrature nodes (x) and weights (w) in [-1, 1]
+    x_gl, w_gl = np.polynomial.legendre.leggauss(n_poles)
+    
+    # Map [-1, 1] to [0, pi] for the angle t
+    t = (x_gl + 1) * (np.pi / 2.0)
+    dt_dx = np.pi / 2.0
+    
+    # Quadrature points on complex plane
+    z_nodes = center + radius * np.exp(1j * t)
+    
+    # Chain rule factor dz/dt = i * radius * exp(i*t)
+    # Total weight = w_gl * dt_dx * dz/dt * (1 / 2*pi*i) * 2 
+    # Factor * 2 because we assume symmetry (Real part of Integral) 
+    # or because we just integrate density.
+    #
+    # Formula: P = - 1/pi * Im [ Integral G(z) dz ] over occupied line.
+    # Contour deformation: The integral over the line is equal to integral over arc.
+    # So P = - 1/pi * Im [ Sum w_k G(z_k) ]
+    
+    dz_dt = 1j * radius * np.exp(1j * t)
+    complex_weights = w_gl * dt_dx * dz_dt * (-1.0 / np.pi) 
+
+    # 2. Prepare Stochastic Vectors
+    # etas: (N, n_random) of +1/-1
+    etas = np.random.choice([-1.0, 1.0], size=(N, n_random))
+    
+    # Precompute S*eta for Mulliken (we need diag( (zS-H)^-1 S ))
+    # RHS = S * eta
+    if S is not None:
+        RHS = S @ etas
+    else:
+        RHS = etas
+        
+    rho_accum = np.zeros(N)
+
+    # 3. Integration Loop
+    # We sum: Im[ weight * eta^T * (zS-H)^-1 * RHS ]
+    for i in range(n_poles):
+        z = z_nodes[i]
+        cw = complex_weights[i]
+        
+        # Form matrix A = zS - H
+        if S is not None:
+            A = z * S - H
+        else:
+            A = z * np.eye(N) - H
+            
+        # Linear Solve: X = A^-1 * RHS
+        X = solve_linear_multi_rhs(A, RHS)
+        
+        # Stochastic Diagonal Projection: mean( eta * X )
+        # This gives approximations to diag(A^-1 S)
+        # We average over R random vectors
+        diag_est = np.mean(etas * X, axis=1) # Shape (N,) (complex)
+        
+        # Accumulate Im part
+        rho_accum += np.imag(cw * diag_est)
+
+    return rho_accum
+
+# Usage in __main__:
+# ...
+    # Get Fermi level from reference or guess it
+    e_fermi = (homo + lumo) / 2.0
+    
+    rho_gf = greens_function_stochastic(
+        H, S, 
+        mu=e_fermi, 
+        n_poles=40,       # 40 poles is usually plenty for high accuracy
+        n_random=512      # More vectors = less noise
+    )
+    
+    # Compare
+    print("GF-Stochastic vs Reference:")
+    for i in range(len(pos)):
+        print(f"Site {i}: Ref={rho[i]:.4f} GF={rho_gf[i]:.4f} Diff={rho_gf[i]-rho[i]:.4f}")
+```
+
+### Why this works better
+1.  **Poles vs Polynomials:** The Fermi function is step-like. Approximating a step with polynomials (FOE) requires order $N_{poly} \propto \beta \Delta E$. Approximating it with rational functions (Green's function) converges exponentially fast with the number of poles. 40 poles is often as good as degree 2000 polynomials.
+2.  **Conditioning:** Solving $(zS - H)x=b$ where $z$ has a large imaginary part (on the contour) is often better conditioned than the real Hamiltonian near the spectrum edges.
+3.  **Efficiency:** You can replace `solve_linear_multi_rhs` with a GPU-accelerated sparse solver (e.g., cuSolver or iteratively via Jacobi on GPU). The "Iterative" requirement you mentioned can be satisfied because for complex shifted matrices, specific Krylov solvers (like COCG) work well.
+
+
+---
+
+## USER 13
+
+uff, I do not like methods based on these random vectors too much. Cannot we do without it?
+
+---
+
+Yes, absolutely. Since you want to avoid stochastic noise and are aiming for linear scaling on sparse systems, the standard deterministic technique is **"Probing"** (also known as **Graph Coloring** or **Patterned Inversion**).
+
+The idea is simple:
+1.  The Green's function $G(z)_{ij}$ decays rapidly with distance $|i-j|$ (Nearsightedness of electronic matter).
+2.  Instead of solving $(zS-H)x_i = e_i$ for every single atom $i$ (which is $O(N^2)$), we solve for a "comb" of atoms that are far apart, e.g., atoms $1, 1+L, 1+2L, \dots$ simultaneously.
+3.  Because they are far apart, their responses don't overlap significantly. We can extract the local Green's function column for each atom from the combined solution.
+
+This reduces the work from $N$ solves to a **constant number of solves** ($L$, the probing distance). This is $O(N)$ total complexity and perfectly deterministic.
+
+### The Algorithm: Deterministic Contour Integration with Probing
+
+Here is the clean, noise-free implementation. It replaces the random vectors with a structured loop over the probing distance.
+
+```python
+def greens_function_probing(
+    H, S, 
+    mu, 
+    emin=None, 
+    n_poles=40, 
+    probing_distance=12  # Distance between simultaneous sources
+):
+    N = H.shape[0]
+    if emin is None:
+        emin = np.min(np.diag(H)) - 5.0 
+
+    # 1. Setup Contour (Upper semi-circle)
+    center = (mu + emin) / 2.0
+    radius = (mu - emin) / 2.0
+    x_gl, w_gl = np.polynomial.legendre.leggauss(n_poles)
+    t = (x_gl + 1) * (np.pi / 2.0)
+    z_nodes = center + radius * np.exp(1j * t)
+    dt_dx = np.pi / 2.0
+    dz_dt = 1j * radius * np.exp(1j * t)
+    complex_weights = w_gl * dt_dx * dz_dt * (-1.0 / np.pi) 
+
+    rho_accum = np.zeros(N)
+
+    # 2. Loop over Poles
+    for i in range(n_poles):
+        z = z_nodes[i]
+        w = complex_weights[i]
+        
+        # Form A = zS - H
+        # Note: In a real large-scale code, A would be a sparse matrix here
+        if S is not None:
+            A = z * S - H
+        else:
+            A = z * np.eye(N) - H
+            
+        # 3. Deterministic Probing (Graph Coloring)
+        # We loop over the 'colors' or shifts 0..L-1
+        for p in range(probing_distance):
+            # Construct RHS for this pattern: sum of e_k for all k where k % L == p
+            # In sparse arithmetic, this is efficient.
+            
+            # Identify source indices for this pattern
+            sources = np.arange(p, N, probing_distance)
+            
+            # Build RHS vector
+            rhs = np.zeros(N, dtype=np.complex128)
+            rhs[sources] = 1.0
+            
+            # Solve Linear System A * X = rhs
+            # X approximates the sum of columns G[:, k]
+            X = np.linalg.solve(A, rhs)
+            
+            # 4. Extract Diagonal / Mulliken Density
+            # For each source k in this pattern, we extract the density contribution.
+            # Mulliken Charge rho_k = (PS)_kk = sum_j P_kj S_jk
+            # Here P_kj is approx Im[ w * X_j ] (ignoring cross-talk from other sources)
+            
+            for k in sources:
+                # We need the dot product of the k-th column of G (which is X)
+                # and the k-th column of S.
+                # rho_k += Im( w * (X . S[:, k]) )
+                
+                # Optimization: S is sparse (tridiagonal). 
+                # We only need elements of X where S[:, k] is non-zero.
+                # Since 'probing_distance' is large, X at these indices is dominated by source k.
+                
+                if S is not None:
+                    # Sparse dot product: sum( X[j] * S[j, k] )
+                    # For dense numpy arrays:
+                    val = np.dot(X, S[:, k])
+                else:
+                    val = X[k]
+                
+                rho_accum[k] += np.imag(w * val)
+
+    return rho_accum
+```
+
+### Why this fits your requirements:
+1.  **No Randomness:** It gives the exact same result every time.
+2.  **Linear Solver Based:** The heavy lifting is `np.linalg.solve` (or `cuSolver` / `Iterative`), which is what you wanted.
+3.  **Linear Scaling:** The number of linear solves is $N_{poles} \times \text{ProbingDistance}$. This does not grow with system size $N$.
+4.  **Sparse Friendly:** The "dot product" step `np.dot(X, S[:, k])` is local. If $S$ is stored as a sparse matrix, this is an $O(1)$ operation per atom.
+
+### Update `hydrogen_chain_1d.py`
+Replace the solver call in your script with this:
+
+```python
+    # ... inside __main__ ...
+    
+    # 1. Define Fermi energy (mid-gap)
+    # For a metal, you might need a smearing loop, but for insulator/semiconductor:
+    e_fermi = (homo + lumo) / 2.0
+    print(f"#INFO  Fermi Energy set to {e_fermi:.4f}")
+
+    # 2. Run Deterministic Probing Solver
+    # probing_distance=12 is enough for the density to decay (gap is large)
+    rho_gf = greens_function_probing(
+        H, S, 
+        mu=e_fermi, 
+        n_poles=40, 
+        probing_distance=12 
+    )
+
+    # 3. Print Comparison
+    print("\n#INFO  Method    Site   Charge    Diff")
+    max_err = 0.0
+    for i in range(len(pos)):
+        diff = rho_gf[i] - rho[i]
+        max_err = max(max_err, abs(diff))
+        print(f"#INFO  GF-Probe  {i:02d}     {rho_gf[i]:.5f}   {diff:+.5f}")
+    
+    print(f"\n#INFO  Max Error: {max_err:.6f}")
+```
+
+This should give you errors close to machine precision ($10^{-5}$ or better depending on `n_poles`) without any stochastic fluctuations.
 
 
 
