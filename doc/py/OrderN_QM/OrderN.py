@@ -129,7 +129,7 @@ def canonical_reference(H, S=None, n_occ=None):
     return e, C, rho
 
 
-def plot_spectrum_and_map(e, C, n_occ=None, positions=None, nbins=200, padding=0.2, cmap="bwr", plot_spectrum=True, info_text=None):
+def plot_spectrum_and_map(e, C, n_occ=None, positions=None, nbins=100, padding=0.2, cmap="bwr", plot_spectrum=True, info_text=None):
     """
     Plot eigen-spectrum (occupied vs unoccupied colors + Fermi) and 2D map of MO coefficients vs energy.
     positions: optional x-axis values for sites; if None use site indices.
