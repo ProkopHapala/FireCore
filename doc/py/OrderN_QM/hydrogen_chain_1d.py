@@ -2,6 +2,9 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 
+# unlimited line lenght in numpy when printing
+np.set_printoptions(linewidth=np.inf)
+
 from OrderN import (
     find_neighbor_pairs,
     build_matrix_from_pairs,
@@ -9,6 +12,7 @@ from OrderN import (
     canonical_reference,
     plot_spectrum_and_map,
 )
+import OMM
 from FOE import foe_stochastic_density
 from GF import (
     greens_function_probing,
@@ -128,31 +132,31 @@ def plot_geometry(pos, cell_a, title="1D geometry"):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="1D hydrogen dimer chain tight-binding reference")
-    ap.add_argument("--n_cells",  type=int, default=8)
+    ap.add_argument("--n_cells",  type=int, default=16)
     ap.add_argument("--cell_a",   type=float, default=2.0)
     ap.add_argument("--dimer_distance", type=float, default=0.74)
     # Defaults aligned to Harrison-like scale in eV/Å
-    ap.add_argument("--onsite",   type=float, default=-13.6)   # H 1s energy in eV
-    ap.add_argument("--decay",    type=float, default=0.60)   # decay length in Å
-    ap.add_argument("--t0",       type=float, default=-24.5)  # ~-18 eV at 0.74 Å with decay 0.60
+    ap.add_argument("--onsite",          type=float, default=-13.6)   # H 1s energy in eV
+    ap.add_argument("--decay",           type=float, default=0.60)   # decay length in Å
+    ap.add_argument("--t0",              type=float, default=-24.5)  # ~-18 eV at 0.74 Å with decay 0.60
     ap.add_argument("--s0",              type=float, default=1.0)    # overlap scale
     ap.add_argument("--TS_decay_factor", type=float, default=1.2)
     ap.add_argument("--conf_amp",        type=float, default=4.0, help="cosine confinement amplitude added to onsite")
-    ap.add_argument("--wrap_ends",    type=int, default=1, help="periodic end-to-end coupling")
-    ap.add_argument("--plot_geom",    type=int, default=1, help="show geometry scatter")
-    ap.add_argument("--plot_mats",    type=int, default=1, help="show H and S matrices")
-    ap.add_argument("--plot_map",     type=int, default=1, help="show MO coefficient map")
-    ap.add_argument("--plot_density", type=int, default=1, help="show Mulliken density")
-    ap.add_argument("--no_show",      type=int, default=0, help="skip plt.show (for batch)")
-    ap.add_argument("--verbosity",    type=int, default=3, help="printing verbosity; states printed if >2")
+    ap.add_argument("--wrap_ends",       type=int, default=1, help="periodic end-to-end coupling")
+    ap.add_argument("--plot_geom",       type=int, default=1, help="show geometry scatter")
+    ap.add_argument("--plot_mats",       type=int, default=1, help="show H and S matrices")
+    ap.add_argument("--plot_map",        type=int, default=1, help="show MO coefficient map")
+    ap.add_argument("--plot_density",    type=int, default=1, help="show Mulliken density")
+    ap.add_argument("--no_show",         type=int, default=0, help="skip plt.show (for batch)")
+    ap.add_argument("--verbosity",       type=int, default=3, help="printing verbosity; states printed if >2")
     
-    ap.add_argument("--orderN_method", type=str, default="GFcomb", help="choose one of: FOE | GFcomb | GFrand")
-    ap.add_argument("--foe_solver",   type=str, default="cholesky", help="FOE solver: jacobi|solve|cholesky")
-    ap.add_argument("--foe_npoly",    type=int, default=200, help="FOE Chebyshev order")
-    ap.add_argument("--foe_beta",     type=float, default=10.0, help="FOE beta (smaller = smoother)")
-    ap.add_argument("--foe_no_ortho", type=int, default=0, help="disable orthogonalization in FOE")
-    ap.add_argument("--foe_diag_every", type=int, default=1, help="if >0 print RMSE/maxdiff vs reference every k Chebyshev step")
-    ap.add_argument("--foe_mu",         type=float, default=None, help="override Fermi level for FOE (defaults to HOMO/LUMO mid)")
+    ap.add_argument("--orderN_method",   type=str, default="OMM", help="choose one of: FOE | GFcomb | GFrand | OMM")
+    ap.add_argument("--foe_solver",      type=str, default="cholesky", help="FOE solver: jacobi|solve|cholesky")
+    ap.add_argument("--foe_npoly",       type=int, default=200, help="FOE Chebyshev order")
+    ap.add_argument("--foe_beta",        type=float, default=10.0, help="FOE beta (smaller = smoother)")
+    ap.add_argument("--foe_no_ortho",    type=int, default=0, help="disable orthogonalization in FOE")
+    ap.add_argument("--foe_diag_every",  type=int, default=1, help="if >0 print RMSE/maxdiff vs reference every k Chebyshev step")
+    ap.add_argument("--foe_mu",          type=float, default=None, help="override Fermi level for FOE (defaults to HOMO/LUMO mid)")
     ap.add_argument("--foe_nrand",       type=int, default=100, help="number of random probes for FOE trace")
     ap.add_argument("--foe_beta_scaled", type=int, default=0, help="set to 1 if beta already in scaled units (skip automatic scaling)")
     
@@ -163,17 +167,69 @@ if __name__ == "__main__":
     ap.add_argument("--gf_plot_poles",   type=str, default="0,7,15", help="comma-separated pole indices to overlay in probe plot")
     ap.add_argument("--gfr_nrand",       type=int, default=64, help="random probes for GF")
     ap.add_argument("--gfr_probe_idx",   type=int, default=0, help="which probe to visualize (0-based)")
+    ap.add_argument("--omm_iter",        type=int, default=8, help="OMM Jacobi iterations")
+    ap.add_argument("--omm_damp",        type=float, default=0.2, help="OMM Jacobi damping")
+    ap.add_argument("--omm_inertia",     type=float, default=1.0, help="OMM inertial diagonal (stabilizer)")
+    ap.add_argument("--omm_max_step",    type=float, default=0.1, help="OMM max coefficient step (abs), set 0 to disable")
+    ap.add_argument("--omm_support",     type=int, default=2, help="OMM support in +/- cells")
+    ap.add_argument("--omm_plot",        type=int, default=1, help="plot OMM orbitals after orthogonalization")
+    ap.add_argument("--omm_init",        type=str, default="const", help="OMM init mode: const | rand")
+    ap.add_argument("--omm_rand_scale",  type=float, default=0.1, help="OMM random init scale")
+    ap.add_argument("--omm_rand_seed",   type=int, default=None, help="OMM random init seed")
+    ap.add_argument("--omm_plot_sel",    type=str, default="0,1", help="comma-separated orbital indices to plot; None=all")
     args = ap.parse_args()
     gf_poles_to_plot = [int(s) for s in args.gf_plot_poles.split(",") if s.strip()!=""]
     method = args.orderN_method.strip().lower()
-    if method not in ("foe", "gfcomb", "gfrand"):
-        raise ValueError("orderN_method must be one of: FOE | GFcomb | GFrand")
+    if method not in ("foe", "gfcomb", "gfrand", "omm"):
+        raise ValueError("orderN_method must be one of: FOE | GFcomb | GFrand | OMM")
 
     pos, cell_ids = build_dimer_chain(n_cells=args.n_cells, cell_a=args.cell_a, dimer_distance=args.dimer_distance)
     H = build_hamiltonian(pos, cell_ids, onsite=args.onsite, decay=args.decay, t0=args.t0, wrap_ends=bool(args.wrap_ends), conf_amp=args.conf_amp)
     S = build_overlap(pos, cell_ids, diag=1.0, decay=args.decay*args.TS_decay_factor, s0=args.s0, wrap_ends=bool(args.wrap_ends))
     print(f"#DEBUG |H| max={np.abs(H).max():.3f} min={np.abs(H).min():.3f}")
     print(f"#DEBUG |S| max={np.abs(S).max():.3f} min={np.abs(S).min():.3f}")
+
+    if method == "omm":
+        C_list, errors, total_abs, max_abs, masks = OMM.run_omm(
+            S,
+            cell_ids,
+            support_cells=args.omm_support,
+            wrap_ends=bool(args.wrap_ends),
+            n_iter=args.omm_iter,
+            damping=args.omm_damp,
+            inertia=args.omm_inertia,
+            max_step=None if args.omm_max_step == 0 else args.omm_max_step,
+            init_mode=args.omm_init,
+            rand_scale=args.omm_rand_scale,
+            rand_seed=args.omm_rand_seed,
+            verbosity=args.verbosity,
+        )
+        print(f"#INFO OMM total_abs_err={total_abs:.6e} max_abs_err={max_abs:.6e}")
+        if args.verbosity >= 3:
+            Rmat = OMM._errors_to_matrix(errors, len(masks))
+            print("#DEBUG OMM R-matrix\n", Rmat)
+        if args.omm_plot:
+            C_norm = OMM.normalize_orbitals(C_list, masks, S)
+            dense = OMM.coeffs_to_dense(C_norm, masks, n_basis=S.shape[0])
+            fig, ax = plt.subplots(figsize=(8, 4))
+            xs = np.arange(S.shape[0])
+            sel = None
+            if args.omm_plot_sel:
+                sel = [int(s) for s in args.omm_plot_sel.split(",") if s.strip()!=""]
+                sel = [i for i in sel if 0 <= i < dense.shape[0]]
+            indices = sel if sel is not None else range(dense.shape[0])
+            for i in indices:
+                ax.plot(xs, dense[i], label=f"orb {i}")
+            ax.set_xlabel("site index")
+            ax.set_ylabel("coeff")
+            ax.set_title("OMM orbitals after orthogonalization")
+            ax.legend(ncol=2, fontsize=8)
+            plt.tight_layout()
+            if args.no_show:
+                plt.close(fig)
+            else:
+                plt.show()
+        exit(0)
 
     if args.plot_geom:
         plot_geometry(pos, cell_a=args.cell_a, title="1D hydrogen dimer chain geometry")
