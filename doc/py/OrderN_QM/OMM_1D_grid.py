@@ -4,6 +4,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.linalg import eigh_tridiagonal
 
+# unlimited line lenght in numpy when printing
+np.set_printoptions(linewidth=np.inf)
+
 class OMM1DSolver:
     def __init__(self, n_grid=200, l_max=20.0):
         self.n = n_grid
