@@ -1849,3 +1849,367 @@ if __name__ == "__main__":
     ---
 
 
+## USER
+
+OK, so I did some test for petacene molecule tha I counted histogram how many atoms overlap with my boxes, and how many that is pairs. Now I'm thinking how to distribute it on GPU efficiently. Because the spread is very high, and it is something like heavy-tail distribution, it would perhaps make sennse to make different kernels, or different strategies.
+
+
+[HIST] atom count per fine block: {0: 142, 1: 47, 2: 39, 3: 19, 4: 39, 5: 17, 6: 19, 7: 30, 8: 25, 9: 10, 10: 15, 11: 18, 12: 17, 13: 14, 14: 14, 15: 5, 16: 6}
+[HIST] pair count per fine block: {0: 142, 1: 47, 3: 39, 6: 19, 10: 39, 15: 17, 21: 19, 28: 30, 35: 3, 36: 22, 43: 1, 44: 1, 45: 8, 55: 15, 64: 5, 66: 13, 76: 5, 77: 6, 78: 6, 88: 3, 89: 4, 90: 3, 91: 4, 100: 3, 103: 6, 105: 5, 117: 4, 119: 1, 130: 3, 134: 3}
+
+for example for boxes with just one atom, we can do only diagonal density, and it make sense to merge all boxes with one atom into single thread or workgroup.
+
+we want to load atoms (their positions, coefs and neighborlists) into shared group local memory in tiles (as every thread can use the same weights). What is the best way how to do it? We will probaby not fit more than 256 coefs to group local memory. But in fact we have like 4x4 matrix for each (i,j) pair with sp3 basis [px,py,pz,s], so we need to do it in smaller blocks like 4x4 atoms = 16x16=256 numbers.
+we may also want to pre-calculate the value of basis function for given voxel which we can keep in private memory (register) but there we perhaps cannot fit more than few atoms (the 4), perhaps we can only store the radial function (which is obtained by spline interpolation) as the angular part (just x,y,z) is very fast to evaluate.
+
+
+---
+
+To handle the "heavy-tail" distribution of your Petacene system effectively, you should move away from a "one-size-fits-all" kernel. Your data shows two distinct regimes: **Sparse/Single-atom blocks** (very frequent) and **Dense/High-pair blocks** (rare but computationally dominant).
+
+Here is a design for an optimal multi-tiered kernel strategy.
+
+### 1. The Multi-Tiered Kernel Strategy
+Instead of complex branching inside a single kernel, launch two or three distinct kernel configurations based on the workload metadata you already calculated.
+
+*   **Tier 1: Single-Atom Kernel (Diagonal Only)**
+    *   **Logic:** For blocks with exactly 1 atom, $P_{ij}$ is just $P_{ii}$. You only need the radial function $\phi_i(r)$ and the coefficient.
+    *   **Optimization:** This kernel can be extremely lightweight. Since there is no pair-wise loop, you can process **multiple fine blocks** per workgroup or use a very high occupancy with few registers.
+*   **Tier 2: Standard/Dense Block Kernel (The "Workhorse")**
+    *   **Logic:** This handles blocks with $2 \le N_{atoms} \le 16$. 
+    *   **Optimization:** Uses the **Shared Memory Tiling** strategy described below.
+*   **Tier 3: The "Monster" Blocks (Optional)**
+    *   **Logic:** If a block has $>100$ pairs, it will hit the "tail" effect where one workgroup stays active while others finish.
+    *   **Strategy:** Split these tasks by **Pairs**, not by space. Launch two workgroups for the same $8\times 8\times 8$ spatial block, each processing half the density matrix elements, and use an `atomicAdd` for the final grid write.
+
+### 2. Optimal Shared Memory Tiling for sp3 Basis
+For a $4 \times 4$ density matrix block (sp3 basis), you have 16 coefficients per atom-pair $(i, j)$. With 134 pairs, that is $134 \times 16 = 2144$ floats (~8.6 KB). This fits easily in Shared Memory (usually 48KB–160KB).
+
+**The "Symmetry-Aware" Shared Memory Layout:**
+Do not store the full 16-element matrix if you can avoid it. In DFTB, the density matrix is symmetric. 
+*   **Storage:** Load the $P_{ij}$ blocks into Shared Memory as a flat array.
+*   **Loading:** Have each thread in the workgroup load one float. For 256 threads, you can load 256 floats in one "cycle." You’ll need ~8-10 cycles to fill the Shared Memory for a dense block.
+*   **Access:** When a thread calculates a voxel, it pulls the 16 $P_{ij}$ values and the 8 basis values (4 for $\phi_i$, 4 for $\phi_j$).
+
+### 3. Register Management: Radial vs. Angular
+The angular part of your $p$-orbitals is just $(x, y, z)/r$. This is "free" in terms of registers. The **Radial Spline** is the bottleneck.
+
+**The "Pre-fetch" Strategy:**
+1.  **Voxel Loop:** Each thread calculates its relative $dx, dy, dz$ and $r$ once per voxel.
+2.  **Radial Lookup:** Perform the spline interpolation for the unique atoms in the block.
+    *   *If $N_{atoms}$ is small (e.g., 4):* You can store the 4 radial values in registers.
+    *   *If $N_{atoms}$ is large (e.g., 16):* You cannot fit 16 radial values in registers without spilling. Instead, process atoms in **sub-batches of 4**.
+    *   **Kernel Loop Structure:**
+        ```cpp
+        for (int batch = 0; batch < num_atom_batches; ++batch) {
+            // 1. Calculate and store 4 radial values in registers (private)
+            // 2. Loop through all pairs (i, j) in Shared Memory where 
+            //    atom i or j is in the current batch.
+            // 3. Accumulate density.
+        }
+        ```
+
+### 4. Handling Splines Efficiently
+Splines are typically 4 control points per interval. 
+*   **Texture Memory:** If your radial functions are the same for all atoms of the same type (all Carbons share one spline), put the spline coefficients in **Texture Memory** (NVIDIA) or **Constant Cache**. This provides hardware-accelerated interpolation and high-speed caching that doesn't compete with Shared Memory.
+*   **Avoid Polynomial Evaluation in Registers:** Do not store the spline coefficients in registers. Only store the *resulting* $\phi(r)$ value in a register.
+
+### Summary of Best Practices for Your Data
+| Workload | Block Resolution | Strategy |
+| :--- | :--- | :--- |
+| **0 Atoms** | 142 blocks | **Discard** (Do not launch). |
+| **1 Atom** | 47 blocks | **Tier 1 Kernel**: High-occupancy, no pair loop. |
+| **2-10 Atoms** | ~100 blocks | **Standard Kernel**: Full Shared Memory tiling for $P_{ij}$. |
+| **11-16 Atoms** | ~50 blocks | **Sub-batched Kernel**: Loop over atoms in groups of 4 to save registers. |
+
+**Pro-Tip on Interleaving:** You mentioned `i=ntread+[1,2,3...ntread]`. This is called **Grid-Stride Looping**. It is excellent for load balancing within the block, but ensure your block size (e.g., $8 \times 8 \times 8 = 512$ voxels) is a multiple of your warp/wavefront size (32 or 64) to maintain "Coalesced Writes" to the global grid. Always aim for 128 or 256 threads per block for these kernels.
+
+---
+
+## USER
+
+OK, so please write me the normal kernel for max 16 atoms with ubblocks of  max 8 (4+4) radial values per thread, 16 or 32 threads 
+
+---
+
+## Gemini
+
+Here is the CUDA kernel designed for the **Standard/Dense block** scenario ($2 \le N_{atoms} \le 16$). 
+
+To meet your requirements, it uses a **sub-batched** approach where 16 atoms are processed in two batches of 8. This keeps the radial function values ($\phi(r)$) in registers (8 per thread) to avoid spilling while still allowing every thread to contribute to the density calculation for every voxel in the block.
+
+### Key Features:
+1.  **Shared Memory Tiling:** The $16 \times 16$ density matrix blocks ($P_{ij}$) are loaded once into Shared Memory (SRAM) by the workgroup.
+2.  **Register-based Basis Values:** To avoid frequent memory lookups, the radial spline results for 8 atoms are stored in a private array (registers).
+3.  **Grid-Stride Voxel Loop:** Threads process voxels in an interleaved manner, ensuring coalesced writes and perfect work distribution even if the block isn't a power of 2.
+4.  **Angular Part on the Fly:** The $(s, p_x, p_y, p_z)$ angular parts are calculated using the relative voxel coordinates $(dx, dy, dz)$, which is computationally cheaper than storing them.
+
+```cpp
+#define BLOCK_SIZE 8        // 8x8x8 voxel block
+#define MAX_ATOMS_BLOCK 16  // Max atoms per workgroup task
+#define SUB_BATCH 8         // Atoms processed in one register batch
+#define THREADS_PER_BLOCK 256 // Adjust based on GPU occupancy tests
+
+// Structure for atom data in Shared Memory
+struct AtomData {
+    float3 pos;
+    int type;      // Used for spline lookup
+    float RcutSq;
+};
+
+__global__ void projectDensityDense(
+    const float* __restrict__ globalGrid,    // Output grid
+    const int*   __restrict__ activeBlocks,  // List of active block IDs
+    const AtomData* __restrict__ atomParams, // Global atom data
+    const float* __restrict__ densityMatrix, // Symmetric P_ij blocks
+    const float* __restrict__ splines,       // Spline coeffs (Texture memory preferred)
+    int nActiveTasks,
+    float voxelStep,
+    float3 gridMin
+) {
+    // 1. Identify which spatial block this workgroup handles
+    int taskIdx = blockIdx.x;
+    if (taskIdx >= nActiveTasks) return;
+    
+    // Shared Memory Allocation
+    // Pij: 16 atoms * 16 atoms * 16 (sp3 basis) = ~16KB (Adjust based on sparsity)
+    __shared__ float s_Pij[MAX_ATOMS_BLOCK * MAX_ATOMS_BLOCK * 16];
+    __shared__ AtomData s_atoms[MAX_ATOMS_BLOCK];
+    
+    // 2. Cooperative Loading (Shared Memory)
+    // Threads work together to load atom positions and the Pij matrix
+    int tid = threadIdx.x;
+    // ... Loading logic for s_atoms and s_Pij ...
+    __syncthreads();
+
+    // 3. Grid-Stride Voxel Loop
+    // Process all 512 voxels in the 8x8x8 block
+    for (int vIdx = tid; vIdx < (BLOCK_SIZE * BLOCK_SIZE * BLOCK_SIZE); vIdx += blockDim.x) {
+        // Convert linear index to local x, y, z
+        int lz = vIdx / (BLOCK_SIZE * BLOCK_SIZE);
+        int ly = (vIdx % (BLOCK_SIZE * BLOCK_SIZE)) / BLOCK_SIZE;
+        int lx = vIdx % BLOCK_SIZE;
+
+        // Voxel world position
+        float3 vPos;
+        vPos.x = gridMin.x + (blockPosX * BLOCK_SIZE + lx) * voxelStep;
+        vPos.y = gridMin.y + (blockPosY * BLOCK_SIZE + ly) * voxelStep;
+        vPos.z = gridMin.z + (blockPosZ * BLOCK_SIZE + lz) * voxelStep;
+
+        float totalDensity = 0.0f;
+
+        // --- SUB-BATCHED PROCESSING ---
+        // Process atoms 0-7, then 8-15 to stay within register limits
+        for (int batch = 0; batch < 2; ++batch) {
+            float phi_radial[SUB_BATCH]; // Basis values in registers
+            
+            #pragma unroll
+            for (int a = 0; a < SUB_BATCH; ++a) {
+                int atomIdx = batch * SUB_BATCH + a;
+                float3 r_vec = vPos - s_atoms[atomIdx].pos;
+                float distSq = dot(r_vec, r_vec);
+                
+                if (distSq < s_atoms[atomIdx].RcutSq) {
+                    // Spline lookup for radial part
+                    phi_radial[a] = evaluate_spline(sqrtf(distSq), s_atoms[atomIdx].type);
+                } else {
+                    phi_radial[a] = 0.0f;
+                }
+            }
+
+            // 4. Interaction Loop (Pij * phi_i * phi_j)
+            // Here you iterate through the Pij elements loaded in Shared Memory
+            // and multiply by the radial/angular values calculated above.
+            for (int i = 0; i < SUB_BATCH; ++i) {
+                if (phi_radial[i] == 0.0f) continue;
+                
+                // Outer loop over all pairs associated with this batch
+                // Use the fact that P_ij is symmetric or stored in tiles
+                // Result += P_ij * (Angular_i * phi_radial[i]) * (Angular_j * phi_radial[j])
+            }
+        }
+
+        // 5. Final Coalesced Write
+        // Each thread writes its final density for this specific voxel
+        int globalIdx = getGlobalGridIndex(vIdx);
+        globalGrid[globalIdx] = totalDensity;
+    }
+}
+```
+
+### Design Decisions & Implementation Advice:
+
+1.  **Register Scaling:** 
+    Using `float phi_radial[8]` uses exactly 8 registers for the basis values. Adding the overhead of voxel coordinates, loop counters, and the 16 $P_{ij}$ coefficients (fetched from Shared Memory into registers during the inner loop), you should land around **48–64 registers per thread**. This is the "sweet spot" for modern GPUs (like NVIDIA Ampere/Lovelace) to maintain 50-60% occupancy.
+
+2.  **Angular Evaluation:** 
+    Since you are using an $sp3$ basis, for each atom $i$ you have 4 basis functions: $\phi_{i,s}$, $\phi_{i,px}$, $\phi_{i,py}$, $\phi_{i,pz}$.
+    *   $\phi_{i,s} = \text{radial}_i$
+    *   $\phi_{i,px} = \text{radial}_i \cdot (dx/r)$
+    Instead of storing these 4 values, just store the `phi_radial` and the normalized vector $(dx/r, dy/r, dz/r)$ in registers to save space.
+
+3.  **Symmetry in Shared Memory:**
+    For 16 atoms, the full $P_{ij}$ matrix (considering 4 orbitals per atom) is $64 \times 64$ elements. That's $4096 \times 4$ bytes = 16 KB. This fits comfortably in shared memory. By loading it once per block, you turn a global memory bottleneck into a high-speed local memory access.
+
+4.  **Occupancy:**
+    With 256 threads per block, each thread handles $512/256 = 2$ voxels. This gives you enough work to hide the latency of the spline lookups but keeps the kernel "responsive" so that if one block finishes early, the GPU can quickly schedule the next one.
+
+
+    No problem! The logic translates very well to **OpenCL**. 
+
+In OpenCL terms:
+*   `__global` (CUDA) $\rightarrow$ `__kernel`
+*   `__shared__` (CUDA) $\rightarrow$ `__local` (OpenCL)
+*   `threadIdx` $\rightarrow$ `get_local_id()`
+*   `blockIdx` $\rightarrow$ `get_group_id()`
+
+Here is the OpenCL kernel optimized for an $sp3$ basis. I have structured the $P_{ij}$ access to handle the $4 \times 4$ orbital blocks (s, px, py, pz) efficiently.
+
+### OpenCL Projection Kernel
+
+```c
+// OpenCL Kernel for sp3 Basis Projection
+// 8x8x8 voxel block = 512 voxels per work-group
+
+typedef struct {
+    float3 pos;
+    int   type;
+    float rCutSq;
+} AtomData;
+
+// Helper to evaluate spline - logic depends on your spline buffer format
+inline float evaluate_spline(__global const float* splines, float r, int type) {
+    // Simplified spline lookup placeholder
+    return 1.0f; 
+}
+
+__kernel void project_density_dense(
+    __global float* restrict grid,              // Global 1D grid
+    __global const int* restrict active_blocks, // List of block indices to process
+    __global const AtomData* restrict atoms,    // All atom params
+    __global const float* restrict p_matrix,    // Sparse density matrix blocks
+    __global const float* restrict splines,     // Spline coefficients
+    const int n_active_tasks,
+    const float voxel_step,
+    const float3 grid_min,
+    const int3 grid_dims
+) {
+    // 1. Identify Task
+    int task_id = get_group_id(0);
+    if (task_id >= n_active_tasks) return;
+
+    // 2. Local Memory (SRAM)
+    // 16 atoms * 16 atoms * 16 (sp3 matrix) = 4096 floats = 16 KB // perhaps we need to make this smaller? 
+    __local float s_Pij[16 * 16 * 16]; 
+    __local AtomData s_atoms[16];
+
+    int lid = get_local_id(0);
+    int group_size = get_local_size(0);
+
+    // 3. Load Atom Data and P_ij Matrix into Local Memory
+    // Every thread helps load the data
+    if (lid < 16) {
+        // Assume active_blocks maps to a metadata struct telling us which atoms are here
+        // For this demo, we assume atoms are pre-indexed for this block
+        s_atoms[lid] = atoms[task_id * 16 + lid];
+    }
+
+    // Load P_ij (64x64 matrix block for 16 atoms with 4 orbitals each)
+    // Coalesced load: threads load 4096 elements
+    for (int i = lid; i < (16 * 16 * 16); i += group_size) {
+
+        // To-Do this should be different - we have neighbor list, and the density matrix is not prepared like this, the block sizes are not the same
+        s_Pij[i] = p_matrix[task_id * (16 * 16 * 16) + i];
+    }
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // 4. Voxel Loop (Grid-Stride)
+    // BLOCK_SIZE is 8, so 512 voxels total
+    int block_idx = active_blocks[task_id];
+    // Convert block_idx to 3D grid offsets (example logic)
+    int3 b_offset;
+    b_offset.z =  block_idx / (grid_dims.x * grid_dims.y);
+    b_offset.y = (block_idx % (grid_dims.x * grid_dims.y)) / grid_dims.x;
+    b_offset.x =  block_idx % grid_dims.x;
+
+    for (int v = lid; v < 512; v += group_size) {
+        int lz =  v / 64;
+        int ly = (v % 64) / 8;
+        int lx =  v % 8;
+
+        float3 v_pos = grid_min + (convert_float3(b_offset * 8 + (int3)(lx, ly, lz))) * voxel_step;
+        float total_density = 0.0f;
+
+        // --- BATCH 1: Atoms 0-7 ---
+        float  phi_r[8]; // Radial part
+        //float3 d_vec[8]; // Relative vectors for angular part
+        
+        #pragma unroll
+        for (int a = 0; a < 8; a++) {
+            float3 d = v_pos - s_atoms[a].pos;
+            float r2 = dot(d, d);
+            //d_vec[a] = d; 
+            phi_r[a] = (r2 < s_atoms[a].rCutSq) ? evaluate_spline(splines, sqrt(r2), s_atoms[a].type) : 0.0f;
+        }
+
+        // --- Interaction Loop ---
+        // For sp3, each atom i has 4 orbitals: s, px, py, pz
+        // P_ij block for atom pair (i,j) is a 4x4 matrix
+        for (int i = 0; i < 8; i++) {
+            if (phi_r[i] == 0.0f) continue;
+            float3 di = v_pos - s_atoms[i].pos; 
+
+            // Construct orbital vector for atom i: [s, px, py, pz]
+            float4 orb_i = (float4)(1.0f, di.x, di.y, di.z) * phi_r[i];
+
+            for (int j = 0; j < 8; j++) {
+                if (phi_r[j] == 0.0f) continue;
+                float3 dj = v_pos - s_atoms[j].pos; 
+                float4 orb_j = (float4)(1.0f, dj.x, dj.y, dj.z) * phi_r[j];
+
+                // Get start of 4x4 block in s_Pij
+                int p_offset = (i * 16 + j) * 16; 
+                float* Pij = s_Pij + p_offset;
+
+                // Matrix-Vector product: orb_i^T * P_ij * orb_j
+                // This is the dense part: 16 multiplications per pair
+                float sum_ij = 0.0f;
+                sum_ij += orb_i.x * (Pij[0 ]*orb_j.x + Pij[1 ]*orb_j.y + Pij[2 ]*orb_j.z + Pij[3 ]*orb_j.w);
+                sum_ij += orb_i.y * (Pij[4 ]*orb_j.x + Pij[5 ]*orb_j.y + Pij[6 ]*orb_j.z + Pij[7 ]*orb_j.w);
+                sum_ij += orb_i.z * (Pij[8 ]*orb_j.x + Pij[9 ]*orb_j.y + Pij[10]*orb_j.z + Pij[11]*orb_j.w);
+                sum_ij += orb_i.w * (Pij[12]*orb_j.x + Pij[13]*orb_j.y + Pij[14]*orb_j.z + Pij[15]*orb_j.w);
+                
+                total_density += sum_ij;
+            }
+        }
+        
+        // REPEAT FOR BATCH 2 (Atoms 8-15) ... (omitted for brevity)
+
+        // Write to Global Memory
+        int global_idx = (b_offset.z * 8 + lz) * (grid_dims.x * grid_dims.y) + 
+                         (b_offset.y * 8 + ly) * grid_dims.x + 
+                         (b_offset.x * 8 + lx);
+        grid[global_idx] = total_density;
+    }
+}
+```
+
+### Critical Optimizations for OpenCL:
+
+1.  **Work-Group Size:** 
+    For an 8x8x8 block (512 voxels), a work-group size of **128 or 256** is usually optimal. This means each thread processes 4 or 2 voxels. This helps hide the latency of the `evaluate_spline` logic.
+
+2.  **`float4` Vectorization:** 
+    I used `float4` for the orbitals (`s, px, py, pz`). Most OpenCL hardware (especially AMD and older Intel) handles `float4` operations very efficiently. On NVIDIA, it just maps to 4 scalar ops, so it doesn't hurt.
+
+3.  **Local Memory Banking:**
+    The $P_{ij}$ matrix in local memory is accessed heavily. By indexing it as `(i * 16 + j) * 16`, we are accessing 16-word chunks. If multiple threads access different $P_{ij}$ blocks, you might get bank conflicts. However, since the voxel loop is the outer loop and the $P_{ij}$ loop is internal, all threads in the work-group are looking at the **same** $P_{ij}$ at the same time. This triggers a **Broadcast**, which is extremely fast and avoids conflicts.
+
+4.  **Register Pressure:**
+    I used `phi_r[8]` and `d_vec[8]`. In OpenCL, if you use too many private variables, the compiler will "spill" them to global memory (slow). 
+    *   If you find performance is poor, reduce the batch size from 8 to 4.
+    *   Since Petacene is planar, many `d_vec.z` values might be small or constant, but the GPU doesn't know that—keep the logic general.
+
+5.  **Splines:**
+    In OpenCL, the `evaluate_spline` function should ideally read from a `__constant` buffer or an `image1d_t` (Texture). Constant memory is cached specifically for these kinds of lookups.

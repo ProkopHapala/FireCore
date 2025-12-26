@@ -75,6 +75,8 @@ def simulate_projection(grid_size=None, block_res=0.8, macro_res=None, margin=0.
     ticks_y = np.arange(bb_min[1], bb_max[1], block_res)
     grid_nx = len(ticks_x)
     grid_ny = len(ticks_y)
+    x_min, x_max = bb_min[0], bb_min[0] + block_res*grid_nx
+    y_min, y_max = bb_min[1], bb_min[1] + block_res*grid_ny
     
     # Data to store
     workload_map = np.zeros((grid_ny, grid_nx))   # pairs per fine block
@@ -109,8 +111,6 @@ def simulate_projection(grid_size=None, block_res=0.8, macro_res=None, margin=0.
             macro_ix = int((x - bb_min[0]) / macro_res)
             macro_iy = int((y - bb_min[1]) / macro_res)
             macro_atoms = macro_grid.get((macro_ix, macro_iy), [])
-            if verbose:
-                print(f"[BLOCK] macro=({macro_ix},{macro_iy}) fine=({ix},{iy}) pos=({x:.2f},{y:.2f}) candidates={len(macro_atoms)}")
             if not macro_atoms:
                 continue
             
@@ -123,7 +123,7 @@ def simulate_projection(grid_size=None, block_res=0.8, macro_res=None, margin=0.
             na = len(overlapping_atoms)
             atom_count_map[iy, ix] = na
             
-            # 2. Count active density elements P_ij for this block
+            # 2. Count active density elements P_ij for this block (using adjacency)
             ne = 0
             for idx_a in range(na):
                 for idx_b in range(idx_a, na):
@@ -133,8 +133,20 @@ def simulate_projection(grid_size=None, block_res=0.8, macro_res=None, margin=0.
                         ne += 1
             
             workload_map[iy, ix] = ne
+            if verbose and na>0:
+                print(f"[FINE] fine=({ix},{iy}) pos=({x:.2f},{y:.2f}) atoms={na} pairs={ne}")
 
-    return (ticks_x, ticks_y), atoms, atom_count_map, workload_map, block_res, macro_res, (bb_min, bb_max)
+    # Histograms
+    atom_counts_flat = atom_count_map.astype(int).ravel()
+    pair_counts_flat = workload_map.astype(int).ravel()
+    atom_hist = np.bincount(atom_counts_flat)
+    pair_hist = np.bincount(pair_counts_flat)
+
+    if verbose:
+        print("[HIST] atom count per fine block:", {i:int(v) for i,v in enumerate(atom_hist) if v>0})
+        print("[HIST] pair count per fine block:", {i:int(v) for i,v in enumerate(pair_hist) if v>0})
+
+    return (ticks_x, ticks_y), atoms, atom_count_map, workload_map, block_res, macro_res, (bb_min, bb_max, x_min, x_max, y_min, y_max)
 def parse_args():
     p = argparse.ArgumentParser(description="Sparse matrix to grid projection with coarse macro culling.")
     p.add_argument("--grid-size", type=float, default=None, dest="grid_size", help="Simulation box size; defaults to bbox span")
@@ -145,13 +157,15 @@ def parse_args():
     p.add_argument("--rcut-default", type=float, default=3.0, dest="rcut_default", help="Default Rcut assigned to atoms when loading XYZ")
     p.add_argument("--margin", type=float, default=0.1, help="Extra padding added to sphere diameter for block sizing")
     p.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
-    p.add_argument("--no-plot", action="store_true", help="Disable plotting")
-    p.add_argument("--quiet", action="store_true", help="Reduce debug prints")
+    p.add_argument("--no-plot", type=int, default=0, help="Disable plotting")
+    p.add_argument("--quiet", type=int, default=0, help="Reduce debug prints")
     return p.parse_args()
 
 def main():
     args = parse_args()
-    (ticks_x, ticks_y), atoms, atom_counts, workload, b_res, m_res, (bb_min, bb_max) = simulate_projection(
+    quiet = bool(args.quiet)
+    no_plot = bool(args.no_plot)
+    (ticks_x, ticks_y), atoms, atom_counts, workload, b_res, m_res, (bb_min, bb_max, x_min, x_max, y_min, y_max) = simulate_projection(
         grid_size=args.grid_size,
         block_res=args.block_res,
         macro_res=args.macro_res,
@@ -160,9 +174,9 @@ def main():
         rcut_default=args.rcut_default,
         margin=args.margin,
         seed=args.seed,
-        verbose=not args.quiet,
+        verbose=not quiet,
     )
-    if args.no_plot:
+    if no_plot:
         return
 
     fig, ax = plt.subplots(1, 2, figsize=(14, 6))
@@ -186,8 +200,8 @@ def main():
     for t in np.arange(bb_min[1], bb_max[1] + m_res, m_res):
         ax[0].axhline(t, color='green', lw=1.0, alpha=0.3)
 
-    ax[0].set_xlim(bb_min[0], bb_max[0])
-    ax[0].set_ylim(bb_min[1], bb_max[1])
+    ax[0].set_xlim(x_min, x_max)
+    ax[0].set_ylim(y_min, y_max)
     ax[0].set_aspect('equal')
     # annotate atom counts
     for i, x in enumerate(ticks_x):
@@ -197,7 +211,7 @@ def main():
                 ax[0].text(x + b_res/2, y + b_res/2, int(val), color='red', ha='center', va='center', fontsize=7)
 
     # Plot 2: Heatmap of pair workload
-    im = ax[1].imshow(workload, origin='lower', extent=[bb_min[0], bb_max[0], bb_min[1], bb_max[1]], cmap='Grays')
+    im = ax[1].imshow(workload, origin='lower', extent=[x_min, x_max, y_min, y_max], cmap='Grays')
     plt.colorbar(im, ax=ax[1], label='Number of Density Matrix Pairs ($N_e$)')
     ax[1].set_title("Compute Cost Heatmap ($O(N_e)$)")
 
@@ -206,8 +220,20 @@ def main():
         for j, y in enumerate(ticks_y):
             val = workload[j, i]
             if val > 0:
-                ax[1].text(x + b_res/2, y + b_res/2, int(val), color='r', ha='center', va='center', fontsize=7)
+                ax[1].text(x + b_res/2, y + b_res/2, int(val), color='red', ha='center', va='center', fontsize=7)
 
+    plt.tight_layout()
+
+    # Histogram figure
+    atom_hist = np.bincount(atom_counts.astype(int).ravel())
+    pair_hist = np.bincount(workload.astype(int).ravel())
+    fig2, axh = plt.subplots(1, 2, figsize=(10, 4))
+    axh[0].bar(np.arange(len(atom_hist)), atom_hist, color='steelblue')
+    axh[0].set_title("Blocks by atom count")
+    axh[0].set_xlabel("atoms per block"); axh[0].set_ylabel("blocks")
+    axh[1].bar(np.arange(len(pair_hist)), pair_hist, color='darkred')
+    axh[1].set_title("Blocks by pair count")
+    axh[1].set_xlabel("pairs per block"); axh[1].set_ylabel("blocks")
     plt.tight_layout()
     plt.show()
 
