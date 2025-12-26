@@ -26,6 +26,7 @@ class OMM1DSolver:
     def setup_orbitals(self, n_orb=4, support_size=40):
         """Initialize localized orbitals with fixed masks."""
         self.n_orb = n_orb
+        self.support_size = support_size
         self.orbitals = []
         self.masks = []
         
@@ -41,6 +42,34 @@ class OMM1DSolver:
             phi[mask] = np.exp(-0.5 * ((self.x[mask] - self.x[c])/(self.dx*5))**2)
             phi /= np.linalg.norm(phi) 
             self.orbitals.append(phi)
+
+    def recenter_supports(self, support_size=None):
+        """Shift each support to center-of-mass of |phi|^2 and trim outside region."""
+        if support_size is None:
+            support_size = self.support_size
+        half = support_size // 2
+        for i in range(self.n_orb):
+            phi = self.orbitals[i]
+            rho = phi * phi
+            norm_rho = rho.sum()
+            if norm_rho < 1e-14:
+                print(f"#DEBUG recenter skipped orb {i} (zero norm)")
+                continue
+            cog = (self.x * rho).sum() / norm_rho
+            idx = int(np.clip(np.searchsorted(self.x, cog), 0, self.n - 1))
+            new_start = max(0, idx - half)
+            new_end = min(self.n, idx + half)
+            new_mask = np.arange(new_start, new_end)
+            old_center = self.masks[i][len(self.masks[i])//2] if len(self.masks[i]) else -1
+            if old_center != idx:
+                print(f"#DEBUG recenter orb {i}: center {old_center} -> {idx} (cog {cog:.3f})")
+            new_phi = np.zeros_like(phi)
+            new_phi[new_mask] = phi[new_mask]
+            nrm = np.linalg.norm(new_phi)
+            if nrm > 1e-12:
+                new_phi /= nrm
+            self.orbitals[i] = new_phi
+            self.masks[i] = new_mask
 
     def orthogonalize(self, n_iter=10, damping=0.5):
         """
@@ -106,19 +135,20 @@ class OMM1DSolver:
         rho = np.sum(evecs[:, :n_occ] ** 2, axis=1)
         return evals, evecs, rho
 
-def main():
+if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="1D orbital minimization vs banded reference")
-    ap.add_argument("--n_grid", type=int, default=100, help="number of grid points")
-    ap.add_argument("--l_max", type=float, default=20.0, help="box length")
-    ap.add_argument("--n_orb", type=int, default=3, help="number of occupied orbitals")
-    ap.add_argument("--support_size", type=int, default=20, help="mask size for each orbital")
-    ap.add_argument("--n_iter", type=int, default=100, help="OMM outer iterations")
-    ap.add_argument("--step_size", type=float, default=0.01, help="energy gradient step")
-    ap.add_argument("--ortho_iter", type=int, default=5, help="orthogonalization iterations per step")
-    ap.add_argument("--ortho_damp", type=float, default=0.4, help="orthogonalization damping")
-    ap.add_argument("--report_every", type=int, default=20, help="print energy/overlap every k steps")
-    ap.add_argument("--compare_ref", type=int, default=1, help="solve reference banded eigenproblem and compare densities")
-    ap.add_argument("--no_plot", type=int, default=0, help="skip matplotlib plots")
+    ap.add_argument("--n_grid",       type=int,   default=100,   help="number of grid points")
+    ap.add_argument("--l_max",        type=float, default=30.0,  help="box length")
+    ap.add_argument("--n_orb",        type=int,   default=3,     help="number of occupied orbitals")
+    ap.add_argument("--support_size", type=int,   default=20,    help="mask size for each orbital")
+    ap.add_argument("--n_iter",       type=int,   default=1000,   help="OMM outer iterations")
+    ap.add_argument("--step_size",    type=float, default=0.01,  help="energy gradient step")
+    ap.add_argument("--ortho_iter",   type=int,   default=5,     help="orthogonalization iterations per step")
+    ap.add_argument("--ortho_damp",   type=float, default=0.4,   help="orthogonalization damping")
+    ap.add_argument("--report_every", type=int,   default=20,    help="print energy/overlap every k steps")
+    ap.add_argument("--compare_ref",  type=int,   default=1,     help="solve reference banded eigenproblem and compare densities")
+    ap.add_argument("--recenter_every", type=int, default=1,     help="recenter supports every k steps (0 to disable)")
+    ap.add_argument("--no_plot",      type=int,   default=0,     help="skip matplotlib plots")
     args = ap.parse_args()
 
     solver = OMM1DSolver(n_grid=args.n_grid, l_max=args.l_max)
@@ -130,6 +160,8 @@ def main():
     for i in range(args.n_iter):
         solver.energy_step(step_size=args.step_size)
         solver.orthogonalize(n_iter=args.ortho_iter, damping=args.ortho_damp)
+        if args.recenter_every > 0 and (i % args.recenter_every == 0):
+            solver.recenter_supports()
         if args.report_every > 0 and (i % args.report_every == 0):
             e, err = solver.get_stats()
             print(f"{i:5d} | {e:10.5f} | {err:12.6e}")
@@ -168,9 +200,17 @@ def main():
         ax[1].legend()
         ax[1].set_title("Electron density comparison")
 
+        # DEBUG: visualize current supports as light spans
+        colors = plt.cm.tab10.colors
+        for i, mi in enumerate(solver.masks):
+            if len(mi) == 0:
+                continue
+            x0 = solver.x[mi[0]]
+            x1 = solver.x[mi[-1]]
+            ax[0].axvspan(x0, x1, color=colors[i % len(colors)], alpha=0.1, lw=0)
+            ax[0].axvline(x0, color=colors[i % len(colors)], ls=":", lw=0.8)
+            ax[0].axvline(x1, color=colors[i % len(colors)], ls=":", lw=0.8)
+
         plt.tight_layout()
         plt.show()
 
-
-if __name__ == "__main__":
-    main()
