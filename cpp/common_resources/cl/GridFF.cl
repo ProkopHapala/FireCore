@@ -647,10 +647,37 @@ __kernel void addMul(
     __global       float* a,
     __global const float* b,
     const float c
-) {
+){
     const int i = get_global_id(0);
-    if( i >= ntot ) return;
-    a[i] += c * b[i];
+    if(i>=ntot) return;
+    a[i]+=b[i]*c;
+}
+
+__attribute__((reqd_work_group_size(64,1,1)))
+__kernel void dot_wg(
+    const int ntot,
+    __global const float* a,
+    __global const float* b,
+    __global       float* partial
+){
+    const int gid = get_global_id(0);
+    const int lid = get_local_id(0);
+    const int lsz = get_local_size(0);
+    float acc = 0.0f;
+    // just in case we want to run nG<ntot, that would decrease paralelism, but also less work for CPU to do the final reduction of partial sum
+    for(int i=gid; i<ntot; i+=get_global_size(0)){
+        acc += a[i]*b[i];
+    }
+    __local float s[64];
+    s[lid] = acc;
+    barrier(CLK_LOCAL_MEM_FENCE);
+    for(int step=lsz>>1; step>0; step>>=1){
+        if(lid<step){ s[lid]+=s[lid+step]; }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    if(lid==0){
+        partial[get_group_id(0)] = s[0];
+    }
 }
 
 __kernel void setLinear(

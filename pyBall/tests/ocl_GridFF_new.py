@@ -53,7 +53,7 @@ def Bspline_basis5(t):
     ws[:,5]=   0.008333333333333333*t5;
     return ws
 
-def test_Ewald( apos, qs, ns=[100,100,100], dg=(0.1,0.1,0.1), nPBC=[30,30,30], pos0=None, scErr=100.0, order=2, bPython=True, bOCL=True, bPlotPy=False,  bPlotOcl=True, bOMP=False, nBlur=0, cSOR=0.0, cV=0.5, yrange=None, bPlot1D=True , bSlab=False, z_slab=None, bOld=False ):
+def test_Ewald( apos, qs, ns=[100,100,100], dg=(0.1,0.1,0.1), nPBC=[30,30,30], pos0=None, scErr=100.0, order=2, bPython=True, bOCL=True, bPlotPy=False,  bPlotOcl=True,  bOMP=False, nBlur=0, cSOR=0.0, cV=0.5, yrange=None, bPlot1D=True , bSlab=False, z_slab=None, bOld=False ):
     try_load_mmff()
 
     apos = apos.copy()
@@ -226,7 +226,7 @@ def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Element_Types_n
     return xyzq, REQs, atoms
 
 
-def plotTrjs( trjs, names ):
+def plotTrjs( trjs, names, save_path=None, show=True ):
     colors = ["b","g","r","c","m","y","k"]
     plt.figure(figsize=(5,5))
     for i,trj in enumerate(trjs):
@@ -238,10 +238,14 @@ def plotTrjs( trjs, names ):
     plt.xlabel('iteration')
     plt.yscale('log')
     plt.title( "GridFF Bspline fitting error" )
-    plt.show()
+    if save_path is not None: 
+        print( "Saving figure to: ", save_path )
+        plt.savefig(save_path, bbox_inches="tight")
+    if show: plt.show()
+    plt.close()
 
 
-def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", job="PLQ", b2D=False, bSymetrize=False, bFit=True, save_name=None, z0=np.nan ):
+def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", job="PLQ", b2D=False, bSymetrize=False, bFit=True, use_CG=False, save_name=None, z0=np.nan, nmaxiter=None, nPerStep=None, damp=None, save_fig=False, fig_path=None ):
     print( "py======= test_gridFF_ocl() START" );
 
     T00 = time.perf_counter()
@@ -404,9 +408,27 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, z0 )
         nPBC_mors = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC(nPBC_mors): ", nPBC_mors )
         clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC_mors, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=False )
-        V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, nPerStep=50, nmaxiter=10000, damp=0.15, bConvTrj=True )
-        V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, nPerStep=50, nmaxiter=10000, damp=0.15, bConvTrj=True )
-        plotTrjs( [trj_paul,trj_lond], ["Paul", "Lond"] )
+
+        # # defaults
+        # nmaxiter_cg = 1000 if nmaxiter is None else nmaxiter
+        # nPerStep_cg = 50   if nPerStep is None else nPerStep
+        # nmaxiter_md = 10000 if nmaxiter is None else nmaxiter
+        # nPerStep_md = 50    if nPerStep is None else nPerStep
+        # damp_md     = 0.15  if damp is None else damp
+
+        if use_CG:
+            V_Paul,trj_paul = clgff.fit3D_CG( clgff.V_Paul_buff, nPerStep=nPerStep, nmaxiter=nmaxiter, bConvTrj=True, nprint=50 )
+            V_Lond,trj_lond = clgff.fit3D_CG( clgff.V_Lond_buff, nPerStep=nPerStep, nmaxiter=nmaxiter, bConvTrj=True, nprint=50 )
+        else:
+            V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, nPerStep=nPerStep, nmaxiter=nmaxiter, damp=damp, bConvTrj=True )
+            V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, nPerStep=nPerStep, nmaxiter=nmaxiter, damp=damp, bConvTrj=True )
+
+
+
+        if save_fig and fig_path is None:
+            base = os.path.basename(os.path.splitext(fname)[0])
+            fig_path = f"./data/{base}/convergence_{'CG' if use_CG else 'MD'}.png"
+        plotTrjs( [trj_paul,trj_lond], ["Paul", "Lond"], save_path=fig_path )
         print( "Paul  min,max = ", V_Paul.min(), V_Paul.max() )
         print( "Lond  min,max = ", V_Lond.min(), V_Lond.max() )
         if save_name=='double3':

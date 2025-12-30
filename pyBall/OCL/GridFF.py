@@ -7,6 +7,7 @@ import pyopencl.array as cl_array
 import pyopencl.cltypes as cltypes
 import matplotlib.pyplot as plt
 import time
+import math
 
 from . import clUtils as clu
 from .clUtils import GridShape,GridCL
@@ -91,6 +92,8 @@ class GridFF_cl:
         self.try_buff("fGs", names, nps*bytePerFloat )
         self.try_buff("dGs", names, nps*bytePerFloat )
         self.try_buff("vGs", names, nps*bytePerFloat )
+        self.try_buff("pGs", names, nps*bytePerFloat )
+        self.try_buff("rGs", names, nps*bytePerFloat )
 
         # New buffers for laplace_real_loop_inert
         self.try_buff("V1", names, nps*bytePerFloat)
@@ -307,6 +310,130 @@ class GridFF_cl:
         self.prg.move(self.queue, (ntot,), None,  np.int32(ntot), p_buf.data, v_buf.data, f_buf.data, np.float32(par))
         
         return p_buf.get(), v_buf.get()
+    
+    def dot_gpu(self, buf_a, buf_b, n ):
+        # GPU reduction into partial sums; final sum on CPU
+        wg = 64
+        nG = clu.roundup_global_size(n, wg)
+        ngrp = nG // wg
+        # grid-stride loop in dot_wg lets us launch fewer threads than ntot if desired;
+        # that would reduce parallelism but shrink CPU work to sum partials
+        # reuse/allocate partial buffer
+        if not hasattr(self, "_dot_partial_buff") or (self._dot_partial_buff.size < ngrp*4):
+            self._dot_partial_buff = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=ngrp*4)
+        self.prg.dot_wg(self.queue, (nG,), (wg,), np.int32(n), buf_a, buf_b, self._dot_partial_buff)
+        partial = np.empty( ngrp, dtype=np.float32 )
+        cl.enqueue_copy(self.queue, partial, self._dot_partial_buff); self.queue.finish()
+        return float(partial.sum())
+
+    def fit3D_CG(self, Ref_buff, nmaxiter=300, Ftol=1e-16, nPerStep=1, bConvTrj=False, bReturn=True, bPrint=True, bTime=True, bDebug=True, nprint=50, nconf=100 ):
+        print(f"GridFF_cl::fit3D_CG() nmaxiter={nmaxiter} Ftol{Ftol}")
+        T00=time.perf_counter()
+
+        ns   = self.gsh.ns #[::-1] 
+        nxyz = self.gcl.nxyz
+
+        buff_names={'Gs','dGs','fGs','vGs','pGs','rGs'}
+        self.try_make_buffs( buff_names, 0, nxyz )
+
+        ns_cl = np.array( ns+(0,), dtype=np.int32 )
+        cs_Err   = np.array( [ 1.0,-1.0], dtype=np.float32 )
+        cs_F     = np.array( [ 1.0,0.0], dtype=np.float32 )
+
+        lsh = (4,4,4)
+        gsh  = clu.roundup_global_size_3d( ns, lsh )
+
+        nL   = 32
+        nG   = clu.roundup_global_size( nxyz, nL )
+        nStepMax = nmaxiter // nPerStep
+        out = np.zeros( ns[::-1], dtype=np.float32)
+
+        ConvTrj=None
+        if bConvTrj:
+            ConvTrj = np.zeros( (nStepMax,3) ) + np.nan
+
+        T0=time.perf_counter()
+
+        # Initial guess x=0, v=0
+        self.prg.setMul(self.queue, (nG,), (nL,), nxyz,  Ref_buff,  self.Gs_buff,  np.float32(0.0) )
+        self.prg.setMul(self.queue, (nG,), (nL,), nxyz,  Ref_buff,  self.vGs_buff, np.float32(0.0) )
+
+        # r = b - A x
+        self.prg.BsplineConv3D (self.queue, gsh, lsh, ns_cl, self.Gs_buff, Ref_buff, self.dGs_buff, cs_Err)
+        self.prg.BsplineConv3D (self.queue, gsh, lsh, ns_cl, self.dGs_buff, None,    self.fGs_buff, cs_F )
+        # r = -grad = -A^T(b-Ax)
+        self.prg.setMul(self.queue, (nG,), (nL,), nxyz,  self.fGs_buff,  self.rGs_buff,  np.float32(-1.0) )
+        # p = r
+        self.prg.setMul(self.queue, (nG,), (nL,), nxyz,  self.rGs_buff,  self.pGs_buff,  np.float32(1.0) )
+
+        rsold = self.dot_gpu(self.rGs_buff, self.rGs_buff, nxyz)
+
+        nstepdone=0
+        Fmin = np.inf
+        Emin = np.inf
+        steps_since_improve = 0
+        steps_since_Eimprove = 0
+        for i in range(nStepMax):
+            for j in range(nPerStep):
+                # Hp = A p
+                self.prg.BsplineConv3D (self.queue, gsh, lsh, ns_cl, self.pGs_buff, None, self.dGs_buff, cs_F)
+                # AHp = A^T (A p)
+                self.prg.BsplineConv3D (self.queue, gsh, lsh, ns_cl, self.dGs_buff, None, self.fGs_buff, cs_F)
+
+                pAp = self.dot_gpu(self.pGs_buff, self.fGs_buff, nxyz)
+                alpha = rsold / (pAp + 1e-16)
+
+                # x = x + alpha*p
+                self.prg.addMul(self.queue, (nG,), (nL,), nxyz, self.Gs_buff, self.pGs_buff, np.float32(alpha))
+                # r = r - alpha*Hp
+                self.prg.addMul(self.queue, (nG,), (nL,), nxyz, self.rGs_buff, self.fGs_buff, np.float32(-alpha))
+
+                rsnew = self.dot_gpu(self.rGs_buff, self.rGs_buff, nxyz)
+                beta = rsnew / (rsold + 1e-16)
+                # p = r + beta*p
+                self.prg.setLinear(self.queue, (nG,), (nL,), nxyz, self.pGs_buff, np.float32(1.0), self.rGs_buff, np.float32(beta), self.pGs_buff)
+                rsold = rsnew
+                nstepdone+=1
+
+            Ftot = math.sqrt(rsold / nxyz)
+            # residual r_b = b - A x (true fitting error)
+            self.prg.BsplineConv3D (self.queue, gsh, lsh, ns_cl, self.Gs_buff, Ref_buff, self.dGs_buff, cs_Err)
+            cl.enqueue_copy(self.queue, out, self.dGs_buff); self.queue.finish(); Eres = np.max(np.abs(out))
+            if Ftot < Fmin:
+                Fmin = Ftot; steps_since_improve = 0
+            else:
+                steps_since_improve += nPerStep
+                if (nconf>0) and (steps_since_improve>=nconf):
+                    print( f"GridFF_cl::fit3D_CG() stop: no improvement for {steps_since_improve} steps, Fmin={Fmin}" )
+                    break
+            if Eres < Emin:
+                Emin = Eres; steps_since_Eimprove = 0
+            else:
+                steps_since_Eimprove += nPerStep
+                if (nconf>0) and (steps_since_Eimprove>=nconf):
+                    print( f"GridFF_cl::fit3D_CG() stop: residual stalled for {steps_since_Eimprove} steps, Emin={Emin}" )
+                    break
+
+            if bConvTrj:
+                ConvTrj[i,:] = (0.0+i*nPerStep,Ftot,Eres)
+                if bPrint and (nprint>0) and ((i*nPerStep)%nprint==0): print( f"GridFF::fit3D_CG[{i*nPerStep}] |F|={Ftot} |Eres|={Eres} Fmin={Fmin}" )
+            else:
+                if bPrint and (nprint>0) and ((i*nPerStep)%nprint==0): print( f"GridFF::fit3D_CG[{i*nPerStep}] |F|={Ftot} Fmin={Fmin}" )
+            if Ftot<Ftol:  break
+
+        if bTime:
+            self.queue.finish()
+            dT=time.perf_counter()-T0
+            nops = nstepdone*nxyz
+            self.queue.finish()
+            print( "GridFF_cl::fit3D_CG() time[s] ", dT, "  preparation[s]  ", T0-T00, "[s] nGOPs: ", nops*1e-9," speed[GOPs/s]: ", (nops*1e-9)/dT , " nstep, nxyz ", nstepdone, nxyz  )
+
+        if bReturn:
+            cl.enqueue_copy(self.queue, out, self.Gs_buff);
+            self.queue.finish()
+            if bDebug:
+                print( "GridFF_cl::fit3D_CG() DONE Gs_buff.min,max: ", out.min(), out.max() )
+            return out, ConvTrj
     
     def fit3D(self, Ref_buff, nmaxiter=300, dt=0.5, Ftol=1e-16, damp=0.15, nPerStep=50, bConvTrj=False, bReturn=True, bPrint=True, bTime=True, bDebug=True, nprint=50, nconf=500, stall_eps=0.01 ):
         # NOTE / TODO : It is a bit strange than GridFF.h::makeGridFF_Bspline_d() the fit is fastes with damp=0.0 but here damp=0.15 performs better

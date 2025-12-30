@@ -2,6 +2,7 @@ import sys
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+import argparse
 
 sys.path.append("../../")
 
@@ -18,6 +19,8 @@ from pyBall.tests import ocl_GridFF_new as gff
 # exit()
 
 
+
+
 # =============  Functions
 
 R0 = 3.5
@@ -28,40 +31,46 @@ Q = 0.4
 p0 = [-2.0,-2.0,0.0]
 
 
-#name="NaCl_1x1_L2"
+def main():
+    parser = argparse.ArgumentParser(description="Run GridFF OCL tests")
+    parser.add_argument("--name",       default="NaCl_1x1_L3", help="Base name of xyz file in data/xyz (default: NaCl_1x1_L3)")
+    parser.add_argument("--job",        default="MorseFit", choices=["MorseFit","PLQ","PLQ_lin","CG"], help="Job type (default: MorseFit)")
+    parser.add_argument("--save-name",  default="double3", help="Save name for outputs (default: double3)")
+    parser.add_argument("--use-CG",     type=int,     default=1, help="Use CG solver for MorseFit (default: 1)")
+    parser.add_argument("--nmaxiter",   type=int,     default=10000, help="Override nmaxiter for fit3D/fit3D_CG")
+    parser.add_argument("--nPerStep",   type=int,     default=10, help="Override nPerStep for fit3D/fit3D_CG")
+    parser.add_argument("--damp",       type=float,   default=0.15, help="Override damp for MD solver")
+    parser.add_argument("--save-fig",   type=int,     default=1, help="Save convergence figure")
+    parser.add_argument("--fig-path",   default=None, help="Path to save convergence figure (default: auto under data/<name>/)")
+    args = parser.parse_args()
 
-name="NaCl_1x1_L3"
-#name="NaCl_8x8_L3"
-#name="NaCl_8x8_L3_NaHole"
-#name="NaCl_8x8_L3_ClHole"
-#name="NaCl_8x8_L3_NaClHole"
-#name="NaCl_8x8_L3_step"
-#name="NaCl_15x8_L3_step"
+    name = args.name
+    job  = args.job
+    save_name = args.save_name
+
+    use_CG = args.use_CG
+    # If job=="CG", force CG path
+    if job == "CG":
+        job = "MorseFit"
+        use_CG = True
+    # defaults matching previous behavior
+    nmaxiter = args.nmaxiter
+    nPerStep = args.nPerStep
+    damp     = args.damp
+
+    kwargs = {}
+    if nmaxiter is not None: kwargs["nmaxiter"] = nmaxiter
+    if nPerStep is not None: kwargs["nPerStep"] = nPerStep
+    if damp is not None:     kwargs["damp"]     = damp
+    if use_CG is not None:   kwargs["use_CG"]   = bool(use_CG)
+    if args.save_fig:        kwargs["save_fig"] = True
+    if args.fig_path is not None: kwargs["fig_path"] = args.fig_path
+
+    gff.test_gridFF_ocl( fname=f"data/xyz/{name}.xyz", save_name=save_name, job=job, **kwargs )
 
 
-
-#mol_name="PTCDA.xyz"
-#gff.test_gridFF_ocl( fname="data/xyz/NaCl_1x1_L2.xyz" )
-#gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz", save_name="double3", bMorse=True, bEwald=False  )
-#gff.test_gridFF_ocl( fname="/home/prokop/git/FireCore/tests/pyutils/NaCl_8x8_L3.xyz" )
-
-#gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz", save_name="double3", job="PLQ" )
-gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz", save_name="double3", job="MorseFit" )
-
-
-
-
-# name="NaCl_1x1_L3"
-# print("# =================== \n\n\n\ NOW ", name, " =================== \n")
-# gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz", save_name="double3", job="PLQ" )
-
-#gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz", save_name="double3", job="PLQ_lin" )
-
-# PLQ = np.load("./data/"+name+"/Bspline_PLQd_ocl.npy")
-# VPaul = PLQ[:,:,:,0]
-# VLond = PLQ[:,:,:,1]
-# VCoul = PLQ[:,:,:,2]
-# print( "Min,Max VPaul ", VPaul.min(), VPaul.max(), " VLond ", VLond.min(), VLond.max(), " VCoul ", VCoul.min(), VCoul.max() )
+if __name__ == "__main__":
+    main()
 # plt.figure( figsize=(15,5)); 
 # plt.subplot(1,3,1); plt.imshow( VPaul[:,:,1] ); plt.colorbar(); plt.title("VPaul fit GPU")
 # plt.subplot(1,3,2); plt.imshow( VLond[:,:,1] ); plt.colorbar(); plt.title("VLond fit GPU")
