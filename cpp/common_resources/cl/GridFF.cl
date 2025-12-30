@@ -599,9 +599,72 @@ __kernel void BsplineConv3D(
 
 }
 
+
 // =============================================
-// ===================== Fitting  Texture Version
+// ===================== Math Utilities
 // =============================================
+
+// __kernel void dot(
+//     const int ntot,
+//     __global const float* a,
+//     __global const float* b,
+//     __global       float* res
+// ) {
+//     const int i = get_global_id(0);
+//     if( i >= ntot ) return;
+//     atomic_add_float(res, a[i] * b[i]);
+// }
+
+// void atomic_add_float(volatile __global float* addr, float val) {
+//     union {
+//         unsigned int u;
+//         float f;
+//     } old, next;
+//     do {
+//         old.f = *addr;
+//         next.f = old.f + val;
+//     } while (atomic_cmpxchg((volatile __global unsigned int*)addr, old.u, next.u) != old.u);
+// }
+
+// __kernel void norm_max(
+//     const int ntot,
+//     __global const float* a,
+//     __global       float* res
+// ) {
+//     const int i = get_global_id(0);
+//     if( i >= ntot ) return;
+//     float val = fabs(a[i]);
+//     // Note: OpenCL 1.2 doesn't have atomic_max for float. 
+//     // This is a simple but slow implementation. 
+//     // For now, let's use a simple trick or just atomic_max on int bits.
+//     union { float f; int i; } u;
+//     u.f = val;
+//     atomic_max((__global int*)res, u.i); 
+// }
+
+__kernel void addMul(
+    const int ntot,
+    __global       float* a,
+    __global const float* b,
+    const float c
+) {
+    const int i = get_global_id(0);
+    if( i >= ntot ) return;
+    a[i] += c * b[i];
+}
+
+__kernel void setLinear(
+    const int ntot,
+    __global       float* out,
+    const float c1,
+    __global const float* a1,
+    const float c2,
+    __global const float* a2
+) {
+    const int i = get_global_id(0);
+    if( i >= ntot ) return;
+    out[i] = c1 * a1[i] + c2 * a2[i];
+}
 
 __constant sampler_t samp_pbc = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_REPEAT | CLK_FILTER_NEAREST;
 
@@ -782,7 +845,7 @@ __kernel void make_MorseFF(
 
                             //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc[%i,%i,%i] dp(%g,%g,%g)\n", ix,iy,iz, dp.x,dp.y,dp.z );   
                             float  r2  = dot(dp,dp);
-                            float  r   = sqrt(r2+1e-32 );
+                            float  r   = sqrt(r2+1e-32f );
                             // ---- Electrostatic
                             //float ir2  = 1.f/(r2+R2damp); 
                             //float   E  = COULOMB_CONST*REQK.z*sqrt(ir2);
@@ -894,7 +957,7 @@ __kernel void make_MorseFF_f4(
 
                             //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc[%i,%i,%i] dp(%g,%g,%g)\n", ix,iy,iz, dp.x,dp.y,dp.z );   
                             float  r2  = dot(dp,dp);
-                            float  r   = sqrt(r2+1e-32 );
+                            float  r   = sqrt(r2+1e-32f );
                             // ---- Electrostatic
                             //float ir2  = 1.f/(r2+R2damp); 
                             //float   E  = COULOMB_CONST*REQK.z*sqrt(ir2);
@@ -1168,11 +1231,11 @@ __kernel void project_atom_on_grid_cubic_pbc(
         for (int dy = 0; dy < 4; dy++) {
             const int gy = yq_[dy];
             const int iiy = iiz + gy * ng.x;
-            const double qbyz = atom.w * wy[dy] * wz[dz];
+            const float qbyz = atom.w * wy[dy] * wz[dz];
             for (int dx = 0; dx < 4; dx++) {
                 const int gx = xq_[dx];
                 const int ig = gx + iiy;
-                double qi = qbyz * wx[dx];
+                float qi = qbyz * wx[dx];
                 Qgrid[ig] += qi;
             }
         }

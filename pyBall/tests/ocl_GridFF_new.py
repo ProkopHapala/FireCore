@@ -6,6 +6,7 @@ import time
 #exit()
 #from . import utils as ut
 from .. import atomicUtils as au
+from ..AtomicSystem import AtomicSystem
 #from .. import FunctionSampling as fu
 #exit()
 from ..OCL.GridFF import GridFF_cl, GridShape
@@ -196,7 +197,7 @@ def coulomb_brute_1D( atoms, kind='z', p0=[0.0,0.0,2.0], bPlot=False, nPBC=(60,6
 def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Element_Types_name="./data/ElementTypes.dat", bSqrtEvdw=True ): 
     #print( os.getcwd() )
     if atoms is None:
-        atoms = au.AtomicSystem( fname=fname )
+        atoms = AtomicSystem( fname=fname )
     if bSymetrize:
         na_before = len(atoms.atypes)
         atoms, ws = atoms.symmetrized()
@@ -226,11 +227,12 @@ def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Element_Types_n
 
 
 def plotTrjs( trjs, names ):
+    colors = ["b","g","r","c","m","y","k"]
     plt.figure(figsize=(5,5))
     for i,trj in enumerate(trjs):
         #plt.plot( trj[:,0], trj[:,1], label=names[i] )
-        plt.plot( trj[:,0], trj[:,1], label=names[i]+" |F|" )
-        plt.plot( trj[:,0], trj[:,2], label=names[i]+" |E|" )
+        plt.plot( trj[:,0], trj[:,1], label=names[i]+" |F|", ls=":", color=colors[i] )
+        plt.plot( trj[:,0], trj[:,2], label=names[i]+" |E|", ls="-", color=colors[i] )
     plt.legend()
     plt.grid()
     plt.xlabel('iteration')
@@ -384,8 +386,59 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         # plt.subplot(1,2,1); plt.imshow( Vcoul [5,:,:] ); plt.colorbar(); plt.title( "V_Lond[0,:,:]" );
         # plt.subplot(1,2,2); plt.imshow( Vcoul [:,:,0] ); plt.colorbar(); plt.title( "Vcoul [0,:,:]" );
 
+        # --- Check the inverted axis of the V grid
+        # plt.figure( figsize=(16,8) )
+        # V = np.empty( [400,40,40], dtype=np.float32)
+        # clgff.cl.enqueue_copy(clgff.queue, V, clgff.V2_buff)
+        # plt.subplot(1,2,1); plt.imshow( V [-5,:,:] ); plt.colorbar(); plt.title( "V_[0,:,:]" );
+        # plt.subplot(1,2,2); plt.imshow( V [200:,:,0] ); plt.colorbar(); plt.title( "V_ [0,:,:]" );
+        # print( "V_Before[:10,0,0] \n", V[::-1,-1,-1][:10] )
+        # print( "V_after[:10,0,0] \n", Vcoul[:10,0,0] )
+
+        plt.show()
+        #exit(0)
 
 
+    elif job=="MorseFit":
+        # Morse-only path: skip Coulomb/Ewald entirely; fit Pauli and London
+        g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, z0 )
+        nPBC_mors = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC(nPBC_mors): ", nPBC_mors )
+        clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC_mors, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=False )
+        V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, nPerStep=50, nmaxiter=10000, damp=0.15, bConvTrj=True )
+        V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, nPerStep=50, nmaxiter=10000, damp=0.15, bConvTrj=True )
+        plotTrjs( [trj_paul,trj_lond], ["Paul", "Lond"] )
+        print( "Paul  min,max = ", V_Paul.min(), V_Paul.max() )
+        print( "Lond  min,max = ", V_Lond.min(), V_Lond.max() )
+        if save_name=='double3':
+            path = os.path.basename( fname )
+            path = "./data/" + os.path.splitext( path )[0]
+            print( "test_gridFF_ocl() path = ", path )
+            if not os.path.exists( path ): os.makedirs( path )
+            V_Paul = V_Paul.transpose( (2,1,0) )
+            V_Lond = V_Lond.transpose( (2,1,0) )
+            PL = np.zeros( V_Paul.shape + (2,) )
+            PL[:,:,:,0] = V_Paul
+            PL[:,:,:,1] = V_Lond
+            full_name = path+"/Bspline_PL_only.npy"; 
+            print("test_gridFF_ocl() - save Morse-only to: ", full_name)
+            np.save( full_name, PL )
+
+        #cmap='plasma'
+        #cmap='inferno'
+        #cmap='magma'
+        plt.figure( figsize=(16,8) )
+        # plt.subplot(1,3,1); plt.imshow( V_Paul[:,:,0] ); plt.colorbar(); plt.title( "V_Paul[:,:,0]" );
+        # plt.subplot(1,3,2); plt.imshow( V_Lond[:,:,0] ); plt.colorbar(); plt.title( "V_Lond[:,:,0]" );
+        # plt.subplot(1,3,3); plt.imshow( V_Coul[:,:,0] ); plt.colorbar(); plt.title( "V_Coul[:,:,0]" );
+        plt.subplot(1,3,1); plt.imshow( V_Paul[0,:,:].transpose() ); plt.colorbar(); plt.title( "V_Paul[0,:,:]" );
+        plt.subplot(1,3,2); plt.imshow( V_Lond[0,:,:].transpose() ); plt.colorbar(); plt.title( "V_Lond[0,:,:]" );
+        # #plt.subplot(1,2,1); plt.imshow( V_Paul[0,:,:], cmap='bwr' ); plt.colorbar(); plt.title( "V_Paul[0,:,:]" );
+        # #plt.subplot(1,2,2); plt.imshow( Vcoul [0,:,:], cmap='bwr' ); plt.colorbar(); plt.title( "Vcoul [0,:,:]" );
+        # #plt.subplot(1,2,1); plt.imshow( V_Paul[:,:,0], cmap='bwr' ); plt.colorbar(); plt.title( "V_Paul[0,:,:]" );
+        # #plt.subplot(1,2,1); plt.imshow( V_Lond[:,:,0], cmap='bwr' ); plt.colorbar(); plt.title( "V_Lond[0,:,:]" );
+        # #plt.subplot(1,2,2); plt.imshow( Vcoul [:,:,0], cmap='bwr' ); plt.colorbar(); plt.title( "Vcoul [0,:,:]" );
+        # plt.subplot(1,2,1); plt.imshow( Vcoul [5,:,:] ); plt.colorbar(); plt.title( "V_Lond[0,:,:]" );
+        # plt.subplot(1,2,2); plt.imshow( Vcoul [:,:,0] ); plt.colorbar(); plt.title( "Vcoul [0,:,:]" );
 
         # --- Check the inverted axis of the V grid
         # plt.figure( figsize=(16,8) )
@@ -595,10 +648,10 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
             #     plt.plot( trj_lond[:,0], trj_lond[:,1], label=("Lond |F| dt=%8.4f" %dt))
 
             plt.figure(figsize=(5,5))
-            plt.plot( trj_paul[:,0], trj_paul[:,1], label="Paul |F|" )
-            plt.plot( trj_paul[:,0], trj_paul[:,2], label="Paul |E|" )
-            plt.plot( trj_lond[:,0], trj_lond[:,1], label="Lond |F|" )
-            plt.plot( trj_lond[:,0], trj_lond[:,2], label="Lond |E|" )
+            plt.plot( trj_paul[:,0], trj_paul[:,1], ':r', label="Paul |F|" )
+            plt.plot( trj_paul[:,0], trj_paul[:,2], '-r', label="Paul |E|" )
+            plt.plot( trj_lond[:,0], trj_lond[:,1], ':b', label="Lond |F|" )
+            plt.plot( trj_lond[:,0], trj_lond[:,2], '-b', label="Lond |E|" )
 
             plt.legend()
             plt.grid()

@@ -308,7 +308,7 @@ class GridFF_cl:
         
         return p_buf.get(), v_buf.get()
     
-    def fit3D(self, Ref_buff, nmaxiter=300, dt=0.5, Ftol=1e-16, damp=0.15, nPerStep=50, bConvTrj=False, bReturn=True, bPrint=False, bTime=True, bDebug=True ):
+    def fit3D(self, Ref_buff, nmaxiter=300, dt=0.5, Ftol=1e-16, damp=0.15, nPerStep=50, bConvTrj=False, bReturn=True, bPrint=True, bTime=True, bDebug=True, nprint=50, nconf=500, stall_eps=0.01 ):
         # NOTE / TODO : It is a bit strange than GridFF.h::makeGridFF_Bspline_d() the fit is fastes with damp=0.0 but here damp=0.15 performs better
         #print(f"GridFF_cl::fit3D().1 Queue: {self.queue}, Context: {self.ctx}")
         print(f"GridFF_cl::fit3D() dt={dt}, damp={damp} nmaxiter={nmaxiter} Ftol{Ftol}")
@@ -374,6 +374,8 @@ class GridFF_cl:
         #     exit()
 
         nstepdone=0
+        Fmin = np.inf
+        steps_since_improve = 0
         for i in range(nStepMax):
             for j in range(nPerStep):
                 self.prg.BsplineConv3D (self.queue, gsh,   lsh,   ns_cl, self.Gs_buff,  Ref_buff,      self.dGs_buff, cs_Err    )   # self.queue.finish() 
@@ -381,12 +383,20 @@ class GridFF_cl:
                 self.prg.move          (self.queue, (nG,), (nL,), nxyz,  self.Gs_buff,  self.vGs_buff, self.fGs_buff, MDpar_cl  )   # self.queue.finish() 
                 nstepdone+=1
             cl.enqueue_copy(self.queue, out, self.fGs_buff); self.queue.finish(); Ftot = np.max(np.abs(out))
+            if Ftot < Fmin:
+                Fmin = Ftot
+                steps_since_improve = 0
+            else:
+                steps_since_improve += nPerStep
+                if (nconf>0) and (steps_since_improve>=nconf):
+                    print( f"GridFF_cl::fit3D() stop: no improvement for {steps_since_improve} steps, Fmin={Fmin}" )
+                    break
             if bConvTrj:
                 cl.enqueue_copy(self.queue, out, self.dGs_buff); self.queue.finish(); Etot = np.max(np.abs(out))
                 ConvTrj[i,:] = (0.0+i*nPerStep,Ftot,Etot)
-                if bPrint: print( f"GridFF::fit3D()[{i*nPerStep}] |F|={Ftot} |E|={Etot}" )
+                if bPrint and (nprint>0) and ((i*nPerStep)%nprint==0): print( f"GridFF::fit3D()[{i*nPerStep}] |F|={Ftot} |E|={Etot} Fmin={Fmin}" )
             else:
-                if bPrint: print( f"GridFF::fit3D()[{i*nPerStep}] |F|={Ftot} " )
+                if bPrint and (nprint>0) and ((i*nPerStep)%nprint==0): print( f"GridFF::fit3D()[{i*nPerStep}] |F|={Ftot} Fmin={Fmin}" )
             if Ftot<Ftol:  break
 
         if bTime:
