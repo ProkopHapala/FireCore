@@ -413,7 +413,10 @@ class FireballData:
         self.rho     = np.zeros((dims.natoms, dims.neigh_max, dims.numorb_max, dims.numorb_max), dtype=np.float64)
         self.h_mat   = np.zeros((dims.natoms, dims.neigh_max, dims.numorb_max, dims.numorb_max), dtype=np.float64)
         self.s_mat   = np.zeros((dims.natoms, dims.neigh_max, dims.numorb_max, dims.numorb_max), dtype=np.float64)
-        self.num_orb = np.zeros(dims.nspecies, dtype=np.int32)
+        # NOTE: iatyp returned by Fortran is the atomic number (Z), not a compact
+        # species index. To avoid out-of-bounds when iatyp is used directly, size
+        # num_orb by the full nspecies_fdata table (max species defined in Fdata).
+        self.num_orb = np.zeros(dims.nspecies_fdata, dtype=np.int32)
         self.degelec = np.zeros(dims.natoms, dtype=np.int32)
         self.iatyp   = np.zeros(dims.natoms, dtype=np.int32)
         # Fortran: lssh(nsh_max, nspecies) -> Python: lssh[ish, ispec]

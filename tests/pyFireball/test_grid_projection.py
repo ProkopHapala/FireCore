@@ -12,21 +12,17 @@ def plot_density_slices(data, title="Density Slices"):
     nx, ny, nz = data.shape
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     fig.suptitle(title)
-    
     axes[0].imshow(data[nx//2, :, :].T, origin='lower')
     axes[0].set_title("X slice")
-    
     axes[1].imshow(data[:, ny//2, :].T, origin='lower')
     axes[1].set_title("Y slice")
-    
     axes[2].imshow(data[:, :, nz//2].T, origin='lower')
     axes[2].set_title("Z slice")
     
-    plt.show()
-
 def test_pentacene_projection():
     # 1. Load Pentacene
-    xyz_path = "../../tests/tUFF/data/xyz/pentacene.xyz"
+    #xyz_path = "../../tests/tUFF/data/xyz/pentacene.xyz"
+    xyz_path = "../../tests/tUFF/data/xyz/benzene.xyz"
     if not os.path.exists(xyz_path):
         print(f"Error: XYZ file not found at {xyz_path}")
         return
@@ -75,6 +71,7 @@ def test_pentacene_projection():
     pos_max = np.max(atomPos, axis=0) + 4.0
     ngrid = [64, 64, 64]
     dCell = (pos_max - pos_min) / ngrid
+    print(f"Grid spec: {pos_min}, {pos_max}, {ngrid}, {dCell}")
     grid_spec = {
         'origin': pos_min,
         'dA': [dCell[0], 0, 0],
@@ -103,3 +100,4 @@ def test_pentacene_projection():
 
 if __name__ == "__main__":
     test_pentacene_projection()
+    plt.show()

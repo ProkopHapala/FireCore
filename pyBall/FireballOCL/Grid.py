@@ -1,5 +1,6 @@
 import numpy as np
 import pyopencl as cl
+import pyopencl.cltypes
 import os
 from ..OCL.OpenCLBase import OpenCLBase
 from .FdataParser import FdataParser
@@ -83,27 +84,9 @@ class GridProjector(OpenCLBase):
         Partition the grid into tasks (active blocks).
         grid_spec: {'origin': [x,y,z], 'dA': [x,y,z], 'dB': [x,y,z], 'dC': [x,y,z], 'ngrid': [nx,ny,nz]}
         """
-        neigh_max = getattr(neighs, "neigh_max", None)
-        if neigh_max is None:
-            # try to infer from arrays
-            if hasattr(neighs, "neigh_j"):
-                neigh_max = neighs.neigh_j.shape[1] if neighs.neigh_j.ndim==2 else neighs.neigh_j.shape[-1]
-            else:
-                raise AttributeError("neighs.neigh_max missing and cannot infer from neigh_j")
+        neigh_max = neighs.neigh_j.shape[1]
         n_atoms_input = len(atoms['pos'])
-        print(f"[DEBUG] build_tasks: n_atoms_input={n_atoms_input}, neigh_max={neigh_max}")
-        print(f"[DEBUG] atoms pos min={np.min(atoms['pos'],axis=0)}, max={np.max(atoms['pos'],axis=0)}")
-        if hasattr(neighs, "neighn"):
-            print(f"[DEBUG] neighn stats: min={np.min(neighs.neighn)}, max={np.max(neighs.neighn)}, mean={np.mean(neighs.neighn)}")
-        if hasattr(neighs, "neigh_j"):
-            nj = neighs.neigh_j
-            print(f"[DEBUG] neigh_j shape={nj.shape}, sample row0={nj[0,:min(8,nj.shape[1])]}")
-            # count valid neighbor ids ( >0 )
-            valid = nj>0
-            print(f"[DEBUG] neigh_j valid count={valid.sum()}, max_val={nj.max()}")
-        # 1. Setup Macro-grid
-        max_rcut = np.max(atoms['Rcut'])
-        macro_res = 2.0 * max_rcut + 0.1
+        print(f"[DEBUG] build_tasks: n_atoms={n_atoms_input}, neigh_max={neigh_max}")
         
         origin = np.array(grid_spec['origin'])
         ngrid = np.array(grid_spec['ngrid'])
@@ -111,115 +94,85 @@ class GridProjector(OpenCLBase):
         dB = np.array(grid_spec['dB'])
         dC = np.array(grid_spec['dC'])
         
-        # Bounding box of atoms
+        # Grid steps
+        step = np.array([np.linalg.norm(dA), np.linalg.norm(dB), np.linalg.norm(dC)])
+        fine_side = step * block_res
+        
         apos = np.array(atoms['pos'])
         ar = np.array(atoms['Rcut'])
-        
-        # Macro cells mapping
-        macro_grid = {} # (ix, iy, iz) -> [atom_indices]
-        for i, (p, r) in enumerate(zip(apos, ar)):
-            idx_min = np.floor((p - r - origin) / macro_res).astype(int)
-            idx_max = np.floor((p + r - origin) / macro_res).astype(int)
+
+        # 1. Map atoms to fine blocks once
+        active_fine_blocks = {} # (fix, fiy, fiz) -> list of atoms
+        for i in range(n_atoms_input):
+            p, r = apos[i], ar[i]
+            f_idx_min = np.floor((p - r - origin) / fine_side).astype(int)
+            f_idx_max = np.floor((p + r - origin) / fine_side).astype(int)
             
-            for ix in range(max(0, idx_min[0]), min(int(np.ceil(ngrid[0]*dA[0]/macro_res)), idx_max[0] + 1)):
-                for iy in range(max(0, idx_min[1]), min(int(np.ceil(ngrid[1]*dB[1]/macro_res)), idx_max[1] + 1)):
-                    for iz in range(max(0, idx_min[2]), min(int(np.ceil(ngrid[2]*dC[2]/macro_res)), idx_max[2] + 1)):
-                        macro_grid.setdefault((ix, iy, iz), []).append(i)
-        
+            for fix in range(max(0, f_idx_min[0]), min(int(np.ceil(ngrid[0]/block_res)), f_idx_max[0] + 1)):
+                for fiy in range(max(0, f_idx_min[1]), min(int(np.ceil(ngrid[1]/block_res)), f_idx_max[1] + 1)):
+                    for fiz in range(max(0, f_idx_min[2]), min(int(np.ceil(ngrid[2]/block_res)), f_idx_max[2] + 1)):
+                        # AABB check
+                        b_min = origin + np.array([fix, fiy, fiz]) * fine_side
+                        b_max = b_min + fine_side
+                        if self.check_overlap_sphere_aabb(p, r, b_min, b_max):
+                            active_fine_blocks.setdefault((fix, fiy, fiz), []).append(i)
+
         tasks = []
         active_atoms_list = []
         active_pairs_list = []
         
-        # Precompute atom-atom adjacency based on cutoffs
-        n_atoms = len(atoms['pos'])
-        adj = np.zeros((n_atoms, n_atoms), dtype=bool)
-        for i in range(n_atoms):
-            for j in range(i, n_atoms):
-                dist = np.linalg.norm(apos[i] - apos[j])
-                if dist < (ar[i] + ar[j]):
-                    adj[i, j] = adj[j, i] = True
+        for (fix, fiy, fiz), overlapping_atoms in active_fine_blocks.items():
+            if len(overlapping_atoms) == 0:
+                continue
+            # Find which pairs (i,j) both overlap this block AND are neighbors in Fireball
+            overlapping_pairs = []
+            for iatom in overlapping_atoms:
+                for k in range(neigh_max):
+                    jatom_p1 = neighs.neigh_j[iatom, k]
+                    if jatom_p1 <= 0: continue
+                    jatom = jatom_p1 - 1
+                    
+                    if jatom in overlapping_atoms:
+                        overlapping_pairs.append((iatom, jatom, k))
 
-        # Fine blocks side lengths in Angstroem
-        fine_side = np.array([dA[0], dB[1], dC[2]]) * block_res
-
-        for (mix, miy, miz), m_atoms in macro_grid.items():
-            # Range of fine blocks in this macro cell
-            f_min = np.floor(np.array([mix, miy, miz]) * macro_res / fine_side).astype(int)
-            f_max = np.floor((np.array([mix, miy, miz]) + 1) * macro_res / fine_side).astype(int)
+            if not overlapping_pairs: continue
             
-            for fix in range(f_min[0], f_max[0] + 1):
-                for fiy in range(f_min[1], f_max[1] + 1):
-                    for fiz in range(f_min[2], f_max[2] + 1):
-                        if fix * block_res >= ngrid[0] or fiy * block_res >= ngrid[1] or fiz * block_res >= ngrid[2]: continue
-                        
-                        b_min = origin + np.array([fix, fiy, fiz]) * fine_side
-                        b_max = b_min + fine_side
-                        
-                        overlapping_atoms = []
-                        for i in m_atoms:
-                            if self.check_overlap_sphere_aabb(apos[i], ar[i], b_min, b_max):
-                                overlapping_atoms.append(i)
-                        
-                        if not overlapping_atoms: continue
-                        
-                        # Count active pairs
-                        overlapping_pairs = [] # list of (i, j, ineigh_ij)
-                        na = len(overlapping_atoms)
-                        for idx_a in range(na):
-                            iatom = overlapping_atoms[idx_a]
-                            for idx_b in range(na):
-                                jatom = overlapping_atoms[idx_b]
-                                if not adj[iatom, jatom]: continue
-                                
-                                # Find ineigh such that neigh_j[iatom, ineigh] == jatom + 1
-                                # We can precompute this mapping for efficiency
-                                # For now, simple search
-                                ineigh_ij = -1
-                                for k in range(neigh_max):
-                                    if neighs.neigh_j[iatom, k] == jatom + 1:
-                                        ineigh_ij = k
-                                        break
-                                
-                                if ineigh_ij >= 0:
-                                    overlapping_pairs.append((iatom, jatom, ineigh_ij))
-                        
-                        if not overlapping_pairs: continue
-                        
-                        task = {
-                            'block_idx': (fix, fiy, fiz),
-                            'atom_start': len(active_atoms_list),
-                            'n_atoms': len(overlapping_atoms),
-                            'pair_start': len(active_pairs_list),
-                            'n_pairs': len(overlapping_pairs)
-                        }
-                        tasks.append(task)
-                        active_atoms_list.extend(overlapping_atoms)
-                        # Store as (iatom, jatom, ineigh_ij, pad)
-                        for p in overlapping_pairs:
-                            active_pairs_list.append((p[0], p[1], p[2], 0))
+            task = {
+                'block_idx': (fix, fiy, fiz),
+                'atom_start': len(active_atoms_list),
+                'n_atoms': len(overlapping_atoms),
+                'pair_start': len(active_pairs_list),
+                'n_pairs': len(overlapping_pairs)
+            }
+            tasks.append(task)
+            active_atoms_list.extend(overlapping_atoms)
+            for p in overlapping_pairs:
+                active_pairs_list.append((p[0], p[1], p[2], 0))
 
-        # Convert to numpy arrays for GPU
+        # Sort tasks by workload: more atoms first, then pairs
+        tasks.sort(key=lambda x: (x['n_atoms'], x['n_pairs']), reverse=True)
+
         tasks_np = np.zeros(len(tasks), dtype=[
             ('block_idx', 'i4', 4),
-            ('atom_start', 'i4'),
             ('n_atoms', 'i4'),
+            ('atom_start', 'i4'),
             ('pair_start', 'i4'),
             ('n_pairs', 'i4')
         ])
         for i, t in enumerate(tasks):
-            tasks_np[i]['block_idx'][:3] = t['block_idx']
-            tasks_np[i]['atom_start'] = t['atom_start']
-            tasks_np[i]['n_atoms'] = t['n_atoms']
-            tasks_np[i]['pair_start'] = t['pair_start']
-            tasks_np[i]['n_pairs'] = t['n_pairs']
-        
-        # DEBUG summary
-        uniq_atoms = len(set(active_atoms_list))
-        total_atoms_refs = len(active_atoms_list)
-        total_pairs = len(active_pairs_list)
-        max_pairs = max((t['n_pairs'] for t in tasks), default=0)
-        max_atoms = max((t['n_atoms'] for t in tasks), default=0)
-        print(f"[DEBUG] tasks: n_tasks={len(tasks)}, uniq_atoms={uniq_atoms}, atom_refs={total_atoms_refs}, pairs={total_pairs}, max_atoms/task={max_atoms}, max_pairs/task={max_pairs}")
+            tasks_np[i]['block_idx'  ][:3] = t['block_idx']
+            tasks_np[i]['n_atoms'    ] = t['n_atoms']
+            tasks_np[i]['atom_start' ] = t['atom_start']
+            
+            tasks_np[i]['pair_start' ] = t['pair_start']
+            tasks_np[i]['n_pairs'    ] = t['n_pairs']
+
+        for i in range(len(tasks_np)):
+            print(f"Task {i}: block_idx={tasks_np[i]['block_idx']} n_atoms: {tasks_np[i]['n_atoms']:<5} n_pairs: {tasks_np[i]['n_pairs']:<5}  atom_start: {tasks_np[i]['atom_start']:<5} pair_start: {tasks_np[i]['pair_start']:<5} ")    
+
+        #exit()
+            
+        print(f"[DEBUG] build_tasks finished: n_tasks={len(tasks)}, total_atom_refs={len(active_atoms_list)}, total_pair_refs={len(active_pairs_list)}")
         return tasks_np, np.array(active_atoms_list, dtype=np.int32), np.array(active_pairs_list, dtype=np.int32)
 
     def project(self, rho, neighs, atoms, grid_spec, tasks=None):
@@ -248,44 +201,48 @@ class GridProjector(OpenCLBase):
         print(f"[DEBUG] out buffer bytes={ngrid_total*4}")
 
         # 1. Prepare atom and species data for GPU
-        natoms = len(atoms['pos'])
-        atom_data = np.zeros(natoms, dtype=[
+        natoms_sys = len(atoms['pos'])
+        atom_data = np.zeros(natoms_sys, dtype=[
             ('pos_rcut', 'f4', 4),
             ('type', 'i4'),
             ('i0orb', 'i4'),
-            ('norb', 'i4')
+            ('norb', 'i4'),
+            ('pad', 'i4')
         ])
         
         nz_map = self.basis_meta['nz_map']
-        
-        # Species info for orbital loops
-        # nzx in neighs maps fb_idx -> Z
-        # We need mapping fb_idx -> basis_idx
-        fb_idx_to_basis_idx = {}
-        for fb_idx, z in enumerate(neighs.nzx):
-            if z in nz_map:
-                fb_idx_to_basis_idx[fb_idx] = nz_map[z]
-
         all_nz_basis = sorted(nz_map.keys())
-        species_info_np = np.zeros(len(all_nz_basis), dtype=[
-            ('nssh', 'i4'),
-            ('lssh', 'i4', 4)
-        ])
+        
+        # Species info for orbital loops (packed as int4 for OpenCL)
+        species_info_flat = np.zeros(len(all_nz_basis) * 4, dtype=np.int32)
         for i, nz in enumerate(all_nz_basis):
             info = self.parser.species_info[nz]
-            species_info_np[i]['nssh'] = info['nssh']
-            species_info_np[i]['lssh'][:len(info['lssh'])] = info['lssh']
+            species_info_flat[i*4] = info['nssh']
+            ls_vals = info['lssh']
+            for j in range(min(3, len(ls_vals))):
+                species_info_flat[i*4 + 1 + j] = ls_vals[j]
 
-        Z_to_fb_idx = {z: i for i, z in enumerate(neighs.nzx)}
+        # Precompute authoritative norb per species from parser (sum of (2l+1) per shell)
+        species_norb = {}
+        for nz in all_nz_basis:
+            info = self.parser.species_info[nz]
+            species_norb[nz] = sum(2 * l + 1 for l in info['lssh'])
 
-        for i in range(natoms):
+        for i in range(natoms_sys):
             atom_data[i]['pos_rcut'][:3] = atoms['pos'][i]
             atom_data[i]['pos_rcut'][3] = atoms['Rcut'][i]
             nz = atoms['type'][i]
             atom_data[i]['type'] = nz_map[nz]
-            
-            fb_idx = Z_to_fb_idx[nz]
-            atom_data[i]['norb'] = 4 if nz == 6 else 1 # TODO: use info from FireballData
+            iatyp_z = int(neighs.iatyp[i])
+            norb_val = None
+            # Prefer num_orb if it is sized to cover Z
+            if (iatyp_z - 1) >= 0 and (iatyp_z - 1) < len(neighs.num_orb) and neighs.num_orb[iatyp_z - 1] > 0:
+                norb_val = int(neighs.num_orb[iatyp_z - 1])
+            elif iatyp_z in species_norb:
+                norb_val = species_norb[iatyp_z]
+            else:
+                raise RuntimeError(f"Missing orbital count for atom {i} Z={iatyp_z}: num_orb len={len(neighs.num_orb)}, species_norb keys={list(species_norb.keys())}")
+            atom_data[i]['norb'] = norb_val
             atom_data[i]['i0orb'] = neighs.degelec[i]
 
         # 2. Buffers
@@ -293,19 +250,19 @@ class GridProjector(OpenCLBase):
         d_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=atom_data)
         d_active_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=active_atoms)
         d_active_pairs = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=active_pairs.astype(np.int32))
-        d_species_info = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=species_info_np)
+        d_species_info = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=species_info_flat)
         
         rho32 = rho.astype(np.float32)
         d_rho = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=rho32)
         
-        # d_neigh_j not strictly needed if we use precomputed active_pairs with ineigh
-        
         d_out = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, nx * ny * nz * 4)
         cl.enqueue_fill_buffer(self.queue, d_out, np.float32(0), 0, nx * ny * nz * 4)
 
-        # 3. Kernel launch
-        gs = (n_tasks * 8, 8, 8)
-        ls = (8, 8, 8)
+        # 3. Kernel launch (1D). Each task covers 8*8*8 voxels (512). Flatten tasks*voxels.
+        vox_per_task = 512
+        total_work = n_tasks * vox_per_task
+        ls = (16,)  # 1D local size
+        gs = (n_tasks * ls[0],)
         
         grid_spec_np = np.zeros(1, dtype=[
             ('origin', 'f4', 4),
@@ -319,13 +276,21 @@ class GridProjector(OpenCLBase):
         grid_spec_np[0]['dB'][:3] = grid_spec['dB']
         grid_spec_np[0]['dC'][:3] = grid_spec['dC']
         grid_spec_np[0]['ngrid'][:3] = grid_spec['ngrid']
+        d_grid = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=grid_spec_np)
 
-        # Dummy neigh_j buffer if not used by refined kernel
         d_dummy = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, 4)
+
+        # Always create a fresh queue for this context (avoid stale/invalid queue issues)
+        self.queue = cl.CommandQueue(self.ctx)
+
+        # Debug device/work sizes to diagnose resource issues
+        dev = self.ctx.devices[0]
+        print(f"[DEBUG] device={dev.name}, max_work_group={dev.max_work_group_size}, local_mem={dev.local_mem_size}")
+        print(f"[DEBUG] gs={gs}, ls={ls}, n_tasks={n_tasks}, active_atoms={len(active_atoms)}, active_pairs={len(active_pairs)}")
 
         self.prg.project_density_sparse(
             self.queue, gs, ls,
-            grid_spec_np[0],
+            d_grid,
             np.int32(n_tasks),
             d_tasks, d_atoms, d_active_atoms, d_active_pairs,
             d_rho, 
@@ -339,7 +304,9 @@ class GridProjector(OpenCLBase):
             np.int32(rho.shape[2]), # numorb_max
             d_out
         )
+        self.queue.finish()
 
         res = np.empty((nx, ny, nz), dtype=np.float32)
         cl.enqueue_copy(self.queue, res, d_out)
+        self.queue.finish()
         return res
