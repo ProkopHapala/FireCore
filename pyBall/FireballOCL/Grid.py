@@ -79,14 +79,14 @@ class GridProjector(OpenCLBase):
         distance_sq = np.sum((center - closest_p)**2)
         return distance_sq < (radius**2)
 
-    def build_tasks(self, atoms, fb_dims, neighs, grid_spec, block_res=8):
+    def build_tasks(self, atoms, fb_dims, neighs, grid_spec, block_res=8, nMaxAtom=16):
         """
         Partition the grid into tasks (active blocks).
         grid_spec: {'origin': [x,y,z], 'dA': [x,y,z], 'dB': [x,y,z], 'dC': [x,y,z], 'ngrid': [nx,ny,nz]}
         """
-        neigh_max = neighs.neigh_j.shape[1]
+        # neigh_max = neighs.neigh_j.shape[1]
         n_atoms_input = len(atoms['pos'])
-        print(f"[DEBUG] build_tasks: n_atoms={n_atoms_input}, neigh_max={neigh_max}")
+        print(f"[DEBUG] build_tasks: n_atoms={n_atoms_input}")
         
         origin = np.array(grid_spec['origin'])
         ngrid = np.array(grid_spec['ngrid'])
@@ -118,64 +118,73 @@ class GridProjector(OpenCLBase):
                             active_fine_blocks.setdefault((fix, fiy, fiz), []).append(i)
 
         tasks = []
-        active_atoms_list = []
-        active_pairs_list = []
+        task_atoms_list = []
         
+        S = nMaxAtom // 2
         for (fix, fiy, fiz), overlapping_atoms in active_fine_blocks.items():
             if len(overlapping_atoms) == 0:
                 continue
-            # Find which pairs (i,j) both overlap this block AND are neighbors in Fireball
-            overlapping_pairs = []
-            for iatom in overlapping_atoms:
-                for k in range(neigh_max):
-                    jatom_p1 = neighs.neigh_j[iatom, k]
-                    if jatom_p1 <= 0: continue
-                    jatom = jatom_p1 - 1
-                    
-                    if jatom in overlapping_atoms:
-                        overlapping_pairs.append((iatom, jatom, k))
-
-            if not overlapping_pairs: continue
             
-            task = {
-                'block_idx': (fix, fiy, fiz),
-                'atom_start': len(active_atoms_list),
-                'n_atoms': len(overlapping_atoms),
-                'pair_start': len(active_pairs_list),
-                'n_pairs': len(overlapping_pairs)
-            }
-            tasks.append(task)
-            active_atoms_list.extend(overlapping_atoms)
-            for p in overlapping_pairs:
-                active_pairs_list.append((p[0], p[1], p[2], 0))
+            # Split atoms in block into chunks of size S
+            chunks = [overlapping_atoms[i:i + S] for i in range(0, len(overlapping_atoms), S)]
+            n_chunks = len(chunks)
+            
+            # Tile interactions
+            covered_diags = set()
+            for i in range(n_chunks):
+                for j in range(i, n_chunks):
+                    if i == j:
+                        if i in covered_diags: continue
+                        # Diagonal task: try to combine C_i and C_{i+1}
+                        atoms_to_add = list(chunks[i])
+                        if i + 1 < n_chunks:
+                            atoms_to_add.extend(chunks[i+1])
+                            covered_diags.add(i+1)
+                        
+                        tasks.append({
+                            'block_idx': (fix, fiy, fiz),
+                            'na': len(atoms_to_add),
+                            'nj': -1,
+                            'atoms': atoms_to_add
+                        })
+                    else:
+                        if j == i + 1 and (i+1) in covered_diags:
+                            continue
+                        # Off-diagonal task for C_i and C_j
+                        atoms_to_add = list(chunks[i]) + list(chunks[j])
+                        tasks.append({
+                            'block_idx': (fix, fiy, fiz),
+                            'na': len(atoms_to_add),
+                            'nj': len(chunks[i]),
+                            'atoms': atoms_to_add
+                        })
 
-        # Sort tasks by workload: more atoms first, then pairs
-        tasks.sort(key=lambda x: (x['n_atoms'], x['n_pairs']), reverse=True)
+        # Sort tasks by workload (na)
+        tasks.sort(key=lambda x: x['na'], reverse=True)
 
         tasks_np = np.zeros(len(tasks), dtype=[
             ('block_idx', 'i4', 4),
-            ('n_atoms', 'i4'),
-            ('atom_start', 'i4'),
-            ('pair_start', 'i4'),
-            ('n_pairs', 'i4')
+            ('na', 'i4'),
+            ('nj', 'i4'),
+            ('pad1', 'i4'),
+            ('pad2', 'i4')
         ])
+        
+        task_atoms_np = np.zeros((len(tasks), nMaxAtom), dtype=np.int32)
+        
         for i, t in enumerate(tasks):
-            tasks_np[i]['block_idx'  ][:3] = t['block_idx']
-            tasks_np[i]['n_atoms'    ] = t['n_atoms']
-            tasks_np[i]['atom_start' ] = t['atom_start']
-            
-            tasks_np[i]['pair_start' ] = t['pair_start']
-            tasks_np[i]['n_pairs'    ] = t['n_pairs']
+            tasks_np[i]['block_idx'][:3] = t['block_idx']
+            tasks_np[i]['na'] = t['na']
+            tasks_np[i]['nj'] = t['nj']
+            task_atoms_np[i, :t['na']] = t['atoms']
 
         for i in range(len(tasks_np)):
-            print(f"Task {i}: block_idx={tasks_np[i]['block_idx']} n_atoms: {tasks_np[i]['n_atoms']:<5} n_pairs: {tasks_np[i]['n_pairs']:<5}  atom_start: {tasks_np[i]['atom_start']:<5} pair_start: {tasks_np[i]['pair_start']:<5} ")    
+            print(f"Task {i}: block_idx={tasks_np[i]['block_idx']} na: {tasks_np[i]['na']:<5} nj: {tasks_np[i]['nj']:<5}")    
 
-        #exit()
-            
-        print(f"[DEBUG] build_tasks finished: n_tasks={len(tasks)}, total_atom_refs={len(active_atoms_list)}, total_pair_refs={len(active_pairs_list)}")
-        return tasks_np, np.array(active_atoms_list, dtype=np.int32), np.array(active_pairs_list, dtype=np.int32)
+        print(f"[DEBUG] build_tasks finished: n_tasks={len(tasks)}")
+        return tasks_np, task_atoms_np
 
-    def project(self, rho, neighs, atoms, grid_spec, tasks=None):
+    def project(self, rho, neighs, atoms, grid_spec, tasks=None, nMaxAtom=16):
         """
         Main entry point for density projection.
         rho: np.ndarray shape (natoms, neigh_max, numorb_max, numorb_max)
@@ -184,9 +193,9 @@ class GridProjector(OpenCLBase):
         grid_spec: grid parameters
         """
         if tasks is None:
-            tasks_np, active_atoms, active_pairs = self.build_tasks(atoms, None, neighs, grid_spec)
+            tasks_np, task_atoms = self.build_tasks(atoms, None, neighs, grid_spec, nMaxAtom=nMaxAtom)
         else:
-            tasks_np, active_atoms, active_pairs = tasks
+            tasks_np, task_atoms = tasks
 
         n_tasks = len(tasks_np)
         if n_tasks == 0:
@@ -195,8 +204,8 @@ class GridProjector(OpenCLBase):
         # DEBUG: print buffer sizes to track resource usage
         nx, ny, nz = grid_spec['ngrid']
         ngrid_total = int(nx) * int(ny) * int(nz)
-        print(f"[DEBUG] project: n_tasks={n_tasks}, active_atoms={len(active_atoms)}, active_pairs={len(active_pairs)}")
-        print(f"[DEBUG] grid_spec: ngrid={grid_spec['ngrid']}, origin={grid_spec['origin']}, dA={grid_spec['dA']}, dB={grid_spec['dB']}, dC={grid_spec['dC']}")
+        print(f"[DEBUG] project: n_tasks={n_tasks}")
+        print(f"[DEBUG] grid_spec: ngrid={grid_spec['ngrid']}, origin={grid_spec['origin']}")
         print(f"[DEBUG] rho shape={rho.shape}, dtype={rho.dtype}, bytes={rho.nbytes}")
         print(f"[DEBUG] out buffer bytes={ngrid_total*4}")
 
@@ -248,8 +257,7 @@ class GridProjector(OpenCLBase):
         # 2. Buffers
         d_tasks = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=tasks_np)
         d_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=atom_data)
-        d_active_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=active_atoms)
-        d_active_pairs = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=active_pairs.astype(np.int32))
+        d_task_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=task_atoms)
         d_species_info = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=species_info_flat)
         
         rho32 = rho.astype(np.float32)
@@ -278,7 +286,7 @@ class GridProjector(OpenCLBase):
         grid_spec_np[0]['ngrid'][:3] = grid_spec['ngrid']
         d_grid = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=grid_spec_np)
 
-        d_dummy = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, 4)
+        d_neigh_j = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=neighs.neigh_j.astype(np.int32))
 
         # Always create a fresh queue for this context (avoid stale/invalid queue issues)
         self.queue = cl.CommandQueue(self.ctx)
@@ -286,15 +294,15 @@ class GridProjector(OpenCLBase):
         # Debug device/work sizes to diagnose resource issues
         dev = self.ctx.devices[0]
         print(f"[DEBUG] device={dev.name}, max_work_group={dev.max_work_group_size}, local_mem={dev.local_mem_size}")
-        print(f"[DEBUG] gs={gs}, ls={ls}, n_tasks={n_tasks}, active_atoms={len(active_atoms)}, active_pairs={len(active_pairs)}")
+        print(f"[DEBUG] gs={gs}, ls={ls}, n_tasks={n_tasks}")
 
         self.prg.project_density_sparse(
             self.queue, gs, ls,
             d_grid,
             np.int32(n_tasks),
-            d_tasks, d_atoms, d_active_atoms, d_active_pairs,
+            d_tasks, d_atoms, d_task_atoms,
             d_rho, 
-            d_dummy, # neigh_j placeholder
+            d_neigh_j,
             self.d_basis,
             d_species_info,
             np.int32(self.basis_meta['n_nodes']),
@@ -302,6 +310,7 @@ class GridProjector(OpenCLBase):
             np.int32(self.basis_meta['max_shells']),
             np.int32(rho.shape[1]), # neigh_max
             np.int32(rho.shape[2]), # numorb_max
+            np.int32(nMaxAtom),
             d_out
         )
         self.queue.finish()

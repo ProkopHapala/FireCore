@@ -2,6 +2,15 @@ import numpy as np
 import os
 
 class FdataParser:
+    """
+    Fdata helper:
+    - 2c files (overlap, kinetic, vna, vnl, …) store columns of mu-nu matrix elements.
+      For vnl (non-local PP) each column is a projector-channel pair; count equals
+      num_nonzero_pp computed from lsshPP of both species. Plotters take a channels
+      argument only to avoid drawing every column when many exist.
+    - basis/*.pp are one-body radial pseudopotentials (no channels); use read_wf/read_wf
+      to load wavefunctions and parse_info to get rc_PP cutoffs.
+    """
     def __init__(self, fdata_dir):
         self.fdata_dir = fdata_dir
 
@@ -32,7 +41,12 @@ class FdataParser:
             # Pseudopotential shells
             nsshPP = int(lines[idx].split()[0])
             idx += 1
-            lsshPP = [int(x) for x in lines[idx].split()]
+            # DEBUG keep loud if missing PP shells
+            if lines[idx].strip():
+                lsshPP = [int(x) for x in lines[idx].split()]
+            else:
+                print(f"[DEBUG] parse_info: empty lsshPP for nz={nz}, nsshPP={nsshPP}")
+                lsshPP = []
             idx += 1
             rc_PP = float(lines[idx].split()[0])
             idx += 3  # skip Qneutral and rcuts
@@ -401,16 +415,36 @@ class FdataParser:
         while i < len(lines):
             line = lines[i]
             if "- Information for this species" in line:
-                # Expect next lines: element, Z, mass, shells, L list
-                if i + 6 >= len(lines): break
+                # Expect next lines: element, Z, mass, shells, L list, PP shells, rc_PP
+                if i + 8 >= len(lines): break
                 element = lines[i+1].split()[0]
                 z = int(float(lines[i+2].split()[0]))
                 # skip mass line (i+3)
                 nssh = int(lines[i+4].split()[0])
                 lssh_line = lines[i+5].strip()
-                lssh = [int(x) for x in lssh_line.split()]
-                species_info[z] = {'element': element, 'nssh': nssh, 'lssh': lssh}
-                i += 6
+                lssh = [int(x) for x in lssh_line.split()] if lssh_line else []
+                nsshPP = int(lines[i+6].split()[0])
+                lsshPP_line = lines[i+7].strip()
+                if lsshPP_line:
+                    lsshPP = [int(x) for x in lsshPP_line.split()]
+                else:
+                    print(f"[DEBUG] parse_info (trimmed): empty lsshPP for z={z}, nsshPP={nsshPP}")
+                    lsshPP = []
+                rc_PP = None
+                try:
+                    rc_PP = float(lines[i+8].split()[0])
+                except Exception as e:
+                    print(f"[DEBUG] parse_info (trimmed): failed rc_PP for z={z} line='{lines[i+8]}' err={e}")
+                species_info[z] = {
+                    'element': element,
+                    'nssh': nssh, 'lssh': lssh,
+                    'nsshPP': nsshPP, 'lsshPP': lsshPP,
+                    'rc_PP': rc_PP,
+                }
+                # Advance to next species block (skip until separator or move past parsed lines)
+                i = i + 9
+                while i < len(lines) and lines[i].strip() and "====" not in lines[i]:
+                    i += 1
             else:
                 i += 1
         self.species_info = species_info
