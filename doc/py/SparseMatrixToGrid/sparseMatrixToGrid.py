@@ -3,6 +3,27 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
+# NOTE: This file is a planning/visualization aid for projecting sparse density
+# matrices onto a real-space grid. Key points from the DensityToGrid partitioning
+# discussion:
+# - Goal: estimate per-block workload (atoms per fine block, non-zero overlap
+#   pairs (i,j)) so GPU workgroups can be scheduled by cost instead of uniform
+#   volume. Heavy blocks (large pair counts) should launch early; empty blocks
+#   should be skipped entirely.
+# - Hierarchy: a coarse macro-grid (~max Rcut) maps atoms into a few boxes
+#   (each atom touches <=4 boxes in 2D / <=8 in 3D). Fine blocks (e.g., 8x8 or
+#   16x16 voxels) inside an occupied macro-cell are refined using only that
+#   cell's atoms—this avoids all-atoms × all-blocks checks.
+# - Cost metric: pairs are counted only when both atoms overlap the fine block
+#   and their cutoffs intersect (|rij| < Ri+Rj). This approximates P_ij != 0.
+#   The resulting atom/pair histograms are what we plan to sort for GPU task
+#   lists to balance load and keep tail effects small.
+# - Next steps: generate a compact task buffer containing active blocks with
+#   their atom lists and pair counts; sort by pair count descending; drive GPU
+#   kernels from that list. This keeps one kernel while handling density
+#   variation without atomics on the output grid (except for rare extreme
+#   splits).
+
 def load_xyz(fname, rcut_default):
     with open(fname, "r") as f:
         lines = f.read().strip().splitlines()
@@ -42,6 +63,9 @@ def check_overlap_sphere_aabb(center, radius, box_min, box_max):
     return distance_sq < (radius**2)
 
 def simulate_projection(grid_size=None, block_res=0.8, macro_res=None, margin=0.1, seed=None, verbose=True, xyz=None, rcut_default=3.0, bbox_margin=1.0):
+    # DEBUG: Hierarchical culling demo. Macro-grid (~max Rcut) limits atom lists
+    # per fine block so we approximate future GPU workgroup tasks without
+    # scanning all atoms x all blocks.
     if seed is not None:
         np.random.seed(seed)
     atoms = load_xyz(xyz, rcut_default) if xyz is not None else get_benzene_coords()
@@ -88,12 +112,12 @@ def simulate_projection(grid_size=None, block_res=0.8, macro_res=None, margin=0.
     for i in range(n_atoms):
         for j in range(i, n_atoms):
             dist = np.linalg.norm(atoms[i]['pos'] - atoms[j]['pos'])
-            # Only consider pairs within combined cutoff
+            # Only consider pairs within combined cutoff; this approximates sparsity of P_ij
             if dist < (atoms[i]['Rcut'] + atoms[j]['Rcut']):
                 adj_matrix[i, j] = adj_matrix[j, i] = True
 
     # Coarse macro mapping: atom -> macro cells it touches (big boxes)
-    macro_grid = {}
+    macro_grid = {}  # maps macro-cell -> atoms; each atom touches <=4 cells (2D)
     for idx, a in enumerate(atoms):
         x_range = [int((a['pos'][0]-a['Rcut'] - bb_min[0])/macro_res),
                    int((a['pos'][0]+a['Rcut'] - bb_min[0])/macro_res)]
@@ -115,7 +139,7 @@ def simulate_projection(grid_size=None, block_res=0.8, macro_res=None, margin=0.
                 continue
             
             # 1. Find which atoms overlap this block
-            overlapping_atoms = []
+            overlapping_atoms = []  # candidate list already culled by macro-grid
             for i in macro_atoms:
                 if check_overlap_sphere_aabb(atoms[i]['pos'], atoms[i]['Rcut'], b_min, b_max):
                     overlapping_atoms.append(i)
@@ -129,9 +153,10 @@ def simulate_projection(grid_size=None, block_res=0.8, macro_res=None, margin=0.
                 for idx_b in range(idx_a, na):
                     atom_i = overlapping_atoms[idx_a]
                     atom_j = overlapping_atoms[idx_b]
+                    # Cost metric driving GPU task sorting: pairs that actually overlap
                     if adj_matrix[atom_i, atom_j]:
                         ne += 1
-            
+
             workload_map[iy, ix] = ne
             if verbose and na>0:
                 print(f"[FINE] fine=({ix},{iy}) pos=({x:.2f},{y:.2f}) atoms={na} pairs={ne}")

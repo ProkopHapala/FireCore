@@ -53,7 +53,9 @@ header_strings = [
 "void firecore_MOtoXSF( int iMO )",
 "void firecore_orb2points( int iband, int ikpoint, int npoints, double* points, double* ewfaux )",
 "void firecore_get_HS_dims( int* natoms_out, int* norbitals_out, int* nspecies_out, int* neigh_max_out, int* numorb_max_out, int* nsh_max_out, int* ME2c_max_out, int* max_mu_dim1_out, int* max_mu_dim2_out, int* max_mu_dim3_out, int* mbeta_max_out, int* nspecies_fdata_out, int* nelec_out)",
-"void firecore_get_HS_sparse( double* h_mat_out, double* s_mat_out, int* num_orb_out, int* degelec_out, int* iatyp_out, int* lssh_out, int* mu_out, int* nu_out, int* mvalue_out, int* nssh_out, int* nzx_out, int* neighn_out, int* neigh_j_out, int* neigh_b_out, double* xl_out )",
+    "void firecore_get_HS_neighs( int* num_orb_out, int* degelec_out, int* iatyp_out, int* lssh_out, int* mu_out, int* nu_out, int* mvalue_out, int* nssh_out, int* nzx_out, int* neighn_out, int* neigh_j_out, int* neigh_b_out, double* xl_out )",
+    "void firecore_get_HS_sparse( double* h_mat_out, double* s_mat_out )",
+    "void firecore_get_rho_sparse( double* rho_out )",
 "void firecore_get_HS_k( double* kpoint_vec, void* Hk_out, void* Sk_out )",
 "void firecore_get_nspecies( int* nspecies_out )",
 "void firecore_get_eigen( int ikp, double* eigen_out )",
@@ -369,30 +371,64 @@ class FireballDims:
         self.nelec = nelec  # Total electron count (from ztot)
 
 class FireballData:
+    # def __init__(self, dims: FireballDims):
+    #     if not isinstance(dims, FireballDims):
+    #         raise TypeError("dims argument must be an instance of FireballDims")
+
+    #     # Fortran: rho(numorb_max, numorb_max, neigh_max, natoms)
+    #     # Python:  rho[imu, inu, ineigh, iatom]
+    #     self.rho     = np.zeros((dims.numorb_max, dims.numorb_max, dims.neigh_max, dims.natoms), dtype=np.float64, order='F')
+    #     self.h_mat   = np.zeros((dims.numorb_max, dims.numorb_max, dims.neigh_max, dims.natoms), dtype=np.float64, order='F')
+    #     self.s_mat   = np.zeros((dims.numorb_max, dims.numorb_max, dims.neigh_max, dims.natoms), dtype=np.float64, order='F')
+    #     self.num_orb = np.zeros(dims.nspecies, dtype=np.int32, order='F')
+    #     self.degelec = np.zeros(dims.natoms, dtype=np.int32, order='F')
+    #     self.iatyp   = np.zeros(dims.natoms, dtype=np.int32, order='F')
+    #     # Fortran: lssh(nsh_max, nspecies) -> Python: lssh[ish, ispec]
+    #     self.lssh    = np.zeros((dims.nsh_max, dims.nspecies), dtype=np.int32, order='F')
+    #     # Fortran: mu(d1,d2,d3) -> Python: mu[d1,d2,d3]
+    #     self.mu      = np.zeros((dims.max_mu_dim1, dims.max_mu_dim2, dims.max_mu_dim3), dtype=np.int32, order='F')
+    #     self.nu      = np.zeros((dims.max_mu_dim1, dims.max_mu_dim2, dims.max_mu_dim3), dtype=np.int32, order='F')
+    #     self.mvalue  = np.zeros((dims.max_mu_dim1, dims.max_mu_dim2, dims.max_mu_dim3), dtype=np.int32, order='F')
+    #     self.nssh    = np.zeros(dims.nspecies, dtype=np.int32, order='F')
+    #     self.nzx     = np.zeros(dims.nspecies_fdata, dtype=np.int32, order='F')
+    #     self.neighn  = np.zeros(dims.natoms, dtype=np.int32, order='F')
+    #     # Fortran: neigh_j(neigh_max, natoms) -> Python: neigh_j[ineigh, iatom]
+    #     self.neigh_j = np.zeros((dims.neigh_max, dims.natoms), dtype=np.int32, order='F')
+    #     self.neigh_b = np.zeros((dims.neigh_max, dims.natoms), dtype=np.int32, order='F')
+    #     # Fortran: xl(3, mbeta_max) -> Python: xl[i, mbeta]
+    #     self.xl      = np.zeros((3, dims.mbeta_max), dtype=np.float64, order='F')
+
+    # NOTE: We intentionally keep Python arrays in default C-order (row-major)
+    # and reverse axis order so the linear layout matches Fortran column-major.
+    # Example: Fortran A(i,j,k,l) -> Python shape (l,k,j,i); last index is fastest.
+    # Do NOT use order='F' because ctypes ndpointer requires C_CONTIGUOUS.
     def __init__(self, dims: FireballDims):
         if not isinstance(dims, FireballDims):
             raise TypeError("dims argument must be an instance of FireballDims")
 
-        # Fortran: h_mat(imu, inu, ineigh, iatom)
-        # Python: h_mat[iatom, ineigh, inu, imu]
+        # Fortran: rho(numorb_max, numorb_max, neigh_max, natoms)
+        # Python (axis-reversed for matching linear layout): rho[iatom, ineigh, imu, inu]
+        self.neigh_max = dims.neigh_max
+        self.numorb_max = dims.numorb_max
+        self.rho     = np.zeros((dims.natoms, dims.neigh_max, dims.numorb_max, dims.numorb_max), dtype=np.float64)
         self.h_mat   = np.zeros((dims.natoms, dims.neigh_max, dims.numorb_max, dims.numorb_max), dtype=np.float64)
         self.s_mat   = np.zeros((dims.natoms, dims.neigh_max, dims.numorb_max, dims.numorb_max), dtype=np.float64)
         self.num_orb = np.zeros(dims.nspecies, dtype=np.int32)
         self.degelec = np.zeros(dims.natoms, dtype=np.int32)
         self.iatyp   = np.zeros(dims.natoms, dtype=np.int32)
-        # Fortran: lssh(nsh_max, nspecies) -> Python: lssh[nspecies, nsh_max]
+        # Fortran: lssh(nsh_max, nspecies) -> Python: lssh[ish, ispec]
         self.lssh    = np.zeros((dims.nspecies, dims.nsh_max), dtype=np.int32)
-        # Fortran: mu(d1,d2,d3) -> Python: mu[d3,d2,d1]
+        # Fortran: mu(d1,d2,d3) -> Python: mu[d1,d2,d3]
         self.mu      = np.zeros((dims.max_mu_dim3, dims.max_mu_dim2, dims.max_mu_dim1), dtype=np.int32)
         self.nu      = np.zeros((dims.max_mu_dim3, dims.max_mu_dim2, dims.max_mu_dim1), dtype=np.int32)
         self.mvalue  = np.zeros((dims.max_mu_dim3, dims.max_mu_dim2, dims.max_mu_dim1), dtype=np.int32)
         self.nssh    = np.zeros(dims.nspecies, dtype=np.int32)
         self.nzx     = np.zeros(dims.nspecies_fdata, dtype=np.int32)
         self.neighn  = np.zeros(dims.natoms, dtype=np.int32)
-        # Fortran: neigh_j(neigh_max, natoms) -> Python: neigh_j[natoms, neigh_max]
+        # Fortran: neigh_j(neigh_max, natoms) -> Python: neigh_j[ineigh, iatom]
         self.neigh_j = np.zeros((dims.natoms, dims.neigh_max), dtype=np.int32)
         self.neigh_b = np.zeros((dims.natoms, dims.neigh_max), dtype=np.int32)
-        # Fortran: xl(3, mbeta_max) -> Python: xl[mbeta_max, 3]
+        # Fortran: xl(3, mbeta_max) -> Python reversed: xl[mbeta, 3]
         self.xl      = np.zeros((dims.mbeta_max, 3), dtype=np.float64)
 
 # void firecore_get_HS_dims( int* natoms_out, int* norbitals_out, int* nspecies_out, int* neigh_max_out, int* numorb_max_out, int* nsh_max_out, int* ME2c_max_out, int* max_mu_dim1_out, int* max_mu_dim2_out, int* max_mu_dim3_out, int* mbeta_max_out, int* nspecies_fdata_out, int* nelec_out)
@@ -427,22 +463,53 @@ def get_HS_dims():
         mbeta_max_c.value, nspecies_fdata_c.value, nelec_c.value
     )
 
-# void firecore_get_HS_sparse( double* h_mat_out, double* s_mat_out, int* num_orb_out, int* degelec_out, int* iatyp_out, int* lssh_out, int* mu_out, int* nu_out, int* mvalue_out, int* nssh_out, int* nzx_out, int* neighn_out, int* neigh_j_out, int* neigh_b_out, double* xl_out )
-argDict["firecore_get_HS_sparse"]=( None, [array4d, array4d, array1i, array1i, array1i, array2i, array3i, array3i, array3i, array1i, array1i, array1i, array2i, array2i, array2d] )
-def get_HS_sparse(dims):
-    # Ensure dims is a FireballDims object
+# void firecore_get_HS_neighs( int* num_orb_out, int* degelec_out, int* iatyp_out, int* lssh_out, int* mu_out, int* nu_out, int* mvalue_out, int* nssh_out, int* nzx_out, int* neighn_out, int* neigh_j_out, int* neigh_b_out, double* xl_out )
+argDict["firecore_get_HS_neighs"]=( None, [array1i, array1i, array1i, array2i, array3i, array3i, array3i, array1i, array1i, array1i, array2i, array2i, array2d] )
+def get_HS_neighs(dims):
     if not isinstance(dims, FireballDims):
         raise TypeError("dims argument must be an instance of FireballDims")
-
-    # Create FireballData instance; arrays are allocated in its constructor
     data = FireballData(dims)
-
-    lib.firecore_get_HS_sparse(
-        data.h_mat, data.s_mat,
+    # Ensure C-contiguous arrays for ctypes ndpointer (flags='C_CONTIGUOUS')
+    def c_array(a, name):
+        arr = np.ascontiguousarray(a, dtype=a.dtype)
+        assert arr.flags['C_CONTIGUOUS'], f"{name} not C-contiguous"
+        return arr
+    data.num_orb = c_array(data.num_orb, "num_orb")
+    data.degelec = c_array(data.degelec, "degelec")
+    data.iatyp   = c_array(data.iatyp,   "iatyp")
+    data.lssh    = c_array(data.lssh,    "lssh")
+    data.mu      = c_array(data.mu,      "mu")
+    data.nu      = c_array(data.nu,      "nu")
+    data.mvalue  = c_array(data.mvalue,  "mvalue")
+    data.nssh    = c_array(data.nssh,    "nssh")
+    data.nzx     = c_array(data.nzx,     "nzx")
+    data.neighn  = c_array(data.neighn,  "neighn")
+    data.neigh_j = c_array(data.neigh_j, "neigh_j")
+    data.neigh_b = c_array(data.neigh_b, "neigh_b")
+    data.xl      = c_array(data.xl,      "xl")
+    lib.firecore_get_HS_neighs(
         data.num_orb, data.degelec, data.iatyp,
         data.lssh, data.mu, data.nu, data.mvalue, data.nssh, data.nzx,
         data.neighn, data.neigh_j, data.neigh_b, data.xl
     )
+    return data
+
+# void firecore_get_HS_sparse( double* h_mat_out, double* s_mat_out )
+argDict["firecore_get_HS_sparse"]=( None, [array4d, array4d] )
+def get_HS_sparse(dims, data=None):
+    if not isinstance(dims, FireballDims):
+        raise TypeError("dims argument must be an instance of FireballDims")
+    if data is None: data = FireballData(dims)
+    lib.firecore_get_HS_sparse( data.h_mat, data.s_mat )
+    return data
+
+# void firecore_get_rho_sparse( double* rho_out )
+argDict["firecore_get_rho_sparse"]=( None, [array4d] )
+def get_rho_sparse(dims, data=None):
+    if not isinstance(dims, FireballDims):
+        raise TypeError("dims argument must be an instance of FireballDims")
+    if data is None: data = FireballData(dims)
+    lib.firecore_get_rho_sparse( data.rho )
     return data
 
 # void firecore_get_HS_k( double* kpoint_vec, void* Hk_out, void* Sk_out ) # Using void* for complex arrays

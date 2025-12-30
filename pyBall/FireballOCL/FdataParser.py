@@ -342,6 +342,79 @@ class FdataParser:
         fname = f"{root}_{itheta:02d}_{isorp:02d}.{nz1:02d}.{nz2:02d}.{nz3:02d}.dat"
         return os.path.join(self.fdata_dir, fname)
 
+    def read_wf(self, fname):
+        """
+        Reads radial wavefunction from a .wf file.
+        Matches read_wf.f90.
+        """
+        with open(fname, 'r') as f:
+            lines = f.readlines()
+        
+        # Header (trash filename, nzx, mesh, rcutoff, rcmax, xnocc, l)
+        nzxwf = int(lines[1].split()[0])
+        mesh = int(lines[2].split()[0])
+        parts_r = lines[3].split()
+        rcutoffwf = float(parts_r[0].replace('D','E'))
+        rcmax = float(parts_r[1].replace('D','E'))
+        xnoccwf = float(parts_r[2].replace('D','E'))
+        lqnwf = int(lines[4].split()[0])
+        
+        all_values = []
+        for line in lines[5:]:
+            all_values.extend([float(x.replace('D', 'E')) for x in line.split()])
+            
+        data = np.array(all_values[:mesh])
+        return {
+            'nzx': nzxwf, 'mesh': mesh, 
+            'rcutoff': rcutoffwf, 'rcmax': rcmax, 'xnocc': xnoccwf, 'l': lqnwf,
+            'data': data
+        }
+
+    def find_wf(self, species_nz):
+        """Finds all .wf-style files for a given species (supports .wf, .wf1, etc.)."""
+        import glob
+        patterns = [
+            os.path.join(self.fdata_dir, f"*.{species_nz:02d}.wf"),
+            os.path.join(self.fdata_dir, f"**/*{species_nz:03d}*.wf*"),
+        ]
+        found = []
+        for pat in patterns:
+            found.extend(glob.glob(pat, recursive=True))
+        return sorted(set(found))
+
+    def parse_info(self):
+        """Parses info.dat to populate species_info (nssh, lssh, element, Z)."""
+        info_path = os.path.join(self.fdata_dir, "info.dat")
+        if not os.path.exists(info_path):
+            # try parent dir if we are inside basis/
+            alt = os.path.join(os.path.dirname(self.fdata_dir), "info.dat")
+            if os.path.exists(alt):
+                info_path = alt
+        if not os.path.exists(info_path):
+            raise FileNotFoundError(f"info.dat not found under {self.fdata_dir} or parent")
+
+        species_info = {}
+        with open(info_path, 'r') as f:
+            lines = [ln.strip() for ln in f.readlines()]
+
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            if "- Information for this species" in line:
+                # Expect next lines: element, Z, mass, shells, L list
+                if i + 6 >= len(lines): break
+                element = lines[i+1].split()[0]
+                z = int(float(lines[i+2].split()[0]))
+                # skip mass line (i+3)
+                nssh = int(lines[i+4].split()[0])
+                lssh_line = lines[i+5].strip()
+                lssh = [int(x) for x in lssh_line.split()]
+                species_info[z] = {'element': element, 'nssh': nssh, 'lssh': lssh}
+                i += 6
+            else:
+                i += 1
+        self.species_info = species_info
+
     def load_species_data(self, species_nz):
         """
         Loads all relevant Fdata for a list of species nuclear charges.

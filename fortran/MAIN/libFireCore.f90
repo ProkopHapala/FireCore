@@ -790,26 +790,18 @@ subroutine firecore_get_HS_dims( &
     nelec_out = nint(ztot)
 end subroutine firecore_get_HS_dims
 
-subroutine firecore_get_HS_sparse( &
-    h_mat_out, s_mat_out, &
+subroutine firecore_get_HS_neighs( &
     num_orb_out, degelec_out, iatyp_out, &
     lssh_out, mu_out, nu_out, mvalue_out, nssh_out, nzx_out, &
     neighn_out, neigh_j_out, neigh_b_out, xl_out &
-  ) bind(c, name='firecore_get_HS_sparse')
+  ) bind(c, name='firecore_get_HS_neighs')
     use iso_c_binding
-    use iso_fortran_env, only: output_unit
-    use configuration, only: natoms, xl, nspecies ! nspecies is from configuration
-    use interactions,  only: h_mat, s_mat, t_mat, vna, vxc, vca, vxc_ca, vnl, num_orb, degelec, iatyp, lssh, mu, nu, mvalue, nssh, numorb_max, nsh_max
+    use configuration, only: natoms, xl, nspecies
+    use interactions,  only: num_orb, degelec, iatyp, lssh, mu, nu, mvalue, nssh, nsh_max
     use neighbor_map,  only: neighn, neigh_j, neigh_b, neigh_max
     use charges,       only: nzx
-    use options,       only: verbosity
-    use debug
-    use firecore_options
+    use options, only : verbosity
     implicit none
-    integer :: ncopy
-    ! Output arrays (pointers to pre-allocated memory from C/Python)
-    real(c_double), dimension(numorb_max, numorb_max, neigh_max, natoms), intent(out) :: h_mat_out
-    real(c_double), dimension(numorb_max, numorb_max, neigh_max, natoms), intent(out) :: s_mat_out
     integer(c_int), dimension(nspecies), intent(out) :: num_orb_out
     integer(c_int), dimension(natoms),   intent(out) :: degelec_out
     integer(c_int), dimension(natoms),   intent(out) :: iatyp_out
@@ -818,31 +810,15 @@ subroutine firecore_get_HS_sparse( &
     integer(c_int), dimension(size(nu,1), size(nu,2), size(nu,3)), intent(out) :: nu_out
     integer(c_int), dimension(size(mvalue,1), size(mvalue,2), size(mvalue,3)), intent(out) :: mvalue_out
     integer(c_int), dimension(nspecies), intent(out) :: nssh_out
-    integer(c_int), dimension(size(nzx,1)), intent(out) :: nzx_out ! Use actual size of charges.nzx
+    integer(c_int), dimension(size(nzx,1)), intent(out) :: nzx_out 
     integer(c_int), dimension(natoms),   intent(out) :: neighn_out
     integer(c_int), dimension(neigh_max, natoms), intent(out) :: neigh_j_out
     integer(c_int), dimension(neigh_max, natoms), intent(out) :: neigh_b_out
     real(c_double), dimension(3,size(xl,2)), intent(out) :: xl_out
 
-
-    write(*,*) "Standard output unit:", OUTPUT_UNIT
-
-    write (*,*) "firecore_get_HS_sparse() verbosity=", verbosity," h_mat, s_mat allocated? ", allocated(h_mat), allocated(s_mat)
-
-    ! Check if source arrays are allocated
-    if (.not. allocated(h_mat)) then
-        if(verbosity.gt.0) write(*,*) "firecore_get_HS_sparse(): h_mat not allocated!"
-        return
-    end if
-    if (.not. allocated(s_mat)) then
-        if(verbosity.gt.0) write(*,*) "firecore_get_HS_sparse(): s_mat not allocated!"
-        return
-    end if
-    ! Add more checks for other arrays as needed
-
     if(verbosity.gt.1) then
-        write(*,"(A,I0,A,I0,A,I0,A,I0,A,I0,1X,I0,1X,I0,1X,I0)") "Fortran DIMS: h_mat_out(",numorb_max,",",numorb_max,",",neigh_max,",",natoms,") vs src h_mat ",shape(h_mat)
-        write(*,"(A,I0,A,I0,A,I0,A,I0,A,I0,1X,I0,1X,I0,1X,I0)") "Fortran DIMS: s_mat_out(",numorb_max,",",numorb_max,",",neigh_max,",",natoms,") vs src s_mat ",shape(s_mat)
+    !    write(*,"(A,I0,A,I0,A,I0,A,I0,A,I0,1X,I0,1X,I0,1X,I0)") "Fortran DIMS: h_mat_out(",numorb_max,",",numorb_max,",",neigh_max,",",natoms,") vs src h_mat ",shape(h_mat)
+    !    write(*,"(A,I0,A,I0,A,I0,A,I0,A,I0,1X,I0,1X,I0,1X,I0)") "Fortran DIMS: s_mat_out(",numorb_max,",",numorb_max,",",neigh_max,",",natoms,") vs src s_mat ",shape(s_mat)
         write(*,"(A,I0,A,I0)")                                  "Fortran DIMS: num_orb_out(",nspecies,") vs src num_orb ",shape(num_orb) ! num_orb is 1D
         write(*,"(A,I0,A,I0)")                                  "Fortran DIMS: degelec_out(",natoms,") vs src degelec ",shape(degelec) ! degelec is 1D
         write(*,"(A,I0,A,I0)")                                  "Fortran DIMS: iatyp_out(",natoms,") vs src iatyp ",shape(iatyp)     ! iatyp is 1D
@@ -857,54 +833,46 @@ subroutine firecore_get_HS_sparse( &
         write(*,"(A,I0,A,I0,A,I0,1X,I0)")                       "Fortran DIMS: neigh_b_out(",neigh_max,",",natoms,") vs src neigh_b ",shape(neigh_b)
         write(*,"(A,I0,A,I0,1X,I0)")                            "Fortran DIMS: xl_out(3,",size(xl,2),") vs src xl ",shape(xl)
     end if
-    ! Export selection: by default export full h_mat/s_mat. For verification we allow exporting individual components.
-    ! NOTE: This does NOT change physics/assembly, it only selects what is copied out.
-    if( (ioff_T.eq.1) .and. (ioff_Vna.eq.0) .and. (ioff_Vnl.eq.0) .and. (ioff_Vxc.eq.0) .and. (ioff_Vca.eq.0) .and. (ioff_Vxc_ca.eq.0) ) then
-        h_mat_out = t_mat
-    else if( (ioff_T.eq.0) .and. (ioff_Vna.eq.1) .and. (ioff_Vnl.eq.0) .and. (ioff_Vxc.eq.0) .and. (ioff_Vca.eq.0) .and. (ioff_Vxc_ca.eq.0) ) then
-        h_mat_out = vna
-    else if( (ioff_T.eq.0) .and. (ioff_Vna.eq.0) .and. (ioff_Vnl.eq.1) .and. (ioff_Vxc.eq.0) .and. (ioff_Vca.eq.0) .and. (ioff_Vxc_ca.eq.0) ) then
-        h_mat_out = 0.0d0
-        ! vnl has dimension (numorb_max,numorb_max,neighPP_max**2,natoms); h_mat_out uses neigh_max in dim3
-        ncopy = min(size(h_mat_out,3), size(vnl,3))
-        h_mat_out(:,:,:ncopy,:) = vnl(:,:,:ncopy,:)
-    else if( (ioff_T.eq.0) .and. (ioff_Vna.eq.0) .and. (ioff_Vnl.eq.0) .and. (ioff_Vxc.eq.1) .and. (ioff_Vca.eq.0) .and. (ioff_Vxc_ca.eq.0) ) then
-        h_mat_out = vxc
-    else if( (ioff_T.eq.0) .and. (ioff_Vna.eq.0) .and. (ioff_Vnl.eq.0) .and. (ioff_Vxc.eq.0) .and. (ioff_Vca.eq.1) .and. (ioff_Vxc_ca.eq.0) ) then
-        h_mat_out = vca
-    else if( (ioff_T.eq.0) .and. (ioff_Vna.eq.0) .and. (ioff_Vnl.eq.0) .and. (ioff_Vxc.eq.0) .and. (ioff_Vca.eq.0) .and. (ioff_Vxc_ca.eq.1) ) then
-        h_mat_out = vxc_ca
-    else if( (ioff_T.eq.0) .and. (ioff_Vna.eq.0) .and. (ioff_Vnl.eq.1) .and. (ioff_Vxc.eq.0) .and. (ioff_Vca.eq.0) .and. (ioff_Vxc_ca.eq.0) ) then
-        h_mat_out = vnl
-    else
-        h_mat_out = h_mat
-    end if
-    s_mat_out = s_mat
-
-    write(*,*) " ==== firecore_get_HS_sparse() print h_mat (full)"
-    call debug_writeBlockedMat( "h_mat.log", h_mat, OUTPUT_UNIT )
-    write(*,*) " ==== firecore_get_HS_sparse() print h_mat_out (exported)"
-    call debug_writeBlockedMat( "h_mat_out.log", h_mat_out, OUTPUT_UNIT )
-    write(*,*) " ==== firecore_get_HS_sparse() print s_mat"
-    call debug_writeBlockedMat( "s_mat.log", s_mat, OUTPUT_UNIT )
+    
 
     if(allocated(num_orb)) num_orb_out = num_orb
     if(allocated(degelec)) degelec_out = degelec
     if(allocated(iatyp))   iatyp_out   = iatyp
-
     if(allocated(lssh))    lssh_out    = lssh
     if(allocated(mu))      mu_out      = mu
     if(allocated(nu))      nu_out      = nu
     if(allocated(mvalue))  mvalue_out  = mvalue
     if(allocated(nssh))    nssh_out    = nssh
     if(allocated(nzx))     nzx_out     = nzx
-
     if(allocated(neighn))  neighn_out  = neighn
     if(allocated(neigh_j)) neigh_j_out = neigh_j
     if(allocated(neigh_b)) neigh_b_out = neigh_b
     if(allocated(xl))      xl_out      = xl
+end subroutine firecore_get_HS_neighs
 
+subroutine firecore_get_HS_sparse( h_mat_out, s_mat_out ) bind(c, name='firecore_get_HS_sparse')
+    use iso_c_binding
+    use configuration, only: natoms
+    use interactions,  only: h_mat, s_mat, numorb_max
+    use neighbor_map,  only: neigh_max
+    implicit none
+    real(c_double), dimension(numorb_max, numorb_max, neigh_max, natoms), intent(out) :: h_mat_out
+    real(c_double), dimension(numorb_max, numorb_max, neigh_max, natoms), intent(out) :: s_mat_out
+    if(allocated(h_mat)) h_mat_out = h_mat
+    if(allocated(s_mat)) s_mat_out = s_mat
 end subroutine firecore_get_HS_sparse
+
+subroutine firecore_get_rho_sparse( rho_out ) bind(c, name='firecore_get_rho_sparse')
+    use iso_c_binding
+    use configuration, only: natoms
+    use density,       only: rho
+    use interactions,  only: numorb_max
+    use neighbor_map,  only: neigh_max
+    implicit none
+    real(c_double), dimension(numorb_max, numorb_max, neigh_max, natoms), intent(out) :: rho_out
+    if(allocated(rho)) rho_out = rho
+end subroutine firecore_get_rho_sparse
+
 
 subroutine firecore_set_options( ioff_S_, ioff_T_, ioff_Vna_, ioff_Vnl_, ioff_Vxc_, ioff_Vca_, ioff_Vxc_ca_ ) bind(c, name='firecore_set_options')
     use iso_c_binding
