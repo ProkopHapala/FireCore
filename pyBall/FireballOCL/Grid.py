@@ -80,91 +80,69 @@ class GridProjector(OpenCLBase):
         distance_sq = np.sum((center - closest_p)**2)
         return distance_sq < (radius**2)
 
-    def build_tasks(self, atoms, fb_dims, neighs, grid_spec, block_res=8, nMaxAtom=16):
+    def build_tasks(self, atoms, grid_spec, block_res=8, nMaxAtom=64):
         """
         Partition the grid into tasks (active blocks).
-        grid_spec: {'origin': [x,y,z], 'dA': [x,y,z], 'dB': [x,y,z], 'dC': [x,y,z], 'ngrid': [nx,ny,nz]}
         """
-        # neigh_max = neighs.neigh_j.shape[1]
-        n_atoms_input = len(atoms['pos'])
-        print(f"[DEBUG] build_tasks: n_atoms={n_atoms_input}")
+        # grid_spec['ngrid'] is (nx, ny, nz, 0)
+        nx, ny, nz = grid_spec['ngrid'][:3]
+        n_blocks = (nx // block_res, ny // block_res, nz // block_res)
         
-        origin = np.array(grid_spec['origin'])
-        ngrid = np.array(grid_spec['ngrid'])
-        dA = np.array(grid_spec['dA'])
-        dB = np.array(grid_spec['dB'])
-        dC = np.array(grid_spec['dC'])
-        
-        # Grid steps
-        step = np.array([np.linalg.norm(dA), np.linalg.norm(dB), np.linalg.norm(dC)])
-        fine_side = step * block_res
-        
-        apos = np.array(atoms['pos'])
-        ar = np.array(atoms['Rcut'])
-
-        # 1. Map atoms to fine blocks once
-        active_fine_blocks = {} # (fix, fiy, fiz) -> list of atoms
-        for i in range(n_atoms_input):
-            p, r = apos[i], ar[i]
-            f_idx_min = np.floor((p - r - origin) / fine_side).astype(int)
-            f_idx_max = np.floor((p + r - origin) / fine_side).astype(int)
-            
-            for fix in range(max(0, f_idx_min[0]), min(int(np.ceil(ngrid[0]/block_res)), f_idx_max[0] + 1)):
-                for fiy in range(max(0, f_idx_min[1]), min(int(np.ceil(ngrid[1]/block_res)), f_idx_max[1] + 1)):
-                    for fiz in range(max(0, f_idx_min[2]), min(int(np.ceil(ngrid[2]/block_res)), f_idx_max[2] + 1)):
-                        # AABB check
-                        b_min = origin + np.array([fix, fiy, fiz]) * fine_side
-                        b_max = b_min + fine_side
-                        if self.check_overlap_sphere_aabb(p, r, b_min, b_max):
-                            active_fine_blocks.setdefault((fix, fiy, fiz), []).append(i)
-
         tasks = []
-        task_atoms_list = []
+        atom_pos = atoms['pos']
+        atom_Rcut = atoms['Rcut']
+        natoms = len(atom_pos)
         
-        S = nMaxAtom // 2
-        for (fix, fiy, fiz), overlapping_atoms in active_fine_blocks.items():
-            if len(overlapping_atoms) == 0:
-                continue
-            
-            # Split atoms in block into chunks of size S
-            chunks = [overlapping_atoms[i:i + S] for i in range(0, len(overlapping_atoms), S)]
-            n_chunks = len(chunks)
-            
-            # Tile interactions
-            covered_diags = set()
-            for i in range(n_chunks):
-                for j in range(i, n_chunks):
-                    if i == j:
-                        if i in covered_diags: continue
-                        # Diagonal task: try to combine C_i and C_{i+1}
-                        atoms_to_add = list(chunks[i])
-                        if i + 1 < n_chunks:
-                            atoms_to_add.extend(chunks[i+1])
-                            covered_diags.add(i+1)
-                        
-                        tasks.append({
-                            'block_idx': (fix, fiy, fiz),
-                            'na': len(atoms_to_add),
-                            'nj': -1,
-                            'atoms': atoms_to_add
-                        })
-                    else:
-                        if j == i + 1 and (i+1) in covered_diags:
-                            continue
-                        # Off-diagonal task for C_i and C_j
-                        atoms_to_add = list(chunks[i]) + list(chunks[j])
-                        tasks.append({
-                            'block_idx': (fix, fiy, fiz),
-                            'na': len(atoms_to_add),
-                            'nj': len(chunks[i]),
-                            'atoms': atoms_to_add
-                        })
+        origin = np.array(grid_spec['origin'][:3])
+        dA = np.array(grid_spec['dA'][:3])
+        dB = np.array(grid_spec['dB'][:3])
+        dC = np.array(grid_spec['dC'][:3])
+
+        block_counts = []
+        max_count = 0
+        empty_blocks = 0
+        one_blocks = 0
+
+        for fix in range(n_blocks[0]):
+            for fiy in range(n_blocks[1]):
+                for fiz in range(n_blocks[2]):
+                    block_min = origin    + np.array([fix*block_res*dA[0], fiy*block_res*dB[1], fiz*block_res*dC[2]])
+                    block_max = block_min + np.array([block_res*dA[0], block_res*dB[1], block_res*dC[2]])
+
+                    atoms_in_block = []
+                    for ia in range(natoms):
+                        if self.check_overlap_sphere_aabb(atom_pos[ia], atom_Rcut[ia], block_min, block_max):
+                            atoms_in_block.append(ia)
+
+                    block_counts.append(len(atoms_in_block))
+                    if len(atoms_in_block) == 0:
+                        empty_blocks += 1
+                        continue
+                    if len(atoms_in_block) == 1:
+                        one_blocks += 1
+                    if len(atoms_in_block) > max_count:
+                        max_count = len(atoms_in_block)
+                    if len(atoms_in_block) > nMaxAtom:
+                        raise RuntimeError(f"Block ({fix},{fiy},{fiz}) has {len(atoms_in_block)} atoms > nMaxAtom={nMaxAtom}")
+
+                    # We want ONE task per voxel block to avoid atomic adds.
+                    # We assume up to nMaxAtom (64) fits.
+                    tasks.append({
+                        'block_idx': (fix, fiy, fiz),
+                        'na': min(len(atoms_in_block), nMaxAtom),
+                        'nj': -1,
+                        'atoms': atoms_in_block[:nMaxAtom]
+                    })
 
         # Sort tasks by workload (na)
         tasks.sort(key=lambda x: x['na'], reverse=True)
 
+        multi_blocks = len(block_counts) - empty_blocks - one_blocks
+        print(f"[DEBUG] block atom stats: na_max={max_count}, nbloks: empty={empty_blocks}, one={one_blocks}, multi={multi_blocks}")
+        self.last_block_atom_counts = np.array(block_counts, dtype=np.int32)
+
         tasks_np = np.zeros(len(tasks), dtype=[
-            ('block_idx', 'i4', 4),
+            ('x', 'i4'), ('y', 'i4'), ('z', 'i4'), ('w', 'i4'),
             ('na', 'i4'),
             ('nj', 'i4'),
             ('pad1', 'i4'),
@@ -174,118 +152,16 @@ class GridProjector(OpenCLBase):
         task_atoms_np = np.zeros((len(tasks), nMaxAtom), dtype=np.int32)
         
         for i, t in enumerate(tasks):
-            tasks_np[i]['block_idx'][:3] = t['block_idx']
+            tasks_np[i]['x'], tasks_np[i]['y'], tasks_np[i]['z'] = t['block_idx']
             tasks_np[i]['na'] = t['na']
             tasks_np[i]['nj'] = t['nj']
             task_atoms_np[i, :t['na']] = t['atoms']
 
-        for i in range(len(tasks_np)):
-            t = tasks_np[i]
-            na = int(t['na'])
-            print(f"Task {i}: block_idx={t['block_idx']} na: {na:<5} nj: {t['nj']:<5} task_atoms_np: {task_atoms_np[i][:na]}")    
-
-        # DEBUG sanity check for nj
-        bad_nj = np.where((tasks_np['nj'] > nMaxAtom) | (tasks_np['nj'] < -1))[0]
-        if len(bad_nj) > 0:
-            print(f"[DEBUG] build_tasks found invalid nj entries at indices {bad_nj}")
-            for idx in bad_nj:
-                t = tasks_np[idx]
-                print(f"[DEBUG] bad task idx={idx} block_idx={t['block_idx']} na={t['na']} nj={t['nj']} atoms={task_atoms_np[idx][:int(t['na'])]}")
-
         print(f"[DEBUG] build_tasks finished: n_tasks={len(tasks)}")
         return tasks_np, task_atoms_np
 
-    def project(self, rho, neighs, atoms, grid_spec, tasks=None, nMaxAtom=16):
-        """
-        Main entry point for density projection.
-        rho: np.ndarray shape (natoms, neigh_max, numorb_max, numorb_max)
-        neighs: FireballData object containing neighn, neigh_j, etc.
-        atoms: dict with 'pos', 'Rcut', 'type' (Z)
-        grid_spec: grid parameters
-        """
-        if tasks is None:
-            tasks_np, task_atoms = self.build_tasks(atoms, None, neighs, grid_spec, nMaxAtom=nMaxAtom)
-        else:
-            tasks_np, task_atoms = tasks
-
-        n_tasks = len(tasks_np)
-        if n_tasks == 0:
-            return np.zeros(grid_spec['ngrid'], dtype=np.float32)
-
-        # DEBUG: print buffer sizes to track resource usage
-        nx, ny, nz = grid_spec['ngrid']
-        ngrid_total = int(nx) * int(ny) * int(nz)
-        print(f"[DEBUG] project: n_tasks={n_tasks}")
-        print(f"[DEBUG] grid_spec: ngrid={grid_spec['ngrid']}, origin={grid_spec['origin']}")
-        print(f"[DEBUG] rho shape={rho.shape}, dtype={rho.dtype}, bytes={rho.nbytes}")
-        print(f"[DEBUG] out buffer bytes={ngrid_total*4}")
-
-        # 1. Prepare atom and species data for GPU
-        natoms_sys = len(atoms['pos'])
-        atom_data = np.zeros(natoms_sys, dtype=[
-            ('pos_rcut', 'f4', 4),
-            ('type', 'i4'),
-            ('i0orb', 'i4'),
-            ('norb', 'i4'),
-            ('pad', 'i4')
-        ])
-        
-        nz_map = self.basis_meta['nz_map']
-        all_nz_basis = sorted(nz_map.keys())
-        
-        # Species info for orbital loops (packed as int4 for OpenCL)
-        species_info_flat = np.zeros(len(all_nz_basis) * 4, dtype=np.int32)
-        for i, z_key in enumerate(all_nz_basis):
-            info = self.parser.species_info[z_key]
-            species_info_flat[i*4] = info['nssh']
-            ls_vals = info['lssh']
-            for j in range(min(3, len(ls_vals))):
-                species_info_flat[i*4 + 1 + j] = ls_vals[j]
-
-        # Precompute authoritative norb per species from parser (sum of (2l+1) per shell)
-        species_norb = {}
-        for z_key in all_nz_basis:
-            info = self.parser.species_info[z_key]
-            species_norb[z_key] = sum(2 * l + 1 for l in info['lssh'])
-
-        for i in range(natoms_sys):
-            atom_data[i]['pos_rcut'][:3] = atoms['pos'][i]
-            atom_data[i]['pos_rcut'][3] = atoms['Rcut'][i]
-            z_atom = atoms['type'][i]
-            atom_data[i]['type'] = nz_map[z_atom]
-            iatyp_z = int(neighs.iatyp[i])
-            norb_val = None
-            # Prefer num_orb if it is sized to cover Z
-            if (iatyp_z - 1) >= 0 and (iatyp_z - 1) < len(neighs.num_orb) and neighs.num_orb[iatyp_z - 1] > 0:
-                norb_val = int(neighs.num_orb[iatyp_z - 1])
-            elif iatyp_z in species_norb:
-                norb_val = species_norb[iatyp_z]
-            else:
-                raise RuntimeError(f"Missing orbital count for atom {i} Z={iatyp_z}: num_orb len={len(neighs.num_orb)}, species_norb keys={list(species_norb.keys())}")
-            atom_data[i]['norb'] = norb_val
-            atom_data[i]['i0orb'] = neighs.degelec[i]
-
-        # 2. Buffers
-        d_tasks = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=tasks_np)
-        d_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=atom_data)
-        d_task_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=task_atoms)
-        d_species_info = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=species_info_flat)
-        
-        rho32 = rho.astype(np.float32)
-        d_rho = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=rho32)
-
-        print(f"[DEBUG] project: rho shape={rho.shape}, dtype={rho.dtype}, bytes={rho.nbytes}")
-        print(f"[DEBUG] project: rho nx={nx}, ny={ny}, nz={nz}")
-        
-        d_out = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, nx * ny * nz * 4)
-        cl.enqueue_fill_buffer(self.queue, d_out, np.float32(0), 0, nx * ny * nz * 4)
-
-        # 3. Kernel launch (1D). Each task covers 8*8*8 voxels (512). Flatten tasks*voxels.
-        vox_per_task = 512
-        total_work = n_tasks * vox_per_task
-        ls = (16,)  # 1D local size
-        gs = (n_tasks * ls[0],)
-        
+    def grid_to_np(self, grid_spec):
+        """Convert grid spec dictionary to numpy struct for GPU."""
         grid_spec_np = np.zeros(1, dtype=[
             ('origin', 'f4', 4),
             ('dA', 'f4', 4),
@@ -298,20 +174,70 @@ class GridProjector(OpenCLBase):
         grid_spec_np[0]['dB'][:3] = grid_spec['dB']
         grid_spec_np[0]['dC'][:3] = grid_spec['dC']
         grid_spec_np[0]['ngrid'][:3] = grid_spec['ngrid']
-        d_grid = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=grid_spec_np)
+        return grid_spec_np
 
-        d_neigh_j = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=neighs.neigh_j.astype(np.int32))
+    def project(self, rho, neighs, atoms, grid_spec, tasks=None, nMaxAtom=64):
+        """
+        Main entry point for density projection using the tiled kernel.
+        """
+        if tasks is None:
+            T0 = time.perf_counter_ns()
+            tasks_np, task_atoms_np = self.build_tasks(atoms, grid_spec, nMaxAtom=nMaxAtom)
+            T1 = time.perf_counter_ns()
+            print(f"[TIME] build_tasks finished in {(T1-T0)*1e-6:.3f} [ms]")
+        else:
+            tasks_np, task_atoms_np = tasks
 
-        # Always create a fresh queue for this context (avoid stale/invalid queue issues)
-        #self.queue = cl.CommandQueue(self.ctx)
+        n_tasks = len(tasks_np)
+        nx, ny, nz = grid_spec['ngrid'][:3]
+        
+        # Prepare other buffers
+        natoms = len(atoms['pos'])
+        atom_data = np.zeros(natoms, dtype=[
+            ('pos_rcut', 'f4', 4),
+            ('type', 'i4'),
+            ('i0orb', 'i4'),
+            ('norb', 'i4'),
+            ('pad', 'i4')
+        ])
+        for i in range(natoms):
+            atom_data[i]['pos_rcut'][:3] = atoms['pos'][i]
+            atom_data[i]['pos_rcut'][3]  = atoms['Rcut'][i]
+            atom_data[i]['type'] = atoms['type'][i]
+            atom_data[i]['norb'] = 4 # Default for C, H with s,p
+            atom_data[i]['i0orb'] = 0
 
-        # Debug device/work sizes to diagnose resource issues
-        dev = self.ctx.devices[0]
-        print(f"[DEBUG] device={dev.name}, max_work_group={dev.max_work_group_size}, local_mem={dev.local_mem_size}")
-        print(f"[DEBUG] gs={gs}, ls={ls}, n_tasks={n_tasks}")
+        # 2. Buffers
+        mf = cl.mem_flags
+        d_grid = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.grid_to_np(grid_spec))
+        d_tasks = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tasks_np)
+        d_atoms = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
+        d_task_atoms = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=task_atoms_np)
+        
+        rho32 = rho.astype(np.float32)
+        d_rho = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=rho32)
+        d_neigh_j = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=neighs.neigh_j.astype(np.int32))
+        
+        # species_info placeholder
+        species_info = np.zeros((10, 4), dtype=np.int32)
+        d_species_info = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=species_info)
+        
+        d_out = cl.Buffer(self.ctx, mf.WRITE_ONLY, nx * ny * nz * 4)
+        cl.enqueue_fill_buffer(self.queue, d_out, np.float32(0), 0, nx * ny * nz * 4)
+
+        # 3. Kernel launch
+        ls = (32,)  # local size
+        gs = (n_tasks * ls[0],)
+        
+        # d_basis placeholder
+        if not hasattr(self, 'd_basis'):
+             self.d_basis = cl.Buffer(self.ctx, mf.READ_ONLY, size=4)
+             self.basis_meta = {'n_nodes': 0, 'dr': 0.0, 'max_shells': 0}
+
+        print(f"[DEBUG] project_tiled: gs={gs}, ls={ls}, n_tasks={n_tasks}")
 
         T0_ns = time.perf_counter_ns()
-        self.prg.project_density_sparse(
+        self.prg.project_density_sparse_tiled(
             self.queue, gs, ls,
             d_grid,
             np.int32(n_tasks),
@@ -330,12 +256,10 @@ class GridProjector(OpenCLBase):
         )
         self.queue.finish()
         dt_ns = time.perf_counter_ns() - T0_ns
-        print(f"[TIME] project finished in {dt_ns*1e-6:.9f} [ms]")
+        print(f"[TIME] project_tiled finished in {dt_ns*1e-6:.9f} [ms]")
 
         res = np.empty((nx, ny, nz), dtype=np.float32)
-        print("[DEBUG] project finished nx,ny,nz:", nx, ny, nz, res.shape, grid_spec['ngrid'])
         cl.enqueue_copy(self.queue, res, d_out)
         self.queue.finish()
-
 
         return res

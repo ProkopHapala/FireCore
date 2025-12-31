@@ -1,3 +1,4 @@
+import argparse
 import numpy as np
 import os
 import sys
@@ -10,29 +11,29 @@ from pyBall.FireballOCL import Grid as ocl_grid
 
 def plot_density_slices(data, title="Density Slices", cmap='magma'):
     nx, ny, nz = data.shape
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    fig, axes = plt.subplots(1, 3, figsize=(20, 5))
     fig.suptitle(title)
     print( "Density range:", data.min(), data.max(), data.shape )
-    axes[0].imshow(data[nx//2, :, :].T, origin='lower', cmap=cmap); axes[0].set_title("X slice")
-    axes[1].imshow(data[:, ny//2, :].T, origin='lower', cmap=cmap); axes[1].set_title("Y slice")
-    axes[2].imshow(data[:, :, nz//2].T, origin='lower', cmap=cmap); axes[2].set_title("Z slice")
+    im0 = axes[0].imshow(data[nx//2, :, :].T, origin='lower', cmap=cmap); axes[0].set_title("X slice"); fig.colorbar(im0, ax=axes[0])
+    im1 = axes[1].imshow(data[:, ny//2, :].T, origin='lower', cmap=cmap); axes[1].set_title("Y slice"); fig.colorbar(im1, ax=axes[1])
+    im2 = axes[2].imshow(data[:, :, nz//2].T, origin='lower', cmap=cmap); axes[2].set_title("Z slice"); fig.colorbar(im2, ax=axes[2])
     
 def plot_density_maxproj(data, title="Density Max Projections", cmap='magma'):
     nx, ny, nz = data.shape
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    fig, axes = plt.subplots(1, 3, figsize=(20, 5))
     fig.suptitle(title)
     max_x = data.max(axis=0).T        # shape ny x nz -> shown as nz x ny after .T
     max_y = data.max(axis=1).T        # shape nx x nz -> shown as nz x nx after .T
     max_z = data.max(axis=2).T        # shape nx x ny -> shown as ny x nx after .T
-    axes[0].imshow(max_x, origin='lower', cmap=cmap); axes[0].set_title("Max over X (ny x nz)")
-    axes[1].imshow(max_y, origin='lower', cmap=cmap); axes[1].set_title("Max over Y (nx x nz)")
-    axes[2].imshow(max_z, origin='lower', cmap=cmap); axes[2].set_title("Max over Z (nx x ny)")
+    im0 = axes[0].imshow(max_x, origin='lower', cmap=cmap); axes[0].set_title("Max over X (ny x nz)"); fig.colorbar(im0, ax=axes[0])
+    im1 = axes[1].imshow(max_y, origin='lower', cmap=cmap); axes[1].set_title("Max over Y (nx x nz)"); fig.colorbar(im1, ax=axes[1])
+    im2 = axes[2].imshow(max_z, origin='lower', cmap=cmap); axes[2].set_title("Max over Z (nx x ny)"); fig.colorbar(im2, ax=axes[2])
     print("[DEBUG] maxproj shapes max_x", max_x.shape, "max_y", max_y.shape, "max_z", max_z.shape)
 
-def test_pentacene_projection():
+def test_pentacene_projection(args):
     # 1. Load Pentacene
-    #xyz_path = "../../tests/tUFF/data/xyz/pentacene.xyz"
-    xyz_path = "../../tests/tUFF/data/xyz/benzene.xyz"
+    xyz_path = args.xyz
+    # xyz_path = "../../tests/tUFF/data/xyz/benzene.xyz"
     if not os.path.exists(xyz_path):
         print(f"Error: XYZ file not found at {xyz_path}")
         return
@@ -69,22 +70,42 @@ def test_pentacene_projection():
     print("[DEBUG] rho shape", rho.shape)
     print("[DEBUG] iatyp (Z per atom):", neighs.iatyp)
     print("[DEBUG] num_orb table len:", len(neighs.num_orb), "head:", neighs.num_orb[:min(16, len(neighs.num_orb))])
-    for i in range(neighs.iatyp.shape[0]):
-        iatyp_z = int(neighs.iatyp[i])
-        norb_i = int(neighs.num_orb[iatyp_z - 1]) if (iatyp_z - 1) < len(neighs.num_orb) else 0
-        for ineigh in range(neighs.neigh_max):
-            j_raw = int(neighs.neigh_j[i, ineigh])
-            if j_raw <= 0:
-                continue
-            j = j_raw - 1  # Fortran -> Python index
-            jatyp_z = int(neighs.iatyp[j])
-            norb_j = int(neighs.num_orb[jatyp_z - 1]) if (jatyp_z - 1) < len(neighs.num_orb) else 0
-            block = rho[i, ineigh, :norb_i, :norb_j]
-            abs_sum = np.sum(np.abs(block))
-            print(f"[DEBUG] rho block i={i} (Z={iatyp_z}, norb={norb_i}) "
-                  f"j={j} (Z={jatyp_z}, norb={norb_j}) ineigh={ineigh} "
-                  f"abs_sum={abs_sum:.6e}")
-            print(block)
+
+    # Optional hack: zero rho and set a single 4x4 diagonal block (i,j) with provided values
+    if hack_block is not None:
+        i_atom, j_atom, vals = hack_block
+        rho = np.zeros_like(rho)
+        ineigh = np.where(neighs.neigh_j[i_atom] == (j_atom + 1))[0]
+        if len(ineigh) == 0:
+            print(f"[WARN] No neighbor entry for i={i_atom} -> j={j_atom}; hack skipped")
+        else:
+            slot = int(ineigh[0])
+            block = np.zeros((4, 4), dtype=rho.dtype)
+            for k, v in enumerate(vals[:4]):
+                block[k, k] = v
+            rho[i_atom, slot, :4, :4] = block
+            # fill reverse if present
+            ineigh_rev = np.where(neighs.neigh_j[j_atom] == (i_atom + 1))[0]
+            if len(ineigh_rev) > 0:
+                slot_rev = int(ineigh_rev[0])
+                rho[j_atom, slot_rev, :4, :4] = block
+            print(f"[DEBUG] Hack block set for i={i_atom}, j={j_atom}, vals={vals}")
+    # for i in range(neighs.iatyp.shape[0]):
+    #     iatyp_z = int(neighs.iatyp[i])
+    #     norb_i = int(neighs.num_orb[iatyp_z - 1]) if (iatyp_z - 1) < len(neighs.num_orb) else 0
+    #     for ineigh in range(neighs.neigh_max):
+    #         j_raw = int(neighs.neigh_j[i, ineigh])
+    #         if j_raw <= 0:
+    #             continue
+    #         j = j_raw - 1  # Fortran -> Python index
+    #         jatyp_z = int(neighs.iatyp[j])
+    #         norb_j = int(neighs.num_orb[jatyp_z - 1]) if (jatyp_z - 1) < len(neighs.num_orb) else 0
+    #         block = rho[i, ineigh, :norb_i, :norb_j]
+    #         abs_sum = np.sum(np.abs(block))
+    #         print(f"[DEBUG] rho block i={i} (Z={iatyp_z}, norb={norb_i}) "
+    #               f"j={j} (Z={jatyp_z}, norb={norb_j}) ineigh={ineigh} "
+    #               f"abs_sum={abs_sum:.6e}")
+    #         print(block)
     
     #exit()
     
@@ -97,15 +118,22 @@ def test_pentacene_projection():
     species_nz = sorted(list(set(atomTypes)))
     projector.load_basis(species_nz)
     
-    # 5. Define Grid
-    # centered around benzene/pentacene
-    pos_min = np.min(atomPos, axis=0) - 4.0
-    pos_max = np.max(atomPos, axis=0) + 4.0
-    ngrid = [64, 64, 64]
-    dCell = (pos_max - pos_min) / ngrid
-    print(f"Grid spec: {pos_min}, {pos_max}, {ngrid}, {dCell}")
+    # 5. Define Grid (centered, fixed step, rounded to block size)
+    margin = args.margin
+    step = args.step
+    block = args.block
+    pos_min_raw = np.min(atomPos, axis=0) - margin
+    pos_max_raw = np.max(atomPos, axis=0) + margin
+    span = pos_max_raw - pos_min_raw
+    ngrid = np.ceil(span / step).astype(int)
+    ngrid = ((ngrid + block - 1) // block) * block  # round up to multiple of block
+    dCell = np.array([step, step, step], dtype=np.float64)
+    total_span = ngrid * dCell
+    center = 0.5 * (pos_min_raw + pos_max_raw)
+    origin = center - 0.5 * total_span
+    print(f"Grid spec: origin={origin}, step={dCell}, ngrid={ngrid}, total_span={total_span}")
     grid_spec = {
-        'origin': pos_min,
+        'origin': origin,
         'dA': [dCell[0], 0, 0],
         'dB': [0, dCell[1], 0],
         'dC': [0, 0, dCell[2]],
@@ -121,16 +149,55 @@ def test_pentacene_projection():
         'type': atomTypes
     }
     
-    dens = projector.project(rho, neighs, atoms_dict, grid_spec)
+    dens = projector.project(rho, neighs, atoms_dict, grid_spec, nMaxAtom=args.nmaxatom)
+
+    # Report block stats and optional histogram
+    if hasattr(projector, "last_block_atom_counts"):
+        counts = projector.last_block_atom_counts
+        max_c = counts.max() if counts.size else 0
+        empty = np.sum(counts == 0)
+        ones = np.sum(counts == 1)
+        multi = np.sum(counts > 1)
+        print(f"[DEBUG] block atom stats (post-project): max={max_c}, empty={empty}, one={ones}, multi={multi}")
+        if args.plot_block_hist:
+            plt.figure()
+            plt.hist(counts, bins=np.arange(0, counts.max()+2)-0.5, edgecolor='k')
+            plt.xlabel("Atoms per block")
+            plt.ylabel("Count of blocks")
+            plt.title("Histogram of atoms per block")
     
     if dens is not None:
         print(f"Density range: {dens.min()} to {dens.max()}")
         print(f"Total charge (integrated): {np.sum(dens) * np.prod(dCell)}")
-        plot_density_slices(dens, title="Pentacene Density (GPU)")
-        plot_density_maxproj(dens, title="Pentacene Density Max Projections (GPU)")
+        plot_density_slices(dens, title="Pentacene Density (GPU) : Slices")
+        plot_density_maxproj(dens, title="Pentacene Density (GPU) : Max Projections")
     else:
         print("Projection failed or returned None.")
 
 if __name__ == "__main__":
-    test_pentacene_projection()
+    parser = argparse.ArgumentParser()
+    #parser.add_argument("--xyz",      type=str,   default="../../tests/tUFF/data/xyz/pentacene.xyz", help="Path to XYZ geometry")
+    #parser.add_argument("--xyz",      type=str,   default="../../tests/tUFF/data/xyz/citosine.xyz", help="Path to XYZ geometry")
+    parser.add_argument("--xyz",      type=str,   default="../../tests/tUFF/data/xyz/guanine.xyz", help="Path to XYZ geometry")
+
+    parser.add_argument("--margin",   type=float, default=4.0,    help="Grid margin (Angstrom)")
+    parser.add_argument("--step",     type=float, default=0.1,    help="Grid spacing (Angstrom)")
+    parser.add_argument("--block",    type=int,   default=8,      help="Block size for tasks (voxel edge count)")
+    parser.add_argument("--nmaxatom", type=int,   default=64,     help="Max atoms per block/task")
+    #parser.add_argument("--hack-block", nargs="+", type=float, default=[0, 0, 0.0, 1.0 ],   help="i j val_s [val_px val_py val_pz]; zeros rho and sets one 4x4 diagonal block")
+    parser.add_argument("--hack-block", nargs="+", type=float, default=None,   help="i j val_s [val_px val_py val_pz]; zeros rho and sets one 4x4 diagonal block")
+    parser.add_argument("--plot-block-hist", type=int, default=0, help="Plot histogram of atoms per block (from build_tasks)")
+    args = parser.parse_args()
+
+    hack_block = None
+    if args.hack_block is not None:
+        if len(args.hack_block) < 2:
+            raise SystemExit("hack-block requires at least i j")
+        i_atom = int(args.hack_block[0])
+        j_atom = int(args.hack_block[1])
+        vals = [float(v) for v in args.hack_block[2:]] if len(args.hack_block) > 2 else [1.0]
+        hack_block = (i_atom, j_atom, vals)
+    args.hack_block = hack_block
+
+    test_pentacene_projection(args)
     plt.show()

@@ -10,6 +10,7 @@ to standard power basis for efficient runtime evaluation.
 import numpy as np
 from scipy.optimize import least_squares
 from numpy.polynomial import chebyshev, polynomial
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 def parse_range(spec, cast=int):
     """
@@ -359,30 +360,70 @@ class RationalPowerFitter:
         P_x = P_u(L_x)
         return P_x.coef
 
-    def pareto_scan(self, configs, cost_weights=(1.0, 0.0), verbose=False):
+    def pareto_scan(self, configs, cost_weights=(1.0, 0.0), verbose=False, workers=1, backend="thread", chunksize=10):
         """
         Brute-force scan over provided configurations to find Pareto front.
         configs: List of dicts like {'p_degrees':[], 'q_degrees':[], 'n':1, 'm':1}
         cost_weights: (w_mem, w_ops) to combine costs for sorting (optional)
         verbose: print progress for large scans
+        workers: if >1, parallelize. backend controls executor: 'thread' or 'process'
+        chunksize: only for process backend; batches tasks to reduce IPC overhead
         """
         results = []
         n_cfg = len(configs)
-        for i, cfg in enumerate(configs):
-            try:
-                res = self.fit_model(
-                    cfg['p_degrees'], 
-                    cfg['q_degrees'], 
-                    cfg['n'], 
-                    cfg['m'],
-                    basis=cfg.get('basis', 'cheb')
-                )
-                results.append(res)
-                if verbose:
-                    label = RationalPowerFitter.compact_pq_label(res)
-                    print(f"[{i+1}/{n_cfg}] {label} : err={res['error']:.3e} ncoefs={res['n_coefs_total']}")
-            except Exception as e:
-                print(f"Fit failed for config {cfg}: {e}")
+        backend = backend.lower()
+        use_process = backend == "process"
+
+        if workers <= 1:
+            for i, cfg in enumerate(configs):
+                try:
+                    res = self.fit_model(
+                        cfg['p_degrees'], 
+                        cfg['q_degrees'], 
+                        cfg['n'], 
+                        cfg['m'],
+                        basis=cfg.get('basis', 'cheb')
+                    )
+                    results.append(res)
+                    if verbose:
+                        label = RationalPowerFitter.compact_pq_label(res)
+                        print(f"[{i+1}/{n_cfg}] {label} : err={res['error']:.3e} ncoefs={res['n_coefs_total']}")
+                except Exception as e:
+                    print(f"Fit failed for config {cfg}: {e}")
+        else:
+            if use_process:
+                # ProcessPool for true parallelism
+                with ProcessPoolExecutor(max_workers=workers) as ex:
+                    # Submit all tasks
+                    futures = [ex.submit(self.fit_model, 
+                                         cfg['p_degrees'], cfg['q_degrees'], 
+                                         cfg['n'], cfg['m'], basis=cfg.get('basis', 'cheb')) 
+                               for cfg in configs]
+                    
+                    for i, fut in enumerate(futures):
+                        try:
+                            res = fut.result()
+                            results.append(res)
+                            if verbose:
+                                label = RationalPowerFitter.compact_pq_label(res)
+                                print(f"[{i+1}/{n_cfg}] {label} : err={res['error']:.3e} ncoefs={res['n_coefs_total']}")
+                        except Exception as e:
+                            print(f"Fit failed for config {configs[i]}: {e}")
+            else:
+                with ThreadPoolExecutor(max_workers=workers) as ex:
+                    futures = [ex.submit(self.fit_model, 
+                                         cfg['p_degrees'], cfg['q_degrees'], 
+                                         cfg['n'], cfg['m'], basis=cfg.get('basis', 'cheb')) 
+                               for cfg in configs]
+                    for i, fut in enumerate(futures):
+                        try:
+                            res = fut.result()
+                            results.append(res)
+                            if verbose:
+                                label = RationalPowerFitter.compact_pq_label(res)
+                                print(f"[{i+1}/{n_cfg}] {label} : err={res['error']:.3e} ncoefs={res['n_coefs_total']}")
+                        except Exception as e:
+                            print(f"Fit failed for config {configs[i]}: {e}")
 
         # Sort by Error first
         results.sort(key=lambda x: x['error'])
