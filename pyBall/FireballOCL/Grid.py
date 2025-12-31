@@ -2,6 +2,7 @@ import numpy as np
 import pyopencl as cl
 import pyopencl.cltypes
 import os
+import time
 from ..OCL.OpenCLBase import OpenCLBase
 from .FdataParser import FdataParser
 
@@ -302,13 +303,14 @@ class GridProjector(OpenCLBase):
         d_neigh_j = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=neighs.neigh_j.astype(np.int32))
 
         # Always create a fresh queue for this context (avoid stale/invalid queue issues)
-        self.queue = cl.CommandQueue(self.ctx)
+        #self.queue = cl.CommandQueue(self.ctx)
 
         # Debug device/work sizes to diagnose resource issues
         dev = self.ctx.devices[0]
         print(f"[DEBUG] device={dev.name}, max_work_group={dev.max_work_group_size}, local_mem={dev.local_mem_size}")
         print(f"[DEBUG] gs={gs}, ls={ls}, n_tasks={n_tasks}")
 
+        T0_ns = time.perf_counter_ns()
         self.prg.project_density_sparse(
             self.queue, gs, ls,
             d_grid,
@@ -327,11 +329,13 @@ class GridProjector(OpenCLBase):
             d_out
         )
         self.queue.finish()
-
-        
+        dt_ns = time.perf_counter_ns() - T0_ns
+        print(f"[TIME] project finished in {dt_ns*1e-6:.9f} [ms]")
 
         res = np.empty((nx, ny, nz), dtype=np.float32)
         print("[DEBUG] project finished nx,ny,nz:", nx, ny, nz, res.shape, grid_spec['ngrid'])
         cl.enqueue_copy(self.queue, res, d_out)
         self.queue.finish()
+
+
         return res
