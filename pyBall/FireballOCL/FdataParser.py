@@ -524,6 +524,35 @@ class FdataParser:
                     
         return data_2c, data_3c
 
+
+
+
+def read_pp(path: str):
+    """
+    Minimal parser for radial pseudopotential basis/*.pp.
+    Returns r (Angstrom) and V(r) arrays using lines that contain two floats.
+    """
+    if not os.path.exists(path):
+        raise RuntimeError(f"PP file not found: {path}")
+    r_list, v_list = [], []
+    with open(path, "r") as f:
+        for line in f:
+            parts = line.split()
+            if len(parts) != 2:
+                continue
+            try:
+                r_val = float(parts[0].replace('D','E'))
+                v_val = float(parts[1].replace('D','E'))
+            except ValueError:
+                continue
+            r_list.append(r_val)
+            v_list.append(v_val)
+    if not r_list:
+        raise RuntimeError(f"Failed to parse any (r,V) pairs from {path}")
+    return np.array(r_list), np.array(v_list)
+
+
+
 if __name__ == "__main__":
     parser = FdataParser("/home/prokophapala/git/FireCore/tests/pyFireball/Fdata")
     
