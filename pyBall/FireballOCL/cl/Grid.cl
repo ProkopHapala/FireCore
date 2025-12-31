@@ -211,6 +211,141 @@ __kernel void project_density_sparse(
     }
 }
 
+typedef struct {
+    int x, y, z, w;
+    int na;
+    int nj;
+    int pad1, pad2;
+} TaskData_local;
+
+__kernel void count_atoms_per_block(
+    __global const GridSpec* grid,
+    const int natoms,
+    __global const AtomData* atoms,
+    const int block_res,
+    const int n_blocks_x,
+    const int n_blocks_y,
+    const int n_blocks_z,
+    __global int* block_counts
+) {
+    const int ia = get_global_id(0);
+    if (ia >= natoms) return;
+
+    AtomData ad = atoms[ia];
+    float3 pos = ad.pos_rcut.xyz;
+    float rcut = ad.pos_rcut.w;
+
+    // Find range of blocks this atom can touch
+    float3 r_min = (pos - rcut - grid->origin.xyz);
+    float3 r_max = (pos + rcut - grid->origin.xyz);
+    
+    // Convert to block indices using floor (since origin is grid zero)
+    // NOTE: dCell is dA.x, dB.y, dC.z assuming orthogonal grid for simplicity in indexing
+    float3 block_size = (float)block_res * (float3)(grid->dA.x, grid->dB.y, grid->dC.z);
+    int3 b0 = convert_int3(floor(r_min / block_size));
+    int3 b1 = convert_int3(floor(r_max / block_size));
+
+    b0 = clamp(b0, (int3)0, (int3)(n_blocks_x-1, n_blocks_y-1, n_blocks_z-1));
+    b1 = clamp(b1, (int3)0, (int3)(n_blocks_x-1, n_blocks_y-1, n_blocks_z-1));
+
+    for (int ix = b0.x; ix <= b1.x; ix++) {
+        for (int iy = b0.y; iy <= b1.y; iy++) {
+            for (int iz = b0.z; iz <= b1.z; iz++) {
+                // Sphere-AABB check for each candidate block
+                float3 b_min = grid->origin.xyz + (float)ix * block_res * grid->dA.xyz + (float)iy * block_res * grid->dB.xyz + (float)iz * block_res * grid->dC.xyz;
+                float3 b_max = b_min + (float)block_res * (grid->dA.xyz + grid->dB.xyz + grid->dC.xyz);
+                
+                float3 closest_p = clamp(pos, b_min, b_max);
+                float3 diff = pos - closest_p;
+                if (dot(diff, diff) < rcut * rcut) {
+                    int b_idx = (ix * n_blocks_y + iy) * n_blocks_z + iz;
+                    atomic_inc(&block_counts[b_idx]);
+                }
+            }
+        }
+    }
+}
+
+__kernel void fill_task_atoms(
+    __global const GridSpec* grid,
+    const int natoms,
+    __global const AtomData* atoms,
+    const int block_res,
+    const int n_blocks_x,
+    const int n_blocks_y,
+    const int n_blocks_z,
+    __global int* block_offsets, // used for atomic fetch-add to write atom ids
+    __global int* task_atoms,    // [n_blocks][nMaxAtom]
+    const int nMaxAtom
+) {
+    const int ia = get_global_id(0);
+    if (ia >= natoms) return;
+
+    AtomData ad = atoms[ia];
+    float3 pos = ad.pos_rcut.xyz;
+    float rcut = ad.pos_rcut.w;
+
+    float3 r_min = (pos - rcut - grid->origin.xyz);
+    float3 r_max = (pos + rcut - grid->origin.xyz);
+    float3 block_size = (float)block_res * (float3)(grid->dA.x, grid->dB.y, grid->dC.z);
+    int3 b0 = convert_int3(floor(r_min / block_size));
+    int3 b1 = convert_int3(floor(r_max / block_size));
+    b0 = clamp(b0, (int3)0, (int3)(n_blocks_x-1, n_blocks_y-1, n_blocks_z-1));
+    b1 = clamp(b1, (int3)0, (int3)(n_blocks_x-1, n_blocks_y-1, n_blocks_z-1));
+
+    for (int ix = b0.x; ix <= b1.x; ix++) {
+        for (int iy = b0.y; iy <= b1.y; iy++) {
+            for (int iz = b0.z; iz <= b1.z; iz++) {
+                float3 b_min = grid->origin.xyz + (float)ix * block_res * grid->dA.xyz + (float)iy * block_res * grid->dB.xyz + (float)iz * block_res * grid->dC.xyz;
+                float3 b_max = b_min + (float)block_res * (grid->dA.xyz + grid->dB.xyz + grid->dC.xyz);
+                float3 closest_p = clamp(pos, b_min, b_max);
+                float3 diff = pos - closest_p;
+                if (dot(diff, diff) < rcut * rcut) {
+                    int b_idx = (ix * n_blocks_y + iy) * n_blocks_z + iz;
+                    int slot = atomic_inc(&block_offsets[b_idx]);
+                    if (slot < nMaxAtom) {
+                        task_atoms[b_idx * nMaxAtom + slot] = ia;
+                    }
+                }
+            }
+        }
+    }
+}
+
+__kernel void compact_tasks(
+    const int n_blocks_x,
+    const int n_blocks_y,
+    const int n_blocks_z,
+    __global const int* block_counts,
+    __global const int* task_offsets, // prefix sum of (block_counts > 0)
+    __global const int* task_atoms_raw, // [n_blocks][nMaxAtom]
+    __global TaskData_local* tasks_out,
+    __global int* task_atoms_out,
+    const int nMaxAtom
+) {
+    const int ix = get_global_id(0);
+    const int iy = get_global_id(1);
+    const int iz = get_global_id(2);
+
+    if (ix >= n_blocks_x || iy >= n_blocks_y || iz >= n_blocks_z) return;
+
+    int b_idx = (ix * n_blocks_y + iy) * n_blocks_z + iz;
+    int na = block_counts[b_idx];
+    if (na > 0) {
+        int t_idx = task_offsets[b_idx];
+        TaskData_local task;
+        task.x = ix; task.y = iy; task.z = iz; task.w = 0;
+        task.na = na;
+        task.nj = -1;
+        task.pad1 = 0; task.pad2 = 0;
+        tasks_out[t_idx] = task;
+        
+        for (int k = 0; k < nMaxAtom; k++) {
+            task_atoms_out[t_idx * nMaxAtom + k] = task_atoms_raw[b_idx * nMaxAtom + k];
+        }
+    }
+}
+
 // Tiled kernel to avoid atomic adds and minimize global reads
 #ifndef TILE_ATOMS
 #define TILE_ATOMS 8

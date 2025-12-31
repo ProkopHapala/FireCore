@@ -2,6 +2,7 @@ import numpy as np
 import pyopencl as cl
 import pyopencl.cltypes
 import os
+import pyopencl.array as cl_array
 import time
 from ..OCL.OpenCLBase import OpenCLBase
 from .FdataParser import FdataParser
@@ -23,6 +24,11 @@ class GridProjector(OpenCLBase):
         if ctx:
             self.ctx = ctx
             self.queue = queue if queue else cl.CommandQueue(self.ctx)
+        self.task_dtype = [
+            ('x', 'i4'), ('y', 'i4'), ('z', 'i4'), ('w', 'i4'),
+            ('na', 'i4'), ('nj', 'i4'), ('pad1', 'i4'), ('pad2', 'i4')
+        ]
+        self.task_dtype_np = np.dtype(self.task_dtype)
         self._load_kernels()
         self.basis_data = {}
 
@@ -80,11 +86,135 @@ class GridProjector(OpenCLBase):
         distance_sq = np.sum((center - closest_p)**2)
         return distance_sq < (radius**2)
 
+    def build_tasks_gpu(self, atoms, grid_spec, block_res=8, nMaxAtom=64):
+        """
+        GPU-based task building using OpenCL kernels.
+        Pseudocode:
+        1) count_atoms_per_block: for each atom, find overlapping blocks (via floor-index range + sphere/AABB), atomic_inc block_counts[b].
+        2) fill_task_atoms: for each atom, again walk overlapping blocks, atomic_inc block_offsets[b], write atom id into task_atoms_raw[b][slot] if slot < nMaxAtom.
+        3) On host: read block_counts, derive mask, check max_count<=nMaxAtom, compute task_offsets = prefix over (mask).
+        4) compact_tasks: for each block with count>0, write TaskData(x,y,z,na,nj=-1) at task_offsets[b], copy task_atoms_raw[b] into compacted task_atoms_out.
+        5) Host copies tasks_np/task_atoms_np back; optional host sort by na desc.
+        Note: compaction is only at block level (drop empty blocks); task_atoms remains padded to nMaxAtom per task (holes stay).
+        """
+        nx, ny, nz = grid_spec['ngrid'][:3]
+        n_blocks_xyz = np.array([nx // block_res, ny // block_res, nz // block_res], dtype=np.int32)
+        n_blocks_total = int(np.prod(n_blocks_xyz))
+        natoms = len(atoms['pos'])
+
+        # 1. Prepare AtomData buffer
+        atom_data = np.zeros(natoms, dtype=[
+            ('pos_rcut', 'f4', 4),
+            ('type', 'i4'),
+            ('i0orb', 'i4'),
+            ('norb', 'i4'),
+            ('pad', 'i4')
+        ])
+        for i in range(natoms):
+            atom_data[i]['pos_rcut'][:3] = atoms['pos'][i]
+            atom_data[i]['pos_rcut'][3]  = atoms['Rcut'][i]
+            atom_data[i]['type'] = atoms['type'][i]
+            atom_data[i]['norb'] = 4
+            atom_data[i]['i0orb'] = 0
+            
+        # DEBUG: print first atom
+        if natoms > 0:
+            print(f"[DEBUG] atom_data[0]: pos_rcut={atom_data[0]['pos_rcut']} type={atom_data[0]['type']}")
+
+        mf = cl.mem_flags
+        d_grid  = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.grid_to_np(grid_spec))
+        d_atoms = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
+        
+        T0 = time.perf_counter_ns()
+        # 2. Kernel 1: Count atoms per block
+        d_block_counts = cl.Buffer(self.ctx, mf.READ_WRITE, n_blocks_total * 4)
+        cl.enqueue_fill_buffer(self.queue, d_block_counts, np.int32(0), 0, n_blocks_total * 4)
+        self.prg.count_atoms_per_block(
+            self.queue, (natoms,), None,
+            d_grid, np.int32(natoms), d_atoms, np.int32(block_res),
+            np.int32(n_blocks_xyz[0]), np.int32(n_blocks_xyz[1]), np.int32(n_blocks_xyz[2]),
+            d_block_counts
+        )
+        self.queue.finish()
+        T1 = time.perf_counter_ns()
+        print(f"[TIME] count_atoms_per_block {(T1-T0)*1e-6:.3f} [ms]")
+
+        T0 = time.perf_counter_ns()
+        # 3. Kernel 2: Fill task_atoms
+        d_task_atoms_raw = cl.Buffer(self.ctx, mf.READ_WRITE, n_blocks_total * nMaxAtom * 4)
+        cl.enqueue_fill_buffer(self.queue, d_task_atoms_raw, np.int32(-1), 0, n_blocks_total * nMaxAtom * 4)
+        # We need a secondary counter for atomic increments during filling
+        d_block_fill_counts = cl.Buffer(self.ctx, mf.READ_WRITE, n_blocks_total * 4)
+        cl.enqueue_fill_buffer(self.queue, d_block_fill_counts, np.int32(0), 0, n_blocks_total * 4)
+        self.prg.fill_task_atoms(
+            self.queue, (natoms,), None,
+            d_grid, np.int32(natoms), d_atoms, np.int32(block_res),
+            np.int32(n_blocks_xyz[0]), np.int32(n_blocks_xyz[1]), np.int32(n_blocks_xyz[2]),
+            d_block_fill_counts, d_task_atoms_raw, np.int32(nMaxAtom)
+        )
+        # 4. Compact tasks
+        # Read back counts to host to identify non-empty blocks and compute stats
+        h_block_counts = np.empty(n_blocks_total, dtype=np.int32)
+        cl.enqueue_copy(self.queue, h_block_counts, d_block_counts)
+        self.queue.finish()
+        T1 = time.perf_counter_ns()
+        print(f"[TIME] count_atoms_per_block.compact_tasks {(T1-T0)*1e-6:.3f} [ms]")
+
+        mask = h_block_counts > 0
+        n_tasks = np.sum(mask)
+        
+        # Stats
+        max_count    = h_block_counts.max() if n_blocks_total > 0 else 0
+        empty_blocks = np.sum(h_block_counts == 0)
+        one_blocks   = np.sum(h_block_counts == 1)
+        multi_blocks = n_blocks_total - empty_blocks - one_blocks
+        print(f"[DEBUG GPU] block atom stats: na_max={max_count}, nbloks: empty={empty_blocks}, one={one_blocks}, multi={multi_blocks}")
+        self.last_block_atom_counts = h_block_counts
+
+        if max_count > nMaxAtom:
+             raise RuntimeError(f"GPU build_tasks: block has {max_count} atoms > nMaxAtom={nMaxAtom}")
+
+        # tasks_np must have the correct structured dtype even when empty
+        self.task_dtype_np = np.dtype(self.task_dtype)
+        if n_tasks == 0:
+            return np.zeros(0, dtype=self.task_dtype_np), np.zeros((0, nMaxAtom), dtype=np.int32)
+
+
+
+        # Compute task offsets for compaction
+        h_task_offsets = np.zeros(n_blocks_total, dtype=np.int32)
+        h_task_offsets[mask] = np.arange(n_tasks, dtype=np.int32)
+        d_task_offsets   = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=h_task_offsets)
+        d_tasks_out      = cl.Buffer(self.ctx, mf.READ_WRITE, n_tasks * 32) # TaskData size is 32 bytes
+        d_task_atoms_out = cl.Buffer(self.ctx, mf.READ_WRITE, n_tasks * nMaxAtom * 4)
+
+        T0 = time.perf_counter_ns()
+        self.prg.compact_tasks(
+            self.queue, (int(n_blocks_xyz[0]), int(n_blocks_xyz[1]), int(n_blocks_xyz[2])), None,
+            np.int32(n_blocks_xyz[0]), np.int32(n_blocks_xyz[1]), np.int32(n_blocks_xyz[2]),
+            d_block_counts, d_task_offsets, d_task_atoms_raw,
+            d_tasks_out, d_task_atoms_out, np.int32(nMaxAtom)
+        )
+        # 5. Read back results
+        tasks_np      = np.empty(n_tasks, dtype=self.task_dtype_np)
+        task_atoms_np = np.empty((n_tasks, nMaxAtom), dtype=np.int32)
+        cl.enqueue_copy(self.queue, tasks_np,      d_tasks_out     )
+        cl.enqueue_copy(self.queue, task_atoms_np, d_task_atoms_out)
+        self.queue.finish()
+        T1 = time.perf_counter_ns()
+        print(f"[TIME] compact_tasks + readback {(T1-T0)*1e-6:.3f} [ms]")
+
+        # Optional: sorting by na (descending) on host
+        idx = np.argsort(tasks_np['na'])[::-1]
+        tasks_np = tasks_np[idx]
+        task_atoms_np = task_atoms_np[idx]
+        
+        return tasks_np, task_atoms_np
+
     def build_tasks(self, atoms, grid_spec, block_res=8, nMaxAtom=64):
         """
         Partition the grid into tasks (active blocks).
         """
-        # grid_spec['ngrid'] is (nx, ny, nz, 0)
         nx, ny, nz = grid_spec['ngrid'][:3]
         n_blocks = (nx // block_res, ny // block_res, nz // block_res)
         
@@ -141,13 +271,7 @@ class GridProjector(OpenCLBase):
         print(f"[DEBUG] block atom stats: na_max={max_count}, nbloks: empty={empty_blocks}, one={one_blocks}, multi={multi_blocks}")
         self.last_block_atom_counts = np.array(block_counts, dtype=np.int32)
 
-        tasks_np = np.zeros(len(tasks), dtype=[
-            ('x', 'i4'), ('y', 'i4'), ('z', 'i4'), ('w', 'i4'),
-            ('na', 'i4'),
-            ('nj', 'i4'),
-            ('pad1', 'i4'),
-            ('pad2', 'i4')
-        ])
+        tasks_np = np.zeros(len(tasks), dtype=self.task_dtype_np)
         
         task_atoms_np = np.zeros((len(tasks), nMaxAtom), dtype=np.int32)
         
@@ -174,15 +298,22 @@ class GridProjector(OpenCLBase):
         grid_spec_np[0]['dB'][:3] = grid_spec['dB']
         grid_spec_np[0]['dC'][:3] = grid_spec['dC']
         grid_spec_np[0]['ngrid'][:3] = grid_spec['ngrid']
+        
+        # DEBUG: print grid_spec_np values
+        print(f"[DEBUG] grid_spec_np: origin={grid_spec_np[0]['origin']} dA={grid_spec_np[0]['dA']} dB={grid_spec_np[0]['dB']} dC={grid_spec_np[0]['dC']} ngrid={grid_spec_np[0]['ngrid']}")
+        
         return grid_spec_np
 
-    def project(self, rho, neighs, atoms, grid_spec, tasks=None, nMaxAtom=64):
+    def project(self, rho, neighs, atoms, grid_spec, tasks=None, nMaxAtom=64, use_gpu_tasks=False):
         """
         Main entry point for density projection using the tiled kernel.
         """
         if tasks is None:
             T0 = time.perf_counter_ns()
-            tasks_np, task_atoms_np = self.build_tasks(atoms, grid_spec, nMaxAtom=nMaxAtom)
+            if use_gpu_tasks:
+                tasks_np, task_atoms_np = self.build_tasks_gpu(atoms, grid_spec, nMaxAtom=nMaxAtom)
+            else:
+                tasks_np, task_atoms_np = self.build_tasks(atoms, grid_spec, nMaxAtom=nMaxAtom)
             T1 = time.perf_counter_ns()
             print(f"[TIME] build_tasks finished in {(T1-T0)*1e-6:.3f} [ms]")
         else:
@@ -209,10 +340,23 @@ class GridProjector(OpenCLBase):
 
         # 2. Buffers
         mf = cl.mem_flags
+        
+        # DEBUG: check tasks_np size and dtype
+        print(f"[DEBUG] tasks_np: len={len(tasks_np)} itemsize={tasks_np.dtype.itemsize} nbytes={tasks_np.nbytes}")
+        
         d_grid = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.grid_to_np(grid_spec))
-        d_tasks = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tasks_np)
+        
+        if len(tasks_np) > 0:
+            d_tasks = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tasks_np)
+        else:
+            # Fallback for empty buffer to avoid INVALID_BUFFER_SIZE
+            d_tasks = cl.Buffer(self.ctx, mf.READ_ONLY, size=32) 
+            
         d_atoms = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
-        d_task_atoms = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=task_atoms_np)
+        if len(task_atoms_np) > 0:
+            d_task_atoms = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=task_atoms_np)
+        else:
+            d_task_atoms = cl.Buffer(self.ctx, mf.READ_ONLY, size=nMaxAtom * 4)
         
         rho32 = rho.astype(np.float32)
         d_rho = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=rho32)

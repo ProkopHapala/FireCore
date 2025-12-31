@@ -149,7 +149,7 @@ def test_pentacene_projection(args):
         'type': atomTypes
     }
     
-    dens = projector.project(rho, neighs, atoms_dict, grid_spec, nMaxAtom=args.nmaxatom)
+    dens = projector.project(rho, neighs, atoms_dict, grid_spec, nMaxAtom=args.nmaxatom, use_gpu_tasks=args.gpu_tasks)
 
     # Report block stats and optional histogram
     if hasattr(projector, "last_block_atom_counts"):
@@ -184,7 +184,7 @@ if __name__ == "__main__":
     parser.add_argument("--step",     type=float, default=0.1,    help="Grid spacing (Angstrom)")
     parser.add_argument("--block",    type=int,   default=8,      help="Block size for tasks (voxel edge count)")
     parser.add_argument("--nmaxatom", type=int,   default=64,     help="Max atoms per block/task")
-    #parser.add_argument("--hack-block", nargs="+", type=float, default=[0, 0, 0.0, 1.0 ],   help="i j val_s [val_px val_py val_pz]; zeros rho and sets one 4x4 diagonal block")
+    parser.add_argument("--gpu-tasks", action="store_true",      help="Use GPU-based task builder")
     parser.add_argument("--hack-block", nargs="+", type=float, default=None,   help="i j val_s [val_px val_py val_pz]; zeros rho and sets one 4x4 diagonal block")
     parser.add_argument("--plot-block-hist", type=int, default=0, help="Plot histogram of atoms per block (from build_tasks)")
     args = parser.parse_args()
