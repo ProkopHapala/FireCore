@@ -870,7 +870,9 @@ subroutine firecore_get_rho_sparse( rho_out ) bind(c, name='firecore_get_rho_spa
     use neighbor_map,  only: neigh_max
     implicit none
     real(c_double), dimension(numorb_max, numorb_max, neigh_max, natoms), intent(out) :: rho_out
-    if(allocated(rho)) rho_out = rho
+    call denmat ()
+    if( .not. allocated(rho)) write(*,*) "Error: rho not allocated in firecore_get_rho_sparse" 
+    rho_out = rho
 end subroutine firecore_get_rho_sparse
 
 

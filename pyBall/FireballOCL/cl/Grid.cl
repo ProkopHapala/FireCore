@@ -1,20 +1,6 @@
-
 // OpenCL kernel for projecting sparse density matrix to a real-space grid.
 // Data layout in memory (originally Fortran column-major): 
 // rho(imu, inu, ineigh, iatom) -> rho[iatom][ineigh][inu][imu] in C-order indexing
-
-inline void atomic_add_float(volatile __global float* addr, float val) {
-    union {
-        unsigned int u;
-        float f;
-    } next, expected, current;
-    current.f = *addr;
-    do {
-        expected.f = current.f;
-        next.f = expected.f + val;
-        current.u = atomic_cmpxchg((volatile __global unsigned int*)addr, expected.u, next.u);
-    } while (current.u != expected.u);
-}
 
 typedef struct {
     float4 origin;
@@ -117,10 +103,13 @@ __kernel void project_density_sparse(
     for (int v = t_idx; v < 512; v += threads_per_task) {
         float3 r_vox;
         int    g_idx;
+        const int lx =  v       & 7;    // v     % 8
+        const int ly = (v >> 3) & 7;   // (v/8 ) % 8
+        const int lz = (v >> 6) & 7;   // (v/64) % 8
         { 
-            const int lx =  v       & 7;    // v     % 8
-            const int ly = (v >> 3) & 7;   // (v/8 ) % 8
-            const int lz = (v >> 6) & 7;   // (v/64) % 8
+            //const int lx =  v       & 7;    // v     % 8
+            //const int ly = (v >> 3) & 7;   // (v/8 ) % 8
+            //const int lz = (v >> 6) & 7;   // (v/64) % 8
             const int gx = task.block_idx.x * 8 + lx;
             const int gy = task.block_idx.y * 8 + ly;
             const int gz = task.block_idx.z * 8 + lz;
@@ -128,8 +117,14 @@ __kernel void project_density_sparse(
             if (gx >= ngrid_dim.x || gy >= ngrid_dim.y || gz >= ngrid_dim.z) continue;
             g_idx = (gx * ngrid_dim.y + gy) * ngrid_dim.z + gz;
             r_vox = grid->origin.xyz + (float)gx * grid->dA.xyz + (float)gy * grid->dB.xyz + (float)gz * grid->dC.xyz;
-            if(v==0) { printf("GPU task[%3i] b_idx=(%i,%i,%i) na=%i nj=%i \n", i_task, task.block_idx.x, task.block_idx.y, task.block_idx.z, na, nj); }
+            if(v==0) { 
+            //    printf("GPU task[%3i] b_idx=(%i,%i,%i) na=%i nj=%i g_idx=%i <? nxyz=%i \n", i_task, task.block_idx.x, task.block_idx.y, task.block_idx.z, na, nj, g_idx, ngrid_dim.x*ngrid_dim.y*ngrid_dim.z ); 
+            }
         }
+
+        // if( t_idx==0 ){ 
+        //     printf("GPU task[%3i] b_idx=(%i,%i,%i) na=%i nj=%i \n", i_task, task.block_idx.x, task.block_idx.y, task.block_idx.z, na, nj); 
+        // }
 
         float den = 0.0f;
         // Loop over active pairs in this block
@@ -169,6 +164,12 @@ __kernel void project_density_sparse(
                 float4 drj;
                 drj.xyz = r_vox - ad_j.pos_rcut.xyz;
                 drj.w   = dot(drj.xyz, drj.xyz);
+
+                // if( t_idx==0 ){
+                //     float3 rij = ad_j.pos_rcut.xyz - ad_i.pos_rcut.xyz;
+                //     int rho_base = i_atom * neigh_max * numorb_max * numorb_max + ineigh_ij * numorb_max * numorb_max;
+                //     if( dot(rij,rij)<(2*rcut_i2) ) printf("GPU task[%3i] rho[%i,%i] %f \n", i_task, i, j, rho[rho_base+0] ); 
+                // } 
                 
                 if (dri.w < rcut_i2 && drj.w < rcut_j2) {
                     //int4 sp_i = species_info[ad_i.type];
@@ -185,16 +186,27 @@ __kernel void project_density_sparse(
                     // drj.w    =  evaluate_radial(drj.w, ad_j.type, 0, basis_data, n_nodes, dr_basis, max_shells); // sj-orb
                     // drj.xyz *=  evaluate_radial(drj.w, ad_j.type, 1, basis_data, n_nodes, dr_basis, max_shells); // pj-orb
                     // 4x4 block (px,py,pz,s)_i * (px,py,pz,s)_j 
-                    den += dot( dri,  (
-                    rho_ij[0]  * drj.x +     // <-- GLOBAL READ
-                    rho_ij[1]  * drj.y + 
-                    rho_ij[2]  * drj.z + 
-                    rho_ij[3]  * drj.w   ) );  
+                    // den += dot( dri,  (
+                    // rho_ij[0]  * drj.x +     // <-- GLOBAL READ
+                    // rho_ij[1]  * drj.y + 
+                    // rho_ij[2]  * drj.z + 
+                    // rho_ij[3]  * drj.w   ) );  
                     
+
+                    den += dot( dri.wxyz,  (
+                    rho_ij[0]  * drj.w +     // <-- GLOBAL READ
+                    rho_ij[1]  * drj.x + 
+                    rho_ij[2]  * drj.y + 
+                    rho_ij[3]  * drj.z   ) );  
                 }
             }
         }
-        
-        atomic_add_float(&out_grid[g_idx], den);
+        //if( v==0 ){  // <---works
+        //if( lx == 0 ){ // <---works
+        // if( ly == 0 ){ // <---works
+        // //if( lz == 0 ){ // <--- crashs pyopencl._cl.LogicError: clFinish failed: INVALID_COMMAND_QUEUE
+        // //if( 0  == 0 ){ // <--- crashs pyopencl._cl.LogicError: clFinish failed: INVALID_COMMAND_QUEUE
+            out_grid[g_idx] = den;
+        //}
     }
 }

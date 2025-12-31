@@ -179,7 +179,17 @@ class GridProjector(OpenCLBase):
             task_atoms_np[i, :t['na']] = t['atoms']
 
         for i in range(len(tasks_np)):
-            print(f"Task {i}: block_idx={tasks_np[i]['block_idx']} na: {tasks_np[i]['na']:<5} nj: {tasks_np[i]['nj']:<5}")    
+            t = tasks_np[i]
+            na = int(t['na'])
+            print(f"Task {i}: block_idx={t['block_idx']} na: {na:<5} nj: {t['nj']:<5} task_atoms_np: {task_atoms_np[i][:na]}")    
+
+        # DEBUG sanity check for nj
+        bad_nj = np.where((tasks_np['nj'] > nMaxAtom) | (tasks_np['nj'] < -1))[0]
+        if len(bad_nj) > 0:
+            print(f"[DEBUG] build_tasks found invalid nj entries at indices {bad_nj}")
+            for idx in bad_nj:
+                t = tasks_np[idx]
+                print(f"[DEBUG] bad task idx={idx} block_idx={t['block_idx']} na={t['na']} nj={t['nj']} atoms={task_atoms_np[idx][:int(t['na'])]}")
 
         print(f"[DEBUG] build_tasks finished: n_tasks={len(tasks)}")
         return tasks_np, task_atoms_np
@@ -224,8 +234,8 @@ class GridProjector(OpenCLBase):
         
         # Species info for orbital loops (packed as int4 for OpenCL)
         species_info_flat = np.zeros(len(all_nz_basis) * 4, dtype=np.int32)
-        for i, nz in enumerate(all_nz_basis):
-            info = self.parser.species_info[nz]
+        for i, z_key in enumerate(all_nz_basis):
+            info = self.parser.species_info[z_key]
             species_info_flat[i*4] = info['nssh']
             ls_vals = info['lssh']
             for j in range(min(3, len(ls_vals))):
@@ -233,15 +243,15 @@ class GridProjector(OpenCLBase):
 
         # Precompute authoritative norb per species from parser (sum of (2l+1) per shell)
         species_norb = {}
-        for nz in all_nz_basis:
-            info = self.parser.species_info[nz]
-            species_norb[nz] = sum(2 * l + 1 for l in info['lssh'])
+        for z_key in all_nz_basis:
+            info = self.parser.species_info[z_key]
+            species_norb[z_key] = sum(2 * l + 1 for l in info['lssh'])
 
         for i in range(natoms_sys):
             atom_data[i]['pos_rcut'][:3] = atoms['pos'][i]
             atom_data[i]['pos_rcut'][3] = atoms['Rcut'][i]
-            nz = atoms['type'][i]
-            atom_data[i]['type'] = nz_map[nz]
+            z_atom = atoms['type'][i]
+            atom_data[i]['type'] = nz_map[z_atom]
             iatyp_z = int(neighs.iatyp[i])
             norb_val = None
             # Prefer num_orb if it is sized to cover Z
@@ -262,6 +272,9 @@ class GridProjector(OpenCLBase):
         
         rho32 = rho.astype(np.float32)
         d_rho = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=rho32)
+
+        print(f"[DEBUG] project: rho shape={rho.shape}, dtype={rho.dtype}, bytes={rho.nbytes}")
+        print(f"[DEBUG] project: rho nx={nx}, ny={ny}, nz={nz}")
         
         d_out = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, nx * ny * nz * 4)
         cl.enqueue_fill_buffer(self.queue, d_out, np.float32(0), 0, nx * ny * nz * 4)
@@ -315,7 +328,10 @@ class GridProjector(OpenCLBase):
         )
         self.queue.finish()
 
+        
+
         res = np.empty((nx, ny, nz), dtype=np.float32)
+        print("[DEBUG] project finished nx,ny,nz:", nx, ny, nz, res.shape, grid_spec['ngrid'])
         cl.enqueue_copy(self.queue, res, d_out)
         self.queue.finish()
         return res

@@ -8,17 +8,27 @@ sys.path.append("../../")
 from pyBall import FireCore as fc
 from pyBall.FireballOCL import Grid as ocl_grid
 
-def plot_density_slices(data, title="Density Slices"):
+def plot_density_slices(data, title="Density Slices", cmap='magma'):
     nx, ny, nz = data.shape
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     fig.suptitle(title)
-    axes[0].imshow(data[nx//2, :, :].T, origin='lower')
-    axes[0].set_title("X slice")
-    axes[1].imshow(data[:, ny//2, :].T, origin='lower')
-    axes[1].set_title("Y slice")
-    axes[2].imshow(data[:, :, nz//2].T, origin='lower')
-    axes[2].set_title("Z slice")
+    print( "Density range:", data.min(), data.max(), data.shape )
+    axes[0].imshow(data[nx//2, :, :].T, origin='lower', cmap=cmap); axes[0].set_title("X slice")
+    axes[1].imshow(data[:, ny//2, :].T, origin='lower', cmap=cmap); axes[1].set_title("Y slice")
+    axes[2].imshow(data[:, :, nz//2].T, origin='lower', cmap=cmap); axes[2].set_title("Z slice")
     
+def plot_density_maxproj(data, title="Density Max Projections", cmap='magma'):
+    nx, ny, nz = data.shape
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    fig.suptitle(title)
+    max_x = data.max(axis=0).T        # shape ny x nz -> shown as nz x ny after .T
+    max_y = data.max(axis=1).T        # shape nx x nz -> shown as nz x nx after .T
+    max_z = data.max(axis=2).T        # shape nx x ny -> shown as ny x nx after .T
+    axes[0].imshow(max_x, origin='lower', cmap=cmap); axes[0].set_title("Max over X (ny x nz)")
+    axes[1].imshow(max_y, origin='lower', cmap=cmap); axes[1].set_title("Max over Y (nx x nz)")
+    axes[2].imshow(max_z, origin='lower', cmap=cmap); axes[2].set_title("Max over Z (nx x ny)")
+    print("[DEBUG] maxproj shapes max_x", max_x.shape, "max_y", max_y.shape, "max_z", max_z.shape)
+
 def test_pentacene_projection():
     # 1. Load Pentacene
     #xyz_path = "../../tests/tUFF/data/xyz/pentacene.xyz"
@@ -55,6 +65,28 @@ def test_pentacene_projection():
     dims = fc.get_HS_dims()
     neighs = fc.get_HS_neighs(dims)
     rho = fc.get_rho_sparse(dims, data=neighs).rho
+    # DEBUG: inspect density matrix blocks to ensure non-zero values
+    print("[DEBUG] rho shape", rho.shape)
+    print("[DEBUG] iatyp (Z per atom):", neighs.iatyp)
+    print("[DEBUG] num_orb table len:", len(neighs.num_orb), "head:", neighs.num_orb[:min(16, len(neighs.num_orb))])
+    for i in range(neighs.iatyp.shape[0]):
+        iatyp_z = int(neighs.iatyp[i])
+        norb_i = int(neighs.num_orb[iatyp_z - 1]) if (iatyp_z - 1) < len(neighs.num_orb) else 0
+        for ineigh in range(neighs.neigh_max):
+            j_raw = int(neighs.neigh_j[i, ineigh])
+            if j_raw <= 0:
+                continue
+            j = j_raw - 1  # Fortran -> Python index
+            jatyp_z = int(neighs.iatyp[j])
+            norb_j = int(neighs.num_orb[jatyp_z - 1]) if (jatyp_z - 1) < len(neighs.num_orb) else 0
+            block = rho[i, ineigh, :norb_i, :norb_j]
+            abs_sum = np.sum(np.abs(block))
+            print(f"[DEBUG] rho block i={i} (Z={iatyp_z}, norb={norb_i}) "
+                  f"j={j} (Z={jatyp_z}, norb={norb_j}) ineigh={ineigh} "
+                  f"abs_sum={abs_sum:.6e}")
+            print(block)
+    
+    #exit()
     
     # 4. Setup Grid Projector
     # Use local test Fdata (contains basis/*.wf1 for H, C)
@@ -95,6 +127,7 @@ def test_pentacene_projection():
         print(f"Density range: {dens.min()} to {dens.max()}")
         print(f"Total charge (integrated): {np.sum(dens) * np.prod(dCell)}")
         plot_density_slices(dens, title="Pentacene Density (GPU)")
+        plot_density_maxproj(dens, title="Pentacene Density Max Projections (GPU)")
     else:
         print("Projection failed or returned None.")
 
