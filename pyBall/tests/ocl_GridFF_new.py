@@ -245,7 +245,7 @@ def plotTrjs( trjs, names, save_path=None, show=True ):
     plt.close()
 
 
-def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", job="PLQ", b2D=False, bSymetrize=False, bFit=True, use_CG=False, save_name=None, z0=np.nan, nmaxiter=None, nPerStep=None, damp=None, save_fig=False, fig_path=None ):
+def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", job="PLQ", b2D=False, bSymetrize=False, bFit=True, use_CG=False, save_name=None, z0=np.nan, nmaxiter=None, nPerStep=None, damp=None, save_fig=False, fig_path=None, use_tiled=False ):
     print( "py======= test_gridFF_ocl() START" );
 
     T00 = time.perf_counter()
@@ -417,8 +417,8 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         # damp_md     = 0.15  if damp is None else damp
 
         if use_CG:
-            V_Paul,trj_paul = clgff.fit3D_CG( clgff.V_Paul_buff, nPerStep=nPerStep, nmaxiter=nmaxiter, bConvTrj=True, nprint=50 )
-            V_Lond,trj_lond = clgff.fit3D_CG( clgff.V_Lond_buff, nPerStep=nPerStep, nmaxiter=nmaxiter, bConvTrj=True, nprint=50 )
+            V_Paul,trj_paul = clgff.fit3D_CG( clgff.V_Paul_buff, nPerStep=nPerStep, nmaxiter=nmaxiter, bConvTrj=True, nprint=50, use_tiled=use_tiled )
+            V_Lond,trj_lond = clgff.fit3D_CG( clgff.V_Lond_buff, nPerStep=nPerStep, nmaxiter=nmaxiter, bConvTrj=True, nprint=50, use_tiled=use_tiled )
         else:
             V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, nPerStep=nPerStep, nmaxiter=nmaxiter, damp=damp, bConvTrj=True )
             V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, nPerStep=nPerStep, nmaxiter=nmaxiter, damp=damp, bConvTrj=True )

@@ -37,6 +37,7 @@ def main():
     parser.add_argument("--job",        default="MorseFit", choices=["MorseFit","PLQ","PLQ_lin","CG"], help="Job type (default: MorseFit)")
     parser.add_argument("--save-name",  default="double3", help="Save name for outputs (default: double3)")
     parser.add_argument("--use-CG",     type=int,     default=1, help="Use CG solver for MorseFit (default: 1)")
+    parser.add_argument("--use-tiled",  type=int,     default=0, help="Use CG solver for MorseFit (default: 1)")
     parser.add_argument("--nmaxiter",   type=int,     default=10000, help="Override nmaxiter for fit3D/fit3D_CG")
     parser.add_argument("--nPerStep",   type=int,     default=10, help="Override nPerStep for fit3D/fit3D_CG")
     parser.add_argument("--damp",       type=float,   default=0.15, help="Override damp for MD solver")
@@ -63,6 +64,7 @@ def main():
     if nPerStep is not None: kwargs["nPerStep"] = nPerStep
     if damp is not None:     kwargs["damp"]     = damp
     if use_CG is not None:   kwargs["use_CG"]   = bool(use_CG)
+    kwargs["use_tiled"] = bool(args.use_tiled)
     if args.save_fig:        kwargs["save_fig"] = True
     if args.fig_path is not None: kwargs["fig_path"] = args.fig_path
 

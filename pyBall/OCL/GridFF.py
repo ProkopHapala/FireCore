@@ -29,7 +29,8 @@ class GridFF_cl:
     def __init__(self, nloc=32 ):
         self.nloc  = nloc
         #self.ctx   = cl.create_some_context()
-        #self.queue = cl.CommandQueue(self.ctx)
+        self.ctx   = cl.create_some_context()
+        self.queue = cl.CommandQueue(self.ctx)
         self.grid  = None   # instance of GridShape, if initialized
         self.gcl   = None   # instance of GridCL, if initialized
 
@@ -311,6 +312,19 @@ class GridFF_cl:
         
         return p_buf.get(), v_buf.get()
     
+    def _bspline_weights(self):
+        b0 = 2.0/3.0
+        b1 = 1.0/6.0
+        return (b0**3, (b0**2)*b1, b0*(b1**2), b1**3)
+
+    def _make_conv3d_call(self, kernel_func, gsh, lsh, ns_cl, weights=None, bPBC=None):
+        def call(Gs_buf, G0_buf, out_buf, coeffs):
+            if weights is not None and bPBC is not None:
+                kernel_func(self.queue, gsh,lsh, ns_cl, Gs_buf, G0_buf, out_buf, weights, bPBC, coeffs )
+            else:
+                kernel_func(self.queue, gsh, lsh, ns_cl, Gs_buf, G0_buf, out_buf, coeffs)
+        return call
+
     def dot_gpu(self, buf_a, buf_b, n ):
         # GPU reduction into partial sums; final sum on CPU
         wg = 64
@@ -326,8 +340,8 @@ class GridFF_cl:
         cl.enqueue_copy(self.queue, partial, self._dot_partial_buff); self.queue.finish()
         return float(partial.sum())
 
-    def fit3D_CG(self, Ref_buff, nmaxiter=300, Ftol=1e-16, nPerStep=1, bConvTrj=False, bReturn=True, bPrint=True, bTime=True, bDebug=True, nprint=50, nconf=100 ):
-        print(f"GridFF_cl::fit3D_CG() nmaxiter={nmaxiter} Ftol{Ftol}")
+    def fit3D_CG(self, Ref_buff, nmaxiter=300, Ftol=1e-16, nPerStep=1, bConvTrj=False, bReturn=True, bPrint=True, bTime=True, bDebug=True, nprint=50, nconf=100, conv3d_kernel=None, conv3d_weights=None,  conv3d_bPBC=None, use_tiled=False):
+        print(f"GridFF_cl::fit3D_CG() nmaxiter={nmaxiter} Ftol{Ftol} use_tiled={use_tiled}")
         T00=time.perf_counter()
 
         ns   = self.gsh.ns #[::-1] 
@@ -340,8 +354,24 @@ class GridFF_cl:
         cs_Err   = np.array( [ 1.0,-1.0], dtype=np.float32 )
         cs_F     = np.array( [ 1.0,0.0], dtype=np.float32 )
 
-        lsh = (4,4,4)
+        lsh_bsp = (4,4,4)
+        lsh_tiled = (8,8,8)
+
+        kernel_func = conv3d_kernel or self.prg.BsplineConv3D
+        extra_weights = None
+        extra_bPBC = None
+        lsh = lsh_bsp
+        if use_tiled:
+            kernel_func = self.prg.Convolution3D_General
+            lsh = lsh_tiled
+            weights = conv3d_weights or self._bspline_weights()
+            # OpenCL expects bPBC={px,py,pz,0} in (X,Y,Z) order
+            bPBC_vals = conv3d_bPBC or (True, True, True)
+            extra_bPBC = cltypes.make_int4(int(bPBC_vals[0]), int(bPBC_vals[1]), int(bPBC_vals[2]), 0)
+            extra_weights = cltypes.make_float4(float(weights[0]), float(weights[1]), float(weights[2]), float(weights[3]))
+        
         gsh  = clu.roundup_global_size_3d( ns, lsh )
+        conv3d = self._make_conv3d_call(  kernel_func, gsh,lsh,  ns_cl, weights=extra_weights, bPBC=extra_bPBC, )
 
         nL   = 32
         nG   = clu.roundup_global_size( nxyz, nL )
@@ -359,8 +389,8 @@ class GridFF_cl:
         self.prg.setMul(self.queue, (nG,), (nL,), nxyz,  Ref_buff,  self.vGs_buff, np.float32(0.0) )
 
         # r = b - A x
-        self.prg.BsplineConv3D (self.queue, gsh, lsh, ns_cl, self.Gs_buff, Ref_buff, self.dGs_buff, cs_Err)
-        self.prg.BsplineConv3D (self.queue, gsh, lsh, ns_cl, self.dGs_buff, None,    self.fGs_buff, cs_F )
+        conv3d(self.Gs_buff, Ref_buff, self.dGs_buff, cs_Err)
+        conv3d(self.dGs_buff, None,    self.fGs_buff, cs_F )
         # r = -grad = -A^T(b-Ax)
         self.prg.setMul(self.queue, (nG,), (nL,), nxyz,  self.fGs_buff,  self.rGs_buff,  np.float32(-1.0) )
         # p = r
@@ -373,12 +403,15 @@ class GridFF_cl:
         Emin = np.inf
         steps_since_improve = 0
         steps_since_Eimprove = 0
+        cycle_time_acc = 0.0
+        cycle_count = 0
         for i in range(nStepMax):
+            t_cycle = time.perf_counter()
             for j in range(nPerStep):
                 # Hp = A p
-                self.prg.BsplineConv3D (self.queue, gsh, lsh, ns_cl, self.pGs_buff, None, self.dGs_buff, cs_F)
+                conv3d(self.pGs_buff, None, self.dGs_buff, cs_F)
                 # AHp = A^T (A p)
-                self.prg.BsplineConv3D (self.queue, gsh, lsh, ns_cl, self.dGs_buff, None, self.fGs_buff, cs_F)
+                conv3d(self.dGs_buff, None, self.fGs_buff, cs_F)
 
                 pAp = self.dot_gpu(self.pGs_buff, self.fGs_buff, nxyz)
                 alpha = rsold / (pAp + 1e-16)
@@ -395,9 +428,14 @@ class GridFF_cl:
                 rsold = rsnew
                 nstepdone+=1
 
+            self.queue.finish()
+            t_cycle = time.perf_counter() - t_cycle
+            cycle_time_acc += t_cycle
+            cycle_count += 1
+
             Ftot = math.sqrt(rsold / nxyz)
             # residual r_b = b - A x (true fitting error)
-            self.prg.BsplineConv3D (self.queue, gsh, lsh, ns_cl, self.Gs_buff, Ref_buff, self.dGs_buff, cs_Err)
+            conv3d(self.Gs_buff, Ref_buff, self.dGs_buff, cs_Err)
             cl.enqueue_copy(self.queue, out, self.dGs_buff); self.queue.finish(); Eres = np.max(np.abs(out))
             if Ftot < Fmin:
                 Fmin = Ftot; steps_since_improve = 0
@@ -427,6 +465,10 @@ class GridFF_cl:
             nops = nstepdone*nxyz
             self.queue.finish()
             print( "GridFF_cl::fit3D_CG() time[s] ", dT, "  preparation[s]  ", T0-T00, "[s] nGOPs: ", nops*1e-9," speed[GOPs/s]: ", (nops*1e-9)/dT , " nstep, nxyz ", nstepdone, nxyz  )
+            if cycle_count>0:
+                avg_cycle = cycle_time_acc/cycle_count
+                vox_per_s = (nPerStep*nxyz)/avg_cycle if avg_cycle>0 else float('inf')
+                print(f"GridFF_cl::fit3D_CG() cycle_time_acc {cycle_time_acc*1000:.6f} [ms] relax-cycle avg[ms]={avg_cycle*1000:.6f} vox/s={vox_per_s:.3e} (per {nPerStep} steps)")
 
         if bReturn:
             cl.enqueue_copy(self.queue, out, self.Gs_buff);
