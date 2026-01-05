@@ -23,6 +23,43 @@ export class BuildersGUI {
             GUIutils.span(rowA, 'a(Å): ');
             const inpA = GUIutils.num(rowA, 2.82, { step: '0.01' }, { width: '70px', flexGrow: '0' });
 
+            const rowRep = GUIutils.row(container, { marginTop: '4px' });
+            const chkRep = GUIutils.labelCheck(rowRep, 'Visual Replicas', false, (e) => {
+                if (window.app) {
+                    const lat = window.app.getLattice('substrate');
+                    lat.show = e.target.checked;
+                    window.app.updateReplicas('substrate');
+                }
+            }).input;
+
+            const rowNRep = GUIutils.row(container, { marginTop: '4px' });
+            GUIutils.span(rowNRep, 'nRep: ');
+            const inpNxRep = GUIutils.num(rowNRep, 1, { min: 0, step: 1 }, { width: '40px' });
+            const inpNyRep = GUIutils.num(rowNRep, 1, { min: 0, step: 1 }, { width: '40px', marginLeft: '5px' });
+            const inpNzRep = GUIutils.num(rowNRep, 1, { min: 0, step: 1 }, { width: '40px', marginLeft: '5px' });
+
+            const updateSubstrateRep = () => {
+                if (window.app) {
+                    const lat = window.app.getLattice('substrate');
+                    lat.nrep.x = parseInt(inpNxRep.value) || 0;
+                    lat.nrep.y = parseInt(inpNyRep.value) || 0;
+                    lat.nrep.z = parseInt(inpNzRep.value) || 0;
+                    const a = parseFloat(inpA.value) || 2.82;
+                    const nx = parseInt(inpNx.value) || 10;
+                    const ny = parseInt(inpNy.value) || 10;
+                    const nz = parseInt(inpNz.value) || 3;
+                    lat.lvec[0].set(a * nx, 0, 0);
+                    lat.lvec[1].set(0, a * ny, 0);
+                    lat.lvec[2].set(0, 0, a * nz);
+                    window.app.updateReplicas('substrate');
+                }
+            };
+            inpNxRep.onchange = updateSubstrateRep;
+            inpNyRep.onchange = updateSubstrateRep;
+            inpNzRep.onchange = updateSubstrateRep;
+            inpA.onchange = updateSubstrateRep;
+
+
             // const PRESETS = {
             //     'NaCl(step)':       { a0: 5.6413 / 2 },
             //     'NaCl(rocksalt)':   { a0: 5.6413 },

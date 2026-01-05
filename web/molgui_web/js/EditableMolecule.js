@@ -711,7 +711,63 @@ export class EditableMolecule {
         this.selectAtom(id, mode);
     }
 
-    clearSelection() { this.selection.clear(); this.dirtyExport = true; }
+    translateAtoms(ids, vec) {
+        if (!ids || ids.length === 0) return;
+        if (!(vec instanceof Vec3)) throw new Error('translateAtoms: vec must be Vec3');
+        const tmp = vec;
+        for (const id of ids) {
+            const a = this.id2atom.get(id);
+            if (a && a.pos) a.pos.add(tmp);
+        }
+        this._touchGeom();
+    }
+
+    rotateAtoms(ids, axis, deg, center = null) {
+        if (!ids || ids.length === 0) return;
+        const vAxis = (axis instanceof Vec3) ? axis.clone() : new Vec3(axis[0], axis[1], axis[2]);
+        const ln = vAxis.normalize();
+        if (!(ln > 0)) throw new Error('rotateAtoms: axis length is zero');
+        const rad = deg * Math.PI / 180.0;
+        const R = new Mat3();
+        R.setRotate(rad, vAxis);
+        let ctr = null;
+        if (center instanceof Vec3) {
+            ctr = center;
+        } else if (center && center.length >= 3) {
+            ctr = new Vec3(center[0], center[1], center[2]);
+        } else {
+            ctr = new Vec3();
+            for (const id of ids) {
+                const a = this.id2atom.get(id);
+                if (a) ctr.add(a.pos);
+            }
+            ctr.mul(1.0 / ids.length);
+        }
+        for (const id of ids) {
+            const a = this.id2atom.get(id);
+            if (!a) continue;
+            a.pos.sub(ctr);
+            R.dotVec(a.pos, a.pos);
+            a.pos.add(ctr);
+        }
+        this._touchGeom();
+    }
+
+    clearSelection() {
+        this.selection.clear();
+        this.isDirty = true;
+        this.dirtyExport = true;
+    }
+
+    selectAll() {
+        this.selection.clear();
+        for (let i = 0; i < this.atoms.length; i++) {
+            const a = this.atoms[i];
+            if (a) this.selection.add(a.id);
+        }
+        this.isDirty = true;
+        this.dirtyExport = true;
+    }
 
     static compileSelectQuery(q, mmParams) {
         if (!mmParams) throw new Error('compileSelectQuery: mmParams required');
@@ -1114,6 +1170,25 @@ export class EditableMolecule {
             if (na >= 0 && nb >= 0) bonds.push([na, nb]);
         }
         return { pos, types, bonds, lvec: parsed.lvec, oldToNew };
+    }
+
+    exportAsParsed(mol = this) {
+        const n = mol.atoms.length;
+        const pos = new Float32Array(n * 3);
+        const types = new Uint8Array(n);
+        const bonds = [];
+        for (let i = 0; i < n; i++) {
+            const a = mol.atoms[i];
+            const i3 = i * 3;
+            pos[i3] = a.pos.x; pos[i3 + 1] = a.pos.y; pos[i3 + 2] = a.pos.z;
+            types[i] = a.Z;
+        }
+        for (let i = 0; i < mol.bonds.length; i++) {
+            const b = mol.bonds[i];
+            b.ensureIndices(mol);
+            bonds.push([b.a, b.b]);
+        }
+        return { pos, types, bonds, lvec: mol.lvec ? [mol.lvec[0].clone(), mol.lvec[1].clone(), mol.lvec[2].clone()] : null };
     }
 
     appendParsedSystem(other, opts = {}) {

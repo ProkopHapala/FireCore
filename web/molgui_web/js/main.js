@@ -7,8 +7,9 @@ import { Editor } from './Editor.js';
 import { ShortcutManager } from './ShortcutManager.js';
 import { Vec3 } from '../../common_js/Vec3.js';
 import { buildWireframeCellVerts, buildWireframeAABBVerts } from '../../common_js/Buckets.js';
+import { ScriptRunner } from './ScriptRunner.js';
 
-class MolGUIApp {
+export class MolGUIApp {
     constructor() {
         this.container = document.getElementById('canvas-container');
         this.scene = null;
@@ -164,6 +165,136 @@ class MolGUIApp {
 
         // 6. Molecule Renderer (renders packedSystem; syncs from EditableMolecule)
         this.molRenderer = new MoleculeRenderer(this.scene, this.packedSystem, this.shaders, this.mmParams, this.system);
+        // Default: show axes (GUI default is checked)
+        if (this.molRenderer && this.molRenderer.toggleAxes) {
+            this.molRenderer.toggleAxes(true);
+        }
+
+        // 7. Script Runner
+        this.scriptRunner = new ScriptRunner(this);
+
+        // --- Replica / Lattice State ---
+        this.lattices = new Map();
+        this.getLattice = (name = 'default') => {
+            if (!this.lattices.has(name)) {
+                const lat = {
+                    lvec: [new Vec3(10, 0, 0), new Vec3(0, 10, 0), new Vec3(0, 0, 10)],
+                    nrep: { x: 1, y: 1, z: 1 },
+                    show: false,
+                    showBox: false,
+                    group: new THREE.Group(),
+                    box: null,
+                    filter: null // optional function (atom) => boolean
+                };
+                this.scene.add(lat.group);
+                this.lattices.set(name, lat);
+            }
+            return this.lattices.get(name);
+        };
+        this.lattice = this.getLattice('default'); // Default/Legacy lattice
+
+        this.updateLatticeBox = (name = 'default') => {
+            const lat = this.getLattice(name);
+            if (lat.box) { lat.group.remove(lat.box); lat.box = null; }
+            if (!lat.showBox) return;
+            const [a, b, c] = lat.lvec;
+            const { x: nx, y: ny, z: nz } = lat.nrep;
+            const superA = a.clone().mulScalar(nx * 2 + 1);
+            const superB = b.clone().mulScalar(ny * 2 + 1);
+            const superC = c.clone().mulScalar(nz * 2 + 1);
+            const origin = a.clone().mulScalar(-nx).addMul(b, -ny).addMul(c, -nz);
+            const verts = buildWireframeCellVerts(superA, superB, superC, origin);
+            const geom = new THREE.BufferGeometry();
+            geom.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+            const mat = new THREE.LineBasicMaterial({ color: (name === 'substrate' ? 0xffff00 : 0x00ffff), opacity: 0.5, transparent: true });
+            lat.box = new THREE.LineSegments(geom, mat);
+            lat.group.add(lat.box);
+        };
+
+        this.updateReplicas = (name = 'default') => {
+            const lat = this.getLattice(name);
+            lat.group.clear();
+            this.updateLatticeBox(name);
+            if (!lat.show) { this.requestRender(); return; }
+            const { x: nx, y: ny, z: nz } = lat.nrep;
+            const [a, b, c] = lat.lvec;
+            
+            // NOTE: Currently MoleculeRenderer renders everything in app.system into its meshes.
+            // To replicate only a subset (e.g. only substrate), we'd need separate meshes or a filter.
+            // For now, they all replicate the entire scene unless we implement selective rendering.
+            const baseMeshes = [
+                this.molRenderer.atomMesh, 
+                this.molRenderer.bondLines, 
+                this.molRenderer.labelMesh
+            ].filter(m => m !== null);
+
+            for (let ix = -nx; ix <= nx; ix++) {
+                for (let iy = -ny; iy <= ny; iy++) {
+                    for (let iz = -nz; iz <= nz; iz++) {
+                        if (ix === 0 && iy === 0 && iz === 0) continue;
+                        const shift = new Vec3();
+                        shift.addMul(a, ix);
+                        shift.addMul(b, iy);
+                        shift.addMul(c, iz);
+                        const rep = new THREE.Group();
+                        rep.position.set(shift.x, shift.y, shift.z);
+                        baseMeshes.forEach(mesh => {
+                            let clone;
+                            if (mesh instanceof THREE.LineSegments) {
+                                clone = new THREE.LineSegments(mesh.geometry, mesh.material);
+                            } else if (mesh instanceof THREE.InstancedMesh) {
+                                clone = new THREE.InstancedMesh(mesh.geometry, mesh.material, mesh.count);
+                                for (const key in mesh.geometry.attributes) {
+                                    clone.geometry.setAttribute(key, mesh.geometry.attributes[key]);
+                                }
+                                clone.count = mesh.count;
+                            } else {
+                                clone = new THREE.Mesh(mesh.geometry, mesh.material);
+                            }
+                            clone.raycast = () => { }; // non-pickable
+                            rep.add(clone);
+                        });
+                        lat.group.add(rep);
+                    }
+                }
+            }
+            this.requestRender();
+        };
+
+        this.bakeReplicas = (name = 'default') => {
+            const lat = this.getLattice(name);
+            const { x: nx, y: ny, z: nz } = lat.nrep;
+            const [a, b, c] = lat.lvec;
+            const mm = this.system;
+            const atoms0 = [...mm.atoms];
+            const bonds0 = [...mm.bonds];
+            for (let ix = -nx; ix <= nx; ix++) {
+                for (let iy = -ny; iy <= ny; iy++) {
+                    for (let iz = -nz; iz <= nz; iz++) {
+                        if (ix === 0 && iy === 0 && iz === 0) continue;
+                        const shift = new Vec3();
+                        shift.addMul(a, ix);
+                        shift.addMul(b, iy);
+                        shift.addMul(c, iz);
+                        const idsNew = new Map();
+                        atoms0.forEach(atom => {
+                            if (!atom) return;
+                            const id = mm.addAtom(atom.pos.x + shift.x, atom.pos.y + shift.y, atom.pos.z + shift.z, atom.Z);
+                            idsNew.set(atom.id, id);
+                        });
+                        bonds0.forEach(bond => {
+                            if (!bond) return;
+                            const aNew = idsNew.get(bond.aId);
+                            const bNew = idsNew.get(bond.bId);
+                            if (aNew !== undefined && bNew !== undefined) mm.addBond(aNew, bNew);
+                        });
+                    }
+                }
+            }
+            if (this.molRenderer) this.molRenderer.update();
+            this.requestRender();
+            window.logger.info(`Baked replicas: system now has ${this.system.atoms.length} atoms.`);
+        };
 
         // --- Bucket overlay (debug visualization) ---
         this.bucketOverlay = null;

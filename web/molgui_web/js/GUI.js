@@ -166,6 +166,15 @@ export class GUI {
             this.lblCount = GUIutils.span(row, '0', { fontWeight: 'bold' });
             this.inpSelection = GUIutils.textInput(container, '', { placeholder: 'IDs (e.g. 1,5)', onchange: (e) => this.onSelectionInputChange(e.target.value) });
 
+            const rowSelAll = GUIutils.row(container, { marginTop: '4px' });
+            GUIutils.btn(rowSelAll, 'Select All', () => {
+                this.system.selectAll();
+                this.updateSelectionUI();
+                this.renderer.update();
+                if (window.app && window.app.editor) window.app.editor.updateGizmo();
+                this.requestRender();
+            }, { flexGrow: '1' });
+
             GUIutils.el(container, 'hr', null, { borderColor: '#444', margin: '10px 0' });
 
             GUIutils.div(container, null, { fontSize: '0.9em', marginBottom: '5px' }).textContent = 'Selection Query:';
@@ -235,7 +244,7 @@ export class GUI {
 
             // Axis Toggle
             const axisRow = GUIutils.row(container, { marginTop: '10px' });
-            GUIutils.labelCheck(axisRow, 'Show Axes', false, (e) => { if (window.app && window.app.molRenderer) window.app.molRenderer.toggleAxes(e.target.checked); this.requestRender(); });
+            GUIutils.labelCheck(axisRow, 'Show Axes', true, (e) => { if (window.app && window.app.molRenderer) window.app.molRenderer.toggleAxes(e.target.checked); this.requestRender(); });
 
             const renderRow = GUIutils.row(container, { marginTop: '6px' });
             GUIutils.labelCheck(renderRow, 'Continuous Render (Animate)', false, (e) => {
@@ -438,6 +447,69 @@ export class GUI {
                 this.requestRender();
                 window.logger.info("Scene cleared.");
             }, { marginTop: '5px' });
+
+            GUIutils.el(container, 'hr', null, { borderColor: '#444', margin: '10px 0' });
+
+            // Examples (mol/mol2 preferred, xyz fallback)
+            const examples = [
+                { name: 'H2O',             path: '../../cpp/common_resources/mol/H2O.mol2', fmt: 'mol2' },
+                { name: 'NH3',             path: '../../cpp/common_resources/mol/NH3.mol2', fmt: 'mol2' },
+                { name: 'CH4',             path: '../../cpp/common_resources/xyz/CH4.xyz',  fmt: 'xyz' },
+                { name: 'Formaldehyde',    path: '../../cpp/common_resources/mol/formaldehyde.mol2', fmt: 'mol2' },
+                { name: 'Formic Acid',     path: '../../cpp/common_resources/mol/formic_acid.mol2', fmt: 'mol2' },
+                { name: 'Methanol',        path: '../../cpp/common_resources/mol/methanol.mol2',   fmt: 'mol2' },
+                { name: 'HCN',             path: '../../cpp/common_resources/mol/HCN.mol2',        fmt: 'mol2' },
+                { name: 'Benzene',         path: '../../cpp/common_resources/xyz/benzene.mol2',    fmt: 'mol2' },
+                { name: 'Pyridine',        path: '../../cpp/common_resources/xyz/pyridine.xyz',    fmt: 'xyz' },
+                { name: 'Pentacene',       path: '../../cpp/common_resources/xyz/pentacene.xyz',   fmt: 'xyz' },
+                { name: 'PTCDA',           path: '../../cpp/common_resources/xyz/PTCDA.xyz',       fmt: 'xyz' },
+                { name: 'Porphirin',       path: '../../cpp/common_resources/mol/porphirin.mol2',  fmt: 'mol2' },
+                { name: 'Thymine',         path: '../../cpp/common_resources/mol/thymine.mol2',    fmt: 'mol2' },
+                { name: 'Adenine',         path: '../../cpp/common_resources/xyz/adenine.xyz',     fmt: 'xyz' },
+                { name: 'Cytosine',        path: '../../cpp/common_resources/xyz/citosine.xyz',    fmt: 'xyz' },
+                { name: 'Uracil',          path: '../../cpp/common_resources/xyz/uracil.xyz',      fmt: 'xyz' },
+                { name: 'Xylitol',         path: '../../cpp/common_resources/mol/xylitol.mol2',    fmt: 'mol2' },
+                { name: 'NaCl 1x1 L3',     path: '../../cpp/common_resources/xyz/NaCl_1x1_L3.xyz', fmt: 'xyz' },
+                // agregates
+                { name: 'Adenine-Thymine pair',  path: '../../cpp/common_resources/xyz/adenine-thymine.xyz', fmt: 'xyz' },
+                { name: 'Guanine-Cytosine pair', path: '../../cpp/common_resources/xyz/guanine-cytosine.xyz', fmt: 'xyz' },
+            ];
+
+            GUIutils.div(container, null, { fontSize: '0.9em', marginBottom: '5px' }).textContent = 'Examples:';
+            const rowEx = GUIutils.row(container);
+            const selEx = GUIutils.el(rowEx, 'select', { className: 'gui-select' }, { flexGrow: '1' });
+            GUIutils.setSelectOptions(selEx, [{ value: '', text: '-- pick example --', selected: true }, ...examples.map((e, i) => ({ value: String(i), text: e.name }))], { selectFirst: true });
+            GUIutils.btn(rowEx, 'Add', async () => {
+                const idx = parseInt(selEx.value);
+                if (isNaN(idx) || idx < 0 || idx >= examples.length) return;
+                const ex = examples[idx];
+                try {
+                    const resp = await fetch(ex.path);
+                    if (!resp.ok) throw new Error(`Fetch failed: ${resp.status} ${resp.statusText}`);
+                    const txt = await resp.text();
+                    const parsed = (ex.fmt === 'mol' || ex.fmt === 'mol2') ? EditableMolecule.parseMol2(txt) : EditableMolecule.parseXYZ(txt);
+                    const n0 = this.system.atoms.length;
+                    this.system.appendParsedSystem(parsed);
+                    // Auto-bond XYZ imports (mol/mol2 already have bonds)
+                    if (ex.fmt === 'xyz') {
+                        const mm = (window.app && window.app.mmParams) ? window.app.mmParams : null;
+                        this.system.recalculateBonds(mm);
+                    }
+                    const n1 = this.system.atoms.length;
+                    this.system.clearSelection();
+                    for (let i = n0; i < n1; i++) this.system.select(this.system.atoms[i].id, 'add');
+                    this.renderer.update();
+                    if (window.app && window.app.editor) {
+                        window.app.editor.updateGizmo();
+                        window.app.editor.toggleGizmo(true);
+                    }
+                    this.requestRender();
+                    window.logger.info(`Added example '${ex.name}' atoms=${n1 - n0}`);
+                } catch (err) {
+                    window.logger.error(String(err));
+                }
+            }, { marginLeft: '5px' });
+
             // Separator
             GUIutils.el(container, 'hr', null, { borderColor: '#444', margin: '10px 0' });
         });
@@ -460,6 +532,95 @@ export class GUI {
 
         this.buildersGUI.addSubstrateSection(sidebar);
         this.buildersGUI.addPolymersSection(sidebar);
+
+        // --- Section: User Script ---
+        this.createSection(sidebar, 'User Script', (container) => {
+            GUIutils.div(container, null, { fontSize: '0.9em', marginBottom: '4px' }).textContent = 'JavaScript (async supported):';
+            const defaultScript = `
+new_system("substrate");
+build_substrate({ nx: 13, ny: 12, nz: 3 });
+replication({ name: "substrate", n: [1, 1, 0] }); // Visual replication of substrate
+
+new_system("molecule");
+load_molecule({ path: "../../cpp/common_resources/xyz/PTCDA.xyz", fmt: "xyz" });
+translate({ vec: [0, 0, 10] });
+
+use_system("main");
+merge_systems({ source: "substrate" });
+merge_systems({ source: "molecule" });
+
+replication({ name: "default", n: [1, 1, 1], lattice: [[36.6, 0, 0], [0, 33.8, 0], [0, 0, 10]] });
+`.trim();
+            
+            const ta = GUIutils.textArea(container, defaultScript, { 
+                width: '100%', height: '180px', fontSize: '11px', fontFamily: 'monospace', backgroundColor: '#222', color: '#eee', display: 'block'
+            });
+            
+            const rowBtns = GUIutils.row(container, { marginTop: '5px' });
+            GUIutils.btn(rowBtns, 'Run Script', async () => {
+                if (window.app && window.app.scriptRunner) {
+                    await window.app.scriptRunner.run(ta.value);
+                    this.updateSelectionUI();
+                }
+            }, { flexGrow: '1' });
+        }, { collapsible: true });
+
+        // --- Section: Replicas / Lattice ---
+        this.createSection(sidebar, 'Replicas / Lattice', (container) => {
+            const rowShow = GUIutils.row(container);
+            GUIutils.labelCheck(rowShow, 'Show Replicas', false, (e) => {
+                if (window.app) {
+                    window.app.lattice.show = e.target.checked;
+                    window.app.updateReplicas();
+                }
+            });
+
+            const rowShowBox = GUIutils.row(container, { marginTop: '2px' });
+            GUIutils.labelCheck(rowShowBox, 'Show Lattice Box', false, (e) => {
+                if (window.app) {
+                    window.app.lattice.showBox = e.target.checked;
+                    window.app.updateLatticeBox();
+                }
+            });
+
+            const rowN = GUIutils.row(container, { marginTop: '5px' });
+            GUIutils.span(rowN, 'nx,ny,nz: ', { fontSize: '0.9em', marginRight: '5px' });
+            const inpNx = GUIutils.num(rowN, 1, { min: 0, step: 1 }, { width: '40px' });
+            const inpNy = GUIutils.num(rowN, 1, { min: 0, step: 1 }, { width: '40px', marginLeft: '5px' });
+            const inpNz = GUIutils.num(rowN, 1, { min: 0, step: 1 }, { width: '40px', marginLeft: '5px' });
+
+            const updateN = () => {
+                if (window.app) {
+                    window.app.lattice.nrep.x = parseInt(inpNx.value) || 0;
+                    window.app.lattice.nrep.y = parseInt(inpNy.value) || 0;
+                    window.app.lattice.nrep.z = parseInt(inpNz.value) || 0;
+                    window.app.updateReplicas();
+                }
+            };
+            inpNx.onchange = updateN;
+            inpNy.onchange = updateN;
+            inpNz.onchange = updateN;
+
+            GUIutils.div(container, null, { fontSize: '0.9em', marginTop: '10px', marginBottom: '5px' }).textContent = 'Lattice Vectors:';
+            const taLvec = GUIutils.textArea(container, '10.0 0.0 0.0\n0.0 10.0 0.0\n0.0 0.0 10.0', { height: '60px', fontSize: '0.85em', width: '100%', display: 'block' });
+            const applyLattice = () => {
+                if (!window.app) return;
+                const lines = taLvec.value.trim().split('\n');
+                for (let i = 0; i < 3 && i < lines.length; i++) {
+                    const vals = lines[i].trim().split(/\s+/).map(parseFloat);
+                    if (vals.length >= 3) {
+                        window.app.lattice.lvec[i].set(vals[0], vals[1], vals[2]);
+                    }
+                }
+                window.app.updateReplicas();
+            };
+            taLvec.oninput = applyLattice;
+
+            const rowBtns = GUIutils.row(container, { marginTop: '5px' });
+            GUIutils.btn(rowBtns, 'Bake', () => {
+                if (window.app && window.app.bakeReplicas) window.app.bakeReplicas('default');
+            }, { marginLeft: '5px', flexGrow: '0', backgroundColor: '#664444' });
+        });
 
         // --- Section: Parameters ---
         this.createSection(sidebar, 'Parameters', (container) => {
@@ -514,6 +675,19 @@ export class GUI {
 
             if (window.logger) window.logger.setContainer(logOut);
         });
+
+        // Final pass to apply current defaults and ensure scene/render is in sync after async init
+        const finalizeInit = () => {
+            const app = window.app;
+            if (!app) return;
+            if (app.molRenderer) {
+                app.molRenderer.updateSelection();
+                app.molRenderer.update();
+            }
+            if (app.requestRender) app.requestRender();
+        };
+        // Defer so window.app is set by main.js before we touch it
+        setTimeout(finalizeInit, 0);
     }
 
     createSection(parent, title, contentFn, opts = null) {
