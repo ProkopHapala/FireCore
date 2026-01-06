@@ -519,6 +519,83 @@ class XPDB:
         )
 
     ## --------------------------------------------------------
+    ## -------- Tiled Topology & Solver (BBox based)
+    ## --------------------------------------------------------
+
+    def init_tiled(self, max_ghosts=128):
+        self.max_ghosts = max_ghosts
+        mf = cl.mem_flags
+        # Bond indices in int4 format for the tiled kernel
+        self.cl_global_bond_indices = cl.Buffer(self.ctx, mf.READ_ONLY, self.num_atoms * 16)
+        self.cl_local_bond_indices  = cl.Buffer(self.ctx, mf.READ_WRITE, self.num_atoms * 16)
+        self.cl_global_bond_L4      = cl.Buffer(self.ctx, mf.READ_ONLY, self.num_atoms * 16)
+        self.cl_global_bond_K4      = cl.Buffer(self.ctx, mf.READ_ONLY, self.num_atoms * 16)
+        
+        # Ghost management
+        max_ghosts_total = self.num_groups * max_ghosts
+        self.cl_ghost_indices = cl.Buffer(self.ctx, mf.READ_WRITE, max_ghosts_total * 4)
+        self.cl_ghost_counts  = cl.Buffer(self.ctx, mf.READ_WRITE, self.num_groups * 4)
+
+        # Debug buffers
+        self.cl_debug_force_bond = cl.Buffer(self.ctx, mf.WRITE_ONLY, self.num_atoms * 16)
+        self.cl_debug_force_coll = cl.Buffer(self.ctx, mf.WRITE_ONLY, self.num_atoms * 16)
+        # For neighbor inspection: 64 slots per atom
+        self.cl_debug_neigh_indices = cl.Buffer(self.ctx, mf.WRITE_ONLY, self.num_atoms * 64 * 4)
+        self.cl_debug_neigh_pos     = cl.Buffer(self.ctx, mf.WRITE_ONLY, self.num_atoms * 64 * 16)
+
+    def upload_global_bonds(self, bonds):
+        """
+        Convert list-of-lists bonds to int4 global indices (max 4 per atom)
+        and also upload float4 lengths and stiffness.
+        """
+        b_indices = np.full((self.num_atoms, 4), -1, dtype=np.int32)
+        b_L4 = np.zeros((self.num_atoms, 4), dtype=np.float32)
+        b_K4 = np.zeros((self.num_atoms, 4), dtype=np.float32)
+        for i, b_list in enumerate(bonds):
+            for k, b in enumerate(b_list[:4]):
+                b_indices[i, k] = b[0]
+                b_L4[i, k] = b[1]
+                b_K4[i, k] = b[2]
+        cl.enqueue_copy(self.queue, self.cl_global_bond_indices, b_indices).wait()
+        cl.enqueue_copy(self.queue, self.cl_global_bond_L4, b_L4).wait()
+        cl.enqueue_copy(self.queue, self.cl_global_bond_K4, b_K4).wait()
+
+    def build_tiled_topology(self, Rmax, coll_scale=2.0, bbox_scale=2.0):
+        """
+        Launch build_local_topology kernel using Rmax instead of explicit margins.
+        - Collision search margin: coll_scale * Rmax (squared passed to kernels)
+        - BBox padding: bbox_scale * Rmax
+        """
+        coll_margin = coll_scale * Rmax
+        bbox_margin = bbox_scale * Rmax
+        # Ensure bboxes are up to date
+        self.update_verlet(margin_sq=coll_margin**2) # Using existing update_verlet which computes bboxes
+        # Global size must be total threads: num_groups * group_size
+        self.prg.build_local_topology(
+            self.queue, (self.num_groups * self.group_size,), (self.group_size,),
+            self.cl_pos, self.cl_bboxes_min, self.cl_bboxes_max, self.cl_global_bond_indices,
+            self.cl_ghost_indices, self.cl_ghost_counts, self.cl_local_bond_indices,
+            np.int32(self.num_atoms), np.int32(self.num_groups),
+            np.float32(coll_margin**2), np.float32(bbox_margin)
+        )
+
+    def solve_tiled_jacobi(self, dt=0.01, iterations=10, k_coll=1000.0, omega=0.8, momentum_beta=0.0):
+        """
+        Tiled Jacobi solver using solve_cluster_jacobi kernel.
+        """
+        # Global size must be multiple of group_size
+        self.prg.solve_cluster_jacobi(
+            self.queue, (self.num_groups * self.group_size,), (self.group_size,),
+            self.cl_pos, self.cl_pred_pos, self.cl_params,
+            self.cl_local_bond_indices, self.cl_global_bond_L4, self.cl_global_bond_K4,
+            self.cl_ghost_indices, self.cl_ghost_counts,
+            np.int32(self.num_atoms), np.int32(iterations),
+            np.float32(dt), np.float32(k_coll), np.float32(omega), np.float32(momentum_beta),
+            self.cl_debug_force_bond, self.cl_debug_force_coll,
+            self.cl_debug_neigh_indices, self.cl_debug_neigh_pos
+        )
+
+    ## --------------------------------------------------------
     ## -------- Gauss-Seidel Block (keep all in local memory)
     ## --------------------------------------------------------
 

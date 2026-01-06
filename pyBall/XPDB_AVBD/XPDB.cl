@@ -944,9 +944,9 @@ __kernel void build_local_topology(
 
 
 // ------------------------------------------------------------------
-// KERNEL 2: THE SOLVER (Purely Local)
+// KERNEL 2: THE SOLVER (Purely Local Jacobi)
 // ------------------------------------------------------------------
-__kernel void solve_cluster_local(
+__kernel void solve_cluster_jacobi(
     __global float4* curr_pos,          // RW
     __global const float4* pred_pos,    // R
     __global const float4* params,      // R
@@ -960,140 +960,140 @@ __kernel void solve_cluster_local(
     __global const int* ghost_indices_flat,
     __global const int* ghost_counts,
 
-    // Coloring
-    __global const int* atom_colors,
-    
     int num_atoms,
     int inner_iters,
     float dt,
     float k_coll,
-    float omega
+    float omega,
+    float momentum_beta,
+    
+    // Debug Outputs
+    __global float4* out_force_bond,
+    __global float4* out_force_coll,
+    __global int*    out_coll_neigh_indices, // num_atoms * 64
+    __global float4* out_coll_neigh_pos      // num_atoms * 64
 ) {
     int lid = get_local_id(0);
     int grp = get_group_id(0);
     int my_global_id = grp * WG_SIZE + lid;
 
-    // -------------------------------------------
-    // 1. UNIFIED LOCAL MEMORY LOAD
-    // -------------------------------------------
-    // Indices [0..63] are Internal
-    // Indices [64..TOTAL_CAP] are Ghosts
     __local float4 l_pos[TOTAL_CAP];
+    __local float4 l_pos_prev[WG_SIZE]; // Only need prev for internal atoms
+    __local float4 l_pos_new[WG_SIZE];
 
-    // A. Load Internal
+    // Load Internal
     if (my_global_id < num_atoms) {
         l_pos[lid] = curr_pos[my_global_id];
+        l_pos_prev[lid] = l_pos[lid]; 
     } else {
-        l_pos[lid] = (float4)(0.0f); // Padding
+        l_pos[lid] = (float4)(0.0f);
+        l_pos_prev[lid] = (float4)(0.0f);
     }
 
-    // B. Load Ghosts
-    int g_count = ghost_counts[grp];
-    int g_offset = grp * MAX_GHOSTS;
-    
-    // Cooperative load
-    for (int k = lid; k < g_count; k += WG_SIZE) {
-        int g_idx = ghost_indices_flat[g_offset + k];
-        l_pos[WG_SIZE + k] = curr_pos[g_idx];
-    }
-
-    // Load Constants to Registers
+    // Load Constants
     float4 my_pred = (my_global_id < num_atoms) ? pred_pos[my_global_id] : (float4)(0.0f);
-    float my_mass = (my_global_id < num_atoms) ? params[my_global_id].w : 1.0f;
-    float my_rad = (my_global_id < num_atoms) ? params[my_global_id].x : 0.0f;
-    
-    int4 my_bonds = (my_global_id < num_atoms) ? local_bond_indices[my_global_id] : (int4)(-1);
-    float4 my_L = (my_global_id < num_atoms) ? bond_lengths[my_global_id] : (float4)(0.0f);
-    float4 my_K = (my_global_id < num_atoms) ? bond_stiffness[my_global_id] : (float4)(0.0f);
-    
-    int my_color = (my_global_id < num_atoms) ? atom_colors[my_global_id] : -1;
-    float alpha = my_mass / (dt*dt);
+    float my_mass  = (my_global_id < num_atoms) ? params[my_global_id].w : 1.0f;
+    float my_rad   = (my_global_id < num_atoms) ? params[my_global_id].x : 0.0f;
+    int4 my_bonds  = (my_global_id < num_atoms) ? local_bond_indices[my_global_id] : (int4)(-1);
+    float4 my_L    = (my_global_id < num_atoms) ? bond_lengths[my_global_id] : (float4)(0.0f);
+    float4 my_K    = (my_global_id < num_atoms) ? bond_stiffness[my_global_id] : (float4)(0.0f);
+    float alpha    = my_mass / (dt*dt);
 
+    __local float l_rad[TOTAL_CAP];
+    if (my_global_id < num_atoms) {
+        l_rad[lid] = my_rad;
+    }
     barrier(CLK_LOCAL_MEM_FENCE);
 
-    // -------------------------------------------
-    // 2. SOLVER LOOP (No Global Reads!)
-    // -------------------------------------------
-    // We iterate over colors to ensure stability
-    
+    float3 f_bond = (float3)(0.0f);
+    float3 f_coll = (float3)(0.0f);
+
     for (int iter = 0; iter < inner_iters; iter++) {
-        
-        // Assume 2 Colors (Red/Black) usually sufficient
-        for (int c = 0; c < 2; c++) {
-            
-            if (my_color == c && my_global_id < num_atoms) {
-                
-                float3 p = l_pos[lid].xyz;
-                float3 force = alpha * (my_pred.xyz - p);
-                float k_sum = alpha;
+        // Load Ghosts
+        int g_count = ghost_counts[grp];
+        int g_offset = grp * MAX_GHOSTS;
+        for (int k = lid; k < g_count; k += WG_SIZE) {
+            int g_idx = ghost_indices_flat[g_offset + k];
+            l_pos[WG_SIZE + k] = curr_pos[g_idx];
+            l_rad[WG_SIZE + k] = params[g_idx].x;
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
 
-                // --- A. Bonds (Using Local Indices) ---
-                #define APPLY_BOND(comp) \
-                if (my_bonds.comp != -1) { \
-                    int idx = my_bonds.comp; \
-                    float3 n_pos = l_pos[idx].xyz; \
-                    float3 diff = p - n_pos; \
-                    float dist = length(diff); \
-                    if (dist > 1e-6f) { \
-                        float C = dist - my_L.comp; \
-                        float st = my_K.comp; \
-                        force -= st * C * (diff/dist); \
-                        k_sum += st; \
-                    } \
-                }
+        if (my_global_id < num_atoms) {
+            float3 p = l_pos[lid].xyz;
+            float3 force = alpha * (my_pred.xyz - p);
+            f_bond = (float3)(0.0f);
+            f_coll = (float3)(0.0f);
+            float k_sum = alpha;
 
-                APPLY_BOND(x);
-                APPLY_BOND(y);
-                APPLY_BOND(z);
-                APPLY_BOND(w);
+            // Bonds
+            #define APPLY_BOND_J(comp) \
+            if (my_bonds.comp != -1) { \
+                int idx = my_bonds.comp; \
+                float3 n_pos = l_pos[idx].xyz; \
+                float3 diff = p - n_pos; \
+                float dist = length(diff); \
+                if (dist > 1e-6f) { \
+                    float C = dist - my_L.comp; \
+                    float st = my_K.comp; \
+                    float3 f = -st * C * (diff/dist); \
+                    f_bond += f; \
+                    k_sum += st; \
+                } \
+            }
+            APPLY_BOND_J(x); APPLY_BOND_J(y); APPLY_BOND_J(z); APPLY_BOND_J(w);
 
-                // --- B. Collisions (All-to-All in Local Mem) ---
-                // Check against everything: Internal + Ghosts
-                int check_count = WG_SIZE + g_count;
-                
-                for (int j = 0; j < check_count; j++) {
-                    if (j == lid) continue; // Skip self
-                    
-                    // Skip if bonded? 
-                    // Optimization: We can check against my_bonds registers
-                    if (j == my_bonds.x || j == my_bonds.y || j == my_bonds.z || j == my_bonds.w) continue;
+            // Collisions
+            int check_count = WG_SIZE + g_count;
+            int coll_count = 0;
+            for (int j = 0; j < check_count; j++) {
+                if (j == lid) continue;
+                if (j == my_bonds.x || j == my_bonds.y || j == my_bonds.z || j == my_bonds.w) continue;
+                float4 other = l_pos[j];
+                float3 diff = p - other.xyz;
+                float dist_sq = dot(diff, diff);
+                float r_sum = my_rad + l_rad[j];
+                if (dist_sq < r_sum * r_sum && dist_sq > 1e-12f) {
+                    float dist = sqrt(dist_sq);
+                    float overlap = dist - r_sum;
+                    float3 f = -k_coll * overlap * (diff/dist);
+                    f_coll += f;
+                    k_sum += k_coll;
 
-                    float4 other = l_pos[j];
-                    // Optimization: If ghost is padded/invalid, other.w might be 0, assume mass/rad > 0
-                    // Let's assume params are stored in .x (radius) .w (mass) of pos vector for simplicity here
-                    // Or we assume radius is uniform? 
-                    // Let's assume other.x is position, and we lack radius info for ghost?
-                    // **CRITICAL**: Ghost load needs to load radius too. 
-                    // We assume curr_pos.w contains mass? No, typically radius is in params.
-                    // For ghosts, we loaded curr_pos. We need ghost params.
-                    // *Fix*: We can pack Radius into curr_pos.w for the Solver phase.
-                    
-                    float3 diff = p - other.xyz;
-                    float dist_sq = dot(diff, diff);
-                    
-                    // Assume radius stored in .w of pos for this kernel context
-                    float r_sum = my_rad + 0.5f; // Hack: need to load ghost radius properly
-                    
-                    if (dist_sq < r_sum * r_sum) {
-                        float dist = sqrt(dist_sq);
-                        float overlap = dist - r_sum;
-                        force -= k_coll * overlap * (diff/dist);
-                        k_sum += k_coll;
+                    // Debug neighbor storage
+                    if (iter == inner_iters - 1 && coll_count < 64) {
+                        int global_neigh_idx = (j < WG_SIZE) ? (grp * WG_SIZE + j) : ghost_indices_flat[g_offset + (j - WG_SIZE)];
+                        out_coll_neigh_indices[my_global_id * 64 + coll_count] = global_neigh_idx;
+                        out_coll_neigh_pos[my_global_id * 64 + coll_count] = other;
+                        coll_count++;
                     }
                 }
-
-                // Update
-                p += (force / k_sum) * omega;
-                l_pos[lid] = (float4)(p, 0.0f); // Preserve w?
             }
-            barrier(CLK_LOCAL_MEM_FENCE);
+            if (iter == inner_iters - 1) {
+                for (int k = coll_count; k < 64; k++) {
+                    out_coll_neigh_indices[my_global_id * 64 + k] = -1;
+                }
+            }
+
+            force += f_bond + f_coll;
+            float3 p_new = p + (force / k_sum) * omega;
+            if (momentum_beta != 0.0f) {
+                p_new += (p - l_pos_prev[lid].xyz) * momentum_beta;
+            }
+            l_pos_new[lid] = (float4)(p_new, 0.0f);
         }
+        barrier(CLK_LOCAL_MEM_FENCE);
+        
+        if (my_global_id < num_atoms) {
+            l_pos_prev[lid] = l_pos[lid];
+            l_pos[lid] = l_pos_new[lid];
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
     }
 
-    // -------------------------------------------
-    // 3. WRITE BACK
-    // -------------------------------------------
     if (my_global_id < num_atoms) {
         curr_pos[my_global_id] = l_pos[lid];
+        out_force_bond[my_global_id] = (float4)(f_bond, 0.0f);
+        out_force_coll[my_global_id] = (float4)(f_coll, 0.0f);
     }
 }
