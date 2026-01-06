@@ -15,6 +15,10 @@ kept for reference only.
 - [x] **Gizmo & Manipulation** – `THREE.TransformControls` on proxy object
 - [x] **Labels** – instanced text labels (ID / element / type placeholder)
 - [x] **MM Parameters** – `ElementTypes.dat` + `AtomTypes.dat` integration
+- [x] **Two-system model (molecule + substrate)** – independent `EditableMolecule` + `MoleculeRenderer` instances, no `main` system
+- [x] **ScriptRunner handles** – direct `molecule`/`substrate`/`mol` handles for `clear()`, `load()`, `build_substrate()`, `move/rotate/replicate()`
+- [x] **EditableMolecule.lvec + replicate** – per-instance lattice vectors, physical PBC replication (atoms+bonds+lvec)
+- [x] **Instanced rendering** – atoms as instanced impostor quads, bonds as line segments, shared shaders; replication clones visual meshes per-lattice without duplicating data
 
 ### 1.2 Topology / Chemistry (Planned or Partial)
 
@@ -69,7 +73,7 @@ kept for reference only.
 - [x] **Direction-based attachment** (cap+back atom with up-vector + twist) via `EditableMolecule.attachParsedByDirection`
 - [x] **Examples UI** (from `tests/tAttach/*`) to load backbones/endgroups and run marker attach in one click
 
-## 2. Current Architecture Overview
+### 2. Current Architecture Overview
 
 ### 2.1 HTML & Entry Point
 
@@ -80,12 +84,8 @@ kept for reference only.
 - `web/molgui_web/js/main.js`
   - Sets up scene, orthographic camera, renderer, `OrbitControls`.
   - Loads shaders from `../common_resources/shaders/` (atoms, bonds, selection, labels).
-  - Instantiates:
-    - `EditableMolecule` (authoritative model)
-    - `PackedMolecule` + `MeshRenderer` (via `MoleculeRenderer` wrapper)
-    - `Editor` (selection + gizmo)
-    - `GUI` (sidebar)
-    - `ShortcutManager`
+  - Instantiates two authoritative systems only: `molecule` and `substrate` (each with its own `EditableMolecule`, `PackedMolecule`, `MoleculeRenderer`); no `main`.
+  - `Editor` (selection + gizmo), `GUI` (sidebar), `ShortcutManager`, `ScriptRunner`.
 
 ### 2.1.1 Controls / UX (Target Scheme)
 
@@ -228,6 +228,13 @@ kept for reference only.
 
 - `ShortcutManager.js`
   - Global keyboard shortcuts (gizmo toggle/mode, delete, add atom, recalc bonds).
+
+### 2.4.1 Recent changes (Jan 2026)
+
+- Switched to **two-system model** (`molecule`, `substrate`), removed `main` system; each has its own renderer.
+- **ScriptRunner handles**: `molecule`, `substrate`, alias `mol`; methods `clear`, `load`, `build_substrate`, `move/translate`, `rotate/roate`, `replicate/replication`. Commands accept optional `system` without changing global state.
+- **EditableMolecule**: per-instance `lvec` and `replicate(nrep,lvec)` clone atoms/bonds and scale lattice; rotation uses `Mat3.fromAxisAngle` and guards missing positions.
+- **Default user script**: clears both systems, builds substrate, loads/positions molecule, replicates each; no `main`/merge.
 
 ## 3. Planned Topology / Chemistry Features (Details)
 

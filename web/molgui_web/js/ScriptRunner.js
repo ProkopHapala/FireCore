@@ -12,9 +12,7 @@ import { BuildersGUI } from './BuildersGUI.js';
 export class ScriptRunner {
     constructor(app) {
         this.app = app;
-        this.systems = new Map();
-        this.activeSystemName = 'main';
-        if (app.system) this.systems.set('main', app.system);
+        this.activeSystemName = 'molecule';
         this.commands = {
             'clear':           this.clear.bind(this),
             'new_system':      this.newSystem.bind(this),
@@ -37,12 +35,8 @@ export class ScriptRunner {
     }
 
     get system() {
-        let s = this.systems.get(this.activeSystemName);
-        if (!s && this.activeSystemName === 'main') {
-            s = this.app.system;
-            if (s) this.systems.set('main', s);
-        }
-        return s || this.app.system;
+        const s = this.app.systems[this.activeSystemName];
+        return s || this.app.systems.molecule || this.app.system;
     }
 
     async run(script) {
@@ -87,16 +81,50 @@ export class ScriptRunner {
         }
         api.run = (cmd, opts = {}) => { queue.push({ name: cmd, opts }); };
 
+        // Handle-based system API
+        const createSystemHandle = (name) => {
+            const sys = this.app.systems[name];
+            if (!sys) throw new Error(`createSystemHandle: system '${name}' not found`);
+            const rend = this.app.renderers[name];
+            const handle = {
+                id: name,
+                system: sys,
+                renderer: rend,
+                clear: () => { queue.push({ name: 'clear', opts: { system: name } }); },
+                load: (opts) => { 
+                    const o = (typeof opts === 'string') ? { path: opts } : opts;
+                    queue.push({ name: 'load_molecule', opts: { ...o, system: name } }); 
+                },
+                build_substrate: (preset, opts) => {
+                    let o = (typeof preset === 'string') ? { preset, ...opts } : preset;
+                    if (o.size) { o.nx = o.size[0]; o.ny = o.size[1]; o.nz = o.size[2]; }
+                    queue.push({ name: 'build_substrate', opts: { ...o, system: name } });
+                },
+                move: (vec) => { queue.push({ name: 'translate', opts: { vec, system: name } }); },
+                translate: (vec) => { queue.push({ name: 'translate', opts: { vec, system: name } }); },
+                rotate: (axis, deg, ctr) => { queue.push({ name: 'rotate', opts: { axis, deg, center: ctr, system: name } }); },
+                roate: (axis, deg, ctr) => { queue.push({ name: 'rotate', opts: { axis, deg, center: ctr, system: name } }); },
+                replicate: (nrep) => { queue.push({ name: 'replicate', opts: { n: nrep, system: name } }); },
+                replication: (opts) => { queue.push({ name: 'replication', opts: { ...opts, name: name, system: name } }); }
+            };
+            return handle;
+        };
+
+        api.get_system = createSystemHandle;
+        const molecule  = createSystemHandle('molecule');
+        const substrate = createSystemHandle('substrate');
+        const mol = molecule;
+
         const decls = Object.keys(this.commands).map(n => `const ${n} = api.${n};`).join('\n');
 
-        const fn = new Function('api', 'app', 'CrystalUtils', 'EditableMolecule', 'Vec3', 'Mat3', 'console', 'logger', `
+        const fn = new Function('api', 'app', 'CrystalUtils', 'EditableMolecule', 'Vec3', 'Mat3', 'console', 'logger', 'molecule', 'substrate', 'mol', `
             "use strict";
             ${decls}
-            const system = api.use_system;
+            const get_system = api.get_system;
             ${text}
         `);
         try {
-            fn(api, this.app, CrystalUtils, EditableMolecule, Vec3, Mat3, console, window.logger || console);
+            fn(api, this.app, CrystalUtils, EditableMolecule, Vec3, Mat3, console, window.logger || console, molecule, substrate, mol);
             for (const { name, opts } of queue) {
                 const cmd = this.commands[name];
                 if (!cmd) throw new Error(`Unknown command '${name}'`);
@@ -110,56 +138,65 @@ export class ScriptRunner {
 
     finalize() {
         if (!this.app) return;
-        if (this.app.molRenderer) {
-            this.app.molRenderer.updateSelection();
-            this.app.molRenderer.update();
-        }
+        Object.values(this.app.renderers).forEach(r => r.update());
         if (this.app.editor) this.app.editor.updateGizmo();
         if (this.app.requestRender) this.app.requestRender();
     }
 
     // --- Command Handlers ---
 
-    clear() {
+    clear(args = {}) {
+        const prev = this.activeSystemName;
+        if (args.system) this.useSystem(args.system);
         this.system.clear();
+        if (args.system) this.useSystem(prev);
     }
 
     newSystem(args) {
         const name = (typeof args === 'string') ? args : (args.name || 'new');
-        const s = new EditableMolecule();
-        this.systems.set(name, s);
+        if (!this.app.systems[name]) {
+            this.app.systems[name] = new EditableMolecule();
+            const packed = new PackedMolecule();
+            this.app.renderers[name] = new MoleculeRenderer(this.app.scene, packed, this.app.shaders, this.app.mmParams, this.app.systems[name]);
+            if (this.app.renderers[name].toggleAxes) this.app.renderers[name].toggleAxes(true);
+        }
         this.activeSystemName = name;
-        return s;
+        return this.app.systems[name];
     }
 
     useSystem(args) {
-        const name = (typeof args === 'string') ? args : (args.name || 'main');
-        if (!this.systems.has(name) && name !== 'main') {
+        const name = (typeof args === 'string') ? args : (args.name || 'molecule');
+        if (!this.app.systems[name]) {
             return this.newSystem(name);
         }
         this.activeSystemName = name;
     }
 
     mergeSystems(args) {
-        const { source, target = 'main', deleteSource = true } = args;
+        const { source, target = 'molecule', deleteSource = true } = args;
         if (!source) throw new Error('merge_systems: source name required');
-        const src = this.systems.get(source);
-        const dst = this.systems.get(target);
+        const src = this.app.systems[source];
+        const dst = this.app.systems[target];
         if (!src || !dst) throw new Error(`merge_systems: system missing src=${!!src} dst=${!!dst}`);
 
         const parsed = src.exportAsParsed();
         dst.appendParsedSystem(parsed);
         
-        if (deleteSource) {
-            this.systems.delete(source);
+        if (deleteSource && source !== 'main' && source !== 'molecule' && source !== 'substrate') {
+            delete this.app.systems[source];
+            delete this.app.renderers[source];
             if (this.activeSystemName === source) this.activeSystemName = target;
         }
         dst.dirtyExport = true;
     }
 
     async loadMolecule(args) {
-        const { path, fmt } = args;
+        const { path, fmt, system } = args;
         if (!path) throw new Error("load_molecule: path required");
+        
+        const prev = this.activeSystemName;
+        if (system) this.useSystem(system);
+
         const realFmt = fmt || path.split('.').pop().toLowerCase();
         
         const response = await fetch(path);
@@ -181,6 +218,8 @@ export class ScriptRunner {
         mm.clearSelection();
         ids.forEach(id => mm.selection.add(id));
         mm.dirtyExport = true;
+
+        if (system) this.useSystem(prev);
     }
 
     makeSubstrate(args) {
@@ -188,22 +227,34 @@ export class ScriptRunner {
     }
 
     translate(args) {
-        const { vec, sel = 'current' } = args;
+        const { vec, sel = 'current', system } = args;
         if (!vec || vec.length < 3) throw new Error("translate: vec [x,y,z] required");
+        
+        const prev = this.activeSystemName;
+        if (system) this.useSystem(system);
+
         const mm = this.system;
         const d = (vec instanceof Vec3) ? vec : new Vec3(vec[0], vec[1], vec[2]);
         const ids = (sel === 'all') ? mm.atoms.map(a => a.id) : Array.from(mm.selection);
         mm.translateAtoms(ids, d);
+
+        if (system) this.useSystem(prev);
     }
 
     rotate(args) {
-        const { axis, deg, sel = 'current', center } = args;
+        const { axis, deg, sel = 'current', center, system } = args;
         if (!axis || axis.length < 3 || deg === undefined) throw new Error("rotate: axis and deg required");
+        
+        const prev = this.activeSystemName;
+        if (system) this.useSystem(system);
+
         const mm = this.system;
         const ids = (sel === 'all') ? mm.atoms.map(a => a.id) : Array.from(mm.selection);
         const vAxis = (axis instanceof Vec3) ? axis : new Vec3(axis[0], axis[1], axis[2]);
         const ctr = (center && center.length >= 3) ? new Vec3(center[0], center[1], center[2]) : null;
         mm.rotateAtoms(ids, vAxis, deg, ctr);
+
+        if (system) this.useSystem(prev);
     }
 
     select(args) {
@@ -234,7 +285,8 @@ export class ScriptRunner {
     }
 
     replicate(args) {
-        this.replication({ name: 'default', ...args });
+        const system = args.system || 'default';
+        this.replication({ name: system, system, ...args });
     }
 
     bake() {
@@ -242,9 +294,18 @@ export class ScriptRunner {
     }
 
     replication(args) {
-        const { name = 'default', n, lattice, show = true, showBox = false } = args;
+        const { name = 'default', n, lattice, show = true, showBox = false, system } = args;
         const lat = this.app.getLattice(name);
         if (n) { lat.nrep.x = n[0]; lat.nrep.y = n[1]; lat.nrep.z = n[2]; }
+        
+        // Sync lattice vectors from system if requested
+        const targetSys = system ? this.app.systems[system] : this.app.systems[name];
+        if (targetSys && targetSys.lvec && !lattice) {
+            lat.lvec[0].setV(targetSys.lvec[0]);
+            lat.lvec[1].setV(targetSys.lvec[1]);
+            lat.lvec[2].setV(targetSys.lvec[2]);
+        }
+
         if (lattice) {
             lat.lvec[0].set(lattice[0][0], lattice[0][1], lattice[0][2]);
             lat.lvec[1].set(lattice[1][0], lattice[1][1], lattice[1][2]);
@@ -258,7 +319,12 @@ export class ScriptRunner {
     // --- Builder bindings ---
 
     buildSubstrate(args) {
-        const { a = 2.82065, nx = 13, ny = 12, nz = 3, replication = true } = args || {};
+        const { a = 2.82065, nx = 13, ny = 12, nz = 3, replication = true, system, preset, step_edge } = args || {};
+        
+        const prev = this.activeSystemName;
+        if (system) this.useSystem(system);
+
+        // TODO: Handle 'preset' and 'step_edge' properly if they differ from default genNaClStep
         const mol = CrystalUtils.genNaClStep({ a, nx, ny, nz });
         const parsed = mol.exportAsParsed();
         const ids = this.system.appendParsedSystem(parsed, { pos: new Vec3(0, 0, 0) });
@@ -268,7 +334,8 @@ export class ScriptRunner {
 
         if (replication) {
             this.replication({
-                name: 'substrate',
+                name: system || 'substrate',
+                system: system || 'substrate',
                 n: [0, 0, 0], // Default to 1x1x1 (no extra replicas)
                 lattice: [
                     [a * nx, 0, 0],
@@ -278,6 +345,8 @@ export class ScriptRunner {
                 show: true
             });
         }
+
+        if (system) this.useSystem(prev);
     }
 
     buildPolymer(args) {

@@ -26,7 +26,9 @@ export class MolGUIApp {
         this._rafPending = true;
         requestAnimationFrame(() => {
             this._rafPending = false;
-            if (this.molRenderer) this.molRenderer.update();
+            if (this.renderers) {
+                Object.values(this.renderers).forEach(r => r.update());
+            }
             if (this.renderer && this.scene && this.camera) this.renderer.render(this.scene, this.camera);
         });
     }
@@ -155,20 +157,33 @@ export class MolGUIApp {
             window.logger.error("OrbitControls not loaded!");
         }
 
-        // 5. Molecule System (authoritative editable model) + packed buffer for renderer
-        this.system = new EditableMolecule();
-        this.packedSystem = new PackedMolecule();
+        // 5. Molecule Systems (authoritative editable models)
+        this.systems = {
+            molecule:  new EditableMolecule(),
+            substrate: new EditableMolecule()
+        };
+        this.system = this.systems.molecule; // default active system
+        
+        this.packedSystems = {
+            molecule:  new PackedMolecule(),
+            substrate: new PackedMolecule()
+        };
 
         // 5. MMParams (Load resources)
         this.mmParams = new MMParams();
         await this.mmParams.loadResources('../common_resources/ElementTypes.dat', '../common_resources/AtomTypes.dat', '../common_resources/BondTypes.dat');
 
-        // 6. Molecule Renderer (renders packedSystem; syncs from EditableMolecule)
-        this.molRenderer = new MoleculeRenderer(this.scene, this.packedSystem, this.shaders, this.mmParams, this.system);
+        // 6. Molecule Renderers
+        this.renderers = {
+            molecule:  new MoleculeRenderer(this.scene, this.packedSystems.molecule,  this.shaders, this.mmParams, this.systems.molecule),
+            substrate: new MoleculeRenderer(this.scene, this.packedSystems.substrate, this.shaders, this.mmParams, this.systems.substrate)
+        };
+        this.molRenderer = this.renderers.molecule; // default active renderer
+
         // Default: show axes (GUI default is checked)
-        if (this.molRenderer && this.molRenderer.toggleAxes) {
-            this.molRenderer.toggleAxes(true);
-        }
+        Object.values(this.renderers).forEach(r => {
+            if (r && r.toggleAxes) r.toggleAxes(true);
+        });
 
         // 7. Script Runner
         this.scriptRunner = new ScriptRunner(this);
@@ -219,13 +234,15 @@ export class MolGUIApp {
             const { x: nx, y: ny, z: nz } = lat.nrep;
             const [a, b, c] = lat.lvec;
             
-            // NOTE: Currently MoleculeRenderer renders everything in app.system into its meshes.
-            // To replicate only a subset (e.g. only substrate), we'd need separate meshes or a filter.
-            // For now, they all replicate the entire scene unless we implement selective rendering.
+            // Pick correct renderer based on lattice name
+            let targetRenderer = this.molRenderer;
+            if (name === 'substrate') targetRenderer = this.renderers.substrate;
+            else if (name === 'molecule') targetRenderer = this.renderers.molecule;
+
             const baseMeshes = [
-                this.molRenderer.atomMesh, 
-                this.molRenderer.bondLines, 
-                this.molRenderer.labelMesh
+                targetRenderer.atomMesh, 
+                targetRenderer.bondLines, 
+                targetRenderer.labelMesh
             ].filter(m => m !== null);
 
             for (let ix = -nx; ix <= nx; ix++) {
@@ -264,36 +281,17 @@ export class MolGUIApp {
         this.bakeReplicas = (name = 'default') => {
             const lat = this.getLattice(name);
             const { x: nx, y: ny, z: nz } = lat.nrep;
-            const [a, b, c] = lat.lvec;
-            const mm = this.system;
-            const atoms0 = [...mm.atoms];
-            const bonds0 = [...mm.bonds];
-            for (let ix = -nx; ix <= nx; ix++) {
-                for (let iy = -ny; iy <= ny; iy++) {
-                    for (let iz = -nz; iz <= nz; iz++) {
-                        if (ix === 0 && iy === 0 && iz === 0) continue;
-                        const shift = new Vec3();
-                        shift.addMul(a, ix);
-                        shift.addMul(b, iy);
-                        shift.addMul(c, iz);
-                        const idsNew = new Map();
-                        atoms0.forEach(atom => {
-                            if (!atom) return;
-                            const id = mm.addAtom(atom.pos.x + shift.x, atom.pos.y + shift.y, atom.pos.z + shift.z, atom.Z);
-                            idsNew.set(atom.id, id);
-                        });
-                        bonds0.forEach(bond => {
-                            if (!bond) return;
-                            const aNew = idsNew.get(bond.aId);
-                            const bNew = idsNew.get(bond.bId);
-                            if (aNew !== undefined && bNew !== undefined) mm.addBond(aNew, bNew);
-                        });
-                    }
-                }
-            }
-            if (this.molRenderer) this.molRenderer.update();
+            
+            let targetSystem = this.system;
+            if (name === 'substrate') targetSystem = this.systems.substrate;
+            else if (name === 'molecule') targetSystem = this.systems.molecule;
+
+            targetSystem.replicate([nx * 2 + 1, ny * 2 + 1, nz * 2 + 1], lat.lvec);
+            
+            // Trigger UI and Renderer update
+            if (this.gui) this.gui.updateSelectionUI();
             this.requestRender();
-            window.logger.info(`Baked replicas: system now has ${this.system.atoms.length} atoms.`);
+            window.logger.info(`Baked replicas for '${name}': system now has ${targetSystem.atoms.length} atoms.`);
         };
 
         // --- Bucket overlay (debug visualization) ---
@@ -444,21 +442,7 @@ export class MolGUIApp {
             this.molRenderer.updateSelection();
         };
 
-        // Create Test Molecule (Water: H-O-H)
-        const o  = this.system.addAtomZ(8, 0, 0, 0);
-        const h1 = this.system.addAtomZ(1, 0.8, 0.6, 0);
-        const h2 = this.system.addAtomZ(1, -0.8, 0.6, 0);
-        this.system.addBond(o, h1);
-        this.system.addBond(o, h2);
-
-        // Methane-like structure nearby
-        const c  = this.system.addAtomZ(6, 3, 0, 0);
-        const h3 = this.system.addAtomZ(1, 3, 1, 0);
-        const h4 = this.system.addAtomZ(1, 3, -0.5, 0.8);
-        const h5 = this.system.addAtomZ(1, 3, -0.5, -0.8);
-        this.system.addBond(c, h3);
-        this.system.addBond(c, h4);
-        this.system.addBond(c, h5);
+        // No default molecules added; scripts/builders should populate systems as needed.
 
         this.molRenderer.update();
 
@@ -498,7 +482,9 @@ export class MolGUIApp {
         requestAnimationFrame(this.animate.bind(this));
         if (!this.continuousRender) return;
         if (this.controls) this.controls.update();
-        if (this.molRenderer) this.molRenderer.update();
+        if (this.renderers) {
+            Object.values(this.renderers).forEach(r => r.update());
+        }
         if (this.renderer && this.scene && this.camera) this.renderer.render(this.scene, this.camera);
     }
 }

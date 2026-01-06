@@ -537,19 +537,18 @@ export class GUI {
         this.createSection(sidebar, 'User Script', (container) => {
             GUIutils.div(container, null, { fontSize: '0.9em', marginBottom: '4px' }).textContent = 'JavaScript (async supported):';
             const defaultScript = `
-new_system("substrate");
-build_substrate({ nx: 13, ny: 12, nz: 3 });
-replication({ name: "substrate", n: [1, 1, 0] }); // Visual replication of substrate
+molecule.clear();
+substrate.clear();
 
-new_system("molecule");
-load_molecule({ path: "../../cpp/common_resources/xyz/PTCDA.xyz", fmt: "xyz" });
-translate({ vec: [0, 0, 10] });
+// Build substrate directly into the 'substrate' system
+substrate.build_substrate('NaCl', { size:[13,12,3], step_edge:[0,0,1] });
+substrate.replication({ n: [1, 1, 0], show: true, showBox: true });
 
-use_system("main");
-merge_systems({ source: "substrate" });
-merge_systems({ source: "molecule" });
-
-replication({ name: "default", n: [1, 1, 1], lattice: [[36.6, 0, 0], [0, 33.8, 0], [0, 0, 10]] });
+// Load molecule directly into the 'molecule' system
+mol.load("../../cpp/common_resources/xyz/PTCDA.xyz");
+mol.move([0, 0, 10]);
+mol.rotate([0, 0, 1], 16.0);
+molecule.replication({ n: [1, 1, 0], show: true, showBox: false });
 `.trim();
             
             const ta = GUIutils.textArea(container, defaultScript, { 
@@ -567,59 +566,84 @@ replication({ name: "default", n: [1, 1, 1], lattice: [[36.6, 0, 0], [0, 33.8, 0
 
         // --- Section: Replicas / Lattice ---
         this.createSection(sidebar, 'Replicas / Lattice', (container) => {
-            const rowShow = GUIutils.row(container);
-            GUIutils.labelCheck(rowShow, 'Show Replicas', false, (e) => {
+            const rowSystem = GUIutils.row(container);
+            GUIutils.span(rowSystem, 'System: ');
+            const selLattice = GUIutils.selectList(rowSystem, ['default', 'substrate', 'molecule'], 'default', (val) => {
+                const lat = window.app.getLattice(val);
+                chkShow.checked = lat.show;
+                chkShowBox.checked = lat.showBox;
+                inpNx.value = lat.nrep.x;
+                inpNy.value = lat.nrep.y;
+                inpNz.value = lat.nrep.z;
+                updateLvecTA();
+            }, { flexGrow: '1' });
+
+            const rowShow = GUIutils.row(container, { marginTop: '5px' });
+            const chkShow = GUIutils.labelCheck(rowShow, 'Show Replicas', false, (e) => {
                 if (window.app) {
-                    window.app.lattice.show = e.target.checked;
-                    window.app.updateReplicas();
+                    const name = selLattice.value;
+                    const lat = window.app.getLattice(name);
+                    lat.show = e.target.checked;
+                    window.app.updateReplicas(name);
                 }
-            });
+            }).input;
 
             const rowShowBox = GUIutils.row(container, { marginTop: '2px' });
-            GUIutils.labelCheck(rowShowBox, 'Show Lattice Box', false, (e) => {
+            const chkShowBox = GUIutils.labelCheck(rowShowBox, 'Show Lattice Box', false, (e) => {
                 if (window.app) {
-                    window.app.lattice.showBox = e.target.checked;
-                    window.app.updateLatticeBox();
+                    const name = selLattice.value;
+                    const lat = window.app.getLattice(name);
+                    lat.showBox = e.target.checked;
+                    window.app.updateLatticeBox(name);
                 }
-            });
+            }).input;
 
             const rowN = GUIutils.row(container, { marginTop: '5px' });
-            GUIutils.span(rowN, 'nx,ny,nz: ', { fontSize: '0.9em', marginRight: '5px' });
-            const inpNx = GUIutils.num(rowN, 1, { min: 0, step: 1 }, { width: '40px' });
-            const inpNy = GUIutils.num(rowN, 1, { min: 0, step: 1 }, { width: '40px', marginLeft: '5px' });
-            const inpNz = GUIutils.num(rowN, 1, { min: 0, step: 1 }, { width: '40px', marginLeft: '5px' });
-
+            GUIutils.span(rowN, 'nRep: ');
+            const mkInt = (val, cb) => {
+                const inp = GUIutils.num(rowN, val, { min: 0, step: 1 }, { width: '40px', marginLeft: '5px' });
+                inp.onchange = cb;
+                return inp;
+            };
             const updateN = () => {
                 if (window.app) {
-                    window.app.lattice.nrep.x = parseInt(inpNx.value) || 0;
-                    window.app.lattice.nrep.y = parseInt(inpNy.value) || 0;
-                    window.app.lattice.nrep.z = parseInt(inpNz.value) || 0;
-                    window.app.updateReplicas();
+                    const name = selLattice.value;
+                    const lat = window.app.getLattice(name);
+                    lat.nrep.x = parseInt(inpNx.value) || 0;
+                    lat.nrep.y = parseInt(inpNy.value) || 0;
+                    lat.nrep.z = parseInt(inpNz.value) || 0;
+                    window.app.updateReplicas(name);
                 }
             };
-            inpNx.onchange = updateN;
-            inpNy.onchange = updateN;
-            inpNz.onchange = updateN;
+            const inpNx = mkInt(1, updateN);
+            const inpNy = mkInt(1, updateN);
+            const inpNz = mkInt(1, updateN);
 
-            GUIutils.div(container, null, { fontSize: '0.9em', marginTop: '10px', marginBottom: '5px' }).textContent = 'Lattice Vectors:';
-            const taLvec = GUIutils.textArea(container, '10.0 0.0 0.0\n0.0 10.0 0.0\n0.0 0.0 10.0', { height: '60px', fontSize: '0.85em', width: '100%', display: 'block' });
-            const applyLattice = () => {
-                if (!window.app) return;
-                const lines = taLvec.value.trim().split('\n');
-                for (let i = 0; i < 3 && i < lines.length; i++) {
-                    const vals = lines[i].trim().split(/\s+/).map(parseFloat);
-                    if (vals.length >= 3) {
-                        window.app.lattice.lvec[i].set(vals[0], vals[1], vals[2]);
-                    }
-                }
-                window.app.updateReplicas();
+            const taLvec = GUIutils.textArea(container, '', { width: '100%', height: '60px', marginTop: '5px', fontSize: '11px', fontFamily: 'monospace' });
+            const updateLvecTA = () => {
+                const lat = window.app.getLattice(selLattice.value);
+                taLvec.value = lat.lvec.map(v => `${v.x.toFixed(3)} ${v.y.toFixed(3)} ${v.z.toFixed(3)}`).join('\n');
             };
-            taLvec.oninput = applyLattice;
+            taLvec.onchange = () => {
+                if (window.app) {
+                    const name = selLattice.value;
+                    const lat = window.app.getLattice(name);
+                    const lines = taLvec.value.trim().split('\n');
+                    lines.forEach((l, i) => {
+                        if (i < 3) {
+                            const p = l.trim().split(/\s+/).map(parseFloat);
+                            if (p.length >= 3) lat.lvec[i].set(p[0], p[1], p[2]);
+                        }
+                    });
+                    window.app.updateReplicas(name);
+                }
+            };
+            updateLvecTA();
 
             const rowBtns = GUIutils.row(container, { marginTop: '5px' });
-            GUIutils.btn(rowBtns, 'Bake', () => {
-                if (window.app && window.app.bakeReplicas) window.app.bakeReplicas('default');
-            }, { marginLeft: '5px', flexGrow: '0', backgroundColor: '#664444' });
+            GUIutils.btn(rowBtns, 'Bake Replicas', () => {
+                if (window.app) window.app.bakeReplicas(selLattice.value);
+            }, { flexGrow: '1' });
         });
 
         // --- Section: Parameters ---

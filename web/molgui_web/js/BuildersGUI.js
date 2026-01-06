@@ -668,40 +668,58 @@ export class BuildersGUI {
             };
 
             const applyToScene = (data, mode) => {
-                if (mode === 'replace') gui.system.clear();
+                const app = window.app;
+                if (!app) return;
+                const sys = app.systems.substrate;
+                const rend = app.renderers.substrate;
+
+                if (mode === 'replace') {
+                    sys.clear();
+                    sys.id2atom.clear();
+                    sys.id2bond.clear();
+                    sys.lastAtomId = 0;
+                    sys.lastBondId = 0;
+                    sys.atoms.length = 0;
+                    sys.bonds.length = 0;
+                }
                 const mol = data.mol;
                 if (!mol) throw new Error('applyToScene: missing mol');
                 if (data.Rmiller) CrystalUtils.rotateMoleculeInPlace(mol, data.Rmiller);
                 const idsNew = new Map();
                 for (const a of mol.atoms) {
-                    const id = gui.system.addAtom(a.pos.x, a.pos.y, a.pos.z, a.Z);
+                    const id = sys.addAtom(a.pos.x, a.pos.y, a.pos.z, a.Z);
                     idsNew.set(a.id, id);
-                    const ia = gui.system.getAtomIndex(id);
-                    if (ia >= 0 && (a.cellIndex !== undefined && a.cellIndex !== null)) gui.system.atoms[ia].cellIndex = a.cellIndex | 0;
+                    const ia = sys.getAtomIndex(id);
+                    if (ia >= 0 && (a.cellIndex !== undefined && a.cellIndex !== null)) sys.atoms[ia].cellIndex = a.cellIndex | 0;
                 }
                 if (mol.bonds && mol.bonds.length) {
                     for (const b of mol.bonds) {
                         const aId = idsNew.get(b.aId);
                         const cId = idsNew.get(b.bId);
                         if (aId === undefined || cId === undefined) throw new Error('applyToScene: bond endpoint missing after copy');
-                        gui.system.addBond(aId, cId);
+                        sys.addBond(aId, cId);
                     }
+                }
+
+                if (data.lvec) {
+                    sys.lvec = [data.lvec[0].clone(), data.lvec[1].clone(), data.lvec[2].clone()];
                 }
 
                 if (data.bucketCells && data.bucketCells.lvecCell) {
                     try {
-                        const bg = buildCrystalCellBucketsFromMol(gui.system, data.bucketCells.na | 0, data.bucketCells.nb | 0, data.bucketCells.nc | 0, data.bucketCells.lvecCell, new Vec3(0, 0, 0));
-                        if (window.app) window.app.lastBucketGraph = bg;
-                        if (window.app && typeof window.app.updateBucketOverlay === 'function') window.app.updateBucketOverlay();
+                        const bg = buildCrystalCellBucketsFromMol(sys, data.bucketCells.na | 0, data.bucketCells.nb | 0, data.bucketCells.nc | 0, data.bucketCells.lvecCell, new Vec3(0, 0, 0));
+                        app.lastBucketGraph = bg;
+                        if (typeof app.updateBucketOverlay === 'function') app.updateBucketOverlay();
                     } catch (e) {
                         window.logger.error(`Failed to build bucket graph: ${String(e)}`);
                         throw e;
                     }
                 }
 
-                gui.renderer.update();
-                gui.requestRender();
-                window.logger.info(`Substrate generated: atoms=${gui.system.nAtoms}`);
+                rend.update();
+                app.requestRender();
+                if (app.gui) app.gui.updateSelectionUI();
+                window.logger.info(`Substrate generated: atoms=${sys.atoms.length}`);
             };
 
             btnReplace.onclick = () => { try { applyToScene(buildData(), 'replace'); } catch (e) { window.logger.error(String(e)); throw e; } };

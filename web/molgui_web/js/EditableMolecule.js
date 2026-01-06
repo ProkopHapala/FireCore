@@ -447,6 +447,12 @@ export class EditableMolecule {
         this.topoVersion = 0;
         this.lockDepth = 0;
         this._topoVersionLocked = -1;
+
+        this.lvec = [
+            new Vec3(1, 0, 0),
+            new Vec3(0, 1, 0),
+            new Vec3(0, 0, 1)
+        ];
     }
 
     get nAtoms() { return this.atoms.length; }
@@ -728,8 +734,7 @@ export class EditableMolecule {
         const ln = vAxis.normalize();
         if (!(ln > 0)) throw new Error('rotateAtoms: axis length is zero');
         const rad = deg * Math.PI / 180.0;
-        const R = new Mat3();
-        R.setRotate(rad, vAxis);
+        const R = Mat3.fromAxisAngle(vAxis, rad);
         let ctr = null;
         if (center instanceof Vec3) {
             ctr = center;
@@ -739,13 +744,13 @@ export class EditableMolecule {
             ctr = new Vec3();
             for (const id of ids) {
                 const a = this.id2atom.get(id);
-                if (a) ctr.add(a.pos);
+                if (a && a.pos) ctr.add(a.pos);
             }
             ctr.mul(1.0 / ids.length);
         }
         for (const id of ids) {
             const a = this.id2atom.get(id);
-            if (!a) continue;
+            if (!a || !a.pos) continue;
             a.pos.sub(ctr);
             R.dotVec(a.pos, a.pos);
             a.pos.add(ctr);
@@ -1170,6 +1175,53 @@ export class EditableMolecule {
             if (na >= 0 && nb >= 0) bonds.push([na, nb]);
         }
         return { pos, types, bonds, lvec: parsed.lvec, oldToNew };
+    }
+
+    replicate(nrep, lvec = null) {
+        this._assertUnlocked('replicate');
+        const nx = (nrep[0] | 0);
+        const ny = (nrep[1] | 0);
+        const nz = (nrep[2] | 0);
+        const nxyz = nx * ny * nz;
+        if (nxyz <= 1) return;
+        const lv = lvec || this.lvec;
+        if (!lv || lv.length < 3) throw new Error('replicate: lattice vectors (lvec) required');
+
+        const oldAtoms = this.atoms.slice();
+        const oldBonds = this.bonds.slice();
+        const na = oldAtoms.length;
+
+        for (let iz = 0; iz < nz; iz++) {
+            for (let iy = 0; iy < ny; iy++) {
+                for (let ix = 0; ix < nx; ix++) {
+                    if (ix === 0 && iy === 0 && iz === 0) continue;
+                    const shift = new Vec3();
+                    shift.addMul(lv[0], ix);
+                    shift.addMul(lv[1], iy);
+                    shift.addMul(lv[2], iz);
+                    
+                    const idMap = new Map();
+                    for (let i = 0; i < na; i++) {
+                        const a = oldAtoms[i];
+                        const newId = this.addAtom(a.pos.x + shift.x, a.pos.y + shift.y, a.pos.z + shift.z, a.Z);
+                        const iNew = this.getAtomIndex(newId);
+                        this.atoms[iNew].atype = a.atype;
+                        this.atoms[iNew].charge = a.charge;
+                        idMap.set(a.id, newId);
+                    }
+                    for (let i = 0; i < oldBonds.length; i++) {
+                        const b = oldBonds[i];
+                        this.addBond(idMap.get(b.aId), idMap.get(b.bId), b.order, b.type);
+                    }
+                }
+            }
+        }
+        this.lvec = [
+            lv[0].clone().mulScalar(nx),
+            lv[1].clone().mulScalar(ny),
+            lv[2].clone().mulScalar(nz)
+        ];
+        this._touchTopo();
     }
 
     exportAsParsed(mol = this) {

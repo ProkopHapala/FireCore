@@ -99,23 +99,24 @@ Do not use Linked Lists (pointer chasing in JS is slow). Use a **Struct of Array
 *   Use **THREE.js math** for Gizmos, Camera, and high-level logic (cleaner code).
 *   Use **TypedArrays + gl-matrix** (or raw inline math) for the heavy lifting of atom position manipulation loops.
 
-### Summary of Tech Stack
+### Summary of Tech Stack (updated)
 
-| Component | Solution | Difficulty |
-| :--- | :--- | :--- |
-| **I/O** | File System Access API + Custom parsers (XYZ/PDB) | 🟢 Easy |
-| **Gizmos** | `THREE.TransformControls` | 🟢 Easy (Library) |
-| **Selection** | `three-mesh-bvh` (Raycast) + Custom Box Select logic | 🟡 Medium |
-| **Rendering** | `InstancedMesh` (Quads) + Custom Ray-traced Shader | 🟡 Medium |
-| **Data** | Pre-allocated `Float32Arrays` (SoA) with resize logic | 🔴 Hard (Logic) |
-| **Math** | Hybrid: Three.js (High level) + Raw Math/gl-matrix (Low level) | 🟢 Easy |
+| Component | Solution | Difficulty | Notes |
+| :--- | :--- | :--- | :--- |
+| **I/O** | File System Access API + Custom parsers (XYZ/MOL2) | 🟢 Easy | Inline XYZ editor + download via Blob |
+| **Gizmos** | `THREE.TransformControls` | 🟢 Easy (Library) | Selection + gizmo only on LMB, camera on RMB/MMB |
+| **Selection** | `THREE.Raycaster` + box select (projected) | 🟡 Medium | Can swap to GPU/bvh later |
+| **Rendering** | `InstancedMesh` (billboard impostors) + `LineSegments` | 🟡 Medium | Shared shaders under `common_resources/shaders` |
+| **Data** | `EditableMolecule` authoritative model (per-system) | 🔴 Hard (Logic) | Two-system model: `molecule`, `substrate`; per-instance `lvec`, replication |
+| **Math** | `Vec3`/`Mat3` (custom) | 🟢 Easy | Rotation via `Mat3.fromAxisAngle`; guards missing positions |
 
-### Conclusion
-The project is very feasible. The hardest technical hurdle is **Data Management**: keeping the editable JavaScript data structure in sync with the WebGL buffers without constantly re-uploading massive arrays to the GPU.
-
-You should implement a "Dirty Flag" system.
-*   If you move one atom: Update just that slot in the Float32Array and use `gl.bufferSubData` (via Three.js `attribute.updateRange`).
-*   If you add/delete: You must rebuild the topology buffers (bonds), which is expensive, so batch these operations.
+### Recent updates (Jan 2026)
+- Adopted **two-system model** (`molecule`, `substrate`) with independent `EditableMolecule` + `MoleculeRenderer` instances; removed `main`.
+- **ScriptRunner** exposes handles `molecule`, `substrate`, alias `mol`; methods: `clear`, `load`, `build_substrate`, `move/translate`, `rotate/roate`, `replicate/replication`. Commands accept optional `system` without changing global state.
+- **EditableMolecule**: per-instance `lvec`; `replicate(nrep,lvec)` clones atoms/bonds and scales lattice; rotation uses `Mat3.fromAxisAngle` and skips atoms lacking positions.
+- **Default user script**: clears both systems, builds substrate (NaCl preset with size/step_edge), loads/positions molecule, replicates each; no merging or `main`.
+- Startup no longer seeds H2O/CH4; scene starts empty until scripts/builders add content.
+- **Rendering/replication**: atoms are instanced impostor quads, bonds are line segments; visual replication duplicates meshes per lattice shift without duplicating data.
 
 ---
 
