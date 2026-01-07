@@ -6,6 +6,7 @@ import { EditableMolecule } from './EditableMolecule.js';
 import { BuildersGUI } from './BuildersGUI.js';
 import { selectBridgeCandidates } from './MoleculeSelection.js';
 import { collapseBridgeAt, collapseBridgeRandom, collapseAllBridges, insertBridge, insertBridgeRandom } from './MoleculeUtils.js';
+import { buildCrystalCellBucketsFromMol } from '../../common_js/Buckets.js';
 
 /**
  * ScriptRunner: High-level command dispatcher for MolGUI.
@@ -33,6 +34,9 @@ export class ScriptRunner {
             'build_substrate': this.buildSubstrate.bind(this),
             'build_polymer':   this.buildPolymer.bind(this),
             'replication':     this.replication.bind(this),
+            'build_nanocrystal': this.buildNanocrystal.bind(this),
+            'recalculate_bonds': this.recalculateBonds.bind(this),
+            'add_caps':         this.addCaps.bind(this),
             'collapse_bridge': this.collapseBridge.bind(this),
             'collapse_bridge_at': this.collapseBridgeAt.bind(this),
             'pick_random_selection': this.pickRandomSelection.bind(this),
@@ -133,7 +137,10 @@ export class ScriptRunner {
                     }
                     queue.push({ name: 'addLvec', opts: { lvec: lvecParam, system: name } });
                 },
-                setViewReplicas: (opts) => { queue.push({ name: 'setViewReplicas', opts: { ...opts, system: name } }); }
+                setViewReplicas: (opts) => { queue.push({ name: 'setViewReplicas', opts: { ...opts, system: name } }); },
+                build_nanocrystal: (opts) => { queue.push({ name: 'build_nanocrystal', opts: { ...opts, system: name } }); },
+                recalculate_bonds: (opts) => { queue.push({ name: 'recalculate_bonds', opts: { ...opts, system: name } }); },
+                add_caps: (opts) => { queue.push({ name: 'add_caps', opts: { ...opts, system: name } }); }
             };
             return handle;
         };
@@ -436,6 +443,117 @@ export class ScriptRunner {
         return new Vec3();
     }
     // --- Builder bindings ---
+
+    buildNanocrystal(args) {
+        const { lvec, basisPos, basisTypes, basisCharges, nRep, planes, planeMode = 'ang', centered = true, dedup = true, dedupTol = 0.1, system } = args;
+        const prev = this.activeSystemName;
+        if (system) this.useSystem(system);
+        const mm = this.system;
+
+        let pls = [];
+        if (planes) {
+            const b = CrystalUtils.reciprocalLattice(lvec.map(v => this._vecFromInput(v)));
+            for (const p of planes) {
+                const n = new Vec3().setLincomb3(p.h || 0, b[0], p.k || 0, b[1], p.l || 0, b[2]);
+                pls.push({ n, cmin: p.cmin, cmax: p.cmax });
+            }
+        }
+
+        const mol = CrystalUtils.genReplicatedCellCutPlanes({
+            lvec: lvec.map(v => this._vecFromInput(v)),
+            basisPos: basisPos.map(v => this._vecFromInput(v)),
+            basisTypes,
+            basisCharges,
+            nRep: nRep || [1, 1, 1],
+            origin: new Vec3(0, 0, 0),
+            planes: pls,
+            planeMode,
+            centered,
+            dedup,
+            dedupTol
+        });
+
+        mm.clear();
+        for (const atom of mol.atoms) {
+            const id = mm.addAtom(atom.pos.x, atom.pos.y, atom.pos.z, atom.Z);
+            const ia = mm.getAtomIndex(id);
+            if (ia >= 0) {
+                mm.atoms[ia].charge = atom.charge;
+                mm.atoms[ia].cellIndex = atom.cellIndex;
+            }
+        }
+        if (mol.lvec) mm.lvec = [mol.lvec[0].clone(), mol.lvec[1].clone(), mol.lvec[2].clone()];
+
+        // Rebuild bucket graph for the system
+        if (this.app) {
+            const na_ = centered ? (2 * nRep[0] + 1) : nRep[0];
+            const nb_ = centered ? (2 * nRep[1] + 1) : nRep[1];
+            const nc_ = centered ? (2 * nRep[2] + 1) : nRep[2];
+            try {
+                const bg = buildCrystalCellBucketsFromMol(mm, na_, nb_, nc_, lvec.map(v => this._vecFromInput(v)), new Vec3(0, 0, 0));
+                this.app.lastBucketGraph = bg;
+                if (typeof this.app.updateBucketOverlay === 'function') this.app.updateBucketOverlay();
+            } catch (e) {
+                console.warn("buildNanocrystal: bucket rebuild failed", e);
+            }
+        }
+
+        mm.dirtyExport = true;
+        const rend = this.app.renderers[this.activeSystemName];
+        if (rend) rend.update();
+        if (system) this.useSystem(prev);
+    }
+
+    recalculateBonds(args) {
+        const { mode = 'bucketNeighbors', system } = args;
+        const prev = this.activeSystemName;
+        if (system) this.useSystem(system);
+        const mm = this.system;
+        const mp = this.app.mmParams;
+        if (!mp) throw new Error("recalculate_bonds: mmParams not found");
+
+        let buckets = null;
+        if (mode === 'bucketNeighbors' || mode === 'bucketAllPairsAABB') {
+            if (this.app.editor && this.app.editor.bucketGraph) buckets = this.app.editor.bucketGraph;
+            if (!buckets && this.app.lastBucketGraph) buckets = this.app.lastBucketGraph;
+            if (!buckets && this.app.editor && this.app.editor.updateBuckets) {
+                this.app.editor.updateBuckets();
+                if (this.app.editor.bucketGraph) buckets = this.app.editor.bucketGraph;
+                else if (this.app.lastBucketGraph) buckets = this.app.lastBucketGraph;
+            }
+        }
+
+        if (buckets && (mode === 'bucketNeighbors' || mode === 'bucketAllPairsAABB')) {
+            if (mode === 'bucketNeighbors') mm.recalculateBondsBucketNeighbors(mp, buckets);
+            else mm.recalculateBondsBucketAllPairsAABB(mp, buckets);
+        } else {
+            if (mode !== 'brute' && !buckets && (mode === 'bucketNeighbors' || mode === 'bucketAllPairsAABB')) {
+                if (window.logger) window.logger.warn('recalculate_bonds: bucket graph missing, falling back to brute mode');
+            }
+            mm.recalculateBonds(mp);
+        }
+
+        mm.dirtyExport = true;
+        const rend = this.app.renderers[this.activeSystemName];
+        if (rend) rend.update();
+        if (system) this.useSystem(prev);
+    }
+
+    addCaps(args) {
+        const { cap = 'H', onlySelection = false, system } = args;
+        const prev = this.activeSystemName;
+        if (system) this.useSystem(system);
+        const mm = this.system;
+        const mp = this.app.mmParams;
+        if (!mp) throw new Error("add_caps: mmParams not found");
+
+        mm.addCappingAtoms(mp, cap, { onlySelection, bBond: true });
+
+        mm.dirtyExport = true;
+        const rend = this.app.renderers[this.activeSystemName];
+        if (rend) rend.update();
+        if (system) this.useSystem(prev);
+    }
 
     buildSubstrate(args) {
         const { a = 2.82, nx = 10, ny = 10, nz = 3, replication = true, system, preset, step_edge } = args || {};

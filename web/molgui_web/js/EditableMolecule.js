@@ -809,6 +809,12 @@ export class EditableMolecule {
                         const iNew = this.getAtomIndex(newId);
                         this.atoms[iNew].atype = a.atype;
                         this.atoms[iNew].charge = a.charge;
+                        if (a.cellIndex !== undefined) {
+                            // Update cellIndex for the replicated atom to stay unique if it's a crystal replication
+                            // This depends on how the caller expects cellIndex to behave.
+                            // For simple replication, we might just copy it or offset it.
+                            this.atoms[iNew].cellIndex = a.cellIndex; 
+                        }
                         idMap.set(a.id, newId);
                     }
                     for (let i = 0; i < oldBonds.length; i++) {

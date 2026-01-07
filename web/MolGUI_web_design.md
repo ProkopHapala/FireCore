@@ -257,6 +257,16 @@ kept for reference only.
 - **ShortcutManager.js**
   - Global keyboard shortcuts (gizmo toggle/mode, delete, add atom, recalc bonds).
 
+### 2.4.2 Update (2026‑01‑07) — Nanocrystal generation + buckets
+
+- **CrystalUtils cell indexing fixed** so `genReplicatedCellCutPlanes()` records dense `cellIndex` values even for centered replications; every replicated cell now maps to a unique bucket slot.
+- **Bucket graph rebuild in ScriptRunner**: `build_nanocrystal` now calls `buildCrystalCellBucketsFromMol` immediately and caches the result in `app.lastBucketGraph`, enabling bucket-aware bond finding without manual GUI steps.
+- **Bond solver fallback logic**:
+  - `ScriptRunner.recalculate_bonds({mode:'bucketNeighbors'})` first tries bucket modes, auto-invokes editor bucket builders when needed, and falls back to `brute` with a warning if no graph is available.
+  - Explicit `mode:'brute'` is now supported in scripts.
+  - GUI Editor’s “Recalculate Bonds” button mirrors the same fallback behavior, preventing crashes when bucket graphs are missing.
+- **Example script**: Added “Silicon Nanocrystal (Planes + H-caps)” to GUI samples; demonstrates CIF-based cell import, HKL plane cuts, bucket-based bond rebuild, and hydrogen passivation via script-only workflow.
+
 ### 3. Planned Topology / Chemistry Features (Details)
 
 This section expands 1.2 with more implementation hints.

@@ -177,13 +177,22 @@ export class Editor {
         const mm = (window.app && window.app.mmParams) ? window.app.mmParams : null;
         const mode = (window.app && window.app.bondRecalcMode) ? String(window.app.bondRecalcMode) : 'brute';
         const stats = { mode, nBondCut2: 0, nRcovCutoff: 0, nDefaultCutoff: 0, nAtomPairs: 0, nDist2: 0, nBondsAdded: 0, nBucketPairs: 0, nAABBTests: 0, timeMs: 0 };
+        
+        let bg = (window.app && window.app.lastBucketGraph) ? window.app.lastBucketGraph : null;
+        
+        // Auto-rebuild buckets if needed for bucket modes
+        if (!bg && (mode === 'bucketNeighbors' || mode === 'bucketAllPairsAABB')) {
+            if (this.updateBuckets) {
+                this.updateBuckets();
+                bg = (window.app && window.app.lastBucketGraph) ? window.app.lastBucketGraph : null;
+            }
+        }
+
         if (mode === 'bucketNeighbors') {
-            const bg = (window.app && window.app.lastBucketGraph) ? window.app.lastBucketGraph : null;
             if (!bg) throw new Error('Bucket bond mode requires window.app.lastBucketGraph (generate a crystal with buckets, or switch to brute)');
             if (typeof bg.toInds === 'function') bg.toInds(this.system);
             this.system.recalculateBondsBucketNeighbors(mm, bg, { stats });
         } else if (mode === 'bucketAllPairsAABB') {
-            const bg = (window.app && window.app.lastBucketGraph) ? window.app.lastBucketGraph : null;
             if (!bg) throw new Error('Bucket bond mode requires window.app.lastBucketGraph (generate a crystal with buckets, or switch to brute)');
             if (typeof bg.toInds === 'function') bg.toInds(this.system);
             this.system.recalculateBondsBucketAllPairsAABB(mm, bg, { stats });
@@ -191,10 +200,20 @@ export class Editor {
             this.system.recalculateBonds(mm, { stats });
         }
         this.molRenderer.update();
-        const nBuckets = (window.app && window.app.lastBucketGraph && window.app.lastBucketGraph.buckets) ? window.app.lastBucketGraph.buckets.length : 0;
+        const nBuckets = (bg && bg.buckets) ? bg.buckets.length : 0;
         window.logger.info(`Bonds Recalculated mode=${stats.mode} time=${(stats.timeMs || 0).toFixed(2)}ms nAtoms=${this.system.nAtoms} nBuckets=${nBuckets} pairs=${stats.nAtomPairs} cut2=${stats.nBondCut2} dist2=${stats.nDist2} bonds=${stats.nBondsAdded} bucketPairs=${stats.nBucketPairs} aabbTests=${stats.nAABBTests}`);
         if (window.app) window.app.lastBondStats = stats;
         if (window.app && window.app.requestRender) window.app.requestRender();
+    }
+
+    updateBuckets() {
+        if (!window.app || !this.system) return;
+        // Generic bucket build if no crystal-specific info is available
+        // For now, we reuse the existing crystal cell logic if we can find the parameters, 
+        // or we might need a general AABB-based bucket builder.
+        // If we are in nanocrystal script, buildNanocrystal already sets it up.
+        // This is a safety net.
+        if (window.app.refreshBucketDebug) window.app.refreshBucketDebug();
     }
 
     addAtom() {

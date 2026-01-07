@@ -606,6 +606,44 @@ molecule.load("../../cpp/common_resources/mol/tetrahedrane.mol2");
 const newC = insert_bridge_random({ minHeavy: 3, minHyd: 1 });
 logger.info("Inserted bridge carbon id=" + newC);
 `.trim() }
+                ,
+                { id: 'si_nanocrystal', name: 'Silicon Nanocrystal (Planes + H-caps)', code: `
+// Silicon Nanocrystal (111) and (100) faces
+molecule.clear();
+substrate.clear();
+
+const aSi = 5.431;
+const lvec = [ [aSi,0,0], [0,aSi,0], [0,0,aSi] ];
+const basisPos = [ 
+    [0.0, 0.0, 0.0], [0.5, 0.5, 0.0], [0.5, 0.0, 0.5], [0.0, 0.5, 0.5],
+    [0.25,0.25,0.25], [0.75,0.75,0.25], [0.75,0.25,0.75], [0.25,0.75,0.75]
+].map(p=>p.map(x=>x*aSi));
+const basisTypes = [14,14,14,14,14,14,14,14];
+
+// Build nanocrystal by cutting with planes
+build_nanocrystal({
+    lvec, basisPos, basisTypes,
+    nRep: [3,3,3],
+    centered: true,
+    planes: [
+        { h: 1, k: 1, l: 1, cmin:-6.0, cmax:6.0 },
+        { h: 1, k: -1, l: 1, cmin:-6.0, cmax:6.0 },
+        { h: 1, k: 1, l: -1, cmin:-6.0, cmax:6.0 },
+        { h: -1, k: 1, l: 1, cmin:-6.0, cmax:6.0 },
+        { h: 1, k: 0, l: 0, cmin:-5.0, cmax:5.0 },
+        { h: 0, k: 1, l: 0, cmin:-5.0, cmax:5.0 },
+        { h: 0, k: 0, l: 1, cmin:-5.0, cmax:5.0 }
+    ]
+});
+
+// Recompute bonds using bucket-based neighbor list
+recalculate_bonds({ mode:'bucketNeighbors' });
+
+// Add hydrogen passivation to dangling bonds
+add_caps({ cap:'H', onlySelection:false });
+
+logger.info("Si Nanocrystal generated with " + mol.system.atoms.length + " atoms.");
+`.trim() }
             ];
 
             const rowSel = GUIutils.row(container, { marginBottom: '5px' });

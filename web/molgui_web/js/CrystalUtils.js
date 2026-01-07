@@ -773,10 +773,14 @@ export function genReplicatedCellCutPlanes(params = {}) {
     const iy1 = centered ? nb : (nb - 1);
     const iz0 = centered ? -nc : 0;
     const iz1 = centered ? nc : (nc - 1);
+    const na_ = centered ? (2 * na + 1) : na;
+    const nb_ = centered ? (2 * nb + 1) : nb;
+    const nc_ = centered ? (2 * nc + 1) : nc;
 
     for (let iz = iz0; iz <= iz1; iz++) {
         for (let iy = iy0; iy <= iy1; iy++) {
             for (let ix = ix0; ix <= ix1; ix++) {
+                const icell = ((iz - iz0) * (nb_ * na_) + (iy - iy0) * na_ + (ix - ix0)) | 0; // dense cell index
                 s.setV(origin);
                 s.addMul(a, ix);
                 s.addMul(b, iy);
@@ -806,7 +810,10 @@ export function genReplicatedCellCutPlanes(params = {}) {
                         const fnAdd = (Z_) => {
                             const id = mol.addAtom(pos.x, pos.y, pos.z, Z_);
                             const ia = mol.getAtomIndex(id);
-                            if (ia >= 0) mol.atoms[ia].charge = q;
+                            if (ia >= 0) {
+                                mol.atoms[ia].charge = q;
+                                mol.atoms[ia].cellIndex = icell;
+                            }
                             return id;
                         };
                         const r = _dedupInsertOrGet(pos, Z, q, buckets, mol.atoms, tol2, h, fnAdd);
@@ -814,7 +821,10 @@ export function genReplicatedCellCutPlanes(params = {}) {
                     } else {
                         const id = mol.addAtom(cx, cy, cz, Z);
                         const ia = mol.getAtomIndex(id);
-                        if (ia >= 0) mol.atoms[ia].charge = q;
+                        if (ia >= 0) {
+                            mol.atoms[ia].charge = q;
+                            mol.atoms[ia].cellIndex = icell;
+                        }
                     }
                 }
             }

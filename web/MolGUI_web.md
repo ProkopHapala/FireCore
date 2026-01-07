@@ -126,6 +126,14 @@ Do not use Linked Lists (pointer chasing in JS is slow). Use a **Struct of Array
 - Startup no longer seeds H2O/CH4; scene starts empty until scripts/builders add content.
 - **Rendering/replication**: atoms are instanced impostor quads, bonds are line segments; visual replication duplicates meshes per lattice shift without duplicating data.
 
+### Update – 2026‑01‑07 Nanocrystal workflow
+- **Crystal bucket indices restored**: `genReplicatedCellCutPlanes()` now records a dense `cellIndex` even in centered grids so bucket graphs span every replicated cell.
+- **ScriptRunner build_nanocrystal**: immediately rebuilds the bucket graph (via `buildCrystalCellBucketsFromMol`) after crystal generation so bucket-based bond finding is ready without GUI interaction.
+- **Bucket-aware bond rebuild**: `recalculate_bonds` command now tries bucket modes first, auto-rebuilds via the editor when needed, and gracefully falls back to `brute`—scripts can also request `mode:'brute'` explicitly.
+- **GUI bonds fail-safe**: Editor “Recalculate Bonds” button mirrors the same fallback path, logging when brute mode is used.
+- **Sample script**: Added “Silicon Nanocrystal (Planes + H-caps)” example tying CIF-based replication, HKL plane cuts, bucket bond rebuild, and hydrogen passivation.
+- **Passivation & topology**: After bonds are rebuilt across all buckets, `add_caps` now yields fully passivated nanocrystals with correct topology metadata for downstream tools.
+
 #### Pitfalls & lessons (Replica phase)
 1. **CPU duplication ≠ instancing** — duplicating atom data into large buffers defeats the instanced impostor design and starves the GPU; stay with transform-group replication unless we truly switch to hardware instancing with per-instance matrices.
 2. **Clone bookkeeping matters** — cloned `THREE.InstancedMesh` objects keep stale `count`/matrices after `clear()` unless we track them and resync; `replicaClones` + `_syncReplicaInstancedMeshes()` is mandatory.
