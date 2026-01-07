@@ -4,6 +4,8 @@ import { Mat3 } from '../../common_js/Mat3.js';
 import * as CrystalUtils from './CrystalUtils.js';
 import { EditableMolecule } from './EditableMolecule.js';
 import { BuildersGUI } from './BuildersGUI.js';
+import { selectBridgeCandidates } from './MoleculeSelection.js';
+import { collapseBridgeAt, collapseBridgeRandom, collapseAllBridges, insertBridge, insertBridgeRandom } from './MoleculeUtils.js';
 
 /**
  * ScriptRunner: High-level command dispatcher for MolGUI.
@@ -30,8 +32,16 @@ export class ScriptRunner {
             'bake':            this.bake.bind(this),
             'build_substrate': this.buildSubstrate.bind(this),
             'build_polymer':   this.buildPolymer.bind(this),
-            'replication':     this.replication.bind(this)
+            'replication':     this.replication.bind(this),
+            'collapse_bridge': this.collapseBridge.bind(this),
+            'collapse_bridge_at': this.collapseBridgeAt.bind(this),
+            'pick_random_selection': this.pickRandomSelection.bind(this),
+            'select_bridge_candidates': this.selectBridgeCandidates.bind(this),
+            'collapse_all_bridges': this.collapseAllBridges.bind(this),
+            'insert_bridge': this.insertBridge.bind(this),
+            'insert_bridge_random': this.insertBridgeRandom.bind(this)
         };
+        this.lastPickedSelection = null;
     }
 
     get system() {
@@ -384,4 +394,114 @@ export class ScriptRunner {
         idsNew.forEach((id) => this.system.selection.add(id));
         this.system.dirtyExport = true;
     }
+
+    pickRandomSelection(args = {}) {
+        const prev = this.activeSystemName;
+        if (args.system) this.useSystem(args.system);
+        const mol = this.system;
+        if (!mol || !mol.selection) throw new Error('pick_random_selection: molecule or selection missing');
+        const ids = Array.from(mol.selection);
+        if (ids.length === 0) {
+            if (args.system) this.useSystem(prev);
+            throw new Error('pick_random_selection: selection is empty');
+        }
+        const idx = (args.pickIndex !== undefined) ? (args.pickIndex | 0) : Math.floor(Math.random() * ids.length);
+        if (idx < 0 || idx >= ids.length) {
+            if (args.system) this.useSystem(prev);
+            throw new Error(`pick_random_selection: pickIndex out of range (0..${ids.length - 1})`);
+        }
+        const picked = ids[idx];
+        if (args.replaceSelection) {
+            mol.selection.clear();
+            mol.selection.add(picked);
+        }
+        this.lastPickedSelection = picked;
+        if (args.system) this.useSystem(prev);
+        return picked;
+    }
+
+    selectBridgeCandidates(args = {}) {
+        const prev = this.activeSystemName;
+        if (args.system) this.useSystem(args.system);
+        const mol = this.system;
+        if (!mol || !mol.selectBridgeCandidates) throw new Error('select_bridge_candidates: helper not installed');
+        const n = mol.selectBridgeCandidates({ requireH2: args.requireH2 });
+        if (args.system) this.useSystem(prev);
+        return n;
+    }
+
+    collapseBridgeAt(args = {}) {
+        const prev = this.activeSystemName;
+        if (args.system) this.useSystem(args.system);
+        const mol = this.system;
+        if (!mol || !mol.atoms) throw new Error('collapse_bridge_at: molecule missing');
+        const idBridge = (args.id !== undefined) ? args.id : (args.atom !== undefined ? args.atom : this.lastPickedSelection);
+        if (idBridge === undefined) {
+            if (args.system) this.useSystem(prev);
+            throw new Error('collapse_bridge_at: id (atom) required');
+        }
+        const neighIds = collapseBridgeAt(mol, idBridge);
+        mol.clearSelection();
+        neighIds.forEach(id => mol.selection.add(id));
+        mol.dirtyExport = true;
+        if (args.system) this.useSystem(prev);
+    }
+
+    collapseBridge(args = {}) {
+        const prev = this.activeSystemName;
+        if (args.system) this.useSystem(args.system);
+        const mol = this.system;
+        if (!mol || !mol.selection) throw new Error('collapse_bridge: molecule or selection missing');
+        const neighIds = collapseBridgeRandom(mol);
+        mol.clearSelection();
+        if (neighIds) neighIds.forEach(id => mol.selection.add(id));
+        mol.dirtyExport = true;
+        if (args.system) this.useSystem(prev);
+    }
+
+    collapseAllBridges(args = {}) {
+        const prev = this.activeSystemName;
+        if (args.system) this.useSystem(args.system);
+        const mol = this.system;
+        if (!mol || !mol.atoms) throw new Error('collapse_all_bridges: molecule missing');
+        const total = collapseAllBridges(mol, { system: args.system || this.activeSystemName });
+        mol.dirtyExport = true;
+        if (args.system) this.useSystem(prev);
+        return total;
+    }
+
+    insertBridge(args = {}) {
+        const prev = this.activeSystemName;
+        if (args.system) this.useSystem(args.system);
+        const mol = this.system;
+        if (!mol || !mol.atoms) throw new Error('insert_bridge: molecule missing');
+        const dbg = (msg) => { if (window.logger && window.logger.info) window.logger.info(msg); else console.log(msg); };
+        const aId = args.aId !== undefined ? args.aId : args.a;
+        const bId = args.bId !== undefined ? args.bId : args.b;
+        if (aId === undefined || bId === undefined) {
+            if (args.system) this.useSystem(prev);
+            throw new Error('insert_bridge: aId and bId required');
+        }
+        const cId = insertBridge(mol, aId, bId, { ...args, dbg });
+        mol.clearSelection();
+        mol.selection.add(cId);
+        mol.dirtyExport = true;
+        if (args.system) this.useSystem(prev);
+        return cId;
+    }
+
+    insertBridgeRandom(args = {}) {
+        const prev = this.activeSystemName;
+        if (args.system) this.useSystem(args.system);
+        const mol = this.system;
+        if (!mol || !mol.atoms) throw new Error('insert_bridge_random: molecule missing');
+        const dbg = (msg) => { if (window.logger && window.logger.info) window.logger.info(msg); else console.log(msg); };
+        const idC = insertBridgeRandom(mol, { ...args, dbg });
+        mol.clearSelection();
+        mol.selection.add(idC);
+        mol.dirtyExport = true;
+        if (args.system) this.useSystem(prev);
+        return idC;
+    }
+
 }

@@ -548,21 +548,78 @@ export class GUI {
         this.createSection(sidebar, 'User Script', (container) => {
             GUIutils.div(container, null, { fontSize: '0.9em', marginBottom: '4px' }).textContent = 'JavaScript (async supported):';
             const defaultScript = `
+// PTCDA on NaCl step
 molecule.clear();
 substrate.clear();
-
-// Build substrate directly into the 'substrate' system
 substrate.build_substrate('NaCl', { size:[13,12,3], step_edge:[0,0,1] });
 substrate.replication({ n: [1, 1, 0], show: true, showBox: true });
-
-// Load molecule directly into the 'molecule' system
 mol.load("../../cpp/common_resources/xyz/PTCDA.xyz");
 mol.move([0, 0, 10]);
 mol.rotate([0, 0, 1], 16.0);
 molecule.replication({ n: [1, 1, 0], show: true, showBox: false });
 `.trim();
-            
-            const ta = GUIutils.textArea(container, defaultScript, { 
+
+            const sampleScripts = [
+                { id: 'blank',         name: '-- custom --', code: '' },
+                { id: 'ptcda_nacl',    name: 'PTCDA on NaCl step', code: defaultScript },
+                { id: 'benzene_clean', name: 'Benzene on clean NaCl', code: `
+// Benzene on clean NaCl
+molecule.clear();
+substrate.clear();
+substrate.build_substrate('NaCl', { size:[10,10,2] });
+substrate.replication({ n: [0, 0, 0], show: true, showBox: true });
+mol.load("../../cpp/common_resources/mol/benzene.mol2");
+mol.move([0, 0, 8]);
+mol.rotate([0, 0, 1], 30.0);
+`.trim() }
+                ,
+                { id: 'adamantane_collapse', name: 'Collapse bridge in adamantane', code: `
+// Collapse one CH2 bridge in adamantane using modular helpers
+molecule.clear();
+molecule.load("../../cpp/common_resources/mol/adamantane.mol2");
+
+// Select bridge carbons (heavy-heavy with optional H2). Prefer CH2, else degree=2 heavy.
+let nsel = select_bridge_candidates({ requireH2: true });
+if (nsel === 0) nsel = select_bridge_candidates({ requireH2: false });
+if (nsel === 0) throw new Error("No bridge atoms found for collapse");
+
+// Pick one from selection (random by default) and collapse it
+const picked = pick_random_selection();
+collapse_bridge_at({ id: picked });
+`.trim() }
+                ,
+                { id: 'adamantane_collapse_all', name: 'Collapse ALL bridges in adamantane', code: `
+// Collapse all CH2-like bridges in adamantane
+molecule.clear();
+molecule.load("../../cpp/common_resources/mol/adamantane.mol2");
+const nCollapsed = collapse_all_bridges();
+logger.info("Collapsed bridges: " + nCollapsed);
+`.trim() }
+                ,
+                { id: 'adamantane_insert_bridge', name: 'Insert bridge between CH carbons', code: `
+// Insert a CH2 bridge into adamantane between two CH carbons
+molecule.clear();
+molecule.load("../../cpp/common_resources/mol/tetrahedrane.mol2");
+
+// Pick a random bond between carbons with >=3 heavy neighbors and >=1 hydrogen (approx CH)
+const newC = insert_bridge_random({ minHeavy: 3, minHyd: 1 });
+logger.info("Inserted bridge carbon id=" + newC);
+`.trim() }
+            ];
+
+            const rowSel = GUIutils.row(container, { marginBottom: '5px' });
+            GUIutils.span(rowSel, 'Sample: ', { marginRight: '4px' });
+            const selSamples = GUIutils.el(rowSel, 'select', { className: 'gui-select' }, { flexGrow: '1' });
+            GUIutils.setSelectOptions(selSamples, sampleScripts.map(s => ({ value: s.id, text: s.name })), { selectedValue: 'ptcda_nacl', selectFirst: true });
+
+            let ta = null;
+            selSamples.onchange = (e) => {
+                const id = e && e.target ? e.target.value : '';
+                const sample = sampleScripts.find(s => s.id === id);
+                if (sample && ta) ta.value = sample.code;
+            };
+
+            ta = GUIutils.textArea(container, defaultScript, { 
                 width: '100%', height: '180px', fontSize: '11px', fontFamily: 'monospace', backgroundColor: '#222', color: '#eee', display: 'block'
             });
             

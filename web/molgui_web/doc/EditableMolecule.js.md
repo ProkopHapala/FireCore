@@ -83,6 +83,22 @@ Context: parsed vs molecule-level
 
 ---
 
+## Bridge editing (collapse/insert)
+
+High-level bridge operations now live in `MoleculeUtils` and are invoked via `ScriptRunner` commands:
+- **Collapse single bridge**: `collapseBridgeAt(mol, idBridge)` removes a CH₂-like bridge atom (optionally selected via `select_bridge_candidates`) and connects its heavy neighbors. Hydrogens attached to the bridge atom are removed automatically. Script command: `collapse_bridge_at`.
+- **Collapse random bridge from selection**: `collapseBridgeRandom(mol)` picks one from current selection. Script command: `collapse_bridge`.
+- **Collapse all bridges**: `collapseAllBridges(mol)` iterates over candidates (prefers CH₂ via hydrogens, then heavy-only). Script command: `collapse_all_bridges`.
+- **Insert bridge into a bond**: `insertBridge(mol, aId, bId, params)` removes the bond between `aId`/`bId`, inserts a carbon offset along the summed hydrogen “up” direction from endpoints, and adds two hydrogens perpendicular to bond/up. Script command: `insert_bridge`.
+- **Insert bridge on a random suitable bond**: `insertBridgeRandom(mol, params)` scans C–C bonds with min heavy/hydrogen neighbors and inserts a CH₂. Script command: `insert_bridge_random`.
+
+Selection helper:
+- **`selectBridgeCandidates`** (in `MoleculeSelection`, installed on `EditableMolecule`): selects carbons with two heavy neighbors (optionally requiring ≥2 hydrogens). Script command: `select_bridge_candidates`.
+
+Notes:
+- Geometry uses `Vec3`/`Mat3` helpers (orthonormal frames, normalized directions) to avoid duplication.
+- ScriptRunner is now a thin wrapper that switches systems, delegates to `MoleculeUtils`/`MoleculeSelection`, updates selection, and logs.
+
 ## `EditableMolecule` (core editable model)
 
 ### Lifecycle / state

@@ -134,6 +134,43 @@ export function applySelectQuery(mol, compiled, opts = {}) {
     return { nHit };
 }
 
+/// Select bridge candidates: carbons with two heavy neighbors and optional >=2 hydrogens.
+/// Mutates mol.selection; returns selection size.
+export function selectBridgeCandidates(mol, opts = {}) {
+    if (!mol || !mol.atoms) throw new Error('select_bridge_candidates: molecule missing');
+    const requireH2 = (opts.requireH2 !== undefined) ? !!opts.requireH2 : true;
+    mol.selection.clear();
+    for (let ia = 0; ia < mol.atoms.length; ia++) {
+        const a = mol.atoms[ia];
+        if (!a || a.Z !== 6) continue; // carbon only
+        let heavy = 0;
+        let hyd = 0;
+        for (const ib of a.bonds) {
+            const b = mol.bonds[ib];
+            if (!b) continue;
+            b.ensureIndices(mol);
+            const jb = b.other(ia);
+            if (jb < 0 || jb >= mol.atoms.length) continue;
+            const nb = mol.atoms[jb];
+            if (!nb) continue;
+            if (nb.Z === 1) hyd++;
+            else heavy++;
+        }
+        if (heavy === 2 && (!requireH2 || hyd >= 2)) {
+            mol.selection.add(a.id);
+        }
+    }
+    mol.dirtyExport = true;
+    return mol.selection.size;
+}
+
+/// Install helper onto EditableMolecule prototype.
+export function installSelectBridgeCandidates(cls = EditableMolecule) {
+    cls.prototype.selectBridgeCandidates = function (opts = {}) {
+        return selectBridgeCandidates(this, opts);
+    };
+}
+
 /// Install selection helpers onto EditableMolecule (uses mol.mmParams and cls.asZ).
 export function installMoleculeSelectionMethods(cls = EditableMolecule) {
     console.log('[installMoleculeSelectionMethods] installing on', cls && cls.name);
@@ -147,6 +184,9 @@ export function installMoleculeSelectionMethods(cls = EditableMolecule) {
     };
     cls.prototype.applySelectQuery = function (compiled, opts = {}) {
         return applySelectQuery(this, compiled, opts);
+    };
+    cls.prototype.selectBridgeCandidates = function (opts = {}) {
+        return selectBridgeCandidates(this, opts);
     };
     // Override static stubs so static calls also work after install
     cls.compileSelectQuery = function (q, mmParams, asZFn) {

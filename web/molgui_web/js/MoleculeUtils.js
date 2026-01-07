@@ -233,6 +233,156 @@ export function replicateMolecule(mol, nrep, lvec = null) {
     mol._touchTopo();
 }
 
+// --- Bridge utilities (moved from ScriptRunner) ---
+
+export function collapseBridgeAt(mol, idBridge) {
+    if (!mol || !mol.atoms) throw new Error('collapse_bridge_at: molecule missing');
+    const iBridge = mol.getAtomIndex(idBridge);
+    if (iBridge < 0) throw new Error(`collapse_bridge_at: atom id=${idBridge} not found`);
+    const a = mol.atoms[iBridge];
+    if (!a) throw new Error(`collapse_bridge_at: atom missing at index ${iBridge}`);
+    const neighIds = [];
+    const hydIds = [];
+    for (const ib of a.bonds) {
+        const b = mol.bonds[ib];
+        if (!b) continue;
+        b.ensureIndices(mol);
+        const jb = b.other(iBridge);
+        if (jb < 0 || jb >= mol.atoms.length) continue;
+        const nb = mol.atoms[jb];
+        if (!nb) continue;
+        if (nb.Z === 1) hydIds.push(nb.id);
+        else neighIds.push(nb.id);
+    }
+    if (neighIds.length !== 2) throw new Error(`collapse_bridge_at: expected 2 non-H neighbors, got ${neighIds.length}`);
+    if (neighIds[0] === neighIds[1]) throw new Error('collapse_bridge_at: neighbors identical, cannot collapse');
+    for (const hid of hydIds) mol.removeAtomById(hid);
+    mol.removeAtomById(idBridge);
+    const i0 = mol.getAtomIndex(neighIds[0]);
+    const i1 = mol.getAtomIndex(neighIds[1]);
+    if (i0 < 0 || i1 < 0) throw new Error('collapse_bridge_at: neighbor atom missing after removal');
+    let alreadyBonded = false;
+    for (const ib of mol.atoms[i0].bonds) {
+        const b = mol.bonds[ib];
+        if (!b) continue;
+        b.ensureIndices(mol);
+        const ja = b.other(i0);
+        if (ja < 0 || ja >= mol.atoms.length) continue;
+        if (mol.atoms[ja].id === neighIds[1]) { alreadyBonded = true; break; }
+    }
+    if (!alreadyBonded) mol.addBond(neighIds[0], neighIds[1]);
+    return neighIds;
+}
+
+export function collapseBridgeRandom(mol) {
+    if (!mol || !mol.selection) throw new Error('collapse_bridge: selection missing');
+    if (mol.selection.size === 0) throw new Error('collapse_bridge: selection empty');
+    const ids = Array.from(mol.selection);
+    const pick = Math.floor(Math.random() * ids.length);
+    return collapseBridgeAt(mol, ids[pick]);
+}
+
+export function collapseAllBridges(mol, opts = {}) {
+    const collapseRound = (requireH2) => {
+        const nsel = mol.selectBridgeCandidates ? mol.selectBridgeCandidates({ requireH2 }) : 0;
+        let nCollapsed = 0;
+        for (let i = 0; i < nsel; i++) {
+            const ids = Array.from(mol.selection);
+            if (ids.length === 0) break;
+            const pick = Math.floor(Math.random() * ids.length);
+            collapseBridgeAt(mol, ids[pick]);
+            nCollapsed++;
+            if (mol.selectBridgeCandidates) mol.selectBridgeCandidates({ requireH2 });
+            if (mol.selection.size === 0) break;
+        }
+        return nCollapsed;
+    };
+    let total = 0;
+    total += collapseRound(true);
+    total += collapseRound(false);
+    return total;
+}
+
+export function insertBridge(mol, aId, bId, params = {}) {
+    if (!mol || !mol.atoms) throw new Error('insert_bridge: molecule missing');
+    const dbg = params.dbg || (()=>{});
+    const ia = mol.getAtomIndex(aId);
+    const ib = mol.getAtomIndex(bId);
+    if (ia < 0 || ib < 0) throw new Error('insert_bridge: atom not found');
+    const pa = mol.atoms[ia].pos;
+    const pb = mol.atoms[ib].pos;
+    const bondId = mol._findBondId(ia, ib);
+    if (bondId === null) throw new Error('insert_bridge: no bond between given atoms');
+    mol.removeBondById(bondId);
+    const mid = new Vec3().setAdd(pa, pb).mulScalar(0.5);
+    const dir = new Vec3().setSub(pb, pa);
+    const L = dir.normalize();
+    if (L < 1e-12) throw new Error('insert_bridge: zero-length bond');
+    const upA = mol._sumHydrogenDirs(ia);
+    const upB = mol._sumHydrogenDirs(ib);
+    const up = new Vec3().setAdd(upA, upB);
+    let upLen = up.normalize();
+    if (upLen < 1e-6) {
+        up.set(Math.abs(dir.x) < 0.9 ? 1 : 0, Math.abs(dir.x) < 0.9 ? 0 : 1, 0);
+        up.setCross(dir, up).normalize();
+    }
+    const upOffset = (params.upOffsetFactor !== undefined ? +params.upOffsetFactor : 0.5) * L;
+    const cPos = new Vec3().setAdd(mid, new Vec3().setV(up).mulScalar(upOffset));
+    const side = new Vec3().setCross(dir, up);
+    if (side.normalize() < 1e-12) {
+        side.set(Math.abs(up.x) < 0.9 ? 1 : 0, Math.abs(up.x) < 0.9 ? 0 : 1, 0);
+        side.setCross(dir, side).normalize();
+    }
+    const hDist = (params.hDist !== undefined) ? +params.hDist : 1.09;
+    const hUpOffset = (params.hUpOffsetFactor !== undefined) ? +params.hUpOffsetFactor : 0.5 * L;
+    const cId = mol.addAtom(cPos.x, cPos.y, cPos.z, 6);
+    if (!(cId >= 0)) throw new Error('insert_bridge: failed to add carbon');
+    mol.addBond(aId, cId);
+    mol.addBond(cId, bId);
+    dbg(`[insert_bridge] c=${cId} dir=(${dir.x.toFixed(3)},${dir.y.toFixed(3)},${dir.z.toFixed(3)}) up=(${up.x.toFixed(3)},${up.y.toFixed(3)},${up.z.toFixed(3)}) side=(${side.x.toFixed(3)},${side.y.toFixed(3)},${side.z.toFixed(3)})`);
+    if (params.addHydrogens !== false) {
+        const base = new Vec3().setAdd(cPos, new Vec3().setV(up).mulScalar(hUpOffset));
+        const h1p = new Vec3().setAdd(base, new Vec3().setV(side).mulScalar(hDist));
+        const h2p = new Vec3().setAdd(base, new Vec3().setV(side).mulScalar(-hDist));
+        const h1 = mol.addAtom(h1p.x, h1p.y, h1p.z, 1);
+        const h2 = mol.addAtom(h2p.x, h2p.y, h2p.z, 1);
+        if (!(h1 >= 0 && h2 >= 0)) throw new Error('insert_bridge: failed to add hydrogens');
+        mol.addBond(cId, h1);
+        mol.addBond(cId, h2);
+        dbg(`[insert_bridge] h1=${h1} h2=${h2}`);
+    }
+    return cId;
+}
+
+export function insertBridgeRandom(mol, params = {}) {
+    if (!mol || !mol.atoms) throw new Error('insert_bridge_random: molecule missing');
+    const minHeavy = (params.minHeavy !== undefined) ? params.minHeavy | 0 : 3;
+    const minHyd = (params.minHyd !== undefined) ? params.minHyd | 0 : 1;
+    const candidates = [];
+    for (let ib = 0; ib < mol.bonds.length; ib++) {
+        const b = mol.bonds[ib];
+        if (!b) continue;
+        b.ensureIndices(mol);
+        const ia = b.a;
+        const ja = b.b;
+        const a = mol.atoms[ia];
+        const c = mol.atoms[ja];
+        if (!a || !c) continue;
+        if (a.Z !== 6 || c.Z !== 6) continue;
+        const stA = mol._atomHeavyHydCounts(ia);
+        const stB = mol._atomHeavyHydCounts(ja);
+        const okA = (stA.heavy >= minHeavy) && (stA.hyd >= minHyd);
+        const okB = (stB.heavy >= minHeavy) && (stB.hyd >= minHyd);
+        if (okA && okB) candidates.push({ aId: a.id, bId: c.id });
+    }
+    if (candidates.length === 0) throw new Error('insert_bridge_random: no candidate bonds found');
+    const pick = (params.pickIndex !== undefined) ? (params.pickIndex | 0) : Math.floor(Math.random() * candidates.length);
+    if (pick < 0 || pick >= candidates.length) throw new Error(`insert_bridge_random: pickIndex out of range (0..${candidates.length - 1})`);
+    const chosen = candidates[pick];
+    const dbg = (msg)=>{};
+    return insertBridge(mol, chosen.aId, chosen.bId, { ...params, dbg });
+}
+
 function _getParsedPos(parsedPos, i) {
     const i3 = (i | 0) * 3;
     return new Vec3(parsedPos[i3], parsedPos[i3 + 1], parsedPos[i3 + 2]);

@@ -715,6 +715,52 @@ export class EditableMolecule {
         }
     }
 
+    _findBondId( ia, ib) {
+        const a = this.atoms[ia];
+        for (const ibond of a.bonds) {
+            const b = this.bonds[ibond];
+            if (!b) continue;
+            b.ensureIndices(this);
+            const other = b.other(ia);
+            if (other === ib) return b.id;
+        }
+        return null;
+    }
+
+    _atomHeavyHydCounts( ia) {
+        const a = this.atoms[ia];
+        let heavy = 0, hyd = 0;
+        for (const ib of a.bonds) {
+            const b = this.bonds[ib];
+            if (!b) continue;
+            b.ensureIndices(this);
+            const jb = b.other(ia);
+            if (jb < 0 || jb >= this.atoms.length) continue;
+            const nb = this.atoms[jb];
+            if (!nb) continue;
+            if (nb.Z === 1) hyd++;
+            else heavy++;
+        }
+        return { heavy, hyd };
+    }
+
+    _sumHydrogenDirs( ia) {
+        const a = this.atoms[ia];
+        const acc = new Vec3();
+        for (const ib of a.bonds) {
+            const b = this.bonds[ib];
+            if (!b) continue;
+            b.ensureIndices(this);
+            const jb = b.other(ia);
+            if (jb < 0 || jb >= this.atoms.length) continue;
+            const nb = this.atoms[jb];
+            if (!nb || nb.Z !== 1) continue;
+            const dir = new Vec3().setSub(nb.pos, a.pos);
+            if (dir.normalize() > 1e-12) acc.add(dir);
+        }
+        return acc;
+    }
+
 
 
     static _buildFrame(forward, up) {
