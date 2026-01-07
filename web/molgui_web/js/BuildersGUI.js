@@ -1,5 +1,5 @@
 import * as CrystalUtils from './CrystalUtils.js';
-import * as PolymerUtils from './PolymerUtils.js';
+import * as PolymerUtils from './MoleculeUtils.js';
 import { Vec3 } from '../../common_js/Vec3.js';
 import { EditableMolecule } from './EditableMolecule.js';
 import { MoleculeRenderer, PackedMolecule } from './MoleculeRenderer.js';
@@ -10,7 +10,6 @@ export class BuildersGUI {
     constructor(gui) {
         this.gui = gui;
     }
-
     addSubstrateSection(sidebar) {
         const gui = this.gui;
         gui.createSection(sidebar, 'Builder: Substrate', (container) => {

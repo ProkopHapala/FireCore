@@ -1,3 +1,4 @@
+/// Simple element record with covalent/van der Waals radii and QEq props.
 class ElementType {
     constructor(name) {
         this.name = name;
@@ -21,6 +22,8 @@ class ElementType {
     }
 }
 
+
+/// Atom-type record with valence, radii, MMFF params, and links to element/parent/epair.
 class AtomType {
     constructor(name) {
         this.name = name;
@@ -56,12 +59,125 @@ class AtomType {
     }
 }
 
+/// Container for element/atom/bond type tables with parsing helpers.
 export class MMParams {
     constructor() {
         this.elementTypes = {}; // name -> ElementType
         this.atomTypes = {};    // name -> AtomType
         this.byAtomicNumber = {}; // iZ -> ElementType
         this.bondTypes = {};    // key -> { l0, k, order, a, b }
+    }
+
+    /// Build cached name↔index maps on atomTypes if missing.
+    ensureTypeIndex() {
+        if (!this.atomTypes) throw new Error('ensureTypeIndex: atomTypes required');
+        if (this._atomTypeNameToIndex && this._atomTypeIndexToName) return;
+        const names = Object.keys(this.atomTypes).sort();
+        const n2i = {};
+        const i2n = names.slice();
+        for (let i = 0; i < i2n.length; i++) n2i[i2n[i]] = i;
+        this._atomTypeNameToIndex = n2i;
+        this._atomTypeIndexToName = i2n;
+    }
+
+    /// Resolve atom-type name to index (or -1 if missing).
+    atomTypeNameToIndex(name) {
+        this.ensureTypeIndex();
+        const i = this._atomTypeNameToIndex[name];
+        return (i === undefined) ? -1 : (i | 0);
+    }
+
+    /// Resolve atom-type index to name (or null).
+    atomTypeIndexToName(i) {
+        this.ensureTypeIndex();
+        const n = this._atomTypeIndexToName[i | 0];
+        return n ? n : null;
+    }
+
+    /// Normalize type/element token to atom-type record with name, index, and iZ.
+    resolveTypeOrElementToAtomType(nameOrEl) {
+        const s = String(nameOrEl || '').trim();
+        if (!s) throw new Error('resolveTypeOrElementToAtomType: empty type');
+        if (this.atomTypes && this.atomTypes[s]) {
+            const at = this.atomTypes[s];
+            return { name: s, atype: this.atomTypeNameToIndex(s), iZ: at.iZ | 0 };
+        }
+        if (this.elementTypes && this.elementTypes[s]) {
+            const el = this.elementTypes[s];
+            const iZ = el.iZ | 0;
+            if (this.atomTypes && this.atomTypes[s]) {
+                const at = this.atomTypes[s];
+                return { name: s, atype: this.atomTypeNameToIndex(s), iZ: at.iZ | 0 };
+            }
+            if (this.atomTypes) {
+                for (const k in this.atomTypes) {
+                    const at = this.atomTypes[k];
+                    if (at && at.element_name === s) return { name: k, atype: this.atomTypeNameToIndex(k), iZ };
+                }
+            }
+            return { name: s, atype: -1, iZ };
+        }
+        throw new Error(`Unknown cap type/element '${s}'`);
+    }
+
+    /// Resolve atom-type object for a given atom (atype or element fallback).
+    getAtomTypeForAtom(atom) {
+        if (!atom) throw new Error('getAtomTypeForAtom: atom required');
+        if (atom.atype !== undefined && (atom.atype | 0) >= 0) {
+            const name = this.atomTypeIndexToName(atom.atype | 0);
+            if (name && this.atomTypes && this.atomTypes[name]) return this.atomTypes[name];
+        }
+        if (this.byAtomicNumber) {
+            const et = this.byAtomicNumber[atom.Z | 0];
+            if (et && this.atomTypes && this.atomTypes[et.name]) return this.atomTypes[et.name];
+        }
+        if (this.atomTypes && this.atomTypes['*']) return this.atomTypes['*'];
+        throw new Error(`getAtomTypeForAtom: cannot resolve atom type for Z=${atom.Z}`);
+    }
+
+    /// Compute squared bond cutoff from covalent radii (fallback to default) for a Z pair.
+    bondCutoff2(z1, z2, defaultRcut2, bondFactor, stats) {
+        if (stats) stats.nBondCut2 = (stats.nBondCut2 | 0) + 1;
+        let r1 = 0.7;
+        let r2 = 0.7;
+        if (this.byAtomicNumber) {
+            const e1 = this.byAtomicNumber[z1 | 0];
+            const e2 = this.byAtomicNumber[z2 | 0];
+            if (e1 && (e1.Rcov > 0)) r1 = e1.Rcov;
+            if (e2 && (e2.Rcov > 0)) r2 = e2.Rcov;
+            if (e1 && e2) {
+                const rSum = (r1 + r2) * bondFactor;
+                if (stats) stats.nRcovCutoff = (stats.nRcovCutoff | 0) + 1;
+                return rSum * rSum;
+            }
+        }
+        if (stats) stats.nDefaultCutoff = (stats.nDefaultCutoff | 0) + 1;
+        return defaultRcut2;
+    }
+
+    /// Find maximum covalent radius present in atom list (fallback when unknown).
+    maxRcovFromAtoms(atoms, fallback = 0.7) {
+        let r = +fallback;
+        if (this.byAtomicNumber) {
+            for (let i = 0; i < atoms.length; i++) {
+                const z = atoms[i].Z | 0;
+                const et = this.byAtomicNumber[z];
+                if (et && (et.Rcov > r)) r = et.Rcov;
+            }
+        }
+        return r;
+    }
+
+    /// Estimate bond length from covalent radii (fallback constant).
+    bondLengthEstimate(zA, zB, bondFactor = 1.1, fallback = 1.0) {
+        if (this.byAtomicNumber) {
+            const e1 = this.byAtomicNumber[zA | 0];
+            const e2 = this.byAtomicNumber[zB | 0];
+            const r1 = (e1 && (e1.Rcov > 0)) ? e1.Rcov : 0.0;
+            const r2 = (e2 && (e2.Rcov > 0)) ? e2.Rcov : 0.0;
+            if (r1 > 0 && r2 > 0) return (r1 + r2) * bondFactor;
+        }
+        return +fallback;
     }
 
     async loadResources(elementPath, atomPath, bondPath = null) {

@@ -66,6 +66,27 @@ export class Mat3 {
         const ang = Math.atan2(s, c);
         return Mat3.fromAxisAngle(axis, ang);
     }
+
+    /// Build an orthonormal frame from forward and up vectors.
+    static fromForwardUp(forward, up) {
+        const f = forward.clone().normalize();
+        const u = up.clone().normalize();
+        const s = u.clone().setCross(f, u).normalize();
+        const v = f.clone().setCross(s, f).normalize();
+        return new Mat3(s, v, f);
+    }
+
+    /// Apply rotation about the forward axis of an existing frame.
+    static rotateAroundForward(M, angle) {
+        const c = Math.cos(angle);
+        const s = Math.sin(angle);
+        const R = new Mat3(
+            new Vec3(c, -s, 0),
+            new Vec3(s,  c, 0),
+            new Vec3(0,  0, 1)
+        );
+        return Mat3.mul(M, R);
+    }
 }
 
 if (typeof window !== 'undefined') {

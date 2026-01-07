@@ -1,9 +1,17 @@
 import * as CrystalUtils from './CrystalUtils.js';
-import * as PolymerUtils from './PolymerUtils.js';
+import * as PolymerUtils from './MoleculeUtils.js';
 import { Vec3 } from '../../common_js/Vec3.js';
 import { GUIutils } from '../../common_js/GUIutils.js';
 import { EditableMolecule } from './EditableMolecule.js';
+import { installMoleculeIOMethods } from './MoleculeIO.js';
+import { installMoleculeUtilsMethods } from './MoleculeUtils.js';
+import { installMoleculeSelectionMethods } from './MoleculeSelection.js';
 import { BuildersGUI } from './BuildersGUI.js';
+
+// Ensure IO and utils methods are installed on EditableMolecule before any static use.
+installMoleculeIOMethods(EditableMolecule);
+installMoleculeUtilsMethods(EditableMolecule);
+installMoleculeSelectionMethods(EditableMolecule);
 
 export class GUI {
     constructor(system, renderer) {
@@ -468,8 +476,11 @@ export class GUI {
                 { name: 'Adenine',         path: '../../cpp/common_resources/xyz/adenine.xyz',     fmt: 'xyz' },
                 { name: 'Cytosine',        path: '../../cpp/common_resources/xyz/citosine.xyz',    fmt: 'xyz' },
                 { name: 'Uracil',          path: '../../cpp/common_resources/xyz/uracil.xyz',      fmt: 'xyz' },
+                { name: 'Adamantane',      path: '../../cpp/common_resources/mol/adamantane.mol2', fmt: 'mol2' },
+                { name: 'Si10',            path: '../../cpp/common_resources/mol/Si10.mol2',       fmt: 'mol2' },
                 { name: 'Xylitol',         path: '../../cpp/common_resources/mol/xylitol.mol2',    fmt: 'mol2' },
                 { name: 'NaCl 1x1 L3',     path: '../../cpp/common_resources/xyz/NaCl_1x1_L3.xyz', fmt: 'xyz' },
+
                 // agregates
                 { name: 'Adenine-Thymine pair',  path: '../../cpp/common_resources/xyz/adenine-thymine.xyz', fmt: 'xyz' },
                 { name: 'Guanine-Cytosine pair', path: '../../cpp/common_resources/xyz/guanine-cytosine.xyz', fmt: 'xyz' },

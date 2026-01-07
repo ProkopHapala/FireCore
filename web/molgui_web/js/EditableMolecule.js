@@ -1,223 +1,20 @@
 import { Vec3 } from "../../common_js/Vec3.js";
 import { Mat3 } from "../../common_js/Mat3.js";
+import { MMParams } from "./MMParams.js";
 
-function _bondCut2(z1, z2, mmParams, defaultRcut2, bondFactor, stats) {
-    if (stats) stats.nBondCut2 = (stats.nBondCut2 | 0) + 1;
-    let r1 = 0.7;
-    let r2 = 0.7;
-    if (mmParams && mmParams.byAtomicNumber) {
-        const e1 = mmParams.byAtomicNumber[z1 | 0];
-        const e2 = mmParams.byAtomicNumber[z2 | 0];
-        if (e1 && (e1.Rcov > 0)) r1 = e1.Rcov;
-        if (e2 && (e2.Rcov > 0)) r2 = e2.Rcov;
-        if (e1 && e2) {
-            const rSum = (r1 + r2) * bondFactor;
-            if (stats) stats.nRcovCutoff = (stats.nRcovCutoff | 0) + 1;
-            return rSum * rSum;
-        }
-    }
-    if (stats) stats.nDefaultCutoff = (stats.nDefaultCutoff | 0) + 1;
-    return defaultRcut2;
-}
-
-function _maxRcovFromMolAtoms(atoms, mmParams, fallback = 0.7) {
-    let r = +fallback;
-    if (mmParams && mmParams.byAtomicNumber) {
-        for (let i = 0; i < atoms.length; i++) {
-            const z = atoms[i].Z | 0;
-            const et = mmParams.byAtomicNumber[z];
-            if (et && (et.Rcov > r)) r = et.Rcov;
-        }
-    }
-    return r;
-}
-
-export class Atom {
-    constructor(id, i, Z = 6, x = 0, y = 0, z = 0) {
-        this.id = id;
-        this.i = i;
-        this.Z = Z;
-        this.atype = -1;
-        this.charge = 0;
-        this.flags = 0;
-        this.pos = new Vec3(x, y, z);
-        this.bonds = [];
-        this.frag = -1;
-        this.fragSlot = -1;
-    }
-}
-
-function _ensureMMTypeIndex(mmParams) {
-    if (!mmParams || !mmParams.atomTypes) throw new Error('_ensureMMTypeIndex: mmParams with atomTypes required');
-    if (mmParams._atomTypeNameToIndex && mmParams._atomTypeIndexToName) return;
-    const names = Object.keys(mmParams.atomTypes);
-    names.sort();
-    const n2i = {};
-    const i2n = names.slice();
-    for (let i = 0; i < i2n.length; i++) n2i[i2n[i]] = i;
-    mmParams._atomTypeNameToIndex = n2i;
-    mmParams._atomTypeIndexToName = i2n;
-}
-
-function _atomTypeNameToIndex(mmParams, name) {
-    _ensureMMTypeIndex(mmParams);
-    const i = mmParams._atomTypeNameToIndex[name];
-    return (i === undefined) ? -1 : (i | 0);
-}
-
-function _atomTypeIndexToName(mmParams, i) {
-    _ensureMMTypeIndex(mmParams);
-    const n = mmParams._atomTypeIndexToName[i | 0];
-    return n ? n : null;
-}
-
-function _resolveTypeOrElementToAtomType(mmParams, nameOrEl) {
-    if (!mmParams) throw new Error('_resolveTypeOrElementToAtomType: mmParams required');
-    const s = String(nameOrEl || '').trim();
-    if (!s) throw new Error('_resolveTypeOrElementToAtomType: empty type');
-    if (mmParams.atomTypes && mmParams.atomTypes[s]) {
-        const at = mmParams.atomTypes[s];
-        return { name: s, atype: _atomTypeNameToIndex(mmParams, s), iZ: at.iZ | 0 };
-    }
-    if (mmParams.elementTypes && mmParams.elementTypes[s]) {
-        const el = mmParams.elementTypes[s];
-        const iZ = el.iZ | 0;
-        if (mmParams.atomTypes && mmParams.atomTypes[s]) {
-            const at = mmParams.atomTypes[s];
-            return { name: s, atype: _atomTypeNameToIndex(mmParams, s), iZ: at.iZ | 0 };
-        }
-        if (mmParams.atomTypes) {
-            for (const k in mmParams.atomTypes) {
-                const at = mmParams.atomTypes[k];
-                if (at && at.element_name === s) return { name: k, atype: _atomTypeNameToIndex(mmParams, k), iZ };
-            }
-        }
-        return { name: s, atype: -1, iZ };
-    }
-    throw new Error(`Unknown cap type/element '${s}'`);
-}
-
-function _parseCountSet(s) {
-    const t = String(s || '').trim();
-    if (!t.startsWith('{') || !t.endsWith('}')) throw new Error(`selectQuery: expected count set {..}, got '${t}'`);
-    const inner = t.slice(1, -1).trim();
-    if (!inner) return new Set();
-    const parts = inner.split(',');
-    const out = new Set();
-    for (let i = 0; i < parts.length; i++) {
-        const x = parseInt(parts[i].trim(), 10);
-        if (!isFinite(x)) throw new Error(`selectQuery: invalid count '${parts[i]}'`);
-        out.add(x | 0);
-    }
-    return out;
-}
-
-function _compileTokenSetToMatcher(mmParams, tokSetStr) {
-    const s = String(tokSetStr || '').trim();
-    if (!s) throw new Error('selectQuery: empty token set');
-    if (s === '*') return { bAny: true, zSet: null, tSet: null, fnMatch: (_a) => true };
-    const toks = s.split('|').map(x => x.trim()).filter(x => x.length > 0);
-    if (toks.length === 0) throw new Error('selectQuery: empty token set');
-    const zSet = new Set();
-    const tSet = new Set();
-    for (let i = 0; i < toks.length; i++) {
-        const tok = toks[i];
-        if (tok === '*') return { bAny: true, zSet: null, tSet: null, fnMatch: (_a) => true };
-        if (tok.indexOf('_') >= 0) {
-            const it = _atomTypeNameToIndex(mmParams, tok);
-            if (it < 0) throw new Error(`selectQuery: unknown atom type '${tok}'`);
-            tSet.add(it | 0);
-        } else {
-            const z = EditableMolecule.asZ(tok);
-            if (!(z > 0)) throw new Error(`selectQuery: invalid element '${tok}'`);
-            zSet.add(z | 0);
-        }
-    }
-    const fnMatch = (a) => {
-        if (!a) return false;
-        const iz = a.Z | 0;
-        if (zSet.size && zSet.has(iz)) return true;
-        const it = (a.atype !== undefined) ? (a.atype | 0) : -1;
-        if (tSet.size && it >= 0 && tSet.has(it)) return true;
-        return false;
-    };
-    return { bAny: false, zSet, tSet, fnMatch };
-}
-
-function _compileSelectQuery(mmParams, q) {
-    const s = String(q || '').trim();
-    if (!s) throw new Error('selectQuery: empty query');
-    const parts = s.split(/\s+/).filter(x => x.length > 0);
-    if (parts.length === 0) throw new Error('selectQuery: empty query');
-    const atomTok = parts[0];
-    const atomMatcher = _compileTokenSetToMatcher(mmParams, atomTok);
-    const constraints = [];
-    for (let i = 1; i < parts.length; i++) {
-        const p = parts[i];
-        if (!p) continue;
-        if (p.startsWith('n{')) {
-            const j = p.indexOf('}');
-            if (j < 0) throw new Error(`selectQuery: missing '}' in '${p}'`);
-            const neiSetStr = p.slice(2, j + 1);
-            const rest = p.slice(j + 1);
-            if (!rest.startsWith('={')) throw new Error(`selectQuery: expected '={' after n{..}, got '${p}'`);
-            const cntSetStr = rest.slice(1);
-            const cntSet = _parseCountSet(cntSetStr);
-            const neiInner = neiSetStr.slice(2, -1).trim();
-            const neiMatcher = _compileTokenSetToMatcher(mmParams, neiInner || '*');
-            constraints.push({ neiMatcher, cntSet, src: p });
-            continue;
-        }
-        if (p.startsWith('deg')) {
-            const rest = p.slice(3);
-            if (!rest.startsWith('={')) throw new Error(`selectQuery: expected deg={..}, got '${p}'`);
-            const cntSet = _parseCountSet(rest.slice(1));
-            const neiMatcher = _compileTokenSetToMatcher(mmParams, '*');
-            constraints.push({ neiMatcher, cntSet, src: p });
-            continue;
-        }
-        throw new Error(`selectQuery: cannot parse token '${p}'`);
-    }
-    return { q: s, atomMatcher, constraints };
-}
-
-function _getAtomTypeForAtom(mmParams, atom) {
-    if (!mmParams) throw new Error('_getAtomTypeForAtom: mmParams required');
-    if (!atom) throw new Error('_getAtomTypeForAtom: atom required');
-    if (atom.atype !== undefined && (atom.atype | 0) >= 0) {
-        const name = _atomTypeIndexToName(mmParams, atom.atype | 0);
-        if (name && mmParams.atomTypes && mmParams.atomTypes[name]) return mmParams.atomTypes[name];
-    }
-    if (mmParams.byAtomicNumber) {
-        const et = mmParams.byAtomicNumber[atom.Z | 0];
-        if (et && mmParams.atomTypes && mmParams.atomTypes[et.name]) return mmParams.atomTypes[et.name];
-    }
-    if (mmParams.atomTypes && mmParams.atomTypes['*']) return mmParams.atomTypes['*'];
-    throw new Error(`_getAtomTypeForAtom: cannot resolve atom type for Z=${atom.Z}`);
-}
-
-function _bondLengthEst(zA, zB, mmParams, bondFactor = 1.1, fallback = 1.0) {
-    if (mmParams && mmParams.byAtomicNumber) {
-        const e1 = mmParams.byAtomicNumber[zA | 0];
-        const e2 = mmParams.byAtomicNumber[zB | 0];
-        const r1 = (e1 && (e1.Rcov > 0)) ? e1.Rcov : 0.0;
-        const r2 = (e2 && (e2.Rcov > 0)) ? e2.Rcov : 0.0;
-        if (r1 > 0 && r2 > 0) return (r1 + r2) * bondFactor;
-    }
-    return +fallback;
-}
-
-function _orthonormalBasisFromDir(dir, outU, outV) {
+/// Build orthonormal basis perpendicular to direction dir (outputs u,v).
+function orthonormalBasisFromDir(dir, outU, outV) {
     const a = Math.abs(dir.x), b = Math.abs(dir.y), c = Math.abs(dir.z);
     const tmp = (a < 0.9) ? new Vec3(1, 0, 0) : ((b < 0.9) ? new Vec3(0, 1, 0) : new Vec3(0, 0, 1));
     outU.setV(tmp);
     outU.subMul(dir, outU.dot(dir));
-    if (!(outU.normalize() > 0)) throw new Error('_orthonormalBasisFromDir: failed to build basis');
+    if (!(outU.normalize() > 0)) throw new Error('orthonormalBasisFromDir: failed to build basis');
     outV.setCross(dir, outU);
-    if (!(outV.normalize() > 0)) throw new Error('_orthonormalBasisFromDir: failed to build basis (v)');
+    if (!(outV.normalize() > 0)) throw new Error('orthonormalBasisFromDir: failed to build basis (v)');
 }
 
-function _missingDirsVSEPR(vs, nMissing, totalDomains, outDirs) {
+/// Compute missing VSEPR directions from existing neighbor vectors.
+function missingDirsVSEPR(vs, nMissing, totalDomains, outDirs) {
     outDirs.length = 0;
     const nb = vs.length | 0;
     if (nMissing <= 0) return outDirs;
@@ -236,14 +33,14 @@ function _missingDirsVSEPR(vs, nMissing, totalDomains, outDirs) {
             outDirs.push(new Vec3(1, 0, 0));
             outDirs.push(new Vec3(-1, 0, 0));
         } else {
-            throw new Error(`_missingDirsVSEPR: unsupported totalDomains=${totalDomains} for nb=0`);
+            throw new Error(`missingDirsVSEPR: unsupported totalDomains=${totalDomains} for nb=0`);
         }
         while (outDirs.length > nMissing) outDirs.pop();
         return outDirs;
     }
 
     if (totalDomains === 2) {
-        if (nb !== 1 || nMissing !== 1) throw new Error(`_missingDirsVSEPR: linear expects nb=1,nMissing=1 got nb=${nb} nMissing=${nMissing}`);
+        if (nb !== 1 || nMissing !== 1) throw new Error(`missingDirsVSEPR: linear expects nb=1,nMissing=1 got nb=${nb} nMissing=${nMissing}`);
         outDirs.push(vs[0].clone().mulScalar(-1));
         return outDirs;
     }
@@ -251,40 +48,40 @@ function _missingDirsVSEPR(vs, nMissing, totalDomains, outDirs) {
     if (totalDomains === 3) {
         if (nb === 2 && nMissing === 1) {
             const m = vs[0].clone().add(vs[1]);
-            if (!(m.normalize() > 0)) throw new Error('_missingDirsVSEPR: nb=2 planar but v1+v2 is zero');
+            if (!(m.normalize() > 0)) throw new Error('missingDirsVSEPR: nb=2 planar but v1+v2 is zero');
             outDirs.push(m.mulScalar(-1));
             return outDirs;
         }
         if (nb === 1 && nMissing === 2) {
             const axis = vs[0].clone().mulScalar(-1);
-            if (!(axis.normalize() > 0)) throw new Error('_missingDirsVSEPR: nb=1 planar axis zero');
+            if (!(axis.normalize() > 0)) throw new Error('missingDirsVSEPR: nb=1 planar axis zero');
             const u = new Vec3();
             const v = new Vec3();
-            _orthonormalBasisFromDir(axis, u, v);
+            orthonormalBasisFromDir(axis, u, v);
             const ca = -0.5;
             const sa = 0.86602540378;
             outDirs.push(axis.clone().mulScalar(ca).addMul(u, sa));
             outDirs.push(axis.clone().mulScalar(ca).addMul(u, -sa));
             return outDirs;
         }
-        throw new Error(`_missingDirsVSEPR: unsupported planar nb=${nb} nMissing=${nMissing}`);
+        throw new Error(`missingDirsVSEPR: unsupported planar nb=${nb} nMissing=${nMissing}`);
     }
 
     if (totalDomains === 4) {
         if (nb === 3 && nMissing === 1) {
             const m = vs[0].clone().add(vs[1]).add(vs[2]);
-            if (!(m.normalize() > 0)) throw new Error('_missingDirsVSEPR: nb=3 tetra but sum is zero');
+            if (!(m.normalize() > 0)) throw new Error('missingDirsVSEPR: nb=3 tetra but sum is zero');
             outDirs.push(m.mulScalar(-1));
             return outDirs;
         }
         if (nb === 2 && nMissing === 2) {
             const m_c = vs[0].clone().add(vs[1]);
-            if (!(m_c.normalize() > 0)) throw new Error('_missingDirsVSEPR: nb=2 tetra but v1+v2 is zero');
+            if (!(m_c.normalize() > 0)) throw new Error('missingDirsVSEPR: nb=2 tetra but v1+v2 is zero');
             const m_b = new Vec3().setCross(vs[0], vs[1]);
             if (!(m_b.normalize() > 0)) {
                 const u = new Vec3();
                 const v = new Vec3();
-                _orthonormalBasisFromDir(m_c, u, v);
+                orthonormalBasisFromDir(m_c, u, v);
                 m_b.setV(u);
             }
             const cc = 0.57735026919;
@@ -292,9 +89,9 @@ function _missingDirsVSEPR(vs, nMissing, totalDomains, outDirs) {
             outDirs.push(m_c.clone().mulScalar(-cc).addMul(m_b, cb).normalize() ? m_c.clone().mulScalar(-cc).addMul(m_b, cb).normalize() : null);
             outDirs.pop();
             const d1 = m_c.clone().mulScalar(-cc).addMul(m_b, cb);
-            if (!(d1.normalize() > 0)) throw new Error('_missingDirsVSEPR: failed normalize tetra dir1');
+            if (!(d1.normalize() > 0)) throw new Error('missingDirsVSEPR: failed normalize tetra dir1');
             const d2 = m_c.clone().mulScalar(-cc).addMul(m_b, -cb);
-            if (!(d2.normalize() > 0)) throw new Error('_missingDirsVSEPR: failed normalize tetra dir2');
+            if (!(d2.normalize() > 0)) throw new Error('missingDirsVSEPR: failed normalize tetra dir2');
             outDirs.push(d1);
             outDirs.push(d2);
             return outDirs;
@@ -303,7 +100,7 @@ function _missingDirsVSEPR(vs, nMissing, totalDomains, outDirs) {
             const v1 = vs[0];
             const u = new Vec3();
             const v = new Vec3();
-            _orthonormalBasisFromDir(v1, u, v);
+            orthonormalBasisFromDir(v1, u, v);
             const a = -1.0 / 3.0;
             const b = Math.sqrt(8.0 / 9.0);
             const c120 = -0.5;
@@ -313,17 +110,33 @@ function _missingDirsVSEPR(vs, nMissing, totalDomains, outDirs) {
             const d1 = v1.clone().mulScalar(a).addMul(u, b);
             const d2 = v1.clone().mulScalar(a).addMul(u2, b);
             const d3 = v1.clone().mulScalar(a).addMul(u3, b);
-            if (!(d1.normalize() > 0 && d2.normalize() > 0 && d3.normalize() > 0)) throw new Error('_missingDirsVSEPR: failed normalize tetra nb=1');
+            if (!(d1.normalize() > 0 && d2.normalize() > 0 && d3.normalize() > 0)) throw new Error('missingDirsVSEPR: failed normalize tetra nb=1');
             outDirs.push(d1);
             outDirs.push(d2);
             outDirs.push(d3);
             return outDirs;
         }
-        throw new Error(`_missingDirsVSEPR: unsupported tetra nb=${nb} nMissing=${nMissing}`);
+        throw new Error(`missingDirsVSEPR: unsupported tetra nb=${nb} nMissing=${nMissing}`);
     }
 
-    throw new Error(`_missingDirsVSEPR: unsupported totalDomains=${totalDomains}`);
+    throw new Error(`missingDirsVSEPR: unsupported totalDomains=${totalDomains}`);
 }
+
+export class Atom {
+    constructor(id, i, Z = 6, x = 0, y = 0, z = 0) {
+        this.id = id;
+        this.i = i;
+        this.Z = Z;
+        this.atype = -1;
+        this.charge = 0;
+        this.flags = 0;
+        this.pos = new Vec3(x, y, z);
+        this.bonds = [];
+        this.frag = -1;
+        this.fragSlot = -1;
+    }
+}
+
 
 export class Bond {
     constructor(id, i, aId, bId, order = 1, type = 1) {
@@ -430,6 +243,7 @@ export class EditableMolecule {
         this.atoms = [];
         this.bonds = [];
         this.fragments = [];
+        this.mmParams = null;
 
         this.id2atom = new Map();
         this.id2bond = new Map();
@@ -515,7 +329,7 @@ export class EditableMolecule {
     setAtomTypeByName(id, typeName, mmParams) {
         const ia = this.getAtomIndex(id);
         if (ia < 0) throw new Error(`setAtomTypeByName: atom not found id=${id}`);
-        const t = _resolveTypeOrElementToAtomType(mmParams, typeName);
+        const t = mmParams.resolveTypeOrElementToAtomType(typeName);
         const a = this.atoms[ia];
         a.atype = t.atype;
         if (t.iZ > 0) a.Z = t.iZ;
@@ -531,7 +345,7 @@ export class EditableMolecule {
         const sel = Array.from(this.selection);
         if (onlySelection && sel.length === 0) throw new Error('addCappingAtoms: selection is empty');
         const ids = onlySelection ? sel : this.atoms.map(a => a.id);
-        const capT = _resolveTypeOrElementToAtomType(mmParams, cap);
+        const capT = mmParams.resolveTypeOrElementToAtomType(cap);
         const out = { nAdded: 0, capIds: [] };
 
         const vs = [];
@@ -542,7 +356,7 @@ export class EditableMolecule {
             const ia = this.getAtomIndex(id);
             if (ia < 0) continue;
             const a = this.atoms[ia];
-            const at = _getAtomTypeForAtom(mmParams, a);
+            const at = mmParams.getAtomTypeForAtom(a);
             const sigmaMax = (at.valence | 0);
             if (sigmaMax < 0) throw new Error(`addCappingAtoms: valence<0 for type='${at.name || '?'}' Z=${a.Z}`);
             let nbReal = 0;
@@ -584,8 +398,8 @@ export class EditableMolecule {
                 vs.push(tmp.clone());
             }
 
-            _missingDirsVSEPR(vs, nDang, totalDomains, dirs);
-            const r = _bondLengthEst(a.Z | 0, capT.iZ | 0, mmParams, bondFactor, 1.0);
+            missingDirsVSEPR(vs, nDang, totalDomains, dirs);
+            const r = mmParams.bondLengthEstimate(a.Z | 0, capT.iZ | 0, bondFactor, 1.0);
             for (let j = 0; j < dirs.length; j++) {
                 const d = dirs[j];
                 const p = a.pos;
@@ -618,7 +432,7 @@ export class EditableMolecule {
             const ia = this.getAtomIndex(id);
             if (ia < 0) continue;
             const a = this.atoms[ia];
-            const at = _getAtomTypeForAtom(mmParams, a);
+            const at = getAtomTypeForAtom(mmParams, a);
             const ne = (at.nepair | 0);
             if (ne <= 0) continue;
 
@@ -650,11 +464,11 @@ export class EditableMolecule {
             }
 
             const totalDomains = ((at.valence | 0) + (at.nepair | 0) + (at.npi | 0)) | 0;
-            _missingDirsVSEPR(vs, nAdd, totalDomains, dirs);
+            missingDirsVSEPR(vs, nAdd, totalDomains, dirs);
 
             const epName = (at.epair_name && at.epair_name !== '*') ? at.epair_name : 'E';
-            const epT = _resolveTypeOrElementToAtomType(mmParams, epName);
-            const r = _bondLengthEst(a.Z | 0, epT.iZ | 0, mmParams, bondFactor, 0.5);
+            const epT = mmParams.resolveTypeOrElementToAtomType(epName);
+            const r = mmParams.bondLengthEstimate(a.Z | 0, epT.iZ | 0, bondFactor, 0.5);
             for (let j = 0; j < dirs.length; j++) {
                 const d = dirs[j];
                 const p = a.pos;
@@ -774,57 +588,6 @@ export class EditableMolecule {
         this.dirtyExport = true;
     }
 
-    static compileSelectQuery(q, mmParams) {
-        if (!mmParams) throw new Error('compileSelectQuery: mmParams required');
-        return _compileSelectQuery(mmParams, q);
-    }
-
-    applySelectQuery(compiled, opts = {}) {
-        const mode = (opts.mode !== undefined) ? String(opts.mode) : 'replace';
-        const bPrint = !!opts.bPrint;
-        if (!compiled || !compiled.atomMatcher || !compiled.constraints) throw new Error('applySelectQuery: invalid compiled query');
-        const atomMatch = compiled.atomMatcher.fnMatch;
-        const constraints = compiled.constraints;
-        const sel = this.selection;
-        if (mode === 'replace') sel.clear();
-        const nAtoms = this.atoms.length | 0;
-        const counts = new Int32Array(constraints.length | 0);
-        let nHit = 0;
-        for (let ia = 0; ia < nAtoms; ia++) {
-            const a = this.atoms[ia];
-            if (!a) continue;
-            if (!atomMatch(a)) continue;
-            for (let k = 0; k < counts.length; k++) counts[k] = 0;
-            const bs = a.bonds;
-            for (let ib0 = 0; ib0 < bs.length; ib0++) {
-                const ib = bs[ib0] | 0;
-                const bnd = this.bonds[ib];
-                if (!bnd) continue;
-                bnd.ensureIndices(this);
-                const jb = bnd.other(ia);
-                if (jb < 0) continue;
-                const nb = this.atoms[jb];
-                if (!nb) continue;
-                for (let ic = 0; ic < constraints.length; ic++) {
-                    if (constraints[ic].neiMatcher.fnMatch(nb)) counts[ic]++;
-                }
-            }
-            let ok = true;
-            for (let ic = 0; ic < constraints.length; ic++) {
-                const cs = constraints[ic].cntSet;
-                if (cs.size && !cs.has(counts[ic] | 0)) { ok = false; break; }
-            }
-            if (!ok) continue;
-            const id = a.id;
-            if (mode === 'subtract') sel.delete(id);
-            else sel.add(id);
-            nHit++;
-            if (bPrint) console.log(`selectQuery hit id=${id} i=${ia} Z=${a.Z}`);
-        }
-        this.dirtyExport = true;
-        return { nHit };
-    }
-
     deleteSelectedAtoms() {
         this._assertUnlocked('deleteSelectedAtoms');
         if (this.selection.size === 0) return;
@@ -932,157 +695,27 @@ export class EditableMolecule {
         return ids;
     }
 
-    updateNeighborList() { /* adjacency is maintained incrementally in atoms[].bonds */ }
-
-    attachGroupByMarker(groupParsed, markerX = 'Xe', markerY = 'He', opts = {}) {
-        const maxIter = (opts.maxIter !== undefined) ? (opts.maxIter | 0) : 10000;
-        const zX = EditableMolecule.asZ(markerX);
-        const zY = EditableMolecule.asZ(markerY);
-        const groupMarkerX = (opts.groupMarkerX !== undefined) ? opts.groupMarkerX : markerX;
-        const groupMarkerY = (opts.groupMarkerY !== undefined) ? opts.groupMarkerY : markerY;
-        const zGX = EditableMolecule.asZ(groupMarkerX);
-        const zGY = EditableMolecule.asZ(groupMarkerY);
-        if (!groupParsed || !groupParsed.pos || !groupParsed.types || !groupParsed.bonds) throw new Error('attachGroupByMarker: groupParsed must have pos/types/bonds');
-        const gPairs = EditableMolecule._findMarkerPairsParsed(groupParsed, zGX, zGY);
-        if (gPairs.length !== 1) throw new Error(`attachGroupByMarker: group must have exactly one marker pair, got ${gPairs.length}`);
-        const gind = gPairs[0]; // [iX, iY, iA] in groupParsed local indices
-
-        const pairs0 = EditableMolecule._findMarkerPairsMol(this, zX, zY);
-        if (pairs0.length === 0) throw new Error(`attachGroupByMarker: backbone has no marker pairs X='${markerX}' Y='${markerY}'`);
-
-        let it = 0;
-        while (it < maxIter) {
-            it++;
-            const pairs = EditableMolecule._findMarkerPairsMol(this, zX, zY);
-            if (pairs.length === 0) break;
-
-            const bind = pairs[0]; // {xId, yId, aId}
-            const R = EditableMolecule._computeMarkerAttachRotation(this, groupParsed, bind, gind, zX, zY, zGX, zGY);
-
-            const Xb = this.atoms[this.getAtomIndex(bind.xId)].pos;
-            const A2 = EditableMolecule._getParsedPos(groupParsed.pos, gind[2]);
-            const tr = EditableMolecule._transformParsed(groupParsed, R, Xb, A2);
-            const removed = EditableMolecule._removeAtomsFromParsed(tr, new Set([gind[0], gind[1]]));
-            const idxAnchorGroup = removed.oldToNew[gind[2]];
-            if (idxAnchorGroup < 0) throw new Error('attachGroupByMarker: group anchor unexpectedly removed');
-
-            const ids = this.appendParsedSystem(removed, { pos: new Vec3(0, 0, 0) });
-            const groupAnchorId = ids[idxAnchorGroup];
-            if (groupAnchorId === undefined) throw new Error('attachGroupByMarker: groupAnchorId missing after append');
-            this.addBond(bind.aId, groupAnchorId);
-
-            // delete backbone marker atoms (order does not matter when deleting by ID)
-            this.removeAtomById(bind.xId);
-            this.removeAtomById(bind.yId);
-        }
-        if (it >= maxIter) throw new Error(`attachGroupByMarker: exceeded maxIter=${maxIter}`);
-    }
-
-    attachParsedByDirection(capAtom, groupParsed, params = {}) {
-        const capId = capAtom | 0;
-        const iCap = this.getAtomIndex(capId);
-        if (iCap < 0) throw new Error(`attachParsedByDirection: capAtom not found id=${capAtom}`);
-        if (!groupParsed || !groupParsed.pos || !groupParsed.types || !groupParsed.bonds) throw new Error('attachParsedByDirection: groupParsed must have pos/types/bonds');
-
-        const cap = this.atoms[iCap];
-        if (!cap.bonds || cap.bonds.length === 0) throw new Error('attachParsedByDirection: capAtom has no neighbors');
-
-        const backId = (params.backAtom !== undefined) ? (params.backAtom | 0) : (() => {
-            const ib = cap.bonds[0];
-            const b = this.bonds[ib];
-            b.ensureIndices(this);
-            return this.atoms[b.other(iCap)].id;
-        })();
-        const iBack = this.getAtomIndex(backId);
-        if (iBack < 0) throw new Error(`attachParsedByDirection: backAtom not found id=${backId}`);
-
-        const bondLen = (params.bondLen !== undefined) ? +params.bondLen : 1.5;
-        const upArr = (params.up !== undefined) ? params.up : [0, 0, 1];
-        const up = new Vec3(+upArr[0], +upArr[1], +upArr[2]);
-        const twistDeg = (params.twistDeg !== undefined) ? +params.twistDeg : 0.0;
-
-        const iGa = (params.groupAnchor !== undefined) ? ((params.groupAnchor | 0) - 1) : 0;
-        const iGf = (params.groupForwardRef !== undefined) ? ((params.groupForwardRef | 0) - 1) : 1;
-        const iGu = (params.groupUpRef !== undefined) ? ((params.groupUpRef | 0) - 1) : -1;
-        if (iGa < 0 || iGa >= groupParsed.types.length) throw new Error(`attachParsedByDirection: groupAnchor out of range ${iGa}`);
-        if (iGf < 0 || iGf >= groupParsed.types.length) throw new Error(`attachParsedByDirection: groupForwardRef out of range ${iGf}`);
-        if (iGu >= groupParsed.types.length) throw new Error(`attachParsedByDirection: groupUpRef out of range ${iGu}`);
-
-        const Xb = this.atoms[iBack].pos;
-        const Xcap = cap.pos;
-        const f = new Vec3().setSub(Xcap, Xb);
-        if (f.normalize() < 1e-12) throw new Error('attachParsedByDirection: cap-back vector is zero');
-
-        const Mb0 = EditableMolecule._buildFrame(f, up);
-        const Mb = (Math.abs(twistDeg) > 1e-9) ? EditableMolecule._rotateFrameAroundForward(Mb0, twistDeg * Math.PI / 180.0) : Mb0;
-
-        const Xg = EditableMolecule._getParsedPos(groupParsed.pos, iGa);
-        const PgF = EditableMolecule._getParsedPos(groupParsed.pos, iGf);
-        const fg = new Vec3().setSub(PgF, Xg);
-
-        let ug = null;
-        if (iGu >= 0) {
-            const PgU = EditableMolecule._getParsedPos(groupParsed.pos, iGu);
-            ug = new Vec3().setSub(PgU, Xg);
-        } else {
-            ug = new Vec3(0, 0, 1);
-        }
-
-        const Mg = EditableMolecule._buildFrame(fg, ug);
-        const R = Mat3.mul(Mb, Mg.clone().transpose());
-
-        const Xattach = Xb.clone().addMul(f, bondLen);
-        const tr = EditableMolecule._transformParsed(groupParsed, R, Xattach, Xg);
-        const ids = this.appendParsedSystem(tr);
-        const groupAnchorId = ids[iGa];
-        if (groupAnchorId === undefined) throw new Error('attachParsedByDirection: groupAnchorId missing after append');
-        this.addBond(backId, groupAnchorId);
-        this.removeAtomById(capId);
-    }
-
-    static _getParsedPos(pos3, i) {
-        const i3 = (i | 0) * 3;
-        return new Vec3(pos3[i3], pos3[i3 + 1], pos3[i3 + 2]);
-    }
-
-    static _findMarkerPairsMol(mol, zX, zY) {
-        const out = [];
-        for (let i = 0; i < mol.atoms.length; i++) {
-            const aX = mol.atoms[i];
-            if (aX.Z !== zX) continue;
-            let yId = -1;
-            let aId = -1;
-            for (const ib of aX.bonds) {
-                const b = mol.bonds[ib];
-                b.ensureIndices(mol);
-                const j = b.other(i);
-                const aj = mol.atoms[j];
-                if (aj.Z === zY) yId = aj.id;
-                else if (aj.Z !== zX) aId = aj.id;
-            }
-            if (yId >= 0 && aId >= 0) out.push({ xId: aX.id, yId, aId });
-        }
-        return out;
-    }
-
-    static _findMarkerPairsParsed(parsed, zX, zY) {
-        const n = parsed.types.length | 0;
-        const ngs = new Array(n).fill(null).map(() => []);
-        for (const [a, b] of parsed.bonds) { ngs[a | 0].push(b | 0); ngs[b | 0].push(a | 0); }
-        const out = [];
+    /// Rebuild atom->bond adjacency from current bonds (safety net / bulk rebuild).
+    updateNeighborList() {
+        const n = this.atoms.length;
         for (let i = 0; i < n; i++) {
-            if (parsed.types[i] !== zX) continue;
-            let iY = -1;
-            let iA = -1;
-            for (const j of ngs[i]) {
-                const tj = parsed.types[j];
-                if (tj === zY) iY = j;
-                else if (tj !== zX) iA = j;
-            }
-            if (iY >= 0 && iA >= 0) out.push([i, iY, iA]);
+            const a = this.atoms[i];
+            if (!a) throw new Error(`updateNeighborList: missing atom at index ${i}`);
+            a.bonds.length = 0;
         }
-        return out;
+        for (let ib = 0; ib < this.bonds.length; ib++) {
+            const b = this.bonds[ib];
+            if (!b) throw new Error(`updateNeighborList: missing bond at index ${ib}`);
+            b.ensureIndices(this);
+            const ia = b.a | 0;
+            const ja = b.b | 0;
+            if (ia < 0 || ia >= n || ja < 0 || ja >= n) throw new Error(`updateNeighborList: bond ${ib} has invalid atom indices a=${ia} b=${ja}`);
+            this.atoms[ia].bonds.push(ib);
+            this.atoms[ja].bonds.push(ib);
+        }
     }
+
+
 
     static _buildFrame(forward, up) {
         const f = forward.clone();
@@ -1104,77 +737,6 @@ export class EditableMolecule {
         const u2 = u.clone().mulScalar(c).addMul(l, s);
         const l2 = l.clone().mulScalar(c).addMul(u, -s);
         return new Mat3(f, u2, l2);
-    }
-
-    static _computeMarkerAttachRotation(backboneMol, groupParsed, bind, gind, zBX, zBY, zGX, zGY) {
-        const iXb = backboneMol.getAtomIndex(bind.xId);
-        const iYb = backboneMol.getAtomIndex(bind.yId);
-        const iAb = backboneMol.getAtomIndex(bind.aId);
-        if (iXb < 0 || iYb < 0 || iAb < 0) throw new Error('_computeMarkerAttachRotation: backbone indices missing');
-        const Xb = backboneMol.atoms[iXb].pos;
-        const Yb = backboneMol.atoms[iYb].pos;
-        const Ab = backboneMol.atoms[iAb].pos;
-
-        const fb = new Vec3().setSub(Ab, Xb);
-        const ub = new Vec3().setSub(Yb, Xb);
-        const Mb = EditableMolecule._buildFrame(fb, ub);
-
-        const Xg = EditableMolecule._getParsedPos(groupParsed.pos, gind[0]);
-        const Yg = EditableMolecule._getParsedPos(groupParsed.pos, gind[1]);
-        const Ag = EditableMolecule._getParsedPos(groupParsed.pos, gind[2]);
-
-        const fg0 = new Vec3().setSub(Ag, Xg);
-        if (fg0.normalize() < 1e-12) throw new Error('_computeMarkerAttachRotation: group forward is zero');
-        const fg = fg0.mulScalar(-1.0);
-        const ug = new Vec3().setSub(Yg, Xg);
-        const Mg = EditableMolecule._buildFrame(fg, ug);
-
-        return Mat3.mul(Mb, Mg.clone().transpose());
-    }
-
-    static _transformParsed(parsed, R, Xb, A2) {
-        const n = parsed.types.length | 0;
-        const pos = new Float32Array(n * 3);
-        const tmp = new Vec3();
-        const tmp2 = new Vec3();
-        for (let i = 0; i < n; i++) {
-            const i3 = i * 3;
-            tmp.set(parsed.pos[i3] - A2.x, parsed.pos[i3 + 1] - A2.y, parsed.pos[i3 + 2] - A2.z);
-            R.mulVec(tmp, tmp2);
-            tmp2.add(Xb);
-            pos[i3] = tmp2.x;
-            pos[i3 + 1] = tmp2.y;
-            pos[i3 + 2] = tmp2.z;
-        }
-        return { ...parsed, pos };
-    }
-
-    static _removeAtomsFromParsed(parsed, toRemoveSet) {
-        const n = parsed.types.length | 0;
-        const oldToNew = new Int32Array(n).fill(-1);
-        let nNew = 0;
-        for (let i = 0; i < n; i++) {
-            if (!toRemoveSet.has(i)) { oldToNew[i] = nNew; nNew++; }
-        }
-        const pos = new Float32Array(nNew * 3);
-        const types = new Uint8Array(nNew);
-        for (let i = 0; i < n; i++) {
-            const j = oldToNew[i];
-            if (j < 0) continue;
-            const i3 = i * 3;
-            const j3 = j * 3;
-            pos[j3] = parsed.pos[i3];
-            pos[j3 + 1] = parsed.pos[i3 + 1];
-            pos[j3 + 2] = parsed.pos[i3 + 2];
-            types[j] = parsed.types[i];
-        }
-        const bonds = [];
-        for (const [a, b] of parsed.bonds) {
-            const na = oldToNew[a | 0];
-            const nb = oldToNew[b | 0];
-            if (na >= 0 && nb >= 0) bonds.push([na, nb]);
-        }
-        return { pos, types, bonds, lvec: parsed.lvec, oldToNew };
     }
 
     replicate(nrep, lvec = null) {
@@ -1224,70 +786,6 @@ export class EditableMolecule {
         this._touchTopo();
     }
 
-    exportAsParsed(mol = this) {
-        const n = mol.atoms.length;
-        const pos = new Float32Array(n * 3);
-        const types = new Uint8Array(n);
-        const bonds = [];
-        for (let i = 0; i < n; i++) {
-            const a = mol.atoms[i];
-            const i3 = i * 3;
-            pos[i3] = a.pos.x; pos[i3 + 1] = a.pos.y; pos[i3 + 2] = a.pos.z;
-            types[i] = a.Z;
-        }
-        for (let i = 0; i < mol.bonds.length; i++) {
-            const b = mol.bonds[i];
-            b.ensureIndices(mol);
-            bonds.push([b.a, b.b]);
-        }
-        return { pos, types, bonds, lvec: mol.lvec ? [mol.lvec[0].clone(), mol.lvec[1].clone(), mol.lvec[2].clone()] : null };
-    }
-
-    appendParsedSystem(other, opts = {}) {
-        if (!other || !other.pos || !other.types) throw new Error('appendParsedSystem: other must have pos/types');
-        const n = other.types.length | 0;
-        const pos = (opts.pos !== undefined) ? opts.pos : new Vec3(0, 0, 0);
-        const rot = (opts.rot !== undefined) ? opts.rot : null;
-        const bPosVec = (pos instanceof Vec3);
-        if (!bPosVec && !(Array.isArray(pos) && pos.length >= 3)) throw new Error('appendParsedSystem: opts.pos must be Vec3 or [x,y,z]');
-        const px = bPosVec ? pos.x : pos[0];
-        const py = bPosVec ? pos.y : pos[1];
-        const pz = bPosVec ? pos.z : pos[2];
-
-        const bRotMat3 = (rot instanceof Mat3);
-        const bRotFlat = (!!rot && !bRotMat3 && (rot.length === 9));
-        if (rot && !bRotMat3 && !bRotFlat) throw new Error('appendParsedSystem: opts.rot must be Mat3 or flat[9]');
-        const tmp = new Vec3();
-        const tmp2 = new Vec3();
-        const ids = new Array(n);
-        for (let i = 0; i < n; i++) {
-            const i3 = i * 3;
-            let x = other.pos[i3];
-            let y = other.pos[i3 + 1];
-            let z = other.pos[i3 + 2];
-            if (bRotMat3) {
-                tmp.set(x, y, z);
-                rot.mulVec(tmp, tmp2);
-                x = tmp2.x; y = tmp2.y; z = tmp2.z;
-            } else if (bRotFlat) {
-                const rx = rot[0] * x + rot[1] * y + rot[2] * z;
-                const ry = rot[3] * x + rot[4] * y + rot[5] * z;
-                const rz = rot[6] * x + rot[7] * y + rot[8] * z;
-                x = rx; y = ry; z = rz;
-            }
-            ids[i] = this.addAtom(x + px, y + py, z + pz, other.types[i]);
-        }
-        if (other.bonds && other.bonds.length) {
-            for (const [a0, b0] of other.bonds) {
-                const aId = ids[a0 | 0];
-                const bId = ids[b0 | 0];
-                if (aId === undefined || bId === undefined) throw new Error(`appendParsedSystem: bond refers to out-of-range atom a0=${a0} b0=${b0}`);
-                this.addBond(aId, bId);
-            }
-        }
-        return ids;
-    }
-
     recalculateBonds(mmParams = null, opts = {}) {
         this._assertUnlocked('recalculateBonds');
         // remove all bonds
@@ -1305,7 +803,7 @@ export class EditableMolecule {
             const xi = ai.pos.x, yi = ai.pos.y, zi0 = ai.pos.z;
             for (let j = i + 1; j < n; j++) {
                 const aj = this.atoms[j];
-                const rCut2 = _bondCut2(ai.Z, aj.Z, mmParams, defaultRcut2, bondFactor, stats);
+                const rCut2 = mmParams.bondCutoff2(ai.Z, aj.Z, defaultRcut2, bondFactor, stats);
                 if (stats) stats.nAtomPairs = (stats.nAtomPairs | 0) + 1;
                 const dx = xi - aj.pos.x;
                 const dy = yi - aj.pos.y;
@@ -1352,7 +850,7 @@ export class EditableMolecule {
                     for (let jb0 = j0; jb0 < bsj.length; jb0++) {
                         const ja = bsj[jb0] | 0;
                         const aj = this.atoms[ja];
-                        const rCut2 = _bondCut2(ai.Z, aj.Z, mmParams, defaultRcut2, bondFactor, stats);
+                        const rCut2 = mmParams.bondCutoff2(ai.Z, aj.Z, defaultRcut2, bondFactor, stats);
                         if (stats) stats.nAtomPairs = (stats.nAtomPairs | 0) + 1;
                         const dx = xi - aj.pos.x;
                         const dy = yi - aj.pos.y;
@@ -1383,7 +881,7 @@ export class EditableMolecule {
         const stats = opts.stats ? opts.stats : null;
         const t0 = (opts.time !== false && typeof performance !== 'undefined') ? performance.now() : 0;
 
-        const maxR = _maxRcovFromMolAtoms(this.atoms, mmParams, 0.7);
+        const maxR = mmParams.maxRcovFromAtoms(this.atoms, 0.7);
         const margin = (opts.margin !== undefined) ? +opts.margin : ((2.0 * maxR) * bondFactor);
 
         const bs = buckets.buckets;
@@ -1404,7 +902,7 @@ export class EditableMolecule {
                     for (let jb0 = j0; jb0 < bsj.length; jb0++) {
                         const ja = bsj[jb0] | 0;
                         const aj = this.atoms[ja];
-                        const rCut2 = _bondCut2(ai.Z, aj.Z, mmParams, defaultRcut2, bondFactor, stats);
+                        const rCut2 = mmParams.bondCutoff2(ai.Z, aj.Z, defaultRcut2, bondFactor, stats);
                         if (stats) stats.nAtomPairs = (stats.nAtomPairs | 0) + 1;
                         const dx = xi - aj.pos.x;
                         const dy = yi - aj.pos.y;
@@ -1462,169 +960,28 @@ export class EditableMolecule {
         this.dirtyExport = false;
     }
 
-    toXYZString(opts = {}) {
-        const qs = opts.qs || null;
-        const bQ = !!qs;
-        const lvec = (opts.lvec !== undefined) ? opts.lvec : (this.lvec || null);
-        const out = [];
-        out.push(String(this.atoms.length));
-        if (lvec && lvec.length === 3) {
-            const a = lvec[0], b = lvec[1], c = lvec[2];
-            out.push(`lvs ${a.x} ${a.y} ${a.z}   ${b.x} ${b.y} ${b.z}   ${c.x} ${c.y} ${c.z}`);
-        } else {
-            out.push('Generated by EditableMolecule');
-        }
-        for (let i = 0; i < this.atoms.length; i++) {
-            const at = this.atoms[i];
-            const sym = EditableMolecule.Z_TO_SYMBOL[at.Z] || 'X';
-            const x = at.pos.x.toFixed(6);
-            const y = at.pos.y.toFixed(6);
-            const z = at.pos.z.toFixed(6);
-            if (bQ) out.push(`${sym} ${x} ${y} ${z} ${(qs[i] !== undefined) ? qs[i] : 0.0}`);
-            else out.push(`${sym} ${x} ${y} ${z}`);
-        }
-        return out.join('\n') + '\n';
-    }
+    /// --- Moved to MoleculeSelection ---
+    static compileSelectQuery(_q, _mmParams, _asZFn) { throw new Error('compileSelectQuery: install MoleculeSelection (installMoleculeSelectionMethods)'); }
+    applySelectQuery(_compiled, _opts = {}) { throw new Error('applySelectQuery: install MoleculeSelection (installMoleculeSelectionMethods)'); }
 
-    toMol2String(opts = {}) {
-        const lvec = (opts.lvec !== undefined) ? opts.lvec : (this.lvec || null);
-        const name = (opts.name !== undefined) ? String(opts.name) : 'EditableMolecule';
-        const out = [];
-        out.push('@<TRIPOS>MOLECULE');
-        out.push(name);
-        out.push(` ${this.atoms.length} ${this.bonds.length} 0 0 0`);
-        out.push('SMALL');
-        out.push('GASTEIGER');
-        if (lvec && lvec.length === 3) {
-            const a = lvec[0], b = lvec[1], c = lvec[2];
-            out.push(`@lvs ${a.x} ${a.y} ${a.z}    ${b.x} ${b.y} ${b.z}   ${c.x} ${c.y} ${c.z}`);
-        }
-        out.push('');
-        out.push('@<TRIPOS>ATOM');
-        for (let i = 0; i < this.atoms.length; i++) {
-            const at = this.atoms[i];
-            const sym = EditableMolecule.Z_TO_SYMBOL[at.Z] || 'X';
-            const aname = `${sym}${i + 1}`;
-            const x = at.pos.x.toFixed(4);
-            const y = at.pos.y.toFixed(4);
-            const z = at.pos.z.toFixed(4);
-            const q = (at.charge !== undefined && at.charge !== null) ? (+at.charge).toFixed(4) : '0.0000';
-            out.push(`${String(i + 1).padStart(7)} ${aname.padEnd(6)} ${x.padStart(10)} ${y.padStart(10)} ${z.padStart(10)} ${sym.padEnd(5)} 1  UNL1  ${q.padStart(10)}`);
-        }
-        out.push('@<TRIPOS>BOND');
-        for (let i = 0; i < this.bonds.length; i++) {
-            const b = this.bonds[i];
-            b.ensureIndices(this);
-            const a = b.a + 1;
-            const c = b.b + 1;
-            const ord = (b.order !== undefined && b.order !== null) ? String(b.order) : '1';
-            out.push(`${String(i + 1).padStart(6)} ${String(a).padStart(5)} ${String(c).padStart(5)} ${ord}`);
-        }
-        out.push('');
-        return out.join('\n') + '\n';
-    }
+    //  -- Moved to MoleculeUtils.js
+    attachGroupByMarker          (_groupParsed, _markerX = 'Xe', _markerY = 'He', _opts = {} ) { throw new Error('attachGroupByMarker: install MoleculeUtils (installMoleculeUtilsMethods)');  }
+    attachParsedByDirection      (_capAtom, _groupParsed, _params = {} )                       { throw new Error('attachParsedByDirection: install MoleculeUtils (installMoleculeUtilsMethods)'); }
+    static _getParsedPos         (_pos3, _i)                                                   { throw new Error('_getParsedPos: install MoleculeUtils (installMoleculeUtilsMethods)'); }
+    static _findMarkerPairsMol   (_mol, _zX, _zY)                                              { throw new Error('_findMarkerPairsMol: install MoleculeUtils (installMoleculeUtilsMethods)');}
+    static _findMarkerPairsParsed(_parsed, _zX, _zY)                                           { throw new Error('_findMarkerPairsParsed: install MoleculeUtils (installMoleculeUtilsMethods)');}
+    static _computeMarkerAttachRotation(_backboneMol, _groupParsed, _bind, _gind, _zBX, _zBY, _zGX, _zGY) { throw new Error('_computeMarkerAttachRotation: install MoleculeUtils (installMoleculeUtilsMethods)'); }
+    static _transformParsed(_parsed, _R, _Xb, _A2)                                                        { throw new Error('_transformParsed: install MoleculeUtils (installMoleculeUtilsMethods)'); }
+    static _removeAtomsFromParsed(_parsed, _toRemoveSet)                                                  {  throw new Error('_removeAtomsFromParsed: install MoleculeUtils (installMoleculeUtilsMethods)');  }
 
-    static normalizeSymbol(s) {
-        if (!s) return s;
-        const a = s.trim();
-        if (a.length === 1) return a.toUpperCase();
-        return a[0].toUpperCase() + a.slice(1).toLowerCase();
-    }
+    // -- Moved to MoleculeIO.js
+    static normalizeSymbol(_s)     { throw new Error('normalizeSymbol: install MoleculeIO (installMoleculeIOMethods)'); }
+    static symbolToZ(_sym)         { throw new Error('symbolToZ: install MoleculeIO (installMoleculeIOMethods)'); }
+    static asZ(_x)                 { throw new Error('asZ: install MoleculeIO (installMoleculeIOMethods)'); }
+    static parseMol2(text)         { throw new Error('parseMol2: install MoleculeIO (installMoleculeIOMethods)'); }
+    static parseXYZ(text)          { throw new Error('parseXYZ: install MoleculeIO (installMoleculeIOMethods)'); }
 
-    static symbolToZ(sym) {
-        const s = EditableMolecule.normalizeSymbol(sym);
-        const z = EditableMolecule.SYMBOL_TO_Z[s];
-        if (!z) throw new Error(`symbolToZ: unknown symbol '${sym}'`);
-        return z;
-    }
-
-    static asZ(x) {
-        if (typeof x === 'number') return x | 0;
-        if (typeof x !== 'string') throw new Error(`asZ: unsupported type ${typeof x}`);
-        return EditableMolecule.symbolToZ(x);
-    }
-
-    static parseMol2(text) {
-        const lines = text.split(/\r?\n/);
-        let mode = '';
-        let lvec = null;
-        const apos = [];
-        const types = [];
-        const bonds = [];
-        for (let il = 0; il < lines.length; il++) {
-            const line = lines[il].trim();
-            if (!line) continue;
-            if (line.startsWith('@lvs')) {
-                const p = line.split(/\s+/).slice(1).map(parseFloat);
-                if (p.length >= 9) {
-                    lvec = [
-                        new Vec3(p[0], p[1], p[2]),
-                        new Vec3(p[3], p[4], p[5]),
-                        new Vec3(p[6], p[7], p[8])
-                    ];
-                }
-                continue;
-            }
-            if (line.startsWith('@<TRIPOS>ATOM')) { mode = 'ATOM'; continue; }
-            if (line.startsWith('@<TRIPOS>BOND')) { mode = 'BOND'; continue; }
-            if (line.startsWith('@<TRIPOS>')) { mode = ''; continue; }
-            if (mode === 'ATOM') {
-                const parts = line.split(/\s+/);
-                if (parts.length < 6) continue;
-                const sym = EditableMolecule.normalizeSymbol(parts[1].replace(/[^A-Za-z].*$/, ''));
-                const x = parseFloat(parts[2]);
-                const y = parseFloat(parts[3]);
-                const z = parseFloat(parts[4]);
-                const Z = EditableMolecule.symbolToZ(sym);
-                apos.push(x, y, z);
-                types.push(Z);
-            } else if (mode === 'BOND') {
-                const parts = line.split(/\s+/);
-                if (parts.length < 4) continue;
-                const a = (parseInt(parts[1]) | 0) - 1;
-                const b = (parseInt(parts[2]) | 0) - 1;
-                if (a >= 0 && b >= 0) bonds.push([a, b]);
-            }
-        }
-        return {
-            pos: new Float32Array(apos),
-            types: new Uint8Array(types),
-            bonds,
-            lvec
-        };
-    }
-
-    static parseXYZ(text) {
-        const lines = text.split(/\r?\n/);
-        let i0 = 0;
-        if (lines.length >= 2) i0 = 2;
-        const pos = [];
-        const types = [];
-        for (let i = i0; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (!line) continue;
-            const parts = line.split(/\s+/);
-            if (parts.length < 4) continue;
-            const sym = parts[0];
-            const x = parseFloat(parts[1]);
-            const y = parseFloat(parts[2]);
-            const z = parseFloat(parts[3]);
-            if (!isFinite(x) || !isFinite(y) || !isFinite(z)) continue;
-            const Z = EditableMolecule.asZ(sym);
-            pos.push(x, y, z);
-            types.push(Z);
-        }
-        return { pos: new Float32Array(pos), types: new Uint8Array(types), bonds: [], lvec: null };
-    }
-
-    // These are intentionally small; expand only when needed.
-    static SYMBOL_TO_Z = {
-        H: 1, He: 2, C: 6, N: 7, O: 8, F: 9, Na: 11, Mg: 12, Al: 13, Si: 14, P: 15, S: 16, Cl: 17, K: 19, Ca: 20,
-        Fe: 26, Cu: 29, Zn: 30, Se: 34, Br: 35, I: 53, Xe: 54
-    };
-
-    static Z_TO_SYMBOL = {
-        1: 'H', 2: 'He', 6: 'C', 7: 'N', 8: 'O', 9: 'F', 11: 'Na', 12: 'Mg', 13: 'Al', 14: 'Si', 15: 'P', 16: 'S', 17: 'Cl',
-        19: 'K', 20: 'Ca', 26: 'Fe', 29: 'Cu', 30: 'Zn', 34: 'Se', 35: 'Br', 53: 'I', 54: 'Xe'
-    };
+    // Symbol helpers provided by MoleculeIO installer.
+    static SYMBOL_TO_Z = {};
+    static Z_TO_SYMBOL = {};
 }
