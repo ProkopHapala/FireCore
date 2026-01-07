@@ -39,7 +39,9 @@ export class ScriptRunner {
             'select_bridge_candidates': this.selectBridgeCandidates.bind(this),
             'collapse_all_bridges': this.collapseAllBridges.bind(this),
             'insert_bridge': this.insertBridge.bind(this),
-            'insert_bridge_random': this.insertBridgeRandom.bind(this)
+            'insert_bridge_random': this.insertBridgeRandom.bind(this),
+            'addLvec': this.addLvec.bind(this),
+            'setViewReplicas': this.setViewReplicas.bind(this)
         };
         this.lastPickedSelection = null;
     }
@@ -115,7 +117,23 @@ export class ScriptRunner {
                 rotate: (axis, deg, ctr) => { queue.push({ name: 'rotate', opts: { axis, deg, center: ctr, system: name } }); },
                 roate: (axis, deg, ctr) => { queue.push({ name: 'rotate', opts: { axis, deg, center: ctr, system: name } }); },
                 replicate: (nrep) => { queue.push({ name: 'replicate', opts: { n: nrep, system: name } }); },
-                replication: (opts) => { queue.push({ name: 'replication', opts: { ...opts, name: name, system: name } }); }
+                replication: (opts) => { queue.push({ name: 'replication', opts: { ...opts, name: name, system: name } }); },
+                addLvec: (...vecs) => {
+                    let lvecParam = vecs;
+                    if (vecs.length === 1) {
+                        const arg0 = vecs[0];
+                        if (arg0 && Array.isArray(arg0) && arg0.length === 3 && !Array.isArray(arg0[0]) && typeof arg0[0] === 'number') {
+                            // Single flat numeric array -> treat as full lattice (convert to 3 Vec3 later)
+                            lvecParam = [[arg0[0], arg0[1], arg0[2]], [0, 0, 0], [0, 0, 0]];
+                        } else if (arg0 && arg0.lvec) {
+                            lvecParam = arg0.lvec;
+                        } else if (Array.isArray(arg0) && arg0.length === 3) {
+                            lvecParam = arg0;
+                        }
+                    }
+                    queue.push({ name: 'addLvec', opts: { lvec: lvecParam, system: name } });
+                },
+                setViewReplicas: (opts) => { queue.push({ name: 'setViewReplicas', opts: { ...opts, system: name } }); }
             };
             return handle;
         };
@@ -239,31 +257,58 @@ export class ScriptRunner {
     translate(args) {
         const { vec, sel = 'current', system } = args;
         if (!vec || vec.length < 3) throw new Error("translate: vec [x,y,z] required");
-        
         const prev = this.activeSystemName;
         if (system) this.useSystem(system);
-
         const mm = this.system;
         const d = (vec instanceof Vec3) ? vec : new Vec3(vec[0], vec[1], vec[2]);
-        const ids = (sel === 'all') ? mm.atoms.map(a => a.id) : Array.from(mm.selection);
-        mm.translateAtoms(ids, d);
+        let ids = (sel === 'all') ? mm.atoms.map(a => a.id) : Array.from(mm.selection);
+        if (ids.length === 0) ids = mm.atoms.map(a => a.id);
 
+        const logFn = (window.logger && typeof window.logger.info === 'function') ? window.logger.info.bind(window.logger) : console.log;
+        logFn(`translate: sys=${this.activeSystemName} ids=${ids.length} vec=${d}`);
+
+        mm.translateAtoms(ids, d);
+        
+        mm.dirtyGeom = true;
+        mm.dirtyExport = true;
+        const rend = this.app.renderers[this.activeSystemName];
+        if (rend) rend.update();
+        if (this.app && this.app.requestRender) this.app.requestRender();
         if (system) this.useSystem(prev);
     }
 
     rotate(args) {
         const { axis, deg, sel = 'current', center, system } = args;
-        if (!axis || axis.length < 3 || deg === undefined) throw new Error("rotate: axis and deg required");
-        
+        if (!axis || deg === undefined) throw new Error("rotate: axis and deg required");
         const prev = this.activeSystemName;
         if (system) this.useSystem(system);
-
         const mm = this.system;
-        const ids = (sel === 'all') ? mm.atoms.map(a => a.id) : Array.from(mm.selection);
+        
         const vAxis = (axis instanceof Vec3) ? axis : new Vec3(axis[0], axis[1], axis[2]);
-        const ctr = (center && center.length >= 3) ? new Vec3(center[0], center[1], center[2]) : null;
-        mm.rotateAtoms(ids, vAxis, deg, ctr);
+        let ids = (sel === 'all') ? mm.atoms.map(a => a.id) : Array.from(mm.selection);
+        if (ids.length === 0) ids = mm.atoms.map(a => a.id);
 
+        let vCenter;
+        if (center) {
+            vCenter = (center instanceof Vec3) ? center : new Vec3(center[0], center[1], center[2]);
+        } else {
+            const points = ids.map(id => {
+                const ia = mm.id2atom.get(id);
+                return (ia !== undefined) ? mm.atoms[ia].pos : null;
+            }).filter(p => p !== null);
+            vCenter = Vec3.getCOG(points);
+        }
+
+        const logFn = (window.logger && typeof window.logger.info === 'function') ? window.logger.info.bind(window.logger) : console.log;
+        logFn(`rotate: sys=${this.activeSystemName} ids=${ids.length} axis=${vAxis} deg=${deg} center=${vCenter}`);
+
+        mm.rotateAtoms(ids, vAxis, deg, vCenter);
+
+        mm.dirtyGeom = true;
+        mm.dirtyExport = true;
+        const rend = this.app.renderers[this.activeSystemName];
+        if (rend) rend.update();
+        if (this.app && this.app.requestRender) this.app.requestRender();
         if (system) this.useSystem(prev);
     }
 
@@ -305,7 +350,19 @@ export class ScriptRunner {
 
     replication(args) {
         const { name = 'default', n, lattice, show = true, showBox = false, system } = args;
-        const lat = this.app.getLattice(name);
+        // Ensure lattice object exists even if caller runs before init wiring
+        if (!this.app.lattices) this.app.lattices = new Map();
+        if (!this.app.lattices.has(name)) {
+            this.app.lattices.set(name, {
+                lvec: [new Vec3(10, 0, 0), new Vec3(0, 10, 0), new Vec3(0, 0, 10)],
+                nrep: { x: 0, y: 0, z: 0 },
+                show: false,
+                showBox: false,
+                filter: null
+            });
+        }
+        let lat = this.app.lattices.get(name);
+        if (!lat && this.app.getLattice) lat = this.app.getLattice(name);
         if (n) { lat.nrep.x = n[0]; lat.nrep.y = n[1]; lat.nrep.z = n[2]; }
         
         // Sync lattice vectors from system if requested
@@ -323,38 +380,95 @@ export class ScriptRunner {
         }
         lat.show = show;
         lat.showBox = showBox;
-        this.app.updateReplicas(name);
+        window.app.updateReplicas(name);
     }
 
+    addLvec(args) {
+        const { lvec, system } = args;
+        const sysName = system || this.activeSystemName;
+        const sys = this.app.systems[sysName];
+        if (!sys) return;
+        if (lvec && lvec.length === 3) {
+            const parsed = [
+                this._vecFromInput(lvec[0]),
+                this._vecFromInput(lvec[1]),
+                this._vecFromInput(lvec[2])
+            ];
+            sys.lvec = [parsed[0].clone(), parsed[1].clone(), parsed[2].clone()];
+            const lat = this.app.getLattice(sysName);
+            lat.lvec = [sys.lvec[0].clone(), sys.lvec[1].clone(), sys.lvec[2].clone()];
+            const rend = this.app.renderers[sysName];
+            if (rend) {
+                rend.setReplicas({ lvec: sys.lvec });
+                rend.update();
+            }
+            this.app.requestRender();
+        }
+    }
+    
+    setViewReplicas(args) {
+        console.log('setViewReplicas', args);
+        const { show, showBox, nrep, lvec, system } = args;
+        const sysName = system || this.activeSystemName;
+        const lat = this.app.getLattice(sysName);
+        if (show !== undefined) lat.show = show;
+        if (showBox !== undefined) lat.showBox = showBox;
+        if (nrep !== undefined) {
+            if (Array.isArray(nrep)) { lat.nrep = { x: nrep[0], y: nrep[1], z: nrep[2] }; } 
+            else { lat.nrep = { ...lat.nrep, ...nrep }; }
+        }
+        if (lvec) {
+            lat.lvec = [
+                this._vecFromInput(lvec[0]),
+                this._vecFromInput(lvec[1]),
+                this._vecFromInput(lvec[2])
+            ];
+        }
+        console.log('setViewReplicas lvec', lat.lvec[0], lat.lvec[1], lat.lvec[2]);
+        this.app.updateReplicas(sysName);
+    }
+
+    _vecFromInput(v) {
+        if (!v) return new Vec3();
+        if (v instanceof Vec3) return v.clone();
+        if (Array.isArray(v)) return new Vec3(v[0] || 0, v[1] || 0, v[2] || 0);
+        if (typeof v === 'object' && 'x' in v && 'y' in v && 'z' in v) return new Vec3(v.x || 0, v.y || 0, v.z || 0);
+        return new Vec3();
+    }
     // --- Builder bindings ---
 
     buildSubstrate(args) {
-        const { a = 2.82065, nx = 13, ny = 12, nz = 3, replication = true, system, preset, step_edge } = args || {};
+        const { a = 2.82, nx = 10, ny = 10, nz = 3, replication = true, system, preset, step_edge } = args || {};
         
         const prev = this.activeSystemName;
         if (system) this.useSystem(system);
 
-        // TODO: Handle 'preset' and 'step_edge' properly if they differ from default genNaClStep
-        const mol = CrystalUtils.genNaClStep({ a, nx, ny, nz });
-        const parsed = mol.exportAsParsed();
-        const ids = this.system.appendParsedSystem(parsed, { pos: new Vec3(0, 0, 0) });
-        this.system.clearSelection();
-        ids.forEach(id => this.system.selection.add(id));
-        this.system.dirtyExport = true;
-
-        if (replication) {
-            this.replication({
-                name: system || 'substrate',
-                system: system || 'substrate',
-                n: [0, 0, 0], // Default to 1x1x1 (no extra replicas)
-                lattice: [
-                    [a * nx, 0, 0],
-                    [0, a * ny, 0],
-                    [0, 0, a * nz]
-                ],
-                show: true
-            });
+        let mol;
+        if (preset === 'NaCl' || preset === 'NaCl(step)') {
+            mol = CrystalUtils.genNaClStep({ a, nx, ny, nz });
+        } else {
+            // Default to NaCl step if unknown
+            mol = CrystalUtils.genNaClStep({ a, nx, ny, nz });
         }
+
+        const targetSys = this.app.systems[this.activeSystemName];
+        targetSys.clear();
+        for (const atom of mol.atoms) {
+            targetSys.addAtom(atom.pos.x, atom.pos.y, atom.pos.z, atom.Z);
+        }
+
+        if (mol.lvec) {
+            targetSys.lvec = [mol.lvec[0].clone(), mol.lvec[1].clone(), mol.lvec[2].clone()];
+            const lat = this.app.getLattice(this.activeSystemName);
+            lat.lvec = [mol.lvec[0].clone(), mol.lvec[1].clone(), mol.lvec[2].clone()];
+            lat.nrep = { x: 1, y: 1, z: 0 };
+            lat.show = true;
+            this.app.updateReplicas(this.activeSystemName);
+        }
+
+        const rend = this.app.renderers[this.activeSystemName];
+        if (rend) rend.update();
+        this.app.requestRender();
 
         if (system) this.useSystem(prev);
     }

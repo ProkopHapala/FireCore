@@ -102,7 +102,7 @@ export class MolGUIApp {
             -1000.,
              1000.
         );
-        this.camera.position.set(10, 10, 10);
+        this.camera.position.set(0, 0, 10);
         this.camera.lookAt(0, 0, 0);
 
         // 3. Renderer
@@ -191,132 +191,90 @@ export class MolGUIApp {
         // --- Replica / Lattice State ---
         this.lattices = new Map();
         this.getLattice = (name = 'default') => {
-            if (!this.lattices.has(name)) {
-                const lat = {
+            const key = name || 'default';
+            if (!this.lattices.has(key)) {
+                this.lattices.set(key, {
                     lvec: [new Vec3(10, 0, 0), new Vec3(0, 10, 0), new Vec3(0, 0, 10)],
-                    nrep: { x: 1, y: 1, z: 1 },
+                    nrep: { x: 0, y: 0, z: 0 },
                     show: false,
                     showBox: false,
-                    group: new THREE.Group(),
-                    box: null,
-                    filter: null // optional function (atom) => boolean
-                };
-                this.scene.add(lat.group);
-                this.lattices.set(name, lat);
+                    filter: null
+                });
             }
-            return this.lattices.get(name);
+            return this.lattices.get(key);
         };
-        this.lattice = this.getLattice('default'); // Default/Legacy lattice
-
-        this.updateLatticeBox = (name = 'default') => {
-            const lat = this.getLattice(name);
-            if (lat.box) { lat.group.remove(lat.box); lat.box = null; }
-            if (!lat.showBox) return;
-            const [a, b, c] = lat.lvec;
-            const { x: nx, y: ny, z: nz } = lat.nrep;
-            const superA = a.clone().mulScalar(nx * 2 + 1);
-            const superB = b.clone().mulScalar(ny * 2 + 1);
-            const superC = c.clone().mulScalar(nz * 2 + 1);
-            const origin = a.clone().mulScalar(-nx).addMul(b, -ny).addMul(c, -nz);
-            const verts = buildWireframeCellVerts(superA, superB, superC, origin);
-            const geom = new THREE.BufferGeometry();
-            geom.setAttribute('position', new THREE.BufferAttribute(verts, 3));
-            const mat = new THREE.LineBasicMaterial({ color: (name === 'substrate' ? 0xffff00 : 0x00ffff), opacity: 0.5, transparent: true });
-            lat.box = new THREE.LineSegments(geom, mat);
-            lat.group.add(lat.box);
-        };
+        this.lattice = this.getLattice('default');
 
         this.updateReplicas = (name = 'default') => {
             const lat = this.getLattice(name);
-            lat.group.clear();
-            this.updateLatticeBox(name);
-            if (!lat.show) { this.requestRender(); return; }
-            const { x: nx, y: ny, z: nz } = lat.nrep;
-            const [a, b, c] = lat.lvec;
-            
-            // Pick correct renderer based on lattice name
-            let targetRenderer = this.molRenderer;
-            if (name === 'substrate') targetRenderer = this.renderers.substrate;
-            else if (name === 'molecule') targetRenderer = this.renderers.molecule;
-
-            const baseMeshes = [
-                targetRenderer.atomMesh, 
-                targetRenderer.bondLines, 
-                targetRenderer.labelMesh
-            ].filter(m => m !== null);
-
-            for (let ix = -nx; ix <= nx; ix++) {
-                for (let iy = -ny; iy <= ny; iy++) {
-                    for (let iz = -nz; iz <= nz; iz++) {
-                        if (ix === 0 && iy === 0 && iz === 0) continue;
-                        const shift = new Vec3();
-                        shift.addMul(a, ix);
-                        shift.addMul(b, iy);
-                        shift.addMul(c, iz);
-                        const rep = new THREE.Group();
-                        rep.position.set(shift.x, shift.y, shift.z);
-                        baseMeshes.forEach(mesh => {
-                            let clone;
-                            if (mesh instanceof THREE.LineSegments) {
-                                clone = new THREE.LineSegments(mesh.geometry, mesh.material);
-                            } else if (mesh instanceof THREE.InstancedMesh) {
-                                clone = new THREE.InstancedMesh(mesh.geometry, mesh.material, mesh.count);
-                                for (const key in mesh.geometry.attributes) {
-                                    clone.geometry.setAttribute(key, mesh.geometry.attributes[key]);
-                                }
-                                clone.count = mesh.count;
-                            } else {
-                                clone = new THREE.Mesh(mesh.geometry, mesh.material);
-                            }
-                            clone.raycast = () => { }; // non-pickable
-                            rep.add(clone);
-                        });
-                        lat.group.add(rep);
-                    }
-                }
+            if (!lat) return;
+            const renderer = this.renderers[name] || this.renderers.molecule || this.molRenderer;
+            const logPrefix = `[updateReplicas:${name}]`;
+            const logMsg = `${logPrefix} show=${lat.show} showBox=${lat.showBox} nrep=(${lat.nrep.x},${lat.nrep.y},${lat.nrep.z}) lvec=${lat.lvec.map(v => v ? `(${v.x.toFixed(2)},${v.y.toFixed(2)},${v.z.toFixed(2)})` : '(null)').join(' ')}`;
+            if (window.logger && window.logger.info) window.logger.info(logMsg);
+            else console.log(logMsg);
+            if (renderer) {
+                renderer.setReplicas({
+                    lvec: lat.lvec,
+                    nrep: lat.nrep,
+                    show: lat.show,
+                    showBox: lat.showBox
+                });
+                renderer.update();
             }
             this.requestRender();
+            if (this.gui && typeof this.gui.refreshLatticeControls === 'function') {
+                this.gui.refreshLatticeControls(name);
+            }
+        };
+
+        // Alias for GUI checkbox; MoleculeRenderer handles box via showBox flag
+        this.updateLatticeBox = (name = 'default') => {
+            this.updateReplicas(name);
         };
 
         this.bakeReplicas = (name = 'default') => {
             const lat = this.getLattice(name);
             const { x: nx, y: ny, z: nz } = lat.nrep;
-            
             let targetSystem = this.system;
             if (name === 'substrate') targetSystem = this.systems.substrate;
             else if (name === 'molecule') targetSystem = this.systems.molecule;
 
             targetSystem.replicate([nx * 2 + 1, ny * 2 + 1, nz * 2 + 1], lat.lvec);
-            
-            // Trigger UI and Renderer update
+
+            const renderer = name === 'substrate' ? this.renderers.substrate : (name === 'molecule' ? this.renderers.molecule : this.molRenderer);
+            if (renderer) {
+                lat.nrep = { x: 0, y: 0, z: 0 };
+                lat.show = false;
+                lat.showBox = false;
+                renderer.setReplicas({ nrep: lat.nrep, show: false, showBox: false });
+                renderer.update();
+            }
             if (this.gui) this.gui.updateSelectionUI();
             this.requestRender();
             window.logger.info(`Baked replicas for '${name}': system now has ${targetSystem.atoms.length} atoms.`);
         };
 
         // --- Bucket overlay (debug visualization) ---
-        this.bucketOverlay = null;
-        {
-            const geom = new THREE.BufferGeometry();
-            geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
-            const mat = new THREE.LineBasicMaterial({ color: 0xff8844, transparent: true, opacity: 0.6 });
-            this.bucketOverlay = new THREE.LineSegments(geom, mat);
-            this.bucketOverlay.renderOrder = 12;
-            this.bucketOverlay.visible = false;
-            this.scene.add(this.bucketOverlay);
-        }
+        this.refreshBucketDebug = () => {
+            const bg = this.lastBucketGraph;
+            if (!bg || !this.molRenderer.bucketRenderer) return;
+            if (typeof bg.toInds === 'function') bg.toInds(this.system);
+            if (typeof bg.pruneEmptyBuckets === 'function') bg.pruneEmptyBuckets();
+            if (typeof bg.recalcBounds === 'function') bg.recalcBounds(this.system);
 
-        // --- Bucket atom->center lines (debug visualization) ---
-        this.bucketAtomLines = null;
-        {
-            const geom = new THREE.BufferGeometry();
-            geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
-            const mat = new THREE.LineBasicMaterial({ color: 0x55ccff, transparent: true, opacity: 0.6 });
-            this.bucketAtomLines = new THREE.LineSegments(geom, mat);
-            this.bucketAtomLines.renderOrder = 13;
-            this.bucketAtomLines.visible = false;
-            this.scene.add(this.bucketAtomLines);
-        }
+            this.molRenderer.bucketRenderer.updateBuckets(
+                bg,
+                this.system,
+                !!this.showBucketBoxes,
+                !!this.showBucketAtomLines
+            );
+            this.requestRender();
+        };
+
+        this.updateBucketOverlay = () => {
+            this.refreshBucketDebug();
+        };
 
         // 7. GUI
         this.gui = new GUI(this.system, this.molRenderer);
@@ -327,98 +285,14 @@ export class MolGUIApp {
         // defaults / shared state
         this.bondRecalcMode = this.bondRecalcMode ? String(this.bondRecalcMode) : 'brute';
         this.showBucketBoxes = !!this.showBucketBoxes;
-        this.autoUpdateBuckets = (this.autoUpdateBuckets !== undefined) ? !!this.autoUpdateBuckets : true;
-        this.showBucketAtomLines = !!this.showBucketAtomLines;
 
-        this.refreshBucketDebug = () => {
-            const bg = this.lastBucketGraph;
-            if (!bg) return;
-            if (typeof bg.toInds === 'function') bg.toInds(this.system);
-            if (typeof bg.pruneEmptyBuckets === 'function') bg.pruneEmptyBuckets();
-            if (typeof bg.recalcBounds === 'function') bg.recalcBounds(this.system);
-            if (typeof this.updateBucketOverlay === 'function') this.updateBucketOverlay();
-            if (!this.bucketAtomLines) return;
-            const showLines = !!this.showBucketAtomLines;
-            if (!showLines || !bg.buckets || bg.buckets.length === 0) {
-                this.bucketAtomLines.visible = false;
-                this.bucketAtomLines.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
-                this.bucketAtomLines.geometry.computeBoundingSphere();
-                this.requestRender();
-                return;
-            }
-            let nPairs = 0;
-            for (let ib = 0; ib < bg.buckets.length; ib++) nPairs += (bg.buckets[ib].atoms.length | 0);
-            const verts = new Float32Array(nPairs * 2 * 3);
-            let k = 0;
-            const c = new Vec3();
-            for (let ib = 0; ib < bg.buckets.length; ib++) {
-                bg.getBucketCenterFromBounds(ib, c);
-                const bs = bg.buckets[ib].atoms;
-                for (let i = 0; i < bs.length; i++) {
-                    const ia = bs[i] | 0;
-                    const a = this.system.atoms[ia];
-                    if (!a) continue;
-                    const p = a.pos;
-                    verts[k++] = p.x; verts[k++] = p.y; verts[k++] = p.z;
-                    verts[k++] = c.x; verts[k++] = c.y; verts[k++] = c.z;
-                }
-            }
-            const v2 = (k === (verts.length | 0)) ? verts : verts.subarray(0, k);
-            this.bucketAtomLines.visible = true;
-            this.bucketAtomLines.geometry.setAttribute('position', new THREE.BufferAttribute(v2, 3));
-            this.bucketAtomLines.geometry.computeBoundingSphere();
-            this.requestRender();
-        };
+        // Default: show axes (GUI default is checked)
+        Object.values(this.renderers).forEach(r => {
+            if (r && r.toggleAxes) r.toggleAxes(true);
+        });
 
-        this.updateBucketOverlay = () => {
-            if (!this.bucketOverlay) return;
-            const show = !!this.showBucketBoxes;
-            const bg = this.lastBucketGraph;
-            if (!show || !bg || !bg.buckets || bg.buckets.length === 0) {
-                this.bucketOverlay.visible = false;
-                this.bucketOverlay.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
-                this.bucketOverlay.geometry.computeBoundingSphere();
-                this.requestRender();
-                return;
-            }
-            const bs = bg.buckets;
-            let verts = new Float32Array(0);
-            let n3 = 0;
-            if (bg.meta && bg.meta.kind === 'crystal_cells' && bg.meta.lvec && bg.meta.origin) {
-                const A = bg.meta.lvec[0], B = bg.meta.lvec[1], C = bg.meta.lvec[2];
-                const o0 = bg.meta.origin;
-                const per = 24 * 3;
-                verts = new Float32Array(bs.length * per);
-                const O = new Vec3();
-                for (let ib = 0; ib < bs.length; ib++) {
-                    const m = bs[ib].meta;
-                    O.setV(o0);
-                    if (m) {
-                        if (m.ix) O.addMul(A, m.ix);
-                        if (m.iy) O.addMul(B, m.iy);
-                        if (m.iz) O.addMul(C, m.iz);
-                    }
-                    buildWireframeCellVerts(A, B, C, O, verts, n3);
-                    n3 += per;
-                }
-            } else {
-                const per = 12 * 2 * 3;
-                verts = new Float32Array(bs.length * per);
-                for (let ib = 0; ib < bs.length; ib++) {
-                    const b = bs[ib];
-                    buildWireframeAABBVerts(b.pmin, b.pmax, verts, n3);
-                    n3 += per;
-                }
-            }
-            const v2 = (n3 === (verts.length | 0)) ? verts : verts.subarray(0, n3);
-            this.bucketOverlay.visible = true;
-            this.bucketOverlay.geometry.setAttribute('position', new THREE.BufferAttribute(v2, 3));
-            this.bucketOverlay.geometry.computeBoundingSphere();
-            this.requestRender();
-        };
-
-        // 8. Selection Rendering (Centralized in MoleculeRenderer)
-        // No extra code needed here, MoleculeRenderer handles it.
+        // 7. Script Runner
+        this.scriptRunner = new ScriptRunner(this);
 
         this.editor.onSelectionChange = () => {
             this.gui.updateSelectionUI();

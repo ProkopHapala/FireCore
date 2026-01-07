@@ -1,6 +1,7 @@
 import { MeshRenderer } from '../../common_js/MeshRenderer.js';
 import { Draw3D } from '../../common_js/Draw3D.js';
 import { Logger } from '../../common_js/Logger.js';
+import { Vec3 } from '../../common_js/Vec3.js';
 
 export class PackedMolecule {
     constructor(capacity = 1024) {
@@ -11,6 +12,14 @@ export class PackedMolecule {
         this.bonds = [];
         this.selection = new Set();
         this.atomIds = new Int32Array(this.capacity);
+        this.isDirty = true;
+    }
+
+    clear() {
+        this.nAtoms = 0;
+        this.bonds = [];
+        this.selection = new Set();
+        // keep buffers allocated; mark dirty so renderer uploads empty state
         this.isDirty = true;
     }
 
@@ -36,7 +45,150 @@ export class PackedMolecule {
     }
 }
 
+export class BucketOverlayRenderer {
+    constructor(scene) {
+        this.scene = scene;
+        this.group = new THREE.Group();
+        this.scene.add(this.group);
+
+        // --- Bucket overlay (boxes) ---
+        const geomBox = new THREE.BufferGeometry();
+        geomBox.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+        const matBox = new THREE.LineBasicMaterial({ color: 0xff8844, transparent: true, opacity: 0.6 });
+        this.bucketOverlay = new THREE.LineSegments(geomBox, matBox);
+        this.bucketOverlay.renderOrder = 12;
+        this.bucketOverlay.visible = false;
+        this.group.add(this.bucketOverlay);
+
+        // --- Bucket atom->center lines ---
+        const geomLines = new THREE.BufferGeometry();
+        geomLines.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+        const matLines = new THREE.LineBasicMaterial({ color: 0x55ccff, transparent: true, opacity: 0.6 });
+        this.bucketAtomLines = new THREE.LineSegments(geomLines, matLines);
+        this.bucketAtomLines.renderOrder = 13;
+        this.bucketAtomLines.visible = false;
+        this.group.add(this.bucketAtomLines);
+    }
+
+    clear() {
+        this.bucketOverlay.visible = false;
+        this.bucketAtomLines.visible = false;
+        this.bucketOverlay.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+        this.bucketAtomLines.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+    }
+
+    updateBuckets(bg, mol, showBoxes, showLines) {
+        if (!bg || !bg.buckets || bg.buckets.length === 0) {
+            this.clear();
+            return;
+        }
+
+        // 1. Update Boxes
+        if (!showBoxes) {
+            this.bucketOverlay.visible = false;
+        } else {
+            this.bucketOverlay.visible = true;
+            let n3 = 0;
+            let verts = new Float32Array(0);
+            if (bg.meta && bg.meta.kind === 'crystal_cells' && bg.meta.lvec && bg.meta.origin) {
+                const A = bg.meta.lvec[0], B = bg.meta.lvec[1], C = bg.meta.lvec[2];
+                const o0 = bg.meta.origin;
+                const n = bg.buckets.length;
+                verts = new Float32Array(n * 12 * 2 * 3);
+                for (let ib = 0; ib < n; ib++) {
+                    const g = bg.buckets[ib].gridPos;
+                    if (!g) continue;
+                    const origin = o0.clone().addMul(A, g.x).addMul(B, g.y).addMul(C, g.z);
+                    const bverts = this._buildWireframeCellVerts(A, B, C, origin);
+                    verts.set(bverts, n3);
+                    n3 += bverts.length;
+                }
+            } else {
+                const n = bg.buckets.length;
+                verts = new Float32Array(n * 12 * 2 * 3);
+                for (let ib = 0; ib < n; ib++) {
+                    const b = bg.buckets[ib];
+                    const lo = b.min, hi = b.max;
+                    if (!lo || !hi) continue;
+                    const bverts = this._buildWireframeAABBVerts(lo, hi);
+                    verts.set(bverts, n3);
+                    n3 += bverts.length;
+                }
+            }
+            const vFinal = (n3 === verts.length) ? verts : verts.subarray(0, n3);
+            this.bucketOverlay.geometry.setAttribute('position', new THREE.BufferAttribute(vFinal, 3));
+            this.bucketOverlay.geometry.computeBoundingSphere();
+        }
+
+        // 2. Update Atom Lines
+        if (!showLines) {
+            this.bucketAtomLines.visible = false;
+        } else {
+            this.bucketAtomLines.visible = true;
+            let nPairs = 0;
+            for (let ib = 0; ib < bg.buckets.length; ib++) nPairs += (bg.buckets[ib].atoms.length | 0);
+            const verts = new Float32Array(nPairs * 2 * 3);
+            let k = 0;
+            const c = new Vec3();
+            for (let ib = 0; ib < bg.buckets.length; ib++) {
+                bg.getBucketCenterFromBounds(ib, c);
+                const bs = bg.buckets[ib].atoms;
+                for (let i = 0; i < bs.length; i++) {
+                    const ia = bs[i] | 0;
+                    const a = mol.atoms[ia];
+                    if (!a) continue;
+                    const p = a.pos;
+                    verts[k++] = p.x; verts[k++] = p.y; verts[k++] = p.z;
+                    verts[k++] = c.x; verts[k++] = c.y; verts[k++] = c.z;
+                }
+            }
+            const vFinal = (k === verts.length) ? verts : verts.subarray(0, k);
+            this.bucketAtomLines.geometry.setAttribute('position', new THREE.BufferAttribute(vFinal, 3));
+            this.bucketAtomLines.geometry.computeBoundingSphere();
+        }
+    }
+
+    _buildWireframeCellVerts(a, b, c, origin) {
+        const v = new Float32Array(24 * 3);
+        const corners = [
+            origin.clone(), origin.clone().add(a), origin.clone().add(b), origin.clone().add(a).add(b),
+            origin.clone().add(c), origin.clone().add(a).add(c), origin.clone().add(b).add(c), origin.clone().add(a).add(b).add(c)
+        ];
+        const edges = [[0, 1], [0, 2], [0, 4], [1, 3], [1, 5], [2, 3], [2, 6], [3, 7], [4, 5], [4, 6], [5, 7], [6, 7]];
+        for (let i = 0; i < edges.length; i++) {
+            const [i0, i1] = edges[i];
+            const p0 = corners[i0], p1 = corners[i1];
+            v[i * 6] = p0.x; v[i * 6 + 1] = p0.y; v[i * 6 + 2] = p0.z;
+            v[i * 6 + 3] = p1.x; v[i * 6 + 4] = p1.y; v[i * 6 + 5] = p1.z;
+        }
+        return v;
+    }
+
+    _buildWireframeAABBVerts(lo, hi) {
+        const v = new Float32Array(24 * 3);
+        const c = [
+            new Vec3(lo.x, lo.y, lo.z), new Vec3(hi.x, lo.y, lo.z), new Vec3(lo.x, hi.y, lo.z), new Vec3(hi.x, hi.y, lo.z),
+            new Vec3(lo.x, lo.y, hi.z), new Vec3(hi.x, lo.y, hi.z), new Vec3(lo.x, hi.y, hi.z), new Vec3(hi.x, hi.y, hi.z)
+        ];
+        const edges = [[0, 1], [0, 2], [0, 4], [1, 3], [1, 5], [2, 3], [2, 6], [3, 7], [4, 5], [4, 6], [5, 7], [6, 7]];
+        for (let i = 0; i < edges.length; i++) {
+            const [i0, i1] = edges[i];
+            const p0 = c[i0], p1 = c[i1];
+            v[i * 6] = p0.x; v[i * 6 + 1] = p0.y; v[i * 6 + 2] = p0.z;
+            v[i * 6 + 3] = p1.x; v[i * 6 + 4] = p1.y; v[i * 6 + 5] = p1.z;
+        }
+        return v;
+    }
+}
+
 export class MoleculeRenderer extends MeshRenderer {
+    /**
+     * @param {THREE.Scene} scene
+     * @param {PackedMolecule} system - packed buffer backing the renderer (positions/types/bonds/selection)
+     * @param {*} shaders
+     * @param {*} mmParams
+     * @param {EditableMolecule|null} source - authoritative editable molecule; if provided, export on update()
+     */
     constructor(scene, system, shaders, mmParams, source = null) {
         super(scene, shaders, system.capacity);
         this.system = system;
@@ -44,10 +196,180 @@ export class MoleculeRenderer extends MeshRenderer {
         this.mmParams = mmParams;
 
         this.axesHelper = null;
-
         this.labelMode = 'none';
 
         // selection is handled by MeshRenderer
+
+        // --- Replicas / Lattice ---
+        this.replicaGroup = new THREE.Group();
+        this.scene.add(this.replicaGroup);
+        this.replicaBox = null;
+        this.replicaConfig = {
+            lvec: [new Vec3(10, 0, 0), new Vec3(0, 10, 0), new Vec3(0, 0, 10)],
+            nrep: { x: 0, y: 0, z: 0 },
+            show: false,
+            showBox: false,
+            filter: null,
+            dirty: false
+        };
+        this.replicaClones = [];
+
+        // --- Buckets ---
+        this.bucketRenderer = new BucketOverlayRenderer(this.scene);
+    }
+
+    clear() {
+        // Clear rendered buffers (PackedMolecule) and mark source dirty so export writes empty state.
+        if (this.system && this.system.clear) this.system.clear(); // PackedMolecule
+        if (this.source) { // EditableMolecule
+            this.source.dirtyTopo = true;
+            this.source.dirtyGeom = true;
+            this.source.dirtyExport = true;
+        }
+        this.clearReplicas();
+        if (this.bucketRenderer) this.bucketRenderer.clear();
+        this.update();
+    }
+
+    setReplicas(cfg) {
+        if (window.logger && window.logger.debug) {
+            window.logger.debug(`[MoleculeRenderer.setReplicas] show=${cfg.show} showBox=${cfg.showBox} nrep=${cfg.nrep ? JSON.stringify(cfg.nrep) : 'null'}`);
+        } else {
+            console.debug('[MoleculeRenderer.setReplicas]', cfg);
+        }
+        // If lattice vectors not provided, fall back to source EditableMolecule.lvec; if still missing, disable replicas.
+        if (cfg.lvec) {
+            for (let i = 0; i < 3; i++) {
+                if (cfg.lvec[i]) this.replicaConfig.lvec[i].setV(cfg.lvec[i]);
+            }
+        } else if (this.source && this.source.lvec) {
+            for (let i = 0; i < 3; i++) {
+                this.replicaConfig.lvec[i].setV(this.source.lvec[i]);
+            }
+        } else {
+            this.replicaConfig.show = false;
+        }
+        if (cfg.nrep) {
+            this.replicaConfig.nrep.x = cfg.nrep.x !== undefined ? cfg.nrep.x : this.replicaConfig.nrep.x;
+            this.replicaConfig.nrep.y = cfg.nrep.y !== undefined ? cfg.nrep.y : this.replicaConfig.nrep.y;
+            this.replicaConfig.nrep.z = cfg.nrep.z !== undefined ? cfg.nrep.z : this.replicaConfig.nrep.z;
+        }
+        if (cfg.show !== undefined) this.replicaConfig.show = cfg.show;
+        if (cfg.showBox !== undefined) this.replicaConfig.showBox = cfg.showBox;
+        if (cfg.filter !== undefined) this.replicaConfig.filter = cfg.filter;
+        this.replicaConfig.dirty = true;
+    }
+
+    clearReplicas() {
+        this.replicaGroup.clear();
+        if (this.replicaBox) {
+            this.replicaGroup.remove(this.replicaBox);
+            if (this.replicaBox.geometry) this.replicaBox.geometry.dispose();
+            if (this.replicaBox.material) this.replicaBox.material.dispose();
+            this.replicaBox = null;
+        }
+        this.replicaClones = [];
+        this.replicaConfig.dirty = false;
+        this.replicaConfig.show = false;
+        this.replicaConfig.showBox = false;
+    }
+
+    rebuildReplicas() {
+        this.replicaGroup.clear();
+        this.replicaBox = null; // updateReplicasBox will handle it
+        this.updateReplicasBox();
+        this.replicaClones = [];
+
+        // Require valid lattice vectors; otherwise skip
+        const lvecOK = this.replicaConfig.lvec && this.replicaConfig.lvec.length === 3;
+        if (!this.replicaConfig.show || !lvecOK) {
+            this.replicaConfig.dirty = false;
+            return;
+        }
+
+        const { x: nx, y: ny, z: nz } = this.replicaConfig.nrep;
+        const [a, b, c] = this.replicaConfig.lvec;
+
+        const baseMeshes = [
+            this.atomMesh,
+            this.bondLines,
+            this.labelMesh
+        ].filter(m => m !== null);
+
+        for (let ix = -nx; ix <= nx; ix++) {
+            for (let iy = -ny; iy <= ny; iy++) {
+                for (let iz = -nz; iz <= nz; iz++) {
+                    if (ix === 0 && iy === 0 && iz === 0) continue;
+                    const shift = new Vec3();
+                    shift.addMul(a, ix);
+                    shift.addMul(b, iy);
+                    shift.addMul(c, iz);
+                    const rep = new THREE.Group();
+                    rep.position.set(shift.x, shift.y, shift.z);
+                    baseMeshes.forEach(mesh => {
+                        let clone;
+                        if (mesh instanceof THREE.LineSegments) {
+                            clone = new THREE.LineSegments(mesh.geometry, mesh.material);
+                        } else if (mesh instanceof THREE.InstancedMesh) {
+                            clone = new THREE.InstancedMesh(mesh.geometry, mesh.material, mesh.count);
+                            clone.count = mesh.count;
+                            this.replicaClones.push({ clone, source: mesh });
+                        } else {
+                            clone = new THREE.Mesh(mesh.geometry, mesh.material);
+                        }
+                        clone.raycast = () => { }; // non-pickable
+                        rep.add(clone);
+                    });
+                    this.replicaGroup.add(rep);
+                }
+            }
+        }
+        this.replicaConfig.dirty = false;
+        this._syncReplicaInstancedMeshes();
+    }
+
+    updateReplicasBox() {
+        if (this.replicaBox) {
+            this.replicaGroup.remove(this.replicaBox);
+            if (this.replicaBox.geometry) this.replicaBox.geometry.dispose();
+            if (this.replicaBox.material) this.replicaBox.material.dispose();
+            this.replicaBox = null;
+        }
+        if (!this.replicaConfig.showBox) return;
+
+        const [a, b, c] = this.replicaConfig.lvec;
+        const origin = new Vec3(); // draw only the base unit cell, independent of nrep
+
+        const verts = this._buildWireframeCellVerts(a, b, c, origin);
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+        const mat = new THREE.LineBasicMaterial({ color: 0x00ffff, opacity: 0.5, transparent: true });
+        this.replicaBox = new THREE.LineSegments(geom, mat);
+        this.replicaGroup.add(this.replicaBox);
+    }
+
+    _buildWireframeCellVerts(a, b, c, origin) {
+        const v = new Float32Array(24 * 3);
+        const corners = [
+            origin.clone(),
+            origin.clone().add(a),
+            origin.clone().add(b),
+            origin.clone().add(a).add(b),
+            origin.clone().add(c),
+            origin.clone().add(a).add(c),
+            origin.clone().add(b).add(c),
+            origin.clone().add(a).add(b).add(c)
+        ];
+        const edges = [
+            [0, 1], [0, 2], [0, 4], [1, 3], [1, 5], [2, 3], [2, 6], [3, 7], [4, 5], [4, 6], [5, 7], [6, 7]
+        ];
+        for (let i = 0; i < edges.length; i++) {
+            const [i0, i1] = edges[i];
+            const p0 = corners[i0], p1 = corners[i1];
+            v[i * 6] = p0.x; v[i * 6 + 1] = p0.y; v[i * 6 + 2] = p0.z;
+            v[i * 6 + 3] = p1.x; v[i * 6 + 4] = p1.y; v[i * 6 + 5] = p1.z;
+        }
+        return v;
     }
 
     update() {
@@ -62,6 +384,11 @@ export class MoleculeRenderer extends MeshRenderer {
             this.updateStructure();
             this.updatePositions(); // Structure change implies position update too
             this.system.isDirty = false;
+            this._syncReplicaInstancedMeshes();
+        }
+
+        if (this.replicaConfig.dirty) {
+            this.rebuildReplicas();
         }
 
         // Update Labels (visibility check handled in parent)
@@ -161,6 +488,19 @@ export class MoleculeRenderer extends MeshRenderer {
             }
             if (scale !== undefined && scale !== null) {
                 this.labelMesh.material.uniforms.uScale.value = parseFloat(scale);
+            }
+        }
+    }
+
+    _syncReplicaInstancedMeshes() {
+        if (!this.replicaClones || this.replicaClones.length === 0) return;
+        for (let i = 0; i < this.replicaClones.length; i++) {
+            const entry = this.replicaClones[i];
+            if (!entry || !entry.clone || !entry.source) continue;
+            entry.clone.count = entry.source.count;
+            if (entry.clone.instanceMatrix && entry.source.instanceMatrix) {
+                entry.clone.instanceMatrix.copy(entry.source.instanceMatrix);
+                entry.clone.instanceMatrix.needsUpdate = true;
             }
         }
     }

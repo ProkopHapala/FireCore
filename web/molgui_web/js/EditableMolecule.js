@@ -534,40 +534,32 @@ export class EditableMolecule {
     translateAtoms(ids, vec) {
         if (!ids || ids.length === 0) return;
         if (!(vec instanceof Vec3)) throw new Error('translateAtoms: vec must be Vec3');
-        const tmp = vec;
         for (const id of ids) {
-            const a = this.id2atom.get(id);
-            if (a && a.pos) a.pos.add(tmp);
+            const ia = this.id2atom.get(id);
+            const a = (ia !== undefined) ? this.atoms[ia] : null;
+            if (a && a.pos) a.pos.add(vec);
+            //console.log(`translateAtoms: translated atom ${id} to ${a.pos}`);
         }
         this._touchGeom();
     }
 
-    rotateAtoms(ids, axis, deg, center = null) {
+    rotateAtoms(ids, axis, deg, center) {
         if (!ids || ids.length === 0) return;
-        const vAxis = (axis instanceof Vec3) ? axis.clone() : new Vec3(axis[0], axis[1], axis[2]);
+        if (!(axis instanceof Vec3)) throw new Error('rotateAtoms: axis must be Vec3');
+        if (!(center instanceof Vec3)) throw new Error('rotateAtoms: center must be Vec3');
+        const vAxis = axis.clone();
         const ln = vAxis.normalize();
         if (!(ln > 0)) throw new Error('rotateAtoms: axis length is zero');
         const rad = deg * Math.PI / 180.0;
         const R = Mat3.fromAxisAngle(vAxis, rad);
-        let ctr = null;
-        if (center instanceof Vec3) {
-            ctr = center;
-        } else if (center && center.length >= 3) {
-            ctr = new Vec3(center[0], center[1], center[2]);
-        } else {
-            ctr = new Vec3();
-            for (const id of ids) {
-                const a = this.id2atom.get(id);
-                if (a && a.pos) ctr.add(a.pos);
-            }
-            ctr.mul(1.0 / ids.length);
-        }
         for (const id of ids) {
-            const a = this.id2atom.get(id);
-            if (!a || !a.pos) continue;
-            a.pos.sub(ctr);
-            R.dotVec(a.pos, a.pos);
-            a.pos.add(ctr);
+            const ia = this.id2atom.get(id);
+            const a = (ia !== undefined) ? this.atoms[ia] : null;
+            if (a && a.pos) {
+                a.pos.sub(center);
+                R.mulVec(a.pos, a.pos);
+                a.pos.add(center);
+            }
         }
         this._touchGeom();
     }
@@ -680,6 +672,8 @@ export class EditableMolecule {
         this.id2atom.clear();
         this.id2bond.clear();
         this.selection.clear();
+        this.lastAtomId = 0;
+        this.lastBondId = 0;
         this._touchTopo();
     }
 

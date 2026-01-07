@@ -115,8 +115,22 @@ Do not use Linked Lists (pointer chasing in JS is slow). Use a **Struct of Array
 - **ScriptRunner** exposes handles `molecule`, `substrate`, alias `mol`; methods: `clear`, `load`, `build_substrate`, `move/translate`, `rotate/roate`, `replicate/replication`. Commands accept optional `system` without changing global state.
 - **EditableMolecule**: per-instance `lvec`; `replicate(nrep,lvec)` clones atoms/bonds and scales lattice; rotation uses `Mat3.fromAxisAngle` and skips atoms lacking positions.
 - **Default user script**: clears both systems, builds substrate (NaCl preset with size/step_edge), loads/positions molecule, replicates each; no merging or `main`.
+- **Replica rendering refactor**:
+    - Kept the original instanced impostor draw path (shared GPU buffers) but added `replicaClones` tracking so every cloned `THREE.InstancedMesh` mirrors its source `count`/`instanceMatrix`.
+    - `_syncReplicaInstancedMeshes()` now runs after structure pushes and replica rebuilds, preventing “ghost” wires after `clear()`/`updatePositions`.
+    - Renderer-side replica config stays encapsulated; `main.js` no longer pokes Three.js groups directly.
+- **ScriptRunner lattice helpers**:
+    - Added `addLvec()` and `setViewReplicas()` commands plus `_vecFromInput` so scripts can pass `[ [ax,ay,az], ... ]`, flat arrays, or `Vec3` objects interchangeably without crashes.
+    - `MolGUI_web/js/main.js::updateReplicas` now picks `this.renderers[name] || this.renderers.molecule || this.molRenderer`, fixing the path where `molecule.setViewReplicas()` toggled GUI checkboxes but rendered nothing.
+    - GUI sample script (“PTCDA on NaCl step”) demonstrates periodic molecule setup via the new helpers (lvec assignment + replica toggles).
 - Startup no longer seeds H2O/CH4; scene starts empty until scripts/builders add content.
 - **Rendering/replication**: atoms are instanced impostor quads, bonds are line segments; visual replication duplicates meshes per lattice shift without duplicating data.
+
+#### Pitfalls & lessons (Replica phase)
+1. **CPU duplication ≠ instancing** — duplicating atom data into large buffers defeats the instanced impostor design and starves the GPU; stay with transform-group replication unless we truly switch to hardware instancing with per-instance matrices.
+2. **Clone bookkeeping matters** — cloned `THREE.InstancedMesh` objects keep stale `count`/matrices after `clear()` unless we track them and resync; `replicaClones` + `_syncReplicaInstancedMeshes()` is mandatory.
+3. **Script commands require registration + parsing** — adding `addLvec`/`setViewReplicas` to handles is insufficient without `this.commands[...] = ...` entries and resilient input parsing; otherwise scripts fail with “unknown command” or Vec3 parsing errors.
+4. **Renderer selection fallback** — `mol.setViewReplicas()` acts on whichever renderer matches the handle; make sure `updateReplicas` selects the correct renderer so GUI toggles truly propagate.
 
 ---
 

@@ -235,8 +235,29 @@ kept for reference only.
 - **ScriptRunner handles**: `molecule`, `substrate`, alias `mol`; methods `clear`, `load`, `build_substrate`, `move/translate`, `rotate/roate`, `replicate/replication`. Commands accept optional `system` without changing global state.
 - **EditableMolecule**: per-instance `lvec` and `replicate(nrep,lvec)` clone atoms/bonds and scale lattice; rotation uses `Mat3.fromAxisAngle` and guards missing positions.
 - **Default user script**: clears both systems, builds substrate, loads/positions molecule, replicates each; no `main`/merge.
+- **Replica rendering refactor**:
+    - Retained original GPU-friendly draw-call replication (shared geometry) but added `replicaClones` tracking so every cloned `THREE.InstancedMesh` mirrors the source `count`/matrices.
+    - `_syncReplicaInstancedMeshes()` runs after structure changes or replica rebuilds; fixes “ghost” replicas after `clear()` or resizing.
+    - Bucket/lattice visuals stay encapsulated in `MoleculeRenderer`; no stray groups in `main.js`.
+- **Script + GUI lattice pipeline**:
+    - Added `ScriptRunner.addLvec()` / `setViewReplicas()` commands, accepting flexible array/object inputs (`_vecFromInput`).
+    - `MolGUI_web/js/main.js::updateReplicas` now logs every invocation and targets `this.renderers[name]`, guaranteeing molecule/substrate parity.
+    - GUI sample (“PTCDA on NaCl step”) demonstrates periodic molecule setup via scripts (lvec + view replicas).
+- **GUI defaults**: Replica / Lattice panel now defaults to the *molecule* system so scripts and manual edits affect the molecule unless explicitly switched.
+- **Rendering/replication**: atoms are instanced impostor quads, bonds are line segments; replication clones visual meshes per lattice shift without duplicating data.
 
-## 3. Planned Topology / Chemistry Features (Details)
+#### Pitfalls & takeaways
+- Pure CPU duplication of atom positions (InstancedMesh-of-InstancedMesh) hurt performance and broke user expectations—stick to single draw-call + transform groups when the scene already uses instanced impostors.
+- Forgetting to sync cloned instanced meshes (`count`, `instanceMatrix`) leaves “ghost” copies after `molecule.clear()`; always track clones explicitly.
+- ScriptRunner commands must be registered in the whitelist **and** support ergonomic inputs; otherwise the script editor silently fails. Use helper parsers to normalize user-provided arrays/objects before touching `Vec3.setV`.
+- System defaults matter: default the Replica/Lattice GUI dropdown to *molecule* so script-driven updates and manual edits align with user expectations.
+
+### 2.4.1 Recent changes (Jan 2026)
+
+- **ShortcutManager.js**
+  - Global keyboard shortcuts (gizmo toggle/mode, delete, add atom, recalc bonds).
+
+### 3. Planned Topology / Chemistry Features (Details)
 
 This section expands 1.2 with more implementation hints.
 

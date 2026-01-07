@@ -552,11 +552,13 @@ export class GUI {
 molecule.clear();
 substrate.clear();
 substrate.build_substrate('NaCl', { size:[13,12,3], step_edge:[0,0,1] });
-substrate.replication({ n: [1, 1, 0], show: true, showBox: true });
 mol.load("../../cpp/common_resources/xyz/PTCDA.xyz");
 mol.move([0, 0, 10]);
-mol.rotate([0, 0, 1], 16.0);
-molecule.replication({ n: [1, 1, 0], show: true, showBox: false });
+mol.move([12, 0, 0]);
+mol.rotate([1, 0, 0], 60.0);
+mol.rotate([0, 0, 1], 30.0);
+molecule.addLvec({lvec: [ [18.0, 9.0, 0.0], [0.0, 16.0, 0.0], [0.0, 0.0, 18.0] ]});
+molecule.setViewReplicas({ show:true, showBox:true, nrep:[1,1,0] });
 `.trim();
 
             const sampleScripts = [
@@ -567,7 +569,6 @@ molecule.replication({ n: [1, 1, 0], show: true, showBox: false });
 molecule.clear();
 substrate.clear();
 substrate.build_substrate('NaCl', { size:[10,10,2] });
-substrate.replication({ n: [0, 0, 0], show: true, showBox: true });
 mol.load("../../cpp/common_resources/mol/benzene.mol2");
 mol.move([0, 0, 8]);
 mol.rotate([0, 0, 1], 30.0);
@@ -633,38 +634,80 @@ logger.info("Inserted bridge carbon id=" + newC);
         }, { collapsible: true });
 
         // --- Section: Replicas / Lattice ---
+        // Store refs to keep refresh callable from main.js
+        const latticeUI = {};
+
         this.createSection(sidebar, 'Replicas / Lattice', (container) => {
             const rowSystem = GUIutils.row(container);
             GUIutils.span(rowSystem, 'System: ');
-            const selLattice = GUIutils.selectList(rowSystem, ['default', 'substrate', 'molecule'], 'default', (val) => {
+            const rowLvec = GUIutils.row(container, { marginTop: '5px' });
+            GUIutils.span(rowLvec, 'Lattice: ', { verticalAlign: 'top' });
+            const taLvec = GUIutils.textArea(rowLvec, '', { height: '60px', flexGrow: '1', fontSize: '0.8em', fontFamily: 'monospace' });
+            latticeUI.taLvec = taLvec;
+
+            const updateLvecFromTA = () => {
+                const name = selLattice.value;
+                const lat = window.app.getLattice(name);
+                const lines = taLvec.value.trim().split('\n');
+                if (lines.length >= 3) {
+                    const lvec = lines.slice(0, 3).map(line => {
+                        const parts = line.trim().split(/\s+/).map(Number);
+                        return new Vec3(parts[0] || 0, parts[1] || 0, parts[2] || 0);
+                    });
+                    lat.lvec = lvec;
+                    const sys = window.app.systems[name];
+                    if (sys) sys.lvec = [lvec[0].clone(), lvec[1].clone(), lvec[2].clone()];
+                    window.app.updateReplicas(name);
+                }
+            };
+            taLvec.onchange = updateLvecFromTA;
+
+            const updateLvecTA = () => {
+                const name = selLattice.value;
+                const lat = window.app.getLattice(name);
+                if (lat && lat.lvec) {
+                    taLvec.value = lat.lvec.map(v => `${v.x.toFixed(4)} ${v.y.toFixed(4)} ${v.z.toFixed(4)}`).join('\n');
+                } else {
+                    taLvec.value = '';
+                }
+            };
+
+            const selLattice = GUIutils.selectList(rowSystem, ['molecule', 'substrate'], 'molecule', (val) => {
+                if (!window.app || !window.app.getLattice) return;
                 const lat = window.app.getLattice(val);
-                chkShow.checked = lat.show;
-                chkShowBox.checked = lat.showBox;
+                if (!lat) return;
+                chkShow.checked = !!lat.show;
+                chkShowBox.checked = !!lat.showBox;
                 inpNx.value = lat.nrep.x;
                 inpNy.value = lat.nrep.y;
                 inpNz.value = lat.nrep.z;
                 updateLvecTA();
             }, { flexGrow: '1' });
+            latticeUI.selLattice = selLattice;
 
             const rowShow = GUIutils.row(container, { marginTop: '5px' });
             const chkShow = GUIutils.labelCheck(rowShow, 'Show Replicas', false, (e) => {
                 if (window.app) {
                     const name = selLattice.value;
-                    const lat = window.app.getLattice(name);
+                    const lat = window.app.getLattice ? window.app.getLattice(name) : null;
+                    if (!lat) return;
                     lat.show = e.target.checked;
                     window.app.updateReplicas(name);
                 }
             }).input;
+            latticeUI.chkShow = chkShow;
 
             const rowShowBox = GUIutils.row(container, { marginTop: '2px' });
             const chkShowBox = GUIutils.labelCheck(rowShowBox, 'Show Lattice Box', false, (e) => {
                 if (window.app) {
                     const name = selLattice.value;
-                    const lat = window.app.getLattice(name);
+                    const lat = window.app.getLattice ? window.app.getLattice(name) : null;
+                    if (!lat) return;
                     lat.showBox = e.target.checked;
                     window.app.updateLatticeBox(name);
                 }
             }).input;
+            latticeUI.chkShowBox = chkShowBox;
 
             const rowN = GUIutils.row(container, { marginTop: '5px' });
             GUIutils.span(rowN, 'nRep: ');
@@ -676,7 +719,8 @@ logger.info("Inserted bridge carbon id=" + newC);
             const updateN = () => {
                 if (window.app) {
                     const name = selLattice.value;
-                    const lat = window.app.getLattice(name);
+                    const lat = window.app.getLattice ? window.app.getLattice(name) : null;
+                    if (!lat) return;
                     lat.nrep.x = parseInt(inpNx.value) || 0;
                     lat.nrep.y = parseInt(inpNy.value) || 0;
                     lat.nrep.z = parseInt(inpNz.value) || 0;
@@ -686,33 +730,31 @@ logger.info("Inserted bridge carbon id=" + newC);
             const inpNx = mkInt(1, updateN);
             const inpNy = mkInt(1, updateN);
             const inpNz = mkInt(1, updateN);
-
-            const taLvec = GUIutils.textArea(container, '', { width: '100%', height: '60px', marginTop: '5px', fontSize: '11px', fontFamily: 'monospace' });
-            const updateLvecTA = () => {
-                const lat = window.app.getLattice(selLattice.value);
-                taLvec.value = lat.lvec.map(v => `${v.x.toFixed(3)} ${v.y.toFixed(3)} ${v.z.toFixed(3)}`).join('\n');
-            };
-            taLvec.onchange = () => {
-                if (window.app) {
-                    const name = selLattice.value;
-                    const lat = window.app.getLattice(name);
-                    const lines = taLvec.value.trim().split('\n');
-                    lines.forEach((l, i) => {
-                        if (i < 3) {
-                            const p = l.trim().split(/\s+/).map(parseFloat);
-                            if (p.length >= 3) lat.lvec[i].set(p[0], p[1], p[2]);
-                        }
-                    });
-                    window.app.updateReplicas(name);
-                }
-            };
-            updateLvecTA();
+            latticeUI.inpNx = inpNx;
+            latticeUI.inpNy = inpNy;
+            latticeUI.inpNz = inpNz;
 
             const rowBtns = GUIutils.row(container, { marginTop: '5px' });
             GUIutils.btn(rowBtns, 'Bake Replicas', () => {
                 if (window.app) window.app.bakeReplicas(selLattice.value);
             }, { flexGrow: '1' });
         });
+
+        // Expose refresh helper for external callers (main.js) to keep UI in sync
+        this.refreshLatticeControls = (name = 'molecule') => {
+            if (!window.app || !window.app.getLattice) return;
+            const lat = window.app.getLattice(name);
+            if (!lat || !latticeUI.selLattice) return;
+            latticeUI.selLattice.value = name;
+            if (latticeUI.chkShow) latticeUI.chkShow.checked = !!lat.show;
+            if (latticeUI.chkShowBox) latticeUI.chkShowBox.checked = !!lat.showBox;
+            if (latticeUI.inpNx) latticeUI.inpNx.value = lat.nrep.x;
+            if (latticeUI.inpNy) latticeUI.inpNy.value = lat.nrep.y;
+            if (latticeUI.inpNz) latticeUI.inpNz.value = lat.nrep.z;
+            if (latticeUI.taLvec && lat.lvec) {
+                latticeUI.taLvec.value = lat.lvec.map(v => `${v.x.toFixed(4)} ${v.y.toFixed(4)} ${v.z.toFixed(4)}`).join('\n');
+            }
+        };
 
         // --- Section: Parameters ---
         this.createSection(sidebar, 'Parameters', (container) => {

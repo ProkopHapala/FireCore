@@ -192,6 +192,18 @@ export class Vec3 {
         return dx * dx + dy * dy + dz * dz;
     }
 
+    static getCOG(points, out = new Vec3()) {
+        out.set(0, 0, 0);
+        if (!points || points.length === 0) return out;
+        for (const p of points) {
+            out.x += p.x;
+            out.y += p.y;
+            out.z += p.z;
+        }
+        out.mulScalar(1.0 / points.length);
+        return out;
+    }
+
     toString() {
         return `(${this.x.toFixed(6)}, ${this.y.toFixed(6)}, ${this.z.toFixed(6)})`;
     }
