@@ -8,17 +8,21 @@ import { ShortcutManager } from './ShortcutManager.js';
 import { Vec3 } from '../../common_js/Vec3.js';
 import { buildWireframeCellVerts, buildWireframeAABBVerts } from '../../common_js/Buckets.js';
 import { ScriptRunner } from './ScriptRunner.js';
+import { PDSimulation } from './ProjectiveDynamics.js';
 
 export class MolGUIApp {
     constructor() {
         this.container = document.getElementById('canvas-container');
+        if (!this.container) throw new Error("Could not find #canvas-container");
         this.scene = null;
         this.camera = null;
         this.renderer = null;
+        this.system = new EditableMolecule();
         this.controls = null;
         this._rafPending = false;
         this._rafLoopActive = false;
         this.continuousRender = false;
+        this.pdDebugTexture = null;
     }
 
     requestRender() {
@@ -29,7 +33,12 @@ export class MolGUIApp {
             if (this.renderers) {
                 Object.values(this.renderers).forEach(r => r.update());
             }
-            if (this.renderer && this.scene && this.camera) this.renderer.render(this.scene, this.camera);
+            if (this.renderer && this.scene && this.camera) {
+                this.renderer.render(this.scene, this.camera);
+                if (this.pdSimulation && this.pdSimulation.debugTextureName) {
+                    this.pdSimulation.renderDebugOverlay(this.renderer);
+                }
+            }
         });
     }
 
@@ -106,9 +115,18 @@ export class MolGUIApp {
         this.camera.lookAt(0, 0, 0);
 
         // 3. Renderer
-        this.renderer = new THREE.WebGLRenderer({
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl2', {
             antialias: true,
-            powerPreference: "high-performance"
+            powerPreference: "high-performance",
+            preserveDrawingBuffer: false,
+        });
+        if (!gl) {
+            throw new Error('WebGL2 context not available. Projective Dynamics requires WebGL2/GLSL 300 ES.');
+        }
+        this.renderer = new THREE.WebGLRenderer({
+            canvas,
+            context: gl
         });
         this.renderer.setSize(width, height);
         this.renderer.setPixelRatio(window.devicePixelRatio);
@@ -119,6 +137,9 @@ export class MolGUIApp {
             this.renderer.domElement.focus();
         });
         this.container.appendChild(this.renderer.domElement);
+        if (!this.renderer.capabilities.isWebGL2) {
+            throw new Error('Three.js fell back to WebGL1. Projective Dynamics shaders need WebGL2.');
+        }
 
         // 4. Controls
         if (THREE.OrbitControls) {
@@ -171,7 +192,7 @@ export class MolGUIApp {
 
         // 5. MMParams (Load resources)
         this.mmParams = new MMParams();
-        await this.mmParams.loadResources('../common_resources/ElementTypes.dat', '../common_resources/AtomTypes.dat', '../common_resources/BondTypes.dat');
+        await this.mmParams.loadResources('../common_resources/ElementTypes.dat', '../common_resources/AtomTypes.dat', '../common_resources/BondTypes.dat', '../common_resources/AngleTypes.dat');
 
         // 6. Molecule Renderers
         this.renderers = {
@@ -186,7 +207,7 @@ export class MolGUIApp {
         });
 
         // 7. Script Runner
-        this.scriptRunner = new ScriptRunner(this);
+        this.requestRender = this.requestRender.bind(this);
 
         // --- Replica / Lattice State ---
         this.lattices = new Map();
@@ -294,6 +315,11 @@ export class MolGUIApp {
         // 7. Script Runner
         this.scriptRunner = new ScriptRunner(this);
 
+        // 8. Projective Dynamics Simulation (optional)
+        this.pdSimulation = null;
+        this.pdEnabled = false;
+        this.pdDt = 0.016;
+
         this.editor.onSelectionChange = () => {
             this.gui.updateSelectionUI();
             this.molRenderer.updateSelection();
@@ -351,15 +377,91 @@ export class MolGUIApp {
         this.requestRender();
     }
 
-    animate() {
-        if (!this._rafLoopActive) return;
-        requestAnimationFrame(this.animate.bind(this));
-        if (!this.continuousRender) return;
-        if (this.controls) this.controls.update();
-        if (this.renderers) {
-            Object.values(this.renderers).forEach(r => r.update());
+    async enablePD(force = false) {
+        const nAtoms = this.system.atoms.length || 0;
+        if (nAtoms === 0) {
+            window.logger.warn("Cannot enable PD: no atoms in system");
+            return;
         }
-        if (this.renderer && this.scene && this.camera) this.renderer.render(this.scene, this.camera);
+        if (!force && this.pdEnabled && this.pdSimulation && this.pdSimulation.N === nAtoms) return;
+        this.pdSimulation = new PDSimulation(this.renderer, nAtoms, 16);
+        await this.pdSimulation.init();
+        this.pdEnabled = true;
+        window.logger.info("Projective Dynamics simulation ready");
+    }
+
+    async runRelax({ dt = 0.1, iterations = 40, rebuild = true } = {}) {
+        const nAtoms = this.system.atoms.length || 0;
+        if (nAtoms === 0) {
+            window.logger.warn("runRelax: no atoms to relax");
+            return;
+        }
+        await this.enablePD();
+        if (!this.pdSimulation) {
+            window.logger.error("runRelax: PD simulation not initialized");
+            return;
+        }
+
+        // Ensure packed buffers reflect current geometry
+        this.molRenderer.update();
+
+        if (rebuild) {
+            this.system.updateNeighborList();
+            this.system.printSizes('beforePD');
+            const bondCount = this.system.bonds ? this.system.bonds.length : 0;
+            console.log(`[PD] setTopology rebuild: atoms=${nAtoms} bonds=${bondCount}`);
+            this.pdSimulation.setTopology(this.system, this.mmParams);
+        }
+        this.pdSimulation.setPositions(this.packedSystems.molecule.pos);
+        this.pdSimulation.setVelocities(null);
+        this.pdSimulation.uploadInitialData();
+
+        console.log('--- PD BEFORE STEP ---');
+        this.pdSimulation.debugReadTexture('Initial Positions', this.pdSimulation.texPosInitial, 8);
+        this.pdSimulation.debugReadTexture('Initial Velocities', this.pdSimulation.texVelInitial, 8);
+        this.pdSimulation.debugReadTexture('texBonds', this.pdSimulation.texBonds, {
+            count: Math.min(8, nAtoms),
+            mode: 'bonds',
+            width: this.pdSimulation.maxBonds,
+            height: this.pdSimulation.N
+        });
+
+        const evenIterations = (iterations % 2 === 0) ? iterations : iterations + 1;
+        const prevIter = this.pdSimulation.iterationCount;
+        this.pdSimulation.iterationCount = evenIterations;
+        this.pdSimulation.step(dt);
+        this.pdSimulation.iterationCount = prevIter;
+
+        console.log('--- PD AFTER STEP ---');
+        this.pdSimulation.debugReadTexture('Prediction Sn', this.pdSimulation.fboSn, 8);
+        this.pdSimulation.debugReadTexture('Final Positions', this.pdSimulation.getOutputTexture(), 8);
+        this.pdSimulation.debugReadTexture('Velocities', this.pdSimulation.fboVel, 8);
+        this.pdSimulation.renderDebugView();
+
+        const buffer = this.pdSimulation.readPositions();
+        if (!buffer) {
+            window.logger.warn("runRelax: failed to read positions from PD");
+            return;
+        }
+
+        const packedPos = this.packedSystems.molecule.pos;
+        for (let i = 0; i < nAtoms; i++) {
+            const a = this.system.atoms[i];
+            if (!a) continue;
+            const x = buffer[i * 4];
+            const y = buffer[i * 4 + 1];
+            const z = buffer[i * 4 + 2];
+            a.pos.set(x, y, z);
+            const base = i * 3;
+            packedPos[base] = x;
+            packedPos[base + 1] = y;
+            packedPos[base + 2] = z;
+        }
+        this.system.dirtyGeom = true;
+        this.system.dirtyExport = true;
+        this.molRenderer.update();
+        this.requestRender();
+        window.logger.info(`runRelax: completed ${evenIterations} iterations`);
     }
 }
 

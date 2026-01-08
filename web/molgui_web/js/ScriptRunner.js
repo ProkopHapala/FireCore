@@ -47,9 +47,132 @@ export class ScriptRunner {
             'remove_undercoordinated': this.removeUndercoordinatedAtoms.bind(this),
             'collapse_undercoordinated': this.collapseUndercoordinatedAtoms.bind(this),
             'addLvec': this.addLvec.bind(this),
-            'setViewReplicas': this.setViewReplicas.bind(this)
+            'setViewReplicas': this.setViewReplicas.bind(this),
+            'relax':          this.relax.bind(this),
+            'relaxJacobi_CPU': this.relaxJacobiCPU.bind(this),
+            'relaxJacobi_GPU': this.relaxJacobiGPU.bind(this)
         };
         this.lastPickedSelection = null;
+    }
+
+    async relax(args = {}) {
+        if (!(this.app && typeof this.app.runRelax === 'function')) {
+            window.logger.warn('relax command unavailable (app.runRelax missing)');
+            return;
+        }
+        const { dt = 0.01, iterations = 40, rebuild = true } = args;
+        await this.app.runRelax({ dt, iterations, rebuild });
+    }
+
+    async ensurePDReady() {
+        if (!this.app) throw new Error('ensurePDReady: app missing');
+        if (!this.app.pdSimulation) {
+            if (typeof this.app.enablePD === 'function') {
+                await this.app.enablePD();
+            }
+        }
+        if (!this.app.pdSimulation) {
+            throw new Error('ensurePDReady: PD simulation still unavailable after enablePD');
+        }
+    }
+
+    async relaxJacobiCPU(args = {}) {
+        const { niter = 40, dt = 0.1, verb = 0, debugAtom = -1, mode = 'jacobi_fly' } = args;
+        console.log(`[ScriptRunner] relaxJacobi_CPU: niter=${niter} dt=${dt} verb=${verb} debugAtom=${debugAtom} mode=${mode}`);
+
+        await this.ensurePDReady();
+
+        const sys = this.system;
+        if (!sys || sys.atoms.length === 0) {
+            throw new Error('relaxJacobi_CPU: No atoms in system');
+        }
+
+        sys.updateNeighborList();
+        if (verb >= 1) sys.printSizes('beforeCPUJacobi');
+
+        const bondCount = sys.bonds ? sys.bonds.length : 0;
+        console.log(`[ScriptRunner] setTopology: atoms=${sys.atoms.length} bonds=${bondCount}`);
+        this.app.pdSimulation.setTopology(sys, this.app.mmParams);
+
+        const positions = new Float32Array(sys.atoms.length * 3);
+        for (let i = 0; i < sys.atoms.length; i++) {
+            const a = sys.atoms[i];
+            positions[i * 3] = a.pos.x;
+            positions[i * 3 + 1] = a.pos.y;
+            positions[i * 3 + 2] = a.pos.z;
+        }
+
+        const resultPos = this.app.pdSimulation.runCpuJacobi({
+            positions,
+            dt,
+            iterations: niter,
+            debugAtom: (verb >= 3) ? debugAtom : -1,
+            mode
+        });
+
+        for (let i = 0; i < sys.atoms.length; i++) {
+            const a = sys.atoms[i];
+            a.pos.x = resultPos[i * 3];
+            a.pos.y = resultPos[i * 3 + 1];
+            a.pos.z = resultPos[i * 3 + 2];
+        }
+
+        sys.dirtyExport = true;
+        if (this.app.molRenderer) this.app.molRenderer.update();
+        this.app.requestRender();
+
+        console.log(`[ScriptRunner] relaxJacobi_CPU completed`);
+    }
+
+    async relaxJacobiGPU(args = {}) {
+        const { niter = 1, dt = 0.1, verb = 0 } = args;
+        console.log(`[ScriptRunner] relaxJacobi_GPU: niter=${niter} dt=${dt} verb=${verb}`);
+
+        await this.ensurePDReady();
+
+        const sys = this.system;
+        if (!sys || sys.atoms.length === 0) {
+            throw new Error('relaxJacobi_GPU: No atoms in system');
+        }
+
+        sys.updateNeighborList();
+        if (verb >= 1) sys.printSizes('beforeGPUJacobi');
+
+        const bondCount = sys.bonds ? sys.bonds.length : 0;
+        console.log(`[ScriptRunner] setTopology: atoms=${sys.atoms.length} bonds=${bondCount}`);
+        this.app.pdSimulation.setTopology(sys, this.app.mmParams);
+
+        const positions = new Float32Array(sys.atoms.length * 3);
+        for (let i = 0; i < sys.atoms.length; i++) {
+            const a = sys.atoms[i];
+            positions[i * 3] = a.pos.x;
+            positions[i * 3 + 1] = a.pos.y;
+            positions[i * 3 + 2] = a.pos.z;
+        }
+        this.app.pdSimulation.setPositions(positions);
+        this.app.pdSimulation.setVelocities(null);
+
+        this.app.pdSimulation.iterationCount = niter;
+        this.app.pdSimulation.omega = 0.0;
+        this.app.pdSimulation.step(dt);
+
+        const buffer = this.app.pdSimulation.readPositions();
+        if (!buffer) {
+            throw new Error('relaxJacobi_GPU: Failed to read positions from GPU');
+        }
+
+        for (let i = 0; i < sys.atoms.length; i++) {
+            const a = sys.atoms[i];
+            a.pos.x = buffer[i * 4];
+            a.pos.y = buffer[i * 4 + 1];
+            a.pos.z = buffer[i * 4 + 2];
+        }
+
+        sys.dirtyExport = true;
+        if (this.app.molRenderer) this.app.molRenderer.update();
+        this.app.requestRender();
+
+        console.log(`[ScriptRunner] relaxJacobi_GPU completed`);
     }
 
     clearNanocrystalVisuals() {
@@ -110,6 +233,7 @@ export class ScriptRunner {
             api[name] = (opts = {}) => { queue.push({ name, opts }); };
         }
         api.run = (cmd, opts = {}) => { queue.push({ name: cmd, opts }); };
+        api.relax = (opts = {}) => { queue.push({ name: 'relax', opts }); };
 
         // Handle-based system API
         const createSystemHandle = (name) => {

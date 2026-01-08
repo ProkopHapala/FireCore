@@ -59,13 +59,14 @@ class AtomType {
     }
 }
 
-/// Container for element/atom/bond type tables with parsing helpers.
+/// Container for element/atom/bond/angle type tables with parsing helpers.
 export class MMParams {
     constructor() {
         this.elementTypes = {}; // name -> ElementType
         this.atomTypes = {};    // name -> AtomType
         this.byAtomicNumber = {}; // iZ -> ElementType
         this.bondTypes = {};    // key -> { l0, k, order, a, b }
+        this.angleTypes = [];   // array of { a1, a2, a3, ang0, k } with wildcard support
     }
 
     /// Build cached name↔index maps on atomTypes if missing.
@@ -180,7 +181,7 @@ export class MMParams {
         return +fallback;
     }
 
-    async loadResources(elementPath, atomPath, bondPath = null) {
+    async loadResources(elementPath, atomPath, bondPath = null, anglePath = null) {
         try {
             const eRes = await fetch(elementPath);
             const eText = await eRes.text();
@@ -194,6 +195,12 @@ export class MMParams {
                 const bRes = await fetch(bondPath);
                 const bText = await bRes.text();
                 this.parseBondTypes(bText);
+            }
+
+            if (anglePath) {
+                const angRes = await fetch(anglePath);
+                const angText = await angRes.text();
+                this.parseAngleTypes(angText);
             }
 
             window.logger.info("MMParams loaded successfully.");
@@ -376,6 +383,59 @@ export class MMParams {
             else if ((best.order | 0) !== 1 && bt.l0 < best.l0) best = bt;
         }
         return best ? best : null;
+    }
+
+    parseAngleTypes(content) {
+        const lines = String(content).replace(/\r/g, '').split('\n');
+        this.angleTypes = [];
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) continue;
+            const parts = trimmed.split(/\s+/);
+            if (parts.length < 5) continue;
+            const a1 = parts[0];
+            const a2 = parts[1];
+            const a3 = parts[2];
+            const ang0 = parseFloat(parts[3]);
+            const k = parseFloat(parts[4]);
+            if (!(ang0 > 0) || !(k > 0)) continue;
+            this.angleTypes.push({ a1, a2, a3, ang0, k });
+        }
+        window.logger.info(`Parsed ${this.angleTypes.length} angle types.`);
+        return this.angleTypes;
+    }
+
+    getAngleParams(nameA, nameB, nameC) {
+        const na = nameA || '*';
+        const nb = nameB || '*';
+        const nc = nameC || '*';
+        for (const at of this.angleTypes) {
+            const matchA = (at.a1 === '*') || (at.a1 === na);
+            const matchB = (at.a2 === '*') || (at.a2 === nb);
+            const matchC = (at.a3 === '*') || (at.a3 === nc);
+            if (matchA && matchB && matchC) {
+                return { ang0: at.ang0, k: at.k };
+            }
+        }
+        return null;
+    }
+
+    convertAngleToDistance(lab, lbc, angleDeg, kAng) {
+        const theta = angleDeg * (Math.PI / 180.0);
+        const lacSq = (lab * lab) + (lbc * lbc) - (2 * lab * lbc * Math.cos(theta));
+        const lac = Math.sqrt(lacSq);
+        const sinTheta = Math.sin(theta);
+        let kLin = 0;
+        if (Math.abs(sinTheta) > 1e-5) {
+            const factor = lac / (lab * lbc * sinTheta);
+            kLin = kAng * (factor * factor);
+        } else {
+            if (window.logger && window.logger.warn) {
+                window.logger.warn(`Angle ${angleDeg} deg is too close to 0 or 180 degrees. Stiffness set to 0 to avoid explosion.`);
+            }
+            kLin = 0;
+        }
+        return { restLength: lac, stiffness: kLin };
     }
 
     // --- Helpers for Renderer ---

@@ -709,6 +709,29 @@ export class EditableMolecule {
         }
     }
 
+    printSizes(label = '') {
+        const prefix = label ? `[EditableMolecule:${label}]` : '[EditableMolecule]';
+        console.log(`${prefix} atoms=${this.atoms.length} bonds=${this.bonds.length} fragments=${this.fragments.length} selection=${this.selection.size}`);
+        if (this.atoms.length > 0) {
+            const sample = Math.min(5, this.atoms.length);
+            for (let i = 0; i < sample; i++) {
+                const a = this.atoms[i];
+                if (!a) continue;
+                const bondCount = a.bonds ? a.bonds.length : 0;
+                console.log(`${prefix} atom[${i}] id=${a.id} Z=${a.Z} degree=${bondCount}`);
+            }
+        }
+        if (this.bonds.length > 0) {
+            const sampleB = Math.min(5, this.bonds.length);
+            for (let ib = 0; ib < sampleB; ib++) {
+                const b = this.bonds[ib];
+                if (!b) continue;
+                b.ensureIndices(this);
+                console.log(`${prefix} bond[${ib}] id=${b.id} a=${b.a} b=${b.b}`);
+            }
+        }
+    }
+
     _findBondId( ia, ib) {
         const a = this.atoms[ia];
         for (const ibond of a.bonds) {

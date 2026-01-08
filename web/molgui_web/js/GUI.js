@@ -541,6 +541,39 @@ export class GUI {
             GUIutils.btn(container, 'Apply XYZ', () => { if (textArea.value.trim()) this.loadXYZString(textArea.value); }, { marginTop: '5px' });
         });
 
+        this.createSection(sidebar, 'Relaxation', (container) => {
+            const rowIter = GUIutils.row(container);
+            GUIutils.span(rowIter, 'Iterations:', { marginRight: '6px' });
+            const iterInput = GUIutils.num(rowIter, 40, { min: 2, step: 2 }, { width: '60px' });
+
+            const rowDt = GUIutils.row(container, { marginTop: '6px' });
+            GUIutils.span(rowDt, 'dt:', { marginRight: '6px' });
+            const dtInput = GUIutils.num(rowDt, 0.01, { step: 0.005, min: 0.0001 }, { width: '60px' });
+
+            const rebuildRow = GUIutils.row(container, { marginTop: '6px' });
+            const chkRebuild = GUIutils.labelCheck(rebuildRow, 'Rebuild constraints each run', true).input;
+
+            const runBtn = GUIutils.btn(container, 'Relax (PD)', async () => {
+                if (!(window.app && typeof window.app.runRelax === 'function')) {
+                    window.logger.warn('Relaxation unavailable: app.runRelax missing');
+                    return;
+                }
+                let iterations = parseInt(iterInput.value, 10) || 40;
+                if (iterations < 2) iterations = 2;
+                const dt = parseFloat(dtInput.value) || 0.01;
+                runBtn.disabled = true;
+                runBtn.textContent = 'Relaxing...';
+                try {
+                    await window.app.runRelax({ dt, iterations, rebuild: !!chkRebuild.checked });
+                } catch (err) {
+                    window.logger.error(`Relax failed: ${err}`);
+                } finally {
+                    runBtn.disabled = false;
+                    runBtn.textContent = 'Relax (PD)';
+                }
+            }, { marginTop: '8px' });
+        });
+
         this.buildersGUI.addSubstrateSection(sidebar);
         this.buildersGUI.addPolymersSection(sidebar);
 
@@ -671,6 +704,16 @@ recalculate_bonds({ mode:'bucketNeighbors' });
 add_caps({ cap:'H', onlySelection:false });
 
 logger.info("Si Nanocrystal generated with " + mol.system.atoms.length + " atoms.");
+`.trim() },
+                { id: 'pd_nh3_compare', name: 'NH3 PD (CPU vs GPU)', code: `
+// Compare CPU Jacobi vs GPU Projective Dynamics for NH3
+molecule.clear();
+mol.load("../../cpp/common_resources/xyz/NH3.xyz");
+relaxJacobi_CPU({ niter: 1, dt: 0.1, verb: 3 });
+
+//molecule.clear();
+//mol.load("../../cpp/common_resources/xyz/NH3.xyz");
+//relaxJacobi_GPU({ niter: 1, dt: 0.1, verb: 3 });
 `.trim() }
             ];
 
