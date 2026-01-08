@@ -383,6 +383,11 @@ export class MolGUIApp {
             window.logger.warn("Cannot enable PD: no atoms in system");
             return;
         }
+        if (this.pdSimulation && (force || this.pdSimulation.N !== nAtoms)) {
+            this.pdSimulation.resize(nAtoms);
+            this.pdEnabled = true;
+            return;
+        }
         if (!force && this.pdEnabled && this.pdSimulation && this.pdSimulation.N === nAtoms) return;
         this.pdSimulation = new PDSimulation(this.renderer, nAtoms, 16);
         await this.pdSimulation.init();
@@ -397,6 +402,9 @@ export class MolGUIApp {
             return;
         }
         await this.enablePD();
+        if (this.pdSimulation && this.pdSimulation.N !== nAtoms) {
+            this.pdSimulation.resize(nAtoms);
+        }
         if (!this.pdSimulation) {
             window.logger.error("runRelax: PD simulation not initialized");
             return;
@@ -433,7 +441,6 @@ export class MolGUIApp {
         this.pdSimulation.iterationCount = prevIter;
 
         console.log('--- PD AFTER STEP ---');
-        this.pdSimulation.debugReadTexture('Prediction Sn', this.pdSimulation.fboSn, 8);
         this.pdSimulation.debugReadTexture('Final Positions', this.pdSimulation.getOutputTexture(), 8);
         this.pdSimulation.debugReadTexture('Velocities', this.pdSimulation.fboVel, 8);
         this.pdSimulation.renderDebugView();

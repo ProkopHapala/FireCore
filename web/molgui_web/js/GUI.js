@@ -548,7 +548,11 @@ export class GUI {
 
             const rowDt = GUIutils.row(container, { marginTop: '6px' });
             GUIutils.span(rowDt, 'dt:', { marginRight: '6px' });
-            const dtInput = GUIutils.num(rowDt, 0.01, { step: 0.005, min: 0.0001 }, { width: '60px' });
+            const dtInput = GUIutils.num(rowDt, 0.5, { step: 0.01, min: 0.0001 }, { width: '60px' });
+
+            const rowOmega = GUIutils.row(container, { marginTop: '6px' });
+            GUIutils.span(rowOmega, 'omega:', { marginRight: '6px' });
+            const omegaInput = GUIutils.num(rowOmega, 0.7, { step: 0.05, min: 0.0, max: 0.999 }, { width: '60px' });
 
             const rebuildRow = GUIutils.row(container, { marginTop: '6px' });
             const chkRebuild = GUIutils.labelCheck(rebuildRow, 'Rebuild constraints each run', true).input;
@@ -560,11 +564,12 @@ export class GUI {
                 }
                 let iterations = parseInt(iterInput.value, 10) || 40;
                 if (iterations < 2) iterations = 2;
-                const dt = parseFloat(dtInput.value) || 0.01;
+                const dt = parseFloat(dtInput.value) || 0.5;
+                const omega = parseFloat(omegaInput.value);
                 runBtn.disabled = true;
                 runBtn.textContent = 'Relaxing...';
                 try {
-                    await window.app.runRelax({ dt, iterations, rebuild: !!chkRebuild.checked });
+                    await window.app.runRelax({ dt, iterations, rebuild: !!chkRebuild.checked, omega });
                 } catch (err) {
                     window.logger.error(`Relax failed: ${err}`);
                 } finally {

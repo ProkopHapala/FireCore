@@ -1,7 +1,6 @@
 precision highp float;
 
-uniform sampler2D tPos;      // Current Iteration Positions (p_k)
-uniform sampler2D tSn;       // Prediction (s_n) - Constant during solver
+uniform sampler2D tPos;      // Current Iteration Positions (p_k) + mass in .a
 uniform sampler2D tBonds;    // Bond Data (Wide texture: W*16 x H)
 uniform sampler2D tMomentum; // Previous momentum (linsolve_yy)
 
@@ -23,28 +22,25 @@ ivec2 getUV(float index, int width) {
 void main() {
     ivec2 centerUV = ivec2(gl_FragCoord.xy);
     
-    // 1. Fetch Self Data
-    vec4 snData = texelFetch(tSn, centerUV, 0); // s_n and mass are stored here
-    vec3 sn = snData.rgb;
-    float mass = snData.a;
+    // 1. Fetch Self Data (position xyz + mass in .a)
+    vec4 pData = texelFetch(tPos, centerUV, 0);
+    vec3 p_current = pData.rgb;
+    float mass = pData.a;
     
     // Handle Fixed Points
     if (mass > 100000.0 || mass <= 0.0) {
-        vec4 pFixed = texelFetch(tPos, centerUV, 0);
-        outPos = pFixed;
+        outPos = pData;
         outMomentum = vec4(0.0);
         return;
     }
-
-    vec3 p_current = texelFetch(tPos, centerUV, 0).rgb;
 
     // 2. Setup PD Matrix Diagonal and RHS
     // Term 1: Inertia (M / dt^2)
     float idt2 = 1.0 / (dt * dt);
     float Aii = mass * idt2;
     
-    // RHS starts with Inertial Target: (M / dt^2) * s_n
-    vec3 b_i = sn * Aii; 
+    // RHS starts with inertial target = current predicted position
+    vec3 b_i = p_current * Aii; 
 
     // 3. Accumulate Constraints (The Loop)
     // Bond texture dimensions: width=maxBonds (columns per atom), height=N (one row per atom)
@@ -58,8 +54,8 @@ void main() {
         if (bond.a < 0.0) break; // End of bond list
 
         float neighborIdx = bond.r;
-        float l0 = bond.g;
-        float stiffness = bond.b;
+        float l0          = bond.g;
+        float stiffness   = bond.b;
 
         // Fetch Neighbor Position (from PREVIOUS iteration or current depending on sync)
         // In Jacobi, we use tPos which is the state at step k

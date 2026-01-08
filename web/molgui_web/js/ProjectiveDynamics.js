@@ -55,6 +55,31 @@ export class PDSimulation {
         this.readbackTargets = new Map();
     }
 
+    disposeResources() {
+        const maybeDispose = (obj) => { if (obj && typeof obj.dispose === 'function') obj.dispose(); };
+        maybeDispose(this.texPosInitial);
+        maybeDispose(this.texVelInitial);
+        maybeDispose(this.texBonds);
+        maybeDispose(this.fboVel);
+        maybeDispose(this.fboReadback);
+        maybeDispose(this.fboSolverA);
+        maybeDispose(this.fboSolverB);
+        this.readbackTargets.forEach(rt => maybeDispose(rt));
+        this.readbackTargets.clear();
+    }
+
+    resize(atomCount, maxBonds = this.maxBonds) {
+        console.log(`[PD] resize: N ${this.N} -> ${atomCount}, maxBonds ${this.maxBonds} -> ${maxBonds}`);
+        this.disposeResources();
+        this.N = atomCount;
+        this.maxBonds = maxBonds;
+        this.currentPosFBO = null;
+        this.readbackTargets.clear();
+        this.initTextures();
+        this.initFBOs();
+        this.initMaterials();
+    }
+
     async init() {
         if (this.initialized) return;
 
@@ -163,9 +188,6 @@ export class PDSimulation {
             depthBuffer: false,
         };
 
-        // Prediction Target
-        this.fboSn = new THREE.WebGLRenderTarget(this.N, 1, options);
-
         // Velocity State
         this.fboVel = new THREE.WebGLRenderTarget(this.N, 1, options);
 
@@ -183,7 +205,7 @@ export class PDSimulation {
     }
 
     initMaterials() {
-        // 1. Prediction Material
+        // 1. Prediction Material (kept for compatibility if needed)
         this.matPredict = new THREE.ShaderMaterial({
             vertexShader: vertexShaderScreen,
             glslVersion: THREE.GLSL3,
@@ -207,11 +229,11 @@ export class PDSimulation {
             fragmentShader: fragmentShaderSolver,
             uniforms: {
                 tPos: { value: null },
-                tSn: { value: null },
-                tMom: { value: null },
+                tMomentum: { value: null },
                 tBonds: { value: this.texBonds },
                 dt: { value: 0.016 },
-                cmix: { value: new THREE.Vector2(1, 0) }
+                omega: { value: this.omega },
+                texWidth: { value: this.N }
             }
         });
 
@@ -308,13 +330,7 @@ export class PDSimulation {
         let sourceMomTex = (this.currentPosFBO) ? this.getRTTexture(this.currentPosFBO, 1) : null; // Null on first frame
         const velTex     = this.fboVel.texture;
 
-        // --- 1. PREDICTION PASS (Calculate Sn) ---
-        this.matPredict.uniforms.tPos.value = sourcePosTex;
-        this.matPredict.uniforms.tVel.value = velTex;
-        this.matPredict.uniforms.dt.value = dt;
-        this.renderPass(this.matPredict, this.fboSn);
-
-        // --- 2. SOLVER LOOP ---
+        // --- 1. SOLVER LOOP (start from predicted/current positions already in tPos) ---
         // Save the "Old" position (start of frame) for velocity update later
         const posAtStartOfFrame = sourcePosTex;
 
@@ -334,29 +350,19 @@ export class PDSimulation {
         }
 
         this.matSolver.uniforms.dt.value = dt;
-        this.matSolver.uniforms.tSn.value = this.fboSn.texture;
+        this.matSolver.uniforms.omega.value = this.omega;
+        this.matSolver.uniforms.texWidth.value = this.N;
         
         for (let i = 0; i < this.iterationCount; i++) {
-            // Determine Mixing
-            let new_mix = 1.0;
-            let old_mix = (i > 0 && i < this.iterationCount - 1) ? this.omega : 0.0;
-            
-            this.matSolver.uniforms.cmix.value.set(new_mix, old_mix);
-            
             // Inputs
             // tPos: P_k (from read buffer)
-            // tMom: D_k (from read buffer)
-            // Special case: Iteration 0. tPos should be the Start-of-Frame position (p_old).
-            // But momentum? Momentum is stored in the readFBO from the previous frame's last step.
-            
+            // tMomentum: D_k (from read buffer)
             if (i === 0) {
                  this.matSolver.uniforms.tPos.value = posAtStartOfFrame;
-                 // Momentum comes from LAST frame's result (which is in readFBO.texture[1])
-                 // If first frame ever, this is 0.
-                 this.matSolver.uniforms.tMom.value = this.getRTTexture(readFBO, 1);
+                 this.matSolver.uniforms.tMomentum.value = this.getRTTexture(readFBO, 1);
             } else {
                  this.matSolver.uniforms.tPos.value = this.getRTTexture(readFBO, 0);
-                 this.matSolver.uniforms.tMom.value = this.getRTTexture(readFBO, 1);
+                 this.matSolver.uniforms.tMomentum.value = this.getRTTexture(readFBO, 1);
             }
 
             // Render
@@ -535,6 +541,7 @@ export class PDSimulation {
         }
         this.texPosInitial.image.data.set(this.dataPos);
         this.texPosInitial.needsUpdate = true;
+        this.currentPosFBO = null; // force re-seed on next upload/step
     }
 
     setVelocities(velArray) {
@@ -550,6 +557,7 @@ export class PDSimulation {
         }
         this.texVelInitial.image.data.set(this.dataVel);
         this.texVelInitial.needsUpdate = true;
+        this.currentPosFBO = null; // force re-seed on next upload/step
     }
 
     readPositions() {
@@ -732,7 +740,7 @@ export class PDSimulation {
         const dt2 = dt * dt;
         const logConstraint = this.logConstraint.bind(this);
 
-        console.groupCollapsed('[CPU][Jacobi] Precompute RHS/diag');
+        console.log('[CPU][Jacobi] Precompute RHS/diag START');
         for (let i = 0; i < N; i++) {
             const shouldDebug = (debugAtom === -1 || debugAtom === i);
             const pi = readVec(pos, i, tmpPi);
@@ -776,13 +784,12 @@ export class PDSimulation {
             writeVec(rhs, i, tmpBi);
 
             if (shouldDebug) {
-                console.groupCollapsed(`[CPU][Jacobi] precompute atom ${i} summary`);
-                console.log(`  pi: ${fmtVec(pi)}`);
-                console.log(`  rhs: ${fmtVec(tmpBi)} diag=${Aii.toFixed(6)}`);
-                console.groupEnd();
+                console.log(`[CPU][Jacobi] precompute atom ${i} summary`);
+                console.log(`    pi: ${fmtVec(pi)}`);
+                console.log(`    rhs: ${fmtVec(tmpBi)} diag=${Aii.toFixed(6)}`);
             }
         }
-        console.groupEnd();
+        console.log('[CPU][Jacobi] Precompute RHS/diag END');
         return { rhs, diag };
     }
 
@@ -800,7 +807,7 @@ export class PDSimulation {
         const tmpDelta = new Vec3();
 
         for (let iter = 0; iter < iterations; iter++) {
-            console.groupCollapsed(`[CPU][Jacobi] Iteration ${iter}`);
+            console.log(`[CPU][Jacobi] Iteration ${iter} START`);
 
             const p_old = new Float32Array(pos);
             const p_new = new Float32Array(N * 3);
@@ -832,19 +839,18 @@ export class PDSimulation {
 
                 if (shouldDebug) {
                     const piOld = readVec(p_old, i, tmpPi);
-                    console.groupCollapsed(`[CPU][Jacobi] Atom ${i}`);
-                    console.log(`  rhs: ${fmtVec(rhs_i)} sum_j: ${fmtVec(tmpSum)}`);
-                    console.log(`  numerator: ${fmtVec(tmpNumerator)} diag=${Aii.toFixed(6)}`);
-                    console.log(`  p_new: ${fmtVec(p_new_i)}`);
+                    console.log(`[CPU][Jacobi] Atom ${i}`);
+                    console.log(`    rhs: ${fmtVec(rhs_i)} sum_j: ${fmtVec(tmpSum)}`);
+                    console.log(`    numerator: ${fmtVec(tmpNumerator)} diag=${Aii.toFixed(6)}`);
+                    console.log(`    p_new: ${fmtVec(p_new_i)}`);
                     const delta = tmpDelta.setSub(p_new_i, piOld);
-                    console.log(`  delta: ${fmtVec(delta)} |delta|=${delta.norm().toFixed(6)}`);
-                    console.groupEnd();
+                    console.log(`    delta: ${fmtVec(delta)} |delta|=${delta.norm().toFixed(6)}`);
                 }
             }
 
             pos.set(p_new);
             console.log(`[CPU][Jacobi] Iteration ${iter} complete`);
-            console.groupEnd();
+            console.log(`[CPU][Jacobi] Iteration ${iter} END`);
         }
         return pos;
     }
@@ -862,7 +868,7 @@ export class PDSimulation {
         const tmpDelta = new Vec3();
 
         for (let iter = 0; iter < iterations; iter++) {
-            console.groupCollapsed(`[CPU][GS] Iteration ${iter}`);
+            console.log(`[CPU][GS] Iteration ${iter} START`);
             for (let i = 0; i < N; i++) {
                 const shouldDebug = (debugAtom === -1 || debugAtom === i);
                 tmpSum.set(0, 0, 0);
@@ -887,18 +893,17 @@ export class PDSimulation {
 
                 if (shouldDebug) {
                     const delta = tmpDelta.setSub(piNew, piOld);
-                    console.groupCollapsed(`[CPU][GS] Atom ${i}`);
-                    console.log(`  rhs: ${fmtVec(rhs_i)} sum_j: ${fmtVec(tmpSum)}`);
-                    console.log(`  diag=${Aii.toFixed(6)} p_new=${fmtVec(piNew)} delta=${fmtVec(delta)}`);
-                    console.groupEnd();
+                    console.log(`[CPU][GS] Atom ${i}`);
+                    console.log(`    rhs: ${fmtVec(rhs_i)} sum_j: ${fmtVec(tmpSum)}`);
+                    console.log(`    diag=${Aii.toFixed(6)} p_new=${fmtVec(piNew)} delta=${fmtVec(delta)}`);
                 }
             }
-            console.groupEnd();
+            console.log(`[CPU][GS] Iteration ${iter} END`);
         }
         return pos;
     }
 
-    solveJacobiFly(pos, masses, dt, iterations, debugAtom = -1) {
+    solveJacobiFly(pos, masses, dt, iterations, debugAtom = -1, momentum = null) {
         const N = this.N;
         const maxBonds = this.maxBonds;
         const readVec = (arr, i, out) => out.set(arr[i * 3], arr[i * 3 + 1], arr[i * 3 + 2]);
@@ -909,10 +914,16 @@ export class PDSimulation {
         const tmpDij = new Vec3();
         const tmpSum = new Vec3();
         const tmpDelta = new Vec3();
+        const tmpMom = new Vec3();
+        const tmpAcc = new Vec3();
         const dt2 = dt * dt;
+        const logConstraint = this.logConstraint.bind(this);
+        const omega = this.omega || 0.0;
+        let momPrev = momentum || new Float32Array(N * 3);
+        let momNew = new Float32Array(N * 3);
 
         for (let iter = 0; iter < iterations; iter++) {
-            console.groupCollapsed(`[CPU][JacobiFly] Iteration ${iter}`);
+            console.log(`[CPU][JacobiFly] Iteration ${iter} START`);
             const p_old = new Float32Array(pos);
             const p_new = new Float32Array(N * 3);
 
@@ -943,23 +954,31 @@ export class PDSimulation {
                     logConstraint('JacobiFly', i, slot, j, l0, dist, dl, k);
                 }
 
-                const p_new_i = tmpPj.setV(tmpSum).mulScalar(1.0 / Aii);
-                writeVec(p_new, i, p_new_i);
+                const p_new_i = tmpPj.setV(tmpSum).mulScalar(1.0 / Aii); // Jacobi solution
+
+                const momPrev_i = readVec(momPrev, i, tmpMom);
+                const p_acc = tmpAcc.setV(p_new_i).addMul(momPrev_i, omega);
+                const delta = tmpDelta.setSub(p_acc, pi);
+
+                writeVec(p_new, i, p_acc);
+                writeVec(momNew, i, delta);
 
                 if (shouldDebug) {
-                    const delta = tmpDelta.setSub(p_new_i, pi);
-                    console.log(`[CPU][JacobiFly] atom ${i} p_new=${fmtVec(p_new_i)} delta=${fmtVec(delta)}`);
+                    console.log(`[CPU][JacobiFly] atom ${i} p_new=${fmtVec(p_acc)} delta=${fmtVec(delta)} momPrev=${fmtVec(momPrev_i)}`);
                 }
             }
 
             pos.set(p_new);
-            console.groupEnd();
+            momPrev = momNew;
+            momNew = new Float32Array(N * 3);
+            console.log(`[CPU][JacobiFly] Iteration ${iter} END`);
         }
 
+        if (momentum) momentum.set(momPrev);
         return pos;
     }
 
-    solveGaussSeidelFly(pos, masses, dt, iterations, debugAtom = -1) {
+    solveGaussSeidelFly(pos, masses, dt, iterations, debugAtom = -1, momentum = null) {
         const N = this.N;
         const maxBonds = this.maxBonds;
         const readVec = (arr, i, out) => out.set(arr[i * 3], arr[i * 3 + 1], arr[i * 3 + 2]);
@@ -970,10 +989,15 @@ export class PDSimulation {
         const tmpDij = new Vec3();
         const tmpSum = new Vec3();
         const tmpDelta = new Vec3();
+        const tmpMom = new Vec3();
+        const tmpAcc = new Vec3();
         const dt2 = dt * dt;
+        const logConstraint = this.logConstraint.bind(this);
+        const omega = this.omega || 0.0;
+        let momPrev = momentum || new Float32Array(N * 3);
 
         for (let iter = 0; iter < iterations; iter++) {
-            console.groupCollapsed(`[CPU][GSFly] Iteration ${iter}`);
+            console.log(`[CPU][GSFly] Iteration ${iter} START`);
             for (let i = 0; i < N; i++) {
                 const shouldDebug = (debugAtom === -1 || debugAtom === i);
                 const pi = readVec(pos, i, tmpPi);
@@ -1001,15 +1025,19 @@ export class PDSimulation {
                     logConstraint('GSFly', i, slot, j, l0, dist, dl, k);
                 }
 
-                const piNew = tmpPj.setV(tmpSum).mulScalar(1.0 / Aii);
-                writeVec(pos, i, piNew);
+                const piNew = tmpPj.setV(tmpSum).mulScalar(1.0 / Aii); // GS solution
+                const momPrev_i = readVec(momPrev, i, tmpMom);
+                const piAcc = tmpDij.setV(piNew).addMul(momPrev_i, omega);
+                const delta = tmpDelta.setSub(piAcc, pi);
+
+                writeVec(pos, i, piAcc);
+                writeVec(momPrev, i, delta);
 
                 if (shouldDebug) {
-                    const delta = tmpDelta.setSub(piNew, pi);
-                    console.log(`[CPU][GSFly] atom ${i} p_new=${fmtVec(piNew)} delta=${fmtVec(delta)}`);
+                    console.log(`[CPU][GSFly] atom ${i} p_new=${fmtVec(piAcc)} delta=${fmtVec(delta)} momPrev=${fmtVec(momPrev_i)}`);
                 }
             }
-            console.groupEnd();
+            console.log(`[CPU][GSFly] Iteration ${iter} END`);
         }
 
         return pos;
@@ -1028,12 +1056,13 @@ export class PDSimulation {
             masses.fill(1.0);
         }
 
-        console.groupCollapsed('[CPU][Jacobi] Starting solver');
+        console.log('[CPU][Jacobi] Starting solver');
         console.log(`[CPU][Jacobi] N=${N} dt=${dt} iterations=${iterations} debugAtom=${debugAtom} mode=${mode}`);
 
         const pos = new Float32Array(positions);
 
         let result;
+        const momBuf = new Float32Array(N * 3);
         if (mode === 'jacobi_lin' || mode === 'gs_lin') {
             const { rhs, diag } = this.computeLinearRHS(pos, masses, dt, debugAtom);
             if (mode === 'jacobi_lin') {
@@ -1042,9 +1071,9 @@ export class PDSimulation {
                 result = this.solveGaussSeidelLinear(pos, rhs, diag, iterations, debugAtom);
             }
         } else if (mode === 'jacobi_fly') {
-            result = this.solveJacobiFly(pos, masses, dt, iterations, debugAtom);
+            result = this.solveJacobiFly(pos, masses, dt, iterations, debugAtom, momBuf);
         } else if (mode === 'gs_fly') {
-            result = this.solveGaussSeidelFly(pos, masses, dt, iterations, debugAtom);
+            result = this.solveGaussSeidelFly(pos, masses, dt, iterations, debugAtom, momBuf);
         } else {
             throw new Error(`runCpuJacobi: unknown mode "${mode}"`);
         }

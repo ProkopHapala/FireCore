@@ -77,10 +77,14 @@ export class ScriptRunner {
     }
 
     async relaxJacobiCPU(args = {}) {
-        const { niter = 40, dt = 0.1, verb = 0, debugAtom = -1, mode = 'jacobi_fly' } = args;
-        console.log(`[ScriptRunner] relaxJacobi_CPU: niter=${niter} dt=${dt} verb=${verb} debugAtom=${debugAtom} mode=${mode}`);
+        const { niter = 40, dt = 0.5, omega = 0.7, verb = 0, debugAtom = -1, mode = 'jacobi_fly' } = args;
+        console.log(`[ScriptRunner] relaxJacobi_CPU: niter=${niter} dt=${dt} omega=${omega} verb=${verb} debugAtom=${debugAtom} mode=${mode}`);
 
         await this.ensurePDReady();
+        if (this.app.pdSimulation.N !== this.system.atoms.length) {
+            this.app.pdSimulation.resize(this.system.atoms.length);
+        }
+        this.app.pdSimulation.omega = omega;
 
         const sys = this.system;
         if (!sys || sys.atoms.length === 0) {
@@ -125,10 +129,14 @@ export class ScriptRunner {
     }
 
     async relaxJacobiGPU(args = {}) {
-        const { niter = 1, dt = 0.1, verb = 0 } = args;
-        console.log(`[ScriptRunner] relaxJacobi_GPU: niter=${niter} dt=${dt} verb=${verb}`);
+        const { niter = 1, dt = 0.5, omega = 0.7, verb = 0 } = args;
+        console.log(`[ScriptRunner] relaxJacobi_GPU: niter=${niter} dt=${dt} omega=${omega} verb=${verb}`);
 
         await this.ensurePDReady();
+        if (this.app.pdSimulation.N !== this.system.atoms.length) {
+            this.app.pdSimulation.resize(this.system.atoms.length);
+        }
+        this.app.pdSimulation.omega = omega;
 
         const sys = this.system;
         if (!sys || sys.atoms.length === 0) {
@@ -151,9 +159,9 @@ export class ScriptRunner {
         }
         this.app.pdSimulation.setPositions(positions);
         this.app.pdSimulation.setVelocities(null);
+        this.app.pdSimulation.uploadInitialData();
 
         this.app.pdSimulation.iterationCount = niter;
-        this.app.pdSimulation.omega = 0.0;
         this.app.pdSimulation.step(dt);
 
         const buffer = this.app.pdSimulation.readPositions();
