@@ -258,52 +258,16 @@ export class BuildersGUI {
                 const slab = planes ? null : getSlab();
 
                 const pls = [];
-                const b = CrystalUtils.reciprocalLattice(cell.lvec);
                 if (planes) {
                     for (const p of planes.planes) {
-                        const n = new Vec3().setLincomb3(p.h, b[0], p.k, b[1], p.l, b[2]);
-                        pls.push({ n, cmin: p.cmin, cmax: p.cmax, mode: planes.planeMode });
+                        pls.push({ h: p.h, k: p.k, l: p.l, cmin: p.cmin, cmax: p.cmax, mode: planes.planeMode });
                     }
                 } else if (slab) {
-                    const n = new Vec3().setLincomb3(slab.hkl[0] | 0, b[0], slab.hkl[1] | 0, b[1], slab.hkl[2] | 0, b[2]);
-                    pls.push({ n, cmin: slab.cmin, cmax: slab.cmax, mode: 'ang' });
+                    pls.push({ h: slab.hkl[0] | 0, k: slab.hkl[1] | 0, l: slab.hkl[2] | 0, cmin: slab.cmin, cmax: slab.cmax, mode: 'ang' });
                 }
 
-                if (pls.length === 0) {
-                    previewPlanes.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
-                    previewPlanes.geometry.computeBoundingSphere();
-                    return;
-                }
-
-                const L = Math.max(cell.lvec[0].norm(), cell.lvec[1].norm(), cell.lvec[2].norm());
-                const R = 0.6 * L;
-                const verts = [];
-                const tmp = new Vec3();
-                for (const pl of pls) {
-                    const n = pl.n.clone();
-                    if (pl.mode === 'ang') n.normalize();
-                    const aN = Math.abs(n.x), bN = Math.abs(n.y), cN = Math.abs(n.z);
-                    const ref = (aN < 0.9) ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
-                    const u = new Vec3().setCross(n, ref);
-                    const lu = u.normalize();
-                    if (!(lu > 0)) continue;
-                    const v = new Vec3().setCross(n, u);
-                    v.normalize();
-                    for (const d0 of [pl.cmin, pl.cmax]) {
-                        const c0 = tmp.setV(n).mulScalar(d0);
-                        const p00 = new Vec3().setV(c0).addMul(u, +R).addMul(v, +R);
-                        const p10 = new Vec3().setV(c0).addMul(u, -R).addMul(v, +R);
-                        const p11 = new Vec3().setV(c0).addMul(u, -R).addMul(v, -R);
-                        const p01 = new Vec3().setV(c0).addMul(u, +R).addMul(v, -R);
-                        const ps = [p00, p10, p11, p01];
-                        for (let i = 0; i < 4; i++) {
-                            const a = ps[i];
-                            const b = ps[(i + 1) & 3];
-                            verts.push(a.x, a.y, a.z, b.x, b.y, b.z);
-                        }
-                    }
-                }
-                previewPlanes.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
+                const verts = CrystalUtils.buildPlaneSegments(cell.lvec, pls);
+                previewPlanes.geometry.setAttribute('position', new THREE.BufferAttribute(verts, 3));
                 previewPlanes.geometry.computeBoundingSphere();
             };
 
@@ -312,28 +276,7 @@ export class BuildersGUI {
                 ensurePreviewCellBox();
                 const THREE = window.THREE;
                 const { cell } = parseUnitCellEditor();
-                const a = cell.lvec[0], b = cell.lvec[1], c = cell.lvec[2];
-                const o = new Vec3(0, 0, 0);
-                const p100 = new Vec3().setV(a);
-                const p010 = new Vec3().setV(b);
-                const p001 = new Vec3().setV(c);
-                const p110 = new Vec3().setV(a).add(b);
-                const p101 = new Vec3().setV(a).add(c);
-                const p011 = new Vec3().setV(b).add(c);
-                const p111 = new Vec3().setV(a).add(b).add(c);
-                const edges = [
-                    o, p100, o, p010, o, p001,
-                    p100, p110, p100, p101,
-                    p010, p110, p010, p011,
-                    p001, p101, p001, p011,
-                    p110, p111, p101, p111, p011, p111,
-                ];
-                const verts = new Float32Array(edges.length * 3);
-                for (let i = 0; i < edges.length; i++) {
-                    const v = edges[i];
-                    const i3 = i * 3;
-                    verts[i3] = v.x; verts[i3 + 1] = v.y; verts[i3 + 2] = v.z;
-                }
+                const verts = CrystalUtils.buildCellBoxSegments(cell.lvec);
                 previewCellBox.geometry.setAttribute('position', new THREE.BufferAttribute(verts, 3));
                 previewCellBox.geometry.computeBoundingSphere();
             };

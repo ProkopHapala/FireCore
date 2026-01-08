@@ -44,10 +44,23 @@ export class ScriptRunner {
             'collapse_all_bridges': this.collapseAllBridges.bind(this),
             'insert_bridge': this.insertBridge.bind(this),
             'insert_bridge_random': this.insertBridgeRandom.bind(this),
+            'remove_undercoordinated': this.removeUndercoordinatedAtoms.bind(this),
+            'collapse_undercoordinated': this.collapseUndercoordinatedAtoms.bind(this),
             'addLvec': this.addLvec.bind(this),
             'setViewReplicas': this.setViewReplicas.bind(this)
         };
         this.lastPickedSelection = null;
+    }
+
+    clearNanocrystalVisuals() {
+        const app = this.app;
+        if (!app) return;
+        const hide = (prop) => {
+            const obj = app[prop];
+            if (obj) obj.visible = false;
+        };
+        hide('nanocrystalPlanes');
+        hide('nanocrystalCellBox');
     }
 
     get system() {
@@ -56,6 +69,7 @@ export class ScriptRunner {
     }
 
     async run(script) {
+        this.clearNanocrystalVisuals();
         if (typeof script === 'string' && !script.trim().startsWith('[') && !script.trim().startsWith('{')) {
             // Execute JavaScript script with a safe, whitelisted API
             await this.runJS(script);
@@ -184,6 +198,8 @@ export class ScriptRunner {
         const prev = this.activeSystemName;
         if (args.system) this.useSystem(args.system);
         this.system.clear();
+        const target = args.system || this.activeSystemName;
+        if (target === 'molecule' || target === 'substrate') this.clearNanocrystalVisuals();
         if (args.system) this.useSystem(prev);
     }
 
@@ -444,29 +460,91 @@ export class ScriptRunner {
     }
     // --- Builder bindings ---
 
-    buildNanocrystal(args) {
-        const { lvec, basisPos, basisTypes, basisCharges, nRep, planes, planeMode = 'ang', centered = true, dedup = true, dedupTol = 0.1, system } = args;
+    async buildNanocrystal(args) {
+        const { cif, lvec, basisPos, basisTypes, basisCharges, nRep, planes, planeTemplates, planeMode = 'ang', planeSymC = 6.0, centered = true, dedup = true, dedupTol = 0.1, showPlanes = false, showCellBox = false, system } = args;
         const prev = this.activeSystemName;
         if (system) this.useSystem(system);
         const mm = this.system;
 
-        let pls = [];
-        if (planes) {
-            const b = CrystalUtils.reciprocalLattice(lvec.map(v => this._vecFromInput(v)));
-            for (const p of planes) {
-                const n = new Vec3().setLincomb3(p.h || 0, b[0], p.k || 0, b[1], p.l || 0, b[2]);
-                pls.push({ n, cmin: p.cmin, cmax: p.cmax });
+        let lvecFinal = null;
+        let basisPosFinal = null;
+        let basisTypesFinal = null;
+        let basisChargesFinal = null;
+
+        if (cif) {
+            let cifText = null;
+            if (cif.path) {
+                const res = await fetch(cif.path);
+                if (!res.ok) throw new Error(`buildNanocrystal: failed to fetch CIF path=${cif.path}`);
+                cifText = await res.text();
+            } else if (cif.text) {
+                cifText = cif.text;
+            } else {
+                throw new Error('buildNanocrystal: cif must have path or text');
             }
+            const crystal = CrystalUtils.cifToCrystalData(cifText);
+            const lvecCIF = CrystalUtils.latticeVectorsFromParams(crystal.lattice);
+            let sites = crystal.sites ? crystal.sites.slice() : [];
+            const applySym = cif.applySymmetry !== false;
+            const dedupSym = cif.dedupSymmetry !== false;
+            if (applySym) {
+                const symOps = crystal.symOps || [];
+                if (!symOps.length) throw new Error('buildNanocrystal: CIF requested symmetry application but file lacks symOps');
+                if (symOps.length > 0) {
+                    sites = CrystalUtils.applySymmetryOpsFracSites(sites, symOps, { tol: 1e-6 });
+                }
+            }
+            if (dedupSym) {
+                sites = CrystalUtils.dedupFracSitesByTolA(sites, lvecCIF, dedupTol);
+            }
+            const cell = CrystalUtils.cellDataFromFracSites(lvecCIF, sites);
+            lvecFinal = cell.lvec;
+            basisPosFinal = cell.basisPos;
+            basisTypesFinal = cell.basisTypes;
+            basisChargesFinal = cell.basisCharges;
+        }
+
+        if (lvec) {
+            lvecFinal = lvec.map(v => this._vecFromInput(v));
+        }
+        if (basisPos) {
+            basisPosFinal = basisPos.map(v => this._vecFromInput(v));
+        }
+        if (basisTypes) {
+            basisTypesFinal = basisTypes;
+        }
+        if (basisCharges) {
+            basisChargesFinal = basisCharges;
+        }
+
+        if (!lvecFinal || !basisPosFinal || !basisTypesFinal) {
+            throw new Error('buildNanocrystal: missing required lvec, basisPos, or basisTypes (provide cif or manual values)');
+        }
+
+        let pls = [];
+        if (planeTemplates && planeTemplates.length > 0) {
+            const expanded = CrystalUtils.expandPlaneTemplates(planeTemplates, planeSymC);
+            pls.push(...expanded);
+        }
+        if (planes && planes.length > 0) {
+            pls.push(...planes);
+        }
+
+        const b = CrystalUtils.reciprocalLattice(lvecFinal);
+        const plsFinal = [];
+        for (const p of pls) {
+            const n = new Vec3().setLincomb3(p.h || 0, b[0], p.k || 0, b[1], p.l || 0, b[2]);
+            plsFinal.push({ n, cmin: p.cmin, cmax: p.cmax });
         }
 
         const mol = CrystalUtils.genReplicatedCellCutPlanes({
-            lvec: lvec.map(v => this._vecFromInput(v)),
-            basisPos: basisPos.map(v => this._vecFromInput(v)),
-            basisTypes,
-            basisCharges,
+            lvec: lvecFinal,
+            basisPos: basisPosFinal,
+            basisTypes: basisTypesFinal,
+            basisCharges: basisChargesFinal,
             nRep: nRep || [1, 1, 1],
             origin: new Vec3(0, 0, 0),
-            planes: pls,
+            planes: plsFinal,
             planeMode,
             centered,
             dedup,
@@ -484,17 +562,51 @@ export class ScriptRunner {
         }
         if (mol.lvec) mm.lvec = [mol.lvec[0].clone(), mol.lvec[1].clone(), mol.lvec[2].clone()];
 
-        // Rebuild bucket graph for the system
-        if (this.app) {
-            const na_ = centered ? (2 * nRep[0] + 1) : nRep[0];
-            const nb_ = centered ? (2 * nRep[1] + 1) : nRep[1];
-            const nc_ = centered ? (2 * nRep[2] + 1) : nRep[2];
-            try {
-                const bg = buildCrystalCellBucketsFromMol(mm, na_, nb_, nc_, lvec.map(v => this._vecFromInput(v)), new Vec3(0, 0, 0));
-                this.app.lastBucketGraph = bg;
-                if (typeof this.app.updateBucketOverlay === 'function') this.app.updateBucketOverlay();
-            } catch (e) {
-                console.warn("buildNanocrystal: bucket rebuild failed", e);
+        const na_ = centered ? (2 * nRep[0] + 1) : nRep[0];
+        const nb_ = centered ? (2 * nRep[1] + 1) : nRep[1];
+        const nc_ = centered ? (2 * nRep[2] + 1) : nRep[2];
+        try {
+            const bg = buildCrystalCellBucketsFromMol(mm, na_, nb_, nc_, lvecFinal, new Vec3(0, 0, 0));
+            this.app.lastBucketGraph = bg;
+            if (typeof this.app.updateBucketOverlay === 'function') this.app.updateBucketOverlay();
+        } catch (e) {
+            console.warn("buildNanocrystal: bucket rebuild failed", e);
+        }
+
+        if (showPlanes || showCellBox) {
+            const THREE = window.THREE;
+            if (!THREE) throw new Error('showPlanes/showCellBox require window.THREE');
+            if (!this.app.scene) throw new Error('showPlanes/showCellBox require window.app.scene');
+
+            if (showPlanes && plsFinal.length > 0) {
+                if (!this.app.nanocrystalPlanes) {
+                    const geom = new THREE.BufferGeometry();
+                    geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+                    const mat = new THREE.LineBasicMaterial({ color: 0x44ff88, transparent: true, opacity: 0.9 });
+                    this.app.nanocrystalPlanes = new THREE.LineSegments(geom, mat);
+                    this.app.nanocrystalPlanes.renderOrder = 11;
+                    this.app.scene.add(this.app.nanocrystalPlanes);
+                }
+                const planeObjs = pls.map(p => ({ h: p.h, k: p.k, l: p.l, cmin: p.cmin, cmax: p.cmax, mode: planeMode }));
+                const verts = CrystalUtils.buildPlaneSegments(lvecFinal, planeObjs);
+                this.app.nanocrystalPlanes.geometry.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+                this.app.nanocrystalPlanes.geometry.computeBoundingSphere();
+                this.app.nanocrystalPlanes.visible = true;
+            }
+
+            if (showCellBox) {
+                if (!this.app.nanocrystalCellBox) {
+                    const geom = new THREE.BufferGeometry();
+                    geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+                    const mat = new THREE.LineBasicMaterial({ color: 0x4488ff, transparent: true, opacity: 0.7 });
+                    this.app.nanocrystalCellBox = new THREE.LineSegments(geom, mat);
+                    this.app.nanocrystalCellBox.renderOrder = 8;
+                    this.app.scene.add(this.app.nanocrystalCellBox);
+                }
+                const verts = CrystalUtils.buildCellBoxSegments(lvecFinal);
+                this.app.nanocrystalCellBox.geometry.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+                this.app.nanocrystalCellBox.geometry.computeBoundingSphere();
+                this.app.nanocrystalCellBox.visible = true;
             }
         }
 
@@ -734,6 +846,72 @@ export class ScriptRunner {
         mol.dirtyExport = true;
         if (args.system) this.useSystem(prev);
         return idC;
+    }
+
+    removeUndercoordinatedAtoms(args = {}) {
+        const prev = this.activeSystemName;
+        if (args.system) this.useSystem(args.system);
+        const mol = this.system;
+        if (!mol || !mol.atoms) throw new Error('remove_undercoordinated: molecule missing');
+        const element = args.element !== undefined ? args.element : 'Si';
+        const degree = args.degree !== undefined ? (args.degree | 0) : 1;
+        const mmParams = mol.mmParams || this.app.mmParams;
+        if (!mmParams) throw new Error('remove_undercoordinated: mmParams missing (set app.mmParams)');
+        if (!mol.mmParams) mol.mmParams = mmParams;
+        const spec = mol.compileSelectQuerySpec(`${element} deg={${degree}}`, { mmParams });
+        const { nHit } = mol.applySelectQuery(spec);
+        if (nHit === 0) {
+            mol.clearSelection();
+            if (args.system) this.useSystem(prev);
+            return 0;
+        }
+        const idsToRemove = Array.from(mol.selection);
+        for (const id of idsToRemove) mol.removeAtomById(id);
+        mol.clearSelection();
+        mol.dirtyExport = true;
+        const logger = window.logger || console;
+        if (logger && logger.info) logger.info(`[remove_undercoordinated] removed ${idsToRemove.length} atoms element=${element} deg=${degree}`);
+        if (args.system) this.useSystem(prev);
+        return idsToRemove.length;
+    }
+
+    collapseUndercoordinatedAtoms(args = {}) {
+        const prev = this.activeSystemName;
+        if (args.system) this.useSystem(args.system);
+        const mol = this.system;
+        if (!mol || !mol.atoms) throw new Error('collapse_undercoordinated: molecule missing');
+        const element = args.element !== undefined ? args.element : 'Si';
+        const degree = args.degree !== undefined ? (args.degree | 0) : 2;
+        const fraction = args.fraction !== undefined ? +args.fraction : 1.0;
+        if (!(fraction >= 0 && fraction <= 1)) throw new Error('collapse_undercoordinated: fraction must be in [0,1]');
+        const mmParams = mol.mmParams || this.app.mmParams;
+        if (!mmParams) throw new Error('collapse_undercoordinated: mmParams missing (set app.mmParams)');
+        if (!mol.mmParams) mol.mmParams = mmParams;
+        const spec = mol.compileSelectQuerySpec(`${element} deg={${degree}}`, { mmParams });
+        const { nHit } = mol.applySelectQuery(spec);
+        if (nHit === 0) {
+            mol.clearSelection();
+            if (args.system) this.useSystem(prev);
+            return { total: 0, collapsed: 0 };
+        }
+        const candidateIds = Array.from(mol.selection);
+        mol.clearSelection();
+        const toCollapse = [];
+        for (const id of candidateIds) if (Math.random() < fraction) toCollapse.push(id);
+        let collapsed = 0;
+        for (const id of toCollapse) {
+            try {
+                collapseBridgeAt(mol, id);
+                collapsed++;
+            } catch (e) {
+                console.warn(`collapse_undercoordinated: failed to collapse id=${id}`, e);
+            }
+        }
+        mol.dirtyExport = true;
+        const logger = window.logger || console;
+        if (logger && logger.info) logger.info(`[collapse_undercoordinated] collapsed ${collapsed}/${candidateIds.length} atoms element=${element} deg=${degree} fraction=${fraction}`);
+        if (args.system) this.useSystem(prev);
+        return { total: candidateIds.length, collapsed };
     }
 
 }

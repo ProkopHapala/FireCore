@@ -544,10 +544,46 @@ export class GUI {
         this.buildersGUI.addSubstrateSection(sidebar);
         this.buildersGUI.addPolymersSection(sidebar);
 
+
+        const defaultScript = `
+// Silicon Nanocrystal from CIF with plane templates and overlays
+molecule.clear();
+substrate.clear();
+
+// Build nanocrystal from CIF file with symmetry and deduplication
+build_nanocrystal({
+    cif: { path: '../../cpp/common_resources/crystals/Si-sym.cif', applySymmetry: true, dedupSymmetry: true },
+    nRep: [3,3,3],
+    centered: true,
+    // Use plane templates to generate {100}, {110}, {111} families automatically
+    //planeTemplates: ['a100', 'a110', 'a111'],
+    planeTemplates: ['a111'],
+    planeSymC: 6.0,
+    // Show cut planes and unit cell box in the scene
+    showPlanes: true,
+    showCellBox: true
+});
+
+// Recompute bonds using bucket-based neighbor list
+recalculate_bonds({ mode:'bucketNeighbors' });
+
+// Remove undersaturated atoms before hydrogenation
+remove_undercoordinated({ element:'Si', degree:1 });
+
+// Collapse some doubly coordinated atoms (random subset)
+collapse_undercoordinated({ element:'Si', degree:2, fraction:0.5 });
+
+// Add hydrogen passivation to dangling bonds
+add_caps({ cap:'H', onlySelection:false });
+`.trim();
+
         // --- Section: User Script ---
         this.createSection(sidebar, 'User Script', (container) => {
             GUIutils.div(container, null, { fontSize: '0.9em', marginBottom: '4px' }).textContent = 'JavaScript (async supported):';
-            const defaultScript = `
+            const sampleScripts = [
+                //{ id: 'blank',         nname: '-- custom --', code: '' },
+                { id: 'defaultScript',    name: 'Default Script', code: defaultScript},
+                { id: 'ptcda_nacl',    name: 'PTCDA on NaCl step', code: `
 // PTCDA on NaCl step
 molecule.clear();
 substrate.clear();
@@ -559,11 +595,7 @@ mol.rotate([1, 0, 0], 60.0);
 mol.rotate([0, 0, 1], 30.0);
 molecule.addLvec({lvec: [ [18.0, 9.0, 0.0], [0.0, 16.0, 0.0], [0.0, 0.0, 18.0] ]});
 molecule.setViewReplicas({ show:true, showBox:true, nrep:[1,1,0] });
-`.trim();
-
-            const sampleScripts = [
-                { id: 'blank',         name: '-- custom --', code: '' },
-                { id: 'ptcda_nacl',    name: 'PTCDA on NaCl step', code: defaultScript },
+`.trim()},
                 { id: 'benzene_clean', name: 'Benzene on clean NaCl', code: `
 // Benzene on clean NaCl
 molecule.clear();
@@ -572,8 +604,7 @@ substrate.build_substrate('NaCl', { size:[10,10,2] });
 mol.load("../../cpp/common_resources/mol/benzene.mol2");
 mol.move([0, 0, 8]);
 mol.rotate([0, 0, 1], 30.0);
-`.trim() }
-                ,
+`.trim() },
                 { id: 'adamantane_collapse', name: 'Collapse bridge in adamantane', code: `
 // Collapse one CH2 bridge in adamantane using modular helpers
 molecule.clear();
@@ -587,16 +618,14 @@ if (nsel === 0) throw new Error("No bridge atoms found for collapse");
 // Pick one from selection (random by default) and collapse it
 const picked = pick_random_selection();
 collapse_bridge_at({ id: picked });
-`.trim() }
-                ,
+`.trim() },
                 { id: 'adamantane_collapse_all', name: 'Collapse ALL bridges in adamantane', code: `
 // Collapse all CH2-like bridges in adamantane
 molecule.clear();
 molecule.load("../../cpp/common_resources/mol/adamantane.mol2");
 const nCollapsed = collapse_all_bridges();
 logger.info("Collapsed bridges: " + nCollapsed);
-`.trim() }
-                ,
+`.trim() },
                 { id: 'adamantane_insert_bridge', name: 'Insert bridge between CH carbons', code: `
 // Insert a CH2 bridge into adamantane between two CH carbons
 molecule.clear();
@@ -605,8 +634,7 @@ molecule.load("../../cpp/common_resources/mol/tetrahedrane.mol2");
 // Pick a random bond between carbons with >=3 heavy neighbors and >=1 hydrogen (approx CH)
 const newC = insert_bridge_random({ minHeavy: 3, minHyd: 1 });
 logger.info("Inserted bridge carbon id=" + newC);
-`.trim() }
-                ,
+`.trim() },
                 { id: 'si_nanocrystal', name: 'Silicon Nanocrystal (Planes + H-caps)', code: `
 // Silicon Nanocrystal (111) and (100) faces
 molecule.clear();
@@ -658,9 +686,7 @@ logger.info("Si Nanocrystal generated with " + mol.system.atoms.length + " atoms
                 if (sample && ta) ta.value = sample.code;
             };
 
-            ta = GUIutils.textArea(container, defaultScript, { 
-                width: '100%', height: '180px', fontSize: '11px', fontFamily: 'monospace', backgroundColor: '#222', color: '#eee', display: 'block'
-            });
+            ta = GUIutils.textArea(container, defaultScript, {  width: '100%', height: '180px', fontSize: '11px', fontFamily: 'monospace', backgroundColor: '#222', color: '#eee', display: 'block'});
             
             const rowBtns = GUIutils.row(container, { marginTop: '5px' });
             GUIutils.btn(rowBtns, 'Run Script', async () => {

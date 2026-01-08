@@ -2,6 +2,32 @@ import { Vec3 } from "../../common_js/Vec3.js";
 import { Mat3 } from "../../common_js/Mat3.js";
 import { EditableMolecule } from "./EditableMolecule.js";
 
+const PLANE_TEMPLATES = {
+    'a100': [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+    'a110': [[1, 1, 0], [1, 0, 1], [0, 1, 1], [1, -1, 0], [1, 0, -1], [0, 1, -1]],
+    'a111': [[1, 1, 1], [1, 1, -1], [1, -1, 1], [-1, 1, 1]]
+};
+
+export function expandPlaneTemplates(templates, cSym) {
+    const c = +cSym;
+    if (!(c > 0)) throw new Error('expandPlaneTemplates: cSym must be >0');
+    const out = [];
+    const existing = new Set();
+    for (const tmpl of templates) {
+        const hkls = PLANE_TEMPLATES[tmpl];
+        if (!hkls) throw new Error(`expandPlaneTemplates: unknown template '${tmpl}'`);
+        for (const v of hkls) {
+            let h = v[0], k = v[1], l = v[2];
+            if (h < 0 || (h === 0 && k < 0) || (h === 0 && k === 0 && l < 0)) { h = -h; k = -k; l = -l; }
+            const key = `${h},${k},${l}`;
+            if (existing.has(key)) continue;
+            existing.add(key);
+            out.push({ h, k, l, cmin: -c, cmax: c });
+        }
+    }
+    return out;
+}
+
 export function parseFraction(x) {
     if (typeof x === 'number') return x;
     if (typeof x !== 'string') throw new Error(`parseFraction: expected number|string, got ${typeof x}`);
@@ -1073,4 +1099,89 @@ export function rotateMoleculeInPlace(mol, R) {
     }
     mol.dirtyGeom = true;
     mol.dirtyExport = true;
+}
+
+export function buildPlaneSegments(lvec, planes, R = null) {
+    if (!lvec || lvec.length !== 3) throw new Error('buildPlaneSegments: lvec must be Vec3[3]');
+    const b = reciprocalLattice(lvec);
+    const pls = [];
+    for (const p of planes) {
+        const n = new Vec3().setLincomb3(p.h || 0, b[0], p.k || 0, b[1], p.l || 0, b[2]);
+        pls.push({ n, cmin: p.cmin, cmax: p.cmax, mode: p.mode || 'ang' });
+    }
+    if (pls.length === 0) return new Float32Array(0);
+
+    const L = Math.max(lvec[0].norm(), lvec[1].norm(), lvec[2].norm());
+    const Rdraw = 0.6 * L;
+    const verts = [];
+    const tmp = new Vec3();
+    for (const pl of pls) {
+        const n = pl.n.clone();
+        if (pl.mode === 'ang') n.normalize();
+        const aN = Math.abs(n.x), bN = Math.abs(n.y), cN = Math.abs(n.z);
+        const ref = (aN < 0.9) ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
+        const u = new Vec3().setCross(n, ref);
+        const lu = u.normalize();
+        if (!(lu > 0)) continue;
+        const v = new Vec3().setCross(n, u);
+        v.normalize();
+        for (const d0 of [pl.cmin, pl.cmax]) {
+            const c0 = tmp.setV(n).mulScalar(d0);
+            const p00 = new Vec3().setV(c0).addMul(u, +Rdraw).addMul(v, +Rdraw);
+            const p10 = new Vec3().setV(c0).addMul(u, -Rdraw).addMul(v, +Rdraw);
+            const p11 = new Vec3().setV(c0).addMul(u, -Rdraw).addMul(v, -Rdraw);
+            const p01 = new Vec3().setV(c0).addMul(u, +Rdraw).addMul(v, -Rdraw);
+            const ps = [p00, p10, p11, p01];
+            for (let i = 0; i < 4; i++) {
+                const a = ps[i];
+                const b = ps[(i + 1) & 3];
+                verts.push(a.x, a.y, a.z, b.x, b.y, b.z);
+            }
+        }
+    }
+    const out = new Float32Array(verts);
+    if (R) {
+        const tmp2 = new Vec3();
+        for (let i = 0; i < out.length; i += 3) {
+            tmp2.set(out[i], out[i + 1], out[i + 2]);
+            R.mulVec(tmp2, tmp2);
+            out[i] = tmp2.x; out[i + 1] = tmp2.y; out[i + 2] = tmp2.z;
+        }
+    }
+    return out;
+}
+
+export function buildCellBoxSegments(lvec, R = null) {
+    if (!lvec || lvec.length !== 3) throw new Error('buildCellBoxSegments: lvec must be Vec3[3]');
+    const a = lvec[0], b = lvec[1], c = lvec[2];
+    const o = new Vec3(0, 0, 0);
+    const p100 = new Vec3().setV(a);
+    const p010 = new Vec3().setV(b);
+    const p001 = new Vec3().setV(c);
+    const p110 = new Vec3().setV(a).add(b);
+    const p101 = new Vec3().setV(a).add(c);
+    const p011 = new Vec3().setV(b).add(c);
+    const p111 = new Vec3().setV(a).add(b).add(c);
+    const edges = [
+        o, p100, o, p010, o, p001,
+        p100, p110, p100, p101,
+        p010, p110, p010, p011,
+        p001, p101, p001, p011,
+        p110, p111, p101, p111, p011, p111,
+    ];
+    const verts = new Float32Array(edges.length * 3);
+    for (let i = 0; i < edges.length; i++) {
+        const v = edges[i];
+        const i3 = i * 3;
+        verts[i3] = v.x; verts[i3 + 1] = v.y; verts[i3 + 2] = v.z;
+    }
+    if (R) {
+        const tmp = new Vec3();
+        for (let i = 0; i < verts.length; i += 3) {
+            tmp.set(verts[i], verts[i + 1], verts[i + 2]);
+            R.mulVec(tmp, tmp);
+            verts[i] = tmp.x; verts[i + 1] = tmp.y; verts[i + 2] = tmp.z;
+        }
+    }
+    return verts;
 }
