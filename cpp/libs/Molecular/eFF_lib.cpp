@@ -757,7 +757,7 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* f
                 initOpt( dt, 0.1, 100.0, false );
             }
         }else{
-            //printf( "particle_line[%i]: %s ", il, line );
+            // printf( "particle_line[%i]: %s ", il, line );
             char type = ff.from_xyz_line(line, ie, ia);
         }
         il++;
@@ -767,13 +767,15 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* f
             if( nstepMax>0 ){ //relaxace - zafixovana jadra
                 // constrain
                 // ff.info();
-                if(bFixedAtoms){
+                if (bFixedAtoms) {
                     int nfix=ff.na;
                     if(iconf==0)ff.realloc_fixed(nfix);
                     for(int i=0; i<nfix; i++){
                         ff.fixed_poss[i].f = ff.apos[i];
                         ff.fixed_inds[i] = Vec2i{i,7};
                     }
+                } else {
+                    ff.nfix = 0; // Clear fixed atoms if not requested
                 }
                            
                 bool bConv = false;

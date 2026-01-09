@@ -15,7 +15,7 @@ from scipy.optimize import dual_annealing
 from pyBall import eFF as eff
 
 elementPath_e = "export/scan_data/angdistscan_CH4_ee.xyz"
-geometry_no_fix_path = "export/scan_data/angdistscan_CH4_10rnd.xyz"
+geometry_no_fix_path = "export/scan_data/CH4_10rnd_be.xyz"
 forces_fixed_path = "export/scan_data/angdistscan_CH4_forces_fixed.xyz"
 elementPath = "export/scan_data/angdistscan_CH4.xyz"
 fileToSavePath = "results/AI/result_dual_anneal_CH4.txt"
@@ -23,7 +23,7 @@ fileToSaveProcess = "processXYZ.xyz"
 numOfFunc = 0
 maxPairedEl = 4 #Number of expected pairs of electrons
 fixedAtoms = True
-maxfunc = 10000
+maxfunc = 100000
 paramsEtotH = []
 paramsEtotV = []
 
@@ -135,7 +135,6 @@ def get_variance_from_ECandPS(theta): #Function we need to minimize
     eff.setParsECandPS(theta)
     eff.setFixedAtoms(fixedAtoms)
     eff.processXYZ_e(elementPath_e, outEs=outEs, epos=epos, nstepMax=10000, dt=0.005, Fconv=1e-3, xyz_out=None, fgo_out=None, convSum=convSum) # FOR NORMAL PURPOSES USE nstepMax=10000
-    print("Out Es: ", outEs[:,0])
 
     outEsdiff = np.zeros((nrec,5))
     outEsdiff[:,0] = params["Etot"] - outEs[:,0]
@@ -176,13 +175,13 @@ def get_geometry_no_fixed(theta):
     fapos = np.zeros( (nPos, na, 3) )
     epos = np.zeros( (nPos, ne, 4) )
     convSum = [0]
-    isGeometryOK = True
-    eff.getBuffs()
 
+    eff.getBuffs()
     eff.setFixedAtoms(False)
     eff.setParsECandPS(theta)
+
     eff.processXYZ_e(geometry_no_fix_path, outEs=outEs, epos=epos, apos=apos, fapos=fapos, nstepMax=10000, dt=0.005, Fconv=1e-3, xyz_out=None, fgo_out=None, convSum=convSum) # FOR NORMAL PURPOSES USE nstepMax=10000
-    # input()
+    
     for snglApos in apos:
         angls = []
         bonds = []
@@ -194,15 +193,14 @@ def get_geometry_no_fixed(theta):
                 HC1 = snglApos[i+1] - snglApos[0]
                 HC2 = snglApos[j+1] - snglApos[0]
                 angl = np.arccos(np.dot(HC1, HC2) / (np.linalg.norm(HC1) * np.linalg.norm(HC2)))
+                # print("angl: ", angl)
                 angls.append(angl)
 
     CHbond = 1.09
     CH4angl = 1.9106 # in radians
     bondErr = np.sum((b-CHbond)**2 for b in bonds)
     anglErr = np.sum((a-CH4angl)**2 for a in angls)
-    if anglErr > 4 or convSum[0] < 6:
-        isGeometryOK = False
-    return bondErr, anglErr, convSum[0], isGeometryOK
+    return bondErr, anglErr, convSum[0]
 
 
 def get_der_diff_from_ECandPS(theta): #EC and PS, eneregy constant and pauli sizes
@@ -230,12 +228,6 @@ def get_der_diff_from_ECandPS(theta): #EC and PS, eneregy constant and pauli siz
     diffV = sum(val**2 for row in outEdiffV for val in row)
 
     var = diffH + diffV
-    with open(fileToSavePath, "a") as f:
-        f.write(f"{numOfFunc}" + "\n")
-        f.write(" ".join(f"{val:.6f}" for val in theta) + "\n")
-        f.write(f"{var:.6f}" + "\n")
-        f.write(f"{convSum}" + "\n")
-        f.write("\n")
     return var , outEs, epos, convSum[0]
 
 def get_wrong_pair_el(eposAll, maxNPairedEl): #Comutes all electrons that are wrongly paired!!!!
@@ -265,28 +257,61 @@ def loss_function(theta):
     global numOfFunc
     numOfFunc += 1
     loss = 0
-    # bondErr, anglErr, convSum1, isGeometryOK = get_geometry_no_fixed(theta)
+    theta = np.array([1.835013 ,5.296729, 3.639857, 5.897393])
     print("Number of get varince: ", numOfFunc)
     print("Flexible variable: ", theta)
-    # print("Bond error: ", bondErr)
-    # print("Angle error: ", anglErr)
-    # print("Is geometry OK: ", isGeometryOK)
-    # print("Sum1: ", convSum1)
-    # if isGeometryOK == False:
-    #     print("\n\n\n")
-    #     loss = 100000*(bondErr + anglErr)
-    #     print("Loss: ", loss)
-    #     return loss
+
     forces = get_forces_fixed(theta)
     print("Forces: ", forces)
-    if forces > 1:
-        return forces*100000
+    # if forces > 1:
+    #     loss = forces*10_000_000 + 3_000_000
+    #     print("Loss: ", loss)
+    #     print("\n\n\n")
+    #     return loss
     
+    bondErr, anglErr, convSum1 = get_geometry_no_fixed(theta)
+    print("Bond error: ", bondErr)
+    print("Angle error: ", anglErr)
+    print("Sum1: ", convSum1)
+    # if anglErr > 1 or convSum1 < 6:
+    #     loss = 100_000*(bondErr + anglErr - convSum1) + 2_000_000
+    #     print("Loss: ", loss)
+    #     print("\n\n\n")
+    #     return loss
+    
+    var, outEs, epos, convSum2 = get_der_diff_from_ECandPS(theta)
+    nWrongPairedEl = get_wrong_pair_el(epos, maxPairedEl)
+    loss = var - (convSum2 + 10*convSum1)*10 + nWrongPairedEl*1000 + bondErr*1000 + 10000*anglErr**2
+    # loss = var - convSum_val*10 + nWrongPairedEl*1000 + forces*10000
+    
+    print("\nConv sum in loss_function: ", convSum2)
+    print("Variance: ", var)
+    print("Wrongly paired el: ", nWrongPairedEl)
+    print("Loss: ", loss)
+    print("\n\n\n")
+
+    with open(fileToSavePath, "a") as f:
+        f.write(f"{numOfFunc}" + "\n")
+        f.write(" ".join(f"{val:.6f}" for val in theta) + "\n")
+        f.write("0 \n") #f.write(f"{forces:.6f}" + "\n")
+        f.write(f"{bondErr:.6f}" + "\n")
+        f.write(f"{anglErr:.6f}" + "\n")
+        f.write(f"{convSum1}" + "\n")
+        f.write(f"{var:.6f}" + "\n")
+        f.write(f"{convSum2}" + "\n")
+        f.write(f"{nWrongPairedEl}" + "\n")
+        f.write(f"{loss:.6f}" + "\n")
+        f.write("\n")
+    return loss
+
+def loss_function1(theta):
+    loss = 0
     var, outEs, epos, convSum_val = get_der_diff_from_ECandPS(theta)
     nWrongPairedEl = get_wrong_pair_el(epos, maxPairedEl)
-    # loss = var - (convSum_val + 10*convSum1)*10 + nWrongPairedEl*1000 + bondErr*1000 + 10000*anglErr**2
-    loss = var - convSum_val*10 + nWrongPairedEl*1000 + forces*10000
+    loss = var - convSum_val*10 + nWrongPairedEl*1000
 
+    print("\nFlexible variable: ", theta)
+    print("Number of get varince: ", numOfFunc)
     print("\nConv sum in loss_function: ", convSum_val)
     print("Variance: ", var)
     print("Wrongly paired el: ", nWrongPairedEl)
@@ -467,12 +492,12 @@ if __name__ == "__main__":
     eff.setAtomParams( atomParams )
 
     params, nrec = extract_blocks(elementPath)
-    # print("params: ", params['Etot'])
     paramsEtot = to_grid(params['Etot'], 20, 20)
     paramsEtotH, paramsEtotV = neighbor_differences(paramsEtot)
-    # print("etotH: ", paramsEtotH)
-    # print("etotV: ", paramsEtotV)
+    print("etotH: ", paramsEtotH)
+    print("etotV: ", paramsEtotV)
     na, ne = extract_nae(elementPath_e)
+    print("na, ne: {0}, {1} ", na, ne)
     eff.initOpt( dt=0.005, damping=0.005, f_limit=1000.0)
     bCoreElectrons = False
     eff.setSwitches( coreCoul=1 )
@@ -482,7 +507,7 @@ if __name__ == "__main__":
     eff.info()
     eff.esize[:]=0.7
     
-    theta0 = np.array([1., 1., 0.5, 0.3])
+    # theta0 = np.array([1., 1., 0.5, 0.3])
     # theta0 = np.array([1.1, 0.7, -0.4])
 
     # Minimize by steps method
@@ -496,10 +521,10 @@ if __name__ == "__main__":
     # (1e-1, 1e2)]
 
     logBounds = [
-        (-6, 3),
-        (-2, 0),
-        (-2, 0),
-        (-2, 0)
+        (-3, 6),
+        (-3, 1),
+        (-3, 1),
+        (-3, 1)
     ]
     startTime = time.perf_counter()
     results = dual_annealing(log_loss_function, bounds=logBounds, maxiter=1000000, maxfun=maxfunc)
@@ -512,35 +537,6 @@ if __name__ == "__main__":
     endTime1 = time.perf_counter()
     elapsedTime1 = endTime1 - startTime
     print(f"Elapsed time: {elapsedTime1:.2f} seconds")
-
-    # ADAM optimizer method
-    # theta = tf.Variable(theta0, dtype=tf.float64)
-    # optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
-
-    # for step in range(1000):
-    #     with tf.GradientTape() as tape:
-    #         # Call the wrapper function which has the custom gradient defined
-    #         loss = get_variance_wrapper(theta)
-    #     grads = tape.gradient(loss, [theta])  # Compute gradients
-    #     optimizer.apply_gradients(zip(grads, [theta]))  # Apply gradients
-
-    # if step % 10 == 0:
-    #     print(f"Step {step}: x = {theta.numpy()}, loss = {loss.numpy():.6f}")
-    # minTheta = theta.numpy()
-    # minVar = loss.numpy()
-    # uncertainty = tf.abs(grads[0])
-
-
-    # eps = 1e-6
-    # grad = opt.approx_fprime(minTheta, get_variance_from_KRSrho, eps)
-    # grad_norm = np.linalg.norm(grad)
-    # print("Grad vector approx: ", grad)
-
-    # print("Grad vector: ", uncertainty)
-    
-    # loss_function(theta0)
-    # minTheta = theta0
-    # minLoss = 0
 
     var = get_der_diff_from_ECandPS(minTheta)[0]
     nPairedEl = get_wrong_pair_el(get_der_diff_from_ECandPS(minTheta)[2], maxPairedEl)

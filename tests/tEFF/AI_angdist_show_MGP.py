@@ -2,6 +2,7 @@ from ctypes import wstring_at
 import sys
 import numpy as np
 import os
+import matplotlib.colors as colors
 import matplotlib.pyplot as plt
 import time
 import argparse
@@ -9,14 +10,14 @@ import argparse
 sys.path.append("../../")
 from pyBall import eFF as eff
 elementPath = "export/scan_data/angdistscan_CH4.xyz"
-elementPath_e = "export/scan_data/angdistscan_CH4_ee.xyz"
-fileToReadPath = "results/AI/result_dual_anneal_CH4_4par.txt"
+elementPath_e = "export/scan_data/angdistscan_CH4_ee copy.xyz"
+# fileToReadPath = "results/AI/result_dual_anneal_CH4_3prts.txt"
 fileToSaveProcess = "processXYZ.xyz"
 maxBars = 20
 fixedAtoms = True
 # ConvSumArr = []
 
-def plot_energy_landscape( Xs, Ys, Es, Espan=None):
+def plot_energy_landscape( Xs, Ys, Es, Espan=None, vmin_fixed=None, vmax_fixed=None):
     """Plot energy landscape from XYZ file using imshow (simple and robust)."""
     #params, nrec = extract_blocks(xyz_file)
     xs, idx = np.unique ( Xs, return_inverse=True )
@@ -27,26 +28,34 @@ def plot_energy_landscape( Xs, Ys, Es, Espan=None):
         energy_grid[ idx[i], idy[i]] = Es[i]
     # Plot
     plt.figure(figsize=(10,8))
-    if Espan is not None: 
+    if vmin_fixed is not None and vmax_fixed is not None:
+        vmin = vmin_fixed
+        vmax = vmax_fixed
+    elif Espan is not None:
         vmin = np.nanmin(energy_grid)
         vmax = vmin + Espan
     else:
         vmin = None
         vmax = None
-    plt.imshow(energy_grid, extent=[ys.min(), ys.max(), xs.max(), xs.min()], aspect='auto', cmap='inferno', vmin=vmin, vmax=vmax)
+    
+    # plt.imshow(energy_grid, extent=[ys.min(), ys.max(), xs.max(), xs.min()], aspect='auto', cmap='inferno', vmin=vmin, vmax=vmax)
+    plt.imshow(energy_grid, extent=[ys.min(), ys.max(), xs.max(), xs.min()], aspect='auto', cmap='inferno')
     plt.colorbar(label='Total Energy ')
     plt.xlabel('Distance (Å)')
     plt.ylabel('Angle (rad)')
     #plt.title('Potential Energy Surface')     
 
 def read_min_theta(fileToReadPath):
-    angleArr, distArr, flexVar, variance, allEtot, minTheta, ConvSumArr = read_simulation(fileToReadPath)
+    angleArr, distArr, flexVar, variance, allEtot, minTheta, ConvSumArr, lossArr = read_simulation(fileToReadPath)
     variance = np.array(variance, dtype=float)
     print(ConvSumArr[0])
     print("--------------------------")    
     print(ConvSumArr[1])
+    return flexVar[np.argmin(lossArr)], np.argmin(lossArr)
 
+    # mask = (np.char.strip(ConvSumArr) == '[400]')
     mask = (np.char.strip(ConvSumArr) == '[400]')
+
     print("mask: ", mask)
     # print("nConvSum: ", ConvSumArr)
     if np.any(mask):
@@ -79,22 +88,23 @@ def read_simulation(fileToReadPath):
     variance = []
     nOfFunc = []
     nConvSum = []
+    loss = []
 
     # Start after angle and dist (which were at line 0 and 1)
     i = 0 
     while i < len(lines):
         n_line = np.array([float(x) for x in lines[i].split()])
         flex_line = np.array([float(x) for x in lines[i+1].split()])
-        var_line = np.array([float(x) for x in lines[i + 2].split()])
-        nConvSum.append(lines[i+3])
-
+        var_line = np.array([float(x) for x in lines[i + 8].split()])
+        nConvSum.append(int(lines[i+7]))
+        loss.append(float(lines[i+9]))
         flexVar.append(flex_line)
         variance.append(var_line)
         nOfFunc.append(n_line)
 
-        i += 4  # advance by 3 lines per block
+        i += 10  # advance by 3 lines per block
 
-    return angleArr, distArr, flexVar, variance, nOfFunc, minTheta, nConvSum
+    return angleArr, distArr, flexVar, variance, nOfFunc, minTheta, nConvSum, loss
 
 def extract_blocks(xyz_file):
     """Extract parameters from XYZ file comments (lines starting with #)
@@ -150,7 +160,7 @@ def allVal():
 
 def minVal():
     print("#=========== RUN /home/gabriel/git/FireCore/tests/tEFF/AI_angdist_show.py, all values")
-    print(f"Loading from file {fileToReadPath}")
+    # print(f"Loading from file {fileToReadPath}")
     # theta = read_min_theta(fileToReadPath) 
     if os.path.exists(fileToSaveProcess):
         os.remove(fileToSaveProcess) # deleting useless information
@@ -158,10 +168,22 @@ def minVal():
     # theta = np.array([450.8817785 , 521.35019532 ,167.2525531,  594.19675996]) # Small loss function
     # theta = np.array([452.43155209, 521.0722547 , 162.6148738,  593.99594424]) # Big loss function
     # # HUGE variance [765.96558711 330.41125944 130.31719022 954.02260112]33333333333333333333333
-    theta = np.array([276.79203223, 650.67447073, 275.4180208,  254.06163771])
-    theta = read_min_theta(fileToReadPath)
+    # theta = np.array([276.79203223, 650.67447073, 275.4180208,  254.06163771])
+    # theta, indx = read_min_theta(fileToReadPath)
+    # angleArr, distArr, flexVar, variance, allEtot, minTheta, ConvSumArr, lossArr = read_simulation(fileToReadPath)
+    theta = np.array([1.835013, 5.296729 ,3.639857 ,5.897393])
+    print("Flexible variable: ", theta)
+    # print("Forces: ", forces)
+    # print("Angle error: ", anglErr)
+    # print("Sum1: ", ConvSumArr[indx])
+    # # print("\nConv sum in loss_function: ", convSum2)
+    # # print("Variance: ", var)
+    # # print("Wrongly paired el: ", nWrongPairedEl)
+    # print("Loss: ", lossArr[indx])
+    print("\n\n\n")
+
     print(theta)
-    eff.setTrjName(fileToSaveProcess, savePerNsteps=1)
+    # eff.setTrjName(fileToSaveProcess, savePerNsteps=1)
     eff.setVerbosity(0,0)
     eff.setFixedAtoms(fixedAtoms)
     eff.setParsECandPS(theta)
@@ -180,9 +202,11 @@ def minVal():
     [ 7.,  0.0, 0.10, 1.0 ], # 9 F
     ], dtype=np.float64)
     eff.setAtomParams( atomParams )
-    params, nrec = extract_blocks("export/scan_data/angdistscan_CH4.xyz")
-    plot_energy_landscape( params['ang'], params['dist'], params['Etot'], Espan=5.0 )
-    plt.title("DFT simulation")
+    params, nrec = extract_blocks(elementPath)
+    # params['Etot'] -= np.min( params['Etot'] ) # Normalize to 0
+    # plot_energy_landscape( params['ang'], params['dist'], params['Etot'], vmin_fixed=0.0, vmax_fixed=50.0 )
+    plot_energy_landscape( params['ang'], params['dist'], params['Etot'] )
+    plt.title("DFT simulation of CH4")
     plt.savefig("map2D_referece.png")
     print("plt.savefig")
     outEs = np.zeros((nrec,5))
@@ -198,21 +222,22 @@ def minVal():
     eff.setSwitches( coreCoul=1 )
     #eff.setSwitches( coreCoul=0 )
     eff.preAllocateXYZ(elementPath, Rfac=-1.35, bCoreElectrons=bCoreElectrons )
-    print("preallocate")
     eff.getBuffs()
     eff.info()
-    print("get buffs")
     #eff.aPars[0,2]=1
     eff.esize[:]=0.7
     print("Params: ", theta)
     convSum = [0]
     # eff.processXYZ( "export/scan_data/angdistscan_CH4.xyz", outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=0, dt=0.005, Fconv=1e-3, ialg=2 ) #, KRSrho=KRSrho 
     eff.processXYZ_e( elementPath_e, outEs=outEs, nstepMax=10000, dt=0.005, Fconv=1e-3, convSum=convSum) #, KRSrho=KRSrho 
-    print("processXYZ")
 
-    plot_energy_landscape( params['ang'], params['dist'], outEs[:,0] )
-    pualiSizesFormated = ", ".join(f"{val:.3f} Å" for val in theta)
+    # outEs[:,0] -= np.min( outEs[:,0] ) # Normalize to 0
+    # plot_energy_landscape( params['ang'], params['dist'], outEs[:,0], vmin_fixed=0.0, vmax_fixed=50.0 )
+    plot_energy_landscape( params['ang'], params['dist'], outEs[:,0])
+
+    pualiSizesFormated = ", ".join(f"{val:.3f} Å" for val in theta[1:])
     plt.title(f"EC = {theta[0]} eV; \n" + "Pauli Gaussian sizes: " + pualiSizesFormated)
+    # plt.title("eFF relaxetion of CH4")
     plt.savefig("map2d_eFF.png")
     print("convSum: ", convSum[0])
     print("#=========== DONE /home/gabriel/git/FireCore/tests/tEFF/AI_angdist_show.py, all values")
