@@ -557,6 +557,16 @@ export class GUI {
             const rebuildRow = GUIutils.row(container, { marginTop: '6px' });
             const chkRebuild = GUIutils.labelCheck(rebuildRow, 'Rebuild constraints each run', true).input;
 
+            const angleRow = GUIutils.row(container, { marginTop: '6px' });
+            const chkAngles = GUIutils.labelCheck(angleRow, 'Show angle constraints overlay', true).input;
+            const applyAngleToggle = () => {
+                if (this.renderer && typeof this.renderer.toggleAngleConstraints === 'function') {
+                    this.renderer.toggleAngleConstraints(!!chkAngles.checked);
+                }
+            };
+            chkAngles.addEventListener('change', applyAngleToggle);
+            applyAngleToggle();
+
             const runBtn = GUIutils.btn(container, 'Relax (PD)', async () => {
                 if (!(window.app && typeof window.app.runRelax === 'function')) {
                     window.logger.warn('Relaxation unavailable: app.runRelax missing');

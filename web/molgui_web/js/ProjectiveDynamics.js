@@ -53,6 +53,12 @@ export class PDSimulation {
 
         // Scratch targets
         this.readbackTargets = new Map();
+
+        // Debug data for angle-derived constraints (transient, rebuilt on setTopology)
+        this.debugAngleBonds = []; // [{a, c, center, l0, k, accumulated}]
+
+        // Optional callback invoked whenever debugAngleBonds is rebuilt
+        this.onAngleDebugUpdate = null;
     }
 
     disposeResources() {
@@ -388,13 +394,16 @@ export class PDSimulation {
         return this.texPosInitial;
     }
 
-    setTopology(mol, mmParams) {
+    setTopology(mol, mmParams, opts = {}) {
         if (!mol || !mmParams) throw new Error('setTopology: mol and mmParams required');
 
         const nAtoms = mol.nAtoms || mol.atoms?.length || 0;
         if (nAtoms !== this.N) {
             console.warn(`setTopology: atom count mismatch (mol=${nAtoms}, sim=${this.N})`);
         }
+
+        const includeAngleConstraints = (opts.includeAngleConstraints !== undefined) ? !!opts.includeAngleConstraints : true;
+        console.log(`[PD] setTopology: atoms=${nAtoms} maxBonds=${this.maxBonds} includeAngleConstraints=${includeAngleConstraints}`);
 
         // Clear bond texture
         this.dataBonds.fill(0);
@@ -411,7 +420,7 @@ export class PDSimulation {
 
         // Helper to add bond entry to texture
         const addBondEntry = (i, j, l0, k) => {
-            if (i < 0 || i >= this.N || j < 0 || j >= this.N) return;
+            if (i < 0 || i >= this.N || j < 0 || j >= this.N) return -1;
             const row = i * this.maxBonds * 4;
             for (let slot = 0; slot < this.maxBonds; slot++) {
                 const idx = row + slot * 4;
@@ -423,10 +432,11 @@ export class PDSimulation {
                     if (window.DEBUG_PD) {
                         console.debug(`[PD][CPU] bond atom=${i} slot=${slot} -> neighbor=${j} l0=${l0.toFixed(3)} k=${k.toFixed(3)}`);
                     }
-                    return;
+                    return slot;
                 }
             }
-            console.warn(`Atom ${i} exceeds max bonds (${this.maxBonds})`);
+            console.warn(`[PD] Atom ${i} exceeds max bonds (${this.maxBonds})`);
+            return -1;
         };
 
         // Helper to find existing bond entry
@@ -441,8 +451,18 @@ export class PDSimulation {
             return -1;
         };
 
+        // Build local neighbor list on the fly (transient, not stored on molecule)
+        const localNeighbors = new Array(nAtoms);
+        for (let i = 0; i < nAtoms; i++) {
+            localNeighbors[i] = [];
+        }
+
         // 1. Process real bonds
         const bonds = mol.bonds || [];
+        let realConstraintsCount = 0;
+        let atomsAtCapacity = 0;
+
+        console.log(`[PD] Processing ${bonds.length} real bonds...`);
         for (const bond of bonds) {
             if (typeof bond.ensureIndices === 'function') {
                 bond.ensureIndices(mol);
@@ -467,14 +487,36 @@ export class PDSimulation {
             let l0 = bondData ? bondData.l0 : 1.5;
             let k = bondData ? bondData.k : 100.0;
 
-            addBondEntry(i, j, l0, k);
-            addBondEntry(j, i, l0, k);
+            const slotA = addBondEntry(i, j, l0, k);
+            const slotB = addBondEntry(j, i, l0, k);
+
+            if (slotA >= 0 && slotB >= 0) {
+                realConstraintsCount++;
+                localNeighbors[i].push(j);
+                localNeighbors[j].push(i);
+            } else {
+                atomsAtCapacity++;
+            }
         }
 
-        // 2. Process angles to create virtual bonds
-        if (mol.neighbors) {
+        console.log(`[PD] Real bonds processed: ${realConstraintsCount} constraints, ${atomsAtCapacity} atoms at capacity`);
+
+        // 2. Process angles to create virtual bonds (on-the-fly from localNeighbors)
+        let virtualConstraintsCount = 0;
+        let angleTriplesProcessed = 0;
+        let angleParamsFound = 0;
+        let angleParamsMissing = 0;
+        let angleBondsAdded = 0;
+        let angleBondsAccumulated = 0;
+
+        // Clear debug data for angle-derived constraints
+        this.debugAngleBonds.length = 0;
+
+        if (includeAngleConstraints) {
+            console.log(`[PD] Processing angle-derived constraints...`);
+            
             for (let b = 0; b < nAtoms; b++) {
-                const neighs = mol.neighbors[b];
+                const neighs = localNeighbors[b];
                 if (!neighs || neighs.length < 2) continue;
 
                 const atomB = mol.atoms[b];
@@ -494,8 +536,15 @@ export class PDSimulation {
                         const nameA = getAtomTypeName(atomA);
                         const nameC = getAtomTypeName(atomC);
 
+                        angleTriplesProcessed++;
+
                         const angleParams = mmParams.getAngleParams(nameA, nameB, nameC);
-                        if (!angleParams) continue;
+                        if (!angleParams) {
+                            angleParamsMissing++;
+                            continue;
+                        }
+
+                        angleParamsFound++;
 
                         // Get bond lengths for AB and BC
                         let lab = 1.5, lbc = 1.5;
@@ -513,13 +562,42 @@ export class PDSimulation {
                         const idxAC = findBondEntry(a, c);
                         if (idxAC >= 0) {
                             this.dataBonds[idxAC + 2] += virtBond.stiffness;
+                            angleBondsAccumulated++;
+                            // Store debug data for accumulated bond
+                            this.debugAngleBonds.push({ a, c, center: b, l0: virtBond.restLength, k: virtBond.stiffness, accumulated: true });
+                            if (window.DEBUG_PD) {
+                                console.debug(`[PD][Angle] accumulated A-C bond: a=${a} c=${c} center=${b} l0=${virtBond.restLength.toFixed(3)} k=${virtBond.stiffness.toFixed(3)}`);
+                            }
                         } else {
-                            addBondEntry(a, c, virtBond.restLength, virtBond.stiffness);
-                            addBondEntry(c, a, virtBond.restLength, virtBond.stiffness);
+                            const slotA = addBondEntry(a, c, virtBond.restLength, virtBond.stiffness);
+                            const slotC = addBondEntry(c, a, virtBond.restLength, virtBond.stiffness);
+                            if (slotA >= 0 && slotC >= 0) {
+                                angleBondsAdded++;
+                                virtualConstraintsCount++;
+                                // Store debug data for newly added bond
+                                this.debugAngleBonds.push({ a, c, center: b, l0: virtBond.restLength, k: virtBond.stiffness, accumulated: false });
+                                if (window.DEBUG_PD) {
+                                    console.debug(`[PD][Angle] added A-C bond: a=${a} c=${c} center=${b} l0=${virtBond.restLength.toFixed(3)} k=${virtBond.stiffness.toFixed(3)}`);
+                                }
+                            } else {
+                                atomsAtCapacity++;
+                            }
                         }
                     }
                 }
             }
+
+            console.log(`[PD] Angle processing complete: triples=${angleTriplesProcessed} paramsFound=${angleParamsFound} paramsMissing=${angleParamsMissing} bondsAdded=${angleBondsAdded} bondsAccumulated=${angleBondsAccumulated} virtualConstraints=${virtualConstraintsCount}`);
+        } else {
+            console.log(`[PD] Angle-derived constraints SKIPPED (includeAngleConstraints=false)`);
+        }
+
+        // 3. Finalize and report summary
+        const totalConstraints = realConstraintsCount + virtualConstraintsCount;
+        console.log(`[PD] setTopology summary: atoms=${nAtoms} realConstraints=${realConstraintsCount} virtualConstraints=${virtualConstraintsCount} totalConstraints=${totalConstraints} maxBonds=${this.maxBonds} atomsAtCapacity=${atomsAtCapacity}`);
+
+        if (typeof this.onAngleDebugUpdate === 'function') {
+            this.onAngleDebugUpdate(this.debugAngleBonds);
         }
 
         // Update bond texture

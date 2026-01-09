@@ -614,6 +614,23 @@ We will port logic from `pyBall` to Javascript.
 
 ---
 
+## Projective Dynamics Angle Constraints (Jan 2026)
+
+- [x] **Angle-Derived Distance Constraints**
+    - [x] `ProjectiveDynamics.setTopology()` now synthesizes second-neighbor bonds via cosine rule using `MMParams.convertAngleToDistance` and merges them into the unified constraint texture.
+    - [x] Optional flag with exhaustive logging so runs clearly state whether angle processing occurred, how many triples were scanned, and how many virtual bonds were created or accumulated.
+    - [x] Strict error handling for missing indices and over-capacity slots to keep failures loud.
+- [x] **Debug Overlay & Workflow**
+    - [x] `MoleculeRenderer` receives transient `debugAngleBonds` data and renders it as a dedicated `THREE.LineSegments` overlay that reuses the live atom positions.
+    - [x] Added GUI toggle (“Show angle constraints overlay”) so users can enable/disable the debug mesh without touching topology state.
+    - [x] Overlay automatically rebuilds whenever PD recomputes constraints and now resizes safely when molecule size changes (prevents `bufferSubData` overflow).
+- [x] **Challenges & Takeaways**
+    - Keeping solver textures unified meant angles had to be expressed strictly as distance constraints; building transient neighbor tables inside PD avoided mutating `EditableMolecule`.
+    - Debuggability required pervasive logging plus visual inspection; ensuring overlay buffers resize correctly was essential once systems grew between relaxations.
+    - Hooking PD ↔ renderer via callbacks keeps debug data transient and ensures overlays always reflect the most recent `setTopology()` run.
+
+---
+
 ## Planned Advanced Topology / Chemistry Features
 
 These are sketched in the "User 6" section and only partially implemented in the current JS code.
@@ -629,6 +646,9 @@ These are sketched in the "User 6" section and only partially implemented in the
 - [ ] **Bridges and Cut Bonds**
     - [ ] Detect bonds whose removal splits a connected component (bridges in the graph).
     - [ ] Optional visualization of such critical bonds (thicker or colored differently).
+- [ ] **Constraint Diagnostics**
+    - [ ] Surface per-atom constraint counts and highlight atoms that hit `maxBonds`.
+    - [ ] Add log summaries to GUI HUD so users can spot over-constrained regions without opening the console.
 
 - [ ] **Group Substitution / Functional Groups**
     - [ ] Define reusable functional group templates (e.g. methyl, phenyl) in a small library.

@@ -31,6 +31,9 @@ kept for reference only.
 - [ ] **Bridges / Cut Bonds**
     - Detect bonds whose removal splits a component.
     - Optional highlighting.
+- [ ] **Constraint Diagnostics**
+    - Surface per-atom constraint counts and highlight atoms that hit `maxBonds`.
+    - Bubble up PD logging stats into a GUI HUD so over-constrained regions are obvious without opening the console.
 - [ ] **Group Substitution / Functional Groups**
 - [ ] **Valence / Electron‑Pair Aids**
 
@@ -252,7 +255,22 @@ kept for reference only.
 - ScriptRunner commands must be registered in the whitelist **and** support ergonomic inputs; otherwise the script editor silently fails. Use helper parsers to normalize user-provided arrays/objects before touching `Vec3.setV`.
 - System defaults matter: default the Replica/Lattice GUI dropdown to *molecule* so script-driven updates and manual edits align with user expectations.
 
-### 2.4.1 Recent changes (Jan 2026)
+### 2.4.2 Update (2026‑01‑09) — PD Angle Constraints & Debug Overlay
+
+- **Angle-derived distance constraints (ProjectiveDynamics)**
+  - `setTopology()` now builds virtual A–C bonds from angle triples using `MMParams.convertAngleToDistance` and merges them into the single constraint texture.
+  - Verbose logging summarizes atoms, real vs virtual constraint counts, angle triples processed, and capacity issues (fail loudly if indices or slots are invalid).
+  - Angle processing remains optional via `includeAngleConstraints` flag (default on).
+- **Debug visualization pipeline**
+  - PD stores transient `debugAngleBonds`, and `MoleculeRenderer.setPDSimulation()` subscribes to updates so the renderer rebuilds when PD recomputes topology.
+  - A dedicated `THREE.LineSegments` overlay renders virtual bonds in green; buffer management now resizes safely when molecule size changes (prevents `bufferSubData` overflow).
+  - GUI (“Relaxation” panel) gained a “Show angle constraints overlay” checkbox wired to `MoleculeRenderer.toggleAngleConstraints`.
+- **Takeaways**
+  - Keep PD-only neighbor tables transient to avoid mutating `EditableMolecule`.
+  - Debug overlays must reuse canonical atom position buffers yet rebuild geometry lengths every time; otherwise WebGL buffer overruns occur when systems grow.
+  - Hooking PD ↔ renderer via callbacks ensures visualization always reflects the most recent `setTopology()` run without manual refresh calls.
+
+### 2.4.3 Recent changes (Jan 2026)
 
 - **ShortcutManager.js**
   - Global keyboard shortcuts (gizmo toggle/mode, delete, add atom, recalc bonds).

@@ -216,6 +216,11 @@ export class MoleculeRenderer extends MeshRenderer {
 
         // --- Buckets ---
         this.bucketRenderer = new BucketOverlayRenderer(this.scene);
+
+        // --- Angle Constraint Debug Visualization ---
+        this.angleConstraintLines = null;
+        this.showAngleConstraints = false;
+        this.pdSimulation = null; // Reference to PDSimulation for debug data
     }
 
     clear() {
@@ -490,6 +495,111 @@ export class MoleculeRenderer extends MeshRenderer {
                 this.labelMesh.material.uniforms.uScale.value = parseFloat(scale);
             }
         }
+    }
+
+    setPDSimulation(pdSim) {
+        if (this.pdSimulation && this._pdAngleCallback && this.pdSimulation.onAngleDebugUpdate === this._pdAngleCallback) {
+            this.pdSimulation.onAngleDebugUpdate = null;
+        }
+        this.pdSimulation = pdSim || null;
+        if (this.pdSimulation) {
+            this._pdAngleCallback = () => this.updateAngleConstraintLines();
+            this.pdSimulation.onAngleDebugUpdate = this._pdAngleCallback;
+            this.updateAngleConstraintLines();
+        } else {
+            this._pdAngleCallback = null;
+            if (this.angleConstraintLines) this.angleConstraintLines.visible = false;
+        }
+    }
+
+    toggleAngleConstraints(visible) {
+        this.showAngleConstraints = !!visible;
+        if (!this.showAngleConstraints) {
+            if (this.angleConstraintLines) {
+                this.angleConstraintLines.visible = false;
+            }
+        } else {
+            this.updateAngleConstraintLines();
+        }
+    }
+
+    updateAngleConstraintLines() {
+        if (!this.pdSimulation || !this.showAngleConstraints) {
+            if (this.angleConstraintLines) {
+                this.angleConstraintLines.visible = false;
+            }
+            return;
+        }
+
+        const bonds = this.pdSimulation.debugAngleBonds || [];
+        if (bonds.length === 0) {
+            if (this.angleConstraintLines) {
+                this.angleConstraintLines.visible = false;
+            }
+            return;
+        }
+
+        const nBonds = bonds.length;
+        const verts = new Float32Array(nBonds * 6);
+        let floatCount = 0;
+
+        for (let i = 0; i < nBonds; i++) {
+            const bond = bonds[i];
+            const a = bond.a | 0;
+            const c = bond.c | 0;
+
+            if (a < 0 || a >= this.system.nAtoms || c < 0 || c >= this.system.nAtoms) {
+                continue;
+            }
+
+            const posA = this.system.pos;
+            const idxA = a * 3;
+            const idxC = c * 3;
+
+            verts[floatCount++] = posA[idxA];
+            verts[floatCount++] = posA[idxA + 1];
+            verts[floatCount++] = posA[idxA + 2];
+            verts[floatCount++] = posA[idxC];
+            verts[floatCount++] = posA[idxC + 1];
+            verts[floatCount++] = posA[idxC + 2];
+        }
+
+        if (floatCount === 0) {
+            if (this.angleConstraintLines) this.angleConstraintLines.visible = false;
+            return;
+        }
+
+        const usedVerts = (floatCount === verts.length) ? verts : verts.slice(0, floatCount);
+
+        if (!this.angleConstraintLines) {
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(usedVerts, 3));
+            geometry.computeBoundingSphere();
+
+            const material = new THREE.LineBasicMaterial({
+                color: 0x00ff00,
+                linewidth: 1,
+                transparent: true,
+                opacity: 0.8
+            });
+
+            this.angleConstraintLines = new THREE.LineSegments(geometry, material);
+            this.scene.add(this.angleConstraintLines);
+        } else {
+            const geometry = this.angleConstraintLines.geometry;
+            let posAttr = geometry.getAttribute('position');
+            if (!posAttr || posAttr.array.length !== usedVerts.length) {
+                posAttr = new THREE.BufferAttribute(usedVerts, 3);
+                geometry.setAttribute('position', posAttr);
+            } else {
+                posAttr.array.set(usedVerts);
+                posAttr.needsUpdate = true;
+            }
+            geometry.computeBoundingSphere();
+        }
+
+        this.angleConstraintLines.geometry.setDrawRange(0, usedVerts.length / 3);
+        this.angleConstraintLines.visible = true;
     }
 
     _syncReplicaInstancedMeshes() {

@@ -390,6 +390,9 @@ export class MolGUIApp {
         }
         if (!force && this.pdEnabled && this.pdSimulation && this.pdSimulation.N === nAtoms) return;
         this.pdSimulation = new PDSimulation(this.renderer, nAtoms, 16);
+        if (this.molRenderer && typeof this.molRenderer.setPDSimulation === 'function') {
+            this.molRenderer.setPDSimulation(this.pdSimulation);
+        }
         await this.pdSimulation.init();
         this.pdEnabled = true;
         window.logger.info("Projective Dynamics simulation ready");
