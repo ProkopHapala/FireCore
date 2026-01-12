@@ -30,6 +30,10 @@
     - `num_nonzero` for 3c now uses the 3c-specific count (not 2c).  
     - Verification script `tests/pyFireball/verify_Fdata_read_3c.py` visualizes Fortran vs Python grids (5×3 subplot: Fortran/Python/Diff) and prints min/max/diff; confirms tables load identically.
 
+- **Charges + average-ρ plumbing (2026-01-12)**  
+  - Added Fortran bindings `firecore_get_Qin_shell`, `firecore_get_Qout_shell`, `firecore_get_Qneutral_shell` (flat exports so no `nsh_max` dependency) and exposed them via `pyBall/FireCore.py`.
+  - `verify_C2.py` now runs SCF once, exports shell-resolved charges, reduces them to per-atom scalars, and feeds them into the new OpenCL `compute_avg_rho` driver.
+  - `OCL_Hamiltonian.compute_avg_rho_3c(...)` builds CSR common-neighbor lists, uploads pair/S/ρ blocks, and launches the kernel successfully (tested on C2; cn list currently empty, next step is a 3-atom test).
 - **Next steps**  
   - Build a consolidated single-geometry regression in `tests/pyFireball/verify_C2.py` that iterates over every Hamiltonian component (S, T, Vna, Vnl, Vxc, Vxc_1c, Vca, Vxc_ca, full H) in one run, printing both matrices and diffs for each term.
   - Re-run the existing S/T/Vna/Vnl checks under this unified harness to reconfirm parity before tackling new terms.

@@ -412,6 +412,7 @@ class FireballData:
         self.neigh_max = dims.neigh_max
         self.numorb_max = dims.numorb_max
         self.rho     = np.zeros((dims.natoms, dims.neigh_max, dims.numorb_max, dims.numorb_max), dtype=np.float64)
+        self.rho_off = np.zeros((dims.natoms, dims.neigh_max, dims.numorb_max, dims.numorb_max), dtype=np.float64)
         self.h_mat   = np.zeros((dims.natoms, dims.neigh_max, dims.numorb_max, dims.numorb_max), dtype=np.float64)
         self.s_mat   = np.zeros((dims.natoms, dims.neigh_max, dims.numorb_max, dims.numorb_max), dtype=np.float64)
         # NOTE: iatyp returned by Fortran is the atomic number (Z), not a compact
@@ -515,6 +516,42 @@ def get_rho_sparse(dims, data=None):
     if data is None: data = FireballData(dims)
     lib.firecore_get_rho_sparse( data.rho )
     return data
+
+# void firecore_get_rho_off_sparse( double* rho_off_out )
+argDict["firecore_get_rho_off_sparse"]=( None, [array4d] )
+def get_rho_off_sparse(dims, data=None):
+    if not isinstance(dims, FireballDims):
+        raise TypeError("dims argument must be an instance of FireballDims")
+    if data is None: data = FireballData(dims)
+    lib.firecore_get_rho_off_sparse( data.rho_off )
+    return data
+
+# void firecore_get_Qin_shell( double* Qin_out )   # flat [nsh_max*natoms]
+argDict["firecore_get_Qin_shell"]=( None, [array1d] )
+def get_Qin_shell(dims):
+    if not isinstance(dims, FireballDims):
+        raise TypeError("dims argument must be an instance of FireballDims")
+    buf = np.zeros(dims.nsh_max * dims.natoms, dtype=np.float64)
+    lib.firecore_get_Qin_shell(buf)
+    return buf.reshape((dims.nsh_max, dims.natoms))
+
+# void firecore_get_Qout_shell( double* Qout_out ) # flat [nsh_max*natoms]
+argDict["firecore_get_Qout_shell"]=( None, [array1d] )
+def get_Qout_shell(dims):
+    if not isinstance(dims, FireballDims):
+        raise TypeError("dims argument must be an instance of FireballDims")
+    buf = np.zeros(dims.nsh_max * dims.natoms, dtype=np.float64)
+    lib.firecore_get_Qout_shell(buf)
+    return buf.reshape((dims.nsh_max, dims.natoms))
+
+# void firecore_get_Qneutral_shell( double* Qneutral_out ) # flat [nsh_max*nspecies]
+argDict["firecore_get_Qneutral_shell"]=( None, [array1d] )
+def get_Qneutral_shell(dims):
+    if not isinstance(dims, FireballDims):
+        raise TypeError("dims argument must be an instance of FireballDims")
+    buf = np.zeros(dims.nsh_max * dims.nspecies, dtype=np.float64)
+    lib.firecore_get_Qneutral_shell(buf)
+    return buf.reshape((dims.nsh_max, dims.nspecies))
 
 # void firecore_get_HS_k( double* kpoint_vec, void* Hk_out, void* Sk_out ) # Using void* for complex arrays
 argDict["firecore_get_HS_k"]=( None, [array1d, array2cd, array2cd] ) # array2cd for complex double

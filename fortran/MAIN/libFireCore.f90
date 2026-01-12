@@ -483,6 +483,48 @@ subroutine firecore_getCharges( charges_ )  bind(c, name='firecore_getCharges')
     !write(*,*) "DEBUG firecore_getCharges END"
 end subroutine
 
+subroutine firecore_get_Qin_shell( Qin_out ) bind(c, name='firecore_get_Qin_shell')
+    use iso_c_binding
+    use charges,       only: Qin
+    implicit none
+    real(c_double), intent(out) :: Qin_out(*)
+    integer iatom, issh, nsh
+    nsh = size(Qin, 1)
+    do iatom = 1, size(Qin, 2)
+        do issh = 1, nsh
+            Qin_out((iatom-1)*nsh + issh) = Qin(issh, iatom)
+        end do
+    end do
+end subroutine
+
+subroutine firecore_get_Qout_shell( Qout_out ) bind(c, name='firecore_get_Qout_shell')
+    use iso_c_binding
+    use charges,       only: Qout
+    implicit none
+    real(c_double), intent(out) :: Qout_out(*)
+    integer iatom, issh, nsh
+    nsh = size(Qout, 1)
+    do iatom = 1, size(Qout, 2)
+        do issh = 1, nsh
+            Qout_out((iatom-1)*nsh + issh) = Qout(issh, iatom)
+        end do
+    end do
+end subroutine
+
+subroutine firecore_get_Qneutral_shell( Qneutral_out ) bind(c, name='firecore_get_Qneutral_shell')
+    use iso_c_binding
+    use charges,       only: Qneutral
+    implicit none
+    real(c_double), intent(out) :: Qneutral_out(*)
+    integer ispec, issh, nsh
+    nsh = size(Qneutral, 1)
+    do ispec = 1, size(Qneutral, 2)
+        do issh = 1, nsh
+            Qneutral_out((ispec-1)*nsh + issh) = Qneutral(issh, ispec)
+        end do
+    end do
+end subroutine
+
 subroutine firecore_get_wfcoef( ikp, wfcoefs )  bind(c, name='firecore_get_wfcoef')
     use iso_c_binding
     use configuration
@@ -975,6 +1017,17 @@ subroutine firecore_get_rho_sparse( rho_out ) bind(c, name='firecore_get_rho_spa
     rho_out = rho
 end subroutine firecore_get_rho_sparse
 
+subroutine firecore_get_rho_off_sparse( rho_off_out ) bind(c, name='firecore_get_rho_off_sparse')
+    use iso_c_binding
+    use configuration, only: natoms
+    use density,       only: rho_off
+    use interactions,  only: numorb_max
+    use neighbor_map,  only: neigh_max
+    implicit none
+    real(c_double), dimension(numorb_max, numorb_max, neigh_max, natoms), intent(out) :: rho_off_out
+    if( .not. allocated(rho_off)) write(*,*) "Error: rho_off not allocated in firecore_get_rho_off_sparse" 
+    rho_off_out = rho_off
+end subroutine firecore_get_rho_off_sparse
 
 subroutine firecore_set_options( ioff_S_, ioff_T_, ioff_Vna_, ioff_Vnl_, ioff_Vxc_, ioff_Vca_, ioff_Vxc_ca_ ) bind(c, name='firecore_set_options')
     use iso_c_binding

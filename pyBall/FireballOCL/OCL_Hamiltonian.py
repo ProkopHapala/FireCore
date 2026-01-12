@@ -187,9 +187,98 @@ class OCL_Hamiltonian:
             dims_3c[i_triplet, i_isorp, 0] = v['numx']
             dims_3c[i_triplet, i_isorp, 1] = v['numy']
             
+        # Keep host copies for CPU reference/plumbing/debug
+        self.data_3c_host = data_3c
+        self.h_grids_3c_host = h_grids_3c
+        self.dims_3c_host = dims_3c
+
         self.d_data_3c = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=data_3c)
         self.d_h_grids_3c = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=h_grids_3c)
         self.d_dims_3c = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=dims_3c)
+
+    def build_common_neighbor_csr(self, neigh_lists, pairs):
+        """Build CSR common-neighbor list for pair list.
+
+        neigh_lists: list of sorted lists (neighbors of atom i)
+        pairs: array [n_pairs,2] of (i,j)
+        """
+        n_pairs = int(pairs.shape[0])
+        offs = np.zeros(n_pairs + 1, dtype=np.int32)
+        cn = []
+        for ip in range(n_pairs):
+            i = int(pairs[ip, 0]); j = int(pairs[ip, 1])
+            # intersection of sorted unique lists
+            a = neigh_lists[i]
+            b = neigh_lists[j]
+            ia = 0; ib = 0
+            while (ia < len(a)) and (ib < len(b)):
+                va = a[ia]; vb = b[ib]
+                if va == vb:
+                    cn.append(int(va))
+                    ia += 1; ib += 1
+                elif va < vb:
+                    ia += 1
+                else:
+                    ib += 1
+            offs[ip + 1] = len(cn)
+        return offs, np.array(cn, dtype=np.int32)
+
+    def compute_avg_rho_3c(self, ratoms, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_2c_blocks, Qatom, isorp=0):
+        """Run compute_avg_rho kernel for given pairs.
+
+        - ratoms: [natoms,3] float
+        - pairs: [n_pairs,2] int32 (atom indices)
+        - pair_triplet_types: [n_pairs] int32 triplet table index (type_idx)
+        - cn_offsets: [n_pairs+1] int32
+        - cn_indices: [n_cn] int32
+        - S_blocks: [n_pairs,4,4] float64 or float32 (dense blocks)
+        - rho_2c_blocks: [n_pairs,4,4] float64/float32 (pair density block)
+        - Qatom: [natoms] float64/float32 (weight per atom)
+        Returns rho_avg_blocks [n_pairs,4,4] float32
+        """
+        assert hasattr(self, 'd_data_3c'), 'prepare_data_3c() must be called before compute_avg_rho_3c'
+        n_pairs = int(pairs.shape[0])
+
+        ratoms4 = np.zeros((ratoms.shape[0], 4), dtype=np.float32)
+        ratoms4[:, :3] = ratoms.astype(np.float32)
+
+        pairs4 = np.zeros((n_pairs, 4), dtype=np.int32)
+        pairs4[:, 0:2] = pairs.astype(np.int32)
+        pairs4[:, 2] = pair_triplet_types.astype(np.int32)
+        pairs4[:, 3] = 0
+
+        S16 = np.ascontiguousarray(S_blocks.reshape((n_pairs, 16)), dtype=np.float32)
+        rho16 = np.ascontiguousarray(rho_2c_blocks.reshape((n_pairs, 16)), dtype=np.float32)
+        Q = np.ascontiguousarray(Qatom, dtype=np.float32)
+
+        d_ratoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=ratoms4)
+        d_pairs = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=pairs4)
+        d_offs = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=cn_offsets.astype(np.int32))
+        if cn_indices.size > 0:
+            d_cns = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=cn_indices.astype(np.int32))
+        else:
+            # OpenCL does not allow zero-sized buffers; kernel won't read because cn_offsets is empty per pair.
+            d_cns = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, 4)
+        d_S = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=S16)
+        d_rho2c = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=rho16)
+        d_Q = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=Q)
+
+        d_out = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, n_pairs * 16 * 4)
+
+        # NOTE: kernel signature is compute_avg_rho(n_pairs,n_nz_max,ratoms,pairs,cn_offsets,cn_indices,S,rho_2c,Q_neutral,data_3c,h_grids_3c,dims_3c,n_isorp_max,nx_max,ny_max,rho_avg_out)
+        self.prg.compute_avg_rho(
+            self.queue, (n_pairs,), None,
+            np.int32(n_pairs), np.int32(self.n_nz_3c_max),
+            d_ratoms, d_pairs, d_offs, d_cns,
+            d_S, d_rho2c, d_Q,
+            self.d_data_3c, self.d_h_grids_3c, self.d_dims_3c,
+            np.int32(self.n_isorp_3c), np.int32(self.numx_3c), np.int32(self.numy_3c),
+            d_out
+        )
+
+        out = np.zeros((n_pairs, 16), dtype=np.float32)
+        cl.enqueue_copy(self.queue, out, d_out)
+        return out.reshape((n_pairs, 4, 4))
 
     def _build_munuPP_map_sp(self, nz1, nz2, n_nonzero_max):
         """

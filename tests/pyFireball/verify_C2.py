@@ -60,6 +60,83 @@ def run_verification():
     print("Initializing PyOpenCL Hamiltonian...")
     ham = OCL_Hamiltonian(fdata_dir)
     ham.prepare_splines(atomTypes_Z)
+    ham.prepare_data_3c(atomTypes_Z)
+
+    print("\n[PLUMBING] compute_avg_rho (3c gather) using exported rho + Qin-shell...")
+    dims = fc.get_HS_dims(force_refresh=True)
+    sd = fc.get_HS_neighs(dims)
+    sd = fc.get_HS_sparse(dims, data=sd)
+    sd = fc.get_rho_sparse(dims, data=sd)
+
+    Qin_shell = fc.get_Qin_shell(dims)  # [nsh_max, natoms]
+    Qatom = np.sum(Qin_shell, axis=0).astype(np.float32)
+
+    # Neighbor lists from Fortran export: neigh_j is 1-based atom index, as used elsewhere in this file.
+    neigh_lists = []
+    for ia in range(dims.natoms):
+        nn = int(sd.neighn[ia])
+        js = []
+        for ineigh in range(nn):
+            j = int(sd.neigh_j[ia, ineigh]) - 1
+            if (j >= 0) and (j < dims.natoms) and (j != ia):
+                js.append(j)
+        js = sorted(set(js))
+        neigh_lists.append(js)
+
+    pairs = []
+    for ia in range(dims.natoms):
+        for j in neigh_lists[ia]:
+            if ia < j:
+                pairs.append((ia, j))
+    if len(pairs) == 0:
+        raise RuntimeError("[PLUMBING] No neighbor pairs found")
+    pairs = np.array(pairs, dtype=np.int32)
+    cn_offsets, cn_indices = ham.build_common_neighbor_csr(neigh_lists, pairs)
+    cn_counts = cn_offsets[1:] - cn_offsets[:-1]
+    print(f"  n_pairs={pairs.shape[0]}  n_cn_total={cn_indices.shape[0]}  cn_max={int(np.max(cn_counts))}")
+
+    # Map sparse neighbor blocks for (i,j) to 4x4 blocks
+    neigh_index = {}
+    for ia in range(dims.natoms):
+        nn = int(sd.neighn[ia])
+        for ineigh in range(nn):
+            j = int(sd.neigh_j[ia, ineigh]) - 1
+            if j >= 0:
+                neigh_index[(ia, j)] = ineigh
+
+    S_blocks = np.zeros((pairs.shape[0], 4, 4), dtype=np.float32)
+    rho_blocks = np.zeros((pairs.shape[0], 4, 4), dtype=np.float32)
+    for ip, (ia, ja) in enumerate(pairs):
+        ineigh = neigh_index.get((ia, ja), None)
+        if ineigh is None:
+            raise RuntimeError(f"[PLUMBING] Missing sparse neighbor index for pair ({ia},{ja})")
+        S_blocks[ip, :, :] = sd.s_mat[ia, ineigh, :4, :4]
+        rho_blocks[ip, :, :] = sd.rho[ia, ineigh, :4, :4]
+
+    # Triplet type selection: for C2 this mostly won't matter (CN likely empty), but we need a valid index.
+    root = 'den3'
+    pair_triplet_types = np.zeros(pairs.shape[0], dtype=np.int32)
+    for ip, (ia, ja) in enumerate(pairs):
+        nz1 = int(atomTypes_Z[ia]); nz2 = int(atomTypes_Z[ja])
+        # choose nz3=nz1 for now; for real 3c contributions we'll switch to per-(pair,k) typing
+        key = (root, nz1, nz2, nz1)
+        if key not in ham.species_triplet_map:
+            # fallback: find any triplet with same root and nz1,nz2
+            found = None
+            for k in ham.species_triplet_map.keys():
+                if (k[0] == root) and (k[1] == nz1) and (k[2] == nz2):
+                    found = k
+                    break
+            if found is None:
+                raise RuntimeError(f"[PLUMBING] Missing 3c triplet table for {key}")
+            key = found
+        pair_triplet_types[ip] = int(ham.species_triplet_map[key])
+
+    rho_avg_blocks = ham.compute_avg_rho_3c(atomPos, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_blocks, Qatom)
+    for ip in range(min(3, pairs.shape[0])):
+        i, j = int(pairs[ip, 0]), int(pairs[ip, 1])
+        print(f"  rho_avg block pair ({i},{j}) cn_count={int(cn_counts[ip])}")
+        print(rho_avg_blocks[ip])
 
     def _dense_from_pair_blocks(B00, B01, B10, B11):
         M = np.zeros((8, 8), dtype=np.float64)
