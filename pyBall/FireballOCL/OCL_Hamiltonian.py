@@ -196,6 +196,46 @@ class OCL_Hamiltonian:
         self.d_h_grids_3c = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=h_grids_3c)
         self.d_dims_3c = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=dims_3c)
 
+        # Build mu/nu/mvalue maps for 3c recovery (Fortran make_munu + recover_3c), sp-only.
+        # For sp basis, index_max3c(in1,in2)=10 and mu/nu indices are 1..4.
+        n_triplets = len(triplets)
+        mu3c_map = np.zeros((n_triplets, self.n_nz_3c_max), dtype=np.int16)
+        nu3c_map = np.zeros((n_triplets, self.n_nz_3c_max), dtype=np.int16)
+        mvalue3c_map = np.zeros((n_triplets, self.n_nz_3c_max), dtype=np.int8)
+        for (root, nz1, nz2, nz3), itype in self.species_triplet_map.items():
+            if root != 'den3':
+                continue
+            # Only support s+p for now
+            if (int(nz1) not in self.parser.species_info) or (int(nz2) not in self.parser.species_info):
+                raise RuntimeError(f"prepare_data_3c: missing species_info for nz1={nz1} nz2={nz2}")
+            info1 = self.parser.species_info[int(nz1)]
+            info2 = self.parser.species_info[int(nz2)]
+            lssh1 = list(info1.get('lssh', []))
+            lssh2 = list(info2.get('lssh', []))
+            if any(int(l) > 1 for l in lssh1) or any(int(l) > 1 for l in lssh2):
+                raise RuntimeError(f"prepare_data_3c: only sp supported for den3 mu/nu map; got lssh1={lssh1} lssh2={lssh2}")
+            # Hardcoded make_munu mapping for sp/sp (Ortega order s,py,pz,px)
+            # For sp/sp, make_munu produces index_max3c=10.
+            # First 6 come from the standard (-min..min) m=0 list:
+            #  (1,1) (1,3) (3,1) (2,2) (3,3) (4,4)
+            mu = np.array([1, 1, 3, 2, 3, 4], dtype=np.int16)
+            nu = np.array([1, 3, 1, 2, 3, 4], dtype=np.int16)
+            mv = np.array([0, 0, 0, 0, 0, 0], dtype=np.int8)
+            # Next 4 are m=1 extras (case1):
+            #  (1,4) (4,1) (4,3) (3,4)
+            mu = np.concatenate([mu, np.array([1, 4, 4, 3], dtype=np.int16)])
+            nu = np.concatenate([nu, np.array([4, 1, 3, 4], dtype=np.int16)])
+            mv = np.concatenate([mv, np.array([1, 1, 1, 1], dtype=np.int8)])
+            if mu.shape[0] > self.n_nz_3c_max:
+                raise RuntimeError(f"prepare_data_3c: mu/nu map len={mu.shape[0]} exceeds n_nz_3c_max={self.n_nz_3c_max}")
+            mu3c_map[itype, :mu.shape[0]] = mu
+            nu3c_map[itype, :nu.shape[0]] = nu
+            mvalue3c_map[itype, :mv.shape[0]] = mv
+
+        self.d_mu3c_map = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=mu3c_map)
+        self.d_nu3c_map = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=nu3c_map)
+        self.d_mvalue3c_map = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=mvalue3c_map)
+
     def build_common_neighbor_csr(self, neigh_lists, pairs):
         """Build CSR common-neighbor list for pair list.
 
@@ -223,7 +263,7 @@ class OCL_Hamiltonian:
             offs[ip + 1] = len(cn)
         return offs, np.array(cn, dtype=np.int32)
 
-    def compute_avg_rho_3c(self, ratoms, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_2c_blocks, Qatom, isorp=0):
+    def compute_avg_rho_3c(self, ratoms, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_2c_blocks, Qneutral_shell, ispec_of_atom, nssh_species, nsh_max, isorp=0, mu3c_map=None, nu3c_map=None, mvalue3c_map=None):
         """Run compute_avg_rho kernel for given pairs.
 
         - ratoms: [natoms,3] float
@@ -233,10 +273,15 @@ class OCL_Hamiltonian:
         - cn_indices: [n_cn] int32
         - S_blocks: [n_pairs,4,4] float64 or float32 (dense blocks)
         - rho_2c_blocks: [n_pairs,4,4] float64/float32 (pair density block)
-        - Qatom: [natoms] float64/float32 (weight per atom)
+        - Qneutral_shell: [nsh_max, nspecies_fdata] float64/float32
+        - ispec_of_atom: [natoms] int32 (0-based species_fdata index)
+        - nssh_species: [nspecies_fdata] int32
+        - nsh_max: int
         Returns rho_avg_blocks [n_pairs,4,4] float32
         """
         assert hasattr(self, 'd_data_3c'), 'prepare_data_3c() must be called before compute_avg_rho_3c'
+        if (mu3c_map is None) or (nu3c_map is None) or (mvalue3c_map is None):
+            assert hasattr(self, 'd_mu3c_map'), 'prepare_data_3c() must build mu3c/nu3c/mvalue3c maps'
         n_pairs = int(pairs.shape[0])
 
         ratoms4 = np.zeros((ratoms.shape[0], 4), dtype=np.float32)
@@ -249,7 +294,9 @@ class OCL_Hamiltonian:
 
         S16 = np.ascontiguousarray(S_blocks.reshape((n_pairs, 16)), dtype=np.float32)
         rho16 = np.ascontiguousarray(rho_2c_blocks.reshape((n_pairs, 16)), dtype=np.float32)
-        Q = np.ascontiguousarray(Qatom, dtype=np.float32)
+        Qsh = np.ascontiguousarray(Qneutral_shell.reshape((-1,)), dtype=np.float32)
+        ispec_atom = np.ascontiguousarray(ispec_of_atom, dtype=np.int32)
+        nssh_sp = np.ascontiguousarray(nssh_species, dtype=np.int32)
 
         d_ratoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=ratoms4)
         d_pairs = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=pairs4)
@@ -261,16 +308,31 @@ class OCL_Hamiltonian:
             d_cns = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, 4)
         d_S = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=S16)
         d_rho2c = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=rho16)
-        d_Q = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=Q)
+        d_Qsh = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=Qsh)
+        d_ispec_atom = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=ispec_atom)
+        d_nssh_sp = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=nssh_sp)
 
         d_out = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, n_pairs * 16 * 4)
 
-        # NOTE: kernel signature is compute_avg_rho(n_pairs,n_nz_max,ratoms,pairs,cn_offsets,cn_indices,S,rho_2c,Q_neutral,data_3c,h_grids_3c,dims_3c,n_isorp_max,nx_max,ny_max,rho_avg_out)
+        if (mu3c_map is not None) and (nu3c_map is not None) and (mvalue3c_map is not None):
+            mu3c_np = np.ascontiguousarray(mu3c_map, dtype=np.int16)
+            nu3c_np = np.ascontiguousarray(nu3c_map, dtype=np.int16)
+            mv3c_np = np.ascontiguousarray(mvalue3c_map, dtype=np.int8)
+            d_mu3c = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=mu3c_np)
+            d_nu3c = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=nu3c_np)
+            d_mv3c = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=mv3c_np)
+        else:
+            d_mu3c = self.d_mu3c_map
+            d_nu3c = self.d_nu3c_map
+            d_mv3c = self.d_mvalue3c_map
+
+        # NOTE: kernel signature is compute_avg_rho(...,Qneutral_shell,ispec_of_atom,nssh_species,nsh_max,mu3c_map,nu3c_map,mvalue3c_map,data_3c,...)
         self.prg.compute_avg_rho(
             self.queue, (n_pairs,), None,
             np.int32(n_pairs), np.int32(self.n_nz_3c_max),
             d_ratoms, d_pairs, d_offs, d_cns,
-            d_S, d_rho2c, d_Q,
+            d_S, d_rho2c, d_Qsh, d_ispec_atom, d_nssh_sp, np.int32(nsh_max),
+            d_mu3c, d_nu3c, d_mv3c,
             self.d_data_3c, self.d_h_grids_3c, self.d_dims_3c,
             np.int32(self.n_isorp_3c), np.int32(self.numx_3c), np.int32(self.numy_3c),
             d_out
@@ -777,19 +839,14 @@ class OCL_Hamiltonian:
                             acc += contract_AB(A, A, clv)
                         Vnl_blocks[idx] = acc
                     else:
-                        # Off-diagonal: PP on i and PP on j
+                        # Off-diagonal: full sum over PP centers k (matches Fortran assemble_2c_PP)
                         acc = np.zeros((4, 4), dtype=np.float32)
-                        # PP at i: <phi_i|Psi_i> <Psi_i|phi_j>
-                        if (i, i) in sVNL_map and (j, i) in sVNL_map:
-                            A = sVNL_map[(i, i)]
-                            B = sVNL_map[(j, i)]
-                            clv = get_cl_for_atom(i)
-                            acc += contract_AB(A, B, clv)
-                        # PP at j: <phi_i|Psi_j> <Psi_j|phi_j>
-                        if (i, j) in sVNL_map and (j, j) in sVNL_map:
-                            A = sVNL_map[(i, j)]
-                            B = sVNL_map[(j, j)]
-                            clv = get_cl_for_atom(j)
+                        for k in range(n_atoms):
+                            if (i, k) not in sVNL_map: continue
+                            if (j, k) not in sVNL_map: continue
+                            A = sVNL_map[(i, k)]
+                            B = sVNL_map[(j, k)]
+                            clv = get_cl_for_atom(k)
                             acc += contract_AB(A, B, clv)
                         Vnl_blocks[idx] = acc
         

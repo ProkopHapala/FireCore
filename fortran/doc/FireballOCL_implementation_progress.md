@@ -1,5 +1,5 @@
 # FireballOCL Implementation Progress
-## Latest status (2025-12-21)
+## Latest status (2026-01-12)
 
 - **2-center (finished)**  
   - PyOpenCL now loads 2c data with the same naming as Fortran `read_2c`: `overlap`, `kinetic`, and all vna variants `vna_atom_<isorp>`, `vna_ontopl_<isorp>`, `vna_ontopr_<isorp>`, iterating `isorp` up to `nssh`.  
@@ -20,20 +20,33 @@
     `vnl(imu,inu) += sum_cc cl(cc) * sVNL(imu,cc) * sVNL(inu,cc)`.
     Our `assemble_pp` kernel outputs blocks in (inu,imu) convention (like other kernels), but the initial CPU contraction treated them as (imu,cc) without consistent transposes, producing a large apparent mismatch. Fixing the transpose handling and returning Vnl blocks in (inu,imu) convention resolved this.
 
-- **3-center (in progress)**  
-  - **Data parity achieved:** Added `firecore_export_bcna_table` (Fortran) and `export_bcna_table` (ctypes) + `verify_Fdata_read_3c.py` plots; Fortran vs Python tables match bitwise for H bcna_01..05 (max|diff|=0).  
-  - **Remaining issue:** OpenCL raw scan still mismatches Fortran on L0 (bcna_01) despite identical tables; likely a host/kernel mapping/stride bug (component selection or triplet index). L1/L2 etc. match to ~1e-9.  
-  - `verify_scan_3c.py --mode raw` highlights this gap; interpolation kernel logic itself matches Fortran (off-by-one fixed), so focus is on the bcna component selection in the OpenCL path.
-  - **Kernel/host fixes done:** Added missing `type_idx` arg to 3c kernels, propagated `isorp` stride through packing and kernel indexing, and fixed off-by-one in 3c interpolation grid access. These bring all components except L0 into agreement (~1e-9).
-  - **Data-loading bugs fixed:**  
-    - 3c header parsing in Python skipped wrong lines (charge lines with `<===`), causing wrong reshapes; fixed by matching Fortran `readheader_3c`.  
-    - `num_nonzero` for 3c now uses the 3c-specific count (not 2c).  
-    - Verification script `tests/pyFireball/verify_Fdata_read_3c.py` visualizes Fortran vs Python grids (5×3 subplot: Fortran/Python/Diff) and prints min/max/diff; confirms tables load identically.
+- **3-center (avg-ρ now passing on C₃; raw scan L0 still pending)**  
+  - **Data parity:** `firecore_export_bcna_table` + `export_bcna_table` and `verify_Fdata_read_3c.py` confirm Fortran vs Python tables bitwise for H bcna_01..05.  
+  - **Avgρ_off parity (C₃) achieved:** `verify_C3.py` now reports `AvgRho_off: PASSED` after:
+    - Feeding OpenCL kernels the exact Fortran `mu/nu/mvalue` maps from `sd` (no guessing 5-coefficient shortcut).
+    - Applying `mvalue==1 → *sint` and reconstructing all 10 sp channels before rotation.
+    - Using per-species `Qneutral_shell` (zero-filled export) and shell-weighted `den_ontopl/den_ontopr` seeds.
+  - **3c-only residual check added** to `verify_C3.py` (GPU minus 2c seed vs Fortran residual) to isolate den3 issues; currently matches on C₃.
+  - **Remaining gap:** OpenCL raw scan still mismatches Fortran on L0 (bcna_01) in `verify_scan_3c.py --mode raw`; likely a host/kernel component-selection stride bug. L1/L2/etc. match to ~1e-9.
+  - **Kernel/host fixes already in:** `type_idx` plumbed through 3c kernels, `isorp` stride honored, off-by-one in grid access fixed.
+  - **Data-loading fixes:** header parsing matches Fortran (`readheader_3c`), 3c `num_nonzero` uses 3c count, visual diff plots confirm identical tables.
+  - **Takeaways / pitfalls avoided going forward:**
+    - Never “compress” 3c to 5 coefficients for sp: always reconstruct via Fortran `mu/nu/mvalue` (10 channels) before rotation.
+    - Always apply `mvalue==1 → sint` (sqrt(1-cost²)) on the correct channels; don’t hardcode to a presumed `pp_pi`.
+    - Use Fortran-exported `mu/nu/mvalue` per species pair; guessing the order leads to silent, geometry-dependent errors.
+    - Zero-fill and reshape `Qneutral_shell` per species (not per atom); garbage in unused species slots overflows float32.
+    - Keep a 3c-only residual check (`rho_avg - rho_2c_seed`) to pinpoint whether issues stem from 3c vs 2c seeds.
+    - When loading tables, honor `type_idx` and `isorp` strides exactly as Fortran does; off-by-one or wrong plane index shows up first on L0.
 
 - **Charges + average-ρ plumbing (2026-01-12)**  
-  - Added Fortran bindings `firecore_get_Qin_shell`, `firecore_get_Qout_shell`, `firecore_get_Qneutral_shell` (flat exports so no `nsh_max` dependency) and exposed them via `pyBall/FireCore.py`.
-  - `verify_C2.py` now runs SCF once, exports shell-resolved charges, reduces them to per-atom scalars, and feeds them into the new OpenCL `compute_avg_rho` driver.
-  - `OCL_Hamiltonian.compute_avg_rho_3c(...)` builds CSR common-neighbor lists, uploads pair/S/ρ blocks, and launches the kernel successfully (tested on C2; cn list currently empty, next step is a 3-atom test).
+  - Added Fortran bindings `firecore_get_Qin_shell`, `firecore_get_Qout_shell`, `firecore_get_Qneutral_shell` (flat exports, zero-filled unused species) and exposed them via `pyBall/FireCore.py`.
+  - `verify_C2.py` runs SCF once, exports shell-resolved charges, reduces to per-atom scalars, and feeds them into the OpenCL `compute_avg_rho` driver.
+  - `OCL_Hamiltonian.compute_avg_rho_3c(...)` builds CSR common-neighbor lists, uploads pair/S/ρ blocks, and now accepts runtime `mu/nu/mvalue` maps (defaulting to Fortran exports).
+- **C3 verification + VNL parity (2026-01-12)**  
+  - `verify_C3.py` harness mirrors `verify_C2.py`, exercises 2c/VNL + avg-ρ.  
+  - PP neighbor export via `firecore_get_HS_neighsPP`; ABI fix: `firecore_get_HS_dims` now returns `neighPP_max`.  
+  - CPU VNL contraction bug fixed (sum over **all** PP centers k); VNL now passes CPU/GPU vs Fortran export.  
+  - Summary snapshot after the fixes: `Overlap/Kinetic/Vna/Vnl/H2c/H raw==recon/VNL vs F/AvgRho_off` all pass on C₃; XC/DOGS rows remain “NOT IMPLEMENTED”.
 - **Next steps**  
   - Build a consolidated single-geometry regression in `tests/pyFireball/verify_C2.py` that iterates over every Hamiltonian component (S, T, Vna, Vnl, Vxc, Vxc_1c, Vca, Vxc_ca, full H) in one run, printing both matrices and diffs for each term.
   - Re-run the existing S/T/Vna/Vnl checks under this unified harness to reconfirm parity before tackling new terms.

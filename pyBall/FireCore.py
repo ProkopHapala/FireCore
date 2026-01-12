@@ -356,11 +356,12 @@ def get_eigen( ikp=1, norb=None ):
 # Define classes to hold the structured data
 class FireballDims:
     def __init__(self, natoms, norbitals, nspecies, neigh_max, numorb_max, nsh_max, ME2c_max,
-                 max_mu_dim1, max_mu_dim2, max_mu_dim3, mbeta_max, nspecies_fdata, nelec):
+                 max_mu_dim1, max_mu_dim2, max_mu_dim3, mbeta_max, nspecies_fdata, nelec, neighPP_max):
         self.natoms = natoms
         self.norbitals = norbitals
-        self.nspecies = nspecies  # Distinct species in current calculation
+        self.nspecies = nspecies
         self.neigh_max = neigh_max
+        self.neighPP_max = neighPP_max
         self.numorb_max = numorb_max
         self.nsh_max = nsh_max
         self.ME2c_max = ME2c_max
@@ -368,8 +369,8 @@ class FireballDims:
         self.max_mu_dim2 = max_mu_dim2
         self.max_mu_dim3 = max_mu_dim3
         self.mbeta_max = mbeta_max
-        self.nspecies_fdata = nspecies_fdata # Total species in info.dat
-        self.nelec = nelec  # Total electron count (from ztot)
+        self.nspecies_fdata = nspecies_fdata
+        self.nelec = nelec
 
 class FireballData:
     # def __init__(self, dims: FireballDims):
@@ -410,6 +411,7 @@ class FireballData:
         # Fortran: rho(numorb_max, numorb_max, neigh_max, natoms)
         # Python (axis-reversed for matching linear layout): rho[iatom, ineigh, imu, inu]
         self.neigh_max = dims.neigh_max
+        self.neighPP_max = dims.neighPP_max
         self.numorb_max = dims.numorb_max
         self.rho     = np.zeros((dims.natoms, dims.neigh_max, dims.numorb_max, dims.numorb_max), dtype=np.float64)
         self.rho_off = np.zeros((dims.natoms, dims.neigh_max, dims.numorb_max, dims.numorb_max), dtype=np.float64)
@@ -430,14 +432,18 @@ class FireballData:
         self.nssh    = np.zeros(dims.nspecies, dtype=np.int32)
         self.nzx     = np.zeros(dims.nspecies_fdata, dtype=np.int32)
         self.neighn  = np.zeros(dims.natoms, dtype=np.int32)
-        # Fortran: neigh_j(neigh_max, natoms) -> Python: neigh_j[ineigh, iatom]
+        # Fortran: neigh_j(neigh_max, natoms)        self.neighn  = np.zeros(dims.natoms, dtype=np.int32)
         self.neigh_j = np.zeros((dims.natoms, dims.neigh_max), dtype=np.int32)
         self.neigh_b = np.zeros((dims.natoms, dims.neigh_max), dtype=np.int32)
+        self.neighPPn  = np.zeros(dims.natoms, dtype=np.int32)
+        # Fortran expects (neighPP_max, natoms) in the bind(c) export, so keep this exact shape here.
+        self.neighPP_j = np.zeros((dims.neighPP_max, dims.natoms), dtype=np.int32)
+        self.neighPP_b = np.zeros((dims.neighPP_max, dims.natoms), dtype=np.int32)
         # Fortran: xl(3, mbeta_max) -> Python reversed: xl[mbeta, 3]
         self.xl      = np.zeros((dims.mbeta_max, 3), dtype=np.float64)
 
-# void firecore_get_HS_dims( int* natoms_out, int* norbitals_out, int* nspecies_out, int* neigh_max_out, int* numorb_max_out, int* nsh_max_out, int* ME2c_max_out, int* max_mu_dim1_out, int* max_mu_dim2_out, int* max_mu_dim3_out, int* mbeta_max_out, int* nspecies_fdata_out, int* nelec_out)
-argDict["firecore_get_HS_dims"]=( None, [c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p] ) # 13 args
+# void firecore_get_HS_dims( int* natoms_out, int* norbitals_out, int* nspecies_out, int* neigh_max_out, int* numorb_max_out, int* nsh_max_out, int* ME2c_max_out, int* max_mu_dim1_out, int* max_mu_dim2_out, int* max_mu_dim3_out, int* mbeta_max_out, int* nspecies_fdata_out, int* nelec_out, int* neighPP_max_out)
+argDict["firecore_get_HS_dims"]=( None, [c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p] ) # 14 args
 def get_HS_dims():
     natoms_c         = ct.c_int()
     norbitals_c      = ct.c_int()
@@ -452,12 +458,13 @@ def get_HS_dims():
     mbeta_max_c      = ct.c_int()
     nspecies_fdata_c = ct.c_int()
     nelec_c          = ct.c_int()
+    neighPP_max_c    = ct.c_int()
     lib.firecore_get_HS_dims(
         ct.byref(natoms_c), ct.byref(norbitals_c), ct.byref(nspecies_c),
         ct.byref(neigh_max_c), ct.byref(numorb_max_c),
         ct.byref(nsh_max_c), ct.byref(ME2c_max_c),
         ct.byref(max_mu_dim1_c), ct.byref(max_mu_dim2_c), ct.byref(max_mu_dim3_c),
-        ct.byref(mbeta_max_c), ct.byref(nspecies_fdata_c), ct.byref(nelec_c)
+        ct.byref(mbeta_max_c), ct.byref(nspecies_fdata_c), ct.byref(nelec_c), ct.byref(neighPP_max_c)
     )
     return FireballDims(
         natoms_c.value, norbitals_c.value,
@@ -465,12 +472,12 @@ def get_HS_dims():
         neigh_max_c.value, numorb_max_c.value,
         nsh_max_c.value, ME2c_max_c.value,
         max_mu_dim1_c.value, max_mu_dim2_c.value, max_mu_dim3_c.value,
-        mbeta_max_c.value, nspecies_fdata_c.value, nelec_c.value
+        mbeta_max_c.value, nspecies_fdata_c.value, nelec_c.value, neighPP_max_c.value
     )
 
 # void firecore_get_HS_neighs( int* num_orb_out, int* degelec_out, int* iatyp_out, int* lssh_out, int* mu_out, int* nu_out, int* mvalue_out, int* nssh_out, int* nzx_out, int* neighn_out, int* neigh_j_out, int* neigh_b_out, double* xl_out )
-argDict["firecore_get_HS_neighs"]=( None, [array1i, array1i, array1i, array2i, array3i, array3i, array3i, array1i, array1i, array1i, array2i, array2i, array2d] )
-def get_HS_neighs(dims):
+argDict["firecore_get_HS_neighs"]=( None, [array1i,array1i,array1i,array2i,array3i,array3i,array3i,array1i,array1i,array1i,array2i,array2i,array2d] )
+def get_HS_neighs(dims, data=None):
     if not isinstance(dims, FireballDims):
         raise TypeError("dims argument must be an instance of FireballDims")
     data = FireballData(dims)
@@ -492,11 +499,20 @@ def get_HS_neighs(dims):
     data.neigh_j = c_array(data.neigh_j, "neigh_j")
     data.neigh_b = c_array(data.neigh_b, "neigh_b")
     data.xl      = c_array(data.xl,      "xl")
-    lib.firecore_get_HS_neighs(
-        data.num_orb, data.degelec, data.iatyp,
-        data.lssh, data.mu, data.nu, data.mvalue, data.nssh, data.nzx,
-        data.neighn, data.neigh_j, data.neigh_b, data.xl
-    )
+    lib.firecore_get_HS_neighs( data.num_orb, data.degelec, data.iatyp, data.lssh, data.mu, data.nu, data.mvalue, data.nssh, data.nzx, data.neighn, data.neigh_j, data.neigh_b, data.xl )
+    return data
+
+# void firecore_get_HS_neighsPP( int* neighPPn_out, int* neighPP_j_out_flat, int* neighPP_b_out_flat )
+argDict["firecore_get_HS_neighsPP"]=( None, [array1i,array1i,array1i] )
+def get_HS_neighsPP(dims, data=None):
+    if not isinstance(dims, FireballDims):
+        raise TypeError("dims argument must be an instance of FireballDims")
+    if data is None: data = FireballData(dims)
+    buf_j = np.zeros(dims.neighPP_max * dims.natoms, dtype=np.int32)
+    buf_b = np.zeros(dims.neighPP_max * dims.natoms, dtype=np.int32)
+    lib.firecore_get_HS_neighsPP( data.neighPPn, buf_j, buf_b )
+    data.neighPP_j[:, :] = buf_j.reshape((dims.natoms, dims.neighPP_max)).T
+    data.neighPP_b[:, :] = buf_b.reshape((dims.natoms, dims.neighPP_max)).T
     return data
 
 # void firecore_get_HS_sparse( double* h_mat_out, double* s_mat_out )
@@ -544,14 +560,24 @@ def get_Qout_shell(dims):
     lib.firecore_get_Qout_shell(buf)
     return buf.reshape((dims.nsh_max, dims.natoms))
 
+# # void firecore_get_Qneutral_shell( double* Qneutral_out ) # flat [nsh_max*nspecies]
+# argDict["firecore_get_Qneutral_shell"]=( None, [array1d] )
+# def get_Qneutral_shell(dims):
+#     if not isinstance(dims, FireballDims):
+#         raise TypeError("dims argument must be an instance of FireballDims")
+#     buf = np.zeros(dims.nsh_max * dims.natoms, dtype=np.float64)
+#     lib.firecore_get_Qneutral_shell(buf)
+#     return buf.reshape((dims.nsh_max, dims.natoms))
+
 # void firecore_get_Qneutral_shell( double* Qneutral_out ) # flat [nsh_max*nspecies]
 argDict["firecore_get_Qneutral_shell"]=( None, [array1d] )
 def get_Qneutral_shell(dims):
     if not isinstance(dims, FireballDims):
         raise TypeError("dims argument must be an instance of FireballDims")
-    buf = np.zeros(dims.nsh_max * dims.nspecies, dtype=np.float64)
+    buf = np.zeros(dims.nsh_max * dims.nspecies_fdata, dtype=np.float64)
     lib.firecore_get_Qneutral_shell(buf)
-    return buf.reshape((dims.nsh_max, dims.nspecies))
+    return buf.reshape((dims.nsh_max, dims.nspecies_fdata))
+
 
 # void firecore_get_HS_k( double* kpoint_vec, void* Hk_out, void* Sk_out ) # Using void* for complex arrays
 argDict["firecore_get_HS_k"]=( None, [array1d, array2cd, array2cd] ) # array2cd for complex double
@@ -602,12 +628,13 @@ def _load_HS_dims():
     mbeta_max_c      = ct.c_int()
     nspecies_fdata_c = ct.c_int()
     nelec_c          = ct.c_int()
+    neighPP_max_c    = ct.c_int()
     lib.firecore_get_HS_dims(
         ct.byref(natoms_c), ct.byref(norbitals_c), ct.byref(nspecies_c),
         ct.byref(neigh_max_c), ct.byref(numorb_max_c),
         ct.byref(nsh_max_c), ct.byref(ME2c_max_c),
         ct.byref(max_mu_dim1_c), ct.byref(max_mu_dim2_c), ct.byref(max_mu_dim3_c),
-        ct.byref(mbeta_max_c), ct.byref(nspecies_fdata_c), ct.byref(nelec_c)
+        ct.byref(mbeta_max_c), ct.byref(nspecies_fdata_c), ct.byref(nelec_c), ct.byref(neighPP_max_c)
     )
     return FireballDims(
         natoms_c.value, norbitals_c.value,
@@ -615,7 +642,7 @@ def _load_HS_dims():
         neigh_max_c.value, numorb_max_c.value,
         nsh_max_c.value, ME2c_max_c.value,
         max_mu_dim1_c.value, max_mu_dim2_c.value, max_mu_dim3_c.value,
-        mbeta_max_c.value, nspecies_fdata_c.value, nelec_c.value
+        mbeta_max_c.value, nspecies_fdata_c.value, nelec_c.value, neighPP_max_c.value
     )
 
 def get_HS_dims(force_refresh=False):

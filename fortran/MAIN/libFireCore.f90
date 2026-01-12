@@ -511,17 +511,38 @@ subroutine firecore_get_Qout_shell( Qout_out ) bind(c, name='firecore_get_Qout_s
     end do
 end subroutine
 
+! subroutine firecore_get_Qneutral_shell( Qneutral_out ) bind(c, name='firecore_get_Qneutral_shell')
+!     use iso_c_binding
+!     use charges,       only: Qneutral
+!     implicit none
+!     real(c_double), intent(out) :: Qneutral_out(*)
+!     integer iatom, issh, nsh
+!     nsh = size(Qneutral, 1)
+!     do iatom = 1, size(Qneutral, 2)
+!         Qneutral_out((iatom-1)*nsh + 1 : iatom*nsh) = 0.0d0
+!         do issh = 1, nsh
+!             Qneutral_out((iatom-1)*nsh + issh) = Qneutral(issh, iatom)
+!         end do
+!     end do
+! end subroutine
+
 subroutine firecore_get_Qneutral_shell( Qneutral_out ) bind(c, name='firecore_get_Qneutral_shell')
     use iso_c_binding
-    use charges,       only: Qneutral
+    use charges,       only: Qneutral, nzx
     implicit none
     real(c_double), intent(out) :: Qneutral_out(*)
-    integer ispec, issh, nsh
+    integer ispec, issh, nsh, nspec
     nsh = size(Qneutral, 1)
-    do ispec = 1, size(Qneutral, 2)
-        do issh = 1, nsh
-            Qneutral_out((ispec-1)*nsh + issh) = Qneutral(issh, ispec)
-        end do
+    nspec = 0
+    if (allocated(nzx)) nspec = size(nzx, 1)
+    ! Zero full output buffer (Python side allocates nsh_max * nspecies_fdata)
+    do ispec = 1, nspec
+        Qneutral_out((ispec-1)*nsh + 1 : ispec*nsh) = 0.0d0
+        if (ispec <= size(Qneutral, 2)) then
+            do issh = 1, nsh
+                Qneutral_out((ispec-1)*nsh + issh) = Qneutral(issh, ispec)
+            end do
+        end if
     end do
 end subroutine
 
@@ -767,18 +788,18 @@ end subroutine
 
 subroutine firecore_get_HS_dims( &
     natoms_out, norbitals_out, nspecies_out, neigh_max_out, numorb_max_out, &
-    nsh_max_out, ME2c_max_out, max_mu_dim1_out, max_mu_dim2_out, max_mu_dim3_out, mbeta_max_out, nspecies_fdata_out, nelec_out &
+    nsh_max_out, ME2c_max_out, max_mu_dim1_out, max_mu_dim2_out, max_mu_dim3_out, mbeta_max_out, nspecies_fdata_out, nelec_out, neighPP_max_out &
   ) bind(c, name='firecore_get_HS_dims')
     use iso_c_binding
     use configuration, only: natoms, nspecies, xl ! nspecies here is for distinct species in current system
     use interactions,  only: norbitals, numorb_max, nsh_max, ME2c_max, mu
-    use neighbor_map,  only: neigh_max
+    use neighbor_map,  only: neigh_max, neighPP_max
     use charges,       only: nzx, ztot  ! nzx: species from Fdata; ztot: total electron count
     use options,       only: verbosity
     implicit none
     integer(c_int), intent(out) :: natoms_out, norbitals_out, nspecies_out, neigh_max_out, numorb_max_out
     integer(c_int), intent(out) :: nsh_max_out, ME2c_max_out
-    integer(c_int), intent(out) :: max_mu_dim1_out, max_mu_dim2_out, max_mu_dim3_out, mbeta_max_out, nspecies_fdata_out, nelec_out
+    integer(c_int), intent(out) :: max_mu_dim1_out, max_mu_dim2_out, max_mu_dim3_out, mbeta_max_out, nspecies_fdata_out, nelec_out, neighPP_max_out
 
     write (*,*) "firecore_get_HS_dims() verbosity=", verbosity
 
@@ -828,6 +849,8 @@ subroutine firecore_get_HS_dims( &
     else
         nspecies_fdata_out = 0
     end if
+
+    neighPP_max_out = neighPP_max
 
     ! Export total electron count as integer approximation of ztot
     nelec_out = nint(ztot)
@@ -892,6 +915,36 @@ subroutine firecore_get_HS_neighs( &
     if(allocated(neigh_b)) neigh_b_out = neigh_b
     if(allocated(xl))      xl_out      = xl
 end subroutine firecore_get_HS_neighs
+
+subroutine firecore_get_HS_neighsPP( neighPPn_out, neighPP_j_out, neighPP_b_out ) bind(c, name='firecore_get_HS_neighsPP')
+    use iso_c_binding
+    use configuration, only: natoms
+    use neighbor_map,  only: neighPPn, neighPP_j, neighPP_b, neighPP_max
+    implicit none
+    integer(c_int), intent(out) :: neighPPn_out(*)   ! [natoms]
+    integer(c_int), intent(out) :: neighPP_j_out(*)  ! [natoms*neighPP_max]
+    integer(c_int), intent(out) :: neighPP_b_out(*)  ! [natoms*neighPP_max]
+    integer :: iatom, ipp
+    if(.not. allocated(neighPPn)) then
+        write(*,*) 'Error: neighPPn not allocated in firecore_get_HS_neighsPP'
+        stop
+    end if
+    if(.not. allocated(neighPP_j)) then
+        write(*,*) 'Error: neighPP_j not allocated in firecore_get_HS_neighsPP'
+        stop
+    end if
+    if(.not. allocated(neighPP_b)) then
+        write(*,*) 'Error: neighPP_b not allocated in firecore_get_HS_neighsPP'
+        stop
+    end if
+    do iatom = 1, natoms
+        neighPPn_out(iatom) = neighPPn(iatom)
+        do ipp = 1, neighPP_max
+            neighPP_j_out((iatom-1)*neighPP_max + ipp) = neighPP_j(ipp, iatom)
+            neighPP_b_out((iatom-1)*neighPP_max + ipp) = neighPP_b(ipp, iatom)
+        end do
+    end do
+end subroutine firecore_get_HS_neighsPP
 
 subroutine firecore_get_HS_sparse( h_mat_out, s_mat_out ) bind(c, name='firecore_get_HS_sparse')
     use iso_c_binding

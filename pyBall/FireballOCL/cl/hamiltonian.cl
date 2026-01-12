@@ -45,6 +45,7 @@ float interpolate_2d(
         g[k] = ((bb3 * py + bb2) * py + bb1) * py + bb0;
     }
 
+
     float f1m1 = g[0];
     float f0p3 = 3.0f * g[1];
     float f1p3 = 3.0f * g[2];
@@ -55,6 +56,50 @@ float interpolate_2d(
     float bb1 = -2.0f * f1m1 - f0p3 + 2.0f * f1p3 - f2p1;
     float bb0 = 2.0f * f0p3;
     return (((bb3 * px + bb2) * px + bb1) * px + bb0) / 36.0f;
+}
+
+inline void recover_and_rotate_3c_munu_sp(
+    const int n_nz_max,
+    const float* hlist,
+    const __global short* mu3c,
+    const __global short* nu3c,
+    const __private float eps[3][3],
+    float* block
+) {
+    float M[4][4];
+    for(int a=0;a<4;a++){ for(int b=0;b<4;b++){ M[a][b]=0.0f; } }
+    for(int idx=0; idx<n_nz_max; idx++){
+        int imu = (int)mu3c[idx];
+        int inu = (int)nu3c[idx];
+        if(imu<=0 || inu<=0) continue;
+        if(imu>4 || inu>4) continue;
+        M[imu-1][inu-1] = hlist[idx];
+    }
+
+    float R[4][4];
+    for(int a=0;a<4;a++){ for(int b=0;b<4;b++){ R[a][b]=0.0f; } }
+    R[0][0] = 1.0f;
+    for(int k=0;k<3;k++){
+        R[1][k+1] = eps[1][k];
+        R[2][k+1] = eps[2][k];
+        R[3][k+1] = eps[0][k];
+    }
+
+    float tmp[4][4];
+    for(int a=0;a<4;a++){
+        for(int b=0;b<4;b++){
+            float acc = 0.0f;
+            for(int k=0;k<4;k++) acc += R[a][k] * M[k][b];
+            tmp[a][b] = acc;
+        }
+    }
+    for(int a=0;a<4;a++){
+        for(int b=0;b<4;b++){
+            float acc = 0.0f;
+            for(int k=0;k<4;k++) acc += tmp[a][k] * R[b][k];
+            block[a*4 + b] = acc;
+        }
+    }
 }
 
 __kernel void assemble_3c(
@@ -1130,8 +1175,14 @@ __kernel void compute_avg_rho(
     const __global int* cn_indices,   // CSR column indices
     // Input Data
     const __global float* S_mat,      // Overlap [n_pairs, 16]
-    const __global float* rho_2c,     // Precomputed 2-center density [n_pairs, 16]
-    const __global float* Q_neutral,  // Neutral atomic charges [natoms]
+    const __global float* rho_2c,            // Precomputed 2-center density [n_pairs, 16]
+    const __global float* Qneutral_shell,    // [nsh_max * nspecies_fdata], packed [ispec*nsh_max + (isorp-1)]
+    const __global int*   ispec_of_atom,     // [natoms], 0-based indices into species_fdata
+    const __global int*   nssh_species,      // [nspecies_fdata], number of shells for this species
+    const int nsh_max,
+    const __global short* mu3c_map,   // [n_types*n_nz_max]
+    const __global short* nu3c_map,   // [n_types*n_nz_max]
+    const __global char*  mvalue3c_map, // [n_types*n_nz_max]
     // Tables (Interaction type = 3)
     const __global float* data_3c,
     const __global float2* h_grids_3c,
@@ -1152,9 +1203,9 @@ __kernel void compute_avg_rho(
     float d_ij = length(r21);
     float3 sighat = (d_ij > 1e-10f) ? r21/d_ij : (float3)(0,0,1);
     
-    // Rotation Matrix
+    // Rotation Matrix (Fortran average_rho 3c part uses epsilon(rhat, sighat, eps) inside the CN loop).
+    // Here we keep eps declared once and set it per-CN below.
     float eps[3][3];
-    epsilon_fb(r_j, sighat, eps); 
 
     // Initialize with 2-center part
     float rho_acc[16];
@@ -1166,7 +1217,8 @@ __kernel void compute_avg_rho(
 
     for (int idx = start; idx < end; idx++) {
         int k = cn_indices[idx];
-        float q_k = Q_neutral[k]; // Weight by neutral charge
+        int ispec_k = ispec_of_atom[k];
+        int nssh_k  = nssh_species[ispec_k];
         float3 r_k = ratoms[k];
 
         // 3C Coords
@@ -1176,38 +1228,56 @@ __kernel void compute_avg_rho(
         float3 rhat = (x > 1e-10f) ? rnabc/x : (float3)(0,0,1);
         float cost = dot(sighat, rhat);
 
+        // For 3c density rotation frame use rhat (matches Fortran average_rho.f90)
+        epsilon_fb(rhat, sighat, eps);
+
+        // Fortran trescentros applies an extra factor sint=sqrt(max(1-cost^2,1e-5)) for mvalue==1 channels.
+        // In our sp-only 5-coefficient packing, pp_pi corresponds to an m=1 channel.
+        float cost2 = cost*cost;
+        float argument = 1.0f - cost2;
+        if (argument < 1e-5f) argument = 1e-5f;
+        float sint = sqrt(argument);
+
         // Legendre Polys
         float P[5];
         eval_legendre_0_4(cost, P);
 
-        // Interpolate hlist[0..4] using correct Legendre sum over itheta planes
-        float hlist[5];
-        int isorp_idx = 0;
-        int grid_idx = type_idx * n_isorp_max + isorp_idx;
-        float hx = h_grids_3c[grid_idx].x;
-        float hy = h_grids_3c[grid_idx].y;
-        int nx = dims_3c[grid_idx].x;
-        int ny = dims_3c[grid_idx].y;
-
         int trip_stride  = n_isorp_max * 5 * ny_max * nx_max * n_nz_max;
         int isorp_stride = 5 * ny_max * nx_max * n_nz_max;
         int theta_stride = ny_max * nx_max * n_nz_max;
-        const __global float* base_trip = &data_3c[type_idx * trip_stride + isorp_idx * isorp_stride];
+        const __global float* base_type = &data_3c[type_idx * trip_stride];
 
-        for(int iME=0; iME<5; iME++){
-            float sum = 0.0f;
-            for(int it=0; it<5; it++){
-                const __global float* plane = base_trip + it * theta_stride;
-                sum += P[it] * interpolate_2d(x, d_ij, nx, ny, hx, hy, plane, iME, n_nz_max);
+        for(int isorp_idx=0; isorp_idx<nssh_k; isorp_idx++){
+            float w = Qneutral_shell[ispec_k * nsh_max + isorp_idx];
+            if (w == 0.0f) continue;
+
+            int grid_idx = type_idx * n_isorp_max + isorp_idx;
+            float hx = h_grids_3c[grid_idx].x;
+            float hy = h_grids_3c[grid_idx].y;
+            int nx = dims_3c[grid_idx].x;
+            int ny = dims_3c[grid_idx].y;
+
+            __private float hlist_local[64];
+            if(n_nz_max > 64) return;
+            const __global float* base_trip = base_type + isorp_idx * isorp_stride;
+            const __global short* mu3c = &mu3c_map[type_idx * n_nz_max];
+            const __global short* nu3c = &nu3c_map[type_idx * n_nz_max];
+            const __global char*  mvalue3c = &mvalue3c_map[type_idx * n_nz_max];
+
+            for(int iME=0; iME<n_nz_max; iME++){
+                float sum = 0.0f;
+                for(int it=0; it<5; it++){
+                    const __global float* plane = base_trip + it * theta_stride;
+                    sum += P[it] * interpolate_2d(x, d_ij, nx, ny, hx, hy, plane, iME, n_nz_max);
+                }
+                if ((int)mvalue3c[iME] == 1) sum *= sint;
+                hlist_local[iME] = sum;
             }
-            hlist[iME] = sum;
-        }
 
-        // Rotate and Accumulate
-        float block[16];
-        recover_and_rotate_3c_sp(hlist, eps, block);
-        
-        for(int m=0; m<16; m++) rho_acc[m] += block[m] * q_k;
+            float block[16];
+            recover_and_rotate_3c_munu_sp(n_nz_max, hlist_local, mu3c, nu3c, eps, block);
+            for(int m=0; m<16; m++) rho_acc[m] += block[m] * w;
+        }
     }
 
     // 3. Output accumulated density block (rho_off-like). Normalization (if any) is handled separately.
