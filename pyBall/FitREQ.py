@@ -50,7 +50,7 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
 # ====================================
 # ========= Globals
 # ====================================
-ev2kcal = 23.060548
+ev2kcal = 23.060547831
 bWeightsSet = False
 #isInitialized = False
 #nfound = -1
@@ -69,10 +69,10 @@ lib.setVerbosity.restype   =  None
 def setVerbosity(verbosity=1, idebug=0, PrintDOFs=0, PrintfDOFs=0, PrintBeforReg=0, PrintAfterReg=0, PrintOverRepulsive=0):
     return lib.setVerbosity(verbosity, idebug, PrintDOFs, PrintfDOFs, PrintBeforReg, PrintAfterReg, PrintOverRepulsive)
 
-lib.setModel.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_double, c_double]
+lib.setModel.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_double, c_double, c_bool]
 lib.setModel.restype   =  None
-def setModel(ivdW=1, iCoul=1, iHbond=0, Epairs=0, iEpairs=0, kMorse=1.8, Lepairs=0.5):
-    return lib.setModel(ivdW, iCoul, iHbond, Epairs, iEpairs, kMorse, Lepairs)
+def setModel(ivdW=1, iCoul=1, iHbond=0, Epairs=0, iEpairs=0, kMorse=1.8, Lepairs=0.5, bPN=True):
+    return lib.setModel(ivdW, iCoul, iHbond, Epairs, iEpairs, kMorse, Lepairs, bPN)
 
 # void setGlobalParams( double kMorse, double Lepairs, double EijMax, double softClamp_start, double softClamp_max ){
 lib.setGlobalParams.argtypes  = [c_double, c_double, c_double, c_double, c_double]
@@ -519,17 +519,25 @@ def comment_non_matching_lines( type_names, fname_in, bWriteAsComment=False, fna
 
 def read_xyz_data(fname="input_all.xyz"):
     """Read XYZ file and extract Etot and x0 values from comment lines"""
-    #print("read_xyz_data()\n")
-    #print("Reading XYZ file:", fname)
+    #print(f"DEBUG: read_xyz_data() reading file: {fname}", flush=True)
     Erefs = []
     x0s = []
+    line_count = 0
+    matched_count = 0
+    sample_lines = []
+    
     with open(fname, 'r') as f:
         while True:
             line = f.readline()
-            #print(line)
+            line_count += 1
             if not line: break
+            
+            # Keep first 5 comment lines as samples
+            if line.startswith('#') and len(sample_lines) < 5:
+                sample_lines.append(line.strip())
+            
             if line.startswith('# n0'):
-                #print(line)
+                matched_count += 1
                 # Parse line like "# n0 5 Etot .70501356708840164618 x0 1.40"
                 parts = line.split()
                 Etot  = float(parts[4])
@@ -540,6 +548,16 @@ def read_xyz_data(fname="input_all.xyz"):
             #natoms = int(line) if line[0].isdigit() else 0
             #for _ in range(natoms):
             #    f.readline()
+    
+    #print(f"DEBUG: Total lines read: {line_count}", flush=True)
+    #print(f"DEBUG: Lines matched with '# n0': {matched_count}", flush=True)
+    #print(f"DEBUG: Sample comment lines:", flush=True)
+    #for sl in sample_lines:
+    #    print(f"  {sl}", flush=True)
+    #print(f"DEBUG: Erefs array length: {len(Erefs)}, x0s array length: {len(x0s)}", flush=True)
+    #if len(Erefs) > 0:
+    #    print(f"DEBUG: First Eref: {Erefs[0]}, First x0: {x0s[0]}", flush=True)
+    
     return np.array(Erefs), np.array(x0s)
 
 def loadDOFnames( fname, comps="REQH" ):
@@ -634,17 +652,18 @@ def split_and_weight_curves(Erefs, x0s, n_before_min=4, weight_func=None, EminMi
     # Add start and end indices to process all segments
     all_splits = np.concatenate(([0], curve_starts, [len(x0s)]))
 
-    lens = []
     # Process each curve segment
+    lens = []
+    #segment_counter = 0
     for start, end in zip(all_splits[:-1], all_splits[1:]):
         segment = Erefs[start:end]
         n = len(segment)
         lens.append(n)
-        #print(  )
         if len(segment) == 0: continue
+                
         imin = np.argmin(segment) + start
-
         Emin = np.min(segment)
+
         if Emin < EminMin:
             icut = imin - n_before_min
             weight_start = max(icut, start)
@@ -658,7 +677,11 @@ def split_and_weight_curves(Erefs, x0s, n_before_min=4, weight_func=None, EminMi
                 weights[start:end] = 1.0
             else:
                 weights[start:end] = weight_func( Erefs[start:end] )
-                #weights[start:end] = 1.0
+        
+        #for i in range(start, end):
+        #    print(f"    {segment_counter:6d} {i:6d} {x0s[i]:12.6f} {Erefs[i]:15.8f} {weights[i]:10.6f}", flush=True)
+
+        #segment_counter += 1
     
     return weights, lens
 
@@ -701,7 +724,7 @@ def numDeriv( x, y):
     xs = x[1:-1]
     return dy/dx, xs
 
-def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans", bEvalSamples=True, bPrint=False ):
+def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans", bEvalSamples=True, bPrint=False, outfile=None ):
     plt.figure(figsize=(8,10.0))
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
     ncol = len(color_cycle)
@@ -710,15 +733,23 @@ def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans
         #print( f"#======= DOF[{iDOF}]: {xs}" )
         Es,Fs = scanParam( iDOF, xs, bEvalSamples=bEvalSamples )   # do 1D scan
         #print( f"#======= fDOF[{iDOF}]: {Efs}" )
-        #print( "iDOF", iDOF, DOFnames[iDOF], "Es", Es )
+
+        #print( "iDOF", iDOF, DOFnames[iDOF], " Fitness       \n", Es )
+        #print( "iDOF", iDOF, DOFnames[iDOF], " dFitness/dDOF \n", Fs )
+        Fs_num, xs_num = numDeriv(xs,Es)
+        if outfile is not None:
+            fname = f"{outfile}_DOF{iDOF}_ana.dat"
+            np.savetxt( fname, np.array([xs, Es,Fs]).T, fmt="%23.15g", header=f"DOF {iDOF} {DOFnames[iDOF]} x[a.u.]  E[eV]  F[eV/a.u.] " )
+            fname = f"{outfile}_DOF{iDOF}_num.dat"
+            np.savetxt( fname, np.array([xs_num, -Fs_num]).T, fmt="%23.15g", header=f"DOF {iDOF} {DOFnames[iDOF]} x[a.u.]  F[eV/a.u.] " )
         # take color from standard matplotlib color cycle
         c = color_cycle[iDOF % ncol]
         if bEs: 
             plt.subplot(2,1,1); plt.plot(xs,Es, '-', color=c, label="E "+DOFnames[iDOF] )       # plot 1D scan
         if bFs: 
             Fs_num, xs_num = numDeriv(xs,Es)
-            plt.subplot(2,1,2); plt.plot(xs,Fs,    '-', lw=1.0, color=c, label="F "+DOFnames[iDOF] )       # This is error in the E_O3 charge derivative
-            plt.subplot(2,1,2); plt.plot(xs_num,-Fs_num, ':', lw=1.5, color=c, label="F "+DOFnames[iDOF] ) 
+            plt.subplot(2,1,2); plt.plot(xs,Fs,    '-', lw=1.0, color=c, label="F_ana "+DOFnames[iDOF] )       # This is error in the E_O3 charge derivative
+            plt.subplot(2,1,2); plt.plot(xs_num,-Fs_num, ':', lw=1.5, color=c, label="F_num "+DOFnames[iDOF] ) 
             if bPrint:
                 print ( "# plotDOFscans DOF ", iDOF, DOFnames[iDOF], " dx= ", xs[1]-xs[0] ); 
                 print ( "#  i          x              E            F_ana=-dE/dDOF     F_num          F_ana-F_num          // F_num=-(E[i+1]-E[i-1])/(x[i+1]-x[i-1])" ); 
@@ -728,12 +759,13 @@ def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans
     plt.subplot(2,1,1);
     plt.legend()
     plt.xlabel("DOF value")
-    plt.ylabel("E [kcal/mol]")   
+    plt.ylabel("E [eV]")   
     plt.grid()
 
     plt.subplot(2,1,2);
     plt.xlabel("DOF value")
-    plt.ylabel("F [kcal/mol/A]")   
+    plt.ylabel("F [eV/a.u.]")   
+    plt.legend()
     plt.grid()
 
     plt.suptitle( title )
@@ -1106,6 +1138,7 @@ def parse_xyz_mapping(xyz_path, distances=None, angles=None):
                 seq.append((idist, iang))
                 if vals["Etot"] is not None:
                     Gref[idist, iang] = vals["Etot"]
+                    #print("Etot", vals["Etot"], " at x0=", vals["x0"], " angle=", vals["angle"])
             for _ in range(n):
                 _ = f.readline()
     return Gref, seq, axis, distances, angles
@@ -1136,7 +1169,8 @@ def shift_grid(G):
         return G, 0.0, 0.0
     last = G[-1, :] if (G.ndim == 2 and G.shape[0] > 0) else np.array([0.0])
     ref = float(np.nanmin(last[np.isfinite(last)])) if np.any(np.isfinite(last)) else 0.0
-    GS = G - ref
+    #GS = G - ref
+    GS = G
     mloc = float(np.nanmin(GS)) if np.any(np.isfinite(GS)) else 0.0
     if np.isfinite(mloc) and mloc > 0: mloc = 0.0
     return GS, ref, mloc

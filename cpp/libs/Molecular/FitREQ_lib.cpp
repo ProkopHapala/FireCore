@@ -75,7 +75,7 @@ void setVerbosity( int verbosity_, int idebug_, int PrintDOFs, int PrintfDOFs, i
     printf( "setVerbosity() PrintDOFs %i PrintfDOFs %i PrintBeforReg %i PrintAfterReg %i PrintOverRepulsive %i \n", W.bPrintDOFs, W.bPrintfDOFs, W.bPrintBeforReg, W.bPrintAfterReg, W.bPrintOverRepulsive );
 }
 
-void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double kMorse, double Lepairs ){
+void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double kMorse, double Lepairs, bool bPN ){
     W.ivdW    = ivdW;
     W.iCoul   = iCoul;
     W.iHbond  = iHbond;
@@ -83,7 +83,8 @@ void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double 
     W.iEpairs = iEpairs;
     W.kMorse  = kMorse;
     W.Lepairs = Lepairs;
-    printf( "setModel() ivdW %i iCoul %i iHbond %i iEpairs %i kMorse %f Lepairs %f \n", W.ivdW, W.iCoul, W.iHbond, W.iEpairs, W.kMorse, W.Lepairs );
+    W.bPN     = bPN;
+    printf( "setModel() ivdW %i iCoul %i iHbond %i iEpairs %i kMorse %f Lepairs %f bPN %i \n", W.ivdW, W.iCoul, W.iHbond, W.iEpairs, W.kMorse, W.Lepairs, W.bPN );
 }
 
 // bool  bEvalJ          = false;    // Should we evaluate variational derivatives on Fregment J 

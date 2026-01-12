@@ -72,6 +72,7 @@ if __name__ == "__main__":
     # Scan arguments
     parser.add_argument("--scan_dofs",         type=int,  nargs='+', default=None,             help="List of DOF indices to scan. If None, all from dof-selection are scanned.")
     parser.add_argument("--scan_range",        type=float, nargs=3,  default=[-1.0, 1.0, 100], help="Scan range: min max n_steps")
+    parser.add_argument("--scan_outfile",      type=str,   default="DOF_scan",                 help="Base name for scan output data files")
     parser.add_argument("--soft_clamp",        type=int,             default=1,                help="Enable soft clamp during scan")
     parser.add_argument("--user_weights",      type=int,             default=1,                help="Enable user weights during scan")
     parser.add_argument("--regularization",    type=int,             default=0,                help="Enable regularization during scan")
@@ -109,17 +110,10 @@ if __name__ == "__main__":
         scan_dofs = args.scan_dofs
         if scan_dofs is None:
             scan_dofs = list(range(fit.nDOFs))
-        xs = np.linspace(args.scan_range[0], args.scan_range[1], int(args.scan_range[2]))
-        for iDOF in scan_dofs:
-            Es, Fs = fit.scanParam(iDOF, xs)
-            plt.figure()
-            plt.plot(xs, Es)
-            plt.xlabel("DOF value")
-            plt.ylabel("Energy")
-            plt.title(f"DOF Scan: {DOFnames[iDOF]}")
-            plt.grid(True)
-            if args.save:
-                plt.savefig(f"{args.save}_DOF_{iDOF}.png")
+        xs = np.linspace(args.scan_range[0], args.scan_range[1], int(args.scan_range[2])) 
+        fit.plotDOFscans(scan_dofs, xs, DOFnames, title="DOF scan 1D", bFs=True, bEvalSamples=True, bPrint=True, outfile=args.scan_outfile)
+        if args.save:
+            plt.savefig(f"{args.save}_DOF_scan.png")
     elif args.mode == "plot":
         Gref, seq, axis, distances, angles = fit.parse_xyz_mapping(args.input)
         title = os.path.basename(args.input)
