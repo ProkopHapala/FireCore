@@ -60,6 +60,7 @@ header_strings = [
 "void firecore_get_nspecies( int* nspecies_out )",
 "void firecore_get_eigen( int ikp, double* eigen_out )",
 "void firecore_set_options( int ioff_S, int ioff_T, int ioff_Vna, int ioff_Vnl, int ioff_Vxc, int ioff_Vca, int ioff_Vxc_ca )",
+"void firecore_set_export_mode( int export_mode )",
 "void firecore_scanHamPiece2c( int interaction, int isub, int in1, int in2, int in3, double* dR, int applyRotation, double* sx_out )",
 "void firecore_scanHamPiece3c( int interaction, int isorp, int in1, int in2, int indna, double* dRj, double* dRk, int applyRotation, double* bcnax_out )",
 ]
@@ -589,6 +590,10 @@ def get_HS_dims(force_refresh=False):
 
 def set_options(ioff_S=1, ioff_T=1, ioff_Vna=1, ioff_Vnl=1, ioff_Vxc=1, ioff_Vca=1, ioff_Vxc_ca=1):
     lib.firecore_set_options(ioff_S, ioff_T, ioff_Vna, ioff_Vnl, ioff_Vxc, ioff_Vca, ioff_Vxc_ca)
+
+argDict["firecore_set_export_mode"]=( None, [c_int] )
+def set_export_mode(export_mode=0):
+    return lib.firecore_set_export_mode(int(export_mode))
 
 # void firecore_scanHamPiece2c( int interaction, int isub, int in1, int in2, int in3, double* dR, int applyRotation, double* sx_out )
 argDict["firecore_scanHamPiece2c"]=( None, [c_int, c_int, c_int, c_int, c_int, c_double_p, c_int, c_double_p] )

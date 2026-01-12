@@ -2,6 +2,7 @@
 module firecore_options
     implicit none
     integer :: ioff_S=1, ioff_T=1, ioff_Vna=1, ioff_Vnl=1, ioff_Vxc=1, ioff_Vca=1, ioff_Vxc_ca=1
+    integer :: export_mode=0
 end module firecore_options
 
 ! ==================================================
@@ -852,14 +853,113 @@ end subroutine firecore_get_HS_neighs
 
 subroutine firecore_get_HS_sparse( h_mat_out, s_mat_out ) bind(c, name='firecore_get_HS_sparse')
     use iso_c_binding
-    use configuration, only: natoms
-    use interactions,  only: h_mat, s_mat, numorb_max
-    use neighbor_map,  only: neigh_max
+    use configuration, only: natoms, ratom, xl
+    use options,       only: itheory, itestrange, testrange, verbosity
+    use firecore_options, only: ioff_S, ioff_T, ioff_Vna, ioff_Vnl, ioff_Vxc, ioff_Vca, ioff_Vxc_ca, export_mode
+    use interactions,  only: h_mat, s_mat, numorb_max, num_orb, imass, t_mat, vna, vnl, vxc, vxc_1c, vca, vxc_ca, ewaldlr, ewaldsr
+    use neighbor_map,  only: neigh_max, neighPP_max, neighn, neigh_j, neigh_b, neighPPn, neighPP_j, neighPP_b
     implicit none
     real(c_double), dimension(numorb_max, numorb_max, neigh_max, natoms), intent(out) :: h_mat_out
     real(c_double), dimension(numorb_max, numorb_max, neigh_max, natoms), intent(out) :: s_mat_out
-    if(allocated(h_mat)) h_mat_out = h_mat
-    if(allocated(s_mat)) s_mat_out = s_mat
+    integer :: iatom, ineigh, jatom, mbeta, in1, in2, nmu, nnu
+    integer :: ineighPP, ineigh0
+    real(c_double) :: dx, dy, dz, dist
+
+    if (export_mode .eq. 0) then
+        if(allocated(h_mat)) h_mat_out = h_mat
+        if(allocated(s_mat)) s_mat_out = s_mat
+        return
+    end if
+
+    h_mat_out = 0.0d0
+    s_mat_out = 0.0d0
+    if (ioff_S .ne. 0) then
+        if(allocated(s_mat)) s_mat_out = s_mat
+    end if
+
+    if (.not. allocated(neighn)) then
+        write(*,*) 'Error: neighn not allocated in firecore_get_HS_sparse export_mode=1'
+        stop
+    end if
+
+    do iatom = 1, natoms
+        in1 = imass(iatom)
+        nmu = num_orb(in1)
+        do ineigh = 1, neighn(iatom)
+            jatom = neigh_j(ineigh, iatom)
+            mbeta = neigh_b(ineigh, iatom)
+            in2 = imass(jatom)
+            nnu = num_orb(in2)
+
+            if (ioff_T .ne. 0) then
+                h_mat_out(:nmu,:nnu,ineigh,iatom) = h_mat_out(:nmu,:nnu,ineigh,iatom) + t_mat(:nmu,:nnu,ineigh,iatom)
+            end if
+            if (ioff_Vna .ne. 0) then
+                h_mat_out(:nmu,:nnu,ineigh,iatom) = h_mat_out(:nmu,:nnu,ineigh,iatom) + vna(:nmu,:nnu,ineigh,iatom)
+            end if
+
+            if (itheory .eq. 3) then
+                if (ioff_Vxc .ne. 0) then
+                    h_mat_out(:nmu,:nnu,ineigh,iatom) = h_mat_out(:nmu,:nnu,ineigh,iatom) + vxc(:nmu,:nnu,ineigh,iatom)
+                end if
+                if (ioff_Vca .ne. 0) then
+                    h_mat_out(:nmu,:nnu,ineigh,iatom) = h_mat_out(:nmu,:nnu,ineigh,iatom) + vca(:nmu,:nnu,ineigh,iatom)
+                end if
+            else
+                if (ioff_Vxc .ne. 0) then
+                    h_mat_out(:nmu,:nnu,ineigh,iatom) = h_mat_out(:nmu,:nnu,ineigh,iatom) + vxc(:nmu,:nnu,ineigh,iatom) + vxc_1c(:nmu,:nnu,ineigh,iatom)
+                end if
+                if (itheory .eq. 1 .or. itheory .eq. 2) then
+                    if (ioff_Vca .ne. 0) then
+                        h_mat_out(:nmu,:nnu,ineigh,iatom) = h_mat_out(:nmu,:nnu,ineigh,iatom) + vca(:nmu,:nnu,ineigh,iatom) + ewaldlr(:nmu,:nnu,ineigh,iatom) - ewaldsr(:nmu,:nnu,ineigh,iatom)
+                    end if
+                    if (ioff_Vxc_ca .ne. 0) then
+                        h_mat_out(:nmu,:nnu,ineigh,iatom) = h_mat_out(:nmu,:nnu,ineigh,iatom) + vxc_ca(:nmu,:nnu,ineigh,iatom)
+                    end if
+                end if
+            end if
+
+            if (itestrange .eq. 0) then
+                dx = ratom(1,iatom) - (xl(1,mbeta) + ratom(1,jatom))
+                dy = ratom(2,iatom) - (xl(2,mbeta) + ratom(2,jatom))
+                dz = ratom(3,iatom) - (xl(3,mbeta) + ratom(3,jatom))
+                dist = sqrt(dx*dx + dy*dy + dz*dz)
+                if (dist .gt. testrange) then
+                    h_mat_out(:nmu,:nnu,ineigh,iatom) = 0.0d0
+                    if (ioff_S .ne. 0) s_mat_out(:nmu,:nnu,ineigh,iatom) = 0.0d0
+                end if
+            end if
+        end do
+    end do
+
+    ! Note: buildh.f90 does NOT add vnl into h_mat (it is kept separate and added later in k-space / solver).
+    ! Therefore we only add vnl here when export_mode>=2, to provide an explicit "full-H" export.
+    if (export_mode .ge. 2) then
+        if (ioff_Vnl .ne. 0) then
+            do iatom = 1, natoms
+                in1 = imass(iatom)
+                nmu = num_orb(in1)
+                do ineighPP = 1, neighPPn(iatom)
+                    jatom = neighPP_j(ineighPP, iatom)
+                    mbeta = neighPP_b(ineighPP, iatom)
+                    in2 = imass(jatom)
+                    nnu = num_orb(in2)
+                    ineigh0 = 0
+                    do ineigh = 1, neighn(iatom)
+                        if (neigh_j(ineigh,iatom) .eq. jatom .and. neigh_b(ineigh,iatom) .eq. mbeta) then
+                            ineigh0 = ineigh
+                            exit
+                        end if
+                    end do
+                    if (ineigh0 .gt. 0) then
+                        h_mat_out(:nmu,:nnu,ineigh0,iatom) = h_mat_out(:nmu,:nnu,ineigh0,iatom) + vnl(:nmu,:nnu,ineighPP,iatom)
+                    else
+                        if (verbosity .gt. 0) write(*,*) 'Warning: VNL neighbor not found in neigh list ', iatom, jatom, mbeta
+                    end if
+                end do
+            end do
+        end if
+    end if
 end subroutine firecore_get_HS_sparse
 
 subroutine firecore_get_rho_sparse( rho_out ) bind(c, name='firecore_get_rho_sparse')
@@ -896,6 +996,14 @@ subroutine firecore_set_options( ioff_S_, ioff_T_, ioff_Vna_, ioff_Vnl_, ioff_Vx
     ioff_Vca  = ioff_Vca_
     ioff_Vxc_ca = ioff_Vxc_ca_
     return
+end subroutine
+
+subroutine firecore_set_export_mode( export_mode_ ) bind(c, name='firecore_set_export_mode')
+    use iso_c_binding
+    use firecore_options
+    implicit none
+    integer(c_int), intent(in), value :: export_mode_
+    export_mode = export_mode_
 end subroutine
 
 subroutine firecore_get_eigen( ikpoint, eigen_out ) bind(c, name='firecore_get_eigen')

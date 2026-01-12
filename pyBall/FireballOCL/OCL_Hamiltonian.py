@@ -263,6 +263,28 @@ class OCL_Hamiltonian:
         cl.enqueue_copy(self.queue, blocks, d_blocks)
         return blocks
 
+    def assemble_pp_device(self, ratoms, neighbors, pair_types):
+        """Like assemble_pp, but returns the device buffer with blocks (and the buffers it depends on).
+
+        The returned device buffer layout matches the OpenCL kernel output:
+          blocks[pair, nu, mu] flattened in row-major order (16 floats per pair).
+        """
+        n_pairs = len(neighbors)
+        ratoms4 = np.zeros((ratoms.shape[0], 4), dtype=np.float32)
+        ratoms4[:, :3] = ratoms.astype(np.float32)
+
+        d_ratoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=ratoms4)
+        d_neighs = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=neighbors.astype(np.int32))
+        d_types = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=pair_types.astype(np.int32))
+
+        d_blocks = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, n_pairs * 16 * 4)
+        self.prg.assemble_pp(self.queue, (n_pairs,), None,
+                             np.int32(n_pairs), np.int32(self.n_nz_max), np.int32(self.numz_max),
+                             d_ratoms, d_neighs, self.d_splines, d_types, self.d_h_grids,
+                             self.d_muPP_map, self.d_nuPP_map,
+                             d_blocks)
+        return d_blocks
+
     def assemble_pp(self, ratoms, neighbors, pair_types):
         """
         Runs the assemble_pp kernel (PP projector overlaps sVNL).
@@ -460,7 +482,7 @@ class OCL_Hamiltonian:
         cl.enqueue_copy(self.queue, results, d_out)
         return results
 
-    def assemble_full(self, ratoms, species, neighbors, include_T=True, include_Vna=True, include_Vnl=False):
+    def assemble_full(self, ratoms, species, neighbors, include_T=True, include_Vna=True, include_Vnl=False, use_gpu_vnl=False):
         """
         Assembles full H and S matrices.
         species: list of nuclear charges for each atom [natoms]
@@ -548,10 +570,18 @@ class OCL_Hamiltonian:
             if pairs_sVNL:
                 neigh_arr = np.array([p[:2] for p in pairs_sVNL], dtype=np.int32)
                 type_arr  = np.array([p[2]  for p in pairs_sVNL], dtype=np.int32)
-                sVNL_eval = self.assemble_pp(ratoms, neigh_arr, type_arr)
+                if use_gpu_vnl:
+                    d_sVNL_blocks = self.assemble_pp_device(ratoms, neigh_arr, type_arr)
+                    sVNL_eval = None
+                else:
+                    sVNL_eval = self.assemble_pp(ratoms, neigh_arr, type_arr)
+                    d_sVNL_blocks = None
             else:
                 sVNL_eval = np.zeros((len(pp_pairs), 4, 4), dtype=np.float32)
-            sVNL_map = {ik: sVNL_eval[idx] for idx, ik in enumerate(pp_pairs)}
+                d_sVNL_blocks = None
+            sVNL_map = None
+            if sVNL_eval is not None:
+                sVNL_map = {ik: sVNL_eval[idx] for idx, ik in enumerate(pp_pairs)}
 
             # Helper: get cl vector for PP atom k
             def get_cl_for_atom(k):
@@ -575,6 +605,15 @@ class OCL_Hamiltonian:
                     cl_full += [c] * (2 * int(l) + 1)
                 return np.array(cl_full, dtype=np.float64)
 
+            def get_cl_sp_for_atom(k):
+                clv = get_cl_for_atom(k)
+                if clv.shape[0] < 4:
+                    raise RuntimeError(f"cl_pseudo expanded length {clv.shape[0]} < 4 for atom {k} (Z={int(species[k])})")
+                if clv.shape[0] != 4:
+                    # keep loud for now: GPU kernel only supports sp projectors
+                    raise RuntimeError(f"GPU Vnl contraction only supports sp projectors (len=4), got len={clv.shape[0]} for atom {k} (Z={int(species[k])})")
+                return clv.astype(np.float32)
+
             # Contraction helper: A(4,npp) * diag(cl) * B(4,npp)^T
             def contract_AB(A, B, clv):
                 """
@@ -593,41 +632,77 @@ class OCL_Hamiltonian:
                 # verify_C2 reconstructs dense blocks via transpose.
                 return (Aw @ Bt.T).astype(np.float32).T
 
-            # Assemble Vnl blocks only for requested neighbor blocks (same output format as T/Vna)
-            for idx, (i, j) in enumerate(neighbors):
-                if i == j:
-                    # On-site: sum over all PP centers k within cutoff
-                    acc = np.zeros((4, 4), dtype=np.float32)
-                    for k in range(n_atoms):
-                        if (i, k) not in sVNL_map:
-                            continue
-                        A = sVNL_map[(i, k)]
-                        clv = get_cl_for_atom(k)
-                        acc += contract_AB(A, A, clv)
-                    Vnl_blocks[idx] = acc
-                else:
-                    # Off-diagonal: PP on i and PP on j
-                    acc = np.zeros((4, 4), dtype=np.float32)
-                    acc_i = None
-                    acc_j = None
-                    # PP at i: <phi_i|Psi_i> <Psi_i|phi_j>
-                    if (i, i) in sVNL_map and (j, i) in sVNL_map:
-                        A = sVNL_map[(i, i)]
-                        B = sVNL_map[(j, i)]
-                        clv = get_cl_for_atom(i)
-                        tmp = contract_AB(A, B, clv)
-                        acc += tmp
-                        acc_i = tmp
-                    # PP at j: <phi_i|Psi_j> <Psi_j|phi_j>
-                    if (i, j) in sVNL_map and (j, j) in sVNL_map:
-                        A = sVNL_map[(i, j)]
-                        B = sVNL_map[(j, j)]
-                        clv = get_cl_for_atom(j)
-                        tmp = contract_AB(A, B, clv)
-                        acc += tmp
-                        acc_j = tmp
+            if use_gpu_vnl:
+                if d_sVNL_blocks is None:
+                    raise RuntimeError("use_gpu_vnl=True but d_sVNL_blocks is None")
+                # Map (phi_atom, pp_atom) -> index in sVNL_global
+                pp_index = {ik: idx for idx, ik in enumerate(pp_pairs)}
 
-                    Vnl_blocks[idx] = acc
+                # In verification we evaluate sVNL for all (i,k) pairs, so VNL contraction is a sum over k=0..n_atoms-1.
+                # Build idx_ik/idx_jk maps for each neighbor pair.
+                n_k = n_atoms
+                idx_ik = np.empty(n_pairs * n_k, dtype=np.int32)
+                idx_jk = np.empty(n_pairs * n_k, dtype=np.int32)
+                for p, (i, j) in enumerate(neighbors):
+                    base = p * n_k
+                    for k in range(n_k):
+                        idx_ik[base + k] = pp_index.get((i, k), -1)
+                        idx_jk[base + k] = pp_index.get((j, k), -1)
+
+                # Per-atom cl coefficients expanded per PP orbital (sp only => 4)
+                cl_host = np.zeros((n_atoms, 4), dtype=np.float32)
+                for a in range(n_atoms):
+                    cl_host[a, :] = get_cl_sp_for_atom(a)
+
+                d_ij_pairs = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.asarray(neighbors, dtype=np.int32))
+                d_idx_ik = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=idx_ik)
+                d_idx_jk = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=idx_jk)
+                d_cl = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=cl_host)
+                d_vnl = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, n_pairs * 16 * 4)
+
+                # Launch: local size 16, global size n_pairs*16
+                self.prg.contract_vnl_sumk_sp(
+                    self.queue, (int(n_pairs * 16),), (16,),
+                    np.int32(n_pairs), np.int32(n_k),
+                    d_ij_pairs,
+                    d_idx_ik, d_idx_jk,
+                    d_sVNL_blocks,
+                    d_cl,
+                    d_vnl
+                )
+
+                vnl_flat = np.zeros((n_pairs, 16), dtype=np.float32)
+                cl.enqueue_copy(self.queue, vnl_flat, d_vnl)
+                Vnl_blocks = vnl_flat.reshape(n_pairs, 4, 4)
+            else:
+                # Assemble Vnl blocks only for requested neighbor blocks (same output format as T/Vna)
+                for idx, (i, j) in enumerate(neighbors):
+                    if i == j:
+                        # On-site: sum over all PP centers k within cutoff
+                        acc = np.zeros((4, 4), dtype=np.float32)
+                        for k in range(n_atoms):
+                            if (i, k) not in sVNL_map:
+                                continue
+                            A = sVNL_map[(i, k)]
+                            clv = get_cl_for_atom(k)
+                            acc += contract_AB(A, A, clv)
+                        Vnl_blocks[idx] = acc
+                    else:
+                        # Off-diagonal: PP on i and PP on j
+                        acc = np.zeros((4, 4), dtype=np.float32)
+                        # PP at i: <phi_i|Psi_i> <Psi_i|phi_j>
+                        if (i, i) in sVNL_map and (j, i) in sVNL_map:
+                            A = sVNL_map[(i, i)]
+                            B = sVNL_map[(j, i)]
+                            clv = get_cl_for_atom(i)
+                            acc += contract_AB(A, B, clv)
+                        # PP at j: <phi_i|Psi_j> <Psi_j|phi_j>
+                        if (i, j) in sVNL_map and (j, j) in sVNL_map:
+                            A = sVNL_map[(i, j)]
+                            B = sVNL_map[(j, j)]
+                            clv = get_cl_for_atom(j)
+                            acc += contract_AB(A, B, clv)
+                        Vnl_blocks[idx] = acc
         
         # Aggregate all potential Vna 2-center components
         Vna_total = np.zeros((n_pairs, 4, 4), dtype=np.float32)

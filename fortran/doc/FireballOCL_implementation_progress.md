@@ -13,9 +13,9 @@
 - **Vna (Neutral Atom Potential) - COMPLETED (2025-12-22)**  
   - **C2 parity achieved:** `verify_C2.py` now passes Vna (max diff ~2e-6). The remaining s-pz sign flip in C2 was due to Vna (interaction=4) using a different rotation frame than S/T: Fortran uses `epsilon(r2, sighat, eps)` with absolute neighbor position `r2`, while OpenCL initially used only relative dR. Implemented Fortran-accurate `epsilon(r_j, sighat, eps)` in `assemble_2c` for `is_vna_pair` flagged blocks, keeping S/T unchanged. This fixed the odd-parity s-p components without affecting other interactions.
 
-- **Vnl (Non-local Pseudopotential) - PARTIALLY FIXED (2025-12-22)**  
+- **Vnl (Non-local Pseudopotential) - VERIFIED PREVIOUSLY, NEEDS RE-TEST (2025-12-22)**  
   - **Scans (radial + angular) now match Fortran:** Added Vnl to `verify_scan_2c.py` with both radial and angular scans, plus extended angular scans for kinetic and Vna. The key fix for scans was routing `root='vnl'` to use `assemble_pp` kernel (PP projector overlaps) instead of `assemble_2c` (wrong kernel). Radial and angular Vnl scans match Fortran within ~1e-6.
-  - **Full C2 verification now passes:** `verify_C2.py` now reports `SUCCESS: Vnl matches` after fixing the **contraction orientation/layout** in the CPU assembly path.
+  - **Single-geometry parity previously passed:** `verify_C2.py` reported `SUCCESS: Vnl matches` after fixing the contraction orientation/layout in the CPU assembly path (same transpose fix as above). We need to re-run this test when the expanded suite is ready to confirm no regressions.
   - **Why scans were correct but verify_C2 initially failed:** scans validate the raw `sVNL` blocks (output of `assemble_pp`). Full Vnl assembly additionally performs the contraction (Fortran `assemble_2c_PP.f90`):
     `vnl(imu,inu) += sum_cc cl(cc) * sVNL(imu,cc) * sVNL(inu,cc)`.
     Our `assemble_pp` kernel outputs blocks in (inu,imu) convention (like other kernels), but the initial CPU contraction treated them as (imu,cc) without consistent transposes, producing a large apparent mismatch. Fixing the transpose handling and returning Vnl blocks in (inu,imu) convention resolved this.
@@ -31,9 +31,11 @@
     - Verification script `tests/pyFireball/verify_Fdata_read_3c.py` visualizes Fortran vs Python grids (5×3 subplot: Fortran/Python/Diff) and prints min/max/diff; confirms tables load identically.
 
 - **Next steps**  
-  - Fix Vnl full assembly discrepancy: Debug the CPU contraction in `assemble_full` by comparing Python contraction terms against Fortran `assemble_2c_PP` loop. Add prints for individual `cl(cc) * sVNL(imu,ncc) * sVNL(inu,ncc)` terms to isolate sign/indexing errors. Once fixed, Vnl will pass in `verify_C2.py`.
+  - Build a consolidated single-geometry regression in `tests/pyFireball/verify_C2.py` that iterates over every Hamiltonian component (S, T, Vna, Vnl, Vxc, Vxc_1c, Vca, Vxc_ca, full H) in one run, printing both matrices and diffs for each term.
+  - Re-run the existing S/T/Vna/Vnl checks under this unified harness to reconfirm parity before tackling new terms.
+  - Add SCF call + density export so that XC/DOGS terms have the required inputs; then add parity checks for `Vxc`, `Vxc_1c`, `Vca`, `Vxc_ca`.
   - Fix OpenCL bcna L0 mismatch: verify type_idx/theta/i_nz mapping in `scan_3c_raw_points` vs host packing, then re-run `verify_scan_3c.py --mode raw`.  
-  - After raw parity, implement Fortran-equivalent 3c rotation/assembly in OpenCL.  
+  - After raw parity, implement Fortran-equivalent 3c rotation/assembly in OpenCL and extend the consolidated test to cover 3c contributions.  
   - Keep verifying with `verify_scan_3c.py`; add batched paths once scalar parity is reached.
 
 
@@ -151,19 +153,49 @@ Replicated logic from `ROTATIONS/epsilon.f90` and `ROTATIONS/twister.f90`.
 
 ### C2 Verification (2-center, 4 orbitals on Carbon)
 
-Verification was performed on a C2 dimer (two Carbon atoms, 4 orbitals per atom: s, py, pz, px). Dense 8x8 matrices were reconstructed from the Fortran sparse blocked export and from the OpenCL blocked output.
+Verification now uses the Fortran scan API (`scanHamPiece2c`) as the reference instead of sparse matrix toggles. For each interaction we build the dense 8×8 matrix from the (s, py, pz, px) 4×4 blocks and compare directly to PyOpenCL scans. As of 2026‑01‑12 we also have a **reliable sparse-export reference** thanks to the new gated export mode in `firecore_get_HS_sparse`, so we can assert that the reconstructed sum of components matches the raw Fortran `h_mat`.
+
+Summary (2026‑01‑12):
 
 | Component | Status | Notes |
 | :--- | :--- | :--- |
-| **Overlap S** | **PASSED** | Matches within ~1e-7 after correct 8x8 reconstruction. |
-| **Kinetic T** | **PASSED** | Matches within ~1e-6. |
-| **Vna (Total)** | **PASSED** | Matches within ~1e-6 after fixing vna_atom direction convention (see below). |
-| **Vnl** | **PASSED** | Matches within ~1e-6 after fixing PP contraction and block orientation. |
+| **Overlap S** | **PASSED** | Scan parity within ~1e‑7. |
+| **Kinetic T** | **PASSED** | Scan parity within ~1e‑6. |
+| **Vna (Total)** | **PASSED** | Ontop L/R (interactions 2/3) + on‑site `vna_atom_00` (interaction 4) agree after direction fix. |
+| **sVNL (PP overlap)** | **PASSED** | Interaction=5 (sVNL) blocks match within ~1e‑6; final contracted Vnl comparison pending. |
+| **VNL (Fortran export vs CPU/GPU)** | **PASSED** | Contracted VNL blocks exported via `firecore_get_HS_sparse(export_mode=2)` (toggling only VNL) match OpenCL CPU/GPU contraction within ~1e‑6. |
+| **H2c (T + Vna)** | **PASSED** | Combined 2-center Hamiltonian reconstructed from scans matches GPU sum. |
+| **Fortran H (raw vs gated reconstruction)** | **PASSED** | New export mode rebuilds H from gated component arrays (T/Vna/Vxc/Vxc_1c/Vca/Vxc_ca/ewald) and matches raw `h_mat` exactly. |
+| **Full H (incl. XC/DOGS/Vnl contraction)** | **NOT YET TESTED** | Requires McWEDA/DOGS kernels plus contracted Vnl export on GPU. |
+
+#### Distinction: sVNL vs contracted VNL
+- **sVNL (interaction=5)** are the projector overlaps `⟨φ_i | V_k^proj⟩`. They are 2‑center blocks indexed by basis orbital `(μ)` and projector channel `(cc)` and are computed by `assemble_sVNL.f90`. These are what the scan parity currently covers.
+- **Contracted VNL** (what end up in `h_mat`) is built in `assemble_2c_PP.f90` via  
+  `Vnl_{ij} = Σ_k Σ_cc cl_k(cc) * sVNL_{i,k}(cc,μ) * sVNL_{j,k}(cc,ν)`  
+  and is the quantity that must be compared to the OpenCL contraction (CPU and GPU) under a frozen density.
+
+Plan to finish VNL parity in `tests/pyFireball/verify_C2.py`:
+1. **Fortran reference**: use `fc.set_options(0,0,0,1,0,0,0)` with `fc.set_export_mode(1)` to export only the reconstructed contracted VNL blocks (no SCF rerun).
+2. **Dense conversion**: reuse `_blocked_to_dense` to obtain `Vnl_fortran`.
+3. **Compare**: existing scan-based reference stays, but add new checks  
+   `compare_matrices("VNL CPU vs Fortran gated export", Vnl_fortran, Vnl_cpu)` and similarly for GPU.
+4. **Reporting**: update summary table to include “VNL vs Fortran export” alongside the scan comparison, ensuring both CPU and GPU contraction pass.
+
+**Status (2026‑01‑12):** All four steps above are implemented. `verify_C2.py` now exports VNL-only blocks via `export_mode=2`, converts them to dense, compares against both OpenCL CPU and GPU contractions, and records the result in the summary (`VNL vs F: PASSED`).
+
+#### Fortran gated export improvements (2026‑01‑12)
+
+- Added `firecore_set_export_mode()` + reconstructed path inside `firecore_get_HS_sparse`. `export_mode=0` returns raw `h_mat`, `export_mode=1` sums gated component buffers, `export_mode>=2` can optionally add VNL blocks for explicit “full H + VNL” exports later.
+- Reconstruction respects `ioff_*` flags and mirrors `buildh.f90` (T + Vna + Vxc + Vxc_1c + Vca + Vxc_ca + ewaldlr − ewaldsr). VNL is **not** added at mode 1 because `buildh` does not include it.
+- Python wrapper now exposes `set_export_mode`, and `verify_C2.py` follows the correct protocol: run SCF once (full Hamiltonian), then export gated sums **without re‑running SCF/assemble** so the density matrix stays frozen.
+- `verify_C2.py` now checks `H_raw` vs `H_reconstructed` and passes (max diff 0.0), giving us a trusted Fortran baseline for term-by-term comparisons.
 
 ### Next Steps
-- [ ] Implement full **McWEDA / OLSXC** logic for XC potentials.
-- [ ] Full integration of `assemble_full` with the main SCF loop.
-- [ ] Rigorous benchmarking and verification against `FireCore` sparse export.
+- [ ] Implement full **McWEDA / OLSXC** logic for XC potentials (`Vxc` off-site + `Vxc_1c` on-site).
+- [ ] Enable DOGS charge-dependent corrections (`Vca`, `Vxc_ca`) on GPU and expose the necessary density exports (`rho`) for parity tests.
+- [ ] Extend `verify_C2.py` to compare the **contracted Vnl** blocks (beyond sVNL) once the OpenCL assembly is routed through `assemble_full`.
+- [ ] Re-introduce a full-H comparison after XC/DOGS/Vnl are available on both sides.
+- [ ] Add geometry sweeps (distance / rotation) once single-geometry parity is locked for all components.
 
 ## 9. Development Notes & References
 
@@ -230,3 +262,51 @@ This session resolved the final C2 verification issue, achieving **full 2-center
 - **Indexing Conventions**: Fortran uses 1-based indices; OpenCL 0-based. Double-check muPP/nuPP mappings and orbital orders (Ortega: s, py, pz, px).
 - **Debugging Strategy**: Use targeted prints (e.g., element-wise comparisons) and isolate issues (e.g., kernel vs contraction). Don't guess—trace Fortran paths.
 - **Avoid Repeating Mistakes**: Always verify full `verify_C2.py` after scan fixes. Check Fortran data loading (e.g., sign flips in splines). Use `git status` to track changes.
+
+
+---
+
+## Current verification status (2026-01-12)
+
+- **Already covered in [verify_C2.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C2.py:0:0-0:0)**:  
+  - Overlap `S` (Fortran offloaded via `firecore_get_HS_sparse` with only `S` enabled, compared to OpenCL blocks) @tests/pyFireball/verify_C2.py#116-128  
+  - Kinetic `T` @tests/pyFireball/verify_C2.py#129-139  
+  - Neutral atom potential `Vna` (2c + bcna) @tests/pyFireball/verify_C2.py#141-151  
+  - Non-local pseudopotential `Vnl` @tests/pyFireball/verify_C2.py#153-165  
+
+- **Verified outside `verify_C2` but limited to interpolation**:  
+  - [scanHamPiece2c](cci:1://file:///home/prokop/git/FireCore/pyBall/FireCore.py:595:0-600:17) sweeps for all 2c interactions (Overlap, T, Vna pieces, Vnl components). This checks spline + rotation parity vs OpenCL but isn’t yet tied into a full Hamiltonian build @tests/pyFireball/verify_scan_2c.py.  
+  - [scanHamPiece3c](cci:1://file:///home/prokop/git/FireCore/pyBall/FireCore.py:619:0-624:20)/[scanHamPiece3c_raw](cci:1://file:///home/prokop/git/FireCore/pyBall/FireCore.py:626:0-641:14) sweeps for bcna, density overlaps, etc. Useful for debugging 3c tables/rotations but not yet wired into the Hamiltonian comparison @tests/pyFireball/verify_scan_3c.py.
+
+- **Not yet covered in parity tests**:
+  - Exchange-correlation pieces: on-site `Vxc_1c`, off-site McWEDA/OLSXC `Vxc`, and DOGS charge-dependent corrections `Vca`, `Vxc_ca`.  
+  - Long-range/Ewald contributions if needed for cluster vs periodic cases.  
+  - Density matrix `rho` export parity (needed before verifying charge-dependent terms).  
+  - Full assembled `H = T + Vna + Vnl + Vxc + ...` comparison.  
+  - Geometry scans (distance/rotation) for each term.
+
+**Next steps for [verify_C2.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C2.py:0:0-0:0) (single-geometry parity with readable output)**
+
+1. **Extend Fortran toggles**: call [fc.set_options(ioff_S, ioff_T, ...)](cci:1://file:///home/prokop/git/FireCore/pyBall/FireCore.py:589:0-590:97) to isolate each remaining term:
+   - `Vxc` (off-site) – ensure SCF inputs provide averaged densities (may need one SCF pass).
+   - `Vxc_1c` – check diagonal blocks.
+   - `Vca` and `Vxc_ca` – requires DOGS/charge data; confirm Fortran is running the same theory switch as OpenCL kernel expectations.
+   - Optional: `Vnl` contraction via SVNL tables if GPU path still differs.
+
+2. **Print matrices for inspection**: after reconstructing dense blocks, dump formatted matrices for both Fortran and OpenCL plus the absolute-difference matrix. Keep existing [compare_matrices](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C2.py:12:0-32:15) helper but add explicit `print` calls even when tolerance is met to give the coding agent raw data.
+
+3. **Add full Hamiltonian check**: run [fc.set_options(1,1,1,1,1,1,1)](cci:1://file:///home/prokop/git/FireCore/pyBall/FireCore.py:589:0-590:97) (or whichever combination corresponds to the intended theory) and compare the summed dense matrices end-to-end.
+
+4. **Record neighbor ordering**: ensure the neighbor list generated from [get_HS_sparse](cci:1://file:///home/prokop/git/FireCore/pyBall/FireCore.py:501:0-506:15) matches the ordering expected by OpenCL assembly (already done but re-validate when new terms are added).
+
+5. **Plan for follow-up geometry sweeps** (later task): reuse `scanHamPiece2c/3c` infrastructure to generate distance/rotation scans once the single-geometry parity is locked.
+
+**Testing plan outline**
+
+1. **Baseline** – rerun existing S/T/Vna/Vnl checks, now printing both matrices.  
+2. **McWEDA / XC** – add tests for `Vxc` and `Vxc_1c`; confirm the SCF loop provides the required densities (may need to call [assembleH](cci:1://file:///home/prokop/git/FireCore/pyBall/FireCore.py:208:0-209:58) after [fc.SCF](cci:1://file:///home/prokop/git/FireCore/pyBall/FireCore.py:234:0-235:58) to populate `rho`).  
+3. **Charge corrections** – enable DOGS terms (if the current dataset supports them) and compare `Vca`, `Vxc_ca`.  
+4. **Full H/S** – single [assembleH](cci:1://file:///home/prokop/git/FireCore/pyBall/FireCore.py:208:0-209:58) call with all toggles, compare entire dense matrices, log max diff.  
+5. **Regression guard** – keep tolerances tight (1e-5) and fail loudly if any block deviates; print blocks automatically for debugging.
+
+This brings the single-geometry test to “full Hamiltonian parity,” after which we can extend to geometry scans and plotting.

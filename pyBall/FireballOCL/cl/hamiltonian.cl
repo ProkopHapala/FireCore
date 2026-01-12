@@ -647,3 +647,259 @@ __kernel void assemble_2c(
     b[3*4 + 2] = diff * ezx * ezz;
     b[3*4 + 3] = diff * ezx * ezx + pp_pi;
 }
+
+
+
+
+// hamiltonian_vnl_shared.cl
+
+// Compile-time constants (passed via -D to PyOpenCL)
+#define N_ORB 4     // e.g., 4 for sp, 9 for spd
+#define N_PROJ 4    // e.g., 4 for sp, 9 for spd
+#define N_ORB_SQ 16 // N_ORB * N_ORB
+
+/**
+ * Kernel: contract_vnl_shared
+ * 
+ * Logic:
+ * 1. Map Workgroup -> Neighbor Pair (i, j)
+ * 2. Cooperative Load: Threads load S_ii, S_jj, S_ij, S_ji into Local Memory.
+ * 3. Compute: H_ij = Term1 (Proj on i) + Term2 (Proj on j)
+ * 4. Write: H_out[pair_index] (No atomics)
+ */
+__kernel void contract_vnl_shared(
+    const int n_pairs,
+    __global const int2* neighbor_pairs,   // (i, j)
+    __global const int* self_offset_map,   // atom_idx -> index of (i, i) in sVNL
+    __global const int* reverse_pair_map,  // pair_idx -> index of (j, i) in sVNL
+    __global const float* sVNL_global,     // [total_pairs, N_ORB, N_PROJ]
+    __global const float* cl_coeffs,       // [n_atoms, N_PROJ]
+    __global float* H_vnl_out              // [total_pairs, N_ORB, N_ORB]
+) {
+    // 1. Identify Workgroup Task
+    int pair_id = get_group_id(0); // Each WG handles one pair
+    if (pair_id >= n_pairs) return;
+
+    // Thread ID within the block (0..15 for sp, 0..80 for spd)
+    int tid = get_local_id(0); 
+    
+    // Identify dimensions (row/col of the output matrix)
+    int row = tid / N_ORB;
+    int col = tid % N_ORB;
+
+    // --- LOCAL MEMORY ALLOCATION ---
+    // We need 4 matrices of size [N_ORB][N_PROJ]
+    // For sp (4x4): 16 floats * 4 matrices = 64 floats (256 bytes) -> Fits easily.
+    __local float S_ii[N_ORB * N_PROJ];
+    __local float S_jj[N_ORB * N_PROJ];
+    __local float S_ij[N_ORB * N_PROJ];
+    __local float S_ji[N_ORB * N_PROJ];
+
+    // --- DATA LOADING PHASE ---
+    
+    int2 atoms = neighbor_pairs[pair_id];
+    int atom_i = atoms.x;
+    int atom_j = atoms.y;
+
+    int idx_S_ii = self_offset_map[atom_i];
+    int idx_S_jj = self_offset_map[atom_j];
+    int idx_S_ij = pair_id;               // The current pair
+    int idx_S_ji = reverse_pair_map[pair_id]; // The reverse pair
+
+    // Threads cooperate to load data. 
+    // Since N_ORB*N_PROJ might be != LocalSize, we loop.
+    int total_elements = N_ORB * N_PROJ;
+    
+    for (int i = tid; i < total_elements; i += get_local_size(0)) {
+        // Flat indices for global buffer
+        int b_row = i / N_PROJ;
+        int b_col = i % N_PROJ;
+        
+        // sVNL layout: [pair][basis_row][proj_col]
+        // Stride = total_elements
+        
+        S_ii[i] = sVNL_global[idx_S_ii * total_elements + i];
+        S_jj[i] = sVNL_global[idx_S_jj * total_elements + i];
+        S_ij[i] = sVNL_global[idx_S_ij * total_elements + i];
+        
+        // Handle case where reverse pair might not exist (boundary conditions)
+        if (idx_S_ji >= 0) {
+            S_ji[i] = sVNL_global[idx_S_ji * total_elements + i];
+        } else {
+            S_ji[i] = 0.0f; 
+        }
+    }
+
+    // Barrier: Wait for all LMEM to be populated
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // --- COMPUTE PHASE ---
+    
+    // Check if this thread maps to a valid matrix element
+    if (row < N_ORB && col < N_ORB) {
+        
+        float val = 0.0f;
+        
+        // Pointers to coefficients
+        __global const float* C_i = &cl_coeffs[atom_i * N_PROJ];
+        __global const float* C_j = &cl_coeffs[atom_j * N_PROJ];
+
+        // Contraction Loop over Projectors (k)
+        for (int k = 0; k < N_PROJ; k++) {
+            
+            // Term 1: Projector on Atom J
+            // <phi_i | Psi_j> * C_j * <Psi_j | phi_j>
+            // Matrix: S_ij * diag(C_j) * S_jj^T
+            // Element: S_ij[row, k] * C_j[k] * S_jj[col, k] 
+            // Note: S_jj[col, k] corresponds to Transpose(S_jj)[k, col]
+            
+            float term_j = S_ij[row * N_PROJ + k] * C_j[k] * S_jj[col * N_PROJ + k];
+
+            // Term 2: Projector on Atom I
+            // <phi_i | Psi_i> * C_i * <Psi_i | phi_j>
+            // Matrix: S_ii * diag(C_i) * S_ji^T
+            // Note: We need <Psi_i | phi_j>. 
+            // In the reverse pair (j->i), sVNL stored <phi_j | Psi_i>.
+            // So <Psi_i | phi_j> is the TRANSPOSE of sVNL(j,i).
+            // So we need (S_ji)^T. Element at [row, k] of S_ji^T is S_ji[k, row]? 
+            // No.
+            // Let's look at indices:
+            // We want element (row, col) of the result.
+            // S_ii[row, k] * C_i[k] * (Something relating i and j)[k, col]
+            // The last term is <Psi_i_k | phi_j_col>.
+            // The stored block S_ji is <phi_j | Psi_i>.
+            // Element S_ji[basis_idx, proj_idx].
+            // We want <Psi_i_k | phi_j_col> = Conjugate(<phi_j_col | Psi_i_k>).
+            // This is S_ji[col, k].
+            
+            float term_i = S_ii[row * N_PROJ + k] * C_i[k] * S_ji[col * N_PROJ + k];
+
+            val += (term_j + term_i);
+        }
+
+        // --- WRITE PHASE ---
+        // Writes are coalesced if N_ORB is multiple of 16/32, 
+        // or at least grouped by workgroup.
+        int out_idx = pair_id * (N_ORB * N_ORB) + row * N_ORB + col;
+        H_vnl_out[out_idx] = val;
+    }
+}
+
+// NOTE:
+// The sketch kernel above assumes that pair_id indexes directly into sVNL_global (idx_S_ij=pair_id).
+// In our Python path, sVNL is typically evaluated for a separate list of (phi_atom, pp_atom) pairs
+// (often all (i,k)), whose ordering does NOT match the 2-center neighbor list.
+// Therefore we provide a map-driven kernel below which explicitly takes indices of the needed sVNL blocks.
+//
+// Conventions:
+// - sVNL blocks are stored in the same orientation as assemble_pp output: block[nu,mu] (row=projector index, col=basis index).
+// - Vnl output blocks should follow the same convention as other 2c blocks in this file: block[nu,mu].
+// - The contraction for one term is:
+//     Vnl(nu,mu) += sum_k sVNL_A(k,mu) * cl(k) * sVNL_B(k,nu)
+//   where sVNL_A corresponds to <phi_i|Psi_K> and sVNL_B corresponds to <phi_j|Psi_K>.
+
+__kernel void contract_vnl_pairs_sp(
+    const int n_pairs,
+    __global const int2* ij_pairs,          // [n_pairs] (i,j)
+    __global const int* idx_ii,             // [n_pairs] index into sVNL_global for (i,i)
+    __global const int* idx_ij,             // [n_pairs] index into sVNL_global for (i,j)
+    __global const int* idx_ji,             // [n_pairs] index into sVNL_global for (j,i)
+    __global const int* idx_jj,             // [n_pairs] index into sVNL_global for (j,j)
+    __global const float* sVNL_global,      // [n_sVNL_pairs, 16] flattened blocks (nu,mu)
+    __global const float* cl_coeffs,        // [n_atoms, 4] expanded per-PP-orb coefficients (s,py,pz,px)
+    __global float* vnl_out                 // [n_pairs, 16] output blocks (nu,mu)
+){
+    // One work-group per pair, local size 16.
+    int gid  = get_global_id(0);
+    int tid  = get_local_id(0);
+    int pair = gid >> 4;                   // /16
+    if(pair >= n_pairs) return;
+
+    // Map tid -> (nu,mu) for output element
+    int nu = tid >> 2;                     // /4
+    int mu = tid & 3;                      // %4
+
+    int2 ij = ij_pairs[pair];
+    int i = ij.x;
+    int j = ij.y;
+
+    int i_ii = idx_ii[pair];
+    int i_ij = idx_ij[pair];
+    int i_ji = idx_ji[pair];
+    int i_jj = idx_jj[pair];
+
+    __local float Sii[16];
+    __local float Sij[16];
+    __local float Sji[16];
+    __local float Sjj[16];
+
+    // Load all 4 blocks into local memory (each thread loads one element from each)
+    // If any index is negative (missing reverse/self), treat as zero.
+    Sii[tid] = (i_ii >= 0) ? sVNL_global[(i_ii<<4) + tid] : 0.0f;
+    Sij[tid] = (i_ij >= 0) ? sVNL_global[(i_ij<<4) + tid] : 0.0f;
+    Sji[tid] = (i_ji >= 0) ? sVNL_global[(i_ji<<4) + tid] : 0.0f;
+    Sjj[tid] = (i_jj >= 0) ? sVNL_global[(i_jj<<4) + tid] : 0.0f;
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    __global const float* Ci = cl_coeffs + (i<<2);
+    __global const float* Cj = cl_coeffs + (j<<2);
+
+    // Compute Vnl(nu,mu) for this pair
+    float val = 0.0f;
+
+    // PP at i: <phi_i|Psi_i> * cl(i) * <phi_j|Psi_i>
+    // Uses Sii(k,mu) and Sji(k,nu)
+    for(int k=0;k<4;k++){
+        val += Sii[(k<<2) + mu] * Ci[k] * Sji[(k<<2) + nu];
+    }
+
+    // PP at j: <phi_i|Psi_j> * cl(j) * <phi_j|Psi_j>
+    // Uses Sij(k,mu) and Sjj(k,nu)
+    for(int k=0;k<4;k++){
+        val += Sij[(k<<2) + mu] * Cj[k] * Sjj[(k<<2) + nu];
+    }
+
+    vnl_out[(pair<<4) + tid] = val;
+}
+
+// General contraction over PP centers k.
+// For each pair (i,j), and each (nu,mu) element:
+//   Vnl(nu,mu) = sum_k sum_cc sVNL(i,k)[cc,mu] * cl(k)[cc] * sVNL(j,k)[cc,nu]
+// Here sVNL(i,k) is stored as block[nu,mu] => nu=cc (projector), mu=basis.
+__kernel void contract_vnl_sumk_sp(
+    const int n_pairs,
+    const int n_k,
+    __global const int2* ij_pairs,     // [n_pairs] (i,j)
+    __global const int* idx_ik,        // [n_pairs*n_k] index of sVNL(i,k)
+    __global const int* idx_jk,        // [n_pairs*n_k] index of sVNL(j,k)
+    __global const float* sVNL_global, // [n_sVNL_pairs,16] blocks (cc,mu)
+    __global const float* cl_coeffs,   // [n_atoms,4] expanded cl per projector orbital
+    __global float* vnl_out            // [n_pairs,16] blocks (nu,mu)
+){
+    int gid = get_global_id(0);
+    int tid = get_local_id(0);
+    int pair = gid >> 4;
+    if(pair >= n_pairs) return;
+
+    int nu = tid >> 2;
+    int mu = tid & 3;
+
+    float val = 0.0f;
+    int base = pair * n_k;
+    for(int ik=0; ik<n_k; ik++){
+        int a = idx_ik[base + ik];
+        int b = idx_jk[base + ik];
+        if(a < 0 || b < 0) continue;
+
+        // k is encoded implicitly by ik: host should order k list consistently and provide cl in same order.
+        // For current usage, host uses k=0..n_atoms-1, so k==ik.
+        __global const float* ck = cl_coeffs + (ik<<2);
+        int ao = a<<4;
+        int bo = b<<4;
+        for(int cc=0; cc<4; cc++){
+            val += sVNL_global[ao + (cc<<2) + mu] * ck[cc] * sVNL_global[bo + (cc<<2) + nu];
+        }
+    }
+    vnl_out[(pair<<4) + tid] = val;
+}
