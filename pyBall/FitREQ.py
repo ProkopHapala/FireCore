@@ -122,10 +122,14 @@ lib.setTrjBuffs.restype   =  None
 def setTrjBuffs( niter, trj_E=None, trj_F=None, trj_DOFs=None, trj_fDOFs=None, nDOFs_=None, bE=True, bF=True, bDOFs=True, bfDOFs=False ):
     if nDOFs_     is None: nDOFs_ = nDOFs
     print("setTrjBuffs(): niter=%i nDOFs=%i bE=%i bF=%i bDOFs=%i bfDOFs=%i" % (niter, nDOFs_, bE, bF, bDOFs, bfDOFs))
-    if (trj_E     is None) and bE     : trj_E     = np.zeros( niter )
-    if (trj_F     is None) and bF     : trj_F     = np.zeros( niter )
-    if (trj_DOFs  is None) and bDOFs  : trj_DOFs  = np.zeros( (niter, nDOFs_) )
-    if (trj_fDOFs is None) and bfDOFs : trj_fDOFs = np.zeros( (niter, nDOFs_) )
+    #if (trj_E     is None) and bE     : trj_E     = np.zeros( niter )
+    #if (trj_F     is None) and bF     : trj_F     = np.zeros( niter )
+    #if (trj_DOFs  is None) and bDOFs  : trj_DOFs  = np.zeros( (niter, nDOFs_) )
+    #if (trj_fDOFs is None) and bfDOFs : trj_fDOFs = np.zeros( (niter, nDOFs_) )
+    if (trj_E     is None) and bE     : trj_E     = np.full( niter, np.nan )
+    if (trj_F     is None) and bF     : trj_F     = np.full( niter, np.nan )
+    if (trj_DOFs  is None) and bDOFs  : trj_DOFs  = np.full( (niter, nDOFs_), np.nan )
+    if (trj_fDOFs is None) and bfDOFs : trj_fDOFs = np.full( (niter, nDOFs_), np.nan )
     lib.setTrjBuffs(_np_as(trj_E,c_double_p), _np_as(trj_F,c_double_p), _np_as(trj_DOFs,c_double_p), _np_as(trj_fDOFs,c_double_p))
     return trj_E, trj_F, trj_DOFs, trj_fDOFs
 
@@ -1414,7 +1418,8 @@ def plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save
         print(f"Warning: failed saving lines: {e}")
     return fig
 
-def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None, save_path=None):
+#def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None, save_path=None):
+def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None, save_path=None, n_steps=None):
     """Plot trajectories of DOFs over optimization iterations.
 
     Args:
@@ -1430,6 +1435,15 @@ def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None, save
     import matplotlib.pyplot as plt
     if trj_DOFs is None: return None
     niter, nDOFs_ = trj_DOFs.shape
+    
+    if n_steps is None:
+        nans = np.isnan(trj_DOFs[:,0])
+        if np.any(nans):
+            n_steps = np.argmax(nans)
+        else:
+            n_steps = niter
+    n_plot = min(niter, int(n_steps))
+
     if DOFnames is None: DOFnames = [f"DOF {i}" for i in range(nDOFs_)]
     if lss      is None: lss = ['-','--',":",'-','--',":",'-','-']
     if clrs     is None: clrs = ['b','b','b','r','r','r','c','m']
@@ -1437,7 +1451,8 @@ def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None, save
     for i in range(min(nDOFs_, len(DOFnames))):
         ls = lss[i % len(lss)]
         c  = clrs[i % len(clrs)]
-        plt.plot(trj_DOFs[:, i], ls, c=c, lw=1.0, ms=2.0, label=DOFnames[i])
+        #plt.plot(trj_DOFs[:, i], ls, c=c, lw=1.0, ms=2.0, label=DOFnames[i])
+        plt.plot(trj_DOFs[:n_plot, i], ls, c=c, lw=1.0, ms=2.0, label=DOFnames[i])
     if title:
         plt.title(title)
     plt.legend(fontsize=8)
@@ -1447,7 +1462,8 @@ def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None, save
         fig.savefig(save_path, bbox_inches='tight')
     return fig
 
-def save_trj_dofs(trj_DOFs, DOFnames=None, folder=None):
+#def save_trj_dofs(trj_DOFs, DOFnames=None, folder=None):
+def save_trj_dofs(trj_DOFs, DOFnames=None, folder=None, n_steps=None):
     """
     Save each DOF trajectory as a separate .dat file in a folder.
 
@@ -1464,6 +1480,15 @@ def save_trj_dofs(trj_DOFs, DOFnames=None, folder=None):
         return
 
     niter, nDOFs_ = trj_DOFs.shape
+    
+    if n_steps is None:
+        nans = np.isnan(trj_DOFs[:,0])
+        if np.any(nans):
+            n_steps = np.argmax(nans)
+        else:
+            n_steps = niter
+    n_save = min(niter, int(n_steps))
+
     if DOFnames is None:
         DOFnames = [f"DOF_{i}" for i in range(nDOFs_)]
 
@@ -1474,14 +1499,17 @@ def save_trj_dofs(trj_DOFs, DOFnames=None, folder=None):
         pass
 
     # Iteration indices for first column
-    iters = np.arange(niter)
+    #iters = np.arange(niter)
+    iters = np.arange(n_save)
 
     # Write each DOF file
     for i in range(nDOFs_):
         filename = os.path.join(folder, f"{DOFnames[i]}.dat")
-        data = np.column_stack((iters, trj_DOFs[:, i]))
+        #data = np.column_stack((iters, trj_DOFs[:, i]))
+        data = np.column_stack((iters, trj_DOFs[:n_save, i]))
         header = f"# iter  {DOFnames[i]}"
         np.savetxt(filename, data, header=header, comments="", fmt="%.12g")
+        print(f"Saved {DOFnames[i]}.dat trajectory file with iteration indices to: {folder}")
     print(f"Saved {nDOFs_} trajectory files with iteration indices to: {folder}")
 
 def save_data(Gref, Gmodel, angles, distances, save_data_prefix=None, save_fmt="both", kcal=False, line=False):
