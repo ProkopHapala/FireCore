@@ -71,6 +71,23 @@ def run_verification():
     Qin_shell = fc.get_Qin_shell(dims)  # [nsh_max, natoms]
     Qatom = np.sum(Qin_shell, axis=0).astype(np.float32)
 
+    # 3c data prep similar to verify_C3.py
+    Qneutral_sh = fc.get_Qneutral_shell(dims)  # [nsh_max, nspecies_fdata]
+    nzx = np.array(sd.nzx, dtype=np.int32)
+    iatyp = np.array(sd.iatyp, dtype=np.int32)
+    ispec_of_atom = np.zeros(dims.natoms, dtype=np.int32)
+    for ia in range(dims.natoms):
+        Z = int(iatyp[ia])
+        w = np.where(nzx == Z)[0]
+        if w.size == 0:
+            raise RuntimeError(f"Cannot map atom Z={Z} to nzx species list {nzx}")
+        ispec_of_atom[ia] = int(w[0])
+    
+    nspecies_fdata = int(Qneutral_sh.shape[1])
+    nssh_species = np.zeros(nspecies_fdata, dtype=np.int32)
+    for ispec in range(nspecies_fdata):
+        nssh_species[ispec] = int(np.count_nonzero(Qneutral_sh[:, ispec] != 0.0))
+
     # Neighbor lists from Fortran export: neigh_j is 1-based atom index, as used elsewhere in this file.
     neigh_lists = []
     for ia in range(dims.natoms):
@@ -132,7 +149,22 @@ def run_verification():
             key = found
         pair_triplet_types[ip] = int(ham.species_triplet_map[key])
 
-    rho_avg_blocks = ham.compute_avg_rho_3c(atomPos, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_blocks, Qatom)
+    # Build mu/nu/mvalue maps for 3c recovery (needed for compute_avg_rho_3c)
+    n_types = int(np.max(pair_triplet_types)) + 1 if pair_triplet_types.size else 0
+    n_nz_max = int(ham.n_nz_3c_max)
+    if n_types > 0:
+        mu3c_map = np.zeros((n_types, n_nz_max), dtype=np.int16)
+        nu3c_map = np.zeros((n_types, n_nz_max), dtype=np.int16)
+        mv3c_map = np.zeros((n_types, n_nz_max), dtype=np.int8)
+        # For C2, single species, in1=in2=1
+        in1 = 1; in2 = 1
+        mu3c_map[:, :] = sd.mu[in2-1, in1-1, :n_nz_max].astype(np.int16)
+        nu3c_map[:, :] = sd.nu[in2-1, in1-1, :n_nz_max].astype(np.int16)
+        mv3c_map[:, :] = sd.mvalue[in2-1, in1-1, :n_nz_max].astype(np.int8)
+    else:
+        mu3c_map = None; nu3c_map = None; mv3c_map = None
+
+    rho_avg_blocks = ham.compute_avg_rho_3c(atomPos, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_blocks, Qneutral_sh, ispec_of_atom, nssh_species, dims.nsh_max, mu3c_map=mu3c_map, nu3c_map=nu3c_map, mvalue3c_map=mv3c_map)
     for ip in range(min(3, pairs.shape[0])):
         i, j = int(pairs[ip, 0]), int(pairs[ip, 1])
         print(f"  rho_avg block pair ({i},{j}) cn_count={int(cn_counts[ip])}")
@@ -433,11 +465,203 @@ def run_verification():
     res_Vxc_1c = False  # Placeholder
 
     print("\nTesting Vca (charge-dependent)...")
-    H_f = H_full_f
-    print("  Fortran Vca matrix:")
-    print(H_f)
-    print("  SKIPPED: OpenCL Vca not yet implemented")
-    res_Vca = False  # Placeholder
+    print("\nTesting Vca (charge-dependent)...")
+    # Isolate Vca from Fortran
+    H_vca_f, _, _ = get_fortran_sparse_H_with_options(0, 0, 0, 0, 0, 1, 0, export_mode=2)
+    print("  Fortran Vca matrix (isolated):")
+    print(H_vca_f)
+
+    # Reconstruct Vca manually from scan2c and charges
+    # vca = sum_k sum_isorp (dq_k * vna(k, isorp)) + ewaldsr
+    # For now, ignore EwaldSR and check if vca matches (ewald might be small or zero if dq=0?)
+    # But dq is likely non-zero.
+    # We need to implement manual Vca to confirm we understand it.
+    Vca_manual = np.zeros_like(H_vca_f)
+    
+    # Calculate dq per shell
+    # dq[isorp, iatom]
+    dq_shell = np.zeros((dims.nsh_max, 2))
+    for ia in range(2):
+        for issh in range(int(nssh_species[0])): # Assuming species 0
+             dq_shell[issh, ia] = Qin_shell[issh, ia] - Qneutral_sh[issh, int(ispec_of_atom[ia])]
+    
+    print("  dq_shell:")
+    print(dq_shell)
+
+    # Accumulate Vca terms
+    # Loop over pairs (i,j) in Vca_manual blocks? No, dense matrix.
+    # Iterate all pairs (i, j)
+    for i in range(2):
+        for j in range(2):
+            dR = atomPos[j] - atomPos[i]
+            # Term 1: vna_atom (interaction 4)
+            # <i| V_atom(k) |i> -> k=i. 
+            # In assemble_ca_2c, for iatom, we loop neighbors jatom.
+            # vna_atom part: interaction=4, in3=in1 (potential at i).
+            # Scaled by dxn = Qin(j) - Qneu(j).
+            # Wait, assemble_ca_2c says: 
+            #   do isorp=1..nssh(in2): dxn = (Qin(j) - Qneu(in2)); bccax = doscentros(4, ... in3=in1 ...); bcca += bccax*dxn
+            # This adds to vca(..., matom, iatom). matom is self. 
+            # So this is a diagonal block contribution (i, i) due to neighbor j's charge.
+            # So for each i, sum over j (all atoms): V_ii += vna_atom(i, j) * dq(j)
+            
+            # Term 2: vna_ontopl/r
+            # For pair (i,j) (neighbor):
+            # vna_ontopl (2): pot at i. dxn = Qin(i)-Qneu(i). V_ij += vna_ontopl * dq(i)
+            # vna_ontopr (3): pot at j. dxn = Qin(j)-Qneu(j). V_ij += vna_ontopr * dq(j)
+            
+            # Lets accumulate into blocks
+            # Calculate EwaldSR constants
+            # dq1 = dq_shell[:, i], dq2 = dq_shell[:, j]
+            # but we need total dq for ewald? No, Fortran uses sum over isorp.
+            dqi_tot = np.sum(dq_shell[:, i])
+            dqj_tot = np.sum(dq_shell[:, j])
+            
+            # Reconstruct per-block
+            # Note: We need to put this into the correct sub-block of Vca_manual
+            # Vca_manual is dense (norb x norb), rows=i, cols=j
+            ni = int(n_orb_atom[i]); nj = int(n_orb_atom[j])
+            i0 = int(offs[i]); j0 = int(offs[j])
+            
+            V_blk = np.zeros((ni, nj))
+            
+            # Diagonal terms (from ALL neighbors k)
+            if i == j:
+                for k in range(2):
+                    dqk = dq_shell[:, k]
+                    dqk_tot = np.sum(dqk)
+                    dR_ik = atomPos[k] - atomPos[i]
+                    rik = np.linalg.norm(dR_ik)
+                    
+                    # Term: vna_atom (interaction 4)
+                    mat4 = np.zeros((ni, nj))
+                    for isorp in range(1, int(nssh_species[0])+1):
+                        # Force isorp into _scan2c or call fc directly
+                        # fc.scanHamPiece2c(interaction, isub, in1, in2, in3, dR, applyRotation)
+                        # in1=in2=in3=1 (species)
+                        m = fc.scanHamPiece2c(4, isorp, 1, 1, 1, dR_ik, applyRotation=True)
+                        mat4 += m * dqk[isorp-1]
+                    V_blk += mat4
+                    
+                    # EwaldSR "ATM CASE" (line 321 in assemble_ca_2c.f90)
+                    # if rik > 1e-4:
+                    #   emnpl = (s_mat / rik) * dqk_tot
+                    #   ewaldsr += emnpl * eq2
+                    if rik > 1e-4:
+                        # Get S matrix for (i, k)? No, s_mat(imu,inu,matom,iatom) -> (i, i) block?
+                        # "s_mat(imu,inu,matom,iatom)" where matom=neigh_self(iatom).
+                        # So it uses the Overlap of (i, i) which is Identity (mostly) or on-site overlap?
+                        # Wait, s_mat for self is Identity.
+                        # So emnpl = (I / rik) * dqk_tot.
+                        # ewaldsr += eqn * emnpl * eq2 ??
+                        # Fortran: emnpl = (s_mat / y) * dq2. ewaldsr += emnpl*eq2.
+                        # Here y = rik. dq2 = dqk_tot.
+                        # So V_ii += (I / rik) * dqk_tot * EQ2
+                        # EQ2 = 14.39975
+                        EQ2 = 14.39975
+                        S_ii = np.eye(ni) # approximate S_ii as Identity
+                        V_blk += (S_ii / rik) * dqk_tot * EQ2
+
+            else:
+                # Off-diagonal V_ij (interaction 2 and 3)
+                # Term: vna_ontopl (2) - pot at i
+                mat2 = np.zeros((ni, nj))
+                for isorp in range(1, int(nssh_species[0])+1):
+                    m = fc.scanHamPiece2c(2, isorp, 1, 1, 1, dR, applyRotation=True)
+                    mat2 += m * dq_shell[isorp-1, i]
+                
+                # Term: vna_ontopr (3) - pot at j
+                mat3 = np.zeros((ni, nj))
+                for isorp in range(1, int(nssh_species[0])+1):
+                    m = fc.scanHamPiece2c(3, isorp, 1, 1, 1, dR, applyRotation=True)
+                    mat3 += m * dq_shell[isorp-1, j]
+                
+                V_blk += mat2 + mat3
+                
+                # EwaldSR "ONTOP CASE" (line 415)
+                # ewaldsr = ...
+                # ewaldsr += ( (S_ij/rij + Dip_ij/rij^2)*dq_i + (S_ij/rij*dq_j - Dip_ij/rij^2*dq_j) ) * eq2
+                # Note: assemble_ca_2c has logic that cancels dipole if charges are same?
+                # Formula: ( (S/y + D/y^2)*dq1 + (S/y*dq2 - D/y^2*dq2) ) * eq2
+                #        = ( S/y*(dq1+dq2) + D/y^2*(dq1-dq2) ) * eq2
+                rij = np.linalg.norm(dR)
+                if rij > 1e-4:
+                    EQ2 = 14.39975
+                    S_ij = _scan2c_fortran(1, dR, applyRotation=True) # Overlap
+                    # Dipole: interaction 9 ??
+                    # Call doscentros(9, isorp=0, ...)
+                    Dip_ij = fc.scanHamPiece2c(9, 0, 1, 1, 1, dR, applyRotation=True)
+                    
+                    term = (S_ij / rij) * (dqi_tot + dqj_tot) + (Dip_ij / (rij**2)) * (dqi_tot - dqj_tot)
+                    V_blk += term * EQ2
+
+            Vca_manual[i0:i0+ni, j0:j0+nj] = V_blk
+
+    print("  Manual Vca matrix:")
+    print(Vca_manual)
+    
+    diff_vca = np.abs(H_vca_f - Vca_manual)
+    print(f"  Max diff Vca: {np.max(diff_vca):.2e}")
+    if np.max(diff_vca) < 1e-4:
+        print("SUCCESS: Vca manual reconstruction matches Fortran export.")
+        res_Vca = True
+    else:
+        print("FAILURE: Vca reconstruction mismatch.")
+    print("  Comparing OpenCL Vca implementation...")
+    # Prepare neighbor list and types for assemble_vca
+    # We need to replicate assemble_full logic for pairs (including self)
+    neigh_list_vca = []
+    for ia in range(dims.natoms):
+        for ja in neigh_lists[ia]:
+            neigh_list_vca.append((ia, int(ja))) # 0-based from get_neighbors
+    # Add self
+    for ia in range(dims.natoms):
+        neigh_list_vca.append((ia, ia))
+    
+    pair_types_vca = []
+    for (i, j) in neigh_list_vca:
+        nz1 = int(atomTypes_Z[i])
+        nz2 = int(atomTypes_Z[j])
+        k = ('vna', nz1, nz2)
+        idx = ham.species_pair_map.get(k)
+        if idx is None:
+            # Fallback alias logic used in ham.prepare_splines but we need the index.
+            # OCL_Hamiltonian aliases vna -> vna_atom_00 if missing.
+            # So ham.species_pair_map should have it if prepared correctly.
+            print(f"Warning: missing vna pair type for {nz1},{nz2}")
+            idx = 0
+        pair_types_vca.append(idx)
+        
+    off_vca, diag_vca = ham.assemble_vca(atomPos, np.array(neigh_list_vca), np.array(pair_types_vca), dq_shell)
+    
+    # Reconstruct dense
+    Vca_ocl = np.zeros_like(H_vca_f)
+    for k, (i, j) in enumerate(neigh_list_vca):
+        i0=int(offs[i]); j0=int(offs[j])
+        ni=int(n_orb_atom[i]); nj=int(n_orb_atom[j])
+        
+        # Off-diagonal block (V_ij)
+        # Transpose to match dense layout (col-major blocks from Fortran/OCL -> row-major numpy)
+        Vca_ocl[i0:i0+ni, j0:j0+nj] += off_vca[k].T
+        
+        # Diagonal update (V_ii) from neighbor j
+        # Added to V[i, i]
+        Vca_ocl[i0:i0+ni, i0:i0+ni] += diag_vca[k, 0].T
+
+    print("  OpenCL Vca matrix result:")
+    print(Vca_ocl)
+    
+    diff_ocl = np.abs(Vca_ocl - H_vca_f)
+    print(f"  Max diff Vca OCL vs Fortran: {np.max(diff_ocl):.2e}")
+    if np.max(diff_ocl) < 1e-4:
+        print("SUCCESS: OpenCL Vca matches Fortran.")
+        res_Vca = True
+    else:
+        print("FAILURE: OpenCL Vca mismatch.")
+        print("  Comparison with Manual (bcca+ewald):")
+        diff_man = np.abs(Vca_ocl - Vca_manual)
+        print(f"  Max diff OCL vs Manual: {np.max(diff_man):.2e}")
+        res_Vca = False
 
     print("\nTesting Vxc_ca (charge-dependent XC)...")
     H_f = H_full_f

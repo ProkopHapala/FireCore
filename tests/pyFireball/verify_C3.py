@@ -345,6 +345,11 @@ def run_verification():
     nu3c_map[:, :] = sd.nu[in2-1, in1-1, :n_nz_max].astype(np.int16)
     mv3c_map[:, :] = sd.mvalue[in2-1, in1-1, :n_nz_max].astype(np.int8)
 
+    if np.any(np.isnan(rho_blocks)):
+        print("ERROR: rho_blocks contains NaN!")
+    if np.any(np.isnan(Qneutral_sh)):
+        print("ERROR: Qneutral_sh contains NaN!")
+        
     rho_avg_blocks = ham.compute_avg_rho_3c(atomPos, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_blocks, Qneutral_sh, ispec_of_atom, nssh_species, dims.nsh_max, mu3c_map=mu3c_map, nu3c_map=nu3c_map, mvalue3c_map=mv3c_map)
 
     # Build Fortran reference blocks: rho_off is stored in sd.rho_off in the same blocked layout as sd.rho.

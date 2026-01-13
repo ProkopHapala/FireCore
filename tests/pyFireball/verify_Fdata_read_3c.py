@@ -23,6 +23,7 @@ def main():
     ap.add_argument("--i_nz", type=int, default=0, help="nonzero slot in Python-loaded table (0-based)")
     ap.add_argument("--fdata", default="./Fdata", help="Fdata directory")
     ap.add_argument("--out", default="compare_bcna_tables.png", help="output image filename")
+    ap.add_argument("--cpi", type=int, default=1, help="Call plt.show() if >0 to view plots interactively")
     args = ap.parse_args()
 
     # Ensure Fortran tables are initialized (sets icon3c, bcna_* arrays)
@@ -78,6 +79,8 @@ def main():
     plt.tight_layout(rect=[0, 0.03, 1, 0.97])
     plt.savefig(args.out, dpi=200)
     print(f"Saved {args.out}")
+    if args.cpi > 0:
+        plt.show()
 
 
 if __name__ == "__main__":

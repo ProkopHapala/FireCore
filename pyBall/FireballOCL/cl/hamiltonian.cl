@@ -1535,3 +1535,166 @@ __kernel void assemble_3c_PP(
     __global float* out = &V_nl_out[pid * 16];
     for(int m=0; m<16; m++) out[m] = acc[m];
 }
+// V_CA assembly kernel
+// Computes charge-dependent potential terms.
+// Iterates pairs (i, j).
+// Accumulates:
+//   blocks_offdiag[i_pair] += (vna_ontopl * dQ[i] + vna_ontopr * dQ[j])
+//   blocks_diag[i_pair]    += (vna_atom * dQ[j])  -- contribution to V_ii from neighbor j
+//
+// Assumptions:
+//   - nsh_vca_max is loop limit for shells.
+//   - dQ buffer is [natoms, nsh_stride] (or close). pass nsh_stride.
+//   - vca_map is [n_pairs, nsh_vca_max, 3]. -1 if missing.
+//
+__kernel void assemble_vca(
+    const int n_pairs,
+    const int n_nonzero_max,
+    const int numz,
+    const int nsh_vca_max,
+    const __global float3* ratoms,
+    const __global int2* neighbors,
+    const __global float* splines,
+    const __global int* pair_types,
+    const __global float* h_grids,
+    const __global int* vca_map,      // [n_species_pairs, nsh_vca_max, 3]
+    const __global float* dQ,         // [natoms, nsh_stride]
+    const int nsh_stride,
+    __global float* blocks_offdiag,   // [n_pairs, 4, 4]
+    __global float* blocks_diag       // [n_pairs, 2, 4, 4] (index 0 for i, index 1 for j if needed, but we output only 1 block for i usually?)
+                                      // Python allocated [n_pairs, 2, 16] but plan changed to only V_ii?
+                                      // Let's stick to Python accumulation: if we output V_ii update, we use index 0.
+                                      // I will write to index 0 of the pair block in blocks_diag.
+) {
+    int i_pair = get_global_id(0);
+    if (i_pair >= n_pairs) return;
+
+    int2 ij = neighbors[i_pair];
+    int atom_i = ij.x;
+    int atom_j = ij.y;
+
+    float3 r_i = ratoms[atom_i];
+    float3 r_j = ratoms[atom_j];
+    float3 dR = r_j - r_i;
+    float r = length(dR);
+    
+    // epsilon_fb uses r_j (neighbor absolute pos) and sighat (ez)
+    float3 ez = (r > 1e-10f) ? dR / r : (float3)(0.0f,0.0f,1.0f);
+    float eps[3][3];
+    epsilon_fb(r_j, ez, eps);
+    float pmat[3][3];
+    twister_pmat(eps, pmat);
+
+    int spec_pair = pair_types[i_pair];
+    float h_grid = h_grids[spec_pair];
+    
+    int i_z = (int)(r / h_grid);
+    if (i_z < 0) i_z = 0;
+    if (i_z >= numz - 1) i_z = numz - 2;
+    float dr = r - i_z * h_grid;
+    
+    int pair_stride = numz * n_nonzero_max * 4;
+    int z_stride = n_nonzero_max * 4;
+    int map_stride = nsh_vca_max * 3; 
+
+    // Accumulators
+    float acc_off[4][4];
+    float acc_diag[4][4];
+    for(int a=0;a<4;a++){ for(int b=0;b<4;b++){ acc_off[a][b]=0.0f; acc_diag[a][b]=0.0f; } }
+
+    for (int ish = 0; ish < nsh_vca_max; ish++) {
+        // Look up dQ
+        // dQ buffer is [natoms, nsh]. dQ[iatom * nsh + ish].
+        // Handle nsh bounds check if needed? Assumed safe.
+        float dq_i = dQ[atom_i * nsh_stride + ish];
+        float dq_j = dQ[atom_j * nsh_stride + ish];
+
+        // 3 components: 0=ontopl, 1=ontopr, 2=atom
+        int idx_ontopl = vca_map[spec_pair * map_stride + ish * 3 + 0];
+        int idx_ontopr = vca_map[spec_pair * map_stride + ish * 3 + 1];
+        int idx_atom   = vca_map[spec_pair * map_stride + ish * 3 + 2];
+
+        // For each component, if valid, eval spline, rotate, and add
+        
+        // --- ontopl (scale dq_i, add to offdiag) ---
+        if (idx_ontopl >= 0) {
+            // idx_ontopl is the "species pair" index in splines array. 
+            // splines array is [n_species_pairs, ...]. 
+            // Wait, vca_map stores INDICES into the splines array (first dimension).
+            // So we use it as `spec_pair` replacement.
+            int base_ptr = idx_ontopl * pair_stride + i_z * z_stride;
+            
+            float comps[6];
+            for(int k=0; k<n_nonzero_max; k++) {
+                int bp = base_ptr + k*4;
+                comps[k] = splines[bp] + dr*(splines[bp+1] + dr*(splines[bp+2] + dr*splines[bp+3]));
+            }
+            float sm[4][4]; // Ortega order
+            for(int a=0;a<4;a++){ for(int b=0;b<4;b++) sm[a][b]=0.0f; }
+            sm[0][0] = comps[0]; sm[0][2] = comps[1]; sm[2][0] = (n_nonzero_max>2)?comps[2]:0.0f;
+            sm[1][1] = (n_nonzero_max>3)?comps[3]:0.0f; sm[2][2] = (n_nonzero_max>4)?comps[4]:0.0f; sm[3][3] = sm[1][1];
+            
+            float sx[4][4];
+            rotatePP_sp(pmat, sm, sx);
+            
+            for(int a=0;a<4;a++){ for(int b=0;b<4;b++) acc_off[a][b] += sx[a][b] * dq_i; }
+        }
+
+        // --- ontopr (scale dq_j, add to offdiag) ---
+        if (idx_ontopr >= 0) {
+            int base_ptr = idx_ontopr * pair_stride + i_z * z_stride;
+            float comps[6];
+            for(int k=0; k<n_nonzero_max; k++) {
+                int bp = base_ptr + k*4;
+                comps[k] = splines[bp] + dr*(splines[bp+1] + dr*(splines[bp+2] + dr*splines[bp+3]));
+            }
+            float sm[4][4]; 
+            for(int a=0;a<4;a++){ for(int b=0;b<4;b++) sm[a][b]=0.0f; }
+            sm[0][0] = comps[0]; sm[0][2] = comps[1]; sm[2][0] = (n_nonzero_max>2)?comps[2]:0.0f;
+            sm[1][1] = (n_nonzero_max>3)?comps[3]:0.0f; sm[2][2] = (n_nonzero_max>4)?comps[4]:0.0f; sm[3][3] = sm[1][1];
+            
+            float sx[4][4];
+            rotatePP_sp(pmat, sm, sx);
+            
+            for(int a=0;a<4;a++){ for(int b=0;b<4;b++) acc_off[a][b] += sx[a][b] * dq_j; }
+        }
+
+        // --- atom (scale dq_j, add to diag_i) ---
+        if (idx_atom >= 0) {
+            int base_ptr = idx_atom * pair_stride + i_z * z_stride;
+            float comps[6];
+            for(int k=0; k<n_nonzero_max; k++) {
+                int bp = base_ptr + k*4;
+                comps[k] = splines[bp] + dr*(splines[bp+1] + dr*(splines[bp+2] + dr*splines[bp+3]));
+            }
+            float sm[4][4];
+            for(int a=0;a<4;a++){ for(int b=0;b<4;b++) sm[a][b]=0.0f; }
+            sm[0][0] = comps[0]; sm[0][2] = comps[1]; sm[2][0] = (n_nonzero_max>2)?comps[2]:0.0f;
+            sm[1][1] = (n_nonzero_max>3)?comps[3]:0.0f; sm[2][2] = (n_nonzero_max>4)?comps[4]:0.0f; sm[3][3] = sm[1][1];
+            
+            float sx[4][4];
+            rotatePP_sp(pmat, sm, sx);
+            
+            for(int a=0;a<4;a++){ for(int b=0;b<4;b++) acc_diag[a][b] += sx[a][b] * dq_j; }
+        }
+    }
+
+    // Store results
+    // Store as (inu, imu) for compatibility (transpose on read)
+    __global float* b_off = &blocks_offdiag[i_pair * 16];
+    for(int a=0;a<4;a++){
+        for(int c=0;c<4;c++){
+            b_off[a*4 + c] = acc_off[c][a]; // Transpose to store
+        }
+    }
+
+    // blocks_diag has shape [n_pairs, 2, 4, 4]. We write to index 0.
+    __global float* b_diag = &blocks_diag[i_pair * 32]; // 2*16
+    for(int a=0;a<4;a++){
+        for(int c=0;c<4;c++){
+            b_diag[a*4 + c] = acc_diag[c][a];
+        }
+    }
+    // Zero out the second block (index 1) to be clean
+    for(int k=16; k<32; k++) b_diag[k] = 0.0f;
+}

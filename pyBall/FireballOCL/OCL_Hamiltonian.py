@@ -49,13 +49,22 @@ class OCL_Hamiltonian:
         # Cache PP coefficients for Vnl contraction (per-species)
         # Fortran: cl_value(in2, cl) loads cl_PP(:,in2) used in Vnl contraction.
         # In the .dat header for interaction=5 (vnl.*.dat) these are stored as cl_pseudo.
+        # Fortran: cl_value(in2, cl) loads cl_PP(:,in2) used in Vnl contraction.
+        # In the .dat header for interaction=5 (vnl.*.dat) these are stored as cl_pseudo.
         self.cl_pseudo = getattr(self, 'cl_pseudo', {})
+        vnl_groups = {}
         for k, v in d2c.items():
             if isinstance(k, tuple) and len(k) >= 3 and k[0] == 'vnl':
+                # This is a VNL interaction, group by (root, nz1, nz2)
+                group_key = (k[0], k[1], k[2])
+                if group_key not in vnl_groups:
+                    vnl_groups[group_key] = []
+                vnl_groups[group_key].append(k)
+                
                 nz2 = k[2]
                 if (nz2 not in self.cl_pseudo) and (v.get('cl_pseudo', None) is not None):
                     self.cl_pseudo[nz2] = np.array(v['cl_pseudo'], dtype=np.float64)
-        
+
         numz_max = 0
         n_nz_max = 0
         for k, v in d2c.items():
@@ -113,6 +122,88 @@ class OCL_Hamiltonian:
                 nuPP_map[itype, :] = nuPP
         self.d_muPP_map = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=muPP_map)
         self.d_nuPP_map = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=nuPP_map)
+
+        # Build V_CA map: [pair_type_vna, isorp, 3] -> spline_index
+        # 3 components: 0=ontopl, 1=ontopr, 2=atom
+        # We assume max 3 shells for now (nsh_max=3)
+        nsh_vca_max = 3
+        vca_map = np.zeros((n_pairs, nsh_vca_max, 3), dtype=np.int32) - 1
+        
+        for k, idx in self.species_pair_map.items():
+            if k[0] == 'vna': # Base VNA type
+                nz1, nz2 = k[1], k[2]
+                # Look for sub-components with suffixes _00, _01, ...
+                for isorp in range(nsh_vca_max):
+                    sfx = f"_{isorp:02d}"
+                    if (f'vna_ontopl{sfx}', nz1, nz2) in self.species_pair_map:
+                        vca_map[idx, isorp, 0] = self.species_pair_map[(f'vna_ontopl{sfx}', nz1, nz2)]
+                    if (f'vna_ontopr{sfx}', nz1, nz2) in self.species_pair_map:
+                        vca_map[idx, isorp, 1] = self.species_pair_map[(f'vna_ontopr{sfx}', nz1, nz2)]
+                    if (f'vna_atom{sfx}', nz1, nz2) in self.species_pair_map:
+                        vca_map[idx, isorp, 2] = self.species_pair_map[(f'vna_atom{sfx}', nz1, nz2)]
+        
+        self.d_vca_map = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=vca_map)
+        self.nsh_vca_max = nsh_vca_max
+
+    def assemble_vca(self, ratoms, neighbors, pair_types, dQ_sh):
+        """
+        Assemble V_CA components:
+        - Off-diagonal blocks (V_ij) from ontopl/ontopr.
+        - Diagonal updates (V_ii, V_jj) from vna_atom. (Returned as separate update list).
+        
+        dQ_sh: [nsh_max, natoms] charge differences (Qin - Qneutral).
+        """
+        n_pairs = len(neighbors)
+        ratoms4 = np.zeros((ratoms.shape[0], 4), dtype=np.float32)
+        ratoms4[:, :3] = ratoms
+        
+        d_ratoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=ratoms4)
+        d_neighs = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=neighbors.astype(np.int32))
+        d_types = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=pair_types.astype(np.int32))
+        
+        # dQ flat buffer [natoms * nsh_max] (or [nsh_max * natoms]? Check kernel use)
+        # We pass [nsh_max, natoms]
+        nsh = dQ_sh.shape[0]
+        # Ensure nsh matches nsh_vca_max or clamp? Kernel loops nsh_vca_max.
+        # We should pass actual nsh to kernel + buffer.
+        dQ_flat = np.ascontiguousarray(dQ_sh.T.flatten(), dtype=np.float32) # [natoms, nsh] for easier indexing (atom * stride + ish)?
+        # Or [nsh, natoms]?
+        # Python: dQ[isorp, iatom].
+        # If we flatten as (nsh, natoms) -> dQ[isorp * natoms + iatom].
+        # Kernel: dQ[iatom * nsh + isorp] is easier?
+        # Let's use [natoms, nsh].
+        dQ_T = np.ascontiguousarray(dQ_sh.T, dtype=np.float32) # [natoms, nsh]
+        d_dQ = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=dQ_T)
+        
+        # Outputs:
+        # Off-diagonal blocks: [n_pairs, 4, 4]
+        # Diagonal updates: [n_pairs, 2, 4, 4] (0->update i with pot_j, 1->update j with pot_i?) 
+        # Actually vna_atom is <i|V_j|i>. So pair (i,j) updates atom i?
+        # Yes.
+        # But we also have pair (j,i) implied if neighbor list is symmetric?
+        # assemble_vca iterates pairs.
+        # If neighbors has (i,j), we add <i|V_j|i> * dQ[j] to V_ii.
+        # And <j|V_i|j> * dQ[i] to V_jj ?? (Symmetry?)
+        # Let's compute both for each pair to be safe / complete.
+        
+        d_offdiag = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, n_pairs * 16 * 4)
+        d_diag = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, n_pairs * 2 * 16 * 4)
+        
+        self.prg.assemble_vca(
+            self.queue, (n_pairs,), None,
+            np.int32(n_pairs), np.int32(self.n_nz_max), np.int32(self.numz_max), np.int32(self.nsh_vca_max),
+            d_ratoms, d_neighs, self.d_splines, d_types, self.d_h_grids, self.d_vca_map,
+            d_dQ, np.int32(nsh),
+            d_offdiag, d_diag
+        )
+        
+        offdiag = np.zeros((n_pairs, 4, 4), dtype=np.float32)
+        cl.enqueue_copy(self.queue, offdiag, d_offdiag)
+        
+        diag_updates = np.zeros((n_pairs, 2, 4, 4), dtype=np.float32)
+        cl.enqueue_copy(self.queue, diag_updates, d_diag)
+        
+        return offdiag, diag_updates
 
     def _is_s_only(self, nz):
         """Returns True if species nz has only s-shell (l=0) as per info.dat."""
@@ -214,18 +305,28 @@ class OCL_Hamiltonian:
             lssh2 = list(info2.get('lssh', []))
             if any(int(l) > 1 for l in lssh1) or any(int(l) > 1 for l in lssh2):
                 raise RuntimeError(f"prepare_data_3c: only sp supported for den3 mu/nu map; got lssh1={lssh1} lssh2={lssh2}")
-            # Hardcoded make_munu mapping for sp/sp (Ortega order s,py,pz,px)
-            # For sp/sp, make_munu produces index_max3c=10.
-            # First 6 come from the standard (-min..min) m=0 list:
-            #  (1,1) (1,3) (3,1) (2,2) (3,3) (4,4)
-            mu = np.array([1, 1, 3, 2, 3, 4], dtype=np.int16)
-            nu = np.array([1, 3, 1, 2, 3, 4], dtype=np.int16)
-            mv = np.array([0, 0, 0, 0, 0, 0], dtype=np.int8)
-            # Next 4 are m=1 extras (case1):
-            #  (1,4) (4,1) (4,3) (3,4)
-            mu = np.concatenate([mu, np.array([1, 4, 4, 3], dtype=np.int16)])
-            nu = np.concatenate([nu, np.array([4, 1, 3, 4], dtype=np.int16)])
-            mv = np.concatenate([mv, np.array([1, 1, 1, 1], dtype=np.int8)])
+            is_s1 = (len(lssh1) == 1 and int(lssh1[0]) == 0)
+            is_s2 = (len(lssh2) == 1 and int(lssh2[0]) == 0)
+
+            if is_s1 and is_s2:
+                # s-s interaction: only (1,1) m=0
+                mu = np.array([1], dtype=np.int16)
+                nu = np.array([1], dtype=np.int16)
+                mv = np.array([0], dtype=np.int8)
+            else:
+                # Hardcoded make_munu mapping for sp/sp (Ortega order s,py,pz,px)
+                # For sp/sp, make_munu produces index_max3c=10.
+                # First 6 come from the standard (-min..min) m=0 list:
+                #  (1,1) (1,3) (3,1) (2,2) (3,3) (4,4)
+                mu = np.array([1, 1, 3, 2, 3, 4], dtype=np.int16)
+                nu = np.array([1, 3, 1, 2, 3, 4], dtype=np.int16)
+                mv = np.array([0, 0, 0, 0, 0, 0], dtype=np.int8)
+                # Next 4 are m=1 extras (case1):
+                #  (1,4) (4,1) (4,3) (3,4)
+                mu = np.concatenate([mu, np.array([1, 4, 4, 3], dtype=np.int16)])
+                nu = np.concatenate([nu, np.array([4, 1, 3, 4], dtype=np.int16)])
+                mv = np.concatenate([mv, np.array([1, 1, 1, 1], dtype=np.int8)])
+
             if mu.shape[0] > self.n_nz_3c_max:
                 raise RuntimeError(f"prepare_data_3c: mu/nu map len={mu.shape[0]} exceeds n_nz_3c_max={self.n_nz_3c_max}")
             mu3c_map[itype, :mu.shape[0]] = mu
@@ -569,12 +670,6 @@ class OCL_Hamiltonian:
         # To match, we need orbital mapping and rotation in OpenCL.
         # For now, let's just return the hlist result.
         results = self.assemble_3c(ratoms, triplets, isorp=isorp_idx)
-
-        # Special-case recovery for s-only species (e.g., H-H s-s vna): map hlist[0] to (0,0)
-        if self._is_s_only(nz1) and self._is_s_only(nz2):
-            mat = np.zeros((1,1), dtype=np.float32)
-            mat[0,0] = results[0,0]
-            return mat
 
         return results[0]
 

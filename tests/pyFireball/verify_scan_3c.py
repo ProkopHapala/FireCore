@@ -160,6 +160,8 @@ def plot_scan_3c(root, nz1, nz2, nz3, interaction, isorp, rs, applyRotation=True
         fname = f"scan_3c_{root}_raw.png"
         plt.savefig(fname)
         print(f"Saved plot {fname}")
+        if args.cpi > 0:
+            plt.show()
     else:
         fs = np.array(fs, dtype=np.float64)
         ps = np.array(ps, dtype=np.float64)
@@ -199,6 +201,7 @@ def plot_scan_3c(root, nz1, nz2, nz3, interaction, isorp, rs, applyRotation=True
         plt.savefig(fname)
         print(f"Saved plot {fname}")
 
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--fdata", default="./Fdata")
@@ -211,6 +214,7 @@ if __name__ == "__main__":
     ap.add_argument("--debug-geom", type=int, default=1, help="print first few (r,x,y) with Fortran/Fdata raw values")
     ap.add_argument("--verbosity",  type=int, default=4, help="Fireball verbosity for debug output")
     ap.add_argument("--debug-ocl-raw", type=int, default=1, help="Invoke PyOpenCL raw kernel to print its debug info")
+    ap.add_argument("--cpi", type=int, default=1, help="Call plt.show() if >0 to view plots interactively")
     args = ap.parse_args()
 
     fdata_dir = args.fdata
@@ -232,3 +236,6 @@ if __name__ == "__main__":
     plot_scan_3c('bcna', nz1, nz2, nz1, 1, 0, rs_3c, applyRotation=False, mode=args.mode, verbosity=args.verbosity, run_ocl_raw=args.debug_ocl_raw)
     
     print("Verification scans complete.")
+
+    if args.cpi > 0:
+        plt.show()

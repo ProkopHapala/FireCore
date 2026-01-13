@@ -1,4 +1,5 @@
 
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
@@ -193,14 +194,20 @@ def plot_scan_2c_angular(root, nz1, nz2, interaction, isub, r, thetas):
     print(f"Saved plot scan_2c_angular_{root}.png")
 
 if __name__ == "__main__":
-    fdata_dir = "./Fdata"
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--fdata", default="./Fdata")
+    ap.add_argument("--nz1", type=int, default=6)
+    ap.add_argument("--nz2", type=int, default=6)
+    ap.add_argument("--cpi", type=int, default=1, help="Call plt.show() if >0 to view plots interactively")
+    args = ap.parse_args()
+
+    fdata_dir = args.fdata
     print(f"Using Fdata from: {fdata_dir}")
-    nz1, nz2 = 6, 6  # Use Carbon for p-orbitals
+    nz1, nz2 = args.nz1, args.nz2
     
     # 1. Initialize Fortran
     print("Initializing Fortran...")
     poss = [[0,0,0],[0,0,1.0]]
-    #poss = [[0,0,0],[0,0.8,0.8]]
     fc.initialize(atomType=np.array([nz1, nz2], dtype=np.int32), atomPos=np.array(poss, dtype=np.float64))
     
     # 2. Initialize PyOpenCL
@@ -231,3 +238,5 @@ if __name__ == "__main__":
     plot_scan_2c_angular('vna_ontopl_00', nz1, nz2, 2, 0, 1.5, thetas)
     plot_scan_2c_angular('vna_ontopr_00', nz1, nz2, 3, 0, 1.5, thetas)
     print("2-center verification complete.")
+    if args.cpi > 0:
+        plt.show()
