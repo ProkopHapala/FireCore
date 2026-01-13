@@ -1,7 +1,7 @@
 
 module firecore_options
     implicit none
-    integer :: ioff_S=1, ioff_T=1, ioff_Vna=1, ioff_Vnl=1, ioff_Vxc=1, ioff_Vca=1, ioff_Vxc_ca=1
+    integer :: ioff_S=1, ioff_T=1, ioff_Vna=1, ioff_Vnl=1, ioff_Vxc=1, ioff_Vca=1, ioff_Vxc_ca=1, ioff_Ewald=1
     integer :: export_mode=0
 end module firecore_options
 
@@ -174,9 +174,14 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     call make_munuPP (nspecies)
     call make_munuS  (nspecies)  
     call countOrbitals(numorb_max)                                                              ! IF_DEF_GRID_END
+
+
     call initcharges  (natoms, nspecies, itheory, ifixcharge, symbol) 
     call countIsorp()
     call countChargeDeglect(numorbPP_max)
+
+    ! Initialise the grid variables.
+    call initgrid ! (natoms, ia_g, ja_g, c2_g, rcut_g, ngrid)
     call get_info_orbital (natoms)
     if (itheory .eq. 2) call make_mu2shell (nspecies)
     call initamat(nspecies)
@@ -529,21 +534,37 @@ end subroutine
 subroutine firecore_get_Qneutral_shell( Qneutral_out ) bind(c, name='firecore_get_Qneutral_shell')
     use iso_c_binding
     use charges,       only: Qneutral, nzx
+    use interactions,  only: nsh_max
     implicit none
     real(c_double), intent(out) :: Qneutral_out(*)
     integer ispec, issh, nsh, nspec
-    nsh = size(Qneutral, 1)
+    
+    ! Get actual dimensions from Fortran arrays
     nspec = 0
-    if (allocated(nzx)) nspec = size(nzx, 1)
-    ! Zero full output buffer (Python side allocates nsh_max * nspecies_fdata)
-    do ispec = 1, nspec
-        Qneutral_out((ispec-1)*nsh + 1 : ispec*nsh) = 0.0d0
-        if (ispec <= size(Qneutral, 2)) then
+    nsh = 0
+    if (allocated(Qneutral)) then
+        nsh = size(Qneutral, 1)
+        nspec = size(Qneutral, 2)
+    end if
+    
+    ! We don't know the exact size of Qneutral_out buffer passed from Python,
+    ! but Python allocates it as dims.nsh_max * dims.nspecies_fdata.
+    ! In OCL_Hamiltonian.py / FireCore.py, dims.nsh_max is usually 6 (matching interactions%nsh_max).
+    ! dims.nspecies_fdata is usually size(nzx,1).
+    
+    ! Fill valid values from Qneutral. 
+    ! We use nsh_max=6 as the stride to match Python's expectation of shape (6, nspecies_fdata)
+    if (allocated(Qneutral)) then
+        do ispec = 1, nspec
             do issh = 1, nsh
-                Qneutral_out((ispec-1)*nsh + issh) = Qneutral(issh, ispec)
+                Qneutral_out((ispec-1)*nsh_max + issh) = Qneutral(issh, ispec)
             end do
-        end if
-    end do
+            ! Zero remaining shells for this species if nsh < nsh_max
+            do issh = nsh + 1, nsh_max
+                Qneutral_out((ispec-1)*nsh_max + issh) = 0.0d0
+            end do
+        end do
+    end if
 end subroutine
 
 subroutine firecore_get_wfcoef( ikp, wfcoefs )  bind(c, name='firecore_get_wfcoef')
@@ -950,7 +971,7 @@ subroutine firecore_get_HS_sparse( h_mat_out, s_mat_out ) bind(c, name='firecore
     use iso_c_binding
     use configuration, only: natoms, ratom, xl
     use options,       only: itheory, itestrange, testrange, verbosity
-    use firecore_options, only: ioff_S, ioff_T, ioff_Vna, ioff_Vnl, ioff_Vxc, ioff_Vca, ioff_Vxc_ca, export_mode
+    use firecore_options, only: ioff_S, ioff_T, ioff_Vna, ioff_Vnl, ioff_Vxc, ioff_Vca, ioff_Vxc_ca, ioff_Ewald, export_mode
     use interactions,  only: h_mat, s_mat, numorb_max, num_orb, imass, t_mat, vna, vnl, vxc, vxc_1c, vca, vxc_ca, ewaldlr, ewaldsr
     use neighbor_map,  only: neigh_max, neighPP_max, neighn, neigh_j, neigh_b, neighPPn, neighPP_j, neighPP_b
     implicit none
@@ -1006,7 +1027,10 @@ subroutine firecore_get_HS_sparse( h_mat_out, s_mat_out ) bind(c, name='firecore
                 end if
                 if (itheory .eq. 1 .or. itheory .eq. 2) then
                     if (ioff_Vca .ne. 0) then
-                        h_mat_out(:nmu,:nnu,ineigh,iatom) = h_mat_out(:nmu,:nnu,ineigh,iatom) + vca(:nmu,:nnu,ineigh,iatom) + ewaldlr(:nmu,:nnu,ineigh,iatom) - ewaldsr(:nmu,:nnu,ineigh,iatom)
+                        h_mat_out(:nmu,:nnu,ineigh,iatom) = h_mat_out(:nmu,:nnu,ineigh,iatom) + vca(:nmu,:nnu,ineigh,iatom)
+                        if (ioff_Ewald .ne. 0) then
+                             h_mat_out(:nmu,:nnu,ineigh,iatom) = h_mat_out(:nmu,:nnu,ineigh,iatom) + ewaldlr(:nmu,:nnu,ineigh,iatom) - ewaldsr(:nmu,:nnu,ineigh,iatom)
+                        end if
                     end if
                     if (ioff_Vxc_ca .ne. 0) then
                         h_mat_out(:nmu,:nnu,ineigh,iatom) = h_mat_out(:nmu,:nnu,ineigh,iatom) + vxc_ca(:nmu,:nnu,ineigh,iatom)
@@ -1082,7 +1106,7 @@ subroutine firecore_get_rho_off_sparse( rho_off_out ) bind(c, name='firecore_get
     rho_off_out = rho_off
 end subroutine firecore_get_rho_off_sparse
 
-subroutine firecore_set_options( ioff_S_, ioff_T_, ioff_Vna_, ioff_Vnl_, ioff_Vxc_, ioff_Vca_, ioff_Vxc_ca_ ) bind(c, name='firecore_set_options')
+subroutine firecore_set_options( ioff_S_, ioff_T_, ioff_Vna_, ioff_Vnl_, ioff_Vxc_, ioff_Vca_, ioff_Vxc_ca_, ioff_Ewald_ ) bind(c, name='firecore_set_options')
     use iso_c_binding
     use options
     use firecore_options
@@ -1094,6 +1118,7 @@ subroutine firecore_set_options( ioff_S_, ioff_T_, ioff_Vna_, ioff_Vnl_, ioff_Vx
     integer(c_int), intent(in), value :: ioff_Vxc_
     integer(c_int), intent(in), value :: ioff_Vca_
     integer(c_int), intent(in), value :: ioff_Vxc_ca_
+    integer(c_int), intent(in), value :: ioff_Ewald_
     ioff_S    = ioff_S_
     ioff_T    = ioff_T_
     ioff_Vna  = ioff_Vna_
@@ -1101,6 +1126,7 @@ subroutine firecore_set_options( ioff_S_, ioff_T_, ioff_Vna_, ioff_Vnl_, ioff_Vx
     ioff_Vxc  = ioff_Vxc_
     ioff_Vca  = ioff_Vca_
     ioff_Vxc_ca = ioff_Vxc_ca_
+    ioff_Ewald = ioff_Ewald_
     return
 end subroutine
 

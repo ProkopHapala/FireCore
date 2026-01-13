@@ -59,7 +59,7 @@ header_strings = [
 "void firecore_get_HS_k( double* kpoint_vec, void* Hk_out, void* Sk_out )",
 "void firecore_get_nspecies( int* nspecies_out )",
 "void firecore_get_eigen( int ikp, double* eigen_out )",
-"void firecore_set_options( int ioff_S, int ioff_T, int ioff_Vna, int ioff_Vnl, int ioff_Vxc, int ioff_Vca, int ioff_Vxc_ca )",
+"void firecore_set_options( int ioff_S, int ioff_T, int ioff_Vna, int ioff_Vnl, int ioff_Vxc, int ioff_Vca, int ioff_Vxc_ca, int ioff_Ewald )",
 "void firecore_set_export_mode( int export_mode )",
 "void firecore_scanHamPiece2c( int interaction, int isub, int in1, int in2, int in3, double* dR, int applyRotation, double* sx_out )",
 "void firecore_scanHamPiece3c( int interaction, int isorp, int in1, int in2, int indna, double* dRj, double* dRk, int applyRotation, double* bcnax_out )",
@@ -652,8 +652,8 @@ def get_HS_dims(force_refresh=False):
     return _cached_dims
 
 
-def set_options(ioff_S=1, ioff_T=1, ioff_Vna=1, ioff_Vnl=1, ioff_Vxc=1, ioff_Vca=1, ioff_Vxc_ca=1):
-    lib.firecore_set_options(ioff_S, ioff_T, ioff_Vna, ioff_Vnl, ioff_Vxc, ioff_Vca, ioff_Vxc_ca)
+def set_options(ioff_S=1, ioff_T=1, ioff_Vna=1, ioff_Vnl=1, ioff_Vxc=1, ioff_Vca=1, ioff_Vxc_ca=1, ioff_Ewald=1):
+    lib.firecore_set_options(ioff_S, ioff_T, ioff_Vna, ioff_Vnl, ioff_Vxc, ioff_Vca, ioff_Vxc_ca, ioff_Ewald)
 
 argDict["firecore_set_export_mode"]=( None, [c_int] )
 def set_export_mode(export_mode=0):

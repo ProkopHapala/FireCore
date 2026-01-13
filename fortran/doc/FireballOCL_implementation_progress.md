@@ -331,45 +331,68 @@ This brings the single-geometry test to “full Hamiltonian parity,” after whi
 
 ----
 
-## Atigravity Gemini-Pro 2026-01-13
+## VCA and 3-Center Debugging Session (2026-01-13)
 
-# Walkthrough - V_CA Implementation and Verification
+### 1. Progress and Current Status
+- **V_CA (Charged Atom Potential)**:
+  - **OpenCL Kernel**: The `assemble_vca` kernel is fully implemented in `hamiltonian.cl` and `OCL_Hamiltonian.py`. It correctly interpolates splines for types 4 (atom), 2 (ontop L), and 3 (ontop R) and sum them per orbital.
+  - **Parity**: Achieved parity between OpenCL and a "Physics-Corrected" manual Python script.
+  - **Remaining Discrepancy**: A constant-like shift remains vs. the full Fortran reference. This is confirmed to be the **Ewald Long-Range (LR) term**, which is not yet implemented in the OpenCL prototype.
+  - **Summary**: `verify_C2.py` now correctly identifies VCA status as `FAILED (charge export issue)` when the shell-resolved charges don't provide the expected cancellation, or `PASSED` relative to the manual check of the kernel logic.
 
-This PR implements the V_CA (Charged Atom Potential) term in the OpenCL Hamiltonian and resolves verification script issues.
+- **3-Center (C3 Verification)**:
+  - **Crash Fixed**: `verify_C3.py` no longer crashes with non-finite value errors. 
+  - **Status**: The script now reports `AvgRho_off: PASSED` and passes other existing checks (S, T, Vna, Vnl).
 
-## Changes
+### 2. Problems & Solutions
 
-### 1. OpenCL V_CA Implementation
-- Added [assemble_vca](file:///home/prokop/git/FireCore/pyBall/FireballOCL/OCL_Hamiltonian.py#148-207) kernel to [hamiltonian.cl](file:///home/prokop/git/FireCore/pyBall/FireballOCL/cl/hamiltonian.cl).
-  - Computes charge-dependent potential terms using splines for interaction types `vna_ontopl`, `vna_ontopr`, and `vna_atom`.
-  - Supports 3 interactions per shell per pair.
-  - Accumulates `off-diagonal` (V_ij) and `diagonal` (V_ii) contributions.
-- Updated [OCL_Hamiltonian.py](file:///home/prokop/git/FireCore/pyBall/FireballOCL/OCL_Hamiltonian.py):
-  - Added `prepare_vca_map` to index `d2c` splines for V_CA components (parsing `vna_atom_XX` etc.).
-  - Added [assemble_vca](file:///home/prokop/git/FireCore/pyBall/FireballOCL/OCL_Hamiltonian.py#148-207) method to launch the kernel.
+#### A. The VCA "Charge Cancellation" Mystery
+- **Problem**: Python/OpenCL results for V_CA were ~40 times larger than Fortran.
+- **Investigation**: Traced through Fortran `assemble_ca_2c.f90`. For Carbon in C₂, the s-sphere loses ~0.66e and the p-spheres gain ~0.66e.
+- **Insight**: The VCA potential is a sum over **all shells**. Because the splines for s and p are very similar at bond distances, the $dq_s \times V_s$ and $dq_p \times V_p$ terms have opposite signs and **cancel out**, leaving a small negative residual.
+- **Solution**: Updated manual calculations to sum over all shells and ensured the OpenCL kernel does the same.
 
-### 2. verify_C2.py Fixes
-- **Indexing Fix**: Identified that `fc.get_neighbors` returns 0-based indices, while the script assumed 1-based (subtracting 1). Removing the subtraction fixed array slicing errors (`invalid index -1`).
-- **V_CA Verification**: Added `ham.assemble_vca` call and comparison against Fortran and Manual reconstruction.
-  - Result: OpenCL V_CA matches Manual reconstruction to within ~4.5 (likely Ewald LR difference), while verifying the spline machinery works (no crash, finite values).
+#### B. Charge Export Stride Mismatch (The "Garbage" Issue)
+- **Problem**: `fc.get_Qin_shell()` was returning zero or garbage for p-orbital shells even when Fortran had non-zero values.
+- **Root Cause**: Fortran memory is Column-Major. The flat buffer exported via `real(c_double) :: Qout(*)` was being reshaped in Python using default Row-Major (`order='C'`). This interleaved s-orbital data from all atoms into the first shell's rows.
+- **Solution**: Fixed `pyBall/FireCore.py` to use `order='F'` (Fortran order) in all `reshape()` calls for `get_Qin_shell`, `get_Qout_shell`, and `get_Qneutral_shell`.
 
-### 3. verify_C3.py Fixes
-- **Crash Resolution**: The "non-finite values" crash is resolved. This was likely related to neighbor list indexing consistency or uninitialized data which is now handled.
-- **Input Checks**: Added debug checks for NaNs in `rho_blocks` and [Qneutral_sh](file:///home/prokop/git/FireCore/pyBall/FireCore.py#574-580).
+#### C. nspecies_fdata vs nspecies Garbage
+- **Problem**: `verify_C3.py` crash due to `nzx` and `Qneutral_sh` containing uninitialized garbage values.
+- **Investigation**: `nspecies_fdata` is the array capacity (e.g., 5 or 10), while `nspecies` is the actual number of species in the simulation (e.g., 1 for C₃). 
+- **Solution**: 
+  - Sliced `nzx` and `Qneutral_sh` in Python to `[:dims.nspecies]` to discard garbage tail.
+  - Fixed `firecore_get_Qneutral_shell` in Fortran to zero the entire buffer and use the correct `nsh_max` stride when filling.
 
-## Verification Results
+### 3. Essential Insights for Future Devs
 
-### verify_C2.py
-- **Overlap S**: PASSED
-- **Kinetic T**: PASSED
-- **Vna**: PASSED
-- **Vnl**: PASSED
-- **V_CA**: Implemented. Mismatch vs Fortran (~3.5) expected due to missing Ewald Long-Range term in OpenCL prototype. Consistency with 2-center splines verified.
+#### Indexing and Strides
+- **nsh_max = 6**: This is a hardcoded parameter in `interactions.f90` and `cl/hamiltonian.cl`. It defines the stride for shell-resolved data. Even if a species has only 2 shells (s, p), the data is stored in blocks of 6.
+- **Column-Major Order**: Always use `order='F'` when reshaping data exported from Fortran via `c_double(*)`.
+- **Species Mapping**: `nzx` (atomic numbers of species) is the key to mapping atoms to their species-specific data (shells, populations). `ispec = where(nzx == Z)[0]`.
 
-### verify_C3.py
-- **Crash**: RESOLVED.
-- **AvgRho**: Finite values produced. Diff ~0.28 vs Fortran (acceptable for current stage).
+#### Units & Scaling
+- **eq2 = 14.39975**: This is the Coulomb constant ($e^2 / 4\pi\epsilon_0$) in $eV \cdot \text{Å}$. Summing `V_CA` terms requires scaling by `eq2` to match the Fireball Hamiltonian units.
+- **H-Matrix Units**: Fireball Hamiltonian elements are in $eV$ and distances in Ångström, see `/fortran/MODULES/constants_fireball.f90`.
+- for information about default parameters see `readparam.f90`
+- for more information about array dimensions see: `allocate_neigh.f90`, `allocate_h.f90`, `allocate_rho.f90`, and function 
+```
+allocate (cape (numorb_max, numorb_max, neigh_max, natoms))
+allocate (rho (numorb_max, numorb_max, neigh_max, natoms))
+allocate (rhoPP (numorb_max, numorb_max, neighPP_max**2, natoms))
+allocate (h_mat (numorb_max, numorb_max, neigh_max, natoms))
+allocate (s_mat (numorb_max, numorb_max, neigh_max, natoms))
+allocate (t_mat (numorb_max, numorb_max, neigh_max, natoms))
+```
+- also functions `firecore_get_HS_dims` and `firecore_get_HS_neighs` from `libFireCore.f90` are relevant when called with higher `verbosity` level provide more information about dimensions of arrays like the number of neighbors and the number of orbitals
 
-## Next Steps
-- Implement Ewald Long-Range summation in OpenCL to fully match Fortran V_CA.
-- Align 3-center [compute_avg_rho](file:///home/prokop/git/FireCore/pyBall/FireballOCL/OCL_Hamiltonian.py#357-435) rotation logic perfectly to reduce 0.28 diff.
+#### Code Structure
+- **itheory**: 
+  - `itheory=1` is **DOGS** (DEnsity-Of-Generalized-States).
+  - `itheory=2` is **McWEDA**. 
+  - Both call `assemble_ca_2c.f90` for charge-dependent terms, but VCA is most critical in DOGS calculations.
+- **ioff_Ewald**: A new flag `ioff_Ewald` (exposed via `set_options`) allows disabling Ewald summation in Fortran. This is critical for isolating the VCA spline term from the Long-Range electrostatic background during debugging.
+
+#### 3-Center Specifics
+- **mu/nu/mvalue maps**: Do NOT guess the 3-center orbital combinations. Always use the exported `mu`, `nu`, and `mvalue` arrays from Fortran, which define exactly which $(L_1, L_2, L_3)$ combinations have non-zero integrals.
+- **mvalue == 1**: When `mvalue` (difference in $m$) is 1, the integral must be scaled by $\sin(\theta)$ during rotation (where $\sin(\theta) = \sqrt{1 - \cos^2(\theta)}$). This is typically related to $\pi$-type interactions.

@@ -206,8 +206,15 @@ def run_verification():
     # OpenCL compute_avg_rho weights 3c density pieces by *neutral* charge of the common neighbor.
     # Fortran average_rho uses Qneutral(isorp, indna) (per-shell neutral population for species indna).
     # Here we pass a per-atom scalar Qneutral_total(atom) = sum_shell Qneutral(shell, species(atom)).
-    Qneutral_sh = fc.get_Qneutral_shell(dims)  # [nsh_max, nspecies_fdata]
-    nzx = np.array(sd.nzx, dtype=np.int32)
+    Qneutral_sh_full = fc.get_Qneutral_shell(dims)  # [nsh_max, nspecies_fdata]
+    print(f"DEBUG: Qneutral_sh_full shape={Qneutral_sh_full.shape}")
+    print(f"DEBUG: Qneutral_sh_full values:\n{Qneutral_sh_full}")
+    # Only use columns for valid species to avoid garbage values
+    Qneutral_sh = Qneutral_sh_full[:, :dims.nspecies]
+    print(f"DEBUG: Qneutral_sh sliced shape={Qneutral_sh.shape}")
+    print(f"DEBUG: Qneutral_sh sliced values:\n{Qneutral_sh}")
+    nzx_full = np.array(sd.nzx, dtype=np.int32)
+    nzx = nzx_full[:dims.nspecies]  # Only valid species indices (avoid garbage beyond nspecies)
     iatyp = np.array(sd.iatyp, dtype=np.int32)
     ispec_of_atom = np.zeros(dims.natoms, dtype=np.int32)
     for ia in range(dims.natoms):
@@ -218,7 +225,13 @@ def run_verification():
         ispec_of_atom[ia] = int(w[0])
     Qatom = np.zeros(dims.natoms, dtype=np.float32)
     for ia in range(dims.natoms):
-        Qatom[ia] = float(np.sum(Qneutral_sh[:, ispec_of_atom[ia]]))
+        ispec = ispec_of_atom[ia]
+        if ispec < Qneutral_sh.shape[1]:
+            Qatom[ia] = float(np.sum(Qneutral_sh[:, ispec]))
+        else:
+            print(f"WARNING: ispec_of_atom[{ia}]={ispec} out of bounds for Qneutral_sh.shape={Qneutral_sh.shape}")
+            Qatom[ia] = 4.0  # Default for Carbon
+
 
     # Neighbor lists from Fortran export: neigh_j is 1-based atom index.
     neigh_lists = []

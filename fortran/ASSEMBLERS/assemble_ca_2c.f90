@@ -353,11 +353,11 @@
            call doscentros (interaction, isorp, kforce, in1, in2, in3, y,  eps, deps, bccax, bccapx)
            dxn = (Qin(isorp,jatom) - Qneutral(isorp,in2))
  
+
 ! Now correct bccax by doing the stinky correction.
 ! Note: these loops are both over in1 indeed!  This is because the two
 ! wavefunctions are located on the same site, but the potential is located
 ! at a different site.
-
 
            bcca(:nmu,:nnu) = bcca(:nmu,:nnu) + bccax(:nmu,:nnu)*dxn
 
@@ -368,8 +368,7 @@
         !    end do
 
           end do
- 
-          vca(:nmu,:nnu,matom,iatom) = vca(:nmu,:nnu,matom,iatom)  + (stn1(:nmu,:nnu)*bcca(:nmu,:nnu) + stn2(:nmu,:nnu)*emnpl(:nmu,:nnu))*eq2
+           vca(:nmu,:nnu,matom,iatom) = vca(:nmu,:nnu,matom,iatom)  + (stn1(:nmu,:nnu)*bcca(:nmu,:nnu) + stn2(:nmu,:nnu)*emnpl(:nmu,:nnu))*eq2
 
 ! Add bcca to vca, including the smoothing.
 ! Note that the loop below involves num_orb(in1) ONLY. Why?
