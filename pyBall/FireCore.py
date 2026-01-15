@@ -63,6 +63,15 @@ header_strings = [
 "void firecore_set_export_mode( int export_mode )",
 "void firecore_scanHamPiece2c( int interaction, int isub, int in1, int in2, int in3, double* dR, int applyRotation, double* sx_out )",
 "void firecore_scanHamPiece3c( int interaction, int isorp, int in1, int in2, int indna, double* dRj, double* dRk, int applyRotation, double* bcnax_out )",
+"void firecore_set_avg_rho_diag( int enable, int iatom, int jatom, int mbeta )",
+"void firecore_get_avg_rho_diag_state( int* enable, int* iatom, int* jatom, int* mbeta )",
+"void firecore_get_avg_rho_diag_meta( int* iatom, int* ineigh, int* in1, int* in2, int* jatom, int* mbeta )",
+"void firecore_get_avg_rho_diag_eps2c( double* eps_out )",
+"void firecore_get_avg_rho_diag_sm( double* sm_out )",
+"void firecore_get_avg_rho_diag_rhom2c( double* m_out )",
+"void firecore_get_avg_rho_diag_rhom3c( double* m_out )",
+"void firecore_get_avg_rho_diag_rhooff_3c( double* m_out )",
+"void firecore_get_avg_rho_diag_rhooff_final( double* m_out )",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -82,8 +91,8 @@ def reload():
     cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '/../build/' ) 
     #lib = cpp_utils.loadLib('FireCore', recompile=False, mode=ct.RTLD_GLOBAL )
     lib = cpp_utils.loadLib('FireCore', recompile=False, mode=ct.RTLD_LOCAL )
-    if bReaload:
-        cpp_utils.set_args_dict(lib, argDict)
+    # Always apply argtypes/restype mapping (not only on reload)
+    cpp_utils.set_args_dict(lib, argDict)
     return lib
 
 lib = reload()
@@ -669,6 +678,9 @@ def scanHamPiece2c( interaction, isub, in1, in2, in3, dR, applyRotation=True, no
     lib.firecore_scanHamPiece2c( interaction, isub, in1, in2, in3, _np_as(dR,c_double_p), int(applyRotation), _np_as(sx_out,c_double_p) )
     return sx_out
 
+
+
+
 def scanHamPiece2c_batch( interaction, isub, in1, in2, in3, dRs, applyRotation=True, norb=None, sx_out=None ):
     dRs_np = np.ascontiguousarray(dRs, dtype=np.float64)
     npoints = dRs_np.shape[0]
@@ -776,6 +788,75 @@ def initialize( atomType=None, atomPos=None, verbosity=1 ):
     norb = init( atomType, atomPos )
     _get_norb(norb)
     return norb
+
+
+# ==============================================================
+# EVEN MORE HORRIFIC BOILERPLATE RELATED TO DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+# ==============================================================
+
+argDict["firecore_set_avg_rho_diag"]=( None, [c_int, c_int, c_int, c_int] )
+def set_avg_rho_diag(enable=1, iatom=1, jatom=1, mbeta=-1):
+    return lib.firecore_set_avg_rho_diag(int(enable), int(iatom), int(jatom), int(mbeta))
+
+argDict["firecore_get_avg_rho_diag_state"]=( None, [c_int_p, c_int_p, c_int_p, c_int_p] )
+def get_avg_rho_diag_state():
+    enable = c_int(0)
+    iatom  = c_int(0)
+    jatom  = c_int(0)
+    mbeta  = c_int(0)
+    lib.firecore_get_avg_rho_diag_state(byref(enable), byref(iatom), byref(jatom), byref(mbeta))
+    return int(enable.value), int(iatom.value), int(jatom.value), int(mbeta.value)
+
+argDict["firecore_get_avg_rho_diag_meta"]=( None, [c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p] )
+def get_avg_rho_diag_meta():
+    iatom  = c_int(0)
+    ineigh = c_int(0)
+    in1    = c_int(0)
+    in2    = c_int(0)
+    jatom  = c_int(0)
+    mbeta  = c_int(0)
+    lib.firecore_get_avg_rho_diag_meta(byref(iatom), byref(ineigh), byref(in1), byref(in2), byref(jatom), byref(mbeta))
+    return int(iatom.value), int(ineigh.value), int(in1.value), int(in2.value), int(jatom.value), int(mbeta.value)
+
+argDict["firecore_get_avg_rho_diag_eps2c"]=( None, [array1d] )
+def get_avg_rho_diag_eps2c():
+    eps = np.zeros(9, dtype=np.float64)
+    lib.firecore_get_avg_rho_diag_eps2c(_np_as(eps, c_double_p))
+    return eps.reshape((3,3), order='F')
+
+argDict["firecore_get_avg_rho_diag_sm"]=( None, [array1d] )
+def get_avg_rho_diag_sm():
+    sm = np.zeros(36, dtype=np.float64)
+    lib.firecore_get_avg_rho_diag_sm(_np_as(sm, c_double_p))
+    return sm.reshape((6,6), order='F')
+
+argDict["firecore_get_avg_rho_diag_rhom2c"]=( None, [array1d] )
+def get_avg_rho_diag_rhom2c():
+    m = np.zeros(36, dtype=np.float64)
+    lib.firecore_get_avg_rho_diag_rhom2c(_np_as(m, c_double_p))
+    return m.reshape((6,6), order='F')
+
+argDict["firecore_get_avg_rho_diag_rhom3c"]=( None, [array1d] )
+def get_avg_rho_diag_rhom3c():
+    m = np.zeros(36, dtype=np.float64)
+    lib.firecore_get_avg_rho_diag_rhom3c(_np_as(m, c_double_p))
+    return m.reshape((6,6), order='F')
+
+argDict["firecore_get_avg_rho_diag_rhooff_3c"]=( None, [array1d] )
+def get_avg_rho_diag_rhooff_3c():
+    m = np.zeros(64, dtype=np.float64)
+    lib.firecore_get_avg_rho_diag_rhooff_3c(_np_as(m, c_double_p))
+    return m.reshape((8,8), order='F')
+
+argDict["firecore_get_avg_rho_diag_rhooff_final"]=( None, [array1d] )
+def get_avg_rho_diag_rhooff_final():
+    m = np.zeros(64, dtype=np.float64)
+    lib.firecore_get_avg_rho_diag_rhooff_final(_np_as(m, c_double_p))
+    return m.reshape((8,8), order='F')
+
+
+
+
 
 
 #===================================

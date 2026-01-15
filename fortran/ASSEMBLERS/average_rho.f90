@@ -64,6 +64,7 @@
         use neighbor_map
         use loops
         use timing
+        use debug
         implicit none
 
 ! Argument Declaration and Description
@@ -368,6 +369,17 @@
         rhopij_off = 0.0d0
         rhom_3c = 0.0d0
 
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py        
+        if (diag_avg_rho_enable) then
+           diag_avg_rho_eps2c = 0.0d0
+           diag_avg_rho_sm = 0.0d0
+           diag_avg_rho_rhom2c = 0.0d0
+           diag_avg_rho_rhom3c = 0.0d0
+           diag_avg_rho_rhooff_3c = 0.0d0
+           diag_avg_rho_rhooff_final = 0.0d0
+        end if
+! --------------------------
 
 ! ****************************************************************************
 !                      T H R E E - C E N T E R   P A R T
@@ -479,6 +491,12 @@
          end do ! end do neigh_comn(ialp)
         end do  ! end do ialp
 
+! --------------------------
+! ! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py    
+        if (diag_avg_rho_enable) then
+           diag_avg_rho_ineigh = -1
+        end if
+! --------------------------
 
 ! ****************************************************************************
 !                        T W O - C E N T E R   P A R T
@@ -525,6 +543,32 @@
 
            call epsilon (r2, sighat, eps)
            call deps2cent (r1, r2, eps, deps)
+
+! --------------------------
+ ! ! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py    
+           if (diag_avg_rho_enable) then
+              if (iatom .eq. diag_avg_rho_iatom .and. ineigh .eq. 1 .and. diag_avg_rho_ineigh .lt. 0) then
+                 write(*,*) '[DEBUG avg_rho_diag] iatom,ineigh,jatom,mbeta,target_iatom=', iatom, ineigh, jatom, mbeta, diag_avg_rho_iatom
+                 write(*,*) '[DEBUG avg_rho_diag] target_jatom,target_mbeta=', diag_avg_rho_jatom_target, diag_avg_rho_mbeta_target
+              end if
+           end if
+           if (diag_avg_rho_enable) then
+              if (iatom .eq. diag_avg_rho_iatom) then
+                 if (diag_avg_rho_jatom_target .lt. 0 .or. jatom .eq. diag_avg_rho_jatom_target) then
+                    if (diag_avg_rho_mbeta_target .lt. 0 .or. mbeta .eq. diag_avg_rho_mbeta_target) then
+                       if (diag_avg_rho_ineigh .lt. 0) then
+                          diag_avg_rho_ineigh = ineigh
+                          diag_avg_rho_jatom  = jatom
+                          diag_avg_rho_mbeta  = mbeta
+                          diag_avg_rho_rhooff_3c(:,:) = 0.0d0
+                          diag_avg_rho_rhooff_3c(1:numorb_max,1:numorb_max) = rho_off(1:numorb_max,1:numorb_max,ineigh,iatom)
+                       end if
+                    end if
+                 end if
+              end if
+           end if
+! --------------------------
+
 
 ! Find sum of density matrices.  These will be the used later to build the
 ! average density.
@@ -598,6 +642,27 @@
                  end do
               end do
            end if
+
+! --------------------------
+           ! ! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py           
+           if (diag_avg_rho_enable) then
+              if (iatom .eq. diag_avg_rho_iatom .and. ineigh .eq. diag_avg_rho_ineigh) then
+                 diag_avg_rho_in1 = in1
+                 diag_avg_rho_in2 = in2
+                 diag_avg_rho_jatom = jatom
+                 diag_avg_rho_mbeta = mbeta
+                 diag_avg_rho_eps2c(:,:) = eps(:,:)
+                 diag_avg_rho_sm(:,:) = 0.0d0
+                 diag_avg_rho_rhom2c(:,:) = 0.0d0
+                 diag_avg_rho_rhom3c(:,:) = 0.0d0
+                 diag_avg_rho_sm(1:nsh_max,1:nsh_max) = sm(1:nsh_max,1:nsh_max)
+                 diag_avg_rho_rhom2c(1:nsh_max,1:nsh_max) = rhom_2c(1:nsh_max,1:nsh_max)
+                 diag_avg_rho_rhom3c(1:nsh_max,1:nsh_max) = rhom_3c(1:nsh_max,1:nsh_max,ineigh,iatom)
+                 diag_avg_rho_rhooff_final(:,:) = 0.0d0
+                 diag_avg_rho_rhooff_final(1:numorb_max,1:numorb_max) = rho_off(1:numorb_max,1:numorb_max,ineigh,iatom)
+              end if
+           end if
+! --------------------------
 
 ! overlap matrix for gaussian
 !           if (igauss .eq. 1) call doscentrosGS_overlap (in1, in2, y, eps, smGS, spmGS, rcutoff )    !   IF_DEF_GAUSS_END

@@ -149,6 +149,27 @@ class OCL_Hamiltonian:
         self.vca_map = vca_map
         self.nsh_vca_max = nsh_vca_max
 
+        # Build AvgRho 2c density seed map: (pair_type, isorp, side) -> spline index
+        # side: 0 = den_ontopl (interaction=15, isorp over nssh(in1)); 1 = den_ontopr (interaction=16, isorp over nssh(in2))
+        nsh_den_max = nsh_vca_max
+        den2c_map = np.zeros((n_pairs, nsh_den_max, 2), dtype=np.int32) - 1
+        for (root, nz1, nz2), idx in self.species_pair_map.items():
+            # Only base pair types (e.g. overlap/kinetic/vna/vnl/...) are used as anchors; den_ontop tables exist per isorp.
+            if isinstance(root, str) and (root in ('overlap', 'kinetic', 'vna', 'vnl', 'vxc') or root.startswith('vna_') or root.startswith('den_') ):
+                # We only want to attach den_ontop maps to the base (nz1,nz2) type index for later lookup.
+                base_idx = idx
+                # den_ontopl uses shells of atom 1 (nz1)
+                for isorp in range(nsh_den_max):
+                    keyL = (f"den_ontopl_{isorp+1:02d}", nz1, nz2)
+                    if keyL in self.species_pair_map:
+                        den2c_map[base_idx, isorp, 0] = self.species_pair_map[keyL]
+                    keyR = (f"den_ontopr_{isorp+1:02d}", nz1, nz2)
+                    if keyR in self.species_pair_map:
+                        den2c_map[base_idx, isorp, 1] = self.species_pair_map[keyR]
+        self.den2c_map = den2c_map
+        self.nsh_den_max = nsh_den_max
+        self.d_den2c_map = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=den2c_map)
+
     def assemble_vca(self, ratoms, neighbors, pair_types, dQ_sh):
         """
         Assemble V_CA components:
@@ -371,7 +392,7 @@ class OCL_Hamiltonian:
             offs[ip + 1] = len(cn)
         return offs, np.array(cn, dtype=np.int32)
 
-    def compute_avg_rho_3c(self, ratoms, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_2c_blocks, Qneutral_shell, ispec_of_atom, nssh_species, lssh_species, nsh_max, isorp=0, mu3c_map=None, nu3c_map=None, mvalue3c_map=None):
+    def compute_avg_rho_3c(self, ratoms, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_2c_blocks, Qneutral_shell, ispec_of_atom, nssh_species, lssh_species, nsh_max, pair_2c_types=None, isorp=0, mu3c_map=None, nu3c_map=None, mvalue3c_map=None):
         """Run compute_avg_rho kernel for given pairs.
 
         - ratoms: [natoms,3] float
@@ -398,11 +419,18 @@ class OCL_Hamiltonian:
         pairs4 = np.zeros((n_pairs, 4), dtype=np.int32)
         pairs4[:, 0:2] = pairs.astype(np.int32)
         pairs4[:, 2] = pair_triplet_types.astype(np.int32)
-        pairs4[:, 3] = 0
+        if pair_2c_types is None:
+            pairs4[:, 3] = 0
+        else:
+            pairs4[:, 3] = pair_2c_types.astype(np.int32)
 
         S16 = np.ascontiguousarray(S_blocks.reshape((n_pairs, 16)), dtype=np.float32)
         rho16 = np.ascontiguousarray(rho_2c_blocks.reshape((n_pairs, 16)), dtype=np.float32)
-        Qsh = np.ascontiguousarray(Qneutral_shell.reshape((-1,)), dtype=np.float32)
+        # Kernel argument d_Qsh can be provided either:
+        # - per-species: Qshell[ish, ispec]  (shape [nsh_max, nspecies])
+        # - per-atom:    Qshell[ish, iatom]  (shape [nsh_max, natoms])
+        # We pack both layouts as contiguous [entity*nsh_max + ish] by transposing.
+        Qsh = np.ascontiguousarray(Qneutral_shell.T.reshape((-1,)), dtype=np.float32)
         ispec_atom = np.ascontiguousarray(ispec_of_atom, dtype=np.int32)
         nssh_sp = np.ascontiguousarray(nssh_species, dtype=np.int32)
         lssh_sp = np.ascontiguousarray(lssh_species, dtype=np.int8)
@@ -436,12 +464,17 @@ class OCL_Hamiltonian:
             d_nu3c = self.d_nu3c_map
             d_mv3c = self.d_mvalue3c_map
 
-        # NOTE: kernel signature is compute_avg_rho(...,Qneutral_shell,ispec_of_atom,nssh_species,lssh_species,nsh_max,mu3c_map,...)
+        if not hasattr(self, 'd_den2c_map'):
+            raise RuntimeError('prepare_splines() must build den2c_map before compute_avg_rho_3c')
+
+        # NOTE: kernel signature includes 2c spline buffers and den2c_map for GPU-side seed
         self.prg.compute_avg_rho(
             self.queue, (n_pairs,), None,
             np.int32(n_pairs), np.int32(self.n_nz_3c_max),
             d_ratoms, d_pairs, d_offs, d_cns,
-            d_S, d_rho2c, d_Qsh, d_ispec_atom, d_nssh_sp, d_lssh_sp, np.int32(nsh_max),
+            d_S, d_rho2c,
+            self.d_splines, self.d_h_grids, np.int32(self.numz_max), np.int32(self.n_nz_max), self.d_den2c_map, np.int32(self.nsh_den_max),
+            d_Qsh, d_ispec_atom, d_nssh_sp, d_lssh_sp, np.int32(nsh_max),
             d_mu3c, d_nu3c, d_mv3c,
             self.d_data_3c, self.d_h_grids_3c, self.d_dims_3c,
             np.int32(self.n_isorp_3c), np.int32(self.numx_3c), np.int32(self.numy_3c),

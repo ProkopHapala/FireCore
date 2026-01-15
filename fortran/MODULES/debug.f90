@@ -1,7 +1,46 @@
 
+
+
+
+
+
+
+
 module debug
     implicit none
+
+
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+! AvgRho diagnostics (filled in average_rho.f90 when enabled)
+         logical :: diag_avg_rho_enable = .false.
+         integer :: diag_avg_rho_iatom = -1
+         integer :: diag_avg_rho_jatom_target = -1
+         integer :: diag_avg_rho_mbeta_target = -1
+         integer :: diag_avg_rho_ineigh = -1
+         integer :: diag_avg_rho_in1 = -1
+         integer :: diag_avg_rho_in2 = -1
+         integer :: diag_avg_rho_jatom = -1
+         integer :: diag_avg_rho_mbeta = -1
+         real, dimension(3,3) :: diag_avg_rho_eps2c = 0.0
+         real, dimension(6,6) :: diag_avg_rho_sm = 0.0
+         real, dimension(6,6) :: diag_avg_rho_rhom2c = 0.0
+         real, dimension(6,6) :: diag_avg_rho_rhom3c = 0.0
+         real, dimension(8,8) :: diag_avg_rho_rhooff_3c = 0.0
+         real, dimension(8,8) :: diag_avg_rho_rhooff_final = 0.0
+! --------------------------
+
+
+
+
+
+
     contains
+
+
+
+
+
 
 subroutine debug_writeArray_1i( name, arr, n )
     ! ===== Parameters

@@ -1122,6 +1122,8 @@ subroutine firecore_get_rho_off_sparse( rho_off_out ) bind(c, name='firecore_get
     rho_off_out = rho_off
 end subroutine firecore_get_rho_off_sparse
 
+
+
 subroutine firecore_set_options( ioff_S_, ioff_T_, ioff_Vna_, ioff_Vnl_, ioff_Vxc_, ioff_Vca_, ioff_Vxc_ca_, ioff_Ewald_ ) bind(c, name='firecore_set_options')
     use iso_c_binding
     use options
@@ -1203,6 +1205,11 @@ subroutine firecore_get_nsh_max(nsh_max_out) bind(c, name='firecore_get_nsh_max'
     integer(c_int), intent(out) :: nsh_max_out
     nsh_max_out = nsh_max
 end subroutine firecore_get_nsh_max
+
+!=============================================================== 
+! HORRIFIC BOILERPLATE RELATED TO DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+!===============================================================
+
 
 ! Add other simple dimension getters if needed, e.g., for ME2c_max
 subroutine firecore_get_ME2c_max(ME2c_max_out) bind(c, name='firecore_get_ME2c_max')
@@ -1604,3 +1611,129 @@ subroutine firecore_scanHamPiece3c_batch( interaction, isorp, in1, in2, indna, n
         bcnax_out(:,:,ip) = bcnax(:,:)
     end do
 end subroutine firecore_scanHamPiece3c_batch
+
+
+! ============================================================== 
+! EVEN MORE HORRIFIC BOILERPLATE RELATED TO DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+! ==============================================================
+
+subroutine firecore_set_avg_rho_diag( enable, iatom, jatom, mbeta ) bind(c, name='firecore_set_avg_rho_diag')
+    use iso_c_binding
+    use debug, only: diag_avg_rho_enable, diag_avg_rho_iatom, diag_avg_rho_jatom_target, diag_avg_rho_mbeta_target, diag_avg_rho_ineigh
+    implicit none
+    integer(c_int), intent(in), value :: enable
+    integer(c_int), intent(in), value :: iatom
+    integer(c_int), intent(in), value :: jatom
+    integer(c_int), intent(in), value :: mbeta
+    diag_avg_rho_enable = (enable .ne. 0)
+    diag_avg_rho_iatom = iatom
+    diag_avg_rho_jatom_target = jatom
+    diag_avg_rho_mbeta_target = mbeta
+    diag_avg_rho_ineigh = -1
+end subroutine firecore_set_avg_rho_diag
+
+subroutine firecore_get_avg_rho_diag_state( enable, iatom, jatom, mbeta ) bind(c, name='firecore_get_avg_rho_diag_state')
+    use iso_c_binding
+    use debug, only: diag_avg_rho_enable, diag_avg_rho_iatom, diag_avg_rho_jatom_target, diag_avg_rho_mbeta_target
+    implicit none
+    integer(c_int), intent(out) :: enable
+    integer(c_int), intent(out) :: iatom
+    integer(c_int), intent(out) :: jatom
+    integer(c_int), intent(out) :: mbeta
+    enable = 0
+    if (diag_avg_rho_enable) enable = 1
+    iatom = diag_avg_rho_iatom
+    jatom = diag_avg_rho_jatom_target
+    mbeta = diag_avg_rho_mbeta_target
+end subroutine firecore_get_avg_rho_diag_state
+
+subroutine firecore_get_avg_rho_diag_meta( iatom, ineigh, in1, in2, jatom, mbeta ) bind(c, name='firecore_get_avg_rho_diag_meta')
+    use iso_c_binding
+    use debug, only: diag_avg_rho_iatom, diag_avg_rho_ineigh, diag_avg_rho_in1, diag_avg_rho_in2, diag_avg_rho_jatom, diag_avg_rho_mbeta
+    implicit none
+    integer(c_int), intent(out) :: iatom, ineigh, in1, in2, jatom, mbeta
+    iatom  = diag_avg_rho_iatom
+    ineigh = diag_avg_rho_ineigh
+    in1    = diag_avg_rho_in1
+    in2    = diag_avg_rho_in2
+    jatom  = diag_avg_rho_jatom
+    mbeta  = diag_avg_rho_mbeta
+end subroutine firecore_get_avg_rho_diag_meta
+
+subroutine firecore_get_avg_rho_diag_eps2c( eps_out ) bind(c, name='firecore_get_avg_rho_diag_eps2c')
+    use iso_c_binding
+    use debug, only: diag_avg_rho_eps2c
+    implicit none
+    real(c_double), intent(out) :: eps_out(*)
+    integer i,j
+    do j=1,3
+        do i=1,3
+            eps_out((j-1)*3 + i) = diag_avg_rho_eps2c(i,j)
+        end do
+    end do
+end subroutine firecore_get_avg_rho_diag_eps2c
+
+subroutine firecore_get_avg_rho_diag_sm( sm_out ) bind(c, name='firecore_get_avg_rho_diag_sm')
+    use iso_c_binding
+    use debug, only: diag_avg_rho_sm
+    implicit none
+    real(c_double), intent(out) :: sm_out(*)
+    integer i,j
+    do j=1,6
+        do i=1,6
+            sm_out((j-1)*6 + i) = diag_avg_rho_sm(i,j)
+        end do
+    end do
+end subroutine firecore_get_avg_rho_diag_sm
+
+subroutine firecore_get_avg_rho_diag_rhom2c( m_out ) bind(c, name='firecore_get_avg_rho_diag_rhom2c')
+    use iso_c_binding
+    use debug, only: diag_avg_rho_rhom2c
+    implicit none
+    real(c_double), intent(out) :: m_out(*)
+    integer i,j
+    do j=1,6
+        do i=1,6
+            m_out((j-1)*6 + i) = diag_avg_rho_rhom2c(i,j)
+        end do
+    end do
+end subroutine firecore_get_avg_rho_diag_rhom2c
+
+subroutine firecore_get_avg_rho_diag_rhom3c( m_out ) bind(c, name='firecore_get_avg_rho_diag_rhom3c')
+    use iso_c_binding
+    use debug, only: diag_avg_rho_rhom3c
+    implicit none
+    real(c_double), intent(out) :: m_out(*)
+    integer i,j
+    do j=1,6
+        do i=1,6
+            m_out((j-1)*6 + i) = diag_avg_rho_rhom3c(i,j)
+        end do
+    end do
+end subroutine firecore_get_avg_rho_diag_rhom3c
+
+subroutine firecore_get_avg_rho_diag_rhooff_3c( m_out ) bind(c, name='firecore_get_avg_rho_diag_rhooff_3c')
+    use iso_c_binding
+    use debug, only: diag_avg_rho_rhooff_3c
+    implicit none
+    real(c_double), intent(out) :: m_out(*)
+    integer i,j
+    do j=1,8
+        do i=1,8
+            m_out((j-1)*8 + i) = diag_avg_rho_rhooff_3c(i,j)
+        end do
+    end do
+end subroutine firecore_get_avg_rho_diag_rhooff_3c
+
+subroutine firecore_get_avg_rho_diag_rhooff_final( m_out ) bind(c, name='firecore_get_avg_rho_diag_rhooff_final')
+    use iso_c_binding
+    use debug, only: diag_avg_rho_rhooff_final
+    implicit none
+    real(c_double), intent(out) :: m_out(*)
+    integer i,j
+    do j=1,8
+        do i=1,8
+            m_out((j-1)*8 + i) = diag_avg_rho_rhooff_final(i,j)
+        end do
+    end do
+end subroutine firecore_get_avg_rho_diag_rhooff_final

@@ -35,6 +35,7 @@
          real, dimension (:, :, :   ), allocatable :: arhoi_on
          real, dimension (:, :, :, :), allocatable :: arho_off
          real, dimension (:, :, :, :), allocatable :: arhoij_off
+
 ! JOM-nonadiabatic
         !  real, dimension ( :, :), allocatable :: foccupy_na
         !  integer, dimension ( :, :), allocatable :: ioccupy_na

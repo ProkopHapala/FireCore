@@ -45,7 +45,6 @@ float interpolate_2d(
         g[k] = ((bb3 * py + bb2) * py + bb1) * py + bb0;
     }
 
-
     float f1m1 = g[0];
     float f0p3 = 3.0f * g[1];
     float f1p3 = 3.0f * g[2];
@@ -62,6 +61,47 @@ inline float chooser_val(const int l, const int k, const int m, const float pmat
     if(l==0){ return (k==0 && m==0) ? 1.0f : 0.0f; }
     if(l==1){ return pmat[k][m]; }
     return NAN;
+}
+
+inline void rotate_fb_matrix_sp(
+    const __private float pmat[3][3],
+    const __global char* lssh_species,
+    const __global int* nssh_species,
+    const int nsh_max,
+    const int ispec1,
+    const int ispec2,
+    const float M[4][4],
+    float Xout[4][4]
+) {
+    for(int a=0;a<4;a++){ for(int b=0;b<4;b++){ Xout[a][b]=0.0f; } }
+    int nssh1 = nssh_species[ispec1];
+    int nssh2 = nssh_species[ispec2];
+    int n1 = 0;
+    for(int ish=0; ish<nssh1; ish++){
+        int l1 = (int)lssh_species[ispec1 * nsh_max + ish];
+        if(l1 > 1){ for(int a=0;a<4;a++){ for(int b=0;b<4;b++){ Xout[a][b]=NAN; } } return; }
+        int n1b = n1 + 2*l1 + 1;
+        int n2 = 0;
+        for(int jsh=0; jsh<nssh2; jsh++){
+            int l2 = (int)lssh_species[ispec2 * nsh_max + jsh];
+            if(l2 > 1){ for(int a=0;a<4;a++){ for(int b=0;b<4;b++){ Xout[a][b]=NAN; } } return; }
+            int n2b = n2 + 2*l2 + 1;
+            for(int m2=0; m2<2*l2+1; m2++){
+                for(int m1=0; m1<2*l1+1; m1++){
+                    float val = M[n1+m1][n2+m2];
+                    for(int k2=0; k2<2*l2+1; k2++){
+                        float right = chooser_val(l2, k2, m2, pmat);
+                        for(int k1=0; k1<2*l1+1; k1++){
+                            float left = chooser_val(l1, k1, m1, pmat);
+                            Xout[n1+k1][n2+k2] += left * val * right;
+                        }
+                    }
+                }
+            }
+            n2 = n2b;
+        }
+        n1 = n1b;
+    }
 }
 
 inline void recover_and_rotate_3c_munu_sp(
@@ -1200,13 +1240,20 @@ __kernel void compute_avg_rho(
     const int n_nz_max, 
     // Geometry
     const __global float3* ratoms,
-    const __global int4* pairs,       // [i, j, type_idx, _]
+    const __global int4* pairs,       // [i, j, type3c_idx, type2c_idx]
     const __global int* cn_offsets,   // CSR offsets
     const __global int* cn_indices,   // CSR column indices
     // Input Data
     const __global float* S_mat,      // Overlap [n_pairs, 16]
-    const __global float* rho_2c,            // Precomputed 2-center density [n_pairs, 16]
-    const __global float* Qneutral_shell,    // [nsh_max * nspecies_fdata], packed [ispec*nsh_max + (isorp-1)]
+    const __global float* rho_2c,            // Optional precomputed 2-center density [n_pairs, 16]
+    // 2c spline tables for den_ontopl/den_ontopr
+    const __global float* splines,           // [n_species_pairs, numz, n_nz_max_2c, 4]
+    const __global float* h_grids,           // [n_species_pairs]
+    const int numz,
+    const int n_nz_max_2c,
+    const __global int* den2c_map,           // [n_species_pairs, nsh_den_max, 2]
+    const int nsh_den_max,
+    const __global float* Qneutral_shell,    // DEBUG: used as per-atom shell charges [natoms*nsh_max] (for itheory=1 parity)
     const __global int*   ispec_of_atom,     // [natoms], 0-based indices into species_fdata
     const __global int*   nssh_species,      // [nspecies_fdata], number of shells for this species
     const __global char*  lssh_species,      // [nspecies_fdata * nsh_max], lssh per species
@@ -1227,7 +1274,7 @@ __kernel void compute_avg_rho(
 
     // 1. Setup Pair Geometry
     int4 p = pairs[pid];
-    int i = p.x; int j = p.y; int type_idx = p.z;
+    int i = p.x; int j = p.y; int type_idx = p.z; int type2c = p.w;
     float3 r_i = ratoms[i];
     float3 r_j = ratoms[j];
     float3 r21 = r_j - r_i;
@@ -1238,9 +1285,90 @@ __kernel void compute_avg_rho(
     // Here we keep eps declared once and set it per-CN below.
     float eps[3][3];
 
-    // Initialize with 2-center part
+    // Build 2-center seed (average_rho.f90 off-site 2c part):
+    //   rho_off += den_ontopl(isorp,in1) * Qneutral(isorp,in1) + den_ontopr(isorp,in2) * Qneutral(isorp,in2)
+    // Rotation frame is epsilon(r2, sighat) where r2 is absolute position of atom j.
     float rho_acc[16];
-    for(int k=0; k<16; k++) rho_acc[k] = rho_2c[pid*16 + k];
+    for(int k=0; k<16; k++) rho_acc[k] = 0.0f;
+    if(type2c < 0){ for(int k=0;k<16;k++) rho_acc[k] = rho_2c[pid*16 + k]; }
+    else {
+        float eps2[3][3];
+        epsilon_fb(r_j, sighat, eps2);
+        float pmat2[3][3];
+        twister_pmat(eps2, pmat2);
+
+        // spline interpolation setup
+        float h_grid = h_grids[type2c];
+        int i_z = (int)(d_ij / h_grid);
+        if (i_z < 0) i_z = 0;
+        if (i_z >= numz - 1) i_z = numz - 2;
+        float dr = d_ij - i_z * h_grid;
+        int pair_stride = numz * n_nz_max_2c * 4;
+        int z_stride = n_nz_max_2c * 4;
+
+        int ispec_i = ispec_of_atom[i];
+        int ispec_j = ispec_of_atom[j];
+        int nssh_i  = nssh_species[ispec_i];
+        int nssh_j  = nssh_species[ispec_j];
+        // Left piece den_ontopl (interaction=15): shells of atom i
+        for(int ish=0; ish<nssh_i; ish++){
+            if(ish >= nsh_den_max) break;
+            float w = Qneutral_shell[i * nsh_max + ish];
+            if(w == 0.0f) continue;
+            int idxL = den2c_map[(type2c * nsh_den_max + ish) * 2 + 0];
+            if(idxL < 0) continue;
+            float comps[6];
+            for(int inz=0; inz<n_nz_max_2c; inz++){
+                int base = idxL * pair_stride + i_z * z_stride + inz * 4;
+                comps[inz] = splines[base + 0] + dr*(splines[base + 1] + dr*(splines[base + 2] + dr*splines[base + 3]));
+            }
+            float ss_sig = comps[0];
+            float sp_sig = comps[1];
+            float ps_sig = (n_nz_max_2c > 2) ? comps[2] : 0.0f;
+            float pp_pi  = (n_nz_max_2c > 3) ? comps[3] : 0.0f;
+            float pp_sig = (n_nz_max_2c > 4) ? comps[4] : 0.0f;
+            float sm[4][4];
+            for(int a=0;a<4;a++){ for(int c=0;c<4;c++){ sm[a][c]=0.0f; } }
+            sm[0][0] = ss_sig;
+            sm[0][2] = sp_sig;
+            sm[2][0] = ps_sig;
+            sm[1][1] = pp_pi;
+            sm[2][2] = pp_sig;
+            sm[3][3] = pp_pi;
+            float sx[4][4];
+            rotate_fb_matrix_sp(pmat2, lssh_species, nssh_species, nsh_max, ispec_i, ispec_j, sm, sx);
+            for(int a=0;a<4;a++){ for(int c=0;c<4;c++){ rho_acc[a*4 + c] += sx[c][a] * w; } }
+        }
+        // Right piece den_ontopr (interaction=16): shells of atom j
+        for(int ish=0; ish<nssh_j; ish++){
+            if(ish >= nsh_den_max) break;
+            float w = Qneutral_shell[j * nsh_max + ish];
+            if(w == 0.0f) continue;
+            int idxR = den2c_map[(type2c * nsh_den_max + ish) * 2 + 1];
+            if(idxR < 0) continue;
+            float comps[6];
+            for(int inz=0; inz<n_nz_max_2c; inz++){
+                int base = idxR * pair_stride + i_z * z_stride + inz * 4;
+                comps[inz] = splines[base + 0] + dr*(splines[base + 1] + dr*(splines[base + 2] + dr*splines[base + 3]));
+            }
+            float ss_sig = comps[0];
+            float sp_sig = comps[1];
+            float ps_sig = (n_nz_max_2c > 2) ? comps[2] : 0.0f;
+            float pp_pi  = (n_nz_max_2c > 3) ? comps[3] : 0.0f;
+            float pp_sig = (n_nz_max_2c > 4) ? comps[4] : 0.0f;
+            float sm[4][4];
+            for(int a=0;a<4;a++){ for(int c=0;c<4;c++){ sm[a][c]=0.0f; } }
+            sm[0][0] = ss_sig;
+            sm[0][2] = sp_sig;
+            sm[2][0] = ps_sig;
+            sm[1][1] = pp_pi;
+            sm[2][2] = pp_sig;
+            sm[3][3] = pp_pi;
+            float sx[4][4];
+            rotate_fb_matrix_sp(pmat2, lssh_species, nssh_species, nsh_max, ispec_i, ispec_j, sm, sx);
+            for(int a=0;a<4;a++){ for(int c=0;c<4;c++){ rho_acc[a*4 + c] += sx[c][a] * w; } }
+        }
+    }
 
     // 2. Loop Common Neighbors
     int start = cn_offsets[pid];
@@ -1279,7 +1407,7 @@ __kernel void compute_avg_rho(
         const __global float* base_type = &data_3c[type_idx * trip_stride];
 
         for(int isorp_idx=0; isorp_idx<nssh_k; isorp_idx++){
-            float w = Qneutral_shell[ispec_k * nsh_max + isorp_idx];
+            float w = Qneutral_shell[k * nsh_max + isorp_idx];
             if (w == 0.0f) continue;
 
             int grid_idx = type_idx * n_isorp_max + isorp_idx;
@@ -1307,7 +1435,11 @@ __kernel void compute_avg_rho(
 
             float block[16];
             recover_and_rotate_3c_munu_sp(n_nz_max, hlist_local, mu3c, nu3c, eps, lssh_species, nssh_species, nsh_max, ispec_of_atom[i], ispec_of_atom[j], block);
-            for(int m=0; m<16; m++) rho_acc[m] += block[m] * w;
+            for(int a=0; a<4; a++){
+                for(int b=0; b<4; b++){
+                    rho_acc[a*4 + b] += block[b*4 + a] * w;
+                }
+            }
         }
     }
 

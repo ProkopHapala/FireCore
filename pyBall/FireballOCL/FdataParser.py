@@ -496,6 +496,21 @@ class FdataParser:
                     if os.path.exists(path):
                         store_root = f"vna_ontopl_{isorp:02d}"
                         data_2c[(store_root, nz1, nz2)] = self.read_2c(path)
+
+                # For average_rho off-site 2c density seed we need shell-resolved density tables:
+                #   interaction=15: den_ontopl <i|n_i|j> weighted by Qneutral(isorp,in1), isorp=1..nssh(in1)
+                #   interaction=16: den_ontopr <i|n_j|j> weighted by Qneutral(isorp,in2), isorp=1..nssh(in2)
+                # File naming in fdata uses explicit isorp suffix (01,02,...) for these.
+                for isorp in range(1, nssh1 + 1):
+                    root = f"den_ontopl_{isorp:02d}"
+                    path = self.find_2c(root, nz1, nz2)
+                    if os.path.exists(path):
+                        data_2c[(root, nz1, nz2)] = self.read_2c(path)
+                for isorp in range(1, nssh2 + 1):
+                    root = f"den_ontopr_{isorp:02d}"
+                    path = self.find_2c(root, nz1, nz2)
+                    if os.path.exists(path):
+                        data_2c[(root, nz1, nz2)] = self.read_2c(path)
         
         # 3-center data (example for den3)
         data_3c = {}

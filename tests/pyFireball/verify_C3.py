@@ -130,10 +130,42 @@ def run_verification():
     fc.initialize(atomType=atomTypes_Z, atomPos=atomPos)
     fc.setVerbosity(0, 1)
 
+    # Enable AvgRho diagnostics in Fortran core (exported via libFireCore, logic still in average_rho.f90)
+    # IMPORTANT: average_rho off-site part is computed on the neighbor list, so pick an actual neighbor.
+    # Use jatom/mbeta wildcards (-1) so Fortran captures the first neighbor of iatom=1.
+    fc.set_avg_rho_diag(enable=1, iatom=1, jatom=-1, mbeta=-1)
+    en, ti, tj, tb = fc.get_avg_rho_diag_state()
+    print(f"[FORTRAN AvgRho DIAG state before SCF] enable={en} iatom={ti} jatom={tj} mbeta={tb}")
+    if en != 1 or ti != 1:
+        raise RuntimeError("AvgRho diagnostic state not set correctly before SCF")
+
     # Run SCF once; afterwards export rho/s/h from the same Fortran state.
     fc.set_export_mode(0)
     fc.set_options(1, 1, 1, 1, 1, 1, 1)
     fc.SCF(positions=atomPos, iforce=0, nmax_scf=50)
+
+    # Fetch AvgRho diagnostic buffers from Fortran core
+    d_iatom, d_ineigh, d_in1, d_in2, d_jatom, d_mbeta = fc.get_avg_rho_diag_meta()
+    eps2c = fc.get_avg_rho_diag_eps2c()
+    smS   = fc.get_avg_rho_diag_sm()
+    rhom2cS = fc.get_avg_rho_diag_rhom2c()
+    rhom3cS = fc.get_avg_rho_diag_rhom3c()
+    rhooff_3c = fc.get_avg_rho_diag_rhooff_3c()
+    rhooff_fin = fc.get_avg_rho_diag_rhooff_final()
+    print("\n[FORTRAN AvgRho DIAG]")
+    print(f"  target meta: iatom={d_iatom} ineigh={d_ineigh} in1={d_in1} in2={d_in2} jatom={d_jatom} mbeta={d_mbeta}")
+    print("  eps2c:")
+    print(eps2c)
+    print("  sm (shell):")
+    print(smS)
+    print("  rhom2c (shell):")
+    print(rhom2cS)
+    print("  rhom3c (shell):")
+    print(rhom3cS)
+    print("  rho_off after 3c (orbital):")
+    print(rhooff_3c[:4,:4])
+    print("  rho_off final (orbital):")
+    print(rhooff_fin[:4,:4])
 
     print("Initializing PyOpenCL Hamiltonian...")
     ham = OCL_Hamiltonian(fdata_dir)
@@ -208,9 +240,11 @@ def run_verification():
     Qneutral_sh_full = fc.get_Qneutral_shell(dims)  # [nsh_max, nspecies_fdata]
     print(f"DEBUG: Qneutral_sh_full shape={Qneutral_sh_full.shape}")
     print(f"DEBUG: Qneutral_sh_full values:\n{Qneutral_sh_full}")
-    # Only use columns for valid species to avoid garbage values
-    Qneutral_sh = Qneutral_sh_full[:, :dims.nspecies]
+    # Qneutral_shell is per-species; slice to species used in this run and zero-fill the rest to avoid garbage.
+    Qneutral_sh = np.zeros_like(Qneutral_sh_full)
+    Qneutral_sh[:, :dims.nspecies] = Qneutral_sh_full[:, :dims.nspecies]
     Qin_shell = fc.get_Qin_shell(dims)  # [nsh_max, natoms]
+    print(f"DEBUG: Qin_shell shape={Qin_shell.shape}")
     print(f"DEBUG: Qneutral_sh sliced shape={Qneutral_sh.shape}")
     print(f"DEBUG: Qneutral_sh sliced values:\n{Qneutral_sh}")
     nzx_full = np.array(sd.nzx, dtype=np.int32)
@@ -276,48 +310,49 @@ def run_verification():
             if j >= 0:
                 neigh_index[(ia, j)] = ineigh
 
-    DEBUG_QIN_TEST = False
+    DEBUG_QIN_TEST = True
     S_blocks = np.zeros((pairs.shape[0], 4, 4), dtype=np.float32)
+    # We no longer construct the 2c seed using scanHamPiece2c (libFireCore interface is not reference).
+    # Instead, OpenCL compute_avg_rho builds the 2c seed internally from den_ontopl/den_ontopr tables.
     rho_blocks = np.zeros((pairs.shape[0], 4, 4), dtype=np.float32)
+    rho_blocks_alt = np.zeros((pairs.shape[0], 4, 4), dtype=np.float32)
+    rho_blocks_alt_raw = np.zeros((pairs.shape[0], 4, 4), dtype=np.float64)
+    rho_blocks_alt_raw_L = np.zeros((pairs.shape[0], 4, 4), dtype=np.float64)
+    rho_blocks_alt_raw_R = np.zeros((pairs.shape[0], 4, 4), dtype=np.float64)
+    pair_dR = np.zeros((pairs.shape[0], 3), dtype=np.float64)
+    pair_in_i = np.zeros(pairs.shape[0], dtype=np.int32)
+    pair_in_j = np.zeros(pairs.shape[0], dtype=np.int32)
+    pair_mbeta = np.zeros(pairs.shape[0], dtype=np.int32)
+    pair_valid = np.zeros(pairs.shape[0], dtype=np.int8)
     rho_blocks_qin = np.zeros((pairs.shape[0], 4, 4), dtype=np.float32) if DEBUG_QIN_TEST else None
+    pair_2c_types = np.zeros(pairs.shape[0], dtype=np.int32)
     for ip, (ia, ja) in enumerate(pairs):
         ineigh = neigh_index.get((int(ia), int(ja)), None)
         if ineigh is None:
             continue
         S_blocks[ip, :, :] = sd.s_mat[int(ia), ineigh, :4, :4]
 
-        # 2-center seed for rho_off: den_ontopl (15) + den_ontopr (16) pieces weighted by Qneutral shells
-        # This matches average_rho.f90 off-site 2-center part before adding the 3c correction.
-        dR = (atomPos[int(ja)] - atomPos[int(ia)]).copy()
+        # Store 2c pair type index for OpenCL seed construction (den_ontopl/den_ontopr tables)
         ispec_i = int(ispec_of_atom[int(ia)])
         ispec_j = int(ispec_of_atom[int(ja)])
-        # Fortran species indices are 1-based
+        nz1 = int(atomTypes_Z[int(ia)])
+        nz2 = int(atomTypes_Z[int(ja)])
+        pt = ham._resolve_pair_type('overlap', nz1, nz2)
+        if pt is None:
+            raise RuntimeError(f"Missing 2c pair type for overlap ({nz1},{nz2})")
+        pair_2c_types[ip] = int(pt)
+        mbeta = int(sd.neigh_b[int(ia), ineigh])
+        r1 = atomPos[int(ia)]
+        r2 = atomPos[int(ja)] + sd.xl[mbeta]
+        dR = (r2 - r1).copy()
+        # Keep pair geometry for potential debug, but do not compute rho_blocks via scanHamPiece2c.
         in_i = ispec_i + 1
         in_j = ispec_j + 1
-
-        # Left piece (interaction=15): sum_{isorp=1..nssh(in_i)} den_ontopl * Qneutral(isorp,in_i)
-        Af = np.zeros((4, 4), dtype=np.float64)
-        Af_qin = np.zeros((4, 4), dtype=np.float64)
-        for isorp in range(1, int(sd.nssh[ispec_i]) + 1):
-            w = float(Qneutral_sh[isorp - 1, ispec_i])
-            if w == 0.0:
-                continue
-            Af += fc.scanHamPiece2c(15, isorp, in_i, in_i, in_j, dR, applyRotation=True, norb=4) * w
-            Af_qin += fc.scanHamPiece2c(15, isorp, in_i, in_i, in_j, dR, applyRotation=True, norb=4) * float(Qin_shell[isorp - 1, int(ia)])
-
-        # Right piece (interaction=16): sum_{isorp=1..nssh(in_j)} den_ontopr * Qneutral(isorp,in_j)
-        Bf = np.zeros((4, 4), dtype=np.float64)
-        Bf_qin = np.zeros((4, 4), dtype=np.float64)
-        for isorp in range(1, int(sd.nssh[ispec_j]) + 1):
-            w = float(Qneutral_sh[isorp - 1, ispec_j])
-            if w == 0.0:
-                continue
-            Bf += fc.scanHamPiece2c(16, isorp, in_i, in_j, in_j, dR, applyRotation=True, norb=4) * w
-            Bf_qin += fc.scanHamPiece2c(16, isorp, in_i, in_j, in_j, dR, applyRotation=True, norb=4) * float(Qin_shell[isorp - 1, int(ja)])
-
-        rho_blocks[ip, :, :] = (Af + Bf).astype(np.float32)
-        if DEBUG_QIN_TEST:
-            rho_blocks_qin[ip, :, :] = (Af_qin + Bf_qin).astype(np.float32)
+        pair_dR[ip, :] = dR
+        pair_in_i[ip] = in_i
+        pair_in_j[ip] = in_j
+        pair_valid[ip] = 1
+        pair_mbeta[ip] = mbeta
 
     # Triplet type selection: key is (root,nz1,nz2,nz3) where nz3 is the common neighbor type
     root = 'den3'
@@ -473,6 +508,25 @@ def run_verification():
             m[imu - 1, inu - 1] = hlist[idx]
         return m
 
+    # Build alternative 2c seed by manually rotating unrotated scanHamPiece2c output
+    for ip, (ia, ja) in enumerate(pairs):
+        if pair_valid[ip] == 0:
+            continue
+        mb = int(pair_mbeta[ip])
+        r1 = atomPos[int(ia)]
+        r2 = atomPos[int(ja)] + sd.xl[mb]
+        r21 = r2 - r1
+        r21_norm = np.linalg.norm(r21)
+        if r21_norm < 1e-12:
+            continue
+        sighat = r21 / r21_norm
+        eps2c = _epsilon_fb_py(r2, sighat)
+        in_i = int(pair_in_i[ip])
+        in_j = int(pair_in_j[ip])
+        left_rot = _rotate_fb_py(in_i, in_i, eps2c, rho_blocks_alt_raw_L[ip], sd.lssh, sd.nssh)
+        right_rot = _rotate_fb_py(in_i, in_j, eps2c, rho_blocks_alt_raw_R[ip], sd.lssh, sd.nssh)
+        rho_blocks_alt[ip, :, :] = (left_rot + right_rot).astype(np.float32)
+
     # Raw 3c interpolation check (no rotation/recover) for a single triplet
     DEBUG_RAW3C = True
     err_rot_isorp = float('nan')
@@ -577,8 +631,6 @@ def run_verification():
             print(ref_is)
             print(f"  [PY] scanHamPiece3c block isorp={isorp} (transposed):")
             print(ref_is_T)
-            print(f"  [PY] bcnax_f - scanHamPiece3c(T) isorp={isorp}:")
-            print(bcnax_f - ref_is_T)
             err_is = float(np.max(np.abs(bcnax_f - ref_is_T)))
             err_rot_isorp = max(err_rot_isorp, err_is)
             print(f"  [PY] max|bcnax_f - scanHamPiece3c(T)| isorp={isorp} = {err_is:.3e}")
@@ -597,15 +649,16 @@ def run_verification():
         print(f"  raw->rot (Fraw) vs Fortran scan: max|diff|={err_rawrot_f:.2e}")
         print(f"  raw->rot (OCLraw) vs Fortran scan: max|diff|={err_rawrot_o:.2e}")
 
-    rho_avg_blocks = ham.compute_avg_rho_3c(atomPos, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_blocks, Qneutral_sh, ispec_of_atom, nssh_species, sd.lssh[:dims.nspecies], dims.nsh_max, mu3c_map=mu3c_map, nu3c_map=nu3c_map, mvalue3c_map=mv3c_map)
+    rho_avg_blocks = ham.compute_avg_rho_3c(atomPos, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_blocks, Qneutral_sh, ispec_of_atom, nssh_species, sd.lssh[:dims.nspecies], dims.nsh_max, pair_2c_types=pair_2c_types, mu3c_map=mu3c_map, nu3c_map=nu3c_map, mvalue3c_map=mv3c_map)
     rho_avg_blocks_qin = None
     if DEBUG_QIN_TEST:
-        ispec_atom = np.arange(natoms, dtype=np.int32)
-        nssh_atom = np.full(natoms, int(sd.nssh[0]), dtype=np.int32)
-        rho_avg_blocks_qin = ham.compute_avg_rho_3c(atomPos, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_blocks_qin, Qin_shell, ispec_atom, nssh_atom, sd.lssh[:dims.nspecies], dims.nsh_max, mu3c_map=mu3c_map, nu3c_map=nu3c_map, mvalue3c_map=mv3c_map)
+        rho_avg_blocks_qin = ham.compute_avg_rho_3c(atomPos, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_blocks_qin, Qin_shell, ispec_of_atom, nssh_species, sd.lssh[:dims.nspecies], dims.nsh_max, pair_2c_types=pair_2c_types, mu3c_map=mu3c_map, nu3c_map=nu3c_map, mvalue3c_map=mv3c_map)
+
+        # For itheory=1 SCF path the Fortran reference (average_ca_rho) uses Qin weights.
+        # Use the Qin-weighted GPU result as the primary comparison target.
+        rho_avg_blocks = rho_avg_blocks_qin
 
     # Build Fortran reference blocks: rho_off is stored in sd.rho_off in the same blocked layout as sd.rho.
-    # compute_avg_rho kernel returns rho_off-like blocks (unnormalized) for direct comparison.
     ref_blocks = np.zeros_like(rho_avg_blocks)
     mask = np.zeros(pairs.shape[0], dtype=np.int32)
     for ip, (ia, ja) in enumerate(pairs):
@@ -617,81 +670,15 @@ def run_verification():
 
     res_AvgRho = False
     err_AvgRho = float('nan')
-    err_AvgRho3c = float('nan')
-    err_AvgRho_seed = float('nan')
-    err_AvgRho_T = float('nan')
-    err_AvgRho_seed_T = float('nan')
-    err_AvgRho3c_T = float('nan')
     if np.any(mask == 1):
         ok_avg, max_diff_avg = compare_blocks("AvgRho_off (Fortran rho_off vs OpenCL compute_avg_rho)", ref_blocks, rho_avg_blocks, tol=1e-4)
         res_AvgRho = ok_avg
         err_AvgRho = max_diff_avg
-        rho_avg_T = np.transpose(rho_avg_blocks, (0, 2, 1))
-        _, err_AvgRho_T = compare_blocks("AvgRho_off (transpose test)", ref_blocks, rho_avg_T, tol=1e-4)
         if DEBUG_QIN_TEST:
             ok_avg_qin, max_diff_avg_qin = compare_blocks("AvgRho_off (Qin weights test)", ref_blocks, rho_avg_blocks_qin, tol=1e-4)
             print(f"  DEBUG AvgRho Qin test: ok={ok_avg_qin} err={max_diff_avg_qin:.2e}")
     else:
         print("WARNING: No comparable neighbor blocks found (mask empty)")
-
-    if np.any(mask == 1):
-        # Isolate 3c contribution: kernel starts from rho_2c seed and adds 3c pieces.
-        # If this matches, remaining mismatch is in rho_2c seed construction.
-        rho3c_gpu = rho_avg_blocks - rho_blocks
-        rho3c_ref = ref_blocks - rho_blocks
-        ok_seed, max_diff_seed = compare_blocks("AvgRho_off 2c seed (rho_blocks vs rho_off)", ref_blocks, rho_blocks, tol=1e-4)
-        err_AvgRho_seed = max_diff_seed
-        rho_seed_T = np.transpose(rho_blocks, (0, 2, 1))
-        _, err_AvgRho_seed_T = compare_blocks("AvgRho_off 2c seed (transpose test)", ref_blocks, rho_seed_T, tol=1e-4)
-        if DEBUG_QIN_TEST:
-            ok_seed_qin, max_diff_seed_qin = compare_blocks("AvgRho_off 2c seed (Qin weights test)", ref_blocks, rho_blocks_qin, tol=1e-4)
-            print(f"  DEBUG seed Qin test: ok={ok_seed_qin} err={max_diff_seed_qin:.2e}")
-        ok_3c, max_diff_3c = compare_blocks("AvgRho_off 3c-only residual (ref - seed vs gpu - seed)", rho3c_ref, rho3c_gpu, tol=1e-4)
-        err_AvgRho3c = max_diff_3c
-        rho3c_gpu_T = np.transpose(rho3c_gpu, (0, 2, 1))
-        _, err_AvgRho3c_T = compare_blocks("AvgRho_off 3c-only residual (transpose test)", rho3c_ref, rho3c_gpu_T, tol=1e-4)
-
-        # Focused 3c block check for pair (0,2) using Fortran scanHamPiece3c
-        ip02 = None
-        for ip, (ia, ja) in enumerate(pairs):
-            if int(ia) == 0 and int(ja) == 2 and mask[ip] == 1:
-                ip02 = ip
-                break
-        if ip02 is not None:
-            i = 0; j = 2; k = 1
-            dRj = (atomPos[j] - atomPos[i]).copy()
-            dRk = (atomPos[k] - atomPos[i]).copy()
-            in1 = int(ispec_of_atom[i]) + 1
-            in2 = int(ispec_of_atom[j]) + 1
-            indna = int(ispec_of_atom[k]) + 1
-            nssh_k = int(sd.nssh[indna - 1])
-            block_f = np.zeros((4, 4), dtype=np.float64)
-            block_f_qin = np.zeros((4, 4), dtype=np.float64)
-            for isorp in range(1, nssh_k + 1):
-                m = fc.scanHamPiece3c(3, isorp, in1, in2, indna, dRj, dRk, applyRotation=True, norb=4)
-                block_f += m * float(Qneutral_sh[isorp - 1, indna - 1])
-                block_f_qin += m * float(Qin_shell[isorp - 1, k])
-            df_ref = rho3c_ref[ip02]
-            df_gpu = rho3c_gpu[ip02]
-            print("  3c block check (pair 0-2, cn=1):")
-            print(f"    max|F(Qneutral)-ref|={float(np.max(np.abs(block_f - df_ref))):.2e}")
-            print(f"    max|F(Qneutral)-gpu|={float(np.max(np.abs(block_f - df_gpu))):.2e}")
-            print(f"    max|F(Qin)-ref|={float(np.max(np.abs(block_f_qin - df_ref))):.2e}")
-            print(f"    max|F(Qin)-gpu|={float(np.max(np.abs(block_f_qin - df_gpu))):.2e}")
-        else:
-            print("  3c block check (pair 0-2): skipped (not in Fortran neighbor list)")
-
-        print("  Per-pair max|diff| (seed / 3c):")
-        for ip, (ia, ja) in enumerate(pairs):
-            if mask[ip] != 1:
-                continue
-            d_seed = float(np.max(np.abs(ref_blocks[ip] - rho_blocks[ip])))
-            d_3c = float(np.max(np.abs(rho3c_ref[ip] - rho3c_gpu[ip])))
-            print(f"    pair({int(ia)},{int(ja)}): seed={d_seed:.2e}  3c={d_3c:.2e}")
-
-        if mv3c_map.size:
-            n_mv1 = int(np.sum(mv3c_map == 1))
-            print(f"  DEBUG mvalue==1 count: {n_mv1} / {mv3c_map.size}")
 
     # Report a few pairs (only those present in Fortran neighbor list)
     for ip in range(pairs.shape[0]):
@@ -989,11 +976,13 @@ def run_verification():
     print(f"H raw==recon:{'PASSED' if res_H_recon else 'FAILED'}  err={err_H_recon:.2e}")
     print(f"VNL vs F:    {'PASSED' if (res_Vnl_cpu_fortran and res_Vnl_gpu_fortran) else 'FAILED'}  err=max({err_Vnl_cpu_fortran:.2e},{err_Vnl_gpu_fortran:.2e})")
     print(f"AvgRho_off:  {'PASSED' if res_AvgRho else 'FAILED'}  err={err_AvgRho:.2e}")
-    print(f"AvgRho_T:    {'PASSED' if err_AvgRho_T < 1e-6 else 'FAILED'}  err={err_AvgRho_T:.2e}")
-    print(f"AvgRho_seed:{'PASSED' if err_AvgRho_seed < 1e-6 else 'FAILED'}  err={err_AvgRho_seed:.2e}")
-    print(f"Seed_T:      {'PASSED' if err_AvgRho_seed_T < 1e-6 else 'FAILED'}  err={err_AvgRho_seed_T:.2e}")
-    print(f"AvgRho_3c:   {'PASSED' if err_AvgRho3c < 1e-6 else 'FAILED'}  err={err_AvgRho3c:.2e}")
-    print(f"AvgRho_3c_T: {'PASSED' if err_AvgRho3c_T < 1e-6 else 'FAILED'}  err={err_AvgRho3c_T:.2e}")
+    
+    #print(f"AvgRho_T:    {'PASSED' if err_AvgRho_T < 1e-6 else 'FAILED'}  err={err_AvgRho_T:.2e}")
+    #print(f"AvgRho_seed:{'PASSED' if err_AvgRho_seed < 1e-6 else 'FAILED'}  err={err_AvgRho_seed:.2e}")
+    #print(f"Seed_T:      {'PASSED' if err_AvgRho_seed_T < 1e-6 else 'FAILED'}  err={err_AvgRho_seed_T:.2e}")
+    #print(f"AvgRho_3c:   {'PASSED' if err_AvgRho3c < 1e-6 else 'FAILED'}  err={err_AvgRho3c:.2e}")
+    #print(f"AvgRho_3c_T: {'PASSED' if err_AvgRho3c_T < 1e-6 else 'FAILED'}  err={err_AvgRho3c_T:.2e}")
+
     print(f"Rot(isorp):  {'PASSED' if err_rot_isorp < 1e-6 else 'FAILED'}  err={err_rot_isorp:.2e}")
     print(f"Raw->rot F:  {'PASSED' if err_rawrot_f < 1e-6 else 'FAILED'}  err={err_rawrot_f:.2e}")
     print(f"Raw->rot O:  {'PASSED' if err_rawrot_o < 1e-6 else 'FAILED'}  err={err_rawrot_o:.2e}")

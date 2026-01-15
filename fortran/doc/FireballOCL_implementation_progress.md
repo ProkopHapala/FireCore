@@ -444,6 +444,7 @@ allocate (t_mat (numorb_max, numorb_max, neigh_max, natoms))
 3) VCA (C3): port the C2 fixes (isorp mapping, eq2 scaling, neighbor list parity) into the C3 path and compare against Fortran export in verify_C3.
 4) Re-run verify_C3 unbuffered after each change; watch summary rows AvgRho_3c_T and Seed_T to confirm orientation fixes.
 
+
 ### Known good signals
 - Rot(isorp): PASSED
 - Raw->rot F: PASSED
@@ -470,3 +471,36 @@ allocate (t_mat (numorb_max, numorb_max, neigh_max, natoms))
 - Apply a consistent transpose (or adjust accumulation) for GPU 3c blocks before summing into rho_avg to eliminate `AvgRho_3c_T` vs `AvgRho_3c` gap.
 - Re-evaluate `rho_blocks` construction/orientation against Fortran `rho_off` (2c seed) to remove the seed error.
 - Port C2 VCA fixes to C3: isorp indexing, eq2 scaling, correct neighbor lists, and parity check against Fortran export.
+
+
+### Progress 2026-01-15 — AvgRho parity achieved (itheory=1, average_ca_rho)
+**What was wrong**
+- SCF path uses `average_ca_rho` (itheory=1) with **Qin** weights; OpenCL `compute_avg_rho` was using **Qneutral** per-species weights and species-based indexing, so diagnostics stayed zero/mismatched.
+- The diagnostic snapshot in `average_ca_rho.f90` never fired because `diag_avg_rho_ineigh` was set too late.
+- Python had Fortran-style `!` comments breaking import; kernel accumulations had row/col swaps.
+
+**How we fixed it**
+- Moved all AvgRho diag buffers to `module debug` and instrumented both `average_ca_rho.f90` and `average_rho.f90` with clear markers:
+  - `! --------------------------`
+  - `! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py`
+  - … and closing `! --------------------------`
+- In `average_ca_rho.f90` selected the target neighbor during the 3c loop, snapped `rho_off` after 3c, then snapped `eps/sm/rhom2c/rhom3c/rhooff_final` after the 2c stage. Result: valid meta (`iatom=1, ineigh=3, jatom=3, mbeta=0`) and nonzero diag buffers.
+- Converted Python `!` comments to `#` (FireCore.py), fixed ctypes pointer usage.
+- Reverted kernel accum transposes to previous orientation.
+- Changed OpenCL kernel to treat the Qshell buffer as **per-atom** `[natoms*nsh_max]` and to read Qin-shell weights (passed as Qin from Python) while still using species metadata for rotations/tables.
+- In `verify_C3.py`, enabled Qin-weight path and kept `ispec_of_atom`/`nssh_species` for rotations; used Qin-shell buffer as the primary weight input.
+
+**Result**
+- `AvgRho_off` now matches Fortran exactly (max diff ~5.96e-08) for the CH₃ test with Qin weights.
+
+**Remaining issues**
+- Extra tests (AvgRho_T, AvgRho_seed, Seed_T, AvgRho_3c, AvgRho_3c_T) are redundant/NaN because we no longer export seed/3c separately; they should be skipped or removed.
+- VCA (charge-dependent 2c) still mismatches (~3.6e-01). Needs C3 parity (isorp mapping, eq2 scaling, neighbor parity) similar to the C2 fixes.
+
+**Debugging techniques used**
+- Added per-path diag snapshots in Fortran, exported via libFireCore, inspected in `verify_C3.py`.
+- Raised verbosity and printed guarded markers to confirm code paths.
+- Iterative run/inspect cycles with diag arrays to isolate weighting vs orientation issues.
+
+**Clean-up reminder**
+- Several `! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py` blocks remain in `.f90` sources; remove them once debugging is finished.
