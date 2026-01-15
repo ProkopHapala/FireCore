@@ -19,7 +19,7 @@ def compare_matrices(name, fortran_mat, ocl_mat, tol=1e-5, require_nonzero=False
 
     if require_nonzero and max_val < tol:
         print(f"WARNING: {name} is (near) zero for both; treating as failure.")
-        return False
+        return False, max_diff
     if max_diff > tol:
         print(f"WARNING: {name} discrepancy exceeds tolerance!")
         print("Fortran Matrix:")
@@ -28,9 +28,9 @@ def compare_matrices(name, fortran_mat, ocl_mat, tol=1e-5, require_nonzero=False
         print(ocl_mat)
         print("Abs Diff:")
         print(diff)
-        return False
+        return False, max_diff
     print(f"SUCCESS: {name} matches.")
-    return True
+    return True, max_diff
 
 
 def compare_matrices_brief(name, A, B, tol=1e-5, require_nonzero=False):
@@ -44,12 +44,12 @@ def compare_matrices_brief(name, A, B, tol=1e-5, require_nonzero=False):
         print(f"Argmax index: {ij}, A={float(A[ij]):.6g}, B={float(B[ij]):.6g}")
     if require_nonzero and max_val < tol:
         print(f"WARNING: {name} is (near) zero for both; treating as failure.")
-        return False
+        return False, max_diff
     if max_diff > tol:
         print(f"WARNING: {name} discrepancy exceeds tolerance!")
-        return False
+        return False, max_diff
     print(f"SUCCESS: {name} matches.")
-    return True
+    return True, max_diff
 
 
 def _orbital_layout(sparse_data, natoms):
@@ -128,7 +128,7 @@ def run_verification():
 
     print("Initializing Fortran FireCore...")
     fc.initialize(atomType=atomTypes_Z, atomPos=atomPos)
-    fc.setVerbosity(0)
+    fc.setVerbosity(0, 1)
 
     # Run SCF once; afterwards export rho/s/h from the same Fortran state.
     fc.set_export_mode(0)
@@ -179,8 +179,8 @@ def run_verification():
                 neighbors.append((i, j))
         return H, S, neighbors, sd_
 
-    def get_fortran_sparse_H_with_options(ioff_S, ioff_T, ioff_Vna, ioff_Vnl, ioff_Vxc, ioff_Vca, ioff_Vxc_ca, export_mode=1):
-        fc.set_options(ioff_S, ioff_T, ioff_Vna, ioff_Vnl, ioff_Vxc, ioff_Vca, ioff_Vxc_ca)
+    def get_fortran_sparse_H_with_options(ioff_S, ioff_T, ioff_Vna, ioff_Vnl, ioff_Vxc, ioff_Vca, ioff_Vxc_ca, ioff_Ewald=1, export_mode=1):
+        fc.set_options(ioff_S, ioff_T, ioff_Vna, ioff_Vnl, ioff_Vxc, ioff_Vca, ioff_Vxc_ca, ioff_Ewald)
         fc.set_export_mode(export_mode)
         dims_ = fc.get_HS_dims()
         sd_ = fc.get_HS_neighs(dims_)
@@ -205,12 +205,12 @@ def run_verification():
 
     # OpenCL compute_avg_rho weights 3c density pieces by *neutral* charge of the common neighbor.
     # Fortran average_rho uses Qneutral(isorp, indna) (per-shell neutral population for species indna).
-    # Here we pass a per-atom scalar Qneutral_total(atom) = sum_shell Qneutral(shell, species(atom)).
     Qneutral_sh_full = fc.get_Qneutral_shell(dims)  # [nsh_max, nspecies_fdata]
     print(f"DEBUG: Qneutral_sh_full shape={Qneutral_sh_full.shape}")
     print(f"DEBUG: Qneutral_sh_full values:\n{Qneutral_sh_full}")
     # Only use columns for valid species to avoid garbage values
     Qneutral_sh = Qneutral_sh_full[:, :dims.nspecies]
+    Qin_shell = fc.get_Qin_shell(dims)  # [nsh_max, natoms]
     print(f"DEBUG: Qneutral_sh sliced shape={Qneutral_sh.shape}")
     print(f"DEBUG: Qneutral_sh sliced values:\n{Qneutral_sh}")
     nzx_full = np.array(sd.nzx, dtype=np.int32)
@@ -223,27 +223,32 @@ def run_verification():
         if w.size == 0:
             raise RuntimeError(f"Cannot map atom Z={Z} to nzx species list {nzx}")
         ispec_of_atom[ia] = int(w[0])
-    Qatom = np.zeros(dims.natoms, dtype=np.float32)
-    for ia in range(dims.natoms):
-        ispec = ispec_of_atom[ia]
-        if ispec < Qneutral_sh.shape[1]:
-            Qatom[ia] = float(np.sum(Qneutral_sh[:, ispec]))
-        else:
-            print(f"WARNING: ispec_of_atom[{ia}]={ispec} out of bounds for Qneutral_sh.shape={Qneutral_sh.shape}")
-            Qatom[ia] = 4.0  # Default for Carbon
+    # TODO/DEBUG: Qatom unused below; summing Qneutral_sh triggered overflow on some runs.
+    # Qatom = np.zeros(dims.natoms, dtype=np.float32)
+    # for ia in range(dims.natoms):
+    #     ispec = ispec_of_atom[ia]
+    #     if ispec >= Qneutral_sh.shape[1]:
+    #         raise RuntimeError(f"ispec_of_atom[{ia}]={ispec} out of bounds for Qneutral_sh.shape={Qneutral_sh.shape}")
+    #     Qatom[ia] = float(np.sum(Qneutral_sh[:, ispec]))
 
 
     # Neighbor lists from Fortran export: neigh_j is 1-based atom index.
     neigh_lists = []
+    neigh_lists_self = []
     for ia in range(dims.natoms):
         nn = int(sd.neighn[ia])
         js = []
+        js_self = []
         for ineigh in range(nn):
             j = int(sd.neigh_j[ia, ineigh]) - 1
-            if (j >= 0) and (j < dims.natoms) and (j != ia):
-                js.append(j)
-        js = sorted(set(js))
-        neigh_lists.append(js)
+            if (j >= 0) and (j < dims.natoms):
+                js_self.append(j)
+                if j != ia:
+                    js.append(j)
+        neigh_lists.append(sorted(set(js)))
+        neigh_lists_self.append(sorted(set(js_self)))
+    print(f"DEBUG: neigh_lists (no self) = {neigh_lists}")
+    print(f"DEBUG: neigh_lists_self = {neigh_lists_self}")
 
     # Build pairs from neighbor lists (unique i<j)
     pairs = []
@@ -255,9 +260,8 @@ def run_verification():
         raise RuntimeError("[PLUMBING] No neighbor pairs found")
     pairs = np.array(pairs, dtype=np.int32)
 
-    # Ensure pair (0,2) is present; if not, append it explicitly (even if not a direct neighbor)
-    if not np.any((pairs[:, 0] == 0) & (pairs[:, 1] == 2)):
-        pairs = np.vstack([pairs, np.array([[0, 2]], dtype=np.int32)])
+    # TODO/DEBUG: do NOT inject non-Fortran neighbor pairs; comparisons must follow Fortran neighbor list exactly.
+    # If pair (0,2) is not in the Fortran neighbor list, we skip its diagnostics below.
 
     cn_offsets, cn_indices = ham.build_common_neighbor_csr(neigh_lists, pairs)
     cn_counts = cn_offsets[1:] - cn_offsets[:-1]
@@ -272,8 +276,10 @@ def run_verification():
             if j >= 0:
                 neigh_index[(ia, j)] = ineigh
 
+    DEBUG_QIN_TEST = False
     S_blocks = np.zeros((pairs.shape[0], 4, 4), dtype=np.float32)
     rho_blocks = np.zeros((pairs.shape[0], 4, 4), dtype=np.float32)
+    rho_blocks_qin = np.zeros((pairs.shape[0], 4, 4), dtype=np.float32) if DEBUG_QIN_TEST else None
     for ip, (ia, ja) in enumerate(pairs):
         ineigh = neigh_index.get((int(ia), int(ja)), None)
         if ineigh is None:
@@ -291,21 +297,27 @@ def run_verification():
 
         # Left piece (interaction=15): sum_{isorp=1..nssh(in_i)} den_ontopl * Qneutral(isorp,in_i)
         Af = np.zeros((4, 4), dtype=np.float64)
-        for isorp in range(1, int(np.count_nonzero(Qneutral_sh[:, ispec_i] != 0.0)) + 1):
+        Af_qin = np.zeros((4, 4), dtype=np.float64)
+        for isorp in range(1, int(sd.nssh[ispec_i]) + 1):
             w = float(Qneutral_sh[isorp - 1, ispec_i])
             if w == 0.0:
                 continue
             Af += fc.scanHamPiece2c(15, isorp, in_i, in_i, in_j, dR, applyRotation=True, norb=4) * w
+            Af_qin += fc.scanHamPiece2c(15, isorp, in_i, in_i, in_j, dR, applyRotation=True, norb=4) * float(Qin_shell[isorp - 1, int(ia)])
 
         # Right piece (interaction=16): sum_{isorp=1..nssh(in_j)} den_ontopr * Qneutral(isorp,in_j)
         Bf = np.zeros((4, 4), dtype=np.float64)
-        for isorp in range(1, int(np.count_nonzero(Qneutral_sh[:, ispec_j] != 0.0)) + 1):
+        Bf_qin = np.zeros((4, 4), dtype=np.float64)
+        for isorp in range(1, int(sd.nssh[ispec_j]) + 1):
             w = float(Qneutral_sh[isorp - 1, ispec_j])
             if w == 0.0:
                 continue
             Bf += fc.scanHamPiece2c(16, isorp, in_i, in_j, in_j, dR, applyRotation=True, norb=4) * w
+            Bf_qin += fc.scanHamPiece2c(16, isorp, in_i, in_j, in_j, dR, applyRotation=True, norb=4) * float(Qin_shell[isorp - 1, int(ja)])
 
         rho_blocks[ip, :, :] = (Af + Bf).astype(np.float32)
+        if DEBUG_QIN_TEST:
+            rho_blocks_qin[ip, :, :] = (Af_qin + Bf_qin).astype(np.float32)
 
     # Triplet type selection: key is (root,nz1,nz2,nz3) where nz3 is the common neighbor type
     root = 'den3'
@@ -337,10 +349,7 @@ def run_verification():
         raise RuntimeError("Qneutral_sh has zero species dimension")
     if int(np.max(ispec_of_atom)) >= nspecies_fdata:
         raise RuntimeError(f"ispec_of_atom out of range: max={int(np.max(ispec_of_atom))} nspecies_fdata(Qneutral_sh)={nspecies_fdata}")
-    nssh_species = np.zeros(nspecies_fdata, dtype=np.int32)
-    # Derive nssh for each Fdata species from Qneutral_sh nonzero count (robust to differing nsh_max).
-    for ispec in range(nspecies_fdata):
-        nssh_species[ispec] = int(np.count_nonzero(Qneutral_sh[:, ispec] != 0.0))
+    nssh_species = np.ascontiguousarray(sd.nssh[:dims.nspecies], dtype=np.int32)
 
     # Use Fortran-exported mu/nu/mvalue (make_munu) to reconstruct 3c blocks exactly.
     # FireCore.py stores Fortran mu(index,in1,in2) as sd.mu[in2-1, in1-1, index-1] due to axis reversal.
@@ -358,12 +367,242 @@ def run_verification():
     nu3c_map[:, :] = sd.nu[in2-1, in1-1, :n_nz_max].astype(np.int16)
     mv3c_map[:, :] = sd.mvalue[in2-1, in1-1, :n_nz_max].astype(np.int8)
 
+    print(f"DEBUG mu/nu/mvalue (sd) first 12: mu={mu3c_map[0,:12]}  nu={nu3c_map[0,:12]}  mv={mv3c_map[0,:12]}")
+    # TODO/DEBUG: override mu/nu map to expected sp mapping (from make_munu) to check Fortran export layout
+    DEBUG_MUNU_OVERRIDE = True
+    if DEBUG_MUNU_OVERRIDE:
+        mu_sp = np.array([1, 1, 3, 2, 3, 4, 1, 4, 4, 3], dtype=np.int16)
+        nu_sp = np.array([1, 3, 1, 2, 3, 4, 4, 1, 3, 4], dtype=np.int16)
+        mv_sp = np.array([0, 0, 0, 0, 0, 0, 1, 1, 1, 1], dtype=np.int8)
+        mu3c_map[:, :] = 0
+        nu3c_map[:, :] = 0
+        mv3c_map[:, :] = 0
+        mu3c_map[:, :mu_sp.size] = mu_sp
+        nu3c_map[:, :nu_sp.size] = nu_sp
+        mv3c_map[:, :mv_sp.size] = mv_sp
+        print(f"DEBUG mu/nu/mvalue (override) first 12: mu={mu3c_map[0,:12]}  nu={nu3c_map[0,:12]}  mv={mv3c_map[0,:12]}")
+
     if np.any(np.isnan(rho_blocks)):
         print("ERROR: rho_blocks contains NaN!")
     if np.any(np.isnan(Qneutral_sh)):
         print("ERROR: Qneutral_sh contains NaN!")
         
-    rho_avg_blocks = ham.compute_avg_rho_3c(atomPos, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_blocks, Qneutral_sh, ispec_of_atom, nssh_species, dims.nsh_max, mu3c_map=mu3c_map, nu3c_map=nu3c_map, mvalue3c_map=mv3c_map)
+    def _epsilon_fb_py(r1, r2):
+        r1mag = np.linalg.norm(r1)
+        r2mag = np.linalg.norm(r2)
+        spe = np.zeros((3, 3), dtype=np.float64)
+        if r2mag < 1e-4:
+            np.fill_diagonal(spe, 1.0)
+            return spe
+        zphat = r2 / r2mag
+        if r1mag > 1e-4:
+            r1hat = r1 / r1mag
+            yphat = np.cross(zphat, r1hat)
+            ypmag = np.linalg.norm(yphat)
+            if ypmag > 1e-6:
+                yphat = yphat / ypmag
+                xphat = np.cross(yphat, zphat)
+                spe[:, 0] = xphat
+                spe[:, 1] = yphat
+                spe[:, 2] = zphat
+                return spe
+        if abs(zphat[0]) > 1e-4:
+            yphat = np.array([-(zphat[1] + zphat[2]) / zphat[0], 1.0, 1.0])
+        elif abs(zphat[1]) > 1e-4:
+            yphat = np.array([1.0, -(zphat[0] + zphat[2]) / zphat[1], 1.0])
+        else:
+            yphat = np.array([1.0, 1.0, -(zphat[0] + zphat[1]) / zphat[2]])
+        yphat = yphat / np.linalg.norm(yphat)
+        xphat = np.cross(yphat, zphat)
+        spe[:, 0] = xphat
+        spe[:, 1] = yphat
+        spe[:, 2] = zphat
+        return spe
+
+    def _twister_pmat(eps):
+        # Fortran twister: pmat(1,1)=eps(2,2), pmat(1,2)=eps(2,3), pmat(1,3)=eps(2,1), ...
+        return np.array([
+            [eps[1, 1], eps[1, 2], eps[1, 0]],
+            [eps[2, 1], eps[2, 2], eps[2, 0]],
+            [eps[0, 1], eps[0, 2], eps[0, 0]],
+        ], dtype=np.float64)
+
+    def _chooser(l, pmat):
+        if l == 0:
+            return np.array([[1.0]], dtype=np.float64)
+        if l == 1:
+            return pmat.astype(np.float64)
+        raise RuntimeError(f"rotate_fb: unsupported l={l} (only s+p handled)")
+
+    def _rotate_fb_py(in1, in2, eps, mmatrix, lssh, nssh):
+        # Fortran rotate_fb: left/right from chooser, apply left * M * right (with right in Fortran indexing)
+        pmat = _twister_pmat(eps)
+        # FireCore.py stores lssh with species as first axis (row). Use that layout here.
+        lssh1 = [int(x) for x in lssh[in1 - 1, :int(nssh[in1 - 1])]]
+        lssh2 = [int(x) for x in lssh[in2 - 1, :int(nssh[in2 - 1])]]
+        xmatrix = np.zeros_like(mmatrix, dtype=np.float64)
+        n1 = 0
+        for l1 in lssh1:
+            left = _chooser(l1, pmat)
+            n2 = 0
+            for l2 in lssh2:
+                right = _chooser(l2, pmat)
+                n1b = n1 + 2 * l1 + 1
+                n2b = n2 + 2 * l2 + 1
+                sub = mmatrix[n1:n1b, n2:n2b]
+                xmatrix[n1:n1b, n2:n2b] += left @ sub @ right.T
+                n2 = n2b
+            n1 = n1b
+        return xmatrix
+
+    def _recover_rotate_sp(hlist, mu, nu, eps, in1, in2, lssh, nssh):
+        m = np.zeros((4, 4), dtype=np.float64)
+        for idx in range(mu.size):
+            imu = int(mu[idx]); inu = int(nu[idx])
+            if imu <= 0 or inu <= 0 or imu > 4 or inu > 4:
+                continue
+            m[imu - 1, inu - 1] = hlist[idx]
+        return _rotate_fb_py(in1, in2, eps, m, lssh, nssh)
+
+    def _recover_sp(hlist, mu, nu):
+        m = np.zeros((4, 4), dtype=np.float64)
+        for idx in range(mu.size):
+            imu = int(mu[idx]); inu = int(nu[idx])
+            if imu <= 0 or inu <= 0 or imu > 4 or inu > 4:
+                continue
+            m[imu - 1, inu - 1] = hlist[idx]
+        return m
+
+    # Raw 3c interpolation check (no rotation/recover) for a single triplet
+    DEBUG_RAW3C = True
+    err_rot_isorp = float('nan')
+    err_rawrot_f = float('nan')
+    err_rawrot_o = float('nan')
+    if DEBUG_RAW3C and natoms >= 3:
+        i = 0; j = 2; k = 1
+        dRj = (atomPos[j] - atomPos[i]).copy()
+        dRk = (atomPos[k] - atomPos[i]).copy()
+        in1 = int(ispec_of_atom[i]) + 1
+        in2 = int(ispec_of_atom[j]) + 1
+        indna = int(ispec_of_atom[k]) + 1
+        nz1 = int(atomTypes_Z[i]); nz2 = int(atomTypes_Z[j]); nz3 = int(atomTypes_Z[k])
+        nssh_k = int(sd.nssh[indna - 1])
+        print(f"\n[DEBUG] 3c raw check pair({i},{j}) cn={k} nssh_k={nssh_k}")
+        dims_dbg = fc.get_HS_dims(force_refresh=True)
+        print(f"[DEBUG] max_mu_dim3(dims)={dims_dbg.max_mu_dim3}  n_nz_3c_max(ham)={ham.n_nz_3c_max}  n_nz_max(local)={n_nz_max}")
+        r1 = atomPos[i]
+        r2 = atomPos[j]
+        r21 = r2 - r1
+        y = np.linalg.norm(r21)
+        sighat = r21 / y if y > 1e-12 else np.array([0.0, 0.0, 1.0])
+        mid = 0.5 * (r1 + r2)
+        rnabc = atomPos[k] - mid
+        x = np.linalg.norm(rnabc)
+        rhat = rnabc / x if x > 1e-12 else np.array([0.0, 0.0, 0.0])
+        cost = float(np.dot(sighat, rhat))
+        cost2 = cost * cost
+        argument = 1.0 - cost2
+        if argument < 1e-5:
+            argument = 1e-5
+        sint = np.sqrt(argument)
+        P = np.zeros(5, dtype=np.float64)
+        P[0] = 1.0
+        P[1] = cost
+        P[2] = (3.0 * cost2 - 1.0) * 0.5
+        P[3] = (5.0 * cost2 * cost - 3.0 * cost) * 0.5
+        P[4] = (35.0 * cost2 * cost2 - 30.0 * cost2 + 3.0) * 0.125
+        eps = _epsilon_fb_py(rhat, sighat)
+        print("  [PY] eps(3x3):")
+        print(eps)
+        print(f"  [PY] nssh in1={in1} nssh[in1]={int(sd.nssh[in1-1])} lssh_row={sd.lssh[in1-1, :int(sd.nssh[in1-1])]}")
+        print(f"  [PY] nssh in2={in2} nssh[in2]={int(sd.nssh[in2-1])} lssh_row={sd.lssh[in2-1, :int(sd.nssh[in2-1])]}")
+
+        block_f_sum = np.zeros((4, 4), dtype=np.float64)
+        block_o_sum = np.zeros((4, 4), dtype=np.float64)
+        print("verify_C3.py() 1")
+        err_rot_isorp = 0.0
+        for isorp in range(1, nssh_k + 1):
+            print("verify_C3.py() 2")
+            out_f = np.zeros((5, n_nz_max), dtype=np.float64, order='F')
+            raw_f = fc.scanHamPiece3c_raw(3, isorp, in1, in2, indna, dRj, dRk, out=out_f)
+            print("verify_C3.py() 3")
+            print("verify_C3.py() 3 --- ")
+            print("verify_C3.py() 3 ---dRk ", dRj )
+            print("verify_C3.py() 3 ---dRk ", dRk )
+            raw_o = ham.scanHamPiece3c_raw_batch('den3', nz1, nz2, nz3, np.array([dRj], dtype=np.float32), np.array([dRk], dtype=np.float32), isorp=isorp)
+            print("verify_C3.py() 4")
+            if raw_o is None:
+                print(f"  raw3c isorp={isorp}: missing OCL table")
+                continue
+            raw_o0 = raw_o[0]
+            print(f"  [PY] raw_f (theta x ME) isorp={isorp}:")
+            print(raw_f[:, :min(10, raw_f.shape[1])])
+            print(f"  [PY] raw_o (theta x ME) isorp={isorp}:")
+            print(raw_o0[:, :min(10, raw_o0.shape[1])])
+            n_me = min(raw_f.shape[1], raw_o0.shape[1], n_nz_max)
+            diff_raw = np.max(np.abs(raw_f[:, :n_me] - raw_o0[:, :n_me]))
+            print(f"  raw3c isorp={isorp}: max|F-OCL|={diff_raw:.2e}")
+            # build hlist and rotate
+            h_f = np.zeros(n_nz_max, dtype=np.float64)
+            h_o = np.zeros(n_nz_max, dtype=np.float64)
+            for iME in range(n_me):
+                hf = float(np.dot(P, raw_f[:, iME]))
+                ho = float(np.dot(P, raw_o0[:, iME]))
+                if int(mv3c_map[0, iME]) == 1:
+                    hf *= sint
+                    ho *= sint
+                h_f[iME] = hf
+                h_o[iME] = ho
+            print(f"  [PY] hlist_f (first 10) isorp={isorp}:", h_f[:10])
+            print(f"  [PY] hlist_o (first 10) isorp={isorp}:", h_o[:10])
+            m_f = _recover_sp(h_f, mu3c_map[0], nu3c_map[0])
+            m_o = _recover_sp(h_o, mu3c_map[0], nu3c_map[0])
+            print("  [PY] bcnam_f pre-rot (4x4):")
+            print(m_f)
+            print("  [PY] bcnam_o pre-rot (4x4):")
+            print(m_o)
+            wf = float(Qneutral_sh[isorp - 1, indna - 1])
+            bcnax_f = _recover_rotate_sp(h_f, mu3c_map[0], nu3c_map[0], eps, in1, in2, sd.lssh, sd.nssh)
+            bcnax_o = _recover_rotate_sp(h_o, mu3c_map[0], nu3c_map[0], eps, in1, in2, sd.lssh, sd.nssh)
+            bcnax_f_sd = _recover_rotate_sp(h_f, sd.mu[in2-1, in1-1, :n_nz_max].astype(np.int16), sd.nu[in2-1, in1-1, :n_nz_max].astype(np.int16), eps, in1, in2, sd.lssh, sd.nssh)
+            print(f"  [PY] bcnax_f post-rot isorp={isorp}:")
+            print(bcnax_f)
+            print(f"  [PY] bcnax_o post-rot isorp={isorp}:")
+            print(bcnax_o)
+            print(f"  [PY] bcnax_f_sdmap post-rot isorp={isorp}:")
+            print(bcnax_f_sd)
+            ref_is = fc.scanHamPiece3c(3, isorp, in1, in2, indna, dRj, dRk, applyRotation=True, norb=4)
+            ref_is_T = ref_is.T.copy()
+            print(f"  [PY] scanHamPiece3c block isorp={isorp} (raw, col-major):")
+            print(ref_is)
+            print(f"  [PY] scanHamPiece3c block isorp={isorp} (transposed):")
+            print(ref_is_T)
+            print(f"  [PY] bcnax_f - scanHamPiece3c(T) isorp={isorp}:")
+            print(bcnax_f - ref_is_T)
+            err_is = float(np.max(np.abs(bcnax_f - ref_is_T)))
+            err_rot_isorp = max(err_rot_isorp, err_is)
+            print(f"  [PY] max|bcnax_f - scanHamPiece3c(T)| isorp={isorp} = {err_is:.3e}")
+            print(f"  [PY] max|bcnax_f_sdmap - scanHamPiece3c(T)| isorp={isorp} = {float(np.max(np.abs(bcnax_f_sd - ref_is_T))):.3e}")
+            # TODO/DEBUG: keep alt rotations removed; we now use exact rotate_fb implementation above
+            block_f_sum += bcnax_f * wf
+            block_o_sum += bcnax_o * wf
+        print("verify_C3.py() 5")
+        block_ref = fc.scanHamPiece3c(3, 1, in1, in2, indna, dRj, dRk, applyRotation=True, norb=4).T * float(Qneutral_sh[0, indna - 1])
+        print("verify_C3.py() 6")
+        if nssh_k > 1:
+            block_ref += fc.scanHamPiece3c(3, 2, in1, in2, indna, dRj, dRk, applyRotation=True, norb=4).T * float(Qneutral_sh[1, indna - 1])
+        print("verify_C3.py() 7")
+        err_rawrot_f = float(np.max(np.abs(block_f_sum - block_ref)))
+        err_rawrot_o = float(np.max(np.abs(block_o_sum - block_ref)))
+        print(f"  raw->rot (Fraw) vs Fortran scan: max|diff|={err_rawrot_f:.2e}")
+        print(f"  raw->rot (OCLraw) vs Fortran scan: max|diff|={err_rawrot_o:.2e}")
+
+    rho_avg_blocks = ham.compute_avg_rho_3c(atomPos, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_blocks, Qneutral_sh, ispec_of_atom, nssh_species, sd.lssh[:dims.nspecies], dims.nsh_max, mu3c_map=mu3c_map, nu3c_map=nu3c_map, mvalue3c_map=mv3c_map)
+    rho_avg_blocks_qin = None
+    if DEBUG_QIN_TEST:
+        ispec_atom = np.arange(natoms, dtype=np.int32)
+        nssh_atom = np.full(natoms, int(sd.nssh[0]), dtype=np.int32)
+        rho_avg_blocks_qin = ham.compute_avg_rho_3c(atomPos, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_blocks_qin, Qin_shell, ispec_atom, nssh_atom, sd.lssh[:dims.nspecies], dims.nsh_max, mu3c_map=mu3c_map, nu3c_map=nu3c_map, mvalue3c_map=mv3c_map)
 
     # Build Fortran reference blocks: rho_off is stored in sd.rho_off in the same blocked layout as sd.rho.
     # compute_avg_rho kernel returns rho_off-like blocks (unnormalized) for direct comparison.
@@ -376,22 +615,85 @@ def run_verification():
         ref_blocks[ip, :, :] = sd.rho_off[int(ia), ineigh, :4, :4].astype(np.float32)
         mask[ip] = 1
 
-    res_AvgRho = True
-    maxdiff = 0.0
+    res_AvgRho = False
+    err_AvgRho = float('nan')
+    err_AvgRho3c = float('nan')
+    err_AvgRho_seed = float('nan')
+    err_AvgRho_T = float('nan')
+    err_AvgRho_seed_T = float('nan')
+    err_AvgRho3c_T = float('nan')
     if np.any(mask == 1):
         ok_avg, max_diff_avg = compare_blocks("AvgRho_off (Fortran rho_off vs OpenCL compute_avg_rho)", ref_blocks, rho_avg_blocks, tol=1e-4)
+        res_AvgRho = ok_avg
+        err_AvgRho = max_diff_avg
+        rho_avg_T = np.transpose(rho_avg_blocks, (0, 2, 1))
+        _, err_AvgRho_T = compare_blocks("AvgRho_off (transpose test)", ref_blocks, rho_avg_T, tol=1e-4)
+        if DEBUG_QIN_TEST:
+            ok_avg_qin, max_diff_avg_qin = compare_blocks("AvgRho_off (Qin weights test)", ref_blocks, rho_avg_blocks_qin, tol=1e-4)
+            print(f"  DEBUG AvgRho Qin test: ok={ok_avg_qin} err={max_diff_avg_qin:.2e}")
     else:
         print("WARNING: No comparable neighbor blocks found (mask empty)")
-        res_AvgRho = False
 
     if np.any(mask == 1):
         # Isolate 3c contribution: kernel starts from rho_2c seed and adds 3c pieces.
         # If this matches, remaining mismatch is in rho_2c seed construction.
         rho3c_gpu = rho_avg_blocks - rho_blocks
         rho3c_ref = ref_blocks - rho_blocks
+        ok_seed, max_diff_seed = compare_blocks("AvgRho_off 2c seed (rho_blocks vs rho_off)", ref_blocks, rho_blocks, tol=1e-4)
+        err_AvgRho_seed = max_diff_seed
+        rho_seed_T = np.transpose(rho_blocks, (0, 2, 1))
+        _, err_AvgRho_seed_T = compare_blocks("AvgRho_off 2c seed (transpose test)", ref_blocks, rho_seed_T, tol=1e-4)
+        if DEBUG_QIN_TEST:
+            ok_seed_qin, max_diff_seed_qin = compare_blocks("AvgRho_off 2c seed (Qin weights test)", ref_blocks, rho_blocks_qin, tol=1e-4)
+            print(f"  DEBUG seed Qin test: ok={ok_seed_qin} err={max_diff_seed_qin:.2e}")
         ok_3c, max_diff_3c = compare_blocks("AvgRho_off 3c-only residual (ref - seed vs gpu - seed)", rho3c_ref, rho3c_gpu, tol=1e-4)
+        err_AvgRho3c = max_diff_3c
+        rho3c_gpu_T = np.transpose(rho3c_gpu, (0, 2, 1))
+        _, err_AvgRho3c_T = compare_blocks("AvgRho_off 3c-only residual (transpose test)", rho3c_ref, rho3c_gpu_T, tol=1e-4)
 
-    # Report a few pairs, focusing on (0,2) which should have CN count 1 in the linear chain
+        # Focused 3c block check for pair (0,2) using Fortran scanHamPiece3c
+        ip02 = None
+        for ip, (ia, ja) in enumerate(pairs):
+            if int(ia) == 0 and int(ja) == 2 and mask[ip] == 1:
+                ip02 = ip
+                break
+        if ip02 is not None:
+            i = 0; j = 2; k = 1
+            dRj = (atomPos[j] - atomPos[i]).copy()
+            dRk = (atomPos[k] - atomPos[i]).copy()
+            in1 = int(ispec_of_atom[i]) + 1
+            in2 = int(ispec_of_atom[j]) + 1
+            indna = int(ispec_of_atom[k]) + 1
+            nssh_k = int(sd.nssh[indna - 1])
+            block_f = np.zeros((4, 4), dtype=np.float64)
+            block_f_qin = np.zeros((4, 4), dtype=np.float64)
+            for isorp in range(1, nssh_k + 1):
+                m = fc.scanHamPiece3c(3, isorp, in1, in2, indna, dRj, dRk, applyRotation=True, norb=4)
+                block_f += m * float(Qneutral_sh[isorp - 1, indna - 1])
+                block_f_qin += m * float(Qin_shell[isorp - 1, k])
+            df_ref = rho3c_ref[ip02]
+            df_gpu = rho3c_gpu[ip02]
+            print("  3c block check (pair 0-2, cn=1):")
+            print(f"    max|F(Qneutral)-ref|={float(np.max(np.abs(block_f - df_ref))):.2e}")
+            print(f"    max|F(Qneutral)-gpu|={float(np.max(np.abs(block_f - df_gpu))):.2e}")
+            print(f"    max|F(Qin)-ref|={float(np.max(np.abs(block_f_qin - df_ref))):.2e}")
+            print(f"    max|F(Qin)-gpu|={float(np.max(np.abs(block_f_qin - df_gpu))):.2e}")
+        else:
+            print("  3c block check (pair 0-2): skipped (not in Fortran neighbor list)")
+
+        print("  Per-pair max|diff| (seed / 3c):")
+        for ip, (ia, ja) in enumerate(pairs):
+            if mask[ip] != 1:
+                continue
+            d_seed = float(np.max(np.abs(ref_blocks[ip] - rho_blocks[ip])))
+            d_3c = float(np.max(np.abs(rho3c_ref[ip] - rho3c_gpu[ip])))
+            print(f"    pair({int(ia)},{int(ja)}): seed={d_seed:.2e}  3c={d_3c:.2e}")
+
+        if mv3c_map.size:
+            n_mv1 = int(np.sum(mv3c_map == 1))
+            print(f"  DEBUG mvalue==1 count: {n_mv1} / {mv3c_map.size}")
+
+    # Report a few pairs (only those present in Fortran neighbor list)
     for ip in range(pairs.shape[0]):
         i, j = int(pairs[ip, 0]), int(pairs[ip, 1])
         if (i, j) in [(0, 2), (0, 1), (1, 2)]:
@@ -435,11 +737,11 @@ def run_verification():
 
     print("\nTesting Overlap S...")
     S_f, S_o = _scan_table_2c(1, 'overlap', applyRotation_offdiag=True, applyRotation_self=False, in3=1)
-    res_S = compare_matrices("Overlap S", S_f, S_o, tol=1e-6, require_nonzero=True)
+    res_S, err_S = compare_matrices("Overlap S", S_f, S_o, tol=1e-6, require_nonzero=True)
 
     print("\nTesting Kinetic T...")
     T_f, T_o = _scan_table_2c(13, 'kinetic', applyRotation_offdiag=True, applyRotation_self=False, in3=1)
-    res_T = compare_matrices("Kinetic T", T_f, T_o, tol=1e-5, require_nonzero=True)
+    res_T, err_T = compare_matrices("Kinetic T", T_f, T_o, tol=1e-5, require_nonzero=True)
 
     print("\nTesting Vna...")
     # Fortran Vna total = ontopl(2)+ontopr(3) for off-diagonal; vna_atom(4) for self accumulated from neighbor direction.
@@ -461,12 +763,12 @@ def run_verification():
         blocks_o.append(Ao)
     Vna_f = _dense_from_neighbor_list(neighs_all, np.array(blocks_f, dtype=np.float64), n_orb_atom, offs)
     Vna_o = _dense_from_neighbor_list(neighs_all, np.array(blocks_o, dtype=np.float64), n_orb_atom, offs)
-    res_Vna = compare_matrices("Vna", Vna_f, Vna_o, tol=1e-5, require_nonzero=True)
+    res_Vna, err_Vna = compare_matrices("Vna", Vna_f, Vna_o, tol=1e-5, require_nonzero=True)
 
     print("\nTesting sVNL (PP overlap, interaction=5)...")
     sVNL_f, sVNL_o = _scan_table_2c(5, 'vnl', applyRotation_offdiag=True, applyRotation_self=False, in3=1)
     require_nz = np.max(np.abs(sVNL_f)) > 1e-6
-    res_sVNL = compare_matrices("sVNL", sVNL_f, sVNL_o, tol=1e-5, require_nonzero=require_nz)
+    res_sVNL, err_sVNL = compare_matrices("sVNL", sVNL_f, sVNL_o, tol=1e-5, require_nonzero=require_nz)
 
     # ------------------------------------------------------------------------------------------
     # Contracted VNL: scan sVNL + contract (reference) vs ham.assemble_full CPU/GPU and Fortran gated export
@@ -550,8 +852,8 @@ def run_verification():
     Vnl_cpu = _dense_from_neighbor_list(neighs_vnl, np.array(H_vnl_cpu_blocks, dtype=np.float64), n_orb_atom, offs)
     Vnl_gpu = _dense_from_neighbor_list(neighs_vnl, np.array(H_vnl_gpu_blocks, dtype=np.float64), n_orb_atom, offs)
 
-    res_Vnl_cpu = compare_matrices("VNL (CPU contraction)", Vnl_ref, Vnl_cpu, tol=1e-5, require_nonzero=True)
-    res_Vnl_gpu = compare_matrices("VNL (GPU contraction)", Vnl_ref, Vnl_gpu, tol=1e-5, require_nonzero=True)
+    res_Vnl_cpu, err_Vnl_cpu = compare_matrices("VNL (CPU contraction)", Vnl_ref, Vnl_cpu, tol=1e-5, require_nonzero=True)
+    res_Vnl_gpu, err_Vnl_gpu = compare_matrices("VNL (GPU contraction)", Vnl_ref, Vnl_gpu, tol=1e-5, require_nonzero=True)
 
     print("\nTesting contracted VNL (Fortran gated export vs OpenCL CPU/GPU)...")
     Vnl_fortran_full, _neighs_vnl_f, _sd_vnl_f = get_fortran_sparse_H_with_options(0, 0, 0, 1, 0, 0, 0, export_mode=2)
@@ -559,42 +861,143 @@ def run_verification():
     Vnl_fortran = Vnl_fortran_full
     print(f"  neighs_vnl blocks: {len(neighs_vnl)}")
     print(f"  max|Vnl_fortran|={float(np.max(np.abs(Vnl_fortran))):.3e}  max|Vnl_cpu|={float(np.max(np.abs(Vnl_cpu))):.3e}")
-    res_Vnl_cpu_fortran = compare_matrices_brief("VNL (CPU) vs Fortran export", Vnl_fortran, Vnl_cpu, tol=1e-5, require_nonzero=True)
-    res_Vnl_gpu_fortran = compare_matrices_brief("VNL (GPU) vs Fortran export", Vnl_fortran, Vnl_gpu, tol=1e-5, require_nonzero=True)
+    res_Vnl_cpu_fortran, err_Vnl_cpu_fortran = compare_matrices_brief("VNL (CPU) vs Fortran export", Vnl_fortran, Vnl_cpu, tol=1e-5, require_nonzero=True)
+    res_Vnl_gpu_fortran, err_Vnl_gpu_fortran = compare_matrices_brief("VNL (GPU) vs Fortran export", Vnl_fortran, Vnl_gpu, tol=1e-5, require_nonzero=True)
 
     print("\nTesting Fortran export reconstruction (raw full H vs reconstructed full H)...")
     H_full_raw, S_full_raw, neighbors_sparse, sparse_data = get_fortran_sparse_full(export_mode=0)
     H_full_rec, S_full_rec, _neighbors2, _sparse2 = get_fortran_sparse_full(export_mode=1)
-    res_H_recon = compare_matrices("Fortran full H: raw vs reconstructed", H_full_raw, H_full_rec, tol=1e-6, require_nonzero=True)
-    _ = compare_matrices("Fortran full S: raw vs reconstructed(export)", S_full_raw, S_full_rec, tol=1e-12, require_nonzero=True)
+    res_H_recon, err_H_recon = compare_matrices("Fortran full H: raw vs reconstructed", H_full_raw, H_full_rec, tol=1e-6, require_nonzero=True)
+    res_S_recon, err_S_recon = compare_matrices("Fortran full S: raw vs reconstructed(export)", S_full_raw, S_full_rec, tol=1e-12, require_nonzero=True)
 
     print("\nTesting combined 2-center H = T + Vna (from scan API)...")
     H2c_f = T_f + Vna_f
     H2c_o = T_o + Vna_o
-    res_H2c = compare_matrices("H2c (T+Vna)", H2c_f, H2c_o, tol=1e-5, require_nonzero=True)
+    res_H2c, err_H2c = compare_matrices("H2c (T+Vna)", H2c_f, H2c_o, tol=1e-5, require_nonzero=True)
+
+    print("\nTesting Vca (charge-dependent, 2-center only)...")
+    H_vca_f, _neighbors_vca_f, _sd_vca_f = get_fortran_sparse_H_with_options(0, 0, 0, 0, 0, 1, 0, ioff_Ewald=0, export_mode=2)
+    print("  Fortran Vca matrix (isolated):")
+    print(H_vca_f)
+
+    dq_shell = np.zeros((dims.nsh_max, natoms))
+    for ia in range(natoms):
+        ispec = int(ispec_of_atom[ia])
+        for issh in range(int(sd.nssh[ispec])):
+            dq_shell[issh, ia] = Qin_shell[issh, ia] - Qneutral_sh[issh, ispec]
+    print("  dq_shell:")
+    print(dq_shell)
+
+    Vca_manual = np.zeros_like(H_vca_f)
+    EQ2 = 14.39975
+    for i in range(natoms):
+        ni = int(n_orb_atom[i]); i0 = int(offs[i])
+        in_i = int(ispec_of_atom[i]) + 1
+        V_ii = np.zeros((ni, ni))
+        for k in neigh_lists_self[i]:
+            in_k = int(ispec_of_atom[k]) + 1
+            dR_ik = atomPos[k] - atomPos[i]
+            for isorp in range(1, int(sd.nssh[in_k - 1]) + 1):
+                dqk = dq_shell[isorp - 1, k]
+                m = fc.scanHamPiece2c(4, isorp, in_i, in_k, in_i, dR_ik, applyRotation=True)
+                V_ii += m * dqk
+        Vca_manual[i0:i0+ni, i0:i0+ni] += V_ii * EQ2
+
+    for i in range(natoms):
+        in_i = int(ispec_of_atom[i]) + 1
+        ni = int(n_orb_atom[i]); i0 = int(offs[i])
+        for j in neigh_lists[i]:
+            in_j = int(ispec_of_atom[j]) + 1
+            nj = int(n_orb_atom[j]); j0 = int(offs[j])
+            dR = atomPos[j] - atomPos[i]
+            mat2 = np.zeros((ni, nj))
+            for isorp in range(1, int(sd.nssh[in_i - 1]) + 1):
+                mat2 += fc.scanHamPiece2c(2, isorp, in_i, in_i, in_j, dR, applyRotation=True) * dq_shell[isorp - 1, i]
+            mat3 = np.zeros((ni, nj))
+            for isorp in range(1, int(sd.nssh[in_j - 1]) + 1):
+                mat3 += fc.scanHamPiece2c(3, isorp, in_i, in_j, in_j, dR, applyRotation=True) * dq_shell[isorp - 1, j]
+            Vca_manual[i0:i0+ni, j0:j0+nj] += (mat2 + mat3) * EQ2
+
+    diff_vca = np.abs(H_vca_f - Vca_manual)
+    print(f"  Max diff Vca manual vs Fortran: {float(np.max(diff_vca)):.2e}")
+    res_Vca = np.max(diff_vca) < 1e-4
+
+    neigh_list_vca = []
+    for ia in range(natoms):
+        for ja in neigh_lists_self[ia]:
+            neigh_list_vca.append((ia, int(ja)))
+
+    pair_types_vca = []
+    for (i, j) in neigh_list_vca:
+        nz1 = int(atomTypes_Z[i]); nz2 = int(atomTypes_Z[j])
+        k = ('vna', nz1, nz2)
+        idx = ham.species_pair_map.get(k)
+        if idx is None:
+            print(f"Warning: missing vna pair type for {nz1},{nz2}")
+            idx = 0
+        pair_types_vca.append(idx)
+
+    off_vca, diag_vca = ham.assemble_vca(atomPos, np.array(neigh_list_vca), np.array(pair_types_vca), dq_shell)
+    Vca_ocl = np.zeros_like(H_vca_f)
+    for k, (i, j) in enumerate(neigh_list_vca):
+        i0 = int(offs[i]); j0 = int(offs[j])
+        ni = int(n_orb_atom[i]); nj = int(n_orb_atom[j])
+        if i != j:
+            Vca_ocl[i0:i0+ni, j0:j0+nj] += off_vca[k].T
+        Vca_ocl[i0:i0+ni, i0:i0+ni] += diag_vca[k, 0].T
+
+    diff_ocl = np.abs(Vca_ocl - H_vca_f)
+    err_Vca = float(np.max(diff_ocl))
+    print(f"  Max diff Vca OCL vs Fortran: {err_Vca:.2e}")
+    if np.max(diff_ocl) < 1e-4:
+        print("SUCCESS: OpenCL Vca matches Fortran.")
+        res_Vca = True
+    else:
+        print("FAILURE: OpenCL Vca mismatch.")
+        res_Vca = False
+
+    def _block(M, i, j):
+        ni = int(n_orb_atom[i]); nj = int(n_orb_atom[j])
+        i0 = int(offs[i]); j0 = int(offs[j])
+        return M[i0:i0+ni, j0:j0+nj]
+
+    for i in range(natoms):
+        for j in range(natoms):
+            if i == j or j in neigh_lists[i]:
+                df = _block(H_vca_f, i, j)
+                dm = _block(Vca_manual, i, j)
+                do = _block(Vca_ocl, i, j)
+                print(f"  VCA block ({i},{j}) max|F-man|={float(np.max(np.abs(df-dm))):.2e}  max|F-ocl|={float(np.max(np.abs(df-do))):.2e}")
 
     # Placeholders
     res_Vxc = False
     res_Vxc_1c = False
-    res_Vca = False
     res_Vxc_ca = False
     res_H_full = False
 
     print("\n" + "=" * 40)
-    print("VERIFICATION SUMMARY")
-    print(f"Overlap S:   {'PASSED' if res_S else 'FAILED'}")
-    print(f"Kinetic T:   {'PASSED' if res_T else 'FAILED'}")
-    print(f"Vna:         {'PASSED' if res_Vna else 'FAILED'}")
-    print(f"Vnl:         {'PASSED' if res_sVNL else 'FAILED'}")
-    print(f"Vxc:         {'PASSED' if res_Vxc else 'NOT IMPLEMENTED'}")
-    print(f"Vxc_1c:      {'PASSED' if res_Vxc_1c else 'NOT IMPLEMENTED'}")
-    print(f"Vca:         {'PASSED' if res_Vca else 'NOT IMPLEMENTED'}")
-    print(f"Vxc_ca:      {'PASSED' if res_Vxc_ca else 'NOT IMPLEMENTED'}")
-    print(f"H2c (T+Vna): {'PASSED' if res_H2c else 'FAILED'}")
-    print(f"H raw==recon:{'PASSED' if res_H_recon else 'FAILED'}")
-    print(f"VNL vs F:    {'PASSED' if (res_Vnl_cpu_fortran and res_Vnl_gpu_fortran) else 'FAILED'}")
-    print(f"AvgRho_off:  {'PASSED' if res_AvgRho else 'FAILED'}")
-    print(f"Full H:      {'PASSED' if res_H_full else 'NOT IMPLEMENTED'}")
+    print("VERIFICATION SUMMARY (max|diff|)")
+    print(f"Overlap S:   {'PASSED' if res_S else 'FAILED'}  err={err_S:.2e}")
+    print(f"Kinetic T:   {'PASSED' if res_T else 'FAILED'}  err={err_T:.2e}")
+    print(f"Vna:         {'PASSED' if res_Vna else 'FAILED'}  err={err_Vna:.2e}")
+    print(f"Vnl:         {'PASSED' if res_sVNL else 'FAILED'}  err={err_sVNL:.2e}")
+    print(f"Vxc:         {'PASSED' if res_Vxc else 'NOT IMPLEMENTED'}  err=nan")
+    print(f"Vxc_1c:      {'PASSED' if res_Vxc_1c else 'NOT IMPLEMENTED'}  err=nan")
+    print(f"Vca:         {'PASSED' if res_Vca else 'FAILED'}  err={err_Vca:.2e}")
+    print(f"Vxc_ca:      {'PASSED' if res_Vxc_ca else 'NOT IMPLEMENTED'}  err=nan")
+    print(f"H2c (T+Vna): {'PASSED' if res_H2c else 'FAILED'}  err={err_H2c:.2e}")
+    print(f"H raw==recon:{'PASSED' if res_H_recon else 'FAILED'}  err={err_H_recon:.2e}")
+    print(f"VNL vs F:    {'PASSED' if (res_Vnl_cpu_fortran and res_Vnl_gpu_fortran) else 'FAILED'}  err=max({err_Vnl_cpu_fortran:.2e},{err_Vnl_gpu_fortran:.2e})")
+    print(f"AvgRho_off:  {'PASSED' if res_AvgRho else 'FAILED'}  err={err_AvgRho:.2e}")
+    print(f"AvgRho_T:    {'PASSED' if err_AvgRho_T < 1e-6 else 'FAILED'}  err={err_AvgRho_T:.2e}")
+    print(f"AvgRho_seed:{'PASSED' if err_AvgRho_seed < 1e-6 else 'FAILED'}  err={err_AvgRho_seed:.2e}")
+    print(f"Seed_T:      {'PASSED' if err_AvgRho_seed_T < 1e-6 else 'FAILED'}  err={err_AvgRho_seed_T:.2e}")
+    print(f"AvgRho_3c:   {'PASSED' if err_AvgRho3c < 1e-6 else 'FAILED'}  err={err_AvgRho3c:.2e}")
+    print(f"AvgRho_3c_T: {'PASSED' if err_AvgRho3c_T < 1e-6 else 'FAILED'}  err={err_AvgRho3c_T:.2e}")
+    print(f"Rot(isorp):  {'PASSED' if err_rot_isorp < 1e-6 else 'FAILED'}  err={err_rot_isorp:.2e}")
+    print(f"Raw->rot F:  {'PASSED' if err_rawrot_f < 1e-6 else 'FAILED'}  err={err_rawrot_f:.2e}")
+    print(f"Raw->rot O:  {'PASSED' if err_rawrot_o < 1e-6 else 'FAILED'}  err={err_rawrot_o:.2e}")
+    print(f"Full H:      {'PASSED' if res_H_full else 'NOT IMPLEMENTED'}  err=nan")
     print("=" * 40)
 
     # AvgRho_off is expected to fail until 2c+3c density-table evaluation is fully implemented on GPU.

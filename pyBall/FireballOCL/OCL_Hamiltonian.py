@@ -125,8 +125,11 @@ class OCL_Hamiltonian:
 
         # Build V_CA map: [pair_type_vna, isorp, 3] -> spline_index
         # 3 components: 0=ontopl, 1=ontopr, 2=atom
-        # We assume max 3 shells for now (nsh_max=3)
-        nsh_vca_max = 3
+        # isorp in Fortran starts at 1 (assemble_ca_2c loops 1..nssh), so we map
+        # ish=0 -> isorp=1 (suffix _01).
+        if not hasattr(self.parser, 'species_info'):
+            self.parser.parse_info()
+        nsh_vca_max = max((info.get('nssh', 0) for info in self.parser.species_info.values()), default=0)
         vca_map = np.zeros((n_pairs, nsh_vca_max, 3), dtype=np.int32) - 1
         
         for k, idx in self.species_pair_map.items():
@@ -134,7 +137,7 @@ class OCL_Hamiltonian:
                 nz1, nz2 = k[1], k[2]
                 # Look for sub-components with suffixes _00, _01, ...
                 for isorp in range(nsh_vca_max):
-                    sfx = f"_{isorp:02d}"
+                    sfx = f"_{isorp + 1:02d}"
                     if (f'vna_ontopl{sfx}', nz1, nz2) in self.species_pair_map:
                         vca_map[idx, isorp, 0] = self.species_pair_map[(f'vna_ontopl{sfx}', nz1, nz2)]
                     if (f'vna_ontopr{sfx}', nz1, nz2) in self.species_pair_map:
@@ -143,6 +146,7 @@ class OCL_Hamiltonian:
                         vca_map[idx, isorp, 2] = self.species_pair_map[(f'vna_atom{sfx}', nz1, nz2)]
         
         self.d_vca_map = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=vca_map)
+        self.vca_map = vca_map
         self.nsh_vca_max = nsh_vca_max
 
     def assemble_vca(self, ratoms, neighbors, pair_types, dQ_sh):
@@ -202,7 +206,10 @@ class OCL_Hamiltonian:
         
         diag_updates = np.zeros((n_pairs, 2, 4, 4), dtype=np.float32)
         cl.enqueue_copy(self.queue, diag_updates, d_diag)
-        
+
+        EQ2 = 14.39975
+        offdiag *= EQ2
+        diag_updates *= EQ2
         return offdiag, diag_updates
 
     def _is_s_only(self, nz):
@@ -364,7 +371,7 @@ class OCL_Hamiltonian:
             offs[ip + 1] = len(cn)
         return offs, np.array(cn, dtype=np.int32)
 
-    def compute_avg_rho_3c(self, ratoms, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_2c_blocks, Qneutral_shell, ispec_of_atom, nssh_species, nsh_max, isorp=0, mu3c_map=None, nu3c_map=None, mvalue3c_map=None):
+    def compute_avg_rho_3c(self, ratoms, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_2c_blocks, Qneutral_shell, ispec_of_atom, nssh_species, lssh_species, nsh_max, isorp=0, mu3c_map=None, nu3c_map=None, mvalue3c_map=None):
         """Run compute_avg_rho kernel for given pairs.
 
         - ratoms: [natoms,3] float
@@ -398,6 +405,7 @@ class OCL_Hamiltonian:
         Qsh = np.ascontiguousarray(Qneutral_shell.reshape((-1,)), dtype=np.float32)
         ispec_atom = np.ascontiguousarray(ispec_of_atom, dtype=np.int32)
         nssh_sp = np.ascontiguousarray(nssh_species, dtype=np.int32)
+        lssh_sp = np.ascontiguousarray(lssh_species, dtype=np.int8)
 
         d_ratoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=ratoms4)
         d_pairs = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=pairs4)
@@ -412,6 +420,7 @@ class OCL_Hamiltonian:
         d_Qsh = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=Qsh)
         d_ispec_atom = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=ispec_atom)
         d_nssh_sp = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=nssh_sp)
+        d_lssh_sp = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=lssh_sp)
 
         d_out = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, n_pairs * 16 * 4)
 
@@ -427,12 +436,12 @@ class OCL_Hamiltonian:
             d_nu3c = self.d_nu3c_map
             d_mv3c = self.d_mvalue3c_map
 
-        # NOTE: kernel signature is compute_avg_rho(...,Qneutral_shell,ispec_of_atom,nssh_species,nsh_max,mu3c_map,nu3c_map,mvalue3c_map,data_3c,...)
+        # NOTE: kernel signature is compute_avg_rho(...,Qneutral_shell,ispec_of_atom,nssh_species,lssh_species,nsh_max,mu3c_map,...)
         self.prg.compute_avg_rho(
             self.queue, (n_pairs,), None,
             np.int32(n_pairs), np.int32(self.n_nz_3c_max),
             d_ratoms, d_pairs, d_offs, d_cns,
-            d_S, d_rho2c, d_Qsh, d_ispec_atom, d_nssh_sp, np.int32(nsh_max),
+            d_S, d_rho2c, d_Qsh, d_ispec_atom, d_nssh_sp, d_lssh_sp, np.int32(nsh_max),
             d_mu3c, d_nu3c, d_mv3c,
             self.d_data_3c, self.d_h_grids_3c, self.d_dims_3c,
             np.int32(self.n_isorp_3c), np.int32(self.numx_3c), np.int32(self.numy_3c),
@@ -698,6 +707,8 @@ class OCL_Hamiltonian:
 
     def scanHamPiece3c_raw_batch(self, root, nz1, nz2, nz3, dRjs, dRks, isorp=0):
         """OpenCL analog of firecore_scanHamPiece3c_raw_batch (no rotation/Legendre)."""
+        print( "scanHamPiece3c_raw_batch()  " )
+        print( "scanHamPiece3c_raw_batch()  root{root}, nz1{nz1}, nz2{nz2}, nz3{nz3}, dRjs{dRjs}, dRks{dRks}, isorp{isorp}" )
         type_idx = self.species_triplet_map.get((root, nz1, nz2, nz3))
         if type_idx is None:
             print(f"[WARN] scanHamPiece3c_raw_batch missing triplet {root} ({nz1},{nz2},{nz3})")

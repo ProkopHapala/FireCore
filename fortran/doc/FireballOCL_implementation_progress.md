@@ -396,3 +396,77 @@ allocate (t_mat (numorb_max, numorb_max, neigh_max, natoms))
 #### 3-Center Specifics
 - **mu/nu/mvalue maps**: Do NOT guess the 3-center orbital combinations. Always use the exported `mu`, `nu`, and `mvalue` arrays from Fortran, which define exactly which $(L_1, L_2, L_3)$ combinations have non-zero integrals.
 - **mvalue == 1**: When `mvalue` (difference in $m$) is 1, the integral must be scaled by $\sin(\theta)$ during rotation (where $\sin(\theta) = \sqrt{1 - \cos^2(\theta)}$). This is typically related to $\pi$-type interactions.
+
+---
+
+## VCA + AvgRho Update (2026-01-15)
+
+### Status (2026-01-15, latest)
+- **VCA (C₂)**: still matches Fortran within ~2e-5 in `verify_C2.py`.
+- **VCA (C₃)**: **failing**; OCL vs Fortran max diff ≈ 3.6e-01 (off-diagonal blocks worst).
+- **AvgRho_off (C₃)**: **failing**; max diff ≈ 1.1e-01. Summary table now reports numeric errors (no false PASS).
+
+### Fixes that landed
+- **isorp offset**: VCA table suffix `_01` corresponds to `isorp=1`; host mapping corrected (no `_00` shell usage).
+- **eq2 scaling**: OpenCL VCA output multiplied by `eq2=14.39975` like `assemble_ca_2c`.
+- **Charges reshape**: `Qin/Qout/Qneutral` reshaped with `order='F'`; garbage tails sliced to `nspecies`.
+- **Shell counts**: use `sd.nssh` (Fortran export), not `count_nonzero` heuristics.
+- **Neighbor handling**: VCA diagonal accumulates over Fortran neighbor list **including self**; off-diagonals exclude self.
+- **Fortran exports**: `Qin/Qout/Qneutral` exporters now zero full `nsh_max` stride and fill with `nsh_max` (recompiled via `./make.sh`).
+
+### Next
+- Port the VCA parity check to **C₃**: reuse the same isorp mapping/eq2 scaling and correct neighbor lists; compare OpenCL vs Fortran export in `verify_C3.py`.
+- Fix **AvgRho_off (C₃)** 3c weighting mismatch (current err~1.1e-01); inspect rho_2c seed vs 3c residual.
+
+### Progress (rotation/AvgRho) — 2026-01-15
+- Rotation parity achieved:
+  - Python rotate_fb reconstruction now matches Fortran trescentros after transposing Fortran scanHamPiece3c outputs (col-major → row-major).
+  - OpenCL recover_and_rotate_3c_munu_sp rewritten to mirror Fortran rotate_fb (chooser/twister, shell-block left·M·right) using lssh/nssh; rotation debug now PASS.
+  - Raw→rot checks: Fraw vs Fortran scan ~7e-18; OCLraw vs Fortran scan ~9e-09; Rot(isorp) ~1.7e-18.
+
+- Debug visibility:
+  - Summary table now reports Rot(isorp), Raw→rot(F/O), AvgRho seed/3c and transpose variants (AvgRho_T, Seed_T, AvgRho_3c_T).
+
+- Current failures (after rotation fix):
+  - AvgRho_off still fails: err ≈ 1.17e-01 (same as before rotation fix).
+  - AvgRho_3c_T drops to 3.93e-03 (suggests GPU 3c block orientation still off vs reference).
+  - AvgRho_seed err ≈ 1.02e-01 (2c seed mismatch remains).
+  - VCA (C3) still failing: max diff ≈ 3.6e-01 (unchanged by rotation work).
+
+### What changed in code
+- Python: verify_C3.py uses rotate_fb-equivalent shell loops + transposed Fortran reference; summary table enhanced with intermediate errors.
+- OpenCL: recover_and_rotate_3c_munu_sp now uses chooser/twister shell-block rotation with lssh/nssh (sp only), called from compute_avg_rho. Kernel signature updated to accept lssh_species/nssh_species.
+- Host: OCL_Hamiltonian.compute_avg_rho_3c passes lssh_species to kernel.
+
+### Next steps (blocking items)
+1) AvgRho 3c orientation: transpose the GPU 3c block (row/col) on output or adjust accumulation to match ref; re-run verify_C3 to reduce AvgRho_3c/AvgRho errors.
+2) AvgRho seed: verify rho_blocks orientation vs Fortran rho_off (consider transpose of rho_blocks before comparison or adjust seed construction).
+3) VCA (C3): port the C2 fixes (isorp mapping, eq2 scaling, neighbor list parity) into the C3 path and compare against Fortran export in verify_C3.
+4) Re-run verify_C3 unbuffered after each change; watch summary rows AvgRho_3c_T and Seed_T to confirm orientation fixes.
+
+### Known good signals
+- Rot(isorp): PASSED
+- Raw->rot F: PASSED
+- Raw->rot O: PASSED
+- Fortran trescentros logs (hlist/bcnam/bcnax) align with Python reconstructed blocks after transpose.
+
+### Root causes / differences found
+- **Rotation algorithm mismatch (fixed)**:
+  - Fortran `rotate_fb` loops shells (lssh/nssh) and applies `chooser`-built left/right matrices; earlier Python/OCL used a single 4×4 R (pmat embedding) with no shell offsets.
+  - Fortran `scanHamPiece3c` returns column-major blocks; Python comparisons must transpose to row-major. This transpose was missing, creating false diffs.
+  - OCL rotation ignored lssh/nssh and used one R; now it mirrors `rotate_fb` with left·sub·right and lssh/nssh inputs.
+  - Missing lssh/nssh in the kernel signature previously meant hardcoded sp with no species stride; fixed by passing lssh_species/nssh_species buffers.
+
+- **Data layout / orientation issues (partly fixed, remaining for AvgRho)**:
+  - 3c raw/Legendre/mvalue now matches Fortran; post-rotation parity achieved after transposing Fortran outputs.
+  - AvgRho still fails: transpose tests show `AvgRho_3c_T` ≈ 3.9e-03 while `AvgRho_3c` ≈ 1.17e-01, indicating a remaining row/col orientation mismatch in GPU 3c accumulation or seed.
+  - 2c seed (`rho_blocks`) mismatch persists (~1.02e-01); likely orientation/stride issue versus Fortran `rho_off` seed.
+
+- **VCA differences (still failing for C3)**:
+  - eq2 scaling and isorp mapping are fixed in C2; C3 path not yet updated with the same mapping/scaling/neigh parity.
+  - Neighbor handling: Fortran VCA diagonals include self; off-diagonals exclude self. The C3 OCL path needs the same policy.
+
+### Open items to verify
+- Apply a consistent transpose (or adjust accumulation) for GPU 3c blocks before summing into rho_avg to eliminate `AvgRho_3c_T` vs `AvgRho_3c` gap.
+- Re-evaluate `rho_blocks` construction/orientation against Fortran `rho_off` (2c seed) to remove the seed error.
+- Port C2 VCA fixes to C3: isorp indexing, eq2 scaling, correct neighbor lists, and parity check against Fortran export.

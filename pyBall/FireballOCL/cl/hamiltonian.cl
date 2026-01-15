@@ -58,12 +58,23 @@ float interpolate_2d(
     return (((bb3 * px + bb2) * px + bb1) * px + bb0) / 36.0f;
 }
 
+inline float chooser_val(const int l, const int k, const int m, const float pmat[3][3]){
+    if(l==0){ return (k==0 && m==0) ? 1.0f : 0.0f; }
+    if(l==1){ return pmat[k][m]; }
+    return NAN;
+}
+
 inline void recover_and_rotate_3c_munu_sp(
     const int n_nz_max,
     const float* hlist,
     const __global short* mu3c,
     const __global short* nu3c,
     const __private float eps[3][3],
+    const __global char* lssh_species,
+    const __global int* nssh_species,
+    const int nsh_max,
+    const int ispec1,
+    const int ispec2,
     float* block
 ) {
     float M[4][4];
@@ -76,28 +87,47 @@ inline void recover_and_rotate_3c_munu_sp(
         M[imu-1][inu-1] = hlist[idx];
     }
 
-    float R[4][4];
-    for(int a=0;a<4;a++){ for(int b=0;b<4;b++){ R[a][b]=0.0f; } }
-    R[0][0] = 1.0f;
-    for(int k=0;k<3;k++){
-        R[1][k+1] = eps[1][k];
-        R[2][k+1] = eps[2][k];
-        R[3][k+1] = eps[0][k];
+    float pmat[3][3];
+    // Match Fortran twister(): pmat(1,1)=eps(2,2), pmat(1,2)=eps(2,3), pmat(1,3)=eps(2,1), etc.
+    pmat[0][0] = eps[1][1]; pmat[0][1] = eps[1][2]; pmat[0][2] = eps[1][0];
+    pmat[1][0] = eps[2][1]; pmat[1][1] = eps[2][2]; pmat[1][2] = eps[2][0];
+    pmat[2][0] = eps[0][1]; pmat[2][1] = eps[0][2]; pmat[2][2] = eps[0][0];
+
+    float X[4][4];
+    for(int a=0;a<4;a++){ for(int b=0;b<4;b++){ X[a][b]=0.0f; } }
+
+    int nssh1 = nssh_species[ispec1];
+    int nssh2 = nssh_species[ispec2];
+    int n1 = 0;
+    for(int ish=0; ish<nssh1; ish++){
+        int l1 = (int)lssh_species[ispec1 * nsh_max + ish];
+        if(l1 > 1){ for(int i=0;i<16;i++){ block[i]=NAN; } return; }
+        int n2 = 0;
+        for(int jsh=0; jsh<nssh2; jsh++){
+            int l2 = (int)lssh_species[ispec2 * nsh_max + jsh];
+            if(l2 > 1){ for(int i=0;i<16;i++){ block[i]=NAN; } return; }
+            int n1b = n1 + 2*l1 + 1;
+            int n2b = n2 + 2*l2 + 1;
+            for(int m2=0; m2<2*l2+1; m2++){
+                for(int m1=0; m1<2*l1+1; m1++){
+                    float val = M[n1+m1][n2+m2];
+                    for(int k2=0; k2<2*l2+1; k2++){
+                        float right = chooser_val(l2, k2, m2, pmat);
+                        for(int k1=0; k1<2*l1+1; k1++){
+                            float left = chooser_val(l1, k1, m1, pmat);
+                            X[n1+k1][n2+k2] += left * val * right;
+                        }
+                    }
+                }
+            }
+            n2 = n2b;
+        }
+        n1 = n1 + 2*l1 + 1;
     }
 
-    float tmp[4][4];
     for(int a=0;a<4;a++){
         for(int b=0;b<4;b++){
-            float acc = 0.0f;
-            for(int k=0;k<4;k++) acc += R[a][k] * M[k][b];
-            tmp[a][b] = acc;
-        }
-    }
-    for(int a=0;a<4;a++){
-        for(int b=0;b<4;b++){
-            float acc = 0.0f;
-            for(int k=0;k<4;k++) acc += tmp[a][k] * R[b][k];
-            block[a*4 + b] = acc;
+            block[a*4 + b] = X[a][b];
         }
     }
 }
@@ -134,7 +164,7 @@ __kernel void assemble_3c(
     float x = length(rnabc);
     
     float3 sighat = (y > 1e-12f) ? r21 / y : (float3)(0.0f,0.0f,1.0f);
-    float3 rhat  = (x > 1e-12f) ? rnabc / x : (float3)(0.0f,0.0f,1.0f);
+    float3 rhat  = (x > 1e-12f) ? rnabc / x : (float3)(0.0f,0.0f,0.0f);
     float cost = dot(sighat, rhat);
     if (cost > 1.0f) cost = 1.0f; else if (cost < -1.0f) cost = -1.0f;
     float cost2 = cost * cost;
@@ -1110,7 +1140,7 @@ __kernel void gather_density_3c(
         float3 mid = 0.5f * (r_i + r_j);
         float3 rnabc = r_k - mid;
         float x = length(rnabc);
-        float3 rhat = (x > 1e-8f) ? rnabc / x : (float3)(0.0f,0.0f,1.0f);
+        float3 rhat = (x > 1e-8f) ? rnabc / x : (float3)(0.0f,0.0f,0.0f);
         float cost = dot(sighat, rhat);
         eval_legendre_0_4(cost, P);
 
@@ -1179,6 +1209,7 @@ __kernel void compute_avg_rho(
     const __global float* Qneutral_shell,    // [nsh_max * nspecies_fdata], packed [ispec*nsh_max + (isorp-1)]
     const __global int*   ispec_of_atom,     // [natoms], 0-based indices into species_fdata
     const __global int*   nssh_species,      // [nspecies_fdata], number of shells for this species
+    const __global char*  lssh_species,      // [nspecies_fdata * nsh_max], lssh per species
     const int nsh_max,
     const __global short* mu3c_map,   // [n_types*n_nz_max]
     const __global short* nu3c_map,   // [n_types*n_nz_max]
@@ -1225,7 +1256,7 @@ __kernel void compute_avg_rho(
         float3 mid = 0.5f * (r_i + r_j);
         float3 rnabc = r_k - mid;
         float x = length(rnabc);
-        float3 rhat = (x > 1e-10f) ? rnabc/x : (float3)(0,0,1);
+        float3 rhat = (x > 1e-10f) ? rnabc/x : (float3)(0,0,0);
         float cost = dot(sighat, rhat);
 
         // For 3c density rotation frame use rhat (matches Fortran average_rho.f90)
@@ -1275,7 +1306,7 @@ __kernel void compute_avg_rho(
             }
 
             float block[16];
-            recover_and_rotate_3c_munu_sp(n_nz_max, hlist_local, mu3c, nu3c, eps, block);
+            recover_and_rotate_3c_munu_sp(n_nz_max, hlist_local, mu3c, nu3c, eps, lssh_species, nssh_species, nsh_max, ispec_of_atom[i], ispec_of_atom[j], block);
             for(int m=0; m<16; m++) rho_acc[m] += block[m] * w;
         }
     }
@@ -1359,7 +1390,7 @@ __kernel void assemble_ca_3c(
             float3 mid = 0.5f * (r_i + r_j);
             float3 rnabc = r_k - mid;
             float x = length(rnabc);
-            float3 rhat = (x > 1e-10f) ? rnabc / x : (float3)(0.0f,0.0f,1.0f);
+            float3 rhat = (x > 1e-10f) ? rnabc / x : (float3)(0.0f,0.0f,0.0f);
             float cost = clamp(dot(sighat, rhat), -1.0f, 1.0f);
             float cost2 = cost*cost;
             

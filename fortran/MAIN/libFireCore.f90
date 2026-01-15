@@ -491,13 +491,18 @@ end subroutine
 subroutine firecore_get_Qin_shell( Qin_out ) bind(c, name='firecore_get_Qin_shell')
     use iso_c_binding
     use charges,       only: Qin
+    use interactions,  only: nsh_max
     implicit none
     real(c_double), intent(out) :: Qin_out(*)
-    integer iatom, issh, nsh
+    integer iatom, issh, nsh, natoms
     nsh = size(Qin, 1)
-    do iatom = 1, size(Qin, 2)
+    natoms = size(Qin, 2)
+    do iatom = 1, natoms
+        do issh = 1, nsh_max
+            Qin_out((iatom-1)*nsh_max + issh) = 0.0d0
+        end do
         do issh = 1, nsh
-            Qin_out((iatom-1)*nsh + issh) = Qin(issh, iatom)
+            Qin_out((iatom-1)*nsh_max + issh) = Qin(issh, iatom)
         end do
     end do
 end subroutine
@@ -505,13 +510,18 @@ end subroutine
 subroutine firecore_get_Qout_shell( Qout_out ) bind(c, name='firecore_get_Qout_shell')
     use iso_c_binding
     use charges,       only: Qout
+    use interactions,  only: nsh_max
     implicit none
     real(c_double), intent(out) :: Qout_out(*)
-    integer iatom, issh, nsh
+    integer iatom, issh, nsh, natoms
     nsh = size(Qout, 1)
-    do iatom = 1, size(Qout, 2)
+    natoms = size(Qout, 2)
+    do iatom = 1, natoms
+        do issh = 1, nsh_max
+            Qout_out((iatom-1)*nsh_max + issh) = 0.0d0
+        end do
         do issh = 1, nsh
-            Qout_out((iatom-1)*nsh + issh) = Qout(issh, iatom)
+            Qout_out((iatom-1)*nsh_max + issh) = Qout(issh, iatom)
         end do
     end do
 end subroutine
@@ -537,7 +547,7 @@ subroutine firecore_get_Qneutral_shell( Qneutral_out ) bind(c, name='firecore_ge
     use interactions,  only: nsh_max
     implicit none
     real(c_double), intent(out) :: Qneutral_out(*)
-    integer ispec, issh, nsh, nspec
+    integer ispec, issh, nsh, nspec, nspec_fdata
     
     ! Get actual dimensions from Fortran arrays
     nspec = 0
@@ -545,6 +555,11 @@ subroutine firecore_get_Qneutral_shell( Qneutral_out ) bind(c, name='firecore_ge
     if (allocated(Qneutral)) then
         nsh = size(Qneutral, 1)
         nspec = size(Qneutral, 2)
+    end if
+    if (allocated(nzx)) then
+        nspec_fdata = size(nzx, 1)
+    else
+        nspec_fdata = nspec
     end if
     
     ! We don't know the exact size of Qneutral_out buffer passed from Python,
@@ -554,14 +569,15 @@ subroutine firecore_get_Qneutral_shell( Qneutral_out ) bind(c, name='firecore_ge
     
     ! Fill valid values from Qneutral. 
     ! We use nsh_max=6 as the stride to match Python's expectation of shape (6, nspecies_fdata)
+    do ispec = 1, nspec_fdata
+        do issh = 1, nsh_max
+            Qneutral_out((ispec-1)*nsh_max + issh) = 0.0d0
+        end do
+    end do
     if (allocated(Qneutral)) then
         do ispec = 1, nspec
             do issh = 1, nsh
                 Qneutral_out((ispec-1)*nsh_max + issh) = Qneutral(issh, ispec)
-            end do
-            ! Zero remaining shells for this species if nsh < nsh_max
-            do issh = nsh + 1, nsh_max
-                Qneutral_out((ispec-1)*nsh_max + issh) = 0.0d0
             end do
         end do
     end if
@@ -1352,15 +1368,24 @@ subroutine firecore_scanHamPiece3c_raw( interaction, isorp, in1, in2, indna, dRj
     rnabc = rna - (r1 + r2)*0.5d0
     x = sqrt(sum(rnabc**2))
     
-    if (interaction .ne. 1) return
+    if ((interaction .ne. 1) .and. (interaction .ne. 3)) return
     
     index = icon3c(in1,in2,indna)
-    hx = hx_bcna(isorp,index)
-    hy = hy_bcna(isorp,index)
-    nx = numx3c_bcna(isorp,index)
-    ny = numy3c_bcna(isorp,index)
-    xxmax = x3cmax_bcna(isorp,index)
-    yymax = y3cmax_bcna(isorp,index)
+    if (interaction .eq. 1) then
+        hx = hx_bcna(isorp,index)
+        hy = hy_bcna(isorp,index)
+        nx = numx3c_bcna(isorp,index)
+        ny = numy3c_bcna(isorp,index)
+        xxmax = x3cmax_bcna(isorp,index)
+        yymax = y3cmax_bcna(isorp,index)
+    else
+        hx = hx_den3(isorp,index)
+        hy = hy_den3(isorp,index)
+        nx = numx3c_den3(isorp,index)
+        ny = numy3c_den3(isorp,index)
+        xxmax = x3cmax_den3(isorp,index)
+        yymax = y3cmax_den3(isorp,index)
+    end if
     if (verbosity >= 3 .and. debug_count < debug_limit) then
         debug_count = debug_count + 1
         write(*,'(A,I5,2X,2F12.6,2X,2F10.6,2X,2I5)') '[DBG-RAW] ip=', 1, x, y, hx, hy, nx, ny
@@ -1368,16 +1393,29 @@ subroutine firecore_scanHamPiece3c_raw( interaction, isorp, in1, in2, indna, dRj
     if (x .gt. xxmax .or. y .gt. yymax .or. x .lt. 0 .or. y .lt. 0) return
     
     do iME = 1, index_max3c(in1,in2)
-        call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_01(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
-        bcnalist_out(1,iME) = Q_L
-        call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_02(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
-        bcnalist_out(2,iME) = Q_L
-        call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_03(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
-        bcnalist_out(3,iME) = Q_L
-        call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_04(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
-        bcnalist_out(4,iME) = Q_L
-        call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_05(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
-        bcnalist_out(5,iME) = Q_L
+        if (interaction .eq. 1) then
+            call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_01(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+            bcnalist_out(1,iME) = Q_L
+            call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_02(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+            bcnalist_out(2,iME) = Q_L
+            call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_03(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+            bcnalist_out(3,iME) = Q_L
+            call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_04(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+            bcnalist_out(4,iME) = Q_L
+            call interpolate_2d (x, y, 0, nx, ny, hx, hy, bcna_05(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+            bcnalist_out(5,iME) = Q_L
+        else
+            call interpolate_2d (x, y, 0, nx, ny, hx, hy, den3_01(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+            bcnalist_out(1,iME) = Q_L
+            call interpolate_2d (x, y, 0, nx, ny, hx, hy, den3_02(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+            bcnalist_out(2,iME) = Q_L
+            call interpolate_2d (x, y, 0, nx, ny, hx, hy, den3_03(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+            bcnalist_out(3,iME) = Q_L
+            call interpolate_2d (x, y, 0, nx, ny, hx, hy, den3_04(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+            bcnalist_out(4,iME) = Q_L
+            call interpolate_2d (x, y, 0, nx, ny, hx, hy, den3_05(1,1,iME,isorp,index), Q_L, dQ_Ldx, dQ_Ldy)
+            bcnalist_out(5,iME) = Q_L
+        end if
     end do
 end subroutine firecore_scanHamPiece3c_raw
 

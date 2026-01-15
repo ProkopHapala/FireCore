@@ -77,8 +77,10 @@ def run_verification():
     Qatom = np.sum(Qin_shell, axis=0).astype(np.float32)
 
     # 3c data prep similar to verify_C3.py
-    Qneutral_sh = fc.get_Qneutral_shell(dims)  # [nsh_max, nspecies_fdata]
-    nzx = np.array(sd.nzx, dtype=np.int32)
+    Qneutral_sh_full = fc.get_Qneutral_shell(dims)  # [nsh_max, nspecies_fdata]
+    Qneutral_sh = Qneutral_sh_full[:, :dims.nspecies]
+    nzx_full = np.array(sd.nzx, dtype=np.int32)
+    nzx = nzx_full[:dims.nspecies]
     iatyp = np.array(sd.iatyp, dtype=np.int32)
     ispec_of_atom = np.zeros(dims.natoms, dtype=np.int32)
     for ia in range(dims.natoms):
@@ -88,22 +90,24 @@ def run_verification():
             raise RuntimeError(f"Cannot map atom Z={Z} to nzx species list {nzx}")
         ispec_of_atom[ia] = int(w[0])
     
-    nspecies_fdata = int(Qneutral_sh.shape[1])
-    nssh_species = np.zeros(nspecies_fdata, dtype=np.int32)
-    for ispec in range(nspecies_fdata):
-        nssh_species[ispec] = int(np.count_nonzero(Qneutral_sh[:, ispec] != 0.0))
+    nssh_species = np.ascontiguousarray(sd.nssh[:dims.nspecies], dtype=np.int32)
 
     # Neighbor lists from Fortran export: neigh_j is 1-based atom index, as used elsewhere in this file.
+    # Build both: with self (Fortran diag Vca uses self neighbor) and without self (off-diagonal pairs).
     neigh_lists = []
+    neigh_lists_self = []
     for ia in range(dims.natoms):
         nn = int(sd.neighn[ia])
         js = []
+        js_self = []
         for ineigh in range(nn):
             j = int(sd.neigh_j[ia, ineigh]) - 1
-            if (j >= 0) and (j < dims.natoms) and (j != ia):
-                js.append(j)
-        js = sorted(set(js))
-        neigh_lists.append(js)
+            if (j >= 0) and (j < dims.natoms):
+                js_self.append(j)
+                if j != ia:
+                    js.append(j)
+        neigh_lists.append(sorted(set(js)))
+        neigh_lists_self.append(sorted(set(js_self)))
 
     pairs = []
     for ia in range(dims.natoms):
@@ -494,125 +498,36 @@ def run_verification():
     print(dq_shell)
 
     # Accumulate Vca terms
-    # Loop over pairs (i,j) in Vca_manual blocks? No, dense matrix.
-    # Iterate all pairs (i, j)
+    EQ2 = 14.39975
+    # Diagonal: <i|V(j)|i> from neighbor charges (interaction 4)
     for i in range(2):
-        for j in range(2):
+        ni = int(n_orb_atom[i]); i0 = int(offs[i])
+        in_i = int(ispec_of_atom[i]) + 1
+        V_ii = np.zeros((ni, ni))
+        for k in neigh_lists_self[i]:
+            in_k = int(ispec_of_atom[k]) + 1
+            dR_ik = atomPos[k] - atomPos[i]
+            for isorp in range(1, int(nssh_species[in_k-1]) + 1):
+                dqk = dq_shell[isorp-1, k]
+                m = fc.scanHamPiece2c(4, isorp, in_i, in_k, in_i, dR_ik, applyRotation=True)
+                V_ii += m * dqk
+        Vca_manual[i0:i0+ni, i0:i0+ni] += V_ii * EQ2
+
+    # Off-diagonal: ontopl/ontopr (interaction 2/3) for neighbor pairs
+    for i in range(2):
+        in_i = int(ispec_of_atom[i]) + 1
+        ni = int(n_orb_atom[i]); i0 = int(offs[i])
+        for j in neigh_lists[i]:
+            in_j = int(ispec_of_atom[j]) + 1
+            nj = int(n_orb_atom[j]); j0 = int(offs[j])
             dR = atomPos[j] - atomPos[i]
-            # Term 1: vna_atom (interaction 4)
-            # <i| V_atom(k) |i> -> k=i. 
-            # In assemble_ca_2c, for iatom, we loop neighbors jatom.
-            # vna_atom part: interaction=4, in3=in1 (potential at i).
-            # Scaled by dxn = Qin(j) - Qneu(j).
-            # Wait, assemble_ca_2c says: 
-            #   do isorp=1..nssh(in2): dxn = (Qin(j) - Qneu(in2)); bccax = doscentros(4, ... in3=in1 ...); bcca += bccax*dxn
-            # This adds to vca(..., matom, iatom). matom is self. 
-            # So this is a diagonal block contribution (i, i) due to neighbor j's charge.
-            # So for each i, sum over j (all atoms): V_ii += vna_atom(i, j) * dq(j)
-            
-            # Term 2: vna_ontopl/r
-            # For pair (i,j) (neighbor):
-            # vna_ontopl (2): pot at i. dxn = Qin(i)-Qneu(i). V_ij += vna_ontopl * dq(i)
-            # vna_ontopr (3): pot at j. dxn = Qin(j)-Qneu(j). V_ij += vna_ontopr * dq(j)
-            
-            # Lets accumulate into blocks
-            # Calculate EwaldSR constants
-            # dq1 = dq_shell[:, i], dq2 = dq_shell[:, j]
-            # but we need total dq for ewald? No, Fortran uses sum over isorp.
-            dqi_tot = np.sum(dq_shell[:, i])
-            dqj_tot = np.sum(dq_shell[:, j])
-            
-            # Reconstruct per-block
-            # Note: We need to put this into the correct sub-block of Vca_manual
-            # Vca_manual is dense (norb x norb), rows=i, cols=j
-            ni = int(n_orb_atom[i]); nj = int(n_orb_atom[j])
-            i0 = int(offs[i]); j0 = int(offs[j])
-            
-            V_blk = np.zeros((ni, nj))
-            
-            # Diagonal terms (from ALL neighbors k)
-            EQ2 = 14.39975
-            if i == j:
-                for k in range(2):
-                    dqk = dq_shell[:, k]
-                    dqk_tot = np.sum(dqk)
-                    dR_ik = atomPos[k] - atomPos[i]
-                    rik = np.linalg.norm(dR_ik)
-                    
-                    # Term: vna_atom (interaction 4)
-                    mat4 = np.zeros((ni, nj))
-                    for isorp in range(1, int(nssh_species[0])+1):
-                        # Force isorp into _scan2c or call fc directly
-                        # fc.scanHamPiece2c(interaction, isub, in1, in2, in3, dR, applyRotation)
-                        # in1=in2=in3=1 (species)
-                        m = fc.scanHamPiece2c(4, isorp, 1, 1, 1, dR_ik, applyRotation=True)
-                        mat4 += m * dqk[isorp-1]
-                    V_blk += mat4 * EQ2
-                    
-                    # EwaldSR "ATM CASE" (line 321 in assemble_ca_2c.f90)
-                    # if rik > 1e-4:
-                    #   emnpl = (s_mat / rik) * dqk_tot
-                    #   ewaldsr += emnpl * eq2
-                    if rik > 1e-4:
-                        # Get S matrix for (i, k)? No, s_mat(imu,inu,matom,iatom) -> (i, i) block?
-                        # "s_mat(imu,inu,matom,iatom)" where matom=neigh_self(iatom).
-                        # So it uses the Overlap of (i, i) which is Identity (mostly) or on-site overlap?
-                        # Wait, s_mat for self is Identity.
-                        # So emnpl = (I / rik) * dqk_tot.
-                        # ewaldsr += eqn * emnpl * eq2 ??
-                        # Fortran: emnpl = (s_mat / y) * dq2. ewaldsr += emnpl*eq2.
-                        # Here y = rik. dq2 = dqk_tot.
-                        # So V_ii += (I / rik) * dqk_tot * EQ2
-                        # EQ2 = 14.39975
-                        EQ2 = 14.39975
-                        S_ii = np.eye(ni) # approximate S_ii as Identity
-                        S_ii = np.eye(ni) # approximate S_ii as Identity
-                        # V_blk += (S_ii / rik) * dqk_tot * EQ2
-                        pass
-
-            else:
-                # Off-diagonal V_ij (interaction 2 and 3)
-                # Term: vna_ontopl (2) - pot at i
-                mat2 = np.zeros((ni, nj))
-                for isorp in range(1, int(nssh_species[0])+1):
-                    m = fc.scanHamPiece2c(2, isorp, 1, 1, 1, dR, applyRotation=True)
-                    mat2 += m * dq_shell[isorp-1, i]
-                
-                # Term: vna_ontopr (3) - pot at j
-                mat3 = np.zeros((ni, nj))
-                for isorp in range(1, int(nssh_species[0])+1):
-                    m = fc.scanHamPiece2c(3, isorp, 1, 1, 1, dR, applyRotation=True)
-                    m = fc.scanHamPiece2c(3, isorp, 1, 1, 1, dR, applyRotation=True)
-                    mat3 += m * dq_shell[isorp-1, j]
-                
-                V_blk += (mat2 + mat3) * EQ2
-                
-                # EwaldSR "ONTOP CASE" (line 415)
-                # ewaldsr = ...
-                # ewaldsr += ( (S_ij/rij + Dip_ij/rij^2)*dq_i + (S_ij/rij*dq_j - Dip_ij/rij^2*dq_j) ) * eq2
-                # Note: assemble_ca_2c has logic that cancels dipole if charges are same?
-                # Formula: ( (S/y + D/y^2)*dq1 + (S/y*dq2 - D/y^2*dq2) ) * eq2
-                #        = ( S/y*(dq1+dq2) + D/y^2*(dq1-dq2) ) * eq2
-                rij = np.linalg.norm(dR)
-                # EwaldSR "ONTOP CASE" (line 415)
-                # ewaldsr = ...
-                # ewaldsr += ( (S_ij/rij + Dip_ij/rij^2)*dq_i + (S_ij/rij*dq_j - Dip_ij/rij^2*dq_j) ) * eq2
-                # Note: assemble_ca_2c has logic that cancels dipole if charges are same?
-                # Formula: ( (S/y + D/y^2)*dq1 + (S/y*dq2 - D/y^2*dq2) ) * eq2
-                #        = ( S/y*(dq1+dq2) + D/y^2*(dq1-dq2) ) * eq2
-                rij = np.linalg.norm(dR)
-                # EWALD DISABLED for this test
-                if False and rij > 1e-4:
-                    EQ2 = 14.39975
-                    S_ij = _scan2c_fortran(1, dR, applyRotation=True) # Overlap
-                    # Dipole: interaction 9 ??
-                    # Call doscentros(9, isorp=0, ...)
-                    Dip_ij = fc.scanHamPiece2c(9, 0, 1, 1, 1, dR, applyRotation=True)
-                    
-                    term = (S_ij / rij) * (dqi_tot + dqj_tot) + (Dip_ij / (rij**2)) * (dqi_tot - dqj_tot)
-                    V_blk += term * EQ2
-
-            Vca_manual[i0:i0+ni, j0:j0+nj] = V_blk
+            mat2 = np.zeros((ni, nj))
+            for isorp in range(1, int(nssh_species[in_i-1]) + 1):
+                mat2 += fc.scanHamPiece2c(2, isorp, in_i, in_i, in_j, dR, applyRotation=True) * dq_shell[isorp-1, i]
+            mat3 = np.zeros((ni, nj))
+            for isorp in range(1, int(nssh_species[in_j-1]) + 1):
+                mat3 += fc.scanHamPiece2c(3, isorp, in_i, in_j, in_j, dR, applyRotation=True) * dq_shell[isorp-1, j]
+            Vca_manual[i0:i0+ni, j0:j0+nj] += (mat2 + mat3) * EQ2
 
     print("  Manual Vca matrix:")
     print(Vca_manual)
@@ -625,15 +540,11 @@ def run_verification():
     else:
         print("FAILURE: Vca reconstruction mismatch.")
     print("  Comparing OpenCL Vca implementation...")
-    # Prepare neighbor list and types for assemble_vca
-    # We need to replicate assemble_full logic for pairs (including self)
+    # Prepare neighbor list and types for assemble_vca (use Fortran neighbor list including self)
     neigh_list_vca = []
     for ia in range(dims.natoms):
-        for ja in neigh_lists[ia]:
+        for ja in neigh_lists_self[ia]:
             neigh_list_vca.append((ia, int(ja))) # 0-based from get_neighbors
-    # Add self
-    for ia in range(dims.natoms):
-        neigh_list_vca.append((ia, ia))
     
     pair_types_vca = []
     for (i, j) in neigh_list_vca:
@@ -648,6 +559,10 @@ def run_verification():
             print(f"Warning: missing vna pair type for {nz1},{nz2}")
             idx = 0
         pair_types_vca.append(idx)
+
+    if len(pair_types_vca) > 0 and hasattr(ham, 'vca_map'):
+        t0 = int(pair_types_vca[0])
+        print(f"  DEBUG vca_map for pair_type={t0}:\n{ham.vca_map[t0]}")
         
     off_vca, diag_vca = ham.assemble_vca(atomPos, np.array(neigh_list_vca), np.array(pair_types_vca), dq_shell)
     
@@ -656,13 +571,12 @@ def run_verification():
     for k, (i, j) in enumerate(neigh_list_vca):
         i0=int(offs[i]); j0=int(offs[j])
         ni=int(n_orb_atom[i]); nj=int(n_orb_atom[j])
-        
-        # Off-diagonal block (V_ij)
-        # Transpose to match dense layout (col-major blocks from Fortran/OCL -> row-major numpy)
-        Vca_ocl[i0:i0+ni, j0:j0+nj] += off_vca[k].T
-        
-        # Diagonal update (V_ii) from neighbor j
-        # Added to V[i, i]
+
+        # Off-diagonal block (V_ij) only for i!=j (Fortran skips ontop for self)
+        if i != j:
+            Vca_ocl[i0:i0+ni, j0:j0+nj] += off_vca[k].T
+
+        # Diagonal update (V_ii) from neighbor j (includes self neighbor)
         Vca_ocl[i0:i0+ni, i0:i0+ni] += diag_vca[k, 0].T
 
     print("  OpenCL Vca matrix result:")

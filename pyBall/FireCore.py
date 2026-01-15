@@ -549,7 +549,7 @@ def get_Qin_shell(dims):
         raise TypeError("dims argument must be an instance of FireballDims")
     buf = np.zeros(dims.nsh_max * dims.natoms, dtype=np.float64)
     lib.firecore_get_Qin_shell(buf)
-    return buf.reshape((dims.nsh_max, dims.natoms))
+    return buf.reshape((dims.nsh_max, dims.natoms), order='F')
 
 # void firecore_get_Qout_shell( double* Qout_out ) # flat [nsh_max*natoms]
 argDict["firecore_get_Qout_shell"]=( None, [array1d] )
@@ -558,7 +558,7 @@ def get_Qout_shell(dims):
         raise TypeError("dims argument must be an instance of FireballDims")
     buf = np.zeros(dims.nsh_max * dims.natoms, dtype=np.float64)
     lib.firecore_get_Qout_shell(buf)
-    return buf.reshape((dims.nsh_max, dims.natoms))
+    return buf.reshape((dims.nsh_max, dims.natoms), order='F')
 
 # # void firecore_get_Qneutral_shell( double* Qneutral_out ) # flat [nsh_max*nspecies]
 # argDict["firecore_get_Qneutral_shell"]=( None, [array1d] )
@@ -576,7 +576,7 @@ def get_Qneutral_shell(dims):
         raise TypeError("dims argument must be an instance of FireballDims")
     buf = np.zeros(dims.nsh_max * dims.nspecies_fdata, dtype=np.float64)
     lib.firecore_get_Qneutral_shell(buf)
-    return buf.reshape((dims.nsh_max, dims.nspecies_fdata))
+    return buf.reshape((dims.nsh_max, dims.nspecies_fdata), order='F')
 
 
 # void firecore_get_HS_k( double* kpoint_vec, void* Hk_out, void* Sk_out ) # Using void* for complex arrays
@@ -698,16 +698,20 @@ def scanHamPiece3c_raw( interaction, isorp, in1, in2, indna, dRj, dRk, out=None 
     Raw bcna interpolation: no Legendre, no mvalue*sint, no recover_3c, no rotate.
     Returns array shape (5, max_mu_dim3).
     """
-    dims = get_HS_dims()
+    dims = get_HS_dims(force_refresh=True)
     max_me = dims.max_mu_dim3
+    if max_me <= 0:
+        raise RuntimeError(f"scanHamPiece3c_raw: invalid max_mu_dim3={max_me}")
     dRj_c = _np_as(dRj, c_double_p)
     dRk_c = _np_as(dRk, c_double_p)
     if out is None:
+        print( f"scanHamPiece3c_raw() np.zeros((5, {max_me}) ")
         out = np.zeros((5, max_me), dtype=np.float64, order='F')
     lib.firecore_scanHamPiece3c_raw(
         c_int(interaction), c_int(isorp), c_int(in1), c_int(in2), c_int(indna),
         dRj_c, dRk_c, _np_as(out, c_double_p)
     )
+    print("scanHamPiece3c_raw() DONE")
     return out
 
 def scanHamPiece3c_raw_batch( interaction, isorp, in1, in2, indna, dRjs, dRks ):
@@ -715,8 +719,10 @@ def scanHamPiece3c_raw_batch( interaction, isorp, in1, in2, indna, dRjs, dRks ):
     Batched raw bcna interpolation over an array of geometries.
     Returns array shape (npoints, 5, max_mu_dim3).
     """
-    dims = get_HS_dims()
+    dims = get_HS_dims(force_refresh=True)
     max_me = dims.max_mu_dim3
+    if max_me <= 0:
+        raise RuntimeError(f"scanHamPiece3c_raw_batch: invalid max_mu_dim3={max_me}")
     dRjs_np = np.ascontiguousarray(dRjs, dtype=np.float64)
     dRks_np = np.ascontiguousarray(dRks, dtype=np.float64)
     npoints = dRjs_np.shape[0]

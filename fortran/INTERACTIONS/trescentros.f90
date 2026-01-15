@@ -91,7 +91,7 @@
         use interactions
         use integrals
         use timing
-        use options, only : ivec_3c
+        use options, only : ivec_3c, idebugWrite
         implicit none
  
 ! Argument Declaration and Description
@@ -279,8 +279,32 @@
 ! is only one-dimensional.
         call recover_3c (in1, in2, hlist, bcnam)
 
+        if (idebugWrite .gt. 0) then
+          write(*,*) '[DEBUG trescentros] in1,in2,indna,isorp,interaction=', in1, in2, indna, isorp, interaction
+          write(*,*) '[DEBUG trescentros] x,y,cost=', x, y, cost
+          write(*,*) '[DEBUG trescentros] hlist(1:min(10,idxmax)):'
+          write(*,*) (hlist(iME), iME=1, min(10, index_max3c(in1,in2)))
+          write(*,*) '[DEBUG trescentros] bcnam(1:4,1:4) pre-rot:'
+          write(*,*) bcnam(1,1), bcnam(1,2), bcnam(1,3), bcnam(1,4)
+          write(*,*) bcnam(2,1), bcnam(2,2), bcnam(2,3), bcnam(2,4)
+          write(*,*) bcnam(3,1), bcnam(3,2), bcnam(3,3), bcnam(3,4)
+          write(*,*) bcnam(4,1), bcnam(4,2), bcnam(4,3), bcnam(4,4)
+        end if
+
 ! Rotate bcnam into crystal-coordinates: bcnam => bcnax
         call rotate_fb (in1, in2, eps, bcnam, bcnax)
+
+        if (idebugWrite .gt. 0) then
+          write(*,*) '[DEBUG trescentros] eps(1:3,1:3):'
+          write(*,*) eps(1,1), eps(1,2), eps(1,3)
+          write(*,*) eps(2,1), eps(2,2), eps(2,3)
+          write(*,*) eps(3,1), eps(3,2), eps(3,3)
+          write(*,*) '[DEBUG trescentros] bcnax(1:4,1:4) post-rot:'
+          write(*,*) bcnax(1,1), bcnax(1,2), bcnax(1,3), bcnax(1,4)
+          write(*,*) bcnax(2,1), bcnax(2,2), bcnax(2,3), bcnax(2,4)
+          write(*,*) bcnax(3,1), bcnax(3,2), bcnax(3,3), bcnax(3,4)
+          write(*,*) bcnax(4,1), bcnax(4,2), bcnax(4,3), bcnax(4,4)
+        end if
  
 ! Format Statements
 ! ===========================================================================
