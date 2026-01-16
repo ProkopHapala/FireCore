@@ -149,7 +149,7 @@ def project_to_plane(pos_3d, origin_3d, x_axis_plane, y_axis_plane):
 atom_colors = {'O': 'red', 'H': 'white'}
 for i, ename in enumerate(mol.enames):
     px, py = project_to_plane(mol.apos[i], pos_O, x_axis, y_axis)
-    plt.scatter(px, py, s=100, c=atom_colors.get(ename, 'gray'), edgecolors='black', label=f'{ename}{i-idx_O if ename=="O" else i-idx_H1 if i==idx_H1 else i-idx_H2}')
+    plt.scatter(px, py, s=10, c=atom_colors.get(ename, 'gray'), edgecolors='black', label=f'{ename}{i-idx_O if ename=="O" else i-idx_H1 if i==idx_H1 else i-idx_H2}')
 
 # Create a legend that doesn't duplicate labels
 handles, labels = plt.gca().get_legend_handles_labels()
