@@ -141,6 +141,22 @@ From `tests/tEFF/OUT_ocl_vs_cpu`:
   - Inputs are consistent; AE and EE Coulomb are correct. The remaining discrepancy is isolated to the EE Pauli contribution in the GPU path.
   - Next action: inspect/validate `getPauliGauss_New()` usage and spin/sign handling in `cpp/common_resources/cl/eFF.cl` for EE interactions, before any kernel-parallelization changes.
 
+## 9. Lab Book: Parallel localMD aligned with CPU (2026-01-16)
+
+**Context:** Removed the serial fallback and kept the optimized per-thread accumulation (each thread i sums force-on-i from all j). Achieved CPU match for H2O (max diff ~2.7e-05, tol 1e-4).
+
+**Problems found in the parallel kernel (post-Gemini):**
+1) **Forces not written:** `localMD` stopped writing forces to `fout`, so GPU forces were all zero.
+   - Fix: store `my_f` in `l_force[lid]` and write to `fout[ip_start+lid]` at the end.
+2) **Electron–ion (AE) ordering/signs/derivative slots wrong:**
+   - Need `dR = elec - ion`, call `getCoulombGauss(dR, sQ, se, -Q)` (ion size first), force on electron is `-dR*fr`, and electron size-force comes from `.w` (fsi wrt se). Core Pauli/Coulomb use `.z` (fsi wrt ion size) but must be accumulated into electron fsize (CPU behavior).
+   - Fix: matched the validated serial/CPU conventions exactly; ions never get `w` accumulation.
+3) **Core charge amplitude:** main AE Coulomb uses full nuclear charge `Q`, not `Q-sP`; core correction uses `qq = sP`.
+
+**Result:** `test_ocl_vs_cpu.py` on H2O_fixcore now **PASS** with max abs diff `2.736e-05` (tol 1e-4) using the parallel path (no serial Newton fallback).
+
+**Next:** Run NH3_fixcore and CH4_fixcore with the parallel kernel; then proceed to perturbation tests.
+
 ## 8. Lab Book: Serial fixes for H2 and H2O (2026-01-16)
 
 **Context:** Continuing serial-validation work to align GPU (OpenCL) with CPU for the simplest systems, before touching parallel accumulation.
@@ -165,3 +181,9 @@ From `tests/tEFF/OUT_ocl_vs_cpu`:
 - Run NH3_fixcore and CH4_fixcore (tol `1e-4`).
 - Add perturbation tests (small random jitter; single-particle displacement) on serial path.
 - Only then address parallel accumulation (pair-once with ±f) and small-system optimization.
+
+## 10. Density fitting path (2026-01-16)
+
+- Added OpenCL kernel `fit_density_fire` with selectable optimizers (`opt_mode`: FIRE / damped MD / gradient descent) plus proper workgroup-wide FIRE reduction.
+- Python host `pyBall/OCL/eFF_ocl.py` updated to pass `opt_mode/md_damp` and expose `eval_density_grid` with amplitudes.
+- Test harness `tests/pyFireball/test_fit_density_fire.py` now supports `--opt {fire,md,gd}` and produces a 2D density slice (imshow) of the fitted model using the OpenCL `eval_density_grid` kernel.

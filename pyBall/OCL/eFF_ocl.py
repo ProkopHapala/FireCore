@@ -227,6 +227,122 @@ class EFF_OCL(OpenCLBase):
         self.queue.finish()
         return self.force_h
 
+    def fit_density_fire(self, electrons, grid_points, amps=None, vel=None, vq=None, fire_state=None, fire_np=None, nsteps=200, dt=0.02, k_pos=0.0, k_size=0.0, k_q=0.0, fire_inc=1.1, fire_dec=0.5, fire_alpha=0.1, fire_dt_max=0.2, opt_mode=0, md_damp=0.9, local_size=32, bForces=True):
+        electrons = np.asarray(electrons, dtype=np.float32)
+        grid_points = np.asarray(grid_points, dtype=np.float32)
+        assert electrons.ndim == 2 and electrons.shape[1] == 4
+        assert grid_points.ndim == 2 and grid_points.shape[1] == 4
+        ne = np.int32(electrons.shape[0])
+        n_grid = np.int32(grid_points.shape[0])
+        if amps is None:
+            amps = np.ones(ne, dtype=np.float32)
+        else:
+            amps = np.asarray(amps, dtype=np.float32)
+            assert amps.shape == (ne,)
+
+        if vel is None:
+            vel = np.zeros((ne, 4), dtype=np.float32)
+        else:
+            vel = np.asarray(vel, dtype=np.float32)
+            assert vel.shape == (ne, 4)
+
+        if vq is None:
+            vq = np.zeros((ne,), dtype=np.float32)
+        else:
+            vq = np.asarray(vq, dtype=np.float32)
+            assert vq.shape == (ne,)
+
+        if fire_state is None:
+            fire_state = np.zeros((1, 4), dtype=np.float32)
+            fire_state[0, 0] = dt
+            fire_state[0, 1] = fire_alpha
+        else:
+            fire_state = np.asarray(fire_state, dtype=np.float32)
+            assert fire_state.shape == (1, 4)
+
+        if fire_np is None:
+            fire_np = np.zeros((1,), dtype=np.int32)
+        else:
+            fire_np = np.asarray(fire_np, dtype=np.int32)
+            assert fire_np.shape == (1,)
+
+        mf = cl.mem_flags
+        e_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=electrons)
+        g_buf = cl.Buffer(self.ctx, mf.READ_ONLY  | mf.COPY_HOST_PTR, hostbuf=grid_points)
+        a_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=amps)
+        v_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=vel)
+        vq_buf= cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=vq)
+        st_buf= cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=fire_state)
+        np_buf= cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=fire_np)
+
+        if bForces:
+            f_out  = np.zeros((ne, 4), dtype=np.float32)
+            fq_out = np.zeros((ne,), dtype=np.float32)
+        else:
+            f_out  = np.zeros((1, 4), dtype=np.float32)
+            fq_out = np.zeros((1,), dtype=np.float32)
+        f_buf  = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=f_out)
+        fq_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=fq_out)
+
+        params = np.array([dt, k_pos, k_size, k_q], dtype=np.float32)
+        fire_params = np.array([fire_inc, fire_dec, fire_alpha, fire_dt_max], dtype=np.float32)
+        kernel = self.prg.fit_density_fire
+        kernel.set_scalar_arg_dtypes([np.int32, np.int32, None, None, None, None, None, None, None, None, None, np.int32, None, None, np.int32, np.float32])
+
+        lsz = int(local_size)
+        if lsz <= 0:
+            raise ValueError(f"local_size must be >0, got {lsz}")
+        gsz = (( (int(ne) + lsz - 1) // lsz ) * lsz,)
+
+        kernel(self.queue, gsz, (lsz,), ne, n_grid, e_buf, g_buf, a_buf, v_buf, vq_buf, st_buf, np_buf, f_buf, fq_buf, np.int32(nsteps), params, fire_params, np.int32(opt_mode), np.float32(md_damp)).wait()
+
+        cl.enqueue_copy(self.queue, electrons, e_buf)
+        cl.enqueue_copy(self.queue, amps, a_buf)
+        cl.enqueue_copy(self.queue, vel, v_buf)
+        cl.enqueue_copy(self.queue, vq, vq_buf)
+        cl.enqueue_copy(self.queue, fire_state, st_buf)
+        cl.enqueue_copy(self.queue, fire_np, np_buf)
+        if bForces:
+            cl.enqueue_copy(self.queue, f_out, f_buf)
+            cl.enqueue_copy(self.queue, fq_out, fq_buf)
+        self.queue.finish()
+        if bForces:
+            return electrons, amps, vel, vq, fire_state, fire_np, f_out, fq_out
+        return electrons, amps, vel, vq, fire_state, fire_np, None, None
+
+    def eval_density_grid(self, electrons, grid_points, amps=None, local_size=128):
+        electrons = np.asarray(electrons, dtype=np.float32)
+        grid_points = np.asarray(grid_points, dtype=np.float32)
+        assert electrons.ndim == 2 and electrons.shape[1] == 4
+        assert grid_points.ndim == 2 and grid_points.shape[1] == 4
+        ne = np.int32(electrons.shape[0])
+        n_grid = np.int32(grid_points.shape[0])
+        if amps is None:
+            amps = np.ones(ne, dtype=np.float32)
+        else:
+            amps = np.asarray(amps, dtype=np.float32)
+            assert amps.shape == (ne,)
+
+        mf = cl.mem_flags
+        e_buf = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=electrons)
+        a_buf = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=amps)
+        g_buf = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=grid_points)
+        out = np.zeros((int(n_grid),), dtype=np.float32)
+        out_buf = cl.Buffer(self.ctx, mf.WRITE_ONLY, out.nbytes)
+
+        kernel = self.prg.eval_density_grid
+        kernel.set_scalar_arg_dtypes([np.int32, np.int32, None, None, None, None])
+
+        lsz = int(local_size)
+        if lsz <= 0:
+            raise ValueError(f"local_size must be >0, got {lsz}")
+        gsz = (((int(n_grid) + lsz - 1) // lsz) * lsz,)
+
+        kernel(self.queue, gsz, (lsz,), ne, n_grid, e_buf, a_buf, g_buf, out_buf).wait()
+        cl.enqueue_copy(self.queue, out, out_buf)
+        self.queue.finish()
+        return out
+
 # =================
 #    MAIN USAGE
 # =================
