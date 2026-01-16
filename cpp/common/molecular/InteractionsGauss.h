@@ -663,9 +663,21 @@ inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f
     // double fr  = (dE_dS22 * dS22_dr  + dE_dDT * dDT_dr )*Hartree2eV*A2bohr*A2bohr*KR2;
 
     E         *= Hartree2eV*sc;
-    fsi       += (dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi)*Hartree2eV*-KS *sc;
-    fsj       += (dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj)*Hartree2eV*-KS *sc;
-    double fr  = (dE_dS22 * dS22_dr  + dE_dDT * dDT_dr )*Hartree2eV*KR2*sc;
+    const double dfsi = (dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi)*Hartree2eV*-KS *sc;
+    const double dfsj = (dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj)*Hartree2eV*-KS *sc;
+    const double fr   = (dE_dS22 * dS22_dr  + dE_dDT * dDT_dr )*Hartree2eV*KR2*sc;
+    fsi       += dfsi;
+    fsj       += dfsj;
+
+    if( idebug>0 ){
+        static int iPrint=0;
+        if(iPrint<8){
+            const double r = sqrt( (dR.norm2()) + 1e-16 );
+            printf("CPU[PauliNew] r %g dR(%g,%g,%g) s(%g,%g) spin %i sc %g | KR2 %g KS %g rho %g | DT %g S22 %g | E %g fr %g fsi %g fsj %g\n",
+                r, dR.x,dR.y,dR.z, si/KS, sj/KS, spin, sc, KR2, KS, KRSrho.z, DT, S22, E, fr, dfsi, dfsj );
+            iPrint++;
+        }
+    }
 
     f.add_mul( dR, fr  );
 

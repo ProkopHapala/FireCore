@@ -13,8 +13,8 @@ __constant static const float const_El_SI  =  const_e_SI*const_e_SI/(4.*M_PI*con
 __constant static const float const_Ry_SI  = 0.5 * const_El_SI*const_El_SI/const_K_SI;
 __constant static const float const_Ry_eV  = 13.6056925944;
 __constant static const float const_El_eVA = const_El_SI/( const_eV_SI*const_Angstroem_SI                    );
-__constant static const float const_K_eVA  = const_K_SI /( const_eV_SI*const_Angstroem_SI*const_Angstroem_SI );
-__constant static const float const_Ke_eVA = const_K_eVA*1.5;
+__constant static const float const_K_eVA  = 3.8099822f;
+__constant static const float const_Ke_eVA = 5.7149734f;
 __constant static const float au_Me           = 1822.88973073;
 __constant static const float eV_MeAfs        = 17.5882001106;   // [ Me*A^2/fs^2]
 __constant static const float const_Coulomb_eVA = 14.3996448915;
@@ -98,71 +98,79 @@ float4 getCoulomb( float3 dp, float qq ){
 }
 
 float4 getPauliGauss_New( float3 dR, float si, float sj, int spin, const float4 KRSrho ){
-    float r2         = dot(dR,dR) + 1e-8;  // for r=0 there are numercial instabilities
+    double r2         = (double)dot(dR,dR) + 1e-8;  // for r=0 there are numercial instabilities
 
-    const float Hartree2eV = 27.211386245988;
-    const float A2bohr     = 1/const_Bohr_Radius;
+    const double Hartree2eV = 27.211386245988;
+    const double A2bohr     = 1.0/(double)const_Bohr_Radius;
 
-    const float KR=A2bohr*KRSrho.x;
-    const float KR2=KR*KR;
-    const float KS =A2bohr*KRSrho.y;
-    si*=KS; sj*=KS; r2*=KR2;
+    const double KR = A2bohr*(double)KRSrho.x;
+    const double KR2 = KR*KR;
+    const double KS = A2bohr*(double)KRSrho.y;
+    double si_ = (double)si * KS;
+    double sj_ = (double)sj * KS;
+    r2 *= KR2;
 
-    float si2        = si*si;
-    float sj2        = sj*sj;
-    float si2sj2     = si2 + sj2;
-    float invsi2sj2  = 1/si2sj2;
-    float invsi2sj22 = invsi2sj2*invsi2sj2;
-    float invsi2sj23 = invsi2sj2*invsi2sj22;
-    float denom_sij  = si*sj*invsi2sj2;
-    float si4sj4     = si2*si2 - sj2*sj2;
-    float invsj      = 1/sj;
-    float invsi      = 1/si;
-    float invsj2     = invsj*invsj;
-    float invsi2     = invsi*invsi;
+    double si2        = si_*si_;
+    double sj2        = sj_*sj_;
+    double si2sj2     = si2 + sj2;
+    double invsi2sj2  = 1.0/si2sj2;
+    double invsi2sj22 = invsi2sj2*invsi2sj2;
+    double invsi2sj23 = invsi2sj2*invsi2sj22;
+    double denom_sij  = si_*sj_*invsi2sj2;
+    double si4sj4     = si2*si2 - sj2*sj2;
+    double invsj      = 1.0/sj_;
+    double invsi      = 1.0/si_;
+    double invsj2     = invsj*invsj;
+    double invsi2     = invsi*invsi;
 
-    float r2_4   =  4*r2;
+    double r2_4   =  4.0*r2;
 
     // ------- Kinetic Energy Difference
-    float DT      = 1.5*si2sj2*invsi2*invsj2 -      (6*si2sj2 - r2_4)*invsi2sj22;
-    float dDT_dsi =  -3*invsi2*invsi         + 4*si*(3*si2sj2 - r2_4)*invsi2sj23;
-    float dDT_dsj =  -3*invsj2*invsj         + 4*sj*(3*si2sj2 - r2_4)*invsi2sj23;
-    float dDT_dr  =   8*invsi2sj22;      // missing 'r' it is in |dR|
+    double DT      = 1.5*si2sj2*invsi2*invsj2 -      (6.0*si2sj2 - r2_4)*invsi2sj22;
+    double dDT_dsi =  -3.0*invsi2*invsi       + 4.0*si_*(3.0*si2sj2 - r2_4)*invsi2sj23;
+    double dDT_dsj =  -3.0*invsj2*invsj       + 4.0*sj_*(3.0*si2sj2 - r2_4)*invsi2sj23;
+    double dDT_dr  =   8.0*invsi2sj22;      // missing 'r' it is in |dR|
 
     // ------- Overlap  ..... actually S22 = 2*S**2
-    float S22      = 8*denom_sij*denom_sij*denom_sij*exp(-2*r2*invsi2sj2);
-    float dS22_dsi = S22*( -3*si4sj4 + r2_4*si2 )*invsi2sj22*invsi;
-    float dS22_dsj = S22*( +3*si4sj4 + r2_4*sj2 )*invsi2sj22*invsj;
-    float dS22_dr  = -4*S22*invsi2sj2;   // missing 'r' it is in |dR|
+    double S22      = 8.0*denom_sij*denom_sij*denom_sij*exp(-2.0*r2*invsi2sj2);
+    double dS22_dsi = S22*( -3.0*si4sj4 + r2_4*si2 )*invsi2sj22*invsi;
+    double dS22_dsj = S22*( +3.0*si4sj4 + r2_4*sj2 )*invsi2sj22*invsj;
+    double dS22_dr  = -4.0*S22*invsi2sj2;   // missing 'r' it is in |dR|
 
-    float rho = KRSrho.z;
+    double rho = (double)KRSrho.z;
 
-    float E=0, dE_dDT=0, dE_dS22=0;
+    double E=0.0, dE_dDT=0.0, dE_dS22=0.0;
     if(spin<=0){
-        float invS22m1 = 1/(S22+1);
+        double invS22m1 = 1.0/(S22+1.0);
         E       += - rho*DT*S22  *invS22m1;
         dE_dDT  += -(rho*   S22 )*invS22m1;
         dE_dS22 += -(rho*DT     )*invS22m1*invS22m1;
     }
     if(spin>=0){
-        float invS222m1 = 1/( S22*S22-1 );
-        E       +=   S22 * DT * ( -rho*S22                     + rho-2 ) *invS222m1;
-        dE_dDT  += - S22 *      (  rho*S22                     - rho+2 ) *invS222m1;
-        dE_dS22 +=      -  DT * (      S22*(S22*(rho-2)-2*rho) + rho-2 ) *invS222m1*invS222m1;
+        double invS222m1 = 1.0/( S22*S22-1.0 );
+        E       +=   S22 * DT * ( -rho*S22                     + rho-2.0 ) *invS222m1;
+        dE_dDT  += - S22 *      (  rho*S22                     - rho+2.0 ) *invS222m1;
+        dE_dS22 +=      -  DT * (      S22*(S22*(rho-2.0)-2.0*rho) + rho-2.0 ) *invS222m1*invS222m1;
     }
 
-    float sc = KRSrho.w;
+    double sc = (double)KRSrho.w;
 
     E         *= Hartree2eV*sc;
-    float fsi = (dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi)*Hartree2eV*-KS *sc;
-    float fsj = (dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj)*Hartree2eV*-KS *sc;
-    float fr  = (dE_dS22 * dS22_dr  + dE_dDT * dDT_dr )*Hartree2eV*KR2 *sc;
+    double fsi = (dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi)*Hartree2eV*-KS *sc;
+    double fsj = (dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj)*Hartree2eV*-KS *sc;
+    double fr  = (dE_dS22 * dS22_dr  + dE_dDT * dDT_dr )*Hartree2eV*KR2 *sc;
 
-    //f = dR * fr;
+    {
+        static int iPrint=0;
+        if(iPrint<8){
+            const double r = sqrt( (double)dot(dR,dR) + 1e-16 );
+            printf("GPU[PauliNew] r %g dR(%g,%g,%g) s(%g,%g) spin %d sc %g | KR2 %g KS %g rho %g | DT %g S22 %g | E %g fr %g fsi %g fsj %g\n",
+                r, (double)dR.x,(double)dR.y,(double)dR.z, (double)si, (double)sj, spin, sc, KR2, KS, rho, DT, S22, E, fr, fsi, fsj );
+            iPrint++;
+        }
+    }
 
-    //printf( "r %g si %g sj %g DT %g S22 %g E %g anti(%i) \n", sqrt(r2), si,sj, DT,S22, E, anti );
-    //return E;
-    return (float4){ E, fr, fsi, fsj };
+    return (float4){ (float)E, (float)fr, (float)fsi, (float)fsj };
 }
 
 float2 addKineticGauss_eFF( float s ){
@@ -256,6 +264,7 @@ __kernel void localMD(
         // Kinetic size forces for electrons
         for (int i=na; i<ntot; ++i) {
             float2 fk = addKineticGauss_eFF(l_pos[i].w);
+            if(bDBGall){ printf("GPU[serial] Ke(i=%i) s %g -> fs %g\n", i-na, l_pos[i].w, fk.y ); }
             F[i].w += fk.y;
         }
 
@@ -277,20 +286,35 @@ __kernel void localMD(
         // Ion-Electron (AE)
         for (int i=0; i<na; ++i) {
             const float8 pari = l_aparams[i];
-            const float  Qi   = pari.s0 - pari.s2;
-            const float  Ri   = pari.s1;
+            const float  Q    = pari.s0;
+            const float  sQ   = pari.s1;
+            const float  sP   = pari.s2;
+            const float  cP   = pari.s3;
+            const float  qCore= Q;
             for (int j=na; j<ntot; ++j) {
                 const float4 ej = l_pos[j];
                 const float3 dR = ej.xyz - l_pos[i].xyz;
-                float4 cg = getCoulombGauss(dR, Ri, ej.w, -Qi);
+                float4 cg = getCoulombGauss(dR, sQ, ej.w, -qCore);
                 float3 f = dR * cg.y;
-                if(bDBGall){ printf("GPU[serial] AE(%i,%i) dR(%.3f,%.3f,%.3f) s(%.3f,%.3f) -> Coul:(%.3f,%.3f,%.3f) | %.3f,%.3f\n", i, j-na, dR.x, dR.y, dR.z, Ri, ej.w, f.x, f.y, f.z, 0.0, cg.w); }
+                if(bDBGall){ printf("GPU[serial] AE(%i,%i) dR(%.3f,%.3f,%.3f) s(%.3f,%.3f) -> Coul:(%.3f,%.3f,%.3f) | %.3f,%.3f\n", i, j-na, dR.x, dR.y, dR.z, sQ, ej.w, f.x, f.y, f.z, 0.0, cg.w); }
                 F[i].xyz += f;
                 F[j].xyz -= f;
-                F[i].w   += cg.z;   // size force on ion
                 F[j].w   += cg.w;   // size force on electron
-                if (bFrozenCore) {
-                    // Pauli with frozen-core (if used) would go here
+
+                if (sP > 1e-8f) {
+                    float4 KRS = KRSrho;
+                    float4 pg  = getPauliGauss_New(dR, sQ, ej.w, 0, (float4)(KRS.x, KRS.y, KRS.z, KRS.w*(sP*0.5f)) );
+                    float3 fp  = dR * pg.y;
+                    F[i].xyz += fp;
+                    F[j].xyz -= fp;
+                    F[j].w   += pg.z;
+
+                    float4 cgC = getCoulombGauss(dR, sQ, ej.w, sP);
+                    float3 fC  = dR * cgC.y;
+                    if(bDBGall){ printf("GPU[serial] AE(%i,%i) Core: (%.3f,%.3f,%.3f) | %.3f,%.3f\n", i, j-na, fC.x, fC.y, fC.z, 0.0, cgC.w); }
+                    F[i].xyz += fC;
+                    F[j].xyz -= fC;
+                    F[j].w   += cgC.z;
                 }
             }
         }
@@ -304,11 +328,14 @@ __kernel void localMD(
                 const int    sj = l_spins[j-na];
                 const float3 dR = ej.xyz - ei.xyz;
                 float4 cg = getCoulombGauss  (dR, ei.w, ej.w, 1.0f);
+                // NOTE: CPU evalEE() currently evaluates CoulombGauss twice before Pauli (see cpp/common/molecular/eFF.h).
+                // We mimic that behavior here to make CPU/GPU force comparison apples-to-apples.
+                float4 cg2 = getCoulombGauss (dR, ei.w, ej.w, 1.0f);
                 // CPU scales Pauli by qq = 2 if both spins are 0 (paired), else 1.0
                 float  qq = ((si==0) && (sj==0)) ? 2.0f : 1.0f;
                 float4 KRS = KRSrho; KRS.w *= qq;
                 float4 pg = getPauliGauss_New(dR, ei.w, ej.w, si*sj, KRS);
-                float  fr = cg.y + pg.y;
+                float  fr = cg.y + cg2.y + pg.y;
                 float3 f  = dR * fr;
                 if(bDBGall){ printf("GPU[serial] EE(%i,%i) dR(%.3f,%.3f,%.3f) s(%.3f,%.3f) -> Coul:(%.3f,%.3f,%.3f) | %.3f,%.3f | Paul:(%.3f,%.3f,%.3f) | %.3f,%.3f\n",
                     i-na, j-na,
@@ -317,8 +344,8 @@ __kernel void localMD(
                     dR.x*pg.y, dR.y*pg.y, dR.z*pg.y, pg.z, pg.w ); }
                 F[i].xyz += f;
                 F[j].xyz -= f;
-                F[i].w   += cg.z + pg.z;   // size force on i
-                F[j].w   += cg.w + pg.w;   // size force on j
+                F[i].w   += cg.z + cg2.z + pg.z;   // size force on i
+                F[j].w   += cg.w + cg2.w + pg.w;   // size force on j
             }
         }
         for (int i=0; i<ntot; ++i) { fout[inds.z + i] = F[i]; }

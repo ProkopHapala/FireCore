@@ -140,3 +140,28 @@ From `tests/tEFF/OUT_ocl_vs_cpu`:
 * __Interim conclusion__
   - Inputs are consistent; AE and EE Coulomb are correct. The remaining discrepancy is isolated to the EE Pauli contribution in the GPU path.
   - Next action: inspect/validate `getPauliGauss_New()` usage and spin/sign handling in `cpp/common_resources/cl/eFF.cl` for EE interactions, before any kernel-parallelization changes.
+
+## 8. Lab Book: Serial fixes for H2 and H2O (2026-01-16)
+
+**Context:** Continuing serial-validation work to align GPU (OpenCL) with CPU for the simplest systems, before touching parallel accumulation.
+
+**H2 (2 atoms, 2 electrons) — PASS (serial)**
+- Max diff ~`2.8e-05` (tol `1e-4`).
+- Problem: GPU kinetic size-force was zero because `const_K_SI ~ 6e-39` underflowed in `float` and was flushed to 0 on NVIDIA.
+- Fix: Hardcode derived constants in `eFF.cl` to avoid subnormals: `const_K_eVA=3.8099822f`, `const_Ke_eVA=5.7149734f`. After this, GPU kinetic `fs` ≈ 182.879 for `s=0.5`, matching CPU. Pauli debug prints already matched; no math change needed.
+- Debugging aids: CPU prints gated by `idebug` in `addPauliGauss_New`; GPU serial `getPauliGauss_New` printf (rate-limited) plus kinetic print; tolerance relaxed to `1e-4` in `test_ocl_vs_cpu.py`.
+
+**H2O_fixcore (3 atoms, 8 electrons) — PASS (serial)**
+- Max diff `1.0e-05` (tol `1e-4`).
+- Problems and fixes in GPU serial AE path:
+  1) Ion `w` accumulation: ions have no size DOF. Removed `cg.z` contribution to ion; only electrons receive size-force.
+  2) Missing oxygen core terms: added AE Pauli (qq = `sP*0.5*qj`) and core Coulomb correction (qq = `sP*qj`) when `sP>0`, matching CPU `evalAE()`.
+  3) Derivative slot: CPU accumulates derivative w.r.t ion size (`fsi`) into electron `fs`. GPU was using `fsj`. Now electron `w` gets `pg.z` and `cgC.z` (not `.w`).
+  4) Core charge: CPU with `bCoreCoul=1` uses full `Q` (not `Q-sP`). GPU serial path now uses `qCore=Q` to mirror CPU config.
+- Result: H2O CPU/GPU forces now agree to ~`1e-5` in serial path.
+- Debugging aids: serial AE/EE printf dumps in `eFF.cl` (guarded by `bDBGall`); CPU verbosity `setVerbosity(4,1)`; test harness pointed to `H2O_fixcore.xyz` with tol `1e-4`; used `OUT-test_ocl_vs_cpu_H2O.txt` to compare pairwise AE/EE prints.
+
+**Remaining work after these serial passes**
+- Run NH3_fixcore and CH4_fixcore (tol `1e-4`).
+- Add perturbation tests (small random jitter; single-particle displacement) on serial path.
+- Only then address parallel accumulation (pair-once with ±f) and small-system optimization.

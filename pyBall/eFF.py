@@ -57,7 +57,7 @@ header_strings = [
 #lib = ctypes.CDLL( LIB_PATH_CPP+("/lib%s.so" %cpp_name) )
 
 cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build/libs/Molecular' ) 
-lib = cpp_utils.loadLib('eFF_lib', recompile=False)
+lib = cpp_utils.loadLib('eFF_lib', recompile=True)
 array1ui = np.ctypeslib.ndpointer(dtype=np.uint32, ndim=1, flags='CONTIGUOUS')
 array1i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=1, flags='CONTIGUOUS')
 array2i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=2, flags='CONTIGUOUS')

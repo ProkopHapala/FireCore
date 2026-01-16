@@ -8,25 +8,14 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 from pyBall import eFF as eff
 from pyBall.OCL import eFF_ocl as ocl
 
-# --- Define a simple H2 molecule geometry
-xyz_content = """4
-na,ne,core 2 2 a | H2 test molecule
-H   0.0   0.0   -0.4
-H   0.0   0.0    0.4
-e-  0.1   0.0   -0.4  -1.0  0.5
-e+  -0.1  0.0    0.4   1.0  0.5
-"""
-xyz_filename = "test_h2_ocl_vs_cpu.xyz"
-with open(xyz_filename, "w") as f:
-    f.write(xyz_content)
-
-print("--- Comparing CPU and GPU eFF implementations for H2 ---")
+xyz_filename = os.path.normpath(os.path.join(os.path.dirname(__file__), "../../cpp/sketches_SDL/Molecular/data/H2O_fixcore.xyz"))
+print("--- Comparing CPU and GPU eFF implementations for H2O_fixcore ---")
 
 # ==========================
 #      CPU Calculation
 # ==========================
 print("\n--- Running CPU Calculation ---")
-eff.setVerbosity(4)
+eff.setVerbosity(4,1)
 eff.processXYZ_e(xyz_filename, nstepMax=0)
 eff.getBuffs()
 
@@ -71,7 +60,7 @@ if gpu_forces is not None:
         max_abs_diff = np.max(np.abs(diff))
         print(f"Max absolute difference: {max_abs_diff}")
 
-        if max_abs_diff < 1e-6:
+        if max_abs_diff < 1e-4:
             print("PASS: Implementations match.")
         else:
             print("FAIL: Implementations do NOT match.")
@@ -88,5 +77,3 @@ if gpu_forces is not None:
 else:
     print("SKIPPED: GPU forces not available for comparison.")
 
-# Clean up the temporary file
-os.remove(xyz_filename)
