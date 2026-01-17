@@ -65,7 +65,9 @@ header_strings = [
 "void firecore_scanHamPiece2c( int interaction, int isub, int in1, int in2, int in3, double* dR, int applyRotation, double* sx_out )",
 "void firecore_scanHamPiece3c( int interaction, int isorp, int in1, int in2, int indna, double* dRj, double* dRk, int applyRotation, double* bcnax_out )",
 "void firecore_set_avg_rho_diag( int enable, int iatom, int jatom, int mbeta )",
+"void firecore_set_vca_diag( int enable, int iatom, int jatom, int mbeta, int isorp )",
 "void firecore_get_avg_rho_diag_state( int* enable, int* iatom, int* jatom, int* mbeta )",
+"void firecore_get_vca_diag_state( int* enable, int* iatom, int* jatom, int* mbeta, int* isorp )",
 "void firecore_get_avg_rho_diag_meta( int* iatom, int* ineigh, int* in1, int* in2, int* jatom, int* mbeta )",
 "void firecore_get_avg_rho_diag_eps2c( double* eps_out )",
 "void firecore_get_avg_rho_diag_sm( double* sm_out )",
@@ -821,6 +823,10 @@ argDict["firecore_set_avg_rho_diag"]=( None, [c_int, c_int, c_int, c_int] )
 def set_avg_rho_diag(enable=1, iatom=1, jatom=1, mbeta=-1):
     return lib.firecore_set_avg_rho_diag(int(enable), int(iatom), int(jatom), int(mbeta))
 
+argDict["firecore_set_vca_diag"]=( None, [c_int, c_int, c_int, c_int, c_int] )
+def set_vca_diag(enable=1, iatom=1, jatom=1, mbeta=-1, isorp=-1):
+    return lib.firecore_set_vca_diag(int(enable), int(iatom), int(jatom), int(mbeta), int(isorp))
+
 argDict["firecore_get_avg_rho_diag_state"]=( None, [c_int_p, c_int_p, c_int_p, c_int_p] )
 def get_avg_rho_diag_state():
     enable = c_int(0)
@@ -829,6 +835,16 @@ def get_avg_rho_diag_state():
     mbeta  = c_int(0)
     lib.firecore_get_avg_rho_diag_state(byref(enable), byref(iatom), byref(jatom), byref(mbeta))
     return int(enable.value), int(iatom.value), int(jatom.value), int(mbeta.value)
+
+argDict["firecore_get_vca_diag_state"]=( None, [c_int_p, c_int_p, c_int_p, c_int_p, c_int_p] )
+def get_vca_diag_state():
+    enable = c_int(0)
+    iatom  = c_int(0)
+    jatom  = c_int(0)
+    mbeta  = c_int(0)
+    isorp  = c_int(0)
+    lib.firecore_get_vca_diag_state(byref(enable), byref(iatom), byref(jatom), byref(mbeta), byref(isorp))
+    return int(enable.value), int(iatom.value), int(jatom.value), int(mbeta.value), int(isorp.value)
 
 argDict["firecore_get_avg_rho_diag_meta"]=( None, [c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p] )
 def get_avg_rho_diag_meta():

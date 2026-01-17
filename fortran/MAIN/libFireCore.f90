@@ -1724,6 +1724,39 @@ subroutine firecore_set_avg_rho_diag( enable, iatom, jatom, mbeta ) bind(c, name
     diag_avg_rho_ineigh = -1
 end subroutine firecore_set_avg_rho_diag
 
+subroutine firecore_set_vca_diag( enable, iatom, jatom, mbeta, isorp ) bind(c, name='firecore_set_vca_diag')
+    use iso_c_binding
+    use debug, only: diag_vca_enable, diag_vca_iatom, diag_vca_jatom, diag_vca_mbeta, diag_vca_isorp
+    implicit none
+    integer(c_int), intent(in), value :: enable
+    integer(c_int), intent(in), value :: iatom
+    integer(c_int), intent(in), value :: jatom
+    integer(c_int), intent(in), value :: mbeta
+    integer(c_int), intent(in), value :: isorp
+    diag_vca_enable = (enable .ne. 0)
+    diag_vca_iatom  = iatom
+    diag_vca_jatom  = jatom
+    diag_vca_mbeta  = mbeta
+    diag_vca_isorp  = isorp
+end subroutine firecore_set_vca_diag
+
+subroutine firecore_get_vca_diag_state( enable, iatom, jatom, mbeta, isorp ) bind(c, name='firecore_get_vca_diag_state')
+    use iso_c_binding
+    use debug, only: diag_vca_enable, diag_vca_iatom, diag_vca_jatom, diag_vca_mbeta, diag_vca_isorp
+    implicit none
+    integer(c_int), intent(out) :: enable
+    integer(c_int), intent(out) :: iatom
+    integer(c_int), intent(out) :: jatom
+    integer(c_int), intent(out) :: mbeta
+    integer(c_int), intent(out) :: isorp
+    enable = 0
+    if (diag_vca_enable) enable = 1
+    iatom = diag_vca_iatom
+    jatom = diag_vca_jatom
+    mbeta = diag_vca_mbeta
+    isorp = diag_vca_isorp
+end subroutine firecore_get_vca_diag_state
+
 subroutine firecore_get_avg_rho_diag_state( enable, iatom, jatom, mbeta ) bind(c, name='firecore_get_avg_rho_diag_state')
     use iso_c_binding
     use debug, only: diag_avg_rho_enable, diag_avg_rho_iatom, diag_avg_rho_jatom_target, diag_avg_rho_mbeta_target

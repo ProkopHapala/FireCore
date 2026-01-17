@@ -1780,8 +1780,10 @@ __kernel void assemble_vca(
         float dq_j = dQ[atom_j * nsh_stride + ish];
 
         if (dbg_enable && (i_pair == dbg_pair) && (ish == dbg_ish)) {
-            printf(" [VCA_DBG][O][CP0] pair=%d ia=%d ja=%d r=%12.6f ish=%d stride=%d dq_i=%12.6f dq_j=%12.6f pmat00=%12.6f pmat01=%12.6f pmat02=%12.6f pmat10=%12.6f pmat11=%12.6f pmat12=%12.6f pmat20=%12.6f pmat21=%12.6f pmat22=%12.6f\n",
+            printf(" [VCA_DBG][O][CP0] pair=%d ia=%d ja=%d r=%12.6f ish=%d stride=%d dq_i=%12.6f dq_j=%12.6f ez=%12.6f %12.6f %12.6f eps=%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f pmat=%12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f %12.6f\n",
                 i_pair, atom_i, atom_j, r, ish, nsh_stride, dq_i, dq_j,
+                ez.x, ez.y, ez.z,
+                eps[0][0], eps[0][1], eps[0][2], eps[1][0], eps[1][1], eps[1][2], eps[2][0], eps[2][1], eps[2][2],
                 pmat[0][0], pmat[0][1], pmat[0][2], pmat[1][0], pmat[1][1], pmat[1][2], pmat[2][0], pmat[2][1], pmat[2][2]);
         }
 
@@ -1809,7 +1811,7 @@ __kernel void assemble_vca(
             }
             float sm[4][4]; // Ortega order (s,py,pz,px)
             for(int a=0;a<4;a++){ for(int b=0;b<4;b++) sm[a][b]=0.0f; }
-            sm[0][0] = comps[0]; sm[0][2] = comps[1]; sm[2][0] = (n_nonzero_max>2)?comps[2]:0.0f;
+            sm[0][0] = comps[0]; sm[0][2] = -((n_nonzero_max>2)?comps[2]:comps[1]); sm[2][0] = -comps[1];
             sm[1][1] = (n_nonzero_max>3)?comps[3]:0.0f; sm[2][2] = (n_nonzero_max>4)?comps[4]:0.0f; sm[3][3] = sm[1][1];
             
             float sx[4][4];
@@ -1844,7 +1846,7 @@ __kernel void assemble_vca(
             }
             float sm[4][4]; 
             for(int a=0;a<4;a++){ for(int b=0;b<4;b++) sm[a][b]=0.0f; }
-            sm[0][0] = comps[0]; sm[0][2] = comps[1]; sm[2][0] = (n_nonzero_max>2)?comps[2]:0.0f;
+            sm[0][0] = comps[0]; sm[0][2] = -((n_nonzero_max>2)?comps[2]:comps[1]); sm[2][0] = -comps[1];
             sm[1][1] = (n_nonzero_max>3)?comps[3]:0.0f; sm[2][2] = (n_nonzero_max>4)?comps[4]:0.0f; sm[3][3] = sm[1][1];
             
             float sx[4][4];

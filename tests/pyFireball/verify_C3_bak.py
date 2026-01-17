@@ -200,49 +200,44 @@ def run_verification():
 
     print("Initializing Fortran FireCore...")
     fc.initialize(atomType=atomTypes_Z, atomPos=atomPos)
+    fc.setVerbosity(7, 1)
 
-    DO_AVGRHO_PLUMBING = False
+    # Enable AvgRho diagnostics in Fortran core (exported via libFireCore, logic still in average_rho.f90)
+    # IMPORTANT: average_rho off-site part is computed on the neighbor list, so pick an actual neighbor.
+    # Use jatom/mbeta wildcards (-1) so Fortran captures the first neighbor of iatom=1.
+    fc.set_avg_rho_diag(enable=1, iatom=1, jatom=-1, mbeta=-1)
+    en, ti, tj, tb = fc.get_avg_rho_diag_state()
+    print(f"[FORTRAN AvgRho DIAG state before SCF] enable={en} iatom={ti} jatom={tj} mbeta={tb}")
+    if en != 1 or ti != 1:
+        raise RuntimeError("AvgRho diagnostic state not set correctly before SCF")
 
-    fc.setVerbosity(0, 0)
+    # Run SCF once; afterwards export rho/s/h from the same Fortran state.
     fc.set_export_mode(0)
-    fc.set_options(1, 1, 1, 1, 1, 1, 1, 1)
+    fc.set_options(1, 1, 1, 1, 1, 1, 1)
     fc.SCF(positions=atomPos, iforce=0, nmax_scf=50)
 
-    fc.setVerbosity(7, 1)
-    fc.set_vca_diag(enable=1, iatom=2, jatom=1, mbeta=0, isorp=1)
-    fc.assembleH(positions=atomPos, iforce=0, Kscf=2)
-    fc.set_vca_diag(enable=0, iatom=2, jatom=1, mbeta=0, isorp=1)
-
-    dims = fc.get_HS_dims(force_refresh=True)
-    sd = fc.get_HS_neighs(dims)
-    sd = fc.get_HS_neighsPP(dims, data=sd)
-    sd = fc.get_HS_sparse(dims, data=sd)
-
-    if DO_AVGRHO_PLUMBING:
-        fc.set_avg_rho_diag(enable=1, iatom=1, jatom=-1, mbeta=-1)
-        en, ti, tj, tb = fc.get_avg_rho_diag_state()
-        print(f"[FORTRAN AvgRho DIAG state] enable={en} iatom={ti} jatom={tj} mbeta={tb}")
-        d_iatom, d_ineigh, d_in1, d_in2, d_jatom, d_mbeta = fc.get_avg_rho_diag_meta()
-        eps2c = fc.get_avg_rho_diag_eps2c()
-        smS   = fc.get_avg_rho_diag_sm()
-        rhom2cS = fc.get_avg_rho_diag_rhom2c()
-        rhom3cS = fc.get_avg_rho_diag_rhom3c()
-        rhooff_3c = fc.get_avg_rho_diag_rhooff_3c()
-        rhooff_fin = fc.get_avg_rho_diag_rhooff_final()
-        print("\n[FORTRAN AvgRho DIAG]")
-        print(f"  target meta: iatom={d_iatom} ineigh={d_ineigh} in1={d_in1} in2={d_in2} jatom={d_jatom} mbeta={d_mbeta}")
-        print("  eps2c:")
-        print(eps2c)
-        print("  sm (shell):")
-        print(smS)
-        print("  rhom2c (shell):")
-        print(rhom2cS)
-        print("  rhom3c (shell):")
-        print(rhom3cS)
-        print("  rho_off after 3c (orbital):")
-        print(rhooff_3c[:4,:4])
-        print("  rho_off final (orbital):")
-        print(rhooff_fin[:4,:4])
+    # Fetch AvgRho diagnostic buffers from Fortran core
+    d_iatom, d_ineigh, d_in1, d_in2, d_jatom, d_mbeta = fc.get_avg_rho_diag_meta()
+    eps2c = fc.get_avg_rho_diag_eps2c()
+    smS   = fc.get_avg_rho_diag_sm()
+    rhom2cS = fc.get_avg_rho_diag_rhom2c()
+    rhom3cS = fc.get_avg_rho_diag_rhom3c()
+    rhooff_3c = fc.get_avg_rho_diag_rhooff_3c()
+    rhooff_fin = fc.get_avg_rho_diag_rhooff_final()
+    print("\n[FORTRAN AvgRho DIAG]")
+    print(f"  target meta: iatom={d_iatom} ineigh={d_ineigh} in1={d_in1} in2={d_in2} jatom={d_jatom} mbeta={d_mbeta}")
+    print("  eps2c:")
+    print(eps2c)
+    print("  sm (shell):")
+    print(smS)
+    print("  rhom2c (shell):")
+    print(rhom2cS)
+    print("  rhom3c (shell):")
+    print(rhom3cS)
+    print("  rho_off after 3c (orbital):")
+    print(rhooff_3c[:4,:4])
+    print("  rho_off final (orbital):")
+    print(rhooff_fin[:4,:4])
 
     print("Initializing PyOpenCL Hamiltonian...")
     ham = OCL_Hamiltonian(fdata_dir)
@@ -304,22 +299,28 @@ def run_verification():
                 neighbors.append((i, j))
         return H, neighbors, sd_
 
-    if DO_AVGRHO_PLUMBING:
-        print("\n[PLUMBING] compute_avg_rho (3c gather) using Fortran-exported rho + Qin-shell...")
-        sd = fc.get_HS_neighsPP(dims, data=sd)
-        sd = fc.get_rho_sparse(dims, data=sd)
-        sd = fc.get_rho_off_sparse(dims, data=sd)
+    print("\n[PLUMBING] compute_avg_rho (3c gather) using Fortran-exported rho + Qin-shell...")
+    dims = fc.get_HS_dims(force_refresh=True)
+    sd = fc.get_HS_neighs(dims)
+    sd = fc.get_HS_neighsPP(dims, data=sd)
+    sd = fc.get_HS_sparse(dims, data=sd)
+    sd = fc.get_rho_sparse(dims, data=sd)
+    sd = fc.get_rho_off_sparse(dims, data=sd)
 
-        # OpenCL compute_avg_rho weights 3c density pieces by *neutral* charge of the common neighbor.
-        # Fortran average_rho uses Qneutral(isorp, indna) (per-shell neutral population for species indna).
-        pass
-
-    Qneutral_sh_full = fc.get_Qneutral_shell(dims)
+    # OpenCL compute_avg_rho weights 3c density pieces by *neutral* charge of the common neighbor.
+    # Fortran average_rho uses Qneutral(isorp, indna) (per-shell neutral population for species indna).
+    Qneutral_sh_full = fc.get_Qneutral_shell(dims)  # [nsh_max, nspecies_fdata]
+    print(f"DEBUG: Qneutral_sh_full shape={Qneutral_sh_full.shape}")
+    print(f"DEBUG: Qneutral_sh_full values:\n{Qneutral_sh_full}")
+    # Qneutral_shell is per-species; slice to species used in this run and zero-fill the rest to avoid garbage.
     Qneutral_sh = np.zeros_like(Qneutral_sh_full)
     Qneutral_sh[:, :dims.nspecies] = Qneutral_sh_full[:, :dims.nspecies]
-    Qin_shell = fc.get_Qin_shell(dims)
+    Qin_shell = fc.get_Qin_shell(dims)  # [nsh_max, natoms]
+    print(f"DEBUG: Qin_shell shape={Qin_shell.shape}")
+    print(f"DEBUG: Qneutral_sh sliced shape={Qneutral_sh.shape}")
+    print(f"DEBUG: Qneutral_sh sliced values:\n{Qneutral_sh}")
     nzx_full = np.array(sd.nzx, dtype=np.int32)
-    nzx = nzx_full[:dims.nspecies]
+    nzx = nzx_full[:dims.nspecies]  # Only valid species indices (avoid garbage beyond nspecies)
     iatyp = np.array(sd.iatyp, dtype=np.int32)
     ispec_of_atom = np.zeros(dims.natoms, dtype=np.int32)
     for ia in range(dims.natoms):
@@ -877,12 +878,9 @@ def run_verification():
     # iterate neighPP list and map each (jatom,mbeta) to an index in the normal neigh list.
     # This avoids comparing OpenCL against zero blocks for non-PP pairs.
     neighs_vnl = []
-    npp_tot = 0
-    npp_mapped = 0
     for i in range(natoms):
         nn  = int(sd.neighn[i])
         npp = int(sd.neighPPn[i])
-        npp_tot += npp
         for ipp in range(npp):
             j = int(sd.neighPP_j[ipp, i]) - 1
             b = int(sd.neighPP_b[ipp, i])
@@ -894,19 +892,9 @@ def run_verification():
                     ineigh0 = ineigh
                     break
             if ineigh0 >= 0:
-                npp_mapped += 1
                 neighs_vnl.append((i, j))
     neighs_vnl = list(dict.fromkeys(neighs_vnl))
     if len(neighs_vnl) == 0:
-        print(f"[VNL_DIAG] neighPPn={sd.neighPPn.tolist()}  total_PP_edges={int(npp_tot)}  mapped_PP_edges={int(npp_mapped)}")
-        for i in range(natoms):
-            nn  = int(sd.neighn[i])
-            npp = int(sd.neighPPn[i])
-            if npp <= 0:
-                continue
-            pp_list = [(int(sd.neighPP_j[ipp, i]) - 1, int(sd.neighPP_b[ipp, i])) for ipp in range(npp)]
-            nb_list = [(int(sd.neigh_j[i, ineigh]) - 1, int(sd.neigh_b[i, ineigh])) for ineigh in range(nn)]
-            print(f"[VNL_DIAG] i={i} pp_list={pp_list} neigh_list={nb_list}")
         raise RuntimeError("VNL: neighs_vnl is empty (no PP neighbors mapped into neigh list)")
 
     Vnl_ref_blocks = []

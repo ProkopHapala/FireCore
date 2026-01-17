@@ -68,7 +68,7 @@
         ! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
         ! VCA component breakdown (ontopl/ontopr/atom) is stored ONLY in MODULES/debug.f90,
         ! allocated+filled only when idebugWrite>0. This keeps production state unchanged.
-        use debug, only: debug_vca_prepare, debug_vca_zero, dbg_vca_ontopl=>vca_ontopl, dbg_vca_ontopr=>vca_ontopr, dbg_vca_atom=>vca_atom
+        use debug, only: debug_vca_prepare, debug_vca_zero, dbg_vca_ontopl=>vca_ontopl, dbg_vca_ontopr=>vca_ontopr, dbg_vca_atom=>vca_atom, diag_vca_enable, diag_vca_iatom, diag_vca_jatom, diag_vca_mbeta, diag_vca_isorp
         ! --------------------------
         implicit none
  
@@ -110,6 +110,14 @@
         integer natomsp
 
         integer nnu, nmu
+
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py        
+        logical dbg_vca_pair
+        logical dbg_vca_shell
+        real, dimension (5, 5) :: dmat
+        real, dimension (3, 3) :: pmat
+! --------------------------
  
         real dq1
         real dq2
@@ -217,6 +225,17 @@
           r2(:) = ratom(:,jatom) + xl(:,mbeta)
           in2 = imass(jatom)
 
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py          
+          dbg_vca_pair = .false.
+          if (idebugWrite .gt. 0 .and. diag_vca_enable) then
+            dbg_vca_pair = .true.
+            if (diag_vca_iatom .ge. 0 .and. iatom .ne. diag_vca_iatom) dbg_vca_pair = .false.
+            if (diag_vca_jatom .ge. 0 .and. jatom .ne. diag_vca_jatom) dbg_vca_pair = .false.
+            if (diag_vca_mbeta .ge. 0 .and. mbeta .ne. diag_vca_mbeta) dbg_vca_pair = .false.
+          end if
+! --------------------------
+
           rcutoff_j = 0
           do imu = 1, nssh(in2)
            if (rcutoff(in2,imu) .gt. rcutoff_j) rcutoff_j = rcutoff(in2,imu)
@@ -242,7 +261,18 @@
  
           call epsilon (r2, sighat, eps)
           call deps2cent (r1, r2, eps, deps)
- 
+
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+          if (dbg_vca_pair .and. verbosity .gt. 6) then
+            call twister (eps, dmat, pmat)
+            write(*,'(A,2I4,A,I4,A,I4,A,F12.6,A,3F12.6,A,9F12.6,A,9F12.6)') &
+              ' [VCA_DBG][F][CP0] ia,ja=', iatom, jatom, ' ineigh=', ineigh, ' mbeta=', mbeta, ' r=', y, ' sighat=', sighat(1), sighat(2), sighat(3), &
+              ' eps=', eps(1,1), eps(1,2), eps(1,3), eps(2,1), eps(2,2), eps(2,3), eps(3,1), eps(3,2), eps(3,3), &
+              ' pmat=', pmat(1,1), pmat(1,2), pmat(1,3), pmat(2,1), pmat(2,2), pmat(2,3), pmat(3,1), pmat(3,2), pmat(3,3)
+          end if
+ ! --------------------------
+
 ! ****************************************************************************
 !
 ! CALL DOSCENTROS AND GET DIP
@@ -368,15 +398,15 @@
 
 ! --------------------------
 ! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+           dbg_vca_shell = dbg_vca_pair
+            if (dbg_vca_shell) then
+              if (diag_vca_isorp .ge. 0 .and. isorp .ne. diag_vca_isorp) dbg_vca_shell = .false.
+            end if
 ! Trace VCA atom intermediate values for one selected directed pair.
 ! Prints bccax (rotated), dxn, and accumulated bcca for (s,s),(s,pz),(pz,s).
-            if (idebugWrite .gt. 0 .and. verbosity .gt. 6) then
-              if (iatom .eq. 2 .and. (jatom .eq. 1 .or. jatom .eq. 2 .or. jatom .eq. 3) .and. mbeta .eq. 0) then
-                if (isorp .le. 2) then
-                  write(*,'(A,2I4,A,I4,A,I4,A,F12.6,A,I3,A,F12.6,A,3E16.8)')  &
-                    ' [VCA_DBG][F][CP0] ia,ja=', iatom, jatom, ' ineigh=', ineigh, ' matom=', matom, ' r=', y, ' isorp=', isorp, ' dxn=', dxn, ' bccax(00,02,20)=', bccax(1,1), bccax(1,3), bccax(3,1)
-                end if
-              end if
+            if (dbg_vca_shell .and. verbosity .gt. 6) then
+              write(*,'(A,2I4,A,I4,A,I4,A,F12.6,A,I3,A,F12.6,A,3E16.8)')  &
+                ' [VCA_DBG][F][CP1A] ia,ja=', iatom, jatom, ' ineigh=', ineigh, ' matom=', matom, ' r=', y, ' isorp=', isorp, ' dxn=', dxn, ' bccax(00,02,20)=', bccax(1,1), bccax(1,3), bccax(3,1)
             end if
 ! --------------------------
 
@@ -391,13 +421,9 @@
 ! --------------------------
 ! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
 ! Partial accumulation after this isorp (pre-smoothing, pre-eq2).
-            if (idebugWrite .gt. 0 .and. verbosity .gt. 6) then
-              if (iatom .eq. 2 .and. (jatom .eq. 1 .or. jatom .eq. 2 .or. jatom .eq. 3) .and. mbeta .eq. 0) then
-                if (isorp .le. 2) then
-                  write(*,'(A,2I4,A,I4,A,I4,A,F12.6,A,I3,A,3E16.8)') &
-                    ' [VCA_DBG][F][CP2] ia,ja=', iatom, jatom, ' ineigh=', ineigh, ' matom=', matom, ' r=', y, ' isorp=', isorp, ' bcca(00,02,20)=', bcca(1,1), bcca(1,3), bcca(3,1)
-                end if
-              end if
+            if (dbg_vca_shell .and. verbosity .gt. 6) then
+              write(*,'(A,2I4,A,I4,A,I4,A,F12.6,A,I3,A,3E16.8)') &
+                ' [VCA_DBG][F][CP2A] ia,ja=', iatom, jatom, ' ineigh=', ineigh, ' matom=', matom, ' r=', y, ' isorp=', isorp, ' bcca(00,02,20)=', bcca(1,1), bcca(1,3), bcca(3,1)
             end if
 ! --------------------------
 
@@ -412,11 +438,9 @@
 ! --------------------------
 ! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
 ! After summing all shell contributions: print accumulated bcca (still pre-smoothing, pre-eq2).
-           if (idebugWrite .gt. 0 .and. verbosity .gt. 6) then
-             if (iatom .eq. 2 .and. (jatom .eq. 1 .or. jatom .eq. 2 .or. jatom .eq. 3) .and. mbeta .eq. 0) then
-               write(*,'(A,2I4,A,I4,A,I4,A,F12.6,A,3E16.8)') &
-                 ' [VCA_DBG][F][CP4] ia,ja=', iatom, jatom, ' ineigh=', ineigh, ' matom=', matom, ' r=', y, ' bcca(00,02,20)=', bcca(1,1), bcca(1,3), bcca(3,1)
-             end if
+           if (dbg_vca_pair .and. verbosity .gt. 6) then
+             write(*,'(A,2I4,A,I4,A,I4,A,F12.6,A,3E16.8)') &
+               ' [VCA_DBG][F][CP4A] ia,ja=', iatom, jatom, ' ineigh=', ineigh, ' matom=', matom, ' r=', y, ' bcca(00,02,20)=', bcca(1,1), bcca(1,3), bcca(3,1)
            end if
 ! --------------------------
            vca(:nmu,:nnu,matom,iatom) = vca(:nmu,:nnu,matom,iatom)  + (stn1(:nmu,:nnu)*bcca(:nmu,:nnu) + stn2(:nmu,:nnu)*emnpl(:nmu,:nnu))*eq2
@@ -502,14 +526,32 @@
 
            do isorp = 1, nssh(in1)
             call doscentros (interaction, isorp, kforce, in1, in1, in3, y, eps, deps, bccax, bccapx)
- 
+
             dxn = (Qin(isorp,iatom) - Qneutral(isorp,in1))
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+            dbg_vca_shell = dbg_vca_pair
+            if (dbg_vca_shell) then
+              if (diag_vca_isorp .ge. 0 .and. isorp .ne. diag_vca_isorp) dbg_vca_shell = .false.
+            end if
+            if (dbg_vca_shell .and. verbosity .gt. 6) then
+              write(*,'(A,2I4,A,I4,A,F12.6,A,I3,A,F12.6,A,3E16.8)') &
+                ' [VCA_DBG][F][CP1L] ia,ja=', iatom, jatom, ' ineigh=', ineigh, ' r=', y, ' isorp=', isorp, ' dxn=', dxn, ' bccax(00,02,20)=', bccax(1,1), bccax(1,3), bccax(3,1)
+            end if
+! --------------------------
 
             bcca(:nmu,:nnu) = bcca(:nmu,:nnu) + dxn*bccax(:nmu,:nnu)
+
+
 
 ! --------------------------
 ! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
 ! Store ontopl contribution only: dxn*bccax (potential on i / left)
+
+            if (dbg_vca_shell .and. verbosity .gt. 6) then
+              write(*,'(A,2I4,A,I4,A,F12.6,A,I3,A,3E16.8)') &
+                ' [VCA_DBG][F][CP2L] ia,ja=', iatom, jatom, ' ineigh=', ineigh, ' r=', y, ' isorp=', isorp, ' bcca(00,02,20)=', bcca(1,1), bcca(1,3), bcca(3,1)
+            end if
             if (idebugWrite .gt. 0) then
               if (allocated(dbg_vca_ontopl)) dbg_vca_ontopl(:nmu,:nnu,ineigh,iatom) = dbg_vca_ontopl(:nmu,:nnu,ineigh,iatom) + dxn*bccax(:nmu,:nnu)*eq2
               if (verbosity .gt. 5 .and. iatom .le. 2 .and. isorp .eq. 1) then
@@ -533,14 +575,33 @@
            do isorp = 1, nssh(in2)
 
             call doscentros (interaction, isorp, kforce, in1, in2, in3, y,  eps, deps, bccax, bccapx)
- 
+
             dxn = (Qin(isorp,jatom) - Qneutral(isorp,in2))
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+! Store ontopr contribution only: dxn*bccax (potential on j / right)
+            dbg_vca_shell = dbg_vca_pair
+            if (dbg_vca_shell) then
+              if (diag_vca_isorp .ge. 0 .and. isorp .ne. diag_vca_isorp) dbg_vca_shell = .false.
+            end if
+            if (dbg_vca_shell .and. verbosity .gt. 6) then
+              write(*,'(A,2I4,A,I4,A,F12.6,A,I3,A,F12.6,A,3E16.8)') &
+                ' [VCA_DBG][F][CP1R] ia,ja=', iatom, jatom, ' ineigh=', ineigh, ' r=', y, ' isorp=', isorp, ' dxn=', dxn, ' bccax(00,02,20)=', bccax(1,1), bccax(1,3), bccax(3,1)
+            end if
+! --------------------------    
 
             bcca(:nmu,:nnu) = bcca(:nmu,:nnu) + dxn*bccax(:nmu,:nnu)
+
 
 ! --------------------------
 ! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
 ! Store ontopr contribution only: dxn*bccax (potential on j / right)
+
+            if (dbg_vca_shell .and. verbosity .gt. 6) then
+              write(*,'(A,2I4,A,I4,A,F12.6,A,I3,A,3E16.8)') &
+                ' [VCA_DBG][F][CP2R] ia,ja=', iatom, jatom, ' ineigh=', ineigh, ' r=', y, ' isorp=', isorp, ' bcca(00,02,20)=', bcca(1,1), bcca(1,3), bcca(3,1)
+            end if
+
             if (idebugWrite .gt. 0) then
               if (allocated(dbg_vca_ontopr)) dbg_vca_ontopr(:nmu,:nnu,ineigh,iatom) = dbg_vca_ontopr(:nmu,:nnu,ineigh,iatom) + dxn*bccax(:nmu,:nnu)*eq2
               if (verbosity .gt. 5 .and. iatom .le. 2 .and. isorp .eq. 1) then
@@ -558,6 +619,13 @@
  
            vca(:nmu,:nnu,ineigh,iatom) =   vca(:nmu,:nnu,ineigh,iatom) + bcca(:nmu,:nnu)*eq2
 
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+           if (dbg_vca_pair .and. verbosity .gt. 6) then
+             write(*,'(A,2I4,A,I4,A,F12.6,A,3E16.8)') &
+               ' [VCA_DBG][F][CP4O] ia,ja=', iatom, jatom, ' ineigh=', ineigh, ' r=', y, ' bcca(00,02,20)=', bcca(1,1), bcca(1,3), bcca(3,1)
+           end if
+! --------------------------
 ! ! Now put into vca.
 !            do inu = 1, num_orb(in3)
 !             do imu = 1, num_orb(in1)
