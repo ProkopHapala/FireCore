@@ -77,17 +77,89 @@ def _blocked_to_dense(sparse_data, H_blocks, natoms):
     M = np.zeros((norb, norb), dtype=np.float64)
     neighn = np.array(sparse_data.neighn, dtype=np.int32)
     neigh_j = np.array(sparse_data.neigh_j, dtype=np.int32)
+    neigh_b = np.array(sparse_data.neigh_b, dtype=np.int32)
+
+    # Fortran uses neigh_self(iatom) = ineigh index where (jatom==iatom && mbeta==0).
+    # Do NOT assume it is the last neighbor slot.
+    neigh_self = np.full(natoms, -1, dtype=np.int32)
+    for i in range(natoms):
+        ii = i + 1  # Fortran 1-based atom index stored in neigh_j
+        for ineigh in range(int(neighn[i])):
+            if int(neigh_j[i, ineigh]) == ii and int(neigh_b[i, ineigh]) == 0:
+                neigh_self[i] = ineigh
+                break
+
     for i in range(natoms):
         ni = int(n_orb_atom[i])
         i0 = int(offs[i])
         for ineigh in range(int(neighn[i])):
-            j = int(neigh_j[i, ineigh]) - 1
+            if ineigh == int(neigh_self[i]):
+                j = i
+            else:
+                j = int(neigh_j[i, ineigh]) - 1
             if j < 0 or j >= natoms:
                 continue
             nj = int(n_orb_atom[j])
             j0 = int(offs[j])
             blk = H_blocks[i, ineigh, :nj, :ni]
             M[i0:i0+ni, j0:j0+nj] += blk.T
+    return M
+
+
+def _blocked_to_dense_vca_atom(sparse_data, A_blocks, natoms):
+    # VCA atom term is a diagonal update on atom i accumulated over non-self neighbors.
+    # For the core debug export we therefore interpret A_blocks[i,ineigh] as contributing to (i,i),
+    # NOT to (i,j). This matches OpenCL assemble_vca which returns diag updates separately.
+    n_orb_atom, offs = _orbital_layout(sparse_data, natoms)
+    norb = int(offs[-1])
+    M = np.zeros((norb, norb), dtype=np.float64)
+    neighn = np.array(sparse_data.neighn, dtype=np.int32)
+    neigh_j = np.array(sparse_data.neigh_j, dtype=np.int32)
+    neigh_b = np.array(sparse_data.neigh_b, dtype=np.int32)
+
+    # Detect whether A_blocks is stored predominantly in the self-slot or in neighbor slots.
+    # We must not guess from interface functions; infer from exported array content only.
+    max_self = 0.0
+    max_nons = 0.0
+    neigh_self = np.full(natoms, -1, dtype=np.int32)
+    for i in range(natoms):
+        ii = i + 1
+        for ineigh in range(int(neighn[i])):
+            if int(neigh_j[i, ineigh]) == ii and int(neigh_b[i, ineigh]) == 0:
+                neigh_self[i] = ineigh
+                break
+        if neigh_self[i] >= 0:
+            ni = int(n_orb_atom[i])
+            ms = float(np.max(np.abs(A_blocks[i, neigh_self[i], :ni, :ni])))
+            if ms > max_self:
+                max_self = ms
+        ni = int(n_orb_atom[i])
+        for ineigh in range(int(neighn[i])):
+            if ineigh == int(neigh_self[i]):
+                continue
+            mn = float(np.max(np.abs(A_blocks[i, ineigh, :ni, :ni])))
+            if mn > max_nons:
+                max_nons = mn
+
+    use_self_slot = (max_self > (10.0 * max_nons))
+    print(f"  [VCA_ATOM export layout] max_self={max_self:.3e} max_nonself={max_nons:.3e} => use_self_slot={int(use_self_slot)}")
+
+    for i in range(natoms):
+        ni = int(n_orb_atom[i])
+        i0 = int(offs[i])
+        if use_self_slot and neigh_self[i] >= 0:
+            blk = A_blocks[i, neigh_self[i], :ni, :ni]
+            M[i0:i0+ni, i0:i0+ni] += blk.T
+        else:
+            ii = i + 1
+            for ineigh in range(int(neighn[i])):
+                if int(neigh_j[i, ineigh]) == ii and int(neigh_b[i, ineigh]) == 0:
+                    continue
+                j = int(neigh_j[i, ineigh]) - 1
+                if j < 0 or j >= natoms:
+                    continue
+                blk = A_blocks[i, ineigh, :ni, :ni]
+                M[i0:i0+ni, i0:i0+ni] += blk.T
     return M
 
 
@@ -128,7 +200,7 @@ def run_verification():
 
     print("Initializing Fortran FireCore...")
     fc.initialize(atomType=atomTypes_Z, atomPos=atomPos)
-    fc.setVerbosity(0, 1)
+    fc.setVerbosity(7, 1)
 
     # Enable AvgRho diagnostics in Fortran core (exported via libFireCore, logic still in average_rho.f90)
     # IMPORTANT: average_rho off-site part is computed on the neighbor list, so pick an actual neighbor.
@@ -863,9 +935,31 @@ def run_verification():
     res_H2c, err_H2c = compare_matrices("H2c (T+Vna)", H2c_f, H2c_o, tol=1e-5, require_nonzero=True)
 
     print("\nTesting Vca (charge-dependent, 2-center only)...")
-    H_vca_f, _neighbors_vca_f, _sd_vca_f = get_fortran_sparse_H_with_options(0, 0, 0, 0, 0, 1, 0, ioff_Ewald=0, export_mode=2)
-    print("  Fortran Vca matrix (isolated):")
+    # Fortran Vca term in assembled H is: vca + ewaldlr - ewaldsr  (see firecore_get_HS_sparse)
+    # Here we export each component explicitly.
+    vcaL4_f    = fc.export_interaction4D(10) # vca_ontopl
+    vcaR4_f    = fc.export_interaction4D(11) # vca_ontopr
+    vcaA4_f    = fc.export_interaction4D(12) # vca_atom
+    ewaldsr4_f = fc.export_interaction4D(2)  # ewaldsr
+    ewaldlr4_f = fc.export_interaction4D(3)  # ewaldlr
+    print(f"  Fortran export max|vcaL4|={float(np.max(np.abs(vcaL4_f))):.3e}  max|vcaR4|={float(np.max(np.abs(vcaR4_f))):.3e}  max|vcaA4|={float(np.max(np.abs(vcaA4_f))):.3e}")
+    ia_max, ineigh_max, inu_max, imu_max = np.unravel_index(int(np.argmax(np.abs(vcaA4_f))), vcaA4_f.shape)
+    print(f"  Fortran export argmax|vcaA4| at iatom={ia_max} ineigh={ineigh_max} (neighn={int(sd.neighn[ia_max])} neigh_j={int(sd.neigh_j[ia_max, ineigh_max])})  |val|={float(np.abs(vcaA4_f[ia_max, ineigh_max, inu_max, imu_max])):.3e}")
+    VcaL_f      = _blocked_to_dense(sd, vcaL4_f, natoms)
+    VcaR_f      = _blocked_to_dense(sd, vcaR4_f, natoms)
+    VcaA_f      = _blocked_to_dense_vca_atom(sd, vcaA4_f, natoms)
+    # Core-reference Vca2c is the *component sum* (ontopl + ontopr + atom).
+    # DO NOT use export_interaction4D(1) as reference; it is an interface-level array and not trusted.
+    Vca2c_f     = VcaL_f + VcaR_f + VcaA_f
+    EwaldSR_f   = _blocked_to_dense(sd, ewaldsr4_f, natoms)
+    EwaldLR_f   = _blocked_to_dense(sd, ewaldlr4_f, natoms)
+    Vca_full_f  = Vca2c_f + EwaldLR_f - EwaldSR_f
+
+    H_vca_f = Vca2c_f
+    print("  Fortran Vca2c (component sum, no Ewald):")
     print(H_vca_f)
+    print(f"  Fortran |Vca2c|={float(np.max(np.abs(Vca2c_f))):.3e}  |EwaldSR|={float(np.max(np.abs(EwaldSR_f))):.3e}  |EwaldLR|={float(np.max(np.abs(EwaldLR_f))):.3e}")
+    print(f"  Fortran |Vca_full|={float(np.max(np.abs(Vca_full_f))):.3e}")
 
     dq_shell = np.zeros((dims.nsh_max, natoms))
     for ia in range(natoms):
@@ -875,44 +969,28 @@ def run_verification():
     print("  dq_shell:")
     print(dq_shell)
 
-    Vca_manual = np.zeros_like(H_vca_f)
-    EQ2 = 14.39975
-    for i in range(natoms):
-        ni = int(n_orb_atom[i]); i0 = int(offs[i])
-        in_i = int(ispec_of_atom[i]) + 1
-        V_ii = np.zeros((ni, ni))
-        for k in neigh_lists_self[i]:
-            in_k = int(ispec_of_atom[k]) + 1
-            dR_ik = atomPos[k] - atomPos[i]
-            for isorp in range(1, int(sd.nssh[in_k - 1]) + 1):
-                dqk = dq_shell[isorp - 1, k]
-                m = fc.scanHamPiece2c(4, isorp, in_i, in_k, in_i, dR_ik, applyRotation=True)
-                V_ii += m * dqk
-        Vca_manual[i0:i0+ni, i0:i0+ni] += V_ii * EQ2
-
-    for i in range(natoms):
-        in_i = int(ispec_of_atom[i]) + 1
-        ni = int(n_orb_atom[i]); i0 = int(offs[i])
-        for j in neigh_lists[i]:
-            in_j = int(ispec_of_atom[j]) + 1
-            nj = int(n_orb_atom[j]); j0 = int(offs[j])
-            dR = atomPos[j] - atomPos[i]
-            mat2 = np.zeros((ni, nj))
-            for isorp in range(1, int(sd.nssh[in_i - 1]) + 1):
-                mat2 += fc.scanHamPiece2c(2, isorp, in_i, in_i, in_j, dR, applyRotation=True) * dq_shell[isorp - 1, i]
-            mat3 = np.zeros((ni, nj))
-            for isorp in range(1, int(sd.nssh[in_j - 1]) + 1):
-                mat3 += fc.scanHamPiece2c(3, isorp, in_i, in_j, in_j, dR, applyRotation=True) * dq_shell[isorp - 1, j]
-            Vca_manual[i0:i0+ni, j0:j0+nj] += (mat2 + mat3) * EQ2
-
-    diff_vca = np.abs(H_vca_f - Vca_manual)
-    print(f"  Max diff Vca manual vs Fortran: {float(np.max(diff_vca)):.2e}")
-    res_Vca = np.max(diff_vca) < 1e-4
-
+    # Build directed neighbor list for OpenCL Vca assembly.
+    # IMPORTANT: Fortran stores the diagonal Vca contributions in a dedicated "self" slot (matom=neigh_self(iatom)),
+    # but those diagonal blocks are accumulated from *non-self* neighbors inside assemble_ca_2c.
+    # Therefore for OpenCL assembly we exclude self-neighbors (ia==ja) and sum diagonal updates over non-self pairs.
     neigh_list_vca = []
+    neigh_mbeta_vca = []
     for ia in range(natoms):
-        for ja in neigh_lists_self[ia]:
-            neigh_list_vca.append((ia, int(ja)))
+        nn = int(sd.neighn[ia])
+        for ineigh in range(nn):
+            ja = int(sd.neigh_j[ia, ineigh]) - 1
+            mb = int(sd.neigh_b[ia, ineigh])
+            if ja < 0 or ja >= natoms:
+                continue
+            # Include self-pairs (ia==ja, mbeta==0) because Fortran includes on-site vca_atom.
+            # This lets us compare OpenCL vs Fortran element-by-element including the self-slot contribution.
+            if ja == ia and mb != 0:
+                continue
+            neigh_list_vca.append((ia, ja))
+            neigh_mbeta_vca.append(mb)
+
+    if len(neigh_mbeta_vca) > 0:
+        print(f"  VCA neigh_b stats: max|mbeta|={int(np.max(np.abs(np.array(neigh_mbeta_vca, dtype=np.int32))))}  unique={sorted(set([int(x) for x in neigh_mbeta_vca]))}")
 
     pair_types_vca = []
     for (i, j) in neigh_list_vca:
@@ -924,24 +1002,290 @@ def run_verification():
             idx = 0
         pair_types_vca.append(idx)
 
-    off_vca, diag_vca = ham.assemble_vca(atomPos, np.array(neigh_list_vca), np.array(pair_types_vca), dq_shell)
+    # IMPORTANT: Fortran uses r2 = atomPos[j] + xl[mbeta] for each neighbor.
+    # OpenCL assemble_vca currently accepts only a flat atom position array; emulate mbeta shifts by
+    # constructing a per-pair position buffer (two atoms per pair) when any mbeta!=0.
+    mb_max = int(np.max(np.abs(np.array(neigh_mbeta_vca, dtype=np.int32)))) if len(neigh_mbeta_vca) > 0 else 0
+    # Pick one directed neighbor pair for synchronized VCA debugging (Fortran vs OpenCL).
+    # Target: ia=1 -> ja=0 in 0-based indexing (Fortran iatom=2, jatom=1), mbeta==0.
+    dbg_pair = -1
+    dbg_ish = 0
+    for k,(i,j) in enumerate(neigh_list_vca):
+        if i == 1 and j == 0 and int(neigh_mbeta_vca[k]) == 0:
+            dbg_pair = k
+            break
+    print(f"  [VCA_DBG][PY][CPSEL] target ia=1 ja=0 mbeta=0 -> dbg_pair={dbg_pair} dbg_ish={dbg_ish}")
+
+    if mb_max != 0:
+        ratoms_pairs = np.zeros((2*len(neigh_list_vca), 3), dtype=np.float64)
+        neigh_pairs = np.zeros((len(neigh_list_vca), 2), dtype=np.int32)
+        for k,(i,j) in enumerate(neigh_list_vca):
+            mb = int(neigh_mbeta_vca[k])
+            ratoms_pairs[2*k+0] = atomPos[i]
+            ratoms_pairs[2*k+1] = atomPos[j] + sd.xl[mb]
+            neigh_pairs[k,0] = 2*k+0
+            neigh_pairs[k,1] = 2*k+1
+        off_vca, diag_vca = ham.assemble_vca(ratoms_pairs, neigh_pairs, np.array(pair_types_vca, dtype=np.int32), dq_shell,
+                                             ispec_of_atom=np.repeat(ispec_of_atom, 1), nssh_species=nssh_species, lssh_species=sd.lssh[:dims.nspecies], nsh_max=dims.nsh_max,
+                                             dbg_enable=int(dbg_pair>=0), dbg_pair=dbg_pair, dbg_ish=dbg_ish)
+    else:
+        off_vca, diag_vca = ham.assemble_vca(atomPos, np.array(neigh_list_vca, dtype=np.int32), np.array(pair_types_vca, dtype=np.int32), dq_shell,
+                                         ispec_of_atom=ispec_of_atom, nssh_species=nssh_species, lssh_species=sd.lssh[:dims.nspecies], nsh_max=dims.nsh_max,
+                                         dbg_enable=int(dbg_pair>=0), dbg_pair=dbg_pair, dbg_ish=dbg_ish)
     Vca_ocl = np.zeros_like(H_vca_f)
+    Vca_ocl_off = np.zeros_like(H_vca_f)
+    Vca_ocl_diag = np.zeros_like(H_vca_f)
     for k, (i, j) in enumerate(neigh_list_vca):
         i0 = int(offs[i]); j0 = int(offs[j])
         ni = int(n_orb_atom[i]); nj = int(n_orb_atom[j])
         if i != j:
-            Vca_ocl[i0:i0+ni, j0:j0+nj] += off_vca[k].T
-        Vca_ocl[i0:i0+ni, i0:i0+ni] += diag_vca[k, 0].T
+            Vca_ocl[i0:i0+ni, j0:j0+nj] += off_vca[k]
+            Vca_ocl_off[i0:i0+ni, j0:j0+nj] += off_vca[k]
+        # Diagonal updates from vna_atom:
+        # diag_vca[k,0] updates V_ii from potential on j (including self-pair i==j).
+        Vca_ocl[i0:i0+ni, i0:i0+ni] += diag_vca[k, 0]
+        Vca_ocl_diag[i0:i0+ni, i0:i0+ni] += diag_vca[k, 0]
+
+    res_Vca, err_Vca = compare_matrices_brief("Vca2c (vca array)", Vca2c_f, Vca_ocl, tol=1e-4, require_nonzero=True)
+
+    # OpenCL component-wise Vca2c (bcca splines only) by masking vca_map indices
+    vmap = ham.vca_map
+    vmap_L = vmap.copy(); vmap_L[:, :, 1] = -1; vmap_L[:, :, 2] = -1
+    vmap_R = vmap.copy(); vmap_R[:, :, 0] = -1; vmap_R[:, :, 2] = -1
+    vmap_A = vmap.copy(); vmap_A[:, :, 0] = -1; vmap_A[:, :, 1] = -1
+
+    # Diagnostic: swapped L/R component interpretation (if OpenCL component order differs)
+    vmap_Ls = vmap.copy(); vmap_Ls[:, :, 0] = -1; vmap_Ls[:, :, 2] = -1  # take comp-1 as "L"
+    vmap_Rs = vmap.copy(); vmap_Rs[:, :, 1] = -1; vmap_Rs[:, :, 2] = -1  # take comp-0 as "R"
+
+    # Extra synchronized atom-only traces for ia=1 -> ja=0 and ia=1 -> ja=2 at ish=0.
+    # These calls are for printing only and do not affect later comparisons.
+    dbg_pairs = []
+    for target_j in (0, 2):
+        kp = -1
+        for k,(i,j) in enumerate(neigh_list_vca):
+            if i == 1 and j == target_j and int(neigh_mbeta_vca[k]) == 0:
+                kp = k
+                break
+        dbg_pairs.append(kp)
+    dbg_ish_list = [0, 1]
+    print(f"  [VCA_DBG][PY][CPSEL2] ia=1 -> ja=(0,2) mbeta=0 dbg_pairs={dbg_pairs} dbg_ish_list={dbg_ish_list}")
+    for kp in dbg_pairs:
+        if kp >= 0:
+            for ish_dbg in dbg_ish_list:
+                _off_tmp, _diag_tmp = ham.assemble_vca(atomPos, np.array(neigh_list_vca, dtype=np.int32), np.array(pair_types_vca, dtype=np.int32), dq_shell,
+                                      ispec_of_atom=ispec_of_atom, nssh_species=nssh_species, lssh_species=sd.lssh[:dims.nspecies], nsh_max=dims.nsh_max,
+                                      vca_map_override=vmap_A, dbg_enable=1, dbg_pair=kp, dbg_ish=int(ish_dbg))
+
+    offL, diagL = ham.assemble_vca(atomPos, np.array(neigh_list_vca, dtype=np.int32), np.array(pair_types_vca, dtype=np.int32), dq_shell,
+                                  ispec_of_atom=ispec_of_atom, nssh_species=nssh_species, lssh_species=sd.lssh[:dims.nspecies], nsh_max=dims.nsh_max, vca_map_override=vmap_L)
+    offR, diagR = ham.assemble_vca(atomPos, np.array(neigh_list_vca, dtype=np.int32), np.array(pair_types_vca, dtype=np.int32), dq_shell,
+                                  ispec_of_atom=ispec_of_atom, nssh_species=nssh_species, lssh_species=sd.lssh[:dims.nspecies], nsh_max=dims.nsh_max, vca_map_override=vmap_R)
+    offA, diagA = ham.assemble_vca(atomPos, np.array(neigh_list_vca, dtype=np.int32), np.array(pair_types_vca, dtype=np.int32), dq_shell,
+                                  ispec_of_atom=ispec_of_atom, nssh_species=nssh_species, lssh_species=sd.lssh[:dims.nspecies], nsh_max=dims.nsh_max, vca_map_override=vmap_A)
+
+    offLs, diagLs = ham.assemble_vca(atomPos, np.array(neigh_list_vca, dtype=np.int32), np.array(pair_types_vca, dtype=np.int32), dq_shell,
+                                   ispec_of_atom=ispec_of_atom, nssh_species=nssh_species, lssh_species=sd.lssh[:dims.nspecies], nsh_max=dims.nsh_max, vca_map_override=vmap_Ls)
+    offRs, diagRs = ham.assemble_vca(atomPos, np.array(neigh_list_vca, dtype=np.int32), np.array(pair_types_vca, dtype=np.int32), dq_shell,
+                                   ispec_of_atom=ispec_of_atom, nssh_species=nssh_species, lssh_species=sd.lssh[:dims.nspecies], nsh_max=dims.nsh_max, vca_map_override=vmap_Rs)
+
+    VcaL_o = np.zeros_like(H_vca_f)
+    VcaR_o = np.zeros_like(H_vca_f)
+    VcaA_o = np.zeros_like(H_vca_f)
+    VcaL_os = np.zeros_like(H_vca_f)
+    VcaR_os = np.zeros_like(H_vca_f)
+    for k, (i, j) in enumerate(neigh_list_vca):
+        i0 = int(offs[i]); j0 = int(offs[j])
+        ni = int(n_orb_atom[i]); nj = int(n_orb_atom[j])
+        # offdiag components
+        VcaL_o[i0:i0+ni, j0:j0+nj] += offL[k]
+        VcaR_o[i0:i0+ni, j0:j0+nj] += offR[k]
+        VcaL_os[i0:i0+ni, j0:j0+nj] += offLs[k]
+        VcaR_os[i0:i0+ni, j0:j0+nj] += offRs[k]
+        # diagonal (atom) component
+        VcaA_o[i0:i0+ni, i0:i0+ni] += diagA[k, 0]
+
+    res_VcaL, err_VcaL = compare_matrices_brief("Vca2c_ontopl (2)", VcaL_f, VcaL_o, tol=1e-4, require_nonzero=True)
+    res_VcaR, err_VcaR = compare_matrices_brief("Vca2c_ontopr (3)", VcaR_f, VcaR_o, tol=1e-4, require_nonzero=True)
+    res_VcaA, err_VcaA = compare_matrices_brief("Vca2c_atom (4)",   VcaA_f, VcaA_o, tol=1e-4, require_nonzero=True)
+
+    _res_VcaL_s, err_VcaL_s = compare_matrices_brief("Vca2c_ontopl (SWAPPED)", VcaL_f, VcaL_os, tol=1e-4, require_nonzero=True)
+    _res_VcaR_s, err_VcaR_s = compare_matrices_brief("Vca2c_ontopr (SWAPPED)", VcaR_f, VcaR_os, tol=1e-4, require_nonzero=True)
+    print(f"  [diag] component swap check: err_L={err_VcaL:.3e} err_R={err_VcaR:.3e} | swapped: err_L={err_VcaL_s:.3e} err_R={err_VcaR_s:.3e}")
+    # Ewald components are currently not implemented on OCL side => compare against zeros (visible in final summary)
+    EwaldSR_o = np.zeros_like(EwaldSR_f)
+    EwaldLR_o = np.zeros_like(EwaldLR_f)
+    res_EwaldSR, err_EwaldSR = compare_matrices_brief("EwaldSR", EwaldSR_f, EwaldSR_o, tol=1e-5, require_nonzero=True)
+    res_EwaldLR, err_EwaldLR = compare_matrices_brief("EwaldLR", EwaldLR_f, EwaldLR_o, tol=1e-5, require_nonzero=True)
+    Vca_full_o = Vca_ocl + EwaldLR_o - EwaldSR_o
+    res_Vca_full, err_Vca_full = compare_matrices_brief("Vca_full (2c)", Vca_full_f, Vca_full_o, tol=1e-5, require_nonzero=True)
+
+    # Pairwise block diagnostics (non-self directed neighbors only).
+    print("\n--- Vca pairwise block diagnostics (non-self directed neighbors) ---")
+    max_pair_diff = 0.0
+    worst = None
+    for kpair, (ia, ja) in enumerate(neigh_list_vca):
+        # Find corresponding Fortran neighbor slot (ia, ineigh) where neigh_j==ja+1
+        nn = int(sd.neighn[ia])
+        ineighF = -1
+        for ineigh in range(nn):
+            if int(sd.neigh_j[ia, ineigh]) - 1 == ja:
+                ineighF = ineigh
+                break
+        if ineighF < 0:
+            continue
+        # Core reference off-diagonal block is ontopl+ontopr. Atom term contributes only to diagonal updates.
+        blk_f = vcaL4_f[ia, ineighF, :, :] + vcaR4_f[ia, ineighF, :, :]   # [nu,mu]
+        blk_o = off_vca[kpair].T             # [nu,mu]
+        d = float(np.max(np.abs(blk_f - blk_o)))
+        if d > max_pair_diff:
+            max_pair_diff = d
+            worst = (ia, ja, ineighF, kpair, d)
+    print(f"  max|Fortran_vca_block - OCL_off_block| over non-self directed pairs = {max_pair_diff:.3e}")
+    if worst is not None:
+        ia, ja, ineighF, kpair, d = worst
+        print(f"  worst directed pair ia={ia} -> ja={ja} ineighF={ineighF} kpair={kpair} diff={d:.3e}")
+        print("  Fortran vca(offdiag) block [nu,mu] = vcaL+vcaR:")
+        print(vcaL4_f[ia, ineighF] + vcaR4_f[ia, ineighF])
+        print("  OpenCL off block [nu,mu]:")
+        print(off_vca[kpair].T)
+
+    # Component-level pairwise diagnostics for ontopl/ontopr
+    print("\n--- Vca pairwise diagnostics: ontopl vs export ---")
+    max_pair_L = 0.0
+    worst_L = None
+    for kpair, (ia, ja) in enumerate(neigh_list_vca):
+        nn = int(sd.neighn[ia])
+        ineighF = -1
+        for ineigh in range(nn):
+            if int(sd.neigh_j[ia, ineigh]) - 1 == ja:
+                ineighF = ineigh; break
+        if ineighF < 0: continue
+        blk_f = vcaL4_f[ia, ineighF, :, :]       # [nu,mu]
+        blk_o = offL[kpair].T                    # [nu,mu]
+        d = float(np.max(np.abs(blk_f - blk_o)))
+        if d > max_pair_L:
+            max_pair_L = d
+            worst_L = (ia, ja, ineighF, kpair, d)
+    print(f"  max|vcaL_export - OCL_offL| over non-self directed pairs = {max_pair_L:.3e}")
+    if worst_L is not None:
+        ia, ja, ineighF, kpair, d = worst_L
+        print(f"  worst ontopl pair ia={ia} -> ja={ja} ineighF={ineighF} kpair={kpair} diff={d:.3e}")
+        blk_f0 = vcaL4_f[ia, ineighF]
+        blk_fT = blk_f0.T
+        blk_o  = offL[kpair].T
+        print(f"  ontopl orientation check: max|F - OCL|={float(np.max(np.abs(blk_f0-blk_o))):.3e}  max|F.T - OCL|={float(np.max(np.abs(blk_fT-blk_o))):.3e}")
+        print("  Fortran vcaL block [nu,mu]:")
+        print(blk_f0)
+        print("  OpenCL offL block [nu,mu]:")
+        print(blk_o)
+
+        # Try to infer orbital ordering/sign mismatch by brute force (full 4-orb basis).
+        import itertools
+        fref = blk_f0[:4, :4].copy()    # [nu,mu]
+        oref = blk_o[:4, :4].copy()     # [nu,mu]
+        best = None
+        for perm in itertools.permutations([0, 1, 2, 3], 4):
+            for sgn in itertools.product([-1.0, 1.0], repeat=4):
+                P = np.array(perm, dtype=int)
+                S = np.array(sgn, dtype=np.float64)
+                M = oref[np.ix_(P, P)].copy()
+                M = (S[:, None] * M) * (S[None, :])
+                dd = float(np.max(np.abs(fref - M)))
+                if (best is None) or (dd < best[0]):
+                    best = (dd, perm, sgn)
+        if best is not None:
+            dd, perm, sgn = best
+            print(f"  [diag] best 4-orb map for ontopl: max|F - mapped(OCL)|={dd:.3e}  perm={perm}  sgn={sgn}")
+
+    print("\n--- Vca pairwise diagnostics: ontopr vs export ---")
+    max_pair_R = 0.0
+    worst_R = None
+    for kpair, (ia, ja) in enumerate(neigh_list_vca):
+        nn = int(sd.neighn[ia])
+        ineighF = -1
+        for ineigh in range(nn):
+            if int(sd.neigh_j[ia, ineigh]) - 1 == ja:
+                ineighF = ineigh; break
+        if ineighF < 0: continue
+        blk_f = vcaR4_f[ia, ineighF, :, :]       # [nu,mu]
+        blk_o = offR[kpair].T                    # [nu,mu]
+        d = float(np.max(np.abs(blk_f - blk_o)))
+        if d > max_pair_R:
+            max_pair_R = d
+            worst_R = (ia, ja, ineighF, kpair, d)
+    print(f"  max|vcaR_export - OCL_offR| over non-self directed pairs = {max_pair_R:.3e}")
+    if worst_R is not None:
+        ia, ja, ineighF, kpair, d = worst_R
+        print(f"  worst ontopr pair ia={ia} -> ja={ja} ineighF={ineighF} kpair={kpair} diff={d:.3e}")
+        blk_f0 = vcaR4_f[ia, ineighF]
+        blk_fT = blk_f0.T
+        blk_o  = offR[kpair].T
+        print(f"  ontopr orientation check: max|F - OCL|={float(np.max(np.abs(blk_f0-blk_o))):.3e}  max|F.T - OCL|={float(np.max(np.abs(blk_fT-blk_o))):.3e}")
+        print("  Fortran vcaR block [nu,mu]:")
+        print(blk_f0)
+        print("  OpenCL offR block [nu,mu]:")
+        print(blk_o)
+
+        import itertools
+        fref = blk_f0[:4, :4].copy()    # [nu,mu]
+        oref = blk_o[:4, :4].copy()     # [nu,mu]
+        best = None
+        for perm in itertools.permutations([0, 1, 2, 3], 4):
+            for sgn in itertools.product([-1.0, 1.0], repeat=4):
+                P = np.array(perm, dtype=int)
+                S = np.array(sgn, dtype=np.float64)
+                M = oref[np.ix_(P, P)].copy()
+                M = (S[:, None] * M) * (S[None, :])
+                dd = float(np.max(np.abs(fref - M)))
+                if (best is None) or (dd < best[0]):
+                    best = (dd, perm, sgn)
+        if best is not None:
+            dd, perm, sgn = best
+            print(f"  [diag] best 4-orb map for ontopr: max|F - mapped(OCL)|={dd:.3e}  perm={perm}  sgn={sgn}")
+
+    # Diagonal diagnostics for atom term
+    print("\n--- Vca atom(diag) diagnostics: export self-slot vs OCL diagA ---")
+    max_ai = 0.0
+    worst_ai = None
+    # Find self-slot index for each atom
+    neigh_self = np.full(natoms, -1, dtype=np.int32)
+    for i in range(natoms):
+        ii = i + 1
+        for ineigh in range(int(sd.neighn[i])):
+            if int(sd.neigh_j[i, ineigh]) == ii and int(sd.neigh_b[i, ineigh]) == 0:
+                neigh_self[i] = ineigh
+                break
+    for i in range(natoms):
+        ni = int(n_orb_atom[i]); i0 = int(offs[i])
+        # Fortran export: vca_atom is accumulated in self-slot (matom = neigh_self(iatom))
+        acc_f = np.zeros((ni, ni), dtype=np.float64)
+        if neigh_self[i] >= 0:
+            acc_f = vcaA4_f[i, neigh_self[i], :ni, :ni].T
+        acc_o = np.zeros((ni, ni), dtype=np.float64)
+        for kpair, (ia, ja) in enumerate(neigh_list_vca):
+            if ia != i: continue
+            acc_o += diagA[kpair, 0, :ni, :ni]
+        d = float(np.max(np.abs(acc_f - acc_o)))
+        if d > max_ai:
+            max_ai = d
+            worst_ai = (i, d, acc_f, acc_o)
+    print(f"  max|atom_diag_export - atom_diag_OCL| over atoms = {max_ai:.3e}")
+    if worst_ai is not None:
+        i, d, acc_f, acc_o = worst_ai
+        print(f"  worst atom i={i} diff={d:.3e}")
+        print("  Fortran atom diag block (from self-slot):")
+        print(acc_f)
+        print("  OpenCL atom diag block (sum diagA[k,0] for ia==i):")
+        print(acc_o)
 
     diff_ocl = np.abs(Vca_ocl - H_vca_f)
-    err_Vca = float(np.max(diff_ocl))
+    # err_Vca already computed above from Fortran export vs OpenCL.
     print(f"  Max diff Vca OCL vs Fortran: {err_Vca:.2e}")
-    if np.max(diff_ocl) < 1e-4:
-        print("SUCCESS: OpenCL Vca matches Fortran.")
-        res_Vca = True
+    if res_Vca:
+        print("SUCCESS: OpenCL Vca2c matches Fortran export.")
     else:
-        print("FAILURE: OpenCL Vca mismatch.")
-        res_Vca = False
+        print("FAILURE: OpenCL Vca2c mismatch vs Fortran export.")
 
     def _block(M, i, j):
         ni = int(n_orb_atom[i]); nj = int(n_orb_atom[j])
@@ -952,9 +1296,36 @@ def run_verification():
         for j in range(natoms):
             if i == j or j in neigh_lists[i]:
                 df = _block(H_vca_f, i, j)
-                dm = _block(Vca_manual, i, j)
                 do = _block(Vca_ocl, i, j)
-                print(f"  VCA block ({i},{j}) max|F-man|={float(np.max(np.abs(df-dm))):.2e}  max|F-ocl|={float(np.max(np.abs(df-do))):.2e}")
+                print(f"  VCA block ({i},{j}) max|F-ocl|={float(np.max(np.abs(df-do))):.2e}")
+
+    # Component-wise diagnostics for the full Vca term used in H assembly: vca + ewaldlr - ewaldsr
+    print("\n--- Vca component-wise diagnostics (Fortran) ---")
+    _ = compare_matrices_brief("Vca2c (vca array)", Vca2c_f, Vca_ocl, tol=1e-4, require_nonzero=True)
+    print(f"  Max|EwaldSR|={float(np.max(np.abs(EwaldSR_f))):.3e}  Max|EwaldLR|={float(np.max(np.abs(EwaldLR_f))):.3e}")
+    Vca_resid = Vca_full_f - Vca_ocl
+    print(f"  Residual fullVca-ocl: max|.|={float(np.max(np.abs(Vca_resid))):.3e}")
+    # If you later implement EwaldSR/LR in OpenCL, compare against Vca_full_f directly.
+
+    print("\n--- Vca split diagnostics: offdiag vs diag (OpenCL) ---")
+    # Off-diagonal differences
+    mask_off = np.ones_like(H_vca_f, dtype=bool)
+    np.fill_diagonal(mask_off, False)
+    diff_off = np.abs((Vca2c_f - Vca_ocl_off) * mask_off)
+    diff_diag = np.abs(np.diag(Vca2c_f) - np.diag(Vca_ocl_diag))
+    print(f"  max|offdiag(F - OCL_off)|={float(np.max(diff_off)):.3e}")
+    print(f"  max|diag(F - OCL_diag)|={float(np.max(diff_diag)):.3e}")
+
+    ij = np.unravel_index(int(np.argmax(np.abs(Vca2c_f - Vca_ocl))), Vca2c_f.shape)
+    print(f"  WORST elem (F-OCL) at {ij}: F={float(Vca2c_f[ij]): .6e}  OCL={float(Vca_ocl[ij]): .6e}")
+    # Locate which atom blocks contain that matrix element
+    def _which_atom(idx_):
+        for ia in range(natoms):
+            if idx_ >= int(offs[ia]) and idx_ < int(offs[ia+1]):
+                return ia
+        return -1
+    ia = _which_atom(int(ij[0])); ja = _which_atom(int(ij[1]))
+    print(f"  WORST elem belongs to atom-block ({ia},{ja})")
 
     # Placeholders
     res_Vxc = False
@@ -971,6 +1342,12 @@ def run_verification():
     print(f"Vxc:         {'PASSED' if res_Vxc else 'NOT IMPLEMENTED'}  err=nan")
     print(f"Vxc_1c:      {'PASSED' if res_Vxc_1c else 'NOT IMPLEMENTED'}  err=nan")
     print(f"Vca:         {'PASSED' if res_Vca else 'FAILED'}  err={err_Vca:.2e}")
+    print(f" Vca2c_ontopl:{'PASSED' if res_VcaL else 'FAILED'}  err={err_VcaL:.2e}")
+    print(f" Vca2c_ontopr:{'PASSED' if res_VcaR else 'FAILED'}  err={err_VcaR:.2e}")
+    print(f" Vca2c_atom:  {'PASSED' if res_VcaA else 'FAILED'}  err={err_VcaA:.2e}")
+    print(f" EwaldSR:     {'PASSED' if res_EwaldSR else 'FAILED'}  err={err_EwaldSR:.2e}")
+    print(f" EwaldLR:     {'PASSED' if res_EwaldLR else 'FAILED'}  err={err_EwaldLR:.2e}")
+    print(f" Vca_full2c:  {'PASSED' if res_Vca_full else 'FAILED'}  err={err_Vca_full:.2e}")
     print(f"Vxc_ca:      {'PASSED' if res_Vxc_ca else 'NOT IMPLEMENTED'}  err=nan")
     print(f"H2c (T+Vna): {'PASSED' if res_H2c else 'FAILED'}  err={err_H2c:.2e}")
     print(f"H raw==recon:{'PASSED' if res_H_recon else 'FAILED'}  err={err_H_recon:.2e}")

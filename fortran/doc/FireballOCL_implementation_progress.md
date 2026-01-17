@@ -474,6 +474,7 @@ allocate (t_mat (numorb_max, numorb_max, neigh_max, natoms))
 
 
 ### Progress 2026-01-15 — AvgRho parity achieved (itheory=1, average_ca_rho)
+
 **What was wrong**
 - SCF path uses `average_ca_rho` (itheory=1) with **Qin** weights; OpenCL `compute_avg_rho` was using **Qneutral** per-species weights and species-based indexing, so diagnostics stayed zero/mismatched.
 - The diagnostic snapshot in `average_ca_rho.f90` never fired because `diag_avg_rho_ineigh` was set too late.
@@ -504,3 +505,22 @@ allocate (t_mat (numorb_max, numorb_max, neigh_max, natoms))
 
 **Clean-up reminder**
 - Several `! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py` blocks remain in `.f90` sources; remove them once debugging is finished.
+
+### Progress 2026-01-16
+- Focusing on VCA (C3) now.
+
+### Indexing / transpose reminder (stop re-deriving)
+- Fortran exports are **col-major, 1-based**. When reshaping in Python/C, reverse axes then transpose to desired row-major order.
+- 4D sparse export: Fortran `(mu,nu,ineigh,iatom)` → reshape → transpose to `(iatom,ineigh,nu,mu)`; block `.T` yields `(mu,nu)`.
+- 2D blocks: Fortran stores `(nu,mu)`; Python dense uses `block.T` → `(mu,nu)`.
+- If axes are exactly reversed, prefer a single `np.transpose(buf, (3,2,1,0))` instead of chained transposes; only chain when reusing an intermediate layout.
+
+### Fortran vs C/Python memory indexing (linear order)
+- Fortran linear index (1-based, col-major) for shape `(n1,n2,...,nk)`: `idx_F = i1 + (i2-1)*n1 + (i3-1)*n1*n2 + ...` (all `i` start at 1).
+- C/Python linear index (0-based, row-major): `idx_C = i_k + n_k*(i_{k-1} + n_{k-1}*(... + n_2*i_1))` (all `i` start at 0).
+- When exporting Fortran buffers, treat the raw bytes as col-major and reshape with reversed axes before transposing; when sending from Python to Fortran, ensure contiguous C-order input is transposed/reshaped to match Fortran expectation or allocated with `order='F'`.
+
+### VCA (C3) current state (2026-01-16)
+- Kernel: skips self-pairs, species-aware rotation via `rotate_fb_matrix_sp` (needs `ispec_of_atom/nssh_species/lssh_species/nsh_max`), directed non-self neighbor list, diag uses only index 0 per directed edge to avoid double-count.
+- Status: still failing; worst offdiag ia=1→ja=2, worst diag at atom-block (1,1); max diff ~1.09.
+- Next fixes: verify ontop mapping/eq2 scaling against Fortran export; add atom-case smoothing (`emnpl`/overlap-based) in OCL; then add EwaldSR/LR and 3c CA terms for full parity.

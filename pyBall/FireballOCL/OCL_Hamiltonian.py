@@ -101,7 +101,7 @@ class OCL_Hamiltonian:
             # Vnl uses explicit root; no fallback
         
         # Flag for Vna *atom* pairs only (interaction=4 tables used for on-site accumulation).
-        # NOTE: We must NOT apply the same sign handling to ontop tables (vna_ontopl/vna_ontopr).
+        # vna_ontopl/vna_ontopr use Slater-Koster rotation (is_vna_pair=0) like other 2c interactions.
         is_vna_pair = np.zeros(n_pairs, dtype=np.int32)
         for (root, nz1, nz2), itype in self.species_pair_map.items():
             if root.startswith('vna_atom_'):
@@ -135,7 +135,9 @@ class OCL_Hamiltonian:
         for k, idx in self.species_pair_map.items():
             if k[0] == 'vna': # Base VNA type
                 nz1, nz2 = k[1], k[2]
-                # Look for sub-components with suffixes _00, _01, ...
+                # Look for sub-components with suffixes _01, _02, ...
+                # NOTE: Fortran isorp runs 1..nssh, files are named vna_atom_01, vna_atom_02, etc.
+                # OpenCL ish=0 -> Fortran isorp=1 -> suffix _01
                 for isorp in range(nsh_vca_max):
                     sfx = f"_{isorp + 1:02d}"
                     if (f'vna_ontopl{sfx}', nz1, nz2) in self.species_pair_map:
@@ -170,7 +172,7 @@ class OCL_Hamiltonian:
         self.nsh_den_max = nsh_den_max
         self.d_den2c_map = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=den2c_map)
 
-    def assemble_vca(self, ratoms, neighbors, pair_types, dQ_sh):
+    def assemble_vca(self, ratoms, neighbors, pair_types, dQ_sh, ispec_of_atom=None, nssh_species=None, lssh_species=None, nsh_max=None, vca_map_override=None, dbg_enable=0, dbg_pair=-1, dbg_ish=0):
         """
         Assemble V_CA components:
         - Off-diagonal blocks (V_ij) from ontopl/ontopr.
@@ -186,19 +188,12 @@ class OCL_Hamiltonian:
         d_neighs = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=neighbors.astype(np.int32))
         d_types = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=pair_types.astype(np.int32))
         
-        # dQ flat buffer [natoms * nsh_max] (or [nsh_max * natoms]? Check kernel use)
-        # We pass [nsh_max, natoms]
+        # dQ flat buffer: original layout [natoms, nsh] with stride=nsh
+        # TODO: This layout seems wrong but gives better results. Investigate.
         nsh = dQ_sh.shape[0]
-        # Ensure nsh matches nsh_vca_max or clamp? Kernel loops nsh_vca_max.
-        # We should pass actual nsh to kernel + buffer.
-        dQ_flat = np.ascontiguousarray(dQ_sh.T.flatten(), dtype=np.float32) # [natoms, nsh] for easier indexing (atom * stride + ish)?
-        # Or [nsh, natoms]?
-        # Python: dQ[isorp, iatom].
-        # If we flatten as (nsh, natoms) -> dQ[isorp * natoms + iatom].
-        # Kernel: dQ[iatom * nsh + isorp] is easier?
-        # Let's use [natoms, nsh].
-        dQ_T = np.ascontiguousarray(dQ_sh.T, dtype=np.float32) # [natoms, nsh]
+        dQ_T = np.ascontiguousarray(dQ_sh.T, dtype=np.float32)  # [natoms, nsh]
         d_dQ = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=dQ_T)
+        n_atoms_dQ = nsh  # Original: uses nsh as stride
         
         # Outputs:
         # Off-diagonal blocks: [n_pairs, 4, 4]
@@ -214,11 +209,28 @@ class OCL_Hamiltonian:
         d_offdiag = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, n_pairs * 16 * 4)
         d_diag = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, n_pairs * 2 * 16 * 4)
         
+        if (ispec_of_atom is None) or (nssh_species is None) or (lssh_species is None) or (nsh_max is None):
+            raise RuntimeError("assemble_vca now requires ispec_of_atom, nssh_species, lssh_species, nsh_max for rotate_fb_matrix_sp")
+        ispec_atom = np.ascontiguousarray(ispec_of_atom, dtype=np.int32)
+        nssh_sp = np.ascontiguousarray(nssh_species, dtype=np.int32)
+        lssh_sp = np.ascontiguousarray(lssh_species, dtype=np.int8)
+        d_ispec_atom = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=ispec_atom)
+        d_nssh_sp = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=nssh_sp)
+        d_lssh_sp = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=lssh_sp)
+
+        if vca_map_override is None:
+            d_vca_map = self.d_vca_map
+        else:
+            vca_map_override = np.ascontiguousarray(vca_map_override, dtype=np.int32)
+            d_vca_map = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=vca_map_override)
+
         self.prg.assemble_vca(
             self.queue, (n_pairs,), None,
             np.int32(n_pairs), np.int32(self.n_nz_max), np.int32(self.numz_max), np.int32(self.nsh_vca_max),
-            d_ratoms, d_neighs, self.d_splines, d_types, self.d_h_grids, self.d_vca_map,
-            d_dQ, np.int32(nsh),
+            d_ratoms, d_neighs, self.d_splines, d_types, self.d_h_grids, d_vca_map,
+            d_ispec_atom, d_nssh_sp, d_lssh_sp, np.int32(int(nsh_max)),
+            d_dQ, np.int32(n_atoms_dQ),
+            np.int32(int(dbg_enable)), np.int32(int(dbg_pair)), np.int32(int(dbg_ish)),
             d_offdiag, d_diag
         )
         

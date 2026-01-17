@@ -28,6 +28,23 @@ module debug
          real, dimension(6,6) :: diag_avg_rho_rhom3c = 0.0
          real, dimension(8,8) :: diag_avg_rho_rhooff_3c = 0.0
          real, dimension(8,8) :: diag_avg_rho_rhooff_final = 0.0
+
+! VCA component debug exports (filled in assemble_ca_2c.f90 when idebugWrite>0)
+! These arrays are NOT part of the production state (kept in MODULES/debug.f90 only).
+! They exist only to provide Fortran reference component breakdown for PyOpenCL parity tests.
+         real, dimension (:, :, :, :), allocatable :: vca_ontopl
+         real, dimension (:, :, :, :), allocatable :: vca_ontopr
+         real, dimension (:, :, :, :), allocatable :: vca_atom
+
+! VCA trace selector (consumed by assemble_ca_2c.f90 when idebugWrite>0)
+! Allows targeting a specific directed neighbor (iatom,jatom,mbeta) and shell (isorp).
+! Use -1 as wildcard for any field.
+         logical :: diag_vca_enable = .false.
+         integer :: diag_vca_iatom  = -1
+         integer :: diag_vca_jatom  = -1
+         integer :: diag_vca_mbeta  = -1
+         integer :: diag_vca_isorp  = -1
+
 ! --------------------------
 
 
@@ -36,6 +53,33 @@ module debug
 
 
     contains
+
+
+subroutine debug_vca_prepare()
+    use configuration, only: natoms
+    use neighbor_map,  only: neigh_max
+    use interactions,  only: numorb_max
+    use options,       only: idebugWrite, verbosity
+    implicit none
+    if (idebugWrite .le. 0) return
+    if (.not. allocated(vca_ontopl)) allocate( vca_ontopl(numorb_max, numorb_max, neigh_max, natoms) )
+    if (.not. allocated(vca_ontopr)) allocate( vca_ontopr(numorb_max, numorb_max, neigh_max, natoms) )
+    if (.not. allocated(vca_atom  )) allocate( vca_atom  (numorb_max, numorb_max, neigh_max, natoms) )
+    vca_ontopl = 0.0d0
+    vca_ontopr = 0.0d0
+    vca_atom   = 0.0d0
+    if (verbosity .gt. 0) write(*,*) 'DEBUG VCA export enabled: allocated+zeroed vca_ontopl/vca_ontopr/vca_atom'
+end subroutine debug_vca_prepare
+
+
+subroutine debug_vca_zero()
+    use options, only: idebugWrite
+    implicit none
+    if (idebugWrite .le. 0) return
+    if (allocated(vca_ontopl)) vca_ontopl = 0.0d0
+    if (allocated(vca_ontopr)) vca_ontopr = 0.0d0
+    if (allocated(vca_atom  )) vca_atom   = 0.0d0
+end subroutine debug_vca_zero
 
 
 

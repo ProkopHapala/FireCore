@@ -61,6 +61,7 @@ header_strings = [
 "void firecore_get_eigen( int ikp, double* eigen_out )",
 "void firecore_set_options( int ioff_S, int ioff_T, int ioff_Vna, int ioff_Vnl, int ioff_Vxc, int ioff_Vca, int ioff_Vxc_ca, int ioff_Ewald )",
 "void firecore_set_export_mode( int export_mode )",
+"void firecore_export_interaction4D( int code, double* out4d )",
 "void firecore_scanHamPiece2c( int interaction, int isub, int in1, int in2, int in3, double* dR, int applyRotation, double* sx_out )",
 "void firecore_scanHamPiece3c( int interaction, int isorp, int in1, int in2, int indna, double* dRj, double* dRk, int applyRotation, double* bcnax_out )",
 "void firecore_set_avg_rho_diag( int enable, int iatom, int jatom, int mbeta )",
@@ -89,8 +90,11 @@ def reload():
         cpp_utils.unload_lib(lib)
         bReaload = True
     cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '/../build/' ) 
-    #lib = cpp_utils.loadLib('FireCore', recompile=False, mode=ct.RTLD_GLOBAL )
-    lib = cpp_utils.loadLib('FireCore', recompile=False, mode=ct.RTLD_LOCAL )
+    lib_ = cpp_utils.loadLib('FireCore', recompile=False, mode=ct.RTLD_LOCAL )
+    if isinstance(lib_, ct.CDLL):
+        lib = lib_
+    else:
+        lib = ct.CDLL(lib_)
     # Always apply argtypes/restype mapping (not only on reload)
     cpp_utils.set_args_dict(lib, argDict)
     return lib
@@ -667,6 +671,25 @@ def set_options(ioff_S=1, ioff_T=1, ioff_Vna=1, ioff_Vnl=1, ioff_Vxc=1, ioff_Vca
 argDict["firecore_set_export_mode"]=( None, [c_int] )
 def set_export_mode(export_mode=0):
     return lib.firecore_set_export_mode(int(export_mode))
+
+# void firecore_export_interaction4D( int code, double* out4d )
+argDict["firecore_export_interaction4D"]=( None, [c_int, c_double_p] )
+def export_interaction4D(code, out=None):
+    """Export Fortran 4D sparse interaction array selected by integer code.
+    Shape is [natoms, neigh_max, numorb_max, numorb_max] in Python (C-order) as returned by numpy.
+    Fortran array is (mu, nu, ineigh, iatom) in column-major order.
+    """
+    dims = get_HS_dims(force_refresh=True)
+    # Allocate Fortran-order buffer matching Fortran's (mu, nu, ineigh, iatom) layout
+    buf = np.zeros((dims.numorb_max, dims.numorb_max, dims.neigh_max, dims.natoms), dtype=np.float64, order='F')
+    lib.firecore_export_interaction4D(c_int(int(code)), _np_as(buf, c_double_p))
+    # Convert to Python C-order (iatom, ineigh, nu, mu) so block[i,j] has shape (nu, mu)
+    # and block[i,j].T gives the (mu, nu) matrix element block.
+    result = np.ascontiguousarray(buf.transpose(3, 2, 1, 0))
+    if out is not None:
+        out[:, :, :, :] = result
+        return out
+    return result
 
 # void firecore_scanHamPiece2c( int interaction, int isub, int in1, int in2, int in3, double* dR, int applyRotation, double* sx_out )
 argDict["firecore_scanHamPiece2c"]=( None, [c_int, c_int, c_int, c_int, c_int, c_double_p, c_int, c_double_p] )

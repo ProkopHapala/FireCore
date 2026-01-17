@@ -173,7 +173,7 @@ def run_verification():
     else:
         mu3c_map = None; nu3c_map = None; mv3c_map = None
 
-    rho_avg_blocks = ham.compute_avg_rho_3c(atomPos, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_blocks, Qneutral_sh, ispec_of_atom, nssh_species, dims.nsh_max, mu3c_map=mu3c_map, nu3c_map=nu3c_map, mvalue3c_map=mv3c_map)
+    rho_avg_blocks = ham.compute_avg_rho_3c(atomPos, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_blocks, Qneutral_sh, ispec_of_atom, nssh_species, sd.lssh[:dims.nspecies], dims.nsh_max, mu3c_map=mu3c_map, nu3c_map=nu3c_map, mvalue3c_map=mv3c_map)
     for ip in range(min(3, pairs.shape[0])):
         i, j = int(pairs[ip, 0]), int(pairs[ip, 1])
         print(f"  rho_avg block pair ({i},{j}) cn_count={int(cn_counts[ip])}")

@@ -1721,8 +1721,15 @@ __kernel void assemble_vca(
     const __global int* pair_types,
     const __global float* h_grids,
     const __global int* vca_map,      // [n_species_pairs, nsh_vca_max, 3]
+    const __global int* ispec_of_atom, // [natoms] 0-based
+    const __global int* nssh_species,  // [nspecies_fdata]
+    const __global char* lssh_species, // [nspecies_fdata * nsh_max]
+    const int nsh_max,
     const __global float* dQ,         // [natoms, nsh_stride]
     const int nsh_stride,
+    const int dbg_enable,
+    const int dbg_pair,
+    const int dbg_ish,
     __global float* blocks_offdiag,   // [n_pairs, 4, 4]
     __global float* blocks_diag       // [n_pairs, 2, 4, 4] (index 0 for i, index 1 for j if needed, but we output only 1 block for i usually?)
                                       // Python allocated [n_pairs, 2, 16] but plan changed to only V_ii?
@@ -1736,6 +1743,10 @@ __kernel void assemble_vca(
     int atom_i = ij.x;
     int atom_j = ij.y;
 
+    // Self-pairs exist in Fortran sparse storage (on-site slot). Fortran includes on-site vna_atom
+    // contributions; therefore we must compute the atom(diag) term also for atom_i==atom_j.
+    // For self we keep offdiag==0 and evaluate only the atom component.
+
     float3 r_i = ratoms[atom_i];
     float3 r_j = ratoms[atom_j];
     float3 dR = r_j - r_i;
@@ -1748,13 +1759,10 @@ __kernel void assemble_vca(
     float pmat[3][3];
     twister_pmat(eps, pmat);
 
+    int ispec_i = ispec_of_atom[atom_i];
+    int ispec_j = ispec_of_atom[atom_j];
+
     int spec_pair = pair_types[i_pair];
-    float h_grid = h_grids[spec_pair];
-    
-    int i_z = (int)(r / h_grid);
-    if (i_z < 0) i_z = 0;
-    if (i_z >= numz - 1) i_z = numz - 2;
-    float dr = r - i_z * h_grid;
     
     int pair_stride = numz * n_nonzero_max * 4;
     int z_stride = n_nonzero_max * 4;
@@ -1768,48 +1776,71 @@ __kernel void assemble_vca(
     for (int ish = 0; ish < nsh_vca_max; ish++) {
         // Look up dQ
         // dQ buffer is [natoms, nsh]. dQ[iatom * nsh + ish].
-        // Handle nsh bounds check if needed? Assumed safe.
         float dq_i = dQ[atom_i * nsh_stride + ish];
         float dq_j = dQ[atom_j * nsh_stride + ish];
+
+        if (dbg_enable && (i_pair == dbg_pair) && (ish == dbg_ish)) {
+            printf(" [VCA_DBG][O][CP0] pair=%d ia=%d ja=%d r=%12.6f ish=%d stride=%d dq_i=%12.6f dq_j=%12.6f pmat00=%12.6f pmat01=%12.6f pmat02=%12.6f pmat10=%12.6f pmat11=%12.6f pmat12=%12.6f pmat20=%12.6f pmat21=%12.6f pmat22=%12.6f\n",
+                i_pair, atom_i, atom_j, r, ish, nsh_stride, dq_i, dq_j,
+                pmat[0][0], pmat[0][1], pmat[0][2], pmat[1][0], pmat[1][1], pmat[1][2], pmat[2][0], pmat[2][1], pmat[2][2]);
+        }
 
         // 3 components: 0=ontopl, 1=ontopr, 2=atom
         int idx_ontopl = vca_map[spec_pair * map_stride + ish * 3 + 0];
         int idx_ontopr = vca_map[spec_pair * map_stride + ish * 3 + 1];
         int idx_atom   = vca_map[spec_pair * map_stride + ish * 3 + 2];
 
-        // For each component, if valid, eval spline, rotate, and add
+        // For each component, use *its own* h_grid for z-indexing.
+        // Each vna_ontopl/ontopr/atom table can have different grid spacing.
         
         // --- ontopl (scale dq_i, add to offdiag) ---
-        if (idx_ontopl >= 0) {
-            // idx_ontopl is the "species pair" index in splines array. 
-            // splines array is [n_species_pairs, ...]. 
-            // Wait, vca_map stores INDICES into the splines array (first dimension).
-            // So we use it as `spec_pair` replacement.
-            int base_ptr = idx_ontopl * pair_stride + i_z * z_stride;
+        if ((atom_i != atom_j) && (idx_ontopl >= 0)) {
+            float h_grid_L = h_grids[idx_ontopl];
+            int i_z_L = (int)(r / h_grid_L);
+            if (i_z_L < 0) i_z_L = 0;
+            if (i_z_L >= numz - 1) i_z_L = numz - 2;
+            float dr_L = r - i_z_L * h_grid_L;
+            int base_ptr = idx_ontopl * pair_stride + i_z_L * z_stride;
             
             float comps[6];
             for(int k=0; k<n_nonzero_max; k++) {
                 int bp = base_ptr + k*4;
-                comps[k] = splines[bp] + dr*(splines[bp+1] + dr*(splines[bp+2] + dr*splines[bp+3]));
+                comps[k] = splines[bp] + dr_L*(splines[bp+1] + dr_L*(splines[bp+2] + dr_L*splines[bp+3]));
             }
-            float sm[4][4]; // Ortega order
+            float sm[4][4]; // Ortega order (s,py,pz,px)
             for(int a=0;a<4;a++){ for(int b=0;b<4;b++) sm[a][b]=0.0f; }
             sm[0][0] = comps[0]; sm[0][2] = comps[1]; sm[2][0] = (n_nonzero_max>2)?comps[2]:0.0f;
             sm[1][1] = (n_nonzero_max>3)?comps[3]:0.0f; sm[2][2] = (n_nonzero_max>4)?comps[4]:0.0f; sm[3][3] = sm[1][1];
             
             float sx[4][4];
             rotatePP_sp(pmat, sm, sx);
+
+            if (dbg_enable && (i_pair == dbg_pair) && (ish == dbg_ish)) {
+                printf(" [VCA_DBG][O][CP1L] pair=%d ish=%d idx=%d iz=%d dr=%12.6f comps00=%12.6f comps01=%12.6f comps02=%12.6f sm00=%12.6f sm02=%12.6f sm20=%12.6f sx00=%12.6f sx02=%12.6f sx20=%12.6f\n",
+                    i_pair, ish, idx_ontopl, i_z_L, dr_L, comps[0], comps[1], (n_nonzero_max>2)?comps[2]:0.0f,
+                    sm[0][0], sm[0][2], sm[2][0], sx[0][0], sx[0][2], sx[2][0]);
+            }
             
             for(int a=0;a<4;a++){ for(int b=0;b<4;b++) acc_off[a][b] += sx[a][b] * dq_i; }
+
+            if (dbg_enable && (i_pair == dbg_pair) && (ish == dbg_ish)) {
+                printf(" [VCA_DBG][O][CP4L] pair=%d ish=%d acc_off00=%12.6f acc_off02=%12.6f acc_off20=%12.6f\n", i_pair, ish, acc_off[0][0], acc_off[0][2], acc_off[2][0]);
+            }
         }
 
         // --- ontopr (scale dq_j, add to offdiag) ---
-        if (idx_ontopr >= 0) {
-            int base_ptr = idx_ontopr * pair_stride + i_z * z_stride;
+        if ((atom_i != atom_j) && (idx_ontopr >= 0)) {
+            float h_grid_R = h_grids[idx_ontopr];
+            int i_z_R = (int)(r / h_grid_R);
+            if (i_z_R < 0) i_z_R = 0;
+            if (i_z_R >= numz - 1) i_z_R = numz - 2;
+            float dr_R = r - i_z_R * h_grid_R;
+            int base_ptr = idx_ontopr * pair_stride + i_z_R * z_stride;
+            
             float comps[6];
             for(int k=0; k<n_nonzero_max; k++) {
                 int bp = base_ptr + k*4;
-                comps[k] = splines[bp] + dr*(splines[bp+1] + dr*(splines[bp+2] + dr*splines[bp+3]));
+                comps[k] = splines[bp] + dr_R*(splines[bp+1] + dr_R*(splines[bp+2] + dr_R*splines[bp+3]));
             }
             float sm[4][4]; 
             for(int a=0;a<4;a++){ for(int b=0;b<4;b++) sm[a][b]=0.0f; }
@@ -1818,17 +1849,33 @@ __kernel void assemble_vca(
             
             float sx[4][4];
             rotatePP_sp(pmat, sm, sx);
+
+            if (dbg_enable && (i_pair == dbg_pair) && (ish == dbg_ish)) {
+                printf(" [VCA_DBG][O][CP1R] pair=%d ish=%d idx=%d iz=%d dr=%12.6f comps00=%12.6f comps01=%12.6f comps02=%12.6f sm00=%12.6f sm02=%12.6f sm20=%12.6f sx00=%12.6f sx02=%12.6f sx20=%12.6f\n",
+                    i_pair, ish, idx_ontopr, i_z_R, dr_R, comps[0], comps[1], (n_nonzero_max>2)?comps[2]:0.0f,
+                    sm[0][0], sm[0][2], sm[2][0], sx[0][0], sx[0][2], sx[2][0]);
+            }
             
             for(int a=0;a<4;a++){ for(int b=0;b<4;b++) acc_off[a][b] += sx[a][b] * dq_j; }
+
+            if (dbg_enable && (i_pair == dbg_pair) && (ish == dbg_ish)) {
+                printf(" [VCA_DBG][O][CP4R] pair=%d ish=%d acc_off00=%12.6f acc_off02=%12.6f acc_off20=%12.6f\n", i_pair, ish, acc_off[0][0], acc_off[0][2], acc_off[2][0]);
+            }
         }
 
         // --- atom (scale dq_j, add to diag_i) ---
         if (idx_atom >= 0) {
-            int base_ptr = idx_atom * pair_stride + i_z * z_stride;
+            float h_grid_A = h_grids[idx_atom];
+            int i_z_A = (int)(r / h_grid_A);
+            if (i_z_A < 0) i_z_A = 0;
+            if (i_z_A >= numz - 1) i_z_A = numz - 2;
+            float dr_A = r - i_z_A * h_grid_A;
+            int base_ptr = idx_atom * pair_stride + i_z_A * z_stride;
+            
             float comps[6];
             for(int k=0; k<n_nonzero_max; k++) {
                 int bp = base_ptr + k*4;
-                comps[k] = splines[bp] + dr*(splines[bp+1] + dr*(splines[bp+2] + dr*splines[bp+3]));
+                comps[k] = splines[bp] + dr_A*(splines[bp+1] + dr_A*(splines[bp+2] + dr_A*splines[bp+3]));
             }
             float sm[4][4];
             for(int a=0;a<4;a++){ for(int b=0;b<4;b++) sm[a][b]=0.0f; }
@@ -1837,26 +1884,43 @@ __kernel void assemble_vca(
             
             float sx[4][4];
             rotatePP_sp(pmat, sm, sx);
+
+            if (dbg_enable && (i_pair == dbg_pair) && (ish == dbg_ish)) {
+                printf(" [VCA_DBG][O][CP1A] pair=%d ish=%d idx=%d iz=%d dr=%12.6f comps00=%12.6f comps01=%12.6f comps02=%12.6f sm00=%12.6f sm02=%12.6f sm20=%12.6f sx00=%12.6f sx02=%12.6f sx20=%12.6f\n",
+                    i_pair, ish, idx_atom, i_z_A, dr_A, comps[0], comps[1], (n_nonzero_max>2)?comps[2]:0.0f,
+                    sm[0][0], sm[0][2], sm[2][0], sx[0][0], sx[0][2], sx[2][0]);
+            }
             
             for(int a=0;a<4;a++){ for(int b=0;b<4;b++) acc_diag[a][b] += sx[a][b] * dq_j; }
+
+            if (dbg_enable && (i_pair == dbg_pair) && (ish == dbg_ish)) {
+                printf(" [VCA_DBG][O][CP4A] pair=%d ish=%d acc_diag00=%12.6f acc_diag02=%12.6f acc_diag20=%12.6f\n", i_pair, ish, acc_diag[0][0], acc_diag[0][2], acc_diag[2][0]);
+            }
         }
     }
 
-    // Store results
-    // Store as (inu, imu) for compatibility (transpose on read)
+    // Store results - NO transpose; acc_off[mu][nu] stored as [mu*4 + nu]
     __global float* b_off = &blocks_offdiag[i_pair * 16];
     for(int a=0;a<4;a++){
         for(int c=0;c<4;c++){
-            b_off[a*4 + c] = acc_off[c][a]; // Transpose to store
+            b_off[a*4 + c] = acc_off[a][c];
         }
+    }
+
+    if (dbg_enable && (i_pair == dbg_pair)) {
+        printf(" [VCA_DBG][O][CP5O] pair=%d off00=%12.6f off02=%12.6f off20=%12.6f\n", i_pair, b_off[0*4+0], b_off[0*4+2], b_off[2*4+0]);
     }
 
     // blocks_diag has shape [n_pairs, 2, 4, 4]. We write to index 0.
     __global float* b_diag = &blocks_diag[i_pair * 32]; // 2*16
     for(int a=0;a<4;a++){
         for(int c=0;c<4;c++){
-            b_diag[a*4 + c] = acc_diag[c][a];
+            b_diag[a*4 + c] = acc_diag[a][c];
         }
+    }
+
+    if (dbg_enable && (i_pair == dbg_pair)) {
+        printf(" [VCA_DBG][O][CP5D] pair=%d diag00=%12.6f diag02=%12.6f diag20=%12.6f\n", i_pair, b_diag[0*4+0], b_diag[0*4+2], b_diag[2*4+0]);
     }
     // Zero out the second block (index 1) to be clean
     for(int k=16; k<32; k++) b_diag[k] = 0.0f;

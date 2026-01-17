@@ -1123,6 +1123,98 @@ subroutine firecore_get_rho_off_sparse( rho_off_out ) bind(c, name='firecore_get
 end subroutine firecore_get_rho_off_sparse
 
 
+! ============================================================== 
+! Universal export of 4D interaction arrays (sparse blocks) for debugging.
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+! code selects which array to export; out4d always has shape (numorb_max,numorb_max,neigh_max,natoms).
+! codes:
+!   1=vca   2=ewaldsr   3=ewaldlr   4=dip
+!   5=vna   6=t_mat     7=vxc      8=vxc_ca
+!   9=vnl (NOTE: uses neighPP_max internally; mapped into neigh_max when possible)
+!  10=vca_ontopl   11=vca_ontopr   12=vca_atom
+subroutine firecore_export_interaction4D( code, out4d ) bind(c, name='firecore_export_interaction4D')
+    use iso_c_binding
+    use configuration, only: natoms
+    use options,       only: verbosity
+    use options,       only: idebugWrite
+    use interactions,  only: numorb_max, vca, ewaldsr, ewaldlr, dip, vna, t_mat, vxc, vxc_ca, vnl, num_orb, imass
+    ! --------------------------
+    ! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+    ! VCA component buffers live only in MODULES/debug.f90 and are allocated/filled
+    ! only when idebugWrite>0 (assemble_ca_2c.f90 contains the gated hook).
+    use debug,         only: dbg_vca_ontopl=>vca_ontopl, dbg_vca_ontopr=>vca_ontopr, dbg_vca_atom=>vca_atom
+    ! --------------------------
+    use neighbor_map,  only: neigh_max, neighn, neigh_j, neigh_b, neighPPn, neighPP_j, neighPP_b
+    implicit none
+    integer(c_int), intent(in), value :: code
+    real(c_double), dimension(numorb_max, numorb_max, neigh_max, natoms), intent(out) :: out4d
+    integer :: iatom, ineigh, ineighPP, ineigh0, jatom, mbeta, in1, in2, nmu, nnu
+
+    out4d = 0.0d0
+    select case(code)
+        case(1)
+            if(allocated(vca)) out4d = vca
+        case(2)
+            if(allocated(ewaldsr)) out4d = ewaldsr
+        case(3)
+            if(allocated(ewaldlr)) out4d = ewaldlr
+        case(4)
+            if(allocated(dip)) out4d = dip
+        case(5)
+            if(allocated(vna)) out4d = vna
+        case(6)
+            if(allocated(t_mat)) out4d = t_mat
+        case(7)
+            if(allocated(vxc)) out4d = vxc
+        case(8)
+            if(allocated(vxc_ca)) out4d = vxc_ca
+        case(10)
+            if(idebugWrite .gt. 0) then
+                if(allocated(dbg_vca_ontopl)) out4d = dbg_vca_ontopl
+            end if
+        case(11)
+            if(idebugWrite .gt. 0) then
+                if(allocated(dbg_vca_ontopr)) out4d = dbg_vca_ontopr
+            end if
+        case(12)
+            if(idebugWrite .gt. 0) then
+                if(allocated(dbg_vca_atom)) out4d = dbg_vca_atom
+            end if
+        case(9)
+            ! vnl uses neighPP lists; map into neigh_max neighbor slots when possible
+            if(.not. allocated(vnl)) return
+            if(.not. allocated(neighn)) then
+                if (verbosity .gt. 0) write(*,*) 'firecore_export_interaction4D(code=9): neighn not allocated'
+                return
+            end if
+            do iatom = 1, natoms
+                in1 = imass(iatom)
+                nmu = num_orb(in1)
+                do ineighPP = 1, neighPPn(iatom)
+                    jatom = neighPP_j(ineighPP, iatom)
+                    mbeta = neighPP_b(ineighPP, iatom)
+                    in2 = imass(jatom)
+                    nnu = num_orb(in2)
+                    ineigh0 = 0
+                    do ineigh = 1, neighn(iatom)
+                        if (neigh_j(ineigh,iatom) .eq. jatom .and. neigh_b(ineigh,iatom) .eq. mbeta) then
+                            ineigh0 = ineigh
+                            exit
+                        end if
+                    end do
+                    if (ineigh0 .gt. 0) then
+                        out4d(:nmu,:nnu,ineigh0,iatom) = vnl(:nmu,:nnu,ineighPP,iatom)
+                    else
+                        if (verbosity .gt. 0) write(*,*) 'firecore_export_interaction4D(code=9): VNL neighbor not found ', iatom, jatom, mbeta
+                    end if
+                end do
+            end do
+        case default
+            if (verbosity .gt. 0) write(*,*) 'firecore_export_interaction4D(): unknown code=', code
+    end select
+end subroutine firecore_export_interaction4D
+
+
 
 subroutine firecore_set_options( ioff_S_, ioff_T_, ioff_Vna_, ioff_Vnl_, ioff_Vxc_, ioff_Vca_, ioff_Vxc_ca_, ioff_Ewald_ ) bind(c, name='firecore_set_options')
     use iso_c_binding
