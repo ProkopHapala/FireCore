@@ -5,10 +5,11 @@ import sys
 # Adjust path to your FireCore/pyBall directory
 sys.path.append("../../")
 from pyBall import FireCore as fc
-from pyBall.FireballOCL.OCL_Hamiltonian import (
-    OCL_Hamiltonian,
+from pyBall.FireballOCL.OCL_Hamiltonian import OCL_Hamiltonian
+from pyBall.FireballOCL.Check_Fireball_wrt_Fotran import (
     compare_matrices as _compare_matrices_shared,
     dense_from_pair_blocks,
+    dense_from_neighbor_list,
     scan2c_fortran,
     scan2c_ocl,
     _orbital_layout as _orbital_layout_shared,
@@ -18,8 +19,6 @@ from pyBall.FireballOCL.OCL_Hamiltonian import (
     cl_sp_from_ham,
     contract_vnl_blocks,
 )
-
-# Reuse testing helpers relocated into OCL_Hamiltonian
 compare_matrices = _compare_matrices_shared
 _orbital_layout = _orbital_layout_shared
 _blocked_to_dense = _blocked_to_dense_shared
@@ -85,6 +84,7 @@ def run_verification():
         ispec_of_atom[ia] = int(w[0])
     
     nssh_species = np.ascontiguousarray(sd.nssh[:dims.nspecies], dtype=np.int32)
+    lssh_species = np.ascontiguousarray(sd.lssh[:dims.nspecies], dtype=np.int32)
 
     # Neighbor lists from Fortran export: neigh_j is 1-based atom index, as used elsewhere in this file.
     # Build both: with self (Fortran diag Vca uses self neighbor) and without self (off-diagonal pairs).
@@ -176,62 +176,62 @@ def run_verification():
     print("\nTesting Overlap S...")
     dR01 = (atomPos[1] - atomPos[0]).copy()
     dR10 = (atomPos[0] - atomPos[1]).copy()
-    S00_f = _scan2c_fortran(1, np.array([0.0, 0.0, 0.0], dtype=np.float64), applyRotation=False)
+    S00_f = scan2c_fortran(fc, 1, np.array([0.0, 0.0, 0.0], dtype=np.float64), applyRotation=False)
     S11_f = S00_f.copy()
     S01_f = scan2c_fortran(fc, 1, dR01, applyRotation=True)
     S10_f = scan2c_fortran(fc, 1, dR10, applyRotation=True)
     S_f = dense_from_pair_blocks(S00_f, S01_f, S10_f, S11_f)
-    S00_o = scan2c_ocl(ham, 'overlap', np.array([0.0, 0.0, 0.0], dtype=np.float64), applyRotation=False)
+    S00_o = scan2c_ocl(ham, 'overlap', int(atomTypes_Z[0]), int(atomTypes_Z[0]), np.array([0.0, 0.0, 0.0], dtype=np.float64), applyRotation=False)
     S11_o = S00_o.copy()
-    S01_o = scan2c_ocl(ham, 'overlap', dR01, applyRotation=True)
-    S10_o = scan2c_ocl(ham, 'overlap', dR10, applyRotation=True)
+    S01_o = scan2c_ocl(ham, 'overlap', int(atomTypes_Z[0]), int(atomTypes_Z[1]), dR01, applyRotation=True)
+    S10_o = scan2c_ocl(ham, 'overlap', int(atomTypes_Z[1]), int(atomTypes_Z[0]), dR10, applyRotation=True)
     S_o = dense_from_pair_blocks(S00_o, S01_o, S10_o, S11_o)
     res_S = compare_matrices("Overlap S", S_f, S_o)
 
     print("\nTesting Kinetic T...")
-    T00_f = _scan2c_fortran(13, np.array([0.0, 0.0, 0.0], dtype=np.float64), applyRotation=False)
+    T00_f = scan2c_fortran(fc, 13, np.array([0.0, 0.0, 0.0], dtype=np.float64), applyRotation=False)
     T11_f = T00_f.copy()
-    T01_f = _scan2c_fortran(13, dR01, applyRotation=True)
-    T10_f = _scan2c_fortran(13, dR10, applyRotation=True)
-    T_f = _dense_from_pair_blocks(T00_f, T01_f, T10_f, T11_f)
-    T00_o = _scan2c_ocl('kinetic', np.array([0.0, 0.0, 0.0], dtype=np.float64), applyRotation=False)
+    T01_f = scan2c_fortran(fc, 13, dR01, applyRotation=True)
+    T10_f = scan2c_fortran(fc, 13, dR10, applyRotation=True)
+    T_f = dense_from_pair_blocks(T00_f, T01_f, T10_f, T11_f)
+    T00_o = scan2c_ocl(ham, 'kinetic', int(atomTypes_Z[0]), int(atomTypes_Z[0]), np.array([0.0, 0.0, 0.0], dtype=np.float64), applyRotation=False)
     T11_o = T00_o.copy()
-    T01_o = _scan2c_ocl('kinetic', dR01, applyRotation=True)
-    T10_o = _scan2c_ocl('kinetic', dR10, applyRotation=True)
-    T_o = _dense_from_pair_blocks(T00_o, T01_o, T10_o, T11_o)
+    T01_o = scan2c_ocl(ham, 'kinetic', int(atomTypes_Z[0]), int(atomTypes_Z[1]), dR01, applyRotation=True)
+    T10_o = scan2c_ocl(ham, 'kinetic', int(atomTypes_Z[1]), int(atomTypes_Z[0]), dR10, applyRotation=True)
+    T_o = dense_from_pair_blocks(T00_o, T01_o, T10_o, T11_o)
     res_T = compare_matrices("Kinetic T", T_f, T_o)
 
     print("\nTesting Vna...")
-    Vna01_f = _scan2c_fortran(2, dR01, in3=1, applyRotation=True) + _scan2c_fortran(3, dR01, in3=1, applyRotation=True)
-    Vna10_f = _scan2c_fortran(2, dR10, in3=1, applyRotation=True) + _scan2c_fortran(3, dR10, in3=1, applyRotation=True)
-    Vna00_f = _scan2c_fortran(4, dR01, in3=1, applyRotation=True)
-    Vna11_f = _scan2c_fortran(4, dR10, in3=1, applyRotation=True)
-    Vna_f = _dense_from_pair_blocks(Vna00_f, Vna01_f, Vna10_f, Vna11_f)
-    Vna01_o = _scan2c_ocl('vna_ontopl_00', dR01, applyRotation=True) + _scan2c_ocl('vna_ontopr_00', dR01, applyRotation=True)
-    Vna10_o = _scan2c_ocl('vna_ontopl_00', dR10, applyRotation=True) + _scan2c_ocl('vna_ontopr_00', dR10, applyRotation=True)
-    Vna00_o = _scan2c_ocl('vna_atom_00', dR01, applyRotation=True)
-    Vna11_o = _scan2c_ocl('vna_atom_00', dR10, applyRotation=True)
-    Vna_o = _dense_from_pair_blocks(Vna00_o, Vna01_o, Vna10_o, Vna11_o)
+    Vna01_f = scan2c_fortran(fc, 2, dR01, in3=1, applyRotation=True) + scan2c_fortran(fc, 3, dR01, in3=1, applyRotation=True)
+    Vna10_f = scan2c_fortran(fc, 2, dR10, in3=1, applyRotation=True) + scan2c_fortran(fc, 3, dR10, in3=1, applyRotation=True)
+    Vna00_f = scan2c_fortran(fc, 4, dR01, in3=1, applyRotation=True)
+    Vna11_f = scan2c_fortran(fc, 4, dR10, in3=1, applyRotation=True)
+    Vna_f = dense_from_pair_blocks(Vna00_f, Vna01_f, Vna10_f, Vna11_f)
+    Vna01_o = scan2c_ocl(ham, 'vna_ontopl_00', int(atomTypes_Z[0]), int(atomTypes_Z[1]), dR01, applyRotation=True) + scan2c_ocl(ham, 'vna_ontopr_00', int(atomTypes_Z[0]), int(atomTypes_Z[1]), dR01, applyRotation=True)
+    Vna10_o = scan2c_ocl(ham, 'vna_ontopl_00', int(atomTypes_Z[1]), int(atomTypes_Z[0]), dR10, applyRotation=True) + scan2c_ocl(ham, 'vna_ontopr_00', int(atomTypes_Z[1]), int(atomTypes_Z[0]), dR10, applyRotation=True)
+    Vna00_o = scan2c_ocl(ham, 'vna_atom_00', int(atomTypes_Z[0]), int(atomTypes_Z[0]), dR01, applyRotation=True)
+    Vna11_o = scan2c_ocl(ham, 'vna_atom_00', int(atomTypes_Z[1]), int(atomTypes_Z[1]), dR10, applyRotation=True)
+    Vna_o = dense_from_pair_blocks(Vna00_o, Vna01_o, Vna10_o, Vna11_o)
     res_Vna = compare_matrices("Vna", Vna_f, Vna_o)
 
     print("\nTesting sVNL (PP overlap, interaction=5)...")
-    sVNL01_f = _scan2c_fortran(5, dR01, in3=1, applyRotation=True)
-    sVNL10_f = _scan2c_fortran(5, dR10, in3=1, applyRotation=True)
-    sVNL00_f = _scan2c_fortran(5, dR01, in3=1, applyRotation=True)
-    sVNL11_f = _scan2c_fortran(5, dR10, in3=1, applyRotation=True)
-    sVNL_f = _dense_from_pair_blocks(sVNL00_f, sVNL01_f, sVNL10_f, sVNL11_f)
-    sVNL01_o = _scan2c_ocl('vnl', dR01, applyRotation=True)
-    sVNL10_o = _scan2c_ocl('vnl', dR10, applyRotation=True)
-    sVNL00_o = _scan2c_ocl('vnl', dR01, applyRotation=True)
-    sVNL11_o = _scan2c_ocl('vnl', dR10, applyRotation=True)
-    sVNL_o = _dense_from_pair_blocks(sVNL00_o, sVNL01_o, sVNL10_o, sVNL11_o)
+    sVNL01_f = scan2c_fortran(fc, 5, dR01, in3=1, applyRotation=True)
+    sVNL10_f = scan2c_fortran(fc, 5, dR10, in3=1, applyRotation=True)
+    sVNL00_f = scan2c_fortran(fc, 5, dR01, in3=1, applyRotation=True)
+    sVNL11_f = scan2c_fortran(fc, 5, dR10, in3=1, applyRotation=True)
+    sVNL_f = dense_from_pair_blocks(sVNL00_f, sVNL01_f, sVNL10_f, sVNL11_f)
+    sVNL01_o = scan2c_ocl(ham, 'vnl', int(atomTypes_Z[0]), int(atomTypes_Z[1]), dR01, applyRotation=True)
+    sVNL10_o = scan2c_ocl(ham, 'vnl', int(atomTypes_Z[1]), int(atomTypes_Z[0]), dR10, applyRotation=True)
+    sVNL00_o = scan2c_ocl(ham, 'vnl', int(atomTypes_Z[0]), int(atomTypes_Z[0]), dR01, applyRotation=True)
+    sVNL11_o = scan2c_ocl(ham, 'vnl', int(atomTypes_Z[1]), int(atomTypes_Z[1]), dR10, applyRotation=True)
+    sVNL_o = dense_from_pair_blocks(sVNL00_o, sVNL01_o, sVNL10_o, sVNL11_o)
     require_nz = np.max(np.abs(sVNL_f)) > 1e-5
     res_Vnl = compare_matrices("sVNL", sVNL_f, sVNL_o, require_nonzero=require_nz)
 
     print("\nTesting sVNL self (dR=0, applyRotation=False)...")
     z0 = np.array([0.0, 0.0, 0.0], dtype=np.float64)
-    sVNL_self_f = _scan2c_fortran(5, z0, in3=1, applyRotation=False)
-    sVNL_self_o = _scan2c_ocl('vnl', z0, applyRotation=False)
+    sVNL_self_f = scan2c_fortran(fc, 5, z0, in3=1, applyRotation=False)
+    sVNL_self_o = scan2c_ocl(ham, 'vnl', int(atomTypes_Z[0]), int(atomTypes_Z[0]), z0, applyRotation=False)
     _ = compare_matrices("sVNL self (0)", sVNL_self_f, sVNL_self_o, tol=1e-6, require_nonzero=True)
 
     print("\nTesting contracted VNL (scan-based reference vs OpenCL CPU/GPU contraction)...")
@@ -331,7 +331,7 @@ def run_verification():
     print("\nTesting Vca (charge-dependent)...")
     print("\nTesting Vca (charge-dependent)...")
     # Isolate Vca from Fortran (Ewald DISABLED)
-    H_vca_f, _, _ = get_fortran_sparse_H_with_options(0, 0, 0, 0, 0, 1, 0, ioff_Ewald=0, export_mode=2)
+    H_vca_f, _, _ = firecore_sparse_H_with_options(fc, 0, 0, 0, 0, 0, 1, 0, ioff_Ewald=0, export_mode=2)
     print("  Fortran Vca matrix (isolated):")
     print(H_vca_f)
 
@@ -344,10 +344,12 @@ def run_verification():
     
     # Calculate dq per shell
     # dq[isorp, iatom]
-    dq_shell = np.zeros((dims.nsh_max, 2))
-    for ia in range(2):
-        for issh in range(int(nssh_species[0])): # Assuming species 0
-             dq_shell[issh, ia] = Qin_shell[issh, ia] - Qneutral_sh[issh, int(ispec_of_atom[ia])]
+    dq_shell = np.zeros((dims.nsh_max, dims.natoms))
+    for ia in range(dims.natoms):
+        ispec = int(ispec_of_atom[ia])
+        nsh_local = int(nssh_species[ispec])
+        for issh in range(nsh_local):
+            dq_shell[issh, ia] = Qin_shell[issh, ia] - Qneutral_sh[issh, ispec]
     
     print("  dq_shell:")
     print(dq_shell)
@@ -419,7 +421,16 @@ def run_verification():
         t0 = int(pair_types_vca[0])
         print(f"  DEBUG vca_map for pair_type={t0}:\n{ham.vca_map[t0]}")
         
-    off_vca, diag_vca = ham.assemble_vca(atomPos, np.array(neigh_list_vca), np.array(pair_types_vca), dq_shell)
+    off_vca, diag_vca = ham.assemble_vca(
+        atomPos,
+        np.array(neigh_list_vca),
+        np.array(pair_types_vca),
+        dq_shell,
+        ispec_of_atom=ispec_of_atom,
+        nssh_species=nssh_species,
+        lssh_species=lssh_species,
+        nsh_max=dims.nsh_max,
+    )
     
     # Reconstruct dense
     Vca_ocl = np.zeros_like(H_vca_f)

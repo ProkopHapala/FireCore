@@ -7,19 +7,21 @@ from io import StringIO
 # Adjust path to your FireCore/pyBall directory
 sys.path.append("../../")
 from pyBall import FireCore as fc
-from pyBall.FireballOCL.OCL_Hamiltonian import (
-    OCL_Hamiltonian,
+from pyBall.FireballOCL.OCL_Hamiltonian import OCL_Hamiltonian
+from pyBall.FireballOCL.Check_Fireball_wrt_Fotran import (
     compare_matrices as _compare_matrices_shared,
     compare_matrices_brief as _compare_matrices_brief_shared,
     _orbital_layout as _orbital_layout_shared,
     _blocked_to_dense as _blocked_to_dense_shared,
     _blocked_to_dense_vca_atom as _blocked_to_dense_vca_atom_shared,
     compare_blocks as _compare_blocks_shared,
-    dense_from_neighbor_list,
+    dense_from_neighbor_list as _dense_from_neighbor_list_shared,
     scan2c_fortran,
     scan2c_ocl,
     firecore_sparse_to_dense,
     firecore_sparse_H_with_options,
+    cl_sp_from_ham,
+    contract_vnl_blocks as _contract_vnl_blocks_shared,
 )
 
 # Reuse testing helpers relocated into OCL_Hamiltonian
@@ -30,7 +32,9 @@ compare_matrices_brief = _compare_matrices_brief_shared
 _orbital_layout = _orbital_layout_shared
 _blocked_to_dense = _blocked_to_dense_shared
 _blocked_to_dense_vca_atom = _blocked_to_dense_vca_atom_shared
+dense_from_neighbor_list = _dense_from_neighbor_list_shared
 compare_blocks = _compare_blocks_shared
+contract_vnl_blocks = _contract_vnl_blocks_shared
 
 np.set_printoptions(precision=6, suppress=True, linewidth=np.inf)
 
@@ -801,17 +805,17 @@ def run_verification():
             dR = (atomPos[j] - atomPos[i]).copy()
             if i == j:
                 dR[:] = 0.0
-                Af = _scan2c_fortran(interaction_fortran, dR, in3=in3, applyRotation=applyRotation_self)
-                Ao = _scan2c_ocl(root_ocl, atomTypes_Z[i], atomTypes_Z[j], dR, applyRotation=applyRotation_self)
+                Af = scan2c_fortran(fc, interaction_fortran, dR, in3=in3, applyRotation=applyRotation_self)
+                Ao = scan2c_ocl(ham, root_ocl, atomTypes_Z[i], atomTypes_Z[j], dR, applyRotation=applyRotation_self)
             else:
-                Af = _scan2c_fortran(interaction_fortran, dR, in3=in3, applyRotation=applyRotation_offdiag)
-                Ao = _scan2c_ocl(root_ocl, atomTypes_Z[i], atomTypes_Z[j], dR, applyRotation=applyRotation_offdiag)
+                Af = scan2c_fortran(fc, interaction_fortran, dR, in3=in3, applyRotation=applyRotation_offdiag)
+                Ao = scan2c_ocl(ham, root_ocl, atomTypes_Z[i], atomTypes_Z[j], dR, applyRotation=applyRotation_offdiag)
             blocks_f.append(Af)
             blocks_o.append(Ao)
         blocks_f = np.array(blocks_f, dtype=np.float64)
         blocks_o = np.array(blocks_o, dtype=np.float64)
-        Mf = _dense_from_neighbor_list(neighs_all, blocks_f, n_orb_atom, offs)
-        Mo = _dense_from_neighbor_list(neighs_all, blocks_o, n_orb_atom, offs)
+        Mf = dense_from_neighbor_list(neighs_all, blocks_f, n_orb_atom, offs)
+        Mo = dense_from_neighbor_list(neighs_all, blocks_o, n_orb_atom, offs)
         return Mf, Mo
 
     print("\nTesting Overlap S...")
@@ -839,15 +843,15 @@ def run_verification():
             # Choose nearest neighbor direction if available; otherwise 0.
             k = 1 if i == 0 else 0
             dR = (atomPos[k] - atomPos[i]).copy()
-            Af = _scan2c_fortran(4, dR, in3=1, applyRotation=True)
-            Ao = _scan2c_ocl('vna_atom_00', atomTypes_Z[i], atomTypes_Z[i], dR, applyRotation=True)
+            Af = scan2c_fortran(fc, 4, dR, in3=1, applyRotation=True)
+            Ao = scan2c_ocl(ham, 'vna_atom_00', atomTypes_Z[i], atomTypes_Z[i], dR, applyRotation=True)
         else:
-            Af = _scan2c_fortran(2, dR, in3=1, applyRotation=True) + _scan2c_fortran(3, dR, in3=1, applyRotation=True)
-            Ao = _scan2c_ocl('vna_ontopl_00', atomTypes_Z[i], atomTypes_Z[j], dR, applyRotation=True) + _scan2c_ocl('vna_ontopr_00', atomTypes_Z[i], atomTypes_Z[j], dR, applyRotation=True)
+            Af = scan2c_fortran(fc, 2, dR, in3=1, applyRotation=True) + scan2c_fortran(fc, 3, dR, in3=1, applyRotation=True)
+            Ao = scan2c_ocl(ham, 'vna_ontopl_00', atomTypes_Z[i], atomTypes_Z[j], dR, applyRotation=True) + scan2c_ocl(ham, 'vna_ontopr_00', atomTypes_Z[i], atomTypes_Z[j], dR, applyRotation=True)
         blocks_f.append(Af)
         blocks_o.append(Ao)
-    Vna_f = _dense_from_neighbor_list(neighs_all, np.array(blocks_f, dtype=np.float64), n_orb_atom, offs)
-    Vna_o = _dense_from_neighbor_list(neighs_all, np.array(blocks_o, dtype=np.float64), n_orb_atom, offs)
+    Vna_f = dense_from_neighbor_list(neighs_all, np.array(blocks_f, dtype=np.float64), n_orb_atom, offs)
+    Vna_o = dense_from_neighbor_list(neighs_all, np.array(blocks_o, dtype=np.float64), n_orb_atom, offs)
     res_Vna, err_Vna = compare_matrices("Vna", Vna_f, Vna_o, tol=1e-5, require_nonzero=True)
 
     print("\nTesting sVNL (PP overlap, interaction=5)...")
