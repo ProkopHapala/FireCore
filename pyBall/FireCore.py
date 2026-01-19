@@ -118,6 +118,7 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
 array3i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=3, flags='CONTIGUOUS')
 array4d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=4, flags='CONTIGUOUS')
 array2cd = np.ctypeslib.ndpointer(dtype=np.complex128, ndim=2, flags='CONTIGUOUS') # 
+array2i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=2, flags='CONTIGUOUS')
 # ========= C functions
 
 
@@ -516,6 +517,17 @@ def get_HS_neighs(dims, data=None):
     data.xl      = c_array(data.xl,      "xl")
     lib.firecore_get_HS_neighs( data.num_orb, data.degelec, data.iatyp, data.lssh, data.mu, data.nu, data.mvalue, data.nssh, data.nzx, data.neighn, data.neigh_j, data.neigh_b, data.xl )
     return data
+
+
+# void firecore_get_neigh_back( int* neigh_back_out )
+argDict["firecore_get_neigh_back"]=( None, [array2i] )
+def get_neigh_back(dims):
+    if not isinstance(dims, FireballDims):
+        raise TypeError("dims argument must be an instance of FireballDims")
+    # Fortran neigh_back(natoms, neigh_max); keep same shape in Python.
+    nb = np.zeros((dims.natoms, dims.neigh_max), dtype=np.int32)
+    lib.firecore_get_neigh_back(nb)
+    return nb
 
 # void firecore_get_HS_neighsPP( int* neighPPn_out, int* neighPP_j_out_flat, int* neighPP_b_out_flat )
 argDict["firecore_get_HS_neighsPP"]=( None, [array1i,array1i,array1i] )

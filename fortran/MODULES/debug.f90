@@ -45,6 +45,22 @@ module debug
          integer :: diag_vca_mbeta  = -1
          integer :: diag_vca_isorp  = -1
 
+! EWALDSR component debug exports (filled in assemble_ca_2c.f90 / assemble_ca_3c.f90 when idebugWrite>0)
+! These arrays are NOT part of the production state (kept in MODULES/debug.f90 only).
+! They exist only to provide Fortran reference component breakdown for PyOpenCL parity tests.
+         real, dimension (:, :, :, :), allocatable :: ewaldsr_2c_atom
+         real, dimension (:, :, :, :), allocatable :: ewaldsr_2c_ontop
+         real, dimension (:, :, :, :), allocatable :: ewaldsr_3c
+
+! EWALDSR trace selector (consumed by assemblers when idebugWrite>0)
+! Allows targeting a specific directed neighbor (iatom,jatom,mbeta) and third center (ialp).
+! Use -1 as wildcard for any field.
+         logical :: diag_ewald_enable = .false.
+         integer :: diag_ewald_iatom  = -1
+         integer :: diag_ewald_jatom  = -1
+         integer :: diag_ewald_mbeta  = -1
+         integer :: diag_ewald_ialp   = -1
+
 ! --------------------------
 
 
@@ -80,6 +96,30 @@ subroutine debug_vca_zero()
     if (allocated(vca_ontopr)) vca_ontopr = 0.0d0
     if (allocated(vca_atom  )) vca_atom   = 0.0d0
 end subroutine debug_vca_zero
+
+
+subroutine debug_ewald_prepare()
+    use configuration, only: natoms
+    use neighbor_map,  only: neigh_max
+    use interactions,  only: numorb_max
+    use options,       only: idebugWrite, verbosity
+    implicit none
+    if (idebugWrite .le. 0) return
+    if (.not. allocated(ewaldsr_2c_atom )) allocate( ewaldsr_2c_atom (numorb_max, numorb_max, neigh_max, natoms) )
+    if (.not. allocated(ewaldsr_2c_ontop)) allocate( ewaldsr_2c_ontop(numorb_max, numorb_max, neigh_max, natoms) )
+    if (.not. allocated(ewaldsr_3c     )) allocate( ewaldsr_3c      (numorb_max, numorb_max, neigh_max, natoms) )
+    if (verbosity .gt. 0) write(*,*) 'DEBUG EWALDSR export enabled: allocated+zeroed ewaldsr_2c_atom/ewaldsr_2c_ontop/ewaldsr_3c'
+end subroutine debug_ewald_prepare
+
+
+subroutine debug_ewald_zero()
+    use options, only: idebugWrite
+    implicit none
+    if (idebugWrite .le. 0) return
+    if (allocated(ewaldsr_2c_atom )) ewaldsr_2c_atom  = 0.0d0
+    if (allocated(ewaldsr_2c_ontop)) ewaldsr_2c_ontop = 0.0d0
+    if (allocated(ewaldsr_3c     )) ewaldsr_3c       = 0.0d0
+end subroutine debug_ewald_zero
 
 
 

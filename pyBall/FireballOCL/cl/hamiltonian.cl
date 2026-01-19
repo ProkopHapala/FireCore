@@ -44,7 +44,6 @@ float interpolate_2d(
         float bb0 = 2.0f * f0p3;
         g[k] = ((bb3 * py + bb2) * py + bb1) * py + bb0;
     }
-
     float f1m1 = g[0];
     float f0p3 = 3.0f * g[1];
     float f1p3 = 3.0f * g[2];
@@ -55,6 +54,136 @@ float interpolate_2d(
     float bb1 = -2.0f * f1m1 - f0p3 + 2.0f * f1p3 - f2p1;
     float bb0 = 2.0f * f0p3;
     return (((bb3 * px + bb2) * px + bb1) * px + bb0) / 36.0f;
+}
+
+
+// ================================================================================================
+// EWALDSR/EWALDLR (verification-oriented kernels)
+// - Minimal, data-oriented: kernels compute per-item 4x4 blocks.
+// - Caller provides already-assembled S and dip blocks in (nu,mu) order.
+// - Caller provides distances and charges.
+// ================================================================================================
+
+__kernel void ewaldsr_2c_atom_blocks(
+    const int n_pairs,
+    const __global int2* ij_pairs,        // [n_pairs] (i,j)
+    const __global float* y_ij,           // [n_pairs] |r_j-r_i|
+    const __global float* dq_atom,        // [natoms]
+    const __global float* S_self_blocks,  // [natoms, 16] overlap self-slot block (nu,mu) for each atom i
+    __global float* out_blocks            // [n_pairs, 16] contribution to add onto i's self-slot (returned per directed pair)
+) {
+    int ip = get_global_id(0);
+    if (ip >= n_pairs) return;
+    int2 ij = ij_pairs[ip];
+    int i = ij.x;
+    int j = ij.y;
+    float y = y_ij[ip];
+    float invy = (y > 1e-8f) ? 1.0f / y : 0.0f;
+    float dq2 = dq_atom[j];
+    const float EQ2 = 14.39975f;
+    const __global float* S = &S_self_blocks[i * 16];
+    __global float* out = &out_blocks[ip * 16];
+    for (int m = 0; m < 16; m++) out[m] = S[m] * invy * dq2 * EQ2;
+}
+
+
+__kernel void ewaldsr_2c_ontop_blocks(
+    const int n_pairs,
+    const __global int2* ij_pairs,   // [n_pairs]
+    const __global float* y_ij,      // [n_pairs]
+    const __global float* dq_atom,   // [natoms]
+    const __global float* S_blocks,  // [n_pairs, 16] (nu,mu)
+    const __global float* dip_blocks,// [n_pairs, 16] (nu,mu)
+    __global float* out_blocks       // [n_pairs, 16]
+) {
+    int ip = get_global_id(0);
+    if (ip >= n_pairs) return;
+    int2 ij = ij_pairs[ip];
+    int i = ij.x;
+    int j = ij.y;
+    float y = y_ij[ip];
+    float invy = (y > 1e-8f) ? 1.0f / y : 0.0f;
+    float invy2 = invy * invy;
+    float dq1 = dq_atom[i];
+    float dq2 = dq_atom[j];
+    const float EQ2 = 14.39975f;
+    const __global float* S = &S_blocks[ip * 16];
+    const __global float* D = &dip_blocks[ip * 16];
+    __global float* out = &out_blocks[ip * 16];
+    for (int m = 0; m < 16; m++) {
+        float s = S[m];
+        float d = D[m];
+        float term = ((s * (0.5f * invy) + d * invy2) * dq1) + (((dq2 * s) * (0.5f * invy) - d * invy2) * dq2);
+        out[m] = term * EQ2;
+    }
+}
+
+
+__kernel void ewaldsr_3c_blocks(
+    const int n_trip,
+    const __global int4* ijk_pairs,   // [n_trip] (i,j,k, pair_slot)  pair_slot is an index into S/dip blocks list for (i,j)
+    const __global float* y_ij,       // [n_trip]
+    const __global float* d13,        // [n_trip]
+    const __global float* d23,        // [n_trip]
+    const __global float* dq_atom,    // [natoms]
+    const __global float* S_blocks,   // [n_pairs, 16] blocks for (i,j)
+    const __global float* dip_blocks, // [n_pairs, 16]
+    __global float* out_blocks        // [n_trip, 16]
+) {
+    int it = get_global_id(0);
+    if (it >= n_trip) return;
+    int4 ijk = ijk_pairs[it];
+    int i = ijk.x;
+    int j = ijk.y;
+    int k = ijk.z;
+    int slot = ijk.w;
+    float y = y_ij[it];
+    float invy = (y > 1e-8f) ? 1.0f / y : 0.0f;
+    float R13 = d13[it];
+    float R23 = d23[it];
+    float inv13 = (R13 > 1e-8f) ? 1.0f / R13 : 0.0f;
+    float inv23 = (R23 > 1e-8f) ? 1.0f / R23 : 0.0f;
+    float dq3 = dq_atom[k];
+    const float EQ2 = 14.39975f;
+    const __global float* S = &S_blocks[slot * 16];
+    const __global float* D = &dip_blocks[slot * 16];
+    __global float* out = &out_blocks[it * 16];
+    for (int m = 0; m < 16; m++) {
+        float sterm = dq3 * S[m] * 0.5f;
+        float dterm = dq3 * D[m] * invy;
+        float emnpl = (sterm - dterm) * inv13 + (sterm + dterm) * inv23;
+        out[m] = emnpl * EQ2;
+    }
+}
+
+
+__kernel void ewaldlr_2c_blocks(
+    const int n_pairs,
+    const __global int2* ij_pairs,
+    const __global float* y_ij,
+    const __global float* sub_ewald,  // [natoms]
+    const __global float* S_blocks,   // [n_pairs, 16] (nu,mu)
+    const __global float* dip_blocks, // [n_pairs, 16] (nu,mu)
+    __global float* out_blocks        // [n_pairs, 16]
+) {
+    int ip = get_global_id(0);
+    if (ip >= n_pairs) return;
+    int2 ij = ij_pairs[ip];
+    int i = ij.x;
+    int j = ij.y;
+    float y = y_ij[ip];
+    float invy = (y > 1e-8f) ? 1.0f / y : 0.0f;
+    const float EQ2 = 14.39975f;
+    float sewi = sub_ewald[i];
+    float sewj = sub_ewald[j];
+    const __global float* S = &S_blocks[ip * 16];
+    const __global float* D = &dip_blocks[ip * 16];
+    __global float* out = &out_blocks[ip * 16];
+    for (int m = 0; m < 16; m++) {
+        float sterm = 0.5f * S[m];
+        float dterm = (y > 1e-8f) ? (D[m] * invy) : 0.0f;
+        out[m] = ((sterm - dterm) * sewi + (sterm + dterm) * sewj) * EQ2;
+    }
 }
 
 inline float chooser_val(const int l, const int k, const int m, const float pmat[3][3]){
@@ -494,6 +623,10 @@ __kernel void scan_2c_points(
     const __global float* dRs,     // [npoints,3]
     const __global float* splines, // [n_pairs, numz, n_nonzero_max, 4]
     const __global float* h_grids, // [n_pairs]
+    const __global int* is_generic2c,
+    const __global short* mu2c_map,
+    const __global short* nu2c_map,
+    const __global int* is_vna_pair,
     __global float* blocks         // [npoints, 4, 4]
 ) {
     int idx = get_global_id(0);
@@ -523,35 +656,58 @@ __kernel void scan_2c_points(
         comps[i_nz] = splines[base + 0] + dr*(splines[base + 1] + dr*(splines[base + 2] + dr*splines[base + 3]));
     }
 
+    int is_gen = is_generic2c[pair_type];
+    if(is_gen != 0){
+        float sm[4][4];
+        for(int a=0;a<4;a++){ for(int c=0;c<4;c++){ sm[a][c]=0.0f; } }
+        int base_map = pair_type * n_nonzero_max;
+        for(int ii=0; ii<n_nonzero_max; ii++){
+            int imu = (int)mu2c_map[base_map + ii];
+            int inu = (int)nu2c_map[base_map + ii];
+            if(imu<=0 || inu<=0) continue;
+            if(imu>4 || inu>4) continue;
+            sm[imu-1][inu-1] = comps[ii];
+        }
+        // For scanning, the geometry is r1=(0,0,0), r2=dR, so absolute r_j is dR.
+        // Match Fortran scanHamPiece2c: epsilon(r2, sighat, eps).
+        float eps[3][3];
+        epsilon_fb(dR, ez, eps);
+        float pmat[3][3];
+        twister_pmat(eps, pmat);
+        float sx[4][4];
+        rotatePP_sp(pmat, sm, sx);
+        __global float* b = &blocks[idx * 16];
+        for(int a=0;a<4;a++){
+            for(int c=0;c<4;c++){
+                b[a*4 + c] = sx[a][c];
+            }
+        }
+        return;
+    }
+
     float ss_sig = comps[0];
     float sp_sig = (n_nonzero_max > 1) ? comps[1] : 0.0f;
     float ps_sig = (n_nonzero_max > 2) ? comps[2] : 0.0f;
     float pp_pi  = (n_nonzero_max > 3) ? comps[3] : 0.0f;
     float pp_sig = (n_nonzero_max > 4) ? comps[4] : 0.0f;
-
     float ezx = ez.x;
     float ezy = -ez.y;
     float ezz = -ez.z;
     __global float* b = &blocks[idx * 16];
-
     b[0*4 + 0] = ss_sig;
     b[0*4 + 1] = sp_sig * ezy;
     b[0*4 + 2] = sp_sig * ezz;
     b[0*4 + 3] = sp_sig * ezx;
-
     b[1*4 + 0] = ps_sig * ezy;
     b[2*4 + 0] = ps_sig * ezz;
     b[3*4 + 0] = ps_sig * ezx;
-
     float diff = pp_sig - pp_pi;
     b[1*4 + 1] = diff * ezy * ezy + pp_pi;
     b[1*4 + 2] = diff * ezy * ezz;
     b[1*4 + 3] = diff * ezy * ezx;
-
     b[2*4 + 1] = diff * ezz * ezy;
     b[2*4 + 2] = diff * ezz * ezz + pp_pi;
     b[2*4 + 3] = diff * ezz * ezx;
-
     b[3*4 + 1] = diff * ezx * ezy;
     b[3*4 + 2] = diff * ezx * ezz;
     b[3*4 + 3] = diff * ezx * ezx + pp_pi;
@@ -644,7 +800,10 @@ __kernel void assemble_2c(
     const __global float* splines,  // [n_species_pairs, numz, n_nonzero_max, 4]
     const __global int* pair_types, // [n_pairs] species pair index
     const __global float* h_grids,  // [n_species_pairs]
-    const __global int* is_vna_pair, // [n_species_pairs] 1 if Vna pair
+    const __global int* is_generic2c, // [n_species_pairs] 1 => generic recover_2c (e.g. dipole_*), 0 => SK
+    const __global short* mu2c_map,  // [n_species_pairs, n_nonzero_max] 1-based mu indices (Ortega order)
+    const __global short* nu2c_map,  // [n_species_pairs, n_nonzero_max] 1-based nu indices (Ortega order)
+    const __global int* is_vna_pair, // [n_species_pairs] (kept for compatibility; not used in generic recover)
     __global float* blocks          // [n_pairs, 4, 4] block-sparse matrix
 ) {
     int i_pair = get_global_id(0);
@@ -683,13 +842,47 @@ __kernel void assemble_2c(
         int base = spec_pair * pair_stride + i_z * z_stride + i_nz * 4;
         comps[i_nz] = splines[base + 0] + dr*(splines[base + 1] + dr*(splines[base + 2] + dr*splines[base + 3]));
     }
-    
-    int is_vna = is_vna_pair[spec_pair];
-    
+
+    int is_gen = is_generic2c[spec_pair];
+    if(is_gen != 0){
+        // Generic recover_2c (Fortran recover_2c) into local molecular-frame matrix sm,
+        // then rotate orbitals to crystal coords.
+        float sm[4][4];
+        for(int a=0;a<4;a++){ for(int c=0;c<4;c++){ sm[a][c]=0.0f; } }
+        int base_map = spec_pair * n_nonzero_max;
+        for(int idx=0; idx<n_nonzero_max; idx++){
+            int imu = (int)mu2c_map[base_map + idx];
+            int inu = (int)nu2c_map[base_map + idx];
+            if(imu<=0 || inu<=0) continue;
+            if(imu>4 || inu>4) continue;
+            sm[imu-1][inu-1] = comps[idx];
+        }
+
+        float eps[3][3];
+        // Match Fortran callers: epsilon(r2, sighat, eps) depends on absolute r_j and bond direction.
+        epsilon_fb(r_j, ez, eps);
+        float pmat[3][3];
+        twister_pmat(eps, pmat);
+        float sx[4][4];
+        rotatePP_sp(pmat, sm, sx);
+
+        __global float* b = &blocks[i_pair * 16];
+        for(int a=0;a<4;a++){
+            for(int c=0;c<4;c++){
+                b[a*4 + c] = sx[a][c];
+            }
+        }
+        return;
+    }
+
     // Map components to local matrix (s, py, pz, px order)
     // 1: ss_sig, 2: sp_sig, 3: ps_sig, 4: pp_pi, 5: pp_sig, 6: pp_pi
+    // --------------------------
+    // Slater–Koster reconstruction (works for overlap/kinetic/vna_ontop etc.)
+    // --------------------------
+    int is_vna = is_vna_pair[spec_pair];
     float ss_sig = comps[0];
-    float sp_sig = comps[1];
+    float sp_sig = (n_nonzero_max > 1) ? comps[1] : 0.0f;
     float ps_sig = (n_nonzero_max > 2) ? comps[2] : 0.0f;
     float pp_pi  = (n_nonzero_max > 3) ? comps[3] : 0.0f;
     float pp_sig = (n_nonzero_max > 4) ? comps[4] : 0.0f;
@@ -697,6 +890,7 @@ __kernel void assemble_2c(
     // Fortran vna_atom path (interaction=4) uses epsilon(r2, sighat, eps) with r2=absolute neighbor position.
     // That makes the x/y axes depend on absolute r_j, not only on dR. This matters for sign/parity.
     // We implement that strictly for vna_atom pairs (flagged in is_vna_pair buffer).
+    // Fortran vna_atom path uses epsilon(r2, sighat, eps) with r2=absolute neighbor position.
     if(is_vna != 0){
         // local (bond-frame) matrix sm in Ortega order (s,py,pz,px) where pz is along bond
         float sm[4][4];
@@ -723,15 +917,14 @@ __kernel void assemble_2c(
         }
         return;
     }
-    
+
     // Rotation assembly (Slater-Koster)
     // Orbital indices: 0:s, 1:py, 2:pz, 3:px
+    // NOTE: signs match previous working implementation
     float ezx = -ez.x;
     float ezy = -ez.y;
     float ezz = -ez.z;
     __global float* b = &blocks[i_pair * 16];
-    
-    // s-s
     b[0*4 + 0] = ss_sig;
     
     // s-p

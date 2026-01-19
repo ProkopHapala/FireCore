@@ -68,7 +68,9 @@
         ! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
         ! VCA component breakdown (ontopl/ontopr/atom) is stored ONLY in MODULES/debug.f90,
         ! allocated+filled only when idebugWrite>0. This keeps production state unchanged.
-        use debug, only: debug_vca_prepare, debug_vca_zero, dbg_vca_ontopl=>vca_ontopl, dbg_vca_ontopr=>vca_ontopr, dbg_vca_atom=>vca_atom, diag_vca_enable, diag_vca_iatom, diag_vca_jatom, diag_vca_mbeta, diag_vca_isorp
+        use debug, only: debug_vca_prepare, debug_vca_zero, dbg_vca_ontopl=>vca_ontopl, dbg_vca_ontopr=>vca_ontopr, dbg_vca_atom=>vca_atom, diag_vca_enable, diag_vca_iatom, diag_vca_jatom, diag_vca_mbeta, diag_vca_isorp, &
+                         debug_ewald_prepare, debug_ewald_zero, dbg_ewaldsr_2c_atom=>ewaldsr_2c_atom, dbg_ewaldsr_2c_ontop=>ewaldsr_2c_ontop, dbg_ewaldsr_3c=>ewaldsr_3c, &
+                         diag_ewald_enable, diag_ewald_iatom, diag_ewald_jatom, diag_ewald_mbeta
         ! --------------------------
         implicit none
  
@@ -115,6 +117,7 @@
 ! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py        
         logical dbg_vca_pair
         logical dbg_vca_shell
+        logical dbg_ewald_pair
         real, dimension (5, 5) :: dmat
         real, dimension (3, 3) :: pmat
 ! --------------------------
@@ -170,8 +173,16 @@
 ! --------------------------
 ! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
 ! Allocate+zero debug VCA component buffers (NO-OP unless idebugWrite>0)
+
+        if (idebugWrite .gt. 0) then
+          write (*,*) 'DEBUG : assemble_ca_2c() : idebugWrite = ', idebugWrite, " dbg_ewald_pair = ", dbg_ewald_pair, " verbosity = ", verbosity
+
         call debug_vca_prepare()
         call debug_vca_zero()
+! Allocate+zero debug EWALDSR component buffers (NO-OP unless idebugWrite>0)
+        call debug_ewald_prepare()
+        call debug_ewald_zero()
+        end if
 ! --------------------------
 
 ! ! IF_DEF_ORDERN
@@ -233,6 +244,14 @@
             if (diag_vca_iatom .ge. 0 .and. iatom .ne. diag_vca_iatom) dbg_vca_pair = .false.
             if (diag_vca_jatom .ge. 0 .and. jatom .ne. diag_vca_jatom) dbg_vca_pair = .false.
             if (diag_vca_mbeta .ge. 0 .and. mbeta .ne. diag_vca_mbeta) dbg_vca_pair = .false.
+          end if
+
+          dbg_ewald_pair = .false.
+          if (idebugWrite .gt. 0 .and. diag_ewald_enable) then
+            dbg_ewald_pair = .true.
+            if (diag_ewald_iatom .ge. 0 .and. iatom .ne. diag_ewald_iatom) dbg_ewald_pair = .false.
+            if (diag_ewald_jatom .ge. 0 .and. jatom .ne. diag_ewald_jatom) dbg_ewald_pair = .false.
+            if (diag_ewald_mbeta .ge. 0 .and. mbeta .ne. diag_ewald_mbeta) dbg_ewald_pair = .false.
           end if
 ! --------------------------
 
@@ -364,6 +383,18 @@
              ewaldsr(imu,inu,matom,iatom) =   ewaldsr(imu,inu,matom,iatom) + emnpl(imu,inu)*eq2
             end do
            end do
+
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+! Store EWALDSR 2c atom component (self-slot accumulation) as a separate buffer.
+           if (idebugWrite .gt. 0) then
+             if (allocated(dbg_ewaldsr_2c_atom)) dbg_ewaldsr_2c_atom(:nmu,:nmu,matom,iatom) = dbg_ewaldsr_2c_atom(:nmu,:nmu,matom,iatom) + emnpl(:nmu,:nmu)*eq2
+             if (iatom .le. 3 .and. jatom .le. 3) then
+               write(*,'(A,2I4,A,I4,A,I4,A,I4,A,F12.6,A,F12.6,A,F12.6,A,F12.6)') &
+                 ' [EW2C_A][F] ia,ja=', iatom, jatom, ' mbeta=', mbeta, ' ineigh=', ineigh, ' matom=', matom, ' y=', y, ' dq1=', dq1, ' dq2=', dq2, ' max|term|=', maxval(abs(emnpl(:nmu,:nmu)))*eq2
+             end if
+           end if
+! --------------------------
  
 
           end if  ! End if y .gt. 1.0d-4
@@ -498,7 +529,19 @@
                 !dterm_1 = dq1*eq2*dip  (:nmu,:nnu,ineigh,iatom)/(y*y)
                 !dterm_2 = dq2*eq2*dip  (:nmu,:nnu,ineigh,iatom)/(y*y)
                 !ewaldsr(:nmu,:nnu,ineigh,iatom) = ewaldsr(:nmu,:nnu,ineigh,iatom)  + ( ( dq1*eq2*s_mat(:nmu,:nnu,ineigh,iatom)/(2.0d0*y))    +  ( dq1*eq2*dip  (:nmu,:nnu,ineigh,iatom)/(y*y))  ) + (   ( dq2*eq2*s_mat(:nmu,:nnu,ineigh,iatom)/(2.0d0*y)) -    ( dq2*eq2*dip  (:nmu,:nnu,ineigh,iatom)/(y*y))    )
-                ewaldsr(:nmu,:nnu,ineigh,iatom) = ewaldsr(:nmu,:nnu,ineigh,iatom)  + ( ( (s_mat(:nmu,:nnu,ineigh,iatom)/(2.0d0*y))    +  (dip(:nmu,:nnu,ineigh,iatom)/(y*y))  )*dq1 + (  (dq2*s_mat(:nmu,:nnu,ineigh,iatom)/(2.0d0*y)) - (dip(:nmu,:nnu,ineigh,iatom)/(y*y))   )*dq2  )*eq2
+                emnpl(:nmu,:nnu) =                                                   ( ( (s_mat(:nmu,:nnu,ineigh,iatom)/(2.0d0*y))    +  (dip(:nmu,:nnu,ineigh,iatom)/(y*y))  )*dq1 + (  (dq2*s_mat(:nmu,:nnu,ineigh,iatom)/(2.0d0*y)) - (dip(:nmu,:nnu,ineigh,iatom)/(y*y))   )*dq2  )*eq2
+                ewaldsr(:nmu,:nnu,ineigh,iatom) = ewaldsr(:nmu,:nnu,ineigh,iatom) + emnpl(:nmu,:nnu)
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+! Store EWALDSR 2c ontop component as a separate buffer.
+                if (idebugWrite .gt. 0) then
+                  if (allocated(dbg_ewaldsr_2c_ontop)) dbg_ewaldsr_2c_ontop(:nmu,:nnu,ineigh,iatom) = dbg_ewaldsr_2c_ontop(:nmu,:nnu,ineigh,iatom) + emnpl(:nmu,:nnu)
+                  if (iatom .le. 3 .and. jatom .le. 3) then
+                    write(*,'(A,2I4,A,I4,A,I4,A,F12.6,A,F12.6,A,F12.6,A,F12.6)') &
+                      ' [EW2C_O][F] ia,ja=', iatom, jatom, ' mbeta=', mbeta, ' ineigh=', ineigh, ' y=', y, ' dq1=', dq1, ' dq2=', dq2, ' max|term|=', maxval(abs(emnpl(:nmu,:nnu)))
+                  end if
+                end if
+! --------------------------
         end if
 
 ! ****************************************************************************
@@ -658,6 +701,13 @@
               end if
             end do
           end do
+
+          if (allocated(dbg_ewaldsr_2c_atom)) then
+            write(*,'(A,F16.8)') ' [EWALD_DBG][F][2C_ATOM_SUM]  max|dbg_ewaldsr_2c_atom|=', maxval(abs(dbg_ewaldsr_2c_atom))
+          end if
+          if (allocated(dbg_ewaldsr_2c_ontop)) then
+            write(*,'(A,F16.8)') ' [EWALD_DBG][F][2C_ONTOP_SUM] max|dbg_ewaldsr_2c_ontop|=', maxval(abs(dbg_ewaldsr_2c_ontop))
+          end if
         end if
 ! --------------------------
 

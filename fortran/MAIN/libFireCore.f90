@@ -953,6 +953,18 @@ subroutine firecore_get_HS_neighs( &
     if(allocated(xl))      xl_out      = xl
 end subroutine firecore_get_HS_neighs
 
+
+subroutine firecore_get_neigh_back( neigh_back_out ) bind(c, name='firecore_get_neigh_back')
+    use iso_c_binding
+    use configuration, only: natoms
+    use neighbor_map,  only: neigh_max, neigh_back
+    implicit none
+    ! Export as (neigh_max,natoms) so Python C-order (natoms,neigh_max) can receive it without reordering.
+    integer(c_int), dimension(neigh_max, natoms), intent(out) :: neigh_back_out
+    neigh_back_out = 0
+    if (allocated(neigh_back)) neigh_back_out = transpose(neigh_back)
+end subroutine firecore_get_neigh_back
+
 subroutine firecore_get_HS_neighsPP( neighPPn_out, neighPP_j_out, neighPP_b_out ) bind(c, name='firecore_get_HS_neighsPP')
     use iso_c_binding
     use configuration, only: natoms
@@ -1132,6 +1144,7 @@ end subroutine firecore_get_rho_off_sparse
 !   5=vna   6=t_mat     7=vxc      8=vxc_ca
 !   9=vnl (NOTE: uses neighPP_max internally; mapped into neigh_max when possible)
 !  10=vca_ontopl   11=vca_ontopr   12=vca_atom
+!  13=ewaldsr_2c_atom   14=ewaldsr_2c_ontop   15=ewaldsr_3c
 subroutine firecore_export_interaction4D( code, out4d ) bind(c, name='firecore_export_interaction4D')
     use iso_c_binding
     use configuration, only: natoms
@@ -1142,7 +1155,8 @@ subroutine firecore_export_interaction4D( code, out4d ) bind(c, name='firecore_e
     ! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
     ! VCA component buffers live only in MODULES/debug.f90 and are allocated/filled
     ! only when idebugWrite>0 (assemble_ca_2c.f90 contains the gated hook).
-    use debug,         only: dbg_vca_ontopl=>vca_ontopl, dbg_vca_ontopr=>vca_ontopr, dbg_vca_atom=>vca_atom
+    use debug,         only: dbg_vca_ontopl=>vca_ontopl, dbg_vca_ontopr=>vca_ontopr, dbg_vca_atom=>vca_atom, &
+                             dbg_ewaldsr_2c_atom=>ewaldsr_2c_atom, dbg_ewaldsr_2c_ontop=>ewaldsr_2c_ontop, dbg_ewaldsr_3c=>ewaldsr_3c
     ! --------------------------
     use neighbor_map,  only: neigh_max, neighn, neigh_j, neigh_b, neighPPn, neighPP_j, neighPP_b
     implicit none
@@ -1179,6 +1193,18 @@ subroutine firecore_export_interaction4D( code, out4d ) bind(c, name='firecore_e
         case(12)
             if(idebugWrite .gt. 0) then
                 if(allocated(dbg_vca_atom)) out4d = dbg_vca_atom
+            end if
+        case(13)
+            if(idebugWrite .gt. 0) then
+                if(allocated(dbg_ewaldsr_2c_atom)) out4d = dbg_ewaldsr_2c_atom
+            end if
+        case(14)
+            if(idebugWrite .gt. 0) then
+                if(allocated(dbg_ewaldsr_2c_ontop)) out4d = dbg_ewaldsr_2c_ontop
+            end if
+        case(15)
+            if(idebugWrite .gt. 0) then
+                if(allocated(dbg_ewaldsr_3c)) out4d = dbg_ewaldsr_3c
             end if
         case(9)
             ! vnl uses neighPP lists; map into neigh_max neighbor slots when possible

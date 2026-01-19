@@ -69,16 +69,22 @@
 ! Program Declaration
 ! ===========================================================================
         subroutine assemble_ca_3c ! (nprocs, iordern, igauss)
-        use options
-        use charges
-        use configuration
-        use constants_fireball
-        use dimensions
-        use interactions
-        use neighbor_map
-        !use gaussG
-        use timing
-        implicit none
+       use options
+       use charges
+       use configuration
+       use constants_fireball
+       use dimensions
+       use forces
+       use interactions
+       use neighbor_map
+       use timing
+       ! --------------------------
+       ! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+       ! EWALDSR 3c component breakdown buffer lives only in MODULES/debug.f90,
+       ! allocated+filled only when idebugWrite>0. This keeps production state unchanged.
+       use debug, only: debug_ewald_prepare, dbg_ewaldsr_3c=>ewaldsr_3c, diag_ewald_enable, diag_ewald_iatom, diag_ewald_jatom, diag_ewald_mbeta, diag_ewald_ialp
+       ! --------------------------
+       implicit none
  
 ! Argument Declaration and Description
 ! ===========================================================================
@@ -139,7 +145,14 @@
         real y
         real rcutoff_i
         real rcutoff_j
- 
+
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+        logical :: dbg_ewald_triple = .false.
+        integer nmu
+        integer nnu
+! --------------------------
+
         real, dimension (numorb_max, numorb_max) :: bcca
         real, dimension (numorb_max, numorb_max) :: bccax
         real, dimension (numorb_max, numorb_max) :: emnpl
@@ -188,6 +201,15 @@
          spmG = 0.0d0
          spmatG = 0.0d0
 
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+! Allocate debug EWALDSR component buffers (NO-OP unless idebugWrite>0)
+         if (idebugWrite .gt. 0) then
+          write (*,*) 'DEBUG : assemble_ca_3c: idebugWrite = ', idebugWrite, " dbg_ewald_triple = ", dbg_ewald_triple, " dbg_ewaldsr_3c = ", dbg_ewaldsr_3c, " verbosity = ", verbosity
+          call debug_ewald_prepare()
+         end if
+! --------------------------
+
 ! ! IF_DEF_ORDERN
 ! ! Determine which atoms are assigned to this processor.
 !         if (iordern .eq. 1) then
@@ -217,6 +239,17 @@
           jatom = neigh_j(ineigh,iatom)
           r2(:) = ratom(:,jatom) + xl(:,mbeta)
           in2 = imass(jatom)
+
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+           dbg_ewald_triple = .false.
+           if (idebugWrite .gt. 0 .and. diag_ewald_enable) then
+             dbg_ewald_triple = .true.
+             if (diag_ewald_iatom .ge. 0 .and. iatom .ne. diag_ewald_iatom) dbg_ewald_triple = .false.
+             if (diag_ewald_jatom .ge. 0 .and. jatom .ne. diag_ewald_jatom) dbg_ewald_triple = .false.
+             if (diag_ewald_mbeta .ge. 0 .and. mbeta .ne. diag_ewald_mbeta) dbg_ewald_triple = .false.
+           end if
+! --------------------------
 
 ! SET-UP STUFF
 ! ****************************************************************************
@@ -432,6 +465,40 @@
             !SFIRE
             end do
            end do
+
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+! PRINT-BASED DEBUG (no extra interfaces): one line per 3c triple for small systems
+           if (idebugWrite .gt. 0) then
+             if (iatom .le. 3 .and. jatom .le. 3 .and. ialp .le. 3) then
+               nmu = num_orb(in1)
+               nnu = num_orb(in2)
+               write(*,'(A,3I4,A,I4,A,2I4,A,F12.6,A,F12.6,A,F12.6,A,F12.6,A,F12.6)') &
+                 ' [EW3C][F] ia,ja,ka=', iatom, jatom, ialp, ' mbeta=', ibeta, ' mneigh,jneigh=', mneigh, jneigh, &
+                 ' y=', y, ' d13=', distance_13, ' d23=', distance_23, ' dq3=', dq3, ' max|term|=', maxval(abs(emnpl(:nmu,:nnu)))*eq2
+             end if
+           end if
+
+           nmu = num_orb(in1)
+           nnu = num_orb(in2)
+           if (idebugWrite .gt. 0) then
+             !if (allocated(dbg_ewaldsr_3c)) then
+              dbg_ewaldsr_3c(:nmu,:nnu,mneigh,iatom) = dbg_ewaldsr_3c(:nmu,:nnu,mneigh,iatom) + emnpl(:nmu,:nnu)*eq2
+              dbg_ewaldsr_3c(:nnu,:nmu,jneigh,jatom) = transpose(dbg_ewaldsr_3c(:nmu,:nnu,mneigh,iatom))
+             !end if
+             !if (dbg_ewald_triple) then
+               if (diag_ewald_ialp .ge. 0 .and. ialp .ne. diag_ewald_ialp) then
+                 ! no-op
+               else
+                 !if (verbosity .gt. 6) then
+                   write(*,'(A,3I4,A,2I4,A,I4,A,F12.6,A,F12.6,A,F12.6,A,F12.6,A,F12.6)') &
+                     ' [EWALD_DBG][F][3C] ia,ja,ka=', iatom, jatom, ialp, ' mneigh,jneigh=', mneigh, jneigh, ' mbeta=', mbeta, &
+                     ' y=', y, ' d13=', distance_13, ' d23=', distance_23, ' dq3=', dq3, ' max|emnpl|=', maxval(abs(emnpl(:nmu,:nnu)))
+                 !end if ! verbosity
+               end if ! diag_ewald_ialp
+             !end if ! dbg_ewald_triple
+           end if ! idebugWrite
+! --------------------------
  
 ! ****************************************************************************
 !
@@ -488,6 +555,14 @@
         deallocate (spmG)
         deallocate (smatG)
         deallocate (spmatG)
+
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+! Print final 3c EWALDSR debug buffer magnitude (useful for parity tests)
+        if (idebugWrite .gt. 0) then
+          write(*,'(A,F16.8)') ' [EWALD_DBG][F][3C_SUM] max|dbg_ewaldsr_3c|=', maxval(abs(dbg_ewaldsr_3c))
+        end if
+! --------------------------
 ! Format Statements
 ! ===========================================================================
  

@@ -460,7 +460,7 @@ class FdataParser:
         data_2c = {}
         for nz1 in species_nz:
             for nz2 in species_nz:
-                for root in ['overlap', 'kinetic', 'vna', 'vnl', 'vxc', 'vna_atom_00', 'vna_ontopl_00', 'vna_ontopr_00']:
+                for root in ['overlap', 'kinetic', 'vna', 'vnl', 'vxc', 'vna_atom_00', 'vna_ontopl_00', 'vna_ontopr_00', 'dipole_z', 'dipole_y', 'dipole_x']:
                     path = self.find_2c(root, nz1, nz2)
                     if os.path.exists(path):
                         # NOTE: Fortran assemble_2c uses interaction=2 (ontopl) and interaction=3 (ontopr).

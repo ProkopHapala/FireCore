@@ -103,13 +103,28 @@ class OCL_Hamiltonian:
         # Flag for Vna *atom* pairs only (interaction=4 tables used for on-site accumulation).
         # vna_ontopl/vna_ontopr use Slater-Koster rotation (is_vna_pair=0) like other 2c interactions.
         is_vna_pair = np.zeros(n_pairs, dtype=np.int32)
+        is_generic2c = np.zeros(n_pairs, dtype=np.int32)
         for (root, nz1, nz2), itype in self.species_pair_map.items():
             if root.startswith('vna_atom_'):
                 is_vna_pair[itype] = 1
+            if root.startswith('dipole_'):
+                is_generic2c[itype] = 1
+
+        # Build generic mu/nu maps for 2c recovery (Fortran make_munu + recover_2c), sp-only.
+        # This is required for dipole_* tables which are not representable by the hardcoded SK 5-parameter form.
+        mu2c_map = np.zeros((n_pairs, n_nz_max), dtype=np.int16)
+        nu2c_map = np.zeros((n_pairs, n_nz_max), dtype=np.int16)
+        for (root, nz1, nz2), itype in self.species_pair_map.items():
+            mu, nu = self._build_munu2c_map_sp(nz1, nz2, n_nz_max)
+            mu2c_map[itype, :] = mu
+            nu2c_map[itype, :] = nu
 
         # Create device buffers for 2c data
         self.d_splines = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=spline_data)
         self.d_h_grids = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=h_grids)
+        self.d_is_generic2c = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=is_generic2c)
+        self.d_mu2c_map = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=mu2c_map)
+        self.d_nu2c_map = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=nu2c_map)
         self.d_is_vna_pair = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=is_vna_pair)
 
         # Build muPP/nuPP maps for PP (vnl) pairs (Fortran make_munuPP)
@@ -541,6 +556,49 @@ class OCL_Hamiltonian:
             n1 = n1 + l1
 
         return muPP, nuPP
+
+    def _build_munu2c_map_sp(self, nz1, nz2, n_nonzero_max):
+        """Build mu/nu (1-based) mapping for 2c recovery, s+p only (indices 1-4).
+
+        Mirrors Fortran make_munu ordering for 2-center integrals:
+        for each shell pair (l1,l2), add entries for m = -min(l1,l2)..min(l1,l2)
+        using Ortega ordering (s,py,pz,px) where pz is bond axis.
+        """
+        if not hasattr(self.parser, 'species_info'):
+            self.parser.parse_info()
+        info1 = self.parser.species_info.get(int(nz1), None)
+        info2 = self.parser.species_info.get(int(nz2), None)
+        if (info1 is None) or (info2 is None):
+            raise RuntimeError(f"_build_munu2c_map_sp: missing species_info for nz1={nz1} nz2={nz2}")
+        lssh1 = info1.get('lssh', [])
+        lssh2 = info2.get('lssh', [])
+        for l in lssh1:
+            if int(l) > 1:
+                raise RuntimeError(f"_build_munu2c_map_sp: unsupported l1={l} for nz1={nz1}")
+        for l in lssh2:
+            if int(l) > 1:
+                raise RuntimeError(f"_build_munu2c_map_sp: unsupported l2={l} for nz2={nz2}")
+
+        mu = np.zeros(n_nonzero_max, dtype=np.int16)
+        nu = np.zeros(n_nonzero_max, dtype=np.int16)
+        index = 0
+        n1 = 0
+        for l1 in lssh1:
+            l1 = int(l1)
+            n1 = n1 + l1 + 1
+            n2 = 0
+            for l2 in lssh2:
+                l2 = int(l2)
+                n2 = n2 + l2 + 1
+                for imu_m in range(-min(l1, l2), min(l1, l2) + 1):
+                    if index >= n_nonzero_max:
+                        return mu, nu
+                    mu[index] = n1 + imu_m
+                    nu[index] = n2 + imu_m
+                    index += 1
+                n2 = n2 + l2
+            n1 = n1 + l1
+        return mu, nu
         
     def assemble_2c(self, ratoms, neighbors, pair_types):
         """
@@ -563,7 +621,10 @@ class OCL_Hamiltonian:
         
         self.prg.assemble_2c(self.queue, (n_pairs,), None, 
                            np.int32(n_pairs), np.int32(self.n_nz_max), np.int32(self.numz_max),
-                           d_ratoms, d_neighs, self.d_splines, d_types, self.d_h_grids, self.d_is_vna_pair, d_blocks)
+                           d_ratoms, d_neighs, self.d_splines, d_types, self.d_h_grids,
+                           self.d_is_generic2c,
+                           self.d_mu2c_map, self.d_nu2c_map, self.d_is_vna_pair,
+                           d_blocks)
         
         blocks = np.zeros((n_pairs, 4, 4), dtype=np.float32)
         cl.enqueue_copy(self.queue, blocks, d_blocks)
@@ -701,7 +762,10 @@ class OCL_Hamiltonian:
             self.queue, (npoints,), None,
             np.int32(npoints), np.int32(self.n_nz_max), np.int32(self.numz_max),
             np.int32(pair_type), np.int32(int(applyRotation)),
-            d_in, self.d_splines, self.d_h_grids, d_out
+            d_in, self.d_splines, self.d_h_grids,
+            self.d_is_generic2c, self.d_mu2c_map, self.d_nu2c_map,
+            self.d_is_vna_pair,
+            d_out
         )
         blocks = np.zeros((npoints, 4, 4), dtype=np.float32)
         cl.enqueue_copy(self.queue, blocks, d_out)
@@ -829,7 +893,6 @@ class OCL_Hamiltonian:
             for idx, p in enumerate(pairs):
                 full_res[p[3]] = res[idx]
             return full_res
-
         EQ2 = 14.39975
         S_blocks = run_2c(pairs_S)
         T_blocks = run_2c(pairs_T) if include_T else np.zeros((n_pairs, 4, 4), dtype=np.float32)
