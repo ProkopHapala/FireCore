@@ -1479,6 +1479,148 @@ def compare_blocks(name, A, B, tol=1e-5, require_nonzero=False):
     return True, max_diff
 
 
+def dense_from_pair_blocks(B00, B01, B10, B11):
+    """
+    Assemble a dense matrix from four 4x4 blocks representing a 2-atom system.
+    Matches the layout used in verify_C2.py for C2 dimer tests.
+    """
+    M = np.zeros((8, 8), dtype=np.float64)
+    M[0:4, 0:4] = B00
+    M[0:4, 4:8] = B01
+    M[4:8, 0:4] = B10
+    M[4:8, 4:8] = B11
+    return M
+
+
+def dense_from_neighbor_list(neighs, blocks, n_orb_atom, offs):
+    """
+    Convert neighbor list + blocks into dense matrix.
+    neighs: list of (i, j) pairs
+    blocks: array of shape (len(neighs), nj, ni) in (nu, mu) order
+    n_orb_atom: per-atom orbital counts
+    offs: orbital offsets (cumulative sum of n_orb_atom)
+    """
+    norb = int(offs[-1])
+    M = np.zeros((norb, norb), dtype=np.float64)
+    for idx, (i, j) in enumerate(neighs):
+        ni = int(n_orb_atom[i]); nj = int(n_orb_atom[j])
+        i0 = int(offs[i]); j0 = int(offs[j])
+        # blocks are (nu,mu); dense expects (mu,nu)
+        M[i0:i0+ni, j0:j0+nj] = blocks[idx, :nj, :ni].T
+    return M
+
+
+def scan2c_fortran(fc, interaction, dR, in3=None, isub=0, applyRotation=True):
+    """
+    Thin wrapper around FireCore.scanHamPiece2c for 2-center interactions.
+    Mirrors usage in verify_C2.py and verify_C3.py.
+    Reference: pyBall/FireCore.py scanHamPiece2c
+    """
+    in1 = 1
+    in2 = 1
+    if in3 is None:
+        in3 = in2
+    return fc.scanHamPiece2c(interaction, isub, in1, in2, in3, dR, applyRotation=applyRotation)
+
+
+def scan2c_ocl(ham, root, nz1, nz2, dR, applyRotation=True):
+    """
+    Thin wrapper around OCL_Hamiltonian.scanHamPiece2c for 2-center interactions.
+    Mirrors usage in verify_C2.py and verify_C3.py.
+    """
+    return ham.scanHamPiece2c(root, int(nz1), int(nz2), dR, applyRotation=applyRotation)
+
+
+def firecore_sparse_to_dense(fc, export_mode=0, natoms=None):
+    """
+    Retrieve full H and S matrices from Fortran FireCore as dense matrices.
+    Automates fc.set_options/export_mode + fc.get_HS_* calls.
+    Reference: libFireCore.f90 exports (h_mat, s_mat, neighn, neigh_j, etc.)
+    """
+    fc.set_options(1, 1, 1, 1, 1, 1, 1)
+    fc.set_export_mode(export_mode)
+    dims_ = fc.get_HS_dims()
+    sd_ = fc.get_HS_neighs(dims_)
+    sd_ = fc.get_HS_sparse(dims_, sd_)
+    if natoms is None:
+        natoms = int(dims_.natoms)
+    H = _blocked_to_dense(sd_, sd_.h_mat, natoms)
+    S = _blocked_to_dense(sd_, sd_.s_mat, natoms)
+    neighbors = []
+    for i in range(natoms):
+        for ineigh in range(int(sd_.neighn[i])):
+            j = int(sd_.neigh_j[i, ineigh]) - 1
+            if j < 0 or j >= natoms:
+                continue
+            neighbors.append((i, j))
+    return H, S, neighbors, sd_
+
+
+def firecore_sparse_H_with_options(fc, ioff_S, ioff_T, ioff_Vna, ioff_Vnl, ioff_Vxc, ioff_Vca, ioff_Vxc_ca, ioff_Ewald=1, export_mode=1, natoms=None):
+    """
+    Retrieve H matrix from Fortran FireCore with specific component toggles.
+    Reference: libFireCore.f90 set_options / get_HS_sparse
+    """
+    fc.set_options(ioff_S, ioff_T, ioff_Vna, ioff_Vnl, ioff_Vxc, ioff_Vca, ioff_Vxc_ca, ioff_Ewald)
+    fc.set_export_mode(export_mode)
+    dims_ = fc.get_HS_dims()
+    sd_ = fc.get_HS_neighs(dims_)
+    sd_ = fc.get_HS_sparse(dims_, sd_)
+    if natoms is None:
+        natoms = int(dims_.natoms)
+    H = _blocked_to_dense(sd_, sd_.h_mat, natoms)
+    neighbors = []
+    for i in range(natoms):
+        for ineigh in range(int(sd_.neighn[i])):
+            j = int(sd_.neigh_j[i, ineigh]) - 1
+            if j < 0 or j >= natoms:
+                continue
+            neighbors.append((i, j))
+    return H, neighbors, sd_
+
+
+def cl_sp_from_ham(ham, atomTypes_Z, atom_idx):
+    """
+    Extract sp-projector CL vector for an atom from OCL_Hamiltonian parser cache.
+    Enforces sp-only (len=4) layout for VNL contraction tests.
+    Reference: assemble_VNL.f90 projector construction
+    """
+    Z = int(atomTypes_Z[atom_idx])
+    cl_shell = ham.cl_pseudo.get(Z, None)
+    if cl_shell is None:
+        raise RuntimeError(f"Missing ham.cl_pseudo for Z={Z}")
+    info = ham.parser.species_info.get(Z, None)
+    if info is None:
+        raise RuntimeError(f"Missing species_info for Z={Z}")
+    lsshPP = info.get('lsshPP', [])
+    cl_full = []
+    for ish, l in enumerate(lsshPP):
+        c = float(cl_shell[ish])
+        cl_full += [c] * (2 * int(l) + 1)
+    cl_full = np.array(cl_full, dtype=np.float64)
+    if cl_full.shape[0] != 4:
+        raise RuntimeError(f"Expected sp projectors (len=4), got len={cl_full.shape[0]} for Z={Z}")
+    return cl_full
+
+
+def contract_vnl_blocks(A, B, clv):
+    """
+    Contract VNL blocks with projector coefficients.
+    A,B: (4,4) blocks (nu,mu) => nu=cc, mu=basis index
+    clv: projector coefficients (len=4)
+    Output: (nu,mu)
+    Reference: OpenCL CPU contraction / assemble_vnl Fortran
+    """
+    out = np.zeros((4, 4), dtype=np.float64)
+    for nu in range(4):
+        for mu in range(4):
+            v = 0.0
+            for cc in range(4):
+                v += A[cc, mu] * clv[cc] * B[cc, nu]
+            out[nu, mu] = v
+    return out
+
+
 if __name__ == "__main__":
     import os
     fdata_dir = "/home/prokophapala/git/FireCore/tests/pyFireball/Fdata"

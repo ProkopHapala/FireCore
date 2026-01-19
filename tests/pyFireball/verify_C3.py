@@ -15,6 +15,11 @@ from pyBall.FireballOCL.OCL_Hamiltonian import (
     _blocked_to_dense as _blocked_to_dense_shared,
     _blocked_to_dense_vca_atom as _blocked_to_dense_vca_atom_shared,
     compare_blocks as _compare_blocks_shared,
+    dense_from_neighbor_list,
+    scan2c_fortran,
+    scan2c_ocl,
+    firecore_sparse_to_dense,
+    firecore_sparse_H_with_options,
 )
 
 # Reuse testing helpers relocated into OCL_Hamiltonian
@@ -266,58 +271,59 @@ def run_verification():
 
     natoms = int(atomPos.shape[0])
 
-    def _scan2c_fortran(interaction, dR, in3=None, isub=0, applyRotation=True):
-        in1 = 1
-        in2 = 1
-        if in3 is None:
-            in3 = in2
-        return fc.scanHamPiece2c(interaction, isub, in1, in2, in3, dR, applyRotation=applyRotation)
+    # For scan-based tests we use all (i,j) including self. For sparse-export parity we must use
+    # the exact same neighbor list as Fortran export.
+    neighs_all = [(i, j) for i in range(natoms) for j in range(natoms)]
 
-    def _scan2c_ocl(root, nz1, nz2, dR, applyRotation=True):
-        return ham.scanHamPiece2c(root, int(nz1), int(nz2), dR, applyRotation=applyRotation)
+    def _scan_table_2c(interaction_fortran, root_ocl, applyRotation_offdiag=True, applyRotation_self=False, in3=1):
+        blocks_f = []
+        blocks_o = []
+        for (i, j) in neighs_all:
+            dR = (atomPos[j] - atomPos[i]).copy()
+            if i == j:
+                dR[:] = 0.0
+                Af = scan2c_fortran(fc, interaction_fortran, dR, in3=in3, applyRotation=applyRotation_self)
+                Ao = scan2c_ocl(ham, root_ocl, atomTypes_Z[i], atomTypes_Z[j], dR, applyRotation=applyRotation_self)
+            else:
+                Af = scan2c_fortran(fc, interaction_fortran, dR, in3=in3, applyRotation=applyRotation_offdiag)
+                Ao = scan2c_ocl(ham, root_ocl, atomTypes_Z[i], atomTypes_Z[j], dR, applyRotation=applyRotation_offdiag)
+            blocks_f.append(Af)
+            blocks_o.append(Ao)
+        blocks_f = np.array(blocks_f, dtype=np.float64)
+        blocks_o = np.array(blocks_o, dtype=np.float64)
+        Mf = dense_from_neighbor_list(neighs_all, blocks_f, n_orb_atom, offs)
+        Mo = dense_from_neighbor_list(neighs_all, blocks_o, n_orb_atom, offs)
+        return Mf, Mo
 
-    def _dense_from_neighbor_list(neighs, blocks, n_orb_atom, offs):
-        norb = int(offs[-1])
-        M = np.zeros((norb, norb), dtype=np.float64)
-        for idx, (i, j) in enumerate(neighs):
-            ni = int(n_orb_atom[i]); nj = int(n_orb_atom[j])
-            i0 = int(offs[i]); j0 = int(offs[j])
-            # blocks are (nu,mu); dense expects (mu,nu)
-            M[i0:i0+ni, j0:j0+nj] = blocks[idx, :nj, :ni].T
-        return M
+    # ------------------------------------------------------------------------------------------
+    # Verify_C2-style 2-center tests (scan API vs OCL scan) for all neighbor pairs (i!=j) and self.
+    # ------------------------------------------------------------------------------------------
+    n_orb_atom, offs = _orbital_layout(sd, natoms)
+    norb = int(offs[-1])
 
-    def get_fortran_sparse_full(export_mode=0):
-        fc.set_options(1, 1, 1, 1, 1, 1, 1)
-        fc.set_export_mode(export_mode)
-        dims_ = fc.get_HS_dims()
-        sd_ = fc.get_HS_neighs(dims_)
-        sd_ = fc.get_HS_sparse(dims_, sd_)
-        H = _blocked_to_dense(sd_, sd_.h_mat, natoms)
-        S = _blocked_to_dense(sd_, sd_.s_mat, natoms)
-        neighbors = []
-        for i in range(natoms):
-            for ineigh in range(int(sd_.neighn[i])):
-                j = int(sd_.neigh_j[i, ineigh]) - 1
-                if j < 0 or j >= natoms:
-                    continue
-                neighbors.append((i, j))
-        return H, S, neighbors, sd_
+    # For scan-based tests we use all (i,j) including self. For sparse-export parity we must use
+    # the exact same neighbor list as Fortran export.
+    neighs_all = [(i, j) for i in range(natoms) for j in range(natoms)]
 
-    def get_fortran_sparse_H_with_options(ioff_S, ioff_T, ioff_Vna, ioff_Vnl, ioff_Vxc, ioff_Vca, ioff_Vxc_ca, ioff_Ewald=1, export_mode=1):
-        fc.set_options(ioff_S, ioff_T, ioff_Vna, ioff_Vnl, ioff_Vxc, ioff_Vca, ioff_Vxc_ca, ioff_Ewald)
-        fc.set_export_mode(export_mode)
-        dims_ = fc.get_HS_dims()
-        sd_ = fc.get_HS_neighs(dims_)
-        sd_ = fc.get_HS_sparse(dims_, sd_)
-        H = _blocked_to_dense(sd_, sd_.h_mat, natoms)
-        neighbors = []
-        for i in range(natoms):
-            for ineigh in range(int(sd_.neighn[i])):
-                j = int(sd_.neigh_j[i, ineigh]) - 1
-                if j < 0 or j >= natoms:
-                    continue
-                neighbors.append((i, j))
-        return H, neighbors, sd_
+    def _scan_table_2c(interaction_fortran, root_ocl, applyRotation_offdiag=True, applyRotation_self=False, in3=1):
+        blocks_f = []
+        blocks_o = []
+        for (i, j) in neighs_all:
+            dR = (atomPos[j] - atomPos[i]).copy()
+            if i == j:
+                dR[:] = 0.0
+                Af = scan2c_fortran(fc, interaction_fortran, dR, in3=in3, applyRotation=applyRotation_self)
+                Ao = scan2c_ocl(ham, root_ocl, atomTypes_Z[i], atomTypes_Z[j], dR, applyRotation=applyRotation_self)
+            else:
+                Af = scan2c_fortran(fc, interaction_fortran, dR, in3=in3, applyRotation=applyRotation_offdiag)
+                Ao = scan2c_ocl(ham, root_ocl, atomTypes_Z[i], atomTypes_Z[j], dR, applyRotation=applyRotation_offdiag)
+            blocks_f.append(Af)
+            blocks_o.append(Ao)
+        blocks_f = np.array(blocks_f, dtype=np.float64)
+        blocks_o = np.array(blocks_o, dtype=np.float64)
+        Mf = dense_from_neighbor_list(neighs_all, blocks_f, n_orb_atom, offs)
+        Mo = dense_from_neighbor_list(neighs_all, blocks_o, n_orb_atom, offs)
+        return Mf, Mo
 
     if DO_AVGRHO_PLUMBING:
         print("\n[PLUMBING] compute_avg_rho (3c gather) using Fortran-exported rho + Qin-shell...")
@@ -854,24 +860,7 @@ def run_verification():
     # ------------------------------------------------------------------------------------------
     print("\nTesting contracted VNL (scan-based reference vs OpenCL CPU/GPU)...")
 
-    def _cl_sp_from_ham(Z):
-        cl_shell = ham.cl_pseudo.get(int(Z), None)
-        if cl_shell is None:
-            raise RuntimeError(f"Missing ham.cl_pseudo for Z={Z}")
-        info = ham.parser.species_info.get(int(Z), None)
-        if info is None:
-            raise RuntimeError(f"Missing species_info for Z={Z}")
-        lsshPP = info.get('lsshPP', [])
-        cl_full = []
-        for ish, l in enumerate(lsshPP):
-            c = float(cl_shell[ish])
-            cl_full += [c] * (2 * int(l) + 1)
-        cl_full = np.array(cl_full, dtype=np.float64)
-        if cl_full.shape[0] != 4:
-            raise RuntimeError(f"Expected sp projectors (len=4), got len={cl_full.shape[0]} for Z={Z}")
-        return cl_full
-
-    cls = [_cl_sp_from_ham(int(z)) for z in atomTypes_Z]
+    cls = [cl_sp_from_ham(ham, atomTypes_Z, i) for i in range(natoms)]
 
     # sVNL blocks for all (basis_atom i, pp_atom k)
     s_map = {}
@@ -879,20 +868,10 @@ def run_verification():
         for k in range(natoms):
             if i == k:
                 dR = np.array([0.0, 0.0, 0.0], dtype=np.float64)
-                s_map[(i, k)] = _scan2c_fortran(5, dR, in3=1, applyRotation=False)
+                s_map[(i, k)] = scan2c_fortran(fc, 5, dR, in3=1, applyRotation=False)
             else:
                 dR = (atomPos[k] - atomPos[i]).copy()
-                s_map[(i, k)] = _scan2c_fortran(5, dR, in3=1, applyRotation=True)
-
-    def _contract_blocks(A, B, clv):
-        out = np.zeros((4, 4), dtype=np.float64)
-        for nu in range(4):
-            for mu in range(4):
-                v = 0.0
-                for cc in range(4):
-                    v += A[cc, mu] * clv[cc] * B[cc, nu]
-                out[nu, mu] = v
-        return out
+                s_map[(i, k)] = scan2c_fortran(fc, 5, dR, in3=1, applyRotation=True)
 
     # Build VNL neighbor list exactly like Fortran export_mode>=2 does:
     # iterate neighPP list and map each (jatom,mbeta) to an index in the normal neigh list.
@@ -934,21 +913,21 @@ def run_verification():
     for (i, j) in neighs_vnl:
         acc = np.zeros((4, 4), dtype=np.float64)
         for k in range(natoms):
-            acc += _contract_blocks(s_map[(i, k)], s_map[(j, k)], cls[k])
+            acc += contract_vnl_blocks(s_map[(i, k)], s_map[(j, k)], cls[k])
         Vnl_ref_blocks.append(acc)
     Vnl_ref_blocks = np.array(Vnl_ref_blocks, dtype=np.float64)
-    Vnl_ref = _dense_from_neighbor_list(neighs_vnl, Vnl_ref_blocks, n_orb_atom, offs)
+    Vnl_ref = dense_from_neighbor_list(neighs_vnl, Vnl_ref_blocks, n_orb_atom, offs)
 
     H_vnl_cpu_blocks, _ = ham.assemble_full(atomPos, atomTypes_Z, neighs_vnl.copy(), include_T=False, include_Vna=False, include_Vnl=True, use_gpu_vnl=False)
     H_vnl_gpu_blocks, _ = ham.assemble_full(atomPos, atomTypes_Z, neighs_vnl.copy(), include_T=False, include_Vna=False, include_Vnl=True, use_gpu_vnl=True)
-    Vnl_cpu = _dense_from_neighbor_list(neighs_vnl, np.array(H_vnl_cpu_blocks, dtype=np.float64), n_orb_atom, offs)
-    Vnl_gpu = _dense_from_neighbor_list(neighs_vnl, np.array(H_vnl_gpu_blocks, dtype=np.float64), n_orb_atom, offs)
+    Vnl_cpu = dense_from_neighbor_list(neighs_vnl, np.array(H_vnl_cpu_blocks, dtype=np.float64), n_orb_atom, offs)
+    Vnl_gpu = dense_from_neighbor_list(neighs_vnl, np.array(H_vnl_gpu_blocks, dtype=np.float64), n_orb_atom, offs)
 
     res_Vnl_cpu, err_Vnl_cpu = compare_matrices("VNL (CPU contraction)", Vnl_ref, Vnl_cpu, tol=1e-5, require_nonzero=True)
     res_Vnl_gpu, err_Vnl_gpu = compare_matrices("VNL (GPU contraction)", Vnl_ref, Vnl_gpu, tol=1e-5, require_nonzero=True)
 
     print("\nTesting contracted VNL (Fortran gated export vs OpenCL CPU/GPU)...")
-    Vnl_fortran_full, _neighs_vnl_f, _sd_vnl_f = get_fortran_sparse_H_with_options(0, 0, 0, 1, 0, 0, 0, export_mode=2)
+    Vnl_fortran_full, _neighs_vnl_f, _sd_vnl_f = firecore_sparse_H_with_options(fc, 0, 0, 0, 1, 0, 0, 0, export_mode=2)
     # Compare only on the PP-neighbor block pattern.
     Vnl_fortran = Vnl_fortran_full
     print(f"  neighs_vnl blocks: {len(neighs_vnl)}")
@@ -957,8 +936,8 @@ def run_verification():
     res_Vnl_gpu_fortran, err_Vnl_gpu_fortran = compare_matrices_brief("VNL (GPU) vs Fortran export", Vnl_fortran, Vnl_gpu, tol=1e-5, require_nonzero=True)
 
     print("\nTesting Fortran export reconstruction (raw full H vs reconstructed full H)...")
-    H_full_raw, S_full_raw, neighbors_sparse, sparse_data = get_fortran_sparse_full(export_mode=0)
-    H_full_rec, S_full_rec, _neighbors2, _sparse2 = get_fortran_sparse_full(export_mode=1)
+    H_full_raw, S_full_raw, neighbors_sparse, sparse_data = firecore_sparse_to_dense(fc, export_mode=0)
+    H_full_rec, S_full_rec, _neighbors2, _sparse2 = firecore_sparse_to_dense(fc, export_mode=1)
     res_H_recon, err_H_recon = compare_matrices("Fortran full H: raw vs reconstructed", H_full_raw, H_full_rec, tol=1e-6, require_nonzero=True)
     res_S_recon, err_S_recon = compare_matrices("Fortran full S: raw vs reconstructed(export)", S_full_raw, S_full_rec, tol=1e-12, require_nonzero=True)
 

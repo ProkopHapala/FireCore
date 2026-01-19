@@ -2111,3 +2111,99 @@ Summary of next actions:
 3. Replace the hardcoded debug matrices in [verify_C3.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:0:0-0:0) with data pulled from new bulk-debug buffers exposed via `debug.f90` → `libFireCore.f90` → [FireCore.py](cci:7://file:///home/prokop/git/FireCore/pyBall/FireCore.py:0:0-0:0), minimizing boilerplate by sharing one accessor per block of related data.
 
 I followed the FireCore coding guide and the user’s rule about reusing existing functions, citing code where the behavior is defined.
+
+
+---
+
+## USER
+
+OK, this is great. We should now thing about refactroing of @verify_C3.py , and @verify_C2.py 
+
+we basically want to make it as really the script for diging the comporison, all the reusable modules which can be refactroed should be put into @OCL_Hamiltonian.py 
+
+this comprise mainly two categories of fucntions
+1) utility function like "compare block ", compare_matrices, _blocked_to_dense etc ...
+2) physitcs function doing manula rotation, VNL contration, 
+basically all the algortihms where we do multiple loops or some math are suspicious to fall into this category.
+basically in @verify_C3.py should be not done in-place any assembling, math, or physics, that all should be moved into @OCL_Hamiltonian.py and clearly documented by docstring including the equations and reference to relevant fotran .f90 file from where we took it. Make clear detailed plan to do this. We do not have to do that in one step. We should do it gradually and always monitor if we did not break the parity with Fireball Fotran by running the scripts @verify_C3.py and @verify_C2.py 
+
+---
+
+## GPT5-Codex
+
+
+
+Plan for refactoring @[/home/prokop/git/FireCore/tests/pyFireball/verify_C2.py] and @[/home/prokop/git/FireCore/tests/pyFireball/verify_C3.py] into reusable modules within @[/home/prokop/git/FireCore/pyBall/FireballOCL/OCL_Hamiltonian.py]:
+
+1. **Catalog existing helpers (inventory pass)**
+   - Read both verify scripts systematically and list every helper function or inline block that performs reusable work (matrix assembly, rotations, block-to-dense conversions, comparisons, physics math, etc.).
+   - For each helper, note:
+     - Purpose and inputs/outputs
+     - Any Fortran routine/file it mirrors (e.g., assemble_olsxc_off.f90, build_ca_olsxc_on.f90)
+     - Whether it’s purely a utility (e.g., compare_matrices, _blocked_to_dense) or a physics kernel (e.g., manual VNL contraction, cepal scalar emulation).
+   - Deliverable: short table or checklist grouped by file, with Fortran references captured so docstrings can cite them.
+
+2. **Define target API placement (grouping & docstrings)**
+   - Split helpers into the two categories you described:
+     1. **Utilities** (matrix comparisons, block↔dense converters, neighbor layout helpers, logging aids).
+     2. **Physics/math kernels** (VNL contraction logic, manual rotations, xc microtests, cepal derivatives, etc.).
+   - For each helper, decide whether it should become:
+     - A standalone module-level function in OCL_Hamiltonian.py, or
+     - A @staticmethod inside OCL_Hamiltonian (if it needs class context later).
+   - Draft docstring templates that include:
+     - Brief description + equations where applicable.
+     - Reference to the authoritative Fortran file/line (e.g., “Matches fortran/ASSEMBLERS/build_olsxc_off.f90, lines 70–180”).
+     - Assumptions about shapes/order (Fortran column-major vs NumPy).
+   - Check that dependencies stay within stdlib + NumPy per user rules.
+
+3. **Plan incremental migration steps**
+   - Order moves so we always keep verify scripts runnable:
+     1. Move utility helpers first (least risky); update imports to pull from OCL_Hamiltonian.py; run [verify_C2.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C2.py:0:0-0:0) and [verify_C3.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:0:0-0:0) after each batch.
+     2. Move physics kernels one by one (e.g., [_cepal_py](cci:1://file:///home/prokop/git/FireCore/pyBall/FireballOCL/OCL_Hamiltonian.py:14:4-61:52), [_build_olsxc_off_py](cci:1://file:///home/prokop/git/FireCore/pyBall/FireballOCL/OCL_Hamiltonian.py:63:4-88:20), VNL contraction), ensuring docstrings cite Fortran references.
+     3. After each move, re-run both verification scripts to confirm parity with Fortran remains intact (per user rule “Never mask failing tests”).
+   - Keep debug instrumentation (prints, gating by `idebugWrite`) untouched on Fortran side per user instructions; only mirror logic in Python helpers.
+   - Once all helpers live in OCL_Hamiltonian.py, keep [verify_C2.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C2.py:0:0-0:0) and [verify_C3.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:0:0-0:0) focused on orchestration: configure FireCore, call helper APIs, print summaries.
+
+4. **Documentation & cleanup**
+   - After migrations, add a section near the top of OCL_Hamiltonian.py explaining the testing utilities (purpose, caution that they mirror Fortran reference).
+   - Optionally introduce a small namespace (e.g., `from pyBall.FireballOCL.OCL_Hamiltonian import testing_utils as tu`) if grouping grows large, but only if it keeps dependencies minimal.
+   - Ensure verify scripts remain lightweight drivers that just fetch data, call helpers, and report results.
+
+Let me know if you’d like me to start with the inventory pass (step 1); I can begin cataloging helpers immediately.
+
+
+
+
+
+
+
+
+### Catalog of helpers still embedded in the verification scripts
+
+| Script | Helper / Logic | Category | Fortran reference / purpose | Refactor note |
+|--------|----------------|----------|-----------------------------|---------------|
+| [verify_C3.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:0:0-0:0) | [_scan2c_fortran](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:425:4-430:99), [_scan2c_ocl](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:616:4-617:92) (wrappers for 2c scans) | Utility | Mirrors [scanHamPiece2c](cci:1://file:///home/prokop/git/FireCore/pyBall/FireCore.py:712:0-717:17) usage from various assemblers | Move into [OCL_Hamiltonian.py](cci:7://file:///home/prokop/git/FireCore/pyBall/FireballOCL/OCL_Hamiltonian.py:0:0-0:0) as thin helpers (`scan2c_fortran`, `scan2c_ocl`) so both verify scripts can import them instead of re-defining @tests/pyFireball/verify_C3.py#269-278 |
+| [verify_C3.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:0:0-0:0) | [_dense_from_neighbor_list](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:619:4-627:16) (neighbor pair → dense matrix) | Utility | General block→dense mapping; parallels [_blocked_to_dense](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:75:0-107:12) that’s already shared | Relocate and merge with existing dense converters so only one implementation exists @tests/pyFireball/verify_C3.py#279-288 |
+| [verify_C3.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:0:0-0:0) | [get_fortran_sparse_full](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:288:4-303:35), [get_fortran_sparse_H_with_options](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:305:4-319:32) | Utility | Automates `fc.set_options/export_mode` + `fc.get_HS_*` to obtain dense matrices | Export as reusable helpers (e.g., `firecore_sparse_to_dense(...)`) with docstrings referencing [libFireCore.f90](cci:7://file:///home/prokop/git/FireCore/fortran/MAIN/libFireCore.f90:0:0-0:0) exports @tests/pyFireball/verify_C3.py#289-333 |
+| [verify_C3.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:0:0-0:0) | BCXCx off/on Python rebuilds ([_build_olsxc_off_py](cci:1://file:///home/prokop/git/FireCore/pyBall/FireballOCL/OCL_Hamiltonian.py:63:4-88:20) already moved, but bcxcx_on loops remain) | Physics kernel | Mirrors [fortran/ASSEMBLERS/build_ca_olsxc_on.f90](cci:7://file:///home/prokop/git/FireCore/fortran/ASSEMBLERS/build_ca_olsxc_on.f90:0:0-0:0) | Implement as `_build_ca_olsxc_on_py` in [OCL_Hamiltonian.py](cci:7://file:///home/prokop/git/FireCore/pyBall/FireballOCL/OCL_Hamiltonian.py:0:0-0:0) with docstring citing the Fortran routine; replace inline loops @tests/pyFireball/verify_C3.py#136-170 |
+| [verify_C3.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:0:0-0:0) | Neighbor/back-consistency checks, neighbor list construction, pair/CSR builders, `cn_offsets` logic | Utility | Derived from Fireball neighbor arrays (`neighbors.f90`) | Extract into helper(s) like `build_neighbor_lists(sd)` and [build_common_neighbor_csr(...)](cci:1://file:///home/prokop/git/FireCore/pyBall/FireballOCL/OCL_Hamiltonian.py:456:4-481:49) (the CSR builder already exists in `ham`, reuse there) @tests/pyFireball/verify_C3.py#172-400 |
+| [verify_C3.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:0:0-0:0) | AvgRho “plumbing” section (Qneutral/Qin manipulations, species mapping) | Physics/data prep | Mirrors `average_rho.f90` and `average_ca_rho.f90` data flow | Move into a documented helper (e.g., `prepare_avg_rho_inputs`) referencing those Fortran files @tests/pyFireball/verify_C3.py#322-354 |
+| [verify_C3.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:0:0-0:0) | Manual common-neighbor diagnostics & pair assembly loops | Utility | Generic data reshaping, no Fortran tie | Relocate to shared helper(s) to keep script focused on reporting @tests/pyFireball/verify_C3.py#355-400 |
+
+| Script | Helper / Logic | Category | Fortran reference / purpose | Refactor note |
+|--------|----------------|----------|-----------------------------|---------------|
+| [verify_C2.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C2.py:0:0-0:0) | Local [compare_matrices](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:14:0-34:25) | Utility | Pure numpy compare | Delete after switching to shared helper (already done in C3) @tests/pyFireball/verify_C2.py#13-34 |
+| [verify_C2.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C2.py:0:0-0:0) | [_dense_from_pair_blocks](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C2.py:181:4-187:16) (assembles 2×2 block system) | Utility | No direct Fortran tie; but reusable for any 2-atom comparisons | Move to shared utilities (maybe as `dense_from_pair_blocks` with docstring) @tests/pyFireball/verify_C2.py#182-188 |
+| [verify_C2.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C2.py:0:0-0:0) | [_scan2c_fortran](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:425:4-430:99), [_scan2c_ocl](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:616:4-617:92) | Utility | Same as C3 wrappers | Relocate once globally available helpers exist @tests/pyFireball/verify_C2.py#190-198 |
+| [verify_C2.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C2.py:0:0-0:0) | [_orbital_layout](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:60:0-76:27), [_blocked_to_dense](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:75:0-107:12), [get_fortran_sparse_full](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:288:4-303:35), [get_fortran_sparse_H_with_options](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:305:4-319:32) | Utility | Identical responsibilities as in C3 (Fireball sparse exports) | Consolidate into shared module to eliminate duplication @tests/pyFireball/verify_C2.py#200-279 |
+| [verify_C2.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C2.py:0:0-0:0) | [_cl_sp_from_ham](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:856:4-871:22) (extracts CL vectors, enforces sp-only) | Physics kernel | Aligns with projector construction used in `build_vnl` Fortran modules (`assemble_VNL.f90`) | Move into [OCL_Hamiltonian.py](cci:7://file:///home/prokop/git/FireCore/pyBall/FireballOCL/OCL_Hamiltonian.py:0:0-0:0) as helper that documents expected projector layout @tests/pyFireball/verify_C2.py#348-365 |
+| [verify_C2.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C2.py:0:0-0:0) | [_contract_blocks](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:886:4-894:18) + VNL contraction loops (`Vnl_ref_blocks`) | Physics kernel | Mirrors OpenCL CPU contraction / `build_vnl` logic | Export as `contract_vnl_blocks` helper with docstring referencing `assemble_vnl` Fortran; use everywhere comparisons are needed @tests/pyFireball/verify_C2.py#383-400 |
+| [verify_C2.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C2.py:0:0-0:0) | Large block that recomputes AvgRho inputs (Qneutral/Qin, neighbor lists, CSR builds) | Utility/data prep | Same Fortran refs as C3 AvgRho plumbing | Extract to shared utilities so both scripts call the same preparation pipeline @tests/pyFireball/verify_C2.py#70-180 |
+
+### Suggested next steps (no coding yet)
+
+1. **Confirm inventory** – tick off each helper above, ensuring we haven’t missed additional inline math lower in [verify_C3.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:0:0-0:0) (e.g., Vca/Ewald block diagnostics after line 400) and later sections of [verify_C2.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C2.py:0:0-0:0) (post-VNL contraction).  
+2. **Draft docstrings** – for each physics helper (bcxcx_on, VNL contraction, AvgRho prep), note the exact Fortran file/function name so the final docstrings can cite them as required.  
+3. **Plan migration order** – start with the shared utilities ([_dense_from_pair_blocks](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C2.py:181:4-187:16), [_dense_from_neighbor_list](cci:1://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:619:4-627:16), scan wrappers, Fireball export helpers), then tackle the physics kernels (bcxcx_on, VNL contraction, AvgRho plumbing). After moving each batch, rerun both verification scripts to ensure Fireball parity remains intact.
+
+Let me know when you want to kick off the first migration batch; I can prioritize whichever helper group you prefer.
