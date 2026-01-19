@@ -1888,3 +1888,62 @@ subroutine firecore_get_avg_rho_diag_rhooff_final( m_out ) bind(c, name='firecor
         end do
     end do
 end subroutine firecore_get_avg_rho_diag_rhooff_final
+
+! VXC debug export - bulk getter for all Vxc microtest data
+subroutine firecore_get_vxc_diag_state( enable, iatom, ineigh ) bind(c, name='firecore_get_vxc_diag_state')
+    use iso_c_binding
+    use debug, only: diag_vxc_enable, diag_vxc_iatom, diag_vxc_ineigh
+    implicit none
+    integer(c_int), intent(out) :: enable
+    integer(c_int), intent(out) :: iatom
+    integer(c_int), intent(out) :: ineigh
+    enable = diag_vxc_enable
+    iatom = diag_vxc_iatom
+    ineigh = diag_vxc_ineigh
+end subroutine firecore_get_vxc_diag_state
+
+subroutine firecore_get_vxc_diag_data( denmx_out, den1x_out, sx_out, dens_out, densij_out, &
+                                       muxc_out, dmuxc_out, muxcij_out, dmuxcij_out, bcxcx_out, &
+                                       arho_on_out, arhoi_on_out, rho_on_out, rhoi_on_out, &
+                                       vxc_ca_out, vxc_1c_out ) bind(c, name='firecore_get_vxc_diag_data')
+    use iso_c_binding
+    use debug, only: dbg_vxc_denmx, dbg_vxc_den1x, dbg_vxc_sx, &
+                      dbg_vxc_dens, dbg_vxc_densij, &
+                      dbg_vxc_muxc, dbg_vxc_dmuxc, dbg_vxc_muxcij, dbg_vxc_dmuxcij, dbg_vxc_bcxcx, &
+                      dbg_vxc_arho_on, dbg_vxc_arhoi_on, dbg_vxc_rho_on, dbg_vxc_rhoi_on, &
+                      dbg_vxc_vxc_ca, dbg_vxc_vxc_1c
+    implicit none
+    real(c_double), dimension(4,4), intent(out) :: denmx_out
+    real(c_double), dimension(4,4), intent(out) :: den1x_out
+    real(c_double), dimension(4,4), intent(out) :: sx_out
+    real(c_double), dimension(2,2), intent(out) :: dens_out
+    real(c_double), dimension(2,2), intent(out) :: densij_out
+    real(c_double), dimension(2,2), intent(out) :: muxc_out
+    real(c_double), dimension(2,2), intent(out) :: dmuxc_out
+    real(c_double), dimension(2,2), intent(out) :: muxcij_out
+    real(c_double), dimension(2,2), intent(out) :: dmuxcij_out
+    real(c_double), dimension(4,4), intent(out) :: bcxcx_out
+    real(c_double), dimension(2,2), intent(out) :: arho_on_out
+    real(c_double), dimension(2,2), intent(out) :: arhoi_on_out
+    real(c_double), dimension(4,4), intent(out) :: rho_on_out
+    real(c_double), dimension(4,4), intent(out) :: rhoi_on_out
+    real(c_double), dimension(4,4), intent(out) :: vxc_ca_out
+    real(c_double), dimension(4,4), intent(out) :: vxc_1c_out
+    
+    denmx_out = dbg_vxc_denmx
+    den1x_out = dbg_vxc_den1x
+    sx_out    = dbg_vxc_sx
+    dens_out  = dbg_vxc_dens
+    densij_out= dbg_vxc_densij
+    muxc_out  = dbg_vxc_muxc
+    dmuxc_out = dbg_vxc_dmuxc
+    muxcij_out= dbg_vxc_muxcij
+    dmuxcij_out= dbg_vxc_dmuxcij
+    bcxcx_out = dbg_vxc_bcxcx
+    arho_on_out = dbg_vxc_arho_on
+    arhoi_on_out = dbg_vxc_arhoi_on
+    rho_on_out = dbg_vxc_rho_on
+    rhoi_on_out = dbg_vxc_rhoi_on
+    vxc_ca_out = dbg_vxc_vxc_ca
+    vxc_1c_out = dbg_vxc_vxc_1c
+end subroutine firecore_get_vxc_diag_data

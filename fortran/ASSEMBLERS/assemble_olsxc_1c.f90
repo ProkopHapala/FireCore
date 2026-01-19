@@ -61,6 +61,7 @@
         use interactions
         use neighbor_map
         use energy
+        use debug
         implicit none
  
 ! Argument Declaration and Description
@@ -119,7 +120,16 @@
            vxc_1c(imu,inu,matom,iatom) =  vxc_1c(imu,inu,matom,iatom) + mu1xc(imu,inu) 
           end do
          end do
- 
+
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+! DEBUG OCL PARITY START (assemble_olsxc_1c)
+         if (idebugWrite .gt. 0 .and. iatom .eq. 2) then
+            ! Populate debug buffers
+            dbg_vxc_vxc_1c = vxc_1c(1:4,1:4,matom,iatom)
+         end if
+! DEBUG OCL PARITY END
+! --------------------------
 ! End loop over atoms
         end do
 ! Format Statements

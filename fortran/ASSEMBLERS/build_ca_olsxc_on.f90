@@ -70,9 +70,11 @@
 ! Program Declaration
 ! ===========================================================================
         subroutine build_ca_olsxc_on (in1, iatom, bcxcx, xc)
+        use options
         use charges
         use density
         use interactions
+        use debug
         implicit none
  
 ! Argument Declaration and Description
@@ -140,10 +142,36 @@
 ! Restore true density for input atom into smaller array.
         do inu = 1, num_orb(in1)
          do imu = 1, num_orb(in1)
-          denx(imu,inu) = rho_on(imu,inu,iatom) 
+          denx(imu,inu) = rho_on(imu,inu,iatom)
           deni(imu,inu) = rhoi_on(imu,inu,iatom)
          end do
         end do
+
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+! DEBUG OCL PARITY START (build_ca_olsxc_on)
+        if (idebugWrite .gt. 0 .and. iatom .eq. 2) then
+           write(*,*) '[XC_ON][inputs] iatom,in1=', iatom, in1
+           write(*,'(a,4(1x,e16.8))') '  arho_on row1:', arho(1,1), arho(1,2), arho(1,3), arho(1,4)
+           write(*,'(a,4(1x,e16.8))') '  arho_on row2:', arho(2,1), arho(2,2), arho(2,3), arho(2,4)
+           write(*,'(a,4(1x,e16.8))') '  arhoi_on row1:', arhoi(1,1), arhoi(1,2), arhoi(1,3), arhoi(1,4)
+           write(*,'(a,4(1x,e16.8))') '  arhoi_on row2:', arhoi(2,1), arhoi(2,2), arhoi(2,3), arhoi(2,4)
+           write(*,'(a,4(1x,e16.8))') '  rho_on row1:', denx(1,1), denx(1,2), denx(1,3), denx(1,4)
+           write(*,'(a,4(1x,e16.8))') '  rho_on row2:', denx(2,1), denx(2,2), denx(2,3), denx(2,4)
+           write(*,'(a,4(1x,e16.8))') '  rho_on row3:', denx(3,1), denx(3,2), denx(3,3), denx(3,4)
+           write(*,'(a,4(1x,e16.8))') '  rho_on row4:', denx(4,1), denx(4,2), denx(4,3), denx(4,4)
+           write(*,'(a,4(1x,e16.8))') '  rhoi_on row1:', deni(1,1), deni(1,2), deni(1,3), deni(1,4)
+           write(*,'(a,4(1x,e16.8))') '  rhoi_on row2:', deni(2,1), deni(2,2), deni(2,3), deni(2,4)
+           write(*,'(a,4(1x,e16.8))') '  rhoi_on row3:', deni(3,1), deni(3,2), deni(3,3), deni(3,4)
+           write(*,'(a,4(1x,e16.8))') '  rhoi_on row4:', deni(4,1), deni(4,2), deni(4,3), deni(4,4)
+           ! Populate debug buffers
+           dbg_vxc_arho_on(1:2,1:2) = arho(1:2,1:2)
+           dbg_vxc_arhoi_on(1:2,1:2) = arhoi(1:2,1:2)
+           dbg_vxc_rho_on(1:4,1:4) = denx(1:4,1:4)
+           dbg_vxc_rhoi_on(1:4,1:4) = deni(1:4,1:4)
+        end if
+! DEBUG OCL PARITY END
+! --------------------------
 
 
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -275,6 +303,16 @@
          end do !do jssh = 1, nssh(in1)
          n1 = n1 + l1
         end do !do issh = 1, nssh(in1)
+
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+! DEBUG OCL PARITY START (build_ca_olsxc_on)
+        if (idebugWrite .gt. 0 .and. iatom .eq. 2) then
+           ! Populate vxc_ca debug buffer
+           dbg_vxc_vxc_ca(1:4,1:4) = bcxcx(1:4,1:4)
+        end if
+! DEBUG OCL PARITY END
+! --------------------------
 
 ! Deallocate Arrays
 ! ===========================================================================

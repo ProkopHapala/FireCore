@@ -61,6 +61,34 @@ module debug
          integer :: diag_ewald_mbeta  = -1
          integer :: diag_ewald_ialp   = -1
 
+! VXC component debug exports (filled in assemble_olsxc_off/on/1c.f90 when idebugWrite>0)
+! These arrays are NOT part of the production state (kept in MODULES/debug.f90 only).
+! They exist only to provide Fortran reference component breakdown for PyOpenCL parity tests.
+! Arrays store debug matrices for a single selected (iatom,ineigh) pair for microtests.
+         real, dimension(4,4) :: dbg_vxc_denmx = 0.0
+         real, dimension(4,4) :: dbg_vxc_den1x = 0.0
+         real, dimension(4,4) :: dbg_vxc_sx = 0.0
+         real, dimension(2,2) :: dbg_vxc_dens = 0.0
+         real, dimension(2,2) :: dbg_vxc_densij = 0.0
+         real, dimension(2,2) :: dbg_vxc_muxc = 0.0
+         real, dimension(2,2) :: dbg_vxc_dmuxc = 0.0
+         real, dimension(2,2) :: dbg_vxc_muxcij = 0.0
+         real, dimension(2,2) :: dbg_vxc_dmuxcij = 0.0
+         real, dimension(4,4) :: dbg_vxc_bcxcx = 0.0
+         real, dimension(2,2) :: dbg_vxc_arho_on = 0.0
+         real, dimension(2,2) :: dbg_vxc_arhoi_on = 0.0
+         real, dimension(4,4) :: dbg_vxc_rho_on = 0.0
+         real, dimension(4,4) :: dbg_vxc_rhoi_on = 0.0
+         real, dimension(4,4) :: dbg_vxc_vxc_ca = 0.0
+         real, dimension(4,4) :: dbg_vxc_vxc_1c = 0.0
+
+! VXC trace selector (consumed by assemblers when idebugWrite>0)
+! Allows targeting a specific directed neighbor (iatom,ineigh) for microtests.
+! Use -1 as wildcard for any field.
+         logical :: diag_vxc_enable = .false.
+         integer :: diag_vxc_iatom  = -1
+         integer :: diag_vxc_ineigh = -1
+
 ! --------------------------
 
 

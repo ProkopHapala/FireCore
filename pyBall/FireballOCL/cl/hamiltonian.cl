@@ -1,3 +1,8 @@
+// NOTE: this file mixes verification kernels and production kernels.
+// Double precision is enabled selectively for parity microtests.
+#pragma OPENCL EXTENSION cl_khr_fp64 : enable
+
+
 
 float interpolate_2d(
     float xin, float yin,
@@ -44,6 +49,7 @@ float interpolate_2d(
         float bb0 = 2.0f * f0p3;
         g[k] = ((bb3 * py + bb2) * py + bb1) * py + bb0;
     }
+
     float f1m1 = g[0];
     float f0p3 = 3.0f * g[1];
     float f1p3 = 3.0f * g[2];
@@ -54,6 +60,207 @@ float interpolate_2d(
     float bb1 = -2.0f * f1m1 - f0p3 + 2.0f * f1p3 - f2p1;
     float bb0 = 2.0f * f0p3;
     return (((bb3 * px + bb2) * px + bb1) * px + bb0) / 36.0f;
+}
+
+// ================================================================================================
+// VXC (verification-oriented micro kernel)
+// - Implements Fortran MATH/cepal.f90 (Perdew-Zunger LDA) and build_olsxc_off for sp-only (4x4).
+// - This is a checkpoint kernel to validate scalar/4x4 numerics before integrating full Vxc.
+// ================================================================================================
+
+inline void cepal_lda_pz(const float rh, float* exc, float* muxc, float* dexc, float* d2exc, float* dmuxc, float* d2muxc){
+    const float abohr = 0.529177249f;
+    const float eq2   = 14.39975f;
+    const float delta_rh = 1.0e-6f;
+    const float rhx = sqrt(rh*rh + delta_rh);
+    const float rho = rhx * (abohr*abohr*abohr);
+    const float rho_third = powr(rho, 1.0f/3.0f);
+    const float rs = 0.62035049f / rho_third;
+    float exc_l=0.0f, muxc_l=0.0f;
+    float dec=0.0f, ddec=0.0f, d2dec=0.0f;
+    if(rho < 0.23873241f){
+        const float sqrs = sqrt(rs);
+        const float den  = 1.0f + 1.0529f*sqrs + 0.3334f*rs;
+        exc_l  = -0.4581652f/rs - 0.1423f/den;
+        muxc_l = exc_l - rs*(0.15273333f/(rs*rs) + (0.02497128f/sqrs + 0.01581427f)/(den*den));
+        const float dden  = 1.0529f/(2.0f*sqrs) + 0.3334f;
+        const float d2den = (-0.5f)*1.0529f/(2.0f*rs*sqrs);
+        const float d3den = (0.75f)*1.0529f/(2.0f*rs*rs*sqrs);
+        dec  = 0.1423f*dden/(den*den);
+        ddec = -2.0f*0.1423f*dden*dden/(den*den*den) + 0.1423f*d2den/(den*den);
+        d2dec= 6.0f*0.1423f*(dden*3.0f)/(den*den*den*den) - 6.0f*0.1423f*dden*d2den/(den*den*den) + 0.1423f*d3den/(den*den);
+    }else{
+        const float rsl = log(rs);
+        exc_l  = -0.4581652f/rs - 0.0480f + 0.0311f*rsl - 0.0116f*rs + 0.002f*rs*rsl;
+        muxc_l = exc_l - rs*(0.15273333f/(rs*rs) + 0.01036667f/rs - 0.003866667f + 0.00066667f*(1.0f+rsl));
+        dec  = 0.0311f/rs - 0.0116f + 0.0020f*(rsl+1.0f);
+        ddec = -0.0311f/(rs*rs) + 0.0020f/rs;
+        d2dec= 2.0f*0.0311f/(rs*rs*rs) - 0.0020f/(rs*rs);
+    }
+    const float ex = -0.7385587664f * rho_third;
+    const float dexc_l = (muxc_l - exc_l) / rho;
+    const float d2nec = (4.0f*rs/(9.0f*rho*rho))*dec + (rs*rs/(9.0f*rho*rho))*ddec;
+    const float d2nex = -(2.0f/(9.0f*rho*rho))*ex;
+    const float dmuxc_l = 2.0f*dexc_l + rho*(d2nex + d2nec);
+    const float d3nec = (-28.0f*rs/(27.0f*rho*rho*rho))*dec + (-4.0f*rs*rs/(9.0f*rho*rho*rho))*ddec + (rs*rs*rs/(-27.0f*rho*rho*rho))*d2dec;
+    const float d3nex = (10.0f/(27.0f*rho*rho*rho))*ex;
+    const float d2muxc_l = 3.0f*(d2nex + d2nec) + rho*(d3nex + d3nec);
+    const float d2exc_l = d2nex + d2nec;
+    const float hartree1 = eq2/abohr;
+    const float abohr3 = abohr*abohr*abohr;
+    const float abohr6 = abohr3*abohr3;
+    *exc    = exc_l*hartree1;
+    *muxc   = muxc_l*hartree1;
+    *dexc   = dexc_l*hartree1*abohr3;
+    *d2exc  = d2exc_l*hartree1*abohr6;
+    *dmuxc  = dmuxc_l*hartree1*abohr3;
+    *d2muxc = d2muxc_l*hartree1*abohr6;
+}
+
+__kernel void build_olsxc_off_sp4(
+    const int n_pairs,
+    __global const float4* dens4,      // [n_pairs] (d11,d12,d21,d22)
+    __global const float4* densij4,    // [n_pairs]
+    __global const float* denx16,      // [n_pairs,16]
+    __global const float* den1x16,     // [n_pairs,16]
+    __global const float* sx16,        // [n_pairs,16]
+    __global float* bcxcx16            // [n_pairs,16]
+){
+    const int ip = (int)get_global_id(0);
+    if(ip>=n_pairs) return;
+    const float4 d4 = dens4[ip];
+    const float4 d4ij = densij4[ip];
+    const float dens[2][2]   = { {d4.x, d4.y}, {d4.z, d4.w} };
+    const float densij[2][2] = { {d4ij.x, d4ij.y}, {d4ij.z, d4ij.w} };
+    const int o = ip*16;
+    float denx[4][4];
+    float den1x[4][4];
+    float sx[4][4];
+    for(int i=0;i<4;i++){
+        for(int j=0;j<4;j++){
+            denx[i][j]  = denx16[o + i*4 + j];
+            den1x[i][j] = den1x16[o + i*4 + j];
+            sx[i][j]    = sx16[o + i*4 + j];
+        }
+    }
+    float bcxcx[4][4];
+    for(int i=0;i<4;i++){ for(int j=0;j<4;j++){ bcxcx[i][j]=0.0f; } }
+    int n1=0;
+    for(int issh=1; issh<=2; issh++){
+        const int l1 = (issh==1)?0:1;
+        n1 += l1+1;
+        int n2=0;
+        for(int jssh=1; jssh<=2; jssh++){
+            const int l2 = (jssh==1)?0:1;
+            n2 += l2+1;
+            float exc,muxc,dexc,d2exc,dmuxc,d2muxc;
+            float excij,muxcij,dexcij,d2excij,dmuxcij,d2muxcij;
+            cepal_lda_pz( dens[issh-1][jssh-1], &exc, &muxc, &dexc, &d2exc, &dmuxc, &d2muxc );
+            cepal_lda_pz( densij[issh-1][jssh-1], &excij, &muxcij, &dexcij, &d2excij, &dmuxcij, &d2muxcij );
+            for(int ind1=-l1; ind1<=l1; ind1++){
+                const int imu = n1 + ind1;
+                for(int ind2=-l2; ind2<=l2; ind2++){
+                    const int inu = n2 + ind2;
+                    if(imu<1||imu>4||inu<1||inu>4) continue;
+                    const int i = imu-1;
+                    const int j = inu-1;
+                    float bc = muxc*sx[i][j];
+                    bc += dmuxc*( denx[i][j] - dens[issh-1][jssh-1]*sx[i][j] );
+                    bc -= muxcij*sx[i][j] + dmuxcij*( den1x[i][j] - densij[issh-1][jssh-1]*sx[i][j] );
+                    bcxcx[i][j] = bc;
+                }
+            }
+            n2 += l2;
+        }
+        n1 += l1;
+    }
+    for(int i=0;i<4;i++){
+        for(int j=0;j<4;j++){
+            bcxcx16[o + i*4 + j] = bcxcx[i][j];
+        }
+    }
+}
+
+
+// ================================================================================================
+// VXC_ON micro-kernel (on-site XC assembly for sp-only 4x4 blocks)
+// Reproduces Fortran build_ca_olsxc_on algorithm for testing
+// ================================================================================================
+__kernel void build_ca_olsxc_on_sp4(
+    const int n_atoms,
+    __global const float* arho_on,      // [n_atoms, 4] shell-level average densities (2x2 padded to 4)
+    __global const float* arhoi_on,     // [n_atoms, 4] shell-level average densities for 1-center (2x2 padded to 4)
+    __global const float* rho_on,       // [n_atoms, 16] orbital-level true densities (4x4)
+    __global const float* rhoi_on,      // [n_atoms, 16] orbital-level true densities for 1-center (4x4)
+    __global float* bcxcx_on            // [n_atoms, 16] on-site XC matrix elements (4x4)
+) {
+    int ia = get_global_id(0);
+    if (ia >= n_atoms) return;
+
+    const int lssh[2] = {0, 1};
+    const int nsh = 2;
+
+    float bcxcx[4][4] = {{0}};
+
+    // Diagonal terms
+    int n1 = 0;
+    for(int issh=0; issh<nsh; issh++){
+        int l1 = lssh[issh];
+        n1 += l1 + 1;
+        float arho_ss = arho_on[ia*4 + issh*2 + issh];
+        float arhoi_ss = arhoi_on[ia*4 + issh*2 + issh];
+        float exc, muxc, dexc, d2exc, dmuxc, d2muxc;
+        float exci, muxci, dexci, d2exci, dmuxci, d2muxci;
+        cepal_lda_pz(arho_ss, &exc, &muxc, &dexc, &d2exc, &dmuxc, &d2muxc);
+        cepal_lda_pz(arhoi_ss, &exci, &muxci, &dexci, &d2exci, &dmuxci, &d2muxci);
+        for(int ind1=-l1; ind1<=l1; ind1++){
+            int imu = n1 + ind1 - 1;
+            if(imu<0||imu>=4) continue;
+            float denx_ii = rho_on[ia*16 + imu*4 + imu];
+            float deni_ii = rhoi_on[ia*16 + imu*4 + imu];
+            bcxcx[imu][imu] = muxc + dmuxc*(denx_ii - arho_ss) - muxci - dmuxci*(deni_ii - arhoi_ss);
+        }
+        n1 += l1;
+    }
+
+    // Off-diagonal terms
+    n1 = 0;
+    for(int issh=0; issh<nsh; issh++){
+        int l1 = lssh[issh];
+        n1 += l1 + 1;
+        int n2 = 0;
+        for(int jssh=0; jssh<nsh; jssh++){
+            int l2 = lssh[jssh];
+            n2 += l2 + 1;
+            float arho_ij = arho_on[ia*4 + issh*2 + jssh];
+            float arhoi_ij = arhoi_on[ia*4 + issh*2 + jssh];
+            float exc, muxc, dexc, d2exc, dmuxc, d2muxc;
+            float exci, muxci, dexci, d2exci, dmuxci, d2muxci;
+            cepal_lda_pz(arho_ij, &exc, &muxc, &dexc, &d2exc, &dmuxc, &d2muxc);
+            cepal_lda_pz(arhoi_ij, &exci, &muxci, &dexci, &d2exci, &dmuxci, &d2muxci);
+            for(int ind1=-l1; ind1<=l1; ind1++){
+                int imu = n1 + ind1 - 1;
+                if(imu<0||imu>=4) continue;
+                for(int ind2=-l2; ind2<=l2; ind2++){
+                    int inu = n2 + ind2 - 1;
+                    if(inu<0||inu>=4) continue;
+                    if(imu != inu){
+                        float denx_ij = rho_on[ia*16 + imu*4 + inu];
+                        float deni_ij = rhoi_on[ia*16 + imu*4 + inu];
+                        bcxcx[imu][inu] = dmuxc*denx_ij - dmuxci*deni_ij;
+                    }
+                }
+            }
+            n2 += l2;
+        }
+        n1 += l1;
+    }
+
+    for(int i=0;i<4;i++){
+        for(int j=0;j<4;j++){
+            bcxcx_on[ia*16 + i*4 + j] = bcxcx[i][j];
+        }
+    }
 }
 
 

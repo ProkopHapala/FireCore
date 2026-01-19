@@ -1985,3 +1985,129 @@ Raw->rot F:  PASSED  err=6.94e-18
 Raw->rot O:  PASSED  err=8.99e-09
 Full H:      NOT IMPLEMENTED  err=nan
 ========================================
+
+---
+
+## GPT5-Codex
+
+We’ve finished the microtests for both Vxc_off and Vxc_on: the Fortran reference, Python rebuilds, and OpenCL kernels all agree within the accepted 1e-6 tolerance (see the “Vxc Microtests” block you highlighted). That confirms the individual pieces work.
+
+However, the overall summary still shows “Vxc” and “Vxc_1c” as “NOT IMPLEMENTED” because the full Hamiltonian verification hasn’t been wired up yet:
+
+1. `res_Vxc`/`res_Vxc_1c` are still hard-coded placeholders (`False`) in [verify_C3.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:0:0-0:0), so the table keeps reporting “NOT IMPLEMENTED”.
+2. We haven’t implemented or validated the 1-center (`Vxc_1c`) contribution at all—`assemble_olsxc_1c` calls `unocentros`, which relies on precomputed tables (`nuxc1c`, `dnuxc1c`, etc.). We still need to export those inputs, build the Python reference, and then write the OpenCL micro-kernel.
+3. The assembled Hamiltonian currently only includes the Fortran Vxc blocks; OpenCL Vxc_off/Vxc_on aren’t yet integrated into [OCL_Hamiltonian](cci:2://file:///home/prokop/git/FireCore/pyBall/FireballOCL/OCL_Hamiltonian.py:5:0-1210:33) for full-matrix comparison.
+
+So, next steps:
+
+1. Add gated debug exports for the `unocentros` inputs (`nuxc1c`, `dnuxc1c`, `exc1c0`, etc.) and capture them in [verify_C3.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:0:0-0:0).
+2. Implement the Python reference for `assemble_olsxc_1c` using those tables; add a microtest similar to Vxc_off/on.
+3. Implement the OpenCL kernel(s) for `Vxc_1c`, add the microtest, and integrate with [OCL_Hamiltonian](cci:2://file:///home/prokop/git/FireCore/pyBall/FireballOCL/OCL_Hamiltonian.py:5:0-1210:33).
+4. Once Vxc_off/on/1c are all wired through the OpenCL assembly, update `res_Vxc`/`res_Vxc_1c` to run real comparisons so the summary table reports “PASSED” with actual max-diff values.
+
+Until those integration steps are done, Vxc will stay marked “NOT IMPLEMENTED” in the final summary even though the microtests look good.
+
+---
+
+## USER
+
+OK,
+1) and the tables
+ precomputed tables (nuxc1c, dnuxc1c, etc.).
+are not avalable somwhere in Fdata? Can you look into the foran code where are these tables inititalized? for which files they are read so we can reimplement this into @FdataParser.py 
+
+2) you say  Vxc_off/Vxc_on are now reproduced, so why we do not add it to the  final table beside
+Vxc:         NOT IMPLEMENTED  err=nan
+Vxc_1c:      NOT IMPLEMENTED  err=nan
+
+3) what I do not like so much inside @verify_C3.py are these hardcoded tables
+``
+    dens_dbg = np.array([
+        [1.0360459532766202, 1.0171010344603173],
+        [1.0107739699500113, 0.98984003080556948],
+    ], dtype=np.float64)
+    densij_dbg = np.array([
+        [1.0110833138955015, 0.98513464803735906],
+        [0.98705365901527842, 0.95962722289642588],
+    ], dtype=np.float64)
+    muxc_dbg = np.array([
+        [-16.079340395777759, -15.987702884922848],
+        [-15.956840163115638, -15.853780556627937],
+    ], dtype=np.float64)
+    dmuxc_dbg = np.array([
+        [-4.8072955860380384, -4.8680035107910520],
+        [-4.8887046568452179, -4.9587825835913062],
+    ], dtype=np.float64)
+    muxcij_dbg = np.array([
+        [-15.958352158587449, -15.830411905525883],
+        [-15.839951562863082, -15.702393387108522],
+    ], dtype=np.float64)
+    dmuxcij_dbg = np.array([
+        [-4.8876874585840424, -4.9748790918057075],
+        [-4.9682987876392550, -5.0644447054841759],
+    ], dtype=np.float64)
+`
+
+`
+    # Reproduce build_olsxc_off bcxcx(1:4,1:4) for the debugged pair (Fortran iatom=2, ineigh=1).
+    # NOTE: FireCore Python bindings export rho_off but not rhoij_off, so we take denmx/den1x/sx from gated Fortran prints.
+    denx = np.array([
+        [ 0.46184789E+00, -0.31907829E-04,  0.54250599E+00,  0.31907829E-04],
+        [-0.50334727E-04,  0.20627118E+00, -0.10734696E-03, -0.15812197E-03],
+        [-0.50299951E+00, -0.22541861E-04, -0.39878472E+00,  0.22541861E-04],
+        [ 0.50334727E-04, -0.15812197E-03,  0.10734696E-03,  0.20627118E+00],
+    ], dtype=np.float64)
+    den1x = np.array([
+        [ 0.45072006E+00,  0.00000000E+00,  0.51835644E+00,  0.00000000E+00],
+        [ 0.00000000E+00,  0.20184694E+00,  0.00000000E+00,  0.00000000E+00],
+        [-0.51157068E+00,  0.00000000E+00, -0.42145371E+00,  0.00000000E+00],
+        [ 0.00000000E+00,  0.00000000E+00,  0.00000000E+00,  0.20184694E+00],
+    ], dtype=np.float64)
+    sx = np.array([
+        [ 0.44577935E+00,  0.00000000E+00,  0.46259964E+00,  0.00000000E+00],
+        [ 0.00000000E+00,  0.30685024E+00,  0.00000000E+00,  0.00000000E+00],
+        [-0.46259964E+00,  0.00000000E+00, -0.26405821E+00,  0.00000000E+00],
+        [ 0.00000000E+00,  0.00000000E+00,  0.00000000E+00,  0.30685024E+00],
+    ], dtype=np.float64)
+    bcxcx_py = _build_olsxc_off_py(den1x, denx, sx, dens_dbg, densij_dbg)
+    bcxcx_F = np.array([
+        [-0.53934058E-01,  0.15532742E-03, -0.11164256E+00, -0.15532742E-03],
+        [ 0.24607161E-03, -0.32206012E-01,  0.53231023E-03,  0.78409249E-03],
+        [-0.45847626E-01,  0.11178019E-03, -0.12975360E+00, -0.11178019E-03],
+        [-0.24607161E-03,  0.78409249E-03, -0.53231023E-03, -0.32206012E-01],
+    ], dtype=np.float64)
+    err_bcxcx = float(np.max(np.abs(bcxcx_py - bcxcx_F)))
+    print(f"[XC_OFF][bcxcx_py] max|bcxcx_py-bcxcx_F|={err_bcxcx:.3e}")
+``
+
+
+where these number come from? are them come form what we printed in fotran? Can we export them instead? I know this means we need to add some boilderplat, so we should think how to use minimal boilerplate, we can add something to @debug.f90 like we did for average rho
+``
+         real, dimension(3,3) :: diag_avg_rho_eps2c = 0.0
+         real, dimension(6,6) :: diag_avg_rho_sm = 0.0
+         real, dimension(6,6) :: diag_avg_rho_rhom2c = 0.0
+         real, dimension(6,6) :: diag_avg_rho_rhom3c = 0.0
+         real, dimension(8,8) :: diag_avg_rho_rhooff_3c = 0.0
+         real, dimension(8,8) :: diag_avg_rho_rhooff_final = 0.0
+``
+main main concern is not to make separate function for each single array, rather export htem in bulk using single interface function define in @libFireCore.f90 @FireCore.py 
+
+---
+
+## GPT5-Codex
+
+1. **Where do the Vxc₁c tables come from?**  
+   The one-center XC tables are read from the Fdata directory during `read_1c.f90`. When `itheory_xc = 2 or 4`, Fireball allocates `exc1c0`, `nuxc1c`, `dexc1c`, `dnuxc1c`, etc., then reads them from `xc1c_dqi.dat` and `nuxc1crho.dat`, scaling entries by `ioff1c` so they can be reused later in `unocentros` (@/fortran/READFILES/read_1c.f90#295-430). During assembly, `unocentros` combines those tables with the per-atom charges to build the diagonal `mu1xc` block (@/fortran/INTERACTIONS/unocentros.f90#260-381). Nothing in Python currently exposes these tables, so we’ll need a parser path (e.g., extend `FdataParser`) that loads the same `.dat` files and delivers `nuxc1c`, `dnuxc1c`, etc., for GPU use.
+
+2. **Why does the summary still show `Vxc` / `Vxc_1c` as NOT IMPLEMENTED?**  
+   In [verify_C3.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:0:0-0:0), the flags `res_Vxc` and `res_Vxc_1c` are hard-coded to `False` (placeholders) before the summary block, so the table prints “NOT IMPLEMENTED” regardless of our microtests (@/tests/pyFireball/verify_C3.py#2093-2125). To flip those rows to “PASSED”, we must (a) integrate the OpenCL Vxc_off/Vxc_on contributions into the full Hamiltonian comparison path and set `res_Vxc` to the real parity result, and (b) implement the same flow for `Vxc_1c` once its data path exists. Until the integration/parity checks occur at the full-matrix level, the top-level summary can’t claim Vxc is implemented even though the standalone microtests pass.
+
+3. **Replacing hard-coded debug arrays.**  
+   The constants you highlighted (densities, overlaps, bcxcx reference, etc.) were indeed copied from the Fortran debug prints (the `[XC_OFF]` / `[XC_ON]` sections in [OUT_C3.txt](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/OUT_C3.txt:0:0-0:0)). Instead of hardcoding them, we can adopt the same pattern we used for AvgRho: declare shared debug buffers (e.g., `dbg_vxc_denmx(4,4)`, `dbg_vxc_den1x`, `dbg_vxc_sx`, `dbg_vxc_arho_on`, etc.) inside `debug.f90`, fill them inside the gated print sections in the Fortran assemblers, and expose a single bulk getter in `libFireCore.f90` / [FireCore.py](cci:7://file:///home/prokop/git/FireCore/pyBall/FireCore.py:0:0-0:0). With that in place, [verify_C3.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:0:0-0:0) and the OpenCL microtests can fetch the reference matrices directly each run, eliminating the literal tables and avoiding future drift.
+
+Summary of next actions:
+1. Extend `FdataParser` (and underlying loaders) to read `xc1c_dqi.dat` / `nuxc1crho.dat`, mirroring `read_1c.f90`, so the OpenCL path can access `nuxc1c`, `dnuxc1c`, etc.
+2. Wire those exports into both the Python reference implementation and a new OpenCL microtest for `Vxc_1c`, then integrate Vxc_off/on/1c into the full matrix comparison so `res_Vxc`/`res_Vxc_1c` become real pass/fail values.
+3. Replace the hardcoded debug matrices in [verify_C3.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/verify_C3.py:0:0-0:0) with data pulled from new bulk-debug buffers exposed via `debug.f90` → `libFireCore.f90` → [FireCore.py](cci:7://file:///home/prokop/git/FireCore/pyBall/FireCore.py:0:0-0:0), minimizing boilerplate by sharing one accessor per block of related data.
+
+I followed the FireCore coding guide and the user’s rule about reusing existing functions, citing code where the behavior is defined.

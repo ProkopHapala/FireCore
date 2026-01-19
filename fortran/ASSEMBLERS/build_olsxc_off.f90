@@ -75,6 +75,8 @@
         use charges
         use density
         use interactions
+        use options, only: idebugWrite
+        use debug
 
         implicit none
 
@@ -161,6 +163,24 @@
           call cepal (dens  (issh,jssh), exc, muxc,   dexc, d2exc, dmuxc,   d2muxc )
           call cepal (densij(issh,jssh), exc, muxcij, dexc, d2exc, dmuxcij, d2muxc )
 
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+! DEBUG OCL PARITY START (build_olsxc_off)
+! NOTE: gate condition is intentionally narrow to avoid flooding stdout; adjust iatom/ineigh as needed.
+          if (idebugWrite .gt. 0 .and. iatom .eq. 2 .and. ineigh .eq. 1) then
+             write(*,*) '[XC_OFF][cepal] iatom,ineigh,in1,in2,issh,jssh=', iatom, ineigh, in1, in2, issh, jssh, ' dens=', dens(issh,jssh), ' densij=', densij(issh,jssh)
+             write(*,*) '[XC_OFF][cepal] muxc,dmuxc,muxcij,dmuxcij=', muxc, dmuxc, muxcij, dmuxcij
+             ! Populate debug buffers
+             dbg_vxc_dens(issh,jssh) = dens(issh,jssh)
+             dbg_vxc_densij(issh,jssh) = densij(issh,jssh)
+             dbg_vxc_muxc(issh,jssh) = muxc
+             dbg_vxc_dmuxc(issh,jssh) = dmuxc
+             dbg_vxc_muxcij(issh,jssh) = muxcij
+             dbg_vxc_dmuxcij(issh,jssh) = dmuxcij
+          end if
+! DEBUG OCL PARITY END
+! --------------------------          
+
 ! +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ! BUILD XC-MATRIX
 ! +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -207,6 +227,19 @@
          end do ! do jssh = 1, nssh(in2)
          n1 = n1 + l1
         end do !do issh = 1, nssh(in1)
+
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+! DEBUG OCL PARITY START (build_olsxc_off)
+        if (idebugWrite .gt. 0 .and. iatom .eq. 2 .and. ineigh .eq. 1) then
+           write(*,*) '[XC_OFF][bcxcx] iatom,ineigh=', iatom, ineigh
+           write(*,'(a,4(1x,e16.8))') '  bcxcx row1:', bcxcx(1,1), bcxcx(1,2), bcxcx(1,3), bcxcx(1,4)
+           write(*,'(a,4(1x,e16.8))') '  bcxcx row2:', bcxcx(2,1), bcxcx(2,2), bcxcx(2,3), bcxcx(2,4)
+           write(*,'(a,4(1x,e16.8))') '  bcxcx row3:', bcxcx(3,1), bcxcx(3,2), bcxcx(3,3), bcxcx(3,4)
+           write(*,'(a,4(1x,e16.8))') '  bcxcx row4:', bcxcx(4,1), bcxcx(4,2), bcxcx(4,3), bcxcx(4,4)
+        end if
+! DEBUG OCL PARITY END
+! --------------------------        
 
 ! Deallocate Arrays
 ! ===========================================================================

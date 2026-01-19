@@ -566,6 +566,160 @@ def read_pp(path: str):
         raise RuntimeError(f"Failed to parse any (r,V) pairs from {path}")
     return np.array(r_list), np.array(v_list)
 
+    def read_xc1c_tables(self):
+        """
+        Reads Vxc_1c tables from xc1c_dqi.dat and nuxc1crho.dat.
+        Returns dict with exc1c0, nuxc1c, dexc1c, dnuxc1c arrays.
+        Follows read_1c.f90 logic for itheory_xc=2/4.
+        """
+        if not hasattr(self, 'species_info'):
+            self.parse_info()
+        
+        # Get nspecies from species_info
+        nspecies = len(self.species_info)
+        nsh_max = max(info['nssh'] for info in self.species_info.values())
+        
+        # Allocate arrays
+        exc1c0 = np.zeros((nspecies, nsh_max, nsh_max), dtype=np.float64)
+        nuxc1c = np.zeros((nspecies, nsh_max, nsh_max), dtype=np.float64)
+        dexc1c = np.zeros((nspecies, nsh_max, nsh_max, nsh_max), dtype=np.float64)
+        dnuxc1c = np.zeros((nspecies, nsh_max, nsh_max, nsh_max), dtype=np.float64)
+        
+        # Read xc1c_dqi.dat
+        path_dqi = os.path.join(self.fdata_dir, 'xc1c_dqi.dat')
+        if not os.path.exists(path_dqi):
+            raise FileNotFoundError(f"xc1c_dqi.dat not found in {self.fdata_dir}")
+        
+        with open(path_dqi, 'r') as f:
+            lines = f.readlines()
+        
+        # Skip 4 header lines
+        idx = 4
+        
+        # Skip species header lines
+        for _ in range(nspecies + 1):
+            while idx < len(lines) and not lines[idx].strip():
+                idx += 1
+            if idx < len(lines):
+                idx += 1
+        
+        # Read data
+        in2 = 1
+        for in1 in range(1, nspecies + 1):
+            if in1 > nspecies:
+                break
+            while idx < len(lines) and not lines[idx].strip():
+                idx += 1
+            if idx >= len(lines):
+                break
+            
+            parts = lines[idx].split()
+            itype = int(parts[0])
+            numsh = int(parts[1])
+            idx += 1
+            
+            if numsh != self.species_info[in2]['nssh']:
+                raise ValueError(f"numsh mismatch: expected {self.species_info[in2]['nssh']}, got {numsh}")
+            
+            # Read exc1c0
+            for issh in range(numsh):
+                while idx < len(lines) and not lines[idx].strip():
+                    idx += 1
+                if idx >= len(lines):
+                    break
+                values = [float(x.replace('D', 'E')) for x in lines[idx].split()]
+                for jssh in range(numsh):
+                    exc1c0[in2-1, issh, jssh] = values[jssh]
+                idx += 1
+            
+            # Skip blank line
+            while idx < len(lines) and not lines[idx].strip():
+                idx += 1
+            
+            # Read nuxc1c
+            for issh in range(numsh):
+                while idx < len(lines) and not lines[idx].strip():
+                    idx += 1
+                if idx >= len(lines):
+                    break
+                values = [float(x.replace('D', 'E')) for x in lines[idx].split()]
+                for jssh in range(numsh):
+                    nuxc1c[in2-1, issh, jssh] = values[jssh]
+                idx += 1
+            
+            in2 += 1
+            if in2 > nspecies:
+                break
+        
+        # Read nuxc1crho.dat
+        path_rho = os.path.join(self.fdata_dir, 'nuxc1crho.dat')
+        if not os.path.exists(path_rho):
+            raise FileNotFoundError(f"nuxc1crho.dat not found in {self.fdata_dir}")
+        
+        with open(path_rho, 'r') as f:
+            lines = f.readlines()
+        
+        # Skip 4 header lines
+        idx = 4
+        
+        # Skip species header lines
+        for _ in range(nspecies + 1):
+            while idx < len(lines) and not lines[idx].strip():
+                idx += 1
+            if idx < len(lines):
+                idx += 1
+        
+        # Read data
+        in2 = 1
+        for in1 in range(1, nspecies + 1):
+            if in1 > nspecies:
+                break
+            while idx < len(lines) and not lines[idx].strip():
+                idx += 1
+            if idx >= len(lines):
+                break
+            
+            parts = lines[idx].split()
+            itype = int(parts[0])
+            numsh = int(parts[1])
+            kkssh = int(parts[2])
+            idx += 1
+            
+            if numsh != self.species_info[in2]['nssh']:
+                raise ValueError(f"numsh mismatch: expected {self.species_info[in2]['nssh']}, got {numsh}")
+            
+            # Read dnuxc1c for each kssh
+            for kssh in range(numsh):
+                while idx < len(lines) and not lines[idx].strip():
+                    idx += 1
+                if idx >= len(lines):
+                    break
+                parts = lines[idx].split()
+                itype = int(parts[0])
+                numsh_k = int(parts[1])
+                kkssh_k = int(parts[2])
+                idx += 1
+                
+                for issh in range(numsh):
+                    while idx < len(lines) and not lines[idx].strip():
+                        idx += 1
+                    if idx >= len(lines):
+                        break
+                    values = [float(x.replace('D', 'E')) for x in lines[idx].split()]
+                    for jssh in range(numsh):
+                        dnuxc1c[in2-1, issh, jssh, kssh] = values[jssh]
+                    idx += 1
+            
+            in2 += 1
+            if in2 > nspecies:
+                break
+        
+        return {
+            'exc1c0': exc1c0,
+            'nuxc1c': nuxc1c,
+            'dexc1c': dexc1c,
+            'dnuxc1c': dnuxc1c,
+        }
 
 
 if __name__ == "__main__":

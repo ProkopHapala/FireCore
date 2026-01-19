@@ -58,6 +58,7 @@
         use charges
         use density
         use dimensions
+        use debug
         use interactions
         use neighbor_map
         use timing
@@ -103,6 +104,9 @@
         real, dimension (3) :: r1, r2, r21
         real, dimension (3) :: sighat
         real, dimension (numorb_max, numorb_max) :: sx
+        real exc, muxc, dexc, d2exc, dmuxc, d2muxc
+        real excij, muxcij, dexcij, d2excij, dmuxcij, d2muxcij
+        integer issh, jssh
 
 ! Procedure
 ! ===========================================================================
@@ -157,7 +161,15 @@
               
           call epsilon (r2, sighat, eps)
           call deps2cent (r1, r2, eps, deps)
- 
+
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+! DEBUG OCL PARITY START (assemble_olsxc_off)
+          if (idebugWrite .gt. 0 .and. iatom .eq. 2 .and. ineigh .eq. 1) then
+             write(*,*) '[XC_OFF][geom] iatom,ineigh,jatom,mbeta,in1,in2,y=', iatom, ineigh, jatom, mbeta, in1, in2, y
+          end if
+! DEBUG OCL PARITY END
+! -------------------------- 
  
 ! ****************************************************************************
 !
@@ -177,6 +189,18 @@
            interaction = 6
            in3 = in2
            call doscentros (interaction, isorp, kforce, in1, in2, in3, y,     eps, deps, rhomx, rhompx)
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py           
+! DEBUG OCL PARITY START (assemble_olsxc_off)
+           if (idebugWrite .gt. 0 .and. iatom .eq. 2 .and. ineigh .eq. 1) then
+              write(*,*) '[XC_OFF][doscentros] interaction=6 iatom,ineigh=', iatom, ineigh
+              write(*,'(a,4(1x,e16.8))') '  rhomx row1:', rhomx(1,1), rhomx(1,2), rhomx(1,3), rhomx(1,4)
+              write(*,'(a,4(1x,e16.8))') '  rhomx row2:', rhomx(2,1), rhomx(2,2), rhomx(2,3), rhomx(2,4)
+              write(*,'(a,4(1x,e16.8))') '  rhomx row3:', rhomx(3,1), rhomx(3,2), rhomx(3,3), rhomx(3,4)
+              write(*,'(a,4(1x,e16.8))') '  rhomx row4:', rhomx(4,1), rhomx(4,2), rhomx(4,3), rhomx(4,4)
+           end if
+! DEBUG OCL PARITY END
+! --------------------------           
            do inu = 1, num_orb(in3)
             do imu = 1, num_orb(in1)
 !$omp atomic
@@ -229,6 +253,35 @@
             end do
            end do
 
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py  
+! DEBUG OCL PARITY START (assemble_olsxc_off)
+           if (idebugWrite .gt. 0 .and. iatom .eq. 2 .and. ineigh .eq. 1) then
+              write(*,*) '[XC_OFF][inputs] iatom,ineigh= ', iatom, ineigh
+              write(*,'(a,4(1x,e16.8))') '  denmx row1:', denmx(1,1), denmx(1,2), denmx(1,3), denmx(1,4)
+              write(*,'(a,4(1x,e16.8))') '  denmx row2:', denmx(2,1), denmx(2,2), denmx(2,3), denmx(2,4)
+              write(*,'(a,4(1x,e16.8))') '  denmx row3:', denmx(3,1), denmx(3,2), denmx(3,3), denmx(3,4)
+              write(*,'(a,4(1x,e16.8))') '  denmx row4:', denmx(4,1), denmx(4,2), denmx(4,3), denmx(4,4)
+              write(*,'(a,4(1x,e16.8))') '  den1x row1:', den1x(1,1), den1x(1,2), den1x(1,3), den1x(1,4)
+              write(*,'(a,4(1x,e16.8))') '  den1x row2:', den1x(2,1), den1x(2,2), den1x(2,3), den1x(2,4)
+              write(*,'(a,4(1x,e16.8))') '  den1x row3:', den1x(3,1), den1x(3,2), den1x(3,3), den1x(3,4)
+              write(*,'(a,4(1x,e16.8))') '  den1x row4:', den1x(4,1), den1x(4,2), den1x(4,3), den1x(4,4)
+              write(*,'(a,4(1x,e16.8))') '  sx row1:', sx(1,1), sx(1,2), sx(1,3), sx(1,4)
+              write(*,'(a,4(1x,e16.8))') '  sx row2:', sx(2,1), sx(2,2), sx(2,3), sx(2,4)
+              write(*,'(a,4(1x,e16.8))') '  sx row3:', sx(3,1), sx(3,2), sx(3,3), sx(3,4)
+              write(*,'(a,4(1x,e16.8))') '  sx row4:', sx(4,1), sx(4,2), sx(4,3), sx(4,4)
+
+            ! Populate debug buffers
+              dbg_vxc_denmx = denmx(1:4,1:4)
+              dbg_vxc_den1x = den1x(1:4,1:4)
+              dbg_vxc_sx = sx(1:4,1:4)
+              ! Store bcxcx after build_olsxc_off call
+              call build_olsxc_off (in1, in2, den1x, denmx, sx, ineigh, iatom, bcxcx)
+              dbg_vxc_bcxcx = bcxcx(1:4,1:4)
+           end if
+! DEBUG OCL PARITY END
+! --------------------------
+           
 ! Calculate <i| V_xc(n) |j> and <i|V_xc(n_i+n_j)|j>              
            call build_olsxc_off (in1, in2, den1x, denmx, sx, ineigh, iatom,  bcxcx)
 
@@ -246,6 +299,27 @@
              end do
             end do
            end if
+
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py      
+! DEBUG OCL PARITY START (assemble_olsxc_off)
+           if (idebugWrite .gt. 0 .and. iatom .eq. 2 .and. ineigh .eq. 1) then
+              if (itheory .eq. 0) then
+                 write(*,*) '[XC_OFF][vxc] final block iatom,ineigh=', iatom, ineigh
+                 write(*,'(a,4(1x,e16.8))') '  vxc row1:', vxc(1,1,ineigh,iatom), vxc(1,2,ineigh,iatom), vxc(1,3,ineigh,iatom), vxc(1,4,ineigh,iatom)
+                 write(*,'(a,4(1x,e16.8))') '  vxc row2:', vxc(2,1,ineigh,iatom), vxc(2,2,ineigh,iatom), vxc(2,3,ineigh,iatom), vxc(2,4,ineigh,iatom)
+                 write(*,'(a,4(1x,e16.8))') '  vxc row3:', vxc(3,1,ineigh,iatom), vxc(3,2,ineigh,iatom), vxc(3,3,ineigh,iatom), vxc(3,4,ineigh,iatom)
+                 write(*,'(a,4(1x,e16.8))') '  vxc row4:', vxc(4,1,ineigh,iatom), vxc(4,2,ineigh,iatom), vxc(4,3,ineigh,iatom), vxc(4,4,ineigh,iatom)
+              else
+                 write(*,*) '[XC_OFF][vxc_ca] final block iatom,ineigh=', iatom, ineigh
+                 write(*,'(a,4(1x,e16.8))') '  vxc_ca row1:', vxc_ca(1,1,ineigh,iatom), vxc_ca(1,2,ineigh,iatom), vxc_ca(1,3,ineigh,iatom), vxc_ca(1,4,ineigh,iatom)
+                 write(*,'(a,4(1x,e16.8))') '  vxc_ca row2:', vxc_ca(2,1,ineigh,iatom), vxc_ca(2,2,ineigh,iatom), vxc_ca(2,3,ineigh,iatom), vxc_ca(2,4,ineigh,iatom)
+                 write(*,'(a,4(1x,e16.8))') '  vxc_ca row3:', vxc_ca(3,1,ineigh,iatom), vxc_ca(3,2,ineigh,iatom), vxc_ca(3,3,ineigh,iatom), vxc_ca(3,4,ineigh,iatom)
+                 write(*,'(a,4(1x,e16.8))') '  vxc_ca row4:', vxc_ca(4,1,ineigh,iatom), vxc_ca(4,2,ineigh,iatom), vxc_ca(4,3,ineigh,iatom), vxc_ca(4,4,ineigh,iatom)
+              end if
+           end if
+! DEBUG OCL PARITY END
+! --------------------------
 
 ! End if for r1 .ne. r2 case
           end if

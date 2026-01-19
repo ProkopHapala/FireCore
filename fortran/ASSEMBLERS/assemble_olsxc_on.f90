@@ -67,6 +67,7 @@
         use interactions
         use neighbor_map
         use timing
+        use debug
         implicit none
  
 ! Argument Declaration and Description
@@ -144,7 +145,17 @@
             vxc_ca(imu,inu,matom,iatom) =  vxc_ca(imu,inu,matom,iatom) + bcxcx(imu,inu)
            end do
           end do
-          
+
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+! DEBUG OCL PARITY START (assemble_olsxc_on)
+          if (idebugWrite .gt. 0 .and. iatom .eq. 2) then
+             ! Populate debug buffers
+             dbg_vxc_vxc_ca = vxc_ca(1:4,1:4,matom,iatom)
+          end if
+! DEBUG OCL PARITY END
+! --------------------------
+
          else
 ! Harris + ext Hubbard
           call build_olsxc_on (in1, iatom, bcxcx, xc)
@@ -156,6 +167,18 @@
             vxc(imu,inu,matom,iatom) = vxc(imu,inu,matom,iatom) + bcxcx(imu,inu)
            end do
           end do
+! --------------------------
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py   
+! DEBUG OCL PARITY START (assemble_olsxc_on)
+          if (idebugWrite .gt. 0 .and. iatom .eq. 2) then
+             write(*,*) '[XC_ON][vxc] iatom,matom,in1=', iatom, matom, in1
+             write(*,'(a,4(1x,e16.8))') '  vxc row1:', vxc(1,1,matom,iatom), vxc(1,2,matom,iatom), vxc(1,3,matom,iatom), vxc(1,4,matom,iatom)
+             write(*,'(a,4(1x,e16.8))') '  vxc row2:', vxc(2,1,matom,iatom), vxc(2,2,matom,iatom), vxc(2,3,matom,iatom), vxc(2,4,matom,iatom)
+             write(*,'(a,4(1x,e16.8))') '  vxc row3:', vxc(3,1,matom,iatom), vxc(3,2,matom,iatom), vxc(3,3,matom,iatom), vxc(3,4,matom,iatom)
+             write(*,'(a,4(1x,e16.8))') '  vxc row4:', vxc(4,1,matom,iatom), vxc(4,2,matom,iatom), vxc(4,3,matom,iatom), vxc(4,4,matom,iatom)
+          end if
+! DEBUG OCL PARITY END
+! --------------------------
          end if
         end do ! End loop over iatom.
 

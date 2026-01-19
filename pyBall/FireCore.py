@@ -75,6 +75,8 @@ header_strings = [
 "void firecore_get_avg_rho_diag_rhom3c( double* m_out )",
 "void firecore_get_avg_rho_diag_rhooff_3c( double* m_out )",
 "void firecore_get_avg_rho_diag_rhooff_final( double* m_out )",
+"void firecore_get_vxc_diag_state( int* enable, int* iatom, int* ineigh )",
+"void firecore_get_vxc_diag_data( double* denmx_out, double* den1x_out, double* sx_out, double* dens_out, double* densij_out, double* muxc_out, double* dmuxc_out, double* muxcij_out, double* dmuxcij_out, double* bcxcx_out, double* arho_on_out, double* arhoi_on_out, double* rho_on_out, double* rhoi_on_out, double* vxc_ca_out, double* vxc_1c_out )",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -904,6 +906,60 @@ def get_avg_rho_diag_rhooff_final():
     m = np.zeros(64, dtype=np.float64)
     lib.firecore_get_avg_rho_diag_rhooff_final(_np_as(m, c_double_p))
     return m.reshape((8,8), order='F')
+
+argDict["firecore_get_vxc_diag_state"]=( None, [c_int_p, c_int_p, c_int_p] )
+def get_vxc_diag_state():
+    enable = c_int(0)
+    iatom  = c_int(0)
+    ineigh = c_int(0)
+    lib.firecore_get_vxc_diag_state(byref(enable), byref(iatom), byref(ineigh))
+    return int(enable.value), int(iatom.value), int(ineigh.value)
+
+argDict["firecore_get_vxc_diag_data"]=( None, [array2d, array2d, array2d, array2d, array2d, array2d, array2d, array2d, array2d, array2d, array2d, array2d, array2d, array2d, array2d, array2d] )
+def get_vxc_diag_data():
+    denmx = np.zeros((4,4), dtype=np.float64, order='F')
+    den1x = np.zeros((4,4), dtype=np.float64, order='F')
+    sx = np.zeros((4,4), dtype=np.float64, order='F')
+    dens = np.zeros((2,2), dtype=np.float64, order='F')
+    densij = np.zeros((2,2), dtype=np.float64, order='F')
+    muxc = np.zeros((2,2), dtype=np.float64, order='F')
+    dmuxc = np.zeros((2,2), dtype=np.float64, order='F')
+    muxcij = np.zeros((2,2), dtype=np.float64, order='F')
+    dmuxcij = np.zeros((2,2), dtype=np.float64, order='F')
+    bcxcx = np.zeros((4,4), dtype=np.float64, order='F')
+    arho_on = np.zeros((2,2), dtype=np.float64, order='F')
+    arhoi_on = np.zeros((2,2), dtype=np.float64, order='F')
+    rho_on = np.zeros((4,4), dtype=np.float64, order='F')
+    rhoi_on = np.zeros((4,4), dtype=np.float64, order='F')
+    vxc_ca = np.zeros((4,4), dtype=np.float64, order='F')
+    vxc_1c = np.zeros((4,4), dtype=np.float64, order='F')
+    lib.firecore_get_vxc_diag_data(
+        _np_as(denmx, c_double_p), _np_as(den1x, c_double_p), _np_as(sx, c_double_p),
+        _np_as(dens, c_double_p), _np_as(densij, c_double_p),
+        _np_as(muxc, c_double_p), _np_as(dmuxc, c_double_p), _np_as(muxcij, c_double_p), _np_as(dmuxcij, c_double_p),
+        _np_as(bcxcx, c_double_p),
+        _np_as(arho_on, c_double_p), _np_as(arhoi_on, c_double_p),
+        _np_as(rho_on, c_double_p), _np_as(rhoi_on, c_double_p),
+        _np_as(vxc_ca, c_double_p), _np_as(vxc_1c, c_double_p)
+    )
+    return {
+        'denmx': denmx,
+        'den1x': den1x,
+        'sx': sx,
+        'dens': dens,
+        'densij': densij,
+        'muxc': muxc,
+        'dmuxc': dmuxc,
+        'muxcij': muxcij,
+        'dmuxcij': dmuxcij,
+        'bcxcx': bcxcx,
+        'arho_on': arho_on,
+        'arhoi_on': arhoi_on,
+        'rho_on': rho_on,
+        'rhoi_on': rhoi_on,
+        'vxc_ca': vxc_ca,
+        'vxc_1c': vxc_1c,
+    }
 
 
 

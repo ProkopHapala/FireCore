@@ -27,6 +27,68 @@ class OCL_Hamiltonian:
         else:
             self.prg = cl.Program(self.ctx, self.kernel_src).build()
 
+    def build_olsxc_off_sp4(self, dens4, densij4, denx16, den1x16, sx16):
+        """Micro-parity helper for Fortran build_olsxc_off (sp-only 4x4).
+
+        Inputs:
+            dens4/densij4: float32 [n_pairs,4] with (d11,d12,d21,d22)
+            denx16/den1x16/sx16: float32 [n_pairs,16] row-major 4x4
+        Output:
+            bcxcx16: float32 [n_pairs,16] row-major 4x4
+        """
+        n_pairs = int(dens4.shape[0])
+        dens4 = np.ascontiguousarray(dens4, dtype=np.float32)
+        densij4 = np.ascontiguousarray(densij4, dtype=np.float32)
+        denx16 = np.ascontiguousarray(denx16, dtype=np.float32)
+        den1x16 = np.ascontiguousarray(den1x16, dtype=np.float32)
+        sx16 = np.ascontiguousarray(sx16, dtype=np.float32)
+        out = np.zeros((n_pairs, 16), dtype=np.float32)
+        d_dens4 = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=dens4.view(np.float32).reshape(n_pairs, 4))
+        d_densij4 = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=densij4.view(np.float32).reshape(n_pairs, 4))
+        d_denx16 = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=denx16.reshape(n_pairs * 16))
+        d_den1x16 = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=den1x16.reshape(n_pairs * 16))
+        d_sx16 = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=sx16.reshape(n_pairs * 16))
+        d_out = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, out.nbytes)
+        evt = self.prg.build_olsxc_off_sp4(self.queue, (n_pairs,), None,
+                                           np.int32(n_pairs),
+                                           d_dens4, d_densij4,
+                                           d_denx16, d_den1x16, d_sx16,
+                                           d_out)
+        evt.wait()
+        cl.enqueue_copy(self.queue, out, d_out).wait()
+        return out
+
+    def build_ca_olsxc_on_sp4(self, arho_on, arhoi_on, rho_on, rhoi_on):
+        """Micro-parity helper for Fortran build_ca_olsxc_on (sp-only 4x4 on-site).
+
+        Inputs:
+            arho_on: float32 [n_atoms,4] shell-level average densities (2x2 padded to 4)
+            arhoi_on: float32 [n_atoms,4] shell-level average densities for 1-center (2x2 padded to 4)
+            rho_on: float32 [n_atoms,16] orbital-level true densities (4x4)
+            rhoi_on: float32 [n_atoms,16] orbital-level true densities for 1-center (4x4)
+        Output:
+            bcxcx_on: float32 [n_atoms,16] on-site XC matrix elements (4x4)
+        """
+        n_atoms = int(arho_on.shape[0])
+        arho_on = np.ascontiguousarray(arho_on, dtype=np.float32)
+        arhoi_on = np.ascontiguousarray(arhoi_on, dtype=np.float32)
+        rho_on = np.ascontiguousarray(rho_on, dtype=np.float32)
+        rhoi_on = np.ascontiguousarray(rhoi_on, dtype=np.float32)
+        out = np.zeros((n_atoms, 16), dtype=np.float32)
+        d_arho_on = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=arho_on.reshape(n_atoms * 4))
+        d_arhoi_on = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=arhoi_on.reshape(n_atoms * 4))
+        d_rho_on = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=rho_on.reshape(n_atoms * 16))
+        d_rhoi_on = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=rhoi_on.reshape(n_atoms * 16))
+        d_out = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, out.nbytes)
+        evt = self.prg.build_ca_olsxc_on_sp4(self.queue, (n_atoms,), None,
+                                             np.int32(n_atoms),
+                                             d_arho_on, d_arhoi_on,
+                                             d_rho_on, d_rhoi_on,
+                                             d_out)
+        evt.wait()
+        cl.enqueue_copy(self.queue, out, d_out).wait()
+        return out
+
     def _resolve_pair_type(self, root, nz1, nz2):
         """
         Resolve pair type with vna fallback. DEBUG prints to track missing data.
@@ -1147,6 +1209,275 @@ class OCL_Hamiltonian:
         H_blocks = T_blocks + Vna_blocks + Vnl_blocks
         
         return H_blocks, S_blocks
+
+    ## ==================================================
+    ##   Temporary python implementations for testing
+    ## ==================================================
+
+    @staticmethod
+    def _cepal_py(rh):
+        abohr = 0.529177249
+        eq2 = 14.39975
+        delta_rh = 1.0e-6
+        rhx = float(np.sqrt(rh * rh + delta_rh))
+        rho = rhx * (abohr ** 3)
+        rho_third = rho ** (1.0 / 3.0)
+        rs = 0.62035049 / rho_third
+        exc = 0.0
+        muxc = 0.0
+        dec = 0.0
+        ddec = 0.0
+        d2dec = 0.0
+        if rho < 0.23873241:
+            sqrs = np.sqrt(rs)
+            den = 1.0 + 1.0529 * sqrs + 0.3334 * rs
+            exc = -0.4581652 / rs - 0.1423 / den
+            muxc = exc - rs * (0.15273333 / (rs ** 2) + (0.02497128 / sqrs + 0.01581427) / (den ** 2))
+            dden = 1.0529 / (2.0 * sqrs) + 0.3334
+            d2den = (-0.5) * 1.0529 / (2.0 * rs * sqrs)
+            d3den = (0.75) * 1.0529 / (2.0 * rs * rs * sqrs)
+            dec = 0.1423 * dden / (den * den)
+            ddec = -2.0 * 0.1423 * dden * dden / (den ** 3) + 0.1423 * d2den / (den * den)
+            d2dec = 6.0 * 0.1423 * (dden * 3.0) / (den ** 4) - 6.0 * 0.1423 * dden * d2den / (den ** 3) + 0.1423 * d3den / (den * den)
+        else:
+            rsl = np.log(rs)
+            exc = -0.4581652 / rs - 0.0480 + 0.0311 * rsl - 0.0116 * rs + 0.002 * rs * rsl
+            muxc = exc - rs * (0.15273333 / (rs ** 2) + 0.01036667 / rs - 0.003866667 + 0.00066667 * (1.0 + rsl))
+            dec = 0.0311 / rs - 0.0116 + 0.0020 * (rsl + 1.0)
+            ddec = -0.0311 / (rs * rs) + 0.0020 / rs
+            d2dec = 2.0 * 0.0311 / (rs * rs * rs) - 0.0020 / (rs * rs)
+        ex = -0.7385587664 * rho_third
+        dexc = (muxc - exc) / rho
+        d2nec = (4.0 * rs / (9.0 * rho * rho)) * dec + (rs * rs / (9.0 * rho * rho)) * ddec
+        d2nex = -(2.0 / (9.0 * rho * rho)) * ex
+        dmuxc = 2.0 * dexc + rho * (d2nex + d2nec)
+        d3nec = (-28.0 * rs / (27.0 * rho * rho * rho)) * dec + (-4.0 * rs * rs / (9.0 * rho * rho * rho)) * ddec + (rs * rs * rs / (-27.0 * rho * rho * rho)) * d2dec
+        d3nex = (10.0 / (27.0 * rho * rho * rho)) * ex
+        d2muxc = 3.0 * (d2nex + d2nec) + rho * (d3nex + d3nec)
+        d2exc = d2nex + d2nec
+        hartree1 = eq2 / abohr
+        exc *= hartree1
+        muxc *= hartree1
+        dexc *= hartree1 * (abohr ** 3)
+        d2exc *= hartree1 * (abohr ** 6)
+        dmuxc *= hartree1 * (abohr ** 3)
+        d2muxc *= hartree1 * (abohr ** 6)
+        return exc, muxc, dexc, d2exc, dmuxc, d2muxc
+
+    @staticmethod
+    def _build_olsxc_off_py(den1x, denx, sx, dens, densij):
+        # For this C-only test case: in1=in2=1 with two shells: s (l=0), p (l=1)
+        # This reproduces fortran/ASSEMBLERS/build_olsxc_off.f90 logic.
+        lssh = [0, 1]
+        bcxcx = np.zeros((4, 4), dtype=np.float64)
+        n1 = 0
+        for issh, l1 in enumerate(lssh, start=1):
+            n1 = n1 + l1 + 1
+            n2 = 0
+            for jssh, l2 in enumerate(lssh, start=1):
+                n2 = n2 + l2 + 1
+                _, muxc, _, _, dmuxc, _ = OCL_Hamiltonian._cepal_py(float(dens[issh - 1, jssh - 1]))
+                _, muxcij, _, _, dmuxcij, _ = OCL_Hamiltonian._cepal_py(float(densij[issh - 1, jssh - 1]))
+                for ind1 in range(-l1, l1 + 1):
+                    imu = n1 + ind1
+                    for ind2 in range(-l2, l2 + 1):
+                        inu = n2 + ind2
+                        if (imu < 1) or (imu > 4) or (inu < 1) or (inu > 4):
+                            continue
+                        bc = muxc * sx[imu - 1, inu - 1]
+                        bc += dmuxc * (denx[imu - 1, inu - 1] - dens[issh - 1, jssh - 1] * sx[imu - 1, inu - 1])
+                        bc -= muxcij * sx[imu - 1, inu - 1] + dmuxcij * (den1x[imu - 1, inu - 1] - densij[issh - 1, jssh - 1] * sx[imu - 1, inu - 1])
+                        bcxcx[imu - 1, inu - 1] = bc
+                n2 = n2 + l2
+            n1 = n1 + l1
+        return bcxcx
+
+
+
+
+
+
+## =============================================================
+##   Utilities for testing and checking wrt Fotran reference
+## ==============================================================
+
+# NOTE: these helpers are intentionally module-level so they can be imported
+#       from testing scripts like tests/pyFireball/verify_C3.py without having to
+#       instantiate OCL_Hamiltonian. Keep them lightweight and pure numpy.
+
+
+def compare_matrices(name, fortran_mat, ocl_mat, tol=1e-5, require_nonzero=False):
+    print(f"\n--- Comparing {name} ---")
+    diff = np.abs(fortran_mat - ocl_mat)
+    max_diff = np.max(diff) if diff.size else 0.0
+    max_val = max(np.max(np.abs(fortran_mat)) if fortran_mat.size else 0.0, np.max(np.abs(ocl_mat)) if ocl_mat.size else 0.0)
+    print(f"Max difference: {max_diff:.2e}")
+
+    if require_nonzero and max_val < tol:
+        print(f"WARNING: {name} is (near) zero for both; treating as failure.")
+        return False, max_diff
+    if max_diff > tol:
+        print(f"WARNING: {name} discrepancy exceeds tolerance!")
+        print("Fortran Matrix:")
+        print(fortran_mat)
+        print("PyOpenCL Matrix:")
+        print(ocl_mat)
+        print("Abs Diff:")
+        print(diff)
+        return False, max_diff
+    print(f"SUCCESS: {name} matches.")
+    return True, max_diff
+
+
+def compare_matrices_brief(name, A, B, tol=1e-5, require_nonzero=False):
+    diff = np.abs(A - B)
+    max_diff = float(np.max(diff)) if diff.size else 0.0
+    max_val = max(float(np.max(np.abs(A))) if A.size else 0.0, float(np.max(np.abs(B))) if B.size else 0.0)
+    print(f"\n--- Comparing {name} (brief) ---")
+    print(f"Max difference: {max_diff:.2e}")
+    if diff.size:
+        ij = np.unravel_index(int(np.argmax(diff)), diff.shape)
+        print(f"Argmax index: {ij}, A={float(A[ij]):.6g}, B={float(B[ij]):.6g}")
+    if require_nonzero and max_val < tol:
+        print(f"WARNING: {name} is (near) zero for both; treating as failure.")
+        return False, max_diff
+    if max_diff > tol:
+        print(f"WARNING: {name} discrepancy exceeds tolerance!")
+        return False, max_diff
+    print(f"SUCCESS: {name} matches.")
+    return True, max_diff
+
+
+def _orbital_layout(sparse_data, natoms):
+    nzx = np.array(sparse_data.nzx, dtype=np.int32)
+    num_orb_species = np.array(sparse_data.num_orb, dtype=np.int32)
+    iatyp = np.array(sparse_data.iatyp, dtype=np.int32)
+    n_orb_atom = np.zeros(natoms, dtype=np.int32)
+    for ia in range(natoms):
+        Z = int(iatyp[ia])
+        w = np.where(nzx == Z)[0]
+        if w.size == 0:
+            raise RuntimeError(f"Cannot map atom Z={Z} to nzx species list {nzx}")
+        ispec = int(w[0])
+        n_orb_atom[ia] = int(num_orb_species[ispec])
+    if np.any(n_orb_atom == 0):
+        raise RuntimeError(f"Zero-orbital atom encountered: n_orb_atom={n_orb_atom}, iatyp={iatyp}, num_orb_species={num_orb_species}, nzx={nzx}")
+    offs = np.zeros(natoms + 1, dtype=np.int32)
+    offs[1:] = np.cumsum(n_orb_atom)
+    return n_orb_atom, offs
+
+
+def _blocked_to_dense(sparse_data, H_blocks, natoms):
+    n_orb_atom, offs = _orbital_layout(sparse_data, natoms)
+    norb = int(offs[-1])
+    M = np.zeros((norb, norb), dtype=np.float64)
+    neighn = np.array(sparse_data.neighn, dtype=np.int32)
+    neigh_j = np.array(sparse_data.neigh_j, dtype=np.int32)
+    neigh_b = np.array(sparse_data.neigh_b, dtype=np.int32)
+
+    # Fortran uses neigh_self(iatom) = ineigh index where (jatom==iatom && mbeta==0).
+    # Do NOT assume it is the last neighbor slot.
+    neigh_self = np.full(natoms, -1, dtype=np.int32)
+    for i in range(natoms):
+        ii = i + 1  # Fortran 1-based atom index stored in neigh_j
+        for ineigh in range(int(neighn[i])):
+            if int(neigh_j[i, ineigh]) == ii and int(neigh_b[i, ineigh]) == 0:
+                neigh_self[i] = ineigh
+                break
+
+    for i in range(natoms):
+        ni = int(n_orb_atom[i])
+        i0 = int(offs[i])
+        for ineigh in range(int(neighn[i])):
+            if ineigh == int(neigh_self[i]):
+                j = i
+            else:
+                j = int(neigh_j[i, ineigh]) - 1
+            if j < 0 or j >= natoms:
+                continue
+            nj = int(n_orb_atom[j])
+            j0 = int(offs[j])
+            blk = H_blocks[i, ineigh, :nj, :ni]
+            M[i0:i0+ni, j0:j0+nj] += blk.T
+    return M
+
+
+def _blocked_to_dense_vca_atom(sparse_data, A_blocks, natoms):
+    # VCA atom term is a diagonal update on atom i accumulated over non-self neighbors.
+    # For the core debug export we therefore interpret A_blocks[i,ineigh] as contributing to (i,i),
+    # NOT to (i,j). This matches OpenCL assemble_vca which returns diag updates separately.
+    n_orb_atom, offs = _orbital_layout(sparse_data, natoms)
+    norb = int(offs[-1])
+    M = np.zeros((norb, norb), dtype=np.float64)
+    neighn = np.array(sparse_data.neighn, dtype=np.int32)
+    neigh_j = np.array(sparse_data.neigh_j, dtype=np.int32)
+    neigh_b = np.array(sparse_data.neigh_b, dtype=np.int32)
+
+    # Detect whether A_blocks is stored predominantly in the self-slot or in neighbor slots.
+    # We must not guess from interface functions; infer from exported array content only.
+    max_self = 0.0
+    max_nons = 0.0
+    neigh_self = np.full(natoms, -1, dtype=np.int32)
+    for i in range(natoms):
+        ii = i + 1
+        for ineigh in range(int(neighn[i])):
+            if int(neigh_j[i, ineigh]) == ii and int(neigh_b[i, ineigh]) == 0:
+                neigh_self[i] = ineigh
+                break
+        if neigh_self[i] >= 0:
+            ni = int(n_orb_atom[i])
+            ms = float(np.max(np.abs(A_blocks[i, neigh_self[i], :ni, :ni])))
+            if ms > max_self:
+                max_self = ms
+        ni = int(n_orb_atom[i])
+        for ineigh in range(int(neighn[i])):
+            if ineigh == int(neigh_self[i]):
+                continue
+            mn = float(np.max(np.abs(A_blocks[i, ineigh, :ni, :ni])))
+            if mn > max_nons:
+                max_nons = mn
+
+    use_self_slot = (max_self > (10.0 * max_nons))
+    print(f"  [VCA_ATOM export layout] max_self={max_self:.3e} max_nonself={max_nons:.3e} => use_self_slot={int(use_self_slot)}")
+
+    for i in range(natoms):
+        ni = int(n_orb_atom[i])
+        i0 = int(offs[i])
+        if use_self_slot and neigh_self[i] >= 0:
+            blk = A_blocks[i, neigh_self[i], :ni, :ni]
+            M[i0:i0+ni, i0:i0+ni] += blk.T
+        else:
+            ii = i + 1
+            for ineigh in range(int(neighn[i])):
+                if int(neigh_j[i, ineigh]) == ii and int(neigh_b[i, ineigh]) == 0:
+                    continue
+                j = int(neigh_j[i, ineigh]) - 1
+                if j < 0 or j >= natoms:
+                    continue
+                blk = A_blocks[i, ineigh, :ni, :ni]
+                M[i0:i0+ni, i0:i0+ni] += blk.T
+    return M
+
+
+def compare_blocks(name, A, B, tol=1e-5, require_nonzero=False):
+    if not np.all(np.isfinite(A)):
+        raise RuntimeError(f"compare_blocks: non-finite values in A for {name}")
+    if not np.all(np.isfinite(B)):
+        raise RuntimeError(f"compare_blocks: non-finite values in B for {name}")
+    diff = np.abs(A - B)
+    max_diff = float(np.max(diff)) if diff.size else 0.0
+    max_val = max(float(np.max(np.abs(A))) if A.size else 0.0, float(np.max(np.abs(B))) if B.size else 0.0)
+    print(f"\n--- Comparing {name} ---")
+    print(f"Max difference: {max_diff:.2e}")
+    if require_nonzero and max_val < tol:
+        print(f"WARNING: {name} is (near) zero for both; treating as failure.")
+        return False, max_diff
+    if max_diff > tol:
+        print(f"WARNING: {name} discrepancy exceeds tolerance!")
+        return False, max_diff
+    print(f"SUCCESS: {name} matches.")
+    return True, max_diff
+
 
 if __name__ == "__main__":
     import os
