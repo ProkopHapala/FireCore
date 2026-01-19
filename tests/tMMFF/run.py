@@ -21,9 +21,11 @@ def scanPlot(nscan=1000, span=(0.0,8.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), la
    
     Es, Fs, Ps = mmff.scan(poss, bF=True, bP=True)
     
+    Es_end = Es[-1]
+    # Es_end = 0
 
     if saveData is not None:
-        np.savetxt(saveData, np.column_stack((ts, Es)), header="ts\tEnergy", comments="# ")
+        np.savetxt(saveData, np.column_stack((ts, Es-Es_end)), header="ts\tEnergy", comments="# ")
 
     plt.title(label)
     plt.plot(ts, Es, '-', lw=0.5, label=label)
@@ -35,33 +37,651 @@ def scanPlot(nscan=1000, span=(0.0,8.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), la
         plt.savefig(saveFig)
     plt.show()
 
+#/home/indranil/git/FireCore/tests/tMMFF
 
+def scanPlot_uff(nscan=1000, span=(0.0,8.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), label="E", saveFig=None, saveData=None):
+    
+    ts = np.linspace(span[0], span[1], nscan, endpoint=False)
+  
+    poss = np.zeros((nscan, 3))
+    poss[:, 0] = p0[0] + ts * dir[0]
+    poss[:, 1] = p0[1] + ts * dir[1]
+    poss[:, 2] = p0[2] + ts * dir[2]
+
+   
+    Es, Fs, Ps = mmff.scan_rigid_uff(poss, bF=True, bP=True)
+    
+    Es_end = Es[-1]
+    # Es_end = 0
+
+    if saveData is not None:
+        np.savetxt(saveData, np.column_stack((ts, Es-Es_end)), header="ts\tEnergy", comments="# ")
+
+    plt.title(label)
+    plt.plot(ts, Es, '-', lw=0.5, label=label)
+    plt.xlabel(f"Scaned along ({dir[0]}_{dir[1]}_{dir[2]}) direction ")
+    plt.ylabel(f"Scaned Energy (eV)")
+    
+    # Optionally, save the figure to a file.
+    if saveFig is not None:
+        plt.savefig(saveFig)
+    plt.show()
+
+def relax_scanPlot1D_0(nscan=1000, span=(0.0,4.0),
+               p0=(0.0,0.0,0.0), dir=(1.0,0.0,0.0),
+               label="E_1D", saveFig=None, saveData=None,
+               bRelax=False, niter_max=10000, dt=0.05, Fconv=1e-5):
+    """
+    Perform a 1D scan along a specified direction with optional relaxation.
+    """
+    # Create linspace array for scan direction
+    t = np.linspace(span[0], span[1], nscan, endpoint=False)
+    
+    # Prepare positions array
+    poss = np.zeros((nscan, 3))
+    
+    # Each scanned position is the starting point plus contribution along direction
+    poss[:, 0] = p0[0] + t*dir[0]
+    poss[:, 1] = p0[1] + t*dir[1]
+    poss[:, 2] = p0[2] + t*dir[2]
+    
+    # Call the scan function using the computed positions.
+    if bRelax:
+        Es, Fs, Ps = mmff.scan(poss, bF=True, bP=True, bRelax=True, niter_max=niter_max, dt=dt, Fconv=Fconv)
+    else:
+        Es, Fs, Ps = mmff.scan(poss, bF=True, bP=True)
+    
+    print(f"Shape of returned arrays: Es={Es.shape}, Ps={Ps.shape}")
+    
+    # Create a line plot for the 1D energy scan
+    plt.figure(figsize=(12, 8))
+    plt.subplot(2, 1, 1)
+    plt.plot(t, Es)
+    plt.title(f"{label} - Energy Profile")
+    plt.xlabel(f"Scan parameter along ({dir[0]:.3f}_{dir[1]:.3f}_{dir[2]:.3f}) direction")
+    plt.ylabel("Energy (eV)")
+    plt.grid(True)
+    
+    # Plot position information
+    plt.subplot(2, 1, 2)
+    
+    # Handle multi-atom position data
+    if len(Ps.shape) == 3:  # (n_scan, n_atoms, 3)
+        n_atoms = Ps.shape[1]
+        
+        # Plot the center of mass movement for simplicity
+        com = np.mean(Ps, axis=1)  # Average across atoms
+        
+        plt.plot(t, com[:, 0], 'r-', label="Center of mass - x")
+        plt.plot(t, com[:, 1], 'g-', label="Center of mass - y")
+        plt.plot(t, com[:, 2], 'b-', label="Center of mass - z")
+        
+        # Calculate and plot distance from initial position
+        init_com = com[0]
+        distances = np.sqrt(np.sum((com - init_com)**2, axis=1))
+        plt.plot(t, distances, 'k--', label="Distance from start")
+        
+        title = "Center of mass trajectory"
+    else:
+        # Fallback for other shapes (unlikely with your data)
+        for i in range(min(Ps.shape[1], 3)):
+            plt.plot(t, Ps[:, i], label=f"Dimension {i}")
+        title = "Position during scan"
+    
+    plt.title(title)
+    plt.xlabel(f"Scan parameter")
+    plt.ylabel("Position (Å)")
+    plt.legend()
+    plt.grid(True)
+    
+    plt.tight_layout()
+    
+    if saveFig is not None:
+        plt.savefig(saveFig)
+    if saveData is not None:
+        # Remove file extension to use as base name
+        base_name = saveData.rsplit('.', 1)[0]
+
+        # Get atom types from MMFF
+        atom_types = mmff.getAtomTypes()
+
+        # Save energy data separately
+        energy_file = f"{base_name}_energy.dat"
+        energy_data = np.column_stack((t, Es))
+        energy_header = f"# Scan along dir: {dir}\n# t\tEnergy(eV)"
+        np.savetxt(energy_file, energy_data, header=energy_header, comments='')
+
+        # Save combined trajectory (initial + relaxed structures)
+        if len(Ps.shape) == 3:
+            xyz_file = f"{base_name}_trajectory.xyz"
+            n_atoms = Ps.shape[1]
+            n_frames = len(t)
+
+            with open(xyz_file, 'w') as f:
+                # First frame: Write initial structure (before relaxation)
+                f.write(f"{n_atoms}\n")
+                f.write(f"Initial structure, E = {Es[0]:.6f} eV\n")
+                # Write initial positions (first frame of Ps before relaxation)
+                for j in range(n_atoms):
+                    f.write(f"{atom_types[j]} {Ps[0,j,0]:12.6f} {Ps[0,j,1]:12.6f} {Ps[0,j,2]:12.6f}\n")
+
+                # Then write all relaxed structures
+                for i in range(n_frames):
+                    f.write(f"{n_atoms}\n")
+                    f.write(f"t = {t[i]:.3f}, E = {Es[i]:.6f} eV\n")
+                    for j in range(n_atoms):
+                        f.write(f"{atom_types[j]} {Ps[i,j,0]:12.6f} {Ps[i,j,1]:12.6f} {Ps[i,j,2]:12.6f}\n")
+    
+    plt.show()
+    
+    return t, Es, Ps
+
+def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
+               p0=(0.0,0.0,0.0), dir=(1.0,0.0,0.0),
+               label="E_1D", saveFig=None, saveData=None,
+               bRelax=False, niter_max=10000, dt=0.05, Fconv=1e-5):
+    """
+    Perform a 1D scan along a specified direction with optional relaxation.
+    """
+    
+    """
+    Debug version with extensive logging
+    """
+    # print(f"===== DEBUGGING INFO =====")
+    # print(f"Input parameters:")
+    # print(f"  nscan: {nscan}")
+    # print(f"  span: {span}")
+    # print(f"  p0: {p0}")
+    # print(f"  dir: {dir}")
+    # print(f"  bRelax: {bRelax}")
+    
+    # Create linspace array for scan direction
+    t = np.linspace(span[0], span[1], nscan, endpoint=False)
+
+    #nscan = 10
+    #p0=[0.0,0.0,8.6]
+    #t = np.linspace( 0.0, 10.0, nscan, endpoint=False)
+
+    
+    # Prepare positions array
+    poss = np.zeros((nscan, 3))
+    
+    # Each scanned position is the starting point plus contribution along direction
+    poss[:, 0] = p0[0] + t*dir[0]
+    poss[:, 1] = p0[1] + t*dir[1]
+    poss[:, 2] = p0[2] + t*dir[2]
+    
+    # print(f"poss: {poss.shape}", poss )
+    # Call the scan function using the computed positions
+    # if bRelax:
+    #     Es, Fs, Ps = mmff.scan(poss, bF=True, bP=True, bRelax=True, niter_max=niter_max, dt=dt, Fconv=Fconv)
+    # else:
+    #     Es, Fs, Ps = mmff.scan(poss, bF=True, bP=True)
+
+    # scan_constr(nconf, ncontr, icontrs, contrs, Es=None, aforces=None, aposs=None, bHardConstr=False, omp=False, niter_max=10000, dt=0.05, Fconv=1e-5, Flim=100.0 ):
+    iconstr = np.array( [26], np.int32)
+    # iconstr = np.arange(1, 38, 1, dtype=np.int32)
+    # iconstr = np.array( [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37], np.int32)
+    # nconf = 10
+    contrs = np.zeros( (nscan,len(iconstr),4), np.float64)
+    contrs[:,0,0] = poss[:,0] # x
+    contrs[:,0,1] = poss[:,1] # y
+    contrs[:,0,2] = poss[:,2] # z
+    contrs[:,:,3] = 1.0 # stiffness
+    # print(f"contrs: {contrs.shape}", contrs )
+    # print(f"iconstr: {iconstr.shape}", iconstr )
+    with open( "scan_constr.xyz","w") as f: f.write("") # delete the file content to  old data
+
+ 
+    Es, Fs, Ps = mmff.scan_constr( iconstr, contrs, bHardConstr=True, bF=True, bP=True, niter_max=niter_max, dt=dt, Fconv=Fconv)
+    
+    # print(f"Shape of returned arrays: Es={Es.shape}, Ps={Ps.shape}")
+    
+    # Deeply check Ps data
+    # print(f"Ps data check:")
+    # print(f"  Ps type: {type(Ps)}")
+    # print(f"  Ps dtype: {Ps.dtype}")
+    # print(f"  Ps min: {np.min(Ps)}, max: {np.max(Ps)}")
+    # print(f"  Ps contains NaN: {np.isnan(Ps).any()}")
+    # print(f"  Ps contains only zeros: {np.all(Ps == 0)}")
+    # print(f"  Ps memory layout: {Ps.flags}")
+    
+    # Create the figure first
+    fig = plt.figure(figsize=(18, 10))
+    
+    # Energy plot
+    ax1 = fig.add_subplot(311)
+    ax1.plot(t, Es)
+    ax1.set_title(f"{label} - Energy Profile")
+    ax1.set_xlabel(f"Scan parameter along ({dir[0]:.3f}_{dir[1]:.3f}_{dir[2]:.3f}) direction")
+    ax1.set_ylabel("Energy (eV)")
+    ax1.grid(True)
+    
+    # Position plot for both atoms
+    ax2 = fig.add_subplot(312)
+    
+    # Plot the first atom coordinates
+    if Ps.shape[1] >= 1:
+        ax2.plot(t, Ps[:, 26, 0], 'r-', label="Atom 26 x")
+        ax2.plot(t, Ps[:, 26, 1], 'g-', label="Atom 26 y")
+        ax2.plot(t, Ps[:, 26, 2], 'b-', label="Atom 26 z")
+    
+    # Plot the second atom coordinates
+    if Ps.shape[1] >= 2:
+        ax2.plot(t, Ps[:, 29, 0], 'r--', label="Atom 29 x")
+        ax2.plot(t, Ps[:, 29, 1], 'g--', label="Atom 29 y")
+        ax2.plot(t, Ps[:, 29, 2], 'b--', label="Atom 29 z")
+    
+    ax2.set_title("Atom Positions During Scan")
+    ax2.set_xlabel("Scan parameter")
+    ax2.set_ylabel("Position (Å)")
+    ax2.legend()
+    ax2.grid(True)
+
+
+    ax3 = fig.add_subplot(313)
+    
+    # Plot the first atom coordinates
+    for i in range(Ps.shape[1]):
+        ax3.plot(t, Ps[:, i, 0], 'r-', label=f"Atom {i} x")
+        ax3.plot(t, Ps[:, i, 1], 'g-', label=f"Atom {i} y")
+        ax3.plot(t, Ps[:, i, 2], 'b-', label=f"Atom {i} z")
+
+      
+    ax3.set_title("Atom Positions During Scan")
+    ax3.set_xlabel("Scan parameter")
+    ax3.set_ylabel("Position (Å)")
+    ax3.legend()
+    ax3.grid(True)
+
+    plt.tight_layout()
+    
+    if saveFig is not None:
+        plt.savefig(saveFig)
+    
+    if saveData is not None:
+        # Remove file extension to use as base name
+        base_name = saveData.rsplit('.', 1)[0]
+        
+        # Save energy data separately
+        energy_file = f"{base_name}_energy.dat"
+        
+        Es_end = Es[-1]
+        # Es_end = 0
+        energy_data = np.column_stack((t, Es-Es_end))
+        # energy_data = np.column_stack((t, Es_end-Es))
+        energy_header = f"# Scan along dir: {dir}\n# t\tEnergy(eV)"
+        np.savetxt(energy_file, energy_data, header=energy_header, comments='')
+        
+         # Get atom type information for molecule
+        atom_types = []
+
+        for j in range(Ps.shape[1]):
+            if j < 24:
+                atom_types.append("C")  # Default to carbon if no specific type info
+            elif j >= 24 and j < 30:
+                atom_types.append("O")  # Default to hydrogen if no specific type info
+            else:
+                atom_types.append("H")  # Default to oxygen if no specific type info
+                
+            # atom_types.append(mmff.geteElements())
+
+        # atom_types = mmff.getAtomTypes()
+        # # Check what was returned and convert to element symbols
+        # atom_symbols = []
+        
+        # if isinstance(atom_types, tuple) and len(atom_types) == 2:
+        #     # If it returned a tuple (types, count), use the first element
+        #     atom_types = atom_types[0]
+        
+        # for i in range(Ps.shape[1]):
+
+        #     atom_symbols.append(atom_types[i])
+
+        
+
+        
+
+
+        # Get substrate atom positions and types
+        substrate_pos, _ = mmff.get_atom_positions()
+        n_sub = substrate_pos.shape[0]
+        
+        # Create substrate atom types (default to Na and Cl alternating)
+        substrate_types = []
+        for j in range(n_sub):
+            if j % 2 == 0:
+                substrate_types.append("Na")
+            else:
+                substrate_types.append("Cl")
+        
+        # Save trajectory in XYZ format with both substrate and molecule
+        if len(Ps.shape) == 3:
+            xyz_file = f"{base_name}_trajectory.xyz"
+            n_mol_atoms = Ps.shape[1]
+            n_frames = len(t)
+            total_atoms = n_mol_atoms + n_sub
+            
+            with open(xyz_file, 'w') as f:
+                # Write all frames including substrate atoms
+                for i in range(n_frames):
+                    f.write(f"{total_atoms}\n")
+                    f.write(f"t = {t[i]:.3f}, E = {Es[i]:.6f} eV\n")
+                    
+                    # First write molecule atoms (which move during relaxation)
+                    for j in range(n_mol_atoms):
+                        f.write(f"{atom_types[j]} {Ps[i,j,0]:12.6f} {Ps[i,j,1]:12.6f} {Ps[i,j,2]:12.6f}\n")
+
+                    # Then write substrate atoms (fixed positions)
+                    for j in range(n_sub):
+                        f.write(f"{substrate_types[j]} {substrate_pos[j,0]:12.6f} {substrate_pos[j,1]:12.6f} {substrate_pos[j,2]:12.6f}\n")
+                    
+                    
+    
+    plt.show()
+    
+    # Create a separate 3D trajectory plot
+    plt.figure(figsize=(10, 8))
+    ax3d = plt.axes(projection='3d')
+    
+    # Plot trajectory of atom 26
+    if Ps.shape[1] >= 26:  # Check if atom 26 exists (0-based indexing)
+        ax3d.plot3D(Ps[:, 26, 0], Ps[:, 26, 1], Ps[:, 26, 2], 'red', label="Atom 26", marker='o', linestyle='-', markersize=4)
+    
+    # Plot trajectory of atom 29
+    if Ps.shape[1] >= 29:  # Check if atom 29 exists (0-based indexing)
+        ax3d.plot3D(Ps[:, 29, 0], Ps[:, 29, 1], Ps[:, 29, 2], 'blue', label="Atom 29", marker='o', linestyle='-', markersize=4)
+    
+    ax3d.set_xlabel('X')
+    ax3d.set_ylabel('Y')
+    ax3d.set_zlabel('Z')
+    ax3d.legend()
+    plt.title("3D Atom Trajectories")
+    plt.show()
+    
+    return t, Es, Ps
+
+def relax_scanPlot1D_debug(nscan=1000, span=(0.0,4.0),
+               p0=(0.0,0.0,0.0), dir=(1.0,0.0,0.0),
+               label="E_1D", saveFig=None, saveData=None,
+               bRelax=False, niter_max=10000, dt=0.05, Fconv=1e-5):
+    """
+    Debug version with extensive logging
+    """
+    # print(f"===== DEBUGGING INFO =====")
+    # print(f"Input parameters:")
+    # print(f"  nscan: {nscan}")
+    # print(f"  span: {span}")
+    # print(f"  p0: {p0}")
+    # print(f"  dir: {dir}")
+    # print(f"  bRelax: {bRelax}")
+    
+    # Create linspace array for scan direction
+    t = np.linspace(span[0], span[1], nscan, endpoint=False)
+    
+    # Prepare positions array
+    poss = np.zeros((nscan, 3))
+    
+    # Each scanned position is the starting point plus contribution along direction
+    poss[:, 0] = p0[0] + t*dir[0]
+    poss[:, 1] = p0[1] + t*dir[1]
+    poss[:, 2] = p0[2] + t*dir[2]
+    
+    print(f"Input scan positions (first 5 points):")
+    for i in range(min(5, nscan)):
+        print(f"  Point {i}: ({poss[i, 0]:.3f}, {poss[i, 1]:.3f}, {poss[i, 2]:.3f})")
+    
+    # Call the scan function using the computed positions
+    if bRelax:
+        print(f"Calling mmff.scan with bRelax=True, niter_max={niter_max}")
+        Es, Fs, Ps = mmff.scan(poss, bF=True, bP=True, bRelax=True, niter_max=niter_max, dt=dt, Fconv=Fconv)
+    else:
+        print("Calling mmff.scan with bRelax=False")
+        Es, Fs, Ps = mmff.scan(poss, bF=True, bP=True)
+    
+    print(f"Shape of returned arrays: Es={Es.shape}, Ps={Ps.shape}")
+    
+    # Deeply check Ps data
+    print(f"Ps data check:")
+    print(f"  Ps type: {type(Ps)}")
+    print(f"  Ps dtype: {Ps.dtype}")
+    print(f"  Ps min: {np.min(Ps)}, max: {np.max(Ps)}")
+    print(f"  Ps contains NaN: {np.isnan(Ps).any()}")
+    print(f"  Ps contains only zeros: {np.all(Ps == 0)}")
+    print(f"  Ps memory layout: {Ps.flags}")
+    
+    # Print some sample values from the array
+    if len(Ps.shape) == 3:
+        print(f"Sample atom positions (first 3 points):")
+        for i in range(min(3, nscan)):
+            for atom_idx in range(Ps.shape[1]):
+                print(f"  Scan point {i}, Atom {atom_idx}: ({Ps[i, atom_idx, 0]:.6f}, {Ps[i, atom_idx, 1]:.6f}, {Ps[i, atom_idx, 2]:.6f})")
+    
+    # Create a simple 1D plot of a few key values to verify data
+    plt.figure(figsize=(10, 6))
+    plt.plot(t, Es, 'b-', label="Energy")
+    
+    # Try to extract and plot direct coordinate values to debug
+    if len(Ps.shape) == 3 and Ps.shape[1] > 0:
+        atom0_z = np.array([p[0][2] for p in Ps])  # Atom 0's z-coordinate
+        plt.plot(t, atom0_z, 'r-', label="Atom 0 z-coord")
+        
+        if Ps.shape[1] > 1:  # If we have a second atom
+            atom1_z = np.array([p[1][2] for p in Ps])  # Atom 1's z-coordinate
+            plt.plot(t, atom1_z, 'g-', label="Atom 1 z-coord")
+    
+    plt.legend()
+    plt.title("Raw data check")
+    plt.grid(True)
+    plt.show()
+    
+    # Proceed with original visualization if we have valid data
+    if not np.all(Ps == 0) and not np.isnan(Ps).any():
+        # Create the figure
+        fig = plt.figure(figsize=(12, 10))
+        
+        # Energy plot
+        ax1 = fig.add_subplot(211)
+        ax1.plot(t, Es)
+        ax1.set_title(f"{label} - Energy Profile")
+        ax1.set_xlabel(f"Scan parameter")
+        ax1.set_ylabel("Energy (eV)")
+        ax1.grid(True)
+        
+        # Position plot
+        ax2 = fig.add_subplot(212)
+        
+        if len(Ps.shape) == 3 and Ps.shape[1] >= 1:
+            ax2.plot(t, Ps[:, 0, 0], 'r-', label="Atom 0 x")
+            ax2.plot(t, Ps[:, 0, 1], 'g-', label="Atom 0 y")
+            ax2.plot(t, Ps[:, 0, 2], 'b-', label="Atom 0 z")
+            
+            if Ps.shape[1] >= 2:
+                ax2.plot(t, Ps[:, 1, 0], 'r--', label="Atom 1 x")
+                ax2.plot(t, Ps[:, 1, 1], 'g--', label="Atom 1 y")
+                ax2.plot(t, Ps[:, 1, 2], 'b--', label="Atom 1 z")
+        
+        ax2.set_title("Atom Positions During Scan")
+        ax2.set_xlabel("Scan parameter")
+        ax2.set_ylabel("Position (Å)")
+        ax2.legend()
+        ax2.grid(True)
+        
+        plt.tight_layout()
+        plt.show()
+    else:
+        print("WARNING: Ps array contains invalid data - skipping main visualization")
+    
+    return t, Es, Ps
+
+def visualize_molecular_trajectory(t, Ps, sample_indices=None):
+    """
+    Visualize the molecular trajectory during a scan.
+    
+    Parameters:
+    - t: scan parameter values
+    - Ps: position array with shape (n_scan_points, n_atoms, 3)
+    - sample_indices: indices to plot (default: 5 evenly spaced points)
+    """
+    if sample_indices is None:
+        # Choose 5 evenly spaced indices by default
+        sample_indices = np.linspace(0, len(t)-1, 5, dtype=int)
+    
+    # Determine the shape
+    n_scan_points, n_atoms, n_coords = Ps.shape
+    
+    # Create 3D plot
+    fig = plt.figure(figsize=(12, 10))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # Plot molecular structure at each sampled point
+    cmap = plt.cm.jet
+    colors = [cmap(i) for i in np.linspace(0, 1, len(sample_indices))]
+    
+    for idx, sample_idx in enumerate(sample_indices):
+        # Plot atoms for this scan point with proper color
+        c = colors[idx]
+        ax.scatter(Ps[sample_idx, :, 0], 
+                  Ps[sample_idx, :, 1], 
+                  Ps[sample_idx, :, 2],
+                  color=c, s=50, label=f"t={t[sample_idx]:.2f}")
+        
+        # Connect atoms with lines to show molecular structure
+        for i in range(n_atoms):
+            for j in range(i+1, n_atoms):
+                ax.plot([Ps[sample_idx, i, 0], Ps[sample_idx, j, 0]],
+                       [Ps[sample_idx, i, 1], Ps[sample_idx, j, 1]],
+                       [Ps[sample_idx, i, 2], Ps[sample_idx, j, 2]],
+                       color=c, alpha=0.5)
+    
+    # Also plot the trajectory of each atom across all scan points
+    for atom_idx in range(n_atoms):
+        ax.plot(Ps[:, atom_idx, 0], 
+               Ps[:, atom_idx, 1], 
+               Ps[:, atom_idx, 2], 
+               'k-', alpha=0.2)
+    
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.legend()
+    plt.title("Molecular structure at different scan points")
+    
+    plt.tight_layout()
+    plt.show()
+
+
+def visualize_relaxed_structures(t, Ps, n_structures=None, bond_length_threshold=2.0):
+    """
+    Visualize the final relaxed molecular structures at different scan points.
+    
+    Parameters:
+    - t: scan parameter values
+    - Ps: position array with shape (n_scan_points, n_atoms, 3)
+    - n_structures: number of structures to visualize (default: all structures)
+    - bond_length_threshold: maximum distance to consider atoms as bonded (in Angstroms)
+    """
+    n_scan_points = Ps.shape[0]
+    
+    if n_structures is None:
+        # If not specified, show all structures
+        n_structures = n_scan_points
+        indices = np.arange(n_scan_points)
+    else:
+        # Create evenly spaced indices based on desired number of structures
+        indices = np.linspace(0, n_scan_points-1, n_structures, dtype=int)
+    
+    # Create 3D plot
+    fig = plt.figure(figsize=(12, 10))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # Plot molecular structure at each sampled point
+    cmap = plt.cm.jet
+    colors = [cmap(i) for i in np.linspace(0, 1, len(indices))]
+    
+    for idx, scan_idx in enumerate(indices):
+        # Plot atoms for this scan point with proper color
+        c = colors[idx]
+        positions = Ps[scan_idx]
+        
+        # Plot atoms
+        ax.scatter(positions[:, 0], 
+                  positions[:, 1], 
+                  positions[:, 2],
+                  color=c, s=1, label=f"z = {t[scan_idx]:.2f} Å")
+        
+        # Connect atoms to all their first nearest neighbors
+        for i in range(positions.shape[0]):
+            # Calculate distances to all other atoms
+            distances = np.sqrt(np.sum((positions - positions[i])**2, axis=1))
+            distances[i] = np.inf  # Exclude self
+            
+            # Find all neighbors within the threshold distance
+            neighbors = np.where(distances < bond_length_threshold)[0]
+            
+            # Draw bonds to all nearest neighbors
+            for neighbor in neighbors:
+                if i < neighbor:  # Avoid double drawing
+                    ax.plot([positions[i, 0], positions[neighbor, 0]],
+                           [positions[i, 1], positions[neighbor, 1]],
+                           [positions[i, 2], positions[neighbor, 2]],
+                           color=c, alpha=0.5)
+    
+    ax.set_xlabel('X (Å)')
+    ax.set_ylabel('Y (Å)')
+    ax.set_zlabel('Z (Å)')
+    ax.legend()
+    plt.title("Final relaxed structures at different scan points")
+    
+    # Set equal aspect ratio
+    ax.set_box_aspect([1,1,1])
+    
+    plt.tight_layout()
+    plt.show()
 
 ########## 2D Scan #####################################################
-def scanPlot2D(nscan1=1000, nscan2=1000, span1=(0.0,4.0), span2=(0.0,4.0),
+def scanPlot2D_uff(nscan1=1000, nscan2=1000, span1=(0.0,4.0), span2=(0.0,4.0),
                p0=(0.0,0.0,0.0), dir1=(1.0,0.0,0.0), dir2=(0.0,1.0,0.0),
-               label="E_2D", saveFig=None, saveData=None):
+               label="E_2D_UFF", saveFig=None, saveData=None):
+    """
+    Perform a 2D scan using rigid UFF across two directions.
+    
+    Args:
+        nscan1 (int): Number of scan points in first direction
+        nscan2 (int): Number of scan points in second direction
+        span1 (tuple): Distance range to scan in first direction (min, max)
+        span2 (tuple): Distance range to scan in second direction (min, max)
+        dir1 (tuple): First direction vector for the scan
+        dir2 (tuple): Second direction vector for the scan
+        p0 (tuple): Starting position
+        label (str): Label for the plot
+        saveFig (str): Path to save figure
+        saveData (str): Path to save data
+    
+    Returns:
+        tuple: (energies, x_grid, y_grid) - 2D energy array and coordinate grids
+    """
+    # Create coordinate arrays for the scan
     # Create linspace arrays for both scan directions
     t1 = np.linspace(span1[0], span1[1], nscan1, endpoint=False)
     t2 = np.linspace(span2[0], span2[1], nscan2, endpoint=False)
     
-    # Generate a meshgrid for these parameters.
-    # 'indexing="ij"' ensures that T1 corresponds to the first dimension and T2 to the second.
+    # Generate a meshgrid for these parameters
     T1, T2 = np.meshgrid(t1, t2, indexing="ij")
     
-    # Prepare an array for positions with shape (nscan1*nscan2, 3)
+    # Prepare positions array
     poss = np.zeros((nscan1*nscan2, 3))
     
-    # Each scanned position is the starting point plus contributions along two directions:
-    # p = p0 + t1*dir1 + t2*dir2 for each point in the grid.
+    # Each scanned position is the starting point plus contributions along two directions
     poss[:, 0] = p0[0] + T1.ravel()*dir1[0] + T2.ravel()*dir2[0]
     poss[:, 1] = p0[1] + T1.ravel()*dir1[1] + T2.ravel()*dir2[1]
     poss[:, 2] = p0[2] + T1.ravel()*dir1[2] + T2.ravel()*dir2[2]
     
     # Call the scan function using the computed positions.
-    Es, Fs, Ps = mmff.scan(poss, bF=True, bP=True)
+ 
+    Es, Fs, Ps = mmff.scan_rigid_uff(poss, bF=True, bP=True)
     
-    # Reshape the energies into a 2D grid matching the T1, T2 shape.
+    # Reshape the energies into a 2D grid matching the T1, T2 shape
     Egrid = Es.reshape(nscan1, nscan2)
     
     # Create a contour plot for the 2D energy scan.
@@ -71,22 +691,108 @@ def scanPlot2D(nscan1=1000, nscan2=1000, span1=(0.0,4.0), span2=(0.0,4.0),
     plt.title(label)
     plt.xlabel(f"Scan parameter along ({dir1[0]}_{dir1[1]}_{dir1[2]}) direction")
     plt.ylabel(f"Scan parameter along ({dir2[0]}_{dir2[1]}_{dir2[2]}) direction")
-    # plt.show()
 
-        # Optionally, save the figure.
     if saveFig is not None:
         plt.savefig(saveFig)
-    
-    # Optionally, save the 2D scan data to a text file that you can later plot with gnuplot.
-    # The file will contain three columns: t1, t2, and Energy.
     if saveData is not None:
-        data = np.column_stack((T1.ravel(), T2.ravel(), Es.ravel()))
-        np.savetxt(saveData, data, header="t1\tt2\tEnergy", comments="# ")
+        # Save in 3-column format: x, y, E
+        data_out = np.column_stack((T1.ravel(), T2.ravel(), Es))
+        header = f"# Scan coordinates along:\n# dir1: {dir1}\n# dir2: {dir2}\n# x\ty\tEnergy(eV)"
+        np.savetxt(saveData, data_out, header=header, comments='')
     plt.show()
 
+def relax_scanPlot2D(nscan1=1000, nscan2=1000, span1=(0.0,4.0), span2=(0.0,4.0),
+               p0=(0.0,0.0,0.0), dir1=(1.0,0.0,0.0), dir2=(0.0,1.0,0.0),
+               label="E_2D", saveFig=None, saveData=None,
+               bRelax=False, niter_max=10000, dt=0.05, Fconv=1e-5):
+    # Create linspace arrays for both scan directions
+    t1 = np.linspace(span1[0], span1[1], nscan1, endpoint=False)
+    t2 = np.linspace(span2[0], span2[1], nscan2, endpoint=False)
+    
+    # Generate a meshgrid for these parameters
+    T1, T2 = np.meshgrid(t1, t2, indexing="ij")
+    
+    # Prepare positions array
+    poss = np.zeros((nscan1*nscan2, 3))
+    
+    # Each scanned position is the starting point plus contributions along two directions
+    poss[:, 0] = p0[0] + T1.ravel()*dir1[0] + T2.ravel()*dir2[0]
+    poss[:, 1] = p0[1] + T1.ravel()*dir1[1] + T2.ravel()*dir2[1]
+    poss[:, 2] = p0[2] + T1.ravel()*dir1[2] + T2.ravel()*dir2[2]
+    
+    # Call the scan function using the computed positions.
+    if bRelax:
+        Es, Fs, Ps = mmff.scan(poss, bF=True, bP=True, bRelax=True, niter_max=niter_max, dt=dt, Fconv=Fconv)
+    else:
+        Es, Fs, Ps = mmff.scan(poss, bF=True, bP=True)
+    
+    # Reshape the energies into a 2D grid matching the T1, T2 shape
+    Egrid = Es.reshape(nscan1, nscan2)
+    
+    # Create a contour plot for the 2D energy scan.
+    plt.figure()
+    cp = plt.contourf(T1, T2, Egrid, levels=20, cmap="viridis")
+    plt.colorbar(cp)
+    plt.title(label)
+    plt.xlabel(f"Scan parameter along ({dir1[0]}_{dir1[1]}_{dir1[2]}) direction")
+    plt.ylabel(f"Scan parameter along ({dir2[0]}_{dir2[1]}_{dir2[2]}) direction")
+
+    if saveFig is not None:
+        plt.savefig(saveFig)
+    if saveData is not None:
+        # Save in 3-column format: x, y, E
+        data_out = np.column_stack((T1.ravel(), T2.ravel(), Es))
+        header = f"# Scan coordinates along:\n# dir1: {dir1}\n# dir2: {dir2}\n# x\ty\tEnergy(eV)"
+        np.savetxt(saveData, data_out, header=header, comments='')
+    plt.show()
+
+def scanPlot2D(nscan1=1000, nscan2=1000, span1=(0.0,4.0), span2=(0.0,4.0),
+               p0=(0.0,0.0,0.0), dir1=(1.0,0.0,0.0), dir2=(0.0,1.0,0.0),
+               label="E_2D", saveFig=None, saveData=None):
+    # Create linspace arrays for both scan directions
+    t1 = np.linspace(span1[0], span1[1], nscan1, endpoint=False)
+    t2 = np.linspace(span2[0], span2[1], nscan2, endpoint=False)
+    
+    # Generate a meshgrid for these parameters
+    T1, T2 = np.meshgrid(t1, t2, indexing="ij")
+    
+    # Prepare positions array
+    poss = np.zeros((nscan1*nscan2, 3))
+    
+    # Each scanned position is the starting point plus contributions along two directions
+    poss[:, 0] = p0[0] + T1.ravel()*dir1[0] + T2.ravel()*dir2[0]
+    poss[:, 1] = p0[1] + T1.ravel()*dir1[1] + T2.ravel()*dir2[1]
+    poss[:, 2] = p0[2] + T1.ravel()*dir1[2] + T2.ravel()*dir2[2]
+    
+    # Call the scan function using the computed positions.
+ 
+    Es, Fs, Ps = mmff.scan(poss, bF=True, bP=True)
+    
+    # Reshape the energies into a 2D grid matching the T1, T2 shape
+    Egrid = Es.reshape(nscan1, nscan2)
+    
+    # Create a contour plot for the 2D energy scan.
+    plt.figure()
+    cp = plt.contourf(T1, T2, Egrid, levels=20, cmap="viridis")
+    plt.colorbar(cp)
+    plt.title(label)
+    plt.xlabel(f"Scan parameter along ({dir1[0]}_{dir1[1]}_{dir1[2]}) direction")
+    plt.ylabel(f"Scan parameter along ({dir2[0]}_{dir2[1]}_{dir2[2]}) direction")
+
+    if saveFig is not None:
+        plt.savefig(saveFig)
+    if saveData is not None:
+        # Save in 3-column format: x, y, E
+        data_out = np.column_stack((T1.ravel(), T2.ravel(), Es))
+        header = f"# Scan coordinates along:\n# dir1: {dir1}\n# dir2: {dir2}\n# x\ty\tEnergy(eV)"
+        np.savetxt(saveData, data_out, header=header, comments='')
+    plt.show()
 #======== Body ###########
 
-mmff.setVerbosity( verbosity=1, idebug=1 )
+mmff.setVerbosity( verbosity=2, idebug=1 )
+
+
+################################### Molecule and Substrate Selection##############################################
 
 #mmff.init( xyz_name="data/xyz/pyridine", surf_name="data/NaCl_1x1_L2" )    
 #mmff.init( xyz_name="data/xyz/nHexadecan_dicarboxylic", bMMFF=True  )     
@@ -105,7 +811,10 @@ mmff.setVerbosity( verbosity=1, idebug=1 )
 
 # mmff.init( xyz_name="data/xyz/PTCDA", surf_name="data/xyz/NaCl_coulomb.iz0" )
 
-mmff.init( xyz_name="data/xyz/PTCDA_paolo", surf_name="data/xyz/NaCl.ptcda" )
+# mmff.init( xyz_name="data/xyz/PTCDA_paolo", surf_name="data/xyz/NaCl.ptcda" )
+
+# mmff.init( xyz_name="data/xyz/PTCDA_charge_paolo", surf_name="data/xyz/NaCl_paolo" )
+# mmff.init( xyz_name="data/xyz/ptcda_charge", surf_name="data/xyz/NaCl_paolo" )
 
 
 # mmff.init( xyz_name="data/xyz/molNaCl_Na.iz0", surf_name="data/xyz/NaCl_coulomb.iz0" )
@@ -115,29 +824,79 @@ mmff.init( xyz_name="data/xyz/PTCDA_paolo", surf_name="data/xyz/NaCl.ptcda" )
 # mmff.init( xyz_name="data/xyz/2_atom_NaCl_mol", surf_name="data/xyz/2_atom_NaCl" )
 
 
+###***** NaCl Molecule #################
+# mmff.init( xyz_name="data/xyz/molNa_0.9_Cl_-0.9_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
+# mmff.init( xyz_name="data/xyz/molNa_0.9_Cl_-0.9_Cl", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
+# mmff.init( xyz_name="data/xyz/molNa_0.9_Cl_-0.9", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
+# mmff.init( xyz_name="data/xyz/molNa_0.9_Cl_-0.9_xy", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
+# mmff.init( xyz_name="data/xyz/H2O", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
 
 
-'''
-Debug :: REQs = [[1.4915     0.03606831 0.         0.        ]] For Na single atom substrate  Na.iz0.xyz
-Debug :: REQs = [[1.9735     0.09921518 0.         0.        ]] For Cl single atom substrate  Cl.iz0.xyz
+############### PTCDA On NaCl +0.9 -0.9 ##############
+# mmff.init( xyz_name="data/xyz/new_PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9" , bUFF=True, bSimple=True )   ### For uff relaxed scan the bUFF has to be true
 
 
-MolWorld_sp3::scan_rigid()[ia=0] pos(  0.0000,  0.0000,  7.1569) REQ(  1.9255,      0.06747763,  0.0000,  0.0000) PLQd(     21.77017471,      1.21202304,      0.00000000,      0.00000000)
-MolWorld_sp3::scan_rigid()[ia=0] pos(  0.0000,  0.0000,  7.1569) REQ(  1.9255,      0.06747763,  0.0000,  0.0000) PLQd(     21.77017471,      1.21202304,      0.00000000,      0.00000000)
+# mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )
 
-'''
+# mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na_relax", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/PTCDA_final", surf_name="data/xyz/NaCl_8x8_L3_final", bUFF=True, bSimple=True ) 
+
+
+mmff.init( xyz_name="data/xyz/old_mol_old_sub_PTCDA", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/new_mol_old_sub_PTCDA", surf_name="data/xyz/NaCl_old", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/new_mol_new_sub_PTCDA", surf_name="data/xyz/NaCl_8x8_L3_final", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/old_mol_new_sub_PTCDA", surf_name="data/xyz/NaCl_8x8_L3_final", bUFF=True, bSimple=True )
+
+# mmff.init( xyz_name="data/xyz/old_Na_atom", surf_name="data/xyz/NaCl_old", bUFF=True, bSimple=True )
+# # mmff.init( xyz_name="data/xyz/new_Na_atom", surf_name="data/xyz/NaCl_8x8_L3_final", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/exp_Na_atom", surf_name="data/xyz/exp_NaCl", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/exp_PTCDA", surf_name="data/xyz/exp_NaCl", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/N2", surf_name="data/xyz/exp_NaCl", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/N2", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )
+
+# mmff.init( xyz_name="data/xyz/asym_Na_atom", surf_name="data/xyz/asym_NaCl", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/extrm_Na_atom", surf_name="data/xyz/extrm_NaCl", bUFF=True, bSimple=True )
+
+
+# mmff.init( xyz_name="data/xyz/PTCDA_final", surf_name="data/xyz/new_Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )
+
+# mmff.init( xyz_name="data/xyz/ptcda_new_rigid", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )  
+# mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na_relax", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9" )   
+# mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Cl", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
+# mmff.init( xyz_name="data/xyz/PTCDA_charge_on_hollow", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
+# mmff.init( xyz_name="data/xyz/PTCDA_charge_xy", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
+# print("After init: ", mmff.ndims if hasattr(mmff, 'ndims') else "ndims not set yet")
+
+# mmff.init( xyz_name="data/xyz/noQ_H2O", surf_name="data/xyz/NaCl_1x1_L1", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/H2O", surf_name="data/xyz/NaCl_1x1_L1", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9_Cl_hole_3", bUFF=True, bSimple=True ) 
+####################################################################################################################################
 
 mmff.getBuffs()
+# print("After getBuffs: ndims=", mmff.ndims)
+# print("natoms=", mmff.natoms, "nnode=", mmff.nnode, "ncap=", mmff.ncap)
+# mmff.ipicked = 30
 
-#print( "ffflags ", mmff.ffflags )
+print( "ffflags ", mmff.ffflags )
 
-mmff.setSwitches( NonBonded=-1, MMFF=-1, SurfAtoms=0, GridFF=1 )
+mmff.setSwitches2( NonBonded=1, MMFF=1, SurfAtoms=1, GridFF=1 )   ### For Relaxed Scan MMFF has to be 1 
+# mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=0, GridFF=1 )   ### For Relaxed Scan MMFF has to be 1 
+# mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=1, GridFF=1 )   #### For Rigid Scan to make ay of the flag noneffective eed to set -1 0 will not work 
 
 
-mmff.PLQs[:,0] = 0.0  # delete Pauli
-mmff.PLQs[:,1] = 0.0  # delete London
+################# Mode Decision Morse Coulomb #######################################################################################################################
+# mmff.PLQs[:,0] = 0.0  # delete Pauli
+# mmff.PLQs[:,1] = 0.0  # delete London
+
 # mmff.PLQs[:,2 ] = 0.0 # delete Coulomb (charges)
 
+###################################################################################################################################################
+
+
+
+
+######################################################################################## 1D Scan Plotting #########################################
 # scanPlot( nscan=10, span=(0.0,4.0), dir=(1.0,0.0,0.0), p0=(0.0,0.0,0.0),  label="E_x", saveFig="E_x_scan.png", saveData="E_x_scan.dat")
 # scanPlot( nscan=1000, span=(0.0,4.0), dir=(0.0,1.0,0.0), p0=(0.0,0.0,0.0),  label="E_y", saveFig="E_y_scan.png", saveData="E_y_scan.dat" )
 
@@ -152,7 +911,7 @@ mmff.PLQs[:,1] = 0.0  # delete London
 # scanPlot( nscan=100, span=(3,10), dir=(0.0,0.0,1.0), p0=(0.0,0.0,5.656854), label="PTCDA z0=0", saveFig="E_z_scan_PTCDA_Ewald.png", saveData="E_z_scan_PTCDA_Ewald.dat" )
 
 # scanPlot( nscan=100, span=(3,10), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA", saveFig="E_z_scan_PTCDA_Ewald_new_Direct.png", saveData="E_z_scan_PTCDA_Ewald_new_Direct.dat" )
-scanPlot( nscan=100, span=(3,10), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA", saveFig="E_z_scan_PTCDA_Ewald_new_trial.png", saveData="E_z_scan_PTCDA_Ewald_new_trial.dat" )
+# scanPlot( nscan=100, span=(3,10), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA", saveFig="E_z_scan_PTCDA_Ewald_new_trial.png", saveData="E_z_scan_PTCDA_Ewald_new_trial.dat" )
 # scanPlot( nscan=100, span=(3,10), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA", saveFig="E_z_scan_PTCDA_Morse_new.png", saveData="E_z_scan_PTCDA_Morse_new.dat" )
 
 # scanPlot( nscan=101, span=(3,8.3), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), label="Atop_Na", saveFig="E_z_scan_Atop_Na_Ewald.png", saveData="E_z_scan_Atop_Na_Ewald.dat" )
@@ -163,17 +922,171 @@ scanPlot( nscan=100, span=(3,10), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCD
 
 # scanPlot( nscan=100, span=(0,20), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), label="Atop_Na", saveFig="E_z_scan_2atom_NaCl_Ewald.png", saveData="E_z_scan_2atom_NaCl_Ewald.dat" )
 
-# # For add pos0+ adjust(1.5) -4.9,4.5, 
-# 2.35,8.5  
-# # For sub pos0 only 8,12.157
-#add pos0 only -3.5,4.5
-# 1.9255
-##################
+# scanPlot( nscan=100, span=(2.6,10), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_NaCl.png", saveData="E_z_scan_on_Na_PTCDA_NaCl.dat" )
+# scanPlot( nscan=100, span=(2.6,10), dir=(0.0,0.0,1.0), p0=(2.0,2.0,0), label="PTCDA on Cl", saveFig="E_z_scan_on_Cl_PTCDA_NaCl.png", saveData="E_z_scan_on_Cl_PTCDA_NaCl.dat" )
+
+################******************* NaCl
+# scanPlot( nscan=150, span=(1.5,16.5), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="NaCl_mol on Na", saveFig=None, saveData="trial_E_z_scan_on_Na_mol_NaCl_Morse.dat" )
+# scanPlot( nscan=150, span=(1.5,16.5), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="NaCl_mol on Na", saveFig="E_z_scan_on_Na_mol_NaCl_Morse.png", saveData="E_z_scan_on_Na_mol_NaCl_Morse.dat" )
+# scanPlot( nscan=150, span=(1.5,16.5), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="NaCl_mol on Na", saveFig="E_z_scan_on_Na_mol_NaCl_Coulomb.png", saveData="E_z_scan_on_Na_mol_NaCl_Coulomb.dat" )
+#scanPlot( nscan=150, span=(1.5,16.5), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="NaCl_mol on Na", saveFig="E_z_scan_on_Na_mol_NaCl_Morse_Coulomb.png", saveData="E_z_scan_on_Na_mol_NaCl_Morse_Coulomb.dat" )
+
+# scanPlot( nscan=150, span=(1.5,16.5), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="NaCl_mol on Cl", saveFig="E_z_scan_on_Cl_mol_NaCl_Morse.png", saveData="E_z_scan_on_Cl_mol_NaCl_Morse.dat" )
+# scanPlot( nscan=150, span=(1.5,16.5), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="NaCl_mol on Cl", saveFig="E_z_scan_on_Cl_mol_NaCl_Coulomb.png", saveData="E_z_scan_on_Cl_mol_NaCl_Coulomb.dat" )
+# scanPlot( nscan=150, span=(1.5,16.5), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="NaCl_mol on Cl", saveFig="E_z_scan_on_Cl_mol_NaCl_Morse_Coulomb.png", saveData="E_z_scan_on_Cl_mol_NaCl_Morse_Coulomb.dat" )
+
+# scanPlot( nscan=150, span=(1.5,16.5), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="NaCl_mol on hollow", saveFig="E_z_scan_on_hollow_mol_NaCl_Morse.png", saveData="E_z_scan_on_hollow_mol_NaCl_Morse.dat" )
+# scanPlot( nscan=150, span=(1.5,16.5), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="NaCl_mol on hollow", saveFig="E_z_scan_on_hollow_mol_NaCl_Coulomb.png", saveData="E_z_scan_on_hollow_mol_NaCl_Coulomb.dat" )
+# scanPlot( nscan=150, span=(1.5,16.5), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="NaCl_mol on hollow", saveFig="E_z_scan_on_hollow_mol_NaCl_Morse_Coulomb.png", saveData="E_z_scan_on_hollow_mol_NaCl_Morse_Coulomb.dat" )
+
+
+################*******************Scan MMFF PTCDA*****************************
+# scanPlot( nscan=125, span=(2.0,14.5), dir=(1.0,1.0,0.0), p0=(0.0,0.0,2.7), label="O on Na", saveFig="E_z_scan_on_Na_O_Morse.png", saveData="gpu_xy_E_z_scan_on_Na_O_Morse.dat" )
+# scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Morse.png", saveData="E_z_scan_on_Na_PTCDA_Morse.dat" )
+# scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Coulomb.png", saveData="E_z_scan_on_Na_PTCDA_Coulomb.dat" )
+# scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Morse_Coulomb.png", saveData="E_z_scan_on_Na_PTCDA_Morse_Coulomb.dat" )
+
+
+##***************************** Scan UFF PTCDA 1D****************   
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), label="PTCDA on Na", saveFig="uff_E_z_scan_on_Na_PTCDA_Morse.png", saveData="uff_E_z_scan_on_Na_PTCDA_Morse.dat" )
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(-0.0,-0.0,0.0), label="PTCDA on Na", saveFig="test_gpu_uff_E_z_scan_on_Na_PTCDA_Coulomb.png", saveData="test_gpu_uff_E_z_scan_on_Na_PTCDA_Coulomb.dat" )
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.png", saveData="uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.dat" )
+
+# scanPlot_uff( nscan=140, span=(1.5,15.6), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="H2o on Na", saveFig="test_gpu_uff_E_z_scan_on_Na_PTCDA_Morse.png", saveData="test_gpu_uff_E_z_scan_on_Na_PTCDA_Morse.dat" )
+# scanPlot_uff( nscan=140, span=(1.5,15.6), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="H2o on Na", saveFig="test_gpu_uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.png", saveData="test_gpu_uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.dat" )
+# scanPlot_uff( nscan=140, span=(1.5,15.6), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="H2o on Na", saveFig="trial_test_gpu_uff_E_z_scan_on_Na_PTCDA_Coulomb.png", saveData="trial_test_gpu_uff_E_z_scan_on_Na_PTCDA_Coulomb.dat" )
+
+# scanPlot_uff( nscan=140, span=(1.5,15.6), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="H2o on Na", saveFig="test_cpu_uff_E_z_scan_on_Na_PTCDA_Morse.png", saveData="test_cpu_uff_E_z_scan_on_Na_PTCDA_Morse.dat" )
+# scanPlot_uff( nscan=140, span=(1.5,15.6), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="H2o on Na", saveFig="test_cpu_uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.png", saveData="test_cpu_uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.dat" )
+# scanPlot_uff( nscan=140, span=(1.5,15.6), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="H2o on Na", saveFig="test_cpu_uff_E_z_scan_on_Na_PTCDA_Coulomb.png", saveData="test_cpu_uff_E_z_scan_on_Na_PTCDA_Coulomb.dat" )
+
+
+# scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Cl", saveFig="E_z_scan_on_Cl_PTCDA_Morse.png", saveData="E_z_scan_on_Cl_PTCDA_Morse.dat" )
+# scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Cl", saveFig="E_z_scan_on_Cl_PTCDA_Coulomb.png", saveData="E_z_scan_on_Cl_PTCDA_Coulomb.dat" )
+# scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Cl", saveFig="E_z_scan_on_Cl_PTCDA_Morse_Coulomb.png", saveData="E_z_scan_on_Cl_PTCDA_Morse_Coulomb.dat" )
+
+# scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on hollow", saveFig="E_z_scan_on_hollow_PTCDA_Morse.png", saveData="E_z_scan_on_hollow_PTCDA_Morse.dat" )
+# scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on hollow", saveFig="E_z_scan_on_hollow_PTCDA_Coulomb.png", saveData="E_z_scan_on_hollow_PTCDA_Coulomb.dat" )
+# scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on hollow", saveFig="E_z_scan_on_hollow_PTCDA_Morse_Coulomb.png", saveData="E_z_scan_on_hollow_PTCDA_Morse_Coulomb.dat" )
+##************************* Final Scans *****************************************
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), label="PTCDA on Na", saveFig="final_uff_E_z_scan_on_Na_PTCDA_Morse.png", saveData="final_uff_E_z_scan_on_Na_PTCDA_Morse.dat" )
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(-0.0,-0.0,0.0), label="PTCDA on Na", saveFig="final_uff_E_z_scan_on_Na_PTCDA_Coulomb.png", saveData="final_uff_E_z_scan_on_Na_PTCDA_Coulomb.dat" )
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig="final_uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.png", saveData="morse_new2_final_uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.dat" )
+
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData=None )
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="new_mol_old_sub_total.dat" )
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="new_mol_new_sub_total.dat" )
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="old_mol_new_sub_total.dat" )
+
+
+# shift_x = -(0.1 - 0.09935) * 31.792 / 2  # Half the difference across the entire substrate
+# shift_y = -(0.1 - 0.09935) * 31.792 / 2
+# shift_x =0
+# shift_y=0
+
+# scanPlot_uff( nscan=133, span=(1.8,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="Na", saveFig=None, saveData="old_Na_atom.dat" )
+# scanPlot_uff( nscan=133, span=(1.8,15.1), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="Na", saveFig=None, saveData="new_Na_atom.dat" )
+
+# scanPlot_uff( nscan=133, span=(1.8,15.1), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="Na", saveFig=None, saveData="exp_new_Na_atom.dat" )
+
+# scanPlot_uff( nscan=133, span=(1.8,15.1), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="Na", saveFig=None, saveData="asym_new_Na_atom.dat" )
+# scanPlot_uff( nscan=133, span=(1.8,15.1), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="Na", saveFig=None, saveData="extrm_asym_new_Na_atom.dat" )
+
+
+# scanPlot_uff( nscan=142, span=(0.9,15.1), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="N2_morse", saveFig=None, saveData="N2_morse.dat" )
+# scanPlot_uff( nscan=142, span=(0.9,15.1), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="N2_coulomb", saveFig=None, saveData="N2_coul.dat" )
+# scanPlot_uff( nscan=142, span=(0.9,6.1), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="N2_total", saveFig=None, saveData="N2_total.dat" )
+# scanPlot_uff( nscan=306, span=(0.9,7.02), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="N2_total", saveFig=None, saveData="N2_total.dat" )
+
+# scanPlot_uff( nscan=306, span=(0.9,7.02), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="N2_total", saveFig=None, saveData="N2_total_nice_sub.dat" )
+# scanPlot_uff( nscan=142, span=(0.9,15.1), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="N2_total", saveFig=None, saveData="01_N2_total_nice_sub.dat" )
+
+# scanPlot_uff( nscan=121, span=(0.0,12.02116858971611587752), dir=(1.0,0.0,0.0), p0=(shift_x,shift_y,1.5), label="X_N2_morse", saveFig=None, saveData="X_N2_morse.dat" )
+# scanPlot_uff( nscan=121, span=(0.0,12.02116858971611587752), dir=(1.0,0.0,0.0), p0=(shift_x,shift_y,1.5), label="X_N2_coulomb", saveFig=None, saveData="X_N2_coul.dat" )
+# scanPlot_uff( nscan=121, span=(0.0,12.02116858971611587752), dir=(1.0,0.0,0.0), p0=(shift_x,shift_y,1.5), label="X_N2_total", saveFig=None, saveData="X_N2_total.dat" )
+# #11.92182008897466037440
+#0.09934850074145550312
+
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="new_mol_new1_sub_total.dat" )
+
+# scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData=None )
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="exp_new_molecule_substrate_coul.dat" )
+# scanPlot_uff( nscan=121, span=(0,12.021168589716126598), dir=(1.0,0.0,0.0), p0=(0,0,3.3), label="PTCDA on Na", saveFig=None, saveData="X_exp_new_molecule_substrate_coul.dat" )
+# scanPlot_uff( nscan=121, span=(0,12.021168589716126598), dir=(1.0,0.0,0.0), p0=(0,0,3.3), label="PTCDA on Na", saveFig=None, saveData="X_exp_new_molecule_substrate_morse.dat" )
+# scanPlot_uff( nscan=121, span=(0,12.021168589716126598), dir=(1.0,0.0,0.0), p0=(0,0,3.3), label="PTCDA on Na", saveFig=None, saveData="X_exp_new_molecule_substrate_total.dat" )
+
+
+# (2*0.09935)
+# import gc
+# gc.disable()
+
+###########********************* Relax 1D
+# t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+2.6)), label="PTCDA on Na", saveFig=None, saveData=None,niter_max=100 )   
+# t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(2.6,15.1),  dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+0)), label="PTCDA on Na", saveFig=None, saveData="new_substrate_trial_relax_scan_ptcda_test_morse",
+#                         niter_max=100000,Fconv=1e-3,dt=0.02 )  ### z scan dt 0.05 is giving energy in the order of less than 100 but for more smaller step it is giving absolute energy in the order of 1e7 and greater value of like 0.1 is giving random values 0.1 is to match with LAMMPs 0.001femto
+
+#As per new lammps setup 
+# t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=201, span=(1.3,21.4),  dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+0)), label="PTCDA on Na", saveFig=None, saveData="new_substrate_trial_relax_scan_ptcda_test_total",
+#                         niter_max=100000,Fconv=1e-3,dt=0.02 ) 
+
+## For certain angle 221
+t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=357, span=(0.0,35.7),  dir=(2.0,1.0,0.0), p0=(0.0,0.0,(2.8)), label="PTCDA on Na", saveFig=None, saveData="new_substrate_trial_relax_scan_ptcda_test_total_angle_210",
+                        niter_max=100000,Fconv=1e-3,dt=0.02 ) 
+
+
+# # Visualize trajectory
+# visualize_molecular_trajectory(t, Ps)
+# visualize_relaxed_structures(t, Ps,n_structures=25)
+
+
+######Add these lines at the end of your script
+# plt.close('all')  # Close all matplotlib figures
+# gc.enable()
+# gc.collect()      # Force garbage collection
+
+"""
+The time i FireCore is            1.0180506e-14 s   
+
+In lammps using 0.001 pico second == 1e-15 second 
+In lammps they are using fire algorithm which can gradually decrease the time step if it detects instability in the system dynamics.
+
+
+sed -i 's/\xEF\xBB\xBF//g' /home/indranil/git/FireCore/cpp/common/molecular/MolWorld_sp3.h
+
+real	77m33.584s
+user	76m30.038s
+sys	0m5.760s
+
+9.467951 -5.65
+
+"""
+
+
+
+# LLAMPS TIME 1D relaxed scan o top of Na aotm 
+# real	183m28.087s
+# user	182m25.173s
+# sys	0m6.427s
+
+########################################### 2D Scan Plotting #########################################
+# scanPlot2D_uff(nscan1=41, nscan2=41,
+#             span1=(0.0, 4.1), span2=(0.0, 4.1),
+#             dir1=(1.0,0.0,0.0), dir2=(0.0,1.0,0.0),
+#             p0=(0.0,0.0,3.3), label="E_xy for z=2.0", #) #,
+#             saveFig=None, saveData=None)
+
+
 # scanPlot2D(nscan1=41, nscan2=41,
 #            span1=(0.0, 4.1), span2=(0.0, 4.1),
 #            dir1=(1.0,0.0,0.0), dir2=(0.0,1.0,0.0),
-#            p0=(0.0,0.0,3.4), label="E_xy for z=3.4",
-#            saveFig="E_xy_scan_mol_NaCl.png", saveData="E_xy_scan_mol_NaCl.dat")
+#            p0=(0.0,0.0,2.0), label="E_xy for z=2.0", #) #,
+#            saveFig="E_xy_scan_mol_NaCl_Morse.png", saveData="E_xy_scan_mol_NaCl_Morse.dat")
+
+# scanPlot2D(nscan1=41, nscan2=41,
+#            span1=(0.0, 4.1), span2=(0.0, 4.1),
+#            dir1=(1.0,0.0,0.0), dir2=(0.0,1.0,0.0),
+#            p0=(0.0,0.0,3.3), label="E_xy for z=3.3", #) #,
+#            saveFig="E_xy_scan_PTCDA_Morse_Coulomb.png", saveData="E_xy_scan_PTCDA_Morse_Coulomb.dat")
 
 # scanPlot2D(nscan1=41, nscan2=61,
 #            span1=(0.0, 4.1), span2=(2.3, 8.3),
@@ -185,7 +1098,25 @@ scanPlot( nscan=100, span=(3,10), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCD
 #            span1=(0.0, 4.1), span2=(2.3, 8.3),
 #            dir1=(0.0,1.0,0.0), dir2=(0.0,0.0,1.0),
 #            p0=(0.0,0.0,0), label="E_xz for Y=3.4",
-#            saveFig="E_yz_scan_C.png", saveData="E_yz_scan_C.dat")           
+#            saveFig="E_yz_scan_C.png", saveData="E_yz_scan_C.dat") 
+
+
+
+
+############################ Relaxed 2D Scan ***********************************************************
+# relax_scanPlot2D(nscan1=64, nscan2=64,
+#            span1=(0.0, 32), span2=(0.0, 32),
+#            dir1=(1.0,0.0,0.0), dir2=(0.0,1.0,0.0),
+#            p0=(0.0,0.0,3.1), label="E_xy for z=3.1", #) #,
+#            bRelax=True,
+#            niter_max=1000,
+#            dt=0.05,
+#            Fconv=1e-5, #)
+#            saveFig="E_xy_Relax_scan_PTCDA_NaCl.png", saveData="E_xy_Relax_scan_PTCDA_NaCl.dat")
+
+        
+
+          
 
 # plt.legend()
 # plt.grid()
@@ -350,9 +1281,9 @@ scanPlot( nscan=100, span=(3,10), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCD
 
 # # ---------------------------
 # # Retrieve grid parameters and atom positions from the C++ extension
-gff_shift0, gff_pos0, gff_cell, gff_dCell, gff_natoms, gff_natoms_ = mmff.get_gridFF_info()
-# print("gff_pos0:", gff_pos0)
-print("gff_shift0:", gff_shift0)
+# gff_shift0, gff_pos0, gff_cell, gff_dCell, gff_natoms, gff_natoms_ = mmff.get_gridFF_info()
+# # print("gff_pos0:", gff_pos0)
+# print("gff_shift0:", gff_shift0)
 # print("gff_cell:\n", gff_cell)
 # print("gff_dCell:\n", gff_dCell)
 

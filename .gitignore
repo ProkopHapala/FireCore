@@ -36,3 +36,4 @@ cpp/build-*
 *.html
 *.svg
 *.csv
+cpp/common_resources/*/Bspline_PLQd.npy

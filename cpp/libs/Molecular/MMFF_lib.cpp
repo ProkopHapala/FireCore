@@ -70,7 +70,23 @@ void init_buffers(){
     buffers .insert( { "apos",   (double*)W.nbmol.apos  } );
     buffers .insert( { "fapos",  (double*)W.nbmol.fapos } );
     buffers .insert( { "REQs",   (double*)W.nbmol.REQs  } );
-    if(W.bMMFF){
+    if (W.bUFF){
+        buffers .insert( { "DOFs",   (double*)   W.ffu.apos  } );
+        buffers .insert( { "fDOFs",  (double*)   W.ffu.fapos } );
+        buffers .insert( { "vDOFs",  (double*)   W.ffu.vapos   } );
+        //buffers .insert( { "REQs",   (double*)W.ffl.REQs  } );
+        buffers .insert( { "PLQs",   (double*)W.nbmol.PLQd  } );
+        //buffers .insert( { "pipos",  (double*)W.ffl.pipos   } );
+        //buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
+        //ibuffers.insert( { "neighs",      (int*)W.ffl.neighs  } );
+
+        ibuffers.insert( { "ndims",    &W.ffu.natoms } );
+        buffers .insert( { "Es",       &W.ffu.Etot   } );
+
+    }else if(W.bMMFF){
+        ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
+        buffers .insert( { "Es",       &W.ff.Etot  } );
+
         buffers .insert( { "DOFs",      W.ffl.DOFs  } );
         buffers .insert( { "fDOFs",     W.ffl.fDOFs } );
         buffers .insert( { "vDOFs",     W.opt.vel  } );
@@ -78,15 +94,15 @@ void init_buffers(){
         buffers .insert( { "PLQs",   (double*)W.ffl.PLQd  } );
         if(!W.bUFF){
             buffers .insert( { "pipos",  (double*)W.ffl.pipos   } );
-            buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
-            ibuffers.insert( { "neighs",      (int*)W.ffl.neighs  } );
+            buffers .insert( { "fpipos", (double*)W.ffl.fpipos }  );
+            ibuffers.insert( { "neighs", (int*)W.ffl.neighs  }    );
         }
-    }else{
+    } else{
         W.ff.natoms=W.nbmol.natoms;
     }
+    printf( "before_MMFF_lib.cpp::init_buffers() ndims{nDOFs=%i,natoms=%i,nnode=%i,ncap=%i}\n", W.ffl.nDOFs, W.ffl.natoms, W.ffl.nnode, W.ffl.ncap );
     printf( "MMFF_lib.cpp::init_buffers() ndims{nDOFs=%i,natoms=%i,nnode=%i,ncap=%i,npi=%i,nbonds=%i,nvecs=%i,ne=%i,ie0=%i}\n", W.ff.nDOFs, W.ff.natoms, W.ff.nnode, W.ff.ncap, W.ff.npi, W.ff.nbonds, W.ff.nvecs, W.ff.ne, W.ff.ie0 );
-    ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
-    buffers .insert( { "Es",       &W.ff.Etot  } );
+
     ibuffers.insert( { "selection", W.manipulation_sel  } );
     bbuffers.insert( { "ffflags", &W.doBonded  } );
     //printBuffNames();
@@ -120,11 +136,13 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
     W.bGridFF=bGrid;
     W.bUFF   =bUFF;
     W.init();
+    // printf("DEBUG: After W.init(): natoms=%d, nDOFs=%d\n", W.nbmol.natoms, W.ff.nDOFs);
     init_buffers();
     return &W;
 }
 
-void makeGridFF( const char* name, int* ffshape, int mode, double z0, double* cel0, bool bSymmetrize, bool bAutoNPBC, bool bFit, bool bRefine ){
+// void makeGridFF( const char* name, int* ffshape, int mode, double z0, double* cel0, bool bSymmetrize, bool bAutoNPBC, bool bFit, bool bRefine ){
+void makeGridFF( const char* name, int* ffshape, int mode, double z0, double* cel0, bool bSymmetrize, bool bAutoNPBC, bool bFit, bool bRefine, double gridStepPy=0.1 ){
     bool bCheckEval=false;
     bool bUseEwald =true;
     printf("MMFF_lib::makeGridFF() bAutoNPBC=%i bCheckEval=%i bUseEwald=%i bFit=%i bRefine=%i \n", bAutoNPBC, bCheckEval, bUseEwald, bFit, bRefine );
@@ -133,7 +151,15 @@ void makeGridFF( const char* name, int* ffshape, int mode, double z0, double* ce
     int ret = W.params.loadXYZ( fname, W.surf.natoms, &W.surf.apos, &W.surf.REQs, &W.surf.atypes, 0, &W.gridFF.grid.cell );
     if     ( ret<0 ){ getcwd(tmpstr,1024); printf("ERROR in MMFF_lib::makeGridFF() file(%s) not found in path(%s)=> Exit() \n", fname, tmpstr ); exit(0); }
     if     ( ret==0){                      printf("ERROR in MMFF_lib::makeGridFF() no lattice vectors in (%s) => Exit() \n",    fname ); exit(0); }
-    else if( ret>0 ){ W.gridFF.grid.updateCell(W.gridStep); W.gridFF.bCellSet=true;  }
+    // else if( ret>0 ){ W.gridFF.grid.updateCell(W.gridStep); W.gridFF.bCellSet=true;  }
+    else if( ret>0 ){ 
+        // Override hardcoded gridStep with the passed Python value for consistency
+        double originalGridStep = W.gridStep;
+        W.gridStep = gridStepPy;
+        printf("DEBUG: Using grid step from Python: %g (was: %g)\n", gridStepPy, originalGridStep);
+        W.gridFF.grid.updateCell(gridStepPy); 
+        W.gridFF.bCellSet=true;
+    }
     //gridFF.grid.printCell(); 
     //if(verbosity>0)printf("MolWorld_sp3::loadSurf(%s) 1 natoms %i apos %li atyps %li \n", name, surf.natoms, (long)surf.apos, (long)surf.atypes  );
     //surf.print();
@@ -221,6 +247,10 @@ int    run( int nstepMax, double dt, double Fconv, int ialg, double damping, dou
 void  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, double* aposs, bool omp, bool bRelax, int niter_max, double dt, double Fconv, double Flim ){
     // Add debug print here
     // printf("DEBUG: scan() function using shift0 = (%g, %g, %g)\n", W.gridFF.shift0.x, W.gridFF.shift0.y, W.gridFF.shift0.z);
+    // --- DEBUG PRINT (Added previously) ---
+    printf("DEBUG>> MMFF_lib: AFTER setSwitches2: W.ffl.PLQd[0].z = %.6f\n", W.ffl.PLQd[0].z); 
+    // --- END DEBUG ---
+
     if(bRelax){
         if(omp){ printf("ERROR: scan_relaxed() not implemented witht OMP\n"); exit(0); } 
         else   { W.scan_relaxed( nconf, (Vec3d*)poss, (Mat3d*)rots, Es, (Vec3d*)aforces, (Vec3d*)aposs, omp, niter_max, dt, Fconv, Flim );  }
@@ -228,6 +258,144 @@ void  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, 
         if(omp){ printf("ERROR: scan_rigid() not implemented witht OMP\n"); exit(0); } 
         else   { W.scan_rigid( nconf, (Vec3d*)poss, (Mat3d*)rots, Es, (Vec3d*)aforces, (Vec3d*)aposs, omp ); }
     }
+}
+
+// void scan_relaxed_constr( int nconf, int ncontr, int *icontrs, Quat4d* contrs, double* Es, Vec3d* aforces, Vec3d* aposs, bool bHardConstr, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000 ){
+
+void  scan_constr( int nconf, int ncontr, int *icontrs, double* contrs, double* Es, double* aforces, double* aposs, bool bHardConstr, bool bOmp, int niter_max, double dt, double Fconv, double Flim ){
+    W.scan_constr( nconf, ncontr, icontrs, (Quat4d*)contrs, Es, (Vec3d*)aforces, (Vec3d*)aposs, bHardConstr, bOmp, niter_max, dt, Fconv, Flim);
+}
+
+// Function to perform rigid scan with UFF forcefield
+void scan_rigid_uff( int nconf, double* poss, double* rots, double* Es, double* aforces, double* aposs, bool omp ){
+    W.scan_rigid_uff( nconf, (Vec3d*)poss, (Mat3d*)rots, Es, (Vec3d*)aforces, (Vec3d*)aposs, omp );
+}
+
+
+/*void setSwitches_testUFF( int bBonds, int bAngles, int bDihedrals, int bInversions, int bNonBonded, int bNonBondNeighs, int bSubtractBondNonBond, int bSubtractAngleNonBond, int bClampNonBonded ){
+    #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
+    _setbool( W.ffu.bBonds                , bBonds                );
+    _setbool( W.ffu.bAngles               , bAngles               );
+    _setbool( W.ffu.bDihedrals            , bDihedrals            );
+    _setbool( W.ffu.bInversions           , bInversions           );
+    _setbool( W.ffu.bNonBonded            , bNonBonded            );
+    _setbool( W.ffu.bNonBondNeighs        , bNonBondNeighs        );
+    _setbool( W.ffu.bSubtractBondNonBond  , bSubtractBondNonBond  );
+    _setbool( W.ffu.bSubtractAngleNonBond , bSubtractAngleNonBond );
+    _setbool( W.ffu.bClampNonBonded       , bClampNonBonded       );
+    printf( "setSwitches_testUFF() bBonds=%i bAngles=%i bDihedrals=%i bInversions=%i | bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i \n", W.ffu.bBonds, W.ffu.bAngles, W.ffu.bDihedrals, W.ffu.bInversions, W.ffu.bNonBonded, W.ffu.bNonBondNeighs, W.ffu.bSubtractBondNonBond, W.ffu.bSubtractAngleNonBond, W.ffu.bClampNonBonded );
+    #undef _setbool
+}*/
+
+void test_UFF( int test ){
+    W.ffu.bBonds                = 0; // consider bonds
+    W.ffu.bAngles               = 0; // consider angles
+    W.ffu.bDihedrals            = 0; // consider dihedrals
+    W.ffu.bInversions           = 0; // consider impropers
+    W.ffu.bNonBonded            = 0; // consider intra-molecular LJ (general)
+    W.ffu.bNonBondNeighs        = 0; // consider intra-molecular LJ and does not compute 1-2 non-bonded interactions (ng4)
+    W.ffu.bSubtractBondNonBond  = 0; // subtract 1-2 non-bonded interactions when computing bonds
+    W.ffu.bSubtractAngleNonBond = 0; // subtract 1-3 non-bonded interactions when computing angles
+    W.ffu.bClampNonBonded       = 0; // clamp forces before subtracting 
+    W.ffu.bSubstrate            = 0; // consider non-bonded interaction with the substrate
+    if     (test== 1){ printf("MMFF_lib.cpp::test_UFF(1): bonds\n");      
+        W.ffu.bBonds = 1; }
+    else if(test== 2){ printf("MMFF_lib.cpp::test_UFF(2): angles\n");     
+        W.ffu.bAngles = 1; }
+    else if(test== 3){ printf("MMFF_lib.cpp::test_UFF(3): dihedrals\n");  
+        W.ffu.bDihedrals = 1; }
+    else if(test== 4){ printf("MMFF_lib.cpp::test_UFF(4): inversions\n"); 
+        W.ffu.bInversions = 1; }
+    else if(test== 5){ printf("MMFF_lib.cpp::test_UFF(5): lj\n"); 
+        W.ffu.bNonBonded = 1; }
+    else if(test== 6){ printf("MMFF_lib.cpp::test_UFF(6): bonds+lj_excluding_1-2_subtract_noclamp\n"); 
+        W.ffu.bBonds = 1; 
+        W.ffu.bNonBonded = 1; 
+        W.ffu.bSubtractBondNonBond = 1; }
+    else if(test== 7){ printf("MMFF_lib.cpp::test_UFF(7): bonds+lj_excluding_1-2_subtract_clamp\n"); 
+        W.ffu.bBonds = 1; 
+        W.ffu.bNonBonded = 1; 
+        W.ffu.bSubtractBondNonBond = 1; 
+        W.ffu.bClampNonBonded = 1; }
+    else if(test== 8){ printf("MMFF_lib.cpp::test_UFF(8): bonds+lj_excluding_1-2_ng4\n"); 
+        W.ffu.bBonds = 1; 
+        W.ffu.bNonBonded = 1;
+        W.ffu.bNonBondNeighs = 1; }
+    else if(test==9){ printf("MMFF_lib.cpp::test_UFF(9): all_intra_subtract_noclamp\n"); 
+        W.ffu.bBonds = 1;
+        W.ffu.bAngles = 1;
+        W.ffu.bDihedrals = 1;
+        W.ffu.bInversions = 1;
+        W.ffu.bNonBonded = 1;
+        W.ffu.bSubtractBondNonBond = 1;
+        W.ffu.bSubtractAngleNonBond = 1; }
+    else if(test==10){ printf("MMFF_lib.cpp::test_UFF(10): all_intra_subtract_clamp\n"); 
+        W.ffu.bBonds = 1;
+        W.ffu.bAngles = 1;
+        W.ffu.bDihedrals = 1;
+        W.ffu.bInversions = 1;
+        W.ffu.bNonBonded = 1;
+        W.ffu.bSubtractBondNonBond = 1;
+        W.ffu.bSubtractAngleNonBond = 1;
+        W.ffu.bClampNonBonded = 1; }
+    else if(test==11){ printf("MMFF_lib.cpp::test_UFF(11): all_intra_ng4_noclamp\n"); 
+        W.ffu.bBonds = 1;
+        W.ffu.bAngles = 1;
+        W.ffu.bDihedrals = 1;
+        W.ffu.bInversions = 1;
+        W.ffu.bNonBonded = 1;
+        W.ffu.bNonBondNeighs = 1; 
+        W.ffu.bSubtractAngleNonBond = 1; }
+    else if(test==12){ printf("MMFF_lib.cpp::test_UFF(12): all_intra_ng4_clamp\n"); 
+        W.ffu.bBonds = 1;
+        W.ffu.bAngles = 1;
+        W.ffu.bDihedrals = 1;
+        W.ffu.bInversions = 1;
+        W.ffu.bNonBonded = 1;
+        W.ffu.bNonBondNeighs = 1; 
+        W.ffu.bSubtractAngleNonBond = 1;
+        W.ffu.bClampNonBonded = 1; }
+    else if(test==13){ printf("MMFF_lib.cpp::test_UFF(13): substrate\n"); 
+        W.ffu.bSubstrate = 1; }
+    else if(test==14){ printf("MMFF_lib.cpp::test_UFF(14): all_subtract_noclamp\n"); 
+        W.ffu.bBonds = 1;
+        W.ffu.bAngles = 1;
+        W.ffu.bDihedrals = 1;
+        W.ffu.bInversions = 1;
+        W.ffu.bNonBonded = 1;
+        W.ffu.bSubtractBondNonBond = 1;
+        W.ffu.bSubtractAngleNonBond = 1;
+        W.ffu.bSubstrate = 1; }
+    else if(test==15){ printf("MMFF_lib.cpp::test_UFF(15): all_subtract_clamp\n"); 
+        W.ffu.bBonds = 1;
+        W.ffu.bAngles = 1;
+        W.ffu.bDihedrals = 1;
+        W.ffu.bInversions = 1;
+        W.ffu.bNonBonded = 1;
+        W.ffu.bSubtractBondNonBond = 1;
+        W.ffu.bSubtractAngleNonBond = 1;
+        W.ffu.bClampNonBonded = 1;
+        W.ffu.bSubstrate = 1; }
+    else if(test==16){ printf("MMFF_lib.cpp::test_UFF(16): all_ng4_noclamp\n"); 
+        W.ffu.bBonds = 1;
+        W.ffu.bAngles = 1;
+        W.ffu.bDihedrals = 1;
+        W.ffu.bInversions = 1;
+        W.ffu.bNonBonded = 1;
+        W.ffu.bNonBondNeighs = 1; 
+        W.ffu.bSubtractAngleNonBond = 1;
+        W.ffu.bSubstrate = 1; }
+    else if(test==17){ printf("MMFF_lib.cpp::test_UFF(17): all_ng4_clamp\n"); 
+        W.ffu.bBonds = 1;
+        W.ffu.bAngles = 1;
+        W.ffu.bDihedrals = 1;
+        W.ffu.bInversions = 1;
+        W.ffu.bNonBonded = 1;
+        W.ffu.bNonBondNeighs = 1; 
+        W.ffu.bSubtractAngleNonBond = 1;
+        W.ffu.bClampNonBonded = 1;
+        W.ffu.bSubstrate = 1; }
+    W.ffu.test_UFF();
 }
 
 
@@ -248,7 +416,9 @@ void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeigh
     _setbool( W.ffl.doPiPiI  , PiPiI     );
 
     printf( "setSwitches2() W.bCheckInvariants==%i bPBC=%i | bNonBonded=%i bNonBondNeighs=%i | bSurfAtoms=%i bGridFF=%i | bMMFF=%i doAngles=%i doPiSigma=%i doPiPiI=%i \n", W.bCheckInvariants, W.bPBC,  W.bNonBonded, W.bNonBondNeighs, W.bSurfAtoms, W.bGridFF, W.bMMFF, W.ffl.doAngles, W.ffl.doPiSigma, W.ffl.doPiPiI );
-
+    // --- DEBUG PRINT ---
+    //printf("DEBUG>> MMFF_lib: AFTER setSwitches2: W.ffl.PLQd[0].z = %.6f\n", W.ffl.PLQd[0].z);
+    // --- END DEBUG ---
     //W.ffl.bSubtractAngleNonBond = W.bNonBonded;
     #undef _setbool
 }

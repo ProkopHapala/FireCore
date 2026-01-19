@@ -2651,30 +2651,30 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         int ic = atoms[ia].iconf;
         if(ic<0){printf("printBondsOfAtom(%i): atom has no conf (capping) \n", ia); return; };
         const AtomConf& c = confs[ic];
-        printf("printBondsOfAtom(%i): ", ia);
+        // printf("printBondsOfAtom(%i): ", ia);
         for(int i=0; i<c.nbond; i++){
             int ib = c.neighs[i];
             Vec2i b = bonds[ib].atoms;
-            printf( "(%i|%i,%i) ", ib, b.i, b.j );
+            // printf( "(%i|%i,%i) ", ib, b.i, b.j );
         }
         printf("\n");
     }
 
     void printAtomConfs( bool bOmmitCap=true, bool bNeighs=false )const{
-        printf(" # MM::Builder.printAtomConfs(na=%i,nc=%i) \n", atoms.size(), confs.size() );
+        // printf(" # MM::Builder.printAtomConfs(na=%i,nc=%i) \n", atoms.size(), confs.size() );
         for(int i=0; i<atoms.size(); i++){ if( bOmmitCap && (atoms[i].iconf==-1) )continue;  if(bNeighs){printAtomNeighs(i);}else{printAtomConf(i);} puts(""); }
     }
 
     void printAtomTypes( )const{
-        printf(" # MM::Builder.printAtomTypes(na=%i,nc=%i) \n", atoms.size(), confs.size() );
+        // printf(" # MM::Builder.printAtomTypes(na=%i,nc=%i) \n", atoms.size(), confs.size() );
         for(int i=0; i<atoms.size(); i++){ 
             const Atom& A = atoms[i];
             int it=A.type;
             if(A.iconf>=0){
                 AtomConf c = confs[A.iconf];
-                printf( "atom[%4i] %ip %ie {%3i,%3i,%3i,%3i} type[%3i]=`%s`   \n", i, c.npi, c.ne, c.neighs[0],c.neighs[1],c.neighs[2],c.neighs[3], it, params->atypes[it].name ); 
+                // printf( "atom[%4i] %ip %ie {%3i,%3i,%3i,%3i} type[%3i]=`%s`   \n", i, c.npi, c.ne, c.neighs[0],c.neighs[1],c.neighs[2],c.neighs[3], it, params->atypes[it].name ); 
             } else{
-                printf( "atom[%4i] type[%3i]=`%s`   \n", i, it, params->atypes[it].name  ); 
+                // printf( "atom[%4i] type[%3i]=`%s`   \n", i, it, params->atypes[it].name  ); 
             }
             
         }
@@ -4186,7 +4186,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
             const Atom& A =  atoms[ia];
             ff.apos  [ia] = A.pos;
             ff.atypes[ia] = A.type;
-            ff.REQs  [ia] = A.REQ;
+            ff.REQs  [ia] = A.REQ;  // Check if charges are on GPU Milan
             AtomType& atyp = params->atypes[A.type];
 
             if(A.iconf>=0){

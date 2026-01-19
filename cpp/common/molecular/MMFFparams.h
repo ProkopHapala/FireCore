@@ -300,17 +300,43 @@ class MMFFparams{ public:
         }
         char buff[1024];
         char * line;
-        AtomType atyp;
+        //AtomType atyp;
         int i;
-        for(i=0; ; i++){
-            line = fgets( buff, 1024, pFile );
-            if(line==NULL)  break;
-            if(line[0]=='#')continue;
-            string2AtomType( line, atyp );
-            atypes.push_back(atyp);
-            atomTypeNames.push_back( atyp.name );
-            if( !atomTypeDict.insert({atyp.name, atypes.size()-1}).second ){ printf("ERROR in MMFFparams::loadAtomTypes: AtomType[%i](%s) is duplicated => Exit()\n", atypes.size(), atyp.name ); printf("%s\n", line ); exit(0); };
-            if(verbosity>1)printf("loadAtomTypes[%i] name='%s' valence=%i nepair=%i npi=%i sym=%i\n", atypes.size(), atyp.name, atyp.valence, atyp.nepair, atyp.npi, atyp.sym );
+        try {
+            for(i=0; ; i++){
+                line = fgets( buff, 1024, pFile );
+                if(line==NULL)  break;
+                if(line[0]=='#')continue;
+                
+                // Create a fully initialized AtomType
+                AtomType atyp = {}; // Zero-initialize all fields
+                
+                // Initialize subTypes to prevent uninitialized memory access
+                for (int j = 0; j < 3; j++) {
+                    atyp.subTypes.array[j] = -1; // Invalid index
+                }
+                
+                string2AtomType( line, atyp );
+                atypes.push_back(atyp);
+                atomTypeNames.push_back( atyp.name );
+                if( !atomTypeDict.insert({atyp.name, atypes.size()-1}).second ){
+                    printf("ERROR in MMFFparams::loadAtomTypes: AtomType[%i](%s) is duplicated => Exit()\n", atypes.size(), atyp.name );
+                    printf("%s\n", line );
+                    if(exitIfFail) exit(0);
+                    return -1;
+                }
+                if(verbosity>1)printf("loadAtomTypes[%i] name='%s' valence=%i nepair=%i npi=%i sym=%i\n", atypes.size(), atyp.name, atyp.valence, atyp.nepair, atyp.npi, atyp.sym );
+            }
+        } catch (const std::exception& e) {
+            printf("Exception in loadAtomTypes: %s\n", e.what());
+            fclose(pFile);
+            if(exitIfFail) exit(0);
+            return -1;
+        } catch (...) {
+            printf("Unknown exception in loadAtomTypes\n");
+            fclose(pFile);
+            if(exitIfFail) exit(0);
+            return -1;
         }
         fclose(pFile);
         return i;
@@ -442,27 +468,56 @@ class MMFFparams{ public:
     // TBD - shall we get rid of subtypes...?
     inline void assignSubTypes( AtomType& t ){
         //printf( "assignSubTypes %s(iZ=%i)\n", t.name, t.iZ );
-        char tmp_name[8];
+        char tmp_name[32]; // Increased buffer size for safety
         const char* ssub[3]{"3","2","1"};
         for(int i=0;i<3;i++){
+            // Ensure we don't overflow the buffer
+            if (strlen(t.name) + 3 >= sizeof(tmp_name)) {
+                printf("Warning: Atom name too long for subtype assignment: %s\n", t.name);
+                continue;
+            }
+            
             sprintf( tmp_name, "%s_%s", t.name, ssub[i] );  // from C generates names like C_3, C_2, C_1
             //printf( "assignSubTypes `%s`(iZ=%i)[%i] %s\n", t.name, t.iZ, i, tmp_name );
             int it = getAtomType(tmp_name, false);  // search for the subtypes in the atom type dictionary
             //printf( "assignSubTypes %s(iZ=%i)[%i] %s=%i\n", t.name, t.iZ, i, tmp_name, it );
             if(it<0)continue;
-            t.subTypes.array[i] = it;
+            
+            // Ensure array index is valid
+            if (i >= 0 && i < 3) {
+                t.subTypes.array[i] = it;
+            } else {
+                printf("Warning: Invalid subtype index %d for atom %s\n", i, t.name);
+            }
             //printf( "assignSubTypes %s(iZ=%i)[%i] %s=%i\n", t.name, t.iZ, tmp_name, it );
         }
     }
 
     inline void assignAllSubTypes(){
         int n=atypes.size();
-        std::vector<bool> doIt(256,true); // Warrning : we assume maximum proton number 256
-        for(int i=0;i<n;i++){
-            AtomType& t = atypes[i];
-            //printf( "assignAllSubTypes() t.iZ %i doIt.size()= %i \n", t.iZ, doIt.size() );
-            //if( t.iZ>=doIt.size() ){ printf("ERROR: atype[%i] t.iZ(%i) > =doIt.size(%i) \n", i, t.iZ, doIt.size()  ); }
-            if(doIt[t.iZ]){ assignSubTypes(t); doIt[t.iZ]=false; }
+        // Use a map instead of fixed-size vector to handle any atomic number
+        std::unordered_map<int, bool> doIt;
+        
+        try {
+            for(int i=0;i<n;i++){
+                AtomType& t = atypes[i];
+                
+                // Check if iZ is valid (positive)
+                if (t.iZ < 0) {
+                    printf("Warning: Invalid atomic number %d for atom type %s\n", t.iZ, t.name);
+                    continue;
+                }
+                
+                // Use map to safely handle any atomic number
+                if(doIt.find(t.iZ) == doIt.end() || doIt[t.iZ]){
+                    assignSubTypes(t);
+                    doIt[t.iZ] = false;
+                }
+            }
+        } catch (const std::exception& e) {
+            printf("Exception in assignAllSubTypes: %s\n", e.what());
+        } catch (...) {
+            printf("Unknown exception in assignAllSubTypes\n");
         }
     }
 
@@ -833,7 +888,7 @@ class MMFFparams{ public:
                 if(atype_)atype[i] = -1;
                 if(REQs_)REQs[i]  = default_REQ;
             }
-            //printf( "MMFFparams::loadXYZ() atom[%3i] atyp(%3i) xyz(%12.6f,%12.6f,%12.6f) REQs(%12.6f,%12.6f,%12.6f,%12.6f) \n", i, atype[i], apos[i].x, apos[i].y, apos[i].z, REQs[i].x,REQs[i].y,REQs[i].z, REQs[i].w  );
+            // printf( "MMFFparams::loadXYZ() atom[%3i] atyp(%3i) xyz(%12.6f,%12.6f,%12.6f) REQs(%12.6f,%12.6f,%12.6f,%12.6f) \n", i, atype[i], apos[i].x, apos[i].y, apos[i].z, REQs[i].x,REQs[i].y,REQs[i].z, REQs[i].w  );
         }
         fclose(pFile);
         printf( "MMFFparams::loadXYZ() DONE \n" );

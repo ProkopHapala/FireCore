@@ -152,6 +152,14 @@ class ForceField: public Atoms{ public:
     bool  bSubtractAngleNonBond = true;  // if true we subtract angle energy from non-bonded energy
     bool  bClampNonBonded       = true;  // if true we clamp non-bonded energy to zero
     double  FmaxNonBonded       = 10.0;  // if bClampNonBonded>0 then we clamp non-bonded forces to this value
+// From Indranil Branch there was problems with relax_multi.cl Solve it
+//    bool  bNonBondNeighs        = true;
+//    bool  bSubtractBondNonBond  = false; // if true we subtract bond energy from non-bonded energy
+//    bool  bSubtractAngleNonBond = true;  // if true we subtract angle energy from non-bonded energy
+//    bool  bClampNonBonded       = false; // if true we clamp non-bonded energy to zero
+//    //double  FmaxNonBonded       = 10.0;  // if bClampNonBonded>0 then we clamp non-bonded forces to this value
+//    double  FmaxNonBonded       = 1000.0;  // increased to 1000 in order not to clamp 1-3 interactions
+//                                             // TBD: to check how it goes on GPU
     std::function<double(int,const Vec3d,Vec3d&)> atomForceFunc = nullptr;
     double time_per_iter = 0;
 

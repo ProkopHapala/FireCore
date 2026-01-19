@@ -533,7 +533,7 @@ class NBFF: public ForceField{ public:
         const Quat4d  REQi    = REQs[ia];
         const double  R2damp = Rdamp*Rdamp;
         double E=0,fx=0,fy=0,fz=0;
-        //#pragma omp simd reduction(+:E,fx,fy,fz)
+        #pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
             //if(ia==j)continue;   ToDo: Maybe we can keep there some ignore list ?
             if(ia==j)[[unlikely]]{continue;}
@@ -556,8 +556,7 @@ class NBFF: public ForceField{ public:
             }
         }
         fapos[ia].add( Vec3d{fx,fy,fz} );
-        //exit(0);
-        return E;
+        return 0.5*E;
     }
     __attribute__((hot))  
     double evalLJQs_PBC_simd(){
@@ -616,7 +615,7 @@ class NBFF: public ForceField{ public:
         }
         //printf("DEBUG 3 id=%i ia=%i \n", id, ia );
         fapos[ia].add( Vec3d{fx,fy,fz} );
-        return E;
+        return 0.5*E;
     }
     __attribute__((hot))  
     double evalLJQs_ng4_PBC_simd(){
@@ -636,7 +635,7 @@ class NBFF: public ForceField{ public:
         const Quat4d REQi = REQs     [ia];
         Vec3d fi = Vec3dZero;
         double E=0,fx=0,fy=0,fz=0;
-        //#pragma omp simd reduction(+:E,fx,fy,fz)
+        #pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
             if(ia==j)[[unlikely]]{continue;}
             const Quat4d& REQj  = REQs[j];
@@ -652,7 +651,7 @@ class NBFF: public ForceField{ public:
             //fi+=fij; 
         }
         fapos[ia].add( Vec3d{fx,fy,fz} );
-        return E;
+        return 0.5*E;
     }
     __attribute__((hot))  
     double evalLJQs_simd(){
@@ -688,7 +687,7 @@ class NBFF: public ForceField{ public:
             //fi+=fij; 
         }
         fapos[ia].add( Vec3d{fx,fy,fz} );
-        return E;
+        return 0.5*E;
     }
     __attribute__((hot))  
     double evalLJQs_ng4_simd(){

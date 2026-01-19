@@ -302,7 +302,7 @@ void optimizeLattice_2d_multi( double* dlvec, int nstesp, int initMode, double t
     W.gopt.lattice_scan_2d_multi( nstesp, *(Mat3d*)dlvec, initMode, "lattice_scan_2d_multi.xyz" );
 }
 
-void  scan( int nconf, double* poss, double* rots, double* dirs, double* Es, double* aforces, double* aposs, bool omp, bool bRelax, int niter_max, double dt, double Fconv, double Flim ){
+void  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, double* aposs, bool omp, bool bRelax, int niter_max, double dt, double Fconv, double Flim ){
     // if(bRelax){
     //     if(omp){ printf("ERROR: scan_relaxed() not implemented witht OMP\n"); exit(0); } 
     //     else   { W.scan_relaxed( nconf, (Vec3d*)poss, (Mat3d*)rots, Es, (Vec3d*)aforces, (Vec3d*)aposs, omp, niter_max, dt, Fconv, Flim );  }
@@ -310,7 +310,7 @@ void  scan( int nconf, double* poss, double* rots, double* dirs, double* Es, dou
     //     if(omp){ printf("ERROR: scan_rigid() not implemented witht OMP\n"); exit(0); } 
     //     else   { W.scan_rigid( nconf, (Vec3d*)poss, (Mat3d*)rots, Es, (Vec3d*)aforces, (Vec3d*)aposs, omp ); }
     // }
-    W.scan_relaxed( nconf, (Vec3d*)poss, (Mat3d*)rots, (Vec3d*)dirs, Es, (Vec3d*)aforces, (Vec3d*)aposs, omp, niter_max, dt, Fconv, Flim );
+    W.scan_relaxed( nconf, (Vec3d*)poss, (Mat3d*)rots, Es, (Vec3d*)aforces, (Vec3d*)aposs, omp, niter_max, dt, Fconv, Flim );
 }
 
 void setSwitches_multi( int CheckInvariants, int PBC, int NonBonded, int MMFF, int Angles, int PiSigma, int PiPiI, int dovdW, int bSaveToDatabase ){

@@ -173,8 +173,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     double gridStep = 0.1; 
     //double gridStep = 0.05; 
     //double gridStep = 0.2; 
-    //Vec3i nPBC{0,0,0};   // just debug
-    Vec3i nPBC{1,1,0};
+    Vec3i nPBC{0,0,0};   // just debug
+    //Vec3i nPBC{1,1,0};
     //Vec3i nPBC{1,3,0};
     int    npbc       = 0;
     Vec3d* pbc_shifts = 0;
@@ -202,12 +202,13 @@ class MolWorld_sp3 : public SolverInterface { public:
 	bool bNonBonded        = true;  // 2
     bool bGroups           = false; // 3
     bool bConstrains       = false; // 4
-	bool bSurfAtoms        = false; // 5
-    bool bGridFF           = false; // 6
+    bool bSurfAtoms        = false; // 5
+    bool bGridFF           = true;  // 6
     bool bTricubic         = false; // 7
-	bool bPlaneSurfForce   = false; // 7
+    bool bPlaneSurfForce   = false; // 7
     bool bMMFF             = true;  // 8
     bool bUFF              = false; // 9
+    // TBD b141, bSimple, bConj and bCumulene are relevant only when you build up the force field, not sure they sould be defined here globally...
     bool b141              = true;  // 10 // seems not to be used in assignUFFtypes()
     bool bSimple           = false; // 11 // use assignUFFtypes_simplerule() or assignUFFtypes_findrings() in assignUFFtypes()
     //bool bSimple           = true;   // use assignUFFtypes_simplerule() or assignUFFtypes_findrings() in assignUFFtypes()
@@ -222,9 +223,12 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bAnimManipulation = false; // 20
     bool bNonBondNeighs    = false; // 21
     bool bWhichAtomNotConv = false; // 22
-    bool bCheckInit        = true; // 23
+    bool bCheckInit        = true; // 23 In Indranil it is false
     bool bBondInitialized  = false; // 24
-    bool dovdW=true;
+    bool bHardConstrs      = false; // 25
+    bool dovdW             = true;
+    bool bSaveToDatabase   = false;
+    bool bRelax            = false;
 
     Vec3d anim_vec;
     float anim_speed;
@@ -282,8 +286,6 @@ class MolWorld_sp3 : public SolverInterface { public:
     int iSystemCur  = 0;    // currently selected system replica
 
     MolecularDatabase* database = 0;
-    bool bSaveToDatabase=false;
-    bool bRelax=false;
 
 
     // ========== from python interface
@@ -326,7 +328,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             printf( "MolWorld_sp3::init() bMMFF %i bUFF %i bRigid %i\n", bMMFF, bUFF, bRigid );
         }
         if(surf_name ){
-//            bGridFF = false; //TODO: fix it with nagridFF
+//            bGridFF = false; //TODO: fix it with nogridFF
             //double z0 = 0.0;   // This is how we have it in python API i.e. MMFF.py
             double z0 = NAN;   // This makes inconsistency with python API i.e. MMFF.py
             loadSurf( surf_name, bGridFF, idebug>0, z0 );
@@ -1002,18 +1004,22 @@ void printPBCshifts(){
         DEBUG
         nbmol.bindOrRealloc( ff->natoms, ff->apos, ff->fapos, ff->REQs, ff->atypes );    
         //nbmol.bindOrRealloc( na, apos, fapos, 0, 0 );   
-        //builder.export_atypes( nbmol.atypes );     
-        //builder.export_REQs( nbmol.REQs   );       ff->REQs=nbmol.REQs;
+        //builder.export_atypes( nbmol.atypes );
+
+        builder.export_REQs( nbmol.REQs   );       ff->REQs=nbmol.REQs; // Check if charges are on GPU Milan
         //printf("DEBUG initNBmol 1 nbmol.print_nonbonded(); \n"); nbmol.print_nonbonded();
-        DEBUG
-        nbmol  .makePLQs   ( gridFF.alphaMorse );  ff->PLQs=nbmol.PLQs; 
-        DEBUG
-        nbmol  .makePLQd   ( gridFF.alphaMorse );  ff->PLQd=nbmol.PLQd; 
-        DEBUG
+
+        // DEBUG
         //nbmol.print_nonbonded();
         if(bCleanCharge)for(int i=builder.atoms.size(); i<ff->natoms; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge        
         params.assignREs( nbmol.natoms, nbmol.atypes, nbmol.REQs, true, false  );
-        DEBUG
+        // DEBUG	// Check if we should make it before params.assignREs??????
+        nbmol  .makePLQs   ( gridFF.alphaMorse );  ff->PLQs=nbmol.PLQs; 
+        // DEBUG
+        nbmol  .makePLQd   ( gridFF.alphaMorse );  ff->PLQd=nbmol.PLQd; 
+        nbmol.print_nonbonded();
+        
+        // DEBUG
         //printf("DEBUG initNBmol 1 nbmol.print_nonbonded(); \n"); nbmol.print_nonbonded();
         //nbmol.print_nonbonded();
         if(verbosity>1)nbmol.print();                              
@@ -1058,12 +1064,17 @@ void printPBCshifts(){
         bSurfAtoms=true;
         if(bGrid){
             bool bSymmetrize=true;
-            initGridFF( name,z0,cel0, bSymmetrize);
+            initGridFF( name,z0,cel0, bSymmetrize );
+        }else{
+            gridFF.bindSystem(surf.natoms, surf.atypes, surf.apos, surf.REQs );
+            gridFF.lvec = gridFF.grid.cell; 
+            gridFF.makePBCshifts(gridFF.nPBC, gridFF.lvec);
+
         }
-        else{
-            bool bSymmetrize=true;
-            initGridFF( name,z0,cel0, bSymmetrize, false);    
-        }
+//        else{ Milan's old solution to turn on all-atom interaction
+//            bool bSymmetrize=true;
+//            initGridFF( name,z0,cel0, bSymmetrize, false);    
+//        }
         return true;
     }
 
@@ -1075,7 +1086,7 @@ void printPBCshifts(){
             // check if last 4 characters are the name of the molecule = '.xyz' or '.mol' or '.mol2'
             const char* ext = strrchr(fname, '.');
             if (ext){
-                printf("MolWorld_sp3::insertMolecule() fname=%s ext=%s \n", fname, ext );
+                // printf("MolWorld_sp3::insertMolecule() fname=%s ext=%s \n", fname, ext );
                 if     ( strcmp(ext, ".xyz")  == 0 ){ iret = builder.loadXYZ_Atoms( fname, &params, -1, false, pos, rot ); }
                 else if( strcmp(ext, ".mol")  == 0 ){ iret = builder.load_mol     ( fname, pos, rot ); bBondInitialized=true; } 
                 else if( strcmp(ext, ".mol2") == 0 ){ iret = builder.load_mol2    ( fname, pos, rot ); bBondInitialized=true; }
@@ -1348,20 +1359,23 @@ void printPBCshifts(){
             printf("ERROR some bonds are not in atom neighbors => exit"); 
             exit(0); 
         };
-        DEBUG
+        // DEBUG
         // reshuffling atoms in order to have non-capping first
         builder.numberAtoms();
         builder.sortConfAtomsFirst();
         builder.checkBondsOrdered( true, false );
-        DEBUG
+        // DEBUG
         // make assignement of atom types and force field parameters
         if( bUFF ){  // according to UFF
+            // DEBUG
             builder.assignUFFtypes( 0, bCumulene, true, b141, bSimple, bConj); 
+            // DEBUG
             builder.assignUFFparams( 0, true );
+            // DEBUG
         }else{      // according to MMFF
             builder.assignTypes();
         }
-        DEBUG
+        // DEBUG
         // passing them to FFs
         if ( bUFF ){
             builder.toUFF( ffu, true );
@@ -1370,16 +1384,16 @@ void printPBCshifts(){
 
             builder.printAtomConfs();
             builder.printBonds();
-            DEBUG
+            // DEBUG
             builder.toMMFFsp3_loc( ffl, true, bEpairs, bUFF );   
             //ffl.printAtomParams();
             if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
             if(ffl.bEachAngle){ builder.assignAnglesMMFFsp3  ( ffl, false      ); ffl.printAngles();   }  //exit(0);
             //builder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
-            DEBUG
+            // DEBUG
             builder.toMMFFsp3    ( ff , true, bEpairs );
             ffl.flipPis( Vec3dOne );
-            DEBUG
+            // DEBUG
             ffl.printNeighs();
             //ff4.flipPis( Vec3fOne );
 
@@ -1396,18 +1410,18 @@ void printPBCshifts(){
                 //ffu.makeNeighCells( nPBC );      
                 ffu.makeNeighCells( npbc, pbc_shifts ); 
             }else{
-                DEBUG
+                // DEBUG
                 ff.bPBCbyLvec = true;
                 ff .setLvec( builder.lvec);
                 ffl.setLvec( builder.lvec);   
                 //ff4.setLvec((Mat3f)builder.lvec);
                 npbc = makePBCshifts( nPBC, builder.lvec );
-                DEBUG
+                // DEBUG
                 ffl.bindShifts(npbc,pbc_shifts);
                 //ff4.makeNeighCells  ( nPBC );       
                 //ffl.makeNeighCells( nPBC );      
                 ffl.makeNeighCells( npbc, pbc_shifts ); 
-                DEBUG
+                // DEBUG
             }
         }
 
@@ -1423,7 +1437,7 @@ void printPBCshifts(){
     virtual void makeFFs(){
         print("MolWorld_sp3::makeFFs()\n" );
         makeMMFFs();
-        DEBUG
+        // DEBUG
 
         // Initialize bounding boxes from atom groups if available
 
@@ -1432,17 +1446,49 @@ void printPBCshifts(){
             setNonBond( bNonBonded );
             ffu.go = &go;
             nbmol.evalPLQs(gridFF.alphaMorse);
+            nbmol.evalPLQd(gridFF.alphaMorse);
+            // DEBUG
             ffu.atomForceFunc = [&](int ia,const Vec3d p,Vec3d& f)->double{    
                 //printf( "ffu.atomForceFunc() ia=%i \n", ia  );
                 double E=0;
-                if   (bGridFF){ 
-                    E += gridFF.addAtom( p, nbmol.PLQd[ia], f );
-                    //Vec3d fi=Vec3dZero;
-                    //E+= gridFF.addForce( p, nbmol.PLQs[ia], fi, true  ); 
-                    //E += gridFF.addAtom( p, nbmol.PLQd[ia], fi );
-                    //printf("MolWorld_sp3::ffu.atomForceFunc(ia=%i,gridFF.mode=%i) p(%g,%g,%g) fi(%g,%g,%g) PLQ(%g,%g,%g) @gridFF.Bspline_PLQ=%li \n", ia, (int)gridFF.mode, p.x, p.y, p.z, fi.x,fi.y,fi.z, nbmol.PLQs[ia].x, nbmol.PLQs[ia].y, nbmol.PLQs[ia].z, (long)gridFF.Bspline_PLQ );
-                    //f.add( fi );
-                }  // GridFF
+                // if   (bGridFF){ 
+                //     Vec3d fi=Vec3dZero;
+                //     E += gridFF.addAtom( p, nbmol.PLQd[ia], f );
+
+                //     //gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia] );
+
+                //     //E+= gridFF.addForce( p, nbmol.PLQs[ia], fi, true  ); 
+                //     //E += gridFF.addAtom( p, nbmol.PLQd[ia], fi );
+                //     //printf("MolWorld_sp3::ffu.atomForceFunc(ia=%i,gridFF.mode=%i) p(%g,%g,%g) fi(%g,%g,%g) PLQ(%g,%g,%g) @gridFF.Bspline_PLQ=%li \n", ia, (int)gridFF.mode, p.x, p.y, p.z, fi.x,fi.y,fi.z, nbmol.PLQs[ia].x, nbmol.PLQs[ia].y, nbmol.PLQs[ia].z, (long)gridFF.Bspline_PLQ );
+                //     //printf("MolWorld_sp3::ffu.atomForceFunc(ia=%i,gridFF.mode=%i) p(%g,%g,%g) fi(%g,%g,%g) PLQ(%g,%g,%g) @gridFF.Bspline_PLQ=%li \n", ia, (int)gridFF.mode, p.x, p.y, p.z, fi.x,fi.y,fi.z, nbmol.PLQd[ia].x, nbmol.PLQd[ia].y, nbmol.PLQd[ia].z, (long)gridFF.Bspline_PLQ );
+                //     f.add( fi );
+                // }  // GridFF
+
+
+                if(bSurfAtoms)[[likely]]{ 
+                    if(bGridFF)[[likely]]{  // with gridFF
+                        //printf( "makeFFs()::ffu.atomForceFunc() ia=%i PLQd(%g,%g,%g,%g) \n", ia,ffu.PLQd[ia].x,ffu.PLQd[ia].y,ffu.PLQd[ia].z,ffu.PLQd[ia].w  );
+                        //gridFF.addAtom( ffu.apos[ia], ffu.PLQd[ia], f );
+                        //double Ei = gridFF.addAtom( ffu.apos[ia], ffu.PLQd[ia], f );  
+                        //E += Ei;
+                        E += gridFF.addAtom( ffu.apos[ia], ffu.PLQd[ia], f );   
+                        //printf("atomForceFunc.gridFF.addAtom Ei %g f(%g,%g,%g) ia=%i\n", Ei, f.x, f.y, f.z, ia);
+                    }else{ // Without gridFF (Direct pairwise atoms)
+                        //{ E+= nbmol .evalMorse   ( surf, false,                  gridFF.alphaMorse, gridFF.Rdamp );  }
+                        //{ E+= nbmol .evalMorsePBC    ( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp );  }
+                        //DEBUG
+                        { 
+                           // E+= gridFF.evalMorsePBC_sym( ffu.apos[ia], ffu.REQs[ia],  f);   
+
+                            Vec3d fi=Vec3dZero;
+                            double Ei = gridFF.evalMorsePBC_sym( ffu.apos[ia], ffu.REQs[ia],  fi);   
+                            printf( "atomForceFunc.evalMorsePBC_sym Ei %g fi(%g,%g,%g) gridFF.natoms=%i gridFF.npbc=%i \n", Ei, fi.x,fi.y,fi.z, gridFF.natoms, gridFF.npbc );
+                            E+=Ei;
+                            f.add(fi);
+                        }
+                        //DEBUG
+                    }
+                }
                 if(bConstrZ){
                     springbound( p.z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, f.z );
                 }
@@ -1452,51 +1498,73 @@ void printPBCshifts(){
                 }
                 
                 return E;
-            };
-
+            }; // end of ffu.atomForceFunc = [&]{} 
+            // DEBUG
             if(bOptimizer){ 
                 //setOptimizer( ffu.nDOFs, ffu.DOFs, ffu.fDOFs );
                 setOptimizer( ffu.natoms*3, (double*)ffu.apos, (double*)ffu.fapos );
                 ffu.vapos = (Vec3d*)opt.vel;
-            }                         
+            }    
+            // DEBUG                     
         }else{
-            DEBUG
+            // DEBUG
             //ffl.realloc( builder.atoms.size() );
             initNBmol( &ffl );
-            DEBUG
+            // DEBUG
+            // --- DEBUG PRINT: Check REQs after initNBmol ---
+            if(ffl.natoms > 0){
+                // printf("DEBUG>> makeFFs (after initNBmol): nbmol.REQs[0](RvdW=%g, sqrtEvdW=%g, Q=%g, Hb?=%g)\n",
+                       /*nbmol.REQs[0].x, nbmol.REQs[0].y, nbmol.REQs[0].z, nbmol.REQs[0].w);*/
+            }
+            // -----------------------------------------------
             if(builder.atom2group.size() > 0){ ffl.initBBsFromGroups(builder.atom2group.size(), builder.atom2group.data()); }
             //ffl.printAtomParams();
             setNonBond( bNonBonded );
-            DEBUG
+            // DEBUG
             //ffl.print_nonbonded();
             bool bChargeToEpair=true;
             //bool bChargeToEpair=false;
             if(bChargeToEpair){
-                DEBUG
+                // DEBUG
                 int etyp=-1; etyp=params.atomTypeDict["E"];
-                DEBUG
+                // DEBUG
                 //ff.chargeToEpairs( nbmol.REQs, QEpair, etyp );  
                 ffl.chargeToEpairs( QEpair, etyp ); 
-                DEBUG
+                // DEBUG
             }
-            DEBUG
+            // DEBUG
+            // --- DEBUG PRINT: Check alphaMorse before evalPLQd ---
+            // printf("DEBUG>> makeFFs (before evalPLQd): gridFF.alphaMorse = %g\n", gridFF.alphaMorse);
+            // --- DEBUG PRINT: Check ffl.REQs before evalPLQd ---
+            if(ffl.natoms > 0){
+                // printf("DEBUG>> makeFFs (before evalPLQd): ffl.REQs[0](RvdW=%g, sqrtEvdW=%g, Q=%g, Hb?=%g)\n",
+                       /*ffl.REQs[0].x, ffl.REQs[0].y, ffl.REQs[0].z, ffl.REQs[0].w);*/
+            }
+            // ---------------------------------------------------
             ffl.evalPLQs(gridFF.alphaMorse);
             ffl.evalPLQd(gridFF.alphaMorse);
-            DEBUG
+            // DEBUG
+            // --- DEBUG PRINT: Check PLQd after calculation ---
+            if(ffl.natoms > 0){
+                // printf("DEBUG>> makeFFs (after evalPLQd): ffl.PLQd[0](Pauli=%g, Lond=%g, Coul=%g, alpha*RvdW?=%g)\n",
+                       /*ffl.PLQd[0].x, ffl.PLQd[0].y, ffl.PLQd[0].z, ffl.PLQd[0].w);*/
+            }
+            // -------------------------------------------------
             if(bCheckInit){
                 idebug=1;
                 ffl.checkREQlimits();
-                DEBUG
+                // DEBUG
                 ffl.eval_check();
-                DEBUG
+                // DEBUG
                 //ff4.eval_check();
                 //ff .eval_check();
                 idebug=0;
             }
-            DEBUG
-            printf("makeFFs(): ffl  .print_nonbonded() \n"); ffl  .print_nonbonded(); 
-            printf("makeFFs(): nbmol.print_nonbonded() \n"); nbmol.print_nonbonded(); 
+            // DEBUG
+            // printf("makeFFs(): ffl  .print_nonbonded() \n"); ffl  .print_nonbonded(); 
+            // printf("makeFFs(): nbmol.print_nonbonded() \n"); nbmol.print_nonbonded(); 
             //exit(0);
+            // DEBUG
             if(bOptimizer){ 
                 //setOptimizer(); 
                 //setOptimizer( ff.nDOFs, ff .DOFs,  ff.fDOFs );
@@ -1504,9 +1572,9 @@ void printPBCshifts(){
                 if(bRelaxPi) ffl.relax_pi( 1000, 0.1, 1e-4 );
                 ffl.vapos = (Vec3d*)opt.vel;
             }               
-            DEBUG          
-            _realloc( manipulation_sel, ff.natoms );
-            DEBUG
+            // DEBUG          
+            _realloc( manipulation_sel, ffl.natoms ); // Check if this does not break charges on GPU Milan (there was ff.natoms)
+            // DEBUG
         }
         //ffl.print_nonbonded();
     }
@@ -1855,7 +1923,7 @@ bGridFF=false;
             // }
             #pragma omp single
             {
-                if(bConstrains  ){ /*std::cout<<"E before constrains :" << E;*/ E+=constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec ); /*std::cout<<" E after constrains :" << E <<std::endl;*/ }
+                if(bConstrains  ){  E+=constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec );  }
                 if(!bRelax){ gopt.constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec ); }
             }
             // ---- assemble (we need to wait when all atoms are evaluated)
@@ -2063,6 +2131,8 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
         long T0 = getCPUticks();
         int nitr=0;
         if(bUFF){
+            //ffu.printSizes();
+            //ffu.printPointers();
             switch(iParalel){
                 case  0: nitr=ffu.run    ( nIter, dt_default, Ftol, 1000.0 ); break;
                 case  1: nitr=ffu.run_omp( nIter, dt_default, Ftol, 1000.0 ); break;
@@ -2101,6 +2171,9 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
     }
 
 double eval_no_omp(){
+    // printf("DEBUG: Entering eval_no_omp()\n");
+    // printf( "DEBUG: MolWorld_sp3::eval_no_omp()  bPBC=%i | bNonBonded=%i bNonBondNeighs=%i | bSurfAtoms=%i bGridFF=%i | bMMFF=%i doAngles=%i doPiSigma=%i doPiPiI=%i \n", bPBC,  bNonBonded, bNonBondNeighs, bSurfAtoms, bGridFF, bMMFF, ffl.doAngles, ffl.doPiSigma, ffl.doPiPiI );
+    
     double E=0;
     double F2max = ffl.FmaxNonBonded*ffl.FmaxNonBonded;
     ffl.bNonBonded=bNonBonded; ffl.setNonBondStrategy( bNonBondNeighs*2-1 );
@@ -2113,7 +2186,7 @@ double eval_no_omp(){
         if(bMMFF)[[likely]]{
             if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
         }
-        //printf( "debug.1 E[%i]=%g\n", ia, E );
+        // printf( "debug.1 E[%i]=%g\n", ia, E );
         // ----- Error is HERE
         if(bNonBonded){
             if(bNonBondNeighs)[[likely]]{
@@ -2122,23 +2195,44 @@ double eval_no_omp(){
             }else{
                 if(bPBC)[[likely]]{ E+=ffl.evalLJQs_PBC_atom_omp( ia, F2max ); }
                 else              { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); } 
-            }
+            } 
         }
-        //printf( "debug.2 E[%i]=%g\n", ia, E );
+        // printf( "debug.2 E[%i]=%g\n", ia, E );
         if(bSurfAtoms)[[likely]]{ 
             if(bGridFF)[[likely]]{  // with gridFF
-                E += gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia] );
+                // --- DEBUG PRINT: Before gridFF.addAtom ---
+                    if(ia == 0){ // Print only for the first atom to reduce output
+                        // printf("DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=%g\n", gridFF.alphaMorse );
+                        // printf("DEBUG>> eval_no_omp[ia=0]: pos(%g,%g,%g) PLQd(Pauli=%g, Lond=%g, Coul=%g, aR?=%g)\n",
+                               // ffl.apos[ia].x, ffl.apos[ia].y, ffl.apos[ia].z,
+                               // ffl.PLQd[ia].x, ffl.PLQd[ia].y, ffl.PLQd[ia].z, ffl.PLQd[ia].w);
+                    }
+                    // -----------------------------------------
+                // E += gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia] );
+                double E_grid = gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia] );
+                    // --- DEBUG PRINT: After gridFF.addAtom ---
+                    if(ia == 0){
+                        //  printf("DEBUG<< eval_no_omp[ia=0]: E_grid=%g, f_accum(%g,%g,%g)\n",
+                                // E_grid, ffl.fapos[ia].x, ffl.fapos[ia].y, ffl.fapos[ia].z);
+                    }
+                    // ----------------------------------------
+                E += E_grid;
             }else{ // Without gridFF (Direct pairwise atoms)
                 //{ E+= nbmol .evalMorse   ( surf, false,                  gridFF.alphaMorse, gridFF.Rdamp );  }
                 //{ E+= nbmol .evalMorsePBC    ( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp );  }
                 { E+= gridFF.evalMorsePBC_sym( ffl.apos[ia], ffl.REQs[ia],  ffl.fapos[ia] );   }
+                if(ia == 0){ // Print only for the first atom to reduce output
+                    // printf("No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=%g, f_accum(%g,%g,%g)\n",
+                            // E, ffl.fapos[ia].x, ffl.fapos[ia].y, ffl.fapos[ia].z);
+                }
+                
             }
         }
-        //printf( "debug.3 E[%i]=%g\n", ia, E );
+        // printf( "debug.3 E[%i]=%g\n", ia, E );
         if(bConstrZ){
             E+=springbound( ffl.apos[ia].z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, ffl.fapos[ia].z );
         }
-        //printf( "debug.4 E[%i]=%g\n", ia, E );
+        // printf( "debug.4 E[%i]=%g\n", ia, E );
     }
     // ---- assembling
     for(int ia=0; ia<ffl.natoms; ia++){
@@ -2147,18 +2241,19 @@ double eval_no_omp(){
     if(bConstrains){
         E += constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec );
     }
-    //printf( "debug.5 E=%g\n", E );
+    // printf( "debug.5 E=%g\n", E );
     if( go.bExploring){
         E += go.constrs.apply( ffl.apos, ffl.fapos, &(ffl.lvec) );
     }
-    //printf( "debug.6 E=%g\n", E );
+    // printf( "debug.6 E=%g\n", E );
     if(bGroups){ groups.applyAllForces(0.0, 0.2*sin(nloop*0.02) ); }
     return E;
+    
 }
 
 
     __attribute__((hot))  
-    int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double damping=-1.0, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
+    int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double damping=-1.0, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ,int ipicked=-1){//}, int iselected=-1 ){
         //printf( "MolWorld_sp3::run_no_omp() niter_max %i dt %g Fconv %g Flim %g damping %g out{E,vv,ff,vf}(%li,%li,%li,%li) \n", niter_max, dt, Fconv, Flim, damping, (long)outE, (long)outF, (long)outV, (long)outVF );
         //printf( "MolWorld_sp3::run_no_omp() ffl.natoms=%i \n", ffl.natoms );
         nloop++;
@@ -2179,13 +2274,15 @@ double eval_no_omp(){
 
         //printf( "MolWorld_sp3::run_no_omp(itr=%i/%i) gridFF.mode=%i bGridFF=%i bSurfAtoms=%i   gridFF.Bspline_PLQ=%li  FFPaul_d=%li FFLond_d=%li FFelec_d=%li \n", itr,niter_max, gridFF.mode, bGridFF, bSurfAtoms, (long)gridFF.Bspline_PLQ, (long)gridFF.FFPaul_d, (long)gridFF.FFLond_d, (long)gridFF.FFelec_d );
 
-        //printf( "MolWorld_sp3::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", bNonBonded, bNonBondNeighs, ffl.bSubtractBondNonBond, ffl.bSubtractAngleNonBond, ffl.bClampNonBonded );
+        //printf( "MolWorld_sp3::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i ffl.nnode=%i bMMFF=%i ipicked=%i \n", bNonBonded, bNonBondNeighs, ffl.bSubtractBondNonBond, ffl.bSubtractAngleNonBond, ffl.bClampNonBonded, ffl.nnode, bMMFF, ipicked );
 
         //if(bToCOG){ printf("bToCOG=%i \n", bToCOG ); center(true); }
         //if(bToCOG){ Vec3d cog=average( ffl.natoms, ffl.apos );  move( ffl.natoms, ffl.apos, cog*-1.0 ); }
         if(bCheckStuck){ checkStuck( RStuck ); }
         //if(verbosity>0)printf( "MolWorld_sp3::run_no_omp(niter=%i,bColB=%i,bColNB=%i) dt %g damping %g colB %g colNB %g \n", niter_max, ffl.bCollisionDamping, ffl.bCollisionDampingNonBond, dt, 1-cdamp, ffl.col_damp*dt, ffl.col_damp_NB*dt );
         //if(verbosity>1)[[unlikely]]{printf( "MolWorld_sp3::run_no_omp(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, ffl.colDamp.bBond, ffl.colDamp.bAng, ffl.colDamp.bNonB, dt, 1-cdamp, ffl.colDamp.cdampB*dt, ffl.colDamp.cdampAng*dt, ffl.colDamp.cdampNB*dt ); }
+        //Vec3d pos_picked = ffl.apos[ipicked];
+        //pick_ray0=pos_picked;
         for(itr=0; itr<niter; itr++){
             //double ff=0,vv=0,vf=0;
             if(bGopt){
@@ -2202,13 +2299,19 @@ double eval_no_omp(){
             //------ eval forces
             //long t1 = getCPUticks();
 
-            for(int i=0; i<ffl.natoms; i++){ ffl.fapos[i]=Vec3dZero; }
+            for(int i=0; i<ffl.natoms; i++){ 
+                ffl.fapos[i]=Vec3dZero; 
+                //if(bHardConstrs) if( ffl.constr[i].w>1e-9 )[[unlikely]]{ ffl.apos[i] = ffl.constr[i].f;};
+            }
             for(int ia=0; ia<ffl.natoms; ia++){ 
                 {                 ffl.fapos[ia           ] = Vec3dZero; } // atom pos force
                 if(ia<ffl.nnode){ ffl.fapos[ia+ffl.natoms] = Vec3dZero; } // atom pi  force
                 if(bMMFF)[[likely]]{
                     if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
+                }else{ // cap atom
+                   //for(int j=0; j<4; j++){ ffl.fneigh[ia*4+j] = Vec3dZero; }
                 }
+                // printf( "ia %3i pos(%g,%g,%g) f_bb(%g,%g,%g) \n", ia, ffl.apos[ia].x,ffl.apos[ia].y,ffl.apos[ia].z, ffl.fapos[ia].x,ffl.fapos[ia].y,ffl.fapos[ia].z );
                 // ----- Error is HERE
                 if(bNonBonded){
                     if(bNonBondNeighs)[[likely]]{
@@ -2219,6 +2322,7 @@ double eval_no_omp(){
                         else              { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); } 
                     }
                 }
+                // printf( "ia %3i pos(%g,%g,%g) f_nb(%g,%g,%g) \n", ia, ffl.apos[ia].x,ffl.apos[ia].y,ffl.apos[ia].z, ffl.fapos[ia].x,ffl.fapos[ia].y,ffl.fapos[ia].z );
                 if(bSurfAtoms)[[likely]]{ 
                     if(bGridFF)[[likely]]{  // with gridFF
                         gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia] );
@@ -2232,6 +2336,8 @@ double eval_no_omp(){
                         { E+= gridFF.evalMorsePBC_sym( ffl.apos[ia], ffl.REQs[ia],  ffl.fapos[ia] );   }
                     }
                 }
+                // printf( "ia %3i pos(%g,%g,%g) f_gf(%g,%g,%g) \n", ia, ffl.apos[ia].x,ffl.apos[ia].y,ffl.apos[ia].z, ffl.fapos[ia].x,ffl.fapos[ia].y,ffl.fapos[ia].z );
+
                 // if   (bGridFF){ 
                 //     if  (bTricubic){ E+= gridFF.addForce_Tricubic( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }
                 //     else           { E+= gridFF.addForce         ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }
@@ -2242,11 +2348,33 @@ double eval_no_omp(){
                     springbound( ffl.apos[ia].z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, ffl.fapos[ia].z );
                 }
                 //if(bGroups){ groups.forceAtom(ia); }
+                
+                // Vec3d pos_picked = ffl.apos[30];
+                // pick_ray0=pos_picked;
+                
+
                 if(ipicked==ia)[[unlikely]]{ 
                     const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
                     ffl.fapos[ia].add( f );
+                    printf( "pick_ray0=(%g,%g,%g)\n", pick_ray0.x, pick_ray0.y, pick_ray0.z );
                 }
+
+                // if(iselected==ia)[[unlikely]]{
+                //     const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick );
+                //     ffl.fapos[ia].add( f );
+                //     printf( "pick_ray0=(%g,%g,%g)\n", pick_ray0.x, pick_ray0.y, pick_ray0.z );
+                // }
+
+                
             }
+            // Vec3d pos_picked = ffl.apos[30];
+                // pick_ray0=pos_picked;
+                //printf( "pos_picked(%g,%g,%g)\n", pos_picked.x, pos_picked.y, pos_picked.z );
+                
+                
+
+            // ffl.print_fneigh();
+
             // ---- assembling
             for(int ia=0; ia<ffl.natoms; ia++){
                 ffl.assemble_atom( ia );
@@ -2285,6 +2413,7 @@ double eval_no_omp(){
                 //if(ffl.colDamp.medium<0){  if( ffl.colDamp.canAccelerate() ){ cdamp=1-ffl.colDamp.medium; }else{ cdamp=1+ffl.colDamp.medium; } }
             }
             for(int i=0; i<ffl.nvecs; i++){
+                // printf( "ia %3i pos(%g,%g,%g) f(%g,%g,%g) v(%g,%g,%g) \n", i, ffl.apos[i].x,ffl.apos[i].y,ffl.apos[i].z, ffl.fapos[i].x,ffl.fapos[i].y,ffl.fapos[i].z, ffl.vapos[i].x,ffl.vapos[i].y,ffl.vapos[i].z );
                 if( go.bExploring ){
                     //if(i==0)printf( "run_no_omp() move_atom_Langevin() gamma_damp%g T_target=%g \n", go.gamma_damp, go.T_target );
                     ffl.move_atom_Langevin( i, dt, 10000.0, go.gamma_damp, go.T_target );
@@ -2298,6 +2427,8 @@ double eval_no_omp(){
                 //ffl.move_atom_MD( i, 0.05, Flim, 0.9 );
                 //ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 );
                 //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
+
+                if(bHardConstrs) if( ffl.constr[i].w>1e-9 )[[unlikely]]{ ffl.apos[i] = ffl.constr[i].f; ffl.vapos[i]=Vec3dZero; };
             }
             if( (!bFIRE) && (!go.bExploring) ){
                 //printf( "Acceleration: cdamp=%g(%g) nstepOK=%i \n", cdamp_, cdamp, ffl.colDamp.nstepOK );
@@ -2319,6 +2450,8 @@ double eval_no_omp(){
                 //printf( "run_no_omp::save() %s \n", tmpstr );
                 saveXYZ( trj_fname, tmpstr, false, "a", nPBC_save );
             }
+
+            // printf("itr: %i |F| %g  F2conv %g \n", itr, ffl.cvf.z, F2conv );
             if(ffl.cvf.z<F2conv)[[unlikely]]{ 
                 //niter=0; 
                 bConverged=true;
@@ -2550,9 +2683,9 @@ void scan_rigid( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces
     //     gridFF.grid.pos0.x, gridFF.grid.pos0.y, gridFF.grid.pos0.z,
     //     gridFF.grid.cell.a.x, gridFF.grid.cell.b.y, gridFF.grid.cell.c.z);
 
-    for(int ia=0; ia<ffl.natoms; ia++){ 
-         printf( "MolWorld_sp3::scan_rigid()[ia=%i] pos(%8.4f,%8.4f,%8.4f) REQ(%8.4f,%16.8f,%8.4f,%8.4f) PLQd(%16.8f,%16.8f,%16.8f,%16.8f) \n", 
-         ia, ffl.apos[ia].x, ffl.apos[ia].y, ffl.apos[ia].z, ffl.REQs[ia].x, ffl.REQs[ia].y, ffl.REQs[ia].z, ffl.REQs[ia].w, ffl.PLQd[ia].x, ffl.PLQd[ia].y, ffl.PLQd[ia].z, ffl.PLQd[ia].w );  }
+    // for(int ia=0; ia<ffl.natoms; ia++){ 
+    //      printf( "MolWorld_sp3::scan_rigid()[ia=%i] pos(%8.4f,%8.4f,%8.4f) REQ(%8.4f,%16.8f,%8.4f,%8.4f) PLQd(%16.8f,%16.8f,%16.8f,%16.8f) \n", 
+    //      ia, ffl.apos[ia].x, ffl.apos[ia].y, ffl.apos[ia].z, ffl.REQs[ia].x, ffl.REQs[ia].y, ffl.REQs[ia].z, ffl.REQs[ia].w, ffl.PLQd[ia].x, ffl.PLQd[ia].y, ffl.PLQd[ia].z, ffl.PLQd[ia].w );  }
 
     Atoms atoms;
     atoms.copyOf( ffl );
@@ -2580,7 +2713,7 @@ void scan_rigid( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces
     }
 }
 
-virtual void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces, Vec3d* aposs, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000 ){
+virtual void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces, Vec3d* aposs, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000,int ipicked=29){// ,int iselected=29){ //unified i seleted and ipicked
     printf("MolWorld_sp3::scan_relaxed(nconf=%i,omp=%i) @poss=%li @rots=%li @Es=%li @aforces=%li @aposs=%li \n", nconf, omp, (long)poss, (long)rots, (long)Es, (long)aforces, (long)aposs);
     Atoms atoms;
     atoms.copyOf( ffl );
@@ -2588,14 +2721,277 @@ virtual void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3
     for(int i=0; i<nconf; i++){
         Vec3d pos; if(poss){ pos=poss[i]; }else{ pos=Vec3dZero; }
         Mat3d rot; if(rots){ rot=rots[i]; }else{ rot=Mat3dIdentity; }
+        for(int ia=0; ia<ffl.natoms; ia<ia++){ ffl.vapos[i]=Vec3dZero;  }
         ffl.setFromRef( atoms.apos, pipos.data(), pos, rot );
-        int niterdone = run_no_omp( niter_max, dt, Fconv);
+//        int niterdone = run_no_omp( niter_max, dt, Fconv, Flim, 1000.0,0,0,0,0,iselected);
+          int niterdone = run_no_omp( niter_max, dt, Fconv, Flim, 1000.0,0,0,0,0,ipicked);
         double E = eval_no_omp();
+        // printf("Debug After Relax %f\n", atoms.apos);
         if(Es){ Es[i]=E; }
         if(aforces){ ffl.copyForcesTo( aforces + i*ffl.natoms ); }
         if(aposs  ){ ffl.copyPosTo   ( aposs   + i*ffl.natoms ); }
+        // printf("Configuration %i: Energy = %g, Iterations = %i\n", i, E, niterdone);
+        // printf("Debug Appos%li %li %li\n", aposs[0], aposs[1], aposs[2]);
     }
 }
+
+// //Without taking the previous position
+// void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double* Es, Vec3d* aforces, Vec3d* aposs, bool bHardConstr_, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000 ){
+//     printf("MolWorld_sp3::scan_relaxed_constr(nconf=%i,nconstr=%i,omp=%i)  dt=%g Fconv=%g Flim=%g @icontrs=%p @contrs=%p @Es=%p @aforces=%p @aposs=%p \n", nconf, nconstr, omp,  dt, Fconv, Flim, icontrs, contrs_,  Es, aforces, aposs );
+//     Atoms atoms;
+//     atoms.copyOf( ffl );
+//     std::vector<Vec3d> pipos(ffl.nnode); for(int i=0; i<ffl.nnode; i++){ pipos[i]=ffl.pipos[i]; }
+//     bHardConstrs = bHardConstr_;
+//     for(int i=0; i<nconf; i++){        
+//         for(int ia=0; ia<ffl.natoms; ia++){ 
+//             ffl.constr[ia]=Quat4dZero; 
+//             ffl.vapos[i]=Vec3dZero;
+//         }
+//         // Vec3d pos; //if(contrs){ pos=contrs[i]; }else{ pos=Vec3dZero; }
+//         // Mat3d rot; //if(rots){ rot=rots[i]; }else{ rot=Mat3dIdentity; }
+//         // if(i==0){ffl.setFromRef( atoms.apos, pipos.data(), pos, rot )};
+
+//         for(int ic=0; ic<nconstr; ic++){ 
+//             int ia = icontrs[ic];
+//             ffl.constr[ia]=contrs_[i*nconstr+ic];
+//             printf("scan_constr()[i=%i] constr %i ia %i (%16.8f,%16.8f,%16.8f,%16.8f)\n", i, ic, ia, ffl.constr[ia].x, ffl.constr[ia].y, ffl.constr[ia].z, ffl.constr[ia].w );
+//             if(bHardConstrs) if( ffl.constr[i].w>1e-9 ){ ffl.apos[ia] = ffl.constr[i].f; ffl.vapos[i]=Vec3dZero; };
+//         }
+//         int niterdone = run_no_omp( niter_max, dt, Fconv, Flim, 1000.0);
+//         double E = eval_no_omp();
+//         if(Es){ Es[i]=E; }
+//         if(aforces){ ffl.copyForcesTo( aforces + i*ffl.natoms ); }
+//         if(aposs  ){ ffl.copyPosTo   ( aposs   + i*ffl.natoms ); }
+//         saveXYZ( "scan_constr.xyz", "#", 1, "a" );
+//     }
+// }
+
+
+// //Working fine with MMFF scan relax  
+// void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double* Es, Vec3d* aforces, Vec3d* aposs, bool bHardConstr_, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000 ){
+//     printf("MolWorld_sp3::scan_relaxed_constr(nconf=%i,nconstr=%i,omp=%i)  dt=%g Fconv=%g Flim=%g @icontrs=%p @contrs=%p @Es=%p @aforces=%p @aposs=%p \n", nconf, nconstr, omp,  dt, Fconv, Flim, icontrs, contrs_,  Es, aforces, aposs );
+//     Atoms atoms;
+//     atoms.copyOf( ffl );
+//     std::vector<Vec3d> pipos(ffl.nnode); for(int i=0; i<ffl.nnode; i++){ pipos[i]=ffl.pipos[i]; }
+//     bHardConstrs = bHardConstr_;
+//     std::vector<Vec3d> initial_Pos(ffl.natoms);
+//     for(int i=0; i<ffl.natoms; i++) {
+//         initial_Pos[i] = ffl.apos[i];
+//     }
+//     for(int i=0; i<nconf; i++){        
+//         for(int ia=0; ia<ffl.natoms; ia++){ 
+//             ffl.constr[ia]=Quat4dZero; 
+//             ffl.vapos[i]=Vec3dZero;
+//         }
+        
+//         for(int ic=0; ic<nconstr; ic++){ 
+//             int ia = icontrs[ic];
+//             ffl.constr[ia]=contrs_[i*nconstr+ic];
+//             ffl.constr[ia].f.x = initial_Pos[ia].x + ffl.constr[ia].x;
+//             ffl.constr[ia].f.y = initial_Pos[ia].y + ffl.constr[ia].y;
+//             ffl.constr[ia].f.z = initial_Pos[ia].z + ffl.constr[ia].z;
+
+
+//             printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, ffl.constr[ia].x, ffl.constr[ia].y, ffl.constr[ia].z, ffl.constr[ia].w,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffl.apos[ia].x,ffl.apos[ia].y,ffl.apos[ia].z );
+            
+//             if(bHardConstrs) if( ffl.constr[ia].w>1e-9 ){ ffl.apos[ia] = ffl.constr[ia].f; ffl.vapos[i]=Vec3dZero; };
+
+//             printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, ffl.constr[ia].x, ffl.constr[ia].y, ffl.constr[ia].z, ffl.constr[ia].w ,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffl.apos[ia].x,ffl.apos[ia].y,ffl.apos[ia].z );
+//         }
+        // int niterdone = run_no_omp( niter_max, dt, Fconv, Flim, 1000.0);
+//         double E = eval_no_omp();
+//         if(Es){ Es[i]=E; }
+//         if(aforces){ ffl.copyForcesTo( aforces + i*ffl.natoms ); }
+//         if(aposs  ){ ffl.copyPosTo   ( aposs   + i*ffl.natoms ); }
+//         saveXYZ( "scan_constr.xyz", "#", 1, "a" );
+//     }
+// }
+
+
+//// it  should be renamed by scan_constr_uff and need to modify the corresponding lib file changes accordingly 
+void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double* Es, Vec3d* aforces, Vec3d* aposs, bool bHardConstr_, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000 ){
+    printf("MolWorld_sp3::scan_relaxed_constr_uff(nconf=%i,nconstr=%i,omp=%i)  dt=%g Fconv=%g Flim=%g @icontrs=%p @contrs=%p @Es=%p @aforces=%p @aposs=%p \n", nconf, nconstr, omp,  dt, Fconv, Flim, icontrs, contrs_,  Es, aforces, aposs );
+    
+    ffu.printSizes();
+    ffu.printPointers();
+    
+    // Store original bUFF value to restore later
+    //bool original_bUFF = bUFF;
+    // Enable UFF force field
+    //bUFF = true;
+    //makeFFs();
+    
+    Atoms atoms;
+    atoms.copyOf( ffu );
+    //std::vector<Vec3d> pipos(ffu.nnode); for(int i=0; i<ffu.nnode; i++){ pipos[i]=ffu.pipos[i]; }
+    bHardConstrs = bHardConstr_;
+    std::vector<Vec3d> initial_Pos(ffu.natoms);
+    for(int i=0; i<ffu.natoms; i++) {
+        initial_Pos[i] = ffu.apos[i];
+    }
+
+    for(int i=0; i<nconf; i++){        
+        for(int ia=0; ia<ffu.natoms; ia++){ 
+            ffu.constr[ia]=Quat4dZero; 
+            ffu.vapos[ia]=Vec3dZero;
+        }
+        
+        for(int ic=0; ic<nconstr; ic++){ 
+            int ia = icontrs[ic];
+            if(ia < 0 || ia >= ffu.natoms) {
+                printf("ERROR: Invalid atom index %d in constraint %d\n", ia, ic);
+                continue;
+            }
+            // Correctly index into the contrs_ array
+            int idx = i*nconstr + ic;
+            ffu.constr[ia] = contrs_[idx];
+            
+            // Update the constraint position with the initial position
+            ffu.constr[ia].f.x = initial_Pos[ia].x + ffu.constr[ia].x;
+            ffu.constr[ia].f.y = initial_Pos[ia].y + ffu.constr[ia].y;
+            ffu.constr[ia].f.z = initial_Pos[ia].z + ffu.constr[ia].z;
+
+            // printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, 
+            //    ffu.constr[ia].x, ffu.constr[ia].y, ffu.constr[ia].z, ffu.constr[ia].w,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffu.apos[ia].x,ffu.apos[ia].y,ffu.apos[ia].z );
+
+            // printf("bHardConstrs %d\n", bHardConstrs);
+            
+            if(bHardConstrs) if( ffu.constr[ia].w>1e-9 ){ ffu.apos[ia] = ffu.constr[ia].f; ffu.vapos[ia]=Vec3dZero; };
+
+            // printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, 
+            //    ffu.constr[ia].x, ffu.constr[ia].y, ffu.constr[ia].z, ffu.constr[ia].w ,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffu.apos[ia].x,ffu.apos[ia].y,ffu.apos[ia].z );
+        }
+        
+        
+        // Run relaxation using UFF
+        int niterdone;
+        // if (omp) {
+        //     niterdone = ffu.run_omp(niter_max, dt, Fconv, Flim);
+        // } else {
+        //     niterdone = ffu.run(niter_max, dt, Fconv, Flim);
+        // }
+        
+        niterdone = ffu.run(niter_max, dt, Fconv, Flim);
+        // omp=true;
+        // niterdone = ffu.run_omp(niter_max, dt, Fconv, Flim);
+        
+        // Print forces for verification
+        // for(int ja=0; ja<ffu.natoms; ja++) {
+        //     printf("DEBUG: before eval fapos[%d] = (%g,%g,%g)\n", 
+        //         ja, ffu.fapos[ja].x, ffu.fapos[ja].y, ffu.fapos[ja].z);
+        // }
+
+        // Evaluate energy using UFF
+        // double E_eval = ffu.eval();
+        //double E_eval_omp=ffu.eval_omp();
+        double E_run = ffu.Etot;
+        
+        // printf("scan_constr()[i=%i] E_from_run=%g \n", i, E_run );
+        //printf("scan_constr()[i=%i] E_from_eval=%g \n", i, E_eval );
+        // printf("scan_constr()[i=%i] E_from_eval_omp=%g \n", i, E_eval_omp );
+        // if(Es) { Es[i] = E_eval; }
+        if(Es) { Es[i] = E_run; }
+        
+        // for(int ja=0; ja<ffu.natoms; ja++) {
+        //     printf("DEBUG: after eval fapos[%d] = (%g,%g,%g)\n", 
+        //         ja, ffu.fapos[ja].x, ffu.fapos[ja].y, ffu.fapos[ja].z);
+        // }
+        
+        // Copy forces and positions if requested
+        if(aforces) {
+            for(int ja=0; ja<ffu.natoms; ja++) {
+                // printf("scan_constr()[i=%i] ja %i fapos(%16.8f,%16.8f,%16.8f)\n", i, ja, ffu.fapos[ja].x, ffu.fapos[ja].y, ffu.fapos[ja].z );
+                aforces[i*ffu.natoms + ja] = ffu.fapos[ja];
+            }
+        }
+        // if(aforces) {
+        //     // First verify that ffu.fapos contains valid data
+        //     printf("DEBUG: Verifying ffu.fapos before copy:\n");
+        //     for(int ja=0; ja<ffu.natoms; ja++) {
+        //         printf("Pre-copy ffu.fapos[%d] = (%g,%g,%g)\n", 
+        //             ja, ffu.fapos[ja].x, ffu.fapos[ja].y, ffu.fapos[ja].z);
+        //     }
+        
+        //     // Direct manual copy with bounds checking
+        //     for(int ja=0; ja<ffu.natoms; ja++) {
+        //         if (i*ffu.natoms + ja >= nconf*ffu.natoms) {
+        //             printf("ERROR: Array bounds exceeded at i=%d, ja=%d\n", i, ja);
+        //             break;
+        //         }
+        //         aforces[i*ffu.natoms + ja].x = ffu.fapos[ja].x;
+        //         aforces[i*ffu.natoms + ja].y = ffu.fapos[ja].y;
+        //         aforces[i*ffu.natoms + ja].z = ffu.fapos[ja].z;
+                
+        //         // Verify the copy was successful
+        //         printf("Post-copy aforces[%d] = (%g,%g,%g)\n", 
+        //             i*ffu.natoms + ja, 
+        //             aforces[i*ffu.natoms + ja].x,
+        //             aforces[i*ffu.natoms + ja].y,
+        //             aforces[i*ffu.natoms + ja].z);
+        //     }
+        // }
+
+        if(aposs) {
+            for(int ja=0; ja<ffu.natoms; ja++) {
+                // printf("scan_constr()[i=%i] ja %i apos(%16.8f,%16.8f,%16.8f)\n", i, ja, ffu.apos[ja].x, ffu.apos[ja].y, ffu.apos[ja].z );
+                aposs[i*ffu.natoms + ja] = ffu.apos[ja];
+            }
+        }
+        
+
+        // if(Es){ Es[i]=E; }
+        // if(aforces){ ffu.copyForcesTo( aforces + i*ffl.natoms ); }
+        // if(aposs  ){ ffu.copyPosTo   ( aposs   + i*ffl.natoms ); }
+        // // Save trajectory if needed
+        //saveXYZ("scan_constr_uff.xyz", "#", 1, "a");
+        // printf("Configuration %i: Energy = %g, Iterations = %i\n", i, E, niterdone);
+        printf("Configuration %i: Energy = %g, Iterations = %i\n", i, E_run, niterdone);
+        // printf("Configuration %i: Energy = %g, Iterations = %i\n", i, E_eval, niterdone);
+    }
+    
+    // Restore original bUFF value
+    //bUFF = original_bUFF;
+}
+
+// UFF version of scan_rigid function for rigid scanning with UFF forcefield
+void scan_rigid_uff( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces, Vec3d* aposs, bool omp ){
+    if(omp){ printf("ERROR: scan_rigid_uff() not implemented with OMP\n"); exit(0); }
+    
+    // Store original positions
+    std::vector<Vec3d> original_positions(ffu.natoms);
+    for(int i=0; i<ffu.natoms; i++){
+        original_positions[i] = ffu.apos[i];
+    }
+    for(int i=0; i<nconf; i++){
+        // Get position and rotation for this configuration
+        Vec3d pos; if(poss){ pos=poss[i]; }else{ pos=Vec3dZero; }
+        Mat3d rot; if(rots){ rot=rots[i]; }else{ rot=Mat3dIdentity; }
+        // Apply position and rotation to atoms
+        for(int ia=0; ia<ffu.natoms; ia++){
+            ffu.apos[ia] = rot.dot(original_positions[ia]) + pos;
+        }
+        
+        // Evaluate energy with UFF
+        double E = ffu.eval();
+        // // Evaluate energy with UFF but WITHOUT GridFF (we'll add it separately)
+        // double E = ffu.eval(true, false);
+        
+        // // Add GridFF interaction manually, similar to MMFF's eval_no_omp
+        // double E_grid_total = 0;
+        // if(bGridFF) { 
+        //     for(int ia=0; ia<ffu.natoms; ia++) { 
+        //         double E_grid = gridFF.addAtom(ffu.apos[ia], ffu.PLQd[ia], ffu.fapos[ia]); 
+        //         E_grid_total += E_grid;             
+        //     }
+        //     E += E_grid_total;
+        // }
+        // Store results
+        if(Es){ Es[i]=E; }
+        if(aforces){ ffu.copyForcesTo( aforces + i*ffu.natoms ); }
+        if(aposs  ){ ffu.copyPosTo   ( aposs   + i*ffu.natoms ); }
+    }
+}
+
 
 
 // void makeGridFF( bool bSaveDebugXSFs=false, Vec3i nPBC={1,1,0} ) {

@@ -40,24 +40,27 @@ n  = 1000
 xs = np.linspace( -10., 10.0,  n )    #;print(xs)
 ps = np.zeros( (n,3) )
 ps[:,2] = xs
-FEs_a     = mmff.sampleSurf_vecs( ps, kind=12,  RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 ) 
-FEs_g_req = mmff.sampleSurf_vecs( ps, kind=9,   RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 ) 
-FEs_g_plq = mmff.sampleSurf_vecs( ps, kind=18,  RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )  
-#FEs_s    = mmff.sampleSurf_vecs( ps, kind=11, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )   
-#FEs_f_   = mmff.sampleSurf_vecs( ps, kind=8,  RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 ) 
-#FEs_f    = mmff.sampleSurf_vecs( ps, kind=12, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )  
-#FEs_f    = mmff.sampleSurf_vecs( ps, kind=15, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )  
+FEs_a     = mmff.sampleSurf_vecs( ps, kind=12,  RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )
+FEs_g_req = mmff.sampleSurf_vecs( ps, kind=9,   RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )
+FEs_g_plq = mmff.sampleSurf_vecs( ps, kind=18,  RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )
+
+#FEs_s    = mmff.sampleSurf_vecs( ps, kind=11, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )
+#FEs_f_   = mmff.sampleSurf_vecs( ps, kind=8,  RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )
+#FEs_f    = mmff.sampleSurf_vecs( ps, kind=12, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )
+#FEs_f    = mmff.sampleSurf_vecs( ps, kind=15, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )
 #FEs_f_   = mmff.sampleSurf_vecs( ps-np.array([0.1,0.1,0.1])[None,:], kind=15, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )
-#FEs_d    = mmff.sampleSurf_vecs( ps, kind=13, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 ) 
-#FEs_cub  = mmff.sampleSurf_vecs( ps, kind=14, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 ) 
-Emin = FEs_g_req[:,3].min(); print( "Emin ", Emin ) 
-Fmin = FEs_g_req[:,2].min(); print( "Fmin ", Fmin ) 
+#FEs_d    = mmff.sampleSurf_vecs( ps, kind=13, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )
+#FEs_cub  = mmff.sampleSurf_vecs( ps, kind=14, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )
+Emin = FEs_g_req[:,3].min(); print( "Emin ", Emin )
+Fmin = FEs_g_req[:,2].min(); print( "Fmin ", Fmin )
 
 plt.figure( figsize=(5,10))
 plt.subplot(2,1,1)
 plt.plot( xs, FEs_a    [:,3],label='E_atom'     )
-plt.plot( xs, FEs_g_req[:,3],label='E_grid_REQ' )
+plt.plot( xs, FEs_g_req[:,3],label='E_grid_REQ',linestyle='--',marker='o',markersize=5,markerfacecolor='none' )
 plt.plot( xs, FEs_g_plq[:,3],label='E_grid_PLQ' )
+# plt.subplot(2,1,2)
+# plt.plot( xs, FEs_g_plq[:,3]-FEs_g_req[:,3],label='E_grid_PLQ-E_grid_REQ' )
 #plt.plot( xs, FEs_s  [:,3],label='E_addForce_surf' )
 # plt.plot( xs, FEs_f_ [:,3],label='E_grid_'    )
 # plt.plot( xs, FEs_f  [:,3],label='E_grid'    )
@@ -138,4 +141,22 @@ plt.subplot(1,4,4); plt.imshow( FEs[:,:,2], vmin=Fmin,vmax=-Fmin, extent=extent,
 #plt.subplot(1,3,1); plt.imshow( FEs_f  [:,:,3], extent=extent, origin='lower', cmap=cmap ); plt.colorbar(); plt.title("E_float")
 #plt.subplot(1,3,2); plt.imshow( FEs_d  [:,:,3], extent=extent, origin='lower', cmap=cmap ); plt.colorbar(); plt.title("E_double")
 #plt.subplot(1,3,3); plt.imshow( FEs_cub[:,:,3], extent=extent, origin='lower', cmap=cmap ); plt.colorbar(); plt.title("E_tricubic")
+# Save data to surf.dat
+with open('surf.dat', 'w') as f:
+    f.write('# x Fx_req Fy_req Fz_req E_req Fx_plq Fy_plq Fz_plq E_plq dFx dFy dFz dE\n')
+    for i in range(len(xs)):
+        # Calculate differences
+        dFx = FEs_g_plq[i,0] - FEs_g_req[i,0]
+        dFy = FEs_g_plq[i,1] - FEs_g_req[i,1]
+        dFz = FEs_g_plq[i,2] - FEs_g_req[i,2]
+        dE = FEs_g_plq[i,3] - FEs_g_req[i,3]
+
+        # Write data
+        f.write(f'{xs[i]:.6f} '
+                f'{FEs_g_req[i,0]:.6e} {FEs_g_req[i,1]:.6e} {FEs_g_req[i,2]:.6e} {FEs_g_req[i,3]:.6e} '
+                f'{FEs_g_plq[i,0]:.6e} {FEs_g_plq[i,1]:.6e} {FEs_g_plq[i,2]:.6e} {FEs_g_plq[i,3]:.6e} '
+                f'{dFx:.6e} {dFy:.6e} {dFz:.6e} {dE:.6e}\n')
+
+print("Data saved to surf.dat")
+
 plt.show()

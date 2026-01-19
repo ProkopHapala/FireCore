@@ -1239,7 +1239,7 @@ virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
     
 }
 
-virtual void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, Vec3d* dirs, double* Es, Vec3d* aforces, Vec3d* aposs, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000, int ipicked=0 ){
+virtual void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces, Vec3d* aposs, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000, int ipicked=0 ){
     if(verbosity>1)printf("MolWorld_sp3_multi::scan_relaxed(nconf=%i,omp=%i) @poss=%li @rots=%li @Es=%li @aforces=%li @aposs=%li \n", nconf, omp, (long)poss, (long)rots, (long)Es, (long)aforces, (long)aposs);
     bOnlyRelax=true;
     Atoms original_atoms;
@@ -2498,10 +2498,11 @@ void surf2ocl( Vec3i nPBC ){
 }
 
 //virtual double* initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true, bool bCheckEval=true )override{
-virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bSymetrize=true, bool bAutoNPBC=true, bool bCheckEval=true, bool bUseEwald=true, bool bFit=true, bool bRefine=true ) override {
+virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bSymetrize=false, bool bAutoNPBC=true, bool bCheckEval=true, bool bUseEwald=true, bool bFit=true, bool bRefine=true ) override {
     int err=0;
     //printf( "MolWorld_sp3_multi::initGridFF() \n");
     
+    bSymetrize=0;
     
     // if(verbosity>0)printf("MolWorld_sp3_multi::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, z0, cel0.x,cel0.y,cel0.z  );
     // if(gridFF.grid.n.anyEqual(0)){ printf("ERROR in MolWorld_sp3_multi::initGridFF() zero grid.n(%i,%i,%i) => Exit() \n", gridFF.grid.n.x,gridFF.grid.n.y,gridFF.grid.n.z ); exit(0); };
@@ -2553,7 +2554,7 @@ virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5
     gridFF.ewald     = &gewald;
     //ffgrid = gridFF.HHermite_d;
     //getcwd(tmpstr, 1024 ); printf( "initGridFF() 3 WD=`%s`\n", tmpstr );
-    gridFF.shift0 = Vec3d{0.,0.,-2.0};
+    // gridFF.shift0 = Vec3d{0.,0.,-2.0};
     //gridFF.shift0 = Vec3d{0.,0.,0.0};
     //if(bCheckEval)gridFF.evalCheck();    // WARRNING:  CHECK FOR gridFF TURNED OFF !!!!!!!!!!!!!!!!!!!!!!!!!
     //return ffgrid;

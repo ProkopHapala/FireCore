@@ -245,8 +245,9 @@ double project_atom_on_grid_quintic_pbc(const Vec3d pi, const double qi, double*
     const Vec6d bx = Bspline::basis5(tx);
     const Vec6d by = Bspline::basis5(ty);
     const Vec6d bz = Bspline::basis5(tz);
-
-    printf("CPU atom[%i]  gi(%3i,%3i,%3i) (%8.4f,%8.4f,%8.4f |%8.4f) \n", iDBG, ix,iy,iz,  pi.x, pi.y, pi.z, qi ); 
+    // printf("\n!!!! DEBUG: CPU Grid and atom information !!!!");
+    // printf("CPU atom[%i]  gi(%3i,%3i,%3i) (%8.4f,%8.4f,%8.4f |%8.4f) gp(%8.4f,%8.4f,%8.4f) \n", 
+    //        iDBG, ix,iy,iz, pi.x, pi.y, pi.z, qi, gp.x, gp.y, gp.z);
 
     // Retrieve the number of grid points in each direction
     const int nxy = n.x * n.y;
