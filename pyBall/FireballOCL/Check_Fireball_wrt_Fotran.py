@@ -327,19 +327,42 @@ def contract_vnl_blocks(A, B, clv):
             out[nu, mu] = v
     return out
 
+def _scan_table_2c(interaction_fortran, root_ocl, applyRotation_offdiag=True, applyRotation_self=False, in3=1):
+    blocks_f = []
+    blocks_o = []
+    for (i, j) in neighs_all:
+        dR = (atomPos[j] - atomPos[i]).copy()
+        if i == j:
+            dR[:] = 0.0
+            Af = scan2c_fortran(fc, interaction_fortran, dR, in3=in3, applyRotation=applyRotation_self)
+            Ao = scan2c_ocl(ham, root_ocl, atomTypes_Z[i], atomTypes_Z[j], dR, applyRotation=applyRotation_self)
+        else:
+            Af = scan2c_fortran(fc, interaction_fortran, dR, in3=in3, applyRotation=applyRotation_offdiag)
+            Ao = scan2c_ocl(ham, root_ocl, atomTypes_Z[i], atomTypes_Z[j], dR, applyRotation=applyRotation_offdiag)
+        blocks_f.append(Af)
+        blocks_o.append(Ao)
+    blocks_f = np.array(blocks_f, dtype=np.float64)
+    blocks_o = np.array(blocks_o, dtype=np.float64)
+    Mf = dense_from_neighbor_list(neighs_all, blocks_f, n_orb_atom, offs)
+    Mo = dense_from_neighbor_list(neighs_all, blocks_o, n_orb_atom, offs)
+    return Mf, Mo
 
-if __name__ == "__main__":
-    import os
-    fdata_dir = "/home/prokophapala/git/FireCore/tests/pyFireball/Fdata"
-    ocl = OCL_Hamiltonian(fdata_dir)
-    
-    # H2 molecule test
-    species_nz = [1, 1]
-    ocl.prepare_splines(species_nz)
-    
-    ratoms = np.array([[0, 0, 0], [0, 0, 0.74]], dtype=np.float32)
-    neighbors = [(0, 1), (1, 0)]
-    
-    H, S = ocl.assemble_full(ratoms, species_nz, neighbors)
-    print("H2 Overlap S[0,1]:\n", S[0,0,0])
-    print("H2 Kinetic T[0,1]:\n", H[0,0,0])
+def _scan_table_2c(interaction_fortran, root_ocl, applyRotation_offdiag=True, applyRotation_self=False, in3=1):
+    blocks_f = []
+    blocks_o = []
+    for (i, j) in neighs_all:
+        dR = (atomPos[j] - atomPos[i]).copy()
+        if i == j:
+            dR[:] = 0.0
+            Af = scan2c_fortran(fc, interaction_fortran, dR, in3=in3, applyRotation=applyRotation_self)
+            Ao = scan2c_ocl(ham, root_ocl, atomTypes_Z[i], atomTypes_Z[j], dR, applyRotation=applyRotation_self)
+        else:
+            Af = scan2c_fortran(fc, interaction_fortran, dR, in3=in3, applyRotation=applyRotation_offdiag)
+            Ao = scan2c_ocl(ham, root_ocl, atomTypes_Z[i], atomTypes_Z[j], dR, applyRotation=applyRotation_offdiag)
+        blocks_f.append(Af)
+        blocks_o.append(Ao)
+    blocks_f = np.array(blocks_f, dtype=np.float64)
+    blocks_o = np.array(blocks_o, dtype=np.float64)
+    Mf = dense_from_neighbor_list(neighs_all, blocks_f, n_orb_atom, offs)
+    Mo = dense_from_neighbor_list(neighs_all, blocks_o, n_orb_atom, offs)
+    return Mf, Mo

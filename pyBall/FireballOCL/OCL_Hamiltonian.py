@@ -1292,6 +1292,92 @@ class OCL_Hamiltonian:
             n1 = n1 + l1
         return bcxcx
 
+    def _epsilon_fb_py(r1, r2):
+        r1mag = np.linalg.norm(r1)
+        r2mag = np.linalg.norm(r2)
+        spe = np.zeros((3, 3), dtype=np.float64)
+        if r2mag < 1e-4:
+            np.fill_diagonal(spe, 1.0)
+            return spe
+        zphat = r2 / r2mag
+        if r1mag > 1e-4:
+            r1hat = r1 / r1mag
+            yphat = np.cross(zphat, r1hat)
+            ypmag = np.linalg.norm(yphat)
+            if ypmag > 1e-6:
+                yphat = yphat / ypmag
+                xphat = np.cross(yphat, zphat)
+                spe[:, 0] = xphat
+                spe[:, 1] = yphat
+                spe[:, 2] = zphat
+                return spe
+        if abs(zphat[0]) > 1e-4:
+            yphat = np.array([-(zphat[1] + zphat[2]) / zphat[0], 1.0, 1.0])
+        elif abs(zphat[1]) > 1e-4:
+            yphat = np.array([1.0, -(zphat[0] + zphat[2]) / zphat[1], 1.0])
+        else:
+            yphat = np.array([1.0, 1.0, -(zphat[0] + zphat[1]) / zphat[2]])
+        yphat = yphat / np.linalg.norm(yphat)
+        xphat = np.cross(yphat, zphat)
+        spe[:, 0] = xphat
+        spe[:, 1] = yphat
+        spe[:, 2] = zphat
+        return spe
+
+    def _twister_pmat(eps):
+        # Fortran twister: pmat(1,1)=eps(2,2), pmat(1,2)=eps(2,3), pmat(1,3)=eps(2,1), ...
+        return np.array([
+            [eps[1, 1], eps[1, 2], eps[1, 0]],
+            [eps[2, 1], eps[2, 2], eps[2, 0]],
+            [eps[0, 1], eps[0, 2], eps[0, 0]],
+        ], dtype=np.float64)
+
+    def _chooser(l, pmat):
+        if l == 0:
+            return np.array([[1.0]], dtype=np.float64)
+        if l == 1:
+            return pmat.astype(np.float64)
+        raise RuntimeError(f"rotate_fb: unsupported l={l} (only s+p handled)")
+
+    def _rotate_fb_py(in1, in2, eps, mmatrix, lssh, nssh):
+        # Fortran rotate_fb: left/right from chooser, apply left * M * right (with right in Fortran indexing)
+        pmat = _twister_pmat(eps)
+        # FireCore.py stores lssh with species as first axis (row). Use that layout here.
+        lssh1 = [int(x) for x in lssh[in1 - 1, :int(nssh[in1 - 1])]]
+        lssh2 = [int(x) for x in lssh[in2 - 1, :int(nssh[in2 - 1])]]
+        xmatrix = np.zeros_like(mmatrix, dtype=np.float64)
+        n1 = 0
+        for l1 in lssh1:
+            left = _chooser(l1, pmat)
+            n2 = 0
+            for l2 in lssh2:
+                right = _chooser(l2, pmat)
+                n1b = n1 + 2 * l1 + 1
+                n2b = n2 + 2 * l2 + 1
+                sub = mmatrix[n1:n1b, n2:n2b]
+                xmatrix[n1:n1b, n2:n2b] += left @ sub @ right.T
+                n2 = n2b
+            n1 = n1b
+        return xmatrix
+
+    def _recover_rotate_sp(hlist, mu, nu, eps, in1, in2, lssh, nssh):
+        m = np.zeros((4, 4), dtype=np.float64)
+        for idx in range(mu.size):
+            imu = int(mu[idx]); inu = int(nu[idx])
+            if imu <= 0 or inu <= 0 or imu > 4 or inu > 4:
+                continue
+            m[imu - 1, inu - 1] = hlist[idx]
+        return _rotate_fb_py(in1, in2, eps, m, lssh, nssh)
+
+    def _recover_sp(hlist, mu, nu):
+        m = np.zeros((4, 4), dtype=np.float64)
+        for idx in range(mu.size):
+            imu = int(mu[idx]); inu = int(nu[idx])
+            if imu <= 0 or inu <= 0 or imu > 4 or inu > 4:
+                continue
+            m[imu - 1, inu - 1] = hlist[idx]
+        return m
+
 if __name__ == "__main__":
     import os
     fdata_dir = "/home/prokophapala/git/FireCore/tests/pyFireball/Fdata"
