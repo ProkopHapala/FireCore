@@ -18,6 +18,9 @@ from pyBall.FireballOCL.Check_Fireball_wrt_Fotran import (
     firecore_sparse_H_with_options,
     cl_sp_from_ham,
     contract_vnl_blocks,
+    summarize_neigh_lists,
+    build_overlap_pairs,
+    assign_triplet_types,
 )
 compare_matrices = _compare_matrices_shared
 _orbital_layout = _orbital_layout_shared
@@ -88,20 +91,7 @@ def run_verification():
 
     # Neighbor lists from Fortran export: neigh_j is 1-based atom index, as used elsewhere in this file.
     # Build both: with self (Fortran diag Vca uses self neighbor) and without self (off-diagonal pairs).
-    neigh_lists = []
-    neigh_lists_self = []
-    for ia in range(dims.natoms):
-        nn = int(sd.neighn[ia])
-        js = []
-        js_self = []
-        for ineigh in range(nn):
-            j = int(sd.neigh_j[ia, ineigh]) - 1
-            if (j >= 0) and (j < dims.natoms):
-                js_self.append(j)
-                if j != ia:
-                    js.append(j)
-        neigh_lists.append(sorted(set(js)))
-        neigh_lists_self.append(sorted(set(js_self)))
+    neigh_lists, neigh_lists_self = summarize_neigh_lists(sd, dims)
 
     pairs = []
     for ia in range(dims.natoms):
@@ -124,33 +114,17 @@ def run_verification():
             if j >= 0:
                 neigh_index[(ia, j)] = ineigh
 
-    S_blocks = np.zeros((pairs.shape[0], 4, 4), dtype=np.float32)
     rho_blocks = np.zeros((pairs.shape[0], 4, 4), dtype=np.float32)
+    S_blocks, pair_2c_types, pair_dR, pair_in_i, pair_in_j, pair_valid, pair_mbeta = build_overlap_pairs(sd, atomPos, ham, pairs, neigh_index, ispec_of_atom, atomTypes_Z)
     for ip, (ia, ja) in enumerate(pairs):
         ineigh = neigh_index.get((ia, ja), None)
         if ineigh is None:
             raise RuntimeError(f"[PLUMBING] Missing sparse neighbor index for pair ({ia},{ja})")
-        S_blocks[ip, :, :] = sd.s_mat[ia, ineigh, :4, :4]
         rho_blocks[ip, :, :] = sd.rho[ia, ineigh, :4, :4]
 
     # Triplet type selection: for C2 this mostly won't matter (CN likely empty), but we need a valid index.
     root = 'den3'
-    pair_triplet_types = np.zeros(pairs.shape[0], dtype=np.int32)
-    for ip, (ia, ja) in enumerate(pairs):
-        nz1 = int(atomTypes_Z[ia]); nz2 = int(atomTypes_Z[ja])
-        # choose nz3=nz1 for now; for real 3c contributions we'll switch to per-(pair,k) typing
-        key = (root, nz1, nz2, nz1)
-        if key not in ham.species_triplet_map:
-            # fallback: find any triplet with same root and nz1,nz2
-            found = None
-            for k in ham.species_triplet_map.keys():
-                if (k[0] == root) and (k[1] == nz1) and (k[2] == nz2):
-                    found = k
-                    break
-            if found is None:
-                raise RuntimeError(f"[PLUMBING] Missing 3c triplet table for {key}")
-            key = found
-        pair_triplet_types[ip] = int(ham.species_triplet_map[key])
+    pair_triplet_types = assign_triplet_types(ham, pairs, cn_offsets, cn_indices, atomTypes_Z, root=root)
 
     # Build mu/nu/mvalue maps for 3c recovery (needed for compute_avg_rho_3c)
     n_types = int(np.max(pair_triplet_types)) + 1 if pair_triplet_types.size else 0

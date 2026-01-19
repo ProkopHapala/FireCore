@@ -1210,173 +1210,839 @@ class OCL_Hamiltonian:
         
         return H_blocks, S_blocks
 
+    def assemble_ewaldsr_blocks(self, atomPos, atomTypes_Z, sd, neigh_self, neigh_back, dq_atom, ewaldsr3c_mask=None):
+        """Assemble EWALDSR contribution using OpenCL kernels.
+
+        This is a verification-oriented routine extracted from tests/pyFireball/verify_C3.py.
+        It constructs the exact OpenCL inputs (overlap + dipole_z blocks per *neighbor slot*) and
+        launches:
+        - ewaldsr_2c_atom_blocks
+        - ewaldsr_2c_ontop_blocks
+        - ewaldsr_3c_blocks
+
+        The result is returned in the same neighbor-slot block layout as Fortran exports:
+            ewaldsr4_o[iatom, ineigh, nu, mu]
+
+        Parameters
+        ----------
+        atomPos : (natoms,3) float
+        atomTypes_Z : (natoms,) int
+        sd : FireCore sparse-data struct (must provide neighn, neigh_j, neigh_b, xl, neigh_max)
+        neigh_self : (natoms,) int   (0-based index of self-slot in neighbor list)
+        neigh_back : (natoms,neigh_max) int (1-based back mapping, as exported by FireCore)
+        dq_atom : (natoms,) float32
+        ewaldsr3c_mask : optional array (natoms,neigh_max,4,4) used as authoritative mask for which
+                         neighbor slots receive 3c contributions and SFIRE overwrite.
+
+        Returns
+        -------
+        dict with keys:
+            - 'ewaldsr4'   : (natoms,neigh_max,4,4) float64 (nu,mu)
+            - 'ij_pairs'   : (n_pairs,2) int32
+            - 'pair_ineigh': (n_pairs,) int32
+            - 'pair_mbeta' : (n_pairs,) int32
+            - 'trips'      : (n_trip,4) int32 (ia,ja,ka,slot)
+        """
+
+        atomPos = np.ascontiguousarray(atomPos, dtype=np.float64)
+        atomTypes_Z = np.ascontiguousarray(atomTypes_Z, dtype=np.int32)
+        dq_atom = np.ascontiguousarray(dq_atom, dtype=np.float32)
+
+        natoms = int(atomPos.shape[0])
+        neigh_max = int(getattr(sd, 'neigh_max', 0))
+        if neigh_max <= 0:
+            neigh_max = int(np.max(np.asarray(sd.neighn, dtype=np.int32)))
+
+        # -------------------------------------------------
+        # Precompute overlap and dipole_z blocks per neighbor slot using per-pair mbeta-shifted positions
+        # -------------------------------------------------
+        S4_o = np.zeros((natoms, neigh_max, 4, 4), dtype=np.float64)
+        Dip4_o = np.zeros((natoms, neigh_max, 4, 4), dtype=np.float64)
+
+        S_pair_types = []
+        D_pair_types = []
+        pair_ia = []
+        pair_ine = []
+        pair_mb = []
+
+        for ia in range(natoms):
+            nn = int(sd.neighn[ia])
+            Zi = int(atomTypes_Z[ia])
+            for ineigh in range(nn):
+                ja = int(sd.neigh_j[ia, ineigh]) - 1
+                mb = int(sd.neigh_b[ia, ineigh])
+                if ja < 0 or ja >= natoms:
+                    continue
+                if ia == ja and mb == 0:
+                    continue
+                Zj = int(atomTypes_Z[ja])
+                tS = self.species_pair_map.get(('overlap', Zi, Zj))
+                tD = self.species_pair_map.get(('dipole_z', Zi, Zj))
+                if tS is None:
+                    raise RuntimeError(f"Missing overlap table for Z pair ({Zi},{Zj})")
+                if tD is None:
+                    raise RuntimeError(f"Missing dipole_z table for Z pair ({Zi},{Zj})")
+                S_pair_types.append(int(tS))
+                D_pair_types.append(int(tD))
+                pair_ia.append(int(ia))
+                pair_ine.append(int(ineigh))
+                pair_mb.append(int(mb))
+
+        if len(pair_ia) == 0:
+            raise RuntimeError("EwaldSR OpenCL inputs: empty neighbor list")
+
+        ratoms_pairs = np.zeros((2 * len(pair_ia), 3), dtype=np.float32)
+        neigh_pairs = np.zeros((len(pair_ia), 2), dtype=np.int32)
+        for k in range(len(pair_ia)):
+            ia = pair_ia[k]
+            ineigh = pair_ine[k]
+            ja = int(sd.neigh_j[ia, ineigh]) - 1
+            mb = int(pair_mb[k])
+            ratoms_pairs[2 * k + 0, :] = atomPos[ia].astype(np.float32)
+            ratoms_pairs[2 * k + 1, :] = (atomPos[ja] + sd.xl[mb]).astype(np.float32)
+            neigh_pairs[k, 0] = 2 * k + 0
+            neigh_pairs[k, 1] = 2 * k + 1
+
+        S_blocks = self.assemble_2c(ratoms_pairs, neigh_pairs, np.array(S_pair_types, dtype=np.int32)).astype(np.float64)
+        D_blocks = self.assemble_2c(ratoms_pairs, neigh_pairs, np.array(D_pair_types, dtype=np.int32)).astype(np.float64)
+        for k in range(len(pair_ia)):
+            S4_o[pair_ia[k], pair_ine[k], :, :] = S_blocks[k]
+            Dip4_o[pair_ia[k], pair_ine[k], :, :] = D_blocks[k]
+
+        # Fill self-slot overlap blocks (on-site). In Fortran these live in the dedicated self-slot.
+        for ia in range(natoms):
+            mat = int(neigh_self[ia])
+            if mat < 0:
+                raise RuntimeError(f"EwaldSR OpenCL inputs: missing neigh_self for atom {ia}")
+            Z = int(atomTypes_Z[ia])
+            blk = self.scanHamPiece2c('overlap', Z, Z, np.array([0.0, 0.0, 0.0], dtype=np.float32), applyRotation=False)
+            if blk is None:
+                raise RuntimeError(f"EwaldSR OpenCL inputs: scanHamPiece2c overlap self returned None for Z={Z}")
+            S4_o[ia, mat, :, :] = np.array(blk, dtype=np.float64)
+
+        # -------------------------------------------------
+        # Build directed pair list aligned with neighbor slots
+        # -------------------------------------------------
+        ij_pairs = []
+        pair_ineigh = []
+        pair_mbeta = []
+        y_list = []
+        S_list = []
+        D_list = []
+        slot_has3c = []
+
+        for ia in range(natoms):
+            nn = int(sd.neighn[ia])
+            r1 = atomPos[ia]
+            for ineigh in range(nn):
+                ja = int(sd.neigh_j[ia, ineigh]) - 1
+                mb = int(sd.neigh_b[ia, ineigh])
+                if ja < 0 or ja >= natoms:
+                    continue
+                if ia == ja and mb == 0:
+                    continue
+                r2 = atomPos[ja] + sd.xl[mb]
+                y = float(np.linalg.norm(r2 - r1))
+                ij_pairs.append((ia, ja))
+                pair_ineigh.append(int(ineigh))
+                pair_mbeta.append(int(mb))
+                y_list.append(y)
+                # Kernels expect (mu,nu) flattened => transpose (nu,mu) block.
+                S_list.append(S4_o[ia, ineigh, :, :].T.astype(np.float32).reshape(16))
+                D_list.append(Dip4_o[ia, ineigh, :, :].T.astype(np.float32).reshape(16))
+                if ewaldsr3c_mask is None:
+                    slot_has3c.append(1)
+                else:
+                    slot_has3c.append(1 if float(np.max(np.abs(ewaldsr3c_mask[ia, ineigh]))) >= 1e-12 else 0)
+
+        ij_pairs = np.ascontiguousarray(np.array(ij_pairs, dtype=np.int32))
+        pair_ineigh = np.ascontiguousarray(np.array(pair_ineigh, dtype=np.int32))
+        pair_mbeta = np.ascontiguousarray(np.array(pair_mbeta, dtype=np.int32))
+        y_list = np.ascontiguousarray(np.array(y_list, dtype=np.float32))
+        S_list = np.ascontiguousarray(np.array(S_list, dtype=np.float32))
+        D_list = np.ascontiguousarray(np.array(D_list, dtype=np.float32))
+        slot_has3c = np.ascontiguousarray(np.array(slot_has3c, dtype=np.int8))
+
+        n_pairs = int(ij_pairs.shape[0])
+        if n_pairs <= 0:
+            raise RuntimeError("EwaldSR OpenCL: empty ij_pairs")
+
+        # Self-slot overlap blocks (mu,nu) for each atom
+        S_self = np.zeros((natoms, 16), dtype=np.float32)
+        for ia in range(natoms):
+            mat = int(neigh_self[ia])
+            if mat < 0:
+                continue
+            S_self[ia, :] = S4_o[ia, mat, :, :].T.astype(np.float32).reshape(16)
+
+        # -------------------------------------------------
+        # Run kernels (2c atom + 2c ontop)
+        # -------------------------------------------------
+        d_ij = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=ij_pairs)
+        d_y = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=y_list)
+        d_dq = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=dq_atom)
+        d_S = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=S_list)
+        d_D = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=D_list)
+        d_Sself = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=S_self)
+
+        d_out_atom = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, n_pairs * 16 * 4)
+        d_out_on = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, n_pairs * 16 * 4)
+
+        self.prg.ewaldsr_2c_atom_blocks(self.queue, (n_pairs,), None, np.int32(n_pairs), d_ij, d_y, d_dq, d_Sself, d_out_atom)
+        self.prg.ewaldsr_2c_ontop_blocks(self.queue, (n_pairs,), None, np.int32(n_pairs), d_ij, d_y, d_dq, d_S, d_D, d_out_on)
+
+        out_atom = np.zeros((n_pairs, 16), dtype=np.float32)
+        out_on = np.zeros((n_pairs, 16), dtype=np.float32)
+        cl.enqueue_copy(self.queue, out_atom, d_out_atom)
+        cl.enqueue_copy(self.queue, out_on, d_out_on)
+        self.queue.finish()
+
+        # -------------------------------------------------
+        # 3c triples (verification mode: by default use all triples, or mask if provided)
+        # -------------------------------------------------
+        trips = []
+        ty = []
+        td13 = []
+        td23 = []
+        for slot in range(n_pairs):
+            if int(slot_has3c[slot]) == 0:
+                continue
+            ia = int(ij_pairs[slot, 0])
+            ja = int(ij_pairs[slot, 1])
+            ineigh = int(pair_ineigh[slot])
+            mb = int(pair_mbeta[slot])
+            r1 = atomPos[ia]
+            r2 = atomPos[ja] + sd.xl[mb]
+            y = float(np.linalg.norm(r2 - r1))
+            for ka in range(natoms):
+                if ka == ia or ka == ja:
+                    continue
+                d13 = float(np.linalg.norm(atomPos[ka] - r1))
+                d23 = float(np.linalg.norm(atomPos[ka] - r2))
+                trips.append((ia, ja, ka, slot))
+                ty.append(y)
+                td13.append(d13)
+                td23.append(d23)
+
+        if len(trips) == 0:
+            trips = np.zeros((0, 4), dtype=np.int32)
+            out3 = np.zeros((0, 16), dtype=np.float32)
+        else:
+            trips = np.ascontiguousarray(np.array(trips, dtype=np.int32))
+            ty = np.ascontiguousarray(np.array(ty, dtype=np.float32))
+            td13 = np.ascontiguousarray(np.array(td13, dtype=np.float32))
+            td23 = np.ascontiguousarray(np.array(td23, dtype=np.float32))
+            n_trip = int(trips.shape[0])
+
+            d_tr = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=trips)
+            d_ty = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=ty)
+            d_t13 = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=td13)
+            d_t23 = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=td23)
+            d_out3 = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, n_trip * 16 * 4)
+
+            self.prg.ewaldsr_3c_blocks(self.queue, (n_trip,), None, np.int32(n_trip), d_tr, d_ty, d_t13, d_t23, d_dq, d_S, d_D, d_out3)
+            out3 = np.zeros((n_trip, 16), dtype=np.float32)
+            cl.enqueue_copy(self.queue, out3, d_out3)
+            self.queue.finish()
+
+        # -------------------------------------------------
+        # Reconstruct EWALDSR in [iatom,ineigh,nu,mu] block layout and apply SFIRE overwrite.
+        # -------------------------------------------------
+        ewaldsr4_o = np.zeros((natoms, neigh_max, 4, 4), dtype=np.float64)  # [iatom,ineigh,nu,mu]
+
+        # 2c ontop: directed neighbor slot
+        for slot in range(n_pairs):
+            ia = int(ij_pairs[slot, 0])
+            ineigh = int(pair_ineigh[slot])
+            ewaldsr4_o[ia, ineigh, :, :] += out_on[slot].reshape(4, 4).T.astype(np.float64)
+
+        # 2c atom: accumulates into self-slot
+        for slot in range(n_pairs):
+            ia = int(ij_pairs[slot, 0])
+            mat = int(neigh_self[ia])
+            if mat < 0 or mat >= neigh_max:
+                continue
+            ewaldsr4_o[ia, mat, :, :] += out_atom[slot].reshape(4, 4).T.astype(np.float64)
+
+        # 3c: directed neighbor slot
+        for it in range(int(trips.shape[0])):
+            ia = int(trips[it, 0])
+            slot = int(trips[it, 3])
+            ineigh = int(pair_ineigh[slot])
+            ewaldsr4_o[ia, ineigh, :, :] += out3[it].reshape(4, 4).T.astype(np.float64)
+
+        # SFIRE overwrite (only for slots where 3c is enabled)
+        for ia in range(natoms):
+            nn = int(sd.neighn[ia])
+            for ineigh in range(nn):
+                if ewaldsr3c_mask is not None:
+                    if float(np.max(np.abs(ewaldsr3c_mask[ia, ineigh]))) < 1e-12:
+                        continue
+                # if no explicit mask, we do NOT know SFIRE scope; apply to all edges by default
+                ja = int(sd.neigh_j[ia, ineigh]) - 1
+                if ja < 0 or ja >= natoms:
+                    continue
+                jneigh = int(neigh_back[ia, ineigh]) - 1
+                if jneigh < 0 or jneigh >= int(sd.neighn[ja]):
+                    continue
+                if int(sd.neigh_j[ja, jneigh]) - 1 != ia:
+                    continue
+                ewaldsr4_o[ja, jneigh, :, :] = ewaldsr4_o[ia, ineigh, :, :].T
+
+        return {
+            'ewaldsr4': ewaldsr4_o,
+            'ij_pairs': ij_pairs,
+            'pair_ineigh': pair_ineigh,
+            'pair_mbeta': pair_mbeta,
+            'trips': trips,
+        }
+
+    def assemble_dip_blocks_per_slot(self, atomPos, atomTypes_Z, sd):
+        """Assemble dipole_z blocks per neighbor slot (iatom,ineigh) using OpenCL.
+
+        This is a verification-oriented routine extracted from tests/pyFireball/verify_C3.py.
+        It constructs per-neighbor-slot dipole_z blocks using per-pair mbeta-shifted positions.
+
+        Parameters
+        ----------
+        atomPos : (natoms,3) float
+        atomTypes_Z : (natoms,) int
+        sd : FireCore sparse-data struct (must provide neighn, neigh_j, neigh_b, xl)
+
+        Returns
+        -------
+        dict with keys:
+            - 'dip4'      : (natoms,neigh_max,4,4) float64 (nu,mu)
+            - 'pair_i'    : (n_pairs,) int32
+            - 'pair_ineigh': (n_pairs,) int32
+            - 'pair_mbeta': (n_pairs,) int32
+        """
+        atomPos = np.ascontiguousarray(atomPos, dtype=np.float64)
+        atomTypes_Z = np.ascontiguousarray(atomTypes_Z, dtype=np.int32)
+
+        natoms = int(atomPos.shape[0])
+        neigh_max = int(getattr(sd, 'neigh_max', 0))
+        if neigh_max <= 0:
+            neigh_max = int(np.max(np.asarray(sd.neighn, dtype=np.int32)))
+
+        dip_pair_types = []
+        pair_i = []
+        pair_ineigh = []
+        pair_mbeta = []
+
+        for ia in range(natoms):
+            nn = int(sd.neighn[ia])
+            Zi = int(atomTypes_Z[ia])
+            for ineigh in range(nn):
+                ja = int(sd.neigh_j[ia, ineigh]) - 1
+                mb = int(sd.neigh_b[ia, ineigh])
+                if ja < 0 or ja >= natoms:
+                    continue
+                # Skip on-site self edge (y==0); dip is irrelevant there and can be ill-defined numerically.
+                if ia == ja and mb == 0:
+                    continue
+                Zj = int(atomTypes_Z[ja])
+                t = self.species_pair_map.get(('dipole_z', Zi, Zj))
+                if t is None:
+                    raise RuntimeError(f"Missing Fdata dipole_z table for Z pair ({Zi},{Zj})")
+                dip_pair_types.append(int(t))
+                pair_i.append(int(ia))
+                pair_ineigh.append(int(ineigh))
+                pair_mbeta.append(int(mb))
+
+        if len(dip_pair_types) == 0:
+            raise RuntimeError("Dip test: empty dip_pair_types")
+
+        # Build per-pair positions including mbeta shift (same approach as VCA mbeta handling)
+        ratoms_pairs = np.zeros((2 * len(dip_pair_types), 3), dtype=np.float32)
+        neigh_pairs = np.zeros((len(dip_pair_types), 2), dtype=np.int32)
+        for k in range(len(dip_pair_types)):
+            ia = pair_i[k]
+            ineigh = pair_ineigh[k]
+            ja = int(sd.neigh_j[ia, ineigh]) - 1
+            mb = pair_mbeta[k]
+            ratoms_pairs[2*k+0, :] = atomPos[ia].astype(np.float32)
+            ratoms_pairs[2*k+1, :] = (atomPos[ja] + sd.xl[mb]).astype(np.float32)
+            neigh_pairs[k, 0] = 2*k+0
+            neigh_pairs[k, 1] = 2*k+1
+
+        dip_blocks = self.assemble_2c(ratoms_pairs, neigh_pairs, np.array(dip_pair_types, dtype=np.int32))
+
+        # Assemble into per-slot layout
+        dip4 = np.zeros((natoms, neigh_max, 4, 4), dtype=np.float64)
+        for k in range(len(dip_pair_types)):
+            ia = pair_i[k]
+            ineigh = pair_ineigh[k]
+            dip4[ia, ineigh, :, :] = dip_blocks[k].astype(np.float64)
+
+        return {
+            'dip4': dip4,
+            'pair_i': np.array(pair_i, dtype=np.int32),
+            'pair_ineigh': np.array(pair_ineigh, dtype=np.int32),
+            'pair_mbeta': np.array(pair_mbeta, dtype=np.int32),
+        }
+
     ## ==================================================
     ##   Temporary python implementations for testing
     ## ==================================================
 
-    @staticmethod
-    def _cepal_py(rh):
-        abohr = 0.529177249
-        eq2 = 14.39975
-        delta_rh = 1.0e-6
-        rhx = float(np.sqrt(rh * rh + delta_rh))
-        rho = rhx * (abohr ** 3)
-        rho_third = rho ** (1.0 / 3.0)
-        rs = 0.62035049 / rho_third
-        exc = 0.0
-        muxc = 0.0
-        dec = 0.0
-        ddec = 0.0
-        d2dec = 0.0
-        if rho < 0.23873241:
-            sqrs = np.sqrt(rs)
-            den = 1.0 + 1.0529 * sqrs + 0.3334 * rs
-            exc = -0.4581652 / rs - 0.1423 / den
-            muxc = exc - rs * (0.15273333 / (rs ** 2) + (0.02497128 / sqrs + 0.01581427) / (den ** 2))
-            dden = 1.0529 / (2.0 * sqrs) + 0.3334
-            d2den = (-0.5) * 1.0529 / (2.0 * rs * sqrs)
-            d3den = (0.75) * 1.0529 / (2.0 * rs * rs * sqrs)
-            dec = 0.1423 * dden / (den * den)
-            ddec = -2.0 * 0.1423 * dden * dden / (den ** 3) + 0.1423 * d2den / (den * den)
-            d2dec = 6.0 * 0.1423 * (dden * 3.0) / (den ** 4) - 6.0 * 0.1423 * dden * d2den / (den ** 3) + 0.1423 * d3den / (den * den)
-        else:
-            rsl = np.log(rs)
-            exc = -0.4581652 / rs - 0.0480 + 0.0311 * rsl - 0.0116 * rs + 0.002 * rs * rsl
-            muxc = exc - rs * (0.15273333 / (rs ** 2) + 0.01036667 / rs - 0.003866667 + 0.00066667 * (1.0 + rsl))
-            dec = 0.0311 / rs - 0.0116 + 0.0020 * (rsl + 1.0)
-            ddec = -0.0311 / (rs * rs) + 0.0020 / rs
-            d2dec = 2.0 * 0.0311 / (rs * rs * rs) - 0.0020 / (rs * rs)
-        ex = -0.7385587664 * rho_third
-        dexc = (muxc - exc) / rho
-        d2nec = (4.0 * rs / (9.0 * rho * rho)) * dec + (rs * rs / (9.0 * rho * rho)) * ddec
-        d2nex = -(2.0 / (9.0 * rho * rho)) * ex
-        dmuxc = 2.0 * dexc + rho * (d2nex + d2nec)
-        d3nec = (-28.0 * rs / (27.0 * rho * rho * rho)) * dec + (-4.0 * rs * rs / (9.0 * rho * rho * rho)) * ddec + (rs * rs * rs / (-27.0 * rho * rho * rho)) * d2dec
-        d3nex = (10.0 / (27.0 * rho * rho * rho)) * ex
-        d2muxc = 3.0 * (d2nex + d2nec) + rho * (d3nex + d3nec)
-        d2exc = d2nex + d2nec
-        hartree1 = eq2 / abohr
-        exc *= hartree1
-        muxc *= hartree1
-        dexc *= hartree1 * (abohr ** 3)
-        d2exc *= hartree1 * (abohr ** 6)
-        dmuxc *= hartree1 * (abohr ** 3)
-        d2muxc *= hartree1 * (abohr ** 6)
-        return exc, muxc, dexc, d2exc, dmuxc, d2muxc
+#@staticmethod
+def _cepal_py(rh):
+    abohr = 0.529177249
+    eq2 = 14.39975
+    delta_rh = 1.0e-6
+    rhx = float(np.sqrt(rh * rh + delta_rh))
+    rho = rhx * (abohr ** 3)
+    rho_third = rho ** (1.0 / 3.0)
+    rs = 0.62035049 / rho_third
+    exc = 0.0
+    muxc = 0.0
+    dec = 0.0
+    ddec = 0.0
+    d2dec = 0.0
+    if rho < 0.23873241:
+        sqrs = np.sqrt(rs)
+        den = 1.0 + 1.0529 * sqrs + 0.3334 * rs
+        exc = -0.4581652 / rs - 0.1423 / den
+        muxc = exc - rs * (0.15273333 / (rs ** 2) + (0.02497128 / sqrs + 0.01581427) / (den ** 2))
+        dden = 1.0529 / (2.0 * sqrs) + 0.3334
+        d2den = (-0.5) * 1.0529 / (2.0 * rs * sqrs)
+        d3den = (0.75) * 1.0529 / (2.0 * rs * rs * sqrs)
+        dec = 0.1423 * dden / (den * den)
+        ddec = -2.0 * 0.1423 * dden * dden / (den ** 3) + 0.1423 * d2den / (den * den)
+        d2dec = 6.0 * 0.1423 * (dden * 3.0) / (den ** 4) - 6.0 * 0.1423 * dden * d2den / (den ** 3) + 0.1423 * d3den / (den * den)
+    else:
+        rsl = np.log(rs)
+        exc = -0.4581652 / rs - 0.0480 + 0.0311 * rsl - 0.0116 * rs + 0.002 * rs * rsl
+        muxc = exc - rs * (0.15273333 / (rs ** 2) + 0.01036667 / rs - 0.003866667 + 0.00066667 * (1.0 + rsl))
+        dec = 0.0311 / rs - 0.0116 + 0.0020 * (rsl + 1.0)
+        ddec = -0.0311 / (rs * rs) + 0.0020 / rs
+        d2dec = 2.0 * 0.0311 / (rs * rs * rs) - 0.0020 / (rs * rs)
+    ex = -0.7385587664 * rho_third
+    dexc = (muxc - exc) / rho
+    d2nec = (4.0 * rs / (9.0 * rho * rho)) * dec + (rs * rs / (9.0 * rho * rho)) * ddec
+    d2nex = -(2.0 / (9.0 * rho * rho)) * ex
+    dmuxc = 2.0 * dexc + rho * (d2nex + d2nec)
+    d3nec = (-28.0 * rs / (27.0 * rho * rho * rho)) * dec + (-4.0 * rs * rs / (9.0 * rho * rho * rho)) * ddec + (rs * rs * rs / (-27.0 * rho * rho * rho)) * d2dec
+    d3nex = (10.0 / (27.0 * rho * rho * rho)) * ex
+    d2muxc = 3.0 * (d2nex + d2nec) + rho * (d3nex + d3nec)
+    d2exc = d2nex + d2nec
+    hartree1 = eq2 / abohr
+    exc *= hartree1
+    muxc *= hartree1
+    dexc *= hartree1 * (abohr ** 3)
+    d2exc *= hartree1 * (abohr ** 6)
+    dmuxc *= hartree1 * (abohr ** 3)
+    d2muxc *= hartree1 * (abohr ** 6)
+    return exc, muxc, dexc, d2exc, dmuxc, d2muxc
 
-    @staticmethod
-    def _build_olsxc_off_py(den1x, denx, sx, dens, densij):
-        # For this C-only test case: in1=in2=1 with two shells: s (l=0), p (l=1)
-        # This reproduces fortran/ASSEMBLERS/build_olsxc_off.f90 logic.
-        lssh = [0, 1]
-        bcxcx = np.zeros((4, 4), dtype=np.float64)
-        n1 = 0
-        for issh, l1 in enumerate(lssh, start=1):
-            n1 = n1 + l1 + 1
-            n2 = 0
-            for jssh, l2 in enumerate(lssh, start=1):
-                n2 = n2 + l2 + 1
-                _, muxc, _, _, dmuxc, _ = OCL_Hamiltonian._cepal_py(float(dens[issh - 1, jssh - 1]))
-                _, muxcij, _, _, dmuxcij, _ = OCL_Hamiltonian._cepal_py(float(densij[issh - 1, jssh - 1]))
-                for ind1 in range(-l1, l1 + 1):
-                    imu = n1 + ind1
-                    for ind2 in range(-l2, l2 + 1):
-                        inu = n2 + ind2
-                        if (imu < 1) or (imu > 4) or (inu < 1) or (inu > 4):
-                            continue
-                        bc = muxc * sx[imu - 1, inu - 1]
-                        bc += dmuxc * (denx[imu - 1, inu - 1] - dens[issh - 1, jssh - 1] * sx[imu - 1, inu - 1])
-                        bc -= muxcij * sx[imu - 1, inu - 1] + dmuxcij * (den1x[imu - 1, inu - 1] - densij[issh - 1, jssh - 1] * sx[imu - 1, inu - 1])
-                        bcxcx[imu - 1, inu - 1] = bc
-                n2 = n2 + l2
-            n1 = n1 + l1
-        return bcxcx
+#@staticmethod
+def _build_olsxc_off_py(den1x, denx, sx, dens, densij):
+    # For this C-only test case: in1=in2=1 with two shells: s (l=0), p (l=1)
+    # This reproduces fortran/ASSEMBLERS/build_olsxc_off.f90 logic.
+    lssh = [0, 1]
+    bcxcx = np.zeros((4, 4), dtype=np.float64)
+    n1 = 0
+    for issh, l1 in enumerate(lssh, start=1):
+        n1 = n1 + l1 + 1
+        n2 = 0
+        for jssh, l2 in enumerate(lssh, start=1):
+            n2 = n2 + l2 + 1
+            _, muxc, _, _, dmuxc, _ = _cepal_py(float(dens[issh - 1, jssh - 1]))
+            _, muxcij, _, _, dmuxcij, _ = _cepal_py(float(densij[issh - 1, jssh - 1]))
+            for ind1 in range(-l1, l1 + 1):
+                imu = n1 + ind1
+                for ind2 in range(-l2, l2 + 1):
+                    inu = n2 + ind2
+                    if (imu < 1) or (imu > 4) or (inu < 1) or (inu > 4):
+                        continue
+                    bc = muxc * sx[imu - 1, inu - 1]
+                    bc += dmuxc * (denx[imu - 1, inu - 1] - dens[issh - 1, jssh - 1] * sx[imu - 1, inu - 1])
+                    bc -= muxcij * sx[imu - 1, inu - 1] + dmuxcij * (den1x[imu - 1, inu - 1] - densij[issh - 1, jssh - 1] * sx[imu - 1, inu - 1])
+                    bcxcx[imu - 1, inu - 1] = bc
+            n2 = n2 + l2
+        n1 = n1 + l1
+    return bcxcx
 
-    def _epsilon_fb_py(r1, r2):
-        r1mag = np.linalg.norm(r1)
-        r2mag = np.linalg.norm(r2)
-        spe = np.zeros((3, 3), dtype=np.float64)
-        if r2mag < 1e-4:
-            np.fill_diagonal(spe, 1.0)
-            return spe
-        zphat = r2 / r2mag
-        if r1mag > 1e-4:
-            r1hat = r1 / r1mag
-            yphat = np.cross(zphat, r1hat)
-            ypmag = np.linalg.norm(yphat)
-            if ypmag > 1e-6:
-                yphat = yphat / ypmag
-                xphat = np.cross(yphat, zphat)
-                spe[:, 0] = xphat
-                spe[:, 1] = yphat
-                spe[:, 2] = zphat
-                return spe
-        if abs(zphat[0]) > 1e-4:
-            yphat = np.array([-(zphat[1] + zphat[2]) / zphat[0], 1.0, 1.0])
-        elif abs(zphat[1]) > 1e-4:
-            yphat = np.array([1.0, -(zphat[0] + zphat[2]) / zphat[1], 1.0])
-        else:
-            yphat = np.array([1.0, 1.0, -(zphat[0] + zphat[1]) / zphat[2]])
-        yphat = yphat / np.linalg.norm(yphat)
-        xphat = np.cross(yphat, zphat)
-        spe[:, 0] = xphat
-        spe[:, 1] = yphat
-        spe[:, 2] = zphat
+#@staticmethod
+def _epsilon_fb_py(r1, r2):
+    r1mag = np.linalg.norm(r1)
+    r2mag = np.linalg.norm(r2)
+    spe = np.zeros((3, 3), dtype=np.float64)
+    if r2mag < 1e-4:
+        np.fill_diagonal(spe, 1.0)
         return spe
+    zphat = r2 / r2mag
+    if r1mag > 1e-4:
+        r1hat = r1 / r1mag
+        yphat = np.cross(zphat, r1hat)
+        ypmag = np.linalg.norm(yphat)
+        if ypmag > 1e-6:
+            yphat = yphat / ypmag
+            xphat = np.cross(yphat, zphat)
+            spe[:, 0] = xphat
+            spe[:, 1] = yphat
+            spe[:, 2] = zphat
+            return spe
+    if abs(zphat[0]) > 1e-4:
+        yphat = np.array([-(zphat[1] + zphat[2]) / zphat[0], 1.0, 1.0])
+    elif abs(zphat[1]) > 1e-4:
+        yphat = np.array([1.0, -(zphat[0] + zphat[2]) / zphat[1], 1.0])
+    else:
+        yphat = np.array([1.0, 1.0, -(zphat[0] + zphat[1]) / zphat[2]])
+    yphat = yphat / np.linalg.norm(yphat)
+    xphat = np.cross(yphat, zphat)
+    spe[:, 0] = xphat
+    spe[:, 1] = yphat
+    spe[:, 2] = zphat
+    return spe
 
-    def _twister_pmat(eps):
-        # Fortran twister: pmat(1,1)=eps(2,2), pmat(1,2)=eps(2,3), pmat(1,3)=eps(2,1), ...
-        return np.array([
-            [eps[1, 1], eps[1, 2], eps[1, 0]],
-            [eps[2, 1], eps[2, 2], eps[2, 0]],
-            [eps[0, 1], eps[0, 2], eps[0, 0]],
-        ], dtype=np.float64)
+#@staticmethod
+def _twister_pmat(eps):
+    # Fortran twister: pmat(1,1)=eps(2,2), pmat(1,2)=eps(2,3), pmat(1,3)=eps(2,1), ...
+    return np.array([
+        [eps[1, 1], eps[1, 2], eps[1, 0]],
+        [eps[2, 1], eps[2, 2], eps[2, 0]],
+        [eps[0, 1], eps[0, 2], eps[0, 0]],
+    ], dtype=np.float64)
 
-    def _chooser(l, pmat):
-        if l == 0:
-            return np.array([[1.0]], dtype=np.float64)
-        if l == 1:
-            return pmat.astype(np.float64)
-        raise RuntimeError(f"rotate_fb: unsupported l={l} (only s+p handled)")
+#@staticmethod
+def _chooser(l, pmat):
+    if l == 0:
+        return np.array([[1.0]], dtype=np.float64)
+    if l == 1:
+        return pmat.astype(np.float64)
+    raise RuntimeError(f"rotate_fb: unsupported l={l} (only s+p handled)")
 
-    def _rotate_fb_py(in1, in2, eps, mmatrix, lssh, nssh):
-        # Fortran rotate_fb: left/right from chooser, apply left * M * right (with right in Fortran indexing)
-        pmat = _twister_pmat(eps)
-        # FireCore.py stores lssh with species as first axis (row). Use that layout here.
-        lssh1 = [int(x) for x in lssh[in1 - 1, :int(nssh[in1 - 1])]]
-        lssh2 = [int(x) for x in lssh[in2 - 1, :int(nssh[in2 - 1])]]
-        xmatrix = np.zeros_like(mmatrix, dtype=np.float64)
-        n1 = 0
-        for l1 in lssh1:
-            left = _chooser(l1, pmat)
-            n2 = 0
-            for l2 in lssh2:
-                right = _chooser(l2, pmat)
-                n1b = n1 + 2 * l1 + 1
-                n2b = n2 + 2 * l2 + 1
-                sub = mmatrix[n1:n1b, n2:n2b]
-                xmatrix[n1:n1b, n2:n2b] += left @ sub @ right.T
-                n2 = n2b
-            n1 = n1b
-        return xmatrix
+#@staticmethod
+def _rotate_fb_py(in1, in2, eps, mmatrix, lssh, nssh):
+    # Fortran rotate_fb: left/right from chooser, apply left * M * right (with right in Fortran indexing)
+    pmat = _twister_pmat(eps)
+    # FireCore.py stores lssh with species as first axis (row). Use that layout here.
+    lssh1 = [int(x) for x in lssh[in1 - 1, :int(nssh[in1 - 1])]]
+    lssh2 = [int(x) for x in lssh[in2 - 1, :int(nssh[in2 - 1])]]
+    xmatrix = np.zeros_like(mmatrix, dtype=np.float64)
+    n1 = 0
+    for l1 in lssh1:
+        left = _chooser(l1, pmat)
+        n2 = 0
+        for l2 in lssh2:
+            right = _chooser(l2, pmat)
+            n1b = n1 + 2 * l1 + 1
+            n2b = n2 + 2 * l2 + 1
+            sub = mmatrix[n1:n1b, n2:n2b]
+            xmatrix[n1:n1b, n2:n2b] += left @ sub @ right.T
+            n2 = n2b
+        n1 = n1b
+    return xmatrix
 
-    def _recover_rotate_sp(hlist, mu, nu, eps, in1, in2, lssh, nssh):
-        m = np.zeros((4, 4), dtype=np.float64)
-        for idx in range(mu.size):
-            imu = int(mu[idx]); inu = int(nu[idx])
-            if imu <= 0 or inu <= 0 or imu > 4 or inu > 4:
+#@staticmethod
+def _recover_rotate_sp(hlist, mu, nu, eps, in1, in2, lssh, nssh):
+    m = np.zeros((4, 4), dtype=np.float64)
+    for idx in range(mu.size):
+        imu = int(mu[idx]); inu = int(nu[idx])
+        if imu <= 0 or inu <= 0 or imu > 4 or inu > 4:
+            continue
+        m[imu - 1, inu - 1] = hlist[idx]
+    return _rotate_fb_py(in1, in2, eps, m, lssh, nssh)
+
+#@staticmethod
+def _recover_sp(hlist, mu, nu):
+    m = np.zeros((4, 4), dtype=np.float64)
+    for idx in range(mu.size):
+        imu = int(mu[idx]); inu = int(nu[idx])
+        if imu <= 0 or inu <= 0 or imu > 4 or inu > 4:
+            continue
+        m[imu - 1, inu - 1] = hlist[idx]
+    return m
+
+def build_vnl_neighbor_map(sd, natoms, verbose=False):
+    """Build VNL neighbor list by mapping PP neighbors to normal neighbor indices.
+
+    This helper iterates neighPP list and maps each (jatom,mbeta) to an index
+    in the normal neigh list. It returns a list of unique (i,j) pairs that have
+    PP neighbors mapped into the regular neighbor list.
+
+    Parameters
+    ----------
+    sd : FireCore sparse-data struct
+    natoms : int
+    verbose : bool, whether to print diagnostic info
+
+    Returns
+    -------
+    neighs_vnl : list of (i,j) tuples
+    """
+    neighs_vnl = []
+    npp_tot = 0
+    npp_mapped = 0
+    for i in range(natoms):
+        nn = int(sd.neighn[i])
+        npp = int(sd.neighPPn[i])
+        npp_tot += npp
+        for ipp in range(npp):
+            j = int(sd.neighPP_j[ipp, i]) - 1
+            b = int(sd.neighPP_b[ipp, i])
+            ineigh0 = -1
+            for ineigh in range(nn):
+                jj = int(sd.neigh_j[i, ineigh]) - 1
+                bb = int(sd.neigh_b[i, ineigh])
+                if (jj == j) and (bb == b):
+                    ineigh0 = ineigh
+                    break
+            if ineigh0 >= 0:
+                npp_mapped += 1
+                neighs_vnl.append((i, j))
+    neighs_vnl = list(dict.fromkeys(neighs_vnl))
+    if len(neighs_vnl) == 0 and verbose:
+        print(f"[VNL_DIAG] neighPPn={sd.neighPPn.tolist()}  total_PP_edges={int(npp_tot)}  mapped_PP_edges={int(npp_mapped)}")
+        for i in range(natoms):
+            nn = int(sd.neighn[i])
+            npp = int(sd.neighPPn[i])
+            if npp <= 0:
                 continue
-            m[imu - 1, inu - 1] = hlist[idx]
-        return _rotate_fb_py(in1, in2, eps, m, lssh, nssh)
+            pp_list = [(int(sd.neighPP_j[ipp, i]) - 1, int(sd.neighPP_b[ipp, i])) for ipp in range(npp)]
+            nb_list = [(int(sd.neigh_j[i, ineigh]) - 1, int(sd.neigh_b[i, ineigh])) for ineigh in range(nn)]
+            print(f"[VNL_DIAG] i={i} pp_list={pp_list} neigh_list={nb_list}")
+    return neighs_vnl
 
-    def _recover_sp(hlist, mu, nu):
-        m = np.zeros((4, 4), dtype=np.float64)
-        for idx in range(mu.size):
-            imu = int(mu[idx]); inu = int(nu[idx])
-            if imu <= 0 or inu <= 0 or imu > 4 or inu > 4:
+def build_bcxcx_on_py(arho_on, arhoi_on, rho_on, rhoi_on, _cepal_py, nsh=2, lssh=None):
+    """Implement build_ca_olsxc_on algorithm in Python.
+
+    This helper computes the on-site exchange-correlation correction matrix
+    bcxcx_on using the CEPAL functional.
+
+    Parameters
+    ----------
+    arho_on : (nsh,nsh) float64, diagonal density matrix for on-site
+    arhoi_on : (nsh,nsh) float64, diagonal density matrix for on-site (i)
+    rho_on : (4,4) float64, full density matrix for on-site
+    rhoi_on : (4,4) float64, full density matrix for on-site (i)
+    _cepal_py : callable, CEPAL functional returning (exc, muxc, dexc, d2exc, dmuxc, d2muxc)
+    nsh : int, number of shells (default 2)
+    lssh : (nsh,) int32, angular momentum per shell (default [0, 1])
+
+    Returns
+    -------
+    bcxcx_on_py : (4,4) float64, on-site exchange-correlation correction matrix
+    """
+    if lssh is None:
+        lssh = np.array([0, 1], dtype=np.int32)
+    bcxcx_on_py = np.zeros((4, 4), dtype=np.float64)
+    n1 = 0
+    for issh in range(nsh):
+        l1 = lssh[issh]
+        n1 += l1 + 1
+        exc, muxc, dexc, d2exc, dmuxc, d2muxc = _cepal_py(arho_on[issh, issh])
+        exci, muxci, dexci, d2exci, dmuxci, d2muxci = _cepal_py(arhoi_on[issh, issh])
+        for ind1 in range(-l1, l1 + 1):
+            imu = n1 + ind1 - 1
+            bcxcx_on_py[imu, imu] = muxc + dmuxc * (rho_on[imu, imu] - arho_on[issh, issh]) - muxci - dmuxci * (rhoi_on[imu, imu] - arhoi_on[issh, issh])
+        n1 += l1
+    n1 = 0
+    for issh in range(nsh):
+        l1 = lssh[issh]
+        n1 += l1 + 1
+        n2 = 0
+        for jssh in range(nsh):
+            l2 = lssh[jssh]
+            n2 += l2 + 1
+            exc, muxc, dexc, d2exc, dmuxc, d2muxc = _cepal_py(arho_on[issh, jssh])
+            exci, muxci, dexci, d2exci, dmuxci, d2muxci = _cepal_py(arhoi_on[issh, jssh])
+            for ind1 in range(-l1, l1 + 1):
+                imu = n1 + ind1 - 1
+                for ind2 in range(-l2, l2 + 1):
+                    inu = n2 + ind2 - 1
+                    if imu != inu:
+                        bcxcx_on_py[imu, inu] = dmuxc * rho_on[imu, inu] - dmuxci * rhoi_on[imu, inu]
+            n2 += l2
+        n1 += l1
+    return bcxcx_on_py
+
+def emit_ewald_2c_debug(sd, atomPos, neigh_self, dip4, dq_fn, natom_cap=3, eq2=14.39975):
+    """Emit Ewald 2c debug terms (EW2C_A and EW2C_O) for verification.
+
+    This is a pure physics kernel that computes the 2c atom-case and 2c ontop-case
+    contributions to EwaldSR. It returns formatted strings for printing.
+
+    Parameters
+    ----------
+    sd : FireCore sparse-data struct
+    atomPos : (natoms,3) float
+    neigh_self : (natoms,) int, self-slot neighbor index for each atom
+    dip4 : (natoms,neigh_max,4,4) float64, dipole interaction 4D blocks
+    dq_fn : callable, function that takes atom index and returns dq (charge deviation)
+    natom_cap : int, limit to first N atoms for debug output (default 3)
+    eq2 : float, Coulomb constant (default 14.39975)
+
+    Returns
+    -------
+    lines : list of str, formatted debug lines
+    """
+    natoms = int(atomPos.shape[0])
+    lines = []
+    for ia in range(min(natom_cap, natoms)):
+        mat = int(neigh_self[ia])
+        if mat < 0:
+            continue
+        ni = int(sd.norb[ia]) if hasattr(sd, 'norb') else 4
+        s_self = sd.s_mat[ia, mat, :ni, :ni].T
+        dq1 = dq_fn(ia)
+        for ineigh in range(int(sd.neighn[ia])):
+            ja = int(sd.neigh_j[ia, ineigh]) - 1
+            mb = int(sd.neigh_b[ia, ineigh])
+            if ja < 0 or ja >= natoms:
                 continue
-            m[imu - 1, inu - 1] = hlist[idx]
-        return m
+            if ia == ja and mb == 0:
+                continue
+            if ja >= natom_cap:
+                continue
+            r1 = atomPos[ia]
+            r2 = atomPos[ja] + sd.xl[mb]
+            y = float(np.linalg.norm(r2 - r1))
+            if y <= 1e-8:
+                continue
+            dq2 = dq_fn(ja)
+            term = (s_self / y) * dq2 * eq2
+            lines.append(f" [EW2C_A][P] ia,ja={ia+1:4d}{ja+1:4d} mbeta={mb:4d} ineigh={ineigh+1:4d} matom={mat+1:4d} y={y:12.6f} dq1={dq1:12.6f} dq2={dq2:12.6f} max|term|={np.max(np.abs(term)):12.6f}")
+            s_blk = sd.s_mat[ia, ineigh, :ni, :ni].T
+            dip_blk = dip4[ia, ineigh, :ni, :ni].T
+            term_o = (((s_blk/(2.0*y) + dip_blk/(y*y))*dq1) + ((dq2*s_blk/(2.0*y) - dip_blk/(y*y))*dq2)) * eq2
+            lines.append(f" [EW2C_O][P] ia,ja={ia+1:4d}{ja+1:4d} mbeta={mb:4d} ineigh={ineigh+1:4d} y={y:12.6f} dq1={dq1:12.6f} dq2={dq2:12.6f} max|term|={np.max(np.abs(term_o)):12.6f}")
+    return lines
+
+def emit_ewald_3c_debug(sd, atomPos, dip4, dq_fn, n_orb_atom, offs, natom_cap=3, eq2=14.39975):
+    """Emit Ewald 3c debug terms (EW3C) for verification.
+
+    This is a pure physics kernel that computes the 3c contribution to EwaldSR.
+    It returns formatted strings for printing.
+
+    Parameters
+    ----------
+    sd : FireCore sparse-data struct
+    atomPos : (natoms,3) float
+    dip4 : (natoms,neigh_max,4,4) float64, dipole interaction 4D blocks
+    dq_fn : callable, function that takes atom index and returns dq (charge deviation)
+    n_orb_atom : (natoms,) int, number of orbitals per atom
+    offs : (natoms,) int, orbital offsets
+    natom_cap : int, limit to first N atoms for debug output (default 3)
+    eq2 : float, Coulomb constant (default 14.39975)
+
+    Returns
+    -------
+    lines : list of str, formatted debug lines
+    """
+    natoms = int(atomPos.shape[0])
+    lines = []
+    for ia in range(min(natom_cap, natoms)):
+        ni = int(n_orb_atom[ia])
+        for mne in range(int(sd.neighn[ia])):
+            ja = int(sd.neigh_j[ia, mne]) - 1
+            mb = int(sd.neigh_b[ia, mne])
+            if ja < 0 or ja >= natoms:
+                continue
+            if ja >= natom_cap:
+                continue
+            if ia == ja and mb == 0:
+                continue
+            r1 = atomPos[ia]
+            r2 = atomPos[ja] + sd.xl[mb]
+            y = float(np.linalg.norm(r2 - r1))
+            if y <= 1e-8:
+                continue
+            nj = int(n_orb_atom[ja])
+            s_blk = sd.s_mat[ia, mne, :nj, :ni].T
+            dip_blk = dip4[ia, mne, :nj, :ni].T
+            for ka in range(min(natom_cap, natoms)):
+                if ka == ia or ka == ja:
+                    continue
+                dq3 = dq_fn(ka)
+                d13 = float(np.linalg.norm(atomPos[ka] - r1))
+                d23 = float(np.linalg.norm(atomPos[ka] - r2))
+                if d13 <= 1e-8 or d23 <= 1e-8:
+                    continue
+                sterm = dq3 * s_blk / 2.0
+                dterm = dq3 * dip_blk / y
+                emnpl = (sterm - dterm)/d13 + (sterm + dterm)/d23
+                term3 = emnpl * eq2
+                lines.append(f" [EW3C][P] ia,ja,ka={ia+1:4d}{ja+1:4d}{ka+1:4d} mbeta={mb:4d} mneigh,jneigh={mne+1:4d}{-1:4d} y={y:12.6f} d13={d13:12.6f} d23={d23:12.6f} dq3={dq3:12.6f} max|term|={np.max(np.abs(term3)):12.6f}")
+    return lines
+
+def enforce_sfire_symmetry(ewaldsr4_sum_f, ewaldsr3c4_f, sd, neigh_back, n_orb_atom):
+    """Apply SFIRE overwrite semantics to EwaldSR 4D blocks.
+
+    This is a pure physics kernel that applies the SFIRE overwrite:
+    ewaldsr(jneigh,jatom) = ewaldsr(ineigh,iatom).T
+
+    Parameters
+    ----------
+    ewaldsr4_sum_f : (natoms,neigh_max,4,4) float64 - sum of 2c_atom + 2c_ontop + 3c
+    ewaldsr3c4_f : (natoms,neigh_max,4,4) float64 - ewaldsr_3c
+    sd : FireCore sparse-data struct
+    neigh_back : (natoms,neigh_max) int
+    n_orb_atom : (natoms,) int
+
+    Returns
+    -------
+    n_sfire_apply : int, number of applied overwrites
+    n_sfire_skip : int, number of skipped overwrites
+    """
+    natoms = int(ewaldsr4_sum_f.shape[0])
+    n_sfire_apply = 0
+    n_sfire_skip = 0
+    for iatom in range(natoms):
+        nn = int(sd.neighn[iatom])
+        nmu = int(n_orb_atom[iatom])
+        for ineigh in range(nn):
+            if float(np.max(np.abs(ewaldsr3c4_f[iatom, ineigh]))) < 1e-12:
+                continue
+            jatom = int(sd.neigh_j[iatom, ineigh]) - 1
+            if jatom < 0 or jatom >= natoms:
+                continue
+            jneigh = int(neigh_back[iatom, ineigh]) - 1
+            if jneigh < 0 or jneigh >= int(sd.neighn[jatom]):
+                n_sfire_skip += 1
+                continue
+            if int(sd.neigh_j[jatom, jneigh]) - 1 != iatom:
+                n_sfire_skip += 1
+                continue
+            nnu = int(n_orb_atom[jatom])
+            ewaldsr4_sum_f[jatom, jneigh, :nnu, :nmu] = ewaldsr4_sum_f[iatom, ineigh, :nmu, :nnu].T
+            n_sfire_apply += 1
+    return n_sfire_apply, n_sfire_skip
+
+def accumulate_vca_blocks(neigh_list_vca, n_orb_atom, offs, offL, offR, diagA, H_shape):
+    """Accumulate Vca neighbor blocks into dense matrices.
+
+    This is a pure physics kernel that scatters off-diagonal and diagonal
+    Vca blocks from neighbor lists into dense matrix form.
+
+    Parameters
+    ----------
+    neigh_list_vca : list of (i,j) tuples, directed neighbor pairs
+    n_orb_atom : (natoms,) int, number of orbitals per atom
+    offs : (natoms,) int, orbital offsets
+    offL : (npairs,4,4) float64, ontopl blocks
+    offR : (npairs,4,4) float64, ontopr blocks
+    diagA : (npairs,1) float64, atom blocks
+    H_shape : tuple, shape of output matrices (norb, norb)
+
+    Returns
+    -------
+    VcaL : (norb,norb) float64, accumulated ontopl matrix
+    VcaR : (norb,norb) float64, accumulated ontopr matrix
+    VcaA : (norb,norb) float64, accumulated atom matrix
+    """
+    VcaL = np.zeros(H_shape, dtype=np.float64)
+    VcaR = np.zeros(H_shape, dtype=np.float64)
+    VcaA = np.zeros(H_shape, dtype=np.float64)
+    for k, (i, j) in enumerate(neigh_list_vca):
+        i0 = int(offs[i]); j0 = int(offs[j])
+        ni = int(n_orb_atom[i]); nj = int(n_orb_atom[j])
+        VcaL[i0:i0+ni, j0:j0+nj] += offL[k]
+        VcaR[i0:i0+ni, j0:j0+nj] += offR[k]
+        VcaA[i0:i0+ni, i0:i0+ni] += diagA[k, 0]
+    return VcaL, VcaR, VcaA
 
 if __name__ == "__main__":
     import os

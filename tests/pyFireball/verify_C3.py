@@ -7,34 +7,47 @@ from io import StringIO
 # Adjust path to your FireCore/pyBall directory
 sys.path.append("../../")
 from pyBall import FireCore as fc
-from pyBall.FireballOCL.OCL_Hamiltonian import OCL_Hamiltonian
+from pyBall.FireballOCL.OCL_Hamiltonian import (
+    OCL_Hamiltonian,
+    _cepal_py,
+    _build_olsxc_off_py,
+    _epsilon_fb_py,
+    _twister_pmat,
+    _chooser,
+    _rotate_fb_py,
+    _recover_rotate_sp,
+    _recover_sp,
+    build_vnl_neighbor_map,
+    build_bcxcx_on_py,
+    accumulate_vca_blocks,
+)
 from pyBall.FireballOCL.Check_Fireball_wrt_Fotran import (
-    compare_matrices as _compare_matrices_shared,
-    compare_matrices_brief as _compare_matrices_brief_shared,
-    _orbital_layout as _orbital_layout_shared,
-    _blocked_to_dense as _blocked_to_dense_shared,
-    _blocked_to_dense_vca_atom as _blocked_to_dense_vca_atom_shared,
-    compare_blocks as _compare_blocks_shared,
-    dense_from_neighbor_list as _dense_from_neighbor_list_shared,
+    compare_matrices,
+    compare_matrices_brief,
+    _orbital_layout,
+    _blocked_to_dense,
+    _blocked_to_dense_vca_atom,
+    compare_blocks,
+    dense_from_neighbor_list,
     scan2c_fortran,
     scan2c_ocl,
     firecore_sparse_to_dense,
     firecore_sparse_H_with_options,
     cl_sp_from_ham,
-    contract_vnl_blocks as _contract_vnl_blocks_shared,
+    contract_vnl_blocks,
+    compare_ewaldsr,
+    compare_dip,
+    compare_vnl_ref,
+    compare_avgrho,
+    check_ewaldsr_decomposition,
+    compare_raw3c_rotation,
+    print_ewald_debug,
+    apply_sfire_overwrite,
+    validate_neigh_back,
+    summarize_neigh_lists,
+    build_overlap_pairs,
+    assign_triplet_types,
 )
-
-# Reuse testing helpers relocated into OCL_Hamiltonian
-_cepal_py = OCL_Hamiltonian._cepal_py
-_build_olsxc_off_py = OCL_Hamiltonian._build_olsxc_off_py
-compare_matrices = _compare_matrices_shared
-compare_matrices_brief = _compare_matrices_brief_shared
-_orbital_layout = _orbital_layout_shared
-_blocked_to_dense = _blocked_to_dense_shared
-_blocked_to_dense_vca_atom = _blocked_to_dense_vca_atom_shared
-dense_from_neighbor_list = _dense_from_neighbor_list_shared
-compare_blocks = _compare_blocks_shared
-contract_vnl_blocks = _contract_vnl_blocks_shared
 
 np.set_printoptions(precision=6, suppress=True, linewidth=np.inf)
 
@@ -143,63 +156,14 @@ def run_verification():
     vxc_ca_on = vxc_dbg['vxc_ca']
 
     # Implement build_ca_olsxc_on algorithm in Python
-    bcxcx_on_py = np.zeros((4,4), dtype=np.float64)
-    nsh = 2
-    lssh = np.array([0, 1], dtype=np.int32)
-    n1 = 0
-    for issh in range(nsh):
-        l1 = lssh[issh]
-        n1 += l1 + 1
-        exc, muxc, dexc, d2exc, dmuxc, d2muxc = _cepal_py(arho_on[issh, issh])
-        exci, muxci, dexci, d2exci, dmuxci, d2muxci = _cepal_py(arhoi_on[issh, issh])
-        for ind1 in range(-l1, l1+1):
-            imu = n1 + ind1 - 1
-            bcxcx_on_py[imu, imu] = muxc + dmuxc*(rho_on[imu, imu] - arho_on[issh, issh]) - muxci - dmuxci*(rhoi_on[imu, imu] - arhoi_on[issh, issh])
-        n1 += l1
-    n1 = 0
-    for issh in range(nsh):
-        l1 = lssh[issh]
-        n1 += l1 + 1
-        n2 = 0
-        for jssh in range(nsh):
-            l2 = lssh[jssh]
-            n2 += l2 + 1
-            exc, muxc, dexc, d2exc, dmuxc, d2muxc = _cepal_py(arho_on[issh, jssh])
-            exci, muxci, dexci, d2exci, dmuxci, d2muxci = _cepal_py(arhoi_on[issh, jssh])
-            for ind1 in range(-l1, l1+1):
-                imu = n1 + ind1 - 1
-                for ind2 in range(-l2, l2+1):
-                    inu = n2 + ind2 - 1
-                    if imu != inu:
-                        bcxcx_on_py[imu, inu] = dmuxc*rho_on[imu, inu] - dmuxci*rhoi_on[imu, inu]
-            n2 += l2
-        n1 += l1
+    bcxcx_on_py = build_bcxcx_on_py(arho_on, arhoi_on, rho_on, rhoi_on, _cepal_py, nsh=2, lssh=np.array([0, 1], dtype=np.int32))
 
     err_bcxcx_on = float(np.max(np.abs(bcxcx_on_py - vxc_ca_on)))
     print(f"[XC_ON][bcxcx_on_py] max|bcxcx_on_py-vxc_ca_on|={err_bcxcx_on:.3e}")
 
     # Quick sanity check: neigh_back should map (iatom,ineigh)->jneigh in neighbor list of jatom
     # such that neigh_j[jatom, jneigh] == iatom+1 (Fortran 1-based atom ids).
-    nb_min = int(np.min(neigh_back))
-    nb_max = int(np.max(neigh_back))
-    print(f"[NEIGH_BACK] min={nb_min} max={nb_max} (expect 0 or 1..neigh_max)")
-    nb_bad = 0
-    for i in range(int(dims.natoms)):
-        nn = int(sd.neighn[i])
-        for ineigh in range(nn):
-            j = int(sd.neigh_j[i, ineigh]) - 1
-            jb = int(neigh_back[i, ineigh])
-            if j < 0 or j >= int(dims.natoms):
-                continue
-            if jb <= 0:
-                nb_bad += 1
-                continue
-            jneigh = jb - 1
-            if jneigh < 0 or jneigh >= int(sd.neighn[j]):
-                nb_bad += 1
-                continue
-            if int(sd.neigh_j[j, jneigh]) - 1 != i:
-                nb_bad += 1
+    nb_bad = validate_neigh_back(sd, neigh_back, dims)
     print(f"[NEIGH_BACK] inconsistent mappings: {nb_bad}")
     res_neigh_back = (nb_bad == 0)
     err_neigh_back = float(nb_bad)
@@ -322,20 +286,7 @@ def run_verification():
 
 
     # Neighbor lists from Fortran export: neigh_j is 1-based atom index.
-    neigh_lists = []
-    neigh_lists_self = []
-    for ia in range(dims.natoms):
-        nn = int(sd.neighn[ia])
-        js = []
-        js_self = []
-        for ineigh in range(nn):
-            j = int(sd.neigh_j[ia, ineigh]) - 1
-            if (j >= 0) and (j < dims.natoms):
-                js_self.append(j)
-                if j != ia:
-                    js.append(j)
-        neigh_lists.append(sorted(set(js)))
-        neigh_lists_self.append(sorted(set(js_self)))
+    neigh_lists, neigh_lists_self = summarize_neigh_lists(sd, dims)
     print(f"DEBUG: neigh_lists (no self) = {neigh_lists}")
     print(f"DEBUG: neigh_lists_self = {neigh_lists_self}")
 
@@ -374,65 +325,14 @@ def run_verification():
     rho_blocks_alt_raw = np.zeros((pairs.shape[0], 4, 4), dtype=np.float64)
     rho_blocks_alt_raw_L = np.zeros((pairs.shape[0], 4, 4), dtype=np.float64)
     rho_blocks_alt_raw_R = np.zeros((pairs.shape[0], 4, 4), dtype=np.float64)
-    pair_dR = np.zeros((pairs.shape[0], 3), dtype=np.float64)
-    pair_in_i = np.zeros(pairs.shape[0], dtype=np.int32)
-    pair_in_j = np.zeros(pairs.shape[0], dtype=np.int32)
-    pair_mbeta = np.zeros(pairs.shape[0], dtype=np.int32)
-    pair_valid = np.zeros(pairs.shape[0], dtype=np.int8)
+    S_blocks = np.zeros((pairs.shape[0], 4, 4), dtype=np.float64)
     rho_blocks_qin = np.zeros((pairs.shape[0], 4, 4), dtype=np.float32) if DEBUG_QIN_TEST else None
-    pair_2c_types = np.zeros(pairs.shape[0], dtype=np.int32)
-    for ip, (ia, ja) in enumerate(pairs):
-        ineigh = neigh_index.get((int(ia), int(ja)), None)
-        if ineigh is None:
-            continue
-        S_blocks[ip, :, :] = sd.s_mat[int(ia), ineigh, :4, :4]
 
-        # Store 2c pair type index for OpenCL seed construction (den_ontopl/den_ontopr tables)
-        ispec_i = int(ispec_of_atom[int(ia)])
-        ispec_j = int(ispec_of_atom[int(ja)])
-        nz1 = int(atomTypes_Z[int(ia)])
-        nz2 = int(atomTypes_Z[int(ja)])
-        pt = ham._resolve_pair_type('overlap', nz1, nz2)
-        if pt is None:
-            raise RuntimeError(f"Missing 2c pair type for overlap ({nz1},{nz2})")
-        pair_2c_types[ip] = int(pt)
-        mbeta = int(sd.neigh_b[int(ia), ineigh])
-        r1 = atomPos[int(ia)]
-        r2 = atomPos[int(ja)] + sd.xl[mbeta]
-        dR = (r2 - r1).copy()
-        # Keep pair geometry for potential debug, but do not compute rho_blocks via scanHamPiece2c.
-        in_i = ispec_i + 1
-        in_j = ispec_j + 1
-        pair_dR[ip, :] = dR
-        pair_in_i[ip] = in_i
-        pair_in_j[ip] = in_j
-        pair_valid[ip] = 1
-        pair_mbeta[ip] = mbeta
+    S_blocks, pair_2c_types, pair_dR, pair_in_i, pair_in_j, pair_valid, pair_mbeta = build_overlap_pairs(sd, atomPos, ham, pairs, neigh_index, ispec_of_atom, atomTypes_Z)
 
     # Triplet type selection: key is (root,nz1,nz2,nz3) where nz3 is the common neighbor type
     root = 'den3'
-    pair_triplet_types = np.zeros(pairs.shape[0], dtype=np.int32)
-    for ip, (ia, ja) in enumerate(pairs):
-        nz1 = int(atomTypes_Z[int(ia)]); nz2 = int(atomTypes_Z[int(ja)])
-        # if there is at least one CN, use the first CN's species as nz3, else fall back nz3=nz1
-        cn0 = int(cn_offsets[ip]); cn1 = int(cn_offsets[ip + 1])
-        if cn1 > cn0:
-            k = int(cn_indices[cn0])
-            nz3 = int(atomTypes_Z[k])
-        else:
-            nz3 = nz1
-        key = (root, nz1, nz2, nz3)
-        if key not in ham.species_triplet_map:
-            # fallback: find any triplet with same root and nz1,nz2
-            found = None
-            for kk in ham.species_triplet_map.keys():
-                if (kk[0] == root) and (kk[1] == nz1) and (kk[2] == nz2):
-                    found = kk
-                    break
-            if found is None:
-                raise RuntimeError(f"[PLUMBING] Missing 3c triplet table for {key}")
-            key = found
-        pair_triplet_types[ip] = int(ham.species_triplet_map[key])
+    pair_triplet_types = assign_triplet_types(ham, pairs, cn_offsets, cn_indices, atomTypes_Z, root=root)
 
     nspecies_fdata = int(Qneutral_sh.shape[1])
     if nspecies_fdata <= 0:
@@ -503,152 +403,19 @@ def run_verification():
     err_rawrot_f = float('nan')
     err_rawrot_o = float('nan')
     if DEBUG_RAW3C and natoms >= 3:
-        i = 0; j = 2; k = 1
-        dRj = (atomPos[j] - atomPos[i]).copy()
-        dRk = (atomPos[k] - atomPos[i]).copy()
-        in1 = int(ispec_of_atom[i]) + 1
-        in2 = int(ispec_of_atom[j]) + 1
-        indna = int(ispec_of_atom[k]) + 1
-        nz1 = int(atomTypes_Z[i]); nz2 = int(atomTypes_Z[j]); nz3 = int(atomTypes_Z[k])
-        nssh_k = int(sd.nssh[indna - 1])
-        print(f"\n[DEBUG] 3c raw check pair({i},{j}) cn={k} nssh_k={nssh_k}")
-        dims_dbg = fc.get_HS_dims(force_refresh=True)
-        print(f"[DEBUG] max_mu_dim3(dims)={dims_dbg.max_mu_dim3}  n_nz_3c_max(ham)={ham.n_nz_3c_max}  n_nz_max(local)={n_nz_max}")
-        r1 = atomPos[i]
-        r2 = atomPos[j]
-        r21 = r2 - r1
-        y = np.linalg.norm(r21)
-        sighat = r21 / y if y > 1e-12 else np.array([0.0, 0.0, 1.0])
-        mid = 0.5 * (r1 + r2)
-        rnabc = atomPos[k] - mid
-        x = np.linalg.norm(rnabc)
-        rhat = rnabc / x if x > 1e-12 else np.array([0.0, 0.0, 0.0])
-        cost = float(np.dot(sighat, rhat))
-        cost2 = cost * cost
-        argument = 1.0 - cost2
-        if argument < 1e-5:
-            argument = 1e-5
-        sint = np.sqrt(argument)
-        P = np.zeros(5, dtype=np.float64)
-        P[0] = 1.0
-        P[1] = cost
-        P[2] = (3.0 * cost2 - 1.0) * 0.5
-        P[3] = (5.0 * cost2 * cost - 3.0 * cost) * 0.5
-        P[4] = (35.0 * cost2 * cost2 - 30.0 * cost2 + 3.0) * 0.125
-        eps = _epsilon_fb_py(rhat, sighat)
-        print("  [PY] eps(3x3):")
-        print(eps)
-        print(f"  [PY] nssh in1={in1} nssh[in1]={int(sd.nssh[in1-1])} lssh_row={sd.lssh[in1-1, :int(sd.nssh[in1-1])]}")
-        print(f"  [PY] nssh in2={in2} nssh[in2]={int(sd.nssh[in2-1])} lssh_row={sd.lssh[in2-1, :int(sd.nssh[in2-1])]}")
+        _raw3c_res = compare_raw3c_rotation(fc, ham, atomPos, atomTypes_Z, sd, dims, ispec_of_atom, Qneutral_sh, n_nz_max, mu3c_map, nu3c_map, mv3c_map, verbose=True)
+        err_rawrot_f = _raw3c_res.details['err_rawrot_f']
+        err_rawrot_o = _raw3c_res.details['err_rawrot_o']
+        err_rot_isorp = _raw3c_res.details['err_rot_isorp']
 
-        block_f_sum = np.zeros((4, 4), dtype=np.float64)
-        block_o_sum = np.zeros((4, 4), dtype=np.float64)
-        print("verify_C3.py() 1")
-        err_rot_isorp = 0.0
-        for isorp in range(1, nssh_k + 1):
-            print("verify_C3.py() 2")
-            out_f = np.zeros((5, n_nz_max), dtype=np.float64, order='F')
-            raw_f = fc.scanHamPiece3c_raw(3, isorp, in1, in2, indna, dRj, dRk, out=out_f)
-            print("verify_C3.py() 3")
-            print("verify_C3.py() 3 --- ")
-            print("verify_C3.py() 3 ---dRk ", dRj )
-            print("verify_C3.py() 3 ---dRk ", dRk )
-            raw_o = ham.scanHamPiece3c_raw_batch('den3', nz1, nz2, nz3, np.array([dRj], dtype=np.float32), np.array([dRk], dtype=np.float32), isorp=isorp)
-            print("verify_C3.py() 4")
-            if raw_o is None:
-                print(f"  raw3c isorp={isorp}: missing OCL table")
-                continue
-            raw_o0 = raw_o[0]
-            print(f"  [PY] raw_f (theta x ME) isorp={isorp}:")
-            print(raw_f[:, :min(10, raw_f.shape[1])])
-            print(f"  [PY] raw_o (theta x ME) isorp={isorp}:")
-            print(raw_o0[:, :min(10, raw_o0.shape[1])])
-            n_me = min(raw_f.shape[1], raw_o0.shape[1], n_nz_max)
-            diff_raw = np.max(np.abs(raw_f[:, :n_me] - raw_o0[:, :n_me]))
-            print(f"  raw3c isorp={isorp}: max|F-OCL|={diff_raw:.2e}")
-            # build hlist and rotate
-            h_f = np.zeros(n_nz_max, dtype=np.float64)
-            h_o = np.zeros(n_nz_max, dtype=np.float64)
-            for iME in range(n_me):
-                hf = float(np.dot(P, raw_f[:, iME]))
-                ho = float(np.dot(P, raw_o0[:, iME]))
-                if int(mv3c_map[0, iME]) == 1:
-                    hf *= sint
-                    ho *= sint
-                h_f[iME] = hf
-                h_o[iME] = ho
-            print(f"  [PY] hlist_f (first 10) isorp={isorp}:", h_f[:10])
-            print(f"  [PY] hlist_o (first 10) isorp={isorp}:", h_o[:10])
-            m_f = _recover_sp(h_f, mu3c_map[0], nu3c_map[0])
-            m_o = _recover_sp(h_o, mu3c_map[0], nu3c_map[0])
-            print("  [PY] bcnam_f pre-rot (4x4):")
-            print(m_f)
-            print("  [PY] bcnam_o pre-rot (4x4):")
-            print(m_o)
-            wf = float(Qneutral_sh[isorp - 1, indna - 1])
-            bcnax_f = _recover_rotate_sp(h_f, mu3c_map[0], nu3c_map[0], eps, in1, in2, sd.lssh, sd.nssh)
-            bcnax_o = _recover_rotate_sp(h_o, mu3c_map[0], nu3c_map[0], eps, in1, in2, sd.lssh, sd.nssh)
-            bcnax_f_sd = _recover_rotate_sp(h_f, sd.mu[in2-1, in1-1, :n_nz_max].astype(np.int16), sd.nu[in2-1, in1-1, :n_nz_max].astype(np.int16), eps, in1, in2, sd.lssh, sd.nssh)
-            print(f"  [PY] bcnax_f post-rot isorp={isorp}:")
-            print(bcnax_f)
-            print(f"  [PY] bcnax_o post-rot isorp={isorp}:")
-            print(bcnax_o)
-            print(f"  [PY] bcnax_f_sdmap post-rot isorp={isorp}:")
-            print(bcnax_f_sd)
-            ref_is = fc.scanHamPiece3c(3, isorp, in1, in2, indna, dRj, dRk, applyRotation=True, norb=4)
-            ref_is_T = ref_is.T.copy()
-            print(f"  [PY] scanHamPiece3c block isorp={isorp} (raw, col-major):")
-            print(ref_is)
-            print(f"  [PY] scanHamPiece3c block isorp={isorp} (transposed):")
-            print(ref_is_T)
-            err_is = float(np.max(np.abs(bcnax_f - ref_is_T)))
-            err_rot_isorp = max(err_rot_isorp, err_is)
-            print(f"  [PY] max|bcnax_f - scanHamPiece3c(T)| isorp={isorp} = {err_is:.3e}")
-            print(f"  [PY] max|bcnax_f_sdmap - scanHamPiece3c(T)| isorp={isorp} = {float(np.max(np.abs(bcnax_f_sd - ref_is_T))):.3e}")
-            # TODO/DEBUG: keep alt rotations removed; we now use exact rotate_fb implementation above
-            block_f_sum += bcnax_f * wf
-            block_o_sum += bcnax_o * wf
-        print("verify_C3.py() 5")
-        block_ref = fc.scanHamPiece3c(3, 1, in1, in2, indna, dRj, dRk, applyRotation=True, norb=4).T * float(Qneutral_sh[0, indna - 1])
-        print("verify_C3.py() 6")
-        if nssh_k > 1:
-            block_ref += fc.scanHamPiece3c(3, 2, in1, in2, indna, dRj, dRk, applyRotation=True, norb=4).T * float(Qneutral_sh[1, indna - 1])
-        print("verify_C3.py() 7")
-        err_rawrot_f = float(np.max(np.abs(block_f_sum - block_ref)))
-        err_rawrot_o = float(np.max(np.abs(block_o_sum - block_ref)))
-        print(f"  raw->rot (Fraw) vs Fortran scan: max|diff|={err_rawrot_f:.2e}")
-        print(f"  raw->rot (OCLraw) vs Fortran scan: max|diff|={err_rawrot_o:.2e}")
-
-    rho_avg_blocks = ham.compute_avg_rho_3c(atomPos, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_blocks, Qneutral_sh, ispec_of_atom, nssh_species, sd.lssh[:dims.nspecies], dims.nsh_max, pair_2c_types=pair_2c_types, mu3c_map=mu3c_map, nu3c_map=nu3c_map, mvalue3c_map=mv3c_map)
-    rho_avg_blocks_qin = None
-    if DEBUG_QIN_TEST:
-        rho_avg_blocks_qin = ham.compute_avg_rho_3c(atomPos, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_blocks_qin, Qin_shell, ispec_of_atom, nssh_species, sd.lssh[:dims.nspecies], dims.nsh_max, pair_2c_types=pair_2c_types, mu3c_map=mu3c_map, nu3c_map=nu3c_map, mvalue3c_map=mv3c_map)
-
-        # For itheory=1 SCF path the Fortran reference (average_ca_rho) uses Qin weights.
-        # Use the Qin-weighted GPU result as the primary comparison target.
-        rho_avg_blocks = rho_avg_blocks_qin
-
-    # Build Fortran reference blocks: rho_off is stored in sd.rho_off in the same blocked layout as sd.rho.
-    ref_blocks = np.zeros_like(rho_avg_blocks)
-    mask = np.zeros(pairs.shape[0], dtype=np.int32)
-    for ip, (ia, ja) in enumerate(pairs):
-        ineigh = neigh_index.get((int(ia), int(ja)), None)
-        if ineigh is None:
-            continue
-        ref_blocks[ip, :, :] = sd.rho_off[int(ia), ineigh, :4, :4].astype(np.float32)
-        mask[ip] = 1
-
-    res_AvgRho = False
-    err_AvgRho = float('nan')
-    if np.any(mask == 1):
-        ok_avg, max_diff_avg = compare_blocks("AvgRho_off (Fortran rho_off vs OpenCL compute_avg_rho)", ref_blocks, rho_avg_blocks, tol=1e-4)
-        res_AvgRho = ok_avg
-        err_AvgRho = max_diff_avg
-        if DEBUG_QIN_TEST:
-            ok_avg_qin, max_diff_avg_qin = compare_blocks("AvgRho_off (Qin weights test)", ref_blocks, rho_avg_blocks_qin, tol=1e-4)
-            print(f"  DEBUG AvgRho Qin test: ok={ok_avg_qin} err={max_diff_avg_qin:.2e}")
-    else:
-        print("WARNING: No comparable neighbor blocks found (mask empty)")
+    # Compute and compare AvgRho blocks
+    _avgrho_res = compare_avgrho(ham, atomPos, pairs, pair_triplet_types, cn_offsets, cn_indices, S_blocks, rho_blocks, Qneutral_sh, ispec_of_atom, nssh_species, sd, dims, neigh_index, cn_counts, pair_2c_types=pair_2c_types, mu3c_map=mu3c_map, nu3c_map=nu3c_map, mv3c_map=mv3c_map, Qin_shell=Qin_shell, DEBUG_QIN_TEST=DEBUG_QIN_TEST)
+    rho_avg_blocks = _avgrho_res.details['rho_avg_blocks']
+    ref_blocks = _avgrho_res.details['ref_blocks']
+    mask = _avgrho_res.details['mask']
+    res_AvgRho = _avgrho_res.ok
+    err_AvgRho = _avgrho_res.err
+    rho_avg_blocks_qin = _avgrho_res.details.get('rho_avg_blocks_qin', None)
 
     # Report a few pairs (only those present in Fortran neighbor list)
     for ip in range(pairs.shape[0]):
@@ -754,55 +521,20 @@ def run_verification():
     # Build VNL neighbor list exactly like Fortran export_mode>=2 does:
     # iterate neighPP list and map each (jatom,mbeta) to an index in the normal neigh list.
     # This avoids comparing OpenCL against zero blocks for non-PP pairs.
-    neighs_vnl = []
-    npp_tot = 0
-    npp_mapped = 0
-    for i in range(natoms):
-        nn  = int(sd.neighn[i])
-        npp = int(sd.neighPPn[i])
-        npp_tot += npp
-        for ipp in range(npp):
-            j = int(sd.neighPP_j[ipp, i]) - 1
-            b = int(sd.neighPP_b[ipp, i])
-            ineigh0 = -1
-            for ineigh in range(nn):
-                jj = int(sd.neigh_j[i, ineigh]) - 1
-                bb = int(sd.neigh_b[i, ineigh])
-                if (jj == j) and (bb == b):
-                    ineigh0 = ineigh
-                    break
-            if ineigh0 >= 0:
-                npp_mapped += 1
-                neighs_vnl.append((i, j))
-    neighs_vnl = list(dict.fromkeys(neighs_vnl))
+    neighs_vnl = build_vnl_neighbor_map(sd, natoms, verbose=True)
     if len(neighs_vnl) == 0:
-        print(f"[VNL_DIAG] neighPPn={sd.neighPPn.tolist()}  total_PP_edges={int(npp_tot)}  mapped_PP_edges={int(npp_mapped)}")
-        for i in range(natoms):
-            nn  = int(sd.neighn[i])
-            npp = int(sd.neighPPn[i])
-            if npp <= 0:
-                continue
-            pp_list = [(int(sd.neighPP_j[ipp, i]) - 1, int(sd.neighPP_b[ipp, i])) for ipp in range(npp)]
-            nb_list = [(int(sd.neigh_j[i, ineigh]) - 1, int(sd.neigh_b[i, ineigh])) for ineigh in range(nn)]
-            print(f"[VNL_DIAG] i={i} pp_list={pp_list} neigh_list={nb_list}")
         raise RuntimeError("VNL: neighs_vnl is empty (no PP neighbors mapped into neigh list)")
 
-    Vnl_ref_blocks = []
-    for (i, j) in neighs_vnl:
-        acc = np.zeros((4, 4), dtype=np.float64)
-        for k in range(natoms):
-            acc += contract_vnl_blocks(s_map[(i, k)], s_map[(j, k)], cls[k])
-        Vnl_ref_blocks.append(acc)
-    Vnl_ref_blocks = np.array(Vnl_ref_blocks, dtype=np.float64)
-    Vnl_ref = dense_from_neighbor_list(neighs_vnl, Vnl_ref_blocks, n_orb_atom, offs)
-
-    H_vnl_cpu_blocks, _ = ham.assemble_full(atomPos, atomTypes_Z, neighs_vnl.copy(), include_T=False, include_Vna=False, include_Vnl=True, use_gpu_vnl=False)
-    H_vnl_gpu_blocks, _ = ham.assemble_full(atomPos, atomTypes_Z, neighs_vnl.copy(), include_T=False, include_Vna=False, include_Vnl=True, use_gpu_vnl=True)
-    Vnl_cpu = dense_from_neighbor_list(neighs_vnl, np.array(H_vnl_cpu_blocks, dtype=np.float64), n_orb_atom, offs)
-    Vnl_gpu = dense_from_neighbor_list(neighs_vnl, np.array(H_vnl_gpu_blocks, dtype=np.float64), n_orb_atom, offs)
-
-    res_Vnl_cpu, err_Vnl_cpu = compare_matrices("VNL (CPU contraction)", Vnl_ref, Vnl_cpu, tol=1e-5, require_nonzero=True)
-    res_Vnl_gpu, err_Vnl_gpu = compare_matrices("VNL (GPU contraction)", Vnl_ref, Vnl_gpu, tol=1e-5, require_nonzero=True)
+    # Cross-check new refactored helper against the inline implementation (no behavior change).
+    # Keep this until we fully switch the inline block to the helper.
+    _vnlchk_cpu = compare_vnl_ref(ham, atomPos, atomTypes_Z, sd, s_map, cls, n_orb_atom, offs, use_gpu_vnl=False)
+    _vnlchk_gpu = compare_vnl_ref(ham, atomPos, atomTypes_Z, sd, s_map, cls, n_orb_atom, offs, use_gpu_vnl=True)
+    Vnl_ref = _vnlchk_cpu.details['Vnl_ref']
+    Vnl_cpu = _vnlchk_cpu.details['Vnl_ocl']
+    Vnl_gpu = _vnlchk_gpu.details['Vnl_ocl']
+    neighs_vnl = _vnlchk_cpu.details['neighs_vnl']
+    res_Vnl_cpu, err_Vnl_cpu = _vnlchk_cpu.ok, _vnlchk_cpu.err
+    res_Vnl_gpu, err_Vnl_gpu = _vnlchk_gpu.ok, _vnlchk_gpu.err
 
     print("\nTesting contracted VNL (Fortran gated export vs OpenCL CPU/GPU)...")
     Vnl_fortran_full, _neighs_vnl_f, _sd_vnl_f = firecore_sparse_H_with_options(fc, 0, 0, 0, 1, 0, 0, 0, export_mode=2)
@@ -835,67 +567,11 @@ def run_verification():
     print("\nTesting dip (OpenCL Fdata dipole_z vs Fortran export dip)...")
     # Fortran computes dip via doscentros(interaction=9) which maps to dipole_z tables.
     # dip is stored per neighbor slot (iatom,ineigh) and used by EWALDSR/LR.
-    dip4_o = np.zeros_like(dip4_f, dtype=np.float64)
-    dip_pairs = []
-    dip_pair_types = []
-    dip_pair_i = []
-    dip_pair_ineigh = []
-    dip_pair_mbeta = []
-    for ia in range(natoms):
-        nn = int(sd.neighn[ia])
-        Zi = int(atomTypes_Z[ia])
-        for ineigh in range(nn):
-            ja = int(sd.neigh_j[ia, ineigh]) - 1
-            mb = int(sd.neigh_b[ia, ineigh])
-            if ja < 0 or ja >= natoms:
-                continue
-            # Skip on-site self edge (y==0); dip is irrelevant there and can be ill-defined numerically.
-            if ia == ja and mb == 0:
-                continue
-            Zj = int(atomTypes_Z[ja])
-            t = ham.species_pair_map.get(('dipole_z', Zi, Zj))
-            if t is None:
-                raise RuntimeError(f"Missing Fdata dipole_z table for Z pair ({Zi},{Zj})")
-            dip_pair_types.append(int(t))
-            dip_pairs.append((0, 0))  # placeholder; filled via per-pair ratoms_pairs indexing below
-            dip_pair_i.append(int(ia))
-            dip_pair_ineigh.append(int(ineigh))
-            dip_pair_mbeta.append(int(mb))
-
-    if len(dip_pair_types) == 0:
-        raise RuntimeError("Dip test: empty dip_pair_types")
-
-    # Build per-pair positions including mbeta shift (same approach as VCA mbeta handling above)
-    ratoms_pairs = np.zeros((2 * len(dip_pair_types), 3), dtype=np.float32)
-    neigh_pairs = np.zeros((len(dip_pair_types), 2), dtype=np.int32)
-    for k in range(len(dip_pair_types)):
-        ia = dip_pair_i[k]
-        ineigh = dip_pair_ineigh[k]
-        ja = int(sd.neigh_j[ia, ineigh]) - 1
-        mb = dip_pair_mbeta[k]
-        ratoms_pairs[2*k+0, :] = atomPos[ia].astype(np.float32)
-        ratoms_pairs[2*k+1, :] = (atomPos[ja] + sd.xl[mb]).astype(np.float32)
-        neigh_pairs[k, 0] = 2*k+0
-        neigh_pairs[k, 1] = 2*k+1
-
-    dip_blocks = ham.assemble_2c(ratoms_pairs, neigh_pairs, np.array(dip_pair_types, dtype=np.int32))
-    for k in range(len(dip_pair_types)):
-        ia = dip_pair_i[k]
-        ineigh = dip_pair_ineigh[k]
-        dip4_o[ia, ineigh, :, :] = dip_blocks[k].astype(np.float64)
-
-    # Compare only on slots we actually computed (others remain zero in dip4_o)
-    dip4_f_use = dip4_f.copy()
-    for ia in range(natoms):
-        for ineigh in range(int(sd.neighn[ia])):
-            ja = int(sd.neigh_j[ia, ineigh]) - 1
-            mb = int(sd.neigh_b[ia, ineigh])
-            if ja < 0 or ja >= natoms: continue
-            if ia == ja and mb == 0:   # keep zero on both sides
-                dip4_f_use[ia, ineigh, :, :] = 0.0
-    Dip_f = _blocked_to_dense(sd, dip4_f_use, natoms)
-    Dip_o = _blocked_to_dense(sd, dip4_o, natoms)
-    res_Dip, err_Dip = compare_matrices_brief("Dip (dense from blocks)", Dip_f, Dip_o, tol=1e-6, require_nonzero=True)
+    _dipchk = compare_dip(ham, atomPos, atomTypes_Z, sd, dims, dip4_f, tol=1e-6)
+    dip4_o = _dipchk.details['dip4_o']
+    Dip_f = _dipchk.details['Dip_f']
+    Dip_o = _dipchk.details['Dip_o']
+    res_Dip, err_Dip = _dipchk.ok, _dipchk.err
 
     print("\nTesting Vca (charge-dependent, 2-center only)...")
     # Fortran Vca term in assembled H is: vca + ewaldlr - ewaldsr  (see firecore_get_HS_sparse)
@@ -922,86 +598,19 @@ def run_verification():
     Vca_full_f  = Vca2c_f + EwaldLR_f - EwaldSR_f
 
     # Stepwise Fortran consistency check: EWALDSR decomposition
-    # NOTE: 2c_atom is accumulated in self-slot (matom=neigh_self(iatom)), so it needs the same dense reconstruction as vca_atom.
-    EwaldSR_2c_atom_f  = _blocked_to_dense_vca_atom(sd, ewaldsr2cA4_f, natoms)
-    EwaldSR_2c_ontop_f = _blocked_to_dense(sd, ewaldsr2cO4_f, natoms)
-    EwaldSR_3c_f       = _blocked_to_dense(sd, ewaldsr3c4_f, natoms)
-    EwaldSR_sum_f      = EwaldSR_2c_atom_f + EwaldSR_2c_ontop_f + EwaldSR_3c_f
+    _ewaldsr_decomp = check_ewaldsr_decomposition(sd, ewaldsr2cA4_f, ewaldsr2cO4_f, ewaldsr3c4_f, ewaldsr4_f, natoms)
+    EwaldSR_2c_atom_f  = _ewaldsr_decomp.details['EwaldSR_2c_atom_f']
+    EwaldSR_2c_ontop_f = _ewaldsr_decomp.details['EwaldSR_2c_ontop_f']
+    EwaldSR_3c_f       = _ewaldsr_decomp.details['EwaldSR_3c_f']
+    EwaldSR_sum_f      = _ewaldsr_decomp.details['EwaldSR_sum_f']
+    res_EwaldSR_split4d = _ewaldsr_decomp.ok
+    err_EwaldSR_split4d = _ewaldsr_decomp.err
 
     # --------------------------
     # PRINT-BASED DEBUG (match Fortran [EW2C_A]/[EW2C_O] lines)
     # Keep it tiny: only atoms <=3. This is for the C3 debugging workflow.
-    eq2 = 14.39975
-    Qin_shell = fc.get_Qin_shell(dims)
-    Qneutral_sh = fc.get_Qneutral_shell(dims)
-    ispec_of_atom = np.zeros(natoms, dtype=np.int32)
-    for ia in range(natoms):
-        Z = int(sd.iatyp[ia])
-        w = np.where(np.array(sd.nzx, dtype=np.int32) == Z)[0]
-        if w.size == 0: raise RuntimeError(f"Cannot map atom Z={Z} to nzx species list")
-        ispec_of_atom[ia] = int(w[0])
-    def _dq_atom(ia):
-        ispec = int(ispec_of_atom[ia])
-        s = 0.0
-        for issh in range(int(sd.nssh[ispec])): s += float(Qin_shell[issh, ia] - Qneutral_sh[issh, ispec])
-        return s
     dip4_f = fc.export_interaction4D(4)
-    for ia in range(min(3, natoms)):
-        mat = int(neigh_self[ia])
-        if mat < 0: continue
-        ni = int(sd.norb[ia]) if hasattr(sd, 'norb') else 4
-        # 2c atom-case: contribution goes to self-slot block (mat, ia)
-        s_self = sd.s_mat[ia, mat, :ni, :ni].T
-        dq1 = _dq_atom(ia)
-        for ineigh in range(int(sd.neighn[ia])):
-            ja = int(sd.neigh_j[ia, ineigh]) - 1
-            mb = int(sd.neigh_b[ia, ineigh])
-            if ja < 0 or ja >= natoms: continue
-            if ia == ja and mb == 0: continue
-            if ja >= 3: continue
-            r1 = atomPos[ia]
-            r2 = atomPos[ja] + sd.xl[mb]
-            y = float(np.linalg.norm(r2 - r1))
-            if y <= 1e-8: continue
-            dq2 = _dq_atom(ja)
-            term = (s_self / y) * dq2 * eq2
-            print(f" [EW2C_A][P] ia,ja={ia+1:4d}{ja+1:4d} mbeta={mb:4d} ineigh={ineigh+1:4d} matom={mat+1:4d} y={y:12.6f} dq1={dq1:12.6f} dq2={dq2:12.6f} max|term|={np.max(np.abs(term)):12.6f}")
-            # 2c ontop-case: directed neighbor slot (ineigh, ia)
-            s_blk = sd.s_mat[ia, ineigh, :ni, :ni].T
-            dip_blk = dip4_f[ia, ineigh, :ni, :ni].T
-            term_o = (((s_blk/(2.0*y) + dip_blk/(y*y))*dq1) + ((dq2*s_blk/(2.0*y) - dip_blk/(y*y))*dq2)) * eq2
-            print(f" [EW2C_O][P] ia,ja={ia+1:4d}{ja+1:4d} mbeta={mb:4d} ineigh={ineigh+1:4d} y={y:12.6f} dq1={dq1:12.6f} dq2={dq2:12.6f} max|term|={np.max(np.abs(term_o)):12.6f}")
-
-    # 3c: print for all small triples that are geometrically meaningful.
-    # Note: Fortran uses common-neighbor list; here we print a superset and you can match by (ia,ja,ka,y,d13,d23,dq3).
-    n_orb_atom, offs = _orbital_layout(sd, natoms)
-    for ia in range(min(3, natoms)):
-        ni = int(n_orb_atom[ia])
-        for mne in range(int(sd.neighn[ia])):
-            ja = int(sd.neigh_j[ia, mne]) - 1
-            mb = int(sd.neigh_b[ia, mne])
-            if ja < 0 or ja >= natoms: continue
-            if ja >= 3: continue
-            if ia == ja and mb == 0: continue
-            # bond vector distance y
-            r1 = atomPos[ia]
-            r2 = atomPos[ja] + sd.xl[mb]
-            y = float(np.linalg.norm(r2 - r1))
-            if y <= 1e-8: continue
-            nj = int(n_orb_atom[ja])
-            s_blk = sd.s_mat[ia, mne, :nj, :ni].T
-            dip_blk = dip4_f[ia, mne, :nj, :ni].T
-            for ka in range(min(3, natoms)):
-                if ka == ia or ka == ja: continue
-                dq3 = _dq_atom(ka)
-                d13 = float(np.linalg.norm(atomPos[ka] - r1))
-                d23 = float(np.linalg.norm(atomPos[ka] - r2))
-                if d13 <= 1e-8 or d23 <= 1e-8: continue
-                sterm = dq3 * s_blk / 2.0
-                dterm = dq3 * dip_blk / y
-                emnpl = (sterm - dterm)/d13 + (sterm + dterm)/d23
-                term3 = emnpl * eq2
-                print(f" [EW3C][P] ia,ja,ka={ia+1:4d}{ja+1:4d}{ka+1:4d} mbeta={mb:4d} mneigh,jneigh={mne+1:4d}{-1:4d} y={y:12.6f} d13={d13:12.6f} d23={d23:12.6f} dq3={dq3:12.6f} max|term|={np.max(np.abs(term3)):12.6f}")
+    print_ewald_debug(fc, sd, atomPos, neigh_self, dip4_f, eq2=14.39975, verbose=True)
     # --------------------------
 
     # 4D-level check: must reproduce SFIRE overwrite semantics used by Fortran in assemble_ca_3c.
@@ -1009,30 +618,7 @@ def run_verification():
     #              ewaldsr(inu,imu,jneigh,jatom) = ewaldsr(imu,inu,ineigh,iatom)
     # In Python export layout [iatom,ineigh,nu,mu], this becomes reverse_block = forward_block.T.
     ewaldsr4_sum_f = ewaldsr2cA4_f + ewaldsr2cO4_f + ewaldsr3c4_f
-    # Apply SFIRE overwrite ONLY for neighbor slots where 3c actually contributed.
-    # Otherwise we'd destroy legitimate 2c-only reverse blocks.
-    n_sfire_apply = 0
-    n_sfire_skip = 0
-    for iatom in range(natoms):
-        nn = int(sd.neighn[iatom])
-        nmu = int(n_orb_atom[iatom])
-        for ineigh in range(nn):
-            if float(np.max(np.abs(ewaldsr3c4_f[iatom, ineigh]))) < 1e-12:
-                continue
-            jatom = int(sd.neigh_j[iatom, ineigh]) - 1
-            if jatom < 0 or jatom >= natoms:
-                continue
-            jneigh = int(neigh_back[iatom, ineigh]) - 1
-            if jneigh < 0 or jneigh >= int(sd.neighn[jatom]):
-                continue
-            if int(sd.neigh_j[jatom, jneigh]) - 1 != iatom:
-                n_sfire_skip += 1
-                continue
-            nnu = int(n_orb_atom[jatom])
-            ewaldsr4_sum_f[jatom, jneigh, :nnu, :nmu] = ewaldsr4_sum_f[iatom, ineigh, :nmu, :nnu].T
-            n_sfire_apply += 1
-
-    print(f"  [EWALD_SPLIT_4D] SFIRE overwrite applied={n_sfire_apply} skipped_bad_map={n_sfire_skip}")
+    _sfire_res = apply_sfire_overwrite(ewaldsr4_sum_f, ewaldsr2cA4_f, ewaldsr2cO4_f, ewaldsr3c4_f, sd, neigh_back, n_orb_atom, verbose=True)
 
     R4 = ewaldsr4_f - ewaldsr4_sum_f
     ijkl = np.unravel_index(int(np.argmax(np.abs(R4))), R4.shape)
@@ -1060,7 +646,6 @@ def run_verification():
                     return ia
             return -1
         ia = _which_atom(int(ij[0])); ja = _which_atom(int(ij[1]))
-        print(f"  [EWALD_SPLIT] WORST elem at {ij} (atom-block {ia},{ja}): EwaldSR={float(EwaldSR_f[ij]): .6e}  sum={float(EwaldSR_sum_f[ij]): .6e}  resid={float(R[ij]): .6e}")
         print(f"  [EWALD_SPLIT] components at worst: 2c_atom={float(EwaldSR_2c_atom_f[ij]): .6e}  2c_ontop={float(EwaldSR_2c_ontop_f[ij]): .6e}  3c={float(EwaldSR_3c_f[ij]): .6e}")
 
     H_vca_f = Vca2c_f
@@ -1074,13 +659,8 @@ def run_verification():
         ispec = int(ispec_of_atom[ia])
         for issh in range(int(sd.nssh[ispec])):
             dq_shell[issh, ia] = Qin_shell[issh, ia] - Qneutral_sh[issh, ispec]
-    print("  dq_shell:")
-    print(dq_shell)
 
-    # Build directed neighbor list for OpenCL Vca assembly.
-    # IMPORTANT: Fortran stores the diagonal Vca contributions in a dedicated "self" slot (matom=neigh_self(iatom)),
-    # but those diagonal blocks are accumulated from *non-self* neighbors inside assemble_ca_2c.
-    # Therefore for OpenCL assembly we exclude self-neighbors (ia==ja) and sum diagonal updates over non-self pairs.
+    # Build directed neighbor list for OpenCL Vca assembly (excludes missing ja, mbeta combos)
     neigh_list_vca = []
     neigh_mbeta_vca = []
     for ia in range(natoms):
@@ -1090,12 +670,19 @@ def run_verification():
             mb = int(sd.neigh_b[ia, ineigh])
             if ja < 0 or ja >= natoms:
                 continue
-            # Include self-pairs (ia==ja, mbeta==0) because Fortran includes on-site vca_atom.
-            # This lets us compare OpenCL vs Fortran element-by-element including the self-slot contribution.
+            # Keep self-pairs only if they correspond to the explicit self slot (mb=0)
             if ja == ia and mb != 0:
                 continue
             neigh_list_vca.append((ia, ja))
             neigh_mbeta_vca.append(mb)
+
+    # Helper function to compute dq for an atom
+    def _dq_atom(ia):
+        ispec = int(ispec_of_atom[ia])
+        s = 0.0
+        for issh in range(int(sd.nssh[ispec])):
+            s += float(Qin_shell[issh, ia] - Qneutral_sh[issh, ispec])
+        return s
 
     if len(neigh_mbeta_vca) > 0:
         print(f"  VCA neigh_b stats: max|mbeta|={int(np.max(np.abs(np.array(neigh_mbeta_vca, dtype=np.int32))))}  unique={sorted(set([int(x) for x in neigh_mbeta_vca]))}")
@@ -1197,21 +784,8 @@ def run_verification():
     offRs, diagRs = ham.assemble_vca(atomPos, np.array(neigh_list_vca, dtype=np.int32), np.array(pair_types_vca, dtype=np.int32), dq_shell,
                                    ispec_of_atom=ispec_of_atom, nssh_species=nssh_species, lssh_species=sd.lssh[:dims.nspecies], nsh_max=dims.nsh_max, vca_map_override=vmap_Rs)
 
-    VcaL_o = np.zeros_like(H_vca_f)
-    VcaR_o = np.zeros_like(H_vca_f)
-    VcaA_o = np.zeros_like(H_vca_f)
-    VcaL_os = np.zeros_like(H_vca_f)
-    VcaR_os = np.zeros_like(H_vca_f)
-    for k, (i, j) in enumerate(neigh_list_vca):
-        i0 = int(offs[i]); j0 = int(offs[j])
-        ni = int(n_orb_atom[i]); nj = int(n_orb_atom[j])
-        # offdiag components
-        VcaL_o[i0:i0+ni, j0:j0+nj] += offL[k]
-        VcaR_o[i0:i0+ni, j0:j0+nj] += offR[k]
-        VcaL_os[i0:i0+ni, j0:j0+nj] += offLs[k]
-        VcaR_os[i0:i0+ni, j0:j0+nj] += offRs[k]
-        # diagonal (atom) component
-        VcaA_o[i0:i0+ni, i0:i0+ni] += diagA[k, 0]
+    VcaL_o, VcaR_o, VcaA_o = accumulate_vca_blocks(neigh_list_vca, n_orb_atom, offs, offL, offR, diagA, H_vca_f.shape)
+    VcaL_os, VcaR_os, VcaA_os = accumulate_vca_blocks(neigh_list_vca, n_orb_atom, offs, offLs, offRs, diagLs, H_vca_f.shape)
 
     res_VcaL, err_VcaL = compare_matrices_brief("Vca2c_ontopl (2)", VcaL_f, VcaL_o, tol=1e-4, require_nonzero=True)
     res_VcaR, err_VcaR = compare_matrices_brief("Vca2c_ontopr (3)", VcaR_f, VcaR_o, tol=1e-4, require_nonzero=True)
@@ -1220,214 +794,12 @@ def run_verification():
     _res_VcaL_s, err_VcaL_s = compare_matrices_brief("Vca2c_ontopl (SWAPPED)", VcaL_f, VcaL_os, tol=1e-4, require_nonzero=True)
     _res_VcaR_s, err_VcaR_s = compare_matrices_brief("Vca2c_ontopr (SWAPPED)", VcaR_f, VcaR_os, tol=1e-4, require_nonzero=True)
     print(f"  [diag] component swap check: err_L={err_VcaL:.3e} err_R={err_VcaR:.3e} | swapped: err_L={err_VcaL_s:.3e} err_R={err_VcaR_s:.3e}")
-    # --------------------------
-    # OpenCL EwaldSR (verification-oriented): use OpenCL kernels with OpenCL-computed S and dip blocks.
-    # This is the prerequisite-complete path: dip is assembled from Fdata (dipole_z) and S from overlap.
-    # --------------------------
+
+
     dq_atom = np.array([_dq_atom(i) for i in range(natoms)], dtype=np.float32)
-    # Build directed non-self pair list aligned with sd.neigh arrays (Fortran neighbor slots).
-    # IMPORTANT: multiple neighbor slots can map to the same (iatom,jatom) due to periodic images; therefore
-    # the correct identifier is (iatom,ineigh), not (iatom,jatom).
-    ij_pairs = []
-    y_list   = []
-    S_list   = []
-    D_list   = []
-    slot_of_ineigh = {}
-    pair_ineigh = []
-    pair_jatom  = []
-    pair_mbeta  = []
-    # Precompute OpenCL S and dip blocks per neighbor slot (iatom,ineigh) using per-pair mbeta-shifted positions.
-    # NOTE: EwaldSR 2c_atom term needs overlap in the self-slot (neigh_self(iatom)). Populate it explicitly.
-    S4_o = np.zeros((natoms, int(dims.neigh_max), 4, 4), dtype=np.float64)
-    Dip4_o = np.zeros((natoms, int(dims.neigh_max), 4, 4), dtype=np.float64)
-    S_pair_types = []
-    D_pair_types = []
-    pair_ia = []
-    pair_ine = []
-    pair_mb = []
-    for ia in range(natoms):
-        nn = int(sd.neighn[ia])
-        Zi = int(atomTypes_Z[ia])
-        for ineigh in range(nn):
-            ja = int(sd.neigh_j[ia, ineigh]) - 1
-            mb = int(sd.neigh_b[ia, ineigh])
-            if ja < 0 or ja >= natoms:
-                continue
-            if ia == ja and mb == 0:
-                continue
-            Zj = int(atomTypes_Z[ja])
-            tS = ham.species_pair_map.get(('overlap', Zi, Zj))
-            tD = ham.species_pair_map.get(('dipole_z', Zi, Zj))
-            if tS is None:
-                raise RuntimeError(f"Missing overlap table for Z pair ({Zi},{Zj})")
-            if tD is None:
-                raise RuntimeError(f"Missing dipole_z table for Z pair ({Zi},{Zj})")
-            S_pair_types.append(int(tS))
-            D_pair_types.append(int(tD))
-            pair_ia.append(int(ia))
-            pair_ine.append(int(ineigh))
-            pair_mb.append(int(mb))
-    if len(pair_ia) == 0:
-        raise RuntimeError("EwaldSR OpenCL inputs: empty neighbor list")
-    ratoms_pairs = np.zeros((2 * len(pair_ia), 3), dtype=np.float32)
-    neigh_pairs = np.zeros((len(pair_ia), 2), dtype=np.int32)
-    for k in range(len(pair_ia)):
-        ia = pair_ia[k]
-        ineigh = pair_ine[k]
-        ja = int(sd.neigh_j[ia, ineigh]) - 1
-        mb = int(pair_mb[k])
-        ratoms_pairs[2*k+0, :] = atomPos[ia].astype(np.float32)
-        ratoms_pairs[2*k+1, :] = (atomPos[ja] + sd.xl[mb]).astype(np.float32)
-        neigh_pairs[k, 0] = 2*k+0
-        neigh_pairs[k, 1] = 2*k+1
-    S_blocks = ham.assemble_2c(ratoms_pairs, neigh_pairs, np.array(S_pair_types, dtype=np.int32)).astype(np.float64)
-    D_blocks = ham.assemble_2c(ratoms_pairs, neigh_pairs, np.array(D_pair_types, dtype=np.int32)).astype(np.float64)
-    for k in range(len(pair_ia)):
-        S4_o[pair_ia[k], pair_ine[k], :, :] = S_blocks[k]
-        Dip4_o[pair_ia[k], pair_ine[k], :, :] = D_blocks[k]
-
-    # Fill self-slot overlap blocks (on-site). In Fortran these live in the dedicated self-slot.
-    for ia in range(natoms):
-        mat = int(neigh_self[ia])
-        if mat < 0:
-            raise RuntimeError(f"EwaldSR OpenCL inputs: missing neigh_self for atom {ia}")
-        Z = int(atomTypes_Z[ia])
-        blk = ham.scanHamPiece2c('overlap', Z, Z, np.array([0.0, 0.0, 0.0], dtype=np.float32), applyRotation=False)
-        if blk is None:
-            raise RuntimeError(f"EwaldSR OpenCL inputs: scanHamPiece2c overlap self returned None for Z={Z}")
-        S4_o[ia, mat, :, :] = np.array(blk, dtype=np.float64)
-
-    for ia in range(natoms):
-        nn = int(sd.neighn[ia])
-        r1 = atomPos[ia]
-        for ineigh in range(nn):
-            ja = int(sd.neigh_j[ia, ineigh]) - 1
-            mb = int(sd.neigh_b[ia, ineigh])
-            if ja < 0 or ja >= natoms: continue
-            if ia == ja and mb == 0:   continue
-            r2 = atomPos[ja] + sd.xl[mb]
-            y = float(np.linalg.norm(r2 - r1))
-            ij_pairs.append((ia, ja))
-            pair_ineigh.append(ineigh)
-            pair_jatom.append(ja)
-            pair_mbeta.append(mb)
-            y_list.append(y)
-            # sd.s_mat and dip4_f are in [nu,mu] block layout; Fortran formulas use (mu,nu).
-            # Provide (mu,nu) to kernels by transposing here.
-            S_list.append(S4_o[ia, ineigh, :, :].T.astype(np.float32).reshape(16))
-            D_list.append(Dip4_o[ia, ineigh, :, :].T.astype(np.float32).reshape(16))
-            slot_of_ineigh[(ia, ineigh)] = len(ij_pairs) - 1
-    ij_pairs = np.array(ij_pairs, dtype=np.int32)
-    pair_ineigh = np.array(pair_ineigh, dtype=np.int32)
-    pair_jatom  = np.array(pair_jatom, dtype=np.int32)
-    pair_mbeta  = np.array(pair_mbeta, dtype=np.int32)
-    y_list   = np.array(y_list, dtype=np.float32)
-    S_list   = np.array(S_list, dtype=np.float32)
-    D_list   = np.array(D_list, dtype=np.float32)
-    # Self-slot overlap blocks (nu,mu) for each atom
-    S_self = np.zeros((natoms, 16), dtype=np.float32)
-    for ia in range(natoms):
-        mat = int(neigh_self[ia])
-        if mat < 0: continue
-        S_self[ia, :] = S4_o[ia, mat, :, :].T.astype(np.float32).reshape(16)
-
-    # Run kernels
-    n_pairs = int(ij_pairs.shape[0])
-    if n_pairs == 0:
-        raise RuntimeError("EwaldSR OpenCL: empty ij_pairs")
-    d_ij = cl.Buffer(ham.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=ij_pairs)
-    d_y  = cl.Buffer(ham.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=y_list)
-    d_dq = cl.Buffer(ham.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=dq_atom)
-    d_S  = cl.Buffer(ham.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=S_list)
-    d_D  = cl.Buffer(ham.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=D_list)
-    d_Sself = cl.Buffer(ham.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=S_self)
-
-    d_out_atom = cl.Buffer(ham.ctx, cl.mem_flags.WRITE_ONLY, n_pairs * 16 * 4)
-    d_out_on   = cl.Buffer(ham.ctx, cl.mem_flags.WRITE_ONLY, n_pairs * 16 * 4)
-    ham.prg.ewaldsr_2c_atom_blocks(ham.queue, (n_pairs,), None, np.int32(n_pairs), d_ij, d_y, d_dq, d_Sself, d_out_atom)
-    ham.prg.ewaldsr_2c_ontop_blocks(ham.queue, (n_pairs,), None, np.int32(n_pairs), d_ij, d_y, d_dq, d_S, d_D, d_out_on)
-    out_atom = np.zeros((n_pairs, 16), dtype=np.float32)
-    out_on   = np.zeros((n_pairs, 16), dtype=np.float32)
-    cl.enqueue_copy(ham.queue, out_atom, d_out_atom)
-    cl.enqueue_copy(ham.queue, out_on,   d_out_on)
-    ham.queue.finish()
-
-    # 3c triples: restrict to those neighbor slots where Fortran ewaldsr_3c export is nonzero.
-    # This avoids adding spurious triples (Python-side superset) and prevents SFIRE overwrite from corrupting 2c-only reverse blocks.
-    trips = []
-    ty = []; td13 = []; td23 = []
-    for slot in range(n_pairs):
-        ia = int(ij_pairs[slot, 0])
-        ja = int(ij_pairs[slot, 1])
-        ineigh = int(pair_ineigh[slot])
-        mb = int(pair_mbeta[slot])
-        # Use Fortran export buffer as authoritative mask for which slots get 3c contributions.
-        if float(np.max(np.abs(ewaldsr3c4_f[ia, ineigh]))) < 1e-12:
-            continue
-        r1 = atomPos[ia]
-        r2 = atomPos[ja] + sd.xl[mb]
-        y = float(np.linalg.norm(r2 - r1))
-        # For C3, there is exactly one third atom. In general, this should come from the common-neighbor list.
-        for ka in range(natoms):
-            if ka == ia or ka == ja:
-                continue
-            d13 = float(np.linalg.norm(atomPos[ka] - r1))
-            d23 = float(np.linalg.norm(atomPos[ka] - r2))
-            trips.append((ia, ja, ka, slot))
-            ty.append(y); td13.append(d13); td23.append(d23)
-    if len(trips) == 0:
-        raise RuntimeError("EwaldSR OpenCL: empty 3c trip list")
-    trips = np.array(trips, dtype=np.int32)
-    ty   = np.array(ty, dtype=np.float32)
-    td13 = np.array(td13, dtype=np.float32)
-    td23 = np.array(td23, dtype=np.float32)
-    n_trip = int(trips.shape[0])
-    d_tr = cl.Buffer(ham.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=trips)
-    d_ty = cl.Buffer(ham.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=ty)
-    d_t13= cl.Buffer(ham.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=td13)
-    d_t23= cl.Buffer(ham.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=td23)
-    d_out3 = cl.Buffer(ham.ctx, cl.mem_flags.WRITE_ONLY, n_trip * 16 * 4)
-    ham.prg.ewaldsr_3c_blocks(ham.queue, (n_trip,), None, np.int32(n_trip), d_tr, d_ty, d_t13, d_t23, d_dq, d_S, d_D, d_out3)
-    out3 = np.zeros((n_trip, 16), dtype=np.float32)
-    cl.enqueue_copy(ham.queue, out3, d_out3)
-    ham.queue.finish()
-
-    # Reconstruct EwaldSR in the same 4D neighbor-slot layout as Fortran export, then apply SFIRE per slot.
-    # This avoids incorrect dense-level overwrites when multiple neighbor slots map to the same (iatom,jatom).
-    neigh_max = int(dims.neigh_max)
-    ewaldsr4_o = np.zeros((natoms, neigh_max, 4, 4), dtype=np.float64)  # [iatom,ineigh,nu,mu]
-    # 2c ontop: goes to the directed neighbor slot (iatom,ineigh)
-    for slot, (ia, ja) in enumerate(ij_pairs.tolist()):
-        ineigh = int(pair_ineigh[slot])
-        ewaldsr4_o[ia, ineigh, :, :] += out_on[slot].reshape(4, 4).T.astype(np.float64)
-    # 2c atom: accumulates into the self-slot (matom=neigh_self)
-    for slot, (ia, ja) in enumerate(ij_pairs.tolist()):
-        mat = int(neigh_self[ia])
-        if mat < 0 or mat >= neigh_max:
-            continue
-        ewaldsr4_o[ia, mat, :, :] += out_atom[slot].reshape(4, 4).T.astype(np.float64)
-    # 3c: goes to the directed neighbor slot (iatom,ineigh)
-    for it, (ia, ja, ka, slot) in enumerate(trips.tolist()):
-        ineigh = int(pair_ineigh[slot])
-        ewaldsr4_o[ia, ineigh, :, :] += out3[it].reshape(4, 4).T.astype(np.float64)
-
-    # SFIRE overwrite: for slots where Fortran 3c contributed, overwrite reverse slot with transpose of forward block.
-    for ia in range(natoms):
-        nn = int(sd.neighn[ia])
-        for ineigh in range(nn):
-            if float(np.max(np.abs(ewaldsr3c4_f[ia, ineigh]))) < 1e-12:
-                continue
-            ja = int(sd.neigh_j[ia, ineigh]) - 1
-            if ja < 0 or ja >= natoms:
-                continue
-            jneigh = int(neigh_back[ia, ineigh]) - 1
-            if jneigh < 0 or jneigh >= int(sd.neighn[ja]):
-                continue
-            if int(sd.neigh_j[ja, jneigh]) - 1 != ia:
-                continue
-            ewaldsr4_o[ja, jneigh, :, :] = ewaldsr4_o[ia, ineigh, :, :].T
-
-    EwaldSR_o = _blocked_to_dense(sd, ewaldsr4_o, natoms)
+    _ewchk = compare_ewaldsr(ham, atomPos, atomTypes_Z, sd, dims, neigh_self, neigh_back, dq_atom, ewaldsr4_f, ewaldsr3c4_f, tol=1e-5)
+    ewaldsr4_o = _ewchk.details['ewaldsr4_o']
+    EwaldSR_o = _ewchk.details['EwaldSR_o']
 
     # EwaldLR still not implemented (requires lattice-summed ewald(i,j) / sub_ewald).
     EwaldLR_o = np.zeros_like(EwaldLR_f)
