@@ -328,10 +328,12 @@ class MolWorld_sp3 : public SolverInterface { public:
             printf( "MolWorld_sp3::init() bMMFF %i bUFF %i bRigid %i\n", bMMFF, bUFF, bRigid );
         }
         if(surf_name ){
-//            bGridFF = false; //TODO: fix it with nogridFF
+            bool bGridFF_pending = bGridFF; //It must be done the loading of GridFF in each case to enable switching between Grid and all-atom MK
+            bGridFF = true; 
             //double z0 = 0.0;   // This is how we have it in python API i.e. MMFF.py
             double z0 = NAN;   // This makes inconsistency with python API i.e. MMFF.py
             loadSurf( surf_name, bGridFF, idebug>0, z0 );
+            bGridFF = bGridFF_pending;
         }
         if ( smile_name ){               
             insertSMILES( smile_name );    

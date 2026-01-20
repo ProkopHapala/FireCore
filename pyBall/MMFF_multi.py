@@ -334,7 +334,7 @@ def insertSMILES(s ):
 #  void setSwitches_multi( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants )
 lib.setSwitches_multi.argtypes  = [c_int, c_int, c_int , c_int, c_int, c_int, c_int, c_int, c_int] 
 lib.setSwitches_multi.restype   =  None
-def setSwitches(doAngles=0, doPiPiT=0, doPiSigma=0, doPiPiI=0, doBonded=0, PBC=0, CheckInvariants=0, dovdW=0, bSaveToDatabase=0):
+def setSwitches_multi(doAngles=0, doPiPiT=0, doPiSigma=0, doPiPiI=0, doBonded=0, PBC=0, CheckInvariants=0, dovdW=0, bSaveToDatabase=0):
     return lib.setSwitches_multi(doAngles, doPiPiT, doPiSigma, doPiPiI, doBonded, PBC, CheckInvariants, dovdW, bSaveToDatabase)
 
 #  bool checkInvariants( double maxVcog, double maxFcog, double maxTg )

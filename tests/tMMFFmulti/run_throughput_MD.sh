@@ -28,7 +28,7 @@ mkdir -p results/all
 
 # Setup parameters
 dovdW=1
-doSurfAtoms=-1
+doSurfAtoms=1
 bGridFF=-6   # 1 for linear, 5or6 for bSpline=1 (works only 6)
 if (( bGridFF == 1 )); then
     bSpline=0

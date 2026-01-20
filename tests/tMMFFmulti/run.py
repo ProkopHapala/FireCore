@@ -34,7 +34,7 @@ mmff.getBuffs()
 print("natoms=", mmff.natoms )
 #print( "ffflags ", mmff.ffflags )
 
-#mmff.setSwitches( NonBonded=-1, MMFF=-1, SurfAtoms=0, GridFF=1 )
+#mmff.setSwitches( NonBonded=-1, MMFF=-1, SurfAtoms=0, GridFF=1 ) # Should be added setSwitches2 with nonBond interactions to make this work
 
 #mmff.PLQs[:,2 ] = 0.0 # delete Coulomb (charges)
 #mmff.PLQs[:,:2] = 0.0 # delete Morse (EvdW)

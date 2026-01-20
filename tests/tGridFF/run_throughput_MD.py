@@ -41,7 +41,7 @@ if(surf_name is None):
 else:
     print("Surface file: ", surf_name)
 
-mmff.setSwitches( dovdW=dovdW, bSaveToDatabase=bSaveToDatabase )
+mmff.setSwitches_multi( dovdW=dovdW, bSaveToDatabase=bSaveToDatabase )
 mmff.init(nSys_=nSys, xyz_name=xyz_name, surf_name=surf_name, T=300, gamma=0.1, nExplore=1000, nRelax=100000, pos_kick=0.25, vel_kick=1.0, GridFF=GridFF, gridnPBC=gridnPBC)
 for i in range(10000):
     mmff.MDloop( perframe=perframe, Ftol=Fconv, iParalel=3, perVF=perVF )

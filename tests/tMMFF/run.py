@@ -881,8 +881,8 @@ mmff.getBuffs()
 print( "ffflags ", mmff.ffflags )
 
 mmff.setSwitches2( NonBonded=1, MMFF=1, SurfAtoms=1, GridFF=1 )   ### For Relaxed Scan MMFF has to be 1 
-# mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=0, GridFF=1 )   ### For Relaxed Scan MMFF has to be 1 
-# mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=1, GridFF=1 )   #### For Rigid Scan to make ay of the flag noneffective eed to set -1 0 will not work 
+# mmff.setSwitches2( NonBonded=-1, MMFF=1, SurfAtoms=0, GridFF=1 )   ### For Relaxed Scan MMFF has to be 1 
+# mmff.setSwitches2( NonBonded=-1, MMFF=1, SurfAtoms=1, GridFF=1 )   #### For Rigid Scan to make ay of the flag noneffective eed to set -1 0 will not work 
 
 
 ################# Mode Decision Morse Coulomb #######################################################################################################################
@@ -1131,7 +1131,7 @@ sys	0m5.760s
 # mmff.getBuffs()
 
 # (Optionally) set up any switches, etc.
-# mmff.setSwitches(NonBonded=-1, MMFF=-1, SurfAtoms=0, GridFF=1)
+# mmff.setSwitches2(NonBonded=-1, MMFF=-1, SurfAtoms=0, GridFF=1)
 
 # Now, call our new saveXSF_geometry function.
 # We assume that: 
