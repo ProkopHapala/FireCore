@@ -1,4 +1,4 @@
-
+﻿
 #ifndef MolWorld_sp3_ocl_h
 #define MolWorld_sp3_ocl_h
 
@@ -293,7 +293,8 @@ void realloc( int nSystems_ ){
         _realloc ( atoms,     uff_ocl->nAtomsTot  );
         _realloc0( aforces,   uff_ocl->nAtomsTot  , Quat4fZero );
         _realloc0( avel,      uff_ocl->nAtomsTot  , Quat4fZero );
-        _realloc0( cvfs_d,    uff_ocl->nAtomsTot  , Quat4dZero );  // UFF uses double precision
+//        _realloc0( cvfs_d,    uff_ocl->nAtomsTot  , Quat4dZero );  // UFF uses double precision
+        _realloc0( cvfs,      uff_ocl->nAtomsTot  , Quat4fZero );
         _realloc( REQs,       uff_ocl->nAtomsTot );
         _realloc( pbcshifts, uff_ocl->nSystems * (npbc+1) ); // npbc is from MolWorld_sp3
         // Allocate constraint buffers for UFF (shared with MMFF)
@@ -1119,8 +1120,8 @@ void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring
         cvf.add( cvfs[i].f );
         cvfs[i] = Quat4fZero;
     }
-    fire.vv=cvf.y;
     fire.ff=cvf.x;
+    fire.vv=cvf.y;
     fire.vf=cvf.z;
     fire.update_params();
     if(bExploring){
@@ -1252,18 +1253,20 @@ double evalVFs( double Fconv=1e-6 ){
     // UFF path: use uff_ocl buffers and sizes; handle minima-hopping here
     if(bUFF){
         int errUF=0;
-        uff_ocl->download( uff_ocl->ibuff_cvf, cvfs_d );  // UFF uses double precision buffer
+        //uff_ocl->download( uff_ocl->ibuff_cvf, cvfs_d );  // UFF uses double precision buffer
+        uff_ocl->download( uff_ocl->ibuff_cvf, cvfs);
         errUF |= uff_ocl->finishRaw();  OCL_checkError(errUF, "evalVFs().UFF.download");
         iSysFMax=-1;
         for(int isys=0; isys<nSystems; isys++){
 
             nbEvaluation += nPerVFs;
             int i0a = isys * uff_ocl->nAtoms;
-            evalVF_new( uff_ocl->nAtoms, cvfs_d+i0a, fire[isys], MDpars[isys], gopts[isys].bExploring );  // UFF uses double precision
+//            evalVF_new( uff_ocl->nAtoms, cvfs_d+i0a, fire[isys], MDpars[isys], gopts[isys].bExploring );  // UFF uses double precision
+            evalVF_new( uff_ocl->nAtoms, cvfs+i0a, fire[isys], MDpars[isys], gopts[isys].bExploring );
             double f2 = fire[isys].ff;
             
             if(f2>F2max){ F2max=f2; iSysFMax=isys; }
-            if(0* ( f2 < F2conv ) && (!gopts[isys].bExploring) ){
+            if(( f2 < F2conv ) && (!gopts[isys].bExploring) ){
                 //printf("UFF Before Download: atoms[0]=(%10.8e,%10.8e,%10.8e)\n", atoms[0+i0a].x, atoms[0+i0a].y, atoms[0+i0a].z);
                 if(!downloaded_buffers){
                     uff_ocl->download( uff_ocl->ibuff_apos, (float*)atoms);
@@ -1275,7 +1278,8 @@ double evalVFs( double Fconv=1e-6 ){
                 isSystemRelaxed[isys]=true;
                 // save
                 if(bSaveToDatabase){
-                    int sameMember = database->addIfNewDescriptor(&ffu, &ffu.lvec);
+                    // printf("MolWorld_sp3_multi::evalVFs save to database\n");
+                    int sameMember = database->addIfNewDescriptor(&ffu);
                     if(sameMember==-1){
                         sprintf(tmpstr,"# %i E %g |F| %g istep=%i isys=%i,", database->getNMembers(), 0.5*fire[isys].vv, sqrt(f2), gopts[isys].istep, isys );
                         nbmol.copyOf( ffu );
@@ -1307,7 +1311,8 @@ double evalVFs( double Fconv=1e-6 ){
 
         errUF |= uff_ocl->upload( uff_ocl->ibuff_MDpars, MDpars );
         errUF |= uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
-        errUF |= uff_ocl->upload( uff_ocl->ibuff_cvf   , cvfs_d );  // UFF uses double precision buffer
+        //errUF |= uff_ocl->upload( uff_ocl->ibuff_cvf   , cvfs_d );  // UFF uses double precision buffer
+        errUF |= uff_ocl->upload( uff_ocl->ibuff_cvf   , cvfs   );
         OCL_checkError(errUF, "evalVFs().UFF.upload");
     }
     else{
@@ -1326,7 +1331,7 @@ double evalVFs( double Fconv=1e-6 ){
             double f2 = fire[isys].ff;
             if(f2>F2max){ F2max=f2; iSysFMax=isys; }
             // -------- Global Optimization
-            if(0* ( f2 < F2conv ) && (!gopts[isys].bExploring) ){
+            if(( f2 < F2conv ) && (!gopts[isys].bExploring) ){
                 //printf("MMFF Before Download: atoms[%i]=(%10.8e,%10.8e,%10.8e)\n", 0+i0v, atoms[0+i0v].x, atoms[0+i0v].y, atoms[0+i0v].z);
                 if(!downloaded_buffers){
                     ocl.download( ocl.ibuff_atoms, atoms );
@@ -2586,7 +2591,7 @@ if(initial){
             //if(bGroupDrive)printf( "bGroupDrive==true\n" );
             {
                 if( bGroupDrive )err |= task_GroupUpdate->enque_raw();
-                if(dovdW)[[likely]]{
+                if(bNonBonded)[[likely]]{
                     if(bSurfAtoms)[[likely]]{
                         if  (bGridFF)[[likely]]{
                             if(bBspline)[[likely]]{
@@ -2685,7 +2690,7 @@ if(initial){
 
     if(bMILAN){ checkBordersOfBbox(); }
     double t=(getCPUticks()-T0)*tick2second;
-    if(verbosity>0)printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bGridFF=%i,bExplore=%i,bGroups=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g [ms]( %g [us/step]) iSysFMax=%i dovdW=%i \n", nSystems, iParalel, bSurfAtoms, bGridFF, bExplore, bGroups, niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, iSysFMax, dovdW ); 
+    if(verbosity>0)printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bGridFF=%i,bExplore=%i,bGroups=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g [ms]( %g [us/step]) iSysFMax=%i bNonBonded=%i \n", nSystems, iParalel, bSurfAtoms, bGridFF, bExplore, bGroups, niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, iSysFMax, bNonBonded ); 
     //if(database->getNMembers()>0)    printf("%i  converged: %s\n", database->getNMembers(), database->convergedStructure.back() ? "true" : "false");
     //err |= ocl.finishRaw();
     //printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
@@ -3091,7 +3096,7 @@ bool written_in_this_frame=false;
 bool first=true;
 uint64_t zeroT=0;
 
-virtual void MDloop( int nIter, double Ftol = -1 ) override {
+virtual void MDloop( int nIter, double Ftol = -1, double elapse_time = 0.0 ) override {
     if(iParalel<-100){ iParalel=iParalel_default; };
 
     if(Ftol<0)  Ftol = Ftol_default;
@@ -3230,8 +3235,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
                 nStepNonConvSum/((double)nbNonConverged),
                 nStepExplorSum/((double)nExploring),
                 (nStepConvSum+nStepNonConvSum+nStepExplorSum));
-            if((getCPUticks()-zeroT)*tick2second > 999999.5){ // reduce the time of simulation 9.5 was used to create nb_evale_vs_surf_size; 59.5 was used to create evaluation_vs_time
-                fclose(file);
+            if((getCPUticks()-zeroT)*tick2second > elapse_time && elapse_time>0){                fclose(file);
                 //database->print();
                 exit(0);
             }

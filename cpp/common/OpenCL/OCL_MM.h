@@ -994,7 +994,7 @@ class OCL_MM: public OCLsystem { public:
         // err |= _useArg( grid_p0         );     // 9
         // //err |= _useArg( grid_shift0     );     // 9
         // err |= _useArg( GFFparams       );     // 10
-
+        grid_p0 = Quat4fZero;   // Position of surface was shifted in GUI MK
         err |= _useArg   ( nDOFs );            OCL_checkError(err, "arg[1]: " );  // 1
         err |= useArgBuff( ibuff_atoms      ); OCL_checkError(err, "arg[2]: " );// 2
         err |= useArgBuff( ibuff_REQs       ); OCL_checkError(err, "arg[3]: " );// 3

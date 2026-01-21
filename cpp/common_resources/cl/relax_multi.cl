@@ -3434,6 +3434,7 @@ __kernel void getSurfMorse(
 
     // if( (DBG_MMFF>0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS) ){
     //     printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) \n", nG,nS, nL, ns.x,ns.y,ns.z  );
+    //     printf("nPBC(%i,%i,%i) \n", nPBC.x,nPBC.y,nPBC.z  );
     //     //printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) nPBC(%i,%i,%i)\n", nG,nS, nL, ns.x,ns.y,ns.z,  nPBC.x,nPBC.y,nPBC.z  );
     //     //for(int i=0; i<ns.x; i++){ printf( "forces[%i] (%g,%g,%g) \n", i, forces[i].x,forces[i].y,forces[i].z );   }
     //     for(int i = 0; i < natoms; i++){ printf( "GPU.atoms[%i](%g,%g,%g) REQs(%g,%g,%g)  \n", i, atoms[i].x,atoms[i].y,atoms[i].z, REQs[i].x,REQs[i].y,REQs[i].z );  }
@@ -3526,7 +3527,7 @@ __kernel void getSurfMorse(
     //      printf( "GPU[iG=%i,iS=%i] fe(%10.6f,%10.6f,%10.6f)\n", iG,iS, fe.x,fe.y,fe.z );
     // }
 
-    // if( (iG==0) ){
+    // if( (iS==0) ){
     //       printf( "GPU[iG=%i,iS=%i] fe(%10.6f,%10.6f,%10.6f)\n", iG,iS, fe.x,fe.y,fe.z );
     // }
     forces[iav] += fe;

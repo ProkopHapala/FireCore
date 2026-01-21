@@ -875,8 +875,8 @@ __kernel void updateAtomsMMFFf4(
     __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
     __global float4*  avel,         // 3 // velocities of atoms
     __global float4*  aforce,       // 4 // forces on atoms
-    //__global float4*  cvfs,         // 5 // damping coefficients for velocity and force
-    __global double4*  cvfs,         // 5 // damping coefficients for velocity and force
+    __global float4*  cvfs,         // 5 // damping coefficients for velocity and force
+    //__global double4*  cvfs,         // 5 // damping coefficients for velocity and force
     __global float4*  constr,       // 8 // constraints (x,y,z,K) for each atom
     __global float4*  constrK,      // 9 // constraints stiffness (kx,ky,kz,?) for each atom
     __global float4*  MDparams,     // 10 // MD parameters (dt,damp,Flimit)
@@ -974,8 +974,8 @@ __kernel void updateAtomsMMFFf4(
         fe.xyz    += rnd.xyz * sqrt( 2*const_kB*TDrive.x*TDrive.y/MDpars.x );
     }
 
-    //float4 cvf = (float4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel
-    double4 cvf = (double4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel 
+    float4 cvf = (float4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel
+    //double4 cvf = (double4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel 
     cvfs[iaa] = cvf;    //accumulating is done outside of the kernel
     //if(!bDrive){ ve.xyz *= MDpars.z; } // friction, velocity damping
 
@@ -1005,7 +1005,7 @@ __kernel void updateAtomsMMFFf4(
 // It calculate Lenard-Jones, Coulomb and Hydrogen-bond forces between all atoms in the system
 // it can be run in parallel for multiple systems, in order to efficiently use number of GPU cores (for small systems with <100 this is essential to get good performance)
 // This is the most time consuming part of the forcefield evaluation, especially for large systems when nPBC>1
-__attribute__((reqd_work_group_size(32,1,1)))
+// __attribute__((reqd_work_group_size(32,1,1)))
 __kernel void getNonBond(
     const int4 ns,                  // 1 // (natoms,nnode) dimensions of the system
     // Dynamical
@@ -1021,20 +1021,9 @@ __kernel void getNonBond(
 ){
 
     // we use local memory to store atomic position and parameters to speed up calculation, the size of local buffers should be equal to local workgroup size
-    //__local float4 LATOMS[2];
-    //__local float4 LCLJS [2];
-    //__local float4 LATOMS[4];
-    //__local float4 LCLJS [4];
-    //__local float4 LATOMS[8];
-    //__local float4 LCLJS [8];
-    //__local float4 LATOMS[16];
-    //__local float4 LCLJS [16];
     __local float4 LATOMS[32];   // local buffer for atom positions
     __local float4 LCLJS [32];   // local buffer for atom parameters
-    //__local float4 LATOMS[64];
-    //__local float4 LCLJS [64];
-    //__local float4 LATOMS[128];
-    //__local float4 LCLJS [128];
+
 
     const int iG = get_global_id  (0); // index of atom
     const int nG = get_global_size(0); // number of atoms
@@ -1153,10 +1142,6 @@ __kernel void getNonBond(
                                 //if( (ji==1)&&(iG==0)&&(iS==0) )printf( "ipbc %i(%i,%i) shift(%g,%g,%g)\n", ipbc,ix,iy, shift.x,shift.y,shift.z );
                                 float4 fij = getLJQH( dp, REQK, R2damp );  // calculate non-bonded force between atoms using LJQH potential
                                 //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); }
-
-                                // Debug print for force calculation - print all interactions for atom 0
-                                if((DBG_UFF>3) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){ printf("GPU fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e) bBonded %i bPBC %i\n", fij.x, fij.y, fij.z, fij.w, REQK.x, REQK.y, REQK.z, bBonded, bPBC);  }
-
                                 fe += fij;
                             }
                             ipbc++;
@@ -1165,16 +1150,7 @@ __kernel void getNonBond(
                         dp    += shift_a;
                     }
                 }else                                                  // ===== if PBC is not used, it is much simpler
-                if( !bBonded ){
-                    float4 fij = getLJQH( dp, REQK, R2damp );  // calculate non-bonded force between atoms using LJQH potential
-
-                    // Debug print for force calculation (non-PBC case) - print all interactions for atom 0
-                    if((DBG_UFF>2) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
-                        printf("GPU fij [i:%3i,j:%3i|isys:%i] dp(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQij(% .6e,% .6e,% .6e) fij(% .6e,% .6e,% .6e) E % .6e bBonded %i bPBC %i\n", iG, ja, iS, dp.x, dp.y, dp.z, length(dp),  REQKi.x, REQKi.y, REQKi.z, REQK.x, REQK.y, REQK.z,  fij.x, fij.y, fij.z, fij.w, bBonded, bPBC );
-                    }
-
-                    fe += fij;
-                }  // if atoms are not bonded, we calculate non-bonded interaction between them
+                if( !bBonded ){  fe += getLJQH( dp, REQK, R2damp ); }  // if atoms are not bonded, we calculate non-bonded interaction between them
             }
         }
         //barrier(CLK_LOCAL_MEM_FENCE);
@@ -1914,18 +1890,13 @@ __kernel void getSurfMorse(
     const int nL = get_local_size (0); // number of atoms in the local memory chunk
 
     const int natoms  = ns.x;         // number of atoms in the system
-    const int nnode   = ns.y;         // number of nodes in the system
-    const int nvec    = natoms+nnode; // number of vectos (atoms and pi-orbitals) in the system
     const int na_surf = ns.z;         //
 
-    //const int i0n = iS*nnode;    // index of the first node in the system
     const int i0a = iS*natoms;     // index of the first atom in the system
-    const int i0v = iS*nvec;       // index of the first vector (atom or pi-orbital) in the system
-    //const int ian = iG + i0n;    // index of the atom in the system
+   //const int ian = iG + i0n;    // index of the atom in the system
     const int iaa = iG + i0a;      // index of the atom in the system
-    const int iav = iG + i0v;      // index of the vector (atom or pi-orbital) in the system
 
-    // if( (DBG_UFF>1) && (iG==IDBG_ATOM) && (iS==IDBG_SYS) ){
+    // if( (DBG_UFF>0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS) ){
     //     printf("GPU::getSurfMorse() nglob(%i,%i) nloc(%i) ns(%i,%i,%i) \n", nG,nS, nL, ns.x,ns.y,ns.z  );
     //     printf("GPU::lvec.a=(%g,%g,%g) lvec.b=(%g,%g,%g) lvec.c=(%g,%g,%g)\n", lvec.a.x, lvec.a.y, lvec.a.z, lvec.b.x, lvec.b.y, lvec.b.z, lvec.c.x, lvec.c.y, lvec.c.z);
     //     printf("GPU::pos0=(%g,%g,%g) \n", pos0.x, pos0.y, pos0.z);
@@ -1939,7 +1910,7 @@ __kernel void getSurfMorse(
 
     // ========== BEGIN test loading atoms to local memory
 
-    if((iG>nL)) return;
+    //if((iG>nL) || (iS>0)) return;
 
     // for (int j0=0; j0<na_surf; j0+= nL ){
     //     const int i = j0 + iL;
@@ -1959,13 +1930,12 @@ __kernel void getSurfMorse(
 
     // ========== END test loading atoms to local memory
 
-
     const float  K          = -GFFParams.y;
     const float  R2damp     =  1e-30;
     const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
     const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz)
 
-    const float3 pos  = atoms[iav].xyz - pos0.xyz +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
+    const float3 pos  = atoms[iaa].xyz - pos0.xyz +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
     const float4 REQi = REQs [iaa];
     // if((iaa<22)&&(iS==0)) printf("REQi[%i].z = %f\n", iaa, REQi.z);
     // ToDo: perhaps it is efficient to share surface along isys direction ( all system operate with the same surface atoms )
@@ -1995,12 +1965,12 @@ __kernel void getSurfMorse(
                         for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
                             const float4 fej = getMorseQH( dp,  REQH, K, R2damp );
                             fe -= fej;
-                            if( (DBG_UFF>1) && (iG==IDBG_ATOM) && (iS==IDBG_SYS) && (iz==0)&&(iy==0)&&(ix==0)){
+                            //if( (iG==0) && (iS==0) && (iz==0)&&(iy==0)&&(ix==0)){
                             //if( (iG==0) && (iS==0) && (jl==0) ){
                             // if( (iG==0) && (jl==0)   && (iz==0)&&(iy==0)&&(ix==0)  ){
                             //    printf( "GPU[%3i|%3i/%3i] dp(%10.6f,%10.6f,%10.6f) LATOMS[%i](%10.6f,%10.6f,%10.6f) pos(%10.6f,%10.6f,%10.6f) pos0(%10.6f,%10.6f,%10.6f)  \n", ja,0,0,   dp.x,dp.y,dp.z,  jl,  LATOMS[jl].x,LATOMS[jl].y,LATOMS[jl].z,   pos.x,pos.y,pos.z,  pos0.x,pos0.y,pos0.z );
-                                printf( "GPU[%3i(%3i,%3i,%3i)] K,R2damp(%10.6f,%10.6f) l=%10.6f dp(%10.6f,%10.6f,%10.6f) REQij(%10.6f,%10.6f,%10.6f,%10.6f) fij(%10.6f,%10.6f,%10.6f) \n", ja, ix,iy,iz,  K,R2damp, length(dp), dp.x,dp.y,dp.z,  REQH.x, REQH.y, REQH.z, REQH.w,  fej.x,fej.y,fej.z );
-                            }
+                            //    //printf( "GPU[%3i(%3i,%3i,%3i)] K,R2damp(%10.6f,%10.6f) l=%10.6f dp(%10.6f,%10.6f,%10.6f) REQij(%10.6f,%10.6f,%10.6f,%10.6f) fij(%10.6f,%10.6f,%10.6f) \n", ja, ix,iy,iz,  K,R2damp, length(dp), dp.x,dp.y,dp.z,  REQH.x, REQH.y, REQH.z, REQH.w,  fej.x,fej.y,fej.z );
+                            //}
                             dp   +=lvec.a.xyz;
                             //shift+=lvec.a.xyz;
                         }
@@ -2018,13 +1988,15 @@ __kernel void getSurfMorse(
         }
         //barrier(CLK_LOCAL_MEM_FENCE);
     }
-    if( (DBG_UFF>1) && (iG==IDBG_ATOM) && (iS==IDBG_SYS) ){
-         printf( "GPU[iG=%i,iS=%i] fe(%10.6f,%10.6f,%10.6f)\n", iG,iS, fe.x,fe.y,fe.z );
-    }
+    if(iG>=nAtoms) return; // for some reason it must be here eventhough in MMFF not
+
+    // if( (DBG_UFF>1) && (iG==IDBG_ATOM) && (iS==IDBG_SYS) ){
+    //      printf( "GPU[iG=%i,iS=%i] fe(%10.6f,%10.6f,%10.6f)\n", iG,iS, fe.x,fe.y,fe.z );
+    // }
 
     // if( (iG==0) ){
     //       printf( "GPU[iG=%i,iS=%i] fe(%10.6f,%10.6f,%10.6f)\n", iG,iS, fe.x,fe.y,fe.z );
     // }
-    forces[iav] += fe;
+    forces[iaa] += fe;
 
 }

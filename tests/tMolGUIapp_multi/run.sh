@@ -216,5 +216,6 @@ touch minima.dat
 #./$name -m 300   -x common_resources/xyz/nHexadecan_dicarboxylic -g common_resources/xyz/NaCl_8x8_L3    -iParalel 3 -T 1000 0.02 -gopt 1000,1000 0.25,1.0   -verb 0 -perframe 100 
 
 
-./$name -m 100    -x common_resources/xyz/xylitol_centered  -uff   -g common_resources/xyz/surfaces_for_throughput/NaCl_3x3_Cl_hole         -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 
+./$name -m 500  -uff  -x common_resources/xyz/nHexadecan_dicarboxylic   -g common_resources/xyz/surfaces_for_throughput/NaCl_3x3_Cl_hole    -Ftol 1e-4     -iParalel 3 -T 1000 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 -dt 0.05 -nogridff
 #./$name -m 2000    -x common_resources/xyz/xylitol_WO_gridFF                 -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 -grid_nPBC 2,2,0 # -nogridff
+ 

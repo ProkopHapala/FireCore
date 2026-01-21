@@ -198,6 +198,7 @@ void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bM
 
 
     //init_buffers();
+    printf("MMFFmulti_lib::init() DONE");
     return &W;
 }
 
@@ -223,11 +224,11 @@ void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeigh
     #undef _setbool
 }
 
-void MDloop( int perframe, double Ftol = -1, int iParalel = 3, int perVF = 100 ){
+void MDloop( int perframe, double Ftol = -1, int iParalel = 3, int perVF = 100, double elapse_time = 0.0){
     W.iParalel = iParalel;
     W.nPerVFs = perVF;
     W.iterPerFrame = perframe;
-    W.MDloop( perframe, Ftol );
+    W.MDloop( perframe, Ftol, elapse_time );
 }
 
 void setSwitchesUFF( int DoBond, int DoAngle, int DoDihedral, int DoInversion, int DoAssemble, int SubtractBondNonBond, int ClampNonBonded ){
@@ -631,7 +632,7 @@ void optimizeLattice_2d_multi( double* dlvec, int nstesp, int initMode, double t
 }
 
 
-void setSwitches_multi( int CheckInvariants, int PBC, int NonBonded, int MMFF, int Angles, int PiSigma, int PiPiI, int dovdW, int bSaveToDatabase ){
+void setSwitches_multi( int CheckInvariants, int PBC, int NonBonded, int MMFF, int Angles, int PiSigma, int PiPiI, int bSaveToDatabase ){
     #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
     _setbool( W.bCheckInvariants, CheckInvariants  );
     _setbool( W.bPBC         , PBC       );
@@ -640,7 +641,6 @@ void setSwitches_multi( int CheckInvariants, int PBC, int NonBonded, int MMFF, i
     _setbool( W.ffl.doAngles , Angles    );
     _setbool( W.ffl.doPiSigma, PiSigma   );
     _setbool( W.ffl.doPiPiI  , PiPiI     );
-    _setbool( W.dovdW, dovdW );
     _setbool( W.bSaveToDatabase, bSaveToDatabase );
     W.ffl.bSubtractAngleNonBond = W.bNonBonded;
     #undef _setbool

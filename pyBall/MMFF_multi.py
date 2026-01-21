@@ -488,10 +488,10 @@ def insertSMILES(s ):
     return lib.insertSMILES(s)
 
 #  void setSwitches_multi( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants )
-lib.setSwitches_multi.argtypes  = [c_int, c_int, c_int , c_int, c_int, c_int, c_int, c_int, c_int] 
+lib.setSwitches_multi.argtypes  = [c_int, c_int, c_int , c_int, c_int, c_int, c_int, c_int] 
 lib.setSwitches_multi.restype   =  None
-def setSwitches(doAngles=0, doPiPiT=0, doPiSigma=0, doPiPiI=0, doBonded=0, PBC=0, CheckInvariants=0, dovdW=0, bSaveToDatabase=0):
-    return lib.setSwitches_multi(doAngles, doPiPiT, doPiSigma, doPiPiI, doBonded, PBC, CheckInvariants, dovdW, bSaveToDatabase)
+def setSwitches(doAngles=0, doPiPiT=0, doPiSigma=0, doPiPiI=0, doBonded=0, PBC=0, CheckInvariants=0, bSaveToDatabase=0):
+    return lib.setSwitches_multi(doAngles, doPiPiT, doPiSigma, doPiPiI, doBonded, PBC, CheckInvariants,bSaveToDatabase)
 
 # void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeighs,  int SurfAtoms, int GridFF, int MMFF, int Angles, int PiSigma, int PiPiI ){
 lib.setSwitches2.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]
@@ -584,10 +584,10 @@ def run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, damping=-1.0, outE=None, outF=
     return lib.run(nstepMax, dt, Fconv, ialg, damping, _np_as(outE,c_double_p), _np_as(outF,c_double_p), _np_as(outV,c_double_p), _np_as(outVF,c_double_p), iParalel )
 
 # void MDloop( int nIter, double Ftol = -1, int iParalel = 3 )
-lib.MDloop.argtypes  = [c_int, c_double, c_int, c_int ] 
+lib.MDloop.argtypes  = [c_int, c_double, c_int, c_int, c_double ] 
 lib.MDloop.restype   =  None
-def MDloop( perframe=100, Ftol=-1, iParalel=3,  perVF=100 ):
-    return lib.MDloop( perframe, Ftol, iParalel, perVF )
+def MDloop( perframe=100, Ftol=-1, iParalel=3,  perVF=100, elapse_time=0.0 ):
+    return lib.MDloop( perframe, Ftol, iParalel, perVF, elapse_time)
 
 # ========= GPU Replicas management
 

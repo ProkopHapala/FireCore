@@ -204,7 +204,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bGroups           = false; // 3
     bool bConstrains       = false; // 4
 	bool bSurfAtoms        = false; // 5
-    bool bGridFF           = true;  // 6 // initial choise is to compute with GridFF
+    bool bGridFF           = false;  // 6 // initial choise is to compute with GridFF
     bool bTricubic         = false; // 7
 	bool bPlaneSurfForce   = false; // 7
     bool bBonding          = true;
@@ -227,7 +227,6 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bCheckInit        = true; // 23    
     bool bBondInitialized  = false; // 24
     bool bExclusion2       = false; // 25 // use second neighbor exclusion (bonds 1-2 and angles 1-3)
-    bool dovdW=true;
     bool bMoving=true;
 
     Vec3d anim_vec;
@@ -2094,7 +2093,7 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
     Vec3d f = getForceSpringRay( apos[ia], pick_hray, pick_ray0, K ); fapos[ia].add( f );
 }
 
-    virtual void MDloop( int nIter, double Ftol=-1 ){
+    virtual void MDloop( int nIter, double Ftol=-1, double elapse_time = 0.0 ){
         if(iParalel<-100){ iParalel=iParalel_default; };
         if(Ftol<0)Ftol=Ftol_default;
         ffu.bNonBonded     = bNonBonded;
