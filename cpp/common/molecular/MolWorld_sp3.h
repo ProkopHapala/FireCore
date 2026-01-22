@@ -1682,13 +1682,26 @@ virtual void clear( bool bParams=true, bool bSurf=false ){
 
 
     int updateBuilderFromFF(bool bPos=true, bool bQ=true){
-        if( ffl.nnode  != builder.confs.size() ){printf( "ERROR: MolWorld_sp3::updateBuilderFromFF() ffl.nnode(%i)  != builder->confs.size(%i) \n", ffl.nnode,  builder.confs.size() ); exit(0); }
-        //if( ffl.natoms != builder.atoms.size() ){printf( "ERROR: MolWorld_sp3::updateBuilderFromFF() ffl.natoms(%i) != builder->atoms.size(%i) \n", ffl.natoms, builder.atoms.size() ); exit(0); }
-        //printf( "MolWorld_sp3::updateBuilderFromFF(nnode=%i,ncap=%i) \n", ffl.nnode, ffl.natoms-ffl.nnode );
-        int na = builder.atoms.size();  if(na>ffl.natoms)na=ffl.natoms;
-        for(int i=0; i<na; i++){
-            if(bPos){ builder.atoms[i].pos   = ffl.apos[i];   }
-            if(bQ  ){ builder.atoms[i].REQ.z = ffl.REQs[i].z; }
+        if(bUFF){
+            printf("builder.confs.size()=%li ffu.natoms=%i \n", builder.confs.size(), ffu.natoms);
+            if( ffu.natoms  != builder.atoms.size() ){printf( "ERROR: MolWorld_sp3::updateBuilderFromFF() ffu.natoms(%i)  != builder.atoms.size(%li) \n", ffu.natoms,  builder.atoms.size() ); exit(0); }
+            //if( ffl.natoms != builder.atoms.size() ){printf( "ERROR: MolWorld_sp3::updateBuilderFromFF() ffl.natoms(%i) != builder->atoms.size(%i) \n", ffl.natoms, builder.atoms.size() ); exit(0); }
+            //printf( "MolWorld_sp3::updateBuilderFromFF(nnode=%i,ncap=%i) \n", ffl.nnode, ffl.natoms-ffl.nnode );
+            int na = builder.atoms.size();  if(na>ffu.natoms)na=ffu.natoms;
+            for(int i=0; i<na; i++){
+                if(bPos){ builder.atoms[i].pos   = ffu.apos[i];   }
+                if(bQ  ){ builder.atoms[i].REQ.z = ffu.REQs[i].z; }
+            }
+        }
+        else{
+            if( ffl.nnode  != builder.confs.size() ){printf( "ERROR: MolWorld_sp3::updateBuilderFromFF() ffl.nnode(%i)  != builder->confs.size(%i) \n", ffl.nnode,  builder.confs.size() ); exit(0); }
+            //if( ffl.natoms != builder.atoms.size() ){printf( "ERROR: MolWorld_sp3::updateBuilderFromFF() ffl.natoms(%i) != builder->atoms.size(%i) \n", ffl.natoms, builder.atoms.size() ); exit(0); }
+            //printf( "MolWorld_sp3::updateBuilderFromFF(nnode=%i,ncap=%i) \n", ffl.nnode, ffl.natoms-ffl.nnode );
+            int na = builder.atoms.size();  if(na>ffl.natoms)na=ffl.natoms;
+            for(int i=0; i<na; i++){
+                if(bPos){ builder.atoms[i].pos   = ffl.apos[i];   }
+                if(bQ  ){ builder.atoms[i].REQ.z = ffl.REQs[i].z; }
+            }
         }
         return 0;
     }
