@@ -16,4 +16,5 @@ add_library(Lattice2D_lib            SHARED Lattice2D_lib.cpp           )
 add_library(SchroedingerGreen2D_lib  SHARED SchroedingerGreen2D_lib.cpp )
 add_library(SchroedingerGreen1D_lib  SHARED SchroedingerGreen1D_lib.cpp )
 add_library(FitREQ_lib               SHARED FitREQ_lib.cpp )
+add_library(FitREQ_PN_lib            SHARED FitREQ_PN_lib.cpp )
 
