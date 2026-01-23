@@ -592,6 +592,101 @@ export class GUI {
         this.buildersGUI.addSubstrateSection(sidebar);
         this.buildersGUI.addPolymersSection(sidebar);
 
+        // --- Section: XPDB Simulation ---
+        this.createSection(sidebar, 'XPDB Simulation', (container) => {
+            const toggleDiv = GUIutils.div(container, null, { marginBottom: '8px' });
+
+            // GUIutils provides checkBox() (camel case) which returns {label, input}
+            const chkEnableObj = GUIutils.checkBox(toggleDiv, 'Enable XPDB', false, (checked) => {
+                if (window.app && window.app.toggleXPDB) {
+                    window.app.toggleXPDB(checked);
+                }
+            });
+            const chkEnable = chkEnableObj.input;
+
+            const statusDiv = GUIutils.div(container, null, { fontSize: '0.85em', color: '#888', marginBottom: '8px' });
+            statusDiv.textContent = 'Status: Disabled';
+
+            // Parameters
+            const paramsDiv = GUIutils.div(container, null, { marginTop: '8px', marginBottom: '8px' });
+
+            // dt slider
+            const dtRow = GUIutils.div(paramsDiv, null, { marginBottom: '4px' });
+            GUIutils.label(dtRow, 'dt:', { width: '40px', fontSize: '0.9em' });
+            const dtSlider = GUIutils.range(dtRow, 0.01, 0.001, 0.1, 0.001, { width: '120px' });
+            const dtValue = GUIutils.span(dtRow, '0.01', { fontSize: '0.9em', marginLeft: '8px' });
+            dtSlider.addEventListener('input', () => {
+                const val = parseFloat(dtSlider.value);
+                dtValue.textContent = val.toFixed(3);
+                if (window.app && window.app.setXPDBParams) {
+                    window.app.setXPDBParams({ dt: val });
+                }
+            });
+
+            // iterations slider
+            const iterRow = GUIutils.div(paramsDiv, null, { marginBottom: '4px' });
+            GUIutils.label(iterRow, 'Iters:', { width: '40px', fontSize: '0.9em' });
+            const iterSlider = GUIutils.range(iterRow, 4, 1, 10, 1, { width: '120px' });
+            const iterValue = GUIutils.span(iterRow, '4', { fontSize: '0.9em', marginLeft: '8px' });
+            iterSlider.addEventListener('input', () => {
+                const val = parseInt(iterSlider.value);
+                iterValue.textContent = val;
+                if (window.app && window.app.setXPDBParams) {
+                    window.app.setXPDBParams({ iterations: val });
+                }
+            });
+
+            // k_coll slider
+            const kRow = GUIutils.div(paramsDiv, null, { marginBottom: '4px' });
+            GUIutils.label(kRow, 'k_coll:', { width: '40px', fontSize: '0.9em' });
+            const kSlider = GUIutils.range(kRow, 500, 100, 1000, 10, { width: '120px' });
+            const kValue = GUIutils.span(kRow, '500', { fontSize: '0.9em', marginLeft: '8px' });
+            kSlider.addEventListener('input', () => {
+                const val = parseFloat(kSlider.value);
+                kValue.textContent = val.toFixed(0);
+                if (window.app && window.app.setXPDBParams) {
+                    window.app.setXPDBParams({ k_coll: val });
+                }
+            });
+
+            // omega slider
+            const omegaRow = GUIutils.div(paramsDiv, null, { marginBottom: '4px' });
+            GUIutils.label(omegaRow, 'omega:', { width: '40px', fontSize: '0.9em' });
+            const omegaSlider = GUIutils.range(omegaRow, 1.0, 0.1, 2.0, 0.01, { width: '120px' });
+            const omegaValue = GUIutils.span(omegaRow, '1.0', { fontSize: '0.9em', marginLeft: '8px' });
+            omegaSlider.addEventListener('input', () => {
+                const val = parseFloat(omegaSlider.value);
+                omegaValue.textContent = val.toFixed(2);
+                if (window.app && window.app.setXPDBParams) {
+                    window.app.setXPDBParams({ omega: val });
+                }
+            });
+
+            // Store references for updating status
+            this.xpdbStatusDiv = statusDiv;
+            this.xpdbToggle = chkEnable;
+
+            // Update status when app state changes
+            const updateStatus = () => {
+                if (window.app && window.app.xpdbEnabled) {
+                    statusDiv.textContent = 'Status: Active';
+                    statusDiv.style.color = '#0f0';
+                } else {
+                    statusDiv.textContent = 'Status: Disabled';
+                    statusDiv.style.color = '#888';
+                }
+            };
+
+            // Listen for changes
+            if (window.app) {
+                const originalToggle = window.app.toggleXPDB;
+                window.app.toggleXPDB = (enabled) => {
+                    if (originalToggle) originalToggle.call(window.app, enabled);
+                    updateStatus();
+                };
+            }
+        });
+
 
         const defaultScript = `
 // Silicon Nanocrystal from CIF with plane templates and overlays

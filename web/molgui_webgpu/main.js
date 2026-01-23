@@ -13,6 +13,8 @@ import { Editor } from './Editor.js';
 import { ShortcutManager } from './ShortcutManager.js';
 import { Vec3 } from '../common_js/Vec3.js';
 import { ScriptRunner } from './ScriptRunner.js';
+import { XPDB_WebGPU } from './XPDB_WebGPU.js';
+import { buildXPDBTopology, getMaxRadius } from './XPDBTopology.js';
 
 export class MolGUIApp {
     constructor() {
@@ -30,6 +32,18 @@ export class MolGUIApp {
         this.controls = null;
         this._rafPending = false;
         this.continuousRender = false;
+
+        // XPDB WebGPU simulation state
+        this.xpdb = null;
+        this.xpdbEnabled = false;
+        this.xpdbParams = {
+            dt: 0.01,
+            iterations: 4,
+            k_coll: 500.0,
+            omega: 1.0,
+            momentum_beta: 0.0
+        };
+        this.xpdbDirty = true; // Flag to re-upload topology
     }
 
     requestRender() {
@@ -37,6 +51,12 @@ export class MolGUIApp {
         this._rafPending = true;
         requestAnimationFrame(async () => {
             this._rafPending = false;
+
+            // Step XPDB simulation if enabled
+            if (this.xpdbEnabled) {
+                await this.stepXPDB();
+            }
+
             if (this.renderers) {
                 Object.values(this.renderers).forEach(r => r.update());
             }
@@ -410,6 +430,135 @@ export class MolGUIApp {
         this.requestRender();
         const finalIsWebGPU = this.useRawWebGPU ? true : (this.renderer.backend && this.renderer.backend.isWebGPU);
         window.logger.info(`Initialization Complete. Backend: ${finalIsWebGPU ? "WebGPU" : "WebGL (Fallback)"}`);
+
+        // Initialize XPDB WebGPU simulation
+        this.initXPDB();
+    }
+
+    async initXPDB() {
+        if (!navigator.gpu) {
+            window.logger.warn("WebGPU not available, XPDB simulation disabled");
+            return;
+        }
+
+        try {
+            const nAtoms = this.system.nAtoms || 0;
+            if (nAtoms === 0) {
+                window.logger.info("XPDB: No atoms yet, will initialize when molecule is loaded");
+                return;
+            }
+
+            this.xpdb = new XPDB_WebGPU(nAtoms);
+            await this.xpdb.init();
+            window.logger.info(`XPDB initialized with ${nAtoms} atoms`);
+            this.xpdbDirty = true;
+        } catch (e) {
+            window.logger.error(`Failed to initialize XPDB: ${e.message}`);
+            console.error(e);
+        }
+    }
+
+    async updateXPDBTopology() {
+        if (!this.xpdb || !this.xpdbEnabled) return;
+
+        try {
+            const nAtoms = this.system.nAtoms || 0;
+            if (nAtoms === 0) return;
+
+            // Re-initialize if atom count changed
+            if (this.xpdb.numAtoms !== nAtoms) {
+                this.xpdb = new XPDB_WebGPU(nAtoms);
+                await this.xpdb.init();
+            }
+
+            // Upload atoms
+            this.xpdb.uploadAtomsFromMolecule(this.system, this.mmParams);
+
+            // Build topology
+            const { bondsAdj } = buildXPDBTopology(this.system, this.mmParams, {
+                includeAngleConstraints: true,
+                maxBonds: 16
+            });
+
+            // Upload bonds
+            this.xpdb.uploadBonds(bondsAdj);
+
+            this.xpdbDirty = false;
+            window.logger.info(`XPDB topology updated: ${nAtoms} atoms`);
+        } catch (e) {
+            window.logger.error(`Failed to update XPDB topology: ${e.message}`);
+            console.error(e);
+        }
+    }
+
+    stepXPDB() {
+        if (!this.xpdb || !this.xpdbEnabled || this.xpdbDirty) return;
+
+        try {
+            const maxRadius = getMaxRadius(this.system, this.mmParams, 1.0);
+            this.xpdb.step(
+                this.xpdbParams.dt,
+                this.xpdbParams.iterations,
+                this.xpdbParams.k_coll,
+                this.xpdbParams.omega,
+                this.xpdbParams.momentum_beta,
+                null, // mousePos
+                -1,   // pickedIdx
+                maxRadius
+            );
+
+            // Update molecule positions from GPU
+            this.syncXPDBPositions();
+        } catch (e) {
+            window.logger.error(`XPDB step failed: ${e.message}`);
+            console.error(e);
+        }
+    }
+
+    async syncXPDBPositions() {
+        if (!this.xpdb) return;
+
+        try {
+            const posData = await this.xpdb.readPositions();
+
+            // Update molecule atom positions
+            for (let i = 0; i < this.system.nAtoms; i++) {
+                const atom = this.system.atoms[i];
+                if (atom) {
+                    atom.pos.x = posData[i * 3];
+                    atom.pos.y = posData[i * 3 + 1];
+                    atom.pos.z = posData[i * 3 + 2];
+                }
+            }
+
+            // Mark geometry as dirty
+            this.system._touchGeom();
+        } catch (e) {
+            window.logger.error(`Failed to sync XPDB positions: ${e.message}`);
+            console.error(e);
+        }
+    }
+
+    async toggleXPDB(enabled) {
+        this.xpdbEnabled = !!enabled;
+        if (this.xpdbEnabled) {
+            window.logger.info("XPDB simulation enabled");
+            if (!this.xpdb) {
+                await this.initXPDB();
+            }
+            if (!this.xpdb) {
+                window.logger.error("XPDB init failed; cannot enable simulation");
+                this.xpdbEnabled = false;
+                return;
+            }
+            await this.updateXPDBTopology();
+        } else {
+            window.logger.info("XPDB simulation disabled");
+        }
+    }
+
+    setXPDBParams(params) {
+        Object.assign(this.xpdbParams, params);
     }
 
     onWindowResize() {
