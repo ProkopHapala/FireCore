@@ -7,6 +7,7 @@ import { logger } from '../common_js/Logger.js';
 import { EditableMolecule } from './EditableMolecule.js';
 import { MMParams } from './MMParams.js';
 import { MoleculeRenderer, PackedMolecule } from './MoleculeRenderer.js';
+import { RawWebGPUAtomsRenderer } from './RawWebGPUAtomsRenderer.js';
 import { GUI } from './GUI.js';
 import { Editor } from './Editor.js';
 import { ShortcutManager } from './ShortcutManager.js';
@@ -20,6 +21,11 @@ export class MolGUIApp {
         this.scene = null;
         this.camera = null;
         this.renderer = null;
+        this.raw = null;
+        this.overlayRenderer = null;
+        this.overlayCanvas = null;
+        this.overlayScene = null;
+        this.useRawWebGPU = !!window.USE_RAW_WEBGPU;
         this.system = new EditableMolecule();
         this.controls = null;
         this._rafPending = false;
@@ -34,6 +40,52 @@ export class MolGUIApp {
             if (this.renderers) {
                 Object.values(this.renderers).forEach(r => r.update());
             }
+
+            if (this.useRawWebGPU && this.raw) {
+                if (this.controls && this.controls.update) this.controls.update();
+                this.camera.updateMatrixWorld(true);
+                this.camera.updateProjectionMatrix();
+
+                const view = new Float32Array(this.camera.matrixWorldInverse.elements);
+                const proj = new Float32Array(this.camera.projectionMatrix.elements);
+                this.raw.updateCamera(view, proj);
+
+                const sys = this.packedSystems ? this.packedSystems.molecule : null;
+                if (sys && sys.nAtoms > 0) {
+                    const n = sys.nAtoms | 0;
+                    const pos = sys.pos;
+                    const col = new Float32Array(n * 3);
+                    const rad = new Float32Array(n);
+                    const sel = this.systems.molecule.selection;
+                    for (let i = 0; i < n; i++) {
+                        const t = sys.types[i] | 0;
+                        const c = this.mmParams ? this.mmParams.getColor(t) : [1, 0, 1];
+                        const isSel = sel && sel.has(i);
+                        col[i * 3] = isSel ? 1.0 : c[0];
+                        col[i * 3 + 1] = isSel ? 1.0 : c[1];
+                        col[i * 3 + 2] = isSel ? 0.0 : c[2];
+                        const r = this.mmParams ? (this.mmParams.getRadius(t) * 0.4) : 0.5;
+                        rad[i] = isSel ? r * 1.3 : r;
+                    }
+                    this.raw.updateAtoms(pos, col, rad, n);
+                } else {
+                    this.raw.nAtoms = 0;
+                }
+
+                this.raw.render();
+
+                // Overlay pass (gizmo/selection via Three WebGL)
+                if (this.overlayRenderer) {
+                    if (this.overlayScene) {
+                        this.overlayRenderer.autoClear = true;
+                        this.overlayRenderer.setClearColor(0x000000, 0.0);
+                        this.overlayRenderer.clear(true, true, true);
+                        this.overlayRenderer.render(this.overlayScene, this.camera);
+                    }
+                }
+                return;
+            }
+
             if (this.renderer && this.scene && this.camera) {
                 if (this.renderer.renderAsync) await this.renderer.renderAsync(this.scene, this.camera);
                 else this.renderer.render(this.scene, this.camera);
@@ -119,24 +171,80 @@ export class MolGUIApp {
         }
         logger.info("----------------------------------");
 
-        // 4. Renderer (WebGPURenderer)
-        this.renderer = new WebGPURenderer({
-            antialias: true,
-            trackTimestamp: true,
-            forceWebGL: false,
-        });
+        // 4. Renderer
+        if (this.useRawWebGPU) {
+            const canvas = document.createElement('canvas');
+            canvas.style.width = '100%';
+            canvas.style.height = '100%';
+            canvas.tabIndex = 0;
+            canvas.style.outline = 'none';
+            canvas.style.position = 'absolute';
+            canvas.style.top = '0';
+            canvas.style.left = '0';
+            canvas.style.zIndex = '0';
+            canvas.addEventListener('pointerdown', () => canvas.focus());
+            this.container.style.position = 'relative';
+            this.container.appendChild(canvas);
 
-        if (this.renderer.init) await this.renderer.init();
-        this.renderer.setSize(width, height);
-        this.renderer.setPixelRatio(window.devicePixelRatio);
-        this.renderer.domElement.tabIndex = 0;
-        this.renderer.domElement.style.outline = 'none';
-        this.renderer.domElement.addEventListener('pointerdown', () => this.renderer.domElement.focus());
-        this.container.appendChild(this.renderer.domElement);
+            this.raw = new RawWebGPUAtomsRenderer(canvas);
+            await this.raw.init({ maxAtoms: 65536 });
 
-        // Check backend capability
-        const isWebGPU = this.renderer.backend && this.renderer.backend.isWebGPU;
-        window.logger.info(`Initialization Complete. Backend: ${isWebGPU ? "WebGPU" : "WebGL (Fallback)"}`);
+            // Provide minimal renderer-like object for Editor/controls
+            this.renderer = {
+                domElement: canvas,
+                setSize: (w, h) => this.raw.resize(w, h),
+                setPixelRatio: () => {},
+                setAnimationLoop: () => {}
+            };
+
+            // Overlay canvas for gizmo/selection (Three WebGL)
+            this.overlayCanvas = document.createElement('canvas');
+            this.overlayCanvas.style.position = 'absolute';
+            this.overlayCanvas.style.top = '0';
+            this.overlayCanvas.style.left = '0';
+            this.overlayCanvas.style.pointerEvents = 'none';
+            this.overlayCanvas.style.zIndex = '1';
+            this.overlayCanvas.style.backgroundColor = 'transparent';
+            this.container.appendChild(this.overlayCanvas);
+
+            this.overlayRenderer = new THREE.WebGLRenderer({ canvas: this.overlayCanvas, antialias: true, alpha: true });
+            this.overlayRenderer.autoClear = true;
+            this.overlayRenderer.setClearColor(0x000000, 0.0);
+            this.overlayRenderer.setSize(width, height, false);
+
+            // Dedicated overlay scene (do NOT render node-material meshes here)
+            this.overlayScene = new THREE.Scene();
+
+            window.logger.info('Initialization Complete. Backend: WebGPU (Raw)');
+        } else {
+            // Three.js WebGPURenderer (may fallback)
+            this.renderer = new WebGPURenderer({
+                antialias: true,
+                trackTimestamp: true,
+                forceWebGPU: true,
+                forceWebGL: false,
+            });
+
+            try {
+                if (this.renderer.init) await this.renderer.init();
+            } catch (e) {
+                logger.error(`WebGPURenderer init failed: ${e?.message || e}`);
+                console.error(e);
+            }
+            this.renderer.setSize(width, height);
+            this.renderer.setPixelRatio(window.devicePixelRatio);
+            this.renderer.domElement.tabIndex = 0;
+            this.renderer.domElement.style.outline = 'none';
+            this.renderer.domElement.addEventListener('pointerdown', () => this.renderer.domElement.focus());
+            this.container.appendChild(this.renderer.domElement);
+
+            const isWebGPU = this.renderer.backend && this.renderer.backend.isWebGPU;
+            window.logger.info(`Initialization Complete. Backend: ${isWebGPU ? "WebGPU" : "WebGL (Fallback)"}`);
+            if (!isWebGPU) {
+                const backend = this.renderer.backend;
+                window.logger.error(`WebGPU unavailable. backend: ${backend ? backend.type || 'unknown' : 'none'}`);
+            }
+        }
         if (OrbitControls) {
             this.controls = new OrbitControls(this.camera, this.renderer.domElement);
             this.controls.enableDamping = false;
@@ -274,6 +382,9 @@ export class MolGUIApp {
         // --- GUI & Editor ---
         this.gui = new GUI(this.system, this.molRenderer);
         this.editor = new Editor(this.scene, this.camera, this.renderer, this.system, this.molRenderer);
+        if (this.useRawWebGPU && this.overlayScene && this.editor && this.editor.gizmo && this.editor.gizmo.getHelper) {
+            this.overlayScene.add(this.editor.gizmo.getHelper());
+        }
         this.scriptRunner = new ScriptRunner(this);
         this.shortcuts = new ShortcutManager(this.editor);
 
@@ -297,7 +408,8 @@ export class MolGUIApp {
 
         window.addEventListener('resize', this.onWindowResize.bind(this));
         this.requestRender();
-        window.logger.info(`Initialization Complete. Backend: ${this.renderer.backend.isWebGPU ? "WebGPU" : "WebGL (Fallback)"}`);
+        const finalIsWebGPU = this.useRawWebGPU ? true : (this.renderer.backend && this.renderer.backend.isWebGPU);
+        window.logger.info(`Initialization Complete. Backend: ${finalIsWebGPU ? "WebGPU" : "WebGL (Fallback)"}`);
     }
 
     onWindowResize() {
@@ -310,6 +422,7 @@ export class MolGUIApp {
         this.camera.bottom = -this.frustumSize / 2;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(width, height);
+        if (this.overlayRenderer) this.overlayRenderer.setSize(width, height, false);
         this.requestRender();
     }
 }

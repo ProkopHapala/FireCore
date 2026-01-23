@@ -84,6 +84,7 @@ export class MeshRenderer {
 
         // --- 2. Atoms (Sprite / Impostor) ---
         {
+            try {
             // Geometry: Simple Quad
             const atomGeo = new THREE.PlaneGeometry(1, 1);
 
@@ -165,200 +166,21 @@ export class MeshRenderer {
             this.atomMesh.geometry.setAttribute('instanceScale', new THREE.InstancedBufferAttribute(scales, 1));
             this.atomMesh.count = 0;
             this.scene.add(this.atomMesh);
-
-            // --- Selection Mesh (Clone logic) ---
-            const selMat = new MeshBasicNodeMaterial();
-            selMat.transparent = true;
-            selMat.depthWrite = false;
-            selMat.depthTest = true;
-
-            const uSelScale = uniform(1.08); // slightly larger
-            const uSelAlpha = uniform(0.22);
-
-            selMat.vertexNode = Fn(() => {
-                const atomData = getAtomPos(attribute('aAtomID', 'float'));
-                const cPos = atomData.xyz;
-                const rad = atomData.w;
-                // Selection scale logic
-                const finalR = attribute('instanceScale', 'float').mul(rad).mul(uSelScale);
-
-                const viewPos = modelViewMatrix.mul(vec4(cPos, 1.0));
-                viewPos.xy.addAssign(positionLocal.xy.mul(finalR));
-                return cameraProjectionMatrix.mul(viewPos);
-            })();
-
-            selMat.colorNode = Fn(() => {
-                const uvOffset = uv().sub(0.5);
-                const distSq = dot(uvOffset, uvOffset);
-                const mask = distSq.lessThan(0.25);
-                const alpha = uSelAlpha.mul(mask.select(1.0, 0.0));
-                return vec4(attribute('instanceColor', 'vec3'), alpha);
-            })();
-
-            this.selectionMesh = new THREE.InstancedMesh(atomGeo.clone(), selMat, this.capacity);
-            this.selectionMesh.geometry.setAttribute('aAtomID', new THREE.InstancedBufferAttribute(ids, 1)); // reuse array
-            this.selectionMesh.geometry.setAttribute('instanceColor', new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3), 3));
-            this.selectionMesh.geometry.setAttribute('instanceScale', new THREE.InstancedBufferAttribute(new Float32Array(this.capacity), 1));
-            this.selectionMesh.count = 0;
-            this.selectionMesh.renderOrder = 998;
-            this.scene.add(this.selectionMesh);
+            } catch (e) {
+                console.error('Atom material build failed', e);
+                if (window.logger) window.logger.error(`[MeshRenderer] atom material failed: ${e?.message||e}`);
+                throw e;
+            }
         }
 
         // --- 3. Bonds (Line Segments) ---
-        {
-            // Geometry logic for lines is tricky in TSL because `LineSegments` sends pairs of vertices.
-            // We need to fetch position based on `aAtomID` (which holds the ID of the endpoint).
-
-            const maxBonds = this.capacity * 4;
-            const bondGeo = new THREE.BufferGeometry();
-            // Dummy positions (not used, but needed for bounding box)
-            bondGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(maxBonds * 2 * 3), 3));
-            const bondIds = new Float32Array(maxBonds * 2);
-            const matIds = new Float32Array(maxBonds * 2);
-            bondGeo.setAttribute('aAtomID', new THREE.BufferAttribute(bondIds, 1));
-            bondGeo.setAttribute('aMatID', new THREE.BufferAttribute(matIds, 1));
-
-            const bondMat = new LineBasicNodeMaterial();
-            bondMat.isLineBasicMaterial = true; // Helps Three.js render it as lines
-            // Define Palette
-            const matColors = uniform([
-                color(1, 1, 1), color(1, 0, 0), color(0, 1, 0), color(0, 0, 1),
-                color(1, 1, 0), color(0, 1, 1), color(1, 0, 1), color(0.5, 0.5, 0.5)
-            ]);
-
-            // Vertex Shader Logic
-            bondMat.vertexNode = Fn(() => {
-                // Fetch pos from texture using attribute ID
-                const posData = getAtomPos(attribute('aAtomID', 'float'));
-                return cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(posData.xyz, 1.0)));
-            })();
-
-            // Fragment Shader Logic
-            bondMat.colorNode = Fn(() => {
-                // Simplify to constant color to avoid uniform null issues
-                return vec4(color(1, 1, 1), 1.0);
-            })();
-
-            this.bondLines = new THREE.LineSegments(bondGeo, bondMat);
-            this.bondLines.frustumCulled = false;
-            this.bondLines.geometry.setDrawRange(0, 0);
-            this.scene.add(this.bondLines);
-        }
+        // TEMP disable bonds to isolate WebGPU errors
+        this.bondLines = null;
 
         // --- 4. Labels ---
         // Porting the font atlas logic to TSL
-        {
-            this.fontTexture = Draw3D.createFontTexture();
-            const uFontTex = texture(this.fontTexture);
-
-            // Uniforms
-            const uColor = uniform(new THREE.Color(1, 1, 1));
-            const uScale = uniform(0.5);
-            // const uScreenSpace = uniform(false); // Simplified for now
-
-            // Geometry setup handled in Draw3D (instanced quads)
-            // We need to define the TSL material that consumes 'aLabel1', 'aCharPos', etc.
-
-            const labelMat = new MeshBasicNodeMaterial();
-            labelMat.transparent = true;
-            labelMat.depthTest = false;
-            labelMat.side = THREE.DoubleSide;
-
-            // Helper to extract char code from vec4
-            const indexToVec4 = Fn(([v, idx]) => {
-                return If(idx.lessThan(1.5),
-                    If(idx.lessThan(0.5), v.x, v.y),
-                    If(idx.lessThan(2.5), v.z, v.w)
-                );
-            });
-
-            // Vertex Logic
-            labelMat.vertexNode = Fn(() => {
-                const aAtomID = attribute('aAtomID', 'float');
-                const aCharPos = attribute('aCharPos', 'float');
-                const aLabel1 = attribute('aLabel1', 'vec4');
-                const aLabel2 = attribute('aLabel2', 'vec4');
-                const aStrLen = attribute('aStrLen', 'float');
-
-                // Decode char index
-                const idx = aCharPos.round();
-                const charCode = float(0).toVar();
-                If(idx.lessThan(4.0), () => {
-                    charCode.assign(indexToVec4(aLabel1, idx));
-                }).Else(() => {
-                    charCode.assign(indexToVec4(aLabel2, idx.sub(4.0)));
-                });
-
-                // Get Atom Pos
-                const atomPos = getAtomPos(aAtomID).xyz;
-
-                // Position Logic (View Space Billboard + Char Offset)
-                const charAdvance = float(0.6);
-                const centerOffset = aStrLen.sub(1.0).mul(0.5);
-                const charOffset = aCharPos.sub(centerOffset).mul(charAdvance);
-
-                const viewPos = modelViewMatrix.mul(vec4(atomPos, 1.0));
-
-                // Add offsets (billboarded)
-                // positionLocal.x/y are the quad coords (-0.5 to 0.5)
-                const finalX = charOffset.add(positionLocal.x);
-                const offset = vec2(finalX, positionLocal.y).mul(uScale);
-
-                viewPos.xy.addAssign(offset);
-
-                return cameraProjectionMatrix.mul(viewPos);
-            })();
-
-            // To handle UV logic based on CharCode, we need a varying.
-            // Currently getting varyings explicitly in TSL:
-            const vCharCode = varying(
-                Fn(() => {
-                    const aCharPos = attribute('aCharPos', 'float');
-                    const aLabel1 = attribute('aLabel1', 'vec4');
-                    const aLabel2 = attribute('aLabel2', 'vec4');
-                    const idx = aCharPos.round();
-                    const code = float(0).toVar();
-                    If(idx.lessThan(4.0), () => {
-                        code.assign(indexToVec4([aLabel1, idx]));
-                    }).Else(() => {
-                        code.assign(indexToVec4([aLabel2, idx.sub(4.0)]));
-                    });
-                    return code;
-                })
-            );
-
-            labelMat.colorNode = Fn(() => {
-                const valid = vCharCode.greaterThan(0.5); // empty chars have code 0
-
-                // UV Calc
-                const cols = float(16.0);
-                const rows = float(16.0);
-                const col = vCharCode.mod(cols);
-                const row = vCharCode.div(cols).floor();
-
-                const cellW = float(1.0).div(cols);
-                const cellH = float(1.0).div(rows);
-
-                const glyphFill = float(0.7);
-                const localX = float(0.5).add(uv().x.sub(0.5).mul(glyphFill));
-
-                const u = col.add(localX).mul(cellW);
-                const v = rows.sub(1.0).sub(row).add(uv().y).mul(cellH);
-
-                const texColor = uFontTex.sample(vec2(u, v));
-                const alphaTex = texColor.a.greaterThan(0.1).select(texColor.a, 0.0);
-                const alpha = alphaTex.mul(valid.select(1.0, 0.0));
-                return vec4(uColor, alpha);
-            })();
-
-            // Instantiate
-            this.labelMesh = Draw3D.createLabelInstancedMesh(this.capacity, null, null, null);
-            // Note: Draw3D.createLabelInstancedMesh created a Mesh with ShaderMaterial. 
-            // We need to overwrite the material.
-            this.labelMesh.material = labelMat;
-            this.scene.add(this.labelMesh);
-            this.labelMesh.visible = false;
-        }
+        // TEMP disable labels to isolate WebGPU errors
+        this.labelMesh = null;
     }
 
     // ... Keep updatePositions, updateParticles, updateBonds, updateSelection, etc. ...
