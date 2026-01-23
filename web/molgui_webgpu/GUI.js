@@ -607,60 +607,89 @@ export class GUI {
             const statusDiv = GUIutils.div(container, null, { fontSize: '0.85em', color: '#888', marginBottom: '8px' });
             statusDiv.textContent = 'Status: Disabled';
 
+            const anglesRow = GUIutils.row(container, { marginBottom: '8px' });
+            const chkUseAngles = GUIutils.labelCheck(anglesRow, 'Angle constraints (MMParams)', true, (e) => {
+                if (window.app && window.app.setXPDBTopologyParams) {
+                    window.app.setXPDBTopologyParams({ useAngles: !!e.target.checked });
+                }
+            }).input;
+
+            const controlsRow = GUIutils.row(container, { marginBottom: '8px' });
+            GUIutils.btn(controlsRow, 'Dump topology', () => {
+                if (window.app && window.app.dumpXPDBTopology) window.app.dumpXPDBTopology();
+            }, { marginRight: '4px', flexGrow: '0' });
+            GUIutils.btn(controlsRow, 'Dump buffers', () => {
+                if (window.app && window.app.dumpXPDBBuffers) window.app.dumpXPDBBuffers();
+            }, { marginRight: '4px', flexGrow: '0' });
+            GUIutils.btn(controlsRow, 'Step once', () => {
+                if (window.app && window.app.xpdbStepOnce) window.app.xpdbStepOnce();
+            }, { marginRight: '4px', flexGrow: '0' });
+            GUIutils.btn(controlsRow, 'Relax N steps', () => {
+                if (window.app && window.app.xpdbRelaxSteps) window.app.xpdbRelaxSteps();
+            }, { flexGrow: '0' });
+
+            const pauseRow = GUIutils.row(container, { marginBottom: '8px' });
+            const chkPause = GUIutils.labelCheck(pauseRow, 'Pause (stop continuous run)', true, (e) => {
+                if (window.app && window.app.setXPDBPaused) window.app.setXPDBPaused(!!e.target.checked);
+            }).input;
+
+            const togglesRow = GUIutils.row(container, { marginBottom: '8px' });
+            GUIutils.labelCheck(togglesRow, 'Disable bonds', false, (e) => {
+                if (window.app && window.app.setXPDBDisableBonds) window.app.setXPDBDisableBonds(!!e.target.checked);
+            });
+            GUIutils.labelCheck(togglesRow, 'Disable collisions', false, (e) => {
+                if (window.app && window.app.setXPDBDisableCollisions) window.app.setXPDBDisableCollisions(!!e.target.checked);
+            });
+
+            const verbRow = GUIutils.row(container, { marginBottom: '8px' });
+            GUIutils.label(verbRow, 'Verbosity:', { width: '70px', fontSize: '0.9em' });
+            const verbInput = GUIutils.num(verbRow, window.VERBOSITY_LEVEL || 0, {
+                min: 0, max: 5, step: '1', onchange: (e) => {
+                    const v = parseInt(e.target.value) | 0;
+                    window.VERBOSITY_LEVEL = v;
+                    window.logger && window.logger.info(`VERBOSITY_LEVEL set to ${v}`);
+                }
+            }, { width: '60px', flexGrow: '0' });
+
             // Parameters
             const paramsDiv = GUIutils.div(container, null, { marginTop: '8px', marginBottom: '8px' });
 
-            // dt slider
+            const hookNumericInput = (inputEl, parser, setterKey, fallback) => {
+                const applyValue = () => {
+                    const parsed = parser(inputEl.value);
+                    if (!Number.isFinite(parsed)) return;
+                    if (window.app && window.app.setXPDBParams) {
+                        window.app.setXPDBParams({ [setterKey]: parsed });
+                    }
+                };
+                inputEl.addEventListener('change', applyValue);
+                inputEl.addEventListener('blur', applyValue);
+                inputEl.value = fallback;
+            };
+
+            // dt input (allow very small/large values)
             const dtRow = GUIutils.div(paramsDiv, null, { marginBottom: '4px' });
             GUIutils.label(dtRow, 'dt:', { width: '40px', fontSize: '0.9em' });
-            const dtSlider = GUIutils.range(dtRow, 0.01, 0.001, 0.1, 0.001, { width: '120px' });
-            const dtValue = GUIutils.span(dtRow, '0.01', { fontSize: '0.9em', marginLeft: '8px' });
-            dtSlider.addEventListener('input', () => {
-                const val = parseFloat(dtSlider.value);
-                dtValue.textContent = val.toFixed(3);
-                if (window.app && window.app.setXPDBParams) {
-                    window.app.setXPDBParams({ dt: val });
-                }
-            });
+            const dtInput = GUIutils.num(dtRow, 0.01, { step: 'any', min: 0 }, { width: '90px' });
+            hookNumericInput(dtInput, (v) => parseFloat(v), 'dt', 0.01);
 
-            // iterations slider
+            // iterations input
             const iterRow = GUIutils.div(paramsDiv, null, { marginBottom: '4px' });
             GUIutils.label(iterRow, 'Iters:', { width: '40px', fontSize: '0.9em' });
-            const iterSlider = GUIutils.range(iterRow, 4, 1, 10, 1, { width: '120px' });
-            const iterValue = GUIutils.span(iterRow, '4', { fontSize: '0.9em', marginLeft: '8px' });
-            iterSlider.addEventListener('input', () => {
-                const val = parseInt(iterSlider.value);
-                iterValue.textContent = val;
-                if (window.app && window.app.setXPDBParams) {
-                    window.app.setXPDBParams({ iterations: val });
-                }
-            });
+            const iterInput = GUIutils.num(iterRow, 4, { step: 1, min: 1 }, { width: '90px' });
+            hookNumericInput(iterInput, (v) => parseInt(v, 10), 'iterations', 4);
 
-            // k_coll slider
+            // k_coll input (order-of-magnitude tuning)
             const kRow = GUIutils.div(paramsDiv, null, { marginBottom: '4px' });
             GUIutils.label(kRow, 'k_coll:', { width: '40px', fontSize: '0.9em' });
-            const kSlider = GUIutils.range(kRow, 500, 100, 1000, 10, { width: '120px' });
-            const kValue = GUIutils.span(kRow, '500', { fontSize: '0.9em', marginLeft: '8px' });
-            kSlider.addEventListener('input', () => {
-                const val = parseFloat(kSlider.value);
-                kValue.textContent = val.toFixed(0);
-                if (window.app && window.app.setXPDBParams) {
-                    window.app.setXPDBParams({ k_coll: val });
-                }
-            });
+            const kInput = GUIutils.num(kRow, 500, { step: 'any', min: 0 }, { width: '90px' });
+            hookNumericInput(kInput, (v) => parseFloat(v), 'k_coll', 500);
 
-            // omega slider
+            // omega input
             const omegaRow = GUIutils.div(paramsDiv, null, { marginBottom: '4px' });
             GUIutils.label(omegaRow, 'omega:', { width: '40px', fontSize: '0.9em' });
-            const omegaSlider = GUIutils.range(omegaRow, 1.0, 0.1, 2.0, 0.01, { width: '120px' });
-            const omegaValue = GUIutils.span(omegaRow, '1.0', { fontSize: '0.9em', marginLeft: '8px' });
-            omegaSlider.addEventListener('input', () => {
-                const val = parseFloat(omegaSlider.value);
-                omegaValue.textContent = val.toFixed(2);
-                if (window.app && window.app.setXPDBParams) {
-                    window.app.setXPDBParams({ omega: val });
-                }
-            });
+            const omegaInput = GUIutils.num(omegaRow, 1.0, { step: 'any' }, { width: '90px' });
+            hookNumericInput(omegaInput, (v) => parseFloat(v), 'omega', 1.0);
 
             // Store references for updating status
             this.xpdbStatusDiv = statusDiv;

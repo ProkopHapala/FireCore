@@ -230,6 +230,10 @@ fn solve_cluster_jacobi(
 
     if (my_global_id < u_params.num_atoms) {
         l_rad[l_idx] = my_rad;
+    } else {
+        // IMPORTANT: avoid uninitialized l_rad for inactive lanes (partial groups).
+        // Otherwise collision loop may see garbage radii and create huge phantom repulsions.
+        l_rad[l_idx] = 0.0;
     }
     workgroupBarrier();
 

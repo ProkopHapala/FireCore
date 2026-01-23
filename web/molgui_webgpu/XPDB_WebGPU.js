@@ -161,7 +161,7 @@ export class XPDB_WebGPU {
     }
 
     // Python 'build_bond_arrays_with_angles' equivalent
-    uploadBonds(bondsAdj, defaultL=0.4, defaultK=200, angleDeg=120, enableAngles=true) {
+    uploadBonds(bondsAdj, defaultL=0.4, defaultK=200, angleDeg=120, enableAngles=false) {
         const bondIndices = new Int32Array(this.numAtoms * this.nMaxBonded).fill(-1);
         const bondLenStiff = new Float32Array(this.numAtoms * this.nMaxBonded * 2).fill(0);
 
@@ -192,27 +192,43 @@ export class XPDB_WebGPU {
         }
 
         // 2. Angles (as distance constraints)
-        if (enableAngles) {
-            const rads = angleDeg * Math.PI / 180.0;
+        // NOTE: Angle-derived constraints are expected to be built in `buildXPDBTopology()` using MMParams.
+        // Doing it here as a second pass would double-add angles and can overflow nMaxBonded.
+        //
+        // if (enableAngles) {
+        //     const rads = angleDeg * Math.PI / 180.0;
+        //     for (let i = 0; i < this.numAtoms; i++) {
+        //         const neighs = bondsAdj[i] || [];
+        //         // Iterate pairs of neighbors
+        //         for (let a = 0; a < neighs.length; a++) {
+        //             for (let b = a + 1; b < neighs.length; b++) {
+        //                 const j = neighs[a][0];
+        //                 const k = neighs[b][0];
+        //                 // Get lengths i-j and i-k
+        //                 const Lij = neighs[a][1] || defaultL;
+        //                 const Lik = neighs[b][1] || defaultL;
+        //                 // Law of cosines
+        //                 const Ljk = Math.sqrt(Math.max(0, Lij**2 + Lik**2 - 2*Lij*Lik*Math.cos(rads)));
+        //
+        //                 // Add constraints between j and k
+        //                 addBond(j, k, Ljk, defaultK);
+        //                 addBond(k, j, Ljk, defaultK);
+        //             }
+        //         }
+        //     }
+        // }
+
+        if ((window.VERBOSITY_LEVEL | 0) >= 3) {
+            const used = new Int32Array(this.numAtoms);
             for (let i = 0; i < this.numAtoms; i++) {
-                const neighs = bondsAdj[i] || [];
-                // Iterate pairs of neighbors
-                for (let a = 0; a < neighs.length; a++) {
-                    for (let b = a + 1; b < neighs.length; b++) {
-                        const j = neighs[a][0];
-                        const k = neighs[b][0];
-                        // Get lengths i-j and i-k
-                        const Lij = neighs[a][1] || defaultL;
-                        const Lik = neighs[b][1] || defaultL;
-                        // Law of cosines
-                        const Ljk = Math.sqrt(Math.max(0, Lij**2 + Lik**2 - 2*Lij*Lik*Math.cos(rads)));
-                        
-                        // Add constraints between j and k
-                        addBond(j, k, Ljk, defaultK); // usually slightly weaker K for angles?
-                        addBond(k, j, Ljk, defaultK);
-                    }
-                }
+                let c = 0;
+                const base = i * this.nMaxBonded;
+                for (let k = 0; k < this.nMaxBonded; k++) if (bondIndices[base + k] >= 0) c++;
+                used[i] = c;
             }
+            console.log('[XPDB_WebGPU.uploadBonds][DEBUG] usedSlotsPerAtom=', Array.from(used));
+            console.log('[XPDB_WebGPU.uploadBonds][DEBUG] bondIndices=', bondIndices);
+            console.log('[XPDB_WebGPU.uploadBonds][DEBUG] bondLenStiff=', bondLenStiff);
         }
 
         this.device.queue.writeBuffer(this.buffers.bondIdxGlobal, 0, bondIndices);

@@ -15,11 +15,10 @@ export function buildXPDBTopology(mol, mmParams, opts = {}) {
 
     console.log(`[XPDBTopology] Building topology: atoms=${nAtoms} maxBonds=${maxBonds} includeAngles=${includeAngleConstraints}`);
 
-    // Initialize adjacency list
-    const bondsAdj = new Array(nAtoms);
-    for (let i = 0; i < nAtoms; i++) {
-        bondsAdj[i] = [];
-    }
+    // Initialize adjacency lists: first-order (real) and second-order (angles), plus merged output
+    const bondsAdj1 = new Array(nAtoms); // real bonds only
+    const bondsAdj2 = new Array(nAtoms); // angle-derived virtual bonds
+    for (let i = 0; i < nAtoms; i++) { bondsAdj1[i] = []; bondsAdj2[i] = []; }
 
     // Helper to get atom type name
     const getAtomTypeName = (atom) => {
@@ -28,21 +27,26 @@ export function buildXPDBTopology(mol, mmParams, opts = {}) {
         return at ? at.name : '*';
     };
 
-    // Helper to add bond entry
-    const addBondEntry = (i, j, l0, k) => {
+    // Helper to add bond entry into a target adjacency list (mutates target)
+    const addBondEntry = (adj, i, j, l0, k, label='') => {
         if (i < 0 || i >= nAtoms || j < 0 || j >= nAtoms) {
             throw new Error(`addBondEntry: out of range i=${i} j=${j} nAtoms=${nAtoms}`);
         }
-        if (bondsAdj[i].length >= maxBonds) {
-            throw new Error(`addBondEntry: atom ${i} exceeds max bonds (${maxBonds})`);
+        if (adj[i].length === (maxBonds - 1)) {
+            console.log(`[XPDBTopology][DEBUG] addBondEntry about to reach maxBonds: atom=${i} nextNeighbor=${j} maxBonds=${maxBonds} ${label}`);
         }
-        bondsAdj[i].push([j, l0, k]);
+        if (adj[i].length >= maxBonds) {
+            console.warn(`[XPDBTopology][WARN] addBondEntry: atom ${i} exceeds max bonds (${maxBonds}), skipping neighbor ${j} ${label}`);
+            return;
+        }
+        adj[i].push([j, l0, k]);
     };
 
-    // Helper to find existing bond entry
-    const findBondEntry = (i, j) => {
-        for (let k = 0; k < bondsAdj[i].length; k++) {
-            if (bondsAdj[i][k][0] === j) return k;
+    // Helper to find existing bond entry in provided adjacency
+    const findBondEntry = (adj, i, j) => {
+        const arr = adj[i];
+        for (let k = 0; k < arr.length; k++) {
+            if (arr[k][0] === j) return k;
         }
         return -1;
     };
@@ -72,18 +76,23 @@ export function buildXPDBTopology(mol, mmParams, opts = {}) {
         const zA = atomA.Z || 0;
         const zB = atomB.Z || 0;
         const bondData = mmParams.getBondL0(zA, zB);
+        if (!bondData) {
+            const enA = mmParams.getElementName ? mmParams.getElementName(zA) : zA;
+            const enB = mmParams.getElementName ? mmParams.getElementName(zB) : zB;
+            throw new Error(`buildXPDBTopology: missing bond params for pair ${i}(${enA})-${j}(${enB}) z=(${zA},${zB})`);
+        }
 
         let l0 = bondData ? bondData.l0 : defaultL;
         let k = bondData ? bondData.k : defaultK;
 
-        addBondEntry(i, j, l0, k);
-        addBondEntry(j, i, l0, k);
+        addBondEntry(bondsAdj1, i, j, l0, k, '[real]');
+        addBondEntry(bondsAdj1, j, i, l0, k, '[real]');
         realConstraintsCount++;
     }
 
     console.log(`[XPDBTopology] Real bonds processed: ${realConstraintsCount} constraints`);
 
-    // 2. Process angles to create virtual bonds
+    // 2. Process angles to create virtual bonds (kept separate from real bonds)
     let virtualConstraintsCount = 0;
     let angleTriplesProcessed = 0;
     let angleParamsFound = 0;
@@ -95,7 +104,7 @@ export function buildXPDBTopology(mol, mmParams, opts = {}) {
         console.log(`[XPDBTopology] Processing angle-derived constraints...`);
 
         for (let b = 0; b < nAtoms; b++) {
-            const neighs = bondsAdj[b];
+            const neighs = bondsAdj1[b];
             if (!neighs || neighs.length < 2) continue;
 
             const atomB = mol.atoms[b];
@@ -104,9 +113,13 @@ export function buildXPDBTopology(mol, mmParams, opts = {}) {
             // Enumerate all pairs of neighbors to form angles A-B-C
             for (let ni = 0; ni < neighs.length; ni++) {
                 for (let nj = ni + 1; nj < neighs.length; nj++) {
-                    const a = neighs[ni][0];
-                    const c = neighs[nj][0];
+                    let a = neighs[ni][0];
+                    let c = neighs[nj][0];
                     if (a < 0 || a >= nAtoms || c < 0 || c >= nAtoms) continue;
+
+                    // Canonical ordering to avoid duplicate A-C virtual bonds from different triples.
+                    // (We still add both directions a->c and c->a below.)
+                    if (c < a) { const t = a; a = c; c = t; }
 
                     const atomA = mol.atoms[a];
                     const atomC = mol.atoms[c];
@@ -119,18 +132,20 @@ export function buildXPDBTopology(mol, mmParams, opts = {}) {
 
                     const angleParams = mmParams.getAngleParams(nameA, nameB, nameC);
                     if (!angleParams) {
-                        angleParamsMissing++;
-                        continue;
+                        const enA = mmParams.getElementName ? mmParams.getElementName(atomA.Z || 0) : atomA.Z;
+                        const enB = mmParams.getElementName ? mmParams.getElementName(atomB.Z || 0) : atomB.Z;
+                        const enC = mmParams.getElementName ? mmParams.getElementName(atomC.Z || 0) : atomC.Z;
+                        throw new Error(`buildXPDBTopology: missing angle params for ${enA}-${enB}-${enC} names=(${nameA},${nameB},${nameC}) at center ${b}`);
                     }
 
                     angleParamsFound++;
 
                     // Get bond lengths for AB and BC
                     let lab = defaultL, lbc = defaultL;
-                    const idxAB = findBondEntry(a, b);
-                    const idxBC = findBondEntry(b, c);
-                    if (idxAB >= 0) lab = bondsAdj[a][idxAB][1];
-                    if (idxBC >= 0) lbc = bondsAdj[b][idxBC][1];
+                    const idxAB = findBondEntry(bondsAdj1, a, b);
+                    const idxBC = findBondEntry(bondsAdj1, b, c);
+                    if (idxAB >= 0) lab = bondsAdj1[a][idxAB][1];
+                    if (idxBC >= 0) lbc = bondsAdj1[b][idxBC][1];
 
                     // Convert angle to distance constraint
                     const virtBond = mmParams.convertAngleToDistance(
@@ -138,18 +153,15 @@ export function buildXPDBTopology(mol, mmParams, opts = {}) {
                     );
 
                     // Add virtual bond A-C (accumulate if exists)
-                    const idxAC = findBondEntry(a, c);
+                    const idxAC = findBondEntry(bondsAdj2, a, c);
                     if (idxAC >= 0) {
-                        bondsAdj[a][idxAC][2] += virtBond.stiffness;
+                        bondsAdj2[a][idxAC][2] += virtBond.stiffness;
                         angleBondsAccumulated++;
-                        // Also update the symmetric bond
-                        const idxCA = findBondEntry(c, a);
-                        if (idxCA >= 0) {
-                            bondsAdj[c][idxCA][2] += virtBond.stiffness;
-                        }
+                        const idxCA = findBondEntry(bondsAdj2, c, a);
+                        if (idxCA >= 0) bondsAdj2[c][idxCA][2] += virtBond.stiffness;
                     } else {
-                        addBondEntry(a, c, virtBond.restLength, virtBond.stiffness);
-                        addBondEntry(c, a, virtBond.restLength, virtBond.stiffness);
+                        addBondEntry(bondsAdj2, a, c, virtBond.restLength, virtBond.stiffness, '[angle]');
+                        addBondEntry(bondsAdj2, c, a, virtBond.restLength, virtBond.stiffness, '[angle]');
                         angleBondsAdded++;
                         virtualConstraintsCount++;
                     }
@@ -162,15 +174,28 @@ export function buildXPDBTopology(mol, mmParams, opts = {}) {
         console.log(`[XPDBTopology] Angle-derived constraints SKIPPED`);
     }
 
+    // 3. Merge first- and second-order neighbors respecting maxBonds, keeping real bonds first
+    const bondsAdjMerged = bondsAdj1.map((list, i) => list.slice());
+    let mergedSkipped = 0;
+    for (let i = 0; i < nAtoms; i++) {
+        const targ = bondsAdjMerged[i];
+        const extras = bondsAdj2[i];
+        for (const b of extras) {
+            if (targ.length >= maxBonds) { mergedSkipped++; continue; }
+            targ.push(b);
+        }
+    }
+
     const totalConstraints = realConstraintsCount + virtualConstraintsCount;
-    console.log(`[XPDBTopology] Summary: atoms=${nAtoms} real=${realConstraintsCount} virtual=${virtualConstraintsCount} total=${totalConstraints}`);
+    console.log(`[XPDBTopology] Summary: atoms=${nAtoms} real=${realConstraintsCount} virtual=${virtualConstraintsCount} total=${totalConstraints} mergedSkipped=${mergedSkipped}`);
 
     return {
-        bondsAdj,
+        bondsAdj: bondsAdjMerged,
         stats: {
             atoms: nAtoms,
             realConstraints: realConstraintsCount,
             virtualConstraints: virtualConstraintsCount,
+            mergedSkipped,
             totalConstraints
         }
     };

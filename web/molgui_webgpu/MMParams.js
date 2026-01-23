@@ -382,6 +382,10 @@ export class MMParams {
             else if ((bt.order | 0) === (best.order | 0) && bt.l0 < best.l0) best = bt;
             else if ((best.order | 0) !== 1 && bt.l0 < best.l0) best = bt;
         }
+        if ((window.VERBOSITY_LEVEL | 0) >= 3) {
+            if (best) console.log(`[MMParams.getBondL0] z=(${z1},${z2}) -> l0=${best.l0} k=${best.k} order=${best.order} a=${best.a} b=${best.b}`);
+            else console.warn(`[MMParams.getBondL0][MISS] z=(${z1},${z2}) no entry`);
+        }
         return best ? best : null;
     }
 
@@ -414,10 +418,12 @@ export class MMParams {
             const matchB = (at.a2 === '*') || (at.a2 === nb);
             const matchC = (at.a3 === '*') || (at.a3 === nc);
             if (matchA && matchB && matchC) {
+                if ((window.VERBOSITY_LEVEL | 0) >= 3) console.log(`[MMParams.getAngleParams] (${na},${nb},${nc}) -> ang0=${at.ang0} k=${at.k}`);
                 return { ang0: at.ang0, k: at.k };
             }
         }
-        return null;
+        console.error(`[MMParams.getAngleParams][MISS] (${na},${nb},${nc}) no entry`);
+        throw new Error(`Missing angle params for (${na},${nb},${nc})`);
     }
 
     convertAngleToDistance(lab, lbc, angleDeg, kAng) {

@@ -36,6 +36,10 @@ export class MolGUIApp {
         // XPDB WebGPU simulation state
         this.xpdb = null;
         this.xpdbEnabled = false;
+        this.xpdbUseAngles = true;
+        this.xpdbPaused = true;
+        this.xpdbDisableBonds = false;
+        this.xpdbDisableCollisions = false;
         this.xpdbParams = {
             dt: 0.01,
             iterations: 4,
@@ -124,6 +128,22 @@ export class MolGUIApp {
         } else {
             this.renderer.setAnimationLoop(null);
         }
+    }
+
+    async ensureXPDBReady(needTopology = false) {
+        if ((this.system?.nAtoms | 0) <= 0) {
+            console.warn('[ensureXPDBReady] No atoms loaded');
+            return false;
+        }
+        if (!this.xpdb) {
+            await this.initXPDB();
+        }
+        if (!this.xpdb) return false;
+        if (needTopology || this.xpdbDirty) {
+            this.xpdbEnabled = true;
+            await this.updateXPDBTopology();
+        }
+        return true;
     }
 
     async init() {
@@ -476,12 +496,19 @@ export class MolGUIApp {
 
             // Build topology
             const { bondsAdj } = buildXPDBTopology(this.system, this.mmParams, {
-                includeAngleConstraints: true,
+                includeAngleConstraints: !!this.xpdbUseAngles,
                 maxBonds: 16
             });
 
+            if ((window.VERBOSITY_LEVEL | 0) >= 3) {
+                const counts = bondsAdj.map(bs => (bs ? bs.length : 0));
+                console.log('[MolGUIApp.updateXPDBTopology][DEBUG] xpdbUseAngles=', this.xpdbUseAngles);
+                console.log('[MolGUIApp.updateXPDBTopology][DEBUG] bondsAdj counts=', counts);
+                console.log('[MolGUIApp.updateXPDBTopology][DEBUG] bondsAdj=', bondsAdj);
+            }
+
             // Upload bonds
-            this.xpdb.uploadBonds(bondsAdj);
+            this.xpdb.uploadBonds(bondsAdj, 0.4, 200, 120, false);
 
             this.xpdbDirty = false;
             window.logger.info(`XPDB topology updated: ${nAtoms} atoms`);
@@ -492,7 +519,7 @@ export class MolGUIApp {
     }
 
     stepXPDB() {
-        if (!this.xpdb || !this.xpdbEnabled || this.xpdbDirty) return;
+        if (!this.xpdb || !this.xpdbEnabled || this.xpdbDirty || this.xpdbPaused) return;
 
         try {
             const maxRadius = getMaxRadius(this.system, this.mmParams, 1.0);
@@ -512,6 +539,167 @@ export class MolGUIApp {
         } catch (e) {
             window.logger.error(`XPDB step failed: ${e.message}`);
             console.error(e);
+        }
+    }
+
+    async dumpXPDBTopology() {
+        if (!this.system || !this.mmParams) {
+            console.warn('[dumpXPDBTopology] System or mmParams missing');
+            return;
+        }
+        const ready = await this.ensureXPDBReady(true);
+        if (!ready) return;
+        console.log('[dumpXPDBTopology] === XPDB Topology Dump ===');
+        console.log('[dumpXPDBTopology] nAtoms=', this.system.nAtoms);
+        console.log('[dumpXPDBTopology] xpdbUseAngles=', this.xpdbUseAngles);
+        try {
+            const { bondsAdj, stats } = buildXPDBTopology(this.system, this.mmParams, {
+                includeAngleConstraints: !!this.xpdbUseAngles,
+                maxBonds: 16
+            });
+            console.log('[dumpXPDBTopology] stats=', stats);
+            const counts = bondsAdj.map(bs => (bs ? bs.length : 0));
+            const maxDeg = Math.max(...counts);
+            const avgDeg = counts.reduce((a, b) => a + b, 0) / counts.length;
+            console.log('[dumpXPDBTopology] bondsAdj counts (avg/max)=', avgDeg.toFixed(2), maxDeg);
+            const lines = bondsAdj.map((bs, i) => {
+                const parts = bs.map(e => `${e[0]}:${(+e[1]).toFixed(4)}/${(+e[2]).toFixed(1)}`);
+                return `${i}: (${bs.length}) ${parts.join('  ')}`;
+            });
+            console.log('[dumpXPDBTopology] bondsAdj formatted:\n' + lines.join('\n'));
+        } catch (e) {
+            console.error('[dumpXPDBTopology] Failed to build topology:', e);
+        }
+    }
+
+    async xpdbStepOnce() {
+        const ready = await this.ensureXPDBReady(true);
+        if (!ready) return;
+        this.xpdbEnabled = true;
+        this.xpdbPaused = true;
+        this.xpdbDirty = false;
+        try {
+            const maxRadius = getMaxRadius(this.system, this.mmParams, 1.0);
+            const kColl = this.xpdbDisableCollisions ? 0.0 : this.xpdbParams.k_coll;
+            const bondScale = this.xpdbDisableBonds ? 0.0 : 1.0;
+            if (this.xpdb.setBondStiffnessScale) this.xpdb.setBondStiffnessScale(bondScale);
+            this.xpdb.step(
+                this.xpdbParams.dt,
+                this.xpdbParams.iterations,
+                kColl,
+                this.xpdbParams.omega,
+                this.xpdbParams.momentum_beta,
+                null, -1, maxRadius
+            );
+            if (this.xpdb.setBondStiffnessScale && this.xpdbDisableBonds) this.xpdb.setBondStiffnessScale(1.0);
+            this.syncXPDBPositions();
+            if (this.renderers?.molecule?.update) this.renderers.molecule.update();
+            this.requestRender();
+            this.logRealBondLengths('after step once');
+            window.logger.info('XPDB single step completed');
+        } catch (e) {
+            window.logger.error(`XPDB step failed: ${e.message}`);
+            console.error(e);
+        }
+    }
+
+    async xpdbRelaxSteps(n = 10) {
+        const ready = await this.ensureXPDBReady(true);
+        if (!ready) return;
+        this.xpdbEnabled = true;
+        this.xpdbPaused = true;
+        this.xpdbDirty = false;
+        try {
+            const maxRadius = getMaxRadius(this.system, this.mmParams, 1.0);
+            const kColl = this.xpdbDisableCollisions ? 0.0 : this.xpdbParams.k_coll;
+            const bondScale = this.xpdbDisableBonds ? 0.0 : 1.0;
+            if (this.xpdb.setBondStiffnessScale) this.xpdb.setBondStiffnessScale(bondScale);
+            for (let i = 0; i < n; i++) {
+                this.xpdb.step(
+                    this.xpdbParams.dt,
+                    this.xpdbParams.iterations,
+                    kColl,
+                    this.xpdbParams.omega,
+                    this.xpdbParams.momentum_beta,
+                    null, -1, maxRadius
+                );
+                this.syncXPDBPositions();
+            }
+            if (this.xpdb.setBondStiffnessScale && this.xpdbDisableBonds) this.xpdb.setBondStiffnessScale(1.0);
+            if (this.renderers?.molecule?.update) this.renderers.molecule.update();
+            this.requestRender();
+            this.logRealBondLengths(`after relax ${n} steps`);
+            window.logger.info(`XPDB relaxed ${n} steps`);
+        } catch (e) {
+            window.logger.error(`XPDB relax failed: ${e.message}`);
+            console.error(e);
+        }
+    }
+
+    setXPDBPaused(paused) {
+        this.xpdbPaused = !!paused;
+    }
+
+    setXPDBDisableBonds(disable) {
+        this.xpdbDisableBonds = !!disable;
+    }
+
+    setXPDBDisableCollisions(disable) {
+        this.xpdbDisableCollisions = !!disable;
+    }
+
+    logRealBondLengths(label = '') {
+        if (!this.system || !this.system.bonds || this.system.bonds.length === 0) {
+            console.warn('[logRealBondLengths] No bonds available');
+            return;
+        }
+        const bnds = this.system.bonds;
+        const atoms = this.system.atoms;
+        const lens = new Array(bnds.length);
+        let minL = 1e9, maxL = -1e9, sumL = 0;
+        for (let i = 0; i < bnds.length; i++) {
+            const b = bnds[i];
+            if (typeof b.ensureIndices === 'function') b.ensureIndices(this.system);
+            const ia = b.a ?? b.i;
+            const ib = b.b ?? b.j;
+            const A = atoms[ia];
+            const B = atoms[ib];
+            if (!A || !B) continue;
+            const dx = A.pos.x - B.pos.x;
+            const dy = A.pos.y - B.pos.y;
+            const dz = A.pos.z - B.pos.z;
+            const l = Math.sqrt(dx*dx + dy*dy + dz*dz);
+            lens[i] = l;
+            if (l < minL) minL = l;
+            if (l > maxL) maxL = l;
+            sumL += l;
+        }
+        const avgL = sumL / lens.length;
+        const sample = lens.slice(0, Math.min(10, lens.length)).map(v => v.toFixed(4));
+        console.log(`[logRealBondLengths] ${label} bonds=${lens.length} min=${minL.toFixed(4)} max=${maxL.toFixed(4)} avg=${avgL.toFixed(4)} sample=${sample.join(', ')}`);
+    }
+
+    async dumpXPDBBuffers() {
+        if (!this.system) {
+            console.warn('[dumpXPDBBuffers] System missing');
+            return;
+        }
+        const ready = await this.ensureXPDBReady(true);
+        if (!ready) return;
+        console.log('[dumpXPDBBuffers] === XPDB Buffer Dump ===');
+        console.log('[dumpXPDBBuffers] nAtoms=', this.system.nAtoms);
+        console.log('[dumpXPDBBuffers] xpdbParams=', this.xpdbParams);
+        try {
+            const posData = await this.xpdb.readPositions();
+            console.log('[dumpXPDBBuffers] pos0:');
+            for (let i = 0; i < this.system.nAtoms; i++) {
+                const x = posData[i * 3 + 0];
+                const y = posData[i * 3 + 1];
+                const z = posData[i * 3 + 2];
+                console.log(`${x.toFixed(6)} ${y.toFixed(6)} ${z.toFixed(6)}`);
+            }
+        } catch (e) {
+            console.error('[dumpXPDBBuffers] Failed to read positions:', e);
         }
     }
 
@@ -555,6 +743,12 @@ export class MolGUIApp {
         } else {
             window.logger.info("XPDB simulation disabled");
         }
+    }
+
+    setXPDBTopologyParams(params) {
+        if (!params) return;
+        if (params.useAngles !== undefined) this.xpdbUseAngles = !!params.useAngles;
+        this.xpdbDirty = true;
     }
 
     setXPDBParams(params) {
