@@ -89,7 +89,6 @@ class XPDB_new:
         Upload bond topology using fixed-size buffers.
         bonds_adj: list of lists, each element is [(neighbor_idx, length, stiffness), ...]
         """
-        # Initialize with -1
         bond_indices = np.full((self.num_atoms, self.n_max_bonded), -1, dtype=np.int32)
         bond_lengths = np.zeros((self.num_atoms, self.n_max_bonded), dtype=np.float32)
         bond_stiffness = np.zeros((self.num_atoms, self.n_max_bonded), dtype=np.float32)
@@ -100,6 +99,17 @@ class XPDB_new:
                 bond_lengths[i, k] = b[1]
                 bond_stiffness[i, k] = b[2]
 
+        cl.enqueue_copy(self.queue, self.cl_bond_indices_global, bond_indices)
+        cl.enqueue_copy(self.queue, self.cl_bond_lengths, bond_lengths)
+        cl.enqueue_copy(self.queue, self.cl_bond_stiffness, bond_stiffness)
+
+    def upload_bonds_fixed_from_arrays(self, bond_indices, bond_lengths, bond_stiffness):
+        """
+        Upload prebuilt bond index/length/stiffness arrays directly to global buffers.
+        bond_indices: (num_atoms, n_max_bonded) int array, -1 for unused
+        bond_lengths: (num_atoms, n_max_bonded) float array
+        bond_stiffness: (num_atoms, n_max_bonded) float array
+        """
         cl.enqueue_copy(self.queue, self.cl_bond_indices_global, bond_indices)
         cl.enqueue_copy(self.queue, self.cl_bond_lengths, bond_lengths)
         cl.enqueue_copy(self.queue, self.cl_bond_stiffness, bond_stiffness)
