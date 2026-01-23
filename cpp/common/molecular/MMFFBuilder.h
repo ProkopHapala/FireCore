@@ -2590,7 +2590,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         }
     }
     void printBonds()const{
-        printf(" # MM::Builder.printBonds(nb=%i) \n", bonds.size() );
+        // printf(" # MM::Builder.printBonds(nb=%i) \n", bonds.size() );
         for(int i=0; i<bonds.size(); i++){
             //printf("bond[%i]",i); bonds[i].print(); if(bPBC)printf(" pbc(%i,%i,%i)",bondPBC[i].x,bondPBC[i].y,bondPBC[i].z); puts("");
             printf("bond[%i]",i); bonds[i].print(); if(bPBC)printf(" pbc(%i,%i,%i)",bonds[i].ipbc.x,bonds[i].ipbc.y,bonds[i].ipbc.z); puts("");
