@@ -43,7 +43,7 @@ export class RawWebGPUAtomsRenderer {
         this.maxLabelChars = 0;
         this.nLabelChars = 0;
         this.labelsVisible = false;
-        this.debugShowLabelAtlas = true;
+        this.debugShowLabelAtlas = false; // TODO: re-enable for atlas debugging only when needed
 
         this.maxAtoms = 0;
         this.nAtoms = 0;
@@ -75,7 +75,7 @@ export class RawWebGPUAtomsRenderer {
         this.device.addEventListener('uncapturederror', (e) => {
             const msg = e && e.error ? (e.error.message || String(e.error)) : String(e);
             this.lastUncapturedError = msg;
-            console.error('[RawWebGPUAtomsRenderer] WebGPU uncapturederror', { msg, error: e && e.error ? e.error : e });
+            //console.error('[RawWebGPUAtomsRenderer] WebGPU uncapturederror', { msg, error: e && e.error ? e.error : e });
             // IMPORTANT: do NOT throw here; throwing hides follow-up diagnostics and may break the app event loop.
             // We want a loud console + continued execution to locate the triggering call.
         });
@@ -91,7 +91,7 @@ export class RawWebGPUAtomsRenderer {
         this._configureSwapChain(this.canvas.clientWidth || this.canvas.width || 1, this.canvas.clientHeight || this.canvas.height || 1);
         this.device.popErrorScope().then((err) => {
             if (err) console.error('[RawWebGPUAtomsRenderer] validation error during _configureSwapChain(init)', err);
-            else console.log('[RawWebGPUAtomsRenderer] _configureSwapChain(init) ok');
+            //else console.log('[RawWebGPUAtomsRenderer] _configureSwapChain(init) ok');
         });
 
         this.maxAtoms = maxAtoms | 0;
@@ -147,7 +147,7 @@ export class RawWebGPUAtomsRenderer {
         ctx.textAlign = 'center';
         const cw = canvas.width / cols;
         const ch = canvas.height / Math.ceil(96 / cols);
-        console.log('[RawWebGPUAtomsRenderer] font atlas layout', { size, cols, rows, canvasW: canvas.width, canvasH: canvas.height, cw, ch });
+        // console.log('[RawWebGPUAtomsRenderer] font atlas layout', { size, cols, rows, canvasW: canvas.width, canvasH: canvas.height, cw, ch }); // TODO: re-enable for debugging
         for (let i = 0; i < 96; i++) {
             const col = i % cols;
             const row = Math.floor(i / cols);
@@ -157,63 +157,64 @@ export class RawWebGPUAtomsRenderer {
         }
         // Pixel probes: sample background and a few known glyph centers.
         // NOTE: We intentionally do NOT sample at (0,0) only; that's often empty.
-        {
-            const bg = ctx.getImageData(0, 0, 1, 1).data;
-            console.log('[RawWebGPUAtomsRenderer] font atlas probe bg(0,0) rgba', Array.from(bg));
-
-            const probeChar = (chAscii) => {
-                const i = (chAscii - 32) | 0;
-                const col = i % cols;
-                const row = Math.floor(i / cols);
-                const px = Math.floor(col * cw + cw * 0.5);
-                const py = Math.floor(row * ch + ch * 0.5);
-                const rgba = ctx.getImageData(px, py, 1, 1).data;
-                console.log('[RawWebGPUAtomsRenderer] font atlas probe glyph center', { ch: String.fromCharCode(chAscii), chAscii, i, col, row, px, py, rgba: Array.from(rgba) });
-            };
-            probeChar(48);  // '0'
-            probeChar(49);  // '1'
-            probeChar(65);  // 'A'
-            probeChar(88);  // 'X'
-        }
+        // {
+        //     const bg = ctx.getImageData(0, 0, 1, 1).data;
+        //     console.log('[RawWebGPUAtomsRenderer] font atlas probe bg(0,0) rgba', Array.from(bg));
+        //
+        //     const probeChar = (chAscii) => {
+        //         const i = (chAscii - 32) | 0;
+        //         const col = i % cols;
+        //         const row = Math.floor(i / cols);
+        //         const px = Math.floor(col * cw + cw * 0.5);
+        //         const py = Math.floor(row * ch + ch * 0.5);
+        //         const rgba = ctx.getImageData(px, py, 1, 1).data;
+        //         console.log('[RawWebGPUAtomsRenderer] font atlas probe glyph center', { ch: String.fromCharCode(chAscii), chAscii, i, col, row, px, py, rgba: Array.from(rgba) });
+        //     };
+        //     probeChar(48);  // '0'
+        //     probeChar(49);  // '1'
+        //     probeChar(65);  // 'A'
+        //     probeChar(88);  // 'X'
+        // }
         const bmp = await createImageBitmap(canvas);
-        console.log('[RawWebGPUAtomsRenderer] font atlas bitmap created', { width: bmp.width, height: bmp.height });
-        try {
-            if (!this._fontAtlasDebugImg) {
-                const img = document.createElement('img');
-                img.style.position = 'fixed';
-                img.style.bottom = '8px';
-                img.style.left = '8px';
-                img.style.width = '128px';
-                img.style.border = '1px solid red';
-                img.style.zIndex = '9999';
-                img.style.pointerEvents = 'none';
-                img.alt = 'FontAtlasDebug';
-                document.body.appendChild(img);
-                this._fontAtlasDebugImg = img;
-            }
-            if (this._fontAtlasDebugImg) this._fontAtlasDebugImg.src = canvas.toDataURL();
-        } catch (e) {
-            console.warn('[RawWebGPUAtomsRenderer] font atlas debug image failed', e);
-        }
+        // console.log('[RawWebGPUAtomsRenderer] font atlas bitmap created', { width: bmp.width, height: bmp.height }); // TODO: re-enable for debugging
+        // try {
+        //     if (!this._fontAtlasDebugImg) {
+        //         const img = document.createElement('img');
+        //         img.style.position = 'fixed';
+        //         img.style.bottom = '8px';
+        //         img.style.left = '8px';
+        //         img.style.width = '128px';
+        //         img.style.border = '1px solid red';
+        //         img.style.zIndex = '9999';
+        //         img.style.pointerEvents = 'none';
+        //         img.alt = 'FontAtlasDebug';
+        //         document.body.appendChild(img);
+        //         this._fontAtlasDebugImg = img;
+        //     }
+        //     if (this._fontAtlasDebugImg) this._fontAtlasDebugImg.src = canvas.toDataURL();
+        // } catch (e) {
+        //     console.warn('[RawWebGPUAtomsRenderer] font atlas debug image failed', e);
+        // }
+        // TODO: re-enable atlas debug overlay only when debugging glyph issues
         this.fontTex = this.device.createTexture({
             size: [bmp.width, bmp.height],
             format: 'rgba8unorm',
             usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT
         });
         this.device.queue.copyExternalImageToTexture({ source: bmp }, { texture: this.fontTex }, [bmp.width, bmp.height]);
-        console.log('[RawWebGPUAtomsRenderer] font atlas copied to GPU texture');
+        // console.log('[RawWebGPUAtomsRenderer] font atlas copied to GPU texture'); // TODO: re-enable for debugging
         this.fontView = this.fontTex.createView();
         this.fontSampler = this.device.createSampler({ magFilter: 'linear', minFilter: 'linear' });
-        console.debug('[RawWebGPUAtomsRenderer] font atlas ready', { width: bmp.width, height: bmp.height });
+        // console.debug('[RawWebGPUAtomsRenderer] font atlas ready', { width: bmp.width, height: bmp.height }); // TODO: re-enable for debugging
         this._refreshLabelBindGroup('fontAtlasReady');
-        const gpuProbePoints = [
-            { label: 'bg00', x: 0, y: 0 },
-            { label: 'glyph_0_center', x: Math.floor(0 * cw + cw * 0.5), y: Math.floor(1 * ch + ch * 0.5) },
-            { label: 'glyph_1_center', x: Math.floor(1 * cw + cw * 0.5), y: Math.floor(1 * ch + ch * 0.5) },
-            { label: 'glyph_A_center', x: Math.floor((65 - 32) % cols * cw + cw * 0.5), y: Math.floor(Math.floor((65 - 32) / cols) * ch + ch * 0.5) },
-            { label: 'glyph_X_center', x: Math.floor((88 - 32) % cols * cw + cw * 0.5), y: Math.floor(Math.floor((88 - 32) / cols) * ch + ch * 0.5) },
-        ];
-        await this._probeFontAtlasGPU(gpuProbePoints);
+        // const gpuProbePoints = [
+        //     { label: 'bg00', x: 0, y: 0 },
+        //     { label: 'glyph_0_center', x: Math.floor(0 * cw + cw * 0.5), y: Math.floor(1 * ch + ch * 0.5) },
+        //     { label: 'glyph_1_center', x: Math.floor(1 * cw + cw * 0.5), y: Math.floor(1 * ch + ch * 0.5) },
+        //     { label: 'glyph_A_center', x: Math.floor((65 - 32) % cols * cw + cw * 0.5), y: Math.floor(Math.floor((65 - 32) / cols) * ch + ch * 0.5) },
+        //     { label: 'glyph_X_center', x: Math.floor((88 - 32) % cols * cw + cw * 0.5), y: Math.floor(Math.floor((88 - 32) / cols) * ch + ch * 0.5) },
+        // ];
+        // await this._probeFontAtlasGPU(gpuProbePoints); // TODO: re-enable for debugging
     }
 
     async _probeFontAtlasGPU(points) {
@@ -249,7 +250,7 @@ export class RawWebGPUAtomsRenderer {
                 };
             });
             probeBuf.unmap();
-            console.log('[RawWebGPUAtomsRenderer] font atlas GPU probes', results);
+            //console.log('[RawWebGPUAtomsRenderer] font atlas GPU probes', results);
         } catch (err) {
             console.warn('[RawWebGPUAtomsRenderer] font atlas GPU probe failed', err);
         }
@@ -293,7 +294,7 @@ fn fs() -> @location(0) vec4<f32> {
                 primitive: { topology: 'triangle-strip', cullMode: 'none' },
                 depthStencil: { format: 'depth24plus', depthWriteEnabled: true, depthCompare: 'always' },
             });
-            console.log('[RawWebGPUAtomsRenderer] pipelineClear created', { ok: !!this.pipelineClear });
+            //console.log('[RawWebGPUAtomsRenderer] pipelineClear created', { ok: !!this.pipelineClear });
         }
 
         const commonWGSL = `
@@ -624,8 +625,8 @@ fn fs(in:VSOut) -> @location(0) vec4<f32> {
         const needsConfig = (W !== this.size.w) || (H !== this.size.h) || !this.depthView;
         if (!needsConfig) return;
 
-        console.log('[RawWebGPUAtomsRenderer] configure swapchain !!!!', widthPixels, heightPixels);
-        console.log('[RawWebGPUAtomsRenderer] --- configure swapchain !!!!', widthPixels, heightPixels);
+        //console.log('[RawWebGPUAtomsRenderer] configure swapchain !!!!', widthPixels, heightPixels);
+        //console.log('[RawWebGPUAtomsRenderer] --- configure swapchain !!!!', widthPixels, heightPixels);
 
         this.size.w = W;
         this.size.h = H;
@@ -645,13 +646,13 @@ fn fs(in:VSOut) -> @location(0) vec4<f32> {
             // a swapchain texture without COPY_DST but Dawn then tries to clear via a copy path and throws.
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST
         };
-        console.debug('[RawWebGPUAtomsRenderer] configure swapchain', cfg, 'size', W, H);
-        console.log('[RawWebGPUAtomsRenderer] _configureSwapChain stage=configure begin');
+        //console.debug('[RawWebGPUAtomsRenderer] configure swapchain', cfg, 'size', W, H);
+        //console.log('[RawWebGPUAtomsRenderer] _configureSwapChain stage=configure begin');
         this.context.configure(cfg);
-        console.log('[RawWebGPUAtomsRenderer] _configureSwapChain stage=configure end');
+        //console.log('[RawWebGPUAtomsRenderer] _configureSwapChain stage=configure end');
 
         // NOTE: Do NOT call getCurrentTexture() here; it must be called exactly once per frame (inside render()).
-        console.log('[RawWebGPUAtomsRenderer] _configureSwapChain stage=getCurrentTexture skipped (handled in render)');
+        //console.log('[RawWebGPUAtomsRenderer] _configureSwapChain stage=getCurrentTexture skipped (handled in render)');
 
         if (this.depthTex) {
             // Commented-out old pointer-only reassignment (kept for reference)
@@ -727,8 +728,10 @@ fn fs(in:VSOut) -> @location(0) vec4<f32> {
     }
 
     setLabelsVisible(visible) {
-        console.debug('[RawWebGPUAtomsRenderer] setLabelsVisible', { visible, previous: this.labelsVisible });
+        if (visible === this.labelsVisible) return;
+        const previous = this.labelsVisible;
         this.labelsVisible = visible;
+        console.debug('[RawWebGPUAtomsRenderer] setLabelsVisible', { visible, previous });
     }
 
     setBondsVisible(f) { this.bondsVisible = !!f; }
@@ -752,15 +755,28 @@ fn fs(in:VSOut) -> @location(0) vec4<f32> {
     setDebugForceSolidLabels(flag) {
         const prev = this.debugForceSolidLabels;
         this.debugForceSolidLabels = !!flag;
-        console.log('[RawWebGPUAtomsRenderer] setDebugForceSolidLabels', { prev, next: this.debugForceSolidLabels });
+        //console.log('[RawWebGPUAtomsRenderer] setDebugForceSolidLabels', { prev, next: this.debugForceSolidLabels });
         this._uploadLabelUBO();
     }
     setDebugLabelMode(mode) {
         const next = mode | 0;
         const prev = this.debugLabelMode | 0;
         this.debugLabelMode = next;
-        console.log('[RawWebGPUAtomsRenderer] setDebugLabelMode', { prev, next });
+        //console.log('[RawWebGPUAtomsRenderer] setDebugLabelMode', { prev, next });
         console.trace('[RawWebGPUAtomsRenderer] debugLabelMode stack');
+        this._uploadLabelUBO();
+    }
+
+    setLabelStyle(color, size) {
+        if (color && typeof color === 'string') {
+            const r = parseInt(color.slice(1, 3), 16) / 255;
+            const g = parseInt(color.slice(3, 5), 16) / 255;
+            const b = parseInt(color.slice(5, 7), 16) / 255;
+            this.labelColor = [r, g, b];
+        }
+        if (typeof size === 'number' && size > 0) {
+            this.labelScale = size;
+        }
         this._uploadLabelUBO();
     }
 
@@ -797,24 +813,24 @@ fn fs(in:VSOut) -> @location(0) vec4<f32> {
             { binding: 5, resource: this.fontView },
             { binding: 6, resource: this.fontSampler },
         ]});
-        console.log('[RawWebGPUAtomsRenderer] label bind group refreshed', { reason, bindGroupLabels: !!this.bindGroupLabels });
+        // console.log('[RawWebGPUAtomsRenderer] label bind group refreshed', { reason, bindGroupLabels: !!this.bindGroupLabels }); // DEBUG
     }
 
     updateLabels(strings, nAtoms) {
-        console.log('[RawWebGPUAtomsRenderer] updateLabels begin', {
-            labelsVisible: this.labelsVisible,
-            nAtoms,
-            stringsType: Array.isArray(strings) ? 'array' : (strings === null ? 'null' : typeof strings),
-            s0: (strings && strings[0]) ? strings[0] : null,
-            s1: (strings && strings[1]) ? strings[1] : null,
-            s2: (strings && strings[2]) ? strings[2] : null,
-            s3: (strings && strings[3]) ? strings[3] : null,
-        });
+        // console.log('[RawWebGPUAtomsRenderer] updateLabels begin', {
+            // labelsVisible: this.labelsVisible,
+            // nAtoms,
+            // stringsType: Array.isArray(strings) ? 'array' : (strings === null ? 'null' : typeof strings),
+            // s0: (strings && strings[0]) ? strings[0] : null,
+            // s1: (strings && strings[1]) ? strings[1] : null,
+            // s2: (strings && strings[2]) ? strings[2] : null,
+            // s3: (strings && strings[3]) ? strings[3] : null,
+        // });
         if (!strings || nAtoms <= 0) {
             this.nLabelChars = 0;
             return;
         }
-        if (!this.labelsVisible) { console.debug('[RawWebGPUAtomsRenderer] updateLabels skipped: labelsVisible=false'); return; }
+        //if (!this.labelsVisible) { console.debug('[RawWebGPUAtomsRenderer] updateLabels skipped: labelsVisible=false'); return; }
         const maxChars = 8;
         const advance = 1.1; // in view-space units; multiplied by labelScale in shader
         let ptr = 0;
@@ -845,28 +861,32 @@ fn fs(in:VSOut) -> @location(0) vec4<f32> {
             }
         }
         this.nLabelChars = ptr;
-        console.log('[RawWebGPUAtomsRenderer] updateLabels built', { nAtoms, maxTotal, nLabelChars: this.nLabelChars });
-        {
-            const nDump = Math.min(this.nLabelChars, 16);
-            const dump = [];
-            for (let i = 0; i < nDump; i++) {
-                const b = i * 4;
-                dump.push({ i, atom: u32[b], code: u32[b + 1], offx: f32[b + 2], offy: f32[b + 3] });
-            }
-            console.log('[RawWebGPUAtomsRenderer] labelChars dump (first)', dump);
-            try { console.table ? console.table(dump) : null; } catch (_) {}
-            for (const entry of dump) {
-                const ascii = (entry.code >= 0 && entry.code <= 95) ? String.fromCharCode(entry.code + 32) : '?';
-                const offx = Number.isFinite(entry.offx) ? entry.offx.toFixed(3) : entry.offx;
-                const offy = Number.isFinite(entry.offy) ? entry.offy.toFixed(3) : entry.offy;
-                console.log(`[RawWebGPUAtomsRenderer] labelChar[${entry.i}] atom=${entry.atom} code=${entry.code} (\"${ascii}\") offx=${offx} offy=${offy}`);
-            }
-        }
+        // console.log('[RawWebGPUAtomsRenderer] updateLabels built', { nAtoms, maxTotal, nLabelChars: this.nLabelChars }); // DEBUG
+        // {
+        //     const nDump = Math.min(this.nLabelChars, 16);
+        //     const dump = [];
+        //     for (let i = 0; i < nDump; i++) {
+        //         const b = i * 4;
+        //         dump.push({ i, atom: u32[b], code: u32[b + 1], offx: f32[b + 2], offy: f32[b + 3] });
+        //     }
+        //     console.log('[RawWebGPUAtomsRenderer] labelChars dump (first)', dump);
+        //     try { console.table ? console.table(dump) : null; } catch (_) {}
+        //     for (const entry of dump) {
+        //         const ascii = (entry.code >= 0 && entry.code <= 95) ? String.fromCharCode(entry.code + 32) : '?';
+        //         const offx = Number.isFinite(entry.offx) ? entry.offx.toFixed(3) : entry.offx;
+        //         const offy = Number.isFinite(entry.offy) ? entry.offy.toFixed(3) : entry.offy;
+        //         console.log(`[RawWebGPUAtomsRenderer] labelChar[${entry.i}] atom=${entry.atom} code=${entry.code} ("${ascii}") offx=${offx} offy=${offy}`);
+        //     }
+        // }
+        // if (this.nLabelChars > 0) {
+        //     this.device.queue.writeBuffer(this.labelCharBuf, 0, buf);
+        //     console.debug('[RawWebGPUAtomsRenderer] uploaded label chars', { nLabelChars: this.nLabelChars }); // DEBUG
+        // } else {
+        //     console.debug('[RawWebGPUAtomsRenderer] no label chars to upload'); // DEBUG
+        // }
         if (this.nLabelChars > 0) {
             this.device.queue.writeBuffer(this.labelCharBuf, 0, buf);
-            console.debug('[RawWebGPUAtomsRenderer] uploaded label chars', { nLabelChars: this.nLabelChars });
         } else {
-            console.debug('[RawWebGPUAtomsRenderer] no label chars to upload');
         }
     }
 
@@ -881,14 +901,14 @@ fn fs(in:VSOut) -> @location(0) vec4<f32> {
 
         // Put a validation scope around the whole render so we can see which call trips.
         dev.pushErrorScope('validation');
-        console.log('[RawWebGPUAtomsRenderer] render stage=getCurrentTexture begin');
+        // console.log('[RawWebGPUAtomsRenderer] render stage=getCurrentTexture begin'); // DEBUG
         const ct = this.context.getCurrentTexture();
-        console.log('[RawWebGPUAtomsRenderer] render getCurrentTexture', { usage: ct.usage, size: this.size, nAtoms: this.nAtoms, nBonds: this.nBonds, nLabelChars: this.nLabelChars });
-        console.log('[RawWebGPUAtomsRenderer] render stage=createView begin');
+        // console.log('[RawWebGPUAtomsRenderer] render getCurrentTexture', { usage: ct.usage, size: this.size, nAtoms: this.nAtoms, nBonds: this.nBonds, nLabelChars: this.nLabelChars }); // DEBUG
+        // console.log('[RawWebGPUAtomsRenderer] render stage=createView begin'); // DEBUG
         const texView = ct.createView();
-        console.log('[RawWebGPUAtomsRenderer] render stage=createView end');
+        // console.log('[RawWebGPUAtomsRenderer] render stage=createView end'); // DEBUG
 
-        console.log('[RawWebGPUAtomsRenderer] render stage=beginRenderPass begin');
+        // console.log('[RawWebGPUAtomsRenderer] render stage=beginRenderPass begin'); // DEBUG
         const encoder = dev.createCommandEncoder();
         const pass = encoder.beginRenderPass({
             colorAttachments: [{
@@ -902,7 +922,7 @@ fn fs(in:VSOut) -> @location(0) vec4<f32> {
                 depthStoreOp: 'store'
             }
         });
-        console.log('[RawWebGPUAtomsRenderer] render stage=beginRenderPass end');
+        // console.log('[RawWebGPUAtomsRenderer] render stage=beginRenderPass end'); // DEBUG
 
         // 0) Clear color+depth explicitly (avoids Dawn internal clear path requiring COPY_DST)
         if (!this.pipelineClear) throw new Error('pipelineClear is missing');
@@ -932,7 +952,7 @@ fn fs(in:VSOut) -> @location(0) vec4<f32> {
 
         // 4) Labels (on top)
         if (this.labelsVisible && this.pipelineLabels && this.bindGroupLabels && this.nLabelChars > 0) {
-            console.debug('[RawWebGPUAtomsRenderer] draw labels', { nLabelChars: this.nLabelChars, labelsVisible: this.labelsVisible });
+            // console.debug('[RawWebGPUAtomsRenderer] draw labels', { nLabelChars: this.nLabelChars, labelsVisible: this.labelsVisible });
             if (this._debugLogLabelBindGroupOnce !== false) {
                 this._debugLogLabelBindGroupOnce = false;
                 console.log('[RawWebGPUAtomsRenderer] label bind group snapshot', {
@@ -962,9 +982,9 @@ fn fs(in:VSOut) -> @location(0) vec4<f32> {
 
         pass.end();
 
-        console.log('[RawWebGPUAtomsRenderer] render stage=submit begin');
+        // console.log('[RawWebGPUAtomsRenderer] render stage=submit begin'); // DEBUG
         dev.queue.submit([encoder.finish()]);
-        console.log('[RawWebGPUAtomsRenderer] render stage=submit end');
+        // console.log('[RawWebGPUAtomsRenderer] render stage=submit end'); // DEBUG
 
         dev.popErrorScope().then((err) => {
             if (err) {

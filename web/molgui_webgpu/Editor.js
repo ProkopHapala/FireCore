@@ -161,6 +161,7 @@ export class Editor {
         this.initialAtomStates = null;
         this.molRenderer.update(); // Double update to ensure buffers are swapped/cleared if needed
         this.updateGizmo();
+        if (window.app && window.app.markRawTopologyDirty) window.app.markRawTopologyDirty('editorDeleteSelection');
         if (this.onSelectionChange) this.onSelectionChange();
         if (window.app && window.app.requestRender) window.app.requestRender();
     }
@@ -192,6 +193,7 @@ export class Editor {
             this.system.recalculateBonds(mm, { stats });
         }
         this.molRenderer.update();
+        if (window.app && window.app.markRawTopologyDirty) window.app.markRawTopologyDirty('editorRecalculateBonds');
         const nBuckets = (bg && bg.buckets) ? bg.buckets.length : 0;
         window.logger.info(`Bonds Recalculated mode=${stats.mode} time=${(stats.timeMs || 0).toFixed(2)}ms nAtoms=${this.system.nAtoms} nBuckets=${nBuckets} pairs=${stats.nAtomPairs} cut2=${stats.nBondCut2} dist2=${stats.nDist2} bonds=${stats.nBondsAdded} bucketPairs=${stats.nBucketPairs} aabbTests=${stats.nAABBTests}`);
         if (window.app) window.app.lastBondStats = stats;
@@ -231,6 +233,7 @@ export class Editor {
         this.system.select(id, 'replace');
         this.updateGizmo();
         this.molRenderer.update();
+        if (window.app && window.app.markRawTopologyDirty) window.app.markRawTopologyDirty('editorAddAtom');
 
         if (window.app && window.app.requestRender) window.app.requestRender();
 
@@ -305,6 +308,7 @@ export class Editor {
         }
 
         this.molRenderer.update();
+        if (window.app && window.app.markRawGeometryDirty) window.app.markRawGeometryDirty('editorGizmoDrag');
     }
 
     onMouseDown(e) {

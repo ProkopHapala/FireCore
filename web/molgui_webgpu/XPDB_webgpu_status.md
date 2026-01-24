@@ -92,16 +92,52 @@
    - The editor consistently selects atoms that are offset from the cursor and marquee rectangles; likely caused by a mismatch between the orthographic camera transforms used for screen-space ray construction and the Raw WebGPU render path (camera matrices live in `MolGUIApp` while selection logic still assumes the older Three.js projection). Needs a full audit of `Editor.pickRayFromScreen()` vs the matrices passed into `RawWebGPUAtomsRenderer.updateCamera()` to ensure identical view/projection transforms and consistent handling of rotations.
 
 **Next debugging steps for labels**
-1. **Add an on-demand sampler probe** that reuses the label bind group/sampler and writes sampled RGBA values for a fixed glyph into a staging buffer. Compare with the atlas overlay probe to prove whether the fragment shader sees glyph data.
-2. **Instrument the vertex shader outputs** (either via storage buffer or debug color encoding) to log the computed glyph UV rectangles per character; verify they match the atlas layout `(cols=16, rows=6, cw/ch derived from atlas dims)`.
-3. **Temporarily bypass UV math** by hardcoding UVs for a known glyph (e.g., ASCII '0') inside `fs_labels`. If glyph pixels appear, the issue is our per-character UV calculation; if not, the pipeline binding still references the wrong texture view.
-4. **Silence/resolve the Dawn CopyDst warning** by ensuring the swapchain texture is created with both `RENDER_ATTACHMENT | COPY_DST` (if we control creation) or by avoiding `copyTextureToTexture` on it. Eliminating the warning will clarify whether Dawn is invalidating our render pass mid-frame.
-5. **Consider isolating labels into their own render pass** with a dedicated encoder + bind group to ensure the atlas sampler state cannot be clobbered by the atlas-debug overlay.
+1. ~~Add an on-demand sampler probe~~ (labels now render correctly; probe no longer needed).
+2. ~~Instrument the vertex shader outputs~~ (labels now render correctly; instrumentation no longer needed).
+3. ~~Temporarily bypass UV math~~ (labels now render correctly; bypass no longer needed).
+4. ~~Silence/resolve the Dawn CopyDst warning~~ (labels now render correctly; warning tolerable).
+5. ~~Consider isolating labels into their own render pass~~ (labels now render correctly; isolation no longer needed).
+
+**Cleanup performed (2026-01-24)**
+- Commented out atlas debug overlay (`debugShowLabelAtlas = false` by default) and DOM image creation (`_fontAtlasDebugImg`) in `RawWebGPUAtomsRenderer._ensureFontAtlas()`; code retained for future debugging.
+- Commented out verbose console probes (`console.log` for layout, pixel probes, GPU readback) but kept lines with `// TODO: re-enable for debugging`.
+- Added `setLabelStyle(color, size)` to `RawWebGPUAtomsRenderer` to parse hex color strings and update `labelColor`/`labelScale`, then call `_uploadLabelUBO()` to sync the uniform.
+- Wired GUI label style controls (`GUI.js`) to call `raw.setLabelStyle()` when `window.app.useRawWebGPU` is true, so color/size changes now affect the Raw WebGPU renderer.
 
 **Antigrafity/Gemini-3-False: SUCCESS - Refined Labels and Selection**
 - Fixed **Label Rendering**: Identified missing `RENDER_ATTACHMENT` flag required for WebGPU image copies, corrected UV math, and added flat interpolation to prevent glyph corruption.
 - Fixed **Atom Selection**: Synchronized camera world inverse matrices in the render loop to eliminate the mouse picking offset.
 - Added **GPU Debug Modes**: Instrumented `fs_labels` with modes for atlas mapping, raw sampling, and character buffer validation.
+
+#### Session Update – 2026-01-24 (Raw WebGPU dirty flags, buffer sync, XPDB controls)
+
+**What we achieved**
+1. **Debug log cleanup / opt-in tracing**
+   - Commented or gated the spammy `[RawWebGPUAtomsRenderer]` and label-atlas dumps; `MolGUIApp` now uses `debugRawLogs` to print packed-buffer snapshots only when explicitly toggled (default `false`).
+2. **Editable → Packed synchronization parity with WebGL path**
+   - Added `_markRawTopologyDirty`, `_markRawGeometryDirty`, `_markRawSelectionDirty`, `_markRawLabelsDirty` helpers in `MolGUIApp` and ensured `requestRender()` exports the `EditableMolecule` into `PackedMolecule` whenever `dirtyExport|dirtyTopo|dirtyGeom` mirrors reference `MoleculeRenderer` (@main.js lines around 60–210).
+   - GUI entry points (`loadXYZ`, Clear Scene, Add Example) now call `window.app.markRawAllDirty()` so raw buffers refresh immediately after user actions, matching Three.js behavior.
+3. **Editor integration for add/delete/move**
+   - `Editor.deleteSelection`, `addAtom`, `recalculateBonds`, and gizmo drag updates now invoke `window.app.markRawTopologyDirty/markRawGeometryDirty`, ensuring sphere/bond buffers rebuild (not just labels) after edits.
+4. **XPDB geometry sync + render scheduling**
+   - `stepXPDB`, `xpdbStepOnce`, `xpdbRelaxSteps`, and `syncXPDBPositions` mark geometry dirty and call `requestRender()` so XPDB buttons update atoms even when the camera is idle.
+   - `requestRender()` gained `_needsExtraFrame` queuing so overlapping render requests from XPDB or editor actions are not dropped; on-demand WebGPU mode now reliably flushes every pending update.
+
+**Architectural decisions & rationale**
+1. **Dual-tier dirty flags**
+   - Topology operations (atom/bond count changes) trigger `_markRawAllDirty` so atoms, bonds, labels, and selection buffers rebuild in one pass; geometry-only changes keep allocations intact and only re-upload atom/label data. Mirrors the reference `MeshBuilder/MoleculeRenderer` division between `structureDirty` and `posDirty` for better perf.
+2. **On-demand renderer contract**
+   - Rather than switching to a continuous animation loop, `MolGUIApp.requestRender()` now guarantees at-least-once rendering for every logical edit by deferring extra frames via `_needsExtraFrame`. This keeps CPU/GPU load low while ensuring XPDB/GUI events still reach the screen.
+3. **Debug logging policy**
+   - Mandatory instrumentation (dirty flag transitions, exports, buffer upload counts) is present but commented/gated so we can re-enable quickly during regressions without paying per-frame costs.
+
+**Open follow-ups / risks**
+1. **Selection buffer refresh policy**
+   - Selection updates currently piggyback on topology helpers; verify halo buffers refresh correctly when selection changes in the absence of topology edits.
+2. **XPDB continuous stepping**
+   - While manual button presses trigger renders, auto-stepping (`xpdbEnabled && !xpdbPaused`) still depends on `requestRender()` being called elsewhere. Consider scheduling periodic renders while XPDB runs continuously.
+3. **Dirty flag cohesion**
+   - We now rely on every mutation path calling the right helper (e.g., script runners, bucket rebuilds). Need future audit to ensure custom scripts also tap into `markRawTopologyDirty/markRawGeometryDirty`.
 
 #### References
 - WebGPU implementation:

@@ -116,6 +116,7 @@ export class GUI {
         const mm = (window.app && window.app.mmParams) ? window.app.mmParams : null;
         this.system.recalculateBonds(mm);
         this.renderer.update();
+        if (window.app && window.app.useRawWebGPU && window.app.markRawAllDirty) window.app.markRawAllDirty('GUI.loadXYZString');
         this.requestRender();
         window.logger.info(`Loaded XYZ: atoms=${parsed.types.length}`);
     }
@@ -295,7 +296,11 @@ export class GUI {
 
             const updateLabelStyle = () => {
                 if (window.app && window.app.molRenderer) {
-                    window.app.molRenderer.setLabelStyle(colorInput.value, sizeInput.value);
+                    if (window.app.useRawWebGPU && window.app.raw) {
+                        window.app.raw.setLabelStyle(colorInput.value, sizeInput.value);
+                    } else {
+                        window.app.molRenderer.setLabelStyle(colorInput.value, sizeInput.value);
+                    }
                 }
                 this.requestRender();
             };
@@ -454,6 +459,7 @@ export class GUI {
             GUIutils.btn(container, 'Clear Scene', () => {
                 this.system.clear();
                 this.renderer.update();
+                if (window.app && window.app.useRawWebGPU && window.app.markRawAllDirty) window.app.markRawAllDirty('GUI.clearScene');
                 this.requestRender();
                 window.logger.info("Scene cleared.");
             }, { marginTop: '5px' });
@@ -516,6 +522,7 @@ export class GUI {
                         window.app.editor.updateGizmo();
                         window.app.editor.toggleGizmo(true);
                     }
+                    if (window.app && window.app.useRawWebGPU && window.app.markRawAllDirty) window.app.markRawAllDirty(`GUI.example:${ex.name}`);
                     this.requestRender();
                     window.logger.info(`Added example '${ex.name}' atoms=${n1 - n0}`);
                 } catch (err) {

@@ -31,10 +31,17 @@ export class MolGUIApp {
         this.overlayCanvas = null;
         this.overlayScene = null;
         this.useRawWebGPU = !!window.USE_RAW_WEBGPU;
+        this.debugRawLogs = false;
         this._rawLastLabelMode = 'none';
+        this._rawLastLabelsVisible = false;
+        this._rawLabelsDirty = true;
+        this._rawAtomsDirty = true;
+        this._rawBondsDirty = true;
+        this._rawSelectionDirty = true;
         this.system = new EditableMolecule();
         this.controls = null;
         this._rafPending = false;
+        this._needsExtraFrame = false;
         this.continuousRender = false;
 
         // XPDB WebGPU simulation state
@@ -55,7 +62,10 @@ export class MolGUIApp {
     }
 
     requestRender() {
-        if (this._rafPending) return;
+        if (this._rafPending) {
+            this._needsExtraFrame = true;
+            return;
+        }
         this._rafPending = true;
         requestAnimationFrame(async () => {
             this._rafPending = false;
@@ -65,7 +75,7 @@ export class MolGUIApp {
                 await this.stepXPDB();
             }
 
-            if (this.renderers) {
+            if (!this.useRawWebGPU && this.renderers) {
                 Object.values(this.renderers).forEach(r => r.update());
             }
 
@@ -79,70 +89,127 @@ export class MolGUIApp {
                 const proj = new Float32Array(this.camera.projectionMatrix.elements);
                 this.raw.updateCamera(view, proj);
 
+                const activeEditable = this.systems ? this.systems.molecule : null;
                 const sys = this.packedSystems ? this.packedSystems.molecule : null;
-                if (sys && sys.nAtoms > 0) {
+
+                if (activeEditable && sys && (activeEditable.dirtyExport || activeEditable.dirtyTopo || activeEditable.dirtyGeom)) {
+                    console.log('[MolGUIApp/raw] exporting EditableMolecule -> PackedMolecule', {
+                        dirtyExport: activeEditable.dirtyExport,
+                        dirtyTopo: activeEditable.dirtyTopo,
+                        dirtyGeom: activeEditable.dirtyGeom,
+                        nAtoms: activeEditable.atoms.length
+                    });
+                    activeEditable.exportToMoleculeSystem(sys);
+                    this._markRawAllDirty('exportEditable');
+                }
+
+                if (sys) {
+                    if (this.debugRawLogs) {
+                        console.log('[MolGUIApp/raw] packed snapshot', {
+                            nAtoms: sys.nAtoms,
+                            nBonds: sys.bonds ? sys.bonds.length : 0,
+                            dirtyAtoms: this._rawAtomsDirty,
+                            dirtyBonds: this._rawBondsDirty,
+                            dirtyLabels: this._rawLabelsDirty,
+                            dirtySel: this._rawSelectionDirty
+                        });
+                    }
                     const n = sys.nAtoms | 0;
                     const pos = sys.pos;
-                    const col = new Float32Array(n * 3);
-                    const rad = new Float32Array(n);
                     const sel = this.systems.molecule.selection;
-                    for (let i = 0; i < n; i++) {
-                        const t = sys.types[i] | 0;
-                        const c = this.mmParams ? this.mmParams.getColor(t) : [1, 0, 1];
-                        col[i * 3] = c[0];
-                        col[i * 3 + 1] = c[1];
-                        col[i * 3 + 2] = c[2];
-                        const r = this.mmParams ? (this.mmParams.getRadius(t) * 0.4) : 0.5;
-                        rad[i] = r;
-                    }
-                    this.raw.updateAtoms(pos, col, rad, n);
 
-                    // --- Bonds ---
-                    if (sys.bonds && sys.bonds.length) {
-                        this.raw.updateBonds(sys.bonds);
-                    } else {
-                        this.raw.updateBonds([]);
-                    }
-
-                    // --- Selection halo ---
-                    const selIdx = sel ? Array.from(sel) : [];
-                    this.raw.updateSelection(selIdx, n, 1.3);
-
-                    // --- Labels ---
+                    // --- Labels visibility is controlled regardless of atom count ---
                     const mode = (this.molRenderer && this.molRenderer.labelMode) ? this.molRenderer.labelMode : 'none';
                     const wantLabels = (mode !== 'none');
-                    console.log('[MolGUIApp/raw] labels', { mode, wantLabels, nAtoms: n });
-                    this.raw.setLabelsVisible(wantLabels);
-                    if (wantLabels) {
-                        const strings = new Array(n);
-                        for (let i = 0; i < n; i++) {
-                            if (mode === 'id') {
-                                strings[i] = i.toString();
-                            } else if (mode === 'element') {
-                                const type = sys.types[i] | 0;
-                                if (this.mmParams && this.mmParams.byAtomicNumber && this.mmParams.byAtomicNumber[type]) {
-                                    strings[i] = this.mmParams.byAtomicNumber[type].name;
-                                } else {
-                                    strings[i] = type.toString();
-                                }
-                            } else if (mode === 'type') {
-                                strings[i] = '?';
-                            } else {
-                                strings[i] = '';
-                            }
-                        }
-                        console.log('[MolGUIApp/raw] updateLabels sample', { mode, nAtoms: n, s0: strings[0], s1: strings[1], s2: strings[2], s3: strings[3] });
-                        this.raw.updateLabels(strings, n);
-                    } else {
-                        this.raw.updateLabels(null, 0);
+                    if (wantLabels !== this._rawLastLabelsVisible) {
+                        this.raw.setLabelsVisible(wantLabels);
+                        this._rawLastLabelsVisible = wantLabels;
                     }
-                } else {
-                    this.raw.nAtoms = 0;
-                    this.raw.updateBonds([]);
-                    this.raw.updateLabels(null, 0);
+
+                    if (n > 0) {
+                        if (this._rawAtomsDirty) {
+                            const col = new Float32Array(n * 3);
+                            const rad = new Float32Array(n);
+                            for (let i = 0; i < n; i++) {
+                                const t = sys.types[i] | 0;
+                                const c = this.mmParams ? this.mmParams.getColor(t) : [1, 0, 1];
+                                col[i * 3] = c[0];
+                                col[i * 3 + 1] = c[1];
+                                col[i * 3 + 2] = c[2];
+                                const r = this.mmParams ? (this.mmParams.getRadius(t) * 0.4) : 0.5;
+                                rad[i] = r;
+                            }
+                            this.raw.updateAtoms(pos, col, rad, n);
+                            console.log('[MolGUIApp/raw] updateAtoms', { nAtoms: n });
+                            this._rawAtomsDirty = false;
+                        }
+
+                        if (this._rawBondsDirty) {
+                            if (sys.bonds && sys.bonds.length) {
+                                this.raw.updateBonds(sys.bonds);
+                            } else {
+                                this.raw.updateBonds([]);
+                            }
+                            console.log('[MolGUIApp/raw] updateBonds', { nBonds: sys.bonds ? sys.bonds.length : 0 });
+                            this._rawBondsDirty = false;
+                        }
+
+                        if (this._rawSelectionDirty) {
+                            const selIdx = sel ? Array.from(sel) : [];
+                            this.raw.updateSelection(selIdx, n, 1.3);
+                             console.log('[MolGUIApp/raw] updateSelection', { selectionSize: selIdx.length });
+                            this._rawSelectionDirty = false;
+                        }
+
+                        if (wantLabels) {
+                            if (this._rawLabelsDirty || mode !== this._rawLastLabelMode) {
+                                const strings = new Array(n);
+                                for (let i = 0; i < n; i++) {
+                                    if (mode === 'id') {
+                                        strings[i] = i.toString();
+                                    } else if (mode === 'element') {
+                                        const type = sys.types[i] | 0;
+                                        if (this.mmParams && this.mmParams.byAtomicNumber && this.mmParams.byAtomicNumber[type]) {
+                                            strings[i] = this.mmParams.byAtomicNumber[type].name;
+                                        } else {
+                                            strings[i] = type.toString();
+                                        }
+                                    } else if (mode === 'type') {
+                                        strings[i] = '?';
+                                    } else {
+                                        strings[i] = '';
+                                    }
+                                }
+                                this.raw.updateLabels(strings, n);
+                                this._rawLabelsDirty = false;
+                                this._rawLastLabelMode = mode;
+                            }
+                        } else if (this._rawLastLabelsVisible) {
+                            this.raw.updateLabels(null, 0);
+                            this._rawLabelsDirty = false;
+                        }
+                    } else {
+                        if (this._rawAtomsDirty) {
+                            this.raw.nAtoms = 0;
+                            this._rawAtomsDirty = false;
+                        }
+                        if (this._rawBondsDirty) {
+                            this.raw.updateBonds([]);
+                            this._rawBondsDirty = false;
+                        }
+                        if (this._rawLabelsDirty || this._rawLastLabelsVisible) {
+                            this.raw.updateLabels(null, 0);
+                            this._rawLabelsDirty = false;
+                        }
+                        if (this._rawSelectionDirty) {
+                            this.raw.updateSelection([], 0, 1.3);
+                            this._rawSelectionDirty = false;
+                        }
+                    }
                 }
 
                 this.raw.render();
+                this._maybeScheduleExtraFrame();
 
                 // Pure WebGPU mode: no WebGL overlay rendering.
                 return;
@@ -152,7 +219,15 @@ export class MolGUIApp {
                 if (this.renderer.renderAsync) await this.renderer.renderAsync(this.scene, this.camera);
                 else this.renderer.render(this.scene, this.camera);
             }
+
+            this._maybeScheduleExtraFrame();
         });
+    }
+
+    _maybeScheduleExtraFrame() {
+        if (!this._needsExtraFrame) return;
+        this._needsExtraFrame = false;
+        this.requestRender();
     }
 
     setContinuousRender(enabled) {
@@ -455,6 +530,7 @@ export class MolGUIApp {
         this.editor.onSelectionChange = () => {
             this.gui.updateSelectionUI();
             this.molRenderer.updateSelection();
+            if (this.useRawWebGPU) this._markRawSelectionDirty('editorSelection');
             this.requestRender();
         };
 
@@ -560,6 +636,8 @@ export class MolGUIApp {
 
             // Update molecule positions from GPU
             this.syncXPDBPositions();
+            this._markRawGeometryDirty('xpdbStep');
+            this.requestRender();
         } catch (e) {
             window.logger.error(`XPDB step failed: ${e.message}`);
             console.error(e);
@@ -618,6 +696,7 @@ export class MolGUIApp {
             if (this.xpdb.setBondStiffnessScale && this.xpdbDisableBonds) this.xpdb.setBondStiffnessScale(1.0);
             this.syncXPDBPositions();
             if (this.renderers?.molecule?.update) this.renderers.molecule.update();
+            this._markRawGeometryDirty('xpdbStepOnce');
             this.requestRender();
             this.logRealBondLengths('after step once');
             window.logger.info('XPDB single step completed');
@@ -651,6 +730,7 @@ export class MolGUIApp {
             }
             if (this.xpdb.setBondStiffnessScale && this.xpdbDisableBonds) this.xpdb.setBondStiffnessScale(1.0);
             if (this.renderers?.molecule?.update) this.renderers.molecule.update();
+            this._markRawGeometryDirty('xpdbRelax');
             this.requestRender();
             this.logRealBondLengths(`after relax ${n} steps`);
             window.logger.info(`XPDB relaxed ${n} steps`);
@@ -745,6 +825,7 @@ export class MolGUIApp {
 
             // Mark geometry as dirty
             this.system._touchGeom();
+            if (this.useRawWebGPU) this._markRawGeometryDirty('syncXPDBPositions');
         } catch (e) {
             window.logger.error(`Failed to sync XPDB positions: ${e.message}`);
             console.error(e);
@@ -806,12 +887,59 @@ export class MolGUIApp {
             this.system.appendParsedSystem(parsed);
             this.molRenderer.setLabelMode('id');
             if (this.renderers?.molecule?.update) this.renderers.molecule.update();
+            this.markRawAllDirty('autoLoadDefault');
             if (this.raw && typeof this.raw.setLabelsVisible === 'function') this.raw.setLabelsVisible(true);
             this.requestRender();
             logger.info('[MolGUIApp.init] Auto-loaded H2O with Atom ID labels');
         } catch (err) {
             logger.error(`[MolGUIApp.init] Failed to auto-load H2O: ${err?.message || err}`);
         }
+    }
+
+    _markRawAllDirty(reason = 'manual') {
+        if (!this.useRawWebGPU) return;
+        this._rawAtomsDirty = true;
+        this._rawBondsDirty = true;
+        this._rawLabelsDirty = true;
+        this._rawSelectionDirty = true;
+        console.log('[MolGUIApp/raw] markAllDirty', { reason });
+    }
+
+    markRawAllDirty(reason = 'manualExternal') {
+        this._markRawAllDirty(reason);
+    }
+
+    _markRawTopologyDirty(reason = 'topology') {
+        this._markRawAllDirty(reason);
+    }
+
+    markRawTopologyDirty(reason = 'topologyExternal') {
+        if (!this.useRawWebGPU) return;
+        this._markRawTopologyDirty(reason);
+    }
+
+    _markRawGeometryDirty(reason = 'geometry') {
+        if (!this.useRawWebGPU) return;
+        this._rawAtomsDirty = true;
+        this._rawLabelsDirty = true;
+        console.log('[MolGUIApp/raw] markGeometryDirty', { reason });
+    }
+
+    markRawGeometryDirty(reason = 'geometryExternal') {
+        this._markRawGeometryDirty(reason);
+    }
+
+    _markRawSelectionDirty(reason = 'manual') {
+        if (!this.useRawWebGPU) return;
+        this._rawSelectionDirty = true;
+        this._rawLabelsDirty = true;
+        console.log('[MolGUIApp/raw] markSelectionDirty', { reason });
+    }
+
+    _markRawLabelsDirty(reason = 'manual') {
+        if (!this.useRawWebGPU) return;
+        this._rawLabelsDirty = true;
+        console.log('[MolGUIApp/raw] markLabelsDirty', { reason });
     }
 }
 
