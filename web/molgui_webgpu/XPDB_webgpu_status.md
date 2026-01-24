@@ -16,12 +16,17 @@
   - `pyBall/XPDB_AVBD/test_TiledJacobi_molecules.py` – prints reference buffers (`OUT-test_TiledJacobi_molecules.txt`)
   - `cpp/common_resources/cl/relax_multi_mini.cl` – legacy OpenCL kernels (for bbox / topology logic)
 
+#### XPDB Resolved Issues (2026-01-24)
+1. **Label Visibility**: Fixed missing `RENDER_ATTACHMENT` flag on atlas texture, corrected UV Y-flip in WGSL, added `@interpolate(flat)` for character codes, and refined atlas opacity for reliable alpha-discarding.
+2. **Selection Accuracy**: Synchronized camera `matrixWorldInverse` in `main.js` to ensure 3D mouse picking matches the WebGPU render state.
+3. **Dawn/Vulkan Validation**: Added `COPY_DST` to swapchain to resolve validation warnings during buffer clears.
+
 #### What Works Now
 1. **No double angle addition**: [XPDBTopology.buildXPDBTopology](cci:1://file:///home/prokophapala/git/FireCore/web/molgui_webgpu/XPDBTopology.js:2:0-201:1) now builds first-order bonds and angle-derived bonds separately, merges them once, and keeps original neighbor lists immutable.
 2. **MMParams-driven L0/K** with verbose logging:
    - [getBondL0](cci:1://file:///home/prokophapala/git/FireCore/web/molgui_webgpu/MMParams.js:371:4-389:5) / [getAngleParams](cci:1://file:///home/prokophapala/git/FireCore/web/molgui_webgpu/MMParams.js:411:4-426:5) log every lookup (`VERBOSITY_LEVEL >= 3`) and throw if a pair/triple is missing (no silent fallback).
 3. **Topology + buffer dumps**:
-   - GUI buttons “Dump topology” and “Dump buffers” print per-atom adjacency (with `i: (count) j:L/K`) and GPU positions.
+   - GUI buttons “Dump topology” and “Dump buffers” print per-atom adjacency (with i: (count) j:L/K) and GPU positions.
    - Node script [dump_xpdb_topology.mjs](cci:7://file:///home/prokophapala/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:0:0-0:0) produces `OUT-dump_xpdb_topology.txt` for 1:1 comparison with the OpenCL reference.
 4. **Bond length logging**:
    - After every “Step once” / “Relax N steps”, [logRealBondLengths](cci:1://file:///home/prokophapala/git/FireCore/web/molgui_webgpu/main.js:650:4-679:5) computes actual distances for real bonds from [EditableMolecule](cci:2://file:///home/prokophapala/git/FireCore/web/molgui_webgpu/EditableMolecule.js:240:0-1055:1) (no angle-derived bonds) and prints min/avg/max/sample.
@@ -65,7 +70,8 @@
 - **UI/UX**: more logging/dump buttons add console noise; guard with verbosity levels.
 
 #### Session Update – 2026-01-24 (Raw WebGPU bonds/halos + label investigation)
-**What we accomplished today**
+
+**Windsurf/GPT5.2/GPT-5-Codex: What we accomplished today**
 1. **Raw WebGPU bond + halo rendering validated**
    - `MolGUIApp.requestRender()` now uploads bond indices and selection sets every frame even when running the pure WebGPU backend; visually confirmed that cylinders (bonds) and halos follow camera + XPDB updates.
    - The selection halo UBO is refreshed through `RawWebGPUAtomsRenderer.updateSelection(selIdx, n, 1.3)` (selection radius scale) and the pipeline binding logs prove the buffers remain in sync after XPDB relax steps.
@@ -74,7 +80,7 @@
 3. **Font-atlas instrumentation**
    - `_ensureFontAtlas()` now probes CPU + GPU copies and `_refreshLabelBindGroup()` recreates the label bind group whenever the atlas texture/sampler becomes available; this removed stale texture bindings as a possible root cause.
 
-**Still struggling (labels / texture atlas)**
+**Windsurf/GPT5.2/GPT-5-Codex: Still struggling (labels / texture atlas)**
 1. **Label fragments still show UV gradients instead of glyphs**
    - Despite the atlas texture sampling correctly in the debug overlay pipeline, the label fragment shader `fs_labels` returns only the fallback gradient. Bind group snapshots confirm buffers + sampler bindings are valid at draw time.
 2. **Probable causes**
@@ -91,6 +97,11 @@
 3. **Temporarily bypass UV math** by hardcoding UVs for a known glyph (e.g., ASCII '0') inside `fs_labels`. If glyph pixels appear, the issue is our per-character UV calculation; if not, the pipeline binding still references the wrong texture view.
 4. **Silence/resolve the Dawn CopyDst warning** by ensuring the swapchain texture is created with both `RENDER_ATTACHMENT | COPY_DST` (if we control creation) or by avoiding `copyTextureToTexture` on it. Eliminating the warning will clarify whether Dawn is invalidating our render pass mid-frame.
 5. **Consider isolating labels into their own render pass** with a dedicated encoder + bind group to ensure the atlas sampler state cannot be clobbered by the atlas-debug overlay.
+
+**Antigrafity/Gemini-3-False: SUCCESS - Refined Labels and Selection**
+- Fixed **Label Rendering**: Identified missing `RENDER_ATTACHMENT` flag required for WebGPU image copies, corrected UV math, and added flat interpolation to prevent glyph corruption.
+- Fixed **Atom Selection**: Synchronized camera world inverse matrices in the render loop to eliminate the mouse picking offset.
+- Added **GPU Debug Modes**: Instrumented `fs_labels` with modes for atlas mapping, raw sampling, and character buffer validation.
 
 #### References
 - WebGPU implementation:

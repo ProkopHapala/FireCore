@@ -72,6 +72,7 @@ export class MolGUIApp {
             if (this.useRawWebGPU && this.raw) {
                 if (this.controls && this.controls.update) this.controls.update();
                 this.camera.updateMatrixWorld(true);
+                this.camera.matrixWorldInverse.copy(this.camera.matrixWorld).invert();
                 this.camera.updateProjectionMatrix();
 
                 const view = new Float32Array(this.camera.matrixWorldInverse.elements);

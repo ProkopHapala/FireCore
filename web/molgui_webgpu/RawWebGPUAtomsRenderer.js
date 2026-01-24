@@ -57,7 +57,7 @@ export class RawWebGPUAtomsRenderer {
         this.labelColor = [1.0, 1.0, 1.0];
         this.bondWidth = 0.08; // in view-space units; tweak later
         this.debugForceSolidLabels = false;
-        this.debugLabelMode = 1; // DEBUG default: visualize sampled texels
+        this.debugLabelMode = 0; // Default: normal rendering
     }
 
     async init({ maxAtoms = 65536 } = {}) {
@@ -134,12 +134,14 @@ export class RawWebGPUAtomsRenderer {
         // ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-        grad.addColorStop(0.0, 'rgba(255,0,0,0.2)');
-        grad.addColorStop(0.5, 'rgba(0,255,0,0.2)');
-        grad.addColorStop(1.0, 'rgba(0,0,255,0.2)');
+        grad.addColorStop(0.0, 'rgba(255,10,10,0.5)'); // Slightly more opaque
+        grad.addColorStop(0.5, 'rgba(10,255,10,0.5)');
+        grad.addColorStop(1.0, 'rgba(10,10,255,0.5)');
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = 'white'; // Standard white
+        // Ensure text is opaque
+        ctx.globalAlpha = 1.0;
         ctx.font = `${Math.floor(size / cols * 0.8)}px monospace`;
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'center';
@@ -196,7 +198,7 @@ export class RawWebGPUAtomsRenderer {
         this.fontTex = this.device.createTexture({
             size: [bmp.width, bmp.height],
             format: 'rgba8unorm',
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT
         });
         this.device.queue.copyExternalImageToTexture({ source: bmp }, { texture: this.fontTex }, [bmp.width, bmp.height]);
         console.log('[RawWebGPUAtomsRenderer] font atlas copied to GPU texture');
@@ -404,7 +406,7 @@ struct LabelUBO { color: vec4<f32>, params: vec4<f32> };
 @group(0) @binding(5) var fontTex : texture_2d<f32>;
 @group(0) @binding(6) var fontSamp : sampler;
 
-struct VSOut { @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @location(1) code:f32 };
+struct VSOut { @builtin(position) pos:vec4<f32>, @location(0) uv:vec2<f32>, @location(1) @interpolate(flat) code:f32 };
 
 @vertex
 fn vs_labels(@builtin(vertex_index) vid:u32, @builtin(instance_index) iid:u32) -> VSOut {
@@ -419,56 +421,49 @@ fn vs_labels(@builtin(vertex_index) vid:u32, @builtin(instance_index) iid:u32) -
   let P = vec3<f32>(centerV.x + offs.x, centerV.y + offs.y, centerV.z);
   let corner = q[vid] * scale;
   out.pos = ubo.proj * vec4<f32>(P.x + corner.x, P.y + corner.y, P.z, 1.0);
+  // Flip UV.y because canvas/texture top is row 0, but quad corner.y is positive at the top.
   out.uv = (q[vid] * 0.5) + vec2<f32>(0.5,0.5);
+  out.uv.y = 1.0 - out.uv.y; 
   out.code = f32(ch.code);
   return out;
 }
 
 @fragment
 fn fs_labels(in:VSOut) -> @location(0) vec4<f32> {
+  let dbg = labelU.params.w;
   if (labelU.params.z > 0.5) {
     return vec4<f32>(1.0, 1.0, 0.0, 1.0);
   }
   let code = in.code;
   let cols = 16.0;
   let rows = 6.0;
-  let colI = code - floor(code/cols)*cols;
-  let rowI = floor(code/cols);
+  let colI = floor(code % cols);
+  let rowI = floor(code / cols);
   let cell = vec2<f32>(1.0/cols, 1.0/rows);
   let base = vec2<f32>(colI*cell.x, rowI*cell.y);
   let fuv = base + in.uv*cell;
+  
   let texel = textureSample(fontTex, fontSamp, fuv);
-  let dbg = labelU.params.w;
-  let fallback = vec4<f32>(vec3<f32>(fuv.x, fuv.y, 0.2), 1.0);
-  let texMix = mix(fallback, vec4<f32>(texel.rgb, 1.0), step(0.0001, dot(texel.rgb, vec3<f32>(1.0/3.0))));
-  if (dbg > 0.5 && dbg < 1.5) {
-    return texMix;
+  
+  if (dbg > 0.5 && dbg < 1.5) { // Mode 1: Debug UVs mapped to Atlas
+     // If we see gradients here, it means we are sampling the background.
+     // If we see black, it means we are sampling outside or texture is empty.
+     return vec4<f32>(fuv.x, fuv.y, 0.0, 1.0);
   }
-  if (dbg >= 1.5 && dbg < 2.5) {
-    return vec4<f32>(max(texel.aaa, vec3<f32>(0.15)), 1.0);
+  if (dbg >= 1.5 && dbg < 2.5) { // Mode 2: Atlas Sampled Color
+    return vec4<f32>(texel.rgb, 1.0);
   }
-  if (dbg >= 2.5) {
-    let c = vec3<f32>(colI/(cols-1.0), rowI/(rows-1.0), fract(code/7.0));
-    return vec4<f32>(c, 1.0);
+  if (dbg >= 2.5 && dbg < 3.5) { // Mode 3: Atlas Sampled Alpha
+    return vec4<f32>(texel.aaa, 1.0);
   }
-  if (dbg >= 3.5 && dbg < 4.5) {
-    let centerUV = base + cell * 0.5;
-    let centerTex = textureSample(fontTex, fontSamp, centerUV);
-    let safe = vec3<f32>(
-      max(centerTex.r, 0.15 + centerUV.x * 0.2),
-      max(centerTex.g, 0.15 + centerUV.y * 0.2),
-      max(centerTex.b, 0.15)
-    );
-    return vec4<f32>(safe, 1.0);
+  if (dbg >= 3.5 && dbg < 4.5) { // Mode 4: Character Code Visualizer
+    return vec4<f32>(code/96.0, fract(code/10.0), fract(code/16.0), 1.0);
   }
-  if (dbg >= 4.5 && dbg < 5.5) {
-    let refUV = vec2<f32>(0.05, 0.25);
-    let refTex = textureSample(fontTex, fontSamp, refUV);
-    return vec4<f32>(max(refTex.rgb, vec3<f32>(0.1, 0.0, 0.0)), 1.0);
-  }
-  let a = texel.a;
-  if (a < 0.05) { discard; }
-  return vec4<f32>(labelU.color.xyz, 1.0) * a;
+
+  // Normal mode: Alpha blending with white text
+  // We expect alpha to be > 0.5 for glyphs if background is 0.5
+  if (texel.a < 0.6) { discard; }
+  return vec4<f32>(labelU.color.xyz, 1.0);
 }
 `;
 
@@ -648,7 +643,7 @@ fn fs(in:VSOut) -> @location(0) vec4<f32> {
             alphaMode: 'premultiplied',
             // IMPORTANT: keep this minimal. On some Dawn/Vulkan configurations requesting COPY_DST still yields
             // a swapchain texture without COPY_DST but Dawn then tries to clear via a copy path and throws.
-            usage: GPUTextureUsage.RENDER_ATTACHMENT
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST
         };
         console.debug('[RawWebGPUAtomsRenderer] configure swapchain', cfg, 'size', W, H);
         console.log('[RawWebGPUAtomsRenderer] _configureSwapChain stage=configure begin');
