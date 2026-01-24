@@ -64,6 +64,34 @@
 - **Remapping correctness**: When group ghost buffers overflow (MAX_GHOSTS=128), bonds to atoms outside the local+ghost set disappear, reintroducing bonded collisions.
 - **UI/UX**: more logging/dump buttons add console noise; guard with verbosity levels.
 
+#### Session Update – 2026-01-24 (Raw WebGPU bonds/halos + label investigation)
+**What we accomplished today**
+1. **Raw WebGPU bond + halo rendering validated**
+   - `MolGUIApp.requestRender()` now uploads bond indices and selection sets every frame even when running the pure WebGPU backend; visually confirmed that cylinders (bonds) and halos follow camera + XPDB updates.
+   - The selection halo UBO is refreshed through `RawWebGPUAtomsRenderer.updateSelection(selIdx, n, 1.3)` (selection radius scale) and the pipeline binding logs prove the buffers remain in sync after XPDB relax steps.
+2. **Automatic startup molecule + labels**
+   - `installMoleculeIOMethods(EditableMolecule)` is invoked in `main.js`, `_autoLoadDefaultMolecule()` fetches `../common_resources/mol/H2O.mol2`, clears the system, appends parsed atoms/bonds, forces Atom-ID label mode, and calls `raw.setLabelsVisible(true)` so debugging starts immediately without GUI clicks.
+3. **Font-atlas instrumentation**
+   - `_ensureFontAtlas()` now probes CPU + GPU copies and `_refreshLabelBindGroup()` recreates the label bind group whenever the atlas texture/sampler becomes available; this removed stale texture bindings as a possible root cause.
+
+**Still struggling (labels / texture atlas)**
+1. **Label fragments still show UV gradients instead of glyphs**
+   - Despite the atlas texture sampling correctly in the debug overlay pipeline, the label fragment shader `fs_labels` returns only the fallback gradient. Bind group snapshots confirm buffers + sampler bindings are valid at draw time.
+2. **Probable causes**
+   1. The label pipeline might still reference an old texture view because the bind group was created before `_ensureFontAtlas()` finished (mitigated by `_refreshLabelBindGroup`, but needs confirmation via GPU readback).
+   2. WGSL UV math could be mis-indexing the atlas (e.g., using normalized indices before multiplying by glyph size), resulting in coordinates that land outside populated texels and sample pure zeros.
+   3. Less likely but possible: Dawn validation warning indicates swapchain texture usage flags; if Dawn silently drops the label bind group when the warning fires, the shader could end up sampling an uninitialized default texture.
+
+3. **Mouse picking / drag-box selection inaccurate**
+   - The editor consistently selects atoms that are offset from the cursor and marquee rectangles; likely caused by a mismatch between the orthographic camera transforms used for screen-space ray construction and the Raw WebGPU render path (camera matrices live in `MolGUIApp` while selection logic still assumes the older Three.js projection). Needs a full audit of `Editor.pickRayFromScreen()` vs the matrices passed into `RawWebGPUAtomsRenderer.updateCamera()` to ensure identical view/projection transforms and consistent handling of rotations.
+
+**Next debugging steps for labels**
+1. **Add an on-demand sampler probe** that reuses the label bind group/sampler and writes sampled RGBA values for a fixed glyph into a staging buffer. Compare with the atlas overlay probe to prove whether the fragment shader sees glyph data.
+2. **Instrument the vertex shader outputs** (either via storage buffer or debug color encoding) to log the computed glyph UV rectangles per character; verify they match the atlas layout `(cols=16, rows=6, cw/ch derived from atlas dims)`.
+3. **Temporarily bypass UV math** by hardcoding UVs for a known glyph (e.g., ASCII '0') inside `fs_labels`. If glyph pixels appear, the issue is our per-character UV calculation; if not, the pipeline binding still references the wrong texture view.
+4. **Silence/resolve the Dawn CopyDst warning** by ensuring the swapchain texture is created with both `RENDER_ATTACHMENT | COPY_DST` (if we control creation) or by avoiding `copyTextureToTexture` on it. Eliminating the warning will clarify whether Dawn is invalidating our render pass mid-frame.
+5. **Consider isolating labels into their own render pass** with a dedicated encoder + bind group to ensure the atlas sampler state cannot be clobbered by the atlas-debug overlay.
+
 #### References
 - WebGPU implementation:
   - [web/molgui_webgpu/main.js](cci:7://file:///home/prokophapala/git/FireCore/web/molgui_webgpu/main.js:0:0-0:0), [GUI.js](cci:7://file:///home/prokophapala/git/FireCore/web/molgui_webgpu/GUI.js:0:0-0:0), [XPDBTopology.js](cci:7://file:///home/prokophapala/git/FireCore/web/molgui_webgpu/XPDBTopology.js:0:0-0:0), [XPDB_WebGPU.js](cci:7://file:///home/prokophapala/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:0:0-0:0), [xpdb.wgsl](cci:7://file:///home/prokophapala/git/FireCore/web/molgui_webgpu/xpdb.wgsl:0:0-0:0), [MMParams.js](cci:7://file:///home/prokophapala/git/FireCore/web/molgui_webgpu/MMParams.js:0:0-0:0)

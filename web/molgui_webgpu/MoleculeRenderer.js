@@ -478,6 +478,10 @@ export class MoleculeRenderer extends MeshRenderer {
     setLabelMode(mode) {
         if (this.labelMode !== mode) {
             this.labelMode = mode;
+            if (window && window.app) {
+                console.debug('[MoleculeRenderer] label mode changed', mode);
+                if (typeof window.app.requestRender === 'function') window.app.requestRender();
+            }
             if (this.labelMesh) {
                 this.labelMesh.visible = (mode !== 'none');
                 if (this.labelMesh.visible) {
@@ -488,13 +492,15 @@ export class MoleculeRenderer extends MeshRenderer {
     }
 
     setLabelStyle(colorHex, scale) {
-        if (this.labelMesh) {
-            if (colorHex) {
-                this.labelMesh.material.uniforms.uColor.value.set(colorHex);
-            }
-            if (scale !== undefined && scale !== null) {
-                this.labelMesh.material.uniforms.uScale.value = parseFloat(scale);
-            }
+        if (!this.labelMesh) return;
+        if (!this._labelUniforms) throw new Error('setLabelStyle: missing this._labelUniforms (MeshRenderer_webgpu init did not expose label uniforms)');
+
+        if (colorHex !== undefined && colorHex !== null) {
+            const c = new THREE.Color(colorHex);
+            this._labelUniforms.uLabelColor.value.set(c.r, c.g, c.b);
+        }
+        if (scale !== undefined && scale !== null) {
+            this._labelUniforms.uLabelScale.value = parseFloat(scale);
         }
     }
 

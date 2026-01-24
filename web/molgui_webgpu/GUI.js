@@ -278,8 +278,10 @@ export class GUI {
             GUIutils.setSelectOptions(labelSel, modes, { selectedValue: 'none', selectFirst: true });
 
             labelSel.onchange = (e) => {
+                const mode = e.target.value;
+                console.log('[GUI] label dropdown changed', mode);
                 if (window.app && window.app.molRenderer) {
-                    window.app.molRenderer.setLabelMode(e.target.value);
+                    window.app.molRenderer.setLabelMode(mode);
                 }
                 this.requestRender();
             };

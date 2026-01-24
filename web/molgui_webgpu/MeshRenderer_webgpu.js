@@ -32,6 +32,10 @@ export class MeshRenderer {
         this.selectionMesh = null;
         this.fontTexture = null;
 
+        // Bonds CPU fallback data (for parity / debugging)
+        this._bondPairs = null;
+        this._bondCount = 0;
+
         this.init();
     }
 
@@ -159,13 +163,54 @@ export class MeshRenderer {
             const ids = new Float32Array(this.capacity);
             const cols = new Float32Array(this.capacity * 3);
             const scales = new Float32Array(this.capacity);
-            for (let i = 0; i < this.capacity; i++) { ids[i] = i; scales[i] = 0; cols[i * 3] = 1; }
+            for (let i = 0; i < this.capacity; i++) { ids[i] = i; scales[i] = 0; cols[i * 3] = 1; cols[i * 3 + 1] = 1; cols[i * 3 + 2] = 1; }
 
             this.atomMesh.geometry.setAttribute('aAtomID', new THREE.InstancedBufferAttribute(ids, 1));
             this.atomMesh.geometry.setAttribute('instanceColor', new THREE.InstancedBufferAttribute(cols, 3));
             this.atomMesh.geometry.setAttribute('instanceScale', new THREE.InstancedBufferAttribute(scales, 1));
             this.atomMesh.count = 0;
             this.scene.add(this.atomMesh);
+
+            // --- 2b. Selection Overlay ---
+            // Same impostor as atoms, but slightly larger and translucent.
+            {
+                const selMat = new MeshBasicNodeMaterial();
+                selMat.transparent = true;
+                selMat.side = THREE.DoubleSide;
+                selMat.depthWrite = false;
+                selMat.depthTest = true;
+
+                const uSelPointScale = uniform(1.08);
+                const uSelAlpha = uniform(0.22);
+
+                selMat.vertexNode = Fn(() => {
+                    const atomPosData2 = getAtomPos(aAtomID);
+                    const centerPos2 = atomPosData2.xyz;
+                    const baseRadius2 = atomPosData2.w;
+                    const finalRadius2 = instanceScale.mul(baseRadius2).mul(uSelPointScale);
+                    const viewPos2 = modelViewMatrix.mul(vec4(centerPos2, 1.0));
+                    viewPos2.xy.addAssign(positionLocal.xy.mul(finalRadius2));
+                    return cameraProjectionMatrix.mul(viewPos2);
+                })();
+
+                selMat.colorNode = Fn(() => {
+                    const vUv2 = uv();
+                    const uvOffset2 = vUv2.sub(0.5);
+                    const distSq2 = dot(uvOffset2, uvOffset2);
+                    const mask2 = distSq2.lessThan(0.25);
+                    const alpha2 = uSelAlpha.mul(mask2.select(1.0, 0.0));
+                    return vec4(instanceColor, alpha2);
+                })();
+
+                this.selectionMesh = new THREE.InstancedMesh(atomGeo.clone(), selMat, this.capacity);
+                // We reuse attribute arrays where it is safe (ids), but keep own colors/scales.
+                this.selectionMesh.geometry.setAttribute('aAtomID', new THREE.InstancedBufferAttribute(ids, 1));
+                this.selectionMesh.geometry.setAttribute('instanceColor', new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3), 3));
+                this.selectionMesh.geometry.setAttribute('instanceScale', new THREE.InstancedBufferAttribute(new Float32Array(this.capacity), 1));
+                this.selectionMesh.count = 0;
+                this.selectionMesh.renderOrder = 998;
+                this.scene.add(this.selectionMesh);
+            }
             } catch (e) {
                 console.error('Atom material build failed', e);
                 if (window.logger) window.logger.error(`[MeshRenderer] atom material failed: ${e?.message||e}`);
@@ -174,13 +219,122 @@ export class MeshRenderer {
         }
 
         // --- 3. Bonds (Line Segments) ---
-        // TEMP disable bonds to isolate WebGPU errors
-        this.bondLines = null;
+        // CPU-updated line buffer as a safe fallback (works in WebGL and WebGPU backends).
+        // Later we can optimize this back to an ID+texture driven shader.
+        {
+            const maxBonds = this.capacity * 4;
+            const geom = new THREE.BufferGeometry();
+            geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(maxBonds * 2 * 3), 3));
+            // Keep these attributes for future shader parity (currently unused by LineBasicMaterial)
+            geom.setAttribute('aAtomID', new THREE.BufferAttribute(new Float32Array(maxBonds * 2), 1));
+            geom.setAttribute('aMatID', new THREE.BufferAttribute(new Float32Array(maxBonds * 2), 1));
+            const mat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
+            this.bondLines = new THREE.LineSegments(geom, mat);
+            this.bondLines.frustumCulled = false;
+            this.bondLines.geometry.setDrawRange(0, 0);
+            this.scene.add(this.bondLines);
+        }
 
         // --- 4. Labels ---
-        // Porting the font atlas logic to TSL
-        // TEMP disable labels to isolate WebGPU errors
-        this.labelMesh = null;
+        // Porting the font atlas logic to TSL.
+        // We reuse Draw3D_webgpu geometry/attribute packing but provide a real NodeMaterial here.
+        {
+            this.fontTexture = Draw3D.createFontTexture();
+            this.labelMesh = Draw3D.createLabelInstancedMesh(this.capacity, null, this.fontTexture, null);
+
+            const uFontTexNode = texture(this.fontTexture);
+            const uFontGrid = uniform(new THREE.Vector2(16, 16));
+            const uLabelScale = uniform(0.5);
+            const uLabelColor = uniform(new THREE.Vector3(1.0, 1.0, 1.0));
+            const uAspect = uniform(1.0);
+
+            // Expose for external styling / resize updates
+            this._labelUniforms = { uLabelScale, uLabelColor, uAspect, uFontGrid };
+
+            const aAtomID_L = attribute('aAtomID', 'float');
+            const aLabel1 = attribute('aLabel1', 'vec4');
+            const aLabel2 = attribute('aLabel2', 'vec4');
+            const aStrLen = attribute('aStrLen', 'float');
+            const aCharPos = attribute('aCharPos', 'float');
+
+            // Choose packed ASCII code for this character quad (0..7)
+            const getCharCode = Fn(([cpos]) => {
+                // Nested selects (avoid try/catch; fail loudly if TSL changes semantics)
+                const c0 = aLabel1.x;
+                const c1 = aLabel1.y;
+                const c2 = aLabel1.z;
+                const c3 = aLabel1.w;
+                const c4 = aLabel2.x;
+                const c5 = aLabel2.y;
+                const c6 = aLabel2.z;
+                const c7 = aLabel2.w;
+                let code = c7;
+                code = cpos.lessThan(6.5).select(c6, code);
+                code = cpos.lessThan(5.5).select(c5, code);
+                code = cpos.lessThan(4.5).select(c4, code);
+                code = cpos.lessThan(3.5).select(c3, code);
+                code = cpos.lessThan(2.5).select(c2, code);
+                code = cpos.lessThan(1.5).select(c1, code);
+                code = cpos.lessThan(0.5).select(c0, code);
+                return code;
+            });
+
+            const labelMat = new MeshBasicNodeMaterial();
+            labelMat.transparent = true;
+            labelMat.depthTest = false;
+            labelMat.depthWrite = false;
+            labelMat.side = THREE.DoubleSide;
+
+            labelMat.vertexNode = Fn(() => {
+                const atomPosDataL = getAtomPos(aAtomID_L);
+                const centerPosL = atomPosDataL.xyz;
+
+                // Center label by length
+                const len = aStrLen;
+                const halfSpan = len.sub(1.0).mul(0.5);
+                const cx = aCharPos.sub(halfSpan);
+
+                // per-character quad offset in view space (billboard)
+                const charAdvance = float(1.1); // spacing
+                const offs = vec2(cx.mul(charAdvance), float(0.0));
+                const viewPosL = modelViewMatrix.mul(vec4(centerPosL, 1.0));
+                // Apply aspect correction only in X so text does not stretch with viewport
+                viewPosL.x.addAssign(offs.x.mul(uLabelScale).div(uAspect));
+                viewPosL.y.addAssign(offs.y.mul(uLabelScale));
+                viewPosL.xy.addAssign(positionLocal.xy.mul(uLabelScale));
+                return cameraProjectionMatrix.mul(viewPosL);
+            })();
+
+            labelMat.colorNode = Fn(() => {
+                const cpos = aCharPos;
+                const len = aStrLen;
+                const visible = cpos.lessThan(len);
+                const code = getCharCode(cpos);
+
+                // If string has no character here, make it transparent
+                const active = visible.select(1.0, 0.0);
+
+                // Map ASCII code into 16x16 atlas
+                const cols = uFontGrid.x;
+                const rows = uFontGrid.y;
+                const col = code.mod(cols);
+                const row = code.div(cols).floor();
+
+                const cell = vec2(float(1.0).div(cols), float(1.0).div(rows));
+                const base = vec2(col.mul(cell.x), row.mul(cell.y));
+
+                const uvLocal = uv();
+                const fuv = base.add(vec2(uvLocal.x.mul(cell.x), uvLocal.y.mul(cell.y)));
+                const texel = uFontTexNode.sample(fuv);
+                // Alpha from atlas (white on transparent)
+                const a = texel.r.mul(active);
+                return vec4(vec3(uLabelColor.x, uLabelColor.y, uLabelColor.z), a);
+            })();
+
+            this.labelMesh.material = labelMat;
+            this.labelMesh.visible = false;
+            this.scene.add(this.labelMesh);
+        }
     }
 
     // ... Keep updatePositions, updateParticles, updateBonds, updateSelection, etc. ...
@@ -196,6 +350,11 @@ export class MeshRenderer {
             this.posData[i * 4 + 3] = 1.0;
         }
         this.posTexture.needsUpdate = true;
+
+        // Bonds CPU fallback: update line vertex positions whenever atom positions change.
+        if (this.bondLines && this._bondPairs && this._bondCount > 0) {
+            this._updateBondLinePositions();
+        }
     }
 
     updateParticles(count, colorGetter, scaleGetter) {
@@ -215,18 +374,28 @@ export class MeshRenderer {
 
     updateBonds(pairs) {
         if (!this.bondLines) return;
+
+        this._bondPairs = pairs || [];
+        this._bondCount = this._bondPairs.length | 0;
+
         const bondIDAttr = this.bondLines.geometry.getAttribute('aAtomID');
         const matIDAttr = this.bondLines.geometry.getAttribute('aMatID');
         let ptr = 0;
-        for (let i = 0; i < pairs.length; i++) {
-            const entry = pairs[i];
+        for (let i = 0; i < this._bondCount; i++) {
+            const entry = this._bondPairs[i];
             const matID = (entry.length >= 3) ? entry[2] : 0;
             bondIDAttr.setX(ptr, entry[0]); matIDAttr.setX(ptr, matID); ptr++;
             bondIDAttr.setX(ptr, entry[1]); matIDAttr.setX(ptr, matID); ptr++;
         }
         bondIDAttr.needsUpdate = true;
         matIDAttr.needsUpdate = true;
-        this.bondLines.geometry.setDrawRange(0, pairs.length * 2);
+
+        this.bondLines.geometry.setDrawRange(0, this._bondCount * 2);
+        this._updateBondLinePositions();
+
+        if ((window.VERBOSITY_LEVEL | 0) >= 4) {
+            console.debug(`[MeshRenderer_webgpu.updateBonds] nBonds=${this._bondCount}`);
+        }
     }
 
     updateSelection(indices) {
@@ -248,11 +417,44 @@ export class MeshRenderer {
         scaleAttr.needsUpdate = true;
         colAttr.needsUpdate = true;
         this.selectionMesh.count = maxCount;
+
+        if ((window.VERBOSITY_LEVEL | 0) >= 4) {
+            console.debug(`[MeshRenderer_webgpu.updateSelection] nSelected=${maxCount}`);
+        }
     }
 
     updateLabels(stringGetter, count) {
         if (!this.labelMesh || !this.labelMesh.visible) return;
         Draw3D.updateLabelBuffers(this.labelMesh, stringGetter, count);
+
+        if ((window.VERBOSITY_LEVEL | 0) >= 4) {
+            console.debug(`[MeshRenderer_webgpu.updateLabels] nLabels=${count}`);
+        }
+    }
+
+    _updateBondLinePositions() {
+        if (!this.bondLines) return;
+        if (!this._bondPairs || (this._bondCount | 0) <= 0) return;
+
+        const posAttr = this.bondLines.geometry.getAttribute('position');
+        const arr = posAttr.array;
+        let k = 0;
+        for (let i = 0; i < this._bondCount; i++) {
+            const e = this._bondPairs[i];
+            const i0 = e[0] | 0;
+            const i1 = e[1] | 0;
+            const o0 = i0 * 4;
+            const o1 = i1 * 4;
+            // posData is RGBA-packed: xyzw
+            arr[k++] = this.posData[o0];
+            arr[k++] = this.posData[o0 + 1];
+            arr[k++] = this.posData[o0 + 2];
+            arr[k++] = this.posData[o1];
+            arr[k++] = this.posData[o1 + 1];
+            arr[k++] = this.posData[o1 + 2];
+        }
+        posAttr.needsUpdate = true;
+        this.bondLines.geometry.computeBoundingSphere();
     }
 
     // Toggles

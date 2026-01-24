@@ -5,6 +5,7 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 
 import { logger } from '../common_js/Logger.js';
 import { EditableMolecule } from './EditableMolecule.js';
+import { installMoleculeIOMethods } from './MoleculeIO.js';
 import { MMParams } from './MMParams.js';
 import { MoleculeRenderer, PackedMolecule } from './MoleculeRenderer.js';
 import { RawWebGPUAtomsRenderer } from './RawWebGPUAtomsRenderer.js';
@@ -15,6 +16,8 @@ import { Vec3 } from '../common_js/Vec3.js';
 import { ScriptRunner } from './ScriptRunner.js';
 import { XPDB_WebGPU } from './XPDB_WebGPU.js';
 import { buildXPDBTopology, getMaxRadius } from './XPDBTopology.js';
+
+installMoleculeIOMethods(EditableMolecule);
 
 export class MolGUIApp {
     constructor() {
@@ -28,6 +31,7 @@ export class MolGUIApp {
         this.overlayCanvas = null;
         this.overlayScene = null;
         this.useRawWebGPU = !!window.USE_RAW_WEBGPU;
+        this._rawLastLabelMode = 'none';
         this.system = new EditableMolecule();
         this.controls = null;
         this._rafPending = false;
@@ -84,29 +88,62 @@ export class MolGUIApp {
                     for (let i = 0; i < n; i++) {
                         const t = sys.types[i] | 0;
                         const c = this.mmParams ? this.mmParams.getColor(t) : [1, 0, 1];
-                        const isSel = sel && sel.has(i);
-                        col[i * 3] = isSel ? 1.0 : c[0];
-                        col[i * 3 + 1] = isSel ? 1.0 : c[1];
-                        col[i * 3 + 2] = isSel ? 0.0 : c[2];
+                        col[i * 3] = c[0];
+                        col[i * 3 + 1] = c[1];
+                        col[i * 3 + 2] = c[2];
                         const r = this.mmParams ? (this.mmParams.getRadius(t) * 0.4) : 0.5;
-                        rad[i] = isSel ? r * 1.3 : r;
+                        rad[i] = r;
                     }
                     this.raw.updateAtoms(pos, col, rad, n);
+
+                    // --- Bonds ---
+                    if (sys.bonds && sys.bonds.length) {
+                        this.raw.updateBonds(sys.bonds);
+                    } else {
+                        this.raw.updateBonds([]);
+                    }
+
+                    // --- Selection halo ---
+                    const selIdx = sel ? Array.from(sel) : [];
+                    this.raw.updateSelection(selIdx, n, 1.3);
+
+                    // --- Labels ---
+                    const mode = (this.molRenderer && this.molRenderer.labelMode) ? this.molRenderer.labelMode : 'none';
+                    const wantLabels = (mode !== 'none');
+                    console.log('[MolGUIApp/raw] labels', { mode, wantLabels, nAtoms: n });
+                    this.raw.setLabelsVisible(wantLabels);
+                    if (wantLabels) {
+                        const strings = new Array(n);
+                        for (let i = 0; i < n; i++) {
+                            if (mode === 'id') {
+                                strings[i] = i.toString();
+                            } else if (mode === 'element') {
+                                const type = sys.types[i] | 0;
+                                if (this.mmParams && this.mmParams.byAtomicNumber && this.mmParams.byAtomicNumber[type]) {
+                                    strings[i] = this.mmParams.byAtomicNumber[type].name;
+                                } else {
+                                    strings[i] = type.toString();
+                                }
+                            } else if (mode === 'type') {
+                                strings[i] = '?';
+                            } else {
+                                strings[i] = '';
+                            }
+                        }
+                        console.log('[MolGUIApp/raw] updateLabels sample', { mode, nAtoms: n, s0: strings[0], s1: strings[1], s2: strings[2], s3: strings[3] });
+                        this.raw.updateLabels(strings, n);
+                    } else {
+                        this.raw.updateLabels(null, 0);
+                    }
                 } else {
                     this.raw.nAtoms = 0;
+                    this.raw.updateBonds([]);
+                    this.raw.updateLabels(null, 0);
                 }
 
                 this.raw.render();
 
-                // Overlay pass (gizmo/selection via Three WebGL)
-                if (this.overlayRenderer) {
-                    if (this.overlayScene) {
-                        this.overlayRenderer.autoClear = true;
-                        this.overlayRenderer.setClearColor(0x000000, 0.0);
-                        this.overlayRenderer.clear(true, true, true);
-                        this.overlayRenderer.render(this.overlayScene, this.camera);
-                    }
-                }
+                // Pure WebGPU mode: no WebGL overlay rendering.
                 return;
             }
 
@@ -229,6 +266,8 @@ export class MolGUIApp {
             this.raw = new RawWebGPUAtomsRenderer(canvas);
             await this.raw.init({ maxAtoms: 65536 });
 
+            console.warn('[MolGUIApp] Raw WebGPU mode enabled. WebGL/Three overlay (gizmo) is DISABLED to keep renderer pure WebGPU.');
+
             // Provide minimal renderer-like object for Editor/controls
             this.renderer = {
                 domElement: canvas,
@@ -236,24 +275,6 @@ export class MolGUIApp {
                 setPixelRatio: () => {},
                 setAnimationLoop: () => {}
             };
-
-            // Overlay canvas for gizmo/selection (Three WebGL)
-            this.overlayCanvas = document.createElement('canvas');
-            this.overlayCanvas.style.position = 'absolute';
-            this.overlayCanvas.style.top = '0';
-            this.overlayCanvas.style.left = '0';
-            this.overlayCanvas.style.pointerEvents = 'none';
-            this.overlayCanvas.style.zIndex = '1';
-            this.overlayCanvas.style.backgroundColor = 'transparent';
-            this.container.appendChild(this.overlayCanvas);
-
-            this.overlayRenderer = new THREE.WebGLRenderer({ canvas: this.overlayCanvas, antialias: true, alpha: true });
-            this.overlayRenderer.autoClear = true;
-            this.overlayRenderer.setClearColor(0x000000, 0.0);
-            this.overlayRenderer.setSize(width, height, false);
-
-            // Dedicated overlay scene (do NOT render node-material meshes here)
-            this.overlayScene = new THREE.Scene();
 
             window.logger.info('Initialization Complete. Backend: WebGPU (Raw)');
         } else {
@@ -325,6 +346,8 @@ export class MolGUIApp {
             substrate: new MoleculeRenderer(this.scene, this.packedSystems.substrate, null, this.mmParams, this.systems.substrate)
         };
         this.molRenderer = this.renderers.molecule;
+
+        await this._autoLoadDefaultMolecule();
 
         Object.values(this.renderers).forEach(r => {
             if (r && r.toggleAxes) r.toggleAxes(true);
@@ -767,6 +790,27 @@ export class MolGUIApp {
         this.renderer.setSize(width, height);
         if (this.overlayRenderer) this.overlayRenderer.setSize(width, height, false);
         this.requestRender();
+    }
+
+    async _autoLoadDefaultMolecule() {
+        const url = '../common_resources/mol/H2O.mol2';
+        try {
+            console.log('[MolGUIApp] auto-loading default molecule', url);
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const text = await resp.text();
+            const parsed = EditableMolecule.parseMol2(text);
+            if (!parsed || !parsed.pos || parsed.pos.length <= 0) throw new Error('parsed molecule empty');
+            if (typeof this.system.clear === 'function') this.system.clear();
+            this.system.appendParsedSystem(parsed);
+            this.molRenderer.setLabelMode('id');
+            if (this.renderers?.molecule?.update) this.renderers.molecule.update();
+            if (this.raw && typeof this.raw.setLabelsVisible === 'function') this.raw.setLabelsVisible(true);
+            this.requestRender();
+            logger.info('[MolGUIApp.init] Auto-loaded H2O with Atom ID labels');
+        } catch (err) {
+            logger.error(`[MolGUIApp.init] Failed to auto-load H2O: ${err?.message || err}`);
+        }
     }
 }
 
