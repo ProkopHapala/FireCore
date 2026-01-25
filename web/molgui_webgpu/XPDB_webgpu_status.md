@@ -147,4 +147,40 @@
   - `pyBall/XPDB_AVBD/XPDB_new.py`, [pyBall/XPDB_AVBD/XPDB_new.cl](cci:7://file:///home/prokophapala/git/FireCore/pyBall/XPDB_AVBD/XPDB_new.cl:0:0-0:0), `pyBall/XPDB_AVBD/test_TiledJacobi_molecules.py`, `pyBall/XPDB_AVBD/OUT-test_TiledJacobi_molecules.txt`
 - Legacy kernels: `cpp/common_resources/cl/relax_multi_mini.cl`
 
+#### Session Update – 2026-01-25 (XPDB CPU reference solver & GPU parity debugging)
+
+**What we investigated & learned**
+1. **Initial GPU step still diverges**
+   - Even after zeroing `l_rad` in WGSL, the very first GPU relaxation of H₂O still flings one H atom away. Subsequent GPU runs behave if we run the CPU solver in between, which indicates the GPU solver’s *first* iteration is inconsistent with the CPU reference rather than a persistent state drift.
+2. **Radii / collision inputs likely root cause**
+   - CPU vs GPU share identical bond data but differing collision radii (vdW vs covalent). The CPU solver shows symmetric forces; GPU still over-penalizes the H–H collision. We’ll need to compare actual `atom_params` used by both paths.
+3. **Mode-switching exposes stale buffer state**
+   - Transitioning from GPU → CPU → GPU highlighted unsynchronized buffers. We added explicit two-way synchronization so GPU buffers are refreshed after CPU runs and CPU state mirrors GPU downloads, but the initial GPU-only run still needs investigation (probably missing `predPos` initialization / radii scaling).
+
+**What we implemented today**
+1. **CPU reference solver (`XPDB_CPU`)**
+   - Pure-JS Jacobi solver using global indices + brute-force collisions, driven by the same `bondsAdj` data. Supports verbose logging (`VERBOSITY_LEVEL ≥ 4`) and tracks `lastDelta` per step.
+2. **CPU/GPU runtime toggle**
+   - GUI checkbox “Use CPU XPDB (reference)” wires into `MolGUIApp`. `xpdbStep`, `xpdbStepOnce`, `xpdbRelaxSteps` now route through CPU when enabled, logging deltas and writing positions back into `EditableMolecule`.
+3. **Bidirectional synchronization**
+   - Added helpers to upload current molecule positions to GPU (`syncXPDBGPUFromSystem`) and to refresh CPU data after GPU downloads. CPU runs now push positions to GPU automatically so switching back doesn’t reuse stale buffers.
+
+**What we ruled out / excluded**
+1. **Workgroup-order issues**: With the CPU mirror, we confirmed the solver is order-independent; asymmetry isn’t caused by missing barriers or simultaneous writes.
+2. **Bond remap failures (for small n)**: H₂O dumps show `bond_indices_local` matches expected internal indices. The collision mask failure must come from collision inputs, not remap truncation, at least for single workgroup cases.
+
+**Prevailing problems**
+1. **Initial GPU collision behavior**: Need to capture GPU buffers just before the first solve (positions, radii, bond data) and compare against CPU step results to see why collisions overwhelm bonds.
+2. **Parameter mismatch (sp² vs sp³)**: Still pending—bond lengths/stiffness use incorrect atom types for pentacene, which will block larger-scale testing until resolved.
+3. **Bond stiffness scaling toggle**: GUI wiring exists but WebGPU implementation does nothing; CPU path currently ignores the toggle as well (always uses provided stiffness).
+
+**Next steps / plan**
+1. **GPU first-step forensics**: Add a dedicated “Dump pre-step buffers” action to capture `curr_pos`, `pred_pos`, `atom_params`, and `bond_indices_*` before the first GPU iteration, then replay the same data through CPU solver to compare per-atom forces and see if radii or `pred_pos` differ.
+2. **Normalize collision radii**: Align GPU `atom_params.x` with CPU reference (likely covalent radius or explicit XPDB parameter) to avoid huge H–H overlap penalties; verify whether `XPDB_new.py` scales radii before uploading.
+3. **Reinitialize GPU solver after CSV load / CPU run**: Despite added sync, we may need to fully reconstruct `XPDB_WebGPU` (init + upload) when enabling GPU to ensure `pred_pos` and ghost buffers are clean, eliminating any hidden Dawn/d3d state carryover.
+4. **Bond stiffness API**: Implement host-side `bondLenStiff` cache + scaling routine so the “Disable bonds” toggle can be honored both on CPU and GPU.
+5. **MMParams audit**: Log the atom-type names assigned during topology builds (e.g., `O_sp3`, `C_sp2`) and compare with the Python-run dumps to ensure we’re reading the same `.dat` files and matching by atom type rather than atomic number.
+
+We’ll resume tomorrow with the buffer dumps and `atom_params` comparison to pinpoint why the first GPU step diverges.
+
 Let me know if you want me to start implementing the bond stiffness scaling or the `bond_indices_local` dump next.

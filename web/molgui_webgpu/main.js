@@ -15,6 +15,7 @@ import { ShortcutManager } from './ShortcutManager.js';
 import { Vec3 } from '../common_js/Vec3.js';
 import { ScriptRunner } from './ScriptRunner.js';
 import { XPDB_WebGPU } from './XPDB_WebGPU.js';
+import { XPDB_CPU } from './XPDB_CPU.js';
 import { buildXPDBTopology, getMaxRadius } from './XPDBTopology.js';
 
 installMoleculeIOMethods(EditableMolecule);
@@ -46,8 +47,10 @@ export class MolGUIApp {
 
         // XPDB WebGPU simulation state
         this.xpdb = null;
+        this.xpdbCPU = null;
         this.xpdbEnabled = false;
         this.xpdbUseAngles = true;
+        this.xpdbUseCPU = false;
         this.xpdbPaused = true;
         this.xpdbDisableBonds = false;
         this.xpdbDisableCollisions = false;
@@ -570,11 +573,30 @@ export class MolGUIApp {
 
             this.xpdb = new XPDB_WebGPU(nAtoms);
             await this.xpdb.init();
+            this.xpdbCPU = new XPDB_CPU(nAtoms);
             window.logger.info(`XPDB initialized with ${nAtoms} atoms`);
             this.xpdbDirty = true;
         } catch (e) {
             window.logger.error(`Failed to initialize XPDB: ${e.message}`);
             console.error(e);
+        }
+    }
+
+    setXPDBUseCPU(useCPU) {
+        this.xpdbUseCPU = !!useCPU;
+        this.xpdbDirty = true;
+        window.logger && window.logger.info(`[MolGUIApp.setXPDBUseCPU] xpdbUseCPU=${this.xpdbUseCPU}`);
+        if (this.xpdbUseCPU) {
+            if (this.xpdbCPU) {
+                try {
+                    this.xpdbCPU.uploadFromMolecule(this.system, this.mmParams);
+                    if ((window.VERBOSITY_LEVEL | 0) >= 2) console.log('[XPDB_CPU] synced from system when enabling CPU mode');
+                } catch (err) {
+                    console.warn('[XPDB_CPU] failed to upload system when enabling CPU mode', err);
+                }
+            }
+        } else {
+            this.syncXPDBGPUFromSystem('switchToGPU');
         }
     }
 
@@ -589,10 +611,12 @@ export class MolGUIApp {
             if (this.xpdb.numAtoms !== nAtoms) {
                 this.xpdb = new XPDB_WebGPU(nAtoms);
                 await this.xpdb.init();
+                this.xpdbCPU = new XPDB_CPU(nAtoms);
             }
 
             // Upload atoms
             this.xpdb.uploadAtomsFromMolecule(this.system, this.mmParams);
+            if (this.xpdbCPU) this.xpdbCPU.uploadFromMolecule(this.system, this.mmParams);
 
             // Build topology
             const { bondsAdj } = buildXPDBTopology(this.system, this.mmParams, {
@@ -610,6 +634,9 @@ export class MolGUIApp {
             // Upload bonds
             this.xpdb.uploadBonds(bondsAdj, 0.4, 200, 120, false);
 
+            // Keep CPU side topology for reference solver
+            this._xpdbBondsAdj = bondsAdj;
+
             this.xpdbDirty = false;
             window.logger.info(`XPDB topology updated: ${nAtoms} atoms`);
         } catch (e) {
@@ -618,29 +645,174 @@ export class MolGUIApp {
         }
     }
 
-    stepXPDB() {
+    async stepXPDB() {
         if (!this.xpdb || !this.xpdbEnabled || this.xpdbDirty || this.xpdbPaused) return;
-
         try {
             const maxRadius = getMaxRadius(this.system, this.mmParams, 1.0);
-            this.xpdb.step(
-                this.xpdbParams.dt,
-                this.xpdbParams.iterations,
-                this.xpdbParams.k_coll,
-                this.xpdbParams.omega,
-                this.xpdbParams.momentum_beta,
-                null, // mousePos
-                -1,   // pickedIdx
-                maxRadius
-            );
+            if (this.xpdbUseCPU) {
+                if (!this.xpdbCPU) throw new Error('XPDB CPU solver missing');
+                if (!this._xpdbBondsAdj) throw new Error('XPDB CPU: missing bondsAdj (topology not built)');
+                const kColl = this.xpdbDisableCollisions ? 0.0 : this.xpdbParams.k_coll;
+                window.logger && window.logger.info('[XPDB][CPU] stepXPDB using CPU solver');
+                this.xpdbCPU.step(this._xpdbBondsAdj, {
+                    dt: this.xpdbParams.dt,
+                    iterations: this.xpdbParams.iterations,
+                    k_coll: kColl,
+                    omega: this.xpdbParams.omega,
+                    momentum_beta: this.xpdbParams.momentum_beta
+                });
+                if ((window.VERBOSITY_LEVEL | 0) >= 2) {
+                    console.log(`[XPDB_CPU] stepXPDB iterations=${this.xpdbParams.iterations} dt=${this.xpdbParams.dt} k_coll=${kColl} lastDelta=${this.xpdbCPU.lastDelta.toExponential(4)}`);
+                }
+                this.xpdbCPU.writeToMolecule(this.system);
+                this.system._touchGeom();
+                this.debugLogCPUState('stepXPDB');
+                this.syncXPDBGPUFromSystem('cpuStepXPDB');
+            } else {
+                this.xpdb.step(
+                    this.xpdbParams.dt,
+                    this.xpdbParams.iterations,
+                    this.xpdbParams.k_coll,
+                    this.xpdbParams.omega,
+                    this.xpdbParams.momentum_beta,
+                    null, // mousePos
+                    -1,   // pickedIdx
+                    maxRadius
+                );
 
-            // Update molecule positions from GPU
-            this.syncXPDBPositions();
+                // Update molecule positions from GPU
+                await this.syncXPDBPositions();
+            }
             this._markRawGeometryDirty('xpdbStep');
             this.requestRender();
         } catch (e) {
             window.logger.error(`XPDB step failed: ${e.message}`);
             console.error(e);
+        }
+    }
+
+    async dumpXPDBBuffers() {
+        if (!this.xpdb || !this.system) {
+            console.warn('[dumpXPDBBuffers] XPDB or system not initialized');
+            return;
+        }
+        const ready = await this.ensureXPDBReady(true);
+        if (!ready) return;
+        console.log('[dumpXPDBBuffers] === XPDB Buffer Dump ===');
+        console.log('[dumpXPDBBuffers] nAtoms=', this.system.nAtoms);
+        console.log('[dumpXPDBBuffers] xpdbParams=', this.xpdbParams);
+        try {
+            const { posData, ghostData, bondGlobalData, bondLocalData, bondLenStiffData } = await this.xpdb.readBuffersAsTyped();
+            const nAtoms = this.system.nAtoms;
+            const groupSize = this.xpdb.groupSize;
+            const numGroups = this.xpdb.numGroups;
+            const maxGhosts = this.xpdb.maxGhosts;
+            const nMaxBonded = this.xpdb.nMaxBonded;
+
+            console.log('[dumpXPDBBuffers] groupSize=', groupSize, 'numGroups=', numGroups, 'maxGhosts=', maxGhosts, 'nMaxBonded=', nMaxBonded);
+
+            for (let g = 0; g < numGroups; g++) {
+                const groupBase = g * groupSize;
+                const ghostBase = g * (maxGhosts + 1);
+                const ghostCount = ghostData[ghostBase + maxGhosts];
+                console.log(`[dumpXPDBBuffers] === Group ${g} (global ${groupBase}-${groupBase + groupSize - 1}) ghostCount=${ghostCount} ===`);
+
+                if (ghostCount > 0) {
+                    console.log('[dumpXPDBBuffers] Ghost list:');
+                    for (let k = 0; k < ghostCount; k++) {
+                        const globalIdx = ghostData[ghostBase + k];
+                        const px = posData[globalIdx * 4 + 0];
+                        const py = posData[globalIdx * 4 + 1];
+                        const pz = posData[globalIdx * 4 + 2];
+                        const atom = this.system.atoms[globalIdx];
+                        const typeName = atom ? (this.mmParams.getAtomTypeForAtom(atom)?.name || 'unknown') : 'missing';
+                        console.log(`  ghost[${k}] -> global ${globalIdx} (${typeName}) pos=(${px.toFixed(3)}, ${py.toFixed(3)}, ${pz.toFixed(3)})`);
+                    }
+                }
+
+                for (let lid = 0; lid < groupSize; lid++) {
+                    const globalIdx = groupBase + lid;
+                    if (globalIdx >= nAtoms) break;
+
+                    const px = posData[globalIdx * 4 + 0];
+                    const py = posData[globalIdx * 4 + 1];
+                    const pz = posData[globalIdx * 4 + 2];
+                    const atom = this.system.atoms[globalIdx];
+                    const typeName = atom ? (this.mmParams.getAtomTypeForAtom(atom)?.name || 'unknown') : 'missing';
+                    console.log(`[dumpXPDBBuffers] atom ${globalIdx} (lid ${lid}, group ${g}, type ${typeName}) pos=(${px.toFixed(3)}, ${py.toFixed(3)}, ${pz.toFixed(3)})`);
+
+                    const bondBase = globalIdx * nMaxBonded;
+
+                    console.log('  bond_indices_global:');
+                    for (let slot = 0; slot < nMaxBonded; slot++) {
+                        const targetGlobal = bondGlobalData[bondBase + slot];
+                        if (targetGlobal === -1) break;
+                        const L0 = bondLenStiffData[(bondBase + slot) * 2 + 0];
+                        const K = bondLenStiffData[(bondBase + slot) * 2 + 1];
+                        console.log(`    slot${slot}: global ${targetGlobal} L0=${L0.toFixed(4)} K=${K.toFixed(1)}`);
+                    }
+
+                    console.log('  bond_indices_local:');
+                    for (let slot = 0; slot < nMaxBonded; slot++) {
+                        const localIdx = bondLocalData[bondBase + slot];
+                        if (localIdx === -1) break;
+                        const targetGlobal = bondGlobalData[bondBase + slot];
+                        const L0 = bondLenStiffData[(bondBase + slot) * 2 + 0];
+                        const K = bondLenStiffData[(bondBase + slot) * 2 + 1];
+
+                        let mappedGlobal = null;
+                        let kind = 'unknown';
+                        if (localIdx < groupSize) {
+                            mappedGlobal = groupBase + localIdx;
+                            kind = 'internal';
+                        } else {
+                            const ghostIdx = localIdx - groupSize;
+                            if (ghostIdx < ghostCount) {
+                                mappedGlobal = ghostData[ghostBase + ghostIdx];
+                                kind = 'ghost';
+                            } else {
+                                kind = 'invalid';
+                            }
+                        }
+
+                        const match = (mappedGlobal !== null && mappedGlobal === targetGlobal) ? 'MATCH' : 'MISMATCH';
+                        console.log(`    slot${slot}: local ${localIdx} -> ${kind} ${mappedGlobal !== null ? mappedGlobal : '?'} (expected ${targetGlobal}) ${match} L0=${L0.toFixed(4)} K=${K.toFixed(1)}`);
+                    }
+                }
+            }
+
+            console.log('[dumpXPDBBuffers] === Real Bond Lengths (EditableMolecule.bonds) ===');
+            if (this.system.bonds && this.system.bonds.length > 0) {
+                const resolveIndices = (bond) => {
+                    if (!bond) return [null, null];
+                    if (Array.isArray(bond)) return bond;
+                    if (typeof bond.ensureIndices === 'function') bond.ensureIndices(this.system);
+                    const a = bond.a ?? bond.i ?? (bond.indices ? bond.indices[0] : null);
+                    const b = bond.b ?? bond.j ?? (bond.indices ? bond.indices[1] : null);
+                    return [a, b];
+                };
+
+                for (const bond of this.system.bonds) {
+                    const [a, b] = resolveIndices(bond);
+                    if (a === null || b === null) {
+                        console.warn('[dumpXPDBBuffers] bond missing indices', bond);
+                        continue;
+                    }
+                    if (a < 0 || a >= nAtoms || b < 0 || b >= nAtoms) {
+                        console.warn(`[dumpXPDBBuffers] bond indices out of range: ${a}, ${b}`);
+                        continue;
+                    }
+                    const ax = posData[a * 4 + 0], ay = posData[a * 4 + 1], az = posData[a * 4 + 2];
+                    const bx = posData[b * 4 + 0], by = posData[b * 4 + 1], bz = posData[b * 4 + 2];
+                    const dist = Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2 + (az - bz) ** 2);
+                    console.log(`[dumpXPDBBuffers] bond ${a}-${b}: dist=${dist.toFixed(4)} A=(${ax.toFixed(3)},${ay.toFixed(3)},${az.toFixed(3)}) B=(${bx.toFixed(3)},${by.toFixed(3)},${bz.toFixed(3)})`);
+                }
+            } else {
+                console.log('[dumpXPDBBuffers] No bonds recorded in EditableMolecule');
+            }
+
+        } catch (e) {
+            console.error('[dumpXPDBBuffers] Failed:', e);
         }
     }
 
@@ -684,17 +856,35 @@ export class MolGUIApp {
             const maxRadius = getMaxRadius(this.system, this.mmParams, 1.0);
             const kColl = this.xpdbDisableCollisions ? 0.0 : this.xpdbParams.k_coll;
             const bondScale = this.xpdbDisableBonds ? 0.0 : 1.0;
-            if (this.xpdb.setBondStiffnessScale) this.xpdb.setBondStiffnessScale(bondScale);
-            this.xpdb.step(
-                this.xpdbParams.dt,
-                this.xpdbParams.iterations,
-                kColl,
-                this.xpdbParams.omega,
-                this.xpdbParams.momentum_beta,
-                null, -1, maxRadius
-            );
-            if (this.xpdb.setBondStiffnessScale && this.xpdbDisableBonds) this.xpdb.setBondStiffnessScale(1.0);
-            this.syncXPDBPositions();
+            if (this.xpdbUseCPU) {
+                if (!this.xpdbCPU) throw new Error('XPDB CPU solver missing');
+                if (!this._xpdbBondsAdj) throw new Error('XPDB CPU: missing bondsAdj (topology not built)');
+                window.logger && window.logger.info('[XPDB][CPU] xpdbStepOnce using CPU solver');
+                this.xpdbCPU.step(this._xpdbBondsAdj, {
+                    dt: this.xpdbParams.dt,
+                    iterations: this.xpdbParams.iterations,
+                    k_coll: kColl,
+                    omega: this.xpdbParams.omega,
+                    momentum_beta: this.xpdbParams.momentum_beta
+                });
+                console.log(`[XPDB_CPU] stepOnce iterations=${this.xpdbParams.iterations} dt=${this.xpdbParams.dt} k_coll=${kColl} lastDelta=${this.xpdbCPU.lastDelta.toExponential(4)}`);
+                this.xpdbCPU.writeToMolecule(this.system);
+                this.system._touchGeom();
+                this.debugLogCPUState('stepOnce');
+                this.syncXPDBGPUFromSystem('cpuStepOnce');
+            } else {
+                if (this.xpdb.setBondStiffnessScale) this.xpdb.setBondStiffnessScale(bondScale);
+                this.xpdb.step(
+                    this.xpdbParams.dt,
+                    this.xpdbParams.iterations,
+                    kColl,
+                    this.xpdbParams.omega,
+                    this.xpdbParams.momentum_beta,
+                    null, -1, maxRadius
+                );
+                if (this.xpdb.setBondStiffnessScale && this.xpdbDisableBonds) this.xpdb.setBondStiffnessScale(1.0);
+                await this.syncXPDBPositions();
+            }
             if (this.renderers?.molecule?.update) this.renderers.molecule.update();
             this._markRawGeometryDirty('xpdbStepOnce');
             this.requestRender();
@@ -716,19 +906,42 @@ export class MolGUIApp {
             const maxRadius = getMaxRadius(this.system, this.mmParams, 1.0);
             const kColl = this.xpdbDisableCollisions ? 0.0 : this.xpdbParams.k_coll;
             const bondScale = this.xpdbDisableBonds ? 0.0 : 1.0;
-            if (this.xpdb.setBondStiffnessScale) this.xpdb.setBondStiffnessScale(bondScale);
-            for (let i = 0; i < n; i++) {
-                this.xpdb.step(
-                    this.xpdbParams.dt,
-                    this.xpdbParams.iterations,
-                    kColl,
-                    this.xpdbParams.omega,
-                    this.xpdbParams.momentum_beta,
-                    null, -1, maxRadius
-                );
-                this.syncXPDBPositions();
+            if (this.xpdbUseCPU) {
+                if (!this.xpdbCPU) throw new Error('XPDB CPU solver missing');
+                if (!this._xpdbBondsAdj) throw new Error('XPDB CPU: missing bondsAdj (topology not built)');
+                window.logger && window.logger.info(`[XPDB][CPU] xpdbRelaxSteps using CPU solver for ${n} outer steps`);
+                for (let i = 0; i < n; i++) {
+                    this.xpdbCPU.step(this._xpdbBondsAdj, {
+                        dt: this.xpdbParams.dt,
+                        iterations: this.xpdbParams.iterations,
+                        k_coll: kColl,
+                        omega: this.xpdbParams.omega,
+                        momentum_beta: this.xpdbParams.momentum_beta
+                    });
+                    if ((window.VERBOSITY_LEVEL | 0) >= 3) {
+                        console.log(`[XPDB_CPU] relax outer=${i} lastDelta=${this.xpdbCPU.lastDelta.toExponential(4)}`);
+                    }
+                }
+                console.log(`[XPDB_CPU] relax completed lastDelta=${this.xpdbCPU.lastDelta.toExponential(4)}`);
+                this.xpdbCPU.writeToMolecule(this.system);
+                this.system._touchGeom();
+                this.debugLogCPUState(`relax${n}`);
+                this.syncXPDBGPUFromSystem('cpuRelax');
+            } else {
+                if (this.xpdb.setBondStiffnessScale) this.xpdb.setBondStiffnessScale(bondScale);
+                for (let i = 0; i < n; i++) {
+                    this.xpdb.step(
+                        this.xpdbParams.dt,
+                        this.xpdbParams.iterations,
+                        kColl,
+                        this.xpdbParams.omega,
+                        this.xpdbParams.momentum_beta,
+                        null, -1, maxRadius
+                    );
+                    await this.syncXPDBPositions();
+                }
+                if (this.xpdb.setBondStiffnessScale && this.xpdbDisableBonds) this.xpdb.setBondStiffnessScale(1.0);
             }
-            if (this.xpdb.setBondStiffnessScale && this.xpdbDisableBonds) this.xpdb.setBondStiffnessScale(1.0);
             if (this.renderers?.molecule?.update) this.renderers.molecule.update();
             this._markRawGeometryDirty('xpdbRelax');
             this.requestRender();
@@ -783,27 +996,68 @@ export class MolGUIApp {
         console.log(`[logRealBondLengths] ${label} bonds=${lens.length} min=${minL.toFixed(4)} max=${maxL.toFixed(4)} avg=${avgL.toFixed(4)} sample=${sample.join(', ')}`);
     }
 
-    async dumpXPDBBuffers() {
-        if (!this.system) {
-            console.warn('[dumpXPDBBuffers] System missing');
-            return;
+    debugLogCPUState(label = 'cpu') {
+        if (!this.xpdbCPU || !this.system) return;
+        const verbosity = window.VERBOSITY_LEVEL | 0;
+        if (verbosity < 1) return;
+        const nAtoms = this.system.nAtoms || 0;
+        console.log(`[XPDB_CPU][STATE] ${label} nAtoms=${nAtoms} lastDelta=${this.xpdbCPU.lastDelta.toExponential(6)}`);
+        const maxAtoms = Math.min(4, nAtoms);
+        for (let i = 0; i < maxAtoms; i++) {
+            const atom = this.system.atoms[i];
+            const px = this.xpdbCPU.pos[i * 3 + 0];
+            const py = this.xpdbCPU.pos[i * 3 + 1];
+            const pz = this.xpdbCPU.pos[i * 3 + 2];
+            const labelName = atom?.label || atom?.element || atom?.name || 'atom';
+            console.log(`  atom ${i} (${labelName}) -> (${px.toFixed(4)}, ${py.toFixed(4)}, ${pz.toFixed(4)})`);
         }
-        const ready = await this.ensureXPDBReady(true);
-        if (!ready) return;
-        console.log('[dumpXPDBBuffers] === XPDB Buffer Dump ===');
-        console.log('[dumpXPDBBuffers] nAtoms=', this.system.nAtoms);
-        console.log('[dumpXPDBBuffers] xpdbParams=', this.xpdbParams);
-        try {
-            const posData = await this.xpdb.readPositions();
-            console.log('[dumpXPDBBuffers] pos0:');
-            for (let i = 0; i < this.system.nAtoms; i++) {
-                const x = posData[i * 3 + 0];
-                const y = posData[i * 3 + 1];
-                const z = posData[i * 3 + 2];
-                console.log(`${x.toFixed(6)} ${y.toFixed(6)} ${z.toFixed(6)}`);
+        const bonds = this.system.bonds || [];
+        if (bonds.length > 0) {
+            const maxBonds = Math.min(5, bonds.length);
+            let logged = 0;
+            const resolve = (bond) => {
+                if (!bond) return [null, null];
+                if (Array.isArray(bond)) return bond;
+                if (typeof bond.ensureIndices === 'function') bond.ensureIndices(this.system);
+                const a = bond.a ?? bond.i ?? (bond.indices ? bond.indices[0] : null);
+                const b = bond.b ?? bond.j ?? (bond.indices ? bond.indices[1] : null);
+                return [a, b];
+            };
+            for (const bond of bonds) {
+                if (logged >= maxBonds) break;
+                const [a, b] = resolve(bond);
+                if (a === null || b === null) continue;
+                const ax = this.xpdbCPU.pos[a * 3 + 0];
+                const ay = this.xpdbCPU.pos[a * 3 + 1];
+                const az = this.xpdbCPU.pos[a * 3 + 2];
+                const bx = this.xpdbCPU.pos[b * 3 + 0];
+                const by = this.xpdbCPU.pos[b * 3 + 1];
+                const bz = this.xpdbCPU.pos[b * 3 + 2];
+                const dx = ax - bx;
+                const dy = ay - by;
+                const dz = az - bz;
+                const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                console.log(`  bond ${a}-${b} length=${dist.toFixed(4)}`);
+                logged++;
             }
-        } catch (e) {
-            console.error('[dumpXPDBBuffers] Failed to read positions:', e);
+        } else {
+            console.log('  [XPDB_CPU][STATE] no bonds recorded');
+        }
+
+        if (verbosity >= 2) {
+            this.logRealBondLengths(`[XPDB_CPU ${label}]`);
+        }
+    }
+
+    syncXPDBGPUFromSystem(reason = 'manual') {
+        if (!this.xpdb || !this.system || !this.mmParams) return;
+        try {
+            this.xpdb.uploadAtomsFromMolecule(this.system, this.mmParams);
+            if ((window.VERBOSITY_LEVEL | 0) >= 2) {
+                console.log(`[XPDB][syncGPU] reason=${reason} uploaded system positions to GPU buffers`);
+            }
+        } catch (err) {
+            console.warn('[XPDB][syncGPU] Failed to upload atoms from system:', err);
         }
     }
 
@@ -826,6 +1080,14 @@ export class MolGUIApp {
             // Mark geometry as dirty
             this.system._touchGeom();
             if (this.useRawWebGPU) this._markRawGeometryDirty('syncXPDBPositions');
+            if (this.xpdbCPU && !this.xpdbUseCPU) {
+                try {
+                    this.xpdbCPU.uploadFromMolecule(this.system, this.mmParams);
+                    if ((window.VERBOSITY_LEVEL | 0) >= 3) console.log('[XPDB_CPU] synced from system after GPU update');
+                } catch (err) {
+                    console.warn('[XPDB_CPU] failed to sync from GPU positions', err);
+                }
+            }
         } catch (e) {
             window.logger.error(`Failed to sync XPDB positions: ${e.message}`);
             console.error(e);

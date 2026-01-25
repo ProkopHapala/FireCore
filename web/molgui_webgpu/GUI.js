@@ -650,6 +650,11 @@ export class GUI {
                 if (window.app && window.app.setXPDBDisableCollisions) window.app.setXPDBDisableCollisions(!!e.target.checked);
             });
 
+            const solverRow = GUIutils.row(container, { marginBottom: '8px' });
+            GUIutils.labelCheck(solverRow, 'Use CPU XPDB (reference)', false, (e) => {
+                if (window.app && window.app.setXPDBUseCPU) window.app.setXPDBUseCPU(!!e.target.checked);
+            });
+
             const verbRow = GUIutils.row(container, { marginBottom: '8px' });
             GUIutils.label(verbRow, 'Verbosity:', { width: '70px', fontSize: '0.9em' });
             const verbInput = GUIutils.num(verbRow, window.VERBOSITY_LEVEL || 0, {
@@ -679,14 +684,14 @@ export class GUI {
             // dt input (allow very small/large values)
             const dtRow = GUIutils.div(paramsDiv, null, { marginBottom: '4px' });
             GUIutils.label(dtRow, 'dt:', { width: '40px', fontSize: '0.9em' });
-            const dtInput = GUIutils.num(dtRow, 0.01, { step: 'any', min: 0 }, { width: '90px' });
-            hookNumericInput(dtInput, (v) => parseFloat(v), 'dt', 0.01);
+            const dtInput = GUIutils.num(dtRow, 1.0, { step: 'any', min: 0 }, { width: '90px' });
+            hookNumericInput(dtInput, (v) => parseFloat(v), 'dt', 1.0);
 
             // iterations input
             const iterRow = GUIutils.div(paramsDiv, null, { marginBottom: '4px' });
             GUIutils.label(iterRow, 'Iters:', { width: '40px', fontSize: '0.9em' });
-            const iterInput = GUIutils.num(iterRow, 4, { step: 1, min: 1 }, { width: '90px' });
-            hookNumericInput(iterInput, (v) => parseInt(v, 10), 'iterations', 4);
+            const iterInput = GUIutils.num(iterRow, 10, { step: 1, min: 1 }, { width: '90px' });
+            hookNumericInput(iterInput, (v) => parseInt(v, 10), 'iterations', 10);
 
             // k_coll input (order-of-magnitude tuning)
             const kRow = GUIutils.div(paramsDiv, null, { marginBottom: '4px' });

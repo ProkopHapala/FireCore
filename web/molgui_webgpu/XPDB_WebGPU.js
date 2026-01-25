@@ -235,6 +235,42 @@ export class XPDB_WebGPU {
         this.device.queue.writeBuffer(this.buffers.bondLenStiff, 0, bondLenStiff);
     }
 
+    async readBuffer(buffer, byteOffset = 0, byteLength = null) {
+        if (!buffer) throw new Error('readBuffer: buffer is null/undefined');
+        const size = byteLength !== null ? byteLength : buffer.size;
+        const staging = this.device.createBuffer({
+            size,
+            usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+        });
+        const commandEncoder = this.device.createCommandEncoder();
+        commandEncoder.copyBufferToBuffer(buffer, byteOffset, staging, 0, size);
+        this.device.queue.submit([commandEncoder.finish()]);
+        await staging.mapAsync(GPUMapMode.READ);
+        const mapped = staging.getMappedRange();
+        const copy = new Uint8Array(mapped.byteLength);
+        copy.set(new Uint8Array(mapped));
+        staging.unmap();
+        staging.destroy();
+        return copy.buffer;
+    }
+
+    async readBuffersAsTyped() {
+        const { numAtoms, numGroups, maxGhosts, nMaxBonded } = this;
+        const vec4 = 16;
+        const i32 = 4;
+        const f32 = 4;
+
+        const [posData, ghostData, bondGlobalData, bondLocalData, bondLenStiffData] = await Promise.all([
+            this.readBuffer(this.buffers.pos).then(buf => new Float32Array(buf)),
+            this.readBuffer(this.buffers.ghostPacked).then(buf => new Int32Array(buf)),
+            this.readBuffer(this.buffers.bondIdxGlobal).then(buf => new Int32Array(buf)),
+            this.readBuffer(this.buffers.bondIdxLocal).then(buf => new Int32Array(buf)),
+            this.readBuffer(this.buffers.bondLenStiff).then(buf => new Float32Array(buf))
+        ]);
+
+        return { posData, ghostData, bondGlobalData, bondLocalData, bondLenStiffData };
+    }
+
     step(dt, iterations, k_coll, omega, momentum_beta, mousePos=null, pickedIdx=-1, maxRadius=null) {
         // 1. Update Params Uniforms
         // Struct: num_atoms(u32), num_groups, inner_iters, pad, dt(f32), k_coll, omega, beta, margin_sq, bbox_margin...
