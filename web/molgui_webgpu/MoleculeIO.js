@@ -117,7 +117,8 @@ export function toMol2String(mol, opts = {}) {
         const y = at.pos.y.toFixed(4);
         const z = at.pos.z.toFixed(4);
         const q = (at.charge !== undefined && at.charge !== null) ? (+at.charge).toFixed(4) : '0.0000';
-        out.push(`${String(i + 1).padStart(7)} ${aname.padEnd(6)} ${x.padStart(10)} ${y.padStart(10)} ${z.padStart(10)} ${sym.padEnd(5)} 1  UNL1  ${q.padStart(10)}`);
+        const tname = (at.typeName !== undefined && at.typeName !== null) ? String(at.typeName) : sym;
+        out.push(`${String(i + 1).padStart(7)} ${aname.padEnd(6)} ${x.padStart(10)} ${y.padStart(10)} ${z.padStart(10)} ${tname.padEnd(5)} 1  UNL1  ${q.padStart(10)}`);
     }
     out.push('@<TRIPOS>BOND');
     for (let i = 0; i < mol.bonds.length; i++) {
@@ -233,7 +234,8 @@ export const SYMBOL_TO_Z = {
 
 export const Z_TO_SYMBOL = {
     1: 'H', 2: 'He', 6: 'C', 7: 'N', 8: 'O', 9: 'F', 11: 'Na', 12: 'Mg', 13: 'Al', 14: 'Si', 15: 'P', 16: 'S', 17: 'Cl',
-    19: 'K', 20: 'Ca', 26: 'Fe', 29: 'Cu', 30: 'Zn', 34: 'Se', 35: 'Br', 53: 'I', 54: 'Xe'
+    19: 'K', 20: 'Ca', 26: 'Fe', 29: 'Cu', 30: 'Zn', 34: 'Se', 35: 'Br', 53: 'I', 54: 'Xe',
+    200: 'E', 201: 'Pi'
 };
 
 /// Install IO helpers onto EditableMolecule (instance methods call exported pure functions).

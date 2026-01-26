@@ -8,10 +8,16 @@ import sys
 import os
 import itertools
 import pyopencl as cl
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
-sys.path.append("../../")
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
 from XPDB_new import XPDB_new
+
+from pyBall.OCL.MMFFL import MMFFL
+from pyBall import atomicUtils as au
 
 # unlimited line length
 np.set_printoptions(threshold=np.inf)
@@ -135,31 +141,188 @@ def load_molecule_bonds(fname, n_max_bonded=16, default_L=None, default_K=200.0,
     bonds_adj : list of lists
     bond_type_mask : np.ndarray (num_atoms, n_max_bonded)
     """
+    raise RuntimeError("load_molecule_bonds() is deprecated; use load_molecule_topology_mmffl()")
+
+
+def _bonds_to_adj(n, bonds, *, default_L=1.0, default_K=200.0, apos=None):
+    bonds_adj = [[] for _ in range(n)]
+    for (i, j) in bonds:
+        i = int(i); j = int(j)
+        if i == j:
+            continue
+        if apos is not None and default_L is None:
+            L = float(np.linalg.norm(apos[i] - apos[j]))
+        else:
+            L = float(default_L) if default_L is not None else float(np.linalg.norm(apos[i] - apos[j]))
+        bonds_adj[i].append([j, L, float(default_K)])
+        bonds_adj[j].append([i, L, float(default_K)])
+    return bonds_adj
+
+
+def _pack_fixed_bonds(n, bonds_adj, *, n_max_bonded=16):
+    bond_indices = np.full((n, n_max_bonded), -1, dtype=np.int32)
+    bond_lengths = np.zeros((n, n_max_bonded), dtype=np.float32)
+    bond_stiffness = np.zeros((n, n_max_bonded), dtype=np.float32)
+    bond_type_mask = np.zeros((n, n_max_bonded), dtype=np.int32)
+    for i in range(n):
+        blist = bonds_adj[i]
+        if len(blist) > n_max_bonded:
+            print(f"[WARN] Atom {i} has {len(blist)} neighbors > n_max_bonded={n_max_bonded}; truncating")
+        for k, (j, L, K) in enumerate(blist[:n_max_bonded]):
+            bond_indices[i, k] = int(j)
+            bond_lengths[i, k] = float(L)
+            bond_stiffness[i, k] = float(K)
+            bond_type_mask[i, k] = 1
+    return bond_indices, bond_lengths, bond_stiffness, bond_type_mask
+
+
+def load_molecule_topology_mmffl(
+    fname,
+    *,
+    n_max_bonded=16,
+    default_K=200.0,
+    type_source="table",
+    add_angle=True,
+    add_pi=False,
+    two_pi_dummies=False,
+    add_pi_align=False,
+    add_epair=False,
+    add_epair_pairs=False,
+    L_pi=1.0,
+    L_epair=0.5,
+    K_ang=0.0,
+    Kpi_host=0.0,
+    Kpi_orth=0.0,
+    Kpi_align=0.0,
+    Kep_host=0.0,
+    Kep_orth=0.0,
+    Kep_pair=0.0,
+    print_topology=False,
+    mol2_out=None,
+):
     from pyBall import AtomicSystem
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     mol = AtomicSystem.AtomicSystem(fname=fname)
     if mol.bonds is None or len(mol.bonds) == 0:
         mol.findBonds()
     mol.neighs()
-    if print_topology:
-        mol.printBonds()
-    apos = mol.apos.astype(np.float32)
-    bonds_adj = [[] for _ in range(len(apos))]
-    if mol.bonds is not None:
-        for b in mol.bonds:
-            if len(b) >= 2:
-                i, j = b[0], b[1]
-                bonds_adj[i].append([j, None, None])
-                bonds_adj[j].append([i, None, None])
-            else:
-                print(f"[WARN] Unexpected bond record {b}")
-    bond_indices, bond_lengths, bond_stiffness, bond_type_mask = build_bond_arrays_with_angles(
-        apos, bonds_adj, n_max_bonded=n_max_bonded,
-        default_L=default_L, default_K=default_K,
-        alpha0_deg=alpha0_deg, k_angle=k_angle,
-        enable_angles=enable_angles
+
+    ff = MMFFL(
+        L_pi=L_pi,
+        two_pi_dummies=two_pi_dummies,
+        Kang=K_ang,
+        Kpi_host=Kpi_host,
+        Kpi_orth=Kpi_orth,
+        Kpi_align=Kpi_align,
+        L_epair=L_epair,
+        Kep_host=Kep_host,
+        Kep_orth=Kep_orth,
+        Kep_pair=Kep_pair,
+        verbosity=1,
     )
-    return apos, bond_indices, bond_lengths, bond_stiffness, bonds_adj, bond_type_mask
+    topo = ff.build_topology(
+        mol,
+        type_source=type_source,
+        add_angle=bool(add_angle),
+        add_pi=bool(add_pi),
+        two_pi_dummies=bool(two_pi_dummies),
+        add_pi_align=bool(add_pi_align),
+        add_epair=bool(add_epair),
+        add_epair_pairs=bool(add_epair_pairs),
+        bUFF=False,
+        report=True,
+    )
+    apos_all = topo["apos"].astype(np.float32)
+    n_all = int(topo["n_all"])
+    n_real = int(topo["n_real"])
+
+    # Build adjacency lists for plotting and for XPDB buffers
+    bonds_primary = topo["bonds_primary"]
+    bonds_derived = []
+    if add_angle:
+        bonds_derived += topo["bonds_angle"]
+    if add_pi:
+        bonds_derived += topo["bonds_pi"]
+    if add_pi and add_pi_align:
+        bonds_derived += topo["bonds_pi_align"]
+    if add_epair:
+        bonds_derived += topo["bonds_epair"]
+    if add_epair and add_epair_pairs:
+        bonds_derived += topo["bonds_epair_pair"]
+
+    bonds_all = sorted(set(bonds_primary + bonds_derived))
+    bonds_adj = _bonds_to_adj(n_all, bonds_all, default_L=None, default_K=default_K, apos=apos_all)
+    bond_indices, bond_lengths, bond_stiffness, bond_type_mask = _pack_fixed_bonds(n_all, bonds_adj, n_max_bonded=n_max_bonded)
+
+    if print_topology:
+        print("[TOPO] n_real=", n_real, " n_all=", n_all, " n_primary=", len(bonds_primary), " n_derived=", len(bonds_derived))
+        print("[TOPO] type_names:")
+        for ia, tn in enumerate(topo["type_names"]):
+            print(f"  {ia:4d} {tn} {'DUMMY' if topo['is_dummy'][ia] else ''}")
+        print("[TOPO] bonds_primary:", bonds_primary)
+        print("[TOPO] bonds_angle:", topo["bonds_angle"])
+        print("[TOPO] bonds_pi:", topo["bonds_pi"])
+        if add_pi and add_pi_align:
+            print("[TOPO] bonds_pi_align:", topo["bonds_pi_align"])
+        print("[TOPO] bonds_epair:", topo["bonds_epair"])
+        if add_epair and add_epair_pairs:
+            print("[TOPO] bonds_epair_pair:", topo["bonds_epair_pair"])
+
+    if mol2_out is not None:
+        au.save_mol2(mol2_out, topo["type_names"], apos_all, bonds_all, qs=None, comment=f"n_real={n_real} n_all={n_all}")
+        print("[TOPO] wrote", mol2_out)
+
+    return topo, apos_all, bond_indices, bond_lengths, bond_stiffness, bonds_adj, bond_type_mask
+
+
+def plot_topology_3d(apos, topo, *, title="Topology"):
+    fig = plt.figure(figsize=(8, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_title(title)
+    p = np.asarray(apos, dtype=float)
+    is_dummy = np.asarray(topo["is_dummy"], dtype=bool)
+    type_names = np.asarray(topo["type_names"], dtype=object)
+    is_pi_dummy = is_dummy & np.array([str(tn).startswith("Pi") for tn in type_names])
+    is_ep_dummy = is_dummy & np.array([str(tn).startswith("E") for tn in type_names])
+    is_other_dummy = is_dummy & ~(is_pi_dummy | is_ep_dummy)
+    # atoms
+    ax.scatter(p[~is_dummy, 0], p[~is_dummy, 1], p[~is_dummy, 2], s=80, c='k', depthshade=True, label='atoms')
+    if np.any(is_pi_dummy):
+        ax.scatter(p[is_pi_dummy, 0], p[is_pi_dummy, 1], p[is_pi_dummy, 2], s=50, c='magenta', depthshade=True, label='pi dummies')
+    if np.any(is_ep_dummy):
+        ax.scatter(p[is_ep_dummy, 0], p[is_ep_dummy, 1], p[is_ep_dummy, 2], s=50, c='cyan', depthshade=True, label='epair dummies')
+    if np.any(is_other_dummy):
+        ax.scatter(p[is_other_dummy, 0], p[is_other_dummy, 1], p[is_other_dummy, 2], s=40, c='r', depthshade=True, label='other dummies')
+
+    def draw_bonds(bonds, color, lw, label):
+        for (i, j) in bonds:
+            i = int(i); j = int(j)
+            ax.plot([p[i, 0], p[j, 0]], [p[i, 1], p[j, 1]], [p[i, 2], p[j, 2]], color=color, lw=lw)
+
+    draw_bonds(topo["bonds_primary"], color='gray', lw=2.0, label='primary')
+    if len(topo["bonds_angle"]) > 0:
+        draw_bonds(topo["bonds_angle"], color='cyan', lw=1.0, label='angle')
+    if len(topo["bonds_pi"]) > 0:
+        draw_bonds(topo["bonds_pi"], color='magenta', lw=1.0, label='pi')
+    if len(topo.get("bonds_pi_align", [])) > 0:
+        draw_bonds(topo["bonds_pi_align"], color='purple', lw=1.0, label='pi-align')
+    if len(topo["bonds_epair"]) > 0:
+        draw_bonds(topo["bonds_epair"], color='orange', lw=1.0, label='epair')
+    if len(topo.get("bonds_epair_pair", [])) > 0:
+        draw_bonds(topo["bonds_epair_pair"], color='brown', lw=1.0, label='epair-pair')
+
+    # labels
+    for ia, tn in enumerate(topo["type_names"]):
+        ax.text(p[ia, 0], p[ia, 1], p[ia, 2], f"{ia}:{tn}", fontsize=8)
+
+    # aspect equal-ish
+    mins = p.min(axis=0); maxs = p.max(axis=0)
+    c = 0.5 * (mins + maxs)
+    r = float(np.max(maxs - mins)) * 0.6 + 1e-6
+    ax.set_xlim(c[0] - r, c[0] + r)
+    ax.set_ylim(c[1] - r, c[1] + r)
+    ax.set_zlim(c[2] - r, c[2] + r)
+    ax.legend(loc='upper right')
+    plt.show()
 
 
 def make_dense_block(nx, ny, spacing, jitter, atom_rad):
@@ -235,31 +398,69 @@ def update_plot(scatter, scatter_sizes, bonds_primary, bonds_secondary, line_seg
 
     return (scatter, line_segments_primary, line_segments_secondary, force_lines)
 
+'''
+
+python -u test_TiledJacobi_molecules.py  --molecule ../../../cpp/common_resources/xyz/OCH2.xyz --use_mmffl 1 --enable_angles 1 --add_epair 1 --add_pi 1 --topology_only 1 --mol2_out /tmp/OCH2_topo.mmffl.mol2 --print_buffers 1
+
+python -u test_TiledJacobi_molecules.py --molecule ../../cpp/common_resources/xyz/OCH2.xyz --use_mmffl 1 --type_source table --enable_angles 1 --add_pi 1 --two_pi 1 --add_pi_align 1 --Kpi_align 15 --add_epair 1 --add_epair_pairs 1 --Kep_pair 10 --topology_only 1 --print_buffers 1
+
+python -u test_TiledJacobi_molecules.py  --molecule ../../cpp/common_resources/xyz/OCH2.xyz --topology_only 1 --mol2_out /tmp/OCH2_topo.mmffl.mol2 --print_buffers 1
+
+
+
+node web/molgui_webgpu/dump_xpdb_topology.mjs --xyz          ./cpp/common_resources/xyz/guanine.xyz --mol2Out  OUT_js_guanine.mol2
+python -u test_TiledJacobi_molecules.py       --molecule ../../cpp/common_resources/xyz/guanine.xyz --mol2_out OUT_py_guanine.mol2 --print_buffers 1 --topology_only 1 
+
+node web/molgui_webgpu/dump_xpdb_topology.mjs --xyz          ./cpp/common_resources/xyz/pyridine.xyz --mol2Out  OUT_js_pyridine.mol2
+python -u test_TiledJacobi_molecules.py       --molecule ../../cpp/common_resources/xyz/pyridine.xyz --mol2_out OUT_py_pyridine.mol2 --print_buffers 1 --topology_only 1 
+
+node web/molgui_webgpu/dump_xpdb_topology.mjs --xyz          ./cpp/common_resources/xyz/pyrrol.xyz --mol2Out  OUT_js_pyrrol.mol2
+python -u test_TiledJacobi_molecules.py       --molecule ../../cpp/common_resources/xyz/pyrrol.xyz --mol2_out OUT_py_pyrrol.mol2 --print_buffers 1 --topology_only 1 
+
+'''
 
 def run_test():
-    parser = argparse.ArgumentParser(description="Tiled Jacobi Solver Test with Molecules")
+    parser = argparse.ArgumentParser(description="Tiled Jacobi Solver Test with Molecules (distances in Å, stiffness in eV/Å^2)")
     parser.add_argument("--molecule",        type=str,   default="../../cpp/common_resources/xyz/pentacene.xyz", help="Path to molecule file (.xyz, .mol, .mol2)")
-    parser.add_argument("--atom_rad",        type=float, default=0.2)
-    parser.add_argument("--omega",           type=float, default=0.7)
-    parser.add_argument("--momentum_beta",   type=float, default=0.0)
-    parser.add_argument("--dt",              type=float, default=100.0)
-    parser.add_argument("--k_coll",          type=float, default=100.0)
-    parser.add_argument("--bond_k",          type=float, default=200.0)
-    parser.add_argument("--bond_len",        type=float, default=1.3)
+    parser.add_argument("--atom_rad",        type=float, default=0.2, help="Collision sphere radius per atom [Å]")
+    parser.add_argument("--omega",           type=float, default=0.7, help="Jacobi relaxation weight ω (dimensionless, 0<ω<1)")
+    parser.add_argument("--momentum_beta",   type=float, default=0.0, help="Momentum/velocity blending factor β (dimensionless)")
+    parser.add_argument("--dt",              type=float, default=100.0, help="Time step for XPDB updates (solver units, typically fs)")
+    parser.add_argument("--k_coll",          type=float, default=100.0, help="Collision spring stiffness [eV/Å^2]")
+    parser.add_argument("--bond_k",          type=float, default=200.0, help="Fallback bond stiffness when no MMFFL data [eV/Å^2]")
+    parser.add_argument("--bond_len",        type=float, default=1.3, help="Fallback bond relaxed length [Å]")
     parser.add_argument("--solver_steps",    type=int,   default=10,  help="Jacobi iterations per MD step (inner solver loop)")
     parser.add_argument("--md_steps",        type=int,   default=-1, help="Number of PD time steps (outer loop); <0 to run until window close")
-    parser.add_argument("--coll_scale",      type=float, default=2.0)
-    parser.add_argument("--bbox_scale",      type=float, default=2.0)
-    parser.add_argument("--group_size",      type=int,   default=64)
-    parser.add_argument("--max_ghosts",      type=int,   default=128)
-    parser.add_argument("--debug_viz",       type=int,   default=1)
-    parser.add_argument("--force_scale",     type=float, default=1.0)
-    parser.add_argument("--pick_radius",     type=float, default=0.4, help="Max distance for picking (world units)")
-    parser.add_argument("--alpha0_deg",      type=float, default=120.0, help="Default relaxed angle (degrees) for angle-derived bonds")
-    parser.add_argument("--k_angle",         type=float, default=None, help="Stiffness for angle-derived bonds (default: same as bond_k)")
-    parser.add_argument("--enable_angles",   type=int,   default=1, help="Enable angle-derived second neighbors (1=yes,0=no)")
-    parser.add_argument("--print_buffers",   type=int,   default=1, help="Print uploaded buffers (positions, bond idx/len/stiff)")
-    parser.add_argument("--print_pos_every", type=int,   default=50, help="Print position bbox every N frames (0=off)")
+    parser.add_argument("--coll_scale",      type=float, default=2.0, help="Collision distance multiplier relative to atom radius (dimensionless)")
+    parser.add_argument("--bbox_scale",      type=float, default=2.0, help="Simulation bounding box padding relative to molecule size (dimensionless)")
+    parser.add_argument("--group_size",      type=int,   default=64, help="OpenCL work-group size for XPDB kernels")
+    parser.add_argument("--max_ghosts",      type=int,   default=128, help="Maximum ghost interactions per atom for collision handling")
+    parser.add_argument("--debug_viz",       type=int,   default=1, help="Enable matplotlib preview (1=yes,0=no)")
+    parser.add_argument("--force_scale",     type=float, default=1.0, help="Scale factor for drawn force vectors in 2D debug view")
+    parser.add_argument("--pick_radius",     type=float, default=0.4, help="Picking radius when interacting with the GUI [Å]")
+    parser.add_argument("--alpha0_deg",      type=float, default=120.0, help="Default relaxed angle (degrees) used when no atom-specific data is available")
+    parser.add_argument("--k_angle",         type=float, default=None, help="Override stiffness for geometric angle bonds [eV/Å^2]; None -> reuse --bond_k")
+    parser.add_argument("--enable_angles",   type=int,   default=1, help="Enable MMFFL angle-derived second neighbors (1=yes,0=no)")
+    parser.add_argument("--type_source",     type=str,   default="table", help="Atom type source: 'table' (AtomTypes.dat) or 'uff' (UFF inference)")
+    parser.add_argument("--use_mmffl",       type=int,   default=1, help="Use MMFFL topology builder (1) or fall back to legacy geometric bonding (0)")
+    parser.add_argument("--add_pi",          type=int,   default=1, help="Enable pi-orbital dummies and their bonds")
+    parser.add_argument("--two_pi",          type=int,   default=1, help="If --add_pi, place dummies on both +/− sides of the pi plane")
+    parser.add_argument("--add_pi_align",    type=int,   default=0, help="Add alignment bonds between pi dummies of bonded atoms")
+    parser.add_argument("--add_epair",       type=int,   default=1, help="Enable electron-pair dummies (lone pairs) and their bonds")
+    parser.add_argument("--add_epair_pairs", type=int,   default=0, help="Connect multiple electron-pair dummies on the same host to enforce spacing")
+    parser.add_argument("--L_pi",            type=float, default=1.0, help="Distance from host atom to pi dummy center [Å]")
+    parser.add_argument("--L_epair",         type=float, default=0.5, help="Distance from host atom to electron-pair dummy [Å]")
+    parser.add_argument("--K_ang",           type=float, default=100.0, help="Stiffness for angle-derived bonds (k) between second neighbors; set 0 to disable custom value")
+    parser.add_argument("--Kpi_host",        type=float, default=50.0, help="Stiffness for host↔pi-dummy bonds (controls sigma/pi coupling)")
+    parser.add_argument("--Kpi_orth",        type=float, default=30.0, help="Stiffness for pi-dummy↔neighbor orthogonal bonds (keeps pi planes aligned)")
+    parser.add_argument("--Kpi_align",       type=float, default=15.0, help="Stiffness for pi↔pi alignment bonds between bonded hosts (requires --add_pi_align)")
+    parser.add_argument("--Kep_host",        type=float, default=40.0, help="Stiffness for host↔electron-pair dummy bonds")
+    parser.add_argument("--Kep_orth",        type=float, default=25.0, help="Stiffness for electron-pair dummy↔neighbor orthogonal bonds")
+    parser.add_argument("--Kep_pair",        type=float, default=10.0, help="Stiffness for electron-pair dummy↔dummy bonds on the same host (requires --add_epair_pairs)")
+    parser.add_argument("--mol2_out",        type=str,   default=None, help="Optional MOL2 export path (writes Å coordinates + dummy atoms)")
+    parser.add_argument("--topology_only",   type=int,   default=0, help="Stop after topology build/plot/export (1=yes,0=run XPDB)")
+    parser.add_argument("--print_buffers",   type=int,   default=1, help="Dump XPDB input arrays (positions, bond idx/len/stiff) for inspection")
+    parser.add_argument("--print_pos_every", type=int,   default=50, help="Print position bounding box every N frames (0=disable)")
     args = parser.parse_args()
 
     if args.molecule is None:
@@ -271,11 +472,39 @@ def run_test():
             alpha0_deg=args.alpha0_deg, k_angle=args.k_angle, enable_angles=bool(args.enable_angles)
         )
     else:
-        pos0, bond_indices, bond_lengths, bond_stiffness, bonds_plot, bond_type_mask = load_molecule_bonds(
-            args.molecule, n_max_bonded=16, default_L=args.bond_len, default_K=args.bond_k,
-            alpha0_deg=args.alpha0_deg, k_angle=args.k_angle, enable_angles=bool(args.enable_angles),
-            print_topology=bool(args.print_buffers)
-        )
+        if args.use_mmffl:
+            topo, pos0, bond_indices, bond_lengths, bond_stiffness, bonds_plot, bond_type_mask = load_molecule_topology_mmffl(
+                args.molecule,
+                n_max_bonded=16,
+                default_K=args.bond_k,
+                type_source=args.type_source,
+                add_angle=bool(args.enable_angles),
+                add_pi=bool(args.add_pi),
+                two_pi_dummies=bool(args.two_pi),
+                add_pi_align=bool(args.add_pi_align),
+                add_epair=bool(args.add_epair),
+                add_epair_pairs=bool(args.add_epair_pairs),
+                L_pi=args.L_pi,
+                L_epair=args.L_epair,
+                K_ang=args.K_ang,
+                Kpi_host=args.Kpi_host,
+                Kpi_orth=args.Kpi_orth,
+                Kpi_align=args.Kpi_align,
+                Kep_host=args.Kep_host,
+                Kep_orth=args.Kep_orth,
+                Kep_pair=args.Kep_pair,
+                print_topology=bool(args.print_buffers),
+                mol2_out=args.mol2_out,
+            )
+            if args.topology_only:
+                plot_topology_3d(pos0, topo, title=os.path.basename(args.molecule))
+                return
+        else:
+            pos0, bond_indices, bond_lengths, bond_stiffness, bonds_plot, bond_type_mask = load_molecule_bonds(
+                args.molecule, n_max_bonded=16, default_L=args.bond_len, default_K=args.bond_k,
+                alpha0_deg=args.alpha0_deg, k_angle=args.k_angle, enable_angles=bool(args.enable_angles),
+                print_topology=bool(args.print_buffers)
+            )
         num_atoms = len(pos0)
         vel0 = np.zeros_like(pos0)
         radius = np.full(num_atoms, args.atom_rad, dtype=np.float32)

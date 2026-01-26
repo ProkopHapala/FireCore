@@ -7,13 +7,9 @@ I have program in WebGL for molecular visulization and it is quite cosrvative fo
 
 therefore I do not want to fully rely on WebGPU, but for some things like running interactive molecular dynamics, I really want to use compute shaders as they map perfectly from my existing OpenCL kernels. So I was thinking to make just the simulation module need webgpu and always report if it is avaialbe or not. But I wo not want to double my rendering systems or generally I wo not want to touch my WebGL rendering system. Question is if I have WebGPU and WebGL system initialized at the same time, if I can share buffwers, for example if particle position buffer which is writen by WebGPU simulation, can be rendered using WebGL system and GLSL shaders.
 
-
-
-
 ---
 
 ## Gemini
-
 
 Initializing WebGL with a conditional WebGPU fallback is technically easy in Three.js, but your specific requirement—**sharing buffers between a WebGPU simulation and a WebGL renderer**—is currently impossible without a significant performance penalty.
 
@@ -52,15 +48,9 @@ However, if performance is the priority:
 2.  **Report WebGPU Status:** You can check `renderer.backend.isWebGPU` to decide whether to enable your "Interactive MD" module.
 3.  **Port Simulation only:** You can write your MD simulation in TSL (which maps very well to OpenCL logic). If the browser falls back to WebGL, Three.js will attempt to run it via Transform Feedback, though it will be slower than the native WebGPU compute path.
 
-
-
 ---
 
-
-
-
 ## USER
-
 
 OK, here is rendering system from WebGL, can you rewrite it to the new system compactible with WebGPU which should work even if WebGPU is not available?
 
@@ -90,684 +80,16 @@ Here is the rewritten rendering system.
 ### Prerequisites
 You must be using a recent version of Three.js (r167+) and have the `three/addons/` mapped correctly in your import map.
 
----
-
 ### 1. main.js
 **Changes**:
 - Removed manual `.glsl` file fetching (shaders are now JS/TSL).
 - Replaced `WebGLRenderer` with `WebGPURenderer`.
-
-```javascript
-import * as THREE from 'three';
-// Import WebGPURenderer from addons
-import { WebGPURenderer } from 'three/addons/renderers/webgpu/WebGPURenderer.js';
-
-import { logger } from '../../common_js/Logger.js';
-import { EditableMolecule } from './EditableMolecule.js';
-import { MMParams } from './MMParams.js';
-import { MoleculeRenderer, PackedMolecule } from './MoleculeRenderer.js';
-import { GUI } from './GUI.js';
-import { Editor } from './Editor.js';
-import { ShortcutManager } from './ShortcutManager.js';
-import { Vec3 } from '../../common_js/Vec3.js';
-import { ScriptRunner } from './ScriptRunner.js';
-// import { PDSimulation } from './ProjectiveDynamics.js'; // Assuming you will update this later
-
-export class MolGUIApp {
-    constructor() {
-        this.container = document.getElementById('canvas-container');
-        if (!this.container) throw new Error("Could not find #canvas-container");
-        this.scene = null;
-        this.camera = null;
-        this.renderer = null;
-        this.system = new EditableMolecule();
-        this.controls = null;
-        this._rafPending = false;
-        this.continuousRender = false;
-    }
-
-    requestRender() {
-        if (this._rafPending) return;
-        this._rafPending = true;
-        requestAnimationFrame(() => {
-            this._rafPending = false;
-            if (this.renderers) {
-                Object.values(this.renderers).forEach(r => r.update());
-            }
-            if (this.renderer && this.scene && this.camera) {
-                // await this.renderer.renderAsync(this.scene, this.camera); // Recommended for WebGPU
-                this.renderer.render(this.scene, this.camera);
-            }
-        });
-    }
-
-    setContinuousRender(enabled) {
-        enabled = !!enabled;
-        if (this.continuousRender === enabled) return;
-        this.continuousRender = enabled;
-        if (enabled) {
-            this.renderer.setAnimationLoop(() => {
-                this.requestRender();
-            });
-        } else {
-            this.renderer.setAnimationLoop(null);
-        }
-    }
-
-    async init() {
-        logger.info("Initializing MolGUI (WebGPU/TSL)...");
-
-        // 1. Scene
-        this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x222222);
-
-        // 2. Camera
-        const width = this.container.clientWidth;
-        const height = this.container.clientHeight;
-        const aspect = width / height;
-        this.frustumSize = 20;
-        this.camera = new THREE.OrthographicCamera(
-            this.frustumSize * aspect / -2,
-            this.frustumSize * aspect / 2,
-            this.frustumSize / 2,
-            this.frustumSize / -2,
-            -1000.,
-             1000.
-        );
-        this.camera.position.set(0, 0, 10);
-        this.camera.lookAt(0, 0, 0);
-
-        // 3. Renderer (WebGPURenderer with Auto Fallback)
-        this.renderer = new WebGPURenderer({
-            antialias: true,
-            trackTimestamp: true // useful for debug
-        });
-        
-        this.renderer.setSize(width, height);
-        this.renderer.setPixelRatio(window.devicePixelRatio);
-        
-        // Append to DOM
-        this.renderer.domElement.tabIndex = 0;
-        this.renderer.domElement.style.outline = 'none';
-        this.renderer.domElement.addEventListener('pointerdown', () => this.renderer.domElement.focus());
-        this.container.appendChild(this.renderer.domElement);
-
-        // Check backend capability
-        // Note: initialization is async in WebGPU, but WebGPURenderer handles generic setup synchronously
-        // You can check renderer.backend.isWebGPU to see if you got the fast path
-
-        // 4. Controls
-        if (THREE.OrbitControls || (THREE.Addons && THREE.Addons.OrbitControls)) {
-            const Orb = THREE.OrbitControls || THREE.Addons.OrbitControls; // Handle various import styles
-            this.controls = new Orb(this.camera, this.renderer.domElement);
-            this.controls.enableDamping = false;
-            this.controls.dampingFactor = 0.05;
-            this.controls.addEventListener('change', () => this.requestRender());
-            this.controls.mouseButtons = {
-                LEFT: null,
-                MIDDLE: THREE.MOUSE.DOLLY,
-                RIGHT: THREE.MOUSE.ROTATE
-            };
-            window.addEventListener('keydown', (e) => {
-                if (e.key === 'Shift') this.controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
-            });
-            window.addEventListener('keyup', (e) => {
-                if (e.key === 'Shift') this.controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
-            });
-        }
-
-        // 5. Molecule Systems
-        this.systems = {
-            molecule:  new EditableMolecule(),
-            substrate: new EditableMolecule()
-        };
-        this.system = this.systems.molecule;
-        
-        this.packedSystems = {
-            molecule:  new PackedMolecule(),
-            substrate: new PackedMolecule()
-        };
-
-        this.mmParams = new MMParams();
-        await this.mmParams.loadResources('../common_resources/ElementTypes.dat', '../common_resources/AtomTypes.dat', '../common_resources/BondTypes.dat', '../common_resources/AngleTypes.dat');
-
-        // 6. Molecule Renderers
-        // Pass null for shaders, we generate them in MeshRenderer now
-        this.renderers = {
-            molecule:  new MoleculeRenderer(this.scene, this.packedSystems.molecule,  null, this.mmParams, this.systems.molecule),
-            substrate: new MoleculeRenderer(this.scene, this.packedSystems.substrate, null, this.mmParams, this.systems.substrate)
-        };
-        this.molRenderer = this.renderers.molecule;
-
-        Object.values(this.renderers).forEach(r => {
-            if (r && r.toggleAxes) r.toggleAxes(true);
-        });
-
-        this.requestRender = this.requestRender.bind(this);
-
-        // --- Lattices / Replicas (Simplified for brevity, same logic as before) ---
-        // ... (Keep existing Lattice logic) ...
-
-        // 7. GUI & Editor
-        this.gui = new GUI(this.system, this.molRenderer);
-        this.editor = new Editor(this.scene, this.camera, this.renderer, this.system, this.molRenderer);
-        this.scriptRunner = new ScriptRunner(this);
-        this.shortcuts = new ShortcutManager(this.editor);
-
-        this.editor.onSelectionChange = () => {
-            this.gui.updateSelectionUI();
-            this.molRenderer.updateSelection();
-            this.requestRender();
-        };
-
-        this.molRenderer.update();
-
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-        this.scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-        dirLight.position.set(5, 10, 7);
-        this.scene.add(dirLight);
-
-        window.addEventListener('resize', this.onWindowResize.bind(this));
-        this.requestRender();
-        window.logger.info(`Initialization Complete. Backend: ${this.renderer.backend.isWebGPU ? "WebGPU" : "WebGL (Fallback)"}`);
-    }
-
-    onWindowResize() {
-        const width = this.container.clientWidth;
-        const height = this.container.clientHeight;
-        const aspect = width / height;
-        this.camera.left = -this.frustumSize * aspect / 2;
-        this.camera.right = this.frustumSize * aspect / 2;
-        this.camera.top = this.frustumSize / 2;
-        this.camera.bottom = -this.frustumSize / 2;
-        this.camera.updateProjectionMatrix();
-        this.renderer.setSize(width, height);
-        this.requestRender();
-    }
-}
-
-window.onload = () => {
-    const app = new MolGUIApp();
-    window.app = app;
-    app.init();
-};
-```
-
----
 
 ### 2. MeshRenderer.js
 **Changes**:
 - Replaced `ShaderMaterial` with TSL Nodes.
 - Implemented the custom logic (texture fetch, impostors) using `three/tsl`.
 - This file contains the logic previously found in `atom.glsl`, `bond.glsl`, etc.
-
-```javascript
-import * as THREE from 'three';
-import { Draw3D } from './Draw3D.js';
-// Import TSL Nodes
-import { 
-    float, vec2, vec3, vec4, color, 
-    positionLocal, uv, 
-    texture, uniform, attribute, 
-    instanceIndex, 
-    mix, normalize, dot, sqrt, max, pow, reflect, 
-    Fn, If, Discard
-} from 'three/tsl';
-
-export class MeshRenderer {
-    constructor(scene, shaders, capacity) {
-        this.scene = scene;
-        // shaders param is ignored/deprecated, we build materials here
-        this.capacity = capacity;
-
-        this.posTexture = null;
-        this.posData = null; 
-        this.texSize = 64; 
-        this.texHeight = 0;
-
-        this.atomMesh = null;
-        this.bondLines = null;
-        this.labelMesh = null;
-        this.selectionMesh = null;
-        this.fontTexture = null;
-
-        this.init();
-    }
-
-    ensureCapacity(newCapacity) {
-        const cap = newCapacity | 0;
-        if (cap <= this.capacity) return;
-
-        // Dispose existing
-        [this.atomMesh, this.selectionMesh, this.bondLines, this.labelMesh].forEach(obj => {
-            if (obj) {
-                this.scene.remove(obj);
-                if (obj.geometry) obj.geometry.dispose();
-                if (obj.material) obj.material.dispose();
-            }
-        });
-        
-        this.posTexture.dispose();
-        this.posData = null;
-
-        this.capacity = cap;
-        this.init();
-    }
-
-    init() {
-        // --- 1. Position Texture ---
-        this.texHeight = Math.ceil(this.capacity / this.texSize);
-        const size = this.texSize * this.texHeight * 4;
-        this.posData = new Float32Array(size);
-
-        this.posTexture = new THREE.DataTexture(
-            this.posData,
-            this.texSize,
-            this.texHeight,
-            THREE.RGBAFormat,
-            THREE.FloatType
-        );
-        this.posTexture.needsUpdate = true;
-
-        // --- TSL Uniforms ---
-        // We wrap Three.js objects in TSL uniforms
-        const uPosTexNode = texture(this.posTexture);
-        const uTexSizeNode = uniform(new THREE.Vector2(this.texSize, this.texHeight));
-        
-        // Helper function to read position from texture based on ID
-        const getAtomPos = Fn(([id]) => {
-            const tx = id.mod(uTexSizeNode.x).add(0.5).div(uTexSizeNode.x);
-            const ty = id.div(uTexSizeNode.x).floor().add(0.5).div(uTexSizeNode.y);
-            return uPosTexNode.sample(vec2(tx, ty)); // returns vec4(x,y,z,radius)
-        });
-
-        // --- 2. Atoms (Sprite / Impostor) ---
-        {
-            // Geometry: Simple Quad
-            const atomGeo = new THREE.PlaneGeometry(1, 1);
-            
-            // Attributes
-            const aAtomID = attribute('aAtomID', 'float');
-            const instanceColor = attribute('instanceColor', 'vec3');
-            const instanceScale = attribute('instanceScale', 'float');
-
-            // --- Vertex Stage ---
-            const atomPosData = getAtomPos(aAtomID);
-            const centerPos = atomPosData.xyz;
-            const baseRadius = atomPosData.w;
-            
-            // Global Uniforms
-            const uPointScale = uniform(1.0); 
-            const uAlpha = uniform(1.0);
-
-            // Billboarding & Scaling
-            // In TSL, we modify 'positionLocal' or calculate 'positionWorld'
-            // For billboarding instanced mesh:
-            const finalRadius = instanceScale.mul(baseRadius).mul(uPointScale);
-            
-            // Create Material
-            // We use NodeMaterial to construct the pipeline
-            const material = new THREE.NodeMaterial();
-            material.transparent = true;
-            material.side = THREE.DoubleSide;
-
-            // Vertex Node
-            // Billboard logic: View-aligned offset added to center position
-            // ModelViewMatrix * Center + Offset
-            const mvPos = THREE.modelViewMatrix.toVar( instanceIndex ).mul( vec4( centerPos, 1.0 ) );
-            // Add vertex offset (scaled)
-            mvPos.xy.addAssign( positionLocal.xy.mul(finalRadius) );
-            material.positionNode = mvPos; // TSL handles projection automatically if we return View Space position? 
-            // Actually, for NodeMaterial, positionNode is usually Local or World.
-            // Let's use the standard "billboard" helper if available, or manual:
-            // Manual View-Space billboard is safest for Impostors:
-            // Override gl_Position logic basically.
-            
-            // NOTE: converting custom billboard logic to TSL:
-            // We can set `material.vertexNode` to manipulate the position.
-            material.vertexNode = Fn(() => {
-                const viewPos = THREE.modelViewMatrix.mul(vec4(centerPos, 1.0));
-                viewPos.xy.addAssign( positionLocal.xy.mul(finalRadius) );
-                return viewPos; // Returns View Space
-            })();
-
-            // --- Fragment Stage (Impostor Sphere) ---
-            const vUv = uv();
-            
-            material.colorNode = Fn(() => {
-                const uvOffset = vUv.sub(0.5);
-                const distSq = dot(uvOffset, uvOffset);
-                
-                // Discard outside circle
-                Discard(distSq.greaterThan(0.25));
-
-                // Normal calc (Impostor)
-                const z = sqrt(float(0.25).sub(distSq));
-                const normal = normalize(vec3(uvOffset.x, uvOffset.y, z));
-
-                // Simple Lighting
-                const lightDir = normalize(vec3(0.5, 0.5, 1.0));
-                const diffuse = max(dot(normal, lightDir), 0.0);
-                const ambient = vec3(0.3);
-                
-                // Specular
-                const viewDir = vec3(0.0, 0.0, 1.0);
-                const reflectDir = reflect(lightDir.negate(), normal);
-                const spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
-                const specular = vec3(0.5).mul(spec);
-
-                const finalColor = instanceColor.mul(ambient.add(diffuse)).add(specular);
-                
-                return vec4(finalColor, uAlpha);
-            })();
-
-            // Create Mesh
-            this.atomMesh = new THREE.InstancedMesh(atomGeo, material, this.capacity);
-            // Setup Attributes
-            const ids = new Float32Array(this.capacity);
-            const cols = new Float32Array(this.capacity * 3);
-            const scales = new Float32Array(this.capacity);
-            for(let i=0; i<this.capacity; i++) { ids[i]=i; scales[i]=0; cols[i*3]=1; }
-            
-            this.atomMesh.geometry.setAttribute('aAtomID', new THREE.InstancedBufferAttribute(ids, 1));
-            this.atomMesh.geometry.setAttribute('instanceColor', new THREE.InstancedBufferAttribute(cols, 3));
-            this.atomMesh.geometry.setAttribute('instanceScale', new THREE.InstancedBufferAttribute(scales, 1));
-            this.atomMesh.count = 0;
-            this.scene.add(this.atomMesh);
-
-            // --- Selection Mesh (Clone logic) ---
-            const selMat = new THREE.NodeMaterial();
-            selMat.transparent = true;
-            selMat.depthWrite = false;
-            selMat.depthTest = true;
-            
-            const uSelScale = uniform(1.08); // slightly larger
-            const uSelAlpha = uniform(0.22);
-            
-            selMat.vertexNode = Fn(() => {
-                const atomData = getAtomPos(attribute('aAtomID', 'float'));
-                const cPos = atomData.xyz;
-                const rad = atomData.w;
-                // Selection scale logic
-                const finalR = attribute('instanceScale', 'float').mul(rad).mul(uSelScale);
-                
-                const viewPos = THREE.modelViewMatrix.mul(vec4(cPos, 1.0));
-                viewPos.xy.addAssign( positionLocal.xy.mul(finalR) );
-                return viewPos;
-            })();
-
-            selMat.colorNode = Fn(() => {
-                const uvOffset = uv().sub(0.5);
-                const distSq = dot(uvOffset, uvOffset);
-                Discard(distSq.greaterThan(0.25));
-                return vec4(attribute('instanceColor', 'vec3'), uSelAlpha);
-            })();
-
-            this.selectionMesh = new THREE.InstancedMesh(atomGeo.clone(), selMat, this.capacity);
-            this.selectionMesh.geometry.setAttribute('aAtomID', new THREE.InstancedBufferAttribute(ids, 1)); // reuse array
-            this.selectionMesh.geometry.setAttribute('instanceColor', new THREE.InstancedBufferAttribute(new Float32Array(this.capacity*3), 3));
-            this.selectionMesh.geometry.setAttribute('instanceScale', new THREE.InstancedBufferAttribute(new Float32Array(this.capacity), 1));
-            this.selectionMesh.count = 0;
-            this.selectionMesh.renderOrder = 998;
-            this.scene.add(this.selectionMesh);
-        }
-
-        // --- 3. Bonds (Line Segments) ---
-        {
-            // Geometry logic for lines is tricky in TSL because `LineSegments` sends pairs of vertices.
-            // We need to fetch position based on `aAtomID` (which holds the ID of the endpoint).
-            
-            const maxBonds = this.capacity * 4;
-            const bondGeo = new THREE.BufferGeometry();
-            // Dummy positions (not used, but needed for bounding box)
-            bondGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(maxBonds*2*3), 3));
-            const bondIds = new Float32Array(maxBonds * 2);
-            const matIds = new Float32Array(maxBonds * 2);
-            bondGeo.setAttribute('aAtomID', new THREE.BufferAttribute(bondIds, 1));
-            bondGeo.setAttribute('aMatID', new THREE.BufferAttribute(matIds, 1));
-
-            const bondMat = new THREE.NodeMaterial();
-            bondMat.isLineBasicMaterial = true; // Helps Three.js render it as lines
-            // Define Palette
-            const matColors = uniform([
-                color(1,1,1), color(1,0,0), color(0,1,0), color(0,0,1),
-                color(1,1,0), color(0,1,1), color(1,0,1), color(0.5,0.5,0.5)
-            ]);
-
-            // Vertex Shader Logic
-            bondMat.vertexNode = Fn(() => {
-                // Fetch pos from texture using attribute ID
-                const posData = getAtomPos(attribute('aAtomID', 'float'));
-                return THREE.modelViewMatrix.mul(vec4(posData.xyz, 1.0));
-            })();
-
-            // Fragment Shader Logic
-            bondMat.colorNode = Fn(() => {
-                const idx = attribute('aMatID', 'float').toInt();
-                // TSL array access might need careful handling, 
-                // but `uniformArray[index]` usually works in newer TSL
-                // If not, we might need a cascading if/else or texture lookup.
-                // Assuming newer TSL supports dynamic indexing on uniform arrays:
-                return vec4(matColors.element(idx), 1.0);
-            })();
-
-            this.bondLines = new THREE.LineSegments(bondGeo, bondMat);
-            this.bondLines.frustumCulled = false;
-            this.bondLines.geometry.setDrawRange(0, 0);
-            this.scene.add(this.bondLines);
-        }
-
-        // --- 4. Labels ---
-        // Porting the font atlas logic to TSL
-        {
-            this.fontTexture = Draw3D.createFontTexture();
-            const uFontTex = texture(this.fontTexture);
-            
-            // Uniforms
-            const uColor = uniform(new THREE.Color(1,1,1));
-            const uScale = uniform(0.5);
-            // const uScreenSpace = uniform(false); // Simplified for now
-
-            // Geometry setup handled in Draw3D (instanced quads)
-            // We need to define the TSL material that consumes 'aLabel1', 'aCharPos', etc.
-            
-            const labelMat = new THREE.NodeMaterial();
-            labelMat.transparent = true;
-            labelMat.depthTest = false;
-            labelMat.side = THREE.DoubleSide;
-
-            // Helper to extract char code from vec4
-            const indexToVec4 = Fn(([v, idx]) => {
-                return If(idx.lessThan(1.5), 
-                    If(idx.lessThan(0.5), v.x, v.y),
-                    If(idx.lessThan(2.5), v.z, v.w)
-                );
-            });
-
-            // Vertex Logic
-            labelMat.vertexNode = Fn(() => {
-                const aAtomID = attribute('aAtomID', 'float');
-                const aCharPos = attribute('aCharPos', 'float');
-                const aLabel1 = attribute('aLabel1', 'vec4');
-                const aLabel2 = attribute('aLabel2', 'vec4');
-                const aStrLen = attribute('aStrLen', 'float');
-
-                // Decode char index
-                const idx = aCharPos.round();
-                const charCode = float(0).toVar();
-                If(idx.lessThan(4.0), () => {
-                    charCode.assign(indexToVec4(aLabel1, idx));
-                }).Else(() => {
-                    charCode.assign(indexToVec4(aLabel2, idx.sub(4.0)));
-                });
-
-                // Get Atom Pos
-                const atomPos = getAtomPos(aAtomID).xyz;
-
-                // Position Logic (View Space Billboard + Char Offset)
-                const charAdvance = float(0.6);
-                const centerOffset = aStrLen.sub(1.0).mul(0.5);
-                const charOffset = aCharPos.sub(centerOffset).mul(charAdvance);
-                
-                const viewPos = THREE.modelViewMatrix.mul(vec4(atomPos, 1.0));
-                
-                // Add offsets (billboarded)
-                // positionLocal.x/y are the quad coords (-0.5 to 0.5)
-                const finalX = charOffset.add(positionLocal.x);
-                const offset = vec2(finalX, positionLocal.y).mul(uScale);
-                
-                viewPos.xy.addAssign(offset);
-                
-                // We must pass data to fragment using Varyings? 
-                // In TSL, we can just assign to a varying property on the material, 
-                // or assume context flow. But `charCode` determines UVs.
-                // We need to calculate UVs here or in frag. Let's do UV in frag?
-                // Actually standard UV is 0..1 per quad. We need to remap.
-                
-                // Let's pass charCode to fragment via a generic varying
-                // TSL `varying(node)` creates a varying.
-                
-                return viewPos;
-            })();
-
-            // To handle UV logic based on CharCode, we need a varying.
-            // Currently getting varyings explicitly in TSL:
-            const vCharCode = THREE.varying( 
-                // We need to duplicate the logic or hoist it. 
-                // For simplicity, let's just recalc or use the shared context.
-                // Re-implementing the extraction logic inside a varying definition:
-                Fn(() => {
-                    const aCharPos = attribute('aCharPos', 'float');
-                    const aLabel1 = attribute('aLabel1', 'vec4');
-                    const aLabel2 = attribute('aLabel2', 'vec4');
-                    const idx = aCharPos.round();
-                    const code = float(0).toVar();
-                    If(idx.lessThan(4.0), () => {
-                        code.assign(indexToVec4(aLabel1, idx));
-                    }).Else(() => {
-                        code.assign(indexToVec4(aLabel2, idx.sub(4.0)));
-                    });
-                    return code;
-                })()
-            );
-
-            labelMat.colorNode = Fn(() => {
-                Discard(vCharCode.lessThan(1.0)); // Hide empty chars
-
-                // UV Calc
-                const cols = float(16.0);
-                const rows = float(16.0);
-                const col = vCharCode.mod(cols);
-                const row = vCharCode.div(cols).floor();
-                
-                const cellW = float(1.0).div(cols);
-                const cellH = float(1.0).div(rows);
-
-                const glyphFill = float(0.7);
-                const localX = float(0.5).add(uv().x.sub(0.5).mul(glyphFill));
-                
-                const u = col.add(localX).mul(cellW);
-                // v calculation might be flipped depending on texture settings
-                const v = rows.sub(1.0).sub(row).add(uv().y).mul(cellH);
-                
-                const texColor = uFontTex.sample(vec2(u, v));
-                Discard(texColor.a.lessThan(0.1));
-
-                return vec4(uColor, texColor.a);
-            })();
-
-            // Instantiate
-            this.labelMesh = Draw3D.createLabelInstancedMesh(this.capacity, null, null, null); 
-            // Note: Draw3D.createLabelInstancedMesh created a Mesh with ShaderMaterial. 
-            // We need to overwrite the material.
-            this.labelMesh.material = labelMat;
-            this.scene.add(this.labelMesh);
-            this.labelMesh.visible = false;
-        }
-    }
-
-    // ... Keep updatePositions, updateParticles, updateBonds, updateSelection, etc. ...
-    // ... Copy them from previous MeshRenderer.js, they work on Data Buffers (CPU side) ...
-    // ... Only change is remove references to `this.shaders` ...
-
-    updatePositions(posArray, count) {
-        if ((count | 0) > (this.capacity | 0)) throw new Error(`Capacity exceeded`);
-        for (let i = 0; i < count; i++) {
-            this.posData[i * 4] = posArray[i * 3];
-            this.posData[i * 4 + 1] = posArray[i * 3 + 1];
-            this.posData[i * 4 + 2] = posArray[i * 3 + 2];
-            this.posData[i * 4 + 3] = 1.0; 
-        }
-        this.posTexture.needsUpdate = true;
-    }
-
-    updateParticles(count, colorGetter, scaleGetter) {
-        if (!this.atomMesh) return;
-        this.atomMesh.count = count;
-        const colorAttr = this.atomMesh.geometry.getAttribute('instanceColor');
-        const scaleAttr = this.atomMesh.geometry.getAttribute('instanceScale');
-        for (let i = 0; i < count; i++) {
-            const col = colorGetter(i);
-            const scale = scaleGetter(i);
-            colorAttr.setXYZ(i, col[0], col[1], col[2]);
-            scaleAttr.setX(i, scale);
-        }
-        colorAttr.needsUpdate = true;
-        scaleAttr.needsUpdate = true;
-    }
-
-    updateBonds(pairs) {
-        if (!this.bondLines) return;
-        const bondIDAttr = this.bondLines.geometry.getAttribute('aAtomID');
-        const matIDAttr  = this.bondLines.geometry.getAttribute('aMatID');
-        let ptr = 0;
-        for (let i = 0; i < pairs.length; i++) {
-            const entry = pairs[i];
-            const matID = (entry.length >= 3) ? entry[2] : 0;
-            bondIDAttr.setX(ptr, entry[0]); matIDAttr.setX(ptr, matID); ptr++;
-            bondIDAttr.setX(ptr, entry[1]); matIDAttr.setX(ptr, matID); ptr++;
-        }
-        bondIDAttr.needsUpdate = true;
-        matIDAttr.needsUpdate = true;
-        this.bondLines.geometry.setDrawRange(0, pairs.length * 2);
-    }
-    
-    updateSelection(indices) {
-        if (!this.selectionMesh) return;
-        const maxCount = Math.min(indices.length, this.capacity);
-        const idAttr = this.selectionMesh.geometry.getAttribute('aAtomID');
-        const scaleAttr = this.selectionMesh.geometry.getAttribute('instanceScale');
-        const colAttr = this.selectionMesh.geometry.getAttribute('instanceColor');
-        
-        // Hide all
-        for(let i=0; i<this.capacity; i++) scaleAttr.array[i] = 0.0;
-        
-        for (let i = 0; i < maxCount; i++) {
-            idAttr.setX(i, indices[i]);
-            scaleAttr.setX(i, 1.2);
-            colAttr.setXYZ(i, 0.95, 0.95, 0.95);
-        }
-        idAttr.needsUpdate = true;
-        scaleAttr.needsUpdate = true;
-        colAttr.needsUpdate = true;
-        this.selectionMesh.count = maxCount;
-    }
-
-    updateLabels(stringGetter, count) {
-         if (!this.labelMesh || !this.labelMesh.visible) return;
-         Draw3D.updateLabelBuffers(this.labelMesh, stringGetter, count);
-    }
-    
-    // Toggles
-    setAtomsVisible(f) { if(this.atomMesh) this.atomMesh.visible = !!f; }
-    setBondsVisible(f) { if(this.bondLines) this.bondLines.visible = !!f; }
-    setLabelsVisible(f) { if(this.labelMesh) this.labelMesh.visible = !!f; }
-    setSelectionVisible(f) { if(this.selectionMesh) this.selectionMesh.visible = !!f; }
-}
-```
-
----
 
 ### 3. Draw3D.js
 **Changes**:
@@ -776,30 +98,9 @@ export class MeshRenderer {
 
 *(Modify `createLabelInstancedMesh` to accept null shaders)*
 
-```javascript
-static createLabelInstancedMesh(capacity, shaders, fontTexture, uniforms) {
-    // ... (Keep Geometry generation code exactly as is) ...
-
-    // Replace the ShaderMaterial creation with a placeholder or simple Mesh
-    // The MeshRenderer now overwrites the material with NodeMaterial.
-    
-    const material = new THREE.MeshBasicMaterial({ visible: false }); // Placeholder
-    
-    const mesh = new THREE.InstancedMesh(instGeo, material, capacity);
-    mesh.frustumCulled = false;
-    mesh.renderOrder = 999;
-    mesh.count = 0;
-    return mesh;
-}
-```
-
----
-
 ### 4. MoleculeRenderer.js
 **Changes**:
 - Minor: Pass `null` for shaders in constructor call (already updated in `main.js` and handled in `MeshRenderer.js`).
-
----
 
 ### Summary of Benefits for your Goal
 
@@ -808,3 +109,205 @@ static createLabelInstancedMesh(capacity, shaders, fontTexture, uniforms) {
 3.  **Compute Readiness**: When you are ready for MD, you can create a `StorageInstancedBufferAttribute` for positions. You can then write a TSL Compute Node (`Fn().compute()`) to update those positions on the GPU. The `MeshRenderer` can then simply read that storage buffer instead of the `DataTexture`, keeping the rendering logic almost identical.
 
 This refactor removes the need for conditional initialization logic in your application code—Three.js handles it internally.
+
+
+---
+
+## USER
+
+now we should accuretely copy this geometry assignment to our javacript implementation of the same problem. which is here
+/home/prokop/git/FireCore/web/molgui_webgpu
+
+see the relevant classes
+@XPDBTopology.js should be equvalent to @MMFFL.py 
+@XPDB_WebGPU.js equvalent to @XPDB_new.py 
+@xpdb.wgsl equvalent to @XPDB_new.cl 
+@EditableMolecule.js equvalent to @AtomicSystem.py 
+and @MMParams.js equivalent to @MMparams.py 
+
+find where are dicrepancies more specifically what is missing in the javascript version.
+
+our goal is to make partity and check it by exporting .mol2 form both, writing the same topology information to console (in same format so it can be excatly compared), and also adding same visualization of the molecule with added dummy atoms, angle/pi/epair-derived bonds like plot_topology_3d from 
+@test_TiledJacobi_molecules.py 
+
+perhps for testing it would be good if you implement standalone script which you run in node.js instead of browser which prints thosse outputs and emit .mol2 file, so you can test it headless partity exactly with respect to the python referecne without browser GUI. Can you do it. Then you should run the test end check the parity of python/javascript outputs
+make detailed plan how to do that
+
+see the current format of ouput from @test_TiledJacobi_molecules.py which we want to reimplement
+``
+TYPE ia=   0 ename=O type=O        nbond=1 npi=1 nepair=2
+TYPE ia=   1 ename=C type=C        nbond=3 npi=1 nepair=0
+TYPE ia=   2 ename=H type=H        nbond=1 npi=0 nepair=0
+TYPE ia=   3 ename=H type=H        nbond=1 npi=0 nepair=0
+read_AtomAndElementTypes() path /home/prokop/git/FireCore/pyBall/OCL/../../cpp/common_resources/
+path1 /home/prokop/git/FireCore/pyBall/OCL/../../cpp/common_resources/ElementTypes.dat
+path2 /home/prokop/git/FireCore/pyBall/OCL/../../cpp/common_resources/AtomTypes.dat
+read_element_types() filepath= /home/prokop/git/FireCore/pyBall/OCL/../../cpp/common_resources/ElementTypes.dat
+DEBUG initAtomProperties: atom 0 O element=O marked node
+DEBUG initAtomProperties: atom 1 C element=C marked node
+DEBUG MMFF: ia=0 O nbond=1 conf_npi=1 conf_ne=2
+DEBUG MMFF: init pi_vec ia=0 -> [0. 0. 0.] (raw=[0. 0. 0.])
+DEBUG MMFF: ia=1 C nbond=3 conf_npi=1 conf_ne=0
+DEBUG MMFF: init pi_vec ia=1 -> [1. 0. 0.] (raw=[0. 0. 0.])
+DEBUG MMFF: propagate pi_vec ia=0 -> [1. 0. 0.] using neighbors [1]
+DEBUG MMFF: final pi_vec ia=0 -> [1. 0. 0.] (norm=1.0)
+DEBUG MMFF: final pi_vec ia=1 -> [1. 0. 0.] (norm=1.0)
+[TOPO] n_real= 4  n_all= 10  n_primary= 3  n_derived= 19
+[TOPO] type_names:
+     0 O 
+     1 C 
+     2 H 
+     3 H 
+     4 Pi DUMMY
+     5 Pi DUMMY
+     6 Pi DUMMY
+     7 Pi DUMMY
+     8 E DUMMY
+     9 E DUMMY
+[TOPO] bonds_primary: [(0, 1), (1, 2), (1, 3)]
+[TOPO] bonds_angle: [(0, 2), (0, 3), (2, 3)]
+[TOPO] bonds_pi: [(0, 4), (0, 5), (0, 6), (0, 7), (1, 4), (1, 5), (1, 6), (1, 7), (2, 6), (2, 7), (3, 6), (3, 7)]
+[TOPO] bonds_epair: [(0, 8), (0, 9), (1, 8), (1, 9)]
+[TOPO] wrote /tmp/OCH2_topo.mmffl.mol2
+``
+
+now make detailed analysis of the referenced files and detailed notes what should be implemented and where
+
+---
+
+## GPT-5.1-Codex
+
+Parity gaps between the Python reference (MMFFL + XPDB driver) and the current WebGPU stack:
+
+1. **Atom typing / reporting**
+   - Python: [MMFFL.assign_type_names(...)](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/MMFFL.py:73:4-95:18) + [report_types_and_valence(...)](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/MMFFL.py:105:4-123:125) print `TYPE ia=... nbond npi nepair` and enforce octet rule using MMparams data.
+   - JS: [MMParams.getAtomTypeForAtom()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMParams.js:123:4-136:5) picks types lazily, but [EditableMolecule](cci:2://file:///home/prokop/git/FireCore/web/molgui_webgpu/EditableMolecule.js:240:0-1055:1) never emits the per-atom report nor asserts valence consistency. No CLI/UI hook to select between “table” vs “UFF” typing.
+   - Missing: equivalent reporting/logging in WebGUI, plus typed outputs for comparison.
+
+2. **Topology builder scope**
+   - Python [MMFFL.build_topology()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/MMFFL.py:125:4-218:9) delivers primary bonds + derived angle, pi-host, pi-align, epair-host, epair-orth, epair-pair lists, dummy bookkeeping, `is_dummy` mask, aggregated `apos`, MOL2-ready names, etc.
+   - JS [buildXPDBTopology()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDBTopology.js:2:0-201:1) only:
+     - reads real bonds from EditableMolecule,
+     - derives angle bonds via [MMParams.getAngleParams](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMParams.js:411:4-426:5) and [convertAngleToDistance](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMParams.js:428:4-444:5),
+     - merges them immediately into a single adjacency per atom.
+   - Missing features:
+     1. **Pi dummies**: no generation of pi positions, no host↔dummy bonds, no dummy↔neighbor springs, no pi-align bonds, no dummy count mask.
+     2. **Electron-pair dummies**: not created automatically; [EditableMolecule.addExplicitEPairs()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/EditableMolecule.js:417:4-484:5) exists but is manual (uses VSEPR heuristics, not MMFFL directions), and even then XPDBTopology ignores “atoms” with `Z=200` when building adjacency (it doesn’t treat them specially).
+     3. **Separation of first- vs second-order bonds**: JS merges angle bonds into the same list immediately, so downstream code can’t distinguish classes (needed for selective uploads or plotting).
+     4. **Dummy bookkeeping**: no `n_real`, `n_dummy`, `is_dummy[]`, or dummy masks for collision filters.
+     5. **Pi / epair stiffness parameters**: no `L_pi`, `L_epair`, or `Kpi_* / Kep_*` equivalents; MMParams has Kss/Ksp but XPDBTopology never uses them.
+
+3. **MMParams data parity**
+   - Python `MMparams` loads ElementTypes/AtomTypes/BondTypes/AngleTypes from files on disk, uses them everywhere.
+   - JS [MMParams](cci:2://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMParams.js:62:0-470:1) parser mirrors the files but is missing:
+     - [convertAngleToDistance](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMParams.js:428:4-444:5) behavior identical to [_law_of_cosines](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/MMFFL.py:7:0-11:42)? Need to confirm; if not, parity may break lengths.
+     - [getAngleParams](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMParams.js:411:4-426:5) in JS only matches by type names; the Python version uses center type’s `Ass` and `Kss`. If WebGUI uses raw angle table while Python uses per-atom-type data, results diverge.
+     - Electron pair counts (`nepair`) exist in JS atom types, but the topology builder never uses them.
+
+4. **EditableMolecule vs AtomicSystem**
+   - Python [AtomicSystem](cci:2://file:///home/prokop/git/FireCore/pyBall/AtomicSystem.py:16:0-975:78) stores `mol.enames`, `mol.bonds` (list of pairs), neighbor lists, `npi_list`, `nep_list`, and [add_electron_pairs()](cci:1://file:///home/prokop/git/FireCore/pyBall/AtomicSystem.py:874:4-887:52) (mutating). The XPDB script builds bonds, prints topology, saves MOL2.
+   - JS [EditableMolecule](cci:2://file:///home/prokop/git/FireCore/web/molgui_webgpu/EditableMolecule.js:240:0-1055:1) tracks atoms/bonds, provides VSEPR helpers, but lacks:
+     - `findAngles/neighbor lists` akin to [mol.findAngles](cci:1://file:///home/prokop/git/FireCore/pyBall/atomicUtils.py:335:0-349:21).
+     - Mechanism to compute `npi/nepair` per atom automatically (only manual selection-based functions).
+     - [.save_mol2()](cci:1://file:///home/prokop/git/FireCore/pyBall/atomicUtils.py:1710:0-1769:95) equivalent. No path to export combined real+dummy positions/bonds; WebGUI can dump JSON but not MOL2 for offline comparison.
+     - Matplotlib-like visualization: Web GUI can render in 3D, but there’s no quick debug view replicating [plot_topology_3d](cci:1://file:///home/prokop/git/FireCore/pyBall/XPDB_AVBD/test_TiledJacobi_molecules.py:276:0-324:14) (color-coded bonds, dummy scatter).
+
+5. **XPDB driver parity**
+   - Python [test_TiledJacobi_molecules.py](cci:7://file:///home/prokop/git/FireCore/pyBall/XPDB_AVBD/test_TiledJacobi_molecules.py:0:0-0:0) prints `[TOPO]` stats, writes `.mol2`, optional 3D plot, and pipelines topology-only mode for debugging.
+   - Web stack lacks any CLI/GUI command to:
+     - dump `[TOPO]` blocks in the same format,
+     - export `.mol2`,
+     - show dummy-specific visualization (colors, separate legends),
+     - run topology-only validation vs CPU reference.
+   - `dump_xpdb_topology.mjs` prints adjacency, but format differs and doesn’t include dummy info because dummies aren’t generated.
+
+6. **Target parity requirements (based on request)**
+   - Need to “accurately copy” geometry assignment:
+     - Implement pi and epair dummy creation in JS (likely inside `XPDBTopology` or a new `LinearizedTopology` module mirroring MMFFL). This includes orientation vectors, lengths (`L_pi`, `L_epair`), stiffness constants, optional pi-align / epair-pair bonds.
+     - Maintain separate bond lists by class, plus aggregated adjacency for GPU.
+     - Track `n_real` vs `n_dummy`, `type_names`, `is_dummy` mask.
+   - Matching output:
+     - Console output identical to Python: `TYPE ...` lines, `[TOPO]` summary, bond lists.
+     - `.mol2` export from Web path (maybe Node script) to compare with Python output.
+     - Visualization: add a debug view (either via WebGUI overlay or Node+three.js) matching [plot_topology_3d](cci:1://file:///home/prokop/git/FireCore/pyBall/XPDB_AVBD/test_TiledJacobi_molecules.py:276:0-324:14)—distinct colors for primary/angle/pi/epair bonds and dummy types.
+
+7. **Suggested implementation plan**
+   1. **Shared topology module**: Port MMFFL logic into JS (`LinearizedMMFF`), using [MMParams](cci:2://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMParams.js:62:0-470:1) for data. Steps:
+      - Assign type names per atom (`type_source` parameter).
+      - Compute neighbor counts, `npi`, `nepair` (via [initAtomProperties](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/MMFF.py:22:0-59:37) analog).
+      - Build angle bonds, pi dummies (with host/neighbor bonds, optional two-sided, align bonds), epair dummies (host/neighbor bonds, optional pair bonds).
+      - Produce topology object with same schema as Python.
+   2. **EditableMolecule integration**:
+      - Provide `calcNeighbors()` to mimic [mol.neighs()](cci:1://file:///home/prokop/git/FireCore/pyBall/AtomicSystem.py:150:4-154:23) (adjacency arrays).
+      - Provide [findAngles()](cci:1://file:///home/prokop/git/FireCore/pyBall/atomicUtils.py:335:0-349:21) to yield (ja, ib, jc) triplets.
+      - Add methods to append dummies (positions + metadata) without interfering with existing atoms (maybe store separate arrays).
+   3. **Logging / assertions**:
+      - Mirror [report_types_and_valence](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/MMFFL.py:105:4-123:125) output (including octet rule) in JS console (maybe gate by verbosity).
+   4. **Dump/export tooling**:
+      - Implement `.mol2` writer in JS (shared util) to dump combined atoms/bonds.
+      - Add a debug command/button to run topology-only mode: compute topology, log `[TOPO]` blocks, produce `.mol2`, render 3D overlay with colored bonds/dummies (matching Python colors).
+   5. **Parity verification**:
+      - Run both Python and JS on same molecule (H2O, OCH2, pentacene). Compare console logs and `.mol2` files.
+
+These steps cover the missing functionality and set the stage for GPU parity (later hooking into XPDB_WebGPU.js and shaders).
+
+
+
+Here’s a concrete plan for the headless Node.js parity harness:
+
+### 1. Assemble a Node-side “linearized topology” module
+1.1 **Port MMFFL logic to JS or wrap existing pieces**
+- Create `web/molgui_webgpu/linearized_topology.mjs` (ESM for Node) that instantiates [MMParams](cci:2://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMParams.js:62:0-470:1), loads AtomTypes/ElementTypes/BondTypes/AngleTypes from disk, and mimics [MMFFL.build_topology](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/MMFFL.py:125:4-218:9).
+- Reuse/extend [XPDBTopology.js](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDBTopology.js:0:0-0:0) helpers but keep angle, pi, epair builders separate so we can produce the same `topo` dict as Python (`apos`, `type_names`, `is_dummy`, bond lists by class).
+- Add per-atom type assignment using the exact `AtomTypes.dat` lookup (table mode) plus optional “UFF” path later.
+
+1.2 **EditableMolecule in Node**
+- Add an importable `EditableMoleculeNode` wrapper that can:
+  - Load `.xyz` files (reuse logic from [atomicUtils.load_xyz](cci:1://file:///home/prokop/git/FireCore/pyBall/atomicUtils.py:1189:0-1231:36) or implement minimal parser).
+  - Build neighbor lists / angle triplets.
+  - Append dummy atoms without interfering with real indices (track `n_real`, `n_dummy`).
+
+### 2. Implement the CLI script
+2.1 **Script skeleton (`tools/xpdb_topology_cli.mjs`)**
+```
+node xpdb_topology_cli.mjs --xyz path --type_source table --add_pi ... --mol2 out.mol2
+```
+- Parse args (yargs or manual).
+- Load molecule via new EditableMoleculeNode.
+- Call linearized topology builder with flags mirroring Python CLI.
+- Capture result `topo`.
+
+2.2 **Output parity**
+- Print `TYPE ia=...` lines exactly like Python (pad widths, include `nbond`, `npi`, `nepair`).
+- Print `[TOPO] ...` block plus lists (`bonds_primary`, `bonds_angle`, etc.) sorted.
+- Write `.mol2` using a shared helper (implement `saveMol2` reusing Python format: `@<TRIPOS>` sections, 1-based indices, include dummy atoms).
+
+2.3 **Optional visualization stub**
+- For headless parity, skip 3D rendering; but keep hooks to dump JSON (positions + bond categories) so the browser UI can reuse the same data later.
+
+### 3. Verification workflow
+3.1 **Reference run (Python)**
+```
+python pyBall/XPDB_AVBD/test_TiledJacobi_molecules.py --molecule ... --topology_only 1 --mol2_out ref.mol2 --print_buffers 1 > ref.log
+```
+
+3.2 **Node run**
+```
+node web/molgui_webgpu/tools/xpdb_topology_cli.mjs --xyz ... --mol2_out js.mol2 > js.log
+```
+
+3.3 **Diffs**
+- `diff -u ref.log js.log` (expect identical `[TYPE]/[TOPO]` sections).
+- `diff -u ref.mol2 js.mol2` (positions/dummies/bonds should match up to float formatting).
+
+### 4. Integration steps
+4.1 **Shared utilities**
+- Put `.xyz` loader and `.mol2` writer under `web/molgui_webgpu/util/` so both Node script and browser code can import them (browser bundler must tree-shake Node-only parts).
+- Expose the topology builder as both ESM (Node) and standard JS module for browser.
+
+4.2 **Testing in CI**
+- Add npm script `npm run topo-test -- --xyz cpp/common_resources/xyz/OCH2.xyz`.
+- Optionally integrate with existing test harness to ensure parity doesn’t regress.
+
+This plan yields a headless parity testbed: run Node CLI → compare logs/MOL2 with Python output; iterate until diffs vanish.
+

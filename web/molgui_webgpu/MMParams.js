@@ -69,6 +69,18 @@ export class MMParams {
         this.angleTypes = [];   // array of { a1, a2, a3, ang0, k } with wildcard support
     }
 
+    _g() { return (typeof window !== 'undefined') ? window : globalThis; }
+    _logger() {
+        const g = this._g();
+        const lg = g && g.logger;
+        if (lg && typeof lg.info === 'function') return lg;
+        return console;
+    }
+    _verbosity() {
+        const g = this._g();
+        return (g && (g.VERBOSITY_LEVEL !== undefined)) ? (g.VERBOSITY_LEVEL | 0) : 0;
+    }
+
     /// Build cached name↔index maps on atomTypes if missing.
     ensureTypeIndex() {
         if (!this.atomTypes) throw new Error('ensureTypeIndex: atomTypes required');
@@ -134,6 +146,25 @@ export class MMParams {
         }
         if (this.atomTypes && this.atomTypes['*']) return this.atomTypes['*'];
         throw new Error(`getAtomTypeForAtom: cannot resolve atom type for Z=${atom.Z}`);
+    }
+
+    /// Resolve AtomTypes.dat key for an element symbol using the same priority as Python MMFFL:
+    /// 1) exact symbol key (e.g. 'C')
+    /// 2) symbol + '_' (e.g. 'C_')
+    /// 3) first atom-type whose element_name matches the symbol
+    resolveTypeNameTable(symbol) {
+        const en = String(symbol || '').trim();
+        if (!en) throw new Error('resolveTypeNameTable: empty symbol');
+        if (this.atomTypes && this.atomTypes[en]) return en;
+        const trial = en + '_';
+        if (this.atomTypes && this.atomTypes[trial]) return trial;
+        if (this.atomTypes) {
+            for (const k in this.atomTypes) {
+                const at = this.atomTypes[k];
+                if (at && at.element_name === en) return k;
+            }
+        }
+        throw new Error(`resolveTypeNameTable: cannot resolve atom type for symbol='${en}' using AtomTypes.dat`);
     }
 
     /// Compute squared bond cutoff from covalent radii (fallback to default) for a Z pair.
@@ -203,9 +234,9 @@ export class MMParams {
                 this.parseAngleTypes(angText);
             }
 
-            window.logger.info("MMParams loaded successfully.");
+            this._logger().info("MMParams loaded successfully.");
         } catch (e) {
-            window.logger.error("Failed to load MMParams: " + e);
+            this._logger().error("Failed to load MMParams: " + e);
         }
     }
 
@@ -259,7 +290,7 @@ export class MMParams {
                 console.warn("Error parsing element line:", line, e);
             }
         }
-        window.logger.info(`Parsed ${Object.keys(this.elementTypes).length} element types.`);
+        this._logger().info(`Parsed ${Object.keys(this.elementTypes).length} element types.`);
         return this.elementTypes;
     }
 
@@ -332,7 +363,7 @@ export class MMParams {
             }
         }
 
-        window.logger.info(`Parsed ${Object.keys(this.atomTypes).length} atom types.`);
+        this._logger().info(`Parsed ${Object.keys(this.atomTypes).length} atom types.`);
         return this.atomTypes;
     }
 
@@ -365,7 +396,7 @@ export class MMParams {
             }
             nOk++;
         }
-        window.logger.info(`Parsed ${Object.keys(this.bondTypes).length} bond types (from ${nOk} lines).`);
+        this._logger().info(`Parsed ${Object.keys(this.bondTypes).length} bond types (from ${nOk} lines).`);
         return this.bondTypes;
     }
 
@@ -382,11 +413,34 @@ export class MMParams {
             else if ((bt.order | 0) === (best.order | 0) && bt.l0 < best.l0) best = bt;
             else if ((best.order | 0) !== 1 && bt.l0 < best.l0) best = bt;
         }
-        if ((window.VERBOSITY_LEVEL | 0) >= 3) {
+        if (this._verbosity() >= 3) {
             if (best) console.log(`[MMParams.getBondL0] z=(${z1},${z2}) -> l0=${best.l0} k=${best.k} order=${best.order} a=${best.a} b=${best.b}`);
             else console.warn(`[MMParams.getBondL0][MISS] z=(${z1},${z2}) no entry`);
         }
         return best ? best : null;
+    }
+
+    /// Get bond parameters by atom-type names (uses atomTypes[name].iZ to index BondTypes).
+    /// If order is not specified, defaults to 1.
+    getBondParams(nameA, nameB, order = 1) {
+        const na = String(nameA || '').trim();
+        const nb = String(nameB || '').trim();
+        if (!na || !nb) throw new Error(`getBondParams: empty nameA/nameB ('${na}','${nb}')`);
+        const a = this.atomTypes ? this.atomTypes[na] : null;
+        const b = this.atomTypes ? this.atomTypes[nb] : null;
+        if (!a || !b) throw new Error(`getBondParams: unknown atom type(s) ('${na}','${nb}')`);
+        const za = a.iZ | 0;
+        const zb = b.iZ | 0;
+        if (!(za > 0) || !(zb > 0)) throw new Error(`getBondParams: bad Z for types ('${na}','${nb}') z=(${za},${zb})`);
+        const z1 = Math.min(za, zb) | 0;
+        const z2 = Math.max(za, zb) | 0;
+
+        const ord = order | 0;
+        const key = `${z1}|${z2}|${ord}`;
+        const bt = this.bondTypes ? this.bondTypes[key] : null;
+        if (bt) return bt;
+        // fallback: if order missing, return best by z pair (prefers single)
+        return this.getBondL0(z1, z2);
     }
 
     parseAngleTypes(content) {
@@ -405,7 +459,7 @@ export class MMParams {
             if (!(ang0 > 0) || !(k > 0)) continue;
             this.angleTypes.push({ a1, a2, a3, ang0, k });
         }
-        window.logger.info(`Parsed ${this.angleTypes.length} angle types.`);
+        this._logger().info(`Parsed ${this.angleTypes.length} angle types.`);
         return this.angleTypes;
     }
 
@@ -418,7 +472,7 @@ export class MMParams {
             const matchB = (at.a2 === '*') || (at.a2 === nb);
             const matchC = (at.a3 === '*') || (at.a3 === nc);
             if (matchA && matchB && matchC) {
-                if ((window.VERBOSITY_LEVEL | 0) >= 3) console.log(`[MMParams.getAngleParams] (${na},${nb},${nc}) -> ang0=${at.ang0} k=${at.k}`);
+                if (this._verbosity() >= 3) console.log(`[MMParams.getAngleParams] (${na},${nb},${nc}) -> ang0=${at.ang0} k=${at.k}`);
                 return { ang0: at.ang0, k: at.k };
             }
         }
@@ -436,9 +490,7 @@ export class MMParams {
             const factor = lac / (lab * lbc * sinTheta);
             kLin = kAng * (factor * factor);
         } else {
-            if (window.logger && window.logger.warn) {
-                window.logger.warn(`Angle ${angleDeg} deg is too close to 0 or 180 degrees. Stiffness set to 0 to avoid explosion.`);
-            }
+            this._logger().warn(`Angle ${angleDeg} deg is too close to 0 or 180 degrees. Stiffness set to 0 to avoid explosion.`);
             kLin = 0;
         }
         return { restLength: lac, stiffness: kLin };

@@ -9,7 +9,9 @@ Applies to all languages (Python, C/C++, OpenCL) and all workflows. These are th
 - Reuse existing functions; avoid duplication (check first, report if adaptation needed)
 - Pure, data‑oriented functions with explicit inputs/outputs; default named args to avoid long call strings
 - Fail loudly: no silent handling; assertions for invariants; crashes with stack trace preferred to masking
+- **Zero fallbacks**: never introduce "fallback" paths that hide missing data/geometry—if something cannot be computed, raise an explicit error immediately so debugging stays transparent
 - Comment out deprecated/experimental code instead of deleting; mark with TODO/DEBUG
+- **Preserve existing comments**: never strip context-rich comments or legacy snippets while debugging; prefer commenting out superseded code so it can be restored quickly.
 
 
 ## NEVER DO THIS
@@ -22,9 +24,11 @@ Applies to all languages (Python, C/C++, OpenCL) and all workflows. These are th
 - Debuggability > UX; do not hide issues
 - Initially add debug prints for key variables and flow; remove later after debugging is done
 - Avoid broad try/except as they mask bugs; prefer loud crashes which write stack trace
+- Never default to synthesized data or geometry when inputs are invalid; throw informative exceptions instead of proceeding with guesses
 - Make small, testable changes and run after every change
 - Log function entries and key conditions when helpful to track the flow
 - Mark unfinished/experimental code clearly (e.g., # TODO, # DEBUG)
+- When replacing behavior during experiments, leave the previous block commented with context so we can revert fast if the new path fails.
 
 
 ## Performance (general)

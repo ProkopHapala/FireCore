@@ -208,3 +208,14 @@ cd tests/Fireball/t02_CH4
 - **Python Bindings**: Access to both C++ and Fortran components
 - **Visualization**: SDL-based interactive applications
 - **Force Field Fitting**: Tools for parameterizing classical potentials against QM data
+
+## Agent Operating Guidelines
+
+These rules apply to any autonomous assistant working inside this repo:
+
+- **No fallbacks or silent fixes**: if required data/geometry is missing, throw a descriptive error immediately. Never synthesize “best-effort” defaults—the failure must be visible.
+- **Debug-first mindset**: prioritize traceable crashes, add targeted logging only while investigating.
+- **Preserve context**: never remove comments during active debugging; if you must replace logic, comment out the old block instead of deleting so we can revert instantly if needed.
+- **Respect existing structure**: extend modules in-place rather than rewriting or rearranging unless explicitly authorized.
+- **Use official scripts**: when commands are required, rely on the provided `run.sh`/`make.sh` helpers; never invoke `make` directly.
+- **Document parity work**: when mirroring Python ↔ JS features, cite the reference file/function in comments so future maintainers can diff implementations quickly.
