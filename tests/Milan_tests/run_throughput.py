@@ -105,6 +105,16 @@ if args.ff == 'uff':
             ClampNonBonded=-1 if args.bNonBonded else -1
         )
 
+# Remove old trajectories
+for _f in glob.glob("traj_UFF_*.xyz"):
+    try:
+        os.remove(_f)
+    except FileNotFoundError:
+        pass
+
+# Set trajectory output (per-system files: traj_UFF_000.xyz, ...)
+ff.setTrjName(trj_fname_="traj_UFF", savePerNsteps=-10, bDel=True)
+
 # ========================================================================
 # ====================== MD Loop =========================================
 # ========================================================================

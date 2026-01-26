@@ -3530,7 +3530,8 @@ __kernel void getSurfMorse(
     // if( (iS==0) ){
     //       printf( "GPU[iG=%i,iS=%i] fe(%10.6f,%10.6f,%10.6f)\n", iG,iS, fe.x,fe.y,fe.z );
     // }
-    forces[iav] += fe;
+
+    if(iG<nAtoms) forces[iav] += fe;  
 
 }
 
