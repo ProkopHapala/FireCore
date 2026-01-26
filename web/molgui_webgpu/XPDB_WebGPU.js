@@ -12,6 +12,29 @@ export class XPDB_WebGPU {
         this.buffers = {};
     }
 
+    static async dumpTypedState(sim, { label = 'XPDB', writeText = null, fixed = 6 } = {}) {
+        const dbg = await import('./debugBuffers.js');
+        const n = sim.numAtoms | 0;
+        const ng = sim.numGroups | 0;
+        const nb = sim.nMaxBonded | 0;
+        const mg = sim.maxGhosts | 0;
+        const state = await sim.readBuffersAsTyped();
+        const sections = [];
+        sections.push([`# ${label} numAtoms=${n} numGroups=${ng} nMaxBonded=${nb} maxGhosts=${mg}`]);
+        sections.push(dbg.dumpVec4BufferLines('pos', state.posData, n, { stride: 4, cols: 3, fixed }));
+        sections.push(dbg.dumpVec4BufferLines('pred_pos', state.predPosData, n, { stride: 4, cols: 3, fixed }));
+        sections.push(dbg.dumpAtomParamsLines('atom_params', state.atomParamsData, n, { fixed }));
+        sections.push(dbg.dumpVec4BufferLines('bboxes', state.bboxesData, ng * 2, { stride: 4, cols: 3, fixed }));
+        sections.push(dbg.dumpGhostPackedLines('ghost_packed', state.ghostData, ng, mg));
+        sections.push(dbg.dumpBondIndicesLines('bond_idx_global', state.bondGlobalData, n, nb));
+        sections.push(dbg.dumpBondIndicesLines('bond_idx_local', state.bondLocalData, n, nb));
+        sections.push(dbg.dumpBondLenStiffLines('bond_len_stiff', state.bondLenStiffData, n, nb, { fixed }));
+        const text = dbg.joinSections(sections);
+        if (typeof writeText === 'function') await writeText(text);
+        else console.log(text);
+        return { text, state };
+    }
+
     async init() {
         if (!navigator.gpu) throw new Error("WebGPU not supported");
         const adapter = await navigator.gpu.requestAdapter();
@@ -260,15 +283,18 @@ export class XPDB_WebGPU {
         const i32 = 4;
         const f32 = 4;
 
-        const [posData, ghostData, bondGlobalData, bondLocalData, bondLenStiffData] = await Promise.all([
+        const [posData, predPosData, atomParamsData, bboxesData, ghostData, bondGlobalData, bondLocalData, bondLenStiffData] = await Promise.all([
             this.readBuffer(this.buffers.pos).then(buf => new Float32Array(buf)),
+            this.readBuffer(this.buffers.predPos).then(buf => new Float32Array(buf)),
+            this.readBuffer(this.buffers.atomParams).then(buf => new Float32Array(buf)),
+            this.readBuffer(this.buffers.bboxes).then(buf => new Float32Array(buf)),
             this.readBuffer(this.buffers.ghostPacked).then(buf => new Int32Array(buf)),
             this.readBuffer(this.buffers.bondIdxGlobal).then(buf => new Int32Array(buf)),
             this.readBuffer(this.buffers.bondIdxLocal).then(buf => new Int32Array(buf)),
             this.readBuffer(this.buffers.bondLenStiff).then(buf => new Float32Array(buf))
         ]);
 
-        return { posData, ghostData, bondGlobalData, bondLocalData, bondLenStiffData };
+        return { posData, predPosData, atomParamsData, bboxesData, ghostData, bondGlobalData, bondLocalData, bondLenStiffData };
     }
 
     step(dt, iterations, k_coll, omega, momentum_beta, mousePos=null, pickedIdx=-1, maxRadius=null) {

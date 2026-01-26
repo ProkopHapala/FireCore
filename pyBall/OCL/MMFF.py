@@ -115,6 +115,16 @@ class MMFF:
         # Pi-orbitals and electron pairs
         self.pipos = None         # [natoms, 3] Pi-orbital orientations
 
+        # Optional debug hook for topology generation parity checks.
+        # If set to a callable(str), it will receive line-by-line debug records.
+        self.debug_topo = None
+
+    def _dbg_topo(self, line: str):
+        cb = getattr(self, 'debug_topo', None)
+        if cb is None:
+            return
+        cb(str(line))
+
     def realloc(self, nnode, ncap, ntors=0, nPBC=(0,0,0) ):
         """
         Reallocates memory for MMFF parameters based on the system size.
@@ -490,6 +500,15 @@ class MMFF:
                 self.pipos[ia] = pi_vec
                 print(f"DEBUG MMFF: init pi_vec ia={ia} -> {self.pipos[ia]} (raw={hs_filled[3]})")
 
+                if conf_npi > 0:
+                    neigh_ids = [int(x) for x in self.neighs[ia] if int(x) >= 0]
+                    hs_raw = hs_filled[3]
+                    self._dbg_topo(
+                        f"PI_INIT ia={ia:4d} nb={int(nbond)} npi={int(conf_npi)} neigh={neigh_ids} "
+                        f"raw=({hs_raw[0]: .6f},{hs_raw[1]: .6f},{hs_raw[2]: .6f}) "
+                        f"pi=({self.pipos[ia][0]: .6f},{self.pipos[ia][1]: .6f},{self.pipos[ia][2]: .6f})"
+                    )
+
                 if bEPairs:
                     # Generate electron pairs
                     for k in range(nbond, nbond + conf_ne):
@@ -529,6 +548,10 @@ class MMFF:
                     self.pipos[i] = (v / n).astype(np.float32)
                 if npi_list[i] > 0:
                     print(f"DEBUG MMFF: final pi_vec ia={i} -> {self.pipos[i]} (norm={n})")
+                    self._dbg_topo(
+                        f"PI_FINAL ia={i:4d} npi={int(npi_list[i])} "
+                        f"pi=({self.pipos[i][0]: .6f},{self.pipos[i][1]: .6f},{self.pipos[i][2]: .6f}) norm={float(n): .6f}"
+                    )
 
         # Write pi-orbital unit vectors into the tail of apos (indices natoms : natoms+nnode)
         # This matches kernels expecting apos[iav + nAtoms] to hold pi orientation for each node atom
@@ -578,6 +601,11 @@ class MMFF:
                 if acc_norm >= min_norm:
                     self.pipos[ia] = (acc / acc_norm).astype(np.float32)
                     print(f"DEBUG MMFF: propagate pi_vec ia={ia} -> {self.pipos[ia]} using neighbors {neigh_ids}")
+                    self._dbg_topo(
+                        f"PI_PROP ia={ia:4d} neigh={neigh_ids} "
+                        f"acc=({acc[0]: .6f},{acc[1]: .6f},{acc[2]: .6f}) acc_norm={float(acc_norm): .6f} "
+                        f"pi=({self.pipos[ia][0]: .6f},{self.pipos[ia][1]: .6f},{self.pipos[ia][2]: .6f})"
+                    )
                     updated = True
             if not updated:
                 break
@@ -616,6 +644,11 @@ class MMFF:
                     if np.dot(v_host, baseline) < 0.0:
                         self.pipos[ia] = -v_host
                         flipped = True
+                        self._dbg_topo(
+                            f"PI_FLIP ia={ia:4d} ja={int(ja):4d} "
+                            f"dot={float(np.dot(v_host, baseline)): .6f} "
+                            f"pi=({self.pipos[ia][0]: .6f},{self.pipos[ia][1]: .6f},{self.pipos[ia][2]: .6f})"
+                        )
                     break
             if not flipped:
                 break

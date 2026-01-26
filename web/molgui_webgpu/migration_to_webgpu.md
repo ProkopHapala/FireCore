@@ -311,3 +311,114 @@ node web/molgui_webgpu/tools/xpdb_topology_cli.mjs --xyz ... --mol2_out js.mol2 
 
 This plan yields a headless parity testbed: run Node CLI → compare logs/MOL2 with Python output; iterate until diffs vanish.
 
+---
+
+## USER
+
+Now we should go furter to step 5 checking exactly the solvers, namely @xpdb.wgsl with respect to @XPDB_new.cl 
+
+In particular we want to check exactly line-by-line component by component 
+
+1) output of build_local_topology, especially the local reindexing bond_indices_local, but also the other, I a bit forgot what cotains which arrrey please refresh my memory
+
+2) solve_cluster_jacobi - we should compere the output positions after one iteration. resp. output forces (resp displaceent, because XPDB does ot compute forces but displacements as far as I know, the name out_force_bond and out_force_coll is missleading I think.
+
+for both we should compare input and output buffers with the same name for the kernels with the same name, with the same inputs. Starting from simple molecules like H2O and CH2O, and then moving to something more complicated like Guainne @guanine.xyz 
+
+---
+
+now make detailed plan what we should implement
+
+the output of the simulation can be printed to console, perhaps you can also produce some output log file? Can you?
+we cannot run the WebGPU using node.js without browser right?
+
+The think is I need detailed logfiles so I can give it to you in text or in feedback...
+
+
+anyway, make dtailed notes what to impleemnt and where,and then think about how to produce text outputs which we can compare linie by line. 
+
+OK, I'm not sure we can debug output buffers without browser, but we can ate least check if all input buffers are the same, you sould make function print buffers in the respective .js file like in @MMFFLTopology.js @XPDB_WebGPU.js and then call these function from @dump_xpdb_topology.mjs and the same functions/datastructures must be also in our web application when we run the XPBD simulations (there should be no code duplications, they shoud import same files and functions)
+
+The output uffers I will then check from console termina, just make sure they are writen in same fomat between python and javascript console, and I do not need to unfold any objects in console (must be writen explicitly line by line)
+
+make these detailed implementtion notes expanding my commands 
+
+---
+
+## GPT-5.1-Codex
+
+Plan for solver parity deep-dive:
+
+1. **Baseline mapping of buffers (done here, no code yet)**
+   - `build_local_topology`
+     - Inputs shared by CL/WGSL: `curr_pos`, `bboxes` (WGSL packs min/max pairs; CL keeps separate min/max arrays), `bond_indices_global`, group count, cluster size.
+     - Outputs to compare:
+       - `ghost list`: CL writes `ghost_indices_flat` + `ghost_counts`; WGSL stores `[indices..., count]` per cluster inside `ghost_packed`. Need helper to dump both forms into identical JSON/CSV for diffing.
+       - `bond_indices_local`: both flatten to `[atom * N_MAX_BONDED + slot]`. Must log per atom the internal index chosen (0–63 internal, 64+ ghost slot). This includes the “local reindexing” you mentioned.
+     - Internal scratch (CL’s `__local` arrays vs WGSL `var<workgroup>`). For logging we only care about final global buffers.
+
+   - `solve_cluster_jacobi`
+     - Inputs to ensure identical:
+       - `curr_pos` (initial), `pred_pos`, `atom_params` (.x radius, .w mass), `bond_indices_local`, `bond_lengths`, `bond_stiffness`, `ghost data`.
+       - Solver constants: `inner_iters`, `dt`, `k_coll`, `omega`, `momentum_beta`.
+     - Outputs:
+       - Updated `curr_pos` (after one Jacobi iteration).
+       - CL also writes `out_force_bond`/`out_force_coll`; WGSL currently doesn’t—but for parity we can add optional storage buffer in WGSL and fill with the equivalent `force` accumulations (or rename to displacement if that’s the intended meaning). That will let us diff “forces/displacements” per atom.
+
+2. **Instrumentation/logging strategy**
+   - Add optional “debug dump” paths in both pipelines.
+     - For CL side (Python driver [test_TiledJacobi_molecules.py](cci:7://file:///home/prokop/git/FireCore/pyBall/XPDB_AVBD/test_TiledJacobi_molecules.py:0:0-0:0)), we can already print numpy buffers. Extend the script with `--dump_topology foo.json` and `--dump_solver foo.json` to serialize:
+       - `ghost_indices_flat`, `ghost_counts`, `bond_indices_local`.
+       - After running a single solver iteration, dump `curr_pos`, `out_force_bond`, `out_force_coll`.
+       - Use `json.dump` of plain lists so it’s easy to diff line-by-line.
+     - For WGSL/WebGPU side (Node CLI [dump_xpdb_topology.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:0:0-0:0) or a new `dump_xpdb_solvers.mjs`):
+       - Hook after compute pass: map the storage buffers back to CPU (`queue.readBuffer`) and write to disk (`fs.writeFileSync`) with the same schema as Python’s JSON.
+       - Produce per-molecule logs: e.g., `out_js_H2O_topology.json`, `out_js_H2O_solver.json`.
+       - Console print summaries (counts, first few entries), but the JSON files are the authoritative diffable artifacts you can share.
+   - Because true WebGPU compute still needs Chrome (or experimental Node/WebGPU flag), we’ll keep using the existing [dump_xpdb_topology.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:0:0-0:0) runner (it already uses Dawn/WebGPU via Node 22). So yes, we can read buffers and write text files without a browser.
+
+3. **Verification workflow**
+   - Molecules: `H2O`, `CH2O`, `guanine` (path `/cpp/common_resources/xyz/<name>.xyz`). Possibly also `pyridine`/`pyrrol` if time.
+   - Procedure per molecule:
+     1. Run Python XPDB (`test_TiledJacobi_molecules.py --topology_only 1 --dump_topology out_py_<mol>_top.json` etc.) to dump reference buffers.
+     2. Run WebGPU CLI to build topology and immediately dump the same buffers (`--dumpTopology out_js_<mol>_top.json`).
+     3. Diff the JSON files (simple `diff -u`). Investigate mismatches in `ghost` or `bond_indices_local`.
+     4. Once topology matches, run single Jacobi iteration on both sides with identical solver parameters, dumping `curr_pos` and “forces/displacements” to `*_solver.json`. Compare again.
+     5. Scale up to guanine after small cases pass.
+
+4. **Implementation notes (“where to add what”)**
+   - [dump_xpdb_topology.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:0:0-0:0): add optional CLI flags `--dumpTopology file`, `--dumpSolver file`, `--innerIters 1`, etc. After compute pass, call helper `writeBufferJSON(buffer, schema, filename)`.
+   - `XPDB_WebGPU.js` (or whichever module dispatches kernels): expose functions to map storage buffers and return typed arrays for logging.
+   - [test_TiledJacobi_molecules.py](cci:7://file:///home/prokop/git/FireCore/pyBall/XPDB_AVBD/test_TiledJacobi_molecules.py:0:0-0:0): add `--dump_topology` and `--dump_solver` flags; after calling CL kernels, use `tolist()` to serialize relevant numpy arrays.
+   - Both sides should include metadata in the JSON (molecule name, cluster count, constants) so logs are self-describing.
+
+Once we add those dumping hooks, you’ll be able to run the two pipelines for H₂O/CH₂O/guanine, collect the logs, and we can diff them line-by-line to pinpoint any solver divergence. Let me know when you’re ready to implement the instrumentation; we’ll start with the Python script (easier to modify) before wiring up the WebGPU logging.
+
+Implementation outline (zero code yet):
+
+1. Shared buffer-print utilities
+   - Add a tiny module (e.g., `web/molgui_webgpu/debugBuffers.js`) exporting pure functions like `formatGhostList(ghostIndices, ghostCounts)` and `formatBondLocal(bondIndicesLocal, groupSize)`. They should output plain strings (one line per entry, e.g., `atom 05 slot 02 -> 071`).
+   - [MMFFLTopology.js](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMFFLTopology.js:0:0-0:0) and `XPDB_WebGPU.js` both import these helpers so printing logic stays single-sourced for CLI + browser builds.
+
+2. XPDB-WebGPU instrumentation
+   - In `XPDB_WebGPU.js`, expose methods `dumpInputsToConsole(label, buffers)` and `dumpOutputsToConsole(...)`. Each method:
+     1. Maps the relevant GPUBuffer to CPU (`device.queue.readBuffer` already supported in Node build). Convert to typed arrays.
+     2. Pass arrays through the shared formatting helpers.
+     3. `console.log` each line explicitly—no console objects, no JSON folding.
+   - Cover at least: `curr_pos`, `pred_pos`, `atom_params`, `bond_indices_global`, `bond_indices_local`, `ghost_packed`. Later we can add solver outputs once WebGPU write-back is working.
+
+3. CLI wiring
+   - [dump_xpdb_topology.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:0:0-0:0):
+     - Add CLI flags `--dumpInputs` and `--dumpOutputs`.
+     - After loading/building topology, call the XPDB dump helpers if flags are set.
+     - The CLI should pass file paths too (e.g., `--dumpInputs out_js_H2O_inputs.txt`). The helper writes to both console and optional files via `fs.writeFileSync`.
+   - Ensure the same exported functions are used by the browser app so we’re not duplicating debugging code.
+
+4. Python parity
+   - [pyBall/XPDB_AVBD/test_TiledJacobi_molecules.py](cci:7://file:///home/prokop/git/FireCore/pyBall/XPDB_AVBD/test_TiledJacobi_molecules.py:0:0-0:0) already prints buffers via numpy. Add `--dump_inputs file` and `--dump_outputs file` that emit the same line format (matching the JS helpers). This way diffs can be run directly between the two text files.
+
+5. Workflow reminder
+   - Start with H₂O and CH₂O: run Python script with `--dump_inputs out_py_H2O_inputs.txt`, then run Node CLI with `--dumpInputs out_js_H2O_inputs.txt`. Diff the text files. Only after inputs match do we move on to solver outputs and larger molecules like guanine.
+   - No browser needed: Node 22 + Dawn backend already powers [dump_xpdb_topology.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:0:0-0:0), so buffer reads/logging happen entirely in the CLI.
+
+Once you’re ready to implement, we’ll add the shared helper module, expose dump functions in `XPDB_WebGPU.js`, extend the CLI flags, and mirror the formatting in the Python driver.

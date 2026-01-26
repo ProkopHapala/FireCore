@@ -51,15 +51,85 @@ function uniqPairs(pairs) {
     return out;
 }
 
+function extendMolWithDummy(mol, Z, pos, atypeIndex = -1) {
+    if (!mol || typeof mol.addAtom !== 'function' || typeof mol.getAtomIndex !== 'function') {
+        throw new Error('extendMolWithDummy: mol must provide addAtom() and getAtomIndex()');
+    }
+    const id = mol.addAtom(pos.x, pos.y, pos.z, Z);
+    const i = mol.getAtomIndex(id);
+    if (i < 0) throw new Error('extendMolWithDummy: getAtomIndex() returned <0');
+    mol.atoms[i].atype = atypeIndex;
+    return { id, i };
+}
+
+function buildAngleBonds(mol, mmParams, bondsAdj1, opts, outLinear) {
+    const n = mol.atoms.length;
+    const kAng = (opts && (opts.k_angle !== undefined)) ? +opts.k_angle : 0.0;
+    for (let ib = 0; ib < n; ib++) {
+        const neighs = bondsAdj1[ib] || [];
+        if (neighs.length < 2) continue;
+        const symB = Z_TO_SYMBOL[mol.atoms[ib].Z] || 'X';
+        const tBname = mmParams.resolveTypeNameTable(symB);
+        const tB = mmParams.atomTypes[tBname];
+        const thetaDeg = (tB && (tB.Ass !== undefined)) ? +tB.Ass : 120.0;
+        const theta = thetaDeg * Math.PI / 180.0;
+        const cosT = Math.cos(theta);
+        const K = (kAng !== 0.0) ? kAng : ((tB && (tB.Kss !== undefined)) ? +tB.Kss : 0.0);
+        if (!(K !== 0.0)) continue;
+
+        for (let ia = 0; ia < neighs.length; ia++) {
+            const ja = neighs[ia][0] | 0;
+            const rab = +neighs[ia][1];
+            if (!(rab > 0)) continue;
+            for (let ic = ia + 1; ic < neighs.length; ic++) {
+                const jc = neighs[ic][0] | 0;
+                if (ja === jc) continue;
+                const rbc = +neighs[ic][1];
+                if (!(rbc > 0)) continue;
+                const l0 = lawOfCosines(rab, rbc, cosT);
+                if (!(l0 > 0)) continue;
+                outLinear.push([ja, jc, l0, K, ['angle', [ja, ib, jc]]]);
+            }
+        }
+    }
+}
+
 function countNeighborsFromAdj(adj) {
     let c = 0;
     for (let i = 0; i < adj.length; i++) if ((adj[i][0] | 0) >= 0) c++;
     return c;
 }
 
-function computePiOrientations(mol, bondsAdj1, npiList) {
+function computeAtomiPiDirectionFromNeighs(mol, ia, nbSorted, tmpA, tmpB, tmpC) {
+    // Python AtomicSystem.get_atomi_pi_direction():
+    // vectors = normalize(rj-ri) for neighbors
+    // dir = sum normalize(cross(v_k, v_{k+1})) with cyclic wrap
+    const hostPos = mol.atoms[ia].pos;
+    const vecs = [];
+    for (let k = 0; k < nbSorted.length; k++) {
+        const jb = nbSorted[k] | 0;
+        if (jb < 0 || jb >= mol.atoms.length) continue;
+        tmpA.setV(mol.atoms[jb].pos);
+        tmpA.sub(hostPos);
+        if (tmpA.normalize() > 1e-12) vecs.push(tmpA.clone());
+    }
+    tmpC.set(0, 0, 0);
+    const m = vecs.length;
+    if (m < 2) return 0.0;
+    for (let k = 0; k < m; k++) {
+        const a = vecs[k];
+        const b = vecs[(k + 1) % m];
+        tmpB.setCross(a, b);
+        const n = tmpB.norm();
+        if (n > 1e-12) tmpC.add(tmpB.mulScalar(1.0 / n));
+    }
+    return tmpC.norm();
+}
+
+function computePiOrientations(mol, bondsAdj1, npiList, alignPiVectors = false, debugTopo = null) {
     const n = mol.atoms.length;
     const pipos = new Array(n);
+    const axisFallback = new Array(n);
     const hostPos = new Vec3();
     const ajPos = new Vec3();
     const dir = new Vec3();
@@ -67,45 +137,122 @@ function computePiOrientations(mol, bondsAdj1, npiList) {
     const cr = new Vec3();
     const tmpU = new Vec3();
     const tmpV = new Vec3();
+    const tmpA = new Vec3();
+    const tmpB = new Vec3();
+    const tmpC = new Vec3();
     for (let ia = 0; ia < n; ia++) {
         const out = new Vec3(0, 0, 0);
         pipos[ia] = out;
         const npi = npiList[ia] | 0;
         if (npi <= 0) continue;
         const neighs = bondsAdj1[ia] || [];
-        hostPos.setV(mol.atoms[ia].pos);
-        const dirs = [];
-        for (let k = 0; k < neighs.length; k++) {
-            const jb = neighs[k][0] | 0;
-            const atomB = mol.atoms[jb];
-            if (!atomB) continue;
-            ajPos.setV(atomB.pos);
-            dir.setV(ajPos);
-            dir.sub(hostPos);
-            if (dir.normalize() > 0) dirs.push(dir.clone());
+        const nbSorted = [];
+        for (let k = 0; k < neighs.length; k++) nbSorted.push(neighs[k][0] | 0);
+        nbSorted.sort((a, b) => (a | 0) - (b | 0));
+
+        // Python parity: initial pi dir from AtomicSystem.get_atomi_pi_direction()
+        tmpC.set(0, 0, 0);
+        const rawNorm = computeAtomiPiDirectionFromNeighs(mol, ia, nbSorted, tmpA, tmpB, tmpC);
+        if (rawNorm > 1e-12) out.setV(tmpC.mulScalar(1.0 / rawNorm));
+        if (nbSorted.length === 1) {
+            // store axis fallback (used only if pi remains unresolved)
+            hostPos.setV(mol.atoms[ia].pos);
+            const jb = nbSorted[0] | 0;
+            if (jb >= 0 && jb < n) {
+                ajPos.setV(mol.atoms[jb].pos);
+                dir.setV(ajPos).sub(hostPos);
+                if (dir.normalize() > 0) axisFallback[ia] = dir.clone();
+            }
         }
-        if (dirs.length >= 2) {
+        if (debugTopo) debugTopo(`PI_INIT ia=${String(ia).padStart(4)} nb=${String(nbSorted.length).padStart(2)} npi=${String(npi).padStart(2)} neigh=${JSON.stringify(nbSorted)} raw=(${(rawNorm > 1e-12 ? out.x : 0).toFixed(6)},${(rawNorm > 1e-12 ? out.y : 0).toFixed(6)},${(rawNorm > 1e-12 ? out.z : 0).toFixed(6)}) pi=(${out.x.toFixed(6)},${out.y.toFixed(6)},${out.z.toFixed(6)})`);
+    }
+
+    // Python parity: propagate low-norm pi dirs from neighbors (min_norm=0.7, max_iter=4)
+    const minNorm = 0.7;
+    for (let it = 0; it < 4; it++) {
+        let updated = 0;
+        for (let ia = 0; ia < n; ia++) {
+            if ((npiList[ia] | 0) <= 0) continue;
+            const vHost = pipos[ia];
+            const hostNorm = vHost.norm();
+            if (hostNorm >= minNorm) continue;
             acc.set(0, 0, 0);
-            for (let a = 0; a < dirs.length; a++) {
-                for (let b = a + 1; b < dirs.length; b++) {
-                    cr.setCross(dirs[a], dirs[b]);
-                    const norm = cr.norm();
-                    if (norm > 1e-8) acc.add(cr.clone().mulScalar(1.0 / norm));
-                }
+            const neighs = bondsAdj1[ia] || [];
+            const nbSorted = [];
+            for (let k = 0; k < neighs.length; k++) nbSorted.push(neighs[k][0] | 0);
+            nbSorted.sort((a, b) => (a | 0) - (b | 0));
+            for (let k = 0; k < nbSorted.length; k++) {
+                const ja = nbSorted[k] | 0;
+                if (ja < 0 || ja >= n) continue;
+                if ((npiList[ja] | 0) <= 0) continue;
+                const vj = pipos[ja];
+                const nj = vj.norm();
+                if (nj < 1e-6) continue;
+                tmpU.setV(vj).mulScalar(1.0 / nj);
+                if (hostNorm > 1e-6 && vHost.dot(tmpU) < 0) tmpU.mulScalar(-1);
+                else if (acc.norm() > 1e-6 && acc.dot(tmpU) < 0) tmpU.mulScalar(-1);
+                acc.add(tmpU);
             }
             const accNorm = acc.norm();
-            if (accNorm > 1e-8) {
-                out.setV(acc.mulScalar(1.0 / accNorm));
-                continue;
+            if (accNorm >= minNorm) {
+                vHost.setV(acc.mulScalar(1.0 / accNorm));
+                if (debugTopo) debugTopo(`PI_PROP ia=${String(ia).padStart(4)} neigh=${JSON.stringify(nbSorted)} acc=(${acc.x.toFixed(6)},${acc.y.toFixed(6)},${acc.z.toFixed(6)}) acc_norm=${accNorm.toFixed(6)} pi=(${vHost.x.toFixed(6)},${vHost.y.toFixed(6)},${vHost.z.toFixed(6)})`);
+                updated++;
             }
         }
-        if (dirs.length === 1) {
-            const axis = dirs[0];
-            orthonormalBasisFromDir(axis, tmpU, tmpV);
-            out.setV(tmpU);
-            continue;
+        if (updated === 0) break;
+    }
+
+    if (alignPiVectors) {
+        // Python parity: optional align signs (max_iter=6) against first available pi neighbor
+        for (let it = 0; it < 6; it++) {
+            let flippedAny = 0;
+            for (let ia = 0; ia < n; ia++) {
+                if ((npiList[ia] | 0) <= 0) continue;
+                const vHost = pipos[ia];
+                const hostNorm = vHost.norm();
+                if (hostNorm < 1e-6) continue;
+                const neighs = bondsAdj1[ia] || [];
+                const nbSorted = [];
+                for (let k = 0; k < neighs.length; k++) nbSorted.push(neighs[k][0] | 0);
+                nbSorted.sort((a, b) => (a | 0) - (b | 0));
+                for (let k = 0; k < nbSorted.length; k++) {
+                    const ja = nbSorted[k] | 0;
+                    if (ja < 0 || ja >= n) continue;
+                    if ((npiList[ja] | 0) <= 0) continue;
+                    const vj = pipos[ja];
+                    const nj = vj.norm();
+                    if (nj < 1e-6) continue;
+                    tmpU.setV(vj).mulScalar(1.0 / nj);
+                    const dot0 = vHost.dot(tmpU);
+                    if (dot0 < 0) {
+                        vHost.mulScalar(-1);
+                        if (debugTopo) debugTopo(`PI_FLIP ia=${String(ia).padStart(4)} ja=${String(ja).padStart(4)} dot=${dot0.toFixed(6)} pi=(${vHost.x.toFixed(6)},${vHost.y.toFixed(6)},${vHost.z.toFixed(6)})`);
+                        flippedAny++;
+                    }
+                    break;
+                }
+            }
+            if (flippedAny === 0) break;
         }
-        out.set(0, 0, 0);
+    }
+
+    // Last resort fallback for unresolved 1-neighbor cases: choose any perpendicular dir
+    for (let ia = 0; ia < n; ia++) {
+        if ((npiList[ia] | 0) <= 0) continue;
+        if (pipos[ia].norm() > 1e-8) continue;
+        const axis = axisFallback[ia];
+        if (!axis) continue;
+        orthonormalBasisFromDir(axis, tmpU, tmpV);
+        pipos[ia].setV(tmpU);
+    }
+
+    for (let ia = 0; ia < n; ia++) {
+        const npi = npiList[ia] | 0;
+        if (npi <= 0) continue;
+        const v = pipos[ia];
+        const nn = v ? v.norm() : 0;
+        if (debugTopo) debugTopo(`PI_FINAL ia=${String(ia).padStart(4)} npi=${String(npi).padStart(2)} pi=(${v.x.toFixed(6)},${v.y.toFixed(6)},${v.z.toFixed(6)}) norm=${nn.toFixed(6)}`);
     }
     return pipos;
 }
@@ -124,8 +271,11 @@ function collectNeighborDirs(mol, ia, neighs, limit = 3) {
     const dirs = [];
     const hostPos = mol.atoms[ia].pos;
     const tmp = new Vec3();
-    for (let k = 0; k < neighs.length && dirs.length < limit; k++) {
-        const jb = neighs[k][0] | 0;
+    const nbSorted = [];
+    for (let k = 0; k < neighs.length; k++) nbSorted.push(neighs[k][0] | 0);
+    nbSorted.sort((a, b) => (a | 0) - (b | 0));
+    for (let k = 0; k < nbSorted.length && dirs.length < limit; k++) {
+        const jb = nbSorted[k] | 0;
         const atomB = mol.atoms[jb];
         if (!atomB) continue;
         tmp.setV(atomB.pos);
@@ -135,7 +285,7 @@ function collectNeighborDirs(mol, ia, neighs, limit = 3) {
     return dirs;
 }
 
-function epairDirsFromMMFF(mol, ia, neighs, pipos, npi, nep) {
+function epairDirsFromMMFF(mol, ia, neighs, pipos, npi, nep, debugTopo = null) {
     const dirs = collectNeighborDirs(mol, ia, neighs, 3);
     const nb = dirs.length;
     const out = [];
@@ -181,172 +331,27 @@ function epairDirsFromMMFF(mol, ia, neighs, pipos, npi, nep) {
             if (!(m_b.normalize() > eps)) m_b.set(0, 0, 1);
             const m_c = new Vec3().setCross(v1, m_b);
             if (!(m_c.normalize() > eps)) {
-                throw new Error(`epairDirsFromMMFF: cannot build orthonormal basis for host ${ia} (nb=1, npi=1)`);
+                const u = new Vec3();
+                const v = new Vec3();
+                orthonormalBasisFromDir(m_b, u, v);
+                m_c.setV(u);
             }
-            const c1 = v1.clone().mulScalar(-0.5).addMul(m_c, 0.86602540378);
-            const c2 = v1.clone().mulScalar(-0.5).addMul(m_c, -0.86602540378);
-            if (c1.normalize() > eps) out.push(c1);
-            if (c2.normalize() > eps) out.push(c2);
+            const d1 = v1.clone().mulScalar(-0.5).addMul(m_c, +0.86602540378);
+            const d2 = v1.clone().mulScalar(-0.5).addMul(m_c, -0.86602540378);
+            if (d1.normalize() > eps) out.push(d1);
+            if (d2.normalize() > eps) out.push(d2);
         }
     }
 
     if (out.length > nep) out.length = nep;
+    if (debugTopo && out.length > 0) {
+        const ss = out.map(v => `(${v.x.toFixed(6)},${v.y.toFixed(6)},${v.z.toFixed(6)})`).join(' ');
+        debugTopo(`EP_DIR ia=${String(ia).padStart(4)} nb=${String(nb).padStart(2)} npi=${String(npi).padStart(2)} nep=${String(nep).padStart(2)} dirs=${ss}`);
+    }
     return out;
 }
 
-function missingDirsVSEPR(vs, nMissing, totalDomains, outDirs) {
-    outDirs.length = 0;
-    const nb = vs.length | 0;
-    if (nMissing <= 0) return outDirs;
-    if (nb === 0) {
-        if (totalDomains === 4) {
-            const a = 0.57735026919;
-            outDirs.push(new Vec3( a, a, a));
-            outDirs.push(new Vec3( a,-a,-a));
-            outDirs.push(new Vec3(-a, a,-a));
-            outDirs.push(new Vec3(-a,-a, a));
-        } else if (totalDomains === 3) {
-            outDirs.push(new Vec3(1, 0, 0));
-            outDirs.push(new Vec3(-0.5, 0.86602540378, 0));
-            outDirs.push(new Vec3(-0.5, -0.86602540378, 0));
-        } else if (totalDomains === 2) {
-            outDirs.push(new Vec3(1, 0, 0));
-            outDirs.push(new Vec3(-1, 0, 0));
-        } else {
-            throw new Error(`missingDirsVSEPR: unsupported totalDomains=${totalDomains} for nb=0`);
-        }
-        while (outDirs.length > nMissing) outDirs.pop();
-        return outDirs;
-    }
-
-    if (totalDomains === 2) {
-        if (nb !== 1 || nMissing !== 1) throw new Error(`missingDirsVSEPR: linear expects nb=1,nMissing=1 got nb=${nb} nMissing=${nMissing}`);
-        outDirs.push(vs[0].clone().mulScalar(-1));
-        return outDirs;
-    }
-
-    if (totalDomains === 3) {
-        if (nb === 2 && nMissing === 1) {
-            const m = vs[0].clone().add(vs[1]);
-            if (!(m.normalize() > 0)) throw new Error('missingDirsVSEPR: nb=2 planar but v1+v2 is zero');
-            outDirs.push(m.mulScalar(-1));
-            return outDirs;
-        }
-        if (nb === 1 && nMissing === 2) {
-            const axis = vs[0].clone().mulScalar(-1);
-            if (!(axis.normalize() > 0)) throw new Error('missingDirsVSEPR: nb=1 planar axis zero');
-            const u = new Vec3();
-            const v = new Vec3();
-            orthonormalBasisFromDir(axis, u, v);
-            const ca = -0.5;
-            const sa = 0.86602540378;
-            outDirs.push(axis.clone().mulScalar(ca).addMul(u, sa));
-            outDirs.push(axis.clone().mulScalar(ca).addMul(u, -sa));
-            return outDirs;
-        }
-        throw new Error(`missingDirsVSEPR: unsupported planar nb=${nb} nMissing=${nMissing}`);
-    }
-
-    if (totalDomains === 4) {
-        if (nb === 3 && nMissing === 1) {
-            const m = vs[0].clone().add(vs[1]).add(vs[2]);
-            if (!(m.normalize() > 0)) throw new Error('missingDirsVSEPR: nb=3 tetra but sum is zero');
-            outDirs.push(m.mulScalar(-1));
-            return outDirs;
-        }
-        if (nb === 2 && nMissing === 2) {
-            const m_c = vs[0].clone().add(vs[1]);
-            if (!(m_c.normalize() > 0)) throw new Error('missingDirsVSEPR: nb=2 tetra but v1+v2 is zero');
-            const m_b = new Vec3().setCross(vs[0], vs[1]);
-            if (!(m_b.normalize() > 0)) {
-                const u = new Vec3();
-                const v = new Vec3();
-                orthonormalBasisFromDir(m_c, u, v);
-                m_b.setV(u);
-            }
-            const cc = 0.57735026919;
-            const cb = 0.81649658092;
-            const d1 = m_c.clone().mulScalar(-cc).addMul(m_b, cb);
-            if (!(d1.normalize() > 0)) throw new Error('missingDirsVSEPR: failed normalize tetra dir1');
-            const d2 = m_c.clone().mulScalar(-cc).addMul(m_b, -cb);
-            if (!(d2.normalize() > 0)) throw new Error('missingDirsVSEPR: failed normalize tetra dir2');
-            outDirs.push(d1);
-            outDirs.push(d2);
-            return outDirs;
-        }
-        if (nb === 1 && nMissing === 3) {
-            const v1 = vs[0];
-            const u = new Vec3();
-            const v = new Vec3();
-            orthonormalBasisFromDir(v1, u, v);
-            const a = -1.0 / 3.0;
-            const b = Math.sqrt(8.0 / 9.0);
-            const c120 = -0.5;
-            const s120 = 0.86602540378;
-            const u2 = u.clone().mulScalar(c120).addMul(v, s120);
-            const u3 = u.clone().mulScalar(c120).addMul(v, -s120);
-            const d1 = v1.clone().mulScalar(a).addMul(u, b);
-            const d2 = v1.clone().mulScalar(a).addMul(u2, b);
-            const d3 = v1.clone().mulScalar(a).addMul(u3, b);
-            if (!(d1.normalize() > 0 && d2.normalize() > 0 && d3.normalize() > 0)) throw new Error('missingDirsVSEPR: failed normalize tetra nb=1');
-            outDirs.push(d1);
-            outDirs.push(d2);
-            outDirs.push(d3);
-            return outDirs;
-        }
-        throw new Error(`missingDirsVSEPR: unsupported tetra nb=${nb} nMissing=${nMissing}`);
-    }
-
-    throw new Error(`missingDirsVSEPR: unsupported totalDomains=${totalDomains}`);
-}
-
-function buildAngleBonds(mol, mmParams, bondsAdj1, opts, outLinear) {
-    const nAtoms = mol.atoms.length;
-    const defaultL = (opts.defaultL !== undefined) ? +opts.defaultL : 1.5;
-    const kAngle = (opts.k_angle !== undefined) ? +opts.k_angle : 0.0;
-
-    for (let b = 0; b < nAtoms; b++) {
-        const neighs = bondsAdj1[b] || [];
-        if (neighs.length < 2) continue;
-        const symB = Z_TO_SYMBOL[mol.atoms[b].Z] || 'X';
-        const typeB = mmParams.resolveTypeNameTable(symB);
-        const atB = mmParams.atomTypes[typeB];
-        if (!atB) continue;
-        const thetaDeg = (atB.Ass > 0) ? atB.Ass : 109.5;
-        const theta = thetaDeg * Math.PI / 180.0;
-        const cosT = Math.cos(theta);
-        const K = (kAngle !== 0.0) ? kAngle : +atB.Kss;
-
-        for (let ni = 0; ni < neighs.length; ni++) {
-            for (let nj = ni + 1; nj < neighs.length; nj++) {
-                let a = neighs[ni][0] | 0;
-                let c = neighs[nj][0] | 0;
-                if (a === c) continue;
-                if (c < a) { const t = a; a = c; c = t; }
-
-                const symA = Z_TO_SYMBOL[mol.atoms[a].Z] || 'X';
-                const symC = Z_TO_SYMBOL[mol.atoms[c].Z] || 'X';
-                const typeA = mmParams.resolveTypeNameTable(symA);
-                const typeC = mmParams.resolveTypeNameTable(symC);
-                const btAB = mmParams.getBondParams(typeB, typeA);
-                const btBC = mmParams.getBondParams(typeB, typeC);
-                const rab = (btAB && btAB.l0 > 0) ? btAB.l0 : defaultL;
-                const rbc = (btBC && btBC.l0 > 0) ? btBC.l0 : defaultL;
-                const l0 = lawOfCosines(rab, rbc, cosT);
-                outLinear.push([a, c, l0, K, ['angle', [a, b, c]]]);
-            }
-        }
-    }
-}
-
-function extendMolWithDummy(mol, Z, pos, atypeIndex = -1) {
-    const id = mol.addAtom(pos.x, pos.y, pos.z, Z);
-    const i = mol.getAtomIndex(id);
-    mol.atoms[i].atype = atypeIndex;
-    return { id, i };
-}
-
-function buildPiDummies(mol, mmParams, bondsAdj1, npiList, pipos, opts, outLinear, outPiDummies) {
+function buildPiDummies(mol, mmParams, bondsAdj1, npiList, pipos, opts, outLinear, outPiDummies, debugTopo = null) {
     const L_pi = (opts.L_pi !== undefined) ? +opts.L_pi : 1.0;
     const K_pi_host = (opts.k_pi !== undefined) ? +opts.k_pi : 0.0;
     const K_pi_orth = (opts.k_pi_orth !== undefined) ? +opts.k_pi_orth : 0.0;
@@ -364,14 +369,15 @@ function buildPiDummies(mol, mmParams, bondsAdj1, npiList, pipos, opts, outLinea
         const hostPos = host.pos;
         const signs = twoPi ? [1.0, -1.0] : [1.0];
 
-        for (let s = 0; s < signs.length; s++) {
-            const sign = signs[s];
+        for (let si = 0; si < signs.length; si++) {
+            const sign = signs[si];
             tmp.setV(dir);
             tmp.mulScalar(L_pi * sign);
             tmp.add(hostPos);
 
             const d = extendMolWithDummy(mol, 201, tmp, -1);
             outPiDummies.push({ index: d.i, host: ia, sign });
+            if (debugTopo) debugTopo(`PI_DUMMY idx=${String(d.i).padStart(4)} host=${String(ia).padStart(4)} sign=${sign.toFixed(1)} pos=(${tmp.x.toFixed(6)},${tmp.y.toFixed(6)},${tmp.z.toFixed(6)})`);
 
             outLinear.push([ia, d.i, L_pi, K_pi_host, ['pi-host', [ia, d.i]]]);
 
@@ -391,7 +397,7 @@ function buildPiDummies(mol, mmParams, bondsAdj1, npiList, pipos, opts, outLinea
     }
 }
 
-function buildEpairDummies(mol, mmParams, bondsAdj1, npiList, nepList, pipos, opts, outLinear, outEpDummies) {
+function buildEpairDummies(mol, mmParams, bondsAdj1, npiList, nepList, pipos, opts, outLinear, outEpDummies, debugTopo = null) {
     const L_epair = (opts.L_epair !== undefined) ? +opts.L_epair : 0.5;
     const K_ep_host = (opts.k_ep !== undefined) ? +opts.k_ep : 0.0;
     const K_ep_orth = (opts.k_ep_orth !== undefined) ? +opts.k_ep_orth : 0.0;
@@ -407,7 +413,7 @@ function buildEpairDummies(mol, mmParams, bondsAdj1, npiList, nepList, pipos, op
         const neighs = bondsAdj1[ia] || [];
         const npi = npiList[ia] | 0;
 
-        const dirList = epairDirsFromMMFF(mol, ia, neighs, pipos, npi, nep);
+        const dirList = epairDirsFromMMFF(mol, ia, neighs, pipos, npi, nep, debugTopo);
         dirs.length = 0;
         for (let k = 0; k < dirList.length; k++) dirs.push(dirList[k]);
         for (let k = 0; k < dirs.length; k++) {
@@ -417,6 +423,7 @@ function buildEpairDummies(mol, mmParams, bondsAdj1, npiList, nepList, pipos, op
             tmp.add(host.pos);
             const d = extendMolWithDummy(mol, 200, tmp, -1);
             outEpDummies.push({ index: d.i, host: ia, slot: k });
+            if (debugTopo) debugTopo(`EP_DUMMY idx=${String(d.i).padStart(4)} host=${String(ia).padStart(4)} slot=${String(k).padStart(2)} pos=(${tmp.x.toFixed(6)},${tmp.y.toFixed(6)},${tmp.z.toFixed(6)})`);
 
             outLinear.push([ia, d.i, L_epair, K_ep_host, ['ep-host', [ia, d.i]]]);
             for (let kk = 0; kk < neighs.length; kk++) {
@@ -559,15 +566,17 @@ export function buildMMFFLTopology(mol, mmParams, opts = {}) {
         }
     }
 
-    const pipos = computePiOrientations(mol, bondsAdj1, npiList);
+    const debugTopo = (opts && (typeof opts.debugTopo === 'function')) ? opts.debugTopo : null;
+    const alignPiVectors = !!(opts && opts.align_pi_vectors);
+    const pipos = computePiOrientations(mol, bondsAdj1, npiList, alignPiVectors, debugTopo);
 
     const linearBonds = [];
     const piDummies = [];
     const epDummies = [];
 
     if (addAngle) buildAngleBonds(mol, mmParams, bondsAdj1, opts, linearBonds);
-    if (addPi) buildPiDummies(mol, mmParams, bondsAdj1, npiList, pipos, opts, linearBonds, piDummies);
-    if (addEpair) buildEpairDummies(mol, mmParams, bondsAdj1, npiList, nepList, pipos, opts, linearBonds, epDummies);
+    if (addPi) buildPiDummies(mol, mmParams, bondsAdj1, npiList, pipos, opts, linearBonds, piDummies, debugTopo);
+    if (addEpair) buildEpairDummies(mol, mmParams, bondsAdj1, npiList, nepList, pipos, opts, linearBonds, epDummies, debugTopo);
     if (addEpair && addEpairPairs) buildEpairPairBonds(mol, epDummies, opts, linearBonds);
     if (addPi && addPiAlign) buildPiAlignBonds(mol, piDummies, uniqPairs(primaryPairs), opts, linearBonds);
 

@@ -184,3 +184,37 @@
 We’ll resume tomorrow with the buffer dumps and `atom_params` comparison to pinpoint why the first GPU step diverges.
 
 Let me know if you want me to start implementing the bond stiffness scaling or the `bond_indices_local` dump next.
+
+#### Session Update – 2026-01-26 (Topology parity + pi-align gating)
+
+**What we achieved**
+1. **Python↔JS topology dumps now match bit-for-bit**
+   - Added gated internal debug logging on both sides (`--dump_topo_debug`) and iterated until `diff -u OUT_py_topo_debug.txt OUT_js_topo_debug.txt` is clean (JS emits extra `EP_DIR` lines by design, everything else identical).
+   - **JS emit site:** `computePiOrientations()` / `buildPiDummies()` / `buildEpairDummies()` in [`web/molgui_webgpu/MMFFLTopology.js`](cci:7://file:///home/prokophapala/git/FireCore/web/molgui_webgpu/MMFFLTopology.js:60:0-520:0) gate calls to the shared `debugTopo(line)` callback; CLI wire-up lives in [`dump_xpdb_topology.mjs`](cci:7://file:///home/prokophapala/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:250:0-360:0).
+   - **Python emit site:** `_dbg_topo()` in [`pyBall/OCL/MMFF.py`](cci:7://file:///home/prokophapala/git/FireCore/pyBall/OCL/MMFF.py:100:0-700:0) is connected from `load_molecule_topology_mmffl()` (`pyBall/XPDB_AVBD/test_TiledJacobi_molecules.py`) when `--dump_topo_debug PATH` is passed; the same file writes `PI_DUMMY/EP_DUMMY` entries after `build_topology()` returns.
+2. **MOL2 parity for guanine**
+   - Node CLI (`dump_xpdb_topology.mjs`) and Python driver now produce identical `OUT_*_guanine.mol2` files (no diff). This confirms atom ordering, dummy placement, and bond policies are synchronized.
+   - JS path: `dump_xpdb_topology.mjs` → `buildMMFFLTopology()` → `mol2FromTopology()`.
+   - Python path: `test_TiledJacobi_molecules.py --mol2_out ...` pulls the same `topo` dict from `MMFFL.build_topology()` and writes via `au.save_mol2`.
+3. **Pi-vector alignment now optional**
+   - Ported Python’s `get_atomi_pi_direction`, propagation, and sign-alignment logic directly into JS. Exposed `--align_pi_vectors` flag (default off, matching Python) so we can flip it on only when needed for future molecules.
+   - JS toggle: `parseArgs()` stores `alignPiVectors`; `buildMMFFLTopology()` forwards it as `align_pi_vectors`; `computePiOrientations(... alignPiVectors)` gates the sign-flip loop.
+   - Python toggle: existing `MMFFL.__init__(align_pi_vectors=True/False)`; currently disabled so we match Python’s default behavior.
+4. **MMFFL topology dump plumbing**
+   - CLI takes `--dump_topo_debug` and `--align_pi_vectors` alongside existing options; JS debug output mirrors Python formatting, making further investigations reproducible.
+   - **Molecules exercised so far:**
+     1. `cpp/common_resources/xyz/H2O.xyz` – sanity check for base plumbing.
+     2. `cpp/common_resources/xyz/CH2O.xyz` – verified pi/orbital ordering after deterministic neighbor sort.
+     3. `cpp/common_resources/xyz/guanine.xyz` – full parity target (current reference `OUT_py_guanine_inputs.txt` / `OUT_js_guanine_inputs.txt`, `OUT_py/js_guanine.mol2`, `OUT_py/js_topo_debug.txt`).
+
+**Still to do from current plan**
+1. **XPDB buffer parity (build_local_topology / solve_cluster_jacobi)**
+   - Next milestone is dumping GPU buffers (positions, `atom_params`, bond remaps, ghosts) and comparing them against the Python OpenCL reference to chase the remaining collision divergence.
+2. **Bond stiffness scaling toggle**
+   - UI wiring exists, but `XPDB_WebGPU.setBondStiffnessScale()` still needs to cache host copies of `bondLenStiff` and re-upload values when “Disable bonds” is toggled.
+3. **Collision radius / pre-step forensics**
+   - Need the “dump pre-step buffers” workflow outlined below to confirm initial GPU iteration uses the same radii / `pred_pos` as CPU.
+4. **MMParams audit for other molecules**
+   - Guanine is green-lit; must repeat the same dump/diff workflow for the rest of the XPDB parity suite (H2O, CH2O, pentacene, etc.) before moving on to GPU solver parity proper.
+
+

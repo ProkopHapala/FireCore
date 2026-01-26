@@ -9,6 +9,7 @@ import os
 import itertools
 import pyopencl as cl
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+import json
 
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
@@ -22,6 +23,53 @@ from pyBall import atomicUtils as au
 # unlimited line length
 np.set_printoptions(threshold=np.inf)
 np.set_printoptions(linewidth=np.inf)
+
+
+def _pad_int(i, w=4):
+    s = str(int(i))
+    if len(s) >= w:
+        return s
+    return (' ' * (w - len(s))) + s
+
+
+def dump_xpdb_inputs_text(path_out, *, xyz_path, pos0, radius, mass, bond_indices, bond_lengths, bond_stiffness, fixed=6):
+    if path_out is None:
+        raise ValueError('dump_xpdb_inputs_text: path_out is None')
+    n = int(pos0.shape[0])
+    if radius.shape[0] != n or mass.shape[0] != n:
+        raise ValueError(f'dump_xpdb_inputs_text: size mismatch pos0={n} radius={radius.shape} mass={mass.shape}')
+    if bond_indices.shape[0] != n:
+        raise ValueError(f'dump_xpdb_inputs_text: bond_indices shape mismatch {bond_indices.shape} expected ({n},*)')
+
+    nMaxBonded = int(bond_indices.shape[1])
+    ffmt = '{:.' + str(int(fixed)) + 'f}'
+    out = []
+    out.append(f"# test_TiledJacobi_molecules.py --dump_inputs molecule={xyz_path}")
+    out.append(f"# nAtoms={n} nMaxBonded={nMaxBonded}")
+    out.append(f"# pos n={n} stride=4 cols=3")
+    for i in range(n):
+        out.append(f"pos[{_pad_int(i,4)}] {ffmt.format(float(pos0[i,0]))} {ffmt.format(float(pos0[i,1]))} {ffmt.format(float(pos0[i,2]))}")
+    out.append(f"# pred_pos n={n} stride=4 cols=3")
+    for i in range(n):
+        out.append(f"pred_pos[{_pad_int(i,4)}] {ffmt.format(float(pos0[i,0]))} {ffmt.format(float(pos0[i,1]))} {ffmt.format(float(pos0[i,2]))}")
+    out.append(f"# atom_params n={n} layout=vec4(radius,0,0,mass)")
+    for i in range(n):
+        out.append(f"atom_params[{_pad_int(i,4)}] r={ffmt.format(float(radius[i]))} m={ffmt.format(float(mass[i]))}")
+    out.append(f"# bond_idx_global nAtoms={n} nMaxBonded={nMaxBonded}")
+    for i in range(n):
+        row = ' '.join(str(int(bond_indices[i,k])) for k in range(nMaxBonded))
+        out.append(f"bond_idx_global[{_pad_int(i,4)}] {row}")
+    out.append(f"# bond_len_stiff nAtoms={n} nMaxBonded={nMaxBonded} layout=(L,K) per slot")
+    for i in range(n):
+        parts = []
+        for k in range(nMaxBonded):
+            parts.append(f"{ffmt.format(float(bond_lengths[i,k]))},{ffmt.format(float(bond_stiffness[i,k]))}")
+        out.append(f"bond_len_stiff[{_pad_int(i,4)}] {' '.join(parts)}")
+    out.append('')
+
+    with open(path_out, 'w') as f:
+        f.write('\n'.join(out))
+    print(f"[DUMP] wrote {path_out}")
 
 
 def build_bond_arrays_with_angles(
@@ -199,6 +247,7 @@ def load_molecule_topology_mmffl(
     Kep_pair=0.0,
     print_topology=False,
     mol2_out=None,
+    dump_topo_debug=None,
 ):
     from pyBall import AtomicSystem
     mol = AtomicSystem.AtomicSystem(fname=fname)
@@ -219,6 +268,11 @@ def load_molecule_topology_mmffl(
         Kep_pair=Kep_pair,
         verbosity=1,
     )
+
+    dbg_fh = None
+    if dump_topo_debug is not None:
+        dbg_fh = open(dump_topo_debug, 'w', encoding='utf-8')
+        ff.debug_topo = lambda s: dbg_fh.write(str(s) + "\n")
     topo = ff.build_topology(
         mol,
         type_source=type_source,
@@ -231,6 +285,24 @@ def load_molecule_topology_mmffl(
         bUFF=False,
         report=True,
     )
+
+    if dbg_fh is not None:
+        apos_all_dbg = topo["apos"]
+        for d in getattr(ff, 'pi_dummies', []):
+            idx = int(d.get('index', -1))
+            host = int(d.get('host', -1))
+            sign = float(d.get('sign', 0.0))
+            if idx >= 0 and idx < apos_all_dbg.shape[0]:
+                p = apos_all_dbg[idx]
+                dbg_fh.write(f"PI_DUMMY idx={idx:4d} host={host:4d} sign={sign: .1f} pos=({p[0]: .6f},{p[1]: .6f},{p[2]: .6f})\n")
+        for d in getattr(ff, 'ep_dummies', []):
+            idx = int(d.get('index', -1))
+            host = int(d.get('host', -1))
+            slot = int(d.get('slot', -1))
+            if idx >= 0 and idx < apos_all_dbg.shape[0]:
+                p = apos_all_dbg[idx]
+                dbg_fh.write(f"EP_DUMMY idx={idx:4d} host={host:4d} slot={slot:2d} pos=({p[0]: .6f},{p[1]: .6f},{p[2]: .6f})\n")
+        dbg_fh.close()
     apos_all = topo["apos"].astype(np.float32)
     n_all = int(topo["n_all"])
     n_real = int(topo["n_real"])
@@ -460,6 +532,9 @@ def run_test():
     parser.add_argument("--mol2_out",        type=str,   default=None, help="Optional MOL2 export path (writes Å coordinates + dummy atoms)")
     parser.add_argument("--topology_only",   type=int,   default=0, help="Stop after topology build/plot/export (1=yes,0=run XPDB)")
     parser.add_argument("--print_buffers",   type=int,   default=1, help="Dump XPDB input arrays (positions, bond idx/len/stiff) for inspection")
+    parser.add_argument("--dump_inputs",     type=str,   default=None, help="Write XPDB input buffers (pos/pred/params/bonds) in line-by-line text format for JS parity")
+    parser.add_argument("--dump_topo_debug",type=str,   default=None, help="Write internal MMFF/MMFFL topology debug records (pipos propagation/sign + dummy placement) for JS parity")
+    parser.add_argument("--dump_fixed",      type=int,   default=6, help="Number of decimals for --dump_inputs")
     parser.add_argument("--print_pos_every", type=int,   default=50, help="Print position bounding box every N frames (0=disable)")
     args = parser.parse_args()
 
@@ -495,7 +570,25 @@ def run_test():
                 Kep_pair=args.Kep_pair,
                 print_topology=bool(args.print_buffers),
                 mol2_out=args.mol2_out,
+                dump_topo_debug=args.dump_topo_debug,
             )
+            num_atoms = len(pos0)
+            vel0 = np.zeros_like(pos0)
+            radius = np.full(num_atoms, args.atom_rad, dtype=np.float32)
+            mass = np.ones(num_atoms, dtype=np.float32)
+
+            if args.dump_inputs:
+                dump_xpdb_inputs_text(
+                    args.dump_inputs,
+                    xyz_path=args.molecule,
+                    pos0=pos0,
+                    radius=radius,
+                    mass=mass,
+                    bond_indices=bond_indices,
+                    bond_lengths=bond_lengths,
+                    bond_stiffness=bond_stiffness,
+                    fixed=args.dump_fixed,
+                )
             if args.topology_only:
                 plot_topology_3d(pos0, topo, title=os.path.basename(args.molecule))
                 return
@@ -516,6 +609,19 @@ def run_test():
     sim = XPDB_new(num_atoms, group_size=args.group_size)
     sim.upload_data(pos0, vel0, radius, mass)
     sim.upload_bonds_fixed_from_arrays(bond_indices, bond_lengths, bond_stiffness)
+
+    if args.dump_inputs:
+        dump_xpdb_inputs_text(
+            args.dump_inputs,
+            xyz_path=args.molecule,
+            pos0=pos0,
+            radius=radius,
+            mass=mass,
+            bond_indices=bond_indices,
+            bond_lengths=bond_lengths,
+            bond_stiffness=bond_stiffness,
+            fixed=args.dump_fixed,
+        )
 
     if args.print_buffers:
         print("[DEBUG] pos0:\n", pos0)

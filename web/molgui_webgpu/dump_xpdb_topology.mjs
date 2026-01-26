@@ -8,6 +8,7 @@ import { installMoleculeUtilsMethods } from './MoleculeUtils.js';
 import { installMoleculeSelectionMethods } from './MoleculeSelection.js';
 import { buildXPDBTopology } from './XPDBTopology.js';
 import { buildMMFFLTopology } from './MMFFLTopology.js';
+import { dumpVec4BufferLines, dumpAtomParamsLines, dumpBondIndicesLines, dumpBondLenStiffLines, joinSections } from './debugBuffers.js';
 
 installMoleculeIOMethods(EditableMolecule);
 installMoleculeUtilsMethods(EditableMolecule);
@@ -73,6 +74,12 @@ function parseArgs(argv) {
         atomTypes: path.join(defaultRes, 'AtomTypes.dat'),
         bondTypes: path.join(defaultRes, 'BondTypes.dat'),
         angleTypes: path.join(defaultRes, 'AngleTypes.dat'),
+        dump_inputs: null,
+        dump_topo_debug: null,
+        dump_fixed: 6,
+        atom_rad: 0.2,
+        atom_mass: 1.0,
+        alignPiVectors: false,
     };
     for (let i = 2; i < argv.length; i++) {
         const a = String(argv[i]);
@@ -89,6 +96,7 @@ function parseArgs(argv) {
         else if (a === '--addPiAlign') out.addPiAlign = (nxt() !== '0');
         else if (a === '--addEpair') out.addEpair = (nxt() !== '0');
         else if (a === '--addEpairPairs') out.addEpairPairs = (nxt() !== '0');
+        else if (a === '--align_pi_vectors') out.alignPiVectors = (nxt() !== '0');
         else if (a === '--reportTypes') out.reportTypes = (nxt() !== '0');
         else if (a === '--L_pi') out.L_pi = +nxt();
         else if (a === '--L_epair') out.L_epair = +nxt();
@@ -107,6 +115,11 @@ function parseArgs(argv) {
         else if (a === '--atomTypes') out.atomTypes = nxt();
         else if (a === '--bondTypes') out.bondTypes = nxt();
         else if (a === '--angleTypes') out.angleTypes = nxt();
+        else if (a === '--dump_inputs') out.dump_inputs = nxt();
+        else if (a === '--dump_topo_debug') out.dump_topo_debug = nxt();
+        else if (a === '--dump_fixed') out.dump_fixed = parseInt(nxt(), 10) | 0;
+        else if (a === '--atom_rad') out.atom_rad = +nxt();
+        else if (a === '--atom_mass') out.atom_mass = +nxt();
         else throw new Error(`Unknown arg ${a}`);
     }
     if (!out.xyz) throw new Error('Usage: node dump_xpdb_topology.mjs --xyz path/to/file.xyz [--useMMFFL 0|1] [--addPi 0|1] [--addEpair 0|1] [--mol2Out out.mol2]');
@@ -119,23 +132,19 @@ function packBondArrays(bondsAdj, nAtoms, nMaxBonded) {
     const bondLenStiff = new Float32Array(nAtoms * nMaxBonded * 2);
     bondLenStiff.fill(0);
 
-    const addBond = (i, j, L, K) => {
-        let slot = -1;
-        const base = i * nMaxBonded;
-        for (let k = 0; k < nMaxBonded; k++) {
-            const jj = bondIndices[base + k];
-            if (jj === -1 || jj === j) { slot = k; break; }
-        }
-        if (slot === -1) throw new Error(`packBondArrays: atom ${i} max bonds exceeded (nMaxBonded=${nMaxBonded})`);
-        bondIndices[base + slot] = j;
-        bondLenStiff[(base + slot) * 2 + 0] = L;
-        bondLenStiff[(base + slot) * 2 + 1] = K;
-    };
-
+    // Match Python _pack_fixed_bonds(): keep adjacency order, truncate if > nMaxBonded.
     for (let i = 0; i < nAtoms; i++) {
         const neighs = bondsAdj[i] || [];
-        for (let b of neighs) {
-            addBond(i, b[0], +b[1], +b[2]);
+        if (neighs.length > nMaxBonded) {
+            console.log(`[WARN] Atom ${i} has ${neighs.length} neighbors > n_max_bonded=${nMaxBonded}; truncating`);
+        }
+        const base = i * nMaxBonded;
+        const m = Math.min(neighs.length, nMaxBonded);
+        for (let k = 0; k < m; k++) {
+            const b = neighs[k];
+            bondIndices[base + k] = (b[0] | 0);
+            bondLenStiff[(base + k) * 2 + 0] = +b[1];
+            bondLenStiff[(base + k) * 2 + 1] = +b[2];
         }
     }
 
@@ -277,6 +286,8 @@ async function main() {
     let topo = null;
 
     if (args.useMMFFL) {
+        const topoDbgLines = [];
+        const debugTopo = args.dump_topo_debug ? ((line) => { topoDbgLines.push(String(line)); }) : null;
         topo = buildMMFFLTopology(mol, mm, {
             report_types: !!args.reportTypes,
             add_angle: !!args.enableAngles,
@@ -296,38 +307,70 @@ async function main() {
             k_ep_pair: args.k_ep_pair,
             defaultL: args.defaultL,
             defaultK: args.defaultK,
+            align_pi_vectors: !!args.alignPiVectors,
+            debugTopo,
         });
+
+        if (args.dump_topo_debug) {
+            fs.writeFileSync(args.dump_topo_debug, topoDbgLines.join('\n') + (topoDbgLines.length ? '\n' : ''), 'utf8');
+            console.log(`Wrote ${args.dump_topo_debug}`);
+        }
         // attach typeName to atoms for MOL2 export parity
         for (let i = 0; i < mol.atoms.length; i++) mol.atoms[i].typeName = topo.type_names[i];
 
-        // Build XPDB adjacency from linear bonds only (primary+linear). Keep simple for parity.
+        // Build XPDB adjacency with the same policy as Python load_molecule_topology_mmffl():
+        // - include primary + derived (angle/pi/pi_align/epair/epair_pair)
+        // - set L from geometry distance |ri-rj|
+        // - set K = defaultK for all bonds
         const nAtoms2 = mol.atoms.length;
         bondsAdj = new Array(nAtoms2);
         for (let i = 0; i < nAtoms2; i++) bondsAdj[i] = [];
-        const maxB = args.maxBonds | 0;
         const addEdge = (i, j, L, K) => {
             const arr = bondsAdj[i];
-            if (arr.length >= maxB) return;
             arr.push([j, +L, +K]);
         };
-        // primary
-        for (const [a, b] of topo.bonds_primary) {
-            const ta = topo.type_names[a];
-            const tb = topo.type_names[b];
-            const bp = mm.getBondParams(ta, tb);
-            const l0 = (bp && bp.l0 > 0) ? bp.l0 : args.defaultL;
-            const K = (bp && bp.k > 0) ? bp.k : args.defaultK;
-            addEdge(a, b, l0, K);
-            addEdge(b, a, l0, K);
+
+        const bondsDerived = [];
+        if (args.enableAngles) bondsDerived.push(...topo.bonds_angle);
+        if (args.addPi) bondsDerived.push(...topo.bonds_pi);
+        if (args.addPi && args.addPiAlign) bondsDerived.push(...topo.bonds_pi_align);
+        if (args.addEpair) bondsDerived.push(...topo.bonds_epair);
+        if (args.addEpair && args.addEpairPairs) bondsDerived.push(...topo.bonds_epair_pair);
+
+        // Python does: bonds_all = sorted(set(bonds_primary + bonds_derived))
+        // Represent as undirected unique pairs (min,max) then sort.
+        const bondKey = (a, b) => {
+            const i = (a < b) ? a : b;
+            const j = (a < b) ? b : a;
+            return `${i},${j}`;
+        };
+        const uniq = new Map();
+        const all0 = [...topo.bonds_primary, ...bondsDerived];
+        for (const e of all0) {
+            const a = e[0] | 0;
+            const b = e[1] | 0;
+            const i = (a < b) ? a : b;
+            const j = (a < b) ? b : a;
+            uniq.set(bondKey(a, b), [i, j]);
         }
-        // linear
-        for (const lb of topo.bonds_linear) {
-            const a = lb[0] | 0;
-            const b = lb[1] | 0;
-            const l0 = +lb[2];
-            const K = +lb[3];
-            addEdge(a, b, l0, K);
-            addEdge(b, a, l0, K);
+        const bondsAll = Array.from(uniq.values());
+        bondsAll.sort((p, q) => (p[0] - q[0]) || (p[1] - q[1]));
+        const dist = (a, b) => {
+            const pa = mol.atoms[a].pos;
+            const pb = mol.atoms[b].pos;
+            const dx = pa.x - pb.x;
+            const dy = pa.y - pb.y;
+            const dz = pa.z - pb.z;
+            return Math.sqrt(dx * dx + dy * dy + dz * dz);
+        };
+
+        for (const e of bondsAll) {
+            const a = e[0] | 0;
+            const b = e[1] | 0;
+            const L = dist(a, b);
+            const K = +args.defaultK;
+            addEdge(a, b, L, K);
+            addEdge(b, a, L, K);
         }
 
         stats = {
@@ -351,6 +394,32 @@ async function main() {
     const nAtoms = mol.nAtoms || mol.atoms.length;
     const nMaxBonded = 16;
     const { bondIndices, bondLenStiff } = packBondArrays(bondsAdj, nAtoms, nMaxBonded);
+
+    if (args.dump_inputs) {
+        const fixed = args.dump_fixed | 0;
+        const pos4 = new Float32Array(nAtoms * 4);
+        const params4 = new Float32Array(nAtoms * 4);
+        for (let i = 0; i < nAtoms; i++) {
+            const a = mol.atoms[i];
+            pos4[i * 4 + 0] = a.pos.x;
+            pos4[i * 4 + 1] = a.pos.y;
+            pos4[i * 4 + 2] = a.pos.z;
+            pos4[i * 4 + 3] = 0.0;
+            params4[i * 4 + 0] = +args.atom_rad;
+            params4[i * 4 + 3] = +args.atom_mass;
+        }
+        const sections = [];
+        sections.push([`# test_TiledJacobi_molecules.py --dump_inputs molecule=${args.xyz}`]);
+        sections.push([`# nAtoms=${nAtoms} nMaxBonded=${nMaxBonded}`]);
+        sections.push(dumpVec4BufferLines('pos', pos4, nAtoms, { stride: 4, cols: 3, fixed }));
+        sections.push(dumpVec4BufferLines('pred_pos', pos4, nAtoms, { stride: 4, cols: 3, fixed }));
+        sections.push(dumpAtomParamsLines('atom_params', params4, nAtoms, { fixed }));
+        sections.push(dumpBondIndicesLines('bond_idx_global', bondIndices, nAtoms, nMaxBonded));
+        sections.push(dumpBondLenStiffLines('bond_len_stiff', bondLenStiff, nAtoms, nMaxBonded, { fixed }));
+        const text = joinSections(sections);
+        fs.writeFileSync(args.dump_inputs, text);
+        console.log(`Wrote ${args.dump_inputs}`);
+    }
 
     const outLines = [];
     outLines.push(`[DEBUG] dump_xpdb_topology.mjs xyz=${args.xyz}`);
