@@ -346,7 +346,7 @@ def load_molecule_topology_mmffl(
     return topo, apos_all, bond_indices, bond_lengths, bond_stiffness, bonds_adj, bond_type_mask
 
 
-def plot_topology_3d(apos, topo, *, title="Topology"):
+def plot_topology_3d(apos, topo, title="Topology", noshow=False):
     fig = plt.figure(figsize=(8, 8))
     ax = fig.add_subplot(111, projection='3d')
     ax.set_title(title)
@@ -394,7 +394,8 @@ def plot_topology_3d(apos, topo, *, title="Topology"):
     ax.set_ylim(c[1] - r, c[1] + r)
     ax.set_zlim(c[2] - r, c[2] + r)
     ax.legend(loc='upper right')
-    plt.show()
+    if not noshow:
+        plt.show()
 
 
 def make_dense_block(nx, ny, spacing, jitter, atom_rad):
@@ -502,7 +503,8 @@ def run_test():
     parser.add_argument("--bond_k",          type=float, default=200.0, help="Fallback bond stiffness when no MMFFL data [eV/Å^2]")
     parser.add_argument("--bond_len",        type=float, default=1.3, help="Fallback bond relaxed length [Å]")
     parser.add_argument("--solver_steps",    type=int,   default=10,  help="Jacobi iterations per MD step (inner solver loop)")
-    parser.add_argument("--md_steps",        type=int,   default=-1, help="Number of PD time steps (outer loop); <0 to run until window close")
+    parser.add_argument("--md_steps",        type=int,   default=0,   help="Number of MD steps to run; <0 for infinite (animation)")
+    parser.add_argument("--noshow",          action="store_true",    help="Skip matplotlib windows (useful for batch/CI)")
     parser.add_argument("--coll_scale",      type=float, default=2.0, help="Collision distance multiplier relative to atom radius (dimensionless)")
     parser.add_argument("--bbox_scale",      type=float, default=2.0, help="Simulation bounding box padding relative to molecule size (dimensionless)")
     parser.add_argument("--group_size",      type=int,   default=64, help="OpenCL work-group size for XPDB kernels")
@@ -590,7 +592,7 @@ def run_test():
                     fixed=args.dump_fixed,
                 )
             if args.topology_only:
-                plot_topology_3d(pos0, topo, title=os.path.basename(args.molecule))
+                plot_topology_3d(pos0, topo, title=os.path.basename(args.molecule), noshow=args.noshow)
                 return
         else:
             pos0, bond_indices, bond_lengths, bond_stiffness, bonds_plot, bond_type_mask = load_molecule_bonds(
@@ -764,7 +766,8 @@ def run_test():
     
     frames_iter = itertools.count() if args.md_steps < 0 else range(args.md_steps)
     ani = FuncAnimation(fig, update, frames=frames_iter, interval=30, blit=False, repeat=False, save_count=0, cache_frame_data=False)
-    plt.show()
+    if not args.noshow:
+        plt.show()
 
 
 if __name__ == "__main__":

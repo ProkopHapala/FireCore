@@ -232,6 +232,154 @@ function mol2FromTopology(topo, name = 'Molecule') {
     return out.join('\n') + '\n';
 }
 
+export async function buildXPDBInputsFromXYZArgs(args) {
+    const mm = new MMParams();
+    const readText = (p) => fs.readFileSync(p, 'utf8');
+
+    mm.parseElementTypes(readText(args.elementTypes));
+    mm.parseAtomTypes(readText(args.atomTypes));
+    mm.parseBondTypes(readText(args.bondTypes));
+    mm.parseAngleTypes(readText(args.angleTypes));
+
+    const resolveXYZPath = (pIn) => {
+        const p = String(pIn || '').trim();
+        if (!p) throw new Error('Empty --xyz path');
+        const tried = [];
+        const tryPath = (q) => {
+            const qq = path.resolve(q);
+            tried.push(qq);
+            if (fs.existsSync(qq)) return qq;
+            return null;
+        };
+
+        let ok = tryPath(p);
+        if (ok) return ok;
+        if (p.startsWith('/cpp/')) {
+            ok = tryPath(path.join(repoRoot, p.slice(1)));
+            if (ok) return ok;
+        }
+        if (p.startsWith('cpp/')) {
+            ok = tryPath(path.join(repoRoot, p));
+            if (ok) return ok;
+        }
+        throw new Error(`--xyz file not found. Provided='${p}'. Tried:\n${tried.map(s => '  ' + s).join('\n')}`);
+    };
+
+    const xyzPath = resolveXYZPath(args.xyz);
+    const xyzText = fs.readFileSync(xyzPath, 'utf8');
+    const parsed = EditableMolecule.parseXYZ(xyzText);
+
+    const mol = new EditableMolecule();
+    mol.clear();
+    mol.appendParsedSystem(parsed);
+    mol.recalculateBonds(mm);
+
+    let bondsAdj = null;
+    let topo = null;
+
+    if (args.useMMFFL) {
+        const topoDbgLines = [];
+        const debugTopo = args.dump_topo_debug ? ((line) => { topoDbgLines.push(String(line)); }) : null;
+        topo = buildMMFFLTopology(mol, mm, {
+            report_types: !!args.reportTypes,
+            add_angle: !!args.enableAngles,
+            add_pi: !!args.addPi,
+            two_pi: !!args.twoPi,
+            add_pi_align: !!args.addPiAlign,
+            add_epair: !!args.addEpair,
+            add_epair_pairs: !!args.addEpairPairs,
+            L_pi: args.L_pi,
+            L_epair: args.L_epair,
+            k_angle: args.k_angle,
+            k_pi: args.k_pi,
+            k_pi_orth: args.k_pi_orth,
+            k_pi_align: args.k_pi_align,
+            k_ep: args.k_ep,
+            k_ep_orth: args.k_ep_orth,
+            k_ep_pair: args.k_ep_pair,
+            defaultL: args.defaultL,
+            defaultK: args.defaultK,
+            align_pi_vectors: !!args.alignPiVectors,
+            debugTopo,
+        });
+        if (args.dump_topo_debug) {
+            fs.writeFileSync(args.dump_topo_debug, topoDbgLines.join('\n') + (topoDbgLines.length ? '\n' : ''), 'utf8');
+            console.log(`Wrote ${args.dump_topo_debug}`);
+        }
+
+        for (let i = 0; i < mol.atoms.length; i++) mol.atoms[i].typeName = topo.type_names[i];
+
+        const nAtoms2 = mol.atoms.length;
+        bondsAdj = new Array(nAtoms2);
+        for (let i = 0; i < nAtoms2; i++) bondsAdj[i] = [];
+        const addEdge = (i, j, L, K) => { bondsAdj[i].push([j, +L, +K]); };
+        const bondsDerived = [];
+        if (args.enableAngles) bondsDerived.push(...topo.bonds_angle);
+        if (args.addPi) bondsDerived.push(...topo.bonds_pi);
+        if (args.addPi && args.addPiAlign) bondsDerived.push(...topo.bonds_pi_align);
+        if (args.addEpair) bondsDerived.push(...topo.bonds_epair);
+        if (args.addEpair && args.addEpairPairs) bondsDerived.push(...topo.bonds_epair_pair);
+        const bondKey = (a, b) => {
+            const i = (a < b) ? a : b;
+            const j = (a < b) ? b : a;
+            return `${i},${j}`;
+        };
+        const uniq = new Map();
+        const all0 = [...topo.bonds_primary, ...bondsDerived];
+        for (const e of all0) {
+            const a = e[0] | 0;
+            const b = e[1] | 0;
+            const i = (a < b) ? a : b;
+            const j = (a < b) ? b : a;
+            uniq.set(bondKey(a, b), [i, j]);
+        }
+        const bondsAll = Array.from(uniq.values());
+        bondsAll.sort((p, q) => (p[0] - q[0]) || (p[1] - q[1]));
+        const dist = (a, b) => {
+            const pa = mol.atoms[a].pos;
+            const pb = mol.atoms[b].pos;
+            const dx = pa.x - pb.x;
+            const dy = pa.y - pb.y;
+            const dz = pa.z - pb.z;
+            return Math.sqrt(dx * dx + dy * dy + dz * dz);
+        };
+        for (const e of bondsAll) {
+            const a = e[0] | 0;
+            const b = e[1] | 0;
+            const L = dist(a, b);
+            const K = +args.defaultK;
+            addEdge(a, b, L, K);
+            addEdge(b, a, L, K);
+        }
+    } else {
+        const r = buildXPDBTopology(mol, mm, {
+            includeAngleConstraints: !!args.enableAngles,
+            maxBonds: args.maxBonds,
+            defaultL: args.defaultL,
+            defaultK: args.defaultK,
+        });
+        bondsAdj = r.bondsAdj;
+    }
+
+    const nAtoms = mol.nAtoms || mol.atoms.length;
+    const nMaxBonded = 16;
+    const { bondIndices, bondLenStiff } = packBondArrays(bondsAdj, nAtoms, nMaxBonded);
+
+    const pos4 = new Float32Array(nAtoms * 4);
+    const params4 = new Float32Array(nAtoms * 4);
+    for (let i = 0; i < nAtoms; i++) {
+        const a = mol.atoms[i];
+        pos4[i * 4 + 0] = a.pos.x;
+        pos4[i * 4 + 1] = a.pos.y;
+        pos4[i * 4 + 2] = a.pos.z;
+        pos4[i * 4 + 3] = 0.0;
+        params4[i * 4 + 0] = +args.atom_rad;
+        params4[i * 4 + 3] = +args.atom_mass;
+    }
+
+    return { mm, mol, topo, bondsAdj, nAtoms, nMaxBonded, bondIndices, bondLenStiff, pos4, params4, xyzPath };
+}
+
 async function main() {
     const args = parseArgs(process.argv);
 
@@ -454,4 +602,18 @@ async function main() {
     }
 }
 
-main();
+// Run as CLI only when executed directly, not when imported as a module.
+const _isCLI = (() => {
+    try {
+        if (!process || !process.argv || process.argv.length < 2) return false;
+        const selfPath = new URL(import.meta.url).pathname;
+        const argvPath = path.resolve(process.argv[1]);
+        return path.resolve(selfPath) === argvPath;
+    } catch (e) {
+        return false;
+    }
+})();
+
+if (_isCLI) {
+    main();
+}
