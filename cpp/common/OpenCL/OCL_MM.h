@@ -84,6 +84,7 @@ class OCL_MM: public OCLsystem { public:
     int ibuff_bboxes=-1;
     int ibuff_sysneighs=-1;
     int ibuff_sysbonds=-1;
+    int ibuff_averageForces=-1;
 
     int ibuff_samp_ps=-1;
     int ibuff_samp_fs=-1;
@@ -598,6 +599,7 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_bboxes     ); // 12
         err |= useArgBuff( ibuff_sysneighs  ); // 13
         err |= useArgBuff( ibuff_sysbonds   ); // 14
+        err |= useArgBuff( ibuff_averageForces ); // 15
         OCL_checkError(err, "setup_updateAtomsMMFFf4");
         return task;
         // const int4        n,            // 1 // (natoms,nnode) dimensions of the system

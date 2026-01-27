@@ -105,6 +105,7 @@ void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bM
     }
     else{
         printf("No surface file specified\n");
+        bGrid = false;
     }
     W.init();
     W.bGridFF = bGrid;
@@ -327,8 +328,8 @@ void setSwitches_multi( int CheckInvariants, int PBC, int NonBonded, int MMFF, i
     #undef _setbool
 }
 
-double computeFreeEnergy(double lamda1, double lamda2, int n, int* dc, int nbStep, int nMDsteps, int nEQsteps, double tdamp, double T, double dt){
-    return W.computeFreeEnergy(lamda1, lamda2, n, dc, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
+double computeFreeEnergy(double nCV, float* initial_pos_1, float* final_pos_1, float* initial_pos_2, float* final_pos_2, int nLambda, int nbStep, int nMDsteps, int nEQsteps, double tdamp, double T, double dt){
+    return W.computeFreeEnergy(nCV, (Vec3f*)initial_pos_1, (Vec3f*)final_pos_1, (Vec3f*)initial_pos_2, (Vec3f*)final_pos_2, nLambda, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
 }
 
 } // extern "C"

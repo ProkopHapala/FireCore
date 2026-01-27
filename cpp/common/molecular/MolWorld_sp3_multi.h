@@ -212,20 +212,73 @@ virtual int getMolWorldVersion() const override { return (int)MolWorldVersion::G
 //         Free Energy Calculation
 // ==================================
 
-double computeFreeEnergy(double lamda1, double lamda2, int n, int *dc, int nbStep = 100, int nMDsteps = 100000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.5){
+double computeFreeEnergy(double nCV, Vec3f* initial_pos_1, Vec3f* final_pos_1, Vec3f* initial_pos_2, Vec3f* final_pos_2, int nLambda, int nbStep = 100, int nMDsteps = 100000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.5){
     printf("MolWorld_sp3_multi::computeFreeEnergy() - Starting\n");
-    printf("  Parameters: lamda1=%g, lamda2=%g, n=%i, nbStep=%i, nMDsteps=%i, nEQsteps=%i, tdamp=%g, T=%g, dt=%g\n",
-           lamda1, lamda2, n, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
+    printf("  Parameters: nCV=%g, nLambda=%i, nbStep=%i, nMDsteps=%i, nEQsteps=%i, tdamp=%g, T=%g, dt=%g\n",
+           nCV, nLambda, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
+    
+    int nCycles = (nLambda + nSystems - 1) / nSystems;
 
-    // Save the loaded molecule to verify it was loaded correctly
-    // Save each replica to a separate file to verify correct loading
-    for (int iSys = 0; iSys < nSystems; ++iSys) {
-        char verify_fname[256];
-        sprintf(verify_fname, "loaded_DA_%i.xyz", iSys);
-        printf("  Saving system %d to: %s\n", iSys, verify_fname);
-        saveSysXYZ(iSys, verify_fname, "# Loaded DA.mol2 for free energy calculation", false, "w", Vec3i{1,1,1});
-        printf("  System %d saved to %s\n", iSys, verify_fname);
+    for(int cycle=0; cycle<nCycles; cycle++){
+        // Set up constraints (set)
+        for(int isys=0; isys<nSystems; isys++){
+            int il = isys + cycle*nSystems;
+            if(il >= nLambda) il = nLambda - 1;
+
+            float k = 0.0f;
+            if(nLambda > 1) k = (float)il / (float)(nLambda - 1);
+
+            int even = 0;
+            for(int ia=0; ia<ffls[isys].natoms; ia++){
+                if(ffls[isys].atypes[ia]==params.getAtomType("Si")){
+                    Quat4f acon = Quat4f{0.0f,0.0f,0.0f,2000.0f};
+                    if(even%2==0){
+                        acon.f.set_sub(final_pos_1[even/2], initial_pos_1[even/2]);
+                        acon.f.mul(k);
+                        acon.f.add(initial_pos_1[even/2]);
+                    }else{
+                        acon.f.set_sub(final_pos_2[even/2], initial_pos_2[even/2]);
+                        acon.f.mul(k);
+                        acon.f.add(initial_pos_2[even/2]);
+                    }
+                    printf("acon(%g,%g,%g,%g) \n", acon.x, acon.y, acon.z, acon.w);
+                    Quat4f aconK = Quat4f{2000.0f,2000.0f,2000.0f,2000.0f};
+                    constr [isys*ocl.nAtoms + ia]=(Quat4f)acon;
+                    constrK[isys*ocl.nAtoms + ia]=(Quat4f)aconK;
+                    even++;          
+                }
+            }
+        }
+        upload( ocl.ibuff_constr,  constr  );
+        upload( ocl.ibuff_constrK, constrK );
+
+        run_ocl_opt( nEQsteps, tdamp);
+
+
+        ocl.download( ocl.ibuff_atoms, atoms );
+        for(int isys=0; isys<nSystems; isys++){
+            int i0v = isys * ocl.nvecs;
+            unpack( ffls[isys].nvecs, ffls[isys].apos, atoms+i0v);
+        }
+
+        // Save the loaded molecule to verify it was loaded correctly
+        // Save each replica to a separate file to verify correct loading
+        for (int iSys = 0; iSys < nSystems; ++iSys) {
+            int il = iSys + cycle*nSystems;
+            if (il >= nLambda) continue;
+
+            char verify_fname[256];
+            sprintf(verify_fname, "loaded_DA_%i.xyz", il);
+            printf("  Saving system %d (lambda %d) to: %s\n", iSys, il, verify_fname);
+            saveSysXYZ(iSys, verify_fname, "# Loaded DA.mol2 for free energy calculation", false, "w", Vec3i{1,1,1});
+            //printf("  System %d saved to %s\n", iSys, verify_fname);
+        }
     }
+
+
+
+
+
 
     // TODO: Implement actual free energy calculation
     printf("MolWorld_sp3_multi::computeFreeEnergy() - Not yet fully implemented\n");
@@ -1718,13 +1771,50 @@ int debug_eval(){
     exit(0);
 }
 
+bool initial = true;
 int run_ocl_opt( int niter, double Fconv=1e-6 ){ 
     //printf("MolWorld_sp3_multi::run_ocl_opt() niter=%i bGroups=%i ocl.nGroupTot=%i \n", niter, bGroups, ocl.nGroupTot );
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
     //debug_eval(); return 0;
 
     double F2conv = Fconv*Fconv;
-    picked2GPU( ipicked,  1.0 );
+    // picked2GPU( ipicked,  1.0 );
+    // if(initial){
+    //     // Set up constraints (set)
+    //     Vec3f initial_pos_1 = {-10.0, 0.0, 0.0};
+    //     Vec3f final_pos_1 = {-60.0, 0.0, 0.0};
+    //     Vec3f initial_pos_2 = {+1.0, 0.0, 0.0};
+    //     Vec3f final_pos_2 = {+6.0, 0.0, 0.0};
+
+    //     for(int isys=0; isys<nSystems; isys++){
+    //         float k = 0.0f;
+    //         if(nSystems > 1) k = (float)isys / (float)(nSystems - 1);
+
+    //         bool bFirst = true;
+    //         for(int ia=0; ia<ffls[isys].natoms; ia++){
+    //             if(ffls[isys].atypes[ia]==params.getAtomType("Si")){
+    //                 Quat4f acon = Quat4f{0.0f,0.0f,0.0f,1.0f};
+    //                 if(bFirst){
+    //                     acon.f.set_sub(final_pos_1, initial_pos_1);
+    //                     acon.f.mul(k);
+    //                     acon.f.add(initial_pos_1);
+    //                 }else{
+    //                     acon.f.set_sub(final_pos_2, initial_pos_2);
+    //                     acon.f.mul(k);
+    //                     acon.f.add(initial_pos_2);
+    //                 }
+    //                 printf("acon(%g,%g,%g,%g) \n", acon.x, acon.y, acon.z, acon.w);
+    //                 Quat4f aconK = Quat4f{1.0f,1.0f,1.0f,1.0f};
+    //                 constr [isys*ocl.nAtoms + ia]=(Quat4f)acon;
+    //                 constrK[isys*ocl.nAtoms + ia]=(Quat4f)aconK;
+    //                 bFirst = !bFirst;          
+    //             }
+    //         }
+    //     }
+    //     upload( ocl.ibuff_constr,  constr  );
+    //     upload( ocl.ibuff_constrK, constrK );
+    //     initial = false;
+    // }
 
     int err=0;
     if( task_MMFF==0)setup_MMFFf4_ocl();
@@ -1841,13 +1931,13 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         }
         */
         //F2 = evalF2();
-        if( F2<F2conv  ){ 
-            double t=(getCPUticks()-T0)*tick2second;
-            //printf( "run_omp_ocl(nSys=%i|iPara=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", nSystems, iParalel, itr,niter_max, sqrt(F2max), T1*1000 );
-            if(verbosity>0)
-            printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bGridFF=%i,bExplore=%i,bGroups=%i) CONVERGED in %i/%i steps, |F|(%g)<%g time %g [ms]( %g [us/step]) \n", nSystems, iParalel, bSurfAtoms, bGridFF, bExplore, bGroups, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone); 
-            return niterdone; 
-        }
+        // if( F2<F2conv  ){ 
+        //     double t=(getCPUticks()-T0)*tick2second;
+        //     //printf( "run_omp_ocl(nSys=%i|iPara=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", nSystems, iParalel, itr,niter_max, sqrt(F2max), T1*1000 );
+        //     if(verbosity>0)
+        //     printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bGridFF=%i,bExplore=%i,bGroups=%i) CONVERGED in %i/%i steps, |F|(%g)<%g time %g [ms]( %g [us/step]) \n", nSystems, iParalel, bSurfAtoms, bGridFF, bExplore, bGroups, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone); 
+        //     return niterdone; 
+        // }
     }
 
     if(bGroups){
@@ -2352,7 +2442,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
                 nStepNonConvSum/((double)nbNonConverged),
                 nStepExplorSum/((double)nExploring),
                 (nStepConvSum+nStepNonConvSum+nStepExplorSum));
-            if((getCPUticks()-zeroT)*tick2second > 9.5){
+            if((getCPUticks()-zeroT)*tick2second > 99999.5){
                 fclose(file);
                 exit(0);
             }

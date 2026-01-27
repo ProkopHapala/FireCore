@@ -633,13 +633,15 @@ def plot_selection(sel=None,ax1=0,ax2=1,ps=None, s=100):
 
 # ========= Free Energy Calculation
 
-#  double computeFreeEnergy(double lamda1, double lamda2, int n, int* dc, int nbStep, int nMDsteps, int nEQsteps, double tdamp, double T, double dt)
-lib.computeFreeEnergy.argtypes  = [c_double, c_double, c_int, c_int_p, c_int, c_int, c_int, c_double, c_double, c_double]
+#  double computeFreeEnergy(double nCV, float* initial_pos_1, float* final_pos_1, float* initial_pos_2, float* final_pos_2, int nLambda, int nbStep, int nMDsteps, int nEQsteps, double tdamp, double T, double dt)
+lib.computeFreeEnergy.argtypes  = [c_double, c_float_p, c_float_p, c_float_p, c_float_p, c_int, c_int, c_int, c_int, c_double, c_double, c_double]
 lib.computeFreeEnergy.restype   =  c_double
-def computeFreeEnergy(lamda1, lamda2, dc, nbStep=100, nMDsteps=100000, nEQsteps=10000, tdamp=100.0, T=300, dt=0.5):
-    n = len(dc)
-    dc = np.array(dc, dtype=np.int32)
-    return lib.computeFreeEnergy(lamda1, lamda2, n, _np_as(dc,c_int_p), nbStep, nMDsteps, nEQsteps, tdamp, T, dt)
+def computeFreeEnergy(nCV, initial_pos_1, final_pos_1, initial_pos_2, final_pos_2, nLambda, nbStep=100, nMDsteps=100000, nEQsteps=10000, tdamp=100.0, T=300, dt=0.5):
+    initial_pos_1 = np.array(initial_pos_1, dtype=np.float32)
+    final_pos_1 = np.array(final_pos_1, dtype=np.float32)
+    initial_pos_2 = np.array(initial_pos_2, dtype=np.float32)
+    final_pos_2 = np.array(final_pos_2, dtype=np.float32)
+    return lib.computeFreeEnergy(nCV, _np_as(initial_pos_1,c_float_p), _np_as(final_pos_1,c_float_p), _np_as(initial_pos_2,c_float_p), _np_as(final_pos_2,c_float_p), nLambda, nbStep, nMDsteps, nEQsteps, tdamp, T, dt)
 
 # ====================================
 # ========= Test Functions

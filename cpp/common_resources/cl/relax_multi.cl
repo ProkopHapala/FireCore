@@ -911,7 +911,8 @@ __kernel void updateAtomsMMFFf4(
     __global float4*  TDrives,      // 11 // Thermal driving (T,gamma_damp,seed,?)
     __global cl_Mat3* bboxes,       // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
     __global int*     sysneighs,    // 13 // // for each system contains array int[nMaxSysNeighs] of nearby other systems
-    __global float4*  sysbonds      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
+    __global float4*  sysbonds,      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
+    __global float4*  averageForces // 15 // contains average forces on atoms for free energy calculation
 ){
     const int natoms=n.x;           // number of atoms
     const int nnode =n.y;           // number of node atoms
@@ -999,13 +1000,25 @@ __kernel void updateAtomsMMFFf4(
         if(B.c.z>0.0f){ if(pe.z<B.a.z){ fe.z+=(B.a.z-pe.z)*B.c.z; }else if(pe.z>B.b.z){ fe.z+=(B.b.z-pe.z)*B.c.z; }; }
         // ------- constrains
         float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
-        if( cons.w>0.f ){            // if stiffness is positive, we have constraint
+        if( cons.w>0.f /*&& (cons.w<1e3f)*/ ){            // if stiffness is positive, we have constraint
             float4 cK = constrK[ iaa ];
             cK = max( cK, (float4){0.0f,0.0f,0.0f,0.0f} );
             const float3 fc = (cons.xyz - pe.xyz)*cK.xyz;
             fe.xyz += fc; // add constraint force
             //if(iS==0){printf( "GPU::constr[ia=%i|iS=%i] (%g,%g,%g|K=%g) fc(%g,%g,%g) cK(%g,%g,%g)\n", iG, iS, cons.x,cons.y,cons.z,cons.w, fc.x,fc.y,fc.z , cK.x, cK.y, cK.z ); }
         }
+        // else if(cons.w>1e3f){ // hard constrain
+        //     pe.xyz = cons.xyz; // move to fixed position
+        //     ve.xyz = 0.0f;     // zero velocity
+        //     averageForces[iS] += (float4){0.5*fe.x,0.5*fe.y,0.5*fe.z,0.0f};
+        //     //if(iS==0){printf( "GPU::constr[ia=%i|iS=%i] (%g,%g,%g|K=%g) fe(%g,%g,%g) \n", iG, iS, cons.x,cons.y,cons.z,cons.w, fe.x,fe.y,fe.z ); }
+        //     //fe.xyz = 0.0f;     // zero force
+        //     apos[iav] = pe;
+        //     avel[iav] = ve;
+        //     //aforce[iav] = fe;
+        //     return;
+
+        // }
     }
 
     // -------- Inter system interactions
