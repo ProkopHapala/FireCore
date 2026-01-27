@@ -209,6 +209,30 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
 virtual int getMolWorldVersion() const override { return (int)MolWorldVersion::GPU; };
 
 // ==================================
+//         Free Energy Calculation
+// ==================================
+
+double computeFreeEnergy(double lamda1, double lamda2, int n, int *dc, int nbStep = 100, int nMDsteps = 100000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.5){
+    printf("MolWorld_sp3_multi::computeFreeEnergy() - Starting\n");
+    printf("  Parameters: lamda1=%g, lamda2=%g, n=%i, nbStep=%i, nMDsteps=%i, nEQsteps=%i, tdamp=%g, T=%g, dt=%g\n",
+           lamda1, lamda2, n, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
+
+    // Save the loaded molecule to verify it was loaded correctly
+    // Save each replica to a separate file to verify correct loading
+    for (int iSys = 0; iSys < nSystems; ++iSys) {
+        char verify_fname[256];
+        sprintf(verify_fname, "loaded_DA_%i.xyz", iSys);
+        printf("  Saving system %d to: %s\n", iSys, verify_fname);
+        saveSysXYZ(iSys, verify_fname, "# Loaded DA.mol2 for free energy calculation", false, "w", Vec3i{1,1,1});
+        printf("  System %d saved to %s\n", iSys, verify_fname);
+    }
+
+    // TODO: Implement actual free energy calculation
+    printf("MolWorld_sp3_multi::computeFreeEnergy() - Not yet fully implemented\n");
+    return 0.0;
+}
+
+// ==================================
 //         Initialization
 // ==================================
 

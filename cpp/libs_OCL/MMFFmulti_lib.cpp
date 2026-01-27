@@ -327,5 +327,8 @@ void setSwitches_multi( int CheckInvariants, int PBC, int NonBonded, int MMFF, i
     #undef _setbool
 }
 
+double computeFreeEnergy(double lamda1, double lamda2, int n, int* dc, int nbStep, int nMDsteps, int nEQsteps, double tdamp, double T, double dt){
+    return W.computeFreeEnergy(lamda1, lamda2, n, dc, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
+}
 
 } // extern "C"
