@@ -7,7 +7,7 @@ import { installMoleculeIOMethods } from './MoleculeIO.js';
 import { installMoleculeUtilsMethods } from './MoleculeUtils.js';
 import { installMoleculeSelectionMethods } from './MoleculeSelection.js';
 import { buildXPDBTopology } from './XPDBTopology.js';
-import { buildMMFFLTopology } from './MMFFLTopology.js';
+import { buildMMFFLTopology, buildXPDBInputsFromMol, packBondArrays } from './MMFFLTopology.js';
 import { dumpVec4BufferLines, dumpAtomParamsLines, dumpBondIndicesLines, dumpBondLenStiffLines, joinSections } from './debugBuffers.js';
 
 installMoleculeIOMethods(EditableMolecule);
@@ -126,30 +126,7 @@ function parseArgs(argv) {
     return out;
 }
 
-function packBondArrays(bondsAdj, nAtoms, nMaxBonded) {
-    const bondIndices = new Int32Array(nAtoms * nMaxBonded);
-    bondIndices.fill(-1);
-    const bondLenStiff = new Float32Array(nAtoms * nMaxBonded * 2);
-    bondLenStiff.fill(0);
-
-    // Match Python _pack_fixed_bonds(): keep adjacency order, truncate if > nMaxBonded.
-    for (let i = 0; i < nAtoms; i++) {
-        const neighs = bondsAdj[i] || [];
-        if (neighs.length > nMaxBonded) {
-            console.log(`[WARN] Atom ${i} has ${neighs.length} neighbors > n_max_bonded=${nMaxBonded}; truncating`);
-        }
-        const base = i * nMaxBonded;
-        const m = Math.min(neighs.length, nMaxBonded);
-        for (let k = 0; k < m; k++) {
-            const b = neighs[k];
-            bondIndices[base + k] = (b[0] | 0);
-            bondLenStiff[(base + k) * 2 + 0] = +b[1];
-            bondLenStiff[(base + k) * 2 + 1] = +b[2];
-        }
-    }
-
-    return { bondIndices, bondLenStiff };
-}
+// packBondArrays() is imported from MMFFLTopology.js (shared with GUI/headless)
 
 function formatArray2D_Int(arr, nRows, nCols) {
     const lines = [];
@@ -280,7 +257,7 @@ export async function buildXPDBInputsFromXYZArgs(args) {
     if (args.useMMFFL) {
         const topoDbgLines = [];
         const debugTopo = args.dump_topo_debug ? ((line) => { topoDbgLines.push(String(line)); }) : null;
-        topo = buildMMFFLTopology(mol, mm, {
+        const packed = buildXPDBInputsFromMol(mol, mm, {
             report_types: !!args.reportTypes,
             add_angle: !!args.enableAngles,
             add_pi: !!args.addPi,
@@ -301,55 +278,15 @@ export async function buildXPDBInputsFromXYZArgs(args) {
             defaultK: args.defaultK,
             align_pi_vectors: !!args.alignPiVectors,
             debugTopo,
+            nMaxBonded: 16,
+            atom_rad: args.atom_rad,
+            atom_mass: args.atom_mass,
         });
+        topo = packed.topo;
+        bondsAdj = packed.bondsAdj;
         if (args.dump_topo_debug) {
             fs.writeFileSync(args.dump_topo_debug, topoDbgLines.join('\n') + (topoDbgLines.length ? '\n' : ''), 'utf8');
             console.log(`Wrote ${args.dump_topo_debug}`);
-        }
-
-        for (let i = 0; i < mol.atoms.length; i++) mol.atoms[i].typeName = topo.type_names[i];
-
-        const nAtoms2 = mol.atoms.length;
-        bondsAdj = new Array(nAtoms2);
-        for (let i = 0; i < nAtoms2; i++) bondsAdj[i] = [];
-        const addEdge = (i, j, L, K) => { bondsAdj[i].push([j, +L, +K]); };
-        const bondsDerived = [];
-        if (args.enableAngles) bondsDerived.push(...topo.bonds_angle);
-        if (args.addPi) bondsDerived.push(...topo.bonds_pi);
-        if (args.addPi && args.addPiAlign) bondsDerived.push(...topo.bonds_pi_align);
-        if (args.addEpair) bondsDerived.push(...topo.bonds_epair);
-        if (args.addEpair && args.addEpairPairs) bondsDerived.push(...topo.bonds_epair_pair);
-        const bondKey = (a, b) => {
-            const i = (a < b) ? a : b;
-            const j = (a < b) ? b : a;
-            return `${i},${j}`;
-        };
-        const uniq = new Map();
-        const all0 = [...topo.bonds_primary, ...bondsDerived];
-        for (const e of all0) {
-            const a = e[0] | 0;
-            const b = e[1] | 0;
-            const i = (a < b) ? a : b;
-            const j = (a < b) ? b : a;
-            uniq.set(bondKey(a, b), [i, j]);
-        }
-        const bondsAll = Array.from(uniq.values());
-        bondsAll.sort((p, q) => (p[0] - q[0]) || (p[1] - q[1]));
-        const dist = (a, b) => {
-            const pa = mol.atoms[a].pos;
-            const pb = mol.atoms[b].pos;
-            const dx = pa.x - pb.x;
-            const dy = pa.y - pb.y;
-            const dz = pa.z - pb.z;
-            return Math.sqrt(dx * dx + dy * dy + dz * dz);
-        };
-        for (const e of bondsAll) {
-            const a = e[0] | 0;
-            const b = e[1] | 0;
-            const L = dist(a, b);
-            const K = +args.defaultK;
-            addEdge(a, b, L, K);
-            addEdge(b, a, L, K);
         }
     } else {
         const r = buildXPDBTopology(mol, mm, {

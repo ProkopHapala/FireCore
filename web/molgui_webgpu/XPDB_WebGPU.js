@@ -29,6 +29,8 @@ export class XPDB_WebGPU {
         sections.push(dbg.dumpBondIndicesLines('bond_idx_global', state.bondGlobalData, n, nb));
         sections.push(dbg.dumpBondIndicesLines('bond_idx_local', state.bondLocalData, n, nb));
         sections.push(dbg.dumpBondLenStiffLines('bond_len_stiff', state.bondLenStiffData, n, nb, { fixed }));
+        if (state.forceBondData) sections.push(dbg.dumpVec3Forces('force_bond', state.forceBondData, n, { fixed }));
+        if (state.forceCollData) sections.push(dbg.dumpVec3Forces('force_coll', state.forceCollData, n, { fixed }));
         const text = dbg.joinSections(sections);
         if (typeof writeText === 'function') await writeText(text);
         else console.log(text);
@@ -38,7 +40,17 @@ export class XPDB_WebGPU {
     async init() {
         if (!navigator.gpu) throw new Error("WebGPU not supported");
         const adapter = await navigator.gpu.requestAdapter();
-        this.device = await adapter.requestDevice();
+        if (!adapter) throw new Error('XPDB_WebGPU.init: navigator.gpu.requestAdapter() returned null');
+        const neededStorageBuffers = 10;
+        const supported = adapter.limits?.maxStorageBuffersPerShaderStage;
+        if (typeof supported === 'number' && supported < neededStorageBuffers) {
+            throw new Error(`XPDB_WebGPU.init: adapter maxStorageBuffersPerShaderStage=${supported} < required ${neededStorageBuffers}`);
+        }
+        this.device = await adapter.requestDevice({
+            requiredLimits: {
+                maxStorageBuffersPerShaderStage: Math.max(neededStorageBuffers, supported || neededStorageBuffers)
+            }
+        });
 
         // Load Shader
         const shaderModule = this.device.createShaderModule({
@@ -57,6 +69,8 @@ export class XPDB_WebGPU {
                 { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // bondIdxGlobal
                 { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }, // bondIdxLocal
                 { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // bondLenStiff packed
+                { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }, // debug force bond
+                { binding: 10, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }, // debug force coll
             ],
         });
 
@@ -113,6 +127,9 @@ export class XPDB_WebGPU {
         // Pack bondLen and bondStiff into vec2<f32>
         this.buffers.bondLenStiff = createBuf(this.numAtoms * this.nMaxBonded * (f32 * 2));
 
+        this.buffers.forceBond = createBuf(this.numAtoms * vec4);
+        this.buffers.forceColl = createBuf(this.numAtoms * vec4);
+
         // Bind Group
         const entries = [
             { binding: 0, resource: { buffer: this.buffers.params } },
@@ -124,6 +141,8 @@ export class XPDB_WebGPU {
             { binding: 6, resource: { buffer: this.buffers.bondIdxGlobal } },
             { binding: 7, resource: { buffer: this.buffers.bondIdxLocal } },
             { binding: 8, resource: { buffer: this.buffers.bondLenStiff } },
+            { binding: 9, resource: { buffer: this.buffers.forceBond } },
+            { binding: 10, resource: { buffer: this.buffers.forceColl } },
         ];
 
         this.bindGroup = this.device.createBindGroup({
@@ -183,7 +202,24 @@ export class XPDB_WebGPU {
         this.device.queue.writeBuffer(this.buffers.atomParams, 0, paramsData);
     }
 
-    // Python 'build_bond_arrays_with_angles' equivalent
+    uploadPackedAtoms(packed) {
+        if (!packed) throw new Error('uploadPackedAtoms: packed is null/undefined');
+        if (!packed.pos4 || !packed.params4) throw new Error('uploadPackedAtoms: packed must provide pos4 and params4');
+        if ((packed.pos4.length | 0) !== (this.numAtoms * 4)) throw new Error(`uploadPackedAtoms: pos4 length mismatch pos4=${packed.pos4.length} expected=${this.numAtoms * 4}`);
+        if ((packed.params4.length | 0) !== (this.numAtoms * 4)) throw new Error(`uploadPackedAtoms: params4 length mismatch params4=${packed.params4.length} expected=${this.numAtoms * 4}`);
+        this.device.queue.writeBuffer(this.buffers.pos, 0, packed.pos4);
+        this.device.queue.writeBuffer(this.buffers.predPos, 0, packed.pos4);
+        this.device.queue.writeBuffer(this.buffers.atomParams, 0, packed.params4);
+    }
+
+    uploadPackedTopology(packed) {
+        if (!packed) throw new Error('uploadPackedTopology: packed is null/undefined');
+        if (!packed.bondIndices || !packed.bondLenStiff) throw new Error('uploadPackedTopology: packed must provide bondIndices and bondLenStiff');
+        this.device.queue.writeBuffer(this.buffers.bondIdxGlobal, 0, packed.bondIndices);
+        this.device.queue.writeBuffer(this.buffers.bondLenStiff, 0, packed.bondLenStiff);
+    }
+
+    // DEPRECATED: this is legacy GUI-only path (bondsAdj + defaults). Use buildXPDBInputsFromMol/buildXPDBInputsFromXYZArgs + uploadPackedTopology().
     uploadBonds(bondsAdj, defaultL=0.4, defaultK=200, angleDeg=120, enableAngles=false) {
         const bondIndices = new Int32Array(this.numAtoms * this.nMaxBonded).fill(-1);
         const bondLenStiff = new Float32Array(this.numAtoms * this.nMaxBonded * 2).fill(0);
@@ -254,8 +290,7 @@ export class XPDB_WebGPU {
             console.log('[XPDB_WebGPU.uploadBonds][DEBUG] bondLenStiff=', bondLenStiff);
         }
 
-        this.device.queue.writeBuffer(this.buffers.bondIdxGlobal, 0, bondIndices);
-        this.device.queue.writeBuffer(this.buffers.bondLenStiff, 0, bondLenStiff);
+        this.uploadPackedTopology({ bondIndices, bondLenStiff });
     }
 
     async readBuffer(buffer, byteOffset = 0, byteLength = null) {
@@ -283,7 +318,7 @@ export class XPDB_WebGPU {
         const i32 = 4;
         const f32 = 4;
 
-        const [posData, predPosData, atomParamsData, bboxesData, ghostData, bondGlobalData, bondLocalData, bondLenStiffData] = await Promise.all([
+        const [posData, predPosData, atomParamsData, bboxesData, ghostData, bondGlobalData, bondLocalData, bondLenStiffData, forceBondData, forceCollData] = await Promise.all([
             this.readBuffer(this.buffers.pos).then(buf => new Float32Array(buf)),
             this.readBuffer(this.buffers.predPos).then(buf => new Float32Array(buf)),
             this.readBuffer(this.buffers.atomParams).then(buf => new Float32Array(buf)),
@@ -291,60 +326,76 @@ export class XPDB_WebGPU {
             this.readBuffer(this.buffers.ghostPacked).then(buf => new Int32Array(buf)),
             this.readBuffer(this.buffers.bondIdxGlobal).then(buf => new Int32Array(buf)),
             this.readBuffer(this.buffers.bondIdxLocal).then(buf => new Int32Array(buf)),
-            this.readBuffer(this.buffers.bondLenStiff).then(buf => new Float32Array(buf))
+            this.readBuffer(this.buffers.bondLenStiff).then(buf => new Float32Array(buf)),
+            this.readBuffer(this.buffers.forceBond).then(buf => new Float32Array(buf)),
+            this.readBuffer(this.buffers.forceColl).then(buf => new Float32Array(buf))
         ]);
 
-        return { posData, predPosData, atomParamsData, bboxesData, ghostData, bondGlobalData, bondLocalData, bondLenStiffData };
+        return { posData, predPosData, atomParamsData, bboxesData, ghostData, bondGlobalData, bondLocalData, bondLenStiffData, forceBondData, forceCollData };
     }
 
-    step(dt, iterations, k_coll, omega, momentum_beta, mousePos=null, pickedIdx=-1, maxRadius=null) {
-        // 1. Update Params Uniforms
-        // Struct: num_atoms(u32), num_groups, inner_iters, pad, dt(f32), k_coll, omega, beta, margin_sq, bbox_margin...
+    step(arg0, iterations, k_coll, omega, momentum_beta, mousePos=null, pickedIdx=-1, maxRadius=null, coll_scale=2.0, bbox_scale=2.0) {
+        const cfg = (arg0 !== null && typeof arg0 === 'object' && !Array.isArray(arg0))
+            ? {
+                dt: arg0.dt ?? 0.01,
+                iterations: arg0.iterations ?? 0,
+                k_coll: arg0.k_coll ?? 0.0,
+                omega: arg0.omega ?? 0.0,
+                momentum_beta: arg0.momentum_beta ?? 0.0,
+                mousePos: arg0.mousePos ?? null,
+                pickedIdx: arg0.pickedIdx ?? -1,
+                maxRadius: arg0.maxRadius ?? null,
+                coll_scale: arg0.coll_scale ?? 2.0,
+                bbox_scale: arg0.bbox_scale ?? 2.0,
+            }
+            : {
+                dt: arg0 ?? 0.01,
+                iterations: iterations ?? 0,
+                k_coll: k_coll ?? 0.0,
+                omega: omega ?? 0.0,
+                momentum_beta: momentum_beta ?? 0.0,
+                mousePos,
+                pickedIdx,
+                maxRadius,
+                coll_scale,
+                bbox_scale,
+            };
+
+        const rMax = (cfg.maxRadius !== null && cfg.maxRadius > 0) ? cfg.maxRadius : 0.5;
+        const bboxMargin = rMax * cfg.bbox_scale;
+        const collMarginSq = (rMax * cfg.coll_scale) ** 2;
+
         const u32View = new Uint32Array(4);
         const f32View = new Float32Array(8);
-
-        const rMax = (maxRadius !== null && maxRadius > 0) ? maxRadius : 0.5;
-        const bboxScale = 2.0;
-        const collScale = 2.0;
-        const bboxMargin = rMax * bboxScale;
-        const collMarginSq = (rMax * collScale) ** 2;
-
         u32View[0] = this.numAtoms;
         u32View[1] = this.numGroups;
-        u32View[2] = iterations;
-        u32View[3] = 0; // pad
+        u32View[2] = cfg.iterations;
+        u32View[3] = 0;
 
-        f32View[0] = dt;
-        f32View[1] = k_coll;
-        f32View[2] = omega;
-        f32View[3] = momentum_beta;
+        f32View[0] = cfg.dt;
+        f32View[1] = cfg.k_coll;
+        f32View[2] = cfg.omega;
+        f32View[3] = cfg.momentum_beta;
         f32View[4] = collMarginSq;
         f32View[5] = bboxMargin;
-        f32View[6] = 0; // pad
-        f32View[7] = 0; // pad
+        f32View[6] = 0;
+        f32View[7] = 0;
 
-        // Combine into one buffer write
         const paramBytes = new ArrayBuffer(64);
         new Uint32Array(paramBytes).set(u32View, 0);
-        new Float32Array(paramBytes).set(f32View, 4); // Offset 4 u32s = 16 bytes
+        new Float32Array(paramBytes).set(f32View, 4);
         this.device.queue.writeBuffer(this.buffers.params, 0, paramBytes);
 
-        // 2. Handle Interaction (Mouse Drag)
-        // In OpenCL code, pred_pos is copied from host. Here we can do a buffer copy or write.
-        // Copy curr -> pred
         const copyEncoder = this.device.createCommandEncoder();
         copyEncoder.copyBufferToBuffer(this.buffers.pos, 0, this.buffers.predPos, 0, this.numAtoms * 16);
         this.device.queue.submit([copyEncoder.finish()]);
 
-        if (pickedIdx >= 0 && mousePos) {
-            // Write specific predicted position for picked atom
-            const mouseData = new Float32Array([mousePos[0], mousePos[1], 0.0, 0.0]);
-            this.device.queue.writeBuffer(this.buffers.predPos, pickedIdx * 16, mouseData);
-            // Also force current pos to prevent spring-back lag
-            this.device.queue.writeBuffer(this.buffers.pos, pickedIdx * 16, mouseData);
+        if (cfg.pickedIdx >= 0 && cfg.mousePos) {
+            const mouseData = new Float32Array([cfg.mousePos[0], cfg.mousePos[1], 0.0, 0.0]);
+            this.device.queue.writeBuffer(this.buffers.predPos, cfg.pickedIdx * 16, mouseData);
+            this.device.queue.writeBuffer(this.buffers.pos, cfg.pickedIdx * 16, mouseData);
         }
 
-        // 3. Dispatch Compute
         const encoder = this.device.createCommandEncoder();
 
         // Pass 1: BBoxes

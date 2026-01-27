@@ -6,6 +6,96 @@ function lawOfCosines(rab, rbc, cosTheta) {
     return Math.sqrt(Math.max(0.0, t));
 }
 
+export function packBondArrays(bondsAdj, nAtoms, nMaxBonded) {
+    const bondIndices = new Int32Array(nAtoms * nMaxBonded);
+    bondIndices.fill(-1);
+    const bondLenStiff = new Float32Array(nAtoms * nMaxBonded * 2);
+    bondLenStiff.fill(0);
+    for (let i = 0; i < nAtoms; i++) {
+        const neighs = bondsAdj[i] || [];
+        if (neighs.length > nMaxBonded) {
+            console.log(`[WARN] Atom ${i} has ${neighs.length} neighbors > n_max_bonded=${nMaxBonded}; truncating`);
+        }
+        const base = i * nMaxBonded;
+        const m = Math.min(neighs.length, nMaxBonded);
+        for (let k = 0; k < m; k++) {
+            const b = neighs[k];
+            bondIndices[base + k] = (b[0] | 0);
+            bondLenStiff[(base + k) * 2 + 0] = +b[1];
+            bondLenStiff[(base + k) * 2 + 1] = +b[2];
+        }
+    }
+    return { bondIndices, bondLenStiff };
+}
+
+export function buildXPDBInputsFromMol(mol, mm, opts = {}) {
+    if (!mol || !mm) throw new Error('buildXPDBInputsFromMol: mol and mm required');
+    const nMaxBonded = (opts.nMaxBonded !== undefined) ? (opts.nMaxBonded | 0) : 16;
+    if (!(nMaxBonded > 0)) throw new Error(`buildXPDBInputsFromMol: invalid nMaxBonded=${nMaxBonded}`);
+    const topo = buildMMFFLTopology(mol, mm, opts);
+
+    const nAtoms = topo.n_all | 0;
+    const bondsAdj = new Array(nAtoms);
+    for (let i = 0; i < nAtoms; i++) bondsAdj[i] = [];
+
+    const addEdge = (i, j, L, K) => { bondsAdj[i].push([j | 0, +L, +K]); };
+    const uniq = new Map();
+    const bondKey = (a, b) => {
+        const i = (a < b) ? a : b;
+        const j = (a < b) ? b : a;
+        return `${i},${j}`;
+    };
+    const derived = [];
+    if (opts.add_angle) derived.push(...topo.bonds_angle);
+    if (opts.add_pi) derived.push(...topo.bonds_pi);
+    if (opts.add_pi && opts.add_pi_align) derived.push(...topo.bonds_pi_align);
+    if (opts.add_epair) derived.push(...topo.bonds_epair);
+    if (opts.add_epair && opts.add_epair_pairs) derived.push(...topo.bonds_epair_pair);
+    const all0 = [...topo.bonds_primary, ...derived];
+    for (const e of all0) {
+        const a = e[0] | 0;
+        const b = e[1] | 0;
+        const i = (a < b) ? a : b;
+        const j = (a < b) ? b : a;
+        uniq.set(bondKey(a, b), [i, j]);
+    }
+    const bondsAll = Array.from(uniq.values());
+    bondsAll.sort((p, q) => (p[0] - q[0]) || (p[1] - q[1]));
+
+    const dist = (a, b) => {
+        const pa = topo.apos[a];
+        const pb = topo.apos[b];
+        const dx = pa[0] - pb[0];
+        const dy = pa[1] - pb[1];
+        const dz = pa[2] - pb[2];
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    };
+    const K0 = (opts.defaultK !== undefined) ? +opts.defaultK : 200.0;
+    for (const [a, b] of bondsAll) {
+        const L = dist(a, b);
+        addEdge(a, b, L, K0);
+        addEdge(b, a, L, K0);
+    }
+
+    const { bondIndices, bondLenStiff } = packBondArrays(bondsAdj, nAtoms, nMaxBonded);
+
+    const pos4 = new Float32Array(nAtoms * 4);
+    const params4 = new Float32Array(nAtoms * 4);
+    const atom_rad = (opts.atom_rad !== undefined) ? +opts.atom_rad : 0.2;
+    const atom_mass = (opts.atom_mass !== undefined) ? +opts.atom_mass : 1.0;
+    for (let i = 0; i < nAtoms; i++) {
+        const p = topo.apos[i];
+        pos4[i * 4 + 0] = +p[0];
+        pos4[i * 4 + 1] = +p[1];
+        pos4[i * 4 + 2] = +p[2];
+        pos4[i * 4 + 3] = 0.0;
+        params4[i * 4 + 0] = atom_rad;
+        params4[i * 4 + 3] = atom_mass;
+    }
+
+    return { topo, bondsAdj, nAtoms, nMaxBonded, bondIndices, bondLenStiff, pos4, params4 };
+}
+
 function piDomainDirForVSEPR(mol, neighs, hostPos) {
     const tmp = new Vec3();
     const v1 = new Vec3();

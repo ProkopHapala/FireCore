@@ -16,7 +16,8 @@ import { Vec3 } from '../common_js/Vec3.js';
 import { ScriptRunner } from './ScriptRunner.js';
 import { XPDB_WebGPU } from './XPDB_WebGPU.js';
 import { XPDB_CPU } from './XPDB_CPU.js';
-import { buildXPDBTopology, getMaxRadius } from './XPDBTopology.js';
+import { getMaxRadius } from './XPDBTopology.js';
+import { buildXPDBInputsFromMol } from './MMFFLTopology.js';
 
 installMoleculeIOMethods(EditableMolecule);
 
@@ -62,6 +63,22 @@ export class MolGUIApp {
             momentum_beta: 0.0
         };
         this.xpdbDirty = true; // Flag to re-upload topology
+
+        // XPDB topology state (real vs dummies)
+        this.xpdbNReal = 0;
+        this.xpdbNAll = 0;
+    }
+
+    _cloneSystemForXPDB() {
+        // MMFFL topology builder mutates the molecule by appending dummy atoms.
+        // Never run it on this.system directly.
+        const m = new EditableMolecule();
+        const parsed = this.system.exportAsParsed ? this.system.exportAsParsed() : null;
+        if (!parsed) throw new Error('_cloneSystemForXPDB: system.exportAsParsed() missing');
+        m.clear();
+        m.appendParsedSystem(parsed);
+        m.recalculateBonds(this.mmParams);
+        return m;
     }
 
     requestRender() {
@@ -604,44 +621,118 @@ export class MolGUIApp {
         if (!this.xpdb || !this.xpdbEnabled) return;
 
         try {
-            const nAtoms = this.system.nAtoms || 0;
-            if (nAtoms === 0) return;
+            const nReal = this.system.nAtoms || 0;
+            if (nReal === 0) return;
 
-            // Re-initialize if atom count changed
-            if (this.xpdb.numAtoms !== nAtoms) {
-                this.xpdb = new XPDB_WebGPU(nAtoms);
-                await this.xpdb.init();
-                this.xpdbCPU = new XPDB_CPU(nAtoms);
-            }
-
-            // Upload atoms
-            this.xpdb.uploadAtomsFromMolecule(this.system, this.mmParams);
-            if (this.xpdbCPU) this.xpdbCPU.uploadFromMolecule(this.system, this.mmParams);
-
-            // Build topology
-            const { bondsAdj } = buildXPDBTopology(this.system, this.mmParams, {
-                includeAngleConstraints: !!this.xpdbUseAngles,
-                maxBonds: 16
+            const molXPDB = this._cloneSystemForXPDB();
+            const packed = buildXPDBInputsFromMol(molXPDB, this.mmParams, {
+                report_types: false,
+                add_angle: !!this.xpdbUseAngles,
+                add_pi: true,
+                two_pi: true,
+                add_pi_align: false,
+                add_epair: true,
+                add_epair_pairs: false,
+                L_pi: 1.0,
+                L_epair: 0.5,
+                k_angle: 100.0,
+                k_pi: 50.0,
+                k_pi_orth: 30.0,
+                k_pi_align: 15.0,
+                k_ep: 40.0,
+                k_ep_orth: 25.0,
+                k_ep_pair: 10.0,
+                defaultK: 200.0,
+                nMaxBonded: 16,
             });
 
-            if ((window.VERBOSITY_LEVEL | 0) >= 3) {
-                const counts = bondsAdj.map(bs => (bs ? bs.length : 0));
-                console.log('[MolGUIApp.updateXPDBTopology][DEBUG] xpdbUseAngles=', this.xpdbUseAngles);
-                console.log('[MolGUIApp.updateXPDBTopology][DEBUG] bondsAdj counts=', counts);
-                console.log('[MolGUIApp.updateXPDBTopology][DEBUG] bondsAdj=', bondsAdj);
+            const nAll = packed.nAtoms | 0;
+            if (nAll !== (packed.topo?.n_all | 0)) {
+                throw new Error(`updateXPDBTopology: packed.nAtoms mismatch topo.n_all packed=${nAll} topo.n_all=${packed.topo?.n_all}`);
+            }
+            if (nAll < nReal) throw new Error(`updateXPDBTopology: nAll=${nAll} < nReal=${nReal}`);
+
+            // Re-initialize XPDB solvers if atom count changed (must match packed n_all)
+            if (!this.xpdb || (this.xpdb.numAtoms !== nAll)) {
+                this.xpdb = new XPDB_WebGPU(nAll);
+                await this.xpdb.init();
+            }
+            if (!this.xpdbCPU || (this.xpdbCPU.nAtoms !== nAll)) {
+                this.xpdbCPU = new XPDB_CPU(nAll);
             }
 
-            // Upload bonds
-            this.xpdb.uploadBonds(bondsAdj, 0.4, 200, 120, false);
+            // Upload packed atoms and topology to GPU
+            this.xpdb.uploadPackedAtoms(packed);
+            this.xpdb.uploadPackedTopology(packed);
 
-            // Keep CPU side topology for reference solver
-            this._xpdbBondsAdj = bondsAdj;
+            // Upload CPU positions/radii/mass from the packed molecule used for topology
+            if (this.xpdbCPU) this.xpdbCPU.uploadFromMolecule(molXPDB, this.mmParams);
+
+            this.xpdbNReal = nReal;
+            this.xpdbNAll = nAll;
+            this._xpdbBondsAdj = packed.bondsAdj;
 
             this.xpdbDirty = false;
-            window.logger.info(`XPDB topology updated: ${nAtoms} atoms`);
+            window.logger.info(`XPDB topology updated: n_real=${nReal} n_all=${nAll}`);
         } catch (e) {
             window.logger.error(`Failed to update XPDB topology: ${e.message}`);
             console.error(e);
+        }
+    }
+
+    async dumpXPDBTopology() {
+        const ready = await this.ensureXPDBReady(true);
+        if (!ready) return;
+        console.log('[dumpXPDBTopology] n_real=', this.xpdbNReal, 'n_all=', this.xpdbNAll, 'useAngles=', this.xpdbUseAngles);
+        try {
+            const molXPDB = this._cloneSystemForXPDB();
+            const packed = buildXPDBInputsFromMol(molXPDB, this.mmParams, {
+                report_types: false,
+                add_angle: !!this.xpdbUseAngles,
+                add_pi: true,
+                two_pi: true,
+                add_pi_align: false,
+                add_epair: true,
+                add_epair_pairs: false,
+                L_pi: 1.0,
+                L_epair: 0.5,
+                k_angle: 100.0,
+                k_pi: 50.0,
+                k_pi_orth: 30.0,
+                k_pi_align: 15.0,
+                k_ep: 40.0,
+                k_ep_orth: 25.0,
+                k_ep_pair: 10.0,
+                defaultK: 200.0,
+                nMaxBonded: 16,
+            });
+            const topo = packed.topo;
+            console.log('[dumpXPDBTopology] topo n_real=', topo.n_real, 'n_all=', topo.n_all);
+            const logPairs = (label, arr) => {
+                console.log(label + ' count=', arr?.length || 0);
+                if (arr && arr.length) arr.forEach((p, idx) => console.log(`  ${label}[${idx}] = (${p[0]}, ${p[1]})`));
+            };
+            if (topo.type_names && topo.type_names.length) {
+                console.log('[dumpXPDBTopology] type_names:');
+                topo.type_names.forEach((name, idx) => console.log(`  type_names[${idx}] = ${name}`));
+            }
+            logPairs('[dumpXPDBTopology] bonds_primary', topo.bonds_primary);
+            logPairs('[dumpXPDBTopology] bonds_angle', topo.bonds_angle);
+            logPairs('[dumpXPDBTopology] bonds_pi', topo.bonds_pi);
+            logPairs('[dumpXPDBTopology] bonds_epair', topo.bonds_epair);
+        } catch (e) {
+            console.error('[dumpXPDBTopology] failed', e);
+        }
+    }
+
+    async dumpXPDBBuffers() {
+        const ready = await this.ensureXPDBReady(true);
+        if (!ready) return;
+        console.log('[dumpXPDBBuffers] n_real=', this.xpdbNReal, 'n_all=', this.xpdbNAll, 'xpdbParams=', this.xpdbParams);
+        try {
+            await XPDB_WebGPU.dumpTypedState(this.xpdb, { label: 'XPDB_GUI', fixed: 6 });
+        } catch (e) {
+            console.error('[dumpXPDBBuffers] failed', e);
         }
     }
 
@@ -669,16 +760,16 @@ export class MolGUIApp {
                 this.debugLogCPUState('stepXPDB');
                 this.syncXPDBGPUFromSystem('cpuStepXPDB');
             } else {
-                this.xpdb.step(
-                    this.xpdbParams.dt,
-                    this.xpdbParams.iterations,
-                    this.xpdbParams.k_coll,
-                    this.xpdbParams.omega,
-                    this.xpdbParams.momentum_beta,
-                    null, // mousePos
-                    -1,   // pickedIdx
-                    maxRadius
-                );
+                this.xpdb.step({
+                    dt: this.xpdbParams.dt,
+                    iterations: this.xpdbParams.iterations,
+                    k_coll: this.xpdbParams.k_coll,
+                    omega: this.xpdbParams.omega,
+                    momentum_beta: this.xpdbParams.momentum_beta,
+                    maxRadius,
+                    coll_scale: 2.0,
+                    bbox_scale: 2.0,
+                });
 
                 // Update molecule positions from GPU
                 await this.syncXPDBPositions();
@@ -688,161 +779,6 @@ export class MolGUIApp {
         } catch (e) {
             window.logger.error(`XPDB step failed: ${e.message}`);
             console.error(e);
-        }
-    }
-
-    async dumpXPDBBuffers() {
-        if (!this.xpdb || !this.system) {
-            console.warn('[dumpXPDBBuffers] XPDB or system not initialized');
-            return;
-        }
-        const ready = await this.ensureXPDBReady(true);
-        if (!ready) return;
-        console.log('[dumpXPDBBuffers] === XPDB Buffer Dump ===');
-        console.log('[dumpXPDBBuffers] nAtoms=', this.system.nAtoms);
-        console.log('[dumpXPDBBuffers] xpdbParams=', this.xpdbParams);
-        try {
-            const { posData, ghostData, bondGlobalData, bondLocalData, bondLenStiffData } = await this.xpdb.readBuffersAsTyped();
-            const nAtoms = this.system.nAtoms;
-            const groupSize = this.xpdb.groupSize;
-            const numGroups = this.xpdb.numGroups;
-            const maxGhosts = this.xpdb.maxGhosts;
-            const nMaxBonded = this.xpdb.nMaxBonded;
-
-            console.log('[dumpXPDBBuffers] groupSize=', groupSize, 'numGroups=', numGroups, 'maxGhosts=', maxGhosts, 'nMaxBonded=', nMaxBonded);
-
-            for (let g = 0; g < numGroups; g++) {
-                const groupBase = g * groupSize;
-                const ghostBase = g * (maxGhosts + 1);
-                const ghostCount = ghostData[ghostBase + maxGhosts];
-                console.log(`[dumpXPDBBuffers] === Group ${g} (global ${groupBase}-${groupBase + groupSize - 1}) ghostCount=${ghostCount} ===`);
-
-                if (ghostCount > 0) {
-                    console.log('[dumpXPDBBuffers] Ghost list:');
-                    for (let k = 0; k < ghostCount; k++) {
-                        const globalIdx = ghostData[ghostBase + k];
-                        const px = posData[globalIdx * 4 + 0];
-                        const py = posData[globalIdx * 4 + 1];
-                        const pz = posData[globalIdx * 4 + 2];
-                        const atom = this.system.atoms[globalIdx];
-                        const typeName = atom ? (this.mmParams.getAtomTypeForAtom(atom)?.name || 'unknown') : 'missing';
-                        console.log(`  ghost[${k}] -> global ${globalIdx} (${typeName}) pos=(${px.toFixed(3)}, ${py.toFixed(3)}, ${pz.toFixed(3)})`);
-                    }
-                }
-
-                for (let lid = 0; lid < groupSize; lid++) {
-                    const globalIdx = groupBase + lid;
-                    if (globalIdx >= nAtoms) break;
-
-                    const px = posData[globalIdx * 4 + 0];
-                    const py = posData[globalIdx * 4 + 1];
-                    const pz = posData[globalIdx * 4 + 2];
-                    const atom = this.system.atoms[globalIdx];
-                    const typeName = atom ? (this.mmParams.getAtomTypeForAtom(atom)?.name || 'unknown') : 'missing';
-                    console.log(`[dumpXPDBBuffers] atom ${globalIdx} (lid ${lid}, group ${g}, type ${typeName}) pos=(${px.toFixed(3)}, ${py.toFixed(3)}, ${pz.toFixed(3)})`);
-
-                    const bondBase = globalIdx * nMaxBonded;
-
-                    console.log('  bond_indices_global:');
-                    for (let slot = 0; slot < nMaxBonded; slot++) {
-                        const targetGlobal = bondGlobalData[bondBase + slot];
-                        if (targetGlobal === -1) break;
-                        const L0 = bondLenStiffData[(bondBase + slot) * 2 + 0];
-                        const K = bondLenStiffData[(bondBase + slot) * 2 + 1];
-                        console.log(`    slot${slot}: global ${targetGlobal} L0=${L0.toFixed(4)} K=${K.toFixed(1)}`);
-                    }
-
-                    console.log('  bond_indices_local:');
-                    for (let slot = 0; slot < nMaxBonded; slot++) {
-                        const localIdx = bondLocalData[bondBase + slot];
-                        if (localIdx === -1) break;
-                        const targetGlobal = bondGlobalData[bondBase + slot];
-                        const L0 = bondLenStiffData[(bondBase + slot) * 2 + 0];
-                        const K = bondLenStiffData[(bondBase + slot) * 2 + 1];
-
-                        let mappedGlobal = null;
-                        let kind = 'unknown';
-                        if (localIdx < groupSize) {
-                            mappedGlobal = groupBase + localIdx;
-                            kind = 'internal';
-                        } else {
-                            const ghostIdx = localIdx - groupSize;
-                            if (ghostIdx < ghostCount) {
-                                mappedGlobal = ghostData[ghostBase + ghostIdx];
-                                kind = 'ghost';
-                            } else {
-                                kind = 'invalid';
-                            }
-                        }
-
-                        const match = (mappedGlobal !== null && mappedGlobal === targetGlobal) ? 'MATCH' : 'MISMATCH';
-                        console.log(`    slot${slot}: local ${localIdx} -> ${kind} ${mappedGlobal !== null ? mappedGlobal : '?'} (expected ${targetGlobal}) ${match} L0=${L0.toFixed(4)} K=${K.toFixed(1)}`);
-                    }
-                }
-            }
-
-            console.log('[dumpXPDBBuffers] === Real Bond Lengths (EditableMolecule.bonds) ===');
-            if (this.system.bonds && this.system.bonds.length > 0) {
-                const resolveIndices = (bond) => {
-                    if (!bond) return [null, null];
-                    if (Array.isArray(bond)) return bond;
-                    if (typeof bond.ensureIndices === 'function') bond.ensureIndices(this.system);
-                    const a = bond.a ?? bond.i ?? (bond.indices ? bond.indices[0] : null);
-                    const b = bond.b ?? bond.j ?? (bond.indices ? bond.indices[1] : null);
-                    return [a, b];
-                };
-
-                for (const bond of this.system.bonds) {
-                    const [a, b] = resolveIndices(bond);
-                    if (a === null || b === null) {
-                        console.warn('[dumpXPDBBuffers] bond missing indices', bond);
-                        continue;
-                    }
-                    if (a < 0 || a >= nAtoms || b < 0 || b >= nAtoms) {
-                        console.warn(`[dumpXPDBBuffers] bond indices out of range: ${a}, ${b}`);
-                        continue;
-                    }
-                    const ax = posData[a * 4 + 0], ay = posData[a * 4 + 1], az = posData[a * 4 + 2];
-                    const bx = posData[b * 4 + 0], by = posData[b * 4 + 1], bz = posData[b * 4 + 2];
-                    const dist = Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2 + (az - bz) ** 2);
-                    console.log(`[dumpXPDBBuffers] bond ${a}-${b}: dist=${dist.toFixed(4)} A=(${ax.toFixed(3)},${ay.toFixed(3)},${az.toFixed(3)}) B=(${bx.toFixed(3)},${by.toFixed(3)},${bz.toFixed(3)})`);
-                }
-            } else {
-                console.log('[dumpXPDBBuffers] No bonds recorded in EditableMolecule');
-            }
-
-        } catch (e) {
-            console.error('[dumpXPDBBuffers] Failed:', e);
-        }
-    }
-
-    async dumpXPDBTopology() {
-        if (!this.system || !this.mmParams) {
-            console.warn('[dumpXPDBTopology] System or mmParams missing');
-            return;
-        }
-        const ready = await this.ensureXPDBReady(true);
-        if (!ready) return;
-        console.log('[dumpXPDBTopology] === XPDB Topology Dump ===');
-        console.log('[dumpXPDBTopology] nAtoms=', this.system.nAtoms);
-        console.log('[dumpXPDBTopology] xpdbUseAngles=', this.xpdbUseAngles);
-        try {
-            const { bondsAdj, stats } = buildXPDBTopology(this.system, this.mmParams, {
-                includeAngleConstraints: !!this.xpdbUseAngles,
-                maxBonds: 16
-            });
-            console.log('[dumpXPDBTopology] stats=', stats);
-            const counts = bondsAdj.map(bs => (bs ? bs.length : 0));
-            const maxDeg = Math.max(...counts);
-            const avgDeg = counts.reduce((a, b) => a + b, 0) / counts.length;
-            console.log('[dumpXPDBTopology] bondsAdj counts (avg/max)=', avgDeg.toFixed(2), maxDeg);
-            const lines = bondsAdj.map((bs, i) => {
-                const parts = bs.map(e => `${e[0]}:${(+e[1]).toFixed(4)}/${(+e[2]).toFixed(1)}`);
-                return `${i}: (${bs.length}) ${parts.join('  ')}`;
-            });
-            console.log('[dumpXPDBTopology] bondsAdj formatted:\n' + lines.join('\n'));
-        } catch (e) {
-            console.error('[dumpXPDBTopology] Failed to build topology:', e);
         }
     }
 
@@ -874,14 +810,16 @@ export class MolGUIApp {
                 this.syncXPDBGPUFromSystem('cpuStepOnce');
             } else {
                 if (this.xpdb.setBondStiffnessScale) this.xpdb.setBondStiffnessScale(bondScale);
-                this.xpdb.step(
-                    this.xpdbParams.dt,
-                    this.xpdbParams.iterations,
-                    kColl,
-                    this.xpdbParams.omega,
-                    this.xpdbParams.momentum_beta,
-                    null, -1, maxRadius
-                );
+                this.xpdb.step({
+                    dt: this.xpdbParams.dt,
+                    iterations: this.xpdbParams.iterations,
+                    k_coll: kColl,
+                    omega: this.xpdbParams.omega,
+                    momentum_beta: this.xpdbParams.momentum_beta,
+                    maxRadius,
+                    coll_scale: 2.0,
+                    bbox_scale: 2.0,
+                });
                 if (this.xpdb.setBondStiffnessScale && this.xpdbDisableBonds) this.xpdb.setBondStiffnessScale(1.0);
                 await this.syncXPDBPositions();
             }
@@ -930,14 +868,16 @@ export class MolGUIApp {
             } else {
                 if (this.xpdb.setBondStiffnessScale) this.xpdb.setBondStiffnessScale(bondScale);
                 for (let i = 0; i < n; i++) {
-                    this.xpdb.step(
-                        this.xpdbParams.dt,
-                        this.xpdbParams.iterations,
-                        kColl,
-                        this.xpdbParams.omega,
-                        this.xpdbParams.momentum_beta,
-                        null, -1, maxRadius
-                    );
+                    this.xpdb.step({
+                        dt: this.xpdbParams.dt,
+                        iterations: this.xpdbParams.iterations,
+                        k_coll: kColl,
+                        omega: this.xpdbParams.omega,
+                        momentum_beta: this.xpdbParams.momentum_beta,
+                        maxRadius,
+                        coll_scale: 2.0,
+                        bbox_scale: 2.0,
+                    });
                     await this.syncXPDBPositions();
                 }
                 if (this.xpdb.setBondStiffnessScale && this.xpdbDisableBonds) this.xpdb.setBondStiffnessScale(1.0);
@@ -1067,8 +1007,8 @@ export class MolGUIApp {
         try {
             const posData = await this.xpdb.readPositions();
 
-            // Update molecule atom positions
-            for (let i = 0; i < this.system.nAtoms; i++) {
+            const n = (this.xpdbNReal > 0) ? (this.xpdbNReal | 0) : (this.system.nAtoms | 0);
+            for (let i = 0; i < n; i++) {
                 const atom = this.system.atoms[i];
                 if (atom) {
                     atom.pos.x = posData[i * 3];
@@ -1082,7 +1022,8 @@ export class MolGUIApp {
             if (this.useRawWebGPU) this._markRawGeometryDirty('syncXPDBPositions');
             if (this.xpdbCPU && !this.xpdbUseCPU) {
                 try {
-                    this.xpdbCPU.uploadFromMolecule(this.system, this.mmParams);
+                    // Keep CPU solver in sync only for real atoms (avoid mismatch with dummy topology in GUI system)
+                    // For now we disable this sync to prevent mol/cpu atom-count mismatch spam.
                     if ((window.VERBOSITY_LEVEL | 0) >= 3) console.log('[XPDB_CPU] synced from system after GPU update');
                 } catch (err) {
                     console.warn('[XPDB_CPU] failed to sync from GPU positions', err);

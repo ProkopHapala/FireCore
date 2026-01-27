@@ -237,4 +237,42 @@ main();
 
 In your `XPDB_WebGPU.js`, do you have any code that relies on a `<canvas>` for sizing or `document.getElementById`? If so, I can show you how to mock those specific DOM elements so the code doesn't crash.
 
-**Would you like me to generate a full \"Mock DOM\" helper for you as well?**
+**Would you like me to generate a full "Mock DOM" helper for you as well?**
+
+---
+
+## 2026-01-27 – Headless XPDB Status Report
+
+- **Headless harness** now runs the full XPDB pipeline (topology build → `build_local_topology` → `solve_cluster_jacobi`) on both PyOpenCL and WebGPU/Dawn, including multi-step trajectories and `.xyz` dumps.
+- **Deterministic distortion** (`--init_scale`, `--init_noise`, `--init_seed`) ensures both backends start from the exact same perturbed geometry before each run, so solver motion is observable even if the input XYZ is already relaxed.
+- **Collision parity**: both runners default to `k_coll=200` (we use 300 for tests below) and copy `curr_pos→pred_pos` before each solve, matching the browser path.
+- **New comparator** (`pyBall/XPDB_AVBD/compare_xyz_trajectories.py`) reports per-frame RMS and max displacement for `.xyz` movies, aborting if any frame exceeds the tolerance.
+
+### Trajectory Results (10 steps, dt=0.01, ω=0.8, momentum=0)
+
+| Molecule | Distortion | Collisions | Flags | RMS/Max diff |
+| --- | --- | --- | --- | --- |
+| H₂O | `--init_scale 1.05 --init_noise 0.02` | `k_coll=300`, `coll_scale=bbox_scale=1.2` | default topology | `max_abs=6.1e-08 Å` |
+| CH₂O | same as above | same | default topology | `max_abs=6.0e-08 Å` |
+| Guanine | same as above | same | default topology | `max_abs=2.7e-07 Å` |
+| Pentacene | same as above | same | **`--two_pi 0 --add_pi_align 0`** to keep ≤16 neighbors | `max_abs=9.6e-07 Å` |
+
+All comparisons passed with `--atol 1e-5`, so WebGPU and PyOpenCL are within sub-nanometer agreement for both small and larger molecules.
+
+### Neighbor-Limit Issue
+
+- XPDB currently fixes `n_max_bonded=16`. For large aromatic systems (pentacene), each sp² carbon accumulates 3 real bonds + 6 angle constraints + 6 π-orth bonds + 2 host bonds = 17 slots even before epairs, so arrays overflow.
+- Workaround: run with single π dummy (`--two_pi 0` / `--twoPi 0`) and disable `pi-align` (`--add_pi_align 0` / `--addPiAlign 0`). This drops the per-atom count to 13 and avoids truncation without widening buffers.
+- Long term options: (1) raise `n_max_bonded` consistently across Python/OpenCL/WebGPU or (2) make the extra constraints configurable so we stay under the cap automatically.
+
+### Files to Commit
+
+- `web/molgui_webgpu/headless_webgpu.js` – Dawn bootstrap + fetch polyfill (`bootstrap()`)
+- `web/molgui_webgpu/headless_init.mjs` – ensures bootstrap runs before other imports
+- `web/molgui_webgpu/run_xpdb_webgpu_headless.mjs` – headless WebGPU runner with trajectory writer
+- `pyBall/XPDB_AVBD/test_XPDB_new_dump_headless.py` – PyOpenCL runner with matching options
+- `pyBall/XPDB_AVBD/compare_xyz_trajectories.py` – RMS/max error checker for `.xyz` files
+- `web/molgui_webgpu/debugBuffers.js` and `web/molgui_webgpu/XPDB_WebGPU.js` updated to expose solver buffers and new device limits
+- `web/molgui_webgpu/xpdb.wgsl` – writes debug force buffers (needed for parity dumps)
+
+Make sure these files plus the updated docs land in git alongside any altered WGSL/OpenCL sources so the headless workflow is reproducible.

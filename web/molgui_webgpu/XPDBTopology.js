@@ -1,5 +1,8 @@
 import { MMParams } from "./MMParams.js";
 
+/// DEPRECATED: GUI-only lightweight topology builder. Do not use for parity.
+/// Use buildMMFFLTopology/buildXPDBInputsFromMol (MMFFLTopology.js) or buildXPDBInputsFromXYZArgs (dump_xpdb_topology.mjs) instead.
+/// This file is kept temporarily as a fallback while the GUI migrates to the shared path.
 /// Helper to build bondsAdj format for XPDB_WebGPU from EditableMolecule + MMParams
 /// bondsAdj[i] = [[neighbor_idx, rest_length, stiffness], ...]
 export function buildXPDBTopology(mol, mmParams, opts = {}) {

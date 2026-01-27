@@ -422,3 +422,204 @@ Implementation outline (zero code yet):
    - No browser needed: Node 22 + Dawn backend already powers [dump_xpdb_topology.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:0:0-0:0), so buffer reads/logging happen entirely in the CLI.
 
 Once you’re ready to implement, we’ll add the shared helper module, expose dump functions in `XPDB_WebGPU.js`, extend the CLI flags, and mirror the formatting in the Python driver.
+
+---
+
+## USER
+
+the discrepancies you found are superficial. Instead we must make sure that we call the same functions for topology builder and biffer preparations, and that we use exactly the same parameters (adding electron pairs, dummy pi, and the angle-derived bonds), only that way we can achieve parity. yes, we should apply same distortion for debugging purposes, but the problem is that just the loaded water geometry without any distorion relax a lot, and asymetrically (one hydrogen atoms goes very far), which is not at all what we see in the headless script. we need to undrstand why is this so, but analysing the code. 
+
+---
+
+## GPT-5.1-Codex
+
+
+
+Current parity gap is due to deeper differences than distortion:
+
+1. **Different topology builders**  
+   - **Python headless** uses [MMFFL.build_topology()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/MMFFL.py:125:4-218:9) ([pyBall/OCL/MMFFL.py](cci:7://file:///home/prokop/git/FireCore/pyBall/OCL/MMFFL.py:0:0-0:0)) which emits `bonds_primary`, angle-derived constraints, π dummies, epair dummies, etc., then `_pack_fixed_bonds()` to fill dense `(nAtoms, nMaxBonded)` arrays.  
+   - **Node headless** calls [buildXPDBInputsFromXYZArgs()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:234:0-380:1) (under the hood it invokes the same Python MMFFL via Pyodide or pre-generated JSON), so it gets the exact same topology as the Python runner.  
+   - **Browser GUI** instead calls `buildXPDBTopology(this.system, this.mmParams, { includeAngleConstraints, maxBonds:16 })` from `web/molgui_webgpu/XPDBTopology.js`, which is a lightweight JS rebuild and only supports real bonds + optional angles. It doesn’t add π/epair dummies at all, nor does it export the same dense bond matrix. So it’s expected that H₂O relaxes differently: you’re driving the solver with a different constraint set.
+
+2. **Buffer preparation**  
+   - Headless pipelines upload precalculated arrays (`bond_idx_global`, `bond_len_stiff`, etc.) matching the Fortran/MMFF data.  
+   - GUI’s [uploadBonds(bondsAdj, defaultL, defaultK, angleDeg, enableAngles)](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:194:4-267:5) simply loops through adjacency lists and writes lengths/stiffness from `bondsAdj`. Default L/K (0.4, 200) aren’t tied to the MMFF parameters. So even the rest lengths differ from what the headless run uses.
+
+Given that, the plan should be:
+
+- **Reuse the same topology generator in all three paths.** Export the Python/MMFFL topology (via JSON) and feed it to both the Node headless script and the browser. Alternatively, port the full MMFFL logic (including π/epair/dummy building) to JS and ensure both headless and GUI call that single implementation. Right now we have two independent builders.
+
+- **Share the same bond packing routine.** Instead of the GUI’s `buildXPDBTopology` + [uploadBonds](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:194:4-267:5), have the UI load the packed arrays (indices/lengths/stiffness) produced by MMFFL or by a shared JS module, so the GPU sees identical data. That includes honoring CLI-style flags (`twoPi`, `addPiAlign`, `addEpair`, etc.) and even `n_max_bonded`.
+
+- **Only after topology parity is achieved** does it make sense to add distortion toggles or logging.
+
+So the next concrete steps:
+
+1. Extract the packed topology from the headless JSON (or a new API) and wire the GUI to ingest it instead of rebuilding locally.
+2. Ensure [XPDB_WebGPU.step](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:320:4-406:5) is always called with the options object (browser still uses positional args).
+3. Once the GUI uses the same buffers, adding console dumps/download buttons becomes meaningful.
+
+Without unifying the topology builder, the browser will keep showing different relaxations no matter how much we instrument it.
+
+---
+
+## USER
+
+aha, again we have some stupid code redudancy making a mess.
+like the reduduancy of buildXPDBTopology() and buildXPDBInputsFromXYZArgs(), are there any other similar casses of redudancy
+ as I stressed several times, these test make only sense if we are checking same thing, so we should reuse the  same code, maximum part of the execution path MUST be shader between the headless script and the GUI, now when we see that headless is correct as it achive parity to pyOpenCL reference, we must modify the GUI version to reuse same execution path and function as the headless. we should make the old legacy GUI code deprecated (ad there at leas deprecation comments to be sure, we do not want to delete it immadiately just for case something breaks). So the whole XPDBTopology.js is now deprecatec / useless an insted of it we should use what?
+we should also consider deprecated UI’s uploadBonds(bondsAdj, defaultL, defaultK, angleDeg, enableAngles) s and anythin like that and replace it by the alterantive function used by headless script. NOTE haowever, and this is very importaint, we should not reimplement anything (creating agaon code duplication) we must make sure that both headless and gui call same function from shader modules. If some functions are not in shared modules now, we should refactroe them and muve them there now. I wanted make them shared between GUI and headless test sript from the start, that was the purpose of testing, to test headlessly the functions used by the GUI, final goal is to make parity of the GUI to pythn, just testing it headlessly is more conveniet. Hope you undrstant the philosophy now.
+
+make detailed notes and plan
+
+---
+
+## GPT-5.1-Codex
+
+Observations on code duplication:
+
+1. **Topology generation**
+   - `buildXPDBTopology()` (GUI, JS) builds adjacency lists with minimal features (real bonds + optional angles) and default lengths.
+   - [buildXPDBInputsFromXYZArgs()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:234:0-380:1) (headless Node) calls the same MMFFL Python code that [test_XPDB_new_dump_headless.py](cci:7://file:///home/prokop/git/FireCore/pyBall/XPDB_AVBD/test_XPDB_new_dump_headless.py:0:0-0:0) uses, producing packed `bond_idx`, `bond_len`, `bond_k`, π/epair dummies, etc.
+   - Result: browser uses a different constraint set than both headless paths.
+
+2. **Bond uploads**
+   - GUI calls [XPDB_WebGPU.uploadBonds(bondsAdj, defaultL, defaultK, angleDeg, enableAngles)](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:204:4-277:5), which re-derives lengths/stiffness from defaults.
+   - Headless uploads precomputed arrays via `writeBuffer` (exactly matching Python outputs).
+
+3. **Solver parameter invocation**
+   - Headless uses the new [xpdb.step({ ... })](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:310:4-382:5) options object (so coll/bbox scales, dt, etc., stay in sync).
+   - GUI still calls the positional signature, relying on legacy default margins.
+
+Plan to eliminate redundancy and keep GUI/headless paths aligned:
+
+1. **Centralize topology build in a shared module**  
+   - Move the MMFFL-based packing logic into a reusable JS module (e.g., `XPDBSharedTopology.js`) that is imported by both [run_xpdb_webgpu_headless.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/run_xpdb_webgpu_headless.mjs:0:0-0:0) and [main.js](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/main.js:0:0-0:0).  
+   - If maintaining Python MMFFL is required, expose a JSON export step that the GUI loads (e.g., precompute `topology.json` for each molecule).  
+   - Mark `XPDBTopology.js` with `// DEPRECATED: use XPDBSharedTopology` and leave the old code commented with a TODO to remove once the new flow is stable.
+
+2. **Replace [uploadBonds(bondsAdj, ...)](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:204:4-277:5) with a shared buffer upload helper**  
+   - Extract the headless upload routine (the part that writes packed arrays) into `XPDBSharedBuffers.js`.  
+   - GUI code calls the same helper, passing the packed arrays generated by the shared topology builder. Deprecate the old [uploadBonds(bondsAdj, ...)](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:204:4-277:5) by annotating it and routing it through the new helper internally until removal.
+
+3. **Unify solver invocation**  
+   - Update [main.js](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/main.js:0:0-0:0) to call [this.xpdb.step({ ... })](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:310:4-382:5) with the same object used in the headless script.  
+   - Store XPDB parameters (dt, inner_iters, k_coll, coll_scale, bbox_scale, init distortion) in a shared config module so both GUI controls and headless CLI read from the same defaults.
+
+4. **Optional initial distortion**  
+   - Implement [applyInitialDistortion()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/run_xpdb_webgpu_headless.mjs:117:0-134:1) in a shared JS helper (`XPDBDebugUtils.js`). GUI can enable it via a checkbox for debugging parity, headless keeps the CLI flags.
+
+5. **Add buffer dump parity**  
+   - Expose [XPDB_WebGPU.dumpTypedState](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:14:4-37:5) in GUI controls (with a download link) so browser output matches the headless `.txt` format. This helps verify that shared topology/upload code is behaving identically.
+
+By moving topology packing, buffer uploads, and XPDB parameter defaults into shared modules (imported by both GUI and headless scripts), we ensure “maximum path sharing” without reimplementing anything. Deprecation comments should be added to `XPDBTopology.js`, [MolGUIApp.updateXPDBTopology](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/main.js:602:4-645:5)’s old code path, and [XPDB_WebGPU.uploadBonds](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:204:4-277:5) so we remember to remove them once the shared modules are fully adopted.
+
+---
+
+## USER
+
+make clear list which function are not in shared modules and need to be muved there and refactroed.
+I hope you do not plan to make any new modules. We already have a lot of modules, and we should consolidate it, putting it to existing modules. Also mention which shared XPBD related function already are in shared modules.
+
+---
+
+## GPT-5.1-Codex
+
+
+
+### XPDB functions that still live in one-off modules (must be moved/refactored into shared code)
+
+| Area | Current function / file | Issue | Target shared home |
+| --- | --- | --- | --- |
+| Topology generation | `buildXPDBTopology(system, mmParams, …)` in `web/molgui_webgpu/XPDBTopology.js` | GUI-only light builder (real bonds + optional angles) reimplements what MMFF already gives us; no π / epair dummies, different rest lengths | Move logic to the same module that headless already uses ([dump_xpdb_topology.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:0:0-0:0) → extract reusable `buildPackedTopology()` and import it from GUI); mark `XPDBTopology.js` as `// DEPRECATED` immediately |
+| Bond upload | [XPDB_WebGPU.uploadBonds(bondsAdj, defaultL, defaultK, …)](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:204:4-277:5) in [XPDB_WebGPU.js](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:0:0-0:0) | Re-derives lengths/stiffness from defaults instead of consuming the packed arrays we already compute for headless | Replace GUI call sites with `XPDB_WebGPU.uploadPackedTopology(packed)` (new helper extracted from headless uploader). Keep [uploadBonds](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:204:4-277:5) only as deprecated wrapper calling the shared helper |
+| Solver invocation | GUI calls [this.xpdb.step(dt, iters, …)](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:320:4-406:5) (positional) in [main.js](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/main.js:0:0-0:0) | Uses legacy defaults (coll/bbox scale 2.0) instead of the shared options object introduced for headless | Refactor GUI to call the same [step({dt,…})](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:320:4-406:5) object used in headless; remove positional signature after transition |
+| Initial distortion utilities | GUI has none; headless uses [applyInitialDistortion()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/run_xpdb_webgpu_headless.mjs:113:0-130:1) defined inside [run_xpdb_webgpu_headless.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/run_xpdb_webgpu_headless.mjs:0:0-0:0) | Duplicate math will appear if we need it in the browser | Move the function into an existing shared helper (e.g., `web/molgui_webgpu/XPDBDebugUtils.js` or [dump_xpdb_topology.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:0:0-0:0)) and import from both headless + GUI |
+
+### XPDB functions already living in shared modules (no action needed)
+
+- [XPDB_WebGPU.dumpTypedState()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:14:4-37:5) in [XPDB_WebGPU.js](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:0:0-0:0): used by both Node runner and (once wired) the GUI to emit identical text dumps.
+- [XPDB_WebGPU.readBuffersAsTyped()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:288:4-308:5) in [XPDB_WebGPU.js](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:0:0-0:0): single implementation already shared; both GUI and headless call it.
+- [buildXPDBInputsFromXYZArgs()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:234:0-380:1) in [web/molgui_webgpu/dump_xpdb_topology.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:0:0-0:0): centralizes MMFFL topology build + buffer packing for headless (we just need GUI to reuse it instead of reimplementing).
+- [XPDB_WebGPU.step(opts)](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:320:4-406:5) in [XPDB_WebGPU.js](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:0:0-0:0): new options-object path is shared; only GUI still uses the deprecated positional overload.
+
+Once `buildXPDBTopology()` and [uploadBonds()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:204:4-277:5) are replaced with the shared builder/uploader, the GUI and headless paths will go through the identical modules, and the older functions can be marked `// DEPRECATED` and eventually removed.
+
+---
+
+## USER
+
+you are an idiot. I just clearly said that buildXPDBTopology is deprecated and we should replace it by buildXPDBInputsFromXYZArgs()  used by the headless script. 
+No need to refactor deprecated function, just mark them clearly as depecated in comments, we need to refactor into shareble modules only those which we wnat to use, which are those used by the headless which has partity with pyOpenCL. Do you readme or are you total ignoratn ?
+
+---
+
+Understood: we will stop touching `buildXPDBTopology()` and [XPDB_WebGPU.uploadBonds()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:194:4-267:5) except to add explicit `// DEPRECATED – use buildXPDBInputsFromXYZArgs()` comments, and we’ll focus solely on wiring the GUI through the same shared code path the headless runner already uses (i.e., [buildXPDBInputsFromXYZArgs()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:234:0-380:1) + packed buffers). No new modules—just relocate the existing headless helpers into the current shared files and have both GUI and CLI call them.
+
+
+### XPDB Parity Migration Script (GUI ⇄ Headless ⇄ PyOpenCL)
+
+1. **Declare legacy JS builder deprecated**
+   - In `web/molgui_webgpu/XPDBTopology.js`, add a banner comment:
+     ```js
+     // DEPRECATED: topology is now generated by buildXPDBInputsFromXYZArgs().
+     // This file exists only as a fallback while the GUI migrates to the shared path.
+     ```
+   - Remove all call sites except the GUI (temporarily); new code must not import this module.
+
+2. **Reuse the headless topology helper**
+   - Extract the already-correct helper from [web/molgui_webgpu/dump_xpdb_topology.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:0:0-0:0):
+     - [buildXPDBInputsFromXYZArgs({ ... })](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:234:0-380:1) already produces packed arrays.
+     - Export a pure function (e.g., `export async function buildPackedTopology(opts)`) from the same file—no new module needed.
+   - In [main.js](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/main.js:0:0-0:0) (MolGUIApp), replace `buildXPDBTopology()` call with:
+     ```js
+     const packed = await buildXPDBInputsFromXYZArgs({
+         xyz: currentXYZPath,
+         // pass same flags GUI already exposes (pi, epairs, etc.)
+     });
+     ```
+     Ensure the GUI supplies the same options as the headless CLI (twoPi, addPiAlign, enableAngles, etc.).
+
+3. **Upload the exact packed buffers**
+   - Add a helper inside [XPDB_WebGPU.js](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:0:0-0:0):
+     ```js
+     uploadPackedTopology({ bondIndices, bondLenStiff }) {
+         this.device.queue.writeBuffer(this.buffers.bondIdxGlobal, 0, bondIndices);
+         this.device.queue.writeBuffer(this.buffers.bondLenStiff, 0, bondLenStiff);
+     }
+     ```
+   - Mark [uploadBonds()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:204:4-277:5) with `// DEPRECATED: use uploadPackedTopology()` and keep it only for old code paths.
+   - GUI now does `xpdb.uploadPackedTopology(packed)` exactly like the headless runner.
+
+4. **Share solver invocation**
+   - Update all GUI calls to [this.xpdb.step({ ... })](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:320:4-406:5), passing the same object the headless script uses (`dt`, `iterations`, `k_coll`, `omega`, `momentum_beta`, `maxRadius`, `coll_scale`, `bbox_scale`).
+   - Remove positional [step(dt, …)](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:320:4-406:5) calls once no longer referenced.
+
+5. **Optional debugging hooks**
+   - Move [applyInitialDistortion()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/run_xpdb_webgpu_headless.mjs:117:0-134:1) from [run_xpdb_webgpu_headless.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/run_xpdb_webgpu_headless.mjs:0:0-0:0) into an existing shared helper file (e.g., [dump_xpdb_topology.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:0:0-0:0)) so GUI and CLI can import the same function when needed.
+   - Add a “Dump XPDB state” button in the GUI that calls [XPDB_WebGPU.dumpTypedState](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:14:4-37:5) and offers the `.txt` download; this matches the headless output format for diffing.
+
+6. **Track remaining legacy code**
+   - Add `TODO(DEPRECATED_XPDB)` tags to:
+     - `XPDBTopology.js`
+     - [XPDB_WebGPU.uploadBonds](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:204:4-277:5)
+     - Any GUI-specific helper that still calls them
+   - Once the GUI is fully wired to the shared helpers, delete the deprecated implementations.
+
+This script keeps everything inside the existing modules, ensures GUI + headless call the same functions, and makes the parity path explicit for future maintenance.
+
+
+
+
+
+Remaining XPDB refactor work (shared vs legacy):
+
+| Category | Legacy code (to be replaced / marked `// DEPRECATED`) | Shared code already correct |
+| --- | --- | --- |
+| Topology build | `web/molgui_webgpu/XPDBTopology.js` (`buildXPDBTopology`) — GUI-only builder using default lengths; must be replaced by calling [buildXPDBInputsFromXYZArgs()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:234:0-380:1) | [web/molgui_webgpu/dump_xpdb_topology.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:0:0-0:0) ([buildXPDBInputsFromXYZArgs](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:234:0-380:1)) — MMFFL-based packed topology used by headless + PyOpenCL |
+| Bond upload | [XPDB_WebGPU.uploadBonds(bondsAdj, defaultL, defaultK, …)](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:204:4-277:5) — rebuilds lengths per call; should be deprecated once GUI calls `uploadPackedTopology` | The headless flow already writes buffers via packed arrays (same helper logic we’ll expose as `uploadPackedTopology`) |
+| Solver invocation | GUI still calls positional [xpdb.step(dt, iterations, …)](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:320:4-406:5); needs to switch to the shared options-object call | [XPDB_WebGPU.step({ dt, iterations, k_coll, … })](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:320:4-406:5) — used by Node headless and matches PyOpenCL settings |
+| Initial distortion utilities | GUI lacks [applyInitialDistortion](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/run_xpdb_webgpu_headless.mjs:117:0-134:1); headless defines it inline (cannot be reused) | [applyInitialDistortion()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/run_xpdb_webgpu_headless.mjs:117:0-134:1) in [run_xpdb_webgpu_headless.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/run_xpdb_webgpu_headless.mjs:0:0-0:0) — move into existing shared helper so both sides can import |
+
+Once the GUI consumes [buildXPDBInputsFromXYZArgs()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:234:0-380:1) + `uploadPackedTopology()` and calls the shared [step({ … })](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:320:4-406:5), all XPDB-critical code will live in the shared modules already proven against the PyOpenCL reference.

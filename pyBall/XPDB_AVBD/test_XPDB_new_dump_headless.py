@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import argparse
+import math
+import os
 import numpy as np
 import pyopencl as cl
 
@@ -18,7 +20,8 @@ def _pad_int(i, w=4):
 
 def dump_xpdb_gpu_state_text(path_out, *, xyz_path, fixed, num_atoms, n_max_bonded, group_size, max_ghosts,
                             pos4, pred4, params4, bboxes_min, bboxes_max, ghost_indices, ghost_counts,
-                            bond_idx_global, bond_len, bond_k, bond_idx_local):
+                            bond_idx_global, bond_len, bond_k, bond_idx_local,
+                            force_bond=None, force_coll=None):
     if path_out is None:
         raise ValueError('dump_xpdb_gpu_state_text: path_out is None')
 
@@ -27,8 +30,7 @@ def dump_xpdb_gpu_state_text(path_out, *, xyz_path, fixed, num_atoms, n_max_bond
     ffmt = '{:.' + str(int(fixed)) + 'f}'
 
     out = []
-    out.append(f"# XPDB_new headless dump xyz={xyz_path}")
-    out.append(f"# numAtoms={n} numGroups={ng} nMaxBonded={int(n_max_bonded)} maxGhosts={int(max_ghosts)}")
+    out.append(f"# XPDB_WebGPU headless xyz={os.path.abspath(xyz_path)} numAtoms={n} numGroups={ng} nMaxBonded={int(n_max_bonded)} maxGhosts={int(max_ghosts)}")
 
     out.append(f"# pos n={n} stride=4 cols=3")
     for i in range(n):
@@ -72,13 +74,51 @@ def dump_xpdb_gpu_state_text(path_out, *, xyz_path, fixed, num_atoms, n_max_bond
             parts.append(f"{ffmt.format(float(bond_len[i,k]))},{ffmt.format(float(bond_k[i,k]))}")
         out.append(f"bond_len_stiff[{_pad_int(i,4)}] {' '.join(parts)}")
 
+    if force_bond is not None:
+        out.append(f"# force_bond n={n} stride=4 cols=3")
+        for i in range(n):
+            fx, fy, fz = force_bond[i]
+            out.append(f"force_bond[{_pad_int(i,4)}] {ffmt.format(float(fx))} {ffmt.format(float(fy))} {ffmt.format(float(fz))}")
+
+    if force_coll is not None:
+        out.append(f"# force_coll n={n} stride=4 cols=3")
+        for i in range(n):
+            fx, fy, fz = force_coll[i]
+            out.append(f"force_coll[{_pad_int(i,4)}] {ffmt.format(float(fx))} {ffmt.format(float(fy))} {ffmt.format(float(fz))}")
+
     out.append('')
     with open(path_out, 'w') as f:
         f.write('\n'.join(out))
 
 
+def write_xyz_frame(f, symbols, pos4, *, step=0, dt=0.01, title='XPDB'):
+    n = int(len(symbols))
+    f.write(f"{n}\n")
+    f.write(f"{title} step={int(step)} time={float(step)*float(dt):.6f}\n")
+    for i, s in enumerate(symbols):
+        x = float(pos4[i, 0]); y = float(pos4[i, 1]); z = float(pos4[i, 2])
+        f.write(f"{s} {x:.8f} {y:.8f} {z:.8f}\n")
+
+
+def _deterministic_noise(idx, axis, seed):
+    # Simple portable hash -> [-1,1] using sin fract noise; matches JS implementation.
+    x = math.sin(float(seed) * 12.9898 + float(idx) * 78.233 + float(axis) * 37.719) * 43758.5453
+    frac = x - math.floor(x)
+    return (frac * 2.0) - 1.0
+
+
+def apply_initial_distortion(apos, scale=1.0, noise_amp=0.0, seed=1337):
+    if scale != 1.0:
+        apos[:, :3] *= float(scale)
+    if noise_amp != 0.0:
+        amp = float(noise_amp)
+        for idx in range(apos.shape[0]):
+            for axis in range(3):
+                apos[idx, axis] += amp * _deterministic_noise(idx, axis, seed)
+
+
 def main():
-    p = argparse.ArgumentParser(description='Headless XPDB_new(OpenCL) dump of build_local_topology outputs')
+    p = argparse.ArgumentParser(description='Headless XPDB_new(OpenCL) dump of build_local_topology + solve outputs')
     p.add_argument('--molecule', type=str, required=True)
     p.add_argument('--type_source', type=str, default='table')
 
@@ -114,6 +154,18 @@ def main():
     p.add_argument('--Rmax', type=float, default=None)
     p.add_argument('--coll_scale', type=float, default=2.0)
     p.add_argument('--bbox_scale', type=float, default=2.0)
+    p.add_argument('--dt', type=float, default=0.01)
+    p.add_argument('--inner_iters', type=int, default=0)
+    p.add_argument('--k_coll', type=float, default=200.0)
+    p.add_argument('--omega', type=float, default=0.0)
+    p.add_argument('--momentum_beta', type=float, default=0.0)
+
+    p.add_argument('--n_steps', type=int, default=0)
+    p.add_argument('--traj_xyz', type=str, default=None)
+    p.add_argument('--traj_real_only', type=int, default=1)
+    p.add_argument('--init_scale', type=float, default=1.0, help='Uniform scale applied to initial coordinates before upload')
+    p.add_argument('--init_noise', type=float, default=0.0, help='Additive jitter amplitude (Angstrom) applied per-component before upload')
+    p.add_argument('--init_seed', type=int, default=1337, help='Seed for deterministic initial jitter (shared with WebGPU harness)')
 
     args = p.parse_args()
 
@@ -147,13 +199,15 @@ def main():
         add_epair_pairs=bool(args.add_epair_pairs),
     )
 
-    apos_all = np.asarray(ff.apos[:ff.natoms, :3], dtype=np.float32)
+    apos_ref = np.array(ff.apos[:ff.natoms, :3], dtype=np.float32, copy=True)
+    apos_all = apos_ref.copy()
+    apply_initial_distortion(apos_all, scale=float(args.init_scale), noise_amp=float(args.init_noise), seed=int(args.init_seed))
     bonds_primary = topo.get('bonds_primary', [])
     bonds_derived = topo.get('bonds_angle', []) + topo.get('bonds_pi', []) + topo.get('bonds_pi_align', []) + topo.get('bonds_epair', []) + topo.get('bonds_epair_pair', [])
     bonds_all = sorted(set(bonds_primary + bonds_derived))
 
     n_all = int(apos_all.shape[0])
-    bonds_adj = _bonds_to_adj(n_all, bonds_all, default_L=None, default_K=args.bond_k, apos=apos_all)
+    bonds_adj = _bonds_to_adj(n_all, bonds_all, default_L=None, default_K=args.bond_k, apos=apos_ref)
     bond_idx, bond_len, bond_k, _ = _pack_fixed_bonds(n_all, bonds_adj, n_max_bonded=args.max_bonded)
 
     radius = np.full(n_all, args.atom_rad, dtype=np.float32)
@@ -167,7 +221,67 @@ def main():
     sim.upload_bonds_fixed_from_arrays(bond_idx, bond_len, bond_k)
 
     Rmax = float(args.Rmax) if args.Rmax is not None else float(np.max(radius))
+
+    # Optional trajectory run: rebuild local topology each step to match WebGPU path.
+    if int(args.n_steps) > 0:
+        if not args.traj_xyz:
+            raise ValueError('--n_steps > 0 requires --traj_xyz PATH')
+
+        type_names = topo.get('type_names', None)
+        if type_names is None or len(type_names) != n_all:
+            raise ValueError('Missing topo.type_names for trajectory symbol export')
+
+        # Use element-ish symbols for visualization.
+        # For many molecules types are simple (C,O,H), and dummies are Pi/E.
+        symbols_all = []
+        for t in type_names:
+            s = str(t)
+            if s in ('Pi', 'E'):
+                symbols_all.append(s)
+            else:
+                s2 = s.split('_')[0]
+                if len(s2) > 2:
+                    s2 = s2[0]
+                symbols_all.append(s2)
+
+        n_real = int(topo.get('n_real', 0))
+        if int(args.traj_real_only) != 0:
+            symbols = symbols_all[:n_real]
+        else:
+            symbols = symbols_all
+
+        pos4 = np.zeros((n_all, 4), dtype=np.float32)
+        with open(args.traj_xyz, 'w') as ftraj:
+            for istep in range(int(args.n_steps)):
+                sim.build_local_topology(Rmax=Rmax, coll_scale=float(args.coll_scale), bbox_scale=float(args.bbox_scale))
+                # Match WebGPU step(): pred_pos := curr_pos before solve
+                cl.enqueue_copy(sim.queue, sim.cl_pred_pos, sim.cl_pos)
+                if args.inner_iters > 0:
+                    sim.solve_cluster_jacobi(
+                        dt=float(args.dt),
+                        iterations=int(args.inner_iters),
+                        k_coll=float(args.k_coll),
+                        omega=float(args.omega),
+                        momentum_beta=float(args.momentum_beta),
+                    )
+                cl.enqueue_copy(sim.queue, pos4, sim.cl_pos).wait()
+                if int(args.traj_real_only) != 0:
+                    write_xyz_frame(ftraj, symbols, pos4[:len(symbols)], step=istep, dt=float(args.dt), title='XPDB_OCL')
+                else:
+                    write_xyz_frame(ftraj, symbols, pos4, step=istep, dt=float(args.dt), title='XPDB_OCL')
+
+        # After trajectory run, continue with final-state dump below.
+
+    # One-shot topology build (or final refresh before dump)
     sim.build_local_topology(Rmax=Rmax, coll_scale=float(args.coll_scale), bbox_scale=float(args.bbox_scale))
+    if args.inner_iters > 0 and int(args.n_steps) == 0:
+        sim.solve_cluster_jacobi(
+            dt=float(args.dt),
+            iterations=int(args.inner_iters),
+            k_coll=float(args.k_coll),
+            omega=float(args.omega),
+            momentum_beta=float(args.momentum_beta),
+        )
 
     # download buffers
     bmin = np.empty((sim.num_groups, 4), dtype=np.float32)
@@ -190,6 +304,13 @@ def main():
     cl.enqueue_copy(sim.queue, pred4, sim.cl_pred_pos).wait()
     cl.enqueue_copy(sim.queue, params4, sim.cl_params).wait()
 
+    f_bond = np.zeros((n_all, 3), dtype=np.float32)
+    f_coll = np.zeros((n_all, 3), dtype=np.float32)
+    if args.inner_iters > 0:
+        fb, fc = sim.get_debug_forces()
+        f_bond[:, :] = fb
+        f_coll[:, :] = fc
+
     dump_xpdb_gpu_state_text(
         args.dump_out,
         xyz_path=args.molecule,
@@ -209,6 +330,8 @@ def main():
         bond_len=bond_len,
         bond_k=bond_k,
         bond_idx_local=bond_loc,
+        force_bond=f_bond if args.inner_iters > 0 else None,
+        force_coll=f_coll if args.inner_iters > 0 else None,
     )
     print(f"[DUMP] wrote {args.dump_out}")
 

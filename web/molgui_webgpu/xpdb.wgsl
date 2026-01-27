@@ -32,6 +32,8 @@ struct Params {
 @group(0) @binding(6) var<storage, read> bond_indices_global: array<i32>;
 @group(0) @binding(7) var<storage, read_write> bond_indices_local: array<i32>;
 @group(0) @binding(8) var<storage, read> bond_len_stiff: array<vec2f>; // packed (L, K)
+@group(0) @binding(9) var<storage, read_write> debug_force_bond: array<vec4f>;
+@group(0) @binding(10) var<storage, read_write> debug_force_coll: array<vec4f>;
 
 // Shared Memory
 var<workgroup> local_min: array<vec4f, GROUP_SIZE>;
@@ -211,6 +213,9 @@ fn solve_cluster_jacobi(
     let group_id = grp.x;
     let my_global_id = gid.x;
 
+    var last_force_bond = vec3f(0.0);
+    var last_force_coll = vec3f(0.0);
+
     // Load Internal
     if (my_global_id < u_params.num_atoms) {
         l_pos[l_idx] = curr_pos[my_global_id];
@@ -253,6 +258,8 @@ fn solve_cluster_jacobi(
             let p = l_pos[l_idx].xyz;
             var force = alpha * (my_pred.xyz - p);
             var k_sum = alpha;
+            var f_bond = vec3f(0.0);
+            var f_coll = vec3f(0.0);
 
             // Bonds
             for (var slot: u32 = 0; slot < N_MAX_BONDED; slot++) {
@@ -269,6 +276,7 @@ fn solve_cluster_jacobi(
                     let C = dist - L;
                     let f_vec = -st * C * (diff / dist);
                     force += f_vec;
+                    f_bond += f_vec;
                     k_sum += st;
                 }
             }
@@ -297,6 +305,7 @@ fn solve_cluster_jacobi(
                     let overlap = dist - r_sum;
                     let f_vec = -u_params.k_coll * overlap * (diff / dist);
                     force += f_vec;
+                    f_coll += f_vec;
                     k_sum += u_params.k_coll;
                 }
             }
@@ -306,6 +315,8 @@ fn solve_cluster_jacobi(
                 p_new += (p - l_pos_prev[l_idx].xyz) * u_params.momentum_beta;
             }
             l_pos_new[l_idx] = vec4f(p_new, 0.0);
+            last_force_bond = f_bond;
+            last_force_coll = f_coll;
         }
         workgroupBarrier();
 
@@ -318,5 +329,7 @@ fn solve_cluster_jacobi(
 
     if (my_global_id < u_params.num_atoms) {
         curr_pos[my_global_id] = l_pos[l_idx];
+        debug_force_bond[my_global_id] = vec4f(last_force_bond, 0.0);
+        debug_force_coll[my_global_id] = vec4f(last_force_coll, 0.0);
     }
 }

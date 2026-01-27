@@ -218,3 +218,98 @@ Let me know if you want me to start implementing the bond stiffness scaling or t
    - Guanine is green-lit; must repeat the same dump/diff workflow for the rest of the XPDB parity suite (H2O, CH2O, pentacene, etc.) before moving on to GPU solver parity proper.
 
 
+#### Session Update – 2026-01-27 (Headless Dawn harness + build_local_topology parity)
+
+**Headless WebGPU harness (Node + Dawn) implemented**
+1. Added **`web/molgui_webgpu/headless_webgpu.js`** which bootstraps a Dawn WebGPU context inside Node via the `webgpu` package (`create([])`), copies `GPUBufferUsage`/friends into `globalThis`, and force-installs a file-backed `fetch` polyfill (resolves relative to the harness directory). Any missing Dawn binding now throws with install instructions (`npm i --save-dev webgpu @webgpu/types`).
+2. Introduced **`web/molgui_webgpu/headless_init.mjs`** – a tiny module that `await bootstrap()` at top-level so downstream imports (notably `XPDB_WebGPU.js`) always see the polyfilled environment before they call `navigator.gpu` or `fetch('./xpdb.wgsl')`.
+3. Authored **`web/molgui_webgpu/run_xpdb_webgpu_headless.mjs`**, a dedicated Node CLI that reuses the existing browser modules (`dump_xpdb_topology.mjs`, `XPDB_WebGPU.js`, `xpdb.wgsl`). The CLI builds topology buffers via `buildXPDBInputsFromXYZArgs()`, uploads them to `XPDB_WebGPU`, dispatches `update_bboxes` + `build_local_topology` (solver iterations optional), and dumps the GPU buffers through `XPDB_WebGPU.dumpTypedState`. WGSL is loaded via the mocked `fetch`, so the shader source stays co-located with the browser path.
+4. Wrote **`web/molgui_webgpu/test_gpu.mjs`** (quick sanity harness) to exercise Dawn ↔ RTX 3090 initialization and document the `adapter.info` property change (`requestAdapterInfo()` is gone in latest Dawn).
+
+**Python/OpenCL dump counterpart**
+1. Added **`pyBall/XPDB_AVBD/test_XPDB_new_dump_headless.py`** which rebuilds MMFFL topology with all derived bonds enabled, uploads them into `XPDB_new`, runs `build_local_topology`, and dumps the same buffer sections as the WebGPU path (`pos`, `pred_pos`, `atom_params`, `bboxes`, `ghost_packed`, `bond_idx_{global,local}`, `bond_len_stiff`). CLI flags (angles/pi/epair toggles, radii, etc.) mirror the JS defaults to keep inputs synchronized.
+
+**Parity campaign (H₂O + CH₂O)**
+1. Ran both harnesses headlessly (Node hitting Dawn/Vulkan, Python hitting PyOpenCL) on `cpp/common_resources/xyz/H2O.xyz` and `CH2O.xyz`. Generated dumps:
+   - Python/OpenCL: `pyBall/XPDB_AVBD/out_ocl_{H2O,CH2O}_topo.txt`
+   - Node/WebGPU: `web/molgui_webgpu/out_webgpu_{H2O,CH2O}_topo.txt`
+2. `diff -u` between the paired files shows **byte-identical data for every buffer section** – only the header line text differs (Python prints `# XPDB_new headless dump xyz=...`, WebGPU prints `# XPDB_WebGPU headless xyz=...`). This confirms the combined effect of `update_bboxes` + `build_local_topology` matches exactly across the two implementations once the new harness is used.
+3. Remaining action to get zero-length diffs: update the Python dump header to match the WebGPU format (absolute path + label) or vice versa. After that, we can extend the same workflow to `solve_cluster_jacobi` outputs (pos/pred_pos after one iteration, debug forces, etc.).
+
+**Key files touched today (2026-01-27)**
+- `web/molgui_webgpu/headless_webgpu.js`
+- `web/molgui_webgpu/headless_init.mjs`
+- `web/molgui_webgpu/run_xpdb_webgpu_headless.mjs`
+- `web/molgui_webgpu/dump_xpdb_topology.mjs` (exported `buildXPDBInputsFromXYZArgs`, guarded CLI entry)
+- `pyBall/XPDB_AVBD/test_XPDB_new_dump_headless.py`
+- `web/molgui_webgpu/test_gpu.mjs`
+
+**Next milestones**
+1. Harmonize dump headers so parity diffs are strictly empty.
+2. Extend both harnesses to run at least one `solve_cluster_jacobi` iteration and dump solver outputs for parity.
+3. Hook the harness into CI/regression scripts so H₂O/CH₂O parity can be tested with a single command.
+4. Once solver parity is confirmed, reuse the Node harness for larger molecules (guanine, pentacene) before tackling bond-parameter audits and collision fixes mentioned above.
+
+**run tests like this:**
+
+node web/molgui_webgpu/run_xpdb_webgpu_headless.mjs --xyz tests/tDFT_pentacene/pentacene.xyz --out web/molgui_webgpu/out_webgpu_pentacene_distort.txt --inner_iters 10 --n_steps 10 --traj_xyz web/molgui_webgpu/traj_webgpu_pentacene.xyz --dt 0.01 --omega 0.8 --momentum_beta 0 --k_coll 300 --coll_scale 1.2 --bbox_scale 1.2 --maxRadius 0.2 --init_scale 1.05 --init_noise 0.02 --init_seed 12345 --twoPi 0 --addPiAlign 0
+
+PYTHONPATH=/home/prokop/git/FireCore:$PYTHONPATH python3 pyBall/XPDB_AVBD/test_XPDB_new_dump_headless.py --molecule tests/tDFT_pentacene/pentacene.xyz --dump_out pyBall/XPDB_AVBD/out_ocl_pentacene_distort.txt --inner_iters 10 --n_steps 10 --traj_xyz pyBall/XPDB_AVBD/traj_ocl_pentacene.xyz --traj_real_only 1 --dt 0.01 --omega 0.8 --momentum_beta 0 --k_coll 300 --coll_scale 1.2 --bbox_scale 1.2 --init_scale 1.05 --init_noise 0.02 --init_seed 12345 --two_pi 0 --add_pi_align 0
+
+python3 pyBall/XPDB_AVBD/compare_xyz_trajectories.py pyBall/XPDB_AVBD/traj_ocl_pentacene.xyz web/molgui_webgpu/traj_webgpu_pentacene.xyz --atol 1e-5
+
+---
+
+#### Session Update – 2026-01-27 (GUI uses shared XPDB path)
+
+**Problem**
+
+- The browser GUI still used legacy helpers (`buildXPDBTopology()`, `XPDB_WebGPU.uploadBonds()`, positional `xpdb.step`) which rebuilt simplified adjacency lists and uploaded only 3 atoms for H₂O.
+- The shared MMFFL builder (`buildXPDBInputsFromMol()` in `MMFFLTopology.js`) mutates its `EditableMolecule` by appending Pi/E dummy atoms. Because the GUI passed `this.system` directly, H₂O became 5 atoms internally while `XPDB_WebGPU`/`XPDB_CPU` buffers stayed sized for 3 atoms, triggering `writeBuffer` overruns and CPU sync mismatches.
+- GUI “Dump topology/buffers” buttons pointed to non-existent methods, so no debug output was available.
+
+**Solution (files/functions updated)**
+
+1. `MMFFLTopology.js`
+   - Exported `packBondArrays()` and `buildXPDBInputsFromMol()`, already used by the headless runner.
+2. `XPDB_WebGPU.js`
+   - Added `uploadPackedAtoms(packed)` and `uploadPackedTopology(packed)`; marked `uploadBonds()` as `// DEPRECATED`.
+3. `main.js`
+   - `MolGUIApp._cloneSystemForXPDB()` clones the molecule via `exportAsParsed()` so MMFFL dummies never touch `this.system`.
+   - `updateXPDBTopology()` now:
+     - Builds packed topology on the clone (`buildXPDBInputsFromMol`).
+     - Re-initializes `XPDB_WebGPU`/`XPDB_CPU` to `n_all` (real + dummies).
+     - Calls `uploadPackedAtoms()` + `uploadPackedTopology()`.
+     - Records `xpdbNReal` / `xpdbNAll` for later sync.
+   - `syncXPDBPositions()` copies back only the first `xpdbNReal` atoms so the GUI geometry stays at 3 atoms.
+   - Added `dumpXPDBTopology()` and `dumpXPDBBuffers()` so the GUI buttons log the same expanded data as the headless CLI.
+   - Updated all solver paths (`stepXPDB`, `xpdbStepOnce`, `xpdbRelaxSteps`) to call `xpdb.step({ ... })` with the shared options object.
+
+**Current result**
+
+- GUI and headless now share the exact MMFFL-packed topology + buffers; the browser logs match the Node dumps (see latest H₂O dump above).
+- Buffer overruns and CPU atom-count mismatch warnings are gone; “Relax N steps” moves symmetrically (albeit little motion because the molecule is already relaxed).
+- “Dump topology” / “Dump buffers” buttons output expanded data.
+
+**Next steps**
+
+1. Add deterministic distortions + collision settings to the GUI (same flags as headless) so we can deliberately perturb geometry and observe motion.
+2. Render Pi/E-pair dummies and angle-derived bonds in the Raw WebGPU renderer to visualize the full MMFFL constraint graph.
+3. Extend GUI tests to run short trajectories and compare against headless `traj_*.xyz` using `compare_xyz_trajectories.py`.
+4. Once GUI ↔ headless parity is validated on H₂O/CH₂O, repeat for guanine/pentacene and move on to solver parity (`solve_cluster_jacobi`).
+
+**Detailed notes about the GUI parity fix**
+
+- The GUI now uses the shared XPDB path, which means it builds the same MMFFL-packed topology and buffers as the headless runner.
+- The `MolGUIApp._cloneSystemForXPDB()` method clones the molecule via `exportAsParsed()` to prevent MMFFL dummies from touching the original system.
+- The `updateXPDBTopology()` method builds packed topology on the clone, re-initializes `XPDB_WebGPU`/`XPDB_CPU` to `n_all` (real + dummies), and calls `uploadPackedAtoms()` + `uploadPackedTopology()`.
+- The `syncXPDBPositions()` method copies back only the first `xpdbNReal` atoms to keep the GUI geometry at 3 atoms.
+- The GUI buttons now log the same expanded data as the headless CLI using `dumpXPDBTopology()` and `dumpXPDBBuffers()`.
+- The solver paths (`stepXPDB`, `xpdbStepOnce`, `xpdbRelaxSteps`) now call `xpdb.step({ ... })` with the shared options object.
+
+**GUI parity fix benefits**
+
+- The GUI now shares the same MMFFL-packed topology and buffers as the headless runner, ensuring consistent behavior and output.
+- The GUI can now deliberately perturb geometry and observe motion using deterministic distortions + collision settings.
+- The GUI can render Pi/E-pair dummies and angle-derived bonds in the Raw WebGPU renderer to visualize the full MMFFL constraint graph.
+- The GUI can run short trajectories and compare against headless `traj_*.xyz` using `compare_xyz_trajectories.py`.
