@@ -18,6 +18,7 @@ import { XPDB_WebGPU } from './XPDB_WebGPU.js';
 import { XPDB_CPU } from './XPDB_CPU.js';
 import { getMaxRadius } from './XPDBTopology.js';
 import { buildXPDBInputsFromMol } from './MMFFLTopology.js';
+import { XPDBTopologyRenderer } from './XPDBTopologyRenderer.js';
 
 installMoleculeIOMethods(EditableMolecule);
 
@@ -67,6 +68,108 @@ export class MolGUIApp {
         // XPDB topology state (real vs dummies)
         this.xpdbNReal = 0;
         this.xpdbNAll = 0;
+
+        // XPDB topology visualization overlay (separate from EditableMolecule renderer)
+        this.xpdbTopoRenderer = null;
+        this.xpdbTopoVisible = false;
+        this.xpdbTopoVisibility = {
+            atoms_real: true,
+            atoms_dummy: true,
+            primary: true,
+            angle: true,
+            pi: true,
+            pi_align: true,
+            epair: true,
+            epair_pair: true,
+        };
+        this._xpdbTopoLast = null;
+    }
+
+    async _rebuildXPDBTopoCPU(reason = 'manual') {
+        const verbosity = window.VERBOSITY_LEVEL | 0;
+        const nReal = this.system.nAtoms || 0;
+        if (!(nReal > 0)) {
+            if (verbosity >= 1) console.warn(`[XPDBTopoCPU] skip rebuild reason=${reason} (no atoms)`);
+            this._xpdbTopoLast = null;
+            return null;
+        }
+        if (!this.mmParams) throw new Error(`[XPDBTopoCPU] mmParams missing (reason=${reason})`);
+        try {
+            const molXPDB = this._cloneSystemForXPDB();
+            const packed = buildXPDBInputsFromMol(molXPDB, this.mmParams, {
+                report_types: false,
+                add_angle: !!this.xpdbUseAngles,
+                add_pi: true,
+                two_pi: true,
+                add_pi_align: false,
+                add_epair: true,
+                add_epair_pairs: false,
+                L_pi: 1.0,
+                L_epair: 0.5,
+                k_angle: 100.0,
+                k_pi: 50.0,
+                k_pi_orth: 30.0,
+                k_pi_align: 15.0,
+                k_ep: 40.0,
+                k_ep_orth: 25.0,
+                k_ep_pair: 10.0,
+                defaultK: 200.0,
+                nMaxBonded: 16,
+            });
+            this._xpdbTopoLast = packed.topo;
+            if (verbosity >= 2) {
+                console.log('[XPDBTopoCPU] rebuilt', {
+                    reason,
+                    n_real: packed.topo?.n_real | 0,
+                    n_all: packed.topo?.n_all | 0,
+                    bonds_primary: packed.topo?.bonds_primary ? packed.topo.bonds_primary.length : 0,
+                });
+            }
+            return packed;
+        } catch (e) {
+            this._xpdbTopoLast = null;
+            if (this.xpdbTopoRenderer) this.xpdbTopoRenderer.clear();
+            throw e;
+        }
+    }
+
+    async _refreshXPDBTopoOverlay(reason = 'manual') {
+        const verbosity = window.VERBOSITY_LEVEL | 0;
+        if (!this.xpdbTopoRenderer) return;
+
+        if (!this.xpdbTopoVisible) {
+            this.xpdbTopoRenderer.setEnabled(false);
+            if (verbosity >= 3) console.log('[XPDBTopoOverlay] disabled', { reason });
+            return;
+        }
+
+        // Ensure we have a topology even if user never enabled XPDB simulation.
+        if (!this._xpdbTopoLast) {
+            if (verbosity >= 2) console.log('[XPDBTopoOverlay] topo missing; rebuilding CPU topo', { reason });
+            try {
+                await this._rebuildXPDBTopoCPU(`overlay:${reason}`);
+            } catch (e) {
+                console.error('[XPDBTopoOverlay] rebuild failed', e);
+                this.xpdbTopoRenderer.setEnabled(false);
+                return;
+            }
+        }
+
+        if (!this._xpdbTopoLast) {
+            if (verbosity >= 1) console.warn('[XPDBTopoOverlay] still no topo after rebuild', { reason });
+            this.xpdbTopoRenderer.setEnabled(false);
+            return;
+        }
+
+        if (verbosity >= 2) {
+            console.log('[XPDBTopoOverlay] update', {
+                reason,
+                visible: this.xpdbTopoVisible,
+                n_all: this._xpdbTopoLast.n_all | 0,
+                n_real: this._xpdbTopoLast.n_real | 0,
+            });
+        }
+        this.xpdbTopoRenderer.updateFromTopo(this._xpdbTopoLast, { enabled: true, visibility: this.xpdbTopoVisibility });
     }
 
     _cloneSystemForXPDB() {
@@ -77,7 +180,8 @@ export class MolGUIApp {
         if (!parsed) throw new Error('_cloneSystemForXPDB: system.exportAsParsed() missing');
         m.clear();
         m.appendParsedSystem(parsed);
-        m.recalculateBonds(this.mmParams);
+        const v = window.VERBOSITY_LEVEL | 0;
+        if (v >= 3) console.log('[MolGUIApp/_cloneSystemForXPDB] cloned system', { nAtoms: m.atoms.length, nBonds: m.bonds ? m.bonds.length : 0 });
         return m;
     }
 
@@ -231,7 +335,15 @@ export class MolGUIApp {
                 this.raw.render();
                 this._maybeScheduleExtraFrame();
 
-                // Pure WebGPU mode: no WebGL overlay rendering.
+                // Optional WebGL overlay (topology debug, etc.) on top of raw WebGPU canvas.
+                if (this.overlayRenderer && this.overlayScene && this.camera) {
+                    try {
+                        this.overlayRenderer.render(this.overlayScene, this.camera);
+                    } catch (e) {
+                        console.error('[MolGUIApp][overlayRenderer] render failed', e);
+                    }
+                }
+
                 return;
             }
 
@@ -362,7 +474,23 @@ export class MolGUIApp {
             this.raw = new RawWebGPUAtomsRenderer(canvas);
             await this.raw.init({ maxAtoms: 65536 });
 
-            console.warn('[MolGUIApp] Raw WebGPU mode enabled. WebGL/Three overlay (gizmo) is DISABLED to keep renderer pure WebGPU.');
+            // WebGL overlay canvas for debug visuals (XPDB topology overlay etc.)
+            // This does NOT affect the raw WebGPU renderer; it's a separate transparent layer.
+            this.overlayCanvas = document.createElement('canvas');
+            this.overlayCanvas.style.width = '100%';
+            this.overlayCanvas.style.height = '100%';
+            this.overlayCanvas.style.position = 'absolute';
+            this.overlayCanvas.style.top = '0';
+            this.overlayCanvas.style.left = '0';
+            this.overlayCanvas.style.zIndex = '1';
+            this.overlayCanvas.style.pointerEvents = 'none';
+            this.container.appendChild(this.overlayCanvas);
+            this.overlayRenderer = new THREE.WebGLRenderer({ canvas: this.overlayCanvas, alpha: true, antialias: true });
+            this.overlayRenderer.setClearColor(0x000000, 0.0);
+            this.overlayRenderer.setSize(width, height);
+            this.overlayScene = new THREE.Scene();
+
+            console.warn('[MolGUIApp] Raw WebGPU mode enabled. Using transparent WebGL overlay canvas for debug/topology visualization.');
 
             // Provide minimal renderer-like object for Editor/controls
             this.renderer = {
@@ -442,6 +570,11 @@ export class MolGUIApp {
             substrate: new MoleculeRenderer(this.scene, this.packedSystems.substrate, null, this.mmParams, this.systems.substrate)
         };
         this.molRenderer = this.renderers.molecule;
+
+        // 6b. XPDB topology overlay renderer (dummy atoms + constraint bonds)
+        this.xpdbTopoRenderer = new XPDBTopologyRenderer(this.useRawWebGPU ? this.overlayScene : this.scene);
+        this.xpdbTopoRenderer.setEnabled(!!this.xpdbTopoVisible);
+        this.xpdbTopoRenderer.setVisibilityMap(this.xpdbTopoVisibility);
 
         await this._autoLoadDefaultMolecule();
 
@@ -575,6 +708,30 @@ export class MolGUIApp {
         this.initXPDB();
     }
 
+    setXPDBTopologyOverlayVisible(visible) {
+        this.xpdbTopoVisible = !!visible;
+        const verbosity = (window.VERBOSITY_LEVEL | 0);
+        const dbg = !!window.DEBUG_XPDB_TOPO_VIZ;
+        if (dbg) console.log('[MolGUIApp.setXPDBTopologyOverlayVisible]', { visible: this.xpdbTopoVisible, hasTopo: !!this._xpdbTopoLast });
+        // async refresh (do not require checkbox handlers to be async)
+        Promise.resolve().then(() => this._refreshXPDBTopoOverlay('setVisible')).catch((e) => {
+            console.error('[XPDBTopoOverlay] refresh failed', e);
+        });
+        this.requestRender();
+    }
+
+    setXPDBTopologyOverlayVisibility(vis) {
+        if (!vis) return;
+        for (const k of Object.keys(vis)) this.xpdbTopoVisibility[k] = !!vis[k];
+        const dbg = !!window.DEBUG_XPDB_TOPO_VIZ;
+        if (dbg) console.log('[MolGUIApp.setXPDBTopologyOverlayVisibility]', { vis });
+        // async refresh (may rebuild topo if missing)
+        Promise.resolve().then(() => this._refreshXPDBTopoOverlay('setVisibility')).catch((e) => {
+            console.error('[XPDBTopoOverlay] refresh failed', e);
+        });
+        this.requestRender();
+    }
+
     async initXPDB() {
         if (!navigator.gpu) {
             window.logger.warn("WebGPU not available, XPDB simulation disabled");
@@ -671,6 +828,10 @@ export class MolGUIApp {
             this.xpdbNReal = nReal;
             this.xpdbNAll = nAll;
             this._xpdbBondsAdj = packed.bondsAdj;
+
+            // Update topology visualization overlay (do not touch EditableMolecule rendering)
+            this._xpdbTopoLast = packed.topo;
+            if (this.xpdbTopoVisible) await this._refreshXPDBTopoOverlay('updateXPDBTopology');
 
             this.xpdbDirty = false;
             window.logger.info(`XPDB topology updated: n_real=${nReal} n_all=${nAll}`);
@@ -1105,6 +1266,10 @@ export class MolGUIApp {
         this._rawBondsDirty = true;
         this._rawLabelsDirty = true;
         this._rawSelectionDirty = true;
+        // Any topology/atom-count change invalidates cached XPDB topo built on previous molecule.
+        this.xpdbDirty = true;
+        this._xpdbTopoLast = null;
+        if (this.xpdbTopoRenderer) this.xpdbTopoRenderer.clear();
         console.log('[MolGUIApp/raw] markAllDirty', { reason });
     }
 

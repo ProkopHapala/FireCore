@@ -20,9 +20,21 @@ export class XPDB_CPU {
             this.pos[i * 3 + 0] = a.pos.x;
             this.pos[i * 3 + 1] = a.pos.y;
             this.pos[i * 3 + 2] = a.pos.z;
+
+            const Z = a.Z | 0;
+            // XPDB/MMFFL dummy atoms (Pi/Epair) use synthetic Z codes (200/201). They have no MMParams type.
+            // We must not call MMParams.getAtomTypeForAtom() on them.
+            if (Z >= 200) {
+                const v = window.VERBOSITY_LEVEL | 0;
+                if (v >= 3) console.warn(`[XPDB_CPU.uploadFromMolecule] dummy atom i=${i} Z=${Z} (using fallback rad/mass)`);
+                this.rad[i] = 0.1;
+                this.mass[i] = 1.0;
+                continue;
+            }
+
             const at = mmParams.getAtomTypeForAtom(a);
             this.rad[i] = (at && at.RvdW > 0) ? at.RvdW : 1.0;
-            this.mass[i] = (a.Z || 1) * 1.0;
+            this.mass[i] = (Z > 0) ? (Z * 1.0) : 1.0;
         }
     }
 

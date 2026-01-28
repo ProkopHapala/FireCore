@@ -730,6 +730,47 @@ export class GUI {
             }
         });
 
+        // --- Section: XPDB Topology (Visualization) ---
+        this.createSection(sidebar, 'XPDB Topology (Viz)', (container) => {
+            const row0 = GUIutils.row(container, { marginBottom: '8px' });
+            GUIutils.labelCheck(row0, 'Show XPDB topology overlay', false, (e) => {
+                const checked = !!(e && e.target && e.target.checked);
+                const dbg = !!window.DEBUG_XPDB_TOPO_VIZ;
+                if (dbg) console.log('[GUI][XPDB Topology Viz] toggle overlay', { checked });
+                if (window.app && window.app.setXPDBTopologyOverlayVisible) {
+                    window.app.setXPDBTopologyOverlayVisible(checked);
+                }
+                this.requestRender();
+            });
+
+            const mk = (label, key, def, color) => {
+                const r = GUIutils.row(container, { marginBottom: '4px' });
+                const obj = GUIutils.labelCheck(r, label, !!def, (e) => {
+                    const checked = !!(e && e.target && e.target.checked);
+                    const dbg = !!window.DEBUG_XPDB_TOPO_VIZ;
+                    if (dbg) console.log('[GUI][XPDB Topology Viz] toggle category', { key, checked });
+                    if (window.app && window.app.setXPDBTopologyOverlayVisibility) {
+                        window.app.setXPDBTopologyOverlayVisibility({ [key]: checked });
+                    }
+                    this.requestRender();
+                });
+                if (obj && obj.label && color) obj.label.style.color = color;
+                return obj;
+            };
+
+            mk('Atoms (real)', 'atoms_real', true, '#ddd');
+            mk('Atoms (dummy)', 'atoms_dummy', true, '#ffcc55');
+            mk('Bonds: primary', 'primary', true, '#ddd');
+            mk('Bonds: angle-derived', 'angle', true, '#55ccff');
+            mk('Bonds: pi', 'pi', true, '#ff55ff');
+            mk('Bonds: pi-align', 'pi_align', true, '#aa55ff');
+            mk('Bonds: epair', 'epair', true, '#ffaa00');
+            mk('Bonds: epair-pair', 'epair_pair', true, '#ff4400');
+
+            const hint = GUIutils.div(container, null, { fontSize: '0.85em', opacity: '0.8', marginTop: '6px' });
+            hint.textContent = 'Overlay uses MMFFLTopology (dummy atoms + derived bonds) built on a cloned molecule; it does not modify the editable molecule renderer.';
+        });
+
 
         const defaultScript = `
 // Silicon Nanocrystal from CIF with plane templates and overlays

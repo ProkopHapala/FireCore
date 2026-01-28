@@ -623,3 +623,192 @@ Remaining XPDB refactor work (shared vs legacy):
 | Initial distortion utilities | GUI lacks [applyInitialDistortion](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/run_xpdb_webgpu_headless.mjs:117:0-134:1); headless defines it inline (cannot be reused) | [applyInitialDistortion()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/run_xpdb_webgpu_headless.mjs:117:0-134:1) in [run_xpdb_webgpu_headless.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/run_xpdb_webgpu_headless.mjs:0:0-0:0) — move into existing shared helper so both sides can import |
 
 Once the GUI consumes [buildXPDBInputsFromXYZArgs()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:234:0-380:1) + `uploadPackedTopology()` and calls the shared [step({ … })](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/XPDB_WebGPU.js:320:4-406:5), all XPDB-critical code will live in the shared modules already proven against the PyOpenCL reference.
+
+
+
+---
+
+## USER
+
+
+OK, the rendering of the topology looks good, but what is very bad is how the topology is recomputed
+1) we are rebuilding all bonds. That should not be done. rebuilding bolds from geometry should be separate function, than building the axuliary dummy atoms and angle-derived bonds for the XPDB forcefied. Now it is mixed up and rebulding everything :-( this we need to repair and rationalize. When I load a .mol file which already contain bonds I do not want to rebuild bond every time I hit "Relax N steps" it should only rebuild the angle derived ones. 
+
+2) Also when I deflect an atom and it rebuild the XPDB tpology, it does not seem to relax to something which loos chemically meaningfull. And I'm not sure why, but it can be because the angle-derived bonds are created from the actuall initial geometry, rather then from @MMParams.js ?
+
+I mean in @MMParams.js should be optimal bond lengh for CH, OH etc, (every combination of types) and also stiffnesses read from @BondTypes.dat @AngleTypes.dat @AtomTypes.dat 
+
+so for example any sp3 should be ~107deg, sp2 ~120deg etc, and C-C ~1.5A, and so we can compute by cosine law what should be distance of the two 2nd neighbor hydrogen atom in  H-C-H angle just form that params.
+
+But it seems to me that instead what we take is the actuall geometry and distance between atoms in that actuall geometry. Which is pretty stupid because it will never correct initial distorted gometry.
+
+Investigate this how it is done in the code and confirme aor disproof my hypothesis.   
+
+---
+
+## GPT-5.1-Codex
+
+Key findings (matching the memories on “fail loudly” and “minimal dependencies”):
+
+1. **We currently rebuild *all* bonds every time XPDB topology is rebuilt.**  
+   - [MolGUIApp._cloneSystemForXPDB()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/main.js:162:4-172:5) calls `m.recalculateBonds(this.mmParams)` unconditionally, so even MOL2 files that already contain bonds get re-derived from geometry every time you hit Relax/Step.  
+   - [buildXPDBInputsFromMol()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMFFLTopology.js:30:0-96:1) always calls [buildMMFFLTopology()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMFFLTopology.js:589:0-719:1), which in turn:
+     - Re-derives primary bond adjacency (`bondsAdj1`) using [mmParams.getBondParams()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMParams.js:422:4-443:5) and the current molecule geometry.
+     - Recomputes angle/auxiliary structures on top of that.  
+   ⇒ You’re right: there’s no separation between “primary bond typing” and “auxiliary XPDB structures”; every rebuild retriggers the expensive, geometry-based bond finding.
+
+2. **Angle-derived bond lengths currently ignore MMFF tables once packing happens.**  
+   - Within [buildAngleBonds()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMFFLTopology.js:154:0-184:1) we do use [MMParams](cci:2://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMParams.js:62:0-522:1): `theta = atype.Ass`, `K = tB.Kss`, and `r_ab`, `r_bc` come from `bondsAdj1` whose `l0` was sourced from [mmParams.getBondParams()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMParams.js:422:4-443:5). So the *initial* `linear_bonds` entries are consistent with AtomTypes + BondTypes + AngleTypes.  
+   - However [buildXPDBInputsFromMol()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMFFLTopology.js:30:0-96:1) throws away those `l0/k` values. It deduplicates `topo.bonds_*`, then reassigns **L = geometric distance** and **K = opts.defaultK** for *every* bond (even angle/π ones) @web/molgui_webgpu/MMFFLTopology.js#48-78. That means XPDB relaxations chase whatever distorted geometry you started with, not the canonical MM parameters—exactly the misbehavior you’re seeing.
+
+3. **Python MMFFL reference keeps canonical lengths.**  
+   - `pyBall/OCL/MMFFL._build_angle_bonds()` mirrors the JS logic but later, when packing for XPDB, Python keeps each `(l0, k)` from `linear_bonds` (see `_pack_fixed_bonds` in `pyBall/XPDB_AVBD/test_TiledJacobi_molecules.py`).  
+   - JS diverged at the packing stage.
+
+### Refactor direction
+
+1. **Separate primary bond management vs XPDB augmentation:**
+   - Persist the bonds that come from loaders (MOL/MOL2) and only call `recalculateBonds()` when the user explicitly requests it (e.g., “Recalculate Bonds” button).
+   - Split [buildMMFFLTopology()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMFFLTopology.js:589:0-719:1) into:
+     1. A “primary snapshot” that takes existing `mol.bonds` (no mutation/recalc).
+     2. An augmentation phase (angles, pi, epairs) that assumes those bonds are already correct.
+
+2. **Preserve per-bond `l0`/`k` from MM tables:**
+   - When building adjacency for XPDB, copy `(l0,k)` directly from:
+     - `bondsAdj1` for real bonds (already typed via [mmParams.getBondParams()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMParams.js:422:4-443:5)).
+     - `linear_bonds` for angle/π/epair entries (they already store `l0`/`k`).
+   - Only fall back to geometric distance + default `K` when MM data is missing.
+
+3. **Optional next steps:**
+   1. Add a checksum/version so XPDB rebuilds only when `mol.dirtyTopo` or aux options change.
+   2. Surface a “Rebuild bonds from geometry” button for the rare case when the file truly has no bonds.
+
+Let me know if you want me to draft the concrete JS changes (I’ll need Code mode to edit).
+
+
+---
+
+## USER
+
+OK, so I was right, it is a mess. So correct that! we must take taget geometric params (angles, bond lenghts) from params not from actuall distorted geometry.
+And we should not recalculate real bonds in the forcefield xPDB topology builder (we should recalculate bonds only in EditableBolecule when button "Recalculate Bonds" is pressed 
+see recalculateBonds in @EditableMolecule.js , we should not have other redudcant bond recalculation.
+
+the philospohy is that the @EditableMolecule.js should be source of real bonding topology and @XPDBTopology.js (or that is deprecated right? we should delete it?) or @MMFFLTopology.js should only add the axuliary pi and epair particles and angle-derived bonds on top of it so we can run XPBD.
+
+Hope this is clearly understanble, Please make a clear plan.
+
+---
+
+## GPT-5.1-Codex
+
+Plan to rationalize XPDB topology rebuilds (based on findings + user rules):
+
+1. **EditableMolecule as sole primary-bond authority**
+   - Stop calling `m.recalculateBonds()` inside [_cloneSystemForXPDB()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/main.js:162:4-172:5) / [buildMMFFLTopology](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMFFLTopology.js:589:0-719:1). These routines should trust whatever `EditableMolecule` already has (MOL/MOL2 import, manual edits, or an explicit GUI “Recalculate Bonds” request).
+   - Ensure all editor operations that mutate bonds (`addBond`, `deleteSelection`, script ops) already mark topology dirty—that’s where bond recalculation belongs, not in XPDB builders.
+
+2. **Split MMFFL builder into two layers**
+   1. **Primary snapshot**: read existing `mol.bonds` and copy their typed parameters (`l0`, `k`) directly via [mmParams.getBondParams()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMParams.js:422:4-443:5); no geometry-based fallback unless a bond is missing MM data (only then use `opts.defaultL/K`, with a loud warn).
+   2. **Auxiliary augmentation**: reuse the existing functions ([buildAngleBonds](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMFFLTopology.js:154:0-184:1), [buildPiDummies](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMFFLTopology.js:443:0-487:1), `buildEpair*`) but make them consume the primary adjacency that already contains canonical `l0/k`. They should append their own `(l0,k)` (using AtomTypes + AngleTypes) into `linear_bonds` without touching real bonds.
+
+3. **Preserve canonical parameters during packing**
+   - Change [buildXPDBInputsFromMol()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMFFLTopology.js:30:0-96:1) so it doesn’t overwrite `l0/k` with geometric distances/default stiffness. Instead:
+     - Seed adjacency with the typed primary bonds (`bondsAdj1`).
+     - For each entry in `linear_bonds`, push its `l0/k` into adjacency as-is.
+     - Only if a bond lacks a defined `l0` (e.g., missing data) compute/assign the geometric fallback once.
+   - This mirrors Python’s `_pack_fixed_bonds`, letting XPDB relax distorted geometries back toward MMFF targets.
+
+4. **Rationalize rebuild triggers**
+   - XPDB rebuild should trigger only when:
+     - EditableMolecule topology dirty (user changed bonds or pressed “Recalculate Bonds”).
+     - XPDB aux options change (toggle pi/epair/angles, dummy lengths, stiffness sliders).
+   - Implement a version counter or hash (`this.system.topoVersion` already exists) and store it alongside `_xpdbTopoLast`. If topoVersion hasn’t changed, skip the expensive rebuild and just reuse cached topology unless aux settings differ.
+   - Ensure `markRawAllDirty/markRawTopologyDirty` only clears `_xpdbTopoLast` when actual molecule topology changes; pure geometry edits (moving atoms) shouldn’t invalidate MMFF topology.
+
+5. **Cleanup / consistency**
+   - Confirm `EditableMolecule.recalculateBonds()` is the *only* path that derives bonds from geometry. Update GUI hints: “Recalculate Bonds” should be the user-controlled action.
+   - Remove the deprecated `XPDBTopology.js` or, at minimum, make it a thin compatibility shim that forwards to `MMFFLTopology` so there’s no confusion about multiple builders.
+   - Add loud warnings when bond data is missing (`console.error` or thrown errors per “fail loudly” memory) so we don’t silently fall back to geometry.
+
+6. **Implementation order**
+   1. Refactor [_cloneSystemForXPDB](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/main.js:162:4-172:5) + [buildMMFFLTopology](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMFFLTopology.js:589:0-719:1) to stop recalc and to reuse existing bonds.
+   2. Rework [buildXPDBInputsFromMol](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMFFLTopology.js:30:0-96:1) packing logic to preserve `l0/k`.
+   3. Add cache invalidation keyed on `EditableMolecule.topoVersion` + aux-options signature.
+   4. Delete or deprecate `XPDBTopology.js` to avoid drift.
+   5. Add regression logging/tests ensuring primary bonds only change via GUI button.
+
+Let me know when you want me to start editing (need Code mode).
+
+---
+
+## USER
+
+"no geometry-based fallback" period !, I hate when you add stupid fallbacks which hide erros , whe have the rule to fail explicitly, we must throw exaction print error to console, never ad stupid fallback. we do scientific simulations here, not some stupid user webpage, we need to see errors when they happen ! This falback philosophy is a scourge of debugging.
+
+1) when you implement these things add debug print to console (can be gated by verbosity) without them we are blind and can debung nothing !!!
+
+we should also add these rules into memory, I keep saying theat but you still do not follow it enoguh !
+
+update the plan
+
+---
+
+## GPT-5.1-Codex
+
+Updated plan (no hidden fallbacks, with debug visibility):
+
+1. **EditableMolecule owns real bonds exclusively**
+   - Strip all implicit `recalculateBonds()` calls from [_cloneSystemForXPDB()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/main.js:174:4-184:5)/[buildMMFFLTopology()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMFFLTopology.js:589:0-719:1). XPDB code must trust whatever bonds already exist; only the GUI “Recalculate Bonds” button may rebuild them.
+   - Ensure any editor action that mutates bonds keeps the existing [markRawTopologyDirty](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/main.js:1242:4-1245:5) flow, so XPDB sees a new topoVersion instead of recomputing bonds itself.
+
+2. **MMFFL builder = augmentation layer only, with loud errors**
+   - While ingesting `mol.bonds`, resolve `(l0,k)` via [mmParams.getBondParams()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMParams.js:422:4-443:5); if lookup fails, immediately throw (or `console.error` + throw) rather than guessing. No geometry fallback.
+   - Angle/pi/epair helpers must also error when required AtomType/AngleType data is missing. Every such path gets verbosity-gated debug prints (e.g., `if ((window.VERBOSITY_LEVEL|0)>=2) console.log('[XPDB/MMFFL] ...')`) so we can trace inputs when it fails.
+
+3. **XPDB packing preserves canonical parameters**
+   - [buildXPDBInputsFromMol()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMFFLTopology.js:30:0-96:1) seeds adjacency directly from the typed primary bonds plus the `linear_bonds` list. Each entry carries its original `l0`/`k`; if either is NaN/<=0, throw with a descriptive message (atom indices, tag).
+   - No geometry-derived lengths unless explicitly provided by MM tables; instead, fail loudly so missing data surfaces in dev logs.
+
+4. **Controlled rebuild triggers + diagnostics**
+   - Cache `_xpdbTopoLast` with `{topoVersion, auxSignature}`. Rebuild only when either changes; otherwise reuse the cached topo, logging at high verbosity.
+   - [markRawTopologyDirty](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/main.js:1242:4-1245:5) should clear the cache only when `EditableMolecule.topoVersion` increments. Pure geometry moves shouldn’t nuke the XPDB topo.
+   - Add debug prints (verbosity ≥2) in [_rebuildXPDBTopoCPU](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/main.js:87:4-133:5), [_refreshXPDBTopoOverlay](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/main.js:135:4-172:5), and XPDB packing so we always see reason codes, n_real/n_all, bond counts.
+
+5. **Cleanup + documentation**
+   - Deprecate `XPDBTopology.js` (either delete or make it delegate to the new path with a loud warning) to avoid parallel implementations.
+   - Document these “no fallback / throw on missing data / debug prints” rules in [migration_to_webgpu.md](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/migration_to_webgpu.md:0:0-0:0) so future contributors follow them.
+
+All future changes will follow the “fail loudly” memory (beab66ed-e401-467a-a73d-25e9a5186c6f) and add verbosity-gated diagnostics per your instruction. When you’re ready for code changes, switch to Code mode.
+
+---
+
+## USER
+
+OK, is seems quite good now,seems to work, but we have probably problem with types, we need to make clear debug ouput in console what types and parameters are assinge, I opened petacene which has all sp2 carbons (aromatics) but the result seems more like sp3 (aliphatic carbons). Also the pi-orbitals are created just on one side. We should have somewhere in gui clickable options which axulary topology (pi-orbitals, electrob pairs, and derived bonds from angles/pi/epair) should be generated, nd if pi-orbitals should be two-sided, we have similar options in the headless scrips like @dump_xpdb_topology.mjs @run_xpdb_webgpu_headless.mjs 
+
+also we should ad option to visialuze bounding boxes
+
+make clear plan.
+
+---
+
+## GPT-5.1-Codex
+
+### Updated plan
+
+1. **High-verbosity type/parameter reporting**  
+   - In [buildMMFFLTopology()](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMFFLTopology.js:626:0-773:1) (and headless parity via [dump_xpdb_topology.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/dump_xpdb_topology.mjs:0:0-0:0)), log per-atom assignments when `VERBOSITY_LEVEL>=2`: atom id, symbol, AtomTypes.dat key, valence, `Ass`, `Kss`, bond params used (`l0/k`).  
+   - For pentacene we’ll see whether carbons get `C_R`/`C_ene` (sp2) vs `C_3` (sp3). Missing entries will throw already; now we also see what was chosen.
+
+2. **GUI + headless toggles for auxiliary topology & pi dummies**  
+   - Add a small XPDB options panel (checkboxes) in the Web GUI mirroring the CLI flags (`addAngle`, `addPi`, `twoPi`, `addPiAlign`, `addEpair`, `addEpairPairs`).  
+   - Each toggle updates an internal “XPDB opts” struct and forces `_xpdbTopoLast` rebuild.  
+   - Expose the same options through [run_xpdb_webgpu_headless.mjs](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/run_xpdb_webgpu_headless.mjs:0:0-0:0) CLI (already parsed) and propagate to [buildXPDBInputsFromMol](cci:1://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMFFLTopology.js:30:0-123:1).  
+   - Add a “show bounding boxes” checkbox to Visualization: when enabled, call the existing bounding-box helper (or add one) in the renderer.
+
+3. **Files touched so far (to stage later)**  
+   - [web/molgui_webgpu/main.js](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/main.js:0:0-0:0)  
+   - [web/molgui_webgpu/MMFFLTopology.js](cci:7://file:///home/prokop/git/FireCore/web/molgui_webgpu/MMFFLTopology.js:0:0-0:0)
+
+Let me know when you want me to start editing (switch to Code mode).

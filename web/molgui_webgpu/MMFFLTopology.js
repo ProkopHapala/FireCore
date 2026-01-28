@@ -34,47 +34,74 @@ export function buildXPDBInputsFromMol(mol, mm, opts = {}) {
     if (!(nMaxBonded > 0)) throw new Error(`buildXPDBInputsFromMol: invalid nMaxBonded=${nMaxBonded}`);
     const topo = buildMMFFLTopology(mol, mm, opts);
 
+    const v = (typeof window !== 'undefined' && window.VERBOSITY_LEVEL !== undefined) ? (window.VERBOSITY_LEVEL | 0) : 0;
+    if (v >= 2) console.log('[buildXPDBInputsFromMol] pack adjacency', { n_real: topo.n_real | 0, n_all: topo.n_all | 0, nMaxBonded });
+
     const nAtoms = topo.n_all | 0;
     const bondsAdj = new Array(nAtoms);
     for (let i = 0; i < nAtoms; i++) bondsAdj[i] = [];
 
-    const addEdge = (i, j, L, K) => { bondsAdj[i].push([j | 0, +L, +K]); };
-    const uniq = new Map();
-    const bondKey = (a, b) => {
+    const addEdge = (i, j, L, K, tag = '') => {
+        const ii = i | 0;
+        const jj = j | 0;
+        const l0 = +L;
+        const k0 = +K;
+        if (!(ii >= 0 && ii < nAtoms && jj >= 0 && jj < nAtoms)) {
+            throw new Error(`buildXPDBInputsFromMol.addEdge: index out of range i=${ii} j=${jj} nAtoms=${nAtoms} tag=${tag}`);
+        }
+        if (!(l0 > 0) || !Number.isFinite(l0)) {
+            throw new Error(`buildXPDBInputsFromMol.addEdge: invalid l0=${l0} for i=${ii} j=${jj} tag=${tag}`);
+        }
+        if (!(k0 > 0) || !Number.isFinite(k0)) {
+            throw new Error(`buildXPDBInputsFromMol.addEdge: invalid k=${k0} for i=${ii} j=${jj} tag=${tag}`);
+        }
+        bondsAdj[ii].push([jj, l0, k0]);
+    };
+
+    // Uniqueness: keep first occurrence per undirected pair. Duplicate definitions are a hard error.
+    const seen = new Map();
+    const keyOf = (a, b) => {
         const i = (a < b) ? a : b;
         const j = (a < b) ? b : a;
         return `${i},${j}`;
     };
-    const derived = [];
-    if (opts.add_angle) derived.push(...topo.bonds_angle);
-    if (opts.add_pi) derived.push(...topo.bonds_pi);
-    if (opts.add_pi && opts.add_pi_align) derived.push(...topo.bonds_pi_align);
-    if (opts.add_epair) derived.push(...topo.bonds_epair);
-    if (opts.add_epair && opts.add_epair_pairs) derived.push(...topo.bonds_epair_pair);
-    const all0 = [...topo.bonds_primary, ...derived];
-    for (const e of all0) {
+    const addUndirected = (a, b, L, K, tag) => {
+        const aa = a | 0;
+        const bb = b | 0;
+        const k = keyOf(aa, bb);
+        if (seen.has(k)) {
+            const prev = seen.get(k);
+            throw new Error(`buildXPDBInputsFromMol: duplicate bond pair (${k}) newTag=${tag} prevTag=${prev}`);
+        }
+        seen.set(k, tag);
+        addEdge(aa, bb, L, K, tag);
+        addEdge(bb, aa, L, K, tag);
+    };
+
+    // Primary bonds MUST exist and MUST be typed.
+    if (!topo.bonds_primary || topo.bonds_primary.length === 0) {
+        throw new Error('buildXPDBInputsFromMol: topo.bonds_primary empty; primary bonding must come from EditableMolecule (use Recalculate Bonds if needed)');
+    }
+    for (let i = 0; i < topo.bonds_primary.length; i++) {
+        const e = topo.bonds_primary[i];
         const a = e[0] | 0;
         const b = e[1] | 0;
-        const i = (a < b) ? a : b;
-        const j = (a < b) ? b : a;
-        uniq.set(bondKey(a, b), [i, j]);
+        const l0 = topo.primary_params_l0 ? topo.primary_params_l0[i] : null;
+        const k0 = topo.primary_params_k ? topo.primary_params_k[i] : null;
+        addUndirected(a, b, l0, k0, 'primary');
     }
-    const bondsAll = Array.from(uniq.values());
-    bondsAll.sort((p, q) => (p[0] - q[0]) || (p[1] - q[1]));
 
-    const dist = (a, b) => {
-        const pa = topo.apos[a];
-        const pb = topo.apos[b];
-        const dx = pa[0] - pb[0];
-        const dy = pa[1] - pb[1];
-        const dz = pa[2] - pb[2];
-        return Math.sqrt(dx * dx + dy * dy + dz * dz);
-    };
-    const K0 = (opts.defaultK !== undefined) ? +opts.defaultK : 200.0;
-    for (const [a, b] of bondsAll) {
-        const L = dist(a, b);
-        addEdge(a, b, L, K0);
-        addEdge(b, a, L, K0);
+    // Derived/aux bonds MUST use canonical l0/k from topo.bonds_linear.
+    if (!topo.bonds_linear) throw new Error('buildXPDBInputsFromMol: topo.bonds_linear missing');
+    for (let i = 0; i < topo.bonds_linear.length; i++) {
+        const b = topo.bonds_linear[i];
+        const a = b[0] | 0;
+        const c = b[1] | 0;
+        const l0 = +b[2];
+        const k0 = +b[3];
+        const tag = b[4];
+        const kind = Array.isArray(tag) ? String(tag[0]) : String(tag);
+        addUndirected(a, c, l0, k0, `aux:${kind}`);
     }
 
     const { bondIndices, bondLenStiff } = packBondArrays(bondsAdj, nAtoms, nMaxBonded);
@@ -161,23 +188,25 @@ function buildAngleBonds(mol, mmParams, bondsAdj1, opts, outLinear) {
         const symB = Z_TO_SYMBOL[mol.atoms[ib].Z] || 'X';
         const tBname = mmParams.resolveTypeNameTable(symB);
         const tB = mmParams.atomTypes[tBname];
-        const thetaDeg = (tB && (tB.Ass !== undefined)) ? +tB.Ass : 120.0;
+        if (!tB) throw new Error(`buildAngleBonds: missing AtomType '${tBname}' for central atom ib=${ib} sym=${symB}`);
+        const thetaDeg = +tB.Ass;
+        if (!(thetaDeg > 0) || !Number.isFinite(thetaDeg)) throw new Error(`buildAngleBonds: invalid Ass=${thetaDeg} for central atom ib=${ib} type=${tBname}`);
         const theta = thetaDeg * Math.PI / 180.0;
         const cosT = Math.cos(theta);
-        const K = (kAng !== 0.0) ? kAng : ((tB && (tB.Kss !== undefined)) ? +tB.Kss : 0.0);
-        if (!(K !== 0.0)) continue;
+        const K = (kAng !== 0.0) ? kAng : (+tB.Kss);
+        if (!(K > 0) || !Number.isFinite(K)) throw new Error(`buildAngleBonds: invalid Kss=${K} for central atom ib=${ib} type=${tBname}`);
 
         for (let ia = 0; ia < neighs.length; ia++) {
             const ja = neighs[ia][0] | 0;
             const rab = +neighs[ia][1];
-            if (!(rab > 0)) continue;
+            if (!(rab > 0) || !Number.isFinite(rab)) throw new Error(`buildAngleBonds: invalid rab=${rab} at (ja=${ja},ib=${ib})`);
             for (let ic = ia + 1; ic < neighs.length; ic++) {
                 const jc = neighs[ic][0] | 0;
                 if (ja === jc) continue;
                 const rbc = +neighs[ic][1];
-                if (!(rbc > 0)) continue;
+                if (!(rbc > 0) || !Number.isFinite(rbc)) throw new Error(`buildAngleBonds: invalid rbc=${rbc} at (jc=${jc},ib=${ib})`);
                 const l0 = lawOfCosines(rab, rbc, cosT);
-                if (!(l0 > 0)) continue;
+                if (!(l0 > 0) || !Number.isFinite(l0)) throw new Error(`buildAngleBonds: invalid l0=${l0} for (ja=${ja},ib=${ib},jc=${jc})`);
                 outLinear.push([ja, jc, l0, K, ['angle', [ja, ib, jc]]]);
             }
         }
@@ -442,10 +471,15 @@ function epairDirsFromMMFF(mol, ia, neighs, pipos, npi, nep, debugTopo = null) {
 }
 
 function buildPiDummies(mol, mmParams, bondsAdj1, npiList, pipos, opts, outLinear, outPiDummies, debugTopo = null) {
-    const L_pi = (opts.L_pi !== undefined) ? +opts.L_pi : 1.0;
+    if (!opts || opts.L_pi === undefined) throw new Error('buildPiDummies: opts.L_pi required (no defaults)');
+    const L_pi = +opts.L_pi;
     const K_pi_host = (opts.k_pi !== undefined) ? +opts.k_pi : 0.0;
     const K_pi_orth = (opts.k_pi_orth !== undefined) ? +opts.k_pi_orth : 0.0;
     const twoPi = !!opts.two_pi;
+
+    if (!(L_pi > 0) || !Number.isFinite(L_pi)) throw new Error(`buildPiDummies: invalid L_pi=${L_pi}`);
+    if (!(K_pi_host > 0) || !Number.isFinite(K_pi_host)) throw new Error(`buildPiDummies: invalid k_pi(K_pi_host)=${K_pi_host}`);
+    if (!(K_pi_orth > 0) || !Number.isFinite(K_pi_orth)) throw new Error(`buildPiDummies: invalid k_pi_orth(K_pi_orth)=${K_pi_orth}`);
 
     const nBefore = mol.atoms.length;
     const tmp = new Vec3();
@@ -474,12 +508,8 @@ function buildPiDummies(mol, mmParams, bondsAdj1, npiList, pipos, opts, outLinea
             const neighs = bondsAdj1[ia] || [];
             for (let k = 0; k < neighs.length; k++) {
                 const jb = neighs[k][0] | 0;
-                const symH = Z_TO_SYMBOL[host.Z] || 'X';
-                const symB = Z_TO_SYMBOL[mol.atoms[jb].Z] || 'X';
-                const tH = mmParams.resolveTypeNameTable(symH);
-                const tB = mmParams.resolveTypeNameTable(symB);
-                const bp = mmParams.getBondParams(tH, tB);
-                const rab = (bp && bp.l0 > 0) ? bp.l0 : 1.5;
+                const rab = +neighs[k][1];
+                if (!(rab > 0) || !Number.isFinite(rab)) throw new Error(`buildPiDummies: invalid host-neigh l0 rab=${rab} for host=${ia} nb=${jb}`);
                 const l0 = Math.sqrt(L_pi * L_pi + rab * rab);
                 outLinear.push([d.i, jb, l0, K_pi_orth, ['pi-orth', [d.i, jb]]]);
             }
@@ -488,9 +518,14 @@ function buildPiDummies(mol, mmParams, bondsAdj1, npiList, pipos, opts, outLinea
 }
 
 function buildEpairDummies(mol, mmParams, bondsAdj1, npiList, nepList, pipos, opts, outLinear, outEpDummies, debugTopo = null) {
-    const L_epair = (opts.L_epair !== undefined) ? +opts.L_epair : 0.5;
+    if (!opts || opts.L_epair === undefined) throw new Error('buildEpairDummies: opts.L_epair required (no defaults)');
+    const L_epair = +opts.L_epair;
     const K_ep_host = (opts.k_ep !== undefined) ? +opts.k_ep : 0.0;
     const K_ep_orth = (opts.k_ep_orth !== undefined) ? +opts.k_ep_orth : 0.0;
+
+    if (!(L_epair > 0) || !Number.isFinite(L_epair)) throw new Error(`buildEpairDummies: invalid L_epair=${L_epair}`);
+    if (!(K_ep_host > 0) || !Number.isFinite(K_ep_host)) throw new Error(`buildEpairDummies: invalid k_ep(K_ep_host)=${K_ep_host}`);
+    if (!(K_ep_orth > 0) || !Number.isFinite(K_ep_orth)) throw new Error(`buildEpairDummies: invalid k_ep_orth(K_ep_orth)=${K_ep_orth}`);
 
     const tmp = new Vec3();
     const dirs = [];
@@ -518,12 +553,8 @@ function buildEpairDummies(mol, mmParams, bondsAdj1, npiList, nepList, pipos, op
             outLinear.push([ia, d.i, L_epair, K_ep_host, ['ep-host', [ia, d.i]]]);
             for (let kk = 0; kk < neighs.length; kk++) {
                 const jb = neighs[kk][0] | 0;
-                const symH = Z_TO_SYMBOL[host.Z] || 'X';
-                const symB = Z_TO_SYMBOL[mol.atoms[jb].Z] || 'X';
-                const tH = mmParams.resolveTypeNameTable(symH);
-                const tB = mmParams.resolveTypeNameTable(symB);
-                const bp = mmParams.getBondParams(tH, tB);
-                const rab = (bp && bp.l0 > 0) ? bp.l0 : 1.5;
+                const rab = +neighs[kk][1];
+                if (!(rab > 0) || !Number.isFinite(rab)) throw new Error(`buildEpairDummies: invalid host-neigh l0 rab=${rab} for host=${ia} nb=${jb}`);
                 const l0 = Math.sqrt(L_epair * L_epair + rab * rab);
                 outLinear.push([d.i, jb, l0, K_ep_orth, ['ep-orth', [d.i, jb]]]);
             }
@@ -534,6 +565,9 @@ function buildEpairDummies(mol, mmParams, bondsAdj1, npiList, nepList, pipos, op
 function buildEpairPairBonds(mol, epDummies, opts, outLinear) {
     const K_ep_pair = (opts.k_ep_pair !== undefined) ? +opts.k_ep_pair : 0.0;
     if (!(K_ep_pair !== 0.0)) return;
+    // No geometry-based equilibrium lengths allowed.
+    // Proper canonical epair-epair spacing needs explicit parameterization (e.g. target angle between lone pairs).
+    throw new Error('buildEpairPairBonds: k_ep_pair enabled but canonical l0 is not implemented without using current geometry; disable k_ep_pair or implement parameter-based l0');
     const byHost = new Map();
     for (let i = 0; i < epDummies.length; i++) {
         const d = epDummies[i];
@@ -560,6 +594,9 @@ function buildEpairPairBonds(mol, epDummies, opts, outLinear) {
 function buildPiAlignBonds(mol, piDummies, primaryPairs, opts, outLinear) {
     const K_pi_align = (opts.k_pi_align !== undefined) ? +opts.k_pi_align : 0.0;
     if (!(K_pi_align !== 0.0)) return;
+    // No geometry-based equilibrium lengths allowed.
+    // Canonical pi-align l0 requires a parameterized target relationship between pi vectors; current implementation used |r_dummyA-r_dummyB|.
+    throw new Error('buildPiAlignBonds: k_pi_align enabled but canonical l0 is not implemented without using current geometry; disable k_pi_align or implement parameter-based l0');
     const byHost = new Map();
     for (let i = 0; i < piDummies.length; i++) {
         const d = piDummies[i];
@@ -592,10 +629,16 @@ export function buildMMFFLTopology(mol, mmParams, opts = {}) {
     if (!mol.atoms || mol.atoms.length === 0) throw new Error('buildMMFFLTopology: empty molecule');
     mmParams.ensureTypeIndex();
 
+    const v = (typeof window !== 'undefined' && window.VERBOSITY_LEVEL !== undefined) ? (window.VERBOSITY_LEVEL | 0) : 0;
+
     // Ensure neighbor lists are correct.
     if (typeof mol.updateNeighborList === 'function') mol.updateNeighborList();
 
     const nReal = mol.atoms.length;
+
+    if (!mol.bonds || mol.bonds.length === 0) {
+        throw new Error('buildMMFFLTopology: mol.bonds empty; primary bonding must be provided by EditableMolecule (use Recalculate Bonds)');
+    }
 
     // Assign type names from table for real atoms.
     const typeNamesReal = new Array(nReal);
@@ -604,8 +647,12 @@ export function buildMMFFLTopology(mol, mmParams, opts = {}) {
         typeNamesReal[i] = mmParams.resolveTypeNameTable(sym);
     }
 
+    if (v >= 2) console.log('[buildMMFFLTopology] start', { nReal, nBonds: mol.bonds.length, add_angle: !!opts.add_angle, add_pi: !!opts.add_pi, add_epair: !!opts.add_epair });
+
     // Primary bonds list (pairs)
     const primaryPairs = [];
+    const primaryParamsL0 = [];
+    const primaryParamsK = [];
     for (let i = 0; i < mol.bonds.length; i++) {
         const b = mol.bonds[i];
         b.ensureIndices(mol);
@@ -621,10 +668,15 @@ export function buildMMFFLTopology(mol, mmParams, opts = {}) {
         const ta = typeNamesReal[a];
         const tb = typeNamesReal[b];
         const bp = mmParams.getBondParams(ta, tb);
-        const l0 = (bp && bp.l0 > 0) ? bp.l0 : ((opts.defaultL !== undefined) ? +opts.defaultL : 1.5);
-        const K = (bp && bp.k > 0) ? bp.k : ((opts.defaultK !== undefined) ? +opts.defaultK : 100.0);
+        if (!bp) throw new Error(`buildMMFFLTopology: missing BondType for types ('${ta}','${tb}') at bond (${a},${b})`);
+        const l0 = +bp.l0;
+        const K = +bp.k;
+        if (!(l0 > 0) || !Number.isFinite(l0)) throw new Error(`buildMMFFLTopology: invalid bond l0=${l0} for types ('${ta}','${tb}') at (${a},${b})`);
+        if (!(K > 0) || !Number.isFinite(K)) throw new Error(`buildMMFFLTopology: invalid bond k=${K} for types ('${ta}','${tb}') at (${a},${b})`);
         bondsAdj1[a].push([b, l0, K]);
         bondsAdj1[b].push([a, l0, K]);
+        primaryParamsL0.push(l0);
+        primaryParamsK.push(K);
     }
 
     const addAngle = (opts.add_angle !== undefined) ? !!opts.add_angle : true;
@@ -706,6 +758,8 @@ export function buildMMFFLTopology(mol, mmParams, opts = {}) {
         type_names: typeNamesAll,
         is_dummy: isDummy,
         bonds_primary: uniqPairs(bondsPrimary),
+        primary_params_l0: primaryParamsL0,
+        primary_params_k: primaryParamsK,
         bonds_angle: uniqPairs(bondsAngle),
         bonds_pi: uniqPairs(bondsPi),
         bonds_pi_align: uniqPairs(bondsPiAlign),
