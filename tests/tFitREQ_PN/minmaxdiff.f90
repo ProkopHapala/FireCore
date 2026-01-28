@@ -1,4 +1,4 @@
-program minmax
+program minmaxdiff
   implicit none
   real(8), parameter :: tol = 1.d-2
   integer :: i
@@ -19,8 +19,24 @@ program minmax
      if ( E > Emax ) Emax = E
   end do
   close(10)
+
+  if ( Emin > 0.d0 ) then
+     write(0,*) "ERROR: Emin must be < 0, got Emin= ", Emin
+     stop
+  end if
+
+  if ( Emax < 0.d0 ) then
+     write(0,*) "ERROR: Emax must be > 0, got Emax= ", Emax
+     stop
+  end if
+  
+  if ( abs(Emin) > abs(Emax) ) then
+     Emax = -Emin
+  else
+     Emin = -Emax
+  end if
   
   write(*,*) Emin, Emax
 
   stop
-end program minmax
+end program minmaxdiff

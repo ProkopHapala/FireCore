@@ -1,4 +1,5 @@
 #!/usr/bin/python3 -u
+#!/usr/bin/python3 -u
 
 import sys
 import numpy as np
@@ -10,9 +11,10 @@ import time
 import argparse
 sys.path.append("/home/niko/work/HBOND/FireCore/")
 from pyBall import FitREQ_PN as fit
+fit.plt = plt
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Fit model parameters to reproduce 2D energy surfaces from multiple .xyz files")
+    parser = argparse.ArgumentParser(description="Plot and compare 2D energy surfaces from a single .xyz file or scan DOFs")
     # setVerbosity
     parser.add_argument("--verbosity",          type=int, default=2, help="Verbosity for FitREQ")
     parser.add_argument("--idebug",             type=int, default=0, help="Flag for debug")
@@ -35,7 +37,6 @@ if __name__ == "__main__":
     parser.add_argument("--inputs_dir",    type=str, default='data', help="Directory where input files are located")
     parser.add_argument("--dof_selection", type=str, default=None,   help="DOF selection file")
     # setPenalty
-    parser.add_argument("--clamp",           type=int,   default=1,     help="Hardly restrain the values of parameters during optimization")
     parser.add_argument("--regularize",      type=int,   default=0,     help="Apply harmonic potentials to keep parameters within a specified range")
     parser.add_argument("--regcountweight",  type=int,   default=0,     help="Apply further normalization on regularizing potentials")
     parser.add_argument("--softclamp",       type=int,   default=0,     help="Apply soft clamping to specific samples")
@@ -47,25 +48,12 @@ if __name__ == "__main__":
     parser.add_argument("--weight_alpha",    type=float, default=4.0,   help="Weight sharpness 'alpha' for exp weight func")
     parser.add_argument("--emin_min",        type=float, default=-0.02, help="Emin threshold for weighting segments")
     parser.add_argument("--emin0",           type=float, default=0.1,   help="Adds to denominator of the exponential function")
-    # setOptimization
-    parser.add_argument("--nstep",     type=int,   default=10000, help="Fitting steps")
-    parser.add_argument("--ialg",      type=int,   default=2,     help="Optimization algorithm, 0=gradient descent, 1=damped dynamics, 2=gradient descent Barzilai-Borwein short step, 3=gradient descent Barzilai-Borwein long step")
-    parser.add_argument("--fmax",      type=float, default=1e-8,  help="Target force max for fitting")
-    parser.add_argument("--dt",        type=float, default=0.02,  help="Integrator dt")
-    parser.add_argument("--max_step",  type=float, default=0.05,  help="Max step")
-    parser.add_argument("--damping",   type=float, default=0.01,  help="Damping")
-    parser.add_argument("--iparallel", type=int,   default=0,     help="Use OpenMP for penalty evaluation or not (0=serial, 1=OpenMP)")
+    # setScan
+    parser.add_argument("--mode",       type=str,   default="scan",           help="Action: plot ref only, compare model (no fit), fit then compare, or scan DOFs", choices=["plot","model","fit","scan"])
+    parser.add_argument("--scan_dofs",  type=int,   default=None,             help="List of DOF indices to scan. If None, all from dof-selection are scanned.",  nargs='+')
+    parser.add_argument("--scan_range", type=float, default=[-1.0, 1.0, 100], help="Scan range: min max n_steps", nargs=3)
     # setOutput
-    parser.add_argument("--plot_dir",           type=str, default=None,      help="Directory to save all output plots")
-    parser.add_argument("--out_dir",            type=str, default=None,      help="Directory to save all output data (2D maps, 1D lines)")
-    parser.add_argument("--save_fmt",           type=str, default="gnuplot", help="Format for saved data", choices=["both","npz","gnuplot"])
-    parser.add_argument("--save",               type=str, default=None,      help="Base name for saving plots (without extension)")
-    parser.add_argument("--show",               type=int, default=0,         help="show the figure")
-    parser.add_argument("--line",               type=int, default=1,         help="plot r_min(angle) and E_min(angle) lines")
-    parser.add_argument("--outxyz",             type=int, default=0,         help="Output XYZ with Epairs")
-    parser.add_argument("--savejustelementxyz", type=int, default=0,         help="Print only element names (not types) in output XYZ with Epairs")
-    parser.add_argument("--outxyz_fname",       type=str, default=None,      help="Filename for output XYZ with Epairs")
-    parser.add_argument("--kcal",               type=int, default=1,         help="Use kcal instead of eV in the output energies")
+    parser.add_argument("--scan_outfile",     type=str, default="DOF_scan", help="Base name for scan output data files")
     args = parser.parse_args()
     
     # setVerbosity
@@ -86,8 +74,7 @@ if __name__ == "__main__":
         fname = os.path.join(args.inputs_dir, f)
         print(f"Loading {fname}")
         bAppend = (i > 0)
-        n_total = fit.loadXYZ(fname, bAddEpairs=(args.epairs == 1), bOutXYZ=(args.outxyz == 1), bSaveJustElementXYZ=(args.savejustelementxyz == 1),
-                              OutXYZ_fname=args.outxyz_fname, bEvalOnlyCorrections=False, bAppend=bAppend)
+        n_total = fit.loadXYZ(fname, bAddEpairs=(args.epairs == 1), bOutXYZ=False, bEvalOnlyCorrections=False, bAppend=bAppend)
         n_delta = n_total - total_loaded
         if n_delta < 0:
             print(f"Warning: loadXYZ returned decreasing total count ({n_total} < {total_loaded}); forcing delta=0")
@@ -101,7 +88,7 @@ if __name__ == "__main__":
     fit.getBuffs()
     
     # setPenalty
-    fit.setPenalty( Clamp=args.clamp, Regularize=args.regularize, AddRegError=args.regularize, RegCountWeight=args.regcountweight,
+    fit.setPenalty( Clamp=0, Regularize=args.regularize, AddRegError=args.regularize, RegCountWeight=args.regcountweight,
                     SoftClamp=args.softclamp, softClamp_start=args.softclamp_start, softClamp_max=args.softclamp_max )
     if args.user_weights:
         Erefs_all = np.concatenate(all_Erefs)
@@ -110,73 +97,7 @@ if __name__ == "__main__":
         weights0, lens = fit.split_and_weight_curves(Erefs_all, x0s_all,  n_before_min=args.n_before, weight_func=weight_func, EminMin=args.emin_min)
         fit.setWeights( weights0 )
 
-    # --- Fitting
-    trj_E, trj_F, trj_DOFs, _ = fit.setTrjBuffs(niter=args.nstep)
+    # --- Scanning
     DOFnames = fit.loadDOFnames(args.dof_selection)
-    
-    # Create output directoryies if needed
-    if not os.path.exists(args.out_dir): os.makedirs(args.out_dir)
-    
-    fit.run_PN(iparallel=args.iparallel, ialg=args.ialg, nstep=args.nstep, Fmax=args.fmax, dt=args.dt, damping=args.damping, max_step=args.max_step)
-
-    # Save trajectory plot
-    if len(DOFnames) > 0:
-        fit.save_trj_dofs(trj_DOFs, DOFnames=DOFnames, folder=args.out_dir)
-    
-    Eerr, E_models, _ = fit.getEs(bDOFtoTypes=True, bEs=True)
-
-    if E_models is None:
-        print("fit.getEs() returned Es=None")
-    else:
-        nan_total = int(np.isnan(E_models).sum())
-        finite = E_models[np.isfinite(E_models)]
-        if finite.size:
-            print(f"E_models shape={E_models.shape} nan={nan_total} min={finite.min():.6f} max={finite.max():.6f}")
-        else:
-            print(f"E_models shape={E_models.shape} all values are NaN")
-
-    print("sample_counts ", sample_counts, np.sum(sample_counts))
-    
-    istart = 0
-    for i, f in enumerate(args.inputs):
-        fname = os.path.join(args.inputs_dir, f)
-        base = os.path.splitext(f)[0]  # Remove .xyz extension
-        #title = base.replace('_', ' ')  # Clean title
-        iend = istart + sample_counts[i]
-        
-        # Get grid mapping
-        Gref, seq, axis, distances, angles = fit.parse_xyz_mapping(fname)
-        print(f"parse_xyz_mapping[{base}] seq_len={len(seq)} grid_shape={Gref.shape} axis={axis}")
-        Es_slice = E_models[istart:iend]
-        
-        # Map to grid with NaN padding
-        Gmodel = np.empty_like(Gref); Gmodel[:] = np.nan
-        nmap = min(len(Es_slice), len(seq))
-        for k in range(nmap):
-            idist, iang = seq[k]
-            Gmodel[idist, iang] = Es_slice[k]
-        if Es_slice.size:
-            nan_slice = int(np.isnan(Es_slice).sum())
-            finite_slice = Es_slice[np.isfinite(Es_slice)]
-            if finite_slice.size:
-                print(f"Es_slice[{base}] size={Es_slice.size} nan={nan_slice} min={finite_slice.min():.6f} max={finite_slice.max():.6f}")
-            else:
-                print(f"Es_slice[{base}] size={Es_slice.size} all NaN")
-        else:
-            print(f"Es_slice[{base}] is empty")
-        finite_model = Gmodel[np.isfinite(Gmodel)]
-        if finite_model.size:
-            print(f"Gmodel[{base}] finite min={finite_model.min():.6f} max={finite_model.max():.6f}")
-        else:
-            print(f"Gmodel[{base}] has no finite values (shape={Gmodel.shape})")
-        finite_ref = Gref[np.isfinite(Gref)]
-        if finite_ref.size:
-            print(f"Gref[{base}] finite min={finite_ref.min():.6f} max={finite_ref.max():.6f}")
-        else:
-            print(f"Gref[{base}] has no finite values (shape={Gref.shape})")
-
-        data_base = os.path.join(args.out_dir, base)
-        fit.save_data(Gref, Gmodel, angles, distances, save_data_prefix=data_base, save_fmt=args.save_fmt, kcal=bool(args.kcal), line=bool(args.line),)
-        istart = iend
-
-    if args.show == 1: plt.show()
+    xs = np.linspace(args.scan_range[0], args.scan_range[1], int(args.scan_range[2])) 
+    fit.plotDOFscans(args.scan_dofs, xs, DOFnames, title="DOF scan 1D", bFs=True, bEvalSamples=True, bPrint=False, outfile=args.scan_outfile)

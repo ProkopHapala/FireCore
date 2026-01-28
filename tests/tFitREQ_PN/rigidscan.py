@@ -48,19 +48,10 @@ if __name__ == "__main__":
     parser.add_argument("--emin_min",        type=float, default=-0.02, help="Emin threshold for weighting segments")
     parser.add_argument("--emin0",           type=float, default=0.1,   help="Adds to denominator of the exponential function")
     # setOptimization
-    parser.add_argument("--nstep",     type=int,   default=10000, help="Fitting steps")
-    parser.add_argument("--ialg",      type=int,   default=2,     help="Optimization algorithm, 0=gradient descent, 1=damped dynamics, 2=gradient descent Barzilai-Borwein short step, 3=gradient descent Barzilai-Borwein long step")
-    parser.add_argument("--fmax",      type=float, default=1e-8,  help="Target force max for fitting")
-    parser.add_argument("--dt",        type=float, default=0.02,  help="Integrator dt")
-    parser.add_argument("--max_step",  type=float, default=0.05,  help="Max step")
-    parser.add_argument("--damping",   type=float, default=0.01,  help="Damping")
-    parser.add_argument("--iparallel", type=int,   default=0,     help="Use OpenMP for penalty evaluation or not (0=serial, 1=OpenMP)")
+    parser.add_argument("--nstep", type=int, default=100, help="Fitting steps")
     # setOutput
-    parser.add_argument("--plot_dir",           type=str, default=None,      help="Directory to save all output plots")
     parser.add_argument("--out_dir",            type=str, default=None,      help="Directory to save all output data (2D maps, 1D lines)")
     parser.add_argument("--save_fmt",           type=str, default="gnuplot", help="Format for saved data", choices=["both","npz","gnuplot"])
-    parser.add_argument("--save",               type=str, default=None,      help="Base name for saving plots (without extension)")
-    parser.add_argument("--show",               type=int, default=0,         help="show the figure")
     parser.add_argument("--line",               type=int, default=1,         help="plot r_min(angle) and E_min(angle) lines")
     parser.add_argument("--outxyz",             type=int, default=0,         help="Output XYZ with Epairs")
     parser.add_argument("--savejustelementxyz", type=int, default=0,         help="Print only element names (not types) in output XYZ with Epairs")
@@ -117,23 +108,43 @@ if __name__ == "__main__":
     # Create output directoryies if needed
     if not os.path.exists(args.out_dir): os.makedirs(args.out_dir)
     
-    fit.run_PN(iparallel=args.iparallel, ialg=args.ialg, nstep=args.nstep, Fmax=args.fmax, dt=args.dt, damping=args.damping, max_step=args.max_step)
+    Err = fit.getError( iparallel=0 )
+    print(Err)
+    quit()
 
-    # Save trajectory plot
-    if len(DOFnames) > 0:
-        fit.save_trj_dofs(trj_DOFs, DOFnames=DOFnames, folder=args.out_dir)
-    
-    Eerr, E_models, _ = fit.getEs(bDOFtoTypes=True, bEs=True)
+    arrays = {"E_tot": E_tot, "E_coul": E_coul, "E_vdw": E_vdw, "E_hcorr": E_hcorr, "E_epairs": E_epairs}
 
-    if E_models is None:
-        print("fit.getEs() returned Es=None")
-    else:
-        nan_total = int(np.isnan(E_models).sum())
-        finite = E_models[np.isfinite(E_models)]
-        if finite.size:
-            print(f"E_models shape={E_models.shape} nan={nan_total} min={finite.min():.6f} max={finite.max():.6f}")
+    def check_array(arr, name):
+        if arr is None:
+            print(f"fit.getEs_components() returned {name}=None")
         else:
-            print(f"E_models shape={E_models.shape} all values are NaN")
+            nan_total = int(np.isnan(arr).sum())
+            finite = arr[np.isfinite(arr)]
+            if finite.size:
+                print(f"{name} shape={arr.shape} nan={nan_total} min={finite.min():.6f} max={finite.max():.6f}")
+            else:
+                print(f"{name} shape={arr.shape} all values are NaN")
+
+    def report_slice(arr, name, base):
+        if arr.size:
+            nan_slice = int(np.isnan(arr).sum())
+            finite = arr[np.isfinite(arr)]
+            if finite.size:
+                print(f"{name}[{base}] size={arr.size} nan={nan_slice} min={finite.min():.6f} max={finite.max():.6f}")
+            else:
+                print(f"{name}[{base}] size={arr.size} all NaN")
+        else:
+            print(f"{name}[{base}] is empty")
+
+    def report_finite(G, name, base):
+        finite = G[np.isfinite(G)]
+        if finite.size:
+            print(f"{name}[{base}] finite min={finite.min():.6f} max={finite.max():.6f}")
+        else:
+            print(f"{name}[{base}] has no finite values (shape={G.shape})")
+            
+    for name, arr in arrays.items():
+        check_array(arr, name)
 
     print("sample_counts ", sample_counts, np.sum(sample_counts))
     
@@ -147,36 +158,48 @@ if __name__ == "__main__":
         # Get grid mapping
         Gref, seq, axis, distances, angles = fit.parse_xyz_mapping(fname)
         print(f"parse_xyz_mapping[{base}] seq_len={len(seq)} grid_shape={Gref.shape} axis={axis}")
-        Es_slice = E_models[istart:iend]
-        
-        # Map to grid with NaN padding
-        Gmodel = np.empty_like(Gref); Gmodel[:] = np.nan
-        nmap = min(len(Es_slice), len(seq))
-        for k in range(nmap):
-            idist, iang = seq[k]
-            Gmodel[idist, iang] = Es_slice[k]
-        if Es_slice.size:
-            nan_slice = int(np.isnan(Es_slice).sum())
-            finite_slice = Es_slice[np.isfinite(Es_slice)]
-            if finite_slice.size:
-                print(f"Es_slice[{base}] size={Es_slice.size} nan={nan_slice} min={finite_slice.min():.6f} max={finite_slice.max():.6f}")
-            else:
-                print(f"Es_slice[{base}] size={Es_slice.size} all NaN")
-        else:
-            print(f"Es_slice[{base}] is empty")
-        finite_model = Gmodel[np.isfinite(Gmodel)]
-        if finite_model.size:
-            print(f"Gmodel[{base}] finite min={finite_model.min():.6f} max={finite_model.max():.6f}")
-        else:
-            print(f"Gmodel[{base}] has no finite values (shape={Gmodel.shape})")
-        finite_ref = Gref[np.isfinite(Gref)]
-        if finite_ref.size:
-            print(f"Gref[{base}] finite min={finite_ref.min():.6f} max={finite_ref.max():.6f}")
-        else:
-            print(f"Gref[{base}] has no finite values (shape={Gref.shape})")
+
+        E_comp_slice = {}
+        G_comp = {}
+        for name, arr in arrays.items():
+            E_comp_slice[name] = arr[istart:iend]
+            G_comp[name] = np.full_like(Gref, np.nan)
+            nmap = min(len(E_comp_slice[name]), len(seq))
+            G = G_comp[name]
+            for k in range(nmap):
+                idist, iang = seq[k]
+                G[idist, iang] = E_comp_slice[name][k]
+        for name, arr in E_comp_slice.items():
+            report_slice(arr, f"{name}_slice", base)
+        for name, G in G_comp.items():
+            report_finite(G, name, base)        
+        report_finite(Gref, "Gref", base)
+
+        G_comp_coul_vdw = np.full_like(Gref, np.nan)
+        mask = np.isfinite(G_comp["E_coul"]) & np.isfinite(G_comp["E_vdw"])
+        G_comp_coul_vdw[mask] = G_comp["E_coul"][mask] + G_comp["E_vdw"][mask]
+
+        G_comp_hcorr_epairs = np.full_like(Gref, np.nan)
+        mask = np.isfinite(G_comp["E_hcorr"]) & np.isfinite(G_comp["E_epairs"])
+        G_comp_hcorr_epairs[mask] = G_comp["E_hcorr"][mask] + G_comp["E_epairs"][mask]
+
+        Gref_nocoul_novdw = np.full_like(Gref, np.nan)
+        mask = np.isfinite(Gref) & np.isfinite(G_comp_coul_vdw)
+        Gref_nocoul_novdw[mask] = Gref[mask] - G_comp_coul_vdw[mask]
+
+        Gdiff_nocoul_novdw = np.full_like(Gref, np.nan)
+        mask = np.isfinite(Gref_nocoul_novdw) & np.isfinite(G_comp_hcorr_epairs)
+        Gdiff_nocoul_novdw[mask] = Gref_nocoul_novdw[mask] - G_comp_hcorr_epairs[mask]
+
+        Gdiff_tot = np.full_like(Gref, np.nan)
+        mask = np.isfinite(Gref) & np.isfinite(G_comp["E_tot"])
+        Gdiff_tot[mask] = Gref[mask] - G_comp["E_tot"][mask]
+              
+        grids = {"G_ref": Gref, "G_ref_nocoul_novdw": Gref_nocoul_novdw, "G_comp_tot": G_comp["E_tot"], "G_comp_coul": G_comp["E_coul"], "G_comp_vdw": G_comp["E_vdw"], "G_comp_hcorr": G_comp["E_hcorr"], "G_comp_epairs": G_comp["E_epairs"], "G_comp_coul_vdw": G_comp_coul_vdw, "G_comp_hcorr_epairs": G_comp_hcorr_epairs, "G_diff_nocoul_novdw": Gdiff_nocoul_novdw, "G_diff_tot": Gdiff_tot}
 
         data_base = os.path.join(args.out_dir, base)
-        fit.save_data(Gref, Gmodel, angles, distances, save_data_prefix=data_base, save_fmt=args.save_fmt, kcal=bool(args.kcal), line=bool(args.line),)
+        fit.save_data(Gref, G_comp["E_tot"], angles, distances, save_data_prefix=data_base, save_fmt=args.save_fmt, kcal=bool(args.kcal), line=bool(args.line),)
+        for name, G in grids.items():
+            fit.save_data_single(G, angles, distances, save_data_prefix=data_base, save_fmt=args.save_fmt, kcal=bool(args.kcal), suffix=name)
         istart = iend
 
-    if args.show == 1: plt.show()
