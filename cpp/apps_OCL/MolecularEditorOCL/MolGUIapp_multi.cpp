@@ -69,7 +69,7 @@ int main(int argc, char *argv[]){
 
 
     W->pre_loop();
-	app->loop( 1000000 );
+	app->loop( 2000000000 );  // 2 billion frames - enough for long global optimization runs
     W->database->print();
 	return 0;
 }

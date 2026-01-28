@@ -15,6 +15,7 @@
     funcs["-T"]={2,[&](const char** ss){ sscanf( ss[0], "%lf", &W->go.T_target ); sscanf( ss[1], "%lf",&W->go.gamma_damp ); W->go.bExploring=true; W->bToCOG=true; }}; // run at non-zero temperature ( i.e. using Langevin dynamics termostat )
 
     funcs["-gopt"]={2,[&](const char** ss){ sscanf( ss[0], "%i,%i", &W->go.nExplore, &W->go.nRelax ); sscanf( ss[1], "%lf,%lf", &W->go.pos_kick, &W->go.vel_kick ); W->bGopt=true; W->bToCOG=true;  }}; // global optimization
+    funcs["-pop"]={1,[&](const char** ss){ W->uploadPopName=ss[0]; }};  // restart from population file (e.g. gopt.xyz)
     funcs["-drive"]={1,[&](const char** ss){ W->go.constrs.loadBonds(ss[0]); }}; // test
 
 	funcs["-s"]={1,[&](const char** ss){ W->smile_name=ss[0]; }}; // molecule as SMILEs

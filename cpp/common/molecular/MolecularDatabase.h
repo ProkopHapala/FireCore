@@ -580,7 +580,7 @@ public:
         float tolerance = 0.0001;
 
         // Error checking
-        unsigned int MAXATOM = 200;
+        unsigned int MAXATOM = 20000;  // Increased from 200 for large superlattice systems
         if (natm > MAXATOM)
         {
             printf("Error! Increase maxatom\n");

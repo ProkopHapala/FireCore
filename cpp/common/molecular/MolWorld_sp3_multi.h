@@ -738,7 +738,7 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
     bool bGroupUpdate=false;
     bool bExploring = false;
 
-    int nMaxSteps = 100000/nPerVFs;
+    int nMaxSteps = go.nRelax/nPerVFs;  // use -gopt nRelax value (was hardcoded 100000/nPerVFs=10000)
 
     for(int isys=0; isys<nSystems; isys++){
         int i0v = isys * ocl.nvecs;
@@ -1211,6 +1211,17 @@ int saveSysXYZ( int isys, const char* fname, const char* comment="#comment", boo
     if(bPBC){ sprintf( str_tmp, "lvs %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f %s", ffl.lvec.a.x, ffl.lvec.a.y, ffl.lvec.a.z, ffl.lvec.b.x, ffl.lvec.b.y, ffl.lvec.b.z, ffl.lvec.c.x, ffl.lvec.c.y, ffl.lvec.c.z, comment ); }
     else    { sprintf( str_tmp, "%s", comment ); }
     return params.saveXYZ( fname, (bNodeOnly ? ffl.nnode : ffl.natoms) , ffl.atypes, ffl.apos, str_tmp, ffl.REQs, mode, true, nPBC, ffl.lvec ); 
+}
+
+void saveCheckpoint( const char* fname="checkpoint.xyz" ){
+    downloadPop();
+    for(int isys=0; isys<nSystems; isys++){
+        unpack_system( isys, ffls[isys], false, false );
+        char tmpstr[256];
+        sprintf(tmpstr,"# checkpoint sys=%i E=%g", isys, ffls[isys].Etot );
+        saveSysXYZ( isys, fname, tmpstr, false, (isys==0)?"w":"a", nPBC_save );
+    }
+    printf( "saveCheckpoint(%s) saved %i replicas\n", fname, nSystems );
 }
 
 virtual void setSystemReplica (int i){ 
@@ -2219,6 +2230,10 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
     icurIter+=nitrdione;
     bChargeUpdated=false;
 
+    // Periodic checkpoint save (every ~50000 iterations) for restart capability
+    if( bGopt && (icurIter > 0) && (icurIter % 50000 == 0) ){
+        saveCheckpoint( "checkpoint.xyz" );
+    }
 
     if( verbosity>=0 && bSaveToDatabase){ // Milan
         FILE* file = fopen("minima.dat", "a"); 
@@ -2257,10 +2272,11 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
                 nStepNonConvSum/((double)nbNonConverged),
                 nStepExplorSum/((double)nExploring),
                 (nStepConvSum+nStepNonConvSum+nStepExplorSum));
-            if((getCPUticks()-zeroT)*tick2second > 9.5){
-                fclose(file);
-                exit(0);
-            }
+            // COMMENTED OUT: This was terminating simulations after 9.5 seconds!
+            // if((getCPUticks()-zeroT)*tick2second > 9.5){
+            //     fclose(file);
+            //     exit(0);
+            // }
         }
         else{
             written_in_this_frame=false;

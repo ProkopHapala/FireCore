@@ -207,5 +207,16 @@ touch minima.dat
 #./$name -m 300   -x common_resources/xyz/nHexadecan_dicarboxylic -g common_resources/xyz/NaCl_8x8_L3    -iParalel 3 -T 1000 0.02 -gopt 1000,1000 0.25,1.0   -verb 0 -perframe 100 
 
 
-./$name -m 50    -x common_resources/xyz/xylitol_WO_gridFF       -g common_resources/xyz/surfaces_for_throughput/NaCl_3x3_Cl_hole            -iParalel 3 -T 3000 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 
+# Original: ./$name -m 50 -x common_resources/xyz/helicene_flower_4x4_superlattice -g common_resources/xyz/surfaces_for_throughput/NaCl_1x1_L3 -iParalel 3 -T 3000 0.2 -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+
+# Optimized for global minimum search of 10k atom superlattice (RTX 3060 12GB):
+#   -m 100      : 100 replicas (doubled for better coverage, fits in 12GB VRAM)
+#   -T 30 0.05  : Very low temp (30K) for stability, minimal thermal noise
+#   -gopt 100,500000 0.02,0.1 : Very small kicks (preserve large structure), extra long relaxation
+#   -Ftol 0.1   : Reasonable tolerance for 10k atoms (0.1 eV/A)
+#   -dt 0.02    : Smaller timestep for numerical stability with large forces
+#   -perframe 1000 : More steps per frame, less overhead
+#   nMaxSteps now uses go.nRelax (500000/10 = 50000 steps per replica before restart)
+./$name -m 100 -x common_resources/xyz/helicene_flower_4x4_superlattice -g common_resources/xyz/surfaces_for_throughput/NaCl_1x1_L3 -iParalel 3 -T 30 0.05 -gopt 100,5000000 0.02,0.1 -Ftol 0.1 -dt 0.02 -verb 1 -perframe 1000 
+# ./$name -m 50    -x common_resources/xyz/xylitol_WO_gridFF       -g common_resources/xyz/surfaces_for_throughput/NaCl_3x3_Cl_hole            -iParalel 3 -T 3000 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 
 #./$name -m 2000    -x common_resources/xyz/xylitol_WO_gridFF                 -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 -grid_nPBC 2,2,0 # -nogridff
