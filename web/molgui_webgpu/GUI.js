@@ -623,6 +623,34 @@ export class GUI {
                 }
             }).input;
 
+            const topoRow = GUIutils.row(container, { marginBottom: '8px', flexWrap: 'wrap' });
+            GUIutils.labelCheck(topoRow, 'Pi dummies', true, (e) => {
+                if (window.app && window.app.setXPDBTopologyParams) window.app.setXPDBTopologyParams({ addPi: !!e.target.checked });
+            });
+            GUIutils.labelCheck(topoRow, 'Two-sided Pi', true, (e) => {
+                if (window.app && window.app.setXPDBTopologyParams) window.app.setXPDBTopologyParams({ twoPi: !!e.target.checked });
+            });
+            GUIutils.labelCheck(topoRow, 'E-pairs', true, (e) => {
+                if (window.app && window.app.setXPDBTopologyParams) window.app.setXPDBTopologyParams({ addEpair: !!e.target.checked });
+            });
+            GUIutils.labelCheck(topoRow, 'Pi-align', false, (e) => {
+                if (window.app && window.app.setXPDBTopologyParams) window.app.setXPDBTopologyParams({ addPiAlign: !!e.target.checked });
+            });
+            GUIutils.labelCheck(topoRow, 'Epair-pairs', false, (e) => {
+                if (window.app && window.app.setXPDBTopologyParams) window.app.setXPDBTopologyParams({ addEpairPairs: !!e.target.checked });
+            });
+
+            const typeRow = GUIutils.row(container, { marginBottom: '8px' });
+            GUIutils.label(typeRow, 'Type source:', { width: '90px', fontSize: '0.9em' });
+            GUIutils.select(typeRow, { table: 'table', heuristic: 'heuristic' }, 'table', (val) => {
+                if (window.app && window.app.setXPDBTopologyParams) window.app.setXPDBTopologyParams({ typeSource: String(val) });
+            });
+
+            const bboxRow = GUIutils.row(container, { marginBottom: '8px' });
+            GUIutils.labelCheck(bboxRow, 'Show XPDB bboxes', false, (e) => {
+                if (window.app && window.app.setXPDBTopologyParams) window.app.setXPDBTopologyParams({ showBBoxes: !!e.target.checked });
+            });
+
             const controlsRow = GUIutils.row(container, { marginBottom: '8px' });
             GUIutils.btn(controlsRow, 'Dump topology', () => {
                 if (window.app && window.app.dumpXPDBTopology) window.app.dumpXPDBTopology();

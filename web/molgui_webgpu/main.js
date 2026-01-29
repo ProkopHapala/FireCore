@@ -83,6 +83,28 @@ export class MolGUIApp {
             epair_pair: true,
         };
         this._xpdbTopoLast = null;
+        this.xpdbOverlayDirty = true;
+
+        this.xpdbTopoOpts = {
+            type_source: 'table',
+            add_angle: true,
+            add_pi: true,
+            two_pi: true,
+            add_pi_align: false,
+            add_epair: true,
+            add_epair_pairs: false,
+            L_pi: 1.0,
+            L_epair: 0.5,
+            k_angle: 100.0,
+            k_pi: 50.0,
+            k_pi_orth: 30.0,
+            k_pi_align: 15.0,
+            k_ep: 40.0,
+            k_ep_orth: 25.0,
+            k_ep_pair: 10.0,
+            nMaxBonded: 16,
+        };
+        this.xpdbShowBBoxes = false;
     }
 
     async _rebuildXPDBTopoCPU(reason = 'manual') {
@@ -96,27 +118,11 @@ export class MolGUIApp {
         if (!this.mmParams) throw new Error(`[XPDBTopoCPU] mmParams missing (reason=${reason})`);
         try {
             const molXPDB = this._cloneSystemForXPDB();
-            const packed = buildXPDBInputsFromMol(molXPDB, this.mmParams, {
-                report_types: false,
-                add_angle: !!this.xpdbUseAngles,
-                add_pi: true,
-                two_pi: true,
-                add_pi_align: false,
-                add_epair: true,
-                add_epair_pairs: false,
-                L_pi: 1.0,
-                L_epair: 0.5,
-                k_angle: 100.0,
-                k_pi: 50.0,
-                k_pi_orth: 30.0,
-                k_pi_align: 15.0,
-                k_ep: 40.0,
-                k_ep_orth: 25.0,
-                k_ep_pair: 10.0,
-                defaultK: 200.0,
-                nMaxBonded: 16,
-            });
+            const topoOpts = Object.assign({}, this.xpdbTopoOpts);
+            topoOpts.add_angle = !!this.xpdbUseAngles;
+            const packed = buildXPDBInputsFromMol(molXPDB, this.mmParams, Object.assign({ report_types: false }, topoOpts));
             this._xpdbTopoLast = packed.topo;
+            this.xpdbOverlayDirty = false;
             if (verbosity >= 2) {
                 console.log('[XPDBTopoCPU] rebuilt', {
                     reason,
@@ -144,7 +150,7 @@ export class MolGUIApp {
         }
 
         // Ensure we have a topology even if user never enabled XPDB simulation.
-        if (!this._xpdbTopoLast) {
+        if (!this._xpdbTopoLast || this.xpdbOverlayDirty) { // NEW
             if (verbosity >= 2) console.log('[XPDBTopoOverlay] topo missing; rebuilding CPU topo', { reason });
             try {
                 await this._rebuildXPDBTopoCPU(`overlay:${reason}`);
@@ -279,9 +285,19 @@ export class MolGUIApp {
                         }
 
                         if (this._rawSelectionDirty) {
-                            const selIdx = sel ? Array.from(sel) : [];
+                            let selIdx = [];
+                            if (sel && sel.size) {
+                                selIdx = new Array(sel.size);
+                                let w = 0;
+                                for (const id of sel) {
+                                    const ia = this.system && this.system.id2atom ? this.system.id2atom.get(id) : undefined;
+                                    if (ia === undefined) throw new Error(`[MolGUIApp/raw] selection id ${id} missing in id2atom map`);
+                                    selIdx[w++] = ia;
+                                }
+                                if (w !== selIdx.length) selIdx = selIdx.slice(0, w);
+                            }
                             this.raw.updateSelection(selIdx, n, 1.3);
-                             console.log('[MolGUIApp/raw] updateSelection', { selectionSize: selIdx.length });
+                            console.log('[MolGUIApp/raw] updateSelection', { selectionSize: selIdx.length });
                             this._rawSelectionDirty = false;
                         }
 
@@ -709,15 +725,16 @@ export class MolGUIApp {
     }
 
     setXPDBTopologyOverlayVisible(visible) {
-        this.xpdbTopoVisible = !!visible;
-        const verbosity = (window.VERBOSITY_LEVEL | 0);
-        const dbg = !!window.DEBUG_XPDB_TOPO_VIZ;
-        if (dbg) console.log('[MolGUIApp.setXPDBTopologyOverlayVisible]', { visible: this.xpdbTopoVisible, hasTopo: !!this._xpdbTopoLast });
-        // async refresh (do not require checkbox handlers to be async)
-        Promise.resolve().then(() => this._refreshXPDBTopoOverlay('setVisible')).catch((e) => {
-            console.error('[XPDBTopoOverlay] refresh failed', e);
-        });
-        this.requestRender();
+        const want = !!visible;
+        if (want === this.xpdbTopoVisible) return;
+        this.xpdbTopoVisible = want;
+        if (want) {
+            this._markXPDBOverlayDirty('overlay_toggle'); // NEW
+            this._refreshXPDBTopoOverlay('overlayVisible');
+        } else if (this.xpdbTopoRenderer) {
+            this.xpdbTopoRenderer.setEnabled(false);
+        }
+        console.log('[MolGUIApp] setXPDBTopologyOverlayVisible', { want });
     }
 
     setXPDBTopologyOverlayVisibility(vis) {
@@ -782,26 +799,9 @@ export class MolGUIApp {
             if (nReal === 0) return;
 
             const molXPDB = this._cloneSystemForXPDB();
-            const packed = buildXPDBInputsFromMol(molXPDB, this.mmParams, {
-                report_types: false,
-                add_angle: !!this.xpdbUseAngles,
-                add_pi: true,
-                two_pi: true,
-                add_pi_align: false,
-                add_epair: true,
-                add_epair_pairs: false,
-                L_pi: 1.0,
-                L_epair: 0.5,
-                k_angle: 100.0,
-                k_pi: 50.0,
-                k_pi_orth: 30.0,
-                k_pi_align: 15.0,
-                k_ep: 40.0,
-                k_ep_orth: 25.0,
-                k_ep_pair: 10.0,
-                defaultK: 200.0,
-                nMaxBonded: 16,
-            });
+            const topoOpts = Object.assign({}, this.xpdbTopoOpts);
+            topoOpts.add_angle = !!this.xpdbUseAngles;
+            const packed = buildXPDBInputsFromMol(molXPDB, this.mmParams, Object.assign({ report_types: false }, topoOpts));
 
             const nAll = packed.nAtoms | 0;
             if (nAll !== (packed.topo?.n_all | 0)) {
@@ -833,6 +833,10 @@ export class MolGUIApp {
             this._xpdbTopoLast = packed.topo;
             if (this.xpdbTopoVisible) await this._refreshXPDBTopoOverlay('updateXPDBTopology');
 
+            if (this.xpdbShowBBoxes && this.xpdbTopoRenderer) {
+                await this.refreshXPDBBBoxOverlay('updateXPDBTopology');
+            }
+
             this.xpdbDirty = false;
             window.logger.info(`XPDB topology updated: n_real=${nReal} n_all=${nAll}`);
         } catch (e) {
@@ -847,26 +851,9 @@ export class MolGUIApp {
         console.log('[dumpXPDBTopology] n_real=', this.xpdbNReal, 'n_all=', this.xpdbNAll, 'useAngles=', this.xpdbUseAngles);
         try {
             const molXPDB = this._cloneSystemForXPDB();
-            const packed = buildXPDBInputsFromMol(molXPDB, this.mmParams, {
-                report_types: false,
-                add_angle: !!this.xpdbUseAngles,
-                add_pi: true,
-                two_pi: true,
-                add_pi_align: false,
-                add_epair: true,
-                add_epair_pairs: false,
-                L_pi: 1.0,
-                L_epair: 0.5,
-                k_angle: 100.0,
-                k_pi: 50.0,
-                k_pi_orth: 30.0,
-                k_pi_align: 15.0,
-                k_ep: 40.0,
-                k_ep_orth: 25.0,
-                k_ep_pair: 10.0,
-                defaultK: 200.0,
-                nMaxBonded: 16,
-            });
+            const topoOpts = Object.assign({}, this.xpdbTopoOpts);
+            topoOpts.add_angle = !!this.xpdbUseAngles;
+            const packed = buildXPDBInputsFromMol(molXPDB, this.mmParams, Object.assign({ report_types: false }, topoOpts));
             const topo = packed.topo;
             console.log('[dumpXPDBTopology] topo n_real=', topo.n_real, 'n_all=', topo.n_all);
             const logPairs = (label, arr) => {
@@ -1217,7 +1204,44 @@ export class MolGUIApp {
     setXPDBTopologyParams(params) {
         if (!params) return;
         if (params.useAngles !== undefined) this.xpdbUseAngles = !!params.useAngles;
+        if (params.addPi !== undefined) this.xpdbTopoOpts.add_pi = !!params.addPi;
+        if (params.twoPi !== undefined) this.xpdbTopoOpts.two_pi = !!params.twoPi;
+        if (params.addPiAlign !== undefined) this.xpdbTopoOpts.add_pi_align = !!params.addPiAlign;
+        if (params.addEpair !== undefined) this.xpdbTopoOpts.add_epair = !!params.addEpair;
+        if (params.addEpairPairs !== undefined) this.xpdbTopoOpts.add_epair_pairs = !!params.addEpairPairs;
+        if (params.typeSource !== undefined) this.xpdbTopoOpts.type_source = String(params.typeSource);
+        if (params.showBBoxes !== undefined) this.xpdbShowBBoxes = !!params.showBBoxes;
         this.xpdbDirty = true;
+        this._markXPDBOverlayDirty('setXPDBTopologyParams'); // NEW
+
+        if (this.xpdbTopoRenderer && params.showBBoxes !== undefined) {
+            this.xpdbTopoRenderer.setBBoxVisible(!!params.showBBoxes);
+            this.requestRender();
+        }
+    }
+
+    async refreshXPDBBBoxOverlay(reason = 'manual') {
+        if (!this.xpdb || !this.xpdbTopoRenderer) return;
+        if (!this.xpdbShowBBoxes) return;
+        const v = window.VERBOSITY_LEVEL | 0;
+        const st = await this.xpdb.readBuffersAsTyped();
+        const bb = st && st.bboxesData;
+        if (!bb) throw new Error('refreshXPDBBBoxOverlay: bboxesData missing');
+        const ng = this.xpdb.numGroups | 0;
+        if (!(ng > 0)) throw new Error(`refreshXPDBBBoxOverlay: invalid numGroups=${ng}`);
+        let xmin = +Infinity, ymin = +Infinity, zmin = +Infinity;
+        let xmax = -Infinity, ymax = -Infinity, zmax = -Infinity;
+        for (let ig = 0; ig < ng; ig++) {
+            const i0 = (ig * 2 + 0) * 4;
+            const i1 = (ig * 2 + 1) * 4;
+            const ax = bb[i0 + 0], ay = bb[i0 + 1], az = bb[i0 + 2];
+            const bx = bb[i1 + 0], by = bb[i1 + 1], bz = bb[i1 + 2];
+            xmin = Math.min(xmin, ax); ymin = Math.min(ymin, ay); zmin = Math.min(zmin, az);
+            xmax = Math.max(xmax, bx); ymax = Math.max(ymax, by); zmax = Math.max(zmax, bz);
+        }
+        if (v >= 3) console.log('[XPDB][bbox] global', { reason, xmin, ymin, zmin, xmax, ymax, zmax, numGroups: ng });
+        this.xpdbTopoRenderer.updateBBox([xmin, ymin, zmin], [xmax, ymax, zmax]);
+        this.requestRender();
     }
 
     setXPDBParams(params) {
@@ -1261,11 +1285,12 @@ export class MolGUIApp {
     }
 
     _markRawAllDirty(reason = 'manual') {
+        this._markXPDBOverlayDirty(`rawAll:${reason}`); // NEW
         if (!this.useRawWebGPU) return;
         this._rawAtomsDirty = true;
         this._rawBondsDirty = true;
-        this._rawLabelsDirty = true;
         this._rawSelectionDirty = true;
+        this._rawLabelsDirty = true;
         // Any topology/atom-count change invalidates cached XPDB topo built on previous molecule.
         this.xpdbDirty = true;
         this._xpdbTopoLast = null;
@@ -1278,6 +1303,7 @@ export class MolGUIApp {
     }
 
     _markRawTopologyDirty(reason = 'topology') {
+        this._markXPDBOverlayDirty(`rawTopo:${reason}`);
         this._markRawAllDirty(reason);
     }
 
@@ -1287,6 +1313,7 @@ export class MolGUIApp {
     }
 
     _markRawGeometryDirty(reason = 'geometry') {
+        this._markXPDBOverlayDirty(`rawGeom:${reason}`);
         if (!this.useRawWebGPU) return;
         this._rawAtomsDirty = true;
         this._rawLabelsDirty = true;
@@ -1308,6 +1335,11 @@ export class MolGUIApp {
         if (!this.useRawWebGPU) return;
         this._rawLabelsDirty = true;
         console.log('[MolGUIApp/raw] markLabelsDirty', { reason });
+    }
+
+    _markXPDBOverlayDirty(reason = 'manual') {
+        this.xpdbOverlayDirty = true;
+        if ((window.VERBOSITY_LEVEL | 0) >= 4) console.log('[XPDB][overlay] markDirty', { reason });
     }
 }
 

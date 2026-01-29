@@ -640,11 +640,48 @@ export function buildMMFFLTopology(mol, mmParams, opts = {}) {
         throw new Error('buildMMFFLTopology: mol.bonds empty; primary bonding must be provided by EditableMolecule (use Recalculate Bonds)');
     }
 
-    // Assign type names from table for real atoms.
+    // Precompute degrees from bonding topology (no geometry).
+    const deg = new Array(nReal);
+    for (let i = 0; i < nReal; i++) deg[i] = 0;
+    for (let i = 0; i < mol.bonds.length; i++) {
+        const b = mol.bonds[i];
+        b.ensureIndices(mol);
+        const a = b.a | 0;
+        const c = b.b | 0;
+        if (!(a >= 0 && a < nReal && c >= 0 && c < nReal)) throw new Error(`buildMMFFLTopology: bond index out of range (${a},${c}) nReal=${nReal}`);
+        deg[a]++;
+        deg[c]++;
+    }
+
+    // Assign type names for real atoms.
     const typeNamesReal = new Array(nReal);
+    const typeSource = (opts && opts.type_source !== undefined) ? String(opts.type_source) : 'table';
     for (let i = 0; i < nReal; i++) {
         const sym = Z_TO_SYMBOL[mol.atoms[i].Z] || 'X';
-        typeNamesReal[i] = mmParams.resolveTypeNameTable(sym);
+        if (typeSource === 'heuristic') {
+            // Minimal topology-only typing to distinguish sp2/aromatic carbons (e.g. pentacene) from sp3.
+            if (sym === 'C') {
+                const d = deg[i] | 0;
+                if (d === 3) {
+                    if (mmParams.atomTypes && mmParams.atomTypes.C_R) typeNamesReal[i] = 'C_R';
+                    else throw new Error('buildMMFFLTopology: type_source=heuristic requires AtomTypes.dat entry C_R');
+                } else if (d === 4) {
+                    if (mmParams.atomTypes && mmParams.atomTypes.C_3) typeNamesReal[i] = 'C_3';
+                    else throw new Error('buildMMFFLTopology: type_source=heuristic requires AtomTypes.dat entry C_3');
+                } else if (d === 2) {
+                    if (mmParams.atomTypes && mmParams.atomTypes.C_2) typeNamesReal[i] = 'C_2';
+                    else throw new Error('buildMMFFLTopology: type_source=heuristic requires AtomTypes.dat entry C_2');
+                } else {
+                    throw new Error(`buildMMFFLTopology: heuristic typing unsupported for C with deg=${d} at i=${i}`);
+                }
+            } else {
+                typeNamesReal[i] = mmParams.resolveTypeNameTable(sym);
+            }
+        } else if (typeSource === 'table') {
+            typeNamesReal[i] = mmParams.resolveTypeNameTable(sym);
+        } else {
+            throw new Error(`buildMMFFLTopology: unknown opts.type_source='${typeSource}'`);
+        }
     }
 
     if (v >= 2) console.log('[buildMMFFLTopology] start', { nReal, nBonds: mol.bonds.length, add_angle: !!opts.add_angle, add_pi: !!opts.add_pi, add_epair: !!opts.add_epair });
@@ -677,6 +714,7 @@ export function buildMMFFLTopology(mol, mmParams, opts = {}) {
         bondsAdj1[b].push([a, l0, K]);
         primaryParamsL0.push(l0);
         primaryParamsK.push(K);
+        if (v >= 4) console.log('[buildMMFFLTopology] bond', { a, b, ta, tb, l0, k: K });
     }
 
     const addAngle = (opts.add_angle !== undefined) ? !!opts.add_angle : true;
@@ -696,6 +734,19 @@ export function buildMMFFLTopology(mol, mmParams, opts = {}) {
         if (npi < 0) npi = 0;
         npiList[i] = npi;
         nepList[i] = nepair;
+    }
+
+    if (v >= 2) {
+        console.log('[buildMMFFLTopology] types/params', { type_source: typeSource });
+        for (let i = 0; i < nReal; i++) {
+            const sym = Z_TO_SYMBOL[mol.atoms[i].Z] || 'X';
+            const tn = typeNamesReal[i];
+            const t = mmParams.atomTypes ? mmParams.atomTypes[tn] : null;
+            const nb = countNeighborsFromAdj(bondsAdj1[i]);
+            const Ass = t ? +t.Ass : NaN;
+            const Kss = t ? +t.Kss : NaN;
+            console.log(`[MMFFL] ia=${String(i).padStart(4)} sym=${String(sym).padEnd(2)} deg=${deg[i]} type=${String(tn).padEnd(6)} nbond=${nb} npi=${npiList[i]} nep=${nepList[i]} Ass=${Ass} Kss=${Kss}`);
+        }
     }
 
     if (!!opts.report_types) {

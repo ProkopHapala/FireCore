@@ -313,3 +313,27 @@ python3 pyBall/XPDB_AVBD/compare_xyz_trajectories.py pyBall/XPDB_AVBD/traj_ocl_p
 - The GUI can now deliberately perturb geometry and observe motion using deterministic distortions + collision settings.
 - The GUI can render Pi/E-pair dummies and angle-derived bonds in the Raw WebGPU renderer to visualize the full MMFFL constraint graph.
 - The GUI can run short trajectories and compare against headless `traj_*.xyz` using `compare_xyz_trajectories.py`.
+
+#### Session Update – 2026-01-29 (Selection parity, halo indexing, topology overlay refresh)
+
+**Problems observed**
+
+1. **Box/marquee selection drifted from rendered atoms.** The Raw WebGPU renderer expects per-atom *indices*, but our editor stored selections as unique atom IDs. Any time atoms were inserted or deleted, IDs no longer matched packed indices, so gizmo drags moved the correct atoms while halos/highlights latched onto unrelated ones. Manual overlay refreshes did not help because the cached XPDB topology snapshot never rebuilt after geometry edits.
+
+2. **XPDB topology overlay became stale.** The “Show XPDB topology overlay” checkbox only took effect once. After moving atoms the cached `_xpdbTopoLast` was still used, so toggling the checkbox simply re-displayed the old snapshot instead of rebuilding the MMFFL topology from the mutated geometry.
+
+**Fixes implemented (2026‑01‑29)**
+
+1. **Selection/halo indexing parity** (@`web/molgui_webgpu/main.js` lines 270‑300)
+   - Export-to-raw path now walks `EditableMolecule.selection` and maps each atom ID through `id2atom` before filling `RawWebGPUAtomsRenderer.updateSelection(...)`. This guarantees halos, gizmos, and packed buffers all point to the same atom indices even after insert/delete/replicate operations.
+
+2. **XPDB overlay dirtiness tracking** (@`main.js` lines 76‑135, 143‑163, 718‑747, 1205‑1221, 1278‑1343)
+   - Introduced `xpdbOverlayDirty` + `_markXPDBOverlayDirty(reason)` and call it from every geometry/topology mutation path (`_markRawAllDirty`, `_markRawTopologyDirty`, `_markRawGeometryDirty`, XPDB topology option setters, overlay toggle).  
+   - `_refreshXPDBTopoOverlay()` now rebuilds via `_rebuildXPDBTopoCPU()` whenever the cached topology is missing *or* marked dirty, so the overlay reflects the latest EditableMolecule state as soon as the checkbox is toggled back on.  
+   - Rebuilds remain clone-based (dummy atoms never touch `this.system`), so interactive drags still operate directly on the user’s geometry without surprise mutations.
+
+**Result**
+
+- Box selection and gizmo operations now highlight exactly the atoms that will move; halos stay glued to the correct indices even after large topology edits.
+- XPDB overlay can be toggled off/on after any geometry change to obtain a fresh constraint visualization without restarting the topology builder manually.
+- These fixes unblock the next debugging steps (Pi/E dummy visualization & GUI parity runs) because the overlay faithfully mirrors the editable molecule again.

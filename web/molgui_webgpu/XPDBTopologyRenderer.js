@@ -77,6 +77,11 @@ export class XPDBTopologyRenderer {
 
         this.lines = new Map();
 
+        this.bbox = {
+            visible: false,
+            obj: null,
+        };
+
         this.style = {
             atomReal: { color: 0xffffff, size: 6.0, opacity: 0.9 },
             atomDummy: { color: 0xffcc55, size: 5.0, opacity: 0.8 },
@@ -129,11 +134,55 @@ export class XPDBTopologyRenderer {
         if (this.atom.dummy) { this.group.remove(this.atom.dummy); this._disposeObject(this.atom.dummy); }
         this.atom.real = null;
         this.atom.dummy = null;
+        if (this.bbox.obj) { this.group.remove(this.bbox.obj); this._disposeObject(this.bbox.obj); }
+        this.bbox.obj = null;
         for (const obj of this.lines.values()) {
             this.group.remove(obj);
             this._disposeObject(obj);
         }
         this.lines.clear();
+    }
+
+    setBBoxVisible(visible) {
+        this.bbox.visible = !!visible;
+        if (this.bbox.obj) this.bbox.obj.visible = this.enabled && this.bbox.visible;
+    }
+
+    updateBBox(min3, max3) {
+        if (!min3 || !max3 || min3.length < 3 || max3.length < 3) throw new Error('XPDBTopologyRenderer.updateBBox: min3/max3 must be length-3 arrays');
+        const xmin = +min3[0], ymin = +min3[1], zmin = +min3[2];
+        const xmax = +max3[0], ymax = +max3[1], zmax = +max3[2];
+        if (![xmin, ymin, zmin, xmax, ymax, zmax].every(Number.isFinite)) throw new Error(`XPDBTopologyRenderer.updateBBox: non-finite bbox min=${min3} max=${max3}`);
+        if (xmin > xmax || ymin > ymax || zmin > zmax) throw new Error(`XPDBTopologyRenderer.updateBBox: invalid bbox ordering min=${min3} max=${max3}`);
+
+        if (!this.bbox.obj) {
+            const geom = new THREE.BufferGeometry();
+            const verts = new Float32Array(24 * 3); // 12 edges -> 24 vertices
+            geom.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+            const mat = new THREE.LineBasicMaterial({ color: _hexToThreeColor(0x00ff88), transparent: true, opacity: 0.5, depthTest: false, depthWrite: false });
+            this.bbox.obj = new THREE.LineSegments(geom, mat);
+            this.bbox.obj.renderOrder = 5;
+            this.group.add(this.bbox.obj);
+        }
+
+        const p = this.bbox.obj.geometry.attributes.position.array;
+        // corners
+        const c000 = [xmin, ymin, zmin], c100 = [xmax, ymin, zmin], c010 = [xmin, ymax, zmin], c110 = [xmax, ymax, zmin];
+        const c001 = [xmin, ymin, zmax], c101 = [xmax, ymin, zmax], c011 = [xmin, ymax, zmax], c111 = [xmax, ymax, zmax];
+        const edges = [
+            c000, c100, c000, c010, c100, c110, c010, c110,
+            c001, c101, c001, c011, c101, c111, c011, c111,
+            c000, c001, c100, c101, c010, c011, c110, c111,
+        ];
+        let k = 0;
+        for (let i = 0; i < edges.length; i++) {
+            const e = edges[i];
+            p[k++] = e[0];
+            p[k++] = e[1];
+            p[k++] = e[2];
+        }
+        this.bbox.obj.geometry.attributes.position.needsUpdate = true;
+        this.bbox.obj.visible = this.enabled && this.bbox.visible;
     }
 
     updateFromTopo(topo, opts = {}) {
@@ -161,6 +210,12 @@ export class XPDBTopologyRenderer {
 
         // Rebuild everything each update (topology can change, categories can be toggled)
         this.clear();
+
+        // bbox visibility persists across rebuilds (geometry can be filled later via updateBBox)
+        if (this.bbox.visible) {
+            // create placeholder bbox object so it can be toggled immediately
+            this.updateBBox([0, 0, 0], [0, 0, 0]);
+        }
 
         if (nReal > 0) {
             this.atom.real = this._makePoints(posReal, this.style.atomReal);
