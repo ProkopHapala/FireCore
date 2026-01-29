@@ -291,7 +291,6 @@ __kernel void solve_simple_jacobi(
     float dt,
     float k_collision,
     float omega,   // Relaxation factor
-    float pd_scale, // multiply mass/dt^2 diagonal (projective inertia term)
     float momentum_beta // heavy-ball momentum coefficient
 ) {
     int i = get_global_id(0);
@@ -304,8 +303,8 @@ __kernel void solve_simple_jacobi(
     float r_i = params[i].x;
 
     // 1. Inertial Potential (Momentum) with projective diagonal
-    // F = alpha * (target - x), alpha = pd_scale * mass/dt^2
-    float alpha = pd_scale * mass / (dt * dt);
+    // F = alpha * (target - x), alpha = mass / (dt*dt)
+    float alpha = mass / (dt * dt);
     float3 total_force = alpha * (tgt.xyz - p_i.xyz);
     float total_stiffness = alpha + 1e-8f; // avoid divide by zero
 
@@ -476,6 +475,38 @@ __kernel void diag_constraints(
 
     out_bond[i] = (float2)(bond_min, bond_max);
     out_coll[i] = (float2)(coll_min, coll_max);
+}
+
+// ------------------------------------------------------------------
+// KERNEL 6b: Bond residuals (per-bond, CSR topology)
+// ------------------------------------------------------------------
+// Writes absolute residual |dist - L0| for each bond entry in the flattened arrays.
+// Note: if bonds are stored symmetrically, entries will be duplicated (OK for norms/max).
+__kernel void bond_residuals_csr(
+    __global const float4* pos,
+    __global const int* bond_start,
+    __global const int* bond_count,
+    __global const int* bond_neighbors,
+    __global const float* bond_lengths,
+    __global float* out_abs_residual,
+    int num_atoms
+){
+    int i = get_global_id(0);
+    if (i >= num_atoms) return;
+
+    float4 p_i = pos[i];
+    int b_start = bond_start[i];
+    int b_cnt   = bond_count[i];
+    for (int k = 0; k < b_cnt; k++) {
+        int idx = b_start + k;
+        int j   = bond_neighbors[idx];
+        float L = bond_lengths[idx];
+        float4 p_j = pos[j];
+        float3 diff = p_i.xyz - p_j.xyz;
+        float dist  = length(diff);
+        float r = dist - L;
+        out_abs_residual[idx] = fabs(r);
+    }
 }
 
 // ------------------------------------------------------------------

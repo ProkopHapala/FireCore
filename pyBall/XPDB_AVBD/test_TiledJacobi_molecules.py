@@ -428,31 +428,20 @@ def make_random_bonds(pos, prob=0.25, rest_len=0.4, k_bond=200.0):
     return bonds_adj
 
 
-def update_plot(scatter, scatter_sizes, bonds_primary, bonds_secondary, line_segments_primary, line_segments_secondary, force_lines, p, f_bond=None, f_coll=None):
+def update_plot(scatter, scatter_sizes, bond_line_layers, bond_layer_pairs, force_lines, p, f_bond=None, f_coll=None):
     """Update plot for animation"""
-    has_primary = bool(bonds_primary) and any(bonds_primary)
-    has_secondary = bool(bonds_secondary) and any(bonds_secondary)
     scatter.set_offsets(p[:, :2])
     scatter.set_sizes(scatter_sizes)
     
-    if has_primary:
-        segs_primary = []
-        for i, blist in enumerate(bonds_primary):
-            for j, _, _ in blist:
-                if j > i:
-                    segs_primary.append([p[i, :2], p[j, :2]])
-        line_segments_primary.set_segments(segs_primary)
-    else:
-        line_segments_primary.set_segments([])
-    if has_secondary:
-        segs_secondary = []
-        for i, blist in enumerate(bonds_secondary):
-            for j, _, _ in blist:
-                if j > i:
-                    segs_secondary.append([p[i, :2], p[j, :2]])
-        line_segments_secondary.set_segments(segs_secondary)
-    else:
-        line_segments_secondary.set_segments([])
+    for layer_name, pairs in bond_layer_pairs.items():
+        lc = bond_line_layers.get(layer_name)
+        if lc is None:
+            continue
+        if not pairs:
+            lc.set_segments([])
+            continue
+        segs = [[p[i, :2], p[j, :2]] for (i, j) in pairs]
+        lc.set_segments(segs)
 
     # Plot forces as lines
     if f_bond is not None and f_coll is not None:
@@ -469,7 +458,9 @@ def update_plot(scatter, scatter_sizes, bonds_primary, bonds_secondary, line_seg
         force_lines.set_segments(f_segs)
         force_lines.set_colors(f_colors)
 
-    return (scatter, line_segments_primary, line_segments_secondary, force_lines)
+    artists = [scatter, force_lines]
+    artists.extend(bond_line_layers.values())
+    return tuple(artists)
 
 '''
 
@@ -503,8 +494,10 @@ def run_test():
     parser.add_argument("--bond_k",          type=float, default=200.0, help="Fallback bond stiffness when no MMFFL data [eV/Å^2]")
     parser.add_argument("--bond_len",        type=float, default=1.3, help="Fallback bond relaxed length [Å]")
     parser.add_argument("--solver_steps",    type=int,   default=10,  help="Jacobi iterations per MD step (inner solver loop)")
-    parser.add_argument("--md_steps",        type=int,   default=0,   help="Number of MD steps to run; <0 for infinite (animation)")
+    parser.add_argument("--solver",         type=str,   default="global", choices=["global", "local", "local_nocoll"], help="Solver variant: global=kernel-per-iter (default), local=in-kernel loop (isolated systems only), local_nocoll=in-kernel loop without collisions")
+    parser.add_argument("--md_steps",        type=int,   default=1000,   help="Number of MD steps to run; <0 for infinite (animation)")
     parser.add_argument("--noshow",          action="store_true",    help="Skip matplotlib windows (useful for batch/CI)")
+    parser.add_argument("--pin_mass_mul",    type=float, default=1e8, help="Multiplier applied to mass of dragged atom while mouse button is held")
     parser.add_argument("--coll_scale",      type=float, default=2.0, help="Collision distance multiplier relative to atom radius (dimensionless)")
     parser.add_argument("--bbox_scale",      type=float, default=2.0, help="Simulation bounding box padding relative to molecule size (dimensionless)")
     parser.add_argument("--group_size",      type=int,   default=64, help="OpenCL work-group size for XPDB kernels")
@@ -645,16 +638,29 @@ def run_test():
     cluster_colors = cmap((np.arange(sim.num_groups) % cmap.N) / cmap.N)
     atom_colors = cluster_colors[np.arange(num_atoms) // sim.group_size]
     scatter = ax.scatter(pos0[:, 0], pos0[:, 1], s=scatter_sizes, c=atom_colors, alpha=0.7, edgecolors='k', linewidths=0.3)
-    line_segments_primary = LineCollection([], colors='gray', linewidths=1.5)
-    line_segments_secondary = LineCollection([], colors='lightgray', linewidths=0.3)
-    ax.add_collection(line_segments_secondary)
-    ax.add_collection(line_segments_primary)
-    
+
+    bond_layer_defs = [
+        ("primary", 'k', 2.5),
+        ("angle", '#00bcd4', 0.8),
+        ("pi", '#ff00ff', 0.8),
+        ("pi_align", '#8a2be2', 0.6),
+        ("epair", '#ffa500', 0.8),
+        ("epair_pair", '#a0522d', 0.6),
+    ]
+    bond_line_layers = {}
+    for name, color, lw in bond_layer_defs:
+        lc = LineCollection([], colors=color, linewidths=lw)
+        ax.add_collection(lc)
+        bond_line_layers[name] = lc
+
     force_lines = LineCollection([], linewidths=1.0)
     ax.add_collection(force_lines)
 
     host_pos = np.empty((num_atoms, 4), dtype=np.float32)
     host_pred = np.empty((num_atoms, 4), dtype=np.float32)
+    host_params = np.zeros((num_atoms, 4), dtype=np.float32)
+    host_params[:, 0] = radius
+    host_params[:, 3] = mass
     # Seed host_pos with initial positions for picking
     sim.get_positions(out=host_pos)
 
@@ -662,7 +668,18 @@ def run_test():
         "idx": None,
         "active": False,
         "mouse": np.array([0.0, 0.0], dtype=np.float32),
+        "mass_orig": None,
     }
+
+    def upload_param_row(atom_idx):
+        offset = atom_idx * 16
+        cl.enqueue_copy(sim.queue, sim.cl_params, host_params[atom_idx:atom_idx+1], device_offset=offset).wait()
+
+    def restore_pick_mass():
+        if pick_state["mass_orig"] is not None and pick_state["idx"] is not None:
+            host_params[pick_state["idx"], 3] = pick_state["mass_orig"]
+            upload_param_row(pick_state["idx"])
+        pick_state["mass_orig"] = None
 
     def on_press(event):
         if event.inaxes != ax or event.xdata is None or event.ydata is None:
@@ -675,6 +692,9 @@ def run_test():
             pick_state["idx"] = i_min
             pick_state["active"] = True
             pick_state["mouse"] = mouse_xy
+            pick_state["mass_orig"] = float(host_params[i_min, 3])
+            host_params[i_min, 3] = pick_state["mass_orig"] * float(args.pin_mass_mul)
+            upload_param_row(i_min)
             print(f"[DEBUG] on_press hit: idx={i_min} d={np.sqrt(d2[i_min]):.4f} radius={args.pick_radius} mouse={mouse_xy}")
         else:
             print(f"[DEBUG] on_press miss: closest idx={i_min} d={np.sqrt(d2[i_min]):.4f} radius={args.pick_radius} mouse={mouse_xy}")
@@ -683,6 +703,7 @@ def run_test():
     def on_release(event):
         if pick_state["active"]:
             print(f"[DEBUG] on_release: idx={pick_state['idx']}")
+        restore_pick_mass()
         pick_state["active"] = False
         pick_state["idx"] = None
 
@@ -698,26 +719,47 @@ def run_test():
     cid_release = fig.canvas.mpl_connect('button_release_event', on_release)
     cid_motion = fig.canvas.mpl_connect('motion_notify_event', on_motion)
     
-    if bonds_plot is not None:
-        bonds_plot_primary = []
-        bonds_plot_secondary = []
-        for i in range(num_atoms):
-            primary_list = []
-            secondary_list = []
-            for k in range( bond_type_mask.shape[1] if bond_type_mask is not None else 0 ):
-                j = bond_indices[i, k]
+    def adjacency_to_pairs(adj_list):
+        pairs = set()
+        if adj_list is None:
+            return []
+        for i, neighbors in enumerate(adj_list):
+            for entry in neighbors:
+                j = int(entry[0])
                 if j == -1:
                     continue
-                entry = [j, bond_lengths[i, k], bond_stiffness[i, k]]
-                if bond_type_mask is not None and bond_type_mask[i, k] == 1:
-                    primary_list.append(entry)
-                elif bond_type_mask is not None and bond_type_mask[i, k] == 2:
-                    secondary_list.append(entry)
-            bonds_plot_primary.append(primary_list)
-            bonds_plot_secondary.append(secondary_list)
+                a, b = (i, j) if i < j else (j, i)
+                pairs.add((a, b))
+        return sorted(pairs)
+
+    bond_layer_pairs = {name: [] for name, _, _ in bond_layer_defs}
+    if 'topo' in locals() and topo is not None:
+        topo_map = {
+            "primary": "bonds_primary",
+            "angle": "bonds_angle",
+            "pi": "bonds_pi",
+            "pi_align": "bonds_pi_align",
+            "epair": "bonds_epair",
+            "epair_pair": "bonds_epair_pair",
+        }
+        for layer_name, topo_key in topo_map.items():
+            entries = topo.get(topo_key, []) if isinstance(topo, dict) else []
+            pairs = set()
+            for record in entries:
+                if isinstance(record, dict):
+                    i = int(record.get('i', record.get('a', 0)))
+                    j = int(record.get('j', record.get('b', 0)))
+                else:
+                    i = int(record[0])
+                    j = int(record[1])
+                a, b = (i, j) if i < j else (j, i)
+                pairs.add((a, b))
+            bond_layer_pairs[layer_name] = sorted(pairs)
+        if not bond_layer_pairs["primary"]:
+            bond_layer_pairs["primary"] = adjacency_to_pairs(bonds_plot)
     else:
-        bonds_plot_primary = bonds_plot
-        bonds_plot_secondary = None
+        bond_layer_pairs["primary"] = adjacency_to_pairs(bonds_plot)
+        bond_layer_pairs["angle"] = adjacency_to_pairs(bonds_plot_secondary if 'bonds_plot_secondary' in locals() else None)
 
     def update(md_step):
         # Build pred targets from current positions, override picked atom to mouse
@@ -740,13 +782,31 @@ def run_test():
         sim.build_local_topology(Rmax=Rmax, coll_scale=args.coll_scale, bbox_scale=args.bbox_scale)
 
         # Solve
-        sim.solve_cluster_jacobi(
-            dt=args.dt,
-            iterations=args.solver_steps,
-            k_coll=args.k_coll,
-            omega=args.omega,
-            momentum_beta=args.momentum_beta
-        )
+        if args.solver == "global":
+            sim.solve_cluster_jacobi(
+                dt=args.dt,
+                iterations=args.solver_steps,
+                k_coll=args.k_coll,
+                omega=args.omega,
+                momentum_beta=args.momentum_beta
+            )
+        elif args.solver == "local":
+            sim.solve_cluster_jacobi_local(
+                dt=args.dt,
+                inner_iters=args.solver_steps,
+                k_coll=args.k_coll,
+                omega=args.omega,
+                momentum_beta=args.momentum_beta
+            )
+        elif args.solver == "local_nocoll":
+            sim.solve_cluster_jacobi_local_nocoll(
+                dt=args.dt,
+                inner_iters=args.solver_steps,
+                omega=args.omega,
+                momentum_beta=args.momentum_beta
+            )
+        else:
+            raise ValueError(f"Unknown solver {args.solver}")
         
         # Download positions
         sim.get_positions(out=host_pos)
@@ -755,14 +815,7 @@ def run_test():
             bbox_max = host_pos[:, :3].max(axis=0)
             print(f"[DEBUG] md_step {md_step}: bbox min {bbox_min} max {bbox_max}")
         
-        # Download forces if debug viz enabled
-        if args.debug_viz:
-            f_bond, f_coll = sim.get_debug_forces()
-            f_bond *= args.force_scale
-            f_coll *= args.force_scale
-            return update_plot(scatter, scatter_sizes, bonds_plot_primary, bonds_plot_secondary, line_segments_primary, line_segments_secondary, force_lines, host_pos, f_bond, f_coll)
-        
-        return update_plot(scatter, scatter_sizes, bonds_plot_primary, bonds_plot_secondary, line_segments_primary, line_segments_secondary, force_lines, host_pos)
+        return update_plot(scatter, scatter_sizes, bond_line_layers, bond_layer_pairs, force_lines, host_pos)
     
     frames_iter = itertools.count() if args.md_steps < 0 else range(args.md_steps)
     ani = FuncAnimation(fig, update, frames=frames_iter, interval=30, blit=False, repeat=False, save_count=0, cache_frame_data=False)

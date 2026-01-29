@@ -46,6 +46,7 @@ class XPDB:
 
         # Host placeholders for Bond topology (need to upload once)
         self.num_bonds = 0
+        self.num_bond_entries = 0
 
         # Host scratch for readback to avoid per-frame allocation
         self._host_pos = np.zeros((self.num_atoms, 4), dtype=np.float32)
@@ -63,6 +64,10 @@ class XPDB:
         self.cl_bond_neighbors = None
         self.cl_bond_lengths = None
         self.cl_bond_stiffness = None
+
+        # Bond residual scratch (lazy init)
+        self.cl_bond_abs_residual = None
+        self._host_bond_abs_residual = None
 
     def _ensure_diag_buffers(self):
         if self.cl_diag_bond is None:
@@ -122,11 +127,17 @@ class XPDB:
                 stiffness.append(b[2])
             current_offset += len(b_list)
 
+        self.num_bond_entries = int(current_offset)
+
         self.cl_bond_start = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(start, dtype=np.int32))
         self.cl_bond_count = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(count, dtype=np.int32))
         self.cl_bond_neighbors = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(neighbors, dtype=np.int32))
         self.cl_bond_lengths = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(lengths, dtype=np.float32))
         self.cl_bond_stiffness = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=np.array(stiffness, dtype=np.float32))
+
+        # Invalidate bond residual scratch (size depends on bond entries)
+        self.cl_bond_abs_residual = None
+        self._host_bond_abs_residual = None
 
     def set_empty_bonds(self):
         """Prepare zero-length bond buffers to allow stepping without bonds."""
@@ -138,6 +149,47 @@ class XPDB:
         self.cl_bond_neighbors = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=np.zeros(1, dtype=np.int32))
         self.cl_bond_lengths = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=zero_f)
         self.cl_bond_stiffness = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=zero_f)
+        self.num_bond_entries = 0
+        self.cl_bond_abs_residual = None
+        self._host_bond_abs_residual = None
+
+    def _ensure_bond_residual_scratch(self):
+        if self.num_bond_entries <= 0:
+            self.cl_bond_abs_residual = None
+            self._host_bond_abs_residual = None
+            return
+        if (self.cl_bond_abs_residual is None) or (self._host_bond_abs_residual is None) or (len(self._host_bond_abs_residual) != self.num_bond_entries):
+            mf = cl.mem_flags
+            self.cl_bond_abs_residual = cl.Buffer(self.ctx, mf.READ_WRITE, self.num_bond_entries * 4)
+            self._host_bond_abs_residual = np.empty(self.num_bond_entries, dtype=np.float32)
+
+    def bond_residual_norms_from_pos(self, cl_pos_buffer, eps=1e-20):
+        """Compute bond residual norms using OpenCL kernel bond_residuals_csr.
+
+        Returns dict {linf, l2, n} where:
+        - linf = max |dist - L0|
+        - l2   = sqrt(mean(|dist - L0|^2))  (RMS)
+        - n    = number of bond entries evaluated
+        """
+        if self.cl_bond_start is None:
+            self.set_empty_bonds()
+        if self.num_bond_entries <= 0:
+            return {"linf": 0.0, "l2": 0.0, "n": 0}
+
+        self._ensure_bond_residual_scratch()
+        self.prg.bond_residuals_csr(
+            self.queue, (self.num_atoms,), None,
+            cl_pos_buffer,
+            self.cl_bond_start, self.cl_bond_count, self.cl_bond_neighbors, self.cl_bond_lengths,
+            self.cl_bond_abs_residual,
+            np.int32(self.num_atoms)
+        )
+        cl.enqueue_copy(self.queue, self._host_bond_abs_residual, self.cl_bond_abs_residual).wait()
+
+        r = self._host_bond_abs_residual
+        linf = float(np.max(r))
+        l2 = float(np.sqrt(np.mean(r * r) + float(eps)))
+        return {"linf": linf, "l2": l2, "n": int(r.size)}
 
     def update_verlet(self, margin_sq=4.0):
         # 1. Update BBoxes
@@ -180,7 +232,6 @@ class XPDB:
         iterations=5,
         k_coll=1000.0,
         omega=0.8,
-        pd_scale=1.0,
         momentum_beta=0.0,
         cheby_enable=False,
         cheby_rho=0.99,
@@ -236,7 +287,7 @@ class XPDB:
                 self.cl_coll_neighbors, self.cl_coll_count,
 
                 np.int32(self.num_atoms), np.float32(dt),
-                np.float32(k_coll), np.float32(omega), np.float32(pd_scale), np.float32(momentum_beta)
+                np.float32(k_coll), np.float32(omega), np.float32(momentum_beta)
             )
             if cheby_enable:
                 # Update Chebyshev omega
@@ -330,7 +381,6 @@ class XPDB:
         dt,
         k_coll,
         omega,
-        pd_scale,
         momentum_beta,
         cheby_state=None,
         pred_buffer=None,
@@ -353,7 +403,7 @@ class XPDB:
             self.cl_bond_start, self.cl_bond_count, self.cl_bond_neighbors, self.cl_bond_lengths, self.cl_bond_stiffness,
             self.cl_coll_neighbors, self.cl_coll_count,
             np.int32(self.num_atoms), np.float32(dt),
-            np.float32(k_coll), np.float32(omega), np.float32(pd_scale), np.float32(momentum_beta)
+            np.float32(k_coll), np.float32(omega), np.float32(momentum_beta)
         )
         if cheby_state is not None:
             i = cheby_state.get("iter", 0)
@@ -394,7 +444,6 @@ class XPDB:
         dt=0.01,
         k_coll=1000.0,
         omega=0.8,
-        pd_scale=1.0,
         momentum_beta=0.0,
         cheby_enable=False,
         cheby_rho=0.99,
@@ -423,7 +472,7 @@ class XPDB:
                 self.cl_bond_start, self.cl_bond_count, self.cl_bond_neighbors, self.cl_bond_lengths, self.cl_bond_stiffness,
                 self.cl_coll_neighbors, self.cl_coll_count,
                 np.int32(self.num_atoms), np.float32(dt),
-                np.float32(k_coll), np.float32(omega), np.float32(pd_scale), np.float32(momentum_beta)
+                np.float32(k_coll), np.float32(omega), np.float32(momentum_beta)
             )
             if cheby_enable:
                 if i < cheby_delay:

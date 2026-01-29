@@ -2741,3 +2741,64 @@ This kerenal already can do the re-indexing in the neighbor list (it reads the n
 
 
 Good question is how to do this in parallel. if one thread take care for one box it would be serail and appending the list of external atom would be easy. But that would use threads very purely (low paralelization). What is better instead is to have workgroup. workgroup take the atoms in bathess of workgroup size, emit to local memory either index of atom, or -1 if that atom is outside box+2*Rmax margin, and then single thread will conduct reducation of these updating the counter of number of external atoms... (hope this is understandable.
+
+
+---
+
+## USER
+
+aha, I see the solve_cluster_jacobi
+have this
+inner_iters
+right? but can this work? I can imagine that if clusters are small (the whole molecule fit into one workgroup) we can run Jacobi solver completely in clocal memory, but when we have larger molecule (which does not fit into one workgroup) we can run only single iteration because we need to synchronize (read updated positions of atoms from other workgroups) and there is no outher sycnrhonization mechanism in OpenCL between workgroups than over global memory and kernel pass, right?
+
+We need to clearly distinguis that.
+
+Even for small molecules running local loop would be problematic because although the bonds can be local, the collisions are non-local (molecule which fit to one workgroup may have bonds only to atoms form the same group, but it colide with atoms of different molecule updated by different group), which is main blocker from having pure local memory solver. right?
+
+We should explain this clearly
+There are few solutions
+1) make purely local solver for small molecules which does just local interactions, where the collisions are not present.
+2) make local solver which treat interaction with other molecules as weak "external" forces which are solved by predictor (like vdW and electronstatics) not by the linear solver (corrector) like hard-spahere colisions.
+3) do loop in global memroy calling kernel every iteration and keeping momentum in global buffers. That can run for molecule of any size.
+
+The gobal kernel should be default as it is general, the other should be more experimental atempst to optimize performance further for specialized cases. 
+
+Am I right? Make clear layout of these architectorual alternatives  (traeoff) optimized for different situations.
+
+---
+
+## GPT-5.1-Codex
+
+You’re exactly right: OpenCL provides no cross–work-group barrier, so any data that must become visible to other groups (bond constraints spanning groups, collisions, momentum history) has to flow through global memory between kernel dispatches. Here’s the layout of viable strategies and their trade-offs:
+
+### 1. Purely local solver (single work-group fits entire system)
+- **How it works**: `inner_iters > 1` loop inside kernel; positions stay in local memory.
+- **Requirements**:
+  - All bonded neighbors reside in the same work-group.
+  - Collisions are either disabled or only involve atoms inside that work-group.
+- **Pros**: Maximum performance (no global traffic mid-iteration).
+- **Cons**: Only works for tiny molecules or contrived test cases; breaks as soon as collisions or bonds span multiple groups because other groups never see the updates.
+
+### 2. Hybrid local solver with “soft” external forces
+- **Idea**: Keep pure local iterations for intra-group bonds while treating inter-group interactions (collisions, vdW, electrostatics) as predictor forces applied outside the Jacobi corrector.
+- **Pros**: Keeps fast local behavior for stiff constraints, offloads far-field interactions to less stringent updates.
+- **Cons**: Still requires a consistent predictor/corrector split; inter-group hard-sphere collisions (what we currently model) don’t fit this approximation, so it’s only applicable if we relax collision modeling.
+
+### 3. Global loop (current default)  
+- **How it works**: Run one outer iteration per kernel launch, write `curr_pos` (and, after fixing the bug, `prev_pos`) to global memory, then relaunch for the next iteration.
+- **Pros**:
+  - Works for any molecule size.
+  - Naturally synchronizes all work-groups via the host between iterations.
+  - Allows correct heavy-ball momentum once we store `prev_pos` persistently.
+  - Lets the host insert diagnostics, adjust `pred_pos`, early-stop, etc.
+- **Cons**: Each iteration pays a kernel launch and global memory traffic, so it’s slower than an all-local loop on small systems.
+
+Given those realities:
+- The **global kernel-per-iteration loop** must be the baseline path; it’s the only correct approach when molecules span multiple work-groups or when collisions couple groups.
+- The **local inner-loop optimization** is a specialized fast path we can keep for cases where the entire system truly fits in one group and collisions are disabled.
+- Diagnostic kernels (like `bond_residuals_fixed_global`) remain separate passes so they don’t pollute the hot solver.
+
+Next concrete step is to fix [solve_cluster_jacobi](cci:1://file:///home/prokop/git/FireCore/pyBall/XPDB_AVBD/XPDB_new.py:157:4-167:9) so it writes/reads `prev_pos` in global memory. Then we can drop the helper kernel and benchmarks will stay on the main path while still supporting per-iteration control.
+
+

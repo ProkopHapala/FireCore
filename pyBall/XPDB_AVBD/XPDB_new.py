@@ -28,9 +28,13 @@ class XPDB_new:
 
         # Atom Data
         self.cl_pos = cl.Buffer(self.ctx, mf.READ_WRITE, num_atoms * 16)  # float4
-        self.cl_pred_pos = cl.Buffer(self.ctx, mf.READ_WRITE, num_atoms * 16)  # float4
+        self.cl_pred_pos = cl.Buffer(self.ctx, mf.READ_WRITE, num_atoms * 16)  # compatibility buffer
         self.cl_vel = cl.Buffer(self.ctx, mf.READ_WRITE, num_atoms * 16)  # float4 (kept for parity/debug)
         self.cl_params = cl.Buffer(self.ctx, mf.READ_ONLY, num_atoms * 16)  # .x=rad, .w=mass
+
+        # Persistent prev positions + momentum (for heavy-ball mixing)
+        self.cl_prev_pos = cl.Buffer(self.ctx, mf.READ_WRITE, num_atoms * 16)  # float4
+        self.cl_momentum = cl.Buffer(self.ctx, mf.READ_WRITE, num_atoms * 16)  # float4
 
         # Bounding Boxes
         self.cl_bboxes_min = cl.Buffer(self.ctx, mf.READ_WRITE, self.num_groups * 16)
@@ -45,6 +49,10 @@ class XPDB_new:
         self.cl_bond_indices_local  = cl.Buffer(self.ctx, mf.READ_WRITE, num_atoms * self.n_max_bonded * 4)  # int
         self.cl_bond_lengths = cl.Buffer(self.ctx, mf.READ_WRITE, num_atoms * self.n_max_bonded * 4)  # float
         self.cl_bond_stiffness = cl.Buffer(self.ctx, mf.READ_WRITE, num_atoms * self.n_max_bonded * 4)  # float
+
+        # Bond residual scratch (lazy init)
+        self.cl_bond_abs_residual = None
+        self._host_bond_abs_residual = None
 
         # Debug Buffers
         self.cl_debug_force_bond = cl.Buffer(self.ctx, mf.WRITE_ONLY, num_atoms * 16)
@@ -81,8 +89,10 @@ class XPDB_new:
 
         cl.enqueue_copy(self.queue, self.cl_pos, pos4)
         cl.enqueue_copy(self.queue, self.cl_pred_pos, pos4)
+        cl.enqueue_copy(self.queue, self.cl_prev_pos, pos4)
         cl.enqueue_copy(self.queue, self.cl_vel, vel4)
         cl.enqueue_copy(self.queue, self.cl_params, params)
+        cl.enqueue_fill_buffer(self.queue, self.cl_momentum, np.float32(0.0), 0, self.num_atoms * 16)
 
     def upload_bonds_fixed(self, bonds_adj):
         """
@@ -103,6 +113,10 @@ class XPDB_new:
         cl.enqueue_copy(self.queue, self.cl_bond_lengths, bond_lengths)
         cl.enqueue_copy(self.queue, self.cl_bond_stiffness, bond_stiffness)
 
+        # Invalidate bond residual scratch
+        self.cl_bond_abs_residual = None
+        self._host_bond_abs_residual = None
+
     def upload_bonds_fixed_from_arrays(self, bond_indices, bond_lengths, bond_stiffness):
         """
         Upload prebuilt bond index/length/stiffness arrays directly to global buffers.
@@ -113,6 +127,50 @@ class XPDB_new:
         cl.enqueue_copy(self.queue, self.cl_bond_indices_global, bond_indices)
         cl.enqueue_copy(self.queue, self.cl_bond_lengths, bond_lengths)
         cl.enqueue_copy(self.queue, self.cl_bond_stiffness, bond_stiffness)
+
+        # Invalidate bond residual scratch
+        self.cl_bond_abs_residual = None
+        self._host_bond_abs_residual = None
+
+    def reset_prev_pos(self, src_buffer=None):
+        """Seed cl_prev_pos from src_buffer (default cl_pos) and clear momentum."""
+        src = self.cl_pos if src_buffer is None else src_buffer
+        cl.enqueue_copy(self.queue, self.cl_prev_pos, src).wait()
+        cl.enqueue_fill_buffer(self.queue, self.cl_momentum, np.float32(0.0), 0, self.num_atoms * 16).wait()
+
+    def _seed_prev_from_curr(self):
+        cl.enqueue_copy(self.queue, self.cl_prev_pos, self.cl_pos)
+
+    def _ensure_bond_residual_scratch(self):
+        n = int(self.num_atoms * self.n_max_bonded)
+        if (self.cl_bond_abs_residual is None) or (self._host_bond_abs_residual is None) or (self._host_bond_abs_residual.size != n):
+            mf = cl.mem_flags
+            self.cl_bond_abs_residual = cl.Buffer(self.ctx, mf.READ_WRITE, n * 4)
+            self._host_bond_abs_residual = np.empty(n, dtype=np.float32)
+
+    def bond_residual_norms(self, eps=1e-20):
+        """Compute bond residual norms using fixed-slot global topology.
+
+        Returns dict {linf, l2, n} where:
+        - linf = max |dist - L0| over all slots
+        - l2   = sqrt(mean(|dist - L0|^2)) over all slots
+        - n    = num_atoms * n_max_bonded
+        Unused slots are written as 0 by the kernel.
+        """
+        self._ensure_bond_residual_scratch()
+        self.prg.bond_residuals_fixed_global(
+            self.queue, (self.num_atoms,), None,
+            self.cl_pos,
+            self.cl_bond_indices_global,
+            self.cl_bond_lengths,
+            self.cl_bond_abs_residual,
+            np.int32(self.num_atoms)
+        )
+        cl.enqueue_copy(self.queue, self._host_bond_abs_residual, self.cl_bond_abs_residual).wait()
+        r = self._host_bond_abs_residual
+        linf = float(np.max(r))
+        l2 = float(np.sqrt(np.mean(r * r) + float(eps)))
+        return {"linf": linf, "l2": l2, "n": int(r.size)}
 
     def update_bboxes(self, margin_sq=4.0):
         """Update bounding boxes for all clusters"""
@@ -144,15 +202,61 @@ class XPDB_new:
         )
 
     def solve_cluster_jacobi(self, dt=0.01, iterations=10, k_coll=1000.0, omega=0.8, momentum_beta=0.0):
-        """Run tiled Jacobi solver"""
+        """Default/global tiled Jacobi solver (one CL iteration per outer loop)."""
+        for _ in range(int(iterations)):
+            self._seed_prev_from_curr()
+            self.prg.solve_cluster_jacobi_step(
+                self.queue, (self.num_groups * self.group_size,), (self.group_size,),
+                self.cl_pos, self.cl_prev_pos, self.cl_momentum, self.cl_params,
+                self.cl_bond_indices_local, self.cl_bond_lengths, self.cl_bond_stiffness,
+                self.cl_ghost_indices, self.cl_ghost_counts,
+                np.int32(self.num_atoms),
+                np.float32(dt), np.float32(k_coll), np.float32(omega)
+            )
+
+    def solve_cluster_jacobi_local(self, dt=0.01, inner_iters=10, k_coll=1000.0, omega=0.8, momentum_beta=0.0):
+        """Local multi-iteration tiled Jacobi solver (specialized).
+
+        WARNING: This runs `inner_iters` iterations inside one kernel launch and therefore
+        does NOT synchronize with other work-groups between iterations. Use only for
+        isolated systems where cross-cluster collisions are disabled/irrelevant.
+        Momentum is synchronized with global `cl_prev_pos` at kernel entry/exit.
+        """
+        self._seed_prev_from_curr()
         self.prg.solve_cluster_jacobi(
             self.queue, (self.num_groups * self.group_size,), (self.group_size,),
-            self.cl_pos, self.cl_pred_pos, self.cl_params,
+            self.cl_pos, self.cl_prev_pos, self.cl_momentum, self.cl_params,
             self.cl_bond_indices_local, self.cl_bond_lengths, self.cl_bond_stiffness,
             self.cl_ghost_indices, self.cl_ghost_counts,
-            np.int32(self.num_atoms), np.int32(iterations),
-            np.float32(dt), np.float32(k_coll), np.float32(omega), np.float32(momentum_beta),
-            self.cl_debug_force_bond, self.cl_debug_force_coll
+            np.int32(self.num_atoms), np.int32(inner_iters),
+            np.float32(dt), np.float32(k_coll), np.float32(omega)
+        )
+
+    def solve_cluster_jacobi_local_nocoll(self, dt=0.01, inner_iters=10, omega=0.8, momentum_beta=0.0):
+        """Local multi-iteration Jacobi WITHOUT collisions (specialized).
+
+        WARNING: Intended only for isolated small systems (e.g. single molecule) where
+        collisions are disabled and where the system fits within a work-group.
+        """
+        self._seed_prev_from_curr()
+        self.prg.solve_cluster_jacobi_nocoll(
+            self.queue, (self.num_groups * self.group_size,), (self.group_size,),
+            self.cl_pos, self.cl_prev_pos, self.cl_momentum, self.cl_params,
+            self.cl_bond_indices_local, self.cl_bond_lengths, self.cl_bond_stiffness,
+            np.int32(self.num_atoms), np.int32(inner_iters),
+            np.float32(dt), np.float32(omega)
+        )
+
+    def solve_cluster_jacobi_step(self, dt=0.01, k_coll=1000.0, omega=0.8, momentum_beta=0.0):
+        """One Jacobi iteration using persistent prev positions (for benchmarking/trajectory recording)."""
+        self._seed_prev_from_curr()
+        self.prg.solve_cluster_jacobi_step(
+            self.queue, (self.num_groups * self.group_size,), (self.group_size,),
+            self.cl_pos, self.cl_prev_pos, self.cl_momentum, self.cl_params,
+            self.cl_bond_indices_local, self.cl_bond_lengths, self.cl_bond_stiffness,
+            self.cl_ghost_indices, self.cl_ghost_counts,
+            np.int32(self.num_atoms),
+            np.float32(dt), np.float32(k_coll), np.float32(omega)
         )
 
     def get_positions(self, out=None):

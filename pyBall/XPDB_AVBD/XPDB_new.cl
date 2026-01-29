@@ -205,9 +205,10 @@ __kernel void build_local_topology(
 // KERNEL 3: Tiled Jacobi Solver (Single Iteration)
 // ------------------------------------------------------------------
 __kernel void solve_cluster_jacobi(
-    __global float4*       curr_pos,          // RW
-    __global const float4* pred_pos,    // R
-    __global const float4* params,      // R: .x = radius, .w = mass
+    __global float4*       curr_pos,          // RW (in-place Jacobi iterate)
+    __global float4*       prev_pos,          // RW (stores previous iterate, updated each launch)
+    __global float4*       momentum,          // RW (stores heavy-ball displacement)
+    __global const float4* params,            // R: .x = radius, .w = mass
     
     // Topology (Fixed-size bond buffers)
     __global const int*   bond_indices_local,   // [num_atoms * N_MAX_BONDED]
@@ -222,33 +223,24 @@ __kernel void solve_cluster_jacobi(
     int inner_iters,
     float dt,
     float k_coll,
-    float omega,
-    float momentum_beta,
-    
-    // Debug Outputs
-    __global float4* out_force_bond,
-    __global float4* out_force_coll
+    float omega
 ) {
     int lid = get_local_id(0);
     int grp = get_group_id(0);
     int my_global_id = grp * GROUP_SIZE + lid;
 
     __local float4 l_pos[GROUP_SIZE + MAX_GHOSTS];
-    __local float4 l_pos_prev[GROUP_SIZE];
     __local float4 l_pos_new[GROUP_SIZE];
     __local float  l_rad[GROUP_SIZE + MAX_GHOSTS];
 
     // Load Internal
     if (my_global_id < num_atoms) {
         l_pos[lid] = curr_pos[my_global_id];
-        l_pos_prev[lid] = l_pos[lid]; 
     } else {
         l_pos[lid] = (float4)(0.0f);
-        l_pos_prev[lid] = (float4)(0.0f);
     }
 
     // Load Constants
-    float4 my_pred = (my_global_id < num_atoms) ? pred_pos[my_global_id] : (float4)(0.0f);
     float my_mass  = (my_global_id < num_atoms) ? params[my_global_id].w : 1.0f;
     float my_rad   = (my_global_id < num_atoms) ? params[my_global_id].x : 0.0f;
     float alpha    = my_mass / (dt*dt);
@@ -257,9 +249,6 @@ __kernel void solve_cluster_jacobi(
         l_rad[lid] = my_rad;
     }
     barrier(CLK_LOCAL_MEM_FENCE);
-
-    float3 f_bond = (float3)(0.0f);
-    float3 f_coll = (float3)(0.0f);
 
     for (int iter = 0; iter < inner_iters; iter++) {
         // Load Ghosts
@@ -274,9 +263,7 @@ __kernel void solve_cluster_jacobi(
 
         if (my_global_id < num_atoms) {
             float3 p = l_pos[lid].xyz;
-            float3 force = alpha * (my_pred.xyz - p);
-            f_bond = (float3)(0.0f);
-            f_coll = (float3)(0.0f);
+            float3 rhs = p * alpha;
             float k_sum = alpha;
 
             // Bonds
@@ -290,9 +277,9 @@ __kernel void solve_cluster_jacobi(
                 if (dist > 1e-6f) {
                     float L = bond_lengths[my_global_id * N_MAX_BONDED + slot];
                     float st = bond_stiffness[my_global_id * N_MAX_BONDED + slot];
-                    float C = dist - L;
-                    float3 f = -st * C * (diff / dist);
-                    f_bond += f;
+                    float coeff = st * (L / dist);
+                    rhs += diff * coeff;
+                    rhs += n_pos * st;
                     k_sum += st;
                 }
             }
@@ -320,24 +307,103 @@ __kernel void solve_cluster_jacobi(
                 float r_sum = my_rad + l_rad[j];
                 if (dist_sq < r_sum * r_sum && dist_sq > 1e-12f) {
                     float dist = sqrt(dist_sq);
-                    float overlap = dist - r_sum;
-                    float3 f = -k_coll * overlap * (diff / dist);
-                    f_coll += f;
+                    float coeff = k_coll * (r_sum / dist);
+                    rhs += diff * coeff;
+                    rhs += other.xyz * k_coll;
                     k_sum += k_coll;
                 }
             }
 
-            force += f_bond + f_coll;
-            float3 p_new = p + (force / k_sum) * omega;
-            if (momentum_beta != 0.0f) {
-                p_new += (p - l_pos_prev[lid].xyz) * momentum_beta;
-            }
+            float3 p_new = rhs / k_sum;
             l_pos_new[lid] = (float4)(p_new, 0.0f);
         }
         barrier(CLK_LOCAL_MEM_FENCE);
         
         if (my_global_id < num_atoms) {
-            l_pos_prev[lid] = l_pos[lid];
+            l_pos[lid] = l_pos_new[lid];
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    if (my_global_id < num_atoms) {
+        float3 p_corr = l_pos[lid].xyz;
+        float3 p_prev = prev_pos[my_global_id].xyz;
+        float3 dp_prev = momentum[my_global_id].xyz;
+        float3 p_new = p_corr + dp_prev * omega;
+        float3 dp_new = p_new - p_prev;
+        momentum[my_global_id] = (float4)(dp_new, 0.0f);
+        prev_pos[my_global_id] = (float4)(p_new, 0.0f);
+        curr_pos[my_global_id] = (float4)(p_new, 0.0f);
+    }
+}
+
+// ------------------------------------------------------------------
+// KERNEL 3b: Local multi-iteration Jacobi WITHOUT collisions
+// ------------------------------------------------------------------
+// WARNING: intended only for isolated small systems where num_atoms <= GROUP_SIZE
+// and where collision constraints are disabled/irrelevant. This kernel performs
+// multiple inner iterations purely on bonds.
+__kernel void solve_cluster_jacobi_nocoll(
+    __global float4*       curr_pos,          // RW
+    __global float4*       prev_pos,          // RW
+    __global float4*       momentum,          // RW
+    __global const float4* params,            // R: .w = mass
+
+    __global const int*   bond_indices_local, // [num_atoms * N_MAX_BONDED]
+    __global const float* bond_lengths,       // [num_atoms * N_MAX_BONDED]
+    __global const float* bond_stiffness,     // [num_atoms * N_MAX_BONDED]
+
+    int num_atoms,
+    int inner_iters,
+    float dt,
+    float omega
+) {
+    int lid = get_local_id(0);
+    int grp = get_group_id(0);
+    int my_global_id = grp * GROUP_SIZE + lid;
+
+    __local float4 l_pos[GROUP_SIZE];
+    __local float4 l_pos_new[GROUP_SIZE];
+
+    if (my_global_id < num_atoms) {
+        l_pos[lid] = curr_pos[my_global_id];
+    } else {
+        l_pos[lid] = (float4)(0.0f);
+    }
+
+    float my_mass  = (my_global_id < num_atoms) ? params[my_global_id].w : 1.0f;
+    float alpha    = my_mass / (dt*dt);
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    for (int iter = 0; iter < inner_iters; iter++) {
+        if (my_global_id < num_atoms) {
+            float3 p = l_pos[lid].xyz;
+            float3 rhs = alpha * p;
+            float k_sum = alpha;
+
+            for (int slot = 0; slot < N_MAX_BONDED; slot++) {
+                int idx = bond_indices_local[my_global_id * N_MAX_BONDED + slot];
+                if (idx == -1) break;
+                float3 n_pos = l_pos[idx].xyz;
+                float3 diff = p - n_pos;
+                float dist = length(diff);
+                if (dist > 1e-6f) {
+                    float L = bond_lengths[my_global_id * N_MAX_BONDED + slot];
+                    float st = bond_stiffness[my_global_id * N_MAX_BONDED + slot];
+                    float coeff = st * (L / dist);
+                    rhs += diff * coeff;
+                    rhs += n_pos * st;
+                    k_sum += st;
+                }
+            }
+
+            float3 p_new = rhs / k_sum;
+            l_pos_new[lid] = (float4)(p_new, 0.0f);
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        if (my_global_id < num_atoms) {
             l_pos[lid] = l_pos_new[lid];
         }
         barrier(CLK_LOCAL_MEM_FENCE);
@@ -345,7 +411,147 @@ __kernel void solve_cluster_jacobi(
 
     if (my_global_id < num_atoms) {
         curr_pos[my_global_id] = l_pos[lid];
-        out_force_bond[my_global_id] = (float4)(f_bond, 0.0f);
-        out_force_coll[my_global_id] = (float4)(f_coll, 0.0f);
+    }
+}
+
+// ------------------------------------------------------------------
+// KERNEL 4: Bond residuals for fixed-slot global topology
+// ------------------------------------------------------------------
+// Writes absolute residual |dist - L0| for each (atom,slot) into out_abs_residual.
+// Layout: out_abs_residual[ i*N_MAX_BONDED + slot ]
+__kernel void bond_residuals_fixed_global(
+    __global const float4* curr_pos,
+    __global const int*    bond_indices_global,
+    __global const float*  bond_lengths,
+    __global float*        out_abs_residual,
+    int num_atoms
+){
+    int i = get_global_id(0);
+    if (i >= num_atoms) return;
+    float3 p = curr_pos[i].xyz;
+    int base = i * N_MAX_BONDED;
+    for (int slot = 0; slot < N_MAX_BONDED; slot++) {
+        int j = bond_indices_global[base + slot];
+        if (j == -1) break;
+        float3 q = curr_pos[j].xyz;
+        float L0 = bond_lengths[base + slot];
+        float r = length(p - q) - L0;
+        out_abs_residual[base + slot] = fabs(r);
+    }
+    // Fill remaining slots with 0 to keep reductions clean
+    for (int slot = 0; slot < N_MAX_BONDED; slot++) {
+        if (bond_indices_global[base + slot] == -1) {
+            out_abs_residual[base + slot] = 0.0f;
+        }
+    }
+}
+
+// ------------------------------------------------------------------
+// KERNEL 5: Single-step tiled Jacobi with persistent prev_pos
+// ------------------------------------------------------------------
+// This is equivalent to one inner iteration of solve_cluster_jacobi, but with momentum
+// based on a global prev_pos buffer so that momentum works across kernel launches.
+__kernel void solve_cluster_jacobi_step(
+    __global float4*       curr_pos,
+    __global float4*       prev_pos,
+    __global float4*       momentum,
+    __global const float4* params,
+
+    __global const int*   bond_indices_local, // [num_atoms * N_MAX_BONDED]
+    __global const float* bond_lengths,       // [num_atoms * N_MAX_BONDED]
+    __global const float* bond_stiffness,     // [num_atoms * N_MAX_BONDED]
+
+    __global const int* ghost_indices_flat,
+    __global const int* ghost_counts,
+
+    int num_atoms,
+    float dt,
+    float k_coll,
+    float omega
+){
+    int lid = get_local_id(0);
+    int grp = get_group_id(0);
+    int my_global_id = grp * GROUP_SIZE + lid;
+
+    __local float4 l_pos[GROUP_SIZE + MAX_GHOSTS];
+    __local float  l_rad[GROUP_SIZE + MAX_GHOSTS];
+
+    float my_mass  = (my_global_id < num_atoms) ? params[my_global_id].w : 1.0f;
+    float my_rad   = (my_global_id < num_atoms) ? params[my_global_id].x : 0.0f;
+    float alpha    = my_mass / (dt*dt);
+
+    if (my_global_id < num_atoms) {
+        l_pos[lid] = curr_pos[my_global_id];
+        l_rad[lid] = my_rad;
+    } else {
+        l_pos[lid] = (float4)(0.0f);
+        l_rad[lid] = 0.0f;
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    int g_count = ghost_counts[grp];
+    int g_offset = grp * MAX_GHOSTS;
+    for (int k = lid; k < g_count; k += GROUP_SIZE) {
+        int g_idx = ghost_indices_flat[g_offset + k];
+        l_pos[GROUP_SIZE + k] = curr_pos[g_idx];
+        l_rad[GROUP_SIZE + k] = params[g_idx].x;
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (my_global_id < num_atoms) {
+        float3 p = l_pos[lid].xyz;
+        float3 rhs = p * alpha;
+        float k_sum = alpha;
+
+        // Bonds
+        for (int slot = 0; slot < N_MAX_BONDED; slot++) {
+            int idx = bond_indices_local[my_global_id * N_MAX_BONDED + slot];
+            if (idx == -1) break;
+            float3 n_pos = l_pos[idx].xyz;
+            float3 diff = p - n_pos;
+            float dist = length(diff);
+            if (dist > 1e-6f) {
+                float L = bond_lengths[my_global_id * N_MAX_BONDED + slot];
+                float st = bond_stiffness[my_global_id * N_MAX_BONDED + slot];
+                float coeff = st * (L / dist);
+                rhs += diff * coeff;
+                rhs += n_pos * st;
+                k_sum += st;
+            }
+        }
+
+        // Collisions
+        if (k_coll != 0.0f) {
+            int check_count = GROUP_SIZE + g_count;
+            for (int j = 0; j < check_count; j++) {
+                if (j == lid) continue;
+                bool is_bonded = false;
+                for (int slot = 0; slot < N_MAX_BONDED; slot++) {
+                    int idx = bond_indices_local[my_global_id * N_MAX_BONDED + slot];
+                    if (idx == -1) break;
+                    if (idx == j) { is_bonded = true; break; }
+                }
+                if (is_bonded) continue;
+                float3 diff = p - l_pos[j].xyz;
+                float dist_sq = dot(diff, diff);
+                float r_sum = my_rad + l_rad[j];
+                if (dist_sq < r_sum * r_sum && dist_sq > 1e-12f) {
+                    float dist = sqrt(dist_sq);
+                    float coeff = k_coll * (r_sum / dist);
+                    rhs += diff * coeff;
+                    rhs += l_pos[j].xyz * k_coll;
+                    k_sum += k_coll;
+                }
+            }
+        }
+
+        float3 p_corr = rhs / k_sum;
+        float3 p_prev = prev_pos[my_global_id].xyz;
+        float3 dp_prev = momentum[my_global_id].xyz;
+        float3 p_new = p_corr + dp_prev * omega;
+        float3 dp_new = p_new - p_prev;
+        momentum[my_global_id] = (float4)(dp_new, 0.0f);
+        prev_pos[my_global_id] = (float4)(p_new, 0.0f);
+        curr_pos[my_global_id] = (float4)(p_new, 0.0f);
     }
 }

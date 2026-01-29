@@ -179,3 +179,153 @@ We need to divide these 750 threads into Workgroups ($M$).
 ### Remaining follow-ups
 - Add a `pred_scale` or auto copy `curr_pos -> pred_pos` before tiled solves to remove unintended anchor forces when desired.
 - Optional: expose debug neighbor/force downloads in XPDB.py helpers for non-visual runs.
+
+
+---
+
+## USER
+
+aha, I see the solve_cluster_jacobi
+have this
+inner_iters
+right? but can this work? I can imagine that if clusters are small (the whole molecule fit into one workgroup) we can run Jacobi solver completely in clocal memory, but when we have larger molecule (which does not fit into one workgroup) we can run only single iteration because we need to synchronize (read updated positions of atoms from other workgroups) and there is no outher sycnrhonization mechanism in OpenCL between workgroups than over global memory and kernel pass, right?
+
+We need to clearly distinguis that.
+
+Even for small molecules running local loop would be problematic because although the bonds can be local, the collisions are non-local (molecule which fit to one workgroup may have bonds only to atoms form the same group, but it colide with atoms of different molecule updated by different group), which is main blocker from having pure local memory solver. right?
+
+We should explain this clearly
+There are few solutions
+1) make purely local solver for small molecules which does just local interactions, where the collisions are not present.
+2) make local solver which treat interaction with other molecules as weak "external" forces which are solved by predictor (like vdW and electronstatics) not by the linear solver (corrector) like hard-spahere colisions.
+3) do loop in global memroy calling kernel every iteration and keeping momentum in global buffers. That can run for molecule of any size.
+
+The gobal kernel should be default as it is general, the other should be more experimental atempst to optimize performance further for specialized cases. 
+
+Am I right? Make clear layout of these architectorual alternatives  (traeoff) optimized for different situations.
+
+---
+
+## GPT-5.1-Codex
+
+You’re exactly right: OpenCL provides no cross–work-group barrier, so any data that must become visible to other groups (bond constraints spanning groups, collisions, momentum history) has to flow through global memory between kernel dispatches. Here’s the layout of viable strategies and their trade-offs:
+
+### 1. Purely local solver (single work-group fits entire system)
+- **How it works**: `inner_iters > 1` loop inside kernel; positions stay in local memory.
+- **Requirements**:
+  - All bonded neighbors reside in the same work-group.
+  - Collisions are either disabled or only involve atoms inside that work-group.
+- **Pros**: Maximum performance (no global traffic mid-iteration).
+- **Cons**: Only works for tiny molecules or contrived test cases; breaks as soon as collisions or bonds span multiple groups because other groups never see the updates.
+
+### 2. Hybrid local solver with “soft” external forces
+- **Idea**: Keep pure local iterations for intra-group bonds while treating inter-group interactions (collisions, vdW, electrostatics) as predictor forces applied outside the Jacobi corrector.
+- **Pros**: Keeps fast local behavior for stiff constraints, offloads far-field interactions to less stringent updates.
+- **Cons**: Still requires a consistent predictor/corrector split; inter-group hard-sphere collisions (what we currently model) don’t fit this approximation, so it’s only applicable if we relax collision modeling.
+
+### 3. Global loop (current default)  
+- **How it works**: Run one outer iteration per kernel launch, write `curr_pos` (and, after fixing the bug, `prev_pos`) to global memory, then relaunch for the next iteration.
+- **Pros**:
+  - Works for any molecule size.
+  - Naturally synchronizes all work-groups via the host between iterations.
+  - Allows correct heavy-ball momentum once we store `prev_pos` persistently.
+  - Lets the host insert diagnostics, adjust `pred_pos`, early-stop, etc.
+- **Cons**: Each iteration pays a kernel launch and global memory traffic, so it’s slower than an all-local loop on small systems.
+
+Given those realities:
+- The **global kernel-per-iteration loop** must be the baseline path; it’s the only correct approach when molecules span multiple work-groups or when collisions couple groups.
+- The **local inner-loop optimization** is a specialized fast path we can keep for cases where the entire system truly fits in one group and collisions are disabled.
+- Diagnostic kernels (like `bond_residuals_fixed_global`) remain separate passes so they don’t pollute the hot solver.
+
+Next concrete step is to fix [solve_cluster_jacobi](cci:1://file:///home/prokop/git/FireCore/pyBall/XPDB_AVBD/XPDB_new.py:157:4-167:9) so it writes/reads `prev_pos` in global memory. Then we can drop the helper kernel and benchmarks will stay on the main path while still supporting per-iteration control.
+
+
+---
+
+## USER
+
+OK, so now we should make clear plan how to modify @XPDB_new.cl @XPDB_new.py do reflect thise tradeoffs specialization. We do not want to have milion of legacy kernels, and we do not want to rewrite kernels from scratch. We want to do minimal changes to existing kernels so that 
+1) one is global single iteration with persistent momentum doing colisions
+2) second is local multiple iterations within single workgrou, but without collisions in between workgroups (i.e. molecules does not seem each other, they are like independent systems only eventually connected by external forces in predictor). For that kernel we need to write clear warrning about the limitations  
+3) third one is local multiple iterations for molecules smaller than workgroup but without collisions. We should also write warning about the limitations.
+
+make a clear plan
+
+---
+
+## GPT-5.1-Codex
+
+Here’s a minimal-change plan to satisfy the three solver variants while avoiding duplicate kernels:
+
+1. **Global single-iteration solver (default)**
+   - Rename/repurpose [solve_cluster_jacobi](cci:1://file:///home/prokop/git/FireCore/pyBall/XPDB_AVBD/XPDB_new.py:197:4-207:9) so it always performs exactly one outer iteration per launch.
+   - Add a mandatory `prev_pos` buffer argument; kernel loads previous positions from global memory and writes updated ones back, so heavy-ball momentum persists across launches.
+   - Host ([XPDB_new.py](cci:7://file:///home/prokop/git/FireCore/pyBall/XPDB_AVBD/XPDB_new.py:0:0-0:0)) loops for `iterations` times, optionally stopping early once diagnostics fall below tolerance. Collisions remain fully supported because every iteration commits to global memory.
+
+2. **Local multi-iteration solver without cross-cluster collisions (specialized)**
+   - Keep the current `inner_iters` loop inside the kernel but gate it behind a new entry point, e.g., `solve_cluster_jacobi_local`.
+   - This kernel assumes:
+     - All bonded neighbors of atoms in the work-group also live in that group (already required).
+     - Collisions with atoms outside the group are disabled; we either skip collision handling or only draw from local memory.
+   - Add a loud warning/comment plus a Python wrapper docstring explaining that this kernel is only valid when molecules do not interact via collisions (e.g., independent clusters, or interactions handled by predictor forces).
+
+3. **Local micro-molecule solver (entire molecule per group, no collisions)**
+   - Provide another entry point, e.g., `solve_cluster_jacobi_local_small`, which is essentially Variant 2 but also assumes there are *no* ghosts at all and `num_atoms <= GROUP_SIZE`.
+   - Strip collision code entirely to reduce register pressure; document explicitly that this is only for standalone small molecules (e.g., H₂O, NH₃) and breaks if ghosts/collisions are needed.
+
+**Implementation notes**
+- Keep shared math (bond loops, alpha computation) identical by factoring helper inline functions/macros inside the OpenCL file; each kernel calls the same helper to avoid divergence.
+- In Python, expose three methods: `solve_cluster_jacobi_global(...)`, `solve_cluster_jacobi_cluster_local(...)`, `solve_cluster_jacobi_small_local(...)`, each performing input validation (e.g., check `num_atoms <= group_size` for the small variant, enforce `k_coll = 0` when a kernel doesn’t handle collisions).
+- Diagnostics (residual kernel) stay independent; benchmarks call whichever solver variant then run the residual kernel afterward when needed.
+
+Let me know if you want me to start applying these changes or adjust the split before modifying [XPDB_new.cl](cci:7://file:///home/prokop/git/FireCore/pyBall/XPDB_AVBD/XPDB_new.cl:0:0-0:0) / `.py`.
+
+
+
+
+---
+
+
+### Status after refactor (Jan 2026)
+
+- `solve_cluster_jacobi_step` is now the canonical **global** kernel (one outer iteration per launch) and keeps heavy-ball momentum by loading/storing `prev_pos` in global memory.
+- The original multi-iteration kernel has been repurposed as `solve_cluster_jacobi_local(...)`, which caches momentum in local memory but **syncs** the start/end state through global `prev_pos`. This variant is documented as “isolated clusters only”.
+- Added `solve_cluster_jacobi_nocoll(...)`, a collision-free local variant for very small molecules (entire molecule <= work-group). Warned clearly in the Python wrapper + docstring.
+- Python wrapper (`XPDB_new.py`) now exposes three explicit entry points: `solve_cluster_jacobi` (global loop), `solve_cluster_jacobi_local`, and `solve_cluster_jacobi_local_nocoll`. CLI scripts (`test_XPDB_new_relax_benchmark.py`, `test_TiledJacobi_molecules.py`) select among them via `--solver {global,local,local_nocoll}`.
+- Interactive viewer improvements:
+  - Dragging a node now multiplies its mass by `--pin_mass_mul` (default `1e8`) while mouse-down, giving a stiff “pin” without extra kernels. Mass is restored on mouse-up.
+  - Bonds are drawn in multiple layers (primary/angle/pi/pi-align/epair/epair-pair) with distinct colors + line widths so pi/epair scaffolding is easy to inspect.
+- Benchmarks run using the same default global solver, so residual plots are apples-to-apples with any future GPU/JS implementation.
+
+No new files were introduced for this iteration; only existing modules/scripts were updated.
+
+### Jacobi + heavy-ball math (matches C++ ProjectiveDynamics_d)
+
+For each atom `i`, the Jacobi corrector solves the PD linear system
+
+\[ (\alpha_i + \sum_j k_{ij})\,\mathbf{p}_i^{\text{corr}} = \alpha_i\,\mathbf{p}_i^{\text{pred}} + \sum_j k_{ij}\bigl(\mathbf{p}_j^{\text{curr}} + \mathbf{d}_{ij}\bigr) + \sum_c k^{\text{coll}}_{ic}\,\mathbf{c}_{ic} \]
+
+where
+
+- \( \alpha_i = m_i / \Delta t^2 \) is the inertial diagonal from the projective term \(m_i (\mathbf{p}_i - \mathbf{p}_i^{\text{pred}})/\Delta t^2\).
+- \(k_{ij}\) are bond stiffnesses, \(\mathbf{d}_{ij}\) encodes the projected edge direction (rest-length correction), and collision terms are treated as virtual springs \(k^{\text{coll}}_{ic}\).
+
+Solving the scalar denominator explicitly gives the update used in all kernels:
+
+\[ \mathbf{p}_i^{\text{corr}} = \frac{\alpha_i\,\mathbf{p}_i^{\text{pred}} + \sum_j k_{ij}\bigl(\mathbf{p}_j^{\text{curr}} + \mathbf{d}_{ij}\bigr) + \sum_c k^{\text{coll}}_{ic}\,\mathbf{c}_{ic}}{\alpha_i + \sum_j k_{ij} + \sum_c k^{\text{coll}}_{ic}}. \]
+
+Heavy-ball momentum is applied after the pure Jacobi correction exactly like `ProjectiveDynamics_d::updateIterativeMomentum`:
+
+\[ \mathbf{p}_i^{n+1} = \mathbf{p}_i^{\text{corr}} + \omega\bigl(\mathbf{p}_i^{\text{corr}} - \mathbf{p}_i^{\text{prev}}\bigr), \qquad \mathbf{p}_i^{\text{prev}} \leftarrow \mathbf{p}_i^{n+1}. \]
+
+The displacement \(\Delta\mathbf{p}_i = \mathbf{p}_i^{\text{corr}} - \mathbf{p}_i^{\text{prev}}\) is persisted per atom in `momentum`/`prev_pos` buffers so that the next Jacobi launch can reuse the exact same recurrence as the C++ reference.
+
+### Kernel specializations (trade-offs)
+
+1. **Global step (`solve_cluster_jacobi_step`)** – one Jacobi iteration per kernel launch; all work-groups read/write `curr_pos`, `prev_pos`, and `momentum` in global memory before the host re-launches. Supports full collisions and arbitrary molecule sizes; this is the default solver used by benchmarks.
+
+2. **Local multi-iter with collisions isolated (`solve_cluster_jacobi_local`)** – runs `inner_iters` loops entirely inside one work-group, only synchronizing with other groups at entry/exit. Valid when each work-group owns an isolated cluster (no cross-group collisions); we document this limitation prominently.
+
+3. **Local multi-iter, no collisions (`solve_cluster_jacobi_nocoll`)** – stripped-down version for molecules that fit entirely inside one work-group and do not collide with anything else (e.g., micro benchmarks). Drops collision code to minimize register pressure; host enforces `k_coll = 0`.
+
+The Python wrapper guards these modes, emitting warnings if a caller requests a specialized kernel while still enabling collisions or providing molecules larger than the group size. Benchmarks keep using Mode 1 to match the C++ PD reference, while Mode 2/3 remain optional fast paths for carefully controlled experiments.
