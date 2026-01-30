@@ -329,3 +329,59 @@ The displacement \(\Delta\mathbf{p}_i = \mathbf{p}_i^{\text{corr}} - \mathbf{p}_
 3. **Local multi-iter, no collisions (`solve_cluster_jacobi_nocoll`)** – stripped-down version for molecules that fit entirely inside one work-group and do not collide with anything else (e.g., micro benchmarks). Drops collision code to minimize register pressure; host enforces `k_coll = 0`.
 
 The Python wrapper guards these modes, emitting warnings if a caller requests a specialized kernel while still enabling collisions or providing molecules larger than the group size. Benchmarks keep using Mode 1 to match the C++ PD reference, while Mode 2/3 remain optional fast paths for carefully controlled experiments.
+
+
+### Explicit force-based rigid solver notes (30.Jan 2026)
+
+**Goals.** Provide a faithful force/inertia fallback path for rigid XPBD that (a) keeps linear/angular momentum symmetric via action–reaction recoils, (b) exposes damping to let oscillations decay after perturbations, and (c) offers diagnostics + visualization so we can debug port geometry and force directions on tiny systems (H₂O, CH₂NH).
+
+> Working name: **RAsp3ff** (Rigid-atom sp³ force-field), since every rigid atom exports up to four sp³-style ports. We will keep using this label for both the position-based XPBD solver and the explicit force backup to make logs/tests consistent.
+
+**Implementation summary.**
+
+1. **Kernel interface cleanup**
+   - `clear_rigid_forces` now zeroes `force`, `fneigh`, and the cached lever arms `pneigh`.
+   - `gather_port_forces` takes per-atom **local** port vectors (`port_local`, `port_n`) and simply loops over the four neighbor slots. For each slot we rotate the stored vector by the atom quaternion, compute the spring force `K (p_j - (p_i + r_arm))`, add it to the atom and store the recoil (`-F`) plus the lever arm so the integrator can reconstruct torque.
+   - `integrate_rigid_explicit` converts the cached recoils into linear force + torque (`tau += r × F`) and updates velocity/quaternion with user-provided damping.
+
+2. **Python wrapper (`XPDB_new.py`)**
+   - Added `cl_rport_local` / `cl_rport_n` buffers and `upload_rigid_ports_local()` so the test harness can feed per-atom port tables without relying on type heuristics.
+   - Explicit force step now accepts `damp` argument from the caller rather than hard-coding 1.0.
+
+3. **Test harness (`test_rigid_XPBD_molecules.py`)**
+   - Added perturbation helpers so we can randomly displace positions (Å) and quaternions (rad) before running either solver.
+   - Added CLI flags for damping (`--damp_force`), perturbation scales, seed, optional trajectory dump (`--dump_xyz`, writes `{base}_{mol}.xyz` with ports as pseudo-atoms), and optional Matplotlib visualization (`--viz_force`).
+   - Diagnostics now print `|F|` every ~5 % of the force iterations in log scale, along with linear/angular momentum drift and bond residuals for both projective and force pipelines.
+
+**Status / results.** With `dt_force=1e-3`, `iters_force=2000`, perturb_pos=perturb_rot=0.1, and `damp_force=0.98`:
+
+| Molecule | `|F|` start | `|F|` end | `max |d-L0|` | `|P|` / `|L|` final |
+|----------|-------------|-----------|--------------|---------------------|
+| H₂O      | ~5.8e1      | ~2.2e-4   | 6e-7         | 3e-11 / 2e-11       |
+| CH₂=NH   | ~9.9e1      | ~9.4e-2   | 3e-4         | 4e-10 / 9e-10       |
+
+The damping drives oscillations down quickly, so both molecules return to their rest bond lengths even after the random perturbation. Visualization shows ports and forces aligned with expectations.
+
+**Known issues / next steps.**
+
+- **XPBD (projective) solver:** with undistorted initial geometry it looked stable, but once we add perturbations we see angular momentum drift—likely because we still rely on the legacy port tables (per-type) instead of the per-atom local ports now used by the force solver. Need to port the same RAsp3ff port data over to the XPBD kernels and re-test from distorted starts.
+- Ports are currently built in the test script from the rest geometry. If we want the force solver to be agnostic to initial orientation without depending on damping, we should store the lever arms in each atom’s body frame (i.e., rotate `rest_vector` by `q⁻¹` before upload).
+- Need to double-check that explicit-force momentum remains bounded for more complex molecules once we add collision constraints; might need per-axis damping or constraint projection.
+- Visualization is Python-side only; we may want a lightweight CLI flag inside `XPDB_new.py` to dump ports/forces directly from OpenCL for regression tests.
+
+Overall the rigid-force path now shares the same design vocabulary as the XPBD solver: simple slot mapping, symmetric recoils, explicit damping, and tooling to inspect what each port is doing.
+
+
+### Status after refactor (Jan 2026)
+
+- **Rigid-force solver**: Implemented a faithful force/inertia fallback path for rigid XPBD that keeps linear/angular momentum symmetric via action–reaction recoils, exposes damping to let oscillations decay after perturbations, and offers diagnostics + visualization so we can debug port geometry and force directions on tiny systems (H₂O, CH₂NH).
+- **Kernel interface cleanup**: Cleaned up kernel interfaces for `clear_rigid_forces`, `gather_port_forces`, and `integrate_rigid_explicit` to improve readability and maintainability.
+- **Python wrapper updates**: Updated the Python wrapper (`XPDB_new.py`) to accept `damp` argument from the caller and added `cl_rport_local` / `cl_rport_n` buffers and `upload_rigid_ports_local()` to feed per-atom port tables without relying on type heuristics.
+- **Test harness updates**: Updated the test harness (`test_rigid_XPBD_molecules.py`) to add perturbation helpers, CLI flags for damping and perturbation scales, and optional trajectory dump and Matplotlib visualization.
+- **Benchmarks**: Ran benchmarks with `dt_force=1e-3`, `iters_force=2000`, perturb_pos=perturb_rot=0.1, and `damp_force=0.98` and observed that the damping drives oscillations down quickly, returning both molecules to their rest bond lengths even after the random perturbation.
+
+**Next steps**
+
+- Store lever arms in each atom’s body frame to make the force solver agnostic to initial orientation without depending on damping.
+- Double-check that explicit-force momentum remains bounded for more complex molecules once we add collision constraints.
+- Add a lightweight CLI flag inside `XPDB_new.py` to dump ports/forces directly from OpenCL for regression tests.
