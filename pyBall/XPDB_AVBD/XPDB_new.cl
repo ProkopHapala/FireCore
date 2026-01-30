@@ -41,6 +41,16 @@ inline float3 porttab_dir(__local const float4* ldirs, int typ, int k){ return l
 inline float4 quat_from_vec(float3 w);
 inline float4 quat_mul(float4 a, float4 b);
 
+// Safe component fetch from __global float4 without address-space cast (Intel OpenCL complains otherwise)
+inline float fetch4(__global const float4* arr, int idx, int k){
+    float4 v = arr[idx];
+    // TODO: replace cascading if with vector load macros if we need speed; kept explicit for debuggability
+    if(k==0) return v.x;
+    if(k==1) return v.y;
+    if(k==2) return v.z;
+    return v.w;
+}
+
 
 // Rotate vector v by quaternion q
 inline float3 quat_rotate(float4 q, float3 v) {
@@ -126,7 +136,8 @@ __kernel void gather_port_forces(
         int j = neighbors[k];
         if (j < 0) break;
 
-        float Kij = ((float*)&bKs[i])[k];
+        // float Kij = ((float*)&bKs[i])[k]; // Intel OpenCL dislikes address-space cast
+        float Kij = fetch4(bKs, i, k);
         float3 p_j = pos[j].xyz;
 
         float3 r_arm = (float3)(0.0f);
@@ -1260,7 +1271,8 @@ __kernel void rigid_atom_xpbd_update(
             
             // --- A. Bond Constraint (Distance) ---
             // Standard PBD
-            float rest_len = ((float*)&bLs[i])[k]; 
+            // float rest_len = ((float*)&bLs[i])[k]; // DEBUG: address-space cast was rejected by Intel
+            float rest_len = fetch4(bLs, i, k);
             float compliance = 0.0001f; // inverse stiffness
             float C_dist = dist - rest_len;
             float lambda_dist = -C_dist / (invMass + apos[j].w + compliance);
@@ -1413,8 +1425,10 @@ __kernel void rigid_solver_pingpong(
             float dist = length(r_ij);
             float3 dir = r_ij / dist;
             
-            float rest_len = ((float*)&bLs[i])[k];
-            float stiffness = ((float*)&bKs[i])[k];
+            // float rest_len = ((float*)&bLs[i])[k]; // DEBUG
+            // float stiffness = ((float*)&bKs[i])[k]; // DEBUG
+            float rest_len = fetch4(bLs, i, k);
+            float stiffness = fetch4(bKs, i, k);
             
             // Compliance alpha = 1 / (k * dt^2)
             float alpha = 1.0f / (stiffness * dt * dt + 1e-6f);
@@ -1575,8 +1589,10 @@ __kernel void solve_rigid_symmetry(
             
             // Part A: Linear Fix (Standard PBD)
             // Move p_i towards p_j to satisfy distance
-            float rest_len = ((float*)&bLs[i])[k];
-            float stiffness = ((float*)&bKs[i])[k];
+            // float rest_len = ((float*)&bLs[i])[k];
+            // float stiffness = ((float*)&bKs[i])[k];
+            float rest_len = fetch4(bLs, i, k);
+            float stiffness = fetch4(bKs, i, k);
             float alpha = 1.0f / (stiffness * dt * dt + 1e-6f);
             
             float3 r_ij = p_j - p_i;
@@ -1717,8 +1733,8 @@ __kernel void solve_rigid_bk_symmetry(
         if (dist < 1e-8f) continue;
         float3 dir = r_ij / dist;
 
-        float rest_len = ((float*)&bLs[i])[k];
-        float stiff    = ((float*)&bKs[i])[k];
+        float rest_len = fetch4(bLs, i, k);
+        float stiff    = fetch4(bKs, i, k);
         float alpha    = 1.0f / (stiff + 1e-12f);
         float C        = dist - rest_len;
         float lambda   = -C / (w_i + w_j + alpha);
@@ -1951,8 +1967,10 @@ __kernel void solve_ports_xpbd(
         float dist = length(diff);
         
         // XPBD Params
-        float rest_len = uses_port_tip ? 0.0f : ((float*)&bLs[i])[k];
-        float stiffness = ((float*)&bKs[i])[k];
+        // float rest_len = uses_port_tip ? 0.0f : ((float*)&bLs[i])[k]; // DEBUG
+        // float stiffness = ((float*)&bKs[i])[k]; // DEBUG
+        float rest_len = uses_port_tip ? 0.0f : fetch4(bLs, i, k);
+        float stiffness = fetch4(bKs, i, k);
         float alpha = 1.0f / (stiffness * dt * dt + 1e-6f);
 
         // If I am a node using a port (Scenario 1), current_pos is offset from my center.
@@ -2043,7 +2061,8 @@ __kernel void project_ports(
     // Project all 4 potential ports
     for (int k = 0; k < 4; k++) {
         float3 local_p = porttab_dir(l_port_dirs, typ, k);
-        float L = ((float*)&bLs[i])[k];
+        // float L = ((float*)&bLs[i])[k]; // DEBUG
+        float L = fetch4(bLs, i, k);
 
         // 2. Rotate to World Space
         // rot = q * local_p * q_inv
@@ -2115,8 +2134,10 @@ __kernel void jacobi_solve_rigid(
         int j = neighbors[k];
         if (j < 0) break;
         
-        float stiffness = ((float*)&bKs[i])[k]; // K_ij
-        float Lij       = ((float*)&bLs[i])[k]; // bond length used as arm length
+        // float stiffness = ((float*)&bKs[i])[k]; // K_ij // DEBUG
+        // float Lij       = ((float*)&bLs[i])[k]; // bond length used as arm length // DEBUG
+        float stiffness = fetch4(bKs, i, k);
+        float Lij       = fetch4(bLs, i, k);
         
         float3 p_j = pos_pred[j].xyz;
 

@@ -12,6 +12,45 @@ if _ROOT not in sys.path:
 
 from XPDB_new import XPDB_new
 
+def write_pdb_trajectory(filename, frames, symbols, bonds):
+    """
+    Writes a multi-model PDB trajectory with explicit connectivity.
+    
+    Args:
+        filename (str): Output filename (e.g., 'debug.pdb')
+        frames (list): List of numpy arrays or lists of shapes (N, 3)
+        symbols (list): List of element symbols (e.g., ['C', 'H', 'H'])
+        bonds (list): List of tuples (atom_index_1, atom_index_2) - 0-indexed
+    """
+    with open(filename, 'w') as f:
+        for model_idx, coords in enumerate(frames):
+            f.write(f"MODEL     {model_idx + 1:4}\n")
+            
+            for i, (sym, pos) in enumerate(zip(symbols, coords)):
+                # Format: ATOM  ID  NAME  RES  CHAIN  RESNO    X      Y      Z
+                # We use 'HETATM' for general molecules to avoid residue logic
+                f.write(f"HETATM{i+1:5} {sym:4} UNK     1    {pos[0]:8.3f}{pos[1]:8.3f}{pos[2]:8.3f}  1.00  0.00          {sym:>2}\n")
+            
+            f.write("ENDMDL\n")
+        
+        # Explicit Bonding (CONECT records)
+        # PDB indices are 1-based, so we add 1 to our 0-indexed bonds
+        for b1, b2 in bonds:
+            f.write(f"CONECT{b1+1:5}{b2+1:5}\n")
+            
+        f.write("END\n")
+
+# # --- Example Usage ---
+# # 3 frames of a vibrating H2 molecule
+# example_symbols = ["H", "H"]
+# example_bonds = [(0, 1)] # Bond between first and second atom
+# example_frames = [
+#     [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]],
+#     [[0.0, 0.0, 0.0], [0.0, 0.0, 0.80]],
+#     [[0.0, 0.0, 0.0], [0.0, 0.0, 0.70]]
+# ]
+
+# write_pdb_trajectory("debug_movie.pdb", example_frames, example_symbols, example_bonds)
 
 def load_xyz(fname):
     with open(fname, 'r') as f:
@@ -181,30 +220,74 @@ def write_xyz_with_ports(fname, elems, pos, pneigh, port_n):
                 ip += 1
 
 
+class LivePortViz:
+    """Lightweight live 3D updater that keeps camera/view persistent."""
+    def __init__(self, elems):
+        self.elems = elems
+        plt.ion()
+        self.fig = plt.figure(figsize=(6, 6))
+        self.ax = self.fig.add_subplot(111, projection='3d')
+        self.sc = self.ax.scatter([], [], [], s=60, c='k')
+        # Port segments as Line3D objects
+        self.lines = []
+        # Force quiver
+        self.quiver = None
+        # Labels
+        self.labels = []
+        for _ in elems:
+            self.labels.append(self.ax.text(0, 0, 0, '', zorder=10))
+        self.ax.set_xlabel('x'); self.ax.set_ylabel('y'); self.ax.set_zlabel('z')
+        self.fig.canvas.draw()
+        self.fig.show()
+
+    def ensure_lines(self, total_ports):
+        while len(self.lines) < total_ports:
+            ln, = self.ax.plot([0, 0], [0, 0], [0, 0], '-', c='C0', lw=1)
+            self.lines.append(ln)
+
+    def update(self, pos, pneigh, port_n, force=None, title=""):
+        self.ax.set_title(title)
+        # atoms
+        self.sc._offsets3d = (pos[:, 0], pos[:, 1], pos[:, 2])
+        # labels
+        for i, lab in enumerate(self.labels):
+            lab.set_position((pos[i, 0], pos[i, 1]))
+            lab.set_3d_properties(pos[i, 2], zdir='z')
+            lab.set_text(self.elems[i])
+        # ports
+        total_ports = int(np.sum(port_n))
+        self.ensure_lines(total_ports)
+        ip = 0
+        for i in range(pos.shape[0]):
+            pi = pos[i]
+            for k in range(int(port_n[i])):
+                tip = pi + pneigh[i, k, :3]
+                self.lines[ip].set_data_3d([pi[0], tip[0]], [pi[1], tip[1]], [pi[2], tip[2]])
+                ip += 1
+        # hide unused lines
+        for j in range(ip, len(self.lines)):
+            self.lines[j].set_data_3d([0, 0], [0, 0], [0, 0])
+        # forces
+        if self.quiver is not None:
+            self.quiver.remove()
+            self.quiver = None
+        if force is not None:
+            f = force[:, :3]
+            self.quiver = self.ax.quiver(pos[:, 0], pos[:, 1], pos[:, 2], f[:, 0], f[:, 1], f[:, 2], length=0.1, normalize=True, color='r')
+        plt.pause(0.001)
+
+
 def plot_state_with_ports(elems, pos, pneigh, port_n, force=None, *, title=""):
-    fig = plt.figure(figsize=(6, 6))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.set_title(title)
-    ax.scatter(pos[:, 0], pos[:, 1], pos[:, 2], s=60, c='k')
-    for i, e in enumerate(elems):
-        ax.text(pos[i, 0], pos[i, 1], pos[i, 2], e)
-    for i in range(pos.shape[0]):
-        pi = pos[i]
-        for k in range(int(port_n[i])):
-            tip = pi + pneigh[i, k, :3]
-            ax.plot([pi[0], tip[0]], [pi[1], tip[1]], [pi[2], tip[2]], '-', c='C0', lw=1)
-            ax.scatter([tip[0]], [tip[1]], [tip[2]], s=20, c='C0')
-    if force is not None:
-        f = force[:, :3]
-        ax.quiver(pos[:, 0], pos[:, 1], pos[:, 2], f[:, 0], f[:, 1], f[:, 2], length=0.1, normalize=True, color='r')
-    ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('z')
-    plt.tight_layout()
-    if not getattr(run_case, '_noshow', False):
-        plt.show()
+    # Reuse a single viz instance so camera rotation persists
+    if not hasattr(plot_state_with_ports, '_viz'):
+        plot_state_with_ports._viz = LivePortViz(elems)
+    viz = plot_state_with_ports._viz
+    viz.update(pos, pneigh, port_n, force=force, title=title)
+    # no blocking show here; interactive draw handled in LivePortViz
 
 
 def run_case(xyz_path, *, dt=0.1, dt_force=0.01, iters=50, iters_force=2000, k_bond=200.0, k_rot=50.0, perturb_pos=0.1, perturb_rot=0.1, seed=0, damp_force=0.98,
-             dump_xyz=None, dump_every=10, viz_force=False, viz_every=100):
+             dump_xyz=None, dump_every=10, viz_force=False, viz_every=100, dump_pdb=None, pdb_every=10, plot_conv=True):
     name = os.path.basename(xyz_path)
     elems, xyz0, _q = load_xyz(xyz_path)
     m = masses_from_elems(elems)
@@ -311,6 +394,7 @@ def run_case(xyz_path, *, dt=0.1, dt_force=0.01, iters=50, iters_force=2000, k_b
     pos_prev = pos_init.copy()
     f_hist = []
     it_hist = []
+    frames_pdb = []
     print_every = max(1, int(iters_force // 20))
     dump_xyz_i = None
     if dump_xyz is not None:
@@ -332,6 +416,10 @@ def run_case(xyz_path, *, dt=0.1, dt_force=0.01, iters=50, iters_force=2000, k_b
             pos4_it, q4_it, v4_it, om4_it = sim.download_rigid_state()
             pneigh_it = sim.download_buffer(sim.cl_rpneigh, (sim.num_atoms * 4, 4)).reshape(sim.num_atoms, 4, 4)
             write_xyz_with_ports(dump_xyz_i, elems, pos4_it[:, :3], pneigh_it, port_n)
+
+        if dump_pdb is not None and ((it % int(pdb_every)) == 0 or (it == int(iters_force) - 1)):
+            pos4_it, q4_it, v4_it, om4_it = sim.download_rigid_state()
+            frames_pdb.append(pos4_it[:, :3].copy())
 
         if viz_force and ((it % int(viz_every)) == 0 or (it == int(iters_force) - 1)):
             pos4_it, q4_it, v4_it, om4_it = sim.download_rigid_state()
@@ -359,14 +447,28 @@ def run_case(xyz_path, *, dt=0.1, dt_force=0.01, iters=50, iters_force=2000, k_b
     print(f"max bond |d-L0| after force iters = {max_err:.6e}")
 
     if len(f_hist) > 1:
-        plt.figure(figsize=(6, 4))
-        plt.plot(it_hist, np.log10(np.array(f_hist) + 1e-30))
-        plt.xlabel('iter')
-        plt.ylabel('log10 |F|')
-        plt.title(f'force convergence: {name}')
-        plt.tight_layout()
-        if not getattr(run_case, '_noshow', False):
-            plt.show()
+        if plot_conv:
+            plt.figure(figsize=(6, 4))
+            plt.plot(it_hist, np.log10(np.array(f_hist) + 1e-30))
+            plt.xlabel('iter')
+            plt.ylabel('log10 |F|')
+            plt.title(f'force convergence: {name}')
+            plt.tight_layout()
+            if not getattr(run_case, '_noshow', False):
+                plt.show()
+
+    if dump_pdb is not None:
+        mol = os.path.splitext(os.path.basename(xyz_path))[0]
+        if '{mol}' in dump_pdb:
+            pdb_path = dump_pdb.format(mol=mol)
+        else:
+            base, ext = os.path.splitext(dump_pdb)
+            if ext == '':
+                ext = '.pdb'
+            pdb_path = f"{base}_{mol}{ext}"
+        if len(frames_pdb) == 0:
+            raise RuntimeError(f"dump_pdb requested but no frames were collected (pdb_every={pdb_every})")
+        write_pdb_trajectory(pdb_path, frames_pdb, elems, bonds)
 
 
 '''
@@ -374,11 +476,20 @@ python3 pyBall/XPDB_AVBD/test_rigid_XPBD_molecules.py  --dt_force 0.001 --iters_
 
 python3 pyBall/XPDB_AVBD/test_rigid_XPBD_molecules.py --dt_force 0.001 --iters_force 2000 --perturb_pos 0.1 --perturb_rot 0.1 --damp_force 0.98 --dump_xyz traj.xyz --dump_every 10 --noshow
 
+
+python test_rigid_XPBD_molecules.py --molecule ch2nh --dt_force 0.001 --iters_force 1000 --perturb_pos 0.1 --perturb_rot 0.1 --damp_force 0.98 --viz_force --viz_every 50 --dump_pdb traj.pdb
+
+
+python test_rigid_XPBD_molecules.py --molecule ch2nh --dt_force 0.001 --iters_force 1000 --perturb_pos 0.1 --perturb_rot 0.1 --damp_force 0.98 --dump_pdb traj.pdb --pdb_every 10 --noshow
+
+python test_rigid_XPBD_molecules.py --molecule ch2nh --dt_force 0.001 --iters_force 1000 --perturb_pos 0.1 --perturb_rot 0.1 --damp_force 0.98 --viz_force --viz_every 50 --dump_pdb traj_{mol}.pdb --pdb_every 10
+
 '''
 
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument('--molecule', type=str, default='all', choices=['all', 'h2o', 'ch2nh'])
     ap.add_argument('--dt', type=float, default=0.1)
     ap.add_argument('--dt_force', type=float, default=0.01)
     ap.add_argument('--iters', type=int, default=50)
@@ -391,8 +502,11 @@ def main():
     ap.add_argument('--damp_force', type=float, default=0.98)
     ap.add_argument('--dump_xyz', type=str, default=None)
     ap.add_argument('--dump_every', type=int, default=10)
+    ap.add_argument('--dump_pdb', type=str, default=None)
+    ap.add_argument('--pdb_every', type=int, default=10)
     ap.add_argument('--viz_force', action='store_true')
     ap.add_argument('--viz_every', type=int, default=100)
+    ap.add_argument('--plot_conv', action='store_true')
     ap.add_argument('--noshow', action='store_true')
     args = ap.parse_args()
 
@@ -400,14 +514,20 @@ def main():
     xyz_h2o = os.path.join(base, 'H2O.xyz')
     xyz_ch2nh = os.path.join(base, 'CH2NH.xyz')
     run_case._noshow = bool(args.noshow)
-    run_case(xyz_h2o, dt=args.dt, dt_force=args.dt_force, iters=args.iters, iters_force=args.iters_force,
-             k_bond=args.k_bond, k_rot=args.k_rot,
-             perturb_pos=args.perturb_pos, perturb_rot=args.perturb_rot, seed=args.seed, damp_force=args.damp_force,
-             dump_xyz=args.dump_xyz, dump_every=args.dump_every, viz_force=args.viz_force, viz_every=args.viz_every)
-    run_case(xyz_ch2nh, dt=args.dt, dt_force=args.dt_force, iters=args.iters, iters_force=args.iters_force,
-             k_bond=args.k_bond, k_rot=args.k_rot,
-             perturb_pos=args.perturb_pos, perturb_rot=args.perturb_rot, seed=args.seed + 1, damp_force=args.damp_force,
-             dump_xyz=args.dump_xyz, dump_every=args.dump_every, viz_force=args.viz_force, viz_every=args.viz_every)
+
+    if args.molecule in ('all', 'h2o'):
+        run_case(xyz_h2o, dt=args.dt, dt_force=args.dt_force, iters=args.iters, iters_force=args.iters_force,
+                 k_bond=args.k_bond, k_rot=args.k_rot,
+                 perturb_pos=args.perturb_pos, perturb_rot=args.perturb_rot, seed=args.seed, damp_force=args.damp_force,
+                 dump_xyz=args.dump_xyz, dump_every=args.dump_every, viz_force=args.viz_force, viz_every=args.viz_every,
+                 dump_pdb=args.dump_pdb, pdb_every=args.pdb_every, plot_conv=bool(args.plot_conv))
+
+    if args.molecule in ('all', 'ch2nh'):
+        run_case(xyz_ch2nh, dt=args.dt, dt_force=args.dt_force, iters=args.iters, iters_force=args.iters_force,
+                 k_bond=args.k_bond, k_rot=args.k_rot,
+                 perturb_pos=args.perturb_pos, perturb_rot=args.perturb_rot, seed=args.seed + 1, damp_force=args.damp_force,
+                 dump_xyz=args.dump_xyz, dump_every=args.dump_every, viz_force=args.viz_force, viz_every=args.viz_every,
+                 dump_pdb=args.dump_pdb, pdb_every=args.pdb_every, plot_conv=bool(args.plot_conv))
 
 
 if __name__ == '__main__':
