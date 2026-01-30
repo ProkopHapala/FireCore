@@ -173,7 +173,7 @@ def run_test():
         if event.xdata is None or event.ydata is None:
             return
         pick_state["mouse"] = np.array([event.xdata, event.ydata], dtype=np.float32)
-        print(f"[DEBUG] on_motion: idx={pick_state['idx']} mouse={pick_state['mouse']}")
+        #print(f"[DEBUG] on_motion: idx={pick_state['idx']} mouse={pick_state['mouse']}")
 
     cid_press = fig.canvas.mpl_connect('button_press_event', on_press)
     cid_release = fig.canvas.mpl_connect('button_release_event', on_release)
