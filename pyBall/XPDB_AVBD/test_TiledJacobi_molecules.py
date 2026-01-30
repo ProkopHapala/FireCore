@@ -165,7 +165,7 @@ def build_bond_arrays_with_angles(
                 seen.add(idx)
                 unique.append(entry)
         if len(unique) > n_max_bonded:
-            print(f"[WARN] Atom {i} has {len(unique)} bonded neighbors > n_max_bonded={n_max_bonded}; truncating.")
+            raise ValueError(f"Atom {i} has {len(unique)} bonded neighbors > n_max_bonded={n_max_bonded}; increase n_max_bonded or reduce dummy generation.")
         for k, entry in enumerate(unique[:n_max_bonded]):
             bond_indices[i, k] = entry[0]
             bond_lengths[i, k] = entry[1]
@@ -215,7 +215,7 @@ def _pack_fixed_bonds(n, bonds_adj, *, n_max_bonded=16):
     for i in range(n):
         blist = bonds_adj[i]
         if len(blist) > n_max_bonded:
-            print(f"[WARN] Atom {i} has {len(blist)} neighbors > n_max_bonded={n_max_bonded}; truncating")
+            raise ValueError(f"Atom {i} has {len(blist)} neighbors > n_max_bonded={n_max_bonded}; increase n_max_bonded or reduce dummy generation.")
         for k, (j, L, K) in enumerate(blist[:n_max_bonded]):
             bond_indices[i, k] = int(j)
             bond_lengths[i, k] = float(L)
@@ -286,6 +286,13 @@ def load_molecule_topology_mmffl(
         report=True,
     )
 
+    # Optional atom-type dump
+    if print_topology:
+        pass
+    elif globals().get('args', None) is not None and getattr(args, 'print_types', 0):
+        for ia, tn in enumerate(topo.get("type_names", [])):
+            print(f"[TYPE] ia={ia:4d} ename={mol.enames[ia]} tname={tn}")
+
     if dbg_fh is not None:
         apos_all_dbg = topo["apos"]
         for d in getattr(ff, 'pi_dummies', []):
@@ -321,7 +328,15 @@ def load_molecule_topology_mmffl(
     if add_epair and add_epair_pairs:
         bonds_derived += topo["bonds_epair_pair"]
 
-    bonds_all = sorted(set(bonds_primary + bonds_derived))
+    ordered_bonds = bonds_primary + bonds_derived
+    seen_pairs = set()
+    bonds_all = []
+    for (a, b) in ordered_bonds:
+        key = (min(int(a), int(b)), max(int(a), int(b)))
+        if key in seen_pairs:
+            raise ValueError(f"Duplicate bond {key} generated; check topology builders")
+        seen_pairs.add(key)
+        bonds_all.append(key)
     bonds_adj = _bonds_to_adj(n_all, bonds_all, default_L=None, default_K=default_K, apos=apos_all)
     bond_indices, bond_lengths, bond_stiffness, bond_type_mask = _pack_fixed_bonds(n_all, bonds_adj, n_max_bonded=n_max_bonded)
 
@@ -486,51 +501,52 @@ python -u test_TiledJacobi_molecules.py       --molecule ../../cpp/common_resour
 def run_test():
     parser = argparse.ArgumentParser(description="Tiled Jacobi Solver Test with Molecules (distances in Å, stiffness in eV/Å^2)")
     parser.add_argument("--molecule",        type=str,   default="../../cpp/common_resources/xyz/pentacene.xyz", help="Path to molecule file (.xyz, .mol, .mol2)")
-    parser.add_argument("--atom_rad",        type=float, default=0.2, help="Collision sphere radius per atom [Å]")
-    parser.add_argument("--omega",           type=float, default=0.7, help="Jacobi relaxation weight ω (dimensionless, 0<ω<1)")
-    parser.add_argument("--momentum_beta",   type=float, default=0.0, help="Momentum/velocity blending factor β (dimensionless)")
-    parser.add_argument("--dt",              type=float, default=100.0, help="Time step for XPDB updates (solver units, typically fs)")
+    parser.add_argument("--atom_rad",        type=float, default=0.2,   help="Collision sphere radius per atom [Å]")
+    parser.add_argument("--omega",           type=float, default=0.98,  help="Jacobi relaxation weight ω (dimensionless, 0<ω<1)")
+    parser.add_argument("--momentum_beta",   type=float, default=0.8,   help="Momentum/velocity blending factor β (dimensionless)")
+    parser.add_argument("--dt",              type=float, default=1.0,  help="Time step for XPDB updates (solver units, typically fs)")
     parser.add_argument("--k_coll",          type=float, default=100.0, help="Collision spring stiffness [eV/Å^2]")
     parser.add_argument("--bond_k",          type=float, default=200.0, help="Fallback bond stiffness when no MMFFL data [eV/Å^2]")
-    parser.add_argument("--bond_len",        type=float, default=1.3, help="Fallback bond relaxed length [Å]")
-    parser.add_argument("--solver_steps",    type=int,   default=10,  help="Jacobi iterations per MD step (inner solver loop)")
-    parser.add_argument("--solver",         type=str,   default="global", choices=["global", "local", "local_nocoll"], help="Solver variant: global=kernel-per-iter (default), local=in-kernel loop (isolated systems only), local_nocoll=in-kernel loop without collisions")
-    parser.add_argument("--md_steps",        type=int,   default=1000,   help="Number of MD steps to run; <0 for infinite (animation)")
-    parser.add_argument("--noshow",          action="store_true",    help="Skip matplotlib windows (useful for batch/CI)")
-    parser.add_argument("--pin_mass_mul",    type=float, default=1e8, help="Multiplier applied to mass of dragged atom while mouse button is held")
-    parser.add_argument("--coll_scale",      type=float, default=2.0, help="Collision distance multiplier relative to atom radius (dimensionless)")
-    parser.add_argument("--bbox_scale",      type=float, default=2.0, help="Simulation bounding box padding relative to molecule size (dimensionless)")
-    parser.add_argument("--group_size",      type=int,   default=64, help="OpenCL work-group size for XPDB kernels")
-    parser.add_argument("--max_ghosts",      type=int,   default=128, help="Maximum ghost interactions per atom for collision handling")
-    parser.add_argument("--debug_viz",       type=int,   default=1, help="Enable matplotlib preview (1=yes,0=no)")
-    parser.add_argument("--force_scale",     type=float, default=1.0, help="Scale factor for drawn force vectors in 2D debug view")
-    parser.add_argument("--pick_radius",     type=float, default=0.4, help="Picking radius when interacting with the GUI [Å]")
+    parser.add_argument("--bond_len",        type=float, default=1.3,   help="Fallback bond relaxed length [Å]")
+    parser.add_argument("--solver_steps",    type=int,   default=10,    help="Jacobi iterations per MD step (inner solver loop)")
+    parser.add_argument("--solver",          type=str,   default="global", choices=["global", "local", "local_nocoll"], help="Solver variant: global=kernel-per-iter (default), local=in-kernel loop (isolated systems only), local_nocoll=in-kernel loop without collisions")
+    parser.add_argument("--md_steps",        type=int,   default=100000,help="Number of MD steps to run; <0 for infinite (animation)")
+    parser.add_argument("--noshow",          action="store_true",       help="Skip matplotlib windows (useful for batch/CI)")
+    parser.add_argument("--pin_mass_mul",    type=float, default=1e8,   help="Multiplier applied to mass of dragged atom while mouse button is held")
+    parser.add_argument("--coll_scale",      type=float, default=2.0,   help="Collision distance multiplier relative to atom radius (dimensionless)")
+    parser.add_argument("--bbox_scale",      type=float, default=2.0,   help="Simulation bounding box padding relative to molecule size (dimensionless)")
+    parser.add_argument("--group_size",      type=int,   default=64,    help="OpenCL work-group size for XPDB kernels")
+    parser.add_argument("--max_ghosts",      type=int,   default=128,   help="Maximum ghost interactions per atom for collision handling")
+    parser.add_argument("--debug_viz",       type=int,   default=1,     help="Enable matplotlib preview (1=yes,0=no)")
+    parser.add_argument("--force_scale",     type=float, default=1.0,   help="Scale factor for drawn force vectors in 2D debug view")
+    parser.add_argument("--pick_radius",     type=float, default=0.4,   help="Picking radius when interacting with the GUI [Å]")
     parser.add_argument("--alpha0_deg",      type=float, default=120.0, help="Default relaxed angle (degrees) used when no atom-specific data is available")
-    parser.add_argument("--k_angle",         type=float, default=None, help="Override stiffness for geometric angle bonds [eV/Å^2]; None -> reuse --bond_k")
-    parser.add_argument("--enable_angles",   type=int,   default=1, help="Enable MMFFL angle-derived second neighbors (1=yes,0=no)")
+    parser.add_argument("--k_angle",         type=float, default=None,  help="Override stiffness for geometric angle bonds [eV/Å^2]; None -> reuse --bond_k")
+    parser.add_argument("--enable_angles",   type=int,   default=1,     help="Enable MMFFL angle-derived second neighbors (1=yes,0=no)")
     parser.add_argument("--type_source",     type=str,   default="table", help="Atom type source: 'table' (AtomTypes.dat) or 'uff' (UFF inference)")
-    parser.add_argument("--use_mmffl",       type=int,   default=1, help="Use MMFFL topology builder (1) or fall back to legacy geometric bonding (0)")
-    parser.add_argument("--add_pi",          type=int,   default=1, help="Enable pi-orbital dummies and their bonds")
-    parser.add_argument("--two_pi",          type=int,   default=1, help="If --add_pi, place dummies on both +/− sides of the pi plane")
-    parser.add_argument("--add_pi_align",    type=int,   default=0, help="Add alignment bonds between pi dummies of bonded atoms")
-    parser.add_argument("--add_epair",       type=int,   default=1, help="Enable electron-pair dummies (lone pairs) and their bonds")
-    parser.add_argument("--add_epair_pairs", type=int,   default=0, help="Connect multiple electron-pair dummies on the same host to enforce spacing")
-    parser.add_argument("--L_pi",            type=float, default=1.0, help="Distance from host atom to pi dummy center [Å]")
-    parser.add_argument("--L_epair",         type=float, default=0.5, help="Distance from host atom to electron-pair dummy [Å]")
+    parser.add_argument("--use_mmffl",       type=int,   default=1,     help="Use MMFFL topology builder (1) or fall back to legacy geometric bonding (0)")
+    parser.add_argument("--add_pi",          type=int,   default=1,     help="Enable pi-orbital dummies and their bonds")
+    parser.add_argument("--two_pi",          type=int,   default=0,     help="If --add_pi, place dummies on both +/− sides of the pi plane")
+    parser.add_argument("--add_pi_align",    type=int,   default=1,     help="Add alignment bonds between pi dummies of bonded atoms")
+    parser.add_argument("--add_epair",       type=int,   default=1,     help="Enable electron-pair dummies (lone pairs) and their bonds")
+    parser.add_argument("--add_epair_pairs", type=int,   default=0,     help="Connect multiple electron-pair dummies on the same host to enforce spacing")
+    parser.add_argument("--L_pi",            type=float, default=1.0,   help="Distance from host atom to pi dummy center [Å]")
+    parser.add_argument("--L_epair",         type=float, default=0.5,   help="Distance from host atom to electron-pair dummy [Å]")
     parser.add_argument("--K_ang",           type=float, default=100.0, help="Stiffness for angle-derived bonds (k) between second neighbors; set 0 to disable custom value")
-    parser.add_argument("--Kpi_host",        type=float, default=50.0, help="Stiffness for host↔pi-dummy bonds (controls sigma/pi coupling)")
-    parser.add_argument("--Kpi_orth",        type=float, default=30.0, help="Stiffness for pi-dummy↔neighbor orthogonal bonds (keeps pi planes aligned)")
-    parser.add_argument("--Kpi_align",       type=float, default=15.0, help="Stiffness for pi↔pi alignment bonds between bonded hosts (requires --add_pi_align)")
-    parser.add_argument("--Kep_host",        type=float, default=40.0, help="Stiffness for host↔electron-pair dummy bonds")
-    parser.add_argument("--Kep_orth",        type=float, default=25.0, help="Stiffness for electron-pair dummy↔neighbor orthogonal bonds")
-    parser.add_argument("--Kep_pair",        type=float, default=10.0, help="Stiffness for electron-pair dummy↔dummy bonds on the same host (requires --add_epair_pairs)")
-    parser.add_argument("--mol2_out",        type=str,   default=None, help="Optional MOL2 export path (writes Å coordinates + dummy atoms)")
-    parser.add_argument("--topology_only",   type=int,   default=0, help="Stop after topology build/plot/export (1=yes,0=run XPDB)")
-    parser.add_argument("--print_buffers",   type=int,   default=1, help="Dump XPDB input arrays (positions, bond idx/len/stiff) for inspection")
-    parser.add_argument("--dump_inputs",     type=str,   default=None, help="Write XPDB input buffers (pos/pred/params/bonds) in line-by-line text format for JS parity")
-    parser.add_argument("--dump_topo_debug",type=str,   default=None, help="Write internal MMFF/MMFFL topology debug records (pipos propagation/sign + dummy placement) for JS parity")
-    parser.add_argument("--dump_fixed",      type=int,   default=6, help="Number of decimals for --dump_inputs")
-    parser.add_argument("--print_pos_every", type=int,   default=50, help="Print position bounding box every N frames (0=disable)")
+    parser.add_argument("--Kpi_host",        type=float, default=50.0,  help="Stiffness for host↔pi-dummy bonds (controls sigma/pi coupling)")
+    parser.add_argument("--Kpi_orth",        type=float, default=30.0,  help="Stiffness for pi-dummy↔neighbor orthogonal bonds (keeps pi planes aligned)")
+    parser.add_argument("--Kpi_align",       type=float, default=15.0,  help="Stiffness for pi↔pi alignment bonds between bonded hosts (requires --add_pi_align)")
+    parser.add_argument("--Kep_host",        type=float, default=40.0,  help="Stiffness for host↔electron-pair dummy bonds")
+    parser.add_argument("--Kep_orth",        type=float, default=25.0,  help="Stiffness for electron-pair dummy↔neighbor orthogonal bonds")
+    parser.add_argument("--Kep_pair",        type=float, default=10.0,  help="Stiffness for electron-pair dummy↔dummy bonds on the same host (requires --add_epair_pairs)")
+    parser.add_argument("--mol2_out",        type=str,   default=None,  help="Optional MOL2 export path (writes Å coordinates + dummy atoms)")
+    parser.add_argument("--topology_only",   type=int,   default=0,     help="Stop after topology build/plot/export (1=yes,0=run XPDB)")
+    parser.add_argument("--print_buffers",   type=int,   default=1,     help="Dump XPDB input arrays (positions, bond idx/len/stiff) for inspection")
+    parser.add_argument("--print_types",     type=int,   default=0,     help="Print assigned atom types (1=yes)")
+    parser.add_argument("--dump_inputs",     type=str,   default=None,  help="Write XPDB input buffers (pos/pred/params/bonds) in line-by-line text format for JS parity")
+    parser.add_argument("--dump_topo_debug",type=str,    default=None,  help="Write internal MMFF/MMFFL topology debug records (pipos propagation/sign + dummy placement) for JS parity")
+    parser.add_argument("--dump_fixed",      type=int,   default=6,     help="Number of decimals for --dump_inputs")
+    parser.add_argument("--print_pos_every", type=int,   default=50,    help="Print position bounding box every N frames (0=disable)")
     args = parser.parse_args()
 
     if args.molecule is None:
@@ -713,7 +729,7 @@ def run_test():
         if event.xdata is None or event.ydata is None:
             return
         pick_state["mouse"] = np.array([event.xdata, event.ydata], dtype=np.float32)
-        print(f"[DEBUG] on_motion: idx={pick_state['idx']} mouse={pick_state['mouse']}")
+        #print(f"[DEBUG] on_motion: idx={pick_state['idx']} mouse={pick_state['mouse']}")
 
     cid_press = fig.canvas.mpl_connect('button_press_event', on_press)
     cid_release = fig.canvas.mpl_connect('button_release_event', on_release)
