@@ -53,6 +53,47 @@ The constraint violation is:
 C = |p_i + rotate(z_i, r_i) - p_j|
 ```
 
+### 4. Projective Dynamics (PD) update in the current kernels
+
+Per node `i` (degree ≤ 4), Jacobi local step:
+
+```
+a_i = M_i / dt^2                         # translational inertia diagonal
+w_i_trans = 1 / M_i                      # reduced-mass weight (node)
+w_j_trans = 1 / M_j                      # reduced-mass weight (neighbor)
+r_world = rotate(z_i, r_local)
+|r_world|^2 = dot(r_world, r_world)
+r_cross_n = r_world.x * n.y - r_world.y * n.x
+S_rot = I_i / dt^2 + K * |r_world|^2     # rotational diagonal + stiffness
+
+# Force/torque accumulators (node-side)
+F_trans += K * (p_j - (p_i + r_world)) * 0.5    # 0.5 avoids double-count with recoil
+F_rot   += cross2D(r_world, K * (p_j - (p_i + r_world)))
+S_trans += K
+
+# Recoil stored for neighbor j
+Δp_j = -(K * (p_j - (p_i + r_world)) * 0.5) / (M_j / dt^2 + K)
+dpos_neigh[idx] = Δp_j
+```
+
+After the neighbor loop:
+```
+Δp_i = F_trans / (S_trans + a_i)
+Δθ_i = F_rot   / S_rot
+dpos_node[i]   = Δp_i
+dtheta_node[i] = Δθ_i
+```
+
+Application (gather + relaxation):
+```
+corr = sum_k dpos_neigh[bkSlots[i][k]]
+if i < nnode:    corr += dpos_node[i]
+else:            corr *= 2.0   # caps not included in node accumulation
+p_i' = p_i + corr * relaxation
+```
+
+This “half in compute, double for caps in apply” avoids double-counting when using recoil buffers and keeps the PD Jacobi step symmetric and stable. Empirically, `pbd_relax` converges quickly with `bmix ≈ 0.8`.
+
 Where:
 - `p_i`, `p_j`: positions of nodes i and j
 - `z_i`: complex rotation of node i

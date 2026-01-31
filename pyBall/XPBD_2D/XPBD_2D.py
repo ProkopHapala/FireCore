@@ -46,10 +46,11 @@ class XPBD_2D:
         # Force buffers
         self.cl_force = cl.Buffer(self.ctx, mf.READ_WRITE, n * 8)    # float2
         
-        # Mass buffer (float per atom)
-        self.cl_mass = cl.Buffer(self.ctx, mf.READ_WRITE, n * 4)     # float[natoms]
-        # Initialize with unit masses
-        cl.enqueue_fill_buffer(self.queue, self.cl_mass, np.float32(1.0), 0, n * 4)
+        # Mass buffer (float2 per atom: M for translation, I for rotation)
+        self.cl_mass = cl.Buffer(self.ctx, mf.READ_WRITE, n * 8)     # float2[natoms] -> (M, I)
+        # Initialize with unit masses and default inertia
+        mass_init = np.ones((n, 2), dtype=np.float32)
+        cl.enqueue_copy(self.queue, self.cl_mass, mass_init)
         
         # Topology buffers (int4 for neighbors)
         self.cl_neighs = cl.Buffer(self.ctx, mf.READ_ONLY, n * 16)   # int4
@@ -338,22 +339,43 @@ class XPBD_2D:
         w = np.asarray(w, dtype=np.float32).reshape(1)
         cl.enqueue_copy(self.queue, self.cl_omega, w, device_offset=ia * 4).wait()
 
-    def set_atom_mass(self, ia, mass):
-        """Update a single atom mass on GPU."""
+    def set_atom_mass(self, ia, mass, inertia=None):
+        """Update a single atom mass on GPU.
+        
+        Args:
+            ia: atom index
+            mass: translational mass (M), or tuple (M, I) if inertia not provided
+            inertia: rotational inertia (I), optional
+        """
         ia = int(ia)
         if ia < 0 or ia >= self.num_atoms:
             raise ValueError(f"set_atom_mass: ia out of range {ia} not in [0,{self.num_atoms})")
-        m = np.asarray(mass, dtype=np.float32).reshape(1)
-        cl.enqueue_copy(self.queue, self.cl_mass, m, device_offset=ia * 4).wait()
+        
+        if hasattr(mass, '__len__'):
+            # mass is a tuple/array (M, I)
+            m = np.asarray([mass[0], mass[1]], dtype=np.float32)
+        elif inertia is not None:
+            m = np.asarray([mass, inertia], dtype=np.float32)
+        else:
+            # Keep existing inertia, update only mass
+            current = np.zeros(2, dtype=np.float32)
+            cl.enqueue_copy(self.queue, current, self.cl_mass, device_offset=ia * 8).wait()
+            m = np.asarray([mass, current[1]], dtype=np.float32)
+        
+        cl.enqueue_copy(self.queue, self.cl_mass, m, device_offset=ia * 8).wait()
 
     def get_atom_mass(self, ia):
-        """Get a single atom mass from GPU."""
+        """Get a single atom mass from GPU.
+        
+        Returns:
+            (M, I) tuple of (translational_mass, rotational_inertia)
+        """
         ia = int(ia)
         if ia < 0 or ia >= self.num_atoms:
             raise ValueError(f"get_atom_mass: ia out of range {ia} not in [0,{self.num_atoms})")
-        m = np.zeros(1, dtype=np.float32)
-        cl.enqueue_copy(self.queue, m, self.cl_mass, device_offset=ia * 4).wait()
-        return float(m[0])
+        m = np.zeros(2, dtype=np.float32)
+        cl.enqueue_copy(self.queue, m, self.cl_mass, device_offset=ia * 8).wait()
+        return (float(m[0]), float(m[1]))
     
     # -------------------------------------------------------------------------
     # SOLVER METHODS
@@ -578,6 +600,7 @@ class XPBD_2D:
                 nnode_i,
                 self.cl_pos, self.cl_rot, self.cl_neighs,
                 self.cl_stiffness, self.cl_port_local,
+                self.cl_mass,
                 self.cl_lambda, self.cl_dpos_neigh,
                 self.cl_dpos_node, self.cl_dtheta_node,
                 dt_f
@@ -643,6 +666,7 @@ class XPBD_2D:
                 nnode_i,
                 self.cl_pos, self.cl_rot, self.cl_neighs,
                 self.cl_stiffness, self.cl_port_local,
+                self.cl_mass,
                 self.cl_lambda, self.cl_dpos_neigh,
                 self.cl_dpos_node, self.cl_dtheta_node,
                 dt_f,

@@ -114,6 +114,379 @@ __kernel void clear_rigid_node_buffers(
 }
 
 
+// Helper: 3x3 Matrix Multiplication
+void mat3_mul(__private float* A, __private float* B, __private float* Out) {
+    for (int r = 0; r < 3; r++) {
+        for (int c = 0; c < 3; c++) {
+            float sum = 0.0f;
+            for (int k = 0; k < 3; k++) sum += A[r*3 + k] * B[k*3 + c];
+            Out[r*3 + c] = sum;
+        }
+    }
+}
+
+// Helper: Matrix Transpose
+void mat3_transpose(__private float* In, __private float* Out) {
+    for(int r=0; r<3; r++)
+        for(int c=0; c<3; c++)
+            Out[c*3 + r] = In[r*3 + c];
+}
+
+float4 matrix_to_quat(float3 x, float3 y, float3 z){
+    float4 q;
+    // Trace case (w largest)
+    float four_w2   = 1.0f + dot(x,x) + dot(y,y) + dot(z,z);
+    float four_x2   = 1.0f + dot(x,x) - dot(y,y) - dot(z,z);
+    float four_y2   = 1.0f - dot(x,x) + dot(y,y) - dot(z,z);
+    float four_z2   = 1.0f - dot(x,x) - dot(y,y) + dot(z,z);
+    float max4      = max(max(four_w2, four_x2), max(four_y2, four_z2));
+    float s         = native_sqrt(max4);
+    float inv_4s    = 0.25f / s;            // cheaper than 0.5f / (0.5f s)
+    if (max4 == four_w2){
+        q.w = 0.5f * s;
+        q.x = inv_4s * (y.z - z.y);
+        q.y = inv_4s * (z.x - x.z);
+        q.z = inv_4s * (x.y - y.x);
+    }  else if (max4 == four_x2){
+        q.x = 0.5f * s;
+        q.y = inv_4s * (x.y + y.x);
+        q.z = inv_4s * (x.z + z.x);
+        q.w = inv_4s * (y.z - z.y);
+    }  else if (max4 == four_y2) {
+        q.y = 0.5f * s;
+        q.z = inv_4s * (y.z + z.y);
+        q.x = inv_4s * (x.y + y.x);
+        q.w = inv_4s * (z.x - x.z);
+    } else { // four_z2
+        q.z = 0.5f * s;
+        q.x = inv_4s * (x.z + z.x);
+        q.y = inv_4s * (y.z + z.y);
+        q.w = inv_4s * (x.y - y.x);
+    }
+    return q;
+}
+
+
+// ===================================================================
+// PURE MATH HELPERS (Register only, no global memory)
+// ===================================================================
+
+// Accumulate weighted vectors for centroid calculation
+// Called inside the first loop
+inline void accum_centroid(
+    float3 p_local, 
+    float3 n_world, 
+    float w, 
+    float3* acc_p, 
+    float3* acc_n, 
+    float* acc_w
+) {
+    *acc_p += p_local * w;
+    *acc_n += n_world * w;
+    *acc_w += w;
+}
+
+// Accumulate Covariance Matrix S
+// S += w * (n * p^T)
+// Called inside the second loop
+inline void accum_covariance(
+    float3 p_centered, 
+    float3 n_centered, 
+    float w, 
+    float* S // float[9]
+) {
+    float3 nw = n_centered * w;
+    
+    // Manual unroll of outer product (n * p^T)
+    // Row 0
+    S[0] += nw.x * p_centered.x; 
+    S[1] += nw.x * p_centered.y; 
+    S[2] += nw.x * p_centered.z;
+    // Row 1
+    S[3] += nw.y * p_centered.x; 
+    S[4] += nw.y * p_centered.y; 
+    S[5] += nw.y * p_centered.z;
+    // Row 2
+    S[6] += nw.z * p_centered.x; 
+    S[7] += nw.z * p_centered.y; 
+    S[8] += nw.z * p_centered.z;
+}
+
+// Convert 3x3 Covariance Matrix S into Horn's 4x4 Symmetric Matrix K
+// K is symmetric, so we store unique elements in a float[10] array
+// Layout: 0:K00, 1:K01, 2:K02, 3:K03, 4:K11, 5:K12, 6:K13, 7:K22, 8:K23, 9:K33
+inline void make_K_matrix(const float* S, float* K) {
+    // S indices: 0:xx, 1:xy, 2:xz, 3:yx, 4:yy, 5:yz, 6:zx, 7:zy, 8:zz
+    
+    float trace = S[0] + S[4] + S[8];
+    
+    // Diagonal K elements
+    K[0] = trace;                       // K00
+    K[4] = S[0] - S[4] - S[8];          // K11
+    K[7] = S[4] - S[0] - S[8];          // K22
+    K[9] = S[8] - S[0] - S[4];          // K33
+
+    // Off-diagonal K elements (Symmetric parts)
+    K[5] = S[1] + S[3];                 // K12 = Sxy + Syx
+    K[6] = S[2] + S[6];                 // K13 = Sxz + Szx
+    K[8] = S[5] + S[7];                 // K23 = Syz + Szy
+
+    // Z-vector parts (Skew-symmetric parts)
+    K[1] = S[5] - S[7];                 // K01 = Syz - Szy
+    K[2] = S[6] - S[2];                 // K02 = Szx - Sxz
+    K[3] = S[1] - S[3];                 // K03 = Sxy - Syx
+}
+
+// Single step of Power Iteration: q_next = K * q
+inline float4 power_iter_step(const float* K, float4 q) {
+    float4 q_out;
+    // Row 0: K00, K01, K02, K03
+    q_out.w = K[0]*q.w + K[1]*q.x + K[2]*q.y + K[3]*q.z;
+    // Row 1: K01, K11, K12, K13 (Exploiting symmetry K10=K01)
+    q_out.x = K[1]*q.w + K[4]*q.x + K[5]*q.y + K[6]*q.z;
+    // Row 2: K02, K12, K22, K23
+    q_out.y = K[2]*q.w + K[5]*q.x + K[7]*q.y + K[8]*q.z;
+    // Row 3: K03, K13, K23, K33
+    q_out.z = K[3]*q.w + K[6]*q.x + K[8]*q.y + K[9]*q.z;
+    
+    // Fast normalize using built-in reciprocal sqrt
+    return normalize(q_out); 
+}
+
+// Standard rotation helper
+inline float3 rotate_vector(float4 q, float3 v) {
+    float3 t = 2.0f * cross(q.xyz, v);
+    return v + q.w * t + cross(q.xyz, t);
+}
+
+// ===================================================================
+// KERNEL
+// ===================================================================
+__kernel void solve_optimal_transform_3d(
+    const int nnode,
+    __global const float4* pos,
+    __global const int4*   neighs,
+    __global const float4* port_local,
+    __global const float*  stiffness,
+    __global float4*       curr_quat,
+    __global float4*       target_pos
+) {
+    int i = get_global_id(0);
+    if (i >= nnode) return;
+
+    // Registers for accumulation
+    float3 sum_p = (float3)(0.0f);
+    float3 sum_n = (float3)(0.0f);
+    float  sum_w = 0.0f;
+    
+    // Prefetch neighbor indices
+    int4 ng = neighs[i];
+    // Cast to int array for indexed access in loop. 
+    // In OpenCL, accessing vector components by variable index (ng[k]) is not standard 
+    // without a union or cast, though some compilers allow it. Safest is proper cast.
+    int* neighbors = (int*)&ng; 
+    
+    int base_idx = i * 4;
+
+    // --- LOOP 1: CENTROIDS ---
+    // We cannot compute covariance without centering first.
+    // NOTE: If you are memory bound, you can merge this into one loop 
+    // by doing the centering "on the fly" if you pre-calculate centroids in a separate kernel, 
+    // but for a single-kernel approach, two passes over the small neighbor set is fine.
+    
+    #pragma unroll
+    for (int k = 0; k < 4; k++) {
+        int j = neighbors[k];
+        if (j < 0) continue; 
+        
+        // Global Loads
+        float3 p = port_local[base_idx + k].xyz;
+        float3 n = pos[j].xyz;
+        float  w = stiffness[base_idx + k];
+        
+        // Math Helper
+        accum_centroid(p, n, w, &sum_p, &sum_n, &sum_w);
+    }
+
+    // Handle isolated atoms
+    if (sum_w <= 1e-9f) {
+        target_pos[i] = (float4)(pos[i].xyz, 0.0f);
+        return; 
+    }
+
+    float inv_w = 1.0f / sum_w;
+    float3 c_p = sum_p * inv_w;
+    float3 c_n = sum_n * inv_w;
+
+    // --- LOOP 2: COVARIANCE ---
+    float S[9] = {0.0f}; // Private array, typically promoted to registers
+
+    #pragma unroll
+    for (int k = 0; k < 4; k++) {
+        int j = neighbors[k];
+        if (j < 0) continue;
+
+        // Global Loads (Cache hit likely from previous loop)
+        float3 p = port_local[base_idx + k].xyz;
+        float3 n = pos[j].xyz;
+        float  w = stiffness[base_idx + k];
+
+        // Math Helper (Pure register math)
+        accum_covariance(p - c_p, n - c_n, w, S);
+    }
+
+    // --- SOLVE ROTATION ---
+    float K[10];
+    make_K_matrix(S, K);
+
+    // Warm start with previous frame quaternion
+    float4 q = curr_quat[i];
+
+    // Iterative Solver (2-4 iterations is usually enough)
+    #pragma unroll
+    for(int iter=0; iter<4; iter++) {
+        q = power_iter_step(K, q);
+    }
+
+    // NOTE: Convention fix
+    // The K-matrix construction used here yields a quaternion corresponding to the inverse rotation
+    // w.r.t. our port mapping convention (local ports -> world neighbors).
+    // Use conjugate(q) to obtain the forward rotation.
+    q.xyz = -q.xyz;
+
+    // Write back state
+    curr_quat[i] = q;
+
+    // --- SOLVE POSITION ---
+    // t = c_n - R * c_p
+    float3 t = c_n - rotate_vector(q, c_p);
+    
+    target_pos[i] = (float4)(t, 0.0f);
+}
+
+// ------------------------------------------------------------------
+// KERNEL: Explicit Rigid Shape Matching (3D)
+// ------------------------------------------------------------------
+__kernel void solve_shape_matching_3d(
+    const int nnode,
+    __global const float4* pos,
+    __global const int4*   neighs,
+    __global const float4* port_local,
+    __global const float*  stiffness,
+    __global float4*       target_pos,    // OUTPUT
+    __global float4*       target_rot_mat0, // OUTPUT: Row 0 of Rot Matrix
+    __global float4*       target_rot_mat1, // OUTPUT: Row 1
+    __global float4*       target_rot_mat2  // OUTPUT: Row 2
+) {
+    int i = get_global_id(0);
+    if (i >= nnode) return;
+
+    // --- 1. Centroids ---
+    float3 c_loc = (float3)(0.0f);
+    float3 c_wld = (float3)(0.0f);
+    float sum_w = 0.0f;
+    int i4 = i * 4;
+    int4 ng = neighs[i];
+    int* neighbors = (int*)&ng;
+
+    for (int k = 0; k < 4; k++) {
+        int j = neighbors[k];
+        if (j < 0) break;
+        float w = stiffness[i4+k];
+        c_loc += port_local[i4+k].xyz * w;
+        c_wld += pos[j].xyz * w;
+        sum_w += w;
+    }
+    
+    if (sum_w < 1e-9f) return;
+    float inv_sw = 1.0f / sum_w;
+    c_loc *= inv_sw;
+    c_wld *= inv_sw;
+
+    // --- 2. Build Covariance Matrix H ---
+    // H = Sum ( w * n' * p'^T )
+    float H[9] = {0.0f,0.0f,0.0f, 0.0f,0.0f,0.0f, 0.0f,0.0f,0.0f};
+
+    for (int k = 0; k < 4; k++) {
+        int j = neighbors[k];
+        if (j < 0) break;
+        float w = stiffness[i4+k];
+        
+        float3 p = port_local[i4+k].xyz - c_loc;
+        float3 n = pos[j].xyz - c_wld;
+
+        // Outer product accumulation unrolled
+        H[0] += w * n.x * p.x; H[1] += w * n.x * p.y; H[2] += w * n.x * p.z;
+        H[3] += w * n.y * p.x; H[4] += w * n.y * p.y; H[5] += w * n.y * p.z;
+        H[6] += w * n.z * p.x; H[7] += w * n.z * p.y; H[8] += w * n.z * p.z;
+    }
+
+    // --- 3. Newton-Schulz Polar Decomposition ---
+    // We want R such that H = R * S. 
+    // Init R = H (works if deformation is small/rigid)
+    float R[9];
+    float fn2 = 0.0f;
+    for(int k=0; k<9; k++){ fn2 += H[k]*H[k]; }
+    float inv_fn = (fn2 > 1e-18f) ? native_rsqrt(fn2) : 1.0f;
+    for(int k=0; k<9; k++) R[k] = H[k] * inv_fn;
+
+    // Iterations: R_next = 0.5 * R * (3I - R^T * R)
+    // 4 iterations is usually enough for physics
+    float Rt[9];
+    float Cov[9]; // R^T * R
+    float T[9];   // Temp
+    
+    for (int iter = 0; iter < 5; iter++) {
+        mat3_transpose(R, Rt);
+        mat3_mul(Rt, R, Cov);
+        
+        // T = 3*Identity - Cov
+        for(int k=0; k<9; k++) T[k] = -Cov[k];
+        T[0] += 3.0f; T[4] += 3.0f; T[8] += 3.0f;
+        
+        // R = 0.5 * R * T
+        mat3_mul(R, T, Cov); // Reuse Cov as temp output
+        for(int k=0; k<9; k++) R[k] = 0.5f * Cov[k];
+    }
+    
+    // --- 4. Final Position Calculation ---
+    // t = c_wld - R * c_loc
+    float3 R_cloc;
+    R_cloc.x = R[0]*c_loc.x + R[1]*c_loc.y + R[2]*c_loc.z;
+    R_cloc.y = R[3]*c_loc.x + R[4]*c_loc.y + R[5]*c_loc.z;
+    R_cloc.z = R[6]*c_loc.x + R[7]*c_loc.y + R[8]*c_loc.z;
+
+    float3 opt_pos = c_wld - R_cloc;
+
+    // --- 5. Orthonormalize (ensure det(R)=+1) ---
+    float3 ex = (float3)(R[0], R[1], R[2]);
+    float3 ey = (float3)(R[3], R[4], R[5]);
+    ex = normalize(ex);
+    ey = ey - ex * dot(ex, ey);
+    ey = normalize(ey);
+    float3 ez = cross(ex, ey);
+    ez = normalize(ez);
+    // re-orthogonalize ey to be consistent with ez
+    ey = cross(ez, ex);
+
+    // Output
+    target_pos[i] = (float4)(opt_pos, 0.0f);
+    
+    // If you need Quaternions, convert Matrix R to Quat here. 
+    // Or just store the matrix rows.
+    target_rot_mat0[i] = (float4)(ex.x, ex.y, ex.z, 0.0f);
+    target_rot_mat1[i] = (float4)(ey.x, ey.y, ey.z, 0.0f);
+    target_rot_mat2[i] = (float4)(ez.x, ez.y, ez.z, 0.0f);
+}
+
+
+
+//================================
+//================================
+
+
+
+
 __kernel void gather_port_forces(
     const int nnode,
     __global const float4* pos,

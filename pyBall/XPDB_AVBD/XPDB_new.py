@@ -282,7 +282,67 @@ class XPDB_new:
         self.cl_romega_delta = cl.Buffer(self.ctx, mf.READ_WRITE, nnode * 16)      # float4[ nnode ]
         self.cl_rlambda      = cl.Buffer(self.ctx, mf.READ_WRITE, nnode * 4 * 4)   # float[ nnode*4 ]
         self.cl_rKflat        = cl.Buffer(self.ctx, mf.READ_ONLY,  nnode * 4 * 4)  # float[ nnode*4 ]
+
+        # Procrustes (local optimal rigid transform) outputs for node atoms
+        self.cl_rtarget_pos = cl.Buffer(self.ctx, mf.READ_WRITE, nnode * 16)  # float4[ nnode ]
+        self.cl_rtarget_rot0 = cl.Buffer(self.ctx, mf.READ_WRITE, nnode * 16) # float4[ nnode ]
+        self.cl_rtarget_rot1 = cl.Buffer(self.ctx, mf.READ_WRITE, nnode * 16) # float4[ nnode ]
+        self.cl_rtarget_rot2 = cl.Buffer(self.ctx, mf.READ_WRITE, nnode * 16) # float4[ nnode ]
         self._rigid_nodes_n = nnode
+
+    def rigid_procrustes_quat(self, *, nnode):
+        self._init_rigid_buffers()
+        nnode = int(nnode)
+        if nnode < 0 or nnode > self.num_atoms:
+            raise ValueError(f'rigid_procrustes_quat: nnode={nnode} out of range [0,{self.num_atoms}]')
+        self._ensure_rigid_node_buffers(nnode)
+        nnode_i = np.int32(nnode)
+
+        # NOTE: kernel reads neighs[i] where i in [0,nnode), so node atoms are assumed to be the first nnode atoms
+        # NOTE: kernel updates curr_quat[i] in-place; we pass cl_rquat_A (natoms) and update the first nnode quats
+        self.prg.solve_optimal_transform_3d(
+            self.queue, (nnode,), None,
+            nnode_i,
+            self.cl_rpos_A,
+            self.cl_rneighs,
+            self.cl_rport_local,
+            self.cl_rKflat,
+            self.cl_rquat_A,
+            self.cl_rtarget_pos
+        ).wait()
+
+    def rigid_procrustes_mat(self, *, nnode):
+        self._init_rigid_buffers()
+        nnode = int(nnode)
+        if nnode < 0 or nnode > self.num_atoms:
+            raise ValueError(f'rigid_procrustes_mat: nnode={nnode} out of range [0,{self.num_atoms}]')
+        self._ensure_rigid_node_buffers(nnode)
+        nnode_i = np.int32(nnode)
+
+        self.prg.solve_shape_matching_3d(
+            self.queue, (nnode,), None,
+            nnode_i,
+            self.cl_rpos_A,
+            self.cl_rneighs,
+            self.cl_rport_local,
+            self.cl_rKflat,
+            self.cl_rtarget_pos,
+            self.cl_rtarget_rot0,
+            self.cl_rtarget_rot1,
+            self.cl_rtarget_rot2
+        ).wait()
+
+    def download_rigid_procrustes_targets(self, *, nnode, with_rot=True):
+        self._init_rigid_buffers()
+        nnode = int(nnode)
+        self._ensure_rigid_node_buffers(nnode)
+        tpos = self.download_buffer(self.cl_rtarget_pos, (nnode, 4))
+        if not with_rot:
+            return tpos
+        r0 = self.download_buffer(self.cl_rtarget_rot0, (nnode, 4))
+        r1 = self.download_buffer(self.cl_rtarget_rot1, (nnode, 4))
+        r2 = self.download_buffer(self.cl_rtarget_rot2, (nnode, 4))
+        return tpos, r0, r1, r2
 
     def _upload_default_port_tables(self):
         # type 0: none

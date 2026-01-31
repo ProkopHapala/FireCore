@@ -28,7 +28,7 @@ from XPBD_2D_utils import (
 np.set_printoptions(linewidth=np.inf, threshold=np.inf)
 
 
-def run_simulation(sim, method, nnode, iters, *, dt=0.01, inner_iters=10, damp_vel=0.98, relax_dt=None, relax=0.7, bmix=0.0, topology=None, noshow=False, viz_every=1, interval=30, pick_radius=0.5, viz_substeps=False, view_scale=None, verbose=0):
+def run_simulation(sim, method, nnode, iters, *, dt=0.01, inner_iters=10, damp_vel=0.98, relax=0.7, bmix=0.0, topology=None, noshow=False, viz_every=1, interval=30, pick_radius=0.5, viz_substeps=False, view_scale=None, verbose=0):
     """Run simulation.
 
     Performance notes:
@@ -46,8 +46,6 @@ def run_simulation(sim, method, nnode, iters, *, dt=0.01, inner_iters=10, damp_v
     port_n = topology.get('port_n')
 
     if noshow:
-        if relax_dt is None:
-            relax_dt = float(dt)
         for it in range(iters):
             if method == 'force':
                 sim.step_explicit_force(nnode=nnode, dt=dt, damp=float(damp_vel), nsteps=1)
@@ -56,7 +54,7 @@ def run_simulation(sim, method, nnode, iters, *, dt=0.01, inner_iters=10, damp_v
             elif method == 'xpbd_relax':
                 # Use debug version for first few iterations to see lambda behavior
                 if (int(verbose) > 0) and (it < 3):
-                    sim.step_xpbd_debug(nnode=nnode, dt=float(relax_dt), iterations=int(inner_iters), reset_lambda=True, bmix=float(bmix), reset_hb=True, max_debug_steps=3)
+                    sim.step_xpbd_debug(nnode=nnode, dt=float(dt), iterations=int(inner_iters), reset_lambda=True, bmix=float(bmix), reset_hb=True, max_debug_steps=3)
                     # Capture detailed diagnostics after first inner iteration
                     diag = sim.download_constraint_diagnostics(nnode)
                     print(f"\n=== CONSTRAINT DIAGNOSTICS (iter {it}, after first inner) ===")
@@ -75,7 +73,7 @@ def run_simulation(sim, method, nnode, iters, *, dt=0.01, inner_iters=10, damp_v
                                 print(f"  node[{ni}].port[{pi}]: C={C_val:12.4e} lam={lam:12.4e} K={K:8.2f} dtheta={dtheta:10.4e} r_world=({r_world[0]:10.4e},{r_world[1]:10.4e}) n=({n[0]:10.4e},{n[1]:10.4e}) dpos_i=({dpos_i[0]:10.4e},{dpos_i[1]:10.4e}) dpos_j=({dpos_j[0]:10.4e},{dpos_j[1]:10.4e})")
                     print("=== END DIAGNOSTICS ===\n")
                 else:
-                    sim.step_xpbd(nnode=nnode, dt=float(relax_dt), iterations=int(inner_iters), reset_lambda=True, bmix=float(bmix), reset_hb=True)
+                    sim.step_xpbd(nnode=nnode, dt=float(dt), iterations=int(inner_iters), reset_lambda=True, bmix=float(bmix), reset_hb=True)
             elif method == 'pbd_md':
                 sim.step_pbd_md(nnode=nnode, dt=float(dt), iterations=int(inner_iters), relax=float(relax), damp=float(damp_vel))
             elif method == 'pbd_relax':
@@ -104,35 +102,35 @@ def run_simulation(sim, method, nnode, iters, *, dt=0.01, inner_iters=10, damp_v
                     print(f"iter {it:4d}: |P|={np.linalg.norm(P):.4e}, |L|={abs(L):.4e} port_max={max_port:.3e} port_rms={rms_port:.3e}")
         return
 
-    relax_dt_ref = {"dt": float(dt) if (relax_dt is None) else float(relax_dt)}
-
     viz = LiveViz2D(view_scale=view_scale)
     pick = attach_picker_2d(viz, sim, pick_radius=float(pick_radius), verbose=int(verbose))
 
     state = {"it": 0, "sub": 0, "reset_lambda": True}
 
     pick_state_prev = {"active": False, "idx": None}
-    PIN_MASS = 1e8  # Very high mass to effectively pin atom
-    NORMAL_MASS = 1.0  # Normal mass
+    PIN_MASS = 1e8  # Very high translational mass to effectively pin atom
+    NORMAL_MASS = 1.0  # Normal translational mass
 
     def apply_pick():
         # Detect pick start/end to set/restore mass
         curr_active = pick.get("active") and pick.get("idx") is not None
         prev_active = pick_state_prev["active"]
         
-        # If pick just started, set high mass on the picked atom
+        # If pick just started, set high translational mass (keep inertia)
         if curr_active and not prev_active:
             ia = int(pick["idx"])
-            sim.set_atom_mass(ia, PIN_MASS)
+            _, I_prev = sim.get_atom_mass(ia)
+            sim.set_atom_mass(ia, (PIN_MASS, I_prev))
             if int(verbose) > 0:
-                print(f"[DEBUG] pick press idx={ia} mass set to {PIN_MASS}")
-        
-        # If pick just ended, restore normal mass on the previously picked atom
+                print(f"[DEBUG] pick press idx={ia} mass set to (M={PIN_MASS}, I={I_prev})")
+
+        # If pick just ended, restore normal translational mass (keep inertia)
         if not curr_active and prev_active and pick_state_prev["idx"] is not None:
             ia = int(pick_state_prev["idx"])
-            sim.set_atom_mass(ia, NORMAL_MASS)
+            _, I_prev = sim.get_atom_mass(ia)
+            sim.set_atom_mass(ia, (NORMAL_MASS, I_prev))
             if int(verbose) > 0:
-                print(f"[DEBUG] pick release idx={ia} mass restored to {NORMAL_MASS}")
+                print(f"[DEBUG] pick release idx={ia} mass restored to (M={NORMAL_MASS}, I={I_prev})")
         
         # Update previous state
         pick_state_prev["active"] = curr_active
@@ -176,8 +174,7 @@ def run_simulation(sim, method, nnode, iters, *, dt=0.01, inner_iters=10, damp_v
     if method == 'xpbd_relax':
         for outer_it in range(int(iters)):
             apply_pick()
-            sim.step_xpbd(nnode=nnode, dt=float(relax_dt_ref["dt"]), iterations=int(inner_iters), 
-                         reset_lambda=True, bmix=float(bmix), reset_hb=True, callback=inner_callback)
+            sim.step_xpbd(nnode=nnode, dt=dt, iterations=int(inner_iters), reset_lambda=True, bmix=float(bmix), reset_hb=True, callback=inner_callback)
             state["it"] = outer_it + 1
         plt.show(block=True)
         return
@@ -306,11 +303,11 @@ if __name__ == '__main__':
 
     parser.add_argument("--molecule",   type=str, default="../../cpp/common_resources/xyz/pentacene.xyz", help="Path to molecule file (.xyz, .mol, .mol2)")
     parser.add_argument('--iters',      type=int,   default=20000)
-    parser.add_argument('--dt',         type=float, default=0.01)
-    parser.add_argument('--relax_dt',   type=float, default=0.2)
+    parser.add_argument('--dt',         type=float, default=0.1)
+    #parser.add_argument('--relax_dt',   type=float, default=0.2)
     parser.add_argument('--inner_iters',type=int,   default=10)
-    parser.add_argument('--relax',      type=float, default=0.7)
-    parser.add_argument('--bmix',       type=float, default=0.2)
+    parser.add_argument('--relax',      type=float, default=1.0)
+    parser.add_argument('--bmix',       type=float, default=0.8)
     parser.add_argument('--perturb',    type=float, default=0.1)
     parser.add_argument('--perturb_rot',type=float, default=0.1)
     parser.add_argument('--seed',       type=int,   default=0)
@@ -361,7 +358,7 @@ if __name__ == '__main__':
     print(f"Running {args.iters} iterations with {args.method} solver... n_atoms={n_atoms} nnode={nnode}")
     run_simulation(sim, args.method, nnode, args.iters,
                    dt=args.dt, inner_iters=args.inner_iters, damp_vel=args.damp_vel,
-                   relax_dt=args.relax_dt, relax=args.relax, bmix=args.bmix,
+                   relax=args.relax, bmix=args.bmix,
                    topology=topology, noshow=bool(args.noshow), viz_every=args.viz_every, interval=args.interval,
                    pick_radius=args.pick_radius, viz_substeps=bool(args.viz_substeps), view_scale=args.viz_scale, verbose=args.verbose)
     

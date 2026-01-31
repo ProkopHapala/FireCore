@@ -358,6 +358,12 @@ In the literature, XPBD is often praised because it allows for "large time steps
 - `pbd_relax` now accepts legacy `--bmix` flag (mapped to both pos/rot) and runs with momentum buffers; no signature errors.
 - Reduced Python overhead: only main kernels inside Jacobi loops; momentum buffers zeroed on host, avoiding extra kernel launches.
 
+### PD double-count fix (current 2D solver)
+- In `compute_corrections_2d` we halve the node-side translational gather to avoid double-counting with recoil stored in `dpos_neigh`:
+  - `float2 fdist = dist_vec * K * 0.5f;`
+- In `apply_corrections_2d` we compensate caps vs nodes: nodes add `dpos_node[i]`; caps (i>=nnode) double the gathered neighbor correction (`corr *= 2.0f`) because they were not included in the node accumulation.
+- With this, `pbd_relax` is stable and converges quickly with `bmix=0.8`.
+
 ### Next steps
 - Verify `bmix_pos` vs `bmix_rot` tuning on larger systems; consider defaulting rotation mix lower if oscillatory.
 - Revisit angular momentum diagnostics after momentum changes.

@@ -91,6 +91,112 @@ __kernel void clear_2d_node_buffers(
     pneigh[i] = (float2)(0.0f, 0.0f);
 }
 
+
+
+
+// ------------------------------------------------------------------
+// KERNEL: Explicit Rigid Shape Matching (2D)
+// Solves optimal Translation (t) and Rotation (z) analytically.
+// ------------------------------------------------------------------
+__kernel void solve_shape_matching_2d(
+    const int nnode,
+    __global const float2* pos,          // Current world positions
+    __global const int4*   neighs,       // Neighbor indices
+    __global const float2* port_local,   // Local offsets (unrotated)
+    __global const float*  stiffness,    // Weights
+    __global float2*       target_pos,   // OUTPUT: Optimal Center Position
+    __global float2*       target_rot    // OUTPUT: Optimal Rotation (Complex Unit)
+) {
+    int i = get_global_id(0);
+    if (i >= nnode) return;
+
+    // 1. Calculate Weighted Centroids
+    // ------------------------------------
+    float2 c_local = (float2)(0.0f); // Center of mass of ports
+    float2 c_world = (float2)(0.0f); // Center of mass of neighbors
+    float sum_w = 0.0f;
+
+    int4 ng = neighs[i];
+    int* neighbors = (int*)&ng;
+    int i4 = i * 4; // Assuming max 4 neighbors
+
+    for (int k = 0; k < 4; k++) {
+        int j = neighbors[k];
+        if (j < 0) continue;
+
+        float w = stiffness[i4 + k];
+        if (w <= 1e-9f) continue;
+
+        c_local += port_local[i4 + k] * w;
+        c_world += pos[j] * w;
+        sum_w   += w;
+    }
+
+    if (sum_w < 1e-9f) return; // Degenerate
+    float inv_sum_w = 1.0f / sum_w;
+    c_local *= inv_sum_w;
+    c_world *= inv_sum_w;
+
+    // 2. Calculate Covariance (Optimal Rotation)
+    // ------------------------------------
+    // We want to maximize: Real( Sum( w * n_centered * conj(p_centered) ) )
+    // effectively calculating the "Average Rotation" required.
+    
+    float2 cov_sum = (float2)(0.0f);
+
+    for (int k = 0; k < 4; k++) {
+        int j = neighbors[k];
+        if (j < 0) continue;
+        float w = stiffness[i4 + k];
+        
+        // Centered vectors
+        float2 p = port_local[i4 + k] - c_local; // Local arm
+        float2 n = pos[j] - c_world;             // World arm
+        
+        // Complex Multiply: n * conj(p)
+        // (nx + i*ny) * (px - i*py) = (nx*px + ny*py) + i(ny*px - nx*py)
+        float dot_prod = dot(n, p);              // Real part (Alignment)
+        float cross_prod = n.y * p.x - n.x * p.y; // Imag part (Torque)
+        
+        cov_sum.x += w * dot_prod;
+        cov_sum.y += w * cross_prod;
+    }
+
+    // 3. Extract Rotation & Translation
+    // ------------------------------------
+    float2 optimal_rot;
+    float norm = length(cov_sum);
+    
+    if (norm > 1e-12f) {
+        optimal_rot = cov_sum / norm;
+    } else {
+        optimal_rot = (float2)(1.0f, 0.0f); // Identity fallback
+    }
+
+    // optimal_pos = c_world - R * c_local
+    // Complex multiplication for rotation
+    float2 rot_c_local;
+    rot_c_local.x = optimal_rot.x * c_local.x - optimal_rot.y * c_local.y;
+    rot_c_local.y = optimal_rot.x * c_local.y + optimal_rot.y * c_local.x;
+
+    float2 optimal_pos = c_world - rot_c_local;
+
+    // Write output
+    target_pos[i] = optimal_pos;
+    target_rot[i] = optimal_rot;
+}
+
+
+
+
+
+
+
+
+
+
+
+
 // ------------------------------------------------------------------
 // KERNEL: Gather port forces (2D version)
 // Each node gathers forces from its ports connected to neighbors
@@ -262,10 +368,108 @@ __kernel void compute_angular_velocities_from_rotations(
     omega[i] = dtheta * inv_dt * damp;
 }
 
+// // ------------------------------------------------------------------
+// // KERNEL: PBD constraint solve (2D version)
+// // Computes position corrections for port constraints with proper masses (M,I)
+// // Uses reduced-mass style weights for proper momentum conservation
+// // ------------------------------------------------------------------
+// __kernel void compute_corrections_2d(
+//     const int nnode,
+//     __global const float2* pos,
+//     __global const float2* rot,
+//     __global const int4*   neighs,
+//     __global const float2* port_local,
+//     __global const float*  stiffness_flat,  // size nnode*4
+//     __global const float2* mass,            // atom masses [natoms] -> (M, I)
+//     __global float2*       dpos_node,       // accumulated position correction
+//     __global float*        dtheta_node,     // accumulated rotation correction (scalar)
+//     __global float2*       dpos_neigh,      // corrections for neighbors
+//     const float dt
+// ) {
+//     int i = get_global_id(0);
+//     if (i >= nnode) return;
+
+//     float2 p_i = pos[i];
+//     float2 z_i = rot[i];
+    
+//     // Mass properties: mass[i].x = M (translation), mass[i].y = I (rotation)
+//     float M_i = mass[i].x;
+//     float I_i = mass[i].y;
+    
+//     // NOTE: we drop the PD diagonal a=M/dt^2 here to avoid suppressing rotation when translation is pinned.
+//     // Translational mass still enters via w_i_trans = 1/M_i (reduced-mass weights).
+//     float dt2 = dt * dt;
+//     float a_i = mass[i].x / (dt2 + 1e-20f);
+
+//     int4 ng = neighs[i];
+//     int* neighbors = (int*)&ng;
+//     float2 dpos = (float2)(0.0f, 0.0f);
+//     float dtheta = 0.0f;
+
+//     int i4 = i * MAX_DEGREE;
+
+//     for (int k = 0; k < MAX_DEGREE; k++) {
+//         int j = neighbors[k];
+//         if (j < 0) continue;
+
+//         float K = stiffness_flat[i4 + k];
+//         if (K <= 0.0f) continue;
+
+//         float2 r_local = port_local[i4 + k];
+//         float2 r_world = cmplx_rotate(z_i, r_local);
+//         float2 tip = p_i + r_world;
+
+//         float2 p_j = pos[j];
+
+//         float2 diff = tip - p_j;  // constraint violation (port->atom)
+//         float C2 = dot(diff, diff);
+//         if (C2 < 1e-12f) continue;
+
+//         float C = sqrt(C2);
+//         float2 n = diff / C;
+
+//         // Get neighbor mass properties
+//         float M_j = mass[j].x;
+        
+//         // Reduced-mass style weights: w = 1/M for each body
+//         // This ensures proper momentum conservation in the pair
+//         //float w_i_trans = (M_i > 1e-9f) ? 1.0f / M_i : 0.0f;
+//         //float w_j_trans = (M_j > 1e-9f) ? 1.0f / M_j : 0.0f;
+//         float w_i_trans = 1.0f / M_i;
+//         float w_j_trans = 1.0f / M_j;
+        
+//         // Rotational weight: I_i in denominator for torque response
+//         float r_cross_n = r_world.x * n.y - r_world.y * n.x;
+//         //float w_i_rot   = (I_i > 1e-12f) ? (r_cross_n * r_cross_n) / I_i : 0.0f;
+//         float w_i_rot   = r_cross_n * r_cross_n / I_i;
+        
+//         // Total effective weight for this constraint (no PD diagonal term)
+//         float w_total   = K * (w_i_trans + w_i_rot + w_j_trans);
+//         //float delta_lambda = (-C * K) / (w_total + 1e-12f);
+//         float delta_lambda = (-C * K) / w_total;
+
+//         // Position corrections using reduced-mass weights
+//         float2 dp_i =  delta_lambda * n * w_i_trans;
+//         float2 dp_j = -delta_lambda * n * w_j_trans;
+
+//         // Rotation correction (only for node i)
+//         //float dtheta_k = (I_i > 1e-12f) ? (delta_lambda * r_cross_n / I_i) : 0.0f;
+
+//         float dtheta_k = delta_lambda * r_cross_n / (I_i*2.0 );
+//         //float dtheta_k = delta_lambda * r_cross_n / (w_total );
+
+//         dpos   += dp_i;
+//         dtheta += dtheta_k;
+//         dpos_neigh[i4 + k] = dp_j;
+//     }
+
+//     dpos_node  [i] = dpos;
+//     dtheta_node[i] = dtheta;
+// }
+
+
 // ------------------------------------------------------------------
-// KERNEL: PBD constraint solve (2D version)
-// Computes position corrections for port constraints with mass (M/dt^2) diagonal term
-// xi_cor = (xi_pred * a + sum_j Kij * xj) / (a + sum_j Kij) where a = M/dt^2
+// KERNEL: Projective Dynamics with Recoil (2D)
 // ------------------------------------------------------------------
 __kernel void compute_corrections_2d(
     const int nnode,
@@ -273,11 +477,11 @@ __kernel void compute_corrections_2d(
     __global const float2* rot,
     __global const int4*   neighs,
     __global const float2* port_local,
-    __global const float*  stiffness_flat,  // size nnode*4
-    __global const float*  mass,            // atom masses [natoms]
-    __global float2*       dpos_node,       // accumulated position correction
-    __global float*        dtheta_node,     // accumulated rotation correction (scalar)
-    __global float2*       dpos_neigh,      // corrections for neighbors
+    __global const float*  stiffness_flat,
+    __global const float2* mass,            // mass[i].x = M, mass[i].y = I
+    __global float2*       dpos_node,       // Output: Delta P for Node i
+    __global float*        dtheta_node,     // Output: Delta Theta for Node i
+    __global float2*       dpos_neigh,      // Output: Delta P for Neighbor j (Recoil)
     const float dt
 ) {
     int i = get_global_id(0);
@@ -286,58 +490,87 @@ __kernel void compute_corrections_2d(
     float2 p_i = pos[i];
     float2 z_i = rot[i];
     
-    // Projective Dynamics diagonal term: a = M/dt^2
-    float dt2 = dt * dt;
-    float a_i = mass[i] / (dt2 + 1e-20f);
+    // 1. Node Inertial Stiffness (a = M/dt^2)
+    float M_i = mass[i].x;
+    float I_i = mass[i].y;
+    float dt2 = dt * dt + 1e-16f; // Avoid div by zero
+    
+    // Stiffness contributions from inertia
+    float S_trans = M_i / dt2;
+    float S_rot   = I_i / dt2;
+
+    // Force accumulators for the Node (Numerator)
+    // We are solving: (M/dt^2 * 0 + Sum(K * disp)) / (M/dt^2 + Sum(K))
+    // The "0" is because we are computing delta from current position.
+    float2 F_trans = (float2)(0.0f, 0.0f); 
+    float  F_rot   = 0.0f;                 
 
     int4 ng = neighs[i];
     int* neighbors = (int*)&ng;
-    float2 dpos = (float2)(0.0f, 0.0f);
-    float dtheta = 0.0f;
-
     int i4 = i * MAX_DEGREE;
 
     for (int k = 0; k < MAX_DEGREE; k++) {
         int j = neighbors[k];
+        int idx = i4 + k;
+        
+        // Default clear for inactive ports
+        dpos_neigh[idx] = (float2)(0.0f, 0.0f);
+
         if (j < 0) continue;
 
-        float K = stiffness_flat[i4 + k];
+        float K = stiffness_flat[idx];
         if (K <= 0.0f) continue;
 
-        float2 r_local = port_local[i4 + k];
+        // Geometry
+        float2 r_local = port_local[idx];
         float2 r_world = cmplx_rotate(z_i, r_local);
-        float2 tip = p_i + r_world;
+        float2 tip = p_i + r_world; // Where the port is now
+        float2 p_j = pos[j];        // Where the neighbor is now
 
-        float2 p_j = pos[j];
+        float2 dist_vec = p_j - tip; // Vector from Port -> Neighbor
 
-        float2 diff = tip - p_j;  // constraint violation (port->atom)
-        float C2 = dot(diff, diff);
-        if (C2 < 1e-12f) continue;
+        // --- 2. Update Node Accumulators (Gather) ---
+        // Translational stiffness add
+        S_trans += K;
+        // Translational force add (K * displacement)
+        // NOTE: we are double-counting node atoms because of recoils stored in dpos_neigh => we weight by 0.5
+        float2 fdist = dist_vec * K * 0.5f;
+        F_trans += fdist;
 
-        float C = sqrt(C2);
-        float2 n = diff / C;
+        // Rotational stiffness add (K * r^2)
+        // Torque = r x F. Rotation is driven by torque.
+        float r2 = dot(r_world, r_world);
+        S_rot += K * r2;
+        
+        // Rotational force (Torque) add
+        // 2D Cross product: r.x * F.y - r.y * F.x
+        float2 spring_force = dist_vec * K;
+        float torque = r_world.x * spring_force.y - r_world.y * spring_force.x;
+        F_rot += torque;
 
-        // Projective Dynamics with inertia term a_i = M/dt^2
-        // Denominator: a_i + sum_j Kij
-        float I_i = 0.4f;
-        float r_cross_n = r_world.x * n.y - r_world.y * n.x;
-        float w_i_trans = 1.0f;
-        float w_i_rot   = (I_i > 1e-12f) ? (r_cross_n * r_cross_n) / I_i : 0.0f;
-        float w_j       = 1.0f;
-        float w_total   = a_i + K * (w_i_trans + w_i_rot + w_j);
-        float delta_lambda = (-C * K) / (w_total + 1e-12f);
 
-        float2 dp_i = delta_lambda * n * w_i_trans;
-        float2 dp_j = -delta_lambda * n * w_j;
-
-        float dtheta_k = (I_i > 1e-12f) ? (delta_lambda * r_cross_n / I_i) : 0.0f;
-
-        dpos += dp_i;
-        dtheta += dtheta_k;
-        dpos_neigh[i4 + k] = dp_j;
+        // --- 3. Compute Neighbor Recoil (Scatter) ---
+        // We calculate what the neighbor SHOULD do based on this single constraint.
+        // Neighbor J target: 'tip'
+        // Neighbor J inertia: M_j/dt^2
+        // Neighbor J bond stiffness: K
+        
+        float M_j = mass[j].x; 
+        float a_j = M_j / dt2;
+        
+        // PD Formula for neighbor delta:
+        // dx_j = ( K * (target - current) ) / ( a_j + K )
+        // target - current = tip - p_j = -dist_vec
+        // If neighbor is effectively massless (or dt is huge), K dominates -> moves full distance
+        // If neighbor is heavy (or dt small), a_j dominates -> moves little        
+        dpos_neigh[idx] = -fdist / (a_j + K + 1e-12f);
     }
 
-    dpos_node[i] = dpos;
+    // 4. Resolve Node Correction
+    float2 dpos  = F_trans / ( S_trans + 1e-12f );
+    float dtheta = F_rot   / ( S_rot   + 1e-12f );
+
+    dpos_node  [i] = dpos;
     dtheta_node[i] = dtheta;
 }
 
@@ -388,9 +621,6 @@ __kernel void apply_corrections_2d(
     // Apply position correction
     float2 corr = (float2)(0.0f, 0.0f);
 
-    if (i < nnode) {
-        corr += dpos_node[i];
-    }
 
     // Gather corrections from neighbors
     int4 bk = bkSlots[i];
@@ -398,6 +628,9 @@ __kernel void apply_corrections_2d(
     if (bk.y >= 0) corr += dpos_neigh[bk.y];
     if (bk.z >= 0) corr += dpos_neigh[bk.z];
     if (bk.w >= 0) corr += dpos_neigh[bk.w];
+
+    // note - capping atoms (i>=nnode) are double-weighted becaous they are not double counted in compute_corrections_2d
+    if (i < nnode) { corr += dpos_node[i]; }else{ corr*=2.0f;}
 
     // Relaxation step
     float2 p_corr = pos[i] + corr * relaxation;
@@ -452,6 +685,7 @@ __kernel void compute_xpbd_corrections_2d(
     __global const int4*   neighs,
     __global const float4* stiffness,     // per-node stiffness
     __global const float2* port_local,
+    __global const float2* mass,          // mass.x=M, mass.y=I
     __global float*        lambda,        // accumulated multipliers [nnode*4]
     __global float2*       dpos_neigh,
     __global float2*       dpos_node,
@@ -494,25 +728,29 @@ __kernel void compute_xpbd_corrections_2d(
         float C = sqrt(C2);
         float2 n = diff / C;
 
-        // Generalized mass (translation + rotation coupling) + XPBD compliance, like XPDB_new.cl
-        float I_i = 0.4f;
+        // Generalized mass (translation + rotation coupling) + XPBD compliance
+        // Mass properties from buffers: mass[i].x = M, mass[i].y = I
+        float M_i = mass[i].x;
+        float I_i = mass[i].y;
+        float M_j = mass[j].x;
         float dt2 = dt * dt;
 
         float r_cross_n = r_world.x * n.y - r_world.y * n.x;
 
-        float w_i_trans = 1.0f;
+        // Reduced-mass style weights for proper momentum conservation
+        float w_i_trans = (M_i > 1e-9f) ? 1.0f / M_i : 0.0f;
         float w_i_rot   = (I_i > 1e-12f) ? (r_cross_n * r_cross_n) / I_i : 0.0f;
-        float w_j       = 1.0f;
+        float w_j_trans = (M_j > 1e-9f) ? 1.0f / M_j : 0.0f;
 
         float alpha = 1.0f / (K + 1e-12f);
         float alpha_tilde = alpha / (dt2 + 1e-20f);
 
-        float w_total = w_i_trans + w_i_rot + w_j + alpha_tilde;
+        float w_total = w_i_trans + w_i_rot + w_j_trans + alpha_tilde;
         float delta_lambda = (-C - alpha_tilde * lambda_prev) / (w_total + 1e-12f);
         lambda[idx] = lambda_prev + delta_lambda;
 
         float2 dp_i = delta_lambda * n * w_i_trans;
-        float2 dp_j = -delta_lambda * n * w_j;
+        float2 dp_j = -delta_lambda * n * w_j_trans;
         float dtheta_k = (I_i > 1e-12f) ? (delta_lambda * r_cross_n / I_i) : 0.0f;
 
         dpos += dp_i;
@@ -546,6 +784,7 @@ __kernel void compute_xpbd_corrections_2d_debug(
     __global const int4*   neighs,
     __global const float4* stiffness,     // per-node stiffness
     __global const float2* port_local,
+    __global const float2* mass,          // mass.x=M, mass.y=I
     __global float*        lambda,        // accumulated multipliers [nnode*4]
     __global float2*       dpos_neigh,
     __global float2*       dpos_node,
@@ -612,24 +851,28 @@ __kernel void compute_xpbd_corrections_2d_debug(
         float2 n = diff / C;
 
         // Generalized mass (translation + rotation coupling) + XPBD compliance
-        float I_i = 0.4f;
+        // Mass properties from buffers: mass[i].x = M, mass[i].y = I
+        float M_i = mass[i].x;
+        float I_i = mass[i].y;
+        float M_j = mass[j].x;
         float dt2 = dt * dt;
 
         float r_cross_n = r_world.x * n.y - r_world.y * n.x;
 
-        float w_i_trans = 1.0f;
+        // Reduced-mass style weights for proper momentum conservation
+        float w_i_trans = (M_i > 1e-9f) ? 1.0f / M_i : 0.0f;
         float w_i_rot   = (I_i > 1e-12f) ? (r_cross_n * r_cross_n) / I_i : 0.0f;
-        float w_j       = 1.0f;
+        float w_j_trans = (M_j > 1e-9f) ? 1.0f / M_j : 0.0f;
 
         float alpha = 1.0f / (K + 1e-12f);
         float alpha_tilde = alpha / (dt2 + 1e-20f);
 
-        float w_total = w_i_trans + w_i_rot + w_j + alpha_tilde;
+        float w_total = w_i_trans + w_i_rot + w_j_trans + alpha_tilde;
         float delta_lambda = (-C - alpha_tilde * lambda_prev) / (w_total + 1e-12f);
         lambda[idx] = lambda_prev + delta_lambda;
 
         float2 dp_i = delta_lambda * n * w_i_trans;
-        float2 dp_j = -delta_lambda * n * w_j;
+        float2 dp_j = -delta_lambda * n * w_j_trans;
         float dtheta_k = (I_i > 1e-12f) ? (delta_lambda * r_cross_n / I_i) : 0.0f;
 
         // Store diagnostics for active constraints
