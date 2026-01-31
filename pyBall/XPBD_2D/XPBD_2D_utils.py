@@ -22,9 +22,10 @@ from pyBall.AtomicSystem import AtomicSystem
 
 class LiveViz2D:
     """Lightweight live 2D updater that keeps view persistent (like LivePortViz but 2D)."""
-    def __init__(self, elems=None):
+    def __init__(self, elems=None, view_scale=None):
         self.plt = plt
         self.elems = elems
+        self.view_scale = view_scale  # Fixed viewport scale if provided
         plt.ion()
         self.fig, self.ax = plt.subplots(figsize=(10, 8))
         self.ax.set_aspect('equal')
@@ -61,8 +62,16 @@ class LiveViz2D:
         if self._inited_view:
             return
         pos = np.asarray(pos)
-        xmin, xmax = pos[:, 0].min() - margin, pos[:, 0].max() + margin
-        ymin, ymax = pos[:, 1].min() - margin, pos[:, 1].max() + margin
+        if self.view_scale is not None:
+            # Use fixed scale centered on the initial positions
+            cx = (pos[:, 0].min() + pos[:, 0].max()) * 0.5
+            cy = (pos[:, 1].min() + pos[:, 1].max()) * 0.5
+            half_scale = self.view_scale * 0.5
+            xmin, xmax = cx - half_scale, cx + half_scale
+            ymin, ymax = cy - half_scale, cy + half_scale
+        else:
+            xmin, xmax = pos[:, 0].min() - margin, pos[:, 0].max() + margin
+            ymin, ymax = pos[:, 1].min() - margin, pos[:, 1].max() + margin
         self.ax.set_xlim(xmin, xmax)
         self.ax.set_ylim(ymin, ymax)
         self._inited_view = True
@@ -180,7 +189,11 @@ def setup_from_mol(sim, mol, *, k_bond=200.0, perturbation=0.0, perturb_rot=0.0,
     bkSlots = make_bk_slots_2d(new_neighs, nnode=nnode, natoms=n_atoms)
     stiffness = make_stiffness_from_bonds_2d(n_atoms, new_neighs, k_bond=k_bond)
     
-    sim.upload_topology(new_neighs, bkSlots, stiffness)
+    sim.upload_topology(new_neighs, bkSlots, stiffness, nnode=nnode)
+    
+    # FIX: Only use first nnode entries for node arrays
+    neighs_nodes = new_neighs[:nnode]  # Only nodes have ports
+    stiffness_nodes = stiffness[:nnode]  # Only nodes have stiffness
     
     port_local = np.zeros((nnode, 4, 2), dtype=np.float32)
     port_n = np.zeros((nnode,), dtype=np.uint8)
@@ -193,7 +206,7 @@ def setup_from_mol(sim, mol, *, k_bond=200.0, perturbation=0.0, perturb_rot=0.0,
                 continue
             dx = new_pos[j, 0] - new_pos[i, 0]
             dy = new_pos[j, 1] - new_pos[i, 1]
-            port_local[i, k] = [dx * 0.5, dy * 0.5]
+            port_local[i, k] = [dx, dy]
             n_ports += 1
         port_n[i] = n_ports
     
@@ -211,10 +224,10 @@ def setup_from_mol(sim, mol, *, k_bond=200.0, perturbation=0.0, perturb_rot=0.0,
     sim.upload_state(new_pos, rot=rot)
     
     return {
-        'neighs': new_neighs,
-        'bks': new_bks,
+        'neighs': neighs_nodes,  # Only nodes, not all atoms
+        'bks': new_bks[:nnode],  # Only nodes
         'bkSlots': bkSlots,
-        'stiffness': stiffness,
+        'stiffness': stiffness_nodes,  # Only nodes
         'port_local': port_local,
         'port_n': port_n,
         'bond_length': 1.0,
@@ -242,17 +255,11 @@ def compute_port_error(pos, rot, neighs, bks, port_local, nnode, port_n=None):
         zi = rot[i]
         for k in range(4):
             j = int(neighs[i, k])
-            if j < 0 or j >= nnode:
-                continue
-            bk = int(bks[i, k])
-            if bk < 0 or bk >= 4:
+            if j < 0:
                 continue
             pi = port_local[i, k]
-            pj = port_local[j, bk]
             pri = np.array([zi[0] * pi[0] - zi[1] * pi[1], zi[1] * pi[0] + zi[0] * pi[1]], dtype=np.float32)
-            zj = rot[j]
-            prj = np.array([zj[0] * pj[0] - zj[1] * pj[1], zj[1] * pj[0] + zj[0] * pj[1]], dtype=np.float32)
-            di = (pos[i] + pri) - (pos[j] + prj)
+            di = (pos[i] + pri) - pos[j]
             err = float(np.sqrt(di[0] * di[0] + di[1] * di[1]))
             if err > max_err:
                 max_err = err
@@ -262,7 +269,7 @@ def compute_port_error(pos, rot, neighs, bks, port_local, nnode, port_n=None):
     return max_err, rms
 
 
-def attach_picker_2d(viz, sim, *, pick_radius=0.5):
+def attach_picker_2d(viz, sim, *, pick_radius=0.5, verbose=0):
     """Attach matplotlib callbacks to pick and drag atoms (2D).
 
     Dragging directly overwrites atom position on GPU; no silent error handling.
@@ -286,12 +293,14 @@ def attach_picker_2d(viz, sim, *, pick_radius=0.5):
             pick["idx"] = i_min
             pick["active"] = True
             pick["mouse"] = mouse_xy
-            print(f"[DEBUG] pick press idx={i_min} d={np.sqrt(float(d2[i_min])):.4f} mouse={mouse_xy}")
+            if int(verbose) > 0:
+                print(f"[DEBUG] pick press idx={i_min} d={np.sqrt(float(d2[i_min])):.4f} mouse={mouse_xy}")
         else:
-            print(f"[DEBUG] pick miss closest idx={i_min} d={np.sqrt(float(d2[i_min])):.4f} mouse={mouse_xy}")
+            if int(verbose) > 0:
+                print(f"[DEBUG] pick miss closest idx={i_min} d={np.sqrt(float(d2[i_min])):.4f} mouse={mouse_xy}")
 
     def on_release(event):
-        if pick["active"]:
+        if pick["active"] and int(verbose) > 0:
             print(f"[DEBUG] pick release idx={pick['idx']}")
         pick["active"] = False
         pick["idx"] = None
