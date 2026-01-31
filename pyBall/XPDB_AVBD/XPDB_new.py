@@ -3,6 +3,134 @@ import numpy as np
 import pyopencl as cl
 
 
+def build_neighs_bk_from_bonds(n, bonds, max_deg=4):
+    neighs = np.full((n, max_deg), -1, dtype=np.int32)
+    bks = np.full((n, max_deg), -1, dtype=np.int32)
+    deg = np.zeros((n,), dtype=np.int32)
+    for (i, j) in bonds:
+        if deg[i] >= max_deg or deg[j] >= max_deg:
+            raise RuntimeError(f"Degree>={max_deg} for bond {i}-{j}")
+        si = int(deg[i]); sj = int(deg[j])
+        neighs[i, si] = j
+        neighs[j, sj] = i
+        bks[i, si] = sj
+        bks[j, sj] = si
+        deg[i] += 1
+        deg[j] += 1
+    return neighs, bks
+
+
+def make_bLs_bKs_from_neighs(xyz, neighs, *, k_bond=200.0):
+    xyz = np.asarray(xyz, dtype=np.float32)
+    n = xyz.shape[0]
+    bLs = np.zeros((n, 4), dtype=np.float32)
+    bKs = np.zeros((n, 4), dtype=np.float32)
+    for i in range(n):
+        for k in range(4):
+            j = int(neighs[i, k])
+            if j < 0:
+                continue
+            bLs[i, k] = float(np.linalg.norm(xyz[j] - xyz[i]))
+            bKs[i, k] = float(k_bond)
+    return bLs, bKs
+
+
+def make_bk_slots(neighs, *, nnode, natoms=None):
+    if natoms is None:
+        natoms = int(neighs.shape[0])
+    bkSlots = np.full((natoms, 4), -1, dtype=np.int32)
+    bkCount = np.zeros((natoms,), dtype=np.int32)
+    for ia in range(int(nnode)):
+        for k in range(4):
+            ja = int(neighs[ia, k])
+            if ja < 0:
+                continue
+            s = int(bkCount[ja])
+            if s >= 4:
+                raise RuntimeError(f"bkSlots overflow: atom {ja} has >4 back slots (from node {ia})")
+            bkSlots[ja, s] = ia * 4 + k
+            bkCount[ja] += 1
+    return bkSlots
+
+
+def com(pos, m):
+    pos = np.asarray(pos, dtype=np.float32)
+    m = np.asarray(m, dtype=np.float32)
+    M = float(np.sum(m))
+    return np.sum(pos * m[:, None], axis=0) / M
+
+
+def linear_momentum(vel, m):
+    vel = np.asarray(vel, dtype=np.float32)
+    m = np.asarray(m, dtype=np.float32)
+    return np.sum(vel * m[:, None], axis=0)
+
+
+def angular_momentum(pos, vel, m, omega, Iiso):
+    pos = np.asarray(pos, dtype=np.float32)
+    vel = np.asarray(vel, dtype=np.float32)
+    m = np.asarray(m, dtype=np.float32)
+    omega = np.asarray(omega, dtype=np.float32)
+    Iiso = np.asarray(Iiso, dtype=np.float32)
+    c = com(pos, m)
+    r = pos - c
+    L_orb = np.sum(np.cross(r, vel * m[:, None]), axis=0)
+    L_spin = np.sum(omega * Iiso[:, None], axis=0)
+    return L_orb + L_spin
+
+
+def run_RRsp3_PD(sim, *, nnode, dt, iters, pos_init, m, quat_init, vel0, omega0, neighs, bks, bLs, bKs, atom_types, verbose=True):
+    sim.upload_rigid_state(pos_init, m, quat=quat_init, vel=vel0, omega=omega0)
+    sim.upload_rigid_topology(neighs, bks, bLs, bKs)
+    sim.upload_rigid_atom_types(atom_types)
+    pos_prev = pos_init.copy()
+    Iiso = 0.4 * m * 1.0 * 1.0
+    for it in range(int(iters)):
+        sim.rigid_projective_step(nnode=int(nnode), dt=float(dt), iterations=1)
+        pos4, q4, v4, om4 = sim.download_rigid_state()
+        p = pos4[:, :3]
+        v = (p - pos_prev) / float(dt)
+        pos_prev = p.copy()
+        if verbose and ((it == 0) or (it == int(iters) - 1)):
+            P = linear_momentum(v, m)
+            L = angular_momentum(p, v, m, om4[:, :3], Iiso)
+            print(f"proj iter={it:4d} |P|={np.linalg.norm(P):.6e} |L|={np.linalg.norm(L):.6e}")
+    max_err = 0.0
+    for i in range(len(pos_prev)):
+        for k in range(4):
+            j = int(neighs[i, k])
+            if j < 0:
+                continue
+            d = float(np.linalg.norm(pos_prev[j] - pos_prev[i]))
+            err = abs(d - float(bLs[i, k]))
+            if err > max_err:
+                max_err = err
+    return pos_prev, max_err
+
+
+def run_RRsp3_force(sim, *, nnode, dt_force, iters_force, damp_force, pos_init, m, quat_init, vel0, omega0, atom_types, bkSlots, port_local, port_n,
+                    on_frame=None, on_force=None):
+    nnode = int(nnode)
+    sim.upload_rigid_state(pos_init, m, quat=quat_init, vel=vel0, omega=omega0)
+    sim.upload_rigid_atom_types(atom_types)
+    sim.upload_rigid_bk_slots(bkSlots)
+    sim.upload_rigid_ports_local(port_local, port_n, nnode=nnode)
+    print_every = max(1, int(int(iters_force) // 20))
+    for it in range(int(iters_force)):
+        sim.rigid_force_explicit_step(nnode=nnode, dt=float(dt_force), nsteps=1, damp=float(damp_force))
+        if (it % print_every) == 0 or (it == int(iters_force) - 1):
+            f4 = sim.download_buffer(sim.cl_rforce, (sim.num_atoms, 4))
+            fnorm = float(np.linalg.norm(f4[:, :3]))
+            if on_force is not None:
+                on_force(it, fnorm, f4)
+            else:
+                print(f"force it={it:6d} |F|={fnorm:.6e} log10|F|={np.log10(fnorm+1e-30): .3f}")
+        if on_frame is not None:
+            on_frame(it)
+    pos4, q4, v4, om4 = sim.download_rigid_state()
+    return pos4, q4, v4, om4
+
+
 class XPDB_new:
     """Simplified Position Based Dynamics with Tiled Jacobi Solver"""
     
@@ -109,12 +237,16 @@ class XPDB_new:
 
         # Explicit force-based rigid dynamics buffers
         self.cl_rforce  = cl.Buffer(self.ctx, mf.READ_WRITE, n * 16)     # float4
-        self.cl_rfneigh = cl.Buffer(self.ctx, mf.READ_WRITE, n * 4 * 16) # float4[ natoms*4 ] recoil forces
-        self.cl_rpneigh = cl.Buffer(self.ctx, mf.READ_WRITE, n * 4 * 16) # float4[ natoms*4 ] port lever arms r_arm
 
-        # Explicit force-based port geometry (per atom, local frame, length-scaled)
-        self.cl_rport_local = cl.Buffer(self.ctx, mf.READ_ONLY, n * 4 * 16) # float4[ natoms*4 ]
-        self.cl_rport_n     = cl.Buffer(self.ctx, mf.READ_ONLY, n * 1)      # uchar[ natoms ]
+        # Host-precomputed back-slot indices into node recoil buffers (int4 per atom, -1 when absent)
+        self.cl_rbkSlots = cl.Buffer(self.ctx, mf.READ_ONLY, n * 16)   # int4[ natoms ]
+
+        # Node-only buffers for explicit rigid dynamics are allocated lazily once nnode is known
+        self._rigid_nodes_n = 0
+        self.cl_rfneigh = None
+        self.cl_rpneigh = None
+        self.cl_rport_local = None
+        self.cl_rport_n = None
 
         # Port template tables (type->dirs, type->nports)
         # N_PORT_TYPES = 4, dirs per type = 4 float4 (xyz dir, w unused)
@@ -130,6 +262,27 @@ class XPDB_new:
         self._upload_default_port_tables()
 
         self._rigid_inited = True
+
+    def _ensure_rigid_node_buffers(self, nnode):
+        self._init_rigid_buffers()
+        nnode = int(nnode)
+        if nnode < 0 or nnode > self.num_atoms:
+            raise ValueError(f'_ensure_rigid_node_buffers: nnode={nnode} out of range [0,{self.num_atoms}]')
+        if self._rigid_nodes_n == nnode and (self.cl_rfneigh is not None):
+            return
+        mf = cl.mem_flags
+        # recoil forces and lever arms are defined only for node atoms (nnode*4 slots)
+        self.cl_rfneigh = cl.Buffer(self.ctx, mf.READ_WRITE, nnode * 4 * 16)   # float4[ nnode*4 ]
+        self.cl_rpneigh = cl.Buffer(self.ctx, mf.READ_WRITE, nnode * 4 * 16)   # float4[ nnode*4 ]
+        self.cl_rport_local = cl.Buffer(self.ctx, mf.READ_ONLY,  nnode * 4 * 16) # float4[ nnode*4 ]
+        self.cl_rport_n     = cl.Buffer(self.ctx, mf.READ_ONLY,  nnode * 1)      # uchar[ nnode ]
+
+        self.cl_rdelta_neigh = cl.Buffer(self.ctx, mf.READ_WRITE, nnode * 4 * 16)  # float4[ nnode*4 ]
+        self.cl_rpos_delta   = cl.Buffer(self.ctx, mf.READ_WRITE, nnode * 16)      # float4[ nnode ]
+        self.cl_romega_delta = cl.Buffer(self.ctx, mf.READ_WRITE, nnode * 16)      # float4[ nnode ]
+        self.cl_rlambda      = cl.Buffer(self.ctx, mf.READ_WRITE, nnode * 4 * 4)   # float[ nnode*4 ]
+        self.cl_rKflat        = cl.Buffer(self.ctx, mf.READ_ONLY,  nnode * 4 * 4)  # float[ nnode*4 ]
+        self._rigid_nodes_n = nnode
 
     def _upload_default_port_tables(self):
         # type 0: none
@@ -227,6 +380,14 @@ class XPDB_new:
         cl.enqueue_copy(self.queue, self.cl_rbLs, bLs)
         cl.enqueue_copy(self.queue, self.cl_rbKs, bKs).wait()
 
+    def upload_rigid_bk_slots(self, bkSlots):
+        self._init_rigid_buffers()
+        n = int(self.num_atoms)
+        bks = np.array(bkSlots, dtype=np.int32, copy=False)
+        if bks.shape != (n, 4):
+            raise ValueError(f'upload_rigid_bk_slots: bkSlots.shape={bks.shape} expected ({n},4)')
+        cl.enqueue_copy(self.queue, self.cl_rbkSlots, bks).wait()
+
     def upload_rigid_atom_types(self, atom_types):
         self._init_rigid_buffers()
         n = int(self.num_atoms)
@@ -235,17 +396,33 @@ class XPDB_new:
             raise ValueError(f'upload_rigid_atom_types: atom_types.shape={at.shape} expected ({n},)')
         cl.enqueue_copy(self.queue, self.cl_ratom_types, at).wait()
 
-    def upload_rigid_ports_local(self, port_local, port_n):
+    def upload_rigid_ports_local(self, port_local, port_n, *, nnode=None):
+        # NOTE: node-only port geometry; capping atoms should not have ports
         self._init_rigid_buffers()
-        n = int(self.num_atoms)
+        if nnode is None:
+            raise ValueError('upload_rigid_ports_local: nnode must be specified (node-only buffers)')
+        nnode = int(nnode)
+        self._ensure_rigid_node_buffers(nnode)
         pl = np.array(port_local, dtype=np.float32, copy=False)
         pn = np.array(port_n, dtype=np.uint8, copy=False)
-        if pl.shape != (n, 4, 4):
-            raise ValueError(f'upload_rigid_ports_local: port_local.shape={pl.shape} expected ({n},4,4)')
-        if pn.shape != (n,):
-            raise ValueError(f'upload_rigid_ports_local: port_n.shape={pn.shape} expected ({n},)')
-        cl.enqueue_copy(self.queue, self.cl_rport_local, pl.reshape(n*4, 4))
+        if pl.shape != (nnode, 4, 4):
+            raise ValueError(f'upload_rigid_ports_local: port_local.shape={pl.shape} expected ({nnode},4,4)')
+        if pn.shape != (nnode,):
+            raise ValueError(f'upload_rigid_ports_local: port_n.shape={pn.shape} expected ({nnode},)')
+        cl.enqueue_copy(self.queue, self.cl_rport_local, pl.reshape(nnode*4, 4))
         cl.enqueue_copy(self.queue, self.cl_rport_n, pn).wait()
+
+    def upload_rigid_node_stiffness_flat(self, bKs, *, nnode=None):
+        self._init_rigid_buffers()
+        if nnode is None:
+            raise ValueError('upload_rigid_node_stiffness_flat: nnode must be specified (node-only buffers)')
+        nnode = int(nnode)
+        self._ensure_rigid_node_buffers(nnode)
+        bk = np.array(bKs, dtype=np.float32, copy=False)
+        if bk.shape != (self.num_atoms, 4):
+            raise ValueError(f'upload_rigid_node_stiffness_flat: bKs.shape={bk.shape} expected ({self.num_atoms},4)')
+        kflat = bk[:nnode, :].reshape(nnode * 4).astype(np.float32, copy=False)
+        cl.enqueue_copy(self.queue, self.cl_rKflat, kflat).wait()
 
     def download_buffer(self, clbuf, shape, *, dtype=np.float32):
         out = np.empty(shape, dtype=dtype)
@@ -327,17 +504,19 @@ class XPDB_new:
         nnode = int(nnode)
         if nnode < 0 or nnode > self.num_atoms:
             raise ValueError(f'rigid_force_explicit_step: nnode={nnode} out of range [0,{self.num_atoms}]')
+        self._ensure_rigid_node_buffers(nnode)
         natoms = np.int32(self.num_atoms)
         nnode_i = np.int32(nnode)
         dt_f = np.float32(float(dt))
         damp_f = np.float32(float(damp))
         for _ in range(int(nsteps)):
-            self.prg.clear_rigid_forces(self.queue, (self.num_atoms,), None, natoms, self.cl_rforce, self.cl_rfneigh, self.cl_rpneigh)
+            self.prg.clear_rigid_forces(self.queue, (self.num_atoms,), None, natoms, self.cl_rforce)
+            self.prg.clear_rigid_node_buffers(self.queue, (nnode*4,), None, nnode_i, self.cl_rfneigh, self.cl_rpneigh)
             self.prg.gather_port_forces(
-                self.queue, (self.num_atoms,), None,
-                natoms, nnode_i,
+                self.queue, (nnode,), None,
+                nnode_i,
                 self.cl_rpos_A, self.cl_rquat_A,
-                self.cl_rneighs, self.cl_rbkneighs,
+                self.cl_rneighs,
                 self.cl_rbKs,
                 self.cl_rport_local,
                 self.cl_rport_n,
@@ -347,9 +526,103 @@ class XPDB_new:
                 self.queue, (self.num_atoms,), None,
                 natoms, nnode_i,
                 self.cl_rpos_A, self.cl_rvel_A, self.cl_rquat_A, self.cl_romega_A,
-                self.cl_rneighs, self.cl_rbkneighs,
+                self.cl_rbkSlots,
                 self.cl_rforce, self.cl_rfneigh, self.cl_rpneigh,
                 dt_f, damp_f
+            )
+
+    def rigid_ports_pbd_step(self, *, nnode, iterations=10, relaxation=0.5):
+        self._init_rigid_buffers()
+        nnode = int(nnode)
+        if nnode < 0 or nnode > self.num_atoms:
+            raise ValueError(f'rigid_ports_pbd_step: nnode={nnode} out of range [0,{self.num_atoms}]')
+        self._ensure_rigid_node_buffers(nnode)
+        natoms = np.int32(self.num_atoms)
+        nnode_i = np.int32(nnode)
+        relax_f = np.float32(float(relaxation))
+
+        for _ in range(int(iterations)):
+            cl.enqueue_fill_buffer(self.queue, self.cl_rdelta_neigh, np.float32(0.0), 0, nnode * 4 * 16)
+            cl.enqueue_fill_buffer(self.queue, self.cl_rpos_delta, np.float32(0.0), 0, nnode * 16)
+            cl.enqueue_fill_buffer(self.queue, self.cl_romega_delta, np.float32(0.0), 0, nnode * 16)
+
+            self.prg.compute_corrections(
+                self.queue, (nnode,), None,
+                nnode_i,
+                self.cl_rpos_A, self.cl_rquat_A,
+                self.cl_rneighs,
+                self.cl_rport_local,
+                self.cl_rKflat,
+                self.cl_rpos_delta,
+                self.cl_romega_delta,
+                self.cl_rdelta_neigh
+            )
+            self.prg.apply_corrections(
+                self.queue, (self.num_atoms,), None,
+                natoms, nnode_i,
+                self.cl_rpos_A, self.cl_rquat_A,
+                self.cl_rbkSlots,
+                self.cl_rpos_delta,
+                self.cl_romega_delta,
+                self.cl_rdelta_neigh,
+                relax_f
+            )
+
+    def rigid_ports_xpbd_step(self, *, nnode, dt=0.1, iterations=10, reset_lambda=True, variant='scalar'):
+        self._init_rigid_buffers()
+        nnode = int(nnode)
+        if nnode < 0 or nnode > self.num_atoms:
+            raise ValueError(f'rigid_ports_xpbd_step: nnode={nnode} out of range [0,{self.num_atoms}]')
+        self._ensure_rigid_node_buffers(nnode)
+        natoms = np.int32(self.num_atoms)
+        nnode_i = np.int32(nnode)
+        dt_f = np.float32(float(dt))
+
+        if reset_lambda:
+            self.prg.reset_lambda(self.queue, (nnode * 4,), None, nnode_i, self.cl_rlambda)
+
+        for _ in range(int(iterations)):
+            cl.enqueue_fill_buffer(self.queue, self.cl_rdelta_neigh, np.float32(0.0), 0, nnode * 4 * 16)
+            cl.enqueue_fill_buffer(self.queue, self.cl_rpos_delta, np.float32(0.0), 0, nnode * 16)
+            cl.enqueue_fill_buffer(self.queue, self.cl_romega_delta, np.float32(0.0), 0, nnode * 16)
+
+            if variant == 'vector':
+                self.prg.compute_and_apply_corrections_xpbd_vector(
+                    self.queue, (nnode,), None,
+                    nnode_i,
+                    self.cl_rpos_A, self.cl_rquat_A,
+                    self.cl_rneighs,
+                    self.cl_rbKs,
+                    self.cl_rport_local,
+                    self.cl_rlambda,
+                    self.cl_rdelta_neigh,
+                    self.cl_rpos_delta,
+                    self.cl_romega_delta,
+                    dt_f
+                )
+            else:
+                self.prg.compute_and_apply_corrections_xpbd(
+                    self.queue, (nnode,), None,
+                    nnode_i,
+                    self.cl_rpos_A, self.cl_rquat_A,
+                    self.cl_rneighs,
+                    self.cl_rbKs,
+                    self.cl_rport_local,
+                    self.cl_rlambda,
+                    self.cl_rdelta_neigh,
+                    self.cl_rpos_delta,
+                    self.cl_romega_delta,
+                    dt_f
+                )
+
+            self.prg.gather_and_apply_xpbd(
+                self.queue, (self.num_atoms,), None,
+                natoms, nnode_i,
+                self.cl_rpos_A, self.cl_rquat_A,
+                self.cl_rbkSlots,
+                self.cl_rdelta_neigh,
+                self.cl_rpos_delta,
+                self.cl_romega_delta
             )
 
     def rigid_jacobi_bk(self, *, nnode, dt=0.1, iterations=10, k_rot=50.0):

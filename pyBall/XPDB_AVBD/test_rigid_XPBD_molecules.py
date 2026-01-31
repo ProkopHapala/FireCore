@@ -3,291 +3,30 @@ import argparse
 import os
 import sys
 
-import matplotlib.pyplot as plt
 from numpy.random import default_rng
 
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from XPDB_new import XPDB_new
-
-def write_pdb_trajectory(filename, frames, symbols, bonds):
-    """
-    Writes a multi-model PDB trajectory with explicit connectivity.
-    
-    Args:
-        filename (str): Output filename (e.g., 'debug.pdb')
-        frames (list): List of numpy arrays or lists of shapes (N, 3)
-        symbols (list): List of element symbols (e.g., ['C', 'H', 'H'])
-        bonds (list): List of tuples (atom_index_1, atom_index_2) - 0-indexed
-    """
-    with open(filename, 'w') as f:
-        for model_idx, coords in enumerate(frames):
-            f.write(f"MODEL     {model_idx + 1:4}\n")
-            
-            for i, (sym, pos) in enumerate(zip(symbols, coords)):
-                # Format: ATOM  ID  NAME  RES  CHAIN  RESNO    X      Y      Z
-                # We use 'HETATM' for general molecules to avoid residue logic
-                f.write(f"HETATM{i+1:5} {sym:4} UNK     1    {pos[0]:8.3f}{pos[1]:8.3f}{pos[2]:8.3f}  1.00  0.00          {sym:>2}\n")
-            
-            f.write("ENDMDL\n")
-        
-        # Explicit Bonding (CONECT records)
-        # PDB indices are 1-based, so we add 1 to our 0-indexed bonds
-        for b1, b2 in bonds:
-            f.write(f"CONECT{b1+1:5}{b2+1:5}\n")
-            
-        f.write("END\n")
-
-# # --- Example Usage ---
-# # 3 frames of a vibrating H2 molecule
-# example_symbols = ["H", "H"]
-# example_bonds = [(0, 1)] # Bond between first and second atom
-# example_frames = [
-#     [[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]],
-#     [[0.0, 0.0, 0.0], [0.0, 0.0, 0.80]],
-#     [[0.0, 0.0, 0.0], [0.0, 0.0, 0.70]]
-# ]
-
-# write_pdb_trajectory("debug_movie.pdb", example_frames, example_symbols, example_bonds)
-
-def load_xyz(fname):
-    with open(fname, 'r') as f:
-        lines_raw = [l.rstrip('\n') for l in f.readlines()]
-
-    # XYZ: line0=nAtoms, line1=comment (can be empty), then n atom lines.
-    # Some files here use "-lvs ..." as comment line.
-    if len(lines_raw) < 2:
-        raise ValueError(f"load_xyz: file too short '{fname}'")
-
-    n = int(lines_raw[0].strip().split()[0])
-    if n <= 0:
-        raise ValueError(f"load_xyz: invalid nAtoms={n} in '{fname}'")
-
-    comment = lines_raw[1].strip()
-    i0 = 2
-    if comment.startswith('-lvs'):
-        i0 = 2
-
-    # Skip any extra empty lines before atoms (some xyz have blank comment line + extra blank)
-    while i0 < len(lines_raw) and (lines_raw[i0].strip() == ''):
-        i0 += 1
-    if i0 + n > len(lines_raw):
-        raise ValueError(f"load_xyz: not enough atom lines in '{fname}' (need {n}, have {len(lines_raw)-i0})")
-    elems = []
-    xyz = np.zeros((n, 3), dtype=np.float32)
-    q = np.zeros((n,), dtype=np.float32)
-    for i in range(n):
-        ws = lines_raw[i0 + i].split()
-        elems.append(ws[0])
-        xyz[i, 0] = float(ws[1]); xyz[i, 1] = float(ws[2]); xyz[i, 2] = float(ws[3])
-        if len(ws) > 4:
-            q[i] = float(ws[4])
-    return elems, xyz, q
-
-
-def masses_from_elems(elems):
-    m = np.zeros((len(elems),), dtype=np.float32)
-    for i, e in enumerate(elems):
-        if e == 'H':
-            m[i] = 1.0
-        elif e == 'C':
-            m[i] = 12.0
-        elif e == 'N':
-            m[i] = 14.0
-        elif e == 'O':
-            m[i] = 16.0
-        else:
-            raise ValueError(f"Unknown element '{e}'")
-    return m
-
-
-def build_neighs_bk_from_bonds(n, bonds, max_deg=4):
-    neighs = np.full((n, max_deg), -1, dtype=np.int32)
-    bks = np.full((n, max_deg), -1, dtype=np.int32)
-
-    deg = np.zeros((n,), dtype=np.int32)
-
-    for (i, j) in bonds:
-        if deg[i] >= max_deg or deg[j] >= max_deg:
-            raise RuntimeError(f"Degree>={max_deg} for bond {i}-{j}")
-        si = int(deg[i]); sj = int(deg[j])
-        neighs[i, si] = j
-        neighs[j, sj] = i
-        bks[i, si] = sj
-        bks[j, sj] = si
-        deg[i] += 1
-        deg[j] += 1
-
-    return neighs, bks
+from XPDB_new import XPDB_new, build_neighs_bk_from_bonds, make_bLs_bKs_from_neighs, make_bk_slots, linear_momentum, angular_momentum, run_RRsp3_PD, run_RRsp3_force
+from XPTB_utils import load_xyz, masses_from_elems, perturb_state, write_xyz_with_ports, write_pdb_trajectory, plot_state_with_ports
 
 
 def bonds_for_molecule(name, elems):
     # Debug test only: hardcoded bonds for the specific xyz files
     if name.lower().startswith('h2o'):
         # O(0)-H(1), O(0)-H(2)
-        return [(0, 1), (0, 2)], 0  # nnode=0 (no rigid ports for water)
+        return [(0, 1), (0, 2)], 1  # nnode=1 (O is node, H are caps)
     if name.lower().startswith('ch2nh'):
         # C(0)=N(1), C(0)-H(2), C(0)-H(3), N(1)-H(4)
         return [(0, 1), (0, 2), (0, 3), (1, 4)], 2  # nnode=2 (C,N)
     raise ValueError(f"No bond template for '{name}'")
 
 
-def make_bLs_bKs_from_neighs(xyz, neighs, *, k_bond=200.0):
-    n = xyz.shape[0]
-    bLs = np.zeros((n, 4), dtype=np.float32)
-    bKs = np.zeros((n, 4), dtype=np.float32)
-    for i in range(n):
-        for k in range(4):
-            j = int(neighs[i, k])
-            if j < 0:
-                bLs[i, k] = 0.0
-                bKs[i, k] = 0.0
-                continue
-            bLs[i, k] = float(np.linalg.norm(xyz[j] - xyz[i]))
-            bKs[i, k] = float(k_bond)
-    return bLs, bKs
-
-
-def com(pos, m):
-    M = float(np.sum(m))
-    return np.sum(pos * m[:, None], axis=0) / M
-
-
-def linear_momentum(vel, m):
-    return np.sum(vel * m[:, None], axis=0)
-
-
-def angular_momentum(pos, vel, m, omega, Iiso):
-    c = com(pos, m)
-    r = pos - c
-    L_orb = np.sum(np.cross(r, vel * m[:, None]), axis=0)
-    L_spin = np.sum(omega * Iiso[:, None], axis=0)
-    return L_orb + L_spin
-
-
-def quat_mul(a, b):
-    out = np.empty_like(a)
-    ax, ay, az, aw = a[:, 0], a[:, 1], a[:, 2], a[:, 3]
-    bx, by, bz, bw = b[:, 0], b[:, 1], b[:, 2], b[:, 3]
-    out[:, 0] = aw*bx + ax*bw + ay*bz - az*by
-    out[:, 1] = aw*by - ax*bz + ay*bw + az*bx
-    out[:, 2] = aw*bz + ax*by - ay*bx + az*bw
-    out[:, 3] = aw*bw - ax*bx - ay*by - az*bz
-    return out
-
-
-def normalize_quat(q):
-    norms = np.linalg.norm(q, axis=1)
-    norms[norms == 0.0] = 1.0
-    return q / norms[:, None]
-
-
-def perturb_state(pos, quat, pos_scale, rot_scale, rng):
-    pos_out = pos.copy()
-    quat_out = quat.copy()
-    if pos_scale > 0:
-        pos_out += rng.normal(scale=pos_scale, size=pos_out.shape)
-    if rot_scale > 0:
-        axes = rng.normal(size=(len(quat_out), 3))
-        axis_norm = np.linalg.norm(axes, axis=1) + 1e-12
-        axes /= axis_norm[:, None]
-        angles = rng.normal(scale=rot_scale, size=(len(quat_out),))
-        half = 0.5 * angles
-        sin_half = np.sin(half)
-        dq = np.zeros_like(quat_out)
-        dq[:, :3] = axes * sin_half[:, None]
-        dq[:, 3] = np.cos(half)
-        quat_out = normalize_quat(quat_mul(dq, quat_out))
-    return pos_out, quat_out
-
-
-def write_xyz_with_ports(fname, elems, pos, pneigh, port_n):
-    n = pos.shape[0]
-    nports = int(np.sum(port_n))
-    with open(fname, 'a') as f:
-        f.write(f"{n + nports}\n")
-        f.write("\n")
-        for i in range(n):
-            f.write(f"{elems[i]} {pos[i,0]:.6f} {pos[i,1]:.6f} {pos[i,2]:.6f}\n")
-        ip = 0
-        for i in range(n):
-            pi = pos[i]
-            for k in range(int(port_n[i])):
-                tip = pi + pneigh[i, k, :3]
-                f.write(f"X {tip[0]:.6f} {tip[1]:.6f} {tip[2]:.6f}\n")
-                ip += 1
-
-
-class LivePortViz:
-    """Lightweight live 3D updater that keeps camera/view persistent."""
-    def __init__(self, elems):
-        self.elems = elems
-        plt.ion()
-        self.fig = plt.figure(figsize=(6, 6))
-        self.ax = self.fig.add_subplot(111, projection='3d')
-        self.sc = self.ax.scatter([], [], [], s=60, c='k')
-        # Port segments as Line3D objects
-        self.lines = []
-        # Force quiver
-        self.quiver = None
-        # Labels
-        self.labels = []
-        for _ in elems:
-            self.labels.append(self.ax.text(0, 0, 0, '', zorder=10))
-        self.ax.set_xlabel('x'); self.ax.set_ylabel('y'); self.ax.set_zlabel('z')
-        self.fig.canvas.draw()
-        self.fig.show()
-
-    def ensure_lines(self, total_ports):
-        while len(self.lines) < total_ports:
-            ln, = self.ax.plot([0, 0], [0, 0], [0, 0], '-', c='C0', lw=1)
-            self.lines.append(ln)
-
-    def update(self, pos, pneigh, port_n, force=None, title=""):
-        self.ax.set_title(title)
-        # atoms
-        self.sc._offsets3d = (pos[:, 0], pos[:, 1], pos[:, 2])
-        # labels
-        for i, lab in enumerate(self.labels):
-            lab.set_position((pos[i, 0], pos[i, 1]))
-            lab.set_3d_properties(pos[i, 2], zdir='z')
-            lab.set_text(self.elems[i])
-        # ports
-        total_ports = int(np.sum(port_n))
-        self.ensure_lines(total_ports)
-        ip = 0
-        for i in range(pos.shape[0]):
-            pi = pos[i]
-            for k in range(int(port_n[i])):
-                tip = pi + pneigh[i, k, :3]
-                self.lines[ip].set_data_3d([pi[0], tip[0]], [pi[1], tip[1]], [pi[2], tip[2]])
-                ip += 1
-        # hide unused lines
-        for j in range(ip, len(self.lines)):
-            self.lines[j].set_data_3d([0, 0], [0, 0], [0, 0])
-        # forces
-        if self.quiver is not None:
-            self.quiver.remove()
-            self.quiver = None
-        if force is not None:
-            f = force[:, :3]
-            self.quiver = self.ax.quiver(pos[:, 0], pos[:, 1], pos[:, 2], f[:, 0], f[:, 1], f[:, 2], length=0.1, normalize=True, color='r')
-        plt.pause(0.001)
-
-
-def plot_state_with_ports(elems, pos, pneigh, port_n, force=None, *, title=""):
-    # Reuse a single viz instance so camera rotation persists
-    if not hasattr(plot_state_with_ports, '_viz'):
-        plot_state_with_ports._viz = LivePortViz(elems)
-    viz = plot_state_with_ports._viz
-    viz.update(pos, pneigh, port_n, force=force, title=title)
-    # no blocking show here; interactive draw handled in LivePortViz
-
-
-def run_case(xyz_path, *, dt=0.1, dt_force=0.01, iters=50, iters_force=2000, k_bond=200.0, k_rot=50.0, perturb_pos=0.1, perturb_rot=0.1, seed=0, damp_force=0.98,
-             dump_xyz=None, dump_every=10, viz_force=False, viz_every=100, dump_pdb=None, pdb_every=10, plot_conv=True):
+def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=50, iters_force=2000, k_bond=200.0, k_rot=50.0, perturb_pos=0.1, perturb_rot=0.1, seed=0, damp_force=0.98,
+             dump_xyz=None, dump_every=10, viz_force=False, viz_every=100, dump_pdb=None, pdb_every=10, plot_conv=True,
+             pbd_relax=0.5, xpbd_reset_lambda=True, xpbd_variant='scalar'):
     name = os.path.basename(xyz_path)
     elems, xyz0, _q = load_xyz(xyz_path)
     m = masses_from_elems(elems)
@@ -318,21 +57,25 @@ def run_case(xyz_path, *, dt=0.1, dt_force=0.01, iters=50, iters_force=2000, k_b
             atom_types[i] = 0
     sim.upload_rigid_atom_types(atom_types)
 
-    # Explicit-force local ports: per-slot vectors in body frame, length-scaled.
+    bkSlots = make_bk_slots(neighs, nnode=int(nnode))
+    sim.upload_rigid_bk_slots(bkSlots)
+
+    # Explicit-force local ports: node-only buffers (shape nnode)
     # For this simple test we use the initial geometry as body frame (quat=identity).
-    port_local = np.zeros((len(elems), 4, 4), dtype=np.float32)
-    port_n = np.zeros((len(elems),), dtype=np.uint8)
-    for i in range(len(elems)):
+    port_local = np.zeros((int(nnode), 4, 4), dtype=np.float32)
+    port_n = np.zeros((int(nnode),), dtype=np.uint8)
+    for ia in range(int(nnode)):
         nn = 0
         for k in range(4):
-            j = int(neighs[i, k])
+            j = int(neighs[ia, k])
             if j < 0:
                 continue
-            v = xyz0[j] - xyz0[i]
-            port_local[i, k, :3] = v
+            v = xyz0[j] - xyz0[ia]
+            port_local[ia, k, :3] = v
             nn += 1
-        port_n[i] = nn
-    sim.upload_rigid_ports_local(port_local, port_n)
+        port_n[ia] = nn
+    sim.upload_rigid_ports_local(port_local, port_n, nnode=int(nnode))
+    sim.upload_rigid_node_stiffness_flat(bKs, nnode=int(nnode))
 
     Iiso = 0.4 * m * 1.0 * 1.0
 
@@ -353,86 +96,137 @@ def run_case(xyz_path, *, dt=0.1, dt_force=0.01, iters=50, iters_force=2000, k_b
     print(f"P(after 1 iter) = {P1}")
     print(f"L(after 1 iter) = {L1}")
 
+    f_hist = []
+    it_hist = []
+    frames_pdb = []
+
+    def emit_frame(it, title=None):
+        if not viz_force:
+            return
+        if (it % int(viz_every)) != 0 and it != int(iters) - 1:
+            return
+        pos4_it, q4_it, *_ = sim.download_rigid_state()
+        pneigh_full = np.zeros((len(elems), 4, 4), dtype=np.float32)
+        port_n_full = np.zeros((len(elems),), dtype=np.uint8)
+        pneigh_full[:int(nnode), :, :] = port_local
+        port_n_full[:int(nnode)] = port_n
+        plot_state_with_ports(
+            elems, pos4_it[:, :3], pneigh_full, port_n_full,
+            title=title or f"{name} it={it}"
+        )
+
     # Reset to initial state
     sim.upload_rigid_state(pos_init, m, quat=quat_init, vel=vel0, omega=omega0)
     sim.upload_rigid_atom_types(atom_types)
 
-    # A) Projective iterations
-    pos_prev = pos_init.copy()
-    for it in range(int(iters)):
-        sim.rigid_projective_step(nnode=nnode, dt=dt, iterations=1)
+    if method == 'projective':
+        sim.upload_rigid_state(pos_init, m, quat=quat_init, vel=vel0, omega=omega0)
+        for it in range(int(iters)):
+            sim.rigid_projective_step(nnode=int(nnode), dt=dt, iterations=1)
+            emit_frame(it, title=f"{name} projective it={it}")
         pos4, q4, v4, om4 = sim.download_rigid_state()
-        p = pos4[:, :3]
-        v = (p - pos_prev) / float(dt)
-        pos_prev = p.copy()
+        pos_prev = pos4[:, :3].copy()
+    elif method == 'pbd_ports':
+        sim.upload_rigid_state(pos_init, m, quat=quat_init, vel=vel0, omega=omega0)
+        for it in range(int(iters)):
+            sim.rigid_ports_pbd_step(nnode=int(nnode), iterations=1, relaxation=float(pbd_relax))
+            emit_frame(it, title=f"{name} pbd it={it}")
+        pos4, q4, v4, om4 = sim.download_rigid_state()
+        pos_prev = pos4[:, :3].copy()
+    elif method.startswith('xpbd_ports'):
+        sim.upload_rigid_state(pos_init, m, quat=quat_init, vel=vel0, omega=omega0)
+        for it in range(int(iters)):
+            sim.rigid_ports_xpbd_step(
+                nnode=int(nnode), dt=float(dt), iterations=1,
+                reset_lambda=bool(xpbd_reset_lambda) if it == 0 else False,
+                variant=xpbd_variant
+            )
+            emit_frame(it, title=f"{name} {method} it={it}")
+        pos4, q4, v4, om4 = sim.download_rigid_state()
+        pos_prev = pos4[:, :3].copy()
+    else:
+        pos_prev, max_err = run_RRsp3_PD(
+            sim,
+            nnode=int(nnode), dt=dt, iters=iters,
+            pos_init=pos_init, m=m, quat_init=quat_init, vel0=vel0, omega0=omega0,
+            neighs=neighs, bks=bks, bLs=bLs, bKs=bKs,
+            atom_types=atom_types,
+            verbose=True
+        )
+        print(f"max bond |d-L0| after proj iters = {max_err:.6e}")
 
-        P = linear_momentum(v, m)
-        L = angular_momentum(p, v, m, om4[:, :3], Iiso)
-
-        if (it == 0) or (it == int(iters) - 1):
-            print(f"proj iter={it:4d} |P|={np.linalg.norm(P):.6e} |L|={np.linalg.norm(L):.6e}")
-
-    # convergence check: bond length residuals (host side)
-    max_err = 0.0
-    for i in range(len(elems)):
-        for k in range(4):
-            j = int(neighs[i, k])
-            if j < 0:
-                continue
-            d = float(np.linalg.norm(pos_prev[j] - pos_prev[i]))
-            err = abs(d - float(bLs[i, k]))
-            if err > max_err:
-                max_err = err
-    print(f"max bond |d-L0| after proj iters = {max_err:.6e}")
-
-    # B) Explicit force-based dynamics
-    # Use nnode_force=natoms so every atom can have ports (e.g. O in H2O).
-    nnode_force = len(elems)
-    sim.upload_rigid_state(pos_init, m, quat=quat_init, vel=vel0, omega=omega0)
-    sim.upload_rigid_atom_types(atom_types)
-    sim.upload_rigid_ports_local(port_local, port_n)
-    pos_prev = pos_init.copy()
-    f_hist = []
-    it_hist = []
-    frames_pdb = []
-    print_every = max(1, int(iters_force // 20))
-    dump_xyz_i = None
-    if dump_xyz is not None:
-        base, ext = os.path.splitext(dump_xyz)
-        if ext == '':
-            ext = '.xyz'
-        dump_xyz_i = f"{base}_{name}{ext}"
-        open(dump_xyz_i, 'w').close()
-    for it in range(int(iters_force)):
-        sim.rigid_force_explicit_step(nnode=nnode_force, dt=dt_force, nsteps=1, damp=damp_force)
-        if (it % print_every) == 0 or (it == int(iters_force) - 1):
-            f4 = sim.download_buffer(sim.cl_rforce, (sim.num_atoms, 4))
-            fnorm = float(np.linalg.norm(f4[:, :3]))
+    if method == 'force_explicit':
+        nnode_force = int(nnode)
+        sim.upload_rigid_state(pos_init, m, quat=quat_init, vel=vel0, omega=omega0)
+        sim.upload_rigid_atom_types(atom_types)
+        sim.upload_rigid_bk_slots(bkSlots)
+        sim.upload_rigid_ports_local(port_local, port_n, nnode=int(nnode))
+        pos_prev = pos_init.copy()
+        print_every = max(1, int(iters_force // 20))
+        dump_xyz_i = None
+        if dump_xyz is not None:
+            base, ext = os.path.splitext(dump_xyz)
+            if ext == '':
+                ext = '.xyz'
+            dump_xyz_i = f"{base}_{name}{ext}"
+            open(dump_xyz_i, 'w').close()
+        def _on_force(it, fnorm, f4):
             f_hist.append(fnorm)
             it_hist.append(it)
             print(f"force it={it:6d} |F|={fnorm:.6e} log10|F|={np.log10(fnorm+1e-30): .3f}")
 
-        if dump_xyz_i is not None and ((it % int(dump_every)) == 0 or (it == int(iters_force) - 1)):
-            pos4_it, q4_it, v4_it, om4_it = sim.download_rigid_state()
-            pneigh_it = sim.download_buffer(sim.cl_rpneigh, (sim.num_atoms * 4, 4)).reshape(sim.num_atoms, 4, 4)
-            write_xyz_with_ports(dump_xyz_i, elems, pos4_it[:, :3], pneigh_it, port_n)
+        def _on_frame(it):
+            if dump_xyz_i is not None and ((it % int(dump_every)) == 0 or (it == int(iters_force) - 1)):
+                pos4_it, q4_it, v4_it, om4_it = sim.download_rigid_state()
+                pneigh_node = sim.download_buffer(sim.cl_rpneigh, (nnode_force * 4, 4)).reshape(nnode_force, 4, 4)
+                pneigh_full = np.zeros((len(elems), 4, 4), dtype=np.float32)
+                port_n_full = np.zeros((len(elems),), dtype=np.uint8)
+                pneigh_full[:nnode_force, :, :] = pneigh_node
+                port_n_full[:nnode_force] = port_n
+                write_xyz_with_ports(dump_xyz_i, elems, pos4_it[:, :3], pneigh_full, port_n_full)
 
-        if dump_pdb is not None and ((it % int(pdb_every)) == 0 or (it == int(iters_force) - 1)):
-            pos4_it, q4_it, v4_it, om4_it = sim.download_rigid_state()
-            frames_pdb.append(pos4_it[:, :3].copy())
+            if dump_pdb is not None and ((it % int(pdb_every)) == 0 or (it == int(iters_force) - 1)):
+                pos4_it, q4_it, v4_it, om4_it = sim.download_rigid_state()
+                frames_pdb.append(pos4_it[:, :3].copy())
 
-        if viz_force and ((it % int(viz_every)) == 0 or (it == int(iters_force) - 1)):
-            pos4_it, q4_it, v4_it, om4_it = sim.download_rigid_state()
-            pneigh_it = sim.download_buffer(sim.cl_rpneigh, (sim.num_atoms * 4, 4)).reshape(sim.num_atoms, 4, 4)
-            f4 = sim.download_buffer(sim.cl_rforce, (sim.num_atoms, 4))
-            plot_state_with_ports(elems, pos4_it[:, :3], pneigh_it, port_n, force=f4, title=f"{name} it={it}")
+            if viz_force and ((it % int(viz_every)) == 0 or (it == int(iters_force) - 1)):
+                pos4_it, q4_it, v4_it, om4_it = sim.download_rigid_state()
+                pneigh_node = sim.download_buffer(sim.cl_rpneigh, (nnode_force * 4, 4)).reshape(nnode_force, 4, 4)
+                f4 = sim.download_buffer(sim.cl_rforce, (sim.num_atoms, 4))
+                pneigh_full = np.zeros((len(elems), 4, 4), dtype=np.float32)
+                port_n_full = np.zeros((len(elems),), dtype=np.uint8)
+                pneigh_full[:nnode_force, :, :] = pneigh_node
+                port_n_full[:nnode_force] = port_n
+                plot_state_with_ports(elems, pos4_it[:, :3], pneigh_full, port_n_full, force=f4, title=f"{name} it={it}")
+
+        run_RRsp3_force(
+            sim,
+            nnode=nnode_force, dt_force=dt_force, iters_force=iters_force, damp_force=damp_force,
+            pos_init=pos_init, m=m, quat_init=quat_init, vel0=vel0, omega0=omega0,
+            atom_types=atom_types,
+            bkSlots=bkSlots,
+            port_local=port_local, port_n=port_n,
+            on_frame=_on_frame,
+            on_force=_on_force
+        )
 
     pos4, q4, v4, om4 = sim.download_rigid_state()
+    if not np.all(np.isfinite(pos4)):
+        raise RuntimeError(f"{method}: non-finite pos detected")
+    if not np.all(np.isfinite(q4)):
+        raise RuntimeError(f"{method}: non-finite quat detected")
     p = pos4[:, :3]
-    v = v4[:, :3]
-    P = linear_momentum(v, m)
-    L = angular_momentum(p, v, m, om4[:, :3], Iiso)
-    print(f"force final |P|={np.linalg.norm(P):.6e} |L|={np.linalg.norm(L):.6e}")
+    if method == 'force_explicit':
+        v = v4[:, :3]
+        if not np.all(np.isfinite(v4)):
+            raise RuntimeError(f"{method}: non-finite vel detected")
+        if not np.all(np.isfinite(om4)):
+            raise RuntimeError(f"{method}: non-finite omega detected")
+        P = linear_momentum(v, m)
+        L = angular_momentum(p, v, m, om4[:, :3], Iiso)
+        print(f"force final |P|={np.linalg.norm(P):.6e} |L|={np.linalg.norm(L):.6e}")
+    else:
+        print(f"{method}: vel/omega not updated (PBD/XPBD step), skipping momentum print")
     pos_prev = p.copy()
     max_err = 0.0
     for i in range(len(elems)):
@@ -444,18 +238,18 @@ def run_case(xyz_path, *, dt=0.1, dt_force=0.01, iters=50, iters_force=2000, k_b
             err = abs(d - float(bLs[i, k]))
             if err > max_err:
                 max_err = err
-    print(f"max bond |d-L0| after force iters = {max_err:.6e}")
+    print(f"max bond |d-L0| after {method} = {max_err:.6e}")
 
-    if len(f_hist) > 1:
-        if plot_conv:
-            plt.figure(figsize=(6, 4))
-            plt.plot(it_hist, np.log10(np.array(f_hist) + 1e-30))
-            plt.xlabel('iter')
-            plt.ylabel('log10 |F|')
-            plt.title(f'force convergence: {name}')
-            plt.tight_layout()
-            if not getattr(run_case, '_noshow', False):
-                plt.show()
+    if (method == 'force_explicit') and (len(f_hist) > 1) and plot_conv:
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(6, 4))
+        plt.plot(it_hist, np.log10(np.array(f_hist) + 1e-30))
+        plt.xlabel('iter')
+        plt.ylabel('log10 |F|')
+        plt.title(f'force convergence: {name}')
+        plt.tight_layout()
+        if not getattr(run_case, '_noshow', False):
+            plt.show()
 
     if dump_pdb is not None:
         mol = os.path.splitext(os.path.basename(xyz_path))[0]
@@ -484,15 +278,17 @@ python test_rigid_XPBD_molecules.py --molecule ch2nh --dt_force 0.001 --iters_fo
 
 python test_rigid_XPBD_molecules.py --molecule ch2nh --dt_force 0.001 --iters_force 1000 --perturb_pos 0.1 --perturb_rot 0.1 --damp_force 0.98 --viz_force --viz_every 50 --dump_pdb traj_{mol}.pdb --pdb_every 10
 
+python test_rigid_XPBD_molecules.py --molecule ch2nh --dt_force 0.001 --iters_force 1000 --perturb_pos 0.1 --perturb_rot 0.1 --damp_force 0.98 --viz_force --viz_every 10 --dump_pdb traj.pdb
+
 '''
 
-
-def main():
+if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--molecule', type=str, default='all', choices=['all', 'h2o', 'ch2nh'])
+    ap.add_argument('--method', type=str, default='force_explicit', choices=['force_explicit', 'projective', 'pbd_ports', 'xpbd_ports_scalar', 'xpbd_ports_vector'])
     ap.add_argument('--dt', type=float, default=0.1)
-    ap.add_argument('--dt_force', type=float, default=0.01)
     ap.add_argument('--iters', type=int, default=50)
+    ap.add_argument('--dt_force', type=float, default=0.01)
     ap.add_argument('--iters_force', type=int, default=2000)
     ap.add_argument('--k_bond', type=float, default=200.0)
     ap.add_argument('--k_rot', type=float, default=50.0)
@@ -508,6 +304,8 @@ def main():
     ap.add_argument('--viz_every', type=int, default=100)
     ap.add_argument('--plot_conv', action='store_true')
     ap.add_argument('--noshow', action='store_true')
+    ap.add_argument('--pbd_relax', type=float, default=0.5)
+    ap.add_argument('--xpbd_reset_lambda', type=int, default=1)
     args = ap.parse_args()
 
     base = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'cpp', 'common_resources', 'xyz'))
@@ -516,19 +314,20 @@ def main():
     run_case._noshow = bool(args.noshow)
 
     if args.molecule in ('all', 'h2o'):
-        run_case(xyz_h2o, dt=args.dt, dt_force=args.dt_force, iters=args.iters, iters_force=args.iters_force,
-                 k_bond=args.k_bond, k_rot=args.k_rot,
-                 perturb_pos=args.perturb_pos, perturb_rot=args.perturb_rot, seed=args.seed, damp_force=args.damp_force,
+        run_case(xyz_h2o, dt=args.dt, iters=args.iters, dt_force=args.dt_force, iters_force=args.iters_force, k_bond=args.k_bond, k_rot=args.k_rot,
+                 perturb_pos=args.perturb_pos, perturb_rot=args.perturb_rot, seed=args.seed + 0, damp_force=args.damp_force,
+                 method=args.method if args.method != 'xpbd_ports_vector' else 'xpbd_ports',
+                 xpbd_variant='vector' if args.method == 'xpbd_ports_vector' else 'scalar',
+                 xpbd_reset_lambda=bool(args.xpbd_reset_lambda),
+                 pbd_relax=args.pbd_relax,
                  dump_xyz=args.dump_xyz, dump_every=args.dump_every, viz_force=args.viz_force, viz_every=args.viz_every,
                  dump_pdb=args.dump_pdb, pdb_every=args.pdb_every, plot_conv=bool(args.plot_conv))
-
     if args.molecule in ('all', 'ch2nh'):
-        run_case(xyz_ch2nh, dt=args.dt, dt_force=args.dt_force, iters=args.iters, iters_force=args.iters_force,
-                 k_bond=args.k_bond, k_rot=args.k_rot,
+        run_case(xyz_ch2nh, dt=args.dt, iters=args.iters, dt_force=args.dt_force, iters_force=args.iters_force, k_bond=args.k_bond, k_rot=args.k_rot,
                  perturb_pos=args.perturb_pos, perturb_rot=args.perturb_rot, seed=args.seed + 1, damp_force=args.damp_force,
+                 method=args.method if args.method != 'xpbd_ports_vector' else 'xpbd_ports',
+                 xpbd_variant='vector' if args.method == 'xpbd_ports_vector' else 'scalar',
+                 xpbd_reset_lambda=bool(args.xpbd_reset_lambda),
+                 pbd_relax=args.pbd_relax,
                  dump_xyz=args.dump_xyz, dump_every=args.dump_every, viz_force=args.viz_force, viz_every=args.viz_every,
                  dump_pdb=args.dump_pdb, pdb_every=args.pdb_every, plot_conv=bool(args.plot_conv))
-
-
-if __name__ == '__main__':
-    main()

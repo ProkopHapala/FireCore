@@ -66,6 +66,15 @@ inline float4 quat_from_vec(float3 w) {
     return (float4)(w * s, cos(angle * 0.5f));
 }
 
+// Quaternion from axis-angle
+inline float4 quat_from_axis_angle(float3 axis, float angle) {
+    float a = length(axis);
+    if (a < 1e-8f || fabs(angle) < 1e-8f) return (float4)(0.0f, 0.0f, 0.0f, 1.0f);
+    float3 n = axis / a;
+    float s = sin(angle * 0.5f);
+    return (float4)(n * s, cos(angle * 0.5f));
+}
+
 // Quaternion multiplication
 inline float4 quat_mul(float4 a, float4 b) {
     return (float4)(
@@ -85,32 +94,31 @@ inline int port_n(int typ){
 
 __kernel void clear_rigid_forces(
     const int natoms,
-    __global float4* force,
-    __global float4* fneigh,
-    __global float4* pneigh
+    __global float4* force
 ) {
     int i = get_global_id(0);
     if (i >= natoms) return;
     force[i]  = (float4)(0.0f);
-    int i4 = i * 4;
-    fneigh[i4  ] = (float4)(0.0f);
-    fneigh[i4+1] = (float4)(0.0f);
-    fneigh[i4+2] = (float4)(0.0f);
-    fneigh[i4+3] = (float4)(0.0f);
-    pneigh[i4  ] = (float4)(0.0f);
-    pneigh[i4+1] = (float4)(0.0f);
-    pneigh[i4+2] = (float4)(0.0f);
-    pneigh[i4+3] = (float4)(0.0f);
+}
+
+__kernel void clear_rigid_node_buffers(
+    const int nnode,
+    __global float4* fneigh,
+    __global float4* pneigh
+) {
+    int i = get_global_id(0);
+    int n = nnode * 4;
+    if (i >= n) return;
+    fneigh[i] = (float4)(0.0f);
+    pneigh[i] = (float4)(0.0f);
 }
 
 
 __kernel void gather_port_forces(
-    const int natoms,
     const int nnode,
     __global const float4* pos,
     __global const float4* quat,
     __global int4*   neighs,
-    __global int4*   bkNeighs,
     __global float4* bKs,
     __global const float4* port_local,
     __global const uchar*  port_n,
@@ -119,7 +127,7 @@ __kernel void gather_port_forces(
     __global float4* pneigh
 ) {
     int i = get_global_id(0);
-    if (i >= natoms) return;
+    if (i >= nnode) return;
 
     float3 p_i = pos[i].xyz;
     float4 q_i = quat[i];
@@ -127,7 +135,7 @@ __kernel void gather_port_forces(
     int4 ng = neighs[i];
     int* neighbors = (int*)&ng;
 
-    int npi = (i < nnode) ? (int)port_n[i] : 0;
+    int npi = (int)port_n[i];
 
     float3 fi = (float3)(0.0f);
 
@@ -136,12 +144,11 @@ __kernel void gather_port_forces(
         int j = neighbors[k];
         if (j < 0) break;
 
-        // float Kij = ((float*)&bKs[i])[k]; // Intel OpenCL dislikes address-space cast
         float Kij = fetch4(bKs, i, k);
         float3 p_j = pos[j].xyz;
 
         float3 r_arm = (float3)(0.0f);
-        if (i < nnode && k < npi) r_arm = quat_rotate(q_i, port_local[i4 + k].xyz);
+        if (k < npi) r_arm = quat_rotate(q_i, port_local[i4 + k].xyz);
 
         float3 tip = p_i + r_arm;
         float3 f   = (p_j - tip) * Kij;
@@ -162,8 +169,7 @@ __kernel void integrate_rigid_explicit(
     __global float4* vel,
     __global float4* quat,
     __global float4* omega,
-    __global int4*   neighs,
-    __global int4*   bkNeighs,
+    __global int4*   bkSlots,
     __global float4* force,
     __global float4* fneigh,
     __global float4* pneigh,
@@ -179,16 +185,12 @@ __kernel void integrate_rigid_explicit(
 
     float3 f = force[i].xyz;
 
-    int4 ng = neighs[i];
-    int4 bk = bkNeighs[i];
-    int* neighbors = (int*)&ng;
-    int* backi     = (int*)&bk;
+    int4 bk = bkSlots[i];
+    int* islots = (int*)&bk;
     for (int k = 0; k < 4; k++) {
-        int j = neighbors[k];
-        if (j < 0) break;
-        int kk = backi[k];
-        if (kk >= 0 && kk < 4) {
-            f += fneigh[j*4 + kk].xyz;
+        int islot = islots[k];
+        if (islot >= 0) {
+            f += fneigh[islot].xyz;
         }
     }
 
@@ -2283,4 +2285,470 @@ __kernel void apply_deltas(
     // Write Output
     pos_new[i]  = (float4)(p_final, pos_pred[i].w);
     quat_new[i] = q_final;
+}
+
+// ===============================
+//  Solution from Kimi 2.5
+// ===============================
+
+
+__kernel void compute_corrections(
+    const int nnode,
+    __global const float4* pos,        // w = invMass
+    __global const float4* quat,
+    __global const int4*   neighs,
+    __global const float4* port_local, // Local offsets (xyz, 0)
+    __global const float*  stiffness,  // K weight
+    __global float4* dpos_node,        // Accumulated COM correction for node i
+    __global float4* drot_node,        // Accumulated rotation vector for node i
+    __global float4* dpos_neigh        // Correction to write to neighbor's slot (recoils)
+) {
+    int i = get_global_id(0);
+    if (i >= nnode) return;
+
+    float3 xi = pos[i].xyz;
+    float4 qi = quat[i];
+    float invMi = pos[i].w;
+    float mi = (invMi > 1e-12f) ? 1.0f/invMi : 1e12f;
+    float3 invIi_vec = (float3)(2.5f * invMi); // Simplified: 1/(0.4*m) for sphere
+
+    float3 dx_accum = (float3)(0.0f);
+    float3 dtheta_accum = (float3)(0.0f);
+    int i4 = i * 4;
+
+    for (int k = 0; k < 4; k++) {
+        int j = neighs[i][k];
+        if (j < 0) break;
+
+        float3 aj = port_local[i4 + k].xyz;
+        float3 ri = quat_rotate(qi, aj); // Arm in world space
+        float3 pi = xi + ri;             // Port position
+        
+        float3 xj = pos[j].xyz;
+        float invMj = pos[j].w;
+        
+        float3 diff = pi - xj;  // tip - neighbor
+        float dist2 = dot(diff, diff);
+        if (dist2 < 1e-12f) continue;
+        float dist = sqrt(dist2);
+        float3 n = diff / dist;
+        float K = stiffness[i4 + k]; // weight
+        
+        // Generalized inverse masses
+        float W_lin_i = invMi;
+        float W_lin_j = invMj;
+        
+        float3 rxn = cross(ri, n);
+        // W_rot = (r x n)^T * I^-1 * (r x n). Using diagonal approx:
+        float W_rot_i = dot(rxn*rxn, invIi_vec); 
+        
+        float W_total = W_lin_i + W_lin_j + W_rot_i + 1e-12f;
+        float delta_lambda = -dist / W_total;
+        
+        // --- Correction for node i (accumulated) ---
+        // Translational part
+        float3 dx_i = delta_lambda * n * W_lin_i;
+        dx_accum += dx_i;
+        
+        // Rotational part: dtheta = I^-1 * (r x n) * scale
+        float3 dtheta_i = (invIi_vec * rxn) * (W_rot_i / W_total) * delta_lambda * dist;
+        dtheta_accum += dtheta_i;
+        
+        // --- Correction for neighbor j (recoil) ---
+        // This is stored in the slot so j can pick it up
+        float3 dx_j = -delta_lambda * n * W_lin_j;
+        dpos_neigh[i4 + k] = (float4)(dx_j, 0.0f);
+    }
+    
+    dpos_node[i] = (float4)(dx_accum, 0.0f);
+    drot_node[i] = (float4)(dtheta_accum, 0.0f);
+}
+
+__kernel void apply_corrections(
+    const int natoms,
+    const int nnode,
+    __global float4* pos,
+    __global float4* quat,
+    __global const int4* bkSlots,      // Back-mapping: which slots affect me?
+    __global const float4* dpos_node,  // From kernel 1 (nodes only)
+    __global const float4* drot_node,  // From kernel 1 (nodes only)
+    __global const float4* dpos_neigh, // From kernel 1 (all bonds)
+    const float relaxation             // 0.2 - 0.8 for Jacobi stability
+) {
+    int i = get_global_id(0);
+    if (i >= natoms) return;
+
+    float3 dx = (float3)(0.0f);
+    if (i < nnode) {
+        dx = dpos_node[i].xyz;
+    }
+    
+    // Gather recoils from all neighbors that wrote to my slots
+    int4 bk = bkSlots[i];
+    for (int k = 0; k < 4; k++) {
+        int slot = bk[k];
+        if (slot >= 0) {
+            dx += dpos_neigh[slot].xyz;
+        }
+    }
+    
+    // Apply position update (Jacobi step with under-relaxation)
+    float3 xi = pos[i].xyz;
+    xi += dx * relaxation;
+    pos[i].xyz = xi;
+    
+    // Apply rotation update (only nodes)
+    if (i < nnode) {
+        float3 dtheta = drot_node[i].xyz * relaxation;
+        
+        float angle = length(dtheta);
+        if (angle > 1e-8f) {
+            float3 axis = dtheta / angle;
+            float4 dq = (float4)(axis * sin(angle * 0.5f), cos(angle * 0.5f));
+            float4 qi = quat[i];
+            // Apply rotation: q_new = dq * q_old (local rotation applied to current)
+            quat[i] = normalize(quat_mul(dq, qi));
+        }
+    }
+}
+
+// ===============================
+//  Solution from Claude 4.5 Sonet 
+// ===============================
+
+__kernel void compute_and_apply_corrections(
+    const int nnode,
+    __global const float4* pos,          // w = invMass
+    __global const float4* quat,
+    __global const int4*   neighs,
+    __global const float4* bKs,
+    __global const float4* port_local,
+    __global float4*       delta_neigh,  // size nnode*4
+    __global float4*       pos_delta,    // size nnode
+    __global float4*       omega_delta,  // size nnode
+    const float dt
+) {
+    int i = get_global_id(0);
+    if (i >= nnode) return;
+
+    float4 pi4 = pos[i];
+    float invMi = pi4.w;
+    float mi = (invMi > 1e-12f) ? (1.0f / invMi) : 1e12f;
+    float3 p_i = pi4.xyz;
+    float4 q_i = quat[i];
+
+    float I_i = 0.4f * mi;
+    (void)dt; // placeholder to match signature; dt may be used for compliance later
+
+    float3 dp_i_total = (float3)(0.0f);
+    float3 dw_i_total = (float3)(0.0f);
+
+    int4 ng = neighs[i];
+    int* neighbors = (int*)&ng;
+
+    for (int k = 0; k < 4; k++) {
+        int j = neighbors[k];
+        if (j < 0) break;
+
+        float K_ij = fetch4(bKs, i, k);
+        float4 pj4 = pos[j];
+        float invMj = pj4.w;
+        float mj = (invMj > 1e-12f) ? (1.0f / invMj) : 1e12f;
+
+        float3 r_k = quat_rotate(q_i, port_local[i * 4 + k].xyz);
+        float3 port_world = p_i + r_k;
+
+        float3 v_k = pj4.xyz - port_world;
+        float C = length(v_k);
+        if (C < 1e-8f) continue;
+        float3 n = v_k / C;
+
+        float3 dr_dq = cross(r_k, n);
+        float w_i_trans = invMi;
+        float w_i_rot = (I_i > 1e-12f) ? dot(dr_dq, dr_dq) / I_i : 0.0f;
+        float w_j = invMj;
+
+        float w_total = w_i_trans + w_i_rot + w_j + 1.0f / (K_ij + 1e-12f);
+        float lambda = -C / w_total;
+
+        float3 dp_i = lambda * n * w_i_trans;
+        float3 dw_i = (I_i > 1e-12f) ? lambda * cross(r_k, n) / I_i : (float3)(0.0f);
+        float3 dp_j = -lambda * n * w_j;
+
+        dp_i_total += dp_i;
+        dw_i_total += dw_i;
+
+        delta_neigh[i * 4 + k] = (float4)(dp_j, 0.0f);
+    }
+
+    pos_delta[i] = (float4)(dp_i_total, 0.0f);
+    omega_delta[i] = (float4)(dw_i_total, 0.0f);
+}
+
+__kernel void gather_and_apply(
+    const int natoms,
+    const int nnode,
+    __global float4*       pos,
+    __global float4*       quat,
+    __global const int4*   bkSlots,
+    __global const float4* delta_neigh,
+    __global const float4* pos_delta,
+    __global const float4* omega_delta
+) {
+    int i = get_global_id(0);
+    if (i >= natoms) return;
+
+    float4 pi4 = pos[i];
+    float3 dp = pos_delta[i].xyz;
+
+    int4 bk = bkSlots[i];
+    int* islots = (int*)&bk;
+    for (int k = 0; k < 4; k++) {
+        int islot = islots[k];
+        if (islot >= 0) {
+            dp += delta_neigh[islot].xyz;
+        }
+    }
+
+    pos[i] = (float4)(pi4.xyz + dp, pi4.w);
+
+    if (i < nnode) {
+        float3 dw = omega_delta[i].xyz;
+        float angle = length(dw);
+        if (angle > 1e-8f) {
+            float3 axis = dw / angle;
+            float4 dq = quat_from_axis_angle(axis, angle);
+            quat[i] = normalize(quat_mul(dq, quat[i]));
+        }
+    }
+}
+
+// ================================================================
+//  Solution from Claude 4.5 Sonet XPBD with λ accumulation
+// ==============================================================
+
+
+__kernel void reset_lambda(
+    const int nnode,
+    __global float* lambda
+) {
+    int i = get_global_id(0);
+    if (i >= nnode * 4) return;
+    lambda[i] = 0.0f;
+}
+
+__kernel void compute_and_apply_corrections_xpbd(
+    const int nnode,
+    __global const float4* pos,          // w = invMass
+    __global const float4* quat,
+    __global const int4*   neighs,
+    __global const float4* bKs,          // now interpreted as stiffness K (compliance α = 1/K)
+    __global const float4* port_local,
+    __global float*        lambda,       // size nnode*4, accumulated per constraint
+    __global float4*       delta_neigh,  // size nnode*4
+    __global float4*       pos_delta,    // size nnode
+    __global float4*       omega_delta,  // size nnode
+    const float dt
+) {
+    int i = get_global_id(0);
+    if (i >= nnode) return;
+
+    float4 pi4 = pos[i];
+    float invMi = pi4.w;
+    float mi = (invMi > 1e-12f) ? (1.0f / invMi) : 1e12f;
+    float3 p_i = pi4.xyz;
+    float4 q_i = quat[i];
+
+    float I_i = 0.4f * mi;
+    float dt2 = dt * dt;
+
+    float3 dp_i_total = (float3)(0.0f);
+    float3 dw_i_total = (float3)(0.0f);
+
+    int4 ng = neighs[i];
+    int* neighbors = (int*)&ng;
+
+    for (int k = 0; k < 4; k++) {
+        int j = neighbors[k];
+        if (j < 0) break;
+
+        float K_ij = fetch4(bKs, i, k);
+        if (K_ij < 1e-12f) continue;  // skip if no stiffness
+        
+        float4 pj4 = pos[j];
+        float invMj = pj4.w;
+        float mj = (invMj > 1e-12f) ? (1.0f / invMj) : 1e12f;
+
+        // Port position in world frame
+        float3 r_k = quat_rotate(q_i, port_local[i * 4 + k].xyz);
+        float3 port_world = p_i + r_k;
+
+        // Constraint violation (consistent with force kernels): diff = tip - xj
+        float3 v_k = port_world - pj4.xyz;
+        float C = length(v_k);
+        if (C < 1e-8f) continue;
+        float3 n = v_k / C;
+
+        // Compute generalized mass (accounts for translation + rotation coupling)
+        float3 dr_dq = cross(r_k, n);
+        float w_i_trans = invMi;
+        float w_i_rot = (I_i > 1e-12f) ? dot(dr_dq, dr_dq) / I_i : 0.0f;
+        float w_j = invMj;
+
+        // XPBD: add compliance term α/dt² where α = 1/K
+        float alpha = 1.0f / K_ij;  // compliance
+        float alpha_tilde = alpha / dt2;
+        
+        float w_total = w_i_trans + w_i_rot + w_j + alpha_tilde;
+
+        int constraint_idx = i * 4 + k;
+        float lambda_prev = lambda[constraint_idx];
+        float delta_lambda = (-C - alpha_tilde * lambda_prev) / w_total;
+        lambda[constraint_idx] = lambda_prev + delta_lambda;
+
+        // Apply corrections using Δλ (not total λ!)
+        float3 dp_i = delta_lambda * n * w_i_trans;
+        float3 dw_i = (I_i > 1e-12f) ? delta_lambda * cross(r_k, n) / I_i : (float3)(0.0f);
+        float3 dp_j = -delta_lambda * n * w_j;
+
+        dp_i_total += dp_i;
+        dw_i_total += dw_i;
+
+        delta_neigh[i * 4 + k] = (float4)(dp_j, 0.0f);
+    }
+
+    pos_delta[i] = (float4)(dp_i_total, 0.0f);
+    omega_delta[i] = (float4)(dw_i_total, 0.0f);
+}
+
+__kernel void gather_and_apply_xpbd(
+    const int natoms,
+    const int nnode,
+    __global float4*       pos,
+    __global float4*       quat,
+    __global const int4*   bkSlots,
+    __global const float4* delta_neigh,
+    __global const float4* pos_delta,
+    __global const float4* omega_delta
+) {
+    int i = get_global_id(0);
+    if (i >= natoms) return;
+
+    float4 pi4 = pos[i];
+    float3 dp = (float3)(0.0f);
+    
+    // Get delta for this atom (0 if i >= nnode, since pos_delta only allocated for nnode)
+    if (i < nnode) {
+        dp = pos_delta[i].xyz;
+    }
+
+    // Gather recoil corrections from neighbors
+    int4 bk = bkSlots[i];
+    int* islots = (int*)&bk;
+    for (int k = 0; k < 4; k++) {
+        int islot = islots[k];
+        if (islot >= 0) {
+            dp += delta_neigh[islot].xyz;
+        }
+    }
+
+    pos[i] = (float4)(pi4.xyz + dp, pi4.w);
+
+    if (i < nnode) {
+        float3 dw = omega_delta[i].xyz;
+        float angle = length(dw);
+        if (angle > 1e-8f) {
+            float3 axis = dw / angle;
+            float4 dq = quat_from_axis_angle(axis, angle);
+            quat[i] = normalize(quat_mul(dq, quat[i]));
+        }
+    }
+}
+
+
+__kernel void compute_and_apply_corrections_xpbd_vector(
+    const int nnode,
+    __global const float4* pos,
+    __global const float4* quat,
+    __global const int4*   neighs,
+    __global const float4* bKs,
+    __global const float4* port_local,
+    __global float*        lambda,
+    __global float4*       delta_neigh,
+    __global float4*       pos_delta,
+    __global float4*       omega_delta,
+    const float dt
+) {
+    int i = get_global_id(0);
+    if (i >= nnode) return;
+
+    float4 pi4 = pos[i];
+    float invMi = pi4.w;
+    float mi = (invMi > 1e-12f) ? (1.0f / invMi) : 1e12f;
+    float3 p_i = pi4.xyz;
+    float4 q_i = quat[i];
+
+    float I_i = 0.4f * mi;
+    float dt2 = dt * dt;
+
+    float3 dp_i_total = (float3)(0.0f);
+    float3 dw_i_total = (float3)(0.0f);
+
+    int4 ng = neighs[i];
+    int* neighbors = (int*)&ng;
+
+    for (int k = 0; k < 4; k++) {
+        int j = neighbors[k];
+        if (j < 0) break;
+
+        float K_ij = fetch4(bKs, i, k);
+        if (K_ij < 1e-12f) continue;
+        
+        float4 pj4 = pos[j];
+        float invMj = pj4.w;
+        float mj = (invMj > 1e-12f) ? (1.0f / invMj) : 1e12f;
+
+        // Port position in world frame
+        float3 r_k = quat_rotate(q_i, port_local[i * 4 + k].xyz);
+        float3 port_world = p_i + r_k;
+
+        // Constraint violation (consistent with force kernels): diff = tip - xj
+        float3 diff = port_world - pj4.xyz;
+        float diff2 = dot(diff, diff);
+        if (diff2 < 1e-16f) continue;
+
+        // For vector form, we need to compute effective mass along diff direction
+        // This is more complex for rotations, so we'll use a scalar constraint
+        float C = sqrt(diff2);
+        float3 n = diff / C;
+
+        float3 dr_dq = cross(r_k, n);
+        float w_i_trans = invMi;
+        float w_i_rot = (I_i > 1e-12f) ? dot(dr_dq, dr_dq) / I_i : 0.0f;
+        float w_j = invMj;
+
+        float alpha = 1.0f / K_ij;
+        float alpha_tilde = alpha / dt2;
+        
+        int constraint_idx = i * 4 + k;
+        float lambda_prev = lambda[constraint_idx];
+        
+        float denom = w_i_trans + w_i_rot + w_j + alpha_tilde + 1e-12f;
+        float delta_lambda = (-C - alpha_tilde * lambda_prev) / denom;
+        
+        lambda[constraint_idx] += delta_lambda;
+
+        // Apply using vector diff (equivalent to delta_lambda * n since n = diff/C)
+        float3 dp_i = delta_lambda * n * w_i_trans;
+        float3 dw_i = (I_i > 1e-12f) ? delta_lambda * cross(r_k, n) / I_i : (float3)(0.0f);
+        float3 dp_j = -delta_lambda * n * w_j;
+
+        dp_i_total += dp_i;
+        dw_i_total += dw_i;
+
+        delta_neigh[i * 4 + k] = (float4)(dp_j, 0.0f);
+    }
+
+    pos_delta[i] = (float4)(dp_i_total, 0.0f);
+    omega_delta[i] = (float4)(dw_i_total, 0.0f);
 }

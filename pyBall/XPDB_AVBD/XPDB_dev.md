@@ -181,6 +181,17 @@ We need to divide these 750 threads into Workgroups ($M$).
 - Optional: expose debug neighbor/force downloads in XPDB.py helpers for non-visual runs.
 
 
+### XPBD rigid refactor (hosts bkSlots, node-only ports, test split)
+- **Host bkSlots mapping**: bkSlots are now precomputed on host as slot indices (`ia*4+k`, matching `MMFFsp3_loc::makeBackNeighs`), uploaded via `XPDB_new.upload_rigid_bk_slots`. Capping atoms (H) receive recoil via bkSlots while ports live only on node atoms.
+- **Node-only port buffers**: Port-related OpenCL buffers (`port_local`, `port_n`, `pneigh`, `fneigh`) are sized to `nnode` not `natoms`. `gather_port_forces` runs over `nnode`; `integrate_rigid_explicit` runs over `natoms` and pulls recoil via bkSlots.
+- **Reusable helpers moved**: Topology builders (`build_neighs_bk_from_bonds`, `make_bLs_bKs_from_neighs`, `make_bk_slots`), momentum/COM helpers, and high-level runners (`run_RRsp3_PD`, `run_RRsp3_force`) now live in `XPDB_new.py` for reuse. Plotting/XYZ/PDB/viz/perturb helpers moved to `XPTB_utils.py`.
+- **Test script slimmed**: `test_rigid_XPBD_molecules.py` now orchestrates via imported helpers; still supports live viz, XYZ dumps, PDB trajectory, convergence plot. Node-sized port buffers are expanded only for visualization/dumps.
+- **Convergence check**: CH2NH run (`dt=0.1`, `dt_force=0.001`, `iters_force=2000`, `damp_force=0.98`) converged to `max bond |d-L0| = 2.9e-4` and near-zero momentum. Same path tested without GUI (`--noshow`).
+- **Warnings to fix later**: OpenCL reports `RepeatedKernelRetrieval` for kernel lookups in `XPDB_new.py`; caching kernel handles would silence this and shave overhead.
+
+
+
+
 ---
 
 ## USER
@@ -385,3 +396,201 @@ Overall the rigid-force path now shares the same design vocabulary as the XPBD s
 - Store lever arms in each atom’s body frame to make the force solver agnostic to initial orientation without depending on damping.
 - Double-check that explicit-force momentum remains bounded for more complex molecules once we add collision constraints.
 - Add a lightweight CLI flag inside `XPDB_new.py` to dump ports/forces directly from OpenCL for regression tests.
+
+
+### 2026-01 Rigid-port PBD/XPBD kernels (pyOpenCL wiring + initial tests)
+
+#### What was implemented
+- **New kernels added to `XPDB_new.cl`** (rigid ports, node/cap split preserved):
+  - PBD-style gather/apply: `compute_corrections`, `apply_corrections` (Kimi-based).
+  - XPBD-style with per-constraint λ: `reset_lambda`, `compute_and_apply_corrections_xpbd`, `compute_and_apply_corrections_xpbd_vector`, `gather_and_apply_xpbd` (Claude-based).
+- **Port convention made consistent**: all these kernels now use the same rest-shape convention as `gather_port_forces`:
+  - `port_world = x[i] + R(q[i]) * port_local[i*4+k]`
+  - constraint vector is taken as `tip - xj` (sign aligned with the explicit-force solver).
+- **pyOpenCL interface in `XPDB_new.py`**:
+  - Allocates node-only buffers for PBD/XPBD: `cl_rdelta_neigh`, `cl_rpos_delta`, `cl_romega_delta`, `cl_rlambda`, plus `cl_rKflat` (float K per node-slot).
+  - Upload helper: `upload_rigid_node_stiffness_flat(bKs, nnode=...)`.
+  - Step methods:
+    - `rigid_ports_pbd_step(nnode, iterations, relaxation)`
+    - `rigid_ports_xpbd_step(nnode, dt, iterations, reset_lambda, variant={'scalar','vector'})`
+- **Test harness updated**: `test_rigid_XPBD_molecules.py` now has `--method` to switch:
+  - `force_explicit` (reference)
+  - `projective` (existing project_ports + jacobi)
+  - `pbd_ports` (new)
+  - `xpbd_ports_scalar`, `xpbd_ports_vector` (new)
+
+#### How to run (examples)
+- `python test_rigid_XPBD_molecules.py --molecule ch2nh --method pbd_ports --iters 200 --pbd_relax 0.5 --noshow`
+- `python test_rigid_XPBD_molecules.py --molecule ch2nh --method xpbd_ports_scalar --iters 200 --xpbd_reset_lambda 1 --noshow`
+- `python test_rigid_XPBD_molecules.py --molecule ch2nh --method xpbd_ports_vector --iters 200 --xpbd_reset_lambda 1 --noshow`
+
+#### Test results (initial)
+- `pbd_ports` (CH2NH, 200 iters, relax=0.5): max bond error `~9e-05`.
+- `xpbd_ports_scalar` (CH2NH, 200 iters): max bond error `~1e-01` (did not converge well).
+- `xpbd_ports_vector` (CH2NH, 200 iters): max bond error `~1e-01` (same scale as scalar).
+- `xpbd_ports_scalar` (H2O, 200 iters): max bond error `~5.6e-02`.
+
+#### Critical notes (physics + numerics + efficiency)
+- **Vel/omega handling**: PBD/XPBD kernels currently update only `pos`/`quat`; `vel`/`omega` are not updated, so momentum prints are skipped in the test for these methods. If we want meaningful momentum diagnostics, we need a post-step recompute:
+  - `vel = (pos_new - pos_old)/dt` and analogous for rotation (or keep a separate momentum formulation).
+- **Stiffness usage in PBD (Kimi)**: current `compute_corrections` uses the effective-mass form but does not actually use the provided stiffness `K` (it is read but not applied). So the current PBD step is effectively "infinite stiffness" / purely geometric correction scaled by inverse masses and relaxation.
+- **XPBD λ correctness**: scalar and vector XPBD now include the λ feedback term (`-alpha_tilde*lambda_prev`) in Δλ, so λ accumulation is structurally correct. However, convergence is currently poor in these small tests.
+- **Possible reason for poor XPBD convergence**: the constraint is formulated as driving `xj` to the port tip (a positional spring-like constraint). With compliance α=1/K and chosen dt, the effective correction per iteration may be too small; also the rotational coupling term can dominate and slow convergence.
+- **Safety/robustness**: test now fails loudly on non-finite positions/quaternions.
+- **Efficiency**:
+  - Extra per-iter buffer clears for `delta_neigh/pos_delta/omega_delta` add overhead.
+  - RepeatedKernelRetrieval warnings indicate kernels are retrieved repeatedly; caching kernel handles in `XPDB_new.py` will reduce overhead.
+
+I’ll wire the new PBD/XPBD rigid-port kernels into [XPDB_new.py](cci:7://file:///home/prokophapala/git/FireCore/pyBall/XPDB_AVBD/XPDB_new.py:0:0-0:0) (pyOpenCL buffer allocation + kernel dispatch), then extend [test_rigid_XPBD_molecules.py](cci:7://file:///home/prokophapala/git/FireCore/pyBall/XPDB_AVBD/test_rigid_XPBD_molecules.py:0:0-0:0) with a CLI switch to choose solver method (existing force-based, existing projective, new XPBD variants). After that I’ll run a couple quick cases (H2O + CH2NH) to validate compilation and convergence, and finally I’ll write a short physics/numerics/efficiency report based on the results and kernel structure.
+
+## Implemented pyOpenCL interface + CLI + tests run
+
+### 1) pyOpenCL wiring ([XPDB_new.py](cci:7://file:///home/prokophapala/git/FireCore/pyBall/XPDB_AVBD/XPDB_new.py:0:0-0:0))
+Added **node-only** buffers + dispatchers for the new rigid-port PBD/XPBD kernels:
+
+- **New buffers (allocated in [_ensure_rigid_node_buffers(nnode)](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPDB_AVBD/XPDB_new.py:265:4-278:35))**
+  - `cl_rdelta_neigh`: `float4[nnode*4]` (recoil deltas written per node-slot)
+  - `cl_rpos_delta`: `float4[nnode]` (node translational deltas)
+  - `cl_romega_delta`: `float4[nnode]` (node angular deltas / small-angle vector)
+  - `cl_rlambda`: `float[nnode*4]` (XPBD λ per node-slot)
+  - `cl_rKflat`: `float[nnode*4]` (flat stiffness K for `compute_corrections`)
+
+- **New upload helper**
+  - [upload_rigid_node_stiffness_flat(bKs, nnode=...)](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPDB_AVBD/XPDB_new.py:414:4-424:65)  
+    Takes the existing `(natoms,4)` `bKs` and uploads `bKs[:nnode].reshape(nnode*4)` into `cl_rKflat`.
+
+- **New step methods**
+  - [rigid_ports_pbd_step(nnode, iterations, relaxation)](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPDB_AVBD/XPDB_new.py:533:4-568:13)
+    - clears `delta_neigh/pos_delta/omega_delta` each iteration
+    - runs `compute_corrections` (node range) + `apply_corrections` (natoms range)
+  - [rigid_ports_xpbd_step(nnode, dt, iterations, reset_lambda, variant={'scalar','vector'})](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPDB_AVBD/XPDB_new.py:570:4-625:13)
+    - optional `reset_lambda`
+    - clears delta buffers each iter
+    - runs either `compute_and_apply_corrections_xpbd` or `_xpbd_vector`
+    - then runs `gather_and_apply_xpbd`
+
+### 2) Test/CLI switching ([test_rigid_XPBD_molecules.py](cci:7://file:///home/prokophapala/git/FireCore/pyBall/XPDB_AVBD/test_rigid_XPBD_molecules.py:0:0-0:0))
+Added `--method` with choices:
+- `force_explicit` (reference, existing)
+- `projective` (existing `project_ports + jacobi_solve_rigid`)
+- `pbd_ports` (new)
+- `xpbd_ports_scalar` (new)
+- `xpbd_ports_vector` (new)
+
+Also added:
+- `--pbd_relax`
+- `--xpbd_reset_lambda`
+
+**Important debugging change:** for PBD/XPBD we now **skip momentum print** because velocities/omegas are not updated by those kernels (fail-loudly if any NaN/Inf appears).
+
+### 3) Kernel fixes applied (critical for correctness)
+- Added missing quaternion helper earlier: `quat_from_axis_angle` (reused by the new kernels).
+- Fixed **sign convention** to match your force reference:
+  - use **constraint vector** as `diff = tip - xj` (tip = `x[i] + R(q[i])*port_local[...]`)
+  - this was required; the wrong sign produced divergence/NaNs earlier.
+- XPBD scalar now uses **λ feedback** term:
+  - `delta_lambda = (-C - alpha_tilde * lambda_prev) / ( ... + alpha_tilde )`
+- XPBD vector: applied same sign fix + denominator epsilon to avoid NaNs.
+
+### 4) Tests actually run (and what they mean)
+
+#### PBD ports
+Command:
+```bash
+python test_rigid_XPBD_molecules.py --molecule ch2nh --method pbd_ports --iters 200 --pbd_relax 0.5 --noshow
+```
+Result:
+- `max bond |d-L0| after pbd_ports = 8.988380e-05`  
+This looks good.
+
+#### XPBD ports (scalar)
+Command:
+```bash
+python test_rigid_XPBD_molecules.py --molecule ch2nh --method xpbd_ports_scalar --iters 200 --xpbd_reset_lambda 1 --noshow
+```
+Result:
+- `max bond |d-L0| after xpbd_ports_scalar = 1.030246e-01`  
+Convergence is **poor** (2 orders of magnitude worse than PBD).
+
+H2O scalar:
+```bash
+python test_rigid_XPBD_molecules.py --molecule h2o --method xpbd_ports_scalar --iters 200 --xpbd_reset_lambda 1 --noshow
+```
+Result:
+- `max bond |d-L0| after xpbd_ports_scalar = 5.624378e-02`  
+Also poor.
+
+#### XPBD ports (vector)
+Command:
+```bash
+python test_rigid_XPBD_molecules.py --molecule ch2nh --method xpbd_ports_vector --iters 200 --xpbd_reset_lambda 1 --noshow
+```
+Result:
+- `max bond |d-L0| after xpbd_ports = 1.030246e-01`  
+Same scale as scalar (after the sign fix it no longer NaNs, but still doesn’t converge well).
+
+### 5) Critical report (physics + numerics + efficiency)
+
+#### A) Physics consistency vs your reference
+- The **constraint geometry convention is now consistent** across:
+  - `gather_port_forces` (force-based)
+  - PBD/XPBD variants  
+  i.e. always use `tip = x[i] + R(q[i]) * port_local[i*4+k]`.
+
+- The **gather-only recoil design** (store per-slot recoil then gather via `bkSlots`) is consistent with your momentum-conserving intent: it avoids atomics and still applies equal/opposite contributions.
+
+#### B) Major red flag: “PBD ports” ignores stiffness
+In the current `compute_corrections` (Kimi-based) **stiffness `K` is loaded but not applied**, so the method behaves like a purely geometric projection (scaled only by inverse masses + relaxation). That actually explains why it converges “great” for bond lengths: it’s effectively “hard constraint”.
+
+If you want PBD with tunable softness, you must incorporate `K` into λ / correction scale (or use proper XPBD with compliance).
+
+#### C) XPBD convergence is poor right now
+Even after λ feedback fix and sign fix, XPBD is not converging well in these small tests.
+Likely causes (most plausible first):
+- **Constraint definition** is “drive neighbor onto the port tip” (a positional constraint). With compliance α = 1/K and chosen dt, per-iter correction may be too small (or too damped by rotation coupling).
+- **Rotation coupling term** may dominate effective mass and slow correction in these tiny systems.
+- **No under-relaxation** in XPBD apply step (unlike PBD where you have `relaxation`): XPBD might benefit from a relaxation multiplier too.
+
+#### D) Vel/omega not updated in PBD/XPBD
+So you can’t yet evaluate momentum conservation in a meaningful way from `vel/omega` buffers. Right now those are stale.
+If you want proper momentum diagnostics for PBD/XPBD, next step is:
+- store previous `pos/quat`
+- after solve, compute:
+  - `vel = (pos_new - pos_old)/dt`
+  - `omega` from quaternion delta (log map) / dt  
+(and then compute `P,L`).
+
+#### E) Efficiency notes
+- Each iteration clears 3 node buffers (`delta_neigh/pos_delta/omega_delta`). That’s OK for debugging but adds overhead.
+- `RepeatedKernelRetrieval` warnings remain: kernel handles should be cached in Python (not functionally wrong, but avoidable overhead).
+
+## Current status
+- **pyOpenCL interface is implemented**
+- **CLI switch is implemented**
+- **tests run**
+- **PBD ports works and converges** (but currently behaves as “hard projection”, stiffness ignored)
+- **XPBD ports runs but convergence is poor** (needs follow-up tuning/fix)
+
+If you want, next step (not doing it unless you ask) is to:
+- fix PBD stiffness usage (or drop it and call it “hard projection” explicitly)
+- add relaxation to XPBD apply
+- update vel/omega for momentum diagnostics
+- then compare P/L drift across `force_explicit` vs `xpbd_ports_*` under same dt/iters.
+
+---
+
+Per-iteration visualization is now enabled for all methods using the existing `--viz_force --viz_every` flags. I added an [emit_frame](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPDB_AVBD/test_rigid_XPBD_molecules.py:102:4-115:9) helper and changed projective/PBD/XPBD branches to run one-iteration steps in a loop, emitting frames at the chosen interval (and at the last iteration).
+
+What changed: @pyBall/XPDB_AVBD/test_rigid_XPBD_molecules.py#93-147
+
+How to use (examples):
+- Force:       `python test_rigid_XPBD_molecules.py --molecule ch2nh --method force_explicit    --iters 2000 --viz_force --viz_every 10`
+- Projective:  `python test_rigid_XPBD_molecules.py --molecule ch2nh --method projective        --iters 200  --viz_force --viz_every 10`
+- PBD ports:   `python test_rigid_XPBD_molecules.py --molecule ch2nh --method pbd_ports         --iters 200  --viz_force --viz_every 10 --pbd_relax 0.5`
+- XPBD scalar: `python test_rigid_XPBD_molecules.py --molecule ch2nh --method xpbd_ports_scalar --iters 200  --viz_force --viz_every 10`
+- XPBD vector: `python test_rigid_XPBD_molecules.py --molecule ch2nh --method xpbd_ports_vector --iters 200  --viz_force --viz_every 10`
+
+Notes:
+- Frames are sampled every `viz_every` iterations and also on the final iteration.
+- Momentum print is still skipped for PBD/XPBD because those paths don’t update vel/omega yet.
+- You will still see RepeatedKernelRetrieval warnings; caching kernel handles in XPDB_new.py would silence them.
