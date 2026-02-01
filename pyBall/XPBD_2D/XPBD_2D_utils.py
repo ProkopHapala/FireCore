@@ -12,6 +12,7 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
+import matplotlib.patheffects as patheffects
 
 # Add repo root to import pyBall.AtomicSystem (AtomicSystem uses relative imports)
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
@@ -19,13 +20,21 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..',
 from XPBD_2D import (build_neighs_bk_from_bonds_2d, make_bk_slots_2d, make_stiffness_from_bonds_2d)
 from pyBall.AtomicSystem import AtomicSystem
 
+# Global verbosity shared across helpers
+VERBOSE = 0
+
+def set_verbose(level:int):
+    global VERBOSE
+    VERBOSE = int(level)
+
 
 class LiveViz2D:
     """Lightweight live 2D updater that keeps view persistent (like LivePortViz but 2D)."""
-    def __init__(self, elems=None, view_scale=None):
+    def __init__(self, elems=None, view_scale=None, show_labels=True):
         self.plt = plt
         self.elems = elems
         self.view_scale = view_scale  # Fixed viewport scale if provided
+        self.show_labels = show_labels
         plt.ion()
         self.fig, self.ax = plt.subplots(figsize=(10, 8))
         self.ax.set_aspect('equal')
@@ -38,9 +47,7 @@ class LiveViz2D:
         self.ax.add_collection(self.lc_atom2port)
         self.lc_port2neigh = LineCollection([], colors=[(1.0, 0.0, 1.0, 0.7)], linewidths=0.8, zorder=3)
         self.ax.add_collection(self.lc_port2neigh)
-        self.info_text = self.ax.text(0.02, 0.98, '', transform=self.ax.transAxes,
-                                      verticalalignment='top', fontsize=9,
-                                      bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        self.info_text = self.ax.text(0.02, 0.98, '', transform=self.ax.transAxes, verticalalignment='top', fontsize=9,  bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
         # Note: blitting currently disabled in test script; keep artists non-animated so they draw.
         self.scatter_atoms.set_animated(False)
         self.scatter_ports.set_animated(False)
@@ -53,6 +60,7 @@ class LiveViz2D:
         self.ax.set_title('XPBD_2D')
         self._last_pos = None
         self._inited_view = False
+        self._atom_labels = []
         self.fig.show()
 
     def artists(self):
@@ -76,11 +84,22 @@ class LiveViz2D:
         self.ax.set_ylim(ymin, ymax)
         self._inited_view = True
 
-    def update(self, pos, neighs=None, nnode=None, title="", info="", port_local=None, port_n=None, rot=None):
+    def update(self, pos, neighs=None, nnode=None, title="", info="", port_local=None, port_n=None, rot=None, radius=None):
         self.ax.set_title(title)
         self._last_pos = np.asarray(pos)
         self.scatter_atoms.set_offsets(pos)
         self.init_view(pos)
+
+        # Clear old labels
+        for lbl in self._atom_labels:
+            lbl.remove()
+        self._atom_labels.clear()
+        if self.show_labels:
+            # Draw atom indices for debugging topology mapping
+            for i, (x, y) in enumerate(pos):
+                lbl = self.ax.text(x, y, str(i), fontsize=9, color='black', ha='center', va='center', zorder=7, alpha=0.95,
+                                   path_effects=[patheffects.withStroke(linewidth=2.0, foreground='white', alpha=0.9)])
+                self._atom_labels.append(lbl)
 
         if neighs is not None and nnode is not None:
             segs = []
@@ -128,6 +147,29 @@ class LiveViz2D:
             self.lc_atom2port.set_segments([])
             self.lc_port2neigh.set_segments([])
         self.info_text.set_text(info)
+
+        # Update atom sizes if radius provided (data-units to points)
+        if radius is not None and len(radius) > 0:
+            # Marker diameter should equal the interaction diameter (2*radius)
+            t = self.ax.transData
+            # Points per data unit in x and y directions (pixels per unit, then convert to points)
+            px_per_unit = t.inverted().transform((1, 0))[1] - t.inverted().transform((0, 0))[1]  # This gives pixels per unit
+            # Better approach: get display scale
+            disp_scale = self.fig.dpi_scale_trans.inverted()
+            # Calculate size in data coordinates per point
+            bbox = self.ax.get_window_extent().transformed(self.fig.dpi_scale_trans.inverted())
+            width_in, height_in = bbox.width, bbox.height
+            xlim = self.ax.get_xlim()
+            ylim = self.ax.get_ylim()
+            x_range = xlim[1] - xlim[0]
+            y_range = ylim[1] - ylim[0]
+            # Points per data unit
+            ppu_x = (width_in * 72.0) / x_range  # 72 points per inch
+            ppu_y = (height_in * 72.0) / y_range
+            avg_ppu = (ppu_x + ppu_y) * 0.5
+            # Scatter marker size is in points^2 (area), so diameter = 2*radius * ppu
+            sizes = ( (2.0 * radius) * avg_ppu ) ** 2
+            self.scatter_atoms.set_sizes(sizes)
 
         # NOTE: For performance (blitting), we do NOT call plt.pause() here.
         # The caller (FuncAnimation) drives the GUI loop.
@@ -437,3 +479,101 @@ def compute_momentum_2d(pos, vel, omega=None):
         L += np.sum(omega) * I
     
     return P, L
+
+
+def setup_from_bonds(sim, pos, bonds, *, k_bond=200.0, perturbation=0.0, perturb_rot=0.0, bAllNodes=False, seed=0):
+    pos = np.asarray(pos, dtype=np.float32)
+    if pos.ndim != 2 or pos.shape[1] != 2:
+        raise ValueError(f"setup_from_bonds: pos shape {pos.shape} expected (natoms,2)")
+    n_atoms = int(pos.shape[0])
+    bonds = [(int(i), int(j)) for (i, j) in bonds]
+
+    neighs, bks = build_neighs_bk_from_bonds_2d(n_atoms, bonds)
+
+    if bAllNodes:
+        nnode = n_atoms
+    else:
+        nnode = sum(1 for i in range(n_atoms) if np.sum(neighs[i] >= 0) > 1)
+
+    node_mask = np.zeros(n_atoms, dtype=bool)
+    for i in range(n_atoms):
+        if bAllNodes or np.sum(neighs[i] >= 0) > 1:
+            node_mask[i] = True
+
+    old_to_new = {}
+    new_idx = 0
+    for i in range(n_atoms):
+        if node_mask[i]:
+            old_to_new[i] = new_idx
+            new_idx += 1
+    for i in range(n_atoms):
+        if not node_mask[i]:
+            old_to_new[i] = new_idx
+            new_idx += 1
+
+    new_pos = np.zeros((n_atoms, 2), dtype=np.float32)
+    for old_i, new_i in old_to_new.items():
+        new_pos[new_i] = pos[old_i]
+
+    new_bonds = []
+    for (i, j) in bonds:
+        ni = int(old_to_new[int(i)])
+        nj = int(old_to_new[int(j)])
+        if ni == nj:
+            continue
+        if ni < nj:
+            new_bonds.append((ni, nj))
+        else:
+            new_bonds.append((nj, ni))
+    new_bonds = sorted(set(new_bonds))
+
+    new_neighs, new_bks = build_neighs_bk_from_bonds_2d(n_atoms, new_bonds)
+
+    bkSlots = make_bk_slots_2d(new_neighs, nnode=nnode, natoms=n_atoms)
+    stiffness = make_stiffness_from_bonds_2d(n_atoms, new_neighs, k_bond=k_bond)
+
+    sim.upload_topology(new_neighs, bkSlots, stiffness, nnode=nnode)
+
+    neighs_nodes = new_neighs[:nnode]
+    stiffness_nodes = stiffness[:nnode]
+
+    port_local = np.zeros((nnode, 4, 2), dtype=np.float32)
+    port_n = np.zeros((nnode,), dtype=np.uint8)
+
+    for i in range(nnode):
+        n_ports = 0
+        for k in range(4):
+            j = new_neighs[i, k]
+            if j < 0:
+                continue
+            dx = new_pos[j, 0] - new_pos[i, 0]
+            dy = new_pos[j, 1] - new_pos[i, 1]
+            port_local[i, k] = [dx, dy]
+            n_ports += 1
+        port_n[i] = n_ports
+
+    sim.upload_ports(port_local, port_n, nnode=nnode)
+
+    if perturbation > 0:
+        np.random.seed(int(seed))
+        new_pos[:nnode] += np.random.randn(nnode, 2) * float(perturbation)
+
+    rot = np.zeros((n_atoms, 2), dtype=np.float32)
+    rot[:, 0] = 1.0
+    if perturb_rot > 0:
+        np.random.seed(int(seed) + 17)
+        ang = np.random.randn(nnode) * float(perturb_rot)
+        rot[:nnode, 0] = np.cos(ang)
+        rot[:nnode, 1] = np.sin(ang)
+
+    sim.upload_state(new_pos, rot=rot)
+
+    return {
+        'nnode': nnode,
+        'neighs': neighs_nodes,
+        'bks': new_bks[:nnode],
+        'bkSlots': bkSlots,
+        'port_local': port_local,
+        'port_n': port_n,
+        'stiffness': stiffness_nodes,
+    }

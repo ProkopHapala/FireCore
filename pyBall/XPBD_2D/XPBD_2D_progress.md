@@ -367,3 +367,140 @@ In the literature, XPBD is often praised because it allows for "large time steps
 ### Next steps
 - Verify `bmix_pos` vs `bmix_rot` tuning on larger systems; consider defaulting rotation mix lower if oscillatory.
 - Revisit angular momentum diagnostics after momentum changes.
+
+
+---
+
+## GPT-5.2 Low
+
+
+
+
+
+
+
+
+
+
+
+
+
+Implementing the remaining wiring fixes: replace leftover `cl_local_counts` references with `cl_cluster_counts`, add the missing `step_pbd_cluster_fused()` method cleanly into [XPBD_2D.py](cci:7://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D.py:0:0-0:0), and ensure [test_XPBD_2D.py](cci:7://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/test_XPBD_2D.py:0:0-0:0) supports `pbd_cluster_fused` in both `--noshow` and interactive paths. Then I’ll run a few quick `python test_XPBD_2D.py` commands (noshow) to confirm both clustering strategies and the fused method execute.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Implemented (as requested)
+
+## 1) Packed ghost layout (no void slots)
+I changed the cluster ghost layout so ghosts are **packed directly after the real in-cluster atoms** in local memory.
+
+- **`build_local_topology_2d`**
+  - `l_ghost_counter` is now `0` again (pure ghost counting).
+  - `ghost_counts[grp]` now means **`nghost` only**.
+  - Neighbor remap now uses:
+    - locals: `0 .. GROUP_SIZE-1`
+    - ghosts: `c_count + g` (packed right behind locals), not `GROUP_SIZE + g`
+
+- **`compute_collision_cluster`**
+  - Ghost staging now writes to `l_pos[c_count + k]` (packed)
+  - Collision loop now iterates `j < (c_count + g_count)` and still skips padding in `[c_count, GROUP_SIZE)`.
+
+This matches your “pack behind locals” design, avoids any “void slots” being interpreted as atoms, and keeps things simple.
+
+## 2) New fused kernel: collisions + port corrections
+Added **new OpenCL kernel** in [pyBall/XPBD_2D/XPBD_2D.cl](cci:7://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D.cl:0:0-0:0):
+
+- `__kernel void compute_cluster_fused_2d(...)`
+  - runs cluster-local collisions (using packed ghosts)
+  - then runs port-based corrections (same math as `compute_corrections_2d` but uses `neighs_local` and local staged positions)
+  - writes into:
+    - `dpos_node` (collision + port impulse)
+    - `dtheta_node`
+    - `dpos_neigh`
+  - Python then calls existing `apply_corrections_2d`, so existing execution paths remain intact.
+
+## 3) Python interface changes ([XPBD_2D.py](cci:7://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D.py:0:0-0:0))
+- Added kernel caching for `compute_cluster_fused_2d`.
+- Added `cl_cluster_counts` buffer (read-only).
+- Added [set_cluster_config(...)](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D.py:365:4-397:95):
+  - sets `group_size`, `num_groups`
+  - uploads `cluster_counts`
+  - re-inits cluster buffers
+- Updated cluster codepaths to pass `cl_cluster_counts` into kernels.
+- Added new driver:
+  - [step_pbd_cluster_fused(...)](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D.py:811:4-882:59)
+
+## 4) CLI + multi-copy molecules ([test_XPBD_2D.py](cci:7://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/test_XPBD_2D.py:0:0-0:0))
+Added:
+- `--copies`
+- `--copy_shift`
+- `--cluster_strategy {one_molecule_per_group,pack_fill}`
+- `--cluster_group_size`
+- `--method pbd_cluster_fused`
+
+Implemented multi-copy by duplicating:
+- positions (shifted in X)
+- bonds (reindexed)
+
+and using your added [setup_from_bonds()](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D_utils.py:12:0-107:5).
+
+# Tests executed (noshow)
+All ran successfully after fixes:
+
+- **one molecule per group (2 copies)**
+  - `--method pbd_cluster_relax ... --copies 2 --cluster_strategy one_molecule_per_group` ✅
+- **pack fill (2 copies)**
+  - `--method pbd_cluster_relax ... --copies 2 --cluster_strategy pack_fill --cluster_group_size 64` ✅
+- **fused method (2 copies)**
+  - `--method pbd_cluster_fused ... --copies 2 --cluster_strategy one_molecule_per_group` ✅
+
+# Notes / critique (kept short)
+- Packing ghosts behind locals is good and simpler.
+- The only hard requirement is that `ghost_counts` stays “pure nghost” and `cluster_counts` stays “pure c_count”; mixing them creates uninitialized slots and invalid indices.
+
+# Status
+All requested features are implemented:
+- **clustering + copies + CLI switching**
+- **packed ghost layout**
+- **new fused kernel + Python driver + CLI entry**
+- **tests run successfully**
+
+# Detailed status (latest changes)
+
+## Kernel corrections (cluster stride & padding bugs)
+- **Problem:** In `one_molecule_per_group`, groups were offset by hard-coded `GROUP_SIZE=64`, so second molecule atoms (esp. H caps) fell outside group coverage; collisions and ports ignored those atoms.
+- **Fix:** Introduced runtime `group_stride` passed from host into cluster kernels. Global index now uses `grp * group_stride + lid` in `build_local_topology_2d`, `compute_collision_cluster`, and `compute_cluster_fused_2d`, while keeping local arrays at hardware `GROUP_SIZE=64`.
+- **Padding skip:** Collision/port loops now skip padding lanes using `group_stride` (not `GROUP_SIZE`) to avoid false collisions with uninitialized lanes.
+- **Leftover identifiers:** Replaced lingering `i_global` with `my_global_id` in fused kernel outputs (`dpos_node`, `dtheta_node`) to fix OpenCL build errors.
+
+## Cluster/group configuration (host side)
+- Added `cluster_stride` to `XPBD_2D` with default = `group_size`. `set_cluster_config` now accepts `cluster_stride` and re-inits cluster buffers.
+- For `one_molecule_per_group`: keep `GROUP_SIZE=64` for hardware; set `group_size=64` (local size), `cluster_stride=n0` (atoms per molecule), `num_groups=copies`, `cluster_counts[:] = n0`. This ensures correct indexing while preserving optimal local size.
+- For `pack_fill`: `cluster_stride = group_size = cluster_group_size` (default 64), preserving previous packing behavior.
+
+## Ghost and neighbor mapping
+- Ghost discovery still uses `MAX_GHOSTS` shared arrays; indices computed with `group_stride` to match actual cluster starts.
+- Neighbor remap (`neighs_local`) now divides/modulos by `group_stride`, so bonded exclusion works when clusters are smaller than `GROUP_SIZE`.
+- Debug helper `debug_clusters()` added to dump `cluster_counts`, `ghost_counts`, `ghost_indices`, and `neighs_local` slices to verify mapping.
+
+## Tests / validation
+- `pbd_cluster_relax` with `--cluster_strategy one_molecule_per_group` now keeps hydrogens/caps active in collisions (stride fixed).
+- `pack_fill` remains working after stride changes.
+- Fused kernel builds cleanly after replacing residual `i_global` identifiers.
+
+## Open issues / cautions
+- `group_stride` must be passed to all cluster kernels; ensure any new cluster kernels mirror this pattern.
+- Keep `cluster_counts` = real locals, `ghost_counts` = pure ghost count; never mix to avoid uninitialized local slots.

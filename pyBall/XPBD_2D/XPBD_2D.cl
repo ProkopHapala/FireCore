@@ -6,6 +6,10 @@
 // CONFIGURATION
 // ------------------------------------------------------------------
 #define MAX_DEGREE     4      // Max ports per node
+ 
+ // Cluster collision solver configuration (mirrors XPDB_new.cl)
+ #define GROUP_SIZE     64      // Workgroup size = atoms per cluster
+ #define MAX_GHOSTS     128     // Max external atoms per cluster
 
 // ------------------------------------------------------------------
 // 2D COMPLEX NUMBER HELPERS (rotation representation)
@@ -17,6 +21,166 @@ inline float2 cmplx_rotate(float2 z, float2 v) {
         z.x * v.x - z.y * v.y,  // real part
         z.y * v.x + z.x * v.y   // imag part
     );
+}
+
+
+__kernel void compute_cluster_fused_2d(
+    const int nnode,
+    __global const float2* pos,
+    __global const float2* rot,
+    __global const float*  radius,
+    __global const float2* mass,
+    __global const int4*   neighs_local,
+    __global const int*    ghost_indices_flat,
+    __global const int*    ghost_counts,
+    __global const int*    cluster_counts,
+    __global const float2* port_local,
+    __global const float*  stiffness_flat,
+    __global float2*       dpos_node,
+    __global float*        dtheta_node,
+    __global float2*       dpos_neigh,
+    const int num_atoms,
+    const float dt,
+    const float k_coll,
+    const int group_stride
+) {
+    int lid = get_local_id(0);
+    int grp = get_group_id(0);
+    int my_global_id = grp * group_stride + lid;
+
+    __local float2 l_pos[GROUP_SIZE + MAX_GHOSTS];
+    __local float2 l_rot[GROUP_SIZE + MAX_GHOSTS];
+    __local float2 l_mass[GROUP_SIZE + MAX_GHOSTS];
+    __local float  l_rad[GROUP_SIZE + MAX_GHOSTS];
+    __local float2 l_pos_new[GROUP_SIZE];
+
+    if (my_global_id < num_atoms) {
+        l_pos[lid]  = pos[my_global_id];
+        l_rot[lid]  = rot[my_global_id];
+        l_mass[lid] = mass[my_global_id];
+        l_rad[lid]  = radius[my_global_id];
+    } else {
+        l_pos[lid]  = (float2)(0.0f, 0.0f);
+        l_rot[lid]  = (float2)(1.0f, 0.0f);
+        l_mass[lid] = (float2)(1.0f, 1.0f);
+        l_rad[lid]  = 0.0f;
+    }
+
+    int g_count  = ghost_counts[grp];
+    int c_count  = cluster_counts[grp];
+    int g_offset = grp * MAX_GHOSTS;
+    for (int k = lid; k < g_count; k += GROUP_SIZE) {
+        int base = grp * MAX_GHOSTS;
+        int gid = ghost_indices_flat[base + k];
+        int lj = c_count + k;
+        l_pos[lj]  = pos[gid];
+        l_rot[lj]  = rot[gid];
+        l_mass[lj] = mass[gid];
+        l_rad[lj]  = radius[gid];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (my_global_id < num_atoms) {
+        float my_mass = l_mass[lid].x;
+        float alpha = my_mass / (dt*dt + 1e-20f);
+        float my_rad = l_rad[lid];
+
+        float2 p = l_pos[lid];
+        float2 rhs = p * alpha;
+        float  k_sum = alpha;
+
+        int4 ng = neighs_local[my_global_id];
+        int* neigh = (int*)&ng;
+        int n_ext = c_count + g_count;
+        for (int j = 0; j < n_ext; j++) {
+            if (j == lid) continue;
+            if (j >= c_count && j < group_stride) continue;
+            bool is_bonded = false;
+            for (int kk = 0; kk < MAX_DEGREE; kk++) {
+                int nb = neigh[kk];
+                if (nb < 0) continue;
+                if (nb == j) { is_bonded = true; break; }
+            }
+            if (is_bonded) continue;
+            float2 q = l_pos[j];
+            float2 d = p - q;
+            float dist_sq = dot(d, d);
+            float r_sum = my_rad + l_rad[j];
+            float r2 = r_sum * r_sum;
+            if (dist_sq < r2 && dist_sq > 1e-16f) {
+                float dist = sqrt(dist_sq);
+                float coeff = k_coll * (r_sum / dist);
+                rhs += d * coeff;
+                rhs += q * k_coll;
+                k_sum += k_coll;
+            }
+        }
+        l_pos_new[lid] = rhs / (k_sum + 1e-20f);
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (my_global_id < num_atoms) {
+        float2 p0 = l_pos[lid];
+        float2 p1 = l_pos_new[lid];
+        float2 dpos = p1 - p0;
+        dpos_node[my_global_id] = dpos;
+    }
+
+    if (my_global_id < nnode) {
+        float2 p_i = l_pos_new[lid];
+        float2 z_i = l_rot[lid];
+
+        float M_i = l_mass[lid].x;
+        float I_i = l_mass[lid].y;
+        float w_i     = (M_i > 1e-9f) ? 1.0f / M_i : 0.0f;
+        float w_rot_i = (I_i > 1e-9f) ? 1.0f / I_i : 0.0f;
+        float dt2 = dt * dt + 1e-16f;
+
+        float2 sum_dpos = (float2)(0.0f, 0.0f);
+        float  sum_dtheta = 0.0f;
+        int4 ng = neighs_local[my_global_id];
+        int* neighbors = (int*)&ng;
+        int i4 = my_global_id * MAX_DEGREE;
+
+        for (int k = 0; k < MAX_DEGREE; k++) {
+            int idx = i4 + k;
+            dpos_neigh[idx] = (float2)(0.0f, 0.0f);
+            int jloc = neighbors[k];
+            if (jloc < 0) continue;
+            if (jloc >= c_count && jloc < group_stride) continue;
+            float K = stiffness_flat[idx];
+            if (K <= 0.0f) continue;
+
+            float2 r_local = port_local[idx];
+            float2 r_arm   = cmplx_rotate(z_i, r_local);
+            float2 tip     = p_i + r_arm;
+            float2 p_j     = l_pos[jloc];
+
+            float2 diff = p_j - tip;
+            float dist  = length(diff);
+            if (dist < 1e-9f) continue;
+            float2 n = diff / dist;
+
+            float alpha = 1.0f / (K * dt2);
+            float M_j = l_mass[jloc].x;
+            float w_j = (M_j > 1e-9f) ? 1.0f / M_j : 0.0f;
+
+            float rn        = r_arm.x * n.y - r_arm.y * n.x;
+            float w_angular = rn * rn * w_rot_i;
+            float w_total   = w_i + w_j + w_angular + alpha;
+
+            float impulse_mag = dist / w_total;
+            impulse_mag *= 0.5f;
+
+            float2 P = n * impulse_mag;
+            sum_dpos += P * w_i;
+            sum_dtheta += (rn * impulse_mag) * w_rot_i;
+            dpos_neigh[idx] = -P * w_j;
+        }
+
+        dpos_node[my_global_id] += sum_dpos;
+        dtheta_node[my_global_id] = sum_dtheta;
+    }
 }
 
 // Complex multiplication: z1 * z2
@@ -43,6 +207,13 @@ inline float2 cmplx_normalize(float2 z) {
     float invr = rsqrt(r2);
     return z * invr;
 }
+
+// ------------------------------------------------------------------
+// CLUSTER COLLISION HELPERS
+// ------------------------------------------------------------------
+
+inline float4 bbox_init_min_2d(float2 p, float r){ return (float4)(p.x - r, p.y - r, 0.0f, 0.0f); }
+inline float4 bbox_init_max_2d(float2 p, float r){ return (float4)(p.x + r, p.y + r, 0.0f, 0.0f); }
 
 // ------------------------------------------------------------------
 // KERNEL: Initialize heavy-ball buffers
@@ -91,8 +262,11 @@ __kernel void clear_2d_node_buffers(
     pneigh[i] = (float2)(0.0f, 0.0f);
 }
 
-
-
+// ==================================================================================
+// ==================================================================================
+//    As Rigid As possible (ARAP) https://igl.ethz.ch/projects/ARAP/arap_web.pdf
+// ==================================================================================
+// ================================================================
 
 // ------------------------------------------------------------------
 // KERNEL: Explicit Rigid Shape Matching (2D)
@@ -186,16 +360,11 @@ __kernel void solve_shape_matching_2d(
     target_rot[i] = optimal_rot;
 }
 
-
-
-
-
-
-
-
-
-
-
+// ================================================================
+// ================================================================
+//   Explicit Force-based Molecular Dynamics (MD)
+// ================================================================
+// ================================================================
 
 // ------------------------------------------------------------------
 // KERNEL: Gather port forces (2D version)
@@ -368,211 +537,263 @@ __kernel void compute_angular_velocities_from_rotations(
     omega[i] = dtheta * inv_dt * damp;
 }
 
-// // ------------------------------------------------------------------
-// // KERNEL: PBD constraint solve (2D version)
-// // Computes position corrections for port constraints with proper masses (M,I)
-// // Uses reduced-mass style weights for proper momentum conservation
-// // ------------------------------------------------------------------
-// __kernel void compute_corrections_2d(
-//     const int nnode,
-//     __global const float2* pos,
-//     __global const float2* rot,
-//     __global const int4*   neighs,
-//     __global const float2* port_local,
-//     __global const float*  stiffness_flat,  // size nnode*4
-//     __global const float2* mass,            // atom masses [natoms] -> (M, I)
-//     __global float2*       dpos_node,       // accumulated position correction
-//     __global float*        dtheta_node,     // accumulated rotation correction (scalar)
-//     __global float2*       dpos_neigh,      // corrections for neighbors
-//     const float dt
-// ) {
-//     int i = get_global_id(0);
-//     if (i >= nnode) return;
 
-//     float2 p_i = pos[i];
-//     float2 z_i = rot[i];
-    
-//     // Mass properties: mass[i].x = M (translation), mass[i].y = I (rotation)
-//     float M_i = mass[i].x;
-//     float I_i = mass[i].y;
-    
-//     // NOTE: we drop the PD diagonal a=M/dt^2 here to avoid suppressing rotation when translation is pinned.
-//     // Translational mass still enters via w_i_trans = 1/M_i (reduced-mass weights).
-//     float dt2 = dt * dt;
-//     float a_i = mass[i].x / (dt2 + 1e-20f);
-
-//     int4 ng = neighs[i];
-//     int* neighbors = (int*)&ng;
-//     float2 dpos = (float2)(0.0f, 0.0f);
-//     float dtheta = 0.0f;
-
-//     int i4 = i * MAX_DEGREE;
-
-//     for (int k = 0; k < MAX_DEGREE; k++) {
-//         int j = neighbors[k];
-//         if (j < 0) continue;
-
-//         float K = stiffness_flat[i4 + k];
-//         if (K <= 0.0f) continue;
-
-//         float2 r_local = port_local[i4 + k];
-//         float2 r_world = cmplx_rotate(z_i, r_local);
-//         float2 tip = p_i + r_world;
-
-//         float2 p_j = pos[j];
-
-//         float2 diff = tip - p_j;  // constraint violation (port->atom)
-//         float C2 = dot(diff, diff);
-//         if (C2 < 1e-12f) continue;
-
-//         float C = sqrt(C2);
-//         float2 n = diff / C;
-
-//         // Get neighbor mass properties
-//         float M_j = mass[j].x;
-        
-//         // Reduced-mass style weights: w = 1/M for each body
-//         // This ensures proper momentum conservation in the pair
-//         //float w_i_trans = (M_i > 1e-9f) ? 1.0f / M_i : 0.0f;
-//         //float w_j_trans = (M_j > 1e-9f) ? 1.0f / M_j : 0.0f;
-//         float w_i_trans = 1.0f / M_i;
-//         float w_j_trans = 1.0f / M_j;
-        
-//         // Rotational weight: I_i in denominator for torque response
-//         float r_cross_n = r_world.x * n.y - r_world.y * n.x;
-//         //float w_i_rot   = (I_i > 1e-12f) ? (r_cross_n * r_cross_n) / I_i : 0.0f;
-//         float w_i_rot   = r_cross_n * r_cross_n / I_i;
-        
-//         // Total effective weight for this constraint (no PD diagonal term)
-//         float w_total   = K * (w_i_trans + w_i_rot + w_j_trans);
-//         //float delta_lambda = (-C * K) / (w_total + 1e-12f);
-//         float delta_lambda = (-C * K) / w_total;
-
-//         // Position corrections using reduced-mass weights
-//         float2 dp_i =  delta_lambda * n * w_i_trans;
-//         float2 dp_j = -delta_lambda * n * w_j_trans;
-
-//         // Rotation correction (only for node i)
-//         //float dtheta_k = (I_i > 1e-12f) ? (delta_lambda * r_cross_n / I_i) : 0.0f;
-
-//         float dtheta_k = delta_lambda * r_cross_n / (I_i*2.0 );
-//         //float dtheta_k = delta_lambda * r_cross_n / (w_total );
-
-//         dpos   += dp_i;
-//         dtheta += dtheta_k;
-//         dpos_neigh[i4 + k] = dp_j;
-//     }
-
-//     dpos_node  [i] = dpos;
-//     dtheta_node[i] = dtheta;
-// }
+// ================================================================================
+// ================================================================================
+//      Collision using Position Based Dynamics (PBD) / Projective Dynamics (PD)
+// ================================================================
+// ================================================================
 
 
 // ------------------------------------------------------------------
-// KERNEL: Projective Dynamics with Recoil (2D)
+// CLUSTER COLLISION KERNELS (2D)
 // ------------------------------------------------------------------
-__kernel void compute_corrections_2d(
-    const int nnode,
-    __global const float2* pos,
-    __global const float2* rot,
-    __global const int4*   neighs,
-    __global const float2* port_local,
-    __global const float*  stiffness_flat,
-    __global const float2* mass,            // mass[i].x = M, mass[i].y = I
-    __global float2*       dpos_node,       // Output: Delta P for Node i
-    __global float*        dtheta_node,     // Output: Delta Theta for Node i
-    __global float2*       dpos_neigh,      // Output: Delta P for Neighbor j (Recoil)
-    const float dt
+
+__kernel void update_bboxes_2d(
+    __global const float2* curr_pos,
+    __global const float*  radius,
+    __global float4*       bboxes_min,
+    __global float4*       bboxes_max,
+    __local  float4*       local_min,
+    __local  float4*       local_max,
+    const int num_atoms
 ) {
-    int i = get_global_id(0);
-    if (i >= nnode) return;
+    int lid = get_local_id(0);
+    int gid = get_global_id(0);
+    int grp = get_group_id(0);
 
-    float2 p_i = pos[i];
-    float2 z_i = rot[i];
-    
-    // 1. Node Inertial Stiffness (a = M/dt^2)
-    float M_i = mass[i].x;
-    float I_i = mass[i].y;
-    float dt2 = dt * dt + 1e-16f; // Avoid div by zero
-    
-    // Stiffness contributions from inertia
-    float S_trans = M_i / dt2;
-    float S_rot   = I_i / dt2;
+    float2 p = (gid < num_atoms) ? curr_pos[gid] : (float2)(0.0f, 0.0f);
+    float  r = (gid < num_atoms) ? radius[gid]   : 0.0f;
 
-    // Force accumulators for the Node (Numerator)
-    // We are solving: (M/dt^2 * 0 + Sum(K * disp)) / (M/dt^2 + Sum(K))
-    // The "0" is because we are computing delta from current position.
-    float2 F_trans = (float2)(0.0f, 0.0f); 
-    float  F_rot   = 0.0f;                 
+    if (gid < num_atoms) {
+        local_min[lid] = bbox_init_min_2d(p, r);
+        local_max[lid] = bbox_init_max_2d(p, r);
+    } else {
+        local_min[lid] = (float4)(1e10f);
+        local_max[lid] = (float4)(-1e10f);
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
 
-    int4 ng = neighs[i];
-    int* neighbors = (int*)&ng;
-    int i4 = i * MAX_DEGREE;
-
-    for (int k = 0; k < MAX_DEGREE; k++) {
-        int j = neighbors[k];
-        int idx = i4 + k;
-        
-        // Default clear for inactive ports
-        dpos_neigh[idx] = (float2)(0.0f, 0.0f);
-
-        if (j < 0) continue;
-
-        float K = stiffness_flat[idx];
-        if (K <= 0.0f) continue;
-
-        // Geometry
-        float2 r_local = port_local[idx];
-        float2 r_world = cmplx_rotate(z_i, r_local);
-        float2 tip = p_i + r_world; // Where the port is now
-        float2 p_j = pos[j];        // Where the neighbor is now
-
-        float2 dist_vec = p_j - tip; // Vector from Port -> Neighbor
-
-        // --- 2. Update Node Accumulators (Gather) ---
-        // Translational stiffness add
-        S_trans += K;
-        // Translational force add (K * displacement)
-        // NOTE: we are double-counting node atoms because of recoils stored in dpos_neigh => we weight by 0.5
-        float2 fdist = dist_vec * K * 0.5f;
-        F_trans += fdist;
-
-        // Rotational stiffness add (K * r^2)
-        // Torque = r x F. Rotation is driven by torque.
-        float r2 = dot(r_world, r_world);
-        S_rot += K * r2;
-        
-        // Rotational force (Torque) add
-        // 2D Cross product: r.x * F.y - r.y * F.x
-        float2 spring_force = dist_vec * K;
-        float torque = r_world.x * spring_force.y - r_world.y * spring_force.x;
-        F_rot += torque;
-
-
-        // --- 3. Compute Neighbor Recoil (Scatter) ---
-        // We calculate what the neighbor SHOULD do based on this single constraint.
-        // Neighbor J target: 'tip'
-        // Neighbor J inertia: M_j/dt^2
-        // Neighbor J bond stiffness: K
-        
-        float M_j = mass[j].x; 
-        float a_j = M_j / dt2;
-        
-        // PD Formula for neighbor delta:
-        // dx_j = ( K * (target - current) ) / ( a_j + K )
-        // target - current = tip - p_j = -dist_vec
-        // If neighbor is effectively massless (or dt is huge), K dominates -> moves full distance
-        // If neighbor is heavy (or dt small), a_j dominates -> moves little        
-        dpos_neigh[idx] = -fdist / (a_j + K + 1e-12f);
+    for (int stride = GROUP_SIZE / 2; stride > 0; stride >>= 1) {
+        if (lid < stride) {
+            local_min[lid] = min(local_min[lid], local_min[lid + stride]);
+            local_max[lid] = max(local_max[lid], local_max[lid + stride]);
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
     }
 
-    // 4. Resolve Node Correction
-    float2 dpos  = F_trans / ( S_trans + 1e-12f );
-    float dtheta = F_rot   / ( S_rot   + 1e-12f );
-
-    dpos_node  [i] = dpos;
-    dtheta_node[i] = dtheta;
+    if (lid == 0) {
+        bboxes_min[grp] = local_min[0];
+        bboxes_max[grp] = local_max[0];
+    }
 }
+
+__kernel void build_local_topology_2d(
+    __global const float2* curr_pos,
+    __global const float4* bboxes_min,
+    __global const float4* bboxes_max,
+    __global const int4*   neighs_global,        // natoms int4
+    __global int*          ghost_indices_flat,   // [ngroup*MAX_GHOSTS]
+    __global int*          ghost_counts,         // [ngroup]
+    __global const int*    cluster_counts,       // [ngroup] number of real atoms in each cluster
+    __global int4*         neighs_local,         // natoms int4 (local indices 0..GROUP_SIZE+nghost)
+    const int num_atoms,
+    const int num_groups,
+    const float margin_sq,
+    const float bbox_margin,
+    const int group_stride
+) {
+    int lid = get_local_id(0);
+    int grp = get_group_id(0);
+
+    __local int   l_ghost_list[MAX_GHOSTS];
+    __local int   l_ghost_counter;
+    __local float4 l_my_bbox_min;
+    __local float4 l_my_bbox_max;
+
+    if (lid == 0) {
+        l_ghost_counter = 0;
+        l_my_bbox_min = bboxes_min[grp];
+        l_my_bbox_max = bboxes_max[grp];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    float4 my_min = l_my_bbox_min;
+    float4 my_max = l_my_bbox_max;
+
+    for (int other_g = 0; other_g < num_groups; other_g++) {
+        if (other_g == grp) continue;
+
+        float4 o_min = bboxes_min[other_g];
+        float4 o_max = bboxes_max[other_g];
+
+        bool overlap = false;
+        if (my_max.x + bbox_margin >= o_min.x && my_min.x <= o_max.x + bbox_margin &&
+            my_max.y + bbox_margin >= o_min.y && my_min.y <= o_max.y + bbox_margin) {
+            overlap = true;
+        }
+
+        if (overlap) {
+            int global_idx = other_g * group_stride + lid;
+            if (global_idx < num_atoms) {
+                float2 p = curr_pos[global_idx];
+                float dx = max(0.0f, max(my_min.x - p.x, p.x - my_max.x));
+                float dy = max(0.0f, max(my_min.y - p.y, p.y - my_max.y));
+                float dist_sq = dx*dx + dy*dy;
+                if (dist_sq < margin_sq) {
+                    int slot = atomic_inc(&l_ghost_counter);
+                    if (slot < MAX_GHOSTS) {
+                        l_ghost_list[slot] = global_idx;
+                    }
+                }
+            }
+        }
+    }
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    int total_ghosts = min(l_ghost_counter, MAX_GHOSTS);
+    int base_offset = grp * MAX_GHOSTS;
+    for (int i = lid; i < total_ghosts; i += GROUP_SIZE) {
+        ghost_indices_flat[base_offset + i] = l_ghost_list[i];
+    }
+    if (lid == 0) ghost_counts[grp] = total_ghosts;
+
+    int my_global_id = grp * group_stride + lid;
+    if (my_global_id < num_atoms) {
+        int4 ng = neighs_global[my_global_id];
+        int* neighbors = (int*)&ng;
+        int4 nl = (int4)(-1,-1,-1,-1);
+        int* nloc = (int*)&nl;
+
+        int c_count = cluster_counts[grp];
+        for (int k = 0; k < MAX_DEGREE; k++) {
+            int target = neighbors[k];
+            if (target < 0) continue;
+            int target_grp = target / group_stride;
+            if (target_grp == grp) {
+                nloc[k] = target % group_stride;
+            } else {
+                int loc = -1;
+                for (int g = 0; g < total_ghosts; g++) {
+                    if (l_ghost_list[g] == target) { loc = c_count + g; break; }
+                }
+                nloc[k] = loc;
+            }
+        }
+        neighs_local[my_global_id] = nl;
+    }
+}
+
+ // DEPRECATED __kernel void solve_cluster_jacobi_2d(
+
+
+__kernel void compute_collision_cluster(
+    __global const float2* curr_pos,           // R
+    __global const float*  radius,             // R
+    __global const float2* mass,               // R: mass[i].x = M
+    __global const int4*   neighs_local,       // natoms int4 local indices
+    __global const int*    ghost_indices_flat,
+    __global const int*    ghost_counts,
+    __global const int*    cluster_counts,
+    __global float2*       dpos_node,          // W: collision correction per atom (natoms-sized)
+    const int num_atoms,
+    const float dt,
+    const float k_coll,
+    const int group_stride
+) {
+    int lid = get_local_id(0);
+    int grp = get_group_id(0);
+    int my_global_id = grp * group_stride + lid;
+
+    __local float2 l_pos[GROUP_SIZE + MAX_GHOSTS];
+    __local float2 l_pos_new[GROUP_SIZE];
+    __local float  l_rad[GROUP_SIZE + MAX_GHOSTS];
+
+    if (my_global_id < num_atoms) {
+        l_pos[lid] = curr_pos[my_global_id];
+        l_rad[lid] = radius[my_global_id];
+    } else {
+        l_pos[lid] = (float2)(0.0f, 0.0f);
+        l_rad[lid] = 0.0f;
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    float my_mass = (my_global_id < num_atoms) ? mass[my_global_id].x : 1.0f;
+    float alpha = my_mass / (dt*dt + 1e-20f);
+    float my_rad = (my_global_id < num_atoms) ? l_rad[lid] : 0.0f;
+
+    int g_count  = ghost_counts[grp];
+    int c_count  = cluster_counts[grp];
+    int g_offset = grp * MAX_GHOSTS;
+    for (int k = lid; k < g_count; k += GROUP_SIZE) {
+        int g_idx = ghost_indices_flat[g_offset + k];
+        int lj = c_count + k;
+        l_pos[lj] = curr_pos[g_idx];
+        l_rad[lj] = radius[g_idx];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (my_global_id < num_atoms) {
+        float2 p = l_pos[lid];
+        float2 rhs = p * alpha;
+        float  k_sum = alpha;
+
+        // Collisions against internal + ghosts, skip if bonded via neighs_local
+        // NOTE: Bonded neighbors are excluded from collision detection.
+        // TODO: May need 2nd neighbor exclusion list (up to 16 entries per atom)
+        //       for more complex force field interactions.
+        int4 ng = neighs_local[my_global_id];
+        int* neigh = (int*)&ng;
+
+        int n_ext = c_count + g_count;
+        for (int j = 0; j < n_ext; j++) {
+            if (j == lid) continue;
+            if (j >= c_count && j < GROUP_SIZE) continue; // skip padding lanes beyond real atoms
+            bool is_bonded = false;
+            for (int kk = 0; kk < MAX_DEGREE; kk++) {
+                int nb = neigh[kk];
+                if (nb < 0) continue;
+                if (nb == j) { is_bonded = true; break; }
+            }
+            if (is_bonded) continue;
+
+            float2 q = l_pos[j];
+            float2 d = p - q;
+            float dist_sq = dot(d, d);
+            float r_sum = my_rad + l_rad[j];
+            float r2 = r_sum * r_sum;
+            if (dist_sq < r2 && dist_sq > 1e-16f) {
+                float dist = sqrt(dist_sq);
+                float coeff = k_coll * (r_sum / dist);
+                rhs += d * coeff;
+                rhs += q * k_coll;
+                k_sum += k_coll;
+            }
+        }
+
+        l_pos_new[lid] = rhs / (k_sum + 1e-20f);
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (my_global_id < num_atoms) {
+        l_pos[lid] = l_pos_new[lid];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (my_global_id < num_atoms) {
+        float2 p0   = curr_pos[my_global_id];
+        float2 p1   = l_pos[lid];
+        dpos_node[my_global_id] = p1 - p0;
+    }
+}
+
+// ================================================================
+// ================================================================
+//      POSITION BASED DYNAMICS (PBD) / Projective Dynamics (PD)
+// ================================================================
+// ================================================================
+
 
 // ------------------------------------------------------------------
 // KERNEL: Initialize momentum buffers to zero
@@ -594,6 +815,179 @@ __kernel void init_mom_rot_2d(
     if (i >= nnode) return;
     mom_rot[i] = (float2)(0.0f, 0.0f);
 }
+
+/*
+### The Fundamental Problem
+
+You sensed that standard Jacobi-PD (your original code) breaks momentum conservation. Here is why:
+
+In Projective Dynamics, the global step is a linear system: $(M/dt^2 + L) \Delta q = f_{rhs}$.
+If you solve this system **exactly** (e.g., Cholesky, CG), momentum is conserved.
+However, on the GPU, we often use **Jacobi iteration** (diagonal approximation).
+
+*   **Jacobi PD:** Node $i$ calculates its next position assuming neighbors stay fixed. Node $j$ calculates its position assuming node $i$ stays fixed.
+*   **The math:** Node $i$ moves by $\approx \frac{F_{ij}}{M_i/dt^2 + K}$. Node $j$ moves by $\approx \frac{-F_{ij}}{M_j/dt^2 + K}$.
+*   **The Error:** Unless $M_i = M_j$, the center of mass moves! $\Delta P \propto F (\frac{M_i}{M_i + \dots} - \frac{M_j}{M_j + \dots}) \neq 0$.
+
+**Conclusion:** You cannot use standard node-based Jacobi iteration (row-based solve) if you require strict momentum conservation per iteration. You must use a **constraint-based (edge-based)** approach.
+
+### Is the solution "Projective Dynamics"?
+
+**Yes, mathematically.**
+XPBD (the code I provided previously) is exactly the analytic solution to the PD minimization problem for a single constraint.
+*   PD minimizes Energy $E = \frac{1}{2} \frac{M}{dt^2} ||\Delta x||^2 + \frac{1}{2} K ||C(x)||^2$.
+*   If you take the derivative of this energy with respect to $x$ and set it to zero for a single constraint, you get **exactly** the XPBD update formula.
+
+So, to keep the "PD spirit" (using $M/dt^2$ and $K$ explicitly) while fixing momentum, we just need to ensure we calculate the **Coupled Impulse** using the correct inertial terms.
+
+### The Solution: Coupled "Block-Jacobi" Solver
+
+Instead of decoupling translation and rotation (which you correctly identified as a big issue), we solve the local system for the constraint exactly. This handles the lever arm $r$ correctly, coupling translation and rotation instantly.
+
+Here is the 2D Kernel. It uses your specific PD inputs ($M, I, K, dt$) but solves the constraint pairwise to guarantee $\Delta P = 0$.
+
+### Why this works (and why it is better than Force-based)
+
+1.  **Implicit Scaling (`alpha`):** The term `alpha = 1.0f / (K * dt2)` provides the infinite stiffness stability of PD/Implicit integration. If `K` is huge, `alpha` is small, and the constraint is solved rigidly. If `K` is small, the constraint is springy.
+2.  **Coupling (`w_angular`):** By including `rn * rn * w_rot_i` in the denominator (`w_total`), we acknowledge that it is harder to satisfy a constraint if it requires spinning a heavy object. This prevents the "vibration" often seen when rotation and translation are solved separately.
+3.  **Conservation:**
+    *   Node $i$ adds $P$.
+    *   Neighbor $j$ adds $-P$.
+    *   Linear Momentum change: $\sum \Delta p = M_i(P/M_i) + M_j(-P/M_j) = P - P = 0$.
+
+*/
+
+// ------------------------------------------------------------------
+// KERNEL: Projective Dynamics / XPBD with Momentum Conservation (2D)
+// ------------------------------------------------------------------
+__kernel void compute_corrections_2d(
+    const int nnode,
+    __global const float2* pos,
+    __global const float2* rot,
+    __global const int4*   neighs,
+    __global const float2* port_local,
+    __global const float*  stiffness_flat,
+    __global const float2* mass,            // mass[i].x = M, mass[i].y = I
+    __global float2*       dpos_node,       // Output: Delta P for Node i
+    __global float*        dtheta_node,     // Output: Delta Theta for Node i
+    __global float2*       dpos_neigh,      // Output: Delta P for Neighbor j (Recoil)
+    const float dt
+) {
+    int i = get_global_id(0);
+    if (i >= nnode) return;
+
+    float2 p_i = pos[i];
+    float2 z_i = rot[i];
+
+    // 1. Get Inertial Properties
+    // In PD, the diagonal term is M / dt^2.
+    // In the update formula, we need inverse mass: w = 1/M.
+    float M_i = mass[i].x;
+    float I_i = mass[i].y;
+    
+    // Inverse masses
+    float w_i     = (M_i > 1e-9f) ? 1.0f / M_i : 0.0f;
+    float w_rot_i = (I_i > 1e-9f) ? 1.0f / I_i : 0.0f;
+    
+    float dt2 = dt * dt + 1e-16f;
+
+    // Accumulators for Node i
+    float2 sum_dpos   = (float2)(0.0f, 0.0f);
+    float  sum_dtheta = 0.0f;
+
+    int4 ng        = neighs[i];
+    int* neighbors = (int*)&ng;
+    int i4         = i * MAX_DEGREE;
+
+    for (int k = 0; k < MAX_DEGREE; k++) {
+        int idx = i4 + k;
+        int j = neighbors[k];
+        
+        // Reset recoil slot
+        dpos_neigh[idx] = (float2)(0.0f, 0.0f);
+
+        if (j < 0) continue;
+
+        float K = stiffness_flat[idx];
+        if (K <= 0.0f) continue;
+
+        // --- Geometry & Constraint Evaluation ---
+        // Port location in World Space
+        float2 r_local = port_local[idx];
+        float2 r_arm   = cmplx_rotate(z_i, r_local); 
+        float2 tip     = p_i + r_arm;
+        float2 p_j     = pos[j]; // Neighbor position
+
+        // Constraint vector: We want Tip and Neighbor to coincide.
+        // Vector from Tip -> Neighbor
+        float2 diff = p_j - tip; 
+        float dist  = length(diff);
+
+        if (dist < 1e-9f) continue;
+
+        float2 n = diff / dist; // Direction of the constraint force
+
+        // --- The "PD" Momentum Conserving Solve ---
+
+        // 1. Compliance (The PD Regularizer)
+        // PD Energy: 0.5 * K * x^2. 
+        // This corresponds to compliance alpha = 1 / (K * dt^2)
+        // If K is infinite (rigid), alpha is 0.
+        float alpha = 1.0f / (K * dt2);
+
+        // 2. Neighbor Mass (Assuming Point Mass for neighbor j for simplicity)
+        // If j is also a node, you technically need its rotation too, but 
+        // standard implementation often treats the "other end" as a point 
+        // in the scatter step to avoid complex locking.
+        float M_j = mass[j].x;
+        float w_j = (M_j > 1e-9f) ? 1.0f / M_j : 0.0f;
+
+        // 3. Generalized Inverse Mass (Coupling Translation & Rotation)
+        // This solves the "Fundamental Problem" of coupling.
+        // How much does the system move along 'n' if we apply unit impulse?
+        // Linear part: w_i + w_j
+        // Angular part: (r x n)^2 / I
+        
+        // 2D Cross product magnitude (r_arm cross n)
+        float rn        = r_arm.x * n.y - r_arm.y * n.x; 
+        float w_angular = rn * rn * w_rot_i;
+
+        // Total effective inverse mass of this constraint
+        float w_total   = w_i + w_j + w_angular + alpha;
+
+        // 4. Calculate Impulse Magnitude (Lagrange Multiplier)
+        // We want to correct the gap 'dist'.
+        // lambda = -C / w_total
+        float impulse_mag = dist / w_total;
+
+        // 5. Symmetric Distribution (Factor of 0.5)
+        // Since we process bond i-j AND bond j-i (in separate threads),
+        // we essentially calculate this force twice. We must halve it 
+        // to avoid double stiffness.
+        impulse_mag *= 0.5f;
+
+        // 6. Apply Impulses (Momentum Conserved!)
+        // Impulse Vector P
+        float2 P = n * impulse_mag;
+
+        // Correct Node i (Move towards neighbor)
+        // Linear: dx = P / M_i
+        sum_dpos += P * w_i;
+        
+        // Angular: dtheta = (r x P) / I_i
+        // r x P = r x (n * mag) = (r x n) * mag = rn * impulse_mag
+        sum_dtheta += (rn * impulse_mag) * w_rot_i;
+
+        // Correct Neighbor j (Recoil - Move towards Node)
+        // Linear: dx = -P / M_j
+        dpos_neigh[idx] = -P * w_j;
+    }
+
+    // Store accumulated corrections for Node i
+    dpos_node[i]   = sum_dpos;
+    dtheta_node[i] = sum_dtheta;
+}
+
 
 // ------------------------------------------------------------------
 // KERNEL: Apply corrections with relaxation and proper momentum mixing (2D)
@@ -621,7 +1015,6 @@ __kernel void apply_corrections_2d(
     // Apply position correction
     float2 corr = (float2)(0.0f, 0.0f);
 
-
     // Gather corrections from neighbors
     int4 bk = bkSlots[i];
     if (bk.x >= 0) corr += dpos_neigh[bk.x];
@@ -630,7 +1023,8 @@ __kernel void apply_corrections_2d(
     if (bk.w >= 0) corr += dpos_neigh[bk.w];
 
     // note - capping atoms (i>=nnode) are double-weighted becaous they are not double counted in compute_corrections_2d
-    if (i < nnode) { corr += dpos_node[i]; }else{ corr*=2.0f;}
+    if (i>=nnode){ corr*=2.0f;}
+    corr += dpos_node[i];
 
     // Relaxation step
     float2 p_corr = pos[i] + corr * relaxation;
@@ -673,6 +1067,24 @@ __kernel void apply_corrections_2d(
             }
         }
     }
+}
+
+// ================================================================
+// ================================================================
+//    XPBD with Lagrange Multipliers ( XPBD-LM ) - Does not work
+// ================================================================
+// ================================================================
+
+// ------------------------------------------------------------------
+// KERNEL: Reset lambda for XPBD
+// ------------------------------------------------------------------
+__kernel void reset_lambda_2d(
+    const int n,
+    __global float* lambda
+) {
+    int i = get_global_id(0);
+    if (i >= n) return;
+    lambda[i] = 0.0f;
 }
 
 // ------------------------------------------------------------------
@@ -760,18 +1172,6 @@ __kernel void compute_xpbd_corrections_2d(
 
     dpos_node[i] = dpos;
     dtheta_node[i] = dtheta;
-}
-
-// ------------------------------------------------------------------
-// KERNEL: Reset lambda for XPBD
-// ------------------------------------------------------------------
-__kernel void reset_lambda_2d(
-    const int n,
-    __global float* lambda
-) {
-    int i = get_global_id(0);
-    if (i >= n) return;
-    lambda[i] = 0.0f;
 }
 
 // ------------------------------------------------------------------

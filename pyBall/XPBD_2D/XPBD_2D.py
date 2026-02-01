@@ -15,6 +15,12 @@ import os
 import numpy as np
 import pyopencl as cl
 
+VERBOSE = 0
+
+def set_verbose(level:int):
+    global VERBOSE
+    VERBOSE = int(level)
+
 
 class XPBD_2D:
     """2D XPBD simulator with port-based constraints."""
@@ -32,6 +38,26 @@ class XPBD_2D:
         with open(cl_path, "r") as f:
             src = f.read()
         self.prg = cl.Program(self.ctx, src).build()
+
+        # Kernel cache dict must exist before caching kernels
+        self._krn = {}
+        # Cache all kernels to avoid RepeatedKernelRetrieval warnings
+        self._init_cached_kernels()
+        # Convenience cached kernel accessors (avoid repeated dict lookups)
+        self._k_init_hb_pos_2d = self._k('init_hb_pos_2d')
+        self._k_init_hb_rot_2d = self._k('init_hb_rot_2d')
+        self._k_compute_corrections_2d = self._k('compute_corrections_2d')
+        self._k_apply_corrections_2d = self._k('apply_corrections_2d')
+        self._k_compute_collision_cluster = self._k('compute_collision_cluster')
+        self._k_compute_cluster_fused_2d = self._k('compute_cluster_fused_2d') if 'compute_cluster_fused_2d' in self._krn else None
+        self._k_update_bboxes_2d = self._k('update_bboxes_2d')
+        self._k_build_local_topology_2d = self._k('build_local_topology_2d')
+        self._k_reset_lambda_2d = self._k('reset_lambda_2d')
+        self._k_compute_xpbd_corrections_2d = self._k('compute_xpbd_corrections_2d') if 'compute_xpbd_corrections_2d' in self._krn else None
+        self._k_gather_and_apply_xpbd_2d = self._k('gather_and_apply_xpbd_2d') if 'gather_and_apply_xpbd_2d' in self._krn else None
+        self._k_compute_velocities = self._k('compute_velocities_from_positions')
+        self._k_compute_omega = self._k('compute_angular_velocities_from_rotations')
+        self._k_reset_lambda_debug = self._krn.get('compute_xpbd_corrections_2d_debug', None)
         
         # Allocate buffers
         mf = cl.mem_flags
@@ -51,6 +77,11 @@ class XPBD_2D:
         # Initialize with unit masses and default inertia
         mass_init = np.ones((n, 2), dtype=np.float32)
         cl.enqueue_copy(self.queue, self.cl_mass, mass_init)
+
+        # Collision radius buffer (float per atom)
+        self.cl_radius = cl.Buffer(self.ctx, mf.READ_WRITE, n * 4)   # float[natoms]
+        rad_init = np.ones((n,), dtype=np.float32) * np.float32(0.5)
+        cl.enqueue_copy(self.queue, self.cl_radius, rad_init)
         
         # Topology buffers (int4 for neighbors)
         self.cl_neighs = cl.Buffer(self.ctx, mf.READ_ONLY, n * 16)   # int4
@@ -77,6 +108,21 @@ class XPBD_2D:
         # Node buffers for explicit force solver
         self.cl_fneigh = None
         self.cl_pneigh = None
+
+        # Cluster collision solver buffers (lazy init)
+        self._cluster_inited = False
+        self.group_size = 64
+        self.cluster_stride = self.group_size
+        self.max_ghosts = 128
+        self.num_groups = (int(self.num_atoms) + self.group_size - 1) // self.group_size
+        self.cl_bboxes_min = None
+        self.cl_bboxes_max = None
+        self.cl_ghost_indices = None
+        self.cl_ghost_counts = None
+        self.cl_cluster_counts = None
+        self.cl_neighs_local = None
+        self.cl_prev_pos_cluster = None
+        self.cl_mom_pos_cluster = None
         
         self._nnode = 0
         
@@ -85,6 +131,39 @@ class XPBD_2D:
         self._host_vel = np.zeros((n, 2), dtype=np.float32)
         self._host_rot = np.zeros((n, 2), dtype=np.float32)  # complex
         self._host_omega = np.zeros((n,), dtype=np.float32)
+
+        self._host_radius = np.zeros((n,), dtype=np.float32)
+        
+    def _init_cached_kernels(self):
+        """Cache all OpenCL kernels to avoid retrieval overhead."""
+        kernel_names = [
+            # Basic init/clear kernels
+            'clear_2d_forces', 'clear_2d_node_buffers', 'init_hb_pos_2d', 'init_hb_rot_2d',
+            'init_mom_pos_2d', 'init_mom_rot_2d', 'reset_lambda_2d',
+            # Force-based kernels
+            'gather_port_forces_2d', 'integrate_2d_explicit',
+            # PBD/XPBD kernels
+            'compute_corrections_2d', 'apply_corrections_2d',
+            'compute_xpbd_corrections_2d', 'gather_and_apply_xpbd_2d',
+            'compute_xpbd_corrections_2d_debug',
+            # Cluster collision kernels
+            'update_bboxes_2d', 'build_local_topology_2d', 'compute_collision_cluster', 'compute_cluster_fused_2d',
+            # MD kernels
+            'compute_velocities_from_positions', 'compute_angular_velocities_from_rotations',
+        ]
+        for name in kernel_names:
+            try:
+                self._krn[name] = cl.Kernel(self.prg, name)
+            except cl.RuntimeError:
+                # Kernel may not exist in the program (e.g., debug kernels)
+                pass
+        
+    def _k(self, name):
+        """Get cached kernel by name."""
+        if name not in self._krn:
+            # Lazy cache if not pre-initialized
+            self._krn[name] = cl.Kernel(self.prg, name)
+        return self._krn[name]
         
     def _make_context(self, prefer_gpu=True, device_idx=0):
         dev_type = cl.device_type.GPU if prefer_gpu else cl.device_type.ALL
@@ -98,12 +177,15 @@ class XPBD_2D:
         return cl.create_some_context(interactive=False)
     
     def _ensure_node_buffers(self, nnode):
-        """Allocate node-only buffers once nnode is known."""
+        """Allocate node-only buffers once nnode is known.
+        dpos_node is sized for max(nnode, natoms) so collision corrections can write per-atom.
+        """
         if self._nnode == nnode and self.cl_fneigh is not None:
             return
         
         mf = cl.mem_flags
         self._nnode = nnode
+        size_nodes = max(nnode, self.num_atoms)
         
         # Explicit force buffers
         self.cl_fneigh = cl.Buffer(self.ctx, mf.READ_WRITE, nnode * 4 * 8)  # float2[nnode*4]
@@ -114,7 +196,7 @@ class XPBD_2D:
         self.cl_port_n = cl.Buffer(self.ctx, mf.READ_ONLY, nnode)  # uchar
         
         # PBD correction buffers
-        self.cl_dpos_node = cl.Buffer(self.ctx, mf.READ_WRITE, nnode * 8)  # float2
+        self.cl_dpos_node = cl.Buffer(self.ctx, mf.READ_WRITE, size_nodes * 8)  # float2[max(nnode,natoms)]
         self.cl_dtheta_node = cl.Buffer(self.ctx, mf.READ_WRITE, nnode * 4)  # float
         self.cl_dpos_neigh = cl.Buffer(self.ctx, mf.READ_WRITE, nnode * 4 * 8)  # float2[nnode*4]
         
@@ -235,6 +317,116 @@ class XPBD_2D:
         
         return self._host_pos.copy(), self._host_rot.copy(), self._host_vel.copy(), self._host_omega.copy()
 
+    def upload_radius(self, radius):
+        radius = np.asarray(radius, dtype=np.float32)
+        if radius.shape != (self.num_atoms,):
+            raise ValueError(f"upload_radius: radius shape {radius.shape} != ({self.num_atoms},)")
+        cl.enqueue_copy(self.queue, self.cl_radius, radius).wait()
+
+    def download_radius(self):
+        cl.enqueue_copy(self.queue, self._host_radius, self.cl_radius).wait()
+        return self._host_radius.copy()
+
+    def download_dpos_node(self):
+        """Download dpos_node buffer (collision/position corrections) from GPU.
+        
+        Returns:
+            dpos: (max(nnode, natoms), 2) float32 position corrections
+        """
+        size_nodes = max(self._nnode, self.num_atoms)
+        out = np.zeros((size_nodes, 2), dtype=np.float32)
+        cl.enqueue_copy(self.queue, out, self.cl_dpos_node).wait()
+        return out.copy()
+
+    def _ensure_cluster_buffers(self):
+        if self._cluster_inited and self.cl_bboxes_min is not None:
+            return
+        mf = cl.mem_flags
+        ng = int(self.num_groups)
+        n = int(self.num_atoms)
+        self.cl_bboxes_min       = cl.Buffer(self.ctx, mf.READ_WRITE, ng * 16)  # float4[ng]
+        self.cl_bboxes_max       = cl.Buffer(self.ctx, mf.READ_WRITE, ng * 16)  # float4[ng]
+        self.cl_ghost_indices    = cl.Buffer(self.ctx, mf.READ_WRITE, ng * int(self.max_ghosts) * 4)  # int
+        self.cl_ghost_counts     = cl.Buffer(self.ctx, mf.READ_WRITE, ng * 4)  # int
+        self.cl_cluster_counts   = cl.Buffer(self.ctx, mf.READ_ONLY,  ng * 4)  # int
+        self.cl_neighs_local     = cl.Buffer(self.ctx, mf.READ_WRITE, n * 16)  # int4[natoms]
+        self.cl_prev_pos_cluster = cl.Buffer(self.ctx, mf.READ_WRITE, n * 8)  # float2[natoms]
+        self.cl_mom_pos_cluster  = cl.Buffer(self.ctx, mf.READ_WRITE, n * 8)   # float2[natoms]
+        # Default cluster_counts: sequential packing
+        counts = np.empty((ng,), dtype=np.int32)
+        for g in range(ng):
+            start = g * int(self.group_size)
+            remaining = n - start
+            if remaining < 0: remaining = 0
+            if remaining > self.group_size: remaining = int(self.group_size)
+            counts[g] = remaining
+        cl.enqueue_copy(self.queue, self.cl_cluster_counts, counts)
+        cl.enqueue_fill_buffer(self.queue, self.cl_ghost_counts, np.int32(0), 0, ng * 4)
+        self._cluster_inited = True
+
+    def set_cluster_config(self, *, group_size=None, num_groups=None, cluster_counts=None, cluster_stride=None):
+        """Configure cluster tiling used by cluster-local kernels.
+
+        Args:
+            group_size: local workgroup size (<= GROUP_SIZE in kernel source)
+            num_groups: number of groups (defaults to ceil(natoms/group_size))
+            cluster_counts: int32[ng] number of real atoms in each group (packed at start)
+        """
+        if group_size is not None:
+            self.group_size = int(group_size)
+        if cluster_stride is not None:
+            self.cluster_stride = int(cluster_stride)
+        else:
+            self.cluster_stride = int(self.group_size)
+        if num_groups is not None:
+            self.num_groups = int(num_groups)
+        else:
+            self.num_groups = (int(self.num_atoms) + int(self.group_size) - 1) // int(self.group_size)
+
+        # Force reinit of cluster buffers on next use
+        self._cluster_inited = False
+        self.cl_bboxes_min = None
+        self.cl_bboxes_max = None
+        self.cl_ghost_indices = None
+        self.cl_ghost_counts = None
+        self.cl_cluster_counts = None
+        self.cl_neighs_local = None
+        self.cl_prev_pos_cluster = None
+        self.cl_mom_pos_cluster = None
+
+        self._ensure_cluster_buffers()
+
+        ng = int(self.num_groups)
+        if cluster_counts is not None:
+            cc = np.asarray(cluster_counts, dtype=np.int32).reshape(ng)
+            cl.enqueue_copy(self.queue, self.cl_cluster_counts, cc)
+        cl.enqueue_fill_buffer(self.queue, self.cl_ghost_counts, np.int32(0), 0, ng * 4).wait()
+
+    def debug_clusters(self, *, ng_print=8, atoms_per_group=16, ghosts_per_group=16):
+        """Dump cluster_counts, ghost_counts, ghost_indices, and neighs_local for inspection."""
+        self._ensure_cluster_buffers()
+        ng = int(self.num_groups)
+        n = int(self.num_atoms)
+        cc = np.zeros((ng,), dtype=np.int32)
+        gc = np.zeros((ng,), dtype=np.int32)
+        gi = np.zeros((ng, int(self.max_ghosts)), dtype=np.int32)
+        nl = np.zeros((n, 4), dtype=np.int32)
+        cl.enqueue_copy(self.queue, cc, self.cl_cluster_counts).wait()
+        cl.enqueue_copy(self.queue, gc, self.cl_ghost_counts).wait()
+        cl.enqueue_copy(self.queue, gi, self.cl_ghost_indices).wait()
+        cl.enqueue_copy(self.queue, nl, self.cl_neighs_local).wait()
+        print(f"[DEBUG] cluster_counts (ng={ng}):")
+        for g in range(min(int(ng_print), ng)):
+            start = g * int(self.group_size)
+            gslice = gi[g, :int(min(ghosts_per_group, gc[g]))]
+            print(f"  grp[{g:3d}] c_count={cc[g]:3d} g_count={gc[g]:3d} ghosts={gslice.tolist()}")
+            for i in range(min(int(atoms_per_group), int(cc[g]))):
+                ia = start + i
+                if ia >= n:
+                    break
+                nl_i = nl[ia]
+                print(f"    atom[{ia:4d}] nl=({nl_i[0]:4d},{nl_i[1]:4d},{nl_i[2]:4d},{nl_i[3]:4d})")
+
     def download_lambda(self, nnode):
         """Download XPBD lambda buffer from GPU for diagnostics.
         
@@ -255,11 +447,11 @@ class XPBD_2D:
         size = nnode * 4 * 4  # nnode * MAX_DEGREE * sizeof(float) for scalar values
         size2 = nnode * 4 * 8  # nnode * MAX_DEGREE * sizeof(float2) for float2 values
         if getattr(self, 'cl_dbg_C', None) is None or self.cl_dbg_C.size < size:
-            self.cl_dbg_C = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=size * 5)  # C, lambda, dtheta, K, alpha
-            self.cl_dbg_dpos_i = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=size2)
-            self.cl_dbg_dpos_j = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=size2)
+            self.cl_dbg_C       = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=size * 5)  # C, lambda, dtheta, K, alpha
+            self.cl_dbg_dpos_i  = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=size2)
+            self.cl_dbg_dpos_j  = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=size2)
             self.cl_dbg_r_world = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=size2)
-            self.cl_dbg_n = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=size2)
+            self.cl_dbg_n       = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=size2)
 
     def download_constraint_diagnostics(self, nnode):
         """Download detailed per-constraint diagnostic data.
@@ -277,9 +469,9 @@ class XPBD_2D:
         """
         n = nnode * 4
         total_size = n * 5  # 5 scalar fields
-        host_data = np.zeros(total_size, dtype=np.float32)
-        host_dpos_i = np.zeros(n * 2, dtype=np.float32)
-        host_dpos_j = np.zeros(n * 2, dtype=np.float32)
+        host_data    = np.zeros(total_size, dtype=np.float32)
+        host_dpos_i  = np.zeros(n * 2, dtype=np.float32)
+        host_dpos_j  = np.zeros(n * 2, dtype=np.float32)
         host_r_world = np.zeros(n * 2, dtype=np.float32)
         host_n = np.zeros(n * 2, dtype=np.float32)
 
@@ -398,12 +590,11 @@ class XPBD_2D:
         
         for _ in range(nsteps):
             # Clear forces
-            self.prg.clear_2d_forces(self.queue, (self.num_atoms,), None, natoms, self.cl_force)
-            self.prg.clear_2d_node_buffers(self.queue, (nnode * 4,), None, nnode_i, 
-                                           self.cl_fneigh, self.cl_pneigh)
+            self._k('clear_2d_forces')(self.queue, (self.num_atoms,), None, natoms, self.cl_force)
+            self._k('clear_2d_node_buffers')(self.queue, (nnode * 4,), None, nnode_i,   self.cl_fneigh, self.cl_pneigh)
             
             # Gather port forces
-            self.prg.gather_port_forces_2d(
+            self._k('gather_port_forces_2d')(
                 self.queue, (nnode,), None,
                 nnode_i,
                 self.cl_pos, self.cl_rot,
@@ -413,7 +604,7 @@ class XPBD_2D:
             )
             
             # Integrate
-            self.prg.integrate_2d_explicit(
+            self._k('integrate_2d_explicit')(
                 self.queue, (self.num_atoms,), None,
                 natoms, nnode_i,
                 self.cl_pos, self.cl_vel, self.cl_rot, self.cl_omega,
@@ -455,8 +646,8 @@ class XPBD_2D:
         dt_f = np.float32(dt)
 
         if reset_hb:
-            self.prg.init_hb_pos_2d(self.queue, (self.num_atoms,), None, natoms, self.cl_pos, self.cl_hb_pos)
-            self.prg.init_hb_rot_2d(self.queue, (nnode,), None, nnode_i, self.cl_rot, self.cl_hb_rot)
+            self._k('init_hb_pos_2d')(self.queue, (self.num_atoms,), None, natoms, self.cl_pos, self.cl_hb_pos)
+            self._k('init_hb_rot_2d')(self.queue, (nnode,), None, nnode_i, self.cl_rot, self.cl_hb_rot)
             # Initialize momentum buffers to zero
             cl.enqueue_fill_buffer(self.queue, self.cl_mom_pos, np.float32(0.0), 0, self.num_atoms * 8)
             cl.enqueue_fill_buffer(self.queue, self.cl_mom_rot, np.float32(0.0), 0, nnode * 8)
@@ -466,7 +657,7 @@ class XPBD_2D:
             cl.enqueue_fill_buffer(self.queue, self.cl_dtheta_node, np.float32(0), 0, nnode * 4)
             cl.enqueue_fill_buffer(self.queue, self.cl_dpos_neigh, np.float32(0), 0, nnode * 4 * 8)
 
-            self.prg.compute_corrections_2d(
+            self._k_compute_corrections_2d(
                 self.queue, (nnode,), None,
                 nnode_i,
                 self.cl_pos, self.cl_rot, self.cl_neighs,
@@ -476,8 +667,8 @@ class XPBD_2D:
                 dt_f
             )
 
-            self.prg.apply_corrections_2d(
-                self.queue, (self.num_atoms,), None,
+            self._k_apply_corrections_2d(
+                self.queue, (natoms,), None,
                 natoms, nnode_i,
                 self.cl_pos, self.cl_rot, self.cl_bkSlots,
                 self.cl_dpos_node, self.cl_dtheta_node, self.cl_dpos_neigh,
@@ -520,7 +711,7 @@ class XPBD_2D:
             cl.enqueue_fill_buffer(self.queue, self.cl_dtheta_node, np.float32(0), 0, nnode * 4)
             cl.enqueue_fill_buffer(self.queue, self.cl_dpos_neigh, np.float32(0), 0, nnode * 4 * 8)
             
-            self.prg.compute_corrections_2d(
+            self._k_compute_corrections_2d(
                 self.queue, (nnode,), None,
                 nnode_i,
                 self.cl_pos, self.cl_rot, self.cl_neighs,
@@ -531,7 +722,7 @@ class XPBD_2D:
             )
             
             # Apply corrections without heavy-ball mixing (that's only for relaxation)
-            self.prg.apply_corrections_2d(
+            self._k_apply_corrections_2d(
                 self.queue, (self.num_atoms,), None,
                 natoms, nnode_i,
                 self.cl_pos, self.cl_rot, self.cl_bkSlots,
@@ -545,16 +736,296 @@ class XPBD_2D:
                 callback(itr)
         
         # Compute real velocities: v = (x_new - x_old)/dt
-        self.prg.compute_velocities_from_positions(
+        self._k_compute_velocities(
             self.queue, (self.num_atoms,), None,
             natoms, self.cl_pos, self.cl_hb_pos, self.cl_vel, dt_f, np.float32(damp)
         )
         
         # For nodes, also compute angular velocities from rotation changes
-        self.prg.compute_angular_velocities_from_rotations(
+        self._k_compute_omega(
             self.queue, (nnode,), None,
             nnode_i, self.cl_rot, self.cl_hb_rot, self.cl_omega, dt_f, np.float32(damp)
         )
+
+    def step_pbd_cluster_relax(self, *, dt=0.1, outer_iters=1, inner_iters=10, k_coll=1.0, bmix=0.8, reset_hb=True, bbox_margin=0.5, callback=None, verbose=0):
+        """Cluster-local Jacobi relaxation with collisions.
+
+        Notes:
+        - This currently solves *collisions only* (no port constraints) in a tiled local-memory manner.
+        - Bonded neighbors are excluded from collision resolution using the remapped `neighs_local`.
+        - Uses heavy-ball mixing on positions via `prev_pos_cluster` and `mom_pos_cluster`.
+        """
+        self._ensure_cluster_buffers()
+        natoms = int(self.num_atoms)
+        ng = int(self.num_groups)
+        dt_f = np.float32(dt)
+        natoms_i = np.int32(self.num_atoms)
+        relax_coll_f = np.float32(1.0)
+        bmix_f = np.float32(bmix)
+
+        # Reset heavy-ball state
+        if reset_hb:
+            cl.enqueue_copy(self.queue, self.cl_prev_pos_cluster, self.cl_pos)
+            cl.enqueue_fill_buffer(self.queue, self.cl_mom_pos_cluster, np.float32(0.0), 0, natoms * 8)
+
+        # Heuristic margin for ghost discovery: use (2*Rmax)^2
+        # We compute Rmax on host (cheap enough) because radius rarely changes.
+        rad = self.download_radius()
+        rmax = float(np.max(rad)) if rad.size else 0.0
+        margin_sq = np.float32((2.0 * rmax + float(bbox_margin)) ** 2)
+        bbox_margin_f = np.float32(bbox_margin)
+
+        # Work sizes
+        global_size = (ng * int(self.group_size),)
+        local_size = (int(self.group_size),)
+
+        for it in range(int(outer_iters)):
+            # 1) AABB per cluster
+            self._k_update_bboxes_2d(
+                self.queue, global_size, local_size,
+                self.cl_pos, self.cl_radius,
+                self.cl_bboxes_min, self.cl_bboxes_max,
+                cl.LocalMemory(int(self.group_size) * 16),
+                cl.LocalMemory(int(self.group_size) * 16),
+                np.int32(natoms)
+            )
+
+            # 2) Ghost discovery + neighbor remap (local indices)
+            self._k_build_local_topology_2d(
+                self.queue, global_size, local_size,
+                self.cl_pos,
+                self.cl_bboxes_min, self.cl_bboxes_max,
+                self.cl_neighs,
+                self.cl_ghost_indices, self.cl_ghost_counts, self.cl_cluster_counts,
+                self.cl_neighs_local,
+                np.int32(natoms), np.int32(ng),
+                margin_sq, bbox_margin_f,
+                np.int32(self.cluster_stride)
+            )
+
+            # DEBUG: Print neighs_local mapping if verbose > 1
+            if int(verbose) > 1:
+                host_neighs_local = np.empty((self.num_atoms, 4), dtype=np.int32)
+                cl.enqueue_copy(self.queue, host_neighs_local, self.cl_neighs_local).wait()
+                print(f"[DEBUG] neighs_local (local indices including ghosts):")
+                for ii in range(min(16, self.num_atoms)):
+                    nl = host_neighs_local[ii]
+                    print(f"  atom[{ii:3d}] -> ({nl[0]:4d}, {nl[1]:4d}, {nl[2]:4d}, {nl[3]:4d})")
+
+            # 3) Cluster-local Jacobi collision solve - inner loop in Python for callback support
+            for inner in range(int(inner_iters)):
+                # Clear dpos_node over all atoms (collision writes natoms-wide)
+                cl.enqueue_fill_buffer(self.queue, self.cl_dpos_node, np.float32(0), 0, self.num_atoms * 8)
+
+                self._k_compute_collision_cluster(
+                    self.queue, global_size, local_size,
+                    self.cl_pos, self.cl_radius, self.cl_mass,
+                    self.cl_neighs_local,
+                    self.cl_ghost_indices, self.cl_ghost_counts, self.cl_cluster_counts,
+                    self.cl_dpos_node,
+                    np.int32(natoms),
+                    dt_f, np.float32(k_coll), np.int32(self.cluster_stride)
+                )
+
+                # Apply collisions: treat all atoms as nodes so dpos_node is applied
+                self._k_apply_corrections_2d(
+                    self.queue, (self.num_atoms,), None,
+                    natoms_i, natoms_i,  # nnode=natoms so dpos_node applies without double-weighting capping
+                    self.cl_pos, self.cl_rot, self.cl_bkSlots,
+                    self.cl_dpos_node, self.cl_dtheta_node, self.cl_dpos_neigh,
+                    relax_coll_f, self.cl_prev_pos_cluster, self.cl_hb_rot,  # hb_rot unused here
+                    self.cl_mom_pos_cluster, self.cl_mom_rot,               # mom_rot unused here
+                    bmix_f, np.float32(0.0)
+                )
+                if callback is not None:
+                    callback(it * int(inner_iters) + inner)
+
+    def step_pbd_cluster_fused(self, nnode, *, dt=0.1, outer_iters=1, inner_iters=10, k_coll=1.0, relax=0.7, bbox_margin=0.5, callback=None, verbose=0):
+        """Cluster-local fused solver: collisions + port corrections in one kernel."""
+        self._ensure_node_buffers(nnode)
+        self._ensure_cluster_buffers()
+        if self._k_compute_cluster_fused_2d is None:
+            raise RuntimeError('step_pbd_cluster_fused: compute_cluster_fused_2d kernel not available')
+
+        natoms = int(self.num_atoms)
+        ng = int(self.num_groups)
+        nnode_i = np.int32(nnode)
+        natoms_i = np.int32(natoms)
+        dt_f = np.float32(dt)
+        bbox_margin_f = np.float32(bbox_margin)
+
+        rad = self.download_radius()
+        rmax = float(np.max(rad)) if rad.size else 0.0
+        margin_sq = np.float32((2.0 * rmax + float(bbox_margin)) ** 2)
+
+        global_size = (ng * int(self.group_size),)
+        local_size = (int(self.group_size),)
+
+        for it in range(int(outer_iters)):
+            self._k_update_bboxes_2d(
+                self.queue, global_size, local_size,
+                self.cl_pos, self.cl_radius,
+                self.cl_bboxes_min, self.cl_bboxes_max,
+                cl.LocalMemory(int(self.group_size) * 16),
+                cl.LocalMemory(int(self.group_size) * 16),
+                np.int32(natoms)
+            )
+
+            self._k_build_local_topology_2d(
+                self.queue, global_size, local_size,
+                self.cl_pos,
+                self.cl_bboxes_min, self.cl_bboxes_max,
+                self.cl_neighs,
+                self.cl_ghost_indices, self.cl_ghost_counts, self.cl_cluster_counts,
+                self.cl_neighs_local,
+                np.int32(natoms), np.int32(ng),
+                margin_sq, bbox_margin_f
+            )
+
+            for inner in range(int(inner_iters)):
+                cl.enqueue_fill_buffer(self.queue, self.cl_dpos_node, np.float32(0), 0, self.num_atoms * 8)
+                cl.enqueue_fill_buffer(self.queue, self.cl_dtheta_node, np.float32(0), 0, nnode * 4)
+                cl.enqueue_fill_buffer(self.queue, self.cl_dpos_neigh, np.float32(0), 0, nnode * 4 * 8)
+
+                self._k_compute_cluster_fused_2d(
+                    self.queue, global_size, local_size,
+                    nnode_i,
+                    self.cl_pos, self.cl_rot,
+                    self.cl_radius, self.cl_mass,
+                    self.cl_neighs_local,
+                    self.cl_ghost_indices, self.cl_ghost_counts, self.cl_cluster_counts,
+                    self.cl_port_local, self.cl_stiffness_flat,
+                    self.cl_dpos_node, self.cl_dtheta_node, self.cl_dpos_neigh,
+                    natoms_i,
+                    dt_f, np.float32(k_coll), np.int32(self.cluster_stride)
+                )
+
+                self._k_apply_corrections_2d(
+                    self.queue, (self.num_atoms,), None,
+                    natoms_i, nnode_i,
+                    self.cl_pos, self.cl_rot, self.cl_bkSlots,
+                    self.cl_dpos_node, self.cl_dtheta_node, self.cl_dpos_neigh,
+                    np.float32(relax), self.cl_hb_pos, self.cl_hb_rot,
+                    self.cl_mom_pos, self.cl_mom_rot,
+                    np.float32(0.0), np.float32(0.0)
+                )
+
+                if callback is not None:
+                    callback(it * int(inner_iters) + inner)
+
+    def step_pbd_cluster_relax_ports(self, nnode, *, dt=0.1, outer_iters=1, inner_iters=10, port_iters=1, k_coll=1.0, relax_ports=0.7, bmix_coll=0.8, bmix_pos_ports=None, bmix_rot_ports=None, reset_hb=True, bbox_margin=0.5, callback=None, verbose=0):
+        """Split-path relaxation: cluster-local collisions, then global port constraints.
+
+        Notes:
+        - Collisions are solved in tiled local memory via the cluster kernels.
+        - Ports are solved using existing global Jacobi PD kernels (`compute_corrections_2d` + `apply_corrections_2d`).
+        - Heavy-ball state is kept independent:
+          - collisions: `prev_pos_cluster` + `mom_pos_cluster`
+          - ports: `hb_pos/hb_rot` + `mom_pos/mom_rot`
+        """
+        self._ensure_node_buffers(nnode)
+        self._ensure_cluster_buffers()
+
+        if int(port_iters) != 1:
+            raise ValueError(f"step_pbd_cluster_relax_ports: port_iters must be 1 (got {port_iters}); port iterations are controlled by inner_iters in the outer Jacobi loop")
+
+        natoms = int(self.num_atoms)
+        ng = int(self.num_groups)
+        nnode_i = np.int32(nnode)
+        natoms_i = np.int32(self.num_atoms)
+        dt_f = np.float32(dt)
+        relax_f = np.float32(relax_ports)
+
+        if bmix_pos_ports is None:
+            bmix_pos_ports = 0.0
+        if bmix_rot_ports is None:
+            bmix_rot_ports = 0.0
+        bmix_pos_ports_f = np.float32(bmix_pos_ports)
+        bmix_rot_ports_f = np.float32(bmix_rot_ports)
+
+        # Reset heavy-ball state for both solvers
+        if reset_hb:
+            # Collisions HB state
+            cl.enqueue_copy(self.queue, self.cl_prev_pos_cluster, self.cl_pos)
+            cl.enqueue_fill_buffer(self.queue, self.cl_mom_pos_cluster, np.float32(0.0), 0, natoms * 8)
+            # Ports HB state
+            self._k_init_hb_pos_2d(self.queue, (self.num_atoms,), None, natoms_i, self.cl_pos, self.cl_hb_pos)
+            self._k_init_hb_rot_2d(self.queue, (nnode,), None, nnode_i, self.cl_rot, self.cl_hb_rot)
+            cl.enqueue_fill_buffer(self.queue, self.cl_mom_pos, np.float32(0.0), 0, self.num_atoms * 8)
+            cl.enqueue_fill_buffer(self.queue, self.cl_mom_rot, np.float32(0.0), 0, nnode * 8)
+
+        # Heuristic margin for ghost discovery: use (2*Rmax)^2
+        rad = self.download_radius()
+        rmax = float(np.max(rad)) if rad.size else 0.0
+        margin_sq = np.float32((2.0 * rmax + float(bbox_margin)) ** 2)
+        bbox_margin_f = np.float32(bbox_margin)
+
+        # Work sizes
+        global_size = (ng * int(self.group_size),)
+        local_size = (int(self.group_size),)
+
+        for it in range(int(outer_iters)):
+            # 1) AABB per cluster
+            self._k_update_bboxes_2d(
+                self.queue, global_size, local_size,
+                self.cl_pos, self.cl_radius,
+                self.cl_bboxes_min, self.cl_bboxes_max,
+                cl.LocalMemory(int(self.group_size) * 16),
+                cl.LocalMemory(int(self.group_size) * 16),
+                np.int32(natoms)
+            )
+
+            # 2) Ghost discovery + neighbor remap (local indices)
+            self._k_build_local_topology_2d(
+                self.queue, global_size, local_size,
+                self.cl_pos,
+                self.cl_bboxes_min, self.cl_bboxes_max,
+                self.cl_neighs,
+                self.cl_ghost_indices, self.cl_ghost_counts, self.cl_cluster_counts,
+                self.cl_neighs_local,
+                np.int32(natoms), np.int32(ng),
+                margin_sq, bbox_margin_f
+            )
+
+            # 3) Cluster-local Jacobi collision solve - inner loop in Python for callback support
+            for inner in range(int(inner_iters)):
+                # Clear correction buffers (collision writes natoms; port uses nnode portions)
+                cl.enqueue_fill_buffer(self.queue, self.cl_dpos_node, np.float32(0), 0, self.num_atoms * 8)
+                cl.enqueue_fill_buffer(self.queue, self.cl_dtheta_node, np.float32(0), 0, nnode * 4)
+                cl.enqueue_fill_buffer(self.queue, self.cl_dpos_neigh, np.float32(0), 0, nnode * 4 * 8)
+
+                self._k_compute_collision_cluster(
+                    self.queue, global_size, local_size,
+                    self.cl_pos, self.cl_radius, self.cl_mass,
+                    self.cl_neighs_local,
+                    self.cl_ghost_indices, self.cl_ghost_counts, self.cl_cluster_counts,
+                    self.cl_dpos_node,
+                    np.int32(natoms),
+                    dt_f, np.float32(k_coll)
+                )
+
+                self._k_compute_corrections_2d(
+                    self.queue, (nnode,), None,
+                    nnode_i,
+                    self.cl_pos, self.cl_rot, self.cl_neighs,
+                    self.cl_port_local, self.cl_stiffness_flat,
+                    self.cl_mass,
+                    self.cl_dpos_node, self.cl_dtheta_node, self.cl_dpos_neigh,
+                    dt_f
+                )
+
+                self._k_apply_corrections_2d(
+                    self.queue, (self.num_atoms,), None,
+                    natoms_i, nnode_i,
+                    self.cl_pos, self.cl_rot, self.cl_bkSlots,
+                    self.cl_dpos_node, self.cl_dtheta_node, self.cl_dpos_neigh,
+                    relax_f, self.cl_hb_pos, self.cl_hb_rot,
+                    self.cl_mom_pos, self.cl_mom_rot,
+                    bmix_pos_ports_f, bmix_rot_ports_f
+                )
+
+                if callback is not None:
+                    callback(it * int(inner_iters) + inner)
 
     def step_xpbd(self, nnode, dt=0.1, iterations=10, reset_lambda=True, bmix_pos=None, bmix_rot=None, bmix=0.0, reset_hb=True, callback=None):
         """XPBD constraint projection step with compliance.
@@ -578,12 +1049,12 @@ class XPBD_2D:
 
         # Reset lambda if requested
         if reset_lambda:
-            self.prg.reset_lambda_2d(self.queue, (nnode * 4,), None, 
-                                     np.int32(nnode * 4), self.cl_lambda)
+            self._k_reset_lambda_2d(self.queue, (nnode * 4,), None, 
+                                    np.int32(nnode * 4), self.cl_lambda)
 
         if reset_hb:
-            self.prg.init_hb_pos_2d(self.queue, (self.num_atoms,), None, natoms, self.cl_pos, self.cl_hb_pos)
-            self.prg.init_hb_rot_2d(self.queue, (nnode,), None, nnode_i, self.cl_rot, self.cl_hb_rot)
+            self._k_init_hb_pos_2d(self.queue, (self.num_atoms,), None, natoms, self.cl_pos, self.cl_hb_pos)
+            self._k_init_hb_rot_2d(self.queue, (nnode,), None, nnode_i, self.cl_rot, self.cl_hb_rot)
             # Initialize momentum buffers to zero
             cl.enqueue_fill_buffer(self.queue, self.cl_mom_pos, np.float32(0.0), 0, self.num_atoms * 8)
             cl.enqueue_fill_buffer(self.queue, self.cl_mom_rot, np.float32(0.0), 0, nnode * 8)
@@ -595,7 +1066,7 @@ class XPBD_2D:
             cl.enqueue_fill_buffer(self.queue, self.cl_dpos_neigh, np.float32(0), 0, nnode * 4 * 8)
             
             # Compute XPBD corrections
-            self.prg.compute_xpbd_corrections_2d(
+            self._k_compute_xpbd_corrections_2d(
                 self.queue, (nnode,), None,
                 nnode_i,
                 self.cl_pos, self.cl_rot, self.cl_neighs,
@@ -607,8 +1078,8 @@ class XPBD_2D:
             )
             
             # Gather and apply with momentum buffers
-            self.prg.gather_and_apply_xpbd_2d(
-                self.queue, (self.num_atoms,), None,
+            self._k_gather_and_apply_xpbd_2d(
+                self.queue, (natoms,), None,
                 natoms, nnode_i,
                 self.cl_pos, self.cl_rot, self.cl_bkSlots,
                 self.cl_dpos_neigh, self.cl_dpos_node, self.cl_dtheta_node,
@@ -645,12 +1116,12 @@ class XPBD_2D:
         bmix_rot_f = np.float32(bmix_rot)
 
         if reset_lambda:
-            self.prg.reset_lambda_2d(self.queue, (nnode * 4,), None,
+            self._k_reset_lambda_2d(self.queue, (nnode * 4,), None,
                                      np.int32(nnode * 4), self.cl_lambda)
 
         if reset_hb:
-            self.prg.init_hb_pos_2d(self.queue, (self.num_atoms,), None, natoms, self.cl_pos, self.cl_hb_pos)
-            self.prg.init_hb_rot_2d(self.queue, (nnode,), None, nnode_i, self.cl_rot, self.cl_hb_rot)
+            self._k_init_hb_pos_2d(self.queue, (self.num_atoms,), None, natoms, self.cl_pos, self.cl_hb_pos)
+            self._k_init_hb_rot_2d(self.queue, (nnode,), None, nnode_i, self.cl_rot, self.cl_hb_rot)
             cl.enqueue_fill_buffer(self.queue, self.cl_mom_pos, np.float32(0.0), 0, self.num_atoms * 8)
             cl.enqueue_fill_buffer(self.queue, self.cl_mom_rot, np.float32(0.0), 0, nnode * 8)
 
@@ -661,14 +1132,13 @@ class XPBD_2D:
             cl.enqueue_fill_buffer(self.queue, self.cl_dpos_neigh, np.float32(0), 0, nnode * 4 * 8)
 
             # Compute XPBD corrections with DEBUG - write to buffers instead of printf
-            self.prg.compute_xpbd_corrections_2d_debug(
+            self._k_compute_xpbd_corrections_2d_debug(
                 self.queue, (nnode,), None,
                 nnode_i,
                 self.cl_pos, self.cl_rot, self.cl_neighs,
-                self.cl_stiffness, self.cl_port_local,
-                self.cl_mass,
-                self.cl_lambda, self.cl_dpos_neigh,
-                self.cl_dpos_node, self.cl_dtheta_node,
+                self.cl_stiffness_flat, self.cl_port_local, self.cl_mass,
+                self.cl_lambda,
+                self.cl_dpos_neigh, self.cl_dpos_node, self.cl_dtheta_node,
                 dt_f,
                 np.int32(itr),
                 np.int32(max_debug_steps),
