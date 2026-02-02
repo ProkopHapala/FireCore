@@ -381,7 +381,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Test XPBD_2D simulator')
     #parser.add_argument('--method',     default='force', choices=['force', 'xpbd_md', 'xpbd_relax'])
     #parser.add_argument('--method',     default='xpbd_relax', choices=['force', 'xpbd_md', 'xpbd_relax', 'pbd_relax'])
-    parser.add_argument('--method',     default='pbd_relax', choices=['force', 'xpbd_md', 'xpbd_relax', 'pbd_relax', 'pbd_md', 'pbd_cluster_relax', 'pbd_cluster_relax_ports', 'pbd_cluster_fused'])
+    parser.add_argument('--method',     default='pbd_relax', choices=['force', 'pbd_relax', 'pbd_md', 'pbd_cluster_relax', 'pbd_cluster_relax_ports', 'pbd_cluster_fused', 'xpbd_md', 'xpbd_relax',])
 
     parser.add_argument("--molecule",   type=str, default="../../cpp/common_resources/xyz/pentacene.xyz", help="Path to molecule file (.xyz, .mol, .mol2)")
     #parser.add_argument("--molecule",   type=str, default="../../cpp/common_resources/xyz/pyrrol.xyz", help="Path to molecule file (.xyz, .mol, .mol2)")
