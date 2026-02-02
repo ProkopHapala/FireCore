@@ -383,7 +383,9 @@ if __name__ == '__main__':
     #parser.add_argument('--method',     default='xpbd_relax', choices=['force', 'xpbd_md', 'xpbd_relax', 'pbd_relax'])
     parser.add_argument('--method',     default='pbd_relax', choices=['force', 'pbd_relax', 'pbd_md', 'pbd_cluster_relax', 'pbd_cluster_relax_ports', 'pbd_cluster_fused', 'xpbd_md', 'xpbd_relax',])
 
-    parser.add_argument("--molecule",   type=str, default="../../cpp/common_resources/xyz/pentacene.xyz", help="Path to molecule file (.xyz, .mol, .mol2)")
+    parser.add_argument("--molecule",   type=str, default="../../cpp/common_resources/xyz/pentacene.xyz", help="Path to molecule file (.xyz, .mol, .mol2) or preset name (hcooh,pyrrole,guanine,pentacene)")
+    parser.add_argument("--xyz",        type=str, default=None, help="Alias for --molecule (kept for compatibility)")
+    parser.add_argument("--preset",     type=str, default=None, choices=['h2o','hcooh','pyrrole','guanine','pentacene'], help="Preset molecule name (overrides --molecule/--xyz)")
     #parser.add_argument("--molecule",   type=str, default="../../cpp/common_resources/xyz/pyrrol.xyz", help="Path to molecule file (.xyz, .mol, .mol2)")
 
 
@@ -418,14 +420,39 @@ if __name__ == '__main__':
     parser.add_argument('--cluster_group_size', type=int, default=64, help='Group size for pack_fill strategy (ignored for one_molecule_per_group unless override)')
     
     args = parser.parse_args()
-    
-    print(f"XPBD_2D Test: method={args.method}, molecule={args.molecule}")
+
+    def resolve_molecule_path(args):
+        if args.preset is not None:
+            key = str(args.preset).lower()
+        elif args.xyz is not None:
+            key = str(args.xyz)
+        else:
+            key = str(args.molecule)
+        key_l = key.lower()
+        presets = {
+            'h2o':       '../../cpp/common_resources/xyz/H2O.xyz',
+            'hcooh':     '../../cpp/common_resources/xyz/HCOOH.xyz',
+            'pyrrole':   '../../cpp/common_resources/xyz/pyrrol.xyz',
+            'pyrrol':    '../../cpp/common_resources/xyz/pyrrol.xyz',
+            'guanine':   '../../cpp/common_resources/xyz/guanine.xyz',
+            'pentacene': '../../cpp/common_resources/xyz/pentacene.xyz',
+        }
+        if key_l in presets:
+            key = presets[key_l]
+        mol_path = os.path.abspath(os.path.join(os.path.dirname(__file__), key))
+        if not os.path.exists(mol_path):
+            raise FileNotFoundError(f"molecule file not found: {mol_path} (from '{key}')")
+        return mol_path
+
+    mol_path = resolve_molecule_path(args)
+
+    print(f"XPBD_2D Test: method={args.method}, molecule={mol_path}")
 
     if args.noshow:
         plt.ioff()
 
     from pyBall.AtomicSystem import AtomicSystem
-    mol = AtomicSystem(fname=args.molecule)
+    mol = AtomicSystem(fname=mol_path)
 
     if int(args.copies) < 1:
         raise ValueError(f"--copies must be >= 1 (got {args.copies})")
@@ -512,7 +539,7 @@ if __name__ == '__main__':
         print("\n=== INITIAL SETUP SUMMARY ===")
         print(f"n_atoms={n_atoms} nnode={nnode} method={args.method}")
         print(f"dt={args.dt} inner_iters={args.inner_iters} iters={args.iters} relax={args.relax} bmix={args.bmix} k_coll={args.k_coll} coll_radius={args.coll_radius}")
-        print(f"molecule={args.molecule}")
+        print(f"molecule={mol_path}")
         print("=== END SUMMARY ===")
 
     if utils.VERBOSE >= 1:

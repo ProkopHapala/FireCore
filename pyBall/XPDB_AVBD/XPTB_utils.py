@@ -3,6 +3,200 @@ import os
 import numpy as np
 
 
+def invert_permutation(perm):
+    perm = np.asarray(perm, dtype=np.int32)
+    if perm.ndim != 1:
+        raise ValueError(f"invert_permutation: perm.ndim={perm.ndim} expected 1")
+    inv = np.empty_like(perm)
+    inv[perm] = np.arange(perm.size, dtype=np.int32)
+    return inv
+
+
+def apply_permutation_to_bonds(bonds, perm_inv):
+    """Map bonds (old indices) to new indices using perm_inv (new_idx_of_old)."""
+    perm_inv = np.asarray(perm_inv, dtype=np.int32)
+    out = []
+    for (i, j) in bonds:
+        i = int(i); j = int(j)
+        ni = int(perm_inv[i])
+        nj = int(perm_inv[j])
+        if ni == nj:
+            continue
+        if ni < nj:
+            out.append((ni, nj))
+        else:
+            out.append((nj, ni))
+    return sorted(set(out))
+
+
+def pack_molecules_contiguous(
+    molecules,
+    *,
+    group_size=64,
+    nodes_first=True,
+    pad_to_group=True,
+):
+    """Pack multiple molecules into contiguous groups of size group_size.
+
+    This is a host-side helper to prepare data for OpenCL kernels which assume:
+    - atoms are in contiguous clusters (workgroups)
+    - within each cluster: node atoms first, then caps, then optional padding
+
+    Parameters
+    ----------
+    molecules : list of dict
+        Each dict must provide:
+        - 'elems': list[str] length n
+        - 'pos': (n,3) float
+        - 'bonds': list[(i,j)] within molecule indexing [0..n)
+        - 'nnode': int (number of node atoms within molecule)
+    group_size : int
+        Workgroup size used by kernels.
+    nodes_first : bool
+        If True, keep node atoms first within each molecule.
+    pad_to_group : bool
+        If True, add dummy atoms (- padding) so each molecule occupies exactly group_size.
+
+    Returns
+    -------
+    packed : dict
+        - 'elems': list[str] length natoms_total
+        - 'pos': (natoms_total,3) float32
+        - 'group_id': (natoms_total,) int32
+        - 'is_padding': (natoms_total,) bool
+        - 'mol_of_atom': (natoms_total,) int32
+        - 'perm_old_to_new': list[np.ndarray] per molecule
+        - 'perm_new_to_old': list[np.ndarray] per molecule
+        - 'bonds': list[(i,j)] in packed global indexing
+        - 'nnode_group': (ngroups,) int32
+        - 'natoms_total': int
+        - 'group_size': int
+    """
+    if int(group_size) <= 0:
+        raise ValueError(f"pack_molecules_contiguous: invalid group_size={group_size}")
+
+    elems_all = []
+    pos_all = []
+    group_id_all = []
+    is_pad_all = []
+    mol_of_atom_all = []
+    bonds_all = []
+    nnode_group = []
+    perm_old_to_new_list = []
+    perm_new_to_old_list = []
+
+    base = 0
+    for imol, mol in enumerate(molecules):
+        if not isinstance(mol, dict):
+            raise ValueError(f"pack_molecules_contiguous: molecule[{imol}] is not dict")
+        elems = mol.get('elems', None)
+        pos = mol.get('pos', None)
+        bonds = mol.get('bonds', None)
+        nnode = int(mol.get('nnode', -1))
+        if elems is None or pos is None or bonds is None:
+            raise ValueError(f"pack_molecules_contiguous: molecule[{imol}] must contain elems,pos,bonds")
+        pos = np.asarray(pos, dtype=np.float32)
+        n = int(pos.shape[0])
+        if pos.shape != (n, 3):
+            raise ValueError(f"pack_molecules_contiguous: molecule[{imol}] pos.shape={pos.shape} expected (n,3)")
+        if len(elems) != n:
+            raise ValueError(f"pack_molecules_contiguous: molecule[{imol}] len(elems)={len(elems)} != n={n}")
+        if nnode < 0 or nnode > n:
+            raise ValueError(f"pack_molecules_contiguous: molecule[{imol}] nnode={nnode} out of range [0,{n}]")
+
+        if pad_to_group and (n > int(group_size)):
+            raise ValueError(f"pack_molecules_contiguous: molecule[{imol}] n={n} > group_size={group_size}; increase group_size or split molecule")
+
+        # local reorder within molecule: nodes first, then caps
+        # Rules:
+        # - if mol provides explicit 'perm', we trust it (after validation)
+        # - otherwise, if nodes_first, we infer node_mask from bond degree (>1), and fail if count != nnode
+        # - otherwise identity
+        perm_override = mol.get('perm', None)
+        if perm_override is not None:
+            perm = np.asarray(perm_override, dtype=np.int32)
+            if perm.shape != (n,):
+                raise ValueError(f"pack_molecules_contiguous: molecule[{imol}] perm.shape={perm.shape} expected ({n},)")
+            if np.any(perm < 0) or np.any(perm >= n):
+                raise ValueError(f"pack_molecules_contiguous: molecule[{imol}] perm has out-of-range entries")
+            if len(set(int(x) for x in perm.tolist())) != n:
+                raise ValueError(f"pack_molecules_contiguous: molecule[{imol}] perm is not a permutation")
+        elif nodes_first:
+            deg = np.zeros((n,), dtype=np.int32)
+            for (i, j) in bonds:
+                i = int(i); j = int(j)
+                if i < 0 or i >= n or j < 0 or j >= n:
+                    raise ValueError(f"pack_molecules_contiguous: molecule[{imol}] bond {(i,j)} out of range [0,{n})")
+                if i == j:
+                    continue
+                deg[i] += 1
+                deg[j] += 1
+            node_mask = deg > 1
+            nnode_inferred = int(np.sum(node_mask))
+            if nnode_inferred != nnode:
+                raise ValueError(f"pack_molecules_contiguous: molecule[{imol}] inferred nnode={nnode_inferred} from degree>1 but provided nnode={nnode}; provide mol['perm'] if you want a custom node/cap split")
+            perm = np.concatenate([np.where(node_mask)[0], np.where(~node_mask)[0]]).astype(np.int32, copy=False)
+        else:
+            perm = np.arange(n, dtype=np.int32)
+
+        perm_inv = invert_permutation(perm)
+        perm_old_to_new_list.append(perm_inv)
+        perm_new_to_old_list.append(perm)
+
+        pos_loc = pos[perm]
+        elems_loc = [elems[int(i)] for i in perm.tolist()]
+        bonds_loc = apply_permutation_to_bonds(bonds, perm_inv)
+
+        # append real atoms
+        ng = int(base // group_size)
+        elems_all += elems_loc
+        pos_all.append(pos_loc)
+        group_id_all += [ng] * n
+        is_pad_all += [False] * n
+        mol_of_atom_all += [imol] * n
+        for (i, j) in bonds_loc:
+            bonds_all.append((base + int(i), base + int(j)))
+
+        # padding
+        n_pad = 0
+        if pad_to_group:
+            n_pad = int(group_size) - n
+        if n_pad > 0:
+            elems_all += ['X'] * n_pad
+            pos_all.append(np.zeros((n_pad, 3), dtype=np.float32))
+            group_id_all += [ng] * n_pad
+            is_pad_all += [True] * n_pad
+            mol_of_atom_all += [imol] * n_pad
+
+        nnode_group.append(nnode)
+        base += n + n_pad
+
+    pos_all = np.vstack(pos_all) if len(pos_all) else np.zeros((0, 3), dtype=np.float32)
+    group_id_all = np.asarray(group_id_all, dtype=np.int32)
+    is_pad_all = np.asarray(is_pad_all, dtype=bool)
+    mol_of_atom_all = np.asarray(mol_of_atom_all, dtype=np.int32)
+    nnode_group = np.asarray(nnode_group, dtype=np.int32)
+
+    if pos_all.shape[0] != len(elems_all):
+        raise RuntimeError(f"pack_molecules_contiguous: internal size mismatch pos={pos_all.shape[0]} elems={len(elems_all)}")
+    if (pos_all.shape[0] % int(group_size)) != 0:
+        raise RuntimeError(f"pack_molecules_contiguous: natoms_total={pos_all.shape[0]} not divisible by group_size={group_size}")
+
+    return {
+        'elems': elems_all,
+        'pos': pos_all.astype(np.float32, copy=False),
+        'group_id': group_id_all,
+        'is_padding': is_pad_all,
+        'mol_of_atom': mol_of_atom_all,
+        'perm_old_to_new': perm_old_to_new_list,
+        'perm_new_to_old': perm_new_to_old_list,
+        'bonds': bonds_all,
+        'nnode_group': nnode_group,
+        'natoms_total': int(pos_all.shape[0]),
+        'group_size': int(group_size),
+    }
+
+
 def as_unit(v):
     v = np.array(v, dtype=np.float32)
     n = float(np.linalg.norm(v))
@@ -222,7 +416,9 @@ class LivePortViz:
     """Lightweight live 3D updater that keeps camera/view persistent."""
     def __init__(self, elems):
         import matplotlib.pyplot as plt
+        from mpl_toolkits.mplot3d import proj3d
         self.plt = plt
+        self.proj3d = proj3d
         self.elems = elems
         plt.ion()
         self.fig = plt.figure(figsize=(6, 6))
@@ -236,6 +432,8 @@ class LivePortViz:
         self.ax.set_xlabel('x'); self.ax.set_ylabel('y'); self.ax.set_zlabel('z')
         self.fig.canvas.draw()
         self.fig.show()
+        self._last_pos = None
+        self._last_proj = None
 
     def ensure_lines(self, total_ports):
         while len(self.lines) < total_ports:
@@ -244,6 +442,7 @@ class LivePortViz:
 
     def update(self, pos, pneigh, port_n, force=None, title=""):
         self.ax.set_title(title)
+        self._last_pos = np.asarray(pos, dtype=np.float32)
         self.sc._offsets3d = (pos[:, 0], pos[:, 1], pos[:, 2])
         for i, lab in enumerate(self.labels):
             lab.set_position((pos[i, 0], pos[i, 1]))
@@ -267,6 +466,78 @@ class LivePortViz:
             f = force[:, :3]
             self.quiver = self.ax.quiver(pos[:, 0], pos[:, 1], pos[:, 2], f[:, 0], f[:, 1], f[:, 2], length=0.1, normalize=True, color='r')
         self.plt.pause(0.001)
+
+
+def attach_picker_3d(viz, sim, *, pick_radius_px=20, verbose=0):
+    if viz is None:
+        raise ValueError('attach_picker_3d: viz is None')
+    if sim is None:
+        raise ValueError('attach_picker_3d: sim is None')
+    if not hasattr(viz, '_last_pos'):
+        raise ValueError('attach_picker_3d: viz has no _last_pos')
+
+    pick = {"idx": None, "active": False, "mouse": np.array([0.0, 0.0], dtype=np.float32), "mouse3": np.array([0.0, 0.0, 0.0], dtype=np.float32), "_zproj": None}
+
+    def _project_all(pos):
+        ax = viz.ax
+        M = ax.get_proj()
+        x2, y2, z2 = viz.proj3d.proj_transform(pos[:, 0], pos[:, 1], pos[:, 2], M)
+        pts2 = np.vstack([x2, y2]).T
+        pts_px = ax.transData.transform(pts2)
+        return pts_px, z2
+
+    def on_press(event):
+        if event.inaxes != viz.ax:
+            return
+        if viz._last_pos is None:
+            return
+        pos = np.asarray(viz._last_pos, dtype=np.float32)
+        if pos.size == 0:
+            return
+        pts_px, z2 = _project_all(pos)
+        mouse_px = np.array([event.x, event.y], dtype=np.float32)
+        d2 = np.sum((pts_px - mouse_px[None, :]) ** 2, axis=1)
+        i_min = int(np.argmin(d2))
+        if d2[i_min] <= float(pick_radius_px) ** 2:
+            pick["idx"] = i_min
+            pick["active"] = True
+            pick["mouse"] = mouse_px
+            pick["_zproj"] = float(z2[i_min])
+            pick["mouse3"] = pos[i_min].copy()
+            if int(verbose) > 0:
+                print(f"[DEBUG] pick3d press idx={i_min} dpx={np.sqrt(float(d2[i_min])):.2f}")
+
+    def on_release(event):
+        if pick["active"] and int(verbose) > 0:
+            print(f"[DEBUG] pick3d release idx={pick['idx']}")
+        pick["active"] = False
+        pick["idx"] = None
+        pick["_zproj"] = None
+
+    def on_motion(event):
+        if not pick["active"]:
+            return
+        if event.inaxes != viz.ax:
+            return
+        if pick.get("_zproj", None) is None:
+            return
+        # Convert mouse pixels -> projection coords -> data coords at fixed projected depth
+        mouse_px = np.array([event.x, event.y], dtype=np.float32)
+        pick["mouse"] = mouse_px
+        ax = viz.ax
+        xy_proj = ax.transData.inverted().transform(mouse_px)
+        try:
+            x, y, z = viz.proj3d.inv_transform(float(xy_proj[0]), float(xy_proj[1]), float(pick["_zproj"]), ax.get_proj())
+        except Exception as e:
+            raise RuntimeError(f"attach_picker_3d: proj3d.inv_transform failed: {e}")
+        pick["mouse3"] = np.array([x, y, z], dtype=np.float32)
+        ia = int(pick["idx"])
+        sim.set_atom_pos(ia, pick["mouse3"])
+
+    viz.fig.canvas.mpl_connect('button_press_event', on_press)
+    viz.fig.canvas.mpl_connect('button_release_event', on_release)
+    viz.fig.canvas.mpl_connect('motion_notify_event', on_motion)
+    return pick
 
 
 def plot_state_with_ports(elems, pos, pneigh, port_n, force=None, *, title=""):

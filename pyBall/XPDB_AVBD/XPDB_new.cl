@@ -114,6 +114,463 @@ __kernel void clear_rigid_node_buffers(
 }
 
 
+// ================================================================
+//  Clustered rigid solver (3D) : collisions + rigid ports (Jacobi)
+//  Mirrors XPBD_2D clustered workflow but uses float3 + quaternion.
+// ================================================================
+
+__kernel void update_bboxes_rigid(
+    __global const float4* curr_pos,
+    __global const float*  radius,
+    __global float4*       bboxes_min,
+    __global float4*       bboxes_max,
+    __local float4*        local_min,
+    __local float4*        local_max,
+    const int num_atoms
+) {
+    int lid = get_local_id(0);
+    int gid = get_global_id(0);
+    int group_id = get_group_id(0);
+
+    float4 p = (gid < num_atoms) ? curr_pos[gid] : (float4)(0.0f);
+    float  r = (gid < num_atoms) ? radius[gid]   : 0.0f;
+    float invM = (gid < num_atoms) ? curr_pos[gid].w : 0.0f;
+    if ((gid < num_atoms) && (invM > 1e-12f) && (r > 0.0f)) {
+        local_min[lid] = (float4)(p.x - r, p.y - r, p.z - r, 0.0f);
+        local_max[lid] = (float4)(p.x + r, p.y + r, p.z + r, 0.0f);
+    } else {
+        local_min[lid] = (float4)(1e10f);
+        local_max[lid] = (float4)(-1e10f);
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    for (int stride = GROUP_SIZE / 2; stride > 0; stride >>= 1) {
+        if (lid < stride) {
+            local_min[lid] = min(local_min[lid], local_min[lid + stride]);
+            local_max[lid] = max(local_max[lid], local_max[lid + stride]);
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    if (lid == 0) {
+        bboxes_min[group_id] = local_min[0];
+        bboxes_max[group_id] = local_max[0];
+    }
+}
+
+
+__kernel void build_local_topology_rigid(
+    __global const float4* curr_pos,
+    __global const float4* bboxes_min,
+    __global const float4* bboxes_max,
+    __global const int4*   neighs_global,
+    __global int*          ghost_indices_flat,
+    __global int*          ghost_counts,
+    __global int4*         neighs_local,
+    const int num_atoms,
+    const int num_groups,
+    const float margin_sq,
+    const float bbox_margin
+) {
+    int lid = get_local_id(0);
+    int grp = get_group_id(0);
+
+    __local int   l_ghost_list[MAX_GHOSTS];
+    __local int   l_ghost_counter;
+    __local float4 l_my_bbox_min;
+    __local float4 l_my_bbox_max;
+
+    if (lid == 0) {
+        l_ghost_counter = 0;
+        l_my_bbox_min = bboxes_min[grp];
+        l_my_bbox_max = bboxes_max[grp];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    float4 my_min = l_my_bbox_min;
+    float4 my_max = l_my_bbox_max;
+
+    for (int other_g = 0; other_g < num_groups; other_g++) {
+        if (other_g == grp) continue;
+
+        float4 o_min = bboxes_min[other_g];
+        float4 o_max = bboxes_max[other_g];
+
+        bool overlap = false;
+        if (my_max.x + bbox_margin >= o_min.x && my_min.x <= o_max.x + bbox_margin &&
+            my_max.y + bbox_margin >= o_min.y && my_min.y <= o_max.y + bbox_margin &&
+            my_max.z + bbox_margin >= o_min.z && my_min.z <= o_max.z + bbox_margin) {
+            overlap = true;
+        }
+        if (overlap) {
+            int global_idx = other_g * GROUP_SIZE + lid;
+            if (global_idx < num_atoms) {
+                float4 p = curr_pos[global_idx];
+                float dx = max(0.0f, max(my_min.x - p.x, p.x - my_max.x));
+                float dy = max(0.0f, max(my_min.y - p.y, p.y - my_max.y));
+                float dz = max(0.0f, max(my_min.z - p.z, p.z - my_max.z));
+                float dist_sq = dx*dx + dy*dy + dz*dz;
+                if (dist_sq < margin_sq) {
+                    int slot = atomic_inc(&l_ghost_counter);
+                    if (slot < MAX_GHOSTS) {
+                        l_ghost_list[slot] = global_idx;
+                    }
+                }
+            }
+        }
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    int total_ghosts = min(l_ghost_counter, MAX_GHOSTS);
+    int base_offset = grp * MAX_GHOSTS;
+    for (int i = lid; i < total_ghosts; i += GROUP_SIZE) {
+        ghost_indices_flat[base_offset + i] = l_ghost_list[i];
+    }
+    if (lid == 0) ghost_counts[grp] = total_ghosts;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    int my_global_id = grp * GROUP_SIZE + lid;
+    if (my_global_id < num_atoms) {
+        int4 ng = neighs_global[my_global_id];
+        int outv[4];
+        int* inb = (int*)&ng;
+        for (int k = 0; k < 4; k++) {
+            int t = inb[k];
+            if (t < 0) { outv[k] = -1; continue; }
+            int tgrp = t / GROUP_SIZE;
+            if (tgrp == grp) {
+                outv[k] = t % GROUP_SIZE;
+            } else {
+                int found = -1;
+                for (int g = 0; g < total_ghosts; g++) {
+                    if (l_ghost_list[g] == t) { found = GROUP_SIZE + g; break; }
+                }
+                outv[k] = found;
+            }
+        }
+        neighs_local[my_global_id] = (int4)(outv[0], outv[1], outv[2], outv[3]);
+    }
+}
+
+
+__kernel void compute_collision_cluster_rigid(
+    __global const float4* pos,
+    __global const float*  radius,
+    __global const int4*   neighs_local,
+    __global const int*    ghost_indices_flat,
+    __global const int*    ghost_counts,
+    __global float4*       dpos_coll,
+    const int num_atoms,
+    const float k_coll
+) {
+    int lid = get_local_id(0);
+    int grp = get_group_id(0);
+    int my_global_id = grp * GROUP_SIZE + lid;
+
+    __local float4 l_pos[GROUP_SIZE + MAX_GHOSTS];
+    __local float  l_rad[GROUP_SIZE + MAX_GHOSTS];
+
+    float4 pi4 = (my_global_id < num_atoms) ? pos[my_global_id] : (float4)(0.0f);
+    float invMi = (my_global_id < num_atoms) ? pi4.w : 0.0f;
+    float ri = (my_global_id < num_atoms) ? radius[my_global_id] : 0.0f;
+    l_pos[lid] = pi4;
+    l_rad[lid] = ri;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    int g_count = ghost_counts[grp];
+    int g_offset = grp * MAX_GHOSTS;
+    for (int k = lid; k < g_count; k += GROUP_SIZE) {
+        int gid = ghost_indices_flat[g_offset + k];
+        l_pos[GROUP_SIZE + k] = pos[gid];
+        l_rad[GROUP_SIZE + k] = radius[gid];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (my_global_id < num_atoms) {
+        if (invMi <= 1e-12f || ri <= 0.0f || k_coll == 0.0f) {
+            dpos_coll[my_global_id] = (float4)(0.0f);
+            return;
+        }
+        float3 p = l_pos[lid].xyz;
+        float w_i = invMi;
+
+        float3 sum = (float3)(0.0f);
+        int4 ng = neighs_local[my_global_id];
+        int* nb = (int*)&ng;
+
+        int n_ext = GROUP_SIZE + g_count;
+        for (int j = 0; j < n_ext; j++) {
+            if (j == lid) continue;
+
+            bool is_bonded = false;
+            for (int kk = 0; kk < 4; kk++) {
+                int bj = nb[kk];
+                if (bj < 0) continue;
+                if (bj == j) { is_bonded = true; break; }
+            }
+            if (is_bonded) continue;
+
+            float4 pj4 = l_pos[j];
+            float invMj = pj4.w;
+            float rj = l_rad[j];
+            if (invMj <= 1e-12f || rj <= 0.0f) continue;
+            float3 q = pj4.xyz;
+            float3 d = p - q;
+            float d2 = dot(d, d);
+            float rsum = ri + rj;
+            float r2 = rsum * rsum;
+            if (d2 < r2 && d2 > 1e-16f) {
+                float dist = sqrt(d2);
+                float3 n = d / dist;
+                float w_j = invMj;
+                float w_tot = w_i + w_j + 1e-12f;
+                float dl = (rsum - dist) / w_tot;
+                // same double-counting rule as 2D: each pair seen twice -> halve
+                dl *= 0.5f;
+                sum += n * (dl * w_i);
+            }
+        }
+        dpos_coll[my_global_id] = (float4)(sum, 0.0f);
+    }
+}
+
+
+__kernel void compute_corrections_rigid_ports(
+    const int nnode,
+    __global const float4* pos,
+    __global const float4* quat,
+    __global const int4*   neighs,
+    __global const float4* port_local,
+    __global const float*  stiffness_flat,
+    __global float4*       dpos_node,
+    __global float4*       drot_node,
+    __global float4*       dpos_neigh,
+    const float dt,
+    const int   accumulate_dpos
+) {
+    int i = get_global_id(0);
+    if (i >= nnode) return;
+
+    float3 xi = pos[i].xyz;
+    float4 qi = quat[i];
+
+    float invMi = pos[i].w;
+    float mi = (invMi > 1e-12f) ? 1.0f / invMi : 1e12f;
+    float invI = 1.0f / (0.4f * mi + 1e-12f);
+    float dt2 = dt * dt + 1e-16f;
+
+    float3 sum_dpos = accumulate_dpos ? dpos_node[i].xyz : (float3)(0.0f);
+    float3 sum_dtheta = (float3)(0.0f);
+
+    int4 ng = neighs[i];
+    int* neighbors = (int*)&ng;
+    int i4 = i * 4;
+
+    for (int k = 0; k < 4; k++) {
+        int idx = i4 + k;
+        dpos_neigh[idx] = (float4)(0.0f);
+        int j = neighbors[k];
+        if (j < 0) continue;
+        float K = stiffness_flat[idx];
+        if (K <= 0.0f) continue;
+
+        float3 r_local = port_local[idx].xyz;
+        float3 r_arm = quat_rotate(qi, r_local);
+        float3 tip = xi + r_arm;
+
+        float3 xj = pos[j].xyz;
+        float invMj = pos[j].w;
+        if (invMj <= 1e-12f) continue;
+
+        float3 diff = xj - tip;
+        float dist2 = dot(diff, diff);
+        if (dist2 < 1e-16f) continue;
+        float dist = sqrt(dist2);
+        float3 n = diff / dist;
+
+        float w_i = invMi;
+        float w_j = invMj;
+        float3 rxn = cross(r_arm, n);
+        float w_ang = dot(rxn, rxn) * invI;
+        float alpha = 1.0f / (K * dt2);
+        float w_total = w_i + w_j + w_ang + alpha + 1e-12f;
+        float impulse_mag = dist / w_total;
+        impulse_mag *= 0.5f;
+
+        float3 P = n * impulse_mag;
+        sum_dpos += P * w_i;
+        sum_dtheta += cross(r_arm, P) * invI;
+        dpos_neigh[idx] = (float4)(-P * w_j, 0.0f);
+    }
+
+    dpos_node[i] = (float4)(sum_dpos, 0.0f);
+    drot_node[i] = (float4)(sum_dtheta, 0.0f);
+}
+
+
+__kernel void compute_ports_cluster_rigid(
+    __global const float4* pos,
+    __global const float4* quat,
+    __global const float*  radius,
+    __global const int4*   neighs_local,
+    __global const int*    ghost_indices_flat,
+    __global const int*    ghost_counts,
+    __global const float4* port_local,
+    __global const float*  stiffness_flat,
+    __global float4*       dpos_node,
+    __global float4*       drot_node,
+    __global float4*       dpos_neigh,
+    const int num_atoms,
+    const int nnode_per_group,
+    const float dt,
+    const int accumulate_dpos
+) {
+    int lid = get_local_id(0);
+    int grp = get_group_id(0);
+    int my_global_id = grp * GROUP_SIZE + lid;
+
+    __local float4 l_pos[GROUP_SIZE + MAX_GHOSTS];
+    __local float  l_rad[GROUP_SIZE + MAX_GHOSTS];
+
+    float4 pi4 = (my_global_id < num_atoms) ? pos[my_global_id] : (float4)(0.0f);
+    l_pos[lid] = pi4;
+    l_rad[lid] = (my_global_id < num_atoms) ? radius[my_global_id] : 0.0f;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    int g_count = ghost_counts[grp];
+    int g_offset = grp * MAX_GHOSTS;
+    for (int k = lid; k < g_count; k += GROUP_SIZE) {
+        int gid = ghost_indices_flat[g_offset + k];
+        l_pos[GROUP_SIZE + k] = pos[gid];
+        l_rad[GROUP_SIZE + k] = radius[gid];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (my_global_id >= num_atoms) return;
+    if (lid >= nnode_per_group) return;
+    float invMi = pi4.w;
+    if (invMi <= 1e-12f) return;
+
+    int inode = grp * nnode_per_group + lid;
+
+    float3 xi = pi4.xyz;
+    float4 qi = quat[my_global_id];
+
+    float mi = 1.0f / invMi;
+    float invI = 1.0f / (0.4f * mi + 1e-12f);
+    float dt2 = dt * dt + 1e-16f;
+
+    float3 sum_dpos = (float3)(0.0f);
+    float3 sum_dtheta = (float3)(0.0f);
+    if (accumulate_dpos) {
+        sum_dpos = dpos_node[inode].xyz;
+    }
+
+    int4 ng = neighs_local[my_global_id];
+    int* neighbors = (int*)&ng;
+    int i4 = inode * 4;
+
+    for (int k = 0; k < 4; k++) {
+        int idx = i4 + k;
+        dpos_neigh[idx] = (float4)(0.0f);
+        int jloc = neighbors[k];
+        if (jloc < 0) continue;
+        float K = stiffness_flat[idx];
+        if (K <= 0.0f) continue;
+
+        float invMj;
+        float3 xj;
+        if (jloc < (GROUP_SIZE + g_count)) {
+            xj = l_pos[jloc].xyz;
+            invMj = l_pos[jloc].w;
+        } else {
+            continue;
+        }
+        if (invMj <= 1e-12f) continue;
+
+        float3 r_local = port_local[idx].xyz;
+        float3 r_arm = quat_rotate(qi, r_local);
+        float3 tip = xi + r_arm;
+
+        float3 diff = xj - tip;
+        float dist2 = dot(diff, diff);
+        if (dist2 < 1e-16f) continue;
+        float dist = sqrt(dist2);
+        float3 n = diff / dist;
+
+        float w_i = invMi;
+        float w_j = invMj;
+        float3 rxn = cross(r_arm, n);
+        float w_ang = dot(rxn, rxn) * invI;
+        float alpha = 1.0f / (K * dt2);
+        float w_total = w_i + w_j + w_ang + alpha + 1e-12f;
+        float impulse_mag = dist / w_total;
+        impulse_mag *= 0.5f;
+
+        float3 P = n * impulse_mag;
+        sum_dpos += P * w_i;
+        sum_dtheta += cross(r_arm, P) * invI;
+        dpos_neigh[idx] = (float4)(-P * w_j, 0.0f);
+    }
+
+    dpos_node[inode] = (float4)(sum_dpos, 0.0f);
+    drot_node[inode] = (float4)(sum_dtheta, 0.0f);
+}
+
+
+__kernel void apply_corrections_rigid_ports(
+    const int natoms,
+    const int nnode_per_group,
+    __global float4* pos,
+    __global float4* quat,
+    __global const int4* bkSlots,
+    __global const float4* dpos_node,
+    __global const float4* drot_node,
+    __global const float4* dpos_neigh,
+    __global const float4* dpos_coll,
+    const float relaxation
+) {
+    int i = get_global_id(0);
+    if (i >= natoms) return;
+
+    int lid = i & (GROUP_SIZE - 1);
+    int grp = i / GROUP_SIZE;
+    int inode = grp * nnode_per_group + lid;
+    int isnode = (lid < nnode_per_group);
+
+    float3 dx = dpos_coll[i].xyz;
+    if (isnode) {
+        dx += dpos_node[inode].xyz;
+    }
+
+    int4 bk = bkSlots[i];
+    for (int k = 0; k < 4; k++) {
+        int slot = bk[k];
+        if (slot >= 0) {
+            dx += dpos_neigh[slot].xyz;
+        }
+    }
+
+    // Caps are not double-counted (they don't run node kernel), so compensate like 2D
+    if (!isnode) { dx *= 2.0f; }
+
+    float3 xi = pos[i].xyz;
+    xi += dx * relaxation;
+    pos[i].xyz = xi;
+
+    if (isnode) {
+        float3 dtheta = drot_node[inode].xyz * relaxation;
+        float angle = length(dtheta);
+        if (angle > 1e-8f) {
+            float3 axis = dtheta / angle;
+            float4 dq = quat_from_axis_angle(axis, angle);
+            quat[i] = normalize(quat_mul(dq, quat[i]));
+        }
+    }
+}
+
+
+
 // Helper: 3x3 Matrix Multiplication
 void mat3_mul(__private float* A, __private float* B, __private float* Out) {
     for (int r = 0; r < 3; r++) {

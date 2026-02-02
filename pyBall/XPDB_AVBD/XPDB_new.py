@@ -53,6 +53,41 @@ def make_bk_slots(neighs, *, nnode, natoms=None):
     return bkSlots
 
 
+def make_bk_slots_clustered(neighs, *, group_size, nnode_per_group, natoms=None):
+    if natoms is None:
+        natoms = int(neighs.shape[0])
+    group_size = int(group_size)
+    nnode_per_group = int(nnode_per_group)
+    if (natoms % group_size) != 0:
+        raise ValueError(f'make_bk_slots_clustered: natoms={natoms} not multiple of group_size={group_size}')
+    ng = natoms // group_size
+    if nnode_per_group < 0 or nnode_per_group > group_size:
+        raise ValueError(f'make_bk_slots_clustered: nnode_per_group={nnode_per_group} out of range [0,{group_size}]')
+
+    neighs = np.array(neighs, dtype=np.int32, copy=False)
+    if neighs.shape != (natoms, 4):
+        raise ValueError(f'make_bk_slots_clustered: neighs.shape={neighs.shape} expected ({natoms},4)')
+
+    bkSlots = np.full((natoms, 4), -1, dtype=np.int32)
+    bkCount = np.zeros((natoms,), dtype=np.int32)
+    for ig in range(ng):
+        abase = ig * group_size
+        inode_base = ig * nnode_per_group
+        for il in range(nnode_per_group):
+            ia = abase + il
+            inode = inode_base + il
+            for k in range(4):
+                ja = int(neighs[ia, k])
+                if ja < 0:
+                    continue
+                s = int(bkCount[ja])
+                if s >= 4:
+                    raise RuntimeError(f"bkSlots overflow: atom {ja} has >4 back slots (from group {ig} node {il})")
+                bkSlots[ja, s] = inode * 4 + k
+                bkCount[ja] += 1
+    return bkSlots
+
+
 def com(pos, m):
     pos = np.asarray(pos, dtype=np.float32)
     m = np.asarray(m, dtype=np.float32)
@@ -196,6 +231,25 @@ class XPDB_new:
         self._rigid_host_vel = None
         self._rigid_host_omega = None
 
+        # Clustered rigid buffers (lazy)
+        self._rigid_cluster_inited = False
+        self.cl_rradius = None
+        self.cl_rneighs_local = None
+        self.cl_rghost_indices = None
+        self.cl_rghost_counts = None
+        self.cl_rbboxes_min = None
+        self.cl_rbboxes_max = None
+        self.cl_rdpos_coll = None
+
+        # Clustered node-only buffers (separate from global-node buffers)
+        self._rigid_cluster_nnode_per_group = 0
+        self._rigid_cluster_nnode_tot = 0
+        self.cl_rpos_delta_cl = None
+        self.cl_romega_delta_cl = None
+        self.cl_rdelta_neigh_cl = None
+        self.cl_rport_local_cl = None
+        self.cl_rKflat_cl = None
+
     def _make_context(self, prefer_gpu=True, device_idx=0):
         dev_type = cl.device_type.GPU if prefer_gpu else cl.device_type.ALL
         try:
@@ -262,6 +316,118 @@ class XPDB_new:
         self._upload_default_port_tables()
 
         self._rigid_inited = True
+
+    def _init_rigid_cluster_buffers(self):
+        self._init_rigid_buffers()
+        if self._rigid_cluster_inited:
+            return
+        if int(self.group_size) != 64:
+            raise ValueError(f"_init_rigid_cluster_buffers: clustered rigid kernels require group_size=64 (OpenCL GROUP_SIZE define), got {self.group_size}")
+        if (int(self.num_atoms) % int(self.group_size)) != 0:
+            raise ValueError(f"_init_rigid_cluster_buffers: clustered rigid kernels assume natoms is multiple of group_size (packed+padding). natoms={self.num_atoms} group_size={self.group_size}")
+        mf = cl.mem_flags
+        n = int(self.num_atoms)
+        ng = int(self.num_groups)
+
+        self.cl_rradius = cl.Buffer(self.ctx, mf.READ_ONLY, n * 4)          # float[natoms]
+        self.cl_rneighs_local = cl.Buffer(self.ctx, mf.READ_WRITE, n * 16)  # int4[natoms]
+        self.cl_rghost_indices = cl.Buffer(self.ctx, mf.READ_WRITE, ng * self.max_ghosts * 4)  # int[ng*MAX_GHOSTS]
+        self.cl_rghost_counts = cl.Buffer(self.ctx, mf.READ_WRITE, ng * 4)  # int[ng]
+        self.cl_rbboxes_min = cl.Buffer(self.ctx, mf.READ_WRITE, ng * 16)   # float4[ng]
+        self.cl_rbboxes_max = cl.Buffer(self.ctx, mf.READ_WRITE, ng * 16)   # float4[ng]
+        self.cl_rdpos_coll = cl.Buffer(self.ctx, mf.READ_WRITE, n * 16)     # float4[natoms]
+
+        self._rigid_cluster_inited = True
+
+    def _ensure_rigid_cluster_node_buffers(self, nnode_per_group):
+        """Allocate node-only buffers for clustered solver.
+
+        Layout matches the 2D reference idea:
+        - nodes are first nnode_per_group atoms inside each group
+        - node buffers are indexed by inode = igroup*nnode_per_group + ilocal_node
+        """
+        self._init_rigid_cluster_buffers()
+        nnode_per_group = int(nnode_per_group)
+        if nnode_per_group < 0 or nnode_per_group > int(self.group_size):
+            raise ValueError(f'_ensure_rigid_cluster_node_buffers: nnode_per_group={nnode_per_group} out of range [0,{self.group_size}]')
+        nnode_tot = int(self.num_groups) * nnode_per_group
+
+        # reuse existing cluster node buffers if size matches
+        if self._rigid_cluster_nnode_tot == nnode_tot and (self.cl_rpos_delta_cl is not None):
+            return
+
+        mf = cl.mem_flags
+        self._rigid_cluster_nnode_per_group = nnode_per_group
+        self._rigid_cluster_nnode_tot = nnode_tot
+
+        # node-only deltas (clustered)
+        self.cl_rpos_delta_cl   = cl.Buffer(self.ctx, mf.READ_WRITE, nnode_tot * 16)      # float4[nnode_tot]
+        self.cl_romega_delta_cl = cl.Buffer(self.ctx, mf.READ_WRITE, nnode_tot * 16)      # float4[nnode_tot]
+        self.cl_rdelta_neigh_cl = cl.Buffer(self.ctx, mf.READ_WRITE, nnode_tot * 4 * 16)  # float4[nnode_tot*4]
+
+        # node-only port params for clustered solver: indexed by inode*4+k
+        self.cl_rport_local_cl = cl.Buffer(self.ctx, mf.READ_ONLY, nnode_tot * 4 * 16)  # float4[nnode_tot*4]
+        self.cl_rKflat_cl      = cl.Buffer(self.ctx, mf.READ_ONLY, nnode_tot * 4 * 4)   # float[nnode_tot*4]
+
+    def upload_rigid_cluster_ports_local(self, port_local_cl, Kflat_cl, *, nnode_per_group):
+        """Upload node-only port geometry + stiffness for clustered solver.
+
+        Shapes:
+        - port_local_cl: (ng*nnode_per_group, 4, 4) float32 (xyz used)
+        - Kflat_cl:      (ng*nnode_per_group, 4) float32
+        """
+        self._ensure_rigid_cluster_node_buffers(int(nnode_per_group))
+        nnode_tot = int(self._rigid_cluster_nnode_tot)
+        pl = np.array(port_local_cl, dtype=np.float32, copy=False)
+        kk = np.array(Kflat_cl, dtype=np.float32, copy=False)
+        if pl.shape != (nnode_tot, 4, 4):
+            raise ValueError(f'upload_rigid_cluster_ports_local: port_local_cl.shape={pl.shape} expected ({nnode_tot},4,4)')
+        if kk.shape != (nnode_tot, 4):
+            raise ValueError(f'upload_rigid_cluster_ports_local: Kflat_cl.shape={kk.shape} expected ({nnode_tot},4)')
+        cl.enqueue_copy(self.queue, self.cl_rport_local_cl, pl.reshape(nnode_tot * 4, 4))
+        cl.enqueue_copy(self.queue, self.cl_rKflat_cl, kk.reshape(nnode_tot * 4)).wait()
+
+    def upload_rigid_cluster_ports_from_atoms(self, port_local_atoms, bKs_atoms, *, nnode_per_group):
+        """Convenience: derive clustered node-only port buffers from per-atom arrays.
+
+        Assumes packed layout:
+        - atoms contiguous per group
+        - node atoms are first nnode_per_group in each group
+        
+        Inputs:
+        - port_local_atoms: (natoms, 4, 4)
+        - bKs_atoms:        (natoms, 4)
+        """
+        self._init_rigid_cluster_buffers()
+        n = int(self.num_atoms)
+        gs = int(self.group_size)
+        ng = int(self.num_groups)
+        nnode_per_group = int(nnode_per_group)
+        if (n % gs) != 0:
+            raise ValueError(f'upload_rigid_cluster_ports_from_atoms: natoms={n} not multiple of group_size={gs}')
+        if nnode_per_group < 0 or nnode_per_group > gs:
+            raise ValueError(f'upload_rigid_cluster_ports_from_atoms: nnode_per_group={nnode_per_group} out of range [0,{gs}]')
+
+        plA = np.array(port_local_atoms, dtype=np.float32, copy=False)
+        kA = np.array(bKs_atoms, dtype=np.float32, copy=False)
+        if plA.shape != (n, 4, 4):
+            raise ValueError(f'upload_rigid_cluster_ports_from_atoms: port_local_atoms.shape={plA.shape} expected ({n},4,4)')
+        if kA.shape != (n, 4):
+            raise ValueError(f'upload_rigid_cluster_ports_from_atoms: bKs_atoms.shape={kA.shape} expected ({n},4)')
+
+        self._ensure_rigid_cluster_node_buffers(nnode_per_group)
+        nnode_tot = int(self._rigid_cluster_nnode_tot)
+        pl = np.zeros((nnode_tot, 4, 4), dtype=np.float32)
+        kk = np.zeros((nnode_tot, 4), dtype=np.float32)
+        for ig in range(ng):
+            abase = ig * gs
+            inode_base = ig * nnode_per_group
+            for il in range(nnode_per_group):
+                ia = abase + il
+                inode = inode_base + il
+                pl[inode, :, :] = plA[ia, :, :]
+                kk[inode, :] = kA[ia, :]
+        self.upload_rigid_cluster_ports_local(pl, kk, nnode_per_group=nnode_per_group)
 
     def _ensure_rigid_node_buffers(self, nnode):
         self._init_rigid_buffers()
@@ -448,6 +614,15 @@ class XPDB_new:
             raise ValueError(f'upload_rigid_bk_slots: bkSlots.shape={bks.shape} expected ({n},4)')
         cl.enqueue_copy(self.queue, self.cl_rbkSlots, bks).wait()
 
+    def upload_rigid_bk_slots_clustered(self, neighs, *, nnode_per_group):
+        """Build+upload bkSlots for clustered solver (per-group nnode).
+
+        NOTE: bkSlots map into recoil slot space of size (ng*nnode_per_group*4), i.e. slot = inode*4+k.
+        """
+        self._init_rigid_cluster_buffers()
+        bks = make_bk_slots_clustered(neighs, group_size=self.group_size, nnode_per_group=int(nnode_per_group), natoms=int(self.num_atoms))
+        self.upload_rigid_bk_slots(bks)
+
     def upload_rigid_atom_types(self, atom_types):
         self._init_rigid_buffers()
         n = int(self.num_atoms)
@@ -455,6 +630,14 @@ class XPDB_new:
         if at.shape != (n,):
             raise ValueError(f'upload_rigid_atom_types: atom_types.shape={at.shape} expected ({n},)')
         cl.enqueue_copy(self.queue, self.cl_ratom_types, at).wait()
+
+    def upload_rigid_radius(self, radius):
+        self._init_rigid_cluster_buffers()
+        n = int(self.num_atoms)
+        r = np.array(radius, dtype=np.float32, copy=False)
+        if r.shape != (n,):
+            raise ValueError(f'upload_rigid_radius: radius.shape={r.shape} expected ({n},)')
+        cl.enqueue_copy(self.queue, self.cl_rradius, r).wait()
 
     def upload_rigid_ports_local(self, port_local, port_n, *, nnode=None):
         # NOTE: node-only port geometry; capping atoms should not have ports
@@ -628,6 +811,105 @@ class XPDB_new:
                 relax_f
             )
 
+    def rigid_cluster_relax_ports_step(self, *, nnode, dt=0.1, outer_iters=1, inner_iters=10, k_coll=50.0, relaxation=0.5, bbox_margin=0.5):
+        """Split-path clustered solver: cluster-local collisions then rigid-port constraints.
+
+        This uses per-group nnode (nodes-first inside each packed group) to match the 2D momentum-conserving scheme.
+        """
+        self._init_rigid_cluster_buffers()
+        nnode = int(nnode)
+        if nnode < 0 or nnode > int(self.group_size):
+            raise ValueError(f'rigid_cluster_relax_ports_step: nnode={nnode} out of range [0,{self.group_size}] (per-group nodes)')
+        self._ensure_rigid_cluster_node_buffers(nnode)
+
+        natoms = np.int32(self.num_atoms)
+        nnode_i = np.int32(nnode)
+        ng = np.int32(self.num_groups)
+        dt_f = np.float32(float(dt))
+        relax_f = np.float32(float(relaxation))
+        kcoll_f = np.float32(float(k_coll))
+
+        # Heuristic margin for ghost discovery: use (2*Rmax + bbox_margin)^2
+        rad = self.download_buffer(self.cl_rradius, (self.num_atoms,), dtype=np.float32)
+        rmax = float(np.max(rad)) if rad.size else 0.0
+        margin_sq = np.float32((2.0 * rmax + float(bbox_margin)) ** 2)
+        bbox_margin_f = np.float32(float(bbox_margin))
+
+        global_size = (int(self.num_groups) * int(self.group_size),)
+        local_size = (int(self.group_size),)
+
+        for _ in range(int(outer_iters)):
+            # 1) AABB per cluster
+            self.prg.update_bboxes_rigid(
+                self.queue, global_size, local_size,
+                self.cl_rpos_A, self.cl_rradius,
+                self.cl_rbboxes_min, self.cl_rbboxes_max,
+                cl.LocalMemory(int(self.group_size) * 16),
+                cl.LocalMemory(int(self.group_size) * 16),
+                natoms
+            )
+
+            # 2) Ghost discovery + neighbor remap for rigid neighs
+            self.prg.build_local_topology_rigid(
+                self.queue, global_size, local_size,
+                self.cl_rpos_A,
+                self.cl_rbboxes_min, self.cl_rbboxes_max,
+                self.cl_rneighs,
+                self.cl_rghost_indices, self.cl_rghost_counts,
+                self.cl_rneighs_local,
+                natoms, ng,
+                margin_sq, bbox_margin_f
+            )
+
+            for _ in range(int(inner_iters)):
+                # clear deltas
+                cl.enqueue_fill_buffer(self.queue, self.cl_rdpos_coll, np.float32(0.0), 0, int(self.num_atoms) * 16)
+                cl.enqueue_fill_buffer(self.queue, self.cl_rpos_delta_cl, np.float32(0.0), 0, int(self._rigid_cluster_nnode_tot) * 16)
+                cl.enqueue_fill_buffer(self.queue, self.cl_romega_delta_cl, np.float32(0.0), 0, int(self._rigid_cluster_nnode_tot) * 16)
+                cl.enqueue_fill_buffer(self.queue, self.cl_rdelta_neigh_cl, np.float32(0.0), 0, int(self._rigid_cluster_nnode_tot) * 4 * 16)
+
+                # 3) collisions (writes dpos_coll)
+                self.prg.compute_collision_cluster_rigid(
+                    self.queue, global_size, local_size,
+                    self.cl_rpos_A, self.cl_rradius,
+                    self.cl_rneighs_local,
+                    self.cl_rghost_indices, self.cl_rghost_counts,
+                    self.cl_rdpos_coll,
+                    natoms,
+                    kcoll_f
+                )
+
+                # 4) ports (accumulate onto node dpos using collision deltas as base)
+                # reuse node buffers: cl_rpos_delta, cl_romega_delta, cl_rdelta_neigh
+                # Start by copying collision deltas for nodes into dpos_node buffer
+                # (we do this by kernel for efficiency instead of host copy)
+                self.prg.compute_ports_cluster_rigid(
+                    self.queue, global_size, local_size,
+                    self.cl_rpos_A, self.cl_rquat_A, self.cl_rradius,
+                    self.cl_rneighs_local,
+                    self.cl_rghost_indices, self.cl_rghost_counts,
+                    self.cl_rport_local_cl,
+                    self.cl_rKflat_cl,
+                    self.cl_rpos_delta_cl,
+                    self.cl_romega_delta_cl,
+                    self.cl_rdelta_neigh_cl,
+                    natoms, nnode_i,
+                    dt_f, np.int32(0)
+                )
+
+                # 5) apply corrections (collision + ports)
+                self.prg.apply_corrections_rigid_ports(
+                    self.queue, (self.num_atoms,), None,
+                    natoms, nnode_i,
+                    self.cl_rpos_A, self.cl_rquat_A,
+                    self.cl_rbkSlots,
+                    self.cl_rpos_delta_cl,
+                    self.cl_romega_delta_cl,
+                    self.cl_rdelta_neigh_cl,
+                    self.cl_rdpos_coll,
+                    relax_f
+                )
+
     def rigid_ports_xpbd_step(self, *, nnode, dt=0.1, iterations=10, reset_lambda=True, variant='scalar'):
         self._init_rigid_buffers()
         nnode = int(nnode)
@@ -736,6 +1018,73 @@ class XPDB_new:
         cl.enqueue_copy(self.queue, self._rigid_host_quat, self.cl_rquat_A)
         cl.enqueue_copy(self.queue, self._rigid_host_omega, self.cl_romega_A).wait()
         return self._rigid_host_pos, self._rigid_host_quat, self._rigid_host_vel, self._rigid_host_omega
+
+    def set_atom_pos(self, ia, xyz):
+        ia = int(ia)
+        if ia < 0 or ia >= self.num_atoms:
+            raise ValueError(f"set_atom_pos: ia out of range {ia} not in [0,{self.num_atoms})")
+        xyz = np.asarray(xyz, dtype=np.float32).reshape(-1)
+        if xyz.size == 2:
+            xyz = np.array([xyz[0], xyz[1], 0.0], dtype=np.float32)
+        elif xyz.size != 3:
+            raise ValueError(f"set_atom_pos: xyz.size={xyz.size} expected 2 or 3")
+        x4 = np.asarray(xyz, dtype=np.float32).reshape(1, 3)
+        # write xyz only into float4 (offset ia*16 bytes)
+        cl.enqueue_copy(self.queue, self.cl_rpos_A, x4, device_offset=ia * 16).wait()
+        cl.enqueue_copy(self.queue, self.cl_rpos_B, x4, device_offset=ia * 16).wait()
+
+    def set_atom_vel(self, ia, v):
+        ia = int(ia)
+        if ia < 0 or ia >= self.num_atoms:
+            raise ValueError(f"set_atom_vel: ia out of range {ia} not in [0,{self.num_atoms})")
+        v = np.asarray(v, dtype=np.float32).reshape(-1)
+        if v.size == 2:
+            v = np.array([v[0], v[1], 0.0], dtype=np.float32)
+        elif v.size != 3:
+            raise ValueError(f"set_atom_vel: v.size={v.size} expected 2 or 3")
+        v3 = np.asarray(v, dtype=np.float32).reshape(1, 3)
+        cl.enqueue_copy(self.queue, self.cl_rvel_A, v3, device_offset=ia * 16).wait()
+        cl.enqueue_copy(self.queue, self.cl_rvel_B, v3, device_offset=ia * 16).wait()
+
+    def set_atom_omega(self, ia, w):
+        ia = int(ia)
+        if ia < 0 or ia >= self.num_atoms:
+            raise ValueError(f"set_atom_omega: ia out of range {ia} not in [0,{self.num_atoms})")
+        w = np.asarray(w, dtype=np.float32).reshape(-1)
+        if w.size == 1:
+            w = np.array([0.0, 0.0, w[0]], dtype=np.float32)
+        elif w.size == 2:
+            w = np.array([w[0], w[1], 0.0], dtype=np.float32)
+        elif w.size != 3:
+            raise ValueError(f"set_atom_omega: w.size={w.size} expected 1,2 or 3")
+        w3 = np.asarray(w, dtype=np.float32).reshape(1, 3)
+        cl.enqueue_copy(self.queue, self.cl_romega_A, w3, device_offset=ia * 16).wait()
+        cl.enqueue_copy(self.queue, self.cl_romega_B, w3, device_offset=ia * 16).wait()
+
+    def get_atom_mass(self, ia):
+        ia = int(ia)
+        if ia < 0 or ia >= self.num_atoms:
+            raise ValueError(f"get_atom_mass: ia out of range {ia} not in [0,{self.num_atoms})")
+        invM = np.zeros(1, dtype=np.float32)
+        cl.enqueue_copy(self.queue, invM, self.cl_rpos_A, device_offset=ia * 16 + 12).wait()
+        invM = float(invM[0])
+        M = (1.0 / invM) if invM > 1e-12 else 1e12
+        I = 0.4 * M
+        return (float(M), float(I))
+
+    def set_atom_mass(self, ia, mass, inertia=None):
+        ia = int(ia)
+        if ia < 0 or ia >= self.num_atoms:
+            raise ValueError(f"set_atom_mass: ia out of range {ia} not in [0,{self.num_atoms})")
+        if hasattr(mass, '__len__'):
+            M = float(mass[0])
+        else:
+            M = float(mass)
+        if not np.isfinite(M) or M <= 0.0:
+            raise ValueError(f"set_atom_mass: mass must be finite positive, got {M}")
+        invM = np.array([1.0 / M], dtype=np.float32)
+        cl.enqueue_copy(self.queue, self.cl_rpos_A, invM, device_offset=ia * 16 + 12).wait()
+        cl.enqueue_copy(self.queue, self.cl_rpos_B, invM, device_offset=ia * 16 + 12).wait()
 
     def upload_data(self, pos, vel, radius, mass):
         """Upload atom positions, velocities, radii, and masses"""
