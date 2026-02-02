@@ -49,9 +49,12 @@ class XPBD_2D:
         self._k_compute_corrections_2d = self._k('compute_corrections_2d')
         self._k_apply_corrections_2d = self._k('apply_corrections_2d')
         self._k_compute_collision_cluster = self._k('compute_collision_cluster')
+        self._k_compute_collision_cluster_scattered = self._k('compute_collision_cluster_scattered') if 'compute_collision_cluster_scattered' in self._krn else None
         self._k_compute_cluster_fused_2d = self._k('compute_cluster_fused_2d') if 'compute_cluster_fused_2d' in self._krn else None
         self._k_update_bboxes_2d = self._k('update_bboxes_2d')
+        self._k_update_bboxes_scattered_2d = self._k('update_bboxes_scattered_2d') if 'update_bboxes_scattered_2d' in self._krn else None
         self._k_build_local_topology_2d = self._k('build_local_topology_2d')
+        self._k_build_local_topology_2d_scattered = self._k('build_local_topology_2d_scattered') if 'build_local_topology_2d_scattered' in self._krn else None
         self._k_reset_lambda_2d = self._k('reset_lambda_2d')
         self._k_compute_xpbd_corrections_2d = self._k('compute_xpbd_corrections_2d') if 'compute_xpbd_corrections_2d' in self._krn else None
         self._k_gather_and_apply_xpbd_2d = self._k('gather_and_apply_xpbd_2d') if 'gather_and_apply_xpbd_2d' in self._krn else None
@@ -120,9 +123,11 @@ class XPBD_2D:
         self.cl_ghost_indices = None
         self.cl_ghost_counts = None
         self.cl_cluster_counts = None
+        self.cl_group_indices = None
         self.cl_neighs_local = None
         self.cl_prev_pos_cluster = None
         self.cl_mom_pos_cluster = None
+        self._use_scattered_groups = False
         
         self._nnode = 0
         
@@ -148,6 +153,7 @@ class XPBD_2D:
             'compute_xpbd_corrections_2d_debug',
             # Cluster collision kernels
             'update_bboxes_2d', 'build_local_topology_2d', 'compute_collision_cluster', 'compute_cluster_fused_2d',
+            'update_bboxes_scattered_2d', 'build_local_topology_2d_scattered', 'compute_collision_cluster_scattered',
             # MD kernels
             'compute_velocities_from_positions', 'compute_angular_velocities_from_rotations',
         ]
@@ -349,6 +355,7 @@ class XPBD_2D:
         self.cl_ghost_indices    = cl.Buffer(self.ctx, mf.READ_WRITE, ng * int(self.max_ghosts) * 4)  # int
         self.cl_ghost_counts     = cl.Buffer(self.ctx, mf.READ_WRITE, ng * 4)  # int
         self.cl_cluster_counts   = cl.Buffer(self.ctx, mf.READ_ONLY,  ng * 4)  # int
+        self.cl_group_indices    = cl.Buffer(self.ctx, mf.READ_ONLY,  ng * int(self.cluster_stride) * 4)  # int
         self.cl_neighs_local     = cl.Buffer(self.ctx, mf.READ_WRITE, n * 16)  # int4[natoms]
         self.cl_prev_pos_cluster = cl.Buffer(self.ctx, mf.READ_WRITE, n * 8)  # float2[natoms]
         self.cl_mom_pos_cluster  = cl.Buffer(self.ctx, mf.READ_WRITE, n * 8)   # float2[natoms]
@@ -361,10 +368,20 @@ class XPBD_2D:
             if remaining > self.group_size: remaining = int(self.group_size)
             counts[g] = remaining
         cl.enqueue_copy(self.queue, self.cl_cluster_counts, counts)
+        # Default group_indices = identity packing by group_stride
+        gi = np.full((ng, int(self.cluster_stride)), -1, dtype=np.int32)
+        for g in range(ng):
+            start = g * int(self.cluster_stride)
+            for i in range(int(self.cluster_stride)):
+                ia = start + i
+                if ia >= n:
+                    break
+                gi[g, i] = ia
+        cl.enqueue_copy(self.queue, self.cl_group_indices, gi)
         cl.enqueue_fill_buffer(self.queue, self.cl_ghost_counts, np.int32(0), 0, ng * 4)
         self._cluster_inited = True
 
-    def set_cluster_config(self, *, group_size=None, num_groups=None, cluster_counts=None, cluster_stride=None, cluster_strategy=None):
+    def set_cluster_config(self, *, group_size=None, num_groups=None, cluster_counts=None, cluster_stride=None, cluster_strategy=None, group_indices=None):
         """Configure cluster tiling used by cluster-local kernels.
 
         Args:
@@ -400,6 +417,11 @@ class XPBD_2D:
         if cluster_counts is not None:
             cc = np.asarray(cluster_counts, dtype=np.int32).reshape(ng)
             cl.enqueue_copy(self.queue, self.cl_cluster_counts, cc)
+        if group_indices is not None:
+            gi = np.asarray(group_indices, dtype=np.int32)
+            gi = gi.reshape((ng, int(self.cluster_stride)))
+            cl.enqueue_copy(self.queue, self.cl_group_indices, gi)
+            self._use_scattered_groups = True
         cl.enqueue_fill_buffer(self.queue, self.cl_ghost_counts, np.int32(0), 0, ng * 4).wait()
 
     def debug_clusters(self, *, ng_print=8, atoms_per_group=16, ghosts_per_group=16):
@@ -781,28 +803,57 @@ class XPBD_2D:
         local_size = (int(self.group_size),)
 
         for it in range(int(outer_iters)):
-            # 1) AABB per cluster
-            self._k_update_bboxes_2d(
-                self.queue, global_size, local_size,
-                self.cl_pos, self.cl_radius,
-                self.cl_bboxes_min, self.cl_bboxes_max,
-                cl.LocalMemory(int(self.group_size) * 16),
-                cl.LocalMemory(int(self.group_size) * 16),
-                np.int32(natoms)
-            )
+            if self._use_scattered_groups:
+                if self._k_update_bboxes_scattered_2d is None or self._k_build_local_topology_2d_scattered is None:
+                    raise RuntimeError('step_pbd_cluster_relax: scattered-group kernels not available in program build')
 
-            # 2) Ghost discovery + neighbor remap (local indices)
-            self._k_build_local_topology_2d(
-                self.queue, global_size, local_size,
-                self.cl_pos,
-                self.cl_bboxes_min, self.cl_bboxes_max,
-                self.cl_neighs,
-                self.cl_ghost_indices, self.cl_ghost_counts, self.cl_cluster_counts,
-                self.cl_neighs_local,
-                np.int32(natoms), np.int32(ng),
-                margin_sq, bbox_margin_f,
-                np.int32(self.cluster_stride)
-            )
+                # 1) AABB per cluster (scattered)
+                self._k_update_bboxes_scattered_2d(
+                    self.queue, global_size, local_size,
+                    self.cl_pos, self.cl_radius,
+                    self.cl_group_indices, self.cl_cluster_counts,
+                    self.cl_bboxes_min, self.cl_bboxes_max,
+                    cl.LocalMemory(int(self.group_size) * 16),
+                    cl.LocalMemory(int(self.group_size) * 16),
+                    np.int32(natoms), np.int32(self.cluster_stride)
+                )
+
+                # 2) Ghost discovery + neighbor remap (scattered)
+                self._k_build_local_topology_2d_scattered(
+                    self.queue, global_size, local_size,
+                    self.cl_pos,
+                    self.cl_bboxes_min, self.cl_bboxes_max,
+                    self.cl_neighs,
+                    self.cl_group_indices,
+                    self.cl_ghost_indices, self.cl_ghost_counts, self.cl_cluster_counts,
+                    self.cl_neighs_local,
+                    np.int32(natoms), np.int32(ng),
+                    margin_sq, bbox_margin_f,
+                    np.int32(self.cluster_stride)
+                )
+            else:
+                # 1) AABB per cluster (packed)
+                self._k_update_bboxes_2d(
+                    self.queue, global_size, local_size,
+                    self.cl_pos, self.cl_radius,
+                    self.cl_bboxes_min, self.cl_bboxes_max,
+                    cl.LocalMemory(int(self.group_size) * 16),
+                    cl.LocalMemory(int(self.group_size) * 16),
+                    np.int32(natoms)
+                )
+
+                # 2) Ghost discovery + neighbor remap (packed)
+                self._k_build_local_topology_2d(
+                    self.queue, global_size, local_size,
+                    self.cl_pos,
+                    self.cl_bboxes_min, self.cl_bboxes_max,
+                    self.cl_neighs,
+                    self.cl_ghost_indices, self.cl_ghost_counts, self.cl_cluster_counts,
+                    self.cl_neighs_local,
+                    np.int32(natoms), np.int32(ng),
+                    margin_sq, bbox_margin_f,
+                    np.int32(self.cluster_stride)
+                )
 
             # DEBUG: Print ghost counts and indices if verbose > 0
             if int(verbose) > 0:
@@ -848,15 +899,29 @@ class XPBD_2D:
                 # Clear dpos_node over all atoms (collision writes natoms-wide)
                 cl.enqueue_fill_buffer(self.queue, self.cl_dpos_node, np.float32(0), 0, self.num_atoms * 8)
 
-                self._k_compute_collision_cluster(
-                    self.queue, global_size, local_size,
-                    self.cl_pos, self.cl_radius, self.cl_mass,
-                    self.cl_neighs_local,
-                    self.cl_ghost_indices, self.cl_ghost_counts, self.cl_cluster_counts,
-                    self.cl_dpos_node,
-                    np.int32(natoms),
-                    dt_f, np.float32(k_coll), np.int32(self.cluster_stride)
-                )
+                if self._use_scattered_groups:
+                    if self._k_compute_collision_cluster_scattered is None:
+                        raise RuntimeError('step_pbd_cluster_relax: compute_collision_cluster_scattered kernel not available in program build')
+                    self._k_compute_collision_cluster_scattered(
+                        self.queue, global_size, local_size,
+                        self.cl_pos, self.cl_radius, self.cl_mass,
+                        self.cl_neighs_local,
+                        self.cl_group_indices,
+                        self.cl_ghost_indices, self.cl_ghost_counts, self.cl_cluster_counts,
+                        self.cl_dpos_node,
+                        np.int32(natoms),
+                        dt_f, np.float32(k_coll), np.int32(self.cluster_stride)
+                    )
+                else:
+                    self._k_compute_collision_cluster(
+                        self.queue, global_size, local_size,
+                        self.cl_pos, self.cl_radius, self.cl_mass,
+                        self.cl_neighs_local,
+                        self.cl_ghost_indices, self.cl_ghost_counts, self.cl_cluster_counts,
+                        self.cl_dpos_node,
+                        np.int32(natoms),
+                        dt_f, np.float32(k_coll), np.int32(self.cluster_stride)
+                    )
 
                 # Apply collisions
                 self._k_apply_corrections_2d(

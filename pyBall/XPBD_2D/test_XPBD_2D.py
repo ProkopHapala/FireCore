@@ -80,7 +80,7 @@ def run_simulation(sim, method, nnode, iters, *, dt=0.01, inner_iters=10, damp_v
             elif method == 'pbd_relax':
                 sim.step_pbd(nnode=nnode, iterations=int(inner_iters), relax=float(relax), bmix=float(bmix), reset_hb=(it == 0))
             elif method == 'pbd_cluster_relax':
-                sim.step_pbd_cluster_relax(dt=float(dt), outer_iters=1, inner_iters=int(inner_iters), k_coll=float(k_coll), bmix=float(bmix), reset_hb=(it == 0))
+                sim.step_pbd_cluster_relax(nnode=nnode, dt=float(dt), outer_iters=1, inner_iters=int(inner_iters), k_coll=float(k_coll), bmix=float(bmix), reset_hb=(it == 0))
             elif method == 'pbd_cluster_relax_ports':
                 sim.step_pbd_cluster_relax_ports(nnode=nnode, dt=float(dt), outer_iters=1, inner_iters=int(inner_iters), port_iters=1, k_coll=float(k_coll), relax_ports=float(relax), bmix_coll=float(bmix), bmix_pos_ports=0.0, bmix_rot_ports=0.0, reset_hb=(it == 0), verbose=verbose)
             elif method == 'pbd_cluster_fused':
@@ -388,6 +388,7 @@ if __name__ == '__main__':
 
 
     parser.add_argument('--cluster_strategy', type=str, default='one_molecule_per_group', choices=['one_molecule_per_group', 'pack_fill'])
+    parser.add_argument('--cluster_scattered', action='store_true', help='Use scattered group_indices list for cluster kernels (do not require global atom reordering)')
 
     parser.add_argument('--iters',      type=int,   default=20000)
     parser.add_argument('--dt',         type=float, default=0.1)
@@ -448,7 +449,32 @@ if __name__ == '__main__':
 
     sim = XPBD_2D(num_atoms=n_atoms)
 
-    topology = setup_from_bonds(sim, pos, bonds, k_bond=200.0, perturbation=args.perturb, perturb_rot=args.perturb_rot, bAllNodes=args.bAllNodes, seed=args.seed)
+    # IMPORTANT: ordering policy
+    # - Default: keep legacy global nodes-first ordering (matches old assumption that nodes occupy indices [0..nnode))
+    # - Optional: if --cluster_scattered, do not reorder atoms here; provide group_indices to cluster kernels instead
+    use_cluster_solver = args.method in ['pbd_cluster_relax', 'pbd_cluster_relax_ports', 'pbd_cluster_fused']
+    groups = [list(range(ic * n0, (ic + 1) * n0)) for ic in range(int(args.copies))]
+    if use_cluster_solver and args.cluster_scattered and args.cluster_strategy == 'one_molecule_per_group':
+        topology = setup_from_bonds(
+            sim, pos, bonds,
+            k_bond=200.0, perturbation=args.perturb, perturb_rot=args.perturb_rot,
+            bAllNodes=args.bAllNodes, seed=args.seed,
+            groups=None, reorder='none', verbose=args.verbose
+        )
+    elif use_cluster_solver and args.cluster_strategy == 'one_molecule_per_group':
+        topology = setup_from_bonds(
+            sim, pos, bonds,
+            k_bond=200.0, perturbation=args.perturb, perturb_rot=args.perturb_rot,
+            bAllNodes=True, seed=args.seed,
+            groups=groups, reorder='groups_then_within', verbose=args.verbose
+        )
+    else:
+        topology = setup_from_bonds(
+            sim, pos, bonds,
+            k_bond=200.0, perturbation=args.perturb, perturb_rot=args.perturb_rot,
+            bAllNodes=args.bAllNodes, seed=args.seed,
+            groups=None, reorder='global_nodes_first', verbose=args.verbose
+        )
     nnode = topology['nnode']
 
     # Configure clustering for cluster solvers
@@ -459,7 +485,17 @@ if __name__ == '__main__':
             group_size = int(args.cluster_group_size)
         num_groups = int(args.copies)
         cluster_counts = np.full((num_groups,), int(n0), dtype=np.int32)
-        sim.set_cluster_config(group_size=group_size, num_groups=num_groups, cluster_counts=cluster_counts)
+        if args.cluster_scattered:
+            gi = np.full((num_groups, int(group_size)), -1, dtype=np.int32)
+            for ig in range(num_groups):
+                g = groups[ig]
+                for ii, ia in enumerate(g):
+                    if ii >= int(group_size):
+                        break
+                    gi[ig, ii] = int(ia)
+            sim.set_cluster_config(group_size=group_size, num_groups=num_groups, cluster_counts=cluster_counts, group_indices=gi)
+        else:
+            sim.set_cluster_config(group_size=group_size, num_groups=num_groups, cluster_counts=cluster_counts)
     else:
         # pack_fill == sequential packing in current atom order
         sim.set_cluster_config(group_size=int(args.cluster_group_size))

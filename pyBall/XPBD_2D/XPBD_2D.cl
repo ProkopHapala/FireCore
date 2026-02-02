@@ -183,6 +183,159 @@ __kernel void compute_cluster_fused_2d(
     }
 }
 
+__kernel void update_bboxes_scattered_2d(
+    __global const float2* curr_pos,
+    __global const float*  radius,
+    __global const int*    group_indices_flat, // [ngroup*GROUP_SIZE] global atom indices
+    __global const int*    cluster_counts,     // [ngroup]
+    __global float4*       bboxes_min,
+    __global float4*       bboxes_max,
+    __local float4*        local_min,
+    __local float4*        local_max,
+    const int num_atoms,
+    const int group_stride
+) {
+    int lid = get_local_id(0);
+    int grp = get_group_id(0);
+    int c_count = cluster_counts[grp];
+
+    float4 vmin = (float4)( 1e30f, 1e30f, 0.0f, 0.0f);
+    float4 vmax = (float4)(-1e30f,-1e30f, 0.0f, 0.0f);
+
+    if (lid < c_count) {
+        int my_global_id = group_indices_flat[grp * group_stride + lid];
+        if (my_global_id >= 0 && my_global_id < num_atoms) {
+            float2 p = curr_pos[my_global_id];
+            float  r = radius[my_global_id];
+            vmin = (float4)(p.x - r, p.y - r, 0.0f, 0.0f);
+            vmax = (float4)(p.x + r, p.y + r, 0.0f, 0.0f);
+        }
+    }
+
+    local_min[lid] = vmin;
+    local_max[lid] = vmax;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    for (int stride = GROUP_SIZE / 2; stride > 0; stride >>= 1) {
+        if (lid < stride) {
+            local_min[lid] = min(local_min[lid], local_min[lid + stride]);
+            local_max[lid] = max(local_max[lid], local_max[lid + stride]);
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    if (lid == 0) {
+        bboxes_min[grp] = local_min[0];
+        bboxes_max[grp] = local_max[0];
+    }
+}
+
+__kernel void build_local_topology_2d_scattered(
+    __global const float2* curr_pos,
+    __global const float4* bboxes_min,
+    __global const float4* bboxes_max,
+    __global const int4*   neighs_global,        // natoms int4
+    __global const int*    group_indices_flat,   // [ngroup*GROUP_SIZE] global atom indices
+    __global int*          ghost_indices_flat,   // [ngroup*MAX_GHOSTS]
+    __global int*          ghost_counts,         // [ngroup]
+    __global const int*    cluster_counts,       // [ngroup]
+    __global int4*         neighs_local,         // natoms int4 (local indices 0..GROUP_SIZE+nghost)
+    const int num_atoms,
+    const int num_groups,
+    const float margin_sq,
+    const float bbox_margin,
+    const int group_stride
+) {
+    int lid = get_local_id(0);
+    int grp = get_group_id(0);
+
+    __local int   l_ghost_list[MAX_GHOSTS];
+    __local int   l_ghost_counter;
+    __local float4 l_my_bbox_min;
+    __local float4 l_my_bbox_max;
+
+    if (lid == 0) {
+        l_ghost_counter = 0;
+        l_my_bbox_min = bboxes_min[grp];
+        l_my_bbox_max = bboxes_max[grp];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    float4 my_min = l_my_bbox_min;
+    float4 my_max = l_my_bbox_max;
+
+    for (int other_g = 0; other_g < num_groups; other_g++) {
+        if (other_g == grp) continue;
+
+        float4 o_min = bboxes_min[other_g];
+        float4 o_max = bboxes_max[other_g];
+
+        bool overlap = false;
+        if (my_max.x + bbox_margin >= o_min.x && my_min.x <= o_max.x + bbox_margin &&
+            my_max.y + bbox_margin >= o_min.y && my_min.y <= o_max.y + bbox_margin) {
+            overlap = true;
+        }
+
+        if (overlap) {
+            int o_count = cluster_counts[other_g];
+            if (lid < o_count) {
+                int global_idx = group_indices_flat[other_g * group_stride + lid];
+                if (global_idx >= 0 && global_idx < num_atoms) {
+                    float2 p = curr_pos[global_idx];
+                    float dx = max(0.0f, max(my_min.x - p.x, p.x - my_max.x));
+                    float dy = max(0.0f, max(my_min.y - p.y, p.y - my_max.y));
+                    float dist_sq = dx*dx + dy*dy;
+                    if (dist_sq < margin_sq) {
+                        int slot = atomic_inc(&l_ghost_counter);
+                        if (slot < MAX_GHOSTS) {
+                            l_ghost_list[slot] = global_idx;
+                        }
+                    }
+                }
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    int total_ghosts = min(l_ghost_counter, MAX_GHOSTS);
+    int base_offset = grp * MAX_GHOSTS;
+    for (int i = lid; i < total_ghosts; i += GROUP_SIZE) {
+        ghost_indices_flat[base_offset + i] = l_ghost_list[i];
+    }
+    if (lid == 0) ghost_counts[grp] = total_ghosts;
+
+    int c_count = cluster_counts[grp];
+    if (lid < c_count) {
+        int my_global_id = group_indices_flat[grp * group_stride + lid];
+        if (my_global_id >= 0 && my_global_id < num_atoms) {
+            int4 ng = neighs_global[my_global_id];
+            int* neighbors = (int*)&ng;
+            int4 nl = (int4)(-1,-1,-1,-1);
+            int* nloc = (int*)&nl;
+
+            for (int k = 0; k < MAX_DEGREE; k++) {
+                int target = neighbors[k];
+                if (target < 0) continue;
+                int loc = -1;
+                // Search own group list
+                for (int t = 0; t < c_count; t++) {
+                    if (group_indices_flat[grp * group_stride + t] == target) { loc = t; break; }
+                }
+                if (loc < 0) {
+                    // Search ghosts
+                    for (int g = 0; g < total_ghosts; g++) {
+                        if (l_ghost_list[g] == target) { loc = c_count + g; break; }
+                    }
+                }
+                nloc[k] = loc;
+            }
+            neighs_local[my_global_id] = nl;
+        }
+    }
+}
+
 // Complex multiplication: z1 * z2
 inline float2 cmplx_mul(float2 z1, float2 z2) {
     return (float2)(
@@ -785,6 +938,104 @@ __kernel void compute_collision_cluster(
         float2 p0   = curr_pos[my_global_id];
         float2 p1   = l_pos[lid];
         dpos_node[my_global_id] = p1 - p0;
+    }
+}
+
+__kernel void compute_collision_cluster_scattered(
+    __global const float2* curr_pos,           // R
+    __global const float*  radius,             // R
+    __global const float2* mass,               // R: mass[i].x = M
+    __global const int4*   neighs_local,       // natoms int4 local indices
+    __global const int*    group_indices_flat, // [ngroup*GROUP_SIZE] global atom indices
+    __global const int*    ghost_indices_flat,
+    __global const int*    ghost_counts,
+    __global const int*    cluster_counts,
+    __global float2*       dpos_node,          // W: collision correction per atom (natoms-sized)
+    const int num_atoms,
+    const float dt,
+    const float k_coll,
+    const int group_stride
+) {
+    int lid = get_local_id(0);
+    int grp = get_group_id(0);
+    int c_count = cluster_counts[grp];
+    int my_global_id = -1;
+    if (lid < c_count) my_global_id = group_indices_flat[grp * group_stride + lid];
+
+    __local float2 l_pos[GROUP_SIZE + MAX_GHOSTS];
+    __local float2 l_pos_new[GROUP_SIZE];
+    __local float  l_rad[GROUP_SIZE + MAX_GHOSTS];
+
+    int gcount = ghost_counts[grp];
+    int base_offset = grp * MAX_GHOSTS;
+
+    if (lid < c_count) {
+        if (my_global_id >= 0 && my_global_id < num_atoms) {
+            l_pos[lid] = curr_pos[my_global_id];
+            l_rad[lid] = radius[my_global_id];
+        } else {
+            l_pos[lid] = (float2)(0.0f, 0.0f);
+            l_rad[lid] = 0.0f;
+        }
+    } else {
+        // padding lanes
+        l_pos[lid] = (float2)(0.0f, 0.0f);
+        l_rad[lid] = 0.0f;
+    }
+
+    for (int i = lid; i < gcount; i += GROUP_SIZE) {
+        int gid = ghost_indices_flat[base_offset + i];
+        int slot = c_count + i;
+        if (gid >= 0 && gid < num_atoms) {
+            l_pos[slot] = curr_pos[gid];
+            l_rad[slot] = radius[gid];
+        } else {
+            l_pos[slot] = (float2)(0.0f, 0.0f);
+            l_rad[slot] = 0.0f;
+        }
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (lid < c_count && my_global_id >= 0 && my_global_id < num_atoms) {
+        int4 nl = neighs_local[my_global_id];
+        int* nloc = (int*)&nl;
+        float2 pi = l_pos[lid];
+        float  ri = l_rad[lid];
+        float2 dpi = (float2)(0.0f, 0.0f);
+        int ncol = 0;
+
+        for (int j = 0; j < c_count + gcount; j++) {
+            if (j == lid) continue;
+            if (j >= c_count && j < GROUP_SIZE) continue; // skip padding lanes
+
+            // Exclude bonded neighbors (local indices)
+            bool bonded = false;
+            for (int k = 0; k < MAX_DEGREE; k++) {
+                if (nloc[k] == j) { bonded = true; break; }
+            }
+            if (bonded) continue;
+
+            float2 pj = l_pos[j];
+            float  rj = l_rad[j];
+            float2 d = pj - pi;
+            float  r = ri + rj;
+            float  dist2 = dot(d, d);
+            if (dist2 < r * r && dist2 > 1e-16f) {
+                float invDist = rsqrt(dist2);
+                float dist = dist2 * invDist;
+                float2 n = d * invDist;
+                float pen = r - dist;
+                dpi -= n * (pen);
+                ncol++;
+            }
+        }
+
+        if (ncol > 0) {
+            float2 mi = mass[my_global_id];
+            float  w = (mi.x > 0.0f) ? (1.0f / mi.x) : 0.0f;
+            float  fac = (k_coll * dt) * w / (float)ncol;
+            dpos_node[my_global_id] += dpi * fac;
+        }
     }
 }
 

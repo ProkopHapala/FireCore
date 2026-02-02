@@ -177,6 +177,79 @@ class LiveViz2D:
         return self.artists()
 
 
+def _make_permutation_from_groups(groups, n_atoms):
+    perm = []
+    used = np.zeros(n_atoms, dtype=np.int32)
+    for g in groups:
+        for ia in g:
+            i = int(ia)
+            if i < 0 or i >= n_atoms:
+                raise ValueError(f"group index out of range: {i} (n_atoms={n_atoms})")
+            if used[i]:
+                raise ValueError(f"atom {i} appears multiple times in groups")
+            used[i] = 1
+            perm.append(i)
+    if len(perm) != n_atoms:
+        missing = [int(i) for i in np.where(used == 0)[0]]
+        raise ValueError(f"groups do not cover all atoms; missing={missing}")
+    return np.array(perm, dtype=np.int32)
+
+
+def _invert_permutation(perm):
+    perm = np.asarray(perm, dtype=np.int32)
+    inv = np.empty_like(perm)
+    for new_i, old_i in enumerate(perm.tolist()):
+        inv[int(old_i)] = int(new_i)
+    return inv
+
+
+def reorder_system_by_groups(pos, bonds, *, groups, node_mask=None, within_group_nodes_first=True, types=None, charges=None):
+    pos = np.asarray(pos, dtype=np.float32)
+    n_atoms = int(pos.shape[0])
+    perm0 = _make_permutation_from_groups(groups, n_atoms)
+
+    if within_group_nodes_first:
+        if node_mask is None:
+            raise ValueError('reorder_system_by_groups: node_mask must be provided when within_group_nodes_first=True')
+        node_mask = np.asarray(node_mask, dtype=np.bool_)
+        if node_mask.shape[0] != n_atoms:
+            raise ValueError(f"reorder_system_by_groups: node_mask shape {node_mask.shape} expected ({n_atoms},)")
+        perm = []
+        for g in groups:
+            g = [int(i) for i in g]
+            gn = [i for i in g if bool(node_mask[i])]
+            gc = [i for i in g if not bool(node_mask[i])]
+            perm.extend(gn)
+            perm.extend(gc)
+        perm = np.asarray(perm, dtype=np.int32)
+    else:
+        perm = perm0
+
+    inv = _invert_permutation(perm)
+
+    pos_new = pos[perm].copy()
+    types_new = None
+    if types is not None:
+        types_new = np.asarray(types)[perm].copy()
+    charges_new = None
+    if charges is not None:
+        charges_new = np.asarray(charges)[perm].copy()
+
+    bonds_new = []
+    for (i, j) in bonds:
+        ni = int(inv[int(i)])
+        nj = int(inv[int(j)])
+        if ni == nj:
+            continue
+        if ni < nj:
+            bonds_new.append((ni, nj))
+        else:
+            bonds_new.append((nj, ni))
+    bonds_new = sorted(set(bonds_new))
+
+    return pos_new, bonds_new, types_new, charges_new, perm, inv
+
+
 def setup_from_mol(sim, mol, *, k_bond=200.0, perturbation=0.0, perturb_rot=0.0, bAllNodes=False, seed=0):
     """Setup simulator from an already loaded AtomicSystem."""
     n_atoms = len(mol.apos)
@@ -481,7 +554,7 @@ def compute_momentum_2d(pos, vel, omega=None):
     return P, L
 
 
-def setup_from_bonds(sim, pos, bonds, *, k_bond=200.0, perturbation=0.0, perturb_rot=0.0, bAllNodes=False, seed=0):
+def setup_from_bonds(sim, pos, bonds, *, k_bond=200.0, perturbation=0.0, perturb_rot=0.0, bAllNodes=False, seed=0, groups=None, reorder='global_nodes_first', verbose=0):
     pos = np.asarray(pos, dtype=np.float32)
     if pos.ndim != 2 or pos.shape[1] != 2:
         raise ValueError(f"setup_from_bonds: pos shape {pos.shape} expected (natoms,2)")
@@ -500,32 +573,51 @@ def setup_from_bonds(sim, pos, bonds, *, k_bond=200.0, perturbation=0.0, perturb
         if bAllNodes or np.sum(neighs[i] >= 0) > 1:
             node_mask[i] = True
 
-    old_to_new = {}
-    new_idx = 0
-    for i in range(n_atoms):
-        if node_mask[i]:
-            old_to_new[i] = new_idx
-            new_idx += 1
-    for i in range(n_atoms):
-        if not node_mask[i]:
-            old_to_new[i] = new_idx
-            new_idx += 1
+    perm = None
+    perm_inv = None
+    if reorder == 'global_nodes_first':
+        old_to_new = {}
+        new_idx = 0
+        for i in range(n_atoms):
+            if node_mask[i]:
+                old_to_new[i] = new_idx
+                new_idx += 1
+        for i in range(n_atoms):
+            if not node_mask[i]:
+                old_to_new[i] = new_idx
+                new_idx += 1
+        perm = np.array([int(i) for i in sorted(old_to_new.keys(), key=lambda k: old_to_new[k])], dtype=np.int32)
+        perm_inv = _invert_permutation(perm)
+        new_pos = pos[perm].copy()
+        new_bonds = []
+        for (i, j) in bonds:
+            ni = int(perm_inv[int(i)])
+            nj = int(perm_inv[int(j)])
+            if ni == nj:
+                continue
+            if ni < nj:
+                new_bonds.append((ni, nj))
+            else:
+                new_bonds.append((nj, ni))
+        new_bonds = sorted(set(new_bonds))
+    elif reorder == 'groups_then_within':
+        if groups is None:
+            raise ValueError('setup_from_bonds: groups must be provided for reorder=groups_then_within')
+        new_pos, new_bonds, _, _, perm, perm_inv = reorder_system_by_groups(pos, bonds, groups=groups, node_mask=node_mask, within_group_nodes_first=True)
+    elif reorder == 'none':
+        new_pos = pos.copy()
+        new_bonds = sorted(set((min(i, j), max(i, j)) for (i, j) in bonds if int(i) != int(j)))
+        perm = np.arange(n_atoms, dtype=np.int32)
+        perm_inv = np.arange(n_atoms, dtype=np.int32)
+    else:
+        raise ValueError(f"setup_from_bonds: unknown reorder='{reorder}'")
 
-    new_pos = np.zeros((n_atoms, 2), dtype=np.float32)
-    for old_i, new_i in old_to_new.items():
-        new_pos[new_i] = pos[old_i]
-
-    new_bonds = []
-    for (i, j) in bonds:
-        ni = int(old_to_new[int(i)])
-        nj = int(old_to_new[int(j)])
-        if ni == nj:
-            continue
-        if ni < nj:
-            new_bonds.append((ni, nj))
-        else:
-            new_bonds.append((nj, ni))
-    new_bonds = sorted(set(new_bonds))
+    if int(verbose) > 0:
+        print(f"[DEBUG] setup_from_bonds reorder={reorder} bAllNodes={bAllNodes} n_atoms={n_atoms}")
+        if perm is not None:
+            print(f"[DEBUG] perm(old_idx_at_new_i)={perm.tolist()}")
+        if perm_inv is not None:
+            print(f"[DEBUG] perm_inv(new_idx_of_old_i)={perm_inv.tolist()}")
 
     new_neighs, new_bks = build_neighs_bk_from_bonds_2d(n_atoms, new_bonds)
 
@@ -576,4 +668,6 @@ def setup_from_bonds(sim, pos, bonds, *, k_bond=200.0, perturbation=0.0, perturb
         'port_local': port_local,
         'port_n': port_n,
         'stiffness': stiffness_nodes,
+        'perm': perm,
+        'perm_inv': perm_inv,
     }
