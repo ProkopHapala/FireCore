@@ -504,3 +504,109 @@ All requested features are implemented:
 ## Open issues / cautions
 - `group_stride` must be passed to all cluster kernels; ensure any new cluster kernels mirror this pattern.
 - Keep `cluster_counts` = real locals, `ghost_counts` = pure ghost count; never mix to avoid uninitialized local slots.
+
+
+---
+
+## USER
+
+exactly as I though look on thishorrible shit  for 2 H2O molecules
+``
+[DEBUG] cluster_counts (owned atoms per group):
+[3 3]
+  grp[  0] owns 3 atoms: [0, 1, 2]
+    atom[  0] pos=(-2.3795,0.0874)
+    atom[  1] pos=(2.4285,0.1100)
+    atom[  2] pos=(-3.2581,0.6358)
+  grp[  1] owns 3 atoms: [3, 4, 5]
+    atom[  3] pos=(-1.7419,0.6358)
+    atom[  4] pos=(1.7419,0.6358)
+    atom[  5] pos=(3.2581,0.6358)
+[DEBUG] ghost_counts:
+[3 3]
+[DEBUG] ghost_indices_flat (per group):
+  grp[  0] ghosts=[3, 4, 5]
+  grp[  1] ghosts=[0, 1, 2]
+``
+
+what I see in the view is that one H2O is left from zero along x (negative x-coords) and the other right (possitive x-coords) but as you can see in our groups thery are intermixed in horrible way. 
+
+What we are doing with the atoms that our groups does not correspond to molecules 
+notice that all hydrogens have initial coordinates 
+0.6358
+
+as you can see  grp[  1] contains only hydrogens, and grp[  0] is OOH instead of OHH
+this reflect the number printed on the plot that we start with node aoms O0 O1 followed by hydrogens H2 H3 H4 H5
+
+the problem is we somehow reoder them sorting node first before we create the groups 
+
+
+we should preserve ordering when we add one molecule per group. This is very importnt. We should ale make sure we order it properly keeping valid the bonds and making proper neighbors. That is rather tricky. 
+
+Later when we will split atoms to groups be other means e.g. BBses, we should be alber to reorder them correctly.
+
+Basically what we need is some general function which we give a lit of atoms in each group, e.g. [[0,3,5,],[1,6,7]] and this function will rerder the atomic coordinats, types, but also bonds an neighors (which should point the the original atoms at the new place). Can we make such function?
+
+Think it throug and make a plan...
+
+interesting is that mthod pbd_cluster_fused seems to work propelry with this wrong ordering. How is that possible ?
+
+
+---
+
+## GPT-5.1-Codex
+
+Problem: atoms are reordered in [setup_from_mol](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D_utils.py:179:0-277:5)/[setup_from_bonds](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D_utils.py:483:0-578:5) (nodes first, then capping), so plot IDs and cluster groups don’t match molecules. You see OOH / HHH splits because of this reordering.
+
+Fix to propose:
+- In [setup_from_mol](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D_utils.py:179:0-277:5) (and [setup_from_bonds](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D_utils.py:483:0-578:5)), add a flag `preserve_order` (default True for clustering path) that skips the node-first reorder and keeps original atom order.
+- When `preserve_order` is True:
+  - Do not build `old_to_new`; keep `new_pos = mol.apos[:, :2]` and bonds unchanged.
+  - Keep `nnode` as before (count nodes), but don’t reshuffle atoms; [make_bk_slots_2d](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D.py:1231:0-1259:18)/neighs use original indices.
+- Wire CLI to pass `preserve_order=True` for cluster solvers; or simply default to True and only reorder when explicitly requested (e.g., a flag `--reorder_nodes_first`).
+
+If you want, I’ll patch [XPBD_2D_utils.py](cci:7://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D_utils.py:0:0-0:0) to:
+1) Add `preserve_order=True` arg to [setup_from_mol](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D_utils.py:179:0-277:5)/[setup_from_bonds](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D_utils.py:483:0-578:5).
+2) Guard the node-first reordering under `if not preserve_order:`. Otherwise, leave positions and bonds as-is.
+3) Adjust return elems accordingly.
+
+Then in [test_XPBD_2D.py](cci:7://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/test_XPBD_2D.py:0:0-0:0), call [setup_from_bonds(..., preserve_order=True)](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D_utils.py:483:0-578:5).
+
+Switch me to Code mode and I’ll apply these changes.
+
+Here’s a concrete plan for a general reorder utility, so clustering can preserve molecule grouping and keep bonds/neighbors consistent:
+
+**Utility goal**
+Given explicit groups (e.g., `[[0,3,5],[1,6,7]]`), produce a reordered topology and state:
+- New ordering is concatenation of groups.
+- Positions, types, charges follow the new order.
+- Bonds are remapped to new indices.
+- Neighbor int4, bkSlots, stiffness, ports are rebuilt from the remapped bonds.
+- Provide old→new and new→old maps so plotting/debug stays consistent.
+
+**Design sketch**
+- Function signature (Python):  
+  `reorder_system(pos, bonds, *, groups, types=None, charges=None, bAllNodes=False)`  
+  Returns: `pos_new, bonds_new, types_new, charges_new, neighs_new, bkSlots_new, stiffness_new, port_local_new, port_n_new, nnode, maps`
+- Steps:
+  1) Build `old_to_new` from `groups` in order; assert each atom appears exactly once.
+  2) Remap positions/types/charges with `new_idx`.
+  3) Remap bonds: `(i,j) -> (old_to_new[i], old_to_new[j])`, drop duplicates/self.
+  4) Recompute neighbors/bkSlots/stiffness via existing helpers [build_neighs_bk_from_bonds_2d](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D.py:1200:0-1228:22), [make_bk_slots_2d](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D.py:1202:0-1230:18), [make_stiffness_from_bonds_2d](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D.py:1231:0-1247:20) on reordered bonds.
+  5) Node detection (`nnode`) on reordered neighbors (or `bAllNodes` override); ports rebuilt from reordered positions as in current setup.
+  6) Return maps: `old_to_new` dict and `new_to_old` list for plotting/cluster debug.
+
+**Integration**
+- In [setup_from_bonds](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D_utils.py:483:0-578:5)/[setup_from_mol](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D_utils.py:179:0-277:5), add arg `preserve_order=True`; when `preserve_order` is True and `groups` is provided (e.g., one-molecule-per-group), call `reorder_system` with those groups (one group per molecule) to keep molecule atoms contiguous.
+- CLI: for `--cluster_strategy one_molecule_per_group`, pass groups based on copies (`[[i*n0 .. i*n0+n0-1] ...]`) into the reorder utility so visualization, clustering, and ghosting all see the same contiguous per-molecule layout.
+- Keep current node-first reorder as an explicit option (`--reorder_nodes_first`) but disable by default for cluster solvers.
+
+If you want, I can implement `reorder_system` in [XPBD_2D_utils.py](cci:7://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D_utils.py:0:0-0:0) and wire [setup_from_bonds](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D_utils.py:483:0-578:5)/[setup_from_mol](cci:1://file:///home/prokophapala/git/FireCore/pyBall/XPBD_2D/XPBD_2D_utils.py:179:0-277:5) to use it with `preserve_order=True` for one-molecule-per-group.
+
+
+
+pbd_cluster_relax is sensitive to the node-first reorder done in setup_from_mol/setup_from_bonds: atoms are reordered (nodes first), then you pack groups (e.g., 0–2 vs 3–5), so each cluster holds a mixed “molecule” and relies on ghosts to reconnect. Collisions are then split across clusters and can miss.
+
+pbd_cluster_fused still uses the reordered indices, but its kernel processes collisions + ports in one pass per cluster and doesn’t suffer the same split/ghost remap gap in your scenario (with group_size=n0, two clusters). In practice, fused is less sensitive because it doesn’t do the separate host-side Jacobi/ghost loop the way pbd_cluster_relax does; it keeps everything in one kernel, so the mixed ordering doesn’t break the collision handling you observe.
+
+Root cause remains the node-first reorder in XPBD_2D_utils.setup_from_mol/setup_from_bonds. To make clusters align with molecules (and plotted labels), we should add a preserve_order path (or explicit group-based reorder) so atoms stay contiguous per molecule before clustering.

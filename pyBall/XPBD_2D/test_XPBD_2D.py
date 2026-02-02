@@ -250,9 +250,12 @@ def run_simulation(sim, method, nnode, iters, *, dt=0.01, inner_iters=10, damp_v
 
     # For pbd_cluster_relax, use callback to visualize inner iterations
     if method == 'pbd_cluster_relax':
+        cluster_strategy = args.cluster_strategy
+        sim.set_cluster_config(group_size=group_size, cluster_strategy=cluster_strategy)
         for outer_it in range(int(iters)):
             apply_pick()
             sim.step_pbd_cluster_relax(
+                nnode=nnode,
                 dt=float(dt), outer_iters=1, inner_iters=int(inner_iters), k_coll=float(k_coll),
                 bmix=float(bmix), reset_hb=(outer_it == 0), callback=inner_callback, verbose=verbose
             )
@@ -354,7 +357,19 @@ python test_XPBD_2D.py --method pbd_relax --molecule ../../cpp/common_resources/
 python test_XPBD_2D.py --method pbd_relax --molecule ../../cpp/common_resources/xyz/pentacene.xyz --interval 0 --iters 1 --inner_iters 50000
 python test_XPBD_2D.py --method pbd_relax --molecule ../../cpp/common_resources/xyz/HCCOCCH.xyz   --interval 0 --iters 1 --inner_iters 50000
 
+python test_XPBD_2D.py --method pbd_cluster_fused --molecule ../../cpp/common_resources/xyz/HCOOH.xyz      --interval 0 --iters 1 --inner_iters 50000
+python test_XPBD_2D.py --method pbd_cluster_fused --molecule ../../cpp/common_resources/xyz/pyrrol.xyz     --interval 0 --iters 1 --inner_iters 50000
+python test_XPBD_2D.py --method pbd_cluster_fused --molecule ../../cpp/common_resources/xyz/guanine.xyz    --interval 0 --iters 1 --inner_iters 50000
+python test_XPBD_2D.py --method pbd_cluster_fused --molecule ../../cpp/common_resources/xyz/pentacene.xy   --interval 0 --iters 1 --inner_iters 50000
 
+python test_XPBD_2D.py --method pbd_cluster_relax_ports --molecule ../../cpp/common_resources/xyz/HCOOH.xyz      --interval 0 --iters 1 --inner_iters 50000
+python test_XPBD_2D.py --method pbd_cluster_relax_ports --molecule ../../cpp/common_resources/xyz/pyrrol.xyz     --interval 0 --iters 1 --inner_iters 50000
+python test_XPBD_2D.py --method pbd_cluster_relax_ports --molecule ../../cpp/common_resources/xyz/guanine.xyz    --interval 0 --iters 1 --inner_iters 50000
+python test_XPBD_2D.py --method pbd_cluster_relax_ports --molecule ../../cpp/common_resources/xyz/pentacene.xy   --interval 0 --iters 1 --inner_iters 50000
+
+
+python test_XPBD_2D.py --method pbd_cluster_relax     --molecule ../../cpp/common_resources/xyz/H2O.xyz    --interval 0 --inner_iters 50000
+python test_XPBD_2D.py --method pbd_cluster_relax     --molecule ../../cpp/common_resources/xyz/HCOOH.xyz    --interval 0 --inner_iters 50000
 python test_XPBD_2D.py --method pbd_cluster_relax     --molecule ../../cpp/common_resources/xyz/pyrrol.xyz    --interval 0 --inner_iters 50000
 
 
@@ -370,6 +385,9 @@ if __name__ == '__main__':
 
     parser.add_argument("--molecule",   type=str, default="../../cpp/common_resources/xyz/pentacene.xyz", help="Path to molecule file (.xyz, .mol, .mol2)")
     #parser.add_argument("--molecule",   type=str, default="../../cpp/common_resources/xyz/pyrrol.xyz", help="Path to molecule file (.xyz, .mol, .mol2)")
+
+
+    parser.add_argument('--cluster_strategy', type=str, default='one_molecule_per_group', choices=['one_molecule_per_group', 'pack_fill'])
 
     parser.add_argument('--iters',      type=int,   default=20000)
     parser.add_argument('--dt',         type=float, default=0.1)
@@ -393,7 +411,9 @@ if __name__ == '__main__':
     parser.add_argument('--k_coll',     type=float, default=50.0, help='Collision stiffness (compared to bond stiffness ~200)')
     parser.add_argument('--copies',     type=int,   default=2, help='Number of copies of the loaded molecule to simulate')
     parser.add_argument('--copy_shift', type=float, default=5.0, help='Translation in X applied between molecule copies')
-    parser.add_argument('--cluster_strategy', type=str, default='one_molecule_per_group', choices=['one_molecule_per_group', 'pack_fill'])
+
+
+    
     parser.add_argument('--cluster_group_size', type=int, default=64, help='Group size for pack_fill strategy (ignored for one_molecule_per_group unless override)')
     
     args = parser.parse_args()
@@ -422,7 +442,7 @@ if __name__ == '__main__':
     bonds = []
     for ic in range(int(args.copies)):
         i0 = ic * n0
-        pos[i0:i0+n0, :] = pos0 + np.array([float(args.copy_shift) * ic, 0.0], dtype=np.float32)
+        pos[i0:i0+n0, :] = pos0 + np.array([float(args.copy_shift) * (ic-0.5), 0.0], dtype=np.float32)
         for (i, j) in bonds0:
             bonds.append((i0 + int(i), i0 + int(j)))
 

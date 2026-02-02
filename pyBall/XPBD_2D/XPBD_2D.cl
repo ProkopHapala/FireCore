@@ -871,7 +871,8 @@ __kernel void compute_corrections_2d(
     __global float2*       dpos_node,       // Output: Delta P for Node i
     __global float*        dtheta_node,     // Output: Delta Theta for Node i
     __global float2*       dpos_neigh,      // Output: Delta P for Neighbor j (Recoil)
-    const float dt
+    const float dt,
+    const int   accumulate_dpos   // 1: add to existing dpos_node (collisions), 0: overwrite
 ) {
     int i = get_global_id(0);
     if (i >= nnode) return;
@@ -892,7 +893,8 @@ __kernel void compute_corrections_2d(
     float dt2 = dt * dt + 1e-16f;
 
     // Accumulators for Node i
-    float2 sum_dpos   = (float2)(0.0f, 0.0f);
+    // Preserve collision corrections if requested (split collision+port path)
+    float2 sum_dpos   = accumulate_dpos ? dpos_node[i] : (float2)(0.0f, 0.0f);
     float  sum_dtheta = 0.0f;
 
     int4 ng        = neighs[i];

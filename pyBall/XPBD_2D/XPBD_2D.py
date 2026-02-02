@@ -364,7 +364,7 @@ class XPBD_2D:
         cl.enqueue_fill_buffer(self.queue, self.cl_ghost_counts, np.int32(0), 0, ng * 4)
         self._cluster_inited = True
 
-    def set_cluster_config(self, *, group_size=None, num_groups=None, cluster_counts=None, cluster_stride=None):
+    def set_cluster_config(self, *, group_size=None, num_groups=None, cluster_counts=None, cluster_stride=None, cluster_strategy=None):
         """Configure cluster tiling used by cluster-local kernels.
 
         Args:
@@ -664,7 +664,7 @@ class XPBD_2D:
                 self.cl_port_local, self.cl_stiffness_flat,
                 self.cl_mass,
                 self.cl_dpos_node, self.cl_dtheta_node, self.cl_dpos_neigh,
-                dt_f
+                dt_f, np.int32(0)  # accumulate_dpos=0 (ports only)
             )
 
             self._k_apply_corrections_2d(
@@ -718,7 +718,7 @@ class XPBD_2D:
                 self.cl_port_local, self.cl_stiffness_flat,
                 self.cl_mass,  # Pass mass buffer
                 self.cl_dpos_node, self.cl_dtheta_node, self.cl_dpos_neigh,
-                dt_f  # Pass dt for M/dt^2 calculation
+                dt_f, np.int32(0)  # accumulate_dpos=0 (ports only)
             )
             
             # Apply corrections without heavy-ball mixing (that's only for relaxation)
@@ -747,7 +747,7 @@ class XPBD_2D:
             nnode_i, self.cl_rot, self.cl_hb_rot, self.cl_omega, dt_f, np.float32(damp)
         )
 
-    def step_pbd_cluster_relax(self, *, dt=0.1, outer_iters=1, inner_iters=10, k_coll=1.0, bmix=0.8, reset_hb=True, bbox_margin=0.5, callback=None, verbose=0):
+    def step_pbd_cluster_relax(self, nnode, *, dt=0.1, outer_iters=1, inner_iters=10, k_coll=1.0, bmix=0.8, reset_hb=True, bbox_margin=0.5, callback=None, verbose=0):
         """Cluster-local Jacobi relaxation with collisions.
 
         Notes:
@@ -759,6 +759,7 @@ class XPBD_2D:
         natoms = int(self.num_atoms)
         ng = int(self.num_groups)
         dt_f = np.float32(dt)
+        nnode_i = np.int32(nnode)
         natoms_i = np.int32(self.num_atoms)
         relax_coll_f = np.float32(1.0)
         bmix_f = np.float32(bmix)
@@ -803,6 +804,36 @@ class XPBD_2D:
                 np.int32(self.cluster_stride)
             )
 
+            # DEBUG: Print ghost counts and indices if verbose > 0
+            if int(verbose) > 0:
+                host_cluster_counts = np.empty((self.num_groups,), dtype=np.int32)
+                host_ghost_counts = np.empty((self.num_groups,), dtype=np.int32)
+                host_ghost_indices = np.empty((self.num_groups, int(self.max_ghosts)), dtype=np.int32)
+                host_pos = np.empty((self.num_atoms, 2), dtype=np.float32)
+                cl.enqueue_copy(self.queue, host_cluster_counts, self.cl_cluster_counts).wait()
+                cl.enqueue_copy(self.queue, host_ghost_counts, self.cl_ghost_counts).wait()
+                cl.enqueue_copy(self.queue, host_ghost_indices, self.cl_ghost_indices).wait()
+                cl.enqueue_copy(self.queue, host_pos, self.cl_pos).wait()
+                print(f"[DEBUG] cluster_counts (owned atoms per group):")
+                print(host_cluster_counts)
+                for g in range(int(self.num_groups)):
+                    start = g * int(self.group_size)
+                    cnt = int(host_cluster_counts[g])
+                    owned = list(range(start, min(start + cnt, self.num_atoms)))
+                    print(f"  grp[{g:3d}] owns {cnt} atoms: {owned}")
+                    for ia in owned:
+                        p = host_pos[ia]
+                        print(f"    atom[{ia:3d}] pos=({p[0]:.4f},{p[1]:.4f})")
+                print(f"[DEBUG] ghost_counts:")
+                print(host_ghost_counts)
+                print(f"[DEBUG] ghost_indices_flat (per group):")
+                for g in range(int(self.num_groups)):
+                    gcount = int(host_ghost_counts[g])
+                    if gcount == 0:
+                        continue
+                    gslice = host_ghost_indices[g, :gcount]
+                    print(f"  grp[{g:3d}] ghosts={gslice.tolist()}")
+
             # DEBUG: Print neighs_local mapping if verbose > 1
             if int(verbose) > 1:
                 host_neighs_local = np.empty((self.num_atoms, 4), dtype=np.int32)
@@ -827,10 +858,10 @@ class XPBD_2D:
                     dt_f, np.float32(k_coll), np.int32(self.cluster_stride)
                 )
 
-                # Apply collisions: treat all atoms as nodes so dpos_node is applied
+                # Apply collisions
                 self._k_apply_corrections_2d(
                     self.queue, (self.num_atoms,), None,
-                    natoms_i, natoms_i,  # nnode=natoms so dpos_node applies without double-weighting capping
+                    natoms_i, nnode_i,
                     self.cl_pos, self.cl_rot, self.cl_bkSlots,
                     self.cl_dpos_node, self.cl_dtheta_node, self.cl_dpos_neigh,
                     relax_coll_f, self.cl_prev_pos_cluster, self.cl_hb_rot,  # hb_rot unused here
@@ -879,7 +910,8 @@ class XPBD_2D:
                 self.cl_ghost_indices, self.cl_ghost_counts, self.cl_cluster_counts,
                 self.cl_neighs_local,
                 np.int32(natoms), np.int32(ng),
-                margin_sq, bbox_margin_f
+                margin_sq, bbox_margin_f,
+                np.int32(self.cluster_stride)
             )
 
             for inner in range(int(inner_iters)):
@@ -984,7 +1016,8 @@ class XPBD_2D:
                 self.cl_ghost_indices, self.cl_ghost_counts, self.cl_cluster_counts,
                 self.cl_neighs_local,
                 np.int32(natoms), np.int32(ng),
-                margin_sq, bbox_margin_f
+                margin_sq, bbox_margin_f,
+                np.int32(self.cluster_stride)
             )
 
             # 3) Cluster-local Jacobi collision solve - inner loop in Python for callback support
@@ -1001,18 +1034,18 @@ class XPBD_2D:
                     self.cl_ghost_indices, self.cl_ghost_counts, self.cl_cluster_counts,
                     self.cl_dpos_node,
                     np.int32(natoms),
-                    dt_f, np.float32(k_coll)
+                    dt_f, np.float32(k_coll), np.int32(self.cluster_stride)
                 )
 
-                self._k_compute_corrections_2d(
-                    self.queue, (nnode,), None,
-                    nnode_i,
-                    self.cl_pos, self.cl_rot, self.cl_neighs,
-                    self.cl_port_local, self.cl_stiffness_flat,
-                    self.cl_mass,
-                    self.cl_dpos_node, self.cl_dtheta_node, self.cl_dpos_neigh,
-                    dt_f
-                )
+                # self._k_compute_corrections_2d(
+                #     self.queue, (nnode,), None,
+                #     nnode_i,
+                #     self.cl_pos, self.cl_rot, self.cl_neighs,
+                #     self.cl_port_local, self.cl_stiffness_flat,
+                #     self.cl_mass,
+                #     self.cl_dpos_node, self.cl_dtheta_node, self.cl_dpos_neigh,
+                #     dt_f, np.int32(1)  # accumulate_dpos=1 (collisions + ports)
+                # )
 
                 self._k_apply_corrections_2d(
                     self.queue, (self.num_atoms,), None,
