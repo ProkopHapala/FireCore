@@ -426,11 +426,6 @@ def attach_picker_2d(viz, sim, *, pick_radius=0.5, verbose=0):
         if event.xdata is None or event.ydata is None:
             return
         pick["mouse"] = np.array([event.xdata, event.ydata], dtype=np.float32)
-        ia = int(pick["idx"])
-        sim.set_atom_pos(ia, pick["mouse"])
-        if viz._last_pos is not None:
-            viz._last_pos[ia, 0] = pick["mouse"][0]
-            viz._last_pos[ia, 1] = pick["mouse"][1]
 
     viz.fig.canvas.mpl_connect('button_press_event', on_press)
     viz.fig.canvas.mpl_connect('button_release_event', on_release)

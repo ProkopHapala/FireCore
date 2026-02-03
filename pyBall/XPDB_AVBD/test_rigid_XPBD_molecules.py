@@ -115,6 +115,13 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
 
     # Explicit-force local ports: node-only buffers (shape nnode)
     # For this simple test we use the initial geometry as body frame (quat=identity).
+    def _quat_rotate(q, v):
+        q = np.asarray(q, dtype=np.float32)
+        v = np.asarray(v, dtype=np.float32)
+        qv = q[..., :3]
+        qw = q[..., 3:4]
+        t = 2.0 * np.cross(qv, v)
+        return v + qw * t + np.cross(qv, t)
     port_local = np.zeros((int(nnode), 4, 4), dtype=np.float32)
     port_n = np.zeros((int(nnode),), dtype=np.uint8)
     for ia in range(int(nnode)):
@@ -123,8 +130,10 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
             j = int(neighs[ia, k])
             if j < 0:
                 continue
-            v = xyz0[j] - xyz0[ia]
-            port_local[ia, k, :3] = v
+            v_world = pos_init[j] - pos_init[ia]
+            qconj = quat_init[ia].copy()
+            qconj[:3] *= -1.0
+            port_local[ia, k, :3] = _quat_rotate(qconj, v_world)
             nn += 1
         port_n[ia] = nn
     sim.upload_rigid_ports_local(port_local, port_n, nnode=int(nnode))
@@ -178,6 +187,7 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
     pick2d = None
     pick3d = None
     active_view = getattr(run_case, '_view', 'none')
+    viz_enabled = bool(getattr(run_case, '_viz_enabled', False))
 
     def hook_toggle_view(fig):
         nonlocal active_view
@@ -212,12 +222,12 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
         pick3d = attach_picker_3d(viz3d, sim, pick_radius_px=20, verbose=1)
         hook_toggle_view(viz3d.fig)
 
-    if viz_force and active_view == '2d':
+    if viz_enabled and active_view == '2d':
         ensure_viz2d()
-    if viz_force and active_view == '3d':
+    if viz_enabled and active_view == '3d':
         ensure_viz3d()
 
-    if viz_force and active_view != 'none':
+    if viz_enabled and active_view != 'none':
         def emit_frame(it, title=None):
             if (it % int(viz_every)) != 0 and it != int(iters) - 1:
                 return
@@ -243,7 +253,7 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
             return
 
     PIN_MASS = 1e8
-    pick_prev = {"active": False, "idx": None}
+    pick_prev = {"active": False, "idx": None, "mass": None}
 
     def apply_pick():
         nonlocal active_view
@@ -256,11 +266,16 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
         if curr_active and (not prev_active):
             ia = int(pick['idx'])
             M_prev, I_prev = sim.get_atom_mass(ia)
+            pick_prev['mass'] = float(M_prev)
             sim.set_atom_mass(ia, (PIN_MASS, I_prev))
         if (not curr_active) and prev_active and (pick_prev['idx'] is not None):
             ia = int(pick_prev['idx'])
             M_prev, I_prev = sim.get_atom_mass(ia)
-            sim.set_atom_mass(ia, (1.0, I_prev))
+            M_restore = pick_prev.get('mass', None)
+            if M_restore is None:
+                M_restore = 1.0
+            sim.set_atom_mass(ia, (float(M_restore), I_prev))
+            pick_prev['mass'] = None
         pick_prev['active'] = curr_active
         pick_prev['idx'] = int(pick['idx']) if curr_active else None
 
@@ -349,6 +364,7 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
             print(f"force it={it:6d} |F|={fnorm:.6e} log10|F|={np.log10(fnorm+1e-30): .3f}")
 
         def _on_frame(it):
+            apply_pick()
             if dump_xyz_i is not None and ((it % int(dump_every)) == 0 or (it == int(iters_force) - 1)):
                 pos4_it, q4_it, v4_it, om4_it = sim.download_rigid_state()
                 pneigh_node = sim.download_buffer(sim.cl_rpneigh, (nnode_force * 4, 4)).reshape(nnode_force, 4, 4)
@@ -361,16 +377,8 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
             if dump_pdb is not None and ((it % int(pdb_every)) == 0 or (it == int(iters_force) - 1)):
                 pos4_it, q4_it, v4_it, om4_it = sim.download_rigid_state()
                 frames_pdb.append(pos4_it[:, :3].copy())
-
-            if viz_force and ((it % int(viz_every)) == 0 or (it == int(iters_force) - 1)):
-                pos4_it, q4_it, v4_it, om4_it = sim.download_rigid_state()
-                pneigh_node = sim.download_buffer(sim.cl_rpneigh, (nnode_force * 4, 4)).reshape(nnode_force, 4, 4)
-                f4 = sim.download_buffer(sim.cl_rforce, (sim.num_atoms, 4))
-                pneigh_full = np.zeros((len(elems), 4, 4), dtype=np.float32)
-                port_n_full = np.zeros((len(elems),), dtype=np.uint8)
-                pneigh_full[:nnode_force, :, :] = pneigh_node
-                port_n_full[:nnode_force] = port_n
-                plot_state_with_ports(elems, pos4_it[:, :3], pneigh_full, port_n_full, force=f4, title=f"{name} it={it}")
+            if viz_enabled:
+                emit_frame(it, title=f"{name} force_explicit it={it}")
 
         run_RRsp3_force(
             sim,
@@ -442,9 +450,7 @@ python3 pyBall/XPDB_AVBD/test_rigid_XPBD_molecules.py  --dt_force 0.001 --iters_
 
 python3 pyBall/XPDB_AVBD/test_rigid_XPBD_molecules.py --dt_force 0.001 --iters_force 2000 --perturb_pos 0.1 --perturb_rot 0.1 --damp_force 0.98 --dump_xyz traj.xyz --dump_every 10 --noshow
 
-
 python test_rigid_XPBD_molecules.py --molecule ch2nh --dt_force 0.001 --iters_force 1000 --perturb_pos 0.1 --perturb_rot 0.1 --damp_force 0.98 --viz_force --viz_every 50 --dump_pdb traj.pdb
-
 
 python test_rigid_XPBD_molecules.py --molecule ch2nh --dt_force 0.001 --iters_force 1000 --perturb_pos 0.1 --perturb_rot 0.1 --damp_force 0.98 --dump_pdb traj.pdb --pdb_every 10 --noshow
 
@@ -456,31 +462,31 @@ python test_rigid_XPBD_molecules.py --molecule ch2nh --dt_force 0.001 --iters_fo
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('--molecule', type=str, default='all')
-    ap.add_argument('--xyz', type=str, default=None)
-    ap.add_argument('--preset', type=str, default=None, choices=['h2o', 'ch2nh', 'hcooh', 'pyrrole', 'guanine', 'pentacene'])
-    ap.add_argument('--bAllNodes', action='store_true')
-    ap.add_argument('--method', type=str, default='force_explicit', choices=['force_explicit', 'projective', 'pbd_ports', 'xpbd_ports_scalar', 'xpbd_ports_vector'])
-    ap.add_argument('--view', type=str, default='none', choices=['none', '2d', '3d'])
-    ap.add_argument('--dt', type=float, default=0.1)
-    ap.add_argument('--iters', type=int, default=50)
-    ap.add_argument('--dt_force', type=float, default=0.01)
-    ap.add_argument('--iters_force', type=int, default=2000)
-    ap.add_argument('--k_bond', type=float, default=200.0)
-    ap.add_argument('--k_rot', type=float, default=50.0)
+    ap.add_argument('--molecule',    type=str,   default='h2o')
+    ap.add_argument('--xyz',         type=str,   default=None)
+    ap.add_argument('--preset',      type=str,   default=None, choices=['h2o', 'ch2nh', 'hcooh', 'pyrrole', 'guanine', 'pentacene'])
+    ap.add_argument('--bAllNodes',   type=int,   default=0 )
+    ap.add_argument('--method',      type=str,   default='force_explicit', choices=['force_explicit', 'projective', 'pbd_ports', 'xpbd_ports_scalar', 'xpbd_ports_vector'])
+    ap.add_argument('--view',        type=str,   default='2d', choices=['none', '2d', '3d'])
+    ap.add_argument('--dt',          type=float, default=0.1)
+    ap.add_argument('--iters',       type=int,   default=10000)
+    ap.add_argument('--dt_force',    type=float, default=0.02)
+    ap.add_argument('--iters_force', type=int,   default=2000)
+    ap.add_argument('--k_bond',      type=float, default=200.0)
+    ap.add_argument('--k_rot',       type=float, default=50.0)
     ap.add_argument('--perturb_pos', type=float, default=0.1)
     ap.add_argument('--perturb_rot', type=float, default=0.1)
-    ap.add_argument('--seed', type=int, default=0)
-    ap.add_argument('--damp_force', type=float, default=0.98)
-    ap.add_argument('--dump_xyz', type=str, default=None)
-    ap.add_argument('--dump_every', type=int, default=10)
-    ap.add_argument('--dump_pdb', type=str, default=None)
-    ap.add_argument('--pdb_every', type=int, default=10)
-    ap.add_argument('--viz_force', action='store_true')
-    ap.add_argument('--viz_every', type=int, default=100)
-    ap.add_argument('--plot_conv', action='store_true')
-    ap.add_argument('--noshow', action='store_true')
-    ap.add_argument('--pbd_relax', type=float, default=0.5)
+    ap.add_argument('--seed',        type=int,   default=167987)
+    ap.add_argument('--damp_force',  type=float, default=0.9)
+    ap.add_argument('--dump_xyz',    type=str,   default=None)
+    ap.add_argument('--dump_every',  type=int,   default=10)
+    ap.add_argument('--dump_pdb',    type=str,   default=None)
+    ap.add_argument('--pdb_every',   type=int,   default=1)
+    ap.add_argument('--viz_every',   type=int,   default=1)
+    ap.add_argument('--pbd_relax',   type=float, default=0.5)
+    ap.add_argument('--viz_force',   type=int,   default=1 )
+    ap.add_argument('--plot_conv',   type=int,   default=0 )
+    ap.add_argument('--noshow',      type=int,   default=0 )
     ap.add_argument('--xpbd_reset_lambda', type=int, default=1)
     args = ap.parse_args()
 
@@ -497,6 +503,7 @@ if __name__ == '__main__':
     }
     run_case._noshow = bool(args.noshow)
     run_case._view = str(args.view)
+    run_case._viz_enabled = (str(args.view) != 'none') and (not bool(args.noshow)) and bool(args.viz_force)
 
     def resolve_xyz(args):
         if args.preset is not None:
@@ -527,7 +534,7 @@ if __name__ == '__main__':
                  xpbd_variant='vector' if args.method == 'xpbd_ports_vector' else 'scalar',
                  xpbd_reset_lambda=bool(args.xpbd_reset_lambda),
                  pbd_relax=args.pbd_relax,
-                 bAllNodes=bool(args.bAllNodes), dump_xyz=args.dump_xyz, dump_every=args.dump_every, viz_force=args.viz_force, viz_every=args.viz_every,
+                 bAllNodes=bool(args.bAllNodes), dump_xyz=args.dump_xyz, dump_every=args.dump_every, viz_force=bool(args.viz_force), viz_every=args.viz_every,
                  dump_pdb=args.dump_pdb, pdb_every=args.pdb_every, plot_conv=bool(args.plot_conv))
     if (xyz_one is None) and (args.molecule in ('all', 'ch2nh')):
         run_case(xyz_ch2nh, dt=args.dt, iters=args.iters, dt_force=args.dt_force, iters_force=args.iters_force, k_bond=args.k_bond, k_rot=args.k_rot,
@@ -536,7 +543,7 @@ if __name__ == '__main__':
                  xpbd_variant='vector' if args.method == 'xpbd_ports_vector' else 'scalar',
                  xpbd_reset_lambda=bool(args.xpbd_reset_lambda),
                  pbd_relax=args.pbd_relax,
-                 bAllNodes=bool(args.bAllNodes), dump_xyz=args.dump_xyz, dump_every=args.dump_every, viz_force=args.viz_force, viz_every=args.viz_every,
+                 bAllNodes=bool(args.bAllNodes), dump_xyz=args.dump_xyz, dump_every=args.dump_every, viz_force=bool(args.viz_force), viz_every=args.viz_every,
                  dump_pdb=args.dump_pdb, pdb_every=args.pdb_every, plot_conv=bool(args.plot_conv))
 
     if xyz_one is not None:
@@ -546,5 +553,5 @@ if __name__ == '__main__':
                  xpbd_variant='vector' if args.method == 'xpbd_ports_vector' else 'scalar',
                  xpbd_reset_lambda=bool(args.xpbd_reset_lambda),
                  pbd_relax=args.pbd_relax,
-                 bAllNodes=bool(args.bAllNodes), dump_xyz=args.dump_xyz, dump_every=args.dump_every, viz_force=args.viz_force, viz_every=args.viz_every,
+                 bAllNodes=bool(args.bAllNodes), dump_xyz=args.dump_xyz, dump_every=args.dump_every, viz_force=bool(args.viz_force), viz_every=args.viz_every,
                  dump_pdb=args.dump_pdb, pdb_every=args.pdb_every, plot_conv=bool(args.plot_conv))

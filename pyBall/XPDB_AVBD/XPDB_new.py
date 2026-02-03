@@ -1023,33 +1023,40 @@ class XPDB_new:
         ia = int(ia)
         if ia < 0 or ia >= self.num_atoms:
             raise ValueError(f"set_atom_pos: ia out of range {ia} not in [0,{self.num_atoms})")
+        self.queue.finish()
         xyz = np.asarray(xyz, dtype=np.float32).reshape(-1)
         if xyz.size == 2:
             xyz = np.array([xyz[0], xyz[1], 0.0], dtype=np.float32)
         elif xyz.size != 3:
             raise ValueError(f"set_atom_pos: xyz.size={xyz.size} expected 2 or 3")
-        x4 = np.asarray(xyz, dtype=np.float32).reshape(1, 3)
-        # write xyz only into float4 (offset ia*16 bytes)
-        cl.enqueue_copy(self.queue, self.cl_rpos_A, x4, device_offset=ia * 16).wait()
-        cl.enqueue_copy(self.queue, self.cl_rpos_B, x4, device_offset=ia * 16).wait()
+        p4 = np.zeros((1, 4), dtype=np.float32)
+        cl.enqueue_copy(self.queue, p4, self.cl_rpos_A, device_offset=ia * 16).wait()
+        p4[0, :3] = xyz
+        cl.enqueue_copy(self.queue, self.cl_rpos_A, p4, device_offset=ia * 16).wait()
+        cl.enqueue_copy(self.queue, self.cl_rpos_B, p4, device_offset=ia * 16).wait()
+        self.queue.finish()
 
     def set_atom_vel(self, ia, v):
         ia = int(ia)
         if ia < 0 or ia >= self.num_atoms:
             raise ValueError(f"set_atom_vel: ia out of range {ia} not in [0,{self.num_atoms})")
+        self.queue.finish()
         v = np.asarray(v, dtype=np.float32).reshape(-1)
         if v.size == 2:
             v = np.array([v[0], v[1], 0.0], dtype=np.float32)
         elif v.size != 3:
             raise ValueError(f"set_atom_vel: v.size={v.size} expected 2 or 3")
-        v3 = np.asarray(v, dtype=np.float32).reshape(1, 3)
-        cl.enqueue_copy(self.queue, self.cl_rvel_A, v3, device_offset=ia * 16).wait()
-        cl.enqueue_copy(self.queue, self.cl_rvel_B, v3, device_offset=ia * 16).wait()
+        v4 = np.zeros((1, 4), dtype=np.float32)
+        v4[0, :3] = v
+        cl.enqueue_copy(self.queue, self.cl_rvel_A, v4, device_offset=ia * 16).wait()
+        cl.enqueue_copy(self.queue, self.cl_rvel_B, v4, device_offset=ia * 16).wait()
+        self.queue.finish()
 
     def set_atom_omega(self, ia, w):
         ia = int(ia)
         if ia < 0 or ia >= self.num_atoms:
             raise ValueError(f"set_atom_omega: ia out of range {ia} not in [0,{self.num_atoms})")
+        self.queue.finish()
         w = np.asarray(w, dtype=np.float32).reshape(-1)
         if w.size == 1:
             w = np.array([0.0, 0.0, w[0]], dtype=np.float32)
@@ -1057,9 +1064,11 @@ class XPDB_new:
             w = np.array([w[0], w[1], 0.0], dtype=np.float32)
         elif w.size != 3:
             raise ValueError(f"set_atom_omega: w.size={w.size} expected 1,2 or 3")
-        w3 = np.asarray(w, dtype=np.float32).reshape(1, 3)
-        cl.enqueue_copy(self.queue, self.cl_romega_A, w3, device_offset=ia * 16).wait()
-        cl.enqueue_copy(self.queue, self.cl_romega_B, w3, device_offset=ia * 16).wait()
+        w4 = np.zeros((1, 4), dtype=np.float32)
+        w4[0, :3] = w
+        cl.enqueue_copy(self.queue, self.cl_romega_A, w4, device_offset=ia * 16).wait()
+        cl.enqueue_copy(self.queue, self.cl_romega_B, w4, device_offset=ia * 16).wait()
+        self.queue.finish()
 
     def get_atom_mass(self, ia):
         ia = int(ia)
@@ -1076,15 +1085,19 @@ class XPDB_new:
         ia = int(ia)
         if ia < 0 or ia >= self.num_atoms:
             raise ValueError(f"set_atom_mass: ia out of range {ia} not in [0,{self.num_atoms})")
+        self.queue.finish()
         if hasattr(mass, '__len__'):
             M = float(mass[0])
         else:
             M = float(mass)
         if not np.isfinite(M) or M <= 0.0:
             raise ValueError(f"set_atom_mass: mass must be finite positive, got {M}")
-        invM = np.array([1.0 / M], dtype=np.float32)
-        cl.enqueue_copy(self.queue, self.cl_rpos_A, invM, device_offset=ia * 16 + 12).wait()
-        cl.enqueue_copy(self.queue, self.cl_rpos_B, invM, device_offset=ia * 16 + 12).wait()
+        p4 = np.zeros((1, 4), dtype=np.float32)
+        cl.enqueue_copy(self.queue, p4, self.cl_rpos_A, device_offset=ia * 16).wait()
+        p4[0, 3] = np.float32(1.0 / M)
+        cl.enqueue_copy(self.queue, self.cl_rpos_A, p4, device_offset=ia * 16).wait()
+        cl.enqueue_copy(self.queue, self.cl_rpos_B, p4, device_offset=ia * 16).wait()
+        self.queue.finish()
 
     def upload_data(self, pos, vel, radius, mass):
         """Upload atom positions, velocities, radii, and masses"""

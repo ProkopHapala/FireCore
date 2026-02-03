@@ -420,6 +420,7 @@ class LivePortViz:
         self.plt = plt
         self.proj3d = proj3d
         self.elems = elems
+        self._last_pos = None
         plt.ion()
         self.fig = plt.figure(figsize=(6, 6))
         self.ax = self.fig.add_subplot(111, projection='3d')
@@ -432,8 +433,7 @@ class LivePortViz:
         self.ax.set_xlabel('x'); self.ax.set_ylabel('y'); self.ax.set_zlabel('z')
         self.fig.canvas.draw()
         self.fig.show()
-        self._last_pos = None
-        self._last_proj = None
+        self._last_pos = np.zeros((len(elems), 3), dtype=np.float32)
 
     def ensure_lines(self, total_ports):
         while len(self.lines) < total_ports:
@@ -441,8 +441,8 @@ class LivePortViz:
             self.lines.append(ln)
 
     def update(self, pos, pneigh, port_n, force=None, title=""):
+        self._last_pos = np.array(pos, dtype=np.float32, copy=True)
         self.ax.set_title(title)
-        self._last_pos = np.asarray(pos, dtype=np.float32)
         self.sc._offsets3d = (pos[:, 0], pos[:, 1], pos[:, 2])
         for i, lab in enumerate(self.labels):
             lab.set_position((pos[i, 0], pos[i, 1]))
@@ -531,8 +531,6 @@ def attach_picker_3d(viz, sim, *, pick_radius_px=20, verbose=0):
         except Exception as e:
             raise RuntimeError(f"attach_picker_3d: proj3d.inv_transform failed: {e}")
         pick["mouse3"] = np.array([x, y, z], dtype=np.float32)
-        ia = int(pick["idx"])
-        sim.set_atom_pos(ia, pick["mouse3"])
 
     viz.fig.canvas.mpl_connect('button_press_event', on_press)
     viz.fig.canvas.mpl_connect('button_release_event', on_release)
