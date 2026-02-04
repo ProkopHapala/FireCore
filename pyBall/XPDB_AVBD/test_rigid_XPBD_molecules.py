@@ -16,7 +16,8 @@ if _XPBD2D_DIR not in sys.path:
     sys.path.insert(0, _XPBD2D_DIR)
 
 from XPDB_new import XPDB_new, build_neighs_bk_from_bonds, make_bLs_bKs_from_neighs, make_bk_slots, linear_momentum, angular_momentum, run_RRsp3_PD, run_RRsp3_force
-from XPTB_utils import load_xyz, masses_from_elems, perturb_state, write_xyz_with_ports, write_pdb_trajectory, plot_state_with_ports
+from XPTB_utils import load_xyz, masses_from_elems, perturb_state, write_xyz_with_ports, write_pdb_trajectory, plot_state_with_ports, pack_molecules_contiguous
+from pyBall.elements import ELEMENT_DICT, index_mass, index_Rvdw
 
 
 def bonds_for_molecule(name, elems):
@@ -76,17 +77,56 @@ def load_molecule_any(xyz_path, *, bAllNodes=False):
 
 def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=50, iters_force=2000, k_bond=200.0, k_rot=50.0, perturb_pos=0.1, perturb_rot=0.1, seed=0, damp_force=0.98,
              dump_xyz=None, dump_every=10, viz_force=False, viz_every=100, dump_pdb=None, pdb_every=10, plot_conv=True,
-             pbd_relax=0.5, xpbd_reset_lambda=True, xpbd_variant='scalar', bAllNodes=False):
+             pbd_relax=0.5, xpbd_reset_lambda=True, xpbd_variant='scalar', bAllNodes=False,
+             copies=1, copy_shift=5.0, coll_radius=1.0, k_coll=50.0, bbox_margin=0.5, outer_iters=1, inner_iters=10):
+    is_pad = None
+    viz_mask = None
+    viz_ids = None
+    neighs_v = None
     name = os.path.basename(xyz_path)
     if name.lower() in ('h2o.xyz', 'ch2nh.xyz'):
         elems, xyz0, _q = load_xyz(xyz_path)
         bonds, nnode = bonds_for_molecule(name, elems)
     else:
         elems, xyz0, bonds, nnode = load_molecule_any(xyz_path, bAllNodes=bool(bAllNodes))
-    m = masses_from_elems(elems)
+
+    if method == 'cluster_relax_ports':
+        if int(copies) < 1: raise ValueError(f"copies must be >= 1 (got {copies})")
+        n0 = int(len(elems))
+        perm = np.arange(n0, dtype=np.int32)
+        mols = []
+        for ic in range(int(copies)):
+            sh = np.array([float(copy_shift) * (float(ic) - 0.5 * float(int(copies) - 1)), 0.0, 0.0], dtype=np.float32)
+            mols.append({'elems': list(elems), 'pos': xyz0 + sh[None, :], 'bonds': list(bonds), 'nnode': int(nnode), 'perm': perm})
+        packed = pack_molecules_contiguous(mols, group_size=64, nodes_first=True, pad_to_group=True)
+        elems = packed['elems']; xyz0 = packed['pos']; bonds = packed['bonds']
+        is_pad = np.array(packed['is_padding'], dtype=bool, copy=False)
+        if is_pad.shape != (len(elems),):
+            raise RuntimeError(f"packed['is_padding'] shape {is_pad.shape} expected ({len(elems)},)")
+        viz_mask = ~is_pad
+
+    if method == 'cluster_relax_ports':
+        m = np.empty((len(elems),), dtype=np.float32)
+        for i, e in enumerate(elems):
+            if e == 'X': m[i] = 1e30
+            else: m[i] = float(ELEMENT_DICT[e][index_mass])
+    else:
+        m = masses_from_elems(elems)
 
     neighs, bks = build_neighs_bk_from_bonds(len(elems), bonds, max_deg=4)
     bLs, bKs = make_bLs_bKs_from_neighs(xyz0, neighs, k_bond=k_bond)
+
+    if method == 'cluster_relax_ports':
+        if viz_mask is None:
+            raise RuntimeError('cluster_relax_ports: viz_mask not initialized')
+        viz_ids = np.nonzero(viz_mask)[0].astype(np.int32)
+        g2v = np.full((len(elems),), -1, dtype=np.int32)
+        g2v[viz_ids] = np.arange(viz_ids.size, dtype=np.int32)
+        neighs_v = neighs[viz_ids, :].copy()
+        for i in range(neighs_v.shape[0]):
+            for k in range(4):
+                j = int(neighs_v[i, k])
+                neighs_v[i, k] = int(g2v[j]) if j >= 0 else -1
 
     quat0 = np.zeros((len(elems), 4), dtype=np.float32)
     quat0[:, 3] = 1.0
@@ -96,6 +136,32 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
 
     rng = default_rng(seed)
     pos_init, quat_init = perturb_state(xyz0, quat0, perturb_pos, perturb_rot, rng)
+
+    if method == 'cluster_relax_ports':
+        # Padding atoms ('X') are voids required by group_size=64; keep them inert and non-confusing.
+        # - do not let perturbation scatter them
+        # - place them onto an existing real atom within the group
+        gs = 64
+        if (len(elems) % gs) != 0:
+            raise RuntimeError(f"cluster_relax_ports expects natoms multiple of {gs} after packing (got {len(elems)})")
+        ng = int(len(elems) // gs)
+        n_pad = int(np.sum(is_pad))
+        n_real = int(len(elems) - n_pad)
+        print(f"[cluster_relax_ports] packed natoms={len(elems)} real={n_real} pad={n_pad} groups={ng} group_size={gs} nnode_per_group={int(nnode)}")
+        for ig in range(ng):
+            a0 = ig * gs
+            sl = slice(a0, a0 + gs)
+            pad_g = is_pad[sl]
+            if not np.any(pad_g):
+                continue
+            real_idx = np.nonzero(~pad_g)[0]
+            if real_idx.size == 0:
+                continue
+            iref = a0 + int(real_idx[0])
+            idx_pad = a0 + np.nonzero(pad_g)[0]
+            pos_init[idx_pad, :] = pos_init[iref, :][None, :]
+            quat_init[idx_pad, :] = (0.0, 0.0, 0.0, 1.0)
+
 
     sim = XPDB_new(len(elems))
     sim.upload_rigid_state(pos_init, m, quat=quat_init, vel=vel0, omega=omega0)
@@ -110,8 +176,11 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
             atom_types[i] = 0
     sim.upload_rigid_atom_types(atom_types)
 
-    bkSlots = make_bk_slots(neighs, nnode=int(nnode))
-    sim.upload_rigid_bk_slots(bkSlots)
+    if method == 'cluster_relax_ports':
+        sim.upload_rigid_bk_slots_clustered(neighs, nnode_per_group=int(nnode))
+    else:
+        bkSlots = make_bk_slots(neighs, nnode=int(nnode))
+        sim.upload_rigid_bk_slots(bkSlots)
 
     # Explicit-force local ports: node-only buffers (shape nnode)
     # For this simple test we use the initial geometry as body frame (quat=identity).
@@ -122,6 +191,35 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
         qw = q[..., 3:4]
         t = 2.0 * np.cross(qv, v)
         return v + qw * t + np.cross(qv, t)
+
+    if method == 'cluster_relax_ports':
+        gs = int(sim.group_size)
+        if (len(elems) % gs) != 0: raise ValueError(f"cluster_relax_ports requires natoms multiple of group_size={gs} (got {len(elems)})")
+        ng = int(len(elems) // gs)
+        port_local_atoms = np.zeros((len(elems), 4, 4), dtype=np.float32)
+        port_n_full = np.zeros((len(elems),), dtype=np.uint8)
+        for ig in range(ng):
+            abase = ig * gs
+            for il in range(int(nnode)):
+                ia = abase + il
+                nn = 0
+                for k in range(4):
+                    j = int(neighs[ia, k])
+                    if j < 0: continue
+                    v_world = pos_init[j] - pos_init[ia]
+                    qconj = quat_init[ia].copy(); qconj[:3] *= -1.0
+                    port_local_atoms[ia, k, :3] = _quat_rotate(qconj, v_world)
+                    nn += 1
+                port_n_full[ia] = nn
+
+        rad = np.zeros((len(elems),), dtype=np.float32)
+        for i, e in enumerate(elems):
+            if e == 'X': continue
+            if float(coll_radius) > 0.0: rad[i] = float(coll_radius)
+            else: rad[i] = float(ELEMENT_DICT[e][index_Rvdw])
+        sim.upload_rigid_radius(rad)
+        sim.upload_rigid_cluster_ports_from_atoms(port_local_atoms, bKs, nnode_per_group=int(nnode))
+
     port_local = np.zeros((int(nnode), 4, 4), dtype=np.float32)
     port_n = np.zeros((int(nnode),), dtype=np.uint8)
     for ia in range(int(nnode)):
@@ -136,6 +234,9 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
             port_local[ia, k, :3] = _quat_rotate(qconj, v_world)
             nn += 1
         port_n[ia] = nn
+    if method != 'cluster_relax_ports':
+        port_n_full = np.zeros((len(elems),), dtype=np.uint8)
+        port_n_full[:int(nnode)] = port_n
     sim.upload_rigid_ports_local(port_local, port_n, nnode=int(nnode))
     sim.upload_rigid_node_stiffness_flat(bKs, nnode=int(nnode))
 
@@ -150,8 +251,13 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
     p1 = pos4[:, :3].copy()
     v1 = (p1 - p0) / float(dt)
 
-    P1 = linear_momentum(v1, m)
-    L1 = angular_momentum(p1, v1, m, om4[:, :3], Iiso)
+    if method == 'cluster_relax_ports':
+        sel = ~is_pad
+        P1 = linear_momentum(v1[sel, :], m[sel])
+        L1 = angular_momentum(p1[sel, :], v1[sel, :], m[sel], om4[sel, :3], Iiso[sel])
+    else:
+        P1 = linear_momentum(v1, m)
+        L1 = angular_momentum(p1, v1, m, om4[:, :3], Iiso)
 
     print(f"\n=== {name} ===")
     print(f"nAtoms={len(elems)} nnode={nnode} dt={dt} iters={iters}")
@@ -168,11 +274,18 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
         if (it % int(viz_every)) != 0 and it != int(iters) - 1:
             return
         pos4_it, q4_it, *_ = sim.download_rigid_state()
-        pneigh_full = np.zeros((len(elems), 4, 4), dtype=np.float32)
-        port_n_full = np.zeros((len(elems),), dtype=np.uint8)
-        pneigh_full[:int(nnode), :, :] = port_local
-        port_n_full[:int(nnode)] = port_n
-        plot_state_with_ports(elems, pos4_it[:, :3], pneigh_full, port_n_full, title=title or f"{name} it={it}")
+        pneigh_full = pneigh_full0.copy()
+        idx_ports = np.nonzero(port_n_full)[0]
+        if idx_ports.size > 0:
+            vloc = pneigh_full[idx_ports, :, :3]
+            qn = q4_it[idx_ports, :]
+            pneigh_full[idx_ports, :, :3] = quat_rotate(qn[:, None, :], vloc)
+        if (viz_mask is not None) and (viz_mask.shape[0] == len(elems)):
+            sel = viz_mask
+            elems_v = [e for i, e in enumerate(elems) if bool(sel[i])]
+            plot_state_with_ports(elems_v, pos4_it[sel, :3], pneigh_full[sel, :, :], port_n_full[sel], title=title or f"{name} it={it}")
+        else:
+            plot_state_with_ports(elems, pos4_it[:, :3], pneigh_full, port_n_full, title=title or f"{name} it={it}")
 
     def quat_rotate(q, v):
         q = np.asarray(q, dtype=np.float32)
@@ -197,10 +310,13 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
                 active_view = '3d' if active_view == '2d' else '2d'
         fig.canvas.mpl_connect('key_press_event', on_key)
 
-    pneigh_full0 = np.zeros((len(elems), 4, 4), dtype=np.float32)
-    port_n_full = np.zeros((len(elems),), dtype=np.uint8)
-    pneigh_full0[:int(nnode), :, :] = port_local
-    port_n_full[:int(nnode)] = port_n
+    if method == 'cluster_relax_ports':
+        pneigh_full0 = port_local_atoms.copy()
+    else:
+        pneigh_full0 = np.zeros((len(elems), 4, 4), dtype=np.float32)
+        port_n_full = np.zeros((len(elems),), dtype=np.uint8)
+        pneigh_full0[:int(nnode), :, :] = port_local
+        port_n_full[:int(nnode)] = port_n
     pneigh2d_full0 = pneigh_full0[:, :, :2].copy()
 
     def ensure_viz2d():
@@ -209,8 +325,38 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
             return
         import XPBD_2D_utils as utils2d
         from XPBD_2D_utils import LiveViz2D, attach_picker_2d
-        viz2d = LiveViz2D(show_labels=True)
-        pick2d = attach_picker_2d(viz2d, sim, pick_radius=0.5, verbose=1)
+        viz2d = LiveViz2D(show_labels=(method != 'cluster_relax_ports'))
+        if method == 'cluster_relax_ports':
+            if viz_ids is None:
+                raise RuntimeError('cluster_relax_ports: viz_ids not initialized')
+            pick = {"idx": None, "active": False, "mouse": np.array([0.0, 0.0], dtype=np.float32)}
+            def on_press(event):
+                if event.inaxes != viz2d.ax or event.xdata is None or event.ydata is None:
+                    return
+                if viz2d._last_pos is None:
+                    return
+                mouse_xy = np.array([event.xdata, event.ydata], dtype=np.float32)
+                d2 = np.sum((viz2d._last_pos[:, :2] - mouse_xy) ** 2, axis=1)
+                i_min = int(np.argmin(d2))
+                if d2[i_min] <= float(0.5) ** 2:
+                    pick["idx"] = int(viz_ids[i_min])
+                    pick["active"] = True
+                    pick["mouse"] = mouse_xy
+            def on_release(event):
+                pick["active"] = False
+                pick["idx"] = None
+            def on_motion(event):
+                if not pick["active"]:
+                    return
+                if event.xdata is None or event.ydata is None:
+                    return
+                pick["mouse"] = np.array([event.xdata, event.ydata], dtype=np.float32)
+            viz2d.fig.canvas.mpl_connect('button_press_event', on_press)
+            viz2d.fig.canvas.mpl_connect('button_release_event', on_release)
+            viz2d.fig.canvas.mpl_connect('motion_notify_event', on_motion)
+            pick2d = pick
+        else:
+            pick2d = attach_picker_2d(viz2d, sim, pick_radius=0.5, verbose=1)
         hook_toggle_view(viz2d.fig)
 
     def ensure_viz3d():
@@ -218,8 +364,13 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
         if viz3d is not None:
             return
         from XPTB_utils import LivePortViz, attach_picker_3d
-        viz3d = LivePortViz(elems)
-        pick3d = attach_picker_3d(viz3d, sim, pick_radius_px=20, verbose=1)
+        if (method == 'cluster_relax_ports') and (viz_mask is not None):
+            elems_v = [e for i, e in enumerate(elems) if bool(viz_mask[i])]
+            viz3d = LivePortViz(elems_v)
+            pick3d = None
+        else:
+            viz3d = LivePortViz(elems)
+            pick3d = attach_picker_3d(viz3d, sim, pick_radius_px=20, verbose=1)
         hook_toggle_view(viz3d.fig)
 
     if viz_enabled and active_view == '2d':
@@ -234,19 +385,27 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
             pos4_it, q4_it, *_ = sim.download_rigid_state()
 
             pneigh_full = pneigh_full0.copy()
-            if int(nnode) > 0:
-                vloc = pneigh_full[:int(nnode), :, :3]
-                qn = q4_it[:int(nnode), :]
-                pneigh_full[:int(nnode), :, :3] = quat_rotate(qn[:, None, :], vloc)
+            idx_ports = np.nonzero(port_n_full)[0]
+            if idx_ports.size > 0:
+                vloc = pneigh_full[idx_ports, :, :3]
+                qn = q4_it[idx_ports, :]
+                pneigh_full[idx_ports, :, :3] = quat_rotate(qn[:, None, :], vloc)
 
             if active_view == '2d':
                 ensure_viz2d()
-                pos2 = pos4_it[:, :2]
-                viz2d.update(pos2, neighs=neighs, nnode=int(nnode), title=title or f"{name} it={it}", info=f"it={it}", port_local=pneigh_full[:, :, :2], port_n=port_n_full, rot=None)
+                if (method == 'cluster_relax_ports') and (viz_ids is not None) and (neighs_v is not None):
+                    pos2 = pos4_it[viz_ids, :2]
+                    viz2d.update(pos2, neighs=neighs_v, nnode=int(pos2.shape[0]), title=title or f"{name} it={it}", info=f"it={it}", port_local=pneigh_full[viz_ids, :, :2], port_n=port_n_full[viz_ids], rot=None)
+                else:
+                    pos2 = pos4_it[:, :2]
+                    viz2d.update(pos2, neighs=neighs, nnode=int(nnode), title=title or f"{name} it={it}", info=f"it={it}", port_local=pneigh_full[:, :, :2], port_n=port_n_full, rot=None)
                 viz2d.fig.canvas.draw(); viz2d.fig.canvas.flush_events(); plt.pause(0.001)
             elif active_view == '3d':
                 ensure_viz3d()
-                viz3d.update(pos4_it[:, :3], pneigh_full, port_n_full, title=title or f"{name} it={it}")
+                if (method == 'cluster_relax_ports') and (viz_mask is not None):
+                    viz3d.update(pos4_it[viz_mask, :3], pneigh_full[viz_mask, :, :], port_n_full[viz_mask], title=title or f"{name} it={it}")
+                else:
+                    viz3d.update(pos4_it[:, :3], pneigh_full, port_n_full, title=title or f"{name} it={it}")
                 viz3d.fig.canvas.draw(); viz3d.fig.canvas.flush_events(); plt.pause(0.001)
     else:
         def emit_frame(it, title=None):
@@ -330,6 +489,14 @@ def run_case(xyz_path, *, method='force_explicit', dt=0.1, dt_force=0.01, iters=
                 variant=xpbd_variant
             )
             emit_frame(it, title=f"{name} {method} it={it}")
+        pos4, q4, v4, om4 = sim.download_rigid_state()
+        pos_prev = pos4[:, :3].copy()
+    elif method == 'cluster_relax_ports':
+        sim.upload_rigid_state(pos_init, m, quat=quat_init, vel=vel0, omega=omega0)
+        for it in range(int(iters)):
+            apply_pick()
+            sim.rigid_cluster_relax_ports_step(nnode=int(nnode), dt=float(dt), outer_iters=int(outer_iters), inner_iters=int(inner_iters), k_coll=float(k_coll), relaxation=float(pbd_relax), bbox_margin=float(bbox_margin))
+            emit_frame(it, title=f"{name} cluster_relax_ports it={it}")
         pos4, q4, v4, om4 = sim.download_rigid_state()
         pos_prev = pos4[:, :3].copy()
     else:
@@ -466,7 +633,7 @@ if __name__ == '__main__':
     ap.add_argument('--xyz',         type=str,   default=None)
     ap.add_argument('--preset',      type=str,   default=None, choices=['h2o', 'ch2nh', 'hcooh', 'pyrrole', 'guanine', 'pentacene'])
     ap.add_argument('--bAllNodes',   type=int,   default=0 )
-    ap.add_argument('--method',      type=str,   default='force_explicit', choices=['force_explicit', 'projective', 'pbd_ports', 'xpbd_ports_scalar', 'xpbd_ports_vector'])
+    ap.add_argument('--method',      type=str,   default='force_explicit', choices=['force_explicit', 'projective', 'pbd_ports', 'cluster_relax_ports'])
     ap.add_argument('--view',        type=str,   default='2d', choices=['none', '2d', '3d'])
     ap.add_argument('--dt',          type=float, default=0.1)
     ap.add_argument('--iters',       type=int,   default=10000)
@@ -488,6 +655,13 @@ if __name__ == '__main__':
     ap.add_argument('--plot_conv',   type=int,   default=0 )
     ap.add_argument('--noshow',      type=int,   default=0 )
     ap.add_argument('--xpbd_reset_lambda', type=int, default=1)
+    ap.add_argument('--copies',      type=int,   default=1)
+    ap.add_argument('--copy_shift',  type=float, default=5.0)
+    ap.add_argument('--coll_radius', type=float, default=1.0)
+    ap.add_argument('--k_coll',      type=float, default=50.0)
+    ap.add_argument('--bbox_margin', type=float, default=0.5)
+    ap.add_argument('--outer_iters', type=int,   default=1)
+    ap.add_argument('--inner_iters', type=int,   default=10)
     args = ap.parse_args()
 
     base = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'cpp', 'common_resources', 'xyz'))
@@ -535,7 +709,8 @@ if __name__ == '__main__':
                  xpbd_reset_lambda=bool(args.xpbd_reset_lambda),
                  pbd_relax=args.pbd_relax,
                  bAllNodes=bool(args.bAllNodes), dump_xyz=args.dump_xyz, dump_every=args.dump_every, viz_force=bool(args.viz_force), viz_every=args.viz_every,
-                 dump_pdb=args.dump_pdb, pdb_every=args.pdb_every, plot_conv=bool(args.plot_conv))
+                 dump_pdb=args.dump_pdb, pdb_every=args.pdb_every, plot_conv=bool(args.plot_conv),
+                 copies=args.copies, copy_shift=args.copy_shift, coll_radius=args.coll_radius, k_coll=args.k_coll, bbox_margin=args.bbox_margin, outer_iters=args.outer_iters, inner_iters=args.inner_iters)
     if (xyz_one is None) and (args.molecule in ('all', 'ch2nh')):
         run_case(xyz_ch2nh, dt=args.dt, iters=args.iters, dt_force=args.dt_force, iters_force=args.iters_force, k_bond=args.k_bond, k_rot=args.k_rot,
                  perturb_pos=args.perturb_pos, perturb_rot=args.perturb_rot, seed=args.seed + 1, damp_force=args.damp_force,
@@ -544,7 +719,8 @@ if __name__ == '__main__':
                  xpbd_reset_lambda=bool(args.xpbd_reset_lambda),
                  pbd_relax=args.pbd_relax,
                  bAllNodes=bool(args.bAllNodes), dump_xyz=args.dump_xyz, dump_every=args.dump_every, viz_force=bool(args.viz_force), viz_every=args.viz_every,
-                 dump_pdb=args.dump_pdb, pdb_every=args.pdb_every, plot_conv=bool(args.plot_conv))
+                 dump_pdb=args.dump_pdb, pdb_every=args.pdb_every, plot_conv=bool(args.plot_conv),
+                 copies=args.copies, copy_shift=args.copy_shift, coll_radius=args.coll_radius, k_coll=args.k_coll, bbox_margin=args.bbox_margin, outer_iters=args.outer_iters, inner_iters=args.inner_iters)
 
     if xyz_one is not None:
         run_case(xyz_one, dt=args.dt, iters=args.iters, dt_force=args.dt_force, iters_force=args.iters_force, k_bond=args.k_bond, k_rot=args.k_rot,
@@ -554,4 +730,5 @@ if __name__ == '__main__':
                  xpbd_reset_lambda=bool(args.xpbd_reset_lambda),
                  pbd_relax=args.pbd_relax,
                  bAllNodes=bool(args.bAllNodes), dump_xyz=args.dump_xyz, dump_every=args.dump_every, viz_force=bool(args.viz_force), viz_every=args.viz_every,
-                 dump_pdb=args.dump_pdb, pdb_every=args.pdb_every, plot_conv=bool(args.plot_conv))
+                 dump_pdb=args.dump_pdb, pdb_every=args.pdb_every, plot_conv=bool(args.plot_conv),
+                 copies=args.copies, copy_shift=args.copy_shift, coll_radius=args.coll_radius, k_coll=args.k_coll, bbox_margin=args.bbox_margin, outer_iters=args.outer_iters, inner_iters=args.inner_iters)

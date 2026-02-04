@@ -118,7 +118,8 @@ class LiveViz2D:
             seg_port2neigh = []
             if rot is None:
                 for i in range(int(nnode)):
-                    for k in range(4):
+                    npi = int(port_n[i]) if port_n is not None else 4
+                    for k in range(npi):
                         j = int(neighs[i, k]) if neighs is not None else -1
                         if j < 0:
                             continue
@@ -129,7 +130,8 @@ class LiveViz2D:
             else:
                 for i in range(int(nnode)):
                     zi = rot[i]
-                    for k in range(4):
+                    npi = int(port_n[i]) if port_n is not None else 4
+                    for k in range(npi):
                         j = int(neighs[i, k]) if neighs is not None else -1
                         if j < 0:
                             continue
