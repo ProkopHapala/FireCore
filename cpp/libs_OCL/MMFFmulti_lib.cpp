@@ -328,8 +328,8 @@ void setSwitches_multi( int CheckInvariants, int PBC, int NonBonded, int MMFF, i
     #undef _setbool
 }
 
-double computeFreeEnergy(double nCV, float* initial_pos_1, float* final_pos_1, float* initial_pos_2, float* final_pos_2, int nLambda, int nbStep, int nMDsteps, int nEQsteps, double tdamp, double T, double dt){
-    return W.computeFreeEnergy(nCV, (Vec3f*)initial_pos_1, (Vec3f*)final_pos_1, (Vec3f*)initial_pos_2, (Vec3f*)final_pos_2, nLambda, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
+double computeFreeEnergy(const char* system_name, int nCVs, float* initial_positions, float* final_positions, int nLambda, int nMDsteps, int nEQsteps, double Fconv){
+    return W.computeFreeEnergy(system_name, nCVs, (Vec3f*)initial_positions, (Vec3f*)final_positions, nLambda, nMDsteps, nEQsteps, Fconv);
 }
 
 } // extern "C"

@@ -633,15 +633,14 @@ def plot_selection(sel=None,ax1=0,ax2=1,ps=None, s=100):
 
 # ========= Free Energy Calculation
 
-#  double computeFreeEnergy(double nCV, float* initial_pos_1, float* final_pos_1, float* initial_pos_2, float* final_pos_2, int nLambda, int nbStep, int nMDsteps, int nEQsteps, double tdamp, double T, double dt)
-lib.computeFreeEnergy.argtypes  = [c_double, c_float_p, c_float_p, c_float_p, c_float_p, c_int, c_int, c_int, c_int, c_double, c_double, c_double]
+#  double computeFreeEnergy(const char* system_name, int nCVs, float* initial_positions, float* final_positions, int nLambda, int nMDsteps, int nEQsteps, double Fconv)
+lib.computeFreeEnergy.argtypes  = [c_char_p, c_int, c_float_p, c_float_p, c_int, c_int, c_int, c_double]
 lib.computeFreeEnergy.restype   =  c_double
-def computeFreeEnergy(nCV, initial_pos_1, final_pos_1, initial_pos_2, final_pos_2, nLambda, nbStep=100, nMDsteps=100000, nEQsteps=10000, tdamp=100.0, T=300, dt=0.5):
-    initial_pos_1 = np.array(initial_pos_1, dtype=np.float32)
-    final_pos_1 = np.array(final_pos_1, dtype=np.float32)
-    initial_pos_2 = np.array(initial_pos_2, dtype=np.float32)
-    final_pos_2 = np.array(final_pos_2, dtype=np.float32)
-    return lib.computeFreeEnergy(nCV, _np_as(initial_pos_1,c_float_p), _np_as(final_pos_1,c_float_p), _np_as(initial_pos_2,c_float_p), _np_as(final_pos_2,c_float_p), nLambda, nbStep, nMDsteps, nEQsteps, tdamp, T, dt)
+def computeFreeEnergy(system_name, nCVs, initial_positions, final_positions, nLambda, nMDsteps=100000, nEQsteps=10000, Fconv=1e-6):
+    initial_positions = np.array(initial_positions, dtype=np.float32)
+    final_positions = np.array(final_positions, dtype=np.float32)
+    system_name_bytes = system_name.encode('utf-8')
+    return lib.computeFreeEnergy(system_name_bytes, nCVs, _np_as(initial_positions,c_float_p), _np_as(final_positions,c_float_p), nLambda, nMDsteps, nEQsteps, Fconv)
 
 # ====================================
 # ========= Test Functions

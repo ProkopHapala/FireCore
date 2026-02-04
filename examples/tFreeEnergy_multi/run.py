@@ -1,34 +1,50 @@
 import sys
+import os
 import numpy as np
-import matplotlib.pyplot as plt
 import argparse
 
 sys.path.append("../../")
 from pyBall import atomicUtils as au
 from pyBall import MMFF_multi as mmff
 
-# Example usage of computeFreeEnergy function
+def load_constraints(filename="constraints.txt"):
+    constraints = []
+
+    with open(filename, 'r') as f:
+        for line in f:
+            line = line.strip()
+            # Skip comments and empty lines
+            if line.startswith('#') or not line:
+                continue
+
+            parts = line.split()
+            if len(parts) != 7:
+                print(f"Warning: Invalid line in constraints file: {line}")
+                continue
+
+            atom_idx = int(parts[0])
+            initial_pos = [float(parts[1]), float(parts[2]), float(parts[3])]
+            final_pos = [float(parts[4]), float(parts[5]), float(parts[6])]
+            constraints.append((initial_pos, final_pos))
+
+
+    return constraints if constraints else None
+
+# Thermodynamic Integration for Entropic Spring
 def main():
-    parser = argparse.ArgumentParser(description="Free Energy Calculation Example")
-    parser.add_argument("--nSys", type=int, default=50, help="Number of systems")
-    parser.add_argument("--xyz_name", type=str, default="data/DA.mol2", help="Path to the molecule file")
-    parser.add_argument("--nCV", type=float, default=1.0, help="Number of Collective Variables")
-    parser.add_argument("--nLambda", type=int, default=10, help="Number of Lambda steps")
-    parser.add_argument("--nbStep", type=int, default=100, help="Number of steps")
-    parser.add_argument("--nMDsteps", type=int, default=100000, help="Number of MD steps")
-    parser.add_argument("--nEQsteps", type=int, default=10000, help="Number of equilibration steps")
-    parser.add_argument("--dt", type=float, default=0.5, help="Time step")
-    parser.add_argument("--tdamp", type=float, default=100.0, help="Temperature damping")
-    parser.add_argument("--T", type=float, default=300.0, help="Temperature in Kelvin")
+    parser = argparse.ArgumentParser(description="Thermodynamic Integration for Entropic Spring")
+    parser.add_argument("--nSys", type=int, default=10, help="Number of parallel systems")
+    parser.add_argument("--xyz_name", type=str, default="../../cpp/common_resources/entropic_spring_20.xyz", help="Path to the molecule file")
+    parser.add_argument("--system_name", type=str, default="entropic_spring_20", help="System name for output files")
+    parser.add_argument("--nLambda", type=int, default=20, help="Number of Lambda windows")
+    parser.add_argument("--nMDsteps", type=int, default=100000, help="Number of MD steps per window")
+    parser.add_argument("--nEQsteps", type=int, default=5000, help="Number of equilibration steps per window")
+    parser.add_argument("--Fconv", type=float, default=1e-6, help="Force convergence criterion")
+    parser.add_argument("--constraints", type=str, default="constraints.txt", help="Path to constraints file")
 
     args = parser.parse_args()
 
-    print("=== Free Energy Calculation Example ===")
-
-    print(f"Initializing MMFF_multi with {args.nSys} systems")
-    print(f"Loading molecule from: {args.xyz_name}")
-
-    # Initialize MMFF_multi with the DA.mol2 file
+    # Initialize MMFF_multi
     mmff.init(
         nSys_=args.nSys,
         xyz_name=args.xyz_name,
@@ -38,44 +54,45 @@ def main():
         sAngleTypes="../../cpp/common_resources/AngleTypes.dat",
         bMMFF=True,
         bEpairs=False,
-        gamma = 1 / (args.dt * args.tdamp),     # Temperature damping
-        T = args.T         # Temperature in Kelvin
-
+        T=300.0,
+        gamma=1/(100*0.05)  # dt_deafult is 0.05 and 100 steps are used for termalization
     )
-    print("Initialization complete")
 
-    # Define positions for Si
-    initial_pos_1 = [-10.0, 0.0, 0.0]
-    final_pos_1   = [-60.0, 0.0, 0.0]
-    initial_pos_2 = [+1.0, 0.0, 0.0]
-    final_pos_2   = [+6.0, 0.0, 0.0]
+    constraints = load_constraints(args.constraints)
 
-    # Call computeFreeEnergy
-    print(f"Computing free energy with parameters:")
-    print(f"  nCV = {args.nCV}")
-    print(f"  nLambda = {args.nLambda}")
-    print(f"  nbStep = {args.nbStep}")
-    print(f"  nMDsteps = {args.nMDsteps}")
-    print(f"  nEQsteps = {args.nEQsteps}")
-    print(f"  dt = {args.dt}")
-    print(f"  T = {args.T}")
+    if constraints is None or len(constraints) == 0:
+        print("ERROR: No constraints loaded!")
+        sys.exit(1)
 
+    nCVs = len(constraints)
+    print(f"Loaded {nCVs} constraint(s) from {args.constraints}")
+
+    # Flatten constraints into separate lists for initial and final positions
+    initial_positions = []
+    final_positions = []
+    for i, (init_pos, final_pos) in enumerate(constraints):
+        initial_positions.extend(init_pos)
+        final_positions.extend(final_pos)
+        print(f"  CV {i+1}: ({init_pos[0]:.1f}, {init_pos[1]:.1f}, {init_pos[2]:.1f}) → ({final_pos[0]:.1f}, {final_pos[1]:.1f}, {final_pos[2]:.1f})")
+
+    print(f"\nTI Parameters: nLambda={args.nLambda}, nMDsteps={args.nMDsteps}, nEQsteps={args.nEQsteps}\n")
+
+    # Run thermodynamic integration
     result = mmff.computeFreeEnergy(
-        nCV=args.nCV,
-        initial_pos_1=initial_pos_1,
-        final_pos_1=final_pos_1,
-        initial_pos_2=initial_pos_2,
-        final_pos_2=final_pos_2,
+        system_name=args.system_name,
+        nCVs=nCVs,
+        initial_positions=initial_positions,
+        final_positions=final_positions,
         nLambda=args.nLambda,
-        nbStep=args.nbStep,
         nMDsteps=args.nMDsteps,
         nEQsteps=args.nEQsteps,
-        tdamp=args.tdamp,
-        T=args.T,
-        dt=args.dt
+        Fconv=args.Fconv
     )
 
-    print(f"\nFree energy result: {result}")
+    print(f"\n{'=' * 60}")
+    print(f"  Free energy change: {result:.6f} eV")
+    print(f"  Results saved to: {args.system_name}_TI.dat")
+    print(f"{'=' * 60}\n")
 
 if __name__ == "__main__":
     main()

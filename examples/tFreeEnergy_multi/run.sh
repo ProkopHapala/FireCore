@@ -1,29 +1,64 @@
 #!/bin/bash
 
-# Create symbolic links if they don't exist
-if [ ! -d data ]; then
-    ln -s ../../cpp/common_resources data
-fi
+set -e  # Exit on error
+
+N=30
 
 # Get working directory
 wd=`pwd`
 
 # Build the library
-echo "Building libMMFFmulti_lib.so..."
+echo "Step 1: Building libMMFFmulti_lib.so..."
 cd ../../cpp/Build/libs_OCL/
 rm -f libMMFFmulti_lib.so
 make MMFFmulti_lib
+if [ $? -ne 0 ]; then
+    echo "ERROR: Build failed!"
+    exit 1
+fi
 cd $wd
+echo "Build successful!"
+echo ""
 
-echo "Running run.py with parameters..."
+# Run the TI calculation
+echo "Step 2: Running Thermodynamic Integration..."
+echo "----------------------------------------"
 python3 run.py \
-    --nSys 10 \
-    --xyz_name "data/DA.mol2" \
-    --nCV 1.0 \
-    --nLambda 10 \
-    --nbStep 100 \
-    --nMDsteps 100000 \
-    --nEQsteps 10000 \
-    --dt 0.5 \
-    --tdamp 100.0 \
-    --T 300.0
+    --nSys 100 \
+    --xyz_name "../tMMFF/data/entropic_spring_$N.xyz" \
+    --system_name "entropic_spring_$N" \
+    --nLambda 100 \
+    --nMDsteps 1000000 \
+    --nEQsteps 5000 \
+    --Fconv 1e-6 \
+    --constraints "constraints.txt" # Values for the distances of the two end atoms to pull
+
+if [ $? -ne 0 ]; then
+    echo "ERROR: TI calculation failed!"
+    exit 1
+fi
+echo ""
+
+# Plot the results
+echo "Step 3: Plotting results..."
+echo "----------------------------------------"
+python3 plot_TI.py --input entropic_spring_${N}_TI.dat
+python3 plot_TI_interactive.py --input entropic_spring_${N}_TI.dat
+if [ $? -ne 0 ]; then
+    echo "ERROR: Plotting failed!"
+    exit 1
+fi
+echo ""
+
+echo "=========================================="
+echo "  Completed successfully!"
+echo "=========================================="
+echo ""
+echo "Output files:"
+echo "  - entropic_spring_${N}_TI.dat (raw data)"
+echo "  - entropic_spring_${N}_TI_plot.png (static plot)"
+echo "  - entropic_spring_${N}_TI_plot.pdf (static plot)"
+echo "  - entropic_spring_${N}_TI_interactive.html (interactive plot)"
+echo ""
+echo "To view the interactive plot, open entropic_spring_${N}_TI_interactive.html in a web browser"
+echo ""

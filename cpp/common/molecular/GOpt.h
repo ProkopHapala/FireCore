@@ -50,12 +50,12 @@ struct GOpt{
         if(bExploring){
             if(istep>=nExplore){ 
                 //printf( "GOpt::update() stop exploring istep(%i)>nExplore(%i) \n" );
-                bExploring=false; istep=0; return true; 
+                bExploring=true; istep=0; return true; 
             }
         }
         else if(istep>=nRelax)
         {
-            printf( "GOpt::update() start exploring istep(%i)>nRelax(%i) \n" );
+            //printf( "GOpt::update() start exploring istep(%i)>nRelax(%i) \n" );
             bExploring=true; istep=0; return true; 
            // if(istep>=nRelax  ){ bExploring=true; istep=0; return true; }
         }

@@ -1,0 +1,18 @@
+# Constraint positions for thermodynamic integration
+#
+# Format: atom_index  initial_x  initial_y  initial_z  final_x  final_y  final_z
+#
+# - Lines starting with # are comments
+# - atom_index is the index of the Si atom in the molecule (0-based)
+# - initial_x/y/z: position at lambda=0
+# - final_x/y/z: position at lambda=1
+# - Positions are linearly interpolated between initial and final for intermediate lambda values
+#
+# Example: Entropic spring with 20 atoms
+# First Si atom (index 0): from (0.5, 0, 0) to (1.5, 0, 0)
+# Second Si atom (index 1): from (-0.5, 0, 0) to (-1.5, 0, 0)
+# This will stretch the spring from 1.0 Å to 3.0 Å
+
+0   0.5   0.0   0.0   5.5   0.0   0.0
+1  -0.5   0.0   0.0  -5.5   0.0   0.0
+
