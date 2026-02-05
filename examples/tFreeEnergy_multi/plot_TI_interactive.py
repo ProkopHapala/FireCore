@@ -149,6 +149,24 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
     if cumulative_err_read is not None:
         cumulative_err_read = cumulative_err_read[sort_idx]
 
+    # --- New calculations ---
+    Force_from_data = None
+    dE_ref_dlambda = None
+    F_ref = None
+    if distances is not None and len(distances) > 1:
+        # Calculate dR/dλ
+        dR_dlambda = np.gradient(distances, lambda_vals)
+        # Avoid division by zero
+        # Create a copy to avoid modifying the original array in place, which can have side effects
+        dR_dlambda_safe = np.copy(dR_dlambda)
+        dR_dlambda_safe[np.abs(dR_dlambda_safe) < 1e-9] = 1e-9
+        Force_from_data = dE_dlambda / dR_dlambda_safe
+        
+        if N_segments is not None:
+            k_spring = kB * T / (N_segments * b**2)
+            F_ref = k_spring * distances
+            dE_ref_dlambda = F_ref * dR_dlambda
+
     # Compute cumulative integral and error
     cumulative_F, cumulative_error = compute_cumulative_integral_and_error(lambda_vals, dE_dlambda, errors)
 
@@ -158,7 +176,7 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
     if cumulative_err_read is not None:
         cumulative_error = cumulative_err_read
     
-    # Integrate to get total free energy (redundant with cumulative_F[-1] but good to keep)
+    # Integrate to get total free energy
     delta_F_trapz = np.trapz(dE_dlambda, lambda_vals)
     if len(lambda_vals) >= 3:
         delta_F_simps = integrate.simpson(y=dE_dlambda, x=lambda_vals)
@@ -169,192 +187,134 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
     total_error = cumulative_error[-1]
     
     # Create subplots
-    fig = make_subplots(
-        rows=3, cols=1,
-        subplot_titles=(
-            'dE/dλ vs λ (Thermodynamic Integration)',
-            'Cumulative Free Energy ΔF(λ)',
-            'Si-Si Distance vs λ' if distances is not None else 'Error Analysis'
-        ),
-        vertical_spacing=0.12,
-        row_heights=[0.35, 0.35, 0.30]
-    )
-    
-    # Prepare hover text
+    if distances is not None:
+        fig = make_subplots(
+            rows=4, cols=1,
+            subplot_titles=(
+                'dE/dλ vs λ (Thermodynamic Integration)',
+                'Force vs λ',
+                'Cumulative Free Energy ΔF(λ)',
+                'Si-Si Distance vs λ'
+            ),
+            vertical_spacing=0.08,
+            row_heights=[0.25, 0.25, 0.25, 0.25]
+        )
+        plot_rows = {'dE/dλ': 1, 'Force': 2, 'FE': 3, 'Distance': 4}
+    else:
+        fig = make_subplots(
+            rows=2, cols=1,
+            subplot_titles=(
+                'dE/dλ vs λ (Thermodynamic Integration)',
+                'Cumulative Free Energy ΔF(λ)'
+            ),
+            vertical_spacing=0.12,
+        )
+        plot_rows = {'dE/dλ': 1, 'FE': 2}
+
+    # --- Plot 1: dE/dlambda vs lambda ---
     hover_text_1 = [
-        f"λ = {lam:.4f}<br>dE/dλ = {de:.4f} eV<br>σ(F) = {err:.4f} eV" + 
-        (f"<br>Distance = {dist:.3f} Å" if distances is not None else "")
-        for lam, de, err, dist in zip(lambda_vals, dE_dlambda, errors, 
-                                       distances if distances is not None else [0]*len(lambda_vals))
+        f"λ = {lam:.4f}<br>dE/dλ = {de:.4f} eV<br>σ(dE/dλ) = {err:.4f} eV"
+        for lam, de, err in zip(lambda_vals, dE_dlambda, errors)
     ]
-    
-    # Plot 1: dE/dlambda vs lambda with error bars
     fig.add_trace(
         go.Scatter(
             x=lambda_vals, y=dE_dlambda,
-            mode='lines+markers',
-            name='dE/dλ',
-            line=dict(color='blue', width=2),
-            marker=dict(size=8, symbol='circle'),
-            error_y=dict(
-                type='data',
-                array=errors,
-                visible=True,
-                color='rgba(0,0,255,0.3)'
-            ) if np.any(errors > 0) else None,
-            hovertext=hover_text_1,
-            hoverinfo='text'
+            mode='lines+markers', name='dE/dλ (data)',
+            line=dict(color='blue', width=2), marker=dict(size=8, symbol='circle'),
+            error_y=dict(type='data', array=errors, visible=True, color='rgba(0,0,255,0.3)'),
+            hovertext=hover_text_1, hoverinfo='text'
         ),
-        row=1, col=1
+        row=plot_rows['dE/dλ'], col=1
     )
-
-    # --- Linear Fit for dE/dlambda ---
-    if len(lambda_vals) > 1:
-        fit_coeffs = np.polyfit(lambda_vals, dE_dlambda, 1)
-        fit_line = np.polyval(fit_coeffs, lambda_vals)
-        fit_expression = f"dE/dλ = {fit_coeffs[0]:.4f}λ + {fit_coeffs[1]:.4f}"
-
-        # Add fitted line to plot
+    if dE_ref_dlambda is not None:
         fig.add_trace(
             go.Scatter(
-                x=lambda_vals, y=fit_line,
-                mode='lines',
-                name='Linear Fit',
-                line=dict(color='cyan', width=2, dash='dot'),
-                hoverinfo='skip'
-            ),
-            row=1, col=1
-        )
-
-        # Add annotation with the fit expression to the first subplot
-        fig.add_annotation(
-            text=fit_expression,
-            xref="paper", yref="paper",
-            x=0.05, y=0.95,
-            xanchor='left', yanchor='top',
-            showarrow=False,
-            bgcolor="rgba(255, 255, 255, 0.8)",
-            bordercolor="black",
-            borderwidth=1,
-            row=1, col=1
-        )
-    
-    # Entropic Spring Reference (Force)
-    if distances is not None and N_segments is not None:
-        k_spring = kB * T / (N_segments * b**2)
-        F_ref = k_spring * distances
-        
-        fig.add_trace(
-            go.Scatter(
-                x=lambda_vals, y=F_ref,
-                mode='lines',
-                name='Ref Force',
+                x=lambda_vals, y=dE_ref_dlambda,
+                mode='lines', name='dE/dλ (ref)',
                 line=dict(color='purple', width=2, dash='dash'),
-                opacity=0.7
+                opacity=0.7, hoverinfo='skip'
             ),
-            row=1, col=1
+            row=plot_rows['dE/dλ'], col=1
         )
+    fig.update_yaxes(title_text="dE/dλ [eV]", row=plot_rows['dE/dλ'], col=1)
+
+    # --- Plot 2: Force vs lambda (New) ---
+    if 'Force' in plot_rows:
+        hover_text_force = [
+            f"λ = {lam:.4f}<br>Force = {f:.4f} eV/Å"
+            for lam, f in zip(lambda_vals, Force_from_data)
+        ]
+        fig.add_trace(
+            go.Scatter(
+                x=lambda_vals, y=Force_from_data,
+                mode='lines+markers', name='Force (from data)',
+                line=dict(color='orange', width=2), marker=dict(size=8, symbol='hexagram'),
+                hovertext=hover_text_force, hoverinfo='text'
+            ),
+            row=plot_rows['Force'], col=1
+        )
+        if F_ref is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=lambda_vals, y=F_ref,
+                    mode='lines', name='Force (ref spring)',
+                    line=dict(color='purple', width=2, dash='dash'),
+                    opacity=0.7, hoverinfo='skip'
+                ),
+                row=plot_rows['Force'], col=1
+            )
+        fig.update_yaxes(title_text="Force [eV/Å]", row=plot_rows['Force'], col=1)
     
-    # Plot 2: Cumulative integral
-    hover_text_2 = [
+    # --- Plot 3: Cumulative Free Energy ---
+    hover_text_fe = [
         f"λ = {lam:.4f}<br>ΔF(λ) = {cf:.4f} eV<br>σ(ΔF) = {ce:.4f} eV"
         for lam, cf, ce in zip(lambda_vals, cumulative_F, cumulative_error)
     ]
-    
     fig.add_trace(
         go.Scatter(
             x=lambda_vals, y=cumulative_F,
-            mode='lines+markers',
-            name='ΔF(λ)',
-            line=dict(color='green', width=2),
-            marker=dict(size=8, symbol='diamond'),
-            error_y=dict(
-                type='data',
-                array=cumulative_error,
-                visible=True,
-                color='rgba(0,255,0,0.3)'
-            ),
-            hovertext=hover_text_2,
-            hoverinfo='text',
+            mode='lines+markers', name='ΔF(λ) (data)',
+            line=dict(color='green', width=2), marker=dict(size=8, symbol='diamond'),
+            error_y=dict(type='data', array=cumulative_error, visible=True, color='rgba(0,255,0,0.3)'),
+            hovertext=hover_text_fe, hoverinfo='text',
         ),
-        row=2, col=1
+        row=plot_rows['FE'], col=1
     )
-    
-    # Entropic Spring Reference (Free Energy)
     if distances is not None and N_segments is not None:
         k_spring = kB * T / (N_segments * b**2)
         FE_ref = 0.5 * k_spring * distances**2
         FE_ref_shifted = FE_ref - FE_ref[0] + cumulative_F[0]
-        
-        hover_text_ref_fe = [
-            f"λ = {lam:.4f}<br>Ref FE = {fe:.4f} eV<br>Distance = {dist:.3f} Å"
-            for lam, fe, dist in zip(lambda_vals, FE_ref_shifted, distances)
-        ]
-        
         fig.add_trace(
             go.Scatter(
                 x=lambda_vals, y=FE_ref_shifted,
-                mode='lines',
-                name='Ref FE (spring)',
+                mode='lines', name='ΔF(λ) (ref spring)',
                 line=dict(color='purple', width=2, dash='dash'),
-                opacity=0.7,
-                hovertext=hover_text_ref_fe,
-                hoverinfo='text'
+                opacity=0.7, hoverinfo='skip'
             ),
-            row=2, col=1
+            row=plot_rows['FE'], col=1
         )
-    
-    # Plot 3: Distance or Error analysis
-    if distances is not None:
-        hover_text_3 = [
+    fig.update_yaxes(title_text="ΔF(λ) [eV]", row=plot_rows['FE'], col=1)
+
+    # --- Plot 4: Distance ---
+    if 'Distance' in plot_rows:
+        hover_text_dist = [
             f"λ = {lam:.4f}<br>Distance = {dist:.3f} Å"
             for lam, dist in zip(lambda_vals, distances)
         ]
-        
         fig.add_trace(
             go.Scatter(
                 x=lambda_vals, y=distances,
-                mode='lines+markers',
-                name='Si-Si Distance',
-                line=dict(color='red', width=2),
-                marker=dict(size=8, symbol='square'),
-                hovertext=hover_text_3,
-                hoverinfo='text'
+                mode='lines+markers', name='Si-Si Distance',
+                line=dict(color='red', width=2), marker=dict(size=8, symbol='square'),
+                hovertext=hover_text_dist, hoverinfo='text'
             ),
-            row=3, col=1
+            row=plot_rows['Distance'], col=1
         )
-    else:
-        # Show error bars if no distance data
-        hover_text_3 = [
-            f"λ = {lam:.4f}<br>σ(F) = {err:.4f} eV"
-            for lam, err in zip(lambda_vals, errors)
-        ]
-        
-        fig.add_trace(
-            go.Scatter(
-                x=lambda_vals, y=errors,
-                mode='lines+markers',
-                name='σ(F)',
-                line=dict(color='orange', width=2),
-                marker=dict(size=8, symbol='triangle-up'),
-                hovertext=hover_text_3,
-                hoverinfo='text'
-            ),
-            row=3, col=1
-        )
+        fig.update_yaxes(title_text="Si-Si Distance [Å]", row=plot_rows['Distance'], col=1)
 
-    # Update axes labels
-    fig.update_xaxes(title_text="λ", row=1, col=1)
-    fig.update_yaxes(title_text="dE/dλ (eV)", row=1, col=1)
-
-    fig.update_xaxes(title_text="λ", row=2, col=1)
-    fig.update_yaxes(title_text="ΔF(λ) (eV)", row=2, col=1)
-
-    fig.update_xaxes(title_text="λ", row=3, col=1)
-    if distances is not None:
-        fig.update_yaxes(title_text="Si-Si Distance (Å)", row=3, col=1)
-    else:
-        fig.update_yaxes(title_text="σ(F) (eV)", row=3, col=1)
+    # Update all x-axes
+    for i in range(1, len(plot_rows) + 1):
+        fig.update_xaxes(title_text="λ", row=i, col=1)
 
     # Add annotations with results
     annotation_text = (
@@ -378,13 +338,14 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
     )
 
     # Update layout
+    total_height = 350 * len(plot_rows)
     fig.update_layout(
         title=dict(
             text=f"Interactive Thermodynamic Integration Analysis<br><sub>{filename}</sub>",
             x=0.5,
             xanchor='center'
         ),
-        height=1200,
+        height=total_height,
         showlegend=True,
         hovermode='closest',
         template='plotly_white'

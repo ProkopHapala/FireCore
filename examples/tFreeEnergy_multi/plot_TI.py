@@ -65,20 +65,15 @@ def detect_columns(filename):
 def plot_ti_results(filename, output_prefix=None, N_segments=None, T=300.0, b=1.198):
     """Plot TI results and compute free energy"""
     
-    # Detect columns
     col_map, header_found = detect_columns(filename)
     if header_found:
         print(f"Detected columns: {col_map}")
     else:
         print("No header detected, using default column mapping.")
 
-    # Read data
     data = read_ti_data(filename)
-    
-    # Check bounds
     ncols = data.shape[1]
     
-    # Safe extraction helper
     def get_col(name):
         idx = col_map.get(name)
         if idx is not None and idx < ncols:
@@ -93,172 +88,140 @@ def plot_ti_results(filename, output_prefix=None, N_segments=None, T=300.0, b=1.
         sys.exit(1)
         
     errors = get_col('sigma_dE')
-    cumulative_FE = get_col('cumulative_FE')
+    cumulative_FE_read = get_col('cumulative_FE')
     cumulative_err_read = get_col('cumulative_err')
     distances = get_col('distance')
 
-    # If using default mapping but data has fewer columns, we might have gotten None or wrong data.
-    # The default mapping assumes 6 columns.
-    # If we didn't find a header, we should apply fallback logic based on shape for backward compatibility.
     if not header_found:
-        if ncols < 6:
-            # Old format: lambda, dE/dlambda, sigma_dE, [cumulative_FE], [distance]
-            # Reset based on observed shape
-            if ncols >= 3: errors = data[:, 2]
-            else: errors = None
+        if ncols >= 3: errors = data[:, 2]
+        else: errors = None
+        if ncols >= 4: cumulative_FE_read = data[:, 3]
+        else: cumulative_FE_read = None
+        if ncols >= 5: distances = data[:, 4]
+        else: distances = None
+        cumulative_err_read = None
 
-            if ncols >= 4: cumulative_FE = data[:, 3]
-            else: cumulative_FE = None
+    if errors is None:
+        errors = np.zeros_like(lambda_vals)
 
-            if ncols >= 5: distances = data[:, 4]
-            else: distances = None
-
-            cumulative_err_read = None
-
-    # Sort by lambda (in case data is not sorted)
     sort_idx = np.argsort(lambda_vals)
     lambda_vals = lambda_vals[sort_idx]
     dE_dlambda = dE_dlambda[sort_idx]
+    if errors is not None: errors = errors[sort_idx]
+    if distances is not None: distances = distances[sort_idx]
+    if cumulative_FE_read is not None: cumulative_FE_read = cumulative_FE_read[sort_idx]
+    if cumulative_err_read is not None: cumulative_err_read = cumulative_err_read[sort_idx]
+
+    Force_from_data, dE_ref_dlambda, F_ref, k_spring = None, None, None, None
+    if distances is not None and len(distances) > 1:
+        dR_dlambda = np.gradient(distances, lambda_vals)
+        dR_dlambda_safe = np.copy(dR_dlambda)
+        dR_dlambda_safe[np.abs(dR_dlambda_safe) < 1e-9] = 1e-9
+        Force_from_data = dE_dlambda / dR_dlambda_safe
+        
+        if N_segments is not None:
+            k_spring = kB * T / (N_segments * b**2)
+            F_ref = k_spring * distances
+            dE_ref_dlambda = F_ref * dR_dlambda
+
+    cumulative_FE_calc = np.zeros_like(lambda_vals)
+    cumulative_error_calc = np.zeros_like(lambda_vals)
     if errors is not None:
-        errors = errors[sort_idx]
-    if distances is not None:
-        distances = distances[sort_idx]
-    if cumulative_FE is not None:
-        cumulative_FE = cumulative_FE[sort_idx]
-    if cumulative_err_read is not None:
-        cumulative_err_read = cumulative_err_read[sort_idx]
-    
-    # Integrate to get free energy
-    # Using trapezoidal rule
-    delta_F_trapz = np.trapz(dE_dlambda, lambda_vals)
-    
-    # Using Simpson's rule if we have enough points
-    if len(lambda_vals) >= 3:
-        delta_F_simps = integrate.simpson(y=dE_dlambda, x=lambda_vals)
-    else:
-        delta_F_simps = delta_F_trapz
-    
-    # Calculate cumulative error if not present in file
-    # Use the cumulative error from file if available, otherwise compute from local errors
-    cumulative_error_calc = None
-    if cumulative_err_read is not None:
-        cumulative_error_calc = cumulative_err_read
-    elif errors is not None:
-        cumulative_error_calc = np.zeros_like(lambda_vals)
         for i in range(1, len(lambda_vals)):
             dx = lambda_vals[i] - lambda_vals[i-1]
+            cumulative_FE_calc[i] = cumulative_FE_calc[i-1] + 0.5 * (dE_dlambda[i] + dE_dlambda[i-1]) * dx
             var_contribution = (0.5 * dx)**2 * (errors[i]**2 + errors[i-1]**2)
             cumulative_error_calc[i] = np.sqrt(cumulative_error_calc[i-1]**2 + var_contribution)
-            
-    # Create figure with subplots (3 rows)
-    fig, axes = plt.subplots(3, 1, figsize=(10, 15))
+
+    cumulative_FE = cumulative_FE_read if cumulative_FE_read is not None else cumulative_FE_calc
+    cumulative_error = cumulative_err_read if cumulative_err_read is not None else cumulative_error_calc
     
-    # Plot 1: dE/dlambda vs lambda
+    delta_F_trapz = np.trapz(dE_dlambda, lambda_vals)
+    delta_F_simps = integrate.simpson(y=dE_dlambda, x=lambda_vals) if len(lambda_vals) >= 3 else delta_F_trapz
+
+    # Create figure
+    num_plots = 4 if distances is not None else 2
+    fig, axes = plt.subplots(num_plots, 1, figsize=(10, 5 * num_plots), sharex=True)
+    
+    # Plot 1: dE/dlambda
     ax1 = axes[0]
-    ax1.plot(lambda_vals, dE_dlambda, 'o-', linewidth=2, markersize=8, label='dE/dλ')
-    if errors is not None and np.any(errors > 0):
-        ax1.fill_between(lambda_vals, dE_dlambda - errors, dE_dlambda + errors, 
-                         alpha=0.3, label='Error estimate')
-    
-    # Entropic Spring Reference (Force)
-    if distances is not None and N_segments is not None:
-        # F = (3kT / Nb^2) * R
-        k_spring = kB * T / (N_segments * b**2)
-        F_ref = k_spring * distances
-        ax1.plot(lambda_vals, F_ref, '--', color='purple', linewidth=2, 
-                 label=f'Ref Force (N={N_segments}, T={T}K)')
-                 
-    ax1.axhline(y=0, color='k', linestyle='--', alpha=0.3)
-    ax1.set_xlabel('λ', fontsize=14)
-    ax1.set_ylabel('dE/dλ [eV]', fontsize=14)
-    ax1.set_title('Thermodynamic Integration: Force Derivative', fontsize=16)
-    ax1.grid(True, alpha=0.3)
-    ax1.legend(fontsize=12)
-    
-    # Add text box with integration results
+    ax1.plot(lambda_vals, dE_dlambda, 'o-', linewidth=2, markersize=6, label='dE/dλ (data)')
+    if errors is not None:
+        ax1.fill_between(lambda_vals, dE_dlambda - errors, dE_dlambda + errors, alpha=0.3)
+    if dE_ref_dlambda is not None:
+        ax1.plot(lambda_vals, dE_ref_dlambda, '--', color='purple', linewidth=2, label='dE/dλ (ref)')
+    ax1.set_ylabel('dE/dλ [eV]')
+    ax1.set_title('Thermodynamic Integration Analysis')
+    ax1.grid(True, alpha=0.5)
+    ax1.legend()
+
     textstr = f'ΔF (trapz) = {delta_F_trapz:.4f} eV\nΔF (Simpson) = {delta_F_simps:.4f} eV'
     props = dict(boxstyle='round', facecolor='wheat', alpha=0.8)
-    ax1.text(0.05, 0.95, textstr, transform=ax1.transAxes, fontsize=12,
-             verticalalignment='top', bbox=props)
-             
-    # Plot 2: Cumulative Free Energy vs lambda
-    ax2 = axes[1]
-    # If we read cumulative FE from file, use it, otherwise compute it
-    if cumulative_FE is None:
-        cumulative_FE_calc = np.zeros_like(lambda_vals)
-        for i in range(1, len(lambda_vals)):
-             cumulative_FE_calc[i] = cumulative_FE_calc[i-1] + 0.5 * (dE_dlambda[i] + dE_dlambda[i-1]) * (lambda_vals[i] - lambda_vals[i-1])
-        cumulative_FE = cumulative_FE_calc
-             
-    ax2.plot(lambda_vals, cumulative_FE, 'd-', linewidth=2, markersize=8, 
-             color='green', label='Cumulative ΔF')
-             
-    if cumulative_error_calc is not None:
-         ax2.fill_between(lambda_vals, cumulative_FE - cumulative_error_calc, cumulative_FE + cumulative_error_calc,
-                          alpha=0.3, color='green', label='Error estimate')
+    ax1.text(0.05, 0.95, textstr, transform=ax1.transAxes, fontsize=12, verticalalignment='top', bbox=props)
 
-    # Entropic Spring Reference (Free Energy)
-    if distances is not None and N_segments is not None:
-        # FE = 0.5 * k * R^2 = 0.5 * (3kT / Nb^2) * R^2
-        k_spring = kB * T / (N_segments * b**2)
-        FE_ref = 0.5 * k_spring * distances**2
-        
-        # Shift to match start
-        FE_ref_shifted = FE_ref - FE_ref[0] + cumulative_FE[0]
-        
-        ax2.plot(lambda_vals, FE_ref_shifted, '--', color='purple', linewidth=2,
-                 label=f'Ref FE (shifted)')
-                          
-    ax2.set_xlabel('λ', fontsize=14)
-    ax2.set_ylabel('ΔF(λ) [eV]', fontsize=14)
-    ax2.set_title('Cumulative Free Energy', fontsize=16)
-    ax2.grid(True, alpha=0.3)
-    ax2.legend(fontsize=12)
-    
-    # Plot 3: Distance vs lambda (if available)
-    ax3 = axes[2]
     if distances is not None:
-        # Check if we should use distance or error analysis in the third plot.
-        # Original code put distance here if available.
-        ax3.plot(lambda_vals, distances, 's-', linewidth=2, markersize=8, 
-                color='red', label='Distance between constrained atoms')
-        ax3.set_xlabel('λ', fontsize=14)
-        ax3.set_ylabel('Distance [Å]', fontsize=14)
-        ax3.set_title('Constraint Distance vs λ', fontsize=16)
-        ax3.grid(True, alpha=0.3)
-        ax3.legend(fontsize=12)
+        # Plot 2: Force
+        ax2 = axes[1]
+        ax2.plot(lambda_vals, Force_from_data, 'o-', color='orange', markersize=6, label='Force (from data)')
+        if F_ref is not None:
+            ax2.plot(lambda_vals, F_ref, '--', color='purple', label='Force (ref spring)')
+        ax2.set_ylabel('Force [eV/Å]')
+        ax2.grid(True, alpha=0.5)
+        ax2.legend()
+
+        # Plot 3: Cumulative FE
+        ax3 = axes[2]
+        ax3.plot(lambda_vals, cumulative_FE, 'd-', color='green', markersize=6, label='Cumulative ΔF (data)')
+        if cumulative_error is not None:
+            ax3.fill_between(lambda_vals, cumulative_FE - cumulative_error, cumulative_FE + cumulative_error, alpha=0.3, color='green')
+        if F_ref is not None:
+            FE_ref = 0.5 * k_spring * distances**2
+            FE_ref_shifted = FE_ref - FE_ref[0] + cumulative_FE[0]
+            ax3.plot(lambda_vals, FE_ref_shifted, '--', color='purple', label='ΔF(λ) (ref spring)')
+        ax3.set_ylabel('ΔF(λ) [eV]')
+        ax3.grid(True, alpha=0.5)
+        ax3.legend()
+
+        # Plot 4: Distance
+        ax4 = axes[3]
+        ax4.plot(lambda_vals, distances, 's-', color='red', markersize=6, label='Si-Si Distance')
+        ax4.set_xlabel('λ')
+        ax4.set_ylabel('Distance [Å]')
+        ax4.grid(True, alpha=0.5)
+        ax4.legend()
     else:
-        ax3.text(0.5, 0.5, 'No distance data available', 
-                transform=ax3.transAxes, ha='center', va='center', fontsize=14)
-        ax3.axis('off')
+        # Plot 2: Cumulative FE (no distance)
+        ax2 = axes[1]
+        ax2.plot(lambda_vals, cumulative_FE, 'd-', color='green', markersize=6, label='Cumulative ΔF')
+        if cumulative_error is not None:
+            ax2.fill_between(lambda_vals, cumulative_FE - cumulative_error, cumulative_FE + cumulative_error, alpha=0.3, color='green')
+        ax2.set_xlabel('λ')
+        ax2.set_ylabel('ΔF(λ) [eV]')
+        ax2.grid(True, alpha=0.5)
+        ax2.legend()
     
-    plt.tight_layout()
-    
-    # Save figure
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.suptitle(f"TI Analysis for {filename}", fontsize=16)
+
     if output_prefix is None:
-        output_prefix = filename.replace('_TI.dat', '').replace('.dat', '')
+        output_prefix = filename.replace('.dat', '')
     
     output_png = f"{output_prefix}_TI_plot.png"
-    output_pdf = f"{output_prefix}_TI_plot.pdf"
+    plt.savefig(output_png, dpi=300)
+    print(f"\nPlot saved to: {output_png}")
     
-    plt.savefig(output_png, dpi=300, bbox_inches='tight')
-    plt.savefig(output_pdf, bbox_inches='tight')
-    print(f"\nPlots saved to:")
-    print(f"  {output_png}")
-    print(f"  {output_pdf}")
-    
-    # Print summary
-    print(f"\n{'=' * 60}")
-    print(f"  Thermodynamic Integration Summary")
-    print(f"{'=' * 60}")
+    print("\n" + "="*60)
+    print("  Thermodynamic Integration Summary")
+    print("="*60)
     print(f"  Number of λ windows: {len(lambda_vals)}")
-    print(f"  λ range: {lambda_vals[0]:.4f} → {lambda_vals[-1]:.4f}")
     print(f"  Free energy change (trapezoidal): {delta_F_trapz:.6f} eV")
     print(f"  Free energy change (Simpson):     {delta_F_simps:.6f} eV")
+    if distances is not None:
+        print(f"  Distance range: {distances[0]:.3f} → {distances[-1]:.3f} Å")
     if N_segments is not None:
-         print(f"  Entropic Spring Reference (N={N_segments}, T={T}K, b={b}A)") 
-    print(f"{'=' * 60}\n")
-    
+         print(f"  Entropic Spring Reference (N={N_segments}, T={T}K, b={b}A)")
+    print("="*60)
+
     return delta_F_trapz, delta_F_simps
 
 def main():
