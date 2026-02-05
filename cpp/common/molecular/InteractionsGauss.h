@@ -4,6 +4,7 @@
 /// @file InteractionsGauss.h @brief Implements functions for evaluation of interaction between gaussian functions such as product, overlap, kinetic energy and electrostatic interaction
 /// @ingroup Electron_Forcefield
 
+#include "globals.h"
 #include "math.h"
 #include "fastmath.h"
 

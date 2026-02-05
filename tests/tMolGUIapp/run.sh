@@ -80,7 +80,17 @@ fi
 #./$name -x common_resources/xyz/NH3     -iParalel 0 -ex2
 
 #./$name -x common_resources/xyz/uracil  -iParalel 0 -ex2
-./$name -x common_resources/xyz/uracil  -iParalel 0 -ex2 -uff
+#./$name -x common_resources/xyz/uracil  -iParalel 0 -ex2 -uff
+
+
+#./$name -x common_resources/xyz/uracil  -iParalel 1
+
+
+./$name -x DiTetracenoHelice_conf1.mol2 -iParalel 1   -dt 0.001  -Flim 1      -nPBC 1,1,0    
+#./$name -x DiTetracenoHelice_conf2.mol2 -iParalel 1  -dt 0.001  -Flim 1      -nPBC 1,1,0    
+#./$name -x DiTriptyceno_helicene_3a.mol2 -iParalel 1
+
+
 
 #./$name -x common_resources/xyz/nHexadecan_dicarboxylic -iParalel 0 -ex2
 #./$name -x common_resources/xyz/CG -iParalel 0  -ex2

@@ -190,6 +190,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 	double  Kmorse = -1.0;
     double  Ftol_default = 1e-4;
     double  dt_default   = 0.05;
+    double  Flim_default = 1000.0;
 
     double time_per_iter = 0;
 
@@ -2039,8 +2040,8 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
         int nitr=0;
         if(bUFF){
             switch(iParalel){
-                case  0: nitr=ffu.run    ( nIter, dt_default, Ftol, 1000.0 ); break;
-                case  1: nitr=ffu.run_omp( nIter, dt_default, Ftol, 1000.0 ); break;
+                case  0: nitr=ffu.run    ( nIter, dt_default, Ftol, Flim_default ); break;
+                case  1: nitr=ffu.run_omp( nIter, dt_default, Ftol, Flim_default ); break;
                 default: [[unlikely]] {
                     printf( "ERROR: MolWorld_sp3::MDloop() iParalel(%i) not implemented (use 0=run_no_omp(), 1=run_omp()) \n", iParalel );
                     exit(0);
@@ -2048,8 +2049,8 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
             }
         }else{
             switch(iParalel){
-                case  0: nitr=run_no_omp( nIter, dt_default, Ftol, 1000.0 ); break;
-                case  1: nitr=run_omp   ( nIter, dt_default, Ftol, 1000.0 ); break;
+                case  0: nitr=run_no_omp( nIter, dt_default, Ftol, Flim_default ); break;
+                case  1: nitr=run_omp   ( nIter, dt_default, Ftol, Flim_default ); break;
                 //case  0: nitr=run_no_omp( nIter, 0.02, Ftol, 1000.0 ); break;
                 //case  1: nitr=run_omp   ( nIter, 0.02, Ftol, 1000.0 ); break;
                 default: [[unlikely]] {

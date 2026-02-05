@@ -2659,10 +2659,10 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
         ffu.bExclusion2    = bExclusion2;
         switch(iParalel){
             case -1:
-            case  0:nitrdione = ffu.run        ( nIter, dt_default, Ftol, 1000.0 ); break;
-            case  1:nitrdione = ffu.run_omp    ( nIter, dt_default, Ftol, 1000.0 ); break;
+            case  0:nitrdione = ffu.run        ( nIter, dt_default, Ftol, Flim_default ); break;
+            case  1:nitrdione = ffu.run_omp    ( nIter, dt_default, Ftol, Flim_default ); break;
             case  2:nitrdione =     run_omp_ocl( nIter,             Ftol         ); break;
-            case  3:nitrdione =     run_uff_ocl( nIter, dt_default, opt.damping, Ftol, 1000.0 );  break;
+            case  3:nitrdione =     run_uff_ocl( nIter, dt_default, opt.damping, Ftol, Flim_default );  break;
             default:
                 printf( "ERROR: MolWorld_sp3_multi::MDloop() iParalel(%i) not implemented for UFF (use 0=run, 1=run_omp, 2=run_omp_ocl, 3=run_uff_ocl)\n", iParalel );
                 exit(0);

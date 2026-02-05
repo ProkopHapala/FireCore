@@ -2236,6 +2236,19 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         if(verbosity>0)printf("Builder::load_mol() read atoms[%d] from %s\n", (int)(atoms.size()-n0), fname);
         return ifrag;
     }
+    
+        inline bool parseLvecLine(const char* s){
+        double xx,xy,xz,yx,yy,yz,zx,zy,zz;
+        if( sscanf(s, "%*[^l]lvs %lf %lf %lf %lf %lf %lf %lf %lf %lf", &xx,&xy,&xz,&yx,&yy,&yz,&zx,&zy,&zz)==9 ){
+            lvec.xx=xx; lvec.xy=xy; lvec.xz=xz;
+            lvec.yx=yx; lvec.yy=yy; lvec.yz=yz;
+            lvec.zx=zx; lvec.zy=zy; lvec.zz=zz;
+            bPBC=true;
+            printf("Builder::parseLvecLine() lvec loaded\n"); printMat(lvec);
+            return true;
+        }
+        return false;
+    }
 
     /// @brief Load a .mol2 file (Tripos mol2 format).
     ///
@@ -2355,10 +2368,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                     inBond = true;
                 }else 
                 if (strncmp(buff, "@lvs", 4) == 0) {    // expected line like this:    @lvs 20.0 0.0 0.0    0.0 0.5 0.0   20.0 0.0 0.0
-                    sscanf( buff+4, "%lf %lf %lf %lf %lf %lf %lf %lf %lf", &lvec.xx, &lvec.xy, &lvec.xz, &lvec.yx, &lvec.yy, &lvec.yz, &lvec.zx, &lvec.zy, &lvec.zz );
-                    //sscanf( buff+4, "%lf %lf %lf %lf %lf %lf %lf %lf %lf", &lvec.xx, &lvec.xy, &lvec.xz, &lvec.yx, &lvec.yy, &lvec.yz, &lvec.zx, &lvec.zy, &lvec.zz );
-                    printf("Builder::load_mol2() lvec loaded\n"); printMat(lvec);
-                    bPBC = true;
+                    parseLvecLine( buff+1 );
                 }else
                 if( strncmp(buff, "@groups", 7) == 0 ){
                     //str2groups(buff+7, nbuf-7 );
@@ -2367,6 +2377,8 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                     //exit(0);
                 }
                 continue;
+            }else if(buff[0]=='#'){
+                if( parseLvecLine(buff) ) continue;
             }
             //printf( "---Builder::load_mol2() [%i] a%i b%i %s", iline, inAtom, inBond, buff);
             
