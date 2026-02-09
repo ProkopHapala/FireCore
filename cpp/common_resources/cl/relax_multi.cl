@@ -912,8 +912,7 @@ __kernel void updateAtomsMMFFf4(
     __global cl_Mat3* bboxes,       // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
     __global int*     sysneighs,    // 13 // // for each system contains array int[nMaxSysNeighs] of nearby other systems
     __global float4*  sysbonds,      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
-    __global float4*  averageForces, // 15 // contains average forces on atoms for free energy calculation
-    __global float4*  averageForcesSq // 16 // contains average squared forces for variance calculation
+    __global float4*  averageForces // 15 // contains average forces on atoms for free energy calculation
 ){
     const int natoms=n.x;           // number of atoms
     const int nnode =n.y;           // number of node atoms
@@ -1009,38 +1008,40 @@ __kernel void updateAtomsMMFFf4(
         }
         else if(cons.w>1e3f){ // hard constrain
             pe.xyz = cons.xyz; // move to fixed position
-            ve.xyz = 0.0f;     // zero velocity
+            ve.xyz = 0.0f;
 
-           // For thermodynamic integration: accumulate force on constrained atoms
-            // Use atomic operations to avoid race conditions
             // Note: cons.w encodes which CV this is (e.g., 1e6 for CV 0, 2e6 for CV 1, etc.)
             // constrK.xyz contains the NORMALIZED direction vector for the distance CV
 
             float sign = (cons.w > 1.5e6f) ? -1.0f : 1.0f;  // negative for second CV (for variance calc)
-            // printf("GPU[iS=%i|iG=%i]::cons.w = %g, sign = %g\n", iS, iG, cons.w, sign );
-
             float4 cK = constrK[ iaa ];
 
             // Calculate force projection along the normalized direction
-            // For 2 CVs with symmetric motion:
-            //   cK = normalized direction from atom0 to atom1 = (-1, 0, 0)
-            //   This gives us the force component along the distance direction
-            // The host code will scale this by |dR/dλ| to get dE/dλ
             float force_proj = dot(fe.xyz, cK.xyz);
 
-            // Use atomic operations to safely accumulate forces across multiple threads
             // averageForces[iS].w accumulates the force projection (will be scaled by host)
             // averageForces[iS].z is used as temporary storage for force difference (F1 - F2)
             // averageForces[iS].x accumulates sum of squared force differences (for variance)
 
             // Helper function to atomically add float using compare-and-swap
             // OpenCL doesn't have atomic_add for floats, so we use atomic_cmpxchg
-            __global float* avgF_ptr = (__global float*)(&averageForces[iS]);
+/*
+            float4 avgF = averageForces[iS];
+            if(sign > 0.0f){
+                float 
+                avgF.w += sign * force_proj;
+//                avgF.x += force_proj*force_proj;          
+                averageForces[iS].w = avgF.w;
+            } else {
+                avgF.z += sign * force_proj;
+//                avgF.y += force_proj*force_proj;          
+                averageForces[iS].z = avgF.z;
+            }
+*/
+           __global float* avgF_ptr = (__global float*)(&averageForces[iS]);
 
             // Atomic add for .w component: accumulate 0.5*(F1 - F2)·cK
             // sign = +1 for first atom, -1 for second atom
-            // This computes: 0.5*F0·cK + 0.5*(-1)*F1·cK = 0.5*(F0 - F1)·cK
-            // For symmetric forces F1 = -F0, this gives: F0·cK
             {
                 volatile __global float* addr = &avgF_ptr[3];
                 float old_val, new_val;
@@ -1050,6 +1051,47 @@ __kernel void updateAtomsMMFFf4(
                 } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
             }
 
+/*
+__global float* avgF_ptr = (__global float*)(&averageForces[iS]);
+
+// Atomic adds pro všechny tři komponenty
+{
+    volatile __global float* addr0 = &avgF_ptr[0];  // .x += 0.5*(F0-F1)
+    volatile __global float* addr2 = &avgF_ptr[2];  // .z += sign*F0
+    volatile __global float* addr3 = &avgF_ptr[3];  // .w += sign*F1
+
+    // Nejdřív .x (funguje ti to)
+    {
+        volatile __global float* addr = addr0;
+        float old_val, new_val;
+        do {
+            old_val = *addr;
+            new_val = old_val + 0.5f * sign * force_proj;
+        } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
+    }
+
+    // Pak .z += sign*F0 (jen pro sign>0)
+    if (sign > 0.0f) {
+        volatile __global float* addr = addr2;
+        float old_val, new_val;
+        do {
+            old_val = *addr;
+            new_val = old_val + sign * force_proj;
+        } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
+    }
+
+    // Pak .w += sign*F1 (jen pro sign<0)
+    if (sign < 0.0f) {
+        volatile __global float* addr = addr3;
+        float old_val, new_val;
+        do {
+            old_val = *addr;
+            new_val = old_val + sign * force_proj;
+        } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
+    }
+}
+*/
+            
             // For variance calculation: compute (F1 - F2)·cK for THIS MD step only
             // We use .y to store F1·cK temporarily (not .z which accumulates over all steps)
             if(sign > 0.0f){
@@ -1074,9 +1116,6 @@ __kernel void updateAtomsMMFFf4(
             }
 
 
-            // printf("GPU::averageForces[iS=%i] += sign(%g) * fe(%g,%g,%g)\n", iS, sign, fe.x,fe.y,fe.z);
-            // printf("GPU::averageForcesSq[iS=%i] += fe(%g,%g,%g) * fe(%g,%g,%g)\n", iS, fe.x,fe.y,fe.z, fe.x,fe.y,fe.z);
-            //if(iS==0){printf( "GPU::constr[ia=%i|iS=%i] cons(%g,%g,%g|K=%g) pe_before(%g,%g,%g) pe_after(%g,%g,%g)\n", iG, iS, cons.x,cons.y,cons.z,cons.w, apos[iav].x,apos[iav].y,apos[iav].z, pe.x,pe.y,pe.z ); }
             fe.xyz = 0.0f;     // zero force
             pe.w=0;ve.w=0;     // clear w components
             apos[iav] = pe;    // write back constrained position

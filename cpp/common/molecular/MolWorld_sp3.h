@@ -353,6 +353,10 @@ class MolWorld_sp3 : public SolverInterface { public:
                 loadNBmol( xyz_name ); 
                 if(bRigid)initRigid();
             }
+            char* fname = new char[256];
+            strncpy(fname, xyz_name, 255);
+            fname[255] = '\0';
+            xyz_name = fname;
         }
         builder.randomFragmentCollors();
         if(bMMFF){     
@@ -1576,6 +1580,7 @@ virtual void clear( bool bParams=true, bool bSurf=false ){
     //     printf("MolWorld_sp3::clear() database->clear(); \n");
     //     database->dealloc();
     // }
+    delete [] xyz_name;
 }
 
     virtual int getMultiSystemPointers( int*& M_neighs,  int*& M_neighCell, Quat4f*& M_apos, int& nvec ){

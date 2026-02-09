@@ -65,29 +65,8 @@ def detect_columns(filename):
 
     return col_map, header_found
 
-def compute_cumulative_integral_and_error(lambda_vals, dE_dlambda, errors):
-    """Compute cumulative integral and propagated error for visualization"""
-    cumulative = np.zeros_like(lambda_vals)
-    cumulative_error = np.zeros_like(lambda_vals)
-    
-    use_errors = errors is not None and np.any(errors > 0)
-    
-    for i in range(1, len(lambda_vals)):
-        dx = lambda_vals[i] - lambda_vals[i-1]
-        
-        # Trapezoidal rule: area = 0.5 * (y1 + y2) * dx
-        cumulative[i] = cumulative[i-1] + 0.5 * (dE_dlambda[i] + dE_dlambda[i-1]) * dx
-        
-        # Error propagation (assuming uncorrelated errors):
-        if use_errors:
-            var_contribution = (0.5 * dx)**2 * (errors[i]**2 + errors[i-1]**2)
-            cumulative_error[i] = np.sqrt(cumulative_error[i-1]**2 + var_contribution)
-        
-    return cumulative, cumulative_error
-
 def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, b=1.198):
-    """Create interactive TI plots using Plotly"""
-    
+
     # Detect columns
     col_map, header_found = detect_columns(filename)
     if header_found:
@@ -120,36 +99,13 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
 
     # Fallback for old format if no header
     if not header_found:
-        if ncols < 6:
-             if ncols >= 3: errors = data[:, 2]
-             else: errors = None
-
-             if ncols >= 4: cumulative_F_read = data[:, 3]
-             else: cumulative_F_read = None
-
-             if ncols >= 5: distances = data[:, 4]
-             else: distances = None
-
-             cumulative_err_read = None
+        print("No header detected, no interactive plot available.")
+        exit(1)
 
     # Handle missing errors array
     if errors is None:
         errors = np.zeros_like(lambda_vals)
 
-    # Sort by lambda
-    sort_idx = np.argsort(lambda_vals)
-    lambda_vals = lambda_vals[sort_idx]
-    dE_dlambda = dE_dlambda[sort_idx]
-    if errors is not None:
-        errors = errors[sort_idx]
-    if distances is not None:
-        distances = distances[sort_idx]
-    if cumulative_F_read is not None:
-        cumulative_F_read = cumulative_F_read[sort_idx]
-    if cumulative_err_read is not None:
-        cumulative_err_read = cumulative_err_read[sort_idx]
-
-    # --- New calculations ---
     Force_from_data = None
     dE_ref_dlambda = None
     F_ref = None
@@ -167,49 +123,24 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
             F_ref = k_spring * distances
             dE_ref_dlambda = F_ref * dR_dlambda
 
-    # Compute cumulative integral and error
-    cumulative_F, cumulative_error = compute_cumulative_integral_and_error(lambda_vals, dE_dlambda, errors)
-
-    # Use read values if available (prioritize file content as requested)
-    if cumulative_F_read is not None:
-        cumulative_F = cumulative_F_read
-    if cumulative_err_read is not None:
-        cumulative_error = cumulative_err_read
-    
-    # Integrate to get total free energy
-    delta_F_trapz = np.trapz(dE_dlambda, lambda_vals)
-    if len(lambda_vals) >= 3:
-        delta_F_simps = integrate.simpson(y=dE_dlambda, x=lambda_vals)
-    else:
-        delta_F_simps = delta_F_trapz
-    
-    # Estimate total uncertainty from final cumulative error
-    total_error = cumulative_error[-1]
+    cumulative_F = cumulative_F_read
+    cumulative_error = cumulative_err_read
     
     # Create subplots
-    if distances is not None:
-        fig = make_subplots(
-            rows=4, cols=1,
-            subplot_titles=(
-                'dE/dλ vs λ (Thermodynamic Integration)',
-                'Force vs λ',
-                'Cumulative Free Energy ΔF(λ)',
-                'Si-Si Distance vs λ'
-            ),
-            vertical_spacing=0.08,
-            row_heights=[0.25, 0.25, 0.25, 0.25]
-        )
-        plot_rows = {'dE/dλ': 1, 'Force': 2, 'FE': 3, 'Distance': 4}
-    else:
-        fig = make_subplots(
-            rows=2, cols=1,
-            subplot_titles=(
-                'dE/dλ vs λ (Thermodynamic Integration)',
-                'Cumulative Free Energy ΔF(λ)'
-            ),
-            vertical_spacing=0.12,
-        )
-        plot_rows = {'dE/dλ': 1, 'FE': 2}
+    fig = make_subplots(
+        rows=5, cols=1,
+        subplot_titles=(
+            'dE/dλ vs λ',
+            'Force vs λ',
+            'Cumulative Free Energy ΔF(λ)',
+            'FE Difference (data vs ref)',
+            'End-to-end distance vs λ'
+        ),
+        vertical_spacing=0.08,
+        row_heights=[0.2, 0.2, 0.2, 0.2, 0.2],
+        specs=[[{"secondary_y": False}], [{"secondary_y": False}], [{"secondary_y": False}], [{"secondary_y": True}], [{"secondary_y": False}]]
+    )
+    plot_rows = {'dE/dλ': 1, 'Force': 2, 'FE': 3, 'FE_diff': 4, 'Distance': 5}
 
     # --- Plot 1: dE/dlambda vs lambda ---
     hover_text_1 = [
@@ -232,14 +163,26 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
                 x=lambda_vals, y=dE_ref_dlambda,
                 mode='lines', name='dE/dλ (ref)',
                 line=dict(color='purple', width=2, dash='dash'),
-                opacity=0.7, hoverinfo='skip'
+                opacity=0.7, hoverinfo='text'
             ),
             row=plot_rows['dE/dλ'], col=1
         )
+    
+    # Linear fit for dE/dlambda
+    p_dE = np.polyfit(lambda_vals, dE_dlambda, 1)
+    fit_text_dE = f"Fit: {p_dE[0]:.4f}λ + {p_dE[1]:.4f}"
+    fig.add_annotation(
+        x=0.01, y=0.99, xref="paper", yref="paper",
+        xanchor='left', yanchor='top',
+        text=fit_text_dE, showarrow=False,
+        font=dict(size=12, color="blue"),
+        bgcolor="rgba(255, 255, 255, 0.8)",
+        row=plot_rows['dE/dλ'], col=1
+    )
     fig.update_yaxes(title_text="dE/dλ [eV]", row=plot_rows['dE/dλ'], col=1)
 
-    # --- Plot 2: Force vs lambda (New) ---
-    if 'Force' in plot_rows:
+    # --- Plot 2: Force vs lambda  ---
+    if 'Force' in plot_rows and Force_from_data is not None:
         hover_text_force = [
             f"λ = {lam:.4f}<br>Force = {f:.4f} eV/Å"
             for lam, f in zip(lambda_vals, Force_from_data)
@@ -259,10 +202,22 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
                     x=lambda_vals, y=F_ref,
                     mode='lines', name='Force (ref spring)',
                     line=dict(color='purple', width=2, dash='dash'),
-                    opacity=0.7, hoverinfo='skip'
+                    opacity=0.7, hoverinfo='text'
                 ),
                 row=plot_rows['Force'], col=1
             )
+        
+        # Linear fit for Force
+        p_force = np.polyfit(lambda_vals, Force_from_data, 1)
+        fit_text_force = f"Fit: {p_force[0]:.4f}λ + {p_force[1]:.4f}"
+        fig.add_annotation(
+            x=0.01, y=0.99, xref="paper", yref="paper",
+            xanchor='left', yanchor='top',
+            text=fit_text_force, showarrow=False,
+            font=dict(size=12, color="orange"),
+            bgcolor="rgba(255, 255, 255, 0.8)",
+            row=plot_rows['Force'], col=1
+        )
         fig.update_yaxes(title_text="Force [eV/Å]", row=plot_rows['Force'], col=1)
     
     # --- Plot 3: Cumulative Free Energy ---
@@ -280,6 +235,7 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
         ),
         row=plot_rows['FE'], col=1
     )
+    FE_ref_shifted = None
     if distances is not None and N_segments is not None:
         k_spring = kB * T / (N_segments * b**2)
         FE_ref = 0.5 * k_spring * distances**2
@@ -289,13 +245,67 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
                 x=lambda_vals, y=FE_ref_shifted,
                 mode='lines', name='ΔF(λ) (ref spring)',
                 line=dict(color='purple', width=2, dash='dash'),
-                opacity=0.7, hoverinfo='skip'
+                opacity=0.7, hoverinfo='text'
             ),
             row=plot_rows['FE'], col=1
         )
+        # Parabolic fit for data
+        p_fe = np.polyfit(lambda_vals, cumulative_F, 2)
+        fit_text_fe = f"Data Fit: {p_fe[0]:.4f}λ² + {p_fe[1]:.4f}λ + {p_fe[2]:.4f}"
+        fig.add_annotation(
+            x=0.01, y=0.99, xref="paper", yref="paper",
+            xanchor='left', yanchor='top',
+            text=fit_text_fe, showarrow=False,
+            font=dict(size=12, color="green"),
+            bgcolor="rgba(255, 255, 255, 0.8)",
+            row=plot_rows['FE'], col=1
+        )
+        # Reference info
+        ref_text_fe = f"Ref: 0.5*k*d², k={k_spring:.4f}"
+        fig.add_annotation(
+            x=0.01, y=0.85, xref="paper", yref="paper",
+            xanchor='left', yanchor='top',
+            text=ref_text_fe, showarrow=False,
+            font=dict(size=12, color="purple"),
+            bgcolor="rgba(255, 255, 255, 0.8)",
+            row=plot_rows['FE'], col=1
+        )
+
     fig.update_yaxes(title_text="ΔF(λ) [eV]", row=plot_rows['FE'], col=1)
 
-    # --- Plot 4: Distance ---
+    # --- Plot 4: FE Difference ---
+    if FE_ref_shifted is not None:
+        # Avoid division by zero, though FE_ref_shifted should be safe
+        safe_ref = np.copy(FE_ref_shifted)
+        safe_ref[np.abs(safe_ref) < 1e-9] = 1e-9
+        fe_diff_percent = ((cumulative_F / safe_ref) - 1) * 100
+        fe_diff_abs = cumulative_F - FE_ref_shifted
+
+        # Percentage difference
+        fig.add_trace(
+            go.Scatter(
+                x=lambda_vals, y=fe_diff_percent,
+                mode='lines+markers', name='% Diff (data/ref)',
+                line=dict(color='cyan', width=2), marker=dict(size=8, symbol='cross'),
+            ),
+            row=plot_rows['FE_diff'], col=1,
+            secondary_y=False
+        )
+        # Absolute difference
+        fig.add_trace(
+            go.Scatter(
+                x=lambda_vals, y=fe_diff_abs,
+                mode='lines+markers', name='Abs Diff (data-ref)',
+                line=dict(color='magenta', width=2, dash='dot'), marker=dict(size=8, symbol='x'),
+            ),
+            row=plot_rows['FE_diff'], col=1,
+            secondary_y=True
+        )
+
+    fig.update_yaxes(title_text="% Difference", row=plot_rows['FE_diff'], col=1, secondary_y=False)
+    fig.update_yaxes(title_text="Abs Difference [eV]", row=plot_rows['FE_diff'], col=1, secondary_y=True)
+
+    # --- Plot 5: Distance ---
     if 'Distance' in plot_rows:
         hover_text_dist = [
             f"λ = {lam:.4f}<br>Distance = {dist:.3f} Å"
@@ -304,13 +314,13 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
         fig.add_trace(
             go.Scatter(
                 x=lambda_vals, y=distances,
-                mode='lines+markers', name='Si-Si Distance',
+                mode='lines+markers', name='End-to-end Distance',
                 line=dict(color='red', width=2), marker=dict(size=8, symbol='square'),
                 hovertext=hover_text_dist, hoverinfo='text'
             ),
             row=plot_rows['Distance'], col=1
         )
-        fig.update_yaxes(title_text="Si-Si Distance [Å]", row=plot_rows['Distance'], col=1)
+        fig.update_yaxes(title_text="End-to-end Distance [Å]", row=plot_rows['Distance'], col=1)
 
     # Update all x-axes
     for i in range(1, len(plot_rows) + 1):
@@ -318,10 +328,6 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
 
     # Add annotations with results
     annotation_text = (
-        f"<b>Free Energy Results:</b><br>"
-        f"ΔF (Trapezoidal) = {delta_F_trapz:.6f} eV<br>"
-        f"ΔF (Simpson) = {delta_F_simps:.6f} eV<br>"
-        f"Total σ(F) = {total_error:.6f} eV<br>"
         f"Number of λ windows: {len(lambda_vals)}"
     )
 
@@ -340,11 +346,6 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
     # Update layout
     total_height = 350 * len(plot_rows)
     fig.update_layout(
-        title=dict(
-            text=f"Interactive Thermodynamic Integration Analysis<br><sub>{filename}</sub>",
-            x=0.5,
-            xanchor='center'
-        ),
         height=total_height,
         showlegend=True,
         hovermode='closest',
@@ -362,23 +363,6 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
     print(f"\nInteractive plot saved to: {output_file}")
     print(f"Open this file in a web browser to explore the data interactively.")
 
-    # Print summary
-    print("\n" + "="*60)
-    print("  Thermodynamic Integration Summary")
-    print("="*60)
-    print(f"  Number of λ windows: {len(lambda_vals)}")
-    print(f"  λ range: {lambda_vals[0]:.4f} → {lambda_vals[-1]:.4f}")
-    print(f"  Free energy change (trapezoidal): {delta_F_trapz:.6f} eV")
-    print(f"  Free energy change (Simpson):     {delta_F_simps:.6f} eV")
-    if total_error > 0:
-        print(f"  Total uncertainty σ(F):            {total_error:.6f} eV")
-    if distances is not None:
-        print(f"  Distance range: {distances[0]:.3f} → {distances[-1]:.3f} Å")
-    if N_segments is not None:
-         print(f"  Entropic Spring Reference (N={N_segments}, T={T}K, b={b}A)")
-    print("="*60)
-
-    return delta_F_trapz, delta_F_simps
 
 def main():
     parser = argparse.ArgumentParser(description="Interactive Thermodynamic Integration Plotter")

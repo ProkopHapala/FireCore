@@ -85,7 +85,6 @@ class OCL_MM: public OCLsystem { public:
     int ibuff_sysneighs=-1;
     int ibuff_sysbonds=-1;
     int ibuff_averageForces=-1;
-    int ibuff_averageForcesSq=-1;
 
     int ibuff_samp_ps=-1;
     int ibuff_samp_fs=-1;
@@ -232,7 +231,6 @@ class OCL_MM: public OCLsystem { public:
 
         // Buffer for thermodynamic integration - stores accumulated force differences
         ibuff_averageForces   = newBuffer( "averageForces",   nSystems, sizeof(float4), 0, CL_MEM_READ_WRITE );
-        ibuff_averageForcesSq = newBuffer( "averageForcesSq", nSystems, sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_BKs        = newBuffer( "BKs",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
         ibuff_Ksp        = newBuffer( "Ksp",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
         ibuff_Kpp        = newBuffer( "Kpp",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
@@ -605,7 +603,6 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_sysneighs  ); // 13
         err |= useArgBuff( ibuff_sysbonds   ); // 14
         err |= useArgBuff( ibuff_averageForces ); // 15
-        err |= useArgBuff( ibuff_averageForcesSq ); // 16
         OCL_checkError(err, "setup_updateAtomsMMFFf4");
         return task;
         // const int4        n,            // 1 // (natoms,nnode) dimensions of the system

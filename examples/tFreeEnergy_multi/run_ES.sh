@@ -23,7 +23,7 @@ echo ""
 # Run the TI calculation
 echo "Step 2: Running Thermodynamic Integration..."
 echo "----------------------------------------"
-python3 run.py \
+python3 run_ES.py \
     --nSys 100 \
     --xyz_name "../tMMFF/data/entropic_spring_$N.xyz" \
     --system_name "entropic_spring_$N" \
@@ -31,7 +31,7 @@ python3 run.py \
     --nMDsteps 1000000 \
     --nEQsteps 5000 \
     --Fconv 1e-6 \
-    --constraints "constraints.txt" # Values for the distances of the two end atoms to pull
+    --constraints "constraints_ES.txt" # Values for the distances of the two end atoms to pull
 
 if [ $? -ne 0 ]; then
     echo "ERROR: TI calculation failed!"
@@ -42,7 +42,6 @@ echo ""
 # Plot the results
 echo "Step 3: Plotting results..."
 echo "----------------------------------------"
-python3 plot_TI.py --input entropic_spring_${N}_TI.dat
 python3 plot_TI_interactive.py --input entropic_spring_${N}_TI.dat
 if [ $? -ne 0 ]; then
     echo "ERROR: Plotting failed!"
@@ -56,8 +55,6 @@ echo "=========================================="
 echo ""
 echo "Output files:"
 echo "  - entropic_spring_${N}_TI.dat (raw data)"
-echo "  - entropic_spring_${N}_TI_plot.png (static plot)"
-echo "  - entropic_spring_${N}_TI_plot.pdf (static plot)"
 echo "  - entropic_spring_${N}_TI_interactive.html (interactive plot)"
 echo ""
 echo "To view the interactive plot, open entropic_spring_${N}_TI_interactive.html in a web browser"
