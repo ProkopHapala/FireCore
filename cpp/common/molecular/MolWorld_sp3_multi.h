@@ -1912,10 +1912,10 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     // picked2GPU( ipicked,  1.0 );
     if(initial){
         // Set up constraints (set)
-        Vec3f initial_pos_1 = {-5.0, 0.0, 0.0};
-        Vec3f final_pos_1 = {-8.0, 0.0, 0.0};
-        Vec3f initial_pos_2 = {+5.0, 0.0, 0.0};
-        Vec3f final_pos_2 = {+8.0, 0.0, 0.0};
+        Vec3f initial_pos_1 = {-9.0, 0.0, 0.0};
+        Vec3f final_pos_1 = {-20.0, 0.0, 0.0};
+        Vec3f initial_pos_2 = {+9.0, 0.0, 0.0};
+        Vec3f final_pos_2 = {+20.0, 0.0, 0.0};
 
         for(int isys=0; isys<nSystems; isys++){
             float k = 0.0f;
@@ -2005,7 +2005,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             {
                 err |= task_cleanF->enque_raw();  // Clear forces before force evaluation
                 if( bGroupDrive )err |= task_GroupUpdate->enque_raw();
-                if(dovdW*0)[[likely]]{
+                if(dovdW)[[likely]]{
                     if(bSurfAtoms)[[likely]]{
                         if  (bGridFF)[[likely]]{ 
                             if(bBspline)[[likely]]{

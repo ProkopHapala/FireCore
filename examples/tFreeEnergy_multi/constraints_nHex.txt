@@ -1,0 +1,15 @@
+# Constraint positions for nHexadecane thermodynamic integration
+#
+# Format: atom_index  initial_x  initial_y  initial_z  final_x  final_y  final_z
+#
+# CV: Distance between the two Si atoms (indices 0 and 17)
+# - λ=0: Si atoms at ~5Å separation (folded)
+# - λ=1: Si atoms at ~10Å separation (extended)
+# - Positions on x-axis line (y=0, z=0)
+#
+# Si atom 0 (terminal): moves from x=+2.5 to x=+5.0
+# Si atom 17 (terminal): moves from x=-2.5 to x=-5.0
+# Distance: 5Å (λ=0) → 10Å (λ=1)
+
+0   0.5   0.0   0.0   10.0   0.0   0.0
+17  -0.5  0.0   0.0  -10.0   0.0   0.0

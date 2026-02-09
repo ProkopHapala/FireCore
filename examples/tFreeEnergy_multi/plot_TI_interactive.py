@@ -387,7 +387,8 @@ def main():
              print(f"Guessed N={args.N} from filename.")
 
     print(f"Reading TI data from: {args.input}")
-    plot_ti_interactive(args.input, args.output, N_segments=args.N-1, T=args.T, b=args.b)
+    N_seg = args.N - 1 if args.N is not None else None
+    plot_ti_interactive(args.input, args.output, N_segments=N_seg, T=args.T, b=args.b)
 
 if __name__ == "__main__":
     main()
