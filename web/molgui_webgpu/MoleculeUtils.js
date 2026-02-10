@@ -356,8 +356,10 @@ export function insertBridge(mol, aId, bId, params = {}) {
 
 export function insertBridgeRandom(mol, params = {}) {
     if (!mol || !mol.atoms) throw new Error('insert_bridge_random: molecule missing');
+    const z = (params.z !== undefined) ? (params.z | 0) : 6;
     const minHeavy = (params.minHeavy !== undefined) ? params.minHeavy | 0 : 3;
     const minHyd = (params.minHyd !== undefined) ? params.minHyd | 0 : 1;
+    const surfaceFilter = (typeof params.surfaceFilter === 'function') ? params.surfaceFilter : null;
     const candidates = [];
     for (let ib = 0; ib < mol.bonds.length; ib++) {
         const b = mol.bonds[ib];
@@ -368,7 +370,8 @@ export function insertBridgeRandom(mol, params = {}) {
         const a = mol.atoms[ia];
         const c = mol.atoms[ja];
         if (!a || !c) continue;
-        if (a.Z !== 6 || c.Z !== 6) continue;
+        if ((a.Z | 0) !== z || (c.Z | 0) !== z) continue;
+        if (surfaceFilter && (!surfaceFilter(mol, ia, a) || !surfaceFilter(mol, ja, c))) continue;
         const stA = mol._atomHeavyHydCounts(ia);
         const stB = mol._atomHeavyHydCounts(ja);
         const okA = (stA.heavy >= minHeavy) && (stA.hyd >= minHyd);

@@ -138,11 +138,16 @@ export function applySelectQuery(mol, compiled, opts = {}) {
 /// Mutates mol.selection; returns selection size.
 export function selectBridgeCandidates(mol, opts = {}) {
     if (!mol || !mol.atoms) throw new Error('select_bridge_candidates: molecule missing');
+    const z = (opts.z !== undefined) ? (opts.z | 0) : 6;
+    const minHeavy = (opts.minHeavy !== undefined) ? (opts.minHeavy | 0) : 2;
+    const minHyd = (opts.minHyd !== undefined) ? (opts.minHyd | 0) : 2;
     const requireH2 = (opts.requireH2 !== undefined) ? !!opts.requireH2 : true;
+    const surfaceFilter = (typeof opts.surfaceFilter === 'function') ? opts.surfaceFilter : null;
     mol.selection.clear();
     for (let ia = 0; ia < mol.atoms.length; ia++) {
         const a = mol.atoms[ia];
-        if (!a || a.Z !== 6) continue; // carbon only
+        if (!a || (a.Z | 0) !== z) continue;
+        if (surfaceFilter && !surfaceFilter(mol, ia, a)) continue;
         let heavy = 0;
         let hyd = 0;
         for (const ib of a.bonds) {
@@ -153,10 +158,10 @@ export function selectBridgeCandidates(mol, opts = {}) {
             if (jb < 0 || jb >= mol.atoms.length) continue;
             const nb = mol.atoms[jb];
             if (!nb) continue;
-            if (nb.Z === 1) hyd++;
+            if ((nb.Z | 0) === 1) hyd++;
             else heavy++;
         }
-        if (heavy === 2 && (!requireH2 || hyd >= 2)) {
+        if (heavy === minHeavy && (!requireH2 || hyd >= minHyd)) {
             mol.selection.add(a.id);
         }
     }
