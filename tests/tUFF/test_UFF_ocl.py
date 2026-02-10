@@ -15,7 +15,7 @@ import numpy as np
 from pyBall.AtomicSystem import AtomicSystem
 from pyBall import     MMFF as uff_cpp
 from pyBall.OCL import UFF  as uff_ocl
-from pyBall.MD_test_utils import scan_energy_force, plot_energy_force_scan
+from pyBall.MD_test_utils import scan_energy_force_uff, plot_energy_force_scan, evaluate_uff_gpu
 
 # ==================
 #  Buffer Specs
@@ -88,7 +88,11 @@ def get_gpu_bufs(uff_cl, specs):
             # This part is inherently specific to the composition
             buf1 = uff_cl.download_buf(gpu_attr[0]).reshape(-1, 4)
             buf2 = uff_cl.download_buf(gpu_attr[1]).reshape(-1, 1)
-            bufs[name] = np.hstack((buf1, buf2))
+            if name == 'angParams':
+                # angParams2_w is K, angParams1 is (c0,c1,c2,c3); CPU layout is [K,c0,c1,c2,c3]
+                bufs[name] = np.hstack((buf2, buf1))
+            else:
+                bufs[name] = np.hstack((buf1, buf2))
         else:
             try:
                 downloaded = uff_cl.download_buf(gpu_attr)
@@ -175,9 +179,24 @@ def run_uff_cpp( args ):
         bUFF=True,
         b141=True,
     )
-    uff_cpp.setSwitches(NonBonded=-1, SurfAtoms=-1, GridFF=-1)
-    #uff_cpp.setSwitchesUFF( DoAssemble=+1, DoBond=1, DoAngle=-1, DoDihedral=-1, DoInversion=-1,  SubtractBondNonBond=-1, ClampNonBonded=-1 )
-    uff_cpp.setSwitchesUFF( DoAssemble=+1, DoBond=1, DoAngle=1, DoDihedral=1, DoInversion=1,  SubtractBondNonBond=-1, ClampNonBonded=-1 )
+    # For parity tests we must explicitly disable all noncovalent paths on CPU.
+    # NOTE: In C++ setSwitches2(), value 0 means "leave as-is"; only i<0 forces false.
+    uff_cpp.setSwitches(NonBonded=-1, NonBondNeighs=-1, SurfAtoms=-1, GridFF=-1)
+    # Match CPU component switches to args.components for fair comparison
+    components = {c.strip() for c in args.components.split(',')}
+    # bonds are required to build hneigh for angles/dihedrals/inversions
+    need_bonds  = ('bonds' in components) or ('angles' in components) or ('dihedrals' in components) or ('inversions' in components)
+    DoBond      = 1 if need_bonds else -1
+    DoAngle     = 1 if 'angles'     in components else -1
+    DoDihedral  = 1 if 'dihedrals'  in components else -1
+    DoInversion = 1 if 'inversions' in components else -1
+    DoAssemble  = 1 if (DoAngle>0 or DoDihedral>0 or DoInversion>0) else -1
+    # NOTE: In C++ setSwitchesUFF(), value 0 means "leave as-is"; only i<0 forces false.
+    uff_cpp.setSwitchesUFF( DoAssemble=DoAssemble, DoBond=DoBond, DoAngle=DoAngle, DoDihedral=DoDihedral, DoInversion=DoInversion, SubtractBondNonBond=-1, ClampNonBonded=-1 )
+
+    # UFF has its own nonbond switches (independent of MolWorld_sp3 flags). Force-disable them as well.
+    uff_cpp.setSwitchesUFF_NB( NonBonded=-1, NonBondNeighs=-1, SubtractAngleNonBond=-1 )
+    print(f"CPU switches: DoBond={DoBond} DoAngle={DoAngle} DoDihedral={DoDihedral} DoInversion={DoInversion} DoAssemble={DoAssemble}")
     print("-----------\n uff_cpp.getBuffs_UFF()  ")
     uff_cpp.getBuffs_UFF()
     print("-----------\n uff_cpp.setTrjName()  ")
@@ -196,7 +215,8 @@ def run_uff_cpp( args ):
     #print("-----------\n uff_cpp.run()  ")
     #uff_cpp.run( nstepMax=1, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1 )
     #uff_cpp.run( nstepMax=10000, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1 )
-    uff_cpp.run( nstepMax=10000, dt=0.01, Fconv=1e-6, ialg=2, damping=0.1 )
+    # Single eval only (nstepMax=1) so geometry stays at input for fair comparison with GPU
+    uff_cpp.run( nstepMax=1, dt=0.01, Fconv=1e-30, ialg=2, damping=0.1 )
     energy = uff_cpp.Es[0]
     forces = uff_cpp.fapos.copy()
     return energy, forces, uff_cpp
@@ -205,7 +225,18 @@ def run_uff_ocl(args):
     mol = AtomicSystem(fname=args.molecule)
 
     # Initialize the OpenCL runner, which now handles the builder internally
-    uff_cl = uff_ocl.UFF_CL(nloc=32)
+    debug_opts = None
+    if args.ocl_dbg > 0:
+        debug_opts = [
+            f"-DDBG_UFF={args.ocl_dbg}",
+            f"-DIDBG_SYS={args.ocl_dbg_sys}",
+            f"-DIDBG_ATOM={args.ocl_dbg_atom}",
+            f"-DIDBG_BOND={args.ocl_dbg_bond}",
+            f"-DIDBG_ANGLE={args.ocl_dbg_angle}",
+            f"-DIDBG_DIH={args.ocl_dbg_dih}",
+            f"-DIDBG_INV={args.ocl_dbg_inv}",
+        ]
+    uff_cl = uff_ocl.UFF_CL(nloc=32, debug_build_options=debug_opts)
 
     # Build the UFF topology, parameters, and allocate buffers
     uff_data = uff_cl.toUFF(mol)
@@ -214,15 +245,18 @@ def run_uff_ocl(args):
     uff_cl.upload_topology_params(uff_data)
     uff_cl.upload_positions(mol.apos)
 
-    # Parse components string into dictionary
+    # Parse components string into dictionary (comma-separated)
+    comp_set = {c.strip() for c in args.components.split(',') if c.strip()}
     components = {
-        'bonds': 'bonds' in args.components,
-        'angles': 'angles' in args.components,
-        'dihedrals': 'dihedrals' in args.components,
-        'inversions': 'inversions' in args.components
+        'bonds': 'bonds' in comp_set,
+        'angles': 'angles' in comp_set,
+        'dihedrals': 'dihedrals' in comp_set,
+        'inversions': 'inversions' in comp_set
     }
 
-    uff_cl.bDoBonds      = components['bonds']
+    need_bonds = components['bonds'] or components['angles'] or components['dihedrals'] or components['inversions']
+
+    uff_cl.bDoBonds      = need_bonds
     uff_cl.bDoAngles     = components['angles']
     uff_cl.bDoDihedrals  = components['dihedrals']
     uff_cl.bDoInversions = components['inversions']
@@ -290,23 +324,76 @@ if __name__ == "__main__":
     parser.add_argument('-m','--molecule',      type=str,     default=default_mol,             help='Molecule file (.mol, .xyz)')
     parser.add_argument('-g','--gpu',           type=int,     default=1,                     help='Use GPU/OpenCL implementation' )
     parser.add_argument('-c','--components',    default='bonds,angles,dihedrals,inversions', help='Comma-separated list of UFF components to test')
+    parser.add_argument('--ocl-dbg',        dest='ocl_dbg',        type=int, default=0,  help='OpenCL DBG_UFF level (0 disables kernel debug prints)')
+    parser.add_argument('--ocl-dbg-sys',    dest='ocl_dbg_sys',    type=int, default=0,  help='OpenCL IDBG_SYS (system index)')
+    parser.add_argument('--ocl-dbg-atom',   dest='ocl_dbg_atom',   type=int, default=0,  help='OpenCL IDBG_ATOM (atom index)')
+    parser.add_argument('--ocl-dbg-bond',   dest='ocl_dbg_bond',   type=int, default=0,  help='OpenCL IDBG_BOND (bond index)')
+    parser.add_argument('--ocl-dbg-angle',  dest='ocl_dbg_angle',  type=int, default=0,  help='OpenCL IDBG_ANGLE (angle index)')
+    parser.add_argument('--ocl-dbg-dih',    dest='ocl_dbg_dih',    type=int, default=0,  help='OpenCL IDBG_DIH (dihedral index)')
+    parser.add_argument('--ocl-dbg-inv',    dest='ocl_dbg_inv',    type=int, default=0,  help='OpenCL IDBG_INV (inversion index)')
+    parser.add_argument('--gpu-scan',       dest='gpu_scan',       type=int, default=0,  help='Run GPU self-consistency scan (analytic vs FD). Off by default to avoid long runs/spam.')
+    parser.add_argument('--fast-exit',      dest='fast_exit',      type=int, default=0,  help='Exit via os._exit(0) to bypass known C++ double-free at interpreter shutdown')
     parser.add_argument('-v','--verbose',       action='count', default=1,                   help='Increase verbosity level'    )
-    parser.add_argument('-t','--tolerance',     type=float,   default=1e-6,                  help='Energy comparison tolerance' )
+    parser.add_argument('-t','--tolerance',     type=float,   default=5e-5,                  help='Energy/force comparison tolerance' )
     args = parser.parse_args()
 
     cpu_energy, cpu_forces, uff_instance = run_uff_cpp(args)
 
-    scan = scan_energy_force(
-        uff_instance,
-        atom_index=0,
-        axis=0,
-        dx=1e-3,
-        nsamp=21,
-        restore=True,
-    )
-    print("Energy range:", scan['diff_stats']['energy_min'], scan['diff_stats']['energy_max'])
-    print("Force range:", scan['diff_stats']['force_min'], scan['diff_stats']['force_max'])
-    print("Force diff stats:", scan['diff_stats'])
-    plot_energy_force_scan(scan, axis_label='dx [Å]', show=True)
+    if args.gpu:
+        gpu_energy, gpu_forces, uff_cl = run_uff_ocl(args)
+
+        # --- Stage 1: Topology comparison ---
+        cpu_topo_bufs  = get_cpu_bufs(uff_instance, TOPOLOGY_SPECS)
+        gpu_topo_bufs  = get_gpu_bufs(uff_cl, TOPOLOGY_SPECS)
+        ok_topo  = compare_bufs(cpu_topo_bufs,  gpu_topo_bufs,  tol=0.0,   buf_type='Topology')
+
+        # --- Stage 2: Parameter comparison ---
+        cpu_param_bufs = get_cpu_bufs(uff_instance, PARAMS_SPECS)
+        gpu_param_bufs = get_gpu_bufs(uff_cl, PARAMS_SPECS)
+        ok_param = compare_bufs(cpu_param_bufs, gpu_param_bufs, tol=1e-5,  buf_type='Parameter')
+
+        if not ok_topo:
+            raise RuntimeError("FAIL: Topology buffers mismatch between CPU and GPU")
+        if not ok_param:
+            print("WARNING: Parameter buffers mismatch (continuing to force comparison anyway)")
+
+        # --- Stage 3: Direct CPU vs GPU force comparison at same geometry ---
+        cpu_f = cpu_forces[:, :3]  # (natoms, 3)
+        gpu_f = gpu_forces.reshape(-1, 3) if gpu_forces.ndim == 3 else gpu_forces[:, :3]
+        print("\n========= Force Parity (CPU vs GPU at input geometry) =========")
+        print("CPU forces:\n", cpu_f)
+        print("GPU forces:\n", gpu_f)
+        diff = cpu_f - gpu_f
+        max_abs_diff = np.max(np.abs(diff))
+        rms_diff = np.sqrt(np.mean(diff**2))
+        print(f"Max |ΔF|  = {max_abs_diff:.6e}")
+        print(f"RMS  ΔF   = {rms_diff:.6e}")
+        for ia in range(cpu_f.shape[0]):
+            d = np.abs(cpu_f[ia] - gpu_f[ia])
+            print(f"  atom {ia}: CPU={cpu_f[ia]}  GPU={gpu_f[ia]}  |diff|={d}")
+
+        tol = args.tolerance
+        if max_abs_diff < tol:
+            print(f"\nPASS: CPU vs GPU force parity within tolerance {tol}")
+        else:
+            print(f"\nFAIL: CPU vs GPU force diff {max_abs_diff:.6e} > tolerance {tol}")
+
+        # --- Stage 4: GPU self-consistency (optional; very spammy with kernel debug prints) ---
+        if args.gpu_scan:
+            mol = AtomicSystem(fname=args.molecule)
+            scan = scan_energy_force_uff(
+                uff_cl, base_apos=mol.apos, atom_index=0, axis=0, dx=1e-3, nsamp=21, restore=True,
+            )
+            print(f"\n========= GPU Self-Consistency (analytic vs numeric) =========")
+            print(f"Energy range: [{scan['diff_stats']['energy_min']:.6e}, {scan['diff_stats']['energy_max']:.6e}]")
+            print(f"Force  range: [{scan['diff_stats']['force_min']:.6e}, {scan['diff_stats']['force_max']:.6e}]")
+            print(f"Diff   RMS:   {scan['diff_stats']['diff_rms']:.6e}")
+            #plot_energy_force_scan(scan, axis_label='dx [Å]', show=True)
+    else:
+        print("GPU run disabled (--gpu 0); only CPU UFF was executed.")
 
     print("=========\nALL DONE")
+    if args.fast_exit:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(0)

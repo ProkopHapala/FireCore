@@ -2483,6 +2483,13 @@ __kernel void getNonBond_GridFF_Bspline(
     const float3 posi  = atoms    [iav].xyz;       // position of the atom
     float4 fe          = float4Zero;              // forces on the atom
 
+    #ifndef DBG_UFF
+    #define DBG_UFF 1
+    #endif
+    if( (DBG_UFF>0) && (iG==0) && (iS==0) ){
+        printf("GPU ENTER relax_multi.cl::getNonBond_GridFF_Bspline() natoms=%d nS=%d nG=%d\n", natoms, nS, nG);
+    }
+
     const int iS_DBG = 0;
     const int iG_DBG = 0;
 

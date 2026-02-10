@@ -55,6 +55,13 @@ const float4   grid_p0
 
 */
 
+// #ifndef DBG_UFF
+// #define DBG_UFF 1
+// #endif
+
+#ifndef DBG_UFF
+#define DBG_UFF 1
+#endif
 
 #define iGdbg 0
 #define iSdbg 0
@@ -2621,6 +2628,11 @@ __kernel void getNonBond_GridFF_Bspline(
     const float4 REQKi = REQs    [iaa];           // parameters of Lenard-Jones potential, Coulomb and Hydrogen Bond (RvdW,EvdW,Q,H) of the atom
     const float3 posi  = apos    [iav].xyz;       // position of the atom
     float4 fe          = float4Zero;              // forces on the atom
+
+
+    if( (DBG_UFF>0) && (iG==0) && (iS==0) ){
+        printf("GPU ENTER relax_multi_mini.cl::getNonBond_GridFF_Bspline() natoms=%d nS=%d nG=%d\n", natoms, nS, nG);
+    }
 
     const int iS_DBG = 0;
     const int iG_DBG = 0;

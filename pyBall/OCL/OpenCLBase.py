@@ -75,7 +75,7 @@ class OpenCLBase:
         self.kernelheaders = {}
         self.prg = None
     
-    def load_program(self, kernel_path=None, rel_path=None, base_path=None, bPrint=False, bMakeHeaders=True):
+    def load_program(self, kernel_path=None, rel_path=None, base_path=None, bPrint=False, bMakeHeaders=True, build_options=None):
         """
         Load and compile an OpenCL program.
         
@@ -97,7 +97,10 @@ class OpenCLBase:
         with open(kernel_path, 'r') as f:
             try:
                 kernel_source = f.read()
-                self.prg = cl.Program(self.ctx, kernel_source).build()
+                if build_options is None:
+                    self.prg = cl.Program(self.ctx, kernel_source).build()
+                else:
+                    self.prg = cl.Program(self.ctx, kernel_source).build(options=build_options)
                 # Extract kernel headers automatically
                 if bMakeHeaders:
                     self.kernelheaders = self.extract_kernel_headers(kernel_source)
@@ -130,6 +133,7 @@ class OpenCLBase:
         lines = source_code.split('\n')
         i = 0
         
+        import re
         while i < len(lines):
             line = lines[i].strip()
             
@@ -141,8 +145,17 @@ class OpenCLBase:
             # Check for kernel definition
             if line.startswith('__kernel'):
                 kernel_start = i
-                # Get clean kernel name (split on whitespace and take third element)
-                kernel_name = line.split()[2].split('(')[0]  # Remove any trailing parenthesis
+                # Robust kernel name parse (avoid relying on fixed token positions)
+                m = re.search(r'__kernel\s+void\s+([A-Za-z0-9_]+)\s*\(', line)
+                if m is None:
+                    # Fallback to the original heuristic
+                    parts = line.split()
+                    if len(parts) < 3:
+                        i += 1
+                        continue
+                    kernel_name = parts[2].split('(')[0].strip()
+                else:
+                    kernel_name = m.group(1).strip()
                 
                 # Find opening parenthesis
                 while '(' not in line and i < len(lines):
@@ -150,7 +163,7 @@ class OpenCLBase:
                     line = lines[i].strip()
                     
                 # Find closing parenthesis
-                paren_level = 1
+                paren_level = line.count('(') - line.count(')')
                 i += 1
                 while i < len(lines) and paren_level > 0:
                     line = lines[i].strip()
@@ -324,8 +337,24 @@ class OpenCLBase:
         Parse a kernel header to extract buffer and parameter information.
         Improved version that properly handles comments and multi-line declarations.
         """
-        # Extract parameter block (everything between parentheses)
-        param_block = header_string[header_string.find('(') + 1:header_string.rfind(')')]
+        # Extract parameter block between the first '(' and its matching ')'.
+        # Do NOT use rfind(')') because header_string may accidentally include
+        # pieces of the kernel body (e.g., printf format strings containing ')').
+        i0 = header_string.find('(')
+        if i0 < 0:
+            return []
+        level = 1
+        i1 = i0 + 1
+        while i1 < len(header_string) and level > 0:
+            c = header_string[i1]
+            if c == '(':
+                level += 1
+            elif c == ')':
+                level -= 1
+            i1 += 1
+        if level != 0:
+            raise ValueError("parse_kernel_header: unmatched parentheses in kernel header")
+        param_block = header_string[i0 + 1:i1 - 1]
         
         # Split into lines and clean them
         param_lines = []
@@ -415,7 +444,14 @@ class OpenCLBase:
         try:
             for aname, typ in args_names:
                 if typ == 0:
-                    args.append(self.buffer_dict[aname])
+                    # Some kernels may have scalar args mis-classified as buffers by header parsing.
+                    # Prefer buffers when present; otherwise fall back to kernel_params.
+                    if aname in self.buffer_dict:
+                        args.append(self.buffer_dict[aname])
+                    elif aname in overrides:
+                        args.append(overrides[aname])
+                    else:
+                        args.append(self.kernel_params[aname])
                 else:
                     if aname in overrides:
                         args.append(overrides[aname])

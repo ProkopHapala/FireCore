@@ -17,13 +17,13 @@ class UFF_CL(OpenCLBase):
     Topology and parameter preparation is delegated to UFF_Builder.
     """
 
-    def __init__(self, nloc=32, kernel_path=None, bPrint=False):
+    def __init__(self, nloc=32, kernel_path=None, bPrint=False, debug_build_options=None):
         super().__init__(nloc=nloc)
         if kernel_path is None:
             base_path = os.path.dirname(os.path.abspath(__file__))
             rel_path = "../../cpp/common_resources/cl/UFF.cl"
             kernel_path = os.path.join(base_path, rel_path)
-        if not self.load_program(kernel_path=kernel_path, bPrint=bPrint):
+        if not self.load_program(kernel_path=kernel_path, bPrint=bPrint, build_options=debug_build_options):
             print(f"Failed to load UFF kernels from {kernel_path}")
             return
 
@@ -80,10 +80,12 @@ class UFF_CL(OpenCLBase):
         nAng = nangles * nSystems
         nD = ndihedrals * nSystems
         nInv = ninversions * nSystems
+        nf_per_system = (ndihedrals * 4) + (ninversions * 4) + (nangles * 3) + nbonds  # matching C++ UFF.h::realloc
         self.na_Tot, self.nb_Tot, self.nd_Tot, self.ni_Tot = nA, nB, nD, nInv
         self.check_buf("apos", nA * 4 * f32sz)
         self.check_buf("fapos", nA * 4 * f32sz)
-        self.check_buf("fint", nA * 4 * f32sz)
+        # fint stores force pieces, indexed by interaction-piece id (not by atom)
+        self.check_buf("fint", (nf_per_system * nSystems) * 4 * f32sz)
         self.check_buf("atype", nA * i32sz)
         self.check_buf("REQs", nA * 4 * f32sz)
         self.check_buf("bonAtoms", nB * 2 * i32sz)
@@ -92,7 +94,7 @@ class UFF_CL(OpenCLBase):
         self.check_buf("angParams1", nAng * 4 * f32sz)
         self.check_buf("angParams2_w", nAng * f32sz)
         self.check_buf("angAtoms", nAng * 4 * i32sz)
-        self.check_buf("angNgs", nAng * 4 * i32sz)
+        self.check_buf("angNgs", nAng * 2 * i32sz)  # int2 per angle
         self.check_buf("dihedrals", nD * 4 * i32sz)
         self.check_buf("dihParams", nD * 3 * f32sz)
         self.check_buf("dihAtoms", nD * 4 * i32sz)
@@ -100,11 +102,12 @@ class UFF_CL(OpenCLBase):
         self.check_buf("inversions", nInv * 4 * i32sz)
         self.check_buf("invParams", nInv * 4 * f32sz)
         self.check_buf("invAtoms", nInv * 4 * i32sz)
-        self.check_buf("invNgs", nInv * 4 * i32sz)
+        self.check_buf("invNgs", nInv * 3 * i32sz)  # int3 per inversion
         self.check_buf("neighs", nA * 4 * i32sz)
         self.check_buf("neighCell", nA * 4 * i32sz)
         self.check_buf("neighBs", nA * 4 * i32sz)
-        self.check_buf("hneigh", nA * 4 * f32sz)
+        # hneigh is [natoms*4] float4 per system
+        self.check_buf("hneigh", (nA * 4) * 4 * f32sz)
         self.check_buf("pbc_shifts", npbc * nSystems * 4 * f32sz)
         self.check_buf("energies", 5 * nSystems * f32sz)
         self.check_buf("lvec", 9 * nSystems * f32sz)
@@ -144,9 +147,12 @@ class UFF_CL(OpenCLBase):
         _upload_if_present("angAtoms", "angAtoms", np.int32, angle_offset * 4, i32sz)
         if 'angParams' in uff_data and uff_data['angParams'] is not None and len(uff_data['angParams']) > 0:
             ang_params = uff_data['angParams'].astype(np.float32)
-            ang_params1 = np.ascontiguousarray(ang_params[:, :4])
-            ang_params2_w = np.ascontiguousarray(ang_params[:, 4])
-            cl.enqueue_copy(self.queue, self.buffer_dict["angParams1"], ang_params1, device_offset=(angle_offset * 4 * f32sz))
+            # CPU angParams layout is [K,c0,c1,c2,c3], but kernel expects:
+            #   angParams1  = [c0,c1,c2,c3]
+            #   angParams2_w= [K]
+            ang_params1   = np.ascontiguousarray(ang_params[:, 1:5])
+            ang_params2_w = np.ascontiguousarray(ang_params[:, 0])
+            cl.enqueue_copy(self.queue, self.buffer_dict["angParams1"],   ang_params1,   device_offset=(angle_offset * 4 * f32sz))
             cl.enqueue_copy(self.queue, self.buffer_dict["angParams2_w"], ang_params2_w, device_offset=(angle_offset * 1 * f32sz))
         _upload_if_present("dihAtoms", "dihAtoms", np.int32, dihedral_offset * 4, i32sz)
         _upload_if_present("dihParams", "dihParams", np.float32, dihedral_offset * 3, f32sz)
@@ -154,17 +160,40 @@ class UFF_CL(OpenCLBase):
         _upload_if_present("invParams", "invParams", np.float32, inversion_offset * 4, f32sz)
         _upload_if_present("neighs", "neighs", np.int32, atom_offset * 4, i32sz)
         _upload_if_present("neighBs", "neighBs", np.int32, atom_offset * 4, i32sz)
+        # Precomputed hneigh indices for angles/dihedrals/inversions (from bakeNeighs)
+        _upload_if_present("angNgs", "angNgs", np.int32, angle_offset * 2, i32sz)  # int2 per angle
+        _upload_if_present("dihNgs", "dihNgs", np.int32, dihedral_offset * 4, i32sz)
+        _upload_if_present("invNgs", "invNgs", np.int32, inversion_offset * 3, i32sz)  # int3 per inversion
+        _upload_if_present("a2f_offsets", "a2f_offsets", np.int32, atom_offset, i32sz)
+        _upload_if_present("a2f_counts",  "a2f_counts",  np.int32, atom_offset, i32sz)
+        if 'a2f_indices' in uff_data and uff_data['a2f_indices'] is not None and len(uff_data['a2f_indices']) > 0:
+            # a2f_indices is per-system local; for now we upload whole map for iSys==0
+            data = np.ascontiguousarray(uff_data['a2f_indices'].astype(np.int32))
+            cl.enqueue_copy(self.queue, self.buffer_dict["a2f_indices"], data, device_offset=0)
 
     def run_eval_step(self, bClearForce=True):
         if not self.args_setup:
             self.prepare_kernel_args()
         queue = self.queue
-        if bClearForce: cl.enqueue_fill_buffer(queue, self.buffer_dict["fapos"], np.float32(0), 0, self.natoms * self.nSystems * 4 * f32sz)
-        if self.bDoBonds: self.prg.evalBondsAndHNeigh_UFF(queue, (self.natoms * self.nSystems,), None, *self.kernel_args["evalBondsAndHNeigh_UFF"])
-        if self.bDoAngles: self.prg.evalAngles_UFF(queue, (self.nangles * self.nSystems,), None, *self.kernel_args["evalAngles_UFF"])
-        if self.bDoDihedrals: self.prg.evalDihedrals_UFF(queue, (self.ndihedrals * self.nSystems,), None, *self.kernel_args["evalDihedrals_UFF"])
-        if self.bDoInversions: self.prg.evalInversions_UFF(queue, (self.ninversions * self.nSystems,), None, *self.kernel_args["evalInversions_UFF"])
+        if bClearForce:
+            cl.enqueue_fill_buffer(queue, self.buffer_dict["fapos"], np.float32(0), 0, self.natoms * self.nSystems * 4 * f32sz)
+        # Clear fint when any term writes into it
+        if self.bDoAngles or self.bDoDihedrals or self.bDoInversions:
+            cl.enqueue_fill_buffer(queue, self.buffer_dict["fint"], np.float32(0), 0, self.buffer_dict["fint"].size)
+
+        if self.bDoBonds:
+            self.prg.evalBondsAndHNeigh_UFF(queue, (self.natoms * self.nSystems,), None, *self.kernel_args["evalBondsAndHNeigh_UFF"])
+        if self.bDoAngles:
+            self.prg.evalAngles_UFF(queue, (self.nangles * self.nSystems,), None, *self.kernel_args["evalAngles_UFF"])
+        if self.bDoDihedrals:
+            self.prg.evalDihedrals_UFF(queue, (self.ndihedrals * self.nSystems,), None, *self.kernel_args["evalDihedrals_UFF"])
+        if self.bDoInversions:
+            self.prg.evalInversions_UFF(queue, (self.ninversions * self.nSystems,), None, *self.kernel_args["evalInversions_UFF"])
+        # Assemble forces from fint into fapos (bond forces are already accumulated in fapos)
+        if self.bDoAngles or self.bDoDihedrals or self.bDoInversions:
+            self.prg.assembleForces_UFF(queue, (self.natoms * self.nSystems,), None, *self.kernel_args["assembleForces_UFF"])
         if self.bDoNonBonded: self.prg.evalNonBonded(queue, (self.natoms * self.nSystems,), None, *self.kernel_args["evalNonBonded"])
+        queue.finish()
         energies = np.zeros(5 * self.nSystems, dtype=np.float32)
         return energies[4::5]
 
@@ -202,11 +231,17 @@ class UFF_CL(OpenCLBase):
             self.kernel_params['ninversions'] = np.int32(self.ninversions)
             self.kernel_params['nSystems'] = np.int32(self.nSystems)
             self.kernel_params['npbc'] = np.int32(self.npbc)
+            # Generic sizes used by clear kernels
+            self.kernel_params['n'] = np.int32(self.natoms * self.nSystems)
+            # fint layout matching C++ UFF.h::realloc: dih|inv|ang|bon
+            nf_per_system = self.ndihedrals * 4 + self.ninversions * 4 + self.nangles * 3 + self.nbonds
+            self.kernel_params['nf_per_system'] = np.int32(nf_per_system)
             self.kernel_params['bSubtractVdW'] = np.int32(0) # Default value
-            self.kernel_params['i0bon'] = np.int32(0)
-            self.kernel_params['i0ang'] = np.int32(0)
-            self.kernel_params['i0dih'] = np.int32(0)
-            self.kernel_params['i0inv'] = np.int32(0)
+            # fint offsets computed by mapAtomInteractions (must be called first)
+            self.kernel_params['i0dih'] = np.int32(getattr(self, '_i0dih', 0))
+            self.kernel_params['i0inv'] = np.int32(getattr(self, '_i0inv', self.ndihedrals * 4))
+            self.kernel_params['i0ang'] = np.int32(getattr(self, '_i0ang', self.ndihedrals * 4 + self.ninversions * 4))
+            self.kernel_params['i0bon'] = np.int32(getattr(self, '_i0bon', self.ndihedrals * 4 + self.ninversions * 4 + self.nangles * 3))
             self.kernel_params['SubNBTorsionFactor'] = np.float32(0.0)
             self.kernel_params['Rdamp'] = np.float32(1.0)
             self.kernel_params['FmaxNonBonded'] = np.float32(10.0)
@@ -220,8 +255,25 @@ class UFF_CL(OpenCLBase):
             self.kernelheaders = self.extract_kernel_headers(self.prg.get_info(cl.prg_info.SOURCE))
 
         self.kernel_args = {}
-        for kernel_name in self.kernelheaders:
-            self.kernel_args[kernel_name] = self.generate_kernel_args(kernel_name)
+
+        # UFF.cl may contain additional kernels unrelated to UFF_CL (e.g. MMFF MD kernels).
+        # Only prepare argument lists for kernels we actually call from UFF_CL.
+        needed = {
+            'clear_fapos_UFF',
+            'clear_fint_UFF',
+            'evalBondsAndHNeigh_UFF',
+            'evalAngles_UFF',
+            'evalDihedrals_UFF',
+            'evalInversions_UFF',
+            'assembleForces_UFF',
+        }
+        if self.bDoNonBonded:
+            # Non-bonded kernels are optional; keep only if present
+            needed.update({'getNonBond', 'getNonBond_ex2', 'getSurfMorse', 'getNonBond_GridFF_Bspline', 'getNonBond_GridFF_Bspline_ex2'})
+
+        for kernel_name in needed:
+            if kernel_name in self.kernelheaders:
+                self.kernel_args[kernel_name] = self.generate_kernel_args(kernel_name)
 
         self.args_setup = True
 
@@ -243,81 +295,83 @@ class UFF_CL(OpenCLBase):
 
     def mapAtomInteractions(self, natoms, dihedrals, inversions, angles):
         """
-        Maps atom interactions to force pieces using a buckets structure.
-        Similar to UFF::mapAtomInteractions in C++.
+        Maps atom interactions to fint force-piece indices using a buckets structure.
+        Matches C++ UFF::mapAtomInteractions exactly.
+        a2f_indices stores fint piece indices (not interaction indices).
 
-        Args:
-            natoms (int): Number of atoms
-            dihedrals (np.ndarray): Dihedral indices
-            inversions (np.ndarray): Inversion indices
-            angles (np.ndarray): Angle indices
-
-        Returns:
-            tuple: (a2f_offsets, a2f_counts, a2f_indices) arrays for GPU upload
+        fint layout (matching C++ UFF.h::realloc):
+          i0dih = 0
+          i0inv = 4 * ndihedrals
+          i0ang = 4 * ndihedrals + 4 * ninversions
+          i0bon = i0ang + 3 * nangles  (bonds don't use fint, kept for size compat)
         """
-        ndihedrals = len(dihedrals)
+        ndihedrals  = len(dihedrals)
         ninversions = len(inversions)
-        nangles = len(angles)
-        # Initialize arrays
-        a2f_counts = np.zeros(natoms, dtype=np.int32)
+        nangles     = len(angles)
+        # fint offsets matching C++ UFF.h::realloc
+        i0dih = 0
+        i0inv = 4 * ndihedrals
+        i0ang = i0inv + 4 * ninversions
+        # Store offsets for later use in prepare_kernel_args
+        self._i0dih = i0dih
+        self._i0inv = i0inv
+        self._i0ang = i0ang
+        self._i0bon = i0ang + 3 * nangles
 
-        # Count interactions per atom
-        # For dihedrals (4 atoms per dihedral)
+        # --- Phase 1: Count interactions per atom (same as C++) ---
+        a2f_counts = np.zeros(natoms, dtype=np.int32)
         for i in range(ndihedrals):
             a2f_counts[dihedrals[i, 0]] += 1
             a2f_counts[dihedrals[i, 1]] += 1
             a2f_counts[dihedrals[i, 2]] += 1
             a2f_counts[dihedrals[i, 3]] += 1
-
-        # For inversions (4 atoms per inversion)
         for i in range(ninversions):
             a2f_counts[inversions[i, 0]] += 1
             a2f_counts[inversions[i, 1]] += 1
             a2f_counts[inversions[i, 2]] += 1
             a2f_counts[inversions[i, 3]] += 1
-
-        # For angles (3 atoms per angle)
         for i in range(nangles):
             a2f_counts[angles[i, 0]] += 1
             a2f_counts[angles[i, 1]] += 1
             a2f_counts[angles[i, 2]] += 1
 
-        # Calculate total size and offsets
-        total_refs = np.sum(a2f_counts)
+        # --- Phase 2: Compute offsets ---
+        total_refs = int(np.sum(a2f_counts))
         a2f_offsets = np.zeros(natoms, dtype=np.int32)
-
-        # Calculate offsets
         offset = 0
         for i in range(natoms):
             a2f_offsets[i] = offset
             offset += a2f_counts[i]
 
-        # Reset counts for filling indices
+        # --- Phase 3: Fill a2f_indices with fint piece indices (matching C++ addToCell) ---
         a2f_counts_temp = np.zeros(natoms, dtype=np.int32)
         a2f_indices = np.zeros(total_refs, dtype=np.int32)
 
-        # Fill indices for dihedrals
+        # Dihedrals: fint piece at i0dih + i*4 + j  (j=0..3 for each atom in dihedral)
         for i in range(ndihedrals):
+            i0 = i * 4 + i0dih
             for j in range(4):
                 atom_idx                   = dihedrals[i, j]
                 offset                     = a2f_offsets[atom_idx] + a2f_counts_temp[atom_idx]
-                a2f_indices[offset]        = i
+                a2f_indices[offset]        = i0 + j
                 a2f_counts_temp[atom_idx] += 1
 
-        # Fill indices for inversions
+        # Inversions: fint piece at i0inv + i*4 + j  (j=0..3)
         for i in range(ninversions):
+            i0 = i * 4 + i0inv
             for j in range(4):
                 atom_idx                   = inversions[i, j]
                 offset                     = a2f_offsets[atom_idx] + a2f_counts_temp[atom_idx]
-                a2f_indices[offset]        = i + ndihedrals  # Offset by ndihedrals
+                a2f_indices[offset]        = i0 + j
                 a2f_counts_temp[atom_idx] += 1
 
-        # Fill indices for angles
+        # Angles: fint piece at i0ang + i*3 + j  (j=0..2)
         for i in range(nangles):
+            i0 = i * 3 + i0ang
             for j in range(3):
                 atom_idx                   = angles[i, j]
                 offset                     = a2f_offsets[atom_idx] + a2f_counts_temp[atom_idx]
-                a2f_indices[offset]        = i + ndihedrals + ninversions  # Offset by ndihedrals + ninversions
+                a2f_indices[offset]        = i0 + j
                 a2f_counts_temp[atom_idx] += 1
 
         return a2f_offsets, a2f_counts, a2f_indices

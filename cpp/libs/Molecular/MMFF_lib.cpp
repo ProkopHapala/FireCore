@@ -407,6 +407,15 @@ void setSwitchesUFF( int DoBond, int DoAngle, int DoDihedral, int DoInversion, i
     #undef _setbool
 }
 
+void setSwitchesUFF_NB( int NonBonded, int NonBondNeighs, int SubtractAngleNonBond ){
+    #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
+    _setbool( W.ffu.bNonBonded           , NonBonded           );
+    _setbool( W.ffu.bNonBondNeighs       , NonBondNeighs       );
+    _setbool( W.ffu.bSubtractAngleNonBond, SubtractAngleNonBond);
+    printf( "setSwitchesUFF_NB() bNonBonded=%i bNonBondNeighs=%i bSubtractAngleNonBond=%i \n", W.ffu.bNonBonded, W.ffu.bNonBondNeighs, W.ffu.bSubtractAngleNonBond );
+    #undef _setbool
+}
+
 int substituteMolecule( const char* fname, int ib, double* up, int ipivot, bool bSwapBond ){
     return W.substituteMolecule( fname, ib, *(Vec3d*)up, ipivot, bSwapBond );
 }

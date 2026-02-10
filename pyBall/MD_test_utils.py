@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
+import pyopencl as cl
+
 from .OCL.MMFF import MMFF
 from .OCL.MolecularDynamics import MolecularDynamics
 from . import elements
@@ -240,7 +242,7 @@ def plot_monitor_series(series, props, show=True):
     fig.tight_layout()
     if show:
         plt.show()
-    return fig, axes_list
+    return fig, axes
 
 
 def build_mmff_from_mol(mol2_path):
@@ -684,13 +686,31 @@ def evaluate_mmff_gpu(mm, md, positions, do_clean=True, do_nb=False, do_mmff=Tru
     return energy, forces
 
 
-def scan_energy_force(mm, md, atom_index=0, axis=0, dx=1e-2, nsamp=100, restore=True, evaluator=None, do_nb=False):
+def evaluate_uff_gpu(uff_cl, positions, bClearForce=True):
+    positions = np.asarray(positions, dtype=np.float32)
+    if positions.ndim != 2 or positions.shape[1] < 3:
+        raise ValueError(f"evaluate_uff_gpu: expected positions shape (natoms,>=3), got {positions.shape}")
+    if positions.shape[0] != uff_cl.natoms:
+        raise ValueError(f"evaluate_uff_gpu: expected natoms={uff_cl.natoms}, got {positions.shape[0]}")
+    uff_cl.upload_positions(positions)
+    uff_cl.run_eval_step(bClearForce=bClearForce)
+    f4 = np.zeros(uff_cl.natoms * 4, dtype=np.float32)
+    cl.enqueue_copy(uff_cl.queue, f4, uff_cl.buffer_dict['fapos'])
+    f4 = f4.reshape(uff_cl.natoms, 4)
+    forces = f4[:, :3].astype(np.float64)
+    energy = float(f4[:, 3].sum())
+    return energy, forces
+
+
+def scan_energy_force_uff(uff_cl, atom_index=0, axis=0, dx=1e-2, nsamp=100, restore=True, evaluator=None, base_apos=None):
     if nsamp < 3 or nsamp % 2 == 0:
         raise ValueError("nsamp must be odd and >= 3 for centered differences")
     if evaluator is None:
-        evaluator = lambda apos: evaluate_mmff_gpu(mm, md, apos, do_clean=True, do_nb=do_nb, do_mmff=True, mode='none')
-    base_apos = np.array(mm.apos, copy=True)
-    natoms = mm.natoms
+        evaluator = lambda apos: evaluate_uff_gpu(uff_cl, apos, bClearForce=True)
+    if base_apos is None:
+        raise ValueError("scan_energy_force_uff: base_apos must be provided (natoms,>=3)")
+    base_apos = np.asarray(base_apos, dtype=np.float32)
+    natoms = base_apos.shape[0]
     energies = np.zeros(nsamp, dtype=np.float64)
     forces = np.zeros((nsamp, natoms, 3), dtype=np.float64)
     offsets = (np.arange(nsamp) - nsamp // 2) * dx
@@ -705,7 +725,7 @@ def scan_energy_force(mm, md, atom_index=0, axis=0, dx=1e-2, nsamp=100, restore=
             raise ValueError(f"Evaluator returned forces with shape {force.shape}, expected {(natoms, 3)}")
         forces[i] = force
     if restore:
-        upload_mmff_positions(mm, md, base_apos)
+        uff_cl.upload_positions(base_apos)
     analytic_force = -forces[:, atom_index, axis]
     numeric_force, idx = centered_finite_difference(energies, dx)
     mid_offsets = offsets[idx]

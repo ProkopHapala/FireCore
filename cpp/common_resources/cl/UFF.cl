@@ -5,13 +5,27 @@
 // Debug Controls (compile-time macros)
 // ======================================================
 // Enable concise debug prints without changing C++ host interface.
+#ifndef DBG_UFF
 #define DBG_UFF 1         // 0/1 master switch
+#endif
+#ifndef IDBG_ATOM
 #define IDBG_ATOM  (0)    // atom index to trace
+#endif
+#ifndef IDBG_BOND
 #define IDBG_BOND  (0)    // bond index to trace (global bond id), -1 disables
+#endif
+#ifndef IDBG_ANGLE
 #define IDBG_ANGLE (0)    // angle index to trace
+#endif
+#ifndef IDBG_DIH
 #define IDBG_DIH   (0)    // dihedral index to trace
+#endif
+#ifndef IDBG_INV
 #define IDBG_INV   (0)    // inversion index to trace
+#endif
+#ifndef IDBG_SYS
 #define IDBG_SYS   (0)    // system index to trace
+#endif
 //#define IDBG_SYS   (8)    // system index to trace
 
 // ======================================================
@@ -168,13 +182,18 @@ __kernel void evalBondsAndHNeigh_UFF(
         for (int ia=0; ia<natoms; ++ia){
             int4 ng = neighs[i0a + ia];
             int4 ngC= neighCell[i0a + ia];
+            int4 nb = neighBs[i0a + ia];
             printf("GPU ATOM %3d : ng={%3d,%3d,%3d,%3d} ngC={%3d,%3d,%3d,%3d} pos{%8.4f,%8.4f,%8.4f} isys=%d ", ia, ng.x, ng.y, ng.z, ng.w, ngC.x, ngC.y, ngC.z, ngC.w, apos[i0a+ia].x, apos[i0a+ia].y, apos[i0a+ia].z, isys);
             for(int in=0; in<4; ++in){
                 int ing = ng[in];
                 if(ing<0) break;
-                // bond params
-                float2 bp = bonParams[ing];
-                printf(" k,l[%i](%8.4f,%8.4f)", in, bp.x, bp.y);
+                int ib = nb[in];
+                if(ib>=0){
+                    float2 bp = bonParams[ib];
+                    printf(" ib[%i]=%d k,l(%8.4f,%8.4f)", in, ib, bp.x, bp.y);
+                }else{
+                    printf(" ib[%i]=%d", in, ib);
+                }
             }
             printf("\n");
         }
@@ -1042,6 +1061,10 @@ __kernel void getNonBond(
     const int i0a = iS*natoms;  // index of first atom in atoms array
     const int iaa = iG + i0a; // index of atom in atoms array
 
+    if( (DBG_UFF>0) && (iG==0) && (iS==0) ){
+        printf("GPU ENTER getNonBond() natoms=%d nS=%d nG=%d\n", natoms, nS, nG);
+    }
+
     if((DBG_UFF>1) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL ); }
     if((DBG_UFF>1) && (iG==IDBG_ATOM)&&(iS==IDBG_SYS)){
        printf( "GPU::getNonBond() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL );
@@ -1534,6 +1557,10 @@ __kernel void getNonBond_GridFF_Bspline(
     const float4 REQKi = REQKs    [iaa];           // parameters of Lenard-Jones potential, Coulomb and Hydrogen Bond (RvdW,EvdW,Q,H) of the atom
     const float3 posi  = atoms    [iaa].xyz;       // position of the atom
     float4 fe          = float4Zero;              // forces on the atom
+
+    if( (DBG_UFF>0) && (iG==0) && (iS==0) ){
+        printf("GPU ENTER getNonBond_GridFF_Bspline() natoms=%d nS=%d nG=%d\n", natoms, nS, nG);
+    }
 
     const int iS_DBG = 0;
     const int iG_DBG = 0;

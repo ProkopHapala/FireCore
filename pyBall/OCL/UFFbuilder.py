@@ -114,7 +114,50 @@ class UFF_Builder:
     def build(self):
         self.assign_uff_types()
         self.assign_uff_params()
+        self.bakeNeighs()
         return self.get_arrays()
+
+    def bakeNeighs(self):
+        """Precompute hneigh indices for angles, dihedrals, inversions (matching C++ bakeAngleNeighs/bakeDihedralNeighs/bakeInversionNeighs)."""
+        neighs = self.neighs  # (natoms, 4) int32
+        # --- Angle Neighs: angNgs[ia] = {hneigh_idx_ji, hneigh_idx_kj} ---
+        nangles = len(self.mol.angles)
+        self.angNgs = np.full((nangles, 2), -1, dtype=np.int32)
+        for ia, ang in enumerate(self.mol.angles):
+            i, j, k = ang.atoms
+            ings = neighs[j]  # neighbors of central atom j
+            for inn in range(4):
+                ing = ings[inn]
+                if ing < 0: break
+                if ing == i: self.angNgs[ia, 0] = j * 4 + inn  # j->i
+                if ing == k: self.angNgs[ia, 1] = j * 4 + inn  # j->k
+        # --- Dihedral Neighs: dihNgs[id] = {hneigh_idx_ji, hneigh_idx_jk, hneigh_idx_kl} ---
+        ndihedrals = len(self.mol.dihedrals)
+        self.dihNgs = np.full((ndihedrals, 4), -1, dtype=np.int32)
+        for did, dih in enumerate(self.mol.dihedrals):
+            i, j, k, l = dih.atoms
+            ingsj = neighs[j]
+            for inn in range(4):
+                ing = ingsj[inn]
+                if ing < 0: break
+                if ing == i: self.dihNgs[did, 0] = j * 4 + inn  # j->i
+                if ing == k: self.dihNgs[did, 1] = j * 4 + inn  # j->k
+            ingsk = neighs[k]
+            for inn in range(4):
+                ing = ingsk[inn]
+                if ing < 0: break
+                if ing == l: self.dihNgs[did, 2] = k * 4 + inn  # k->l
+        # --- Inversion Neighs: invNgs[ii] = {hneigh_idx_ij, hneigh_idx_ik, hneigh_idx_il} (int3 in kernel) ---
+        ninversions = len(self.mol.inversions)
+        self.invNgs = np.full((ninversions, 3), -1, dtype=np.int32)
+        for ii, inv in enumerate(self.mol.inversions):
+            i, j, k, l = inv.atoms
+            ings = neighs[i]  # neighbors of central atom i
+            for inn in range(3):
+                ing = ings[inn]
+                if ing == j: self.invNgs[ii, 0] = i * 4 + inn  # i->j
+                elif ing == k: self.invNgs[ii, 1] = i * 4 + inn  # i->k
+                elif ing == l: self.invNgs[ii, 2] = i * 4 + inn  # i->l
 
     def assign_uff_types(self):
         # This is a Python implementation of the C++ assignUFFtypes logic
@@ -175,6 +218,10 @@ class UFF_Builder:
         # store bond orders
         self.mol.bond_orders = BOs
 
+        # propagate assigned bond orders into Bond objects (used later by parameter assignment)
+        for ib, b in enumerate(self.bonds):
+            b.order = float(BOs[ib])
+
     def assign_uff_params(self):
         # This is a Python implementation of the C++ assignUFFparams logic
         # It will calculate and store bond, angle, dihedral, and inversion parameters
@@ -201,6 +248,9 @@ class UFF_Builder:
             "invParams": np.array([[i.k, i.C0, i.C1, i.C2] for i in self.mol.inversions], dtype=np.float32),
             "neighs": self.neighs,
             "neighBs": self.neighBs,
+            "angNgs": self.angNgs,
+            "dihNgs": self.dihNgs,
+            "invNgs": self.invNgs,
         }
         return uff_data
 

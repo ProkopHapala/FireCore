@@ -211,6 +211,7 @@ class OCLsystem{ public:
     cl_context       context  = 0;      // compute context
     cl_command_queue commands = 0;      // compute command queue
     cl_program       program  = 0;      // compute program - TODO FIXME: There could be more than one !!!!
+    bool             bReleased=false;
 
     std::vector<cl_kernel> kernels;
     std::vector<OCLBuffer> buffers;
@@ -221,8 +222,23 @@ class OCLsystem{ public:
     std::unordered_map<std::string,int> task_dict;
 
     cl_kernel current_kernel;
-    OCLtask* currentTask=0;
-    int argCounter;
+    int       argCounter=0;
+    OCLtask*  currentTask=0;
+
+    OCLsystem() = default;
+    OCLsystem(const OCLsystem&)            = delete;
+    OCLsystem& operator=(const OCLsystem&) = delete;
+    OCLsystem(OCLsystem&& o) noexcept { *this = std::move(o); }
+    OCLsystem& operator=(OCLsystem&& o) noexcept {
+        if(this==&o) return *this;
+        // We do not auto-release existing resources here; caller should manage lifetime.
+        device=o.device; context=o.context; commands=o.commands; program=o.program; bReleased=o.bReleased;
+        kernels=std::move(o.kernels); buffers=std::move(o.buffers); tasks=std::move(o.tasks);
+        kernel_dict=std::move(o.kernel_dict); buffer_dict=std::move(o.buffer_dict); task_dict=std::move(o.task_dict);
+        current_kernel=o.current_kernel; argCounter=o.argCounter; currentTask=o.currentTask;
+        o.device=0; o.context=0; o.commands=0; o.program=0; o.bReleased=true; o.current_kernel=0; o.currentTask=0;
+        return *this;
+    }
 
     OCLtask* getTask(const char* name){ 
         auto it = task_dict.find(name);
@@ -481,7 +497,7 @@ class OCLsystem{ public:
 
     char * getKernelSource(const char *filename){
         FILE *file = fopen(filename, "r");
-        if (!file){ fprintf(stderr, "Error: Could not open kernel source file\n"); exit(-1); }
+        if (!file){ fprintf(stderr, "Error: Could not open kernel source file %s\n", filename   ); exit(-1); }
         fseek(file, 0, SEEK_END);
         int len = ftell(file) + 1;
         rewind(file);
@@ -582,22 +598,28 @@ class OCLsystem{ public:
         return err;
     }
 
-    void release_OCL( cl_program program=0 ){
+    void release_OCL( cl_program program_=0 ){
+        if(bReleased) return;
+        if(context==0) { bReleased=true; return; }
         printf( "OCL_DEF::release_OCL() --- START \n" );
-        if(program==0) program=this->program;
+        cl_program program = (program_==0) ? this->program : program_;
         printf( "OCL_DEF::release_OCL() kernels \n" );
-        for(size_t i=0; i<kernels.size(); i++){ clReleaseKernel   (kernels[i]      ); }
+        for(size_t i=0; i<kernels.size(); i++){ if(kernels[i]){ clReleaseKernel(kernels[i]); kernels[i]=0; } }
         printf( "OCL_DEF::release_OCL() buffers \n" );
-        for(size_t i=0; i<buffers.size(); i++){ clReleaseMemObject(buffers[i].p_gpu); }
+        for(size_t i=0; i<buffers.size(); i++){ if(buffers[i].p_gpu){ clReleaseMemObject(buffers[i].p_gpu); buffers[i].p_gpu=0; } }
         printf( "OCL_DEF::release_OCL() program \n" );
-        clReleaseProgram(program);   
+        if(program){ clReleaseProgram(program); }
+        this->program=0;
         printf( "OCL_DEF::release_OCL() commands \n" );
         //clReleaseKernel(kernel);
-        clReleaseCommandQueue(commands);
+        if(commands){ clReleaseCommandQueue(commands); }
+        commands=0;
         printf( "OCL_DEF::release_OCL() context \n" );
-        clReleaseContext(context);
+        if(context){ clReleaseContext(context); }
+        context=0;
         printf( "OCL_DEF::release_OCL() --- DONE \n" );
         printf( "NOTE: Do not worry about \"double free or corruption\" error message now! It is because of python, we will solve it later. \n" );
+        bReleased=true;
     }
     ~OCLsystem(){ 
         release_OCL();

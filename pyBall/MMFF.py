@@ -1107,6 +1107,12 @@ lib.setSwitchesUFF.restype   =  None
 def setSwitchesUFF( DoBond=0, DoAngle=0, DoDihedral=0, DoInversion=0, DoAssemble=0, SubtractBondNonBond=0, ClampNonBonded=0):
     return lib.setSwitchesUFF(DoBond, DoAngle, DoDihedral, DoInversion, DoAssemble, SubtractBondNonBond, ClampNonBonded)
 
+# void setSwitchesUFF_NB( int NonBonded, int NonBondNeighs, int SubtractAngleNonBond )
+lib.setSwitchesUFF_NB.argtypes = [c_int, c_int, c_int]
+lib.setSwitchesUFF_NB.restype  = None
+def setSwitchesUFF_NB( NonBonded=0, NonBondNeighs=0, SubtractAngleNonBond=0 ):
+    return lib.setSwitchesUFF_NB( NonBonded, NonBondNeighs, SubtractAngleNonBond )
+
 #  bool checkInvariants( double maxVcog, double maxFcog, double maxTg )
 lib.checkInvariants.argtypes  = [c_double, c_double, c_double]
 lib.checkInvariants.restype   =  c_bool
