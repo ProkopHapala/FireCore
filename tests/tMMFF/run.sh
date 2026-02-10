@@ -1,10 +1,10 @@
 #!/bin/bash
 
-ln -s ../../cpp/common_resources data
-ln -s ../../cpp/common_resources common_resources 
+ln -s ../../cpp/common_resources data 2>/dev/null
+ln -s ../../cpp/common_resources common_resources 2>/dev/null
 
 wd=`pwd`
-cd ../../cpp/Build/libs/Molecular/
+cd ../../cpp/Build-opt/libs/Molecular/
 pwd
 rm libMMFF_lib.so
 make MMFF_lib
@@ -12,7 +12,7 @@ rm   libLattice2D_lib.so
 make Lattice2D_lib
 cd $wd
 
-cd ../../cpp/Build/libs_SDL
+cd ../../cpp/Build-opt/libs_SDL
 rm libMolGUIlib.so
 make MolGUIlib
 cd $wd
@@ -29,14 +29,14 @@ export OMP_NUM_THREADS
 
 # ------- asan (Memory Sanitizer)
 LD_PRELOAD=$(g++ -print-file-name=libasan.so)
-LD_PRELOAD=$LD_PRELOAD  $(g++ -print-file-name=libfftw3.so)
+LD_PRELOAD=$LD_PRELOAD:$(g++ -print-file-name=libfftw3.so)
 echo   $LD_PRELOAD
 export LD_PRELOAD
 # --- ignore memory leaks in ASAM
 export LSAN_OPTIONS=detect_leaks=0
 
 #python3 run.py
-python3 run_hessian.py
+#python3 run_hessian.py
 
 #python3 run_gui.py
 #python3 run_surf_lattice.py
@@ -52,6 +52,8 @@ python3 run_hessian.py
 #python3 run_test_Multipole.py
 
 #python3 run_sample_surf.py
+
+python3 run_relax_surf.py
 
 #python3 run_sample_tricubic.py
 #python3 run_sample_nonBond.py

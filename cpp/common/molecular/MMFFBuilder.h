@@ -2172,23 +2172,26 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         char buff[nbuf];
         int lineIndex = 0;
         int na = 0, nb = 0;
+        int countsLine = -1;
         int n0 = atoms.size();
 
         int ifrag=-1;
         startFragment();
         ifrag   = frags.size()-1;  // frags.size()-1
+        int ib0 = bonds.size();
         
         while (fgets(buff, nbuf, fp)) {
-            // The 5th line (lineIndex==4) should contain atom and bond counts.
-            if (lineIndex == 4) {
+            // Counts line in V2000 is line 3 (index 3); be tolerant of 4 as well.
+            if ( (lineIndex==3 || lineIndex==4) && countsLine<0 ) {
                 if (sscanf(buff, "%d %d", &na, &nb) < 2) {
                     printf("Error reading atom/bond counts in file %s\n", fname);
                     fclose(fp);
                     return -1;
                 }
+                countsLine = lineIndex;
             }
             // Process atom lines
-            else if (lineIndex > 4 && lineIndex <= 4 + na) {
+            else if ( (countsLine>=0) && (lineIndex > countsLine) && (lineIndex <= countsLine + na) ) {
                 Vec3d pos;
                 char elem[16] = {0};
                 int ret = sscanf(buff, "%lf %lf %lf %15s", &pos.x, &pos.y, &pos.z, elem);
@@ -2213,26 +2216,37 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
 
                     Vec3d p; rot.dot_to(pos,p); p.add( pos0 ); //p.sub(cog);
 
-                    insertAtom(ityp, p, &REQ, npi, ne);
+                    int ia = insertAtom(ityp, p, &REQ, npi, ne);
+                    tryAddConfToAtom( ia );
                 }
             }
             // Process bond lines
-            else if (lineIndex > 4 + na && lineIndex <= 4 + na + nb) {
-                int bond_id, a1, a2;
-                int ret = sscanf(buff, "%d %d %d", &bond_id, &a1, &a2);
+            else if ( (countsLine>=0) && (lineIndex > countsLine + na) && (lineIndex <= countsLine + na + nb) ) {
+                int a1, a2, order;
+                int ret = sscanf(buff, "%d %d %d", &a1, &a2, &order);
                 if(ret < 3){
                     printf("Error reading bond at line %d in %s\n", lineIndex, fname);
                     continue;
                 }
-                // Convert 1-based atom indices to 0-based
                 Bond bond;
-                bond.atoms.i = a1 - 1;
+                bond.atoms.i = a1 - 1; // V2000 atom indices are 1-based
                 bond.atoms.j = a2 - 1;
+                // bond order 'order' currently ignored
                 bonds.push_back(bond);
             }
             lineIndex++;
         }
         fclose(fp);
+        tryAddConfsToAtoms(0, -1);
+        for(int ib=ib0; ib<bonds.size(); ib++){ addBondToConfs(ib); }
+        {
+            std::vector<int> nb( atoms.size(), 0 );
+            for(const Bond& b: bonds){ nb[b.atoms.i]++; nb[b.atoms.j]++; }
+            for(int ia=0; ia<atoms.size(); ia++){
+                int ic = atoms[ia].iconf;
+                if(ic>=0 && confs[ic].nbond==0){ confs[ic].nbond = nb[ia]; }
+            }
+        }
         if(verbosity>0)printf("Builder::load_mol() read atoms[%d] from %s\n", (int)(atoms.size()-n0), fname);
         return ifrag;
     }

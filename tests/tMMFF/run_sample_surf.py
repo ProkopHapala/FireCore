@@ -7,7 +7,7 @@ sys.path.append("../../")
 from pyBall import atomicUtils as au
 from pyBall import MMFF as mmff
 
-mmff.init( xyz_name="data/H2O", surf_name="data/NaCl_1x1_L2", bMMFF=False )
+mmff.init( xyz_name="data/xyz/H2O", surf_name="data/xyz/NaCl_1x1_L2", bMMFF=False )
 
 
 # ======= Setup
@@ -43,6 +43,14 @@ ps[:,2] = xs
 FEs_a     = mmff.sampleSurf_vecs( ps, kind=12,  RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 ) 
 FEs_g_req = mmff.sampleSurf_vecs( ps, kind=9,   RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 ) 
 FEs_g_plq = mmff.sampleSurf_vecs( ps, kind=18,  RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )  
+
+bTestFlat = True
+if bTestFlat:
+    mmff.setSurfFlatPlane( pos0=(0.0,0.0,0.0), normal=(0.0,0.0,1.0) )
+    mmff.setSurfFlatParams( mode=1, REQ=(RvdW,EvdW,0.0,0.0), K=1.6 )
+    FEs_flat_H = mmff.sampleSurf_vecs( ps, kind=30,  RvdW=RvdW, EvdW=EvdW, Q=Q, K=1.6, npbc=0 )
+    mmff.setSurfFlatParams( mode=2, REQ=(RvdW,EvdW,0.0,0.0), K=1.6 )
+    FEs_flat_M = mmff.sampleSurf_vecs( ps, kind=31,  RvdW=RvdW, EvdW=EvdW, Q=Q, K=1.6, npbc=0 )
 #FEs_s    = mmff.sampleSurf_vecs( ps, kind=11, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )   
 #FEs_f_   = mmff.sampleSurf_vecs( ps, kind=8,  RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 ) 
 #FEs_f    = mmff.sampleSurf_vecs( ps, kind=12, RvdW=RvdW, EvdW=EvdW, Q=Q, npbc=5 )  
@@ -58,6 +66,9 @@ plt.subplot(2,1,1)
 plt.plot( xs, FEs_a    [:,3],label='E_atom'     )
 plt.plot( xs, FEs_g_req[:,3],label='E_grid_REQ' )
 plt.plot( xs, FEs_g_plq[:,3],label='E_grid_PLQ' )
+if bTestFlat:
+    plt.plot( xs, FEs_flat_H[:,3],label='E_flat_Ham93' )
+    plt.plot( xs, FEs_flat_M[:,3],label='E_flat_Morse' )
 #plt.plot( xs, FEs_s  [:,3],label='E_addForce_surf' )
 # plt.plot( xs, FEs_f_ [:,3],label='E_grid_'    )
 # plt.plot( xs, FEs_f  [:,3],label='E_grid'    )

@@ -148,7 +148,11 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
     //W.init( bGrid, bUFF );
     W.bGridFF=bGrid;
     W.bUFF   =bUFF;
-    W.init();
+    int ret = W.init();
+    if(ret!=0){
+        printf("MMFF_lib::init() failed ret=%i -> return nullptr\n", ret);
+        return nullptr;
+    }
     //init_buffers();
     return &W;
 }
@@ -202,6 +206,14 @@ int setupEwaldGrid( double* pos0, double* dCell, int* ns, bool bPrint ){
 
 void projectAtomsEwaldGrid( int na, double* apos, double* qs, double* dens, int order ){
     W.gewald.projectAtoms( na, (Vec3d*)apos, qs, dens, order );
+}
+
+void setSurfFlatPlane( double* pos0, double* normal ){
+    W.setSurfFlatPlane( *(Vec3d*)pos0, *(Vec3d*)normal );
+}
+
+void setSurfFlatParams( int mode, double* REQ, double K ){
+    W.setSurfFlatParams( mode, *(Quat4d*)REQ, K );
 }
 
 
@@ -659,7 +671,8 @@ void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, dou
     }
     //W.gridFF.alphaMorse = 1.6;
     //printf( "!!!!!!!! MMFF_lib::sampleSurf_vecs() K=%g alphaMorse=%g \n", K, W.gridFF.alphaMorse  );
-    if( fabs(K-W.gridFF.alphaMorse) > 1e-6 ){ printf("ERROR in sampleSurf_vecs K(%20.10f) does not match gridFF.alphaMorse(%20.10f) => exit()\n", K, W.gridFF.alphaMorse );  exit(0); }
+    const bool bKindFlat = (kind==30)||(kind==31);
+    if( (!bKindFlat) && ( fabs(K-W.gridFF.alphaMorse) > 1e-6 ) ){ printf("ERROR in sampleSurf_vecs K(%20.10f) does not match gridFF.alphaMorse(%20.10f) => exit()\n", K, W.gridFF.alphaMorse );  exit(0); }
     for(int i=0; i<n; i++){
         //printf( "sampleSurf_vecs()[%i]\n", i  );
         Quat4f fe  =Quat4fZero;
@@ -696,6 +709,9 @@ void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, dou
 
             case 13: fe_d = W.gridFF.getForce_d       (pos, PLQ_d   );         FEs[i]=fe_d;        break;
             case 14: fe_d = W.gridFF.getForce_Tricubic(pos, PLQ_d   );         FEs[i]=fe_d;        break;
+
+            case 30: W.setSurfFlatParams( MolWorld_sp3::SurfFlat_HamakerLJ93, W.surfFlat_REQ, W.surfFlat_K ); fe_d.e = W.evalSurfFlat( pos, test_REQ, fe_d.f ); FEs[i]=fe_d; break;
+            case 31: W.setSurfFlatParams( MolWorld_sp3::SurfFlat_Morse      , W.surfFlat_REQ, K            ); fe_d.e = W.evalSurfFlat( pos, test_REQ, fe_d.f ); FEs[i]=fe_d; break;
         }
         //fs[i]=(Vec3d)(fe.f);
         //Es[i]=fe.e;

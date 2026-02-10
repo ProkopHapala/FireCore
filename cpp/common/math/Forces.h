@@ -281,6 +281,106 @@ inline double evalCos2_o(const Vec3d& hi, const Vec3d& hj, Vec3d& fi, Vec3d& fj,
     return k*c*c;
 }
 
+// ================ Non-Covalent Forces With surface
+
+// ===========================================================================
+// Hamaker-like Potential (Lennard-Jones 9-3) for Flat Surface
+// ===========================================================================
+//
+// Derivation: Integration of LJ 12-6 pairwise potential over a semi-infinite 
+// half-space (z < 0).
+//
+// Interaction form:
+// U(z) = (Eij / 2) * [ (Rij/z)^9 - 3 * (Rij/z)^3 ]
+//
+// Force Fz = -dU/dz:
+// F(z) = (9 * Eij / (2 * z)) * [ (Rij/z)^9 - (Rij/z)^3 ]
+//
+// Inputs:
+// dp   : Vector from surface origin to atom position
+// n    : Surface normal vector (MUST be normalized, length = 1.0)
+// f    : Force vector (output)
+// REQH : Parameters (x = Rij (z0), y = Eij (epsilon))
+//
+inline double getHamakerLJ93( const Vec3d& dp, const Vec3d& n, Vec3d& f, const Quat4d& REQH ){
+    // 1. Calculate perpendicular distance to the plane
+    // We assume dp is relative to a point on the plane. 
+    // z = dot(dp, normal)
+    const double z = dp.dot(n); 
+
+    // Safety check: prevent division by zero or penetration behind surface
+    // In real sims, you might want a soft cap or valid check here.
+    //if( z < 1e-6 ) return 0.0; // Or handle singularity
+
+    // 2. Precompute ratios (Rij / z)
+    // REQH.x is Equilibrium Distance (z0)
+    // REQH.y is Well Depth (epsilon)
+    const double ratio = REQH.x / z; 
+    const double r3    = ratio*ratio*ratio; // (z0/z)^3
+    const double r9    = r3*r3*r3;          // (z0/z)^9
+
+    // 3. Energy Calculation
+    // U = (Eps/2) * [ (z0/z)^9 - 3*(z0/z)^3 ]
+    double E = 0.5 * REQH.y * ( r9 - 3.0*r3 );
+
+    // 4. Force Calculation
+    // Force magnitude F_scalar = (9 * Eps / (2 * z)) * [ (z0/z)^9 - (z0/z)^3 ]
+    // A positive F pushes the atom away (direction of normal n)
+    double F_scalar = ( 4.5 * REQH.y / z ) * ( r9 - r3 );
+
+    // 5. Set Force Vector
+    // Force acts strictly along the surface normal
+    f.set_mul( n, F_scalar );
+
+    return E;
+}
+
+
+// ===========================================================================
+// Morse Potential for Flat Surface (1D approximation)
+// ===========================================================================
+//
+// Form: U(z) = Eij * [ (1 - exp(-K*(z - Rij)))^2 - 1 ]
+// Expanded: U(z) = Eij * [ exp(-2*K*(z-Rij)) - 2*exp(-K*(z-Rij)) ]
+//
+// Force Fz = -dU/dz:
+// F(z) = 2 * K * Eij * exp(...) * [ exp(...) - 1 ]
+//
+// Inputs:
+// dp   : Vector from surface origin to atom
+// n    : Surface normal vector (normalized)
+// f    : Force vector (output)
+// REQH : Params (x = Rij (z0), y = Eij (epsilon))
+// K    : Stiffness parameter (beta)
+//
+inline double getMorseSurface( const Vec3d& dp, const Vec3d& n, Vec3d& f, const Quat4d& REQH, const double K ){
+    // 1. Perpendicular distance
+    const double z = dp.dot(n);
+
+    // 2. Exponentials
+    // REQH.x is Equilibrium Distance (z0)
+    // REQH.y is Well Depth (epsilon)
+    // exp_term = exp( -K * (z - z0) )
+    const double exp_term = exp( -K * (z - REQH.x) );
+    
+    // 3. Energy Calculation
+    // U = Eij * ( exp_term^2 - 2*exp_term )
+    double E = REQH.y * ( exp_term*exp_term - 2.0*exp_term );
+
+    // 4. Force Calculation
+    // F_scalar = 2 * K * Eij * exp_term * (exp_term - 1)
+    //
+    // Analysis:
+    // If z < z0 (close): exp_term > 1 -> (exp - 1) > 0 -> Force > 0 (Repulsive, pushes along +n)
+    // If z > z0 (far):   exp_term < 1 -> (exp - 1) < 0 -> Force < 0 (Attractive, pulls along -n)
+    double F_scalar = 2.0 * K * REQH.y * exp_term * ( exp_term - 1.0 );
+
+    // 5. Set Force Vector along normal
+    f.set_mul( n, F_scalar );
+
+    return E;
+}
+
 
 // ================ Non-Covalent Forces (Lenard-Jones, Morse, etc.)
 

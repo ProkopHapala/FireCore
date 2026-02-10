@@ -20,6 +20,9 @@
 	funcs["-s"]={1,[&](const char** ss){ W->smile_name=ss[0]; }}; // molecule as SMILEs
 	funcs["-x"]={1,[&](const char** ss){ W->xyz_name  =ss[0]; }}; // molecule as .xyz
 	funcs["-g"]={1,[&](const char** ss){ W->surf_name =ss[0]; }}; // substrate as .xyz
+
+	funcs["-surfFlatPlane"]={1,[&](const char** ss){ Vec3d p0,n; int nret=sscanf(ss[0],"%lf,%lf,%lf,%lf,%lf,%lf",&p0.x,&p0.y,&p0.z,&n.x,&n.y,&n.z); if(nret!=6){ printf("ERROR in -surfFlatPlane expects x,y,z,nx,ny,nz got `%s` => exit()\n", ss[0] ); exit(0); } W->setSurfFlatPlane(p0,n); }};
+	funcs["-surfFlat"]={1,[&](const char** ss){ int mode=0; double z0=1.0,eps=1.0,K=1.6; int nret=sscanf(ss[0],"%i,%lf,%lf,%lf",&mode,&z0,&eps,&K); if(nret<3){ printf("ERROR in -surfFlat expects mode,z0,eps[,K] got `%s` => exit()\n", ss[0] ); exit(0); } Quat4d REQ{z0,eps,0.0,0.0}; W->setSurfFlatParams(mode, REQ, K); }};
 	funcs["-r"]={0,[&](const char** ss){ W->bMMFF=false;      }}; // rigid
 	funcs["-n"]={1,[&](const char** ss){  W->nMulPBC.x=(ss[0][0]-'0'); W->nMulPBC.y=(ss[0][1]-'0'); W->nMulPBC.z=(ss[0][2]-'0'); }}; // PBC multiplication of molecule
 	funcs["-ng"]={1,[&](const char** ss){ W->bCellBySurf=true; sscanf(ss[0],"%lf,%lf,%lf,%lf", &W->bySurf_lat[0].x,&W->bySurf_lat[0].y,  &W->bySurf_lat[1].x,&W->bySurf_lat[1].y ); }}; // change molecule cell by surface multiple
@@ -65,13 +68,15 @@
     funcs["-tricubic"]={0,[&](const char** ss){ W->bTricubic=true; }};
     funcs["-bbox"]={1,[&](const char** ss){ Mat3d m;  sscanf(ss[0],"%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf",  &m.ax,&m.ay,&m.az,  &m.bx,&m.by,&m.bz,  &m.cx,&m.cy,&m.cz );  W->bbox=m; }};
 
-    funcs["-gridffmode"]={1,[&](const char** ss){ sscanf( ss[0],"%i", (int*)&(W->gridFF.mode) );   printf( "-griffmode=%i ss(%s) \n", (int)W->gridFF.mode  );    }};
+    	funcs["-gridffmode"]={1,[&](const char** ss){ sscanf( ss[0],"%i", (int*)&(W->gridFF.mode) );   printf( "-griffmode=%i ss(%s) \n", (int)W->gridFF.mode  );    }};
     funcs["-nogridff"]={0,[&](const char** ss){ W->bGridFF=false; }}; // AutoCharge
     funcs["-group"]={3,[&](const char** ss){  }};
     funcs["-shift"]={1,[&](const char** ss){ }};
 
     funcs["-nPBC"]={1,[&](const char** ss){ sscanf( ss[0],"%i,%i,%i", &(W->nPBC.x),&(W->nPBC.y),&(W->nPBC.z) ); }};
-    
+
+    funcs["-surfFlatPlane"]={1,[&](const char** ss){ Vec3d p0,n; int nret=sscanf(ss[0],"%lf,%lf,%lf,%lf,%lf,%lf",&p0.x,&p0.y,&p0.z,&n.x,&n.y,&n.z); if(nret!=6){ printf("ERROR in -surfFlatPlane expects x,y,z,nx,ny,nz got `%s` => exit()\n", ss[0] ); exit(0); } W->setSurfFlatPlane(p0,n); }};
+    funcs["-surfFlatParams"]={3,[&](const char** ss){ int mode=0; double z0=1.0,eps=1.0,K=1.6; int nret=sscanf(ss[0],"%i,%lf,%lf,%lf",&mode,&z0,&eps,&K); if(nret<3){ printf("ERROR in -surfFlat expects mode,z0,eps[,K] got `%s` => exit()\n", ss[0] ); exit(0); } Quat4d REQ{z0,eps,0.0,0.0}; W->setSurfFlatParams(mode, REQ, K); }};
     
 
     // ==== funcs2 are executed after initialization MolWorld_sp3 ( therefore may have no effect on initialization process )

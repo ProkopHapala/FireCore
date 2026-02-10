@@ -132,6 +132,8 @@ class MolWorld_sp3 : public SolverInterface { public:
 	GridFF       gridFF;
     bool bGridDouble = true;
 
+    ~MolWorld_sp3(){ gridFF.apos=0; gridFF.atypes=0; }
+
     EwaldGrid gewald;
 
     std::vector<int> atom2group;
@@ -199,6 +201,13 @@ class MolWorld_sp3 : public SolverInterface { public:
 
 	// force-eval-switchefs
     int  imethod=0;
+
+    enum SurfFlatMode : int { SurfFlat_None=0, SurfFlat_HamakerLJ93=1, SurfFlat_Morse=2 };
+    int   surfFlat_mode = SurfFlat_None;
+    Vec3d surfFlat_pos0   = Vec3d{0.0,0.0,-5.0};
+    Vec3d surfFlat_normal = Vec3dZ;
+    Quat4d surfFlat_REQ   = Quat4d{ 1.0, 1.0, 0.0, 0.0 }; // x=z0(R), y=epsilon(E), z=qq, w=Hb ; combined with atom REQ by combineREQ()
+    double surfFlat_K = 1.6;
 
 	bool doBonded          = false; // 1
 	bool bNonBonded        = true;  // 2
@@ -277,6 +286,38 @@ class MolWorld_sp3 : public SolverInterface { public:
     double Kpick  = -2.0;
     double QEpair = -0.2;
     //int nEp=0;    // number of electron pairs
+
+    inline void setSurfFlatPlane( const Vec3d& pos0, const Vec3d& normal ){
+        const double n2 = normal.norm2();
+        if( n2 < 1e-20 ){ printf("ERROR in MolWorld_sp3::setSurfFlatPlane() |normal|^2(%g) too small => exit()\n", n2 ); exit(0); }
+        surfFlat_pos0   = pos0;
+        surfFlat_normal = normal * (1.0/sqrt(n2));
+    }
+
+    inline void setSurfFlatParams( int mode, const Quat4d& REQ, double K ){
+        surfFlat_mode = mode;
+        surfFlat_REQ  = REQ;
+        surfFlat_K    = K;
+        bPlaneSurfForce = (mode!=SurfFlat_None);
+        if(bPlaneSurfForce){ bSurfAtoms=true; }
+    }
+
+    inline double evalSurfFlat( const Vec3d& pi, const Quat4d& REQi, Vec3d& fi ) const {
+        //if(!bPlaneSurfForce) return 0.0;
+        //if(surfFlat_mode==SurfFlat_None) return 0.0;
+        Quat4d REQij; combineREQ( surfFlat_REQ, REQi, REQij );
+        Vec3d f = Vec3dZero;
+        const Vec3d dp = pi - surfFlat_pos0;
+        double E=0.0;
+        switch(surfFlat_mode){
+            case SurfFlat_HamakerLJ93: E = getHamakerLJ93 ( dp, surfFlat_normal, f, REQij ); break;
+            case SurfFlat_Morse:       E = getMorseSurface( dp, surfFlat_normal, f, REQij, surfFlat_K ); break;
+            default: printf("ERROR in MolWorld_sp3::evalSurfFlat() surfFlat_mode=%i invalid => exit()\n", surfFlat_mode ); exit(0);
+        }
+        //printf( "evalSurfFlat() surfFlat_mode %i pi(%g,%g,%g) fi(%g,%g,%g) REQi(%g,%g,%g,%g) REQij(%g,%g,%g,%g)\n", surfFlat_mode, pi.x, pi.y, pi.z, f.x, f.y, f.z, REQi.x,REQi.y,REQi.z,REQi.w, REQij.x,REQij.y,REQij.z,REQij.w );
+        fi.add(f);
+        return E;
+    }
     //int etyp=0;   // electron pair type
 
     int itest = 0;
@@ -305,7 +346,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         return nstr;
     }
 
-    virtual void init(){
+    virtual int init(){
         printf( "MolWorld_sp3::init() verbosity=%i\n", verbosity );
         //params.verbosity=verbosity;
         //printf(  "MolWorld_sp3:init() params.verbosity = %i \n", params.verbosity );
@@ -340,7 +381,11 @@ class MolWorld_sp3 : public SolverInterface { public:
         }else if ( xyz_name ){
             if( bMMFF || bUFF ){  
                 printf("buildMolecule_xyz( %s )\n", xyz_name);
-                buildMolecule_xyz( xyz_name );
+                int ifrag = buildMolecule_xyz( xyz_name );
+                if(ifrag<0 || builder.atoms.size()==0){
+                    printf("ERROR MolWorld_sp3::init() failed to load `%s` (ifrag=%i atoms=%zu) => return -1\n", xyz_name, ifrag, builder.atoms.size());
+                    return -1;
+                }
             }else{
                 printf("MolWorld_sp3::init() loading %s\n", xyz_name);
                 loadNBmol( xyz_name ); 
@@ -365,9 +410,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         
         if(verbosity>0) 
         printf( "#### MolWorld_sp3::init() DONE\n\n");
-
-
-
+        return 0;
     }
 
     virtual void pre_loop(){
@@ -1978,6 +2021,7 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
         //printf( "MolWorld_sp3::run(%i) \n", nstepMax );
         //printf( "MolWorld_sp3::run() nstepMax %i double dt %g Fconv %g ialg %g \n", nstepMax, dt, Fconv, ialg );
         //printf( "opt.damp_max %g opt.damping %g \n", opt.damp_max, opt.damping );
+        printf("DEBUG run(): enter trj_fname=%s savePerNsteps=%i nPBC_save(%i,%i,%i) verbosity=%i\n", trj_fname?trj_fname:"<null>", savePerNsteps, nPBC_save.x, nPBC_save.y, nPBC_save.z, verbosity);
         double F2conv=Fconv*Fconv;
         double F2 = 1.0;
         double Etot=0;
@@ -2000,6 +2044,7 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
             if(outF){ outF[itr]=F2;   }
             if( (savePerNsteps>0) &&  (trj_fname) && (itr%savePerNsteps==0) )[[unlikely]]{
                 sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(F2) );
+                printf("DEBUG run(): write trj step=%i to %s comment='%s'\n", itr, trj_fname, tmpstr );
                 saveXYZ( trj_fname, tmpstr, false, "a", nPBC_save );
             }
             if(verbosity>1)[[unlikely]]{ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
@@ -2008,6 +2053,7 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
                 if(verbosity>0)[[unlikely]]{ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
                 if( trj_fname )[[unlikely]]{
                     sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(F2) );
+                    printf("DEBUG run(): write final trj step=%i to %s comment='%s'\n", itr, trj_fname, tmpstr );
                     saveXYZ( trj_fname, tmpstr, false, "a", nPBC_save );
                 }
                 break;
@@ -2096,7 +2142,9 @@ double eval_no_omp(){
             }
         }
         if(bSurfAtoms)[[likely]]{ 
-            if(bGridFF)[[likely]]{  // with gridFF
+            if(bPlaneSurfForce)[[likely]]{ 
+                E += evalSurfFlat( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia] );
+            }else if(bGridFF)[[likely]]{  // with gridFF
                 E += gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia] );
             }else{ // Without gridFF (Direct pairwise atoms)
                 //{ E+= nbmol .evalMorse   ( surf, false,                  gridFF.alphaMorse, gridFF.Rdamp );  }
@@ -2128,6 +2176,12 @@ double eval_no_omp(){
         int itr=0,niter=niter_max;
         bConverged = false;
         bool bFIRE = true;
+
+        if(trj_fname){
+            sprintf(tmpstr,"# init E %g |F| %g", E, sqrt(F2) );
+            if(verbosity>1) printf("run_omp::save(init) %s nnode %i natom %i\n", tmpstr, ffl.nnode, ffl.natoms );
+            saveXYZ( trj_fname, tmpstr, false, "a", nPBC_save );
+        }
 
         double cdamp = ffl.colDamp.update( dt );  if(cdamp>1)cdamp=1;
         // if(damping>0){ cdamp = 1-damping; if(cdamp<0)cdamp=0;}
@@ -2181,7 +2235,9 @@ double eval_no_omp(){
                     }
                 }
                 if(bSurfAtoms)[[likely]]{ 
-                    if(bGridFF)[[likely]]{  // with gridFF
+                    if(bPlaneSurfForce)[[likely]]{ 
+                        E += evalSurfFlat( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia] );
+                    }else if(bGridFF)[[likely]]{  // with gridFF
                         gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia] );
                         //Vec3d fi=Vec3dZero;
                         //gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], fi );
@@ -2389,7 +2445,9 @@ double eval_no_omp(){
                 }
 
                 if(bSurfAtoms)[[likely]]{ 
-                    if(bGridFF)[[likely]]{  // with gridFF
+                    if(bPlaneSurfForce)[[likely]]{ 
+                        E += evalSurfFlat( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia] );
+                    }else if(bGridFF)[[likely]]{  // with gridFF
                         gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia] );
                     }else{ // Without gridFF (Direct pairwise atoms)
                         //{ E+= nbmol .evalMorse   ( surf, false,                  gridFF.alphaMorse, gridFF.Rdamp );  }
@@ -2474,6 +2532,11 @@ double eval_no_omp(){
                 //         if(verbosity>1) [[unlikely]] { printf( "run_omp() ended due to time limit after %i nsteps ( %6.3f [s]) \n", itr, t ); }
                 //     }
                 // }
+                if( (trj_fname) && ( (itr%savePerNsteps==0) ||(niter==0) ) )[[unlikely]]{
+                    sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(ffl.cvf.z) );
+                    if(verbosity>1) printf( "run_omp::save() %s %i nnode %i natom %i \n", tmpstr, itr, ffl.nnode, ffl.natoms );
+                    saveXYZ( trj_fname, tmpstr, false, "a", nPBC_save );
+                }
                 if(F2<F2conv)[[unlikely]]{ 
                     niter=0; 
                     bConverged = true;
@@ -2503,6 +2566,12 @@ double eval_no_omp(){
             }
             } // if(itr<niter)
         } // while(itr<niter)
+
+        if(trj_fname){
+            sprintf(tmpstr,"# final itr %i E %g |F| %g", itr, E, sqrt(F2) );
+            printf("run_omp::save(final) %s nnode %i natom %i\n", tmpstr, ffl.nnode, ffl.natoms );
+            saveXYZ( trj_fname, tmpstr, false, "a", nPBC_save );
+        }
            
         {
         double t = (getCPUticks() - T0)*tick2second;

@@ -76,7 +76,9 @@ header_strings = [
 #LIB_PATH_CPP  = os.path.normpath(LIB_PATH+'../../../'+'/cpp/Build/libs/'+cpp_name )
 #lib = ctypes.CDLL( LIB_PATH_CPP+("/lib%s.so" %cpp_name) )
 
-cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build/libs/Molecular' )
+_buildPath1 = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build-opt/libs/Molecular' )
+_buildPath0 = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build/libs/Molecular' )
+cpp_utils.BUILD_PATH = _buildPath1 if os.path.isdir(_buildPath1) else _buildPath0
 lib = cpp_utils.loadLib('MMFF_lib', recompile=False)
 
 
@@ -747,6 +749,22 @@ def sampleSurf_vecs(ps, FEs=None, kind=1, ityp=-1, RvdW=1.487, EvdW=0.0006808, Q
     return FEs
 
 
+# void setSurfFlatPlane( double* pos0, double* normal )
+lib.setSurfFlatPlane.argtypes = [ c_double_p, c_double_p ]
+lib.setSurfFlatPlane.restype  = None
+def setSurfFlatPlane( pos0=(0.0,0.0,0.0), normal=(0.0,0.0,1.0) ):
+    pos0   = np.array(pos0,   dtype=np.float64)
+    normal = np.array(normal, dtype=np.float64)
+    lib.setSurfFlatPlane( _np_as(pos0,c_double_p), _np_as(normal,c_double_p) )
+
+# void setSurfFlatParams( int mode, double* REQ, double K )
+lib.setSurfFlatParams.argtypes = [ c_int, c_double_p, c_double ]
+lib.setSurfFlatParams.restype  = None
+def setSurfFlatParams( mode=1, REQ=(1.0,1.0,0.0,0.0), K=1.6 ):
+    REQ = np.array(REQ, dtype=np.float64)
+    lib.setSurfFlatParams( mode, _np_as(REQ,c_double_p), K )
+
+
 # void sampleSurf_new( int n, double* ps_, double* FEout_, int kind, double* REQ_, double K, double RQ ){
 lib.sampleSurf_new.argtypes  = [ c_int, array2d, array2d, c_int, array1d, c_double, c_double ]
 lib.sampleSurf_new.restype   =  None
@@ -1012,7 +1030,10 @@ def init(
     glob_bMMFF = bMMFF
     glob_bUFF = bUFF
     nPBC=np.array(nPBC,dtype=np.int32)
-    return lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, bUFF, b141, bSimple, bConj, bCumulene, nPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
+    ptr = lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, bUFF, b141, bSimple, bConj, bCumulene, nPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
+    if not ptr:
+        raise RuntimeError(f"MMFF.init failed for xyz={xyz_name} surf={surf_name} smile={smile_name}")
+    return ptr
 
 
 #void initParams          ( const char* sElementTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes, const char* sDihedralTypes ){
@@ -1156,7 +1177,10 @@ def eval():
 lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double, c_double_p, c_double_p, c_double_p, c_double_p, c_bool ]
 lib. run.restype   =  c_int
 def run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, damping=-1.0, outE=None, outF=None, outV=None, outVF=None, omp=False):
-    return lib.run(nstepMax, dt, Fconv, ialg, damping, _np_as(outE,c_double_p), _np_as(outF,c_double_p), _np_as(outV,c_double_p), _np_as(outVF,c_double_p), omp )
+    print(f"pyBall.MMFF.run: n={nstepMax} dt={dt} Fconv={Fconv} ialg={ialg} damping={damping} omp={omp}")
+    ret = lib.run(nstepMax, dt, Fconv, ialg, damping, _np_as(outE,c_double_p), _np_as(outF,c_double_p), _np_as(outV,c_double_p), _np_as(outVF,c_double_p), omp )
+    print(f"pyBall.MMFF.run: returned {ret}")
+    return ret
 
 #lib.scan.argtypes  = [c_int, array2d, array2d, array1d, array2d, array2d, c_bool, c_bool, c_int, c_double, c_double, c_double]
 # int  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, double* aposs, bool omp, bool bRelax, int niter_max, double dt, double Fconv, double Flim ){
