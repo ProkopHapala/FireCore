@@ -387,9 +387,20 @@ void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeigh
     _setbool( W.ffl.doPiSigma, PiSigma   );
     _setbool( W.ffl.doPiPiI  , PiPiI     );
 
-    printf( "setSwitches2() W.bCheckInvariants==%i bPBC=%i | bNonBonded=%i bNonBondNeighs=%i | bSurfAtoms=%i bGridFF=%i | bMMFF=%i doAngles=%i doPiSigma=%i doPiPiI=%i \n", W.bCheckInvariants, W.bPBC,  W.bNonBonded, W.bNonBondNeighs, W.bSurfAtoms, W.bGridFF, W.bMMFF, W.ffl.doAngles, W.ffl.doPiSigma, W.ffl.doPiPiI );
+    // Keep subtraction/clamp consistent with nonbond evaluation.
+    // NOTE: switch semantics are 0=keep, >0=force true, <0=force false.
+    if(NonBonded!=0){
+        bool b = (NonBonded>0);
+        W.ffl.bSubtractBondNonBond  = b;
+        W.ffl.bSubtractAngleNonBond = b;
+        W.ffl.bClampNonBonded       = b;
+    }
 
-    //W.ffl.bSubtractAngleNonBond = W.bNonBonded;
+    printf( "setSwitches2() W.bCheckInvariants==%i bPBC=%i | bNonBonded=%i bNonBondNeighs=%i | bSurfAtoms=%i bGridFF=%i | bMMFF=%i doAngles=%i doPiSigma=%i doPiPiI=%i | subNB(bond=%i,angle=%i,clamp=%i) \n",
+        W.bCheckInvariants, W.bPBC,  W.bNonBonded, W.bNonBondNeighs, W.bSurfAtoms, W.bGridFF, W.bMMFF, W.ffl.doAngles, W.ffl.doPiSigma, W.ffl.doPiPiI,
+        W.ffl.bSubtractBondNonBond, W.ffl.bSubtractAngleNonBond, W.ffl.bClampNonBonded
+    );
+
     #undef _setbool
 }
 

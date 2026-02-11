@@ -861,6 +861,23 @@ __kernel void getMMFFf4(
     //aforce[iav     ] = (float4){fa ,0}; // If we do  run it as first forcefield
     aforce[iav ]       += (float4){fa.x,fa.y,fa.z,E};
     //aforce[iav+nAtoms]  = (float4){fpi,0}; 
+
+    #if DBG_UFF
+    if((iG==iGdbg)&&(iS==iSdbg)){
+        float4 fnow = aforce[iav];
+        printf("DBG getMMFFf4 iS=%i iG=%i iaa=%i ian=%i iav=%i fa=(%g,%g,%g) E=%g aforce=(%g,%g,%g|%g) ng=(%i,%i,%i,%i)\n",
+            iS,iG,iaa,ian,iav, fa.x,fa.y,fa.z, E, fnow.x,fnow.y,fnow.z,fnow.w, ng.x,ng.y,ng.z,ng.w );
+        printf("DBG getMMFFf4 fneighSigma[%i..%i] = {%g,%g,%g} {%g,%g,%g} {%g,%g,%g} {%g,%g,%g}\n",
+            i4,i4+3,
+            fneigh[i4+0].x,fneigh[i4+0].y,fneigh[i4+0].z,
+            fneigh[i4+1].x,fneigh[i4+1].y,fneigh[i4+1].z,
+            fneigh[i4+2].x,fneigh[i4+2].y,fneigh[i4+2].z,
+            fneigh[i4+3].x,fneigh[i4+3].y,fneigh[i4+3].z );
+        float4 fpi0 = aforce[iav+nAtoms];
+        float3 hpi0 = apos[iav+nAtoms].xyz;
+        printf("DBG getMMFFf4 fpi=(%g,%g,%g|%g) hpi=(%g,%g,%g)\n", fpi0.x,fpi0.y,fpi0.z,fpi0.w, hpi0.x,hpi0.y,hpi0.z );
+    }
+    #endif
     
 }
 
@@ -1892,6 +1909,19 @@ __kernel void updateAtomsMMFFf4(
     if(ngs.z>=0){ fe += fneigh[ngs.z]; }
     if(ngs.w>=0){ fe += fneigh[ngs.w]; }
     }
+
+    #if DBG_UFF
+    if((iG==iGdbg)&&(iS==iSdbg)){
+        printf("DBG updateAtomsMMFFf4 iS=%i iG=%i iav=%i bPi=%i fe_after_recoil=(%g,%g,%g|%g) ngs=(%i,%i,%i,%i)\n",
+            iS,iG,iav,(int)bPi, fe.x,fe.y,fe.z,fe.w, ngs.x,ngs.y,ngs.z,ngs.w );
+        if(!bPi){
+            if(ngs.x>=0){ float4 t=fneigh[ngs.x]; printf("DBG updateAtomsMMFFf4 recoil0 idx=%i fneigh=(%g,%g,%g|%g)\n", ngs.x, t.x,t.y,t.z,t.w ); }
+            if(ngs.y>=0){ float4 t=fneigh[ngs.y]; printf("DBG updateAtomsMMFFf4 recoil1 idx=%i fneigh=(%g,%g,%g|%g)\n", ngs.y, t.x,t.y,t.z,t.w ); }
+            if(ngs.z>=0){ float4 t=fneigh[ngs.z]; printf("DBG updateAtomsMMFFf4 recoil2 idx=%i fneigh=(%g,%g,%g|%g)\n", ngs.z, t.x,t.y,t.z,t.w ); }
+            if(ngs.w>=0){ float4 t=fneigh[ngs.w]; printf("DBG updateAtomsMMFFf4 recoil3 idx=%i fneigh=(%g,%g,%g|%g)\n", ngs.w, t.x,t.y,t.z,t.w ); }
+        }
+    }
+    #endif
 
     // ---- Limit Forces - WARRNING : Github_Copilot says: this is not the best way to limit forces, because it can lead to drift, better is to limit forces in the first forcefield run (best is NBFF) 
     // float Flimit = 10.0f;

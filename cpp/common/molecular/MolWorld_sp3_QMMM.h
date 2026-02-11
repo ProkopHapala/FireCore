@@ -63,13 +63,13 @@ class MolWorld_sp3_QMMM : public MolWorld_sp3 { public:
     virtual int getMolWorldVersion() const override { return (int)MolWorldVersion::QM; };
 
 
-virtual void init( ){
+virtual int init( ){
     MolWorld_sp3::init( );
-    if( file_exist("Fdata/info.dat") ){ 
+    if( file_exist("Fdata/info.dat") ){
         InitQMMM(); bPrepared_qm=true; 
         printf("QM preparation DONE \n");
     }
-
+    return 0;
 }
 
 

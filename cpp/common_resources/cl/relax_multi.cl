@@ -44,6 +44,17 @@ const float4   grid_p0
 
 */
 
+// #ifndef DBG_UFF
+// #define DBG_UFF 1
+// #endif
+
+#ifndef DBG_UFF
+#define DBG_UFF 1
+#endif
+
+#define iGdbg 3
+#define iSdbg 0
+
 
 /*
     relax_multi.cl -  OpenCL kernel source code for multi-system relaxation
@@ -666,6 +677,23 @@ __kernel void getMMFFf4_bak(
     fapos[iav       ] += (float4){fa ,0};  // If we not run it as first forcefield
     fapos[iav+nAtoms]  = (float4){fpi,0};
 
+    #if DBG_UFF
+    if((iG==iGdbg)&&(iS==iSdbg)){
+        float4 fnow = fapos[iav];
+        printf("DBG getMMFFf4(relax_multi.cl) iS=%i iG=%i iaa=%i ian=%i iav=%i fa=(%g,%g,%g) fapos=(%g,%g,%g|%g) ng=(%i,%i,%i,%i)\n",
+            iS,iG,iaa,ian,iav, fa.x,fa.y,fa.z, fnow.x,fnow.y,fnow.z,fnow.w, ng.x,ng.y,ng.z,ng.w );
+        printf("DBG getMMFFf4(relax_multi.cl) fneighSigma[%i..%i] = {%g,%g,%g} {%g,%g,%g} {%g,%g,%g} {%g,%g,%g}\n",
+            i4,i4+3,
+            fneigh[i4+0].x,fneigh[i4+0].y,fneigh[i4+0].z,
+            fneigh[i4+1].x,fneigh[i4+1].y,fneigh[i4+1].z,
+            fneigh[i4+2].x,fneigh[i4+2].y,fneigh[i4+2].z,
+            fneigh[i4+3].x,fneigh[i4+3].y,fneigh[i4+3].z );
+        float4 fpi0 = fapos[iav+nAtoms];
+        float3 hpi0 = apos[iav+nAtoms].xyz;
+        printf("DBG getMMFFf4(relax_multi.cl) fpi=(%g,%g,%g|%g) hpi=(%g,%g,%g)\n", fpi0.x,fpi0.y,fpi0.z,fpi0.w, hpi0.x,hpi0.y,hpi0.z );
+    }
+    #endif
+
 
     //printf( "GPU[%i] fa(%g,%g,%g) fpi(%g,%g,%g)\n", ia, fa.x,fa.y,fa.z, fpi.x,fpi.y,fpi.z );
 
@@ -961,12 +989,12 @@ __kernel void updateAtomsMMFFf4(
     //         printf( "GPU:constr[%i](%7.3f,%7.3f,%7.3f |K= %7.3f) \n", i, constr[i0a+i].x,constr[i0a+i].y,constr[i0a+i].z,  constr[i0a+i].w   );
     //     }
     // }
-
     if(iG>=(natoms+nnode)) return; // make sure we are not out of bounds of current system
 
     //aforce[iav] = float4Zero;
 
-    float4 fe      = aforce[iav]; // force on atom or pi-orbital
+    const float4 fe0     = aforce[iav]; // force on atom or pi-orbital (before recoil)
+    float4 fe      = fe0;
     const bool bPi = iG>=natoms;  // is it pi-orbital ?
 
     // ------ Gather Forces from back-neighbors
@@ -977,12 +1005,28 @@ __kernel void updateAtomsMMFFf4(
     //if( (iS==0)&&(iG==0) ){ printf( "GPU:fe.1[iS=%i,iG=%i](%g,%g,%g,%g) \n", fe.x,fe.y,fe.z,fe.w ); }
 
     // sum all recoil forces from back neighbors   - WARRNING : bkNeighs must be properly shifted on CPU by adding offset of system iS*nvec*4
-    if(ngs.x>=0){ fe += fneigh[ngs.x]; } // if neighbor index is negative it means that there is no neighbor, so we skip it
-    if(ngs.y>=0){ fe += fneigh[ngs.y]; }
-    if(ngs.z>=0){ fe += fneigh[ngs.z]; }
-    if(ngs.w>=0){ fe += fneigh[ngs.w]; }
+    {
+    float4 frec = float4Zero;
+    if(ngs.x>=0){ frec += fneigh[ngs.x]; } // if neighbor index is negative it means that there is no neighbor, so we skip it
+    if(ngs.y>=0){ frec += fneigh[ngs.y]; }
+    if(ngs.z>=0){ frec += fneigh[ngs.z]; }
+    if(ngs.w>=0){ frec += fneigh[ngs.w]; }
+    fe += frec;
 
-    // ---- Limit Forces - WARRNING : Github_Copilot says: this is not the best way to limit forces, because it can lead to drift, better is to limit forces in the first forcefield run (best is NBFF)
+    #if DBG_UFF
+    if((iG==iGdbg)&&(iS==iSdbg)){
+        printf("DBG updateAtomsMMFFf4(relax_multi.cl) iS=%i iG=%i iav=%i bPi=%i fe0=(%g,%g,%g|%g) frec=(%g,%g,%g|%g) fe=(%g,%g,%g|%g) ngs=(%i,%i,%i,%i)\n",
+            iS,iG,iav,(int)bPi, fe0.x,fe0.y,fe0.z,fe0.w, frec.x,frec.y,frec.z,frec.w, fe.x,fe.y,fe.z,fe.w, ngs.x,ngs.y,ngs.z,ngs.w );
+        if(!bPi){
+            if(ngs.x>=0){ float4 t=fneigh[ngs.x]; printf("DBG updateAtomsMMFFf4(relax_multi.cl) recoil0 idx=%i fneigh=(%g,%g,%g|%g)\n", ngs.x, t.x,t.y,t.z,t.w ); }
+            if(ngs.y>=0){ float4 t=fneigh[ngs.y]; printf("DBG updateAtomsMMFFf4(relax_multi.cl) recoil1 idx=%i fneigh=(%g,%g,%g|%g)\n", ngs.y, t.x,t.y,t.z,t.w ); }
+            if(ngs.z>=0){ float4 t=fneigh[ngs.z]; printf("DBG updateAtomsMMFFf4(relax_multi.cl) recoil2 idx=%i fneigh=(%g,%g,%g|%g)\n", ngs.z, t.x,t.y,t.z,t.w ); }
+            if(ngs.w>=0){ float4 t=fneigh[ngs.w]; printf("DBG updateAtomsMMFFf4(relax_multi.cl) recoil3 idx=%i fneigh=(%g,%g,%g|%g)\n", ngs.w, t.x,t.y,t.z,t.w ); }
+        }
+    }
+    #endif
+    }
+ // ---- Limit Forces - WARRNING : Github_Copilot says: this is not the best way to limit forces, because it can lead to drift, better is to limit forces in the first forcefield run (best is NBFF)
     float Flimit = 10.0;
     float fr2 = dot(fe.xyz,fe.xyz);  // squared force
     if( fr2 > (Flimit*Flimit) ){  fe.xyz*=(Flimit/sqrt(fr2)); }  // if force is too big, we scale it down to Flimit

@@ -78,6 +78,8 @@ void init_buffers_UFF(){
     // UFF-specific buffers
     if(W.bUFF){ // UFF-specific buffers
         buffers.insert(  { "hneigh",    (double*)W.ffu.hneigh } );
+        // GPU-computed hneigh (float4) downloaded from OpenCL into MolWorld_sp3_multi::hneigh_ocl
+        if(W.hneigh_ocl) fbuffers.insert( { "gpu_hneigh", (float*)W.hneigh_ocl } );
         buffers.insert(  { "fint",      (double*)W.ffu.fint   } );
         buffers.insert(  { "bonParams", (double*)W.ffu.bonParams } );
         buffers.insert(  { "angParams", (double*)W.ffu.angParams } );
@@ -95,6 +97,13 @@ void init_buffers_UFF(){
         ibuffers.insert( { "angNgs",    (int*)W.ffu.angNgs    } );
         ibuffers.insert( { "dihNgs",    (int*)W.ffu.dihNgs    } );
         ibuffers.insert( { "invNgs",    (int*)W.ffu.invNgs    } );
+
+        // Atom-to-force-piece assembly map packed for OpenCL (MolWorld_sp3_multi::pack_uff_system)
+        // NOTE: host_a2f_indices has length nA2F == ffu.nf; only first sum(a2f_counts) entries are meaningful,
+        // remaining entries should be -1.
+        if(W.host_a2f_offsets.size()>0) ibuffers.insert( { "a2f_offsets", (int*)W.host_a2f_offsets.data() } );
+        if(W.host_a2f_counts .size()>0) ibuffers.insert( { "a2f_counts",  (int*)W.host_a2f_counts .data() } );
+        if(W.host_a2f_indices.size()>0) ibuffers.insert( { "a2f_indices", (int*)W.host_a2f_indices.data() } );
 
 
         // ---- TODO: GPU buffers for UFF
@@ -179,10 +188,87 @@ void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeigh
     _setbool( W.ffl.doPiSigma, PiSigma   );
     _setbool( W.ffl.doPiPiI  , PiPiI     );
 
-    printf( "setSwitches2() W.bCheckInvariants==%i bPBC=%i | bNonBonded=%i bNonBondNeighs=%i | bSurfAtoms=%i bGridFF=%i | bMMFF=%i doAngles=%i doPiSigma=%i doPiPiI=%i \n", W.bCheckInvariants, W.bPBC,  W.bNonBonded, W.bNonBondNeighs, W.bSurfAtoms, W.bGridFF, W.bMMFF, W.ffl.doAngles, W.ffl.doPiSigma, W.ffl.doPiPiI );
+    // Keep subtraction/clamp consistent with nonbond evaluation.
+    // NOTE: switch semantics are 0=keep, >0=force true, <0=force false.
+    if(NonBonded!=0){
+        bool b = (NonBonded>0);
+        W.ffl.bSubtractBondNonBond  = b;
+        W.ffl.bSubtractAngleNonBond = b;
+        W.ffl.bClampNonBonded       = b;
+    }
 
-    //W.ffl.bSubtractAngleNonBond = W.bNonBonded;
+    printf( "setSwitches2() W.bCheckInvariants==%i bPBC=%i | bNonBonded=%i bNonBondNeighs=%i | bSurfAtoms=%i bGridFF=%i | bMMFF=%i doAngles=%i doPiSigma=%i doPiPiI=%i | subNB(bond=%i,angle=%i,clamp=%i) \n",
+        W.bCheckInvariants, W.bPBC,  W.bNonBonded, W.bNonBondNeighs, W.bSurfAtoms, W.bGridFF, W.bMMFF, W.ffl.doAngles, W.ffl.doPiSigma, W.ffl.doPiPiI,
+        W.ffl.bSubtractBondNonBond, W.ffl.bSubtractAngleNonBond, W.ffl.bClampNonBonded
+    );
+
     #undef _setbool
+}
+
+double eval_force_MMFF( int iParalel ){
+    if(W.bUFF){ printf("eval_force_MMFF(): ERROR W.bUFF=true; this is MMFF-only\n"); return 0.0; }
+    const int isys = 0;
+    if(iParalel==2){
+        int err=0;
+        W.bOcl=true;
+        if( W.task_MMFF==0 ){ W.setup_MMFFf4_ocl(); }
+        // Keep GPU host-side flat buffers in sync with current CPU state
+        // blvec=false: lvec already uploaded during init; avoids 0-size pbcshifts upload when npbc=0
+        W.pack_system  ( isys, W.ffls[isys], true, false, false, false );
+        W.upload_sys   ( isys, true, false, false, false );
+        // Set bSubtractVdW consistent with NonBonded switch (same as run_ocl_opt)
+        W.ocl.bSubtractVdW = W.bNonBonded ? (!W.bExclusion2) : 0;
+        if(W.task_MMFF){
+            int err_set = clSetKernelArg( W.ocl.kernels[W.task_MMFF->ikernel], 16, sizeof(int), &W.ocl.bSubtractVdW );
+            OCL_checkError(err_set, "eval_force_MMFF.set_bSubtractVdW");
+        }
+        // Force evaluation: getMMFFf4 computes per-atom forces and stores recoil in fneigh;
+        // updateAtomsMMFFf4 assembles recoil via bkNeighs. With dt=0 it skips dynamics.
+        Quat4f MDpars_save = W.MDpars[isys];
+        W.MDpars[isys] = Quat4f{0.0f, 0.0f, 0.0f, 0.0f};  // dt=0 → assembly only, no move
+        err |= W.ocl.upload( W.ocl.ibuff_MDpars, W.MDpars );
+        err |= W.task_cleanF->enque_raw();
+        err |= W.task_MMFF  ->enque_raw();
+        err |= W.task_move  ->enque_raw();  // assembles recoil forces, skips dynamics (dt=0)
+        err |= W.ocl.finishRaw();
+        OCL_checkError(err, "eval_force_MMFF(GPU).finishRaw");
+        W.MDpars[isys] = MDpars_save;  // restore original MDpars
+        // Download assembled forces (aforces now includes recoil)
+        W.download_mmff_sys( isys, true, false );
+        W.unpack_system( isys, W.ffls[isys], true, false );
+        // Etot is not guaranteed to be updated on GPU path; compute explicitly from aforces.w (atoms only)
+        {
+            const int i0v = isys * W.ocl.nvecs;
+            double Etot = 0.0;
+            for(int i=0; i<W.ffl.natoms; i++){
+                Etot += (double)W.aforces[i0v+i].w;
+            }
+            W.ffls[isys].Etot = Etot;
+        }
+        // Copy forces back to shared nbmol arrays so Python can read them
+        for(int i=0; i<W.ffl.natoms; i++){ W.nbmol.fapos[i] = W.ffls[isys].fapos[i]; }
+        return W.ffls[isys].Etot;
+    }else{
+        W.bOcl=false;
+        W.setNonBond( W.bNonBonded );
+        // Propagate switches from template ffl to per-system copy ffls[isys]
+        W.ffls[isys].doBonds              = W.ffl.doBonds;
+        W.ffls[isys].doAngles             = W.ffl.doAngles;
+        W.ffls[isys].doPiSigma            = W.ffl.doPiSigma;
+        W.ffls[isys].doPiPiI              = W.ffl.doPiPiI;
+        W.ffls[isys].bSubtractBondNonBond = W.ffl.bSubtractBondNonBond;
+        W.ffls[isys].bSubtractAngleNonBond= W.ffl.bSubtractAngleNonBond;
+        W.ffls[isys].bClampNonBonded      = W.ffl.bClampNonBonded;
+        printf("eval_force_MMFF(CPU) doAngles=%i doPiSigma=%i doPiPiI=%i subBondNB=%i subAngNB=%i clampNB=%i\n",
+            W.ffls[isys].doAngles, W.ffls[isys].doPiSigma, W.ffls[isys].doPiPiI,
+            W.ffls[isys].bSubtractBondNonBond, W.ffls[isys].bSubtractAngleNonBond, W.ffls[isys].bClampNonBonded);
+        // Force-only evaluation on CPU
+        W.ffls[isys].cleanForce();
+        double E = W.ffls[isys].eval(true);
+        // Copy forces back to shared nbmol arrays so Python can read them
+        for(int i=0; i<W.ffl.natoms; i++){ W.nbmol.fapos[i] = W.ffls[isys].fapos[i]; }
+        return E;
+    }
 }
 
 

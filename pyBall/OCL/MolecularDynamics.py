@@ -48,7 +48,7 @@ class MolecularDynamics(OpenCLBase):
         
         # Load the OpenCL program
         base_path = os.path.dirname(os.path.abspath(__file__))
-        rel_path = "../../cpp/common_resources/cl/relax_multi_mini.cl"
+        rel_path = "../../cpp/common_resources/cl/relax_multi.cl"
         if not self.load_program(rel_path=rel_path, base_path=base_path, bPrint=False):
             exit(1)
         
@@ -116,6 +116,8 @@ class MolecularDynamics(OpenCLBase):
         # Dynamical variables
         self.create_buffer('apos',       nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
         self.create_buffer('aforce',     nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
+        # relax_multi.cl getMMFFf4() uses argument name 'fapos' for forces; alias it to the same buffer
+        self.buffer_dict['fapos'] = self.buffer_dict['aforce']
         self.create_buffer('aforce_old', nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
         self.create_buffer('avel',       nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
         self.create_buffer('fneigh',     nSystems * nnode * 4 * 2 * float_size, mf.READ_WRITE)
@@ -126,6 +128,8 @@ class MolecularDynamics(OpenCLBase):
         self.create_buffer('bkNeighs',  nSystems * nvecs  * 4 * int_size, mf.READ_ONLY)
         # Force field parameters
         self.create_buffer('REQs',     nSystems * natoms * 4 * float_size, mf.READ_ONLY)
+        # relax_multi.cl getMMFFf4() uses argument name 'REQKs' for REQ parameters; alias it to the same buffer
+        self.buffer_dict['REQKs'] = self.buffer_dict['REQs']
         self.create_buffer('apars',    nSystems * nnode * 4 * float_size, mf.READ_ONLY)
         self.create_buffer('bLs',      nSystems * nnode * 4 * float_size, mf.READ_ONLY)
         self.create_buffer('bKs',      nSystems * nnode * 4 * float_size, mf.READ_ONLY)
@@ -259,6 +263,8 @@ class MolecularDynamics(OpenCLBase):
 
         self.create_buffer('apos',   na * 4 * float_size, mf.READ_WRITE)
         self.create_buffer('aforce', na * 4 * float_size, mf.READ_WRITE)
+        # relax_multi.cl getMMFFf4() uses argument name 'fapos' for forces; alias it to the same buffer
+        self.buffer_dict['fapos'] = self.buffer_dict['aforce']
         self.create_buffer('REQs',   na * 4 * float_size, mf.READ_ONLY)
 
         self.toGPU('apos',   self.atoms  )
@@ -276,19 +282,31 @@ class MolecularDynamics(OpenCLBase):
         self.get_work_sizes()
         self.init_kernel_params()
                 
-        # Generate kernel arguments
-        self.kernel_args_getMMFFf4         = self.generate_kernel_args("getMMFFf4")
-        self.kernel_args_getMMFFf4_rot     = self.generate_kernel_args("getMMFFf4_rot")
-        self.kernel_args_getNonBond        = self.generate_kernel_args("getNonBond")
+        # Generate kernel arguments (only for kernels present in the compiled source)
+        self.kernel_args_getMMFFf4     = self.generate_kernel_args("getMMFFf4")
+        self.kernel_args_getMMFFf4_rot = None
+        if "getMMFFf4_rot" in self.kernelheaders:
+            self.kernel_args_getMMFFf4_rot = self.generate_kernel_args("getMMFFf4_rot")
+
+        self.kernel_args_getNonBond = None
+        if "getNonBond" in self.kernelheaders:
+            try:
+                self.kernel_args_getNonBond = self.generate_kernel_args("getNonBond")
+            except KeyError:
+                self.kernel_args_getNonBond = None
         # --- NOTE: grid-kernels are intialized in initGridFF()
         #self.kernel_args_getNonBond_GridFF_Bspline = self.generate_kernel_args("getNonBond_GridFF_Bspline")
         #self.kernel_args_getNonBond_GridFF_Bspline_tex = self.generate_kernel_args("getNonBond_GridFF_Bspline_tex")
         self.kernel_args_updateAtomsMMFFf4 = self.generate_kernel_args("updateAtomsMMFFf4")
-        # New propagator variants
-        self.kernel_args_updateAtomsMMFFf4_rot    = self.generate_kernel_args("updateAtomsMMFFf4_rot")
+        # New propagator variants (optional)
+        self.kernel_args_updateAtomsMMFFf4_rot = None
+        if "updateAtomsMMFFf4_rot" in self.kernelheaders:
+            self.kernel_args_updateAtomsMMFFf4_rot = self.generate_kernel_args("updateAtomsMMFFf4_rot")
         #self.kernel_args_updateAtomsMMFFf4_RATTLE = self.generate_kernel_args("updateAtomsMMFFf4_RATTLE")
-        self.kernel_args_cleanForceMMFFf4  = self.generate_kernel_args("cleanForceMMFFf4")
-        self.kernel_args_runMD             = self.generate_kernel_args("runMD")
+        self.kernel_args_cleanForceMMFFf4 = self.generate_kernel_args("cleanForceMMFFf4")
+        self.kernel_args_runMD = None
+        if "runMD" in self.kernelheaders:
+            self.kernel_args_runMD = self.generate_kernel_args("runMD")
 
     def init_kernel_params(self):
         """
@@ -311,6 +329,12 @@ class MolecularDynamics(OpenCLBase):
             'grid_invStep': np.array([0.0,0.0,0.0,0.0], dtype=np.float32),
             'grid_p0':      np.array([0.0,0.0,0.0,0.0], dtype=np.float32),
         }
+
+        # relax_multi.cl uses different arg names for the same dimensions
+        # - updateAtomsMMFFf4 uses `n`
+        # - getNonBond uses `ns`
+        self.kernel_params['n']  = self.kernel_params['nDOFs']
+        self.kernel_params['ns'] = self.kernel_params['nDOFs']
         
     def get_work_sizes(self):
         """

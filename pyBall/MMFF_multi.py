@@ -257,12 +257,12 @@ def getBuffs( NEIGH_MAX=4 ):
     gpu_avel      = getfBuff ( "gpu_avel",      (nSys,nvecs,4)  ) 
     gpu_constr    = getfBuff ( "gpu_constr",    (nSys,natoms,4) )
 
-    gpu_REQs      = getfBuff ( "gpu_REQs",      (nSys,natoms,3) )
-    gpu_MMpars    = getfBuff ( "gpu_MMpars",    (nSys,nnode,3)  ) 
-    gpu_BLs       = getfBuff ( "gpu_BLs",       (nSys,nnode,3)  ) 
-    gpu_BKs       = getfBuff ( "gpu_BKs",       (nSys,nnode,3)  )
-    gpu_Ksp       = getfBuff ( "gpu_Ksp",       (nSys,nnode,3)  )
-    gpu_Kpp       = getfBuff ( "gpu_Kpp",       (nSys,nnode,3)  )
+    gpu_REQs      = getfBuff ( "gpu_REQs",      (nSys,natoms,4) )
+    gpu_MMpars    = getfBuff ( "gpu_MMpars",    (nSys,nnode,4)  ) 
+    gpu_BLs       = getfBuff ( "gpu_BLs",       (nSys,nnode,4)  ) 
+    gpu_BKs       = getfBuff ( "gpu_BKs",       (nSys,nnode,4)  )
+    gpu_Ksp       = getfBuff ( "gpu_Ksp",       (nSys,nnode,4)  )
+    gpu_Kpp       = getfBuff ( "gpu_Kpp",       (nSys,nnode,4)  )
 
     gpu_lvecs     = getfBuff ( "gpu_lvecs",     (nSys,3,4)    )
     gpu_ilvecs    = getfBuff ( "gpu_ilvecs",    (nSys,3,4)    )
@@ -285,14 +285,25 @@ def getBuffs_UFF( NEIGH_MAX=4 ):
         natoms=ndims[0]; nbonds=ndims[1]; nangles=ndims[2]; ndihedrals=ndims[3]; ninversions=ndims[4]; nf=ndims[5]; i0dih=ndims[6]; i0inv=ndims[7]; i0ang=ndims[8]; i0bon=ndims[9]
         print( "getBuffs(): natoms=%i nbonds=%i nangles=%i ndihedrals=%i ninversions=%i nf=%i i0dih=%i i0inv=%i i0ang=%i i0bon=%i " %(natoms,nbonds,nangles,ndihedrals,ninversions,nf,i0dih,i0inv,i0ang,i0bon) )
         Es    = getBuff ( "Es",    (5,) )  # [ Etot,Eb,Ea,Ed,Ei ]
-        global apos,fapos,REQs,hneigh,fint,bonAtoms,angAtoms,dihAtoms,invAtoms,neighs,neighBs,bonParams,angParams,dihParams,invParams,angNgs,dihNgs,invNgs
+        global apos,fapos,REQs,hneigh,gpu_hneigh,fint,bonAtoms,angAtoms,dihAtoms,invAtoms,neighs,neighBs,bonParams,angParams,dihParams,invParams,angNgs,dihNgs,invNgs
+        global a2f_offsets,a2f_counts,a2f_indices
         #Ebuf     = getEnergyTerms( )
         apos      = getBuff ( "apos",     (natoms,3) )
         fapos     = getBuff ( "fapos",    (natoms,3) )
         REQs      = getBuff ( "REQs",     (natoms,4) )
         # ------ UFF
         hneigh    = getBuff ( "hneigh",    (natoms*NEIGH_MAX,4) )
+        # GPU-computed hneigh downloaded from OpenCL (float4). Optional.
+        try:
+            gpu_hneigh = getfBuff( "gpu_hneigh", (natoms*NEIGH_MAX,4) )
+        except Exception:
+            gpu_hneigh = None
         fint      = getBuff ( "fint",      (nf,3) )
+
+        # atom-to-force-piece mapping used by OpenCL assembleForces_UFF
+        a2f_offsets = getIBuff( "a2f_offsets", (natoms,) )
+        a2f_counts  = getIBuff( "a2f_counts",  (natoms,) )
+        a2f_indices = getIBuff( "a2f_indices", (nf,)     )
 
         bonParams = getBuff ( "bonParams", (nbonds,2)      )
         angParams = getBuff ( "angParams", (nangles,5)     )
@@ -525,6 +536,12 @@ lib.eval.argtypes  = []
 lib.eval.restype   =  c_double
 def eval():
     return lib.eval()
+
+# double eval_force_MMFF( int iParalel )
+lib.eval_force_MMFF.argtypes = [c_int]
+lib.eval_force_MMFF.restype  = c_double
+def eval_force_MMFF(iParalel=0):
+    return lib.eval_force_MMFF(iParalel)
 
 # #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
 # lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p, c_int ] 

@@ -123,6 +123,9 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     Quat4f* avel       =0;
     Quat4f* cvfs       =0;
 
+    // ---- UFF GPU-computed auxiliary buffer (downloaded from OpenCL)
+    Quat4f* hneigh_ocl =0; // [nSystems*nAtoms*4]
+
     FIRE*   fire       =0;  // FIRE-relaxation state
     Quat4f* MDpars     =0;  // Molecular dynamics params
     Quat4f* TDrive     =0;  // temperature and drived dynamics
@@ -289,6 +292,7 @@ void realloc( int nSystems_ ){
         _realloc0( avel,      uff_ocl->nAtomsTot  , Quat4fZero );
         _realloc( REQs,       uff_ocl->nAtomsTot );
         _realloc( pbcshifts, uff_ocl->nSystems * (npbc+1) ); // npbc is from MolWorld_sp3
+        _realloc0( hneigh_ocl, uff_ocl->nAtomsTot*4, Quat4fZero );
         // Allocate constraint buffers for UFF (shared with MMFF)
         _realloc0( constr,    uff_ocl->nAtomsTot , Quat4fOnes*-1. );
         _realloc0( constrK,   uff_ocl->nAtomsTot , Quat4fOnes*-1. );
@@ -369,7 +373,7 @@ virtual int getMultiConf( float* Fconvs , bool* bExplors )override{
 };
 
 
-virtual void init() override {
+virtual int init() override {
     int err = 0;
     printf("# ========== MolWorld_sp3_multi::init() START\n");
     gopt.msolver = this;
@@ -462,6 +466,7 @@ virtual void init() override {
     if( uploadPopName ){   printf( "!!!!!!!!!!!!\n UPLOADING POPULATION FROM FILE (%s)", uploadPopName );  upload_pop( uploadPopName ); }
 
     printf("# ========== MolWorld_sp3_multi::init() DONE\n");
+    return 0;
 }
 
 
@@ -693,7 +698,7 @@ void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=false, bool bVel=fa
 
 
 void upload_sys( int isys, bool bParams=false, bool bForces=0, bool bVel=true, bool blvec=true ){
-    //printf("MolWorld_sp3_multi::upload() \n");
+    printf("MolWorld_sp3_multi::upload() nvecs %i nAtoms %i nnode %i nbkng %i\n", ocl.nvecs, ocl.nAtoms, ocl.nnode, ocl.nbkng);
     int i0v   = isys * ocl.nvecs;
     int i0a   = isys * ocl.nAtoms;
     int err=0;
@@ -720,8 +725,8 @@ void upload_sys( int isys, bool bParams=false, bool bForces=0, bool bVel=true, b
         if(bExclusion2){
             err|= ocl.upload( ocl.ibuff_excl,      excl      , ocl.nAtoms*EXCL_MAX, i0a*EXCL_MAX  );
         }
-        err|= ocl.upload( ocl.ibuff_bkNeighs,  bkNeighs  , ocl.nbkng, i0bk  );
-        err|= ocl.upload( ocl.ibuff_bkNeighs_new, bkNeighs_new, ocl.nbkng, i0bk  );
+        err|= ocl.upload( ocl.ibuff_bkNeighs,     bkNeighs    , ocl.nvecs, i0v  );  // buffer is nSystems*nvecs elements
+        err|= ocl.upload( ocl.ibuff_bkNeighs_new, bkNeighs_new, ocl.nvecs, i0v  );
         //err|= ocl.upload( ocl.ibuff_neighForce, neighForce  );
         err|= ocl.upload( ocl.ibuff_REQs,   REQs,  ocl.nAtoms, i0a  );
         err|= ocl.upload( ocl.ibuff_MMpars, MMpars, ocl.nnode, i0n );
@@ -991,6 +996,8 @@ void download_uff_sys( int isys, bool bForces, bool bVel ){
     int i0a = isys * uff_ocl->nAtoms;
     uff_ocl->download( uff_ocl->ibuff_apos, (float*)(atoms+i0a), uff_ocl->nAtoms );
     if(bForces){ uff_ocl->download( uff_ocl->ibuff_fapos, (float*)(aforces+i0a), uff_ocl->nAtoms ); }
+    // download GPU-computed hneigh (float4) for parity/debugging
+    uff_ocl->download( uff_ocl->ibuff_hneigh, (float*)(hneigh_ocl + i0a*4), uff_ocl->nAtoms*4 );
     //if(bVel   ){ uff_ocl->download( uff_ocl->ibuff_avel,  (float*)(avel+i0a),    uff_ocl->nAtoms ); } // not implemented yet
     uff_ocl->finishRaw();
 }
@@ -999,6 +1006,8 @@ void download_uff_sys( int isys, bool bForces, bool bVel ){
 void download_uff( bool bForces, bool bVel ){
     uff_ocl->download_results( (float*)aforces, 0 ); // energies not handled yet
     uff_ocl->download( uff_ocl->ibuff_apos, (float*)atoms );
+    // download GPU-computed hneigh (float4) for parity/debugging
+    uff_ocl->download( uff_ocl->ibuff_hneigh, (float*)hneigh_ocl, uff_ocl->nAtomsTot*4 );
     uff_ocl->finishRaw();
 }
 

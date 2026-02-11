@@ -27,6 +27,7 @@ class AtomicSystem( ):
         self.ngs     = ngs 
         self.lvec    = lvec
         self.aux_labels = None
+        self.natoms  = 0
         if fname is not None:
             ext = fname.split('.')[-1]
             print(f"DEBUG: AtomicSystem.__init__({fname}) ext={ext}")
@@ -77,6 +78,9 @@ class AtomicSystem( ):
                     import traceback
                     traceback.print_exc()
                     raise
+
+        if self.apos is not None:
+            self.natoms = len(self.apos)
 
     def saveXYZ(self, fname, mode="w", blvec=True, comment="", ignore_es=None, bQs=True, other_lines=None ):
         if blvec and (self.lvec is not None):

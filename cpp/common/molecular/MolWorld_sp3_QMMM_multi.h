@@ -62,7 +62,7 @@ class MolWorld_sp3_QMMM_multi : public MolWorld_sp3_multi { public:
 
 virtual int getMolWorldVersion() const override { return (int)MolWorldVersion::QM | (int)MolWorldVersion::GPU; };
 
-virtual void init(){
+virtual int init(){
     //MolWorld_sp3    ::init( bGrid );
     //MolWorld_sp3_multi::init( bGrid );
     MolWorld_sp3_multi::init();
@@ -70,7 +70,7 @@ virtual void init(){
         InitQMMM(); bPrepared_qm=true; 
         printf("QM preparation DONE \n");
     }
-
+    return 0;
 }
 
 

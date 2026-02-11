@@ -128,56 +128,34 @@ class OpenCLBase:
                   and values are the full header string
         """
         headers = {}
-        
-        # Split into lines and process line by line
-        lines = source_code.split('\n')
-        i = 0
-        
+
+        # Robust extraction: for each "__kernel void name(" find the matching ')' of the parameter list
         import re
-        while i < len(lines):
-            line = lines[i].strip()
-            
-            # Skip empty lines and commented lines
-            if not line or line.startswith('//'):
-                i += 1
+        for m in re.finditer(r'__kernel\s+void\s+([A-Za-z0-9_]+)\s*\(', source_code):
+            kname = m.group(1)
+            i0 = m.start()
+            # Find the '(' that starts the parameter list
+            ip = source_code.find('(', m.end() - 1)
+            if ip < 0:
                 continue
-                
-            # Check for kernel definition
-            if line.startswith('__kernel'):
-                kernel_start = i
-                # Robust kernel name parse (avoid relying on fixed token positions)
-                m = re.search(r'__kernel\s+void\s+([A-Za-z0-9_]+)\s*\(', line)
-                if m is None:
-                    # Fallback to the original heuristic
-                    parts = line.split()
-                    if len(parts) < 3:
-                        i += 1
-                        continue
-                    kernel_name = parts[2].split('(')[0].strip()
-                else:
-                    kernel_name = m.group(1).strip()
-                
-                # Find opening parenthesis
-                while '(' not in line and i < len(lines):
-                    i += 1
-                    line = lines[i].strip()
-                    
-                # Find closing parenthesis
-                paren_level = line.count('(') - line.count(')')
+            level = 1
+            i = ip + 1
+            while i < len(source_code) and level > 0:
+                c = source_code[i]
+                if c == '(':
+                    level += 1
+                elif c == ')':
+                    level -= 1
                 i += 1
-                while i < len(lines) and paren_level > 0:
-                    line = lines[i].strip()
-                    if not line.startswith('//'):  # Skip comment lines
-                        paren_level += line.count('(')
-                        paren_level -= line.count(')')
-                    i += 1
-                    
-                # Extract full header
-                header = '\n'.join(lines[kernel_start:i])
-                headers[kernel_name] = header
-            else:
-                i += 1
-                
+            if level != 0:
+                continue
+            # Include lines from kernel start up to the line containing the closing ')'
+            i1 = i
+            # Expand to end of line for readability (optional)
+            while i1 < len(source_code) and source_code[i1] != '\n':
+                i1 += 1
+            headers[kname] = source_code[i0:i1]
+
         return headers
     
     def create_buffer(self, name, size, flags=cl.mem_flags.READ_WRITE):

@@ -95,13 +95,32 @@ Related to script `/tests/tUFF/test_MMFFsp3_pyOCL.py`
 
 ## Current parity test status (UFF/MMFF)
 
-| Test | How to run (CWD) | Result | Notes |
-| --- | --- | --- | --- |
-| UFF CPU vs GPU (C++ path, bonded-only) | `cd tests/tUFF && python3 test_UFF_multi.py` | **Pass on forces**: max |ΔF| ~5e-6 | Kernels load via `common_resources/cl`; tolerance 1e-5. |
-| UFF PyOpenCL vs CPU (kernel isolation) | `cd tests/tUFF && python3 test_UFF_ocl.py --molecule ../../cpp/common_resources/mol/formic_acid.mol2 --components bonds,angles,dihedrals,inversions` | **Pass**: bonds/angles/dihedrals/inversions all within float32 noise (max |ΔF| ~4e-5) | Default tol now 5e-5; use `--fast-exit 1` to skip teardown noise. |
-| MMFF parity | (not scripted) | **Unknown** | No dedicated CPU↔GPU parity harness; `test_MMFFsp3_pyOCL.py` is MD/diagnostics only. |
+### Summary matrix (6-molecule sweep: methanol.mol2, HCONH2.xyz, uracil.xyz, xylitol.mol2, guanine.xyz, Si10_H.xyz)
 
-### 2026-02-10 UFF PyOpenCL parity recap
+| Forcefield | Driver pair | Scope | Result | Notes |
+| --- | --- | --- | --- | --- |
+| MMFF | C++ CPU ↔ C++ OpenCL | bonded-only | **PASS (all 6)** | `test_MMFF_multi_parity.py` with `--nonbond 0 --angles 1 --pisigma 1 --pipii 1`; tolerances 1e-4/0.0. |
+| MMFF | C++ OpenCL ↔ PyOpenCL | bonded-only | **PASS (all 6)** | `test_MMFF_cpp_vs_pyocl_parity.py` with `--nonbond 0 --angles 1 --pisigma 1 --pipii 1`; tolerances 1e-4/0.0. |
+| UFF | C++ CPU ↔ C++ OpenCL | bonds-only | **PASS (all 6)** | `test_parity_suite.py` stages `--components bonds`; max |ΔF| ~1e-6. |
+| UFF | C++ CPU ↔ C++ OpenCL | bonds+angles | **PASS (all 6)** | Stage `--components bonds,angles`; float noise only. |
+| UFF | C++ CPU ↔ C++ OpenCL | bonds+angles+dihedrals | **FAIL (methanol, HCONH2, uracil, xylitol, guanine); PASS (Si10_H)** | Mismatch isolated to dihedral term; max |ΔF| up to ~5e-3 for methanol, larger for others earlier; likely `dihNgs/hneigh` sign/assembly issue. |
+| UFF | C++ CPU ↔ C++ OpenCL | full (incl. inversions) | **same as above** | Si10_H trivial/pass; others fail once dihedrals enabled. |
+
+### Key scripts and roles (with dump/fast-exit options)
+- `tests/tUFF/test_parity_suite.py`: Orchestrates multi-molecule runs, stages UFF components, reruns failures with `--dump`/`--dump-n`, uses `--fast-exit` to avoid C++ teardown aborts; logs in `OUT_parity_suite/`.
+- `tests/tUFF/test_MMFF_multi_parity.py`: C++ CPU vs C++ OpenCL MMFF bonded parity; flags `--dump/--dump-n/--save-npz/--fast-exit`.
+- `tests/tUFF/test_MMFF_cpp_vs_pyocl_parity.py`: C++ OpenCL vs PyOpenCL MMFF parity; same dump flags.
+- `tests/tUFF/test_MMFF_ocl_parity.py`: C++ CPU vs PyOpenCL MMFF parity; same dump flags (named ocl but compares CPU↔PyOCL).
+- `tests/tUFF/test_UFF_ocl.py`: C++ CPU vs C++ OpenCL UFF; supports `--components` staging plus `--dump/--dump-n/--fast-exit`; now uses `uff_cpp.eval()` to keep geometry fixed.
+- `tests/tUFF/test_UFF_multi.py`: Legacy C++ UFF multi-system test (CPU vs GPU) — kept as reference.
+- `tests/tUFF/test_MMFFsp3_pyOCL.py`: Rotational/pi-focused MMFF PyOCL harness with pack/dump options (not part of suite).
+
+### Insights / open items
+- MMFF parity achieved; all inputs and forces match across CPU/OCL/PyOCL for bonded terms on the 6-molecule set.
+- UFF parity clean until dihedrals; staging proves bonds/angles OK. Next step: compare/dump `dihNgs`, `hneigh`, and `a2f_*` to find the sign/assembly mismatch in `evalDihedrals_UFF` vs CPU `bakeDihedralNeighs()` convention.
+- Tolerances: MMFF 1e-4 (forces), UFF staged runs currently 1e-4; dihedral discrepancy exceeds float noise, so do not loosen tolerance until the sign issue is fixed.
+
+### 2026-02-11 UFF PyOpenCL parity recap
 
 - **Root causes fixed**
   - CPU was still running nonbonded/subtraction paths because `setSwitches2/setSwitchesUFF` treat `0` as “keep”. Added C++ API `setSwitchesUFF_NB` and Python binding to force-disable UFF internal `bNonBonded/bNonBondNeighs/bSubtractAngleNonBond` with `-1` for bonds-only parity.
@@ -122,3 +141,34 @@ Related to script `/tests/tUFF/test_MMFFsp3_pyOCL.py`
   - Accept float32 GPU vs float64 CPU differences by setting tolerance accordingly; don’t chase noise once physics and buffers align.
 
 - **[Follow-up]** Keep Kpp/Ks overrides synchronized with AtomTypes overrides (e.g. methanol tweak) now that recoil is disabled; any future mixing changes must maintain symmetry so the double-counted pi-pi evaluation does not introduce bias.
+
+### 2026-02-11 UFF PyOCL vs C++ OCL (6-molecule sweep, staged components)
+
+| molecule      | bonds | bonds+angles | +dihedrals | +dihedrals+inversions |
+|---------------|-------|--------------|------------|-----------------------|
+| methanol.mol2 | PASS  | PASS         | FAIL       | FAIL                  |
+| HCONH2.xyz    | PASS  | PASS         | FAIL       | FAIL                  |
+| uracil.xyz    | PASS  | PASS         | FAIL       | FAIL                  |
+| xylitol.mol2  | PASS  | PASS         | FAIL       | FAIL                  |
+| guanine.xyz   | PASS  | PASS         | FAIL       | FAIL                  |
+| Si10_H.xyz    | PASS  | PASS         | FAIL       | FAIL                  |
+
+Notes
+- All bonds and bonds+angles now pass with buffer min/max reported; no zero-force or NaN cases.
+- Si10_H upgraded from ABORT to PASS for bonds and bonds+angles after generalized Si3 typing; dihedrals still mismatch.
+- Dihedral (and inversion) stages remain the only failing tier; failing forces without NaNs. Next step is focused dump/compare of dih* inputs (dihNgs/hneigh/a2f) and per-dihedral forces for Si10_H and organics.
+
+## MMFF GPU/CPU Parity Findings (bonded-only, Feb 2026)
+
+- Flow (mirror run_ocl_opt for forces-only): cleanF -> getMMFFf4 -> updateAtomsMMFFf4 with dt=0 -> download/unpack. The dt=0 call assembles recoil forces from fneigh via bkNeighs but skips dynamics (see relax_multi_mini.cl: updateAtomsMMFFf4 early return at MDpars.x<1e-16).
+- Switch propagation: setSwitches2 touches W.ffl; propagate flags to W.ffls[isys] before CPU eval so CPU/GPU match.
+- VdW subtraction flag: set bSubtractVdW=0 when NonBonded is off and pass it to kernel arg 16 of getMMFFf4.
+- Force readback: both CPU and GPU paths must copy ffls[isys].fapos into nbmol.fapos so Python sees the same buffer.
+- bkNeighs upload sizing: ibuff_bkNeighs/bkNeighs_new are allocated as nSystems*nvecs (nvecs=natoms+nnode). Upload must use size=nvecs and offset=i0v. Uploading nbkng overruns the buffer (nbkng=nnode*4*2). In the current builder, nnode=natoms and each atom gets a pi slot; caps have Ksp/Kpp=0 so their pi entries are inert but still occupy nvecs slots.
+- Parity result: HCOOH bonded-only (nonbond off) now matches CPU vs GPU with Max|dF|~1.9e-6, RMS~7e-7, energy match.
+
+### 2026-02-11 MMFF C++/OCL vs PyOCL parity status
+- Inputs: **PASS** — neighs, bkNeighs, REQs, MMpars/apars, BLs, BKs, Ksp, Kpp, and `gpu_atoms` (xyz + pi tail) match within tolerance.
+- Forces: **PENDING** — bonded-only HCOOH still shows |ΔF|≈3.7 in the parity harness; C++ `gpu_aforces.w` is zero (kernels don’t accumulate energy), PyOCL sums nonzero `.w`.
+- Kernels: both paths build from the same `cpp/common_resources/cl/relax_multi_mini.cl`; intended sequence is `cleanForceMMFFf4 -> getMMFFf4 -> updateAtomsMMFFf4(dt=0)`. Need to re-check flags (nPBC, bSubtractVdW, mask) and buffer clearing (aforce/fneigh) to ensure identical flow.
+- Next checks: compare forces only (ignore `.w`), gate kernel DBG prints for one atom/system after `getMMFFf4` and after `updateAtomsMMFFf4`, verify work sizes and per-system offsets, and decide whether to add matching energy accumulation or skip energy comparison.

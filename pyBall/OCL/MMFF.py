@@ -119,11 +119,37 @@ class MMFF:
         # If set to a callable(str), it will receive line-by-line debug records.
         self.debug_topo = None
 
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        data_path = os.path.join(base_path, "../../cpp/common_resources/")
+        self._bond_types = MMparams.read_bond_types(os.path.join(data_path, 'BondTypes.dat'))
+
     def _dbg_topo(self, line: str):
         cb = getattr(self, 'debug_topo', None)
         if cb is None:
             return
         cb(str(line))
+
+    @staticmethod
+    def _getSomeOrtho(v):
+        # Exact port of Vec3<T>::getSomeOrtho() from cpp/common/math/Vec3.h
+        v = np.asarray(v, dtype=np.float64)
+        x, y, z = float(v[0]), float(v[1]), float(v[2])
+        xx = x * x
+        yy = y * y
+        v1 = np.zeros(3, dtype=np.float64)
+        if xx < yy:
+            v1[0] = -(yy + z * z)
+            v1[1] = x * y
+            v1[2] = x * z
+        else:
+            v1[0] = y * x
+            v1[1] = -(z * z + xx)
+            v1[2] = y * z
+        v2 = np.zeros(3, dtype=np.float64)
+        v2[0] = y * v1[2] - z * v1[1]
+        v2[1] = z * v1[0] - x * v1[2]
+        v2[2] = x * v1[1] - y * v1[0]
+        return v1, v2
 
     def realloc(self, nnode, ncap, ntors=0, nPBC=(0,0,0) ):
         """
@@ -422,12 +448,12 @@ class MMFF:
                 self.apars[ia, 0] = np.cos(ang0)    # ssC0
                 self.apars[ia, 1] = np.sin(ang0)    # ssC1
                 self.apars[ia, 2] = atom_type.Kss * 4.0  # ssK
-                self.apars[ia, 3] = np.sin(atom_type.Ass * deg2rad)  # piC0
+                self.apars[ia, 3] = np.sin(atom_type.Asp * deg2rad)  # piC0
 
 
                 if verbosity > 0: print( "nbond", nbond )
                 # Setup neighbors - ngs is already populated above
-                hs = np.zeros((4, 3), dtype=np.float32)
+                hs = np.zeros((4, 3), dtype=np.float64)
                 print(f"DEBUG MMFF: ia={ia} {A_ename} nbond={nbond} conf_npi={conf_npi} conf_ne={conf_ne}")
                 for k in range(nbond):
                     ja = ngi[k]  # ja is the atom index of the neighbor
@@ -451,7 +477,7 @@ class MMFF:
                         hs_k /= norm
                     else:
                         hs_k = np.array([0.0, 0.0, 0.0], dtype=np.float32)
-                    hs[k] = hs_k.astype(np.float32)
+                    hs[k] = hs_k.astype(np.float64)
 
                     # Assign neighbor
                     self.neighs[ia, k] = ja
@@ -462,9 +488,9 @@ class MMFF:
                         self.bLs[ia, k] = rij
                         self.bKs[ia, k] = kij
                     else:
-                        rij, kij = self.assignBondParamsSimple(ia, ja, mol, atom_types)
-                        self.bLs[ia, k] = rij
-                        self.bKs[ia, k] = kij
+                        rij, kij = self.assignBondParamsTable(ia, ja, mol, atom_types, npi_list)
+                        self.bLs[ia, k] = np.float32(rij)
+                        self.bKs[ia, k] = np.float32(kij)
 
                     # Assign Ksp
                     if conf_npi > 0 or conf_ne > 0:
@@ -484,25 +510,13 @@ class MMFF:
                 if nbond <= 1:
                     self.pipos[ia] = np.array([0.0, 0.0, 0.0], dtype=np.float32)
                 
-                hs_filled = self.makeConfGeom(nb=nbond, npi=conf_npi)
-                if nbond < 4:
-                    for idx in range(nbond, 4):
-                        hs_filled[idx] = hs[idx]
-                if conf_npi > 0 and hasattr(mol, 'get_atomi_pi_direction'):
-                    pi_vec = mol.get_atomi_pi_direction(ia)
-                else:
-                    pi_vec = hs_filled[3]
-                norm_pi = np.linalg.norm(pi_vec)
-                if norm_pi >= 1e-6:
-                    pi_vec = (pi_vec / norm_pi).astype(np.float32)
-                else:
-                    pi_vec = np.array([0.0, 0.0, 0.0], dtype=np.float32)
-                self.pipos[ia] = pi_vec
-                print(f"DEBUG MMFF: init pi_vec ia={ia} -> {self.pipos[ia]} (raw={hs_filled[3]})")
+                # Complete configuration geometry from sigma bond directions (C++ makeConfGeom)
+                self.makeConfGeom(hs, nbond, conf_npi)
+                self.pipos[ia] = hs[3].astype(np.float32)
 
                 if conf_npi > 0:
                     neigh_ids = [int(x) for x in self.neighs[ia] if int(x) >= 0]
-                    hs_raw = hs_filled[3]
+                    hs_raw = hs[3]
                     self._dbg_topo(
                         f"PI_INIT ia={ia:4d} nb={int(nbond)} npi={int(conf_npi)} neigh={neigh_ids} "
                         f"raw=({hs_raw[0]: .6f},{hs_raw[1]: .6f},{hs_raw[2]: .6f}) "
@@ -532,26 +546,22 @@ class MMFF:
         mol.npi_list = [int(x) for x in npi_list]
         mol.nep_list = [int(x) for x in nep_list]
 
-        self._propagate_pi_dirs(mol, npi_list)
-        if align_pi_vectors:
-            self._align_pi_signs(mol, npi_list)
+        # For parity with C++: do not propagate/flip pi directions here; C++ uses hs[3] from makeConfGeom directly.
 
-        # Normalize pi-orbital vectors and provide a safe fallback if zero
+        # C++ normalizes pi vectors before use in evaluation/upload (normalizePis); do the same here.
         if self.pipos is not None:
-            for i in range(self.nnode):
-                v = self.pipos[i]
-                n = np.linalg.norm(v)
-                if not np.isfinite(n) or n < 1e-8:
-                    print(f"WARNING MMFF: pi_dir unresolved for node {i}, leaving zero vector")
-                    self.pipos[i] = np.array([0.0, 0.0, 0.0], dtype=np.float32)
-                else:
-                    self.pipos[i] = (v / n).astype(np.float32)
-                if npi_list[i] > 0:
-                    print(f"DEBUG MMFF: final pi_vec ia={i} -> {self.pipos[i]} (norm={n})")
-                    self._dbg_topo(
-                        f"PI_FINAL ia={i:4d} npi={int(npi_list[i])} "
-                        f"pi=({self.pipos[i][0]: .6f},{self.pipos[i][1]: .6f},{self.pipos[i][2]: .6f}) norm={float(n): .6f}"
-                    )
+            for ia in range(min(self.nnode, self.pipos.shape[0])):
+                v = self.pipos[ia]
+                n = float(np.linalg.norm(v))
+                if n > 1e-16:
+                    self.pipos[ia] = (v / n).astype(np.float32)
+
+        # Match C++ ffl.flipPis(Vec3dOne): enforce consistent sign of pi vectors
+        if self.pipos is not None:
+            ref = np.array([1.0, 1.0, 1.0], dtype=np.float32)
+            for ia in range(min(self.nnode, self.pipos.shape[0])):
+                if float(np.dot(self.pipos[ia], ref)) < 0.0:
+                    self.pipos[ia] *= -1.0
 
         # Write pi-orbital unit vectors into the tail of apos (indices natoms : natoms+nnode)
         # This matches kernels expecting apos[iav + nAtoms] to hold pi orientation for each node atom
@@ -654,12 +664,28 @@ class MMFF:
                 break
 
 
-    def assignBondParamsSimple(self, ia, ja, mol, atom_types ):
+    def assignBondParamsTable(self, ia, ja, mol, atom_types, npi_list):
         ti = atom_types[mol.enames[ia]]
         tj = atom_types[mol.enames[ja]]
-        rij = ti.Ruff + tj.Ruff
-        kij = np.sqrt( tj.Kss * ti.Kss )
-        return rij, kij
+        order = 1 + min(int(npi_list[ia]), int(npi_list[ja]))
+        # Try exact atom-type names first, then parents, then elements (mirrors MMFFparams::getBondType fallbacks)
+        def _try(a, b):
+            return MMparams.get_bond_params(self._bond_types, a, b, order)
+        a0 = ti.name; b0 = tj.name
+        try:
+            return _try(a0, b0)
+        except KeyError:
+            pass
+        ap = ti.parent_name if ti.parent_name and ti.parent_name != '*' else a0
+        bp = tj.parent_name if tj.parent_name and tj.parent_name != '*' else b0
+        for a1, b1 in ((ap, b0), (a0, bp), (ap, bp)):
+            try:
+                return _try(a1, b1)
+            except KeyError:
+                pass
+        ae = ti.element_name if ti.element_name else a0
+        be = tj.element_name if tj.element_name else b0
+        return _try(ae, be)
         
 
     def assignBondParamsUFF(self, ib, ai, aj, mol, atom_types):
@@ -753,7 +779,7 @@ class MMFF:
 
         return (rij, kij)
 
-    def makeConfGeom(self, nb, npi):
+    def makeConfGeom(self, hs, nb, npi):
         """
         Sets up the configuration geometry based on bond vectors.
 
@@ -765,15 +791,16 @@ class MMFF:
         Returns:
         - np.ndarray: The filled hs array with shape (4, 3).
         """
-        hs = np.zeros((4, 3), dtype=np.float32)
+        hs = np.asarray(hs, dtype=np.float64)
+        assert hs.shape == (4, 3)
         if nb == 3:
             # Defined by 3 sigma bonds
             cross_prod = np.cross(hs[1] - hs[0], hs[2] - hs[0])
             norm = np.linalg.norm(cross_prod)
             if norm != 0:
-                cross_prod /= norm
+                cross_prod *= (-1.0 / norm)
             else:
-                cross_prod = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+                cross_prod = np.array([0.0, 0.0, 0.0], dtype=np.float64)
 
             if npi == 0:
                 # sp3 no-pi
@@ -786,27 +813,43 @@ class MMFF:
 
         elif nb == 2:
             # Defined by 2 sigma bonds
-            cross_prod = np.cross(hs[0], hs[1])
-            norm = np.linalg.norm(cross_prod)
-            if norm != 0:
-                cross_prod /= norm
+            v1 = hs[0]
+            v2 = hs[1]
+            b = np.cross(v1, v2)
+            nb2 = float(np.dot(b, b))
+            if nb2 > 0.0:
+                b *= (1.0 / np.sqrt(nb2))
             else:
-                cross_prod = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+                b[:] = 0.0
+            a = (v2 - v1)
+            na2 = float(np.dot(a, a))
+            if na2 > 0.0:
+                a *= (1.0 / np.sqrt(na2))
+            else:
+                # fallback: pick any ortho to v1
+                ax = np.array([1.0, 0.0, 0.0], dtype=np.float64)
+                if abs(float(v1[0])) > 0.9:
+                    ax[:] = (0.0, 1.0, 0.0)
+                a = np.cross(v1, ax)
+                na2 = float(np.dot(a, a))
+                if na2 > 0.0:
+                    a *= (1.0 / np.sqrt(na2))
+                else:
+                    a[:] = 0.0
+            c = np.cross(b, a)
 
             if npi == 0:
                 # -CH2- like sp3 no-pi => 109.5 degrees
                 cb = 0.81649658092  # sqrt(2/3)
                 cc = 0.57735026919  # sqrt(1/3)
-                hs[2] = cross_prod * cc + hs[0] * cb
-                hs[3] = cross_prod * cc - hs[0] * cb
+                hs[2] = c * cc + b * cb
+                hs[3] = c * cc - b * cb
             elif npi == 1:
-                # =CH- like sp1-pi
-                hs[2] = cross_prod
-                hs[3] = hs[0]
+                hs[2] = c
+                hs[3] = b
             else:
-                # #C- like sp2-pi
-                hs[2] = -cross_prod
-                hs[3] = hs[0]
+                hs[2] = c
+                hs[3] = b
 
         elif nb == 1:
             # Defined by 1 sigma bond
@@ -814,33 +857,10 @@ class MMFF:
             if norm_c != 0:
                 c = hs[0] / norm_c
             else:
-                c = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+                c = np.array([0.0, 0.0, 0.0], dtype=np.float64)
 
-            # Find an orthogonal vector to c
-            if abs(c[0]) < abs(c[1]):
-                if abs(c[0]) < abs(c[2]):
-                    ortho1 = np.array([1.0, 0.0, 0.0], dtype=np.float32)
-                else:
-                    ortho1 = np.array([0.0, 0.0, 1.0], dtype=np.float32)
-            else:
-                if abs(c[1]) < abs(c[2]):
-                    ortho1 = np.array([0.0, 1.0, 0.0], dtype=np.float32)
-                else:
-                    ortho1 = np.array([0.0, 0.0, 1.0], dtype=np.float32)
-
-            a = np.cross(c, ortho1)
-            norm_a = np.linalg.norm(a)
-            if norm_a != 0:
-                a /= norm_a
-            else:
-                a = np.array([0.0, 0.0, 0.0], dtype=np.float32)
-
-            b = np.cross(c, a)
-            norm_b = np.linalg.norm(b)
-            if norm_b != 0:
-                b /= norm_b
-            else:
-                b = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+            # C++: c.getSomeOrtho(m.b,m.a);
+            b, a = self._getSomeOrtho(c)   # C++ uses raw (non-normalized) vectors
 
             if npi == 0:
                 # -CH3 like sp3 no-pi => 109.5 degrees
@@ -870,33 +890,10 @@ class MMFF:
             if norm_c != 0:
                 c = hs[0] / norm_c
             else:
-                c = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+                c = np.array([0.0, 0.0, 0.0], dtype=np.float64)
 
-            # Find an orthogonal vector to c
-            if abs(c[0]) < abs(c[1]):
-                if abs(c[0]) < abs(c[2]):
-                    ortho1 = np.array([1.0, 0.0, 0.0], dtype=np.float32)
-                else:
-                    ortho1 = np.array([0.0, 0.0, 1.0], dtype=np.float32)
-            else:
-                if abs(c[1]) < abs(c[2]):
-                    ortho1 = np.array([0.0, 1.0, 0.0], dtype=np.float32)
-                else:
-                    ortho1 = np.array([0.0, 0.0, 1.0], dtype=np.float32)
-
-            a = np.cross(c, ortho1)
-            norm_a = np.linalg.norm(a)
-            if norm_a != 0:
-                a /= norm_a
-            else:
-                a = np.array([0.0, 0.0, 0.0], dtype=np.float32)
-
-            b = np.cross(c, a)
-            norm_b = np.linalg.norm(b)
-            if norm_b != 0:
-                b /= norm_b
-            else:
-                b = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+            # C++: c.getSomeOrtho(m.b,m.a);
+            b, a = self._getSomeOrtho(c)   # C++ uses raw (non-normalized) vectors
 
             if npi == 0:
                 # CH4 like sp3 no-pi => 109.5 degrees

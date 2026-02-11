@@ -200,6 +200,35 @@ def read_atom_types(filepath, element_types=None):
 
     return atom_types
 
+
+def read_bond_types(filepath):
+    bond_types = {}
+    with open(filepath, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if (not line) or line.startswith('#'):
+                continue
+            parts = line.split()
+            if len(parts) < 5:
+                raise ValueError(f"BondTypes.dat line incomplete: '{line}'")
+            a = parts[0]
+            b = parts[1]
+            order = int(parts[2])
+            l0 = float(parts[3])
+            k = float(parts[4])
+            key = (a, b, order) if (a <= b) else (b, a, order)
+            if key in bond_types:
+                raise ValueError(f"Duplicate bond type {key} in BondTypes.dat")
+            bond_types[key] = (l0, k)
+    return bond_types
+
+
+def get_bond_params(bond_types, a, b, order):
+    key = (a, b, order) if (a <= b) else (b, a, order)
+    if key not in bond_types:
+        raise KeyError(f"Missing bond type {key} in BondTypes.dat")
+    return bond_types[key]
+
 def read_AtomAndElementTypes(path, felement_types='ElementTypes.dat', fatom_types='AtomTypes.dat'):
     print("read_AtomAndElementTypes() path", path)
     path1 = path + felement_types; print("path1", path1)

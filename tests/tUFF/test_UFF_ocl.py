@@ -114,8 +114,10 @@ def compare_bufs(cpu_bufs, gpu_bufs, tol=1e-6, buf_type='Buffers'):
     # Use cpu_bufs keys as the reference set of buffers to check
     for name in cpu_bufs:
         if name not in gpu_bufs:
-            # This is not necessarily an error if GPU doesn't need the buffer,
-            # but for UFF validation it is.
+            cpu = cpu_bufs[name]
+            # If CPU buffer is empty, GPU may legitimately skip allocation/download
+            if hasattr(cpu, 'size') and (cpu.size == 0):
+                continue
             error_messages.append(f"--- ERROR in buffer: {name} ---\nGPU buffer not found or failed to download.\n")
             has_errors = True
             continue
@@ -201,23 +203,19 @@ def run_uff_cpp( args ):
     uff_cpp.getBuffs_UFF()
     print("-----------\n uff_cpp.setTrjName()  ")
 
-    print("--- CPU Buffers Before Run ---")
-    cpu_topo_bufs = get_cpu_bufs(uff_cpp, TOPOLOGY_SPECS)
-    print_bufs(cpu_topo_bufs, "CPU Topology Buffers")
-    cpu_param_bufs = get_cpu_bufs(uff_cpp, PARAMS_SPECS)
-    print_bufs(cpu_param_bufs, "CPU Parameter Buffers")
+    if args.dump:
+        print("--- CPU Buffers Before Run ---")
+        cpu_topo_bufs = get_cpu_bufs(uff_cpp, TOPOLOGY_SPECS)
+        print_bufs(cpu_topo_bufs, "CPU Topology Buffers")
+        cpu_param_bufs = get_cpu_bufs(uff_cpp, PARAMS_SPECS)
+        print_bufs(cpu_param_bufs, "CPU Parameter Buffers")
 
 
     uff_cpp.print_debugs()
     uff_cpp.print_setup()
 
-    uff_cpp.setTrjName("trj.xyz", savePerNsteps=1)
-    #print("-----------\n uff_cpp.run()  ")
-    #uff_cpp.run( nstepMax=1, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1 )
-    #uff_cpp.run( nstepMax=10000, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1 )
-    # Single eval only (nstepMax=1) so geometry stays at input for fair comparison with GPU
-    uff_cpp.run( nstepMax=1, dt=0.01, Fconv=1e-30, ialg=2, damping=0.1 )
-    energy = uff_cpp.Es[0]
+    # Evaluate energy/forces at fixed geometry (no dynamics/integration)
+    energy = uff_cpp.eval()
     forces = uff_cpp.fapos.copy()
     return energy, forces, uff_cpp
 
@@ -261,11 +259,12 @@ def run_uff_ocl(args):
     uff_cl.bDoDihedrals  = components['dihedrals']
     uff_cl.bDoInversions = components['inversions']
 
-    print("--- GPU Buffers Before Run ---")
-    gpu_topo_bufs = get_gpu_bufs(uff_cl, TOPOLOGY_SPECS)
-    print_bufs(gpu_topo_bufs, "GPU Topology Buffers")
-    gpu_param_bufs = get_gpu_bufs(uff_cl, PARAMS_SPECS)
-    print_bufs(gpu_param_bufs, "GPU Parameter Buffers")
+    if args.dump:
+        print("--- GPU Buffers Before Run ---")
+        gpu_topo_bufs = get_gpu_bufs(uff_cl, TOPOLOGY_SPECS)
+        print_bufs(gpu_topo_bufs, "GPU Topology Buffers")
+        gpu_param_bufs = get_gpu_bufs(uff_cl, PARAMS_SPECS)
+        print_bufs(gpu_param_bufs, "GPU Parameter Buffers")
 
     uff_cl.run_eval_step(bClearForce=True)
 
@@ -333,9 +332,15 @@ if __name__ == "__main__":
     parser.add_argument('--ocl-dbg-inv',    dest='ocl_dbg_inv',    type=int, default=0,  help='OpenCL IDBG_INV (inversion index)')
     parser.add_argument('--gpu-scan',       dest='gpu_scan',       type=int, default=0,  help='Run GPU self-consistency scan (analytic vs FD). Off by default to avoid long runs/spam.')
     parser.add_argument('--fast-exit',      dest='fast_exit',      type=int, default=0,  help='Exit via os._exit(0) to bypass known C++ double-free at interpreter shutdown')
+    parser.add_argument('--dump',           dest='dump',           type=int, default=0,  help='If >0, print full input/output buffers and detailed per-atom diffs')
+    parser.add_argument('--dump-n',         dest='dump_n',         type=int, default=0,  help='If >0, print only first N rows of long buffers (where supported)')
     parser.add_argument('-v','--verbose',       action='count', default=1,                   help='Increase verbosity level'    )
     parser.add_argument('-t','--tolerance',     type=float,   default=5e-5,                  help='Energy/force comparison tolerance' )
     args = parser.parse_args()
+
+    ok_topo  = True
+    ok_param = True
+    ok_force = True
 
     cpu_energy, cpu_forces, uff_instance = run_uff_cpp(args)
 
@@ -353,7 +358,7 @@ if __name__ == "__main__":
         ok_param = compare_bufs(cpu_param_bufs, gpu_param_bufs, tol=1e-5,  buf_type='Parameter')
 
         if not ok_topo:
-            raise RuntimeError("FAIL: Topology buffers mismatch between CPU and GPU")
+            print("FAIL: Topology buffers mismatch between CPU and GPU")
         if not ok_param:
             print("WARNING: Parameter buffers mismatch (continuing to force comparison anyway)")
 
@@ -361,19 +366,22 @@ if __name__ == "__main__":
         cpu_f = cpu_forces[:, :3]  # (natoms, 3)
         gpu_f = gpu_forces.reshape(-1, 3) if gpu_forces.ndim == 3 else gpu_forces[:, :3]
         print("\n========= Force Parity (CPU vs GPU at input geometry) =========")
-        print("CPU forces:\n", cpu_f)
-        print("GPU forces:\n", gpu_f)
+        if args.dump:
+            print("CPU forces:\n", cpu_f)
+            print("GPU forces:\n", gpu_f)
         diff = cpu_f - gpu_f
         max_abs_diff = np.max(np.abs(diff))
         rms_diff = np.sqrt(np.mean(diff**2))
         print(f"Max |ΔF|  = {max_abs_diff:.6e}")
         print(f"RMS  ΔF   = {rms_diff:.6e}")
-        for ia in range(cpu_f.shape[0]):
-            d = np.abs(cpu_f[ia] - gpu_f[ia])
-            print(f"  atom {ia}: CPU={cpu_f[ia]}  GPU={gpu_f[ia]}  |diff|={d}")
+        if args.dump:
+            for ia in range(cpu_f.shape[0]):
+                d = np.abs(cpu_f[ia] - gpu_f[ia])
+                print(f"  atom {ia}: CPU={cpu_f[ia]}  GPU={gpu_f[ia]}  |diff|={d}")
 
         tol = args.tolerance
-        if max_abs_diff < tol:
+        ok_force = max_abs_diff < tol
+        if ok_force:
             print(f"\nPASS: CPU vs GPU force parity within tolerance {tol}")
         else:
             print(f"\nFAIL: CPU vs GPU force diff {max_abs_diff:.6e} > tolerance {tol}")
@@ -392,8 +400,11 @@ if __name__ == "__main__":
     else:
         print("GPU run disabled (--gpu 0); only CPU UFF was executed.")
 
+    ok_all = True
+    if args.gpu:
+        ok_all = bool(ok_topo) and bool(ok_param) and bool(ok_force)
     print("=========\nALL DONE")
     if args.fast_exit:
-        sys.stdout.flush()
-        sys.stderr.flush()
-        os._exit(0)
+        sys.stdout.flush(); sys.stderr.flush(); os._exit(0 if ok_all else 1)
+
+    raise SystemExit(0 if ok_all else 1)

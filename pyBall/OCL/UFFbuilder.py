@@ -254,6 +254,12 @@ class UFF_Builder:
         }
         return uff_data
 
+
+    @staticmethod
+    def _uff_hyb_char(name: str):
+        """Return UFF hybridization marker compatible with existing name[2] logic."""
+        return name[2] if len(name) > 2 else '\0'
+
     # --- Helper methods for assign_uff_types ---
 
     def assign_uff_types_trivial(self, neighs, BOs, BOs_int, set_atom, set_bond):
@@ -277,17 +283,23 @@ class UFF_Builder:
                     BOs_int[ib] = 1
                     set_bond[ib] = True
             else:
-                if self.params.atypes[ai.type].name.startswith('C') and ci.nbond == 4:
-                    ai.type = self.params.getAtomType("C_3")
-                    set_atom[ia] = True
-                    for i in range(4):
-                        ja = neighs[ia, i]
-                        if ja < 0: continue
-                        ib = self.mol.get_bond_by_atoms(ia, ja)
-                        if ib is not None:
-                            BOs[ib] = 1.0
-                            BOs_int[ib] = 1
-                            set_bond[ib] = True
+                if ci.nbond == 4:
+                    # generic sp3 (coordination 4) if subtype exists (e.g. C_3, Si3)
+                    el = self.params.atypes[ai.type].element_name
+                    it = self.params.getAtomType(f"{el}_3", bErr=False)
+                    if it == -1:
+                        it = self.params.getAtomType(f"{el}3", bErr=False)
+                    if it != -1:
+                        ai.type = it
+                        set_atom[ia] = True
+                        for i in range(4):
+                            ja = neighs[ia, i]
+                            if ja < 0: continue
+                            ib = self.mol.get_bond_by_atoms(ia, ja)
+                            if ib is not None:
+                                BOs[ib] = 1.0
+                                BOs_int[ib] = 1
+                                set_bond[ib] = True
                 elif self.params.atypes[ai.type].name.startswith('N') and ci.nbond == 3:
                     for i in range(3):
                         ja = neighs[ia, i]

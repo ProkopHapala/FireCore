@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+import os
 
 import pyopencl as cl
 
@@ -668,6 +669,26 @@ def upload_mmff_positions(mm, md, positions):
     md.toGPU('apos', mm.apos.astype(np.float32).ravel())
 
 
+def run_step(md, do_clean=True, do_nb=False, do_mmff=True, mode='none', use_rot_force=False):
+    if do_clean:
+        md.run_cleanForceMMFFf4()
+    if do_nb:
+        md.run_getNonBond()
+    if do_mmff:
+        if use_rot_force:
+            md.run_getMMFFf4_rot()
+        else:
+            md.run_getMMFFf4()
+    if mode == 'basic':
+        md.run_updateAtomsMMFFf4()
+    elif mode == 'rot':
+        md.run_updateAtomsMMFFf4_rot()
+    elif mode == 'none':
+        pass
+    else:
+        raise ValueError(f"run_step: unknown mode '{mode}'")
+
+
 def evaluate_mmff_gpu(mm, md, positions, do_clean=True, do_nb=False, do_mmff=True, mode='none'):
     upload_mmff_positions(mm, md, positions)
     run_step(md, do_clean=do_clean, do_nb=do_nb, do_mmff=do_mmff, mode=mode)
@@ -684,6 +705,110 @@ def evaluate_mmff_gpu(mm, md, positions, do_clean=True, do_nb=False, do_mmff=Tru
     forces = buf['afor_atoms'].astype(np.float64)
     energy = float(buf['afor_atoms_full'][:, 3].sum())
     return energy, forces
+
+
+def mmff_cpp_init_from_atoms(apos, enames, data_dir, nPBC=(0,0,0), b141=True, bSimple=False, bConj=True, bCumulene=True, tmp_xyz="/tmp/mmff_parity_tmp.xyz"):
+    from . import MMFF as mmff_cpp
+    apos = np.asarray(apos, dtype=np.float64)
+    if apos.ndim != 2 or apos.shape[1] < 3:
+        raise ValueError(f"mmff_cpp_init_from_atoms: expected apos (natoms,>=3), got {apos.shape}")
+    natoms = apos.shape[0]
+    if len(enames) != natoms:
+        raise ValueError(f"mmff_cpp_init_from_atoms: len(enames)={len(enames)} != natoms={natoms}")
+    # write temporary xyz for C++ loader
+    with open(tmp_xyz, 'w') as f:
+        f.write(f"{natoms}\n")
+        f.write("mmff_parity\n")
+        for i in range(natoms):
+            x,y,z = apos[i,:3]
+            f.write(f"{enames[i]} {x:.16e} {y:.16e} {z:.16e}\n")
+    sElementTypes  = os.path.join(data_dir, "ElementTypes.dat")
+    sAtomTypes     = os.path.join(data_dir, "AtomTypes.dat")
+    sBondTypes     = os.path.join(data_dir, "BondTypes.dat")
+    sAngleTypes    = os.path.join(data_dir, "AngleTypes.dat")
+    sDihedralTypes = os.path.join(data_dir, "DihedralTypes.dat")
+    mmff_cpp.init(
+        xyz_name=tmp_xyz,
+        surf_name=None,
+        smile_name=None,
+        sElementTypes=sElementTypes,
+        sAtomTypes=sAtomTypes,
+        sBondTypes=sBondTypes,
+        sAngleTypes=sAngleTypes,
+        sDihedralTypes=sDihedralTypes,
+        bMMFF=True,
+        bEpairs=False,
+        nPBC=nPBC,
+        gridStep=0.1,
+        bUFF=False,
+        b141=b141,
+        bSimple=bSimple,
+        bConj=bConj,
+        bCumulene=bCumulene,
+    )
+    mmff_cpp.getBuffs()
+    return {
+        'tmp_xyz': tmp_xyz,
+        'data_dir': data_dir,
+    }
+
+
+def mmff_cpp_set_switches(do_nonbond=False, do_angles=True, do_pisigma=True, do_pipii=True, do_pbc=False, do_check_invariants=False):
+    from . import MMFF as mmff_cpp
+    def sw(b):
+        return 1 if b else -1
+    # explicitly force (0 means keep)
+    mmff_cpp.setSwitches(
+        CheckInvariants=sw(do_check_invariants),
+        PBC=sw(do_pbc),
+        NonBonded=sw(do_nonbond),
+        NonBondNeighs=sw(do_nonbond),
+        SurfAtoms=-1,
+        GridFF=-1,
+        MMFF=1,
+        Angles=sw(do_angles),
+        PiSigma=sw(do_pisigma),
+        PiPiI=sw(do_pipii),
+    )
+
+
+def evaluate_mmff_cpp(positions, do_nonbond=False, do_angles=True, do_pisigma=True, do_pipii=True, do_pbc=False):
+    from . import MMFF as mmff_cpp
+    positions = np.asarray(positions, dtype=np.float64)
+    if positions.ndim != 2 or positions.shape[1] < 3:
+        raise ValueError(f"evaluate_mmff_cpp: expected positions (natoms,>=3), got {positions.shape}")
+    # set switches first (avoid 0=keep trap)
+    mmff_cpp_set_switches(do_nonbond=do_nonbond, do_angles=do_angles, do_pisigma=do_pisigma, do_pipii=do_pipii, do_pbc=do_pbc, do_check_invariants=False)
+    # push geometry into C++ buffers
+    mmff_cpp.apos[:,:3] = positions[:,:3]
+    E = float(mmff_cpp.eval())
+    F = np.array(mmff_cpp.fapos[:,:3], copy=True, dtype=np.float64)
+    return E, F
+
+
+def force_parity_report(F_ref, F_tst, tol=5e-5, label_ref="REF", label_tst="TST"):
+    F_ref = np.asarray(F_ref, dtype=np.float64)
+    F_tst = np.asarray(F_tst, dtype=np.float64)
+    if F_ref.shape != F_tst.shape:
+        raise ValueError(f"force_parity_report: shape mismatch {F_ref.shape} vs {F_tst.shape}")
+    dF = F_tst - F_ref
+    max_abs = float(np.max(np.abs(dF))) if dF.size else 0.0
+    rms = float(np.sqrt(np.mean(dF*dF))) if dF.size else 0.0
+    idx = np.unravel_index(int(np.argmax(np.abs(dF))), dF.shape) if dF.size else (0,0)
+    ok = max_abs <= tol
+    msg = {
+        'ok': ok,
+        'max_abs': max_abs,
+        'rms': rms,
+        'idx': idx,
+        'ref': F_ref[idx[0]],
+        'tst': F_tst[idx[0]],
+        'diff': dF[idx[0]],
+        'tol': tol,
+        'label_ref': label_ref,
+        'label_tst': label_tst,
+    }
+    return msg
 
 
 def evaluate_uff_gpu(uff_cl, positions, bClearForce=True):
