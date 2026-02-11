@@ -33,19 +33,29 @@ def _absmax(A):
     return float(np.max(np.abs(A))) if A.size else 0.0
 
 
+def _minmax(A):
+    A = np.asarray(A)
+    if A.size == 0:
+        return 0.0, 0.0
+    return float(np.min(A)), float(np.max(A))
+
+
 def compare(name, A, B, tol=0.0):
     A = np.asarray(A)
     B = np.asarray(B)
     if A.shape != B.shape:
-        print(f"MISMATCH {name}: shape {A.shape} != {B.shape}")
+        print(f"{name:<10}: FAIL  shape {A.shape} != {B.shape}")
         return False
     d = B - A
     m = _absmax(d)
     ok = m <= tol
-    print(f"BUF {name}: max|d|={m:.6e} tol={tol:.1e} {'OK' if ok else 'FAIL'}")
+    amin, amax = _minmax(A)
+    bmin, bmax = _minmax(B)
+    status = 'PASS' if ok else 'FAIL'
+    print(f"{name:<10}: {status}  max|Δ|={m:.3e}  tol={tol:.1e}  C++[{amin:.3e},{amax:.3e}]  PyOCL[{bmin:.3e},{bmax:.3e}]")
     if not ok:
         idx = np.unravel_index(int(np.argmax(np.abs(d))), d.shape)
-        print(f"  worst idx={idx} A={A[idx]} B={B[idx]} d={d[idx]}")
+        print(f"    worst idx={idx} A={A[idx]} B={B[idx]} Δ={d[idx]}")
     return ok
 
 
@@ -63,6 +73,7 @@ def main():
     ap.add_argument('--dump-n', type=int, default=0, help='If >0, print only first N rows of long buffers')
     ap.add_argument('--save-npz', type=str, default='', help='If non-empty, save compared buffers/forces to NPZ at this path')
     ap.add_argument('--fast-exit', type=int, default=0, help='Exit via os._exit(0) to bypass known C++ double-free at interpreter shutdown')
+    ap.add_argument('--label', type=str, default='', help='Optional label/preset name for summary printing')
     args = ap.parse_args()
 
     # ---- C++/OpenCL path (reference for this parity step)
@@ -173,9 +184,14 @@ def main():
 
     # ---- Input parity (only if shapes match)
     ok_buf = True
-    print(f"Dims: C++ natoms={mm_cpp.natoms} nnode={mm_cpp.nnode} nvecs={mm_cpp.nvecs} | PyOCL natoms={mm.natoms} nnode={mm.nnode} nvecs={mm.nvecs}")
+    print("========= MMFF PyOpenCL vs C++ OpenCL =========")
+    print(f"molecule: {args.xyz}")
+    label = args.label if args.label else f"nonbond={args.nonbond} angles={args.angles} pisigma={args.pisigma} pipii={args.pipii}"
+    print(f"preset: {label}")
+    print(f"C++ dims natoms={mm_cpp.natoms} nnode={mm_cpp.nnode} nvecs={mm_cpp.nvecs} | PyOCL natoms={mm.natoms} nnode={mm.nnode} nvecs={mm.nvecs}")
 
     if (mm_cpp.natoms == mm.natoms) and (mm_cpp.nnode == mm.nnode) and (mm_cpp.nvecs == mm.nvecs):
+        print("\n--- Buffer parity (builder outputs) ---")
         ok_buf &= compare('neighs', mm_cpp.neighs[:mm_cpp.natoms, :], mm.neighs[:mm.natoms, :], tol=args.tolBuf)
         ok_buf &= compare('bkNeighs', mm_cpp.gpu_bkNeighs[0, :mm_cpp.nvecs, :], mm.back_neighs[:mm.nvecs, :], tol=0.0)
 
@@ -198,11 +214,16 @@ def main():
     max_abs = _absmax(dF)
     rms = float(np.sqrt(np.mean(dF*dF)))
     idx = np.unravel_index(int(np.argmax(np.abs(dF))), dF.shape)
+    cmin, cmax = _minmax(F_cpp)
+    pmin, pmax = _minmax(F_py)
 
-    print(f"\nE_cpp(OCL)={E_cpp:+.8e} E_pyOCL={E_py:+.8e} dE={E_py-E_cpp:+.3e}")
-    print(f"Max|dF|={max_abs:.6e} RMS={rms:.6e} tolF={args.tolF:.1e} worst={idx} dF={dF[idx]}")
-
+    print("\n--- Force parity ---")
+    print(f"Max |ΔF| = {max_abs:.6e}")
+    print(f"RMS  ΔF  = {rms:.6e}")
     okF = max_abs <= args.tolF
+    print(f"{'PASS' if okF else 'FAIL'}: forces within tol {args.tolF:.1e} (worst idx={idx} Δ={dF[idx]})")
+    print(f"Force ranges: C++ [{cmin:.3e}, {cmax:.3e}]  PyOCL [{pmin:.3e}, {pmax:.3e}]")
+
     print('\nPASS' if (ok_buf and okF) else '\nFAIL')
 
     if args.save_npz:

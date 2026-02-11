@@ -108,9 +108,11 @@ Related to script `/tests/tUFF/test_MMFFsp3_pyOCL.py`
 
 ### Key scripts and roles (with dump/fast-exit options)
 - `tests/tUFF/test_parity_suite.py`: Orchestrates multi-molecule runs, stages UFF components, reruns failures with `--dump`/`--dump-n`, uses `--fast-exit` to avoid C++ teardown aborts; logs in `OUT_parity_suite/`.
+- `tests/tUFF/run_parity_uff.sh`: Rebuilds libMMFFmulti_lib then runs UFF PyOCL vs C++ OCL parity across 6 molecules and staged components (bonds → bonds+angles → +dihedrals → +inversions); prints SUMMARY lines and exits nonzero on failure.
 - `tests/tUFF/test_MMFF_multi_parity.py`: C++ CPU vs C++ OpenCL MMFF bonded parity; flags `--dump/--dump-n/--save-npz/--fast-exit`.
 - `tests/tUFF/test_MMFF_cpp_vs_pyocl_parity.py`: C++ OpenCL vs PyOpenCL MMFF parity; same dump flags.
 - `tests/tUFF/test_MMFF_ocl_parity.py`: C++ CPU vs PyOpenCL MMFF parity; same dump flags (named ocl but compares CPU↔PyOCL).
+- `tests/tUFF/run_parity_mmff.sh`: Rebuilds libMMFFmulti_lib then runs MMFF PyOCL vs C++ OCL parity over 6 molecules and 3 presets (bonds; bonds+angles+pi; bonds+angles+pi+nonbond); prints SUMMARY lines and exits nonzero on failure.
 - `tests/tUFF/test_UFF_ocl.py`: C++ CPU vs C++ OpenCL UFF; supports `--components` staging plus `--dump/--dump-n/--fast-exit`; now uses `uff_cpp.eval()` to keep geometry fixed.
 - `tests/tUFF/test_UFF_multi.py`: Legacy C++ UFF multi-system test (CPU vs GPU) — kept as reference.
 - `tests/tUFF/test_MMFFsp3_pyOCL.py`: Rotational/pi-focused MMFF PyOCL harness with pack/dump options (not part of suite).
@@ -146,17 +148,17 @@ Related to script `/tests/tUFF/test_MMFFsp3_pyOCL.py`
 
 | molecule      | bonds | bonds+angles | +dihedrals | +dihedrals+inversions |
 |---------------|-------|--------------|------------|-----------------------|
-| methanol.mol2 | PASS  | PASS         | FAIL       | FAIL                  |
-| HCONH2.xyz    | PASS  | PASS         | FAIL       | FAIL                  |
-| uracil.xyz    | PASS  | PASS         | FAIL       | FAIL                  |
-| xylitol.mol2  | PASS  | PASS         | FAIL       | FAIL                  |
-| guanine.xyz   | PASS  | PASS         | FAIL       | FAIL                  |
-| Si10_H.xyz    | PASS  | PASS         | FAIL       | FAIL                  |
+| methanol.mol2 | PASS  | PASS         | PASS       | PASS                  |
+| HCONH2.xyz    | PASS  | PASS         | PASS       | PASS                  |
+| uracil.xyz    | PASS  | PASS         | PASS       | PASS                  |
+| xylitol.mol2  | PASS  | PASS         | PASS       | PASS                  |
+| guanine.xyz   | PASS  | PASS         | PASS       | PASS                  |
+| Si10_H.xyz    | PASS  | PASS         | PASS       | PASS                  |
 
 Notes
-- All bonds and bonds+angles now pass with buffer min/max reported; no zero-force or NaN cases.
-- Si10_H upgraded from ABORT to PASS for bonds and bonds+angles after generalized Si3 typing; dihedrals still mismatch.
-- Dihedral (and inversion) stages remain the only failing tier; failing forces without NaNs. Next step is focused dump/compare of dih* inputs (dihNgs/hneigh/a2f) and per-dihedral forces for Si10_H and organics.
+- Root cause fixed: PyOCL packed `dihParams` as float3 and `invNgs` as int3; kernel expects float4/int4. PyOCL now pads (dihParams w=0, invNgs w=-1), kernel uses `__global int4* invNgs`.
+- C++ harness already allocated `invNgs` as int4, so only kernel signature + PyOCL upload needed change.
+- DBG_UFF defaults to 2 in UFF.cl with IDBG gating; parity confirmed across all components on the 6-molecule sweep.
 
 ## MMFF GPU/CPU Parity Findings (bonded-only, Feb 2026)
 

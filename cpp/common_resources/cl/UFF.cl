@@ -6,22 +6,22 @@
 // ======================================================
 // Enable concise debug prints without changing C++ host interface.
 #ifndef DBG_UFF
-#define DBG_UFF 1         // 0/1 master switch
+#define DBG_UFF 2         // 0=off; 1=basic; 2=trace selected interaction(s)
 #endif
 #ifndef IDBG_ATOM
-#define IDBG_ATOM  (0)    // atom index to trace
+#define IDBG_ATOM  (0)    // atom index to trace, -1 disables
 #endif
 #ifndef IDBG_BOND
 #define IDBG_BOND  (0)    // bond index to trace (global bond id), -1 disables
 #endif
 #ifndef IDBG_ANGLE
-#define IDBG_ANGLE (0)    // angle index to trace
+#define IDBG_ANGLE (0)    // angle index to trace, -1 disables
 #endif
 #ifndef IDBG_DIH
-#define IDBG_DIH   (0)    // dihedral index to trace
+#define IDBG_DIH   (0)    // dihedral index to trace, -1 disables
 #endif
 #ifndef IDBG_INV
-#define IDBG_INV   (0)    // inversion index to trace
+#define IDBG_INV   (0)    // inversion index to trace, -1 disables
 #endif
 #ifndef IDBG_SYS
 #define IDBG_SYS   (0)    // system index to trace
@@ -676,7 +676,7 @@ __kernel void evalInversions_UFF(
     const int        i0inv,       // Offset for inversion forces in fint array
     // --- Input Arrays ---
     __global int*    invAtoms,    // [ninversions*4] {ia, ja, ka, la} where ia is central
-    __global int*    invNgs,      // [ninversions*3] Precomputed {hneigh_idx_ji, hneigh_idx_ki, hneigh_idx_li}
+    __global int4*   invNgs,      // [ninversions] padded {hneigh_idx_ji, hneigh_idx_ki, hneigh_idx_li, -1}
     __global float4* invParams,   // [ninversions] { K, c0, c1, c2 } -> Actually Quat4d in C++? {K, c0, c1, c2} assume float4
     __global float4* hneigh,      // Input: [natoms*4] Precomputed h-vectors
     // --- Output Arrays ---
@@ -708,10 +708,10 @@ __kernel void evalInversions_UFF(
     int la = invAtoms[i4a + 3]; // Atom l
 
     // Get precomputed hneigh indices {ji, ki, li} relative to central atom ia
-    int3 ngs = ((__global int3*)invNgs)[i0I + ii]; // Read as int3 (already offset by i0I)
-    float4 q21 = hneigh[ngs.x]; // ji {h_ji, 1/l_ji}
-    float4 q31 = hneigh[ngs.y]; // ki {h_ki, 1/l_ki}
-    float4 q41 = hneigh[ngs.z]; // li {h_li, 1/l_li}
+    int4 ngs4 = invNgs[i0I + ii];
+    float4 q21 = hneigh[ngs4.x]; // ji {h_ji, 1/l_ji}
+    float4 q31 = hneigh[ngs4.y]; // ki {h_ki, 1/l_ki}
+    float4 q41 = hneigh[ngs4.z]; // li {h_li, 1/l_li}
 
     float4 par = invParams[i0I + ii]; // { K, c0, c1, c2 }
 

@@ -96,13 +96,15 @@ class UFF_CL(OpenCLBase):
         self.check_buf("angAtoms", nAng * 4 * i32sz)
         self.check_buf("angNgs", nAng * 2 * i32sz)  # int2 per angle
         self.check_buf("dihedrals", nD * 4 * i32sz)
-        self.check_buf("dihParams", nD * 3 * f32sz)
+        # UFF.cl expects dihParams as float4 per dihedral (xyz used, w ignored)
+        self.check_buf("dihParams", nD * 4 * f32sz)
         self.check_buf("dihAtoms", nD * 4 * i32sz)
         self.check_buf("dihNgs", nD * 4 * i32sz)
         self.check_buf("inversions", nInv * 4 * i32sz)
         self.check_buf("invParams", nInv * 4 * f32sz)
         self.check_buf("invAtoms", nInv * 4 * i32sz)
-        self.check_buf("invNgs", nInv * 3 * i32sz)  # int3 per inversion
+        # UFF.cl uses padded int4 for invNgs on the C++ path; keep int4 for consistent stride
+        self.check_buf("invNgs", nInv * 4 * i32sz)
         self.check_buf("neighs", nA * 4 * i32sz)
         self.check_buf("neighCell", nA * 4 * i32sz)
         self.check_buf("neighBs", nA * 4 * i32sz)
@@ -155,7 +157,12 @@ class UFF_CL(OpenCLBase):
             cl.enqueue_copy(self.queue, self.buffer_dict["angParams1"],   ang_params1,   device_offset=(angle_offset * 4 * f32sz))
             cl.enqueue_copy(self.queue, self.buffer_dict["angParams2_w"], ang_params2_w, device_offset=(angle_offset * 1 * f32sz))
         _upload_if_present("dihAtoms", "dihAtoms", np.int32, dihedral_offset * 4, i32sz)
-        _upload_if_present("dihParams", "dihParams", np.float32, dihedral_offset * 3, f32sz)
+        if 'dihParams' in uff_data and uff_data['dihParams'] is not None and len(uff_data['dihParams']) > 0:
+            p3 = np.ascontiguousarray(uff_data['dihParams'].astype(np.float32))
+            assert p3.ndim == 2 and p3.shape[1] == 3
+            p4 = np.zeros((p3.shape[0], 4), dtype=np.float32)
+            p4[:, :3] = p3
+            cl.enqueue_copy(self.queue, self.buffer_dict["dihParams"], p4, device_offset=(dihedral_offset * 4 * f32sz))
         _upload_if_present("invAtoms", "invAtoms", np.int32, inversion_offset * 4, i32sz)
         _upload_if_present("invParams", "invParams", np.float32, inversion_offset * 4, f32sz)
         _upload_if_present("neighs", "neighs", np.int32, atom_offset * 4, i32sz)
@@ -163,7 +170,12 @@ class UFF_CL(OpenCLBase):
         # Precomputed hneigh indices for angles/dihedrals/inversions (from bakeNeighs)
         _upload_if_present("angNgs", "angNgs", np.int32, angle_offset * 2, i32sz)  # int2 per angle
         _upload_if_present("dihNgs", "dihNgs", np.int32, dihedral_offset * 4, i32sz)
-        _upload_if_present("invNgs", "invNgs", np.int32, inversion_offset * 3, i32sz)  # int3 per inversion
+        if 'invNgs' in uff_data and uff_data['invNgs'] is not None and len(uff_data['invNgs']) > 0:
+            ng3 = np.ascontiguousarray(uff_data['invNgs'].astype(np.int32))
+            assert ng3.ndim == 2 and ng3.shape[1] == 3
+            ng4 = np.full((ng3.shape[0], 4), -1, dtype=np.int32)
+            ng4[:, :3] = ng3
+            cl.enqueue_copy(self.queue, self.buffer_dict["invNgs"], ng4, device_offset=(inversion_offset * 4 * i32sz))
         _upload_if_present("a2f_offsets", "a2f_offsets", np.int32, atom_offset, i32sz)
         _upload_if_present("a2f_counts",  "a2f_counts",  np.int32, atom_offset, i32sz)
         if 'a2f_indices' in uff_data and uff_data['a2f_indices'] is not None and len(uff_data['a2f_indices']) > 0:

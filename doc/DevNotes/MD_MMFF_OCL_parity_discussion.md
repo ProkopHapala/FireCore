@@ -1274,3 +1274,173 @@ Notes:
 - Force ranges and per-buffer min/max now show in the output for every run.
 
 If you want, I can dump the failing dihedral case for Si10_H (`--dump 1 --dump-n 5`) to pinpoint which dihedral terms diverge.
+
+
+---
+
+
+## USER
+
+OK, now I commited it to git, now we can focus on resolving the problems with the Dihedrals and trosions/nversions, recap what is the status, why they do not match , you say that inputs are matching. We perhaps need to add depbug prints inside the kernels in @UFF.cl 
+
+with that it must be obvious where is the divergence. 
+
+Hoever we also need to check if we are running exactly the same kernel sequence in C++ and in pyOpenCL
+
+check @UFF.py 
+
+and @MolWorld_sp3_multi.h MDloop and most importaintly 
+MolWorld_sp3_multi::run_uff_ocl()
+
+this is the key.
+
+make sure all flags are set properly and we do not run anything else, and we initialize and clear the buffers properly
+
+now make detailed notes about existing code, and the plan
+
+---
+
+## GPT-5.1-Codex
+
+Status recap (UFF PyOCL vs C++ OCL):
+- Bonds and bonds+angles: PASS on all 6 molecules (Si10_H included); buffer min/max match, no NaNs/zeros.
+- Dihedrals/inversions: still FAIL on all 6 (forces differ; buffers already match).
+
+Existing code paths (relevant pieces):
+
+PyOpenCL ([pyBall/OCL/UFF.py](cci:7://file:///home/prokop/git/FireCore/pyBall/OCL/UFF.py:0:0-0:0)):
+- [run_eval_step](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/UFF.py:173:4-197:29): clears `fapos`; clears `fint` when angles/dihedrals/inversions enabled; launches in order:
+  `evalBondsAndHNeigh_UFF` → `evalAngles_UFF` → `evalDihedrals_UFF` → `evalInversions_UFF` → `assembleForces_UFF`; no nonbonded unless `bDoNonBonded` set.
+- Buffers: [realloc_buffers](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/UFF.py:69:4-118:87) aligns with C++ layout; [upload_topology_params](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/UFF.py:132:4-171:95) splits angParams into angParams1/angParams2_w; uploads dihAtoms/dihParams/dihNgs, hneigh (via angles/dihedrals Ngs), and a2f_*.
+
+C++ side ([MolWorld_sp3_multi::run_uff_ocl](cci:1://file:///home/prokop/git/FireCore/cpp/common/molecular/MolWorld_sp3_multi.h:1986:0-2050:1)):
+- Ensures [setup_UFF_ocl()](cci:1://file:///home/prokop/git/FireCore/cpp/common/molecular/MolWorld_sp3_multi.h:1390:0-1416:1) then sets MDpars (dt, Flim, damping), uploads constraints.
+- `bBonding = ffu.bDoBond`; per-iteration: if bBonding → [uff_ocl->eval(false)](cci:1://file:///home/prokop/git/FireCore/cpp/common/molecular/MolWorld_sp3_multi.h:2548:0-2602:1); else clears fapos. Optional NB path may enqueue NB kernels if bNonBonded/bGridFF flags are on.
+- Calls `setup_updateAtomsMMFFf4` once; enqueues `task_updateAtoms` every loop; downloads at end.
+- Need to confirm inside [OCL_UFF::eval](cci:1://file:///home/prokop/git/FireCore/cpp/common/molecular/MolWorld_sp3_multi.h:2548:0-2602:1) that fapos/fint are cleared when any bonded term runs, and that DoAngle/DoDihedral/DoInversion are honored (DoAssemble true when any are on). Also confirm bNonBonded, bExclusion2, etc., are all forced off during parity runs.
+
+Mismatch hypothesis:
+- Buffers match, so divergence is likely in kernel execution/assembly order or buffer clearing: (a) C++ eval might reuse stale `fint`/`fapos` between calls; (b) C++ may be enqueuing extra kernels (NB, assemble) or missing clears; (c) kernel behavior itself (sign/order in `evalDihedrals_UFF` or `assembleForces_UFF`).
+
+Plan to debug dihedrals/inversions:
+1) Verify kernel sequence & flags match on both paths.
+   - Audit [OCL_UFF::eval](cci:1://file:///home/prokop/git/FireCore/cpp/common/molecular/MolWorld_sp3_multi.h:2548:0-2602:1) implementation: ensure it clears `fint` when angles/dihedrals/inversions are active, sets DoAssemble when any of those flags are true, and does NOT enqueue NB kernels during parity.
+   - Check work-group/local sizes (`nloc`) for both C++ and PyOCL; ensure they match or are not affecting ordering.
+   - Ensure `uff_cppocl.scan`/`setSwitchesUFF` path sets DoBond/DoAngle/DoDihedral/DoInversion identically to PyOCL (and DoAssemble=1 when any are on).
+
+2) Add targeted debug prints in `cpp/common_resources/cl/UFF.cl` (guarded by `#if DBG_UFF` and `if(IDBG_SYS==0 && gid< N)`):
+   - In `evalDihedrals_UFF`: print gid, dihAtoms, dihParams, hneigh references used, computed torque/force vectors, and the indices written into `fint`.
+   - In `assembleForces_UFF`: print gid, a2f_offsets/counts entries, and assembled contributions pulled from `fint`.
+   - Consider a NaN/Inf check to print offending gid.
+
+3) Run a failing case (e.g., Si10_H with `--components bonds,angles,dihedrals --dump 1 --dump-n 5`) on both C++ OCL and PyOCL to capture printed traces; compare per-gid outputs.
+
+4) If kernel traces align, double-check buffer clearing in C++:
+   - Explicitly clear `fapos` and `fint` before [eval](cci:1://file:///home/prokop/git/FireCore/cpp/common/molecular/MolWorld_sp3_multi.h:2548:0-2602:1) in [run_uff_ocl](cci:1://file:///home/prokop/git/FireCore/cpp/common/molecular/MolWorld_sp3_multi.h:1986:0-2050:1) (or confirm [OCL_UFF::eval](cci:1://file:///home/prokop/git/FireCore/cpp/common/molecular/MolWorld_sp3_multi.h:2548:0-2602:1) already does it).
+   - Ensure no NB or assemble side effects are enqueued when only bonded terms are desired.
+
+5) If traces diverge, focus on `hneigh`/`dihNgs` interpretation or force sign in `evalDihedrals_UFF`; adjust kernel accordingly and retest.
+
+Let me know if you want me to (a) audit [OCL_UFF::eval](cci:1://file:///home/prokop/git/FireCore/cpp/common/molecular/MolWorld_sp3_multi.h:2548:0-2602:1) for clearing/flags and (b) insert the gated debug prints into `UFF.cl` to start capturing per-dihedral traces.
+
+---
+
+## USER
+
+DO to the debugging, do not worry add prints in the kenrel,s in @UFF.cl but make sure the prints are actyally working in C++ which does not accepts the compile flags for OpenCL you need to edit the flags manually in the code
+
+GO! I expect you find the disceprency between GPU OpenCL with C++ versus pyOpenCL harness. Do not stop until it is done. Test it for all referenced molecules in the end.
+
+---
+
+## ## GPT-5.2 Low
+
+## Recap: what was wrong and why “inputs matched” but dihedrals/inversions didn’t
+
+### 1) Kernel sequence / clears (C++ vs PyOpenCL)
+Both paths were *intended* to run the same chain:
+
+- **clear** (`fapos`, `fint`)
+- `evalBondsAndHNeigh_UFF`
+- `evalAngles_UFF`
+- `evalDihedrals_UFF`
+- `evalInversions_UFF`
+- `assembleForces_UFF`
+
+C++ ([OCL_UFF::eval](cci:1://file:///home/prokop/git/FireCore/cpp/common/molecular/MolWorld_sp3_multi.h:2548:0-2602:1)) does this directly (and clears both `fapos`+`fint` when `bClearForce==true`).
+PyOpenCL ([UFF_CL.run_eval_step](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/UFF.py:185:4-209:29)) also clears `fapos` and clears `fint` when any higher-order terms are enabled.
+
+So the *sequence/clearing* was not the real mismatch.
+
+### 2) The real discrepancy: **buffer layout mismatch vs kernel signatures**
+Even though the **builder outputs** (your parity “buffers”) matched numerically, the **GPU kernels were reading some of those arrays with the wrong stride / type**, specifically:
+
+- **`dihParams`**
+  - In [UFF.cl](cci:7://file:///home/prokop/git/FireCore/cpp/common_resources/cl/UFF.cl:0:0-0:0), `evalDihedrals_UFF` takes `__global float4* dihParams`.
+  - PyOpenCL previously allocated/uploaded it as **3 floats per dihedral**.
+  - Result: kernel reads wrong values (misaligned / wrong stride), producing wrong torsion forces.
+
+- **`invNgs`**
+  - In C++ path, `invNgs` is allocated as `int4` per inversion (padded).
+  - In [UFF.cl](cci:7://file:///home/prokop/git/FireCore/cpp/common_resources/cl/UFF.cl:0:0-0:0) it was declared as `__global int* invNgs` and then cast to `int3*`, which is only safe if the memory is packed exactly as int3 stride (it wasn’t).
+  - PyOpenCL previously allocated/uploaded it as **3 ints per inversion**, while C++ allocates `int4`.
+  - Result: inversion kernel reads wrong neighbor indices.
+
+This perfectly explains the symptom: **“inputs match” in the comparison** (because we compared host-side arrays), but **kernels compute different results** (because the on-device interpretation differed).
+
+## What I changed to fix it (minimal, data-layout correct)
+
+### A) [pyBall/OCL/UFF.py](cci:7://file:///home/prokop/git/FireCore/pyBall/OCL/UFF.py:0:0-0:0)
+- Allocate `dihParams` as **float4 per dihedral** (pad `.w = 0`)
+- Allocate `invNgs` as **int4 per inversion** (pad `.w = -1`)
+- Upload padded arrays accordingly
+
+### B) [cpp/common_resources/cl/UFF.cl](cci:7://file:///home/prokop/git/FireCore/cpp/common_resources/cl/UFF.cl:0:0-0:0)
+- Changed inversion kernel signature to:
+  - `__global int4* invNgs`
+- Read indices as `ngs4.x/y/z` (no casting tricks)
+
+### C) Debug prints in kernels (C++-safe)
+- Set `DBG_UFF` default to **2** in [UFF.cl](cci:7://file:///home/prokop/git/FireCore/cpp/common_resources/cl/UFF.cl:0:0-0:0) so the C++ OpenCL path prints without compile flags.
+- Kept prints gated by `(DBG_UFF>1) && (id==IDBG_*) && (isys==IDBG_SYS)`.
+
+## Results after the fix (all referenced molecules)
+I reran the full staged suite (`bonds`, `bonds,angles`, `bonds,angles,dihedrals`, `bonds,angles,dihedrals,inversions`) for:
+
+- `methanol.mol2`
+- `HCONH2.xyz`
+- `uracil.xyz`
+- `xylitol.mol2`
+- `guanine.xyz`
+- `Si10_H.xyz`
+
+All combinations are now **PASS**.
+
+## Current status
+- **Root cause identified and fixed**: wrong OpenCL buffer layouts for torsions/inversions on the PyOpenCL side + unsafe `invNgs` interpretation in kernel.
+- **Parity now holds** for bonds+angles+dihedrals+inversions across all 6 molecules.
+
+If you want, next I can:
+- Reduce default `DBG_UFF` back to `1` (or `0`) to avoid noisy output in normal runs, while keeping the gating infrastructure intact.
+
+---
+
+## USER
+
+OK, this is greaat news, but I do not understand one thing, you changed kenrel header here
+    __global int4*   invNgs,      // [ninversions] padded {hneigh_idx_ji, hneigh_idx_ki, hneigh_idx_li, -1}
+
+but you did not changed anything in C++ harness in @OCL_UFF.h 
+
+how it is possible that it works and parity is achieved ?
+
+---
+
+## GPT-5.1-Codex
+
+Because the C++ side already allocates/uses invNgs as an int4 buffer (see OCL_UFF::realloc and setup_kernels), no host-side signature change was needed:
+
+In C++: invNgs is allocated as int4 per inversion and bound unchanged to the kernel argument list. The host never hardcodes the element type; it just passes the buffer handle.
+In the kernel: switching the signature to __global int4* invNgs made the device-side view consistent with what the C++ host already allocates.
+In PyOpenCL: we were previously packing invNgs as int3, causing stride/interpretation mismatch. Fixing it to int4 plus padding aligned PyOCL with both the kernel and the C++ layout.
+So parity was achieved once the kernel signature matched the actual buffer layout and PyOCL uploads were corrected; the C++ harness was already compatible.
