@@ -42,14 +42,14 @@ class MolecularDynamics(OpenCLBase):
     for molecular dynamics simulations using the relax_multi_mini.cl kernel.
     """
     
-    def __init__(self, nloc=32, perBatch=10):
+    def __init__(self, nloc=32, perBatch=10, debug_build_options=None, enable_nonbond=False):
         # Initialize the base class
         super().__init__(nloc=nloc, device_index=0)
         
         # Load the OpenCL program
         base_path = os.path.dirname(os.path.abspath(__file__))
         rel_path = "../../cpp/common_resources/cl/relax_multi.cl"
-        if not self.load_program(rel_path=rel_path, base_path=base_path, bPrint=False):
+        if not self.load_program(rel_path=rel_path, base_path=base_path, bPrint=False, build_options=debug_build_options):
             exit(1)
         
         # Initialize other attributes that will be set in realloc
@@ -59,6 +59,7 @@ class MolecularDynamics(OpenCLBase):
         self.perBatch         = perBatch
         self.nstep            = 1
         self.bPrintPackSystem = False
+        self.enable_nonbond   = bool(enable_nonbond)
 
     def realloc(self, mmff, nSystems=1 ):
         """
@@ -289,10 +290,12 @@ class MolecularDynamics(OpenCLBase):
             self.kernel_args_getMMFFf4_rot = self.generate_kernel_args("getMMFFf4_rot")
 
         self.kernel_args_getNonBond = None
-        if "getNonBond" in self.kernelheaders:
+        if self.enable_nonbond and ("getNonBond" in self.kernelheaders):
             try:
                 self.kernel_args_getNonBond = self.generate_kernel_args("getNonBond")
-            except KeyError:
+            except Exception:
+                # Some relax_multi.cl variants use arg names like `atoms`/`forces` instead of `apos`/`aforce`.
+                # Keep nonbonded optional; bonded-only workflows must remain usable.
                 self.kernel_args_getNonBond = None
         # --- NOTE: grid-kernels are intialized in initGridFF()
         #self.kernel_args_getNonBond_GridFF_Bspline = self.generate_kernel_args("getNonBond_GridFF_Bspline")

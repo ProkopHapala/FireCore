@@ -49,7 +49,7 @@ const float4   grid_p0
 // #endif
 
 #ifndef DBG_UFF
-#define DBG_UFF 1
+#define DBG_UFF 0
 #endif
 
 #define iGdbg 3
@@ -313,9 +313,11 @@ __kernel void getMMFFf4(
 
     float3 f1,f2;         // working forces
 
+    #if DBG_UFF
     if((iG==0)&&(iS==0)){
         printf( "getMMFFf4() iG %i, iS %i, iaa %i bSubtractVdW %i\n", iG, iS, iaa, bSubtractVdW );
     }
+    #endif
 
     { // ========= BONDS - here we evaluate pairwise interactions of node atoms with its 4 neighbors
 

@@ -1,7 +1,11 @@
 import numpy as np
+import matplotlib
+import os
+if os.environ.get('DISPLAY', '') == '':
+    matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from pathlib import Path
-import os
+ 
 
 import pyopencl as cl
 
@@ -30,6 +34,117 @@ _ENERGY_CACHE = {
     'prev_vel': None,
     'prev_pos': None,
 }
+
+
+def clean_element_symbol(s):
+    if s is None:
+        return ''
+    ss = str(s)
+    a = ''.join(ch for ch in ss if ch.isalpha())
+    if a:
+        if len(a) >= 2 and a[0].isupper() and a[1].isupper():
+            a = a[0] + a[1].lower() + a[2:]
+        return a
+    if ss:
+        return ss[0]
+    return ''
+
+
+def clean_element_symbols_list(enames):
+    return [clean_element_symbol(s) for s in list(enames)]
+
+
+def apply_random_displacement(pos, dmax, seed=None):
+    if dmax is None:
+        return pos
+    dmax = float(dmax)
+    if dmax <= 0.0:
+        return pos
+    rng = np.random.default_rng(seed)
+    d = rng.uniform(-dmax, dmax, size=pos.shape).astype(np.float32)
+    pos[:] = (np.asarray(pos, dtype=np.float32) + d)
+    return pos
+
+
+def max_norm3(A):
+    A = np.asarray(A)
+    return float(np.sqrt(np.max(np.sum(A*A, axis=1)))) if A.size else 0.0
+
+
+def write_xyz_frame(fout, enames, pos3, comment=""):
+    pos3 = np.asarray(pos3)
+    nat = pos3.shape[0]
+    fout.write(f"{nat}\n")
+    fout.write(f"{comment}\n")
+    for i in range(nat):
+        x, y, z = float(pos3[i, 0]), float(pos3[i, 1]), float(pos3[i, 2])
+        fout.write(f"{enames[i]} {x: .10f} {y: .10f} {z: .10f}\n")
+
+
+def iter_should_write(istep, write_stride, steps_total):
+    if istep == 0:
+        return True
+    if istep == steps_total:
+        return True
+    w = int(write_stride)
+    if w <= 0:
+        return False
+    return (istep % w) == 0
+
+
+def plot_fmax_history_png(png_path, steps, fmax_hist, fconv=None, title=None):
+    png_path = str(png_path)
+    if not png_path:
+        return
+    steps = np.asarray(steps, dtype=np.int32)
+    fmax_hist = np.asarray(fmax_hist, dtype=np.float64)
+    if steps.size == 0 or fmax_hist.size == 0:
+        return
+    if not np.isfinite(fmax_hist).all():
+        return
+    if os.environ.get('DISPLAY', '') == '':
+        try:
+            import matplotlib
+            matplotlib.use('Agg')
+        except Exception:
+            pass
+    fig = plt.figure(figsize=(6.0, 3.6))
+    ax = fig.add_subplot(1, 1, 1)
+    ax.semilogy(steps, fmax_hist, '-', lw=1.5, label='max|F|')
+    if fconv is not None:
+        ax.axhline(float(fconv), color='k', lw=1.0, ls='--', label='fconv')
+    ax.set_xlabel('step')
+    ax.set_ylabel('max|F|')
+    if title:
+        ax.set_title(title)
+    ax.grid(True, which='both', alpha=0.3)
+    ax.legend(loc='best', fontsize=8)
+    fig.tight_layout()
+    fig.savefig(png_path, dpi=150)
+    plt.close(fig)
+
+
+def conv_plot_path_from_xyz(out_xyz_path):
+    s = str(out_xyz_path)
+    if s.lower().endswith('.xyz'):
+        return s[:-4] + '.conv.png'
+    return s + '.conv.png'
+
+
+def format_relax_summary(ff_name, mol_path, converged, nstep, fmax, out_xyz, out_png, wall_s, abort_reason=None):
+    m = os.path.basename(str(mol_path))
+    c = 1 if converged else 0
+    msg = f"RELAX_SUMMARY ff={ff_name} mol={m} converged={c} nstep={int(nstep)} fmax={float(fmax):.6e} wall={float(wall_s):.3f}s xyz={out_xyz} png={out_png}"
+    if abort_reason:
+        msg += f" abort={abort_reason}"
+    return msg
+
+
+def effective_verbosity(quiet=0, verbosity=1):
+    v = int(verbosity)
+    if int(quiet):
+        v = 0
+    return v
 
 # __all__ = [
 #     'MONITOR_PROPERTY_TYPES',

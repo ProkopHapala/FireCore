@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 from random import random
+import os
 import numpy as np
 from . import elements
 #import elements
@@ -17,7 +18,8 @@ VALENCE_DICT={
 class AtomicSystem( ):
 
     def __init__(self,fname=None, apos=None, atypes=None, enames=None, lvec=None, qs=None, Rs=None, bonds=None, ngs=None, bReadN=True, bPreinit=True ) -> None:
-        print(f"DEBUG: AtomicSystem.__init__ called with fname={fname}")
+        bdbg = os.environ.get('PYBALL_DEBUG_ATOMICSYSTEM','0') not in ('0','', 'false','False','FALSE')
+        if bdbg: print(f"DEBUG: AtomicSystem.__init__ called with fname={fname}")
         self.apos    = apos
         self.atypes  = atypes
         self.enames  = enames
@@ -30,24 +32,25 @@ class AtomicSystem( ):
         self.natoms  = 0
         if fname is not None:
             ext = fname.split('.')[-1]
-            print(f"DEBUG: AtomicSystem.__init__({fname}) ext={ext}")
+            if bdbg: print(f"DEBUG: AtomicSystem.__init__({fname}) ext={ext}")
             try:
                 if( 'mol' == ext ):
-                    print(f"DEBUG: Loading mol file: {fname}")
+                    if bdbg: print(f"DEBUG: Loading mol file: {fname}")
                     self.apos,self.atypes,self.enames,self.qs,self.bonds = au.loadMol(fname=fname, bReadN=bReadN )
                 elif ( 'mol2' == ext ):
-                    print(f"DEBUG: Loading mol2 file: {fname}")
+                    if bdbg: print(f"DEBUG: Loading mol2 file: {fname}")
                     self.apos,self.atypes,self.enames,self.qs,self.bonds, self.lvec = au.loadMol2(fname=fname, bReadN=bReadN )
                 elif ( 'xyz' == ext ):
-                    print(f"DEBUG: Loading xyz file: {fname}")
+                    if bdbg: print(f"DEBUG: Loading xyz file: {fname}")
                     try:
                         self.apos,self.atypes,self.enames,self.qs, comment = au.load_xyz(fname=fname, bReadN=bReadN )
-                        print(f"DEBUG: XYZ file loaded successfully")
-                        print(f"DEBUG: apos type: {type(self.apos)}, shape: {self.apos.shape if hasattr(self.apos, 'shape') else 'no shape'}, dtype: {self.apos.dtype if hasattr(self.apos, 'dtype') else 'no dtype'}")
-                        print(f"DEBUG: atypes type: {type(self.atypes)}, shape: {self.atypes.shape if hasattr(self.atypes, 'shape') else 'no shape'}, dtype: {self.atypes.dtype if hasattr(self.atypes, 'dtype') else 'no dtype'}")
-                        print(f"DEBUG: enames: {self.enames}")
-                        print(f"DEBUG: qs type: {type(self.qs)}, shape: {self.qs.shape if hasattr(self.qs, 'shape') else 'no shape'}, dtype: {self.qs.dtype if hasattr(self.qs, 'dtype') else 'no dtype'}")
-                        print(f"DEBUG: comment: {comment}")
+                        if bdbg:
+                            print(f"DEBUG: XYZ file loaded successfully")
+                            print(f"DEBUG: apos type: {type(self.apos)}, shape: {self.apos.shape if hasattr(self.apos, 'shape') else 'no shape'}, dtype: {self.apos.dtype if hasattr(self.apos, 'dtype') else 'no dtype'}")
+                            print(f"DEBUG: atypes type: {type(self.atypes)}, shape: {self.atypes.shape if hasattr(self.atypes, 'shape') else 'no shape'}, dtype: {self.atypes.dtype if hasattr(self.atypes, 'dtype') else 'no dtype'}")
+                            print(f"DEBUG: enames: {self.enames}")
+                            print(f"DEBUG: qs type: {type(self.qs)}, shape: {self.qs.shape if hasattr(self.qs, 'shape') else 'no shape'}, dtype: {self.qs.dtype if hasattr(self.qs, 'dtype') else 'no dtype'}")
+                            print(f"DEBUG: comment: {comment}")
                     except Exception as e:
                         print(f"ERROR loading xyz file: {type(e)}: {e}")
                         import traceback
@@ -56,11 +59,11 @@ class AtomicSystem( ):
 
                     if comment is not None:
                         if comment[:3] == 'lvs':      
-                            print(f"DEBUG: Parsing lattice vectors from comment")
+                            if bdbg: print(f"DEBUG: Parsing lattice vectors from comment")
                             self.lvec = au.string_to_matrix( comment, nx=3,ny=3, bExactSize=False )
-                            print(f"DEBUG: lvec=\n{self.lvec}")
+                            if bdbg: print(f"DEBUG: lvec=\n{self.lvec}")
                 else:
-                    print(f"DEBUG: Loading generic atoms file: {fname}")
+                    if bdbg: print(f"DEBUG: Loading generic atoms file: {fname}")
                     self.apos,self.atypes,self.enames,self.qs = au.loadAtomsNP(fname=fname , bReadN=bReadN )
             except Exception as e:
                 print(f"ERROR in AtomicSystem.__init__ loading file {fname}: {type(e)}: {e}")
@@ -69,10 +72,10 @@ class AtomicSystem( ):
                 raise
                 
             if bPreinit:
-                print(f"DEBUG: Calling preinitialize_atomic_properties()")
+                if bdbg: print(f"DEBUG: Calling preinitialize_atomic_properties()")
                 try:
                     self.preinitialize_atomic_properties()
-                    print(f"DEBUG: preinitialize_atomic_properties() completed successfully")
+                    if bdbg: print(f"DEBUG: preinitialize_atomic_properties() completed successfully")
                 except Exception as e:
                     print(f"ERROR in preinitialize_atomic_properties: {type(e)}: {e}")
                     import traceback
