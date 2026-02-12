@@ -631,14 +631,14 @@ def plot_selection(sel=None,ax1=0,ax2=1,ps=None, s=100):
     asel=ps[sel]
     plt.scatter( asel[:,ax1], asel[:,ax2], s=s, facecolors='none', edgecolors='r' )
 
-#  double computeFreeEnergy(const char* system_name, int nCVs, float* initial_positions, float* final_positions, int nLambda, int nMDsteps, int nEQsteps, double Fconv)
-lib.computeFreeEnergy.argtypes  = [c_char_p, c_int, c_float_p, c_float_p, c_int, c_int, c_int, c_double]
+
+#  double computeFreeEnergy(int nCVs, float* initial_positions, float* final_positions, int nLambda, int nMDsteps, int nEQsteps, double Fconv, int mode, int nPerVFs)
+lib.computeFreeEnergy.argtypes  = [c_int, c_float_p, c_float_p, c_int, c_int, c_int, c_double, c_int, c_int]
 lib.computeFreeEnergy.restype   =  c_double
-def computeFreeEnergy(system_name, nCVs, initial_positions, final_positions, nLambda, nMDsteps=100000, nEQsteps=10000, Fconv=1e-6):
+def computeFreeEnergy(nCVs, initial_positions, final_positions, nLambda, nMDsteps=100000, nEQsteps=10000, Fconv=1e-6, mode=0, nPerVFs=10):
     initial_positions = np.array(initial_positions, dtype=np.float32)
     final_positions = np.array(final_positions, dtype=np.float32)
-    system_name_bytes = system_name.encode('utf-8')
-    return lib.computeFreeEnergy(system_name_bytes, nCVs, _np_as(initial_positions,c_float_p), _np_as(final_positions,c_float_p), nLambda, nMDsteps, nEQsteps, Fconv)
+    return lib.computeFreeEnergy(nCVs, _np_as(initial_positions,c_float_p), _np_as(final_positions,c_float_p), nLambda, nMDsteps, nEQsteps, Fconv, mode, nPerVFs)
 
 # ====================================
 # ========= Test Functions

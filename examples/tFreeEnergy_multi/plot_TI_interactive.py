@@ -11,6 +11,7 @@ import numpy as np
 import argparse
 from scipy import integrate
 import re
+import os
 
 # Constants
 kB = 8.617333262145e-5  # eV/K
@@ -44,19 +45,22 @@ def detect_columns(filename):
         with open(filename, 'r') as f:
             for line in f:
                 line = line.strip()
-                if line.startswith('#') and 'lambda' in line and 'dE' in line:
+                if line.startswith('#') and 'lambda' in line:
                     parts = line.replace('#','').split()
                     # Map standard names
                     temp_map = {}
                     for i, p in enumerate(parts):
                         if p == 'lambda': temp_map['lambda'] = i
-                        elif p == 'dE/dlambda': temp_map['dE_dlambda'] = i
-                        elif p == 'sigma_dE': temp_map['sigma_dE'] = i
-                        elif p == 'cumulative_FE': temp_map['cumulative_FE'] = i
-                        elif p == 'cumulative_err': temp_map['cumulative_err'] = i
+                        elif p == 'dE/dlambda' or p == 'TI_dE/dlambda': temp_map['dE_dlambda'] = i
+                        elif p == 'sigma_dE' or p == 'TI_sigma': temp_map['sigma_dE'] = i
+                        elif p == 'cumulative_FE' or p == 'TI_F': temp_map['cumulative_FE'] = i
+                        elif p == 'cumulative_err' or p == 'TI_err': temp_map['cumulative_err'] = i
                         elif p == 'distance': temp_map['distance'] = i
+                        elif p == 'JE_F': temp_map['JE_F'] = i
+                        elif p == 'JE_W_avg': temp_map['JE_W_avg'] = i
+                        elif p == 'JE_W_sigma': temp_map['JE_W_sigma'] = i
 
-                    if 'lambda' in temp_map and 'dE_dlambda' in temp_map:
+                    if 'lambda' in temp_map:
                         col_map.update(temp_map)
                         header_found = True
                     break
@@ -76,6 +80,10 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
 
     # Read data
     data = read_ti_data(filename)
+    if data.shape[0] > 1000:
+        print(f"Downsampling data from {data.shape[0]} to 1000 points for performance.")
+        indices = np.linspace(0, data.shape[0] - 1, 1000).astype(int)
+        data = data[indices]
     ncols = data.shape[1]
     
     # Safe extraction helper
@@ -88,44 +96,55 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
     lambda_vals = get_col('lambda')
     dE_dlambda = get_col('dE_dlambda')
     
-    if lambda_vals is None or dE_dlambda is None:
-        print("Error: Could not extract lambda or dE/dlambda columns.")
+    if lambda_vals is None:
+        print("Error: Could not extract lambda columns.")
         sys.exit(1)
         
     errors = get_col('sigma_dE')
     cumulative_F_read = get_col('cumulative_FE')
     cumulative_err_read = get_col('cumulative_err')
-    distances = get_col('distance')
-
-    # Fallback for old format if no header
-    if not header_found:
-        print("No header detected, no interactive plot available.")
-        exit(1)
-
-    # Handle missing errors array
-    if errors is None:
-        errors = np.zeros_like(lambda_vals)
-
-    Force_from_data = None
-    dE_ref_dlambda = None
-    F_ref = None
-    if distances is not None and len(distances) > 1:
-        # Calculate dR/dλ
-        dR_dlambda = np.gradient(distances, lambda_vals)
-        # Avoid division by zero
-        # Create a copy to avoid modifying the original array in place, which can have side effects
-        dR_dlambda_safe = np.copy(dR_dlambda)
-        dR_dlambda_safe[np.abs(dR_dlambda_safe) < 1e-9] = 1e-9
-        Force_from_data = dE_dlambda / dR_dlambda_safe
-        
-        if N_segments is not None:
-            k_spring = kB * T / (N_segments * b**2)
-            F_ref = k_spring * distances
-            dE_ref_dlambda = F_ref * dR_dlambda
 
     cumulative_F = cumulative_F_read
     cumulative_error = cumulative_err_read
+
+    distances = get_col('distance')
     
+    Force_from_data = None
+    dE_ref_dlambda = None
+    F_ref = None
+
+    # JE columns
+    je_F_col = get_col('JE_F')
+
+    je_F_col_to_plot = None
+    initial_je_F_val = 0.0
+    je_final_dF = None # This will be the Delta F from the start of the curve
+
+    if je_F_col is not None:
+        valid_je_F_indices = np.where(~np.isnan(je_F_col))[0]
+        if len(valid_je_F_indices) > 0:
+            initial_je_F_val = je_F_col[valid_je_F_indices[0]]
+            je_F_col_to_plot = je_F_col - initial_je_F_val
+            je_final_dF = je_F_col_to_plot[valid_je_F_indices[-1]] # Final value of the shifted curve
+            print(f"Loaded Jarzynski Free Energy from file. Final dF (curve shifted to zero) = {je_final_dF:.6f} eV")
+        # If no valid data, je_F_col_to_plot remains None
+
+
+    je_dF = je_final_dF # Use this for annotation if curve data is primary
+    
+    if je_dF is None: # Only try to load from work.dat if not already set from curve
+        je_filename = "jarzynski_work.dat"
+        if os.path.exists(je_filename):
+            try:
+                work_data = np.loadtxt(je_filename)
+                beta = 1.0 / (kB * T)
+                avg_exp = np.mean(np.exp(-beta * work_data))
+                je_dF_from_work_file = -np.log(avg_exp) / beta
+                je_dF = je_dF_from_work_file
+                print(f"Loaded Jarzynski Work data from {je_filename}. Computed dF = {je_dF:.6f} eV")
+            except Exception as e:
+                print(f"Warning: Could not read {je_filename}: {e}")
+
     # Create subplots
     fig = make_subplots(
         rows=5, cols=1,
@@ -143,46 +162,49 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
     plot_rows = {'dE/dλ': 1, 'Force': 2, 'FE': 3, 'FE_diff': 4, 'Distance': 5}
 
     # --- Plot 1: dE/dlambda vs lambda ---
-    hover_text_1 = [
-        f"λ = {lam:.4f}<br>dE/dλ = {de:.4f} eV<br>σ(dE/dλ) = {err:.4f} eV"
-        for lam, de, err in zip(lambda_vals, dE_dlambda, errors)
-    ]
-    fig.add_trace(
-        go.Scatter(
-            x=lambda_vals, y=dE_dlambda,
-            mode='lines+markers', name='dE/dλ (data)',
-            line=dict(color='blue', width=2), marker=dict(size=8, symbol='circle'),
-            error_y=dict(type='data', array=errors, visible=True, color='rgba(0,0,255,0.3)'),
-            hovertext=hover_text_1, hoverinfo='text'
-        ),
-        row=plot_rows['dE/dλ'], col=1
-    )
-    if dE_ref_dlambda is not None:
+    if dE_dlambda is not None and not np.isnan(dE_dlambda).all():
+        hover_text_1 = [
+            f"λ = {lam:.4f}<br>dE/dλ = {de:.4f} eV<br>σ(dE/dλ) = {err:.4f} eV"
+            for lam, de, err in zip(lambda_vals, dE_dlambda, errors)
+        ]
         fig.add_trace(
             go.Scatter(
-                x=lambda_vals, y=dE_ref_dlambda,
-                mode='lines', name='dE/dλ (ref)',
-                line=dict(color='purple', width=2, dash='dash'),
-                opacity=0.7, hoverinfo='text'
+                x=lambda_vals, y=dE_dlambda,
+                mode='lines+markers', name='dE/dλ (TI)',
+                line=dict(color='blue', width=2), marker=dict(size=8, symbol='circle'),
+                error_y=dict(type='data', array=errors, visible=True, color='rgba(0,0,255,0.3)'),
+                hovertext=hover_text_1, hoverinfo='text'
             ),
             row=plot_rows['dE/dλ'], col=1
         )
-    
-    # Linear fit for dE/dlambda
-    p_dE = np.polyfit(lambda_vals, dE_dlambda, 1)
-    fit_text_dE = f"Fit: {p_dE[0]:.4f}λ + {p_dE[1]:.4f}"
-    fig.add_annotation(
-        x=0.01, y=0.99, xref="paper", yref="paper",
-        xanchor='left', yanchor='top',
-        text=fit_text_dE, showarrow=False,
-        font=dict(size=12, color="blue"),
-        bgcolor="rgba(255, 255, 255, 0.8)",
-        row=plot_rows['dE/dλ'], col=1
-    )
+        if dE_ref_dlambda is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=lambda_vals, y=dE_ref_dlambda,
+                    mode='lines', name='dE/dλ (ref)',
+                    line=dict(color='purple', width=2, dash='dash'),
+                    opacity=0.7, hoverinfo='text'
+                ),
+                row=plot_rows['dE/dλ'], col=1
+            )
+        
+        # Linear fit for dE/dlambda
+        valid = ~np.isnan(dE_dlambda)
+        if np.any(valid):
+            p_dE = np.polyfit(lambda_vals[valid], dE_dlambda[valid], 1)
+            fit_text_dE = f"Fit: {p_dE[0]:.4f}λ + {p_dE[1]:.4f}"
+            fig.add_annotation(
+                x=0.01, y=0.99, xref="paper", yref="paper",
+                xanchor='left', yanchor='top',
+                text=fit_text_dE, showarrow=False,
+                font=dict(size=12, color="blue"),
+                bgcolor="rgba(255, 255, 255, 0.8)",
+                row=plot_rows['dE/dλ'], col=1
+            )
     fig.update_yaxes(title_text="dE/dλ [eV]", row=plot_rows['dE/dλ'], col=1)
 
     # --- Plot 2: Force vs lambda  ---
-    if 'Force' in plot_rows and Force_from_data is not None:
+    if 'Force' in plot_rows and Force_from_data is not None and not np.isnan(Force_from_data).all():
         hover_text_force = [
             f"λ = {lam:.4f}<br>Force = {f:.4f} eV/Å"
             for lam, f in zip(lambda_vals, Force_from_data)
@@ -208,58 +230,90 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
             )
         
         # Linear fit for Force
-        p_force = np.polyfit(lambda_vals, Force_from_data, 1)
-        fit_text_force = f"Fit: {p_force[0]:.4f}λ + {p_force[1]:.4f}"
-        fig.add_annotation(
-            x=0.01, y=0.99, xref="paper", yref="paper",
-            xanchor='left', yanchor='top',
-            text=fit_text_force, showarrow=False,
-            font=dict(size=12, color="orange"),
-            bgcolor="rgba(255, 255, 255, 0.8)",
-            row=plot_rows['Force'], col=1
-        )
-        fig.update_yaxes(title_text="Force [eV/Å]", row=plot_rows['Force'], col=1)
+        valid = ~np.isnan(Force_from_data)
+        if np.any(valid):
+            p_force = np.polyfit(lambda_vals[valid], Force_from_data[valid], 1)
+            fit_text_force = f"Fit: {p_force[0]:.4f}λ + {p_force[1]:.4f}"
+            fig.add_annotation(
+                x=0.01, y=0.99, xref="paper", yref="paper",
+                xanchor='left', yanchor='top',
+                text=fit_text_force, showarrow=False,
+                font=dict(size=12, color="orange"),
+                bgcolor="rgba(255, 255, 255, 0.8)",
+                row=plot_rows['Force'], col=1
+            )
+    fig.update_yaxes(title_text="Force [eV/Å]", row=plot_rows['Force'], col=1)
     
     # --- Plot 3: Cumulative Free Energy ---
-    hover_text_fe = [
-        f"λ = {lam:.4f}<br>ΔF(λ) = {cf:.4f} eV<br>σ(ΔF) = {ce:.4f} eV"
-        for lam, cf, ce in zip(lambda_vals, cumulative_F, cumulative_error)
-    ]
-    fig.add_trace(
-        go.Scatter(
-            x=lambda_vals, y=cumulative_F,
-            mode='lines+markers', name='ΔF(λ) (data)',
-            line=dict(color='green', width=2), marker=dict(size=8, symbol='diamond'),
-            error_y=dict(type='data', array=cumulative_error, visible=True, color='rgba(0,255,0,0.3)'),
-            hovertext=hover_text_fe, hoverinfo='text',
-        ),
-        row=plot_rows['FE'], col=1
-    )
-    FE_ref_shifted = None
-    if distances is not None and N_segments is not None:
-        k_spring = kB * T / (N_segments * b**2)
-        FE_ref = 0.5 * k_spring * distances**2
-        FE_ref_shifted = FE_ref - FE_ref[0] + cumulative_F[0]
+    if cumulative_F is not None and not np.isnan(cumulative_F).all():
+        hover_text_fe = [
+            f"λ = {lam:.4f}<br>ΔF(λ) = {cf:.4f} eV<br>σ(ΔF) = {ce:.4f} eV"
+            for lam, cf, ce in zip(lambda_vals, cumulative_F, cumulative_error)
+        ]
         fig.add_trace(
             go.Scatter(
-                x=lambda_vals, y=FE_ref_shifted,
-                mode='lines', name='ΔF(λ) (ref spring)',
-                line=dict(color='purple', width=2, dash='dash'),
+                x=lambda_vals, y=cumulative_F,
+                mode='lines+markers', name='ΔF(λ) (TI)',
+                line=dict(color='green', width=2), marker=dict(size=8, symbol='diamond'),
+                error_y=dict(type='data', array=cumulative_error, visible=True, color='rgba(0,255,0,0.3)'),
+                hovertext=hover_text_fe, hoverinfo='text',
+            ),
+            row=plot_rows['FE'], col=1
+        )
+        
+    if je_F_col is not None and not np.isnan(je_F_col).all():
+        fig.add_trace(
+            go.Scatter(
+                x=lambda_vals, y=je_F_col,
+                mode='lines+markers', name='ΔF(λ) (JE)',
+                line=dict(color='orange', width=2, dash='dash'), marker=dict(size=6, symbol='triangle-up'),
+            ),
+            row=plot_rows['FE'], col=1
+        )
+
+    FE_ref_shifted = None 
+    FE_ref_smooth_plot_data = None  # Keep this initialized to None for the FE Difference plot
+    if distances is not None and N_segments is not None and cumulative_F is not None:
+        k_spring = kB * T / (N_segments * b**2)
+        
+        # Calculate FE_ref_shifted for the difference plot (using original lambda_vals points)
+        FE_ref_original_points = 0.5 * k_spring * distances**2
+        FE_ref_shifted = FE_ref_original_points - FE_ref_original_points[0] + cumulative_F[0]
+
+        # Generate denser lambda values for plotting the smooth reference
+        lambda_plot_vals = np.linspace(lambda_vals[0], lambda_vals[-1], 200)
+
+        # Assume distance changes linearly with lambda for the reference parabola
+        initial_distance = distances[0]
+        final_distance = distances[-1]
+        distances_smooth = initial_distance + (final_distance - initial_distance) * lambda_plot_vals
+
+        # Calculate the smooth reference free energy for plotting
+        FE_ref_smooth_plot = 0.5 * k_spring * distances_smooth**2
+        FE_ref_smooth_plot_data = FE_ref_smooth_plot - FE_ref_smooth_plot[0] + cumulative_F[0]
+        
+        fig.add_trace(
+            go.Scatter(
+                x=lambda_plot_vals, y=FE_ref_smooth_plot_data, # Use smooth values for plotting
+                mode='lines', name='ΔF(λ) (ref spring, smooth)', # Updated name
+                line=dict(color='purple', width=2, dash='solid'), # Changed dash to solid for smooth
                 opacity=0.7, hoverinfo='text'
             ),
             row=plot_rows['FE'], col=1
         )
         # Parabolic fit for data
-        p_fe = np.polyfit(lambda_vals, cumulative_F, 2)
-        fit_text_fe = f"Data Fit: {p_fe[0]:.4f}λ² + {p_fe[1]:.4f}λ + {p_fe[2]:.4f}"
-        fig.add_annotation(
-            x=0.01, y=0.99, xref="paper", yref="paper",
-            xanchor='left', yanchor='top',
-            text=fit_text_fe, showarrow=False,
-            font=dict(size=12, color="green"),
-            bgcolor="rgba(255, 255, 255, 0.8)",
-            row=plot_rows['FE'], col=1
-        )
+        valid = ~np.isnan(cumulative_F)
+        if np.any(valid):
+            p_fe = np.polyfit(lambda_vals[valid], cumulative_F[valid], 2)
+            fit_text_fe = f"Data Fit: {p_fe[0]:.4f}λ² + {p_fe[1]:.4f}λ + {p_fe[2]:.4f}"
+            fig.add_annotation(
+                x=0.01, y=0.99, xref="paper", yref="paper",
+                xanchor='left', yanchor='top',
+                text=fit_text_fe, showarrow=False,
+                font=dict(size=12, color="green"),
+                bgcolor="rgba(255, 255, 255, 0.8)",
+                row=plot_rows['FE'], col=1
+            )
         # Reference info
         ref_text_fe = f"Ref: 0.5*k*d², k={k_spring:.4f}"
         fig.add_annotation(
@@ -271,10 +325,30 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
             row=plot_rows['FE'], col=1
         )
 
+    # Add Jarzynski result if available
+    if je_dF is not None:
+        fig.add_annotation(
+            x=0.5, y=0.1, xref="paper", yref="paper",
+            xanchor='center', yanchor='bottom',
+            text=f"Jarzynski ΔF: {je_dF:.4f} eV",
+            showarrow=False,
+            font=dict(size=14, color="red", weight="bold"),
+            bgcolor="rgba(255, 255, 255, 0.9)",
+            bordercolor="red",
+            row=plot_rows['FE'], col=1
+        )
+        # Also add a horizontal line at the end
+        fig.add_shape(
+            type="line",
+            x0=0, y0=je_dF, x1=1, y1=je_dF,
+            line=dict(color="red", width=2, dash="dashdot"),
+            row=plot_rows['FE'], col=1
+        )
+
     fig.update_yaxes(title_text="ΔF(λ) [eV]", row=plot_rows['FE'], col=1)
 
     # --- Plot 4: FE Difference ---
-    if FE_ref_shifted is not None:
+    if FE_ref_shifted is not None and cumulative_F is not None:
         # Avoid division by zero, though FE_ref_shifted should be safe
         safe_ref = np.copy(FE_ref_shifted)
         safe_ref[np.abs(safe_ref) < 1e-9] = 1e-9
@@ -306,7 +380,7 @@ def plot_ti_interactive(filename, output_prefix=None, N_segments=None, T=300.0, 
     fig.update_yaxes(title_text="Abs Difference [eV]", row=plot_rows['FE_diff'], col=1, secondary_y=True)
 
     # --- Plot 5: Distance ---
-    if 'Distance' in plot_rows:
+    if 'Distance' in plot_rows and distances is not None:
         hover_text_dist = [
             f"λ = {lam:.4f}<br>Distance = {dist:.3f} Å"
             for lam, dist in zip(lambda_vals, distances)

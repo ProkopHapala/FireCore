@@ -342,7 +342,7 @@ __kernel void getMMFFf4(
             // --- Evaluate bond-length stretching energy and forces
             if(iG<ing){
                 // Bond stretching with proper MMFF parameters from bL[i] and bK[i]
-                E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;   // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor,
+                E+= evalBond( h.xyz, l-1.198f, 40.0f, &f1 );  fbs[i]-=f1;  fa+=f1;   // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor,
 
                 // pi-pi alignment interaction            
                 float kpp = Kppi[i];
@@ -384,8 +384,8 @@ __kernel void getMMFFf4(
                 const int jnga = jng+i0a;
                 const float4 hj = hs[j];  
                       
-                E += evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );    // evaluate angular force and energy using cos(angle/2) formulation        
-                fa    -= f1+f2;
+                // E += evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );    // evaluate angular force and energy using cos(angle/2) formulation        
+                // fa    -= f1+f2;
 
         //         //if(bSubtractVdW)
         //         { // Remove non-bonded interactions from atoms that are bonded to common neighbor
@@ -402,8 +402,8 @@ __kernel void getMMFFf4(
         //             f2 +=  fij.xyz;
         //         }
 
-                fbs[i]+= f1;
-                fbs[j]+= f2;
+                // fbs[i]+= f1;
+                // fbs[j]+= f2;
             }
         }
 
@@ -913,7 +913,9 @@ __kernel void updateAtomsMMFFf4(
     __global cl_Mat3* bboxes,       // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
     __global int*     sysneighs,    // 13 // // for each system contains array int[nMaxSysNeighs] of nearby other systems
     __global float4*  sysbonds,      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
-    __global float4*  averageForces // 15 // contains average forces on atoms for free energy calculation
+    __global float4*  averageForces, // 15 // contains average forces on atoms for Thermodynamic Integration
+    __global float*   work//,          // 16 // contains work recorded at each step for Jarzynski Equality
+//    const int4    jeParams
 ){
     const int natoms=n.x;           // number of atoms
     const int nnode =n.y;           // number of node atoms
@@ -1000,6 +1002,49 @@ __kernel void updateAtomsMMFFf4(
         if(B.c.z>0.0f){ if(pe.z<B.a.z){ fe.z+=(B.a.z-pe.z)*B.c.z; }else if(pe.z>B.b.z){ fe.z+=(B.b.z-pe.z)*B.c.z; }; }
         // ------- constrains
         float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
+
+
+        // if(iS==0 && iG==0)printf("GPU: iS=%i iG=%i cons.w=%g TDrive.z=%g \n", iS, iG, cons.w, TDrive.z );
+        if( work && (cons.w > 0.f) ){
+             float4 consEnd = constrK[ iaa ];
+             int nLambda    = (int)consEnd.w;
+             float lambda   = TDrive.z/(float)(nLambda-1);
+             float k        = cons.w; // Stiffness stored in .w
+             
+             // Interpolate position
+             float3 p0 = cons.xyz;
+             float3 p1 = consEnd.xyz;
+             float3 target = p0 + (p1 - p0) * lambda;
+             
+             // Compute Force (Harmonic)
+             // Force on atom = k * (target - pe)
+             float3 fc = (target - pe.xyz) * (float3){k,k,k};
+             fe.xyz += fc;
+             
+             // Accumulate Work
+             // Work done ON system = integral of (dH/dLambda) dLambda
+             // H_spring = 0.5 * k * (x - x0(lambda))^2
+             // dH/dLambda = k * (x - x0) * (-dx0/dLambda)
+             //            = k * (x - x0) * -(p1 - p0)
+             //            = k * (x0 - x) * (p1 - p0)  = fc * (p1 - p0)
+             // So we accumulate dot(fc, dir).
+             
+             float3 dir = p1 - p0;
+             float work_term = dot(fc, dir);
+             work_term *= 1.0f/(float)(nLambda-1);
+             
+             // Record work at this step if buffer provided
+            {
+                volatile __global float* addr = &work[ nLambda * iS + (int)(TDrive.z) ];
+                float old_val, new_val;
+                do {
+                    old_val = *addr;
+                    new_val = old_val + work_term;
+                } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
+            }
+             cons.w = 0.0f; // Disable standard logic
+        }
+
         if( cons.w>0.f && (cons.w<1e3f) ){            // if stiffness is positive, we have constraint
             float4 cK = constrK[ iaa ];
             cK = max( cK, (float4){0.0f,0.0f,0.0f,0.0f} );

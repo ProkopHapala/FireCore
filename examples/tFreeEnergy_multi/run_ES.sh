@@ -1,9 +1,23 @@
 #!/bin/bash
-
+rm trajectory.xyz
 set -e  # Exit on error
+
+# Default Mode
+MODE="BOTH"  # Options: TI, JE, BOTH
+
+# Parse command line arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --mode) MODE="$2"; shift ;;
+        *) ;; # Ignore unknown args
+    esac
+    shift
+done
 
 N=30
 
+# Ensure we are in the script directory
+cd "$(dirname "$0")"
 # Get working directory
 wd=`pwd`
 
@@ -20,21 +34,23 @@ cd $wd
 echo "Build successful!"
 echo ""
 
-# Run the TI calculation
-echo "Step 2: Running Thermodynamic Integration..."
+# Run calculation
+echo "Step 2: Running Free Energy Calculation (Mode: $MODE)..."
 echo "----------------------------------------"
 python3 run_ES.py \
+    --mode $MODE \
     --nSys 100 \
     --xyz_name "../tMMFF/data/entropic_spring_$N.xyz" \
     --system_name "entropic_spring_$N" \
-    --nLambda 100 \
+    --nLambda 50000 \
     --nMDsteps 1000000 \
     --nEQsteps 5000 \
     --Fconv 1e-6 \
-    --constraints "constraints_ES.txt" # Values for the distances of the two end atoms to pull
+    --constraints "constraints_ES.txt" \
+    --nPerVFs 10
 
 if [ $? -ne 0 ]; then
-    echo "ERROR: TI calculation failed!"
+    echo "ERROR: Calculation failed!"
     exit 1
 fi
 echo ""
@@ -42,7 +58,7 @@ echo ""
 # Plot the results
 echo "Step 3: Plotting results..."
 echo "----------------------------------------"
-python3 plot_TI_interactive.py --input entropic_spring_${N}_TI.dat
+python3 plot_F_interactive.py --input entropic_spring_${N}_TI.dat
 if [ $? -ne 0 ]; then
     echo "ERROR: Plotting failed!"
     exit 1

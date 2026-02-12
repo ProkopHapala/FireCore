@@ -41,6 +41,8 @@ def main():
     parser.add_argument("--nEQsteps", type=int, default=5000, help="Number of equilibration steps per window")
     parser.add_argument("--Fconv", type=float, default=1e-6, help="Force convergence criterion")
     parser.add_argument("--constraints", type=str, default="constraints.txt", help="Path to constraints file")
+    parser.add_argument("--mode", type=str, default="TI", choices=["TI", "JE", "BOTH"], help="Mode of calculation: TI, JE, or BOTH")
+    parser.add_argument("--nPerVFs", type=int, default=10, help="Number of steps per VF save")
 
     args = parser.parse_args()
 
@@ -75,18 +77,23 @@ def main():
         final_positions.extend(final_pos)
         print(f"  CV {i+1}: ({init_pos[0]:.1f}, {init_pos[1]:.1f}, {init_pos[2]:.1f}) → ({final_pos[0]:.1f}, {final_pos[1]:.1f}, {final_pos[2]:.1f})")
 
-    print(f"\nTI Parameters: nLambda={args.nLambda}, nMDsteps={args.nMDsteps}, nEQsteps={args.nEQsteps}\n")
+    print(f"\nParameters: nLambda={args.nLambda}, nMDsteps={args.nMDsteps}, nEQsteps={args.nEQsteps}, Mode={args.mode}\n")
 
-    # Run thermodynamic integration
+    # Map mode to integer
+    mode_map = {"TI": 0, "JE": 1, "BOTH": 2}
+    mode_int = mode_map[args.mode.upper()]
+
+    # Run free energy calculation
     result = mmff.computeFreeEnergy(
-        system_name=args.system_name,
         nCVs=nCVs,
         initial_positions=initial_positions,
         final_positions=final_positions,
         nLambda=args.nLambda,
         nMDsteps=args.nMDsteps,
         nEQsteps=args.nEQsteps,
-        Fconv=args.Fconv
+        Fconv=args.Fconv,
+        mode=mode_int,
+        nPerVFs=args.nPerVFs
     )
 
     print(f"\n{'=' * 60}")
