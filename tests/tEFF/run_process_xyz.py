@@ -99,7 +99,22 @@ if __name__ == "__main__":
     [ 6.,  0.0, 0.2, 1.0 ], # 8 O
     [ 7.,  0.0, 0.10, 1.0 ], # 9 F
     ], dtype=np.float64)
-    eff.setAtomParams( atomParams )
+   
+
+    atomParams2 = np.array([
+        # Z_nuc, R_eff,    Zcore_eff,   PA,        PB,        PC,        PD,        PE
+        [0.0,    1.0,      0.0,         0.0,       0.0,       0.0,       0.0,       0.0],
+        [1.0,    0.0,      0.0,         0.0,       0.0,       0.0,       0.0,       0.0],
+        [2.0,    0.1,      2.0,         0.0,       0.0,       0.0,       0.0,       0.0],
+        [3.0,    0.1,      2.0,         0.0,       0.0,       0.0,       0.0,       0.0],
+        [4.0,    0.1,      2.0,         0.0,       0.0,       0.0,       0.0,       0.0],
+        [5.0,    0.1,      2.0,         0.0,       0.0,       0.0,       0.0,       0.0],
+        [6.0,    0.621427, 2.0,        22.721015, 0.728733,  1.103199, 17.695345, 6.693621],
+        [7.0,    0.0,      2.0,         0.0,       0.0,       0.0,       0.0,       0.0],
+        [8.0,    0.167813, 2.0,        25.080199, 0.331574,  1.276183, 12.910142, 3.189333],
+        [9.0,    0.3,      2.0,         0.0,       0.0,       0.0,       0.0,       0.0],
+    ], dtype=np.float64)
+    eff.setAtomParams(atomParams2, mode=2)
 
     params, nrec = extract_blocks("export/scan_data/angdistscan_H2O.xyz")
     plot_energy_landscape( params['ang'], params['dist'], params['Etot'], Espan=5.0 )
@@ -112,8 +127,6 @@ if __name__ == "__main__":
     with open("processXYZ.xyz", "w") as f: f.write("")
     #eff.processXYZ( "export/scan_data/distscan_H2O.xyz", bOutXYZ=True, outEs );
 
-    eff.initOpt( dt=0.005, damping=0.005, f_limit=1000.0)
-
     ## ---- Previous scan
 
     bCoreElectrons = False
@@ -121,6 +134,7 @@ if __name__ == "__main__":
     #eff.setSwitches( coreCoul=0 )
     eff.preAllocateXYZ("export/scan_data/angdistscan_H2O.xyz", Rfac=-1.35, bCoreElectrons=bCoreElectrons )
     eff.getBuffs()
+    eff.initOpt( dt=0.005, damping=0.005, f_limit=1000.0)
     eff.info()
     #eff.aPars[0,2]=1
     eff.esize[:]=0.7

@@ -1,5 +1,5 @@
 import numpy as np
-from   ctypes import c_int, c_double, c_bool, c_float, c_char_p, c_bool, c_void_p, c_char_p
+from   ctypes import c_int, c_double, c_bool, c_float, c_char, c_char_p, c_void_p
 import ctypes
 import os
 import sys
@@ -340,14 +340,19 @@ def sample_EA( RSs, FEout=None, KRSrho=[1.125,0.9,-0.2], aPar=[4.,0.1,0.1,2.0], 
     lib.sample_EA(n, RSs, FEout, KRSrho, aPar, bEvalAECoulomb, bCoreCoul, bEvalAEPauli)
     return FEout
 
-#int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo" ){
-lib.processXYZ.argtypes  = [c_char_p, c_double, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_bool, c_bool, c_bool, c_bool, c_char_p, c_char_p ]
+#int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo", bool bPaired=false, bool bEval=true, bool bOutCoreHeader=false, char coreMode='a' ){
+lib.processXYZ.argtypes  = [c_char_p, c_double, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_bool, c_bool, c_bool, c_bool, c_char_p, c_char_p, c_bool, c_bool, c_bool, c_char ]
 lib.processXYZ.restype   =  c_int
-def processXYZ( fname, Rfac=-1.35, outEs=None, apos=None, epos=None, nstepMax=1000, dt=0.5e-2, Fconv=1e-3, ialg=2, bAddEpairs=False, bCoreElectrons=False, bChangeCore=True, bChangeEsize=True,xyz_out="processXYZ.xyz", fgo_out="processXYZ.fgo",  bOutputs=(0,0,0) ):
+def processXYZ( fname, Rfac=-1.35, outEs=None, apos=None, epos=None, nstepMax=1000, dt=0.5e-2, Fconv=1e-3, ialg=2, bAddEpairs=False, bCoreElectrons=False, bChangeCore=True, bChangeEsize=True, xyz_out="processXYZ.xyz", fgo_out="processXYZ.fgo", bPaired=False, bEval=True, bOutCoreHeader=False, coreMode=b'a', bOutputs=(0,0,0) ):
     if bOutputs[0] and outEs is None: outEs = np.zeros(8, dtype=np.float64)
     if bOutputs[1] and apos  is None: apos  = np.zeros( (na, 3) )
     if bOutputs[2] and epos  is None: epos  = np.zeros( (ne, 4) )
-    lib.processXYZ( cstr(fname), Rfac, _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg, bAddEpairs, bCoreElectrons, bChangeCore, bChangeEsize, cstr(xyz_out), cstr(fgo_out) )
+    if isinstance(coreMode,str): coreMode = coreMode.encode('utf-8')
+    if not (isinstance(coreMode,(bytes,bytearray)) and (len(coreMode)==1)):
+        raise ValueError(f"coreMode must be single byte/char like 'a','f','e'; got {coreMode!r}")
+    xyz_out_ = None if (xyz_out is None or xyz_out=="") else cstr(xyz_out)
+    fgo_out_ = None if (fgo_out is None or fgo_out=="") else cstr(fgo_out)
+    lib.processXYZ( cstr(fname), Rfac, _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg, bAddEpairs, bCoreElectrons, bChangeCore, bChangeEsize, xyz_out_, fgo_out_, bPaired, bEval, bOutCoreHeader, coreMode[0] )
     return outEs, apos, epos
 
 #int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int optAlg=2, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo" ){
@@ -359,7 +364,7 @@ def processXYZ_e( fname, outEs=None, apos=None, epos=None, nstepMax=0, dt=0.001,
     Returns: outEs, apos, epos
     """    
     # Get number of atoms and electrons from file (first and second line)
-    if (bOutputs[1] and apos  is None) or (bOutputs[2] and epos  is None):
+    if ( (bOutputs[0] and outEs is None) or (bOutputs[1] and apos  is None) or (bOutputs[2] and epos  is None) ):
         with open(fname) as f:
             nae = int(f.readline().strip().split()[0])
             ws  = f.readline().strip().split()
@@ -373,7 +378,11 @@ def processXYZ_e( fname, outEs=None, apos=None, epos=None, nstepMax=0, dt=0.001,
     if bOutputs[0] and outEs is None: outEs = np.zeros( (nconf,5) )
     if bOutputs[1] and apos  is None: apos  = np.zeros( (nconf, na, 3) )
     if bOutputs[2] and epos  is None: epos  = np.zeros( (nconf, ne, 4) )
-    lib.processXYZ_e( cstr(fname), _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, optAlg, cstr(xyz_out), cstr(fgo_out) )
+    if (xyz_out is None) or (xyz_out == ""):
+        xyz_out = None
+    if (fgo_out is None) or (fgo_out == ""):
+        fgo_out = None
+    lib.processXYZ_e( cstr(fname), _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, optAlg, cstr(xyz_out) if xyz_out is not None else None, cstr(fgo_out) if fgo_out is not None else None )
     return outEs, apos, epos
 
 

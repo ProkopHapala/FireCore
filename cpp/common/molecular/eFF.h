@@ -119,6 +119,7 @@ constexpr static const default_EPCs[] = {
 int get_iZ( const char* name ){
     char c0 = name[0];
     char c1 = name[1];
+    if( c0>='0' && c0<='9' ){ return atoi(name); }
     if(c1!='\0'){
         if(name[2]=='\0'){ printf("ERROR in get_iZ(): element %s not supported\n", name); exit(0); }
         if     (c0=='H' && c1=='e') return 2;  // He
@@ -578,6 +579,10 @@ double evalEE(){
                         //dEpaul = addPauliGauss  ( dR, si, sj, f, fsi, fsj, spini!=espin[j], KRSrho );
                         //dEpaul = addPauliGauss_New  ( dR, si, sj, f, fsi, fsj, spini!=espin[j], KRSrho );
                         dEpaul = addPauliGauss_New  ( dR, si, sj, f, fsi, fsj, spinij, KRSrho, qq );
+                        if( !std::isfinite(dEpaul) || !std::isfinite(fsi) || !std::isfinite(fsj) ){
+                            printf("ERROR NaN/inf in EE Pauli: (i=%i j=%i) spinij=%i qq=%g dEpaul=%g fsi=%g fsj=%g r=%g si=%g sj=%g dR(%g,%g,%g)\n", i, j, spinij, qq, dEpaul, fsi, fsj, dR.norm(), si, sj, dR.x, dR.y, dR.z );
+                            fflush(stdout);
+                        }
                         if(verbosity>3){
                             Vec3d f_paul = f - f_before_paul;
                             printf("CPU EE(%i,%i) dR(%.3f,%.3f,%.3f) s(%.3f,%.3f) -> Paul:(%.3f,%.3f,%.3f) | %.3f,%.3f\n", i, j, dR.x, dR.y, dR.z, si, sj, f_paul.x, f_paul.y, f_paul.z, fsi - fsi_before_paul, fsj - fsj_before_paul);
@@ -646,9 +651,10 @@ double evalAE(){
         for(int j=0; j<ne; j++){
             Vec3d f=Vec3dZero;
             const Vec3d   dR  = epos [j] - pi;
-            const double  sj  = esize[j];
-            const double  qj  = echarge[j];
-            double& fsj = fsize[j];
+            double& fsj     = fsize[j];
+            //const double sj = esize[j];
+            const double sj = esize[j];
+            const double qj = echarge[j];
             double  fs_junk=0;
             //Eae += addPairEF_expQ( epos[j]-pi, f, abwi.z, qi*QE, abwi.y, abwi.x );
             //Eae  += addCoulombGauss( dR,sj,      f, fsj,      qqi );     // correct
@@ -890,6 +896,10 @@ double eval(){
     }
     if(bEvalAA         ) Etot+= evalAA();
     if(bEvalCoreCorect ) Etot+=evalCoreCorrection();
+    if( !std::isfinite(Etot) ){
+        printf("ERROR NaN/inf Etot: Etot=%g Ek=%g Eee=%g EeePaul=%g EeeExch=%g Eae=%g EaePaul=%g Eaa=%g\n", Etot, Ek, Eee, EeePaul, EeeExch, Eae, EaePaul, Eaa );
+        fflush(stdout);
+    }
     //printf( "eval() Etot %g epos[0](%g,%g,%g) \n", Etot, epos[0].x, epos[0].y, epos[0].z );
     return Etot;
 }
@@ -959,6 +969,7 @@ double electronPotAtPoint( const Vec3d& pi, double si, double Q, int spini=0, bo
         //const double sj = esize[j];
         const double sj = esize[j];
         double&     fsj = fsize[j];
+        const double qj = echarge[j];
         double dEee=0,dEpaul=0;
         if(bEvalCoulomb){
             dEee = addCoulombGauss( dR, si, sj, f, fsi, fsj, Q );
@@ -1032,6 +1043,15 @@ void printAtoms(){
     }
 }
 
+void printAtomParams2(){
+    printf( "EFF::printAtomParams2()\n" );
+    for(int i=0;i<na;i++){
+        const Quat4d& A = aPars[i];   // {Z_nuc, R_eff, Zcore_eff, P}
+        const Quat4d& B = aPars2[i];  // {PA, PB, PC, PD/PE}
+        printf( "a2[%3i ] Z_nuc %g R_eff %g Zcore_eff %g | PA..PE(%g,%g,%g,%g)\n", i, A.x, A.y, A.z, B.x, B.y, B.z, B.w );
+    }
+}
+
 void printElectrons(){
     printf( "EFF::printElectrons()\n" );
     for(int i=0; i<ne; i++){
@@ -1047,14 +1067,14 @@ void printSwitches(){
     printf( "KRSrho %g %g %g \n", KRSrho.x, KRSrho.y, KRSrho.z );
 }
 
-void printAtomParams2(){
-    printf( "EFF::printAtomParams2()\n" );
-    for(int i=0;i<na;i++){
-        const Quat4d& A = aPars[i];   // {Z_nuc, R_eff, Zcore_eff, P}
-        const Quat4d& B = aPars2[i];  // {PA, PB, PC, PD/PE}
-        printf( "a2[%3i ] Z_nuc %g R_eff %g Zcore_eff %g | PA..PE(%g,%g,%g,%g)\n", i, A.x, A.y, A.z, B.x, B.y, B.z, B.w );
-    }
-}
+// void printAtomParams2(){
+//     printf( "EFF::printAtomParams2()\n" );
+//     for(int i=0;i<na;i++){
+//         const Quat4d& A = aPars[i];   // {Z_nuc, R_eff, Zcore_eff, P}
+//         const Quat4d& B = aPars2[i];  // {PA, PB, PC, PD/PE}
+//         printf( "a2[%3i ] Z_nuc %g R_eff %g Zcore_eff %g | PA..PE(%g,%g,%g,%g)\n", i, A.x, A.y, A.z, B.x, B.y, B.z, B.w );
+//     }
+// }
 
 void info(){
     printf( "EFF::info()\n" );
@@ -1110,7 +1130,11 @@ void to_xyz( FILE* pFile, const char* comment=0 ){
             if     (e== 0){ ename="e2"; }
             else if(e== 1){ ename="e+"; }
             else if(e==-1){ ename="e-"; } 
-            fprintf( pFile, "%3s %10.6f %10.6f %10.6f 0 %10.6f \n", ename, epos[i].x, epos[i].y, epos[i].z,  esize[i] );
+            double Q = echarge ? echarge[i] : 1.0;
+            if     (e== 1){ Q = +Q; }
+            else if(e==-1){ Q = -Q; }
+            else          { Q = fabs(Q); }
+            fprintf( pFile, "%3s %10.6f %10.6f %10.6f %4.1f %10.6f \n", ename, epos[i].x, epos[i].y, epos[i].z, Q, esize[i] );
         }
     }else{
         for (int i=0; i<ne; i++){
@@ -1118,8 +1142,37 @@ void to_xyz( FILE* pFile, const char* comment=0 ){
             if     (e== 0){ e=0;   }
             else if(e== 1){ e=92;  }
             else if(e==-1){ e=109; } // see Jmol colors https://jmol.sourceforge.net/jscolors/
-            fprintf( pFile, "%3i %10.6f %10.6f %10.6f 0 %10.6f \n", e, epos[i].x, epos[i].y, epos[i].z,  esize[i] );
+            double Q = echarge ? echarge[i] : 1.0;
+            if     (espin[i]== 1){ Q = +Q; }
+            else if(espin[i]==-1){ Q = -Q; }
+            else                 { Q = fabs(Q); }
+            fprintf( pFile, "%3i %10.6f %10.6f %10.6f %4.1f %10.6f \n", e, epos[i].x, epos[i].y, epos[i].z, Q, esize[i] );
         }
+    }
+}
+
+void to_xyz_core( FILE* pFile, const char* aux=0 ){
+    fprintf( pFile, " %i \n", na+ne );
+    if(aux){
+        fprintf( pFile, "na,ne,core %i %i %c | %s\n", na, ne, coreMode, aux );
+    }else{
+        fprintf( pFile, "na,ne,core %i %i %c\n", na, ne, coreMode );
+    }
+    for (int i=0; i<na; i++){
+        int iZ = (int)(aPars[i].x+0.5);
+        fprintf( pFile, "%3i %10.6f %10.6f %10.6f \n", iZ, apos[i].x, apos[i].y, apos[i].z );
+    }
+    for (int i=0; i<ne; i++){
+        int e = espin[i];
+        char* ename=0;
+        if     (e== 0){ ename="e2"; }
+        else if(e== 1){ ename="e+"; }
+        else if(e==-1){ ename="e-"; }
+        double Q = echarge ? echarge[i] : 1.0;
+        if     (e== 1){ Q = +Q; }
+        else if(e==-1){ Q = -Q; }
+        else          { Q = fabs(Q); }
+        fprintf( pFile, "%3s %10.6f %10.6f %10.6f %4.1f %10.6f \n", ename, epos[i].x, epos[i].y, epos[i].z, Q, esize[i] );
     }
 }
 
@@ -1127,9 +1180,15 @@ void save_xyz( const char* filename, const char* mode="w", const char* comment=0
     //printf( "EFF::save_xyz(%s)\n", filename );
     FILE * pFile; 
     pFile = fopen (filename,mode);
-    if(pFile==0){ printf("ERROR file >>%s<< not found \n", filename ); return; }
     to_xyz( pFile, comment );
-    fclose(pFile);
+    fclose (pFile);
+}
+
+void save_xyz_core( const char* filename, const char* mode="w", const char* aux=0 ){
+    FILE * pFile; 
+    pFile = fopen (filename,mode);
+    to_xyz_core( pFile, aux );
+    fclose (pFile);
 }
 
 void setCoreMode(char coreMode_){

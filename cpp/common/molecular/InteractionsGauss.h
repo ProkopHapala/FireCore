@@ -633,7 +633,9 @@ inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f
         dE_dS22 += -(rho*DT     )*invS22m1*invS22m1;
     }
     if(spin>=0){
-        double invS222m1 = 1/( S22*S22-1 );
+        double denom = (S22*S22 - 1);
+        if( fabs(denom) < 1e-12 ){ denom = (denom>=0) ? 1e-12 : -1e-12; }
+        double invS222m1 = 1/denom;
         //printf( "DEBUG S22*DT %g invS222m1 %g (-rho*S22+rho-2) %g \n", S22*DT, invS222m1, (-rho*S22+rho-2) );
         E       +=   S22 * DT * ( -rho*S22                     + rho-2 ) *invS222m1;
         dE_dDT  += - S22 *      (  rho*S22                     - rho+2 ) *invS222m1;

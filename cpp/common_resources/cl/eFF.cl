@@ -355,6 +355,274 @@ __kernel void localMD(
 }
 
 
+#ifdef EFF_EVAL_ENERGY
+// ========================================================================
+// KERNEL: localMD_energy (no-relax energy eval using localMD data path)
+// ========================================================================
+// Conservative: does NOT modify localMD. This is a separate kernel with identical
+// force path signature, plus an energy output buffer.
+//
+// Intended use: nsteps=1, dt=0, damping=0. We compute energies from positions only.
+__kernel void localMD_energy(
+    __global       int4*        sysinds, // 0  : [nsys]   {na,ne,i0p,i0a}
+    __global       float4*      pos,     // 1  : [ntot]   {x,y,z,w}
+    __global       float4*      vel,     // 2  : [ntot]   {vx,vy,vz,dw/dt}
+    __global const float8*      aParams, // 3  : [ntot_a] { Z_nuc, R_eff, Zcore_eff, ... }
+    __global const signed char* espins,  // 4  : [ntot]   {spin}
+    __global       float4*      fout,    // 5  : [ntot]   {fx,fy,fz,fw} output force buffer (kept for compatibility)
+    __global       float8*      Es,      // 6  : [nsys]   {Etot,Ek,Eee,Eae,Eaa,0,0,0}
+    const int    nsys,                  // 7
+    const int    nsteps,                // 8  (unused; kept for interface compatibility)
+    const float  dt,                   // 9  (unused)
+    const float  damping,              // 10 (unused)
+    const float4 KRSrho,               // 11
+    const int    bFrozenCore           // 12
+){
+    __local float4      l_pos     [MAX_LOC_SIZE];
+    __local float8      l_aparams [MAX_LOC_SIZE];
+    __local signed char l_spins   [MAX_LOC_SIZE];
+
+    __local float l_Ek   [MAX_LOC_SIZE];
+    __local float l_Eee  [MAX_LOC_SIZE];
+    __local float l_Eae  [MAX_LOC_SIZE];
+    __local float l_Eaa  [MAX_LOC_SIZE];
+    __local float l_EeeP [MAX_LOC_SIZE];
+    __local float l_EaeP [MAX_LOC_SIZE];
+
+    const int group_id = get_group_id(0);
+    const int lid      = get_local_id(0);
+    if(group_id >= nsys) return;
+
+    const int4 inds    = sysinds[group_id];
+    const int na       = inds.x;
+    const int ne       = inds.y;
+    const int ntot     = na + ne;
+    const int ip_start = inds.z;
+    const int ia_start = inds.w;
+
+    if (lid < ntot) {
+        l_pos[lid] = pos[ip_start + lid];
+        if (lid < na) {
+            l_aparams[lid] = aParams[ia_start + lid];
+        } else {
+            l_spins[lid - na] = espins[ip_start + lid];
+        }
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    float Ek      = 0.0f;
+    float EeeCoul = 0.0f;
+    float EeePaul = 0.0f;
+    float EaeCoul = 0.0f;
+    float EaePaul = 0.0f;
+    float Eaa     = 0.0f;
+
+    if(lid < ntot){
+        const float4 pi    = l_pos[lid];
+        const int    i_ion = (lid < na);
+
+        // Kinetic (electrons only)  (C++ scales by electron charge magnitude)
+        if(!i_ion){
+            const int si = l_spins[lid - na];
+            const float qe = (si==0) ? 2.0f : 1.0f;
+            float2 fk = addKineticGauss_eFF(pi.w);
+            Ek += fk.x*qe;
+        }
+
+        for(int j=lid+1; j<ntot; j++){
+            const float4 pj    = l_pos[j];
+            const int    j_ion = (j < na);
+            const float3 dR    = pj.xyz - pi.xyz;
+
+            if(i_ion && j_ion){
+                const float8 pari = l_aparams[lid];
+                const float8 parj = l_aparams[j];
+                const float Qi = pari.s0 - ( (bFrozenCore!=0) ? pari.s2 : 0.0f );
+                const float Qj = parj.s0 - ( (bFrozenCore!=0) ? parj.s2 : 0.0f );
+                float4 fc = getCoulomb(dR, Qi*Qj);
+                Eaa += fc.w;
+            }else if(i_ion != j_ion){
+                // electron-ion (order: dR_ei = epos - ipos)
+                const int   ia = i_ion ? lid : j;
+                const int   ie = i_ion ? j   : lid;
+                const float4 pa = l_pos[ia];
+                const float4 pe = l_pos[ie];
+                const float3 dRei = pe.xyz - pa.xyz;
+
+                const signed char se = l_spins[ie - na];
+                const float qe = (se==0) ? 2.0f : 1.0f;
+
+                const float8 par = l_aparams[ia];
+                const float  Q   = par.s0;
+                const float  sQ  = par.s1;
+                const float  sP  = (bFrozenCore!=0) ? par.s2 : 0.0f;
+
+                float4 cg = getCoulombGauss(dRei, sQ, pe.w, -Q*qe);
+                EaeCoul += cg.x;
+                if(sP > 1e-8f){
+                    float4 KRS = KRSrho;
+                    // C++: addPauliGauss_New(..., KRSrho, qj*sP*0.5)
+                    float4 pg  = getPauliGauss_New(dRei, sQ, pe.w, 0, (float4)(KRS.x, KRS.y, KRS.z, KRS.w*(qe*sP*0.5f)));
+                    EaePaul += pg.x;
+                    // C++ counts core-correction Coulomb into Eee (not Eae)
+                    float4 cgC = getCoulombGauss(dRei, sQ, pe.w, sP*qe);
+                    EeeCoul += cgC.x;
+                }
+            }else{
+                // electron-electron
+                const int si = l_spins[lid - na];
+                const int sj = l_spins[j   - na];
+                const float qi = (si==0) ? 2.0f : 1.0f;
+                const float qj = (sj==0) ? 2.0f : 1.0f;
+                float4 cg = getCoulombGauss(dR, pi.w, pj.w, qi*qj);
+                float qq = ((si==0) && (sj==0)) ? 2.0f : 1.0f;
+                float4 eff_KRS = KRSrho; eff_KRS.w *= qq;
+                float4 pg = getPauliGauss_New(dR, pi.w, pj.w, si*sj, eff_KRS);
+                EeeCoul += cg.x;
+                EeePaul += pg.x;
+            }
+        }
+    }
+
+    // reduction
+    if(lid < MAX_LOC_SIZE){
+        l_Ek  [lid] = (lid < ntot) ? Ek      : 0.0f;
+        l_Eee [lid] = (lid < ntot) ? EeeCoul : 0.0f;
+        l_Eae [lid] = (lid < ntot) ? EaeCoul : 0.0f;
+        l_Eaa [lid] = (lid < ntot) ? Eaa     : 0.0f;
+        l_EeeP[lid] = (lid < ntot) ? EeePaul : 0.0f;
+        l_EaeP[lid] = (lid < ntot) ? EaePaul : 0.0f;
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    for(int stride=MAX_LOC_SIZE/2; stride>0; stride>>=1){
+        if(lid < stride){
+            l_Ek [lid] += l_Ek [lid+stride];
+            l_Eee[lid] += l_Eee[lid+stride];
+            l_Eae[lid] += l_Eae[lid+stride];
+            l_Eaa[lid] += l_Eaa[lid+stride];
+            l_EeeP[lid] += l_EeeP[lid+stride];
+            l_EaeP[lid] += l_EaeP[lid+stride];
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    if(lid == 0){
+        float Etot = l_Ek[0] + l_Eee[0] + l_EeeP[0] + l_Eae[0] + l_EaeP[0] + l_Eaa[0];
+        Es[group_id] = (float8)(Etot, l_Ek[0], l_Eee[0], l_Eae[0], l_Eaa[0], l_EeeP[0], l_EaeP[0], 0.0f);
+    }
+}
+#endif
+
+
+// ========================================================================
+// KERNEL: Energy evaluation (no relaxation)
+// ========================================================================
+// One workgroup per system. Only lid==0 does the work (serial per system).
+// Outputs: {Etot,Ek,Eee,Eae,Eaa} for each system.
+__kernel void evalEnergy(
+    __global const int4*        sysinds,   // 0  : [nsys] {na,ne,i0p,i0a}
+    __global const float4*      pos,       // 1  : [ntot] {x,y,z,w}
+    __global const float8*      aParams,   // 2  : [ntot_a]
+    __global const signed char* espins,    // 3  : [ntot]
+    __global       float8*      Es,        // 4  : [nsys] {Etot,Ek,Eee,Eae,Eaa,0,0,0}
+    const int                 nsys,       // 5
+    const float4              KRSrho,      // 6
+    const int                 bFrozenCore // 7
+){
+    const int group_id = get_group_id(0);
+    const int lid      = get_local_id(0);
+    if(group_id >= nsys) return;
+    if(lid != 0) return;
+
+    const int4 inds    = sysinds[group_id];
+    const int na       = inds.x;
+    const int ne       = inds.y;
+    const int ntot     = na + ne;
+    const int ip_start = inds.z;
+    const int ia_start = inds.w;
+
+    float Ek      = 0.0f;
+    float EeeCoul = 0.0f; // matches C++ ff.Eee (includes core-correction Coulomb)
+    float EeePaul = 0.0f; // matches C++ ff.EeePaul
+    float EaeCoul = 0.0f; // matches C++ ff.Eae
+    float EaePaul = 0.0f; // matches C++ ff.EaePaul
+    float Eaa     = 0.0f;
+
+    // Kinetic (electrons only)  (C++ scales by electron charge magnitude)
+    for(int i=0; i<ne; i++){
+        float4 pi = pos[ip_start + na + i];
+        int si    = espins[ip_start + na + i];
+        float qe  = (si==0) ? 2.0f : 1.0f;
+        float2 fk = addKineticGauss_eFF(pi.w);
+        Ek += fk.x*qe;
+    }
+
+    // AA
+    for(int i=0; i<na; i++){
+        float4 pi   = pos[ip_start + i];
+        float8 pari = aParams[ia_start + i];
+        float Qi    = pari.s0 - ( (bFrozenCore!=0) ? pari.s2 : 0.0f );
+        for(int j=i+1; j<na; j++){
+            float4 pj   = pos[ip_start + j];
+            float8 parj = aParams[ia_start + j];
+            float Qj    = parj.s0 - ( (bFrozenCore!=0) ? parj.s2 : 0.0f );
+            float3 dR   = pj.xyz - pi.xyz;
+            float4 fc   = getCoulomb(dR, Qi*Qj);
+            Eaa        += fc.w;
+        }
+    }
+
+    // AE + (optional frozen-core correction terms)
+    for(int ia=0; ia<na; ia++){
+        float4 pa   = pos[ip_start + ia];
+        float8 par  = aParams[ia_start + ia];
+        float  Q    = par.s0;
+        float  sQ   = par.s1;
+        float  sP   = (bFrozenCore!=0) ? par.s2 : 0.0f;
+        for(int ie=0; ie<ne; ie++){
+            float4 pe = pos[ip_start + na + ie];
+            float3 dR = pe.xyz - pa.xyz; // elec - ion
+            const signed char se = espins[ip_start + na + ie];
+            const float qe = (se==0) ? 2.0f : 1.0f;
+            float4 cg = getCoulombGauss(dR, sQ, pe.w, -Q*qe);
+            EaeCoul  += cg.x;
+            if(sP > 1e-8f){
+                float4 KRS = KRSrho;
+                float4 pg  = getPauliGauss_New(dR, sQ, pe.w, 0, (float4)(KRS.x, KRS.y, KRS.z, KRS.w*(qe*sP*0.5f)));
+                EaePaul  += pg.x;
+                // C++ counts this Coulomb(core-electron correction) into Eee
+                float4 cgC = getCoulombGauss(dR, sQ, pe.w, sP*qe);
+                EeeCoul  += cgC.x;
+            }
+        }
+    }
+
+    // EE
+    for(int i=0; i<ne; i++){
+        float4 pi = pos[ip_start + na + i];
+        int si    = espins[ip_start + na + i];
+        float qi  = (si==0) ? 2.0f : 1.0f;
+        for(int j=i+1; j<ne; j++){
+            float4 pj = pos[ip_start + na + j];
+            int sj    = espins[ip_start + na + j];
+            float qj  = (sj==0) ? 2.0f : 1.0f;
+            float3 dR = pj.xyz - pi.xyz;
+            float4 cg  = getCoulombGauss(dR, pi.w, pj.w, qi*qj);
+            float qq = ((si==0) && (sj==0)) ? 2.0f : 1.0f;
+            float4 eff_KRS = KRSrho; eff_KRS.w *= qq;
+            float4 pg = getPauliGauss_New(dR, pi.w, pj.w, si*sj, eff_KRS);
+            EeeCoul += cg.x;
+            EeePaul += pg.x;
+        }
+    }
+
+    float Etot = Ek + EeeCoul + EeePaul + EaeCoul + EaePaul + Eaa;
+    // Match C++ processXYZ_e outputs (first 5): {Etot,Ek,Eee,Eae,Eaa}
+    Es[group_id] = (float8)(Etot, Ek, EeeCoul, EaeCoul, Eaa, EeePaul, EaePaul, 0.0f);
+}
+
+
 // ========================================================================
 // Helper: Density Evaluation (Requested)
 // ========================================================================

@@ -18,6 +18,17 @@ BASE_PATH = os.path.normpath(os.path.join(PACKAGE_PATH, '../'))
 # Default library path
 BUILD_PATH = os.path.normpath(os.path.join(BASE_PATH, 'cpp/Build/libs/'))
 
+# Allow overriding build path from environment (useful when repo uses Build-opt/Build-asan etc.)
+_env_build_path = os.environ.get('CPP_BUILD_PATH', '')
+if _env_build_path:
+    BUILD_PATH = os.path.normpath(_env_build_path)
+
+# Allow disabling automatic rebuild via env
+_env_recompile = os.environ.get('CPP_RECOMPILE', '')
+if _env_recompile.strip() == '0':
+    recompile_glob = False
+    clean_build    = False
+
 #print (" PACKAGE_PATH : ", PACKAGE_PATH)
 #print (" BUILD_PATH   : ", BUILD_PATH)
 

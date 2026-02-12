@@ -53,8 +53,6 @@ The immediate task is to resolve the asymmetric force application in the `localM
 
 *   **Recommended Action**: Before attempting a complex kernel rewrite (e.g., using atomic operations or a two-pass approach), the **pairwise debug prints should be used to verify that the single-sided force contributions are correct**. We need to run a test where we manually inspect the `printf` output from both CPU and GPU for a single pair interaction (e.g., `CPU EE(0,1) Coul` vs. `GPU EE(0,1) Coul`). If these match, it confirms the physics equations are correct and the problem lies solely in the accumulation of the reaction force. This is a crucial step to isolate the problem and prevent debugging the wrong part of the code.
 
----
-
 ## 6. Lab Book: Latest Findings (2025-08-29)
 
 **Entry 1: Initial Test & Debugging Setup**

@@ -80,6 +80,22 @@ void setup_measurements(int i0_, int n_, int nd, Vec2i* d_inds, int na_, Vec3i* 
     ang_vals   = a_vals;
 }
 
+static inline int add_electrons_pair_or_split( EFF* ff, int ie, const Vec3d& p1, const Vec3d& p2, double esize0, bool bPaired, bool bChangeEsize ){
+    if(bPaired){
+        Vec3d p = (p1+p2)*0.5;
+        ff->epos   [ie]=p;
+        ff->espin  [ie]=0;
+        ff->echarge[ie]=2.0;
+        if(bChangeEsize){ ff->esize[ie]=esize0; }
+        if(ff->esize[ie]<=0){ printf("ERROR add_electrons_pair_or_split(): esize<=0 ie=%i esize=%g\n", ie, ff->esize[ie] ); exit(0); }
+        return ie+1;
+    }else{
+        ff->epos   [ie]=p1; ff->espin  [ie]= 1; ff->echarge[ie]=1.0; if(bChangeEsize){ ff->esize[ie]=esize0; } if(ff->esize[ie]<=0){ printf("ERROR add_electrons_pair_or_split(): esize<=0 ie=%i esize=%g\n", ie, ff->esize[ie] ); exit(0); } ie++;
+        ff->epos   [ie]=p2; ff->espin  [ie]=-1; ff->echarge[ie]=1.0; if(bChangeEsize){ ff->esize[ie]=esize0; } if(ff->esize[ie]<=0){ printf("ERROR add_electrons_pair_or_split(): esize<=0 ie=%i esize=%g\n", ie, ff->esize[ie] ); exit(0); } ie++;
+        return ie;
+    }
+}
+
 extern "C"{
 // ========= Grid initialization
 
@@ -191,8 +207,8 @@ void initOpt( double dt, double damping, double f_limit, bool bMass ){
     opt.setDamping  (damping);
     opt.f_limit = f_limit;
     opt_initialized=true;
-    opt.fixmask = ff.fixmask;
-    opt.bfixmask=true;
+    opt.fixmask  = ff.fixmask;
+    opt.bfixmask = (ff.fixmask!=0);
 };
 
 //int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
@@ -504,7 +520,7 @@ void builder2EFF(EFF& ff, const MM::Builder& builder, bool bRealloc=true ){
     }
 }
 
-int builder2EFFstatic( EFF* ff, MM::Builder& builder, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, double esize0=0.5, double le=-0.5 ){
+int builder2EFFstatic( EFF* ff, MM::Builder& builder, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, double esize0=0.5, double le=-0.5, bool bPaired=false ){
     //printf( "builder2EFFstatic() builder.atoms.size() %i builder.bonds.size() %i ff=%p \n", builder.atoms.size(), builder.bonds.size(), ff );
     //if(ff){ printf( "builder2EFFstatic() ff.na %i ff.ne %i \n", ff->na, ff->ne ); }
     int ie=0;
@@ -518,12 +534,10 @@ int builder2EFFstatic( EFF* ff, MM::Builder& builder, bool bCoreElectrons=true, 
             double c = 0.6;
             Vec3d p1 = pb*(1-c) + pa*c;
             Vec3d p2 = pa*(1-c) + pb*c;
-
-            ff->epos[ie]=p1; ff->espin[ie]= 1; if(bChangeEsize){ff->esize[ie]=esize0;}; ie++;
-            ff->epos[ie]=p2; ff->espin[ie]=-1; if(bChangeEsize){ff->esize[ie]=esize0;}; ie++;
+            ie = add_electrons_pair_or_split( ff, ie, p1, p2, esize0, bPaired, bChangeEsize );
             //ff->set_electron( ie, p, esize0,  1 );  ie++;
             //ff->set_electron( ie, p, esize0, -1 );  ie++;
-        }else{ ie+=2; }
+        }else{ ie += (bPaired?1:2); }
     }
     for(int ia=0; ia<builder.atoms.size(); ia++){
         //printf( "builder2EFFstatic() ia=%i na=%i \n", ia, builder.atoms.size() );
@@ -536,29 +550,37 @@ int builder2EFFstatic( EFF* ff, MM::Builder& builder, bool bCoreElectrons=true, 
             ff->apos [ia] = pa;
             if(bCore){
                 ff->aPars[ia] = (Quat4d){ (double)iZ, 0.0, 0.0, 0.0 };
-                //double ecsize = EFF::default_AtomParams[iZ].z;
+                // Explicit core electrons are always a paired orbital (e2, spin=0, Q=2) to match existing XYZ conventions
                 double ecsize = ff->atom_params[iZ].z;
-                ff->epos[ie]=pa; ff->espin[ie]= 1; if(bChangeEsize){ff->esize[ie]=ecsize;}; ie++;
-                ff->epos[ie]=pa; ff->espin[ie]=-1; if(bChangeEsize){ff->esize[ie]=ecsize;}; ie++;
+                ff->epos  [ie]=pa;
+                ff->espin [ie]=0;
+                ff->echarge[ie]=2.0;
+                if(bChangeEsize){ ff->esize[ie]=ecsize; }
+                if(ff->esize[ie]<=0){ printf("ERROR builder2EFFstatic(): core esize<=0 ia=%i iZ=%i ie=%i esize=%g\n", ia, iZ, ie, ff->esize[ie] ); exit(0); }
+                ie++;
                 //ff->set_electron( ie, pa, ecsize,  1 ); ie++;
                 //ff->set_electron( ie, pa, ecsize, -1 ); ie++;
             }else if (bChangeCore){
                 Quat4d& apar = ff->aPars[ia];
-                //apar = EFF::default_AtomParams[iZ];
-                apar = ff->atom_params[iZ];
+                // For core-mode setups, initialize from atom_params2 {Z_nuc,R_eff,Zcore_eff,...} to ensure nonzero sQ when sP>0
+                const double8 ap2 = ff->atom_params2[iZ];
+                apar = Quat4d{ ap2.x, ap2.y, ap2.z, 0.0 };
                 if   (ff->bCoreCoul){ apar.x = iZ    ; }
                 else                { apar.x = iZ-2.0; }
+                if( (apar.y>0) && (apar.z<=0) ){ printf("ERROR builder2EFFstatic(): invalid core params ia=%i iZ=%i sP=%g sQ=%g\n", ia, iZ, apar.y, apar.z ); exit(0); }
+            }else{
+                // Ensure aPars is always initialized (important for coreMode 'a' and for output headers)
+                ff->aPars[ia] = (Quat4d){ (double)iZ, 0.0, 0.0, 0.0 };
             }
-        }else if(bCore){ ie+=2; }
+        }else if(bCore){ ie += 1; }
         int nei = builder.addEpairsByPi(ia, le, epos, false );
         //printf( "builder2EFFstatic() ia=%i nei=%i \n", ia, nei );
         for(int i=0; i<nei; i++){
             if( ff ){
-                ff->epos[ie]=epos[i]; ff->espin[ie]= 1; if(bChangeEsize){ff->esize[ie]=esize0;}; ie++;
-                ff->epos[ie]=epos[i]; ff->espin[ie]=-1; if(bChangeEsize){ff->esize[ie]=esize0;}; ie++;
+                ie = add_electrons_pair_or_split( ff, ie, epos[i], epos[i], esize0, bPaired, bChangeEsize );
                 //ff->set_electron( ie, epos[i], esize0,  1 ); ie++;
                 //ff->set_electron( ie, epos[i], esize0, -1 ); ie++;
-            }else{ ie+=2; }
+            }else{ ie += (bPaired?1:2); }
         }
     }
     return ie;
@@ -614,9 +636,16 @@ int preAllocateXYZ(const char* fname, double Rfac=-0.5, bool bCoreElectrons=true
     return 1;
 }
 
-int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo" ){
+int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo", bool bPaired=false, bool bEval=true, bool bOutCoreHeader=false, char coreMode='a' ){
     setvbuf(stdout, NULL, _IONBF, 0);
-    printf( "processXYZ(%s) bAddEpairs=%i Rfac %g xyz_out=%s fgo_out=%s \n", fname, bAddEpairs, Rfac, xyz_out, fgo_out );
+    if(coreMode=='a'){ bCoreElectrons=true;  bChangeCore=false; }
+    else             { bCoreElectrons=false; bChangeCore=true;  }
+    printf( "processXYZ(%s) bAddEpairs=%i Rfac %g xyz_out=%s fgo_out=%s bPaired=%i bEval=%i bOutCoreHeader=%i coreMode=%c\n", fname, bAddEpairs, Rfac, xyz_out, fgo_out, bPaired, bEval, bOutCoreHeader, coreMode );
+
+    // We keep `builder` as a global; clear it at the start of each new processXYZ() invocation
+    // to avoid state accumulation when called repeatedly from Python in one process.
+    builder.clear();
+    isPreAllocated = false;
 
     if(params.atypes.size()==0){
         const char* sElementTypes  = "common_resources/ElementTypes.dat";
@@ -633,6 +662,7 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
     const int nline=1024;
     char line[nline];
     char comment[nline];
+    char aux[2048]; aux[0]=0;
     char at_name[8];
     // --- Open output file
     int il   = 0;
@@ -654,6 +684,12 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
             //printf("comment_line=%s\n",line);
             sscanf( line, "%*s %i %*s %lf ", &(atoms->n0), &(atoms->Energy) );
             sprintf(comment,"%s",line);
+            { 
+                const char* p = strchr(comment,'|');
+                if(p){ p++; while(*p==' ')p++; strncpy(aux,p,sizeof(aux)); aux[sizeof(aux)-1]=0; }
+                else { strncpy(aux,comment,sizeof(aux)); aux[sizeof(aux)-1]=0; }
+                for(int i=strlen(aux)-1; i>=0; i--){ char c=aux[i]; if(c=='\n'||c=='\r'||c==' '||c=='\t'){ aux[i]=0; }else{ break; } }
+            }
         }else if( il<atoms->natoms+2 ){  // --- Road atom line (type, position, charge)
             double x,y,z,q;
             int nret = sscanf( line, "%s %lf %lf %lf %lf", at_name, &x, &y, &z, &q );
@@ -666,17 +702,18 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
         }
         if( il==atoms->natoms+2 ){
             if( (!isPreAllocated) && iconf==0 ){
+                ff.setCoreMode(coreMode);
                 builder.insertAtoms( *atoms );
                 builder.tryAddConfsToAtoms( 0, -1 );
-                builder.printAtomConfs();
+                if(verbosity>0) builder.printAtomConfs();
                 builder.autoBonds( Rfac ); 
-                int ne = builder2EFFstatic( 0, builder, bCoreElectrons, bChangeCore, bChangeEsize );
+                int ne = builder2EFFstatic( 0, builder, bCoreElectrons, bChangeCore, bChangeEsize, 0.5, -0.5, bPaired );
                 if(verbosity>0)printf("processXYZ() iconf=%i natoms=%i ne=%i builder.atoms.size()=%i builder.bonds.size()=%i\n", iconf, atoms->natoms, ne, builder.atoms.size(), builder.bonds.size() );
                 ff.realloc( atoms->natoms, ne, true );
                 opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses );
             }
             builder.load_atom_pos( atoms->apos, 0 );
-            builder2EFFstatic( &ff, builder, bCoreElectrons, bChangeCore, bChangeEsize );    
+            builder2EFFstatic( &ff, builder, bCoreElectrons, bChangeCore, bChangeEsize, 0.5, -0.5, bPaired );    
 
             if(verbosity>1)ff.info();
             if( nstepMax>0 ){
@@ -695,13 +732,18 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
                 //run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF );
                 run( nstepMax, dt, Fconv, ialg, 0, 0 );
             }
-            ff.eval();
+            if(bEval){ ff.eval(); }
             //snprintf(comment, nline, "na,ne %i %i Etot(%.3f)=T(%.2f)+ee(%.3f)+ea(%.3f)+aa(%.3f)", ff.na, ff.ne, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa);
-            if(verbosity>0){
-                //printf("processXYZ() iconf=%i natoms=%i | %s \n", iconf, atoms->natoms, comment);
+            if(verbosity>0 && bEval){
                 printf("processXYZ() iconf=%i na: %i ne: %i Etot(%.3f)=T(%.2f)+ee(%.3f)+ea(%.3f)+aa(%.3f)\n", iconf, ff.na, ff.ne, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa );
             }
-            if(xyz_out)ff.save_xyz(xyz_out, "a", comment);
+            if(xyz_out){
+                if(bOutCoreHeader){
+                    ff.save_xyz_core(xyz_out, "a", aux);
+                }else{
+                    ff.save_xyz(xyz_out, "a", comment);
+                }
+            }
             if(fgo_out)ff.writeTo_fgo(fgo_out, false, "a", iconf);
             ff.copyEnergies         (outEs, iconf);
             ff.copyAtomPositions    ((Vec3d*)apos_, iconf);
@@ -727,6 +769,8 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* e
     int il = 0, iconf = 0;
     int ie=0,ia=0;
     int nae=0,na=0,ne=0;
+    char aux_in[2048]; aux_in[0]=0;
+    char aux_out[4096];
     while(fgets(line, sizeof(line), fin)){
         if      (il == 0){
             sscanf(line, "%d", &nae);
@@ -734,6 +778,12 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* e
             char coreMode;
             sscanf(line, "na,ne,core %i %i %c ", &na, &ne, &coreMode );
             ff.setCoreMode(coreMode);
+            { 
+                const char* p = strchr(line,'|');
+                if(p){ p++; while(*p==' ')p++; strncpy(aux_in,p,sizeof(aux_in)); aux_in[sizeof(aux_in)-1]=0; }
+                else { aux_in[0]=0; }
+                for(int i=strlen(aux_in)-1; i>=0; i--){ char c=aux_in[i]; if(c=='\n'||c=='\r'||c==' '||c=='\t'){ aux_in[i]=0; }else{ break; } }
+            }
             //na=nae-ne;
             if(nae!=na+ne){ printf("ERROR in processXYZ_e() nae(%i) != na(%i) + ne(%i) while reading `%s`  => Exit() \n", nae, na, ne, fname ); exit(0); }
             if(iconf == 0){
@@ -742,6 +792,7 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* e
                 initOpt( dt, 0.1, 100.0, false );
             }
         }else{
+            if( (line[0]=='\n')||(line[0]=='\r')||(line[0]=='#') ) continue;
             //printf( "particle_line[%i]: %s ", il, line );
             char type = ff.from_xyz_line(line, ie, ia);
         }
@@ -755,12 +806,20 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* e
             ff.copyAtomPositions    ((Vec3d* )apos_, iconf );
             ff.copyElectronPositions((Quat4d*)epos_, iconf );
             if(verbosity>0) printf(" processXYZ_e() iconf: %3i na: %3i ne: %3i Etot: %16.8f\n", iconf, na, ne, ff.Etot);
-            if(xyz_out) ff.save_xyz(xyz_out, "a", line);
+            if(xyz_out){
+                if(aux_in[0]){
+                    snprintf(aux_out, sizeof(aux_out), "Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) | %s", ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa, aux_in );
+                }else{
+                    snprintf(aux_out, sizeof(aux_out), "Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g)", ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa );
+                }
+                ff.save_xyz_core(xyz_out, "a", aux_out);
+            }
             il = 0;
             ia = 0;
             ie = 0;
             iconf++;
-        }        
+        }
+        
     }
     fclose(fin);
     return iconf;
