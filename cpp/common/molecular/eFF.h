@@ -560,7 +560,7 @@ double evalEE(){
             }
             if(verbosity>3){
                 Vec3d f_coul = f - f_before_coul;
-                printf("CPU EE(%i,%i) dR(%.3f,%.3f,%.3f) s(%.3f,%.3f) -> Coul:(%.3f,%.3f,%.3f) | %.3f,%.3f\n", i, j, dR.x, dR.y, dR.z, si, sj, f_coul.x, f_coul.y, f_coul.z, fsi - fsi_before_coul, fsj - fsj_before_coul);
+                printf("CPU EE(%i,%i) r %.6f s(%.6f,%.6f) spin(%d,%d) q(%.3f,%.3f) Ecoul %.10f | dR(%.3f,%.3f,%.3f) f(%.3f,%.3f,%.3f) fs(%.3f,%.3f)\n", i, j, dR.norm(), si, sj, spini, spinj, qi, qj, dEee, dR.x, dR.y, dR.z, f_coul.x, f_coul.y, f_coul.z, fsi - fsi_before_coul, fsj - fsj_before_coul);
             }
 
             Vec3d f_before_paul = f; double fsi_before_paul = fsi; double fsj_before_paul = fsj;
@@ -585,7 +585,7 @@ double evalEE(){
                         }
                         if(verbosity>3){
                             Vec3d f_paul = f - f_before_paul;
-                            printf("CPU EE(%i,%i) dR(%.3f,%.3f,%.3f) s(%.3f,%.3f) -> Paul:(%.3f,%.3f,%.3f) | %.3f,%.3f\n", i, j, dR.x, dR.y, dR.z, si, sj, f_paul.x, f_paul.y, f_paul.z, fsi - fsi_before_paul, fsj - fsj_before_paul);
+                            printf("CPU EE(%i,%i) r %.6f s(%.6f,%.6f) spinij %d qq %.3f Epaul %.10f | dR(%.3f,%.3f,%.3f) f(%.3f,%.3f,%.3f) fs(%.3f,%.3f)\n", i, j, dR.norm(), si, sj, spinij, qq, dEpaul, dR.x, dR.y, dR.z, f_paul.x, f_paul.y, f_paul.z, fsi - fsi_before_paul, fsj - fsj_before_paul);
                         }
                         //printf( "EeePaul[%i,%i]= %g \n", i, j, dEpaul );
                     //}
@@ -665,7 +665,7 @@ double evalAE(){
                 dEae  = addCoulombGauss( dR, aPar.y, sj, f, fs_junk, fsj, qCore*-qj );
                 if(verbosity>3){
                     Vec3d f_coul = f - f_before;
-                    printf("CPU AE(%i,%i) dR(%.3f,%.3f,%.3f) s(%.3f,%.3f) -> Coul:(%.3f,%.3f,%.3f) | %.3f,%.3f\n", i, j, dR.x, dR.y, dR.z, aPar.y, sj, f_coul.x, f_coul.y, f_coul.z, 0.0, fsj - fsj_before);
+                    printf("CPU AE(%i,%i) r %.6f sQ %.6f se %.6f q %.3f Ecoul %.10f | dR(%.3f,%.3f,%.3f) f(%.3f,%.3f,%.3f) fs %.3f\n", i, j, dR.norm(), aPar.y, sj, qj, dEae, dR.x, dR.y, dR.z, f_coul.x, f_coul.y, f_coul.z, fsj - fsj_before);
                 }
             }
             if( aPar.z>1e-8 ){ // is there a core electron?
@@ -677,7 +677,7 @@ double evalAE(){
                     dEaePaul = addPauliGauss_New( dR, aPar.y, sj, f, fsj, fs_junk, 0, KRSrho, qj*aPar.z*0.5 );
                     if(verbosity>3){
                         Vec3d f_paul = f - f_before;
-                        printf("CPU AE(%i,%i) dR(%.3f,%.3f,%.3f) s(%.3f,%.3f) -> Paul:(%.3f,%.3f,%.3f) | %.3f,%.3f\n", i, j, dR.x, dR.y, dR.z, aPar.y, sj, f_paul.x, f_paul.y, f_paul.z, 0.0, fsj - fsj_before);
+                        printf("CPU AE(%i,%i) r %.6f sQ %.6f se %.6f q %.3f Epaul %.10f | dR(%.3f,%.3f,%.3f) f(%.3f,%.3f,%.3f) fs %.3f\n", i, j, dR.norm(), aPar.y, sj, qj, dEaePaul, dR.x, dR.y, dR.z, f_paul.x, f_paul.y, f_paul.z, fsj - fsj_before);
                     }
                 } // spin=0 means both -1 and +1  
                 if(bCoreCoul   ){ 
@@ -685,7 +685,7 @@ double evalAE(){
                     dEee     = addCoulombGauss  ( dR, aPar.y, sj, f, fsj, fs_junk,            qj*aPar.z     );
                     if(verbosity>3){
                         Vec3d f_coul = f - f_before;
-                        printf("CPU AE(%i,%i) Core: (%g,%g,%g) | %g,%g\n", i, j, f_coul.x, f_coul.y, f_coul.z, 0.0, fsj - fsj_before);
+                        printf("CPU AEcoreC(%i,%i) r %.6f sQ %.6f se %.6f q %.3f EcoreC %.10f | f(%.3f,%.3f,%.3f) fs %.3f\n", i, j, dR.norm(), aPar.y, sj, qj, dEee, f_coul.x, f_coul.y, f_coul.z, fsj - fsj_before);
                     }
                 }
                 //printf( "EaePaul[%i,%i] E %g r %g s %g abw(%g,%g) \n", i, j, dEaePaul, dR.norm(), sj, abwi.z, abwi.a );

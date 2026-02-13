@@ -802,6 +802,7 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* e
             ff.info();
             if(nstepMax > 0) run(nstepMax, dt, Fconv, optAlg, 0, 0);   
             ff.eval();
+            if(verbosity>0){ printf("CPU Eterms: Etot %16.8f | Ek %16.8f Eee %16.8f EeePaul %16.8f Eae %16.8f EaePaul %16.8f Eaa %16.8f\n", ff.Etot, ff.Ek, ff.Eee, ff.EeePaul, ff.Eae, ff.EaePaul, ff.Eaa );}
             ff.copyEnergies         (         outEs, iconf );
             ff.copyAtomPositions    ((Vec3d* )apos_, iconf );
             ff.copyElectronPositions((Quat4d*)epos_, iconf );

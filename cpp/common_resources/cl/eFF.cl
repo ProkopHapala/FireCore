@@ -133,7 +133,9 @@ inline float4 getPauliGauss_New( float3 dR, float si, float sj, int spin, const 
         dE_dS22 += -(rho*DT     )*invS22m1*invS22m1;
     }
     if(spin>=0){
-        float invS222m1 = 1.0f/( S22*S22-1.0f );
+        float denom = (S22*S22 - 1.0f);
+        if(fabs(denom) < 1e-12f){ denom = (denom>=0.0f) ? 1e-12f : -1e-12f; }
+        float invS222m1 = 1.0f/denom;
         E       +=   S22 * DT * ( -rho*S22                     + rho-2.0f ) *invS222m1;
         dE_dDT  += - S22 *      (  rho*S22                     - rho+2.0f ) *invS222m1;
         dE_dS22 +=      -  DT * (      S22*(S22*(rho-2.0f)-2.0f*rho) + rho-2.0f ) *invS222m1*invS222m1;
@@ -165,6 +167,12 @@ inline float2 addKineticGauss_eFF( float s ){
 // Performs exact physics replication of the serial CPU reference.
 
 #define MAX_LOC_SIZE 64
+#ifndef DBG_EFF_PAIR
+#define DBG_EFF_PAIR 0
+#endif
+#ifndef IDBG_SYS
+#define IDBG_SYS 0
+#endif
 __kernel void localMD(
     __global       int4*        sysinds, // 0  : [nsys]   {na,ne,i0p,i0a} size and initial index for each atom
     __global       float4*      pos,     // 1  : [ntot]   {x,y,z,w} positions (and size) of ions and electrons
@@ -198,6 +206,8 @@ __kernel void localMD(
     const int ntot     = na + ne;
     const int ip_start = inds.z;
     const int ia_start = inds.w;
+
+    const int bDbg = (DBG_EFF_PAIR && (group_id==IDBG_SYS));
 
     // --- 2. Parallel Load from Global to Local ---
     if (lid < ntot) {
@@ -367,16 +377,18 @@ __kernel void localMD_energy(
     __global       int4*        sysinds, // 0  : [nsys]   {na,ne,i0p,i0a}
     __global       float4*      pos,     // 1  : [ntot]   {x,y,z,w}
     __global       float4*      vel,     // 2  : [ntot]   {vx,vy,vz,dw/dt}
-    __global const float8*      aParams, // 3  : [ntot_a] { Z_nuc, R_eff, Zcore_eff, ... }
+    __global const float8*      aParams, // 3  : [ntot_a] parameters of ions { Z_nuc, R_eff, Zcore_eff,   PA,        PB,        PC,        PD }
     __global const signed char* espins,  // 4  : [ntot]   {spin}
     __global       float4*      fout,    // 5  : [ntot]   {fx,fy,fz,fw} output force buffer (kept for compatibility)
     __global       float8*      Es,      // 6  : [nsys]   {Etot,Ek,Eee,Eae,Eaa,0,0,0}
-    const int    nsys,                  // 7
-    const int    nsteps,                // 8  (unused; kept for interface compatibility)
-    const float  dt,                   // 9  (unused)
-    const float  damping,              // 10 (unused)
-    const float4 KRSrho,               // 11
-    const int    bFrozenCore           // 12
+    __global const   char*      coreMap,
+    const int    nsys,                   // 7
+    const int    nsteps,                 // 8  (unused; kept for interface compatibility)
+    const float  dt,                     // 9  (unused)
+    const float  damping,                // 10 (unused)
+    const float4 KRSrho,                 // 11
+    const int    bFrozenCore,            // 12
+    const int    bOffloadCore
 ){
     __local float4      l_pos     [MAX_LOC_SIZE];
     __local float8      l_aparams [MAX_LOC_SIZE];
@@ -410,7 +422,7 @@ __kernel void localMD_energy(
     }
     barrier(CLK_LOCAL_MEM_FENCE);
 
-    float Ek      = 0.0f;
+    double Ek      = 0.0;
     float EeeCoul = 0.0f;
     float EeePaul = 0.0f;
     float EaeCoul = 0.0f;
@@ -426,7 +438,9 @@ __kernel void localMD_energy(
             const int si = l_spins[lid - na];
             const float qe = (si==0) ? 2.0f : 1.0f;
             float2 fk = addKineticGauss_eFF(pi.w);
-            Ek += fk.x*qe;
+            if( !(bOffloadCore && (coreMap[ip_start + lid] >= 0)) ){
+                Ek += (double)(fk.x * qe);
+            }
         }
 
         for(int j=lid+1; j<ntot; j++){
@@ -508,7 +522,7 @@ __kernel void localMD_energy(
     }
 
     if(lid == 0){
-        float Etot = l_Ek[0] + l_Eee[0] + l_EeeP[0] + l_Eae[0] + l_EaeP[0] + l_Eaa[0];
+        double Etot = l_Ek[0] + l_Eee[0] + l_EeeP[0] + l_Eae[0] + l_EaeP[0] + l_Eaa[0];
         Es[group_id] = (float8)(Etot, l_Ek[0], l_Eee[0], l_Eae[0], l_Eaa[0], l_EeeP[0], l_EaeP[0], 0.0f);
     }
 }
@@ -526,9 +540,11 @@ __kernel void evalEnergy(
     __global const float8*      aParams,   // 2  : [ntot_a]
     __global const signed char* espins,    // 3  : [ntot]
     __global       float8*      Es,        // 4  : [nsys] {Etot,Ek,Eee,Eae,Eaa,0,0,0}
+    __global const   char*      coreMap,
     const int                 nsys,       // 5
-    const float4              KRSrho,      // 6
-    const int                 bFrozenCore // 7
+    const float4              KRSrho,     // 6
+    const int                 bFrozenCore,// 7
+    const int                 bOffloadCore
 ){
     const int group_id = get_group_id(0);
     const int lid      = get_local_id(0);
@@ -542,7 +558,9 @@ __kernel void evalEnergy(
     const int ip_start = inds.z;
     const int ia_start = inds.w;
 
-    float Ek      = 0.0f;
+    const int bDbg = (DBG_EFF_PAIR && (group_id==IDBG_SYS));
+
+    double Ek      = 0.0;
     float EeeCoul = 0.0f; // matches C++ ff.Eee (includes core-correction Coulomb)
     float EeePaul = 0.0f; // matches C++ ff.EeePaul
     float EaeCoul = 0.0f; // matches C++ ff.Eae
@@ -550,12 +568,15 @@ __kernel void evalEnergy(
     float Eaa     = 0.0f;
 
     // Kinetic (electrons only)  (C++ scales by electron charge magnitude)
-    for(int i=0; i<ne; i++){
-        float4 pi = pos[ip_start + na + i];
-        int si    = espins[ip_start + na + i];
-        float qe  = (si==0) ? 2.0f : 1.0f;
-        float2 fk = addKineticGauss_eFF(pi.w);
-        Ek += fk.x*qe;
+    for(int ie=0; ie<ne; ie++){
+        const int ip = ip_start + na + ie;
+        const float4 pi = pos[ip];
+        const float si = pi.w;
+        const char spin_i = espins[ip];
+        const float qe = (spin_i==0) ? 2.0f : 1.0f;
+        if( !(bOffloadCore && (coreMap[ip] >= 0)) ){
+            Ek += (double)( addKineticGauss_eFF(si).x * qe );
+        }
     }
 
     // AA
@@ -568,56 +589,97 @@ __kernel void evalEnergy(
             float8 parj = aParams[ia_start + j];
             float Qj    = parj.s0 - ( (bFrozenCore!=0) ? parj.s2 : 0.0f );
             float3 dR   = pj.xyz - pi.xyz;
-            float4 fc   = getCoulomb(dR, Qi*Qj);
-            Eaa        += fc.w;
+            float4 fc = getCoulomb( dR, Qi*Qj );
+            Eaa += (double)fc.w;
+            if(bDbg){ printf("GPU AA(%d,%d) r=%g E=%g\n", i, j, sqrt((double)(dot(dR,dR))), (double)fc.w ); }
         }
     }
 
     // AE + (optional frozen-core correction terms)
     for(int ia=0; ia<na; ia++){
-        float4 pa   = pos[ip_start + ia];
-        float8 par  = aParams[ia_start + ia];
-        float  Q    = par.s0;
-        float  sQ   = par.s1;
-        float  sP   = (bFrozenCore!=0) ? par.s2 : 0.0f;
+        const int ia_glb = ia_start + ia;
+        const float4 ai = pos[ip_start + ia];
+        const float8 pari = aParams[ia_glb];
+        const float3 ri = ai.xyz;
+        const float  Q  = pari.s0;
+        const float  sQ = pari.s1;
+        const float  sP = pari.s2;
+        const float  Qi = Q - sP;
         for(int ie=0; ie<ne; ie++){
-            float4 pe = pos[ip_start + na + ie];
-            float3 dR = pe.xyz - pa.xyz; // elec - ion
-            const signed char se = espins[ip_start + na + ie];
-            const float qe = (se==0) ? 2.0f : 1.0f;
-            float4 cg = getCoulombGauss(dR, sQ, pe.w, -Q*qe);
-            EaeCoul  += cg.x;
-            if(sP > 1e-8f){
-                float4 KRS = KRSrho;
-                float4 pg  = getPauliGauss_New(dR, sQ, pe.w, 0, (float4)(KRS.x, KRS.y, KRS.z, KRS.w*(qe*sP*0.5f)));
-                EaePaul  += pg.x;
-                // C++ counts this Coulomb(core-electron correction) into Eee
-                float4 cgC = getCoulombGauss(dR, sQ, pe.w, sP*qe);
-                EeeCoul  += cgC.x;
+            const int ip = ip_start + na + ie;
+            const float4 pi = pos[ip];
+            const float3 re = pi.xyz;
+            const float  se = pi.w;
+            const char spin_e = espins[ip];
+            const float qe = (spin_e==0) ? 2.0f : 1.0f;
+            const float3 dR = re - ri;
+            const char cme = coreMap[ip];
+            const int skip_core_self = (bOffloadCore && (cme == (char)ia));
+            if(!skip_core_self){
+                float4 cg = getCoulombGauss( dR, sQ, se, -Q*qe );
+                EaeCoul += (double)cg.x;
+
+                float4 pg = (float4)(0.0f);
+                float4 cgC = (float4)(0.0f);
+                if(sP > 1e-8f){
+                    float4 KRS = KRSrho;
+                    pg  = getPauliGauss_New( dR, sQ, se, 0, (float4)(KRS.x, KRS.y, KRS.z, KRS.w*(sP*0.5f*qe)) );
+                    cgC = getCoulombGauss( dR, sQ, se, sP*qe );
+                    EaePaul += (double)pg.x;
+                    EeeCoul += (double)cgC.x;
+                }
+
+                if(bDbg){
+                    printf("GPU AE(a=%d,e=%d) r=%g se=%g sQ=%g qe=%g Ec=%g Ep=%g EcoreC=%g\n", ia, ie, sqrt((double)(dot(dR,dR))), (double)se, (double)sQ, (double)qe, (double)cg.x, (double)pg.x, (double)cgC.x );
+                }
+            }else{
+                if(bDbg){ printf("GPU AE_SKIP_CORE_SELF(a=%d,e=%d)\n", ia, ie ); }
             }
         }
     }
 
     // EE
-    for(int i=0; i<ne; i++){
-        float4 pi = pos[ip_start + na + i];
-        int si    = espins[ip_start + na + i];
-        float qi  = (si==0) ? 2.0f : 1.0f;
-        for(int j=i+1; j<ne; j++){
-            float4 pj = pos[ip_start + na + j];
-            int sj    = espins[ip_start + na + j];
-            float qj  = (sj==0) ? 2.0f : 1.0f;
-            float3 dR = pj.xyz - pi.xyz;
-            float4 cg  = getCoulombGauss(dR, pi.w, pj.w, qi*qj);
-            float qq = ((si==0) && (sj==0)) ? 2.0f : 1.0f;
-            float4 eff_KRS = KRSrho; eff_KRS.w *= qq;
-            float4 pg = getPauliGauss_New(dR, pi.w, pj.w, si*sj, eff_KRS);
-            EeeCoul += cg.x;
-            EeePaul += pg.x;
+    for(int ie=0; ie<ne; ie++){
+        const int ipi = ip_start + na + ie;
+        const float4 pi = pos[ipi];
+        const float3 ri = pi.xyz;
+        const float  si = pi.w;
+        const char spin_i = espins[ipi];
+        const float qe_i = (spin_i==0) ? 2.0f : 1.0f;
+        for(int je=0; je<ie; je++){
+            const int ipj = ip_start + na + je;
+            if(bOffloadCore){
+                const char cmi = coreMap[ipi];
+                const char cmj = coreMap[ipj];
+                if( (cmi>=0) && (cmi==cmj) ){
+                    if(bDbg){ printf("GPU EE_SKIP_CORE_SELF(%d,%d) ia=%d\n", ie, je, (int)cmi ); }
+                    continue;
+                }
+            }
+            const float4 pj = pos[ipj];
+            const float3 dR = pj.xyz - ri;
+            const float  sj = pj.w;
+            const char spin_j = espins[ipj];
+            const float qe_j = (spin_j==0) ? 2.0f : 1.0f;
+            const float qij = qe_i*qe_j;
+            if(1){
+                float4 cg = getCoulombGauss( dR, si, sj, qij );
+                EeeCoul += (double)cg.x;
+            }
+            if(1){
+                const int spinij = ((int)spin_i)*((int)spin_j);
+                const float qq = ((spin_i==0) && (spin_j==0)) ? 2.0f : 1.0f;
+                float4 eff_KRS = KRSrho; eff_KRS.w *= qq;
+                float4 pg = getPauliGauss_New( dR, si, sj, spinij, eff_KRS );
+                EeePaul += (double)pg.x;
+                if(bDbg){
+                    printf("GPU EE(%d,%d) r=%g si=%g sj=%g spin(%d,%d) q(%g,%g) Ec=%g Ep=%g\n", ie, je, sqrt((double)(dot(dR,dR))), (double)si, (double)sj, (int)spin_i, (int)spin_j, (double)qe_i, (double)qe_j, (double)getCoulombGauss(dR,si,sj,qij).x, (double)pg.x );
+                }
+            }
         }
     }
 
-    float Etot = Ek + EeeCoul + EeePaul + EaeCoul + EaePaul + Eaa;
+    double Etot = Ek + EeeCoul + EeePaul + EaeCoul + EaePaul + Eaa;
     // Match C++ processXYZ_e outputs (first 5): {Etot,Ek,Eee,Eae,Eaa}
     Es[group_id] = (float8)(Etot, Ek, EeeCoul, EaeCoul, Eaa, EeePaul, EaePaul, 0.0f);
 }

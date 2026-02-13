@@ -31,14 +31,20 @@ def worker_cpu(xyz, out_txt):
         f.write(f"CPU Etot={E[0,0]:.10f} Ek={E[0,1]:.10f} Eee={E[0,2]:.10f} Eae={E[0,3]:.10f} Eaa={E[0,4]:.10f}\n")
 
 
-def worker_gpu(xyz, out_txt, nloc=32, device_index=0):
+def worker_gpu(xyz, out_txt, nloc=32, device_index=0, dbg_pair=False, idbg_sys=0, offload_core=False):
     from pyBall.OCL import eFF_ocl
-    ocl = eFF_ocl.EFF_OCL(nloc=nloc, device_index=device_index, bEnergyKernel=True)
+    ocl = eFF_ocl.EFF_OCL(nloc=nloc, device_index=device_index, bEnergyKernel=True, dbg_pair=dbg_pair, idbg_sys=idbg_sys)
     ocl.load_xyzs(xyz, bPrint=False)
     ocl.realloc_buffers(); ocl.upload_data()
-    Es = np.array(ocl.eval_energies_localmd(), dtype=float)
+    coreConsts5 = None
+    if offload_core:
+        coreConsts5 = ocl.compute_core_constants_cpu()
+    if dbg_pair:
+        ocl.eval_energies(bOffloadCore=offload_core, coreConsts5=coreConsts5)
+    Es = np.array(ocl.eval_energies_localmd(bOffloadCore=offload_core, coreConsts5=coreConsts5), dtype=float)
     with open(out_txt,'w') as f:
         f.write(f"GPU file={xyz}\n")
+        f.write(f"GPU offload_core={int(offload_core)} dbg_pair={int(dbg_pair)}\n")
         f.write(f"GPU Etot={Es[0,0]:.10f} Ek={Es[0,1]:.10f} Eee={Es[0,2]:.10f} Eae={Es[0,3]:.10f} Eaa={Es[0,4]:.10f}\n")
 
 
@@ -63,19 +69,26 @@ def main():
     ap.add_argument('--out', required=True)
     ap.add_argument('--nloc', type=int, default=32)
     ap.add_argument('--device', type=int, default=0)
+    ap.add_argument('--dbg_pair', action='store_true', default=False)
+    ap.add_argument('--idbg_sys', type=int, default=0)
+    ap.add_argument('--offload_core', action='store_true', default=False)
     args=ap.parse_args()
 
     if args.worker=='cpu':
         worker_cpu(args.xyz, args.out); return
     if args.worker=='gpu':
-        worker_gpu(args.xyz, args.out, nloc=args.nloc, device_index=args.device); return
+        worker_gpu(args.xyz, args.out, nloc=args.nloc, device_index=args.device, dbg_pair=args.dbg_pair, idbg_sys=args.idbg_sys, offload_core=args.offload_core); return
 
     # orchestrator mode
     out_base=args.out
     out_cpu=out_base + '__cpu.txt'
     out_gpu=out_base + '__gpu.txt'
     run_subprocess('cpu', args.xyz, out_cpu, nloc=args.nloc, device=args.device)
-    run_subprocess('gpu', args.xyz, out_gpu, nloc=args.nloc, device=args.device)
+    cmd=[sys.executable, '-u', os.path.abspath(__file__), '--worker', 'gpu', '--xyz', args.xyz, '--out', out_gpu, '--nloc', str(args.nloc), '--device', str(args.device)]
+    if args.dbg_pair: cmd += ['--dbg_pair', '--idbg_sys', str(args.idbg_sys)]
+    if args.offload_core: cmd += ['--offload_core']
+    env=os.environ.copy(); env.pop('LD_PRELOAD', None)
+    subprocess.check_call(cmd, env=env)
 
     def _parse_E(path):
         with open(path,'r') as f:

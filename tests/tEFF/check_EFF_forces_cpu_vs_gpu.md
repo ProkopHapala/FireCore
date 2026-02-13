@@ -185,3 +185,22 @@ From `tests/tEFF/OUT_ocl_vs_cpu`:
 - Added OpenCL kernel `fit_density_fire` with selectable optimizers (`opt_mode`: FIRE / damped MD / gradient descent) plus proper workgroup-wide FIRE reduction.
 - Python host `pyBall/OCL/eFF_ocl.py` updated to pass `opt_mode/md_damp` and expose `eval_density_grid` with amplitudes.
 - Test harness `tests/pyFireball/test_fit_density_fire.py` now supports `--opt {fire,md,gd}` and produces a 2D density slice (imshow) of the fitted model using the OpenCL `eval_density_grid` kernel.
+
+## 11. Recent advancements (2026-02-13)
+
+**What was corrected (parallel `localMD` path):**
+- Forces were not written from local buffer: restored writeback of `my_f` via `l_force[lid]` to `fout[ip_start+lid]`.
+- AE ordering/signs/derivatives aligned to CPU: use `dR=elec-ion`, call `getCoulombGauss(dR, sQ, se, -Q)`, force on electron `-dR*fr`, accumulate Pauli/core Coulomb size-derivatives into electron `w` (ions never get `w`).
+- Core charge amplitude: main AE Coulomb uses full nuclear charge `Q`; core correction uses `qq=sP` (matches CPU `bCoreCoul` behavior).
+
+**Root problems:**
+- Missing force writeback made GPU forces zero.
+- AE derivative slots and charge amplitudes mismatched CPU, especially in frozen-core cases.
+
+**What works now:**
+- `test_ocl_vs_cpu.py` on `H2O_fixcore` **PASS** on the parallel path (no serial fallback), max abs diff ≈ `2.7e-05` (tol `1e-4`).
+- Serial path remains matched for H2 and H2O (previous entries); parallel path now aligned for H2O and ready for NH3/CH4 runs.
+
+**Next targets:**
+- Run `NH3_fixcore` and `CH4_fixcore` on the parallel path (tol `1e-4`).
+- Add perturbation tests (small random jitter / single-particle displacement) on parallel path.

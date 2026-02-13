@@ -30,15 +30,19 @@ class EFF_OCL(OpenCLBase):
     #     self.load_program(kernel_path=kernel_path, bPrint=True)
     #     self.systems = []
 
-    def __init__(self, nloc: int = 32, device_index: int = 0, bEnergyKernel: bool = False):
+    def __init__(self, nloc: int = 32, device_index: int = 0, bEnergyKernel: bool = False, dbg_pair: bool = False, idbg_sys: int = 0):
         super().__init__(nloc=nloc, device_index=device_index)
 
-        # Build the OpenCL program ------------------------------------------------
         base_path = os.path.dirname(os.path.abspath(__file__))
         rel_path  = "../../cpp/common_resources/cl/eFF.cl"
-        build_options = None
+        build_options = []
         if bEnergyKernel:
-            build_options = ["-DEFF_EVAL_ENERGY"]
+            build_options.append("-DEFF_EVAL_ENERGY")
+        if dbg_pair:
+            build_options.append("-DDBG_EFF_PAIR=1")
+            build_options.append(f"-DIDBG_SYS={int(idbg_sys)}")
+        if not build_options:
+            build_options = None
         if not self.load_program(rel_path=rel_path, base_path=base_path, build_options=build_options):
             raise RuntimeError("[EFF_OCL] Failed to load/compile eFF.cl")
 
@@ -89,14 +93,29 @@ class EFF_OCL(OpenCLBase):
                         else:
                             raise ValueError(f"[EFF_OCL] Unsupported numeric element '{name}' in {xyz_path}")
                     elif name.startswith('e'):
+                        Q = float(parts[4]) if len(parts) > 4 else None
                         size = float(parts[5]) if len(parts) > 5 else 1.0
                         if name == 'e2':
-                            # Paired electron: single particle with spin=0 and charge magnitude 2
+                            if (Q is not None) and (abs(Q) < 1.5):
+                                raise ValueError(f"[EFF_OCL] Inconsistent electron record '{name}' with Q={Q} (<1.5) in {xyz_path}")
                             electrons.append( ((pos[0],pos[1],pos[2],size), 0) )
-                        elif name == 'e+':
-                            electrons.append( ( (pos[0],pos[1],pos[2],size),  1) )
-                        elif name == 'e-':
-                            electrons.append( ( (pos[0],pos[1],pos[2],size), -1) )
+                        else:
+                            if Q is None:
+                                if name == 'e+':
+                                    Q = +1.0
+                                elif name == 'e-':
+                                    Q = -1.0
+                                else:
+                                    raise ValueError(f"[EFF_OCL] Unsupported electron name '{name}' without explicit Q in {xyz_path}")
+                            spin = 0
+                            if abs(Q) < 1.5:
+                                spin = 1 if Q > 0.0 else -1
+                            if bPrint:
+                                if name == 'e+' and spin != 1:
+                                    print(f"Warning: [EFF_OCL] Electron name/Q mismatch '{name}' Q={Q} => spin={spin} in {xyz_path} (using Q sign)")
+                                if name == 'e-' and spin != -1:
+                                    print(f"Warning: [EFF_OCL] Electron name/Q mismatch '{name}' Q={Q} => spin={spin} in {xyz_path} (using Q sign)")
+                            electrons.append( ( (pos[0],pos[1],pos[2],size), spin) )
                     nread += 1
                 # if core_mode == 'f':
                 #     for ion in ions:
@@ -146,6 +165,7 @@ class EFF_OCL(OpenCLBase):
             'vel':     sz_f4*ntot,
             'aparams': sz_f8*ntot_a,
             'espins':  sz_s1*ntot,
+            'coreMap': sz_s1*ntot,
             'force':   sz_f4*ntot,
             'Es':      sz_f8*nsys,
         }
@@ -153,6 +173,7 @@ class EFF_OCL(OpenCLBase):
             self.try_make_buff(f"{name}_buff", element_size)
         self.force_h = np.zeros((self.ntot, 4), dtype=np.float32)
         self.Es_h    = np.zeros((nsys, 8), dtype=np.float32)
+        self.coreMap_h = np.full(self.ntot, -1, dtype=np.int8)
         print("--- GPU buffers allocated.")
 
     def upload_data(self):
@@ -167,6 +188,7 @@ class EFF_OCL(OpenCLBase):
         self.vel_h     = np.zeros((self.ntot,   4), dtype=np.float32)
         self.aparams_h = np.zeros((self.ntot_a, 8), dtype=np.float32)
         self.spins_h   = np.zeros( self.ntot,       dtype=np.int8)
+        self.coreMap_h = np.full( self.ntot,        -1, dtype=np.int8)
 
         i0a =0
         i0  = 0
@@ -180,7 +202,11 @@ class EFF_OCL(OpenCLBase):
                 self.pos_h    [i0 +j, :3] = pos
                 apar = self.ATOM_PARAMS[name].copy()
                 if sys['core_mode'] == 'a':
-                    apar[2] = 0.0  # Zcore_eff = 0 for explicit-core-electron mode
+                    # Match C++ from_xyz_line(): for coreMode 'a' force aPars={Q,0,0,0}
+                    # Here mapping is {Q,sQ,sP,cP,...} in apar[0:4]
+                    apar[1] = 0.0
+                    apar[2] = 0.0
+                    apar[3] = 0.0
                 self.aparams_h[i0a+j, : ] = apar
                 # print(f"ion {j:3} i {i0+j} {name} pos {pos}")
             i0e = i0+na
@@ -189,6 +215,24 @@ class EFF_OCL(OpenCLBase):
                 self.pos_h    [i0e+j, :4] = pos
                 self.spins_h  [i0e+j    ] = spin
                 # print(f"electron {j:3} i {i0e+j} {pos} {spin}")
+
+            if sys.get('core_mode','f') == 'f':
+                for je in range(ne):
+                    ip = i0e + je
+                    pe = self.pos_h[ip, :3]
+                    se = self.pos_h[ip, 3]
+                    if se > 0.15: continue
+                    d2min = 1e+9
+                    imin = -1
+                    for ia in range(na):
+                        pa = self.pos_h[i0 + ia, :3]
+                        d = pe - pa
+                        d2 = float(d[0]*d[0] + d[1]*d[1] + d[2]*d[2])
+                        if d2 < d2min:
+                            d2min = d2
+                            imin = ia
+                    if (imin >= 0) and (d2min < 1e-10):
+                        self.coreMap_h[ip] = np.int8(imin)
             i0a += na
             i0  += na + ne
 
@@ -198,10 +242,64 @@ class EFF_OCL(OpenCLBase):
         self.toGPU_(self.vel_buff,     self.vel_h)
         self.toGPU_(self.aparams_buff, self.aparams_h)
         self.toGPU_(self.espins_buff,  self.spins_h)
+        self.toGPU_(self.coreMap_buff, self.coreMap_h)
         self.queue.finish()
         # print(f"upload_data() DONE")
 
-    def eval_energies(self, bFrozenCore=None):
+    def _core_const_xyz_for_atom(self, atom_name, atom_pos, elecs, core_mode='f'):
+        na = 1
+        ne = len(elecs)
+        lines = []
+        lines.append(f"{na+ne}\n")
+        lines.append(f"na,ne,core {na} {ne} {core_mode}\n")
+        lines.append(f"{atom_name} {atom_pos[0]:.16f} {atom_pos[1]:.16f} {atom_pos[2]:.16f}\n")
+        for (e,pos4,spin) in elecs:
+            x,y,z,s = pos4
+            name = 'e2' if spin==0 else ('e+' if spin>0 else 'e-')
+            lines.append(f"{name} {x:.16f} {y:.16f} {z:.16f} 0 {s:.16f}\n")
+        return ''.join(lines)
+
+    def compute_core_constants_cpu(self):
+        from pyBall import eFF as eff
+        import tempfile
+
+        nsys = len(self.systems)
+        core5 = np.zeros((nsys, 5), dtype=np.float64)
+
+        i0a = 0
+        i0 = 0
+        for isys, sys in enumerate(self.systems):
+            na = sys['na']
+            ne = sys['ne']
+            if sys.get('core_mode','f') != 'f':
+                i0a += na
+                i0 += na + ne
+                continue
+            i0e = i0 + na
+
+            for ia in range(na):
+                elecs = []
+                for je in range(ne):
+                    ip = i0e + je
+                    if int(self.coreMap_h[ip]) != ia: continue
+                    pos4 = tuple(float(x) for x in self.pos_h[ip, :4])
+                    spin = int(self.spins_h[ip])
+                    elecs.append(('e', pos4, spin))
+                if not elecs: continue
+                atom_name, atom_pos = sys['ions'][ia]
+                xyz = self._core_const_xyz_for_atom(atom_name, atom_pos, elecs, core_mode='f')
+                with tempfile.NamedTemporaryFile(mode='w+', suffix='.xyz', delete=True) as f:
+                    f.write(xyz)
+                    f.flush()
+                    Es,_,_ = eff.processXYZ_e(f.name, nstepMax=0, xyz_out=None, fgo_out=None, bOutputs=(1,0,0))
+                core5[isys, :] += np.array(Es[0, :5], dtype=np.float64)
+
+            i0a += na
+            i0 += na + ne
+
+        return core5
+
+    def eval_energies(self, bFrozenCore=None, bOffloadCore: bool = False, coreConsts5=None):
         """Evaluate energies for all loaded systems without relaxation.
 
         Returns float32 array [nsys,5] = {Etot,Ek,Eee,Eae,Eaa}.
@@ -218,18 +316,25 @@ class EFF_OCL(OpenCLBase):
             self.aparams_buff,
             self.espins_buff,
             self.Es_buff,
+            self.coreMap_buff,
             np.int32(nsys),
             krsrho,
             np.int32(1 if bFrozenCore else 0),
+            np.int32(1 if bOffloadCore else 0),
         )
         global_size = (len(self.systems) * self.nloc,)
         local_size  = (self.nloc,)
         cl.enqueue_nd_range_kernel(self.queue, kernel, global_size, local_size).wait()
         self.fromGPU_(self.Es_buff, self.Es_h)
         self.queue.finish()
-        return self.Es_h[:, :5].copy()
+        out5 = self.Es_h[:, :5].astype(np.float64)
+        if bOffloadCore:
+            if coreConsts5 is None:
+                coreConsts5 = self.compute_core_constants_cpu()
+            out5 += coreConsts5
+        return out5
 
-    def eval_energies_localmd(self, bFrozenCore=None):
+    def eval_energies_localmd(self, bFrozenCore=None, bOffloadCore: bool = False, coreConsts5=None):
         """Evaluate energies using the localMD force kernel path with an optional energy reduction.
 
         This requires that the program is built with -DEFF_EVAL_ENERGY and that kernel
@@ -253,19 +358,26 @@ class EFF_OCL(OpenCLBase):
             self.espins_buff,
             self.force_buff,
             self.Es_buff,
+            self.coreMap_buff,
             np.int32(nsys),
             np.int32(1),
             np.float32(0.0),
             np.float32(0.0),
             krsrho,
             np.int32(1 if bFrozenCore else 0),
+            np.int32(1 if bOffloadCore else 0),
         )
         global_size = (len(self.systems) * self.nloc,)
         local_size  = (self.nloc,)
         cl.enqueue_nd_range_kernel(self.queue, kernel, global_size, local_size).wait()
         self.fromGPU_(self.Es_buff, self.Es_h)
         self.queue.finish()
-        return self.Es_h[:, :5].copy()
+        out5 = self.Es_h[:, :5].astype(np.float64)
+        if bOffloadCore:
+            if coreConsts5 is None:
+                coreConsts5 = self.compute_core_constants_cpu()
+            out5 += coreConsts5
+        return out5
 
     def relax_systems(self, n_steps=1, dt=0.1, damping=0.5, bFrozenCore=False):
         """
