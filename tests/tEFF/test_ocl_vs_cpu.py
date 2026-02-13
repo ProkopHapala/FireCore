@@ -8,8 +8,12 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 from pyBall import eFF as eff
 from pyBall.OCL import eFF_ocl as ocl
 
-xyz_filename = os.path.normpath(os.path.join(os.path.dirname(__file__), "../../cpp/sketches_SDL/Molecular/data/H2O_fixcore.xyz"))
-print("--- Comparing CPU and GPU eFF implementations for H2O_fixcore ---")
+default_xyz = os.path.normpath(os.path.join(os.path.dirname(__file__), "../../cpp/sketches_SDL/Molecular/data/H2O_fixcore.xyz"))
+xyz_filename = os.environ.get("EFF_XYZ", "")
+if not xyz_filename:
+    xyz_filename = sys.argv[1] if len(sys.argv) > 1 else default_xyz
+xyz_filename = os.path.normpath(xyz_filename)
+print(f"--- Comparing CPU and GPU eFF implementations for {os.path.basename(xyz_filename)} ---")
 
 # ==========================
 #      CPU Calculation
@@ -33,11 +37,19 @@ cpu_forces[na:, 3]  = eff.fsize
 print("\n--- Running GPU Calculation ---")
 gpu_forces = None
 try:
-    eff_gpu = ocl.EFF_OCL()
+    dbg_pair = int(os.environ.get('DBG_PAIR', '0')) != 0
+    if dbg_pair:
+        idbg_step = int(os.environ.get('DBG_STEP', '0'))
+        idbg_i    = int(os.environ.get('DBG_I', '0'))
+        idbg_j    = int(os.environ.get('DBG_J', '1'))
+        eff_gpu = ocl.EFF_OCL(dbg_pair=True, idbg_sys=0, idbg_step=idbg_step, idbg_i=idbg_i, idbg_j=idbg_j, dbg_allpairs=False)
+    else:
+        eff_gpu = ocl.EFF_OCL()
     eff_gpu.load_xyzs(xyz_filename)
     eff_gpu.realloc_buffers()
     eff_gpu.upload_data()
-    eff_gpu.relax_systems(n_steps=1, dt=0.0, damping=0.0)
+    b_frozen = any(sys.get('core_mode', 'f') == 'f' for sys in eff_gpu.systems)
+    eff_gpu.relax_systems(n_steps=1, dt=0.0, damping=0.0, bFrozenCore=b_frozen)
     gpu_forces = eff_gpu.get_forces()
 except Exception as e:
     print(f"Could not run GPU calculation: {e}")

@@ -78,6 +78,18 @@ def setVerbosity(verbosity_=0, idebug=0):
     verbosity = verbosity_
     return lib.setVerbosity(verbosity, idebug)
 
+# void setEFFDbgPair( int on, int step, int kind, int i, int j )
+lib.setEFFDbgPair.argtypes  = [c_int, c_int, c_int, c_int, c_int]
+lib.setEFFDbgPair.restype   = None
+def setEFFDbgPair(on=0, step=0, kind=0, i=0, j=1):
+    return lib.setEFFDbgPair(int(on), int(step), int(kind), int(i), int(j))
+
+# void setEFFDbgAllPairs( int on )
+lib.setEFFDbgAllPairs.argtypes = [c_int]
+lib.setEFFDbgAllPairs.restype  = None
+def setEFFDbgAllPairs(on=0):
+    return lib.setEFFDbgAllPairs(int(on))
+
 #  void init_buffers(){
 lib.init_buffers.argtypes  = [] 
 lib.init_buffers.restype   =  None

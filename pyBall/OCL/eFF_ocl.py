@@ -21,6 +21,7 @@ class EFF_OCL(OpenCLBase):
     #                   Z_nuc , R_eff    , Zcore_eff , PA        , PB       , PC,        PD        ,  PE
         'H': np.array([ 1.0   , 0.0      , 0.0       , 0.0       , 0.0      , 0.0      , 0.0       , 0.0      ], dtype=np.float32),
         'C': np.array([ 6.0   , 0.621427 , 2.0       , 22.721015 , 0.728733 , 1.103199 , 17.695345 , 6.693621 ], dtype=np.float32),
+        'N': np.array([ 7.0   , 0.1      , 2.0       , 0.0       , 0.0      , 0.0      , 0.0       , 0.0      ], dtype=np.float32),
         'O': np.array([ 8.0   , 0.167813 , 2.0       , 25.080199 , 0.331574 , 1.276183 , 12.910142 , 3.189333 ], dtype=np.float32),
     }
     ELEMENT_Z = {name: params[0] for name, params in ATOM_PARAMS.items()}
@@ -30,7 +31,7 @@ class EFF_OCL(OpenCLBase):
     #     self.load_program(kernel_path=kernel_path, bPrint=True)
     #     self.systems = []
 
-    def __init__(self, nloc: int = 32, device_index: int = 0, bEnergyKernel: bool = False, dbg_pair: bool = False, idbg_sys: int = 0):
+    def __init__(self, nloc: int = 32, device_index: int = 0, bEnergyKernel: bool = False, dbg_pair: bool = False, idbg_sys: int = 0, idbg_step: int = 0, idbg_i: int = 0, idbg_j: int = 1, dbg_allpairs: bool = False):
         super().__init__(nloc=nloc, device_index=device_index)
 
         base_path = os.path.dirname(os.path.abspath(__file__))
@@ -41,6 +42,11 @@ class EFF_OCL(OpenCLBase):
         if dbg_pair:
             build_options.append("-DDBG_EFF_PAIR=1")
             build_options.append(f"-DIDBG_SYS={int(idbg_sys)}")
+            build_options.append(f"-DIDBG_STEP={int(idbg_step)}")
+            build_options.append(f"-DIDBG_I={int(idbg_i)}")
+            build_options.append(f"-DIDBG_J={int(idbg_j)}")
+            if dbg_allpairs:
+                build_options.append("-DDBG_EFF_ALLPAIRS=1")
         if not build_options:
             build_options = None
         if not self.load_program(rel_path=rel_path, base_path=base_path, build_options=build_options):
@@ -88,6 +94,8 @@ class EFF_OCL(OpenCLBase):
                             ions.append( ('H', pos) )
                         elif iz==6:
                             ions.append( ('C', pos) )
+                        elif iz==7:
+                            ions.append( ('N', pos) )
                         elif iz==8:
                             ions.append( ('O', pos) )
                         else:
@@ -168,10 +176,12 @@ class EFF_OCL(OpenCLBase):
             'coreMap': sz_s1*ntot,
             'force':   sz_f4*ntot,
             'Es':      sz_f8*nsys,
+            'fixmask': sz_s1*ntot,
         }
         for name, element_size in buffer_specs.items():
             self.try_make_buff(f"{name}_buff", element_size)
-        self.force_h = np.zeros((self.ntot, 4), dtype=np.float32)
+        self.force_h  = np.zeros((self.ntot, 4), dtype=np.float32)
+        self.fixmask_h = np.zeros((self.ntot,), dtype=np.uint8)
         self.Es_h    = np.zeros((nsys, 8), dtype=np.float32)
         self.coreMap_h = np.full(self.ntot, -1, dtype=np.int8)
         print("--- GPU buffers allocated.")
@@ -233,6 +243,14 @@ class EFF_OCL(OpenCLBase):
                             imin = ia
                     if (imin >= 0) and (d2min < 1e-10):
                         self.coreMap_h[ip] = np.int8(imin)
+
+            # fixmask: optional per-system (len=na+ne) array of uint8
+            fm = sys.get('fixmask', None)
+            if fm is not None:
+                fm = np.asarray(fm, dtype=np.uint8)
+                if fm.size != (na + ne):
+                    raise RuntimeError(f"[EFF_OCL] fixmask size mismatch: got {fm.size} expected {na+ne} for system {i}")
+                self.fixmask_h[i0:i0+na+ne] = fm
             i0a += na
             i0  += na + ne
 
@@ -243,6 +261,7 @@ class EFF_OCL(OpenCLBase):
         self.toGPU_(self.aparams_buff, self.aparams_h)
         self.toGPU_(self.espins_buff,  self.spins_h)
         self.toGPU_(self.coreMap_buff, self.coreMap_h)
+        self.toGPU_(self.fixmask_buff, self.fixmask_h)
         self.queue.finish()
         # print(f"upload_data() DONE")
 
@@ -327,7 +346,11 @@ class EFF_OCL(OpenCLBase):
         cl.enqueue_nd_range_kernel(self.queue, kernel, global_size, local_size).wait()
         self.fromGPU_(self.Es_buff, self.Es_h)
         self.queue.finish()
-        out5 = self.Es_h[:, :5].astype(np.float64)
+        # localMD_energy writes Es as float8: (Etot,Ek,EeeC,EaeC,Eaa,EeeP,EaeP,0)
+        Es = self.Es_h.astype(np.float64)
+        out5 = Es[:, :5].copy()
+        out5[:, 2] = Es[:, 2] + Es[:, 5]  # Eee = Coul + Pauli
+        out5[:, 3] = Es[:, 3] + Es[:, 6]  # Eae = Coul + Pauli
         if bOffloadCore:
             if coreConsts5 is None:
                 coreConsts5 = self.compute_core_constants_cpu()
@@ -359,6 +382,7 @@ class EFF_OCL(OpenCLBase):
             self.force_buff,
             self.Es_buff,
             self.coreMap_buff,
+            self.fixmask_buff,
             np.int32(nsys),
             np.int32(1),
             np.float32(0.0),
@@ -372,7 +396,11 @@ class EFF_OCL(OpenCLBase):
         cl.enqueue_nd_range_kernel(self.queue, kernel, global_size, local_size).wait()
         self.fromGPU_(self.Es_buff, self.Es_h)
         self.queue.finish()
-        out5 = self.Es_h[:, :5].astype(np.float64)
+        # localMD_energy writes Es as float8: (Etot,Ek,EeeC,EaeC,Eaa,EeeP,EaeP,0)
+        Es = self.Es_h.astype(np.float64)
+        out5 = Es[:, :5].copy()
+        out5[:, 2] = Es[:, 2] + Es[:, 5]  # Eee = Coul + Pauli
+        out5[:, 3] = Es[:, 3] + Es[:, 6]  # Eae = Coul + Pauli
         if bOffloadCore:
             if coreConsts5 is None:
                 coreConsts5 = self.compute_core_constants_cpu()
@@ -395,6 +423,8 @@ class EFF_OCL(OpenCLBase):
         #     __global       float4*      vel,     // [ntot]   {vx,vy,vz,dw/dt} velocities of ions and electrons (including change of size)
         #     __global const float8*      aParams, // [ntot_a] parameters of ions { Z_nuc, R_eff, Zcore_eff,   PA,        PB,        PC,        PD }
         #     __global const signed char* espins,  // [ntot]   {spin}
+        #     __global const unsigned char* fixmask, // [ntot] {fixmask}
+        #     __global       float4*      force,   // [ntot]   {fx,fy,fz,0} forces on ions and electrons
         #     const int    nsys,
         #     const int    nsteps,
         #     const float  dt,
@@ -409,6 +439,7 @@ class EFF_OCL(OpenCLBase):
             self.aparams_buff,
             self.espins_buff,
             self.force_buff,
+            self.fixmask_buff,
             np.int32(nsys),
             np.int32(n_steps),
             np.float32(dt),

@@ -18,6 +18,14 @@
 
 #include "eFF_LAMMPS_funcs.h"
 
+extern int eff_dbg_on;
+extern int eff_dbg_step;
+extern int eff_dbg_kind;
+extern int eff_dbg_i;
+extern int eff_dbg_j;
+extern int eff_dbg_step_current;
+extern int eff_dbg_allpairs;
+
 
 /*
 
@@ -232,7 +240,7 @@ class EFF{ public:
 { 4.0,   0.1,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 4: Be (Simple core: Z=4, sQ=0.4, sP=0.4, cP=1.0 for 1s2)
 { 5.0,   0.1,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 5: B  (Simple core: Z=5, sQ=0.35,sP=0.35,cP=1.0 for 1s2)
 { 6.0,   0.621427, 2.0,     22.721015, 0.728733,  1.103199,  17.695345, 6.693621  }, // 6: C (ECP: Z_nuc=6, R_core=0.621, Z_core=2. p-type)
-{ 7.0,   0.0,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 7: N (ECP: Z_nuc=7, R_core=0.0,   Z_core=2. p-type)
+{ 7.0,   0.1,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 7: N (ECP: Z_nuc=7, R_core=0.1,   Z_core=2. p-type)
 { 8.0,   0.167813, 2.0,     25.080199, 0.331574,  1.276183,  12.910142, 3.189333  }, // 8: O (ECP: Z_nuc=8, R_core=0.167, Z_core=2. p-type)
 { 9.0,   0.3,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }  // 9: F (Simple core: Z=9, sQ=0.3, sP=0.3, cP=1.0 for 1s2)
 // Add Al, Si etc. as needed
@@ -557,6 +565,8 @@ double evalEE(){
             Vec3d f_before_coul = f; double fsi_before_coul = fsi; double fsj_before_coul = fsj;
             if(bEvalCoulomb){
                 dEee = addCoulombGauss( dR, si, sj, f, fsi, fsj, qij );
+                //dEee = addCoulombGauss( dR, si*M_SQRT2, sj*M_SQRT2, f, fsi, fsj, qq );
+                //dEee = addCoulombGauss( dR, si*2, sj*2, f, fsi, fsj, qq );
             }
             if(verbosity>3){
                 Vec3d f_coul = f - f_before_coul;
@@ -564,12 +574,6 @@ double evalEE(){
             }
 
             Vec3d f_before_paul = f; double fsi_before_paul = fsi; double fsj_before_paul = fsj;
-
-            if(bEvalCoulomb){
-                dEee = addCoulombGauss( dR, si, sj, f, fsi, fsj, qij );
-                //dEee = addCoulombGauss( dR, si*M_SQRT2, sj*M_SQRT2, f, fsi, fsj, qq );
-                //dEee = addCoulombGauss( dR, si*2, sj*2, f, fsi, fsj, qq );
-            }
             if(bEvalPauli){
                 //printf( "Eee[%i,%i]= %g(%g) r %g s(%g,%g) \n", i, j, dEee, Eee, dR.norm(), si,sj );
                 if( iPauliModel == 1 ){ // Pauli repulsion form this eFF paper http://aip.scitation.org/doi/10.1063/1.3272671
@@ -611,6 +615,16 @@ double evalEE(){
             //if(verbosity>2){ printf("%s e%i-e%i Coul %5.20f \n",prefix,i,j,dEee); printf("%s e%i-e%i Paul %5.20f \n",prefix,i,j,dEpaul); }
             Eee    += dEee;
             EeePaul+= dEpaul;
+
+            if( eff_dbg_on && (eff_dbg_kind==1) && (eff_dbg_step_current==eff_dbg_step) ){
+                const int pi = na + i;
+                const int pj = na + j;
+                if( eff_dbg_allpairs || ((eff_dbg_i==pi)&&(eff_dbg_j==pj)) || ((eff_dbg_i==pj)&&(eff_dbg_j==pi)) ){
+                    const double r = dR.norm();
+                    printf("DBG_PAIR step=%d kind=EE i=%d j=%d r=%.8g si=%.8g sj=%.8g spinij=%d qq=%.8g | Ec=%.10g Ep=%.10g fr=(%.10g %.10g %.10g)\n",
+                        eff_dbg_step_current, pi, pj, r, si, sj, spinij, qq, dEee, dEpaul, dR.x, dR.y, dR.z );
+                }
+            }
             double dE = 0.5*( dEee + dEpaul );
             eE[i]+=dE;
             eE[j]+=dE;
@@ -700,6 +714,16 @@ double evalAE(){
             Eae    +=dEae;
             EaePaul+=dEaePaul;
             Eee_   +=dEee;
+
+            if( eff_dbg_on && (eff_dbg_kind==2) && (eff_dbg_step_current==eff_dbg_step) ){
+                const int pi = i;
+                const int pj = na + j;
+                if( eff_dbg_allpairs || ((eff_dbg_i==pi)&&(eff_dbg_j==pj)) || ((eff_dbg_i==pj)&&(eff_dbg_j==pi)) ){
+                    const double r = dR.norm();
+                    printf("DBG_PAIR step=%d kind=AE i=%d j=%d r=%.8g sQ=%.8g se=%.8g q=%.8g sP=%.8g | Ec=%.10g Ep=%.10g EcC=%.10g fr=(%.10g %.10g %.10g)\n",
+                        eff_dbg_step_current, pi, pj, r, aPar.y, sj, qj, aPar.z, dEae, dEaePaul, dEee, dR.x, dR.y, dR.z );
+                }
+            }
             eE[j]  +=dEae+dEaePaul+dEee;
             eforce[j].sub(f);
             aforce[i].add(f);

@@ -204,3 +204,36 @@ From `tests/tEFF/OUT_ocl_vs_cpu`:
 **Next targets:**
 - Run `NH3_fixcore` and `CH4_fixcore` on the parallel path (tol `1e-4`).
 - Add perturbation tests (small random jitter / single-particle displacement) on parallel path.
+
+
+### Feb 2026 parity fix (force arrays now match)
+- **Symptom:** `test_ocl_vs_cpu.py` diff O(1e1–1e2) on EE forces with GPU correct math; AE already matched. Inputs verified identical via gated kernel dumps.
+- **Root cause:** CPU `evalEE` called `addCoulombGauss` **twice** per EE pair (copy-paste bug), doubling EE Coulomb forces while energy counted once. GPU had single call.
+- **Fix:** Commented the duplicate Coulomb call in `cpp/common/molecular/eFF.h` EE loop; kept GPU unchanged. Rebuilt `eFF_lib`.
+- **Result:** `test_ocl_vs_cpu.py` on `H2O_fixcore` **PASS**, max abs diff ≈ `2.75e-05` (tol `1e-4`) on the parallel path.
+- **Workflow lessons:**
+  1. Verify inputs first (gated `DBG_EFF_INPUT`, CPU verbosity) before touching physics.
+  2. Audit CPU reference for accidental duplicates/side-effects; don’t bend GPU to a CPU bug.
+  3. Keep heavy prints gated (`DBG_EFF_INPUT`, `DBG_EFF_PAIR`) and only enable on the first divergence.
+  4. Compare per-kind decompositions (AE vs EE; Coulomb vs Pauli) and **total per-particle** forces—pairwise sign flips don’t matter if totals match.
+  5. Re-test after each single, minimal change; avoid back-and-forth toggles.
+
+### Forward plan (parity + trajectories)
+- **Static force parity:** Re-run NH3_fixcore and CH4_fixcore (tol 1e-4) on the parallel kernel.
+- **Short trajectory parity (≤10 steps):** H2O and CH4 with identical MDdamp/dt/damping/fixmask/spins; accept positions/sizes ≤1e-3 after 10 steps; log per-step deltas; enable all-pairs debug only on first divergence.
+- **Long convergence parity:** CPU relax to Fconv 1e-4–1e-5, perturb (~0.05 Å), GPU relax with same MDdamp settings; compare endpoints (positions/sizes priority ≤1e-3; energies via `localMD_energy`; forces ≤ Fconv).
+- **Scan parity (fixed ions + electron relax):** 1D/2D scans with nuclei fixed; relax electrons CPU vs GPU, write multi-frame `gpu_scan_relaxed.xyz`; post-relax energies via `localMD_energy`; target positions/sizes ≤1e-3, |ΔE| ≤ 5e-4 eV.
+- **Debug discipline:** identical algorithms/settings (MDdamp), identical fixmask/constraints, redirect heavy debug to files to avoid truncation, and gate prints to the first failing step.
+
+### Status 2026-02-13 (evening)
+- **Static force parity:** PASS for H2O_fixcore, CH4_fixcore, NH3_fixcore (N `R_eff` set to 0.1 in CPU+GPU tables; `test_ocl_vs_cpu.py` now takes argv/env).
+- **Short trajectory parity (10-step, stepwise, tol_pos/size=1e-3):** PASS for H2O and CH4; no divergence flagged (forces/energies logged but not gating).
+- **Debug gating:** `DBG_EFF_FDECOMP` added to silence per-electron prints by default; long/pert sections in `run_relax_parity_protocol.py` are skipped when `--long-steps 0`.
+- **Fixed-ion scan parity (electron-only):** First run on H2O distscan (50 conf, nuclei fixed) shows large mismatch (pos_xyz_max~1.29, pos_size_max~0.59, Etot_max~111 eV). Needs investigation (likely scan handling/constraints mismatch).
+
+**Next actions:**
+1) Investigate fixed-ion scan mismatch: compare a single config CPU `relaxed_scan` vs GPU `relax` (fixmask) on distscan_H2O__spins_fc.xyz to find geometry/energy delta source.
+2) Repeat fixed-ion scan after fix; target pos/size ≤1e-3 and |ΔE| ≤5e-4 eV.
+3) (Optional) Long convergence parity after scan fix: CPU relax → perturb → GPU relax.
+
+- **Debug discipline:** identical algorithms/settings (MDdamp), identical fixmask/constraints, redirect heavy debug to files to avoid truncation, and gate prints to the first failing step.

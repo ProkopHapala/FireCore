@@ -173,6 +173,24 @@ inline float2 addKineticGauss_eFF( float s ){
 #ifndef IDBG_SYS
 #define IDBG_SYS 0
 #endif
+ #ifndef IDBG_STEP
+ #define IDBG_STEP 0
+ #endif
+ #ifndef IDBG_I
+ #define IDBG_I 0
+ #endif
+ #ifndef IDBG_J
+ #define IDBG_J 1
+ #endif
+ #ifndef DBG_EFF_ALLPAIRS
+ #define DBG_EFF_ALLPAIRS 0
+ #endif
+#ifndef DBG_EFF_INPUT
+#define DBG_EFF_INPUT 0
+#endif
+#ifndef DBG_EFF_FDECOMP
+#define DBG_EFF_FDECOMP 0
+#endif
 __kernel void localMD(
     __global       int4*        sysinds, // 0  : [nsys]   {na,ne,i0p,i0a} size and initial index for each atom
     __global       float4*      pos,     // 1  : [ntot]   {x,y,z,w} positions (and size) of ions and electrons
@@ -180,12 +198,13 @@ __kernel void localMD(
     __global const float8*      aParams, // 3  : [ntot_a] parameters of ions { Z_nuc, R_eff, Zcore_eff,   PA,        PB,        PC,        PD }
     __global const signed char* espins,  // 4  : [ntot]   {spin}
     __global       float4*      fout,    // 5  : [ntot]   {fx,fy,fz,fw} output force buffer
-    const int    nsys,                   // 6  : Number of systems
-    const int    nsteps,                 // 7  : Number of steps
-    const float  dt,                     // 8  : Time step
-    const float  damping,                // 9  : Damping factor
-    const float4 KRSrho,                 // 10 : KRSrho
-    const int    bFrozenCore             // 11 : Boolean flag for frozen core
+    __global const  uchar*      fixmask, // 6  : [ntot]   bitmask of fixed DOFs: 1=x 2=y 4=z 8=w(size)
+    const int    nsys,                   // 7  : Number of systems
+    const int    nsteps,                 // 8  : Number of steps
+    const float  dt,                     // 9  : Time step
+    const float  damping,                // 10 : Damping factor
+    const float4 KRSrho,                 // 11 : KRSrho
+    const int    bFrozenCore             // 12 : Boolean flag for frozen core
 ) {
     // --- 1. SLM Setup ---
     __local float4      l_pos     [MAX_LOC_SIZE];
@@ -229,12 +248,39 @@ __kernel void localMD(
         if (lid < ntot) {
             float4 my_pos = l_pos[lid];
             float4 my_f   = (float4)(0.0f);
+            float4 dbg_fAE = (float4)(0.0f);
+            float4 dbg_fEE = (float4)(0.0f);
+            float4 dbg_fK  = (float4)(0.0f);
             bool i_am_ion = (lid < na);
+            const uchar msk = fixmask ? fixmask[ip_start + lid] : (uchar)0;
+
+            if ((get_global_id(0)==0) && (lid==0) && (step==0)) {
+                printf("SWITCH localMD: nsys=%d group=%d na=%d ne=%d ntot=%d bFrozenCore=%d KRSrho=(%.8g %.8g %.8g %.8g)\n",
+                    nsys, group_id, na, ne, ntot, bFrozenCore,
+                    (double)KRSrho.x, (double)KRSrho.y, (double)KRSrho.z, (double)KRSrho.w );
+#if DBG_EFF_INPUT
+                // DEBUG: Dump all particle inputs (compile-time gated)
+                for (int dd=0; dd<ntot; dd++){
+                    float4 pp = l_pos[dd];
+                    if (dd < na){
+                        float8 ap = l_aparams[dd];
+                        printf("GPU_INPUT ion[%d] pos(%12.6f %12.6f %12.6f) aP(Q=%g sQ=%g sP=%g s3=%g s4=%g s5=%g s6=%g s7=%g)\n",
+                            dd, (double)pp.x,(double)pp.y,(double)pp.z,
+                            (double)ap.s0,(double)ap.s1,(double)ap.s2,(double)ap.s3,(double)ap.s4,(double)ap.s5,(double)ap.s6,(double)ap.s7);
+                    } else {
+                        int sp = l_spins[dd - na];
+                        printf("GPU_INPUT elec[%d] pos(%12.6f %12.6f %12.6f) size=%12.8f spin=%d\n",
+                            dd, (double)pp.x,(double)pp.y,(double)pp.z, (double)pp.w, sp);
+                    }
+                }
+#endif
+            }
 
             // --- A. Kinetic Force ---
             if (!i_am_ion) {
                 float2 fk = addKineticGauss_eFF(my_pos.w);
                 my_f.w += fk.y;
+                dbg_fK.w += fk.y;
             }
 
             // --- B. Interaction Loop ---
@@ -251,13 +297,13 @@ __kernel void localMD(
 
                 if (i_am_ion) {
                     float8 my_par = l_aparams[lid];
-                    float Qi      = my_par.s0 - my_par.s2; // Q_nuc - Z_core_eff
+                    float Qi      = my_par.s0 - ( (bFrozenCore!=0) ? my_par.s2 : 0.0f ); // Q_nuc - Z_core_eff (only in frozen-core mode)
                     float Q       = my_par.s0;
 
                     if (j_is_ion) {
                         // --- Ion-Ion ---
                         float8 other_par = l_aparams[j];
-                        float Qj         = other_par.s0 - other_par.s2;
+                        float Qj         = other_par.s0 - ( (bFrozenCore!=0) ? other_par.s2 : 0.0f );
                         float4 fc        = getCoulomb(dR, Qi * Qj);
                         my_f.xyz        += fc.xyz; 
                         // Note: dR points to J. fc.xyz is (dR * fr). 
@@ -269,27 +315,25 @@ __kernel void localMD(
                         // Reference AE logic: dR = Elec - Ion.
                         // Here dR = Elec - Ion (since I am Ion). Matches ref.
                         float Ri = my_par.s1; // R_eff
-                        float4 cg = getCoulombGauss(dR, Ri, other_pos.w, -Q);
-                        // WAIT: Reference says: `getCoulombGauss(dR, Ri, pj.w, Qi)`
-                        // `forcei.xyz += dR * cg.y`
-                        
+                        const int   se = l_spins[j - na];
+                        const float qe = 1.0f;
+                        float4 cg = getCoulombGauss(dR, Ri, other_pos.w, -Q*qe);
                         my_f.xyz += dR * cg.y;
                         // ion has no size DOF
                         
                         // Core correction (Frozen Core)
-                        float sP = my_par.s2; // Zcore_eff ? No, sP usually parameter.
-                        // Actually in provided code: `float sP = pari.s2;`
+                        float sP = (bFrozenCore!=0) ? my_par.s2 : 0.0f;
                         if (sP > 1e-8f) {
                              float4 KRS = KRSrho;
-                             // Pauli
-                             float4 pg = getPauliGauss_New(dR, Ri, other_pos.w, 0, (float4)(KRS.x, KRS.y, KRS.z, KRS.w*(sP*0.5f)));
-                             my_f.xyz += dR * pg.y;
-                             // ion has no size DOF
+                            // Pauli
+                            float4 pg = getPauliGauss_New(dR, Ri, other_pos.w, 0, (float4)(KRS.x, KRS.y, KRS.z, KRS.w*(qe*sP*0.5f)));
+                            my_f.xyz += dR * pg.y;
+                            // ion has no size DOF
 
                              // Core Coulomb
-                             float4 cgC = getCoulombGauss(dR, Ri, other_pos.w, sP);
-                             my_f.xyz += dR * cgC.y;
-                             // ion has no size DOF
+                            float4 cgC = getCoulombGauss(dR, Ri, other_pos.w, qe*sP);
+                            my_f.xyz += dR * cgC.y;
+                            // ion has no size DOF
                         }
                     }
                 } 
@@ -300,52 +344,122 @@ __kernel void localMD(
                         const float8 other_par = l_aparams[j];
                         const float  Q         = other_par.s0;
                         const float  sQ        = other_par.s1;
-                        const float  sP        = other_par.s2;
+                        const float  sP        = (bFrozenCore!=0) ? other_par.s2 : 0.0f;
 
                         const float3 dRei = my_pos.xyz - other_pos.xyz;
-                        const float4 cg   = getCoulombGauss(dRei, sQ, my_pos.w, -Q);
+                        const int    se   = l_spins[lid - na];
+                        const float  qe   = 1.0f;
+                        const float4 cg   = getCoulombGauss(dRei, sQ, my_pos.w, -Q*qe);
 
                         my_f.xyz += -dRei * cg.y;
-                        my_f.w   +=  cg.w;   // electron size-force from main Coulomb
+                        my_f.w   += cg.w;   // size-force for electron (fsj)
+                        dbg_fAE.xyz += -dRei * cg.y;
+                        dbg_fAE.w   += cg.w;
                         
                         if (sP > 1e-8f) {
                             float4 KRS = KRSrho;
-                            float4 pg  = getPauliGauss_New(dRei, sQ, my_pos.w, 0, (float4)(KRS.x, KRS.y, KRS.z, KRS.w*(sP*0.5f)));
+                            float4 pg  = getPauliGauss_New(dRei, sQ, my_pos.w, 0, (float4)(KRS.x, KRS.y, KRS.z, KRS.w*(qe*sP*0.5f)));
                             my_f.xyz  += -dRei * pg.y;
-                            my_f.w    +=  pg.z; // CPU puts fsi (wrt sQ) into electron fsize
+                            my_f.w    += pg.z;
+                            dbg_fAE.xyz += -dRei * pg.y;
+                            dbg_fAE.w   += pg.z;
 
-                            float4 cgC = getCoulombGauss(dRei, sQ, my_pos.w, sP);
+                            float4 cgC = getCoulombGauss(dRei, sQ, my_pos.w, sP*qe);
                             my_f.xyz  += -dRei * cgC.y;
-                            my_f.w    +=  cgC.z; // CPU puts fsi (wrt sQ) into electron fsize
+                            my_f.w    += cgC.z;
+                            dbg_fAE.xyz += -dRei * cgC.y;
+                            dbg_fAE.w   += cgC.z;
                         }
 
-                    } 
+                        if (bDbg && (step==IDBG_STEP) && ( (DBG_EFF_ALLPAIRS && (lid==0)) || ((!DBG_EFF_ALLPAIRS) && (lid==IDBG_I) && (j==IDBG_J)) ) ) {
+                            const float r = sqrt(dot(dRei,dRei));
+                            float4 pg_dbg = (float4)(0.0f);
+                            float4 cgC_dbg = (float4)(0.0f);
+                            if (sP > 1e-8f) {
+                                float4 KRS = KRSrho;
+                                pg_dbg  = getPauliGauss_New(dRei, sQ, my_pos.w, 0, (float4)(KRS.x, KRS.y, KRS.z, KRS.w*(qe*sP*0.5f)));
+                                cgC_dbg = getCoulombGauss(dRei, sQ, my_pos.w, sP*qe);
+                            }
+                            const float3 fC  = -dRei * cg.y;
+                            const float3 fP  = -dRei * pg_dbg.y;
+                            const float3 fCC = -dRei * cgC_dbg.y;
+                            printf("DBG_PAIR step=%d kind=AE(iElec) i=%d j=%d r=%.8g sQ=%.8g se=%.8g Qion=%.8g sP=%.8g | Ec=%.10g Ep=%.10g EcC=%.10g | fC(%.6g %.6g %.6g) fsC=%.6g | fP(%.6g %.6g %.6g) fsP=%.6g | fCC(%.6g %.6g %.6g) fsCC=%.6g\n",
+                                step, lid, j, (double)r, (double)sQ, (double)my_pos.w, (double)Q, (double)sP,
+                                (double)cg.x, (double)pg_dbg.x, (double)cgC_dbg.x,
+                                (double)fC.x, (double)fC.y, (double)fC.z, (double)cg.w,
+                                (double)fP.x, (double)fP.y, (double)fP.z, (double)pg_dbg.z,
+                                (double)fCC.x,(double)fCC.y,(double)fCC.z,(double)cgC_dbg.z );
+                        }
+                    }
+ 
                     else {
                         // --- Electron-Electron ---
                         int my_spin    = l_spins[lid - na];
                         int other_spin = l_spins[j - na];
+                        const float qij = 1.0f;
                         
-                        // Reference mimics CPU: Calls Coulomb twice.
-                        float4 cg1 = getCoulombGauss(dR, my_pos.w, other_pos.w, 1.0f);
-                        float4 cg2 = getCoulombGauss(dR, my_pos.w, other_pos.w, 1.0f);
+                        // Per-particle force accumulation: this work-item computes force on i.
+                        // Therefore each pair contribution must be added once (CPU i<j loop adds to both i and j).
+                        float4 cg1 = getCoulombGauss(dR, my_pos.w, other_pos.w, qij);
                         
                         // Pauli
                         float qq = ((my_spin==0) && (other_spin==0)) ? 2.0f : 1.0f;
                         float4 eff_KRS = KRSrho; eff_KRS.w *= qq;
                         float4 pg = getPauliGauss_New(dR, my_pos.w, other_pos.w, my_spin*other_spin, eff_KRS);
                         
-                        float total_fr = cg1.y + cg2.y + pg.y;
-                        my_f.xyz += dR * total_fr;
+                        float total_fr = cg1.y + pg.y;
+                        my_f.xyz +=  dR * total_fr;
                         
                         // Size force: Accumulate .z (fsi) for me
-                        my_f.w   += cg1.z + cg2.z + pg.z;
+                        my_f.w   += cg1.z + pg.z;
+                        dbg_fEE.xyz += dR * total_fr;
+                        dbg_fEE.w   += cg1.z + pg.z;
+
+                        if (bDbg && (step==IDBG_STEP) && ( (DBG_EFF_ALLPAIRS && (lid==0)) || ((!DBG_EFF_ALLPAIRS) && (lid==IDBG_I) && (j==IDBG_J)) ) ) {
+                            const float r = sqrt(dot(dR,dR));
+                            printf("DBG_PAIR step=%d kind=EE i=%d j=%d r=%.8g si=%.8g sj=%.8g spinij=%d qq=%.8g | Ec1=%.10g Ec2=%.10g Ep=%.10g fr=(%.10g %.10g %.10g)\n",
+                                step, lid, j, (double)r, (double)my_pos.w, (double)other_pos.w, (int)(my_spin*other_spin), (double)qq,
+                                (double)cg1.x, 0.0, (double)pg.x, (double)dR.x, (double)dR.y, (double)dR.z );
+                        }
                     }
                 }
             } // end loop j
 
+            if (bDbg && (step==IDBG_STEP) && (lid==IDBG_I)) {
+                printf("DBG_SUM step=%d i=%d kind=SUM | fTot(%.8g %.8g %.8g %.8g) fAE(%.8g %.8g %.8g %.8g) fEE(%.8g %.8g %.8g %.8g) fK(%.8g %.8g %.8g %.8g)\n",
+                    step, lid,
+                    (double)my_f.x,(double)my_f.y,(double)my_f.z,(double)my_f.w,
+                    (double)dbg_fAE.x,(double)dbg_fAE.y,(double)dbg_fAE.z,(double)dbg_fAE.w,
+                    (double)dbg_fEE.x,(double)dbg_fEE.y,(double)dbg_fEE.z,(double)dbg_fEE.w,
+                    (double)dbg_fK.x,(double)dbg_fK.y,(double)dbg_fK.z,(double)dbg_fK.w
+                );
+            }
+            // DEBUG: print per-electron force decomposition for ALL electrons at step 0 (compile-time gated)
+#if DBG_EFF_FDECOMP
+            if ((step==0) && (!i_am_ion) && (group_id==0)) {
+                printf("GPU_FDECOMP elec[%d] fTot(%12.6f %12.6f %12.6f %12.6f) fAE(%12.6f %12.6f %12.6f %12.6f) fEE(%12.6f %12.6f %12.6f %12.6f) fK(%12.6f %12.6f %12.6f %12.6f)\n",
+                    lid,
+                    (double)my_f.x,(double)my_f.y,(double)my_f.z,(double)my_f.w,
+                    (double)dbg_fAE.x,(double)dbg_fAE.y,(double)dbg_fAE.z,(double)dbg_fAE.w,
+                    (double)dbg_fEE.x,(double)dbg_fEE.y,(double)dbg_fEE.z,(double)dbg_fEE.w,
+                    (double)dbg_fK.x,(double)dbg_fK.y,(double)dbg_fK.z,(double)dbg_fK.w);
+            }
+#endif
+
             // --- C. Integration (Verlet/Euler) ---
-            l_vel[lid] = l_vel[lid] * damping + my_f * dt;
-            l_pos[lid] = l_pos[lid] + l_vel[lid] * dt;
+            float4 vnew = l_vel[lid] * damping + my_f * dt;
+            float4 pnew = l_pos[lid] + vnew * dt;
+
+            // Apply fixmask (simple, per-DOF)
+            if (msk) {
+                if (msk & 1) { vnew.x = 0.0f; pnew.x = l_pos[lid].x; my_f.x = 0.0f; }
+                if (msk & 2) { vnew.y = 0.0f; pnew.y = l_pos[lid].y; my_f.y = 0.0f; }
+                if (msk & 4) { vnew.z = 0.0f; pnew.z = l_pos[lid].z; my_f.z = 0.0f; }
+                if (msk & 8) { vnew.w = 0.0f; pnew.w = l_pos[lid].w; my_f.w = 0.0f; }
+            }
+
+            l_vel[lid] = vnew;
+            l_pos[lid] = pnew;
             
             if (!i_am_ion) l_pos[lid].w = fmax(l_pos[lid].w, 0.001f);
             // Cache force from this step (for output)
@@ -382,6 +496,7 @@ __kernel void localMD_energy(
     __global       float4*      fout,    // 5  : [ntot]   {fx,fy,fz,fw} output force buffer (kept for compatibility)
     __global       float8*      Es,      // 6  : [nsys]   {Etot,Ek,Eee,Eae,Eaa,0,0,0}
     __global const   char*      coreMap,
+    __global const  uchar*      fixmask,
     const int    nsys,                   // 7
     const int    nsteps,                 // 8  (unused; kept for interface compatibility)
     const float  dt,                     // 9  (unused)
@@ -488,6 +603,7 @@ __kernel void localMD_energy(
                 const int sj = l_spins[j   - na];
                 const float qi = (si==0) ? 2.0f : 1.0f;
                 const float qj = (sj==0) ? 2.0f : 1.0f;
+                // Match CPU energy bookkeeping: Coulomb energy counted once
                 float4 cg = getCoulombGauss(dR, pi.w, pj.w, qi*qj);
                 float qq = ((si==0) && (sj==0)) ? 2.0f : 1.0f;
                 float4 eff_KRS = KRSrho; eff_KRS.w *= qq;

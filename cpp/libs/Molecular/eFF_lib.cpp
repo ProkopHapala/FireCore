@@ -31,6 +31,14 @@ int i_DEBUG=0;
 
 const char* prefix = "#Epiece";
 
+int eff_dbg_on=0;
+int eff_dbg_step=0;
+int eff_dbg_kind=0; // 1=EE 2=AE 3=AA
+int eff_dbg_i=0;
+int eff_dbg_j=1;
+int eff_dbg_step_current=0;
+int eff_dbg_allpairs=0;
+
 #include "InteractionsGauss.h"
 #include "eFF.h"
 #include "DynamicOpt.h"
@@ -78,6 +86,18 @@ void setup_measurements(int i0_, int n_, int nd, Vec2i* d_inds, int na_, Vec3i* 
     ang_inds   = a_inds;
     dists_vals = d_vals;
     ang_vals   = a_vals;
+}
+
+extern "C" void setEFFDbgPair( int on, int step, int kind, int i, int j ){
+    eff_dbg_on   = on;
+    eff_dbg_step = step;
+    eff_dbg_kind = kind;
+    eff_dbg_i    = i;
+    eff_dbg_j    = j;
+}
+
+extern "C" void setEFFDbgAllPairs( int on ){
+    eff_dbg_allpairs = on;
 }
 
 static inline int add_electrons_pair_or_split( EFF* ff, int ie, const Vec3d& p1, const Vec3d& p2, double esize0, bool bPaired, bool bChangeEsize ){
@@ -212,7 +232,8 @@ void initOpt( double dt, double damping, double f_limit, bool bMass ){
 };
 
 //int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
-int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF ){ 
+int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF ){
+ 
     double F2conv=Fconv*Fconv;
     double F2 = 1.0;
     double Etot;
@@ -226,28 +247,24 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
         opt.cleanVel( ); 
     }
     bool bConv=false;
-    //if(ff.nfix>0){ ff.apply_hard_fix(); }
+    if(ff.nfix>0){ ff.apply_hard_fix(); }
     for(itr=0; itr<nstepMax; itr++ ){
+        eff_dbg_step_current = itr;
         ff.clearForce();
         Etot = ff.eval();
         if( ff.bNegativeSizes & (verbosity>0) ){ printf( "negative electron sizes in step #%i => perhaps decrease relaxation time step dt=%g[fs]? \n", itr, opt.dt ); }
-        //if(ff.nfix>0){ if(ialg>0){ ff.clear_fixed_dynamics(); }else{ ff.clear_fixed_force(); } }
+        if(ff.nfix>0){ if(ialg>0){ ff.clear_fixed_dynamics(); }else{ ff.clear_fixed_force(); } }
         switch(ialg){
             case  0: F2 = ff .move_GD      (dt);      break;
             case -1: F2 = opt.move_LeapFrog(dt);      break;
             case  1: F2 = opt.move_MD (dt,opt.damping); break;
             case  2: F2 = opt.move_FIRE();       break;
         }
-        //if(ff.nfix>0){ ff.apply_hard_fix(); }
+        if(ff.nfix>0){ ff.apply_hard_fix(); }
         if(outE){ outE[itr]=Etot;     }
         if(outF){ outF[itr]=sqrt(F2); }
         if(verbosity>2){ printf("itr: %6i Etot[eV] %16.8f |F|[eV/A] %16.8f \n", itr, Etot, sqrt(F2) ); };
-        if(F2<F2conv){
-            //if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
-            bConv=true;
-            break;
-        }
-        if( (trj_fname) && (itr%savePerNsteps==0) )  ff.save_xyz( trj_fname, "a" );
+        if(F2<F2conv){ bConv=true; break; }
     }
     if(verbosity>1){ printf("run() %s in %6i iterations Etot[eV] %16.8f |F|[eV/A] %16.8f (Fconv=%g) \n", bConv ? "    CONVERGED" : "NOT-CONVERGED", itr, Etot, sqrt(F2), Fconv ); };
     //printShortestBondLengths();
