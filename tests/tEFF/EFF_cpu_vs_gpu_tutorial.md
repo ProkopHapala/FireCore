@@ -24,18 +24,30 @@ Notes:
 
 Output files: e.g. [distscan_CH4__spins_a.xyz](cci:7://file:///home/prokop/git/FireCore/tests/tEFF/export/scan_data/distscan_CH4__spins_a.xyz:0:0-0:0), [distscan_CH4__pairs_fc.xyz](cci:7://file:///home/prokop/git/FireCore/tests/tEFF/export/scan_data/distscan_CH4__pairs_fc.xyz:0:0-0:0), etc.
 
-## 2) Run scans and produce GPU vs CPU plots (1D/2D)
-Script: `tests/tEFF/batch_eval_plot_cpu_gpu_maps.sh` → calls [eval_plot_cpu_gpu_maps.py](cci:7://file:///home/prokop/git/FireCore/tests/tEFF/eval_plot_cpu_gpu_maps.py:0:0-0:0).
+## 2) Run scans and produce GPU vs CPU plots (1D/2D, rigid or relaxed)
+- **Rigid (no relaxation):** `tests/tEFF/batch_eval_plot_cpu_gpu_maps.sh` → [eval_plot_cpu_gpu_maps.py](cci:7://file:///home/prokop/git/FireCore/tests/tEFF/eval_plot_cpu_gpu_maps.py:0:0-0:0) computes CPU/GPU energies directly.
+  ```bash
+  cd tests/tEFF
+  OUTDIR=export/plots_cpu_gpu_regen PYTHONPATH=../.. OFFLOAD_CORE=0 bash batch_eval_plot_cpu_gpu_maps.sh
+  ```
+  Outputs: `*_cpu.npy`, `*_gpu.npy`, `*__1d.png`/`*__2d.png`, `*__stats.txt`.
 
-Example (no offload, clean outdir):
-```bash
-cd tests/tEFF
-OUTDIR=export/plots_cpu_gpu_regen PYTHONPATH=../.. OFFLOAD_CORE=0 bash batch_eval_plot_cpu_gpu_maps.sh
-```
-Outputs:
-- `*_cpu.npy`, `*_gpu.npy` per scan
-- `*__1d.png`, `*__2d.png` if 1D/2D
-- `*__stats.txt` with diff stats (GPU-CPU)
+- **Relaxed 1D scans (fixed ions, electron relax, parity check):**
+  - Runner: `tests/tEFF/run_relaxed_scans_1d.sh` (H2/CH4/H2O distance scans; dt=0.01, damping=0.1, steps=2000, fixed ions).
+  - Plotter: `tests/tEFF/plot_scan_parity.py` (CPU dotted lw=1.5, GPU solid lw=0.5; per-component diffs).
+  ```bash
+  cd tests/tEFF
+  bash run_relaxed_scans_1d.sh
+  ```
+  Outputs: `export/scan_parity_*/*{Es5_cpu.npy,Es5_gpu.npy,scan_parity.png}` plus reports.
+
+- **Relaxed 2D scans (spins/pairs, frozen core):**
+  - Runner: `tests/tEFF/run_relaxed_scans_2d.sh` auto-discovers `*scan*__spins_fc.xyz` / `*scan*__pairs_fc.xyz`, relaxes via `run_relax_parity_protocol.py` (dt=0.01, damping=0.1, steps=2000), then plots maps using `eval_plot_cpu_gpu_maps.py --from-es5-*`.
+  ```bash
+  cd tests/tEFF
+  bash run_relaxed_scans_2d.sh
+  ```
+  Outputs: `export/relaxed_*/*{Es5_cpu.npy,Es5_gpu.npy,__stats.txt,__1d.png/__2d.png}`.
 
 Files consumed: any `*__*.xyz` with `na,ne,core` header in [export/scan_data/](cci:9://file:///home/prokop/git/FireCore/tests/tEFF/export/scan_data:0:0-0:0).
 
@@ -101,6 +113,17 @@ PYTHONPATH=../.. python3 test_ocl_vs_cpu.py --xyz H2O_fixcore.xyz --tol 1e-4
 cd tests/tEFF
 PYTHONPATH=../.. python3 regen_scans.py --backup --in-dir export/scan_data --out-dir export/scan_data
 ```
+
+### Generate jittered single-config inputs (H2 / CH4) for trajectory parity
+Tools: `tests/tEFF/export/h2_jitter.py`, `tests/tEFF/export/ch4_jitter.py` (sample names; use the provided jitter scripts next to the XYZs). They write `*jpos*` jittered XYZs used by long-parity tests.
+
+Example:
+```bash
+cd tests/tEFF/export
+python3 h2_jitter.py   # writes h2_jpos001_js002.xyz etc.
+python3 ch4_jitter.py  # writes ch4_jpos001_js002.xyz etc.
+```
+Then run long-parity (CPU C++ ialg=3 vs GPU localMD) via `run_relax_parity_protocol.py` with `--long-parity --fix-atoms` pointing to the jittered file.
 
 ### Run full batch plots/stats (GPU vs CPU, no offload)
 ```bash

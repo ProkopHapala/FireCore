@@ -259,11 +259,30 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
             case -1: F2 = opt.move_LeapFrog(dt);      break;
             case  1: F2 = opt.move_MD (dt,opt.damping); break;
             case  2: F2 = opt.move_FIRE();       break;
+            case  3: F2 = opt.move_MD_dbg(dt,opt.damping); break;
+        }
+
+        // Match GPU localMD behavior: keep electron sizes > 0
+        // (GPU test harness clamps to ~1e-3)
+        if(ff.esize){
+            for(int ie=0; ie<ff.ne; ie++){
+                if(ff.esize[ie] < 1e-3) ff.esize[ie] = 1e-3;
+            }
         }
         if(ff.nfix>0){ ff.apply_hard_fix(); }
         if(outE){ outE[itr]=Etot;     }
         if(outF){ outF[itr]=sqrt(F2); }
         if(verbosity>2){ printf("itr: %6i Etot[eV] %16.8f |F|[eV/A] %16.8f \n", itr, Etot, sqrt(F2) ); };
+     
+        // if(F2<F2conv){
+        //     //if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
+        //     bConv=true;
+        //     break;
+        // }
+        // if( (trj_fname) && (itr%savePerNsteps==0) )  ff.save_xyz( trj_fname, "a" );
+
+        if( (trj_fname) && (itr%savePerNsteps==0) )  ff.save_xyz_core( trj_fname, "a", "" );
+     
         if(F2<F2conv){ bConv=true; break; }
     }
     if(verbosity>1){ printf("run() %s in %6i iterations Etot[eV] %16.8f |F|[eV/A] %16.8f (Fconv=%g) \n", bConv ? "    CONVERGED" : "NOT-CONVERGED", itr, Etot, sqrt(F2), Fconv ); };
@@ -806,7 +825,11 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* e
             if(iconf == 0){
                 ff.realloc(na, ne, true);
                 //opt.bindOrAlloc(ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses);
-                initOpt( dt, 0.1, 100.0, false );
+                if(!opt_initialized){
+                    initOpt( dt, 0.1, 100.0, false );
+                }else{
+                    opt.setTimeSteps(dt);
+                }
             }
         }else{
             if( (line[0]=='\n')||(line[0]=='\r')||(line[0]=='#') ) continue;

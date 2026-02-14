@@ -10,6 +10,14 @@ __constant static const float const_El_eVA       = 14.3996448915f;
 __constant static const float const_K_eVA        = 3.8099822f;
 __constant static const float const_Bohr_Radius  = 0.529177210903f;
 
+#ifndef DBG_EFF_SWITCH
+#define DBG_EFF_SWITCH 0
+#endif
+
+#ifndef DBG_EFF_SWITCH_EVERY
+#define DBG_EFF_SWITCH_EVERY 1000000000
+#endif
+
 // Optimized approximations (inline for performance)
 inline float2 erfx_e6( float x_, float k ){
     float x = x_*k;
@@ -254,7 +262,7 @@ __kernel void localMD(
             bool i_am_ion = (lid < na);
             const uchar msk = fixmask ? fixmask[ip_start + lid] : (uchar)0;
 
-            if ((get_global_id(0)==0) && (lid==0) && (step==0)) {
+            if (DBG_EFF_SWITCH && (get_global_id(0)==0) && (lid==0) && ((step%DBG_EFF_SWITCH_EVERY)==0)) {
                 printf("SWITCH localMD: nsys=%d group=%d na=%d ne=%d ntot=%d bFrozenCore=%d KRSrho=(%.8g %.8g %.8g %.8g)\n",
                     nsys, group_id, na, ne, ntot, bFrozenCore,
                     (double)KRSrho.x, (double)KRSrho.y, (double)KRSrho.z, (double)KRSrho.w );

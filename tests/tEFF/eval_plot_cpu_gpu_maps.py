@@ -265,6 +265,8 @@ def main():
     ap.add_argument('xyz', help='electron-augmented multi-geometry xyz scan file')
     ap.add_argument('--worker', choices=['cpu','gpu'], default=None, help='internal: run only CPU/GPU eval and write --out-npy')
     ap.add_argument('--out-npy', default=None)
+    ap.add_argument('--from-es5-cpu', default=None, help='Use precomputed Es5_cpu.npy (skip CPU worker)')
+    ap.add_argument('--from-es5-gpu', default=None, help='Use precomputed Es5_gpu.npy (skip GPU worker)')
     ap.add_argument('--mode', choices=['auto','1d','2d'], default='auto')
     ap.add_argument('--outdir', default='export/plots_cpu_gpu')
     ap.add_argument('--noshow', action='store_true')
@@ -299,12 +301,16 @@ def main():
     base=os.path.basename(args.xyz)
     tag=os.path.splitext(base)[0]
 
-    tmp_cpu=os.path.join(args.outdir, f".{tag}__cpu.npy")
-    tmp_gpu=os.path.join(args.outdir, f".{tag}__gpu.npy")
-    _run_worker('cpu', args.xyz, tmp_cpu, nloc=args.nloc, device_index=args.device)
-    _run_worker('gpu', args.xyz, tmp_gpu, nloc=args.nloc, device_index=args.device)
-    cpuEs=np.load(tmp_cpu)
-    gpuEs=np.load(tmp_gpu)
+    if args.from_es5_cpu and args.from_es5_gpu:
+        cpuEs = np.load(args.from_es5_cpu)
+        gpuEs = np.load(args.from_es5_gpu)
+    else:
+        tmp_cpu=os.path.join(args.outdir, f".{tag}__cpu.npy")
+        tmp_gpu=os.path.join(args.outdir, f".{tag}__gpu.npy")
+        _run_worker('cpu', args.xyz, tmp_cpu, nloc=args.nloc, device_index=args.device)
+        _run_worker('gpu', args.xyz, tmp_gpu, nloc=args.nloc, device_index=args.device)
+        cpuEs=np.load(tmp_cpu)
+        gpuEs=np.load(tmp_gpu)
     cpuE = cpuEs[:,0]
     gpuE = gpuEs[:,0]
 

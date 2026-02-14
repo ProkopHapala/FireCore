@@ -4,6 +4,8 @@
 
 The primary objective is to validate that the pyOpenCL (GPU) implementation of the Electron Force Field (eFF) produces results identical to the reference C++ (CPU) implementation. This document tracks the plan, actions taken, and current findings.
 
+
+
 ## 2. Key Files
 
 *   **CPU**: `cpp/common/molecular/eFF.h` (Logic), `cpp/libs/Molecular/eFF_lib.cpp` (C-Interface), `pyBall/eFF.py` (Python Wrapper)
@@ -237,3 +239,44 @@ From `tests/tEFF/OUT_ocl_vs_cpu`:
 3) (Optional) Long convergence parity after scan fix: CPU relax → perturb → GPU relax.
 
 - **Debug discipline:** identical algorithms/settings (MDdamp), identical fixmask/constraints, redirect heavy debug to files to avoid truncation, and gate prints to the first failing step.
+
+### Progress notes 2026-02-14 — Relaxed trajectories and scans (CPU↔GPU parity)
+
+**Single-frame / trajectory groundwork**
+- Switched CPU long-parity to the C++ integrator (`move_MD_dbg`, `ialg=3`), matching the GPU localMD algorithm. Critical divergence resolved by using the same integrator and writing the **initial frame** into trajectories (CPU/GPU alignment).
+- Trajectory writer in C++ now uses `save_xyz_core(...)` to emit parser-friendly headers (`na,ne,core`).
+- Validated on jittered H2: long parity (2000 steps, dt=0.01, damp=0.1) now `divergence=None` with overlaid trajectories.
+
+**1D relaxed scans (fixed ions, electron relax)**
+- Added `plot_scan_parity.py` (CPU vs GPU Etot curves + per-component diffs; CPU dotted lw=1.5, GPU solid lw=0.5).
+- Added `run_relaxed_scans_1d.sh` to batch H2 / CH4 / H2O distance scans (dt=0.01, damp=0.1, 2000 steps). Outputs in `export/scan_parity_*` with Es5_{cpu,gpu}.npy and plots.
+- Parity is good for the main H2/H2O runs; remaining 1D issues:
+  - `relaxed_distscan_H2O__pairs_fc`: GPU-CPU Etot diff ~ +22 eV.
+  - `relaxed_rotscalescan_CH4__spins_fc` and `__pairs_fc`: GPU-CPU Etot diff up to ~58 eV.
+
+**2D relaxed scans (frozen-core spins/pairs grids)**
+- Added `run_relaxed_scans_2d.sh` to auto-discover `*scan*__spins_fc.xyz` / `*scan*__pairs_fc.xyz`, relax via `run_relax_parity_protocol.py`, then plot maps.
+- Extended `eval_plot_cpu_gpu_maps.py` with `--from-es5-{cpu,gpu}` to plot precomputed relaxed energies (Etot from Es5) without re-evaluating.
+- Good parity examples:
+  - `relaxed_distscan_H2__spins_fc`: Etot diff rms ~1.3e-05 eV.
+  - `relaxed_distscan_H2O__spins_fc`: Etot diff rms ~1e-4 eV.
+- Problem cases (need follow-up):
+  - 1D: `relaxed_distscan_H2O__pairs_fc`, `relaxed_rotscalescan_CH4__spins_fc`, `relaxed_rotscalescan_CH4__pairs_fc` show large Etot offsets (tens of eV).
+  - 2D: `relaxed_angdistscan_CH4__pairs_fc`, `relaxed_angdistscan_CH4__spins_fc`, `relaxed_angdistscan_H2O__pairs_fc`, `relaxed_angdistscan_H2O__spins_fc` show map artifacts (GPU energy surfaces with blotches).
+  - Invalid input skipped: `distscan_Oe__spins_fc.xyz` contains `nan`/bad record; relax aborted.
+
+**Hypotheses and next checks**
+- OpenCL synchronization is unlikely the culprit: kernels `localMD` / `localMD_energy` wait and `queue.finish()` before host reads. Artifacts resemble initialization/model mismatch, not unsynchronized reads.
+- Suspect inputs with tiny/zero electron sizes and core-mapping differences in pairs variants: CPU clamps sizes to ≥1e-3 during run; GPU upload currently preserves raw sizes. Action: clamp `pos_h[:,3]` ≥1e-3 before upload (or mirror CPU clamp) and retest failing pairs/spins scans.
+- Also inspect problematic XYZs for NaNs or inconsistent `na,ne` headers; GPU parser may skip/interpret differently than CPU.
+
+**Scripts added/updated today**
+- `plot_scan_parity.py` — overlay Etot + component diffs for 1D scans.
+- `run_relaxed_scans_1d.sh` — batch H2/CH4/H2O distance scans.
+- `run_relaxed_scans_2d.sh` — batch 2D scans (spins/pairs fc) with relaxed parity and plotting.
+- `eval_plot_cpu_gpu_maps.py` — new `--from-es5-cpu/--from-es5-gpu` path for plotting relaxed energies.
+
+**Open items**
+- Clamp GPU-uploaded electron sizes to match CPU clamp; rerun failing pairs/spins scans.
+- Validate/clean problematic XYZ inputs (remove NaNs, fix headers).
+- Re-run 2D angdistscan grids after clamp/input fixes to confirm parity.

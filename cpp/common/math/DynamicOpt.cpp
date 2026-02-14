@@ -96,6 +96,23 @@ double DynamicOpt::move_MD(double dt_loc,double damp){
     return f2sum;
 }
 
+double DynamicOpt::move_MD_dbg(double dt_loc,double damping_factor){
+    // Mirror OpenCL localMD integrator: v = v*damping + f*dt ; p = p + v*dt
+    // Here we keep invMasses scaling consistent with other integrators in this class.
+    double f2sum=0;
+    for ( int i=0; i<n; i++ ){
+        if(bfixmask){ if(fixmask[i])continue; }
+        double fi = force[i]*invMasses[i];
+        double vi = vel[i]*damping_factor + fi*dt_loc;
+        pos[i] += vi*dt_loc;
+        vel[i]  = vi;
+        f2sum  += fi*fi;
+    }
+    stepsDone++;
+    t += dt_loc;
+    return f2sum;
+}
+
 
 
 double DynamicOpt::move_VSpread(double dt_loc,double damp, double beta ){

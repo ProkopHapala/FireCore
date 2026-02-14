@@ -115,6 +115,7 @@ class DynamicOpt{ public:
     double move_GD      ( double dt_loc );
     //double move_GD_safe ( double dt_loc );
     double move_MD( double dt_loc, double damp);
+    double move_MD_dbg( double dt_loc, double damping_factor );
     double move_VSpread(double dt_loc,double damp, double beta );
     //double move_MD_safe ( double dt_loc );
     inline double move_MDquench(){ return move_MD(dt,damping);};
