@@ -69,3 +69,31 @@
 - `test_RRsp3_vispy.py` — interactive GUI: pick/drag, run/stop loop, fixmask pinning, clamp toggle, manual camera; wires to `VispyUtils` and RRsp3 kernels.
 - `RRsp3_XPBD_verification_strategy.md` — strategy notes for synthetic interaction/momentum tests and kernel debug gates.
 
+
+## **2026-02-15 (today)** (stretch + vispy + scan)
+
+### Vispy improvements (today)
+- Kept GUI intact while adding convergence changes; re-verified `VISPY_LOG_LEVEL=debug VISPY_DEBUG_GL=1 python3 test_RRsp3_vispy.py` runs clean.
+- Interaction remains: LMB pick/drag, RMB rotate, wheel zoom with debug logs; dragged atom re-applied before/after solver step to stay under cursor; padding/fixed atoms ignored by picker.
+
+### Headless convergence & scans (today)
+- Added robust scan mode to `test_RRsp3_convergence.py`: sweeps bmix/dt/relax, early-stop on `max_err` thresholds (1e-2 / 1e-3), detects blow-ups, saves per-run `errors.csv` + `convergence.png` + full `traj.xyz` (configurable `--save_every`), and aggregates `summary.csv` under `scan_outputs/<timestamp>/`.
+- Distortion workflow for polyacetylene: freeze ports from reference, then stretch along X by `--fstretch` (default 1.5), collisions off by default (`k_coll=0`).
+- Fixed padded-atom NaN poisoning: `RRsp3.upload_state(..., nan_padding=False)` now used by headless scripts so padded slots stay finite; optional `--nan_padding` keeps old debug behavior. This enabled errors to decay to ~1e-3 for strong stretches when scanning bmix/dt/relax.
+- Example scan (stretch 1.5, k_coll=0) produced converged runs to ~1e-3: e.g., bmix=0.9, dt=1.0, relax=1.0 reached 1e-3 at ~222 iterations (see `scan_outputs/scan_20260215_140055/summary.csv`).
+
+### Visualization details (expanded)
+
+- Fixed absolute radius scaling (collision glyphs) in `VispyUtils.AtomScene._px_per_world_ortho`: pixels-per-world now derived from the inverse scene transform of a 1-pixel screen delta (no try/except, no fallbacks, orientation-independent). set_zoom triggers `_redraw()` so glyphs rescale immediately. Result: R_coll=1.0 now visually matches 1–1.5 Å bond lengths (disks overlap as expected).
+- Planned/added overlays (via `test_RRsp3_vispy.py` checkboxes):
+  - Neighbor bonds (from global neighs, dedup j>i).
+  - Node → port-tip rays (rotate `port_local` by node quaternion).
+  - Port-tip → target atom bonds (bkSlots mapping).
+  - Debug vectors: `dpos` (total) and `dpos_neigh` (slot recoil) per atom.
+- Halo/inbox connectors recolor to cluster palette when “color by groups” is enabled; otherwise magenta. Padding/fixed atoms are skipped by picker/overlays; drag-hold re-applies grabbed atom around solver steps.
+- Hardcoded H2O bonds removed; bonds now come from packed molecule data. GUI verified with `VISPY_LOG_LEVEL=debug VISPY_DEBUG_GL=1 python3 test_RRsp3_vispy.py` in the current worktree.
+
+### Momentum/physics design docs (new)
+- `RRsp3_momentum_design.md` — comprehensive design for XPBD heavy-ball momentum on pos/quat, compliance/weights, testing strategy (XYZ + convergence plots).
+- `RRsp3_momentum_design_old.md` — prior draft kept for reference.
+- `RRsp3_discussion_2.md` — historical discussion on port PBD vs XPBD and cluster handling (retained as context).

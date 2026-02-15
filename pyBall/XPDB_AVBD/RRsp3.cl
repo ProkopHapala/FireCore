@@ -455,7 +455,10 @@ __kernel void apply_corrections_rigid_ports(
     __global const float4* drot_node,
     __global const float4* dpos_neigh,
     __global const float4* dpos_coll,
-    const float relaxation
+    __global float4* dpos_mom,
+    __global float4* dquat_mom,
+    const float relaxation,
+    const float beta
 ) {
     int i = get_global_id(0);
     if (i >= natoms) return;
@@ -491,19 +494,51 @@ __kernel void apply_corrections_rigid_ports(
     if (msk & 2) dx.y = 0.0f;
     if (msk & 4) dx.z = 0.0f;
 
-    float3 xi = pos[i].xyz;
-    xi += dx * relaxation;
-    if (msk & 8) xi.z = 0.0f;
-    pos[i].xyz = xi;
+    // --- Momentum Update (Linear) ---
+    // p_jacobi = p_old + dx * relaxation
+    // p_new = p_jacobi + beta * d_mom_old
+    // d_mom_new = p_new - p_old = dx * relaxation + beta * d_mom_old
+    
+    float3 d_mom = dpos_mom[i].xyz;
+    float3 move = dx * relaxation + d_mom * beta;
+    
+    if (msk & 8) { // constrain Z to 0 plane if requested (e.g. 2D mode)
+        float3 p_old = pos[i].xyz;
+        if (fabs(p_old.z) > 1e-6f) { // snap to plane if drifted
+             move.z -= p_old.z;
+        } else {
+             move.z = 0.0f;
+        }
+    }
+    
+    pos[i].xyz += move;
+    dpos_mom[i] = (float4)(move, 0.0f);
 
     if (isnode) {
         if (msk & (1|2|4)) return; // pinned node: do not rotate
+        
+        // --- Rotation Update ---
         float3 dtheta = drot_node[inode].xyz * relaxation;
         float angle = length(dtheta);
+        
+        float4 q_old = quat[i];
+        float4 q_jacobi = q_old;
+        
         if (angle > 1e-8f) {
             float3 axis = dtheta / angle;
             float4 dq = quat_from_axis_angle(axis, angle);
-            quat[i] = quat_normalize(quat_mul(dq, quat[i]));
+            q_jacobi = quat_normalize(quat_mul(dq, q_old));
         }
+        
+        // Momentum for quaternion: q_new = Normalize(q_jacobi + beta * d_q_mom)
+        float4 dq_mom = dquat_mom[i];
+        float4 q_new = q_jacobi + dq_mom * beta;
+        q_new = quat_normalize(q_new);
+        
+        // Ensure we stay in the same hemisphere to avoid flips
+        if (dot(q_new, q_old) < 0.0f) q_new = -q_new;
+        
+        quat[i] = q_new;
+        dquat_mom[i] = q_new - q_old;
     }
 }

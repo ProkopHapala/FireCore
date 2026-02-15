@@ -148,6 +148,11 @@ class RRsp3:
 
         self.cl_dpos_coll = cl.Buffer(self.ctx, mf.READ_WRITE, n * 16)
 
+        # Solver momentum buffers (heavy-ball)
+        self.cl_dpos_mom = cl.Buffer(self.ctx, mf.READ_WRITE, n * 16)
+        self.cl_dquat_mom = cl.Buffer(self.ctx, mf.READ_WRITE, n * 16)
+        self.reset_momentum()
+
         self.cl_fixmask = cl.Buffer(self.ctx, mf.READ_ONLY, n * 4)   # int
         cl.enqueue_fill_buffer(self.queue, self.cl_fixmask, np.int32(0), 0, n * 4).wait()
 
@@ -159,6 +164,12 @@ class RRsp3:
         self.cl_port_local = None
         self.cl_Kflat = None
         self.cl_bkSlots = None
+
+    def reset_momentum(self):
+        """Clear solver momentum buffers (dpos_mom, dquat_mom). Call this before starting a new time step or relaxation."""
+        zero = np.float32(0.0)
+        cl.enqueue_fill_buffer(self.queue, self.cl_dpos_mom, zero, 0, self.num_atoms * 16)
+        cl.enqueue_fill_buffer(self.queue, self.cl_dquat_mom, zero, 0, self.num_atoms * 16).wait()
 
     def _make_context(self, prefer_gpu=True, device_idx=0):
         dev_type = cl.device_type.GPU if prefer_gpu else cl.device_type.ALL
@@ -189,7 +200,7 @@ class RRsp3:
         self.cl_Kflat = cl.Buffer(self.ctx, mf.READ_ONLY, nnode_tot * 4 * 4)
         self.cl_bkSlots = cl.Buffer(self.ctx, mf.READ_ONLY, self.num_atoms * 16)
 
-    def upload_state(self, pos3, inv_mass, *, quat=None):
+    def upload_state(self, pos3, inv_mass, *, quat=None, nan_padding=True):
         pos3 = np.asarray(pos3, dtype=np.float32)
         inv_mass = np.asarray(inv_mass, dtype=np.float32)
         if pos3.shape != (self.num_atoms, 3):
@@ -199,11 +210,12 @@ class RRsp3:
         pos4 = np.zeros((self.num_atoms, 4), dtype=np.float32)
         pos4[:, :3] = pos3
         pos4[:, 3] = inv_mass
-        # Make padding clearly invalid to catch accidental use (inv_mass==0)
-        m0 = (inv_mass <= 1e-12)
-        pos4[m0, 0] = np.nan
-        pos4[m0, 1] = np.nan
-        pos4[m0, 2] = np.nan
+        if nan_padding:
+            # Make padding clearly invalid to catch accidental use (inv_mass==0)
+            m0 = (inv_mass <= 1e-12)
+            pos4[m0, 0] = np.nan
+            pos4[m0, 1] = np.nan
+            pos4[m0, 2] = np.nan
 
         if quat is None:
             quat4 = np.zeros((self.num_atoms, 4), dtype=np.float32)
@@ -358,7 +370,7 @@ class RRsp3:
             margin_sq, bbox_margin_f
         ).wait()
 
-    def step_cluster(self, *, nnode_per_group, dt=0.1, k_coll=50.0, relaxation=0.5, bbox_margin=0.5):
+    def step_cluster(self, *, nnode_per_group, dt=0.1, k_coll=50.0, relaxation=0.5, bbox_margin=0.5, momentum_beta=0.0):
         nnode_per_group = int(nnode_per_group)
         self._ensure_node_buffers(nnode_per_group)
 
@@ -368,6 +380,7 @@ class RRsp3:
         relax_f = np.float32(float(relaxation))
         kcoll_f = np.float32(float(k_coll))
         bbox_margin_f = np.float32(float(bbox_margin))
+        beta_f = np.float32(float(momentum_beta))
 
         # heuristic ghost margin
         rad = self.download(self.cl_radius, (self.num_atoms,), np.float32)
@@ -436,7 +449,8 @@ class RRsp3:
             self.cl_bkSlots,
             self.cl_dpos_node, self.cl_drot_node, self.cl_dpos_neigh,
             self.cl_dpos_coll,
-            relax_f
+            self.cl_dpos_mom, self.cl_dquat_mom,
+            relax_f, beta_f
         ).wait()
 
     def compute_cluster_deltas(self, *, nnode_per_group, dt=0.1, k_coll=50.0, bbox_margin=0.5):
@@ -513,11 +527,12 @@ class RRsp3:
         dpos_neigh = self.download(self.cl_dpos_neigh, (self._nnode_tot * 4, 4), np.float32)
         return dpos_coll, dpos_node, drot_node, dpos_neigh
 
-    def apply_cluster_corrections(self, *, nnode_per_group, relaxation=0.5):
+    def apply_cluster_corrections(self, *, nnode_per_group, relaxation=0.5, momentum_beta=0.0):
         nnode_per_group = int(nnode_per_group)
         self._ensure_node_buffers(nnode_per_group)
         natoms = np.int32(self.num_atoms)
         relax_f = np.float32(float(relaxation))
+        beta_f = np.float32(float(momentum_beta))
         self.prg.apply_corrections_rigid_ports(
             self.queue, (self.num_atoms,), None,
             natoms, np.int32(nnode_per_group),
@@ -526,7 +541,8 @@ class RRsp3:
             self.cl_bkSlots,
             self.cl_dpos_node, self.cl_drot_node, self.cl_dpos_neigh,
             self.cl_dpos_coll,
-            relax_f
+            self.cl_dpos_mom, self.cl_dquat_mom,
+            relax_f, beta_f
         ).wait()
 
     def download(self, buf, shape, dtype):
