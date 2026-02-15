@@ -48,6 +48,11 @@ class AtomScene(QtCore.QObject):
         self.bbox_lines = visuals.Line(parent=self.view.scene, color=(0.2, 0.6, 1.0, 0.6), width=1.2, antialias=True, method='gl')
         self.inbox_lines = visuals.Line(parent=self.view.scene, color=(0.0, 0.0, 0.0, 0.35), width=1.0, antialias=True, method='gl')
         self.halo_lines  = visuals.Line(parent=self.view.scene, color=(0.8, 0.1, 0.8, 0.35), width=1.0, antialias=True, method='gl')
+        self.neigh_lines = visuals.Line(parent=self.view.scene, color=(0.2, 0.2, 0.2, 0.65), width=1.0, antialias=True, method='gl')
+        self.port_lines = visuals.Line(parent=self.view.scene, color=(1.0, 0.55, 0.0, 0.55), width=1.0, antialias=True, method='gl')
+        self.port_target_lines = visuals.Line(parent=self.view.scene, color=(0.0, 0.7, 0.9, 0.55), width=1.0, antialias=True, method='gl')
+        self.dpos_lines = visuals.Line(parent=self.view.scene, color=(0.9, 0.0, 0.0, 0.75), width=1.6, antialias=True, method='gl')
+        self.dpos_neigh_lines = visuals.Line(parent=self.view.scene, color=(0.2, 0.2, 1.0, 0.75), width=1.6, antialias=True, method='gl')
         self.bond_lines = visuals.Line(parent=self.view.scene, color='gray', width=1.5, antialias=True, method='gl')
         self.force_lines = visuals.Line(parent=self.view.scene, color=(1, 0, 0, 0.8), width=2.0, antialias=True, method='gl')
         self.atom_markers = visuals.Markers(parent=self.view.scene)
@@ -55,14 +60,14 @@ class AtomScene(QtCore.QObject):
         self.text_labels = visuals.Text(parent=self.view.scene, color='black', font_size=10, anchor_x='left', anchor_y='bottom')
 
         # Enforce z-order when supported
-        for o, v in enumerate((self.radius_markers, self.bbox_lines, self.inbox_lines, self.halo_lines, self.bond_lines, self.force_lines, self.atom_markers, self.axes, self.text_labels)):
+        for o, v in enumerate((self.radius_markers, self.bbox_lines, self.inbox_lines, self.halo_lines, self.neigh_lines, self.port_lines, self.port_target_lines, self.dpos_lines, self.dpos_neigh_lines, self.bond_lines, self.force_lines, self.atom_markers, self.axes, self.text_labels)):
             if hasattr(v, 'order'):
                 v.order = int(o)
 
         # GL state: radius translucent and never blocks other overlays
         try:
             self.radius_markers.set_gl_state('translucent', depth_test=False)
-            for v in (self.bbox_lines, self.inbox_lines, self.halo_lines, self.bond_lines, self.force_lines):
+            for v in (self.bbox_lines, self.inbox_lines, self.halo_lines, self.neigh_lines, self.port_lines, self.port_target_lines, self.dpos_lines, self.dpos_neigh_lines, self.bond_lines, self.force_lines):
                 v.set_gl_state('translucent', depth_test=False)
             self.atom_markers.set_gl_state('translucent', depth_test=False)
             self.text_labels.set_gl_state('translucent', depth_test=False)
@@ -85,11 +90,24 @@ class AtomScene(QtCore.QObject):
         self._show_bboxes = False
         self._show_inbox_links = False
         self._show_halo_links = False
+        self._show_neigh_bonds = False
+        self._show_port_tips = False
+        self._show_port_targets = False
+        self._show_dpos = False
+        self._show_dpos_neigh = False
         self._show_axes = True
         self._bboxes_min = None
         self._bboxes_max = None
         self._inbox_link_segs = None
         self._halo_link_segs = None
+        self._inbox_link_gid = None
+        self._halo_link_gid = None
+
+        self._neigh_segs = None
+        self._port_tip_segs = None
+        self._port_target_segs = None
+        self._dpos_segs = None
+        self._dpos_neigh_segs = None
 
         self._label_mode = 'none'  # none|global|local|pair|radius
         self._labels_text = None
@@ -174,12 +192,32 @@ class AtomScene(QtCore.QObject):
         self._show_bboxes = bool(enable)
         self._redraw()
 
-    def set_show_inbox_links(self, enable):
-        self._show_inbox_links = bool(enable)
+    def set_show_inbox_links(self, show):
+        self._show_inbox_links = bool(show)
         self._redraw()
 
-    def set_show_halo_links(self, enable):
-        self._show_halo_links = bool(enable)
+    def set_show_halo_links(self, show):
+        self._show_halo_links = bool(show)
+        self._redraw()
+
+    def set_show_neigh_bonds(self, show):
+        self._show_neigh_bonds = bool(show)
+        self._redraw()
+
+    def set_show_port_tips(self, show):
+        self._show_port_tips = bool(show)
+        self._redraw()
+
+    def set_show_port_targets(self, show):
+        self._show_port_targets = bool(show)
+        self._redraw()
+
+    def set_show_dpos(self, show):
+        self._show_dpos = bool(show)
+        self._redraw()
+
+    def set_show_dpos_neigh(self, show):
+        self._show_dpos_neigh = bool(show)
         self._redraw()
 
     def set_show_axes(self, enable):
@@ -187,24 +225,90 @@ class AtomScene(QtCore.QObject):
         self.axes.visible = bool(enable)
         self.canvas.update()
 
-    def set_inbox_links(self, segs):
+    def set_inbox_links(self, segs, *, gids=None):
         if segs is None:
             self._inbox_link_segs = None
+            self._inbox_link_gid = None
         else:
             s = _as_f32(segs)
             if s.ndim != 2 or s.shape[1] != 3 or (s.shape[0] % 2) != 0:
                 raise ValueError(f"AtomScene.set_inbox_links: segs.shape={s.shape} expected (2*m,3)")
             self._inbox_link_segs = s
+            if gids is None:
+                self._inbox_link_gid = None
+            else:
+                g = np.asarray(gids, dtype=np.int32)
+                if g.shape != (s.shape[0] // 2,):
+                    raise ValueError(f"AtomScene.set_inbox_links: gids.shape={g.shape} expected ({s.shape[0]//2},)")
+                self._inbox_link_gid = g
         self._redraw()
 
-    def set_halo_links(self, segs):
+    def set_halo_links(self, segs, *, gids=None):
         if segs is None:
             self._halo_link_segs = None
+            self._halo_link_gid = None
         else:
             s = _as_f32(segs)
             if s.ndim != 2 or s.shape[1] != 3 or (s.shape[0] % 2) != 0:
                 raise ValueError(f"AtomScene.set_halo_links: segs.shape={s.shape} expected (2*m,3)")
             self._halo_link_segs = s
+            if gids is None:
+                self._halo_link_gid = None
+            else:
+                g = np.asarray(gids, dtype=np.int32)
+                if g.shape != (s.shape[0] // 2,):
+                    raise ValueError(f"AtomScene.set_halo_links: gids.shape={g.shape} expected ({s.shape[0]//2},)")
+                self._halo_link_gid = g
+        self._redraw()
+
+    def set_neigh_bonds(self, segs):
+        if segs is None:
+            self._neigh_segs = None
+        else:
+            s = _as_f32(segs)
+            if s.ndim != 2 or s.shape[1] != 3 or (s.shape[0] % 2) != 0:
+                raise ValueError(f"AtomScene.set_neigh_bonds: segs.shape={s.shape} expected (2*m,3)")
+            self._neigh_segs = s
+        self._redraw()
+
+    def set_port_tips(self, segs):
+        if segs is None:
+            self._port_tip_segs = None
+        else:
+            s = _as_f32(segs)
+            if s.ndim != 2 or s.shape[1] != 3 or (s.shape[0] % 2) != 0:
+                raise ValueError(f"AtomScene.set_port_tips: segs.shape={s.shape} expected (2*m,3)")
+            self._port_tip_segs = s
+        self._redraw()
+
+    def set_port_targets(self, segs):
+        if segs is None:
+            self._port_target_segs = None
+        else:
+            s = _as_f32(segs)
+            if s.ndim != 2 or s.shape[1] != 3 or (s.shape[0] % 2) != 0:
+                raise ValueError(f"AtomScene.set_port_targets: segs.shape={s.shape} expected (2*m,3)")
+            self._port_target_segs = s
+        self._redraw()
+
+    def set_dpos(self, segs):
+        if segs is None:
+            self._dpos_segs = None
+        else:
+            s = _as_f32(segs)
+            if s.ndim != 2 or s.shape[1] != 3 or (s.shape[0] % 2) != 0:
+                raise ValueError(f"AtomScene.set_dpos: segs.shape={s.shape} expected (2*m,3)")
+            self._dpos_segs = s
+        self._redraw()
+
+    def set_dpos_neigh(self, segs):
+        if segs is None:
+            self._dpos_neigh_segs = None
+        else:
+            s = _as_f32(segs)
+            if s.ndim != 2 or s.shape[1] != 3 or (s.shape[0] % 2) != 0:
+                raise ValueError(f"AtomScene.set_dpos_neigh: segs.shape={s.shape} expected (2*m,3)")
+            self._dpos_neigh_segs = s
         self._redraw()
 
     def set_bboxes(self, bmin, bmax):
@@ -396,6 +500,52 @@ class AtomScene(QtCore.QObject):
         i = int(np.argmin(d2))
         return i, float(d2[i])
 
+    def _validated_segs(self, tag, segs):
+        s = np.asarray(segs, dtype=np.float32)
+        if s.ndim != 2 or s.shape[1] != 3 or (s.shape[0] % 2) != 0:
+            raise ValueError(f"{tag}: segs.shape={s.shape} expected (2*m,3)")
+        if not np.isfinite(s).all():
+            bad = np.where(~np.isfinite(s))[0][:10]
+            raise ValueError(f"{tag}: non-finite entries at idx={bad.tolist()}")
+        return s
+
+    def _line_set(self, tag, visual, segs, *, color=None, width=None, connect=None):
+        if segs is None:
+            visual.set_data(np.zeros((0, 3), dtype=np.float32))
+            return
+        try:
+            s = self._validated_segs(tag, segs)
+        except Exception as e:
+            print(f"[VISPY-SEG-ERR] {tag} validation failed: {e}")
+            visual.set_data(np.zeros((0, 3), dtype=np.float32))
+            return
+        if s.size == 0:
+            visual.set_data(np.zeros((0, 3), dtype=np.float32))
+            return
+        conn = connect
+        if conn is None:
+            conn = np.zeros((s.shape[0],), dtype=bool); conn[0::2] = True
+        # validate color length if array-like
+        if hasattr(color, 'shape') and hasattr(color, '__len__'):
+            clen = int(len(color))
+            if clen not in (0, s.shape[0]):
+                print(f"[VISPY-SEG-ERR] {tag} color length mismatch: len(color)={clen} verts={s.shape[0]}")
+                color = None
+        try:
+            visual.set_data(s, connect=conn, color=color, width=width)
+        except Exception as e:
+            stats = {
+                'tag': tag,
+                'segs_shape': s.shape,
+                'segs_min': float(np.min(s)) if s.size else None,
+                'segs_max': float(np.max(s)) if s.size else None,
+                'connect_shape': getattr(conn, 'shape', None),
+                'color_shape': getattr(color, 'shape', None) if hasattr(color, 'shape') else None,
+                'width': width,
+            }
+            print(f"[VISPY-LINE-ERR] {tag} set_data failed: {e} | stats={stats}")
+            visual.set_data(np.zeros((0, 3), dtype=np.float32))
+
     def _intersect_ray_plane(self, r0, rd, p0, n):
         denom = float(np.dot(rd, n))
         if abs(denom) < 1e-12:
@@ -411,6 +561,13 @@ class AtomScene(QtCore.QObject):
             self.bond_lines.set_data(np.zeros((0, 3), dtype=np.float32))
             self.force_lines.set_data(np.zeros((0, 3), dtype=np.float32))
             self.bbox_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+            self.inbox_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+            self.halo_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+            self.neigh_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+            self.port_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+            self.port_target_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+            self.dpos_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+            self.dpos_neigh_lines.set_data(np.zeros((0, 3), dtype=np.float32))
             # vispy Text requires at least one position; keep a hidden dummy.
             self.text_labels.text = ['']
             self.text_labels.pos = np.zeros((1, 3), dtype=np.float32)
@@ -480,16 +637,65 @@ class AtomScene(QtCore.QObject):
 
         # Debug link lines
         if self._show_inbox_links and (self._inbox_link_segs is not None) and (self._inbox_link_segs.size > 0):
-            connect = np.zeros((self._inbox_link_segs.shape[0],), dtype=bool); connect[0::2] = True
-            self.inbox_lines.set_data(self._inbox_link_segs, connect=connect)
+            if self._color_by_group and (self._inbox_link_gid is not None):
+                gid = self._inbox_link_gid
+                col = np.empty((gid.size * 2, 4), dtype=np.float32)
+                for i, gi in enumerate(gid):
+                    h = float((int(gi) * 0.61803398875) % 1.0)
+                    r = abs(h * 6.0 - 3.0) - 1.0
+                    g1 = 2.0 - abs(h * 6.0 - 2.0)
+                    b = 2.0 - abs(h * 6.0 - 4.0)
+                    rgb = np.clip(np.array([r, g1, b], dtype=np.float32), 0.0, 1.0)
+                    col[2*i+0, :3] = rgb; col[2*i+1, :3] = rgb
+                    col[2*i+0, 3] = 0.35; col[2*i+1, 3] = 0.35
+                self._line_set("inbox_links", self.inbox_lines, self._inbox_link_segs, color=col)
+            else:
+                self._line_set("inbox_links", self.inbox_lines, self._inbox_link_segs)
         else:
             self.inbox_lines.set_data(np.zeros((0, 3), dtype=np.float32))
 
         if self._show_halo_links and (self._halo_link_segs is not None) and (self._halo_link_segs.size > 0):
-            connect = np.zeros((self._halo_link_segs.shape[0],), dtype=bool); connect[0::2] = True
-            self.halo_lines.set_data(self._halo_link_segs, connect=connect)
+            if self._color_by_group and (self._halo_link_gid is not None):
+                gid = self._halo_link_gid
+                col = np.empty((gid.size * 2, 4), dtype=np.float32)
+                for i, gi in enumerate(gid):
+                    h = float((int(gi) * 0.61803398875) % 1.0)
+                    r = abs(h * 6.0 - 3.0) - 1.0
+                    g1 = 2.0 - abs(h * 6.0 - 2.0)
+                    b = 2.0 - abs(h * 6.0 - 4.0)
+                    rgb = np.clip(np.array([r, g1, b], dtype=np.float32), 0.0, 1.0)
+                    col[2*i+0, :3] = rgb; col[2*i+1, :3] = rgb
+                    col[2*i+0, 3] = 0.35; col[2*i+1, 3] = 0.35
+                self._line_set("halo_links", self.halo_lines, self._halo_link_segs, color=col)
+            else:
+                self._line_set("halo_links", self.halo_lines, self._halo_link_segs)
         else:
             self.halo_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+
+        if self._show_neigh_bonds and (self._neigh_segs is not None) and (self._neigh_segs.size > 0):
+            self._line_set("neigh_bonds", self.neigh_lines, self._neigh_segs)
+        else:
+            self.neigh_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+
+        if self._show_port_tips and (self._port_tip_segs is not None) and (self._port_tip_segs.size > 0):
+            self._line_set("port_tips", self.port_lines, self._port_tip_segs)
+        else:
+            self.port_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+
+        if self._show_port_targets and (self._port_target_segs is not None) and (self._port_target_segs.size > 0):
+            self._line_set("port_targets", self.port_target_lines, self._port_target_segs)
+        else:
+            self.port_target_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+
+        if self._show_dpos and (self._dpos_segs is not None) and (self._dpos_segs.size > 0):
+            self._line_set("dpos", self.dpos_lines, self._dpos_segs)
+        else:
+            self.dpos_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+
+        if self._show_dpos_neigh and (self._dpos_neigh_segs is not None) and (self._dpos_neigh_segs.size > 0):
+            self._line_set("dpos_neigh", self.dpos_neigh_lines, self._dpos_neigh_segs)
+        else:
+            self.dpos_neigh_lines.set_data(np.zeros((0, 3), dtype=np.float32))
 
         # Bonds: draw segment pairs
         if (self._bonds is not None) and (self._bonds.size > 0):
@@ -500,9 +706,7 @@ class AtomScene(QtCore.QObject):
                 segs = np.empty((b.shape[0] * 2, 3), dtype=np.float32)
                 segs[0::2] = self._pos[b[:, 0]]
                 segs[1::2] = self._pos[b[:, 1]]
-                connect = np.zeros(segs.shape[0], dtype=bool)
-                connect[0::2] = True
-                self.bond_lines.set_data(segs, connect=connect, color=(0.3, 0.3, 0.3, 0.8), width=1.5)
+                self._line_set("bonds", self.bond_lines, segs, color=(0.3, 0.3, 0.3, 0.8), width=1.5)
             else:
                 self.bond_lines.set_data(np.zeros((0, 3), dtype=np.float32))
         else:
@@ -516,9 +720,7 @@ class AtomScene(QtCore.QObject):
             segs = np.empty((idx.size * 2, 3), dtype=np.float32)
             segs[0::2] = self._pos[idx]
             segs[1::2] = self._pos[idx] + f[idx] * self._force_scale
-            connect = np.zeros(segs.shape[0], dtype=bool)
-            connect[0::2] = True
-            self.force_lines.set_data(segs, connect=connect)
+            self._line_set("forces", self.force_lines, segs)
         else:
             self.force_lines.set_data(np.zeros((0, 3), dtype=np.float32))
 

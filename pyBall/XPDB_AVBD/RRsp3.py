@@ -241,6 +241,33 @@ class RRsp3:
         gc = self.download(self.cl_ghost_counts, (self.num_groups,), np.int32)
         return gi, gc
 
+    def download_neighs(self):
+        return self.download(self.cl_neighs, (self.num_atoms, 4), np.int32)
+
+    def download_bkSlots(self):
+        if self.cl_bkSlots is None:
+            raise RuntimeError("download_bkSlots: bkSlots buffer not allocated; call upload_cluster_ports first")
+        return self.download(self.cl_bkSlots, (self.num_atoms, 4), np.int32)
+
+    def download_port_local(self, *, nnode_per_group):
+        nnode_per_group = int(nnode_per_group)
+        self._ensure_node_buffers(nnode_per_group)
+        pl = self.download(self.cl_port_local, (self._nnode_tot * 4, 4), np.float32)
+        return pl.reshape(self._nnode_tot, 4, 4)
+
+    def download_dpos_coll(self):
+        return self.download(self.cl_dpos_coll, (self.num_atoms, 4), np.float32)
+
+    def download_dpos_node(self, *, nnode_per_group):
+        nnode_per_group = int(nnode_per_group)
+        self._ensure_node_buffers(nnode_per_group)
+        return self.download(self.cl_dpos_node, (self._nnode_tot, 4), np.float32)
+
+    def download_dpos_neigh(self, *, nnode_per_group):
+        nnode_per_group = int(nnode_per_group)
+        self._ensure_node_buffers(nnode_per_group)
+        return self.download(self.cl_dpos_neigh, (self._nnode_tot * 4, 4), np.float32).reshape(self._nnode_tot, 4, 4)
+
     def upload_neighs_and_exclusions(self, neighs, excl1, excl2):
         neighs = np.asarray(neighs, dtype=np.int32)
         excl1 = np.asarray(excl1, dtype=np.int32)

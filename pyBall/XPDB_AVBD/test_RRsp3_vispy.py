@@ -17,6 +17,24 @@ from RRsp3 import RRsp3, build_neighs_bk_from_bonds, make_bk_slots_clustered, ma
 from XPTB_utils import pack_molecules_contiguous, make_h2o_geometry, masses_from_elems, load_xyz, perturb_state
 
 
+def quat_rotate_vec(q, v):
+    q = np.asarray(q, dtype=np.float32)
+    v = np.asarray(v, dtype=np.float32)
+    if q.shape[-1] != 4:
+        raise ValueError(f"quat_rotate_vec: q.shape={q.shape} expected (...,4)")
+    if v.shape[-1] != 3:
+        raise ValueError(f"quat_rotate_vec: v.shape={v.shape} expected (...,3)")
+    x = q[..., 0]; y = q[..., 1]; z = q[..., 2]; w = q[..., 3]
+    vx = v[..., 0]; vy = v[..., 1]; vz = v[..., 2]
+    tx = 2.0 * (y * vz - z * vy)
+    ty = 2.0 * (z * vx - x * vz)
+    tz = 2.0 * (x * vy - y * vx)
+    rx = vx + w * tx + (y * tz - z * ty)
+    ry = vy + w * ty + (z * tx - x * tz)
+    rz = vz + w * tz + (x * ty - y * tx)
+    return np.stack((rx, ry, rz), axis=-1).astype(np.float32, copy=False)
+
+
 def reorder_nodes_first(elems, xyz, bonds, *, is_node=None):
     elems = list(elems)
     xyz = np.asarray(xyz, dtype=np.float32)
@@ -165,6 +183,17 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         vbox.addWidget(self.cb_inbox_links)
         vbox.addWidget(self.cb_halo_links)
 
+        self.cb_neigh_bonds = QtWidgets.QCheckBox('Bonds: neighs (global list)'); self.cb_neigh_bonds.setChecked(False)
+        self.cb_port_tips = QtWidgets.QCheckBox('Bonds: node -> port tip'); self.cb_port_tips.setChecked(False)
+        self.cb_port_targets = QtWidgets.QCheckBox('Bonds: port tip -> target atom'); self.cb_port_targets.setChecked(False)
+        self.cb_dpos = QtWidgets.QCheckBox('Debug: dpos (total)'); self.cb_dpos.setChecked(False)
+        self.cb_dpos_neigh = QtWidgets.QCheckBox('Debug: dpos_neigh (slot recoils)'); self.cb_dpos_neigh.setChecked(False)
+        vbox.addWidget(self.cb_neigh_bonds)
+        vbox.addWidget(self.cb_port_tips)
+        vbox.addWidget(self.cb_port_targets)
+        vbox.addWidget(self.cb_dpos)
+        vbox.addWidget(self.cb_dpos_neigh)
+
         self.cb_labels = QtWidgets.QComboBox(); self.cb_labels.addItems(['none', 'global', 'local', 'pair', 'radius'])
         vbox.addWidget(QtWidgets.QLabel('labels'))
         vbox.addWidget(self.cb_labels)
@@ -226,6 +255,11 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         self.cb_axes.stateChanged.connect(self.on_viz_changed)
         self.cb_inbox_links.stateChanged.connect(self.on_viz_changed)
         self.cb_halo_links.stateChanged.connect(self.on_viz_changed)
+        self.cb_neigh_bonds.stateChanged.connect(self.on_viz_changed)
+        self.cb_port_tips.stateChanged.connect(self.on_viz_changed)
+        self.cb_port_targets.stateChanged.connect(self.on_viz_changed)
+        self.cb_dpos.stateChanged.connect(self.on_viz_changed)
+        self.cb_dpos_neigh.stateChanged.connect(self.on_viz_changed)
         self.cb_labels.currentIndexChanged.connect(self.on_viz_changed)
         self.sp_rcoll.valueChanged.connect(self.on_radius_changed)
         self.sp_zoom.valueChanged.connect(self.on_zoom_changed)
@@ -364,8 +398,8 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
 
         colors = colors_for_enames(self.elems, alpha=0.9)
         sizes = sizes_for_enames(self.elems, scale=0.25)
-        bonds_np = np.array([(0, 1), (0, 2), (64, 65), (64, 66)], dtype=np.int32)
 
+        bonds_np = np.asarray(packed['bonds'], dtype=np.int32)
         self.scene.set_data(self.pos, colors=colors, sizes=sizes, bonds=bonds_np)
         # strict: never render padding atoms (they are invalid and should carry NaNs)
         self.scene.set_render_mask(self.real)
@@ -375,6 +409,7 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         bmin, bmax = self.sim.download_bboxes()
         self._set_scene_bboxes_from_device(bmin, bmax)
         self._update_debug_links_from_device()
+        self._update_debug_overlays_from_device()
         self.status.setText(f'natoms={self.natoms} groups={self.natoms//group_size} nnode_per_group={self.nnode_per_group}')
 
     def on_reload(self):
@@ -420,9 +455,15 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         self.scene.set_show_axes(bool(self.cb_axes.isChecked()))
         self.scene.set_show_inbox_links(bool(self.cb_inbox_links.isChecked()))
         self.scene.set_show_halo_links(bool(self.cb_halo_links.isChecked()))
+        self.scene.set_show_neigh_bonds(bool(self.cb_neigh_bonds.isChecked()))
+        self.scene.set_show_port_tips(bool(self.cb_port_tips.isChecked()))
+        self.scene.set_show_port_targets(bool(self.cb_port_targets.isChecked()))
+        self.scene.set_show_dpos(bool(self.cb_dpos.isChecked()))
+        self.scene.set_show_dpos_neigh(bool(self.cb_dpos_neigh.isChecked()))
         # update bbox mode immediately from last downloaded device bboxes
         if hasattr(self, '_bmin_dev') and hasattr(self, '_bmax_dev'):
             self._set_scene_bboxes_from_device(self._bmin_dev, self._bmax_dev)
+        self._update_debug_overlays_from_device()
 
     def on_zoom_changed(self, v):
         self.scene.set_zoom(float(v))
@@ -456,6 +497,7 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         c = 0.5 * (bmin[:, :3] + bmax[:, :3])
 
         seg_in = []
+        gid_in = []
         if bool(self.cb_inbox_links.isChecked()):
             for ig in range(ng):
                 a0 = ig * self.group_size
@@ -466,8 +508,10 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
                     if not bool(ok):
                         continue
                     seg_in.append(c[ig]); seg_in.append(p[k])
+                    gid_in.append(int(ig))
 
         seg_h = []
+        gid_h = []
         if bool(self.cb_halo_links.isChecked()):
             gi, gc = self.sim.download_ghosts()
             for ig in range(ng):
@@ -484,8 +528,173 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
                         continue
                     seg_h.append(c[ig]); seg_h.append(self.pos[jj])
 
-        self.scene.set_inbox_links(None if len(seg_in) == 0 else np.asarray(seg_in, dtype=np.float32))
-        self.scene.set_halo_links(None if len(seg_h) == 0 else np.asarray(seg_h, dtype=np.float32))
+                    gid_h.append(int(ig))
+
+        if len(seg_in) == 0:
+            self.scene.set_inbox_links(None)
+        else:
+            self.scene.set_inbox_links(np.asarray(seg_in, dtype=np.float32), gids=np.asarray(gid_in, dtype=np.int32))
+        if len(seg_h) == 0:
+            self.scene.set_halo_links(None)
+        else:
+            self.scene.set_halo_links(np.asarray(seg_h, dtype=np.float32), gids=np.asarray(gid_h, dtype=np.int32))
+
+    def _update_debug_overlays_from_device(self):
+        if not hasattr(self, 'sim'):
+            return
+        if not hasattr(self, 'pos'):
+            return
+        if not hasattr(self, 'quat'):
+            return
+        pos = np.asarray(self.pos, dtype=np.float32)
+        quat = np.asarray(self.quat, dtype=np.float32)
+        gs = int(self.group_size)
+        ng = int(self.natoms // gs)
+
+        # neigh bonds (global)
+        if bool(self.cb_neigh_bonds.isChecked()):
+            neighs = np.asarray(self.neighs, dtype=np.int32)
+            segs = []
+            for i in range(self.natoms):
+                if bool(self.is_pad[i]):
+                    continue
+                for k in range(4):
+                    j = int(neighs[i, k])
+                    if j < 0:
+                        continue
+                    if j <= i:
+                        continue
+                    if j >= self.natoms:
+                        raise RuntimeError(f"neighs out of range: i={i} k={k} j={j} natoms={self.natoms}")
+                    if bool(self.is_pad[j]):
+                        continue
+                    segs.append(pos[i]); segs.append(pos[j])
+            self.scene.set_neigh_bonds(None if len(segs) == 0 else np.asarray(segs, dtype=np.float32))
+        else:
+            self.scene.set_neigh_bonds(None)
+
+        # port data (only meaningful when ports enabled and buffers allocated)
+        ports_ok = bool(self.cb_ports.isChecked())
+        if ports_ok and (self.sim.cl_port_local is None):
+            ports_ok = False
+
+        if ports_ok and (bool(self.cb_port_tips.isChecked()) or bool(self.cb_port_targets.isChecked()) or bool(self.cb_dpos.isChecked()) or bool(self.cb_dpos_neigh.isChecked())):
+            port_local = self.sim.download_port_local(nnode_per_group=self.nnode_per_group)[:, :, :3].copy()  # (nnode_tot,4,3)
+            bk = self.sim.download_bkSlots()  # (natoms,4)
+        else:
+            port_local = None
+            bk = None
+
+        # node -> tip
+        if ports_ok and bool(self.cb_port_tips.isChecked()):
+            segs = []
+            nnode_pg = int(self.nnode_per_group)
+            for ig in range(ng):
+                a0 = ig * gs
+                for il in range(nnode_pg):
+                    ia = a0 + il
+                    if bool(self.is_pad[ia]):
+                        continue
+                    inode = ig * nnode_pg + il
+                    qi = quat[ia]
+                    xi = pos[ia]
+                    rloc = port_local[inode]
+                    rarm = quat_rotate_vec(qi[None, :], rloc).reshape(4, 3)
+                    tips = xi[None, :] + rarm
+                    for k in range(4):
+                        segs.append(xi); segs.append(tips[k])
+            self.scene.set_port_tips(None if len(segs) == 0 else np.asarray(segs, dtype=np.float32))
+        else:
+            self.scene.set_port_tips(None)
+
+        # tip -> target atom via bkSlots
+        if ports_ok and bool(self.cb_port_targets.isChecked()):
+            segs = []
+            nnode_pg = int(self.nnode_per_group)
+            for ia in range(self.natoms):
+                if bool(self.is_pad[ia]):
+                    continue
+                for k in range(4):
+                    slot = int(bk[ia, k])
+                    if slot < 0:
+                        continue
+                    inode = slot >> 2
+                    pk = slot & 3
+                    ig = inode // nnode_pg
+                    il = inode - ig * nnode_pg
+                    if ig < 0 or ig >= ng:
+                        raise RuntimeError(f"bkSlots bad inode->ig: ia={ia} slot={slot} inode={inode} ig={ig} ng={ng}")
+                    node_atom = ig * gs + il
+                    if node_atom < 0 or node_atom >= self.natoms:
+                        raise RuntimeError(f"bkSlots bad node_atom: ia={ia} slot={slot} node_atom={node_atom}")
+                    if bool(self.is_pad[node_atom]):
+                        continue
+                    tip = pos[node_atom] + quat_rotate_vec(quat[node_atom], port_local[inode, pk])
+                    segs.append(tip); segs.append(pos[ia])
+            self.scene.set_port_targets(None if len(segs) == 0 else np.asarray(segs, dtype=np.float32))
+        else:
+            self.scene.set_port_targets(None)
+
+        # dpos (total)
+        if ports_ok and bool(self.cb_dpos.isChecked()):
+            dpos_coll = self.sim.download_dpos_coll()[:, :3]
+            dpos_node = self.sim.download_dpos_node(nnode_per_group=self.nnode_per_group)[:, :3]
+            dpos_neigh = self.sim.download_dpos_neigh(nnode_per_group=self.nnode_per_group)[:, :, :3]
+            dx = np.zeros_like(pos)
+            nnode_pg = int(self.nnode_per_group)
+            for ig in range(ng):
+                a0 = ig * gs
+                inode_base = ig * nnode_pg
+                for il in range(nnode_pg):
+                    ia = a0 + il
+                    if bool(self.is_pad[ia]):
+                        continue
+                    inode = inode_base + il
+                    dx[ia, :] += dpos_node[inode]
+            for ia in range(self.natoms):
+                if bool(self.is_pad[ia]):
+                    continue
+                for k in range(4):
+                    slot = int(bk[ia, k])
+                    if slot < 0:
+                        continue
+                    inode = slot >> 2
+                    pk = slot & 3
+                    dx[ia, :] += dpos_neigh[inode, pk]
+            dx += dpos_coll
+            segs = []
+            s = 1.0
+            for ia in range(self.natoms):
+                if bool(self.is_pad[ia]):
+                    continue
+                segs.append(pos[ia]); segs.append(pos[ia] + dx[ia] * s)
+            self.scene.set_dpos(None if len(segs) == 0 else np.asarray(segs, dtype=np.float32))
+        else:
+            self.scene.set_dpos(None)
+
+        # dpos_neigh vectors (slot recoils)
+        if ports_ok and bool(self.cb_dpos_neigh.isChecked()):
+            dpos_neigh = self.sim.download_dpos_neigh(nnode_per_group=self.nnode_per_group)[:, :, :3]
+            segs = []
+            nnode_pg = int(self.nnode_per_group)
+            for ia in range(self.natoms):
+                if bool(self.is_pad[ia]):
+                    continue
+                for k in range(4):
+                    slot = int(bk[ia, k])
+                    if slot < 0:
+                        continue
+                    inode = slot >> 2
+                    pk = slot & 3
+                    ig = inode // nnode_pg
+                    il = inode - ig * nnode_pg
+                    node_atom = ig * gs + il
+                    if bool(self.is_pad[node_atom]):
+                        continue
+                    segs.append(pos[ia]); segs.append(pos[ia] + dpos_neigh[inode, pk])
+            self.scene.set_dpos_neigh(None if len(segs) == 0 else np.asarray(segs, dtype=np.float32))
+        else:
+            self.scene.set_dpos_neigh(None)
 
     def on_radius_changed(self, v):
         self.rad[:] = 0.0
@@ -564,6 +773,7 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         bmin, bmax = self.sim.download_bboxes()
         self._set_scene_bboxes_from_device(bmin, bmax)
         self._update_debug_links_from_device()
+        self._update_debug_overlays_from_device()
 
 
 def main():
