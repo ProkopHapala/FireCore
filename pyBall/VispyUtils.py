@@ -40,16 +40,62 @@ class AtomScene(QtCore.QObject):
         self._rmb_last = None
         self._cam_rot_speed = 0.3  # deg per pixel
         self._cam_zoom_speed = 0.12
+        self._cam_zoom_min = 1e-4
+        self._cam_zoom_max = 1e+4
 
-        self.atom_markers = visuals.Markers(parent=self.view.scene)
+        # Draw ordering: radius behind everything, then bboxes/links/lines, then atom centers, then labels.
+        self.radius_markers = visuals.Markers(parent=self.view.scene)
+        self.bbox_lines = visuals.Line(parent=self.view.scene, color=(0.2, 0.6, 1.0, 0.6), width=1.2, antialias=True, method='gl')
+        self.inbox_lines = visuals.Line(parent=self.view.scene, color=(0.0, 0.0, 0.0, 0.35), width=1.0, antialias=True, method='gl')
+        self.halo_lines  = visuals.Line(parent=self.view.scene, color=(0.8, 0.1, 0.8, 0.35), width=1.0, antialias=True, method='gl')
         self.bond_lines = visuals.Line(parent=self.view.scene, color='gray', width=1.5, antialias=True, method='gl')
         self.force_lines = visuals.Line(parent=self.view.scene, color=(1, 0, 0, 0.8), width=2.0, antialias=True, method='gl')
+        self.atom_markers = visuals.Markers(parent=self.view.scene)
+        self.axes = visuals.XYZAxis(parent=self.view.scene)
+        self.text_labels = visuals.Text(parent=self.view.scene, color='black', font_size=10, anchor_x='left', anchor_y='bottom')
+
+        # Enforce z-order when supported
+        for o, v in enumerate((self.radius_markers, self.bbox_lines, self.inbox_lines, self.halo_lines, self.bond_lines, self.force_lines, self.atom_markers, self.axes, self.text_labels)):
+            if hasattr(v, 'order'):
+                v.order = int(o)
+
+        # GL state: radius translucent and never blocks other overlays
+        try:
+            self.radius_markers.set_gl_state('translucent', depth_test=False)
+            for v in (self.bbox_lines, self.inbox_lines, self.halo_lines, self.bond_lines, self.force_lines):
+                v.set_gl_state('translucent', depth_test=False)
+            self.atom_markers.set_gl_state('translucent', depth_test=False)
+            self.text_labels.set_gl_state('translucent', depth_test=False)
+        except Exception:
+            pass
 
         self._pos = np.zeros((0, 3), dtype=np.float32)
         self._colors = None
         self._sizes = None
         self._bonds = None
         self._forces = None
+        self._radius = None
+
+        self._render_mask = None
+        self._group_size = 64
+        self._color_by_group = False
+        self._colors_base = None
+
+        self._show_radius = False
+        self._show_bboxes = False
+        self._show_inbox_links = False
+        self._show_halo_links = False
+        self._show_axes = True
+        self._bboxes_min = None
+        self._bboxes_max = None
+        self._inbox_link_segs = None
+        self._halo_link_segs = None
+
+        self._label_mode = 'none'  # none|global|local|pair|radius
+        self._labels_text = None
+
+        self._marker_style = 'disc'      # vispy marker name
+        self._radius_style = 'disc'
 
         self._pick_active = False
         self._pick_idx = -1
@@ -82,11 +128,150 @@ class AtomScene(QtCore.QObject):
         if (self._fixed is None) or (self._fixed.shape[0] != self._pos.shape[0]):
             self._fixed = np.zeros((self._pos.shape[0],), dtype=bool)
         self._colors = None if colors is None else _as_f32(colors)
+        self._colors_base = None if colors is None else _as_f32(colors)
         self._sizes = None if sizes is None else _as_f32(sizes)
         self._bonds = None if bonds is None else np.asarray(bonds, dtype=np.int32)
         self._forces = None if forces is None else _as_f32(forces)
         self._force_scale = float(force_scale)
         self._redraw()
+
+    def set_marker_style(self, style='disc'):
+        style = str(style)
+        self._marker_style = style
+        self._redraw()
+
+    def set_radius_style(self, style='disc'):
+        style = str(style)
+        self._radius_style = style
+        self._redraw()
+
+    def set_radius(self, radius):
+        r = np.asarray(radius, dtype=np.float32)
+        if r.shape != (self._pos.shape[0],):
+            raise ValueError(f"AtomScene.set_radius: radius.shape={r.shape} expected ({self._pos.shape[0]},)")
+        self._radius = r
+        self._redraw()
+
+    def set_render_mask(self, mask):
+        mask = np.asarray(mask, dtype=bool)
+        if mask.shape != (self._pos.shape[0],):
+            raise ValueError(f"AtomScene.set_render_mask: mask.shape={mask.shape} expected ({self._pos.shape[0]},)")
+        self._render_mask = mask.copy()
+        self._redraw()
+
+    def set_group_size(self, group_size):
+        self._group_size = int(group_size)
+
+    def set_color_by_group(self, enable):
+        self._color_by_group = bool(enable)
+        self._redraw()
+
+    def set_show_radius(self, enable):
+        self._show_radius = bool(enable)
+        self._redraw()
+
+    def set_show_bboxes(self, enable):
+        self._show_bboxes = bool(enable)
+        self._redraw()
+
+    def set_show_inbox_links(self, enable):
+        self._show_inbox_links = bool(enable)
+        self._redraw()
+
+    def set_show_halo_links(self, enable):
+        self._show_halo_links = bool(enable)
+        self._redraw()
+
+    def set_show_axes(self, enable):
+        self._show_axes = bool(enable)
+        self.axes.visible = bool(enable)
+        self.canvas.update()
+
+    def set_inbox_links(self, segs):
+        if segs is None:
+            self._inbox_link_segs = None
+        else:
+            s = _as_f32(segs)
+            if s.ndim != 2 or s.shape[1] != 3 or (s.shape[0] % 2) != 0:
+                raise ValueError(f"AtomScene.set_inbox_links: segs.shape={s.shape} expected (2*m,3)")
+            self._inbox_link_segs = s
+        self._redraw()
+
+    def set_halo_links(self, segs):
+        if segs is None:
+            self._halo_link_segs = None
+        else:
+            s = _as_f32(segs)
+            if s.ndim != 2 or s.shape[1] != 3 or (s.shape[0] % 2) != 0:
+                raise ValueError(f"AtomScene.set_halo_links: segs.shape={s.shape} expected (2*m,3)")
+            self._halo_link_segs = s
+        self._redraw()
+
+    def set_bboxes(self, bmin, bmax):
+        bmin = _as_f32(bmin)
+        bmax = _as_f32(bmax)
+        if bmin.shape != bmax.shape or bmin.ndim != 2 or bmin.shape[1] != 4:
+            raise ValueError(f"AtomScene.set_bboxes: bmin.shape={bmin.shape} bmax.shape={bmax.shape} expected (ng,4)")
+        self._bboxes_min = bmin
+        self._bboxes_max = bmax
+        self._redraw()
+
+    def set_label_mode(self, mode):
+        mode = str(mode).lower()
+        if mode not in ('none', 'global', 'local', 'pair', 'radius'):
+            raise ValueError(f"AtomScene.set_label_mode: mode={mode} expected none|global|local|pair|radius")
+        self._label_mode = mode
+        self._labels_text = None
+        self._redraw()
+
+    def _px_per_world_ortho(self):
+        """Pixels per 1 world unit for TurntableCamera with fov=0.
+
+        To keep glyph size independent of camera orientation, use only zoom (scale_factor) and viewport.
+        """
+        cam = self.view.camera
+        if cam is None:
+            return 1.0
+        sf = float(getattr(cam, 'scale_factor', 1.0))
+        if (not np.isfinite(sf)) or (sf <= 1e-12):
+            return 1.0
+        tr = self.view.scene.transform
+        p0 = np.array(tr.imap((0.0, 0.0, 0.0)), dtype=np.float32)
+        p1 = np.array(tr.imap((1.0, 0.0, 0.0)), dtype=np.float32)
+        world_len = float(np.linalg.norm(p1[:2] - p0[:2]))
+        if (not np.isfinite(world_len)) or (world_len <= 1e-12):
+            return 1.0
+        return 1.0 / world_len
+
+    def get_zoom(self):
+        cam = self.view.camera
+        if cam is None:
+            return 1.0
+        sf = getattr(cam, 'scale_factor', 1.0)
+        return float(sf)
+
+    def set_zoom(self, zoom):
+        cam = self.view.camera
+        if cam is None:
+            return
+        z = float(zoom)
+        if z < self._cam_zoom_min:
+            z = self._cam_zoom_min
+        if z > self._cam_zoom_max:
+            z = self._cam_zoom_max
+        cam.scale_factor = z
+        self._redraw()
+
+    def reset_view(self):
+        cam = self.view.camera
+        if cam is None:
+            return
+        cam.fov = 0
+        cam.azimuth = 0
+        cam.elevation = 90
+        cam.roll = 0
+        cam.scale_factor = 1.0
+        self.canvas.update()
 
     def set_pick_mode(self, mode):
         mode = str(mode).lower()
@@ -162,22 +347,25 @@ class AtomScene(QtCore.QObject):
             cam.elevation = 89.0
         if cam.elevation < -89.0:
             cam.elevation = -89.0
-        self.canvas.update()
+        self._redraw()
         self._cam_print('rotate')
 
     def _cam_zoom(self, delta):
         cam = self.view.camera
         if cam is None:
             return
-        d = float(cam.distance)
+        # Orthographic zoom: change camera scale_factor (distance does not change zoom for fov=0).
+        z0 = float(getattr(cam, 'scale_factor', 1.0))
         s = float(np.exp(-float(delta) * float(self._cam_zoom_speed)))
-        d2 = d * s
-        if d2 < 0.1:
-            d2 = 0.1
-        cam.distance = d2
-        self.canvas.update()
+        z1 = z0 * s
+        if z1 < self._cam_zoom_min:
+            z1 = self._cam_zoom_min
+        if z1 > self._cam_zoom_max:
+            z1 = self._cam_zoom_max
+        cam.scale_factor = z1
+        self._redraw()
         if int(self._cam_debug) > 0:
-            print(f"[CAM] zoom delta={float(delta):.6g} dist:{d:.6g}->{d2:.6g}")
+            print(f"[CAM] zoom delta={float(delta):.6g} scale:{z0:.6g}->{z1:.6g}")
 
     def _ray_from_mouse(self, mouse_pos, z0=0.0, z1=1.0):
         # mouse_pos in canvas pixels
@@ -219,31 +407,104 @@ class AtomScene(QtCore.QObject):
         n = self._pos.shape[0]
         if n == 0:
             self.atom_markers.set_data(np.zeros((0, 3), dtype=np.float32))
+            self.radius_markers.set_data(np.zeros((0, 3), dtype=np.float32))
             self.bond_lines.set_data(np.zeros((0, 3), dtype=np.float32))
             self.force_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+            self.bbox_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+            # vispy Text requires at least one position; keep a hidden dummy.
+            self.text_labels.text = ['']
+            self.text_labels.pos = np.zeros((1, 3), dtype=np.float32)
+            self.text_labels.visible = False
             self.canvas.update();
             return
 
-        if self._colors is None:
-            face_color = (0.2, 0.2, 0.2, 1.0)
+        if self._render_mask is None:
+            m = np.isfinite(self._pos).all(axis=1)
+            if not np.all(m):
+                raise RuntimeError("AtomScene._redraw: found NaN/Inf in positions but no render_mask set")
+            self._render_mask = np.ones((n,), dtype=bool)
+
+        # Strict rule: never render invalid atoms; if any non-masked atom is invalid -> crash loudly.
+        finite = np.isfinite(self._pos).all(axis=1)
+        if np.any((~finite) & (self._render_mask)):
+            bad = np.where((~finite) & (self._render_mask))[0]
+            raise RuntimeError(f"AtomScene._redraw: invalid pos for render_mask atoms; bad indices (first 10)={bad[:10]}")
+        m = self._render_mask & finite
+        idx = np.where(m)[0]
+
+        if self._color_by_group:
+            # deterministic HSV-like palette per group
+            g = (idx // int(self._group_size)).astype(np.int32)
+            c = np.empty((idx.size, 4), dtype=np.float32)
+            for i, gi in enumerate(g):
+                h = float((gi * 0.61803398875) % 1.0)
+                r = abs(h * 6.0 - 3.0) - 1.0
+                g1 = 2.0 - abs(h * 6.0 - 2.0)
+                b = 2.0 - abs(h * 6.0 - 4.0)
+                rgb = np.clip(np.array([r, g1, b], dtype=np.float32), 0.0, 1.0)
+                c[i, :3] = rgb
+                c[i, 3] = 0.9
+            face_color = c
         else:
-            face_color = self._colors
+            if self._colors is None:
+                face_color = (0.2, 0.2, 0.2, 1.0)
+            else:
+                face_color = self._colors[idx]
         if self._sizes is None:
             size = 8.0
+            size = np.full((idx.size,), float(size), dtype=np.float32)
         else:
-            size = self._sizes
+            size = _as_f32(self._sizes[idx])
 
-        self.atom_markers.set_data(self._pos, face_color=face_color, size=size, edge_width=0.5, edge_color='black')
+        # marker style (disc/square, etc.)
+        try:
+            self.atom_markers.set_data(self._pos[idx], face_color=face_color, size=size, edge_width=0.5, edge_color='black', symbol=self._marker_style)
+        except TypeError:
+            # older vispy uses 'marker' kw
+            self.atom_markers.set_data(self._pos[idx], face_color=face_color, size=size, edge_width=0.5, edge_color='black', marker=self._marker_style)
+
+        if self._show_radius and (self._radius is not None):
+            # world radius -> exact screen size scaling for orthographic camera (depends only on zoom)
+            r = np.maximum(self._radius[idx], 0.0)
+            px_per_world = float(self._px_per_world_ortho())
+            sizeR = (2.0 * r * px_per_world).astype(np.float32)
+            colR = np.zeros((idx.size, 4), dtype=np.float32)
+            colR[:, :3] = face_color[:, :3] if isinstance(face_color, np.ndarray) else np.array(face_color[:3], dtype=np.float32)[None, :]
+            colR[:, 3] = 0.10
+            try:
+                self.radius_markers.set_data(self._pos[idx], face_color=colR, size=sizeR, edge_width=0.0, symbol=self._radius_style)
+            except TypeError:
+                self.radius_markers.set_data(self._pos[idx], face_color=colR, size=sizeR, edge_width=0.0, marker=self._radius_style)
+        else:
+            self.radius_markers.set_data(np.zeros((0, 3), dtype=np.float32))
+
+        # Debug link lines
+        if self._show_inbox_links and (self._inbox_link_segs is not None) and (self._inbox_link_segs.size > 0):
+            connect = np.zeros((self._inbox_link_segs.shape[0],), dtype=bool); connect[0::2] = True
+            self.inbox_lines.set_data(self._inbox_link_segs, connect=connect)
+        else:
+            self.inbox_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+
+        if self._show_halo_links and (self._halo_link_segs is not None) and (self._halo_link_segs.size > 0):
+            connect = np.zeros((self._halo_link_segs.shape[0],), dtype=bool); connect[0::2] = True
+            self.halo_lines.set_data(self._halo_link_segs, connect=connect)
+        else:
+            self.halo_lines.set_data(np.zeros((0, 3), dtype=np.float32))
 
         # Bonds: draw segment pairs
         if (self._bonds is not None) and (self._bonds.size > 0):
             b = self._bonds
-            segs = np.empty((b.shape[0] * 2, 3), dtype=np.float32)
-            segs[0::2] = self._pos[b[:, 0]]
-            segs[1::2] = self._pos[b[:, 1]]
-            connect = np.zeros(segs.shape[0], dtype=bool)
-            connect[0::2] = True
-            self.bond_lines.set_data(segs, connect=connect, color=(0.3, 0.3, 0.3, 0.8), width=1.5)
+            mb = m[b[:, 0]] & m[b[:, 1]]
+            b = b[mb]
+            if b.size > 0:
+                segs = np.empty((b.shape[0] * 2, 3), dtype=np.float32)
+                segs[0::2] = self._pos[b[:, 0]]
+                segs[1::2] = self._pos[b[:, 1]]
+                connect = np.zeros(segs.shape[0], dtype=bool)
+                connect[0::2] = True
+                self.bond_lines.set_data(segs, connect=connect, color=(0.3, 0.3, 0.3, 0.8), width=1.5)
+            else:
+                self.bond_lines.set_data(np.zeros((0, 3), dtype=np.float32))
         else:
             self.bond_lines.set_data(np.zeros((0, 3), dtype=np.float32))
 
@@ -252,14 +513,67 @@ class AtomScene(QtCore.QObject):
             f = self._forces
             if f.shape != self._pos.shape:
                 raise ValueError(f"AtomScene._redraw: forces.shape={f.shape} expected {self._pos.shape}")
-            segs = np.empty((n * 2, 3), dtype=np.float32)
-            segs[0::2] = self._pos
-            segs[1::2] = self._pos + f * self._force_scale
+            segs = np.empty((idx.size * 2, 3), dtype=np.float32)
+            segs[0::2] = self._pos[idx]
+            segs[1::2] = self._pos[idx] + f[idx] * self._force_scale
             connect = np.zeros(segs.shape[0], dtype=bool)
             connect[0::2] = True
             self.force_lines.set_data(segs, connect=connect)
         else:
             self.force_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+
+        # Bounding boxes (clusters)
+        if self._show_bboxes and (self._bboxes_min is not None) and (self._bboxes_max is not None):
+            bmin = self._bboxes_min
+            bmax = self._bboxes_max
+            ng = int(bmin.shape[0])
+            segs = []
+            connect = []
+            for ig in range(ng):
+                mn = bmin[ig, :3]; mx = bmax[ig, :3]
+                v = np.array([
+                    [mn[0], mn[1], mn[2]], [mx[0], mn[1], mn[2]],
+                    [mx[0], mx[1], mn[2]], [mn[0], mx[1], mn[2]],
+                    [mn[0], mn[1], mx[2]], [mx[0], mn[1], mx[2]],
+                    [mx[0], mx[1], mx[2]], [mn[0], mx[1], mx[2]],
+                ], dtype=np.float32)
+                e = [(0,1),(1,2),(2,3),(3,0),(4,5),(5,6),(6,7),(7,4),(0,4),(1,5),(2,6),(3,7)]
+                for (a,b) in e:
+                    segs.append(v[a]); segs.append(v[b])
+                    connect.append(True); connect.append(False)
+            if len(segs) > 0:
+                segs = np.asarray(segs, dtype=np.float32)
+                connect = np.asarray(connect, dtype=bool)
+                self.bbox_lines.set_data(segs, connect=connect)
+            else:
+                self.bbox_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+        else:
+            self.bbox_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+
+        # Labels
+        if self._label_mode == 'none':
+            self.text_labels.text = ['']
+            self.text_labels.pos = np.zeros((1, 3), dtype=np.float32)
+            self.text_labels.visible = False
+        else:
+            if self._labels_text is None:
+                txt = []
+                for ii in idx:
+                    if self._label_mode == 'global':
+                        txt.append(str(int(ii)))
+                    elif self._label_mode == 'local':
+                        txt.append(str(int(ii % int(self._group_size))))
+                    elif self._label_mode == 'radius':
+                        if self._radius is None:
+                            txt.append('nan')
+                        else:
+                            txt.append(f"{float(self._radius[int(ii)]):.3f}")
+                    else:
+                        txt.append(f"{int(ii//int(self._group_size))},{int(ii%int(self._group_size))}")
+                self._labels_text = txt
+            self.text_labels.text = self._labels_text
+            self.text_labels.pos = (self._pos[idx] + np.array([0.02, 0.02, 0.02], dtype=np.float32)[None, :]).astype(np.float32)
+            self.text_labels.visible = True
 
         self.canvas.update()
 

@@ -14,7 +14,43 @@ from MolGUI_common import colors_for_enames, sizes_for_enames
 from VispyUtils import AtomScene
 
 from RRsp3 import RRsp3, build_neighs_bk_from_bonds, make_bk_slots_clustered, make_exclusions_1st_2nd
-from XPTB_utils import pack_molecules_contiguous, make_h2o_geometry, masses_from_elems
+from XPTB_utils import pack_molecules_contiguous, make_h2o_geometry, masses_from_elems, load_xyz, perturb_state
+
+
+def reorder_nodes_first(elems, xyz, bonds, *, is_node=None):
+    elems = list(elems)
+    xyz = np.asarray(xyz, dtype=np.float32)
+    n = int(len(elems))
+    if xyz.shape != (n, 3):
+        raise ValueError(f"reorder_nodes_first: xyz.shape={xyz.shape} expected ({n},3)")
+    if is_node is None:
+        is_node = np.array([e != 'H' for e in elems], dtype=bool)
+    is_node = np.asarray(is_node, dtype=bool)
+    if is_node.shape != (n,):
+        raise ValueError(f"reorder_nodes_first: is_node.shape={is_node.shape} expected ({n},)")
+    if not np.any(is_node):
+        is_node[:] = True
+    order = np.concatenate([np.nonzero(is_node)[0], np.nonzero(~is_node)[0]]).astype(np.int32)
+    perm_inv = np.empty((n,), dtype=np.int32)
+    perm_inv[order] = np.arange(n, dtype=np.int32)
+    elems2 = [elems[i] for i in order]
+    xyz2 = xyz[order, :].copy()
+    bonds2 = [(int(perm_inv[int(i)]), int(perm_inv[int(j)])) for (i, j) in bonds]
+    nnode = int(np.sum(is_node))
+    return elems2, xyz2, bonds2, nnode
+
+
+def load_molecule_any_xyz(xyz_path):
+    # Use AtomicSystem bond finding for general molecules
+    from pyBall.AtomicSystem import AtomicSystem
+    mol = AtomicSystem(fname=xyz_path)
+    if mol.bonds is None or len(mol.bonds) == 0:
+        mol.findBonds()
+    bonds = [(int(b[0]), int(b[1])) for b in mol.bonds]
+    elems = list(mol.enames)
+    xyz = np.asarray(mol.apos[:, :3], dtype=np.float32)
+    elems, xyz, bonds, nnode = reorder_nodes_first(elems, xyz, bonds)
+    return elems, xyz, bonds, nnode
 
 
 def make_ports_from_neighs(pos, neighs, K=200.0):
@@ -67,12 +103,79 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         vbox.addWidget(self.cb_coll)
         vbox.addWidget(self.cb_ports)
 
+        # ---- Molecule loading ----
+        self.xyz_dir = '/home/prokop/git/FireCore/web/common_resources/xyz'
+        self.cb_preset = QtWidgets.QComboBox(); self.cb_preset.addItems(['h2o', 'ch2nh', 'hcooh', 'pyrrole', 'guanine', 'pentacene'])
+        self.cb_preset.setCurrentText('guanine')
+        vbox.addWidget(QtWidgets.QLabel('molecule preset'))
+        vbox.addWidget(self.cb_preset)
+
+        self.sp_nmol = QtWidgets.QSpinBox(); self.sp_nmol.setRange(1, 200); self.sp_nmol.setValue(2)
+        vbox.addWidget(QtWidgets.QLabel('num molecules (=num clusters)'))
+        vbox.addWidget(self.sp_nmol)
+
+        self.sp_shift = QtWidgets.QDoubleSpinBox(); self.sp_shift.setRange(0.0, 100.0); self.sp_shift.setSingleStep(0.5); self.sp_shift.setValue(8.0)
+        vbox.addWidget(QtWidgets.QLabel('cluster spacing'))
+        vbox.addWidget(self.sp_shift)
+
+        self.sp_pert_pos = QtWidgets.QDoubleSpinBox(); self.sp_pert_pos.setRange(0.0, 5.0); self.sp_pert_pos.setSingleStep(0.01); self.sp_pert_pos.setDecimals(4); self.sp_pert_pos.setValue(0.0)
+        self.sp_pert_rot = QtWidgets.QDoubleSpinBox(); self.sp_pert_rot.setRange(0.0, 5.0); self.sp_pert_rot.setSingleStep(0.01); self.sp_pert_rot.setDecimals(4); self.sp_pert_rot.setValue(0.0)
+        vbox.addWidget(QtWidgets.QLabel('perturb pos'))
+        vbox.addWidget(self.sp_pert_pos)
+        vbox.addWidget(QtWidgets.QLabel('perturb rot'))
+        vbox.addWidget(self.sp_pert_rot)
+
+        self.sp_seed = QtWidgets.QSpinBox(); self.sp_seed.setRange(0, 10**9); self.sp_seed.setValue(0)
+        vbox.addWidget(QtWidgets.QLabel('perturb seed'))
+        vbox.addWidget(self.sp_seed)
+
+        self.btn_reload = QtWidgets.QPushButton('Reload molecule(s)')
+        self.btn_reload.clicked.connect(self.on_reload)
+        vbox.addWidget(self.btn_reload)
+
         self.cb_lock = QtWidgets.QCheckBox('Lock top view (2D pick)'); self.cb_lock.setChecked(False)
         self.cb_clamp = QtWidgets.QCheckBox('Clamp dragged atom to XY'); self.cb_clamp.setChecked(False)
         self.cb_pick3d = QtWidgets.QCheckBox('3D picking/drag (ortho)'); self.cb_pick3d.setChecked(True)
         vbox.addWidget(self.cb_lock)
         vbox.addWidget(self.cb_clamp)
         vbox.addWidget(self.cb_pick3d)
+
+        self.cb_color_group = QtWidgets.QCheckBox('Color by groups'); self.cb_color_group.setChecked(False)
+        vbox.addWidget(self.cb_color_group)
+
+        self.cb_show_rad = QtWidgets.QCheckBox('Show collision radius'); self.cb_show_rad.setChecked(False)
+        vbox.addWidget(self.cb_show_rad)
+
+        self.sp_rcoll = QtWidgets.QDoubleSpinBox(); self.sp_rcoll.setRange(0.0, 100.0); self.sp_rcoll.setSingleStep(0.1); self.sp_rcoll.setDecimals(4); self.sp_rcoll.setValue(1.0)
+        vbox.addWidget(QtWidgets.QLabel('collision radius R_coll'))
+        vbox.addWidget(self.sp_rcoll)
+
+        self.cb_show_bbox = QtWidgets.QCheckBox('Show group bboxes'); self.cb_show_bbox.setChecked(False)
+        vbox.addWidget(self.cb_show_bbox)
+
+        self.cb_bbox_mode = QtWidgets.QComboBox(); self.cb_bbox_mode.addItems(['tight', 'overlap', 'halo'])
+        vbox.addWidget(QtWidgets.QLabel('bbox mode'))
+        vbox.addWidget(self.cb_bbox_mode)
+
+        self.cb_axes = QtWidgets.QCheckBox('Show axes'); self.cb_axes.setChecked(True)
+        vbox.addWidget(self.cb_axes)
+
+        self.cb_inbox_links = QtWidgets.QCheckBox('Links: bbox center -> in-box atoms'); self.cb_inbox_links.setChecked(False)
+        self.cb_halo_links = QtWidgets.QCheckBox('Links: bbox center -> halo atoms'); self.cb_halo_links.setChecked(False)
+        vbox.addWidget(self.cb_inbox_links)
+        vbox.addWidget(self.cb_halo_links)
+
+        self.cb_labels = QtWidgets.QComboBox(); self.cb_labels.addItems(['none', 'global', 'local', 'pair', 'radius'])
+        vbox.addWidget(QtWidgets.QLabel('labels'))
+        vbox.addWidget(self.cb_labels)
+
+        self.sp_zoom = QtWidgets.QDoubleSpinBox(); self.sp_zoom.setRange(1e-4, 1e4); self.sp_zoom.setDecimals(6); self.sp_zoom.setSingleStep(0.05); self.sp_zoom.setValue(1.0)
+        vbox.addWidget(QtWidgets.QLabel('zoom (ortho scale)'))
+        vbox.addWidget(self.sp_zoom)
+
+        self.btn_reset_view = QtWidgets.QPushButton('Reset view')
+        self.btn_reset_view.clicked.connect(self.on_reset_view)
+        vbox.addWidget(self.btn_reset_view)
 
         self.btn_pin = QtWidgets.QPushButton('Pin/Unpin picked')
         self.btn_pin.clicked.connect(self.on_pin_toggle)
@@ -116,7 +219,18 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         self.cb_lock.stateChanged.connect(self.on_view_mode_changed)
         self.cb_clamp.stateChanged.connect(self.on_view_mode_changed)
         self.cb_pick3d.stateChanged.connect(self.on_view_mode_changed)
+        self.cb_color_group.stateChanged.connect(self.on_viz_changed)
+        self.cb_show_rad.stateChanged.connect(self.on_viz_changed)
+        self.cb_show_bbox.stateChanged.connect(self.on_viz_changed)
+        self.cb_bbox_mode.currentIndexChanged.connect(self.on_viz_changed)
+        self.cb_axes.stateChanged.connect(self.on_viz_changed)
+        self.cb_inbox_links.stateChanged.connect(self.on_viz_changed)
+        self.cb_halo_links.stateChanged.connect(self.on_viz_changed)
+        self.cb_labels.currentIndexChanged.connect(self.on_viz_changed)
+        self.sp_rcoll.valueChanged.connect(self.on_radius_changed)
+        self.sp_zoom.valueChanged.connect(self.on_zoom_changed)
         self.on_view_mode_changed()
+        self.on_viz_changed()
 
     def on_run_toggled(self, checked):
         if bool(checked):
@@ -148,15 +262,36 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
 
     def _init_system(self):
         group_size = 64
-        pos_h2o, _ = make_h2o_geometry(add_angle=False)
-        elems = ['O', 'H', 'H']
-        bonds = [(0, 1), (0, 2)]
-        nnode = 1
+        name = str(self.cb_preset.currentText()).strip().lower()
+        xyz_path = os.path.join(self.xyz_dir, f"{name}.xyz")
+        if os.path.isfile(xyz_path):
+            try:
+                elems0, xyz0, bonds0, _nnode_loaded = load_molecule_any_xyz(xyz_path)
+            except Exception:
+                elems0, xyz0, _q = load_xyz(xyz_path)
+                bonds0 = []
+        else:
+            pos_h2o, _ = make_h2o_geometry(add_angle=False)
+            elems0 = ['O', 'H', 'H']
+            xyz0 = pos_h2o
+            bonds0 = [(0, 1), (0, 2)]
 
-        mols = [
-            {'elems': elems, 'pos': pos_h2o, 'bonds': bonds, 'nnode': nnode},
-            {'elems': elems, 'pos': pos_h2o + np.array([2.2, 0.0, 0.0], dtype=np.float32), 'bonds': bonds, 'nnode': nnode},
-        ]
+        # Infer nnode the same way pack_molecules_contiguous does (deg>1 => node). Avoid mismatches.
+        deg = np.zeros((len(elems0),), dtype=np.int32)
+        for (i, j) in bonds0:
+            deg[int(i)] += 1
+            deg[int(j)] += 1
+        nnode = int(np.sum(deg > 1))
+        if nnode <= 0:
+            nnode = len(elems0)  # fallback: all atoms as nodes if no bonds/isolated
+
+        nmol = int(self.sp_nmol.value())
+        shift = float(self.sp_shift.value())
+        mols = []
+        for i in range(nmol):
+            sh = np.array([shift * (float(i) - 0.5 * float(nmol - 1)), 0.0, 0.0], dtype=np.float32)
+            mols.append({'elems': list(elems0), 'pos': xyz0 + sh[None, :], 'bonds': list(bonds0), 'nnode': int(nnode)})
+
         packed = pack_molecules_contiguous(mols, group_size=group_size, nodes_first=True, pad_to_group=True)
         self.group_size = group_size
         self.natoms = int(packed['natoms_total'])
@@ -177,8 +312,32 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         # padding atoms always fixed (and should not be pickable)
         self._fixed[self.is_pad] = True
 
-        # quat
+        # quat (+ optional perturb)
         self.quat = np.zeros((self.natoms, 4), dtype=np.float32); self.quat[:, 3] = 1.0
+        try:
+            from numpy.random import default_rng
+            rng = default_rng(int(self.sp_seed.value()))
+            pos_init, quat_init = perturb_state(self.pos, self.quat, float(self.sp_pert_pos.value()), float(self.sp_pert_rot.value()), rng)
+            # keep padding inert and non-confusing
+            gs = int(self.group_size)
+            ng = int(self.natoms // gs)
+            for ig in range(ng):
+                a0 = ig * gs
+                sl = slice(a0, a0 + gs)
+                pad_g = np.asarray(self.is_pad[sl], dtype=bool)
+                if not np.any(pad_g):
+                    continue
+                real_idx = np.nonzero(~pad_g)[0]
+                if real_idx.size == 0:
+                    continue
+                iref = a0 + int(real_idx[0])
+                idx_pad = a0 + np.nonzero(pad_g)[0]
+                pos_init[idx_pad, :] = pos_init[iref, :][None, :]
+                quat_init[idx_pad, :] = (0.0, 0.0, 0.0, 1.0)
+            self.pos = pos_init
+            self.quat = quat_init
+        except Exception:
+            pass
 
         # neighs/excl
         self.neighs, _ = build_neighs_bk_from_bonds(self.natoms, packed['bonds'], max_deg=4)
@@ -190,9 +349,9 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         # ports
         self.port_local_atoms, self.K_atoms = make_ports_from_neighs(self.pos, self.neighs, K=200.0)
 
-        # radii
+        # radii (constant for now; will later be per-element)
         self.rad = np.zeros((self.natoms,), dtype=np.float32)
-        self.rad[self.real] = 1.0
+        self.rad[self.real] = float(self.sp_rcoll.value())
 
         self.sim = RRsp3(self.natoms, group_size=group_size, prefer_gpu=True)
         self.sim.upload_state(self.pos, self.invm, quat=self.quat)
@@ -200,14 +359,29 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         self.sim.upload_neighs_and_exclusions(self.neighs, self.excl1, self.excl2)
         self.sim.upload_cluster_ports(self.port_local_atoms, self.K_atoms, nnode_per_group=self.nnode_per_group)
         self.sim.upload_bkSlots(self.bkSlots)
+        self._upload_fixmask()
+        self.sim.run_bboxes_and_topology(bbox_margin=0.5)
 
         colors = colors_for_enames(self.elems, alpha=0.9)
         sizes = sizes_for_enames(self.elems, scale=0.25)
         bonds_np = np.array([(0, 1), (0, 2), (64, 65), (64, 66)], dtype=np.int32)
 
         self.scene.set_data(self.pos, colors=colors, sizes=sizes, bonds=bonds_np)
+        # strict: never render padding atoms (they are invalid and should carry NaNs)
+        self.scene.set_render_mask(self.real)
+        self.scene.set_group_size(self.group_size)
+        self.scene.set_radius(self.rad)
         self.scene.set_fixed_mask(self._fixed)
+        bmin, bmax = self.sim.download_bboxes()
+        self._set_scene_bboxes_from_device(bmin, bmax)
+        self._update_debug_links_from_device()
         self.status.setText(f'natoms={self.natoms} groups={self.natoms//group_size} nnode_per_group={self.nnode_per_group}')
+
+    def on_reload(self):
+        if self.btn_run.isChecked():
+            self.btn_run.setChecked(False)
+            self.on_run_toggled(False)
+        self._init_system()
 
     def on_pick(self, idx):
         self._picked = int(idx)
@@ -236,6 +410,101 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         self.scene.set_clamp_xy(clamp)
         self.scene.set_pick_mode('3d' if pick3d else '2d')
         self._upload_fixmask()
+
+    def on_viz_changed(self):
+        self.scene.set_color_by_group(bool(self.cb_color_group.isChecked()))
+        self.scene.set_show_radius(bool(self.cb_show_rad.isChecked()))
+        self.scene.set_show_bboxes(bool(self.cb_show_bbox.isChecked()))
+        self.scene.set_radius_style('disc')
+        self.scene.set_label_mode(str(self.cb_labels.currentText()))
+        self.scene.set_show_axes(bool(self.cb_axes.isChecked()))
+        self.scene.set_show_inbox_links(bool(self.cb_inbox_links.isChecked()))
+        self.scene.set_show_halo_links(bool(self.cb_halo_links.isChecked()))
+        # update bbox mode immediately from last downloaded device bboxes
+        if hasattr(self, '_bmin_dev') and hasattr(self, '_bmax_dev'):
+            self._set_scene_bboxes_from_device(self._bmin_dev, self._bmax_dev)
+
+    def on_zoom_changed(self, v):
+        self.scene.set_zoom(float(v))
+
+    def on_reset_view(self):
+        self.scene.reset_view()
+        self.sp_zoom.blockSignals(True)
+        self.sp_zoom.setValue(self.scene.get_zoom())
+        self.sp_zoom.blockSignals(False)
+
+    def _set_scene_bboxes_from_device(self, bmin, bmax):
+        self._bmin_dev = np.asarray(bmin, dtype=np.float32)
+        self._bmax_dev = np.asarray(bmax, dtype=np.float32)
+        mode = str(self.cb_bbox_mode.currentText())
+        bbmin = self._bmin_dev.copy(); bbmax = self._bmax_dev.copy()
+        if mode != 'tight':
+            rad = self.sim.download_radius()
+            rmax = float(np.max(rad[np.isfinite(rad)])) if rad.size else 0.0
+            bbox_margin = 0.5
+            if mode == 'overlap':
+                ext = float(bbox_margin)
+            else:
+                ext = float(2.0 * rmax + bbox_margin)
+            bbmin[:, :3] -= ext
+            bbmax[:, :3] += ext
+        self.scene.set_bboxes(bbmin, bbmax)
+
+    def _update_debug_links_from_device(self):
+        bmin, bmax = self._bmin_dev, self._bmax_dev
+        ng = int(bmin.shape[0])
+        c = 0.5 * (bmin[:, :3] + bmax[:, :3])
+
+        seg_in = []
+        if bool(self.cb_inbox_links.isChecked()):
+            for ig in range(ng):
+                a0 = ig * self.group_size
+                a1 = a0 + self.group_size
+                p = self.pos[a0:a1, :]
+                m = self.real[a0:a1] & np.isfinite(p).all(axis=1)
+                for k, ok in enumerate(m):
+                    if not bool(ok):
+                        continue
+                    seg_in.append(c[ig]); seg_in.append(p[k])
+
+        seg_h = []
+        if bool(self.cb_halo_links.isChecked()):
+            gi, gc = self.sim.download_ghosts()
+            for ig in range(ng):
+                n = int(gc[ig])
+                if n <= 0:
+                    continue
+                for j in gi[ig, :min(n, gi.shape[1])]:
+                    jj = int(j)
+                    if jj < 0 or jj >= self.natoms:
+                        continue
+                    if bool(self.is_pad[jj]):
+                        continue
+                    if not np.isfinite(self.pos[jj]).all():
+                        continue
+                    seg_h.append(c[ig]); seg_h.append(self.pos[jj])
+
+        self.scene.set_inbox_links(None if len(seg_in) == 0 else np.asarray(seg_in, dtype=np.float32))
+        self.scene.set_halo_links(None if len(seg_h) == 0 else np.asarray(seg_h, dtype=np.float32))
+
+    def on_radius_changed(self, v):
+        self.rad[:] = 0.0
+        self.rad[self.real] = float(v)
+        self.sim.upload_radius(self.rad)
+        self.scene.set_radius(self.rad)
+
+    def keyPressEvent(self, ev):
+        k = ev.key()
+        if k == QtCore.Qt.Key_Space:
+            self.btn_run.setChecked(not self.btn_run.isChecked())
+            self.on_run_toggled(self.btn_run.isChecked())
+            ev.accept();
+            return
+        if k == QtCore.Qt.Key_P:
+            self.on_pin_toggle()
+            ev.accept();
+            return
+        super().keyPressEvent(ev)
 
     def _upload_fixmask(self):
         if self._fixed is None:
@@ -284,17 +553,17 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
             self.sim.upload_cluster_ports(self.port_local_atoms, self.K_atoms, nnode_per_group=self.nnode_per_group)
             self.sim.upload_bkSlots(self.bkSlots)
             self._upload_fixmask()
+            self.sim.run_bboxes_and_topology(bbox_margin=0.5)
 
         self.sim.step_cluster(nnode_per_group=self.nnode_per_group, dt=float(self.sp_dt.value()), k_coll=float(self.sp_kcoll.value()), relaxation=float(self.sp_relax.value()), bbox_margin=0.5)
         pos4, quat4 = self.sim.download_pos_quat()
-        pos_new = pos4[:, :3].copy()
-        # GPU padding slots may be NaN by design; keep viewer positions stable for padding
-        mnan = ~np.isfinite(pos_new).all(axis=1)
-        if np.any(mnan):
-            pos_new[mnan, :] = self.pos[mnan, :]
-        self.pos = pos_new
+        # strict: padding atoms remain NaN (invalid) always
+        self.pos = pos4[:, :3].copy()
         self.quat = quat4.copy()
         self.scene.update_positions(self.pos)
+        bmin, bmax = self.sim.download_bboxes()
+        self._set_scene_bboxes_from_device(bmin, bmax)
+        self._update_debug_links_from_device()
 
 
 def main():

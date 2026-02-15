@@ -228,6 +228,19 @@ class RRsp3:
             raise ValueError(f"upload_radius: radius.shape={r.shape} expected ({self.num_atoms},)")
         cl.enqueue_copy(self.queue, self.cl_radius, r).wait()
 
+    def download_radius(self):
+        return self.download(self.cl_radius, (self.num_atoms,), np.float32)
+
+    def download_bboxes(self):
+        bmin = self.download(self.cl_bboxes_min, (self.num_groups, 4), np.float32)
+        bmax = self.download(self.cl_bboxes_max, (self.num_groups, 4), np.float32)
+        return bmin, bmax
+
+    def download_ghosts(self):
+        gi = self.download(self.cl_ghost_indices, (self.num_groups, self.max_ghosts), np.int32)
+        gc = self.download(self.cl_ghost_counts, (self.num_groups,), np.int32)
+        return gi, gc
+
     def upload_neighs_and_exclusions(self, neighs, excl1, excl2):
         neighs = np.asarray(neighs, dtype=np.int32)
         excl1 = np.asarray(excl1, dtype=np.int32)
@@ -279,6 +292,44 @@ class RRsp3:
         if bk.shape != (self.num_atoms, 4):
             raise ValueError(f"upload_bkSlots: bkSlots.shape={bk.shape} expected ({self.num_atoms},4)")
         cl.enqueue_copy(self.queue, self.cl_bkSlots, bk).wait()
+
+    def run_bboxes_and_topology(self, *, bbox_margin=0.5):
+        """Run only broad-phase kernels to populate bboxes and ghost lists (no integration).
+
+        This is used by the visual debugger to show AABBs + halo mapping immediately after upload.
+        """
+        natoms = np.int32(self.num_atoms)
+        ng = np.int32(self.num_groups)
+        bbox_margin_f = np.float32(float(bbox_margin))
+
+        rad = self.download(self.cl_radius, (self.num_atoms,), np.float32)
+        rmax = float(np.max(rad)) if rad.size else 0.0
+        margin_sq = np.float32((2.0 * rmax + float(bbox_margin)) ** 2)
+
+        global_size = (self.num_groups * self.group_size,)
+        local_size = (self.group_size,)
+
+        self.prg.update_bboxes_rigid(
+            self.queue, global_size, local_size,
+            self.cl_pos, self.cl_radius,
+            self.cl_bboxes_min, self.cl_bboxes_max,
+            cl.LocalMemory(self.group_size * 16),
+            cl.LocalMemory(self.group_size * 16),
+            natoms
+        )
+
+        self.prg.build_local_topology_rigid(
+            self.queue, global_size, local_size,
+            self.cl_pos,
+            self.cl_bboxes_min, self.cl_bboxes_max,
+            self.cl_neighs,
+            self.cl_excl1, self.cl_excl2,
+            self.cl_ghost_indices, self.cl_ghost_counts,
+            self.cl_neighs_local,
+            self.cl_excl1_local, self.cl_excl2_local,
+            natoms, ng,
+            margin_sq, bbox_margin_f
+        ).wait()
 
     def step_cluster(self, *, nnode_per_group, dt=0.1, k_coll=50.0, relaxation=0.5, bbox_margin=0.5):
         nnode_per_group = int(nnode_per_group)
