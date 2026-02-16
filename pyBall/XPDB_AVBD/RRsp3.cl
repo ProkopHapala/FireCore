@@ -33,9 +33,14 @@
 #define ENABLE_PORT 1
 #endif
 
-// ------------------------------------------------------------------
-// HELPER: Bounding Box Intersection
-// ------------------------------------------------------------------
+// =========================================================
+// =========================================================
+//  Helper, Mmatrix, Quaternion, AABB 
+// =========================================================
+// =========================================================
+
+
+
 bool bboxes_overlap(float4 minA, float4 maxA, float4 minB, float4 maxB, float margin) {
     if (maxA.x + margin < minB.x || minA.x > maxB.x + margin) return false;
     if (maxA.y + margin < minB.y || minA.y > maxB.y + margin) return false;
@@ -47,6 +52,7 @@ inline float3 quat_rotate(float4 q, float3 v) {
     float3 t = 2.0f * cross(q.xyz, v);
     return v + q.w * t + cross(q.xyz, t);
 }
+inline float3 q_rot(float4 q, float3 v) { return quat_rotate(q, v); }
 
 inline float4 quat_from_axis_angle(float3 axis, float angle) {
     float a = length(axis);
@@ -65,10 +71,57 @@ inline float4 quat_mul(float4 a, float4 b) {
     );
 }
 
+inline float4 quat_conj(float4 q){ return (float4)(-q.x, -q.y, -q.z, q.w); }
+
+inline float3 quat_delta_rotvec(float4 q_new, float4 q_old){
+    float4 dq = quat_mul(q_new, quat_conj(q_old));
+    float sign = (dq.w < 0.0f) ? -1.0f : 1.0f;
+    return 2.0f * dq.xyz * sign;
+}
+
 inline float4 quat_normalize(float4 q){
     float n2 = dot(q,q);
     if(n2<1e-16f) return (float4)(0.0f,0.0f,0.0f,1.0f);
     return q * rsqrt(n2);
+}
+
+inline float3 solve_3x3(float3 r0, float3 r1, float3 r2, float3 b) {
+    // Solve A x = b for A with rows r0,r1,r2 using adjugate.
+    float3 c0 = cross(r1, r2);
+    float3 c1 = cross(r2, r0);
+    float3 c2 = cross(r0, r1);
+    float det = dot(r0, c0);
+    if (fabs(det) < 1e-20f) return (float3)(0.0f);
+    float invDet = 1.0f / det;
+    // inv(A) = [c0 c1 c2]^T / det
+    return (float3)( dot(b, (float3)(c0.x,c1.x,c2.x)), dot(b, (float3)(c0.y,c1.y,c2.y)), dot(b, (float3)(c0.z,c1.z,c2.z)) ) * invDet;
+}
+
+inline float4 apply_delta_rot(float4 q, float3 dtheta) {
+    float angle = length(dtheta);
+    if (angle < 1e-8f) return q;
+    float3 axis = dtheta / angle;
+    float4 dq = quat_from_axis_angle(axis, angle);
+    return quat_normalize(quat_mul(dq, q));
+}
+
+inline void add_hessian_rr(float3* H0, float3* H1, float3* H2, float w, float3 r){
+    float r2 = dot(r, r);
+    (*H0).x += w * (r2 - r.x*r.x);
+    (*H0).y += w * (   - r.x*r.y);
+    (*H0).z += w * (   - r.x*r.z);
+    (*H1).x += w * (   - r.y*r.x);
+    (*H1).y += w * (r2 - r.y*r.y);
+    (*H1).z += w * (   - r.y*r.z);
+    (*H2).x += w * (   - r.z*r.x);
+    (*H2).y += w * (   - r.z*r.y);
+    (*H2).z += w * (r2 - r.z*r.z);
+}
+
+inline void mat3_outer_add(float* A, float w, float3 a, float3 b){
+    A[0] += w * a.x * b.x;  A[1] += w * a.x * b.y;  A[2] += w * a.x * b.z;
+    A[3] += w * a.y * b.x;  A[4] += w * a.y * b.y;  A[5] += w * a.y * b.z;
+    A[6] += w * a.z * b.x;  A[7] += w * a.z * b.y;  A[8] += w * a.z * b.z;
 }
 
 inline int excluded8(int j, int4 a, int4 b){
@@ -76,6 +129,95 @@ inline int excluded8(int j, int4 a, int4 b){
     if( (j==b.x) || (j==b.y) || (j==b.z) || (j==b.w) ) return 1;
     return 0;
 }
+
+// Multiply 3x3 matrices (Column Major or Row Major consistent)
+inline void mat3_mul(float* A, float* B, float* Out) {
+    // Unrolled for performance
+    for (int r = 0; r < 3; r++) {
+        for (int c = 0; c < 3; c++) {
+            Out[r*3 + c] = A[r*3 + 0] * B[0*3 + c] + 
+                           A[r*3 + 1] * B[1*3 + c] + 
+                           A[r*3 + 2] * B[2*3 + c];
+        }
+    }
+}
+
+// Convert Rotation Matrix to Quaternion
+// Robust method handling the trace singularities
+inline float4 mat3_to_quat(float* R) {
+    float4 q;
+    float tr = R[0] + R[4] + R[8];
+    if (tr > 0.0f) {
+        float S = sqrt(tr + 1.0f) * 2.0f; // S=4*qw 
+        q.w = 0.25f * S;
+        q.x = (R[5] - R[7]) / S;
+        q.y = (R[6] - R[2]) / S;
+        q.z = (R[1] - R[3]) / S;
+    } else if ((R[0] > R[4]) && (R[0] > R[8])) {
+        float S = sqrt(1.0f + R[0] - R[4] - R[8]) * 2.0f; 
+        q.w = (R[5] - R[7]) / S;
+        q.x = 0.25f * S;
+        q.y = (R[1] + R[3]) / S;
+        q.z = (R[6] + R[2]) / S;
+    } else if (R[4] > R[8]) {
+        float S = sqrt(1.0f + R[4] - R[0] - R[8]) * 2.0f; 
+        q.w = (R[6] - R[2]) / S;
+        q.x = (R[1] + R[3]) / S;
+        q.y = 0.25f * S;
+        q.z = (R[5] + R[7]) / S;
+    } else {
+        float S = sqrt(1.0f + R[8] - R[0] - R[4]) * 2.0f; 
+        q.w = (R[1] - R[3]) / S;
+        q.x = (R[6] + R[2]) / S;
+        q.y = (R[5] + R[7]) / S;
+        q.z = 0.25f * S;
+    }
+    return normalize(q);
+}
+
+// This calculates q_out = K * q_in without storing the 4x4 matrix K.
+// It uses the 9 elements of the Covariance Matrix B (Sxx, Sxy...) directly.
+// K = [ Trace(B)   z^T          ]
+//     [ z          B+B^T-Tr(B)I ]
+inline float4 apply_K_matrix(
+    float Sxx, float Sxy, float Sxz,
+    float Syx, float Syy, float Syz,
+    float Szx, float Szy, float Szz,
+    float4 q
+) {
+    float4 q_out;
+    
+    // 1. Calculate helper terms
+    float trace = Sxx + Syy + Szz;
+    float3 z = (float3)(Syz - Szy, Szx - Sxz, Sxy - Syx);
+    
+    // 2. Row 0 (Scalar w component)
+    // K_00 * w + K_01 * x + K_02 * y + K_03 * z
+    q_out.w = trace * q.w + dot(z, q.xyz);
+    
+    // 3. Vector components (x, y, z)
+    // q_vec_out = z * w + (B + B^T - tr*I) * v
+    
+    float3 v = q.xyz;
+    
+    // Diagonal terms of the block (B + B^T - tr*I)
+    // Sxx + Sxx - (Sxx + Syy + Szz) = Sxx - Syy - Szz
+    float3 diag = (float3)(Sxx - Syy - Szz, 
+                           Syy - Sxx - Szz, 
+                           Szz - Sxx - Syy);
+                           
+    q_out.x = z.x * q.w + diag.x * v.x + (Sxy + Syx) * v.y + (Sxz + Szx) * v.z;
+    q_out.y = z.y * q.w + (Sxy + Syx) * v.x + diag.y * v.y + (Syz + Szy) * v.z;
+    q_out.z = z.z * q.w + (Sxz + Szx) * v.x + (Syz + Szy) * v.y + diag.z * v.z;
+
+    return q_out;
+}
+
+// =========================================================
+// =========================================================
+//  Kernels
+// =========================================================
+// =========================================================
 
 __kernel void update_bboxes_rigid(
     __global const float4* curr_pos,
@@ -342,6 +484,143 @@ __kernel void compute_ports_cluster_rigid(
     const int num_atoms,
     const int nnode_per_group,
     const float dt,
+    const int accumulate_dpos,
+    const float rot_mass_scale
+) {
+    if(ENABLE_PORT==0){
+        return;
+    }
+    int lid = get_local_id(0);
+    int grp = get_group_id(0);
+    int my_global_id = grp * GROUP_SIZE + lid;
+
+    __local float4 l_pos[GROUP_SIZE + MAX_GHOSTS];
+    __local float  l_rad[GROUP_SIZE + MAX_GHOSTS];
+
+    float4 pi4 = (my_global_id < num_atoms) ? pos[my_global_id] : (float4)(0.0f);
+    l_pos[lid] = pi4;
+    l_rad[lid] = (my_global_id < num_atoms) ? radius[my_global_id] : 0.0f;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    int g_count = ghost_counts[grp];
+    int g_offset = grp * MAX_GHOSTS;
+    for (int k = lid; k < g_count; k += GROUP_SIZE) {
+        int gid = ghost_indices_flat[g_offset + k];
+        l_pos[GROUP_SIZE + k] = pos[gid];
+        l_rad[GROUP_SIZE + k] = radius[gid];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (my_global_id >= num_atoms) return;
+    if (lid >= nnode_per_group) return;
+    float invMi = pi4.w;
+    if (invMi <= 1e-12f) return;
+
+    int inode = grp * nnode_per_group + lid;
+
+    float3 xi = pi4.xyz;
+    float4 qi = quat[my_global_id];
+
+    float mi = 1.0f / invMi;
+    float invI = rot_mass_scale / (0.4f * mi + 1e-12f);
+    float dt2 = dt * dt + 1e-16f;
+
+    float3 sum_dpos = (float3)(0.0f);
+    float3 sum_dtheta = (float3)(0.0f);
+    if (accumulate_dpos) {
+        sum_dpos = dpos_node[inode].xyz;
+    }
+
+    int4 ng = neighs_local[my_global_id];
+    int* neighbors = (int*)&ng;
+    int i4 = inode * 4;
+
+    for (int k = 0; k < 4; k++) {
+        int idx = i4 + k;
+        dpos_neigh[idx] = (float4)(0.0f);
+        int jloc = neighbors[k];
+        if (jloc < 0) continue;
+        float K = stiffness_flat[idx];
+        if (K <= 0.0f) continue;
+
+        float invMj;
+        float3 xj;
+        if (jloc < (GROUP_SIZE + g_count)) {
+            xj = l_pos[jloc].xyz;
+            invMj = l_pos[jloc].w;
+        } else {
+            continue;
+        }
+        if (invMj <= 1e-12f) continue;
+
+        float3 r_local = port_local[idx].xyz;
+        float3 r_arm = quat_rotate(qi, r_local);
+        float3 tip = xi + r_arm;
+
+        float3 diff = xj - tip;
+        float dist2 = dot(diff, diff);
+        if (dist2 < 1e-16f) continue;
+        float dist = sqrt(dist2);
+        float3 n = diff / dist;
+
+        float w_i = invMi;
+        float w_j = invMj;
+        float3 rxn = cross(r_arm, n);
+        float w_ang = dot(rxn, rxn) * invI;
+        float alpha = 1.0f / (K * dt2);
+
+        // Determine neighbor type early to adjust weighting
+        int j_global = (jloc < GROUP_SIZE) ? (grp * GROUP_SIZE + jloc) : ghost_indices_flat[g_offset + (jloc - GROUP_SIZE)];
+        int j_lid = j_global & (GROUP_SIZE - 1);
+        int j_isnode = (j_lid < nnode_per_group);
+
+        float w_total = w_i + w_j + w_ang + alpha + 1e-12f;
+        // If neighbor is also a node, it also rotates. Assume symmetric inertia (w_ang_j ~ w_ang_i) 
+        // to avoid over-stiffening the constraint.
+        if (j_isnode) { w_total += w_ang; }
+
+        float impulse_mag = dist / w_total;
+        
+        // Decoupled scaling:
+        // Linear: Halve if double-counted (both threads run)
+        // Angular: Keep full (torque is applied locally, not gathered from neighbor recoil)
+        float impulse_lin = impulse_mag;
+        float impulse_ang = impulse_mag;
+
+        if (j_isnode) { 
+            impulse_lin *= 0.5f; 
+            // impulse_ang stays full magnitude 
+        }
+
+        float3 P_lin = n * impulse_lin;
+        float3 P_ang = n * impulse_ang;
+
+        sum_dpos   += P_lin * w_i;
+        sum_dtheta += cross(r_arm, P_ang) * invI;
+        dpos_neigh[idx] = (float4)(-P_lin * w_j, 0.0f);
+    }
+
+    dpos_node[inode] = (float4)(sum_dpos, 0.0f);
+    drot_node[inode] = (float4)(sum_dtheta, 0.0f);
+}
+
+
+// compute_ports_cluster_rigid before changes implemented by Gemini 
+__kernel void compute_ports_cluster_rigid_orig(
+    __global const float4* pos,
+    __global const float4* quat,
+    __global const float*  radius,
+    __global const int4*   neighs_local,
+    __global const int*    ghost_indices_flat,
+    __global const int*    ghost_counts,
+    __global const float4* port_local,
+    __global const float*  stiffness_flat,
+    __global float4*       dpos_node,
+    __global float4*       drot_node,
+    __global float4*       dpos_neigh,
+    const int num_atoms,
+    const int nnode_per_group,
+    const float dt,
     const int accumulate_dpos
 ) {
     if(ENABLE_PORT==0){
@@ -444,6 +723,496 @@ __kernel void compute_ports_cluster_rigid(
     drot_node[inode] = (float4)(sum_dtheta, 0.0f);
 }
 
+__kernel void compute_ports_cluster_rigid_substep_optimized(
+    __global const float4* pos,
+    __global const float4* quat,
+    __global const float*  radius,
+    __global const int4*   neighs_local,
+    __global const int*    ghost_indices_flat,
+    __global const int*    ghost_counts,
+    __global const float4* port_local,
+    __global const float*  stiffness_flat,
+    __global float4*       dpos_node,
+    __global float4*       drot_node,
+    __global float4*       dpos_neigh,
+    const int num_atoms,
+    const int nnode_per_group,
+    const float dt,
+    const int accumulate_dpos,
+    const int n_rot_substeps,
+    const float rot_eps,
+    const float theta_max
+) {
+    if(ENABLE_PORT==0) return;
+
+    int lid = get_local_id(0);
+    int grp = get_group_id(0);
+    int my_global_id = grp * GROUP_SIZE + lid;
+
+    // --- 1. LOCAL MEMORY LOAD ---
+    // (We reuse the existing logic, which is efficient)
+    __local float4 l_pos[GROUP_SIZE + MAX_GHOSTS];
+    
+    float4 pi4 = (my_global_id < num_atoms) ? pos[my_global_id] : (float4)(0.0f);
+    l_pos[lid] = pi4;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    int g_count = ghost_counts[grp];
+    int g_offset = grp * MAX_GHOSTS;
+    for (int k = lid; k < g_count; k += GROUP_SIZE) {
+        int gid = ghost_indices_flat[g_offset + k];
+        l_pos[GROUP_SIZE + k] = pos[gid];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // --- 2. EARLY EXITS ---
+    if (my_global_id >= num_atoms) return;
+    if (lid >= nnode_per_group) return; 
+    float invMi = pi4.w;
+    if (invMi <= 1e-12f) return;
+
+    // --- 3. PRELOAD DATA TO REGISTERS (Essential for Speed) ---
+    int inode = grp * nnode_per_group + lid;
+    int4 ng = neighs_local[my_global_id];
+    int neighbors[4] = {ng.x, ng.y, ng.z, ng.w};
+    
+    // Cache for Ports and Stiffness to avoid Global Reads in loop
+    float3 r_local_cache[4];
+    float  K_cache[4];
+    int    valid_bond[4]; // 0 or 1
+    
+    int i4 = inode * 4;
+    
+    for(int k=0; k<4; k++) {
+        int idx = i4 + k;
+        int jloc = neighbors[k];
+        
+        if (jloc >= 0 && stiffness_flat[idx] > 0.0f) {
+             float K = stiffness_flat[idx];
+             r_local_cache[k] = port_local[idx].xyz;
+             K_cache[k]       = K;
+             valid_bond[k]    = 1;
+        } else {
+            valid_bond[k] = 0;
+        }
+    }
+
+    // Initialize State Registers
+    float3 xi = pi4.xyz;
+    float4 qi = quat[my_global_id];
+    float4 qi_orig = qi;
+
+    float mi = 1.0f / invMi;
+    float invI = 1.0f / (0.4f * mi + 1e-12f); // Approx sphere inertia
+    float dt2 = dt * dt + 1e-16f;
+
+    float3 sum_dpos = (float3)(0.0f);
+    if (accumulate_dpos) sum_dpos = dpos_node[inode].xyz;
+
+    for (int sub=0; sub < n_rot_substeps; sub++) {
+        // Newton step in rotation-vector space: H * omega = torque
+        float3 torque = (float3)(0.0f);
+        float3 H0 = (float3)(0.0f);
+        float3 H1 = (float3)(0.0f);
+        float3 H2 = (float3)(0.0f);
+
+        for (int k = 0; k < 4; k++) {
+            if (!valid_bond[k]) continue;
+            int jloc = neighbors[k];
+            float3 xj = l_pos[jloc].xyz;
+
+            float3 r_arm = q_rot(qi, r_local_cache[k]);
+            float3 diff  = xj - (xi + r_arm);
+
+            // Weight: using stiffness only (no mass coupling)
+            float w = K_cache[k];
+
+            torque += cross(r_arm, diff) * w;
+
+            add_hessian_rr(&H0, &H1, &H2, w, r_arm);
+        }
+
+        float damp = (rot_eps > 0.0f) ? rot_eps : 0.0f;
+        H0.x += (1e-8f + damp);
+        H1.y += (1e-8f + damp);
+        H2.z += (1e-8f + damp);
+
+        float3 omega = solve_3x3(H0, H1, H2, torque);
+
+        if (theta_max > 0.0f) {
+            float a = length(omega);
+            if (a > theta_max) omega *= (theta_max / (a + 1e-16f));
+        }
+
+        qi = apply_delta_rot(qi, omega);
+    }
+
+    float3 sum_dpos_final = (float3)(0.0f);
+    if (accumulate_dpos) sum_dpos_final = dpos_node[inode].xyz;
+
+    for (int k = 0; k < 4; k++) {
+        int idx = i4 + k;
+        dpos_neigh[idx] = (float4)(0.0f); // Reset
+        if (!valid_bond[k]) continue;
+
+        int jloc = neighbors[k];
+        float3 xj = l_pos[jloc].xyz;
+        float invMj = l_pos[jloc].w;
+
+        // Recalculate with optimized qi
+        float3 r_arm = q_rot(qi, r_local_cache[k]);
+        float3 diff  = xj - (xi + r_arm);
+        
+        float dist2 = dot(diff, diff);
+        if (dist2 < 1e-16f) continue;
+        float dist = sqrt(dist2);
+        float3 n = diff / dist;
+
+        float3 rxn = cross(r_arm, n);
+        float w_ang = dot(rxn, rxn) * invI;
+        float alpha = 1.0f / (K_cache[k] * dt2);
+        
+        // Full XPBD denominator
+        float w_total = invMi + invMj + w_ang + alpha + 1e-12f;
+        float impulse = dist / w_total;
+        
+        // Double counting prevention (same as original logic)
+        int j_global = (jloc < GROUP_SIZE) ? (grp * GROUP_SIZE + jloc) : ghost_indices_flat[g_offset + (jloc - GROUP_SIZE)];
+        int j_lid = j_global & (GROUP_SIZE - 1);
+        if (j_lid < nnode_per_group) { impulse *= 0.5f; }
+
+        float3 P = n * impulse;
+        sum_dpos_final += P * invMi;
+        dpos_neigh[idx] = (float4)(-P * invMj, 0.0f);
+    }
+
+    dpos_node[inode] = (float4)(sum_dpos_final, 0.0f);
+    
+    drot_node[inode] = (float4)(quat_delta_rotvec(qi, qi_orig), 0.0f);
+}
+
+__kernel void compute_ports_cluster_rigid_shapematch(
+    __global const float4* pos,
+    __global const float4* quat,
+    __global const float*  radius,
+    __global const int4*   neighs_local,
+    __global const int*    ghost_indices_flat,
+    __global const int*    ghost_counts,
+    __global const float4* port_local,
+    __global const float*  stiffness_flat,
+    __global float4*       dpos_node,
+    __global float4*       drot_node,
+    __global float4*       dpos_neigh,
+    const int num_atoms,
+    const int nnode_per_group,
+    const float dt,
+    const int accumulate_dpos
+) {
+    if(ENABLE_PORT==0) return;
+
+    int lid = get_local_id(0);
+    int grp = get_group_id(0);
+    int my_global_id = grp * GROUP_SIZE + lid;
+
+    // --- 1. LOCAL MEMORY SETUP (Standard) ---
+    __local float4 l_pos[GROUP_SIZE + MAX_GHOSTS];
+    float4 pi4 = (my_global_id < num_atoms) ? pos[my_global_id] : (float4)(0.0f);
+    l_pos[lid] = pi4;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    int g_count = ghost_counts[grp];
+    int g_offset = grp * MAX_GHOSTS;
+    for (int k = lid; k < g_count; k += GROUP_SIZE) {
+        int gid = ghost_indices_flat[g_offset + k];
+        l_pos[GROUP_SIZE + k] = pos[gid];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // --- 2. EARLY EXITS & PRELOAD ---
+    if (my_global_id >= num_atoms) return;
+    if (lid >= nnode_per_group) return; 
+    float invMi = pi4.w;
+    if (invMi <= 1e-12f) return;
+
+    // Load Indices
+    int inode = grp * nnode_per_group + lid;
+    int4 ng = neighs_local[my_global_id];
+    int neighbors[4] = {ng.x, ng.y, ng.z, ng.w};
+    int i4 = inode * 4;
+
+    // Preload Data to Registers
+    float3 r_local_cache[4];
+    float  K_cache[4];
+    int    valid_bond[4];
+    
+    for(int k=0; k<4; k++) {
+        int idx = i4 + k;
+        int jloc = neighbors[k];
+        
+        if (jloc >= 0 && stiffness_flat[idx] > 0.0f) {
+             float K = stiffness_flat[idx];
+             r_local_cache[k] = port_local[idx].xyz;
+             K_cache[k]       = K;
+             valid_bond[k]    = 1;
+        } else {
+             valid_bond[k] = 0;
+        }
+    }
+
+    float3 xi = pi4.xyz;
+    float4 qi_orig = quat[my_global_id];
+
+    // --- 3. EXPLICIT SHAPE MATCHING (Fixed Pivot) ---
+    // We want Rotation R that minimizes sum( w * || R*r_local - (x_j - x_i) ||^2 )
+    // This is solved by Polar Decomposition of Covariance Matrix A.
+    // A = Sum( w * (x_j - x_i) * r_local^T )
+
+    float A[9] = {0.0f}; // Covariance Matrix
+    
+    for(int k=0; k<4; k++) {
+        if(!valid_bond[k]) continue;
+        
+        int jloc = neighbors[k];
+        float3 xj = l_pos[jloc].xyz;
+         float3 vec_target = xj - xi; // Target vector relative to node center
+         float3 vec_source = r_local_cache[k];
+         float w = K_cache[k]; // Use stiffness as weight
+
+        mat3_outer_add(A, w, vec_target, vec_source);
+     }
+
+    float nF = 0.0f;
+    for(int i=0; i<9; i++) nF += A[i]*A[i];
+    float scale = (nF > 1e-12f) ? native_rsqrt(nF) * 1.7f : 1.0f; // 1.7 approx sqrt(3)
+
+    float R[9];
+    for(int i=0; i<9; i++) R[i] = A[i] * scale;
+    
+    float Rt[9], M[9], T[9];
+    // 4 Iterations is usually sufficient for single precision
+    for(int iter=0; iter<4; iter++) {
+        // Transpose R -> Rt
+        Rt[0]=R[0]; Rt[1]=R[3]; Rt[2]=R[6];
+        Rt[3]=R[1]; Rt[4]=R[4]; Rt[5]=R[7];
+        Rt[6]=R[2]; Rt[7]=R[5]; Rt[8]=R[8];
+        
+        // M = Rt * R
+        mat3_mul(Rt, R, M);
+        
+        // T = 3I - M
+        for(int i=0; i<9; i++) T[i] = -M[i];
+        T[0] += 3.0f; T[4] += 3.0f; T[8] += 3.0f;
+        
+        // R_new = 0.5 * R * T
+        mat3_mul(R, T, M); // Use M as temp
+        for(int i=0; i<9; i++) R[i] = 0.5f * M[i];
+    }
+    
+    float4 qi_opt = mat3_to_quat(R);
+
+    // --- 5. LINEAR RECOIL (Using Exact Rotation) ---
+    float3 sum_dpos = (float3)(0.0f);
+    if (accumulate_dpos) sum_dpos = dpos_node[inode].xyz;
+    
+    float invI = 1.0f / (0.4f * (1.0f/invMi) + 1e-12f);
+    float dt2 = dt*dt;
+
+    for (int k = 0; k < 4; k++) {
+        int idx = i4 + k;
+        dpos_neigh[idx] = (float4)(0.0f);
+        if (!valid_bond[k]) continue;
+
+        int jloc = neighbors[k];
+        float3 xj = l_pos[jloc].xyz;
+        float invMj = l_pos[jloc].w;
+
+        // Use qi_opt
+        float3 r_arm = q_rot(qi_opt, r_local_cache[k]);
+        
+        float3 diff = xj - (xi + r_arm);
+        float dist2 = dot(diff, diff);
+        if (dist2 < 1e-16f) continue;
+        float dist = sqrt(dist2);
+        float3 n = diff / dist;
+
+        // Same XPBD weighting as substep kernel for fair comparison
+        float3 rxn = cross(r_arm, n);
+        float w_ang = dot(rxn, rxn) * invI;
+        float alpha = 1.0f / (K_cache[k] * dt2);
+        
+        float w_total = invMi + invMj + w_ang + alpha + 1e-12f;
+        float impulse = dist / w_total;
+        
+        int j_global = (jloc < GROUP_SIZE) ? (grp * GROUP_SIZE + jloc) : ghost_indices_flat[g_offset + (jloc - GROUP_SIZE)];
+        int j_lid = j_global & (GROUP_SIZE - 1);
+        if (j_lid < nnode_per_group) { impulse *= 0.5f; }
+
+        float3 P = n * impulse;
+        sum_dpos += P * invMi;
+        dpos_neigh[idx] = (float4)(-P * invMj, 0.0f);
+    }
+
+    dpos_node[inode] = (float4)(sum_dpos, 0.0f);
+
+    drot_node[inode] = (float4)(quat_delta_rotvec(qi_opt, qi_orig), 0.0f);
+}
+
+__kernel void compute_ports_cluster_rigid_eigen(
+    __global const float4* pos,
+    __global const float4* quat,
+    __global const float*  radius,
+    __global const int4*   neighs_local,
+    __global const int*    ghost_indices_flat,
+    __global const int*    ghost_counts,
+    __global const float4* port_local,
+    __global const float*  stiffness_flat,
+    __global float4*       dpos_node,
+    __global float4*       drot_node,
+    __global float4*       dpos_neigh,
+    const int num_atoms,
+    const int nnode_per_group,
+    const float dt,
+    const int accumulate_dpos
+) {
+    if(ENABLE_PORT==0) return;
+
+    int lid = get_local_id(0);
+    int grp = get_group_id(0);
+    int my_global_id = grp * GROUP_SIZE + lid;
+
+    // --- 1. LOCAL MEMORY SETUP ---
+    __local float4 l_pos[GROUP_SIZE + MAX_GHOSTS];
+    float4 pi4 = (my_global_id < num_atoms) ? pos[my_global_id] : (float4)(0.0f);
+    l_pos[lid] = pi4;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    int g_count = ghost_counts[grp];
+    int g_offset = grp * MAX_GHOSTS;
+    for (int k = lid; k < g_count; k += GROUP_SIZE) {
+        int gid = ghost_indices_flat[g_offset + k];
+        l_pos[GROUP_SIZE + k] = pos[gid];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // --- 2. EARLY EXITS & PRELOAD ---
+    if (my_global_id >= num_atoms) return;
+    if (lid >= nnode_per_group) return; 
+    float invMi = pi4.w;
+    if (invMi <= 1e-12f) return;
+
+    int inode = grp * nnode_per_group + lid;
+    int4 ng = neighs_local[my_global_id];
+    int neighbors[4] = {ng.x, ng.y, ng.z, ng.w};
+    int i4 = inode * 4;
+
+    float3 r_local_cache[4];
+    float  K_cache[4];
+    int    valid_bond[4];
+    
+    for(int k=0; k<4; k++) {
+        int idx = i4 + k;
+        int jloc = neighbors[k];
+        
+        if (jloc >= 0 && stiffness_flat[idx] > 0.0f) {
+             float K = stiffness_flat[idx];
+             r_local_cache[k] = port_local[idx].xyz;
+             K_cache[k]       = K;
+             valid_bond[k]    = 1;
+        } else {
+             valid_bond[k] = 0;
+        }
+    }
+
+    float3 centroid_neigh = (float3)(0.0f);
+    float sum_w = 0.0f;
+    
+    for(int k=0; k<4; k++) {
+        if(!valid_bond[k]) continue;
+        
+        int jloc = neighbors[k];
+        float3 xj = l_pos[jloc].xyz;
+         float w = K_cache[k];
+         centroid_neigh += xj * w;
+         sum_w += w;
+    }
+    
+    if (sum_w > 1e-9f) centroid_neigh *= (1.0f / sum_w);
+    else centroid_neigh = pi4.xyz; // Fallback
+
+    // --- 4. ACCUMULATE COVARIANCE MATRIX B ---
+    // B = Sum( w_i * (n_i - centroid) * p_i^T )
+    // Note: p_i (ports) are already local (centered at 0,0,0).
+     float S[9] = {0.0f};
+
+    for(int k=0; k<4; k++) {
+        if(!valid_bond[k]) continue;
+        float w = K_cache[k];
+        float3 p = r_local_cache[k];
+        float3 n = l_pos[neighbors[k]].xyz - centroid_neigh; // Centered target
+        mat3_outer_add(S, w, n, p);
+     }
+
+    float4 q = quat[my_global_id];
+    
+    // 4 Iterations is robust for standard physics
+    // Each step: q = K * q; q = normalize(q);
+    for(int iter=0; iter<4; iter++) {
+        q = apply_K_matrix(S[0], S[1], S[2], S[3], S[4], S[5], S[6], S[7], S[8], q);
+        q = normalize(q);
+    }
+    
+    float4 qi_opt = q;
+    float4 qi_orig = quat[my_global_id];
+    float3 xi = pi4.xyz;
+
+    // --- 6. LINEAR RECOIL ---
+    // Same linear logic as before, using the optimal orientation
+
+    float3 sum_dpos = (float3)(0.0f);
+    if (accumulate_dpos) sum_dpos = dpos_node[inode].xyz;
+    
+    float invI = 1.0f / (0.4f * (1.0f/invMi) + 1e-12f);
+    float dt2 = dt*dt;
+
+    for (int k = 0; k < 4; k++) {
+        int idx = i4 + k;
+        dpos_neigh[idx] = (float4)(0.0f);
+        if (!valid_bond[k]) continue;
+
+        int jloc = neighbors[k];
+        float3 xj = l_pos[jloc].xyz;
+        float invMj = l_pos[jloc].w;
+
+        float3 r_arm = q_rot(qi_opt, r_local_cache[k]);
+        
+        float3 diff = xj - (xi + r_arm);
+        float dist2 = dot(diff, diff);
+        if (dist2 < 1e-16f) continue;
+        float dist = sqrt(dist2);
+        float3 n = diff / dist;
+
+        float3 rxn = cross(r_arm, n);
+        float w_ang = dot(rxn, rxn) * invI;
+        float alpha = 1.0f / (K_cache[k] * dt2);
+        
+        float w_total = invMi + invMj + w_ang + alpha + 1e-12f;
+        float impulse = dist / w_total;
+        
+        // Double-count check
+        int j_global = (jloc < GROUP_SIZE) ? (grp * GROUP_SIZE + jloc) : ghost_indices_flat[g_offset + (jloc - GROUP_SIZE)];
+        int j_lid = j_global & (GROUP_SIZE - 1);
+        if (j_lid < nnode_per_group) { impulse *= 0.5f; }
+
+        float3 P = n * impulse;
+        sum_dpos += P * invMi;
+        dpos_neigh[idx] = (float4)(-P * invMj, 0.0f);
+    }
+
+    dpos_node[inode] = (float4)(sum_dpos, 0.0f);
+
+    drot_node[inode] = (float4)(quat_delta_rotvec(qi_opt, qi_orig), 0.0f);
+}
+
 __kernel void apply_corrections_rigid_ports(
     const int natoms,
     const int nnode_per_group,
@@ -458,7 +1227,8 @@ __kernel void apply_corrections_rigid_ports(
     __global float4* dpos_mom,
     __global float4* dquat_mom,
     const float relaxation,
-    const float beta
+    const float beta,
+    const int massless_rot
 ) {
     int i = get_global_id(0);
     if (i >= natoms) return;
@@ -486,7 +1256,6 @@ __kernel void apply_corrections_rigid_ports(
         }
     }
 
-    // Port constraints include explicit recoils (dpos_neigh), so we do not apply any extra scaling for caps.
     float3 dx = dx_coll + dx_port;
 
     int msk = (fixmask != 0) ? fixmask[i] : 0;
@@ -494,11 +1263,6 @@ __kernel void apply_corrections_rigid_ports(
     if (msk & 2) dx.y = 0.0f;
     if (msk & 4) dx.z = 0.0f;
 
-    // --- Momentum Update (Linear) ---
-    // p_jacobi = p_old + dx * relaxation
-    // p_new = p_jacobi + beta * d_mom_old
-    // d_mom_new = p_new - p_old = dx * relaxation + beta * d_mom_old
-    
     float3 d_mom = dpos_mom[i].xyz;
     float3 move = dx * relaxation + d_mom * beta;
     
@@ -517,7 +1281,6 @@ __kernel void apply_corrections_rigid_ports(
     if (isnode) {
         if (msk & (1|2|4)) return; // pinned node: do not rotate
         
-        // --- Rotation Update ---
         float3 dtheta = drot_node[inode].xyz * relaxation;
         float angle = length(dtheta);
         
@@ -530,15 +1293,19 @@ __kernel void apply_corrections_rigid_ports(
             q_jacobi = quat_normalize(quat_mul(dq, q_old));
         }
         
-        // Momentum for quaternion: q_new = Normalize(q_jacobi + beta * d_q_mom)
-        float4 dq_mom = dquat_mom[i];
-        float4 q_new = q_jacobi + dq_mom * beta;
-        q_new = quat_normalize(q_new);
+        float4 q_new;
+        if (massless_rot) {
+            q_new = q_jacobi;
+            dquat_mom[i] = (float4)(0.0f);
+        } else {
+            float4 dq_mom = dquat_mom[i];
+            q_new = q_jacobi + dq_mom * beta;
+            q_new = quat_normalize(q_new);
+        }
         
-        // Ensure we stay in the same hemisphere to avoid flips
         if (dot(q_new, q_old) < 0.0f) q_new = -q_new;
         
         quat[i] = q_new;
-        dquat_mom[i] = q_new - q_old;
+        if (!massless_rot) dquat_mom[i] = q_new - q_old;
     }
 }

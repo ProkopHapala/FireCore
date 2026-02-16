@@ -370,7 +370,7 @@ class RRsp3:
             margin_sq, bbox_margin_f
         ).wait()
 
-    def step_cluster(self, *, nnode_per_group, dt=0.1, k_coll=50.0, relaxation=0.5, bbox_margin=0.5, momentum_beta=0.0):
+    def step_cluster(self, *, nnode_per_group, dt=0.1, k_coll=50.0, relaxation=0.5, bbox_margin=0.5, momentum_beta=0.0, port_kernel='current', rot_mass_scale=1.0, n_rot_substeps=5, rot_eps=0.0, theta_max=0.0):
         nnode_per_group = int(nnode_per_group)
         self._ensure_node_buffers(nnode_per_group)
 
@@ -381,6 +381,9 @@ class RRsp3:
         kcoll_f = np.float32(float(k_coll))
         bbox_margin_f = np.float32(float(bbox_margin))
         beta_f = np.float32(float(momentum_beta))
+        rms_f = np.float32(float(rot_mass_scale))
+        rot_eps_f = np.float32(float(rot_eps))
+        theta_max_f = np.float32(float(theta_max))
 
         # heuristic ghost margin
         rad = self.download(self.cl_radius, (self.num_atoms,), np.float32)
@@ -427,7 +430,30 @@ class RRsp3:
             kcoll_f
         )
 
-        self.prg.compute_ports_cluster_rigid(
+        if port_kernel in (None, 'current', 'rigid'):
+            kfun = getattr(self.prg, 'compute_ports_cluster_rigid', None)
+            massless_rot = 0
+        elif port_kernel in ('orid', 'orig', 'original'):
+            # Backward-compat: kernel was renamed from _orid -> _orig
+            kfun = getattr(self.prg, 'compute_ports_cluster_rigid_orig', None)
+            if kfun is None:
+                kfun = getattr(self.prg, 'compute_ports_cluster_rigid_orid', None)
+            massless_rot = 0
+        elif port_kernel in ('substep', 'substep_optimized'):
+            kfun = getattr(self.prg, 'compute_ports_cluster_rigid_substep_optimized', None)
+            massless_rot = 1
+        elif port_kernel in ('shapematch', 'shape_match'):
+            kfun = getattr(self.prg, 'compute_ports_cluster_rigid_shapematch', None)
+            massless_rot = 1
+        elif port_kernel in ('eigen', 'q_eigen'):
+            kfun = getattr(self.prg, 'compute_ports_cluster_rigid_eigen', None)
+            massless_rot = 1
+        else:
+            raise ValueError(f"RRsp3.step_cluster: unknown port_kernel={port_kernel!r}; use 'current','orig','substep_optimized','shapematch','eigen'")
+        if kfun is None:
+            raise RuntimeError(f"RRsp3.step_cluster: requested port_kernel={port_kernel!r} not present in built program")
+
+        args = [
             self.queue, global_size, local_size,
             self.cl_pos, self.cl_quat, self.cl_radius,
             self.cl_neighs_local,
@@ -439,7 +465,15 @@ class RRsp3:
             self.cl_dpos_neigh,
             natoms, np.int32(nnode_per_group),
             dt_f, np.int32(0)
-        )
+        ]
+        if port_kernel in (None, 'current', 'rigid'):
+            args.append(rms_f)
+        elif port_kernel in ('substep', 'substep_optimized'):
+            args.append(np.int32(int(n_rot_substeps)))
+            args.append(rot_eps_f)
+            args.append(theta_max_f)
+        
+        kfun(*args)
 
         self.prg.apply_corrections_rigid_ports(
             self.queue, (self.num_atoms,), None,
@@ -450,7 +484,7 @@ class RRsp3:
             self.cl_dpos_node, self.cl_drot_node, self.cl_dpos_neigh,
             self.cl_dpos_coll,
             self.cl_dpos_mom, self.cl_dquat_mom,
-            relax_f, beta_f
+            relax_f, beta_f, np.int32(massless_rot)
         ).wait()
 
     def compute_cluster_deltas(self, *, nnode_per_group, dt=0.1, k_coll=50.0, bbox_margin=0.5):
@@ -542,7 +576,7 @@ class RRsp3:
             self.cl_dpos_node, self.cl_drot_node, self.cl_dpos_neigh,
             self.cl_dpos_coll,
             self.cl_dpos_mom, self.cl_dquat_mom,
-            relax_f, beta_f
+            relax_f, beta_f, np.int32(0)
         ).wait()
 
     def download(self, buf, shape, dtype):

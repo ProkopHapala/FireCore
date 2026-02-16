@@ -984,3 +984,8 @@ I_i·dω_i + r_k × (m_j·dp_j)
 The key was computing `λ` using the **generalized mass** `w_total` that accounts for both translation AND rotation coupling.
 
 Does this clarify the approach?
+
+---
+
+# USER
+
