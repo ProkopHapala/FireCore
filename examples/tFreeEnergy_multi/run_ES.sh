@@ -1,4 +1,8 @@
 #!/bin/bash
+
+ln -s ../../cpp/common_resources data
+ln -s ../../cpp/common_resources common_resources 
+
 rm trajectory.xyz
 set -e  # Exit on error
 
@@ -14,7 +18,7 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
-N=30
+N=20
 
 # Ensure we are in the script directory
 cd "$(dirname "$0")"

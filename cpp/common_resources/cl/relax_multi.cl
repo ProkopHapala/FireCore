@@ -914,8 +914,8 @@ __kernel void updateAtomsMMFFf4(
     __global int*     sysneighs,    // 13 // // for each system contains array int[nMaxSysNeighs] of nearby other systems
     __global float4*  sysbonds,      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
     __global float4*  averageForces, // 15 // contains average forces on atoms for Thermodynamic Integration
-    __global float*   work//,          // 16 // contains work recorded at each step for Jarzynski Equality
-//    const int4    jeParams
+    __global float*   work,          // 16 // contains work recorded at each step for Jarzynski Equality
+    const int4    jeParams
 ){
     const int natoms=n.x;           // number of atoms
     const int nnode =n.y;           // number of node atoms
@@ -1005,7 +1005,7 @@ __kernel void updateAtomsMMFFf4(
 
 
         // if(iS==0 && iG==0)printf("GPU: iS=%i iG=%i cons.w=%g TDrive.z=%g \n", iS, iG, cons.w, TDrive.z );
-        if( work && (cons.w > 0.f) ){
+        if( work && (cons.w > 0.f) && (TDrive.z >= 0.f) ){
              float4 consEnd = constrK[ iaa ];
              int nLambda    = (int)consEnd.w;
              float lambda   = TDrive.z/(float)(nLambda-1);
