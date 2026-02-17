@@ -1326,6 +1326,83 @@ __kernel void printOnGPU(
 }
 
 // ======================================================================
+//                          Surface Forces
+// ======================================================================
+
+inline float4 combineREQ(float4 a, float4 b){
+    return (float4)(a.x+b.x, a.y*b.y, a.z*b.z, a.w*b.w);
+}
+
+inline float getHamakerLJ93( float3 dp, float3 n, __private float3* f, float4 REQH ){
+    float z = dot(dp, n);
+    z = fmax(z, 1e-6f);
+    float ratio = REQH.x / z;
+    float r3    = ratio*ratio*ratio; // (z0/z)^3
+    float r9    = r3*r3*r3;          // (z0/z)^9
+    float E = 0.5f * REQH.y * ( r9 - 3.0f*r3 );
+    float F_scalar = ( 4.5f * REQH.y / z ) * ( r9 - r3 );
+    *f = n * F_scalar;
+    return E;
+}
+
+inline float getMorseSurface( float3 dp, float3 n, __private float3* f, float4 REQH, float K ){
+    float z = dot(dp, n);
+    float exp_term = exp( -K * (z - REQH.x) );
+    float E = REQH.y * ( exp_term*exp_term - 2.0f*exp_term );
+    float F_scalar = 2.0f * K * REQH.y * exp_term * ( exp_term - 1.0f );
+    *f = n * F_scalar;
+    return E;
+}
+
+__kernel void getSurfFlat(
+    const int4 nDOFs,               // 1   (nAtoms,nnode, nSystems, 0)
+    // Dynamical
+    __global float4*  apos,         // 2  [natoms]
+    __global float4*  fapos,        // 3  [natoms]
+    // parameters
+    __global float4*  REQs,         // 4  [natoms]
+    // Surface params
+    const float4 surf_pos0,         // 5
+    const float4 surf_normal,       // 6
+    const float4 surf_REQ,          // 7
+    const float4 surf_param         // 8  (K, mode, 0, 0)
+){
+    const int iG = get_global_id (0);   // index of atom
+    const int iS = get_global_id (1);   // index of system
+    const int nAtoms = nDOFs.x;
+    const int nnode  = nDOFs.y;
+
+    if(iG >= nAtoms) return;
+
+    const int i0a   = iS*nAtoms;         // index of first atom
+    const int i0v   = iS*(nAtoms+nnode); // index of first vector
+
+    const int iav = iG + i0v;
+    const int iaa = iG + i0a;
+
+    float3 p = apos[iav].xyz;
+    float4 REQi = REQs[iaa];
+
+    float4 REQij = combineREQ( surf_REQ, REQi );
+
+    float3 f = (float3)(0.0f);
+    float E = 0.0f;
+
+    float3 dp = p - surf_pos0.xyz;
+    float3 nn = surf_normal.xyz;
+    float  K  = surf_param.x;
+    int mode  = (int)surf_param.y;
+
+    if(mode == 1){ // Hamaker LJ93
+        E = getHamakerLJ93( dp, nn, &f, REQij );
+    } else if (mode == 2){ // Morse
+        E = getMorseSurface( dp, nn, &f, REQij, K );
+    }
+
+    fapos[iav] += (float4)(f, E);
+}
+
+// ======================================================================
 //                     cleanForceMMFFf4()
 // ======================================================================
 // Clean forces on atoms and neighbors to prepare for next forcefield evaluation

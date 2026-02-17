@@ -1350,6 +1350,13 @@ def loadMol2(fname, bReadN=True, bExitError=True):
     for i, line in enumerate(lines):
         line = line.strip()
         if   len(line) == 0: continue
+        elif line.startswith('#lvs') or line.startswith('#LVS'):
+            # Handle #lvs comment line, e.g.: "#lvs  32.7 0.0 0.0   16.35 28.319 0.0   0.0 0.0 40.0"
+            parts = line[4:].split()
+            nums = [ float(w) for w in parts if w.replace('.','',1).replace('-','',1).replace('+','',1).isdigit() or ('e' in w.lower()) ]
+            if len(nums) >= 9:
+                lvec = np.array(nums[:9]).reshape(3,3)
+            continue
         elif line[0] == '@':
             #print( f"{fname} line: {i}: {line}" )
             lu = line.upper()

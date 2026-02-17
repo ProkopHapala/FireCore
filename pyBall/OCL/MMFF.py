@@ -176,7 +176,10 @@ class MMFF:
         self.fapos      = np.full((self.nvecs, 4), 0.0, dtype=np.float32)
         self.atypes     = np.full( self.natoms,    -1,  dtype=np.int32)
         self.neighs     = np.full((self.natoms,4), -1,  dtype=np.int32)
-        self.neighCell  = np.full((self.natoms,4),  0,  dtype=np.int32)
+        # neighCell must point to the zero-shift index in the PBC shifts array.
+        # Zero shift is at index: nz*(2*ny+1)*(2*nx+1) + ny*(2*nx+1) + nx
+        zero_shift_idx = nPBC[2]*(2*nPBC[1]+1)*(2*nPBC[0]+1) + nPBC[1]*(2*nPBC[0]+1) + nPBC[0]
+        self.neighCell  = np.full((self.natoms,4),  zero_shift_idx,  dtype=np.int32)
         self.REQs       = np.full((self.natoms,4), 0.0, dtype=np.float32)
         self.apars      = np.full((self.nnode, 4), 0.0, dtype=np.float32)
         self.bLs        = np.full((self.nnode, 4), 0.0, dtype=np.float32)
@@ -389,7 +392,8 @@ class MMFF:
 
         ntors = 0
         if bRealloc:
-            self.realloc(nnode=nnode, ncap=ncap + ne_total, ntors=ntors)
+            nPBC_ = getattr(self, 'nPBC', None) or (0,0,0)
+            self.realloc(nnode=nnode, ncap=ncap + ne_total, ntors=ntors, nPBC=nPBC_)
             self.REQs[:,:] = REQs[:,:]
 
         # Assign atom types and positions
@@ -545,6 +549,12 @@ class MMFF:
 
         mol.npi_list = [int(x) for x in npi_list]
         mol.nep_list = [int(x) for x in nep_list]
+
+        # Copy lattice vectors if present
+        if mol.lvec is not None:
+            self.lvec = mol.lvec.astype(np.float32)
+        else:
+            self.lvec = None
 
         # For parity with C++: do not propagate/flip pi directions here; C++ uses hs[3] from makeConfGeom directly.
 

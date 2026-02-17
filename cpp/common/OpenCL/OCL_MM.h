@@ -184,6 +184,7 @@ class OCL_MM: public OCLsystem { public:
         newTask( "printOnGPU"             ,program_relax, 2);
 
         newTask( "getSurfMorse"           ,program_relax, 2);
+        newTask( "getSurfFlat"            ,program_relax, 2);
         newTask( "make_GridFF"            ,program_relax, 1);
         newTask( "sampleGridFF"           ,program_relax, 1);
         newTask( "addDipoleField"         ,program_relax, 1);
@@ -788,6 +789,33 @@ class OCL_MM: public OCLsystem { public:
         // __global float4*  aforce,       // 4
         // __global float4*  fneigh,       // 5
         // __global int4*    bkNeighs      // 6
+    }
+
+    OCLtask* setup_getSurfFlat( int na, int nNode, OCLtask* task=0 ){
+        printf("setup_getSurfFlat(na=%i,nnode=%i) \n", na, nNode);
+        if(task==0) task = getTask("getSurfFlat");
+        int nloc = 32;
+        task->local.x  = nloc;
+        task->global.x = na + nloc-(na%nloc);
+        task->global.y = nSystems;
+        
+        useKernel( task->ikernel );
+        nDOFs.x=na; 
+        nDOFs.y=nNode; 
+        
+        int err=0;
+        err |= _useArg   ( nDOFs );            // 1
+        err |= useArgBuff( ibuff_atoms  );     // 2
+        err |= useArgBuff( ibuff_aforces);     // 3
+        err |= useArgBuff( ibuff_REQs   );     // 4
+        // Surface parameters will be set by updateArgs or setArg in run loop usually, 
+        // but here we just define the task structure. 
+        // arguments 5,6,7,8 are float4 constants. 
+        // For C++ usage, we might want to bind them to member variables or buffers if they change.
+        // For PyOpenCL, this setup function might not be used directly, but good to have for completeness.
+        
+        OCL_checkError(err, "setup_getSurfFlat");
+        return task;
     }
 
     OCLtask* setup_cleanForceMMFFf4( int na, int nNode,  OCLtask* task=0 ){
