@@ -683,11 +683,14 @@ float4 getLJ( float3 apos, float2 cLJ, float3 pos ){
 }
 
 float4 getMorse( float3 dp, float3 REA ){
+    // REA = (R0, E0, K)  K<0 i.e. K=-alpha  (standard Morse alpha>0)
+    // E   =  E0 * (expar^2 - 2*expar)   expar=exp(K*(r-R0))
+    // F   = -dE/dr * dp/r = -2*K*E0*expar*(expar-1)*dp/r
     //float3  dp  =  pos - apos;
     float   r     = sqrt( dot(dp,dp) + R2SAFE );
     float   expar = exp( REA.z*(r-REA.x) );
     float   E     = REA.y*expar*( expar - 2 );
-    float   fr    = REA.y*expar*( expar - 1 )*2*REA.z;
+    float   fr    = -REA.y*expar*( expar - 1 )*2*REA.z;  // fixed sign: -dE/dr
     return (float4)(dp*(fr/r), E);
 }
 
@@ -938,6 +941,59 @@ __kernel void evalLJC_QZs_toImg(
     //fe  = (float4){sin(ia*0.1), sin(ia*0.1), sin(ib*0.1), cos(ia*0.1)*cos(ib*0.1)*cos(ic*0.1) };
     write_imagef( imgOut, (int4){ia,ib,ic,0}, fe );
     //write_imagef( imgOut, (int4){0,0,0,0},  float4Zero );
+}
+
+// ========================== evalMorseC_QZs_toImg
+// Same as evalLJC_QZs_toImg but uses getMorse(dp, cMs[j].xyz) instead of getLJ.
+// cMs: float4 per atom: (.x=R0_ij, .y=E0_ij, .z=alpha, .w=unused)
+__kernel void evalMorseC_QZs_toImg(
+    const int nAtoms,
+    __global float4* atoms,         // 2  (x,y,z,q)
+    __global float4* cMs,           // 3  (R0, E0, alpha, 0)
+    __write_only image3d_t  imgOut, // 4
+    const int4 nGrid,               // 5
+    const float4 grid_p0,           // 6
+    const float4 grid_dA,           // 7
+    const float4 grid_dB,           // 8
+    const float4 grid_dC,           // 9
+    float4 Qs,                      // 10
+    float4 QZs                      // 11
+){
+    __local float4 LATOMS[32];
+    __local float4 LCLJS [32];
+    const int iG = get_global_id(0);
+    const int iL = get_local_id (0);
+    const int nL = get_local_size(0);
+    const int nab = nGrid.x*nGrid.y;
+    const int ia  = iG%nGrid.x;
+    const int ib  = (iG%nab)/nGrid.x;
+    const int ic  = iG/nab;
+    const int nMax = nab*nGrid.z;
+    if(iG>nMax) return;
+    float4 fe  = float4Zero;
+    float3 pos = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib + grid_dC.xyz*ic;
+    Qs *= COULOMB_CONST;
+    for(int i0=0; i0<nAtoms; i0+=nL){
+        int i = i0+iL;
+        LATOMS[iL] = atoms[i];
+        LCLJS [iL] = cMs  [i];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for(int j=0; j<nL; j++){
+            if((j+i0)<nAtoms){
+                float4 xyzq = LATOMS[j];
+                float3 dp   = pos - xyzq.xyz;
+                fe += getMorse( dp, LCLJS[j].xyz );
+                fe += getCoulomb( xyzq, pos+(float3)(0,0,QZs.x) ) * Qs.x;
+                fe += getCoulomb( xyzq, pos+(float3)(0,0,QZs.y) ) * Qs.y;
+                fe += getCoulomb( xyzq, pos+(float3)(0,0,QZs.z) ) * Qs.z;
+                fe += getCoulomb( xyzq, pos+(float3)(0,0,QZs.w) ) * Qs.w;
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    float renorm = 100.0/fabs(fe.w);
+    if(renorm<1.f){ fe*=renorm; }
+    write_imagef( imgOut, (int4){ia,ib,ic,0}, fe );
 }
 
 // ========================== 

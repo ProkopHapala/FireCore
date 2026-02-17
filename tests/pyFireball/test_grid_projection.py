@@ -4,8 +4,26 @@ import os
 import sys
 import matplotlib.pyplot as plt
 
-# Adjust path to FireCore/pyBall directory
-sys.path.append("../../")
+# Adjust path to FireCore repo root (so `import pyBall` works regardless of cwd)
+_REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+# Ensure relative runtime data paths (e.g. ./Fdata/info.dat) resolve correctly
+_THIS_DIR = os.path.dirname(__file__)
+os.chdir(_THIS_DIR)
+
+_FDATA_LOCAL = os.path.join(_THIS_DIR, "Fdata")
+_FDATA_INFO  = os.path.join(_FDATA_LOCAL, "info.dat")
+if not os.path.exists(_FDATA_INFO):
+    _FDATA_FALLBACK = os.path.join(_REPO_ROOT, "tests", "Fireball", "Fdata_HCNO")
+    _FDATA_FALLBACK_INFO = os.path.join(_FDATA_FALLBACK, "info.dat")
+    if not os.path.exists(_FDATA_FALLBACK_INFO):
+        raise RuntimeError(f"Cannot find Fireball Fdata/info.dat. Missing: '{_FDATA_INFO}' and fallback '{_FDATA_FALLBACK_INFO}'")
+    if os.path.lexists(_FDATA_LOCAL):
+        os.unlink(_FDATA_LOCAL)
+    os.symlink(_FDATA_FALLBACK, _FDATA_LOCAL)
+
 from pyBall import FireCore as fc
 from pyBall.FireballOCL import Grid as ocl_grid
 
@@ -169,8 +187,9 @@ def test_pentacene_projection(args):
     if dens is not None:
         print(f"Density range: {dens.min()} to {dens.max()}")
         print(f"Total charge (integrated): {np.sum(dens) * np.prod(dCell)}")
-        plot_density_slices(dens, title="Pentacene Density (GPU) : Slices")
-        plot_density_maxproj(dens, title="Pentacene Density (GPU) : Max Projections")
+        if not args.noplot:
+            plot_density_slices(dens, title="Pentacene Density (GPU) : Slices")
+            plot_density_maxproj(dens, title="Pentacene Density (GPU) : Max Projections")
     else:
         print("Projection failed or returned None.")
 
@@ -178,13 +197,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     #parser.add_argument("--xyz",      type=str,   default="../../tests/tUFF/data/xyz/pentacene.xyz", help="Path to XYZ geometry")
     #parser.add_argument("--xyz",      type=str,   default="../../tests/tUFF/data/xyz/citosine.xyz", help="Path to XYZ geometry")
-    parser.add_argument("--xyz",      type=str,   default="../../tests/tUFF/data/xyz/guanine.xyz", help="Path to XYZ geometry")
+    parser.add_argument("--xyz",      type=str,   default=os.path.join(_REPO_ROOT, "tests", "tUFF", "data_UFF", "xyz", "guanine.xyz"), help="Path to XYZ geometry")
 
     parser.add_argument("--margin",   type=float, default=4.0,    help="Grid margin (Angstrom)")
     parser.add_argument("--step",     type=float, default=0.1,    help="Grid spacing (Angstrom)")
     parser.add_argument("--block",    type=int,   default=8,      help="Block size for tasks (voxel edge count)")
     parser.add_argument("--nmaxatom", type=int,   default=64,     help="Max atoms per block/task")
     parser.add_argument("--gpu-tasks", action="store_true",      help="Use GPU-based task builder")
+    parser.add_argument("--noplot",   action="store_true",      help="Disable matplotlib figures/plt.show()")
     parser.add_argument("--hack-block", nargs="+", type=float, default=None,   help="i j val_s [val_px val_py val_pz]; zeros rho and sets one 4x4 diagonal block")
     parser.add_argument("--plot-block-hist", type=int, default=0, help="Plot histogram of atoms per block (from build_tasks)")
     args = parser.parse_args()
@@ -200,4 +220,5 @@ if __name__ == "__main__":
     args.hack_block = hack_block
 
     test_pentacene_projection(args)
-    plt.show()
+    if not args.noplot:
+        plt.show()

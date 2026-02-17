@@ -14,8 +14,16 @@ The package is a multi-language system combining Python for high-level logic, C+
 | **C++/OpenCL Host** | `/cpp/libs_OCL/OCL_GridFF.cpp`| C++ | Main C++ library file. Manages OpenCL environment and defines the C functions called by Python. |
 | **DFT/OCL Interface** | `/cpp/common/OpenCL/OCL_DFT.h` | C++ | Header defining the `OCL_DFT` class, which encapsulates DFT-specific OpenCL tasks like density projection. |
 | **Primary Kernels** | `/cpp/common_resources/cl/myprog.cl` | OpenCL C | **Contains the critical density projection kernels** (`projectOrbDenToGrid_texture`, `projectDenmatToGrid`, etc.). |
-| **Force Field Kernels**| `/cpp/common_resources/cl/GridFF.cl` | OpenCL C | Contains kernels for generating force fields from potentials (e.g., `make_MorseFF`). |
-| **Relaxation Kernels**| `/cpp/common_resources/cl/relax.cl` | OpenCL C | Contains kernels for probe particle relaxation (`relaxStrokesTilted`) and post-processing (`convolveZ`). |
+| **Force Field Kernels**| `/cpp/common_resources/cl/GridFF.cl` | OpenCL C | Kernels for force-field grids, Poisson (`poissonW`), and Bspline-based interpolation. |
+| **Relaxation Kernels**| `/cpp/common_resources/cl/relax.cl` | OpenCL C | Kernels for probe particle relaxation (`relaxStrokesTilted`), trilinear sampling, and df post-processing (`convolveZ`). |
+| **PyOpenCL Grid Host** | `/pyBall/OCL/GridFF.py` | Python | PyOpenCL host for FFT, Poisson, and grid convolution; reuses `GridFF.cl` kernels. |
+| **Fireball Density Host** | `/pyBall/FireballOCL/Grid.py` | Python | PyOpenCL host for projecting Fireball LCAO density to grids (uses `cl/Grid.cl`). |
+| **Fireball Density Kernels** | `/pyBall/FireballOCL/cl/Grid.cl` | OpenCL C | Sparse density-matrix projection onto real-space grids. |
+| **Fireball Density Test** | `/tests/pyFireball/test_grid_projection.py` | Python | Regression test driving `pyBall/FireballOCL/Grid.py` and `cl/Grid.cl`. |
+| **Atomic IO** | `/pyBall/AtomicSystem.py` | Python | Loads molecules (XYZ, etc.), atom types/positions for downstream AFM workflows. |
+| **MM Params** | `/pyBall/OCL/MMparams.py` | Python | Provides vdW/Morse/charge parameters; reads shared element tables. |
+| **QEq Model** | `/cpp/common/molecular/QEq.h` | C++ | Reference charge-equilibration model; defines Eaff/Ehard/Ra/eta per element. |
+| **Element Data** | `/cpp/common_resources/ElementTypes.dat` | Data | Element parameters (charges, vdW/QEq constants) shared across C++/Python. |
 | **DFT Engine** | `/fortran/MAIN/libFireCore.f90`| Fortran | Core Fireball DFT library for self-consistent wavefunction and density calculations. |
 | **Tests** | `/tests/tDFT/`, `/tests/tDFT_CO/`, `/tests/tDFT_pentacene/` | Python | Example scripts demonstrating how to use the package. |
 
@@ -24,6 +32,23 @@ The package is a multi-language system combining Python for high-level logic, C+
 ## 2. Workflow Review
 
 The simulation follows a five-step process to generate AFM frequency shift maps. Each step is detailed below with the full function call chain.
+
+### 0. Mathematical Background for Density-Based Models
+
+For the later “full-density” AFM mode (Pauli overlap + electrostatics), keep these identities in mind:
+
+- Pauli overlap (b=1 convolution form):
+  \( E_{\text{Pauli}}(R) = A \int \rho_\text{sample}(r)\, \rho_\text{tip}(r+R)\, dr = A\, \mathcal{F}^{-1}[\tilde\rho_\text{sample}(k)\, \tilde\rho_\text{tip}(k)] \).
+  For \( b>1 \), raise the real-space overlap to \( b \) after inverse FFT.
+- Coulomb / Hartree: solve \( \nabla^2 V_\text{sample} = - \rho_\text{sample}/\varepsilon_0 \Rightarrow \tilde V_\text{sample}(k) = \tilde\rho_\text{sample}(k)/(\varepsilon_0 |k|^2) \). Then
+  \( E_{\text{Coulomb}}(R) = \int V_\text{sample}(r)\, \Delta\rho_\text{tip}(r+R)\, dr = \mathcal{F}^{-1}[\tilde V_\text{sample}(k)\, \widetilde{\Delta\rho}_\text{tip}(k)] \).
+- Neutral-atom difference: \( \Delta\rho_\text{tip} = \rho^{\text{SCF}}_\text{tip} - \rho^{\text{NA}}_\text{tip} \) (and similarly for the sample if needed).
+
+Where this lives in code:
+- FFT + convolution + Poisson (1/|k|²): C++ host in @cpp/common/OpenCL/OCL_DFT.h#594-612 with kernels in @cpp/common_resources/cl/GridFF.cl#1490-1545 (poissonW/poissonW_old) and mul kernel for k-space products.
+- Python PyOpenCL path uses the same Poisson kernel via @pyBall/OCL/GridFF.py#791-811.
+- Density projection for Fireball grids: @pyBall/FireballOCL/Grid.py and @pyBall/FireballOCL/cl/Grid.cl with test harness @tests/pyFireball/test_grid_projection.py.
+
 
 ### Step 1: DFT Calculation (Fireball)
 

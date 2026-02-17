@@ -2,8 +2,6 @@
 
 This plan describes how to replace the `libOCL_GridFF.so` C/C++ host layer with a pure Python implementation that relies on NumPy for data preparation and PyOpenCL for GPU execution. It expands previous drafts by synchronizing with the verified documentation in @/doc/Topics/AFM/AFM.md and enumerating every C/C++ function, class, and data dependency that must be re-created in Python.
 
----
-
 ## 1. Scope and Goals
 
 - **Goal:** deliver a Python package (working name `pyBall.pyocl_dft`) that exposes the same API currently provided by `pyBall.DFT.oclfft`, while driving the existing OpenCL kernels (`myprog.cl`, `GridFF.cl`, `relax.cl`) directly from Python.
@@ -12,8 +10,6 @@ This plan describes how to replace the `libOCL_GridFF.so` C/C++ host layer with 
   1. All Python tests under `tests/tDFT*` and AFM tutorials run using the new package without loading `libOCL_GridFF.so`.
   2. Density grids, potentials, relaxation trajectories, and frequency-shift outputs match C++ results within numerical tolerance (define per dataset in §6).
   3. Documentation and examples default to the Python host while keeping the legacy C++ path as fallback until feature parity is proven.
-
----
 
 ## 2. Summary of the Current Workflow
 
@@ -26,8 +22,6 @@ The AFM workflow has five computational stages (@/doc/Topics/AFM/AFM.md#37-112):
 5. **Frequency-shift post-processing** applies `convolveZ` weights to relaxed force traces (@/doc/Topics/AFM/AFM.md#103-111).
 
 Each stage is currently orchestrated in C++ via `OCL_DFT` and `OCL_PP` classes, exported in `OCL_GridFF.cpp` and invoked through `pyBall.DFT.oclfft.py` (summarized in Appendix A of AFM.md @/doc/Topics/AFM/AFM.md#214-233). The migration replicates those orchestrations in Python.
-
----
 
 ## 3. Target Python Package Layout
 
@@ -46,8 +40,6 @@ Create a new directory `pyBall/pyocl_dft/` (parallel to `pyBall/DFT/`) with the 
 | `tests/` (package) | Python-level regression harness mirroring `run.sh` scripts | New |
 
 Provide a top-level facade `pyBall/pyocl_dft/__init__.py` exposing functions with the same names/signatures as `pyBall.DFT.oclfft` so existing user scripts import the new module transparently.
-
----
 
 ## 4. Detailed Migration Tasks
 
@@ -116,8 +108,6 @@ If the project chooses to expose `make_MorseFF` (currently only through PyOpenCL
 - Implement logging/verbosity toggles matching `setVerbosity`, `setErrorCheck`.
 - Ensure Python functions reuse the "Supporting Assets" rules from AFM.md (basis availability, buffer formats, etc.).
 
----
-
 ## 5. Validation & Testing Strategy
 
 1. **Unit tests** for each Python wrapper using small synthetic systems (e.g., single hydrogen atom) to confirm kernel argument wiring.
@@ -128,8 +118,6 @@ If the project chooses to expose `make_MorseFF` (currently only through PyOpenCL
    - Validate `convolveZ` outputs against saved reference traces.
 4. **Performance benchmarking** to ensure PyOpenCL overhead is acceptable; gather timings similar to existing `GridFF_cl::make_MorseFF()` prints.
 
----
-
 ## 6. Risks and Mitigation
 
 | Risk | Impact | Mitigation |
@@ -138,8 +126,6 @@ If the project chooses to expose `make_MorseFF` (currently only through PyOpenCL
 | FFT API differences | Incorrect scaling/orientation | Cross-check with C++ output; wrap clFFT plan creation to mimic stride/order; add regression tests. |
 | Memory alignment | Kernel reads wrong offsets | Mirror buffer-offset logic noted in internal memory reminders (host/device offsets) and validate with assertions before kernel launch. |
 | Numeric drift | Breaks regression comparisons | Keep computations in `float32` to match GPU; where double precision is required, document conversions. |
-
----
 
 ## 6.1 Critical Implementation Notes
 
@@ -182,8 +168,6 @@ The Python AFM host continues to obtain molecular orbital data from the Fireball
 
 During the migration, design the PyOpenCL pipeline so that the Fireball SCF step can hand off either (a) the MO coefficient matrix for GPU projection (`projectOrbDenToGrid_texture`) or (b) the already-sampled density grid for comparison. Record grid metadata (`pos0`, `dA/B/C`, `ngrid`) immediately after `setupGrid` so both paths remain consistent.
 
----
-
 ## 7. Roadmap & Milestones
 
 1. **Milestone A – Fireball Data Extraction**
@@ -210,8 +194,6 @@ During the migration, design the PyOpenCL pipeline so that the Fireball SCF step
    - Update tutorials, ensure `run.sh` scripts can switch hosts.
    - Collect benchmarks, document known differences.
    - Create `tests/pyocl_dft/test_end_to_end.py` CLI script orchestrating the full pipeline (density → potentials → relaxation → df), writing summary artifacts and generating figure panels for documentation.
-
----
 
 ## 8. Deliverables Checklist
 
