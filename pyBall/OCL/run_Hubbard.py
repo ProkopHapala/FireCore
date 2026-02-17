@@ -686,6 +686,26 @@ def demo_local_update(
     else:
         energy, current, occupation = solver.solve_mc_2phase(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nx=nxy_scan[0], nGlobalSteps=nGlobalSteps, nLocalIter=150, prob_params=prob_phase2, bAlloc=True,  bFinalize=True)
 
+    occ_gs = occupation.reshape(nTips, solver.occ_bytes)
+    pme_curr_star  = solver.solve_pme_star( W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, occ_gs=occ_gs, nTips=nTips, nSite=nSingle, mu_tip=Vbias, T_env=T, Gamma_sub=1.0, Gamma_tip=1.0, bAlloc=True )
+    pme_curr_dense = solver.solve_pme_dense(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, occ_gs=occ_gs, nTips=nTips, nSite=nSingle, mu_tip=Vbias, T_env=T, Gamma_sub=1.0, Gamma_tip=1.0, bAlloc=False)
+
+    pme_curr_star_map  = pme_curr_star .reshape((nxy_scan[0], nxy_scan[1]))
+    pme_curr_dense_map = pme_curr_dense.reshape((nxy_scan[0], nxy_scan[1]))
+
+    fig, axs = plt.subplots(1, 2, figsize=(12, 5))
+    fig.suptitle(f"PME postprocess currents (T={T}K, V={Vbias:.2f}V)")
+    plot2d(pme_curr_star_map.T,  extent=extent, title="PME star analytic",  ax=axs[0], cmap='viridis', ps=posE)
+    plot2d(pme_curr_dense_map.T, extent=extent, title="PME dense subspace", ax=axs[1], cmap='magma',   ps=posE)
+    plt.tight_layout(rect=[0, 0, 1, 0.93])
+    fname_pme = os.path.join(fig_dir, f"pme_currents_V{Vbias:.2f}.png")
+    plt.savefig(fname_pme)
+    print(f"Saved figure: {fname_pme}")
+    if show_plots:
+        plt.show()
+    else:
+        plt.close(fig)
+
     print( "demo_local_update() energy.shape: ", energy.shape )
     #print( "demo_local_update() current.shape: ", current.shape )
     #print( "demo_local_update() occupation.shape: ", occupation.shape, solver.occ_bytes )
@@ -795,6 +815,6 @@ if __name__ == "__main__":
     #test_brute_force_solver()
     #test_site_coupling()
     #demo_precalc_scan()
-    demo_local_update()
+    demo_local_update(show_plots=False)
 
     

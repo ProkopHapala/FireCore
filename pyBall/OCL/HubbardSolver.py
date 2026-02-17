@@ -61,7 +61,7 @@ class HubbardSolver(OpenCLBase):
     # buf_iMin  = "iMin_buff"      #   nTips    * sizeof(int  )
     # buf_Itot  = "Itot_buff"      #   nTips    * sizeof(float2)
 
-    def __init__(self, nloc:int= 32, nloc_MC=16, device_index: int=0 ):
+    def __init__(self, nloc:int= 32, nloc_MC=16, device_index: int=0, build_options=None ):
         super().__init__(nloc=nloc, device_index=device_index)
 
         self.nloc_MC = nloc_MC
@@ -76,7 +76,7 @@ class HubbardSolver(OpenCLBase):
         # Build the OpenCL program ------------------------------------------------
         base_path = os.path.dirname(os.path.abspath(__file__))
         rel_path  = "cl/hubbard.cl"
-        if not self.load_program(rel_path=rel_path, base_path=base_path):
+        if not self.load_program(rel_path=rel_path, base_path=base_path, build_options=build_options):
             raise RuntimeError("[HubbardSolver] Failed to load/compile hubbard.cl")
 
 
@@ -95,6 +95,21 @@ class HubbardSolver(OpenCLBase):
             "Emin":   sz_f*1 * nTips,
             "iMin":   sz_f*1 * nTips,
             "Itot":   sz_f*2 * nTips,
+        }
+        self.try_make_buffers(buffs)
+
+    def realloc_pme_buffers(self, nSite: int, nTips: int):
+        sz_f = np.dtype(np.float32).itemsize
+        sz_i = np.dtype(np.int32).itemsize
+        nbyte = (nSite + 7) // 8
+        buffs = {
+            "occ_gs":    (nTips * self.occ_bytes),
+            "tipTf":     (sz_f * nTips * nSite),
+            "pme_curr":  (sz_f * nTips),
+            "pme_probs": (sz_f * nTips * 64),
+            "pme_isite": (sz_f * nTips * nSite),
+            "basis":     (sz_i * nTips * 64 * 4),
+            "n_basis":   (sz_i * nTips),
         }
         self.try_make_buffers(buffs)
 
@@ -127,7 +142,7 @@ class HubbardSolver(OpenCLBase):
         buffs = {
             "posE":      (sz_f*4 * nSingle),
             "pTips":     (sz_f*4 * nTips),
-            "mpolCs":    (sz_f*4 * nSingle * nMulti),
+            "mpolCs":    (sz_f * nSingle * nMulti),
             "rotSite":   (self.cl_mat3_dtype.itemsize * nSingle),
             "Esite":     (sz_f*1 * nTips * nSingle),
             "Tsite":     (sz_f*1 * nTips * nSingle),
@@ -201,6 +216,157 @@ class HubbardSolver(OpenCLBase):
             self.Itot_buff,
         )
         return args, kernel
+
+    def setup_solve_pme_star_analytic(self, nSite, nTips, mu_tip, T_env, Gamma_sub, Gamma_tip, max_neighs=None):
+        kernel = self.prg.solve_pme_star_analytic
+        if max_neighs is None: max_neighs = self.max_neighs
+        args = (
+            np.int32(nSite),
+            np.int32(nTips),
+            np.float32(mu_tip),
+            np.float32(T_env),
+            np.float32(Gamma_sub),
+            np.float32(Gamma_tip),
+            np.float32(1.0),
+            np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            self.occ_gs_buff,
+            self.Esite_buff,
+            self.W_val_buff,
+            self.W_idx_buff,
+            self.nNeigh_buff,
+            np.int32(max_neighs),
+            self.tipTf_buff,
+            self.pme_curr_buff,
+        )
+        return args, kernel
+
+    def setup_kinetic_basis_scanner(self, nSite, nTips, mu_tip, T_env, Gamma_sub, Gamma_tip, max_neighs=None):
+        kernel = self.prg.kinetic_basis_scanner
+        if max_neighs is None: max_neighs = self.max_neighs
+        args = (
+            np.int32(nSite),
+            np.int32(nTips),
+            np.float32(mu_tip),
+            np.float32(T_env),
+            np.float32(Gamma_sub),
+            np.float32(Gamma_tip),
+            self.occ_gs_buff,
+            self.Esite_buff,
+            self.W_val_buff,
+            self.W_idx_buff,
+            self.nNeigh_buff,
+            np.int32(max_neighs),
+            self.tipTf_buff,
+            self.basis_buff,
+            self.n_basis_buff,
+        )
+        return args, kernel
+
+    def setup_solve_pme_dense_batch(self, nSite, nTips, mu_tip, T_env, Gamma_sub, Gamma_tip, max_neighs=None):
+        kernel = self.prg.solve_pme_dense_batch
+        if max_neighs is None: max_neighs = self.max_neighs
+        args = (
+            np.int32(nSite),
+            np.int32(nTips),
+            np.float32(mu_tip),
+            np.float32(T_env),
+            np.float32(Gamma_sub),
+            np.float32(Gamma_tip),
+            self.basis_buff,
+            self.n_basis_buff,
+            self.Esite_buff,
+            self.W_val_buff,
+            self.W_idx_buff,
+            self.nNeigh_buff,
+            np.int32(max_neighs),
+            self.tipTf_buff,
+            self.pme_curr_buff,
+            self.pme_probs_buff,
+            self.pme_isite_buff,
+        )
+        return args, kernel
+
+    def pme_fetch_dense_outputs(self, nTips, nSite, max_basis=64):
+        curr = np.empty(nTips, dtype=np.float32)
+        probs = np.empty((nTips, max_basis), dtype=np.float32)
+        isite = np.empty((nTips, nSite), dtype=np.float32)
+        self.fromGPU_(self.pme_curr_buff, curr)
+        self.fromGPU_(self.pme_probs_buff, probs)
+        self.fromGPU_(self.pme_isite_buff, isite)
+        self.queue.finish()
+        return curr, probs, isite
+
+    def pme_prepare_inputs(self, W_sparse, Esite, Tsite, occ_gs, nTips, nSite, bAlloc=True):
+        nMaxNeigh = W_sparse[0].shape[1] if W_sparse is not None else 0
+        if bAlloc:
+            self.realloc_mc_buffers(nSite, nTips, nMaxNeigh)
+            self.realloc_pme_buffers(nSite, nTips)
+        # upload system
+        self.toGPU_(self.Esite_buff, Esite)
+        self.toGPU_(self.Tsite_buff, Tsite)
+        if W_sparse is not None:
+            self.toGPU_(self.W_val_buff, W_sparse[0])
+            self.toGPU_(self.W_idx_buff, W_sparse[1])
+            self.toGPU_(self.nNeigh_buff, W_sparse[2])
+        # occupancy (use occ_bytes stride; kernel reads only nbyte)
+        if occ_gs.ndim == 1:
+            occ_gs = occ_gs.reshape(nTips, -1)
+        self.toGPU_(self.occ_gs_buff, occ_gs)
+        # tip coupling factor: reuse Tsite as exp(-beta r) proxy
+        self.toGPU_(self.tipTf_buff, Tsite)
+
+    def solve_pme_star(self, W_sparse, Esite, Tsite, occ_gs, nTips, nSite, mu_tip=0.5, T_env=4.0, Gamma_sub=1.0, Gamma_tip=1.0, bAlloc=True):
+        self.pme_prepare_inputs(W_sparse, Esite, Tsite, occ_gs, nTips, nSite, bAlloc=bAlloc)
+        args, kernel = self.setup_solve_pme_star_analytic(nSite, nTips, mu_tip, T_env, Gamma_sub, Gamma_tip, max_neighs=(W_sparse[0].shape[1] if W_sparse is not None else 0))
+        kernel(self.queue, (nTips,), None, *args)
+        self.queue.finish()
+        curr = np.empty(nTips, dtype=np.float32)
+        self.fromGPU_(self.pme_curr_buff, curr)
+        self.queue.finish()
+        return curr
+
+    def solve_pme_dense(self, W_sparse, Esite, Tsite, occ_gs, nTips, nSite, mu_tip=0.5, T_env=4.0, Gamma_sub=1.0, Gamma_tip=1.0, bAlloc=True, return_all=False):
+        self.pme_prepare_inputs(W_sparse, Esite, Tsite, occ_gs, nTips, nSite, bAlloc=bAlloc)
+        max_neighs = (W_sparse[0].shape[1] if W_sparse is not None else 0)
+        # 1) scan basis
+        args, kernel = self.setup_kinetic_basis_scanner(nSite, nTips, mu_tip, T_env, Gamma_sub, Gamma_tip, max_neighs=max_neighs)
+        global_size = (nTips * self.nloc_MC,)
+        local_size  = (self.nloc_MC,)
+        kernel(self.queue, global_size, local_size, *args)
+        # 2) solve dense PME
+        args2, kernel2 = self.setup_solve_pme_dense_batch(nSite, nTips, mu_tip, T_env, Gamma_sub, Gamma_tip, max_neighs=max_neighs)
+        kernel2(self.queue, global_size, local_size, *args2)
+        self.queue.finish()
+        curr, probs, isite = self.pme_fetch_dense_outputs(nTips, nSite, max_basis=64)
+        if return_all:
+            return curr, probs, isite
+        return curr
+
+    def solve_pme_dense_fullbasis(self, W_sparse, Esite, Tsite, basis_u4, nTips, nSite, mu_tip=0.5, T_env=4.0, Gamma_sub=1.0, Gamma_tip=1.0, bAlloc=True):
+        """Run dense PME solver on an explicit basis (e.g. all 2^nSite states for small systems).
+
+        basis_u4: np.ndarray shape (nTips, N, 4) int32 storing uint4 words.
+        """
+        self.pme_prepare_inputs(W_sparse, Esite, Tsite, occ_gs=np.zeros((nTips, self.occ_bytes), dtype=np.uint8), nTips=nTips, nSite=nSite, bAlloc=bAlloc)
+        if basis_u4.ndim != 3 or basis_u4.shape[0] != nTips or basis_u4.shape[2] != 4:
+            raise ValueError("basis_u4 must have shape (nTips, N, 4)")
+        N = basis_u4.shape[1]
+        if N > 64:
+            raise ValueError("basis size must be <= 64")
+        # upload basis and N
+        nb = np.full(nTips, N, dtype=np.int32)
+        self.toGPU_(self.n_basis_buff, nb)
+        flat = np.zeros((nTips, 64, 4), dtype=np.int32)
+        flat[:, :N, :] = np.ascontiguousarray(basis_u4, dtype=np.int32)
+        self.toGPU_(self.basis_buff, flat)
+
+        max_neighs = (W_sparse[0].shape[1] if W_sparse is not None else 0)
+        args2, kernel2 = self.setup_solve_pme_dense_batch(nSite, nTips, mu_tip, T_env, Gamma_sub, Gamma_tip, max_neighs=max_neighs)
+        global_size = (nTips * self.nloc_MC,)
+        local_size = (self.nloc_MC,)
+        kernel2(self.queue, global_size, local_size, *args2)
+        self.queue.finish()
+        return self.pme_fetch_dense_outputs(nTips, nSite, max_basis=64)
     
     def setup_solve_minBrute_boltzmann(self, nSingle, nTips, tipDecay, tipRadius, zMirror, Wcouple, bBoltzmann):
         kernel = self.prg.solve_minBrute_boltzmann

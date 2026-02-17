@@ -73,6 +73,95 @@ int get_W_idx(int i, int j, int n) {
     return (i*n-i * (i+1)/2) + (j-i-1);
 }
 
+// --- CONSTANTS ---
+#define MAX_BASIS 64        // Max matrix size (must fit in LDS)
+#define N_TOP_SINGLES 48    // How many singles to keep
+#define N_PARENTS_DOUBLE 5  // Top K singles to combine for doubles
+
+#define PI 3.14159265359f
+
+#ifndef DBG_PRECALC
+#define DBG_PRECALC 0
+#endif
+
+// --- DEVICE FUNCTIONS ---
+
+
+inline float fermi(float E, float mu, float T) {
+    float arg = (E - mu) / T;
+    if (arg > 20.0f) return 0.0f;
+    if (arg < -20.0f) return 1.0f;
+    return 1.0f / (1.0f + native_exp(arg));
+}
+
+inline float get_lead_rate(float dE, float gamma, float mu, float T, bool is_add) {
+    float f = fermi(dE, mu, T);
+    return is_add ? (gamma * f) : (gamma * (1.0f - f));
+}
+
+inline float calc_total_rate(float dE, float t_factor, float mu_tip, float T, float G_sub, float G_tip_pre, bool is_add) {
+    float G_tip = G_tip_pre * t_factor * t_factor;
+    float rate_sub = get_lead_rate(dE, G_sub, 0.0f, T, is_add);
+    float rate_tip = get_lead_rate(dE, G_tip, mu_tip, T, is_add);
+    return 2.0f * PI * (rate_sub + rate_tip);
+}
+
+inline uint4 mask_from_occ(const __global uchar* occ, int nSite){
+    uint4 m = (uint4)(0u,0u,0u,0u);
+    const int nbyte = (nSite+7)/8;
+    for(int ib=0; ib<nbyte; ib++){
+        uint v = (uint)occ[ib];
+        int iw = ib>>2;
+        int sh = (ib&3)*8;
+        if(iw==0){ m.x |= v<<sh; }
+        else if(iw==1){ m.y |= v<<sh; }
+        else if(iw==2){ m.z |= v<<sh; }
+        else if(iw==3){ m.w |= v<<sh; }
+    }
+    return m;
+}
+
+inline uint get_bit_u4(uint4 m, int i){
+    int iw=i>>5;
+    int b=i&31;
+    if(iw==0){ return (m.x>>b)&1u; }
+    if(iw==1){ return (m.y>>b)&1u; }
+    if(iw==2){ return (m.z>>b)&1u; }
+    return (m.w>>b)&1u;
+}
+
+inline uint4 flip_bit_u4(uint4 m, int i){
+    uint bit = 1u<<(i&31);
+    int iw=i>>5;
+    if(iw==0){ m.x ^= bit; }
+    else if(iw==1){ m.y ^= bit; }
+    else if(iw==2){ m.z ^= bit; }
+    else          { m.w ^= bit; }
+    return m;
+}
+
+inline float deltaE_flip_u4(int i_site, uint4 occ_u4, __global const float* Esite_tip, __global const float* W_val, __global const int* W_idx, __global const int* nNeigh, int max_neighs){
+    const uint ni = get_bit_u4(occ_u4, i_site);
+    const int s_i = (ni>0u) ? -1 : 1;
+    float raw = Esite_tip[i_site];
+    if(max_neighs>0){
+        const int iw0 = i_site * max_neighs;
+        for(int k=0; k<nNeigh[i_site]; k++){
+            const int iw = iw0+k;
+            const int j  = W_idx[iw];
+            raw += (float)get_bit_u4(occ_u4, j) * W_val[iw];
+        }
+    }
+    return (float)s_i * raw;
+}
+
+inline float rate_tip_only(float dE, float t_factor, float mu_tip, float T, float G_tip_pre, bool is_add){
+    float G_tip = G_tip_pre * t_factor * t_factor;
+    float f = fermi(dE, mu_tip, T);
+    float r = is_add ? (G_tip*f) : (G_tip*(1.0f-f));
+    return 2.0f*PI*r;
+}
+
 /**
  * @file hubbard_solver_on_the_fly.cl
  * @brief Kernel using on-the-fly W_ij calculation to conserve local memory.
@@ -1074,18 +1163,16 @@ float3 mat3_dot_vec3(cl_Mat3 m, float3 v) {  return (float3)( dot(m.a.xyz, v), d
 float Emultipole(__private const float* cs, float3 d, int nMulti) {
     float ir2 = 1.0f / dot(d, d);    
     float E = cs[0];  // Assumes cs[0] always exists
-    if (nMulti >= 1) {   // Dipole term (requires at least 4 coefficients: c0, px, py, pz)
-        E += ir2 * ( cs[1] * d.x + 
-                     cs[2] * d.y + 
-                     cs[3] * d.z );  }  
-    if (nMulti >= 4) {   // diagonal Quadrupole term
-        E += ir2 * ir2 * ( cs[4] * d.x*d.x +
-                           cs[5] * d.y*d.y +
-                           cs[6] * d.z*d.z ); }  
-    if (nMulti >= 7) {  // off-diagonal Quadrupole term
-        E += ir2 * ir2 * (  cs[7] * d.y*d.z +
-                            cs[8] * d.z*d.x +
-                            cs[9] * d.x*d.y ); }
+    if (nMulti >= 4) {   // Dipole term (c0, px, py, pz)
+        E += ir2 * ( cs[1] * d.x + cs[2] * d.y + cs[3] * d.z );
+    }
+    float ir4 = ir2 * ir2;
+    if (nMulti >= 7) {   // Diagonal quadrupole (cxx, cyy, czz)
+        E += ir4 * ( cs[4] * d.x*d.x + cs[5] * d.y*d.y + cs[6] * d.z*d.z );
+    }
+    if (nMulti >= 10) {  // Off-diagonal quadrupole (cyz, czx, cxy)
+        E += ir4 * ( cs[7] * d.y*d.z + cs[8] * d.z*d.x + cs[9] * d.x*d.y );
+    }
     return sqrt(ir2) * E;
 }
 
@@ -1124,6 +1211,7 @@ __kernel void precalc_Esite_Thop(
     const float4 tip_data  = pTips[iTip];
     const float4 site_data = posE[iSite];
 
+#if DBG_PRECALC
     if( (iTip==0)&&(iSite==0) ) {
         printf("GPU: Tip( %12.8f , %12.8f , %12.8f | %12.8f ) Site( %12.8f , %12.8f , %12.8f | %12.8f ) \n", tip_data.x, tip_data.y, tip_data.z, tip_data.w, site_data.x, site_data.y, site_data.z, site_data.w );
         // print site rotation
@@ -1136,6 +1224,8 @@ __kernel void precalc_Esite_Thop(
         } 
 
     }
+
+#endif
 
     float3       pTip      = tip_data.xyz;
     const float  VBias     = tip_data.w;
@@ -1156,23 +1246,32 @@ __kernel void precalc_Esite_Thop(
     //     pTipMirror = mat3_dot_vec3(rot, pTipMirror);
     // }
 
-    // MODIFIED: Copy this site's coefficients from global to private memory. This makes access within Emultipole much faster.
+    // Copy this site's coefficients from global to private memory.
     __private float cs[16]; // Max supported multipole coeffs
+    for(int i=0; i<16; i++){ cs[i]=0.0f; }
     const int nMulti_ = min(nMulti, 16);
     for(int i = 0; i < nMulti_; ++i){  cs[i] = multipoleCoefs[iSite * nMulti + i];  }
 
 
     
-    float E                 = Emultipole(cs, pTip, nMulti);
-    //if (bMirror != 0) {  E -= Emultipole(cs, pTipMirror, nMulti); }
+    if (rotSite) {
+        cl_Mat3 rot = rotSite[iSite];
+        pTip       = mat3_dot_vec3(rot, pTip);
+        pTipMirror = mat3_dot_vec3(rot, pTipMirror);
+    }
+
+    float E = Emultipole(cs, pTip, nMulti);
+    if (bMirror != 0) {  E -= Emultipole(cs, pTipMirror, nMulti); }
     E *= (VBias * Rtip);
 
+#if DBG_PRECALC
     if( (iTip==0)&&(iSite==0) ) {
         printf("GPU: VBias %12.8f    Rtip %12.8f  zV1 %12.8f  zV0 %12.8f \n", VBias, Rtip, zV1, zV0 );
         printf("GPU: E %12.8f pTip %12.8f %12.8f %12.8f    cs:   ", E, pTip.x, pTip.y, pTip.z);
         for(int i = 0; i < nMulti_; ++i){  printf("%12.8f ", cs[i]);  }
         printf("\n");
     }
+#endif
 
     if (bRamp != 0 && (zV1 - zV0) != 0.0f) {
         float ramp = clamp((pSite.z - zV0) / (zV1 - zV0), 0.0f, 1.0f);
@@ -1188,4 +1287,426 @@ __kernel void precalc_Esite_Thop(
     // 5. Store Results
     Esite[gid] = final_Esite;
     Tsite[gid] = final_Thop;
+}
+
+
+
+
+
+
+__kernel void solve_pme_star_analytic(
+    // Dimensions
+    const int nSite,
+    const int nTips,
+    // Physics Parameters
+    const float mu_tip,       // V_bias
+    const float T_env,        // Temperature
+    const float Gamma_sub,
+    const float Gamma_tip,    // Prefactor
+    const float beta_decay,   // Tip tunneling decay
+    const float4 tip_pos,     // Actually passed usually via struct, simplified here
+    // Arrays
+    __global const uchar* occ_gs,     // [nTips, OCC_BYTES]
+    __global const float* Esite,      // [nTips, nSite] (includes static tip pot)
+    __global const float* W_val,      // Sparse W
+    __global const int*   W_idx,
+    __global const int*   nNeigh,
+    const int max_neighs,
+    __global const float* tip_T_factors, // [nTips, nSite] Precomputed exp(-beta*r)
+    // Output
+    __global float* current_out       // [nTips]
+) {
+    int itip = get_global_id(0);
+    if (itip >= nTips) return;
+
+    // Pointers for this tip
+    const int nbyte = (nSite+7)/8;
+    const int occ_offset  = itip * nbyte;
+    const int site_offset = itip * nSite;
+    const __global uchar* occ_tip = occ_gs + occ_offset;
+    uint4 gs_mask = mask_from_occ(occ_tip, nSite);
+    
+    // Accumulators for the analytic solution
+    // P_gs = 1 / (1 + Sum( R_i )) where R_i = Rate(0->i)/Rate(i->0)
+    // I = P_gs * Sum( I(0->i) - I(i->0)*R_i )
+    
+    float sum_R = 0.0f;
+    float sum_I_terms = 0.0f;
+
+    // Loop over all single excitations
+    for (int i = 0; i < nSite; i++) {
+        float dE_exc = deltaE_flip_u4(i, gs_mask, Esite + site_offset, W_val, W_idx, nNeigh, max_neighs);
+        float t_fac  = tip_T_factors[site_offset + i];
+        const uint ni = get_bit_u4(gs_mask, i);
+        const bool is_add = (ni==0u);
+        float W_0_i = calc_total_rate( dE_exc, t_fac, mu_tip, T_env, Gamma_sub, Gamma_tip, is_add);
+        float W_i_0 = calc_total_rate(-dE_exc, t_fac, mu_tip, T_env, Gamma_sub, Gamma_tip, !is_add);
+        float I_0_i = rate_tip_only( dE_exc, t_fac, mu_tip, T_env, Gamma_tip, is_add);
+        float I_i_0 = rate_tip_only(-dE_exc, t_fac, mu_tip, T_env, Gamma_tip, !is_add);
+        if (W_i_0 > 1e-20f) {
+            float R = W_0_i / W_i_0;
+            sum_R += R;
+            // Current contribution: Flow_0->i - Flow_i->0
+            // Flow_0->i = P_0 * I_0_i
+            // Flow_i->0 = P_i * I_i_0 = (P_0 * R) * I_i_0
+            sum_I_terms += (I_0_i - R * I_i_0);
+        }
+    }
+
+    // Final Calculation
+    float P_gs = 1.0f / (1.0f + sum_R);
+    float total_current = P_gs * sum_I_terms;
+
+    // Invert sign if electron flows Tip->System (convention)
+    // Usually I is measured at Tip. This calculates net flow FROM Tip.
+    current_out[itip] = total_current; 
+}
+
+/// Kernel 1: The Scanner (Subspace Generator)
+
+__kernel void kinetic_basis_scanner(
+    // Dims
+    const int nSite,
+    const int nTips,
+    // Physics
+    const float mu_tip,
+    const float T_env,
+    const float Gamma_sub,
+    const float Gamma_tip,
+    // Input Data
+    __global const uchar* occ_gs,     // [nTips, OCC_BYTES] Ground State
+    __global const float* Esite,      // [nTips, nSite] (includes Tip Potential)
+    __global const float* W_val,
+    __global const int*   W_idx,
+    __global const int*   nNeigh,
+    const int max_neighs,
+    __global const float* tip_T_factors,
+    // Output
+    __global int* basis_out,          // [nTips, MAX_BASIS * 4] (Stores bitmasks as int4 or similar)
+    __global int* n_basis_out         // [nTips] Actual size
+) {
+    // Shared memory for sorting
+    __local float score_cache[128];
+    __local int   idx_cache[128];
+    __local float energy_cache[128]; // Store dE for reuse
+
+    int gid = get_group_id(0);
+    int lid = get_local_id(0);
+    if (gid >= nTips) return;
+
+    // 1. LOAD GROUND STATE
+    // (Assuming GS is effectively constant per tip for this scan)
+    // We only support 128 sites max (fits in registers/LDS)
+
+    // 2. PASS 1: SCAN SINGLES
+    // Compute P_est for all 128 single flips
+
+    const int nbyte = (nSite+7)/8;
+    const int occ_offset = gid * nbyte;
+    const int site_offset = gid * nSite;
+    const __global uchar* occ_tip = occ_gs + occ_offset;
+    uint4 gs_mask = mask_from_occ(occ_tip, nSite);
+
+    // pass1: compute kinetic score for each single flip (parallel)
+    for (int i = lid; i < nSite; i += get_local_size(0)) {
+        float dE = deltaE_flip_u4(i, gs_mask, Esite + site_offset, W_val, W_idx, nNeigh, max_neighs);
+        float t_fac = tip_T_factors[site_offset + i];
+        const uint ni = get_bit_u4(gs_mask, i);
+        const bool is_add = (ni==0u);
+        float r_in  = calc_total_rate( dE, t_fac, mu_tip, T_env, Gamma_sub, Gamma_tip, is_add);
+        float r_out = calc_total_rate(-dE, t_fac, mu_tip, T_env, Gamma_sub, Gamma_tip, !is_add);
+        float score = 0.0f;
+        float rt = r_in + r_out;
+        if (rt > 1e-20f) { score = r_in / rt; }
+        score_cache[i]  = score;
+        idx_cache[i]    = i;
+        energy_cache[i] = dE;
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // selection + writeout (serial in lid==0 for robustness)
+    if (lid == 0) {
+        // store basis masks as 4x uint32 words (same layout as uint4)
+        const int basis_ptr = gid * MAX_BASIS * 4;
+        int count = 0;
+
+        // write GS
+        basis_out[basis_ptr + 4*count + 0] = (int)gs_mask.x;
+        basis_out[basis_ptr + 4*count + 1] = (int)gs_mask.y;
+        basis_out[basis_ptr + 4*count + 2] = (int)gs_mask.z;
+        basis_out[basis_ptr + 4*count + 3] = (int)gs_mask.w;
+        count++;
+
+        // pick top singles by score without full sort (O(nSite*N_TOP_SINGLES))
+        int   top_idx[N_TOP_SINGLES];
+        float top_sc [N_TOP_SINGLES];
+        int nTop=0;
+        for(int i=0;i<nSite;i++){
+            float sc = score_cache[i];
+            if(sc<=0.0f) continue;
+            // insert into descending list
+            int pos=nTop;
+            if(pos>N_TOP_SINGLES-1) pos=N_TOP_SINGLES-1;
+            while(pos>0 && (pos-1)<nTop && top_sc[pos-1] < sc){
+                if(pos < N_TOP_SINGLES){ top_sc[pos]=top_sc[pos-1]; top_idx[pos]=top_idx[pos-1]; }
+                pos--;
+            }
+            if(pos < N_TOP_SINGLES){
+                top_sc[pos]=sc;
+                top_idx[pos]=i;
+                if(nTop < N_TOP_SINGLES) nTop++;
+            }
+        }
+
+        const int nParents = (nTop < N_PARENTS_DOUBLE) ? nTop : N_PARENTS_DOUBLE;
+        int parents[N_PARENTS_DOUBLE];
+        for(int i=0;i<nParents;i++) parents[i]=top_idx[i];
+
+        // write singles
+        for(int is=0; is<nTop; is++){
+            if(count>=MAX_BASIS) break;
+            int si = top_idx[is];
+            uint4 m = flip_bit_u4(gs_mask, si);
+            basis_out[basis_ptr + 4*count + 0] = (int)m.x;
+            basis_out[basis_ptr + 4*count + 1] = (int)m.y;
+            basis_out[basis_ptr + 4*count + 2] = (int)m.z;
+            basis_out[basis_ptr + 4*count + 3] = (int)m.w;
+            count++;
+        }
+
+        // write doubles from top parents; dedup is implicit by i<j
+        for(int a=0; a<nParents; a++){
+            for(int b=a+1; b<nParents; b++){
+                if(count>=MAX_BASIS) break;
+                uint4 m = gs_mask;
+                m = flip_bit_u4(m, parents[a]);
+                m = flip_bit_u4(m, parents[b]);
+                basis_out[basis_ptr + 4*count + 0] = (int)m.x;
+                basis_out[basis_ptr + 4*count + 1] = (int)m.y;
+                basis_out[basis_ptr + 4*count + 2] = (int)m.z;
+                basis_out[basis_ptr + 4*count + 3] = (int)m.w;
+                count++;
+            }
+        }
+
+        n_basis_out[gid] = count;
+    }
+}
+
+// #### Kernel 2: The Solver (Linear Algebra)
+
+__kernel void solve_pme_dense_batch(
+    const int nSite,
+    const int nTips,
+    // Physics
+    const float mu_tip,
+    const float T_env,
+    const float Gamma_sub,
+    const float Gamma_tip,
+    // Input
+    __global const int* basis_in,     // [nTips, MAX_BASIS * 4]
+    __global const int* n_basis_in,   // [nTips]
+    __global const float* Esite,
+    __global const float* W_val,
+    __global const int*   W_idx,
+    __global const int*   nNeigh,
+    const int max_neighs,
+    __global const float* tip_T_factors, // [nTips * nSite]
+
+    // Output
+    __global float* current_out,          // [nTips]
+    __global float* probs_out,            // [nTips * MAX_BASIS] (first N valid)
+    __global float* isite_out             // [nTips * nSite] per-site tip current contribution
+) {
+    // Matrix storage in LDS
+    __local float Mat[MAX_BASIS][MAX_BASIS];
+    __local float RHS[MAX_BASIS];
+    __local uint4  StateMasks[MAX_BASIS]; 
+    __local float  StateEnergies[MAX_BASIS];
+
+    int gid = get_group_id(0);
+    int lid = get_local_id(0);
+    if (gid >= nTips) return;
+
+    int N = n_basis_in[gid]; 
+    const int site_offset = gid * nSite;
+    const int basis_ptr   = gid * MAX_BASIS * 4;
+    // Load Basis from Global to Local + compute energies
+    if (lid < N) {
+        uint4 m;
+        m.x = (uint)basis_in[basis_ptr + 4*lid + 0];
+        m.y = (uint)basis_in[basis_ptr + 4*lid + 1];
+        m.z = (uint)basis_in[basis_ptr + 4*lid + 2];
+        m.w = (uint)basis_in[basis_ptr + 4*lid + 3];
+        StateMasks[lid] = m;
+        // energy: sum_i n_i Esite + sum_{i<j} n_i n_j W_ij (sparse)
+        float E = 0.0f;
+        for(int i=0;i<nSite;i++){
+            if(get_bit_u4(m,i)){
+                E += Esite[site_offset + i];
+                if(max_neighs>0){
+                    const int iw0 = i*max_neighs;
+                    for(int k=0;k<nNeigh[i];k++){
+                        const int iw = iw0+k;
+                        const int j  = W_idx[iw];
+                        if(i<j && get_bit_u4(m,j)) E += W_val[iw];
+                    }
+                }
+            }
+        }
+        StateEnergies[lid] = E;
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // 1. BUILD MATRIX
+    // Iterate all pairs (row, col)
+    for (int k = lid; k < N*N; k += get_local_size(0)) {
+        int r = k / N;
+        int c = k % N;
+        
+        if (r == c) {
+            Mat[r][c] = 0.0f; // Will fill diagonal later
+        } else {
+            // Check connectivity
+            uint4 m_r = StateMasks[r];
+            uint4 m_c = StateMasks[c];
+            uint4 diff = m_r ^ m_c;
+            
+            // Popcount of int4 (manual sum)
+            int dist = popcount(diff.x) + popcount(diff.y) + popcount(diff.z) + popcount(diff.w);
+            
+            if (dist == 1) {
+                // Connected!
+                // Identify flipped bit 'k'
+                // Determine direction: Did c->r add or remove electron?
+                // Calculate dE = E_r - E_c
+                float dE = StateEnergies[r] - StateEnergies[c];
+                // find the flipped bit index (dist==1)
+                int flip_idx = -1;
+                for(int iw=0;iw<4;iw++){
+                    uint w = (iw==0)?diff.x:((iw==1)?diff.y:((iw==2)?diff.z:diff.w));
+                    if(w!=0u){
+                        flip_idx = iw*32 + ctz(w);
+                        break;
+                    }
+                }
+                float t_fac = tip_T_factors[site_offset + flip_idx];
+                bool adding = (get_bit_u4(m_r, flip_idx) > 0u); // c->r adds if r has 1 at flip
+                float dE_add = adding ? dE : -dE;  // always ε_add = E(more) - E(fewer), matching PME.cl convention
+                float rate = calc_total_rate(dE_add, t_fac, mu_tip, T_env, Gamma_sub, Gamma_tip, adding);
+                Mat[r][c] = rate; // Inflow to r from c
+            } else {
+                Mat[r][c] = 0.0f;
+            }
+        }
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // 2. FILL DIAGONALS (Conservation)
+    // M[c][c] = -Sum(M[r][c]) for all r != c
+    for (int c = lid; c < N; c += get_local_size(0)) {
+        float sum_out = 0.0f;
+        for (int r = 0; r < N; r++) {
+            if (r != c) sum_out += Mat[r][c]; // Rate leaving c
+        }
+        Mat[c][c] = -sum_out;
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // 2b) RHS + normalization row (row0): sum(P)=1
+    if (lid < N) RHS[lid] = 0.0f;
+    barrier(CLK_LOCAL_MEM_FENCE);
+    if (lid == 0) {
+        RHS[0] = 1.0f;
+        for (int j = 0; j < N; j++) Mat[0][j] = 1.0f;
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // 3) Gauss-Jordan elimination with partial pivoting (matching PME.cl)
+    for (int k = 0; k < N; k++) {
+        barrier(CLK_LOCAL_MEM_FENCE);
+        // A. Partial pivoting: thread 0 finds best pivot row
+        if (lid == 0) {
+            int pivot_row = k;
+            float max_val = fabs(Mat[k][k]);
+            for (int i = k + 1; i < N; i++) {
+                float val = fabs(Mat[i][k]);
+                if (val > max_val) { max_val = val; pivot_row = i; }
+            }
+            if (pivot_row != k) {
+                float tmp_rhs = RHS[k]; RHS[k] = RHS[pivot_row]; RHS[pivot_row] = tmp_rhs;
+                for (int j = k; j < N; j++) { float tmp = Mat[k][j]; Mat[k][j] = Mat[pivot_row][j]; Mat[pivot_row][j] = tmp; }
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+        // B. Normalize pivot row
+        float piv = Mat[k][k];
+        if (fabs(piv) < 1e-30f) {
+            if (lid == 0) current_out[gid] = 0.0f;  // singular => zero current (equilibrium)
+            return;
+        }
+        for (int j = lid; j < N; j += get_local_size(0)) Mat[k][j] /= piv;
+        if (lid == 0) RHS[k] /= piv;
+        barrier(CLK_LOCAL_MEM_FENCE);
+        // C. Elimination
+        int i = lid;
+        if (i < N && i != k) {
+            float f = Mat[i][k];
+            if (f != 0.0f) {
+                for (int j = 0; j < N; j++) Mat[i][j] -= f * Mat[k][j];
+                RHS[i] -= f * RHS[k];
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    // 4. EXPORT PROBABILITIES + CALCULATE CURRENT
+    // Match PME.cl convention:
+    // For each added transition (b lower charge -> c higher charge):
+    //   contrib = P_b * rate_enter_tip - P_c * rate_leave_tip
+    // where rate_enter uses fermi(dE), rate_leave uses (1-fermi(dE)).
+    
+    if (lid < N) {
+        probs_out[gid * MAX_BASIS + lid] = RHS[lid];
+    }
+    barrier(CLK_GLOBAL_MEM_FENCE);
+
+    // Tip current evaluation from solved probabilities RHS[*]
+    if (lid == 0) {
+        float Itot = 0.0f;
+        for (int i = 0; i < nSite; i++) { isite_out[gid * nSite + i] = 0.0f; }
+        for (int b = 0; b < N; b++) {
+            uint4 mb = StateMasks[b];
+            float Pb = RHS[b];
+            for (int c = 0; c < N; c++) {
+                if (c == b) continue;
+                uint4 mc = StateMasks[c];
+                uint4 diff = mc ^ mb;
+                int dist = popcount(diff.x) + popcount(diff.y) + popcount(diff.z) + popcount(diff.w);
+                if (dist != 1) continue;
+                int flip_idx = -1;
+                for (int iw = 0; iw < 4; iw++) {
+                    uint w = (iw==0)?diff.x:((iw==1)?diff.y:((iw==2)?diff.z:diff.w));
+                    if (w != 0u) { flip_idx = iw*32 + ctz(w); break; }
+                }
+                if (flip_idx < 0 || flip_idx >= nSite) continue;
+                bool bit_b = (get_bit_u4(mb, flip_idx) > 0u);
+                bool bit_c = (get_bit_u4(mc, flip_idx) > 0u);
+                bool added = (bit_c && !bit_b);
+                if (!added) continue; // count each edge once
+
+                float Pc = RHS[c];
+                float dE = StateEnergies[c] - StateEnergies[b];
+                float t_fac = tip_T_factors[site_offset + flip_idx];
+                float f = fermi(dE, mu_tip, T_env);
+                float G_tip = Gamma_tip * t_fac * t_fac;
+                float rate_enter = 2.0f * PI * (G_tip * f);
+                float rate_leave = 2.0f * PI * (G_tip * (1.0f - f));
+                float contrib = Pb * rate_enter - Pc * rate_leave;
+                Itot += contrib;
+                isite_out[gid * nSite + flip_idx] += contrib;
+            }
+        }
+        current_out[gid] = Itot;
+    }
 }
