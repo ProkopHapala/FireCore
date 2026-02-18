@@ -20,6 +20,34 @@ PI_HINTS = {
     "N_2": 1, "N_R": 1, "N_1": 2,
 }
 
+MOL2_ATOMTYPE_ALIASES = {
+    # Common Tripos MOL2 aromatic spelling
+    'C.ar': 'C_R',
+    'C_ar': 'C_R',
+    'N.ar': 'N_R',
+    'N_ar': 'N_R',
+    'O.ar': 'O_R',
+    'O_ar': 'O_R',
+    # Common Tripos hybridization spelling
+    'C.2':  'C_2',
+    'C_2':  'C_2',
+    'N.2':  'N_2',
+    'N_2':  'N_2',
+    'O.2':  'O_2',
+    'O_2':  'O_2',
+    'C.1':  'C_1',
+    'C_1':  'C_1',
+    'N.1':  'N_1',
+    'N_1':  'N_1',
+    # Some exporters use these
+    'C.3':  'C_3',
+    'C_3':  'C_3',
+    'N.3':  'N_3',
+    'N_3':  'N_3',
+    'O.3':  'O_3',
+    'O_3':  'O_3',
+}
+
 def initAtomProperties(mol, atom_types, capping_atoms={'H'}, bPrint=True):
     """Initialize atom properties (npi, nep, isNode) based on atom types.
     
@@ -34,18 +62,18 @@ def initAtomProperties(mol, atom_types, capping_atoms={'H'}, bPrint=True):
     isNode   = np.ones(natoms,  dtype=np.int32)  # Default to node
     for i in range(natoms):
         atom_name = mol.enames[i]
+        atom_name = MOL2_ATOMTYPE_ALIASES.get(atom_name, atom_name)
         if atom_name in atom_types:
             at = atom_types[atom_name]
             npi_list[i] = at.npi
             nep_list[i] = at.nepair
-            if bPrint:
-                if npi_list[i] > 0:
-                    print(f"DEBUG initAtomProperties: atom {i} {atom_name} npi={npi_list[i]} nep={nep_list[i]}")
-                else:
-                    hinted = PI_HINTS.get(atom_name, 0)
-                    if hinted > 0:
-                        npi_list[i] = hinted
-                        print(f"DEBUG initAtomProperties: atom {i} {atom_name} using hint npi={hinted}")
+            if npi_list[i] <= 0:
+                hinted = PI_HINTS.get(atom_name, 0)
+                if hinted > 0:
+                    npi_list[i] = hinted
+                    if bPrint: print(f"DEBUG initAtomProperties: atom {i} {atom_name} using hint npi={hinted}")
+            if bPrint and (npi_list[i] > 0):
+                print(f"DEBUG initAtomProperties: atom {i} {atom_name} npi={npi_list[i]} nep={nep_list[i]}")
         # Mark as capping if element is in capping set
         if atom_name in capping_atoms:
             isNode[i] = 0
@@ -194,6 +222,71 @@ class MMFF:
         self.invLvec    = np.full((3,3), 0.0,  dtype=np.float32)  # Assuming single system; modify as needed
         self.pbc_shifts = np.full((self.npbc, 3), 0.0,  dtype=np.float32)
         self.pipos = np.zeros((self.natoms, 3), dtype=np.float32)
+
+        # Exclusion list for non-bonded kernels (packed as (ipbc<<24)|ja, EXCL_MAX entries per atom)
+        self.excl = None
+
+    @staticmethod
+    def _make_excl_1_2_3(neighs, neighCell=None, npbc=1, EXCL_MAX=16):
+        """Build packed sorted exclusion list for getNonBond_ex2.
+
+        - Excludes 1-2 (bonded) and 1-3 (second neighbors) interactions.
+        - Packing matches OpenCL kernel: `jac = (ipbc<<24) | ja`.
+        - If neighCell is not provided, uses ipbc=0 for all exclusions.
+        - If neighCell is provided but contains only a single zero-shift index, this still works.
+        """
+        neighs = np.asarray(neighs, dtype=np.int32)
+        natoms = neighs.shape[0]
+        if neighCell is None:
+            neighCell = np.zeros_like(neighs, dtype=np.int32)
+        else:
+            neighCell = np.asarray(neighCell, dtype=np.int32)
+            assert neighCell.shape == neighs.shape
+
+        excl = np.full((natoms, EXCL_MAX), -1, dtype=np.int32)
+
+        for ia in range(natoms):
+            # Kernel logic effectively supports at most one exclusion entry per `ja`.
+            # It advances the exclusion pointer only based on (jex & 0xFFFFFF) < ja.
+            # Therefore we store a mapping ja -> ipbc.
+            m = {}
+            ng = neighs[ia]
+            ngC = neighCell[ia]
+
+            def add_excl(ja, ipbc):
+                if ja < 0 or ja >= natoms: return
+                if ja == ia: return
+                if ipbc < 0 or ipbc >= npbc: ipbc = 0
+                ja = int(ja)
+                ipbc = int(ipbc)
+                # Prefer already-stored ipbc (first wins). For intramolecular bonds this should typically be the zero-shift.
+                if ja not in m:
+                    m[ja] = ipbc
+
+            # 1-2 exclusions
+            for k in range(4):
+                add_excl(int(ng[k]), int(ngC[k]))
+
+            # 1-3 exclusions (neighbors of neighbors)
+            for k in range(4):
+                ja = int(ng[k])
+                if ja < 0 or ja >= natoms: continue
+                ng2 = neighs[ja]
+                ng2C = neighCell[ja]
+                for mn in range(4):
+                    jb = int(ng2[mn])
+                    # For 1-3 via two bonds, exact PBC cell composition is subtle.
+                    # For intramolecular topology (bonds not crossing boundary) we can safely use ipbc of the second bond.
+                    add_excl(jb, int(ng2C[mn]))
+
+            if not m:
+                continue
+            jas = sorted(m.keys())
+            if len(jas) > EXCL_MAX:
+                raise ValueError(f"excl overflow ia={ia} n={len(jas)} EXCL_MAX={EXCL_MAX}")
+            items = [ (m[ja] << 24) | ja for ja in jas ]
+            excl[ia, :len(items)] = np.array(items, dtype=np.int32)
+        return excl
 
     def make_back_neighs(self, b_cap_neighs=True):
         """Populate back-neighbor indices similar to `MMFFsp3_loc::makeBackNeighs()`."""

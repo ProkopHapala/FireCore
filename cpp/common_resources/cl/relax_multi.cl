@@ -1028,10 +1028,12 @@ __kernel void updateAtomsMMFFf4(
     }
     #endif
     }
- // ---- Limit Forces - WARRNING : Github_Copilot says: this is not the best way to limit forces, because it can lead to drift, better is to limit forces in the first forcefield run (best is NBFF)
-    float Flimit = 10.0;
-    float fr2 = dot(fe.xyz,fe.xyz);  // squared force
-    if( fr2 > (Flimit*Flimit) ){  fe.xyz*=(Flimit/sqrt(fr2)); }  // if force is too big, we scale it down to Flimit
+ // ---- Limit Forces - WARNING: this can lead to drift; prefer limiting in forcefield kernels when possible
+    float Flimit = MDpars.z;
+    if(Flimit>0){
+        float fr2 = dot(fe.xyz,fe.xyz);  // squared force
+        if( fr2 > (Flimit*Flimit) ){  fe.xyz*=(Flimit/sqrt(fr2)); }  // if force is too big, we scale it down to Flimit
+    }
 
     // =============== FORCE DONE
     aforce[iav] = fe;             // store force before limit
@@ -1986,9 +1988,24 @@ __kernel void getNonBond_ex2(
     const int iex_end   = iex + EXCL_MAX-1;
     int jex             = excl[iex];
 
+    #ifndef DBG_NB
+    #define DBG_NB 0
+    #endif
+    #ifndef DBG_NB_IS
+    #define DBG_NB_IS 0
+    #endif
+    #ifndef DBG_NB_IG
+    #define DBG_NB_IG 0
+    #endif
+    #ifndef DBG_NB_R
+    #define DBG_NB_R 2.5f
+    #endif
+
+    #if DBG_NB
     if((iG==0)&&(iS==0)){
         printf( "getNonBond_ex2() iG %i, iS %i, iaa %i, iex %i, iex_end %i, jex %i\n", iG, iS, iaa, iex, iex_end, jex );
     }
+    #endif
 
     // ========= Atom-to-Atom interaction ( N-body problem ), we do it in chunks of size of local memory, in order to reuse data and reduce number of reads from global memory  
     //barrier(CLK_LOCAL_MEM_FENCE);
@@ -2022,6 +2039,14 @@ __kernel void getNonBond_ex2(
                         for(int ix=0; ix<3; ix++){
                             int jac = (ipbc<<24) | ja;
                             if(jex!=jac){
+                                #if DBG_NB
+                                if( (iS==DBG_NB_IS) && (iG==DBG_NB_IG) ){
+                                    float r2 = dot(dp,dp);
+                                    if(r2 < (DBG_NB_R*DBG_NB_R)){
+                                        printf("DBG_NB iS=%i iG=%i ja=%i ipbc=%i r=%g dp=(%g,%g,%g) jex=%i jac=%i\n", iS,iG,ja,ipbc,sqrt(r2),dp.x,dp.y,dp.z,jex,jac);
+                                    }
+                                }
+                                #endif
                                 float4 fij = getLJQH( dp, REQK, R2damp );  // calculate non-bonded force between atoms using LJQH potential
                                 fe += fij;
                             }
@@ -2032,6 +2057,14 @@ __kernel void getNonBond_ex2(
                     }
                 }else {
                     if(jex!=ja){                                              // ===== if PBC is not used, it is much simpler
+                        #if DBG_NB
+                        if( (iS==DBG_NB_IS) && (iG==DBG_NB_IG) ){
+                            float r2 = dot(dp,dp);
+                            if(r2 < (DBG_NB_R*DBG_NB_R)){
+                                printf("DBG_NB_NOPBC iS=%i iG=%i ja=%i r=%g dp=(%g,%g,%g) jex=%i\n", iS,iG,ja,sqrt(r2),dp.x,dp.y,dp.z,jex);
+                            }
+                        }
+                        #endif
                         float4 fij = getLJQH( dp, REQK, R2damp ); 
                         fe += fij;
                     }

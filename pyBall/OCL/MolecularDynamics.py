@@ -132,6 +132,11 @@ class MolecularDynamics(OpenCLBase):
         self.create_buffer('REQs',     nSystems * natoms * 4 * float_size, mf.READ_ONLY)
         # relax_multi.cl getMMFFf4() uses argument name 'REQKs' for REQ parameters; alias it to the same buffer
         self.buffer_dict['REQKs'] = self.buffer_dict['REQs']
+
+        # Non-bonded exclusions (optional; required by getNonBond_ex2)
+        # NOTE: kernel uses EXCL_MAX=16 ints per atom
+        if self.enable_nonbond:
+            self.create_buffer('excl', nSystems * natoms * 16 * int_size, mf.READ_ONLY)
         self.create_buffer('apars',    nSystems * nnode * 4 * float_size, mf.READ_ONLY)
         self.create_buffer('bLs',      nSystems * nnode * 4 * float_size, mf.READ_ONLY)
         self.create_buffer('bKs',      nSystems * nnode * 4 * float_size, mf.READ_ONLY)
@@ -268,14 +273,21 @@ class MolecularDynamics(OpenCLBase):
         if "getSurfFlat" in self.kernelheaders:
             self.kernel_args_getSurfFlat = self.generate_kernel_args("getSurfFlat")
 
+        # Non-bonded (optional)
         self.kernel_args_getNonBond = None
-        if self.enable_nonbond and ("getNonBond" in self.kernelheaders):
-            try:
-                self.kernel_args_getNonBond = self.generate_kernel_args("getNonBond")
-            except Exception:
-                # Some relax_multi.cl variants use arg names like `atoms`/`forces` instead of `apos`/`aforce`.
-                # Keep nonbonded optional; bonded-only workflows must remain usable.
-                self.kernel_args_getNonBond = None
+        self.kernel_args_getNonBond_ex2 = None
+        if self.enable_nonbond:
+            if "getNonBond_ex2" in self.kernelheaders:
+                try:
+                    self.kernel_args_getNonBond_ex2 = self.generate_kernel_args("getNonBond_ex2")
+                except Exception as e:
+                    print(f"setup_kernels: skipping getNonBond_ex2 ({e})")
+            if (self.kernel_args_getNonBond_ex2 is None) and ("getNonBond" in self.kernelheaders):
+                try:
+                    self.kernel_args_getNonBond = self.generate_kernel_args("getNonBond")
+                except Exception as e:
+                    # Keep nonbonded optional; bonded-only workflows must remain usable.
+                    print(f"setup_kernels: skipping getNonBond ({e})")
         # --- NOTE: grid-kernels are intialized in initGridFF()
         #self.kernel_args_getNonBond_GridFF_Bspline = self.generate_kernel_args("getNonBond_GridFF_Bspline")
         #self.kernel_args_getNonBond_GridFF_Bspline_tex = self.generate_kernel_args("getNonBond_GridFF_Bspline_tex")
@@ -363,6 +375,10 @@ class MolecularDynamics(OpenCLBase):
 
     def run_getNonBond(self):
         self.prg.getNonBond(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_getNonBond)
+        self.queue.finish()
+
+    def run_getNonBond_ex2(self):
+        self.prg.getNonBond_ex2(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_getNonBond_ex2)
         self.queue.finish()
     
     def run_getNonBond_GridFF_Bspline(self):
@@ -646,6 +662,13 @@ class MolecularDynamics(OpenCLBase):
         self.toGPU('neighs',    self._int32 (mmff.neighs),    byte_offset=offset_neighs)
         self.toGPU('neighCell', self._int32 (mmff.neighCell), byte_offset=offset_neighs)
         self.toGPU('bkNeighs',  bk,                         byte_offset=offset_bk)
+
+        # Non-bonded exclusions (packed EXCL_MAX=16 ints per atom)
+        if self.enable_nonbond and (self.buffer_dict.get('excl') is not None):
+            if getattr(mmff, 'excl', None) is None:
+                raise ValueError("enable_nonbond=True but mmff.excl is None; build exclusions before pack_system()")
+            offset_excl = iSys * natoms * 16 * np.int32().itemsize
+            self.toGPU('excl', self._int32(mmff.excl), byte_offset=offset_excl)
         self.toGPU('apars',     self._flat32(mmff.apars),   byte_offset=offset_apars)
         self.toGPU('bLs',       self._flat32(mmff.bLs),     byte_offset=offset_apars)
         self.toGPU('bKs',       self._flat32(mmff.bKs),     byte_offset=offset_apars)

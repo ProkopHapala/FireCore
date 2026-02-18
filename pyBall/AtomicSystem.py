@@ -85,19 +85,25 @@ class AtomicSystem( ):
         if self.apos is not None:
             self.natoms = len(self.apos)
 
-    def saveXYZ(self, fname, mode="w", blvec=True, comment="", ignore_es=None, bQs=True, other_lines=None ):
+    def saveXYZ(self, fname, mode="w", blvec=True, comment="", ignore_es=None, bQs=True, other_lines=None, simple_names=False ):
         if blvec and (self.lvec is not None):
             #print( self.lvec )
             comment= ( "lvs %6.3f %6.3f %6.3f   %6.3f %6.3f %6.3f   %6.3f %6.3f %6.3f" %(self.lvec[0,0],self.lvec[0,1],self.lvec[0,2],  self.lvec[1,0],self.lvec[1,1],self.lvec[1,2],  self.lvec[2,0],self.lvec[2,1],self.lvec[2,2]   ) ) + comment
         qs = self.qs
         if(not bQs): qs=None
-        au.saveXYZ( self.enames, self.apos, fname, qs=qs, Rs=self.Rs, mode=mode, comment=comment, ignore_es=ignore_es, other_lines=other_lines )
+        es = self.enames
+        if simple_names and (es is not None):
+            es = [ e.split('_')[0] for e in es ]
+        au.saveXYZ( es, self.apos, fname, qs=qs, Rs=self.Rs, mode=mode, comment=comment, ignore_es=ignore_es, other_lines=other_lines )
 
     def save_mol(self, fname, title="Avogadro"):
         au.save_mol(fname, self.enames, self.apos, self.bonds, title="Avogadro")
 
-    def save_mol2(self, fname, comment=""):
-        au.save_mol2(fname, self.enames, self.apos, self.bonds, comment="")
+    def save_mol2(self, fname, comment="", simple_names=False):
+        es = self.enames
+        if simple_names and (es is not None):
+            es = [ e.split('_')[0] for e in es ]
+        au.save_mol2(fname, es, self.apos, self.bonds, comment=comment)
 
     def toLines(self):
         #lines = []

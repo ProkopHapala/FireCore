@@ -1254,37 +1254,117 @@ def string_to_matrix( s, nx=3,ny=3, bExactSize=False ):
 
 def loadMol(fname=None, fin=None, bReadN=False, nmax=10000 ):
     bClose=False
-    if fin is None: 
+    if fin is None:
         fin=open(fname, 'r')
         bClose=True
-    xyzs   = [] 
+    # V2000 MOL format (as produced by Avogadro / many exporters):
+    #  - 3 header lines
+    #  - counts line (fixed width): aaa bbb ... V2000
+    #  - atom block: na lines with x y z symbol ...
+    #  - bond block: nb lines with a1 a2 order ...
+    xyzs   = []
     Zs     = []
     enames = []
     qs     = []
     bonds  = []
-    ia=0
-    na=0
-    nb=0
-    for il,line in enumerate(fin):
+
+    lines = fin.readlines()
+    if bClose:
+        fin.close()
+    if len(lines) < 2:
+        raise ValueError(f"loadMol(): file too short ({len(lines)} lines) fname={fname}")
+
+    # Locate counts line (typically the 4th line, but exporters may add/omit blanks)
+    i_counts = None
+    for i, line in enumerate(lines[:64]):
+        s = line.strip()
+        if not s:
+            continue
+        if 'V2000' in s:
+            i_counts = i
+            break
+    if i_counts is None:
+        # Fallback: first line with at least 6 leading digits/spaces usable for fixed-width parsing
+        for i, line in enumerate(lines[:64]):
+            s = line.rstrip("\n")
+            if len(s) >= 6 and s[:6].strip().isdigit():
+                i_counts = i
+                break
+    if i_counts is None:
+        raise ValueError(f"loadMol(): cannot locate counts line (V2000) fname={fname}")
+
+    counts = lines[i_counts].rstrip("\n")
+    na = None
+    nb = None
+    # Prefer fixed-width parsing (robust against missing spaces like '624720  0  0 ...')
+    try:
+        if len(counts) >= 6 and counts[:6].strip().isdigit():
+            na = int(counts[0:3])
+            nb = int(counts[3:6])
+    except Exception:
+        na = None
+        nb = None
+    if na is None or nb is None:
+        wds = counts.split()
+        if len(wds) < 2:
+            raise ValueError(f"loadMol(): cannot parse counts line '{counts}' fname={fname}")
+        na = int(wds[0])
+        nb = int(wds[1])
+
+    i_atom0 = i_counts + 1
+    i_bond0 = i_atom0 + na
+    if len(lines) < i_bond0 + nb:
+        raise ValueError(f"loadMol(): file truncated: need >= {i_bond0+nb} lines, have {len(lines)} fname={fname}")
+
+    for il in range(i_atom0, i_atom0 + na):
+        line = lines[il]
         wds = line.split()
-        if (il>4) and ((il-4)<na):
-            xyzs.append( ( float(wds[0]), float(wds[1]), float(wds[2]) ) )
-            ename = wds[0]
-            enames.append( ename )
-            Zs    .append( elements.ELEMENT_DICT[ename][0] )
-            ia+=1
-            if (bReadN and ia>=na): break
-        if (il>(4+na) ) and ((il-4-na)<nb):
-            bonds.append( wds[1],wds[2] )  # ignoring bond order
-        elif(il==4):
-            na=int(wds[0])
-            nb=int(wds[2])
-    if(bClose): fin.close()
-    xyzs  = np.array( xyzs )
-    Zs    = np.array( Zs, dtype=np.int32 )
-    qs    = np.array(qs)
-    bonds = np.array( bonds, dtype=np.int32 )
-    return xyzs,Zs,enames,qs,bonds
+        if len(wds) < 4:
+            raise ValueError(f"loadMol(): bad atom line il={il} '{line.strip()}' fname={fname}")
+        x = float(wds[0]); y = float(wds[1]); z = float(wds[2])
+        sym_raw = wds[3]
+        sym = sym_raw.replace('.','_').split('_')[0]
+        if sym not in elements.ELEMENT_DICT:
+            raise KeyError(f"loadMol(): unknown element symbol '{sym}' (raw='{sym_raw}') il={il} fname={fname}")
+        xyzs.append((x,y,z))
+        enames.append(sym_raw.replace('.', '_'))
+        Zs.append(elements.ELEMENT_DICT[sym][0])
+
+    for il in range(i_bond0, i_bond0 + nb):
+        line = lines[il]
+        wds = line.split()
+        a1 = None
+        a2 = None
+        if len(wds) >= 2:
+            try:
+                a1 = int(wds[0]) - 1
+                a2 = int(wds[1]) - 1
+            except Exception:
+                a1 = None
+                a2 = None
+        # Some exporters omit spaces; V2000 bond records are fixed-width 3+3+3
+        # Example observed: '1397  1  0  0  0  0' which should be a1=13 a2=97
+        if (a1 is None) or (a2 is None) or (a1 < 0) or (a2 < 0) or (a1 >= na) or (a2 >= na):
+            s = line.rstrip("\n")
+            try:
+                if len(s) >= 6:
+                    a1_fw = int(s[0:3]) - 1
+                    a2_fw = int(s[3:6]) - 1
+                    a1 = a1_fw
+                    a2 = a2_fw
+            except Exception:
+                pass
+        if a1 is None or a2 is None:
+            raise ValueError(f"loadMol(): bad bond line il={il} '{line.strip()}' fname={fname}")
+        if a1 < 0 or a2 < 0 or a1 >= na or a2 >= na:
+            raise ValueError(f"loadMol(): bond index out of range il={il} a1={a1} a2={a2} na={na} fname={fname}")
+        bonds.append((a1, a2))
+
+    xyzs  = np.array(xyzs, dtype=np.float32)
+    Zs    = np.array(Zs,   dtype=np.int32)
+    qs    = np.array(qs,   dtype=np.float32)
+    bonds = np.array(bonds, dtype=np.int32)
+    return xyzs, Zs, np.array(enames, dtype=object), qs, bonds
 
 
 def loadMol2(fname, bReadN=True, bExitError=True):
@@ -1335,6 +1415,7 @@ def loadMol2(fname, bReadN=True, bExitError=True):
     enames  = []
     qs      = []
     bonds   = []
+    bond_types = []
     lvec    = None
 
     with open(fname, 'r') as fin:
@@ -1442,6 +1523,8 @@ def loadMol2(fname, bReadN=True, bExitError=True):
                 iatom = int(tokens[1]) - 1  # convert to zero-based index
                 jatom = int(tokens[2]) - 1
                 bonds.append( (iatom, jatom) )
+                btyp = tokens[3] if (len(tokens) > 3) else ''
+                bond_types.append(str(btyp).strip())
             except:
                 continue
 
@@ -1449,6 +1532,21 @@ def loadMol2(fname, bReadN=True, bExitError=True):
     apos_np   = np.array(apos,   dtype=float)
     atypes_np = np.array(atypes, dtype=int)
     qs_np     = np.array(qs,     dtype=float)
+    # If bond types contain aromatic markers ('ar'), tag involved plain-element atoms as *_ar
+    # (e.g. C -> C_ar). This keeps full atom typing info for downstream MMFF/UFF.
+    if bond_types and enames:
+        for (b, bt) in zip(bonds, bond_types):
+            if str(bt).lower() != 'ar':
+                continue
+            ia, ja = int(b[0]), int(b[1])
+            for k in (ia, ja):
+                try:
+                    ek = enames[k]
+                    if ek in ('C', 'N', 'O'):
+                        enames[k] = ek + '_ar'
+                except Exception:
+                    pass
+
     enames_np = np.array(enames)
     #bonds_np  = np.array(bonds, dtype=int)
 
@@ -1737,6 +1835,11 @@ def save_mol2( fname, enames, apos, bonds, qs=None, comment=""):
     None.
     """
     with open(fname, "w") as fout:
+        if comment:
+            c = str(comment).rstrip("\n")
+            if not c.startswith('#'):
+                c = '#'+c
+            fout.write(c + "\n")
         # Write the MOLECULE section.
         fout.write("@<TRIPOS>MOLECULE\n")
         # Use a default molecule name or comment.
@@ -1754,8 +1857,7 @@ def save_mol2( fname, enames, apos, bonds, qs=None, comment=""):
         for i in range(n_atoms):
             atom_id   = i + 1  # MOL2 uses 1-based indexing.
             atom_type = enames[i]
-            ename     = atom_type.replace('.','_')
-            ename     = ename.split('_')[0]
+            ename     = atom_type
             x, y, z   = apos[i]
             substructure = 1  # Default substructure id.
             residue = "UNL1"   # Standard residue name for unknown ligand.
