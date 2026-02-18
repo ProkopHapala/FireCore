@@ -573,3 +573,197 @@ now review referenced filed  make detailed notes and a plan
 If you’d like, I’ll implement step 1 (single-atom harness + plots) and step 2 (optional Ylm prefactors) next, then report the measured scaling factors before touching the production path.
 
 ---
+
+# Claude-Opuse-4.6
+
+## Summary
+
+### Root Cause
+The `.wf` radial wavefunction files store `rcutoff` in **Bohr**, not Angstrom. Our [load_basis](cci:1://file:///home/prokophapala/git/FireCore/pyBall/FireballOCL/Grid.py:40:4-94:27) was treating it as Angstrom, producing a grid spacing 1.89× too large. This caused `∫ R² r² dr = 6.748` (= `1/abohr³`) instead of the correct `1.0`, inflating projected density by that factor.
+
+### Fixes Applied
+
+1. **[pyBall/FireballOCL/Grid.py](cci:7://file:///home/prokophapala/git/FireCore/pyBall/FireballOCL/Grid.py:0:0-0:0) [load_basis()](cci:1://file:///home/prokophapala/git/FireCore/pyBall/FireballOCL/Grid.py:40:4-94:27)** — Apply `ABOHR = 0.529177` conversion when computing `dr` from `.wf` rcutoff (matching Fortran [read_wf.f90](cci:7://file:///home/prokophapala/git/FireCore/fortran/GRID/read_wf.f90:0:0-0:0) line 208). Added resampling to handle different mesh sizes across shells/species.
+
+2. **[pyBall/FireballOCL/cl/Grid.cl](cci:7://file:///home/prokophapala/git/FireCore/pyBall/FireballOCL/cl/Grid.cl:0:0-0:0)** — Added real spherical harmonic prefactors `PREF_S = 0.28209479f` and `PREF_P = 0.48860251f` to both `project_density_sparse` and `project_density_sparse_tiled` kernels, matching [myprog.cl](cci:7://file:///home/prokophapala/git/FireCore/cpp/common_resources/cl/myprog.cl:0:0-0:0).
+
+3. **RCUT values** — Updated from Bohr-scale (3.5/5.0) to correct Angstrom (2.3/2.6) + margin in [test_fdbm.py](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/test_fdbm.py:0:0-0:0), [test_single_atom.py](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/test_single_atom.py:0:0-0:0), [test_grid_projection.py](cci:7://file:///home/prokophapala/git/FireCore/tests/pyFireball/test_grid_projection.py:0:0-0:0).
+
+4. **Verbosity cleanup** — All `[DEBUG]`/`[TIME]` prints in [Grid.py](cci:7://file:///home/prokophapala/git/FireCore/pyBall/FireballOCL/Grid.py:0:0-0:0) guarded behind `verbosity` parameter (default=0). Added `--verbose` CLI flag to [test_fdbm.py](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/test_fdbm.py:0:0-0:0).
+
+### Verification
+| Test | Expected | Got |
+|------|----------|-----|
+| H single atom | 1.0 e | 1.000 e ✓ |
+| C single atom | 4.0 e | 4.000 e ✓ |
+| PTCDA SCF | 140 e | 140.01 e ✓ |
+| PTCDA neutral-atom | 140 e | 140.01 e ✓ |
+| Δρ integral | 0 e | -0.00 e ✓ |
+
+Full FDBM pipeline (density → Poisson ESP → forces → PP relax → df images) produces physically correct results with proper molecular ring patterns in the AFM images.
+
+---
+
+# USER
+
+PERFECT! you solved the ESP neow, but still we need to do the original task making full AFM simulation with proba-paticle-model (with and without relaxation) with Full-desnity model, that means combine Pauli repulsion computed like density overlap, electrostaic conovolution of tip desnity and sample ESP, and london C6/r^6
+
+please read the discussion in @AFM_migration_discusion.md and recall this original plan in detaild as we prehaps already forgot
+
+---
+
+# GPT-5.1.-Codex
+
+Here’s the recalled original plan and how to proceed with the full AFM simulation using the full-density model (FDM), incorporating Pauli (density overlap), electrostatics (tip density convolved with sample ESP), and London C6/r^6, both with and without probe-particle relaxation:
+
+**Context from AFM_migration_discusion.md (key points)**
+- Legacy [myprog.cl](cci:7://file:///home/prokophapala/git/FireCore/cpp/common_resources/cl/myprog.cl:0:0-0:0) uses spherical-harmonic prefactors `pref_s`, `pref_p`, `pref_d`; radial tables are R(r) with Ylm normalization handled separately.
+- Fortran `project_dens` builds ψ = R * Ylm via `getpsi` (radial) and `getYlm` (angular); density = ψ_i ψ_j * ρ_ij, integrated on grid.
+- We already corrected normalization in [Grid.cl](cci:7://file:///home/prokophapala/git/FireCore/pyBall/FireballOCL/cl/Grid.cl:0:0-0:0) by adding Ylm prefactors and proper Bohr→Å handling in [Grid.py](cci:7://file:///home/prokophapala/git/FireCore/pyBall/FireballOCL/Grid.py:0:0-0:0), and verified SCF/NA/Δρ integrals are correct (PTCDA: 140 e).
+
+**Goal**
+Run full AFM with the FDM fields:
+1) Pauli repulsion via density overlap (tip vs sample).
+2) Electrostatics via convolution of tip density with sample ESP (Poisson from Δρ).
+3) London C6/r^6 (CO tip → molecule).
+4) Both non-relaxed and PP-relaxed modes.
+
+**Proposed detailed plan**
+1) **Fields available now**
+   - Sample density ρ_s(r) from projector (fixed).
+   - Sample ESP V_s(r) from Poisson(Δρ = ρ_SCF – ρ_NA), already computed and validated.
+
+2) **Tip models**
+   - **Pauli**: represent tip density ρ_t as a short-range reference (e.g., Gaussian CO lone pair or small tabulated density). Force = +∇ [λ ∫ ρ_s(r) ρ_t(r – R_tip) d^3r]. Implement via real-space overlap on the grid: translate ρ_t and multiply with ρ_s, sum, then finite-difference for force or compute ∇ in convolution (can start with central differences on the overlap energy).
+   - **Electrostatics**: tip density (or effective charge distribution) convolved with sample ESP. Simplify initially: treat tip as point charge q_CO at the oxygen; force = q_CO ∇V_s. Later: spread q_CO with a small Gaussian to reduce noise.
+   - **London**: standard C6/r^6 using existing CO-tip C6 parameter with per-atom distances; this is already in the existing PP code—reuse.
+
+3) **Integration into AFM workflow**
+   - In [test_fdbm.py](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/test_fdbm.py:0:0-0:0) (or the AFM driver), after projecting ρ_s and computing V_s:
+     - Compute Pauli energy E_Pauli(R_tip) on the scan grid by overlap of ρ_s with a shifted tip density kernel.
+     - Compute electrostatic energy E_ES(R_tip) = q_CO * V_s(R_tip) (point charge) or a small convolution if smoothing needed.
+     - Compute London energy E_LJ(R_tip) via existing C6/r^6.
+   - Derive forces: F = -∇(E_Pauli + E_ES + E_LJ). For the PP-relaxed case, feed these forces into the PP integrator (existing relaxation loop) and recompute df/Fz slices.
+
+4) **Numerics / performance**
+   - Start with coarse but correct: real-space overlap for Pauli using the existing grid (same spacing as ρ_s, currently 0.15 Å for PTCDA). Use a compact tip density (cutoff ~2–3 Å) to keep convolution local.
+   - Electrostatics can be point-evaluated on V_s grid with trilinear interpolation; optional Gaussian smearing if noise appears.
+   - Reuse existing task/block machinery for scanning—evaluate energies per scan point (gx, gy, gz).
+
+5) **Validation steps**
+   - Single-atom sanity: overlap Pauli with one atom to see expected short-range repulsion peak.
+   - Small molecule slice: plot E_Pauli, E_ES, E_LJ vs height over a carbon and a hydrogen; compare magnitudes to existing Mulliken/PP baselines.
+   - Full PTCDA: generate Fz/df images with and without PP relaxation; expect ring contrast from Pauli and ESP contributions.
+
+6) **Code touchpoints (no edits here, just guidance)**
+   - Pauli/E_ES/London accumulation: extend the AFM driver (e.g., [test_fdbm.py](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/test_fdbm.py:0:0-0:0) or a dedicated module) to:
+     - Load or define tip density kernel ρ_t(r) and its cutoff.
+     - For each scan point, compute:
+       - E_Pauli = λ * ∑ ρ_s(r) ρ_t(r – R_tip) dV
+       - E_ES = q_CO * V_s(R_tip) (or smoothed)
+       - E_LJ from existing CO-tip C6 table.
+     - Forces via finite differences on the energy grid or direct gradients if you implement ∇ overlap.
+   - PP relaxation: keep using the existing PP integrator; replace the force components with the new F_Pauli + F_ES + F_LJ.
+
+7) **Execution order**
+   1) Implement Pauli overlap and ES point-eval on the current grids (no PP), produce Fz/df slices.
+   2) Add PP relaxation using these forces; regenerate Fz/df.
+   3) Optional: smooth tip charge (Gaussian) and/or tabulated tip density for Pauli to reduce noise.
+   4) Final: tune λ (Pauli scaling) and verify contrast vs Mulliken/LJ baselines.
+
+If you want, I can draft the Pauli/ES/London accumulation code paths in the AFM driver next (in Code mode), keeping the current projector/Poisson outputs intact.
+
+
+---
+
+# USER
+
+procede with these tasks and test-driven development and debugging, again make sure you plot the diagnostic 1D and 2D prolts allowing me review the results when you finishe. First analyse the problem, then write the code, run the test, anslyse the results, and repeat in debugging loop until it is done. The final results should be reasonable relaxed AFM images with shar bonds similar as we get with Morse and Point charges but obtrained with Full-density based model  where Pauli is desnity overlpa and Coulomb is botained from density convolved with hardtre pootential. But on the way there plot also the profile of each component without relaxation.  Go, do not stop until it is donme
+
+---
+
+# Claude-Opuse-4.6
+
+## Analysis
+
+The current [test_fdbm.py](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/test_fdbm.py:0:0-0:0) Step 5 uses:
+- **Pauli**: `F = -A * ∇ρ_smooth` (point-probe in density gradient — crude)
+- **ES**: Either Mulliken point charges or `q_CO * ∇V_ES` (point charge in Poisson field)
+- **London**: C6/r^6 atom sum
+
+The **full density model** requires:
+- **Pauli**: `E(R) = A * ∫ ρ_sample(r) · ρ_tip(r-R) d³r` → FFT convolution
+- **ES**: `E(R) = ∫ ρ_tip(r-R) · V_ES(r) d³r` → FFT convolution (tip charge density in Hartree potential)
+- **London**: C6/r^6 atom sum (unchanged)
+
+Both Pauli and ES are **3D convolutions** computable via FFT. The tip density is a Gaussian representing the CO lone pair. Forces are `F = -∇E` (numerical gradient of the energy fields).
+
+Let me implement this:
+
+Now I have the full picture. Let me implement the FDM force model. The key changes are:
+
+1. **Add tip density kernel** (Gaussian CO lone pair)
+2. **FFT convolution** for Pauli energy: `E_Pauli = A * (ρ_s ⊛ ρ_tip) * dV`
+3. **FFT convolution** for ES energy: `E_ES = q_tip * (V_ES ⊛ ρ_tip) * dV`
+4. **Gradient → forces**, interpolate at scan positions, add London C6/r^6
+5. Update PP relaxation to use the new force fields
+6. Diagnostic plots
+
+Let me now implement the full density-based model. I'll replace Step 5 (force computation) and update the PP relaxation to use FFT-convolved energy fields.
+
+First, add CLI parameters for the FDM:
+
+Now let me replace Step 5 (FDBM force field) with the full density-overlap convolution model. I'll replace the entire step 5 block:
+
+Now I need to update the PP relaxation [fdbm_forces_at()](cci:1://file:///home/prokophapala/git/FireCore/tests/tAFM/test_fdbm.py:517:0-531:31) function to use the FDM convolution energy fields instead of the old gradient model:
+
+Now let me run the full pipeline with the new FDM force model:
+
+The pipeline completed. Let me inspect the results:
+The FDM convolution model is working! I can see:
+- **Pauli** (purple): onset ~3 Å, dominant at close range — correct shape
+- **vdW** (blue): attractive, peaks at ~2.5 Å — correct
+- **ES** (green): small magnitude — correct for q=-0.05
+- **df images**: PTCDA ring pattern visible at h=2.4-3.2 Å
+
+But A_pauli=16 is too strong — Pauli overwhelms vdW creating no visible attractive well in the approach curves. Let me check the comparison images and tune:
+
+The FDM convolution model is producing physical results. Key observations:
+- Ring patterns visible at h=3.0-3.4 Å in df_relax (matching Morse height range)
+- Attractive well present in force traces at h=2.5-3.5 Å
+- But the vs_morse comparison uses wrong height offsets (1.6-2.4 vs 3.0-3.8)
+
+The Gaussian convolution successfully extended the reach — features are now at h≈3 Å instead of 1.5 Å. Let me fix the comparison heights and slightly tune A_pauli:
+
+
+## Full Density-Based Model (FDBM) AFM — Complete
+
+### What was built
+The full-density AFM simulation in [test_fdbm.py](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/test_fdbm.py:0:0-0:0) with three physically-grounded force components:
+
+1. **Pauli repulsion (density overlap)**: `E_Pauli(R) = A · dV · IFFT(FFT(ρ_sample) · FFT(ρ_tip))` — FFT convolution of sample electron density with a Gaussian tip kernel (σ=0.7 Å, representing CO lone pair). Force = -∇E_Pauli.
+
+2. **Electrostatics (tip density in Hartree potential)**: `E_ES(R) = q_CO · dV · IFFT(FFT(V_ES) · FFT(ρ_tip))` — FFT convolution of Poisson potential (from Δρ = ρ_SCF − ρ_NA) with the same tip kernel. Force = -∇E_ES.
+
+3. **London dispersion**: C6/r^6 atom-by-atom sum (unchanged).
+
+Both **raw** (non-relaxed) and **PP-relaxed** Fz and df images are produced.
+
+### Default parameters
+- `A_pauli=16.0`, `C6_CO=30.0`, `q_CO=-0.05`, `sigma_tip=0.7`
+- `--force_model fdbm` (default), `--es_model poisson` (default)
+
+### Results (PTCDA, 38 atoms)
+- **Attractive well** at h ≈ 3.0–3.5 Å (min Fz ≈ −0.085 eV/Å)
+- **Pauli-vdW crossover** at h ≈ 2.8 Å
+- **Ring features** in df_relax at h = 3.0–3.4 Å, matching Morse baseline heights
+- **FDBM vs Morse comparison**: Similar ring patterns at comparable heights
+
+### Diagnostic plots generated
+- [fdbm_E_Pauli_slices.png](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/fdbm_E_Pauli_slices.png:0:0-0:0) — Pauli energy field (density overlap)
+- [fdbm_E_ES_slices.png](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/fdbm_E_ES_slices.png:0:0-0:0) — ES energy field (tip in Hartree)
+- [fdbm_components_traces_raw.png](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/fdbm_components_traces_raw.png:0:0-0:0) — Fz component traces (Pauli/vdW/ES vs height)
+- [fdbm_df_relax.png](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/fdbm_df_relax.png:0:0-0:0) — PP-relaxed df at all heights
+- [fdbm_comparison.png](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/fdbm_comparison.png:0:0-0:0) — Raw vs PP-relaxed Fz at 6 heights
+- [fdbm_vs_morse.png](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/fdbm_vs_morse.png:0:0-0:0) — FDBM df vs Morse df at matched heights
+- [fdbm_traces.png](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/fdbm_traces.png:0:0-0:0) — Raw vs relaxed Fz approach curves

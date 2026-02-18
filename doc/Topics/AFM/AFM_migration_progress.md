@@ -38,3 +38,34 @@ Build a simple, reusable PyOpenCL AFM tool:
 - **Single source for parameters**: ElementTypes.dat drives LJ/Morse/Q/QEq in both C++ and Python; avoid duplicating constants.
 - **Trilinear is enough for AFM imaging**: Bspline path adds fitting overhead; use it only when high interpolation accuracy is needed.
 - **QEq can explode**: Validate charge magnitudes early (sum=0, ranges reasonable) before coupling to force-field kernels.
+
+## Phase 3: Full Density-Based Model (FDBM) AFM (Fireball DFT)
+
+### What we achieved
+- Fixed density projection normalization:
+  - `.wf` cutoffs are in **Bohr**; applied Bohr→Å conversion in `Grid.py::load_basis`.
+  - Added real spherical-harmonic prefactors (PREF_S/PREF_P) in `Grid.cl`.
+  - Verified single-atom integrals: H=1.000 e, C=4.000 e; PTCDA SCF/NA integrals = 140.01 e, Δρ ≈ 0.
+- Implemented full-density AFM forces in `tests/tAFM/test_fdbm.py`:
+  - Pauli = FFT convolution of sample density with Gaussian tip density (σ=0.7 Å), force = -∇E.
+  - Electrostatics = tip density convolved with Hartree potential from Δρ (Poisson FFT), force = -∇E.
+  - London C6/r^6 retained; tuned to C6_CO=30 for balanced well.
+  - PP relaxation uses these forces; raw and relaxed Fz/df grids with diagnostics are saved.
+- Diagnostics: energy-field slices (E_Pauli/E_ES), component traces, raw/relax Fz, df, and FDBM vs Morse comparisons show clear PTCDA ring/bond contrast at h≈3.0–3.4 Å.
+
+### Problems we hit
+- Huge density overcount (∫ρ ≈ 6.748×): root cause was treating `.wf` rcutoff as Å instead of Bohr; also missing Ylm prefactors.
+- PP forces too repulsive when Pauli dominated; balanced by increasing C6 and using Gaussian tip convolution (σ=0.7 Å) to extend reach.
+
+### Takeaways
+- Always confirm units of radial tables (.wf): Bohr cutoffs require explicit Bohr→Å conversion before resampling.
+- Apply Ylm prefactors explicitly; radial tables store R(r), not u(r).
+- Convolution with a realistic tip density (Gaussian) yields correct height scaling (~3–3.5 Å) and smoother fields than point gradients.
+- Keep A_pauli and C6 tunable; small adjustments shift the attractive well significantly.
+
+### Files created/touched
+- `pyBall/FireballOCL/cl/Grid.cl` — add PREF_S/PREF_P.
+- `pyBall/FireballOCL/Grid.py` — Bohr→Å in load_basis, resampling, normalization.
+- `tests/tAFM/test_single_atom.py` — single-atom projection harness.
+- `tests/pyFireball/test_grid_projection.py` — RCUT fix.
+- `tests/tAFM/test_fdbm.py` — full FDBM force model (Pauli/ES FFT conv., C6 tune), diagnostics/plots.
