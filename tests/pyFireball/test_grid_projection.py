@@ -163,7 +163,7 @@ def test_pentacene_projection(args):
     # Map atom data for projector
     atoms_dict = {
         'pos': atomPos,
-        'Rcut': np.array([4.5 if z == 6 else 3.5 for z in atomTypes]), # Dummy Rcuts
+        'Rcut': np.array([2.6 if z == 6 else 2.3 for z in atomTypes]), # .wf rc is in Bohr; abohr*rc + margin
         'type': atomTypes
     }
     

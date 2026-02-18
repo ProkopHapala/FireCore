@@ -33,6 +33,16 @@ ap.add_argument('--dz',      type=float, default=0.2)
 ap.add_argument('--A_pauli', type=float, default=3.0,    help='Pauli repulsion amplitude [eV·Å³]')
 ap.add_argument('--C6_CO',   type=float, default=10.0,   help='CO-tip London C6 per atom [eV·Å^6]')
 ap.add_argument('--q_CO',    type=float, default=-0.05,  help='CO-tip net charge [e]')
+ap.add_argument('--es_model', choices=['mulliken','poisson'], default='mulliken', help='Electrostatics model: mulliken point charges or Poisson from delta density')
+ap.add_argument('--proj_notiled', action='store_true', help='Use non-tiled density projection kernel (debug GPU crashes)')
+ap.add_argument('--proj_debug_exit', action='store_true', help='Build projection kernels with DEBUG_EARLY_EXIT=1 (debug GPU crashes)')
+ap.add_argument('--proj_debug_clear', action='store_true', help='Build projection kernels with DEBUG_CLEAR_ONLY=1 (debug GPU crashes)')
+ap.add_argument('--proj_debug_return0', action='store_true', help='Build projection kernels with DEBUG_RETURN0=1 (debug GPU crashes)')
+ap.add_argument('--proj_debug_read_task', action='store_true', help='Build projection kernels with DEBUG_READ_TASK=1 (debug GPU crashes)')
+ap.add_argument('--proj_debug_read_grid', action='store_true', help='Build projection kernels with DEBUG_READ_GRID=1 (debug GPU crashes)')
+ap.add_argument('--proj_ntasks', type=int, default=0, help='Limit number of projection tasks (blocks) for debugging; 0=all')
+ap.add_argument('--stop_after_proj', action='store_true', help='Exit after density projection step (for crash bisection)')
+ap.add_argument('--verbose', type=int, default=0, help='Verbosity level for GridProjector (0=quiet, 1=debug, 2=timing)')
 args = ap.parse_args()
 
 nz        = int(round((args.z_start - args.z_end) / args.dz)) + 1
@@ -79,6 +89,13 @@ neighs = fc.get_rho_sparse(dims, data=neighs)
 rho_sparse = neighs.rho
 print(f"rho_sparse shape={rho_sparse.shape}  |max|={np.abs(rho_sparse).max():.4f}")
 
+# DEBUG: quick neighbor list sanity (is there a self-neighbor entry?)
+try:
+    nj0 = neighs.neigh_j.reshape(natoms, -1)
+    print(f"neigh_j[0,:10]={nj0[0,:10]}")
+except Exception as e:
+    print(f"[WARN] cannot print neigh_j head: {e}")
+
 # firecore_getCharges returns dimension(natoms) populations (Mulliken or Lowdin)
 # pass (natoms,1) so the C pointer points to contiguous natoms doubles
 charges2d = np.zeros((natoms, 1), dtype=np.float64)
@@ -111,25 +128,137 @@ grid_spec = {
     'dA': [_step,0.,0.], 'dB': [0.,_step,0.], 'dC': [0.,0.,_step],
     'ngrid': ngrid.astype(int)
 }
-RCUT = {1:3.5, 6:5.0, 7:5.0, 8:5.0}
+# Wf cutoffs in Angstrom (.wf rcutoff is in Bohr; abohr=0.529177) + 0.2 Å margin
+RCUT = {1:2.3, 6:2.6, 7:2.6, 8:2.5}
 atoms_dict = {
     'pos':  atomPos,
     'Rcut': np.array([RCUT.get(int(z),4.5) for z in atomTypes]),
     'type': atomTypes,
 }
-projector = ocl_grid.GridProjector(fdata_dir=_FDATA_BASIS)
+projector = ocl_grid.GridProjector(
+    fdata_dir=_FDATA_BASIS,
+    debug_early_exit=args.proj_debug_exit,
+    debug_clear_only=args.proj_debug_clear,
+    debug_return0=args.proj_debug_return0,
+    debug_read_task=args.proj_debug_read_task,
+    debug_read_grid=args.proj_debug_read_grid,
+    verbosity=args.verbose,
+)
 try:
     projector.load_basis(sorted(set(atomTypes.tolist())))
 except Exception as e:
     print(f"[WARN] basis load: {e}")
 
 print("Projecting density to grid...")
-rho_grid = projector.project(rho_sparse, neighs, atoms_dict, grid_spec, nMaxAtom=64)
+proj_tasks = None
+if args.proj_ntasks and args.proj_ntasks > 0:
+    print(f"[DEBUG] Building tasks on host and slicing to first {args.proj_ntasks} tasks")
+    tasks_np, task_atoms_np = projector.build_tasks(atoms_dict, grid_spec, nMaxAtom=64)
+    nt = min(int(args.proj_ntasks), len(tasks_np))
+    proj_tasks = (tasks_np[:nt].copy(), task_atoms_np[:nt].copy())
+    print(f"[DEBUG] proj_tasks: nt={nt} na_max={int(tasks_np['na'][:nt].max()) if nt>0 else 0}")
+rho_grid = projector.project(rho_sparse, neighs, atoms_dict, grid_spec, tasks=proj_tasks, nMaxAtom=64, use_tiled=(not args.proj_notiled))
 nx_d, ny_d, nz_d = rho_grid.shape
 dV = _step**3
 print(f"rho_grid shape={rho_grid.shape} range=[{rho_grid.min():.5f},{rho_grid.max():.5f}]")
 print(f"  Integrated electrons = {rho_grid.sum()*dV:.2f}")
 np.save(os.path.join(_THIS_DIR,'rho_grid_fdbm.npy'), rho_grid)
+
+# Build a simple neutral-atom (promolecule) density on the same sparse layout:
+# Only on-site (i,i) blocks are set, off-diagonal are zero.
+print("Building neutral-atom density matrix (on-site only)...")
+rho_na = np.zeros_like(rho_sparse, dtype=np.float32)
+neigh_j = neighs.neigh_j.reshape(natoms, -1)
+def _onsite_occ(Z):
+    # Returns diag occupations for (s,py,pz,px) in the kernel convention used in Grid.cl.
+    # This is a crude promolecule guess (valence only).
+    if Z == 1:  # H: 1s1
+        return np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    if Z == 6:  # C: 2s2 2p2
+        return np.array([2.0, 2.0/3.0, 2.0/3.0, 2.0/3.0], dtype=np.float32)
+    if Z == 7:  # N: 2s2 2p3
+        return np.array([2.0, 1.0, 1.0, 1.0], dtype=np.float32)
+    if Z == 8:  # O: 2s2 2p4
+        return np.array([2.0, 4.0/3.0, 4.0/3.0, 4.0/3.0], dtype=np.float32)
+    # fallback: put all valence into s
+    return np.array([float(_Z_to_Zval.get(int(Z), int(Z))), 0.0, 0.0, 0.0], dtype=np.float32)
+
+for i in range(natoms):
+    # find self-neighbor slot where neigh_j == i+1
+    slots = np.where(neigh_j[i] == (i+1))[0]
+    if len(slots) == 0:
+        raise RuntimeError(f"No self-neighbor slot found for atom i={i}")
+    iself = int(slots[0])
+    occ = _onsite_occ(int(atomTypes[i]))
+    rho_na[i, iself, :, :] = 0.0
+    rho_na[i, iself, 0, 0] = occ[0]
+    rho_na[i, iself, 1, 1] = occ[1]
+    rho_na[i, iself, 2, 2] = occ[2]
+    rho_na[i, iself, 3, 3] = occ[3]
+
+rho_na_grid = projector.project(rho_na, neighs, atoms_dict, grid_spec, tasks=proj_tasks, nMaxAtom=64, use_tiled=(not args.proj_notiled))
+print(f"rho_na_grid: range=[{rho_na_grid.min():.5f},{rho_na_grid.max():.5f}] integral={rho_na_grid.sum()*dV:.2f} e")
+rho_diff = (rho_grid - rho_na_grid).astype(np.float32)
+print(f"rho_diff: range=[{rho_diff.min():.5f},{rho_diff.max():.5f}] integral={rho_diff.sum()*dV:.2f} e")
+np.save(os.path.join(_THIS_DIR,'rho_na_grid_fdbm.npy'), rho_na_grid)
+np.save(os.path.join(_THIS_DIR,'rho_diff_grid_fdbm.npy'), rho_diff)
+
+if args.stop_after_proj:
+    print("=== STOP_AFTER_PROJ ===")
+    sys.exit(0)
+
+def _clip3(i, n):
+    return max(0, min(n-1, int(i)))
+
+def plot_local_zooms(rho, title, fname, atom_indices, half_box_A=3.0):
+    """Show XY zooms around selected atoms at atom z-plane + +/- a few slices."""
+    half = int(round(half_box_A / _step))
+    fig, axes = plt.subplots(len(atom_indices), 3, figsize=(12, 3.2*len(atom_indices)))
+    if len(atom_indices) == 1:
+        axes = np.array([axes])
+    fig.suptitle(title, fontsize=11)
+    for row, ia in enumerate(atom_indices):
+        gc = (atomPos[ia] - origin) / _step
+        ix, iy, iz = (_clip3(round(gc[0]), nx_d), _clip3(round(gc[1]), ny_d), _clip3(round(gc[2]), nz_d))
+        slx = slice(max(0, ix-half), min(nx_d, ix+half+1))
+        sly = slice(max(0, iy-half), min(ny_d, iy+half+1))
+        # show iz-2, iz, iz+2 (clipped)
+        izs = [_clip3(iz-2, nz_d), iz, _clip3(iz+2, nz_d)]
+        for col, iz0 in enumerate(izs):
+            data = rho[slx, sly, iz0].T
+            vmax = float(np.percentile(data, 99.5))
+            im = axes[row, col].imshow(data, origin='lower', cmap='magma', vmin=0.0, vmax=max(vmax, 1e-8), aspect='equal')
+            axes[row, col].set_title(f"ia={ia} Z={atomTypes[ia]} iz={iz0}  max~{data.max():.3g}", fontsize=8)
+            plt.colorbar(im, ax=axes[row, col], shrink=0.8)
+            axes[row, col].tick_params(labelsize=6)
+    plt.tight_layout()
+    plt.savefig(os.path.join(_THIS_DIR, fname), dpi=120, bbox_inches='tight'); plt.close()
+    print(f"Saved {fname}")
+
+def radial_profile(rho, rmax_A=8.0, nbins=200, ia=0):
+    """Radial average rho(r) around atom ia from local subgrid (for smoothness/decay diagnostics)."""
+    gc = (atomPos[ia] - origin) / _step
+    ix, iy, iz = (int(round(gc[0])), int(round(gc[1])), int(round(gc[2])))
+    R = int(np.ceil(rmax_A / _step))
+    x0, x1 = max(0, ix-R), min(nx_d, ix+R+1)
+    y0, y1 = max(0, iy-R), min(ny_d, iy+R+1)
+    z0, z1 = max(0, iz-R), min(nz_d, iz+R+1)
+    xs = (np.arange(x0, x1) * _step + origin[0]).astype(np.float64)
+    ys = (np.arange(y0, y1) * _step + origin[1]).astype(np.float64)
+    zs = (np.arange(z0, z1) * _step + origin[2]).astype(np.float64)
+    X, Y, Z = np.meshgrid(xs, ys, zs, indexing='ij')
+    d = np.sqrt((X-atomPos[ia,0])**2 + (Y-atomPos[ia,1])**2 + (Z-atomPos[ia,2])**2)
+    v = rho[x0:x1, y0:y1, z0:z1].astype(np.float64)
+    d = d.ravel(); v = v.ravel()
+    m = d <= rmax_A
+    d = d[m]; v = v[m]
+    bins = np.linspace(0.0, rmax_A, nbins+1)
+    ib = np.clip(np.searchsorted(bins, d, side='right')-1, 0, nbins-1)
+    sum_v = np.bincount(ib, weights=v, minlength=nbins)
+    cnt_v = np.bincount(ib, minlength=nbins)
+    avg = sum_v / np.maximum(cnt_v, 1)
+    rc = 0.5*(bins[:-1] + bins[1:])
+    return rc, avg, cnt_v
 
 # ── STEP 3: FFT Poisson ────────────────────────────────────────────────────────
 print("\n=== STEP 3: FFT Poisson solver ===")
@@ -150,8 +279,66 @@ from scipy.ndimage import gaussian_filter
 sigma_elec = 0.8 / _step    # mild smoothing for gradient stability
 rho_smooth = gaussian_filter(rho_grid.astype(np.float64), sigma=sigma_elec).astype(np.float32)
 print(f"rho_smooth: max={rho_smooth.max():.5f}  integral={rho_smooth.sum()*dV:.2f} e")
-# No V_ES from Poisson: Mulliken charges used in atom loop for electrostatics
-V_H = np.zeros(rho_grid.shape, dtype=np.float32)   # placeholder for plot compat
+# Poisson ES from delta-density (SCF - neutral atoms)
+V_ES = fft_poisson(-rho_diff.astype(np.float64), _step).astype(np.float32)   # charge density = -rho_e
+print(f"V_ES(delta): range=[{V_ES.min():.3f},{V_ES.max():.3f}] eV")
+V_H = V_ES
+
+# Density projection diagnostics (rings/steps around H etc.)
+if not args.noplot:
+    print("  Density projection diagnostics...")
+    # pick one H (if present) and one C near center
+    iHs = np.where(atomTypes == 1)[0]
+    iCs = np.where(atomTypes == 6)[0]
+    iaH = int(iHs[0]) if len(iHs) > 0 else 0
+    centroid = atomPos[:,:2].mean(axis=0)
+    if len(iCs) > 0:
+        dCs = np.linalg.norm(atomPos[iCs,:2] - centroid[None,:], axis=1)
+        iaC = int(iCs[int(np.argmin(dCs))])
+    else:
+        iaC = int(np.argmin(np.linalg.norm(atomPos[:,:2] - centroid[None,:], axis=1)))
+    # Use a larger box to catch any hard Rcut artifacts (rims/shells)
+    plot_local_zooms(rho_grid,   'ρ projection local zooms (raw)',    'fdbm_rho_zooms_raw.png',    [iaH, iaC], half_box_A=6.0)
+    plot_local_zooms(rho_smooth, 'ρ projection local zooms (smooth)', 'fdbm_rho_zooms_smooth.png', [iaH, iaC], half_box_A=6.0)
+    for ia, tag in [(iaH, 'H'), (iaC, 'C')]:
+        rc, avg, cnt = radial_profile(rho_grid, rmax_A=8.0, nbins=220, ia=ia)
+        fig, axes = plt.subplots(1, 2, figsize=(10, 3.2))
+        fig.suptitle(f"Radial profile around atom ia={ia} Z={atomTypes[ia]} ({tag})", fontsize=10)
+        axes[0].plot(rc, avg, lw=1.2)
+        axes[0].set_xlabel('r (Å)'); axes[0].set_ylabel('⟨ρ⟩ (e/Å³)')
+        axes[0].set_title('linear')
+        axes[1].semilogy(rc, np.maximum(avg, 1e-12), lw=1.2)
+        axes[1].set_xlabel('r (Å)'); axes[1].set_ylabel('⟨ρ⟩ (e/Å³)')
+        axes[1].set_title('log')
+        for ax in axes:
+            ax.grid(True, alpha=0.2)
+        plt.tight_layout()
+        fn = f"fdbm_rho_radial_{tag}.png"
+        plt.savefig(os.path.join(_THIS_DIR, fn), dpi=130, bbox_inches='tight'); plt.close()
+        print(f"Saved {fn}")
+
+    # 1D z-lineouts above the chosen atoms (this avoids contamination by other atoms)
+    def lineout_z(rho, ia, zmax_A=10.0):
+        gc = (atomPos[ia] - origin) / _step
+        ix = _clip3(round(gc[0]), nx_d)
+        iy = _clip3(round(gc[1]), ny_d)
+        iz0 = _clip3(round(gc[2]), nz_d)
+        npts = int(round(zmax_A / _step))
+        izs = np.arange(iz0, min(nz_d, iz0+npts))
+        zsA = (izs * _step + origin[2]) - atomPos[ia,2]
+        return zsA.astype(np.float64), rho[ix, iy, izs].astype(np.float64)
+
+    fig, axes = plt.subplots(1, 2, figsize=(11, 3.2))
+    fig.suptitle('1D density lineout along +z above atoms (checks smooth decay / no steps)', fontsize=10)
+    for ax, (ia, tag) in zip(axes, [(iaH,'H'), (iaC,'C')]):
+        zA, v = lineout_z(rho_grid, ia, zmax_A=10.0)
+        ax.plot(zA, v, lw=1.2)
+        ax.set_xlabel('z above atom (Å)'); ax.set_ylabel('ρ (e/Å³)')
+        ax.set_title(f"ia={ia} Z={atomTypes[ia]} ({tag})")
+        ax.grid(True, alpha=0.2)
+    plt.tight_layout()
+    plt.savefig(os.path.join(_THIS_DIR,'fdbm_rho_lineout_z.png'), dpi=130, bbox_inches='tight'); plt.close()
+    print('Saved fdbm_rho_lineout_z.png')
 
 # ── STEP 4: Debug plots ─────────────────────────────────────────────────────
 def safe_norm(d2d, pct=99):
@@ -180,6 +367,9 @@ def plot_slices(data, title, fname, sym=False, cmap='magma'):
 if not args.noplot:
     plot_slices(rho_grid, 'PTCDA density ρ(r) [e/Å³] (Fireball STO)', 'fdbm_rho_slices.png')
     plot_slices(rho_smooth, 'PTCDA smoothed density ρ_smooth [e/Å³]', 'fdbm_VH_slices.png')
+    plot_slices(rho_na_grid, 'Neutral-atom promolecule ρ_NA(r) [e/Å³]', 'fdbm_rhoNA_slices.png')
+    plot_slices(rho_diff, 'Difference density Δρ=ρ_SCF-ρ_NA [e/Å³]', 'fdbm_rhoDiff_slices.png', sym=True, cmap='bwr')
+    plot_slices(V_ES, 'Electrostatic potential from Δρ (Poisson) [eV]', 'fdbm_VES_slices.png', sym=True, cmap='bwr')
 
 # ── STEP 5: FDBM force field ──────────────────────────────────────────────────
 print("\n=== STEP 5: FDBM force field ===")
@@ -205,13 +395,16 @@ for axis, label in [(0,'x'),(1,'y'),(2,'z')]:
     pass  # compute below per-axis
 
 grads_rho = [np.gradient(rho_smooth, _step, axis=a).astype(np.float32) for a in range(3)]
-grads_VH  = [np.zeros_like(grads_rho[a]) for a in range(3)]   # unused (no V_H Poisson)
+grads_VES = [np.gradient(V_ES, _step, axis=a).astype(np.float32) for a in range(3)]
 
 print("  Interpolating gradients at scan positions...")
-F_fdbm = np.zeros((flat_pos.shape[0], 4), dtype=np.float32)
+F_pauli = np.zeros((flat_pos.shape[0], 3), dtype=np.float32)
+F_vdw   = np.zeros((flat_pos.shape[0], 3), dtype=np.float32)
+F_es    = np.zeros((flat_pos.shape[0], 3), dtype=np.float32)
+F_es_poiss = np.zeros((flat_pos.shape[0], 3), dtype=np.float32)
 # F_Pauli = -A * grad(rho_smooth)  [repulsive density overlap]
 for a in range(3):
-    F_fdbm[:,a] += -args.A_pauli * interp3(grads_rho[a], grid_c)
+    F_pauli[:,a] += -args.A_pauli * interp3(grads_rho[a], grid_c)
 
 print("  Atom loop: London vdW + Mulliken electrostatics...")
 RA2_VDW = 1.5**2   # vdW softening
@@ -222,14 +415,57 @@ for ia in range(natoms):
     r8_vdw = (r2 + RA2_VDW)**4
     r3_es  = (r2 + RA2_ES)**1.5
     for a in range(3):
-        F_fdbm[:,a] -= args.C6_CO * 6.0 * dr[:,a] / r8_vdw          # London attractive
-        F_fdbm[:,a] += COULOMB_CONST * q_mulliken[ia] * args.q_CO * dr[:,a] / r3_es   # Mulliken ES
+        F_vdw[:,a] -= args.C6_CO * 6.0 * dr[:,a] / r8_vdw          # London attractive
+        F_es[:,a]  += COULOMB_CONST * q_mulliken[ia] * args.q_CO * dr[:,a] / r3_es   # Mulliken ES
+
+# Poisson ES force (from delta density): F = q_tip * (-∇V)
+if args.es_model == 'poisson':
+    for a in range(3):
+        F_es_poiss[:,a] += -args.q_CO * interp3(grads_VES[a], grid_c)
+
+F_fdbm = np.zeros((flat_pos.shape[0], 4), dtype=np.float32)
+F_fdbm[:,:3] = F_pauli + F_vdw + (F_es_poiss if args.es_model=='poisson' else F_es)
 
 FEs_raw = F_fdbm.reshape(nx_s, ny_s, nz, 4)
 Fz_raw  = FEs_raw[:,:,:,2]
 print(f"Fz_raw: min={Fz_raw.min():.4f}  max={Fz_raw.max():.4f}  mean={Fz_raw.mean():.4f} eV/Å")
 np.save(os.path.join(_THIS_DIR,'FEs_raw_fdbm.npy'),FEs_raw)
 np.save(os.path.join(_THIS_DIR,'Fz_raw_fdbm.npy'), Fz_raw)
+
+# Component diagnostics: 1D profiles of Pauli/vdW/ES together
+if not args.noplot:
+    Fz_pauli = F_pauli[:,2].reshape(nx_s, ny_s, nz)
+    Fz_vdw   = F_vdw[:,2].reshape(nx_s, ny_s, nz)
+    Fz_es    = F_es[:,2].reshape(nx_s, ny_s, nz)
+    Fz_esp    = F_es_poiss[:,2].reshape(nx_s, ny_s, nz)
+    # pick three representative atom-centered pixels (center/mid/edge)
+    centroid = atomPos[:,:2].mean(axis=0)
+    dists = np.linalg.norm(atomPos[:,:2]-centroid,axis=1)
+    ia_c = int(np.argmin(dists)); ia_e = int(np.argmax(dists))
+    ia_m = int(np.argsort(dists)[natoms//2])
+    def to_pixel(axy):
+        ix=int(round((axy[0]-scan_x0)/scan_dx)); iy=int(round((axy[1]-scan_y0)/scan_dy))
+        return max(0,min(nx_s-1,ix)), max(0,min(ny_s-1,iy))
+    trace_pixels = [to_pixel(atomPos[ia,:2]) for ia in [ia_c,ia_m,ia_e]]
+    trace_labels = ['center-atom','mid-atom','edge-atom']
+    fig, axes = plt.subplots(2, 3, figsize=(14, 7))
+    fig.suptitle('FDBM Fz components vs height (top=full, bottom=zoom ±0.5)', fontsize=11)
+    for col, ((ix,iy), lbl) in enumerate(zip(trace_pixels, trace_labels)):
+        for row,(ax,ylim) in enumerate(zip(axes[:,col],[None,(-0.5,0.5)])):
+            ax.plot(probe_heights, Fz_pauli[ix,iy,:], color='purple',    lw=1.0, label='Pauli')
+            ax.plot(probe_heights, Fz_vdw[ix,iy,:],   color='royalblue', lw=1.0, label='vdW')
+            ax.plot(probe_heights, (Fz_esp if args.es_model=='poisson' else Fz_es)[ix,iy,:], color='seagreen',  lw=1.0, label=f"ES[{args.es_model}]")
+            ax.plot(probe_heights, Fz_raw[ix,iy,:],   color='k',         lw=1.0, ls='--', label='sum')
+            ax.axhline(0,color='k',lw=0.5)
+            ax.set_xlabel('Probe height (Å)',fontsize=8); ax.set_ylabel('Fz (eV/Å)',fontsize=8)
+            ax.set_title(lbl if row==0 else f"{lbl} [zoom]",fontsize=8)
+            ax.legend(fontsize=6); ax.invert_xaxis()
+            if ylim:
+                ax.set_ylim(ylim); ax.axhspan(ylim[0],0,alpha=0.04,color='blue')
+            ax.grid(True, alpha=0.15)
+    plt.tight_layout()
+    plt.savefig(os.path.join(_THIS_DIR,'fdbm_components_traces_raw.png'), dpi=120, bbox_inches='tight'); plt.close()
+    print('Saved fdbm_components_traces_raw.png')
 
 # ── STEP 6: PP relaxation ─────────────────────────────────────────────────────
 print("\n=== STEP 6: PP relaxation ===")

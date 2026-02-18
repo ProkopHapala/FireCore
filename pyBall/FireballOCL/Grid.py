@@ -11,10 +11,16 @@ class GridProjector(OpenCLBase):
     """
     Host class for projecting sparse density matrices to a real-space grid using OpenCL.
     """
-    def __init__(self, fdata_dir, ctx=None, queue=None, nloc=32):
+    def __init__(self, fdata_dir, ctx=None, queue=None, nloc=32, debug_early_exit=False, debug_clear_only=False, debug_return0=False, debug_read_task=False, debug_read_grid=False, verbosity=0):
         super().__init__(nloc=nloc)
         self.fdata_dir = fdata_dir
         self.parser = FdataParser(fdata_dir)
+        self.debug_early_exit = bool(debug_early_exit)
+        self.debug_clear_only = bool(debug_clear_only)
+        self.debug_return0 = bool(debug_return0)
+        self.debug_read_task = bool(debug_read_task)
+        self.debug_read_grid = bool(debug_read_grid)
+        self.verbosity = int(verbosity)
         if not hasattr(self.parser, "species_info"):
             try:
                 self.parser.parse_info()
@@ -45,21 +51,44 @@ class GridProjector(OpenCLBase):
             raise RuntimeError(f"No .wf files found for species {missing} under {self.fdata_dir}; ensure Fdata dir has *.ZZ.wf")
         
         # Prepare for GPU: pack into a single buffer
-        # For simplicity, assume same mesh and dr for all wfs initially
+        # Resample all wavefunctions to a common uniform grid (finest dr, largest rcutoff)
         all_nz = sorted(self.basis_data.keys())
         if len(all_nz)==0:
             raise RuntimeError("load_basis called with empty species list (species_nz).")
         max_shells = max(len(v) for v in self.basis_data.values())
         if max_shells==0:
             raise RuntimeError(f"No wavefunctions loaded for species {all_nz}")
-        first_wf = self.basis_data[all_nz[0]][0]
-        n_nodes = first_wf['mesh']
-        dr = first_wf['rcutoff'] / (n_nodes - 1)
+        # Find finest dr and largest rcutoff across all shells/species
+        # IMPORTANT: .wf files store rcutoff in Bohr. Convert to Angstrom via abohr.
+        # See Fortran read_wf.f90 line 208: drr_wf = abohr * rcutoffwf / (mesh-1)
+        ABOHR = 0.529177       # Bohr -> Angstrom
+        all_dr = []
+        all_rc_ang = []
+        for nz in all_nz:
+            for wf in self.basis_data[nz]:
+                wf_dr_ang = ABOHR * wf['rcutoff'] / (wf['mesh'] - 1)
+                all_dr.append(wf_dr_ang)
+                all_rc_ang.append(ABOHR * wf['rcutoff'])
+        dr = min(all_dr)                   # finest spacing in Angstrom
+        rc_max_ang = max(all_rc_ang)       # largest cutoff in Angstrom
+        n_nodes = int(np.ceil(rc_max_ang / dr)) + 1
+        if self.verbosity > 0: print(f"[DEBUG] load_basis: common grid dr={dr:.6f} Å  rc_max={rc_max_ang:.3f} Å  n_nodes={n_nodes}")
         
         packed_basis = np.zeros((len(all_nz), max_shells, n_nodes), dtype=np.float32)
         for i, nz in enumerate(all_nz):
             for ish, wf in enumerate(self.basis_data[nz]):
-                packed_basis[i, ish, :len(wf['data'])] = wf['data']
+                wf_mesh = wf['mesh']
+                wf_rc_bohr = wf['rcutoff']
+                wf_dr_ang  = ABOHR * wf_rc_bohr / (wf_mesh - 1)
+                wf_data    = wf['data']
+                # Resample from wf's own grid (Angstrom) to common grid via linear interpolation
+                r_common = np.arange(n_nodes) * dr
+                r_orig   = np.arange(wf_mesh) * wf_dr_ang
+                resampled = np.interp(r_common, r_orig, wf_data, right=0.0)
+                # Verify normalization: ∫ R² r² dr should be ~1.0 with correct Angstrom grid
+                S_rad = np.trapz(resampled**2 * r_common**2, r_common)
+                packed_basis[i, ish, :] = resampled.astype(np.float32)
+                if self.verbosity > 0: print(f"[DEBUG]   species {nz} shell {ish} (l={wf.get('l','?')}): mesh={wf_mesh} rc={wf_rc_bohr:.3f} Bohr = {ABOHR*wf_rc_bohr:.3f} Å  S_rad={S_rad:.6f} (should be ~1.0)")
         
         self.d_basis = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=packed_basis)
         self.basis_meta = {'n_species': len(all_nz), 'max_shells': max_shells, 'n_nodes': n_nodes, 'dr': dr, 'nz_map': {nz: i for i, nz in enumerate(all_nz)}}
@@ -75,10 +104,20 @@ class GridProjector(OpenCLBase):
         
         # We might want to pass some constants to the kernel during build
         build_opts = []
-        if hasattr(self, 'basis_meta'):
+        if self.debug_early_exit:
+            build_opts.append("-DDEBUG_EARLY_EXIT=1")
+        if self.debug_clear_only:
+            build_opts.append("-DDEBUG_CLEAR_ONLY=1")
+        if self.debug_return0:
+            build_opts.append("-DDEBUG_RETURN0=1")
+        if self.debug_read_task:
+            build_opts.append("-DDEBUG_READ_TASK=1")
+        if self.debug_read_grid:
+            build_opts.append("-DDEBUG_READ_GRID=1")
+        if hasattr(self, 'basis_meta') and ('max_shells' in self.basis_meta):
             build_opts.append(f"-DMAX_ORBS={self.basis_meta['max_shells'] * 9}") # conservative upper bound
-        
-        self.load_program(kernel_path=cl_path)
+
+        self.load_program(kernel_path=cl_path, build_options=build_opts if len(build_opts)>0 else None)
 
     def check_overlap_sphere_aabb(self, center, radius, box_min, box_max):
         """ Fast AABB-Sphere collision: Find closest point in box to sphere center """
@@ -118,7 +157,7 @@ class GridProjector(OpenCLBase):
             atom_data[i]['i0orb'] = 0
             
         # DEBUG: print first atom
-        if natoms > 0:
+        if natoms > 0 and self.verbosity > 0:
             print(f"[DEBUG] atom_data[0]: pos_rcut={atom_data[0]['pos_rcut']} type={atom_data[0]['type']}")
 
         mf = cl.mem_flags
@@ -268,7 +307,7 @@ class GridProjector(OpenCLBase):
         tasks.sort(key=lambda x: x['na'], reverse=True)
 
         multi_blocks = len(block_counts) - empty_blocks - one_blocks
-        print(f"[DEBUG] block atom stats: na_max={max_count}, nbloks: empty={empty_blocks}, one={one_blocks}, multi={multi_blocks}")
+        if self.verbosity > 0: print(f"[DEBUG] block atom stats: na_max={max_count}, nbloks: empty={empty_blocks}, one={one_blocks}, multi={multi_blocks}")
         self.last_block_atom_counts = np.array(block_counts, dtype=np.int32)
 
         tasks_np = np.zeros(len(tasks), dtype=self.task_dtype_np)
@@ -281,7 +320,7 @@ class GridProjector(OpenCLBase):
             tasks_np[i]['nj'] = t['nj']
             task_atoms_np[i, :t['na']] = t['atoms']
 
-        print(f"[DEBUG] build_tasks finished: n_tasks={len(tasks)}")
+        if self.verbosity > 0: print(f"[DEBUG] build_tasks finished: n_tasks={len(tasks)}")
         return tasks_np, task_atoms_np
 
     def grid_to_np(self, grid_spec):
@@ -300,11 +339,11 @@ class GridProjector(OpenCLBase):
         grid_spec_np[0]['ngrid'][:3] = grid_spec['ngrid']
         
         # DEBUG: print grid_spec_np values
-        print(f"[DEBUG] grid_spec_np: origin={grid_spec_np[0]['origin']} dA={grid_spec_np[0]['dA']} dB={grid_spec_np[0]['dB']} dC={grid_spec_np[0]['dC']} ngrid={grid_spec_np[0]['ngrid']}")
+        if self.verbosity > 0: print(f"[DEBUG] grid_spec_np: origin={grid_spec_np[0]['origin']} dA={grid_spec_np[0]['dA']} dB={grid_spec_np[0]['dB']} dC={grid_spec_np[0]['dC']} ngrid={grid_spec_np[0]['ngrid']}")
         
         return grid_spec_np
 
-    def project(self, rho, neighs, atoms, grid_spec, tasks=None, nMaxAtom=64, use_gpu_tasks=False):
+    def project(self, rho, neighs, atoms, grid_spec, tasks=None, nMaxAtom=64, use_gpu_tasks=False, use_tiled=True):
         """
         Main entry point for density projection using the tiled kernel.
         """
@@ -315,15 +354,34 @@ class GridProjector(OpenCLBase):
             else:
                 tasks_np, task_atoms_np = self.build_tasks(atoms, grid_spec, nMaxAtom=nMaxAtom)
             T1 = time.perf_counter_ns()
-            print(f"[TIME] build_tasks finished in {(T1-T0)*1e-6:.3f} [ms]")
+            if self.verbosity > 0: print(f"[TIME] build_tasks finished in {(T1-T0)*1e-6:.3f} [ms]")
         else:
             tasks_np, task_atoms_np = tasks
 
         n_tasks = len(tasks_np)
-        nx, ny, nz = grid_spec['ngrid'][:3]
-        
+        ngrid_in = grid_spec['ngrid']
+        if self.verbosity > 0: print(f"[DEBUG] grid_spec['ngrid']={ngrid_in} type={type(ngrid_in)}")
+        nx, ny, nz = [int(x) for x in ngrid_in[:3]]
+        if self.verbosity > 0: print(f"[DEBUG] derived grid dims nx,ny,nz=({nx},{ny},{nz})")
+
         # Prepare other buffers
         natoms = len(atoms['pos'])
+
+        # DEBUG/ASSERT: validate task_atoms indices for active entries
+        if n_tasks > 0:
+            na_arr = tasks_np['na'].astype(np.int32)
+            bad = []
+            for it in range(n_tasks):
+                na = int(na_arr[it])
+                if na <= 0: continue
+                idxs = task_atoms_np[it, :na]
+                if (idxs < 0).any() or (idxs >= natoms).any():
+                    bad.append((it, na, int(idxs.min()), int(idxs.max())))
+                    if len(bad) >= 5:
+                        break
+            if bad:
+                raise RuntimeError(f"GridProjector.project(): invalid atom index in task_atoms for tasks={bad} natoms={natoms}")
+
         atom_data = np.zeros(natoms, dtype=[
             ('pos_rcut', 'f4', 4),
             ('type', 'i4'),
@@ -331,18 +389,35 @@ class GridProjector(OpenCLBase):
             ('norb', 'i4'),
             ('pad', 'i4')
         ])
+        if (not hasattr(self, 'basis_meta')) or ('nz_map' not in self.basis_meta):
+            raise RuntimeError('GridProjector.project(): basis_meta.nz_map missing; call load_basis(species_nz) before project().')
+        if ('n_species' not in self.basis_meta) or ('max_shells' not in self.basis_meta) or ('n_nodes' not in self.basis_meta):
+            raise RuntimeError(f"GridProjector.project(): basis_meta incomplete keys={list(self.basis_meta.keys())}")
         for i in range(natoms):
             atom_data[i]['pos_rcut'][:3] = atoms['pos'][i]
             atom_data[i]['pos_rcut'][3]  = atoms['Rcut'][i]
-            atom_data[i]['type'] = atoms['type'][i]
+            # IMPORTANT: kernel expects a compact species index into packed basis_data, not atomic Z
+            Z = int(atoms['type'][i])
+            try:
+                atom_data[i]['type'] = int(self.basis_meta['nz_map'][Z])
+            except Exception as e:
+                raise RuntimeError(f"GridProjector.project(): species nz={Z} not in loaded basis nz_map keys={list(self.basis_meta['nz_map'].keys())}") from e
             atom_data[i]['norb'] = 4 # Default for C, H with s,p
             atom_data[i]['i0orb'] = 0
+
+        # DEBUG/ASSERT: mapped species indices must be in-range for packed basis buffer
+        it_min = int(atom_data['type'].min()) if natoms > 0 else -1
+        it_max = int(atom_data['type'].max()) if natoms > 0 else -1
+        if self.verbosity > 0: print(f"[DEBUG] basis_meta: n_species={self.basis_meta['n_species']} max_shells={self.basis_meta['max_shells']} n_nodes={self.basis_meta['n_nodes']} dr={self.basis_meta['dr']:.6f}")
+        if self.verbosity > 0: print(f"[DEBUG] atom_data.type range=[{it_min},{it_max}] unique={sorted(set(atom_data['type'].tolist()))}")
+        if it_min < 0 or it_max >= int(self.basis_meta['n_species']):
+            raise RuntimeError(f"GridProjector.project(): atom_data.type out of range [0,{self.basis_meta['n_species']-1}] got range=[{it_min},{it_max}]")
 
         # 2. Buffers
         mf = cl.mem_flags
         
         # DEBUG: check tasks_np size and dtype
-        print(f"[DEBUG] tasks_np: len={len(tasks_np)} itemsize={tasks_np.dtype.itemsize} nbytes={tasks_np.nbytes}")
+        if self.verbosity > 0: print(f"[DEBUG] tasks_np: len={len(tasks_np)} itemsize={tasks_np.dtype.itemsize} nbytes={tasks_np.nbytes}")
         
         d_grid = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.grid_to_np(grid_spec))
         
@@ -365,9 +440,11 @@ class GridProjector(OpenCLBase):
         # species_info placeholder
         species_info = np.zeros((10, 4), dtype=np.int32)
         d_species_info = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=species_info)
-        
-        d_out = cl.Buffer(self.ctx, mf.WRITE_ONLY, nx * ny * nz * 4)
-        cl.enqueue_fill_buffer(self.queue, d_out, np.float32(0), 0, nx * ny * nz * 4)
+
+        out_nbytes = int(nx) * int(ny) * int(nz) * 4
+        if self.verbosity > 0: print(f"[DEBUG] allocating d_out: nx,ny,nz=({nx},{ny},{nz}) out_nbytes={out_nbytes}")
+        d_out = cl.Buffer(self.ctx, mf.WRITE_ONLY, out_nbytes)
+        cl.enqueue_fill_buffer(self.queue, d_out, np.float32(0), 0, out_nbytes)
 
         # 3. Kernel launch
         ls = (32,)  # local size
@@ -378,31 +455,54 @@ class GridProjector(OpenCLBase):
              self.d_basis = cl.Buffer(self.ctx, mf.READ_ONLY, size=4)
              self.basis_meta = {'n_nodes': 0, 'dr': 0.0, 'max_shells': 0}
 
-        print(f"[DEBUG] project_tiled: gs={gs}, ls={ls}, n_tasks={n_tasks}")
+        if use_tiled:
+            if self.verbosity > 0: print(f"[DEBUG] project_tiled: gs={gs}, ls={ls}, n_tasks={n_tasks}")
+        else:
+            if self.verbosity > 0: print(f"[DEBUG] project (non-tiled): gs={gs}, ls={ls}, n_tasks={n_tasks}")
 
         T0_ns = time.perf_counter_ns()
-        self.prg.project_density_sparse_tiled(
-            self.queue, gs, ls,
-            d_grid,
-            np.int32(n_tasks),
-            d_tasks, d_atoms, d_task_atoms,
-            d_rho, 
-            d_neigh_j,
-            self.d_basis,
-            d_species_info,
-            np.int32(self.basis_meta['n_nodes']),
-            np.float32(self.basis_meta['dr']),
-            np.int32(self.basis_meta['max_shells']),
-            np.int32(rho.shape[1]), # neigh_max
-            np.int32(rho.shape[2]), # numorb_max
-            np.int32(nMaxAtom),
-            d_out
-        )
+        if use_tiled:
+            self.prg.project_density_sparse_tiled(
+                self.queue, gs, ls,
+                d_grid,
+                np.int32(n_tasks),
+                d_tasks, d_atoms, d_task_atoms,
+                d_rho, 
+                d_neigh_j,
+                self.d_basis,
+                d_species_info,
+                np.int32(self.basis_meta['n_nodes']),
+                np.float32(self.basis_meta['dr']),
+                np.int32(self.basis_meta['max_shells']),
+                np.int32(rho.shape[1]), # neigh_max
+                np.int32(rho.shape[2]), # numorb_max
+                np.int32(nMaxAtom),
+                d_out
+            )
+        else:
+            self.prg.project_density_sparse(
+                self.queue, gs, ls,
+                d_grid,
+                np.int32(n_tasks),
+                d_tasks, d_atoms, d_task_atoms,
+                d_rho, 
+                d_neigh_j,
+                self.d_basis,
+                d_species_info,
+                np.int32(self.basis_meta['n_nodes']),
+                np.float32(self.basis_meta['dr']),
+                np.int32(self.basis_meta['max_shells']),
+                np.int32(rho.shape[1]), # neigh_max
+                np.int32(rho.shape[2]), # numorb_max
+                np.int32(nMaxAtom),
+                d_out
+            )
         self.queue.finish()
         dt_ns = time.perf_counter_ns() - T0_ns
-        print(f"[TIME] project_tiled finished in {dt_ns*1e-6:.9f} [ms]")
+        if self.verbosity > 0: print(f"[TIME] project_tiled finished in {dt_ns*1e-6:.9f} [ms]")
 
-        res = np.empty((nx, ny, nz), dtype=np.float32)
+        if self.verbosity > 0: print(f"[DEBUG] allocating host res: shape=({nx},{ny},{nz}) nbytes={int(nx)*int(ny)*int(nz)*4}")
+        res = np.empty((int(nx), int(ny), int(nz)), dtype=np.float32)
         cl.enqueue_copy(self.queue, res, d_out)
         self.queue.finish()
 

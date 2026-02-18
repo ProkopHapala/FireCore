@@ -2,6 +2,26 @@
 // Data layout in memory (originally Fortran column-major): 
 // rho(imu, inu, ineigh, iatom) -> rho[iatom][ineigh][inu][imu] in C-order indexing
 
+#ifndef DEBUG_EARLY_EXIT
+#define DEBUG_EARLY_EXIT 0
+#endif
+
+#ifndef DEBUG_CLEAR_ONLY
+#define DEBUG_CLEAR_ONLY 0
+#endif
+
+#ifndef DEBUG_RETURN0
+#define DEBUG_RETURN0 0
+#endif
+
+#ifndef DEBUG_READ_TASK
+#define DEBUG_READ_TASK 0
+#endif
+
+#ifndef DEBUG_READ_GRID
+#define DEBUG_READ_GRID 0
+#endif
+
 typedef struct {
     float4 origin;
     float4 dA;
@@ -26,6 +46,11 @@ typedef struct {
     int pad2;
 } TaskData;
 
+// Real spherical harmonic normalization prefactors (same as myprog.cl)
+// Y_00 = pref_s, Y_1m = pref_p * (x,y,z)/r
+#define PREF_S 0.28209479f   // 1/sqrt(4*pi)
+#define PREF_P 0.48860251f   // sqrt(3/(4*pi))
+
 // Cubic B-spline interpolation for radial part
 float evaluate_radial(
     float r, 
@@ -33,6 +58,9 @@ float evaluate_radial(
     __global const float* basis_data,
     int n_nodes, float dr, int max_shells
 ) {
+    if (ityp < 0) return 0.0f;
+    if (ish < 0) return 0.0f;
+    if (ish >= max_shells) return 0.0f;
     if (r >= (n_nodes - 1) * dr) return 0.0f;
     float x = r / dr;
     int i = (int)x;
@@ -81,7 +109,7 @@ __kernel void project_density_sparse(
     const int gid = get_global_id(0);
     const int threads_per_task = get_local_size(0);
     // DEBUG: emit one-line params to verify kernel entry
-    if (get_global_id(0) == 0) {
+    if (0 && get_global_id(0) == 0) {
         printf("GPU: kernel entry: n_tasks=%d vox_per_task=%d n_nodes=%d max_shells=%d neigh_max=%d numorb_max=%d ngrid=(%d,%d,%d)\n",
                n_tasks, 512, n_nodes, max_shells, neigh_max, numorb_max,
                grid->ngrid.x, grid->ngrid.y, grid->ngrid.z);
@@ -91,10 +119,13 @@ __kernel void project_density_sparse(
 
     //{ // sanitize local memory space
     if (i_task >= n_tasks) return;
+    if (DEBUG_RETURN0) return;
     __global const int* my_atoms = task_atoms + i_task * nMaxAtom;
     const TaskData task = tasks[i_task];
     const int  na    = task.na;
     const int  nj    = task.nj;
+    if (DEBUG_READ_TASK) return;
+    if (DEBUG_READ_GRID) { (void)grid->ngrid.x; return; }
     //const int3 b_idx = task.block_idx.xyz;
     
     //}
@@ -126,7 +157,15 @@ __kernel void project_density_sparse(
         //     printf("GPU task[%3i] b_idx=(%i,%i,%i) na=%i nj=%i \n", i_task, task.block_idx.x, task.block_idx.y, task.block_idx.z, na, nj); 
         // }
 
+        if (DEBUG_CLEAR_ONLY) {
+            out_grid[g_idx] = 0.0f;
+            continue;
+        }
         float den = 0.0f;
+        if (DEBUG_EARLY_EXIT) {
+            out_grid[g_idx] = 0.0f;
+            continue;
+        }
         // Loop over active pairs in this block
         for (int i = 0; i < na; i++) {
             
@@ -143,9 +182,12 @@ __kernel void project_density_sparse(
             float    rcut_i2 = ad_i.pos_rcut.w; rcut_i2*=rcut_i2;
             float4 dri;
             dri.xyz       = r_vox - ad_i.pos_rcut.xyz;
-            dri.w         = dot(dri.xyz, dri.xyz);
-            dri.w = sqrt(dri.w); dri.xyz /= (dri.w + 1e-12f);
-            dri*=exp(-dri.w);
+            const float ri2 = dot(dri.xyz, dri.xyz);
+            if (ri2 > rcut_i2) continue;
+            const float ri = sqrt(ri2);
+            dri.xyz /= (ri + 1e-12f);
+            dri.w =  evaluate_radial(ri, ad_i.type, 0, basis_data, n_nodes, dr_basis, max_shells) * PREF_S;
+            dri.xyz *= evaluate_radial(ri, ad_i.type, 1, basis_data, n_nodes, dr_basis, max_shells) * PREF_P;
             
             for (int j = j_start; j < j_end; j++) {
                 const int j_atom = my_atoms[j]; // <-- GLOBAL READ
@@ -163,7 +205,7 @@ __kernel void project_density_sparse(
                 float    rcut_j2 = ad_j.pos_rcut.w; rcut_j2*=rcut_j2;
                 float4 drj;
                 drj.xyz = r_vox - ad_j.pos_rcut.xyz;
-                drj.w   = dot(drj.xyz, drj.xyz);
+                const float rj2 = dot(drj.xyz, drj.xyz);
 
                 // if( t_idx==0 ){
                 //     float3 rij = ad_j.pos_rcut.xyz - ad_i.pos_rcut.xyz;
@@ -171,20 +213,16 @@ __kernel void project_density_sparse(
                 //     if( dot(rij,rij)<(2*rcut_i2) ) printf("GPU task[%3i] rho[%i,%i] %f \n", i_task, i, j, rho[rho_base+0] ); 
                 // } 
                 
-                if (dri.w < rcut_i2 && drj.w < rcut_j2) {
+                if (rj2 <= rcut_j2) {
                     //int4 sp_i = species_info[ad_i.type];
                     //int4 sp_j = species_info[ad_j.type];
 
                     int rho_base = i_atom * neigh_max * numorb_max * numorb_max + ineigh_ij * numorb_max * numorb_max;
                     const __global float4* rho_ij = (const __global  float4*)(rho + rho_base); // <-- GLOBAL READ
-                    drj.w = sqrt(drj.w); drj.xyz /= (drj.w + 1e-12f);
-                    // -- for now we test with STO basis, so we just use exp(-r), later we will use spline radial basis functions
-                    drj*=exp(-drj.w);
-                    // from dr -> WF
-                    // dri.w    =  evaluate_radial(dri.w, ad_i.type, 0, basis_data, n_nodes, dr_basis, max_shells); // si-orb
-                    // dri.xyz *=  evaluate_radial(dri.w, ad_i.type, 1, basis_data, n_nodes, dr_basis, max_shells); // pi-orb
-                    // drj.w    =  evaluate_radial(drj.w, ad_j.type, 0, basis_data, n_nodes, dr_basis, max_shells); // sj-orb
-                    // drj.xyz *=  evaluate_radial(drj.w, ad_j.type, 1, basis_data, n_nodes, dr_basis, max_shells); // pj-orb
+                    const float rj = sqrt(rj2);
+                    drj.xyz /= (rj + 1e-12f);
+                    drj.w =  evaluate_radial(rj, ad_j.type, 0, basis_data, n_nodes, dr_basis, max_shells) * PREF_S;
+                    drj.xyz *= evaluate_radial(rj, ad_j.type, 1, basis_data, n_nodes, dr_basis, max_shells) * PREF_P;
                     // 4x4 block (px,py,pz,s)_i * (px,py,pz,s)_j 
                     // den += dot( dri,  (
                     // rho_ij[0]  * drj.x +     // <-- GLOBAL READ
@@ -373,8 +411,11 @@ __kernel void project_density_sparse_tiled(
     const int threads_per_task = get_local_size(0);
     
     if (i_task >= n_tasks) return;
+    if (DEBUG_RETURN0) return;
 
     TaskData task = tasks[i_task];
+    if (DEBUG_READ_TASK) return;
+    if (DEBUG_READ_GRID) { (void)grid->ngrid.x; return; }
 
     // Clean up output grid so we can accumulate into it   --- to avoid need for  l_den[512];
     for (int v = t_idx; v < 512; v += threads_per_task) {
@@ -401,6 +442,10 @@ __kernel void project_density_sparse_tiled(
     //for (int v = t_idx; v < 512; v += threads_per_task) {    l_den[v] = 0.0f;}
 
     barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (DEBUG_CLEAR_ONLY) return;
+
+    if (DEBUG_EARLY_EXIT) return;
 
     // Tiled interaction loop: TILE_ATOMS x TILE_ATOMS atoms at a time
     for (int it = 0; it < na; it += TILE_ATOMS) {
@@ -480,8 +525,10 @@ __kernel void project_density_sparse_tiled(
                     const float  rcut_i = ad_i.pos_rcut.w;
                     if (r2_i > rcut_i*rcut_i) continue;
                     const float r_i      = sqrt(r2_i);
-                    const float radial_i = exp(-r_i);
-                    const float4 psi_i = (float4){dpos_i * (radial_i / (r_i + 1e-12f)), radial_i};
+                    const float si = evaluate_radial(r_i, ad_i.type, 0, basis_data, n_nodes, dr_basis, max_shells) * PREF_S;
+                    const float pi = evaluate_radial(r_i, ad_i.type, 1, basis_data, n_nodes, dr_basis, max_shells) * PREF_P;
+                    const float sc_i = (pi / (r_i + 1e-12f));
+                    const float4 psi_i = (float4)(dpos_i.x*sc_i, dpos_i.y*sc_i, dpos_i.z*sc_i, si);
 
                     const int j_start_tile = (task.nj < 0 && jt == it) ? i_in_tile : 0;
                     for (int j_in_tile = j_start_tile; j_in_tile < TILE_ATOMS && (jt + j_in_tile) < na; j_in_tile++) {
@@ -495,8 +542,10 @@ __kernel void project_density_sparse_tiled(
                         const float rcut_j  = ad_j.pos_rcut.w;
                         if (r2_j > rcut_j*rcut_j) continue;
                         const float r_j  = sqrt(r2_j);
-                        const float radial_j = exp(-r_j);
-                        const float4 psi_j = (float4){dpos_j * (radial_j / (r_j + 1e-12f)), radial_j};
+                        const float sj = evaluate_radial(r_j, ad_j.type, 0, basis_data, n_nodes, dr_basis, max_shells) * PREF_S;
+                        const float pj = evaluate_radial(r_j, ad_j.type, 1, basis_data, n_nodes, dr_basis, max_shells) * PREF_P;
+                        const float sc_j = (pj / (r_j + 1e-12f));
+                        const float4 psi_j = (float4)(dpos_j.x*sc_j, dpos_j.y*sc_j, dpos_j.z*sc_j, sj);
 
                         const int tile_rho_base = (i_in_tile * TILE_ATOMS + j_in_tile) * 4;
                         const float pairsym = (task_atoms[i_task * nMaxAtom + i] == task_atoms[i_task * nMaxAtom + j]) ? 1.0f : 2.0f;

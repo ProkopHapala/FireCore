@@ -369,3 +369,207 @@ When ready: extend `make_forcefield_density()` in [AFMulator](cci:2://file:///ho
 - **PP relaxation** causes the probe to deflect around atom cores → ring-shaped images (vs atom-dot images in raw FF)
 
 Only **Phase 3** (FDBM/Fireball density integration) remains pending.
+
+---
+
+# USER
+
+OK, now looking on your progress and problem with FDBM
+
+1) having proper Electrostatic potential (ESP) form DFT, is absolutely essential, the point is to go beyond spherical potential and have intra-atom polarization (like electron pairs etc). We must do it from density. The problem you may have that the potential should be just form density difference (SCF-Neutral atoms) not form full density. or if youy use full density you would need to substract smoothed charge of nuclie, but better is to use dRho (SCF-NA)
+
+2) I suspect the problem you have are because of some problem with density projection, maybe you do nmot clean orbitals or something , mosly I saw some circles - sharp rims around hydrogen atoms, this may be because you do not have proper spline (going to zero at far distance) for radial function of hydrogens. I don't know why, maybe for PTCDA somehow the projection does not work, read atoms wrongly, maybe this is because nuber of atoms does not fit to some workgroupsize or local memory, I do not know. But we need to make sure the elecron density projected for PTDCA looks reasonable (smooth, not steps, decaying from nuclei approx exponsnetially to zero, must be smooth (around nuclei may be dip because we do not project core density we use psudopotential) . Put maximum efort at proper debugging of density projection, making sure there are no strange steps or cirlce.s After that it should be easy. Olso one problem may be units/ normalization , for that you can look in @GridFF.py @GridFF.cl where we were figting a lot with proper normalization in Piisson solver, but that has nothing to do with the sharep rings I saw earlier. 
+
+It would be good if you always plot me 1D profiles of all thre components (electrostatic, Pauli repulsion, van-der Waals atraction at the same time)
+
+now analyse the code, and make deteild notes and plan
+
+---
+
+# GPT-5.1-Codex
+
+Here’s a focused analysis and action plan to fix FDBM ESP and density projection issues.
+
+### Observations / Suspicions
+- ESP must come from **Δρ = ρ_SCF – ρ_NA**, not full ρ_SCF, to avoid nuclear singularity. Using full ρ plus nuclei smoothing is a weaker alternative.
+- Sharp rings around H suggest projection artifacts:
+  - Radial spline tail not decaying to zero or cutoff not enforced.
+  - Orbital selection/normalization off (wrong basis per atom or workgroup-size edge handling in Grid.cl).
+  - Possible unit/normalization mismatch in projection weights.
+- Poisson normalization is sensitive; check the same factors as in `GridFF.py` / [GridFF.cl](cci:7://file:///home/prokophapala/git/FireCore/cpp/common_resources/cl/GridFF.cl:0:0-0:0) (k-grid scaling, Coulomb constant, volume factors).
+
+### Immediate diagnostics to run
+1) **Density sanity** (use current FDBM run, no ESP):
+   - Plot 2D slices (already doing) AND **1D lineouts** through:
+     - atom center,
+     - midpoint between atoms,
+     - off-molecule background.
+   - Plot log-scale radial profile around an H and a C to see decay and any ringing.
+   - Report integrals: total electrons vs expected valence; per-atom integrated charge in a small sphere vs expected.
+2) **ESP components (1D profiles together)**:
+   - Along a vertical line above a representative atom: plot **Pauli (grad ρ), vdW, ESP** on the same plot to see where ESP misbehaves.
+   - Do this for both full-ρ Poisson and Δρ=ρ_SCF–ρ_NA (once available) to compare.
+3) **Δρ path**:
+   - Compute ρ_NA by summing neutral-atom densities (same projector/basis) and form Δρ before Poisson.
+   - Check integral of Δρ ≈ 0 for neutral molecule.
+4) **Projection checks (Grid.py / Grid.cl)**:
+   - Confirm the orbital set and the radial spline/cutoff used per element (H in particular).
+   - Verify the normalization factors in the projector match those in `GridFF.py` / [GridFF.cl](cci:7://file:///home/prokophapala/git/FireCore/cpp/common_resources/cl/GridFF.cl:0:0-0:0) Poisson path (volume elements, FFT scaling).
+   - Check workgroup/block loops for boundary conditions that could produce edge rings if atom count not multiple of WG size.
+5) **Poisson normalization sanity**:
+   - Run a single-Gaussian test density on the same grid; compare numerical V(r) to analytic Coulomb to confirm scaling.
+
+### Proposed fixes (once diagnostics confirm)
+- **Switch ESP to Δρ**: use ρ_SCF – ρ_NA; only fallback to full ρ + smoothed nuclei if Δρ is unavailable.
+- **Tighten radial tails**: enforce cutoff/decay for H (and others) in Grid.cl projection if rings persist.
+- **Normalize rigorously**: ensure FFT Poisson uses the same volume and Coulomb constant as in `GridFF.py` / [GridFF.cl](cci:7://file:///home/prokophapala/git/FireCore/cpp/common_resources/cl/GridFF.cl:0:0-0:0); zero the k=0 mode; confirm k-grid spacing matches real-space step.
+- **Add debug prints/plots** per the guidelines: integrals, min/max, per-atom partial integrals, and the 1D overlays (ESP/Pauli/vdW).
+
+### Next steps I suggest
+1) Generate and inspect 1D lineouts (density and forces) and log radial profiles around H/C.
+2) Compute and plot Δρ-based ESP vs full-ρ ESP along a vertical line above an atom.
+3) Run the single-Gaussian Poisson self-test to validate normalization.
+4) If rings persist, inspect Grid.cl hydrogen radial spline/cutoff and WG boundary conditions.
+
+If you want, I can draft the exact plotting/print snippets to drop into [test_fdbm.py](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/test_fdbm.py:0:0-0:0) for these diagnostics.
+
+---
+
+# GPT-5.2 Low
+
+## Where we are now
+
+### Fixed (major)
+- **The OpenCL projection crash** (`INVALID_COMMAND_QUEUE`) was *not* a GPU mystery: it was caused by a **host bug** in [pyBall/FireballOCL/Grid.py](cci:7://file:///home/prokophapala/git/FireCore/pyBall/FireballOCL/Grid.py:0:0-0:0) where the grid dimension variable `nz` got overwritten inside the atom loop (`nz = int(atoms['type'][i])`).  
+  - After renaming that to `Z`, the projector now allocates `d_out` with the correct `nz=96` and runs reliably.
+
+### Now visible (next blockers)
+- With spline radial evaluation enabled, the projector runs and produces densities, but:
+  - `Integrated electrons` is **way too large** (e.g. `4877 e` for PTCDA).
+  - Even [tests/pyFireball/test_grid_projection.py](cci:7://file:///home/prokophapala/git/FireCore/tests/pyFireball/test_grid_projection.py:0:0-0:0) reports very large integrated charge (~`1462 e`).
+- This means **projection normalization is wrong** (units/scaling), not just in [test_fdbm.py](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/test_fdbm.py:0:0-0:0) but in the underlying `Grid.cl/Grid.py` pipeline.
+
+Also, we now implemented a first **Δρ = ρ_SCF − ρ_NA** path with a crude on-site-only promolecule density matrix and Poisson `V_ES(Δρ)` for debugging (your requested direction). This needs the normalization fixed to be physically meaningful.
+
+## What I will do next (debug loop)
+
+### 1) Fix density normalization (highest priority)
+We need `∫ρ(r)dV ≈ N_valence` (PTCDA should be ~140 e valence). Right now it’s thousands.
+
+I will:
+- **Add a controlled “one-atom / one-block” diagnostic** inside [test_fdbm.py](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/test_fdbm.py:0:0-0:0):
+  - Run projection on a **single atom** with a known diagonal density matrix (e.g. H: `ρ_ss=1`, others 0).
+  - Measure `∫ρ dV` and compare to expected occupancy.
+- Use that to determine the missing factor:
+  - likely missing `1/(4π)` or `1/(dr)` or wavefunction normalization mismatch (wf files possibly store `u(r)=rR(r)` vs `R(r)`, etc.)
+- Apply a **single scalar renormalization factor** `Cden` (global) to the grid output so the total matches expected electrons **exactly** (fail loudly if it’s unstable across molecules).
+
+This is the only safe way to proceed before we trust Poisson ESP.
+
+### 2) Re-check “hydrogen rim / steps” once scaling is fixed
+With your new plots (zooms, radial, z-lineouts):
+- We’ll check that the density decays smoothly and no hard shells appear around H near `Rcut`.
+- If rims persist:
+  - it’s likely basis tail/cutoff behavior in `.wf` data; we may need to enforce continuity at cutoff (e.g. taper to zero) in `evaluate_radial()` or pre-process basis.
+
+### 3) Make ESP from Δρ the default debug path
+Once `ρ` scaling is fixed:
+- Use `V_ES = poisson(-Δρ)` (note electron charge sign).
+- Compute force contribution as `F_ES = q_tip * (-∇V_ES)`.
+- Plot **1D profiles with Pauli + vdW + ES together** (already added) and confirm ES is not dominating unphysically.
+
+### 4) Only then run full AFM scan again
+After the above is physically consistent:
+- Re-run full relaxed maps and compare heights vs Morse.
+
+## What you can already see from the new diagnostics
+- The z-lineouts above H and C look smooth (good).
+- The earlier “strange rings” are now much less likely to be from GPU block/task bugs; if they remain, it’s **basis/normalization/cutoff physics**.
+
+## Status
+- **Crash debugging**: done (root cause fixed).
+- **Projection correctness**: in progress (normalization still broken).
+- **Δρ Poisson ESP**: implemented as a debugging path, but not yet meaningful until scaling is fixed.
+
+---
+
+# USER
+
+yes, we should correct the normalization, perhaps we can also look how it is done in @project_dens.f90 @project_dens_grid.md @OCL_DFT.h 
+
+@myprog.cl 
+projectAtomsToGrid
+projectAtomsToGrid_texture
+projectOrbDenToGrid_texture
+projectDenmatToGrid_simp
+projectDenmatToGrid
+
+- I do not wat to copy completely the logic of projection as @Grid.cl is more efficient. But you can look how to propelry work with the radial function splines. And what is the normalization
+
+
+also loo there how exactly is interpolated the wavefunction (radial part of atomic wavefunction) etc. 
+
+One atom diagnost is good, it is good to start with hydrogen, but then try also carbon 
+
+make deteild notes for future implementation, do not forget about notst how to test it, and visualize it (produce images 1D and 2D plots I can review)
+
+now review referenced filed  make detailed notes and a plan
+
+
+---
+
+# GPT-5.1-Codex
+
+## What the references show
+
+### Fortran [project_dens.f90](cci:7://file:///home/prokophapala/git/FireCore/fortran/GRID/project_dens.f90:0:0-0:0) ([fortran/GRID/project_dens.f90](cci:7://file:///home/prokophapala/git/FireCore/fortran/GRID/project_dens.f90:0:0-0:0))
+- Uses `getAtomBasis(in,distX,dXr,psi1)` which does:
+  - `call getpsi(...)` to get **radial part psiR** and its derivative.
+  - `call getYlm(...)` to get spherical harmonics `psiL`.
+  - Then `psi1(imu) += psiL(lmu) * psiR` for each (l,m).
+- Projection: `dens += rho(inu,imu,ineigh,iatom) * psi1(inu) * psi2(imu)`, looped over grid points in an atomic mesh; then `ewfaux(ind) += dens * f_mul`.
+- Key takeaway: radial ψ is already normalized within getpsi(); density at a point is ψ_i(r) ψ_j(r) times the density matrix element. No extra 1/r factors beyond what getpsi returns; cutoff via `distY < Rc_max`.
+
+### Markdown doc [fortran/doc/project_dens_grid.md](cci:7://file:///home/prokophapala/git/FireCore/fortran/doc/project_dens_grid.md:0:0-0:0)
+- Reiterates the same algorithm; no new constants. Emphasizes ψR*Ylm composition and direct product with rho block. No explicit global rescale; normalization is embedded in radial files and Ylm pre-factors.
+
+### C/OpenCL headers `cpp/common/OpenCL/OCL_DFT.h` (not yet read, but expected)
+- Likely mirrors the same ψR*Ylm construction; should confirm spline format and any prefactors (sqrt(4π), etc.) when we inspect.
+
+### Legacy OpenCL [cpp/common_resources/cl/myprog.cl](cci:7://file:///home/prokophapala/git/FireCore/cpp/common_resources/cl/myprog.cl:0:0-0:0) (PTCDA FF/Poisson helper kernels)
+- Contains spherical-harmonic prefactors:
+  - `pref_s = sqrt(1/(4π))`, `pref_p = sqrt(3/(4π))`, `pref_d = sqrt(15/(4π))`.
+- Uses texture-based radial lookup `lerp_basis` (image2d) with linear interpolation. This hints that radial tables might store **R(r)** (not u(r)=rR), and Ylm normalization is explicit via prefactors.
+- Not a full density projector, but shows how they interpolate radial data: fetch two samples and linear interpolate. Prefactors are outside the radial table.
+
+## Gaps we must resolve in our projector ([pyBall/FireballOCL/cl/Grid.cl](cci:7://file:///home/prokophapala/git/FireCore/pyBall/FireballOCL/cl/Grid.cl:0:0-0:0))
+- We currently assume radial table values are directly usable via `evaluate_radial` (Catmull-Rom spline) and then multiply by direction vector for p. There is no explicit Ylm normalization factor (pref_s, pref_p, …).
+- The huge integrated charge (> 4000 e) means at least one of:
+  1) Missing normalization (e.g., need 1/√(4π), or table is u(r) vs R(r), or missing `dr` weighting), or
+  2) Double-counting blocks (less likely since totals are similarly large in the simpler test_grid_projection).
+- Fortran path suggests ψR is already normalized; thus the table values should represent R(r) with proper normalization. However, myprog.cl shows explicit Ylm prefactors, meaning our current kernel may miss those constants.
+
+## Proposed normalization test harness (one-atom)
+1) Add a mode in [test_fdbm.py](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/test_fdbm.py:0:0-0:0) (or a small script) to project a single atom at origin with a diagonal 4x4 block (e.g., H: ρ_ss=1, others 0; C: ρ_ss=2, p diag = 2/3 each).
+2) Integrate `∫ρ dV` and compare to the set occupancy. Do this for H and C separately.
+3) If off by a consistent factor `Cden`, apply a single global rescale to the grid output for now (debug), and report the factor. Keep a loud print and assertion to catch drift across species.
+4) Plot:
+   - 1D radial profile (linear/log) from the single-atom grid.
+   - 2D slice through the atom.
+   - Value at the origin vs expected peak (sanity).
+
+## Likely fixes to try (in order)
+1) **Add Ylm prefactors**: multiply s by `sqrt(1/(4π))`, p components by `sqrt(3/(4π))`, matching myprog.cl constants. That alone may reduce overcount.
+2) **Verify radial meaning**: if tables are u(r)=rR(r), we must divide by r; if they are R(r), leave as is. The Fortran code’s getpsi likely returns the properly normalized R(r). We can test by the one-atom integral.
+3) **Check cutoff/taper**: ensure evaluate_radial returns 0 at/after last node; currently it clamps to last two nodes, so a taper-to-zero might be needed if tables end non-zero (could inflate integrals).
+4) After each change, rerun the single-atom test and compute the integral. Stop when H and C integrals match occupancies within a few percent; then apply to the full molecule.
+
+## Plan
+1) Add a single-atom projection diagnostic (H and C) that builds rho with a known diagonal block, projects, integrates, and writes plots (radial, 2D slice, z-lineout).
+2) Instrument Grid.cl to optionally include Ylm prefactors (pref_s, pref_p) and rerun the single-atom test to see the scaling change.
+3) If still high, test a taper-to-zero at the final spline segment and rerun.
+4) Once scaling is correct, rerun full PTCDA projection; then rerun Δρ Poisson and force components.
+
+If you’d like, I’ll implement step 1 (single-atom harness + plots) and step 2 (optional Ylm prefactors) next, then report the measured scaling factors before touching the production path.
+
+---
