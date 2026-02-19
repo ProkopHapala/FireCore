@@ -239,8 +239,8 @@ class AtomicSystem( ):
         else:
             atypes = None
 
-        if self.enames is not None: 
-            enames = []
+        if self.enames is not None:
+            enames = np.empty(na*nxyz, dtype=object)
         else:
             enames = None
 
@@ -271,6 +271,60 @@ class AtomicSystem( ):
             if enames is not None: enames[:] = self.enames[:]
 
         return AtomicSystem(apos=apos, atypes=atypes, enames=enames, lvec=lvec, qs=qs ) 
+
+    def clonePBC_central(self, nPBC=(1,1,0)):
+        """Like clonePBC(), but centers the replicas around the original cell.
+
+        Here nPBC is the *radius* of replication (images on each side). For example:
+        nPBC=(1,1,0) -> (3,3,1) copies, with the original cell in the middle.
+        """
+        rx, ry, rz = nPBC
+        nx, ny, nz = 2*rx+1, 2*ry+1, 2*rz+1
+        sys = self.clonePBC(nPBC=(nx, ny, nz))
+        shift0 = self.lvec[0, :]*rx + self.lvec[1, :]*ry + self.lvec[2, :]*rz
+        sys.apos[:, :] -= shift0[None, :]
+        return sys
+
+    def clonePBC_images_central(self, nPBC=(1,1,0)):
+        """Clone atoms into a +/- halo of periodic images but keep primitive lvec unchanged.
+
+        This is useful when you want:
+        - Primitive-cell grid / periodic sampling defined by the original lvec
+        - Extra atoms around the cell to provide interaction margin for force-field projection
+
+        nPBC is the *radius* of replication (images on each side), e.g. (1,1,0) -> 3x3x1.
+        """
+        rx, ry, rz = nPBC
+        nx, ny, nz = 2*rx+1, 2*ry+1, 2*rz+1
+        na = len(self.apos)
+        nxyz = nx*ny*nz
+        apos = np.zeros((na*nxyz, 3))
+
+        if self.atypes is not None:
+            atypes = np.zeros(na*nxyz, np.int32)
+        else:
+            atypes = None
+        if self.enames is not None:
+            enames = np.empty(na*nxyz, dtype=object)
+        else:
+            enames = None
+        if self.qs is not None:
+            qs = np.zeros(na*nxyz)
+        else:
+            qs = None
+
+        i0 = 0
+        for iz in range(-rz, rz+1):
+            for iy in range(-ry, ry+1):
+                for ix in range(-rx, rx+1):
+                    shift = self.lvec[0, :]*ix + self.lvec[1, :]*iy + self.lvec[2, :]*iz
+                    apos[i0:i0+na, :] = self.apos[:, :] + shift[None, :]
+                    if atypes is not None: atypes[i0:i0+na] = self.atypes
+                    if qs     is not None: qs    [i0:i0+na] = self.qs
+                    if enames is not None: enames[i0:i0+na] = self.enames
+                    i0 += na
+
+        return AtomicSystem(apos=apos, atypes=atypes, enames=enames, lvec=self.lvec.copy(), qs=qs)
 
     def symmetrized(self, d=0.1 ):
         # def atoms_symmetrized( atypes, apos, lvec, qs=None, REQs=None, d=0.1):

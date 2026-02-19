@@ -12,7 +12,7 @@ typedef struct __attribute__ ((packed)){
 
 // see https://gist.github.com/likr/3735779
 // https://www.khronos.org/registry/OpenCL/sdk/1.1/docs/man/xhtml/sampler_t.html
-__constant sampler_t sampler_1 =  CLK_NORMALIZED_COORDS_TRUE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;
+__constant sampler_t sampler_1 =  CLK_NORMALIZED_COORDS_TRUE  | CLK_ADDRESS_REPEAT | CLK_FILTER_LINEAR;
 //__constant sampler_t sampler_1 =  CLK_NORMALIZED_COORDS_FALSE  | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_LINEAR;
 //__constant sampler_t sampler_2 =  CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_MIRRORED_REPEAT | CLK_FILTER_NEAREST; // NOTE AMD-GPU seems to not accept CLK_NORMALIZED_COORDS_FALSE
 
@@ -906,7 +906,7 @@ __kernel void evalLJC_QZs_toImg(
     //         printf( "atom(%g,%g,%g|%g) cLJ(%g,%g)\n", atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w,  cLJs[i].x,cLJs[i].y );
     //     }
     // }
-    if(iG>nMax) return;
+    if(iG>=nMax) return;
 
     float4 fe  =  float4Zero;
     float3 pos    = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib  + grid_dC.xyz*ic;
@@ -969,7 +969,7 @@ __kernel void evalMorseC_QZs_toImg(
     const int ib  = (iG%nab)/nGrid.x;
     const int ic  = iG/nab;
     const int nMax = nab*nGrid.z;
-    if(iG>nMax) return;
+    if(iG>=nMax) return;
     float4 fe  = float4Zero;
     float3 pos = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib + grid_dC.xyz*ic;
     Qs *= COULOMB_CONST;
@@ -991,6 +991,18 @@ __kernel void evalMorseC_QZs_toImg(
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
+
+    // Keep This for debugging
+    // if(iG==0){ printf("!!!!!!!! DEBUG !!!!!!!!!  __KERNEL__ evalMorseC_QZs_toImg()\n"); }
+    // float amp=0.1;
+    // float cosTerm   = 1.0* cos( M_PI*0.25 * pos.x) * cos( M_PI*0.25 * pos.y);
+    // float cosTerm_x = 1.0* sin( M_PI*0.25 * pos.x) * cos( M_PI*0.25 * pos.y);
+    // float cosTerm_y = 1.0* cos( M_PI*0.25 * pos.x) * sin( M_PI*0.25 * pos.y);
+    // fe.z =cosTerm  *amp;
+    // fe.x =cosTerm_x*amp;
+    // fe.y =cosTerm_y*amp;
+    //fe.xy+=cosTerm*0.1;
+
     float renorm = 100.0/fabs(fe.w);
     if(renorm<1.f){ fe*=renorm; }
     write_imagef( imgOut, (int4){ia,ib,ic,0}, fe );
@@ -1095,6 +1107,10 @@ __kernel void make_GridFF(
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
+
+
+
+
     //FE_Paul[iG] = fe_Paul;
     //FE_Lond[iG] = fe_Lond;
     //FE_Coul[iG] = fe_Coul;

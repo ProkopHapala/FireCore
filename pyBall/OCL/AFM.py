@@ -4,6 +4,10 @@ import os, sys
 
 COULOMB_CONST = 14.3996448915  # [eV*Ang/e^2]
 
+
+def _bytes_to_gb(nbytes):
+    return nbytes / (1024.0**3)
+
 class AFMulator:
     """
     PyOpenCL AFM simulator (Phase 1: LJ/Morse + point charges).
@@ -26,6 +30,7 @@ class AFMulator:
     def __init__(self, cl_src_dir=None, use_morse=False, nloc=32):
         self.use_morse = use_morse
         self.nloc = nloc
+        self._vram_bytes = 0
         if cl_src_dir is None:
             d = os.path.dirname(os.path.abspath(__file__))
             cl_src_dir = os.path.realpath(os.path.join(d,'..','..','cpp','common_resources','cl'))
@@ -37,6 +42,10 @@ class AFMulator:
             print("AFMulator: no NVIDIA device, using default context")
             self.ctx   = cl.create_some_context()
             self.queue = cl.CommandQueue(self.ctx)
+        dev = self.ctx.devices[0]
+        self._max_alloc = dev.get_info(cl.device_info.MAX_MEM_ALLOC_SIZE)
+        self._global_mem = dev.get_info(cl.device_info.GLOBAL_MEM_SIZE)
+        print(f"AFMulator: device max_alloc={_bytes_to_gb(self._max_alloc):.3f} GB global_mem={_bytes_to_gb(self._global_mem):.3f} GB")
         relax_cl = os.path.join(cl_src_dir, 'relax.cl')
         print(f"AFMulator: compiling {relax_cl}")
         self.prg = cl.Program(self.ctx, open(relax_cl).read()).build()
@@ -113,8 +122,8 @@ class AFMulator:
 
     def setup_grid(self, n=(100,100,60), L=None, margin=3.0, z_top=12.0):
         """
-        Set up 3D force-field grid. Molecule is shifted so grid runs from (0,0,0) to L,
-        ensuring dot(pos,dinv) ∈ [0,1] for the image sampler (CLK_NORMALIZED_COORDS_TRUE).
+        Set up 3D force-field grid. Molecule is shifted so grid occupies [0,L] in all dims,
+        making dot(pos, dinv) in [0,1] for normalized image sampling.
         n: (nx,ny,nz)  L: (Lx,Ly,Lz) Ang  margin: xy pad  z_top: extra z above molecule.
         """
         assert self.atoms_arr is not None, "call assign_params() first"
@@ -140,8 +149,70 @@ class AFMulator:
         self.dinvB = np.array([0., 1./L[1], 0., 0.], dtype=np.float32)
         self.dinvC = np.array([0., 0., 1./L[2], 0.], dtype=np.float32)
         self.L = L
-        print(f"AFMulator.setup_grid: n={n} L={L} mol_shift={self.mol_shift}")
+        grid_bytes = int(nx*ny*nz*4*4)  # float4 image
+        if not hasattr(self, '_vram_bytes'): self._vram_bytes = 0
+        warn = "" if grid_bytes <= getattr(self, '_max_alloc', grid_bytes+1) else " [exceeds device max_alloc!]"
+        print(f"AFMulator.setup_grid: n={n} L={L} mol_shift={self.mol_shift} | FF image ~{_bytes_to_gb(grid_bytes):.3f} GB{warn}")
+        self._grid_bytes = grid_bytes
         return L
+
+    def setup_grid_lvec(self, n=(100, 100, 60), margin_z=2.0, z_top=12.0):
+        """Set up primitive-cell force-field grid aligned with mol.lvec.
+
+        - x,y are along mol.lvec[0], mol.lvec[1] (skew cells supported)
+        - z is Cartesian along mol.lvec[2] if present, otherwise +z axis
+        - grid uses normalized image sampling with periodic wrap (sampler uses repeat/mirrored-repeat)
+
+        This expects atoms_arr to already be in the same coordinate frame as mol.lvec.
+        """
+        assert self.atoms_arr is not None, "call assign_params() first"
+        assert self.mol is not None and getattr(self.mol, 'lvec', None) is not None, \
+            "setup_grid_lvec requires mol.lvec (periodic system)"
+
+        nx, ny, nz = [int(x) for x in n]
+        if nx <= 1 or ny <= 1 or nz <= 1:
+            raise ValueError(f"setup_grid_lvec: invalid n={n}")
+
+        a = self.mol.lvec[0, :3].astype(np.float32)
+        b = self.mol.lvec[1, :3].astype(np.float32)
+        c = self.mol.lvec[2, :3].astype(np.float32) if self.mol.lvec.shape[0] > 2 else np.array([0., 0., 1.], dtype=np.float32)
+
+        # z extent from atoms + padding
+        apos = self.atoms_arr[:, :3]
+        zmin = float(apos[:, 2].min())
+        zmax = float(apos[:, 2].max())
+        Lz = (zmax - zmin) + float(margin_z) + float(z_top)
+        if Lz <= 0:
+            raise ValueError(f"setup_grid_lvec: invalid Lz={Lz}")
+
+        # Shift atoms so that bottom is near z=margin_z*0.5, keep x,y in cell frame (no bbox shift)
+        p0z = zmin - 0.5*float(margin_z)
+        self.mol_shift = np.array([0., 0., -p0z], dtype=np.float32)
+        self.atoms_arr[:, :3] += self.mol_shift[None, :]
+
+        self.n = np.array([nx, ny, nz], dtype=np.int32)
+        self.p0 = np.zeros(4, dtype=np.float32)
+        self.dA = np.array([a[0]/nx, a[1]/nx, a[2]/nx, 0.], dtype=np.float32)
+        self.dB = np.array([b[0]/ny, b[1]/ny, b[2]/ny, 0.], dtype=np.float32)
+        self.dC = np.array([0., 0., Lz/nz, 0.], dtype=np.float32)
+
+        # Inverse mapping for normalized coordinates u,v,w in [0,1]
+        # pos = a*u + b*v + (0,0,Lz*w)
+        M = np.stack([a, b, np.array([0., 0., Lz], dtype=np.float32)], axis=1).astype(np.float64)  # 3x3
+        det = float(np.linalg.det(M))
+        if abs(det) < 1e-12:
+            raise ValueError(f"setup_grid_lvec: singular cell matrix det={det} for a={a} b={b} Lz={Lz}")
+        invMT = np.linalg.inv(M).T.astype(np.float32)
+        self.dinvA = np.array([invMT[0, 0], invMT[0, 1], invMT[0, 2], 0.], dtype=np.float32)
+        self.dinvB = np.array([invMT[1, 0], invMT[1, 1], invMT[1, 2], 0.], dtype=np.float32)
+        self.dinvC = np.array([invMT[2, 0], invMT[2, 1], invMT[2, 2], 0.], dtype=np.float32)
+
+        self.L = np.array([np.linalg.norm(a), np.linalg.norm(b), Lz], dtype=np.float32)
+        grid_bytes = int(nx * ny * nz * 4 * 4)
+        warn = "" if grid_bytes <= getattr(self, '_max_alloc', grid_bytes+1) else " [exceeds device max_alloc!]"
+        print(f"AFMulator.setup_grid_lvec: n=({nx},{ny},{nz}) a={a} b={b} Lz={Lz:.3f} mol_shift={self.mol_shift} | FF image ~{_bytes_to_gb(grid_bytes):.3f} GB{warn}")
+        self._grid_bytes = grid_bytes
+        return self.L
 
     # ── force field ───────────────────────────────────────────────────────────
 
@@ -152,25 +223,48 @@ class AFMulator:
         na = len(self.atoms_arr)
         nMax = int(nx*ny*nz)
         mf = cl.mem_flags
+        # estimate allocations
+        atoms_bytes = self.atoms_arr.nbytes
+        cLJs_bytes  = self.cLJs_arr.nbytes
+        img_bytes   = nx*ny*nz*4*4
+        alloc = atoms_bytes + cLJs_bytes + img_bytes
+        self._vram_bytes += alloc
+        print(f"AFMulator.make_forcefield: alloc atoms={_bytes_to_gb(atoms_bytes):.3f} GB cLJs={_bytes_to_gb(cLJs_bytes):.3f} GB img={_bytes_to_gb(img_bytes):.3f} GB | cumulative ~{_bytes_to_gb(self._vram_bytes):.3f} GB")
+        if img_bytes > self._max_alloc:
+            raise MemoryError(f"FF image needs {img_bytes} bytes ({_bytes_to_gb(img_bytes):.3f} GB) > device max_alloc {_bytes_to_gb(self._max_alloc):.3f} GB")
+        # 3D image dimension guard
+        max_w = self.ctx.devices[0].get_info(cl.device_info.IMAGE3D_MAX_WIDTH)
+        max_h = self.ctx.devices[0].get_info(cl.device_info.IMAGE3D_MAX_HEIGHT)
+        max_d = self.ctx.devices[0].get_info(cl.device_info.IMAGE3D_MAX_DEPTH)
+        if nx > max_w or ny > max_h or nz > max_d:
+            raise MemoryError(f"FF image dims {nx}x{ny}x{nz} exceed device limits {max_w}x{max_h}x{max_d}; reduce spacing/margin/z_top")
         self.atoms_cl = cl.Buffer(self.ctx, mf.READ_ONLY|mf.COPY_HOST_PTR, hostbuf=self.atoms_arr)
         self.cLJs_cl  = cl.Buffer(self.ctx, mf.READ_ONLY|mf.COPY_HOST_PTR, hostbuf=self.cLJs_arr)
         fmt = cl.ImageFormat(cl.channel_order.RGBA, cl.channel_type.FLOAT)
-        self.img_FF = cl.Image(self.ctx, mf.READ_WRITE, fmt, shape=(nx,ny,nz))
+        try:
+            self.img_FF = cl.Image(self.ctx, mf.READ_WRITE, fmt, shape=(nx,ny,nz))
+        except Exception as e:
+            print(f"AFMulator.make_forcefield: cl.Image allocation failed for shape {nx}x{ny}x{nz} : {e}")
+            raise
         gs  = (self._roundup(nMax, self.nloc),)
         ls  = (self.nloc,)
         nGrid = np.array([nx,ny,nz,nMax], dtype=np.int32)
         print(f"AFMulator.make_forcefield: na={na} nGrid={nGrid[:3]} gs={gs[0]}")
         kernel_name = "evalMorseC_QZs_toImg" if self.use_morse else "evalLJC_QZs_toImg"
-        getattr(self.prg, kernel_name)(
-            self.queue, gs, ls,
-            np.int32(na),
-            self.atoms_cl, self.cLJs_cl,
-            self.img_FF,
-            nGrid, self.p0,
-            self.dA, self.dB, self.dC,
-            self.tipQs, self.tipQZs
-        )
-        self.queue.finish()
+        try:
+            getattr(self.prg, kernel_name)(
+                self.queue, gs, ls,
+                np.int32(na),
+                self.atoms_cl, self.cLJs_cl,
+                self.img_FF,
+                nGrid, self.p0,
+                self.dA, self.dB, self.dC,
+                self.tipQs, self.tipQZs
+            )
+            self.queue.finish()
+        except Exception as e:
+            print(f"AFMulator.make_forcefield: kernel {kernel_name} failed: {e}")
+            raise
         print("AFMulator.make_forcefield: done")
 
     # ── scan ──────────────────────────────────────────────────────────────────
@@ -205,6 +299,13 @@ class AFMulator:
                 pts[k,:3] = scan_p0 + scan_da*ix + scan_db*iy
                 k += 1
         mf = cl.mem_flags
+        FEs_bytes = n_scan*nz*4*4
+        pts_bytes = pts.nbytes
+        if not hasattr(self, '_vram_bytes'): self._vram_bytes = 0
+        if FEs_bytes > self._max_alloc:
+            raise MemoryError(f"run_scan: FEs buffer needs {FEs_bytes} bytes ({_bytes_to_gb(FEs_bytes):.3f} GB) > device max_alloc {_bytes_to_gb(self._max_alloc):.3f} GB")
+        self._vram_bytes += FEs_bytes + pts_bytes
+        print(f"AFMulator.run_scan: alloc pts={_bytes_to_gb(pts_bytes):.3f} GB FEs={_bytes_to_gb(FEs_bytes):.3f} GB | cumulative ~{_bytes_to_gb(self._vram_bytes):.3f} GB")
         pts_cl = cl.Buffer(self.ctx, mf.READ_ONLY|mf.COPY_HOST_PTR, hostbuf=pts)
         FEs_h  = np.zeros((n_scan*nz, 4), dtype=np.float32)
         FEs_cl = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=FEs_h.nbytes)
@@ -257,6 +358,13 @@ class AFMulator:
                 pts[k,:3] = scan_p0 + scan_da*ix + scan_db*iy
                 k += 1
         mf = cl.mem_flags
+        FEs_bytes = n_scan*nz*4*4
+        pts_bytes = pts.nbytes
+        if not hasattr(self, '_vram_bytes'): self._vram_bytes = 0
+        if FEs_bytes > self._max_alloc:
+            raise MemoryError(f"get_raw_FE: FEs buffer needs {FEs_bytes} bytes ({_bytes_to_gb(FEs_bytes):.3f} GB) > device max_alloc {_bytes_to_gb(self._max_alloc):.3f} GB")
+        self._vram_bytes += FEs_bytes + pts_bytes
+        print(f"AFMulator.get_raw_FE: alloc pts={_bytes_to_gb(pts_bytes):.3f} GB FEs={_bytes_to_gb(FEs_bytes):.3f} GB | cumulative ~{_bytes_to_gb(self._vram_bytes):.3f} GB")
         pts_cl = cl.Buffer(self.ctx, mf.READ_ONLY|mf.COPY_HOST_PTR, hostbuf=pts)
         FEs_h  = np.zeros((n_scan*nz, 4), dtype=np.float32)
         FEs_cl = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=FEs_h.nbytes)
