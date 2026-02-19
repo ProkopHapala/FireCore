@@ -767,3 +767,20 @@ Both **raw** (non-relaxed) and **PP-relaxed** Fz and df images are produced.
 - [fdbm_comparison.png](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/fdbm_comparison.png:0:0-0:0) — Raw vs PP-relaxed Fz at 6 heights
 - [fdbm_vs_morse.png](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/fdbm_vs_morse.png:0:0-0:0) — FDBM df vs Morse df at matched heights
 - [fdbm_traces.png](cci:7://file:///home/prokophapala/git/FireCore/tests/tAFM/fdbm_traces.png:0:0-0:0) — Raw vs relaxed Fz approach curves
+
+---
+
+# USER
+
+One more thing, we should refactor  @test_fdbm.py and @test_ptcda.py @test_single_atom.py 
+
+these should be all just lighweight user facing top-level scripts, just calling reusable refactroed function from module @AFM.py 
+
+after you finish refactrogin, be sure to test both Morse/LJ and FDMB methods if you still produce rasonable resuls, resp if you reproduce previous result (perhaps you should save reference before you start refactroing)
+
+now do the refactoring and run the tests. Go! do not stop before it is finished
+
+---
+
+# Claude-Opus-4.6
+
