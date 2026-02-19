@@ -122,6 +122,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     Quat4f* MDpars     =0;  // Molecular dynamics params
     Quat4f* TDrive     =0;  // temperature and drived dynamics
     Quat4f* averageForces =0;  // accumulated force differences for thermodynamic integration
+    Quat4i*   jeParams   = 0;  // parameters for Jarzynski Equality [ nSystems ]
 
     Quat4f* constr     =0;
     Quat4f* constrK    =0;
@@ -389,8 +390,8 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 for(int ia=0; ia<ffls[isys].natoms; ia++){
                     if(ffls[isys].atypes[ia]==params.getAtomType("Si")){
                         if(si_count < nCVs){
-                            Quat4f acon  = Quat4f{initial_positions[si_count].x, initial_positions[si_count].y, initial_positions[si_count].z, 1e2f}; 
-                            Quat4f aconK = Quat4f{final_positions[si_count].x,   final_positions[si_count].y,   final_positions[si_count].z,   (float)nLambda}; 
+                            Quat4f acon  = Quat4f{initial_positions[si_count].x, initial_positions[si_count].y, initial_positions[si_count].z, 5.0f}; 
+                            Quat4f aconK = Quat4f{final_positions[si_count].x,   final_positions[si_count].y,   final_positions[si_count].z,   0.0f}; 
                             constr [isys*ocl.nAtoms + ia] = acon;
                             constrK[isys*ocl.nAtoms + ia] = aconK;
                         }
@@ -402,6 +403,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
             upload( ocl.ibuff_constrK, constrK );
 
             double beta = 1.0 / (const_kB * go.T_target);
+            double dLambda = 1.0 / (double)(nLambda - 1);
             nPerVFs = nPerVFs_;
             int nBatches = nMDsteps / (nLambda * nPerVFs);
             if( nBatches < 1 ) nBatches = 1;
@@ -416,20 +418,15 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 printf("  Equilibrating %d steps...\n", nEQsteps);
                 bSaveTrajectory = false;
                 nPerVFs = nEQsteps;                
-                for(int isys=0; isys<nSystems; isys++){
-                    TDrive[isys].z = -1;
-                }
-                ocl.upload( ocl.ibuff_TDrive, TDrive );
+                for(int isys=0; isys<nSystems; isys++){ jeParams[isys].x = -1; }
+                ocl.upload( ocl.ibuff_jeParams, jeParams );
                 run_ocl_opt( nEQsteps, Fconv );
 
                 // 2. Pulling
                 bSaveTrajectory = true;
-                nPerVFs = nPerVFs_; // High resolution pulling
-                std::vector<bool> bExploring_old(nSystems);
-                for(int isys=0; isys<nSystems; isys++){
-                    TDrive[isys].z = 0;
-                }
-                ocl.upload( ocl.ibuff_TDrive, TDrive );
+                nPerVFs = nPerVFs_;
+                for(int isys=0; isys<nSystems; isys++){ jeParams[isys].x = 0; jeParams[isys].y = nLambda; jeParams[isys].z = nPerVFs; jeParams[isys].w = 0; }
+                ocl.upload( ocl.ibuff_jeParams, jeParams );
                 // Clear work buffer
                 float* zero_work = new float[nSystems * nLambda];
                 for(int i=0; i<nSystems * nLambda; i++) zero_work[i] = 0;
@@ -438,16 +435,24 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
 
                 printf("  Pulling for %d * %d = %d steps...\n", nLambda, nPerVFs, nLambda*nPerVFs);
                 run_ocl_opt( nLambda*nPerVFs, Fconv );
-                for(int isys=0; isys<nSystems; isys++) gopts[isys].bExploring = bExploring_old[isys];
 
                 // 3. Download work and accumulate
                 ocl.download( ocl.ibuff_work, gpu_work );
                 ocl.finishRaw();
+                // DEBUG: Print first few work values for system 0 in first batch
+                if(batch==0){
+                    printf("DEBUG gpu_work[sys=0]: ");
+                    for(int i=0; i<5; i++) printf("[%d]=%g ", i, gpu_work[i]);
+                    printf(" dLambda=%g\n", dLambda);
+                    printf("DEBUG gpu_work[sys=0] dW: ");
+                    for(int i=0; i<5; i++) printf("[%d]=%g ", i, gpu_work[i]*dLambda);
+                    printf("\n");
+                }
                    
                 for(int isys=0; isys<nSystems; isys++){
                     double W_traj = 0;
                     for(int i=0; i<nLambda; i++){
-                        float dW = gpu_work[ isys * nLambda + i ];
+                        float dW = gpu_work[ isys * nLambda + i ]*dLambda;
                         W_traj += (double)dW;
                         //if(isys==0 && i==0) printf("batch %d, isys %d, i %d, W %f\n", batch, isys, i, W);
                         sum_exp_W[i] += exp(-beta * W_traj);
@@ -526,6 +531,7 @@ void realloc( int nSystems_ ){
 
     // Initialize averageForces buffer for thermodynamic integration
     _realloc0( averageForces, nSystems, Quat4fZero );
+    _realloc0( jeParams, nSystems, Quat4iMinusOnes );
 
     _realloc( pbcshifts, ocl.npbc*nSystems );
 
@@ -1180,7 +1186,8 @@ double evalVFs( double Fconv=1e-6 ){
             //     TDrive[isys].z = 0;
             // }
             // printf("evalVFs() TDrive[isys].z = %f\n", TDrive[isys].z);
-            TDrive[isys].z += 1;
+            jeParams[isys].x += 1;
+            jeParams[isys].w = 0;
             // printf("evalVFs() TDrive[isys].z = %f\n", TDrive[isys].z);
             TDrive[isys].w = randf(-1.0,1.0); 
         }else{
@@ -1193,6 +1200,7 @@ double evalVFs( double Fconv=1e-6 ){
     //printf( "MDpars{%g,%g,%g,%g}\n", MDpars[0].x,MDpars[0].y,MDpars[0].z,MDpars[0].w );
     err |= ocl.upload( ocl.ibuff_MDpars, MDpars );
     err |= ocl.upload( ocl.ibuff_TDrive, TDrive );
+    if(jeParams)err |= ocl.upload( ocl.ibuff_jeParams, jeParams );
     err |= ocl.upload( ocl.ibuff_cvf   , cvfs   );
     // //printf("MolWorld_sp3_multi::evalVFs() bGroupUpdate=%i \n", bGroupUpdate );
     // if(bGroupUpdate){

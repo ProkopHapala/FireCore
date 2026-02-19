@@ -23,7 +23,7 @@ echo "Step 2: Running Thermodynamic Integration for DA..."
 echo "----------------------------------------"
 python3 run_ES.py \
     --nSys 100 \
-    --xyz_name "../../cpp/common_resources/DA.mol2" \
+    --xyz_name "../../cpp/common_resources/xyz/DA.xyz" \
     --system_name "DA" \
     --nLambda 100 \
     --nMDsteps 2000000 \

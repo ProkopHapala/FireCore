@@ -4186,6 +4186,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
             const Atom& A =  atoms[ia];
             ff.apos  [ia] = A.pos;
             ff.atypes[ia] = A.type;
+            ff.REQs  [ia] = A.REQ;
             AtomType& atyp = params->atypes[A.type];
 
             if(A.iconf>=0){
