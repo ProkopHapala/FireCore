@@ -18,7 +18,7 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
-N=20
+N=30
 
 # Ensure we are in the script directory
 cd "$(dirname "$0")"
@@ -46,12 +46,12 @@ python3 run_ES.py \
     --nSys 100 \
     --xyz_name "../tMMFF/data/entropic_spring_$N.xyz" \
     --system_name "entropic_spring_$N" \
-    --nLambda 50000 \
-    --nMDsteps 1000000 \
-    --nEQsteps 5000 \
+    --nLambda 100000 \
+    --nMDsteps 100000 \
+    --nEQsteps 50000 \
     --Fconv 1e-6 \
     --constraints "constraints_ES.txt" \
-    --nPerVFs 10
+    --nPerVFs 1
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Calculation failed!"

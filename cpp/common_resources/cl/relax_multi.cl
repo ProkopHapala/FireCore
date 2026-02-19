@@ -915,7 +915,7 @@ __kernel void updateAtomsMMFFf4(
     __global float4*  sysbonds,      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
     __global float4*  averageForces, // 15 // contains average forces on atoms for Thermodynamic Integration
     __global float*   work,          // 16 // contains work recorded at each step for Jarzynski Equality
-    const int4    jeParams
+    __global int4*    jeParams       // 17 // parameters for Jarzynski Equality per system
 ){
     const int natoms=n.x;           // number of atoms
     const int nnode =n.y;           // number of node atoms
@@ -1004,45 +1004,59 @@ __kernel void updateAtomsMMFFf4(
         float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
 
 
-        // if(iS==0 && iG==0)printf("GPU: iS=%i iG=%i cons.w=%g TDrive.z=%g \n", iS, iG, cons.w, TDrive.z );
-        if( work && (cons.w > 0.f) && (TDrive.z >= 0.f) ){
-             float4 consEnd = constrK[ iaa ];
-             int nLambda    = (int)consEnd.w;
-             float lambda   = TDrive.z/(float)(nLambda-1);
-             float k        = cons.w; // Stiffness stored in .w
-             
-             // Interpolate position
-             float3 p0 = cons.xyz;
-             float3 p1 = consEnd.xyz;
-             float3 target = p0 + (p1 - p0) * lambda;
-             
-             // Compute Force (Harmonic)
-             // Force on atom = k * (target - pe)
-             float3 fc = (target - pe.xyz) * (float3){k,k,k};
-             fe.xyz += fc;
-             
-             // Accumulate Work
-             // Work done ON system = integral of (dH/dLambda) dLambda
-             // H_spring = 0.5 * k * (x - x0(lambda))^2
-             // dH/dLambda = k * (x - x0) * (-dx0/dLambda)
-             //            = k * (x - x0) * -(p1 - p0)
-             //            = k * (x0 - x) * (p1 - p0)  = fc * (p1 - p0)
-             // So we accumulate dot(fc, dir).
-             
-             float3 dir = p1 - p0;
-             float work_term = dot(fc, dir);
-             work_term *= 1.0f/(float)(nLambda-1);
-             
-             // Record work at this step if buffer provided
-            {
-                volatile __global float* addr = &work[ nLambda * iS + (int)(TDrive.z) ];
-                float old_val, new_val;
-                do {
-                    old_val = *addr;
-                    new_val = old_val + work_term;
-                } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
+        // if(iS==0 && iG==0)printf("GPU: iS=%i iG=%i jeParams(%i,%i,%i,%i) \n", iS, iG, jeParams[iS].x, jeParams[iS].y, jeParams[iS].z, jeParams[iS].w );
+        if( (cons.w > 0.f) && (jeParams[iS].x >= -1) ){
+            // Jarzynski equality / Thermodynamic integration
+            // We use standard "constr" for initial position and "constrK" for final position
+            // But we use "cons.w" as stiffness
+            
+            float4 consEnd = constrK[ iaa ];
+            int nLambda    = jeParams[iS].y;
+            float k = cons.w;
+            
+            float lambda;
+            if(jeParams[iS].x < 0){
+                lambda = 0.0f;
+            }else{
+                lambda = (float)jeParams[iS].x/(float)(nLambda-1);
             }
-             cons.w = 0.0f; // Disable standard logic
+            
+            float3 p0 = cons.xyz;
+            float3 p1 = consEnd.xyz;
+            
+            float3 target = p0 + (p1 - p0) * lambda;
+            
+            // Compute Force (Harmonic)
+            // Force on atom = k * (target - pe)
+            float3 fc = (target - pe.xyz) * (float3){k,k,k};
+            fe.xyz += fc;
+            
+            // Accumulate Work
+            // Work done ON system = integral of (dH/dLambda) dLambda
+            // H_spring = 0.5 * k * (x - x0(lambda))^2
+            // dH/dLambda = k * (x - x0) * (-dx0/dLambda)
+            //            = k * (x - x0) * -(p1 - p0)
+            //            = k * (x0 - x) * (p1 - p0)  = fc * (p1 - p0)
+            // So we accumulate dot(fc, dir).
+            
+            float3 dir = p1 - p0;
+            float work_term = dot(fc, dir);
+            if( (jeParams[iS].w >= jeParams[iS].z - 1) && (jeParams[iS].x >= 0) ){
+                // Record work at this step if buffer provided
+                {
+                    volatile __global float* addr = &work[ nLambda * iS + jeParams[iS].x ];
+                    float old_val, new_val;
+                    do {
+                        old_val = *addr;
+                        new_val = old_val + work_term;
+                    } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
+
+                }                    
+            }
+            else if(iG==0){
+                jeParams[iS].w += 1;
+            }
+            cons.w = 0.0f; // Disable standard logic
         }
 
         if( cons.w>0.f && (cons.w<1e3f) ){            // if stiffness is positive, we have constraint

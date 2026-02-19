@@ -211,6 +211,7 @@ touch minima.dat
 #./$name -m 2000    -x common_resources/xyz/xylitol_WO_gridFF                 -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 -grid_nPBC 2,2,0 # -nogridff
 
 
-./$name -m 50 -x common_resources/DA.mol2 -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0
-# ./$name -m 50 -x common_resources/entropic_spring_30.xyz -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0
+# ./$name -m 50 -x common_resources/DA.mol2 -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0
+# ./$name -m 50 -x common_resources/xyz/DA.xyz -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0
+./$name -m 50 -x common_resources/entropic_spring_30.xyz -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0
 # ./$name -m 2 -x common_resources/xyz/nHexadecan.xyz -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0

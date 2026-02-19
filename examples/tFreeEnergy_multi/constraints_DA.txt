@@ -1,13 +1,2 @@
-# Constraint positions for DA (dimer) thermodynamic integration
-#
-# Format: atom_index  initial_x  initial_y  initial_z  final_x  final_y  final_z
-#
-# CV: Distance between the two Si atoms (indices 18 and 43 in 0-indexed)
-# Si atoms from DA.mol2:
-#   Atom 19 (index 18): Si at (-12.0498, -6.8896, 1.7148)
-#   Atom 44 (index 43): Si at (3.1486, -10.9881, 10.9822)
-#
-# Initial distance ~18Å, pulling from 1Å to 20Å on x-axis
-
-18   0.5   0.0   0.0   10.0   0.0   0.0
-43  -0.5   0.0   0.0  -10.0   0.0   0.0
+18   5.5   0.0   0.0   30.0   0.0   0.0
+43  -5.5   0.0   0.0  -30.0   0.0   0.0

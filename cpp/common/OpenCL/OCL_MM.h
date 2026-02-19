@@ -78,7 +78,7 @@ class OCL_MM: public OCLsystem { public:
     int ibuff_atoms=-1,ibuff_aforces=-1,ibuff_neighs=-1,ibuff_neighCell=-1;
     int ibuff_avel=-1,ibuff_cvf=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1, ibuff_bkNeighs_new=-1;
     int ibuff_REQs=-1, ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
-    int ibuff_lvecs=-1, ibuff_ilvecs=-1,ibuff_MDpars=-1,ibuff_TDrive=-1, ibuff_pbcshifts=-1; 
+    int ibuff_lvecs=-1, ibuff_ilvecs=-1,ibuff_MDpars=-1,ibuff_TDrive=-1, ibuff_pbcshifts=-1, ibuff_jeParams=-1; 
     int ibuff_constr=-1;
     int ibuff_constrK=-1;
     int ibuff_bboxes=-1;
@@ -86,7 +86,6 @@ class OCL_MM: public OCLsystem { public:
     int ibuff_sysbonds=-1;
     int ibuff_averageForces=-1;
     int ibuff_work=-1;
-    int4 jeParams{0,0,0,0};
 
     int ibuff_samp_ps=-1;
     int ibuff_samp_fs=-1;
@@ -233,6 +232,8 @@ class OCL_MM: public OCLsystem { public:
 
         // Buffer for thermodynamic integration - stores accumulated force differences
         ibuff_averageForces   = newBuffer( "averageForces",   nSystems, sizeof(float4), 0, CL_MEM_READ_WRITE );
+        ibuff_work            = newBuffer( "work",            nSystems, sizeof(float),  0, CL_MEM_READ_WRITE );
+        ibuff_jeParams        = newBuffer( "jeParams",        nSystems, sizeof(int4),   0, CL_MEM_READ_WRITE  );
         ibuff_BKs        = newBuffer( "BKs",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
         ibuff_Ksp        = newBuffer( "Ksp",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
         ibuff_Kpp        = newBuffer( "Kpp",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
@@ -606,7 +607,7 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_sysbonds   ); // 14
         err |= useArgBuff( ibuff_averageForces);// 15
         err |= useArgBuff( ibuff_work       ); // 16
-        err |= _useArg( jeParams            ); // 17
+        err |= useArgBuff( ibuff_jeParams   ); // 17
         OCL_checkError(err, "setup_updateAtomsMMFFf4");
         return task;
         // const int4        n,            // 1 // (natoms,nnode) dimensions of the system
