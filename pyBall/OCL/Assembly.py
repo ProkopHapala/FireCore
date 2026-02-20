@@ -31,8 +31,12 @@ class AssemblyOCL(OpenCLBase):
         results_host = np.zeros(n_confs, dtype=np.float32)
         d_results = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, results_host.nbytes)
         
+        results_min_host = np.zeros(n_confs, dtype=np.float32)
+        d_results_min = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, results_min_host.nbytes)
+        
         local_replica = cl.LocalMemory(self.nloc * 16) # float4
         local_scores = cl.LocalMemory(self.nloc * 4)   # float
+        local_min_dist = cl.LocalMemory(self.nloc * 4) # float
         
         global_size = (int(n_confs * self.nloc),)
         local_size = (int(self.nloc),)
@@ -45,12 +49,15 @@ class AssemblyOCL(OpenCLBase):
             max_penalty_f32,
             local_replica,
             local_scores,
+            local_min_dist,
             d_results,
+            d_results_min
         )
         cl.enqueue_nd_range_kernel(self.queue, self.krn_evaluate_packing_3d, global_size, local_size).wait()
         
         cl.enqueue_copy(self.queue, results_host, d_results).wait()
-        return results_host
+        cl.enqueue_copy(self.queue, results_min_host, d_results_min).wait()
+        return results_host, results_min_host
         
     def emit_configuration(self, transforms_single_conf, nmols):
         # transforms_single_conf: (nmols, 4, 4) float32

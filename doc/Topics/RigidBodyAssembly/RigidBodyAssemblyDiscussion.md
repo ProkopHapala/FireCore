@@ -1077,3 +1077,511 @@ Right now we still allow translations in `[-0.5,0.5]` fractional range, which ca
 
 ## Status
 - **Done:** zspan prefilter, filtered plotting/export, outputs in `tests/tMMFF/assembly_out_*`, dense run performed, results analyzed.
+
+
+---
+
+# USER
+
+My generator of rotations based on euler angles seems to generate a bit non uniform distribution - see image. 
+
+But I want to generate angles  for flat laying molecule which means I want to generate such rotation that 
+vectors a,b of my rotation matrix (a,b,c) are close to plan (some band of limited angular with around plane) and vector c has some limited angle form z-axis (like precession of planet)
+
+see how I generate rotations currently in 
+```python
+def super_fibonacci_rotations(N):
+    phi = np.sqrt(2)
+    psi = (1 + np.sqrt(5)/2 + np.sqrt((5 + 2*np.sqrt(5) + np.sqrt(25 + 20*np.sqrt(5)))/4)) ** 0.25
+    quats = np.zeros((N, 4))
+    for i in range(N):
+        s = i + 1
+        t = s / N
+        d = 2 * np.pi * s
+        r = np.sqrt(t)
+        R_val = np.sqrt(1 - t)
+        alpha = d * phi
+        beta = d * psi
+        quats[i] = [r * np.sin(alpha), r * np.cos(alpha), R_val * np.sin(beta), R_val * np.cos(beta)]
+    return R.from_quat(quats).as_matrix()
+
+def generate_rotations(mode, nrot, tilt_range=0.1, n_tilt=3, rot_tol=1e-2):
+    if mode == 'full3d':
+        from pyBall.OCL.Assembly import super_fibonacci_rotations
+        R_raw = super_fibonacci_rotations(nrot)
+    elif mode == 'inplane':
+        angles = np.linspace(0, 2*np.pi, nrot, endpoint=False)
+        R_raw = R.from_euler('z', angles).as_matrix()
+    elif mode == 'tilt':
+        angles_z = np.linspace(0, 2*np.pi, nrot, endpoint=False)
+        tilt_x = np.linspace(-tilt_range, tilt_range, n_tilt)
+        tilt_y = np.linspace(-tilt_range, tilt_range, n_tilt)
+        # yaw (Z) should be fastest index -> X, Y, Z with indexing='ij'
+        X, Y, Z = np.meshgrid(tilt_x, tilt_y, angles_z, indexing='ij')
+        euler = np.column_stack((X.flatten(), Y.flatten(), Z.flatten()))
+        R_raw = R.from_euler('xyz', euler).as_matrix()
+    else:
+        raise ValueError(f"Unknown rotation mode: {mode}")
+
+    angles_60 = np.linspace(0, 2*np.pi, 6, endpoint=False)
+    S_sym = R.from_euler('z', angles_60).as_matrix()
+
+    R_unique = prune_duplicate_rotations_sym(R_raw, S_sym, rot_tol)
+    if len(R_unique) < len(R_raw):
+        print(f"Rotation dedup: kept {len(R_unique)} / {len(R_raw)} (tol={rot_tol} rad) considering 6-fold Z-symmetry")
+    return R_unique
+```
+
+Also I was thinking maybe I can do it using this method, which seems more controlable than the fibonachi super spiral
+
+
+#### Method 2: Hopf Fibration Grids
+- **Why it works**: Hopf fibration projects S³ → S² with S¹ fibers, allowing uniform base sampling on S² (e.g., HEALPix grid) and uniform along fibers (circles). This decomposes SO(3) into equivolumetric cells.
+- **Steps** (from Yershova et al., 2010):
+  1. Parameterize rotation as (α, β, γ) in [0,2π) × [0,π] × [0,2π), but adjust density for uniformity: dV = (1/8π²) sin β dα dβ dγ.
+  2. Sample base on S² uniformly (β via cos-inverse of uniform, α uniform).
+  3. For each base point, sample γ uniformly along the fiber.
+  4. For grid: Discretize into k levels; at level k, use ~12k² points on base S² (icosahedral/HEALPix), then m points per fiber for total ~12k² m points.
+  5. Quaternion from params: q = (cos(γ/2) cos(β/2), sin(γ/2) cos(β/2), sin(γ/2) sin(β/2), cos(γ/2) sin(β/2)) [adjusted order].
+- **Properties**: Equivolumetric partitions, optimal dispersion reduction per added point, explicit neighbors.
+- **Efficiency**: O(N) time; supports refinement.
+- **Python Example** (simplified base; use HEALPix lib for full):
+  ```python
+  import numpy as np
+
+  def hopf_grid_rotations(k, m):  # k levels on base, m per fiber
+      N = 12 * k**2 * m  # Approx total
+      quats = []
+      for i in range(12 * k**2):  # Simulate base points on S^2 (use healpy for real)
+          beta = np.arccos(2 * np.random.rand() - 1)  # Uniform on S^2 (placeholder)
+          alpha = 2 * np.pi * np.random.rand()
+          for j in range(m):
+              gamma = 2 * np.pi * j / m
+              cw, sw = np.cos(gamma/2), np.sin(gamma/2)
+              cb, sb = np.cos(beta/2), np.sin(beta/2)
+              quats.append([cw * cb, sw * cb, -sw * sb, cw * sb])  # (w, x, y, z)
+      return np.array(quats)
+
+  # Usage: quats = hopf_grid_rotations(4, 10)  # ~1920 points
+  ```
+
+the thing is that I want these rotation to be nicely smooth so when I review the configurations in order they are generated in .xyz file (movie) so the molecule rotate smoothly along the fastest stride (fastest stride should be something like rotation along the c-vectro approx in x,y plane)
+
+how to do that
+
+---
+
+# Gemini-3.1-pro
+
+The reason your Fibonacci spiral looks chaotic in a movie sequence is that the Fibonacci lattice places points by rotating $\approx 137.5^\circ$ (the golden angle) around the z-axis for every subsequent point. While mathematically beautifully uniform, it jumps back and forth across the sphere, completely destroying the "smooth continuous movement" needed for an animation. 
+
+The **Hopf Fibration** is mathematically perfect for the *entire* 3D rotation space, but since you want **flat-laying molecules with a limited tilt**, computing the full Hopf/HEALPix grid and discarding 95% of the points that fall outside your tilt range is inefficient.
+
+### The Solution: "Concentric Rings" (Localized Hopf Fibration)
+
+We can achieve exactly what you want (Uniformity + Smoothness + Fastest Stride on the $c$-vector spin + Limited Tilt) by directly generating a grid of **Z-Y-Z Euler angles**.
+
+In the intrinsic `ZYZ` Euler convention:
+1. **$\beta$ (Tilt/Nutation):** Tilts the molecule's $c$-vector away from the Z-axis.
+2. **$\alpha$ (Precession):** Sweeps the tilted $c$-vector around the Z-axis.
+3. **$\gamma$ (Spin):** Spins the molecule around its *own* $c$-vector (in the molecular x-y plane).
+
+To make it **smooth**, we just nest our loops from slowest ($\beta$) to fastest ($\gamma$).
+To make it **uniform**, we space the $\beta$ rings by $\cos(\beta)$ (equal area on a sphere) and scale the number of $\alpha$ steps proportionally to the circumference of the ring ($\sin(\beta)$).
+
+Here is the updated generator code to add to your script:
+
+```python
+import numpy as np
+from scipy.spatial.transform import Rotation as R
+
+def generate_smooth_cap_rotations(tilt_range, n_rings, max_n_alpha, n_spin):
+    """
+    Generates uniform, smoothly transitioning rotations for a flat-laying 
+    molecule with a limited tilt.
+    
+    n_rings: Number of tilt levels (beta).
+    max_n_alpha: Number of precession steps (alpha) at the maximum tilt.
+    n_spin: Number of in-plane spin steps (gamma). Fastest stride.
+    """
+    euler_angles =[]
+
+    # 1. SLOWEST STRIDE: Tilt (beta)
+    # To get uniform area density on a spherical cap, we space z = cos(beta) evenly.
+    z_rings = np.linspace(1.0, np.cos(tilt_range), n_rings)
+    beta_rings = np.arccos(z_rings)
+
+    for beta in beta_rings:
+        # Scale the number of precession steps by the radius of the ring to keep density uniform
+        if beta < 1e-5:
+            n_alpha = 1 # At the exact pole (flat), precession is degenerate
+        else:
+            # Circumference is proportional to sin(beta)
+            n_alpha = max(1, int(round(max_n_alpha * np.sin(beta) / np.sin(tilt_range))))
+
+        # 2. MIDDLE STRIDE: Precession (alpha)
+        alphas = np.linspace(0, 2*np.pi, n_alpha, endpoint=False)
+        for alpha in alphas:
+            
+            # 3. FASTEST STRIDE: Spin around c-vector (gamma)
+            # Sweeping 0 to 2*pi. (If you have 6-fold symmetry, you could technically 
+            # sweep 0 to 2*pi/6 here to save time, but your pruner will handle duplicates anyway).
+            gammas = np.linspace(0, 2*np.pi, n_spin, endpoint=False)
+            for gamma in gammas:
+                euler_angles.append()
+
+    euler_angles = np.array(euler_angles)
+    
+    # Use intrinsic ZYZ rotations (uppercase letters in scipy)
+    # This precisely maps to: Precess(Z) -> Tilt(Y) -> Spin(Z)
+    return R.from_euler('ZYZ', euler_angles).as_matrix()
+
+
+def generate_rotations(mode, nrot, tilt_range=0.1, n_tilt=3, rot_tol=1e-2):
+    if mode == 'full3d':
+        from pyBall.OCL.Assembly import super_fibonacci_rotations
+        R_raw = super_fibonacci_rotations(nrot)
+    
+    elif mode == 'inplane':
+        angles = np.linspace(0, 2*np.pi, nrot, endpoint=False)
+        R_raw = R.from_euler('z', angles).as_matrix()
+    
+    elif mode == 'tilt':
+        # Your original tilt (Cartesian meshgrid)
+        angles_z = np.linspace(0, 2*np.pi, nrot, endpoint=False)
+        tilt_x = np.linspace(-tilt_range, tilt_range, n_tilt)
+        tilt_y = np.linspace(-tilt_range, tilt_range, n_tilt)
+        X, Y, Z = np.meshgrid(tilt_x, tilt_y, angles_z, indexing='ij')
+        euler = np.column_stack((X.flatten(), Y.flatten(), Z.flatten()))
+        R_raw = R.from_euler('xyz', euler).as_matrix()
+        
+    elif mode == 'smooth_cap':
+        # NEW MODE: Uniform & Smooth
+        # Example parameters: 
+        # n_tilt = number of rings. 
+        # nrot = roughly equates to max_n_alpha and n_spin for scaling
+        R_raw = generate_smooth_cap_rotations(
+            tilt_range=tilt_range, 
+            n_rings=n_tilt,         # e.g., 3 to 5
+            max_n_alpha=nrot,       # e.g., 12 steps around the maximum tilt perimeter
+            n_spin=nrot             # e.g., 12 to 36 spin steps
+        )
+        
+    else:
+        raise ValueError(f"Unknown rotation mode: {mode}")
+
+    # Symmtery pruning
+    angles_60 = np.linspace(0, 2*np.pi, 6, endpoint=False)
+    S_sym = R.from_euler('z', angles_60).as_matrix()
+
+    R_unique = prune_duplicate_rotations_sym(R_raw, S_sym, rot_tol)
+    if len(R_unique) < len(R_raw):
+        print(f"Rotation dedup: kept {len(R_unique)} / {len(R_raw)} (tol={rot_tol} rad) considering 6-fold Z-symmetry")
+    return R_unique
+```
+
+### Why this is perfect for your `.xyz` movies:
+1. **The fastest loop (`gamma`)** simply spins the molecule like a record player in its own plane. When you watch the `.xyz` file, you will see the molecule spin completely around.
+2. **The middle loop (`alpha`)** then shifts the *direction* of the tilt slightly. The molecule spins completely again. Over time, you see the axis of rotation precessing smoothly in a continuous circle.
+3. **The slowest loop (`beta`)** eventually steps the tilt slightly steeper.
+4. **Uniformity:** Because `z_rings` scales with `cos(beta)` and `n_alpha` scales with `sin(beta)`, the rotations perfectly approximate equivolumetric chunks on the SO(3) manifold (exactly the property that makes Hopf fibrations mathematically desirable), but *strictly confined* to the tiny polar cap you actually care about.
+
+---
+
+# USER
+
+WE  SHOULD NOT USE STUPID "FALLBACK" I PROHIBITED DOING SILENT FALLBACK IN CODING RULES !!!! THIS MAKES DEBUGGING IMPOSSIBLE< UNSCIENTIFI UNDETERMINISTIC!!!!
+
+we need to have predictable debuggable behaciour. It nothink pass the filter we should raise warring. not fallback silently !!!
+
+other thing is that partepo plot is alsmost empty, this is exactly the opposite behaviour than what I want! 
+
+I want to have dense single pixel black dots  in the pareto front plot also for those which does not pass the collision filter, and then some parato front on that. And the selected points which are stored to output .xyz should be highlighted by a bil larger (2pixel) red dots
+
+compare it with how it is not review and quote the responsible code, and plan how to correct it
+
+
+---
+
+# Grmini-3.1-pro
+
+I have implemented the requested changes to strictly enforce the export criteria and overhaul the Pareto visualization. 
+
+### Changes Implemented
+1. **Removed Silent Fallbacks**: The script now strictly adheres to `--clash_max` and `--zspan_max`. If zero configurations satisfy these thresholds, it prints a loud `WARNING` and entirely skips exporting the `.xyz` movie and atomic `.png` files. It will no longer silently fall back to exporting the "least bad" structures.
+2. **Overhauled Pareto Plot (`pareto_<preset>.png`)**:
+   - **Base sampling density**: All evaluated configurations are now plotted as dense, small black dots (`alpha=0.3`), providing a clear view of the entire sampled landscape.
+   - **Pareto Front Line**: The script now calculates the mathematical Pareto frontier (non-dominated points minimizing both clash and z-span) and draws a continuous blue line through them.
+   - **Export Highlights**: Configurations that successfully pass the filters and are chosen for export are overlaid as larger red dots. The absolute best configuration is marked with a lime star. If no configurations pass, the "least bad" overall is marked with an orange 'x' for reference.
+   - **Threshold Guides**: Dashed lines visually indicate your chosen `--clash_max` (red) and `--zspan_max` (blue) bounds.
+
+### Test Results
+When running your exact command with the strict `--clash_max 1` filter:
+```bash
+python3 test_assembly.py --preset triptycene --rot_mode tilt --nrot 16 --n_tilt 3 --tilt_range 0.25 --nshift 10 --zspan_max 40 --clash_max 1 --plot_trans --plot_rot --plot_best_k 1 --z_highlight 0.4 --dump
+```
+
+**Output snippet:**
+```text
+Configurations passing export criteria (zspan < 40.0, clash < 1.0): 0
+WARNING: No configurations passed the strict export criteria (zspan < 40.0, clash < 1.0).
+         The Pareto plot will still be generated, but no XYZ movie or 2D plots will be exported.
+Best configuration overall: index 196 with Clash 10.3655, Z-span 8.5390, Total Score 27.4435
+Saved Pareto plot to /home/prokop/git/FireCore/tests/tMMFF/assembly_out_triptycene/pareto_triptycene.png
+```
+
+As expected, it successfully evaluates the 1080 configurations, finds that the lowest clash is `10.3655` (failing the `< 1.0` requirement), throws the warning, generates the comprehensive Pareto plot, and avoids generating a useless `.xyz` movie.
+
+
+### Implementation Summary
+
+The requested changes have been fully implemented across the OpenCL kernel, Python harness, and main test script:
+
+1. **Kernel Updates ([Assembly.cl](cci:7://file:///home/prokop/git/FireCore/pyBall/OCL/cl/Assembly.cl:0:0-0:0))**:
+   - Added a `my_min_dist2` register to track the minimum squared distance between atoms of different molecules.
+   - Implemented a parallel reduction for the minimum distance alongside the clash sum.
+   - The kernel now outputs two arrays: `results` (clash sums) and `results_min` (minimum inter-molecular distances).
+
+2. **Harness Updates ([Assembly.py](cci:7://file:///home/prokop/git/FireCore/pyBall/OCL/Assembly.py:0:0-0:0))**:
+   - Updated `evaluate_packing` to allocate, map, and return the secondary `results_min_host` array.
+
+3. **CLI and Logic Updates ([test_assembly.py](cci:7://file:///home/prokop/git/FireCore/tests/tMMFF/test_assembly.py:0:0-0:0))**:
+   - Added `--nPBC_test` (options: 0, 1, 2, 3 mapping to 1, 9, 25, 49 lattice replicas) for independent control of the OpenCL evaluation grid.
+   - Added `--dist_min` threshold.
+   - Added safety validation: strictly enforces that `--nPBC_xyz` (export replicas) does not exceed `--nPBC_test` (evaluated replicas) to prevent exporting untested boundaries.
+   - Implemented the double Pareto plot:
+     - **Subplot 1**: Clash vs Z-span (minimizing both).
+     - **Subplot 2**: Min-Dist vs Z-span (maximizing Min-Dist, minimizing Z-span).
+     - Both subplots render all configurations as dense black dots, highlight exported ones in red, and draw a continuous blue line for the respective mathematical Pareto fronts.
+
+### Analysis of Test Results
+
+I ran the following test using the strict parameters:
+```bash
+python3 test_assembly.py --preset triptycene --rot_mode tilt --nrot 16 --n_tilt 5 --tilt_range 0.4 --nshift 10 --zspan_max 40 --clash_max 1.0 --dist_min 2.0 --plot_trans --plot_rot --plot_best_k 1 --z_highlight 0.4 --dump --nPBC_test 1 --nPBC_xyz 0
+```
+
+**Findings:**
+- **Performance**: Generated 7,200 configurations and evaluated them against 54 replicas (3x3 grid * 6 symmetries = 388,800 total transforms) in **0.020 seconds** on the GPU.
+- **Filtering Strictness**: **0 configurations** passed the combined strict export criteria (`clash < 1.0` AND `dist_min >= 2.0`).
+- **Closest Approach**: The configuration with the best overall composite score (Index 757) had a minimum inter-molecular distance of **0.7355 Å** and a clash penalty of **9.6264**. 
+- **Correct Fallback Prevention**: Because 0 configurations passed, the script successfully triggered the explicit warning and bypassed the `.xyz` and `.png` dump, preventing the export of invalid structures.
+- **Double Pareto**: The `pareto_triptycene.png` was successfully generated showing the full landscape of the 7,200 sampled configurations across both metrics.
+
+To successfully export configurations for this molecule, you will need to either increase `--clash_max` / decrease `--dist_min`, or expand the sampling grid (`--nshift`, `--nrot`, `--tilt_range`) to find more favorable packings.
+
+### Implementation Summary
+
+The requested changes have been fully implemented across the OpenCL kernel, Python harness, and main test script:
+
+1. **Kernel Updates ([Assembly.cl](cci:7://file:///home/prokop/git/FireCore/pyBall/OCL/cl/Assembly.cl:0:0-0:0))**:
+   - Added a `my_min_dist2` register to track the minimum squared distance between atoms of different molecules.
+   - Implemented a parallel reduction for the minimum distance alongside the clash sum.
+   - The kernel now outputs two arrays: `results` (clash sums) and `results_min` (minimum inter-molecular distances).
+
+2. **Harness Updates ([Assembly.py](cci:7://file:///home/prokop/git/FireCore/pyBall/OCL/Assembly.py:0:0-0:0))**:
+   - Updated `evaluate_packing` to allocate, map, and return the secondary `results_min_host` array.
+
+3. **CLI and Logic Updates ([test_assembly.py](cci:7://file:///home/prokop/git/FireCore/tests/tMMFF/test_assembly.py:0:0-0:0))**:
+   - Added `--nPBC_test` (options: 0, 1, 2, 3 mapping to 1, 9, 25, 49 lattice replicas) for independent control of the OpenCL evaluation grid.
+   - Added `--dist_min` threshold.
+   - Added safety validation: strictly enforces that `--nPBC_xyz` (export replicas) does not exceed `--nPBC_test` (evaluated replicas) to prevent exporting untested boundaries.
+   - Implemented the double Pareto plot:
+     - **Subplot 1**: Clash vs Z-span (minimizing both).
+     - **Subplot 2**: Min-Dist vs Z-span (maximizing Min-Dist, minimizing Z-span).
+     - Both subplots render all configurations as dense black dots, highlight exported ones in red, and draw a continuous blue line for the respective mathematical Pareto fronts.
+
+### Analysis of Test Results
+
+I ran the following test using the strict parameters:
+```bash
+python3 test_assembly.py --preset triptycene --rot_mode tilt --nrot 16 --n_tilt 5 --tilt_range 0.4 --nshift 10 --zspan_max 40 --clash_max 1.0 --dist_min 2.0 --plot_trans --plot_rot --plot_best_k 1 --z_highlight 0.4 --dump --nPBC_test 1 --nPBC_xyz 0
+```
+
+**Findings:**
+- **Performance**: Generated 7,200 configurations and evaluated them against 54 replicas (3x3 grid * 6 symmetries = 388,800 total transforms) in **0.020 seconds** on the GPU.
+- **Filtering Strictness**: **0 configurations** passed the combined strict export criteria (`clash < 1.0` AND `dist_min >= 2.0`).
+- **Closest Approach**: The configuration with the best overall composite score (Index 757) had a minimum inter-molecular distance of **0.7355 Å** and a clash penalty of **9.6264**. 
+- **Correct Fallback Prevention**: Because 0 configurations passed, the script successfully triggered the explicit warning and bypassed the `.xyz` and `.png` dump, preventing the export of invalid structures.
+- **Double Pareto**: The `pareto_triptycene.png` was successfully generated showing the full landscape of the 7,200 sampled configurations across both metrics.
+
+To successfully export configurations for this molecule, you will need to either increase `--clash_max` / decrease `--dist_min`, or expand the sampling grid (`--nshift`, `--nrot`, `--tilt_range`) to find more favorable packings.
+
+---
+
+# USER
+
+OK, now review out edots and achivements in this session. What were the goals, what we achived, what was chalanges how we solved it, some takeways to avoid pitfalls and erors in future, 
+
+---
+
+# GPT-5.1-Codex
+
+Session summary
+
+Goals addressed
+- Enforce strict, debuggable filtering (no silent fallbacks) for assembly export.
+- Improve Pareto plots to show all configs, highlight exports, add Pareto lines.
+- Add min-distance evaluation alongside clash sum; filter and plot on both.
+- Add independent PBC controls for evaluation vs export/plot, and ensure exports use the intended centered 2D tiling.
+- Fix export correctness: emit all passing configs, not just one; avoid 1D strips in XYZ/PNG.
+
+Key achievements
+- Export gating: no silent fallbacks; combined filter now requires zspan, clash, and min-dist thresholds.
+- Double Pareto: two subplots (clash vs z-span, min-dist vs z-span), dense black dots, red exports, Pareto front lines, threshold guides.
+- Min-distance computation: kernel computes both clash sum and min distance; Python API returns both; CLI flag dist_min controls filtering.
+- PBC controls: nPBC_test sets evaluation lattice size; nPBC_xyz sets export/plot lattice. Added centered selection of lattice cells so exports/PNGs use proper 2D tiling (no 1D strip).
+- Export loop fixed: indentation corrected; all passing configurations now written to the movie; selection indices applied consistently to XYZ and PNG.
+- Axis scaling for min-distance plot widened to show higher distances.
+
+Challenges and resolutions
+- Initial silent fallback paths caused confusing exports—removed and replaced with loud warnings and hard stops.
+- Min-distance plotting range too tight—broadened limits based on high percentile.
+- Mismatch between nPBC_test and nPBC_xyz led to a 1D strip—resolved by explicit centered lattice selection (sel_indices) for export/plot.
+- Export loop bug (mis-indentation) wrote only the last config—fixed by re-indenting and emitting per config.
+
+Takeaways to avoid future pitfalls
+- Always keep evaluation/selection indices explicit; don’t rely on simple slicing when ordering is lattice-major.
+- Keep export/plot subsets derived from spatial criteria (centered block) and validate counts.
+- Avoid silent fallbacks; prefer loud warnings/errors when filters yield zero results.
+- Maintain consistent loop indentation for per-config exports.
+- Use Cascade edit tools (not shell-based patching) for reviewable changes.
+
+Current status
+- Triptycene test with nPBC_test=2, nPBC_xyz=1 now exports 13 configurations with proper 3×3 tiling in the movie and plots; double Pareto generated successfully.
+
+
+---
+
+# USER
+
+is there a way how to use jmol from a script saving .xyz from each configuration in a movie ?
+Or something ele to render nice molecule programatically in linux ?
+
+---
+
+# Grok 4.2
+
+**Yes, Jmol can do exactly that from a script** (and run fully headless on Linux).
+
+### 1. If your "movie" is already a multi-frame `.xyz` file (very common for trajectories)
+Jmol treats multi-frame XYZ files as a trajectory with numbered frames/models.
+
+Create a file `extract_frames.spt` (plain text):
+
+```jmol
+load "your_movie.xyz"   # or trajectory "your_movie.xyz" if you prefer
+
+# Get number of frames
+n = getProperty("modelInfo.modelCount");
+
+# Optional: nice consistent look (only matters if you also want images)
+spacefill 200;
+color cpk;
+background white;
+set antialiasDisplay ON;
+
+for (var i = 1; i <= n; i = i + 1) {
+    frame @i;                     # go to frame i
+    write xyz "config_" + i + ".xyz";   # saves config_1.xyz, config_2.xyz, ...
+    # or padded: write xyz "config_" + format("%04d",i) + ".xyz";
+}
+
+exit
+```
+
+Run it (no GUI at all):
+
+```bash
+java -jar /path/to/Jmol.jar -n -s extract_frames.spt
+```
+
+(or use `JmolData.jar` if you have it: `java -jar JmolData.jar -j "script extract_frames.spt"`)
+
+On a truly headless server (no X11), wrap with `xvfb-run`:
+
+```bash
+xvfb-run java -jar Jmol.jar -n -s extract_frames.spt
+```
+
+### 2. If you have many separate `.xyz` files instead
+Change the script to loop over files:
+
+```jmol
+# set style once
+spacefill 200; color cpk; background white;
+
+n = 250;   # change to your number of frames
+for (var i = 1; i <= n; i = i + 1) {
+    load format("config_%04d.xyz", i);   # or whatever your naming is
+    write xyz format("single_%04d.xyz", i);
+    # ... or write image png 1200 800 format("frame_%04d.png", i);  # for rendering too
+}
+exit
+```
+
+### For nice rendered images + movie (Jmol can do it too)
+Replace the `write xyz` line with:
+
+```jmol
+write image png 1920 1080 format("frame_%04d.png", i);
+```
+
+Then make the movie with ffmpeg (one-liner):
+
+```bash
+ffmpeg -framerate 30 -i frame_%04d.png -c:v libx264 -pix_fmt yuv420p movie.mp4
+```
+
+### Better alternatives for "nice" programmatic rendering on Linux
+Jmol works, but **PyMOL** is vastly superior for high-quality ray-traced images/movies and is the de-facto standard in the field. It runs perfectly headless and has a real Python API.
+
+#### Quick PyMOL example (save as `render.py`)
+```python
+from pymol import cmd
+import os
+
+# one-time setup
+cmd.set("ray_opaque_background", 1)
+cmd.set("antialias", 2)
+
+n = 250  # your number of configs
+for i in range(1, n+1):
+    fname = f"config_{i:04d}.xyz"
+    if not os.path.exists(fname):
+        break
+    cmd.load(fname, "mol")
+    cmd.hide("everything")
+    cmd.show("sticks")
+    cmd.show("spheres", "elem O")   # example: highlight oxygen
+    cmd.color("carbon", "elem C")
+    cmd.zoom()
+    cmd.ray(1200, 800)              # high-quality raytrace
+    cmd.png(f"frame_{i:04d}.png", dpi=300)
+    cmd.delete("mol")
+
+print("Done!")
+```
+
+Run:
+
+```bash
+pymol -cqr render.py
+```
+
+Then the same `ffmpeg` command as above → beautiful movie.
+
+**Other excellent Linux-native options:**
+- **VMD** – unbeatable for MD trajectories, Tcl/Python scripting, Tachyon renderer.
+- **ChimeraX** – modern lighting/shadows, `--nogui` mode, Python scripts, `save image`.
+
+All three are free, installable via conda/apt, and give much prettier publication-quality renders than Jmol with almost the same effort.
+
+If you tell me:
+- Is the input one big multi-frame XYZ or separate files?
+- How many frames?
+- What style you want (ball-and-stick, spacefill, cartoon for proteins, etc.)
+- Do you need the .xyz files **or** mainly the movie/images?
+
+…I can give you the exact ready-to-run script (Jmol or PyMOL). Happy to help!
+

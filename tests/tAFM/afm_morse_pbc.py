@@ -207,7 +207,8 @@ python3 afm_morse_pbc.py   --spacing 0.3,0.3,0.3   --scan_step 0.3,0.3,0.0   --z
 
 def main():
     ap = argparse.ArgumentParser(description="AFM imaging (Morse + point charges) using relax.cl: build primitive-cell 3D FF image + PP relaxation (FIRE). Uses halo atom replication for FF projection and periodic image sampling for scan." )
-    ap.add_argument('--mol',     type=str,  default=os.path.join(_ROOT, 'tests', 'tMMFF', 'trj_ditetraceno_conf1_hamaker_final.mol2'))
+    #ap.add_argument('--mol',     type=str,  default=os.path.join(_ROOT, 'tests', 'tMMFF', 'trj_ditetraceno_conf1_hamaker_final.mol2'))
+    ap.add_argument('--mol',     type=str,  default=os.path.join(_ROOT, 'tests', 'tMMFF', 'trj_ditetraceno_conf2_hamaker_final.mol2'))
     ap.add_argument('--params',  type=str,  default=os.path.join(_ROOT, 'cpp', 'common_resources', 'ElementTypes.dat'))
     ap.add_argument('--outdir',  type=str,  default=os.path.join(_THIS_DIR, 'out_afm_morse_pbc'))
     ap.add_argument('--pbc',     type=_parse_int3, default=(1, 1, 0),       help='PBC replication radius as rx,ry,rz. Example 1,1,0 -> (3,3,1) copies (central).')

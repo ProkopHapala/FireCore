@@ -1,0 +1,63 @@
+// render_movie_jmol_debug.spt   ← save as this name
+print "=== Jmol Debug Script STARTED ==="
+print "Jmol version: " + _version
+
+set debugScript true     // extra internal logging
+
+xyzFile = "assembly_out_triptycene/assembly_best_triptycene_movie.xyz"
+load trajectory @xyzFile
+print "Trying to load: " + xyzFile
+
+print "Load successful. Frames detected: " + getProperty("modelInfo.modelCount")
+
+background white
+spacefill 200
+color cpk
+set antialiasDisplay true
+set antialiasTranslucent true
+
+set ambient 40
+set diffuse 70
+set specular 25
+set perspectiveDepth true
+
+set zshade true
+set zshadePower 10.0      // very strong gradient — perfect for thin layers
+
+print "Style + strong zshade set"
+
+n = getProperty("modelInfo.modelCount")
+
+for (var i = 1; i <= n; i = i + 1) {
+  print "=== FRAME " + i + "/" + n + " ==="
+
+  frame @i
+  print "  → frame switched"
+
+  center {*}
+  zoom 118
+  print "  → centered + zoomed"
+
+    #minZ = {*}.z.min 
+    #maxZ = {*}.z.max 
+    #print "  Z range this frame: " + minZ + " → " + maxZ
+    #set zSlab  @maxZ    // start of fade (near side)
+    #set zDepth @minZ    // end of fade (far side)
+
+  #rotate x 7               // tiny tilt → z now has visible depth!
+  print "  → applied 7° x-rotation (makes shading visible on flat molecule)"
+
+  refresh
+  print "  → refresh done"
+
+  fname = "jmol_frames/frame_" + format("%04d", i) + ".png"
+  print "  → writing " + fname + " ..."
+
+  write IMAGE PNG 1200 900 @fname
+  print "  → image write command issued"
+}
+
+print "=== SCRIPT FINISHED SUCCESSFULLY ==="
+print "Now make the movie:"
+print "ffmpeg -framerate 30 -i jmol_frames/frame_%04d.png -c:v libx264 -pix_fmt yuv420p -crf 18 movie.mp4"
+exit

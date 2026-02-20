@@ -51,7 +51,9 @@ __kernel void evaluate_packing_3d(
     float max_clash_penalty,              // Threshold for early exit
     __local float4* local_replica,        // Dynamically sized local memory:
     __local float* local_scores,          // Dynamically sized local memory:
-    __global float* results               // - Output array
+    __local float* local_min_dist,        // Dynamically sized local memory:
+    __global float* results,              // - Output array (clash sums)
+    __global float* results_min           // - Output array (min distances)
 ) {
     // 1. Identify Workgroup (Configuration) and Thread
     int conf_id = get_group_id(0);
@@ -70,6 +72,7 @@ __kernel void evaluate_packing_3d(
     Transform t0 = transforms[conf_transform_offset + 0];
 
     float my_score = 0.0f;
+    float my_min_dist2 = 1e20f;
 
     // 2. OUTER LOOP: Tiles of Molecule 0
     for (int t_m0 = 0; t_m0 < natoms; t_m0 += wg_size) {
@@ -112,6 +115,10 @@ __kernel void evaluate_packing_3d(
                         float dz = my_atom.z - partner.z;
                         float dist_sq = dx*dx + dy*dy + dz*dz;
                         
+                        if (dist_sq < my_min_dist2) {
+                            my_min_dist2 = dist_sq;
+                        }
+                        
                         float r_sum = my_atom.w + partner.w;
                         float r_sum_sq = r_sum * r_sum;
 
@@ -142,11 +149,15 @@ __kernel void evaluate_packing_3d(
 
     // 5. PARALLEL REDUCTION: Sum up scores from all threads in the workgroup
     local_scores[lid] = my_score;
+    local_min_dist[lid] = my_min_dist2;
     barrier(CLK_LOCAL_MEM_FENCE);
 
     for (int stride = wg_size / 2; stride > 0; stride >>= 1) {
         if (lid < stride) {
             local_scores[lid] += local_scores[lid + stride];
+            if (local_min_dist[lid + stride] < local_min_dist[lid]) {
+                local_min_dist[lid] = local_min_dist[lid + stride];
+            }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
@@ -155,8 +166,10 @@ __kernel void evaluate_packing_3d(
     if (lid == 0) {
         if (abort_flag) {
             results[conf_id] = 999999.0f; // Write a massive penalty for aborted configs
+            results_min[conf_id] = 0.0f;
         } else {
             results[conf_id] = local_scores[0]; // Write the total accumulated score
+            results_min[conf_id] = sqrt(local_min_dist[0]);
         }
     }
 }
