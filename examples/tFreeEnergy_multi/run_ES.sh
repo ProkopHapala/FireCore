@@ -8,11 +8,13 @@ set -e  # Exit on error
 
 # Default Mode
 MODE="BOTH"  # Options: TI, JE, BOTH
+JE_K=5.0     # Default JE force constant
 
 # Parse command line arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --mode) MODE="$2"; shift ;;
+        --k)    JE_K="$2"; shift ;;
         *) ;; # Ignore unknown args
     esac
     shift
@@ -43,14 +45,15 @@ echo "Step 2: Running Free Energy Calculation (Mode: $MODE)..."
 echo "----------------------------------------"
 python3 run_ES.py \
     --mode $MODE \
-    --nSys 100 \
+    --nSys 10 \
     --xyz_name "../tMMFF/data/entropic_spring_$N.xyz" \
     --system_name "entropic_spring_$N" \
     --nLambda 100000 \
-    --nMDsteps 100000 \
+    --nMDsteps 10000000 \
     --nEQsteps 50000 \
     --Fconv 1e-6 \
     --constraints "constraints_ES.txt" \
+    --JEforceconst $JE_K \
     --nPerVFs 1
 
 if [ $? -ne 0 ]; then
@@ -62,7 +65,7 @@ echo ""
 # Plot the results
 echo "Step 3: Plotting results..."
 echo "----------------------------------------"
-python3 plot_F_interactive.py --input entropic_spring_${N}_TI.dat
+python3 plot_F_interactive.py --input entropic_spring_${N}_free_energy.dat
 if [ $? -ne 0 ]; then
     echo "ERROR: Plotting failed!"
     exit 1

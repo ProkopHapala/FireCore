@@ -57,8 +57,6 @@ def detect_columns(filename):
                         elif p == 'cumulative_err' or p == 'TI_err': temp_map['cumulative_err'] = i
                         elif p == 'distance': temp_map['distance'] = i
                         elif p == 'JE_F': temp_map['JE_F'] = i
-                        elif p == 'JE_W_avg': temp_map['JE_W_avg'] = i
-                        elif p == 'JE_W_sigma': temp_map['JE_W_sigma'] = i
 
                     if 'lambda' in temp_map:
                         col_map.update(temp_map)
@@ -85,6 +83,10 @@ def plot_f_interactive(filename, output_prefix=None, N_segments=None, T=300.0, b
         indices = np.linspace(0, data.shape[0] - 1, 1000).astype(int)
         data = data[indices]
     ncols = data.shape[1]
+
+    if 'distance' in col_map and col_map['distance'] >= ncols:
+         print(f"Warning: 'distance' column index {col_map['distance']} from header is out of bounds for data with {ncols} columns. Using last column.")
+         col_map['distance'] = ncols - 1
     
     # Safe extraction helper
     def get_col(name):

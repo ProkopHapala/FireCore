@@ -329,8 +329,8 @@ void setSwitches_multi( int CheckInvariants, int PBC, int NonBonded, int MMFF, i
 }
 
 
-double computeFreeEnergy(int nCVs, float* initial_positions, float* final_positions, int nLambda, int nMDsteps, int nEQsteps, double Fconv, int mode, int nPerVFs){
-    return W.computeFreeEnergy(nCVs, (Vec3f*)initial_positions, (Vec3f*)final_positions, nLambda, nMDsteps, nEQsteps, Fconv, mode, nPerVFs);
+double computeFreeEnergy(int nCVs, float* initial_positions, float* final_positions, int nLambda, int nMDsteps, int nEQsteps, double Fconv, int mode, int nPerVFs, double JEforceconst){
+    return W.computeFreeEnergy(nCVs, (Vec3f*)initial_positions, (Vec3f*)final_positions, nLambda, nMDsteps, nEQsteps, Fconv, mode, nPerVFs, JEforceconst);
 }
 
 } // extern "C"

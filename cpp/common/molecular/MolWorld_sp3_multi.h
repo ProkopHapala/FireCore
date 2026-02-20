@@ -249,12 +249,12 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
 }
 
 
-    double computeFreeEnergy(int nCVs, Vec3f* initial_positions, Vec3f* final_positions, int nLambda, int nMDsteps = 100000, int nEQsteps = 10000, double Fconv = 1e-6, int mode = 0, int nPerVFs_ = 10){
+    double computeFreeEnergy(int nCVs, Vec3f* initial_positions, Vec3f* final_positions, int nLambda, int nMDsteps = 100000, int nEQsteps = 10000, double Fconv = 1e-6, int mode = 0, int nPerVFs_ = 10, double JEforceconst = 5.0){
         // mode: 0=TI, 1=JE, 2=Both
         bool doTI = (mode == 0) || (mode == 2);
         bool doJE = (mode == 1) || (mode == 2);
 
-        char ti_filename[512];
+        char stored_data_filename[512];
         const char *basename = strrchr(xyz_name, '/');
         if (!basename) { basename = xyz_name; } 
         else           { basename++;          }
@@ -265,9 +265,9 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         char *last_dot = strrchr(fname, '.');
         if (last_dot) *last_dot = '\0';
 
-        sprintf(ti_filename, "%s_TI.dat", fname);
-        FILE* fti = fopen(ti_filename, "w");
-        if(!fti){ printf("ERROR: Cannot open file %s for writing\n", ti_filename); return 0.0; }
+        sprintf(stored_data_filename, "%s_free_energy.dat", fname);
+        FILE* fti = fopen(stored_data_filename, "w");
+        if(!fti){ printf("ERROR: Cannot open file %s for writing\n", stored_data_filename); return 0.0; }
         
         // Write header
         fprintf(fti, "# Free Energy Calculation Results\n");
@@ -376,6 +376,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
             
             // Allocate work buffer on GPU
             _realloc( gpu_work, nSystems * nLambda );
+            _realloc0( jeParams, nSystems, Quat4iMinusOnes );
             if( ocl.ibuff_work >= 0 ) {
                 ocl.buffers[ocl.ibuff_work].release();
                 ocl.buffers[ocl.ibuff_work].n = nSystems * nLambda;
@@ -390,7 +391,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 for(int ia=0; ia<ffls[isys].natoms; ia++){
                     if(ffls[isys].atypes[ia]==params.getAtomType("Si")){
                         if(si_count < nCVs){
-                            Quat4f acon  = Quat4f{initial_positions[si_count].x, initial_positions[si_count].y, initial_positions[si_count].z, 5.0f}; 
+                            Quat4f acon  = Quat4f{initial_positions[si_count].x, initial_positions[si_count].y, initial_positions[si_count].z, JEforceconst}; 
                             Quat4f aconK = Quat4f{final_positions[si_count].x,   final_positions[si_count].y,   final_positions[si_count].z,   0.0f}; 
                             constr [isys*ocl.nAtoms + ia] = acon;
                             constrK[isys*ocl.nAtoms + ia] = aconK;
@@ -405,7 +406,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
             double beta = 1.0 / (const_kB * go.T_target);
             double dLambda = 1.0 / (double)(nLambda - 1);
             nPerVFs = nPerVFs_;
-            int nBatches = nMDsteps / (nLambda * nPerVFs);
+            int nBatches = nMDsteps / (nLambda * nPerVFs * nSystems);
             if( nBatches < 1 ) nBatches = 1;
             
             printf("  Running %d batches of %d pulling steps each...\n", nBatches, nLambda);
@@ -416,22 +417,18 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 
                 // 1. Equilibrate lambda=0
                 printf("  Equilibrating %d steps...\n", nEQsteps);
-                bSaveTrajectory = false;
                 nPerVFs = nEQsteps;                
                 for(int isys=0; isys<nSystems; isys++){ jeParams[isys].x = -1; }
                 ocl.upload( ocl.ibuff_jeParams, jeParams );
                 run_ocl_opt( nEQsteps, Fconv );
 
                 // 2. Pulling
-                bSaveTrajectory = true;
                 nPerVFs = nPerVFs_;
                 for(int isys=0; isys<nSystems; isys++){ jeParams[isys].x = 0; jeParams[isys].y = nLambda; jeParams[isys].z = nPerVFs; jeParams[isys].w = 0; }
                 ocl.upload( ocl.ibuff_jeParams, jeParams );
-                // Clear work buffer
-                float* zero_work = new float[nSystems * nLambda];
-                for(int i=0; i<nSystems * nLambda; i++) zero_work[i] = 0;
-                ocl.upload( ocl.ibuff_work, zero_work );
-                delete [] zero_work;
+
+                for(int i=0; i<nSystems * nLambda; i++) gpu_work[i] = 0;
+                ocl.upload( ocl.ibuff_work, gpu_work );
 
                 printf("  Pulling for %d * %d = %d steps...\n", nLambda, nPerVFs, nLambda*nPerVFs);
                 run_ocl_opt( nLambda*nPerVFs, Fconv );
@@ -439,22 +436,12 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 // 3. Download work and accumulate
                 ocl.download( ocl.ibuff_work, gpu_work );
                 ocl.finishRaw();
-                // DEBUG: Print first few work values for system 0 in first batch
-                if(batch==0){
-                    printf("DEBUG gpu_work[sys=0]: ");
-                    for(int i=0; i<5; i++) printf("[%d]=%g ", i, gpu_work[i]);
-                    printf(" dLambda=%g\n", dLambda);
-                    printf("DEBUG gpu_work[sys=0] dW: ");
-                    for(int i=0; i<5; i++) printf("[%d]=%g ", i, gpu_work[i]*dLambda);
-                    printf("\n");
-                }
                    
                 for(int isys=0; isys<nSystems; isys++){
                     double W_traj = 0;
                     for(int i=0; i<nLambda; i++){
                         float dW = gpu_work[ isys * nLambda + i ]*dLambda;
                         W_traj += (double)dW;
-                        //if(isys==0 && i==0) printf("batch %d, isys %d, i %d, W %f\n", batch, isys, i, W);
                         sum_exp_W[i] += exp(-beta * W_traj);
                     }
                 }
@@ -463,8 +450,6 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
             // Calculate free energy profile from exponential averages
             double total_samples = (double)(nBatches * nSystems);
             res_JE_F[0] = 0.0;
-            res_JE_W_avg[0] = 0.0;
-            res_JE_W_sigma[0] = 0.0;
             res_dist[0] = initial_positions[0].dist(initial_positions[1]);
             for(int step=1; step<nLambda; step++){
                 double dF = -log( sum_exp_W[step] / total_samples ) / beta;
@@ -478,10 +463,10 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         }
 
         for(int i=0; i<nLambda; i++){
-            fprintf(fti, "%10.6f %12.8f %12.8f %12.8f %12.8f %12.8f %12.8f %12.8f %10.6f\n", 
+            fprintf(fti, "%10.6f %12.8f %12.8f %12.8f %12.8f %12.8f %10.6f\n", 
                 res_lambda[i], 
                 res_TI_dE[i], res_TI_sigma[i], res_TI_F[i], res_TI_Ferr[i],
-                res_JE_F[i], res_JE_W_avg[i], res_JE_W_sigma[i],
+                res_JE_F[i],
                 res_dist[i]
             );
         }
@@ -902,6 +887,7 @@ void upload_sys( int isys, bool bParams=false, bool bForces=0, bool bVel=true, b
     err|= ocl.upload( ocl.ibuff_constr,  constr,  ocl.nAtoms, i0a );
     err|= ocl.upload( ocl.ibuff_constrK, constrK, ocl.nAtoms, i0a );
     err|= ocl.upload( ocl.ibuff_bboxes,  bboxes, 1, isys  );
+    err|= ocl.upload( ocl.ibuff_jeParams, jeParams, 1, isys );
     if(bForces){ err|= ocl.upload( ocl.ibuff_aforces, aforces, ocl.nvecs, i0v ); }
     if(bVel   ){ 
         err|= ocl.upload( ocl.ibuff_avel,    avel,    ocl.nvecs, i0v ); 
@@ -954,6 +940,7 @@ void upload(  bool bParams=false, bool bForces=0, bool bVel=true, bool blvec=tru
     err|= ocl.upload( ocl.ibuff_constr,  constr );
     err|= ocl.upload( ocl.ibuff_constrK, constrK );
     err|= ocl.upload( ocl.ibuff_bboxes,  bboxes );
+    err|= ocl.upload( ocl.ibuff_jeParams, jeParams );
     if(bForces){ err|= ocl.upload( ocl.ibuff_aforces, aforces ); }
     if(bVel   ){ err|= ocl.upload( ocl.ibuff_avel,    avel    ); }
     if(blvec){
@@ -1186,8 +1173,10 @@ double evalVFs( double Fconv=1e-6 ){
             //     TDrive[isys].z = 0;
             // }
             // printf("evalVFs() TDrive[isys].z = %f\n", TDrive[isys].z);
-            jeParams[isys].x += 1;
-            jeParams[isys].w = 0;
+            if( jeParams && jeParams[isys].x >= 0 ){
+                jeParams[isys].x += 1;
+                jeParams[isys].w = 0;
+            }
             // printf("evalVFs() TDrive[isys].z = %f\n", TDrive[isys].z);
             TDrive[isys].w = randf(-1.0,1.0); 
         }else{
@@ -1200,7 +1189,7 @@ double evalVFs( double Fconv=1e-6 ){
     //printf( "MDpars{%g,%g,%g,%g}\n", MDpars[0].x,MDpars[0].y,MDpars[0].z,MDpars[0].w );
     err |= ocl.upload( ocl.ibuff_MDpars, MDpars );
     err |= ocl.upload( ocl.ibuff_TDrive, TDrive );
-    if(jeParams)err |= ocl.upload( ocl.ibuff_jeParams, jeParams );
+    if( jeParams)err |= ocl.upload( ocl.ibuff_jeParams, jeParams );
     err |= ocl.upload( ocl.ibuff_cvf   , cvfs   );
     // //printf("MolWorld_sp3_multi::evalVFs() bGroupUpdate=%i \n", bGroupUpdate );
     // if(bGroupUpdate){
@@ -1987,7 +1976,7 @@ int debug_eval(){
     exit(0);
 }
 
-bool initial = false;  // Disabled test code - constraints are set by computeFreeEnergy
+bool initial = true;  // Disabled test code - constraints are set by computeFreeEnergy
 int run_ocl_opt( int niter, double Fconv=1e-6 ){
     //printf("MolWorld_sp3_multi::run_ocl_opt() niter=%i bGroups=%i ocl.nGroupTot=%i \n", niter, bGroups, ocl.nGroupTot );
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
@@ -1997,10 +1986,10 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     // picked2GPU( ipicked,  1.0 );
     if(initial){
         // Set up constraints (set)
-        Vec3f initial_pos_1 = {-0.5, 0.0, 0.0};
-        Vec3f final_pos_1 = {-5.5, 0.0, 0.0};
-        Vec3f initial_pos_2 = {+0.5, 0.0, 0.0};
-        Vec3f final_pos_2 = {+5.5, 0.0, 0.0};
+        Vec3f initial_pos_1 = {-10.5, 0.0, 0.0};
+        Vec3f final_pos_1 = {-15.5, 0.0, 0.0};
+        Vec3f initial_pos_2 = {+10.5, 0.0, 0.0};
+        Vec3f final_pos_2 = {+15.5, 0.0, 0.0};
 
         for(int isys=0; isys<nSystems; isys++){
             float k = 0.0f;
@@ -2090,7 +2079,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             {
                 err |= task_cleanF->enque_raw();  // Clear forces before force evaluation
                 if( bGroupDrive )err |= task_GroupUpdate->enque_raw();
-                if(dovdW*0)[[likely]]{
+                if(dovdW)[[likely]]{
                     if(bSurfAtoms)[[likely]]{
                         if  (bGridFF)[[likely]]{ 
                             if(bBspline)[[likely]]{

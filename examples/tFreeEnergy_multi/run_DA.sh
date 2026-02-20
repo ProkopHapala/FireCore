@@ -40,7 +40,7 @@ echo ""
 # Plot the results
 echo "Step 3: Plotting results..."
 echo "----------------------------------------"
-python3 plot_TI_interactive.py --input DA_TI.dat
+python3 plot_TI_interactive.py --input DA_free_energy.dat
 if [ $? -ne 0 ]; then
     echo "ERROR: Plotting failed!"
     exit 1

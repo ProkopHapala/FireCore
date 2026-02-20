@@ -342,7 +342,8 @@ __kernel void getMMFFf4(
             // --- Evaluate bond-length stretching energy and forces
             if(iG<ing){
                 // Bond stretching with proper MMFF parameters from bL[i] and bK[i]
-                E+= evalBond( h.xyz, l-1.198f, 40.0f, &f1 );  fbs[i]-=f1;  fa+=f1;   // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor,
+                E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;   // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor,
+                //E+= evalBond( h.xyz, l-1.198f, 40.f, &f1 );  fbs[i]-=f1;  fa+=f1;   // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor,
 
                 // pi-pi alignment interaction            
                 float kpp = Kppi[i];
@@ -384,26 +385,26 @@ __kernel void getMMFFf4(
                 const int jnga = jng+i0a;
                 const float4 hj = hs[j];  
                       
-                // E += evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );    // evaluate angular force and energy using cos(angle/2) formulation        
-                // fa    -= f1+f2;
+                E += evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );    // evaluate angular force and energy using cos(angle/2) formulation        
+                fa    -= f1+f2;
 
-        //         //if(bSubtractVdW)
-        //         { // Remove non-bonded interactions from atoms that are bonded to common neighbor
-        //             float4 REQi=REQKs[inga];   // non-bonding parameters of i-th neighbor
-        //             float4 REQj=REQKs[jnga];   // non-bonding parameters of j-th neighbor
-        //             // combine non-bonding parameters of i-th and j-th neighbors using mixing rules
-        //             float4 REQij;             
-        //             REQij.x  = REQi.x  + REQj.x;
-        //             REQij.yz = REQi.yz * REQj.yz; 
+                //if(bSubtractVdW)
+                { // Remove non-bonded interactions from atoms that are bonded to common neighbor
+                    float4 REQi=REQKs[inga];   // non-bonding parameters of i-th neighbor
+                    float4 REQj=REQKs[jnga];   // non-bonding parameters of j-th neighbor
+                    // combine non-bonding parameters of i-th and j-th neighbors using mixing rules
+                    float4 REQij;             
+                    REQij.x  = REQi.x  + REQj.x;
+                    REQij.yz = REQi.yz * REQj.yz; 
                     
-        //             float3 dp = (hj.xyz/hj.w) - (hi.xyz/hi.w);   // recover vector between i-th and j-th neighbors using stored vectos and inverse bond lengths, this should be faster than dp=apos[jngv].xyz-apos[ingv].xyz; from global memory
-        //             float4 fij = getLJQH( dp, REQij, 1.0f );     // compute non-bonded interaction between i-th and j-th neighbors using Lennard-Jones and Coulomb interactions and Hydrogen bond correction
-        //             f1 -=  fij.xyz;
-        //             f2 +=  fij.xyz;
-        //         }
+                    float3 dp = (hj.xyz/hj.w) - (hi.xyz/hi.w);   // recover vector between i-th and j-th neighbors using stored vectos and inverse bond lengths, this should be faster than dp=apos[jngv].xyz-apos[ingv].xyz; from global memory
+                    float4 fij = getLJQH( dp, REQij, 1.0f );     // compute non-bonded interaction between i-th and j-th neighbors using Lennard-Jones and Coulomb interactions and Hydrogen bond correction
+                    f1 -=  fij.xyz;
+                    f2 +=  fij.xyz;
+                }
 
-                // fbs[i]+= f1;
-                // fbs[j]+= f2;
+                fbs[i]+= f1;
+                fbs[j]+= f2;
             }
         }
 
@@ -1003,23 +1004,17 @@ __kernel void updateAtomsMMFFf4(
         // ------- constrains
         float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
 
-
-        // if(iS==0 && iG==0)printf("GPU: iS=%i iG=%i jeParams(%i,%i,%i,%i) \n", iS, iG, jeParams[iS].x, jeParams[iS].y, jeParams[iS].z, jeParams[iS].w );
-        if( (cons.w > 0.f) && (jeParams[iS].x >= -1) ){
-            // Jarzynski equality / Thermodynamic integration
+        if( (cons.w > 0.f) && jeParams && (jeParams[iS].x > -1) ){
+            // Jarzynski equality 
             // We use standard "constr" for initial position and "constrK" for final position
             // But we use "cons.w" as stiffness
+            // jeParams are (iLambda, nLambda, nPerVF, iStep) for Jarzynski Equality
             
             float4 consEnd = constrK[ iaa ];
             int nLambda    = jeParams[iS].y;
             float k = cons.w;
             
-            float lambda;
-            if(jeParams[iS].x < 0){
-                lambda = 0.0f;
-            }else{
-                lambda = (float)jeParams[iS].x/(float)(nLambda-1);
-            }
+            float lambda = (float)jeParams[iS].x/(float)(nLambda-1);
             
             float3 p0 = cons.xyz;
             float3 p1 = consEnd.xyz;
@@ -1050,6 +1045,7 @@ __kernel void updateAtomsMMFFf4(
                         old_val = *addr;
                         new_val = old_val + work_term;
                     } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
+
 
                 }                    
             }
