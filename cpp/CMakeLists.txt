@@ -77,6 +77,18 @@ message ( ${CMAKE_CXX_FLAGS} )
 ### this is for compile_commands.json   (it should help various IDEs and other tool to understand the project)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Keep compile_commands.json available for clangd in the source tree
+if(CMAKE_EXPORT_COMPILE_COMMANDS)
+    set(BUILD_COMPILE_COMMANDS  "${CMAKE_BINARY_DIR}/compile_commands.json")
+    set(SOURCE_COMPILE_COMMANDS "${CMAKE_SOURCE_DIR}/compile_commands.json")
+    add_custom_target(copy_compile_commands ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${BUILD_COMPILE_COMMANDS}"
+            "${SOURCE_COMPILE_COMMANDS}"
+        COMMENT "Copying compile_commands.json to source directory for clangd"
+    )
+endif()
+
 # ==============================
 # ==== Functions
 # ==============================

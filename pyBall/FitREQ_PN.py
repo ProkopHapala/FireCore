@@ -168,6 +168,26 @@ def getEs(Es=None, Fs=None, bOmp=False, bDOFtoTypes=True, bEs=True, bFs=False, x
     return Eerr, Es, Fs
 
 
+#int getSampleGeom(int isamp, double* pos, int* types, double* Qs, int* host, int* n0)
+lib.getSampleGeom.argtypes = [c_int, c_double_p, c_int_p, c_double_p, c_int_p, c_int_p]
+lib.getSampleGeom.restype = c_int
+def getSampleGeom(isamp, n_atoms_max=1000):
+    pos = np.zeros((n_atoms_max, 3))
+    types = np.zeros(n_atoms_max, dtype=np.int32)
+    Qs = np.zeros(n_atoms_max)
+    host = np.zeros(n_atoms_max, dtype=np.int32)
+    n0_arr = np.zeros(1, dtype=np.int32)
+    natoms = lib.getSampleGeom(isamp, _np_as(pos, c_double_p), _np_as(types, c_int_p), _np_as(Qs, c_double_p), _np_as(host, c_int_p), _np_as(n0_arr, c_int_p))
+    return pos[:natoms], types[:natoms], Qs[:natoms], host[:natoms], n0_arr[0]
+
+#void evalSamplePairs(int isamp, double* pair_out)
+lib.evalSamplePairs.argtypes = [c_int, c_double_p]
+lib.evalSamplePairs.restype = None
+def evalSamplePairs(isamp, natoms):
+    pair_out = np.zeros((natoms, natoms, 4))
+    lib.evalSamplePairs(isamp, _np_as(pair_out, c_double_p))
+    return pair_out
+
 # =============== Buffers
     
 #def getBuffs( nnode, npi, ncap, nbond, NEIGH_MAX=4 ):
