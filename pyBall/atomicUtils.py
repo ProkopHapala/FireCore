@@ -1412,7 +1412,9 @@ def loadMol2(fname, bReadN=True, bExitError=True):
     """
     apos    = []
     atypes  = []
-    enames  = []
+    enames  = []             # element symbols for column 2 (atom_name)
+    atom_types_trip = []     # original Tripos atom types (with dots)
+    atom_types_mmff = []     # canonical underscore form for MMFF lookup
     qs      = []
     bonds   = []
     bond_types = []
@@ -1485,12 +1487,16 @@ def loadMol2(fname, bReadN=True, bExitError=True):
             except:
                 continue
             apos.append( [x, y, z] )
-                        
-            ename  = tokens[1]
-            atype  = tokens[5].replace('.', '_')
-            ename2 = atype.split('_')[0]
-            znum = elements.ELEMENT_DICT[ename2][0]
-            enames.append( atype )
+
+            atom_name_token = tokens[1]
+            atom_type_trip  = tokens[5]                   # keep dot form
+            atom_type_mmff  = atom_type_trip.replace('.', '_')
+            elem_guess = atom_name_token if atom_name_token in elements.ELEMENT_DICT else atom_type_mmff.split('_')[0]
+            znum = elements.ELEMENT_DICT[elem_guess][0]
+
+            enames.append(elem_guess)
+            atom_types_trip.append(atom_type_trip)
+            atom_types_mmff.append(atom_type_mmff)
             atypes.append( znum )
 
             #print( "atom: ", i, atype, znum, ename2 )
@@ -1532,28 +1538,30 @@ def loadMol2(fname, bReadN=True, bExitError=True):
     apos_np   = np.array(apos,   dtype=float)
     atypes_np = np.array(atypes, dtype=int)
     qs_np     = np.array(qs,     dtype=float)
-    # If bond types contain aromatic markers ('ar'), tag involved plain-element atoms as *_ar
-    # (e.g. C -> C_ar). This keeps full atom typing info for downstream MMFF/UFF.
-    if bond_types and enames:
+    # If bond types contain aromatic markers ('ar'), tag involved atoms in atom_types_mmff
+    if bond_types and atom_types_mmff:
         for (b, bt) in zip(bonds, bond_types):
             if str(bt).lower() != 'ar':
                 continue
             ia, ja = int(b[0]), int(b[1])
             for k in (ia, ja):
                 try:
-                    ek = enames[k]
-                    if ek in ('C', 'N', 'O'):
-                        enames[k] = ek + '_ar'
+                    typ = atom_types_mmff[k]
+                    if typ in ('C', 'N', 'O'):
+                        atom_types_mmff[k] = typ + '_ar'
+                        atom_types_trip[k] = typ.replace('_', '.')
                 except Exception:
                     pass
 
-    enames_np = np.array(enames)
+    enames_np      = np.array(enames)
+    atom_types_np  = np.array(atom_types_trip)
+    atom_types_mmff_np = np.array(atom_types_mmff)
     #bonds_np  = np.array(bonds, dtype=int)
 
     # Create an AtomicSystem instance.
     #system = AtomicSystem(apos=apos_np, atypes=atypes_np, enames=enames_np, qs=qs_np, bonds=bonds, lvec=lvec)
     
-    return apos_np, atypes_np, enames_np, qs_np, bonds, lvec
+    return apos_np, atypes_np, enames_np, qs_np, bonds, lvec, atom_types_np, atom_types_mmff_np
 
 
 def readAtomsXYZ( fin, na ):
@@ -1813,7 +1821,7 @@ def save_mol(fname, enames, apos, bonds, title="Avogadro"):
         fout.write("M  END\n")
 
 
-def save_mol2( fname, enames, apos, bonds, qs=None, comment=""):
+def save_mol2( fname, enames, apos, bonds, qs=None, comment="", lvec=None, atom_types=None):
     """
     Save the current AtomicSystem in MOL2 format.
 
@@ -1835,10 +1843,16 @@ def save_mol2( fname, enames, apos, bonds, qs=None, comment=""):
     None.
     """
     with open(fname, "w") as fout:
+        comments = []
+        if lvec is not None:
+            lv = lvec
+            comments.append("#lvs %g %g %g   %g %g %g   %g %g %g" % (lv[0,0],lv[0,1],lv[0,2], lv[1,0],lv[1,1],lv[1,2], lv[2,0],lv[2,1],lv[2,2]))
         if comment:
             c = str(comment).rstrip("\n")
             if not c.startswith('#'):
                 c = '#'+c
+            comments.append(c)
+        for c in comments:
             fout.write(c + "\n")
         # Write the MOLECULE section.
         fout.write("@<TRIPOS>MOLECULE\n")
@@ -1856,8 +1870,8 @@ def save_mol2( fname, enames, apos, bonds, qs=None, comment=""):
         fout.write("@<TRIPOS>ATOM\n")
         for i in range(n_atoms):
             atom_id   = i + 1  # MOL2 uses 1-based indexing.
-            atom_type = enames[i]
-            ename     = atom_type
+            ename     = enames[i] if enames is not None else 'X'
+            atom_type = atom_types[i] if (atom_types is not None) else ename
             x, y, z   = apos[i]
             substructure = 1  # Default substructure id.
             residue = "UNL1"   # Standard residue name for unknown ligand.

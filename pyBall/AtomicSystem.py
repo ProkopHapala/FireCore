@@ -39,7 +39,13 @@ class AtomicSystem( ):
                     self.apos,self.atypes,self.enames,self.qs,self.bonds = au.loadMol(fname=fname, bReadN=bReadN )
                 elif ( 'mol2' == ext ):
                     if bdbg: print(f"DEBUG: Loading mol2 file: {fname}")
-                    self.apos,self.atypes,self.enames,self.qs,self.bonds, self.lvec = au.loadMol2(fname=fname, bReadN=bReadN )
+                    tmp = au.loadMol2(fname=fname, bReadN=bReadN )
+                    # Support extended return (with atom_types tripos/underscore)
+                    if len(tmp) >= 8:
+                        (self.apos,self.atypes,self.enames,self.qs,
+                         self.bonds, self.lvec, self.atom_types, self.atom_types_mmff) = tmp
+                    else:
+                        (self.apos,self.atypes,self.enames,self.qs,self.bonds, self.lvec) = tmp
                 elif ( 'xyz' == ext ):
                     if bdbg: print(f"DEBUG: Loading xyz file: {fname}")
                     try:
@@ -103,7 +109,8 @@ class AtomicSystem( ):
         es = self.enames
         if simple_names and (es is not None):
             es = [ e.split('_')[0] for e in es ]
-        au.save_mol2(fname, es, self.apos, self.bonds, comment=comment)
+        atom_types = getattr(self, 'atom_types', None)
+        au.save_mol2(fname, es, self.apos, self.bonds, comment=comment, lvec=self.lvec, atom_types=atom_types)
 
     def toLines(self):
         #lines = []

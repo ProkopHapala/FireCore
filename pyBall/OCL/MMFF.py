@@ -61,7 +61,7 @@ def initAtomProperties(mol, atom_types, capping_atoms={'H'}, bPrint=True):
     nep_list = np.zeros(natoms, dtype=np.int32)
     isNode   = np.ones(natoms,  dtype=np.int32)  # Default to node
     for i in range(natoms):
-        atom_name = mol.enames[i]
+        atom_name = mol.atom_types_mmff[i] if hasattr(mol, 'atom_types_mmff') and mol.atom_types_mmff is not None else mol.enames[i]
         atom_name = MOL2_ATOMTYPE_ALIASES.get(atom_name, atom_name)
         if atom_name in atom_types:
             at = atom_types[atom_name]
@@ -389,6 +389,14 @@ class MMFF:
 
         natom  = len(mol.apos)
 
+        # Pre-resolve typed names to avoid ename fallback
+        at_mmff = getattr(mol, 'atom_types_mmff', None)
+        for i in range(natom):
+            raw = at_mmff[i] if at_mmff is not None else mol.enames[i]
+            tname = MOL2_ATOMTYPE_ALIASES.get(raw, raw)
+            if tname not in atom_types:
+                raise KeyError(f"Missing atom type {tname} for atom {i}")
+            
         if self.reorder_nodes_first:
             npi_list, nep_list, isNode = self._ensure_node_first(mol, atom_types)
         else:
@@ -401,6 +409,9 @@ class MMFF:
             mol.isNode_original = list(int(x) for x in isNode)
             isNode = [1] * natom
             mol.isNode = list(isNode)
+        
+        self.npi_list = mol.npi_list
+        self.nep_list = mol.nep_list
         REQs     = getattr(mol, 'REQs', MMparams.generate_REQs_from_atom_types(mol, atom_types))
         #self.REQs[:,:] = REQs[:,:] # self.REQs not yet allocated
 
@@ -430,7 +441,8 @@ class MMFF:
                     nngs[ia] = sum(1 for nb in row if nb >= 0)
 
         for ia in range(natom):
-            at_name = mol.enames[ia]
+            raw = at_mmff[ia] if at_mmff is not None else mol.enames[ia]
+            at_name = MOL2_ATOMTYPE_ALIASES.get(raw, raw)
             at_type = atom_types.get(at_name)
             if at_type is None:
                 continue
@@ -506,10 +518,12 @@ class MMFF:
         for ia in range(natom):
             A_pos        = mol.apos[ia]
             A_type_index = mol.atypes[ia]
-            A_ename      = mol.enames[ia]
-            atom_type    = atom_types.get(A_ename, None)
+            
+            raw = at_mmff[ia] if at_mmff is not None else mol.enames[ia]
+            tname = MOL2_ATOMTYPE_ALIASES.get(raw, raw)
+            atom_type = atom_types.get(tname, None)
             if atom_type is None:
-                raise ValueError(f"Atom type '{A_ename}' not found in atom_types.")
+                raise ValueError(f"Atom type '{tname}' not found in atom_types for ia={ia}.")
 
             self.apos  [ia,:3] = A_pos.astype(np.float32)
             self.atypes[ia]    = A_type_index
@@ -551,7 +565,7 @@ class MMFF:
                 if verbosity > 0: print( "nbond", nbond )
                 # Setup neighbors - ngs is already populated above
                 hs = np.zeros((4, 3), dtype=np.float64)
-                print(f"DEBUG MMFF: ia={ia} {A_ename} nbond={nbond} conf_npi={conf_npi} conf_ne={conf_ne}")
+                print(f"DEBUG MMFF: ia={ia} {tname} nbond={nbond} conf_npi={conf_npi} conf_ne={conf_ne}")
                 for k in range(nbond):
                     ja = ngi[k]  # ja is the atom index of the neighbor
                     if verbosity > 2: print( "ia,ja", ia,ja )
@@ -563,10 +577,11 @@ class MMFF:
 
                     bond = mol.bonds[bond_index]
                     Aj = mol.apos[ja]
-                    jtyp_ename = mol.enames[ja]
-                    jtyp = atom_types.get(jtyp_ename, None)
+                    jraw = at_mmff[ja] if at_mmff is not None else mol.enames[ja]
+                    jtname = MOL2_ATOMTYPE_ALIASES.get(jraw, jraw)
+                    jtyp = atom_types.get(jtname, None)
                     if jtyp is None:
-                        raise ValueError(f"Atom type '{jtyp_ename}' not found in atom_types.")
+                        raise ValueError(f"Atom type '{jtname}' not found in atom_types for ja={ja}.")
 
                     hs_k = Aj - A_pos
                     norm = np.linalg.norm(hs_k)

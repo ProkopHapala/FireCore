@@ -241,20 +241,30 @@ def generate_REQs_from_atom_types(mol, atom_types):
     """
     Generate REQs array for the molecule based on atom types.
 
-    Parameters:
-    - mol (AtomicSystem): The atomic system
-    - atom_types (dict): Dictionary of AtomType objects
+    Prefer MOL2 atom_types_mmff (underscore form) if present; fall back to enames.
+    Apply MOL2 atom-type aliases (aromatic, hybridization) before lookup.
+    Fail loudly on missing types to avoid silent bad parameters.
 
     Returns:
     - np.array: REQs array with shape (natoms, 4)
     """
+    # Local alias map (duplicate of MOL2_ATOMTYPE_ALIASES) to avoid circular import
+    alias = {
+        'C.ar': 'C_R', 'C_ar': 'C_R', 'N.ar': 'N_R', 'N_ar': 'N_R', 'O.ar': 'O_R', 'O_ar': 'O_R',
+        'C.2': 'C_2',  'C_2': 'C_2', 'N.2': 'N_2',  'N_2': 'N_2',  'O.2': 'O_2',  'O_2': 'O_2',
+        'C.1': 'C_1',  'C_1': 'C_1', 'N.1': 'N_1',  'N_1': 'N_1',
+        'C.3': 'C_3',  'C_3': 'C_3', 'N.3': 'N_3',  'N_3': 'N_3', 'O.3': 'O_3',  'O_3': 'O_3',
+    }
+
     natom = len(mol.apos)
     REQs = np.zeros((natom, 4), dtype=np.float32)
 
+    at_mmff = getattr(mol, 'atom_types_mmff', None)
+
     for ia in range(natom):
-        atom_name = mol.enames[ia]
-        q=0
-        if mol.qs is not None: q=mol.qs[ia]
+        atom_name = at_mmff[ia] if (at_mmff is not None) else mol.enames[ia]
+        atom_name = alias.get(atom_name, atom_name)
+        q = mol.qs[ia] if mol.qs is not None else 0.0
         if atom_name in atom_types:
             at          = atom_types[atom_name]
             REQs[ia, 0] = float(at.RvdW)
@@ -262,13 +272,7 @@ def generate_REQs_from_atom_types(mol, atom_types):
             REQs[ia, 2] = q
             REQs[ia, 3] = float(at.Hb)   # H-bond correction
         else:
-            print(f"ERROR: Atom type {atom_name} not found in atom_types")
-            exit()
-            # # Set default values
-            # REQs[ia, 0] = 1.0  # Default radius
-            # REQs[ia, 1] = math.sqrt(0.01)  # Default energy (stored as sqrt)
-            # REQs[ia, 2] = q
-            # REQs[ia, 3] = 0.0   # H-bond correction
+            raise KeyError(f"Atom type {atom_name} not found in atom_types for ia={ia}")
     return REQs
 
 class MMFFparams:

@@ -268,10 +268,12 @@ def main():
         cell_lvs = parse_lvs(args.cell)
     elif mol.lvec is not None:
         cell_lvs = mol.lvec
-        
+    
     if cell_lvs is None:
         print("Warning: No lattice vectors provided. Using default 20x20x20 box.")
         cell_lvs = np.array([[20.0, 0, 0], [0, 20.0, 0], [0, 0, 20.0]])
+    # ensure the molecule carries the lattice for downstream exports (mol2 #lvs)
+    mol.lvec = cell_lvs
         
     print(f"Lattice Vectors:\n{cell_lvs}")
     
@@ -579,11 +581,23 @@ def main():
         # Dump configuration movie
         if len(export_sorted) > 0:
             out_name = os.path.join(args.outdir, f"assembly_best_{args.preset}_movie.xyz")
-            print(f"Dumping {len(export_sorted)} configurations (capped at {args.export_max}) to {out_name} with {nmols_out} replicas...")
+            mol2_dir = os.path.join(args.outdir, "mol2")
+            os.makedirs(mol2_dir, exist_ok=True)
+            print(f"Dumping {len(export_sorted)} configurations (capped at {args.export_max}) to {out_name} with {nmols_out} replicas and per-config .mol2 files...")
+            # ensure base bonds exist once; reuse for all replicas
+            if (mol.bonds is None) or (len(mol.bonds) == 0):
+                try:
+                    mol.findBonds(Rcut=3.0, RvdwCut=0.5)
+                except Exception:
+                    pass
+            base_bonds = mol.bonds if mol.bonds is not None else []
             with open(out_name, 'w') as f:
                 for i_rank, idx in enumerate(export_sorted):
                     best_transforms = transforms[idx][sel_indices]
                     out_atoms = ocl.emit_configuration(best_transforms, nmols_out)
+                    # Normalize z so lowest atom sits at z=0
+                    z_shift = np.min(out_atoms[:, 2])
+                    out_atoms[:, 2] -= z_shift
                     
                     r_flat = R_conf[idx].flatten()
                     t_vec = T_conf[idx]
@@ -597,6 +611,29 @@ def main():
                         if args.xyz_simple:
                             elem = elem.split('_')[0] if '_' in elem else elem
                         f.write(f"{elem} {out_atoms[i,0]:.6f} {out_atoms[i,1]:.6f} {out_atoms[i,2]:.6f}\n")
+
+                    # Save per-config mol2 (single configuration, already z-normalized)
+                    asys = AtomicSystem.__new__(AtomicSystem)
+                    asys.apos = out_atoms[:, :3].copy()
+                    asys.enames = [mol.enames[j % mol.natoms] for j in range(len(out_atoms))]
+                    base_atom_types = getattr(mol, 'atom_types', None)
+                    if base_atom_types is not None:
+                        asys.atom_types = [base_atom_types[j % mol.natoms] for j in range(len(out_atoms))]
+                    # replicate bonds across all replicas (index-shifted)
+                    replicated_bonds = []
+                    for k in range(nmols_out):
+                        offset = k * mol.natoms
+                        for b in base_bonds:
+                            replicated_bonds.append([b[0] + offset, b[1] + offset])
+                    asys.bonds = replicated_bonds
+                    asys.lvec = mol.lvec
+                    asys.natoms = len(out_atoms)
+                    asys.atypes = None
+                    asys.qs = None
+                    asys.Rs = None
+                    mol_comment = f"idx={idx} rank={i_rank} clash={scores[idx]:.4f} mindist={min_dists[idx]:.4f} zspan={z_spans[idx]:.4f} transform: {transform_str}"
+                    mol2_path = os.path.join(mol2_dir, f"rank_{i_rank:04d}_idx_{idx}.mol2")
+                    asys.save_mol2(mol2_path, comment=mol_comment, simple_names=False)
             print(f"Saved movie to {out_name}")
         
         # Render Atoms Plot for the top K configs
