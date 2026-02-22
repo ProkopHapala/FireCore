@@ -75,7 +75,7 @@ void setVerbosity( int verbosity_, int idebug_, int PrintDOFs, int PrintfDOFs, i
     printf( "setVerbosity() PrintDOFs %i PrintfDOFs %i PrintBeforReg %i PrintAfterReg %i PrintOverRepulsive %i \n", W.bPrintDOFs, W.bPrintfDOFs, W.bPrintBeforReg, W.bPrintAfterReg, W.bPrintOverRepulsive );
 }
 
-void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double kMorse, double Lepairs, bool bPN ){
+void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double kMorse, double Lepairs, double hScale, bool bPN ){
     W.ivdW    = ivdW;
     W.iCoul   = iCoul;
     W.iHbond  = iHbond;
@@ -83,8 +83,9 @@ void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double 
     W.iEpairs = iEpairs;
     W.kMorse  = kMorse;
     W.Lepairs = Lepairs;
+    W.hScale  = hScale;
     W.bPN     = bPN;
-    printf( "setModel() ivdW %i iCoul %i iHbond %i iEpairs %i kMorse %f Lepairs %f bPN %i \n", W.ivdW, W.iCoul, W.iHbond, W.iEpairs, W.kMorse, W.Lepairs, W.bPN );
+    printf( "setModel() ivdW %i iCoul %i iHbond %i iEpairs %i kMorse %f Lepairs %f hScale %f bPN %i \n", W.ivdW, W.iCoul, W.iHbond, W.iEpairs, W.kMorse, W.Lepairs, W.hScale, W.bPN );
 }
 
 // bool  bEvalJ          = false;    // Should we evaluate variational derivatives on Fregment J 
@@ -118,13 +119,14 @@ void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regulariz
     #undef _setbool
 }
 
-void setGlobalParams( double kMorse, double Lepairs, double EijMax, double softClamp_start, double softClamp_max ){
+void setGlobalParams( double kMorse, double Lepairs, double EijMax, double softClamp_start, double softClamp_max, double hScale ){
     W.kMorse   = kMorse;
     W.Lepairs  = Lepairs;
     W.EijMax   = EijMax;
     W.softClamp_start = softClamp_start;
     W.softClamp_max   = softClamp_max;
-    printf( "setGlobalParams() kMorse %g Lepairs %g EijMax %g softClamp_start %g softClamp_max %g \n", kMorse, Lepairs, EijMax, softClamp_start, softClamp_max );
+    W.hScale   = hScale;
+    printf( "setGlobalParams() kMorse %g Lepairs %g EijMax %g softClamp_start %g softClamp_max %g hScale %g \n", kMorse, Lepairs, EijMax, softClamp_start, softClamp_max, hScale );
 }
 
 //bool bListOverRepulsive    = true;   // Should we list overrepulsive samples? 
