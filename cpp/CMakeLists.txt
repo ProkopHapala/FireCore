@@ -10,8 +10,10 @@ option(WITH_OMP    "build with OpenMP paralelization for multiple CPUs"         
 option(WITH_AVX    "build with AVX256 SIMD intrinstic ? up to 10x speedup on 1CPU"         OFF)
 option(RELEASE     "build optimized release (-O3/-Ofast) rather than debug? (-g -Og)"      OFF)
 option(WITH_ASAN   "use runtime memory sanitizer (asan) to trace segfaults and mem-leaks?" OFF)
+option(WITH_UBSAN  "use runtime undefined behavior sanitizer (ubsan) to trace segfaults and mem-leaks?" OFF)
 
-message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_OPENCL=${WITH_OPENCL} -DWITH_OMP=${WITH_OMP} -DWITH_AVX=${WITH_AVX} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN}" )
+
+message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_OPENCL=${WITH_OPENCL} -DWITH_OMP=${WITH_OMP} -DWITH_AVX=${WITH_AVX} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN} -DWITH_UBSAN=${WITH_UBSAN}" )
 
 # ==============================
 # ==== FLAGS
@@ -48,6 +50,9 @@ if (  CMAKE_BUILD_TYPE MATCHES Debug )
         #SET( AXULIARY_COMPILE_FLAGS "-Wall -g -Og")
         ### flags for debug
         SET( AXULIARY_COMPILE_FLAGS "-g -Og -march=native")
+    endif()
+    if ( WITH_UBSAN )
+        SET( AXULIARY_COMPILE_FLAGS "${AXULIARY_COMPILE_FLAGS} -fsanitize=undefined -fno-sanitize-recover=all")
     endif()
     #set(CMAKE_CXX_CPPCHECK "cppcheck")
     message("DEBUG BUILD FFLAGS : " )

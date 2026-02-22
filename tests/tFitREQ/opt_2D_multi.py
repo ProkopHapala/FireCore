@@ -40,7 +40,8 @@ if __name__ == "__main__":
     parser.add_argument("-i", "--inputs", nargs='*', default=None, help="List of input .xyz files (single movie). If empty, uses default set")
     #parser.add_argument("--dir", type=str, default='/home/prokophapala/Desktop/CARBSIS/wb97m-split/', help="Directory where input files are located")
     #parser.add_argument("--dir", type=str, default="/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/HbondFit_small_mols_2025_08_15/confs/wb97m-split/", help="Directory where input files are located")
-    parser.add_argument("--dir", type=str, default="/home/niko/work/HBOND/REFERENCE/2-pairs_small_small/4-to_firecore/confs_wb97m/", help="Directory where input files are located")
+    #parser.add_argument("--dir", type=str, default="/home/niko/work/HBOND/REFERENCE/2-pairs_small_small/4-to_firecore/confs_wb97m/", help="Directory where input files are located")
+    parser.add_argument("--dir", type=str, default="../tFitREQ_PN/wb97m-split/", help="Directory where input files are located")
     #parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O_CH2O.dat", help="DOF selection file")
     parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O.dat", help="DOF selection file")
     

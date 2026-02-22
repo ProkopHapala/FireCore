@@ -45,7 +45,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot and compare 2D energy surfaces from a single .xyz file or scan DOFs")
     parser.add_argument("--mode", choices=["plot", "model", "fit", "scan"], default="fit", help="Action: plot ref only, compare model (no fit), fit then compare, or scan DOFs")
     #parser.add_argument("-i", "--input",           default="/home/prokophapala/Desktop/CARBSIS/wb97m-split/H2O-A1_H2O-D1-y.xyz", help="Input .xyz file (single movie)")
-    parser.add_argument("-i", "--input",           default="/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/HbondFit_small_mols_2025_08_15/confs/wb97m-split/H2O-A1_H2O-D1-y.xyz", help="Input .xyz file (single movie)")
+    #parser.add_argument("-i", "--input",           default="/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/HbondFit_small_mols_2025_08_15/confs/wb97m-split/H2O-A1_H2O-D1-y.xyz", help="Input .xyz file (single movie)")
+    parser.add_argument("-i", "--input",           default="../tFitREQ_PN/wb97m-split/H2O-A1_H2O-D1-y.xyz", help="Input .xyz file (single movie)")
     parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O.dat", help="DOF selection file")
     parser.add_argument("--verbosity", type=int,   default=2,    help="Verbosity for FitREQ")
     parser.add_argument("--nstep",     type=int,   default=100, help="Fitting steps")
@@ -55,7 +56,7 @@ if __name__ == "__main__":
     parser.add_argument("--damping",   type=float, default=0.0,  help="Damping")
     # Global model params
     parser.add_argument("--kMorse",    type=float, default=1.7,  help="Global kMorse parameter")
-    parser.add_argument("--Lepairs",   type=float, default=1.2,  help="Global Lepairs parameter")
+    parser.add_argument("--Lepairs",   type=float, default=0.9,  help="Global Lepairs parameter")
     parser.add_argument("--model",     type=int,   default=7,    help="Model type: 1=LJ, 5=MorseQ_SR, 7=MorseQ_SR_boys  8=MorseQ_SR_softclamp ")
     # Weighting controls
     parser.add_argument("--n_before",        type=int,   default=100,    help="#points before min to weight")

@@ -283,6 +283,9 @@ void scanParam2D( int iDOFx, int iDOFy, int nx, int ny, double* xs, double* ys, 
 void init_buffers(){
     //printf( "init_buffers() \n" );
 
+    ibuffers.clear();
+    buffers.clear();
+
     ibuffers.insert( { "ndims", &W.nDOFs  } );
     ibuffers.insert( { "typToREQ",      (int*)W.typToREQ  } );
 
