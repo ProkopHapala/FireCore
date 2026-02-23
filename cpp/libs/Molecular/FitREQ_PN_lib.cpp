@@ -101,6 +101,118 @@ void init_buffers(){
     //printBuffNames();
 }
 
+int getSampleGeom(int isamp, double* pos, int* types, double* Qs, int* host, int* n0){
+    if(isamp < 0 || isamp >= W.samples.size()) return 0;
+    Atoms* atoms = W.samples[isamp];
+    const AddedData* adata = (const AddedData*)(atoms->userData);
+    
+    W.fillTempArrays( atoms, (Vec3d*)pos, Qs );
+    
+    for(int i=0; i<atoms->natoms; i++){
+        types[i] = atoms->atypes[i];
+        if(host) host[i] = adata->host[i];
+    }
+    if(n0) *n0 = atoms->n0;
+    return atoms->natoms;
+}
+
+void evalSamplePairs(int isamp, double* pair_out){
+    if(isamp < 0 || isamp >= W.samples.size()) return;
+    W.DOFsToTypes(); 
+    Atoms* atoms = W.samples[isamp];
+    const AddedData* adata = (const AddedData*)(atoms->userData);
+    int natoms = atoms->natoms;
+    alignas(32) double Qs[natoms];
+    alignas(32) Vec3d apos[natoms];
+    W.fillTempArrays( atoms, apos, Qs );
+    
+    int i0 = atoms->n0;
+    int ni = natoms - atoms->n0;
+    int j0 = 0;
+    int nj = atoms->n0;
+
+    for(int i=0; i<natoms*natoms*4; i++) pair_out[i] = 0.0;
+
+    for(int ii=0; ii<ni; ii++){
+        const int i = i0+ii;
+        const int ih = adata->host[i];
+        const bool bEpi = ih>=0;
+        const Vec3d& pi = apos[i];
+        const double Qi = Qs[i];
+        const int ti = atoms->atypes[i];
+        const Quat4d& REQi = W.typeREQs[ti];
+
+        for(int jj=0; jj<nj; jj++){
+            const int j = j0+jj;
+            const int jh = adata->host[j];
+            const bool bEpj = jh>=0;
+            const double Qj = Qs[j];
+            const Vec3d dij = apos[j] - pi;
+            const int tj = atoms->atypes[j];
+            const Quat4d& REQj = W.typeREQs[tj];
+            const double R0 = REQi.x + REQj.x;
+            const double eps = REQi.y * REQj.y;
+            const double Q = Qi * Qj;
+            double H = REQi.w * REQj.w;
+            const double sH = (H<0.0) ? 1.0 : 0.0;
+            const double r = dij.norm();
+
+            double Eij_Coul = 0.0, Eij_vdW = 0.0, Eij_Hcorr = 0.0, Eij_Epairs = 0.0;
+            double dE_dH=0.0, dE_dR=0.0;
+            double fA=0.0, fR=0.0, fH1=0.0, fH2=0.0;
+
+            if( bEpi ){
+                if(bEpj) continue;
+                if(W.iEpairs==1)      Eij_Epairs = getSR_PN( r, H, REQi.x, dE_dH, dE_dR );
+                else if(W.iEpairs==2) Eij_Epairs = getSR2_PN( r, H, REQi.x, dE_dH, dE_dR );
+                else if(W.iEpairs==3) Eij_Epairs = getSR3_PN( r, H, REQi.x, dE_dH, dE_dR );
+            }else if( bEpj ){
+                if(W.iEpairs==1)      Eij_Epairs = getSR_PN( r, H, REQj.x, dE_dH, dE_dR );
+                else if(W.iEpairs==2) Eij_Epairs = getSR2_PN( r, H, REQj.x, dE_dH, dE_dR );
+                else if(W.iEpairs==3) Eij_Epairs = getSR3_PN( r, H, REQj.x, dE_dH, dE_dR );
+            }else{
+                if(W.iCoul==1) Eij_Coul = Q * COULOMB_CONST / r;
+                else if(W.iCoul==2) Eij_Coul = Q * dampCoulomb_SoftClamp(r, W.clamp_y1, W.clamp_y2) * COULOMB_CONST;
+                else if(W.iCoul>9) Eij_Coul = Q * dampCoulomb_Boys(r, W.boys_rmin, W.iCoul-10) * COULOMB_CONST;
+
+                if(W.ivdW==1){
+                    double u = R0/r; double u3 = u*u*u; fA = u3*u3; fR = fA*fA; fH1=1.0; fH2=2.0;
+                }else if(W.ivdW==2){
+                    double u = R0/r; double u2 = u*u; fA = u2*u2*u2; fR = fA*u2; fH1=3.0; fH2=4.0;
+                }else if(W.ivdW==3){
+                    double u = R0/r; double u3 = u*u*u; fA = u3*u3; fR = fA*u3; fH1=2.0; fH2=3.0;
+                }else if(W.ivdW==4){
+                    double alpha = W.kMorse;
+                    if(alpha < 0.0) alpha = 6.0/R0;
+                    fA = exp(-alpha*(r-R0)); fR = fA*fA; fH1=1.0; fH2=2.0;
+                }else if(W.ivdW==5){
+                    double alpha = W.kMorse;
+                    if(alpha < 0.0) alpha = 6.0/R0;
+                    double u = R0/r; double u3 = u*u*u; double e = exp(-alpha*(r-R0));
+                    fA = u3*u3; fR = e*e; fH1=1.0; fH2=2.0;
+                }
+                Eij_vdW = eps * (fH1*fR - fH2*fA);
+
+                if(sH>0.0){
+                    if(W.iHbond==1 || W.iHbond==3) Eij_Hcorr += eps * H * fH1 * fR;
+                    if(W.iHbond==2 || W.iHbond==3) Eij_Hcorr += eps * H * fH2 * fA;
+                }
+            }
+
+            int idx1 = (i * natoms + j) * 4;
+            int idx2 = (j * natoms + i) * 4;
+            pair_out[idx1+0] = Eij_vdW;
+            pair_out[idx1+1] = Eij_Coul;
+            pair_out[idx1+2] = Eij_Hcorr;
+            pair_out[idx1+3] = Eij_Epairs;
+            pair_out[idx2+0] = Eij_vdW;
+            pair_out[idx2+1] = Eij_Coul;
+            pair_out[idx2+2] = Eij_Hcorr;
+            pair_out[idx2+3] = Eij_Epairs;
+        }
+    }
+}
+
 void setPenalty( int Clamp, int Regularize, int AddRegError, int RegCountWeight, int SoftClamp, double softClamp_start, double softClamp_max ){
     //if(Clamp>0){W.bClamp=true;}else if(Clamp<0){W.bClamp=false;}
     #define _setbool(name) { if(name>0){W.b##name=true;}else if(name<0){W.b##name=false;} }

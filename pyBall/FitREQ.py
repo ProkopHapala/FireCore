@@ -69,16 +69,16 @@ lib.setVerbosity.restype   =  None
 def setVerbosity(verbosity=1, idebug=0, PrintDOFs=0, PrintfDOFs=0, PrintBeforReg=0, PrintAfterReg=0, PrintOverRepulsive=0):
     return lib.setVerbosity(verbosity, idebug, PrintDOFs, PrintfDOFs, PrintBeforReg, PrintAfterReg, PrintOverRepulsive)
 
-lib.setModel.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_double, c_double, c_bool]
+lib.setModel.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_double, c_double, c_double, c_bool]
 lib.setModel.restype   =  None
-def setModel(ivdW=1, iCoul=1, iHbond=0, Epairs=0, iEpairs=0, kMorse=1.8, Lepairs=0.5, bPN=True):
-    return lib.setModel(ivdW, iCoul, iHbond, Epairs, iEpairs, kMorse, Lepairs, bPN)
+def setModel(ivdW=1, iCoul=1, iHbond=0, Epairs=0, iEpairs=0, kMorse=1.8, Lepairs=0.5, hScale=1.0, bPN=True):
+    return lib.setModel(ivdW, iCoul, iHbond, Epairs, iEpairs, kMorse, Lepairs, hScale, bPN)
 
 # void setGlobalParams( double kMorse, double Lepairs, double EijMax, double softClamp_start, double softClamp_max ){
-lib.setGlobalParams.argtypes  = [c_double, c_double, c_double, c_double, c_double]
+lib.setGlobalParams.argtypes  = [c_double, c_double, c_double, c_double, c_double, c_double]
 lib.setGlobalParams.restype   =  None
-def setGlobalParams(kMorse=1.6, Lepairs=0.5, EijMax=5.0, softClamp_start=4.0, softClamp_max=6.0):
-    return lib.setGlobalParams(kMorse, Lepairs, EijMax, softClamp_start, softClamp_max)
+def setGlobalParams(kMorse=1.6, Lepairs=0.5, EijMax=5.0, softClamp_start=4.0, softClamp_max=6.0, hScale=1.0):
+    return lib.setGlobalParams(kMorse, Lepairs, EijMax, softClamp_start, softClamp_max, hScale)
 
 #                   1          2          3               4                 5                 6                  7              8              9                   10                    11                     12                    13
 # void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int RegCountWeight, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds, int EvalOnlyCorrections, int SaveJustElementXYZ, int SoftClamp){
@@ -1169,12 +1169,15 @@ def compute_model_grid(xyz_path, seq, shape, do_fit=False, bAddEpairs=True, run_
 
 def shift_grid(G):
     import numpy as _np
-    if G.size == 0:
+    if G is None or G.size == 0:
         return G, 0.0, 0.0
-    last = G[-1, :] if (G.ndim == 2 and G.shape[0] > 0) else np.array([0.0])
+    # Clean up garbage
+    G_clean = np.copy(G)
+    G_clean[np.abs(G_clean) > 1e10] = np.nan
+    
+    last = G_clean[-1, :] if (G_clean.ndim == 2 and G_clean.shape[0] > 0) else np.array([0.0])
     ref = float(np.nanmin(last[np.isfinite(last)])) if np.any(np.isfinite(last)) else 0.0
-    #GS = G - ref
-    GS = G
+    GS = G_clean - ref
     mloc = float(np.nanmin(GS)) if np.any(np.isfinite(GS)) else 0.0
     if np.isfinite(mloc) and mloc > 0: mloc = 0.0
     return GS, ref, mloc
@@ -1330,6 +1333,130 @@ def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=
             if save_fmt in ("both","gnuplot"): save_grid_gnuplot(angles, distances, D, base+"__diff.dat")
         #except Exception as e:
         #    print(f"Warning: failed saving grids: {e}")
+
+def plot_compare_combined(Gref, Gmodel, angles, distances, title, save_path=None, kcal=False, params_text=None):
+    import matplotlib.pyplot as plt
+    Gref_raw = np.array(Gref, copy=True) if Gref is not None else None
+    GRS, refR, mlocR = shift_grid(Gref)
+    GMS = None
+    if Gmodel is not None:
+        GMS, refM, mlocM = shift_grid(Gmodel)
+        
+    if kcal:
+        if GRS is not None: GRS *= ev2kcal
+        if GMS is not None: GMS *= ev2kcal
+
+    vmin = float(np.nanmin(GRS)) if np.any(np.isfinite(GRS)) else None
+    if vmin is not None and vmin > 0: vmin = 0.0
+    vmax = -vmin if vmin is not None else None
+
+    # Energy margins (kcal) for normalization
+    E_MARGIN_KCAL = 1.0
+    E_SPAN_KCAL   = 2.0
+    E_MARGIN = E_MARGIN_KCAL if kcal else (E_MARGIN_KCAL / ev2kcal)
+    E_SPAN   = E_SPAN_KCAL   if kcal else (E_SPAN_KCAL   / ev2kcal)
+
+    # Get lines
+    Epanel_ref = GRS.T
+    Xpanel = np.tile(np.asarray(distances, dtype=float), (len(angles), 1))
+    rR, eR = compute_min_lines_from_panel(Epanel_ref, Xpanel, angles)
+    rM = eM = None
+    if GMS is not None:
+        Epanel_mod = GMS.T
+        rM, eM = compute_min_lines_from_panel(Epanel_mod, Xpanel, angles)
+
+    # Zero line per angle: first +→≤0 crossing along distance
+    zero_r = []
+    if Gref_raw is not None:
+        Epanel_raw = np.asarray(Gref_raw, dtype=float).T  # angles x distances, unshifted
+        r_vec = np.asarray(distances, dtype=float)
+        for row in Epanel_raw:
+            e = np.asarray(row, dtype=float)
+            r0 = np.nan
+            for j in range(len(r_vec)-1):
+                if not (np.isfinite(e[j]) and np.isfinite(e[j+1])):
+                    continue
+                if e[j] > 0 and e[j+1] <= 0:
+                    r0 = r_vec[j] - e[j]*(r_vec[j+1]-r_vec[j])/(e[j+1]-e[j])
+                    break
+            zero_r.append(r0)
+    else:
+        zero_r = [np.nan]*len(angles)
+    # Convert distances to pixel indices for imshow y-axis
+    zero_r_pixels = []
+    for r in zero_r:
+        if np.isnan(r):
+            zero_r_pixels.append(np.nan)
+        else:
+            zero_r_pixels.append(int(np.argmin(np.abs(np.asarray(distances) - r))))
+
+    fig = plt.figure(figsize=(10, 8), constrained_layout=True)
+    gs = fig.add_gridspec(3, 2, width_ratios=[1, 1])
+    
+    axs_2d = [fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[1, 0]), fig.add_subplot(gs[2, 0])]
+    axR = fig.add_subplot(gs[0, 1])
+    axE = fig.add_subplot(gs[1, 1])
+    axTxt = fig.add_subplot(gs[2, 1])
+    
+    # Ref 2D
+    im0 = axs_2d[0].imshow(GRS, origin='lower', aspect='auto', cmap='bwr', vmin=vmin, vmax=vmax)
+    xt = np.linspace(0, GRS.shape[1]-1, min(6, GRS.shape[1])).astype(int)
+    yt = np.linspace(0, GRS.shape[0]-1, min(6, GRS.shape[0])).astype(int)
+    axs_2d[0].set_xticks(xt); axs_2d[0].set_yticks(yt)
+    x_ticks=[f"{angles[i]:.0f}" for i in xt]
+    y_ticks=[f"{distances[i]:.2f}" for i in yt]
+    axs_2d[0].set_xticklabels(x_ticks); axs_2d[0].set_yticklabels(y_ticks)
+    axs_2d[0].set_ylabel('Distance (Å)')
+    axs_2d[0].set_title('Reference')
+    plt.colorbar(im0, ax=axs_2d[0])
+
+    if GMS is not None:
+        im1 = axs_2d[1].imshow(GMS, origin='lower', aspect='auto', cmap='bwr', vmin=vmin, vmax=vmax)
+        axs_2d[1].set_xticks(xt); axs_2d[1].set_yticks(yt)
+        axs_2d[1].set_xticklabels(x_ticks); axs_2d[1].set_yticklabels(y_ticks)
+        axs_2d[1].set_ylabel('Distance (Å)')
+        axs_2d[1].set_title('Model')
+        plt.colorbar(im1, ax=axs_2d[1])
+        axs_2d[1].plot(range(len(angles)), zero_r_pixels, linestyle=':', color='k', alpha=0.7, label='E_DFT=0')
+        axs_2d[1].legend(fontsize=8)
+
+        D = GMS - GRS
+        im2 = axs_2d[2].imshow(D, origin='lower', aspect='auto', cmap='bwr', vmin=-E_MARGIN, vmax=E_MARGIN)
+        axs_2d[2].set_xticks(xt); axs_2d[2].set_yticks(yt)
+        axs_2d[2].set_xticklabels(x_ticks); axs_2d[2].set_yticklabels(y_ticks)
+        axs_2d[2].set_xlabel('Angle (deg)')
+        axs_2d[2].set_ylabel('Distance (Å)')
+        axs_2d[2].set_title('Difference')
+        plt.colorbar(im2, ax=axs_2d[2])
+        axs_2d[2].plot(range(len(angles)), zero_r_pixels, linestyle=':', color='k', alpha=0.7)
+
+    # Add params text panel
+    axTxt.axis('off')
+    if params_text:
+        axTxt.text(0.0, 1.0, params_text, va='top', ha='left', family='monospace', fontsize=9)
+    else:
+        axTxt.text(0.0, 0.5, 'Params', va='center', ha='left', alpha=0.4)
+
+    # Lines
+    lw = 1.0; ms = 4
+    axR.plot(angles, rR, '.-k', lw=lw, ms=ms, label='Ref')
+    if rM is not None: axR.plot(angles, rM, '.-r', lw=lw, ms=ms, label='Model')
+    axR.set_title('r_min(angle)'); axR.set_xlabel('Angle (deg)'); axR.set_ylabel('Distance x0 [Å]')
+    axR.set_ylim(1.5, 3.0); axR.grid(alpha=0.3, linestyle='--'); axR.legend(fontsize=8)
+    
+    axE.plot(angles, eR, '.-k', lw=lw, ms=ms, label='Ref')
+    if eM is not None: axE.plot(angles, eM, '.-r', lw=lw, ms=ms, label='Model')
+    axE.set_title('E_min(angle)'); axE.set_xlabel('Angle (deg)')
+    axE.set_ylabel('Energy [{}]'.format('kcal/mol' if kcal else 'eV'))
+    axE.grid(alpha=0.3, linestyle='--'); axE.legend(fontsize=8)
+    emin_ref = np.nanmin(eR) if np.any(np.isfinite(eR)) else 0.0
+    axE.set_ylim(emin_ref - E_MARGIN, emin_ref + E_SPAN + E_MARGIN)
+
+    fig.suptitle(title, fontsize=12)
+    if save_path:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+
 
 # ===== Reusable helpers for Rmin/Emin from panel-shaped data (angles x distances)
 

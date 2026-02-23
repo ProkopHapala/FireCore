@@ -488,6 +488,7 @@ class FitREQ{ public:
     int    iHbond    = 0;     // 0=no HBond correction, 1=H1 correction, 2=H2 correction
     int    iEpairs   = 0;     // 0=no interaction, 1=SR interaction, 2=SR2 interaction
     double Lepairs   = 1.0;   // Ang, distance host atom-Epair
+    double hScale    = 1.0;   // Homogenous H-bonding interactions scaling factor
     bool   bPN       = false; // use PN model for vdW and Coulomb interactions
 
 // =================================
@@ -1557,7 +1558,7 @@ void printOverRepulsiveList(){
 
 __attribute__((hot)) 
 double evalSampleError( int isamp, double& E ){
-    //printf( "evalSampleError() isamp = %i \n", isamp );
+    //printf( "evalSampleError() bPN=%i isamp = %i \n", bPN, isamp );
     isamp_debug = isamp;
     Atoms* atoms  = samples[isamp];
     double wi     = (weights)? weights[isamp] : 1.0;
@@ -1565,7 +1566,7 @@ double evalSampleError( int isamp, double& E ){
     alignas(32) Quat4d fREQs [atoms->natoms];
     alignas(32) double fDOFs_[nDOFs];
     if(bPN){ E = evalSample_PN( isamp, atoms, wi, fREQs ); }
-    else{ E = evalSample( isamp, atoms, wi, fREQs ); }
+    else   { E = evalSample   ( isamp, atoms, wi, fREQs ); }
     
     //if(verbosity>3)
     //printf( "evalSampleError() isamp: %3i Emodel: %20.6f Eref: %20.6f bBroadcastFDOFs=%i @sample_fdofs=%p \n", isamp, E, atoms->Energy, bBroadcastFDOFs, sample_fdofs );
@@ -1669,7 +1670,7 @@ double evalSamples_noOmp( double* Eout=0 ){
             Eout[isamp]=E;
         }
     }
-    if(bPrintOverRepulsive){ printOverRepulsiveList(); }
+    if(bPrintOverRepulsive  && overRepulsiveList.size()>0 ){ printOverRepulsiveList(); }
 //exit(0); // JAMME
     return Error;
 }
@@ -2005,22 +2006,22 @@ double evalExampleDerivs_MorseQ_SR_boys( int i0, int ni, int j0, int nj, int*  t
 
             if( bEpi ){  
                 if(bEpj) continue; // dummy atoms should not interacti which each other
-                double Edummy = getSR2( r, H, REQi.x, dE_dH, dE_dw );
+                double Edummy = getSR( r, H, REQi.x, dE_dH, dE_dw );
                 Eij += Edummy;
-                if( isamp_debug<nsamp_debug ){   printf( "evalExampleDerivs_MorseQ_SR_boy  %-8s %-8s r: %10.3e H: %10.3e (Hi: %10.3e Hj: %10.3e ) Eij_dummy : %10.3e\n", params->atypes[ti].name, params->atypes[tj].name, r, H, REQi.w, REQj.w, Edummy );}
+                //if( isamp_debug<nsamp_debug ){  printf( "evalExampleDerivs_MorseQ_SR_boy  %-8s %-8s r: %10.3e H: %10.3e (Hi: %10.3e Hj: %10.3e ) Eij_dummy : %10.3e\n", params->atypes[ti].name, params->atypes[tj].name, r, H, REQi.w, REQj.w, Edummy );}
                 dE_dH*=-1.0;
                 dEdREQs[i].x += -dE_dw;
             }else if( bEpj ){
-                Eij += getSR2( r, H, REQj.x, dE_dH, dE_dw );
+                Eij += getSR( r, H, REQj.x, dE_dH, dE_dw );
                 dE_dH*=-1.0;
                 if( bWJ )dEdREQs[j].x += -dE_dw;
             }else{
                 const double e       = exp( -alpha * ( r - R0 ) );
                 const double e2      = e * e;
-                const double e2p     = ( 1.0 + H ) * e2;
+                const double e2p     = ( 1.0 + H*hScale ) * e2;
                 const double dE_dE0  = e2p - 2.0 * e;
                 const double dE_dR0  = 2.0 * alpha * E0 * ( e2p - e );
-                const double dE_dH   = - E0 * e2;
+                const double dE_dH   = - E0 * e2 * hScale;
                 const double ELJ     =   E0 * dE_dE0;
                 Eij += ELJ;
             }
@@ -3032,7 +3033,9 @@ double move_MD( double dt, double max_step=-0.1, double damp=0.1, bool bClimbBre
     if(bClimbBreak){
         double fv = 0.0; for(int i=0; i<nDOFs; i++){ fv += vDOFs[i]*fDOFs[i]; }
         //printf( "move_MD fv= %g\n", fv );
-        if(fv<0.0){      for(int i=0; i<nDOFs; i++){       vDOFs[i] = 0.0;    }; printf( "ClimbBreak <f|v>=%g\n", fv ); } 
+        if(fv<0.0){ for(int i=0; i<nDOFs; i++){ vDOFs[i] = 0.0;  };  
+            //printf( "ClimbBreak <f|v>=%g\n", fv ); 
+        } 
     }
     double F2 = 0.0;
     if(max_step>0.0){ dt=limit_dt_MD(dt,max_step,cdamp); };
