@@ -82,7 +82,45 @@ def plot_2d_maps(angles, distances, E_dft, E_model, E_diff, min_a, min_d, Emin, 
     plt.savefig(save_path)
     plt.close()
 
-def plot_1d_slices(angles, distances, E_dft, E_base, E_hcorr, E_sr, min_a, min_d, Emin, save_path="plot_1d_slices.png"):
+def plot_min_lines_vs_angle(Epanel, distances):
+    """For each angle column, find Emin and corresponding Rmin (distance)."""
+    n_angles = Epanel.shape[1]
+    Emin = np.full(n_angles, np.nan)
+    Rmin = np.full(n_angles, np.nan)
+    for i in range(n_angles):
+        col = Epanel[:, i]
+        if np.all(np.isnan(col)):
+            continue
+        j = np.nanargmin(col)
+        Emin[i] = col[j]
+        Rmin[i] = distances[j]
+    return Rmin, Emin
+
+
+def model_min_with_components(Gmodel, Gbase, Ghcorr, Gsr, distances):
+    """Per angle: take argmin of total model, then sample base/H/SR at that same distance.
+    Returns (Rmin_model, E_model, E_base, E_base_H, E_base_H_SR).
+    """
+    n_angles = Gmodel.shape[1]
+    rmin = np.full(n_angles, np.nan)
+    e_tot = np.full(n_angles, np.nan)
+    e_base = np.full(n_angles, np.nan)
+    e_base_h = np.full(n_angles, np.nan)
+    e_full = np.full(n_angles, np.nan)
+    for i in range(n_angles):
+        col = Gmodel[:, i]
+        if np.all(np.isnan(col)):
+            continue
+        j = np.nanargmin(col)
+        rmin[i] = distances[j]
+        e_tot[i] = Gmodel[j, i]
+        e_base[i] = Gbase[j, i]
+        e_base_h[i] = Gbase[j, i] + Ghcorr[j, i]
+        e_full[i] = Gbase[j, i] + Ghcorr[j, i] + Gsr[j, i]
+    return rmin, e_tot, e_base, e_base_h, e_full
+
+
+def plot_1d_slices(angles, distances, E_dft, E_base, E_hcorr, E_sr, min_a, min_d, Emin, mode="rigid", save_path="plot_1d_slices.png"):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
     
     ang_val = angles[min_a]
@@ -111,22 +149,48 @@ def plot_1d_slices(angles, distances, E_dft, E_base, E_hcorr, E_sr, min_a, min_d
     ax1.set_ylabel("Energy [kcal/mol]")
     ax1.legend()
     
-    # Angular Scan (fixed distance -> slice over angle)
-    b_a = E_base[min_d, :]
-    h_a = E_hcorr[min_d, :]
-    s_a = E_sr[min_d, :]
-    dft_a = E_dft[min_d, :]
-    
-    ax2.plot(angles, dft_a, 'k-', linewidth=2, label='DFT')
-    ax2.plot(angles, b_a, color='gray', linestyle=':', linewidth=1, label='Baseline')
-    ax2.fill_between(angles, b_a, b_a + h_a, color='cyan', alpha=0.5)
-    ax2.fill_between(angles, b_a + h_a, b_a + h_a + s_a, color='orange', alpha=0.5)
-    
-    ax2.axvline(ang_val, color='gray', linestyle=':')
-    ax2.set_ylim(y_lims)
-    ax2.axhline(0, color='k', linewidth=0.5)
-    ax2.set_title(f"Angular Scan @ Distance = {dist_val:.2f}")
-    ax2.set_xlabel("Angle [deg]")
+    if mode == "rigid":
+        # Angular Scan (fixed distance -> slice over angle)
+        b_a = E_base[min_d, :]
+        h_a = E_hcorr[min_d, :]
+        s_a = E_sr[min_d, :]
+        dft_a = E_dft[min_d, :]
+
+        ax2.plot(angles, dft_a, 'k-', linewidth=2, label='DFT')
+        ax2.plot(angles, b_a, color='gray', linestyle=':', linewidth=1, label='Baseline')
+        ax2.fill_between(angles, b_a, b_a + h_a, color='cyan', alpha=0.5)
+        ax2.fill_between(angles, b_a + h_a, b_a + h_a + s_a, color='orange', alpha=0.5)
+        ax2.axvline(ang_val, color='gray', linestyle=':')
+        ax2.set_ylim(y_lims)
+        ax2.axhline(0, color='k', linewidth=0.5)
+        ax2.set_title(f"Angular Scan @ Distance = {dist_val:.2f}")
+        ax2.set_xlabel("Angle [deg]")
+    else:
+        # Emin(angle) using model total argmin; sample base/H/SR at the same distance
+        r_ref, e_ref = plot_min_lines_vs_angle(E_dft, distances)
+        r_model, e_model, e_base, e_base_h, e_full = model_min_with_components(E_base + E_hcorr + E_sr, E_base, E_hcorr, E_sr, distances)
+
+        ax2.plot(angles, e_ref, 'k-', linewidth=2, label='DFT (min per angle)')
+        ax2.plot(angles, e_full, color='orange', linewidth=1.5, label='Model Emin')
+        ax2.plot(angles, e_base, color='gray', linestyle=':', linewidth=1,  label='Base @ model Rmin')
+        ax2.fill_between(angles, e_base, e_base_h, color='cyan',   alpha=0.5, label='+ Hcorr @ model Rmin')
+        ax2.fill_between(angles, e_base_h, e_full, color='orange', alpha=0.3, label='+ SR @ model Rmin')
+        ax2.axhline(0, color='k', linewidth=0.5)
+        ax2.set_title("Emin vs Angle (model argmin per angle)")
+        ax2.set_xlabel("Angle [deg]")
+        ax2.set_ylabel("Energy [kcal/mol]")
+
+        # Rmin overlay
+        ax2b = ax2.twinx()
+        ax2b.plot(angles, r_ref, 'k--', linewidth=1, label='Rmin (DFT)')
+        ax2b.plot(angles, r_model, color='orange', linestyle='--', linewidth=1, label='Rmin (model)')
+        ax2b.set_ylabel("Rmin [A]")
+        ax2b.set_ylim(1.5, 3.0)
+        # Combine legends
+        lines, labels   = ax2.get_legend_handles_labels()
+        lines2, labels2 = ax2b.get_legend_handles_labels()
+        ax2b.legend(lines + lines2, labels + labels2, loc='upper right')
+
     
     plt.tight_layout()
     plt.savefig(save_path)
@@ -186,13 +250,16 @@ def plot_interaction_matrix(matrix, labels, title, save_path):
 
 def main():
     parser = argparse.ArgumentParser(description="Static visualization for FitREQ_PN surfaces")
-    parser.add_argument("--input", type=str, default="wb97m-split/H2O-A1_H2O-D1-z.xyz", help="Input XYZ path (relative to script dir or absolute)")
-    parser.add_argument("--dof_selection", type=str, default="data/dofSelection_run.dat", help="DOF selection file (relative to script dir or absolute)")
-    parser.add_argument("--atom_types", type=str, default="data/AtomTypes.dat", help="AtomTypes.dat path")
-    parser.add_argument("--element_types", type=str, default="data/ElementTypes.dat", help="ElementTypes.dat path")
-    parser.add_argument("--label_mode", type=str, default="chem_no_unders", choices=["chem_no_unders", "chem", "numeric"], help="Label style")
-    parser.add_argument("--lepairs", type=float, default=0.8, help="Epair distance from host")
-    parser.add_argument("--kmorse", type=float, default=1.8, help="Morse curvature")
+    parser.add_argument("--input",         type=str,   default="wb97m-split/H2O-A1_H2O-D1-y.xyz", help="Input XYZ path (relative to script dir or absolute)")
+    #parser.add_argument("--dof_selection",type=str,   default="data/dofSelection_run.dat", help="DOF selection file (relative to script dir or absolute)")
+    parser.add_argument("--dof_selection", type=str,   default="data/dofSelection_H2O.dat", help="DOF selection file (relative to script dir or absolute)")
+    parser.add_argument("--atom_types",    type=str,   default="data/AtomTypes.dat", help="AtomTypes.dat path")
+    parser.add_argument("--element_types", type=str,   default="data/ElementTypes.dat", help="ElementTypes.dat path")
+    parser.add_argument("--label_mode",    type=str,   default="chem_no_unders", choices=["chem_no_unders", "chem", "numeric"], help="Label style")
+    parser.add_argument("--lepairs",       type=float, default=1.0, help="Epair distance from host")
+    parser.add_argument("--kmorse",        type=float, default=1.6, help="Morse curvature")
+    parser.add_argument("--slice_mode",    type=str,   default="emin", choices=["rigid", "emin"], help="Angular slice mode: rigid uses fixed distance, emin plots per-angle minima Rmin/Emin")
+    parser.add_argument("--init_relax",    type=int,   default=0, help="Do a single PN step with dt=0 to apply DOF xstart before evaluation")
     args = parser.parse_args()
 
     here = os.path.dirname(__file__)
@@ -215,7 +282,11 @@ def main():
     
     n_total = fit.loadXYZ(fname, bAddEpairs=True, bOutXYZ=False, bEvalOnlyCorrections=False, bAppend=False)
     fit.getBuffs()
-    
+
+    if args.init_relax:
+        # One step, dt=0 ensures only DOFsToTypes/regularization applied (no movement)
+        fit.run_PN(ialg=0, iparallel=0, nstep=1, Fmax=0.0, dt=0.0001, max_step=0.0, damping=0.0)
+
     Erefs, x0s = fit.read_xyz_data(fname)
     Eerr, Es_model, _ = fit.getEs(bDOFtoTypes=True, bEs=True)
     _, Es_Coul, Es_vdW, Es_Hcorr, Es_Epairs = fit.getEs_components()
@@ -224,11 +295,11 @@ def main():
     
     Gref, seq, axis, distances, angles = fit.parse_xyz_mapping(fname)
     
-    shape = Gref.shape  # this is (len(distances), len(angles)) if correctly parsed
+    shape  = Gref.shape  # this is (len(distances), len(angles)) if correctly parsed
     Gmodel = np.full(shape, np.nan)
-    Gbase = np.full(shape, np.nan)
+    Gbase  = np.full(shape, np.nan)
     Ghcorr = np.full(shape, np.nan)
-    Gsr = np.full(shape, np.nan)
+    Gsr   = np.full(shape, np.nan)
     
     nmap = min(len(Es_model), len(seq))
     for k in range(nmap):
@@ -293,7 +364,7 @@ def main():
         
     # Gref is [dist, angle]. We want X=angle, Y=dist.
     plot_2d_maps(angles, distances, Gref, Gmodel, Gdiff, min_a, min_d, Emin, save_path="plot_2d_maps.png")
-    plot_1d_slices(angles, distances, Gref, Gbase, Ghcorr, Gsr, min_a, min_d, Emin, save_path="plot_1d_slices.png")
+    plot_1d_slices(angles, distances, Gref, Gbase, Ghcorr, Gsr, min_a, min_d, Emin, mode=args.slice_mode, save_path="plot_1d_slices.png")
 
 if __name__ == "__main__":
     main()

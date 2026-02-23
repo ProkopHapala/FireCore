@@ -1,4 +1,14 @@
-E_H_O     0                  1.0e-10    5.0        0.1    2.5      0.0   0.0  0.0    0.06             1.0
-E_H_O     3                  1.0e-10   50.0        0.1   10.0      0.0   0.0  0.0    0.96             1.0
-E_O_3     0                  1.0e-10    5.0        0.1    2.5      0.0   0.0  0.0    1.00             1.0
-E_O_3     3                -50.0       -1.0e-10  -10.0   -0.1      0.0   0.0  0.0    -7.68             1.0
+# Epair-only DOFs (charges removed, atom H-corrections removed)
+# Format retained from original file; only epair R/H entries kept
+# typename comp   Min     Max         xlo     xhi        Klo   Khi   K0     xstar    invMass
+#
+E_HO        2    -1e-6   +1e-6        -0.00   -0.00      0.0  0.0  0.0    +0.0    1.0
+E_HO        3     0.0     +1.0         1.00    0.00      0.0  0.0  0.0    +0.0    5.0
+E_HO        0     0.0      2.0         0.3     1.0       1.0  0.0  0.0    +0.0    1.0
+#
+E_O3        2    -1e-6   +1e-6        -0.00    -0.00     0.0  0.0  0.0     0.0    1.0 
+E_O3        3    -1.0      0.0         1.00     0.00     0.0  0.0  0.0    -0.2    5.0
+E_O3        0     0.2      2.0         0.3      1.0      0.0  0.0  0.0     0.9    1.0
+# H2 corrections (just a comment)
+H_O         3     0.01     0.9         0.00     0.90     0.0  0.0  0.0    +0.7    1.0
+O_3         3    -0.9      0.01       -0.90    -0.50     0.0  0.0  0.0    -0.7    1.0
