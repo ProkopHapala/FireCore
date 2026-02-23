@@ -12,6 +12,7 @@ import barrier_utils as bu
 def run_grid_search():
     # Use the Z-file (double-well) as required
     xyz_path = "../tFitREQ_PN/wb97m-split/H2O-A1_H2O-D1-y.xyz"
+    #xyz_path = "/home/niko/work/HBOND/REFERENCE/2-pairs_small_small/4-to_firecore/confs_wb97m/H2O-A1_H2O-D1-y.xyz"
     # Epairs-only DOF selection (no charges, no atom H-corrections)
     base_dof_file = "dofSelection_MorseSR_H2O_epairOnly.dat"
     out_dir = "grid_search_out"
