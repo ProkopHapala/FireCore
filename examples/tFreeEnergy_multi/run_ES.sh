@@ -45,11 +45,11 @@ echo "Step 2: Running Free Energy Calculation (Mode: $MODE)..."
 echo "----------------------------------------"
 python3 run_ES.py \
     --mode $MODE \
-    --nSys 10 \
+    --nSys 20 \
     --xyz_name "../tMMFF/data/entropic_spring_$N.xyz" \
     --system_name "entropic_spring_$N" \
     --nLambda 100000 \
-    --nMDsteps 10000000 \
+    --nMDsteps 2000000 \
     --nEQsteps 50000 \
     --Fconv 1e-6 \
     --constraints "constraints_ES.txt" \
@@ -77,8 +77,8 @@ echo "  Completed successfully!"
 echo "=========================================="
 echo ""
 echo "Output files:"
-echo "  - entropic_spring_${N}_TI.dat (raw data)"
-echo "  - entropic_spring_${N}_TI_interactive.html (interactive plot)"
+echo "  - entropic_spring_${N}_free_energy.dat (raw data)"
+echo "  - entropic_spring_${N}_free_energy_interactive.html (interactive plot)"
 echo ""
-echo "To view the interactive plot, open entropic_spring_${N}_TI_interactive.html in a web browser"
+echo "To view the interactive plot, open entropic_spring_${N}_free_energy_interactive.html in a web browser"
 echo ""

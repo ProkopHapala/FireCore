@@ -393,8 +393,12 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                         if(si_count < nCVs){
                             Quat4f acon  = Quat4f{initial_positions[si_count].x, initial_positions[si_count].y, initial_positions[si_count].z, JEforceconst}; 
                             Quat4f aconK = Quat4f{final_positions[si_count].x,   final_positions[si_count].y,   final_positions[si_count].z,   0.0f}; 
+                            if(si_count == 0){ // for incrementing of lambda step index in the kernel
+                                aconK.w = 1.0f;
+                            }                            
                             constr [isys*ocl.nAtoms + ia] = acon;
                             constrK[isys*ocl.nAtoms + ia] = aconK;
+
                         }
                         si_count++;
                     }
@@ -406,7 +410,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
             double beta = 1.0 / (const_kB * go.T_target);
             double dLambda = 1.0 / (double)(nLambda - 1);
             nPerVFs = nPerVFs_;
-            int nBatches = nMDsteps / (nLambda * nPerVFs * nSystems);
+            int nBatches = nMDsteps / (nLambda * nSystems);
             if( nBatches < 1 ) nBatches = 1;
             
             printf("  Running %d batches of %d pulling steps each...\n", nBatches, nLambda);
@@ -423,15 +427,16 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 run_ocl_opt( nEQsteps, Fconv );
 
                 // 2. Pulling
+                // nPerVFs = nLambda;
                 nPerVFs = nPerVFs_;
-                for(int isys=0; isys<nSystems; isys++){ jeParams[isys].x = 0; jeParams[isys].y = nLambda; jeParams[isys].z = nPerVFs; jeParams[isys].w = 0; }
+                for(int isys=0; isys<nSystems; isys++){ jeParams[isys].x = 0; jeParams[isys].y = nLambda; }
                 ocl.upload( ocl.ibuff_jeParams, jeParams );
 
                 for(int i=0; i<nSystems * nLambda; i++) gpu_work[i] = 0;
                 ocl.upload( ocl.ibuff_work, gpu_work );
 
-                printf("  Pulling for %d * %d = %d steps...\n", nLambda, nPerVFs, nLambda*nPerVFs);
-                run_ocl_opt( nLambda*nPerVFs, Fconv );
+                printf("  Pulling for %d steps...\n", nLambda);
+                run_ocl_opt( nLambda, Fconv );
 
                 // 3. Download work and accumulate
                 ocl.download( ocl.ibuff_work, gpu_work );
@@ -441,6 +446,9 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                     double W_traj = 0;
                     for(int i=0; i<nLambda; i++){
                         float dW = gpu_work[ isys * nLambda + i ]*dLambda;
+                        // if(isys == 0 && i%1000 == 0){ 
+                        //     printf("  System %d, lambda %f, dW %f, cumulative W %f\n", isys, (float)i/(float)(nLambda-1), dW, W_traj + dW);
+                        // }
                         W_traj += (double)dW;
                         sum_exp_W[i] += exp(-beta * W_traj);
                     }
@@ -1173,10 +1181,6 @@ double evalVFs( double Fconv=1e-6 ){
             //     TDrive[isys].z = 0;
             // }
             // printf("evalVFs() TDrive[isys].z = %f\n", TDrive[isys].z);
-            if( jeParams && jeParams[isys].x >= 0 ){
-                jeParams[isys].x += 1;
-                jeParams[isys].w = 0;
-            }
             // printf("evalVFs() TDrive[isys].z = %f\n", TDrive[isys].z);
             TDrive[isys].w = randf(-1.0,1.0); 
         }else{
@@ -1189,7 +1193,6 @@ double evalVFs( double Fconv=1e-6 ){
     //printf( "MDpars{%g,%g,%g,%g}\n", MDpars[0].x,MDpars[0].y,MDpars[0].z,MDpars[0].w );
     err |= ocl.upload( ocl.ibuff_MDpars, MDpars );
     err |= ocl.upload( ocl.ibuff_TDrive, TDrive );
-    if( jeParams)err |= ocl.upload( ocl.ibuff_jeParams, jeParams );
     err |= ocl.upload( ocl.ibuff_cvf   , cvfs   );
     // //printf("MolWorld_sp3_multi::evalVFs() bGroupUpdate=%i \n", bGroupUpdate );
     // if(bGroupUpdate){

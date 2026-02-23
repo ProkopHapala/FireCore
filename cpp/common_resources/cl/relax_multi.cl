@@ -342,8 +342,8 @@ __kernel void getMMFFf4(
             // --- Evaluate bond-length stretching energy and forces
             if(iG<ing){
                 // Bond stretching with proper MMFF parameters from bL[i] and bK[i]
-                E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;   // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor,
-                //E+= evalBond( h.xyz, l-1.198f, 40.f, &f1 );  fbs[i]-=f1;  fa+=f1;   // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor,
+                //E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;   // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor,
+                E+= evalBond( h.xyz, l-1.198f, 40.f, &f1 );  fbs[i]-=f1;  fa+=f1;   // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor,
 
                 // pi-pi alignment interaction            
                 float kpp = Kppi[i];
@@ -385,26 +385,26 @@ __kernel void getMMFFf4(
                 const int jnga = jng+i0a;
                 const float4 hj = hs[j];  
                       
-                E += evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );    // evaluate angular force and energy using cos(angle/2) formulation        
-                fa    -= f1+f2;
+                // E += evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );    // evaluate angular force and energy using cos(angle/2) formulation        
+                // fa    -= f1+f2;
 
-                //if(bSubtractVdW)
-                { // Remove non-bonded interactions from atoms that are bonded to common neighbor
-                    float4 REQi=REQKs[inga];   // non-bonding parameters of i-th neighbor
-                    float4 REQj=REQKs[jnga];   // non-bonding parameters of j-th neighbor
-                    // combine non-bonding parameters of i-th and j-th neighbors using mixing rules
-                    float4 REQij;             
-                    REQij.x  = REQi.x  + REQj.x;
-                    REQij.yz = REQi.yz * REQj.yz; 
+                // //if(bSubtractVdW)
+                // { // Remove non-bonded interactions from atoms that are bonded to common neighbor
+                //     float4 REQi=REQKs[inga];   // non-bonding parameters of i-th neighbor
+                //     float4 REQj=REQKs[jnga];   // non-bonding parameters of j-th neighbor
+                //     // combine non-bonding parameters of i-th and j-th neighbors using mixing rules
+                //     float4 REQij;             
+                //     REQij.x  = REQi.x  + REQj.x;
+                //     REQij.yz = REQi.yz * REQj.yz; 
                     
-                    float3 dp = (hj.xyz/hj.w) - (hi.xyz/hi.w);   // recover vector between i-th and j-th neighbors using stored vectos and inverse bond lengths, this should be faster than dp=apos[jngv].xyz-apos[ingv].xyz; from global memory
-                    float4 fij = getLJQH( dp, REQij, 1.0f );     // compute non-bonded interaction between i-th and j-th neighbors using Lennard-Jones and Coulomb interactions and Hydrogen bond correction
-                    f1 -=  fij.xyz;
-                    f2 +=  fij.xyz;
-                }
+                //     float3 dp = (hj.xyz/hj.w) - (hi.xyz/hi.w);   // recover vector between i-th and j-th neighbors using stored vectos and inverse bond lengths, this should be faster than dp=apos[jngv].xyz-apos[ingv].xyz; from global memory
+                //     float4 fij = getLJQH( dp, REQij, 1.0f );     // compute non-bonded interaction between i-th and j-th neighbors using Lennard-Jones and Coulomb interactions and Hydrogen bond correction
+                //     f1 -=  fij.xyz;
+                //     f2 +=  fij.xyz;
+                // }
 
-                fbs[i]+= f1;
-                fbs[j]+= f2;
+                // fbs[i]+= f1;
+                // fbs[j]+= f2;
             }
         }
 
@@ -1004,54 +1004,57 @@ __kernel void updateAtomsMMFFf4(
         // ------- constrains
         float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
 
-        if( (cons.w > 0.f) && jeParams && (jeParams[iS].x > -1) ){
-            // Jarzynski equality 
+        if( (cons.w > 0.f) && jeParams ){
+            // Jarzynski equality or Setup Equilibration
             // We use standard "constr" for initial position and "constrK" for final position
             // But we use "cons.w" as stiffness
-            // jeParams are (iLambda, nLambda, nPerVF, iStep) for Jarzynski Equality
             
             float4 consEnd = constrK[ iaa ];
-            int nLambda    = jeParams[iS].y;
-            float k = cons.w;
-            
-            float lambda = (float)jeParams[iS].x/(float)(nLambda-1);
-            
-            float3 p0 = cons.xyz;
-            float3 p1 = consEnd.xyz;
-            
-            float3 target = p0 + (p1 - p0) * lambda;
-            
-            // Compute Force (Harmonic)
-            // Force on atom = k * (target - pe)
-            float3 fc = (target - pe.xyz) * (float3){k,k,k};
-            fe.xyz += fc;
-            
-            // Accumulate Work
-            // Work done ON system = integral of (dH/dLambda) dLambda
-            // H_spring = 0.5 * k * (x - x0(lambda))^2
-            // dH/dLambda = k * (x - x0) * (-dx0/dLambda)
-            //            = k * (x - x0) * -(p1 - p0)
-            //            = k * (x0 - x) * (p1 - p0)  = fc * (p1 - p0)
-            // So we accumulate dot(fc, dir).
-            
-            float3 dir = p1 - p0;
-            float work_term = dot(fc, dir);
-            if( (jeParams[iS].w >= jeParams[iS].z - 1) && (jeParams[iS].x >= 0) ){
-                // Record work at this step if buffer provided
-                {
-                    volatile __global float* addr = &work[ nLambda * iS + jeParams[iS].x ];
-                    float old_val, new_val;
-                    do {
-                        old_val = *addr;
-                        new_val = old_val + work_term;
-                    } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
+            int step       = jeParams[iS].x;
+            if (step > -1) {
+                int nLambda    = jeParams[iS].y;
+                float k = cons.w;
+                
+                // RESTRICTION: Ensure step does not overrun nLambda and cause OOB memory access
+                if (step < nLambda) {
+                    // Calculate lambda continuously
+                    float lambda = min(1.0f, (float)step / (float)((nLambda - 1)));
+                    
+                    float3 p0 = cons.xyz;
+                    float3 p1 = consEnd.xyz;
+                    
+                    float3 target = p0 + (p1 - p0) * lambda;
+                    
+                    // Compute Force (Harmonic)
+                    float3 fc = (target - pe.xyz) * (float3){k,k,k};
+                    fe.xyz += fc;
+                    
+                    // Accumulate Work
+                    float3 dir = p1 - p0;
+                    float work_term = dot(fc, dir);
+                    
+                    // Record work at this safely bounded step
+                    {
+                        volatile __global float* addr = &work[ nLambda * iS + step ];
+                        float old_val, new_val;
+                        do {
+                            old_val = *addr;
+                            new_val = old_val + work_term;
+                        } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
+                    }
+                } // End of Restriction 
+                
+                if(consEnd.w>0.0f && step < nLambda){
+                    jeParams[iS].x += 1; // Increment step index for next step exactly once per system
+                }
+            } else if (step == -1) {
+                // Initial Equilibrium Step
+                float k = cons.w;
 
-
-                }                    
-            }
-            else if(iG==0){
-                jeParams[iS].w += 1;
-            }
+                float3 target = cons.xyz;
+                float3 fc = (target - pe.xyz) * (float3){k,k,k};
+                fe.xyz += fc;
+            }  
             cons.w = 0.0f; // Disable standard logic
         }
 
