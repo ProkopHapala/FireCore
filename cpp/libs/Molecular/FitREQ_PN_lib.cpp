@@ -38,7 +38,7 @@ void setVerbosity( int verbosity_, int idebug_, int PrintDOFs, int PrintfDOFs, i
     printf( "setVerbosity() verbosity %i idebug %i PrintDOFs %i PrintfDOFs %i PrintBeforReg %i PrintAfterReg %i PrintOverRepulsive %i\n", verbosity, idebug, W.bPrintDOFs, W.bPrintfDOFs, W.bPrintBeforReg, W.bPrintAfterReg, W.bPrintOverRepulsive );
 }
 
-void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double kMorse, double Lepairs, bool bPN ){
+void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double kMorse, double Lepairs, bool bPN, double svdW, double sCoul, double sHcorr, double sEpairs ){
     W.ivdW    = ivdW;
     W.iCoul   = iCoul;
     W.iHbond  = iHbond;
@@ -47,7 +47,11 @@ void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double 
     W.kMorse  = kMorse;
     W.Lepairs = Lepairs;
     W.bPN     = bPN;
-    printf( "setModel() ivdW %i iCoul %i iHbond %i iEpairs %i kMorse %f Lepairs %f bPN %i \n", W.ivdW, W.iCoul, W.iHbond, W.iEpairs, W.kMorse, W.Lepairs, W.bPN );
+    W.svdW    = svdW;
+    W.sCoul   = sCoul;
+    W.sHcorr  = sHcorr;
+    W.sEpairs  = sEpairs;
+    printf( "setModel() ivdW %i iCoul %i iHbond %i iEpairs %i kMorse %f Lepairs %f bPN %i svdW %f sCoul %f sHcorr %f sEpairs %f\n", W.ivdW, W.iCoul, W.iHbond, W.iEpairs, W.kMorse, W.Lepairs, W.bPN, W.svdW, W.sCoul, W.sHcorr, W.sEpairs );
 }
 
 void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){
