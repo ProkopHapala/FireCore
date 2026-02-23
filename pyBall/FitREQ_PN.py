@@ -62,11 +62,11 @@ lib.setVerbosity.restype   =  None
 def setVerbosity(verbosity=0, idebug=0, PrintDOFs=0, PrintfDOFs=0, PrintBeforReg=0, PrintAfterReg=0, PrintOverRepulsive=0):
     return lib.setVerbosity(verbosity, idebug, PrintDOFs, PrintfDOFs, PrintBeforReg, PrintAfterReg, PrintOverRepulsive)
 
-#void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double kMorse, double Lepairs, bool bPN ){
-lib.setModel.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_double, c_double, c_bool]
+#void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double kMorse, double Lepairs, bool bPN, double svdW, double sCoul, double sHcorr, double sEpairs ){
+lib.setModel.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_double, c_double, c_bool, c_double, c_double, c_double, c_double]
 lib.setModel.restype   =  None
-def setModel(ivdW=4, iCoul=1, iHbond=0, Epairs=0, iEpairs=0, kMorse=1.6, Lepairs=0.5, bPN=True):
-    return lib.setModel(ivdW, iCoul, iHbond, Epairs, iEpairs, kMorse, Lepairs, bPN)
+def setModel(ivdW=4, iCoul=1, iHbond=0, Epairs=0, iEpairs=0, kMorse=1.6, Lepairs=0.5, bPN=True, svdW=1.0, sCoul=1.0, sHcorr=1.0, sEpairs=1.0):
+    return lib.setModel(ivdW, iCoul, iHbond, Epairs, iEpairs, kMorse, Lepairs, bPN, svdW, sCoul, sHcorr, sEpairs)
 
 #void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){
 lib.loadTypes.argtypes  = [c_char_p, c_char_p]
@@ -278,6 +278,38 @@ def read_xyz_data(fname="input_all.xyz"):
     #    print(f"DEBUG: First Eref: {Erefs[0]}, First x0: {x0s[0]}", flush=True)
     
     return np.array(Erefs), np.array(x0s)
+
+def read_xyz_data_new(fname="input_all.xyz"):
+    """Read XYZ file and extract Etot and x0 values from comment lines"""
+    Erefs = []
+    x0s = []
+    pairs = []
+    line_count = 0
+    matched_count = 0
+    sample_lines = []
+    
+    with open(fname, 'r') as f:
+        while True:
+            line = f.readline()
+            line_count += 1
+            if not line: break
+            
+            # Keep first 5 comment lines as samples
+            if line.startswith('#') and len(sample_lines) < 5:
+                sample_lines.append(line.strip())
+            
+            if line.startswith('# n0'):
+                matched_count += 1
+                # Parse line like "# n0 5 Etot .70501356708840164618 x0 1.40 y -90 CH2O-A1_NH3-D1"
+                parts = line.split()
+                Etot  = float(parts[4])
+                x0    = float(parts[6])
+                pair  = parts[9]
+                Erefs.append(Etot)
+                x0s.append(x0)
+                pairs.append(pair)
+    
+    return np.array(Erefs), np.array(x0s), np.array(pairs)
 
 def loadDOFnames( fname, comps="REQH" ):
     names = []
@@ -588,7 +620,9 @@ def save_data_single(G, angles, distances, save_data_prefix=None, save_fmt="both
 
 def exp_weight_func(Erefs, a=1.0, alpha=3.0, Emin0=0.1 ):
     Emin = np.min(Erefs)
-    return np.exp( -alpha*(Erefs-Emin)/( np.abs(Emin) + Emin0 ) )*a
+    #return np.exp( -alpha*(Erefs-Emin)/( np.abs(Emin) + Emin0 ) )*a
+    arg = -alpha * (Erefs - Emin) / (np.abs(Emin) + Emin0)
+    return a * np.exp(np.clip(arg, -700, 700))
 
 def split_and_weight_curves(Erefs, x0s, n_before_min=4, weight_func=None, EminMin=-0.02 ):
     """
@@ -643,6 +677,42 @@ def split_and_weight_curves(Erefs, x0s, n_before_min=4, weight_func=None, EminMi
         #segment_counter += 1
     
     return weights, lens
+
+def split_and_weight_curves_new(Erefs, x0s, pairs, weight_func=None):
+    """
+    Assign weights based on the global minimum for each pair/section.
+    
+    Args:
+        Erefs: numpy array of total energies
+        x0s: numpy array of x0 values (monotonic within each curve)
+        pairs: numpy array of pair labels 
+    
+    Returns:
+        weights: numpy array of weights
+    """
+    weights = np.zeros_like(Erefs)
+    
+    # Split when pair changes
+    pair_changes = np.where(pairs[1:] != pairs[:-1])[0] + 1
+    all_splits = np.concatenate(([0], pair_changes, [len(Erefs)]))
+
+    # Process each curve segment
+    lens = []
+    for start, end in zip(all_splits[:-1], all_splits[1:]):
+        segment = Erefs[start:end]
+        n = len(segment)
+        lens.append(n)
+        if n == 0: continue
+                
+        imin = np.argmin(segment) + start
+        Emin = np.min(segment)
+
+        if weight_func is None:
+            weights[start:end] = 1.0
+        else:
+            weights[start:end] = weight_func( Erefs[start:end] )
+    
+    return weights
 
 def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans", bEvalSamples=True, bPrint=False, outfile=None ):
     plt.figure(figsize=(8,10.0))

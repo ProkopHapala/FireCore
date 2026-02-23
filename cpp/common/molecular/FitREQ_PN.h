@@ -76,7 +76,7 @@ inline double getSR3_PN( double r, double H, double R0, double& dEdH, double& dE
     const double s = 1.0 / ( ep + em );
     dEdH = 2.0 * s;
     dEdR0 = H * u * iR0 * ( ep - em ) * dEdH * s;
-//if (!std::isfinite(dEdR0)||!std::isfinite(dEdH)) { printf("getSR3_PN: r=%f H=%f R0=%f u=%f dEdH=%f dEdR0=%f\n", r, H, R0, u, dEdH, dEdR0); exit(0); }
+    //if (!std::isfinite(dEdR0)||!std::isfinite(dEdH)) { printf("getSR3_PN: r=%f H=%f R0=%f u=%f dEdH=%f dEdR0=%f\n", r, H, R0, u, dEdH, dEdR0); exit(0); }
     return H * dEdH;
 }
 
@@ -323,6 +323,10 @@ class FitREQ_PN{ public:
     int    iEpairs   = 0;     // 0=no interaction, 1=SR interaction, 2=SR2 interaction, 3=SR3 interaction
     double Lepairs   = 1.0;   // Ang, distance host atom-Epair
     bool   bPN       = true;  // use PN model for vdW and Coulomb interactions
+    double svdW      = 1.0;   // strength of vdW interactions
+    double sCoul     = 1.0;   // strength of Coulomb interactions
+    double sHcorr    = 1.0;   // strength of H-bond correction
+    double sEpairs   = 1.0;   // strength of Epair interactions
 
 // =================================
 // =========== Functions ===========
@@ -979,11 +983,11 @@ double evalSamples_serial( double* Eout=0 ){
     for(int isamp=0; isamp<nsamp; isamp++){
         double E; 
         Error+=evalSampleError( isamp, E );
-//printf( "evalSamples_serial() isamp=%i E=%18.8e\n", isamp, E );
+        //printf( "evalSamples_serial() isamp=%i E=%18.8e\n", isamp, E );
         if(Eout)Eout[isamp]=E;
     }
     if(bPrintOverRepulsive){ printOverRepulsiveList(); }
-//exit(0); // JAMME
+    //exit(0); // JAMME
     return Error;
 }
 
@@ -1129,9 +1133,9 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
 __attribute__((hot)) 
 double evalEnergyDerivs ( int i0, int ni, int j0, int nj, int* types, Vec3d* ps, Quat4d* typeREQs, double* Qs, int* host, Quat4d* dEdREQs )const{
     double E_tot = 0.0;
-//double E_Coul = 0.0, E_vdW = 0.0, E_Hcorr = 0.0, E_Epairs = 0.0;    
+    //double E_Coul = 0.0, E_vdW = 0.0, E_Hcorr = 0.0, E_Epairs = 0.0;    
     //const double alpha   = kMorse;
-//printf("JAMME     i     -dE_dR0_i       -dE_dRi         -dE_deps_i      -dE_dQ_i        -dE_dH_i        j     -dE_dR0_j       -dE_dRj         -dE_deps_j      -dE_dQ_j        -dE_dH_j        E_vdW           E_Hcorr         E_Coul          E_Epair\n");
+    //printf("JAMME     i     -dE_dR0_i       -dE_dRi         -dE_deps_i      -dE_dQ_i        -dE_dH_i        j     -dE_dR0_j       -dE_dRj         -dE_deps_j      -dE_dQ_j        -dE_dH_j        E_vdW           E_Hcorr         E_Coul          E_Epair\n");
     for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system2
         const int     i     = i0+ii;
         const int     ih    = host[i];
@@ -1162,52 +1166,55 @@ double evalEnergyDerivs ( int i0, int ni, int j0, int nj, int* types, Vec3d* ps,
             double dE_dR0 = 0.0, dE_deps = 0.0, dE_dQ = 0.0, dE_dH = 0.0;
             double fR = 0.0, fA = 0.0, fH1 = 0.0, fH2 = 0.0, fR0 = 0.0, fB = 1.0;
             double alpha = kMorse;
-//double dE_dRi = 0.0, dE_dRj = 0.0; // JAMME
+            //double dE_dRi = 0.0, dE_dRj = 0.0; // JAMME
 
             if( bEpi ){  
                 if(bEpj) continue; // dummy atoms should not interact with each other
-/*
-if(bEpj){
-    double dE_dR = 0.0;
-    if(iEpairs==1){ 
-        Eij_Epairs = getSR_PN( r, H, REQj.x, dE_dH, dE_dR );
-    }else if(iEpairs==2){ 
-        Eij_Epairs = getSR2_PN( r, H, REQj.x, dE_dH, dE_dR );
-    }
-    dEdREQs[j].x -= dE_dR;
-}
-*/
+                // Epair-Epair interactions
+                /*
+                if(bEpj){
+                    double dE_dR = 0.0;
+                    if(iEpairs==1){ 
+                        Eij_Epairs = sEpairs * getSR_PN( r, H, REQj.x, dE_dH, dE_dR );
+                    }else if(iEpairs==2){ 
+                        Eij_Epairs = sEpairs * getSR2_PN( r, H, REQj.x, dE_dH, dE_dR );
+                    }else if(iEpairs==3){ 
+                        Eij_Epairs = sEpairs * getSR3_PN( r, H, REQj.x, dE_dH, dE_dR );
+                    }
+                    dEdREQs[j].x -= sEpairs * dE_dR;
+                }
+                */
                 // --- Electron pair interaction
                 double dE_dR = 0.0;
                 if(iEpairs==1){ 
-                    Eij_Epairs = getSR_PN( r, H, REQi.x, dE_dH, dE_dR );
+                    Eij_Epairs = sEpairs * getSR_PN( r, H, REQi.x, dE_dH, dE_dR );
                 }else if(iEpairs==2){ 
-                    Eij_Epairs = getSR2_PN( r, H, REQi.x, dE_dH, dE_dR );
+                    Eij_Epairs = sEpairs * getSR2_PN( r, H, REQi.x, dE_dH, dE_dR );
                 }else if(iEpairs==3){ 
-                    Eij_Epairs = getSR3_PN( r, H, REQi.x, dE_dH, dE_dR );
+                    Eij_Epairs = sEpairs * getSR3_PN( r, H, REQi.x, dE_dH, dE_dR );
                 }
-                dEdREQs[i].x -= dE_dR;
-//dE_dRi = dE_dR; // JAMME
+                dEdREQs[i].x -= sEpairs * dE_dR;
+                //dE_dRi = sEpairs * dE_dR; // JAMME
             }else if( bEpj ){
                 // --- Electron pair interaction
                 double dE_dR = 0.0;
                 if(iEpairs==1){ 
-                    Eij_Epairs = getSR_PN( r, H, REQj.x, dE_dH, dE_dR );
+                    Eij_Epairs = sEpairs * getSR_PN( r, H, REQj.x, dE_dH, dE_dR );
                 }else if(iEpairs==2){ 
-                    Eij_Epairs = getSR2_PN( r, H, REQj.x, dE_dH, dE_dR );
+                    Eij_Epairs = sEpairs * getSR2_PN( r, H, REQj.x, dE_dH, dE_dR );
                 }else if(iEpairs==3){ 
-                    Eij_Epairs = getSR3_PN( r, H, REQj.x, dE_dH, dE_dR );
+                    Eij_Epairs = sEpairs * getSR3_PN( r, H, REQj.x, dE_dH, dE_dR );
                 }
-                dEdREQs[j].x -= dE_dR;
-//dE_dRj = dE_dR; // JAMME
+                dEdREQs[j].x -= sEpairs * dE_dR;
+                //dE_dRj = sEpairs * dE_dR; // JAMME
             }else{
                 // --- Electrostatic interaction
                 if(iCoul==1){ // point charges
-                    dE_dQ = COULOMB_CONST / r ;
+                    dE_dQ = sCoul * COULOMB_CONST / r ;
                 }else if(iCoul==2){ // point charges with softclamp
-                    dE_dQ = dampCoulomb_SoftClamp(r, clamp_y1, clamp_y2) * COULOMB_CONST;
+                    dE_dQ = sCoul * dampCoulomb_SoftClamp(r, clamp_y1, clamp_y2) * COULOMB_CONST;
                 }else if(iCoul>9){ // Boys clamping with different approximations
-                    dE_dQ = dampCoulomb_Boys(r, boys_rmin, iCoul-10) * COULOMB_CONST;
+                    dE_dQ = sCoul * dampCoulomb_Boys(r, boys_rmin, iCoul-10) * COULOMB_CONST;
                 }
                 Eij_Coul = Q * dE_dQ;                
                 // --- Van der Waals interaction
@@ -1260,37 +1267,37 @@ if(bEpj){
                     fH2                = 2.0;
                     fR0                = 2.0 * alpha;
                 }
-                dE_deps = fH1 * fR - fH2 * fA;
-                dE_dR0  = eps * fR0 * ( fB * fR - fA );
+                dE_deps = svdW * ( fH1 * fR - fH2 * fA );
+                dE_dR0  = svdW * eps * fR0 * ( fB * fR - fA );
                 Eij_vdW   = eps * dE_deps;
                 // --- Hydrogen-bond corrections
                 if(sH>0.0){
                     if(iHbond==1||iHbond==3){
                         const double f         = fH1 * fR;
-                        const double dE_deps_H = H * f;
+                        const double dE_deps_H = sHcorr * H * f;
                         dE_deps       += dE_deps_H;
-                        dE_dR0        += H * eps * fB * fR0 * fR;
-                        dE_dH          = eps * f;
-                        Eij_Hcorr      = eps * dE_deps_H;
+                        dE_dR0        += sHcorr * H * eps * fB * fR0 * fR;
+                        dE_dH         += sHcorr * eps * f;
+                        Eij_Hcorr     += eps * dE_deps_H;
                     }
                     if(iHbond==2||iHbond==3){
                         const double f         = fH2 * fA;
-                        const double dE_deps_H = H * f;
+                        const double dE_deps_H = sHcorr * H * f;
                         dE_deps       += dE_deps_H;
-                        dE_dR0        += H * eps * fR0 * fA;
-                        dE_dH         += eps * f;
+                        dE_dR0        += sHcorr * H * eps * fR0 * fA;
+                        dE_dH         += sHcorr * eps * f;
                         Eij_Hcorr     += eps * dE_deps_H;
                     }
                 }
             }
 
             double Eij = Eij_Coul + Eij_vdW + Eij_Hcorr + Eij_Epairs;
-//E_Coul += Eij_Coul; E_vdW += Eij_vdW; E_Hcorr += Eij_Hcorr; E_Epairs += Eij_Epairs;            
-/*
-printf("JAMME %5i %15.9f %15.9f %15.9f %15.9f %15.9f %5i %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f\n",
-j+1, -dE_dR0,-dE_dRj,-dE_deps*REQi.y,-dE_dQ*Qi,-dE_dH*REQi.w, 
-i+1, -dE_dR0,-dE_dRi,-dE_deps*REQj.y,-dE_dQ*Qj,-dE_dH*REQj.w, Eij_vdW, Eij_Hcorr, Eij_Coul, Eij_Epairs);
-*/
+            //E_Coul += Eij_Coul; E_vdW += Eij_vdW; E_Hcorr += Eij_Hcorr; E_Epairs += Eij_Epairs;            
+            /*
+            printf("JAMME %5i %15.9f %15.9f %15.9f %15.9f %15.9f %5i %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f\n",
+            j+1, -dE_dR0,-dE_dRj,-dE_deps*REQi.y,-dE_dQ*Qi,-dE_dH*REQi.w, 
+            i+1, -dE_dR0,-dE_dRi,-dE_deps*REQj.y,-dE_dQ*Qj,-dE_dH*REQj.w, Eij_vdW, Eij_Hcorr, Eij_Coul, Eij_Epairs);
+            */
             dEdREQs[j].sub( Quat4d{ 
                 dE_dR0, 
                 dE_deps * REQi.y, 
@@ -1308,26 +1315,26 @@ i+1, -dE_dR0,-dE_dRi,-dE_deps*REQj.y,-dE_dQ*Qj,-dE_dH*REQj.w, Eij_vdW, Eij_Hcorr
 
         dEdREQs[i].add(fREQi);
     }  // end loop over all atoms[i] in system2
-/*
-printf("JAMMETOT     Etot\n");
-printf("JAMMETOT %15.9f\n", E_tot );
-printf("JAMMETOT     i     x_i             y_i             z_i             R0_i            eps_i           q_i             H_i             F_i[1]          F_i[2]          F_i[3]          F_i[4]\n");
-for(int jj=0; jj<nj; jj++){ // loop over all atoms[j] in system1
-    const int     j     = j0+jj;
-    const int     tj    = types   [j ];
-    const Quat4d& REQj  = typeREQs[tj];
-    printf("JAMMETOT %5i %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f\n", 
-        j+1, ps[j].x,ps[j].y,ps[j].z, REQj.x,REQj.y,Qs[j],REQj.w, dEdREQs[j].x,dEdREQs[j].y,dEdREQs[j].z,dEdREQs[j].w );
-}
-for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system2
-    const int     i     = i0+ii;
-    const int     ti    = types   [i ];
-    const Quat4d& REQi  = typeREQs[ti];
-    printf("JAMMETOT %5i %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f\n", 
-        i+1, ps[i].x,ps[i].y,ps[i].z, REQi.x,REQi.y,Qs[i],REQi.w, dEdREQs[i].x,dEdREQs[i].y,dEdREQs[i].z,dEdREQs[i].w );
-}
-*/
-//exit(0);
+    /*
+    printf("JAMMETOT     Etot\n");
+    printf("JAMMETOT %15.9f\n", E_tot );
+    printf("JAMMETOT     i     x_i             y_i             z_i             R0_i            eps_i           q_i             H_i             F_i[1]          F_i[2]          F_i[3]          F_i[4]\n");
+    for(int jj=0; jj<nj; jj++){ // loop over all atoms[j] in system1
+        const int     j     = j0+jj;
+        const int     tj    = types   [j ];
+        const Quat4d& REQj  = typeREQs[tj];
+        printf("JAMMETOT %5i %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f\n", 
+            j+1, ps[j].x,ps[j].y,ps[j].z, REQj.x,REQj.y,Qs[j],REQj.w, dEdREQs[j].x,dEdREQs[j].y,dEdREQs[j].z,dEdREQs[j].w );
+    }
+    for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system2
+            const int     i     = i0+ii;
+        const int     ti    = types   [i ];
+        const Quat4d& REQi  = typeREQs[ti];
+        printf("JAMMETOT %5i %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f %15.9f\n", 
+            i+1, ps[i].x,ps[i].y,ps[i].z, REQi.x,REQi.y,Qs[i],REQi.w, dEdREQs[i].x,dEdREQs[i].y,dEdREQs[i].z,dEdREQs[i].w );
+    }
+    */
+    //exit(0);
     return E_tot;
 }
 
@@ -1658,7 +1665,7 @@ void evalEnergyComponents ( int i0, int ni, int j0, int nj, int* types, Vec3d* p
             const double  R0   = REQi.x + REQj.x;
             const double  eps  = REQi.y * REQj.y; 
             const double  Q    = Qi     * Qj    ;
-//const double  Q    = Qi     * Qj    * 1.;
+            //const double  Q    = Qi     * Qj    * 1.;
             double        H    = REQi.w * REQj.w;
             const double  sH   = (H<0.0) ? 1.0 : 0.0; 
             const double  r    = dij.norm();
