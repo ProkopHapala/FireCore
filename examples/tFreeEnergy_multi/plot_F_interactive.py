@@ -57,6 +57,10 @@ def detect_columns(filename):
                         elif p == 'cumulative_err' or p == 'TI_err': temp_map['cumulative_err'] = i
                         elif p == 'distance': temp_map['distance'] = i
                         elif p == 'JE_F': temp_map['JE_F'] = i
+                        elif p == 'JE_F_sigma': temp_map['JE_F_sigma'] = i
+                        elif p == 'JE_W_avg': temp_map['JE_W_avg'] = i
+                        elif p == 'JE_W_sigma': temp_map['JE_W_sigma'] = i
+                        elif p == 'JE_W_skew': temp_map['JE_W_skew'] = i
 
                     if 'lambda' in temp_map:
                         col_map.update(temp_map)
@@ -106,6 +110,16 @@ def plot_f_interactive(filename, output_prefix=None, N_segments=None, T=300.0, b
     cumulative_err_ti = get_col('cumulative_err')
     distances = get_col('distance')
     je_F_col = get_col('JE_F')
+    je_F_sigma_col = get_col('JE_F_sigma')
+    je_W_avg_col = get_col('JE_W_avg')
+    je_W_sigma_col = get_col('JE_W_sigma')
+    je_W_skew_col = get_col('JE_W_skew')
+
+    # Legacy files may advertise JE work columns in the header but not store them.
+    # In that case, avoid misusing the distance column as JE_W_avg.
+    if je_W_avg_col is not None and je_W_sigma_col is None and je_W_skew_col is None:
+        print("Detected legacy JE header without full work statistics; disabling JE work-stat plots.")
+        je_W_avg_col = None
 
     # Shift data to start at zero if requested
     # TI Data
@@ -119,6 +133,7 @@ def plot_f_interactive(filename, output_prefix=None, N_segments=None, T=300.0, b
 
     # JE Data
     je_plot = je_F_col
+    je_sigma_plot = je_F_sigma_col
     if je_plot is not None and not np.isnan(je_plot).all():
         valid_je = ~np.isnan(je_plot)
         if np.any(valid_je):
@@ -159,19 +174,29 @@ def plot_f_interactive(filename, output_prefix=None, N_segments=None, T=300.0, b
 
     # Create subplots
     fig = make_subplots(
-        rows=5, cols=1,
+        rows=7, cols=1,
         subplot_titles=(
             'dE/dλ vs λ',
             'Force vs λ',
             'Cumulative Free Energy ΔF(λ)',
+            'Jarzynski Work W(λ)',
+            'Jarzynski Dispersion and Skewness',
             'FE Difference (data vs ref)',
             'End-to-end distance vs λ'
         ),
         vertical_spacing=0.08,
-        row_heights=[0.2, 0.2, 0.2, 0.2, 0.2],
-        specs=[[{"secondary_y": False}], [{"secondary_y": False}], [{"secondary_y": False}], [{"secondary_y": True}], [{"secondary_y": False}]]
+        row_heights=[0.14, 0.14, 0.14, 0.14, 0.14, 0.15, 0.15],
+        specs=[
+            [{"secondary_y": False}],
+            [{"secondary_y": False}],
+            [{"secondary_y": False}],
+            [{"secondary_y": False}],
+            [{"secondary_y": True}],
+            [{"secondary_y": True}],
+            [{"secondary_y": False}]
+        ]
     )
-    plot_rows = {'dE/dλ': 1, 'Force': 2, 'FE': 3, 'FE_diff': 4, 'Distance': 5}
+    plot_rows = {'dE/dλ': 1, 'Force': 2, 'FE': 3, 'Work': 4, 'JE_stats': 5, 'FE_diff': 6, 'Distance': 7}
 
     # --- Plot 1: dE/dlambda vs lambda ---
     # TI Data
@@ -271,15 +296,17 @@ def plot_f_interactive(filename, output_prefix=None, N_segments=None, T=300.0, b
         
     # JE Data
     if je_plot is not None and not np.isnan(je_plot).all():
+        errs_je = je_sigma_plot if je_sigma_plot is not None else np.zeros_like(je_plot)
         hover_text_fe_je = [
-            f"λ = {lam:.4f}<br>ΔF (JE) = {cf:.4f} eV"
-            for lam, cf in zip(lambda_vals, je_plot)
+            f"λ = {lam:.4f}<br>ΔF (JE) = {cf:.4f} eV<br>σ(ΔF) = {err:.4f} eV"
+            for lam, cf, err in zip(lambda_vals, je_plot, errs_je)
         ]
         fig.add_trace(
             go.Scatter(
                 x=lambda_vals, y=je_plot,
                 mode='lines+markers', name='ΔF(λ) (JE)',
                 line=dict(color='red', width=2, dash='dash'), marker=dict(size=6, symbol='triangle-up'),
+                error_y=dict(type='data', array=errs_je, visible=True, color='rgba(255,0,0,0.3)'),
                 hovertext=hover_text_fe_je, hoverinfo='text'
             ),
             row=plot_rows['FE'], col=1
@@ -342,7 +369,72 @@ def plot_f_interactive(filename, output_prefix=None, N_segments=None, T=300.0, b
 
     fig.update_yaxes(title_text="ΔF(λ) [eV]", row=plot_rows['FE'], col=1)
 
-    # --- Plot 4: FE Difference ---
+    # --- Plot 4: JE Work with std ---
+    if je_W_avg_col is not None and not np.isnan(je_W_avg_col).all():
+        errs_work = je_W_sigma_col if je_W_sigma_col is not None else np.zeros_like(je_W_avg_col)
+        hover_text_work = [
+            f"λ = {lam:.4f}<br>W (avg) = {w:.4f} eV<br>σ(W) = {ws:.4f} eV"
+            for lam, w, ws in zip(lambda_vals, je_W_avg_col, errs_work)
+        ]
+        fig.add_trace(
+            go.Scatter(
+                x=lambda_vals, y=je_W_avg_col,
+                mode='lines+markers', name='W(λ) avg (JE)',
+                line=dict(color='firebrick', width=2), marker=dict(size=7, symbol='triangle-down'),
+                error_y=dict(type='data', array=errs_work, visible=True, color='rgba(178,34,34,0.3)'),
+                hovertext=hover_text_work, hoverinfo='text'
+            ),
+            row=plot_rows['Work'], col=1
+        )
+    fig.update_yaxes(title_text="Work [eV]", row=plot_rows['Work'], col=1)
+
+    # --- Plot 5: JE std and skewness vs lambda ---
+    if je_W_sigma_col is not None and not np.isnan(je_W_sigma_col).all():
+        hover_text_wsigma = [
+            f"λ = {lam:.4f}<br>σ(W) = {ws:.4f} eV"
+            for lam, ws in zip(lambda_vals, je_W_sigma_col)
+        ]
+        fig.add_trace(
+            go.Scatter(
+                x=lambda_vals, y=je_W_sigma_col,
+                mode='lines+markers', name='σ(W)',
+                line=dict(color='darkorange', width=2), marker=dict(size=6, symbol='circle'),
+                hovertext=hover_text_wsigma, hoverinfo='text'
+            ),
+            row=plot_rows['JE_stats'], col=1, secondary_y=False
+        )
+    if je_sigma_plot is not None and not np.isnan(je_sigma_plot).all():
+        hover_text_fsigma = [
+            f"λ = {lam:.4f}<br>σ(ΔF) = {fs:.4f} eV"
+            for lam, fs in zip(lambda_vals, je_sigma_plot)
+        ]
+        fig.add_trace(
+            go.Scatter(
+                x=lambda_vals, y=je_sigma_plot,
+                mode='lines+markers', name='σ(ΔF)',
+                line=dict(color='tomato', width=2, dash='dot'), marker=dict(size=5, symbol='diamond'),
+                hovertext=hover_text_fsigma, hoverinfo='text'
+            ),
+            row=plot_rows['JE_stats'], col=1, secondary_y=False
+        )
+    if je_W_skew_col is not None and not np.isnan(je_W_skew_col).all():
+        hover_text_wskew = [
+            f"λ = {lam:.4f}<br>Skew(W) = {ws:.4f}"
+            for lam, ws in zip(lambda_vals, je_W_skew_col)
+        ]
+        fig.add_trace(
+            go.Scatter(
+                x=lambda_vals, y=je_W_skew_col,
+                mode='lines+markers', name='Skew(W)',
+                line=dict(color='teal', width=2), marker=dict(size=6, symbol='x'),
+                hovertext=hover_text_wskew, hoverinfo='text'
+            ),
+            row=plot_rows['JE_stats'], col=1, secondary_y=True
+        )
+    fig.update_yaxes(title_text="Std [eV]", row=plot_rows['JE_stats'], col=1, secondary_y=False)
+    fig.update_yaxes(title_text="Skewness [-]", row=plot_rows['JE_stats'], col=1, secondary_y=True)
+
+    # --- Plot 6: FE Difference ---
     if FE_ref is not None:
         data_to_compare = None
         method_name = ""
@@ -400,7 +492,7 @@ def plot_f_interactive(filename, output_prefix=None, N_segments=None, T=300.0, b
     fig.update_yaxes(title_text="% Difference", row=plot_rows['FE_diff'], col=1, secondary_y=False)
     fig.update_yaxes(title_text="Abs Difference [eV]", row=plot_rows['FE_diff'], col=1, secondary_y=True)
 
-    # --- Plot 5: Distance ---
+    # --- Plot 7: Distance ---
     if distances is not None:
         hover_text_dist = [
             f"λ = {lam:.4f}<br>Distance = {dist:.3f} Å"
@@ -418,11 +510,11 @@ def plot_f_interactive(filename, output_prefix=None, N_segments=None, T=300.0, b
         fig.update_yaxes(title_text="End-to-end Distance [Å]", row=plot_rows['Distance'], col=1)
 
     # Update all x-axes
-    for i in range(1, 6):
+    for i in range(1, 8):
         fig.update_xaxes(title_text="λ", row=i, col=1)
 
     # Layout
-    total_height = 1600
+    total_height = 2200
     fig.update_layout(
         height=total_height,
         title=f"Free Energy Analysis: {os.path.basename(filename)}",

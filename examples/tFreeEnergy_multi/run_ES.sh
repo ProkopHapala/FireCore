@@ -8,7 +8,7 @@ set -e  # Exit on error
 
 # Default Mode
 MODE="BOTH"  # Options: TI, JE, BOTH
-JE_K=5.0     # Default JE force constant
+JE_K=2.0     # Default JE force constant
 
 # Parse command line arguments
 while [[ "$#" -gt 0 ]]; do
@@ -54,8 +54,9 @@ python3 run_ES.py \
     --Fconv 1e-6 \
     --constraints "constraints_ES.txt" \
     --JEforceconst $JE_K \
-    --nPerVFs 1 \
-    --t_damp 100
+    --dt 0.05 \
+    -T 300 \
+    --t_damp 150
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Calculation failed!"

@@ -42,7 +42,6 @@ def main():
     parser.add_argument("--Fconv", type=float, default=1e-6, help="Force convergence criterion")
     parser.add_argument("--constraints", type=str, default="constraints.txt", help="Path to constraints file")
     parser.add_argument("--mode", type=str, default="TI", choices=["TI", "JE", "BOTH"], help="Mode of calculation: TI, JE, or BOTH")
-    parser.add_argument("--nPerVFs", type=int, default=10, help="Number of steps per VF save")
     parser.add_argument("--JEforceconst", type=float, default=5.0, help="Jarzynski Equality force constant")
     parser.add_argument("-T", "--temperature", type=float, default=300.0, help="Temperature in Kelvin")
     parser.add_argument("--dt", type=float, default=0.05, help="Time step")
@@ -97,7 +96,6 @@ def main():
         nEQsteps=args.nEQsteps,
         Fconv=args.Fconv,
         mode=mode_int,
-        nPerVFs=args.nPerVFs,
         JEforceconst=args.JEforceconst
     )
 

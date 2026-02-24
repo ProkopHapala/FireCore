@@ -632,14 +632,13 @@ def plot_selection(sel=None,ax1=0,ax2=1,ps=None, s=100):
     plt.scatter( asel[:,ax1], asel[:,ax2], s=s, facecolors='none', edgecolors='r' )
 
 
-#  double computeFreeEnergy(int nCVs, float* initial_positions, float* final_positions, int nLambda, int nMDsteps, int nEQsteps, double Fconv, int mode, int nPerVFs)
-#  double computeFreeEnergy(int nCVs, float* initial_positions, float* final_positions, int nLambda, int nMDsteps, int nEQsteps, double Fconv, int mode, int nPerVFs, double JEforceconst)
-lib.computeFreeEnergy.argtypes  = [c_int, c_float_p, c_float_p, c_int, c_int, c_int, c_double, c_int, c_int, c_double]
+#  double computeFreeEnergy(int nCVs, float* initial_positions, float* final_positions, int nLambda, int nMDsteps, int nEQsteps, double Fconv, int mode, double JEforceconst)
+lib.computeFreeEnergy.argtypes  = [c_int, c_float_p, c_float_p, c_int, c_int, c_int, c_double, c_int, c_double]
 lib.computeFreeEnergy.restype   =  c_double
-def computeFreeEnergy(nCVs, initial_positions, final_positions, nLambda, nMDsteps=100000, nEQsteps=10000, Fconv=1e-6, mode=0, nPerVFs=10, JEforceconst=5.0):
+def computeFreeEnergy(nCVs, initial_positions, final_positions, nLambda, nMDsteps=100000, nEQsteps=10000, Fconv=1e-6, mode=0, JEforceconst=5.0):
     initial_positions = np.array(initial_positions, dtype=np.float32)
     final_positions = np.array(final_positions, dtype=np.float32)
-    return lib.computeFreeEnergy(nCVs, _np_as(initial_positions,c_float_p), _np_as(final_positions,c_float_p), nLambda, nMDsteps, nEQsteps, Fconv, mode, nPerVFs, JEforceconst)
+    return lib.computeFreeEnergy(nCVs, _np_as(initial_positions,c_float_p), _np_as(final_positions,c_float_p), nLambda, nMDsteps, nEQsteps, Fconv, mode, JEforceconst)
 
 # ====================================
 # ========= Test Functions

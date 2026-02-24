@@ -249,7 +249,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
 }
 
 
-    double computeFreeEnergy(int nCVs, Vec3f* initial_positions, Vec3f* final_positions, int nLambda, int nMDsteps = 100000, int nEQsteps = 10000, double Fconv = 1e-6, int mode = 0, int nPerVFs_ = 10, double JEforceconst = 5.0){
+    double computeFreeEnergy(int nCVs, Vec3f* initial_positions, Vec3f* final_positions, int nLambda, int nMDsteps = 100000, int nEQsteps = 10000, double Fconv = 1e-6, int mode = 0, double JEforceconst = 5.0){
         // mode: 0=TI, 1=JE, 2=Both
         bool doTI = (mode == 0) || (mode == 2);
         bool doJE = (mode == 1) || (mode == 2);
@@ -272,7 +272,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         // Write header
         fprintf(fti, "# Free Energy Calculation Results\n");
         fprintf(fti, "# Mode: %d (0=TI, 1=JE, 2=Both)\n", mode);
-        fprintf(fti, "# lambda  TI_dE/dlambda  TI_sigma  TI_F  TI_err  JE_F  JE_W_avg  JE_W_sigma  distance\n");
+        fprintf(fti, "# lambda  TI_dE/dlambda  TI_sigma  TI_F  TI_err  JE_F  JE_F_sigma  JE_W_avg  JE_W_sigma  JE_W_skew  distance\n");
 
         std::vector<double> res_lambda(nLambda);
         std::vector<double> res_TI_dE(nLambda, NAN);
@@ -280,8 +280,10 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         std::vector<double> res_TI_F(nLambda, NAN);
         std::vector<double> res_TI_Ferr(nLambda, NAN);
         std::vector<double> res_JE_F(nLambda, NAN);
+        std::vector<double> res_JE_F_sigma(nLambda, NAN);
         std::vector<double> res_JE_W_avg(nLambda, NAN);
         std::vector<double> res_JE_W_sigma(nLambda, NAN);
+        std::vector<double> res_JE_W_skew(nLambda, NAN);
         std::vector<double> res_dist(nLambda, NAN);
 
         // Initialize lambda array
@@ -409,29 +411,34 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
 
             double beta = 1.0 / (const_kB * go.T_target);
             double dLambda = 1.0 / (double)(nLambda - 1);
-            nPerVFs = nPerVFs_;
             int nBatches = nMDsteps / (nLambda * nSystems);
             if( nBatches < 1 ) nBatches = 1;
             
             printf("  Running %d batches of %d pulling steps each...\n", nBatches, nLambda);
 
             std::vector<double> sum_exp_W(nLambda, 0.0);
+            std::vector<double> sum_exp_W2(nLambda, 0.0);
+            std::vector<double> sum_W(nLambda, 0.0);
+            std::vector<double> sum_W2(nLambda, 0.0);
+            std::vector<double> sum_W3(nLambda, 0.0);
             for(int batch=0; batch<nBatches; batch++){
                 printf("  Batch %d/%d...\n", batch+1, nBatches);
                 
                 // 1. Equilibrate lambda=0
                 printf("  Equilibrating %d steps...\n", nEQsteps);
                 nPerVFs = nEQsteps;
-                for(int i=0; i<nSystems * nLambda; i++) gpu_work[i] = randf(-1.0, 1.0); // initialize work buffer with random values to check later if it's properly overwritten
+                for(int isys=0; isys<nSystems; isys++){ jeParams[isys] = Quat4i{-1, nLambda, 0, 0}; } // JE equilibration mode at lambda=0
+                for(int i=0; i<nSystems * nLambda; i++) gpu_work[i] = randf(-1.0, 1.0);
                 ocl.upload( ocl.ibuff_work, gpu_work );
                 ocl.upload( ocl.ibuff_jeParams, jeParams );
                 run_ocl_opt( nEQsteps, Fconv );
 
                 // 2. Pulling
                 nPerVFs = nLambda;
+                for(int isys=0; isys<nSystems; isys++){ jeParams[isys] = Quat4i{0, nLambda, 0, 0}; } // activate JE pulling from step 0
                 ocl.upload( ocl.ibuff_jeParams, jeParams );
 
-                for(int i=0; i<nSystems * nLambda; i++) gpu_work[i] = randf(-1.0, 1.0); // initialize work buffer with random values to check later if it's properly overwritten
+                for(int i=0; i<nSystems * nLambda; i++) gpu_work[i] = randf(-1.0, 1.0);
                 ocl.upload( ocl.ibuff_work, gpu_work );
 
                 printf("  Pulling for %d steps...\n", nLambda);
@@ -449,7 +456,12 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                         //     printf("  System %d, lambda %f, dW %f, cumulative W %f\n", isys, (float)i/(float)(nLambda-1), dW, W_traj + dW);
                         // }
                         W_traj += (double)dW;
-                        sum_exp_W[i] += exp(-beta * W_traj);
+                        double expW = exp(-beta * W_traj);
+                        sum_exp_W[i]  += expW;
+                        sum_exp_W2[i] += expW * expW;
+                        sum_W[i]      += W_traj;
+                        sum_W2[i]     += W_traj * W_traj;
+                        sum_W3[i]     += W_traj * W_traj * W_traj;
                     }
                 }
             }
@@ -457,10 +469,35 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
             // Calculate free energy profile from exponential averages
             double total_samples = (double)(nBatches * nSystems);
             res_JE_F[0] = 0.0;
+            res_JE_F_sigma[0] = 0.0;
+            res_JE_W_avg[0] = 0.0;
+            res_JE_W_sigma[0] = 0.0;
+            res_JE_W_skew[0] = 0.0;
             res_dist[0] = initial_positions[0].dist(initial_positions[1]);
             for(int step=1; step<nLambda; step++){
-                double dF = -log( sum_exp_W[step] / total_samples ) / beta;
+                double mean_expW = sum_exp_W[step] / total_samples;
+                double mean_expW2 = sum_exp_W2[step] / total_samples;
+                double var_expW = mean_expW2 - mean_expW * mean_expW;
+                if(var_expW < 0.0) var_expW = 0.0;
+                double sem_expW = sqrt(var_expW / total_samples);
+
+                double dF = -log( mean_expW ) / beta;
+                double dF_sigma = (mean_expW > 0.0) ? (sem_expW / (beta * mean_expW)) : NAN;
+
+                double w_mean = sum_W[step] / total_samples;
+                double w2_mean = sum_W2[step] / total_samples;
+                double w3_mean = sum_W3[step] / total_samples;
+                double w_var = w2_mean - w_mean * w_mean;
+                if(w_var < 0.0) w_var = 0.0;
+                double w_sigma = sqrt(w_var);
+                double m3 = w3_mean - 3.0 * w_mean * w2_mean + 2.0 * w_mean * w_mean * w_mean;
+                double w_skew = (w_sigma > 1e-16) ? (m3 / (w_sigma * w_sigma * w_sigma)) : 0.0;
+
                 res_JE_F[step] = dF;
+                res_JE_F_sigma[step] = dF_sigma;
+                res_JE_W_avg[step] = w_mean;
+                res_JE_W_sigma[step] = w_sigma;
+                res_JE_W_skew[step] = w_skew;
                 res_lambda[step] = (float)step / (float)(nLambda - 1);
                 Vec3f dr_i = initial_positions[0] - initial_positions[1];
                 Vec3f dr_f = final_positions[0] - final_positions[1];
@@ -470,10 +507,12 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         }
 
         for(int i=0; i<nLambda; i++){
-            fprintf(fti, "%10.6f %12.8f %12.8f %12.8f %12.8f %12.8f %10.6f\n", 
+            fprintf(fti, "%10.6f %12.8f %12.8f %12.8f %12.8f %12.8f %12.8f %12.8f %12.8f %12.8f %10.6f\n", 
                 res_lambda[i], 
                 res_TI_dE[i], res_TI_sigma[i], res_TI_F[i], res_TI_Ferr[i],
                 res_JE_F[i],
+                res_JE_F_sigma[i],
+                res_JE_W_avg[i], res_JE_W_sigma[i], res_JE_W_skew[i],
                 res_dist[i]
             );
         }
