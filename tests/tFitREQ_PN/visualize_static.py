@@ -41,43 +41,73 @@ def get_atom_labels(types, host, type_names, mode="chem"):
     return labels
 
 def plot_2d_maps(angles, distances, E_dft, E_model, E_diff, min_a, min_d, Emin, save_path="plot_2d_maps.png"):
+    # Shift reference to its minimum (match plot_compare_combined)
+    Eref_raw = np.array(E_dft, copy=True)
+    ref_min = np.nanmin(Eref_raw)
+    Eref = Eref_raw - ref_min
+    Emod = np.array(E_model, copy=True) if E_model is not None else None
+    if Emod is not None:
+        Emod = Emod - ref_min
+    Ediff = np.array(E_diff, copy=True)
+
+    # Shared vmin/vmax from reference
+    vmin = float(np.nanmin(Eref)) if np.any(np.isfinite(Eref)) else None
+    if vmin is not None and vmin > 0: vmin = 0.0
+    vmax = -vmin if vmin is not None else None
+
+    # Difference clamp (symmetric, small span)
+    E_MARGIN = 1.0  # kcal/ev units consistent with inputs (kcal here)
+
+    # Zero line from raw DFT: angle-dependent E=0 crossing mapped to pixel indices
+    zero_r_pixels = []
+    r_vec = np.asarray(distances, dtype=float)
+    for i_ang in range(len(angles)):
+        row = Eref_raw[:, i_ang]
+        r0 = np.nan
+        for j in range(len(r_vec)-1):
+            if not (np.isfinite(row[j]) and np.isfinite(row[j+1])):
+                continue
+            if row[j] > 0 and row[j+1] <= 0:
+                r0 = r_vec[j] - row[j]*(r_vec[j+1]-r_vec[j])/(row[j+1]-row[j])
+                break
+        if np.isnan(r0):
+            zero_r_pixels.append(np.nan)
+        else:
+            zero_r_pixels.append(int(np.argmin(np.abs(r_vec - r0))))
+
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-    
-    # Normalization based on Emin
-    vmin, vmax = Emin, -Emin
-    diff_scale = 0.25
-    vmin_diff, vmax_diff = diff_scale * Emin, -diff_scale * Emin
-    
-    im0 = axes[0].imshow(E_dft, origin='lower', aspect='auto', cmap='coolwarm', vmin=vmin, vmax=vmax)
+
+    im0 = axes[0].imshow(Eref, origin='lower', aspect='auto', cmap='bwr', vmin=vmin, vmax=vmax)
     axes[0].set_title('DFT Reference')
-    
-    im1 = axes[1].imshow(E_model, origin='lower', aspect='auto', cmap='coolwarm', vmin=vmin, vmax=vmax)
+
+    im1 = axes[1].imshow(Emod, origin='lower', aspect='auto', cmap='bwr', vmin=vmin, vmax=vmax)
     axes[1].set_title('Model')
-    
-    im2 = axes[2].imshow(E_diff, origin='lower', aspect='auto', cmap='bwr', vmin=vmin_diff, vmax=vmax_diff)
-    axes[2].set_title(f'Difference (Model - DFT) [scale={diff_scale}]')
-    
+    axes[1].plot(range(len(angles)), zero_r_pixels, linestyle=':', color='k', alpha=0.7, label='E_DFT=0')
+    axes[1].legend(fontsize=8)
+
+    im2 = axes[2].imshow(Ediff, origin='lower', aspect='auto', cmap='bwr', vmin=-E_MARGIN, vmax=E_MARGIN)
+    axes[2].set_title('Difference (Model - DFT)')
+    axes[2].plot(range(len(angles)), zero_r_pixels, linestyle=':', color='k', alpha=0.7)
+
     for ax in axes:
-        # X is Angle
         xticks = np.linspace(0, len(angles)-1, 5, dtype=int)
         ax.set_xticks(xticks)
         ax.set_xticklabels([f"{angles[i]:.1f}" for i in xticks])
-        
-        # Y is Distance
+
         yticks = np.linspace(0, len(distances)-1, 5, dtype=int)
         ax.set_yticks(yticks)
         ax.set_yticklabels([f"{distances[i]:.2f}" for i in yticks])
-        
+
         ax.set_xlabel("Angle [deg]")
         ax.set_ylabel("Distance [A]")
-        
-        # Plot crosshair (X=Angle_idx, Y=Dist_idx)
+
+        # Crosshair at global minimum
         ax.plot([min_a], [min_d], 'k+', markersize=15, markeredgewidth=2)
-        
+
     plt.colorbar(im0, ax=axes[0], fraction=0.046, pad=0.04)
     plt.colorbar(im1, ax=axes[1], fraction=0.046, pad=0.04)
     plt.colorbar(im2, ax=axes[2], fraction=0.046, pad=0.04)
-    
+
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
@@ -256,8 +286,8 @@ def main():
     parser.add_argument("--atom_types",    type=str,   default="data/AtomTypes.dat", help="AtomTypes.dat path")
     parser.add_argument("--element_types", type=str,   default="data/ElementTypes.dat", help="ElementTypes.dat path")
     parser.add_argument("--label_mode",    type=str,   default="chem_no_unders", choices=["chem_no_unders", "chem", "numeric"], help="Label style")
-    parser.add_argument("--lepairs",       type=float, default=1.0, help="Epair distance from host")
-    parser.add_argument("--kmorse",        type=float, default=1.6, help="Morse curvature")
+    parser.add_argument("--lepairs",       type=float, default=0.8, help="Epair distance from host")
+    parser.add_argument("--kmorse",        type=float, default=1.8, help="Morse curvature")
     parser.add_argument("--slice_mode",    type=str,   default="emin", choices=["rigid", "emin"], help="Angular slice mode: rigid uses fixed distance, emin plots per-angle minima Rmin/Emin")
     parser.add_argument("--init_relax",    type=int,   default=0, help="Do a single PN step with dt=0 to apply DOF xstart before evaluation")
     args = parser.parse_args()

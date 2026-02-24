@@ -13,10 +13,16 @@ A practical guide for students diagnosing hydrogen-bond fitting runs in FitREQ. 
 
 ## 2) Prerequisites
 - Dataset: `tests/tFitREQ_PN/wb97m-split/H2O-A1_H2O-D1-y.xyz` (double-well reference)
-- DOF file: epair-only (no Q), e.g., [tests/tFitREQ/dofSelection_MorseSR_H2O_epairOnly.dat](cci:7://file:///home/prokophapala/git/FireCore-fitREQH/tests/tFitREQ/dofSelection_MorseSR_H2O_epairOnly.dat:0:0-0:0)
-- Python deps: numpy, matplotlib; optional: umap-learn, pacmap, scikit-learn
-- Ensure [pyBall/FitREQ.py](cci:7://file:///home/prokophapala/git/FireCore-fitREQH/pyBall/FitREQ.py:0:0-0:0) uses the combined plotting with correct normalization (shift to min, shared vmin/vmax from ref).
-- DOF metadata: each `.dat` may carry hyperparameters in a `#HYPER kMorse=... Lepairs=... weight_alpha=... hScale=...` line. Grid search now writes these automatically; string scans read and interpolate them.
+- DOF file: epair-only (no Q)
+  - Legacy FitREQ: [tests/tFitREQ/dofSelection_MorseSR_H2O_epairOnly.dat](cci:7://file:///home/prokophapala/git/FireCore-fitREQH/tests/tFitREQ/dofSelection_MorseSR_H2O_epairOnly.dat:0:0-0:0)
+  - PN backend: [tests/tFitREQ/dofSelection_MorseSR_H2O_epairOnly-PN.dat](cci:7://file:///home/prokophapala/git/FireCore-fitREQH/tests/tFitREQ/dofSelection_MorseSR_H2O_epairOnly-PN.dat:0:0-0:0)
+- Python deps (install once):
+  ```bash
+  pip install --user numpy matplotlib scikit-learn umap-learn pacmap
+  ```
+  UMAP and PaCMAP are optional; PCA fallback works without them.
+- Backend switch: add `--pn` to use `FitREQ_PN` everywhere; omit for legacy `FitREQ`.
+- DOF metadata: each `.dat` may carry hyperparameters in a `#HYPER kMorse=... Lepairs=... weight_alpha=... hScale=...` line. Grid search writes these automatically; string scans read and interpolate them.
 
 ## 3) Scripts overview (all in `tests/tFitREQ/`)
 - [grid_search.py](cci:7://file:///home/prokophapala/git/FireCore-fitREQH/tests/tFitREQ/grid_search.py:0:0-0:0): Hyperparameter sweep; outputs combined 2D+1D figures per run and `ensemble_data.npz`.
@@ -31,11 +37,21 @@ cd tests/tFitREQ
 python grid_search.py \
   --xyz ../tFitREQ_PN/wb97m-split/H2O-A1_H2O-D1-y.xyz \
   --dof_file dofSelection_MorseSR_H2O_epairOnly.dat \
-  --out_dir grid_search_out
+  --out_dir grid_search_out \
+  [--pn]
 ```
 - Sweeps `kMorse=[1.6,1.7,1.8]`, `Lepairs=[0.6,0.8,1.0,1.2]`, `weight_alpha=[4.0]`, `hScale=[0.0,0.5,1.0]` (edit in script).
 - Outputs: one combined PNG per run in `grid_search_out/`, plus `ensemble_data.npz` and `run_*.dat` files with `#HYPER` metadata embedded.
 - Check logs for min/max, NaN/Inf diagnostics; verbosity is set to 0.
+
+UMAP collage (matching old `ensemble_umap_all.png`):
+```bash
+python cluster_ensemble.py \
+  --data grid_search_out/ensemble_data.npz \
+  --out_prefix grid_search_out/ensemble \
+  [--pn]
+```
+Outputs `grid_search_out/ensemble_all.png` with 4 panels (colored by log10(error), kMorse, Lepairs, weight_alpha).
 
 ## 5) Compare two endpoints
 Pick two optimized DOF files (e.g., best/worst from grid):
@@ -49,7 +65,7 @@ python compare_endpoints.py \
 Outputs combined ref/model/diff + minima plots for rigid and relaxed variants.
 
 ## 6) Path (string/NEB-like) scan with Hessians
-Interpolate DOFs **and** hyperparameters between two endpoints (reads `#HYPER` from the `.dat` files):
+Interpolate DOFs **and** hyperparameters between two endpoints (reads `#HYPER` from the `.dat` files). Add `--pn` to run PN backend:
 ```bash
 python string_scan.py \
   --dofA grid_search_out/run_MIN.dat \
@@ -57,7 +73,8 @@ python string_scan.py \
   --xyz ../tFitREQ_PN/wb97m-split/H2O-A1_H2O-D1-y.xyz \
   --n_points 11 \
   --relax --hessian \
-  --out_prefix grid_search_out/path
+   --out_prefix grid_search_out/path \
+  [--pn]
 ```
 Outputs:
 - `path_string.png` (energy barrier, **relaxed** parameter evolution with y-lim ±1, gradients)
@@ -71,21 +88,37 @@ Interpretation:
 - Correlation heatmaps: red = positively correlated, blue = anti-correlated; compare α=0 vs α=1 to see physics shift across basins.
 
 ## 7) Dimensionality reduction (ensemble or path)
-Use ensemble (`ensemble_data.npz`) or path (`path_trajectory.npz`):
+Use ensemble (`ensemble_data.npz`) or path (`path_trajectory.npz`). UMAP/PacMAP enabled if installed (see prerequisites):
 ```bash
 python plot_dr.py \
   --trajectory_npz grid_search_out/path_trajectory.npz \
-  --out_prefix grid_search_out/dr
+  --out_prefix grid_search_out/dr \
+  [--pn]
 ```
 Outputs: `dr_pca.png` (and `dr_umap.png` / `dr_pacmap.png` if libs installed), showing clustering/bifurcation; colored by log(error), with initial/relaxed path overlays.
+Also see the ensemble collage (UMAP/PCA) via `cluster_ensemble.py` (Section 4) which produces `ensemble_all.png` colored by log10(error), kMorse, Lepairs, weight_alpha.
+
+### 7.1) Primer: PCA vs UMAP vs PaCMAP (why we use them)
+- **PCA (Principal Component Analysis):** Linear projection that rotates the data to maximize variance along orthogonal axes. Pros: fast, deterministic, interpretable (loadings). Cons: only linear structure; may miss curved manifolds.
+- **UMAP (Uniform Manifold Approximation and Projection):** Nonlinear manifold learner that preserves local neighborhoods while keeping some global structure. Pros: reveals curved branches/bifurcations in DOF space; fast on moderate data. Cons: stochastic (seed-sensitive), hyperparameters (`n_neighbors`, `min_dist`) affect layouts.
+- **PaCMAP (Pairwise Controlled Manifold Approximation):** Nonlinear method emphasizing both local and mid-range relationships for clearer global structure. Pros: often shows cluster separation and medium-scale trends better than UMAP; good for moderate-size ensembles. Cons: also stochastic; needs `pynndescent`/`numba` stack.
+- **Why here:** The ensemble of optimized DOFs often lives on a low-dimensional manifold shaped by competing physics. PCA gives a baseline linear view; UMAP/PaCMAP expose nonlinear separations (distinct basins, forks). Coloring by log(error) highlights which regions fit better/worse.
+
+### 7.2) Hessian and parameter correlations (why compute it)
+- Around a solution, the **Hessian** of the objective w.r.t. parameters/DOFs approximates curvature. Its eigenvectors show soft/stiff directions: soft modes = directions with low curvature → parameters can trade off.
+- The pseudo-inverse of the Hessian acts like a covariance in parameter space. Converting to a correlation matrix (normalize by std dev per parameter) reveals which parameters co-vary (red, positive) or counter-vary (blue, negative).
+- **Why here:**
+  - Soft modes indicate redundancies or ill-conditioned combinations of DOFs (e.g., two parameters both adjusting depth/width of the same well).
+  - Correlation heatmaps show which parameters move together between basins—useful for pruning, reparameterizing, or adding regularization.
+  - Comparing α=0, 0.5, 1 (ends vs middle of the path) shows how the governing physics shifts along the barrier.
 
 ## 8) One-click pipeline
-To run grid search, DR, auto-select farthest endpoints (min/max error), and do a relaxed + Hessian string scan with hyperparameter interpolation:
+To run grid search, DR, auto-select farthest endpoints (min/max error), and do a relaxed + Hessian string scan with hyperparameter interpolation. Add `--pn` to switch backend and auto-pick the PN DOF file:
 ```bash
 cd tests/tFitREQ
-./run_barrier_pipeline.sh
+./run_barrier_pipeline.sh [--pn]
 ```
-Outputs land in `grid_search_out/`: grid run PNGs, ensemble DR, `path_string.png`, `path_hessian_*`, and `path_dr_*`.
+Outputs land in `grid_search_out/`: grid run PNGs, ensemble DR (`ensemble_*`), `path_string.png`, `path_hessian_*`, and `path_dr_*`. Use `cluster_ensemble.py` (see Section 4) to add `ensemble_all.png` collage.
 
 ## 9) Normalization and zero-line sanity
 - All plots use ref-based vmin/vmax (shifted to ref min) shared across ref/model/diff.
