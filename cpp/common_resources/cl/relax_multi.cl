@@ -1004,7 +1004,7 @@ __kernel void updateAtomsMMFFf4(
         // ------- constrains
         float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
 
-        if( (cons.w > 0.f) && jeParams && (jeParams[iS].x > -1) ){
+        if( (cons.w > 0.f) && jeParams && (jeParams[iS].x >= -1) ){
             // Jarzynski equality or Setup Equilibration
             // We use standard "constr" for initial position and "constrK" for final position
             // But we use "cons.w" as stiffness

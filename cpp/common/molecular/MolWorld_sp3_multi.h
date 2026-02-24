@@ -291,6 +291,9 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
 
         double cumulative_FE = 0.0;
 
+        Quat4i jeParamsInit = Quat4i{ -2, -2, -2, -2 };
+        _realloc0( jeParams, nSystems, jeParamsInit );
+
         // --- Thermodynamic Integration (TI) ---
         if(doTI){
             printf("\n=== Thermodynamic Integration ===\n");
@@ -561,8 +564,9 @@ void realloc( int nSystems_ ){
     Quat4f _q0{0.0,-1.0,0.0,0.0}; _realloc0( TDrive,   nSystems, _q0 );
 
     // Initialize averageForces buffer for thermodynamic integration
-    _realloc0( averageForces, nSystems, Quat4fZero );
-    _realloc0( jeParams, nSystems, Quat4iMinusOnes );
+    _realloc0( averageForces, nSystems, Quat4fZero );        
+    Quat4i jeParamsInit = Quat4i{ -2, -2, -2, -2 };
+    _realloc0( jeParams, nSystems, jeParamsInit );
 
     _realloc( pbcshifts, ocl.npbc*nSystems );
 
@@ -2019,10 +2023,10 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     // picked2GPU( ipicked,  1.0 );
     if(initial){
         // Set up constraints (set)
-        Vec3f initial_pos_1 = {-10.5, 0.0, 0.0};
-        Vec3f final_pos_1 = {-15.5, 0.0, 0.0};
-        Vec3f initial_pos_2 = {+10.5, 0.0, 0.0};
-        Vec3f final_pos_2 = {+15.5, 0.0, 0.0};
+        Vec3f initial_pos_1 = {-1.5, 0.0, 0.0};
+        Vec3f final_pos_1 = {-5.5, 0.0, 0.0};
+        Vec3f initial_pos_2 = {+1.5, 0.0, 0.0};
+        Vec3f final_pos_2 = {+5.5, 0.0, 0.0};
 
         for(int isys=0; isys<nSystems; isys++){
             float k = 0.0f;
