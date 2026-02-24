@@ -45,16 +45,17 @@ echo "Step 2: Running Free Energy Calculation (Mode: $MODE)..."
 echo "----------------------------------------"
 python3 run_ES.py \
     --mode $MODE \
-    --nSys 20 \
+    --nSys 100 \
     --xyz_name "../tMMFF/data/entropic_spring_$N.xyz" \
     --system_name "entropic_spring_$N" \
     --nLambda 100000 \
-    --nMDsteps 2000000 \
+    --nMDsteps 10000000 \
     --nEQsteps 50000 \
     --Fconv 1e-6 \
     --constraints "constraints_ES.txt" \
     --JEforceconst $JE_K \
-    --nPerVFs 1
+    --nPerVFs 1 \
+    --t_damp 100
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Calculation failed!"

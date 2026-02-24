@@ -338,8 +338,8 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 for(int isys=0; isys<nSystems; isys++) averageForces[isys] = Quat4fZero;
                 upload( ocl.ibuff_averageForces, averageForces );
 
-                printf("  Production %d steps...\n", nMDsteps);
-                run_ocl_opt( nMDsteps, Fconv);
+                printf("  Production %d steps...\n", nMDsteps/nLambda);
+                run_ocl_opt( nMDsteps/nLambda, Fconv);
 
                 ocl.download( ocl.ibuff_averageForces, averageForces );
                 ocl.finishRaw();
@@ -348,8 +348,8 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                     int il = isys + batch*nSystems;
                     if(il >= nLambda) continue;
                     float lambda = (float)il / (float)(nLambda - 1);
-                    double dE = averageForces[isys].w * (1.0/ (double)nMDsteps);
-                    double mean_sq = averageForces[isys].x * (1.0 / (double)nMDsteps);
+                    double dE = averageForces[isys].w * (1.0*nLambda/ (double)(nMDsteps));
+                    double mean_sq = averageForces[isys].x * (1.0*nLambda / (double)(nMDsteps));
                     double var = mean_sq - dE * dE;
                     double sigma = sqrt(fabs(var));
 
@@ -421,18 +421,17 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 
                 // 1. Equilibrate lambda=0
                 printf("  Equilibrating %d steps...\n", nEQsteps);
-                nPerVFs = nEQsteps;                
-                for(int isys=0; isys<nSystems; isys++){ jeParams[isys].x = -1; }
+                nPerVFs = nEQsteps;
+                for(int i=0; i<nSystems * nLambda; i++) gpu_work[i] = randf(-1.0, 1.0); // initialize work buffer with random values to check later if it's properly overwritten
+                ocl.upload( ocl.ibuff_work, gpu_work );
                 ocl.upload( ocl.ibuff_jeParams, jeParams );
                 run_ocl_opt( nEQsteps, Fconv );
 
                 // 2. Pulling
-                // nPerVFs = nLambda;
-                nPerVFs = nPerVFs_;
-                for(int isys=0; isys<nSystems; isys++){ jeParams[isys].x = 0; jeParams[isys].y = nLambda; }
+                nPerVFs = nLambda;
                 ocl.upload( ocl.ibuff_jeParams, jeParams );
 
-                for(int i=0; i<nSystems * nLambda; i++) gpu_work[i] = 0;
+                for(int i=0; i<nSystems * nLambda; i++) gpu_work[i] = randf(-1.0, 1.0); // initialize work buffer with random values to check later if it's properly overwritten
                 ocl.upload( ocl.ibuff_work, gpu_work );
 
                 printf("  Pulling for %d steps...\n", nLambda);
@@ -1174,14 +1173,6 @@ double evalVFs( double Fconv=1e-6 ){
         if( gopts[isys].bExploring && !bOnlyRelax ){
             TDrive[isys].x = go.T_target;  // Temperature [K]
             TDrive[isys].y = go.gamma_damp;  // gamma_damp
-            // if( bJE_pulling ){
-            //     float lambda   = CVs[nloop % iterPerFrame];
-            //     TDrive[isys].z = lambda;
-            // }else{
-            //     TDrive[isys].z = 0;
-            // }
-            // printf("evalVFs() TDrive[isys].z = %f\n", TDrive[isys].z);
-            // printf("evalVFs() TDrive[isys].z = %f\n", TDrive[isys].z);
             TDrive[isys].w = randf(-1.0,1.0); 
         }else{
             TDrive[isys].y = -1.0; // gamma_damp
@@ -1979,7 +1970,7 @@ int debug_eval(){
     exit(0);
 }
 
-bool initial = true;  // Disabled test code - constraints are set by computeFreeEnergy
+bool initial = false;  // Disabled test code - constraints are set by computeFreeEnergy
 int run_ocl_opt( int niter, double Fconv=1e-6 ){
     //printf("MolWorld_sp3_multi::run_ocl_opt() niter=%i bGroups=%i ocl.nGroupTot=%i \n", niter, bGroups, ocl.nGroupTot );
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
@@ -2082,7 +2073,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             {
                 err |= task_cleanF->enque_raw();  // Clear forces before force evaluation
                 if( bGroupDrive )err |= task_GroupUpdate->enque_raw();
-                if(dovdW)[[likely]]{
+                if(0*dovdW)[[likely]]{
                     if(bSurfAtoms)[[likely]]{
                         if  (bGridFF)[[likely]]{ 
                             if(bBspline)[[likely]]{

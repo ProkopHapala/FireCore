@@ -44,6 +44,9 @@ def main():
     parser.add_argument("--mode", type=str, default="TI", choices=["TI", "JE", "BOTH"], help="Mode of calculation: TI, JE, or BOTH")
     parser.add_argument("--nPerVFs", type=int, default=10, help="Number of steps per VF save")
     parser.add_argument("--JEforceconst", type=float, default=5.0, help="Jarzynski Equality force constant")
+    parser.add_argument("-T", "--temperature", type=float, default=300.0, help="Temperature in Kelvin")
+    parser.add_argument("--dt", type=float, default=0.05, help="Time step")
+    parser.add_argument("--t_damp", type=float, default=100.0, help="Damping time constant")
 
     args = parser.parse_args()
 
@@ -57,8 +60,8 @@ def main():
         sAngleTypes="../../cpp/common_resources/AngleTypes.dat",
         bMMFF=True,
         bEpairs=False,
-        T=300.0,
-        gamma=1/(100*0.05)  # dt_deafult is 0.05 and 100 steps are used for termalization
+        T=args.temperature,
+        gamma=1/(args.t_damp*args.dt)  # dt_deafult is 0.05 and 100 steps are used for termalization
     )
 
     constraints = load_constraints(args.constraints)

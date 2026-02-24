@@ -1004,7 +1004,7 @@ __kernel void updateAtomsMMFFf4(
         // ------- constrains
         float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
 
-        if( (cons.w > 0.f) && jeParams ){
+        if( (cons.w > 0.f) && jeParams && (jeParams[iS].x > -1) ){
             // Jarzynski equality or Setup Equilibration
             // We use standard "constr" for initial position and "constrK" for final position
             // But we use "cons.w" as stiffness
@@ -1046,6 +1046,8 @@ __kernel void updateAtomsMMFFf4(
                 
                 if(consEnd.w>0.0f && step < nLambda){
                     jeParams[iS].x += 1; // Increment step index for next step exactly once per system
+                    if(step+1 < nLambda)
+                        TDrives[iS].w = work[ nLambda * iS + step+1 ]; // I missed random seed in TDrives, so I use work buffer to store the random numbers...
                 }
             } else if (step == -1) {
                 // Initial Equilibrium Step
@@ -1082,21 +1084,6 @@ __kernel void updateAtomsMMFFf4(
             // averageForces[iS].z is used as temporary storage for force difference (F1 - F2)
             // averageForces[iS].x accumulates sum of squared force differences (for variance)
 
-            // Helper function to atomically add float using compare-and-swap
-            // OpenCL doesn't have atomic_add for floats, so we use atomic_cmpxchg
-/*
-            float4 avgF = averageForces[iS];
-            if(sign > 0.0f){
-                float 
-                avgF.w += sign * force_proj;
-//                avgF.x += force_proj*force_proj;          
-                averageForces[iS].w = avgF.w;
-            } else {
-                avgF.z += sign * force_proj;
-//                avgF.y += force_proj*force_proj;          
-                averageForces[iS].z = avgF.z;
-            }
-*/
            __global float* avgF_ptr = (__global float*)(&averageForces[iS]);
 
             // Atomic add for .w component: accumulate 0.5*(F1 - F2)·cK
@@ -1109,48 +1096,6 @@ __kernel void updateAtomsMMFFf4(
                     new_val = old_val + 0.5f * sign * force_proj;
                 } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
             }
-
-/*
-__global float* avgF_ptr = (__global float*)(&averageForces[iS]);
-
-// Atomic adds pro všechny tři komponenty
-{
-    volatile __global float* addr0 = &avgF_ptr[0];  // .x += 0.5*(F0-F1)
-    volatile __global float* addr2 = &avgF_ptr[2];  // .z += sign*F0
-    volatile __global float* addr3 = &avgF_ptr[3];  // .w += sign*F1
-
-    // Nejdřív .x (funguje ti to)
-    {
-        volatile __global float* addr = addr0;
-        float old_val, new_val;
-        do {
-            old_val = *addr;
-            new_val = old_val + 0.5f * sign * force_proj;
-        } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
-    }
-
-    // Pak .z += sign*F0 (jen pro sign>0)
-    if (sign > 0.0f) {
-        volatile __global float* addr = addr2;
-        float old_val, new_val;
-        do {
-            old_val = *addr;
-            new_val = old_val + sign * force_proj;
-        } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
-    }
-
-    // Pak .w += sign*F1 (jen pro sign<0)
-    if (sign < 0.0f) {
-        volatile __global float* addr = addr3;
-        float old_val, new_val;
-        do {
-            old_val = *addr;
-            new_val = old_val + sign * force_proj;
-        } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
-    }
-}
-*/
-            
             // For variance calculation: compute (F1 - F2)·cK for THIS MD step only
             // We use .y to store F1·cK temporarily (not .z which accumulates over all steps)
             if(sign > 0.0f){
