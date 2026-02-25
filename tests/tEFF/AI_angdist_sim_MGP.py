@@ -96,7 +96,6 @@ def plot_energy_landscape( Xs, Ys, Es, Espan=None):
     plt.colorbar(label='Total Energy ')
     plt.xlabel('Distance (Å)')
     plt.ylabel('Angle (rad)')
-    #plt.title('Potential Energy Surface')     
 
 
 def save_simulation(angleArr, distArr, minTheta ,fileToSavePath, allEtot=None, flexVar=None, variance=None):
@@ -130,8 +129,6 @@ def get_variance_from_ECandPS(theta): #Function we need to minimize
     outEs = np.zeros((nrec,5))
     epos = np.zeros( (nrec, ne, 4) )
     convSum = [0]
-    # eff.setEnergyConstants(eConst)
-    # eff.setPauliGaussSizes(sizes)
     eff.setParsECandPS(theta)
     eff.setFixedAtoms(fixedAtoms)
     eff.processXYZ_e(elementPath_e, outEs=outEs, epos=epos, nstepMax=10000, dt=0.005, Fconv=1e-3, xyz_out=None, fgo_out=None, convSum=convSum) # FOR NORMAL PURPOSES USE nstepMax=10000
@@ -161,10 +158,6 @@ def get_forces_fixed(theta):
     eff.setFixedAtoms(True)
     eff.setParsECandPS(theta)
     eff.processXYZ_e(forces_fixed_path, outEs=outEs, epos=epos, apos=apos, fapos=fapos, nstepMax=10000, dt=0.005, Fconv=1e-3, xyz_out=None, fgo_out=None, convSum=convSum) # FOR NORMAL PURPOSES USE nstepMax=10000
-    # forces = 0
-    # for snglFapos in fapos:
-    #     for snglForce in snglFapos:
-    #         forces+= np.linalg.norm(snglForce)
     forces = np.linalg.norm(fapos)
     return forces
 
@@ -192,7 +185,7 @@ def get_geometry_no_fixed(theta):
             for j in range(i+1, hatoms):
                 HC1 = snglApos[i+1] - snglApos[0]
                 HC2 = snglApos[j+1] - snglApos[0]
-                angl = np.arccos(np.dot(HC1, HC2) / (np.linalg.norm(HC1) * np.linalg.norm(HC2)))
+                angl = np.arccos(np.dot(HC1, HC2) / (np.linalg.norm(HC1) * np.linalg.norm(HC2) + 1e-8))
                 # print("angl: ", angl)
                 angls.append(angl)
 
@@ -207,8 +200,6 @@ def get_der_diff_from_ECandPS(theta): #EC and PS, eneregy constant and pauli siz
     outEs = np.zeros((nrec,5))
     epos = np.zeros( (nrec, ne, 4) )
     convSum = [0]
-    # eff.setEnergyConstants(eConst)
-    # eff.setPauliGaussSizes(sizes)
     eff.setParsECandPS(theta)
     eff.setFixedAtoms(True)
     eff.processXYZ_e(elementPath_e, outEs=outEs, epos=epos, nstepMax=10000, dt=0.005, Fconv=1e-3, xyz_out=None, fgo_out=None, convSum=convSum) # FOR NORMAL PURPOSES USE nstepMax=10000
@@ -216,8 +207,6 @@ def get_der_diff_from_ECandPS(theta): #EC and PS, eneregy constant and pauli siz
     # print("Out Es: ", outEs[:,0])
     outEsGrid = to_grid(outEs[:,0], 20, 20)
     outEtotH, outEtotV = neighbor_differences(outEsGrid)
-    # print("Out Etot H: ", outEtotH)
-    # print("Out Etot V: ", outEtotV)
 
     outEdiffH = subtract_grids(outEtotH, paramsEtotH)
     outEdiffV = subtract_grids(outEtotV, paramsEtotV)
@@ -257,27 +246,27 @@ def loss_function(theta):
     global numOfFunc
     numOfFunc += 1
     loss = 0
-    theta = np.array([1.835013 ,5.296729, 3.639857, 5.897393])
+    # theta = np.array([1.835013 ,5.296729, 3.639857, 5.897393])
     print("Number of get varince: ", numOfFunc)
     print("Flexible variable: ", theta)
 
     forces = get_forces_fixed(theta)
     print("Forces: ", forces)
-    # if forces > 1:
-    #     loss = forces*10_000_000 + 3_000_000
-    #     print("Loss: ", loss)
-    #     print("\n\n\n")
-    #     return loss
+    if forces > 1:
+        loss = forces*10_000_000 + 3_000_000
+        print("Loss: ", loss)
+        print("\n\n\n")
+        return loss
     
     bondErr, anglErr, convSum1 = get_geometry_no_fixed(theta)
     print("Bond error: ", bondErr)
     print("Angle error: ", anglErr)
     print("Sum1: ", convSum1)
-    # if anglErr > 1 or convSum1 < 6:
-    #     loss = 100_000*(bondErr + anglErr - convSum1) + 2_000_000
-    #     print("Loss: ", loss)
-    #     print("\n\n\n")
-    #     return loss
+    if anglErr > 1 or convSum1 < 6:
+        loss = 100_000*(bondErr + anglErr - convSum1) + 2_000_000
+        print("Loss: ", loss)
+        print("\n\n\n")
+        return loss
     
     var, outEs, epos, convSum2 = get_der_diff_from_ECandPS(theta)
     nWrongPairedEl = get_wrong_pair_el(epos, maxPairedEl)
@@ -486,7 +475,7 @@ if __name__ == "__main__":
     [ 3.,  0.0, 0.10, 1.0 ], # 5 B
     [ 4.,  0.0, 0.10, 1.0 ], # 6 C
     [ 5.,  0.0, 0.10, 1.0 ], # 7 N
-    [ 6.,  0.0, 0.2, 1.0 ], # 8 O
+    [ 6.,  0.0, 0.10, 1.0 ], # 8 O
     [ 7.,  0.0, 0.10, 1.0 ], # 9 F
     ], dtype=np.float64)
     eff.setAtomParams( atomParams )
@@ -527,7 +516,7 @@ if __name__ == "__main__":
         (-3, 1)
     ]
     startTime = time.perf_counter()
-    results = dual_annealing(log_loss_function, bounds=logBounds, maxiter=1000000, maxfun=maxfunc)
+    results = dual_annealing(log_loss_function, bounds=logBounds, maxiter=1000, maxfun=maxfunc)
     minLogTheta = results.x
     minTheta = [10**x for x in minLogTheta]
     minLoss = results.fun
