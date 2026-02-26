@@ -502,8 +502,12 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 if(var_expW < 0.0) var_expW = 0.0;
                 double sem_expW = sqrt(var_expW / total_samples);
 
-                double dF = -log( mean_expW ) / beta;
-                double dF_sigma = (mean_expW > 0.0) ? (sem_expW / (beta * mean_expW)) : NAN;
+                double dF = NAN;
+                double dF_sigma = NAN;
+                if(mean_expW > 0.0 && std::isfinite(mean_expW)){
+                    dF = -log( mean_expW ) / beta;
+                    dF_sigma = sem_expW / (beta * mean_expW);
+                }
 
                 double w_mean = sum_W[step] / total_samples;
                 double w2_mean = sum_W2[step] / total_samples;
