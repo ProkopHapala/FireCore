@@ -47,7 +47,6 @@ python3 run_ES.py \
     --mode $MODE \
     --nSys 100 \
     --xyz_name "../tMMFF/data/entropic_spring_$N.xyz" \
-    --system_name "entropic_spring_$N" \
     --nLambda 100000 \
     --nMDsteps 10000000 \
     --nEQsteps 50000 \
@@ -57,7 +56,19 @@ python3 run_ES.py \
     --dt 0.05 \
     -T 300 \
     --t_damp 150
-
+# python3 run_ES.py \
+#     --mode $MODE \
+#     --nSys 100 \
+#     --xyz_name "../tMMFF/data/entropic_spring_$N.xyz" \
+#     --nLambda 100 \
+#     --nMDsteps 100000000 \
+#     --nEQsteps 50000 \
+#     --Fconv 1e-6 \
+#     --constraints "constraints_ES.txt" \
+#     --JEforceconst $JE_K \
+#     --dt 0.05 \
+#     -T 300 \
+#     --t_damp 150
 if [ $? -ne 0 ]; then
     echo "ERROR: Calculation failed!"
     exit 1

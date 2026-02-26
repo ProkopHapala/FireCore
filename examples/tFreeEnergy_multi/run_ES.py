@@ -35,7 +35,6 @@ def main():
     parser = argparse.ArgumentParser(description="Thermodynamic Integration for Entropic Spring")
     parser.add_argument("--nSys", type=int, default=10, help="Number of parallel systems")
     parser.add_argument("--xyz_name", type=str, default="../../cpp/common_resources/entropic_spring_20.xyz", help="Path to the molecule file")
-    parser.add_argument("--system_name", type=str, default="entropic_spring_20", help="System name for output files")
     parser.add_argument("--nLambda", type=int, default=20, help="Number of Lambda windows")
     parser.add_argument("--nMDsteps", type=int, default=100000, help="Number of MD steps per window")
     parser.add_argument("--nEQsteps", type=int, default=5000, help="Number of equilibration steps per window")
@@ -99,9 +98,11 @@ def main():
         JEforceconst=args.JEforceconst
     )
 
+    out_base = os.path.splitext(os.path.basename(args.xyz_name))[0]
+    out_data = f"{out_base}_free_energy.dat"
     print(f"\n{'=' * 60}")
     print(f"  Free energy change: {result:.6f} eV")
-    print(f"  Results saved to: {args.system_name}_TI.dat")
+    print(f"  Results saved to: {out_data}")
     print(f"{'=' * 60}\n")
 
 if __name__ == "__main__":
