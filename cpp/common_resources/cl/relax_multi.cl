@@ -1046,8 +1046,11 @@ __kernel void updateAtomsMMFFf4(
                 
                 if(consEnd.w>0.0f && step < nLambda){
                     jeParams[iS].x += 1; // Increment step index for next step exactly once per system
-                    if(step+1 < nLambda)
-                        TDrives[iS].w = work[ nLambda * iS + step+1 ]; // I missed random seed in TDrives, so I use work buffer to store the random numbers...
+                    if(step+1 < nLambda){
+                        float seed = work[ nLambda * iS + step+1 ]; // seed for thermostat RNG
+                        TDrives[iS].w = seed;
+                    }
+                        // work[ nLambda * iS + step ] = 0.0f; // Clear work for this step after reading it for the next step's TDrive.w
                 }
             } else if (step == -1) {
                 // Initial Equilibrium Step

@@ -424,6 +424,8 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
             std::vector<double> sum_W(nLambda, 0.0);
             std::vector<double> sum_W2(nLambda, 0.0);
             std::vector<double> sum_W3(nLambda, 0.0);
+            std::vector<float> work_seed(nSystems * nLambda, 0.0f);
+            int n_bad_work = 0;
             for(int batch=0; batch<nBatches; batch++){
                 printf("  Batch %d/%d...\n", batch+1, nBatches);
                 
@@ -441,7 +443,11 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 for(int isys=0; isys<nSystems; isys++){ jeParams[isys] = Quat4i{0, nLambda, 0, 0}; } // activate JE pulling from step 0
                 ocl.upload( ocl.ibuff_jeParams, jeParams );
 
-                for(int i=0; i<nSystems * nLambda; i++) gpu_work[i] = randf(-1.0, 1.0);
+                for(int i=0; i<nSystems * nLambda; i++){
+                    const float r = randf(-1.0, 1.0);
+                    gpu_work[i] = r;
+                    work_seed[i] = r; // kernel stores cumulative work on top of this value
+                }
                 ocl.upload( ocl.ibuff_work, gpu_work );
 
                 printf("  Pulling for %d steps...\n", nLambda);
@@ -454,12 +460,21 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 for(int isys=0; isys<nSystems; isys++){
                     double W_traj = 0;
                     for(int i=0; i<nLambda; i++){
-                        float dW = gpu_work[ isys * nLambda + i ]*dLambda;
+                        const int iw = isys * nLambda + i;
+                        double work_raw = (double)gpu_work[iw] - (double)work_seed[iw];
+                        if(!std::isfinite(work_raw)){
+                            n_bad_work++;
+                            work_raw = 0.0;
+                        }
+                        double dW = work_raw * dLambda;
                         // if(isys == 0 && i%1000 == 0){ 
                         //     printf("  System %d, lambda %f, dW %f, cumulative W %f\n", isys, (float)i/(float)(nLambda-1), dW, W_traj + dW);
                         // }
-                        W_traj += (double)dW;
-                        double expW = exp(-beta * W_traj);
+                        W_traj += dW;
+                        double arg = -beta * W_traj;
+                        if(arg > 700.0)  arg = 700.0;
+                        if(arg < -700.0) arg = -700.0;
+                        double expW = exp(arg);
                         sum_exp_W[i]  += expW;
                         sum_exp_W2[i] += expW * expW;
                         sum_W[i]      += W_traj;
@@ -467,6 +482,9 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                         sum_W3[i]     += W_traj * W_traj * W_traj;
                     }
                 }
+            }
+            if(n_bad_work > 0){
+                printf("WARNING: JE detected %d non-finite work samples; replaced with 0.\n", n_bad_work);
             }
 
             // Calculate free energy profile from exponential averages
