@@ -1058,7 +1058,7 @@ __kernel void updateAtomsMMFFf4(
             cK = max( cK, (float4){0.0f,0.0f,0.0f,0.0f} );
             const float3 fc = (cons.xyz - pe.xyz)*cK.xyz;
             fe.xyz += fc; // add constraint force
-            if(iS==0){printf( "GPU::constr[ia=%i|iS=%i] (%g,%g,%g|K=%g) fc(%g,%g,%g) cK(%g,%g,%g)\n", iG, iS, cons.x,cons.y,cons.z,cons.w, fc.x,fc.y,fc.z , cK.x, cK.y, cK.z ); }
+            // if(iS==0){printf( "GPU::constr[ia=%i|iS=%i] (%g,%g,%g|K=%g) fc(%g,%g,%g) cK(%g,%g,%g)\n", iG, iS, cons.x,cons.y,cons.z,cons.w, fc.x,fc.y,fc.z , cK.x, cK.y, cK.z ); }
         }
     }
 
@@ -2761,6 +2761,14 @@ __kernel void getNonBond_GridFF_Bspline(
 
         //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU::getNonBond_GridFF_Bspline() fg(%g,%g,%g|%g) u(%g,%g,%g) posi(%g,%g,%g) grid_invStep(%g,%g,%g)\n", fg.x,fg.y,fg.z,fg.w,  u.x,u.y,u.z, posi.x,posi.y,posi.z, grid_invStep.x, grid_invStep.y, grid_invStep.z  ); }
 
+        #if DBG_UFF
+        if( (iG==0) && (iS==0) ){
+            printf("DBG GridFF_Bspline buf pos(%g,%g,%g) u(%g,%g,%g) grid_p0(%g,%g,%g) invStep(%g,%g,%g) REQKi(%g,%g,%g,%g) PLQH(%g,%g,%g,%g) fg_raw(%g,%g,%g,%g)\n",
+                posi.x,posi.y,posi.z, u.x,u.y,u.z, grid_p0.x,grid_p0.y,grid_p0.z, grid_invStep.x,grid_invStep.y,grid_invStep.z,
+                REQKi.x,REQKi.y,REQKi.z,REQKi.w, PLQH.x,PLQH.y,PLQH.z,PLQH.w, fg.x,fg.y,fg.z,fg.w );
+        }
+        #endif
+
         fg.xyz *= -grid_invStep.xyz;
         fe += fg;
         //fes[iG] = fe;
@@ -2856,9 +2864,9 @@ __kernel void getNonBond_GridFF_Bspline_ex2(
     const int iex_end   = iex + EXCL_MAX-1;
     int jex             = excl[iex];
 
-    if((iG==0)&&(iS==0)){
-        printf( "getNonBond_ex2() iG %i, iS %i, iaa %i, iex %i, iex_end %i, jex %i\n", iG, iS, iaa, iex, iex_end, jex );
-    }
+    // if((iG==0)&&(iS==0)){
+    //     printf( "getNonBond_GridFF_Bspline_ex2() iG %i, iS %i, iaa %i, iex %i, iex_end %i, jex %i\n", iG, iS, iaa, iex, iex_end, jex );
+    // }
 
     // ========= Atom-to-Atom interaction ( N-body problem ), we do it in chunks of size of local memory, in order to reuse data and reduce number of reads from global memory  
     //barrier(CLK_LOCAL_MEM_FENCE);
@@ -3261,9 +3269,15 @@ __kernel void getNonBond_GridFF_Bspline_tex( // Renamed kernel to distinguish fr
         // fg contains (dE/dux, dE/duy, dE/duz, Energy)
         float4 fg = fe3d_pbc_comb_tex(u, grid_ns.xyz, BsplinePLQH_tex, sampler_bspline, PLQH, xqs, yqs);
 
-        // Convert derivatives from du space to real space: Fx = -dE/dx = - (dE/dux) * (dux/dx)
-        // dux/dx = grid_invStep.x, etc.
-        fg.xyz *= -grid_invStep.xyz; // grid_invStep components are positive
+        #if DBG_UFF
+        if( (iG==0) && (iS==0) ){
+            printf("DBG GridFF_Bspline tex pos(%g,%g,%g) u(%g,%g,%g) grid_p0(%g,%g,%g) invStep(%g,%g,%g) REQKi(%g,%g,%g,%g) PLQH(%g,%g,%g,%g) fg_raw(%g,%g,%g,%g)\n",
+                posi.x,posi.y,posi.z, u.x,u.y,u.z, grid_p0.x,grid_p0.y,grid_p0.z, grid_invStep.x,grid_invStep.y,grid_invStep.z,
+                REQKi.x,REQKi.y,REQKi.z,REQKi.w, PLQH.x,PLQH.y,PLQH.z,PLQH.w, fg.x,fg.y,fg.z,fg.w );
+        }
+        #endif
+
+        fg.xyz *= -grid_invStep.xyz; // dux/dx = grid_invStep.x, etc.   Fx = -dE/dx = - (dE/dux) * (dux/dx)
 
         fe += fg; // Add GridFF force and energy to atom's total
         // fes[iG] = fe; // If you have a separate energy buffer
@@ -4986,3 +5000,79 @@ __kernel void evalMMFFf4_local1(
     }
 
 };
+
+
+__kernel void init_trajectory_shift(
+    int natoms, int n_steps, int nvec,
+    __global float4* apos,
+    __global float4* apos_initial,
+    __global float4* tip_positions
+) {
+    int iG = get_global_id(0); // atom index
+    int iS = get_global_id(1); // replica index
+    if(iG >= natoms) return;
+
+    float4 initial_p = apos_initial[iG];
+    float4 tip_p     = tip_positions[iS];
+    float4 tip_p0    = tip_positions[(iS / n_steps) * n_steps];
+    
+    float4 shift = tip_p - tip_p0;
+    shift.w = 0.0f;
+    
+    apos[iS * nvec + iG] = initial_p + shift;
+}
+
+__kernel void getTipMorse(
+    int natoms, int tip_idx, int nvec,
+    __global float4* apos,
+    __global float4* aforce,
+    __global float4* tip_positions,
+    float De, float r0, float alpha,
+    __global float* max_tip_force
+) {
+    int iS = get_global_id(0); // replica index
+    
+    float4 ap = apos[iS * nvec + tip_idx];
+    float4 tip = tip_positions[iS];
+    
+    float3 d = ap.xyz - tip.xyz;
+    float r = length(d);
+    
+    float expar = exp(-alpha * (r - r0));
+    float fr = -2.0f * alpha * De * (1.0f - expar) * expar;
+    
+    float3 f = (d / (r + 1e-8f)) * fr;
+    
+    int f_idx = iS * nvec + tip_idx;
+    float4 cur_f = aforce[f_idx];
+    cur_f.xyz += f;
+    aforce[f_idx] = cur_f;
+    
+    float f_mag = length(f);
+    if (f_mag > max_tip_force[iS]) {
+        max_tip_force[iS] = f_mag;
+    }
+}
+
+__kernel void reduce_trajectory_gaps(
+    int natoms, int n_steps, int nvec,
+    __global float4* apos,
+    __global float* gap_sizes
+) {
+    int iS = get_global_id(0); // replica index
+    int step_idx = iS % n_steps;
+    
+    if (step_idx == 0) {
+        gap_sizes[iS] = 0.0f;
+        return;
+    }
+    
+    float max_gap = 0.0f;
+    for(int i = 0; i < natoms; i++) {
+        float4 p_cur = apos[iS * nvec + i];
+        float4 p_prev = apos[(iS - 1) * nvec + i];
+        float d = length(p_cur.xyz - p_prev.xyz);
+        if (d > max_gap) max_gap = d;
+    }
+    gap_sizes[iS] = max_gap;
+}

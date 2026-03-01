@@ -60,6 +60,10 @@ class MolecularDynamics(OpenCLBase):
         self.nstep            = 1
         self.bPrintPackSystem = False
         self.enable_nonbond   = bool(enable_nonbond)
+        self.use_padded_nonbond_small = False
+        self._nb_small_ready  = False
+        self._nb_prg_small    = None
+        self._nb_bufs         = {}
 
     def realloc(self, mmff, nSystems=1 ):
         """
@@ -69,8 +73,81 @@ class MolecularDynamics(OpenCLBase):
         print(f"MolecularDynamics::realloc() natoms={mmff.natoms}, nvecs={mmff.nvecs}, nnode={mmff.nnode}")
         self.nSystems = nSystems
         self.mmff_list = [mmff] * nSystems  # Assuming all systems use the same MMFF parameters
+        # Recreate command queue to ensure validity after reallocation/resizing
+        self.queue = cl.CommandQueue(self.ctx)
         self.allocate_cl_buffers(mmff)
         self.allocate_host_buffers()
+        self._nb_small_ready = False
+        self._nb_bufs = {}
+
+    def _setup_small_system_nonbond(self):
+        if self._nb_small_ready:
+            return
+        if self.natoms >= self.nloc:
+            return
+        # Allocate padded buffers of size nloc per system to satisfy kernels with reqd_work_group_size(32)
+        nSystems = self.nSystems
+        nloc = self.nloc
+        float_size = np.float32().itemsize
+        int_size   = np.int32().itemsize
+        mf = cl.mem_flags
+
+        self._nb_bufs['apos_nb']      = cl.Buffer(self.ctx, mf.READ_WRITE, nSystems * nloc * 4 * float_size)
+        self._nb_bufs['aforce_nb']    = cl.Buffer(self.ctx, mf.READ_WRITE, nSystems * nloc * 4 * float_size)
+        self._nb_bufs['REQs_nb']      = cl.Buffer(self.ctx, mf.READ_ONLY,  nSystems * nloc * 4 * float_size)
+        self._nb_bufs['neighs_nb']    = cl.Buffer(self.ctx, mf.READ_ONLY,  nSystems * nloc * 4 * int_size)
+        self._nb_bufs['neighCell_nb'] = cl.Buffer(self.ctx, mf.READ_ONLY,  nSystems * nloc * 4 * int_size)
+        if self.enable_nonbond:
+            self._nb_bufs['excl_nb'] = cl.Buffer(self.ctx, mf.READ_ONLY, nSystems * nloc * 16 * int_size)
+
+        src = r'''
+        __kernel void copyAposToPadded(const int natoms, const int nvec_main, __global const float4* apos_main, __global float4* apos_nb){
+            const int iG = get_global_id(0);
+            const int iS = get_global_id(1);
+            const int i0m = iS*nvec_main;
+            const int i0n = iS*get_global_size(0);
+            float4 p = (float4)(0.0f,0.0f,0.0f,0.0f);
+            if(iG<natoms){ p = apos_main[i0m + iG]; }
+            apos_nb[i0n + iG] = p;
+        }
+
+        __kernel void addForcesFromPadded(const int natoms, const int nvec_main, __global float4* aforce_main, __global const float4* aforce_nb){
+            const int iG = get_global_id(0);
+            const int iS = get_global_id(1);
+            if(iG>=natoms) return;
+            const int i0m = iS*nvec_main;
+            const int i0n = iS*get_global_size(0);
+            aforce_main[i0m + iG] += aforce_nb[i0n + iG];
+        }
+        '''
+        self._nb_prg_small = cl.Program(self.ctx, src).build()
+
+        # Prepare padded parameter arrays once (REQs / neighs are constant for the topology)
+        natoms = self.natoms
+        REQs_pad = np.zeros((nSystems, nloc, 4), dtype=np.float32)
+        neighs_pad = np.full((nSystems, nloc, 4), -1, dtype=np.int32)
+        neighCell_pad = np.zeros((nSystems, nloc, 4), dtype=np.int32)
+        # Download current per-system topology params from mmff_list[0] and broadcast
+        mm = self.mmff_list[0]
+        REQs_pad[:, :natoms, :] = np.asarray(mm.REQs, dtype=np.float32)[None, :, :]
+        neighs_pad[:, :natoms, :] = np.asarray(mm.neighs, dtype=np.int32)[None, :, :]
+        neighCell_pad[:, :natoms, :] = np.asarray(mm.neighCell, dtype=np.int32)[None, :, :]
+        cl.enqueue_copy(self.queue, self._nb_bufs['REQs_nb'], REQs_pad)
+        cl.enqueue_copy(self.queue, self._nb_bufs['neighs_nb'], neighs_pad)
+        cl.enqueue_copy(self.queue, self._nb_bufs['neighCell_nb'], neighCell_pad)
+        if self.enable_nonbond and (self._nb_bufs.get('excl_nb') is not None):
+            if getattr(mm, 'excl', None) is None:
+                raise ValueError("_setup_small_system_nonbond(): enable_nonbond=True but mmff.excl is None")
+            excl_pad = np.full((nSystems, nloc, 16), -1, dtype=np.int32)
+            excl_pad[:, :natoms, :] = np.asarray(mm.excl, dtype=np.int32)[None, :, :]
+            cl.enqueue_copy(self.queue, self._nb_bufs['excl_nb'], excl_pad)
+        self.queue.finish()
+
+        self._nb_small_ready = True
+
+    def ensure_queue(self):
+        if self.queue is None:
+            self.queue = cl.CommandQueue(self.ctx)
 
     def allocate_host_buffers(self):
         self.atoms  = np.zeros((self.nSystems, self.nvecs, 4), dtype=np.float32)
@@ -119,6 +196,9 @@ class MolecularDynamics(OpenCLBase):
         self.create_buffer('aforce',     nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
         # relax_multi.cl getMMFFf4() uses argument name 'fapos' for forces; alias it to the same buffer
         self.buffer_dict['fapos'] = self.buffer_dict['aforce']
+        # relax_multi.cl nonbond kernels use argument names `atoms` and `forces`
+        self.buffer_dict['atoms']  = self.buffer_dict['apos']
+        self.buffer_dict['forces'] = self.buffer_dict['aforce']
         self.create_buffer('aforce_old', nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
         self.create_buffer('avel',       nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
         float4_size = 4 * float_size  # sizeof(float4) = 16 bytes
@@ -147,6 +227,8 @@ class MolecularDynamics(OpenCLBase):
         self.create_buffer('ilvecs',   nSystems * mat3_size, mf.READ_ONLY)
         self.create_buffer('pbc_shifts', nSystems * npbc * 4 * float_size, mf.READ_ONLY)
         # MD parameters and constraints
+        # NOTE: updateAtomsMMFFf4 indexes constr/constrK by iaa=iG+iS*natoms (only atoms have constraints)
+        # so the per-system stride must be natoms (not nvecs).
         self.create_buffer('constr',   nSystems * natoms * 4 * float_size, mf.READ_WRITE)
         self.create_buffer('constrK',  nSystems * natoms * 4 * float_size, mf.READ_WRITE)
         self.create_buffer('MDparams', nSystems * 4 * float_size, mf.READ_ONLY)
@@ -382,14 +464,79 @@ class MolecularDynamics(OpenCLBase):
         self.queue.finish()
     
     def run_getNonBond_GridFF_Bspline(self):
-        self.prg.getNonBond_GridFF_Bspline(self.queue, self.sz_na, self.sz_loc,  *self.kernel_args_getNonBond_GridFF_Bspline)
-        self.queue.finish()
+        self.ensure_queue()
+        if self.use_padded_nonbond_small and (self.natoms < self.nloc):
+            self._setup_small_system_nonbond()
+            # Copy current positions into padded buffer
+            sz = (self.nloc, self.nSystems)
+            self._nb_prg_small.copyAposToPadded(self.queue, sz, self.sz_loc, np.int32(self.natoms), np.int32(self.nvecs), self.buffer_dict['apos'], self._nb_bufs['apos_nb'])
+            # Zero padded forces
+            cl.enqueue_fill_buffer(self.queue, self._nb_bufs['aforce_nb'], np.zeros(1, dtype=np.float32), 0, self._nb_bufs['aforce_nb'].size)
+            # Run GridFF kernel on padded buffers
+            args = list(self.kernel_args_getNonBond_GridFF_Bspline)
+            # Padded buffers are laid out with stride==nloc; set nnode=0 so kernel uses nvec==natoms==nloc
+            args[0] = cltypes.make_int4(self.nloc, 0, self.nloc, 0)
+            args[1] = self._nb_bufs['apos_nb']
+            args[2] = self._nb_bufs['aforce_nb']
+            args[3] = self._nb_bufs['REQs_nb']
+            args[4] = self._nb_bufs['neighs_nb']
+            args[5] = self._nb_bufs['neighCell_nb']
+            self.prg.getNonBond_GridFF_Bspline(self.queue, sz, self.sz_loc, *args)
+            # Accumulate first natoms forces back to main aforce
+            self._nb_prg_small.addForcesFromPadded(self.queue, sz, self.sz_loc, np.int32(self.natoms), np.int32(self.nvecs), self.buffer_dict['aforce'], self._nb_bufs['aforce_nb'])
+            self.queue.finish()
+        else:
+            self.prg.getNonBond_GridFF_Bspline(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_getNonBond_GridFF_Bspline)
+            self.queue.finish()
 
     def run_getNonBond_GridFF_Bspline_tex(self):
-        self.prg.getNonBond_GridFF_Bspline_tex(self.queue, self.sz_na, self.sz_loc,  *self.kernel_args_getNonBond_GridFF_Bspline_tex)
-        self.queue.finish()
+        self.ensure_queue()
+        if self.use_padded_nonbond_small and (self.natoms < self.nloc):
+            self._setup_small_system_nonbond()
+            sz = (self.nloc, self.nSystems)
+            self._nb_prg_small.copyAposToPadded(self.queue, sz, self.sz_loc, np.int32(self.natoms), np.int32(self.nvecs), self.buffer_dict['apos'], self._nb_bufs['apos_nb'])
+            cl.enqueue_fill_buffer(self.queue, self._nb_bufs['aforce_nb'], np.zeros(1, dtype=np.float32), 0, self._nb_bufs['aforce_nb'].size)
+            args = list(self.kernel_args_getNonBond_GridFF_Bspline_tex)
+            args[0] = cltypes.make_int4(self.nloc, 0, self.nloc, 0)  # ns (natoms padded, nnode, nvec padded)
+            args[1] = self._nb_bufs['apos_nb']
+            args[2] = self._nb_bufs['aforce_nb']
+            args[3] = self._nb_bufs['REQs_nb']
+            args[4] = self._nb_bufs['neighs_nb']
+            args[5] = self._nb_bufs['neighCell_nb']
+            self.prg.getNonBond_GridFF_Bspline_tex(self.queue, sz, self.sz_loc, *args)
+            self._nb_prg_small.addForcesFromPadded(self.queue, sz, self.sz_loc, np.int32(self.natoms), np.int32(self.nvecs), self.buffer_dict['aforce'], self._nb_bufs['aforce_nb'])
+            self.queue.finish()
+        else:
+            self.prg.getNonBond_GridFF_Bspline_tex(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_getNonBond_GridFF_Bspline_tex)
+            self.queue.finish()
+
+    def run_getNonBond_GridFF_Bspline_ex2(self):
+        self.ensure_queue()
+        if self.kernel_args_getNonBond_GridFF_Bspline_ex2 is None:
+            raise RuntimeError("run_getNonBond_GridFF_Bspline_ex2(): kernel args not initialized; call initGridFF(..., bKernels=True) and ensure enable_nonbond=True")
+        if self.use_padded_nonbond_small and (self.natoms < self.nloc):
+            self._setup_small_system_nonbond()
+            if self._nb_bufs.get('excl_nb') is None:
+                raise RuntimeError("run_getNonBond_GridFF_Bspline_ex2(): enable_nonbond=True required for excl buffer")
+            sz = (self.nloc, self.nSystems)
+            self._nb_prg_small.copyAposToPadded(self.queue, sz, self.sz_loc, np.int32(self.natoms), np.int32(self.nvecs), self.buffer_dict['apos'], self._nb_bufs['apos_nb'])
+            cl.enqueue_fill_buffer(self.queue, self._nb_bufs['aforce_nb'], np.zeros(1, dtype=np.float32), 0, self._nb_bufs['aforce_nb'].size)
+            args = list(self.kernel_args_getNonBond_GridFF_Bspline_ex2)
+            # Padded buffers are laid out with stride==nloc; set nnode=0 so kernel uses nvec==natoms==nloc
+            args[0] = cltypes.make_int4(self.nloc, 0, self.nloc, 0)
+            args[1] = self._nb_bufs['apos_nb']
+            args[2] = self._nb_bufs['aforce_nb']
+            args[3] = self._nb_bufs['REQs_nb']
+            args[4] = self._nb_bufs['excl_nb']
+            self.prg.getNonBond_GridFF_Bspline_ex2(self.queue, sz, self.sz_loc, *args)
+            self._nb_prg_small.addForcesFromPadded(self.queue, sz, self.sz_loc, np.int32(self.natoms), np.int32(self.nvecs), self.buffer_dict['aforce'], self._nb_bufs['aforce_nb'])
+            self.queue.finish()
+        else:
+            self.prg.getNonBond_GridFF_Bspline_ex2(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_getNonBond_GridFF_Bspline_ex2)
+            self.queue.finish()
 
     def run_getMMFFf4(self):
+        self.ensure_queue()
         self.prg.getMMFFf4(self.queue, self.sz_node, self.sz_loc, *self.kernel_args_getMMFFf4)
         self.queue.finish()
     
@@ -398,7 +545,12 @@ class MolecularDynamics(OpenCLBase):
         self.queue.finish()
     
     def run_updateAtomsMMFFf4(self):
-        self.prg.updateAtomsMMFFf4(self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_updateAtomsMMFFf4)
+        self.ensure_queue()
+        # IMPORTANT: updateAtomsMMFFf4 indexes apos/avel/aforce using nvec=natoms+nnode.
+        # When nvecs < nloc and global size is padded to nloc, iG can exceed nvec and write out-of-bounds
+        # into the next system's memory, corrupting geometry (observed as stretched molecules in multi-system runs).
+        sz = (int(self.nvecs), int(self.nSystems))
+        self.prg.updateAtomsMMFFf4(self.queue, sz, None, *self.kernel_args_updateAtomsMMFFf4)
         self.queue.finish()
     
     def run_updateAtomsMMFFf4_rot(self):
@@ -410,7 +562,12 @@ class MolecularDynamics(OpenCLBase):
         self.queue.finish()
     
     def run_cleanForceMMFFf4(self):
-        self.prg.cleanForceMMFFf4(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_cleanForceMMFFf4)
+        self.ensure_queue()
+        # IMPORTANT: cleanForceMMFFf4 indexes `aforce` using `nvec = natoms+nnode`.
+        # Therefore it must be launched with global size covering nvec, not natoms.
+        # Also must NOT pad to nloc when nvec < nloc, otherwise iG spans beyond nvec and writes OOB across systems.
+        sz = (int(self.nvecs), int(self.nSystems))
+        self.prg.cleanForceMMFFf4(self.queue, sz, None, *self.kernel_args_cleanForceMMFFf4)
         # cleanForceMMFFf4 kernel only zeros sigma portion of fneigh (nnode*4 entries).
         # The pi portion (nnode*4 to nnode*8-1) may contain stale data.
         # Zero the full fneigh buffer to prevent accumulation → NaN.
@@ -570,8 +727,16 @@ class MolecularDynamics(OpenCLBase):
 
             buf = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY|cl.mem_flags.COPY_HOST_PTR, hostbuf=bspline_data)
             self.buffer_dict['BsplinePLQH'] = buf
+            # Kernel expects argument name 'BsplinePLQ'
+            self.buffer_dict['BsplinePLQ'] = buf
             if bKernels:
                 self.kernel_args_getNonBond_GridFF_Bspline = self.generate_kernel_args("getNonBond_GridFF_Bspline", bPrint=False)
+                self.kernel_args_getNonBond_GridFF_Bspline_ex2 = None
+                if self.enable_nonbond and ('excl' in self.buffer_dict) and ("getNonBond_GridFF_Bspline_ex2" in self.kernelheaders):
+                    try:
+                        self.kernel_args_getNonBond_GridFF_Bspline_ex2 = self.generate_kernel_args("getNonBond_GridFF_Bspline_ex2", bPrint=False)
+                    except Exception as e:
+                        print(f"initGridFF: skipping getNonBond_GridFF_Bspline_ex2 ({e})")
         print("MolecularDynamics::initGridFF() DONE")
 
     def scan_1D( self, nsteps=100, d=[0.1,0.0,0.0], p0=[0.0,0.0,0.0], use_texture=False, mmff=None ):
@@ -643,11 +808,19 @@ class MolecularDynamics(OpenCLBase):
         if self.bPrintPackSystem:
             self._print_pack_system_params(iSys, mmff)
 
-        # Back-neighbor indices per vector (atoms + pi) for recoil force accumulation; default to -1 if not provided
+        # Back-neighbor indices per vector (atoms + pi) for recoil force accumulation; default to -1 if not provided.
+        # IMPORTANT: updateAtomsMMFFf4 uses these as direct indices into the global `fneigh` buffer.
+        # `fneigh` is laid out per-system with stride (nnode*4*2) float4 entries.
+        # Therefore bkNeighs MUST be offset per-system, otherwise replicas read recoil from other systems.
         bk = np.full((nvecs, 4), -1, dtype=np.int32)
         if hasattr(mmff, 'back_neighs') and (mmff.back_neighs is not None):
             ncopy = min(mmff.back_neighs.shape[0], nvecs)
             bk[:ncopy, :] = mmff.back_neighs[:ncopy, :].astype(np.int32)
+            if nnode > 0:
+                fneigh_stride = int(nnode) * 8  # nnode * (4 neighbors) * (2 channels sigma+pi)
+                fneigh_off = int(iSys) * fneigh_stride
+                mask = bk[:ncopy, :] >= 0
+                bk[:ncopy, :][mask] += np.int32(fneigh_off)
         offset_bk     = iSys * nvecs * int4_size
         offset_atoms  = iSys * nvecs  * float4_size
         offset_REQs   = iSys * natoms * float4_size
