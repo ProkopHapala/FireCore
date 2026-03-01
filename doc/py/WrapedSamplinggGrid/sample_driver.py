@@ -5,15 +5,17 @@ import matplotlib.pyplot as plt
 
 from sampling_lib import (
     AtomicSystem,
+    blend_uv_grids,
     build_grid_uv,
     compute_sdf_2d,
     count_5d,
     estimate_scan_total,
     generate_tilts,
+    local_up_from_streamline,
     make_atoms_nacl_step,
     make_u_levels,
     make_y_levels,
-    make_pose_coords,
+    make_pose_coords_local,
     parse_int_list,
     parse_u_list,
     save_xyz_frames,
@@ -96,19 +98,55 @@ def build_spatial_grid(args):
     x_range = (x_left - pad, x_right + pad)
     z_range = (-a - 0.3, a + args.u_max + 1.5)
 
-    atoms = make_atoms_nacl_step(a, args.r_Na, args.r_Cl, corner_species=args.corner)
-    X_grid, Z_grid, sdf, x_lin, z_lin = compute_sdf_2d(atoms, x_range, z_range, args.sdf_res, args.combine_p)
-
     if args.u_list:
         u_levels = parse_u_list(args.u_list)
     else:
         u_levels = make_u_levels(args.u_min, args.u_max, args.u_levels, args.u_schedule, args.u_sinh_a)
 
-    grid_uv, u_vals, u_idx_valid, arc_lengths = build_grid_uv(sdf, x_lin, z_lin, u_levels, x_left, x_right, args.n_sub, args.walk_res)
-    if grid_uv is None:
-        raise RuntimeError('No valid isolines found; grid_uv is None')
+    atoms_na = make_atoms_nacl_step(a, args.r_Na, args.r_Cl, corner_species='Na')
+    X_grid_na, Z_grid_na, sdf_na, x_lin_na, z_lin_na = compute_sdf_2d(atoms_na, x_range, z_range, args.sdf_res, args.combine_p)
+    grid_uv_na, u_vals_na, u_idx_valid_na, arc_lengths_na = build_grid_uv(sdf_na, x_lin_na, z_lin_na, u_levels, x_left, x_right, args.n_sub, args.walk_res)
+    if grid_uv_na is None:
+        raise RuntimeError('No valid isolines found for corner=Na; grid_uv_na is None')
 
-    return atoms, (X_grid, Z_grid, sdf, x_lin, z_lin), (grid_uv, u_vals, u_idx_valid, arc_lengths, x_left, x_right)
+    atoms_cl = make_atoms_nacl_step(a, args.r_Na, args.r_Cl, corner_species='Cl')
+    X_grid_cl, Z_grid_cl, sdf_cl, x_lin_cl, z_lin_cl = compute_sdf_2d(atoms_cl, x_range, z_range, args.sdf_res, args.combine_p)
+    grid_uv_cl, u_vals_cl, u_idx_valid_cl, arc_lengths_cl = build_grid_uv(sdf_cl, x_lin_cl, z_lin_cl, u_levels, x_left, x_right, args.n_sub, args.walk_res)
+    if grid_uv_cl is None:
+        raise RuntimeError('No valid isolines found for corner=Cl; grid_uv_cl is None')
+
+    if grid_uv_na.shape != grid_uv_cl.shape:
+        raise RuntimeError(f"Na/Cl grids have different shapes: {grid_uv_na.shape} vs {grid_uv_cl.shape}")
+
+    # keep u_vals from Na (should match Cl if u_levels same and both valid)
+    return (atoms_na, atoms_cl), (X_grid_na, Z_grid_na, sdf_na, x_lin_na, z_lin_na), (grid_uv_na, grid_uv_cl, u_vals_na, u_idx_valid_na, arc_lengths_na, x_left, x_right)
+
+
+def plot_up_vectors(grid_uv_y, out_png, u_sel=None, v_sel=None, scale=0.4):
+    # grid_uv_y: (n_y,n_u,n_v,2)
+    n_y, n_u, n_v = grid_uv_y.shape[:3]
+    if u_sel is None:
+        u_sel = [0, n_u//2, n_u-1]
+    if v_sel is None:
+        v_sel = [0, n_v//2, n_v-1]
+    y_idx = n_y // 2
+    grid_uv = grid_uv_y[y_idx]
+
+    fig, ax = plt.subplots(1, 1, figsize=(7, 6))
+    ax.set_title(f"Local up-vectors from streamline connector (y_idx={y_idx})")
+    ax.plot(grid_uv[:, :, 0].ravel(), grid_uv[:, :, 1].ravel(), '.', ms=2, alpha=0.2, color='#888')
+    for iv in v_sel:
+        for iu in u_sel:
+            xz = grid_uv[iu, iv]
+            up = local_up_from_streamline(grid_uv, iu, iv)
+            dx, dz = up[0]*scale, up[2]*scale
+            ax.arrow(xz[0], xz[1], dx, dz, head_width=0.05, head_length=0.08, fc='r', ec='r', alpha=0.9)
+            ax.text(xz[0], xz[1], f"({iu},{iv})", fontsize=7, color='k')
+    ax.set_aspect('equal')
+    ax.set_xlabel('x (A)'); ax.set_ylabel('z (A)')
+    fig.tight_layout()
+    fig.savefig(out_png, dpi=150, bbox_inches='tight')
+    plt.close(fig)
 
 
 def build_angular_grid(args):
@@ -160,18 +198,20 @@ def _save_scan_png(args, grid_uv, u_vals, y_vals, tilts, phi_grid, coarse, scan_
 
     ax0 = fig.add_subplot(gs[0, 0])
     ax0.set_title('Spatial grid (x,z): scan lines overlay')
-    ax0.scatter(grid_uv[:, :, 0].ravel(), grid_uv[:, :, 1].ravel(), s=3, c='#bbb', alpha=0.25, edgecolors='none')
+    y_idx = len(y_vals)//2
+    g = grid_uv[y_idx]
+    ax0.scatter(g[:, :, 0].ravel(), g[:, :, 1].ravel(), s=3, c='#bbb', alpha=0.25, edgecolors='none')
 
-    n_u, n_v = grid_uv.shape[:2]
+    n_u, n_v = g.shape[:2]
 
     if 'u' in scan_axes:
         for j in coarse['v']:
-            col = grid_uv[:, j]
+            col = g[:, j]
             ax0.plot(col[:, 0], col[:, 1], lw=1.4, alpha=0.9, label=f'scan u @ v={j}')
 
     if 'v' in scan_axes:
         for i in coarse['u']:
-            row = grid_uv[i, :]
+            row = g[i, :]
             ax0.plot(row[:, 0], row[:, 1], lw=1.4, alpha=0.9, label=f'scan v @ u={i}')
 
     ax0.set_aspect('equal')
@@ -236,12 +276,13 @@ def _write_xyz_for_indices(tag, indices_iter, sys, grid_uv, y_vals, tilts, phi_g
     coords_frames = []
     comments = []
     for (iu, iv, iy, it, ip) in indices_iter:
-        xz = grid_uv[iu, iv]
+        xz = grid_uv[iy, iu, iv]
         y = y_vals[iy]
+        up = local_up_from_streamline(grid_uv[iy], iu, iv)
         tvec = tilts[it]
         phi = phi_grid[ip]
         pos = np.array([xz[0], y, xz[1]])
-        coords = make_pose_coords(sys, pos, tvec, phi, center=True)
+        coords = make_pose_coords_local(sys, pos, up, tvec, phi, center=True)
         coords_frames.append(coords)
         comments.append(f"iu={iu} iv={iv} iy={iy} it={it} ip={ip}  x={pos[0]:.6f} y={pos[1]:.6f} z={pos[2]:.6f}  phi_deg={np.rad2deg(phi):.3f}  tilt=({tvec[0]:.6f},{tvec[1]:.6f},{tvec[2]:.6f})")
 
@@ -268,28 +309,30 @@ def _write_xyz_line(axis_name, sweep_values, fixed, sys, grid_uv, y_vals, tilts,
         iy = fixed['y'] if axis_name != 'y' else idx
         it = fixed['tilt'] if axis_name != 'tilt' else idx
         ip = fixed['phi'] if axis_name != 'phi' else idx
-        xz = grid_uv[iu, iv]
+        xz = grid_uv[iy, iu, iv]
         y = y_vals[iy]
-        tvec = tilts[it]
+        up = local_up_from_streamline(grid_uv[iy], iu, iv)
+        tloc = tilts[it]
         phi = phi_grid[ip]
         pos = np.array([xz[0], y, xz[1]])
-        coords = make_pose_coords(sys, pos, tvec, phi, center=True)
+        coords = make_pose_coords_local(sys, pos, up, tloc, phi, center=True)
         coords_frames.append(coords)
-        comments.append(f"iu={iu} iv={iv} iy={iy} it={it} ip={ip}  x={pos[0]:.6f} y={pos[1]:.6f} z={pos[2]:.6f}  phi_deg={np.rad2deg(phi):.3f}  tilt=({tvec[0]:.6f},{tvec[1]:.6f},{tvec[2]:.6f})")
+        comments.append(f"iu={iu} iv={iv} iy={iy} it={it} ip={ip}  x={pos[0]:.6f} y={pos[1]:.6f} z={pos[2]:.6f}  phi_deg={np.rad2deg(phi):.3f}  tilt=({tloc[0]:.6f},{tloc[1]:.6f},{tloc[2]:.6f})  up=({up[0]:.6f},{up[1]:.6f},{up[2]:.6f})")
 
     save_xyz_frames(sys, coords_frames, comments, out_xyz)
     print(f"Saved {len(coords_frames)} frames -> {out_xyz}")
 
 
 def do_counts(args):
-    atoms, sdfpack, gridpack = build_spatial_grid(args)
-    grid_uv, u_vals, u_idx_valid, arc_lengths, x_left, x_right = gridpack
+    atoms_pair, sdfpack, gridpack = build_spatial_grid(args)
+    grid_uv_na, grid_uv_cl, u_vals, u_idx_valid, arc_lengths, x_left, x_right = gridpack
     y_vals = make_y_levels(args.y_min, args.y_max, args.y_levels)
+    grid_uv_y, w_na, w_cl = blend_uv_grids(grid_uv_na, grid_uv_cl, y_vals, mode='cos')
     angpack = build_angular_grid(args)
     tilts = angpack[6]
     phi_grid = angpack[7]
 
-    n_u, n_v = grid_uv.shape[:2]
+    n_y, n_u, n_v = grid_uv_y.shape[:3]
     n_y = len(y_vals)
     n_tilt = len(tilts)
     n_phi = len(phi_grid)
@@ -337,15 +380,15 @@ def do_random(args):
     if args.Nrandom <= 0:
         raise ValueError('--Nrandom must be > 0 for mode=random')
 
-    atoms, sdfpack, gridpack = build_spatial_grid(args)
-    grid_uv, u_vals, u_idx_valid, arc_lengths, x_left, x_right = gridpack
+    atoms_pair, sdfpack, gridpack = build_spatial_grid(args)
+    grid_uv_na, grid_uv_cl, u_vals, u_idx_valid, arc_lengths, x_left, x_right = gridpack
     y_vals = make_y_levels(args.y_min, args.y_max, args.y_levels)
+    grid_uv = blend_uv_grids(grid_uv_na, grid_uv_cl, y_vals, mode='cos')[0]
     angpack = build_angular_grid(args)
     tilts = angpack[6]
     phi_grid = angpack[7]
 
-    n_u, n_v = grid_uv.shape[:2]
-    n_y = len(y_vals)
+    n_y, n_u, n_v = grid_uv.shape[:3]
     n_tilt = len(tilts)
     n_phi = len(phi_grid)
 
@@ -359,15 +402,15 @@ def do_random(args):
 def do_scan(args):
     scan_axes = _parse_scan_axes(args)
 
-    atoms, sdfpack, gridpack = build_spatial_grid(args)
-    grid_uv, u_vals, u_idx_valid, arc_lengths, x_left, x_right = gridpack
+    atoms_pair, sdfpack, gridpack = build_spatial_grid(args)
+    grid_uv_na, grid_uv_cl, u_vals, u_idx_valid, arc_lengths, x_left, x_right = gridpack
     y_vals = make_y_levels(args.y_min, args.y_max, args.y_levels)
+    grid_uv = blend_uv_grids(grid_uv_na, grid_uv_cl, y_vals, mode='cos')[0]
     angpack = build_angular_grid(args)
     tilts = angpack[6]
     phi_grid = angpack[7]
 
-    n_u, n_v = grid_uv.shape[:2]
-    n_y = len(y_vals)
+    n_y, n_u, n_v = grid_uv.shape[:3]
     n_tilt = len(tilts)
     n_phi = len(phi_grid)
 
@@ -381,6 +424,10 @@ def do_scan(args):
     out_png = args.png or f"{args.out_prefix}_scan_lines.png"
     _save_scan_png(args, grid_uv, u_vals, y_vals, tilts, phi_grid, coarse, scan_axes, out_png)
     print(f"Saved scan visualization -> {out_png}")
+
+    out_up = f"{args.out_prefix}_up_vectors.png"
+    plot_up_vectors(grid_uv, out_up)
+    print(f"Saved up-vector debug plot -> {out_up}")
 
     sys = AtomicSystem(fname=args.xyz)
 

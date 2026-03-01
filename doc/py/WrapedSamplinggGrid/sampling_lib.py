@@ -216,6 +216,40 @@ def make_y_levels(y_min, y_max, n_y):
     return np.linspace(y_min, y_max, n_y)
 
 
+def y_blend_weights(y_vals, mode='cos'):
+    """Weights for blending Na and Cl configurations across y.
+
+    We interpret y_vals as sampling within one unit cell; endpoints correspond
+    to the two extreme configurations.
+
+    Returns:
+      w_Na, w_Cl arrays of shape (n_y,)
+    """
+    y_vals = np.asarray(y_vals, dtype=float)
+    if len(y_vals) == 1:
+        return np.array([0.5]), np.array([0.5])
+    t = (y_vals - y_vals[0]) / (y_vals[-1] - y_vals[0])
+    t = np.clip(t, 0.0, 1.0)
+    if mode == 'linear':
+        w_na = 1.0 - t
+    elif mode == 'cos':
+        # smooth periodic-ish blend: w=cos^2(pi/2 * t)
+        w_na = np.cos(0.5 * np.pi * t) ** 2
+    else:
+        raise ValueError(f"Unknown y_blend mode '{mode}'")
+    w_cl = 1.0 - w_na
+    return w_na, w_cl
+
+
+def blend_uv_grids(grid_uv_na, grid_uv_cl, y_vals, mode='cos'):
+    """Blend two (n_u,n_v,2) uv grids into (n_y,n_u,n_v,2) using y-dependent weights."""
+    w_na, w_cl = y_blend_weights(y_vals, mode=mode)
+    out = []
+    for wa, wc in zip(w_na, w_cl):
+        out.append(wa * grid_uv_na + wc * grid_uv_cl)
+    return np.stack(out, axis=0), w_na, w_cl
+
+
 # ============================== angular sampling ==============================
 
 def build_fan_points(M, n_sub):
@@ -348,6 +382,71 @@ def make_oriented_coords(sys: AtomicSystem, tilt_vec, phi, center=True):
 
 def make_pose_coords(sys: AtomicSystem, pos_xyz, tilt_vec, phi, center=True):
     rot_coords = make_oriented_coords(sys, tilt_vec, phi, center=center)
+    return rot_coords + np.asarray(pos_xyz, dtype=float)[None, :]
+
+
+def local_up_from_streamline(grid_uv, iu, iv):
+    """Local 'up' direction from streamline connector at fixed v.
+
+    We use forward/backward difference along u-index.
+    Returns normalized 3D vector (x,0,z).
+    """
+    n_u = grid_uv.shape[0]
+    if n_u < 2:
+        return np.array([0.0, 0.0, 1.0])
+    if iu <= 0:
+        d = grid_uv[1, iv] - grid_uv[0, iv]
+    elif iu >= n_u - 1:
+        d = grid_uv[n_u - 1, iv] - grid_uv[n_u - 2, iv]
+    else:
+        d = grid_uv[iu + 1, iv] - grid_uv[iu - 1, iv]
+    v = np.array([d[0], 0.0, d[1]], dtype=float)
+    n = np.linalg.norm(v)
+    if n < 1e-12:
+        return np.array([0.0, 0.0, 1.0])
+    return v / n
+
+
+def _orthonormal_frame_from_up(up, ref=np.array([0.0, 1.0, 0.0])):
+    up = np.asarray(up, dtype=float)
+    up = up / max(np.linalg.norm(up), 1e-12)
+    e1 = np.cross(ref, up)
+    n1 = np.linalg.norm(e1)
+    if n1 < 1e-12:
+        ref2 = np.array([1.0, 0.0, 0.0])
+        e1 = np.cross(ref2, up)
+        n1 = np.linalg.norm(e1)
+    e1 = e1 / max(n1, 1e-12)
+    e2 = np.cross(up, e1)
+    e2 = e2 / max(np.linalg.norm(e2), 1e-12)
+    # columns are basis vectors
+    return np.stack([e1, e2, up], axis=1)
+
+
+def make_oriented_coords_local(sys: AtomicSystem, up_vec, tilt_vec_local, phi, center=True):
+    """Orient molecule with tilt measured from local up_vec.
+
+    tilt_vec_local: unit vector defined in the local frame where +Z is up_vec.
+    We map it to global by frame @ tilt_vec_local, then rotate around global tilt axis by phi.
+    """
+    sys.ensure_numpy_arrays()
+    coords0 = sys.apos.copy()
+    if center:
+        coords0 = coords0 - coords0.mean(axis=0)
+
+    frame = _orthonormal_frame_from_up(up_vec)
+    tloc = np.asarray(tilt_vec_local, dtype=float)
+    tloc = tloc / max(np.linalg.norm(tloc), 1e-12)
+    tglob = frame @ tloc
+    # rotate +Z to tglob, then apply phi around tglob
+    R_align = align_z_to(tglob)
+    R_phi = rotation_matrix(tglob, phi)
+    R = R_phi @ R_align
+    return (R @ coords0.T).T
+
+
+def make_pose_coords_local(sys: AtomicSystem, pos_xyz, up_vec, tilt_vec_local, phi, center=True):
+    rot_coords = make_oriented_coords_local(sys, up_vec, tilt_vec_local, phi, center=center)
     return rot_coords + np.asarray(pos_xyz, dtype=float)[None, :]
 
 
