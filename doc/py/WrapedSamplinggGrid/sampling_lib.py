@@ -84,7 +84,11 @@ def walk_isoline_segment(sdf, x_lin, z_lin, u_level, x_left, x_right, walk_res=0
     best_seg = None
     best_n = 0
 
-    for path in cs.get_paths():
+    paths = []
+    for coll in cs.collections:
+        paths.extend(coll.get_paths())
+
+    for path in paths:
         verts = path.vertices
         if len(verts) < 4:
             continue

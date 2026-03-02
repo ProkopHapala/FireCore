@@ -115,10 +115,22 @@ def build_spatial_grid(args):
     if grid_uv_cl is None:
         raise RuntimeError('No valid isolines found for corner=Cl; grid_uv_cl is None')
 
-    if grid_uv_na.shape != grid_uv_cl.shape:
-        raise RuntimeError(f"Na/Cl grids have different shapes: {grid_uv_na.shape} vs {grid_uv_cl.shape}")
+    # Align to common set of valid u-levels (intersection by original u_indices)
+    common_idx = sorted(set(u_idx_valid_na).intersection(u_idx_valid_cl))
+    if not common_idx:
+        raise RuntimeError('No overlapping valid isolines between Na and Cl grids')
 
-    # keep u_vals from Na (should match Cl if u_levels same and both valid)
+    def _filter_grid(grid, u_vals, u_idx_valid, arc_lengths, keep_idx):
+        pos = [i for i, u_idx in enumerate(u_idx_valid) if u_idx in keep_idx]
+        return grid[pos], u_vals[pos], [u_idx_valid[i] for i in pos], [arc_lengths[i] for i in pos]
+
+    grid_uv_na, u_vals_na, u_idx_valid_na, arc_lengths_na = _filter_grid(grid_uv_na, u_vals_na, u_idx_valid_na, arc_lengths_na, common_idx)
+    grid_uv_cl, u_vals_cl, u_idx_valid_cl, arc_lengths_cl = _filter_grid(grid_uv_cl, u_vals_cl, u_idx_valid_cl, arc_lengths_cl, common_idx)
+
+    if grid_uv_na.shape != grid_uv_cl.shape:
+        raise RuntimeError(f"Na/Cl grids have different shapes after alignment: {grid_uv_na.shape} vs {grid_uv_cl.shape}")
+
+    # keep u_vals from Na (should match Cl after alignment)
     return (atoms_na, atoms_cl), (X_grid_na, Z_grid_na, sdf_na, x_lin_na, z_lin_na), (grid_uv_na, grid_uv_cl, u_vals_na, u_idx_valid_na, arc_lengths_na, x_left, x_right)
 
 
