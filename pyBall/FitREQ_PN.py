@@ -302,7 +302,6 @@ def read_xyz_data(fname="input_all.xyz"):
 def read_xyz_data_new(fname="input_all.xyz"):
     """Read XYZ file and extract Etot and x0 values from comment lines"""
     Erefs = []
-    x0s = []
     pairs = []
     line_count = 0
     matched_count = 0
@@ -323,13 +322,11 @@ def read_xyz_data_new(fname="input_all.xyz"):
                 # Parse line like "# n0 5 Etot .70501356708840164618 x0 1.40 y -90 CH2O-A1_NH3-D1"
                 parts = line.split()
                 Etot  = float(parts[4])
-                x0    = float(parts[6])
                 pair  = parts[9]
                 Erefs.append(Etot)
-                x0s.append(x0)
                 pairs.append(pair)
     
-    return np.array(Erefs), np.array(x0s), np.array(pairs)
+    return np.array(Erefs), np.array(pairs)
 
 def loadDOFnames( fname, comps="REQH" ):
     names = []
@@ -640,8 +637,11 @@ def save_data_single(G, angles, distances, save_data_prefix=None, save_fmt="both
 
 def exp_weight_func(Erefs, a=1.0, alpha=3.0, Emin0=0.1 ):
     Emin = np.min(Erefs)
-    #return np.exp( -alpha*(Erefs-Emin)/( np.abs(Emin) + Emin0 ) )*a
-    arg = -alpha * (Erefs - Emin) / (np.abs(Emin) + Emin0)
+    return np.exp( -alpha*(Erefs-Emin)/( np.abs(Emin) + Emin0 ) )*a
+
+def exp_weight_func_new(Erefs, a=1.0, alpha=3.0 ):
+    Emin = np.min(Erefs)
+    arg = -alpha * (Erefs - Emin) / np.abs(Emin)
     return a * np.exp(np.clip(arg, -700, 700))
 
 def split_and_weight_curves(Erefs, x0s, n_before_min=4, weight_func=None, EminMin=-0.02 ):
@@ -698,13 +698,12 @@ def split_and_weight_curves(Erefs, x0s, n_before_min=4, weight_func=None, EminMi
     
     return weights, lens
 
-def split_and_weight_curves_new(Erefs, x0s, pairs, weight_func=None):
+def split_and_weight_curves_new(Erefs, pairs, weight_func=None):
     """
     Assign weights based on the global minimum for each pair/section.
     
     Args:
         Erefs: numpy array of total energies
-        x0s: numpy array of x0 values (monotonic within each curve)
         pairs: numpy array of pair labels 
     
     Returns:
@@ -723,9 +722,6 @@ def split_and_weight_curves_new(Erefs, x0s, pairs, weight_func=None):
         n = len(segment)
         lens.append(n)
         if n == 0: continue
-                
-        imin = np.argmin(segment) + start
-        Emin = np.min(segment)
 
         if weight_func is None:
             weights[start:end] = 1.0
