@@ -76,6 +76,7 @@ def setup_reference_scanner(mol_file, sub_file, mol_type_map=None, nPBC=(4, 4, 0
     scanner.enable_Morse = True
     scanner.enable_macro = bool(enable_macro)
     scanner.nPBC[:] = tuple(int(v) for v in nPBC)
+    scanner.wrap_PBC = True
     if enable_macro:
         scanner._update_macro_from_substrate()
     return scanner
@@ -226,6 +227,102 @@ def run_fast_case(mol_file, sub_file, out_dir=OUT_DIR, mol_type_map=None, nPBC=(
     return {'tag': tag, 'line_png': line_png, 'xy_png': xy_png, 'wall_s': gpu_xy['wall_s'], 't_prep_s': gpu_xy.get('t_prep_s', 0.0), 't_kernel_s': gpu_xy.get('t_kernel_s', 0.0), 't_download_s': gpu_xy.get('t_download_s', 0.0), 'dE2d_max': float(np.max(np.abs(dE2d)))}
 
 
+def run_folded_case(mol_file, sub_file, out_dir=OUT_DIR, mol_type_map=None, nPBC=(4, 4, 0), z0=None, nx=121, ny=121, ns_line=9, xy_range=None, nSystems=8192, chunk_size=8192, folded_nxy=32, folded_nz=40, folded_nu=4, folded_nv=4, folded_nzbasis=4):
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    os.makedirs(out_dir, exist_ok=True)
+    scanner = setup_reference_scanner(mol_file, sub_file, mol_type_map=mol_type_map, nPBC=nPBC, enable_macro=True)
+    md, mol_pos, mol_REQs, mol_names = setup_folded_gpu_scanner(mol_file, sub_file, nSystems=nSystems, mol_type_map=mol_type_map, folded_nxy=folded_nxy, folded_nz=folded_nz, folded_nu=folded_nu, folded_nv=folded_nv, folded_nzbasis=folded_nzbasis)
+    tag = scenario_tag(mol_file, sub_file)
+    if md.folded_params is None:
+        raise ValueError('run_folded_case(): md.folded_params is None after setup_folded_gpu_scanner()')
+    coeffs = np.asarray(md.folded_params['coeffs'], dtype=float)
+    type_ids = np.asarray(md.folded_params['atom_type_ids'], dtype=int)
+    basis_params = np.asarray(md.folded_params['basis_params'], dtype=float)
+    basis_lvec2d = np.asarray(md.folded_params['basis_lvec2d'], dtype=float)
+    coeff_norms = np.linalg.norm(coeffs, axis=1)
+    coeff_maxabs = np.max(np.abs(coeffs), axis=1)
+    print(f'[folded] {tag} fit summary nbasis={basis_params.shape[0]} ntypes={coeffs.shape[0]} type_ids={type_ids.tolist()} coeff_norms={coeff_norms.tolist()} coeff_maxabs={coeff_maxabs.tolist()}')
+    if z0 is None:
+        z0 = 3.5 if 'ptcda' in os.path.basename(mol_file).lower() else 1.0
+    if xy_range is None:
+        xy_range = default_xy_range(sub_file, mol_file)
+    p0 = np.array([0.0, 0.0, float(z0)], dtype=float)
+    step_x = np.array(basis_lvec2d[0, :3], dtype=float)
+    step_y = np.array(basis_lvec2d[1, :3], dtype=float)
+    tx = np.array([p0 + i * step_x for i in range(ns_line)], dtype=np.float32)
+    ty = np.array([p0 + i * step_y for i in range(ns_line)], dtype=np.float32)
+    transforms_x = ScanUtils.pack_transforms([np.eye(3)] * len(tx), tx)
+    transforms_y = ScanUtils.pack_transforms([np.eye(3)] * len(ty), ty)
+    cpu_x = np.array(scanner.evaluate(transforms_x)['total'], dtype=float)
+    cpu_y = np.array(scanner.evaluate(transforms_y)['total'], dtype=float)
+    gpu_x = np.array(eval_folded_gpu(md, transforms_x, chunk_size=chunk_size)['total'], dtype=float)
+    gpu_y = np.array(eval_folded_gpu(md, transforms_y, chunk_size=chunk_size)['total'], dtype=float)
+    print(f'[folded] {tag} line-x ref[min,max]=({cpu_x.min():.6e},{cpu_x.max():.6e}) folded[min,max]=({gpu_x.min():.6e},{gpu_x.max():.6e}) max|Δ|={np.max(np.abs(gpu_x-cpu_x)):.6e}')
+    print(f'[folded] {tag} line-y ref[min,max]=({cpu_y.min():.6e},{cpu_y.max():.6e}) folded[min,max]=({gpu_y.min():.6e},{gpu_y.max():.6e}) max|Δ|={np.max(np.abs(gpu_y-cpu_y)):.6e}')
+    for i in [0, len(cpu_x)//2, len(cpu_x)-1]:
+        print(f'[folded] {tag} sample-x i={i:3d} ref={cpu_x[i]: .6e} folded={gpu_x[i]: .6e} dE={gpu_x[i]-cpu_x[i]: .6e}')
+    for i in [0, len(cpu_y)//2, len(cpu_y)-1]:
+        print(f'[folded] {tag} sample-y i={i:3d} ref={cpu_y[i]: .6e} folded={gpu_y[i]: .6e} dE={gpu_y[i]-cpu_y[i]: .6e}')
+    dEx_cpu = cpu_x - cpu_x[0]
+    dEy_cpu = cpu_y - cpu_y[0]
+    dEx_gpu = gpu_x - gpu_x[0]
+    dEy_gpu = gpu_y - gpu_y[0]
+    labs = np.arange(ns_line)
+    fig, ax = plt.subplots(1, 1, figsize=(8, 4.5))
+    ax.plot(labs, dEx_cpu, 'o-', lw=1.5, label='CPU ref a')
+    ax.plot(labs, dEy_cpu, 's-', lw=1.5, label='CPU ref b')
+    ax.plot(labs, dEx_gpu, 'o--', lw=1.2, label='GPU folded a')
+    ax.plot(labs, dEy_gpu, 's--', lw=1.2, label='GPU folded b')
+    ax.axhline(0.0, c='k', lw=0.8)
+    ax.set_xlabel('Equivalent-site index')
+    ax.set_ylabel('ΔE [eV]')
+    ax.set_title(f'Folded parity {os.path.basename(mol_file)} on {os.path.basename(sub_file)}')
+    ax.grid(True, alpha=0.3)
+    ax.legend(frameon=False, fontsize=8)
+    line_png = os.path.join(out_dir, f'{tag}_equiv_line_folded_gpu.png')
+    fig.tight_layout()
+    fig.savefig(line_png, dpi=180)
+    plt.close(fig)
+
+    transforms_xy, info_xy = ScanUtils.scan_lateral_2d(float(z0), xy_range, xy_range, R=np.eye(3), nx=int(nx), ny=int(ny))
+    cpu_xy = np.array(scanner.evaluate(transforms_xy)['total'], dtype=float)
+    gpu_xy = eval_folded_gpu(md, transforms_xy, chunk_size=chunk_size)
+    Egpu = np.array(gpu_xy['total'], dtype=float).reshape(info_xy['shape'])
+    Ecpu = cpu_xy.reshape(info_xy['shape'])
+    dE2d = Egpu - Ecpu
+    print(f'[folded] {tag} xy ref[min,max]=({Ecpu.min():.6e},{Ecpu.max():.6e}) folded[min,max]=({Egpu.min():.6e},{Egpu.max():.6e}) dE[min,max]=({dE2d.min():.6e},{dE2d.max():.6e}) max|Δ|={np.max(np.abs(dE2d)):.6e}')
+    ix = len(info_xy['x'])//2
+    iy = len(info_xy['y'])//2
+    for (jx, jy) in [(0,0), (ix,iy), (-1,-1)]:
+        print(f'[folded] {tag} sample-xy ix={jx} iy={jy} ref={Ecpu[jx,jy]: .6e} folded={Egpu[jx,jy]: .6e} dE={dE2d[jx,jy]: .6e}')
+    xs = info_xy['x']
+    ys = info_xy['y']
+    vmax_map = np.nanmax(np.abs(Egpu - np.nanmean(Egpu)))
+    vmax_err = np.nanmax(np.abs(dE2d))
+    fig, axs = plt.subplots(1, 2, figsize=(14, 6))
+    im0 = axs[0].imshow((Egpu - np.mean(Egpu)).T, extent=[xs[0], xs[-1], ys[0], ys[-1]], origin='lower', aspect='equal', cmap='bwr', vmin=-vmax_map, vmax=vmax_map)
+    axs[0].set_xlabel('x [Å]')
+    axs[0].set_ylabel('y [Å]')
+    axs[0].set_title('Folded GPU XY scan')
+    plt.colorbar(im0, ax=axs[0], label='E - <E> [eV]')
+    im1 = axs[1].imshow(dE2d.T, extent=[xs[0], xs[-1], ys[0], ys[-1]], origin='lower', aspect='equal', cmap='bwr', vmin=-vmax_err, vmax=vmax_err)
+    axs[1].set_xlabel('x [Å]')
+    axs[1].set_ylabel('y [Å]')
+    axs[1].set_title('Folded GPU - CPU reference')
+    plt.colorbar(im1, ax=axs[1], label='ΔE [eV]')
+    xy_png = os.path.join(out_dir, f'{tag}_XYscan_folded_gpu.png')
+    fig.tight_layout()
+    fig.savefig(xy_png, dpi=180)
+    plt.close(fig)
+    print(f'[folded] {tag} line max|ΔE| x={np.max(np.abs(gpu_x-cpu_x)):.6e} y={np.max(np.abs(gpu_y-cpu_y)):.6e} 2D max|ΔE|={np.max(np.abs(dE2d)):.6e} wall={gpu_xy["wall_s"]:.3f}s prep={gpu_xy.get("t_prep_s",0.0):.3f}s kernel={gpu_xy.get("t_kernel_s",0.0):.3f}s download={gpu_xy.get("t_download_s",0.0):.3f}s')
+    print(f'[folded] saved {line_png}')
+    print(f'[folded] saved {xy_png}')
+    return {'tag': tag, 'line_png': line_png, 'xy_png': xy_png, 'wall_s': gpu_xy['wall_s'], 't_prep_s': gpu_xy.get('t_prep_s', 0.0), 't_kernel_s': gpu_xy.get('t_kernel_s', 0.0), 't_download_s': gpu_xy.get('t_download_s', 0.0), 'dE2d_max': float(np.max(np.abs(dE2d)))}
+
+
 def default_scenarios():
     scs = []
     for mol_key, (mol_name, mol_type_map, z0) in MOL_PRESETS.items():
@@ -252,6 +349,8 @@ def run_batch_cases(args):
             results.append(run_reference_case(case['mol_file'], case['sub_file'], out_dir=args.out_dir, mol_type_map=case['mol_type_map'], nPBC=tuple(args.npbc), z0=case['z0'], nx=args.nx, ny=args.ny, ns_line=args.ns_line))
         if args.mode in ('fast', 'all'):
             results.append(run_fast_case(case['mol_file'], case['sub_file'], out_dir=args.out_dir, mol_type_map=case['mol_type_map'], nPBC=tuple(args.npbc), z0=case['z0'], nx=args.nx, ny=args.ny, ns_line=args.ns_line, nSystems=args.fast_nsystems, chunk_size=args.fast_chunk))
+        if args.mode in ('folded', 'all'):
+            results.append(run_folded_case(case['mol_file'], case['sub_file'], out_dir=args.out_dir, mol_type_map=case['mol_type_map'], nPBC=tuple(args.npbc), z0=case['z0'], nx=args.nx, ny=args.ny, ns_line=args.ns_line, nSystems=args.fast_nsystems, chunk_size=args.fast_chunk, folded_nxy=args.folded_nxy, folded_nz=args.folded_nz, folded_nu=args.folded_nu, folded_nv=args.folded_nv, folded_nzbasis=args.folded_nzbasis))
     return results
 
 
@@ -263,9 +362,26 @@ def setup_fast_gpu_scanner(mol_file, sub_file, nSystems=8192, mol_type_map=None)
     return md, mol_pos, mol_REQs, mol_names
 
 
+def setup_folded_gpu_scanner(mol_file, sub_file, nSystems=8192, mol_type_map=None, folded_nxy=32, folded_nz=40, folded_nu=4, folded_nv=4, folded_nzbasis=4):
+    mol_pos, mol_REQs, mol_names, mol_Zs, mol_lvec = load_xyz_with_REQs(mol_file, type_map=mol_type_map)
+    md = MolecularDynamics(nloc=32, debug_build_options='-DDBG_UFF=0')
+    md.init_rigid_molecule_batch(mol_pos, mol_REQs, nSystems=nSystems)
+    md.set_surface(sub_file, nPBC=(4, 4, 0), pos0=(0.0, 0.0, 0.0), alpha_morse=1.8, r_damp=0.0, bMacro=True)
+    z0 = 3.5 if 'ptcda' in os.path.basename(mol_file).lower() else 1.0
+    md.fit_folded_surface_basis(sub_file, type_map=None, nPBC=(4,4,0), z_range=(max(0.5, z0-0.5), z0+4.5), nu=folded_nu, nv=folded_nv, nz=folded_nzbasis, nxy=folded_nxy, nz_samp=folded_nz, r_damp=0.0, alpha_morse=1.8, bMacro=True)
+    return md, mol_pos, mol_REQs, mol_names
+
+
 def eval_fast_gpu(md, transforms, chunk_size=None):
     t0 = time.perf_counter()
     out = md.eval_rigid_getSurfMorse(transforms, chunk_size=chunk_size)
+    out['wall_s'] = time.perf_counter() - t0
+    return out
+
+
+def eval_folded_gpu(md, transforms, chunk_size=None):
+    t0 = time.perf_counter()
+    out = md.eval_rigid_getSurfFolded(transforms, chunk_size=chunk_size)
     out['wall_s'] = time.perf_counter() - t0
     return out
 
@@ -626,7 +742,7 @@ def make_argparser():
     parser.add_argument('--mol-preset', choices=sorted(MOL_PRESETS.keys()), default='h2o', help='Preset molecule when --mol is not given')
     parser.add_argument('--sub-preset', choices=sorted(SUB_PRESETS.keys()), default='nacl_8x8', help='Preset substrate when --sub is not given')
     parser.add_argument('--batch-presets', action='store_true', help='Run H2O/PTCDA on NaCl 1x1 and 8x8')
-    parser.add_argument('--mode', choices=['reference', 'fast', 'all'], default='all', help='Which scan backend(s) to run')
+    parser.add_argument('--mode', choices=['reference', 'fast', 'folded', 'all'], default='all', help='Which scan backend(s) to run')
     parser.add_argument('--nx', type=int, default=121, help='2D scan resolution in x')
     parser.add_argument('--ny', type=int, default=121, help='2D scan resolution in y')
     parser.add_argument('--ns-line', type=int, default=9, help='Number of equivalent-site points in 1D line check')
@@ -634,6 +750,11 @@ def make_argparser():
     parser.add_argument('--npbc', type=int, nargs=3, default=(4, 4, 0), help='PBC replication used for macro correction')
     parser.add_argument('--fast-nsystems', type=int, default=8192, help='Number of replicas allocated for fast GPU batch')
     parser.add_argument('--fast-chunk', type=int, default=8192, help='Chunk size used during fast GPU evaluation')
+    parser.add_argument('--folded-nxy', type=int, default=32, help='Folded basis fitting samples in u/v per axis')
+    parser.add_argument('--folded-nz', type=int, default=40, help='Folded basis fitting samples in z')
+    parser.add_argument('--folded-nu', type=int, default=4, help='Folded basis cosine harmonics in u')
+    parser.add_argument('--folded-nv', type=int, default=4, help='Folded basis cosine harmonics in v')
+    parser.add_argument('--folded-nzbasis', type=int, default=4, help='Folded basis exponential count in z')
     parser.add_argument('--out-dir', type=str, default=OUT_DIR, help='Output directory for PNGs')
     parser.add_argument('--legacy-suite', action='store_true', help='Also run the older H2O/PTCDA demo suite')
     return parser

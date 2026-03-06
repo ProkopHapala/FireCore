@@ -2,6 +2,7 @@ import sys
 import os
 import numpy as np
 import re
+import math
 
 import pyopencl as cl
 # from . import clUtils as clu
@@ -16,6 +17,9 @@ from .OpenCLBase import OpenCLBase
 from .InteractionEnergy import load_xyz_with_REQs
 
 REQ_DEFAULT = np.array([1.7, 0.1, 0.0, 0.0], dtype=np.float32)  # R, E, Q, padding
+
+FOLDED_BASIS_MAX = 64
+FOLDED_TYPES_MAX = 8
 
 verbose=False
 
@@ -81,6 +85,9 @@ class MolecularDynamics(OpenCLBase):
         self.surface_pos0     = np.zeros(4, dtype=np.float32)
         self.rigid_apos0      = None
         self.rigid_REQs0      = None
+        self.folded_params    = None
+        self.folded_type_ids  = None
+        self.folded_fit_info  = None
 
     def realloc(self, mmff, nSystems=1 ):
         """
@@ -394,8 +401,14 @@ class MolecularDynamics(OpenCLBase):
         self.check_buf('surf_qQa', self.nSystems * 4 * float_size, mf.READ_ONLY)
         self.check_buf('surf_qQb', self.nSystems * 4 * float_size, mf.READ_ONLY)
         self.check_buf('surf_qQc', self.nSystems * 4 * float_size, mf.READ_ONLY)
+        self.check_buf('folded_coeffs', FOLDED_TYPES_MAX * FOLDED_BASIS_MAX * float_size, mf.READ_ONLY)
+        self.check_buf('folded_kxyz',   FOLDED_BASIS_MAX * 4 * float_size, mf.READ_ONLY)
+        self.check_buf('folded_atom_type', self.natoms * np.int32().itemsize, mf.READ_ONLY)
         reqs_all = np.broadcast_to(self.rigid_REQs0[None, :, :], (self.nSystems, self.natoms, 4)).copy()
         self.toGPU('REQs', reqs_all)
+        self.toGPU('folded_atom_type', np.zeros(self.natoms, dtype=np.int32))
+        self.toGPU('folded_coeffs', np.zeros((FOLDED_TYPES_MAX, FOLDED_BASIS_MAX), dtype=np.float32))
+        self.toGPU('folded_kxyz', np.zeros((FOLDED_BASIS_MAX, 4), dtype=np.float32))
         cl.enqueue_fill_buffer(self.queue, self.buffer_dict['apos'], np.zeros(1, dtype=np.float32), 0, self.buffer_dict['apos'].size)
         cl.enqueue_fill_buffer(self.queue, self.buffer_dict['aforce'], np.zeros(1, dtype=np.float32), 0, self.buffer_dict['aforce'].size)
         self.setup_kernels()
@@ -462,6 +475,13 @@ class MolecularDynamics(OpenCLBase):
                 self.kernel_args_getSurfMorse = self.generate_kernel_args("getSurfMorse")
             else:
                 warn_skip("getSurfMorse", missing)
+        self.kernel_args_getSurfFolded = None
+        if "getSurfFolded" in self.kernelheaders:
+            ok, missing = can_bind_kernel("getSurfFolded")
+            if ok:
+                self.kernel_args_getSurfFolded = self.generate_kernel_args("getSurfFolded")
+            else:
+                warn_skip("getSurfFolded", missing)
 
         # Non-bonded (optional)
         self.kernel_args_getNonBond = None
@@ -577,6 +597,7 @@ class MolecularDynamics(OpenCLBase):
             raise ValueError(f"Surface file {surf_xyz} must contain lattice vectors in comment line")
         self.surface_atoms = np.zeros((len(apos), 4), dtype=np.float32)
         self.surface_atoms[:, :3] = apos.astype(np.float32)
+        self.surface_enames = list(enames)
         self.surface_REQs = np.ascontiguousarray(REQs, dtype=np.float32)
         self.surface_lvec = np.zeros((3,4), dtype=np.float32)
         self.surface_lvec[:, :3] = lvec.astype(np.float32)
@@ -867,6 +888,264 @@ class MolecularDynamics(OpenCLBase):
         loc = (int(lx), 1)
         self.prg.getSurfMorse(self.queue, sz, loc, *self.kernel_args_getSurfMorse)
         self.queue.finish()
+
+    def run_getSurfFolded(self, nSystems=None):
+        if self.kernel_args_getSurfFolded is None:
+            self.kernel_args_getSurfFolded = self.generate_kernel_args('getSurfFolded', bPrint=False)
+        nSystems = self.nSystems if nSystems is None else int(nSystems)
+        lx = min(int(self.nloc), int(self.natoms))
+        while (lx > 1) and (int(self.natoms) % lx != 0):
+            lx -= 1
+        sz = (int(self.natoms), nSystems)
+        loc = (int(lx), 1)
+        self.prg.getSurfFolded(self.queue, sz, loc, *self.kernel_args_getSurfFolded)
+        self.queue.finish()
+
+    def _folded_unique_types(self, REQs, decimals=6):
+        keys = np.round(np.asarray(REQs[:, :4], dtype=np.float64), decimals).astype(np.float32)
+        uniq = []
+        idxs = np.empty(len(keys), dtype=np.int32)
+        mapping = {}
+        for i, row in enumerate(keys):
+            key = tuple(row.tolist())
+            it = mapping.get(key, None)
+            if it is None:
+                it = len(uniq)
+                mapping[key] = it
+                uniq.append(np.array(row, dtype=np.float32))
+            idxs[i] = it
+        return np.array(uniq, dtype=np.float32), idxs
+
+    def _build_folded_basis_params(self, nu=4, nv=4, nz=4, z0=0.0, z_scale=0.75):
+        params = []
+        alphas = z_scale * (1.0 + np.arange(int(nz), dtype=np.float32))
+        for iu in range(int(nu)):
+            for iv in range(int(nv)):
+                for az in alphas:
+                    params.append((float(iu), float(iv), float(az), float(z0)))
+        if len(params) > FOLDED_BASIS_MAX:
+            raise ValueError(f'_build_folded_basis_params(): nbasis={len(params)} exceeds FOLDED_BASIS_MAX={FOLDED_BASIS_MAX}')
+        return np.array(params, dtype=np.float32)
+
+    def _folded_basis_matrix(self, uvz, basis_params):
+        uvz = np.asarray(uvz, dtype=np.float64)
+        basis_params = np.asarray(basis_params, dtype=np.float64)
+        u = uvz[:, 0][:, None]
+        v = uvz[:, 1][:, None]
+        z = uvz[:, 2][:, None]
+        ku = basis_params[None, :, 0]
+        kv = basis_params[None, :, 1]
+        az = basis_params[None, :, 2]
+        z0 = basis_params[None, :, 3]
+        bx = np.cos((2.0 * np.pi) * ku * u)
+        by = np.cos((2.0 * np.pi) * kv * v)
+        bz = np.exp(-az * np.maximum(0.0, z - z0))
+        return (bx * by * bz).astype(np.float64)
+
+    def _folded_fractional_coords(self, xyz):
+        if self.surface_lvec is None:
+            raise ValueError('_folded_fractional_coords(): surface_lvec is not initialized')
+        lvec2d = getattr(self, 'folded_lvec_basis', None)
+        if lvec2d is None:
+            a = np.array(self.surface_lvec[0, :3], dtype=np.float64)
+            b = np.array(self.surface_lvec[1, :3], dtype=np.float64)
+        else:
+            a = np.array(lvec2d[0, :3], dtype=np.float64)
+            b = np.array(lvec2d[1, :3], dtype=np.float64)
+        M = np.array([[a[0], b[0]], [a[1], b[1]]], dtype=np.float64)
+        det = float(np.linalg.det(M))
+        if abs(det) < 1e-12:
+            raise ValueError(f'_folded_fractional_coords(): degenerate in-plane lattice det={det}')
+        invM = np.linalg.inv(M)
+        xy = np.asarray(xyz[:, :2], dtype=np.float64)
+        uv = (invM @ xy.T).T
+        uv -= np.floor(uv)
+        out = np.empty((len(xyz), 3), dtype=np.float64)
+        out[:, :2] = uv
+        out[:, 2] = np.asarray(xyz[:, 2], dtype=np.float64)
+        return out
+
+    def _infer_folded_primitive_lvec2d(self):
+        if self.surface_lvec is None:
+            raise ValueError('_infer_folded_primitive_lvec2d(): surface_lvec is not initialized')
+        a = np.array(self.surface_lvec[0, :3], dtype=np.float64)
+        b = np.array(self.surface_lvec[1, :3], dtype=np.float64)
+        apos = getattr(self, 'surface_atoms', None)
+        enames = getattr(self, 'surface_enames', None)
+        if apos is None or enames is None:
+            out = np.zeros((3, 4), dtype=np.float32)
+            out[0, :3] = a.astype(np.float32)
+            out[1, :3] = b.astype(np.float32)
+            out[2, :3] = np.array(self.surface_lvec[2, :3], dtype=np.float32)
+            return out
+        apos = np.asarray(apos[:, :3], dtype=np.float64)
+        enames = np.asarray(enames)
+        la = np.linalg.norm(a[:2])
+        lb = np.linalg.norm(b[:2])
+        ah = a[:2] / max(la, 1e-12)
+        bh = b[:2] / max(lb, 1e-12)
+        ua = apos[:, :2] @ ah
+        ub = apos[:, :2] @ bh
+
+        def infer_period(ucoord, vcoord, labels, axis_len):
+            best = None
+            ztol = 1e-3
+            vtol = 1e-3
+            for lab in np.unique(labels):
+                mask_lab = labels == lab
+                if np.count_nonzero(mask_lab) < 2:
+                    continue
+                zs = apos[mask_lab, 2]
+                us = ucoord[mask_lab]
+                vs = vcoord[mask_lab]
+                for z0 in np.unique(np.round(zs, 3)):
+                    mask_z = np.abs(zs - z0) < ztol
+                    if np.count_nonzero(mask_z) < 2:
+                        continue
+                    usz = us[mask_z]
+                    vsz = vs[mask_z]
+                    vkeys = np.unique(np.round(vsz, 3))
+                    for vk in vkeys:
+                        mask_v = np.abs(vsz - vk) < vtol
+                        vals = np.unique(np.round(usz[mask_v], 6))
+                        if len(vals) < 2:
+                            continue
+                        ds = np.diff(np.sort(vals))
+                        ds = ds[ds > 1e-6]
+                        if len(ds) <= 0:
+                            continue
+                        d = float(np.min(ds))
+                        if (d > 1e-6) and (d < axis_len - 1e-6):
+                            best = d if (best is None or d < best) else best
+            return axis_len if best is None else best
+
+        pa = infer_period(ua, ub, enames, la)
+        pb = infer_period(ub, ua, enames, lb)
+        out = np.zeros((3, 4), dtype=np.float32)
+        out[0, :3] = (a * (pa / max(la, 1e-12))).astype(np.float32)
+        out[1, :3] = (b * (pb / max(lb, 1e-12))).astype(np.float32)
+        out[2, :3] = np.array(self.surface_lvec[2, :3], dtype=np.float32)
+        return out
+
+    def fit_folded_surface_basis(self, surf_xyz=None, type_map=None, nPBC=(4,4,0), z_range=(0.5, 8.0), nu=4, nv=4, nz=4, nxy=32, nz_samp=40, r_damp=0.0, alpha_morse=1.8, bMacro=True):
+        if self.rigid_REQs0 is None:
+            raise ValueError('fit_folded_surface_basis(): call init_rigid_molecule_batch() first')
+        if surf_xyz is None:
+            surf_xyz = getattr(self, 'surface_source_xyz', None)
+        if surf_xyz is None:
+            raise ValueError('fit_folded_surface_basis(): surf_xyz must be provided the first time')
+        uniq_REQs, atom_type_ids = self._folded_unique_types(self.rigid_REQs0)
+        ntypes = len(uniq_REQs)
+        if ntypes > FOLDED_TYPES_MAX:
+            raise ValueError(f'fit_folded_surface_basis(): ntypes={ntypes} exceeds FOLDED_TYPES_MAX={FOLDED_TYPES_MAX}')
+        basis_params = self._build_folded_basis_params(nu=nu, nv=nv, nz=nz, z0=float(z_range[0]), z_scale=1.0/max(1e-6, float(z_range[1]-z_range[0])))
+        nbasis = len(basis_params)
+        self.folded_lvec_basis = self._infer_folded_primitive_lvec2d()
+        a = np.array(self.folded_lvec_basis[0, :3], dtype=np.float32)
+        b = np.array(self.folded_lvec_basis[1, :3], dtype=np.float32)
+        u_freqs = np.unique(basis_params[:, 0]).astype(int).tolist()
+        v_freqs = np.unique(basis_params[:, 1]).astype(int).tolist()
+        alphas = np.unique(np.round(basis_params[:, 2].astype(np.float64), 6)).tolist()
+        print(f'[folded] basis primitive_lvec a={a.tolist()} b={b.tolist()} |a|={float(np.linalg.norm(a[:2])):.6f} |b|={float(np.linalg.norm(b[:2])):.6f}')
+        print(f'[folded] basis u_freqs={u_freqs} v_freqs={v_freqs} z_alphas={alphas} z0={float(z_range[0]):.6f} z1={float(z_range[1]):.6f}')
+        us = np.linspace(0.0, 1.0, int(nxy), endpoint=False, dtype=np.float32)
+        vs = np.linspace(0.0, 1.0, int(nxy), endpoint=False, dtype=np.float32)
+        zs = np.linspace(float(z_range[0]), float(z_range[1]), int(nz_samp), endpoint=True, dtype=np.float32)
+        xyz = []
+        uvz = []
+        for z in zs:
+            for v in vs:
+                for u in us:
+                    p = a*u + b*v
+                    xyz.append((float(p[0]), float(p[1]), float(z)))
+                    uvz.append((float(u), float(v), float(z)))
+        xyz = np.array(xyz, dtype=np.float32)
+        uvz = np.array(uvz, dtype=np.float64)
+        transforms = np.zeros((len(xyz), 3, 4), dtype=np.float32)
+        transforms[:, 0, 0] = 1.0; transforms[:, 1, 1] = 1.0; transforms[:, 2, 2] = 1.0
+        transforms[:, :, 3] = xyz
+        Phi = self._folded_basis_matrix(uvz, basis_params)
+        coeffs = np.zeros((ntypes, nbasis), dtype=np.float32)
+        refs = []
+        for it in range(ntypes):
+            md1 = MolecularDynamics(nloc=self.nloc, debug_build_options='-DDBG_UFF=0')
+            md1.init_rigid_molecule_batch(np.zeros((1,3), dtype=np.float32), uniq_REQs[it:it+1], nSystems=min(max(len(transforms), 1), 8192))
+            md1.set_surface(surf_xyz, nPBC=nPBC, pos0=(0.0,0.0,0.0), alpha_morse=alpha_morse, r_damp=r_damp, bMacro=bMacro, type_map=type_map)
+            out = md1.eval_rigid_getSurfMorse(transforms.reshape(-1,12), chunk_size=md1.nSystems)
+            y = np.asarray(out['total'], dtype=np.float64)
+            refs.append(y)
+            S, *_ = np.linalg.lstsq(Phi, y, rcond=None)
+            coeffs[it, :nbasis] = S.astype(np.float32)
+        self.surface_source_xyz = surf_xyz
+        self.folded_params = {
+            'basis_params': basis_params,
+            'coeffs': coeffs,
+            'atom_type_ids': atom_type_ids.astype(np.int32),
+            'unique_REQs': uniq_REQs,
+            'basis_lvec2d': self.folded_lvec_basis.copy(),
+            'nu': int(nu), 'nv': int(nv), 'nz': int(nz),
+            'z_range': (float(z_range[0]), float(z_range[1])),
+            'nxy': int(nxy), 'nz_samp': int(nz_samp),
+        }
+        self.folded_fit_info = {
+            'uvz': uvz,
+            'Phi': Phi,
+            'refs': refs,
+        }
+        coeff_pad = np.zeros((FOLDED_TYPES_MAX, FOLDED_BASIS_MAX), dtype=np.float32)
+        coeff_pad[:ntypes, :nbasis] = coeffs[:, :nbasis]
+        kxyz_pad = np.zeros((FOLDED_BASIS_MAX, 4), dtype=np.float32)
+        kxyz_pad[:nbasis, :] = basis_params[:, :4]
+        self.toGPU('folded_coeffs', coeff_pad)
+        self.toGPU('folded_kxyz', kxyz_pad)
+        self.toGPU('folded_atom_type', atom_type_ids.astype(np.int32))
+        self.folded_type_ids = atom_type_ids.astype(np.int32)
+        self.kernel_params['folded_meta'] = np.array([nbasis, ntypes, 0, 0], dtype=np.int32)
+        self.kernel_params['folded_lvec2d'] = np.array([a[0], b[0], a[1], b[1]], dtype=np.float32)
+        self.kernel_params['folded_z0'] = np.array([float(z_range[0]), 0.0, 0.0, 0.0], dtype=np.float32)
+        if 'getSurfFolded' in self.kernelheaders:
+            self.kernel_args_getSurfFolded = self.generate_kernel_args('getSurfFolded', bPrint=False)
+        return self.folded_params
+
+    def eval_rigid_getSurfFolded(self, transforms, chunk_size=None):
+        if self.kernel_args_getSurfFolded is None:
+            raise ValueError('eval_rigid_getSurfFolded(): call fit_folded_surface_basis() first')
+        T = self.wrap_rigid_transforms_PBC(transforms).reshape(-1, 3, 4)
+        nconf = len(T)
+        if nconf <= 0:
+            z = np.zeros(0, dtype=np.float32)
+            return {'total': z.copy(), 'LJ': z.copy(), 'Coulomb': z.copy(), 'HBond': z.copy()}
+        if chunk_size is None:
+            chunk_size = self.nSystems
+        chunk_size = int(min(chunk_size, self.nSystems))
+        if chunk_size <= 0:
+            raise ValueError(f'eval_rigid_getSurfFolded(): invalid chunk_size={chunk_size} for nSystems={self.nSystems}')
+        out_total = np.empty(nconf, dtype=np.float32)
+        float_size = np.float32().itemsize
+        sys_bytes = self.nvecs * 4 * float_size
+        t_prep = 0.0
+        t_kernel = 0.0
+        t_download = 0.0
+        for i0 in range(0, nconf, chunk_size):
+            nch = min(chunk_size, nconf - i0)
+            t1 = time.perf_counter()
+            self.upload_rigid_transforms(T[i0:i0+nch], iSys0=0)
+            cl.enqueue_fill_buffer(self.queue, self.buffer_dict['aforce'], np.zeros(1, dtype=np.float32), 0, nch * sys_bytes)
+            self.queue.finish()
+            t2 = time.perf_counter()
+            self.run_getSurfFolded(nSystems=nch)
+            self.queue.finish()
+            t3 = time.perf_counter()
+            aforce = np.empty((nch, self.nvecs, 4), dtype=np.float32)
+            self.fromGPU('aforce', aforce)
+            self.queue.finish()
+            out_total[i0:i0+nch] = -aforce[:, :self.natoms, 3].sum(axis=1)
+            t4 = time.perf_counter()
+            t_prep += (t2 - t1)
+            t_kernel += (t3 - t2)
+            t_download += (t4 - t3)
+        z = np.zeros_like(out_total)
+        return {'total': out_total, 'LJ': z.copy(), 'Coulomb': z.copy(), 'HBond': z.copy(), 't_prep_s': t_prep, 't_kernel_s': t_kernel, 't_download_s': t_download, 't_total_s': t_prep + t_kernel + t_download}
     
     def run_runMD(self):
         self.prg.runMD(self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_runMD)

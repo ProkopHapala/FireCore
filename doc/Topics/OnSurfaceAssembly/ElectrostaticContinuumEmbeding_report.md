@@ -306,3 +306,43 @@ The fast rigid-surface scan path is now working for both small and large molecul
 - kernel-dominated runtime on the large GPU workload
 
 So the Python harness is no longer the main bottleneck for the large fast scan; the measured runtime is mostly the GPU kernel execution itself.
+
+### 9) Folded-basis PyOpenCL parity (primitive lattice fix)
+
+We implemented a compressed folded-basis evaluation path (PyOpenCL + `getSurfFolded`) and discovered a critical parity bug: the lateral basis was built on the **8×8 supercell lattice (32 Å)** instead of the primitive NaCl **4 Å** repeat. This collapsed the folded field to a near-constant. The fix was to infer the primitive in-plane lattice from the substrate motif and use it for folded basis construction and evaluation.
+
+Key diagnostics now printed during fit:
+
+```
+[folded] basis primitive_lvec a=[4.0, 0.0, 0.0] b=[0.0, 4.0, 0.0] |a|=4.000000 |b|=4.000000
+[folded] basis u_freqs=[0, 1, 2, 3] v_freqs=[0, 1, 2, 3] z_alphas=[0.2, 0.4, 0.6, 0.8]
+```
+
+The test harness now also wraps periodic transforms in the CPU reference to match the folded path.
+
+#### Parity results (folded vs reference, Morse + macro)
+
+- **H2O on NaCl 8×8**, z≈1.0 Å, nx=ny=81:
+  - line max|ΔE|: x=2.94e-04 eV, y=3.05e-04 eV
+  - 2D max|ΔE|: 4.43e-04 eV
+  - plots: `tests/tMMFF/output_interaction_scan/H2O_O__NaCl_8x8_L3_equiv_line_folded_gpu.png`, `tests/tMMFF/output_interaction_scan/H2O_O__NaCl_8x8_L3_XYscan_folded_gpu.png`
+
+- **H2O on NaCl 1×1**, z≈1.0 Å, nx=ny=81:
+  - line max|ΔE|: x=2.82e-04 eV, y=2.82e-04 eV
+  - 2D max|ΔE|: 4.57e-04 eV
+  - plots: `tests/tMMFF/output_interaction_scan/H2O_O__NaCl_1x1_L3_equiv_line_folded_gpu.png`, `tests/tMMFF/output_interaction_scan/H2O_O__NaCl_1x1_L3_XYscan_folded_gpu.png`
+
+- **PTCDA on NaCl 8×8**, z≈3.5 Å, nx=ny=81:
+  - line max|ΔE|: x=1.16e-04 eV, y=1.20e-04 eV
+  - 2D max|ΔE|: 1.64e-04 eV
+  - plots: `tests/tMMFF/output_interaction_scan/PTCDA__NaCl_8x8_L3_equiv_line_folded_gpu.png`, `tests/tMMFF/output_interaction_scan/PTCDA__NaCl_8x8_L3_XYscan_folded_gpu.png`
+
+All folded runs use per-type fitted coefficients (unique REQ rows) and the primitive lateral basis shown above. The remaining errors are O(1e-4 eV) on the tested grids.
+
+### 10) Takeaways to avoid similar issues
+
+- **Always use primitive lattice for basis construction.** Do not assume the substrate XYZ cell is the primitive; infer the smallest repeat from the motif (or load a known primitive) before building lateral modes.
+- **Print and inspect basis parameters.** Lattice vectors, lateral frequencies, and z-decay alphas must be logged so periodicity mistakes surface immediately.
+- **Match periodic wrapping between reference and fast paths.** If the folded path wraps transforms into the cell, the CPU reference must wrap identically for fair parity.
+- **Per-type coefficients are necessary but not sufficient.** Even with distinct REQ types, a wrong lattice or wrapping can collapse the folded field to a constant; always check min/max(ref) vs min/max(folded) and sample points.
+- **Keep headless diagnostics strict.** Report ref/folded min/max, max|Δ|, and a few sample values for both line and 2D scans so qualitative mismatches are obvious.

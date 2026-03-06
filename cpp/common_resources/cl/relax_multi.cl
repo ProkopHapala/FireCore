@@ -308,6 +308,33 @@ inline float4 getMacroRectLayers( float3 pos, float q, float4 bounds, float4 L0,
     return (float4){ g*(COULOMB_CONST*q), COULOMB_CONST*q*phi };
 }
 
+inline float folded_eval_basis(float u, float v, float z, float4 prm){
+    float bx = cos( (2.0f*M_PI_F) * prm.x * u );
+    float by = cos( (2.0f*M_PI_F) * prm.y * v );
+    float dz = fmax(0.0f, z - prm.w);
+    float bz = exp( -prm.z * dz );
+    return bx * by * bz;
+}
+
+inline float3 folded_eval_grad(float u, float v, float z, float4 prm, float4 invLvec2d){
+    float phix = (2.0f*M_PI_F) * prm.x;
+    float phiy = (2.0f*M_PI_F) * prm.y;
+    float cu = cos(phix*u);
+    float su = sin(phix*u);
+    float cv = cos(phiy*v);
+    float sv = sin(phiy*v);
+    float dz = fmax(0.0f, z - prm.w);
+    float bz = exp(-prm.z * dz);
+    float dEdu = -phix * su * cv * bz;
+    float dEdv = -phiy * cu * sv * bz;
+    float dEdz = (z > prm.w) ? (-prm.z * cu * cv * bz) : 0.0f;
+    float dudx = invLvec2d.x;
+    float dudy = invLvec2d.z;
+    float dvdx = invLvec2d.y;
+    float dvdy = invLvec2d.w;
+    return (float3)( dEdu*dudx + dEdv*dvdx, dEdu*dudy + dEdv*dvdy, dEdz );
+}
+
 // limit force magnitude to fmax
 float3 limnitForce( float3 f, float fmax ){
     float fr2 = dot(f,f);                         // force magnitude squared
@@ -3777,6 +3804,78 @@ __kernel void getSurfMorse(
     // }
     forces[iav] += fe;
 
+}
+
+__kernel void getSurfFolded(
+    const int4 ns,                     // 1
+    __global float4*  atoms,           // 2
+    __global float4*  REQs,            // 3
+    __global float4*  forces,          // 4
+    __global float*   folded_coeffs,   // 5  [ntypeMax*nbasisMax]
+    __global float4*  folded_kxyz,     // 6  [nbasisMax]
+    __global int*     folded_atom_type,// 7  [natoms]
+    const int4        folded_meta,     // 8  (nbasis, ntypes, 0, 0)
+    const float4      folded_lvec2d    // 9  (ax,bx,ay,by)
+){
+    __local float4 LBASIS[64];
+    __local float  LCOEFFS[8*64];
+
+    const int iG = get_global_id(0);
+    const int iS = get_global_id(1);
+    const int iL = get_local_id(0);
+    const int nL = get_local_size(0);
+
+    const int natoms = ns.x;
+    const int nnode  = ns.y;
+    const int nvec   = natoms + nnode;
+    const int i0a    = iS*natoms;
+    const int i0v    = iS*nvec;
+    const int iaa    = iG + i0a;
+    const int iav    = iG + i0v;
+    if(iG>=natoms) return;
+
+    const int nbasis = folded_meta.x;
+    const int ntypes = folded_meta.y;
+    if(nbasis<=0) return;
+    if(nbasis>64){ return; }
+    if(ntypes>8 ){ return; }
+
+    for(int j=iL; j<nbasis; j+=nL){
+        LBASIS[j] = folded_kxyz[j];
+    }
+    for(int j=iL; j<nbasis*ntypes; j+=nL){
+        LCOEFFS[j] = folded_coeffs[j];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    float ax = folded_lvec2d.x;
+    float bx = folded_lvec2d.y;
+    float ay = folded_lvec2d.z;
+    float by = folded_lvec2d.w;
+    float det = ax*by - bx*ay;
+    if(fabs(det) < 1e-12f) return;
+    float4 invLvec2d = (float4)( by/det, -bx/det, -ay/det, ax/det );
+
+    float3 pos = atoms[iav].xyz;
+    float u = invLvec2d.x*pos.x + invLvec2d.y*pos.y;
+    float v = invLvec2d.z*pos.x + invLvec2d.w*pos.y;
+    u = u - floor(u);
+    v = v - floor(v);
+    int ityp = folded_atom_type[iG];
+    if(ityp < 0 || ityp >= ntypes) return;
+
+    float E = 0.0f;
+    float3 F = (float3)(0.0f,0.0f,0.0f);
+    int ioff = ityp*nbasis;
+    for(int ib=0; ib<nbasis; ib++){
+        float c = LCOEFFS[ioff + ib];
+        float4 prm = LBASIS[ib];
+        float  b = folded_eval_basis(u, v, pos.z, prm);
+        float3 g = folded_eval_grad (u, v, pos.z, prm, invLvec2d);
+        E += c * b;
+        F -= c * g;
+    }
+    forces[iav] += (float4)(F.x, F.y, F.z, -E);
 }
 
 

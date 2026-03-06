@@ -57,6 +57,7 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
         # ---- Scanner backend (lazy init) ----
         self.scanner = None
         self.fast_scanner = None
+        self.folded_scanner = None
         self._mol_file = mol_file
         self._sub_file = sub_file
         self._mol_type_map = mol_type_map or {}
@@ -169,7 +170,7 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
         sgl.addWidget(self.combo_scan, 0, 1)
         sgl.addWidget(QtWidgets.QLabel("Backend"), 1, 0)
         self.combo_backend = QtWidgets.QComboBox()
-        self.combo_backend.addItems(["Fast GPU", "Reference"])
+        self.combo_backend.addItems(["Fast GPU", "Folded GPU", "Reference"])
         sgl.addWidget(self.combo_backend, 1, 1)
         self.sp_npts = self._add_ispin(sgl, 2, "N points", 60, 10, 10, 500)
         self.sp_zlo  = self._add_dspin(sgl, 3, "Z min (Å)", 2.0, 0.2, -200, 200, 1)
@@ -288,6 +289,7 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
         mol_REQs = None
         self.mol_apos = None; self.mol_enames = None; self.mol_bonds = None
         self.sub_apos = None; self.sub_enames = None; self.sub_bonds = None
+        self.folded_scanner = None
         if self._mol_file:
             if not os.path.exists(self._mol_file):
                 raise FileNotFoundError(f"Molecule file not found: {self._mol_file}")
@@ -306,6 +308,28 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
             self.fast_scanner = MolecularDynamics(nloc=32, debug_build_options='-DDBG_UFF=0')
             self.fast_scanner.init_rigid_molecule_batch(self.mol_apos, mol_REQs, nSystems=self.fast_chunk_size)
             self.fast_scanner.set_surface(self._sub_file, nPBC=(4, 4, 0), pos0=(0.0, 0.0, 0.0), alpha_morse=1.8, r_damp=0.0, bMacro=True, type_map=self._sub_type_map)
+            self.folded_scanner = MolecularDynamics(nloc=32, debug_build_options='-DDBG_UFF=0')
+            self.folded_scanner.init_rigid_molecule_batch(self.mol_apos, mol_REQs, nSystems=self.fast_chunk_size)
+            self.folded_scanner.set_surface(self._sub_file, nPBC=(4, 4, 0), pos0=(0.0, 0.0, 0.0), alpha_morse=1.8, r_damp=0.0, bMacro=True, type_map=self._sub_type_map)
+
+    def _ensure_folded_ready(self):
+        if self.folded_scanner is None:
+            raise ValueError("Folded GPU scanner not initialized")
+        if self.folded_scanner.kernel_args_getSurfFolded is not None:
+            return
+        z0 = max(0.5, float(self.sp_tz.value()) - 0.5)
+        z1 = float(self.sp_tz.value()) + 4.5
+        from pyBall.OCL.MolecularDynamics import FOLDED_BASIS_MAX
+        if self.mol_apos is None or len(self.mol_apos) < 10:
+            nu, nv, nz = 4, 4, 4
+        else:
+            nu, nv = 4, 4
+            nz = max(2, min(4, FOLDED_BASIS_MAX // max(1, nu * nv)))
+        nxy = 20 if (self.mol_apos is None or len(self.mol_apos) < 10) else 28
+        nzs = 24 if (self.mol_apos is None or len(self.mol_apos) < 10) else 32
+        self.status.setText("Fitting folded basis on GPU reference...")
+        QtWidgets.QApplication.processEvents()
+        self.folded_scanner.fit_folded_surface_basis(self._sub_file, type_map=self._sub_type_map, nPBC=(4,4,0), z_range=(z0, z1), nu=nu, nv=nv, nz=nz, nxy=nxy, nz_samp=nzs, r_damp=0.0, alpha_morse=1.8, bMacro=True)
 
     def _resolve_xyz(self, fname):
         if fname is None:
@@ -527,6 +551,57 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
         results['scan_info'] = info
         return results, mode, plot
 
+    def _run_scan_folded(self, scan_type, npts, nxy, zlo, zhi, xylo, xyhi, relax, R, pos_xy):
+        if self.folded_scanner is None:
+            raise ValueError("Folded GPU scanner not initialized")
+        if relax:
+            raise ValueError("Folded GPU backend does not support constrained relaxation; switch to Reference backend")
+        self.cb_morse.setChecked(True)
+        self.cb_coul.setChecked(True)
+        self.cb_lj.setChecked(False)
+        self.cb_hb.setChecked(False)
+        self._ensure_folded_ready()
+        if scan_type == "Z approach":
+            from pyBall.OCL import ScanUtils
+            transforms, info = ScanUtils.scan_z_approach(pos_xy, (zlo, zhi), R=R, nz=npts)
+            mode = 'z'
+            plot = ('1d', 'z')
+        elif scan_type == "Lateral XY":
+            from pyBall.OCL import ScanUtils
+            transforms, info = ScanUtils.scan_lateral_2d(self.sp_tz.value(), (xylo, xyhi), (xylo, xyhi), R=R, nx=npts, ny=npts)
+            mode = 'xy'
+            plot = ('2d', 'xy')
+        elif scan_type == "XZ slice":
+            from pyBall.OCL import ScanUtils
+            transforms, info = ScanUtils.scan_xz_slice(self.sp_ty.value(), (xylo, xyhi), (zlo, zhi), R=R, nx=nxy, nz=npts)
+            mode = 'xz'
+            plot = ('2d', 'xz')
+        elif scan_type == "Rotation":
+            from pyBall.OCL import ScanUtils
+            pos = (self.sp_tx.value(), self.sp_ty.value(), self.sp_tz.value())
+            transforms, info = ScanUtils.scan_rotation_1d(pos, (0,0,1), (0, 2*np.pi), nrot=npts)
+            mode = 'rot'
+            plot = ('1d', 'angle')
+        elif scan_type == "Rot vs Z":
+            from pyBall.OCL import ScanUtils
+            transforms, info = ScanUtils.scan_rotation_z_2d(pos_xy, (zlo, zhi), (0,0,1), (0, 2*np.pi), nz=npts//2, nrot=npts//2)
+            mode = 'rotz'
+            plot = ('2d', 'rot_z')
+        else:
+            raise ValueError(f"Unsupported scan type: {scan_type}")
+        transforms = np.asarray(transforms, dtype=np.float32)
+        t0 = time.perf_counter()
+        results = self.folded_scanner.eval_rigid_getSurfFolded(transforms, chunk_size=self.fast_chunk_size)
+        info = dict(info)
+        info['transforms'] = transforms
+        info['backend'] = 'folded_gpu'
+        info['wall_s'] = time.perf_counter() - t0
+        info['t_prep_s'] = results.get('t_prep_s', 0.0)
+        info['t_kernel_s'] = results.get('t_kernel_s', 0.0)
+        info['t_download_s'] = results.get('t_download_s', 0.0)
+        results['scan_info'] = info
+        return results, mode, plot
+
     # ================================================================
     #  Event handlers
     # ================================================================
@@ -557,6 +632,8 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
             t0 = time.perf_counter()
             if backend == "Fast GPU":
                 results, mode, plot = self._run_scan_fast(scan_type, npts, nxy, zlo, zhi, xylo, xyhi, relax, R, pos_xy)
+            elif backend == "Folded GPU":
+                results, mode, plot = self._run_scan_folded(scan_type, npts, nxy, zlo, zhi, xylo, xyhi, relax, R, pos_xy)
             else:
                 results, mode, plot = self._run_scan_reference(scan_type, npts, nxy, zlo, zhi, xylo, xyhi, relax, R, pos_xy)
             wall_s = results.get('scan_info', {}).get('wall_s', time.perf_counter() - t0)
@@ -569,7 +646,7 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
             else:
                 self._plot_2d(results, plot[1])
             self.last_results = results
-            if backend == "Fast GPU":
+            if backend in ("Fast GPU", "Folded GPU"):
                 self.status.setText(f"Scan done: {scan_type} ({backend}) in {wall_s:.3f} s [prep {t_prep:.3f} s | kernel {t_kernel:.3f} s | download {t_download:.3f} s]")
                 print(f"Scan done: {scan_type} ({backend}) in {wall_s:.3f} s [prep {t_prep:.3f} s | kernel {t_kernel:.3f} s | download {t_download:.3f} s]")
             else:
@@ -753,7 +830,7 @@ def main():
     parser.add_argument('--sub_types', type=str, default='', help='Substrate type map')
     parser.add_argument('--run_scan', action='store_true', help='Run one scan automatically at startup')
     parser.add_argument('--scan_type', choices=['Lateral XY', 'Z approach', 'XZ slice', 'Rotation', 'Rot vs Z'], default='Lateral XY', help='Scan type for --run_scan')
-    parser.add_argument('--backend', choices=['Fast GPU', 'Reference'], default='Fast GPU', help='Backend for --run_scan')
+    parser.add_argument('--backend', choices=['Fast GPU', 'Folded GPU', 'Reference'], default='Fast GPU', help='Backend for --run_scan')
     parser.add_argument('--npts', type=int, default=None, help='Override N points for startup scan')
     args = parser.parse_args()
 
