@@ -220,10 +220,10 @@ def run_fast_case(mol_file, sub_file, out_dir=OUT_DIR, mol_type_map=None, nPBC=(
     fig.tight_layout()
     fig.savefig(xy_png, dpi=180)
     plt.close(fig)
-    print(f'[fast] {tag} line max|ΔE| x={np.max(np.abs(gpu_x-cpu_x)):.6e} y={np.max(np.abs(gpu_y-cpu_y)):.6e} 2D max|ΔE|={np.max(np.abs(dE2d)):.6e} wall={gpu_xy["wall_s"]:.3f}s')
+    print(f'[fast] {tag} line max|ΔE| x={np.max(np.abs(gpu_x-cpu_x)):.6e} y={np.max(np.abs(gpu_y-cpu_y)):.6e} 2D max|ΔE|={np.max(np.abs(dE2d)):.6e} wall={gpu_xy["wall_s"]:.3f}s prep={gpu_xy.get("t_prep_s",0.0):.3f}s kernel={gpu_xy.get("t_kernel_s",0.0):.3f}s download={gpu_xy.get("t_download_s",0.0):.3f}s')
     print(f'[fast] saved {line_png}')
     print(f'[fast] saved {xy_png}')
-    return {'tag': tag, 'line_png': line_png, 'xy_png': xy_png, 'wall_s': gpu_xy['wall_s'], 'dE2d_max': float(np.max(np.abs(dE2d)))}
+    return {'tag': tag, 'line_png': line_png, 'xy_png': xy_png, 'wall_s': gpu_xy['wall_s'], 't_prep_s': gpu_xy.get('t_prep_s', 0.0), 't_kernel_s': gpu_xy.get('t_kernel_s', 0.0), 't_download_s': gpu_xy.get('t_download_s', 0.0), 'dE2d_max': float(np.max(np.abs(dE2d)))}
 
 
 def default_scenarios():

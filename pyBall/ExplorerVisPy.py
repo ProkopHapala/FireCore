@@ -293,12 +293,12 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
                 raise FileNotFoundError(f"Molecule file not found: {self._mol_file}")
             apos, REQs, enames = self.scanner.load_molecule_xyz(self._mol_file, type_map=self._mol_type_map)
             mol_REQs = REQs
-            self.mol_apos = apos; self.mol_enames = enames; self.mol_bonds = find_bonds(apos)
+            self.mol_apos = apos; self.mol_enames = enames; self.mol_bonds = find_bonds(apos, enames)
         if self._sub_file:
             if not os.path.exists(self._sub_file):
                 raise FileNotFoundError(f"Substrate file not found: {self._sub_file}")
             apos, REQs, enames = self.scanner.load_substrate_xyz(self._sub_file, type_map=self._sub_type_map)
-            self.sub_apos = apos; self.sub_enames = enames; self.sub_bonds = find_bonds(apos)
+            self.sub_apos = apos; self.sub_enames = enames; self.sub_bonds = find_bonds(apos, enames)
             self.scanner.nPBC[:] = (4, 4, 0)
             self.scanner.enable_macro = True
             self.scanner._update_macro_from_substrate()
@@ -521,6 +521,9 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
         info['transforms'] = transforms
         info['backend'] = 'fast_gpu'
         info['wall_s'] = time.perf_counter() - t0
+        info['t_prep_s'] = results.get('t_prep_s', 0.0)
+        info['t_kernel_s'] = results.get('t_kernel_s', 0.0)
+        info['t_download_s'] = results.get('t_download_s', 0.0)
         results['scan_info'] = info
         return results, mode, plot
 
@@ -557,14 +560,21 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
             else:
                 results, mode, plot = self._run_scan_reference(scan_type, npts, nxy, zlo, zhi, xylo, xyhi, relax, R, pos_xy)
             wall_s = results.get('scan_info', {}).get('wall_s', time.perf_counter() - t0)
+            t_prep = results.get('scan_info', {}).get('t_prep_s', 0.0)
+            t_kernel = results.get('scan_info', {}).get('t_kernel_s', 0.0)
+            t_download = results.get('scan_info', {}).get('t_download_s', 0.0)
             self._store_scan_positions(results, mode=mode)
             if plot[0] == '1d':
                 self._plot_1d(results, plot[1])
             else:
                 self._plot_2d(results, plot[1])
             self.last_results = results
-            self.status.setText(f"Scan done: {scan_type} ({backend}) in {wall_s:.3f} s")
-            print(f"Scan done: {scan_type} ({backend}) in {wall_s:.3f} s")
+            if backend == "Fast GPU":
+                self.status.setText(f"Scan done: {scan_type} ({backend}) in {wall_s:.3f} s [prep {t_prep:.3f} s | kernel {t_kernel:.3f} s | download {t_download:.3f} s]")
+                print(f"Scan done: {scan_type} ({backend}) in {wall_s:.3f} s [prep {t_prep:.3f} s | kernel {t_kernel:.3f} s | download {t_download:.3f} s]")
+            else:
+                self.status.setText(f"Scan done: {scan_type} ({backend}) in {wall_s:.3f} s")
+                print(f"Scan done: {scan_type} ({backend}) in {wall_s:.3f} s")
         except Exception as e:
             self.status.setText(f"Scan error: {e}")
             import traceback; traceback.print_exc()
@@ -710,7 +720,7 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
         if self.scanner is None: return
         apos, REQs, enames = self.scanner.load_molecule_xyz(fname, type_map=type_map)
         self.mol_apos = apos; self.mol_enames = enames
-        self.mol_bonds = find_bonds(apos)
+        self.mol_bonds = find_bonds(apos, enames)
         self._update_visuals()
         self._eval_current_pose()
 
@@ -718,7 +728,7 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
         if self.scanner is None: return
         apos, REQs, enames = self.scanner.load_substrate_xyz(fname, type_map=type_map)
         self.sub_apos = apos; self.sub_enames = enames
-        self.sub_bonds = find_bonds(apos)
+        self.sub_bonds = find_bonds(apos, enames)
         self._update_visuals()
         self._eval_current_pose()
 

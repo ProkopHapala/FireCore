@@ -860,8 +860,12 @@ class MolecularDynamics(OpenCLBase):
         if self.kernel_args_getSurfMorse is None:
             self.kernel_args_getSurfMorse = self.generate_kernel_args('getSurfMorse', bPrint=False)
         nSystems = self.nSystems if nSystems is None else int(nSystems)
+        lx = min(int(self.nloc), int(self.natoms))
+        while (lx > 1) and (int(self.natoms) % lx != 0):
+            lx -= 1
         sz = (int(self.natoms), nSystems)
-        self.prg.getSurfMorse(self.queue, sz, None, *self.kernel_args_getSurfMorse)
+        loc = (int(lx), 1)
+        self.prg.getSurfMorse(self.queue, sz, loc, *self.kernel_args_getSurfMorse)
         self.queue.finish()
     
     def run_runMD(self):
@@ -1231,16 +1235,29 @@ class MolecularDynamics(OpenCLBase):
         out_total = np.empty(nconf, dtype=np.float32)
         float_size = np.float32().itemsize
         sys_bytes = self.nvecs * 4 * float_size
+        t_prep = 0.0
+        t_kernel = 0.0
+        t_download = 0.0
         for i0 in range(0, nconf, chunk_size):
             nch = min(chunk_size, nconf - i0)
+            t1 = time.perf_counter()
             self.upload_rigid_transforms(T[i0:i0+nch], iSys0=0)
             cl.enqueue_fill_buffer(self.queue, self.buffer_dict['aforce'], np.zeros(1, dtype=np.float32), 0, nch * sys_bytes)
+            self.queue.finish()
+            t2 = time.perf_counter()
             self.run_getSurfMorse(nSystems=nch)
+            self.queue.finish()
+            t3 = time.perf_counter()
             aforce = np.empty((nch, self.nvecs, 4), dtype=np.float32)
             self.fromGPU('aforce', aforce)
+            self.queue.finish()
             out_total[i0:i0+nch] = -aforce[:, :self.natoms, 3].sum(axis=1)
+            t4 = time.perf_counter()
+            t_prep += (t2 - t1)
+            t_kernel += (t3 - t2)
+            t_download += (t4 - t3)
         z = np.zeros_like(out_total)
-        return {'total': out_total, 'LJ': z.copy(), 'Coulomb': z.copy(), 'HBond': z.copy()}
+        return {'total': out_total, 'LJ': z.copy(), 'Coulomb': z.copy(), 'HBond': z.copy(), 't_prep_s': t_prep, 't_kernel_s': t_kernel, 't_download_s': t_download, 't_total_s': t_prep + t_kernel + t_download}
 
     def realloc_scan(self, n, na=-1):
         sz_f  = 4

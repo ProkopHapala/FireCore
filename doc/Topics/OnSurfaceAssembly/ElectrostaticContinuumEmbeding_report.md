@@ -154,3 +154,155 @@ md.set_surface('cpp/common_resources/xyz/NaCl_8x8_L3.xyz', nPBC=(4,4,0), alpha_m
 **Tests/plots – `tests/tMMFF/test_interaction_scan.py`**
 - `run_macro_reference_scan()`: non-GUI macro validation, prints equivalent-site errors, saves 1D/2D PNGs.
 - Updated `main()` to run the macro reference scan by default.
+
+## Addendum: Fast rigid-surface scan debugging, PTCDA fix, and GUI improvements
+
+This section documents the later debugging round focused on the fast GUI/headless rigid-surface path (`ExplorerVisPy.py` + `tests/tMMFF/test_interaction_scan.py`) and large aromatic molecules such as PTCDA.
+
+### 1) Root cause of the PTCDA fast-path failure
+
+The remaining fast-path failure for `PTCDA.xyz` on `NaCl_8x8_L3.xyz` was **not** caused by MMFF `nvecs` / pi-orbital packing. The `getSurfMorse` path is intentionally atom-only:
+
+- host side uses `natoms` atoms and `nnode = 0`
+- kernel indexes atoms with `i0a = iS*natoms`, `i0v = iS*(natoms+nnode)`
+- rigid-surface scan reduces only `forces[:natoms,3]`
+
+The actual failure came from the OpenCL launch contract of `getSurfMorse` in `relax_multi.cl`:
+
+- the kernel uses fixed local arrays `LATOMS[32]`, `LCLJS[32]`
+- the kernel contains barriers inside the surface loop
+- threads with `iG >= nAtoms` return early
+
+Therefore a padded x-dimension with a partial final workgroup is invalid: some threads would return before a barrier, producing undefined behavior. This was harmless for small molecules with `natoms <= 32` or exact divisibility, but broke for `PTCDA` (`natoms = 38`).
+
+#### Final host fix
+
+`pyBall/OCL/MolecularDynamics.py` now launches `getSurfMorse` with:
+
+- `global_x = natoms`
+- `local_x = lx`, where `lx <= nloc` and `natoms % lx == 0`
+
+For PTCDA this chooses `lx = 19`, avoiding any partial x-workgroup and restoring correct multi-system behavior.
+
+### 2) Additional fast-path fixes retained
+
+Two other fixes remain part of the final implementation:
+
+- **Molecule typing parity**
+  - `tests/tMMFF/test_interaction_scan.py` now passes the same `mol_type_map` into the fast GPU setup as the reference path.
+  - This is essential for PTCDA, where `C -> C_R` and `O -> O_2` are needed when loading from XYZ.
+
+- **Substrate-cell translation wrapping**
+  - the rigid transform translation is wrapped into the substrate primitive cell before upload/evaluation.
+  - This does **not** impose PBC on the molecule internals; it only wraps the rigid-body lateral translation so the finite substrate image sum and macro rectangle remain centered consistently with the reference scanner.
+
+### 3) Separated timing: preparation vs kernel vs download
+
+The fast path now reports three timing components in `MolecularDynamics.eval_rigid_getSurfMorse()`:
+
+- `t_prep_s`
+  - rigid transform packing
+  - upload of batched positions
+  - force-buffer clear
+  - queue finished before timing closes
+
+- `t_kernel_s`
+  - kernel launch to `queue.finish()`
+
+- `t_download_s`
+  - download of `aforce`
+  - host-side energy reduction
+  - queue finished before timing closes
+
+These are surfaced both in:
+
+- headless output (`tests/tMMFF/test_interaction_scan.py`)
+- GUI status / console output (`pyBall/ExplorerVisPy.py`)
+
+### 4) Validated results after the final fix
+
+#### PTCDA on NaCl 8x8
+
+Headless fast vs reference, `nx = ny = 121`, `z = 3.5 Å`, `nPBC = (4,4,0)`:
+
+- equivalent-site line error:
+  - `max|ΔE|_x = 1.377101e-02 eV`
+  - `max|ΔE|_y = 1.109781e-02 eV`
+- 2D lateral scan parity:
+  - `max|ΔE|_2D = 7.459815e-05 eV`
+- fast path timing:
+  - `wall = 0.134 s`
+  - `prep = 0.009 s`
+  - `kernel = 0.123 s`
+  - `download = 0.002 s`
+
+This confirms that for the large 8x8 PTCDA case the runtime is dominated by the kernel, not by Python harness overhead.
+
+#### PTCDA on NaCl 1x1
+
+Headless fast vs reference, `nx = ny = 121`, `z = 3.5 Å`:
+
+- equivalent-site line error:
+  - `max|ΔE|_x = 1.339363e-02 eV`
+  - `max|ΔE|_y = 1.082945e-02 eV`
+- 2D lateral scan parity:
+  - `max|ΔE|_2D = 1.093703e-03 eV`
+- fast path timing:
+  - `wall = 0.017 s`
+  - `prep = 0.007 s`
+  - `kernel = 0.009 s`
+  - `download = 0.001 s`
+
+For the small 1x1 substrate, kernel time is much smaller and Python-side prep becomes a larger fraction of total wall time, as expected.
+
+### 5) Generated plots
+
+The headless script now supports batch preset runs and writes the validated plots into:
+
+- `tests/tMMFF/output_interaction_scan/`
+
+including the PTCDA outputs:
+
+- `PTCDA__NaCl_1x1_L3_equiv_line_fast_gpu.png`
+- `PTCDA__NaCl_1x1_L3_XYscan_fast_gpu.png`
+- `PTCDA__NaCl_8x8_L3_equiv_line_fast_gpu.png`
+- `PTCDA__NaCl_8x8_L3_XYscan_fast_gpu.png`
+- corresponding `*_macro.png` reference plots
+
+### 6) GUI updates
+
+`pyBall/ExplorerVisPy.py` now includes:
+
+- molecule presets:
+  - `H2O`
+  - `PTCDA`
+- substrate presets:
+  - `NaCl 1x1`
+  - `NaCl 8x8`
+- file dialogs for custom molecule/substrate loading
+- startup CLI-triggered scan execution for debugging
+- fast/reference backend timing printout
+
+### 7) Bond visualization fix for PTCDA
+
+The incorrect PTCDA bond display in the GUI was caused by a fixed-cutoff bond guess in `pyBall/MolGUI_common.py`:
+
+- previous behavior used `findBondsNP(..., Rcut=1.8, byRvdW=False)`
+- this is too crude for aromatic systems and can produce visually wrong connectivity
+
+The GUI helper now uses element-aware bond detection:
+
+- element names are converted to atomic types when available
+- `findBondsNP(..., atypes=..., byRvdW=True, RvdwCut=1.5)` is used
+
+This does not create an exact chemical topology in the MOL2 sense, but it is much more reasonable for aromatic PTCDA visualization than the previous constant cutoff.
+
+### 8) Final conclusion
+
+The fast rigid-surface scan path is now working for both small and large molecules, including PTCDA. The decisive issue was a **host launch mismatch with kernel barrier semantics**, not a physics error in the kernel itself. After fixing the launch, keeping molecule typing consistent, and exposing split timings, the large 8x8 PTCDA scan shows:
+
+- correct parity (`~7.5e-05 eV` in 2D)
+- strong acceleration relative to reference (`~0.13 s` vs `~4.2 s` for the validated 121×121 case)
+- kernel-dominated runtime on the large GPU workload
+
+So the Python harness is no longer the main bottleneck for the large fast scan; the measured runtime is mostly the GPU kernel execution itself.

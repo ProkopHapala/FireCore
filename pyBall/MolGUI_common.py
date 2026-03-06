@@ -100,12 +100,13 @@ except Exception:
         _HAS_AU = False
         au = None
 
-def find_bonds(apos, Rcut=1.8):
+def find_bonds(apos, enames=None, Rcut=1.8, RvdwCut=1.5, byRvdW=True):
     """Return (nbonds,2) int array of bond pairs, or None."""
     if not _HAS_AU or au is None:
         return None
     try:
-        bonds, _ = au.findBondsNP(apos, Rcut=Rcut, byRvdW=False)
+        atypes = None if enames is None else [au.elements.ELEMENT_DICT[e][0] for e in enames]
+        bonds, _ = au.findBondsNP(apos, atypes=atypes, Rcut=Rcut, RvdwCut=RvdwCut, byRvdW=byRvdW)
         return bonds
     except Exception as e:
         print(f"Warning: bond detection failed: {e}")
