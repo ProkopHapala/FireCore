@@ -10,6 +10,7 @@ Usage:
 
 import numpy as np
 import os, sys, argparse
+import time
 
 _THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 _ROOT_DIR = os.path.abspath(os.path.join(_THIS_DIR, os.pardir))
@@ -34,21 +35,35 @@ matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
+XYZ_DIR = os.path.join(_ROOT_DIR, 'cpp', 'common_resources', 'xyz')
+MOL_PRESETS = {
+    'H2O': ('H2O_O.xyz', {}),
+    'PTCDA': ('PTCDA.xyz', {'C': 'C_R', 'O': 'O_2'}),
+}
+SUB_PRESETS = {
+    'NaCl 1x1': ('NaCl_1x1_L3.xyz', {}),
+    'NaCl 8x8': ('NaCl_8x8_L3.xyz', {}),
+}
+
 
 class ExplorerVisPy(QtWidgets.QMainWindow):
     """Interactive molecule-substrate interaction explorer with VisPy 3D view and scan controls."""
 
-    def __init__(self, mol_file=None, sub_file=None, mol_type_map=None, sub_type_map=None):
+    def __init__(self, mol_file=None, sub_file=None, mol_type_map=None, sub_type_map=None, startup_scan=None, startup_backend=None):
         super().__init__()
         self.setWindowTitle('Molecule-Substrate Explorer (VisPy)')
         self.resize(1600, 950)
 
         # ---- Scanner backend (lazy init) ----
         self.scanner = None
+        self.fast_scanner = None
         self._mol_file = mol_file
         self._sub_file = sub_file
         self._mol_type_map = mol_type_map or {}
         self._sub_type_map = sub_type_map or {}
+        self.fast_chunk_size = 8192
+        self.startup_scan = startup_scan
+        self.startup_backend = startup_backend
 
         # ---- Molecule pose state ----
         self.mol_pos = np.array([0.0, 0.0, 3.0])   # translation (x, y, z)
@@ -126,6 +141,18 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
         # --- Physics ---
         grp_phys = QtWidgets.QGroupBox("Physics")
         pfl = QtWidgets.QVBoxLayout(grp_phys)
+        self.combo_mol_preset = QtWidgets.QComboBox(); self.combo_mol_preset.addItems(['Custom'] + list(MOL_PRESETS.keys()))
+        self.combo_sub_preset = QtWidgets.QComboBox(); self.combo_sub_preset.addItems(['Custom'] + list(SUB_PRESETS.keys()))
+        btn_load_mol = QtWidgets.QPushButton('Load molecule...'); btn_load_mol.clicked.connect(self._on_load_molecule)
+        btn_load_sub = QtWidgets.QPushButton('Load substrate...'); btn_load_sub.clicked.connect(self._on_load_substrate)
+        self.combo_mol_preset.currentTextChanged.connect(self._on_mol_preset)
+        self.combo_sub_preset.currentTextChanged.connect(self._on_sub_preset)
+        pfl.addWidget(QtWidgets.QLabel('Molecule preset'))
+        pfl.addWidget(self.combo_mol_preset)
+        pfl.addWidget(btn_load_mol)
+        pfl.addWidget(QtWidgets.QLabel('Substrate preset'))
+        pfl.addWidget(self.combo_sub_preset)
+        pfl.addWidget(btn_load_sub)
         self.cb_lj   = QtWidgets.QCheckBox("LJ (van der Waals)"); self.cb_lj.setChecked(True)
         self.cb_coul = QtWidgets.QCheckBox("Coulomb");            self.cb_coul.setChecked(True)
         self.cb_hb   = QtWidgets.QCheckBox("H-bond");             self.cb_hb.setChecked(False)
@@ -140,16 +167,20 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
         self.combo_scan = QtWidgets.QComboBox()
         self.combo_scan.addItems([ "Lateral XY", "Z approach","XZ slice", "Rotation", "Rot vs Z"])
         sgl.addWidget(self.combo_scan, 0, 1)
-        self.sp_npts = self._add_ispin(sgl, 1, "N points", 60, 10, 10, 500)
-        self.sp_zlo  = self._add_dspin(sgl, 2, "Z min (Å)", 2.0, 0.2, -200, 200, 1)
-        self.sp_zhi  = self._add_dspin(sgl, 3, "Z max (Å)", 8.0, 0.5, -200, 200, 1)
-        self.sp_xylo = self._add_dspin(sgl, 4, "XY min (Å)", -5.0, 1.0, -50, 50, 1)
-        self.sp_xyhi = self._add_dspin(sgl, 5, "XY max (Å)", 25.0, 1.0, -50, 50, 1)
-        self.sp_nxy  = self._add_ispin(sgl, 6, "N XY", 40, 5, 5, 200)
+        sgl.addWidget(QtWidgets.QLabel("Backend"), 1, 0)
+        self.combo_backend = QtWidgets.QComboBox()
+        self.combo_backend.addItems(["Fast GPU", "Reference"])
+        sgl.addWidget(self.combo_backend, 1, 1)
+        self.sp_npts = self._add_ispin(sgl, 2, "N points", 60, 10, 10, 500)
+        self.sp_zlo  = self._add_dspin(sgl, 3, "Z min (Å)", 2.0, 0.2, -200, 200, 1)
+        self.sp_zhi  = self._add_dspin(sgl, 4, "Z max (Å)", 8.0, 0.5, -200, 200, 1)
+        self.sp_xylo = self._add_dspin(sgl, 5, "XY min (Å)", -5.0, 1.0, -50, 50, 1)
+        self.sp_xyhi = self._add_dspin(sgl, 6, "XY max (Å)", 25.0, 1.0, -50, 50, 1)
+        self.sp_nxy  = self._add_ispin(sgl, 7, "N XY", 40, 5, 5, 200)
         self.cb_relax = QtWidgets.QCheckBox("Constrained relax"); self.cb_relax.setChecked(False)
-        sgl.addWidget(self.cb_relax, 7, 0, 1, 2)
+        sgl.addWidget(self.cb_relax, 8, 0, 1, 2)
         btn_scan = QtWidgets.QPushButton("Run Scan"); btn_scan.clicked.connect(self._on_run_scan)
-        sgl.addWidget(btn_scan, 8, 0, 1, 2)
+        sgl.addWidget(btn_scan, 9, 0, 1, 2)
         vbox.addWidget(grp_scan)
 
         # --- Relax params ---
@@ -244,26 +275,86 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
 
     def _init_scanner(self):
         from pyBall.OCL.InteractionEnergy import InteractionScanner
+        from pyBall.OCL.MolecularDynamics import MolecularDynamics
         self.scanner = InteractionScanner()
+        self.fast_scanner = None
+        self._reload_system()
+        self._update_visuals()
+        self._eval_current_pose()
+        self.status.setText("Ready")
+
+    def _reload_system(self):
+        from pyBall.OCL.MolecularDynamics import MolecularDynamics
+        mol_REQs = None
+        self.mol_apos = None; self.mol_enames = None; self.mol_bonds = None
+        self.sub_apos = None; self.sub_enames = None; self.sub_bonds = None
         if self._mol_file:
             if not os.path.exists(self._mol_file):
                 raise FileNotFoundError(f"Molecule file not found: {self._mol_file}")
             apos, REQs, enames = self.scanner.load_molecule_xyz(self._mol_file, type_map=self._mol_type_map)
-            self.mol_apos = apos; self.mol_enames = enames
-            self.mol_bonds = find_bonds(apos)
+            mol_REQs = REQs
+            self.mol_apos = apos; self.mol_enames = enames; self.mol_bonds = find_bonds(apos)
         if self._sub_file:
             if not os.path.exists(self._sub_file):
                 raise FileNotFoundError(f"Substrate file not found: {self._sub_file}")
             apos, REQs, enames = self.scanner.load_substrate_xyz(self._sub_file, type_map=self._sub_type_map)
-            self.sub_apos = apos; self.sub_enames = enames
-            self.sub_bonds = find_bonds(apos)
-            # Match headless macro correction defaults used in tests
+            self.sub_apos = apos; self.sub_enames = enames; self.sub_bonds = find_bonds(apos)
             self.scanner.nPBC[:] = (4, 4, 0)
             self.scanner.enable_macro = True
             self.scanner._update_macro_from_substrate()
+        if (self.mol_apos is not None) and (mol_REQs is not None) and (self._sub_file is not None):
+            self.fast_scanner = MolecularDynamics(nloc=32, debug_build_options='-DDBG_UFF=0')
+            self.fast_scanner.init_rigid_molecule_batch(self.mol_apos, mol_REQs, nSystems=self.fast_chunk_size)
+            self.fast_scanner.set_surface(self._sub_file, nPBC=(4, 4, 0), pos0=(0.0, 0.0, 0.0), alpha_morse=1.8, r_damp=0.0, bMacro=True, type_map=self._sub_type_map)
+
+    def _resolve_xyz(self, fname):
+        if fname is None:
+            return None
+        if os.path.isabs(fname):
+            return fname
+        if os.path.exists(fname):
+            return os.path.abspath(fname)
+        return os.path.join(XYZ_DIR, fname)
+
+    def _apply_loaded_files(self):
+        self._reload_system()
         self._update_visuals()
         self._eval_current_pose()
-        self.status.setText("Ready")
+        self.status.setText(f"Loaded {os.path.basename(self._mol_file)} on {os.path.basename(self._sub_file)}")
+
+    def _on_mol_preset(self, name):
+        if name == 'Custom':
+            return
+        fname, tmap = MOL_PRESETS[name]
+        self._mol_file = self._resolve_xyz(fname)
+        self._mol_type_map = dict(tmap)
+        self._apply_loaded_files()
+
+    def _on_sub_preset(self, name):
+        if name == 'Custom':
+            return
+        fname, tmap = SUB_PRESETS[name]
+        self._sub_file = self._resolve_xyz(fname)
+        self._sub_type_map = dict(tmap)
+        self._apply_loaded_files()
+
+    def _on_load_molecule(self):
+        fname, _ = QtWidgets.QFileDialog.getOpenFileName(self, 'Load molecule', XYZ_DIR, 'XYZ files (*.xyz);;All files (*)')
+        if not fname:
+            return
+        self.combo_mol_preset.setCurrentText('Custom')
+        self._mol_file = fname
+        self._mol_type_map = {}
+        self._apply_loaded_files()
+
+    def _on_load_substrate(self):
+        fname, _ = QtWidgets.QFileDialog.getOpenFileName(self, 'Load substrate', XYZ_DIR, 'XYZ files (*.xyz);;All files (*)')
+        if not fname:
+            return
+        self.combo_sub_preset.setCurrentText('Custom')
+        self._sub_file = fname
+        self._sub_type_map = {}
+        self._apply_loaded_files()
 
     # ================================================================
     #  Rotation matrix from Euler angles
@@ -341,23 +432,97 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
     def _sync_physics(self):
         if self.scanner is None: return
         self.scanner.enable_LJ      = self.cb_lj.isChecked()
-        self.scanner.enable_Coulomb  = self.cb_coul.isChecked()
+        self.scanner.enable_Coulomb = self.cb_coul.isChecked()
         self.scanner.enable_HBond   = self.cb_hb.isChecked()
         self.scanner.enable_Morse   = self.cb_morse.isChecked()
         self.scanner.spring_k       = np.float32(self.sp_springk.value())
         self.scanner.relax_dt       = np.float32(self.sp_rdt.value())
-        self.scanner.relax_nsteps   = self.sp_rsteps.value()
+        self.scanner.relax_nsteps   = int(self.sp_rsteps.value())
 
     def _eval_current_pose(self):
-        if self.scanner is None or self.mol_apos is None or self.sub_apos is None: return
+        if self.scanner is None or self.mol_apos is None:
+            return
         self._sync_physics()
+        pos = self._current_translation()
         R = self._current_rotmat()
-        t = self._current_translation()
-        res = self.scanner.evaluate_single(pos=t, R=R)
+        res = self.scanner.evaluate_single(pos=pos, R=R)
         self.lbl_etot.setText(f"{res['total']:.4f} eV")
         self.lbl_elj.setText(f"{res['LJ']:.4f} eV")
         self.lbl_ecoul.setText(f"{res['Coulomb']:.4f} eV")
         self.lbl_ehb.setText(f"{res['HBond']:.4f} eV")
+
+    def _run_scan_reference(self, scan_type, npts, nxy, zlo, zhi, xylo, xyhi, relax, R, pos_xy):
+        if scan_type == "Z approach":
+            results = self.scanner.scan_z(pos_xy=pos_xy, z_range=(zlo, zhi), nz=npts, R=R, relax=relax)
+            return results, 'z', ('1d', 'z')
+        if scan_type == "Lateral XY":
+            z = self.sp_tz.value()
+            results = self.scanner.scan_lateral(z=z, x_range=(xylo, xyhi), y_range=(xylo, xyhi), nx=npts, ny=npts, R=R, relax=relax)
+            return results, 'xy', ('2d', 'xy')
+        if scan_type == "XZ slice":
+            y = self.sp_ty.value()
+            results = self.scanner.scan_xz(y=y, x_range=(xylo, xyhi), z_range=(zlo, zhi), nx=nxy, nz=npts, R=R, relax=relax)
+            return results, 'xz', ('2d', 'xz')
+        if scan_type == "Rotation":
+            pos = (self.sp_tx.value(), self.sp_ty.value(), self.sp_tz.value())
+            results = self.scanner.scan_rotation(pos=pos, nrot=npts, relax=relax)
+            return results, 'rot', ('1d', 'angle')
+        if scan_type == "Rot vs Z":
+            results = self.scanner.scan_rot_z(pos_xy=pos_xy, z_range=(zlo, zhi), nz=npts//2, nrot=npts//2, relax=relax)
+            return results, 'rotz', ('2d', 'rot_z')
+        raise ValueError(f"Unsupported scan type: {scan_type}")
+
+    def _run_scan_fast(self, scan_type, npts, nxy, zlo, zhi, xylo, xyhi, relax, R, pos_xy):
+        if self.fast_scanner is None:
+            raise ValueError("Fast GPU scanner not initialized")
+        if relax:
+            raise ValueError("Fast GPU backend does not support constrained relaxation; switch to Reference backend")
+        # Enforce supported physics for the fast path: Morse + Coulomb only
+        self.cb_morse.setChecked(True)
+        self.cb_coul.setChecked(True)
+        self.cb_lj.setChecked(False)
+        self.cb_hb.setChecked(False)
+        self.fast_scanner.enable_Morse = True
+        self.fast_scanner.enable_Coulomb = True
+        self.fast_scanner.enable_LJ = False
+        self.fast_scanner.enable_HBond = False
+        if scan_type == "Z approach":
+            from pyBall.OCL import ScanUtils
+            transforms, info = ScanUtils.scan_z_approach(pos_xy, (zlo, zhi), R=R, nz=npts)
+            mode = 'z'
+            plot = ('1d', 'z')
+        elif scan_type == "Lateral XY":
+            from pyBall.OCL import ScanUtils
+            transforms, info = ScanUtils.scan_lateral_2d(self.sp_tz.value(), (xylo, xyhi), (xylo, xyhi), R=R, nx=npts, ny=npts)
+            mode = 'xy'
+            plot = ('2d', 'xy')
+        elif scan_type == "XZ slice":
+            from pyBall.OCL import ScanUtils
+            transforms, info = ScanUtils.scan_xz_slice(self.sp_ty.value(), (xylo, xyhi), (zlo, zhi), R=R, nx=nxy, nz=npts)
+            mode = 'xz'
+            plot = ('2d', 'xz')
+        elif scan_type == "Rotation":
+            from pyBall.OCL import ScanUtils
+            pos = (self.sp_tx.value(), self.sp_ty.value(), self.sp_tz.value())
+            transforms, info = ScanUtils.scan_rotation_1d(pos, (0,0,1), (0, 2*np.pi), nrot=npts)
+            mode = 'rot'
+            plot = ('1d', 'angle')
+        elif scan_type == "Rot vs Z":
+            from pyBall.OCL import ScanUtils
+            transforms, info = ScanUtils.scan_rotation_z_2d(pos_xy, (zlo, zhi), (0,0,1), (0, 2*np.pi), nz=npts//2, nrot=npts//2)
+            mode = 'rotz'
+            plot = ('2d', 'rot_z')
+        else:
+            raise ValueError(f"Unsupported scan type: {scan_type}")
+        transforms = np.asarray(transforms, dtype=np.float32)
+        t0 = time.perf_counter()
+        results = self.fast_scanner.eval_rigid_getSurfMorse(transforms, chunk_size=self.fast_chunk_size)
+        info = dict(info)
+        info['transforms'] = transforms
+        info['backend'] = 'fast_gpu'
+        info['wall_s'] = time.perf_counter() - t0
+        results['scan_info'] = info
+        return results, mode, plot
 
     # ================================================================
     #  Event handlers
@@ -373,6 +538,7 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
             self.status.setText("Scanner not initialized"); return
         self._sync_physics()
         scan_type = self.combo_scan.currentText()
+        backend = self.combo_backend.currentText()
         npts  = self.sp_npts.value()
         zlo   = self.sp_zlo.value()
         zhi   = self.sp_zhi.value()
@@ -382,35 +548,23 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
         relax = self.cb_relax.isChecked()
         R = self._current_rotmat()
         pos_xy = (self.sp_tx.value(), self.sp_ty.value())
-        self.status.setText(f"Running {scan_type} scan...")
+        self.status.setText(f"Running {scan_type} scan ({backend})...")
         QtWidgets.QApplication.processEvents()
         try:
-            if scan_type == "Z approach":
-                results = self.scanner.scan_z(pos_xy=pos_xy, z_range=(zlo, zhi), nz=npts, R=R, relax=relax)
-                self._store_scan_positions(results, mode='z')
-                self._plot_1d(results, 'z')
-            elif scan_type == "Lateral XY":
-                z = self.sp_tz.value()
-                # Use the main N points control for XY resolution (square grid npts x npts)
-                results = self.scanner.scan_lateral(z=z, x_range=(xylo, xyhi), y_range=(xylo, xyhi), nx=npts, ny=npts, R=R, relax=relax)
-                self._store_scan_positions(results, mode='xy')
-                self._plot_2d(results, 'xy')
-            elif scan_type == "XZ slice":
-                y = self.sp_ty.value()
-                results = self.scanner.scan_xz(y=y, x_range=(xylo, xyhi), z_range=(zlo, zhi), nx=nxy, nz=npts, R=R, relax=relax)
-                self._store_scan_positions(results, mode='xz')
-                self._plot_2d(results, 'xz')
-            elif scan_type == "Rotation":
-                pos = (self.sp_tx.value(), self.sp_ty.value(), self.sp_tz.value())
-                results = self.scanner.scan_rotation(pos=pos, nrot=npts, relax=relax)
-                self._store_scan_positions(results, mode='rot')
-                self._plot_1d(results, 'angle')
-            elif scan_type == "Rot vs Z":
-                results = self.scanner.scan_rot_z(pos_xy=pos_xy, z_range=(zlo, zhi), nz=npts//2, nrot=npts//2, relax=relax)
-                self._store_scan_positions(results, mode='rotz')
-                self._plot_2d(results, 'rot_z')
+            t0 = time.perf_counter()
+            if backend == "Fast GPU":
+                results, mode, plot = self._run_scan_fast(scan_type, npts, nxy, zlo, zhi, xylo, xyhi, relax, R, pos_xy)
+            else:
+                results, mode, plot = self._run_scan_reference(scan_type, npts, nxy, zlo, zhi, xylo, xyhi, relax, R, pos_xy)
+            wall_s = results.get('scan_info', {}).get('wall_s', time.perf_counter() - t0)
+            self._store_scan_positions(results, mode=mode)
+            if plot[0] == '1d':
+                self._plot_1d(results, plot[1])
+            else:
+                self._plot_2d(results, plot[1])
             self.last_results = results
-            self.status.setText(f"Scan done: {scan_type}")
+            self.status.setText(f"Scan done: {scan_type} ({backend}) in {wall_s:.3f} s")
+            print(f"Scan done: {scan_type} ({backend}) in {wall_s:.3f} s")
         except Exception as e:
             self.status.setText(f"Scan error: {e}")
             import traceback; traceback.print_exc()
@@ -587,6 +741,10 @@ def main():
     parser.add_argument('--sub', type=str, default=None, help='Substrate XYZ file')
     parser.add_argument('--mol_types', type=str, default='', help='Molecule type map (e.g. C=C_R,O=O_2)')
     parser.add_argument('--sub_types', type=str, default='', help='Substrate type map')
+    parser.add_argument('--run_scan', action='store_true', help='Run one scan automatically at startup')
+    parser.add_argument('--scan_type', choices=['Lateral XY', 'Z approach', 'XZ slice', 'Rotation', 'Rot vs Z'], default='Lateral XY', help='Scan type for --run_scan')
+    parser.add_argument('--backend', choices=['Fast GPU', 'Reference'], default='Fast GPU', help='Backend for --run_scan')
+    parser.add_argument('--npts', type=int, default=None, help='Override N points for startup scan')
     args = parser.parse_args()
 
     # Defaults
@@ -599,7 +757,15 @@ def main():
         mol_file=mol_file, sub_file=sub_file,
         mol_type_map=parse_type_map(args.mol_types),
         sub_type_map=parse_type_map(args.sub_types),
+        startup_scan=args.scan_type if args.run_scan else None,
+        startup_backend=args.backend if args.run_scan else None,
     )
+    if args.npts is not None:
+        win.sp_npts.setValue(int(args.npts))
+    if args.run_scan:
+        win.combo_backend.setCurrentText(args.backend)
+        win.combo_scan.setCurrentText(args.scan_type)
+        QtCore.QTimer.singleShot(200, win._on_run_scan)
     win.show()
     sys.exit(app.exec_())
 

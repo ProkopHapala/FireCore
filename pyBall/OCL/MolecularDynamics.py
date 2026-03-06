@@ -79,6 +79,8 @@ class MolecularDynamics(OpenCLBase):
         self.surface_REQs     = None
         self.surface_lvec     = None
         self.surface_pos0     = np.zeros(4, dtype=np.float32)
+        self.rigid_apos0      = None
+        self.rigid_REQs0      = None
 
     def realloc(self, mmff, nSystems=1 ):
         """
@@ -352,6 +354,53 @@ class MolecularDynamics(OpenCLBase):
         self.toGPU('REQs',   self.REQs   )
         self.queue.finish()
 
+    def init_rigid_molecule_batch(self, apos, REQs, nSystems=1):
+        apos = np.asarray(apos, dtype=np.float32)
+        REQs = np.asarray(REQs, dtype=np.float32)
+        if apos.ndim != 2 or apos.shape[1] < 3:
+            raise ValueError(f"init_rigid_molecule_batch(): apos must have shape (natoms,3+) got {apos.shape}")
+        if REQs.ndim != 2 or REQs.shape[0] != apos.shape[0] or REQs.shape[1] < 4:
+            raise ValueError(f"init_rigid_molecule_batch(): REQs must have shape (natoms,4+) matching apos, got {REQs.shape}")
+        self.nSystems = int(nSystems)
+        self.natoms = int(apos.shape[0])
+        self.nvecs = self.natoms
+        self.nnode = 0
+        self.nDOFs = (self.natoms, 0)
+        self.nPBC = (0, 0, 0)
+        self.npbc = 0
+        self.nbkng = self.natoms
+        self.ncap = 0
+        self.ntors = 0
+        self.mmff_list = []
+        self.rigid_apos0 = np.zeros((self.natoms, 4), dtype=np.float32)
+        self.rigid_apos0[:, :3] = apos[:, :3]
+        self.rigid_REQs0 = np.zeros((self.natoms, 4), dtype=np.float32)
+        self.rigid_REQs0[:, :4] = REQs[:, :4]
+        self.allocate_host_buffers()
+        float_size = np.float32().itemsize
+        mf = cl.mem_flags
+        self.check_buf('apos', self.nSystems * self.nvecs * 4 * float_size, mf.READ_WRITE)
+        self.check_buf('aforce', self.nSystems * self.nvecs * 4 * float_size, mf.READ_WRITE)
+        self.buffer_dict['fapos'] = self.buffer_dict['aforce']
+        self.buffer_dict['atoms'] = self.buffer_dict['apos']
+        self.buffer_dict['forces'] = self.buffer_dict['aforce']
+        self.check_buf('REQs', self.nSystems * self.natoms * 4 * float_size, mf.READ_ONLY)
+        self.buffer_dict['REQKs'] = self.buffer_dict['REQs']
+        self.check_buf('surf_mpos', self.nSystems * 4 * float_size, mf.READ_ONLY)
+        self.check_buf('surf_mdip', self.nSystems * 4 * float_size, mf.READ_ONLY)
+        self.check_buf('surf_mQa', self.nSystems * 4 * float_size, mf.READ_ONLY)
+        self.check_buf('surf_mQb', self.nSystems * 4 * float_size, mf.READ_ONLY)
+        self.check_buf('surf_mQc', self.nSystems * 4 * float_size, mf.READ_ONLY)
+        self.check_buf('surf_qQa', self.nSystems * 4 * float_size, mf.READ_ONLY)
+        self.check_buf('surf_qQb', self.nSystems * 4 * float_size, mf.READ_ONLY)
+        self.check_buf('surf_qQc', self.nSystems * 4 * float_size, mf.READ_ONLY)
+        reqs_all = np.broadcast_to(self.rigid_REQs0[None, :, :], (self.nSystems, self.natoms, 4)).copy()
+        self.toGPU('REQs', reqs_all)
+        cl.enqueue_fill_buffer(self.queue, self.buffer_dict['apos'], np.zeros(1, dtype=np.float32), 0, self.buffer_dict['apos'].size)
+        cl.enqueue_fill_buffer(self.queue, self.buffer_dict['aforce'], np.zeros(1, dtype=np.float32), 0, self.buffer_dict['aforce'].size)
+        self.setup_kernels()
+        return self
+
     def setup_kernels(self):
         """
         Prepares the kernel arguments for all kernels by parsing their headers.
@@ -361,71 +410,106 @@ class MolecularDynamics(OpenCLBase):
         # Get all work sizes at once
         self.get_work_sizes()
         self.init_kernel_params()
+
+        def can_bind_kernel(kname):
+            if kname not in self.kernelheaders:
+                return False, [f'kernel:{kname}']
+            missing = []
+            for aname, typ in self.parse_kernel_header(self.kernelheaders[kname]):
+                if typ == 0:
+                    if (aname not in self.buffer_dict) and (aname not in self.kernel_params):
+                        missing.append(aname)
+                else:
+                    if aname not in self.kernel_params:
+                        missing.append(aname)
+            return (len(missing) == 0), missing
+
+        warned = set()
+        def warn_skip(kname, missing):
+            key = (kname, tuple(missing))
+            if key in warned:
+                return
+            warned.add(key)
+            print(f"warning: skipping {kname} because required buffers/params are not initialized: {', '.join(missing)}")
                 
         # Generate kernel arguments (only for kernels present in the compiled source)
         # Wrap bonded-force kernels in try/except so init_with_atoms (no MMFF buffers) still works
         self.kernel_args_getMMFFf4 = None
-        try:
+        ok, missing = can_bind_kernel("getMMFFf4")
+        if ok:
             self.kernel_args_getMMFFf4 = self.generate_kernel_args("getMMFFf4")
-        except (KeyError, Exception) as e:
-            print(f"setup_kernels: skipping getMMFFf4 ({e})")
+        elif "getMMFFf4" in self.kernelheaders:
+            warn_skip("getMMFFf4", missing)
         self.kernel_args_getMMFFf4_rot = None
         if "getMMFFf4_rot" in self.kernelheaders:
-            try:
+            ok, missing = can_bind_kernel("getMMFFf4_rot")
+            if ok:
                 self.kernel_args_getMMFFf4_rot = self.generate_kernel_args("getMMFFf4_rot")
-            except (KeyError, Exception) as e:
-                print(f"setup_kernels: skipping getMMFFf4_rot ({e})")
+            else:
+                warn_skip("getMMFFf4_rot", missing)
         
         self.kernel_args_getSurfFlat = None
         if "getSurfFlat" in self.kernelheaders:
-            self.kernel_args_getSurfFlat = self.generate_kernel_args("getSurfFlat")
+            ok, missing = can_bind_kernel("getSurfFlat")
+            if ok:
+                self.kernel_args_getSurfFlat = self.generate_kernel_args("getSurfFlat")
+            else:
+                warn_skip("getSurfFlat", missing)
         self.kernel_args_getSurfMorse = None
         if "getSurfMorse" in self.kernelheaders:
-            if ('atoms_s' in self.buffer_dict) and ('REQ_s' in self.buffer_dict):
-                try:
-                    self.kernel_args_getSurfMorse = self.generate_kernel_args("getSurfMorse")
-                except Exception as e:
-                    print(f"setup_kernels: skipping getSurfMorse ({e})")
+            ok, missing = can_bind_kernel("getSurfMorse")
+            if ok:
+                self.kernel_args_getSurfMorse = self.generate_kernel_args("getSurfMorse")
+            else:
+                warn_skip("getSurfMorse", missing)
 
         # Non-bonded (optional)
         self.kernel_args_getNonBond = None
         self.kernel_args_getNonBond_ex2 = None
         if self.enable_nonbond:
             if "getNonBond_ex2" in self.kernelheaders:
-                try:
+                ok, missing = can_bind_kernel("getNonBond_ex2")
+                if ok:
                     self.kernel_args_getNonBond_ex2 = self.generate_kernel_args("getNonBond_ex2")
-                except Exception as e:
-                    print(f"setup_kernels: skipping getNonBond_ex2 ({e})")
+                else:
+                    warn_skip("getNonBond_ex2", missing)
             if (self.kernel_args_getNonBond_ex2 is None) and ("getNonBond" in self.kernelheaders):
-                try:
+                ok, missing = can_bind_kernel("getNonBond")
+                if ok:
                     self.kernel_args_getNonBond = self.generate_kernel_args("getNonBond")
-                except Exception as e:
-                    # Keep nonbonded optional; bonded-only workflows must remain usable.
-                    print(f"setup_kernels: skipping getNonBond ({e})")
+                else:
+                    warn_skip("getNonBond", missing)
         # --- NOTE: grid-kernels are intialized in initGridFF()
         #self.kernel_args_getNonBond_GridFF_Bspline = self.generate_kernel_args("getNonBond_GridFF_Bspline")
         #self.kernel_args_getNonBond_GridFF_Bspline_tex = self.generate_kernel_args("getNonBond_GridFF_Bspline_tex")
         self.kernel_args_updateAtomsMMFFf4 = None
-        try:
+        ok, missing = can_bind_kernel("updateAtomsMMFFf4")
+        if ok:
             self.kernel_args_updateAtomsMMFFf4 = self.generate_kernel_args("updateAtomsMMFFf4")
-        except (KeyError, Exception) as e:
-            print(f"setup_kernels: skipping updateAtomsMMFFf4 ({e})")
+        elif "updateAtomsMMFFf4" in self.kernelheaders:
+            warn_skip("updateAtomsMMFFf4", missing)
         # New propagator variants (optional)
         self.kernel_args_updateAtomsMMFFf4_rot = None
         if "updateAtomsMMFFf4_rot" in self.kernelheaders:
-            try:
+            ok, missing = can_bind_kernel("updateAtomsMMFFf4_rot")
+            if ok:
                 self.kernel_args_updateAtomsMMFFf4_rot = self.generate_kernel_args("updateAtomsMMFFf4_rot")
-            except (KeyError, Exception) as e:
-                print(f"setup_kernels: skipping updateAtomsMMFFf4_rot ({e})")
+            else:
+                warn_skip("updateAtomsMMFFf4_rot", missing)
         #self.kernel_args_updateAtomsMMFFf4_RATTLE = self.generate_kernel_args("updateAtomsMMFFf4_RATTLE")
         self.kernel_args_cleanForceMMFFf4 = None
-        try:
+        ok, missing = can_bind_kernel("cleanForceMMFFf4")
+        if ok:
             self.kernel_args_cleanForceMMFFf4 = self.generate_kernel_args("cleanForceMMFFf4")
-        except (KeyError, Exception) as e:
-            print(f"setup_kernels: skipping cleanForceMMFFf4 ({e})")
+        elif "cleanForceMMFFf4" in self.kernelheaders:
+            warn_skip("cleanForceMMFFf4", missing)
         self.kernel_args_runMD = None
         if "runMD" in self.kernelheaders:
-            self.kernel_args_runMD = self.generate_kernel_args("runMD")
+            ok, missing = can_bind_kernel("runMD")
+            if ok:
+                self.kernel_args_runMD = self.generate_kernel_args("runMD")
+            else:
+                warn_skip("runMD", missing)
 
     def init_kernel_params(self):
         """
@@ -772,10 +856,11 @@ class MolecularDynamics(OpenCLBase):
         self.prg.getSurfFlat(self.queue, self.sz_na, self.sz_loc, *args)
         self.queue.finish()
 
-    def run_getSurfMorse(self):
+    def run_getSurfMorse(self, nSystems=None):
         if self.kernel_args_getSurfMorse is None:
             self.kernel_args_getSurfMorse = self.generate_kernel_args('getSurfMorse', bPrint=False)
-        sz = (int(self.natoms), int(self.nSystems))
+        nSystems = self.nSystems if nSystems is None else int(nSystems)
+        sz = (int(self.natoms), nSystems)
         self.prg.getSurfMorse(self.queue, sz, None, *self.kernel_args_getSurfMorse)
         self.queue.finish()
     
@@ -1095,6 +1180,67 @@ class MolecularDynamics(OpenCLBase):
                 forces[ix, iy,:] = force_i[0,:]
                 pos[ix, iy,:] = pos_i[0,:]
         return pos, forces
+
+    def upload_rigid_transforms(self, transforms, iSys0=0):
+        if self.rigid_apos0 is None or self.rigid_REQs0 is None:
+            raise ValueError('upload_rigid_transforms(): call init_rigid_molecule_batch() first')
+        T = self.wrap_rigid_transforms_PBC(transforms).reshape(-1, 3, 4)
+        nsys = len(T)
+        if (iSys0 < 0) or ((iSys0 + nsys) > self.nSystems):
+            raise ValueError(f'upload_rigid_transforms(): systems [{iSys0},{iSys0+nsys}) exceed allocated nSystems={self.nSystems}')
+        xyz = np.einsum('aj,nij->nai', self.rigid_apos0[:, :3], T[:, :, :3], optimize=True)
+        xyz += T[:, None, :, 3]
+        apos = np.zeros((nsys, self.nvecs, 4), dtype=np.float32)
+        apos[:, :self.natoms, :3] = xyz
+        byte_offset = iSys0 * self.nvecs * 4 * np.float32().itemsize
+        self.toGPU('apos', apos, byte_offset=byte_offset)
+        return apos
+
+    def wrap_rigid_transforms_PBC(self, transforms):
+        if getattr(self, 'surface_lvec', None) is None:
+            return np.asarray(transforms, dtype=np.float32).reshape(-1, 3, 4)
+        a = np.array(self.surface_lvec[0, :3], dtype=np.float64)
+        b = np.array(self.surface_lvec[1, :3], dtype=np.float64)
+        M = np.array([[a[0], b[0]], [a[1], b[1]]], dtype=np.float64)
+        det = float(np.linalg.det(M))
+        if abs(det) < 1e-12:
+            raise ValueError(f'wrap_rigid_transforms_PBC(): degenerate lattice vectors det={det} a={a} b={b}')
+        invM = np.linalg.inv(M)
+        T = np.array(transforms, copy=True, dtype=np.float32).reshape(-1, 3, 4)
+        txy = T[:, 0:2, 3].astype(np.float64)
+        frac = (invM @ txy.T).T
+        frac -= np.round(frac)
+        txy2 = (M @ frac.T).T
+        T[:, 0, 3] = txy2[:, 0]
+        T[:, 1, 3] = txy2[:, 1]
+        return T
+
+    def eval_rigid_getSurfMorse(self, transforms, chunk_size=None):
+        if self.kernel_args_getSurfMorse is None:
+            raise ValueError('eval_rigid_getSurfMorse(): call set_surface() before evaluation')
+        T = self.wrap_rigid_transforms_PBC(transforms).reshape(-1, 3, 4)
+        nconf = len(T)
+        if nconf <= 0:
+            z = np.zeros(0, dtype=np.float32)
+            return {'total': z.copy(), 'LJ': z.copy(), 'Coulomb': z.copy(), 'HBond': z.copy()}
+        if chunk_size is None:
+            chunk_size = self.nSystems
+        chunk_size = int(min(chunk_size, self.nSystems))
+        if chunk_size <= 0:
+            raise ValueError(f'eval_rigid_getSurfMorse(): invalid chunk_size={chunk_size} for nSystems={self.nSystems}')
+        out_total = np.empty(nconf, dtype=np.float32)
+        float_size = np.float32().itemsize
+        sys_bytes = self.nvecs * 4 * float_size
+        for i0 in range(0, nconf, chunk_size):
+            nch = min(chunk_size, nconf - i0)
+            self.upload_rigid_transforms(T[i0:i0+nch], iSys0=0)
+            cl.enqueue_fill_buffer(self.queue, self.buffer_dict['aforce'], np.zeros(1, dtype=np.float32), 0, nch * sys_bytes)
+            self.run_getSurfMorse(nSystems=nch)
+            aforce = np.empty((nch, self.nvecs, 4), dtype=np.float32)
+            self.fromGPU('aforce', aforce)
+            out_total[i0:i0+nch] = -aforce[:, :self.natoms, 3].sum(axis=1)
+        z = np.zeros_like(out_total)
+        return {'total': out_total, 'LJ': z.copy(), 'Coulomb': z.copy(), 'HBond': z.copy()}
 
     def realloc_scan(self, n, na=-1):
         sz_f  = 4
