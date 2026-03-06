@@ -138,13 +138,13 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
         sgl = QtWidgets.QGridLayout(grp_scan)
         sgl.addWidget(QtWidgets.QLabel("Type"), 0, 0)
         self.combo_scan = QtWidgets.QComboBox()
-        self.combo_scan.addItems(["Z approach", "Lateral XY", "XZ slice", "Rotation", "Rot vs Z"])
+        self.combo_scan.addItems([ "Lateral XY", "Z approach","XZ slice", "Rotation", "Rot vs Z"])
         sgl.addWidget(self.combo_scan, 0, 1)
         self.sp_npts = self._add_ispin(sgl, 1, "N points", 60, 10, 10, 500)
         self.sp_zlo  = self._add_dspin(sgl, 2, "Z min (Å)", 2.0, 0.2, -200, 200, 1)
         self.sp_zhi  = self._add_dspin(sgl, 3, "Z max (Å)", 8.0, 0.5, -200, 200, 1)
         self.sp_xylo = self._add_dspin(sgl, 4, "XY min (Å)", -5.0, 1.0, -50, 50, 1)
-        self.sp_xyhi = self._add_dspin(sgl, 5, "XY max (Å)", 5.0, 1.0, -50, 50, 1)
+        self.sp_xyhi = self._add_dspin(sgl, 5, "XY max (Å)", 25.0, 1.0, -50, 50, 1)
         self.sp_nxy  = self._add_ispin(sgl, 6, "N XY", 40, 5, 5, 200)
         self.cb_relax = QtWidgets.QCheckBox("Constrained relax"); self.cb_relax.setChecked(False)
         sgl.addWidget(self.cb_relax, 7, 0, 1, 2)
@@ -257,6 +257,10 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
             apos, REQs, enames = self.scanner.load_substrate_xyz(self._sub_file, type_map=self._sub_type_map)
             self.sub_apos = apos; self.sub_enames = enames
             self.sub_bonds = find_bonds(apos)
+            # Match headless macro correction defaults used in tests
+            self.scanner.nPBC[:] = (4, 4, 0)
+            self.scanner.enable_macro = True
+            self.scanner._update_macro_from_substrate()
         self._update_visuals()
         self._eval_current_pose()
         self.status.setText("Ready")
@@ -387,7 +391,8 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
                 self._plot_1d(results, 'z')
             elif scan_type == "Lateral XY":
                 z = self.sp_tz.value()
-                results = self.scanner.scan_lateral(z=z, x_range=(xylo, xyhi), y_range=(xylo, xyhi), nx=nxy, ny=nxy, R=R, relax=relax)
+                # Use the main N points control for XY resolution (square grid npts x npts)
+                results = self.scanner.scan_lateral(z=z, x_range=(xylo, xyhi), y_range=(xylo, xyhi), nx=npts, ny=npts, R=R, relax=relax)
                 self._store_scan_positions(results, mode='xy')
                 self._plot_2d(results, 'xy')
             elif scan_type == "XZ slice":

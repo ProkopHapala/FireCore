@@ -13,6 +13,7 @@ import time
 from . import clUtils as clu
 from .MMFF import MMFF
 from .OpenCLBase import OpenCLBase
+from .InteractionEnergy import load_xyz_with_REQs
 
 REQ_DEFAULT = np.array([1.7, 0.1, 0.0, 0.0], dtype=np.float32)  # R, E, Q, padding
 
@@ -33,6 +34,16 @@ def mat3_to_cl(mat3_np):
 
 def vec3_to_cl(vec3_np):
     return np.append(vec3_np, 0.0).astype(np.float32)
+
+def half_step_from_coords(cs):
+    cu = np.unique(np.round(np.asarray(cs, dtype=np.float64), 8))
+    if len(cu) < 2:
+        return 0.0
+    ds = np.diff(np.sort(cu))
+    ds = ds[ds > 1e-8]
+    if len(ds) == 0:
+        return 0.0
+    return 0.5 * float(ds.min())
 
 class MolecularDynamics(OpenCLBase):
     """
@@ -64,6 +75,10 @@ class MolecularDynamics(OpenCLBase):
         self._nb_small_ready  = False
         self._nb_prg_small    = None
         self._nb_bufs         = {}
+        self.surface_atoms    = None
+        self.surface_REQs     = None
+        self.surface_lvec     = None
+        self.surface_pos0     = np.zeros(4, dtype=np.float32)
 
     def realloc(self, mmff, nSystems=1 ):
         """
@@ -237,6 +252,14 @@ class MolecularDynamics(OpenCLBase):
         self.create_buffer('bboxes',   nSystems * mat3_size, mf.READ_ONLY)
         self.create_buffer('sysneighs',nSystems * int_size, mf.READ_ONLY)
         self.create_buffer('sysbonds', nSystems * 4 * float_size, mf.READ_ONLY)
+        self.check_buf('surf_mpos', nSystems * 4 * float_size, mf.READ_ONLY)
+        self.check_buf('surf_mdip', nSystems * 4 * float_size, mf.READ_ONLY)
+        self.check_buf('surf_mQa',  nSystems * 4 * float_size, mf.READ_ONLY)
+        self.check_buf('surf_mQb',  nSystems * 4 * float_size, mf.READ_ONLY)
+        self.check_buf('surf_mQc',  nSystems * 4 * float_size, mf.READ_ONLY)
+        self.check_buf('surf_qQa',  nSystems * 4 * float_size, mf.READ_ONLY)
+        self.check_buf('surf_qQb',  nSystems * 4 * float_size, mf.READ_ONLY)
+        self.check_buf('surf_qQc',  nSystems * 4 * float_size, mf.READ_ONLY)
         
         # Zero-initialize dynamical state buffers to prevent NaN from uninitialized GPU memory
         zero4 = np.zeros(1, dtype=np.float32)
@@ -320,6 +343,8 @@ class MolecularDynamics(OpenCLBase):
         self.create_buffer('aforce', na * 4 * float_size, mf.READ_WRITE)
         # relax_multi.cl getMMFFf4() uses argument name 'fapos' for forces; alias it to the same buffer
         self.buffer_dict['fapos'] = self.buffer_dict['aforce']
+        self.buffer_dict['atoms']  = self.buffer_dict['apos']
+        self.buffer_dict['forces'] = self.buffer_dict['aforce']
         self.create_buffer('REQs',   na * 4 * float_size, mf.READ_ONLY)
 
         self.toGPU('apos',   self.atoms  )
@@ -354,6 +379,13 @@ class MolecularDynamics(OpenCLBase):
         self.kernel_args_getSurfFlat = None
         if "getSurfFlat" in self.kernelheaders:
             self.kernel_args_getSurfFlat = self.generate_kernel_args("getSurfFlat")
+        self.kernel_args_getSurfMorse = None
+        if "getSurfMorse" in self.kernelheaders:
+            if ('atoms_s' in self.buffer_dict) and ('REQ_s' in self.buffer_dict):
+                try:
+                    self.kernel_args_getSurfMorse = self.generate_kernel_args("getSurfMorse")
+                except Exception as e:
+                    print(f"setup_kernels: skipping getSurfMorse ({e})")
 
         # Non-bonded (optional)
         self.kernel_args_getNonBond = None
@@ -420,6 +452,8 @@ class MolecularDynamics(OpenCLBase):
             'surf_normal':  np.array([0.0,0.0,1.0,0.0], dtype=np.float32),
             'surf_REQ':     np.array([1.0,1.0,0.0,0.0], dtype=np.float32),
             'surf_param':   np.array([1.0,1.0,0.0,0.0], dtype=np.float32), # K, mode, 0, 0
+            'lvec':         np.zeros((3,4), dtype=np.float32),
+            'pos0':         np.zeros(4, dtype=np.float32),
         }
 
         # relax_multi.cl uses different arg names for the same dimensions
@@ -427,6 +461,132 @@ class MolecularDynamics(OpenCLBase):
         # - getNonBond uses `ns`
         self.kernel_params['n']  = self.kernel_params['nDOFs']
         self.kernel_params['ns'] = self.kernel_params['nDOFs']
+
+    def _surface_supercell_moments(self, apos, qs, lvec, nPBC):
+        a = np.array(lvec[0], dtype=np.float64)
+        b = np.array(lvec[1], dtype=np.float64)
+        c = np.array(lvec[2], dtype=np.float64)
+        shifts = []
+        for iz in range(-int(nPBC[2]), int(nPBC[2])+1):
+            for iy in range(-int(nPBC[1]), int(nPBC[1])+1):
+                for ix in range(-int(nPBC[0]), int(nPBC[0])+1):
+                    shifts.append(ix*a + iy*b + iz*c)
+        pts = np.concatenate([apos + sh[None, :] for sh in shifts], axis=0)
+        qq = np.tile(qs, len(shifts))
+        qtot = float(qq.sum())
+        if abs(qtot) > 1e-10:
+            ctr = (qq[:, None] * pts).sum(axis=0) / qtot
+        else:
+            ctr = 0.5 * (pts.min(axis=0) + pts.max(axis=0))
+        d = pts - ctr[None, :]
+        mu = (qq[:, None] * d).sum(axis=0)
+        Q = np.zeros((3,3), dtype=np.float64)
+        r2 = np.sum(d*d, axis=1)
+        for i in range(3):
+            for j in range(3):
+                Q[i, j] = np.sum(qq * (3.0*d[:, i]*d[:, j] - (r2 if i == j else 0.0)))
+        return ctr, qtot, mu, Q
+
+    def set_surface(self, surf_xyz, nPBC=(1,1,0), pos0=None, alpha_morse=1.6, r_damp=0.0, bMacro=True, type_map=None):
+        apos, REQs, enames, Zs, lvec = load_xyz_with_REQs(surf_xyz, type_map=type_map)
+        if lvec is None:
+            raise ValueError(f"Surface file {surf_xyz} must contain lattice vectors in comment line")
+        self.surface_atoms = np.zeros((len(apos), 4), dtype=np.float32)
+        self.surface_atoms[:, :3] = apos.astype(np.float32)
+        self.surface_REQs = np.ascontiguousarray(REQs, dtype=np.float32)
+        self.surface_lvec = np.zeros((3,4), dtype=np.float32)
+        self.surface_lvec[:, :3] = lvec.astype(np.float32)
+        self.surface_pos0 = np.array([0.0, 0.0, 0.0, 0.0] if pos0 is None else [pos0[0], pos0[1], pos0[2], 0.0], dtype=np.float32)
+        float_size = np.float32().itemsize
+        self.check_buf('atoms_s', len(apos) * 4 * float_size, cl.mem_flags.READ_ONLY)
+        self.check_buf('REQ_s',   len(apos) * 4 * float_size, cl.mem_flags.READ_ONLY)
+        self.check_buf('surf_mpos', self.nSystems * 4 * float_size, cl.mem_flags.READ_ONLY)
+        self.check_buf('surf_mdip', self.nSystems * 4 * float_size, cl.mem_flags.READ_ONLY)
+        self.check_buf('surf_mQa',  self.nSystems * 4 * float_size, cl.mem_flags.READ_ONLY)
+        self.check_buf('surf_mQb',  self.nSystems * 4 * float_size, cl.mem_flags.READ_ONLY)
+        self.check_buf('surf_mQc',  self.nSystems * 4 * float_size, cl.mem_flags.READ_ONLY)
+        self.check_buf('surf_qQa',  self.nSystems * 4 * float_size, cl.mem_flags.READ_ONLY)
+        self.check_buf('surf_qQb',  self.nSystems * 4 * float_size, cl.mem_flags.READ_ONLY)
+        self.check_buf('surf_qQc',  self.nSystems * 4 * float_size, cl.mem_flags.READ_ONLY)
+        self.toGPU('atoms_s', self.surface_atoms)
+        self.toGPU('REQ_s', self.surface_REQs)
+        ctr, qtot, mu, Q = self._surface_supercell_moments(apos.astype(np.float64), REQs[:,2].astype(np.float64), lvec.astype(np.float64), nPBC)
+        a = np.array(lvec[0], dtype=np.float64)
+        b = np.array(lvec[1], dtype=np.float64)
+        xmin0, xmax0 = float(apos[:,0].min()), float(apos[:,0].max())
+        ymin0, ymax0 = float(apos[:,1].min()), float(apos[:,1].max())
+        hx = half_step_from_coords(apos[:,0])
+        hy = half_step_from_coords(apos[:,1])
+        xmin = xmin0 - hx - float(nPBC[0]) * float(np.linalg.norm(a))
+        xmax = xmax0 + hx + float(nPBC[0]) * float(np.linalg.norm(a))
+        ymin = ymin0 - hy - float(nPBC[1]) * float(np.linalg.norm(b))
+        ymax = ymax0 + hy + float(nPBC[1]) * float(np.linalg.norm(b))
+        area = float(np.linalg.norm(np.cross(a, b)))
+        if area < 1e-12:
+            raise ValueError(f"set_surface(): invalid cell area {area}")
+        zs = apos[:,2].astype(np.float64)
+        qs = REQs[:,2].astype(np.float64)
+        zuniq = []
+        layers = []
+        sigmas = []
+        tol = 1e-4
+        for i in np.argsort(zs):
+            z = zs[i]
+            if (not zuniq) or (abs(z-zuniq[-1]) > tol):
+                zuniq.append(z)
+        if len(zuniq) > 3:
+            raise ValueError(f"set_surface(): getSurfMorse rectangle macro currently supports up to 3 z-layers, got {len(zuniq)}")
+        cx = 0.5 * (xmin + xmax)
+        cy = 0.5 * (ymin + ymax)
+        for z in zuniq:
+            m = np.abs(zs-z) < tol
+            dx = apos[m,0].astype(np.float64) - cx
+            dy = apos[m,1].astype(np.float64) - cy
+            dz = apos[m,2].astype(np.float64) - z
+            qq = qs[m]
+            mu_layer = np.array([np.sum(qq*dx), np.sum(qq*dy), np.sum(qq*dz)], dtype=np.float64) / area
+            layers.append(np.array([mu_layer[0], mu_layer[1], mu_layer[2], z], dtype=np.float32))
+            sigmas.append(float(np.sum(qq) / area))
+        qlayers = []
+        for z in zuniq:
+            m = np.abs(zs-z) < tol
+            dx = apos[m,0].astype(np.float64) - cx
+            dy = apos[m,1].astype(np.float64) - cy
+            qq = qs[m]
+            qxx = float(np.sum(qq * (2.0*dx*dx - dy*dy)) / area)
+            qyy = float(np.sum(qq * (2.0*dy*dy - dx*dx)) / area)
+            qxy = float(np.sum(qq * (3.0*dx*dy)) / area)
+            qlayers.append(np.array([qxx, qxy, qyy, z], dtype=np.float32))
+        while len(layers) < 3:
+            layers.append(np.zeros(4, dtype=np.float32))
+        while len(sigmas) < 3:
+            sigmas.append(0.0)
+        while len(qlayers) < 3:
+            qlayers.append(np.zeros(4, dtype=np.float32))
+        mpos = np.tile(np.array([xmin, xmax, ymin, ymax], dtype=np.float32), (self.nSystems, 1))
+        mdip = np.tile(layers[0], (self.nSystems, 1))
+        mQa  = np.tile(layers[1], (self.nSystems, 1))
+        mQb  = np.tile(layers[2], (self.nSystems, 1))
+        mQc  = np.tile(np.array([sigmas[0], sigmas[1], sigmas[2], qtot], dtype=np.float32), (self.nSystems, 1))
+        qQa  = np.tile(qlayers[0], (self.nSystems, 1))
+        qQb  = np.tile(qlayers[1], (self.nSystems, 1))
+        qQc  = np.tile(qlayers[2], (self.nSystems, 1))
+        self.toGPU('surf_mpos', mpos)
+        self.toGPU('surf_mdip', mdip)
+        self.toGPU('surf_mQa', mQa)
+        self.toGPU('surf_mQb', mQb)
+        self.toGPU('surf_mQc', mQc)
+        self.toGPU('surf_qQa', qQa)
+        self.toGPU('surf_qQb', qQb)
+        self.toGPU('surf_qQc', qQc)
+        self.kernel_params['ns'] = np.array([self.natoms, self.nnode, len(apos), self.perBatch], dtype=np.int32)
+        self.kernel_params['nPBC'] = np.array([int(nPBC[0]), int(nPBC[1]), int(nPBC[2]), 0], dtype=np.int32)
+        self.kernel_params['lvec'] = self.surface_lvec.copy()
+        self.kernel_params['pos0'] = self.surface_pos0.copy()
+        self.kernel_params['GFFParams'] = np.array([r_damp, alpha_morse, 1.0 if bMacro else 0.0, float(len(zuniq))], dtype=np.float32)
+        if 'getSurfMorse' in self.kernelheaders:
+            self.kernel_args_getSurfMorse = self.generate_kernel_args('getSurfMorse', bPrint=False)
+        return {'apos': apos, 'REQs': REQs, 'lvec': lvec, 'center': ctr, 'qtot': qtot, 'mu': mu, 'Q': Q, 'layers': layers, 'sigmas': sigmas, 'bounds': (xmin, xmax, ymin, ymax)}
         
     def get_work_sizes(self):
         """
@@ -610,6 +770,13 @@ class MolecularDynamics(OpenCLBase):
         args = self.generate_kernel_args("getSurfFlat", bPrint=False)
         
         self.prg.getSurfFlat(self.queue, self.sz_na, self.sz_loc, *args)
+        self.queue.finish()
+
+    def run_getSurfMorse(self):
+        if self.kernel_args_getSurfMorse is None:
+            self.kernel_args_getSurfMorse = self.generate_kernel_args('getSurfMorse', bPrint=False)
+        sz = (int(self.natoms), int(self.nSystems))
+        self.prg.getSurfMorse(self.queue, sz, None, *self.kernel_args_getSurfMorse)
         self.queue.finish()
     
     def run_runMD(self):
@@ -905,6 +1072,28 @@ class MolecularDynamics(OpenCLBase):
                 pos_i, force_i = self.download_results()
                 forces[ix, iy,:] = force_i[0,: ]  # Get force on first (and only) atom
                 pos   [ix, iy,:] = pos_i  [0,: ]  # Store position for reference
+        return pos, forces
+
+    def scanSurfMorse_2D(self, ns=(50,50), du=[0.1,0.0,0.0], dv=[0.0,0.1,0.0], p0=[0.0,0.0,0.0], mmff=None):
+        if self.kernel_args_getSurfMorse is None:
+            raise ValueError('scanSurfMorse_2D() requires set_surface() and getSurfMorse kernel setup first')
+        if mmff is None:
+            mmff = self.mmff_list[0]
+        pos = np.zeros((ns[0], ns[1], 4), dtype=np.float32)
+        forces = np.zeros((ns[0], ns[1], 4), dtype=np.float32)
+        du = np.array(du, dtype=np.float32)
+        dv = np.array(dv, dtype=np.float32)
+        p0 = np.array(p0, dtype=np.float32)
+        for ix in range(ns[0]):
+            for iy in range(ns[1]):
+                p = p0 + du*ix + dv*iy
+                mmff.apos[0,:3] = p[:3]
+                self.pack_system(0, mmff)
+                self.toGPU('aforce', np.zeros((self.nvecs,4), dtype=np.float32))
+                self.run_getSurfMorse()
+                pos_i, force_i = self.download_results()
+                forces[ix, iy,:] = force_i[0,:]
+                pos[ix, iy,:] = pos_i[0,:]
         return pos, forces
 
     def realloc_scan(self, n, na=-1):

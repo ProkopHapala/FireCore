@@ -25,6 +25,78 @@ from pyBall.OCL import ScanUtils
 
 # ======== Paths ========
 XYZ_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'cpp', 'common_resources', 'xyz')
+OUT_DIR = os.path.join(os.path.dirname(__file__), 'output_interaction_scan')
+
+
+def run_macro_reference_scan():
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    os.makedirs(OUT_DIR, exist_ok=True)
+    mol_file = os.path.join(XYZ_DIR, 'H2O_O.xyz')
+    sub_file = os.path.join(XYZ_DIR, 'NaCl_8x8_L3.xyz')
+    scanner = InteractionScanner(nloc=32)
+    scanner.load_molecule_xyz(mol_file)
+    scanner.load_substrate_xyz(sub_file)
+    scanner.enable_LJ = True
+    scanner.enable_Coulomb = True
+    scanner.enable_HBond = False
+    scanner.enable_Morse = True
+    scanner.enable_macro = True
+    scanner.nPBC[:] = (4, 4, 0)
+    scanner._update_macro_from_substrate()
+    p0 = np.array([1.0, 1.0, 1.0], dtype=float)
+    step_x = np.array([4.0, 0.0, 0.0], dtype=float)
+    step_y = np.array([0.0, 4.0, 0.0], dtype=float)
+    ns = 9
+    tx = [p0 + i * step_x for i in range(ns)]
+    ty = [p0 + i * step_y for i in range(ns)]
+    transforms_x = ScanUtils.pack_transforms([np.eye(3)] * len(tx), tx)
+    transforms_y = ScanUtils.pack_transforms([np.eye(3)] * len(ty), ty)
+    Ex = np.array(scanner.evaluate(transforms_x)['total'], dtype=float)
+    Ey = np.array(scanner.evaluate(transforms_y)['total'], dtype=float)
+    dEx = Ex - Ex[0]
+    dEy = Ey - Ey[0]
+    labs = np.arange(ns)
+    print('Equivalent-site line errors along x [eV]:')
+    for i, de in zip(labs, dEx):
+        print(f'  ix={i:2d}  dE={de:+.6e}')
+    print('Equivalent-site line errors along y [eV]:')
+    for i, de in zip(labs, dEy):
+        print(f'  iy={i:2d}  dE={de:+.6e}')
+    fig, ax = plt.subplots(1, 1, figsize=(8, 4.5))
+    ax.plot(labs, dEx, 'o-', lw=1.5, label='step (4,0) Å')
+    ax.plot(labs, dEy, 's-', lw=1.5, label='step (0,4) Å')
+    ax.axhline(0.0, c='k', lw=0.8)
+    ax.set_xlabel('Equivalent-site index along a+b')
+    ax.set_ylabel('ΔE [eV]')
+    ax.set_title('Equivalent-site energy error, H2O_O on NaCl8x8, z=1.0 Å')
+    ax.grid(True, alpha=0.3)
+    ax.legend(frameon=False)
+    line_png = os.path.join(OUT_DIR, 'H2O_NaCl8x8_equiv_line_macro.png')
+    fig.tight_layout()
+    fig.savefig(line_png, dpi=180)
+    plt.close(fig)
+
+    res_xy = scanner.scan_lateral(z=1.0, x_range=(-5.0, 35.0), y_range=(-5.0, 35.0), nx=161, ny=161)
+    E2d = np.array(res_xy['total'], dtype=float).reshape(res_xy['scan_info']['shape'])
+    xs = res_xy['scan_info']['x']
+    ys = res_xy['scan_info']['y']
+    vabs = np.nanmax(np.abs(E2d - np.nanmean(E2d)))
+    if not np.isfinite(vabs) or (vabs <= 0.0):
+        raise ValueError(f'Invalid XY energy span {vabs}')
+    fig, ax = plt.subplots(1, 1, figsize=(8, 7))
+    im = ax.imshow((E2d - np.mean(E2d)).T, extent=[xs[0], xs[-1], ys[0], ys[-1]], origin='lower', aspect='equal', cmap='bwr', vmin=-vabs, vmax=vabs)
+    ax.set_xlabel('x [Å]')
+    ax.set_ylabel('y [Å]')
+    ax.set_title('H2O_O on NaCl8x8 XY scan at z=1.0 Å (macro corrected, mean-shifted)')
+    plt.colorbar(im, ax=ax, label='E - <E> [eV]')
+    xy_png = os.path.join(OUT_DIR, 'H2O_NaCl8x8_XYscan_-5_35_npbc4_macro.png')
+    fig.tight_layout()
+    fig.savefig(xy_png, dpi=180)
+    plt.close(fig)
+    return {'line_png': line_png, 'xy_png': xy_png, 'dEx': dEx, 'dEy': dEy, 'scanner': scanner}
 
 
 def test_h2o_on_nacl():
@@ -181,6 +253,10 @@ def test_ptcda_on_nacl():
 
 
 def main():
+    macro_info = run_macro_reference_scan()
+    print(f"Macro 1D equivalent-site plot saved to: {macro_info['line_png']}")
+    print(f"Macro 2D XY scan saved to: {macro_info['xy_png']}")
+
     # Run H2O test
     scanner_h2o, res_z_h2o, res_xy_h2o, res_rot_h2o, res_sl_h2o, res_relax_h2o = test_h2o_on_nacl()
 

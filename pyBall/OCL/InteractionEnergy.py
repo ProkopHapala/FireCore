@@ -27,6 +27,78 @@ _BASE_PATH = os.path.dirname(os.path.abspath(__file__))
 _DATA_PATH = os.path.join(_BASE_PATH, "../../cpp/common_resources/")
 
 
+def _half_step_from_coords(cs):
+    cu = np.unique(np.round(np.asarray(cs, dtype=np.float64), 8))
+    if len(cu) < 2:
+        return 0.0
+    ds = np.diff(np.sort(cu))
+    ds = ds[ds > 1e-8]
+    if len(ds) == 0:
+        return 0.0
+    return 0.5 * float(ds.min())
+
+
+def _rect_sheet_F(X, Y, Z):
+    R = np.sqrt(X*X + Y*Y + Z*Z)
+    t1 = X * np.log(np.maximum(Y + R, 1e-12))
+    t2 = Y * np.log(np.maximum(X + R, 1e-12))
+    t3 = Z * np.arctan2(X * Y, Z * R + 1e-12)
+    return t1 + t2 - t3
+
+
+def rect_sheet_potential(xs, ys, zs, sigma, xmin, xmax, ymin, ymax):
+    x0 = xs - xmin
+    x1 = xs - xmax
+    y0 = ys - ymin
+    y1 = ys - ymax
+    return sigma * (_rect_sheet_F(x0, y0, zs) - _rect_sheet_F(x1, y0, zs) - _rect_sheet_F(x0, y1, zs) + _rect_sheet_F(x1, y1, zs))
+
+
+def rect_dipole_potential(xs, ys, zs, Px, Py, Pz, xmin, xmax, ymin, ymax):
+    sum_omega = 0.0
+    sum_logy  = 0.0
+    sum_logx  = 0.0
+    for xc, sx in ((xmin, 1.0), (xmax, -1.0)):
+        X = xs - xc
+        for yc, sy in ((ymin, 1.0), (ymax, -1.0)):
+            Y = ys - yc
+            s = sx * sy
+            R = np.sqrt(X*X + Y*Y + zs*zs)
+            sum_omega += s * np.arctan2(X * Y, zs * R + 1e-12)
+            sum_logy  += s * np.log(np.maximum(Y + R, 1e-12))
+            sum_logx  += s * np.log(np.maximum(X + R, 1e-12))
+    return Pz * sum_omega - Px * sum_logy - Py * sum_logx
+
+
+def rect_quadrupole_potential(xs, ys, zs, Qxx, Qxy, Qyy, Qxz, Qyz, Qzz, xmin, xmax, ymin, ymax, eps=1e-3):
+    I0   = rect_sheet_potential(xs, ys, zs, 1.0, xmin, xmax, ymin, ymax)
+    Ixp  = rect_sheet_potential(xs + eps, ys, zs, 1.0, xmin, xmax, ymin, ymax)
+    Ixm  = rect_sheet_potential(xs - eps, ys, zs, 1.0, xmin, xmax, ymin, ymax)
+    Iyp  = rect_sheet_potential(xs, ys + eps, zs, 1.0, xmin, xmax, ymin, ymax)
+    Iym  = rect_sheet_potential(xs, ys - eps, zs, 1.0, xmin, xmax, ymin, ymax)
+    Izp  = rect_sheet_potential(xs, ys, zs + eps, 1.0, xmin, xmax, ymin, ymax)
+    Izm  = rect_sheet_potential(xs, ys, zs - eps, 1.0, xmin, xmax, ymin, ymax)
+    Ixyp = rect_sheet_potential(xs + eps, ys + eps, zs, 1.0, xmin, xmax, ymin, ymax)
+    Ixym = rect_sheet_potential(xs + eps, ys - eps, zs, 1.0, xmin, xmax, ymin, ymax)
+    Imyp = rect_sheet_potential(xs - eps, ys + eps, zs, 1.0, xmin, xmax, ymin, ymax)
+    Imym = rect_sheet_potential(xs - eps, ys - eps, zs, 1.0, xmin, xmax, ymin, ymax)
+    Ixzp = rect_sheet_potential(xs + eps, ys, zs + eps, 1.0, xmin, xmax, ymin, ymax)
+    Ixzm = rect_sheet_potential(xs + eps, ys, zs - eps, 1.0, xmin, xmax, ymin, ymax)
+    Imzp = rect_sheet_potential(xs - eps, ys, zs + eps, 1.0, xmin, xmax, ymin, ymax)
+    Imzm = rect_sheet_potential(xs - eps, ys, zs - eps, 1.0, xmin, xmax, ymin, ymax)
+    Iyzp = rect_sheet_potential(xs, ys + eps, zs + eps, 1.0, xmin, xmax, ymin, ymax)
+    Iyzm = rect_sheet_potential(xs, ys + eps, zs - eps, 1.0, xmin, xmax, ymin, ymax)
+    Imzzp = rect_sheet_potential(xs, ys - eps, zs + eps, 1.0, xmin, xmax, ymin, ymax)
+    Imzzm = rect_sheet_potential(xs, ys - eps, zs - eps, 1.0, xmin, xmax, ymin, ymax)
+    dxx = (Ixp - 2.0 * I0 + Ixm) / (eps * eps)
+    dyy = (Iyp - 2.0 * I0 + Iym) / (eps * eps)
+    dzz = (Izp - 2.0 * I0 + Izm) / (eps * eps)
+    dxy = (Ixyp - Ixym - Imyp + Imym) / (4.0 * eps * eps)
+    dxz = (Ixzp - Ixzm - Imzp + Imzm) / (4.0 * eps * eps)
+    dyz = (Iyzp - Iyzm - Imzzp + Imzzm) / (4.0 * eps * eps)
+    return (Qxx * dxx + Qyy * dyy + Qzz * dzz + 2.0 * Qxy * dxy + 2.0 * Qxz * dxz + 2.0 * Qyz * dyz) / 6.0
+
+
 def make_REQs_from_enames(enames, qs, atom_types, type_map=None):
     """Build MMFF REQ array (R, sqrt(E), Q, H) from element/type names and charges.
     enames:     list of element names or atom type names
@@ -111,6 +183,8 @@ class InteractionScanner(OpenCLBase):
         self.enable_macro    = False
         self.macro_P         = np.zeros(4, dtype=np.float32)   # (Px,Py,Pz,0) polarization [e/Ang]
         self.macro_AB        = np.zeros(4, dtype=np.float32)   # (Ax,By,0,0) half-sizes [Ang]
+        self._macro_layers   = None
+        self._macro_bounds   = None
         # Relaxation defaults
         self.spring_k        = np.float32(5.0)
         self.relax_dt        = np.float32(0.005)
@@ -188,6 +262,79 @@ class InteractionScanner(OpenCLBase):
         Ax = (float(self.nPBC[0]) + 0.5) * float(np.linalg.norm(a))
         By = (float(self.nPBC[1]) + 0.5) * float(np.linalg.norm(b))
         self.macro_AB[:] = (Ax, By, 0.0, 0.0)
+        xmin0, xmax0 = float(self.sub_apos[:, 0].min()), float(self.sub_apos[:, 0].max())
+        ymin0, ymax0 = float(self.sub_apos[:, 1].min()), float(self.sub_apos[:, 1].max())
+        hx = _half_step_from_coords(self.sub_apos[:, 0])
+        hy = _half_step_from_coords(self.sub_apos[:, 1])
+        La = float(np.linalg.norm(a))
+        Lb = float(np.linalg.norm(b))
+        xmin = xmin0 - hx - float(self.nPBC[0]) * La
+        xmax = xmax0 + hx + float(self.nPBC[0]) * La
+        ymin = ymin0 - hy - float(self.nPBC[1]) * Lb
+        ymax = ymax0 + hy + float(self.nPBC[1]) * Lb
+        self._macro_bounds = (xmin, xmax, ymin, ymax)
+        zs = self.sub_apos[:, 2].astype(np.float64)
+        qs = self.sub_REQs[:, 2].astype(np.float64)
+        zuniq = []
+        qsum = []
+        izs = np.argsort(zs)
+        tol = 1e-4
+        for i in izs:
+            z = zs[i]
+            q = qs[i]
+            if not zuniq or abs(z - zuniq[-1]) > tol:
+                zuniq.append(z)
+                qsum.append(q)
+            else:
+                qsum[-1] += q
+        sigmas = np.array(qsum, dtype=np.float64) / A
+        mus = []
+        quads = []
+        cx = 0.5 * (xmin + xmax)
+        cy = 0.5 * (ymin + ymax)
+        for z in zuniq:
+            m = np.abs(zs - z) < tol
+            dx = ps[m, 0] - cx
+            dy = ps[m, 1] - cy
+            dz = ps[m, 2] - z
+            qq = qs[m]
+            mus.append(np.array([np.sum(qq * dx), np.sum(qq * dy), np.sum(qq * dz)]))
+            qzz = np.sum(qq * (2.0 * dz * dz - dx * dx - dy * dy))
+            qxx = np.sum(qq * (2.0 * dx * dx - dy * dy - dz * dz))
+            qyy = np.sum(qq * (2.0 * dy * dy - dx * dx - dz * dz))
+            qxy = np.sum(qq * (3.0 * dx * dy))
+            qxz = np.sum(qq * (3.0 * dx * dz))
+            qyz = np.sum(qq * (3.0 * dy * dz))
+            quads.append((qxx / A, qxy / A, qyy / A, qxz / A, qyz / A, qzz / A))
+        self._macro_layers = (np.array(zuniq, dtype=np.float64), sigmas, np.array(mus, dtype=np.float64) / A, np.array(quads, dtype=np.float64))
+
+    def _apply_macro_correction(self, transforms, out, relaxed_pos=None):
+        if (not self.enable_macro) or (self._macro_layers is None) or (self._macro_bounds is None):
+            return out
+        zls, sigmas, Pmus, Qdens = self._macro_layers
+        xmin, xmax, ymin, ymax = self._macro_bounds
+        qs = self.mol_REQs[:, 2].astype(np.float64)
+        if relaxed_pos is None:
+            T = np.ascontiguousarray(transforms, dtype=np.float64).reshape(-1, 3, 4)
+            p0 = self.mol_apos.astype(np.float64)
+            xyz = np.empty((len(T), len(p0), 3), dtype=np.float64)
+            xyz[:, :, 0] = p0[None, :, 0] * T[:, None, 0, 0] + p0[None, :, 1] * T[:, None, 0, 1] + p0[None, :, 2] * T[:, None, 0, 2] + T[:, None, 0, 3]
+            xyz[:, :, 1] = p0[None, :, 0] * T[:, None, 1, 0] + p0[None, :, 1] * T[:, None, 1, 1] + p0[None, :, 2] * T[:, None, 1, 2] + T[:, None, 1, 3]
+            xyz[:, :, 2] = p0[None, :, 0] * T[:, None, 2, 0] + p0[None, :, 1] * T[:, None, 2, 1] + p0[None, :, 2] * T[:, None, 2, 2] + T[:, None, 2, 3]
+        else:
+            xyz = relaxed_pos.astype(np.float64)
+        dE = np.zeros(xyz.shape[0], dtype=np.float64)
+        xs = xyz[:, :, 0]
+        ys = xyz[:, :, 1]
+        for zl, sigma, Pmu, Qd in zip(zls, sigmas, Pmus, Qdens):
+            dz = xyz[:, :, 2] - zl
+            phi = rect_sheet_potential(xs, ys, dz, sigma, xmin, xmax, ymin, ymax)
+            phi += rect_dipole_potential(xs, ys, dz, Pmu[0], Pmu[1], Pmu[2], xmin, xmax, ymin, ymax)
+            phi += rect_quadrupole_potential(xs, ys, dz, Qd[0], Qd[1], Qd[2], Qd[3], Qd[4], Qd[5], xmin, xmax, ymin, ymax)
+            dE -= self.Coulomb_const * np.sum(phi * qs[None, :], axis=1)
+        out['Coulomb'] = out['Coulomb'].astype(np.float64) + dE
+        out['total'] = out['total'].astype(np.float64) + dE
+        return out
 
     # ======== Evaluation ========
 
@@ -243,8 +390,8 @@ class InteractionScanner(OpenCLBase):
             lb = cl_array.vec.make_float4(float(self.lvec[1, 0]), float(self.lvec[1, 1]), float(self.lvec[1, 2]), 0.0)
             lc = cl_array.vec.make_float4(float(self.lvec[2, 0]), float(self.lvec[2, 1]), float(self.lvec[2, 2]), 0.0)
         npbc = cl_array.vec.make_int3(int(self.nPBC[0]), int(self.nPBC[1]), int(self.nPBC[2]))
-        macro_P  = cl_array.vec.make_float4(float(self.macro_P[0]), float(self.macro_P[1]), float(self.macro_P[2]), 0.0)
-        macro_AB = cl_array.vec.make_float4(float(self.macro_AB[0]), float(self.macro_AB[1]), 0.0, 0.0)
+        macro_P  = cl_array.vec.make_float4(0.0, 0.0, 0.0, 0.0)
+        macro_AB = cl_array.vec.make_float4(0.0, 0.0, 0.0, 0.0)
         self.krn_evaluate(
             self.queue, global_size, local_size,
             self._mol_buf, self._mol_req_buf, np.int32(self._nmol),
@@ -253,7 +400,7 @@ class InteractionScanner(OpenCLBase):
             trans_buf,
             np.int32(int(self.enable_LJ)), np.int32(int(self.enable_Coulomb)),
             np.int32(int(self.enable_HBond)), np.int32(int(self.enable_Morse)),
-            np.int32(int(self.enable_macro)), macro_P, macro_AB,
+            np.int32(0), macro_P, macro_AB,
             np.float32(self.Coulomb_const), np.float32(self.Morse_alpha),
             local_mem,
             res_total, res_lj, res_coul, res_hb,
@@ -263,7 +410,7 @@ class InteractionScanner(OpenCLBase):
             arr = np.empty(nconf, dtype=np.float32)
             cl.enqueue_copy(self.queue, arr, buf)
             out[name] = arr
-        return out
+        return self._apply_macro_correction(transforms, out)
 
     def evaluate_relaxed(self, transforms):
         """Evaluate with constrained relaxation.
@@ -293,8 +440,8 @@ class InteractionScanner(OpenCLBase):
             lb = cl_array.vec.make_float4(float(self.lvec[1, 0]), float(self.lvec[1, 1]), float(self.lvec[1, 2]), 0.0)
             lc = cl_array.vec.make_float4(float(self.lvec[2, 0]), float(self.lvec[2, 1]), float(self.lvec[2, 2]), 0.0)
         npbc = cl_array.vec.make_int3(int(self.nPBC[0]), int(self.nPBC[1]), int(self.nPBC[2]))
-        macro_P  = cl_array.vec.make_float4(float(self.macro_P[0]), float(self.macro_P[1]), float(self.macro_P[2]), 0.0)
-        macro_AB = cl_array.vec.make_float4(float(self.macro_AB[0]), float(self.macro_AB[1]), 0.0, 0.0)
+        macro_P  = cl_array.vec.make_float4(0.0, 0.0, 0.0, 0.0)
+        macro_AB = cl_array.vec.make_float4(0.0, 0.0, 0.0, 0.0)
         self.krn_relax(
             self.queue, global_size, local_size,
             self._mol_buf, self._mol_req_buf, np.int32(self._nmol),
@@ -303,7 +450,7 @@ class InteractionScanner(OpenCLBase):
             trans_buf,
             np.int32(int(self.enable_LJ)), np.int32(int(self.enable_Coulomb)),
             np.int32(int(self.enable_HBond)), np.int32(int(self.enable_Morse)),
-            np.int32(int(self.enable_macro)), macro_P, macro_AB,
+            np.int32(0), macro_P, macro_AB,
             np.float32(self.Coulomb_const), np.float32(self.Morse_alpha),
             self.spring_k, self.relax_dt, np.int32(self.relax_nsteps),
             local_mem,
@@ -318,7 +465,7 @@ class InteractionScanner(OpenCLBase):
         rpos = np.empty((nconf, self._nmol, 4), dtype=np.float32)
         cl.enqueue_copy(self.queue, rpos, relax_buf)
         out['relaxed_pos'] = rpos[:, :, :3]
-        return out
+        return self._apply_macro_correction(transforms, out, relaxed_pos=out['relaxed_pos'])
 
     def evaluate_single(self, pos=(0,0,3), R=None):
         """Evaluate energy for a single translation (identity rotation or given R).

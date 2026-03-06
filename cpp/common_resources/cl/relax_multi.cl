@@ -202,6 +202,112 @@ inline float4 getCoulomb( float3 dp, float R2damp ){
     return  (float4){ dp*-E*ir2_, E };
 }
 
+inline float macro_phi_rect_dipole(float3 p, float4 Pz, float4 AB) {
+    float Ax = AB.x;
+    float Bx = AB.y;
+    float x = p.x;
+    float y = p.y;
+    float z = p.z;
+    float sumOmega = 0.0f;
+    float sumLogY  = 0.0f;
+    float sumLogX  = 0.0f;
+    float xs[2] = {-Ax, Ax};
+    float ys[2] = {-Bx, Bx};
+    for (int ix=0; ix<2; ix++) {
+        for (int iy=0; iy<2; iy++) {
+            float X = x - xs[ix];
+            float Y = y - ys[iy];
+            float R = sqrt(X*X + Y*Y + z*z);
+            float s = ((ix==0)?-1.0f:1.0f) * ((iy==0)?-1.0f:1.0f);
+            sumOmega += s * atan2( X*Y, z * R + 1e-12f );
+            sumLogY  += s * log( Y + R + 1e-12f );
+            sumLogX  += s * log( X + R + 1e-12f );
+        }
+    }
+    return (Pz.z * sumOmega) - (Pz.x * sumLogY) - (Pz.y * sumLogX);
+}
+
+inline float rect_sheet_F(float X, float Y, float Z){
+    float R = sqrt(X*X + Y*Y + Z*Z);
+    return X*log(Y + R + 1e-12f) + Y*log(X + R + 1e-12f) - Z*atan2(X*Y, Z*R + 1e-12f);
+}
+
+inline float macro_phi_rect_charge(float3 p, float4 AB){
+    float Ax = AB.x;
+    float By = AB.y;
+    float x0 = p.x + Ax;
+    float x1 = p.x - Ax;
+    float y0 = p.y + By;
+    float y1 = p.y - By;
+    return rect_sheet_F(x0,y0,p.z) - rect_sheet_F(x1,y0,p.z) - rect_sheet_F(x0,y1,p.z) + rect_sheet_F(x1,y1,p.z);
+}
+
+inline float4 getMacroRectLayers( float3 pos, float q, float4 bounds, float4 L0, float4 L1, float4 L2, float4 S0, float4 Q0, float4 Q1, float4 Q2, int nlayer ){
+    float Ax = 0.5f*(bounds.y - bounds.x);
+    float By = 0.5f*(bounds.w - bounds.z);
+    float cx = 0.5f*(bounds.y + bounds.x);
+    float cy = 0.5f*(bounds.w + bounds.z);
+    float3 p = pos - (float3)(cx,cy,0.0f);
+    float phi = 0.0f;
+    float4 ls[3] = {L0,L1,L2};
+    float sigmas[3] = {S0.x,S0.y,S0.z};
+    float4 qs[3] = {Q0,Q1,Q2};
+    for(int i=0; i<nlayer; i++){
+        float4 Li = ls[i];
+        float3 pp = (float3)(p.x,p.y,p.z-Li.w);
+        float4 AB = (float4)(Ax,By,0.0f,0.0f);
+        phi += sigmas[i] * macro_phi_rect_charge( pp, AB );
+        phi += macro_phi_rect_dipole( pp, (float4)(Li.x,Li.y,Li.z,0.0f), AB );
+        float4 Qi = qs[i];
+        const float eps2 = 2e-2f;
+        float I0  = macro_phi_rect_charge( pp, AB );
+        float Ixp = macro_phi_rect_charge( (float3)(pp.x+eps2,pp.y,pp.z), AB );
+        float Ixm = macro_phi_rect_charge( (float3)(pp.x-eps2,pp.y,pp.z), AB );
+        float Iyp = macro_phi_rect_charge( (float3)(pp.x,pp.y+eps2,pp.z), AB );
+        float Iym = macro_phi_rect_charge( (float3)(pp.x,pp.y-eps2,pp.z), AB );
+        float Ixyp = macro_phi_rect_charge( (float3)(pp.x+eps2,pp.y+eps2,pp.z), AB );
+        float Ixym = macro_phi_rect_charge( (float3)(pp.x+eps2,pp.y-eps2,pp.z), AB );
+        float Imyp = macro_phi_rect_charge( (float3)(pp.x-eps2,pp.y+eps2,pp.z), AB );
+        float Imym = macro_phi_rect_charge( (float3)(pp.x-eps2,pp.y-eps2,pp.z), AB );
+        float dxx = (Ixp - 2.0f*I0 + Ixm)/(eps2*eps2);
+        float dyy = (Iyp - 2.0f*I0 + Iym)/(eps2*eps2);
+        float dxy = (Ixyp - Ixym - Imyp + Imym)/(4.0f*eps2*eps2);
+        phi += (Qi.x*dxx + 2.0f*Qi.y*dxy + Qi.z*dyy)/6.0f;
+    }
+    const float eps = 1e-3f;
+    float phixp = 0.0f, phixm = 0.0f, phiyp = 0.0f, phiym = 0.0f, phizp = 0.0f, phizm = 0.0f;
+    for(int i=0; i<nlayer; i++){
+        float4 Li = ls[i];
+        float4 Qi = qs[i];
+        float3 pp = (float3)(p.x,p.y,p.z-Li.w);
+        float4 Pi = (float4)(Li.x,Li.y,Li.z,0.0f);
+        float4 AB = (float4)(Ax,By,0.0f,0.0f);
+        float3 pps[6] = {
+            (float3)(pp.x+eps,pp.y,pp.z),(float3)(pp.x-eps,pp.y,pp.z),(float3)(pp.x,pp.y+eps,pp.z),
+            (float3)(pp.x,pp.y-eps,pp.z),(float3)(pp.x,pp.y,pp.z+eps),(float3)(pp.x,pp.y,pp.z-eps)
+        };
+        float vals[6];
+        for(int k=0;k<6;k++){
+            float I0  = macro_phi_rect_charge( pps[k], AB );
+            float Ixp = macro_phi_rect_charge( (float3)(pps[k].x+2e-2f,pps[k].y,pps[k].z), AB );
+            float Ixm = macro_phi_rect_charge( (float3)(pps[k].x-2e-2f,pps[k].y,pps[k].z), AB );
+            float Iyp = macro_phi_rect_charge( (float3)(pps[k].x,pps[k].y+2e-2f,pps[k].z), AB );
+            float Iym = macro_phi_rect_charge( (float3)(pps[k].x,pps[k].y-2e-2f,pps[k].z), AB );
+            float Ixyp = macro_phi_rect_charge( (float3)(pps[k].x+2e-2f,pps[k].y+2e-2f,pps[k].z), AB );
+            float Ixym = macro_phi_rect_charge( (float3)(pps[k].x+2e-2f,pps[k].y-2e-2f,pps[k].z), AB );
+            float Imyp = macro_phi_rect_charge( (float3)(pps[k].x-2e-2f,pps[k].y+2e-2f,pps[k].z), AB );
+            float Imym = macro_phi_rect_charge( (float3)(pps[k].x-2e-2f,pps[k].y-2e-2f,pps[k].z), AB );
+            float dxx = (Ixp - 2.0f*I0 + Ixm)/(4e-4f);
+            float dyy = (Iyp - 2.0f*I0 + Iym)/(4e-4f);
+            float dxy = (Ixyp - Ixym - Imyp + Imym)/(1.6e-3f);
+            vals[k] = sigmas[i] * macro_phi_rect_charge( pps[k], AB ) + macro_phi_rect_dipole( pps[k], Pi, AB ) + (Qi.x*dxx + 2.0f*Qi.y*dxy + Qi.z*dyy)/6.0f;
+        }
+        phixp += vals[0]; phixm += vals[1]; phiyp += vals[2]; phiym += vals[3]; phizp += vals[4]; phizm += vals[5];
+    }
+    float3 g = (float3)( (phixp-phixm)/(2.0f*eps), (phiyp-phiym)/(2.0f*eps), (phizp-phizm)/(2.0f*eps) );
+    return (float4){ g*(COULOMB_CONST*q), COULOMB_CONST*q*phi };
+}
+
 // limit force magnitude to fmax
 float3 limnitForce( float3 f, float fmax ){
     float fr2 = dot(f,f);                         // force magnitude squared
@@ -3554,10 +3660,18 @@ __kernel void getSurfMorse(
     __global float4*  forces,     // 4
     __global float4*  atoms_s,    // 5
     __global float4*  REQ_s,      // 6
-    const int4     nPBC,          // 7
-    const cl_Mat3  lvec,          // 8
-    const float4   pos0,          // 9
-    const float4   GFFParams      // 10
+    __global float4*  surf_mpos,  // 7  (xmin,xmax,ymin,ymax)
+    __global float4*  surf_mdip,  // 8  (mx,my,mz,0)
+    __global float4*  surf_mQa,   // 9  Q row a
+    __global float4*  surf_mQb,   // 10 Q row b
+    __global float4*  surf_mQc,   // 11 (sigma0,sigma1,sigma2,Qtot)
+    __global float4*  surf_qQa,   // 12 layer quadrupole (Qxx,Qxy,Qyy,z0)
+    __global float4*  surf_qQb,   // 13 layer quadrupole (Qxx,Qxy,Qyy,z1)
+    __global float4*  surf_qQc,   // 14 layer quadrupole (Qxx,Qxy,Qyy,z2)
+    const int4     nPBC,          // 15
+    const cl_Mat3  lvec,          // 16
+    const float4   pos0,          // 17
+    const float4   GFFParams      // 18
 ){
 
     __local float4 LATOMS[32];
@@ -3598,6 +3712,7 @@ __kernel void getSurfMorse(
     const float  R2damp     =  GFFParams.x*GFFParams.x;
     const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
     const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz)
+    const int bMacro      = (int)(GFFParams.z>0.5f);
 
     const float3 pos  = atoms[iav].xyz - pos0.xyz +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
     const float4 REQi = REQs [iaa];
@@ -3646,6 +3761,12 @@ __kernel void getSurfMorse(
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    if( bMacro && (fabs(REQi.z) > 1e-12f) ){
+        int nlayer = (int)(GFFParams.w + 0.5f);
+        float4 fm = getMacroRectLayers( atoms[iav].xyz, REQi.z, surf_mpos[iS], surf_mdip[iS], surf_mQa[iS], surf_mQb[iS], surf_mQc[iS], surf_qQa[iS], surf_qQb[iS], surf_qQc[iS], nlayer );
+        fe.xyz += fm.xyz;
+        fe.w   += fm.w;
     }
     // if( (iG==0) && (iS==0) ){
     //      printf( "GPU[iG=%i,iS=%i] fe(%10.6f,%10.6f,%10.6f)\n", iG,iS, fe.x,fe.y,fe.z );
