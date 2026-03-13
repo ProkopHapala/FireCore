@@ -193,6 +193,22 @@ inline float4 getMorseQH( float3 dp,  float4 REQH, float K, float R2damp ){
     return  (float4){ dp*fr, EMors+Eel };
 }
 
+inline float4 getMorsePLQH( float3 dp, float4 REQH, float4 PLQH, float K, float R2damp ){
+    float r2    = dot(dp,dp);
+    float ir2_  = 1/(r2+R2damp);
+    float r     = sqrt( r2   );
+    float ir_   = sqrt( ir2_ );
+    float e     = exp ( K*(r-REQH.x));
+    float Ee    = REQH.y*e;
+    float EP    = Ee*e      * PLQH.x;
+    float EL    = -2.0f*Ee  * PLQH.y;
+    float EQ    = COULOMB_CONST*REQH.z*ir_ * PLQH.z;
+    float frP   = (2.0f*K*EP)/r;
+    float frL   = (-2.0f*K*Ee*PLQH.y)/r;
+    float frQ   = -EQ*ir2_;
+    return (float4){ dp*(frP+frL+frQ), EP+EL+EQ };
+}
+
 // evaluate damped Coulomb potential and force
 inline float4 getCoulomb( float3 dp, float R2damp ){
     // ---- Electrostatic
@@ -307,6 +323,10 @@ inline float4 getMacroRectLayers( float3 pos, float q, float4 bounds, float4 L0,
     float3 g = (float3)( (phixp-phixm)/(2.0f*eps), (phiyp-phiym)/(2.0f*eps), (phizp-phizm)/(2.0f*eps) );
     return (float4){ g*(COULOMB_CONST*q), COULOMB_CONST*q*phi };
 }
+
+
+// NOTE: This is slow - Folded Basis should be evaluated using multiplication, not by repeating evaluation of cos/exp functions !!!
+//
 
 inline float folded_eval_basis(float u, float v, float z, float4 prm){
     float bx = cos( (2.0f*M_PI_F) * prm.x * u );
@@ -3698,7 +3718,8 @@ __kernel void getSurfMorse(
     const int4     nPBC,          // 15
     const cl_Mat3  lvec,          // 16
     const float4   pos0,          // 17
-    const float4   GFFParams      // 18
+    const float4   GFFParams,     // 18
+    const float4   PLQH           // 19   (Pauli, London, Coulomb, HBond)
 ){
 
     __local float4 LATOMS[32];
@@ -3764,7 +3785,7 @@ __kernel void getSurfMorse(
                 for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
                     for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
                         for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
-                            const float4 fej = getMorseQH( dp,  REQH, K, R2damp );
+                            float4 fej = getMorsePLQH( dp, REQH, PLQH, K, R2damp );
                             fe -= fej;
                             //if( (iG==0) && (iS==0) && (iz==0)&&(iy==0)&&(ix==0)){
                             //if( (iG==0) && (iS==0) && (jl==0) ){
@@ -3789,7 +3810,7 @@ __kernel void getSurfMorse(
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
-    if( bMacro && (fabs(REQi.z) > 1e-12f) ){
+    if( bMacro && (fabs(PLQH.z) > 1e-12f) && (fabs(REQi.z) > 1e-12f) ){
         int nlayer = (int)(GFFParams.w + 0.5f);
         float4 fm = getMacroRectLayers( atoms[iav].xyz, REQi.z, surf_mpos[iS], surf_mdip[iS], surf_mQa[iS], surf_mQb[iS], surf_mQc[iS], surf_qQa[iS], surf_qQb[iS], surf_qQc[iS], nlayer );
         fe.xyz += fm.xyz;
@@ -3878,6 +3899,294 @@ __kernel void getSurfFolded(
     forces[iav] += (float4)(F.x, F.y, F.z, -E);
 }
 
+
+// Max dimension size for local memory allocation (e.g., up to 4x4x4)
+#define MAX_D 4 
+
+__kernel void getSurfFolded_wrokgroup(
+    const int4 ns,                     
+    __global float4*  atoms,           
+    __global float4*  REQs,            
+    __global float4*  forces,          
+    __global float*   folded_coeffs,   
+    __global float4*  folded_kxyz,     // 1D params: [Nx params, Ny params, Nz params]
+    __global int*     folded_atom_type,
+    const int4        folded_meta,     // (Nx, Ny, Nz, ntypes)
+    const float4      folded_lvec2d    
+){
+    // ------------------------------------------------------------------
+    // ARCHITECTURE MAPPING: 1 WORKGROUP = 1 ATOM, 1 THREAD = 1 BASIS
+    // ------------------------------------------------------------------
+    const int i_atom = get_group_id(0);    // Which atom this workgroup is processing
+    const int i_sys  = get_global_id(1);   // System replica index
+    const int iL     = get_local_id(0);    // Which basis function this thread handles
+    const int nL     = get_local_size(0);  // Should equal nbasis (e.g., 64)
+
+    const int natoms = ns.x;
+    if(i_atom >= natoms) return;
+
+    const int Nx = folded_meta.x;
+    const int Ny = folded_meta.y;
+    const int Nz = folded_meta.z;
+    const int ntypes = folded_meta.w;
+    const int nbasis = Nx * Ny * Nz;
+
+    // Uniform check: if the atom type is invalid, the WHOLE workgroup exits safely
+    int ityp = folded_atom_type[i_atom];
+    if(ityp < 0 || ityp >= ntypes) return;
+
+    // Local memory for cooperative 1D basis evaluation and final reduction
+    __local float L_BX[MAX_D], L_dBX[MAX_D];
+    __local float L_BY[MAX_D], L_dBY[MAX_D];
+    __local float L_BZ[MAX_D], L_dBZ[MAX_D];
+    __local float4 L_REDUCE[128]; // Max basis size supported for reduction
+
+    // ------------------------------------------------------------------
+    // GEOMETRY (All threads read identical data - L1 cache broadcast)
+    // ------------------------------------------------------------------
+    float det = folded_lvec2d.x * folded_lvec2d.w - folded_lvec2d.y * folded_lvec2d.z;
+    float4 invLvec = (float4)(folded_lvec2d.w/det, -folded_lvec2d.y/det, -folded_lvec2d.z/det, folded_lvec2d.x/det);
+
+    int iav = i_atom + i_sys * (natoms + ns.y);
+    float3 pos = atoms[iav].xyz;
+    
+    float u = invLvec.x * pos.x + invLvec.y * pos.y;
+    float v = invLvec.z * pos.x + invLvec.w * pos.y;
+    u -= floor(u);
+    v -= floor(v);
+
+    // ------------------------------------------------------------------
+    // PHASE 1: COOPERATIVE 1D BASIS EVALUATION
+    // Threads 0 to (Nx+Ny+Nz-1) evaluate the 1D functions in parallel.
+    // ------------------------------------------------------------------
+    if (iL < Nx) {
+        float kx = folded_kxyz[iL].x;
+        float phix = (2.0f * M_PI_F) * kx;
+        L_BX[iL]  =         cos(phix * u);
+        L_dBX[iL] = -phix * sin(phix * u);
+    } 
+    else if (iL >= Nx && iL < Nx + Ny) {
+        int iy = iL - Nx;
+        float ky = folded_kxyz[iL].y;
+        float phiy = (2.0f * M_PI_F) * ky;
+        L_BY[iy]  =         cos(phiy * v);
+        L_dBY[iy] = -phiy * sin(phiy * v);
+    } 
+    else if (iL >= Nx + Ny && iL < Nx + Ny + Nz) {
+        int iz = iL - Nx - Ny;
+        float kz = folded_kxyz[iL].z;
+        float z0 = folded_kxyz[iL].w;
+        float dz = fmax(0.0f, pos.z - z0);
+        float bz = exp(-kz * dz);
+        L_BZ[iz]  = bz;
+        L_dBZ[iz] = (pos.z > z0) ? (-kz * bz) : 0.0f;
+    }
+    
+    // Wait for 1D arrays to be populated
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // ------------------------------------------------------------------
+    // PHASE 2: PARALLEL 3D TENSOR PRODUCT & COEFFICIENTS
+    // Every thread calculates exactly ONE 3D coefficient.
+    // ------------------------------------------------------------------
+    float du = 0.0f, dv = 0.0f, dz = 0.0f, e = 0.0f;
+    
+    if (iL < nbasis) {
+        // Map 1D thread ID back to 3D grid indices
+        int ix = iL % Nx;
+        int iy = (iL / Nx) % Ny;
+        int iz = iL / (Nx * Ny);
+
+        float bx = L_BX[ix];  float dbx = L_dBX[ix];
+        float by = L_BY[iy];  float dby = L_dBY[iy];
+        float bz = L_BZ[iz];  float dbz = L_dBZ[iz];
+
+        // PERFECTLY COALESCED GLOBAL READ: No local memory staging required!
+        float c = folded_coeffs[ityp * nbasis + iL];
+
+        e  = c * (bx * by * bz);
+        du = c * (dbx * by * bz);
+        dv = c * (bx * dby * bz);
+        dz = c * (bx * by * dbz);
+    }
+    
+    L_REDUCE[iL] = (float4)(du, dv, dz, e);
+    
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // ------------------------------------------------------------------
+    // PHASE 3: FAST LOGARITHMIC TREE REDUCTION
+    // Reduces 64 items to 1 item in exactly 6 clock cycles
+    // (Assumes local_size is a power of 2, e.g., 64)
+    // ------------------------------------------------------------------
+    for (int stride = nL >> 1; stride > 0; stride >>= 1) {
+        if (iL < stride) {
+            L_REDUCE[iL] += L_REDUCE[iL + stride];
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    // ------------------------------------------------------------------
+    // PHASE 4: CHAIN RULE & WRITE TO GLOBAL MEMORY
+    // Thread 0 handles the final output for this specific atom
+    // ------------------------------------------------------------------
+    if (iL == 0) {
+        float4 res = L_REDUCE[0];
+        float dEdu_tot = res.x;
+        float dEdv_tot = res.y;
+        float dEdz_tot = res.z;
+        float E_tot    = res.w;
+
+        float3 F_tot;
+        F_tot.x = -(dEdu_tot * invLvec.x + dEdv_tot * invLvec.z);
+        F_tot.y = -(dEdu_tot * invLvec.y + dEdv_tot * invLvec.w);
+        F_tot.z = -dEdz_tot;
+
+        // Atomic is not needed because iav is unique to this workgroup
+        forces[iav] += (float4)(F_tot.x, F_tot.y, F_tot.z, -E_tot);
+    }
+}
+
+__kernel void getSurfFolded_harmonics(
+    const int4 ns,                     
+    __global float4*  atoms,           
+    __global float4*  REQs,            
+    __global float4*  forces,          
+    __global float*   folded_coeffs,   
+    __global float4*  folded_kxyz,     // Now stores 1D params: [Nx params, Ny params, Nz params]
+    __global int*     folded_atom_type,
+    const int4        folded_meta,     // (Nx, Ny, Nz, ntypes)
+    const float4      folded_lvec2d    
+){    
+    // Local memory for coefficients and 1D parameters
+    __local float  LCOEFFS[MAX_D * MAX_D * MAX_D * 8]; //[Nx*Ny*Nz * ntypes]
+    __local float4 LBASIS[MAX_D * 3];                  // [Nx + Ny + Nz]
+
+    const int iG = get_global_id(0);
+    const int iS = get_global_id(1);
+    const int iL = get_local_id(0);
+    const int nL = get_local_size(0);
+    const int natoms = ns.x;
+    
+    if(iG >= natoms) return;
+
+    // Tensor product dimensions
+    const int Nx = folded_meta.x;
+    const int Ny = folded_meta.y;
+    const int Nz = folded_meta.z;
+    const int ntypes = folded_meta.w;
+    const int nbasis_total = Nx * Ny * Nz;
+    const int nparams_1d = Nx + Ny + Nz;
+
+    // Cooperative load of 1D params and 3D coefficients into __local
+    for(int j = iL; j < nparams_1d; j += nL){
+        LBASIS[j] = folded_kxyz[j];
+    }
+    for(int j = iL; j < nbasis_total * ntypes; j += nL){
+        LCOEFFS[j] = folded_coeffs[j];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // Coordinate transformation
+    float det = folded_lvec2d.x * folded_lvec2d.w - folded_lvec2d.y * folded_lvec2d.z;
+    float4 invLvec = (float4)(folded_lvec2d.w/det, -folded_lvec2d.y/det, -folded_lvec2d.z/det, folded_lvec2d.x/det);
+
+    int iav = iG + iS * (natoms + ns.y);
+    float3 pos = atoms[iav].xyz;
+    float u = invLvec.x * pos.x + invLvec.y * pos.y;
+    float v = invLvec.z * pos.x + invLvec.w * pos.y;
+    u -= floor(u);
+    v -= floor(v);
+
+    int ityp = folded_atom_type[iG];
+    if(ityp < 0 || ityp >= ntypes) return;
+
+    // ====================================================================
+    // 1. PRECOMPUTE 1D BASIS FUNCTIONS (OUTSIDE THE LOOP)
+    // ====================================================================
+    // Stored in fast private registers for this specific atom
+    
+    float BX[MAX_D], dBX[MAX_D];
+    float BY[MAX_D], dBY[MAX_D];
+    float BZ[MAX_D], dBZ[MAX_D];
+
+    // Evaluate X Basis (Standard cos/sin for now)
+    for(int ix = 0; ix < Nx; ++ix) {
+        float kx = LBASIS[ix].x; 
+        float phix = (2.0f * M_PI_F) * kx;
+        BX[ix]  = native_cos(phix * u);
+        dBX[ix] = -phix * native_sin(phix * u);
+    }
+
+    // Evaluate Y Basis
+    for(int iy = 0; iy < Ny; ++iy) {
+        float ky = LBASIS[Nx + iy].y; 
+        float phiy = (2.0f * M_PI_F) * ky;
+        BY[iy]  = native_cos(phiy * v);
+        dBY[iy] = -phiy * native_sin(phiy * v);
+    }
+
+    // Evaluate Z Basis
+    for(int iz = 0; iz < Nz; ++iz) {
+        float kz = LBASIS[Nx + Ny + iz].z; // Decay parameter
+        float z0 = LBASIS[Nx + Ny + iz].w; // Offset
+        float dz = fmax(0.0f, pos.z - z0);
+        float bz = native_exp(-kz * dz);
+        BZ[iz]  = bz;
+        dBZ[iz] = (pos.z > z0) ? (-kz * bz) : 0.0f;
+    }
+
+    // ====================================================================
+    // 2. THE TRIPLE LOOP (PURE MATH, MAXIMAL REGISTER REUSE)
+    // ====================================================================
+    
+    float E_tot = 0.0f;
+    float dEdu_tot = 0.0f;
+    float dEdv_tot = 0.0f;
+    float dEdz_tot = 0.0f;
+
+    // Coefficient linear index (assuming flattened as C[ityp][iz][iy][ix])
+    int ic = ityp * nbasis_total;
+
+    for(int iz = 0; iz < Nz; ++iz) {
+        float bz  = BZ[iz];
+        float dbz = dBZ[iz];
+        
+        for(int iy = 0; iy < Ny; ++iy) {
+            float by  = BY[iy];
+            float dby = dBY[iy];
+            
+            // Pre-multiply outer loop terms to save ALU cycles in the inner loop
+            float bz_by   = bz * by;
+            float dbz_by  = dbz * by;
+            float bz_dby  = bz * dby;
+            
+            for(int ix = 0; ix < Nx; ++ix) {
+                float bx  = BX[ix];
+                float dbx = dBX[ix];
+                
+                // Single contiguous read from local memory
+                float c = LCOEFFS[ic++]; 
+                
+                // Accumulate Energy
+                E_tot += c * (bx * bz_by);
+                
+                // Accumulate Gradients (Chain rule components built from factored arrays)
+                dEdu_tot += c * (dbx * bz_by);
+                dEdv_tot += c * (bx * bz_dby);
+                dEdz_tot += c * (bx * dbz_by);
+            }
+        }
+    }
+
+    // Map gradients back to X, Y, Z forces
+    float3 F_tot;
+    F_tot.x = -(dEdu_tot * invLvec.x + dEdv_tot * invLvec.z);
+    F_tot.y = -(dEdu_tot * invLvec.y + dEdv_tot * invLvec.w);
+    F_tot.z = -dEdz_tot;
+
+    forces[iav] += (float4)(F_tot.x, F_tot.y, F_tot.z, -E_tot);
+}
 
 
 // ======================================

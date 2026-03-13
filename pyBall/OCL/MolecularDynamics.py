@@ -39,6 +39,13 @@ def mat3_to_cl(mat3_np):
 def vec3_to_cl(vec3_np):
     return np.append(vec3_np, 0.0).astype(np.float32)
 
+COMPONENT_PLQH = {
+    'total':   np.array([1.0, 1.0, 1.0, 0.0], dtype=np.float32),
+    'pauli':   np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    'london':  np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float32),
+    'coulomb': np.array([0.0, 0.0, 1.0, 0.0], dtype=np.float32),
+}
+
 def half_step_from_coords(cs):
     cu = np.unique(np.round(np.asarray(cs, dtype=np.float64), 8))
     if len(cu) < 2:
@@ -558,6 +565,7 @@ class MolecularDynamics(OpenCLBase):
             'surf_param':   np.array([1.0,1.0,0.0,0.0], dtype=np.float32), # K, mode, 0, 0
             'lvec':         np.zeros((3,4), dtype=np.float32),
             'pos0':         np.zeros(4, dtype=np.float32),
+            'PLQH':         np.array([1.0, 1.0, 1.0, 0.0], dtype=np.float32),
         }
 
         # relax_multi.cl uses different arg names for the same dimensions
@@ -916,6 +924,30 @@ class MolecularDynamics(OpenCLBase):
             idxs[i] = it
         return np.array(uniq, dtype=np.float32), idxs
 
+    def _component_plqh(self, component=None):
+        if component is None:
+            component = 'total'
+        key = str(component).lower()
+        if key not in COMPONENT_PLQH:
+            raise ValueError(f"_component_plqh(): unknown component '{component}', expected one of {sorted(COMPONENT_PLQH.keys())}")
+        return COMPONENT_PLQH[key].copy()
+
+    def _resolve_plqh(self, component=None, PLQH=None):
+        if PLQH is not None:
+            arr = np.asarray(PLQH, dtype=np.float32).reshape(4)
+            return arr.copy()
+        return self._component_plqh(component)
+
+    def _set_folded_coefficients(self, coeffs):
+        coeffs = np.asarray(coeffs, dtype=np.float32)
+        if self.folded_params is None:
+            raise ValueError('_set_folded_coefficients(): fit_folded_surface_basis() must be called first')
+        nbasis = int(self.folded_params['basis_params'].shape[0])
+        ntypes = int(coeffs.shape[0])
+        coeff_pad = np.zeros((FOLDED_TYPES_MAX, FOLDED_BASIS_MAX), dtype=np.float32)
+        coeff_pad[:ntypes, :nbasis] = coeffs[:, :nbasis]
+        self.toGPU('folded_coeffs', coeff_pad)
+
     def _build_folded_basis_params(self, nu=4, nv=4, nz=4, z0=0.0, z_scale=0.75):
         params = []
         alphas = z_scale * (1.0 + np.arange(int(nz), dtype=np.float32))
@@ -1027,7 +1059,7 @@ class MolecularDynamics(OpenCLBase):
         out[2, :3] = np.array(self.surface_lvec[2, :3], dtype=np.float32)
         return out
 
-    def fit_folded_surface_basis(self, surf_xyz=None, type_map=None, nPBC=(4,4,0), z_range=(0.5, 8.0), nu=4, nv=4, nz=4, nxy=32, nz_samp=40, r_damp=0.0, alpha_morse=1.8, bMacro=True):
+    def fit_folded_surface_basis(self, surf_xyz=None, type_map=None, nPBC=(4,4,0), z_range=(0.5, 8.0), nu=4, nv=4, nz=4, nxy=32, nz_samp=40, r_damp=0.0, alpha_morse=1.8, bMacro=True, components=('total',), fit_mask=None, weight_power=0.0):
         if self.rigid_REQs0 is None:
             raise ValueError('fit_folded_surface_basis(): call init_rigid_molecule_batch() first')
         if surf_xyz is None:
@@ -1065,21 +1097,38 @@ class MolecularDynamics(OpenCLBase):
         transforms[:, 0, 0] = 1.0; transforms[:, 1, 1] = 1.0; transforms[:, 2, 2] = 1.0
         transforms[:, :, 3] = xyz
         Phi = self._folded_basis_matrix(uvz, basis_params)
-        coeffs = np.zeros((ntypes, nbasis), dtype=np.float32)
-        refs = []
+        comp_keys = [str(c).lower() for c in components]
+        coeff_sets = {ck: np.zeros((ntypes, nbasis), dtype=np.float32) for ck in comp_keys}
+        refs = {ck: [] for ck in comp_keys}
+        weights = []
+        z_mask = np.ones(len(uvz), dtype=bool) if fit_mask is None else np.asarray(fit_mask, dtype=bool).reshape(-1)
+        if len(z_mask) != len(uvz):
+            raise ValueError(f'fit_folded_surface_basis(): fit_mask length {len(z_mask)} != nsamples {len(uvz)}')
         for it in range(ntypes):
             md1 = MolecularDynamics(nloc=self.nloc, debug_build_options='-DDBG_UFF=0')
             md1.init_rigid_molecule_batch(np.zeros((1,3), dtype=np.float32), uniq_REQs[it:it+1], nSystems=min(max(len(transforms), 1), 8192))
             md1.set_surface(surf_xyz, nPBC=nPBC, pos0=(0.0,0.0,0.0), alpha_morse=alpha_morse, r_damp=r_damp, bMacro=bMacro, type_map=type_map)
-            out = md1.eval_rigid_getSurfMorse(transforms.reshape(-1,12), chunk_size=md1.nSystems)
-            y = np.asarray(out['total'], dtype=np.float64)
-            refs.append(y)
-            S, *_ = np.linalg.lstsq(Phi, y, rcond=None)
-            coeffs[it, :nbasis] = S.astype(np.float32)
+            out = md1.eval_rigid_getSurfMorse_components(transforms.reshape(-1,12), chunk_size=md1.nSystems, components=comp_keys)
+            for ck in comp_keys:
+                y = np.asarray(out[ck], dtype=np.float64)
+                refs[ck].append(y)
+                ww = np.ones(len(y), dtype=np.float64)
+                ww[~z_mask] = 0.0
+                if weight_power != 0.0:
+                    ymin = float(np.min(y[z_mask])) if np.any(z_mask) else float(np.min(y))
+                    ww *= np.exp(np.clip(weight_power*(ymin - y), -60.0, 60.0))
+                Phiw = Phi * ww[:, None]
+                yw = y * ww
+                S, *_ = np.linalg.lstsq(Phiw, yw, rcond=None)
+                coeff_sets[ck][it, :nbasis] = S.astype(np.float32)
+                if ck == comp_keys[0]:
+                    weights.append(ww.copy())
         self.surface_source_xyz = surf_xyz
+        coeffs = coeff_sets['total'] if 'total' in coeff_sets else coeff_sets[comp_keys[0]]
         self.folded_params = {
             'basis_params': basis_params,
             'coeffs': coeffs,
+            'coeff_sets': coeff_sets,
             'atom_type_ids': atom_type_ids.astype(np.int32),
             'unique_REQs': uniq_REQs,
             'basis_lvec2d': self.folded_lvec_basis.copy(),
@@ -1091,6 +1140,9 @@ class MolecularDynamics(OpenCLBase):
             'uvz': uvz,
             'Phi': Phi,
             'refs': refs,
+            'weights': weights,
+            'fit_mask': z_mask,
+            'weight_power': float(weight_power),
         }
         coeff_pad = np.zeros((FOLDED_TYPES_MAX, FOLDED_BASIS_MAX), dtype=np.float32)
         coeff_pad[:ntypes, :nbasis] = coeffs[:, :nbasis]
@@ -1107,9 +1159,15 @@ class MolecularDynamics(OpenCLBase):
             self.kernel_args_getSurfFolded = self.generate_kernel_args('getSurfFolded', bPrint=False)
         return self.folded_params
 
-    def eval_rigid_getSurfFolded(self, transforms, chunk_size=None):
+    def eval_rigid_getSurfFolded(self, transforms, chunk_size=None, component='total'):
         if self.kernel_args_getSurfFolded is None:
             raise ValueError('eval_rigid_getSurfFolded(): call fit_folded_surface_basis() first')
+        key = str(component).lower()
+        coeff_sets = self.folded_params.get('coeff_sets', None) if self.folded_params is not None else None
+        if coeff_sets is not None:
+            if key not in coeff_sets:
+                raise ValueError(f"eval_rigid_getSurfFolded(): component '{component}' not available, have {sorted(coeff_sets.keys())}")
+            self._set_folded_coefficients(coeff_sets[key])
         T = self.wrap_rigid_transforms_PBC(transforms).reshape(-1, 3, 4)
         nconf = len(T)
         if nconf <= 0:
@@ -1498,9 +1556,11 @@ class MolecularDynamics(OpenCLBase):
         T[:, 1, 3] = txy2[:, 1]
         return T
 
-    def eval_rigid_getSurfMorse(self, transforms, chunk_size=None):
+    def eval_rigid_getSurfMorse(self, transforms, chunk_size=None, component='total', PLQH=None):
         if self.kernel_args_getSurfMorse is None:
             raise ValueError('eval_rigid_getSurfMorse(): call set_surface() before evaluation')
+        self.kernel_params['PLQH'] = self._resolve_plqh(component=component, PLQH=PLQH)
+        self.kernel_args_getSurfMorse = self.generate_kernel_args('getSurfMorse', bPrint=False)
         T = self.wrap_rigid_transforms_PBC(transforms).reshape(-1, 3, 4)
         nconf = len(T)
         if nconf <= 0:
@@ -1537,6 +1597,26 @@ class MolecularDynamics(OpenCLBase):
             t_download += (t4 - t3)
         z = np.zeros_like(out_total)
         return {'total': out_total, 'LJ': z.copy(), 'Coulomb': z.copy(), 'HBond': z.copy(), 't_prep_s': t_prep, 't_kernel_s': t_kernel, 't_download_s': t_download, 't_total_s': t_prep + t_kernel + t_download}
+
+    def eval_rigid_getSurfMorse_components(self, transforms, chunk_size=None, components=('pauli', 'london', 'coulomb')):
+        out = {}
+        total = None
+        timing = None
+        for ck in components:
+            res = self.eval_rigid_getSurfMorse(transforms, chunk_size=chunk_size, component=ck)
+            arr = np.asarray(res['total'], dtype=np.float32)
+            out[ck] = arr
+            total = arr.copy() if total is None else (total + arr)
+            timing = res
+        if total is None:
+            total = np.zeros(len(np.asarray(transforms).reshape(-1, 12)), dtype=np.float32)
+        out['total'] = total
+        if timing is not None:
+            out['t_prep_s'] = timing['t_prep_s']
+            out['t_kernel_s'] = timing['t_kernel_s']
+            out['t_download_s'] = timing['t_download_s']
+            out['t_total_s'] = timing['t_total_s']
+        return out
 
     def realloc_scan(self, n, na=-1):
         sz_f  = 4

@@ -346,3 +346,45 @@ All folded runs use per-type fitted coefficients (unique REQ rows) and the primi
 - **Match periodic wrapping between reference and fast paths.** If the folded path wraps transforms into the cell, the CPU reference must wrap identically for fair parity.
 - **Per-type coefficients are necessary but not sufficient.** Even with distinct REQ types, a wrong lattice or wrapping can collapse the folded field to a constant; always check min/max(ref) vs min/max(folded) and sample points.
 - **Keep headless diagnostics strict.** Report ref/folded min/max, max|Δ|, and a few sample values for both line and 2D scans so qualitative mismatches are obvious.
+
+### 11) 2026-03-13 — Folded fitting & periodic flat-surface test (current state)
+
+#### What was broken
+
+- The “periodic” lateral scan in `tests/tMMFF/test_flat_folded_components.py` was run along a diagonal (a+b) direction and applied the macro correction on **unwrapped** transforms while the local GPU path wrapped translations to the primary cell. This mismatch reintroduced a large linear slope/jump in lateral plots.
+- The folded fit weighting plot was unclear (weights only, no energy overlay), and there was no explicit repulsion cutoff to suppress highly repulsive samples in the fit.
+
+#### Fixes implemented
+
+1. **Macro footing aligned**: `apply_macro()` now wraps transforms (`_wrap_transforms_PBC`) before applying `_apply_macro_correction`, so macro and local evaluations use identical coordinates.
+2. **Validated directions**: Lateral parity scans now run along the primitive lattice vectors `a` and `b` (previously validated paths), not the diagonal `a+b`.
+3. **Repulsion cutoff**: New CLI flag `--repel-cut` (default `0.2 eV`) excludes highly repulsive points from the fit mask; the mask also enforces `z >= zfit_min`.
+4. **Weight/energy plot**: Weight plot now overlays macro-corrected reference energy, repulsion cutoff, z-fit-min marker, weight, and mask with clear labels. Files: `tests/tMMFF/output_flat_folded_components_periodic/H_weights.png` and `O_weights.png`.
+5. **Consistent macro scanners**: Reference uses `nPBC=(12,12,0)`, embedding/folded use `nPBC=(4,4,0)`; each builds its own macro scanner to avoid mixed footing.
+
+#### How the current fitting/testing works
+
+- **Fit generation** (`build_folded` in `test_flat_folded_components.py`):
+  - Sample uniform xy grid (24×24) over z in the requested range; evaluate macro-corrected reference energy.
+  - Fit mask keeps points with `z >= zfit_min` and `E <= repel_cut`; weights use Boltzmann-like factor (`weight_power`, default 12).
+  - Run `fit_folded_surface_basis` for components (Pauli, London, Coulomb) without macro during fit (explicit macro applied later in tests).
+- **Scans**:
+  - **Z-scans** above Na and Cl surface sites with periodic wrapping + macro on reference/embedding/folded; outputs PNG/CSV/JSON per site.
+  - **Lateral scans** along `a` and `b` at fixed height (default 2.0 Å) with periodic wrapping + macro; outputs PNG/CSV/JSON per direction.
+- **Components**: Pauli, London, Coulomb evaluated separately; total is their sum.
+- **Artifacts to watch**: Macro-induced slope/jump is gone on validated `a`/`b` scans (embedding errors ~1e-4 eV). Remaining large errors are folded Pauli over Cl (basis expressivity in the repulsive wall, not macro).
+
+#### Current outputs (2026-03-13 run)
+
+- Folder: `tests/tMMFF/output_flat_folded_components_periodic/`
+- Key files:
+  - Lateral: `H_qp0.20_{a,b}_lateral.png`, `O_qp0.20_{a,b}_lateral.png`
+  - Z-scans: `H_qp0.20_{na,cl}_zscan.png`, `O_qp0.20_{na,cl}_zscan.png`
+  - Weights: `H_weights.png`, `O_weights.png`
+  - Summary: `summary.md`, `summary.json`
+- Embedding lateral max|ΔE| is back to ~1e-4 eV; folded still large on the Cl Pauli wall (≈1 eV for H, ≈4 eV for O) — attributed to basis limits in the repulsive region, not macro periodicity.
+
+#### Next steps (fit improvements)
+
+- Increase basis richness near the wall (higher `nzbasis` or specialized repulsive terms) while keeping the current macro footing intact.
+- Optionally adjust `repel_cut` or weight shaping to de-emphasize the hardest wall but retain enough curvature to fit the minimum reliably.
