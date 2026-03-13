@@ -388,3 +388,30 @@ All folded runs use per-type fitted coefficients (unique REQ rows) and the primi
 
 - Increase basis richness near the wall (higher `nzbasis` or specialized repulsive terms) while keeping the current macro footing intact.
 - Optionally adjust `repel_cut` or weight shaping to de-emphasize the hardest wall but retain enough curvature to fit the minimum reliably.
+
+### 12) 2026-03-13 — Orig folded kernel z-scan (mask/footing fixes)
+
+What was still wrong
+
+- Fit targets and weights in the harness were not aligned with the basis sampling grid, so the folded fit effectively trained on a laterally shifted dataset.
+- `z_fit_min` was applied relative to the absolute z-range origin instead of “z above the top layer”, so the intended fit window was wrong.
+- Baseline subtraction for `total` could double-count a separate total baseline instead of deriving it from component baselines.
+
+Fixes applied
+
+1. **Target grid match**: Rebuilt the fit targets on the exact `uvz` sampling grid emitted by `fit_folded_surface_basis`, eliminating lateral phase mismatch.
+2. **Correct z mask**: `z_fit_min` now applies to `z - z_top` (height above the top layer), so the fit window is what the CLI specifies.
+3. **Consistent baselines**: `total` baseline is now the sum of component baselines; no extra subtraction is applied.
+4. **Weights**: Kept Boltzmann-like weights with `repel_cut=0.2 eV`; far-z baselines retained; tail forced to zero by construction.
+
+Evidence (orig kernel, z-only)
+
+- **Far tail**: folded total → ~1e-5 eV at z=8 Å (matches reference zero).
+- **Attractive well (O@Cl)**: minimum at z≈3.30 Å; ref −0.026246 eV, folded −0.027563 eV (error ≈ −1.3 meV). Position and depth are aligned.
+- **Fit window error (ref ≤ 0.2 eV)**: RMSE ≈ 5.3 meV (O@Cl), ≈ 4.4 meV (O@Na).
+- **Repulsive wall (ref > 0.2 eV)**: still large (≈6.6 eV on O@Cl) because it is intentionally down-weighted/excluded by `repel_cut`.
+
+Status and remaining work
+
+- Orig kernel: tail and minimum fixed; near-min RMSE in the meV range. The only large discrepancy is the excluded Pauli wall.
+- Lateral scans and optimized kernels (harmonics/workgroup) still need to be rerun under this corrected footing; planned next.

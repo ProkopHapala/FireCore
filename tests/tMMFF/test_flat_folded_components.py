@@ -19,6 +19,7 @@ OUT_DIR = os.path.join(os.path.dirname(__file__), 'output_flat_folded_components
 COMPONENTS = ('pauli', 'london', 'coulomb')
 COMP_LABELS = {'pauli': 'Pauli', 'london': 'London', 'coulomb': 'Coulomb', 'total': 'Total'}
 COLORS = {'reference': 'k', 'embedding': 'tab:blue', 'folded': 'tab:red'}
+FOLDED_KERNELS = ('orig', 'harmonics', 'workgroup')
 
 def ensure_dir(path): os.makedirs(path, exist_ok=True)
 
@@ -91,6 +92,7 @@ def apply_macro(scanner, transforms, local_components):
     corrected = {'pauli': np.array(local_components['pauli'], dtype=np.float64), 'london': np.array(local_components['london'], dtype=np.float64), 'coulomb': np.array(out2['Coulomb'], dtype=np.float64)}
     corrected['total'] = corrected['pauli'] + corrected['london'] + corrected['coulomb']
     corrected['macro_delta'] = corrected['coulomb'] - np.array(local_components['coulomb'], dtype=np.float64)
+    corrected['timing'] = dict(local_components.get('timing', {}))
     return corrected
 
 def eval_md_components(md, transforms, chunk_size):
@@ -105,34 +107,82 @@ def eval_folded_components(md, transforms, chunk_size):
     for ck in COMPONENTS:
         res = md.eval_rigid_getSurfFolded(transforms, chunk_size=chunk_size, component=ck)
         out[ck] = np.array(res['total'], dtype=np.float64); timing = res
+    baselines = getattr(md, 'folded_baselines', {})
+    for ck in COMPONENTS:
+        if ck in baselines:
+            out[ck] -= float(baselines[ck])
     out['total'] = out['pauli'] + out['london'] + out['coulomb']
     out['timing'] = {k: float(timing.get(k, 0.0)) for k in ('t_prep_s', 't_kernel_s', 't_download_s', 't_total_s')}
+    out['macro_delta'] = np.zeros(len(out['total']), dtype=np.float64)
     return out
 
-def build_fit_mask_and_weights(z_sample, z_min, E_sample=None, repel_cut=None):
+def build_fit_mask_and_weights(z_sample, z_min, E_sample, repel_cut, weight_k):
+    z_sample = np.asarray(z_sample, dtype=np.float64)
+    E_sample = np.asarray(E_sample, dtype=np.float64)
     mask = np.asarray(z_sample >= float(z_min), dtype=bool)
-    if E_sample is not None and repel_cut is not None:
+    Emin = float(np.min(E_sample)) if len(E_sample) else 0.0
+    w = np.exp(np.clip(-float(weight_k) * (E_sample - Emin), -60.0, 60.0))
+    if repel_cut is not None:
+        w[E_sample > float(repel_cut)] = 0.0
         mask &= np.asarray(E_sample <= float(repel_cut), dtype=bool)
-    return mask
+    return mask, w
 
-def build_folded(req, sub_file, nSystems, z_abs_range, nPBC_small, z_fit_min=1.5, repel_cut=0.2, weight_power=12.0, folded_nxy=24, folded_nz=96, folded_nu=2, folded_nv=2, folded_nzbasis=12):
+def build_folded(req, sub_file, nSystems, z_abs_range, nPBC_small, z_fit_min=1.5, repel_cut=0.2, weight_power=12.0, folded_nxy=24, folded_nz=96, folded_nu=2, folded_nv=2, folded_nzbasis=8, kernel_kind='orig'):
     md = setup_md(req, nSystems=nSystems, sub_file=sub_file, nPBC=nPBC_small, bMacro=False)
+    md.set_folded_kernel_kind(kernel_kind)
     ref_scan = setup_macro_scanner(req, sub_file, nPBC_small)
-    xyz = []
-    for iz, z in enumerate(np.linspace(float(z_abs_range[0]), float(z_abs_range[1]), int(folded_nz), endpoint=True, dtype=np.float32)):
-        for iy in range(int(folded_nxy)):
-            v = (iy + 0.5) / float(folded_nxy) - 0.5
-            for ix in range(int(folded_nxy)):
-                u = (ix + 0.5) / float(folded_nxy) - 0.5
-                p = u*md.surface_lvec[0, :3].astype(np.float64) + v*md.surface_lvec[1, :3].astype(np.float64)
-                xyz.append((p[0], p[1], float(z)))
-    xyz = np.array(xyz, dtype=np.float32)
-    tref = apply_macro(ref_scan, pack_transforms(xyz), eval_md_components(md, pack_transforms(xyz), min(len(xyz), md.nSystems)))
-    fit_mask = build_fit_mask_and_weights(xyz[:, 2] - float(z_abs_range[0]), z_fit_min, tref['total'], repel_cut)
-    md.fit_folded_surface_basis(sub_file, nPBC=nPBC_small, z_range=z_abs_range, nu=folded_nu, nv=folded_nv, nz=folded_nzbasis, nxy=folded_nxy, nz_samp=folded_nz, r_damp=0.0, alpha_morse=1.8, bMacro=False, components=COMPONENTS, fit_mask=fit_mask, weight_power=weight_power)
+    info = surface_info(sub_file)
+    z_top = float(info['z_top'])
+    md.fit_folded_surface_basis(sub_file, nPBC=nPBC_small, z_range=z_abs_range, nu=folded_nu, nv=folded_nv, nz=folded_nzbasis, nxy=folded_nxy, nz_samp=folded_nz, r_damp=0.0, alpha_morse=1.8, bMacro=False, components=COMPONENTS, fit_mask=None, weight_power=0.0)
+    uvz = np.asarray(md.folded_fit_info['uvz'], dtype=np.float64)
+    a = md.folded_lvec_basis[0, :3].astype(np.float64)
+    b = md.folded_lvec_basis[1, :3].astype(np.float64)
+    xyz = np.empty((len(uvz), 3), dtype=np.float32)
+    xyz[:, 0] = uvz[:, 0]*a[0] + uvz[:, 1]*b[0]
+    xyz[:, 1] = uvz[:, 0]*a[1] + uvz[:, 1]*b[1]
+    xyz[:, 2] = uvz[:, 2]
+    transforms = pack_transforms(xyz)
+    tref = apply_macro(ref_scan, transforms, eval_md_components(md, transforms, min(len(xyz), md.nSystems)))
+    zrel = xyz[:, 2] - float(z_abs_range[0])
+    z_thresh = np.percentile(zrel, 95.0)
+    far_mask = zrel >= z_thresh
+    baselines = {}
+    for ck in COMPONENTS:
+        baselines[ck] = float(np.mean(tref[ck][far_mask])) if np.any(far_mask) else 0.0
+        tref[ck] = np.asarray(tref[ck], dtype=np.float64) - baselines[ck]
+    tref['total'] = tref['pauli'] + tref['london'] + tref['coulomb']
+    baselines['total'] = baselines['pauli'] + baselines['london'] + baselines['coulomb']
+    z_above_top = xyz[:, 2] - z_top
+    fit_mask, wmask = build_fit_mask_and_weights(z_above_top, z_fit_min, tref['total'], repel_cut, weight_power)
+    Phi = np.asarray(md.folded_fit_info['Phi'], dtype=np.float64)
+    ww = np.asarray(wmask, dtype=np.float64) * np.asarray(fit_mask, dtype=np.float64)
+    if not np.any(ww > 0.0):
+        raise ValueError('build_folded(): all fit weights are zero')
+    coeff_sets = {}
+    nbasis = Phi.shape[1]
+    ntypes = int(md.folded_params['unique_REQs'].shape[0])
+    if ntypes != 1:
+        raise ValueError(f'build_folded(): expected single probe type for this harness, got ntypes={ntypes}')
+    ws = np.sqrt(ww)
+    Phiw = Phi * ws[:, None]
+    for ck in COMPONENTS:
+        yw = np.asarray(tref[ck], dtype=np.float64) * ws
+        S, *_ = np.linalg.lstsq(Phiw, yw, rcond=None)
+        coeff = np.zeros((ntypes, nbasis), dtype=np.float32)
+        coeff[0, :] = S.astype(np.float32)
+        coeff_sets[ck] = coeff
+    md.folded_params['coeff_sets'] = coeff_sets
+    md.folded_params['coeffs'] = coeff_sets[COMPONENTS[0]].copy()
+    md._set_folded_coefficients(coeff_sets[COMPONENTS[0]])
     md.folded_fit_info['fit_ref_total'] = np.asarray(tref['total'], dtype=np.float64)
     md.folded_fit_info['repel_cut'] = float(repel_cut)
     md.folded_fit_info['z_fit_min'] = float(z_fit_min)
+    md.folded_fit_info['z_top'] = z_top
+    md.folded_fit_info['kernel_kind'] = str(kernel_kind)
+    md.folded_fit_info['weights'] = [wmask]
+    md.folded_fit_info['fit_mask'] = fit_mask
+    md.folded_fit_info['baselines'] = baselines
+    md.folded_baselines = baselines
     return md
 
 def make_weight_plot(path_png, md, title):
@@ -142,22 +192,57 @@ def make_weight_plot(path_png, md, title):
     Ez = np.zeros(len(zuniq)); wz = np.zeros(len(zuniq)); mz = np.zeros(len(zuniq))
     for i, zz in enumerate(zuniq):
         m = np.abs(z - zz) < 1e-6
-        Ez[i] = np.min(E[m])
-        wz[i] = np.max(ww[m])
+        Ez[i] = np.mean(E[m]) if np.any(m) else 0.0
+        wz[i] = np.mean(ww[m]) if np.any(m) else 0.0
         mz[i] = np.any(mask[m]).astype(float)
     fig, ax = plt.subplots(1, 1, figsize=(8, 4.5))
     ax.plot(zuniq, Ez, '-', lw=1.8, c='k', label='Reference total (macro-corrected)')
     ax.axhline(md.folded_fit_info.get('repel_cut', 0.0), ls='--', lw=1.0, c='tab:red', label='Repulsion cutoff')
-    ax.axvline(float(zuniq.min()) + md.folded_fit_info.get('z_fit_min', 0.0), ls='--', lw=1.0, c='tab:green', label='z fit min')
+    ax.axvline(float(md.folded_fit_info.get('z_top', float(zuniq.min()))) + md.folded_fit_info.get('z_fit_min', 0.0), ls='--', lw=1.0, c='tab:green', label='z fit min')
     ax.set_xlabel('absolute z [Å]'); ax.set_ylabel('Energy [eV]'); ax.grid(True, alpha=0.25)
     ax2 = ax.twinx()
     ax2.plot(zuniq, wz, '-', lw=1.4, c='tab:purple', label='Fit weight')
-    ax2.plot(zuniq, mz, '--', lw=1.0, c='tab:blue', label='Fit mask')
-    ax2.set_ylabel('Weight / mask')
-    h1, l1 = ax.get_legend_handles_labels(); h2, l2 = ax2.get_legend_handles_labels()
-    ax.legend(h1+h2, l1+l2, loc='best', frameon=False, fontsize=8)
+    for axx in (ax, ax2):
+        axx.legend(loc='upper right', frameon=False)
     ax.set_title(title)
     fig.tight_layout(); fig.savefig(path_png, dpi=180); plt.close(fig)
+
+def compute_weights_only(req, sub_file, z_abs_range, nPBC_small, z_fit_min, repel_cut, weight_power, folded_nxy=16, folded_nz=80):
+    # Build sample grid first
+    xyz_tmp = []
+    z_samples = np.linspace(float(z_abs_range[0]), float(z_abs_range[1]), int(folded_nz), endpoint=True, dtype=np.float32)
+    for z in z_samples:
+        for iy in range(int(folded_nxy)):
+            v = (iy + 0.5) / float(folded_nxy) - 0.5
+            for ix in range(int(folded_nxy)):
+                u = (ix + 0.5) / float(folded_nxy) - 0.5
+                xyz_tmp.append((u, v, float(z)))
+    xyz_tmp = np.array(xyz_tmp, dtype=np.float32)
+    # Instantiate MD with enough systems to batch upload
+    md = setup_md(req, nSystems=min(len(xyz_tmp), 4096), sub_file=sub_file, nPBC=nPBC_small, bMacro=False)
+    ref_scan = setup_macro_scanner(req, sub_file, nPBC_small)
+    info = surface_info(sub_file)
+    z_top = float(info['z_top'])
+    # Map fractional (u,v) to Cartesian using surface_lvec
+    a = md.surface_lvec[0, :3].astype(np.float64); b = md.surface_lvec[1, :3].astype(np.float64)
+    xyz = np.empty_like(xyz_tmp)
+    xyz[:, 0] = xyz_tmp[:, 0]*a[0] + xyz_tmp[:, 1]*b[0]
+    xyz[:, 1] = xyz_tmp[:, 0]*a[1] + xyz_tmp[:, 1]*b[1]
+    xyz[:, 2] = xyz_tmp[:, 2]
+    T = pack_transforms(xyz)
+    chunk = md.nSystems
+    tref = apply_macro(ref_scan, T, eval_md_components(md, T, chunk))
+    fit_mask, wmask = build_fit_mask_and_weights(xyz[:, 2] - z_top, z_fit_min, tref['total'], repel_cut, weight_power)
+    md.folded_fit_info = {
+        'uvz': np.column_stack([np.zeros(len(xyz)), np.zeros(len(xyz)), xyz[:, 2]]),
+        'fit_ref_total': np.asarray(tref['total'], dtype=np.float64),
+        'repel_cut': float(repel_cut),
+        'z_fit_min': float(z_fit_min),
+        'z_top': z_top,
+        'weights': [wmask],
+        'fit_mask': fit_mask,
+    }
+    return md
 
 def save_case_numeric(path_csv, x, xname, ref, emb, fold):
     cols = [np.asarray(x, dtype=np.float64)]; names = [xname]
@@ -189,8 +274,8 @@ def print_case_stats(prefix, ref, emb, fold):
         ee = err_stats(ref[ck], emb[ck]); ef = err_stats(ref[ck], fold[ck]); sr = arr_stats(ref[ck]); sf = arr_stats(fold[ck])
         print(f"[{prefix}] {ck:7s} ref[min,max]=({sr['min']:.6e},{sr['max']:.6e}) fold[min,max]=({sf['min']:.6e},{sf['max']:.6e}) err_emb[maxabs,rmse]=({ee['max_abs']:.6e},{ee['rmse']:.6e}) err_fold[maxabs,rmse]=({ef['max_abs']:.6e},{ef['rmse']:.6e})")
 
-def make_record(kind, probe_name, q, site_name, ref, emb, fold, timing_ref, timing_emb, timing_fold, files, focus_mask=None):
-    rec = {'kind': kind, 'probe': probe_name, 'charge': float(q), 'site': site_name, 'files': files, 'timing_s': {'reference': timing_ref, 'embedding': timing_emb, 'folded': timing_fold}, 'components': {}}
+def make_record(kind, probe_name, q, site_name, ref, emb, fold, timing_ref, timing_emb, timing_fold, files, focus_mask=None, kernel_kind='orig'):
+    rec = {'kind': kind, 'probe': probe_name, 'charge': float(q), 'site': site_name, 'kernel': str(kernel_kind), 'files': files, 'timing_s': {'reference': timing_ref, 'embedding': timing_emb, 'folded': timing_fold}, 'components': {}}
     for ck in ('pauli', 'london', 'coulomb', 'total'):
         rec['components'][ck] = {'reference': arr_stats(ref[ck]), 'embedding': arr_stats(emb[ck]), 'folded': arr_stats(fold[ck]), 'embedding_error': err_stats(ref[ck], emb[ck]), 'folded_error': err_stats(ref[ck], fold[ck])}
         if focus_mask is not None:
@@ -198,6 +283,49 @@ def make_record(kind, probe_name, q, site_name, ref, emb, fold, timing_ref, timi
             rec['components'][ck]['embedding_error_focus'] = err_stats(np.asarray(ref[ck])[m], np.asarray(emb[ck])[m])
             rec['components'][ck]['folded_error_focus'] = err_stats(np.asarray(ref[ck])[m], np.asarray(fold[ck])[m])
     return rec
+
+def make_benchmark_record(probe_name, q, kernel_kind, timing, nconf):
+    tt = timing.get('timing', timing)
+    return {'probe': probe_name, 'charge': float(q), 'kernel': str(kernel_kind), 'nconf': int(nconf), 'timing_s': {k: float(tt.get(k, 0.0)) for k in ('t_prep_s', 't_kernel_s', 't_download_s', 't_total_s')}}
+
+def make_benchmark_plot(path_png, bench_records, title):
+    kernels = [r['kernel'] for r in bench_records]
+    vals = [r['timing_s']['t_total_s'] for r in bench_records]
+    fig, ax = plt.subplots(1, 1, figsize=(7, 4.5))
+    ax.bar(np.arange(len(kernels)), vals, color=['tab:red', 'tab:orange', 'tab:green'][:len(kernels)])
+    ax.set_xticks(np.arange(len(kernels)), kernels)
+    ax.set_ylabel('Wall time [s]')
+    ax.set_title(title)
+    ax.grid(True, axis='y', alpha=0.25)
+    fig.tight_layout(); fig.savefig(path_png, dpi=180); plt.close(fig)
+
+def run_kernel_benchmarks(req, info, z_abs_range, nPBC_small, kernel_kinds, probe_name, q, nconf):
+    xyz = []
+    nu = 2
+    nv = 2
+    nzb = 8
+    nxy = int(np.sqrt(max(4, int(nconf // max(1, len(np.linspace(z_abs_range[0], z_abs_range[1], 8)))))))
+    zs = np.linspace(float(z_abs_range[0]), float(z_abs_range[1]), 8, endpoint=True, dtype=np.float32)
+    for z in zs:
+        for iy in range(nxy):
+            v = (iy + 0.5) / float(nxy) - 0.5
+            for ix in range(nxy):
+                u = (ix + 0.5) / float(nxy) - 0.5
+                p = u*info['a'] + v*info['b']
+                xyz.append((p[0], p[1], float(z)))
+                if len(xyz) >= int(nconf):
+                    break
+            if len(xyz) >= int(nconf):
+                break
+        if len(xyz) >= int(nconf):
+            break
+    transforms = pack_transforms(np.asarray(xyz, dtype=np.float32))
+    benches = []
+    for kernel_kind in kernel_kinds:
+        md = build_folded(req, SUB_FILE, min(len(xyz), 4096), z_abs_range, nPBC_small, folded_nu=nu, folded_nv=nv, folded_nzbasis=nzb, kernel_kind=kernel_kind)
+        out = eval_folded_components(md, transforms, chunk_size=min(len(xyz), md.nSystems))
+        benches.append(make_benchmark_record(probe_name, q, kernel_kind, out, len(xyz)))
+    return benches
 
 def save_summary_markdown(path_md, records, config):
     lines = ['# Rigorous periodic flat-surface folded-component test summary', '', '## Configuration', '']
@@ -208,7 +336,7 @@ def save_summary_markdown(path_md, records, config):
     lines.append(f'- **Worst total folded max|ΔE|**: `{total_max_fold:.6e} eV`')
     lines.append(f'- **Worst total embedding max|ΔE|**: `{total_max_emb:.6e} eV`')
     for r in records:
-        lines += ['', f"## {r['kind']} : {r['probe']} q={r['charge']:+.3f} site={r['site']}", '']
+        lines += ['', f"## {r['kind']} : {r['probe']} q={r['charge']:+.3f} site={r['site']} kernel={r.get('kernel', 'orig')}", '']
         lines.append(f"- **PNG**: `{r['files']['png']}`"); lines.append(f"- **CSV**: `{r['files']['csv']}`"); lines.append(f"- **JSON**: `{r['files']['json']}`")
         for ck in ('pauli', 'london', 'coulomb', 'total'):
             ce = r['components'][ck]['embedding_error']; cf = r['components'][ck]['folded_error']
@@ -216,6 +344,10 @@ def save_summary_markdown(path_md, records, config):
             cef = r['components'][ck].get('embedding_error_focus', None); cff = r['components'][ck].get('folded_error_focus', None)
             if (cef is not None) and (cff is not None):
                 lines.append(f"  - focus: emb max|Δ|=`{cef['max_abs']:.6e}` rmse=`{cef['rmse']:.6e}` ; fold max|Δ|=`{cff['max_abs']:.6e}` rmse=`{cff['rmse']:.6e}`")
+    if 'benchmarks' in config:
+        lines += ['', '## Folded kernel benchmark', '']
+        for b in config['benchmarks']:
+            lines.append(f"- **{b['probe']} q={b['charge']:+.3f} kernel={b['kernel']} n={b['nconf']}**: total=`{b['timing_s']['t_total_s']:.6e}` prep=`{b['timing_s']['t_prep_s']:.6e}` kernel=`{b['timing_s']['t_kernel_s']:.6e}` download=`{b['timing_s']['t_download_s']:.6e}`")
     open(path_md, 'w').write('\n'.join(lines) + '\n')
 
 def parse_args():
@@ -228,54 +360,78 @@ def parse_args():
     ap.add_argument('--repel-cut', type=float, default=0.2)
     ap.add_argument('--lateral-z', type=float, default=2.0)
     ap.add_argument('--nxy-line', type=int, default=320)
+    ap.add_argument('--folded-kernels', type=str, default='orig,harmonics,workgroup')
+    ap.add_argument('--bench-n', type=int, default=32768)
+    ap.add_argument('--weights-only', action='store_true', help='Only compute reference total + weights and save weight plot; skip fitting/scans')
+    ap.add_argument('--z-only', action='store_true', help='Run only z-scans; skip lateral scans and benchmarks')
     return ap.parse_args()
 
 def main():
     args = parse_args()
     ensure_dir(OUT_DIR)
+    kernel_kinds = [s.strip().lower() for s in str(args.folded_kernels).split(',') if s.strip()]
+    for k in kernel_kinds:
+        if k not in FOLDED_KERNELS:
+            raise ValueError(f"unknown folded kernel '{k}', expected one of {FOLDED_KERNELS}")
     info = surface_info(SUB_FILE); atom_types = atom_types_data(); z_heights = np.linspace(args.zmin, args.zmax, args.nz, dtype=np.float32)
     z_abs_range = (float(info['z_top'] + z_heights.min()), float(info['z_top'] + z_heights.max())); nPBC_ref = (12, 12, 0); nPBC_small = (4, 4, 0)
-    probes = [('H', 0.2), ('O', 0.2)]; records = []
-    config = {'substrate': os.path.relpath(SUB_FILE, ROOT), 'periodic_reference': 'wrapped PBC + macro', 'z_scan_above_top_A': f'{float(z_heights.min()):.3f}..{float(z_heights.max()):.3f}', 'lateral_scan_height_A': float(args.lateral_z), 'nz': len(z_heights), 'nPBC_reference': nPBC_ref, 'nPBC_embedding_local': nPBC_small, 'folded_components': COMPONENTS, 'folded_basis': 'nu=2 nv=2 nzbasis=12 nxy=24 nzsamp=96', 'zfit_min_A': float(args.zfit_min), 'repel_cut_eV': float(args.repel_cut), 'weight_k': float(args.weight_k)}
+    probes = [('H', 0.2), ('O', 0.2)]; records = []; bench_records = []
+    config = {'substrate': os.path.relpath(SUB_FILE, ROOT), 'periodic_reference': 'wrapped PBC + macro', 'z_scan_above_top_A': f'{float(z_heights.min()):.3f}..{float(z_heights.max()):.3f}', 'lateral_scan_height_A': float(args.lateral_z), 'nz': len(z_heights), 'nPBC_reference': nPBC_ref, 'nPBC_embedding_local': nPBC_small, 'folded_components': COMPONENTS, 'folded_basis': 'nu=2 nv=2 nzbasis=8 nxy=24 nzsamp=96', 'zfit_min_A': float(args.zfit_min), 'repel_cut_eV': float(args.repel_cut), 'weight_k': float(args.weight_k), 'folded_kernels': kernel_kinds, 'bench_n': int(args.bench_n)}
     for probe_name, q in probes:
         req = make_probe_REQ(probe_name, q, atom_types)
+        probe_root = os.path.join(OUT_DIR, f'{probe_name}_q{q:+.2f}'.replace('+', 'p').replace('-', 'm')); ensure_dir(probe_root)
+        if args.weights_only:
+            mdw = compute_weights_only(req, SUB_FILE, z_abs_range, nPBC_small, args.zfit_min, args.repel_cut, args.weight_k, folded_nxy=24, folded_nz=96)
+            make_weight_plot(os.path.join(probe_root, f'{probe_name}_weights_only.png'), mdw, f'{probe_name} reference + weights')
+            continue
         md_ref = setup_md(req, len(z_heights), SUB_FILE, nPBC_ref, bMacro=False)
         md_emb = setup_md(req, len(z_heights), SUB_FILE, nPBC_small, bMacro=False)
-        md_fold = build_folded(req, SUB_FILE, len(z_heights), z_abs_range, nPBC_small, z_fit_min=args.zfit_min, repel_cut=args.repel_cut, weight_power=args.weight_k)
         macro_ref = setup_macro_scanner(req, SUB_FILE, nPBC_ref)
         macro_emb = setup_macro_scanner(req, SUB_FILE, nPBC_small)
-        probe_dir = os.path.join(OUT_DIR, f'{probe_name}_q{q:+.2f}'.replace('+', 'p').replace('-', 'm')); ensure_dir(probe_dir)
-        make_weight_plot(os.path.join(probe_dir, f'{probe_name}_weights.png'), md_fold, f'{probe_name} folded fit weights')
-        for site_name, xy in info['sites'].items():
-            transforms, _ = make_z_transforms(xy, info['z_top'], z_heights)
-            ref = apply_macro(macro_ref, transforms, eval_md_components(md_ref, transforms, len(z_heights)))
-            emb = apply_macro(macro_emb, transforms, eval_md_components(md_emb, transforms, len(z_heights)))
-            fold = apply_macro(macro_emb, transforms, eval_folded_components(md_fold, transforms, len(z_heights)))
-            prefix = f'{probe_name}_q{q:+.2f}_{site_name}_zscan'.replace('+', 'p').replace('-', 'm')
-            print_case_stats(prefix, ref, emb, fold)
-            png_file = os.path.join(probe_dir, f'{prefix}.png'); csv_file = os.path.join(probe_dir, f'{prefix}.csv'); json_file = os.path.join(probe_dir, f'{prefix}.json')
-            make_scan_plot(png_file, f'{probe_name} q={q:+.2f} periodic z-scan @ {site_name}', z_heights, 'z above top layer [Å]', ref, emb, fold, zoom=(-0.2, 0.2))
-            save_case_numeric(csv_file, z_heights, 'z', ref, emb, fold)
-            focus_mask = np.asarray(z_heights >= args.zfit_min, dtype=bool)
-            rec = make_record('z_scan', probe_name, q, site_name, ref, emb, fold, ref['macro_delta'].size*0.0, emb['macro_delta'].size*0.0, fold['macro_delta'].size*0.0, {'png': png_file, 'csv': csv_file, 'json': json_file}, focus_mask=focus_mask)
-            open(json_file, 'w').write(json.dumps(rec, indent=2)); records.append(rec)
-        for axis in ('a', 'b'):
-            lateral_trans, ts = make_lateral_line(info, info['z_top'] + args.lateral_z, nxy=args.nxy_line, ncell_span=3.0, axis=axis)
-            md_refL = setup_md(req, len(ts), SUB_FILE, nPBC_ref, bMacro=False)
-            md_embL = setup_md(req, len(ts), SUB_FILE, nPBC_small, bMacro=False)
-            md_foldL = build_folded(req, SUB_FILE, len(ts), z_abs_range, nPBC_small, z_fit_min=args.zfit_min, repel_cut=args.repel_cut, weight_power=args.weight_k)
-            refL = apply_macro(macro_ref, lateral_trans, eval_md_components(md_refL, lateral_trans, len(ts)))
-            embL = apply_macro(macro_emb, lateral_trans, eval_md_components(md_embL, lateral_trans, len(ts)))
-            foldL = apply_macro(macro_emb, lateral_trans, eval_folded_components(md_foldL, lateral_trans, len(ts)))
-            prefix = f'{probe_name}_q{q:+.2f}_{axis}_lateral'.replace('+', 'p').replace('-', 'm')
-            print_case_stats(prefix, refL, embL, foldL)
-            png_file = os.path.join(probe_dir, f'{prefix}.png'); csv_file = os.path.join(probe_dir, f'{prefix}.csv'); json_file = os.path.join(probe_dir, f'{prefix}.json')
-            make_scan_plot(png_file, f'{probe_name} q={q:+.2f} periodic lateral scan along {axis} z={args.lateral_z:.2f} Å', ts, f'path coordinate along {axis} [primitive cells]', refL, embL, foldL, zoom=(-0.2, 0.2))
-            save_case_numeric(csv_file, ts, 's_cell', refL, embL, foldL)
-            rec = make_record('lateral_scan', probe_name, q, f'{axis}_periodic', refL, embL, foldL, 0.0, 0.0, 0.0, {'png': png_file, 'csv': csv_file, 'json': json_file}, focus_mask=np.ones(len(ts), dtype=bool))
-            open(json_file, 'w').write(json.dumps(rec, indent=2)); records.append(rec)
+        for kernel_kind in kernel_kinds:
+            probe_dir = os.path.join(probe_root, kernel_kind); ensure_dir(probe_dir)
+            md_fold = build_folded(req, SUB_FILE, len(z_heights), z_abs_range, nPBC_small, z_fit_min=args.zfit_min, repel_cut=args.repel_cut, weight_power=args.weight_k, kernel_kind=kernel_kind)
+            make_weight_plot(os.path.join(probe_dir, f'{probe_name}_{kernel_kind}_weights.png'), md_fold, f'{probe_name} folded fit weights [{kernel_kind}]')
+            for site_name, xy in info['sites'].items():
+                transforms, _ = make_z_transforms(xy, info['z_top'], z_heights)
+                ref = apply_macro(macro_ref, transforms, eval_md_components(md_ref, transforms, len(z_heights)))
+                emb = apply_macro(macro_emb, transforms, eval_md_components(md_emb, transforms, len(z_heights)))
+                fold = eval_folded_components(md_fold, transforms, len(z_heights))
+                prefix = f'{probe_name}_q{q:+.2f}_{kernel_kind}_{site_name}_zscan'.replace('+', 'p').replace('-', 'm')
+                print_case_stats(prefix, ref, emb, fold)
+                png_file = os.path.join(probe_dir, f'{prefix}.png'); csv_file = os.path.join(probe_dir, f'{prefix}.csv'); json_file = os.path.join(probe_dir, f'{prefix}.json')
+                make_scan_plot(png_file, f'{probe_name} q={q:+.2f} periodic z-scan @ {site_name} [{kernel_kind}]', z_heights, 'z above top layer [Å]', ref, emb, fold, zoom=(-0.2, 0.2))
+                save_case_numeric(csv_file, z_heights, 'z', ref, emb, fold)
+                focus_mask = np.asarray(z_heights >= args.zfit_min, dtype=bool)
+                rec = make_record('z_scan', probe_name, q, site_name, ref, emb, fold, ref['timing'], emb['timing'], fold['timing'], {'png': png_file, 'csv': csv_file, 'json': json_file}, focus_mask=focus_mask, kernel_kind=kernel_kind)
+                open(json_file, 'w').write(json.dumps(rec, indent=2)); records.append(rec)
+            if args.z_only:
+                continue
+            for axis in ('a', 'b'):
+                lateral_trans, ts = make_lateral_line(info, info['z_top'] + args.lateral_z, nxy=args.nxy_line, ncell_span=3.0, axis=axis)
+                md_refL = setup_md(req, len(ts), SUB_FILE, nPBC_ref, bMacro=False)
+                md_embL = setup_md(req, len(ts), SUB_FILE, nPBC_small, bMacro=False)
+                md_foldL = build_folded(req, SUB_FILE, len(ts), z_abs_range, nPBC_small, z_fit_min=args.zfit_min, repel_cut=args.repel_cut, weight_power=args.weight_k, kernel_kind=kernel_kind)
+                refL = apply_macro(macro_ref, lateral_trans, eval_md_components(md_refL, lateral_trans, len(ts)))
+                embL = apply_macro(macro_emb, lateral_trans, eval_md_components(md_embL, lateral_trans, len(ts)))
+                foldL = eval_folded_components(md_foldL, lateral_trans, len(ts))
+                prefix = f'{probe_name}_q{q:+.2f}_{kernel_kind}_{axis}_lateral'.replace('+', 'p').replace('-', 'm')
+                print_case_stats(prefix, refL, embL, foldL)
+                png_file = os.path.join(probe_dir, f'{prefix}.png'); csv_file = os.path.join(probe_dir, f'{prefix}.csv'); json_file = os.path.join(probe_dir, f'{prefix}.json')
+                make_scan_plot(png_file, f'{probe_name} q={q:+.2f} periodic lateral scan along {axis} z={args.lateral_z:.2f} Å [{kernel_kind}]', ts, f'path coordinate along {axis} [primitive cells]', refL, embL, foldL, zoom=(-0.2, 0.2))
+                save_case_numeric(csv_file, ts, 's_cell', refL, embL, foldL)
+                rec = make_record('lateral_scan', probe_name, q, f'{axis}_periodic', refL, embL, foldL, refL['timing'], embL['timing'], foldL['timing'], {'png': png_file, 'csv': csv_file, 'json': json_file}, focus_mask=np.ones(len(ts), dtype=bool), kernel_kind=kernel_kind)
+                open(json_file, 'w').write(json.dumps(rec, indent=2)); records.append(rec)
+        if not args.z_only:
+            probe_bench = run_kernel_benchmarks(req, info, z_abs_range, nPBC_small, kernel_kinds, probe_name, q, args.bench_n)
+            bench_records.extend(probe_bench)
+            make_benchmark_plot(os.path.join(probe_root, f'{probe_name}_kernel_bench.png'), probe_bench, f'{probe_name} folded kernel benchmark')
+    if args.weights_only:
+        print('[weights-only] completed weight plots; skipping fits/scans/summary')
+        return
+    config['benchmarks'] = bench_records
     summary_json = os.path.join(OUT_DIR, 'summary.json'); summary_md = os.path.join(OUT_DIR, 'summary.md')
-    open(summary_json, 'w').write(json.dumps({'config': config, 'records': records}, indent=2)); save_summary_markdown(summary_md, records, config)
+    open(summary_json, 'w').write(json.dumps({'config': config, 'records': records, 'benchmarks': bench_records}, indent=2)); save_summary_markdown(summary_md, records, config)
     print(f'[flat-folded-periodic] saved summary {summary_json}'); print(f'[flat-folded-periodic] saved summary {summary_md}')
 
 if __name__ == '__main__': main()

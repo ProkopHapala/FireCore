@@ -767,3 +767,222 @@ __kernel void getSurfFolded(
 2. **Cooperative 1D Math:** To calculate a $4 \times 4 \times 4$ basis, you only need 12 evaluations of `cos`/`exp`. Instead of 1 thread doing 12 evaluations sequentially, Threads 0-11 each do **1 evaluation simultaneously**.
 3. **Maximized ALU / Minimized Registers:** In Phase 2, each thread requires roughly 4 registers and executes just 7 basic math operations.
 4. **Perfect Memory Bandwidth:** The line `folded_coeffs[ityp * nbasis + iL]` means all 64 threads in the warp ask the VRAM for consecutive `float` addresses simultaneously. The GPU memory controller fulfills this in a single burst.
+
+---
+
+# USER
+
+I think this is not what I wanted
+
+getSurfFolded_workgroup: 1 workgroup = 1 atom, 1 thread = 1 basis term (nbasis threads). Threads cooperatively build 1D bases (cos/exp) in local memory, then each thread evaluates exactly one 3D basis product and its gradients, then a tree reduction sums to E/F. Requires launch: global = [natoms*nbasis, nSystems], local = [nbasis,1], nbasis ≤ 128 (with MAX_D=4 → 4×4×4=64) unless you enlarge buffers.
+
+what I want to sot amortize the precalculation.
+
+The workgroup should not process single atom but multiple atoms,. the threads in worgroup evaluate the basis function and save them to memory we have 16 basis functions - along x and along y are the same we do not need to calculate them saparately, along z are different
+
+then each thread evaluate one atom (we process 64 atoms in one workgorup batch) reading precalculated basis from memory. We never need to save all the basis functons as we can make them as product of the 3 while walking the triple loop
+
+NO! I wanted that you still paralleize the precalculation and store it in local memory. Basis function for each atom are the same, we should leverage that, this can be paralelize and stored to local memory
+
+```
+    // ------------------------------------------------------------------
+    // PHASE 2: 1D BASIS PRECALCULATION 
+    // Saved to thread-private memory (which maps directly to GPU Registers)
+    // ------------------------------------------------------------------
+    float BX[MAX_XY], dBX[MAX_XY];
+    float BY[MAX_XY], dBY[MAX_XY];
+    float BZ[MAX_Z],  dBZ[MAX_Z];
+
+    // OPTIMIZATION: X and Y share the exact same parameters!
+    // We compute both in a single loop, halving parameter reads.
+    for(int i = 0; i < Nxy; i++){
+        float k = LPARAMS_XY[i].x; 
+        float phi = 2.0f * M_PI_F * k;
+        
+        float phix_u = phi * u;
+        BX[i]  = native_cos(phix_u);
+        dBX[i] = -phi * native_sin(phix_u);
+        
+        float phiy_v = phi * v;
+        BY[i]  = native_cos(phiy_v);
+        dBY[i] = -phi * native_sin(phiy_v);
+    }
+
+    for(int i = 0; i < Nz; i++){
+        float kz = LPARAMS_Z[i].z;
+        float z0 = LPARAMS_Z[i].w;
+        float dz = fmax(0.0f, pos.z - z0);
+        float bz = native_exp(-kz * dz);
+        BZ[i]  = bz;
+        dBZ[i] = (pos.z > z0) ? (-kz * bz) : 0.0f;
+    }
+```
+
+---
+
+# Gemini-3.1-pro
+
+
+
+
+Ah! I finally see exactly what you are saying. 
+
+By using `float BX[MAX_XY]` in my previous code, I forced the 1D evaluations into **Thread-Private Registers**. If the basis set grows even slightly, the GPU runs out of registers and silently performs **Register Spilling** (dumping your variables into slow global VRAM), completely destroying your performance.
+
+By explicitly declaring a 2D array in `__local` memory (`[64_atoms][N_basis]`), we force the GPU to store the precalculated 1D evaluations in the ultra-fast SRAM shared memory. Every thread (atom) computes its own row, saves it to the local memory block, and then the triple-loop streams the factors directly from there without ever spilling to global memory.
+
+Here is the exact architecture you defined:
+1. **Batching:** 1 Workgroup = 64 Atoms. 1 Thread = 1 Atom.
+2. **Precalculation:** Threads compute their 1D bases and store them explicitly into `__local` arrays.
+3. **Triple Loop:** Threads walk the triple loop, reading their precalculated 1D components from `__local` memory and multiplying them on the fly to build the 3D basis.
+
+### The Correctly Mapped `__local` Memory Kernel
+
+```c
+// Define max sizes to allocate explicit Shared Memory (Local Memory)
+#define MAX_ATOMS 64
+#define MAX_XY 8
+#define MAX_Z  8
+
+__kernel void getSurfFolded(
+    const int4 ns,                     // (natoms, nnode, 0, 0)
+    __global float4*  atoms,           
+    __global float4*  REQs,            
+    __global float4*  forces,          
+    __global float*   folded_coeffs,   
+    __global float4*  folded_kxyz,     // [Nxy params, Nz params]
+    __global int*     folded_atom_type,
+    const int4        folded_meta,     // (N_xy, N_z, ntypes, 0) 
+    const float4      folded_lvec2d    
+){
+    const int iG = get_global_id(0);
+    const int iS = get_global_id(1);
+    const int iL = get_local_id(0);    // Thread ID (0 to 63) maps to Atom index within batch
+    const int nL = get_local_size(0);  // 64
+
+    const int natoms = ns.x;
+    const int Nxy = folded_meta.x; 
+    const int Nz  = folded_meta.y;
+    const int ntypes = folded_meta.z;
+    const int nbasis_total = Nxy * Nxy * Nz;
+
+    // ==================================================================
+    // 1. ALLOCATE __LOCAL MEMORY FOR EXPLICIT PRECALCULATION STORAGE
+    // ==================================================================
+    // Coefficients and parameters
+    __local float  LCOEFFS[MAX_XY * MAX_XY * MAX_Z * 8]; 
+    __local float4 LPARAMS_XY[MAX_XY]; 
+    __local float4 LPARAMS_Z[MAX_Z];
+
+    // Evaluated 1D Basis Arrays [Atom_Index][Basis_Index]
+    __local float L_BX [MAX_ATOMS][MAX_XY];
+    __local float L_dBX[MAX_ATOMS][MAX_XY];
+    __local float L_BY[MAX_ATOMS][MAX_XY];
+    __local float L_dBY[MAX_ATOMS][MAX_XY];
+    __local float L_BZ [MAX_ATOMS][MAX_Z];
+    __local float L_dBZ[MAX_ATOMS][MAX_Z];
+
+    // Cooperative parameter loading
+    for(int j = iL; j < Nxy; j += nL) LPARAMS_XY[j] = folded_kxyz[j];
+    for(int j = iL; j < Nz;  j += nL) LPARAMS_Z[j]  = folded_kxyz[Nxy + j];
+    for(int j = iL; j < nbasis_total * ntypes; j += nL) LCOEFFS[j] = folded_coeffs[j];
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // Bounds and type check
+    if(iG >= natoms) return;
+    int ityp = folded_atom_type[iG];
+    if(ityp < 0 || ityp >= ntypes) return;
+
+    // Geometry transforms
+    float det = folded_lvec2d.x * folded_lvec2d.w - folded_lvec2d.y * folded_lvec2d.z;
+    float4 invLvec = (float4)(folded_lvec2d.w/det, -folded_lvec2d.y/det, -folded_lvec2d.z/det, folded_lvec2d.x/det);
+
+    int iav = iG + iS * (natoms + ns.y);
+    float3 pos = atoms[iav].xyz;
+    
+    float u = invLvec.x * pos.x + invLvec.y * pos.y;
+    float v = invLvec.z * pos.x + invLvec.w * pos.y;
+    u -= floor(u);
+    v -= floor(v);
+
+    // ==================================================================
+    // 2. PARALLEL PRECALCULATION -> SAVE TO LOCAL MEMORY
+    // Every thread calculates its own atom's basis and explicitly saves 
+    // it to its dedicated row in the Local Memory array.
+    // ==================================================================
+    for(int i = 0; i < Nxy; i++){
+        float k = LPARAMS_XY[i].x; 
+        float phi = 2.0f * M_PI_F * k;
+        
+        float phix_u = phi * u;
+        L_BX[iL][i]  = native_cos(phix_u);
+        L_dBX[iL][i] = -phi * native_sin(phix_u);
+        
+        float phiy_v = phi * v;
+        L_BY[iL][i]  = native_cos(phiy_v);
+        L_dBY[iL][i] = -phi * native_sin(phiy_v);
+    }
+
+    for(int i = 0; i < Nz; i++){
+        float kz = LPARAMS_Z[i].z;
+        float z0 = LPARAMS_Z[i].w;
+        float dz = fmax(0.0f, pos.z - z0);
+        float bz = native_exp(-kz * dz);
+        L_BZ[iL][i]  = bz;
+        L_dBZ[iL][i] = (pos.z > z0) ? (-kz * bz) : 0.0f;
+    }
+
+    // Optional: Ensure all memory writes are visible. Because thread iL 
+    // only reads row iL below, it's inherently safe, but good practice.
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // ==================================================================
+    // 3. THE TRIPLE LOOP
+    // Thread streams its precalculated 1D factors from Local Memory,
+    // avoiding the risk of register spilling entirely.
+    // ==================================================================
+    float E_tot = 0.0f;
+    float dEdu_tot = 0.0f;
+    float dEdv_tot = 0.0f;
+    float dEdz_tot = 0.0f;
+
+    int ic = ityp * nbasis_total; // Pointer to coefficients
+
+    for(int iz = 0; iz < Nz; iz++){
+        float bz  = L_BZ[iL][iz];
+        float dbz = L_dBZ[iL][iz];
+
+        for(int iy = 0; iy < Nxy; iy++){
+            float by  = L_BY[iL][iy];
+            float dby = L_dBY[iL][iy];
+            
+            // Outer loop multipliers
+            float bz_by  = bz * by;
+            float dbz_by = dbz * by;
+            float bz_dby = bz * dby;
+
+            for(int ix = 0; ix < Nxy; ix++){
+                float bx  = L_BX[iL][ix];
+                float dbx = L_dBX[iL][ix];
+
+                float c = LCOEFFS[ic++]; 
+
+                // Dynamic 3D Basis Construction
+                E_tot    += c * (bx * bz_by);
+                dEdu_tot += c * (dbx * bz_by);
+                dEdv_tot += c * (bx * bz_dby);
+                dEdz_tot += c * (bx * dbz_by);
+            }
+        }
+    }
+
+    // Map gradients back to forces
+    float3 F_tot;
+    F_tot.x = -(dEdu_tot * invLvec.x + dEdv_tot * invLvec.z);
+    F_tot.y = -(dEdu_tot * invLvec.y + dEdv_tot * invLvec.w);
+    F_tot.z = -dEdz_tot;
+
+    forces[iav] += (float4)(F_tot.x, F_tot.y, F_tot.z, -E_tot);
+}
+```
