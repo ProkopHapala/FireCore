@@ -7,6 +7,7 @@ import time
 #from . import utils as ut
 from .. import atomicUtils as au
 from ..AtomicSystem import AtomicSystem
+from ..OCL.MMparams import read_atom_types, read_element_types
 #from .. import FunctionSampling as fu
 #exit()
 from ..OCL.GridFF import GridFF_cl, GridShape
@@ -194,7 +195,21 @@ def coulomb_brute_1D( atoms, kind='z', p0=[0.0,0.0,2.0], bPlot=False, nPBC=(60,6
         return FEps
         #plt.show()
 
-def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Element_Types_name="./data/ElementTypes.dat", bSqrtEvdw=True ): 
+def getAtomTypeREQs( atoms, Atom_Types_name="./data/AtomTypes.dat", Element_Types_name="./data/ElementTypes.dat" ):
+    etypes = read_element_types(Element_Types_name)
+    atypes = read_atom_types(Atom_Types_name, element_types=etypes)
+    REvdW = np.zeros((len(atoms.atypes),2), dtype=np.float32)
+    for i, iz in enumerate(atoms.atypes):
+        ename = au.elements.ELEMENTS[int(iz)-1][1]
+        at = atypes.get(ename, None)
+        if at is None:
+            raise KeyError(f"getAtomTypeREQs(): atom type '{ename}' not found in {Atom_Types_name}")
+        REvdW[i,0] = at.RvdW
+        REvdW[i,1] = at.EvdW
+    return REvdW
+
+
+def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Atom_Types_name="./data/AtomTypes.dat", Element_Types_name="./data/ElementTypes.dat", bSqrtEvdw=True ): 
     #print( os.getcwd() )
     if atoms is None:
         atoms = AtomicSystem( fname=fname )
@@ -204,7 +219,7 @@ def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Element_Types_n
         #print( "ws ",    ws    )
 
     print( "Qtot ", np.sum(atoms.qs)," Qabs ", np.sum(np.abs(atoms.qs)) )
-    REvdW = au.getVdWparams( atoms.atypes, fname=Element_Types_name )
+    REvdW = getAtomTypeREQs( atoms, Atom_Types_name=Atom_Types_name, Element_Types_name=Element_Types_name )
     #print( "REvdW ", REvdW )
     if bSymetrize: 
         REvdW[:,1] *= ws
@@ -226,6 +241,20 @@ def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Element_Types_n
     return xyzq, REQs, atoms
 
 
+def make_xyzq_only(atoms=None, fname=None, bSymetrize=False):
+    if atoms is None:
+        atoms = AtomicSystem( fname=fname )
+    if bSymetrize:
+        atoms, _ = atoms.symmetrized()
+    if atoms.qs is None:
+        raise ValueError(f"make_xyzq_only(): missing charges for {fname}")
+    na = len(atoms.atypes)
+    xyzq = np.zeros( (na,4), dtype=np.float32 )
+    xyzq[:,:3] = atoms.apos
+    xyzq[:,3]  = atoms.qs
+    return xyzq, atoms
+
+
 def plotTrjs( trjs, names, save_path=None, show=True ):
     colors = ["b","g","r","c","m","y","k"]
     plt.figure(figsize=(5,5))
@@ -245,19 +274,23 @@ def plotTrjs( trjs, names, save_path=None, show=True ):
     plt.close()
 
 
-def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", job="PLQ", b2D=False, bSymetrize=False, bFit=True, use_CG=False, save_name=None, z0=np.nan, nmaxiter=None, nPerStep=None, damp=None, save_fig=False, fig_path=None, use_tiled=False ):
+def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Atom_Types_name="./data/AtomTypes.dat", Element_Types_name="./data/ElementTypes.dat", job="PLQ", b2D=False, bSymetrize=False, bFit=True, use_CG=False, save_name=None, z0=np.nan, nmaxiter=None, nPerStep=None, damp=None, save_fig=False, fig_path=None, use_tiled=False, dg=(0.1,0.1,0.1) ):
     print( "py======= test_gridFF_ocl() START" );
 
     T00 = time.perf_counter()
 
     #Element_Types_name="/home/prokop/git/FireCore/tests/tMMFF/data/ElementTypes.dat"
 
-    xyzq, REQs, atoms = make_atoms_arrays( fname=fname, bSymetrize=bSymetrize, Element_Types_name=Element_Types_name )
+    if job == "Ewald":
+        xyzq, atoms = make_xyzq_only( fname=fname )
+        REQs = None
+    else:
+        xyzq, REQs, atoms = make_atoms_arrays( fname=fname, bSymetrize=bSymetrize, Atom_Types_name=Atom_Types_name, Element_Types_name=Element_Types_name )
 
     if np.isnan(z0): z0 = xyzq[0,2].max()
     print( "test_gridFF_ocl() z0= ", z0 )
 
-    grid = GridShape( dg=(0.1,0.1,0.1),  lvec=atoms.lvec)
+    grid = GridShape( dg=dg,  lvec=atoms.lvec)
     clgff.set_grid( grid )
 
     if job=="brute":
@@ -283,7 +316,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
 
         g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, z0 )
         nPBC_mors = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC(nPBC_mors): ", nPBC_mors )
-        FE_Paul, FE_Lond = clgff.make_MorseFF_f4( xyzq, REQs, nPBC=nPBC_mors, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=True )
+        FE_Paul, FE_Lond = clgff.make_MorseFF_f4( xyzq, REQs, nPBC=nPBC_mors, dg=dg, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=True )
         np.save( path+"FE_Paul.npy", FE_Paul )
         np.save( path+"FE_Lond.npy", FE_Lond )
     
@@ -314,7 +347,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         # --- Morse
         g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, z0 )
         nPBC_mors = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC(nPBC_mors): ", nPBC_mors )
-        clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC_mors, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=False )
+        clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC_mors, dg=dg, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=False )
         V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, nPerStep=50, nmaxiter=500, damp=0.15, bConvTrj=True ); #T_fit_P = time.perf_counter()
         V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, nPerStep=50, nmaxiter=500, damp=0.15, bConvTrj=True ); #T_fit_ = time.perf_counter()
 
@@ -506,7 +539,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         #clgff.set_grid( grid )
         #Vcoul = clgff.makeCoulombEwald( xyzq )
 
-        xyzq[:,2] += 0.1*4  # NOTE / TODO : This is strange, not sure why we need to shift the z-coordinate by 4 dg  
+        xyzq[:,2] += dg[2]*4  # NOTE / TODO : This is strange, not sure why we need to shift the z-coordinate by 4 dg  
 
         Vcoul = clgff.makeCoulombEwald_slab( xyzq, niter=2 )
 
@@ -585,7 +618,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
 
         # plt.subplot(1,6,6); plt.imshow( Vbrute, cmap='bwr' ); plt.colorbar(); plt.title( "Vbrute[200:300,:,0]" );
 
-        xyzq_sym, _, _ = make_atoms_arrays( atoms=atoms, bSymetrize=True, Element_Types_name=Element_Types_name )
+        xyzq_sym, _ = make_xyzq_only( atoms=atoms, bSymetrize=True )
         Vbrute         = coulomb_brute_1D( xyzq_sym, kind='z', p0=[0.0,0.0,0.0], bPlot=False )
 
         plt.figure( figsize=(7,5) )

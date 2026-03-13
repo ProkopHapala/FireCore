@@ -910,7 +910,12 @@ def makeVectros( apos, ip0, b1, b2, _0=1 ):
 
 def getVdWparams( iZs, etypes=None, fname='ElementTypes.dat' ):
     if etypes is None: etypes = loadElementTypes( fname=fname, bDict=False )
-    return np.array( [( etypes[i][6],etypes[i][7] ) for i in iZs  ] )
+    if isinstance(etypes, dict):
+        get_rec = lambda iz: etypes[elements.ELEMENTS[int(iz)-1][1]]
+    else:
+        etypes_by_z = { int(rec[1]):rec for rec in etypes }
+        get_rec = lambda iz: etypes_by_z[int(iz)]
+    return np.array( [( get_rec(i)[6], get_rec(i)[7] ) for i in iZs  ] )
 
 def iz2enames( iZs ):
     return [ elements.ELEMENTS[iz-1][1] for iz in iZs ]

@@ -310,6 +310,19 @@ def make_output_lvec(lvec_xy, apos, vacuum=0.0):
     return apos2, lvec_out, thickness
 
 
+def assign_caf2_charges(enames, q):
+    q = float(q)
+    qs = np.zeros(len(enames), dtype=float)
+    for i, e in enumerate(enames):
+        if e == 'Ca':
+            qs[i] = 2.0 * q
+        elif e == 'F':
+            qs[i] = -q
+        else:
+            raise ValueError(f'assign_caf2_charges(): unsupported element {e}, expected only Ca/F')
+    return qs
+
+
 def plot_structure(apos, enames, lvec, png_path, title=''):
     fig, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
     ax0, ax1 = axes
@@ -350,6 +363,7 @@ def parse_args():
     ap.add_argument('--out_dir', default=None, help='Directory for generated files; default <input_dir>/generated_rect')
     ap.add_argument('--out_prefix', default=None, help='Prefix for output files; default derived from input and options')
     ap.add_argument('--coeff_search', type=int, default=4, help='Max integer coefficient when searching rectangular in-plane supercell')
+    ap.add_argument('--Q', type=float, default=1.0, help='Assign ionic charges +2Q to Ca and -Q to F in the output xyz')
     ap.add_argument('--no_charges', action='store_true', help='Do not write charges into the xyz output')
     return ap.parse_args()
 
@@ -376,6 +390,7 @@ def main():
 
     apos_trim, lvec_trim, thickness = make_output_lvec(lvec_rect0, layer_sel['apos'], vacuum=vacuum)
     apos_out, enames_out, atypes_out, qs_out, lvec_out = replicate_rectangular(apos_trim, layer_sel['enames'], layer_sel['atypes'], layer_sel['qs'], lvec_trim, nx=args.nx, ny=ny)
+    qs_out = assign_caf2_charges(enames_out, args.Q)
 
     out_dir = args.out_dir or os.path.join(os.path.dirname(os.path.abspath(args.in_xyz)), 'generated_rect')
     os.makedirs(out_dir, exist_ok=True)

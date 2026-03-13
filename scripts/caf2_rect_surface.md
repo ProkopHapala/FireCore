@@ -93,3 +93,47 @@ A naive approach rotates atoms and clips by Cartesian bounds. That is only appro
 - `cpp/common_resources/Substrates/generated_rect/CaF2_6L_Ni3_rect_nx2_nz1_L2_top.xyz/.png`
 
 These are strictly periodic under the rectangular superlattice and have borders shifted off atom rows.
+
+---
+
+# GPU GridFF / PLQ generation notes (CaF₂)
+
+## What we generated
+- Full GPU PLQ (Pauli, London, Coulomb) grids for `CaF2_6L_Ni3_rect_nx2_nz1_L2_top.xyz` using `tests/tMMFF/run_test_GridFF_CaF2.py`.
+- Outputs:
+  - `tests/tMMFF/data/CaF2_6L_Ni3_rect_nx2_nz1_L2_top/Bspline_PLQd.npy`
+  - Plots: `plq_components_gpu.png`, `plq_xy_gpu.png`, `plq_xz_gpu.png`, `plq_linecuts_gpu.png`
+  - XSF exports: `gpu_VPaul.xsf`, `gpu_VLond.xsf`, `gpu_VCoul.xsf` (same folder)
+
+## Key fixes and caveats
+- **vdW params missing for Ca**: Added a temporary `Ca` entry to `cpp/common_resources/AtomTypes.dat` by copying Na (placeholder until true Ca/F parameters are available). Without this, Pauli/London were zeroed.
+- **Parameter source**: GPU helper now loads REQ from `AtomTypes.dat` (not `ElementTypes.dat`).
+- **Grid spacing**: Passed `dgx/dgy/dgz` through Morse and Coulomb so the grid stays FFT-friendly and consistent.
+- **Slices near surface**: Auto-selects a z-cut ~0.8–3 Å above the topmost atom based on max total variation; prints min/max/range to stdout.
+- **Plots with physical units**: Separate `plq_xy_gpu.png` and `plq_xz_gpu.png` use physical extents (Å) and `aspect='equal'` for readability.
+
+## Probe PLQ coefficients (test particle)
+- Computed via `getPLQH(R0, E0, a, Q, H)` in `pyBall/tests/utils.py`.
+- Defaults (H-like): `R0=1.443 Å`, `E0=0.00190802 eV`, `a=1.5`, `Q=0.4`, `H=0.0`.
+- Derived coefficients: `cL = exp(a*R0)*E0`, `cP = exp(a*R0)*cL`, `Q` passes through. Adjust CLI `--R0 --E0 --a --Q` to model another probe.
+
+## Observed magnitudes (near-surface cut, iz≈45)
+- VPaul range ≈ 0.56 eV, VLond ≈ 0.24 eV, VCoul ≈ 11.5 eV, VTotal ≈ 4.53 eV.
+- Global ranges: VPaul up to ~13 eV, VLond ~2 eV span, VCoul ~277 eV span, VTotal ~110 eV span.
+
+## Known limitations / TODO
+- Ca/F vdW parameters are placeholders (copied from Na); needs proper Ca²⁺/F⁻ data for production.
+- XSF axis order follows `saveXSF` transpose; visual conventions may appear swapped in some viewers (arrays are correct in Python).
+- Orientation cross-check (xs/yz swap suspicion) still pending a formal note—current lvs are diagonal with z normal to slab.
+
+## How to rerun
+```bash
+cd tests/tMMFF
+python3 run_test_GridFF_CaF2.py \
+  --dgx 23.175/225.0 --dgy 20.070/200.0 --dgz 48.472/382.0 \
+  --job PLQ --use_CG 1
+```
+Important switches:
+- `--z_above_top -1` (default) → auto-pick a near-surface cut with highest total variation.
+- `--slice_z` → force a specific z index if desired.
+- `--R0/E0/a/Q` → set probe coefficients.
