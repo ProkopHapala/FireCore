@@ -149,3 +149,108 @@ python3 test_rigid_gridff_ptcda_batch.py \
   - H2O: `tests/tMMFF/output_rigid_gridff_fastscan_*`, `output_rigid_gridff_settle_*`
   - PTCDA stage 1: `tests/tMMFF/output_rigid_gridff_ptcda_prod_stage1/`
   - PTCDA stage 2 refine: `tests/tMMFF/output_rigid_gridff_ptcda_prod_stage2_refine/`
+
+---
+
+# Rigid GridFF — PTCDA on CaF2 (multi-replica) — Report and Tutorial
+
+This mirrors the NaCl workflow but uses the **validated CaF2 grid** built by the CaF2 tutorial scripts. Focus: validate the potential, locate the adsorption window, run two-stage batches, and filter true adsorbed minima.
+
+## A) Goals (CaF2)
+- Validate CaF2 GridFF field (signs/minima) with ion z-scans before any PTCDA batches.
+- Run rigid PTCDA adsorption z-scan to locate the adsorption height window.
+- Execute two-stage multi-replica relaxation on the validated CaF2 grid (separate outputs from NaCl).
+- Separate physically adsorbed minima from shallow high-z stationary states.
+
+## B) Sources / inspiration
+- `tests/tMMFF/GridFF_CaF2_doc_tutorial.md`
+- `tests/tMMFF/run_test_GridFF_CaF2.py`
+- `tests/tMMFF/test_rigid_gridff_ptcda_batch.py`
+
+## C) Challenges and fixes
+- **Ca typing mismatch**: slab uses `Ca`, table uses `Ca+2`. Fixed by parsing/propagating `--type-map Ca:Ca+2` in batch runner and `RigidBodyDynamics.from_xyz_and_grid`.
+- **Zero forces / huge z**: caused by wrong grid/typing. Fixed by using validated CaF2 grid `Bspline_PLQd_sigma_0p500.npy` and correct type-map.
+- **High-z converged states**: CaF2 yields shallow stationary points far from surface; apply energy/z filter to isolate adsorbed minima.
+
+## D) What we ran (and outputs)
+- Validated grid (sigma=0.5): `tests/tMMFF/data/CaF2_6L_Ni3_rect_nx2_nz1_L2_top/Bspline_PLQd_sigma_0p500.npy`
+- Substrate xyz: `cpp/common_resources/Substrates/generated_rect/CaF2_6L_Ni3_rect_nx2_nz1_L2_top.xyz`
+- PTCDA xyz: `cpp/common_resources/xyz/PTCDA.xyz`
+- Medium batch (6x6x8=288)
+  - Stage 1: `tests/tMMFF/output_rigid_gridff_ptcda_caf2_midcheck/`
+  - Stage 2 refine: `tests/tMMFF/output_rigid_gridff_ptcda_caf2_midcheck_refine/`
+  - Converged 140/288; deep adsorbed subset 127 with E < -2.5 eV, z ≈ 6.97–7.00 Å
+- Production (12x12x8=1152)
+  - Stage 1: `tests/tMMFF/output_rigid_gridff_ptcda_caf2_prod_stage1/`
+  - Stage 2 refine: `tests/tMMFF/output_rigid_gridff_ptcda_caf2_prod_stage2_refine/`
+  - Converged 448/1152; distinct minima 222
+  - Adsorbed subset (recommended filter): 344 with **E < -2.5 eV** and **z < 8.0 Å** (all z ≈ 6.965–6.999 Å)
+
+## E) Run tutorial (CaF2)
+
+### 1) Build/validate CaF2 grid + ion z-scans (sigma=0.5)
+From `tests/tMMFF/`:
+```bash
+bash run_test_GridFF_CaF2.sh \
+  --sigma 0.5 --sigma_scan 0.5 \
+  --probe_specs H:0.2,O:-0.4 \
+  --a 2.0 --auto_total_center 0.0 --auto_comp_center 0.0
+```
+Outputs: `tests/tMMFF/data/CaF2_6L_Ni3_rect_nx2_nz1_L2_top/` (plots, z-scan NPZs, `Bspline_PLQd_sigma_0p500.npy`).
+
+### 2) Rigid PTCDA z-scan on validated CaF2 grid
+Expectation: adsorption window COM z ~7.5 Å (surface top z ~4.88 Å). Example driver (simplified):
+```python
+# inputs: mol, sub, grid as above; type_map = {'Ca':'Ca+2'}
+# scan_z = linspace(5.0, 20.0, 121)
+# for each top Ca/F site: reset pose at (x,y,z), run_gridff once, sum atom_force[...,3] as energy
+```
+
+### 3) PTCDA CaF2 batch — Stage 1 (production tiling)
+```bash
+python3 test_rigid_gridff_ptcda_batch.py \
+  --mol /home/prokop/git/FireCore/cpp/common_resources/xyz/PTCDA.xyz \
+  --sub /home/prokop/git/FireCore/cpp/common_resources/Substrates/generated_rect/CaF2_6L_Ni3_rect_nx2_nz1_L2_top.xyz \
+  --grid /home/prokop/git/FireCore/tests/tMMFF/data/CaF2_6L_Ni3_rect_nx2_nz1_L2_top/Bspline_PLQd_sigma_0p500.npy \
+  --type-map Ca:Ca+2 \
+  --nx 12 --ny 12 --nrot 8 --max-bodies 1152 \
+  --nsteps 16000 --chunk-steps 400 --report-every-steps 4000 \
+  --sample-check-stride 64 --sample-every-steps 400 \
+  --z0 7.8 --dt 0.02 --lin-damp 0.99 --ang-damp 0.97 \
+  --mass-trans 1.0 --mass-rot 4.0 --force-scale 1.0 --torque-scale 1.0 \
+  --outdir output_rigid_gridff_ptcda_caf2_prod_stage1
+```
+
+### 4) PTCDA CaF2 batch — Stage 2 refinement (restart)
+```bash
+python3 test_rigid_gridff_ptcda_batch.py \
+  --mol /home/prokop/git/FireCore/cpp/common_resources/xyz/PTCDA.xyz \
+  --sub /home/prokop/git/FireCore/cpp/common_resources/Substrates/generated_rect/CaF2_6L_Ni3_rect_nx2_nz1_L2_top.xyz \
+  --grid /home/prokop/git/FireCore/tests/tMMFF/data/CaF2_6L_Ni3_rect_nx2_nz1_L2_top/Bspline_PLQd_sigma_0p500.npy \
+  --type-map Ca:Ca+2 \
+  --init-from-npz output_rigid_gridff_ptcda_caf2_prod_stage1/rigid_ptcda_batch_final.npz \
+  --nsteps 20000 --chunk-steps 400 --report-every-steps 4000 \
+  --sample-check-stride 64 --sample-every-steps 400 \
+  --dt 0.02 --lin-damp 0.99 --ang-damp 0.97 \
+  --mass-trans 1.0 --mass-rot 4.0 --force-scale 1.0 --torque-scale 1.0 \
+  --outdir output_rigid_gridff_ptcda_caf2_prod_stage2_refine
+```
+
+## F) Results (CaF2)
+- Stage 1 (1152 reps): converged 295 / 1152; zmin stabilized at 6.933–6.934 Å; no post-transient jumps.
+- Stage 2 refine: converged 448 / 1152; distinct minima 222.
+- **Adsorbed subset (physically meaningful)**: 344 with E < -2.5 eV, z < 8.0 Å (all at z ≈ 6.965–6.999 Å).
+- Remaining converged states are shallow/high-z stationary points; keep them separate from the adsorbed basin.
+
+## G) Practical filters for CaF2 outputs
+- `converged == 1`
+- `unstable == 0`
+- `energy < -2.5` eV
+- `pos_z < 8.0` Å
+
+## H) Takeaways (CaF2)
+- Always validate GridFF on the surface (ion z-scans) before molecular batches.
+- Type-map is essential: `Ca:Ca+2` for this slab/grid pair.
+- CaF2 produces shallow high-z stationary states; apply an energy/z filter to isolate true adsorbed minima.
+- Stable relaxation uses the same physical parameters as NaCl (dt 0.02, lin_damp 0.99, ang_damp 0.97, mass_rot 4.0, no force/torque overscaling) with higher starting height (z0 ≈ 7.8) matching the CaF2 adsorption window.
+

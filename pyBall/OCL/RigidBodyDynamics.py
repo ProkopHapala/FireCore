@@ -530,7 +530,7 @@ void rigid_body_gridff_kernel(
             grid = np.load(grid_file)
         except Exception:
             grid = _load_npy_legacy(grid_file)
-        _, _, _, _, lvec = load_xyz_with_REQs(substrate_xyz)
+        _, _, _, _, lvec = load_xyz_with_REQs(substrate_xyz, type_map=type_map)
         if lvec is None:
             raise ValueError(f"Substrate lattice vectors missing in {substrate_xyz}")
         ax = float(np.linalg.norm(lvec[0]))

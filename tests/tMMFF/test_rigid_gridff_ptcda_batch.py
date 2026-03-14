@@ -178,7 +178,21 @@ def run_batch(args):
     if not os.path.exists(sub_xyz): raise FileNotFoundError(sub_xyz)
     if not os.path.exists(sub_grid): raise FileNotFoundError(sub_grid)
 
-    _, _, _, _, lvec = load_xyz_with_REQs(sub_xyz)
+    tm = None
+    if isinstance(args.type_map, str) and len(args.type_map) > 0:
+        tm = {}
+        for kv in args.type_map.split(','):
+            if not kv:
+                continue
+            if ':' not in kv:
+                continue
+            k, v = kv.split(':', 1)
+            tm[k] = v
+    elif isinstance(args.type_map, dict):
+        tm = args.type_map
+
+    atom_pos_body, atom_plq, atom_mass, qs, lvec = load_xyz_with_REQs(mol_path, type_map=tm)
+    _, _, _, _, lvec_sub = load_xyz_with_REQs(sub_xyz, type_map=tm)
     if lvec is None:
         raise RuntimeError(f"Substrate {sub_xyz} has no lattice vectors in XYZ comment")
 
