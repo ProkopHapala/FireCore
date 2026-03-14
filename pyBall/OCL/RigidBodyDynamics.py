@@ -429,6 +429,46 @@ void rigid_body_gridff_kernel(
             'body_torque': body_torque,
         }
 
+    def download_selected(self, fields):
+        req = tuple(fields)
+        out = {}
+        if 'pos' in req:
+            buf = np.empty((self.n_bodies, 4), dtype=np.float32)
+            self.fromGPU('poss', buf)
+            out['pos'] = buf
+        if 'quats' in req:
+            buf = np.empty((self.n_bodies, 4), dtype=np.float32)
+            self.fromGPU('qrots', buf)
+            out['quats'] = buf
+        if 'lin_mom' in req:
+            buf = np.empty((self.n_bodies, 4), dtype=np.float32)
+            self.fromGPU('vposs', buf)
+            out['lin_mom'] = buf
+        if 'ang_mom' in req:
+            buf = np.empty((self.n_bodies, 4), dtype=np.float32)
+            self.fromGPU('vrots', buf)
+            out['ang_mom'] = buf
+        if 'atom_positions' in req:
+            buf = np.empty((self.total_atoms, 4), dtype=np.float32)
+            self.fromGPU('apos_world', buf)
+            out['atom_positions'] = buf.reshape(self.n_bodies, self.num_atoms, 4)
+        if 'atom_force' in req:
+            buf = np.empty((self.total_atoms, 4), dtype=np.float32)
+            self.fromGPU('atom_force', buf)
+            out['atom_force'] = buf.reshape(self.n_bodies, self.num_atoms, 4)
+        if 'body_force' in req:
+            buf = np.empty((self.n_bodies, 4), dtype=np.float32)
+            self.fromGPU('body_force', buf)
+            self.last_body_force = buf
+            out['body_force'] = buf
+        if 'body_torque' in req:
+            buf = np.empty((self.n_bodies, 4), dtype=np.float32)
+            self.fromGPU('body_torque', buf)
+            self.last_body_torque = buf
+            out['body_torque'] = buf
+        self.queue.finish()
+        return out
+
     def sync_outputs_to_inputs(self):
         self.queue.finish()
 
@@ -450,13 +490,22 @@ void rigid_body_gridff_kernel(
         return out
 
     @classmethod
-    def from_xyz_and_grid(cls, mol_file, grid_file, substrate_xyz, n_bodies=1, body_positions=None, quats=None, alpha_morse=DEFAULT_ALPHA_MORSE, debug=False, type_map=None):
+    def from_xyz_and_grid(cls, mol_file, grid_file, substrate_xyz, n_bodies=1, body_positions=None, quats=None, alpha_morse=DEFAULT_ALPHA_MORSE, debug=False, type_map=None, mass_trans=1.0, mass_rot=None):
         apos, reqs, enames, _, _ = load_xyz_with_REQs(mol_file, type_map=type_map)
         masses = _guess_mass(enames)
         apos = np.asarray(apos, dtype=np.float32)
         com0 = (apos * masses[:, None]).sum(axis=0) / masses.sum()
         rel = apos - com0[None, :]
         mtot, _, Iinv = compute_mass_properties(rel, masses)
+        mass_trans = float(mass_trans)
+        if mass_trans <= 0.0:
+            raise ValueError(f"mass_trans must be > 0, got {mass_trans}")
+        if mass_rot is None:
+            mass_rot = mass_trans
+        mass_rot = float(mass_rot)
+        if mass_rot <= 0.0:
+            raise ValueError(f"mass_rot must be > 0, got {mass_rot}")
+        Iinv_relax = Iinv * (mtot / mass_rot)
         if body_positions is None:
             body_positions = np.repeat(com0[None, :], n_bodies, axis=0).astype(np.float32)
         else:
@@ -465,7 +514,7 @@ void rigid_body_gridff_kernel(
                 raise ValueError(f"Expected body_positions shape ({n_bodies},3), got {body_positions.shape}")
         pos4 = np.zeros((n_bodies, 4), dtype=np.float32)
         pos4[:, :3] = body_positions
-        pos4[:, 3] = mtot
+        pos4[:, 3] = mass_trans
         quat4 = np.zeros((n_bodies, 4), dtype=np.float32)
         quat4[:, 3] = 1.0
         if quats is not None:
@@ -497,8 +546,11 @@ void rigid_body_gridff_kernel(
         rbd.atom_types_assigned = [type_map.get(e, e) if type_map is not None else e for e in enames]
         rbd.atom_REQ = reqs.copy()
         rbd.atom_masses = masses.copy()
+        rbd.mass_physical = float(mtot)
+        rbd.mass_trans = mass_trans
+        rbd.mass_rot = mass_rot
         rbd.atom_PLQ = atom_plq.copy()
-        rbd.upload_state(pos4, quat4, zero4, zero4, mtot, 1.0 / mtot, np.repeat(Iinv[None, :, :], n_bodies, axis=0), atom_body, atom_PLQ=atom_plq)
+        rbd.upload_state(pos4, quat4, zero4, zero4, mass_trans, 1.0 / mass_trans, np.repeat(Iinv_relax[None, :, :], n_bodies, axis=0), atom_body, atom_PLQ=atom_plq)
         rbd.init_gridff(grid, grid_p0=grid_p0, grid_step=grid_step)
         return rbd
 

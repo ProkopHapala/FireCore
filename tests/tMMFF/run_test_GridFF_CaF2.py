@@ -160,22 +160,46 @@ def summarize_scan_case(target_name, probe_name, sigma, scan):
 def save_scan_npz(path, data):
     np.savez(path, **data)
 
-def plot_scan_compare(out_png, scans, target_name, probe_name, q):
+def _apply_ylim(ax, arr, ylim, auto_span, center=None):
+    if ylim is not None:
+        ax.set_ylim(ylim)
+    else:
+        c = float(center) if center is not None else float(np.nanmin(arr))
+        ax.set_ylim(c - auto_span, c + auto_span)
+
+
+def plot_scan_compare(out_png, scans, target_name, probe_name, q, ylim_total=None, ylim_comp=None, auto_span=1.0, center_total=None, center_comp=None):
     fig, axes = plt.subplots(1, 4, figsize=(19, 4), constrained_layout=True)
+    totals = []
+    coulombs = []
+    paulis = []
+    nonel = []
     for sigma, data in scans:
         lbl = f'sigma={sigma:.2f} A'
-        axes[0].plot(data['h'], data['VTotal'], lw=1.5, label=lbl)
-        axes[1].plot(data['h'], data['VCoul'] * q, lw=1.5, label=lbl)
-        axes[2].plot(data['h'], data['VPaul'] * data['plqh'][0], lw=1.5, label=lbl)
-        axes[3].plot(data['h'], data['VNonElec'], lw=1.5, label=lbl)
+        t = data['VTotal']
+        c = data['VCoul'] * q
+        p = data['VPaul'] * data['plqh'][0]
+        n = data['VNonElec']
+        totals.append(t)
+        coulombs.append(c)
+        paulis.append(p)
+        nonel.append(n)
+        axes[0].plot(data['h'], t, lw=1.5, label=lbl)
+        axes[1].plot(data['h'], c, lw=1.5, label=lbl)
+        axes[2].plot(data['h'], p, lw=1.5, label=lbl)
+        axes[3].plot(data['h'], n, lw=1.5, label=lbl)
     axes[0].set_title(f'{target_name} / {probe_name} q={q:+.2f} Total')
     axes[1].set_title(f'{target_name} / {probe_name} q={q:+.2f} Coulomb')
     axes[2].set_title(f'{target_name} / {probe_name} q={q:+.2f} Pauli')
     axes[3].set_title(f'{target_name} / {probe_name} q={q:+.2f} Non-electrostatic')
-    for ax in axes:
+    for ax, arr in zip(axes, [np.concatenate(totals), np.concatenate(coulombs), np.concatenate(paulis), np.concatenate(nonel)]):
         ax.set_xlabel('z - z_atom [A]')
         ax.set_ylabel('Energy [eV]')
         ax.grid(True)
+        if ax is axes[0]:
+            _apply_ylim(ax, arr, ylim_total, auto_span, center_total)
+        else:
+            _apply_ylim(ax, arr, ylim_comp, auto_span, center_comp)
         ax.legend()
     fig.savefig(out_png, dpi=150)
     plt.close(fig)
@@ -370,6 +394,11 @@ def parse_args():
     ap.add_argument('--probe_o_e0', type=float, default=None, help='Explicit EvdW override for O probe in scans')
     ap.add_argument('--probe_h_r0', type=float, default=None, help='Explicit RvdW override for H probe in scans')
     ap.add_argument('--probe_o_r0', type=float, default=None, help='Explicit RvdW override for O probe in scans')
+    ap.add_argument('--ylim_total', type=str, default=None, help='Optional y-lim for total plot, format min,max')
+    ap.add_argument('--ylim_comp', type=str, default=None, help='Optional y-lim for component plots, format min,max')
+    ap.add_argument('--auto_ylim_span', type=float, default=1.0, help='If y-lim not set, span around center (default center=0 for total, min for comps)')
+    ap.add_argument('--auto_total_center', type=float, default=0.0, help='If total y-lim not set, center span here (default 0.0 eV)')
+    ap.add_argument('--auto_comp_center', type=float, default=None, help='Optional center for component auto-lims; if None uses min')
     return ap.parse_args()
 
 
@@ -406,7 +435,12 @@ def main():
     atom_type_table = load_atom_type_table(atom_types, element_types)
     scan_alpha = args.a if args.probe_a_scan is None else args.probe_a_scan
     probe_overrides = {'H': {'E0': args.probe_h_e0, 'R0': args.probe_h_r0}, 'O': {'E0': args.probe_o_e0, 'R0': args.probe_o_r0}}
+    ylim_total = tuple(map(float, args.ylim_total.split(','))) if args.ylim_total else None
+    ylim_comp = tuple(map(float, args.ylim_comp.split(','))) if args.ylim_comp else None
+    center_total = args.auto_total_center if args.auto_total_center is not None else 0.0
+    center_comp = args.auto_comp_center if args.auto_comp_center is not None else None
     target_inds = find_top_atom_indices(atoms)
+    alias_map = {'Ca': 'Ca+2', 'F': 'F-'}
     scans_dir = os.path.join(out_dir, 'z_scans')
     ensure_dir(scans_dir)
     gpu_by_sigma = {}
@@ -458,7 +492,13 @@ def main():
     gpu0 = list(gpu_by_sigma.values())[0]
     for target_name, ia in target_inds.items():
         p = atoms.apos[ia]
-        surface_at = atom_type_table[target_name]
+        surface_at = atom_type_table.get(target_name, None)
+        if surface_at is None:
+            alt = alias_map.get(target_name, None)
+            if alt is not None:
+                surface_at = atom_type_table.get(alt, None)
+        if surface_at is None:
+            raise KeyError(f"Atom type '{target_name}' not found; tried alias '{alias_map.get(target_name, 'none')}' in {atom_types}")
         g0x = -0.5 * float(atoms.lvec[0][0])
         g0y = -0.5 * float(atoms.lvec[1][1])
         ix = coord_to_index(p[0], dg[0], gpu0.shape[0], g0=g0x)
@@ -489,7 +529,10 @@ def main():
                 summarize_scan_case(target_name, probe_name, sigma, scan_cut)
                 scans.append((sigma, scan_cut))
             out_png = os.path.join(scans_dir, f'zscan_compare_{target_name}_{probe_name}_q{q_probe:+.2f}.png'.replace('+', 'p').replace('-', 'm'))
-            plot_scan_compare(out_png, scans, target_name, probe_name, q_probe)
+            plot_scan_compare(out_png, scans, target_name, probe_name, q_probe,
+                              ylim_total=ylim_total, ylim_comp=ylim_comp,
+                              auto_span=args.auto_ylim_span,
+                              center_total=center_total, center_comp=center_comp)
             report_lines += [
                 f'## {target_name} target / {probe_name} probe q={q_probe:+.2f}',
                 f'- target_index: `{ia}`',

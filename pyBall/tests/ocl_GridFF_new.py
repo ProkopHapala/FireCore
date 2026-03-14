@@ -198,10 +198,20 @@ def coulomb_brute_1D( atoms, kind='z', p0=[0.0,0.0,2.0], bPlot=False, nPBC=(60,6
 def getAtomTypeREQs( atoms, Atom_Types_name="./data/AtomTypes.dat", Element_Types_name="./data/ElementTypes.dat" ):
     etypes = read_element_types(Element_Types_name)
     atypes = read_atom_types(Atom_Types_name, element_types=etypes)
+    # Allow aliases in AtomTypes.dat (e.g., Ca+2, F-) by falling back to simple element name
+    alias_map = {
+        'Ca': ('Ca', 'Ca+2'),
+        'F' : ('F', 'F-'),
+    }
     REvdW = np.zeros((len(atoms.atypes),2), dtype=np.float32)
     for i, iz in enumerate(atoms.atypes):
         ename = au.elements.ELEMENTS[int(iz)-1][1]
-        at = atypes.get(ename, None)
+        names_to_try = alias_map.get(ename, (ename,))
+        at = None
+        for nm in names_to_try:
+            at = atypes.get(nm, None)
+            if at is not None:
+                break
         if at is None:
             raise KeyError(f"getAtomTypeREQs(): atom type '{ename}' not found in {Atom_Types_name}")
         REvdW[i,0] = at.RvdW
