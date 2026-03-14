@@ -28,9 +28,6 @@ class GridFF_cl:
 
     def __init__(self, nloc=32 ):
         self.nloc  = nloc
-        #self.ctx   = cl.create_some_context()
-        self.ctx   = cl.create_some_context()
-        self.queue = cl.CommandQueue(self.ctx)
         self.grid  = None   # instance of GridShape, if initialized
         self.gcl   = None   # instance of GridCL, if initialized
 
@@ -788,10 +785,10 @@ class GridFF_cl:
             #self.Qgrid=Qgrid
             return Qgrid
 
-    def _poisson(self, sz_glob, sz_loc, ns, coefs_cl ):
+    def _poisson(self, sz_glob, sz_loc, ns, coefs_cl, params_cl ):
         event, = self.transform.enqueue() 
         event.wait()
-        self.prg.poissonW( self.queue, sz_glob, sz_loc,       ns, self.Qgrid_buff, self.Vgrid_buff, coefs_cl )
+        self.prg.poissonW( self.queue, sz_glob, sz_loc, ns, self.Qgrid_buff, self.Vgrid_buff, coefs_cl, params_cl )
         event, = self.inverse_transform.enqueue()
         event.wait()
 
@@ -845,7 +842,8 @@ class GridFF_cl:
             print( "Vgrid min,max ", Vgrid.min(), Vgrid.max(), " sc_ewald ", sc_ewald, " dV ", dV, " nxyz ", nxyz )
             return Vgrid
 
-    def poisson(self, bReturn=True, sh=None, dV=None):
+    def fft_filter(self, bReturn=True, sh=None, dV=None, sigma=0.0, bDivideByK2=True, bApplyEwaldScale=True):
+        clu.try_load_clFFT()
         if sh is None:
             sh = self.gsh.ns[::-1]
         nxyz = np.int32(sh[0] * sh[1] * sh[2])
@@ -868,24 +866,29 @@ class GridFF_cl:
         freq_y = 2.0 * np.pi / Ly
         freq_z = 2.0 * np.pi / Lz
 
-        scEwald = COULOMB_CONST * 4.0 * np.pi / (nxyz * dV)
-
-        #coefs_cl = np.array((freq_x, freq_y, freq_z, 0.0), dtype=np.float32)
-        coefs_cl = np.array((freq_x, freq_y, freq_z, scEwald), dtype=np.float32)
+        amp = 1.0 / float(nxyz)
+        if bDivideByK2 and bApplyEwaldScale:
+            amp = COULOMB_CONST * 4.0 * np.pi / (float(nxyz) * dV)
+        coefs_cl = np.array((freq_x, freq_y, freq_z, amp), dtype=np.float32)
+        gauss_a = 0.5 * sigma * sigma if sigma > 0.0 else 0.0
+        params_cl = np.array((gauss_a, 1.0 if bDivideByK2 else 0.0, 0.0, 0.0), dtype=np.float32)
 
         nL = self.nloc
         nG = clu.roundup_global_size(nxyz, nL)
-        self._poisson((nG,), (nL,), ns_cl, coefs_cl)
+        self._poisson((nG,), (nL,), ns_cl, coefs_cl, params_cl)
 
         if bReturn:
             sh_ = (*sh, 2)
             Vgrid = np.zeros(sh_, dtype=np.float32)
             cl.enqueue_copy(self.queue, Vgrid, self.Vgrid_buff)
-            # Apply scaling factor after inverse FFT
-            scEwald = COULOMB_CONST * 4.0 * np.pi / (nxyz * dV)
-            Vgrid *= scEwald
-            print("Vgrid min,max ", Vgrid.min(), Vgrid.max(), " scEwald ", scEwald, " dV ", dV, " nxyz ", nxyz)
+            print("Vgrid min,max ", Vgrid.min(), Vgrid.max(), " amp ", amp, " sigma ", sigma, " gauss_a ", gauss_a, " bDivideByK2 ", bDivideByK2, " dV ", dV, " nxyz ", nxyz)
             return Vgrid
+
+    def poisson(self, bReturn=True, sh=None, dV=None, sigma=0.0):
+        return self.fft_filter(bReturn=bReturn, sh=sh, dV=dV, sigma=sigma, bDivideByK2=True, bApplyEwaldScale=True)
+
+    def smear_density(self, bReturn=True, sh=None, sigma=0.0):
+        return self.fft_filter(bReturn=bReturn, sh=sh, dV=1.0, sigma=sigma, bDivideByK2=False, bApplyEwaldScale=False)
 
 
 
@@ -979,7 +982,7 @@ class GridFF_cl:
             elif last_buff == 1:
                 return self.V1_buff
     
-    def makeCoulombEwald(self, atoms, bOld=False ):
+    def makeCoulombEwald(self, atoms, bOld=False, sigma=0.0, bDensityOnly=False ):
         print( "GridFF_cl::makeCoulombEwald() " )
         clu.try_load_clFFT()
         if self.gcl is None: 
@@ -1006,14 +1009,17 @@ class GridFF_cl:
         if bOld:
             Vgrid = self.poisson_old()
         else:
-            Vgrid = self.poisson()
+            if bDensityOnly:
+                Vgrid = self.smear_density(sigma=sigma)
+            else:
+                Vgrid = self.poisson(sigma=sigma)
 
         Vgrid = Vgrid[:,:,:,0].copy()
         #print( "Vgrid min,max", Vgrid.min(), Vgrid.max() )
         return Vgrid
 
 
-    def makeCoulombEwald_slab(self, atoms, Lz_slab=20.0, dipol=0.0, niter=4, bDipoleCoorection=False, bReturn=True, bTranspose=False, bSaveQgrid=False, bCheckVin=False, bCheckPoisson=False ):
+    def makeCoulombEwald_slab(self, atoms, Lz_slab=20.0, dipol=0.0, niter=4, bDipoleCoorection=False, bReturn=True, bTranspose=False, bSaveQgrid=False, bCheckVin=False, bCheckPoisson=False, sigma=0.0 ):
         print( "GridFF_cl::makeCoulombEwald_slab() " )
         clu.try_load_clFFT()
         if self.gcl is None: 
@@ -1057,7 +1063,7 @@ class GridFF_cl:
             print("Qgrid min,max ", Qgrid[:,:,:,0].min(), Qgrid[:,:,:,0].max() )
             np.save( "./data/NaCl_1x1_L3/Qgrid_ocl.npy", Qgrid[:,:,:,0] )
         
-        self.poisson( bReturn=bCheckPoisson, sh=sh )
+        self.poisson( bReturn=bCheckPoisson, sh=sh, sigma=sigma )
         Vin_buff = self.laplace_real_loop_inert( bReturn=False, niter=niter, sh=sh )
 
         if bCheckVin:

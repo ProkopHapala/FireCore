@@ -14,16 +14,17 @@ def print_devices(platforms=None ):
         for j, device in enumerate(devices):
             print(f"  Device {j}: {device.name}")
 
-def select_device(platforms=None, preferred_vendor='nvidia', bPrint=False, device_index=0):
+def select_device(platforms=None, preferred_vendor='nvidia', bPrint=False, device_index=0, return_queue=False):
     if platforms is None:
         platforms = cl.get_platforms()
     if bPrint:
         print_devices(platforms)
-    # Try to find preferred vendor device
     preferred_devices = []
     for platform in platforms:
         for device in platform.get_devices():
-            if preferred_vendor.lower() in device.name.lower():
+            name = device.name.lower()
+            vendor = device.vendor.lower()
+            if (preferred_vendor is not None) and ((preferred_vendor.lower() in name) or (preferred_vendor.lower() in vendor)):
                 preferred_devices.append((platform, device))
     if preferred_devices:
         platform, device = preferred_devices[0]
@@ -31,10 +32,26 @@ def select_device(platforms=None, preferred_vendor='nvidia', bPrint=False, devic
         if bPrint:
             print(f"Selected {preferred_vendor} device: {device.name}")
     else:
-        # Fall back to default behavior
-        if bPrint:
-            print(f"Selected default device {device_index}")
-        ctx = cl.create_some_context(answers=[device_index])
+        devices = []
+        for platform in platforms:
+            for device in platform.get_devices():
+                devices.append(device)
+        if len(devices) > 0:
+            i = max(0, min(int(device_index), len(devices) - 1))
+            device = devices[i]
+            ctx = cl.Context([device])
+            if bPrint:
+                print(f"Selected fallback device {i}: {device.name}")
+        else:
+            if bPrint:
+                print(f"Selected default device {device_index}")
+            ctx = cl.create_some_context(answers=[device_index])
+            device = ctx.devices[0]
+    queue = cl.CommandQueue(ctx)
+    if bPrint and len(ctx.devices) > 0:
+        clu.get_cl_info(ctx.devices[0])
+    if return_queue:
+        return ctx, queue
     return ctx
 
 class OpenCLBase:
@@ -58,7 +75,7 @@ class OpenCLBase:
         return np.require(arr, dtype=np.int32, requirements=('C',)) # .view(np.int32).ravel()
 
 
-    def __init__(self, nloc=32, device_index=0):
+    def __init__(self, nloc=32, device_index=0, preferred_vendor='nvidia', bPrint=True):
         """
         Initialize the OpenCL environment.
         
@@ -67,9 +84,7 @@ class OpenCLBase:
             device_index (int): Index of the device to use (default: 0)
         """
         self.nloc = nloc
-        self.ctx = select_device(preferred_vendor='nvidia', bPrint=True)
-        clu.get_cl_info(self.ctx.devices[0])
-        self.queue = cl.CommandQueue(self.ctx)
+        self.ctx, self.queue = select_device(preferred_vendor=preferred_vendor, bPrint=bPrint, device_index=device_index, return_queue=True)
             
         self.buffer_dict = {}
         self.kernelheaders = {}

@@ -415,3 +415,43 @@ Status and remaining work
 
 - Orig kernel: tail and minimum fixed; near-min RMSE in the meV range. The only large discrepancy is the excluded Pauli wall.
 - Lateral scans and optimized kernels (harmonics/workgroup) still need to be rerun under this corrected footing; planned next.
+
+# 2026-03-14 — CaF₂ GridFF Coulomb/PLQ debugging note
+
+## Problem observed
+- 1D z-scans over topmost F/Ca with H(+0.2e) and O(-0.4e) showed nonphysical signs and collapse.
+- Coulomb appeared to have the wrong sign above F/Ca, and smeared (σ=1.0 Å) potentials still collapsed for Ca–O.
+- Pauli (Morse) contribution was far too weak relative to Coulomb.
+
+## Root causes (evidence-based)
+1) Grid origin mismatch in scans
+   - PLQ grids are built with `g0 = (-Lx/2, -Ly/2, z0)` (centered lattice), but the scan extractor indexed as if `g0=(0,0,0)`.
+   - Fix: use centered `g0` when converting atom coords to grid indices.
+2) Pauli too soft
+   - Default `alpha=1.5` with tiny EvdW values (F: 2.17e-3, Ca: 1.30e-3, H probe: 1.91e-3, O probe: 2.60e-3) yields meV-scale Pauli near contact.
+   - Smeared Coulomb (erf-like) still dominates → collapse for attractive pairs (Ca–O).
+3) Prefactor handling clarified
+   - Surface grid: `make_MorseFF` applies `exp(-α(r-R_surface))`, so the grid already includes `exp(+αR_surface)` (Pauli uses `exp(+2αR_surface)`).
+   - Probe combination (Python `getPLQH`): multiplies by `exp(+αR_probe)` (London) and `exp(+2αR_probe)` (Pauli).
+   - Final pair prefactors: `cL ∝ E_surface E_probe exp(α(Ri+Rj))`, `cP ∝ E_surface E_probe exp(2α(Ri+Rj))`. Both radii are included, split across surface and probe stages.
+
+## Corrections applied
+- Scan indexing fixed (centered origin) → Coulomb signs restored.
+- `alpha_morse` exposed to OpenCL build; CaF₂ workflow default set to `alpha=2.0` so surface and probe use the same exponent.
+- Added diagnostics: pair prefactor prints, per-case scan summaries, component plots (Total, Coulomb, Pauli, NonElec).
+
+## Results with `alpha=2.0` (σ = 0.0, 1.0 Å)
+- F–H: attractive at medium range; repulsive near contact (smeared avoids collapse).
+- F–O: repulsive (like-charge).
+- Ca–H: repulsive.
+- Ca–O: no collapse; repulsive at contact, crosses to attraction ≈0.73 Å above Ca for σ=1.0.
+
+## Recommended practice for prefactors/radii
+- Keep `alpha` consistent between surface-grid build and probe combination (one source of truth, passed through).
+- Use centered grid origin when sampling PLQ outputs.
+- If Pauli is too weak for attractive pairs, prefer increasing `alpha` moderately (e.g., 2.0) before inflating EvdW; this strengthens only short-range repulsion.
+- Verify at least four diagnostics per system: Coulomb-only sign, Pauli magnitude at contact, zero-crossing height, far-field reference (V at largest h).
+
+## Files touched (for reference)
+- `tests/tMMFF/run_test_GridFF_CaF2.py`: centered indexing, diagnostics, default `alpha=2.0`, pass `alpha_morse` through.
+- `pyBall/tests/ocl_GridFF_new.py`: `alpha_morse` parameter used in OpenCL Morse grid build.

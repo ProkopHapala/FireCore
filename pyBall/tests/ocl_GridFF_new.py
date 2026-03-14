@@ -186,7 +186,7 @@ def coulomb_brute_1D( atoms, kind='z', p0=[0.0,0.0,2.0], bPlot=False, nPBC=(60,6
             ps[:,2] = p0[2]
             ps[:,0] = ts
             ps[:,1] = ts
-        FEps = clgff.make_Coulomb_points( atoms, ps, nPBC=nPBC, Ls=[4.0,4.0,40.0], GFFParams=(0.00001, 1.5, 0.0, 0.0), bReturn=True)
+        FEps = clgff.make_Coulomb_points( atoms, ps, nPBC=nPBC, Ls=[4.0,4.0,40.0], GFFParams=(0.00001, alpha_morse, 0.0, 0.0), bReturn=True)
         vmin=FEps.min()
         vmax=FEps.max()
         print( "coulomb_brute_1D() vmin,vmax ", vmin, vmax )
@@ -274,8 +274,10 @@ def plotTrjs( trjs, names, save_path=None, show=True ):
     plt.close()
 
 
-def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Atom_Types_name="./data/AtomTypes.dat", Element_Types_name="./data/ElementTypes.dat", job="PLQ", b2D=False, bSymetrize=False, bFit=True, use_CG=False, save_name=None, z0=np.nan, nmaxiter=None, nPerStep=None, damp=None, save_fig=False, fig_path=None, use_tiled=False, dg=(0.1,0.1,0.1) ):
+def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Atom_Types_name="./data/AtomTypes.dat", Element_Types_name="./data/ElementTypes.dat", job="PLQ", b2D=False, bSymetrize=False, bFit=True, use_CG=False, save_name=None, z0=np.nan, nmaxiter=None, nPerStep=None, damp=None, save_fig=False, fig_path=None, use_tiled=False, dg=(0.1,0.1,0.1), sigma=0.0, alpha_morse=1.5 ):
     print( "py======= test_gridFF_ocl() START" );
+    global clgff
+    clgff = GridFF_cl()
 
     T00 = time.perf_counter()
 
@@ -316,7 +318,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Atom_Types_name="./data
 
         g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, z0 )
         nPBC_mors = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC(nPBC_mors): ", nPBC_mors )
-        FE_Paul, FE_Lond = clgff.make_MorseFF_f4( xyzq, REQs, nPBC=nPBC_mors, dg=dg, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=True )
+        FE_Paul, FE_Lond = clgff.make_MorseFF_f4( xyzq, REQs, nPBC=nPBC_mors, dg=dg, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,alpha_morse,0.0,0.0), bReturn=True )
         np.save( path+"FE_Paul.npy", FE_Paul )
         np.save( path+"FE_Lond.npy", FE_Lond )
     
@@ -347,12 +349,12 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Atom_Types_name="./data
         # --- Morse
         g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, z0 )
         nPBC_mors = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC(nPBC_mors): ", nPBC_mors )
-        clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC_mors, dg=dg, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=False )
+        clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC_mors, dg=dg, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,alpha_morse,0.0,0.0), bReturn=False )
         V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, nPerStep=50, nmaxiter=500, damp=0.15, bConvTrj=True ); #T_fit_P = time.perf_counter()
         V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, nPerStep=50, nmaxiter=500, damp=0.15, bConvTrj=True ); #T_fit_ = time.perf_counter()
 
         # --- Coulomb
-        Vcoul = clgff.makeCoulombEwald_slab( xyzq, niter=2, bSaveQgrid=True, bCheckVin=True, bCheckPoisson=True )
+        Vcoul = clgff.makeCoulombEwald_slab( xyzq, niter=2, bSaveQgrid=True, bCheckVin=True, bCheckPoisson=True, sigma=sigma )
 
         #VcoulB,trj_coul = clgff.fit3D( clgff.V1_buff, nPerStep=100, nmaxiter=3000, damp=0.05, bConvTrj=True ); #T_fit_ = time.perf_counter()
         VcoulB,trj_coul = clgff.fit3D( clgff.V_Coul_buff, nPerStep=50, nmaxiter=500, damp=0.15, bConvTrj=True ); #T_fit_ = time.perf_counter()
@@ -440,7 +442,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Atom_Types_name="./data
         # Morse-only path: skip Coulomb/Ewald entirely; fit Pauli and London
         g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, z0 )
         nPBC_mors = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC(nPBC_mors): ", nPBC_mors )
-        clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC_mors, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=False )
+        clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC_mors, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,alpha_morse,0.0,0.0), bReturn=False )
 
         # # defaults
         # nmaxiter_cg = 1000 if nmaxiter is None else nmaxiter
@@ -640,7 +642,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Atom_Types_name="./data
             g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, 0.0 )
             #g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, -p0[2] ) 
             #T0 = time.perf_counter()
-            clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=False )
+            clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,alpha_morse,0.0,0.0), bReturn=False )
             #T_morse = time.perf_counter()
 
             # if bDebug:

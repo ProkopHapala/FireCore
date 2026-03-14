@@ -1513,7 +1513,8 @@ __kernel void poissonW(
     const int4   ns,         // (nx, ny, nz, nxyz)
     __global float2* rho_k,  // input array  rho(k) - Fourier coefficients (complex)
     __global float2* V_k,    // output array V(k)   - Fourier coefficients (complex)
-    const float4 coefs       // (freq_x, freq_y, freq_z, unused)
+    const float4 coefs,      // (freq_x, freq_y, freq_z, amp)
+    const float4 params      // (gauss_a, bDivideByK2, bNormalizeGauss, unused)
 ){
     const int iG = get_global_id(0);
     if (iG >= ns.w) return;
@@ -1539,7 +1540,15 @@ __kernel void poissonW(
 
     const float k2 = kx * kx + ky * ky + kz * kz;
 
-    const float f = (k2 > 1e-32) ? ( coefs.w / k2) : 0.0f;
+    float f = coefs.w;
+    if (params.x > 0.0f) {
+        f *= exp(-params.x * k2);
+    }
+    if (params.y > 0.5f) {
+        f = (k2 > 1e-32f) ? (f / k2) : 0.0f;
+    } else if ((k2 <= 1e-32f) && (params.x <= 0.0f) && (fabs(coefs.w - 1.0f) < 1e-8f)) {
+        f = 1.0f;
+    }
 
     V_k[iG] = rho_k[iG] * f;
 }
