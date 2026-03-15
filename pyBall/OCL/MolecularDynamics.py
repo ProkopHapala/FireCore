@@ -505,7 +505,13 @@ class MolecularDynamics(OpenCLBase):
                 self.kernel_args_getSurfFolded_workgroup = self.generate_kernel_args("getSurfFolded_workgroup")
             else:
                 warn_skip("getSurfFolded_workgroup", missing)
-
+        self.kernel_args_sampleGridFF_Bspline_points = None
+        if "sampleGridFF_Bspline_points" in self.kernelheaders:
+            ok, missing = can_bind_kernel("sampleGridFF_Bspline_points")
+            if ok:
+                self.kernel_args_sampleGridFF_Bspline_points = self.generate_kernel_args("sampleGridFF_Bspline_points")
+            else:
+                warn_skip("sampleGridFF_Bspline_points", missing)
         # Non-bonded (optional)
         self.kernel_args_getNonBond = None
         self.kernel_args_getNonBond_ex2 = None
@@ -663,7 +669,7 @@ class MolecularDynamics(OpenCLBase):
             z = zs[i]
             if (not zuniq) or (abs(z-zuniq[-1]) > tol):
                 zuniq.append(z)
-        if len(zuniq) > 3:
+        if bMacro and (len(zuniq) > 3):
             raise ValueError(f"set_surface(): getSurfMorse rectangle macro currently supports up to 3 z-layers, got {len(zuniq)}")
         cx = 0.5 * (xmin + xmax)
         cy = 0.5 * (ymin + ymax)
@@ -943,6 +949,22 @@ class MolecularDynamics(OpenCLBase):
             self.prg.getSurfFolded_workgroup(self.queue, sz, loc, *self.kernel_args_getSurfFolded_workgroup)
         else:
             raise ValueError(f"run_getSurfFolded(): unknown folded kernel '{kind}', expected one of {FOLDED_KERNEL_NAMES}")
+        self.queue.finish()
+
+    def run_sampleGridFF_Bspline_points(self, nSystems=None, PLQH=None):
+        if self.kernel_args_sampleGridFF_Bspline_points is None:
+            self.kernel_args_sampleGridFF_Bspline_points = self.generate_kernel_args('sampleGridFF_Bspline_points', bPrint=False)
+        args = self.kernel_args_sampleGridFF_Bspline_points
+        if PLQH is not None:
+            self.kernel_params['PLQH'] = np.asarray(PLQH, dtype=np.float32).reshape(4)
+            self.kernel_args_sampleGridFF_Bspline_points = self.generate_kernel_args('sampleGridFF_Bspline_points', bPrint=False)
+            args = self.kernel_args_sampleGridFF_Bspline_points
+        nSystems = self.nSystems if nSystems is None else int(nSystems)
+        lx = int(self.nloc)
+        gx = int(math.ceil(float(self.natoms) / lx) * lx)
+        sz = (gx, nSystems)
+        loc = (lx, 1)
+        self.prg.sampleGridFF_Bspline_points(self.queue, sz, loc, *args)
         self.queue.finish()
 
     def _folded_unique_types(self, REQs, decimals=6):
@@ -1275,7 +1297,152 @@ class MolecularDynamics(OpenCLBase):
             t_download += (t4 - t3)
         z = np.zeros_like(out_total)
         return {'total': out_total, 'LJ': z.copy(), 'Coulomb': z.copy(), 'HBond': z.copy(), 't_prep_s': t_prep, 't_kernel_s': t_kernel, 't_download_s': t_download, 't_total_s': t_prep + t_kernel + t_download}
-    
+
+    def eval_gridff_points(self, points, PLQH=None, chunk_size=None):
+        if self.kernel_args_sampleGridFF_Bspline_points is None:
+            if 'sampleGridFF_Bspline_points' in self.kernelheaders:
+                self.kernel_args_sampleGridFF_Bspline_points = self.generate_kernel_args('sampleGridFF_Bspline_points', bPrint=False)
+            else:
+                raise ValueError('eval_gridff_points(): sampleGridFF_Bspline_points kernel not available')
+        pts = np.asarray(points, dtype=np.float32).reshape(-1, 3)
+        nconf = len(pts)
+        if nconf <= 0:
+            z = np.zeros(0, dtype=np.float32)
+            return {'total': z.copy(), 'fx': z.copy(), 'fy': z.copy(), 'fz': z.copy()}
+        if chunk_size is None:
+            chunk_size = self.nSystems
+        chunk_size = int(min(chunk_size, self.nSystems))
+        if chunk_size <= 0:
+            raise ValueError(f'eval_gridff_points(): invalid chunk_size={chunk_size} for nSystems={self.nSystems}')
+        out_total = np.empty(nconf, dtype=np.float32)
+        out_fx = np.empty(nconf, dtype=np.float32)
+        out_fy = np.empty(nconf, dtype=np.float32)
+        out_fz = np.empty(nconf, dtype=np.float32)
+        float_size = np.float32().itemsize
+        sys_bytes = self.nvecs * 4 * float_size
+        plqh = self._resolve_plqh(PLQH=PLQH)
+        for i0 in range(0, nconf, chunk_size):
+            nch = min(chunk_size, nconf - i0)
+            apos = np.zeros((nch, self.nvecs, 4), dtype=np.float32)
+            apos[:, 0, :3] = pts[i0:i0+nch, :3]
+            self.toGPU('apos', apos, byte_offset=0)
+            cl.enqueue_fill_buffer(self.queue, self.buffer_dict['aforce'], np.zeros(1, dtype=np.float32), 0, nch * sys_bytes)
+            self.queue.finish()
+            self.run_sampleGridFF_Bspline_points(nSystems=nch, PLQH=plqh)
+            aforce = np.empty((nch, self.nvecs, 4), dtype=np.float32)
+            self.fromGPU('aforce', aforce)
+            self.queue.finish()
+            out_fx[i0:i0+nch] = aforce[:, 0, 0]
+            out_fy[i0:i0+nch] = aforce[:, 0, 1]
+            out_fz[i0:i0+nch] = aforce[:, 0, 2]
+            out_total[i0:i0+nch] = -aforce[:, 0, 3]
+        return {'total': out_total, 'fx': out_fx, 'fy': out_fy, 'fz': out_fz}
+
+    def eval_surface_iso_gridff(self, probe_req, sel_PLQH, col_PLQH, x_range, y_range, z_range, nx=64, ny=64, nz=80, mode='threshold', threshold=0.0, z_top=0.0):
+        if 'getSurfaceIsoGridFF' not in self.kernelheaders:
+            raise ValueError("eval_surface_iso_gridff(): kernel 'getSurfaceIsoGridFF' not available")
+        nx = int(nx); ny = int(ny); nz = int(nz)
+        if nx <= 0 or ny <= 0 or nz < 2:
+            raise ValueError(f"eval_surface_iso_gridff(): invalid grid ({nx},{ny},{nz})")
+        nxy = nx * ny
+        float_size = np.float32().itemsize
+        self.check_buf('surf_xyzq', nxy * 4 * float_size, cl.mem_flags.READ_WRITE)
+        self.check_buf('surf_zc', nxy * 2 * float_size, cl.mem_flags.READ_WRITE)
+        x0, x1 = float(x_range[0]), float(x_range[1])
+        y0, y1 = float(y_range[0]), float(y_range[1])
+        z0, z1 = float(z_range[0]), float(z_range[1])
+        dx = 0.0 if nx <= 1 else (x1 - x0) / float(nx - 1)
+        dy = 0.0 if ny <= 1 else (y1 - y0) / float(ny - 1)
+        dz = 0.0 if nz <= 1 else (z1 - z0) / float(nz - 1)
+        imode = 0 if str(mode).lower() == 'threshold' else 1
+        kernel = self.prg.getSurfaceIsoGridFF
+        kernel.set_args(
+            np.asarray(self.kernel_params['grid_ns'], dtype=np.int32),
+            self.buffer_dict['BsplinePLQ'],
+            np.asarray(self.kernel_params['grid_invStep'], dtype=np.float32),
+            np.asarray(self.kernel_params['grid_p0'], dtype=np.float32),
+            np.asarray(sel_PLQH, dtype=np.float32).reshape(4),
+            np.asarray(col_PLQH, dtype=np.float32).reshape(4),
+            np.array([nx, ny, nz, imode], dtype=np.int32),
+            np.array([x0, y0, z0, float(threshold)], dtype=np.float32),
+            np.array([dx, dy, dz, z1], dtype=np.float32),
+            np.array([float(z_top), 0.0, 0.0, 0.0], dtype=np.float32),
+            self.buffer_dict['surf_xyzq'],
+            self.buffer_dict['surf_zc'],
+        )
+        local = (min(self.nloc, 16), min(self.nloc, 16))
+        global_size = (clu.roundup_global_size(nx, local[0]), clu.roundup_global_size(ny, local[1]))
+        cl.enqueue_nd_range_kernel(self.queue, kernel, global_size, local)
+        self.queue.finish()
+        xyzq = np.empty((nxy, 4), dtype=np.float32)
+        zc = np.empty((nxy, 2), dtype=np.float32)
+        self.fromGPU('surf_xyzq', xyzq)
+        self.fromGPU('surf_zc', zc)
+        self.queue.finish()
+        xyzq = xyzq.reshape(ny, nx, 4).transpose(1, 0, 2).copy()
+        zc = zc.reshape(ny, nx, 2).transpose(1, 0, 2).copy()
+        return {'points_world': xyzq[:, :, :3], 'ok_mask': xyzq[:, :, 3] > 0.5, 'z_report': zc[:, :, 0], 'color': zc[:, :, 1]}
+
+    def eval_surface_iso_morse(self, probe_req, sel_PLQH, col_PLQH, x_range, y_range, z_range, nx=64, ny=64, nz=80, mode='threshold', threshold=0.0, z_top=None):
+        if 'getSurfaceIsoSurfMorse' not in self.kernelheaders:
+            raise ValueError("eval_surface_iso_morse(): kernel 'getSurfaceIsoSurfMorse' not available")
+        if getattr(self, 'surface_atoms', None) is None:
+            raise ValueError('eval_surface_iso_morse(): call set_surface() first')
+        nx = int(nx); ny = int(ny); nz = int(nz)
+        if nx <= 0 or ny <= 0 or nz < 2:
+            raise ValueError(f"eval_surface_iso_morse(): invalid grid ({nx},{ny},{nz})")
+        nxy = nx * ny
+        float_size = np.float32().itemsize
+        self.check_buf('surf_xyzq', nxy * 4 * float_size, cl.mem_flags.READ_WRITE)
+        self.check_buf('surf_zc', nxy * 2 * float_size, cl.mem_flags.READ_WRITE)
+        x0, x1 = float(x_range[0]), float(x_range[1])
+        y0, y1 = float(y_range[0]), float(y_range[1])
+        z0, z1 = float(z_range[0]), float(z_range[1])
+        dx = 0.0 if nx <= 1 else (x1 - x0) / float(nx - 1)
+        dy = 0.0 if ny <= 1 else (y1 - y0) / float(ny - 1)
+        dz = 0.0 if nz <= 1 else (z1 - z0) / float(nz - 1)
+        imode = 0 if str(mode).lower() == 'threshold' else 1
+        z_top = float(np.max(self.surface_atoms[:, 2])) if z_top is None else float(z_top)
+        ns = np.array([1, 0, len(self.surface_atoms), 0], dtype=np.int32)
+        kernel = self.prg.getSurfaceIsoSurfMorse
+        kernel.set_args(
+            ns,
+            self.buffer_dict['atoms_s'],
+            self.buffer_dict['REQ_s'],
+            self.buffer_dict['surf_mpos'],
+            self.buffer_dict['surf_mdip'],
+            self.buffer_dict['surf_mQa'],
+            self.buffer_dict['surf_mQb'],
+            self.buffer_dict['surf_mQc'],
+            self.buffer_dict['surf_qQa'],
+            self.buffer_dict['surf_qQb'],
+            self.buffer_dict['surf_qQc'],
+            np.asarray(self.kernel_params['nPBC'], dtype=np.int32),
+            np.asarray(self.kernel_params['lvec'], dtype=np.float32),
+            np.asarray(self.kernel_params['GFFParams'], dtype=np.float32),
+            np.asarray(probe_req, dtype=np.float32).reshape(4),
+            np.asarray(sel_PLQH, dtype=np.float32).reshape(4),
+            np.asarray(col_PLQH, dtype=np.float32).reshape(4),
+            np.array([nx, ny, nz, imode], dtype=np.int32),
+            np.array([x0, y0, z_top + z0, float(threshold)], dtype=np.float32),
+            np.array([dx, dy, dz, z_top + z1], dtype=np.float32),
+            self.buffer_dict['surf_xyzq'],
+            self.buffer_dict['surf_zc'],
+        )
+        local = (min(self.nloc, 16), min(self.nloc, 16))
+        global_size = (clu.roundup_global_size(nx, local[0]), clu.roundup_global_size(ny, local[1]))
+        cl.enqueue_nd_range_kernel(self.queue, kernel, global_size, local)
+        self.queue.finish()
+        xyzq = np.empty((nxy, 4), dtype=np.float32)
+        zc = np.empty((nxy, 2), dtype=np.float32)
+        self.fromGPU('surf_xyzq', xyzq)
+        self.fromGPU('surf_zc', zc)
+        self.queue.finish()
+        xyzq = xyzq.reshape(ny, nx, 4).transpose(1, 0, 2).copy()
+        zc = zc.reshape(ny, nx, 2).transpose(1, 0, 2).copy()
+        zc[:, :, 0] = xyzq[:, :, 2] - z_top
+        return {'points_world': xyzq[:, :, :3], 'ok_mask': xyzq[:, :, 3] > 0.5, 'z_report': zc[:, :, 0], 'color': zc[:, :, 1]}
+
     def run_runMD(self):
         self.prg.runMD(self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_runMD)
         self.queue.finish()
@@ -1394,7 +1561,17 @@ class MolecularDynamics(OpenCLBase):
             # Kernel expects argument name 'BsplinePLQ'
             self.buffer_dict['BsplinePLQ'] = buf
             if bKernels:
-                self.kernel_args_getNonBond_GridFF_Bspline = self.generate_kernel_args("getNonBond_GridFF_Bspline", bPrint=False)
+                self.kernel_args_getNonBond_GridFF_Bspline = None
+                if "getNonBond_GridFF_Bspline" in self.kernelheaders:
+                    try:
+                        self.kernel_args_getNonBond_GridFF_Bspline = self.generate_kernel_args("getNonBond_GridFF_Bspline", bPrint=False)
+                    except Exception as e:
+                        print(f"initGridFF: skipping getNonBond_GridFF_Bspline ({e})")
+                if "sampleGridFF_Bspline_points" in self.kernelheaders:
+                    try:
+                        self.kernel_args_sampleGridFF_Bspline_points = self.generate_kernel_args("sampleGridFF_Bspline_points", bPrint=False)
+                    except Exception as e:
+                        print(f"initGridFF: skipping sampleGridFF_Bspline_points ({e})")
                 self.kernel_args_getNonBond_GridFF_Bspline_ex2 = None
                 if self.enable_nonbond and ('excl' in self.buffer_dict) and ("getNonBond_GridFF_Bspline_ex2" in self.kernelheaders):
                     try:

@@ -23,6 +23,8 @@ from pyBall.MolGUI_common import (
     colors_for_enames, sizes_for_enames,
     find_bonds,
 )
+from pyBall.SurfaceSampling import ProbeParticle, build_surface_map
+from pyBall.VispyUtils import make_surface_mesh
 
 from PyQt5 import QtWidgets, QtCore
 import vispy
@@ -83,6 +85,8 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
 
         # ---- Scan results ----
         self.last_results = None
+        self.last_surface_result = None
+        self.last_surface_mesh = None
 
         self._build_ui()
         self._init_scanner()
@@ -108,6 +112,11 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
         # Scan trajectory visuals
         self.scan_points = visuals.Markers(parent=self.view.scene)
         self.scan_path   = visuals.Line(parent=self.view.scene, color=(0.9,0.2,0.2,0.7), width=2.0, antialias=True, method='gl')
+        self.surface_mesh = visuals.Mesh(parent=self.view.scene)
+        try:
+            self.surface_mesh.set_gl_state('translucent', depth_test=True)
+        except Exception:
+            pass
 
         # ---- Middle: Matplotlib plot ----
         self.fig = Figure(figsize=(4, 6), dpi=90, facecolor='white')
@@ -208,6 +217,38 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
         pgl.addWidget(btn_replot, 4, 0, 1, 2)
         vbox.addWidget(grp_plot)
 
+        grp_surf = QtWidgets.QGroupBox("Surface Map")
+        sfg = QtWidgets.QGridLayout(grp_surf)
+        self.combo_surf_source = QtWidgets.QComboBox(); self.combo_surf_source.addItems(["XYZ Reference", "XYZ Fast GPU", "XYZ Folded GPU", "GridFF"])
+        self.combo_probe = QtWidgets.QComboBox(); self.combo_probe.addItems(["H", "O", "Na", "Cl"])
+        self.sp_probe_q = self._add_dspin(sfg, 2, "Probe q", 0.2, 0.1, -4.0, 4.0, 3)
+        self.sp_probe_a = self._add_dspin(sfg, 3, "Probe alpha", 2.0, 0.1, 0.1, 10.0, 3)
+        sfg.addWidget(QtWidgets.QLabel("Backend"), 0, 0); sfg.addWidget(self.combo_surf_source, 0, 1)
+        sfg.addWidget(QtWidgets.QLabel("Probe"), 1, 0); sfg.addWidget(self.combo_probe, 1, 1)
+        sfg.addWidget(QtWidgets.QLabel("Mode"), 4, 0)
+        self.combo_surf_mode = QtWidgets.QComboBox(); self.combo_surf_mode.addItems(["threshold", "first_minimum"]); sfg.addWidget(self.combo_surf_mode, 4, 1)
+        sfg.addWidget(QtWidgets.QLabel("Selector"), 5, 0)
+        self.combo_surf_selector = QtWidgets.QComboBox(); self.combo_surf_selector.addItems(["total", "nonel", "coulomb", "pauli", "london"]); sfg.addWidget(self.combo_surf_selector, 5, 1)
+        sfg.addWidget(QtWidgets.QLabel("Color"), 6, 0)
+        self.combo_surf_color = QtWidgets.QComboBox(); self.combo_surf_color.addItems(["coulomb", "total", "nonel", "pauli", "london"]); sfg.addWidget(self.combo_surf_color, 6, 1)
+        self.sp_surf_thresh = self._add_dspin(sfg, 7, "Threshold (eV)", 0.0, 0.05, -10.0, 10.0, 3)
+        self.sp_surf_zmin = self._add_dspin(sfg, 8, "z min", 1.0, 0.1, -20.0, 50.0, 2)
+        self.sp_surf_zmax = self._add_dspin(sfg, 9, "z max", 8.0, 0.1, -20.0, 80.0, 2)
+        self.sp_surf_xlo = self._add_dspin(sfg, 10, "x min", -1.0, 0.5, -100.0, 100.0, 2)
+        self.sp_surf_xhi = self._add_dspin(sfg, 11, "x max", 5.0, 0.5, -100.0, 100.0, 2)
+        self.sp_surf_ylo = self._add_dspin(sfg, 12, "y min", -1.0, 0.5, -100.0, 100.0, 2)
+        self.sp_surf_yhi = self._add_dspin(sfg, 13, "y max", 5.0, 0.5, -100.0, 100.0, 2)
+        self.sp_surf_nx = self._add_ispin(sfg, 14, "Nx", 64, 8, 8, 512)
+        self.sp_surf_ny = self._add_ispin(sfg, 15, "Ny", 64, 8, 8, 512)
+        self.sp_surf_nz = self._add_ispin(sfg, 16, "Nz", 80, 8, 8, 512)
+        self.cb_show_surface = QtWidgets.QCheckBox("Show surface mesh"); self.cb_show_surface.setChecked(True)
+        self.cb_show_surface.stateChanged.connect(self._update_surface_visual)
+        sfg.addWidget(self.cb_show_surface, 17, 0, 1, 2)
+        btn_surf = QtWidgets.QPushButton("Build Surface")
+        btn_surf.clicked.connect(self._on_build_surface)
+        sfg.addWidget(btn_surf, 18, 0, 1, 2)
+        vbox.addWidget(grp_surf)
+
         # --- Energy display ---
         grp_e = QtWidgets.QGroupBox("Current Energy")
         efl = QtWidgets.QFormLayout(grp_e)
@@ -300,17 +341,24 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
             if not os.path.exists(self._sub_file):
                 raise FileNotFoundError(f"Substrate file not found: {self._sub_file}")
             apos, REQs, enames = self.scanner.load_substrate_xyz(self._sub_file, type_map=self._sub_type_map)
-            self.sub_apos = apos; self.sub_enames = enames; self.sub_bonds = find_bonds(apos, enames)
+            self.sub_apos = apos; self.sub_enames = enames; self.sub_bonds = []
+            zs = np.asarray(self.sub_apos[:, 2], dtype=np.float64)
+            zuniq = []
+            tol = 1e-4
+            for z in np.sort(zs):
+                if (not zuniq) or (abs(z - zuniq[-1]) > tol):
+                    zuniq.append(z)
+            bMacro = len(zuniq) <= 3
             self.scanner.nPBC[:] = (4, 4, 0)
-            self.scanner.enable_macro = True
+            self.scanner.enable_macro = bMacro
             self.scanner._update_macro_from_substrate()
         if (self.mol_apos is not None) and (mol_REQs is not None) and (self._sub_file is not None):
             self.fast_scanner = MolecularDynamics(nloc=32, debug_build_options='-DDBG_UFF=0')
             self.fast_scanner.init_rigid_molecule_batch(self.mol_apos, mol_REQs, nSystems=self.fast_chunk_size)
-            self.fast_scanner.set_surface(self._sub_file, nPBC=(4, 4, 0), pos0=(0.0, 0.0, 0.0), alpha_morse=1.8, r_damp=0.0, bMacro=True, type_map=self._sub_type_map)
+            self.fast_scanner.set_surface(self._sub_file, nPBC=(4, 4, 0), pos0=(0.0, 0.0, 0.0), alpha_morse=1.8, r_damp=0.0, bMacro=bMacro, type_map=self._sub_type_map)
             self.folded_scanner = MolecularDynamics(nloc=32, debug_build_options='-DDBG_UFF=0')
             self.folded_scanner.init_rigid_molecule_batch(self.mol_apos, mol_REQs, nSystems=self.fast_chunk_size)
-            self.folded_scanner.set_surface(self._sub_file, nPBC=(4, 4, 0), pos0=(0.0, 0.0, 0.0), alpha_morse=1.8, r_damp=0.0, bMacro=True, type_map=self._sub_type_map)
+            self.folded_scanner.set_surface(self._sub_file, nPBC=(4, 4, 0), pos0=(0.0, 0.0, 0.0), alpha_morse=1.8, r_damp=0.0, bMacro=bMacro, type_map=self._sub_type_map)
 
     def _ensure_folded_ready(self):
         if self.folded_scanner is None:
@@ -729,6 +777,76 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
         self.scan_points.set_data(pts, face_color=(0.9, 0.2, 0.2, 0.8), size=6.0, edge_width=0.5, edge_color='white')
         self.scan_path.set_data(pts, color=(0.9, 0.2, 0.2, 0.7), width=2.0)
 
+    def _surface_backend_name(self):
+        txt = self.combo_surf_source.currentText()
+        if txt == "XYZ Reference":
+            return 'reference'
+        if txt == "XYZ Fast GPU":
+            return 'fast_gpu'
+        if txt == "XYZ Folded GPU":
+            return 'folded_gpu'
+        if txt == "GridFF":
+            return 'gridff'
+        raise ValueError(f"_surface_backend_name(): unsupported combo text '{txt}'")
+
+    def _surface_gridff_path(self):
+        if self._sub_file is None:
+            raise ValueError("Surface backend requires loaded substrate xyz")
+        base = os.path.splitext(os.path.basename(self._sub_file))[0]
+        gpath = os.path.join(_ROOT_DIR, 'cpp', 'common_resources', base, 'Bspline_PLQd.npy')
+        if not os.path.exists(gpath):
+            raise FileNotFoundError(f"GridFF resource not found for substrate '{base}': {gpath}")
+        return gpath
+
+    def _update_surface_visual(self):
+        if (not self.cb_show_surface.isChecked()) or (self.last_surface_mesh is None):
+            self.surface_mesh.set_data(vertices=np.zeros((0, 3), dtype=np.float32), faces=np.zeros((0, 3), dtype=np.uint32))
+            return
+        md = self.last_surface_mesh
+        self.surface_mesh.set_data(vertices=md['vertices'], faces=md['faces'], vertex_colors=md['vertex_colors'])
+
+    def _on_build_surface(self):
+        self.status.setText("Building surface map...")
+        QtWidgets.QApplication.processEvents()
+        try:
+            probe = ProbeParticle(
+                name=self.combo_probe.currentText(),
+                charge=float(self.sp_probe_q.value()),
+                alpha=float(self.sp_probe_a.value()),
+            )
+            bk = self._surface_backend_name()
+            src = 'gridff' if bk == 'gridff' else 'xyz'
+            kwargs = dict(
+                source=src,
+                substrate_xyz=self._sub_file,
+                gridff_path=(self._surface_gridff_path() if src == 'gridff' else None),
+                xyz_path=(self._sub_file if src == 'gridff' else None),
+                probe=probe,
+                xyz_type_map=self._sub_type_map,
+                backend=('reference' if bk == 'gridff' else bk),
+                nPBC=(4, 4, 0),
+                chunk_size=self.fast_chunk_size,
+                x_range=(self.sp_surf_xlo.value(), self.sp_surf_xhi.value()),
+                y_range=(self.sp_surf_ylo.value(), self.sp_surf_yhi.value()),
+                z_range=(self.sp_surf_zmin.value(), self.sp_surf_zmax.value()),
+                nx=self.sp_surf_nx.value(),
+                ny=self.sp_surf_ny.value(),
+                nz=self.sp_surf_nz.value(),
+                selector=self.combo_surf_selector.currentText(),
+                color_component=self.combo_surf_color.currentText(),
+                mode=self.combo_surf_mode.currentText(),
+                threshold=self.sp_surf_thresh.value(),
+            )
+            result = build_surface_map(**kwargs)
+            mesh = make_surface_mesh(result.xs, result.ys, result.zs_world, scalar=result.color, cmap='coolwarm', symmetric=False, mask=result.ok_mask)
+            self.last_surface_result = result
+            self.last_surface_mesh = mesh
+            self._update_surface_visual()
+            self.status.setText(f"Surface map done: ok={int(np.sum(result.ok_mask))}/{int(result.ok_mask.size)}")
+        except Exception as e:
+            self.status.setText(f"Surface map error: {e}")
+            import traceback; traceback.print_exc()
+
     def _plot_2d(self, results, mode='xy'):
         self.ax.clear()
         if self._last_colorbar is not None:
@@ -805,7 +923,7 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
         if self.scanner is None: return
         apos, REQs, enames = self.scanner.load_substrate_xyz(fname, type_map=type_map)
         self.sub_apos = apos; self.sub_enames = enames
-        self.sub_bonds = find_bonds(apos, enames)
+        self.sub_bonds = []
         self._update_visuals()
         self._eval_current_pose()
 

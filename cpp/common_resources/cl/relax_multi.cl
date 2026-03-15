@@ -2741,6 +2741,316 @@ inline float4 fe3d_pbc_comb(const float3 u, const int3 n, __global const float4*
 
 
 // ======================================================================
+//                    sampleGridFF_Bspline_points()
+// ======================================================================
+// Sample GridFF B-spline at arbitrary points. Intended for rigid single-probe
+// batched surface scans. X/Y are periodic, Z is non-periodic and returns zero
+// outside valid cubic support. Output layout matches other rigid surface
+// kernels: forces.xyz = -dE/dxyz, forces.w = -E.
+__attribute__((reqd_work_group_size(32,1,1)))
+__kernel void sampleGridFF_Bspline_points(
+    const int4 ns,                  // 1  (natoms,nnode,nvec,0)
+    __global float4*  atoms,        // 2
+    __global float4*  forces,       // 3
+    __global float4*  BsplinePLQ,   // 4
+    const int4        grid_ns,      // 5
+    const float4      grid_invStep, // 6
+    const float4      grid_p0,      // 7
+    const float4      PLQH          // 8
+){
+    __local int4 xqs[4];
+    __local int4 yqs[4];
+    const int iG = get_global_id(0);
+    const int iS = get_global_id(1);
+    const int iL = get_local_id(0);
+    const int natoms = ns.x;
+    const int nnode  = ns.y;
+    const int nvec   = natoms + nnode;
+    const int i0v    = iS*nvec;
+    const int iav    = iG + i0v;
+    if(iL<4){ xqs[iL] = make_inds_pbc(grid_ns.x, iL); }
+    else if(iL<8){ int i=iL-4; yqs[i] = make_inds_pbc(grid_ns.y, i); }
+    barrier(CLK_LOCAL_MEM_FENCE);
+    if(iG>=natoms) return;
+    const float3 pos = atoms[iav].xyz;
+    const float3 u = (pos - grid_p0.xyz) * grid_invStep.xyz;
+    float4 fg = fe3d_pbc_comb(u, grid_ns.xyz, BsplinePLQ, PLQH, xqs, yqs);
+    fg.xyz *= -grid_invStep.xyz;
+    forces[iav] = (float4)(fg.x, fg.y, fg.z, -fg.w);
+}
+
+inline float evalSurfMorseE3D(
+    const float3 pos,
+    const float4 REQi,
+    __global float4*  atoms_s,
+    __global float4*  REQ_s,
+    __global float4*  surf_mpos,
+    __global float4*  surf_mdip,
+    __global float4*  surf_mQa,
+    __global float4*  surf_mQb,
+    __global float4*  surf_mQc,
+    __global float4*  surf_qQa,
+    __global float4*  surf_qQb,
+    __global float4*  surf_qQc,
+    const int na_surf,
+    const int4 nPBC,
+    const cl_Mat3 lvec,
+    const float4 GFFParams,
+    const float4 PLQH
+){
+    const float  K          = -GFFParams.y;
+    const float  R2damp     =  GFFParams.x*GFFParams.x;
+    const float3 shift_b    = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);
+    const float3 shift_c    = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);
+    const int bMacro        = (int)(GFFParams.z>0.5f);
+    const float3 pos0       = pos + lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+    float E = 0.0f;
+    for(int ja=0; ja<na_surf; ja++){
+        float4 REQH = REQ_s[ja];
+        float3 dp   = pos0 - atoms_s[ja].xyz;
+        REQH.x   += REQi.x;
+        REQH.yzw *= REQi.yzw;
+        for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+            for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+                    float4 fej = getMorsePLQH(dp, REQH, PLQH, K, R2damp);
+                    E -= fej.w;
+                    dp += lvec.a.xyz;
+                }
+                dp += shift_b;
+            }
+            dp += shift_c;
+        }
+    }
+    if( bMacro && (fabs(PLQH.z) > 1e-12f) && (fabs(REQi.z) > 1e-12f) ){
+        int nlayer = (int)(GFFParams.w + 0.5f);
+        float4 fm = getMacroRectLayers( pos, REQi.z, surf_mpos[0], surf_mdip[0], surf_mQa[0], surf_mQb[0], surf_mQc[0], surf_qQa[0], surf_qQb[0], surf_qQc[0], nlayer );
+        E += fm.w;
+    }
+    return E;
+}
+
+inline float evalGridFFEnergy3D(
+    const float3 pos,
+    __global float4*  BsplinePLQ,
+    const int4        grid_ns,
+    const float4      grid_invStep,
+    const float4      grid_p0,
+    const float4      PLQH,
+    __local const int4* xqs,
+    __local int4* yqs
+){
+    const float3 u = (pos - grid_p0.xyz) * grid_invStep.xyz;
+    float4 fg = fe3d_pbc_comb(u, grid_ns.xyz, BsplinePLQ, PLQH, xqs, yqs);
+    return fg.w;
+}
+
+__kernel void getSurfaceIsoSurfMorse(
+    const int4 ns,                // 1  (1,0,na_surf,0)
+    __global float4*  atoms_s,    // 2
+    __global float4*  REQ_s,      // 3
+    __global float4*  surf_mpos,  // 4
+    __global float4*  surf_mdip,  // 5
+    __global float4*  surf_mQa,   // 6
+    __global float4*  surf_mQb,   // 7
+    __global float4*  surf_mQc,   // 8
+    __global float4*  surf_qQa,   // 9
+    __global float4*  surf_qQb,   // 10
+    __global float4*  surf_qQc,   // 11
+    const int4        nPBC,       // 12
+    const cl_Mat3     lvec,       // 13
+    const float4      GFFParams,  // 14
+    const float4      probe_REQ,  // 15
+    const float4      sel_PLQH,   // 16
+    const float4      col_PLQH,   // 17
+    const int4        surf_ns,    // 18 (nx,ny,nz,mode)
+    const float4      surf_p0,    // 19 (x0,y0,zmin,threshold)
+    const float4      surf_step,  // 20 (dx,dy,dz,zmax)
+    __global float4*  surf_xyzq,  // 21 (x,y,z,ok)
+    __global float2*  surf_zc     // 22 (z_report,color)
+){
+    const int ix = get_global_id(0);
+    const int iy = get_global_id(1);
+    const int nx = surf_ns.x;
+    const int ny = surf_ns.y;
+    const int nz = surf_ns.z;
+    const int mode = surf_ns.w;
+    if((ix>=nx)||(iy>=ny)) return;
+    const int i = ix + iy*nx;
+    const float x_in = surf_p0.x + surf_step.x*(float)ix;
+    const float y_in = surf_p0.y + surf_step.y*(float)iy;
+    const float ax = lvec.a.x;
+    const float ay = lvec.a.y;
+    const float bx = lvec.b.x;
+    const float by = lvec.b.y;
+    const float det = ax*by - bx*ay;
+    float x = x_in;
+    float y = y_in;
+    if(fabs(det) > 1e-12f){
+        const float inv00 =  by/det;
+        const float inv01 = -bx/det;
+        const float inv10 = -ay/det;
+        const float inv11 =  ax/det;
+        float fu = inv00*x_in + inv01*y_in;
+        float fv = inv10*x_in + inv11*y_in;
+        fu -= rint(fu);
+        fv -= rint(fv);
+        x = ax*fu + bx*fv;
+        y = ay*fu + by*fv;
+    }
+    const float zmin = surf_p0.z;
+    const float thr  = surf_p0.w;
+    const float dz   = surf_step.z;
+    const float zmax = surf_step.w;
+    float zh = NAN;
+    float ch = NAN;
+    int ok = 0;
+    if(mode==0){
+        float z_prev = zmax;
+        float e_prev = evalSurfMorseE3D((float3)(x,y,z_prev), probe_REQ, atoms_s, REQ_s, surf_mpos, surf_mdip, surf_mQa, surf_mQb, surf_mQc, surf_qQa, surf_qQb, surf_qQc, ns.z, nPBC, lvec, GFFParams, sel_PLQH);
+        for(int iz=nz-2; iz>=0; iz--){
+            float z_cur = zmin + dz*(float)iz;
+            float e_cur = evalSurfMorseE3D((float3)(x,y,z_cur), probe_REQ, atoms_s, REQ_s, surf_mpos, surf_mdip, surf_mQa, surf_mQb, surf_mQc, surf_qQa, surf_qQb, surf_qQc, ns.z, nPBC, lvec, GFFParams, sel_PLQH);
+            float s0 = e_prev - thr;
+            float s1 = e_cur  - thr;
+            if( isfinite(s0) && isfinite(s1) && (((s0<=0.f)&&(s1>=0.f)) || ((s0>=0.f)&&(s1<=0.f))) ){
+                float dv = s1 - s0;
+                float t = (fabs(dv)<1e-16f) ? 0.5f : (-s0/dv);
+                t = clamp(t, 0.0f, 1.0f);
+                zh = z_prev + t*(z_cur-z_prev);
+                ch = evalSurfMorseE3D((float3)(x,y,zh), probe_REQ, atoms_s, REQ_s, surf_mpos, surf_mdip, surf_mQa, surf_mQb, surf_mQc, surf_qQa, surf_qQb, surf_qQc, ns.z, nPBC, lvec, GFFParams, col_PLQH);
+                ok = 1;
+                break;
+            }
+            z_prev = z_cur;
+            e_prev = e_cur;
+        }
+    }else{
+        if(nz>=3){
+            float z0 = zmin;
+            float z1 = zmin + dz;
+            float v0 = evalSurfMorseE3D((float3)(x,y,z0), probe_REQ, atoms_s, REQ_s, surf_mpos, surf_mdip, surf_mQa, surf_mQb, surf_mQc, surf_qQa, surf_qQb, surf_qQc, ns.z, nPBC, lvec, GFFParams, sel_PLQH);
+            float v1 = evalSurfMorseE3D((float3)(x,y,z1), probe_REQ, atoms_s, REQ_s, surf_mpos, surf_mdip, surf_mQa, surf_mQb, surf_mQc, surf_qQa, surf_qQb, surf_qQc, ns.z, nPBC, lvec, GFFParams, sel_PLQH);
+            for(int iz=2; iz<nz; iz++){
+                float z2 = zmin + dz*(float)iz;
+                float v2 = evalSurfMorseE3D((float3)(x,y,z2), probe_REQ, atoms_s, REQ_s, surf_mpos, surf_mdip, surf_mQa, surf_mQb, surf_mQc, surf_qQa, surf_qQb, surf_qQc, ns.z, nPBC, lvec, GFFParams, sel_PLQH);
+                if( isfinite(v0) && isfinite(v1) && isfinite(v2) && (v1<=v0) && (v1<=v2) && ((v1<v0)||(v1<v2)) ){
+                    float den = (z0-z1)*(z0-z2)*(z1-z2);
+                    zh = z1;
+                    if(fabs(den)>=1e-16f){
+                        float A = (z2*(v1-v0) + z1*(v0-v2) + z0*(v2-v1)) / den;
+                        float B = (z2*z2*(v0-v1) + z1*z1*(v2-v0) + z0*z0*(v1-v2)) / den;
+                        if(fabs(A)>=1e-16f){
+                            float zm = -B/(2.f*A);
+                            if((zm>=fmin(z0,z2)) && (zm<=fmax(z0,z2))) zh = zm;
+                        }
+                    }
+                    ch = evalSurfMorseE3D((float3)(x,y,zh), probe_REQ, atoms_s, REQ_s, surf_mpos, surf_mdip, surf_mQa, surf_mQb, surf_mQc, surf_qQa, surf_qQb, surf_qQc, ns.z, nPBC, lvec, GFFParams, col_PLQH);
+                    ok = 1;
+                    break;
+                }
+                z0 = z1; z1 = z2; v0 = v1; v1 = v2;
+            }
+        }
+    }
+    surf_xyzq[i] = (float4)(x, y, zh, ok ? 1.0f : 0.0f);
+    surf_zc [i] = (float2)(zh, ch);
+}
+
+__kernel void getSurfaceIsoGridFF(
+    const int4        grid_ns,      // 1
+    __global float4*  BsplinePLQ,   // 2
+    const float4      grid_invStep, // 3
+    const float4      grid_p0,      // 4
+    const float4      sel_PLQH,     // 5
+    const float4      col_PLQH,     // 6
+    const int4        surf_ns,      // 7  (nx,ny,nz,mode)
+    const float4      surf_p0,      // 8  (x0,y0,zmin,threshold)
+    const float4      surf_step,    // 9  (dx,dy,dz,zmax)
+    const float4      surf_z0,      // 10 (z_top,0,0,0)
+    __global float4*  surf_xyzq,    // 11
+    __global float2*  surf_zc       // 12
+){
+    __local int4 xqs[4];
+    __local int4 yqs[4];
+    const int ix = get_global_id(0);
+    const int iy = get_global_id(1);
+    const int iLx = get_local_id(0);
+    const int iLy = get_local_id(1);
+    const int nx = surf_ns.x;
+    const int ny = surf_ns.y;
+    const int nz = surf_ns.z;
+    const int mode = surf_ns.w;
+    if((iLy==0) && (iLx<4)){ xqs[iLx] = make_inds_pbc(grid_ns.x, iLx); }
+    if((iLx==0) && (iLy<4)){ yqs[iLy] = make_inds_pbc(grid_ns.y, iLy); }
+    barrier(CLK_LOCAL_MEM_FENCE);
+    if((ix>=nx)||(iy>=ny)) return;
+    const int i = ix + iy*nx;
+    const float x = surf_p0.x + surf_step.x*(float)ix;
+    const float y = surf_p0.y + surf_step.y*(float)iy;
+    const float zmin = surf_p0.z;
+    const float thr  = surf_p0.w;
+    const float dz   = surf_step.z;
+    const float zmax = surf_step.w;
+    float zh = NAN;
+    float ch = NAN;
+    int ok = 0;
+    if(mode==0){
+        float z_prev = zmax;
+        const float3 u_prev = ((float3)(x,y,z_prev) - grid_p0.xyz) * grid_invStep.xyz;
+        float e_prev = fe3d_pbc_comb(u_prev, grid_ns.xyz, BsplinePLQ, sel_PLQH, xqs, yqs).w;
+        for(int iz=nz-2; iz>=0; iz--){
+            float z_cur = zmin + dz*(float)iz;
+            const float3 u_cur = ((float3)(x,y,z_cur) - grid_p0.xyz) * grid_invStep.xyz;
+            float e_cur = fe3d_pbc_comb(u_cur, grid_ns.xyz, BsplinePLQ, sel_PLQH, xqs, yqs).w;
+            float s0 = e_prev - thr;
+            float s1 = e_cur  - thr;
+            if( isfinite(s0) && isfinite(s1) && (((s0<=0.f)&&(s1>=0.f)) || ((s0>=0.f)&&(s1<=0.f))) ){
+                float dv = s1 - s0;
+                float t = (fabs(dv)<1e-16f) ? 0.5f : (-s0/dv);
+                t = clamp(t, 0.0f, 1.0f);
+                zh = z_prev + t*(z_cur-z_prev);
+                ch = fe3d_pbc_comb((((float3)(x,y,zh) - grid_p0.xyz) * grid_invStep.xyz), grid_ns.xyz, BsplinePLQ, col_PLQH, xqs, yqs).w;
+                ok = 1;
+                break;
+            }
+            z_prev = z_cur;
+            e_prev = e_cur;
+        }
+    }else{
+        if(nz>=3){
+            float z0 = zmin;
+            float z1 = zmin + dz;
+            float v0 = fe3d_pbc_comb((((float3)(x,y,z0) - grid_p0.xyz) * grid_invStep.xyz), grid_ns.xyz, BsplinePLQ, sel_PLQH, xqs, yqs).w;
+            float v1 = fe3d_pbc_comb((((float3)(x,y,z1) - grid_p0.xyz) * grid_invStep.xyz), grid_ns.xyz, BsplinePLQ, sel_PLQH, xqs, yqs).w;
+            for(int iz=2; iz<nz; iz++){
+                float z2 = zmin + dz*(float)iz;
+                float v2 = fe3d_pbc_comb((((float3)(x,y,z2) - grid_p0.xyz) * grid_invStep.xyz), grid_ns.xyz, BsplinePLQ, sel_PLQH, xqs, yqs).w;
+                if( isfinite(v0) && isfinite(v1) && isfinite(v2) && (v1<=v0) && (v1<=v2) && ((v1<v0)||(v1<v2)) ){
+                    float den = (z0-z1)*(z0-z2)*(z1-z2);
+                    zh = z1;
+                    if(fabs(den)>=1e-16f){
+                        float A = (z2*(v1-v0) + z1*(v0-v2) + z0*(v2-v1)) / den;
+                        float B = (z2*z2*(v0-v1) + z1*z1*(v2-v0) + z0*z0*(v1-v2)) / den;
+                        if(fabs(A)>=1e-16f){
+                            float zm = -B/(2.f*A);
+                            if((zm>=fmin(z0,z2)) && (zm<=fmax(z0,z2))) zh = zm;
+                        }
+                    }
+                    ch = fe3d_pbc_comb((((float3)(x,y,zh) - grid_p0.xyz) * grid_invStep.xyz), grid_ns.xyz, BsplinePLQ, col_PLQH, xqs, yqs).w;
+                    ok = 1;
+                    break;
+                }
+                z0 = z1; z1 = z2; v0 = v1; v1 = v2;
+            }
+        }
+    }
+    surf_xyzq[i] = (float4)(x, y, zh, ok ? 1.0f : 0.0f);
+    surf_zc [i] = (float2)(zh - surf_z0.x, ch);
+}
+
+
+// ======================================================================
 //                           getNonBond_GridFF_Bspline()
 // ======================================================================
 // Calculate non-bonded forces on atoms (icluding both node atoms and capping atoms), cosidering periodic boundary conditions

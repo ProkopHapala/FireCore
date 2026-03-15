@@ -5,6 +5,7 @@ import vispy
 vispy.use('pyqt5')
 from vispy import scene
 from vispy.scene import visuals
+from vispy.color import Colormap
 
 
 def _as_f32(x):
@@ -936,3 +937,130 @@ class AtomScene(QtCore.QObject):
             return
         self._cam_zoom(delta)
         ev.handled = True
+
+
+def normalize_scalar_field(vals, vmin=None, vmax=None, symmetric=False):
+    a = np.asarray(vals, dtype=np.float64)
+    finite = np.isfinite(a)
+    if not np.any(finite):
+        raise ValueError("normalize_scalar_field(): field has no finite values")
+    if symmetric:
+        if vmin is None and vmax is None:
+            vmax = float(np.max(np.abs(a[finite])))
+            vmin = -vmax
+        elif vmin is None:
+            vmin = -float(vmax)
+        elif vmax is None:
+            vmax = -float(vmin)
+    else:
+        if vmin is None:
+            vmin = float(np.min(a[finite]))
+        if vmax is None:
+            vmax = float(np.max(a[finite]))
+    if not np.isfinite(vmin) or not np.isfinite(vmax):
+        raise ValueError(f"normalize_scalar_field(): invalid limits vmin={vmin} vmax={vmax}")
+    if vmax <= vmin:
+        if vmax == vmin:
+            out = np.zeros_like(a, dtype=np.float32)
+            out[~finite] = 0.0
+            return out, float(vmin), float(vmax)
+        raise ValueError(f"normalize_scalar_field(): vmax={vmax} must be > vmin={vmin}")
+    out = np.zeros_like(a, dtype=np.float32)
+    out[finite] = np.clip((a[finite] - vmin) / (vmax - vmin), 0.0, 1.0)
+    out[~finite] = 0.0
+    return out, float(vmin), float(vmax)
+
+
+def make_grid_mesh_data(xs, ys, zs, colors=None, mask=None):
+    xs = np.asarray(xs, dtype=np.float32)
+    ys = np.asarray(ys, dtype=np.float32)
+    zs = np.asarray(zs, dtype=np.float32)
+    if zs.shape != (len(xs), len(ys)):
+        raise ValueError(f"make_grid_mesh_data(): zs.shape={zs.shape} expected ({len(xs)},{len(ys)})")
+    if mask is None:
+        mask = np.isfinite(zs)
+    else:
+        mask = np.asarray(mask, dtype=bool)
+        if mask.shape != zs.shape:
+            raise ValueError(f"make_grid_mesh_data(): mask.shape={mask.shape} expected {zs.shape}")
+    X, Y = np.meshgrid(xs, ys, indexing='ij')
+    verts = np.stack([X, Y, zs], axis=2).reshape(-1, 3).astype(np.float32)
+    if colors is not None:
+        cols = np.asarray(colors, dtype=np.float32)
+        if cols.shape[:2] != zs.shape:
+            raise ValueError(f"make_grid_mesh_data(): colors.shape[:2]={cols.shape[:2]} expected {zs.shape}")
+        cols = cols.reshape(-1, cols.shape[-1]).astype(np.float32)
+    else:
+        cols = None
+    faces = []
+    for ix in range(len(xs) - 1):
+        for iy in range(len(ys) - 1):
+            i00 = ix * len(ys) + iy
+            i10 = (ix + 1) * len(ys) + iy
+            i01 = ix * len(ys) + (iy + 1)
+            i11 = (ix + 1) * len(ys) + (iy + 1)
+            if mask[ix, iy] and mask[ix + 1, iy] and mask[ix + 1, iy + 1]:
+                faces.append((i00, i10, i11))
+            if mask[ix, iy] and mask[ix + 1, iy + 1] and mask[ix, iy + 1]:
+                faces.append((i00, i11, i01))
+    faces = np.asarray(faces, dtype=np.uint32)
+    return verts, faces, cols
+
+
+def colormap_rgba(vals, cmap='coolwarm', vmin=None, vmax=None, symmetric=False, alpha=1.0):
+    t, vmin, vmax = normalize_scalar_field(vals, vmin=vmin, vmax=vmax, symmetric=symmetric)
+    cm = Colormap(cmap) if isinstance(cmap, (list, tuple)) else vispy.color.get_colormap(cmap)
+    rgba = np.asarray(cm.map(t.ravel()), dtype=np.float32).reshape(t.shape + (4,))
+    rgba[..., 3] = float(alpha)
+    return rgba, vmin, vmax
+
+
+def make_surface_mesh(xs, ys, zs, scalar=None, cmap='coolwarm', vmin=None, vmax=None, symmetric=False, alpha=1.0, mask=None):
+    if scalar is None:
+        rgba = None
+        clim = None
+    else:
+        rgba, vmin, vmax = colormap_rgba(scalar, cmap=cmap, vmin=vmin, vmax=vmax, symmetric=symmetric, alpha=alpha)
+        clim = (vmin, vmax)
+    verts, faces, cols = make_grid_mesh_data(xs, ys, zs, colors=rgba, mask=mask)
+    return {'vertices': verts, 'faces': faces, 'vertex_colors': cols, 'clim': clim}
+
+
+def create_surface_visual(parent, mesh_data, shading='smooth'):
+    v = np.asarray(mesh_data['vertices'], dtype=np.float32)
+    f = np.asarray(mesh_data['faces'], dtype=np.uint32)
+    if len(v) == 0 or len(f) == 0:
+        raise ValueError(f"create_surface_visual(): empty mesh vertices={v.shape} faces={f.shape}")
+    vc = mesh_data.get('vertex_colors', None)
+    if vc is not None:
+        return visuals.Mesh(vertices=v, faces=f, vertex_colors=np.asarray(vc, dtype=np.float32), shading=shading, parent=parent)
+    return visuals.Mesh(vertices=v, faces=f, color=(0.7, 0.7, 0.9, 1.0), shading=shading, parent=parent)
+
+
+def render_surface_png(out_path, mesh_data, atom_points=None, atom_colors=None, atom_sizes=None, title=None, bgcolor='white', azimuth=-60.0, elevation=35.0, scale=1.2):
+    canvas = scene.SceneCanvas(keys=None, bgcolor=bgcolor, show=False, size=(1200, 900))
+    view = canvas.central_widget.add_view()
+    view.camera = scene.TurntableCamera(fov=0.0, elevation=float(elevation), azimuth=float(azimuth))
+    mesh = create_surface_visual(view.scene, mesh_data, shading='smooth')
+    mesh.set_gl_state('translucent', depth_test=True)
+    if atom_points is not None:
+        pts = np.asarray(atom_points, dtype=np.float32)
+        if pts.ndim != 2 or pts.shape[1] != 3:
+            raise ValueError(f"render_surface_png(): atom_points.shape={pts.shape} expected (n,3)")
+        mk = visuals.Markers(parent=view.scene)
+        mk.set_data(pts, face_color=atom_colors if atom_colors is not None else (0.1, 0.1, 0.1, 0.5), size=atom_sizes if atom_sizes is not None else 8.0, edge_width=0.0)
+    if title:
+        visuals.Text(text=str(title), pos=np.array([[0.0, 0.0, 0.0]], dtype=np.float32), color='black', font_size=12, parent=view.scene)
+    vv = np.asarray(mesh_data['vertices'], dtype=np.float32)
+    ctr = vv.mean(axis=0)
+    ext = np.max(vv, axis=0) - np.min(vv, axis=0)
+    rad = float(np.max(ext[:2]))
+    if rad <= 1e-6:
+        rad = 1.0
+    view.camera.center = tuple(ctr.tolist())
+    view.camera.scale_factor = float(rad * scale)
+    img = canvas.render(alpha=False)
+    from vispy.io import write_png
+    write_png(out_path, img)
+    canvas.close()
+    return out_path
