@@ -298,7 +298,8 @@ __kernel void getMMFFf4(
     const float   ssC0   = par.x*par.x - par.y*par.y;                      // cos(2) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf , where ang0 is equilibrium angle
     for(int i=0; i<NNEIGH; i++){ fbs[i]=float3Zero; fps[i]=float3Zero; }   // clear recoil forces on neighbors
 
-    float3 f1,f2;         // working forces 
+    float3 f1 = float3Zero;
+    float3 f2 = float3Zero;         // working forces 
 
     { // ========= BONDS - here we evaluate pairwise interactions of node atoms with its 4 neighbors 
 
@@ -342,23 +343,25 @@ __kernel void getMMFFf4(
             // --- Evaluate bond-length stretching energy and forces
             if(iG<ing){
                 // Bond stretching with proper MMFF parameters from bL[i] and bK[i]
-                //E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;   // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor,
-                E+= evalBond( h.xyz, l-1.198f, 40.f, &f1 );  fbs[i]-=f1;  fa+=f1;   // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor,
+                // E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;   // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor,
+                // if(iS==0 && iG==0){printf("GPU: f1=(%g,%g,%g), fa=(%g,%g,%g), l=%g, bL[i]=%g, bK[i]=%g, h=(%g,%g,%g)\n", f1.x,f1.y,f1.z, fa.x,fa.y,fa.z, l, 1.198f, 40.f, h.x,h.y,h.z ); }
+                E+= evalBond( h.xyz, l-1.198f, 80.f, &f1 );  fbs[i]-=f1;  fa+=f1;   // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor,
+                // if(iS==0 && iG==0){printf("GPU: f1=(%g,%g,%g), fa=(%g,%g,%g)\n", f1.x,f1.y,f1.z, fa.x,fa.y,fa.z ); }
 
                 // pi-pi alignment interaction            
                 float kpp = Kppi[i];
-                if( (ing<nnode) && (kpp>1.e-6) ){   // Only node atoms have pi-pi alignemnt interaction
-                    epp += evalPiAling( hpi, apos[ingv+nAtoms].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;    //   pi-alignment(konjugation), fpi is force on pi-orbital, fps[i] is recoil force on i-th neighbor's pi-orbital
-                    E+=epp;
-                }
+                // if( (ing<nnode) && (kpp>1.e-6) ){   // Only node atoms have pi-pi alignemnt interaction
+                //     epp += evalPiAling( hpi, apos[ingv+nAtoms].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;    //   pi-alignment(konjugation), fpi is force on pi-orbital, fps[i] is recoil force on i-th neighbor's pi-orbital
+                //     E+=epp;
+                // }
             } 
             
             // pi-sigma othogonalization interaction
             float ksp = Kspi[i];
-            if(ksp>1.e-6){  
-                esp += evalAngCos( (float4){hpi,1.}, h, ksp, par.w, &f1, &f2 );   fpi+=f1; fa-=f2;  fbs[i]+=f2;    //   pi-planarization (orthogonality), fpi is force on pi-orbital, fbs[i] is recoil force on i-th neighbor
-                E+=epp;
-            }
+            // if(ksp>1.e-6){  
+            //     esp += evalAngCos( (float4){hpi,1.}, h, ksp, par.w, &f1, &f2 );   fpi+=f1; fa-=f2;  fbs[i]+=f2;    //   pi-planarization (orthogonality), fpi is force on pi-orbital, fbs[i] is recoil force on i-th neighbor
+            //     E+=epp;
+            // }
         }
 
         // --- Store Pi-forces                      we store pi-forces here because we don't use them in the angular force evaluation
@@ -417,6 +420,7 @@ __kernel void getMMFFf4(
         fneigh[i4 +i] = (float4){fbs[i],0};
         //fneigh[i4p+i] = (float4){fps[i],0};
     }
+    // if(iS==0 && (iG==19))printf("GPU:MMFFf4[%i] fa(%g,%g,%g) fapos(%g,%g,%g)\n", iG, fa.x,fa.y,fa.z, fapos[iav].x,fapos[iav].y,fapos[iav].z );
     //fapos[iav     ] = (float4){fa ,0}; // If we do  run it as first forcefield
     fapos[iav       ] += (float4){fa ,0};  // If we not run it as first forcefield
     //fapos[iav+nAtoms]  = (float4){fpi,0}; 
@@ -897,6 +901,34 @@ float hashf_wang( float val, float xmin, float xmax) {
     return (((float)( hash_wang(  __float_as_int(val) ) )) * 4.6566129e-10 )  *(xmax-xmin)+ xmin;
 }
 
+inline uint xorshift32( uint state ){
+    if(state==0u) state = 0x6D2B79F5u;
+    state ^= (state << 13);
+    state ^= (state >> 17);
+    state ^= (state << 5 );
+    return state;
+}
+
+inline float rand01_xorshift( __private uint* state ){
+    *state = xorshift32(*state);
+    return ((float)(*state) + 1.0f) * 2.3283064365386963e-10f;
+}
+
+inline float2 randn2_box_muller( __private uint* state ){
+    const float u1  = fmax( rand01_xorshift(state), 1e-7f );
+    const float u2  = rand01_xorshift(state);
+    const float amp = sqrt( -2.0f * log(u1) );
+    const float phi = 6.283185307179586f * u2;
+    return (float2)( amp*cos(phi), amp*sin(phi) );
+}
+
+inline float3 randn3_xorshift_box_muller( uint seed ){
+    uint rng = xorshift32(seed);
+    const float2 g01 = randn2_box_muller( &rng );
+    const float2 g23 = randn2_box_muller( &rng );
+    return (float3)( g01.x, g01.y, g23.x );
+}
+
 // Assemble recoil forces from neighbors and  update atoms positions and velocities 
 //__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void updateAtomsMMFFf4(
@@ -972,13 +1004,14 @@ __kernel void updateAtomsMMFFf4(
     int4 ngs = bkNeighs[ iav ]; // back neighbors indices
 
     //if(iS==5)printf( "iG,iS %i %i ngs %i,%i,%i,%i \n", iG, iS, ngs.x,ngs.y,ngs.z,ngs.w );
-    //if( (iS==0)&&(iG==0) ){ printf( "GPU:fe.1[iS=%i,iG=%i](%g,%g,%g,%g) \n", fe.x,fe.y,fe.z,fe.w ); }
+    // if( (iS==0)&&(iG==19) ){ printf( "GPU:fe.1[iS=%i,iG=%i](%g,%g,%g,%g) \n",iS,iG, fe.x,fe.y,fe.z,fe.w ); }
 
     // sum all recoil forces from back neighbors   - WARRNING : bkNeighs must be properly shifted on CPU by adding offset of system iS*nvec*4
     if(ngs.x>=0){ fe += fneigh[ngs.x]; } // if neighbor index is negative it means that there is no neighbor, so we skip it
     if(ngs.y>=0){ fe += fneigh[ngs.y]; }
     if(ngs.z>=0){ fe += fneigh[ngs.z]; }
     if(ngs.w>=0){ fe += fneigh[ngs.w]; }
+    // if( (iS==0)&&(iG==19) ){ printf( "GPU:fe.2[iS=%i,iG=%i](%g,%g,%g,%g) \n",iS,iG, fe.x,fe.y,fe.z,fe.w ); }
 
     // ---- Limit Forces - WARRNING : Github_Copilot says: this is not the best way to limit forces, because it can lead to drift, better is to limit forces in the first forcefield run (best is NBFF) 
     float Flimit = 10.0;
@@ -987,7 +1020,7 @@ __kernel void updateAtomsMMFFf4(
 
     // =============== FORCE DONE
     aforce[iav] = fe;             // store force before limit
-    //aforce[iav] = float4Zero;   // clean force   : This can be done in the first forcefield run (best is NBFF)
+    aforce[iav] = float4Zero;   // clean force   : This can be done in the first forcefield run (best is NBFF)
     
     // =============== DYNAMICS
 
@@ -996,122 +1029,82 @@ __kernel void updateAtomsMMFFf4(
 
     // -------- Fixed Atoms and Bounding Box
     if(iG<natoms){                  // only atoms have constraints, not pi-orbitals
+    // if( (iS==0)&&(iG==19) ){ printf( "GPU:fe.3[iS=%i,iG=%i](%g,%g,%g,%g) \n",iS,iG, fe.x,fe.y,fe.z,fe.w ); }
         // ------- bboxes
         const cl_Mat3 B = bboxes[iS];
         // if(B.c.x>0.0f){ if(pe.x<B.a.x){ fe.x+=(B.a.x-pe.x)*B.c.x; }else if(pe.x>B.b.x){ fe.x+=(B.b.x-pe.x)*B.c.x; }; }
         // if(B.c.y>0.0f){ if(pe.y<B.a.y){ fe.y+=(B.a.y-pe.y)*B.c.y; }else if(pe.y>B.b.y){ fe.y+=(B.b.y-pe.y)*B.c.y; }; }
-        if(B.c.z>0.0f){ if(pe.z<B.a.z){ fe.z+=(B.a.z-pe.z)*B.c.z; }else if(pe.z>B.b.z){ fe.z+=(B.b.z-pe.z)*B.c.z; }; }
+        if(B.c.z>0.0f){ if(0 && pe.z<B.a.z){ fe.z+=(B.a.z-pe.z)*B.c.z; }else if(pe.z>B.b.z){ fe.z+=(B.b.z-pe.z)*B.c.z; }; }
         // ------- constrains
         float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
+        float4 cK   = constrK[ iaa ];
 
-        if( (cons.w > 0.f) && jeParams && (jeParams[iS].x >= -1) ){
-            // Jarzynski equality or Setup Equilibration
-            // We use standard "constr" for initial position and "constrK" for final position
-            // But we use "cons.w" as stiffness
+        if( cons.w > 0.0f ){
+            float3 stiffness = (float3){0.0f, 0.0f, 0.0f};
+            bool bHard = false;
+            float sign = 0.0f;
+            bool bDist = false;
             
-            float4 consEnd = constrK[ iaa ];
-            int step       = jeParams[iS].x;
-            if (step > -1) {
-                int nLambda    = jeParams[iS].y;
-                float k = cons.w;
-                
-                // RESTRICTION: Ensure step does not overrun nLambda and cause OOB memory access
-                if (step < nLambda) {
-                    // Calculate lambda continuously
-                    float lambda = min(1.0f, (float)step / (float)((nLambda - 1)));
-                    
-                    float3 p0 = cons.xyz;
-                    float3 p1 = consEnd.xyz;
-                    
-                    float3 target = p0 + (p1 - p0) * lambda;
-                    
-                    // Compute Force (Harmonic)
-                    float3 fc = (target - pe.xyz) * (float3){k,k,k};
+            if( (cons.w > 0.0f) && (cons.w < 1e3f) ){
+                stiffness = (float3){cons.w, cons.w, cons.w};
+            } else if ( cons.w >= 1e6f && cons.w < 3e6f ){ // Hard Atom
+                bHard = true;
+                sign = (cons.w < 1.5e6f) ? 1.0f : -1.0f;
+            } else if ( cons.w >= 3e6f && cons.w < 5e6f ){ // Soft Atom
+                stiffness = (float3){cK.w, cK.w, cK.w};
+                sign = (cons.w < 3.5e6f) ? 1.0f : -1.0f;
+            } else if ( cons.w >= 5e6f && cons.w < 7e6f ){ // Hard Distance
+                bHard = true; bDist = true;
+                sign = (cons.w < 5.5e6f) ? 1.0f : -1.0f;
+            } else if ( cons.w >= 7e6f && cons.w < 9e6f ){ // Soft Distance
+                bDist = true;
+                stiffness = (float3){cK.w, cK.w, cK.w};
+                sign = (cons.w < 7.5e6f) ? 1.0f : -1.0f;
+            }
+
+            float3 h = (float3){0.0f, 0.0f, 0.0f};
+            float force_proj = 0.0f;
+            if( bDist ){
+                int ing = (int)cons.x;
+                float3 pj = apos[ing + iS*nvec].xyz;
+                float3 d = pe.xyz - pj;
+                float r = length(d);
+                h = d / (r + 1e-10f);
+                force_proj = dot(fe.xyz, h);
+                if( bHard ){
+                    // Geometric correction
+                    pe.xyz -= h * (0.5f * (r - cons.y)); 
+                    // Subtract parallel components to allow free "flying"
+                    float v_proj = dot(ve.xyz, h);
+                    ve.xyz -= h * v_proj;
+                    fe.xyz -= h * force_proj; 
+                } else {
+                    const float3 fc = h * (-stiffness.x * (r - cons.y));
                     fe.xyz += fc;
-                    
-                    // Accumulate Work
-                    float3 dir = p1 - p0;
-                    float work_term = dot(fc, dir);
-                    
-                    // Record work at this safely bounded step
-                    {
-                        volatile __global float* addr = &work[ nLambda * iS + step ];
-                        float old_val, new_val;
-                        do {
-                            old_val = *addr;
-                            new_val = old_val + work_term;
-                        } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
-                    }
-                } // End of Restriction 
-                
-                if(consEnd.w>0.0f && step < nLambda){
-                    jeParams[iS].x += 1; // Increment step index for next step exactly once per system
-                    if(step+1 < nLambda){
-                        float seed = work[ nLambda * iS + step+1 ]; // seed for thermostat RNG
-                        TDrives[iS].w = seed;
-                    }
-                        // work[ nLambda * iS + step ] = 0.0f; // Clear work for this step after reading it for the next step's TDrive.w
                 }
-            } else if (step == -1) {
-                // Initial Equilibrium Step
-                float k = cons.w;
-
-                float3 target = cons.xyz;
-                float3 fc = (target - pe.xyz) * (float3){k,k,k};
-                fe.xyz += fc;
-            }  
-            cons.w = 0.0f; // Disable standard logic
-        }
-
-        if( cons.w>0.f && (cons.w<1e3f) ){            // if stiffness is positive, we have constraint
-            float4 cK = constrK[ iaa ];
-            cK = max( cK, (float4){0.0f,0.0f,0.0f,0.0f} );
-            const float3 fc = (cons.xyz - pe.xyz)*cK.xyz;
-            fe.xyz += fc; // add constraint force
-            //if(iS==0){printf( "GPU::constr[ia=%i|iS=%i] (%g,%g,%g|K=%g) fc(%g,%g,%g) cK(%g,%g,%g)\n", iG, iS, cons.x,cons.y,cons.z,cons.w, fc.x,fc.y,fc.z , cK.x, cK.y, cK.z ); }
-        }
-        else if(cons.w>1e3f){ // hard constrain
-            pe.xyz = cons.xyz; // move to fixed position
-            ve.xyz = 0.0f;
-
-            // Note: cons.w encodes which CV this is (e.g., 1e6 for CV 0, 2e6 for CV 1, etc.)
-            // constrK.xyz contains the NORMALIZED direction vector for the distance CV
-
-            float sign = (cons.w > 1.5e6f) ? -1.0f : 1.0f;  // negative for second CV (for variance calc)
-            float4 cK = constrK[ iaa ];
-
-            // Calculate force projection along the normalized direction
-            float force_proj = dot(fe.xyz, cK.xyz);
-
-            // averageForces[iS].w accumulates the force projection (will be scaled by host)
-            // averageForces[iS].z is used as temporary storage for force difference (F1 - F2)
-            // averageForces[iS].x accumulates sum of squared force differences (for variance)
-
-           __global float* avgF_ptr = (__global float*)(&averageForces[iS]);
-
-            // Atomic add for .w component: accumulate 0.5*(F1 - F2)·cK
-            // sign = +1 for first atom, -1 for second atom
-            {
-                volatile __global float* addr = &avgF_ptr[3];
-                float old_val, new_val;
-                do {
-                    old_val = *addr;
-                    new_val = old_val + 0.5f * sign * force_proj;
-                } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
+            } else {
+                if( bHard ){
+                    pe.xyz = cons.xyz; // move to fixed position
+                    ve.xyz = 0.0f;
+                    force_proj = dot(fe.xyz, cK.xyz);
+                    fe.xyz = 0.0f; // wipe force for pinned atom
+                } else {
+                    const float3 fc = (cons.xyz - pe.xyz) * stiffness;
+                    fe.xyz += fc; // add constraint force
+                    force_proj = dot(fe.xyz, cK.xyz);
+                }
+                h = cK.xyz; // For Atoms, cK.xyz stores the fixed projection direction
             }
-            // For variance calculation: compute (F1 - F2)·cK for THIS MD step only
-            // We use .y to store F1·cK temporarily (not .z which accumulates over all steps)
-            if(sign > 0.0f){
-                // First CV: store F1·cK in .y temporarily (for this MD step only)
-                averageForces[iS].y = force_proj;
-                //if(iS==99 && iG==0) printf("GPU[step=?][iS=%i,iG=%i] first CV: force_proj=%g, fe=(%g,%g,%g), avgF.w=%g\n", iS, iG, force_proj, fe.x,fe.y,fe.z, averageForces[iS].w);
-            }
-            else{
-                // Second CV: compute (F1 - F2)·cK for this step and square it
-                float force_diff = averageForces[iS].y - force_proj;  // F1·cK - F2·cK for this step
 
-                // Atomic add for .x component: sum of (F1·cK - F2·cK)^2
-                {
+            if( sign != 0.0f ){
+                __global float* avgF_ptr = (__global float*)(&averageForces[iS]);
+                if(sign > 0.0f){
+                    if(!isnan(force_proj)) avgF_ptr[2] += force_proj;
+                    averageForces[iS].y = force_proj;
+                }
+                else{
+                    if(!isnan(force_proj)) avgF_ptr[3] += force_proj;
+                    float force_diff = averageForces[iS].y - force_proj; 
                     volatile __global float* addr = &avgF_ptr[0];
                     float old_val, new_val;
                     do {
@@ -1119,16 +1112,14 @@ __kernel void updateAtomsMMFFf4(
                         new_val = old_val + force_diff * force_diff;
                     } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
                 }
-                //if(iS==99 && iG==1) printf("GPU[step=?][iS=%i,iG=%i] second CV: force_proj=%g, force_diff=%g, fe=(%g,%g,%g), avgF.w=%g\n", iS, iG, force_proj, force_diff, fe.x,fe.y,fe.z, averageForces[iS].w);
             }
 
-
-            fe.xyz = 0.0f;     // zero force
-            pe.w=0;ve.w=0;     // clear w components
-            apos[iav] = pe;    // write back constrained position
-            avel[iav] = ve;    // write back zero velocity
-            return;            // skip MD update for constrained atoms
-
+            if( bHard && !bDist ){
+                pe.w=0;ve.w=0;     // clear w components
+                apos[iav] = pe;    // write back constrained position
+                avel[iav] = ve;    // write back zero velocity
+                return;            // skip MD update for constrained atoms
+            }
         }
     }
 
@@ -1289,13 +1280,22 @@ __kernel void getNonBond(
             __private float3 ix; 
             // + (float3){TDrive.w,TDrive.w,TDrive.w}
             //const float4 rnd = fract( (ve*541547.1547987f + TDrive.wwww), &ix )*2.f - (float4){1.0,1.0,1.0,1.0};  // changes every frame
-            const float3 rvec = (float3){  // random vector depending on the index
-                (((iG+136  + (int)(1000.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f, 
-                (((iG+778  + (int)(1013.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f,
-                (((iG+4578 + (int)( 998.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f
-            };
-            //const float3 rnd = fract( ( rvec + TDrive.www)*12.4565f, &ix )*2.f - (float3){1.0,1.0,1.0};
-            const float3 rnd = sin( ( rvec + TDrive.www )*124.4565f );
+            // const float3 rvec = (float3){  // random vector depending on the index
+            //     (((iG+136  + (int)(1000.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f, 
+            //     (((iG+778  + (int)(1013.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f,
+            //     (((iG+4578 + (int)( 998.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f
+            // };
+            // //const float3 rnd = fract( ( rvec + TDrive.www)*12.4565f, &ix )*2.f - (float3){1.0,1.0,1.0};
+            // const float3 rnd = sin( ( rvec + TDrive.www )*124.4565f );
+
+                const uint seed = hash_wang(
+                    ((uint)(iG + 1))*0x9E3779B9u
+                    ^ ((uint)(iS + 1))*0x85EBCA6Bu
+                    ^ ((uint)__float_as_int(TDrive.w))*0xC2B2AE35u
+                    ^ ((uint)__float_as_int(MDpars.x))*0x27D4EB2Du
+                );
+                const float3 rnd = randn3_xorshift_box_muller( seed );
+
             //if(iS==3){  printf( "atom[%i] seed=%g rvec(%g,%g,%g) rnd(%g,%g,%g) \n", iG, TDrive.w, rvec.x,rvec.y,rvec.z, rnd.x,rnd.y,rnd.z ); }
             fe.xyz    += rnd.xyz * sqrt( 2*const_kB*TDrive.x*TDrive.y/MDpars.x );
         }
@@ -1424,6 +1424,8 @@ __kernel void cleanForceMMFFf4(
     const int nG = get_global_size(0);
     const int nS = get_global_size(1);
     const int nvec = natoms+nnode;
+
+    if(iG>=nvec) return;
 
     const int iav = iG + iS*nvec;
     const int ian = iG + iS*nnode;

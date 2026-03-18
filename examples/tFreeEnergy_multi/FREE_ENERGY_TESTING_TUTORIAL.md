@@ -55,7 +55,7 @@ python3 run_ES.py \
   --nEQsteps 300 \
   --Fconv 1e-6 \
   --constraints constraints_ES.txt \
-  --JEforceconst 2.0 \
+  --K 2.0 \
   --dt 0.05 \
   -T 300 \
   --t_damp 150

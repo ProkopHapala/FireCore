@@ -2,6 +2,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Ensure required symlinks exist (OpenCL kernels need common_resources/cl)
+ln -sf ../../cpp/common_resources "$SCRIPT_DIR/data"              2>/dev/null || true
+ln -sf ../../cpp/common_resources "$SCRIPT_DIR/common_resources"  2>/dev/null || true
+
 CONFIG_FILE="$SCRIPT_DIR/es_optimization_config.json"
 RESET=0
 EXTRA_ARGS=()

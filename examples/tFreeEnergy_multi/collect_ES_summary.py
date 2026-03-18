@@ -86,7 +86,7 @@ def _write_summary_plots(summary_dir: str, rows: List[Dict[str, object]]) -> Non
             f"set={r.get('param_set','')}<br>"
             f"mode={r.get('mode')} N={r.get('N')}<br>"
             f"nSys={r.get('nSys')} nLambda={r.get('nLambda')}<br>"
-            f"nEQ={r.get('nEQsteps')} nMD={r.get('nMDsteps')} JE_K={r.get('JE_K')}<br>"
+            f"nEQ={r.get('nEQsteps')} nMD={r.get('nMDsteps')} K={r.get('K')}<br>"
             f"dt={r.get('dt')} t_damp={r.get('t_damp')}<br>"
             f"wall_s={float(r.get('wall_s', float('nan'))):.6g}<br>"
             f"{yname}={yval:.6g}<br>"
@@ -271,7 +271,7 @@ def _parse_combo(tag: str) -> Dict[str, object]:
         "nLambda": "",
         "nEQsteps": "",
         "nMDsteps": "",
-        "JE_K": "",
+        "K": "",
         "dt": "",
         "t_damp": "",
         "je_target_trajectories": "",
@@ -293,7 +293,7 @@ def _parse_combo(tag: str) -> Dict[str, object]:
         out["nMDsteps"] = int(m.group(1))
     m = re.search(r"_jek([0-9mp]+)", tag)
     if m:
-        out["JE_K"] = m.group(1).replace("m", "-").replace("p", ".")
+        out["K"] = m.group(1).replace("m", "-").replace("p", ".")
     m = re.search(r"_dt([0-9mp]+)", tag)
     if m:
         out["dt"] = m.group(1).replace("m", "-").replace("p", ".")
@@ -380,7 +380,7 @@ def main() -> None:
         rows.append(row)
 
     fieldnames = [
-        "status", "N", "mode", "param_set", "nSys", "nLambda", "nEQsteps", "nMDsteps", "JE_K",
+        "status", "N", "mode", "param_set", "nSys", "nLambda", "nEQsteps", "nMDsteps", "K",
         "dt", "t_damp",
         "je_target_trajectories", "je_effective_trajectories",
         "wall_s", "md_ocl_time_ms_total", "md_ocl_calls", "md_ocl_avg_us_per_step",

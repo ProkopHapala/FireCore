@@ -149,7 +149,7 @@ def plot_f_interactive(filename, output_prefix=None, N_segments=None, T=300.0, b
     
     if distances is not None and N_segments is not None:
         k_spring = kB * T / (N_segments * b**2)
-        F_ref = k_spring * distances
+        F_ref = - k_spring * distances
         FE_ref_abs = 0.5 * k_spring * distances**2
         FE_ref = FE_ref_abs - FE_ref_abs[0]
         
@@ -241,7 +241,7 @@ def plot_f_interactive(filename, output_prefix=None, N_segments=None, T=300.0, b
         dd_dlambda = np.gradient(distances, lambda_vals)
         safe_dd = np.copy(dd_dlambda)
         safe_dd[np.abs(safe_dd) < 1e-9] = np.nan
-        force_ti = dE_dlambda / safe_dd
+        force_ti = -dE_dlambda / safe_dd
         
         hover_text_force_ti = [
             f"λ = {lam:.4f}<br>Force (TI) = {f:.4f} eV/Å<br>d = {d:.3f} Å"

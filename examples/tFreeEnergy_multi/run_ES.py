@@ -41,10 +41,14 @@ def main():
     parser.add_argument("--Fconv", type=float, default=1e-6, help="Force convergence criterion")
     parser.add_argument("--constraints", type=str, default="constraints.txt", help="Path to constraints file")
     parser.add_argument("--mode", type=str, default="TI", choices=["TI", "JE", "BOTH"], help="Mode of calculation: TI, JE, or BOTH")
-    parser.add_argument("--JEforceconst", type=float, default=5.0, help="Jarzynski Equality force constant")
+    parser.add_argument("--K", type=float, default=5.0, help="Jarzynski Equality force constant")
     parser.add_argument("-T", "--temperature", type=float, default=300.0, help="Temperature in Kelvin")
     parser.add_argument("--dt", type=float, default=0.05, help="Time step")
     parser.add_argument("--t_damp", type=float, default=100.0, help="Damping time constant")
+    parser.add_argument("--hard_atoms", action="store_true", help="Use hard atom constraints")
+    parser.add_argument("--soft_atoms", action="store_true", help="Use soft atom constraints")
+    parser.add_argument("--hard_dist",  action="store_true", help="Use hard distance constraints")
+    parser.add_argument("--soft_dist",  action="store_true", help="Use soft distance constraints")
 
     args = parser.parse_args()
 
@@ -95,7 +99,11 @@ def main():
         nEQsteps=args.nEQsteps,
         Fconv=args.Fconv,
         mode=mode_int,
-        JEforceconst=args.JEforceconst
+        K=args.K,
+        hardAtoms = 1 if args.hard_atoms else -1,
+        softAtoms = 1 if args.soft_atoms else -1,
+        hardDist  = 1 if args.hard_dist  else -1,
+        softDist  = 1 if args.soft_dist  else -1
     )
 
     out_base = os.path.splitext(os.path.basename(args.xyz_name))[0]

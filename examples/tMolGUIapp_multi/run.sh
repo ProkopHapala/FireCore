@@ -213,5 +213,5 @@ touch minima.dat
 
 # ./$name -m 50 -x common_resources/DA.mol2 -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0
 # ./$name -m 50 -x common_resources/xyz/DA.xyz -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0
-./$name -m 50 -x common_resources/entropic_spring_30.xyz -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0
+./$name -m 50 -x common_resources/entropic_spring_30.xyz -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0 -dt 0.0005
 # ./$name -m 2 -x common_resources/xyz/nHexadecan.xyz -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0

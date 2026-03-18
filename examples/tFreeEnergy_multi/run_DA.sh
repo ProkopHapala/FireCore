@@ -7,13 +7,13 @@ set -e  # Exit on error
 
 # Default Mode
 MODE="BOTH"  # Options: TI, JE, BOTH
-JE_K=20.0     # Default JE force constant
+K=10.0     # Default JE force constant
 
 # Parse command line arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --mode) MODE="$2"; shift ;;
-        --k)    JE_K="$2"; shift ;;
+        --k)    K="$2"; shift ;;
         *) ;; # Ignore unknown args
     esac
     shift
@@ -40,32 +40,32 @@ echo ""
 # Run the calculation
 echo "Step 2: Running Free Energy Calculation for DA (Mode: $MODE)..."
 echo "----------------------------------------"
-# python3 run_ES.py \
-#     --mode $MODE \
-#     --nSys 80 \
-#     --xyz_name "../../cpp/common_resources/xyz/DA.xyz" \
-#     --nLambda 80 \
-#     --nMDsteps 4000000 \
-#     --nEQsteps 50000 \
-#     --Fconv 1e-6 \
-#     --constraints "constraints_DA.txt" \
-#     --JEforceconst $JE_K \
-#     --dt 0.05 \
-#     -T 300 \
-#     --t_damp 150
 python3 run_ES.py \
     --mode $MODE \
-    --nSys 100 \
+    --nSys 200 \
     --xyz_name "../../cpp/common_resources/xyz/DA.xyz" \
-    --nLambda 100000 \
-    --nMDsteps 40000000 \
-    --nEQsteps 50000 \
+    --nLambda 200 \
+    --nMDsteps 200000000 \
+    --nEQsteps 100000 \
     --Fconv 1e-6 \
     --constraints "constraints_DA.txt" \
-    --JEforceconst $JE_K \
+    --K $K \
     --dt 0.05 \
     -T 300 \
     --t_damp 150
+# python3 run_ES.py \
+#     --mode $MODE \
+#     --nSys 1000 \
+#     --xyz_name "../../cpp/common_resources/xyz/DA.xyz" \
+#     --nLambda 100000 \
+#     --nMDsteps 100000000 \
+#     --nEQsteps 20000 \
+#     --Fconv 1e-6 \
+#     --constraints "constraints_DA.txt" \
+#     --K $K \
+#     --dt 0.05 \
+#     -T 300 \
+#     --t_damp 150
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Calculation failed!"

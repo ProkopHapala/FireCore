@@ -234,7 +234,7 @@ def getBuffs( NEIGH_MAX=4 ):
         selection = getIBuff( "selection",  (natoms) )
     
     # --- GPU buffers (multi-replicas)
-    global gpu_neighs,gpu_neighCell,gpu_bkNeighs,  gpu_atoms, gpu_aforces, gpu_avel, gpu_constr,  gpu_REQs, gpu_MMpars, gpu_BLs, gpu_BKs, gpu_Ksp, gpu_Kpp, gpu_lvecs, gpu_ilvecs
+    global gpu_neighs,gpu_neighCell,gpu_bkNeighs,  gpu_atoms, gpu_aforces, gpu_avel, gpu_constr, gpu_constrK, gpu_averageForces, gpu_REQs, gpu_MMpars, gpu_BLs, gpu_BKs, gpu_Ksp, gpu_Kpp, gpu_lvecs, gpu_ilvecs
     gpu_neighs    = getIBuff ( "gpu_neighs",    (nSys,nvecs,4)  )
     gpu_neighCell = getIBuff ( "gpu_neighCell", (nSys,nvecs,4)  ) 
     gpu_bkNeighs  = getIBuff ( "gpu_bkNeighs",  (nSys,nvecs,4)  ) 
@@ -243,6 +243,8 @@ def getBuffs( NEIGH_MAX=4 ):
     gpu_aforces   = getfBuff ( "gpu_aforces",   (nSys,nvecs,4)  ) 
     gpu_avel      = getfBuff ( "gpu_avel",      (nSys,nvecs,4)  ) 
     gpu_constr    = getfBuff ( "gpu_constr",    (nSys,natoms,4) )
+    gpu_constrK   = getfBuff ( "gpu_constrK",   (nSys,natoms,4) )
+    gpu_averageForces = getfBuff ( "gpu_averageForces", (nSys,4) )
 
     gpu_REQs      = getfBuff ( "gpu_REQs",      (nSys,natoms,3) )
     gpu_MMpars    = getfBuff ( "gpu_MMpars",    (nSys,nnode,3)  ) 
@@ -390,6 +392,18 @@ lib.eval.restype   =  c_double
 def eval():
     return lib.eval()
 
+#void eval_getMMFFf4_ocl()
+lib.eval_getMMFFf4_ocl.argtypes  = []
+lib.eval_getMMFFf4_ocl.restype   =  None
+def eval_getMMFFf4_ocl():
+    return lib.eval_getMMFFf4_ocl()
+
+#void eval_getMMFFf4_cpu()
+lib.eval_getMMFFf4_cpu.argtypes  = []
+lib.eval_getMMFFf4_cpu.restype   =  None
+def eval_getMMFFf4_cpu():
+    return lib.eval_getMMFFf4_cpu()
+
 #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
 lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p, c_int ] 
 lib. run.restype   =  c_int
@@ -401,6 +415,40 @@ lib.MDloop.argtypes  = [c_int, c_double, c_int, c_int ]
 lib.MDloop.restype   =  None
 def MDloop( perframe=100, Ftol=-1, iParalel=3,  perVF=100 ):
     return lib.MDloop( perframe, Ftol, iParalel, perVF )
+
+# void setupTIConstraintsBatch( int nCVs, float* initial_positions, float* final_positions, int nLambda, int batch )
+lib.setupTIConstraintsBatch.argtypes = [c_int, c_float_p, c_float_p, c_int, c_int]
+lib.setupTIConstraintsBatch.restype  = None
+def setupTIConstraintsBatch(nCVs, initial_positions, final_positions, nLambda, batch):
+    initial_positions = np.array(initial_positions, dtype=np.float32)
+    final_positions = np.array(final_positions, dtype=np.float32)
+    return lib.setupTIConstraintsBatch(nCVs, _np_as(initial_positions,c_float_p), _np_as(final_positions,c_float_p), nLambda, batch)
+
+# void zeroTIAverageForces()
+lib.zeroTIAverageForces.argtypes = []
+lib.zeroTIAverageForces.restype  = None
+def zeroTIAverageForces():
+    return lib.zeroTIAverageForces()
+
+# void downloadTIAverageForces()
+lib.downloadTIAverageForces.argtypes = []
+lib.downloadTIAverageForces.restype  = None
+def downloadTIAverageForces():
+    return lib.downloadTIAverageForces()
+
+# void resetTIBatchState()
+lib.resetTIBatchState.argtypes = []
+lib.resetTIBatchState.restype  = None
+def resetTIBatchState():
+    return lib.resetTIBatchState()
+
+# void getTIHostEstimator( int isys, int nLambda, int nMDsteps, double* out )
+lib.getTIHostEstimator.argtypes = [c_int, c_int, c_int, c_double_p]
+lib.getTIHostEstimator.restype  = None
+def getTIHostEstimator(isys, nLambda, nMDsteps):
+    out = np.zeros(6, dtype=np.float64)
+    lib.getTIHostEstimator(isys, nLambda, nMDsteps, _np_as(out, c_double_p))
+    return out
 
 # ========= GPU Replicas management
 
@@ -632,13 +680,19 @@ def plot_selection(sel=None,ax1=0,ax2=1,ps=None, s=100):
     plt.scatter( asel[:,ax1], asel[:,ax2], s=s, facecolors='none', edgecolors='r' )
 
 
-#  double computeFreeEnergy(int nCVs, float* initial_positions, float* final_positions, int nLambda, int nMDsteps, int nEQsteps, double Fconv, int mode, double JEforceconst)
-lib.computeFreeEnergy.argtypes  = [c_int, c_float_p, c_float_p, c_int, c_int, c_int, c_double, c_int, c_double]
+#  void setConstraints( int hardAtoms, int softAtoms, int hardDist, int softDist, int initial )
+lib.setConstraints.argtypes = [c_int, c_int, c_int, c_int, c_int]
+lib.setConstraints.restype  = None
+def setConstraints(hardAtoms=-1, softAtoms=-1, hardDist=-1, softDist=-1, initial=-1):
+    return lib.setConstraints(hardAtoms, softAtoms, hardDist, softDist, initial)
+
+#  double computeFreeEnergy(int nCVs, float* initial_positions, float* final_positions, int nLambda, int nMDsteps, int nEQsteps, double Fconv, int mode, double K, int hardAtoms, int softAtoms, int hardDist, int softDist)
+lib.computeFreeEnergy.argtypes  = [c_int, c_float_p, c_float_p, c_int, c_int, c_int, c_double, c_int, c_double, c_int, c_int, c_int, c_int]
 lib.computeFreeEnergy.restype   =  c_double
-def computeFreeEnergy(nCVs, initial_positions, final_positions, nLambda, nMDsteps=100000, nEQsteps=10000, Fconv=1e-6, mode=0, JEforceconst=5.0):
+def computeFreeEnergy(nCVs, initial_positions, final_positions, nLambda, nMDsteps=100000, nEQsteps=10000, Fconv=1e-6, mode=0, K=5.0, hardAtoms=-1, softAtoms=-1, hardDist=-1, softDist=-1):
     initial_positions = np.array(initial_positions, dtype=np.float32)
     final_positions = np.array(final_positions, dtype=np.float32)
-    return lib.computeFreeEnergy(nCVs, _np_as(initial_positions,c_float_p), _np_as(final_positions,c_float_p), nLambda, nMDsteps, nEQsteps, Fconv, mode, JEforceconst)
+    return lib.computeFreeEnergy(nCVs, _np_as(initial_positions,c_float_p), _np_as(final_positions,c_float_p), nLambda, nMDsteps, nEQsteps, Fconv, mode, K, hardAtoms, softAtoms, hardDist, softDist)
 
 # ====================================
 # ========= Test Functions

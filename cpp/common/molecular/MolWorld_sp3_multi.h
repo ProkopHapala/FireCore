@@ -14,6 +14,20 @@
 
 #include "MultiSolverInterface.h"
 #include "Confs.h"
+#include <cstdint>
+
+static inline uint32_t ti_hash_u32(uint32_t x){
+    x ^= x >> 16;
+    x *= 0x7feb352dU;
+    x ^= x >> 15;
+    x *= 0x846ca68bU;
+    x ^= x >> 16;
+    return x;
+}
+
+static inline float ti_hash_unit_f(uint32_t x){
+    return (float)x * (1.0f/4294967296.0f);
+}
 
 
 
@@ -113,6 +127,12 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     //int iSystemCur  = 8;    // currently selected system replica
     bool bGPU_MMFF = true;
 
+    bool initial = false;
+    bool bHardConstrainedAtoms    = true;
+    bool bSoftConstrainedAtoms    = false;
+    bool bHardConstrainedDistance = false;
+    bool bSoftConstrainedDistance = false;
+
     Quat4f* atoms      =0;
     Quat4f* aforces    =0;
     Quat4f* avel       =0;
@@ -123,6 +143,9 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     Quat4f* TDrive     =0;  // temperature and drived dynamics
     Quat4f* averageForces =0;  // accumulated force differences for thermodynamic integration
     Quat4i*   jeParams   = 0;  // parameters for Jarzynski Equality [ nSystems ]
+    MMFFsp3_loc ffl0;         // pristine initial replica state used for TI batch resets
+    bool bDeterministicTDrive = false;
+    int  ti_step = 0;
 
     Quat4f* constr     =0;
     Quat4f* constrK    =0;
@@ -248,11 +271,139 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         outFerr = sqrt(cumulative_var);
 }
 
+    void resetTIBatchState(bool bUploadToGPU=true){
+        ti_step = 0;
+        const Quat4f tdrive0{0.0f,-1.0f,0.0f,0.0f};
+        for(int isys=0; isys<nSystems; isys++){
+            const int i0v = isys * ocl.nvecs;
+            pack_system(isys, ffl0, false, false, false, true);
+            for(int i=0; i<ocl.nvecs; i++){
+                aforces[i0v+i] = Quat4fZero;
+                avel   [i0v+i] = Quat4fZero;
+                cvfs   [i0v+i] = Quat4fZero;
+            }
+            averageForces[isys] = Quat4fZero;
+            TDrive[isys] = tdrive0;
+            fire[isys].bind_params( &fire_setup );
+            fire[isys].id = isys;
+            MDpars[isys] = Quat4f{ fire[isys].dt, 1.0f - fire[isys].damping, 1.0f, 0.0f };
+            if(gopts){
+                gopts[isys].copy(go);
+                gopts[isys].istep = 0;
+                gopts[isys].bExploring = bGopt;
+            }
+            if(isSystemRelaxed){ isSystemRelaxed[isys] = false; }
+        }
+        if(!bUploadToGPU) return;
+        int err = 0;
+        err |= ocl.upload( ocl.ibuff_atoms, atoms );
+        err |= ocl.upload( ocl.ibuff_aforces, aforces );
+        err |= ocl.upload( ocl.ibuff_avel, avel );
+        err |= ocl.upload( ocl.ibuff_cvf, cvfs );
+        err |= ocl.upload( ocl.ibuff_constr, constr );
+        err |= ocl.upload( ocl.ibuff_constrK, constrK );
+        err |= ocl.upload( ocl.ibuff_lvecs, lvecs );
+        err |= ocl.upload( ocl.ibuff_ilvecs, ilvecs );
+        err |= ocl.upload( ocl.ibuff_pbcshifts, pbcshifts );
+        err |= ocl.upload( ocl.ibuff_MDpars, MDpars );
+        err |= ocl.upload( ocl.ibuff_TDrive, TDrive );
+        err |= ocl.upload( ocl.ibuff_averageForces, averageForces );
+        err |= ocl.finishRaw();
+        OCL_checkError(err, "resetTIBatchState().upload");
+    }
 
-    double computeFreeEnergy(int nCVs, Vec3f* initial_positions, Vec3f* final_positions, int nLambda, int nMDsteps = 100000, int nEQsteps = 10000, double Fconv = 1e-6, int mode = 0, double JEforceconst = 5.0){
+
+    void setupTIConstraints( int isys, float lambda, int nCVs, Vec3f* initial_positions, Vec3f* final_positions, bool bAlign=false, float K=10.0f ){
+        const int i0a = isys * ocl.nAtoms;
+        for(int ia=0; ia<ocl.nAtoms; ia++){
+            constr [i0a + ia] = Quat4f{0.0f, 0.0f, 0.0f, -1.0f};
+            constrK[i0a + ia] = Quat4fZero;
+        }
+        
+        int iSi1 = -1;
+        int si_count = 0;
+        for(int ia=0; ia<ffls[isys].natoms; ia++){
+            if(ffls[isys].atypes[ia]==params.getAtomType("Si")){
+                if(iSi1 == -1){ iSi1 = ia; }
+                else {
+                    int iSi2 = ia;
+                    if( si_count < nCVs ){
+                        Vec3f p1_0 = initial_positions[si_count*2];
+                        Vec3f p1_1 = final_positions  [si_count*2];
+                        Vec3f p2_0 = initial_positions[si_count*2+1];
+                        Vec3f p2_1 = final_positions  [si_count*2+1];
+
+                        Vec3f T1, T2;
+                        T1.set_sub(p1_1, p1_0); T1.mul(lambda); T1.add(p1_0);
+                        T2.set_sub(p2_1, p2_0); T2.mul(lambda); T2.add(p2_0);
+                        float L_target = (T1 - T2).norm();
+
+                        Quat4f acon1=Quat4fZero, acon2=Quat4fZero;
+                        Quat4f aconK1=Quat4fZero, aconK2=Quat4fZero;
+
+                        if( bHardConstrainedAtoms || bSoftConstrainedAtoms ){
+                            acon1.f = T1; acon2.f = T2;
+                            float type_offset = bHardConstrainedAtoms ? 0.0e6f : 2.0e6f;
+                            acon1.w = 1e6f + type_offset;
+                            acon2.w = 2e6f + type_offset;
+                            if( bSoftConstrainedAtoms ){
+                                aconK1.w = K;
+                                aconK2.w = K;
+                            } else {
+                                Vec3f dir = p1_1 - p1_0; dir.normalize(); 
+                                aconK1.f = dir; aconK2.f = dir;
+                            }
+                        } else if ( bHardConstrainedDistance || bSoftConstrainedDistance ){
+                            float type_offset = bHardConstrainedDistance ? 4.0e6f : 6.0e6f;
+                            acon1.w = 1e6f + type_offset;
+                            acon2.w = 2e6f + type_offset;
+                            acon1.x = (float)iSi2; acon1.y = L_target;
+                            acon2.x = (float)iSi1; acon2.y = L_target;
+                            if( bSoftConstrainedDistance ){
+                                aconK1.w = K;
+                                aconK2.w = K;
+                            }
+                        }
+                        constr [i0a + iSi1] = acon1;
+                        constr [i0a + iSi2] = acon2;
+                        constrK[i0a + iSi1] = aconK1;
+                        constrK[i0a + iSi2] = aconK2;
+
+                        if( bAlign ){
+                            int i0v = isys * ocl.nvecs;
+                            atoms[i0v + iSi1] = (Quat4f){T1.x, T1.y, T1.z, 0.0f};
+                            atoms[i0v + iSi2] = (Quat4f){T2.x, T2.y, T2.z, 0.0f};
+                        }
+                    }
+                    si_count++;
+                    iSi1 = -1;
+                }
+            }
+        }
+    }
+
+    double computeFreeEnergy(int nCVs, Vec3f* initial_positions, Vec3f* final_positions, int nLambda, int nMDsteps = 100000, int nEQsteps = 10000, double Fconv = 1e-6, int mode = 0, double K = 5.0, 
+        int hardAtoms=-1, int softAtoms=-1, int hardDist=-1, int softDist=-1 ){
+        
+        #define _setbool(b,i) { if(i>=0){b=(i>0);} }
+        _setbool( bHardConstrainedAtoms,    hardAtoms );
+        _setbool( bSoftConstrainedAtoms,    softAtoms );
+        _setbool( bHardConstrainedDistance, hardDist  );
+        _setbool( bSoftConstrainedDistance, softDist  );
+        #undef _setbool
+
         // mode: 0=TI, 1=JE, 2=Both
         bool doTI = (mode == 0) || (mode == 2);
         bool doJE = (mode == 1) || (mode == 2);
+
+        if(doTI && (nLambda > 0) && ((nMDsteps % nLambda) != 0)){
+            printf(
+                "ERROR: computeFreeEnergy() requires nMDsteps (%d) divisible by nLambda (%d) for TI normalization.\n",
+                nMDsteps,
+                nLambda
+            );
+            return NAN;
+        }
 
         char stored_data_filename[512];
         const char *basename = strrchr(xyz_name, '/');
@@ -290,13 +441,21 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         for(int i=0; i<nLambda; i++) res_lambda[i] = (double)i/(nLambda-1);
 
         double cumulative_FE = 0.0;
+        const int nProdStepsPerLambda = nMDsteps / nLambda;
+        const bool bTIDebugAccounting = doTI && (nSystems == 1) && (nLambda == 2)
+            && ( (nProdStepsPerLambda == 1) || ((nEQsteps >= 2000) && (nProdStepsPerLambda <= 64)) );
 
         Quat4i jeParamsInit = Quat4i{ -2, -2, -2, -2 };
         _realloc0( jeParams, nSystems, jeParamsInit );
 
+        const bool prevDeterministicTDrive = bDeterministicTDrive;
+
         // --- Thermodynamic Integration (TI) ---
         if(doTI){
+            bDeterministicTDrive = true;
             printf("\n=== Thermodynamic Integration ===\n");
+            const int nPerVFs_bak = nPerVFs;
+            if(bTIDebugAccounting){ nPerVFs = 1; }
             
             int nBatches = (nLambda + nSystems - 1) / nSystems;
             //double cumulative_FE = 0.0;
@@ -307,44 +466,28 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
 
             for(int batch=0; batch<nBatches; batch++){
                 printf("\n--- TI Batch %d/%d ---\n", batch+1, nBatches);
+                resetTIBatchState(true);
                 // Setup constraints
                 for(int isys=0; isys<nSystems; isys++){
                     int il = isys + batch*nSystems;
+                    TDrive[isys].z = (il < nLambda) ? (float)il : -1.0f;
                     if(il >= nLambda) continue;
                     float lambda = (float)il / (float)(nLambda - 1);
-                    
-                    int si_count = 0;
-                    for(int ia=0; ia<ffls[isys].natoms; ia++){
-                        if(ffls[isys].atypes[ia]==params.getAtomType("Si")){
-                            if(si_count < nCVs){
-                                Quat4f acon = Quat4f{0.0f,0.0f,0.0f,0.0f}; 
-                                acon.f.set_sub(final_positions[si_count], initial_positions[si_count]);
-                                acon.f.mul(lambda);
-                                acon.f.add(initial_positions[si_count]);
-                                acon.w = 1e6f * (float)(si_count % 2 + 1);
-                                Quat4f aconK = Quat4f{acon.w, acon.w, acon.w, acon.w};
-                                constr [isys*ocl.nAtoms + ia] = acon;
-                                constrK[isys*ocl.nAtoms + ia] = aconK;
-                                if(nCVs == 2){ 
-                                    constrK[isys*ocl.nAtoms + ia].f.set_sub(initial_positions[1], initial_positions[0]);
-                                    constrK[isys*ocl.nAtoms + ia].f.normalize();
-                                }
-                            }
-                            si_count++;
-                        }
-                    }
+                    setupTIConstraints( isys, lambda, nCVs, initial_positions, final_positions, true, K );
                 }
-                upload( ocl.ibuff_constr,  constr  );
-                upload( ocl.ibuff_constrK, constrK );
+                ocl.upload( ocl.ibuff_constr,  constr  );
+                ocl.upload( ocl.ibuff_constrK, constrK );
+                ocl.upload( ocl.ibuff_atoms,   atoms   ); // Upload potentially aligned atoms
 
-                printf("  Equilibrating %d steps...\n", nEQsteps);
+		                printf("  Equilibrating %d steps...\n", nEQsteps);
                 run_ocl_opt( nEQsteps, Fconv);
 
                 for(int isys=0; isys<nSystems; isys++) averageForces[isys] = Quat4fZero;
-                upload( ocl.ibuff_averageForces, averageForces );
+                ocl.upload( ocl.ibuff_averageForces, averageForces );
+                ocl.finishRaw();
 
-                printf("  Production %d steps...\n", nMDsteps/nLambda);
-                run_ocl_opt( nMDsteps/nLambda, Fconv);
+		                printf("  Production %d steps...\n", nProdStepsPerLambda);
+                run_ocl_opt( nProdStepsPerLambda, Fconv);
 
                 ocl.download( ocl.ibuff_averageForces, averageForces );
                 ocl.finishRaw();
@@ -353,17 +496,81 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                     int il = isys + batch*nSystems;
                     if(il >= nLambda) continue;
                     float lambda = (float)il / (float)(nLambda - 1);
-                    double dE = averageForces[isys].w * (1.0*nLambda/ (double)(nMDsteps));
+                    // printf("  System %d, lambda %f, averageForces %f %f %f %f\n", isys, lambda, averageForces[isys].x, averageForces[isys].y, averageForces[isys].z, averageForces[isys].w);
+                    if(bTIDebugAccounting){
+                        printf(
+                            "TI_DEBUG_HOST_AVG batch=%d isys=%d lambda=%.17g avg=(%.17g,%.17g,%.17g,%.17g)\n",
+                            batch + 1,
+                            isys,
+                            (double)lambda,
+                            (double)averageForces[isys].x,
+                            (double)averageForces[isys].y,
+                            (double)averageForces[isys].z,
+                            (double)averageForces[isys].w
+                        );
+                    }
+                    const double force_sum = averageForces[isys].z + averageForces[isys].w;
+                    const double force_scale = 1.0*nLambda / (double)(nMDsteps);
+                    double dE = -force_sum * force_scale;
+                    if(bTIDebugAccounting){
+                        printf(
+                            "TI_DEBUG_HOST_DE batch=%d isys=%d lambda=%.9g force_sum=%.17g scale=%.17g dE=%.17g\n",
+                            batch + 1,
+                            isys,
+                            (double)lambda,
+                            force_sum,
+                            force_scale,
+                            dE
+                        );
+                    }
+                    printf("  System %d, lambda %f, dE %f\n", isys, lambda, dE);
                     double mean_sq = averageForces[isys].x * (1.0*nLambda / (double)(nMDsteps));
                     double var = mean_sq - dE * dE;
-                    double sigma = sqrt(fabs(var));
+                    double SD = sqrt(fabs(var));
+                    double SEM = SD / sqrt(nProdStepsPerLambda);
+                    if(bTIDebugAccounting){
+                        printf(
+                            "TI_DEBUG_HOST_STATS batch=%d isys=%d lambda=%.17g nprod=%d mean_sq=%.17g var=%.17g sd=%.17g sem=%.17g\n",
+                            batch + 1,
+                            isys,
+                            (double)lambda,
+                            nProdStepsPerLambda,
+                            mean_sq,
+                            var,
+                            SD,
+                            SEM
+                        );
+                    }
 
                     double outF, outFerr;
-                    TI_step(lambda, dE, sigma, dLambda, nMDsteps, cumulative_FE, cumulative_var, prev_dE_dlambda, prev_sigma_dE, outF, outFerr);
-                    
+                    const double prev_dE_before = prev_dE_dlambda;
+                    const double prev_sigma_before = prev_sigma_dE;
+                    const double cumulative_FE_before = cumulative_FE;
+                    const double cumulative_var_before = cumulative_var;
+                    TI_step(lambda, dE, SEM, dLambda, nMDsteps, cumulative_FE, cumulative_var, prev_dE_dlambda, prev_sigma_dE, outF, outFerr);
+                    if(bTIDebugAccounting){
+                        printf(
+                            "TI_DEBUG_TI_STEP batch=%d isys=%d lambda=%.17g dLambda=%.17g prev_dE=%.17g prev_sigma=%.17g in_dE=%.17g in_sigma=%.17g cumFE_before=%.17g cumVar_before=%.17g outF=%.17g outFerr=%.17g cumFE_after=%.17g cumVar_after=%.17g\n",
+                            batch + 1,
+                            isys,
+                            (double)lambda,
+                            dLambda,
+                            prev_dE_before,
+                            prev_sigma_before,
+                            dE,
+                            SEM,
+                            cumulative_FE_before,
+                            cumulative_var_before,
+                            outF,
+                            outFerr,
+                            cumulative_FE,
+                            cumulative_var
+                        );
+                    }
+                    // printf("  System %d, lambda %f, dE %f, SEM %f, outF %f, outFerr %f\n", isys, lambda, dE, SEM, outF, outFerr);
                     res_lambda[il] = lambda;
                     res_TI_dE[il] = dE;
-                    res_TI_sigma[il] = sigma;
+                    res_TI_sigma[il] = SEM;
                     res_TI_F[il] = outF;
                     res_TI_Ferr[il] = outFerr;
                     
@@ -373,7 +580,9 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                     res_dist[il] = dr.norm();
                 }
             }
+            nPerVFs = nPerVFs_bak;
         }
+        bDeterministicTDrive = prevDeterministicTDrive;
 
         // --- Jarzynski Equality (JE) ---
         if(doJE){
@@ -396,13 +605,13 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 for(int ia=0; ia<ffls[isys].natoms; ia++){
                     if(ffls[isys].atypes[ia]==params.getAtomType("Si")){
                         if(si_count < nCVs){
-                            Quat4f acon  = Quat4f{initial_positions[si_count].x, initial_positions[si_count].y, initial_positions[si_count].z, JEforceconst}; 
+                            Quat4f acon  = Quat4f{initial_positions[si_count].x, initial_positions[si_count].y, initial_positions[si_count].z, K}; 
                             Quat4f aconK = Quat4f{final_positions[si_count].x,   final_positions[si_count].y,   final_positions[si_count].z,   0.0f}; 
                             if(si_count == 0){ // for incrementing of lambda step index in the kernel
-                                aconK.w = 1.0f;
-                            }                            
-                            constr [isys*ocl.nAtoms + ia] = acon;
-                            constrK[isys*ocl.nAtoms + ia] = aconK;
+                        aconK.w = 1.0f;
+                    }
+                    constr [isys*ocl.nAtoms + ia] = acon;
+                    constrK[isys*ocl.nAtoms + ia] = aconK;
 
                         }
                         si_count++;
@@ -431,11 +640,12 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 
                 // 1. Equilibrate lambda=0
                 printf("  Equilibrating %d steps...\n", nEQsteps);
-                nPerVFs = nEQsteps;
+                nPerVFs = 1;
+                // nPerVFs = nEQsteps;
                 for(int isys=0; isys<nSystems; isys++){ jeParams[isys] = Quat4i{-1, nLambda, 0, 0}; } // JE equilibration mode at lambda=0
                 for(int i=0; i<nSystems * nLambda; i++) gpu_work[i] = randf(-1.0, 1.0);
-                ocl.upload( ocl.ibuff_work, gpu_work );
-                ocl.upload( ocl.ibuff_jeParams, jeParams );
+		                ocl.upload( ocl.ibuff_work, gpu_work );
+		                ocl.upload( ocl.ibuff_jeParams, jeParams );
                 run_ocl_opt( nEQsteps, Fconv );
 
                 // 2. Pulling
@@ -450,7 +660,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 }
                 ocl.upload( ocl.ibuff_work, gpu_work );
 
-                printf("  Pulling for %d steps...\n", nLambda);
+		                printf("  Pulling for %d steps...\n", nLambda);
                 run_ocl_opt( nLambda, Fconv );
 
                 // 3. Download work and accumulate
@@ -495,39 +705,39 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
             res_JE_W_sigma[0] = 0.0;
             res_JE_W_skew[0] = 0.0;
             res_dist[0] = initial_positions[0].dist(initial_positions[1]);
-            for(int step=1; step<nLambda; step++){
-                double mean_expW = sum_exp_W[step] / total_samples;
-                double mean_expW2 = sum_exp_W2[step] / total_samples;
+            for(int i=1; i<nLambda; i++){
+                double mean_expW = sum_exp_W[i] / total_samples;
+                double mean_expW2 = sum_exp_W2[i] / total_samples;
                 double var_expW = mean_expW2 - mean_expW * mean_expW;
                 if(var_expW < 0.0) var_expW = 0.0;
                 double sem_expW = sqrt(var_expW / total_samples);
 
-                double dF = NAN;
-                double dF_sigma = NAN;
+                double F = NAN;
+                double F_sigma = NAN;
                 if(mean_expW > 0.0 && std::isfinite(mean_expW)){
-                    dF = -log( mean_expW ) / beta;
-                    dF_sigma = sem_expW / (beta * mean_expW);
+                    F = -log( mean_expW ) / beta;
+                    F_sigma = sem_expW / (beta * mean_expW);
                 }
 
-                double w_mean = sum_W[step] / total_samples;
-                double w2_mean = sum_W2[step] / total_samples;
-                double w3_mean = sum_W3[step] / total_samples;
+                double w_mean = sum_W[i] / total_samples;
+                double w2_mean = sum_W2[i] / total_samples;
+                double w3_mean = sum_W3[i] / total_samples;
                 double w_var = w2_mean - w_mean * w_mean;
                 if(w_var < 0.0) w_var = 0.0;
                 double w_sigma = sqrt(w_var);
                 double m3 = w3_mean - 3.0 * w_mean * w2_mean + 2.0 * w_mean * w_mean * w_mean;
                 double w_skew = (w_sigma > 1e-16) ? (m3 / (w_sigma * w_sigma * w_sigma)) : 0.0;
 
-                res_JE_F[step] = dF;
-                res_JE_F_sigma[step] = dF_sigma;
-                res_JE_W_avg[step] = w_mean;
-                res_JE_W_sigma[step] = w_sigma;
-                res_JE_W_skew[step] = w_skew;
-                res_lambda[step] = (float)step / (float)(nLambda - 1);
+                res_JE_F[i] = F;
+                res_JE_F_sigma[i] = F_sigma;
+                res_JE_W_avg[i] = w_mean;
+                res_JE_W_sigma[i] = w_sigma;
+                res_JE_W_skew[i] = w_skew;
+                res_lambda[i] = (float)i / (float)(nLambda - 1);
                 Vec3f dr_i = initial_positions[0] - initial_positions[1];
                 Vec3f dr_f = final_positions[0] - final_positions[1];
-                Vec3f dr; dr.set_lincomb(1.0 - res_lambda[step], dr_i, res_lambda[step], dr_f);
-                res_dist[step] = dr.norm();
+                Vec3f dr; dr.set_lincomb(1.0 - res_lambda[i], dr_i, res_lambda[i], dr_f);
+                res_dist[i] = dr.norm();
             }
         }
 
@@ -541,7 +751,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 res_dist[i]
             );
         }
-        fclose(fti);
+		        fclose(fti);
         return doTI ? cumulative_FE : res_JE_F[nLambda-1];
     }
 
@@ -650,6 +860,8 @@ virtual void init() override {
     ocl.init(i_nvidia);
     ocl.makeKrenels_MM("common_resources/cl" );
     MolWorld_sp3::init();
+        ffl0.clone( ffl, true, true );
+        ffl0.makePBCshifts( nPBC, true );
 
     // initialization of ff4 is here because parrent MolWorld_sp3 does not contain ff4 anymore 
     builder.toMMFFf4( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
@@ -876,9 +1088,9 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=false,
     for(int i=0; i<ocl.nAtoms; i++){ 
         Quat4f a=atoms[i+i0v]; 
         //a.w=-1.0;
-        a.w = ffl.constr[i].w; 
+        a.w = ff.constr[i].w; 
         constr [i+i0a] = a; 
-        constrK[i+i0a] = (Quat4f)ffl.constrK[i]; 
+        constrK[i+i0a] = (Quat4f)ff.constrK[i]; 
         //printf(  "atom[%3i|sys=%i](%8.5f,%8.5f,%8.5f) constr(%8.5f,%8.5f,%8.5f|%8.5f)\n", i, isys, ff.apos[i].x,ff.apos[i].y,ff.apos[i].z,     a.x,a.y,a.z,a.w );
     }  // contrains
     /*
@@ -1094,8 +1306,8 @@ void evalVF_new( int n, Quat4f* cvfs, FIRE& fire, Quat4f& MDpar, bool bExploring
         cvf.add( cvfs[i].f ); 
         cvfs[i] = Quat4fZero; 
     }
-    fire.vv=cvf.x;
-    fire.ff=cvf.y;
+    fire.ff=cvf.x;
+    fire.vv=cvf.y;
     fire.vf=cvf.z;
     fire.update_params();
     if(bExploring){
@@ -1238,7 +1450,14 @@ double evalVFs( double Fconv=1e-6 ){
         if( gopts[isys].bExploring && !bOnlyRelax ){
             TDrive[isys].x = go.T_target;  // Temperature [K]
             TDrive[isys].y = go.gamma_damp;  // gamma_damp
-            TDrive[isys].w = randf(-1.0,1.0); 
+            if(bDeterministicTDrive){
+                uint32_t lambda_id = (TDrive[isys].z >= 0.0f) ? (uint32_t)(TDrive[isys].z + 0.5f) : (uint32_t)isys;
+                const uint32_t step_id = (uint32_t)ti_step;
+                const uint32_t seed = ti_hash_u32(lambda_id * 0x9E3779B9u ^ step_id);
+                TDrive[isys].w = ti_hash_unit_f(seed) * 2.0f - 1.0f;
+            }else{
+                TDrive[isys].w = randf(-1.0,1.0); 
+            }
         }else{
             TDrive[isys].y = -1.0; // gamma_damp
         }
@@ -2035,7 +2254,6 @@ int debug_eval(){
     exit(0);
 }
 
-bool initial = false;  // Disabled test code - constraints are set by computeFreeEnergy
 int run_ocl_opt( int niter, double Fconv=1e-6 ){
     //printf("MolWorld_sp3_multi::run_ocl_opt() niter=%i bGroups=%i ocl.nGroupTot=%i \n", niter, bGroups, ocl.nGroupTot );
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
@@ -2044,39 +2262,31 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     double F2conv = Fconv*Fconv;
     // picked2GPU( ipicked,  1.0 );
     if(initial){
-        // Set up constraints (set)
-        Vec3f initial_pos_1 = {-1.5, 0.0, 0.0};
-        Vec3f final_pos_1 = {-5.5, 0.0, 0.0};
-        Vec3f initial_pos_2 = {+1.5, 0.0, 0.0};
-        Vec3f final_pos_2 = {+5.5, 0.0, 0.0};
-
         for(int isys=0; isys<nSystems; isys++){
-            float k = 0.0f;
-            if(nSystems > 1) k = (float)isys / (float)(nSystems - 1);
-
-            bool bFirst = true;
+            float lambda = (nSystems > 1) ? (float)isys / (float)(nSystems - 1) : 0.0f;
+            
+            // For 'initial' setup via GUI/manual, we derive anchor points from current positions
+            std::vector<Vec3f> p_init, p_final;
+            int iSi1 = -1;
             for(int ia=0; ia<ffls[isys].natoms; ia++){
                 if(ffls[isys].atypes[ia]==params.getAtomType("Si")){
-                    Quat4f acon = Quat4f{0.0f,0.0f,0.0f,2000.0f};
-                    if(bFirst){
-                        acon.f.set_sub(final_pos_1, initial_pos_1);
-                        acon.f.mul(k);
-                        acon.f.add(initial_pos_1);
-                    }else{
-                        acon.f.set_sub(final_pos_2, initial_pos_2);
-                        acon.f.mul(k);
-                        acon.f.add(initial_pos_2);
+                    if(iSi1 == -1){ iSi1 = ia; }
+                    else{
+                        Vec3f p1 = (Vec3f){-0.5f, 0, 0};
+                        Vec3f p2 = (Vec3f){+0.5f, 0, 0};
+                        p_init.push_back(p1); p_init.push_back(p2);
+                        // Default final positions: stretched by 15A along X
+                        p_final.push_back(p1 + (Vec3f){-7.5f, 0, 0});
+                        p_final.push_back(p2 + (Vec3f){ 7.5f, 0, 0});
+                        iSi1 = -1;
                     }
-                    printf("acon(%g,%g,%g,%g) \n", acon.x, acon.y, acon.z, acon.w);
-                    Quat4f aconK = Quat4f{2000.0f,2000.0f,2000.0f,2000.0f};
-                    constr [isys*ocl.nAtoms + ia]=(Quat4f)acon;
-                    constrK[isys*ocl.nAtoms + ia]=(Quat4f)aconK;
-                    bFirst = !bFirst;
                 }
             }
+            setupTIConstraints( isys, lambda, p_init.size()/2, p_init.data(), p_final.data(), true );
         }
         upload( ocl.ibuff_constr,  constr  );
         upload( ocl.ibuff_constrK, constrK );
+        upload( ocl.ibuff_atoms,   atoms   );
         initial = false;
     }
 
@@ -2172,6 +2382,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             }
             niterdone++;
             nloop++;
+            if(bDeterministicTDrive){ ti_step++; }
         }
         err |= ocl.finishRaw(); 
         F2 = evalVFs( Fconv );

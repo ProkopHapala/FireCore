@@ -189,6 +189,7 @@ void clone( MMFFsp3_loc& from, bool bRealloc, bool bREQsDeep=true ){
         neighCell[i]=from.neighCell[i];
         bkneighs [i]=from.bkneighs [i];
         constr   [i]=from.constr   [i];
+        constrK  [i]=from.constrK  [i];
     }
     for(int i=0; i<nnode; i++){
         apars[i]=from.apars[i];

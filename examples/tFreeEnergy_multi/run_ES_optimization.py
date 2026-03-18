@@ -126,7 +126,7 @@ class Combo:
     nLambda: int
     nEQsteps: int
     nMDsteps: int
-    JE_K: Optional[float]
+    K: Optional[float]
     dt: float
     t_damp: float
     je_target_trajectories: Optional[int] = None
@@ -148,9 +148,9 @@ class Combo:
             f"td{_float_tag(self.t_damp)}",
         ]
         if self.mode == "JE":
-            parts.append(f"jek{_float_tag(self.JE_K)}")
+            parts.append(f"jek{_float_tag(self.K)}")
         if self.mode == "BOTH":
-            parts.append(f"jek{_float_tag(self.JE_K)}")
+            parts.append(f"jek{_float_tag(self.K)}")
         tag_parts.extend(parts)
         return "_".join(tag_parts)
 
@@ -161,7 +161,7 @@ def _all_combos(
     nlambda_list: Iterable[int],
     neq_list: Iterable[int],
     nmd_list: Iterable[int],
-    je_k_list: Iterable[float],
+    K_list: Iterable[float],
     dt: float,
     t_damp: float,
 ) -> List[Combo]:
@@ -169,7 +169,7 @@ def _all_combos(
     for mode in modes:
         for nsys, nl, neq, nmd in itertools.product(nsys_list, nlambda_list, neq_list, nmd_list):
             if mode in ("JE", "BOTH"):
-                for jk in je_k_list:
+                for jk in K_list:
                     out.append(Combo(mode, nsys, nl, neq, nmd, jk, dt, t_damp))
             else:
                 out.append(Combo(mode, nsys, nl, neq, nmd, None, dt, t_damp))
@@ -215,13 +215,13 @@ def _combos_from_param_sets(param_sets: List[dict], common: Dict[str, object]) -
         dt = _to_float(ps.get("dt", common.get("dt", 0.05)), f"set[{i}].dt")
         t_damp = _to_float(ps.get("t_damp", common.get("t_damp", 150.0)), f"set[{i}].t_damp")
 
-        je_k = ps.get("JE_K", common.get("JE_K"))
+        K = ps.get("K", common.get("K"))
         if mode in ("JE", "BOTH"):
-            if je_k is None:
-                raise ValueError(f"Set[{i}] mode={mode} requires JE_K")
-            je_k = _to_float(je_k, f"set[{i}].JE_K")
+            if K is None:
+                raise ValueError(f"Set[{i}] mode={mode} requires K")
+            K = _to_float(K, f"set[{i}].K")
         else:
-            je_k = None
+            K = None
         label = str(ps.get("name", "")).strip()
         out.append(
             Combo(
@@ -230,7 +230,7 @@ def _combos_from_param_sets(param_sets: List[dict], common: Dict[str, object]) -
                 nLambda=nlambda,
                 nEQsteps=neq,
                 nMDsteps=nmd,
-                JE_K=je_k,
+                K=K,
                 dt=dt,
                 t_damp=t_damp,
                 je_target_trajectories=je_target_trajectories,
@@ -346,7 +346,7 @@ def _write_summary_plots(summary_dir: str, rows: List[Dict[str, object]]) -> Non
         x="wall_s",
         y="rmsd_profile_eV",
         color="mode",
-        hover_data=["N", "nSys", "nLambda", "nEQsteps", "nMDsteps", "JE_K", "run_dir"],
+        hover_data=["N", "nSys", "nLambda", "nEQsteps", "nMDsteps", "K", "run_dir"],
         title="Pareto: Wall Time vs RMSD",
     )
     fig1.write_html(os.path.join(summary_dir, "pareto_time_vs_rmsd.html"))
@@ -356,7 +356,7 @@ def _write_summary_plots(summary_dir: str, rows: List[Dict[str, object]]) -> Non
         x="wall_s",
         y="final_abs_error_eV",
         color="mode",
-        hover_data=["N", "nSys", "nLambda", "nEQsteps", "nMDsteps", "JE_K", "run_dir"],
+        hover_data=["N", "nSys", "nLambda", "nEQsteps", "nMDsteps", "K", "run_dir"],
         title="Pareto: Wall Time vs Final |DeltaF-Ref|",
     )
     fig2.write_html(os.path.join(summary_dir, "pareto_time_vs_final_error.html"))
@@ -369,7 +369,7 @@ def _write_summary_plots(summary_dir: str, rows: List[Dict[str, object]]) -> Non
             y="je_wiggle_rmse_eV",
             color="N",
             symbol="mode",
-            hover_data=["nSys", "nLambda", "nEQsteps", "nMDsteps", "JE_K", "run_dir"],
+            hover_data=["nSys", "nLambda", "nEQsteps", "nMDsteps", "K", "run_dir"],
             title="JE Wiggle Fit RMSE on lambda in [0,0.05]",
         )
         fig3.write_html(os.path.join(summary_dir, "je_wiggle_fit_lambda_0_0p05.html"))
@@ -383,7 +383,7 @@ def main() -> None:
     ap.add_argument("--nLambda-list", default="1000", help="Comma-separated nLambda values")
     ap.add_argument("--nEQsteps-list", default="5000", help="Comma-separated nEQsteps values")
     ap.add_argument("--nMDsteps-list", default="1000000", help="Comma-separated nMDsteps values")
-    ap.add_argument("--je-k-list", default="2.0", help="Comma-separated JE_K values (JE mode only)")
+    ap.add_argument("--je-k-list", default="2.0", help="Comma-separated K values (JE mode only)")
     ap.add_argument("--output-root", default="bench_ES", help="Output directory under examples/tFreeEnergy_multi")
     ap.add_argument("--constraints", default="constraints_ES.txt")
     ap.add_argument("--Fconv", type=float, default=1e-6)
@@ -460,8 +460,8 @@ def main() -> None:
         nlambda_list = _parse_int_list(args.nLambda_list)
         neq_list = _parse_int_list(args.nEQsteps_list)
         nmd_list = _parse_int_list(args.nMDsteps_list)
-        je_k_list = _parse_float_list(args.je_k_list)
-        combos = _all_combos(modes, nsys_list, nlambda_list, neq_list, nmd_list, je_k_list, args.dt, args.t_damp)
+        K_list = _parse_float_list(args.K_list)
+        combos = _all_combos(modes, nsys_list, nlambda_list, neq_list, nmd_list, K_list, args.dt, args.t_damp)
 
     out_root = os.path.join(SCRIPT_DIR, args.output_root)
     runs_root = os.path.join(out_root, "runs")
@@ -523,8 +523,8 @@ def main() -> None:
                 str(args.Fconv),
                 "--constraints",
                 args.constraints,
-                "--JEforceconst",
-                str(combo.JE_K if combo.JE_K is not None else 2.0),
+                "--K",
+                str(combo.K if combo.K is not None else 2.0),
                 "--dt",
                 str(combo.dt),
                 "-T",
@@ -546,7 +546,7 @@ def main() -> None:
                 "nLambda": combo.nLambda,
                 "nEQsteps": combo.nEQsteps,
                 "nMDsteps": combo.nMDsteps,
-                "JE_K": combo.JE_K if combo.JE_K is not None else "",
+                "K": combo.K if combo.K is not None else "",
                 "dt": combo.dt,
                 "t_damp": combo.t_damp,
                 "je_target_trajectories": combo.je_target_trajectories if combo.je_target_trajectories is not None else "",
@@ -656,7 +656,7 @@ def main() -> None:
         "nLambda",
         "nEQsteps",
         "nMDsteps",
-        "JE_K",
+        "K",
         "dt",
         "t_damp",
         "je_target_trajectories",

@@ -8,19 +8,27 @@ set -e  # Exit on error
 
 # Default Mode
 MODE="BOTH"  # Options: TI, JE, BOTH
-JE_K=2.0     # Default JE force constant
+K=2.0     # Default JE force constant
+HARD_ATOMS=1
+SOFT_ATOMS=0
+HARD_DIST=0
+SOFT_DIST=0
 
 # Parse command line arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --mode) MODE="$2"; shift ;;
-        --k)    JE_K="$2"; shift ;;
+        --k)    K="$2"; shift ;;
+        --hard_atoms) HARD_ATOMS="$2"; shift ;;
+        --soft_atoms) SOFT_ATOMS="$2"; shift ;;
+        --hard_dist) HARD_DIST="$2"; shift ;;
+        --soft_dist) SOFT_DIST="$2"; shift ;;
         *) ;; # Ignore unknown args
     esac
     shift
 done
 
-N=30
+N=20
 
 # Ensure we are in the script directory
 cd "$(dirname "$0")"
@@ -43,29 +51,43 @@ echo ""
 # Run calculation
 echo "Step 2: Running Free Energy Calculation (Mode: $MODE)..."
 echo "----------------------------------------"
-python3 run_ES.py \
-    --mode $MODE \
-    --nSys 100 \
-    --xyz_name "../tMMFF/data/entropic_spring_$N.xyz" \
-    --nLambda 100000 \
-    --nMDsteps 10000000 \
-    --nEQsteps 50000 \
-    --Fconv 1e-6 \
-    --constraints "constraints_ES.txt" \
-    --JEforceconst $JE_K \
-    --dt 0.05 \
-    -T 300 \
-    --t_damp 150
 # python3 run_ES.py \
 #     --mode $MODE \
 #     --nSys 100 \
 #     --xyz_name "../tMMFF/data/entropic_spring_$N.xyz" \
-#     --nLambda 100 \
-#     --nMDsteps 100000000 \
+#     --nLambda 100000 \
+#     --nMDsteps 10000000 \
 #     --nEQsteps 50000 \
 #     --Fconv 1e-6 \
 #     --constraints "constraints_ES.txt" \
-#     --JEforceconst $JE_K \
+#     --K $K \
+#     --dt 0.05 \
+#     -T 300 \
+#     --t_damp 150
+python3 run_ES.py \
+    --mode $MODE \
+    --nSys 100 \
+    --xyz_name "../tMMFF/data/entropic_spring_$N.xyz" \
+    --nLambda 100 \
+    --nMDsteps 100000000 \
+    --nEQsteps 50000 \
+    --Fconv 1e-6 \
+    --constraints "constraints_ES.txt" \
+    --K $K \
+    --dt 0.05 \
+    -T 300 \
+    --t_damp 200 \
+    --soft_atoms
+# python3 run_ES.py \
+#     --mode $MODE \
+#     --nSys 2 \
+#     --xyz_name "../tMMFF/data/entropic_spring_$N.xyz" \
+#     --nLambda 2 \
+#     --nMDsteps 40 \
+#     --nEQsteps 20000 \
+#     --Fconv 1e-6 \
+#     --constraints "constraints_ES.txt" \
+#     --K $K \
 #     --dt 0.05 \
 #     -T 300 \
 #     --t_damp 150

@@ -8,6 +8,7 @@
 
 #include <thread>
 #include <chrono>
+#include <vector>
 
 // ============ Global Variables
 
@@ -19,6 +20,106 @@ MolWorld_sp3_multi W;
 #include "libUtils.h"
 
 extern "C"{
+
+static void assembleMMFFforcesFromRecoil(){
+    const int nvecTot = W.ocl.nvecs * W.nSystems;
+    const int nbkTot  = W.ocl.nbkng * W.nSystems;
+    static std::vector<Quat4f> neighForce;
+    neighForce.resize(nbkTot);
+
+    int err=0;
+    err |= W.ocl.download( W.ocl.ibuff_aforces,    W.aforces        );
+    err |= W.ocl.download( W.ocl.ibuff_neighForce, neighForce.data() );
+    err |= W.ocl.finishRaw();
+    OCL_checkError(err, "assembleMMFFforcesFromRecoil().download");
+
+    for(int i=0; i<nvecTot; i++){
+        Quat4f fe = W.aforces[i];
+        const Quat4i ngs = W.bkNeighs[i];
+        if(ngs.x>=0){ const Quat4f& q = neighForce[ngs.x]; fe.x+=q.x; fe.y+=q.y; fe.z+=q.z; fe.w+=q.w; }
+        if(ngs.y>=0){ const Quat4f& q = neighForce[ngs.y]; fe.x+=q.x; fe.y+=q.y; fe.z+=q.z; fe.w+=q.w; }
+        if(ngs.z>=0){ const Quat4f& q = neighForce[ngs.z]; fe.x+=q.x; fe.y+=q.y; fe.z+=q.z; fe.w+=q.w; }
+        if(ngs.w>=0){ const Quat4f& q = neighForce[ngs.w]; fe.x+=q.x; fe.y+=q.y; fe.z+=q.z; fe.w+=q.w; }
+        W.aforces[i] = fe;
+    }
+}
+
+static void copySystemGeometryToFF4( int isys ){
+    const int i0v = isys * W.ocl.nvecs;
+    for(int i=0; i<W.ff4.nvecs; i++){
+        W.ff4.apos[i] = W.atoms[i0v+i];
+    }
+
+    Mat3d lvec;
+    Mat3_from_cl( lvec, W.lvecs[isys] );
+    W.ff4.setLvec( (Mat3f)lvec );
+    W.ff4.makeNeighCells( W.bPBC ? W.nPBC : Vec3iZero );
+}
+
+static void packMMFFforcesToGPUBuffer( int isys, MMFFf4& ff ){
+    const int i0v = isys * W.ocl.nvecs;
+    for(int i=0; i<ff.nvecs; i++){
+        W.aforces[i0v+i] = ff.fapos[i];
+    }
+}
+
+static void setupTIConstraintsBatch_( int nCVs, Vec3f* initial_positions, Vec3f* final_positions, int nLambda, int batch ){
+    const Quat4f no_constr  = Quat4f{0.0f, 0.0f, 0.0f, -1.0f};
+    const Quat4f no_constrK = Quat4fZero;
+    for(int isys=0; isys<W.nSystems; isys++){
+        const int i0a = isys * W.ocl.nAtoms;
+        for(int ia=0; ia<W.ocl.nAtoms; ia++){
+            W.constr [i0a + ia] = no_constr;
+            W.constrK[i0a + ia] = no_constrK;
+        }
+        const int il = isys + batch*W.nSystems;
+        if(il >= nLambda) continue;
+        const float lambda = (nLambda > 1) ? ((float)il / (float)(nLambda - 1)) : 0.0f;
+
+        int si_count = 0;
+        for(int ia=0; ia<W.ffls[isys].natoms; ia++){
+            if(W.ffls[isys].atypes[ia] != W.params.getAtomType("Si")) continue;
+            if(si_count < nCVs){
+                Quat4f acon = Quat4f{0.0f,0.0f,0.0f,0.0f};
+                acon.f.set_sub(final_positions[si_count], initial_positions[si_count]);
+                acon.f.mul(lambda);
+                acon.f.add(initial_positions[si_count]);
+                acon.w = 1e6f * (float)(si_count % 2 + 1);
+
+                Quat4f aconK = Quat4f{0.0f,0.0f,0.0f, acon.w};
+                aconK.f.set_sub(final_positions[si_count], initial_positions[si_count]);
+
+                W.constr [isys*W.ocl.nAtoms + ia] = acon;
+                W.constrK[isys*W.ocl.nAtoms + ia] = aconK;
+            }
+            si_count++;
+        }
+    }
+    int err = 0;
+    err |= W.ocl.upload( W.ocl.ibuff_constr,  W.constr  );
+    err |= W.ocl.upload( W.ocl.ibuff_constrK, W.constrK );
+    err |= W.ocl.finishRaw();
+    OCL_checkError(err, "setupTIConstraintsBatch_().upload");
+}
+
+static void zeroTIAverageForces_(){
+    for(int isys=0; isys<W.nSystems; isys++) W.averageForces[isys] = Quat4fZero;
+    int err = 0;
+    err |= W.ocl.upload( W.ocl.ibuff_averageForces, W.averageForces );
+    err |= W.ocl.finishRaw();
+    OCL_checkError(err, "zeroTIAverageForces_().upload");
+}
+
+static void downloadTIAverageForces_(){
+    int err = 0;
+    err |= W.ocl.download( W.ocl.ibuff_averageForces, W.averageForces );
+    err |= W.ocl.finishRaw();
+    OCL_checkError(err, "downloadTIAverageForces_().download");
+}
+
+static void resetTIBatchState_(){
+    W.resetTIBatchState(true);
+}
 
 void init_buffers(){
     buffers .insert( { "apos",   (double*)W.nbmol.apos } );
@@ -48,6 +149,8 @@ void init_buffers(){
         fbuffers.insert( { "gpu_aforces",  (float*)W.aforces } );
         fbuffers.insert( { "gpu_avel",     (float*)W.avel    } );
         fbuffers.insert( { "gpu_constr",   (float*)W.constr  } );
+        fbuffers.insert( { "gpu_constrK",  (float*)W.constrK } );
+        fbuffers.insert( { "gpu_averageForces", (float*)W.averageForces } );
         
         fbuffers.insert( { "gpu_REQs",     (float*)W.REQs   } );
         fbuffers.insert( { "gpu_MMpars",   (float*)W.MMpars } );
@@ -132,11 +235,63 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
     //return W.run(nstepMax,dt,Fconv,ialg,outE,outF);  
 }
 
+void eval_getMMFFf4_ocl(){
+    if( W.task_MMFF == 0 ) W.setup_MMFFf4_ocl();
+    int err=0;
+    err |= W.task_cleanF->enque_raw();
+    err |= W.task_MMFF  ->enque_raw();
+    err |= W.ocl.finishRaw();
+    OCL_checkError(err, "eval_getMMFFf4_ocl");
+    assembleMMFFforcesFromRecoil();
+}
+
+void eval_getMMFFf4_cpu(){
+    W.download( false, false );
+    for(int isys=0; isys<W.nSystems; isys++){
+        copySystemGeometryToFF4( isys );
+        W.ff4.eval();
+        packMMFFforcesToGPUBuffer( isys, W.ff4 );
+    }
+}
+
 void MDloop( int perframe, double Ftol = -1, int iParalel = 3, int perVF = 100 ){
     W.iParalel = iParalel;
     W.nPerVFs = perVF;
     W.iterPerFrame = perframe;
     W.MDloop( perframe, Ftol );
+}
+
+void setupTIConstraintsBatch( int nCVs, float* initial_positions, float* final_positions, int nLambda, int batch ){
+    setupTIConstraintsBatch_( nCVs, (Vec3f*)initial_positions, (Vec3f*)final_positions, nLambda, batch );
+}
+
+void zeroTIAverageForces(){
+    zeroTIAverageForces_();
+}
+
+void downloadTIAverageForces(){
+    downloadTIAverageForces_();
+}
+
+void resetTIBatchState(){
+    resetTIBatchState_();
+}
+
+void getTIHostEstimator( int isys, int nLambda, int nMDsteps, double* out ){
+    const int nProdStepsPerLambda = nMDsteps / nLambda;
+    const double force_scale = 1.0*nLambda / (double)(nMDsteps);
+    const double force_sum = W.averageForces[isys].z + W.averageForces[isys].w;
+    const double dE = -force_sum * force_scale;
+    const double mean_sq = W.averageForces[isys].x * force_scale;
+    const double var = mean_sq - dE*dE;
+    const double SD = sqrt(fabs(var));
+    const double SEM = SD / sqrt((double)nProdStepsPerLambda);
+    out[0] = force_sum;
+    out[1] = dE;
+    out[2] = mean_sq;
+    out[3] = SEM;
+    out[4] = force_scale;
+    out[5] = (double)nProdStepsPerLambda;
 }
 
 void set_opt( 
@@ -329,8 +484,18 @@ void setSwitches_multi( int CheckInvariants, int PBC, int NonBonded, int MMFF, i
 }
 
 
-double computeFreeEnergy(int nCVs, float* initial_positions, float* final_positions, int nLambda, int nMDsteps, int nEQsteps, double Fconv, int mode, double JEforceconst){
-    return W.computeFreeEnergy(nCVs, (Vec3f*)initial_positions, (Vec3f*)final_positions, nLambda, nMDsteps, nEQsteps, Fconv, mode, JEforceconst);
+void setConstraints( int hardAtoms, int softAtoms, int hardDist, int softDist, int initial ){
+    #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
+    _setbool( W.bHardConstrainedAtoms,    hardAtoms );
+    _setbool( W.bSoftConstrainedAtoms,    softAtoms );
+    _setbool( W.bHardConstrainedDistance, hardDist  );
+    _setbool( W.bSoftConstrainedDistance, softDist  );
+    _setbool( W.initial,                  initial   );
+    #undef _setbool
+}
+
+double computeFreeEnergy(int nCVs, float* initial_positions, float* final_positions, int nLambda, int nMDsteps, int nEQsteps, double Fconv, int mode, double K, int hardAtoms, int softAtoms, int hardDist, int softDist){
+    return W.computeFreeEnergy(nCVs, (Vec3f*)initial_positions, (Vec3f*)final_positions, nLambda, nMDsteps, nEQsteps, Fconv, mode, K, hardAtoms, softAtoms, hardDist, softDist);
 }
 
 } // extern "C"
