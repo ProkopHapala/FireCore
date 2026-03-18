@@ -1,0 +1,12 @@
+{
+    "molecule1": {
+        "name": "Acetamide",
+        "CID": 178,
+        "final_energy": -5694.291812119
+    },
+    "molecule2": {
+        "name": "Acetamide",
+        "CID": 2331,
+        "final_energy": -10910.844054433
+    }
+}

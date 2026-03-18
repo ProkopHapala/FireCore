@@ -1,0 +1,12 @@
+# input file for adsorption study involving rotation and translation of adsorbate on a substrate translation (x,y) + adsorption height (z), rotat
+ion (Rx, Ry, Rz).
+# optimization
+userfn       userfn_sym_6D_rot_trans.py
+bounds       0 2.884; 0 4.994; 3.0 12.0; -180 180; -180 180; -180 180
+kernel       stdp stdp rbf stdp stdp stdp
+yrange       -4 4
+initpts      20
+iterpts      100
+parallel_optims 128
+# post-processing
+pp_models        1

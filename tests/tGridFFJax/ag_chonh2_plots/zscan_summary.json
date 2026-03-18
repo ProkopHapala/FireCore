@@ -1,0 +1,474 @@
+{
+  "adsorbate": {
+    "name": "CHONH2",
+    "natoms": 6,
+    "symbols": [
+      "C",
+      "N",
+      "O",
+      "H",
+      "H",
+      "H"
+    ],
+    "source_file": "cpp/common_resources/xyz/CHONH2.xyz",
+    "used_input_charges": true
+  },
+  "orientation": {
+    "yaw_deg": 0.0,
+    "tilt_x_deg": 0.0,
+    "tilt_y_deg": 0.0,
+    "quaternion": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rotation_matrix": [
+      [
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0
+      ]
+    ]
+  },
+  "sampling": {
+    "sites": [
+      "top",
+      "bridge",
+      "hollow"
+    ],
+    "eval_z_points": 121,
+    "train_z_points": 31,
+    "z_min": 2.0,
+    "z_max": 5.6,
+    "n_total": 363,
+    "n_train": 93,
+    "n_holdout": 270
+  },
+  "timing": {
+    "teacher_seconds_total": 75.74499959798413,
+    "teacher_seconds_per_pose": 0.2086639107382483,
+    "fit_seconds_total": 11.884045816987054,
+    "student_seconds_total": 21.37305105899577,
+    "student_seconds_per_pose": 0.05887892853717843,
+    "speedup_teacher_over_student_eval": 3.543948844220048
+  },
+  "backend": {
+    "teacher_device": "cpu",
+    "student_backend": {
+      "jax": true,
+      "optax": true,
+      "default_backend": "gpu",
+      "devices": [
+        "gpu:0"
+      ]
+    },
+    "student_use_jax": true
+  },
+  "fit": {
+    "optimizer_metrics": {
+      "train_loss": 1.1827212032179013,
+      "val_loss": null,
+      "test_loss": null,
+      "split_indices": {
+        "CHONH2": {
+          "train": [
+            41,
+            80,
+            35,
+            78,
+            28,
+            13,
+            38,
+            55,
+            88,
+            20,
+            70,
+            48,
+            26,
+            61,
+            50,
+            1,
+            23,
+            22,
+            54,
+            64,
+            90,
+            73,
+            86,
+            4,
+            72,
+            67,
+            11,
+            87,
+            29,
+            45,
+            19,
+            47,
+            68,
+            12,
+            75,
+            34,
+            84,
+            69,
+            21,
+            79,
+            14,
+            8,
+            63,
+            18,
+            15,
+            66,
+            53,
+            32,
+            60,
+            83,
+            0,
+            3,
+            82,
+            40,
+            65,
+            37,
+            6,
+            39,
+            51,
+            33,
+            58,
+            25,
+            62,
+            56,
+            30,
+            31,
+            16,
+            57,
+            43,
+            7,
+            71,
+            44,
+            52,
+            49,
+            10,
+            92,
+            17,
+            42,
+            27,
+            36,
+            76,
+            59,
+            77,
+            46,
+            81,
+            85,
+            89,
+            24,
+            5,
+            9,
+            91,
+            2,
+            74
+          ],
+          "val": [],
+          "test": []
+        }
+      },
+      "backend": "optax_adam_jax"
+    },
+    "optimizer_result": {
+      "success": true,
+      "message": "completed",
+      "nit": 400,
+      "best_val_loss": 1.1827816852429944,
+      "early_stopped": false
+    }
+  },
+  "splits": {
+    "train": {
+      "n_samples": 93,
+      "energy": {
+        "rmse": 0.13030264761659993,
+        "mae": 0.08063635630636,
+        "max_abs": 0.4140691420684391,
+        "mean_signed": 0.07570578606865747
+      },
+      "force": {
+        "rmse": 0.34142970334199185,
+        "mae": 0.11258164032058475,
+        "max_abs": 3.1939562519390123,
+        "mean_signed": -0.001512144210733376
+      }
+    },
+    "holdout": {
+      "n_samples": 270,
+      "energy": {
+        "rmse": 0.13076217406566903,
+        "mae": 0.08023989724565415,
+        "max_abs": 0.4140314688152614,
+        "mean_signed": 0.07665633898505131
+      },
+      "force": {
+        "rmse": 0.3151808981844675,
+        "mae": 0.10466519190341678,
+        "max_abs": 3.0749860787491423,
+        "mean_signed": -0.00019188552334894297
+      }
+    },
+    "all": {
+      "n_samples": 363,
+      "energy": {
+        "rmse": 0.13064459815342316,
+        "mae": 0.08034146940170277,
+        "max_abs": 0.4140691420684391,
+        "mean_signed": 0.07641280889903306
+      },
+      "force": {
+        "rmse": 0.32210967004970753,
+        "mae": 0.1066933729028565,
+        "max_abs": 3.1939562519390123,
+        "mean_signed": -0.0005301336168110707
+      }
+    }
+  },
+  "sites": {
+    "top": {
+      "metrics_train": {
+        "n_samples": 31,
+        "energy": {
+          "rmse": 0.10057856779783893,
+          "mae": 0.06580522536260142,
+          "max_abs": 0.24039229938246298,
+          "mean_signed": 0.06552262606128423
+        },
+        "force": {
+          "rmse": 0.3721621741027554,
+          "mae": 0.12340483513129684,
+          "max_abs": 3.006896754700234,
+          "mean_signed": 0.001079303301010699
+        }
+      },
+      "metrics_holdout": {
+        "n_samples": 90,
+        "energy": {
+          "rmse": 0.10203979821864244,
+          "mae": 0.06669872157499426,
+          "max_abs": 0.24369449542923427,
+          "mean_signed": 0.0663876545376495
+        },
+        "force": {
+          "rmse": 0.346137177564015,
+          "mae": 0.11499486813743427,
+          "max_abs": 2.9272481526149603,
+          "mean_signed": 0.0019808353089795375
+        }
+      },
+      "metrics_all": {
+        "n_samples": 121,
+        "energy": {
+          "rmse": 0.10166743447472258,
+          "mae": 0.06646980932223247,
+          "max_abs": 0.24369449542923427,
+          "mean_signed": 0.06616603567180385
+        },
+        "force": {
+          "rmse": 0.35298760672995605,
+          "mae": 0.11714948778048997,
+          "max_abs": 3.006896754700234,
+          "mean_signed": 0.0017498642986734725
+        }
+      },
+      "energy_residual_mean_signed": 0.06616603567180385,
+      "energy_residual_max_abs": 0.24369449542923427,
+      "force_error_norm_mean": 0.8267340378860061,
+      "force_error_norm_max": 4.903369254069848,
+      "teacher_energy_roughness": 0.001544107706481669,
+      "student_energy_roughness": 0.001215075621844762,
+      "teacher_force_delta_max": 0.3640745530826411,
+      "student_force_delta_max": 0.2117852841776027,
+      "corr_energy_residual_z": -0.7008192596853938,
+      "corr_force_error_z": -0.8074396372661464,
+      "corr_energy_residual_pauli": 0.6354032850162274,
+      "corr_energy_residual_london": -0.7877059883964358,
+      "corr_energy_residual_coulomb": -0.6616689363191975,
+      "corr_force_error_pauli": 0.9794653385385987,
+      "corr_force_error_london": -0.9916902656260641,
+      "corr_force_error_coulomb": -0.9860995893434804,
+      "worst_energy_index": 14,
+      "worst_force_index": 0,
+      "worst_energy_point": {
+        "z": 2.42,
+        "teacher_energy": -0.24299807548050012,
+        "student_energy": 0.0006964199487341366,
+        "energy_residual": 0.24369449542923427
+      },
+      "worst_force_point": {
+        "z": 2.0,
+        "teacher_force_norm": 5.56230140992748,
+        "student_force_norm": 2.145053369136152,
+        "force_error_norm": 4.903369254069848
+      }
+    },
+    "bridge": {
+      "metrics_train": {
+        "n_samples": 31,
+        "energy": {
+          "rmse": 0.17536861689730135,
+          "mae": 0.11031345342807934,
+          "max_abs": 0.4140691420684391,
+          "mean_signed": 0.10634869422424258
+        },
+        "force": {
+          "rmse": 0.3371505993443696,
+          "mae": 0.11332705096468752,
+          "max_abs": 3.1939562519390123,
+          "mean_signed": -0.0020218612490520114
+        }
+      },
+      "metrics_holdout": {
+        "n_samples": 90,
+        "energy": {
+          "rmse": 0.17552503516515985,
+          "mae": 0.1091199612964113,
+          "max_abs": 0.4140314688152614,
+          "mean_signed": 0.10506867503664033
+        },
+        "force": {
+          "rmse": 0.31079793697725666,
+          "mae": 0.10558552364497575,
+          "max_abs": 3.0749860787491423,
+          "mean_signed": -3.087025057611855e-05
+        }
+      },
+      "metrics_all": {
+        "n_samples": 121,
+        "energy": {
+          "rmse": 0.17548497434777147,
+          "mae": 0.1094257320078304,
+          "max_abs": 0.4140691420684391,
+          "mean_signed": 0.10539661383676983
+        },
+        "force": {
+          "rmse": 0.3177577500329325,
+          "mae": 0.10756889014837298,
+          "max_abs": 3.1939562519390123,
+          "mean_signed": -0.0005409588534914289
+        }
+      },
+      "energy_residual_mean_signed": 0.10539661383676983,
+      "energy_residual_max_abs": 0.4140691420684391,
+      "force_error_norm_mean": 0.7304975088188541,
+      "force_error_norm_max": 4.594356464672977,
+      "teacher_energy_roughness": 0.0016851483554649754,
+      "student_energy_roughness": 0.0011550244694398053,
+      "teacher_force_delta_max": 0.41170001474335605,
+      "student_force_delta_max": 0.19615994501348533,
+      "corr_energy_residual_z": -0.7747790268795365,
+      "corr_force_error_z": -0.7930457857541328,
+      "corr_energy_residual_pauli": 0.8337296141568038,
+      "corr_energy_residual_london": -0.9248434749448609,
+      "corr_energy_residual_coulomb": -0.8334796663295644,
+      "corr_force_error_pauli": 0.9866273922512152,
+      "corr_force_error_london": -0.9865588405091564,
+      "corr_force_error_coulomb": -0.9865147238528514,
+      "worst_energy_index": 8,
+      "worst_force_index": 0,
+      "worst_energy_point": {
+        "z": 2.2399999999999998,
+        "teacher_energy": -0.15309040136162366,
+        "student_energy": 0.2609787407068154,
+        "energy_residual": 0.4140691420684391
+      },
+      "worst_force_point": {
+        "z": 2.0,
+        "teacher_force_norm": 5.300421691764737,
+        "student_force_norm": 2.1087822852024276,
+        "force_error_norm": 4.594356464672977
+      }
+    },
+    "hollow": {
+      "metrics_train": {
+        "n_samples": 31,
+        "energy": {
+          "rmse": 0.10033015416588628,
+          "mae": 0.06579039012839924,
+          "max_abs": 0.24671550601347153,
+          "mean_signed": 0.05524603792044561
+        },
+        "force": {
+          "rmse": 0.3123259779484319,
+          "mae": 0.10101303486576985,
+          "max_abs": 2.8221927149208206,
+          "mean_signed": -0.0035938746841588137
+        }
+      },
+      "metrics_holdout": {
+        "n_samples": 90,
+        "energy": {
+          "rmse": 0.10037469854953047,
+          "mae": 0.06490100886555693,
+          "max_abs": 0.2463560210283341,
+          "mean_signed": 0.05851268738086408
+        },
+        "force": {
+          "rmse": 0.28567585200678364,
+          "mae": 0.09341518392784029,
+          "max_abs": 2.6888858075922206,
+          "mean_signed": -0.0025256216284502485
+        }
+      },
+      "metrics_all": {
+        "n_samples": 121,
+        "energy": {
+          "rmse": 0.10036328823577989,
+          "mae": 0.06512886687504546,
+          "max_abs": 0.24671550601347153,
+          "mean_signed": 0.057675777188525464
+        },
+        "force": {
+          "rmse": 0.29273482950899543,
+          "mae": 0.09536174077970654,
+          "max_abs": 2.8221927149208206,
+          "mean_signed": -0.0027993062956152533
+        }
+      },
+      "energy_residual_mean_signed": 0.057675777188525464,
+      "energy_residual_max_abs": 0.24671550601347153,
+      "force_error_norm_mean": 0.6806895066059728,
+      "force_error_norm_max": 4.377657703255964,
+      "teacher_energy_roughness": 0.0013682121849235367,
+      "student_energy_roughness": 0.0008983331415278541,
+      "teacher_force_delta_max": 0.2699551231311739,
+      "student_force_delta_max": 0.12318383558858421,
+      "corr_energy_residual_z": -0.49547301866050075,
+      "corr_force_error_z": -0.79457817385094,
+      "corr_energy_residual_pauli": 0.23683020986833983,
+      "corr_energy_residual_london": -0.4530206818511549,
+      "corr_energy_residual_coulomb": -0.24822892624481893,
+      "corr_force_error_pauli": 0.9923055522922173,
+      "corr_force_error_london": -0.9829180049114677,
+      "corr_force_error_coulomb": -0.993715120208918,
+      "worst_energy_index": 20,
+      "worst_force_index": 0,
+      "worst_energy_point": {
+        "z": 2.5999999999999996,
+        "teacher_energy": -0.38722174968097534,
+        "student_energy": -0.1405062436675038,
+        "energy_residual": 0.24671550601347153
+      },
+      "worst_force_point": {
+        "z": 2.0,
+        "teacher_force_norm": 4.797180676567429,
+        "student_force_norm": 1.488119903887308,
+        "force_error_norm": 4.377657703255964
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "teacher_seconds_total": 38.25917413100251,
+  "teacher_seconds_per_pose": 0.20906652530602465,
+  "backend": {
+    "jax": true,
+    "optax": true,
+    "default_backend": "gpu",
+    "devices": [
+      "gpu:0"
+    ]
+  },
+  "n_total": 183
+}

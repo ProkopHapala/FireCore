@@ -4,11 +4,22 @@
 import sys
 import os
 import numpy as np
-import matplotlib.pyplot as plt
 
 sys.path.append("../../")
 from pyBall import atomicUtils as au
 from pyBall import MMFF as mmff
+
+
+def _get_plt():
+    import matplotlib.pyplot as plt
+
+    return plt
+
+
+def _scan_savefig(path: str | None):
+    if os.environ.get("GRIDFF_SKIP_PLOTS", "0") == "1":
+        return None
+    return path
 
 
 def scanPlot(nscan=1000, span=(0.0,8.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), label="E", saveFig=None, saveData=None):
@@ -32,6 +43,7 @@ def scanPlot(nscan=1000, span=(0.0,8.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), la
         np.savetxt(saveData, np.column_stack((ts, Es-Es_end)), header="ts\tEnergy", comments="# ")
 
     if saveFig is not None:
+        plt = _get_plt()
         plt.figure(figsize=(10, 6))
         plt.title(label)
         plt.plot(ts, Es-Es_end, '-', lw=1.5, label=label)
@@ -65,6 +77,7 @@ def scanPlot_uff(nscan=1000, span=(0.0,8.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0)
         np.savetxt(saveData, np.column_stack((ts, Es-Es_end)), header="ts\tEnergy", comments="# ")
 
     if saveFig is not None:
+        plt = _get_plt()
         plt.figure(figsize=(10, 6))
         plt.title(label)
         plt.plot(ts, Es-Es_end, '-', lw=1.5, label=label)
@@ -119,6 +132,7 @@ def scanPlot2D_uff(nscan1=1000, nscan2=1000, span1=(0.0,4.0), span2=(0.0,4.0),p0
     Egrid = Es.reshape(nscan1, nscan2)
     
     # Create a contour plot for the 2D energy scan.
+    plt = _get_plt()
     plt.figure()
     cp = plt.contourf(T1, T2, Egrid, levels=20, cmap="viridis")
     plt.colorbar(cp)
@@ -206,6 +220,7 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
     # print(f"  Ps memory layout: {Ps.flags}")
     
     # Create the figure first
+    plt = _get_plt()
     fig = plt.figure(figsize=(18, 10))
     
     plt.plot(t, Es)
@@ -589,7 +604,7 @@ def run_scan(molecule, substrate, output_dir, scan_type, scan_params, skip_init=
         # 2D scan
         scanPlot2D_uff(
             **scan_params_with_label,
-            saveFig=f"{output_dir}/{mol_name}_{scan_file_prefix}_2d.png",
+            saveFig=_scan_savefig(f"{output_dir}/{mol_name}_{scan_file_prefix}_2d.png"),
             saveData=f"{output_dir}/{mol_name}_{scan_file_prefix}_2d.dat"
         )
         print(f"{scan_type.capitalize()} 2D scan completed. Data saved in {output_dir}/{mol_name}_{scan_file_prefix}_2d.dat")
@@ -603,7 +618,7 @@ def run_scan(molecule, substrate, output_dir, scan_type, scan_params, skip_init=
                 dir=scan_params['dir'],
                 p0=scan_params['p0'],
                 label=scan_label,
-                saveFig=f"{output_dir}/{mol_name}_{scan_file_prefix}.png",
+                saveFig=_scan_savefig(f"{output_dir}/{mol_name}_{scan_file_prefix}.png"),
                 saveData=f"{output_dir}/{mol_name}_{scan_file_prefix}.dat",
                 bRelax=True,
                 niter_max=scan_params['niter_max'],
@@ -615,7 +630,7 @@ def run_scan(molecule, substrate, output_dir, scan_type, scan_params, skip_init=
             # Regular 1D scan
             scanPlot_uff(
                 **scan_params_with_label,
-            saveFig=f"{output_dir}/{mol_name}_{scan_file_prefix}.png",
+            saveFig=_scan_savefig(f"{output_dir}/{mol_name}_{scan_file_prefix}.png"),
             saveData=f"{output_dir}/{mol_name}_{scan_file_prefix}.dat"
             )
         print(f"{scan_type.capitalize()} 1D scan completed. Data saved in {output_dir}/{mol_name}_{scan_file_prefix}.dat")
