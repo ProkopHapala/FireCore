@@ -430,6 +430,16 @@ def _metal_density_fields(density: DensityData, grid_config: GridConfig):
     rho_norm = np.clip(rho / rho_scale, 0.0, 1.0)
     pauli = np.power(rho_norm, grid_config.metal_density_pauli_power)
     london = -np.power(rho_norm, grid_config.metal_density_london_power)
+    if grid_config.london_damping_d0 > 0.0:
+        z_surface = float(np.max(density.positions[:, 2]))
+        nz = london.shape[0]
+        voxel_z = float(density.voxel[2, 2]) if density.voxel.ndim == 2 else float(density.voxel[2])
+        origin_z = float(density.origin[2])
+        z_grid = np.arange(nz) * voxel_z + origin_z
+        d_from_surface = z_grid - z_surface
+        w = max(float(grid_config.london_damping_width), 1.0e-6)
+        fermi = 1.0 / (1.0 + np.exp((d_from_surface - grid_config.london_damping_d0) / w))
+        london *= fermi[:, np.newaxis, np.newaxis]
     if density.v_loc_zyx is not None:
         coulomb = np.asarray(density.v_loc_zyx, dtype=float)
         source = "locpot"
@@ -521,6 +531,8 @@ def build_substrate_grids(
         metadata["metal_density_pauli_power"] = float(grid_config.metal_density_pauli_power)
         metadata["metal_density_london_power"] = float(grid_config.metal_density_london_power)
         metadata["metal_bulk_electron_density"] = float(grid_config.metal_bulk_electron_density)
+        metadata["london_damping_d0"] = float(grid_config.london_damping_d0)
+        metadata["london_damping_width"] = float(grid_config.london_damping_width)
     return {
         "pauli_zyx": pauli,
         "london_zyx": london,

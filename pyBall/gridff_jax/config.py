@@ -92,6 +92,8 @@ class GridConfig:
     metal_density_london_power: float = 0.5
     metal_density_rho_smoothing_sigma: float = 0.0
     metal_bulk_electron_density: float = 0.0530
+    london_damping_d0: float = 0.0
+    london_damping_width: float = 0.5
 
 
 @dataclass

@@ -66,6 +66,13 @@ def parse_args():
     parser.add_argument("--alpha-morse", type=float, default=None, help="Optional override of substrate Morse alpha")
     parser.add_argument("--ag-radius-scale", type=float, default=None, help="Optional override of Ag vdW radius scale")
     parser.add_argument("--ag-energy-scale", type=float, default=None, help="Optional override of Ag vdW energy scale")
+    parser.add_argument("--pauli-power", type=float, default=None, help="metal_density_pauli_power for grid building")
+    parser.add_argument("--london-power", type=float, default=None, help="metal_density_london_power for grid building")
+    parser.add_argument("--direct-plq", action="store_true", help="Use direct pauli/london scalars instead of REQ Morse coupling")
+    parser.add_argument("--fit-z-shift", action="store_true", help="Fit sample_shift_z (global z offset for grid sampling)")
+    parser.add_argument("--london-damp-d0", type=float, default=0.0, help="London damping d0 (Fermi midpoint above surface, Angstrom)")
+    parser.add_argument("--london-damp-width", type=float, default=0.5, help="London damping Fermi width (Angstrom)")
+    parser.add_argument("--builder-mode", type=str, default="metal_density_plq", help="Grid builder mode (metal_density_plq, metal_dft_plq, parity_core)")
     parser.add_argument("--teacher-chunk-size", type=int, default=64, help="Teacher batch chunk size")
     parser.add_argument("--student-chunk-size", type=int, default=64, help="Student batch chunk size")
     parser.add_argument("--prefer-jax", dest="prefer_jax", action="store_true", help="Use the JAX student backend when available")
@@ -317,10 +324,17 @@ def _set_strict_plq_config(config: RunConfig, args):
     config.teacher_backend.kind = "madsurf"
     config.teacher_backend.model_path = args.model_path
     config.teacher_backend.device = args.device
-    config.grid.builder_mode = "metal_density_plq"
+    config.grid.builder_mode = str(getattr(args, 'builder_mode', 'metal_density_plq'))
     config.grid.interpolation_order = 3
     if args.alpha_morse is not None:
         config.grid.alpha_morse = float(args.alpha_morse)
+    if args.pauli_power is not None:
+        config.grid.metal_density_pauli_power = float(args.pauli_power)
+    if args.london_power is not None:
+        config.grid.metal_density_london_power = float(args.london_power)
+    if args.london_damp_d0 > 0.0:
+        config.grid.london_damping_d0 = float(args.london_damp_d0)
+        config.grid.london_damping_width = float(args.london_damp_width)
     if args.ag_radius_scale is not None:
         config.grid.req_scale_radius["Ag"] = float(args.ag_radius_scale)
     if args.ag_energy_scale is not None:
@@ -331,15 +345,20 @@ def _set_strict_plq_config(config: RunConfig, args):
     config.hybrid_model.use_qeq = False
     config.hybrid_model.use_image = False
     config.hybrid_model.use_reactive_grid = False
-    config.hybrid_model.use_req_plq = True
+    if args.direct_plq:
+        config.hybrid_model.use_req_plq = False
+        config.training.fit_req_radius_offset = False
+        config.training.fit_req_energy_scale = False
+    else:
+        config.hybrid_model.use_req_plq = True
+        config.training.fit_req_radius_offset = True
+        config.training.fit_req_energy_scale = True
     config.training.fit_chi = False
     config.training.fit_hardness = False
     config.training.fit_image_plane = False
     config.training.fit_reactive = False
     config.training.fit_static_charge = bool(args.fit_static_charge)
-    config.training.fit_req_radius_offset = True
-    config.training.fit_req_energy_scale = True
-    config.training.fit_sample_shift_z = False
+    config.training.fit_sample_shift_z = bool(getattr(args, 'fit_z_shift', False))
     config.training.fit_coulomb_shift_z = False
     config.training.req_radius_regularization = 5.0e-2
     config.training.req_energy_regularization = 5.0e-3

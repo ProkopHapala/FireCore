@@ -319,12 +319,12 @@ class HybridGridFFModel:
             }
         else:
             self.interpolation_kind = "trilinear"
-        self.sample_grids = {
-            "pauli_zyx": self.grids["pauli_zyx"],
-            "london_zyx": self.grids["london_zyx"],
-            "coulomb_zyx": self.grids["coulomb_zyx"],
-            "reactive_zyxc": self.grids["reactive_zyxc"],
-        }
+            self.sample_grids = {
+                "pauli_zyx": self.grids["pauli_zyx"],
+                "london_zyx": self.grids["london_zyx"],
+                "coulomb_zyx": self.grids["coulomb_zyx"],
+                "reactive_zyxc": self.grids["reactive_zyxc"],
+            }
         self.element_to_index = {element: i for i, element in enumerate(self.parameter_elements)}
         self.base_req_radius, self.base_req_sqrt_energy = _base_req_for_elements(
             self.parameter_elements,

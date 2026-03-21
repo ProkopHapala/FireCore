@@ -45,9 +45,9 @@ class ParameterLayout:
 
         if self.use_req_plq:
             if training.fit_req_radius_offset:
-                self._append_group("req_radius_offset", (-0.35, 0.80))
+                self._append_group("req_radius_offset", (-0.50, 1.20))
             if training.fit_req_energy_scale:
-                self._append_group("req_energy_scale", (np.log(0.25), np.log(8.0)), physical_bounds=(0.25, 8.0), transform="exp")
+                self._append_group("req_energy_scale", (np.log(0.1), np.log(30.0)), physical_bounds=(0.1, 30.0), transform="exp")
         else:
             self._append_group("pauli", (0.05, 5.0))
             self._append_group("london", (0.05, 5.0))
