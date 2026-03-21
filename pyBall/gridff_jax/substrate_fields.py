@@ -418,6 +418,96 @@ def _surrogate_density_fields(density: DensityData, grid_config: GridConfig):
     return pauli, london, coulomb, source
 
 
+# vdW-surf screened parameters (Ruiz et al. PRL 108, 146103, 2012)
+# (alpha_0 [Ang^3], C6 [eV*Ang^6], R_vdW [Ang])
+VDW_SURF_PARAMS = {
+    "Cu": (1.6122, 35.19, 1.270),
+    "Ag": (2.2761, 72.90, 1.360),
+    "Au": (2.3146, 80.01, 1.540),
+}
+
+# Free-atom TS parameters (Chu & Dalgarno, JCP 121, 4083, 2004)
+TS_FREE_PARAMS = {
+    "H":  (0.6668,  3.884, 1.640),
+    "C":  (1.7782, 27.845, 1.900),
+    "N":  (1.0966, 14.460, 1.768),
+    "O":  (0.8002,  9.321, 1.688),
+    "Cu": (6.2238, 151.17, 1.990),
+    "Ag": (7.4981, 202.56, 2.022),
+    "Au": (5.4087, 178.06, 2.043),
+}
+
+
+def _ts_c6_pair(el_ads, el_metal, use_screened=True):
+    """TS combination rule for C6 and R_vdW sum.
+
+    Returns (C6_pair [eV*Ang^6], R_sum [Ang]).
+    """
+    alpha_a, c6_a, r_a = TS_FREE_PARAMS[el_ads]
+    if use_screened and el_metal in VDW_SURF_PARAMS:
+        alpha_m, c6_m, r_m = VDW_SURF_PARAMS[el_metal]
+    else:
+        alpha_m, c6_m, r_m = TS_FREE_PARAMS[el_metal]
+    c6_pair = 2.0 * c6_a * c6_m / (
+        (alpha_m / alpha_a) * c6_a + (alpha_a / alpha_m) * c6_m
+    )
+    return c6_pair, r_a + r_m
+
+
+def _build_dispersion_grid(density: DensityData, grid_config: GridConfig, reactive_elements: tuple[str, ...]):
+    """Build per-element pairwise C6/R^6 dispersion grids with TS Fermi damping.
+
+    Returns dispersion_zyxc: array [nz, ny, nx, n_elements].
+    Channel c holds V_disp for reactive_elements[c] interacting with substrate metal.
+    """
+    nz, ny, nx = density.grid_shape_zyx
+    n_el = len(reactive_elements)
+    dispersion = np.zeros((nz, ny, nx, n_el), dtype=float)
+
+    # Detect metal from substrate atoms
+    metal = density.symbols[0]
+    if metal not in TS_FREE_PARAMS:
+        import warnings
+        warnings.warn(f"Unknown metal '{metal}' for C6 grid; dispersion grid will be zero")
+        return dispersion
+
+    # Pre-compute C6 and R_sum for each adsorbate element
+    c6_pairs = np.zeros(n_el, dtype=float)
+    r_sums = np.zeros(n_el, dtype=float)
+    for idx, el in enumerate(reactive_elements):
+        if el in TS_FREE_PARAMS:
+            c6_pairs[idx], r_sums[idx] = _ts_c6_pair(el, metal)
+        else:
+            import warnings
+            warnings.warn(f"No TS params for element '{el}'; C6 channel will be zero")
+
+    # PBC image positions
+    c6_counts = auto_pbc_counts(density.cell, grid_config.c6_rcut, mask=(1, 1, 0))
+    shifts = make_pbc_shifts(density.cell, c6_counts)
+    atom_positions = (density.positions[None, :, :] + shifts[:, None, :]).reshape(-1, 3)
+
+    s_r = float(grid_config.c6_s_r)
+    chunk_size = int(grid_config.pairwise_point_chunk)
+
+    for _, _, iz, iy, ix, points in iter_grid_point_chunks(density, chunk_size):
+        # points: [n_pts, 3], atom_positions: [n_atoms_pbc, 3]
+        dp = points[:, None, :] - atom_positions[None, :, :]  # [n_pts, n_atoms, 3]
+        r2 = np.sum(dp * dp, axis=-1) + 1.0e-32               # [n_pts, n_atoms]
+        r = np.sqrt(r2)
+        r6 = r2 * r2 * r2
+
+        for c in range(n_el):
+            if c6_pairs[c] == 0.0:
+                continue
+            # TS Fermi damping: f = 1/(1+exp(-20*(R/(s_R*R_sum)-1)))
+            r0 = s_r * r_sums[c]
+            f_damp = 1.0 / (1.0 + np.exp(-20.0 * (r / r0 - 1.0)))
+            v_disp = np.sum(f_damp * (-c6_pairs[c] / r6), axis=1)  # [n_pts]
+            dispersion[iz, iy, ix, c] = v_disp
+
+    return dispersion
+
+
 def _metal_density_fields(density: DensityData, grid_config: GridConfig):
     """Volumetric P/L from CHGCAR + LOCPOT for Q. Physically correct for metals."""
     if density.rho_zyx is None:
@@ -514,6 +604,13 @@ def build_substrate_grids(
     london_coeff = bspline_prefilter_numpy(london, wrap_z=wrap_z)
     coulomb_coeff = bspline_prefilter_numpy(coulomb, wrap_z=wrap_z)
     reactive_coeff = bspline_prefilter_numpy(reactive, wrap_z=wrap_z)
+    if grid_config.use_pairwise_c6:
+        disp_raw = _build_dispersion_grid(density, grid_config, reactive_elements)
+        disp_coeff = bspline_prefilter_numpy(disp_raw, wrap_z=wrap_z)
+    else:
+        nz_d, ny_d, nx_d = pauli.shape
+        disp_raw = np.zeros((nz_d, ny_d, nx_d, len(reactive_elements)), dtype=float)
+        disp_coeff = np.zeros_like(disp_raw)
     z_ref = float(np.max(density.positions[:, 2]))
     metadata = {
         "builder_mode": grid_config.builder_mode,
@@ -533,14 +630,20 @@ def build_substrate_grids(
         metadata["metal_bulk_electron_density"] = float(grid_config.metal_bulk_electron_density)
         metadata["london_damping_d0"] = float(grid_config.london_damping_d0)
         metadata["london_damping_width"] = float(grid_config.london_damping_width)
+    if grid_config.use_pairwise_c6:
+        metadata["use_pairwise_c6"] = True
+        metadata["c6_rcut"] = float(grid_config.c6_rcut)
+        metadata["c6_s_r"] = float(grid_config.c6_s_r)
     return {
         "pauli_zyx": pauli,
         "london_zyx": london,
         "coulomb_zyx": coulomb,
         "reactive_zyxc": reactive,
+        "dispersion_zyxc": disp_raw,
         "pauli_coeff_zyx": pauli_coeff,
         "london_coeff_zyx": london_coeff,
         "coulomb_coeff_zyx": coulomb_coeff,
         "reactive_coeff_zyxc": reactive_coeff,
+        "dispersion_coeff_zyxc": disp_coeff,
         "metadata": metadata,
     }

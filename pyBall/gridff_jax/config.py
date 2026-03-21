@@ -94,6 +94,9 @@ class GridConfig:
     metal_bulk_electron_density: float = 0.0530
     london_damping_d0: float = 0.0
     london_damping_width: float = 0.5
+    use_pairwise_c6: bool = False
+    c6_rcut: float = 15.0
+    c6_s_r: float = 0.94
 
 
 @dataclass
@@ -128,6 +131,7 @@ class TrainingConfig:
     fit_req_energy_scale: bool = False
     fit_sample_shift_z: bool = False
     fit_coulomb_shift_z: bool = False
+    fit_c6_coeff: bool = False
     req_radius_regularization: float = 5.0e-2
     req_energy_regularization: float = 5.0e-3
     constraint_bound_fraction: float = 5.0e-2

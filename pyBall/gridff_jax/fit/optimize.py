@@ -51,6 +51,8 @@ class ParameterLayout:
         else:
             self._append_group("pauli", (0.05, 5.0))
             self._append_group("london", (0.05, 5.0))
+        if training.fit_c6_coeff:
+            self._append_group("c6_coeff", (0.0, 5.0))
         if training.fit_static_charge:
             self._append_group("static_charge", (-0.95, 2.0))
         if training.fit_reactive:
@@ -108,6 +110,7 @@ class ParameterLayout:
             "london": xp.asarray([self.base.london[element] for element in self.elements], dtype=xp.float64),
             "reactive": xp.asarray([self.base.reactive[element] for element in self.elements], dtype=xp.float64),
             "static_charge": xp.asarray([self.base.static_charge[element] for element in self.elements], dtype=xp.float64),
+            "c6_coeff": xp.asarray([self.base.c6_coeff.get(element, 1.0) for element in self.elements], dtype=xp.float64),
             "req_radius_offset": xp.asarray([self.base.req_radius_offset[element] for element in self.elements], dtype=xp.float64),
             "req_energy_scale": xp.asarray([self.base.req_energy_scale[element] for element in self.elements], dtype=xp.float64),
             "chi": xp.asarray([self.base.chi[element] for element in self.elements], dtype=xp.float64),
@@ -126,7 +129,7 @@ class ParameterLayout:
         xp = jnp if use_jax and HAS_JAX else np
         vector = xp.asarray(vector, dtype=xp.float64)
         tree = self._base_tree(use_jax=use_jax)
-        for prefix in ("pauli", "london", "static_charge", "reactive", "chi", "hardness", "req_radius_offset", "req_energy_scale"):
+        for prefix in ("pauli", "london", "c6_coeff", "static_charge", "reactive", "chi", "hardness", "req_radius_offset", "req_energy_scale"):
             if prefix in self.group_slices:
                 tree[prefix] = self._to_physical(prefix, vector[self.group_slices[prefix]], xp)
         for prefix in ("sample_shift_z", "coulomb_shift_z", "image_scale", "reservoir_chi", "reservoir_hardness", "image_plane"):
@@ -137,7 +140,7 @@ class ParameterLayout:
     def pack(self, params: HybridParameters):
         values = []
         for prefix, element in self.names:
-            if prefix in ("pauli", "london", "static_charge", "reactive", "chi", "hardness", "req_radius_offset", "req_energy_scale"):
+            if prefix in ("pauli", "london", "c6_coeff", "static_charge", "reactive", "chi", "hardness", "req_radius_offset", "req_energy_scale"):
                 values.append(self._to_internal(prefix, getattr(params, prefix)[element]))
             else:
                 values.append(self._to_internal(prefix, getattr(params, prefix)))
@@ -150,6 +153,7 @@ class ParameterLayout:
             london=dict(self.base.london),
             reactive=dict(self.base.reactive),
             static_charge=dict(self.base.static_charge),
+            c6_coeff=dict(self.base.c6_coeff) if self.base.c6_coeff else {},
             req_radius_offset=dict(self.base.req_radius_offset),
             req_energy_scale=dict(self.base.req_energy_scale),
             chi=dict(self.base.chi),
@@ -165,7 +169,7 @@ class ParameterLayout:
         )
         for value, (prefix, element) in zip(vector, self.names):
             physical_value = self._to_physical(prefix, float(value), np)
-            if prefix in ("pauli", "london", "static_charge", "reactive", "chi", "hardness", "req_radius_offset", "req_energy_scale"):
+            if prefix in ("pauli", "london", "c6_coeff", "static_charge", "reactive", "chi", "hardness", "req_radius_offset", "req_energy_scale"):
                 getattr(params, prefix)[element] = float(physical_value)
             else:
                 setattr(params, prefix, float(physical_value))

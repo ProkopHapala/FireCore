@@ -44,6 +44,7 @@ class HybridParameters:
     req_energy_scale: dict[str, float] = field(default_factory=dict)
     chi: dict[str, float] = field(default_factory=dict)
     hardness: dict[str, float] = field(default_factory=dict)
+    c6_coeff: dict[str, float] = field(default_factory=dict)
     image_scale: float = 1.0
     image_plane: float = 0.0
     image_damping: float = 0.5
@@ -64,6 +65,7 @@ def default_hybrid_parameters(elements, z_image: float):
         params.static_charge[symbol] = 0.0
         params.req_radius_offset[symbol] = 0.0
         params.req_energy_scale[symbol] = 1.0
+        params.c6_coeff[symbol] = 1.0
         params.chi[symbol] = chi
         params.hardness[symbol] = hardness
     return params
@@ -316,6 +318,7 @@ class HybridGridFFModel:
                 "london_zyx": self.grids["london_coeff_zyx"],
                 "coulomb_zyx": self.grids["coulomb_coeff_zyx"],
                 "reactive_zyxc": self.grids["reactive_coeff_zyxc"],
+                "dispersion_zyxc": self.grids["dispersion_coeff_zyxc"],
             }
         else:
             self.interpolation_kind = "trilinear"
@@ -324,6 +327,7 @@ class HybridGridFFModel:
                 "london_zyx": self.grids["london_zyx"],
                 "coulomb_zyx": self.grids["coulomb_zyx"],
                 "reactive_zyxc": self.grids["reactive_zyxc"],
+                "dispersion_zyxc": self.grids["dispersion_zyxc"],
             }
         self.element_to_index = {element: i for i, element in enumerate(self.parameter_elements)}
         self.base_req_radius, self.base_req_sqrt_energy = _base_req_for_elements(
@@ -342,6 +346,7 @@ class HybridGridFFModel:
                 "london_zyx": jnp.asarray(np.asarray(self.sample_grids["london_zyx"], dtype=float), dtype=jnp.float64),
                 "coulomb_zyx": jnp.asarray(np.asarray(self.sample_grids["coulomb_zyx"], dtype=float), dtype=jnp.float64),
                 "reactive_zyxc": jnp.asarray(np.asarray(self.sample_grids["reactive_zyxc"], dtype=float), dtype=jnp.float64),
+                "dispersion_zyxc": jnp.asarray(np.asarray(self.sample_grids["dispersion_zyxc"], dtype=float), dtype=jnp.float64),
             }
 
     def make_species_indices(self, symbols):
@@ -355,6 +360,7 @@ class HybridGridFFModel:
             "london": xp.asarray([params.london.get(symbol, 1.0) for symbol in self.parameter_elements], dtype=xp.float64),
             "reactive": xp.asarray([params.reactive.get(symbol, 0.0) for symbol in self.parameter_elements], dtype=xp.float64),
             "static_charge": xp.asarray([params.static_charge.get(symbol, 0.0) for symbol in self.parameter_elements], dtype=xp.float64),
+            "c6_coeff": xp.asarray([params.c6_coeff.get(symbol, 1.0) for symbol in self.parameter_elements], dtype=xp.float64),
             "req_radius_offset": xp.asarray([params.req_radius_offset.get(symbol, 0.0) for symbol in self.parameter_elements], dtype=xp.float64),
             "req_energy_scale": xp.asarray([params.req_energy_scale.get(symbol, 1.0) for symbol in self.parameter_elements], dtype=xp.float64),
             "chi": xp.asarray([params.chi.get(symbol, DEFAULT_QEQ.get(symbol, (-4.0, 10.0))[0]) for symbol in self.parameter_elements], dtype=xp.float64),
@@ -376,6 +382,7 @@ class HybridGridFFModel:
             "london": np.array([params.london.get(symbol, 1.0) for symbol in symbols], dtype=float),
             "reactive": np.array([params.reactive.get(symbol, 0.0) for symbol in symbols], dtype=float),
             "static_charge": np.array([params.static_charge.get(symbol, 0.0) for symbol in symbols], dtype=float),
+            "c6_coeff": np.array([params.c6_coeff.get(symbol, 1.0) for symbol in symbols], dtype=float),
             "req_radius_offset": np.array([params.req_radius_offset.get(symbol, 0.0) for symbol in symbols], dtype=float),
             "req_energy_scale": np.array([params.req_energy_scale.get(symbol, 1.0) for symbol in symbols], dtype=float),
             "chi": np.array([params.chi.get(symbol, DEFAULT_QEQ.get(symbol, (-4.0, 10.0))[0]) for symbol in symbols], dtype=float),
@@ -460,7 +467,16 @@ class HybridGridFFModel:
         if self.toggles.use_reactive_grid:
             e_reactive = float(np.dot(atom_params["reactive"], reactive_selected))
 
-        total = e_pauli + e_london + e_coul + e_qeq + e_reactive + e_image
+        e_dispersion = 0.0
+        if self.grid_config.use_pairwise_c6:
+            disp_sample = self._sample_field_numpy(self.sample_grids["dispersion_zyxc"], positions_pl)
+            if np.ndim(disp_sample) == 1:
+                disp_selected = disp_sample
+            else:
+                disp_selected = disp_sample[np.arange(len(symbols)), atom_params["species_idx"]]
+            e_dispersion = float(np.dot(atom_params["c6_coeff"], disp_selected))
+
+        total = e_pauli + e_london + e_coul + e_qeq + e_reactive + e_image + e_dispersion
         return total, {
             "pauli": e_pauli,
             "london": e_london,
@@ -468,6 +484,7 @@ class HybridGridFFModel:
             "qeq": e_qeq,
             "image": e_image,
             "reactive": e_reactive,
+            "dispersion": e_dispersion,
             "charges": charges,
         }
 
@@ -554,7 +571,19 @@ class HybridGridFFModel:
             if self.toggles.use_reactive_grid:
                 e_reactive = jnp.dot(reactive_coeff, reactive_selected)
 
-            total = e_pauli + e_london + e_coul + e_qeq + e_reactive + e_image
+            e_dispersion = jnp.array(0.0, dtype=jnp.float64)
+            if self.grid_config.use_pairwise_c6:
+                disp_sample = self._sample_field_jax(
+                    self._jax_sample_grids["dispersion_zyxc"], positions_pl
+                )
+                if disp_sample.ndim == 1:
+                    disp_selected = disp_sample
+                else:
+                    disp_selected = disp_sample[jnp.arange(species_idx.shape[0]), species_idx]
+                c6_coeff = params_tree["c6_coeff"][species_idx]
+                e_dispersion = jnp.dot(c6_coeff, disp_selected)
+
+            total = e_pauli + e_london + e_coul + e_qeq + e_reactive + e_image + e_dispersion
             return total, {
                 "pauli": e_pauli,
                 "london": e_london,
@@ -562,6 +591,7 @@ class HybridGridFFModel:
                 "qeq": e_qeq,
                 "image": e_image,
                 "reactive": e_reactive,
+                "dispersion": e_dispersion,
                 "charges": charges,
             }
 
@@ -635,7 +665,7 @@ class HybridGridFFModel:
 
         energies = []
         forces = []
-        components = {name: [] for name in ["pauli", "london", "coulomb", "qeq", "image", "reactive"]}
+        components = {name: [] for name in ["pauli", "london", "coulomb", "qeq", "image", "reactive", "dispersion"]}
         charge_list = []
         for positions in poses.positions:
             energy, detail = self.energy_single(positions, poses.adsorbate.symbols, params, fixed_charges=fixed_charges)
