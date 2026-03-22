@@ -97,6 +97,14 @@ class GridConfig:
     use_pairwise_c6: bool = False
     c6_rcut: float = 15.0
     c6_s_r: float = 0.94
+    # DISABLED(2026-03): density-derived auxiliary channels confirmed ineffective
+    # in exhaustive 10-strategy ablation scan. All produce identical or worse RMSE
+    # vs 37.1 meV PLQ baseline. Laplacian/gradient interfere with REQ optimization;
+    # alt London is absorbed by existing REQ parameters. Code preserved for reference.
+    use_density_laplacian: bool = False
+    use_density_gradient: bool = False
+    use_london_alt: bool = False
+    london_alt_power: float = 1.5
 
 
 @dataclass
@@ -132,9 +140,27 @@ class TrainingConfig:
     fit_sample_shift_z: bool = False
     fit_coulomb_shift_z: bool = False
     fit_c6_coeff: bool = False
+    # DISABLED(2026-03): see GridConfig comments — these channels were confirmed ineffective.
+    fit_density_lap: bool = False
+    fit_density_grad: bool = False
+    fit_london_alt: bool = False
     req_radius_regularization: float = 5.0e-2
     req_energy_regularization: float = 5.0e-3
+    c6_regularization: float = 1.0e-1
+    # DISABLED(2026-03): regularization for disabled channels (kept for compatibility).
+    density_lap_regularization: float = 0.0
+    density_grad_regularization: float = 0.0
+    london_alt_regularization: float = 0.0
     constraint_bound_fraction: float = 5.0e-2
+    # Two-stage C₆ optimization: Stage 1 fits REQ (c6_coeff=0), Stage 2 freezes REQ and fits C₆
+    two_stage_c6: bool = False
+    stage2_max_steps: int = 400
+    stage2_learning_rate: float = 5.0e-3
+    stage2_force_weight: float = 10.0
+    # Stage 3 (optional): gentle joint REQ+C₆ refinement with small learning rate
+    stage3_refine: bool = False
+    stage3_max_steps: int = 200
+    stage3_learning_rate: float = 1.0e-4
 
 
 @dataclass

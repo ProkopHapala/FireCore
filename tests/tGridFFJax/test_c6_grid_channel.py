@@ -84,14 +84,14 @@ def _build_poses(density, adsorbate, site_uvs, z_values):
     )
 
 
-def compute_direct_c6_at_points(points, ag_positions, cell, element, metal="Ag",
-                                 pbc_counts=(2, 2, 0), s_r=0.94):
-    """Direct pairwise C₆ sum with TS Fermi damping (matches _build_dispersion_grid)."""
-    c6_pair, r_sum = _ts_c6_pair(element, metal)
+def compute_direct_shape_at_points(points, ag_positions, cell, element, metal="Ag",
+                                    pbc_counts=(2, 2, 0), s_r=0.94):
+    """Direct pairwise shape sum: -Σ f_damp/r⁶ (NO C₆ factor, matches grid semantics)."""
+    _c6_pair, r_sum = _ts_c6_pair(element, metal)
     r0 = s_r * r_sum
 
     n_points = len(points)
-    v_disp = np.zeros(n_points)
+    v_shape = np.zeros(n_points)
 
     na, nb, nc = pbc_counts
     for ia in range(-na, na + 1):
@@ -104,9 +104,9 @@ def compute_direct_c6_at_points(points, ag_positions, cell, element, metal="Ag",
                 r = np.sqrt(r2)
                 r6 = r2 ** 3
                 f_damp = 1.0 / (1.0 + np.exp(-20.0 * (r / r0 - 1.0)))
-                v_disp += np.sum(f_damp * (-c6_pair / r6), axis=1)
+                v_shape += np.sum(f_damp * (-1.0 / r6), axis=1)
 
-    return v_disp
+    return v_shape
 
 
 def main():
@@ -262,7 +262,7 @@ def main():
                 model_c6.sample_grids["dispersion_zyxc"], mol_pos[i:i+1]
             )[0, c]) if model_c6.sample_grids["dispersion_zyxc"].ndim == 4 else 0.0
             # Direct sum
-            direct_val = float(compute_direct_c6_at_points(
+            direct_val = float(compute_direct_shape_at_points(
                 mol_pos[i:i+1], density_c6.positions, density_c6.cell, el
             )[0])
             abs_err = abs(grid_val - direct_val)
@@ -284,10 +284,12 @@ def main():
     print("=" * 50)
 
     # Build design matrix from dispersion component per element
+    # Grid stores shape only; multiply by c6_pair_values so fit produces c6_coeff
     n_poses_total = len(poses.positions)
     el_list = list(reactive_elements)
     n_el = len(el_list)
-    X_c6 = np.zeros((n_poses_total, n_el))
+    c6_pairs = model_c6.c6_pair_values  # [n_el]
+    X_shape = np.zeros((n_poses_total, n_el))
 
     for k in range(n_poses_total):
         mol_pos = poses.positions[k]
@@ -296,7 +298,10 @@ def main():
         )
         for i, el in enumerate(adsorbate.symbols):
             c = el_list.index(el)
-            X_c6[k, c] += disp_sample[i, c] if disp_sample.ndim == 2 else disp_sample[i]
+            X_shape[k, c] += disp_sample[i, c] if disp_sample.ndim == 2 else disp_sample[i]
+
+    # X_c6 = shape × c6_pair (so that fitted D values are c6_coeff scaling factors)
+    X_c6 = X_shape * c6_pairs[np.newaxis, :]
 
     # Fit: E_MACE ≈ E_GridFF + X_c6 @ D + offset
     residual = teacher_e - gridff_e_no_c6
@@ -308,9 +313,10 @@ def main():
     E_corrected = gridff_e_no_c6 + X_c6 @ D_fit + offset
     rmse_corrected = np.sqrt(np.mean((E_corrected - teacher_e) ** 2)) * 1000
 
-    print(f"  Fitted C₆ scaling coefficients:")
+    print(f"  Fitted C₆ scaling coefficients (c6_coeff values):")
     for c, el in enumerate(el_list):
-        print(f"    {el}: D = {D_fit[c]:.4f}")
+        c6_p = c6_pairs[c]
+        print(f"    {el}: c6_coeff = {D_fit[c]:.4f}  (C6_pair = {c6_p:.2f} eV·Å⁶)")
     print(f"  Offset: {offset:.4f} eV")
     print(f"  RMSE (PLQ-only):     {rmse_no_c6:.1f} meV")
     print(f"  RMSE (PLQ + C₆ fit): {rmse_corrected:.1f} meV")

@@ -1,5 +1,25 @@
 #!/usr/bin/env python3
-"""Focused Ag(111) z-scan benchmark for one fixed adsorbate orientation."""
+"""Focused Ag(111) z-scan benchmark for one fixed adsorbate orientation.
+
+Typical CLI usage
+-----------------
+# PLQ-only baseline with London Fermi damping (37.1 meV holdout):
+  python benchmark_ag_zscan.py --london-damp-d0 3.70 --london-damp-width 0.35 --prefer-jax
+
+# Two-stage PLQ + raw 1/r⁶ lstsq correction (16.9 meV holdout):
+  python benchmark_ag_zscan.py --london-damp-d0 3.70 --london-damp-width 0.35 \\
+      --two-stage-c6 --raw-r6 --prefer-jax
+
+Two-stage workflow (--two-stage-c6):
+  Stage 1: Fit REQ parameters with c6_coeff=0 (PLQ-only, gradient descent)
+  Stage 2: Freeze REQ, fit C₆ coefficients + energy_offset via np.linalg.lstsq
+  Stage 3 (optional, --stage3-refine): Gentle joint REQ+C₆ gradient refinement
+
+The --raw-r6 flag replaces the TS-damped dispersion grid with raw -Σ 1/|r-r_j|⁶
+(no Fermi damping, c6_pair=1.0).  This gives a basis function with different
+lateral variation than exponential density decay, enabling site differentiation
+that PLQ alone cannot achieve.
+"""
 
 from __future__ import annotations
 
@@ -19,7 +39,8 @@ sys.path.append(str(ROOT))
 
 from pyBall.gridff_jax import RunConfig, backend_summary, save_config
 from pyBall.gridff_jax.density_backends import make_density_backend
-from pyBall.gridff_jax.fit import fit_hybrid_parameters
+from pyBall.gridff_jax.export import export_firecore_artifacts
+from pyBall.gridff_jax.fit import fit_hybrid_parameters, fit_two_stage_c6
 from pyBall.gridff_jax.hybrid_energy import HybridGridFFModel, HybridParameters
 from pyBall.gridff_jax.interfaces import ModelEvaluation, PoseBatch, TeacherResult
 from pyBall.gridff_jax.pose_sampling import get_adsorbate, infer_reference_planes, infer_surface_sites, transform_adsorbate
@@ -72,6 +93,22 @@ def parse_args():
     parser.add_argument("--fit-z-shift", action="store_true", help="Fit sample_shift_z (global z offset for grid sampling)")
     parser.add_argument("--london-damp-d0", type=float, default=0.0, help="London damping d0 (Fermi midpoint above surface, Angstrom)")
     parser.add_argument("--london-damp-width", type=float, default=0.5, help="London damping Fermi width (Angstrom)")
+    parser.add_argument("--use-c6", action="store_true", help="Enable pairwise C6/R6 dispersion grid channel (vdW-surf screened)")
+    parser.add_argument("--fit-c6", action="store_true", help="Fit per-element c6_coeff scaling factors (requires --use-c6)")
+    parser.add_argument("--c6-rcut", type=float, default=15.0, help="Cutoff for pairwise C6 sum (Angstrom)")
+    parser.add_argument("--two-stage-c6", action="store_true", help="Enable two-stage REQ→C6 optimization (Stage1: PLQ-only, Stage2: C6-only)")
+    parser.add_argument("--stage2-max-steps", type=int, default=400, help="Steps for C6-only stage (default 400)")
+    parser.add_argument("--stage2-lr", type=float, default=5.0e-3, help="Learning rate for C6-only stage (default 5e-3)")
+    parser.add_argument("--stage2-force-weight", type=float, default=10.0, help="Force loss weight for C6-only stage (default 10.0)")
+    parser.add_argument("--raw-r6", action="store_true", help="Use raw 1/r^6 basis (no TS damping) for Stage 2 lstsq — matches proof-of-concept")
+    parser.add_argument("--stage3-refine", action="store_true", help="Enable optional joint REQ+C6 refinement stage")
+    parser.add_argument("--stage3-max-steps", type=int, default=200, help="Steps for joint refinement (default 200)")
+    parser.add_argument("--stage3-lr", type=float, default=1.0e-4, help="Learning rate for joint refinement (default 1e-4)")
+    # DISABLED(2026-03): density-derived channels confirmed ineffective in ablation scan.
+    parser.add_argument("--use-density-lap", action="store_true", help="[DISABLED] Density Laplacian — confirmed ineffective")
+    parser.add_argument("--use-density-grad", action="store_true", help="[DISABLED] Density gradient — confirmed ineffective")
+    parser.add_argument("--use-london-alt", action="store_true", help="[DISABLED] Alt London power — confirmed ineffective")
+    parser.add_argument("--london-alt-power", type=float, default=1.5, help="[DISABLED] Power for alt London channel")
     parser.add_argument("--builder-mode", type=str, default="metal_density_plq", help="Grid builder mode (metal_density_plq, metal_dft_plq, parity_core)")
     parser.add_argument("--teacher-chunk-size", type=int, default=64, help="Teacher batch chunk size")
     parser.add_argument("--student-chunk-size", type=int, default=64, help="Student batch chunk size")
@@ -237,7 +274,7 @@ def _evaluate_student_chunked(model, poses, params, chunk_size: int):
 
 
 def _fit_param_payload(params: HybridParameters):
-    return {
+    payload = {
         "pauli": dict(params.pauli),
         "london": dict(params.london),
         "reactive": dict(params.reactive),
@@ -255,6 +292,11 @@ def _fit_param_payload(params: HybridParameters):
         "reservoir_hardness": float(params.reservoir_hardness),
         "total_charge": float(params.total_charge),
     }
+    if params.c6_coeff:
+        payload["c6_coeff"] = dict(params.c6_coeff)
+    if params.energy_offset != 0.0:
+        payload["energy_offset"] = float(params.energy_offset)
+    return payload
 
 
 def _select_even_indices(indices, count: int):
@@ -335,6 +377,29 @@ def _set_strict_plq_config(config: RunConfig, args):
     if args.london_damp_d0 > 0.0:
         config.grid.london_damping_d0 = float(args.london_damp_d0)
         config.grid.london_damping_width = float(args.london_damp_width)
+    if args.use_c6 or args.two_stage_c6:
+        config.grid.use_pairwise_c6 = True
+        config.grid.c6_rcut = float(args.c6_rcut)
+        config.training.fit_c6_coeff = bool(args.fit_c6)
+    if args.two_stage_c6:
+        config.training.two_stage_c6 = True
+        config.training.stage2_max_steps = int(args.stage2_max_steps)
+        config.training.stage2_learning_rate = float(args.stage2_lr)
+        config.training.stage2_force_weight = float(args.stage2_force_weight)
+        config.training.stage3_refine = bool(args.stage3_refine)
+        config.training.stage3_max_steps = int(args.stage3_max_steps)
+        config.training.stage3_learning_rate = float(args.stage3_lr)
+    # DISABLED(2026-03): density-derived channels confirmed ineffective in ablation scan.
+    # if args.use_density_lap:
+    #     config.grid.use_density_laplacian = True
+    #     config.training.fit_density_lap = True
+    # if args.use_density_grad:
+    #     config.grid.use_density_gradient = True
+    #     config.training.fit_density_grad = True
+    # if args.use_london_alt:
+    #     config.grid.use_london_alt = True
+    #     config.grid.london_alt_power = float(args.london_alt_power)
+    #     config.training.fit_london_alt = True
     if args.ag_radius_scale is not None:
         config.grid.req_scale_radius["Ag"] = float(args.ag_radius_scale)
     if args.ag_energy_scale is not None:
@@ -416,8 +481,6 @@ def _plot_site_traces(out_dir, site_label, z_values, teacher_energy, student_ene
     plt.figure(figsize=(7, 4.8))
     plt.plot(z_values, teacher_energy, label="MAD-SURF", color="tab:blue", lw=2.5)
     plt.plot(z_values, student_energy, label="GridFF", color="tab:orange", lw=2.0, ls="--")
-    plt.scatter(z_values[train_mask], teacher_energy[train_mask], color="tab:blue", s=18, alpha=0.8, marker="o", label="train points")
-    plt.scatter(z_values[train_mask], student_energy[train_mask], color="tab:orange", s=18, alpha=0.8, marker="x")
     plt.xlabel("z [A]")
     plt.ylabel("Energy [eV]")
     plt.title(f"{site_label} z scan")
@@ -430,8 +493,6 @@ def _plot_site_traces(out_dir, site_label, z_values, teacher_energy, student_ene
     plt.figure(figsize=(7, 4.8))
     plt.plot(z_values, teacher_force_norm, label="MAD-SURF", color="tab:blue", lw=2.5)
     plt.plot(z_values, student_force_norm, label="GridFF", color="tab:orange", lw=2.0, ls="--")
-    plt.scatter(z_values[train_mask], teacher_force_norm[train_mask], color="tab:blue", s=18, alpha=0.8, marker="o", label="train points")
-    plt.scatter(z_values[train_mask], student_force_norm[train_mask], color="tab:orange", s=18, alpha=0.8, marker="x")
     plt.xlabel("z [A]")
     plt.ylabel("|Force| [eV/A]")
     plt.title(f"{site_label} force norm")
@@ -588,15 +649,40 @@ def main():
         hybrid_config=config.hybrid_model,
         prefer_jax=args.prefer_jax,
     )
+    if getattr(args, "raw_r6", False):
+        print("[zscan] Installing raw 1/r^6 dispersion grid (no TS damping)...", flush=True)
+        model.install_raw_r6_grid()
 
     fit_t0 = time.perf_counter()
-    fit_result = fit_hybrid_parameters(
-        density=density,
-        datasets=[(train_poses, train_teacher)],
-        model=model,
-        training=config.training,
-        initial_params=None,
-    )
+    if config.training.two_stage_c6:
+        # Build primary-window dataset for lstsq Stage 2 (all z >= z_min points).
+        # REQ Stage 1 fits on training data; lstsq Stage 2 uses all primary-window
+        # data because it's a 5-parameter linear fit with negligible overfitting risk.
+        primary_mask = np.zeros(len(dense_poses.positions), dtype=bool)
+        n_z = len(z_values)
+        for si in range(len(site_uvs)):
+            lo, hi = si * n_z, (si + 1) * n_z
+            primary_mask[lo:hi] = z_values >= float(args.z_min)
+        primary_indices = np.where(primary_mask)[0]
+        primary_poses = _slice_pose_batch(dense_poses, primary_indices)
+        primary_teacher = _slice_teacher_result(teacher_dense, primary_indices)
+        fit_result = fit_two_stage_c6(
+            density=density,
+            datasets=[(train_poses, train_teacher)],
+            model=model,
+            training=config.training,
+            initial_params=None,
+            lstsq_datasets=[(primary_poses, primary_teacher)],
+            use_raw_r6=getattr(args, "raw_r6", False),
+        )
+    else:
+        fit_result = fit_hybrid_parameters(
+            density=density,
+            datasets=[(train_poses, train_teacher)],
+            model=model,
+            training=config.training,
+            initial_params=None,
+        )
     fit_elapsed = time.perf_counter() - fit_t0
     save_json(_fit_param_payload(fit_result.params), out_dir / "fit_params.json")
     save_json(fit_result.metrics.get("constraint_report", {}), out_dir / "fit_constraints.json")
@@ -609,6 +695,17 @@ def main():
         },
     )
     print(f"[zscan] fit done in {fit_elapsed:.3f}s", flush=True)
+
+    # Export FireCore-compatible grid artifacts (Bspline_PLQd.npy, etc.)
+    export_paths = export_firecore_artifacts(
+        out_dir=out_dir,
+        density=density,
+        model=model,
+        fit_result=fit_result,
+        toggles=config.toggles,
+        teacher_backend_id=config.teacher_backend.kind,
+    )
+    print(f"[zscan] grid exported: {export_paths['plq_path']}", flush=True)
 
     student_dense, student_elapsed = _evaluate_student_chunked(
         model=model,

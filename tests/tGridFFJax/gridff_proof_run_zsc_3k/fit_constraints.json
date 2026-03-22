@@ -1,0 +1,97 @@
+{
+  "constraint_limited": true,
+  "threshold_fraction": 0.05,
+  "parameters": {
+    "req_radius_offset:C": {
+      "value": 0.7146403248525001,
+      "lower": -0.5,
+      "upper": 1.2,
+      "distance_fraction": 0.2855056912632352,
+      "near_bound": false
+    },
+    "req_radius_offset:H": {
+      "value": 0.005921440483553964,
+      "lower": -0.5,
+      "upper": 1.2,
+      "distance_fraction": 0.297600847343267,
+      "near_bound": false
+    },
+    "req_radius_offset:N": {
+      "value": 0.7689847633208623,
+      "lower": -0.5,
+      "upper": 1.2,
+      "distance_fraction": 0.2535383745171398,
+      "near_bound": false
+    },
+    "req_radius_offset:O": {
+      "value": 0.35056934201144413,
+      "lower": -0.5,
+      "upper": 1.2,
+      "distance_fraction": 0.4996650929344446,
+      "near_bound": false
+    },
+    "req_energy_scale:C": {
+      "value": 6.522540336622084,
+      "lower": 0.1,
+      "upper": 30.0,
+      "distance_fraction": 0.21480068015458478,
+      "near_bound": false
+    },
+    "req_energy_scale:H": {
+      "value": 0.619276977325177,
+      "lower": 0.1,
+      "upper": 30.0,
+      "distance_fraction": 0.017367122987464113,
+      "near_bound": true
+    },
+    "req_energy_scale:N": {
+      "value": 4.665957352954367,
+      "lower": 0.1,
+      "upper": 30.0,
+      "distance_fraction": 0.15270760377773804,
+      "near_bound": false
+    },
+    "req_energy_scale:O": {
+      "value": 10.054386460335508,
+      "lower": 0.1,
+      "upper": 30.0,
+      "distance_fraction": 0.3329226240914886,
+      "near_bound": false
+    },
+    "static_charge:C": {
+      "value": 1.4875610939593216,
+      "lower": -0.95,
+      "upper": 2.0,
+      "distance_fraction": 0.17370810374260284,
+      "near_bound": false
+    },
+    "static_charge:H": {
+      "value": -0.95,
+      "lower": -0.95,
+      "upper": 2.0,
+      "distance_fraction": 0.0,
+      "near_bound": true
+    },
+    "static_charge:N": {
+      "value": -0.95,
+      "lower": -0.95,
+      "upper": 2.0,
+      "distance_fraction": 0.0,
+      "near_bound": true
+    },
+    "static_charge:O": {
+      "value": 1.672231407469018,
+      "lower": -0.95,
+      "upper": 2.0,
+      "distance_fraction": 0.11110799746812945,
+      "near_bound": false
+    },
+    "sample_shift_z": {
+      "value": 0.05087377110322819,
+      "lower": -1.5,
+      "upper": 1.5,
+      "distance_fraction": 0.483042076298924,
+      "near_bound": false
+    }
+  }
+}

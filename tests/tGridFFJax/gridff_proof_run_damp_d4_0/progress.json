@@ -1,0 +1,12 @@
+{
+  "stage": "poses_ready",
+  "n_total": 189,
+  "sites": [
+    "top",
+    "bridge",
+    "hollow"
+  ],
+  "eval_z_points": 63,
+  "primary_z_min": 2.0,
+  "stress_z_min": 1.8
+}

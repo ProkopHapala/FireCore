@@ -455,24 +455,31 @@ def _ts_c6_pair(el_ads, el_metal, use_screened=True):
 
 
 def _build_dispersion_grid(density: DensityData, grid_config: GridConfig, reactive_elements: tuple[str, ...]):
-    """Build per-element pairwise C6/R^6 dispersion grids with TS Fermi damping.
+    """Build per-element pairwise dispersion shape grids with TS Fermi damping.
 
-    Returns dispersion_zyxc: array [nz, ny, nx, n_elements].
-    Channel c holds V_disp for reactive_elements[c] interacting with substrate metal.
+    The grid stores the GEOMETRIC SHAPE only: V_shape_el(r) = -Σ_j f_damp(r_ij) / r_ij⁶
+    The C₆ pair values are returned separately and multiplied in the model:
+        E_disp = Σ_i c6_coeff_i × c6_pair_i × V_shape_el(r_i)
+
+    This separation keeps grid values on order ~0.001-1.0, enabling stable optimization.
+
+    Returns:
+        dispersion_zyxc: array [nz, ny, nx, n_elements] — geometric shape
+        c6_pairs: array [n_elements] — C₆ pair values (eV·Å⁶)
     """
     nz, ny, nx = density.grid_shape_zyx
     n_el = len(reactive_elements)
     dispersion = np.zeros((nz, ny, nx, n_el), dtype=float)
+    c6_pairs = np.zeros(n_el, dtype=float)
 
     # Detect metal from substrate atoms
     metal = density.symbols[0]
     if metal not in TS_FREE_PARAMS:
         import warnings
         warnings.warn(f"Unknown metal '{metal}' for C6 grid; dispersion grid will be zero")
-        return dispersion
+        return dispersion, c6_pairs
 
     # Pre-compute C6 and R_sum for each adsorbate element
-    c6_pairs = np.zeros(n_el, dtype=float)
     r_sums = np.zeros(n_el, dtype=float)
     for idx, el in enumerate(reactive_elements):
         if el in TS_FREE_PARAMS:
@@ -502,10 +509,42 @@ def _build_dispersion_grid(density: DensityData, grid_config: GridConfig, reacti
             # TS Fermi damping: f = 1/(1+exp(-20*(R/(s_R*R_sum)-1)))
             r0 = s_r * r_sums[c]
             f_damp = 1.0 / (1.0 + np.exp(-20.0 * (r / r0 - 1.0)))
-            v_disp = np.sum(f_damp * (-c6_pairs[c] / r6), axis=1)  # [n_pts]
-            dispersion[iz, iy, ix, c] = v_disp
+            # Store SHAPE only: -Σ f_damp/r⁶ (no C₆ factor)
+            v_shape = np.sum(f_damp * (-1.0 / r6), axis=1)  # [n_pts]
+            dispersion[iz, iy, ix, c] = v_shape
 
-    return dispersion
+    return dispersion, c6_pairs
+
+
+def build_raw_r6_grid(density: DensityData, grid_config: GridConfig, n_elements: int):
+    """Build a raw -Σ 1/|r-r_j|⁶ dispersion grid (no TS damping).
+
+    Matches the proof-of-concept exactly: r² >= 1.0 minimum, PBC images,
+    no Fermi damping. The grid is element-independent (same shape for all
+    elements) and c6_pair is set to 1.0 (absorbed into lstsq coefficients).
+
+    Returns:
+        dispersion_zyxc: array [nz, ny, nx, n_elements] — all channels identical
+        c6_pairs: array [n_elements] — all ones
+    """
+    nz, ny, nx = density.grid_shape_zyx
+    raw_grid = np.zeros((nz, ny, nx), dtype=float)
+
+    c6_counts = auto_pbc_counts(density.cell, grid_config.c6_rcut, mask=(1, 1, 0))
+    shifts = make_pbc_shifts(density.cell, c6_counts)
+    atom_positions = (density.positions[None, :, :] + shifts[:, None, :]).reshape(-1, 3)
+
+    chunk_size = int(grid_config.pairwise_point_chunk)
+    for _, _, iz, iy, ix, points in iter_grid_point_chunks(density, chunk_size):
+        dp = points[:, None, :] - atom_positions[None, :, :]
+        r2 = np.sum(dp * dp, axis=-1)
+        r2 = np.maximum(r2, 1.0)
+        r6 = r2 * r2 * r2
+        raw_grid[iz, iy, ix] = -np.sum(1.0 / r6, axis=1)
+
+    dispersion = np.repeat(raw_grid[:, :, :, None], n_elements, axis=3)
+    c6_pairs = np.ones(n_elements, dtype=float)
+    return dispersion, c6_pairs
 
 
 def _metal_density_fields(density: DensityData, grid_config: GridConfig):
@@ -536,7 +575,65 @@ def _metal_density_fields(density: DensityData, grid_config: GridConfig):
     else:
         coulomb = poisson_potential_from_density(rho, density.voxel)
         source = "poisson_from_rho"
-    return pauli, london, coulomb, source
+    return pauli, london, coulomb, source, rho_norm
+
+
+def _density_derived_channels(rho_norm, density, grid_config):
+    """Compute auxiliary grid channels derived from the normalized electron density.
+
+    Returns (laplacian, gradient_mag, london_alt) — each shaped like rho_norm.
+
+    DISABLED(2026-03): All three channels (reduced Laplacian, reduced gradient, alt London)
+    confirmed ineffective in exhaustive 10-strategy ablation scan on CHONH2/Ag(111).
+    - Laplacian/gradient: interfere with REQ optimization (37.1 → 83.8 meV)
+    - Alt London ρ^1.5: absorbed by existing REQ params (37.1 → 37.1 meV, neutral)
+    Returns zeros unconditionally. Original implementation preserved below as comments.
+    """
+    return np.zeros_like(rho_norm), np.zeros_like(rho_norm), np.zeros_like(rho_norm)
+    # --- Original implementation (commented out 2026-03) ---
+    # voxel = np.asarray(density.voxel, dtype=float)
+    # if voxel.ndim == 2:
+    #     dx = float(voxel[0, 0])
+    #     dy = float(voxel[1, 1])
+    #     dz = float(voxel[2, 2])
+    # else:
+    #     dx, dy, dz = float(voxel[0]), float(voxel[1]), float(voxel[2])
+    # laplacian = np.zeros_like(rho_norm)
+    # gradient_mag = np.zeros_like(rho_norm)
+    # london_alt = np.zeros_like(rho_norm)
+    # need_derivatives = grid_config.use_density_laplacian or grid_config.use_density_gradient
+    # if need_derivatives:
+    #     rho_safe = np.clip(rho_norm, 1.0e-10, None)
+    #     drdx = (np.roll(rho_norm, -1, axis=2) - np.roll(rho_norm, 1, axis=2)) / (2.0 * dx)
+    #     drdy = (np.roll(rho_norm, -1, axis=1) - np.roll(rho_norm, 1, axis=1)) / (2.0 * dy)
+    #     drdz = np.zeros_like(rho_norm)
+    #     drdz[1:-1] = (rho_norm[2:] - rho_norm[:-2]) / (2.0 * dz)
+    # if grid_config.use_density_laplacian:
+    #     d2_dx2 = (np.roll(rho_norm, -1, axis=2) + np.roll(rho_norm, 1, axis=2) - 2.0 * rho_norm) / (dx * dx)
+    #     d2_dy2 = (np.roll(rho_norm, -1, axis=1) + np.roll(rho_norm, 1, axis=1) - 2.0 * rho_norm) / (dy * dy)
+    #     d2_dz2 = np.zeros_like(rho_norm)
+    #     d2_dz2[1:-1] = (rho_norm[2:] + rho_norm[:-2] - 2.0 * rho_norm[1:-1]) / (dz * dz)
+    #     raw_lap = d2_dx2 + d2_dy2 + d2_dz2
+    #     reduced_lap = raw_lap / rho_safe
+    #     rlap_max = max(float(np.max(np.abs(reduced_lap))), 1.0e-30)
+    #     laplacian = reduced_lap / rlap_max
+    # if grid_config.use_density_gradient:
+    #     raw_grad = np.sqrt(drdx ** 2 + drdy ** 2 + drdz ** 2)
+    #     reduced_grad = raw_grad / rho_safe
+    #     rgrad_max = max(float(np.max(reduced_grad)), 1.0e-30)
+    #     gradient_mag = reduced_grad / rgrad_max
+    # if grid_config.use_london_alt:
+    #     london_alt = -np.power(rho_norm, grid_config.london_alt_power)
+    #     if grid_config.london_damping_d0 > 0.0:
+    #         z_surface = float(np.max(density.positions[:, 2]))
+    #         nz = london_alt.shape[0]
+    #         origin_z = float(density.origin[2])
+    #         z_grid = np.arange(nz) * dz + origin_z
+    #         d_from_surface = z_grid - z_surface
+    #         w = max(float(grid_config.london_damping_width), 1.0e-6)
+    #         fermi = 1.0 / (1.0 + np.exp((d_from_surface - grid_config.london_damping_d0) / w))
+    #         london_alt *= fermi[:, np.newaxis, np.newaxis]
+    # return laplacian, gradient_mag, london_alt
 
 
 def build_substrate_grids(
@@ -549,10 +646,11 @@ def build_substrate_grids(
     grid_config = grid_config or GridConfig()
     toggles = toggles or FeatureToggles()
 
+    rho_norm = None
     if grid_config.builder_mode == "surrogate_density":
         pauli, london, coulomb, coulomb_source = _surrogate_density_fields(density, grid_config)
     elif grid_config.builder_mode == "metal_density_plq":
-        pauli, london, coulomb, coulomb_source = _metal_density_fields(density, grid_config)
+        pauli, london, coulomb, coulomb_source, rho_norm = _metal_density_fields(density, grid_config)
     else:
         reqs = build_req_array(
             symbols=density.symbols,
@@ -599,18 +697,35 @@ def build_substrate_grids(
         grid_config=grid_config,
         enabled=bool(toggles.use_reactive_grid),
     )
+    # Density-derived auxiliary channels (Laplacian, gradient, alt London)
+    need_derived = (
+        grid_config.use_density_laplacian
+        or grid_config.use_density_gradient
+        or grid_config.use_london_alt
+    )
+    if rho_norm is not None and need_derived:
+        density_lap, density_grad, london_alt_field = _density_derived_channels(rho_norm, density, grid_config)
+    else:
+        density_lap = np.zeros_like(pauli)
+        density_grad = np.zeros_like(pauli)
+        london_alt_field = np.zeros_like(pauli)
+
     wrap_z = bool(grid_config.builder_mode == "parity_core")
     pauli_coeff = bspline_prefilter_numpy(pauli, wrap_z=wrap_z)
     london_coeff = bspline_prefilter_numpy(london, wrap_z=wrap_z)
     coulomb_coeff = bspline_prefilter_numpy(coulomb, wrap_z=wrap_z)
     reactive_coeff = bspline_prefilter_numpy(reactive, wrap_z=wrap_z)
+    density_lap_coeff = bspline_prefilter_numpy(density_lap, wrap_z=wrap_z)
+    density_grad_coeff = bspline_prefilter_numpy(density_grad, wrap_z=wrap_z)
+    london_alt_coeff = bspline_prefilter_numpy(london_alt_field, wrap_z=wrap_z)
     if grid_config.use_pairwise_c6:
-        disp_raw = _build_dispersion_grid(density, grid_config, reactive_elements)
+        disp_raw, c6_pair_values = _build_dispersion_grid(density, grid_config, reactive_elements)
         disp_coeff = bspline_prefilter_numpy(disp_raw, wrap_z=wrap_z)
     else:
         nz_d, ny_d, nx_d = pauli.shape
         disp_raw = np.zeros((nz_d, ny_d, nx_d, len(reactive_elements)), dtype=float)
         disp_coeff = np.zeros_like(disp_raw)
+        c6_pair_values = np.zeros(len(reactive_elements), dtype=float)
     z_ref = float(np.max(density.positions[:, 2]))
     metadata = {
         "builder_mode": grid_config.builder_mode,
@@ -634,16 +749,31 @@ def build_substrate_grids(
         metadata["use_pairwise_c6"] = True
         metadata["c6_rcut"] = float(grid_config.c6_rcut)
         metadata["c6_s_r"] = float(grid_config.c6_s_r)
+        metadata["c6_pair_values"] = c6_pair_values.tolist()
+    if grid_config.use_density_laplacian:
+        metadata["use_density_laplacian"] = True
+    if grid_config.use_density_gradient:
+        metadata["use_density_gradient"] = True
+    if grid_config.use_london_alt:
+        metadata["use_london_alt"] = True
+        metadata["london_alt_power"] = float(grid_config.london_alt_power)
     return {
         "pauli_zyx": pauli,
         "london_zyx": london,
         "coulomb_zyx": coulomb,
         "reactive_zyxc": reactive,
         "dispersion_zyxc": disp_raw,
+        "c6_pair_values": c6_pair_values,
+        "density_lap_zyx": density_lap,
+        "density_grad_zyx": density_grad,
+        "london_alt_zyx": london_alt_field,
         "pauli_coeff_zyx": pauli_coeff,
         "london_coeff_zyx": london_coeff,
         "coulomb_coeff_zyx": coulomb_coeff,
         "reactive_coeff_zyxc": reactive_coeff,
         "dispersion_coeff_zyxc": disp_coeff,
+        "density_lap_coeff_zyx": density_lap_coeff,
+        "density_grad_coeff_zyx": density_grad_coeff,
+        "london_alt_coeff_zyx": london_alt_coeff,
         "metadata": metadata,
     }

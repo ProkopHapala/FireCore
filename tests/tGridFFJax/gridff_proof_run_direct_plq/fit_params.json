@@ -1,0 +1,58 @@
+{
+  "pauli": {
+    "C": 5.0,
+    "H": 5.0,
+    "N": 5.0,
+    "O": 5.0
+  },
+  "london": {
+    "C": 0.05,
+    "H": 0.05,
+    "N": 0.05,
+    "O": 0.05
+  },
+  "reactive": {
+    "C": 1.0,
+    "H": 1.0,
+    "N": 1.0,
+    "O": 1.0
+  },
+  "static_charge": {
+    "C": 0.0,
+    "H": 0.0,
+    "N": 0.0,
+    "O": 0.0
+  },
+  "req_radius_offset": {
+    "C": 0.0,
+    "H": 0.0,
+    "N": 0.0,
+    "O": 0.0
+  },
+  "req_energy_scale": {
+    "C": 1.0,
+    "H": 1.0,
+    "N": 1.0,
+    "O": 1.0
+  },
+  "chi": {
+    "C": -5.343,
+    "H": -4.528,
+    "N": -6.899,
+    "O": -8.741
+  },
+  "hardness": {
+    "C": 10.126,
+    "H": 13.8904,
+    "N": 11.76,
+    "O": 13.364
+  },
+  "image_scale": 1.0,
+  "image_plane": 23.0564,
+  "image_damping": 0.5,
+  "sample_shift_z": 0.0,
+  "coulomb_shift_z": 0.0,
+  "reservoir_chi": -4.5,
+  "reservoir_hardness": 7.0,
+  "total_charge": 0.0
+}

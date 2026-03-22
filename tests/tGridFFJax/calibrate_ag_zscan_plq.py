@@ -61,6 +61,9 @@ def parse_args():
     parser.add_argument("--pauli-powers", default="1.0", help="Comma-separated metal_density_pauli_power values to sweep")
     parser.add_argument("--london-powers", default="0.5", help="Comma-separated metal_density_london_power values to sweep")
     parser.add_argument("--z-dense-cutoff", type=float, default=2.8, help="Upper edge of the dense chemisorption window")
+    parser.add_argument("--use-c6", action="store_true", help="Enable pairwise C6/R6 dispersion grid channel (vdW-surf screened)")
+    parser.add_argument("--fit-c6", action="store_true", help="Fit per-element c6_coeff scaling factors (requires --use-c6)")
+    parser.add_argument("--c6-rcut", type=float, default=15.0, help="Cutoff for pairwise C6 sum (Angstrom)")
     parser.add_argument("--max-steps", type=int, default=300)
     parser.add_argument("--force-weight", type=float, default=10.0)
     parser.add_argument("--learning-rate", type=float, default=1.0e-2)
@@ -234,6 +237,9 @@ def _set_strict_plq_config(config: RunConfig, args):
     config.teacher_backend.device = args.device
     config.grid.builder_mode = "metal_density_plq"
     config.grid.interpolation_order = 3
+    if args.use_c6:
+        config.grid.use_pairwise_c6 = True
+        config.grid.c6_rcut = float(args.c6_rcut)
     config.toggles.use_ct_qeq = False
     config.toggles.use_image_charge = False
     config.toggles.use_reactive_grid = False
@@ -246,6 +252,7 @@ def _set_strict_plq_config(config: RunConfig, args):
     config.training.fit_image_plane = False
     config.training.fit_reactive = False
     config.training.fit_static_charge = bool(args.fit_static_charge)
+    config.training.fit_c6_coeff = bool(getattr(args, 'fit_c6', False))
     config.training.fit_req_radius_offset = True
     config.training.fit_req_energy_scale = True
     config.training.fit_sample_shift_z = False

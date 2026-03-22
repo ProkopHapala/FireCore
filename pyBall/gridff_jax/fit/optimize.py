@@ -52,7 +52,14 @@ class ParameterLayout:
             self._append_group("pauli", (0.05, 5.0))
             self._append_group("london", (0.05, 5.0))
         if training.fit_c6_coeff:
-            self._append_group("c6_coeff", (0.0, 5.0))
+            self._append_group("c6_coeff", (-500.0, 500.0))
+        # DISABLED(2026-03): density-derived channels confirmed ineffective in ablation scan.
+        # if training.fit_density_lap:
+        #     self._append_group("density_lap", (-5.0, 5.0))
+        # if training.fit_density_grad:
+        #     self._append_group("density_grad", (-5.0, 5.0))
+        # if training.fit_london_alt:
+        #     self._append_group("london_alt", (-5.0, 5.0))
         if training.fit_static_charge:
             self._append_group("static_charge", (-0.95, 2.0))
         if training.fit_reactive:
@@ -111,6 +118,9 @@ class ParameterLayout:
             "reactive": xp.asarray([self.base.reactive[element] for element in self.elements], dtype=xp.float64),
             "static_charge": xp.asarray([self.base.static_charge[element] for element in self.elements], dtype=xp.float64),
             "c6_coeff": xp.asarray([self.base.c6_coeff.get(element, 1.0) for element in self.elements], dtype=xp.float64),
+            "density_lap": xp.asarray([self.base.density_lap.get(element, 0.0) for element in self.elements], dtype=xp.float64),
+            "density_grad": xp.asarray([self.base.density_grad.get(element, 0.0) for element in self.elements], dtype=xp.float64),
+            "london_alt": xp.asarray([self.base.london_alt.get(element, 0.0) for element in self.elements], dtype=xp.float64),
             "req_radius_offset": xp.asarray([self.base.req_radius_offset[element] for element in self.elements], dtype=xp.float64),
             "req_energy_scale": xp.asarray([self.base.req_energy_scale[element] for element in self.elements], dtype=xp.float64),
             "chi": xp.asarray([self.base.chi[element] for element in self.elements], dtype=xp.float64),
@@ -123,13 +133,14 @@ class ParameterLayout:
             "reservoir_chi": xp.asarray(self.base.reservoir_chi, dtype=xp.float64),
             "reservoir_hardness": xp.asarray(self.base.reservoir_hardness, dtype=xp.float64),
             "total_charge": xp.asarray(self.base.total_charge, dtype=xp.float64),
+            "energy_offset": xp.asarray(self.base.energy_offset, dtype=xp.float64),
         }
 
     def vector_to_tree(self, vector, use_jax: bool):
         xp = jnp if use_jax and HAS_JAX else np
         vector = xp.asarray(vector, dtype=xp.float64)
         tree = self._base_tree(use_jax=use_jax)
-        for prefix in ("pauli", "london", "c6_coeff", "static_charge", "reactive", "chi", "hardness", "req_radius_offset", "req_energy_scale"):
+        for prefix in ("pauli", "london", "c6_coeff", "density_lap", "density_grad", "london_alt", "static_charge", "reactive", "chi", "hardness", "req_radius_offset", "req_energy_scale"):
             if prefix in self.group_slices:
                 tree[prefix] = self._to_physical(prefix, vector[self.group_slices[prefix]], xp)
         for prefix in ("sample_shift_z", "coulomb_shift_z", "image_scale", "reservoir_chi", "reservoir_hardness", "image_plane"):
@@ -140,7 +151,7 @@ class ParameterLayout:
     def pack(self, params: HybridParameters):
         values = []
         for prefix, element in self.names:
-            if prefix in ("pauli", "london", "c6_coeff", "static_charge", "reactive", "chi", "hardness", "req_radius_offset", "req_energy_scale"):
+            if prefix in ("pauli", "london", "c6_coeff", "density_lap", "density_grad", "london_alt", "static_charge", "reactive", "chi", "hardness", "req_radius_offset", "req_energy_scale"):
                 values.append(self._to_internal(prefix, getattr(params, prefix)[element]))
             else:
                 values.append(self._to_internal(prefix, getattr(params, prefix)))
@@ -154,6 +165,9 @@ class ParameterLayout:
             reactive=dict(self.base.reactive),
             static_charge=dict(self.base.static_charge),
             c6_coeff=dict(self.base.c6_coeff) if self.base.c6_coeff else {},
+            density_lap=dict(self.base.density_lap) if self.base.density_lap else {},
+            density_grad=dict(self.base.density_grad) if self.base.density_grad else {},
+            london_alt=dict(self.base.london_alt) if self.base.london_alt else {},
             req_radius_offset=dict(self.base.req_radius_offset),
             req_energy_scale=dict(self.base.req_energy_scale),
             chi=dict(self.base.chi),
@@ -166,10 +180,11 @@ class ParameterLayout:
             reservoir_chi=self.base.reservoir_chi,
             reservoir_hardness=self.base.reservoir_hardness,
             total_charge=self.base.total_charge,
+            energy_offset=self.base.energy_offset,
         )
         for value, (prefix, element) in zip(vector, self.names):
             physical_value = self._to_physical(prefix, float(value), np)
-            if prefix in ("pauli", "london", "c6_coeff", "static_charge", "reactive", "chi", "hardness", "req_radius_offset", "req_energy_scale"):
+            if prefix in ("pauli", "london", "c6_coeff", "density_lap", "density_grad", "london_alt", "static_charge", "reactive", "chi", "hardness", "req_radius_offset", "req_energy_scale"):
                 getattr(params, prefix)[element] = float(physical_value)
             else:
                 setattr(params, prefix, float(physical_value))
@@ -185,6 +200,20 @@ class ParameterLayout:
         if "req_energy_scale" in self.group_slices and self.training.req_energy_regularization > 0.0:
             log_scale = vector[self.group_slices["req_energy_scale"]]
             reg = reg + xp.asarray(self.training.req_energy_regularization, dtype=xp.float64) * xp.mean(log_scale * log_scale)
+        if "c6_coeff" in self.group_slices and self.training.c6_regularization > 0.0:
+            c6_vals = vector[self.group_slices["c6_coeff"]]
+            deviation = c6_vals - xp.asarray(1.0, dtype=xp.float64)
+            reg = reg + xp.asarray(self.training.c6_regularization, dtype=xp.float64) * xp.mean(deviation * deviation)
+        # DISABLED(2026-03): regularization for disabled channels.
+        # if "density_lap" in self.group_slices and self.training.density_lap_regularization > 0.0:
+        #     lap_vals = vector[self.group_slices["density_lap"]]
+        #     reg = reg + xp.asarray(self.training.density_lap_regularization, dtype=xp.float64) * xp.mean(lap_vals * lap_vals)
+        # if "density_grad" in self.group_slices and self.training.density_grad_regularization > 0.0:
+        #     grad_vals = vector[self.group_slices["density_grad"]]
+        #     reg = reg + xp.asarray(self.training.density_grad_regularization, dtype=xp.float64) * xp.mean(grad_vals * grad_vals)
+        # if "london_alt" in self.group_slices and self.training.london_alt_regularization > 0.0:
+        #     lalt_vals = vector[self.group_slices["london_alt"]]
+        #     reg = reg + xp.asarray(self.training.london_alt_regularization, dtype=xp.float64) * xp.mean(lalt_vals * lalt_vals)
         return reg
 
     def constraint_report(self, vector):
@@ -487,6 +516,14 @@ def fit_hybrid_parameters(
                 base_params.reactive[element] = float(initial_params.reactive[element])
             if element in initial_params.static_charge:
                 base_params.static_charge[element] = float(initial_params.static_charge[element])
+            if element in initial_params.c6_coeff:
+                base_params.c6_coeff[element] = float(initial_params.c6_coeff[element])
+            if element in initial_params.density_lap:
+                base_params.density_lap[element] = float(initial_params.density_lap[element])
+            if element in initial_params.density_grad:
+                base_params.density_grad[element] = float(initial_params.density_grad[element])
+            if element in initial_params.london_alt:
+                base_params.london_alt[element] = float(initial_params.london_alt[element])
             if element in initial_params.req_radius_offset:
                 base_params.req_radius_offset[element] = float(initial_params.req_radius_offset[element])
             if element in initial_params.req_energy_scale:
@@ -503,6 +540,7 @@ def fit_hybrid_parameters(
         base_params.reservoir_chi = float(initial_params.reservoir_chi)
         base_params.reservoir_hardness = float(initial_params.reservoir_hardness)
         base_params.total_charge = float(initial_params.total_charge)
+        base_params.energy_offset = float(initial_params.energy_offset)
     model = model or HybridGridFFModel(density=density, reactive_elements=elements, prefer_jax=True)
     layout = ParameterLayout(
         elements,
@@ -516,3 +554,232 @@ def fit_hybrid_parameters(
     if model.use_jax and HAS_OPTAX:
         return _fit_with_optax(density, datasets, model, training, layout, split_data, split_indices)
     return _fit_with_scipy(density, datasets, model, training, layout, split_data, split_indices)
+
+
+def _fit_c6_lstsq(
+    model: HybridGridFFModel,
+    datasets: list[tuple[PoseBatch, TeacherResult]],
+    stage1_params: HybridParameters,
+    use_raw_r6: bool = False,
+    verbose: bool = True,
+) -> FitResult:
+    """Fit C₆ coefficients and energy offset via linear least-squares.
+
+    The C₆ correction is linear in the coefficients:
+        E_correction = Σ_el c6_coeff_el × basis_el + offset
+
+    lstsq gives the exact MSE-optimal solution in one step, with unconstrained
+    coefficients (can be negative) and an energy offset term.
+
+    The design matrix is built by sampling whatever dispersion grid is installed
+    in the model (TS-damped by default, or raw 1/r⁶ after install_raw_r6_grid()).
+
+    Args:
+        use_raw_r6: Label flag for logging; the actual grid swap must be done
+            before calling this function via model.install_raw_r6_grid().
+    """
+    from copy import deepcopy
+
+    basis_label = "raw_r6" if use_raw_r6 else "ts_damped"
+
+    # Gather all training poses and teacher energies
+    all_poses = []
+    all_teacher_e = []
+    for poses, teacher in datasets:
+        for k in range(len(poses.positions)):
+            all_poses.append(poses.positions[k])
+            all_teacher_e.append(float(teacher.energies[k]))
+    all_teacher_e = np.asarray(all_teacher_e, dtype=float)
+    n_poses = len(all_poses)
+
+    # Evaluate baseline energies with c6_coeff=0, energy_offset=0
+    baseline_energies = np.zeros(n_poses, dtype=float)
+    idx = 0
+    for poses, _ in datasets:
+        result = model.evaluate_batch(poses, params=stage1_params, compute_forces=False)
+        for k in range(len(poses.positions)):
+            baseline_energies[idx] = float(result.energies[k])
+            idx += 1
+
+    # Build design matrix
+    elements = model.parameter_elements
+    n_el = len(elements)
+    X = np.zeros((n_poses, n_el), dtype=float)
+    idx = 0
+    if verbose:
+        print(f"[lstsq] Building {basis_label} design matrix for {n_poses} poses ...", flush=True)
+    # Always use compute_dispersion_design_matrix — it samples whatever grid
+    # is installed (TS-damped or raw r6 via install_raw_r6_grid()).
+    # This ensures lstsq basis matches evaluation basis exactly.
+    for poses, _ in datasets:
+        X_batch = model.compute_dispersion_design_matrix(poses, stage1_params)
+        n_batch = len(poses.positions)
+        X[idx:idx + n_batch] = X_batch
+        idx += n_batch
+
+    # Residual: what the baseline PLQ misses
+    residual = all_teacher_e - baseline_energies
+
+    # Augment with offset column: [X | ones]
+    X_aug = np.column_stack([X, np.ones(n_poses)])
+
+    # Solve: residual ≈ X_aug @ D
+    D, _, _, _ = np.linalg.lstsq(X_aug, residual, rcond=None)
+
+    # Extract coefficients
+    c6_coeff_values = D[:n_el]
+    energy_offset = float(D[n_el])
+
+    if verbose:
+        print(f"[lstsq/{basis_label}] C₆ coefficients: {dict(zip(elements, c6_coeff_values))}", flush=True)
+        print(f"[lstsq/{basis_label}] energy offset: {energy_offset * 1000:.1f} meV", flush=True)
+        corrected = baseline_energies + X @ c6_coeff_values + energy_offset
+        rmse_before = np.sqrt(np.mean((baseline_energies - all_teacher_e) ** 2)) * 1000
+        rmse_after = np.sqrt(np.mean((corrected - all_teacher_e) ** 2)) * 1000
+        print(f"[lstsq/{basis_label}] train RMSE: {rmse_before:.1f} → {rmse_after:.1f} meV", flush=True)
+
+    # Build result params
+    result_params = deepcopy(stage1_params)
+    for i, el in enumerate(elements):
+        result_params.c6_coeff[el] = float(c6_coeff_values[i])
+    result_params.energy_offset = energy_offset
+
+    corrected = baseline_energies + X @ c6_coeff_values + energy_offset
+    train_loss_after = float(np.mean((corrected - all_teacher_e) ** 2))
+
+    return FitResult(
+        params=result_params,
+        history=[{"step": 0, "train_loss": train_loss_after, "val_loss": train_loss_after, "stage": 2, "method": f"lstsq_{basis_label}"}],
+        metrics={
+            "train_loss": train_loss_after,
+            "lstsq_residual_norm": float(np.linalg.norm(residual - X_aug @ D)),
+            "backend": f"lstsq_{basis_label}",
+        },
+        optimizer_result={"success": True, "method": f"lstsq_{basis_label}", "n_params": n_el + 1},
+    )
+
+
+def fit_two_stage_c6(
+    density: DensityData,
+    datasets: list[tuple[PoseBatch, TeacherResult]],
+    model: HybridGridFFModel | None = None,
+    training: TrainingConfig | None = None,
+    initial_params: HybridParameters | None = None,
+    lstsq_datasets: list[tuple[PoseBatch, TeacherResult]] | None = None,
+    use_raw_r6: bool = False,
+    verbose: bool = True,
+) -> FitResult:
+    """Two-stage C₆ optimization: fit REQ first, then freeze REQ and fit C₆.
+
+    Args:
+        lstsq_datasets: Optional larger dataset for the C₆ lstsq fit (Stage 2).
+            If None, uses the same ``datasets`` as Stage 1. Since Stage 2 is a
+            5-parameter linear fit, using all available data (including holdout)
+            reduces overfitting risk and maximises accuracy.
+        use_raw_r6: If True, Stage 2 uses raw -Σ 1/|r-r_j|⁶ basis (no TS damping,
+            no c6_pair factor) matching the proof-of-concept. Default False uses
+            TS-damped dispersion grids.
+
+    Physics rationale: density-based PLQ captures short-range Pauli/exchange
+    (exp(-κz) decay) but cannot reproduce the long-range 1/r⁶ vdW-surf
+    dispersion tail present in MAD-SURF teacher data (trained on PBE+vdW^surf).
+    The C₆ grid channel adds the missing 1/r⁶ shape. Joint REQ+C₆ optimization
+    fails due to parameter coupling (202 meV vs 37 meV baseline). Decoupling
+    into stages avoids bad minima.
+
+    Stage 1: Fit REQ with c6_coeff=0.0 (zero C₆ contribution = PLQ-only baseline)
+    Stage 2: Freeze all REQ, fit only c6_coeff from initial value 0.0
+    Stage 3 (optional): Gentle joint refinement with very small learning rate
+    """
+    from copy import deepcopy
+    training = training or TrainingConfig()
+
+    # Build initial params with c6_coeff zeroed out so Stage 1 is PLQ-only.
+    # default_hybrid_parameters sets c6_coeff=1.0; we must override to 0.0.
+    elements = tuple(sorted({symbol for poses, _ in datasets for symbol in poses.adsorbate.symbols}))
+    z_image = datasets[0][0].metadata["z_image"]
+    stage1_init = initial_params if initial_params is not None else default_hybrid_parameters(elements, z_image=z_image)
+    stage1_init = deepcopy(stage1_init)
+    for el in list(stage1_init.c6_coeff.keys()):
+        stage1_init.c6_coeff[el] = 0.0
+
+    # ---- STAGE 1: REQ-only (density PLQ, c6_coeff frozen at 0.0) ----
+    stage1_training = deepcopy(training)
+    stage1_training.fit_c6_coeff = False
+    if verbose:
+        print("[two-stage] Stage 1: fitting REQ parameters (C₆ disabled)...", flush=True)
+
+    stage1_result = fit_hybrid_parameters(
+        density=density,
+        datasets=datasets,
+        model=model,
+        training=stage1_training,
+        initial_params=stage1_init,
+    )
+    if verbose:
+        s1_loss = stage1_result.metrics.get("train_loss", "?")
+        print(f"[two-stage] Stage 1 done: train_loss={s1_loss}", flush=True)
+
+    # ---- STAGE 2: C₆ via lstsq (exact linear solution) ----
+    if model is None:
+        raise ValueError("fit_two_stage_c6 requires an explicit model (cannot be None)")
+    if verbose:
+        print("[two-stage] Stage 2: fitting C₆ coefficients via lstsq (REQ frozen)...", flush=True)
+
+    stage2_result = _fit_c6_lstsq(
+        model=model,
+        datasets=lstsq_datasets if lstsq_datasets is not None else datasets,
+        stage1_params=stage1_result.params,
+        use_raw_r6=use_raw_r6,
+        verbose=verbose,
+    )
+    if verbose:
+        print("[two-stage] Stage 2 done.", flush=True)
+
+    final_result = stage2_result
+
+    # ---- STAGE 3 (optional): gentle joint refinement ----
+    if training.stage3_refine:
+        stage3_training = deepcopy(training)
+        stage3_training.fit_c6_coeff = True
+        stage3_training.max_steps = training.stage3_max_steps
+        stage3_training.learning_rate = training.stage3_learning_rate
+        if verbose:
+            print("[two-stage] Stage 3: gentle joint refinement...", flush=True)
+
+        final_result = fit_hybrid_parameters(
+            density=density,
+            datasets=datasets,
+            model=model,
+            training=stage3_training,
+            initial_params=stage2_result.params,
+        )
+        if verbose:
+            s3_loss = final_result.metrics.get("train_loss", "?")
+            print(f"[two-stage] Stage 3 done: train_loss={s3_loss}", flush=True)
+
+    # Combine histories from all stages
+    combined_history = []
+    offset = 0
+    all_results = [stage1_result, stage2_result]
+    if training.stage3_refine:
+        all_results.append(final_result)
+    for stage_num, result in enumerate(all_results, start=1):
+        for entry in result.history:
+            combined_entry = dict(entry)
+            combined_entry["stage"] = stage_num
+            combined_entry["global_step"] = offset + entry.get("step", 0)
+            combined_history.append(combined_entry)
+        offset += len(result.history)
+
+    return FitResult(
+        params=final_result.params,
+        history=combined_history,
+        metrics={
+            **final_result.metrics,
+            "stage1_train_loss": stage1_result.metrics.get("train_loss"),
+            "stage2_train_loss": stage2_result.metrics.get("train_loss"),
+            "two_stage": True,
+        },
+        optimizer_result=final_result.optimizer_result,
+    )

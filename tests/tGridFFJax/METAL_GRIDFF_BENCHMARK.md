@@ -309,6 +309,119 @@ correction is applied on top of frozen GridFF parameters.
 
 ---
 
+## Phase 6: Pairwise C₆ Grid Channel (integrated)
+
+**Scripts:** `tests/tGridFFJax/test_c6_grid_channel.py`, `tests/tGridFFJax/fit_joint_req_c6.py`
+**Output:** `tests/tGridFFJax/c6_grid_channel_test/`, `tests/tGridFFJax/joint_req_c6_fit/`
+
+### Implementation
+
+The proof-of-concept C₆ correction from Phase 5 has been integrated as a permanent 4th grid
+channel in the HybridGridFFModel. The channel stores per-element pairwise dispersion shape
+grids with TS Fermi damping and vdW-surf screened parameters.
+
+**Files modified:**
+- `pyBall/gridff_jax/config.py` — Added `use_pairwise_c6`, `c6_rcut`, `c6_s_r`, `fit_c6_coeff`, `c6_regularization`
+- `pyBall/gridff_jax/substrate_fields.py` — Added `VDW_SURF_PARAMS`, `TS_FREE_PARAMS`, `_ts_c6_pair()`, `_build_dispersion_grid()`
+- `pyBall/gridff_jax/hybrid_energy/model.py` — Added `c6_coeff` to HybridParameters, dispersion energy in NumPy + JAX paths
+- `pyBall/gridff_jax/fit/optimize.py` — Added `c6_coeff` group to ParameterLayout with regularization toward 1.0
+
+**CLI flags added to `benchmark_ag_zscan.py` and `calibrate_ag_zscan_plq.py`:**
+- `--use-c6` — Enable pairwise C₆/R⁶ dispersion grid channel
+- `--fit-c6` — Fit per-element c6_coeff scaling factors
+- `--c6-rcut` — Cutoff for pairwise C₆ sum (default 15.0 A)
+
+### Grid Architecture
+
+The dispersion grid stores the **geometric shape only**: `V_shape(r) = -Σ_j f_damp(r_ij) / r_ij⁶`
+
+The C₆ pair values are stored separately and multiplied in the model:
+`E_disp = Σ_i c6_coeff_i × C₆_pair_i × V_shape(r_i)`
+
+This separation keeps grid values on order ~0.001-1.0, enabling stable gradient optimization.
+
+### Validation Results
+
+**Grid interpolation accuracy:** 0.38% max relative error vs direct pairwise sum (PASS)
+**PLQ-only regression:** use_pairwise_c6=False gives identical results (PASS)
+
+### Standard Benchmark Results (benchmark_ag_zscan.py)
+
+Four configurations tested via the standard benchmark workflow with MACE teacher,
+CHONH2/Ag(111), 189 poses (48 train, 141 holdout), 3 sites, z=1.8-8.0 A:
+
+| Configuration | Overall RMSE | Primary RMSE | Force RMSE | Per-site (top/bridge/hollow) |
+|---|---|---|---|---|
+| No damping, no C6 | 79.9 meV | 67.4 meV | 0.322 eV/A | 101/59/74 meV |
+| **London damping only** | **56.4 meV** | **38.4 meV** | **0.321 eV/A** | **82/19/50 meV** |
+| C6 only (no damping) | 202.4 meV | 94.4 meV | 0.337 eV/A | 204/224/176 meV |
+| C6 + damping (joint) | 197.2 meV | 85.2 meV | 0.337 eV/A | 199/220/170 meV |
+
+**CLI commands used:**
+```bash
+# Baseline (no damping, no C6)
+python3 tests/tGridFFJax/benchmark_ag_zscan.py --prefer-jax --max-steps 800 --force-weight 10.0
+
+# London damping only (BEST)
+python3 tests/tGridFFJax/benchmark_ag_zscan.py --prefer-jax --max-steps 800 --force-weight 10.0 \
+  --london-damp-d0 3.70 --london-damp-width 0.35
+
+# C6 only (no damping)
+python3 tests/tGridFFJax/benchmark_ag_zscan.py --prefer-jax --max-steps 800 --force-weight 10.0 \
+  --use-c6 --fit-c6
+
+# C6 + damping (joint)
+python3 tests/tGridFFJax/benchmark_ag_zscan.py --prefer-jax --max-steps 800 --force-weight 10.0 \
+  --london-damp-d0 3.70 --london-damp-width 0.35 --use-c6 --fit-c6
+```
+
+### Joint Optimization Results (fit_joint_req_c6.py)
+
+Controlled 3-config comparison on 60 training poses with C₆ bounds (0.1, 3.0) and
+regularization toward 1.0 (λ=0.1):
+
+| Config | RMSE | c6_coeff values |
+|---|---|---|
+| A: PLQ-only baseline | 70.1 meV | [1.0, 1.0, 1.0, 1.0] (fixed) |
+| B: Joint REQ + C6 | 227.8 meV | [0.82, 0.43, 0.74, 0.73] (destabilized) |
+| C: Frozen REQ + C6 only | 137.6 meV | [0.49, 0.16, 0.49, 0.57] (suppressed) |
+
+### Key Finding: London Damping vs C₆ Overlap
+
+**Conclusion: London damping wins decisively. The C₆ channel makes things worse in all
+gradient-optimization configurations.**
+
+Both London damping and pairwise C₆ address the same physics: the exponential-vs-power-law
+decay mismatch at intermediate distances (3-5 A). When used together, they compete for the
+same error signal, destabilizing the optimization.
+
+**Why the proof-of-concept (14.6 meV) is not reproducible with gradient optimization:**
+1. The proof-of-concept used unconstrained linear regression with frozen REQ parameters
+2. It allowed negative C₆ coefficients (unphysical but fitting-optimal)
+3. The 4-parameter linear fit solved a different optimization landscape than the
+   8+4 parameter nonlinear joint optimization
+
+**Recommendation:** Use London damping only (`--london-damp-d0 3.70 --london-damp-width 0.35`).
+The C₆ channel remains available as an experimental research tool for cases without damping
+or for future optimization strategies (e.g., two-stage fitting, constrained optimization).
+
+### Error Reduction Roadmap (Final)
+
+```
+81.8 meV — Initial (B-spline bug)
+  ↓ -21%  Bug fix
+64.5 meV — Baseline (density-only PLQ)
+  ↓ -43%  London Fermi damping
+36.7 meV — Damped optimal  ← CURRENT BEST PRODUCTION (543 poses, 800 steps)
+38.4 meV — Damped (standard benchmark, 189 poses, primary window)
+56.4 meV — Damped (standard benchmark, 189 poses, all z)
+```
+
+The ~10 meV theoretical floor (set by d-band hybridization and site-dependent orbital
+effects) is not reachable with pairwise or density-based corrections alone.
+
+---
+
 ## Output Directories
 - `tests/tGridFFJax/gridff_proof_run/` — v1 (buggy B-spline)
 - `tests/tGridFFJax/gridff_proof_run_v2/` — v2 (B-spline fix, scipy)
@@ -329,3 +442,5 @@ correction is applied on top of frozen GridFF parameters.
 - `tests/tGridFFJax/component_analysis/` — component-wise PLQ error + interpolation accuracy
 - `tests/tGridFFJax/plq_ceiling_analysis/` — linear PLQ ceiling analysis
 - `tests/tGridFFJax/c6_correction_test/` — pairwise C₆/R⁶ correction proof of concept
+- `tests/tGridFFJax/c6_grid_channel_test/` — C₆ grid channel integration validation
+- `tests/tGridFFJax/joint_req_c6_fit/` — joint REQ + C₆ optimization comparison

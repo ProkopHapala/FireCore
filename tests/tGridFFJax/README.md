@@ -223,6 +223,63 @@ Phase-1 strict `PLQ` now uses explicit substrate builder modes from `GridConfig.
 For NaCl parity work, use `surface_xyz + parity_core`.
 For Ag/Au/Cu/Pt from real DFT volumetrics, use `vasp_volumetric + metal_density_plq`.
 
+### Pairwise C₆/R⁶ dispersion grid channel
+
+An optional 4th grid channel provides pairwise vdW dispersion with TS Fermi damping and
+vdW-surf screened parameters (Ruiz et al. PRL 108, 146103, 2012). This adds a power-law
+`1/r⁶` interaction that complements the density-based exponential `P/L` fields.
+
+Enable with:
+
+```python
+config.grid.use_pairwise_c6 = True      # Build dispersion grid
+config.grid.c6_rcut = 15.0              # Cutoff radius (Angstrom)
+config.grid.c6_s_r = 0.94               # TS damping s_R (0.94 for PBE)
+config.training.fit_c6_coeff = True      # Fit per-element c6_coeff scaling
+```
+
+Or via CLI:
+
+```bash
+python3 tests/tGridFFJax/benchmark_ag_zscan.py \
+  --london-damp-d0 3.70 --london-damp-width 0.35 \
+  --use-c6 --fit-c6 \
+  --prefer-jax \
+  ...
+```
+
+Pre-computed vdW-surf screened pair C₆ values (eV·Å⁶):
+
+| Pair | C₆ | R_sum (Å) |
+|------|-----|-----------|
+| H-Ag | 16.36 | 3.000 |
+| C-Ag | 43.84 | 3.260 |
+| N-Ag | 32.37 | 3.128 |
+| O-Ag | 26.06 | 3.048 |
+| H-Cu | 11.42 | 2.910 |
+| C-Cu | 30.59 | 3.170 |
+| N-Cu | 22.52 | 3.037 |
+| O-Cu | 18.10 | 2.958 |
+| H-Au | 17.01 | 3.180 |
+| C-Au | 45.60 | 3.440 |
+| N-Au | 33.82 | 3.307 |
+| O-Au | 27.31 | 3.228 |
+
+The dispersion grid stores the geometric shape only (`-Σ f_damp/r⁶`) and the C₆ pair
+values are stored separately. Each element gets a trainable `c6_coeff` (default 1.0,
+regularized toward 1.0) that scales the physical vdW-surf value. Grid interpolation
+accuracy: < 0.4% vs direct sum (validated).
+
+The grid build takes ~350s for a 540×128×128×4 grid on CPU (one-time cost). This cost
+is amortized across all subsequent evaluations and fitting steps.
+
+**Important finding:** London Fermi damping and pairwise C₆ address overlapping physics
+(exponential vs power-law decay mismatch at 3-5 A). With London damping active
+(`--london-damp-d0 3.70 --london-damp-width 0.35`), adding C₆ degrades accuracy due to
+parameter competition in gradient optimization. Use one or the other, not both. London
+damping alone gives the best results (38.4 meV primary RMSE vs 94.4 meV with C₆ only).
+See `METAL_GRIDFF_BENCHMARK.md` Phase 6 for the full comparison.
+
 ### Fixed charges in PLQ
 
 The strict `PLQ` path now carries fixed adsorbate charges through the dataset and the student model.
@@ -296,6 +353,22 @@ MPLCONFIGDIR=/tmp/mpl_gridff python3 tests/tGridFFJax/benchmark_ag_zscan.py \
   --heldout-tilt-x-deg 20 \
   --heldout-tilt-y-deg 10 \
   --max-steps 600 \
+  --force-weight 10.0 \
+  --learning-rate 1.0e-2 \
+  --no-fit-static-charge \
+  --prefer-jax
+```
+
+To enable the pairwise C₆ dispersion channel on top of London damping:
+
+```bash
+MPLCONFIGDIR=/tmp/mpl_gridff python3 tests/tGridFFJax/benchmark_ag_zscan.py \
+  --device cpu \
+  --out-dir /tmp/ag_chonh2_c6 \
+  --adsorbate-name CHONH2 \
+  --london-damp-d0 3.70 --london-damp-width 0.35 \
+  --use-c6 --fit-c6 \
+  --max-steps 800 \
   --force-weight 10.0 \
   --learning-rate 1.0e-2 \
   --no-fit-static-charge \

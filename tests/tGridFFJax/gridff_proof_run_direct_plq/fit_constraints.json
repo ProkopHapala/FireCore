@@ -1,0 +1,62 @@
+{
+  "constraint_limited": true,
+  "threshold_fraction": 0.05,
+  "parameters": {
+    "pauli:C": {
+      "value": 5.0,
+      "lower": 0.05,
+      "upper": 5.0,
+      "distance_fraction": 0.0,
+      "near_bound": true
+    },
+    "pauli:H": {
+      "value": 5.0,
+      "lower": 0.05,
+      "upper": 5.0,
+      "distance_fraction": 0.0,
+      "near_bound": true
+    },
+    "pauli:N": {
+      "value": 5.0,
+      "lower": 0.05,
+      "upper": 5.0,
+      "distance_fraction": 0.0,
+      "near_bound": true
+    },
+    "pauli:O": {
+      "value": 5.0,
+      "lower": 0.05,
+      "upper": 5.0,
+      "distance_fraction": 0.0,
+      "near_bound": true
+    },
+    "london:C": {
+      "value": 0.05,
+      "lower": 0.05,
+      "upper": 5.0,
+      "distance_fraction": 0.0,
+      "near_bound": true
+    },
+    "london:H": {
+      "value": 0.05,
+      "lower": 0.05,
+      "upper": 5.0,
+      "distance_fraction": 0.0,
+      "near_bound": true
+    },
+    "london:N": {
+      "value": 0.05,
+      "lower": 0.05,
+      "upper": 5.0,
+      "distance_fraction": 0.0,
+      "near_bound": true
+    },
+    "london:O": {
+      "value": 0.05,
+      "lower": 0.05,
+      "upper": 5.0,
+      "distance_fraction": 0.0,
+      "near_bound": true
+    }
+  }
+}

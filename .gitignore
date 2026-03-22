@@ -21,7 +21,7 @@ __pycache__
 
 build
 build-*
-Build
+Build*
 Build-*
 
 cpp/Build
@@ -30,6 +30,7 @@ cpp/build
 cpp/build-*
 .aider*
 .env
+*.venv*
 
 *.pdf
 *.png
@@ -37,3 +38,5 @@ cpp/build-*
 *.svg
 *.csv
 cpp/common_resources/*/Bspline_PLQd.npy
+*.npz
+tests/tGridFFJax/mad-surf_data/

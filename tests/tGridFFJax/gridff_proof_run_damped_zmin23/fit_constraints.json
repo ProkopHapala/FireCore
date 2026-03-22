@@ -1,0 +1,62 @@
+{
+  "constraint_limited": true,
+  "threshold_fraction": 0.05,
+  "parameters": {
+    "req_radius_offset:C": {
+      "value": 0.5506748497202996,
+      "lower": -0.5,
+      "upper": 1.2,
+      "distance_fraction": 0.38195597075276494,
+      "near_bound": false
+    },
+    "req_radius_offset:H": {
+      "value": 0.9883154916022655,
+      "lower": -0.5,
+      "upper": 1.2,
+      "distance_fraction": 0.12452029905749086,
+      "near_bound": false
+    },
+    "req_radius_offset:N": {
+      "value": 0.007506548241778483,
+      "lower": -0.5,
+      "upper": 1.2,
+      "distance_fraction": 0.29853326367163435,
+      "near_bound": false
+    },
+    "req_radius_offset:O": {
+      "value": 0.038266055961160755,
+      "lower": -0.5,
+      "upper": 1.2,
+      "distance_fraction": 0.31662709174185927,
+      "near_bound": false
+    },
+    "req_energy_scale:C": {
+      "value": 6.412654216262535,
+      "lower": 0.1,
+      "upper": 30.0,
+      "distance_fraction": 0.2111255590723256,
+      "near_bound": false
+    },
+    "req_energy_scale:H": {
+      "value": 7.193196676694187,
+      "lower": 0.1,
+      "upper": 30.0,
+      "distance_fraction": 0.23723065808341764,
+      "near_bound": false
+    },
+    "req_energy_scale:N": {
+      "value": 1.0213788139782338,
+      "lower": 0.1,
+      "upper": 30.0,
+      "distance_fraction": 0.030815344949104814,
+      "near_bound": true
+    },
+    "req_energy_scale:O": {
+      "value": 1.5236075013742187,
+      "lower": 0.1,
+      "upper": 30.0,
+      "distance_fraction": 0.047612291015860154,
+      "near_bound": true
+    }
+  }
+}

@@ -12,7 +12,7 @@ from pyBall import elements
 from ..array_api import HAS_JAX, as_numpy, finite_difference_force
 from ..config import FeatureToggles, GridConfig, HybridModelConfig
 from ..interfaces import DensityData, ModelEvaluation, PoseBatch
-from ..substrate_fields import build_substrate_grids, poisson_potential_from_density
+from ..substrate_fields import build_raw_r6_grid, build_substrate_grids, poisson_potential_from_density
 from ..utils import cartesian_to_fractional
 from .qeq import solve_qeq_with_reservoir
 
@@ -45,6 +45,9 @@ class HybridParameters:
     chi: dict[str, float] = field(default_factory=dict)
     hardness: dict[str, float] = field(default_factory=dict)
     c6_coeff: dict[str, float] = field(default_factory=dict)
+    density_lap: dict[str, float] = field(default_factory=dict)
+    density_grad: dict[str, float] = field(default_factory=dict)
+    london_alt: dict[str, float] = field(default_factory=dict)
     image_scale: float = 1.0
     image_plane: float = 0.0
     image_damping: float = 0.5
@@ -53,6 +56,7 @@ class HybridParameters:
     reservoir_chi: float = -4.5
     reservoir_hardness: float = 7.0
     total_charge: float = 0.0
+    energy_offset: float = 0.0
 
 
 def default_hybrid_parameters(elements, z_image: float):
@@ -66,6 +70,9 @@ def default_hybrid_parameters(elements, z_image: float):
         params.req_radius_offset[symbol] = 0.0
         params.req_energy_scale[symbol] = 1.0
         params.c6_coeff[symbol] = 1.0
+        params.density_lap[symbol] = 0.0
+        params.density_grad[symbol] = 0.0
+        params.london_alt[symbol] = 0.0
         params.chi[symbol] = chi
         params.hardness[symbol] = hardness
     return params
@@ -319,6 +326,9 @@ class HybridGridFFModel:
                 "coulomb_zyx": self.grids["coulomb_coeff_zyx"],
                 "reactive_zyxc": self.grids["reactive_coeff_zyxc"],
                 "dispersion_zyxc": self.grids["dispersion_coeff_zyxc"],
+                "density_lap_zyx": self.grids["density_lap_coeff_zyx"],
+                "density_grad_zyx": self.grids["density_grad_coeff_zyx"],
+                "london_alt_zyx": self.grids["london_alt_coeff_zyx"],
             }
         else:
             self.interpolation_kind = "trilinear"
@@ -328,12 +338,16 @@ class HybridGridFFModel:
                 "coulomb_zyx": self.grids["coulomb_zyx"],
                 "reactive_zyxc": self.grids["reactive_zyxc"],
                 "dispersion_zyxc": self.grids["dispersion_zyxc"],
+                "density_lap_zyx": self.grids["density_lap_zyx"],
+                "density_grad_zyx": self.grids["density_grad_zyx"],
+                "london_alt_zyx": self.grids["london_alt_zyx"],
             }
         self.element_to_index = {element: i for i, element in enumerate(self.parameter_elements)}
         self.base_req_radius, self.base_req_sqrt_energy = _base_req_for_elements(
             self.parameter_elements,
             self.grid_config.element_types_path,
         )
+        self.c6_pair_values = np.asarray(self.grids.get("c6_pair_values", np.zeros(len(self.parameter_elements))), dtype=float)
         self._jax_predictor_cache = {}
 
         if HAS_JAX:
@@ -341,13 +355,40 @@ class HybridGridFFModel:
             self._jax_cell_inv = jnp.asarray(np.linalg.inv(np.asarray(density.cell, dtype=float)), dtype=jnp.float64)
             self._jax_base_req_radius = jnp.asarray(self.base_req_radius, dtype=jnp.float64)
             self._jax_base_req_sqrt_energy = jnp.asarray(self.base_req_sqrt_energy, dtype=jnp.float64)
+            self._jax_c6_pair_values = jnp.asarray(self.c6_pair_values, dtype=jnp.float64)
             self._jax_sample_grids = {
                 "pauli_zyx": jnp.asarray(np.asarray(self.sample_grids["pauli_zyx"], dtype=float), dtype=jnp.float64),
                 "london_zyx": jnp.asarray(np.asarray(self.sample_grids["london_zyx"], dtype=float), dtype=jnp.float64),
                 "coulomb_zyx": jnp.asarray(np.asarray(self.sample_grids["coulomb_zyx"], dtype=float), dtype=jnp.float64),
                 "reactive_zyxc": jnp.asarray(np.asarray(self.sample_grids["reactive_zyxc"], dtype=float), dtype=jnp.float64),
                 "dispersion_zyxc": jnp.asarray(np.asarray(self.sample_grids["dispersion_zyxc"], dtype=float), dtype=jnp.float64),
+                "density_lap_zyx": jnp.asarray(np.asarray(self.sample_grids["density_lap_zyx"], dtype=float), dtype=jnp.float64),
+                "density_grad_zyx": jnp.asarray(np.asarray(self.sample_grids["density_grad_zyx"], dtype=float), dtype=jnp.float64),
+                "london_alt_zyx": jnp.asarray(np.asarray(self.sample_grids["london_alt_zyx"], dtype=float), dtype=jnp.float64),
             }
+
+    def install_raw_r6_grid(self):
+        """Replace TS-damped dispersion grid with raw -Σ 1/|r-r_j|⁶ grid.
+
+        Sets c6_pair_values to 1.0 so that lstsq coefficients are applied
+        directly without the TS C₆ pair factor.
+        """
+        from ..substrate_fields import bspline_prefilter_numpy
+
+        n_el = len(self.parameter_elements)
+        disp_raw, c6_ones = build_raw_r6_grid(
+            self.density, self.grid_config, n_el
+        )
+        self.c6_pair_values = c6_ones
+        if self.grid_config.interpolation_order >= 3:
+            self.sample_grids["dispersion_zyxc"] = bspline_prefilter_numpy(disp_raw)
+        else:
+            self.sample_grids["dispersion_zyxc"] = disp_raw
+        if HAS_JAX:
+            self._jax_c6_pair_values = jnp.asarray(self.c6_pair_values, dtype=jnp.float64)
+            self._jax_sample_grids["dispersion_zyxc"] = jnp.asarray(
+                np.asarray(self.sample_grids["dispersion_zyxc"], dtype=float), dtype=jnp.float64
+            )
 
     def make_species_indices(self, symbols):
         return np.asarray([self.element_to_index[symbol] for symbol in symbols], dtype=np.int32)
@@ -361,6 +402,9 @@ class HybridGridFFModel:
             "reactive": xp.asarray([params.reactive.get(symbol, 0.0) for symbol in self.parameter_elements], dtype=xp.float64),
             "static_charge": xp.asarray([params.static_charge.get(symbol, 0.0) for symbol in self.parameter_elements], dtype=xp.float64),
             "c6_coeff": xp.asarray([params.c6_coeff.get(symbol, 1.0) for symbol in self.parameter_elements], dtype=xp.float64),
+            "density_lap": xp.asarray([params.density_lap.get(symbol, 0.0) for symbol in self.parameter_elements], dtype=xp.float64),
+            "density_grad": xp.asarray([params.density_grad.get(symbol, 0.0) for symbol in self.parameter_elements], dtype=xp.float64),
+            "london_alt": xp.asarray([params.london_alt.get(symbol, 0.0) for symbol in self.parameter_elements], dtype=xp.float64),
             "req_radius_offset": xp.asarray([params.req_radius_offset.get(symbol, 0.0) for symbol in self.parameter_elements], dtype=xp.float64),
             "req_energy_scale": xp.asarray([params.req_energy_scale.get(symbol, 1.0) for symbol in self.parameter_elements], dtype=xp.float64),
             "chi": xp.asarray([params.chi.get(symbol, DEFAULT_QEQ.get(symbol, (-4.0, 10.0))[0]) for symbol in self.parameter_elements], dtype=xp.float64),
@@ -373,6 +417,7 @@ class HybridGridFFModel:
             "reservoir_chi": xp.asarray(params.reservoir_chi, dtype=xp.float64),
             "reservoir_hardness": xp.asarray(params.reservoir_hardness, dtype=xp.float64),
             "total_charge": xp.asarray(params.total_charge, dtype=xp.float64),
+            "energy_offset": xp.asarray(params.energy_offset, dtype=xp.float64),
         }
         return arrays
 
@@ -383,6 +428,9 @@ class HybridGridFFModel:
             "reactive": np.array([params.reactive.get(symbol, 0.0) for symbol in symbols], dtype=float),
             "static_charge": np.array([params.static_charge.get(symbol, 0.0) for symbol in symbols], dtype=float),
             "c6_coeff": np.array([params.c6_coeff.get(symbol, 1.0) for symbol in symbols], dtype=float),
+            "density_lap": np.array([params.density_lap.get(symbol, 0.0) for symbol in symbols], dtype=float),
+            "density_grad": np.array([params.density_grad.get(symbol, 0.0) for symbol in symbols], dtype=float),
+            "london_alt": np.array([params.london_alt.get(symbol, 0.0) for symbol in symbols], dtype=float),
             "req_radius_offset": np.array([params.req_radius_offset.get(symbol, 0.0) for symbol in symbols], dtype=float),
             "req_energy_scale": np.array([params.req_energy_scale.get(symbol, 1.0) for symbol in symbols], dtype=float),
             "chi": np.array([params.chi.get(symbol, DEFAULT_QEQ.get(symbol, (-4.0, 10.0))[0]) for symbol in symbols], dtype=float),
@@ -474,9 +522,22 @@ class HybridGridFFModel:
                 disp_selected = disp_sample
             else:
                 disp_selected = disp_sample[np.arange(len(symbols)), atom_params["species_idx"]]
-            e_dispersion = float(np.dot(atom_params["c6_coeff"], disp_selected))
+            c6_pairs = self.c6_pair_values[atom_params["species_idx"]]
+            e_dispersion = float(np.dot(atom_params["c6_coeff"] * c6_pairs, disp_selected))
 
-        total = e_pauli + e_london + e_coul + e_qeq + e_reactive + e_image + e_dispersion
+        # DISABLED(2026-03): density Laplacian, gradient, and alt London channels
+        # confirmed ineffective in 10-strategy ablation. Code preserved as comments.
+        # if self.grid_config.use_density_laplacian:
+        #     lap_sample = self._sample_field_numpy(self.sample_grids["density_lap_zyx"], positions_pl)
+        #     e_density_lap = float(np.dot(atom_params["density_lap"], lap_sample))
+        # if self.grid_config.use_density_gradient:
+        #     grad_sample = self._sample_field_numpy(self.sample_grids["density_grad_zyx"], positions_pl)
+        #     e_density_grad = float(np.dot(atom_params["density_grad"], grad_sample))
+        # if self.grid_config.use_london_alt:
+        #     lalt_sample = self._sample_field_numpy(self.sample_grids["london_alt_zyx"], positions_pl)
+        #     e_london_alt = float(np.dot(atom_params["london_alt"], lalt_sample))
+
+        total = e_pauli + e_london + e_coul + e_qeq + e_reactive + e_image + e_dispersion + params.energy_offset
         return total, {
             "pauli": e_pauli,
             "london": e_london,
@@ -491,6 +552,35 @@ class HybridGridFFModel:
     def _force_single(self, positions, symbols, params: HybridParameters, fixed_charges=None):
         energy_fn = lambda pos: self.energy_single(pos, symbols, params, fixed_charges=fixed_charges)[0]
         return finite_difference_force(energy_fn, positions)
+
+    def compute_dispersion_design_matrix(self, poses, params: HybridParameters):
+        """Build design matrix for lstsq C₆ fitting using TS-damped grids.
+
+        Returns X of shape [n_poses, n_elements] where
+        X[k, el] = Σ_{atoms i of element el} c6_pair[el] × V_shape(r_i)
+        for pose k.  The c6_pair factor is baked into X so that the lstsq
+        coefficient D[el] directly gives c6_coeff[el].
+        """
+        if not self.grid_config.use_pairwise_c6:
+            raise ValueError("compute_dispersion_design_matrix requires use_pairwise_c6=True")
+        n_poses = len(poses.positions)
+        n_el = len(self.parameter_elements)
+        X = np.zeros((n_poses, n_el), dtype=float)
+        species_idx = self.make_species_indices(poses.adsorbate.symbols)
+        for k in range(n_poses):
+            positions_pl = poses.positions[k].copy()
+            positions_pl[:, 2] += params.sample_shift_z
+            disp_sample = self._sample_field_numpy(
+                self.sample_grids["dispersion_zyxc"], positions_pl
+            )
+            if np.ndim(disp_sample) == 1:
+                disp_selected = disp_sample
+            else:
+                disp_selected = disp_sample[np.arange(len(species_idx)), species_idx]
+            c6_pairs = self.c6_pair_values[species_idx]
+            for i, el_idx in enumerate(species_idx):
+                X[k, el_idx] += c6_pairs[i] * disp_selected[i]
+        return X
 
     if HAS_JAX:
 
@@ -581,9 +671,25 @@ class HybridGridFFModel:
                 else:
                     disp_selected = disp_sample[jnp.arange(species_idx.shape[0]), species_idx]
                 c6_coeff = params_tree["c6_coeff"][species_idx]
-                e_dispersion = jnp.dot(c6_coeff, disp_selected)
+                c6_pairs = self._jax_c6_pair_values[species_idx]
+                e_dispersion = jnp.dot(c6_coeff * c6_pairs, disp_selected)
 
-            total = e_pauli + e_london + e_coul + e_qeq + e_reactive + e_image + e_dispersion
+            # DISABLED(2026-03): density Laplacian, gradient, and alt London channels
+            # confirmed ineffective in 10-strategy ablation. Code preserved as comments.
+            # if self.grid_config.use_density_laplacian:
+            #     lap_sample = self._sample_field_jax(self._jax_sample_grids["density_lap_zyx"], positions_pl)
+            #     lap_coeff = params_tree["density_lap"][species_idx]
+            #     e_density_lap = jnp.dot(lap_coeff, lap_sample)
+            # if self.grid_config.use_density_gradient:
+            #     grad_sample = self._sample_field_jax(self._jax_sample_grids["density_grad_zyx"], positions_pl)
+            #     grad_coeff = params_tree["density_grad"][species_idx]
+            #     e_density_grad = jnp.dot(grad_coeff, grad_sample)
+            # if self.grid_config.use_london_alt:
+            #     lalt_sample = self._sample_field_jax(self._jax_sample_grids["london_alt_zyx"], positions_pl)
+            #     lalt_coeff = params_tree["london_alt"][species_idx]
+            #     e_london_alt = jnp.dot(lalt_coeff, lalt_sample)
+
+            total = e_pauli + e_london + e_coul + e_qeq + e_reactive + e_image + e_dispersion + params_tree["energy_offset"]
             return total, {
                 "pauli": e_pauli,
                 "london": e_london,

@@ -1,0 +1,158 @@
+{
+  "surface": {
+    "metal": "Ag",
+    "facet": "111",
+    "size": [
+      12,
+      12,
+      4
+    ],
+    "layers": 4,
+    "vacuum": 18.0,
+    "rigid": true
+  },
+  "adsorbates": [
+    {
+      "name": "H",
+      "xyz_path": null,
+      "samples_per_site": 48,
+      "systematic_orientations": 1,
+      "random_samples": 256,
+      "representative_sites_per_label": 1,
+      "z_range": [
+        1.2,
+        5.0
+      ],
+      "z_bias_power": 1.0,
+      "jitter_uv": 0.03,
+      "tilt_deg": 60.0
+    },
+    {
+      "name": "CO",
+      "xyz_path": null,
+      "samples_per_site": 48,
+      "systematic_orientations": 1,
+      "random_samples": 256,
+      "representative_sites_per_label": 1,
+      "z_range": [
+        1.5,
+        5.5
+      ],
+      "z_bias_power": 1.0,
+      "jitter_uv": 0.03,
+      "tilt_deg": 60.0
+    },
+    {
+      "name": "H2O",
+      "xyz_path": null,
+      "samples_per_site": 48,
+      "systematic_orientations": 1,
+      "random_samples": 256,
+      "representative_sites_per_label": 1,
+      "z_range": [
+        1.5,
+        5.5
+      ],
+      "z_bias_power": 1.0,
+      "jitter_uv": 0.03,
+      "tilt_deg": 60.0
+    }
+  ],
+  "density_backend": {
+    "kind": "vasp_volumetric",
+    "xyz_path": null,
+    "chgcar_path": "/home/niel/git/ORR_HER_Ag_Colab/results/Ag_ORR_HER/slab_clean/final_scf_12x12x1/CHGCAR",
+    "locpot_path": "/home/niel/git/ORR_HER_Ag_Colab/results/Ag_ORR_HER/slab_clean/workfunc_12x12x1/LOCPOT",
+    "volumetric_npz_path": null,
+    "grid_shape": null,
+    "gaussian_sigma": 0.65,
+    "metadata": {}
+  },
+  "teacher_backend": {
+    "kind": "madsurf",
+    "model_module": null,
+    "model_callable": null,
+    "model_path": "/home/niel/git/FireCore/tests/tGridFFJax/mad-surf_data/models/full_dataset_config_weights/MACE_model.model",
+    "batch_size": 64,
+    "device": "cpu",
+    "default_dtype": "float64",
+    "interaction_energy": true,
+    "metadata": {}
+  },
+  "toggles": {
+    "use_density_charge": true,
+    "use_locpot": true,
+    "use_ct_qeq": false,
+    "use_image_charge": false,
+    "use_image_charge_fixed": false,
+    "use_reactive_grid": false,
+    "use_teacher_residual": true
+  },
+  "grid": {
+    "spacing": 0.25,
+    "padding_z": 6.0,
+    "interpolation_order": 3,
+    "export_shape": "xyzc",
+    "builder_mode": "metal_density_plq",
+    "alpha_morse": 1.5,
+    "morse_rcut": 20.0,
+    "coulomb_rcut": 80.0,
+    "pairwise_point_chunk": 2048,
+    "pairwise_atom_chunk": 256,
+    "element_types_path": "cpp/common_resources/ElementTypes.dat",
+    "req_scale_radius": {},
+    "req_scale_energy": {},
+    "surface_z0_mode": "top_layer_majority",
+    "reactive_sigma_z": 1.2,
+    "reactive_power": 1.25,
+    "pauli_power": 1.5,
+    "london_power": 0.75,
+    "metal_density_pauli_power": 1.0,
+    "metal_density_london_power": 1.0,
+    "metal_density_rho_smoothing_sigma": 0.0,
+    "metal_bulk_electron_density": 0.053
+  },
+  "hybrid_model": {
+    "use_qeq": false,
+    "use_image": false,
+    "use_reactive_grid": false,
+    "use_req_plq": true,
+    "reactive_channels": [
+      "H",
+      "C",
+      "O"
+    ],
+    "reservoir_charge": 0.0,
+    "image_plane_offset": 1.0,
+    "image_damping": 0.5
+  },
+  "training": {
+    "seed": 12345,
+    "batch_size": 64,
+    "learning_rate": 0.01,
+    "max_steps": 600,
+    "early_stopping_patience": 40,
+    "force_weight": 10.0,
+    "energy_weight": 1.0,
+    "validation_split": 0.0,
+    "test_split": 0.0,
+    "fit_chi": false,
+    "fit_hardness": false,
+    "fit_image_plane": false,
+    "fit_reactive": false,
+    "fit_static_charge": false,
+    "fit_req_radius_offset": true,
+    "fit_req_energy_scale": true,
+    "fit_sample_shift_z": false,
+    "fit_coulomb_shift_z": false,
+    "req_radius_regularization": 0.05,
+    "req_energy_regularization": 0.005,
+    "constraint_bound_fraction": 0.05
+  },
+  "export": {
+    "out_dir": "tests/tGridFFJax/gridff_proof_run_pp10_lp10",
+    "write_plq": true,
+    "write_sidecars": true,
+    "write_plots": true
+  }
+}
