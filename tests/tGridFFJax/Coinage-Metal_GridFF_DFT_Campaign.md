@@ -1,4 +1,4 @@
-# Local-First Coinage-Metal DFT Database Campaign for GridFF, With Rigid and Relaxed Scan Families
+# Local-First Coinage-Metal DFT Database Campaign for GridFF, With Three Scan Families
 
 ## Summary
 - Build this as a **database-creation campaign** with two execution tiers:
@@ -6,10 +6,11 @@
   - **HPC** for the full production matrix across `Ag`, `Cu`, and `Au`
 - Use **`PBE + vdWsurf` as the primary production protocol** and keep **`RPBE-D3(BJ)` as a smaller audit subset** after the main workflow is stable.
 - Use **`3x3x4` as the fixed production slab** for the current HPC campaign, following the verified Ag reference workflow in `ORR_HER_Ag_Colab/results`.
-- The database must contain **two scan families** for every retained adsorption minimum:
+- The database must contain **three scan families** for every retained adsorption minimum:
   - **rigid scan**: rigid substrate, rigid molecule
   - **relaxed scan**: rigid substrate, molecule relaxed at each scan point
-- For GridFF, the **rigid scan family is the primary fitting target**. The relaxed scan family is a required benchmark/sensitivity layer, not the baseline GridFF target.
+  - **relaxed slab+molecule scan**: top slab layers relaxed, molecule relaxed at each scan point
+- For GridFF, the **rigid scan family is the primary fitting target**. The relaxed families are required benchmark/sensitivity layers, not the baseline GridFF target.
 
 ## Scientific Scope
 - Metals:
@@ -40,7 +41,7 @@
 - HPC is required for:
   - full Ag adsorption library
   - all Cu and Au production jobs
-  - full rigid and relaxed scan databases
+  - full rigid, relaxed-molecule, and relaxed-top-slab scan databases
   - volumetric subsets for all retained minima
 - Keep one manifest schema and one directory layout for both local and HPC; only the launcher changes.
 
@@ -58,8 +59,9 @@
   - `05_ads_relax`
   - `06_scan_rigid`
   - `07_scan_relaxed`
-  - `08_volumetrics`
-  - `09_analysis`
+  - `08_scan_relaxed_slab`
+  - `09_volumetrics`
+  - `10_analysis`
 - Reuse from `/home/niel/git/ORR_HER_Ag_Colab`:
   - bulk-to-slab construction logic
   - multi-stage metallic slab relaxation logic
@@ -90,9 +92,9 @@
 - Keep all unique relaxed minima within the production retention window.
 
 ## Scan Families
-- Both scan families use a **rigid slab**.
 - **Rigid scan**
   - molecule geometry and orientation fixed
+  - slab fixed
   - scan only along the surface normal from the retained adsorption minimum
   - this is the primary GridFF fitting dataset
 - **Relaxed scan**
@@ -100,6 +102,12 @@
   - at each scan point, constrain the molecule’s scan coordinate and lateral site anchor
   - allow the molecule to relax internally and reorient
   - this is a benchmark/sensitivity dataset for how much rigid GridFF misses due to molecular relaxation
+- **Relaxed slab+molecule scan**
+  - bottom slab layers remain fixed
+  - top slab layers are free
+  - at each scan point, constrain the molecule’s scan coordinate and lateral site anchor
+  - allow the molecule and top slab region to relax
+  - this is the highest-cost benchmark layer for substrate-relaxation effects beyond the rigid-slab GridFF baseline
 - Common scan range:
   - `2.0–12.0 Å`
 - Common scan spacing:

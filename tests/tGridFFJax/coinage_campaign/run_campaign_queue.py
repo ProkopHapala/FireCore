@@ -46,7 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pilot-only", action="store_true", help="Restrict execution to the local-pilot phases.")
     parser.add_argument(
         "--phases",
-        default="00_bulk,01_universal_slab_selection,02_clean_slab_final,03_gas_refs,04_ads_seed_library,05_ads_relax,06_scan_rigid,07_scan_relaxed,08_volumetrics,09_analysis",
+        default="00_bulk,01_universal_slab_selection,02_clean_slab_final,03_gas_refs,04_ads_seed_library,05_ads_relax,06_scan_rigid,07_scan_relaxed,08_scan_relaxed_slab,09_volumetrics,10_analysis",
         help="Comma-separated phases to consider.",
     )
     parser.add_argument("--phase", action="append", default=[], help="Additional phase filter. Can be passed multiple times.")

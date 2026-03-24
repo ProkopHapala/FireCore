@@ -65,6 +65,7 @@ class TeacherBackendConfig:
     device: str = "cpu"
     default_dtype: str = "float64"
     interaction_energy: bool = True
+    teacher_tile: tuple[int, int] = (1, 1)
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

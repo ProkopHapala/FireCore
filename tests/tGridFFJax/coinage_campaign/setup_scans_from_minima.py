@@ -14,11 +14,16 @@ from coinage_campaign.workflow import create_scan_jobs_from_minimum
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Create rigid and/or relaxed scan jobs from converged adsorption minima.")
+    parser = argparse.ArgumentParser(description="Create rigid, molecule-relaxed, and/or slab+molecule-relaxed scan jobs from converged adsorption minima.")
     parser.add_argument("--minimum-dir", help="Path to one converged minimum directory containing CONTCAR and job_manifest.json.")
     parser.add_argument("--minima-root", help="Root containing many converged minimum directories (final_static stage directories).")
     parser.add_argument("--out-root", required=True, help="Output root for scan jobs.")
-    parser.add_argument("--family", choices=["rigid", "relaxed", "both"], default="both", help="Scan family to generate.")
+    parser.add_argument(
+        "--family",
+        choices=["rigid", "relaxed", "relaxed_slab", "both", "all"],
+        default="all",
+        help="Scan family to generate. 'both' keeps the legacy two-family behavior; 'all' generates all three families.",
+    )
     return parser.parse_args()
 
 
@@ -27,7 +32,12 @@ def main() -> None:
     if bool(args.minimum_dir) == bool(args.minima_root):
         raise SystemExit("Provide exactly one of --minimum-dir or --minima-root.")
     config = build_default_campaign_config(ROOT)
-    families = ("rigid", "relaxed") if args.family == "both" else (args.family,)
+    if args.family == "both":
+        families = ("rigid", "relaxed")
+    elif args.family == "all":
+        families = ("rigid", "relaxed", "relaxed_slab")
+    else:
+        families = (args.family,)
     minima_dirs: list[Path]
     if args.minimum_dir:
         minima_dirs = [Path(args.minimum_dir)]

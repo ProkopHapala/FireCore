@@ -26,12 +26,17 @@ class HPCConfig:
     nodes: int
     ncpus: int
     mem: str
+    scratch_local: str
+    ncpus_molecule: int
+    mem_molecule: str
+    scratch_local_molecule: str
     walltime: str
     email_notifications: bool
     module_lines: tuple[str, ...]
     mpi_provider: str
     vasp_binary_env: str
     vasp_binary_default: str
+    vasp_gamma_binary_default: str
     ncore_bulk: int
     ncore_slab: int
     ncore_molecule: int
@@ -100,6 +105,7 @@ class CampaignConfig:
     slab_bader_stage_name: str = "bader"
     gas_relax_stages: tuple[str, ...] = ("relax_stage1", "final_static")
     site_labels: tuple[str, ...] = ("ontop", "bridge", "fcc", "hcp")
+    scan_relaxed_slab_phase_name: str = "08_scan_relaxed_slab"
     campaign_phases: tuple[str, ...] = (
         "00_bulk",
         "01_universal_slab_selection",
@@ -109,8 +115,9 @@ class CampaignConfig:
         "05_ads_relax",
         "06_scan_rigid",
         "07_scan_relaxed",
-        "08_volumetrics",
-        "09_analysis",
+        "08_scan_relaxed_slab",
+        "09_volumetrics",
+        "10_analysis",
     )
 
     def to_json(self) -> dict:
@@ -126,10 +133,10 @@ class CampaignConfig:
 def build_default_campaign_config(repo_root: Path, external_root: Path | None = None) -> CampaignConfig:
     campaign_root = external_root or Path("/home/niel/git/coinage_gridff_dft")
     primary = ProtocolConfig(
-        name="PBE+vdWsurf",
+        name="PBE-D3(BJ)",
         gga="PE",
-        ivdw=2,
-        ltssurf=True,
+        ivdw=12,
+        ltssurf=False,
         lasph=True,
         encut=500,
         ediff=1.0e-6,
@@ -158,6 +165,10 @@ def build_default_campaign_config(repo_root: Path, external_root: Path | None = 
         nodes=1,
         ncpus=96,
         mem="1280gb",
+        scratch_local="100gb",
+        ncpus_molecule=4,
+        mem_molecule="8gb",
+        scratch_local_molecule="20gb",
         walltime="160:00:00",
         email_notifications=True,
         module_lines=(
@@ -170,10 +181,11 @@ def build_default_campaign_config(repo_root: Path, external_root: Path | None = 
         ),
         mpi_provider="sockets",
         vasp_binary_env="VASP_BIN_ON_HPC",
-        vasp_binary_default="vasp_std",
+        vasp_binary_default="/storage/praha1/home/indranil/src/vasp_std",
+        vasp_gamma_binary_default="/storage/praha1/home/indranil/src/vasp_std",
         ncore_bulk=16,
-        ncore_slab=16,
-        ncore_molecule=16,
+        ncore_slab=8,
+        ncore_molecule=1,
     )
     return CampaignConfig(
         repo_root=repo_root,

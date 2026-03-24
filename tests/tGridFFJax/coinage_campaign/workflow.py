@@ -65,6 +65,12 @@ def write_job_dir(
     metadata: dict,
     local_job_name: str,
     hpc_ncore: int,
+    hpc_ncpus: int | None = None,
+    hpc_mem: str | None = None,
+    hpc_scratch: str | None = None,
+    hpc_binary_default: str | None = None,
+    hpc_binary_env: str | None = None,
+    use_custodian_hpc: bool = True,
 ) -> None:
     ensure_dir(job_dir)
     ase_write(job_dir / "POSCAR", atoms, format="vasp", direct=True, sort=False)
@@ -72,8 +78,25 @@ def write_job_dir(
     (job_dir / "KPOINTS").write_text(kpoints_text)
     assemble_potcar(job_dir, atoms, config.potcar_root)
     (job_dir / "run_local.sh").write_text(local_run_script(config.local_vasp_bin))
-    (job_dir / "run.pbs").write_text(hpc_pbs_template(local_job_name, config.hpc))
-    (job_dir / "run_custodian.py").write_text(run_custodian_template(config.hpc, hpc_ncore))
+    (job_dir / "run.pbs").write_text(
+        hpc_pbs_template(
+            local_job_name,
+            config.hpc,
+            ncpus=hpc_ncpus,
+            mem=hpc_mem,
+            scratch_local=hpc_scratch,
+            vasp_binary_default=hpc_binary_default,
+            use_custodian=use_custodian_hpc,
+        )
+    )
+    (job_dir / "run_custodian.py").write_text(
+        run_custodian_template(
+            config.hpc,
+            hpc_ncore,
+            binary_env_name=hpc_binary_env,
+            binary_default=hpc_binary_default,
+        )
+    )
     (job_dir / "submit_hpc.sh").write_text(hpc_submit_script())
     (job_dir / "run_local.sh").chmod(0o755)
     (job_dir / "run.pbs").chmod(0o755)
@@ -352,7 +375,13 @@ def create_local_pilot_campaign(config: CampaignConfig, campaign_root: Path) -> 
                 incar = bader_incar(config.primary_protocol, f"Ag_{candidate.label}_slab_bader", config.hpc.ncore_slab)
                 kpoints_text = kpoints_grid(slab_dense_kmesh(candidate))
             else:
-                incar = slab_relax_incar(config.primary_protocol, f"Ag_{candidate.label}_{stage_name}", stage_name, config.hpc.ncore_slab)
+                incar = slab_relax_incar(
+                    config.primary_protocol,
+                    f"Ag_{candidate.label}_clean_{stage_name}",
+                    stage_name,
+                    config.hpc.ncore_slab,
+                    clean_slab=True,
+                )
                 kpoints_text = kpoints_grid(slab_kmesh(candidate))
             metadata = dict(stage_meta)
             metadata["stage"] = stage_name
@@ -369,6 +398,7 @@ def create_local_pilot_campaign(config: CampaignConfig, campaign_root: Path) -> 
                 metadata,
                 f"Ag_{candidate.label}_{stage_name}",
                 config.hpc.ncore_slab,
+                use_custodian_hpc=True,
             )
             manifest_jobs.append({"path": str(stage_dir.relative_to(campaign_root)), **metadata})
         write_phase_pipeline(clean_root, stage_sequence)
@@ -454,6 +484,7 @@ def create_local_pilot_campaign(config: CampaignConfig, campaign_root: Path) -> 
                             metadata,
                             f"Ag_{ads_name}_{stage_name}",
                             config.hpc.ncore_slab,
+                            use_custodian_hpc=True,
                         )
                         manifest_jobs.append({"path": str(stage_dir.relative_to(campaign_root)), **metadata})
                     write_phase_pipeline(variant_root, stage_sequence)
@@ -461,6 +492,13 @@ def create_local_pilot_campaign(config: CampaignConfig, campaign_root: Path) -> 
     for ads_name in config.production_adsorbates:
         ads = place_in_box(build_adsorbate(ads_name))
         gas_root = campaign_root / "03_gas_refs" / ads_name
+        is_atomic_h = ads_name == "H"
+        gas_ncore = 1 if is_atomic_h else config.hpc.ncore_molecule
+        gas_ncpus = 4 if is_atomic_h else config.hpc.ncpus_molecule
+        gas_mem = "8gb" if is_atomic_h else config.hpc.mem_molecule
+        gas_spin = is_atomic_h
+        gas_magmom = "1" if is_atomic_h else None
+        gas_nupdown = 1 if is_atomic_h else None
         gas_metadata = {
             "phase": "03_gas_refs",
             "adsorbate": ads_name,
@@ -478,10 +516,21 @@ def create_local_pilot_campaign(config: CampaignConfig, campaign_root: Path) -> 
                     restart_mode="cold",
                     apply_dipole=False,
                     surface_screened=False,
-                    ncore=config.hpc.ncore_molecule,
+                    ncore=gas_ncore,
+                    spin_polarized=gas_spin,
+                    magmom=gas_magmom,
+                    nupdown=gas_nupdown,
                 )
             else:
-                incar_text = gas_phase_incar(config.primary_protocol, f"{ads_name}_gas_relax", stage_name, config.hpc.ncore_molecule)
+                incar_text = gas_phase_incar(
+                    config.primary_protocol,
+                    f"{ads_name}_gas_relax",
+                    stage_name,
+                    gas_ncore,
+                    spin_polarized=gas_spin,
+                    magmom=gas_magmom,
+                    nupdown=gas_nupdown,
+                )
             metadata = dict(gas_metadata)
             metadata["stage"] = stage_name
             if stage_name != config.gas_relax_stages[0]:
@@ -496,7 +545,13 @@ def create_local_pilot_campaign(config: CampaignConfig, campaign_root: Path) -> 
                 config,
                 metadata,
                 f"{ads_name}_{stage_name}",
-                config.hpc.ncore_molecule,
+                gas_ncore,
+                hpc_ncpus=gas_ncpus,
+                hpc_mem=gas_mem,
+                hpc_scratch=config.hpc.scratch_local_molecule,
+                hpc_binary_default=config.hpc.vasp_binary_default,
+                hpc_binary_env=config.hpc.vasp_binary_env,
+                use_custodian_hpc=True,
             )
             manifest_jobs.append({"path": str(stage_dir.relative_to(campaign_root)), **metadata})
         write_phase_pipeline(gas_root, config.gas_relax_stages)
@@ -572,9 +627,10 @@ def create_clean_slab_final_phase(
             else:
                 incar = slab_relax_incar(
                     config.primary_protocol,
-                    f"{metal}_{candidate.label}_{stage_name}",
+                    f"{metal}_{candidate.label}_clean_{stage_name}",
                     stage_name,
                     config.hpc.ncore_slab,
+                    clean_slab=True,
                 )
                 kpoints_text = kpoints_grid(slab_kmesh(candidate))
             metadata = dict(base_meta)
@@ -745,13 +801,35 @@ def create_production_adsorption_phases(
     }
 
 
-def build_scan_constraints(full_atoms: Atoms, anchor_index_global: int, relaxed: bool, metal_symbols: set[str]) -> Atoms:
+def bottom_fixed_metal_indices(full_atoms: Atoms, n_fixed_layers: int, metal_symbols: set[str]) -> list[int]:
+    metal_indices = [i for i, sym in enumerate(full_atoms.get_chemical_symbols()) if sym in metal_symbols]
+    z_positions = full_atoms.positions[:, 2]
+    unique_z = sorted(set(np.round(z_positions[metal_indices], 4)))
+    if n_fixed_layers <= 0:
+        return []
+    z_cutoff = unique_z[n_fixed_layers - 1] + 1.0e-3
+    return [i for i in metal_indices if z_positions[i] <= z_cutoff]
+
+
+def build_scan_constraints(
+    full_atoms: Atoms,
+    anchor_index_global: int,
+    family: str,
+    metal_symbols: set[str],
+    n_fixed_layers: int,
+) -> Atoms:
     atoms = full_atoms.copy()
-    fixed_indices = [i for i, sym in enumerate(atoms.get_chemical_symbols()) if sym in metal_symbols]
-    if relaxed:
+    if family == "rigid":
+        fixed_indices = [i for i, sym in enumerate(atoms.get_chemical_symbols()) if sym in metal_symbols]
+        fixed_indices.extend([i for i, sym in enumerate(atoms.get_chemical_symbols()) if sym not in metal_symbols])
+    elif family == "relaxed":
+        fixed_indices = [i for i, sym in enumerate(atoms.get_chemical_symbols()) if sym in metal_symbols]
+        fixed_indices.append(anchor_index_global)
+    elif family == "relaxed_slab":
+        fixed_indices = bottom_fixed_metal_indices(atoms, n_fixed_layers, metal_symbols)
         fixed_indices.append(anchor_index_global)
     else:
-        fixed_indices.extend([i for i, sym in enumerate(atoms.get_chemical_symbols()) if sym not in metal_symbols])
+        raise ValueError(f"Unsupported scan family: {family}")
     atoms.set_constraint(FixAtoms(indices=sorted(set(fixed_indices))))
     return atoms
 
@@ -794,9 +872,19 @@ def create_scan_jobs_from_minimum(
         label = f"z_{z_value:05.2f}".replace(".", "p")
         point_root = family_root / label
         geometry = rigid_scan_geometry(minimum_atoms, anchor_index_global, z_value, {"Ag", "Cu", "Au"})
-        constrained = build_scan_constraints(geometry, anchor_index_global, relaxed=(family == "relaxed"), metal_symbols={"Ag", "Cu", "Au"})
+        constrained = build_scan_constraints(
+            geometry,
+            anchor_index_global,
+            family=family,
+            metal_symbols={"Ag", "Cu", "Au"},
+            n_fixed_layers=slab_candidate.n_fixed_layers,
+        )
         point_meta = {
-            "phase": "06_scan_rigid" if family == "rigid" else "07_scan_relaxed",
+            "phase": (
+                "06_scan_rigid"
+                if family == "rigid"
+                else ("07_scan_relaxed" if family == "relaxed" else config.scan_relaxed_slab_phase_name)
+            ),
             "source_minimum": str(minimum_dir),
             "adsorbate": adsorbate_name,
             "site_label": job_manifest["site_label"],
@@ -835,7 +923,11 @@ def create_scan_jobs_from_minimum(
                 ),
                 kpoints_grid(slab_kmesh(slab_candidate)),
                 config,
-                dict(point_meta, stage="relax", job_kind="relaxed_scan"),
+                dict(
+                    point_meta,
+                    stage="relax",
+                    job_kind="relaxed_scan" if family == "relaxed" else "relaxed_slab_scan",
+                ),
                 f"{job_manifest['metal']}_{adsorbate_name}_relax",
                 config.hpc.ncore_slab,
             )
@@ -854,7 +946,11 @@ def create_scan_jobs_from_minimum(
                 ),
                 kpoints_grid(slab_kmesh(slab_candidate)),
                 config,
-                dict(point_meta, stage="final_static", job_kind="relaxed_scan"),
+                dict(
+                    point_meta,
+                    stage="final_static",
+                    job_kind="relaxed_scan" if family == "relaxed" else "relaxed_slab_scan",
+                ),
                 f"{job_manifest['metal']}_{adsorbate_name}_final",
                 config.hpc.ncore_slab,
             )
@@ -908,7 +1004,7 @@ def create_interaction_reference_jobs(scan_root: Path, out_root: Path, config: C
             ),
             kpoints_grid(slab_kmesh(slab_candidate)),
             config,
-            dict(source_meta, phase="08_volumetrics", reference_kind="slab_only"),
+            dict(source_meta, phase="09_volumetrics", reference_kind="slab_only"),
             f"{source_meta['metal']}_{source_meta['adsorbate']}_slab_ref",
             config.hpc.ncore_slab,
         )
@@ -927,12 +1023,17 @@ def create_interaction_reference_jobs(scan_root: Path, out_root: Path, config: C
             ),
             kpoints_grid(gas_kmesh(), gamma=True),
             config,
-            dict(source_meta, phase="08_volumetrics", reference_kind="molecule_only"),
+            dict(source_meta, phase="09_volumetrics", reference_kind="molecule_only"),
             f"{source_meta['metal']}_{source_meta['adsorbate']}_mol_ref",
             config.hpc.ncore_molecule,
+            hpc_ncpus=config.hpc.ncpus_molecule,
+            hpc_mem=config.hpc.mem_molecule,
+            hpc_scratch=config.hpc.scratch_local_molecule,
+            hpc_binary_default=config.hpc.vasp_binary_default,
+            hpc_binary_env=config.hpc.vasp_binary_env,
         )
-        jobs.append({"path": str(slab_dir.relative_to(out_root)), "phase": "08_volumetrics", "reference_kind": "slab_only"})
-        jobs.append({"path": str(mol_dir.relative_to(out_root)), "phase": "08_volumetrics", "reference_kind": "molecule_only"})
+        jobs.append({"path": str(slab_dir.relative_to(out_root)), "phase": "09_volumetrics", "reference_kind": "slab_only"})
+        jobs.append({"path": str(mol_dir.relative_to(out_root)), "phase": "09_volumetrics", "reference_kind": "molecule_only"})
     manifest = {
         "source_root": str(scan_root),
         "reference_root": str(out_root),

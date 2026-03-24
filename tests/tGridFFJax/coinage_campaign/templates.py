@@ -59,24 +59,33 @@ def bulk_relax_incar(protocol: ProtocolConfig, system_label: str, stage: str, nc
     return _render_incar(tags)
 
 
-def slab_relax_incar(protocol: ProtocolConfig, system_label: str, stage: str, ncore: int | None = None) -> str:
-    tags = _protocol_tags(protocol, surface_screened=True)
+def slab_relax_incar(
+    protocol: ProtocolConfig,
+    system_label: str,
+    stage: str,
+    ncore: int | None = None,
+    clean_slab: bool = False,
+) -> str:
+    tags = _protocol_tags(protocol, surface_screened=False)
     tags["SYSTEM"] = system_label
-    tags["ISPIN"] = 1
+    tags["ISPIN"] = 2
     tags["ISMEAR"] = protocol.ismear_metal
     tags["SIGMA"] = protocol.sigma_metal
     tags["ISYM"] = 0
-    tags["IBRION"] = 2
+    tags["IBRION"] = 1 if clean_slab else 2
     tags["ISIF"] = 2
     tags["ALGO"] = "All"
     tags["TIME"] = 0.4
-    tags["LREAL"] = "Auto"
+    tags["LREAL"] = False
     tags["NELM"] = 200
-    tags["NELMIN"] = 6
+    tags["NELMIN"] = 8
+    tags["IWAVPR"] = 11
+    tags["NELMDL"] = -8
     tags["LORBIT"] = 11
     tags["NSW"] = 300
     tags["EDIFFG"] = protocol.ediffg_relax
     tags["POTIM"] = 0.3
+    tags["MAXMIX"] = 40
     if ncore is not None:
         tags["NCORE"] = ncore
     tags["LWAVE"] = True
@@ -102,10 +111,13 @@ def final_static_incar(
     surface_screened: bool = True,
     ncore: int | None = None,
     include_dispersion: bool = True,
+    spin_polarized: bool = False,
+    magmom: str | None = None,
+    nupdown: int | None = None,
 ) -> str:
     tags = _protocol_tags(protocol, surface_screened=surface_screened, include_dispersion=include_dispersion)
     tags["SYSTEM"] = system_label
-    tags["ISPIN"] = 1
+    tags["ISPIN"] = 2 if (metallic or spin_polarized) else 1
     tags["ISMEAR"] = protocol.ismear_metal if metallic else protocol.ismear_molecule
     tags["SIGMA"] = protocol.sigma_metal if metallic else protocol.sigma_molecule
     tags["ISYM"] = 0
@@ -116,7 +128,11 @@ def final_static_incar(
     tags["IBRION"] = -1
     tags["NSW"] = 0
     tags["EDIFF"] = 1.0e-7
-    tags["LREAL"] = "Auto" if metallic else False
+    tags["LREAL"] = False
+    if metallic:
+        tags["IWAVPR"] = 11
+        tags["NELMDL"] = -8
+        tags["LORBIT"] = 11
     if ncore is not None:
         tags["NCORE"] = ncore
     tags["LDIPOL"] = metallic and apply_dipole
@@ -133,13 +149,17 @@ def final_static_incar(
     tags["LCHARG"] = write_volumetrics
     tags["LVHAR"] = write_volumetrics
     tags["LAECHG"] = write_volumetrics
+    if magmom is not None:
+        tags["MAGMOM"] = magmom
+    if nupdown is not None:
+        tags["NUPDOWN"] = nupdown
     return _render_incar(tags)
 
 
 def workfunction_incar(protocol: ProtocolConfig, system_label: str, ncore: int | None = None) -> str:
-    tags = _protocol_tags(protocol, surface_screened=True)
+    tags = _protocol_tags(protocol, surface_screened=False)
     tags["SYSTEM"] = system_label
-    tags["ISPIN"] = 1
+    tags["ISPIN"] = 2
     tags["ISMEAR"] = protocol.ismear_metal
     tags["SIGMA"] = 0.01
     tags["ALGO"] = "All"
@@ -149,7 +169,7 @@ def workfunction_incar(protocol: ProtocolConfig, system_label: str, ncore: int |
     tags["NSW"] = 0
     tags["ISTART"] = 1
     tags["ICHARG"] = 11
-    tags["LREAL"] = "Auto"
+    tags["LREAL"] = False
     tags["IWAVPR"] = 11
     tags["LDIPOL"] = True
     tags["IDIPOL"] = 3
@@ -166,9 +186,9 @@ def workfunction_incar(protocol: ProtocolConfig, system_label: str, ncore: int |
 
 
 def bader_incar(protocol: ProtocolConfig, system_label: str, ncore: int | None = None) -> str:
-    tags = _protocol_tags(protocol, surface_screened=True)
+    tags = _protocol_tags(protocol, surface_screened=False)
     tags["SYSTEM"] = system_label
-    tags["ISPIN"] = 1
+    tags["ISPIN"] = 2
     tags["ISMEAR"] = protocol.ismear_metal
     tags["SIGMA"] = 0.01
     tags["ALGO"] = "All"
@@ -178,7 +198,8 @@ def bader_incar(protocol: ProtocolConfig, system_label: str, ncore: int | None =
     tags["NSW"] = 0
     tags["ISTART"] = 1
     tags["ICHARG"] = 11
-    tags["LREAL"] = "Auto"
+    tags["LREAL"] = False
+    tags["IWAVPR"] = 11
     tags["LDIPOL"] = True
     tags["IDIPOL"] = 3
     tags["DIPOL"] = "0.5 0.5 0.5"
@@ -191,15 +212,24 @@ def bader_incar(protocol: ProtocolConfig, system_label: str, ncore: int | None =
     return _render_incar(tags)
 
 
-def gas_phase_incar(protocol: ProtocolConfig, system_label: str, stage: str, ncore: int | None = None) -> str:
+def gas_phase_incar(
+    protocol: ProtocolConfig,
+    system_label: str,
+    stage: str,
+    ncore: int | None = None,
+    spin_polarized: bool = False,
+    magmom: str | None = None,
+    nupdown: int | None = None,
+) -> str:
     tags = _protocol_tags(protocol, surface_screened=False)
     tags["SYSTEM"] = system_label
-    tags["ISPIN"] = 1
+    tags["ISPIN"] = 2 if spin_polarized else 1
     tags["ISMEAR"] = protocol.ismear_molecule
     tags["SIGMA"] = protocol.sigma_molecule
     tags["ISYM"] = 0
     tags["ALGO"] = "Normal"
     tags["LREAL"] = False
+    tags["NELM"] = 200
     tags["IBRION"] = 2
     tags["ISIF"] = 2
     tags["NSW"] = 50
@@ -208,6 +238,10 @@ def gas_phase_incar(protocol: ProtocolConfig, system_label: str, stage: str, nco
         tags["NCORE"] = ncore
     tags["LWAVE"] = False
     tags["LCHARG"] = False
+    if magmom is not None:
+        tags["MAGMOM"] = magmom
+    if nupdown is not None:
+        tags["NUPDOWN"] = nupdown
     return _render_incar(tags)
 
 
@@ -224,18 +258,20 @@ def rigid_scan_incar(protocol: ProtocolConfig, system_label: str, ncore: int | N
 
 
 def relaxed_scan_incar(protocol: ProtocolConfig, system_label: str, ncore: int | None = None) -> str:
-    tags = _protocol_tags(protocol, surface_screened=True)
+    tags = _protocol_tags(protocol, surface_screened=False)
     tags["SYSTEM"] = system_label
-    tags["ISPIN"] = 1
+    tags["ISPIN"] = 2
     tags["ISMEAR"] = protocol.ismear_metal
     tags["SIGMA"] = protocol.sigma_metal
     tags["ISYM"] = 0
     tags["ALGO"] = "All"
+    tags["NELM"] = 200
     tags["NELMIN"] = 8
     tags["IBRION"] = 2
     tags["ISIF"] = 2
     tags["NSW"] = 120
     tags["EDIFFG"] = -0.01
+    tags["LREAL"] = False
     tags["LDIPOL"] = True
     tags["IDIPOL"] = 3
     tags["DIPOL"] = "0.5 0.5 0.5"
@@ -264,9 +300,6 @@ def copy_forward_snippet(source_stage: str, target_stage: str) -> list[str]:
     return [
         f'cp "{source_stage}/CONTCAR" "{target_stage}/POSCAR"',
         f'if [ -f "{source_stage}/WAVECAR" ]; then cp "{source_stage}/WAVECAR" "{target_stage}/WAVECAR"; fi',
-        f'if [ -f "{source_stage}/CHGCAR" ]; then cp "{source_stage}/CHGCAR" "{target_stage}/CHGCAR"; fi',
-        f'if [ -f "{source_stage}/AECCAR0" ]; then cp "{source_stage}/AECCAR0" "{target_stage}/AECCAR0"; fi',
-        f'if [ -f "{source_stage}/AECCAR2" ]; then cp "{source_stage}/AECCAR2" "{target_stage}/AECCAR2"; fi',
     ]
 
 
@@ -295,9 +328,16 @@ def local_run_script(vasp_bin: Path) -> str:
     )
 
 
-def run_custodian_template(hpc: HPCConfig, ncore: int) -> str:
+def run_custodian_template(
+    hpc: HPCConfig,
+    ncore: int,
+    binary_env_name: str | None = None,
+    binary_default: str | None = None,
+) -> str:
     hours, minutes, seconds = (int(part) for part in hpc.walltime.split(":"))
     wall_seconds = max(1, hours * 3600 + minutes * 60 + seconds - 7200)
+    env_name = binary_env_name or hpc.vasp_binary_env
+    default_bin = binary_default or hpc.vasp_binary_default
     return "\n".join(
         [
             "#!/usr/bin/env python3",
@@ -324,7 +364,7 @@ def run_custodian_template(hpc: HPCConfig, ncore: int) -> str:
             "    return importlib.util.find_spec(name) is not None",
             "",
             f"ncore = {ncore}",
-            f'default_bin = os.environ.get("{hpc.vasp_binary_env}", "{hpc.vasp_binary_default}")',
+            f'default_bin = os.environ.get("{env_name}", "{default_bin}")',
             "ntasks = _detect_ntasks()",
             "ntasks = (ntasks // ncore) * ncore",
             "if ntasks < ncore:",
@@ -371,16 +411,28 @@ def run_custodian_template(hpc: HPCConfig, ncore: int) -> str:
     )
 
 
-def hpc_pbs_template(job_name: str, hpc: HPCConfig) -> str:
+def hpc_pbs_template(
+    job_name: str,
+    hpc: HPCConfig,
+    ncpus: int | None = None,
+    mem: str | None = None,
+    scratch_local: str | None = None,
+    vasp_binary_default: str | None = None,
+    use_custodian: bool = False,
+) -> str:
     email_line = "#PBS -m bae" if hpc.email_notifications else ""
     module_lines = list(hpc.module_lines)
     digest = hashlib.sha1(job_name.encode("utf-8")).hexdigest()[:6]
     pbs_name = f"{job_name[:24]}_{digest}"
+    requested_ncpus = ncpus or hpc.ncpus
+    requested_mem = mem or hpc.mem
+    requested_scratch = scratch_local or hpc.scratch_local
+    binary_default = vasp_binary_default or hpc.vasp_binary_default
     lines = [
         "#!/bin/bash",
         f"#PBS -N {pbs_name}",
         f"#PBS -q {hpc.queue}",
-        f"#PBS -l select={hpc.nodes}:ncpus={hpc.ncpus}:mem={hpc.mem}",
+        f"#PBS -l select={hpc.nodes}:ncpus={requested_ncpus}:mem={requested_mem}:scratch_local={requested_scratch}",
         f"#PBS -l walltime={hpc.walltime}",
         f"#PBS -o run_{hpc.queue}.jobout",
         f"#PBS -e run_{hpc.queue}.joberr",
@@ -392,17 +444,51 @@ def hpc_pbs_template(job_name: str, hpc: HPCConfig) -> str:
         [
             "",
             "set -euo pipefail",
-            'cd "${PBS_O_WORKDIR}"',
+            "umask 002",
+            'WORKDIR="${PBS_O_WORKDIR}"',
+            'RUNDIR="${SCRATCHDIR:-${WORKDIR}/.scratch_${PBS_JOBID}}"',
+            'mkdir -p "${RUNDIR}"',
+            'export TMPDIR="${RUNDIR}"',
+            "cleanup_jobdir() {",
+            "  status=$?",
+            '  shopt -s nullglob',
+            '  for name in INCAR KPOINTS POSCAR CONTCAR OUTCAR OSZICAR vasp.out vasprun.xml CHGCAR WAVECAR DOSCAR EIGENVAL IBZKPT PCDAT REPORT XDATCAR AECCAR0 AECCAR2 LOCPOT PROCAR; do',
+            '    if [ -e "${RUNDIR}/${name}" ]; then',
+            '      cp -a "${RUNDIR}/${name}" "${WORKDIR}/"',
+            "    fi",
+            "  done",
+            '  if [ -n "${SCRATCHDIR:-}" ] && command -v clean_scratch >/dev/null 2>&1; then',
+            "    clean_scratch || true",
+            '  elif [[ "${RUNDIR}" == "${WORKDIR}/.scratch_"* ]]; then',
+            '    rm -rf "${RUNDIR}" || true',
+            "  fi",
+            "  exit ${status}",
+            "}",
+            "trap cleanup_jobdir EXIT",
+            'for name in INCAR KPOINTS POSCAR POTCAR WAVECAR CHGCAR AECCAR0 AECCAR2 run_custodian.py job_manifest.json; do',
+            '  if [ -e "${WORKDIR}/${name}" ]; then',
+            '    cp -a "${WORKDIR}/${name}" "${RUNDIR}/"',
+            "  fi",
+            "done",
+            'cd "${RUNDIR}"',
             "",
             *module_lines,
             "",
-            f'VASP_BIN="${{{hpc.vasp_binary_env}:-{hpc.vasp_binary_default}}}"',
-            'NPROCS=$(wc -l < "${PBS_NODEFILE}")',
-            'echo "Running on ${NPROCS} processors"',
-            'time -p mpiexec -np "${NPROCS}" "${VASP_BIN}" > vasp.out',
+            f'VASP_BIN="${{{hpc.vasp_binary_env}:-{binary_default}}}"',
             "",
         ]
     )
+    if use_custodian:
+        lines.append("python3 run_custodian.py")
+    else:
+        lines.extend(
+            [
+                'NPROCS=$(wc -l < "${PBS_NODEFILE}")',
+                'echo "Running on ${NPROCS} processors"',
+                'time -p mpiexec -np "${NPROCS}" "${VASP_BIN}" > vasp.out',
+                "",
+            ]
+        )
     return "\n".join(lines)
 
 

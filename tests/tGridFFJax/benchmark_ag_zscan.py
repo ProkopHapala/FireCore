@@ -112,6 +112,8 @@ def parse_args():
     parser.add_argument("--builder-mode", type=str, default="metal_density_plq", help="Grid builder mode (metal_density_plq, metal_dft_plq, parity_core)")
     parser.add_argument("--teacher-chunk-size", type=int, default=64, help="Teacher batch chunk size")
     parser.add_argument("--student-chunk-size", type=int, default=64, help="Student batch chunk size")
+    parser.add_argument("--teacher-tile", type=str, default="1,1",
+                        help="Slab tiling for teacher evaluation: 'NX,NY' (e.g. '2,2') or 'auto' to compute from molecule extent")
     parser.add_argument("--prefer-jax", dest="prefer_jax", action="store_true", help="Use the JAX student backend when available")
     parser.add_argument("--no-prefer-jax", dest="prefer_jax", action="store_false", help="Force the NumPy fallback backend")
     parser.set_defaults(prefer_jax=True)
@@ -366,6 +368,13 @@ def _set_strict_plq_config(config: RunConfig, args):
     config.teacher_backend.kind = "madsurf"
     config.teacher_backend.model_path = args.model_path
     config.teacher_backend.device = args.device
+    # Parse teacher tiling: "auto" or "NX,NY"
+    tile_str = getattr(args, "teacher_tile", "1,1")
+    if tile_str.strip().lower() == "auto":
+        config.teacher_backend.teacher_tile = (0, 0)  # 0,0 triggers auto in madsurf
+    else:
+        parts = tile_str.split(",")
+        config.teacher_backend.teacher_tile = (int(parts[0]), int(parts[1]))
     config.grid.builder_mode = str(getattr(args, 'builder_mode', 'metal_density_plq'))
     config.grid.interpolation_order = 3
     if args.alpha_morse is not None:
