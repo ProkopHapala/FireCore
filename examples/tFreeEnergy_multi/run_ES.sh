@@ -8,27 +8,27 @@ set -e  # Exit on error
 
 # Default Mode
 MODE="BOTH"  # Options: TI, JE, BOTH
-K=2.0     # Default JE force constant
-HARD_ATOMS=1
-SOFT_ATOMS=0
-HARD_DIST=0
-SOFT_DIST=0
+K=3.0     # Default JE force constant
+HARD_ATOMS=""
+SOFT_ATOMS=""
+HARD_DIST=""
+SOFT_DIST=""
 
 # Parse command line arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --mode) MODE="$2"; shift ;;
         --k)    K="$2"; shift ;;
-        --hard_atoms) HARD_ATOMS="$2"; shift ;;
-        --soft_atoms) SOFT_ATOMS="$2"; shift ;;
-        --hard_dist) HARD_DIST="$2"; shift ;;
-        --soft_dist) SOFT_DIST="$2"; shift ;;
+        --hard_atoms) HARD_ATOMS="--hard_atoms";;
+        --soft_atoms) SOFT_ATOMS="--soft_atoms";;
+        --hard_dist) HARD_DIST="--hard_dist";;
+        --soft_dist) SOFT_DIST="--soft_dist";;
         *) ;; # Ignore unknown args
     esac
     shift
 done
 
-N=20
+N=30
 
 # Ensure we are in the script directory
 cd "$(dirname "$0")"
@@ -75,9 +75,12 @@ python3 run_ES.py \
     --constraints "constraints_ES.txt" \
     --K $K \
     --dt 0.05 \
-    -T 300 \
+    -T 1000 \
     --t_damp 200 \
-    --soft_atoms
+    $HARD_ATOMS \
+    $SOFT_ATOMS \
+    $HARD_DIST \
+    $SOFT_DIST
 # python3 run_ES.py \
 #     --mode $MODE \
 #     --nSys 2 \

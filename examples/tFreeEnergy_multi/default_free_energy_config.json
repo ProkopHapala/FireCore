@@ -1,0 +1,39 @@
+{
+  "output_root": "results_sweep",
+  "common": {
+    "xyz_name": "../../cpp/common_resources/xyz/DA.xyz",
+    "constraints": "constraints_DA.txt",
+    "Fconv": 1e-06,
+    "temperature": 300.0,
+    "t_damp": 200.0,
+    "dt": 0.05,
+    "nSys": 200,
+    "nEQsteps": 5000,      
+    "nLambda": 200,
+    "nMDsteps": 200000000,
+    "mode": "TI",
+    "K": 10.0
+  },
+  "parameter_sets": [
+    {
+      "name": "temp_100K",
+      "temperature": 100.0
+    },
+    {
+      "name": "temp_200K",
+      "temperature": 200.0
+    },
+    {
+      "name": "temp_300K",
+      "temperature": 300.0
+    },
+    {
+      "name": "temp_400K",
+      "temperature": 400.0
+    },
+    {
+      "name": "temp_500K",
+      "temperature": 500.0
+    }
+  ]
+}

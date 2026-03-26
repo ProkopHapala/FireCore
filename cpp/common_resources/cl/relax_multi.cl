@@ -948,7 +948,8 @@ __kernel void updateAtomsMMFFf4(
     __global float4*  sysbonds,      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
     __global float4*  averageForces, // 15 // contains average forces on atoms for Thermodynamic Integration
     __global float*   work,          // 16 // contains work recorded at each step for Jarzynski Equality
-    __global int4*    jeParams       // 17 // parameters for Jarzynski Equality per system
+    __global int4*    jeParams,      // 17 // parameters for Jarzynski Equality per system
+    __global float4*  fprev          // 18 // previous forces for velocity-Verlet in deterministic TI Langevin
 ){
     const int natoms=n.x;           // number of atoms
     const int nnode =n.y;           // number of node atoms
@@ -1064,20 +1065,26 @@ __kernel void updateAtomsMMFFf4(
 
             float3 h = (float3){0.0f, 0.0f, 0.0f};
             float force_proj = 0.0f;
+            float force_proj_dbg = 0.0f;
+            float3 fe_dbg = fe.xyz;
             if( bDist ){
                 int ing = (int)cons.x;
                 float3 pj = apos[ing + iS*nvec].xyz;
                 float3 d = pe.xyz - pj;
                 float r = length(d);
                 h = d / (r + 1e-10f);
-                force_proj = dot(fe.xyz, h);
+                const float force_proj_raw = dot(fe.xyz, h);
+                force_proj = force_proj_raw * cK.x;
+                force_proj_dbg = force_proj;
+                fe_dbg = fe.xyz;
                 if( bHard ){
                     // Geometric correction
                     pe.xyz -= h * (0.5f * (r - cons.y)); 
-                    // Subtract parallel components to allow free "flying"
+                    // Subtract parallel components
                     float v_proj = dot(ve.xyz, h);
                     ve.xyz -= h * v_proj;
-                    fe.xyz -= h * force_proj; 
+                    fe.xyz -= h * force_proj_raw; 
+                    // if(iS==0 && iG==0) printf( "GPU:hard constr dist force %g,%g,%g \n", fe.x, fe.y, fe.z );
                 } else {
                     const float3 fc = h * (-stiffness.x * (r - cons.y));
                     fe.xyz += fc;
@@ -1087,17 +1094,32 @@ __kernel void updateAtomsMMFFf4(
                     pe.xyz = cons.xyz; // move to fixed position
                     ve.xyz = 0.0f;
                     force_proj = dot(fe.xyz, cK.xyz);
+                    force_proj_dbg = force_proj;
+                    fe_dbg = fe.xyz;
                     fe.xyz = 0.0f; // wipe force for pinned atom
+                    // printf( "GPU:hard constr atoms force %g,%g,%g \n", fe.x, fe.y, fe.z );
                 } else {
                     const float3 fc = (cons.xyz - pe.xyz) * stiffness;
-                    fe.xyz += fc; // add constraint force
+                    // if(iS==0 && iG==0) printf( "GPU:soft constr force %g,%g,%g \n", fc.x, fc.y, fc.z );
                     force_proj = dot(fe.xyz, cK.xyz);
+                    force_proj_dbg = force_proj;
+                    fe_dbg = fe.xyz;
+                    fe.xyz += fc; // add constraint force
+                    
                 }
                 h = cK.xyz; // For Atoms, cK.xyz stores the fixed projection direction
             }
 
             if( sign != 0.0f ){
                 __global float* avgF_ptr = (__global float*)(&averageForces[iS]);
+                if(nS==1){
+                    printf(
+                        "TI_DEBUG_GPU iS=%d ia=%d sign=%.17g force_proj=%.17g fe=(%.17g,%.17g,%.17g) cK=(%.17g,%.17g,%.17g)\n",
+                        iS, iG, (double)sign, (double)force_proj_dbg,
+                        (double)fe_dbg.x, (double)fe_dbg.y, (double)fe_dbg.z,
+                        (double)cK.x, (double)cK.y, (double)cK.z
+                    );
+                }
                 if(sign > 0.0f){
                     if(!isnan(force_proj)) avgF_ptr[2] += force_proj;
                     averageForces[iS].y = force_proj;
@@ -1116,6 +1138,7 @@ __kernel void updateAtomsMMFFf4(
 
             if( bHard && !bDist ){
                 pe.w=0;ve.w=0;     // clear w components
+                fprev[iav] = float4Zero;
                 apos[iav] = pe;    // write back constrained position
                 avel[iav] = ve;    // write back zero velocity
                 return;            // skip MD update for constrained atoms
@@ -1268,7 +1291,7 @@ __kernel void getNonBond(
     
     const bool bDrive = TDrive.y > 0.0f;
 
-    // ------ Move (Leap-Frog)
+    // ------ Move (Velocity-Verlet for deterministic TI Langevin, otherwise keep Leap-Frog)
     if(bPi){ // if pi-orbital, we need to make sure that it has unit length
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght, 
         ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz );   // subtract veocity component which change pi-orbital lenght
@@ -1288,9 +1311,12 @@ __kernel void getNonBond(
             // //const float3 rnd = fract( ( rvec + TDrive.www)*12.4565f, &ix )*2.f - (float3){1.0,1.0,1.0};
             // const float3 rnd = sin( ( rvec + TDrive.www )*124.4565f );
 
+                const uint sys_or_lambda_id = (TDrive.z >= 0.0f)
+                    ? 1u
+                    : ((uint)(iS + 1));
                 const uint seed = hash_wang(
                     ((uint)(iG + 1))*0x9E3779B9u
-                    ^ ((uint)(iS + 1))*0x85EBCA6Bu
+                    ^ sys_or_lambda_id*0x85EBCA6Bu
                     ^ ((uint)__float_as_int(TDrive.w))*0xC2B2AE35u
                     ^ ((uint)__float_as_int(MDpars.x))*0x27D4EB2Du
                 );
@@ -1301,12 +1327,23 @@ __kernel void getNonBond(
         }
     }
     cvf[iav] += (float4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel
-    //if(!bDrive){ ve.xyz *= MDpars.z; } // friction, velocity damping
-    ve.xyz *= MDpars.z;             // friction, velocity damping
-    ve.xyz += fe.xyz*MDpars.x;      // acceleration
-    pe.xyz += ve.xyz*MDpars.x;      // move
-    // if(iG<natoms){                  // only atoms have constraints, not pi-orbitals
-    //     // ------- constrains
+    const bool bTIVelocityVerlet = bDrive && (TDrive.z >= 0.0f);
+    if( bTIVelocityVerlet ){
+        const float3 f_old = fprev[iav].xyz;
+        ve.xyz += (f_old + fe.xyz) * (0.5f*MDpars.x);
+        if(bPi){ ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz ); }
+        pe.xyz += ve.xyz*MDpars.x;
+        pe.xyz += fe.xyz*(0.5f*MDpars.x*MDpars.x);
+        if(bPi){ pe.xyz = normalize(pe.xyz); }
+        fprev[iav] = (float4)(fe.xyz, 0.0f);
+    }else{
+        // Temporary fallback: keep the original leap-frog / explicit update outside the TI Langevin path.
+        // if(!bDrive){ ve.xyz *= MDpars.z; } // friction, velocity damping
+        ve.xyz *= MDpars.z;             // friction, velocity damping
+        ve.xyz += fe.xyz*MDpars.x;      // acceleration
+        pe.xyz += ve.xyz*MDpars.x;      // move
+        fprev[iav] = float4Zero;
+    }
     //     float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
     //     if( cons.w>0.f ){            // if stiffness is positive, we have constraint
     //         pe.xyz = cons.xyz;

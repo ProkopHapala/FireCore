@@ -65,6 +65,17 @@ def main():
         T=args.temperature,
         gamma=1/(args.t_damp*args.dt)  # dt_deafult is 0.05 and 100 steps are used for termalization
     )
+    mmff.set_opt(
+        dt_max=args.dt,
+        dt_min=max(args.dt * 0.1, 1.0e-6),
+        damp_max=0.2,
+        finc=1.1,
+        fdec=0.5,
+        falpha=0.8,
+        minLastNeg=5,
+        cvf_min=-0.1,
+        cvf_max=+0.1,
+    )
 
     constraints = load_constraints(args.constraints)
 

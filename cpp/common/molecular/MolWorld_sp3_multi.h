@@ -29,6 +29,45 @@ static inline float ti_hash_unit_f(uint32_t x){
     return (float)x * (1.0f/4294967296.0f);
 }
 
+static inline Mat3f ti_rotation_between_dirs( const Vec3f& from, const Vec3f& to ){
+    Mat3f rot = Mat3fIdentity;
+    const float from_n2 = from.norm2();
+    const float to_n2   = to  .norm2();
+    if( (from_n2 < 1.0e-12f) || (to_n2 < 1.0e-12f) ) return rot;
+    Vec3f a = from*(1.0f/sqrtf(from_n2));
+    Vec3f b = to  *(1.0f/sqrtf(to_n2  ));
+    float c = a.dot(b);
+    if(c >  1.0f) c =  1.0f;
+    if(c < -1.0f) c = -1.0f;
+    if(c > 1.0f - 1.0e-6f) return rot;
+    Vec3f axis;
+    if(c < -1.0f + 1.0e-6f){
+        axis = (fabsf(a.x) < 0.9f) ? Vec3f{1.0f,0.0f,0.0f} : Vec3f{0.0f,1.0f,0.0f};
+        axis.makeOrthoU(a);
+        const float axis_n2 = axis.norm2();
+        if(axis_n2 < 1.0e-12f) return rot;
+        axis.mul(1.0f/sqrtf(axis_n2));
+        rot.fromRotation(3.14159265358979323846f, axis);
+        return rot;
+    }
+    axis.set_cross(a,b);
+    const float s2 = axis.norm2();
+    if(s2 < 1.0e-12f) return rot;
+    axis.mul(1.0f/sqrtf(s2));
+    rot.fromRotation(atan2f(sqrtf(s2), c), axis);
+    return rot;
+}
+
+static inline Vec3f ti_precondition_atom_position( const Vec3f& p, const Vec3f& mid0, const Vec3f& e0, const Mat3f& rot, const Vec3f& mid1, const Vec3f& e1, float stretch ){
+    Vec3f q = p - mid0;
+    const float q_par = q.dot(e0);
+    q.add_mul( e0, -q_par );
+    Vec3f q_out = rot.dot(q);
+    q_out.add_mul( e1, q_par * stretch );
+    q_out.add(mid1);
+    return q_out;
+}
+
 
 
 struct FIRE_setup{
@@ -128,7 +167,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     bool bGPU_MMFF = true;
 
     bool initial = false;
-    bool bHardConstrainedAtoms    = true;
+    bool bHardConstrainedAtoms    = false;
     bool bSoftConstrainedAtoms    = false;
     bool bHardConstrainedDistance = false;
     bool bSoftConstrainedDistance = false;
@@ -137,6 +176,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     Quat4f* aforces    =0;
     Quat4f* avel       =0;
     Quat4f* cvfs       =0;
+    Quat4f* fprev      =0;
 
     FIRE*   fire       =0;  // FIRE-relaxation state
     Quat4f* MDpars     =0;  // Molecular dynamics params
@@ -216,19 +256,11 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
 
     const char* uploadPopName=0;
 
-                int iterPerFrame = 1000;
-
-                float* gpu_work = 0;
-
-                bool   bSaveTrajectory = false;
-
-                char   traj_fname[256] = "trajectory.xyz";
-
-        
-
-    
-
-        bool bMILAN = false; 
+    int iterPerFrame = 1000;
+    float* gpu_work = 0;
+    bool   bSaveTrajectory = false;
+    char   traj_fname[256] = "trajectory.xyz";
+    bool bMILAN = false; 
 
      
     bool bSaveToDatabase=false;
@@ -273,7 +305,9 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
 
     void resetTIBatchState(bool bUploadToGPU=true){
         ti_step = 0;
-        const Quat4f tdrive0{0.0f,-1.0f,0.0f,0.0f};
+        const Quat4f tdrive0 = bDeterministicTDrive
+            ? Quat4f{ (float)go.T_target, (float)go.gamma_damp, 0.0f, 0.0f }
+            : Quat4f{ 0.0f, -1.0f, 0.0f, 0.0f };
         for(int isys=0; isys<nSystems; isys++){
             const int i0v = isys * ocl.nvecs;
             pack_system(isys, ffl0, false, false, false, true);
@@ -281,16 +315,19 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 aforces[i0v+i] = Quat4fZero;
                 avel   [i0v+i] = Quat4fZero;
                 cvfs   [i0v+i] = Quat4fZero;
+                fprev  [i0v+i] = Quat4fZero;
             }
             averageForces[isys] = Quat4fZero;
             TDrive[isys] = tdrive0;
             fire[isys].bind_params( &fire_setup );
             fire[isys].id = isys;
-            MDpars[isys] = Quat4f{ fire[isys].dt, 1.0f - fire[isys].damping, 1.0f, 0.0f };
+            MDpars[isys] = bDeterministicTDrive
+                ? Quat4f{ fire[isys].par->dt_max, 1.0f, 1.0f, 0.0f }
+                : Quat4f{ fire[isys].dt, 1.0f - fire[isys].damping, 1.0f, 0.0f };
             if(gopts){
                 gopts[isys].copy(go);
                 gopts[isys].istep = 0;
-                gopts[isys].bExploring = bGopt;
+                gopts[isys].bExploring = bDeterministicTDrive ? true : bGopt;
             }
             if(isSystemRelaxed){ isSystemRelaxed[isys] = false; }
         }
@@ -300,6 +337,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         err |= ocl.upload( ocl.ibuff_aforces, aforces );
         err |= ocl.upload( ocl.ibuff_avel, avel );
         err |= ocl.upload( ocl.ibuff_cvf, cvfs );
+        err |= ocl.upload( ocl.ibuff_fprev, fprev );
         err |= ocl.upload( ocl.ibuff_constr, constr );
         err |= ocl.upload( ocl.ibuff_constrK, constrK );
         err |= ocl.upload( ocl.ibuff_lvecs, lvecs );
@@ -321,7 +359,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         }
         
         int iSi1 = -1;
-        int si_count = 0;
+        int si_count = 0; // counts pairs of Si atoms
         for(int ia=0; ia<ffls[isys].natoms; ia++){
             if(ffls[isys].atypes[ia]==params.getAtomType("Si")){
                 if(iSi1 == -1){ iSi1 = ia; }
@@ -349,16 +387,27 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                             if( bSoftConstrainedAtoms ){
                                 aconK1.w = K;
                                 aconK2.w = K;
-                            } else {
-                                Vec3f dir = p1_1 - p1_0; dir.normalize(); 
-                                aconK1.f = dir; aconK2.f = dir;
                             }
-                        } else if ( bHardConstrainedDistance || bSoftConstrainedDistance ){
+                            aconK1.f.set_sub(p1_1, p1_0);
+                            aconK2.f.set_sub(p2_1, p2_0);
+                        } 
+                        else if ( bHardConstrainedDistance || bSoftConstrainedDistance ){
                             float type_offset = bHardConstrainedDistance ? 4.0e6f : 6.0e6f;
                             acon1.w = 1e6f + type_offset;
                             acon2.w = 2e6f + type_offset;
                             acon1.x = (float)iSi2; acon1.y = L_target;
                             acon2.x = (float)iSi1; acon2.y = L_target;
+                            Vec3f dT1, dT2, dD, h;
+                            dT1.set_sub(p1_1, p1_0);
+                            dT2.set_sub(p2_1, p2_0);
+                            dD.set_sub(dT1, dT2);
+                            h.set_sub(T1, T2);
+                            const float invL = (L_target > 1e-8f) ? (1.0f / L_target) : 0.0f;
+                            const float dLdl = h.dot(dD) * invL;
+                            // Each atom contributes the same radial projection; store half on each side
+                            // so the host-side sum reconstructs dU/dlambda only once per constrained pair.
+                            aconK1.x = 0.5f * dLdl;
+                            aconK2.x = 0.5f * dLdl;
                             if( bSoftConstrainedDistance ){
                                 aconK1.w = K;
                                 aconK2.w = K;
@@ -371,6 +420,33 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
 
                         if( bAlign ){
                             int i0v = isys * ocl.nvecs;
+                            // Precondition the whole system from the reference endpoint geometry to the
+                            // current TI window. This reduces large nonequilibrium transients caused by
+                            // moving only the constrained atoms while leaving the rest of the chain at
+                            // the lambda=0 geometry.
+                            if( (go.T_target > 1.0e-6) && (si_count == 0) ){
+                                const Vec3f P1_ref = atoms[i0v + iSi1].f;
+                                const Vec3f P2_ref = atoms[i0v + iSi2].f;
+                                Vec3f u0 = P1_ref - P2_ref;
+                                Vec3f u1 = T1 - T2;
+                                const float L0 = u0.norm();
+                                const float L1 = u1.norm();
+                                if( (L0 > 1.0e-6f) && (L1 > 1.0e-6f) ){
+                                    const Vec3f mid0 = (P1_ref + P2_ref)*0.5f;
+                                    const Vec3f mid1 = (T1 + T2)*0.5f;
+                                    const Vec3f e0   = u0*(1.0f/L0);
+                                    const Vec3f e1   = u1*(1.0f/L1);
+                                    const float stretch = L1/L0;
+                                    const Mat3f rot = ti_rotation_between_dirs( u0, u1 );
+                                    for(int i=0; i<ocl.nvecs; i++){
+                                        if(i < ocl.nAtoms){
+                                            atoms[i0v + i].f = ti_precondition_atom_position( atoms[i0v + i].f, mid0, e0, rot, mid1, e1, stretch );
+                                        }else{
+                                            atoms[i0v + i].f = rot.dot( atoms[i0v + i].f );
+                                        }
+                                    }
+                                }
+                            }
                             atoms[i0v + iSi1] = (Quat4f){T1.x, T1.y, T1.z, 0.0f};
                             atoms[i0v + iSi2] = (Quat4f){T2.x, T2.y, T2.z, 0.0f};
                         }
@@ -391,6 +467,21 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         _setbool( bHardConstrainedDistance, hardDist  );
         _setbool( bSoftConstrainedDistance, softDist  );
         #undef _setbool
+
+        int nConstraintModes =
+            (int)bHardConstrainedAtoms +
+            (int)bSoftConstrainedAtoms +
+            (int)bHardConstrainedDistance +
+            (int)bSoftConstrainedDistance;
+        if(nConstraintModes == 0){
+            bHardConstrainedAtoms = true;
+            nConstraintModes = 1;
+            printf("WARNING: computeFreeEnergy() no TI constraint mode selected; defaulting to hard atom constraints.\n");
+        }
+        if(nConstraintModes > 1){
+            printf("ERROR: computeFreeEnergy() expects exactly one TI constraint mode, got %d.\n", nConstraintModes);
+            return NAN;
+        }
 
         // mode: 0=TI, 1=JE, 2=Both
         bool doTI = (mode == 0) || (mode == 2);
@@ -475,6 +566,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                     float lambda = (float)il / (float)(nLambda - 1);
                     setupTIConstraints( isys, lambda, nCVs, initial_positions, final_positions, true, K );
                 }
+                ocl.upload( ocl.ibuff_TDrive, TDrive );
                 ocl.upload( ocl.ibuff_constr,  constr  );
                 ocl.upload( ocl.ibuff_constrK, constrK );
                 ocl.upload( ocl.ibuff_atoms,   atoms   ); // Upload potentially aligned atoms
@@ -770,6 +862,7 @@ void realloc( int nSystems_ ){
     _realloc0( aforces,   ocl.nvecs*nSystems  , Quat4fZero );
     _realloc0( avel,      ocl.nvecs*nSystems  , Quat4fZero );
     _realloc0( cvfs,      ocl.nvecs*nSystems  , Quat4fZero );
+    _realloc0( fprev,     ocl.nvecs*nSystems  , Quat4fZero );
     _realloc0( constr,    ocl.nAtoms*nSystems , Quat4fOnes*-1. );
     _realloc0( constrK,   ocl.nAtoms*nSystems , Quat4fOnes*-1. );
 
@@ -1407,9 +1500,19 @@ double evalVFs( double Fconv=1e-6 ){
         nbEvaluation+=nPerVFs;
         int i0v = isys * ocl.nvecs;
         //evalVF( ocl.nvecs, aforces+i0v, avel   +i0v, fire[isys], MDpars[isys] );
-        evalVF_new( ocl.nvecs, cvfs+i0v, fire[isys], MDpars[isys], gopts[isys].bExploring );
+        const bool bSamplingTI = bDeterministicTDrive;
+        evalVF_new( ocl.nvecs, cvfs+i0v, fire[isys], MDpars[isys], bSamplingTI || gopts[isys].bExploring );
         double f2 = fire[isys].ff;
         if(f2>F2max){ F2max=f2; iSysFMax=isys; }
+        if(bSamplingTI){
+            TDrive[isys].x = go.T_target;
+            TDrive[isys].y = go.gamma_damp;
+            uint32_t lambda_id = (TDrive[isys].z >= 0.0f) ? (uint32_t)(TDrive[isys].z + 0.5f) : (uint32_t)isys;
+            const uint32_t step_id = (uint32_t)ti_step;
+            const uint32_t seed = ti_hash_u32(lambda_id * 0x9E3779B9u ^ step_id);
+            TDrive[isys].w = ti_hash_unit_f(seed) * 2.0f - 1.0f;
+            continue;
+        }
         // -------- Global Optimization
         if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){
             int i0v = isys * ocl.nvecs;
@@ -2318,7 +2421,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             ocl.upload( ocl.ibuff_gforces, gforces );
         }
 
-        if (bGopt){
+        if (bGopt && !bDeterministicTDrive){
             //printf("MolWorld_sp3_multi::run_ocl_opt() bGopt=%i bGroups=%i \n", bGopt, bGroups );
             bExplore = false;
             for (int isys = 0; isys < nSystems; isys++){

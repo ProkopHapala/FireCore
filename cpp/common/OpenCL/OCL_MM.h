@@ -76,7 +76,7 @@ class OCL_MM: public OCLsystem { public:
 
     // OpenCL buffers and textures ids
     int ibuff_atoms=-1,ibuff_aforces=-1,ibuff_neighs=-1,ibuff_neighCell=-1;
-    int ibuff_avel=-1,ibuff_cvf=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1, ibuff_bkNeighs_new=-1;
+    int ibuff_avel=-1,ibuff_cvf=-1, ibuff_fprev=-1, ibuff_neighForce=-1,  ibuff_bkNeighs=-1, ibuff_bkNeighs_new=-1;
     int ibuff_REQs=-1, ibuff_MMpars=-1, ibuff_BLs=-1,ibuff_BKs=-1,ibuff_Ksp=-1, ibuff_Kpp=-1;   // MMFFf4 params
     int ibuff_lvecs=-1, ibuff_ilvecs=-1,ibuff_MDpars=-1,ibuff_TDrive=-1, ibuff_pbcshifts=-1, ibuff_jeParams=-1; 
     int ibuff_constr=-1;
@@ -225,6 +225,7 @@ class OCL_MM: public OCLsystem { public:
         ibuff_bkNeighs_new = newBuffer( "bkNeighs_new", nSystems*nvecs, sizeof(int4  ), 0, CL_MEM_READ_ONLY  );   
         ibuff_avel       = newBuffer( "avel",       nSystems*nvecs,     sizeof(float4), 0, CL_MEM_READ_WRITE );     // atoms velocities (x,y,z,m)
         ibuff_cvf        = newBuffer( "cvf",        nSystems*nvecs ,    sizeof(float4), 0, CL_MEM_READ_WRITE );
+        ibuff_fprev      = newBuffer( "fprev",      nSystems*nvecs ,    sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_neighForce = newBuffer( "neighForce", nSystems*nbkng,     sizeof(float4), 0, CL_MEM_READ_WRITE );
 
         ibuff_MMpars     = newBuffer( "MMpars",     nSystems*nnode,  sizeof(int4),   0, CL_MEM_READ_ONLY  );
@@ -608,6 +609,7 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_averageForces);// 15
         err |= useArgBuff( ibuff_work       ); // 16
         err |= useArgBuff( ibuff_jeParams   ); // 17
+        err |= useArgBuff( ibuff_fprev      ); // 18
         OCL_checkError(err, "setup_updateAtomsMMFFf4");
         return task;
         // const int4        n,            // 1 // (natoms,nnode) dimensions of the system
