@@ -401,21 +401,23 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Atom_Types_name="./data
         # V_max = np.maximum( V_max, VcoulB )
         # print( "V_max.shape ", V_max.shape )
 
-        if save_name=='double3':
-            path = os.path.basename( fname )
-            path = "./data/" + os.path.splitext( path )[0]
-            print( "test_gridFF_ocl() path = ", path )
-            if not os.path.exists( path ): os.makedirs( path )
-            V_Paul = V_Paul.transpose( (2,1,0) )
-            V_Lond = V_Lond.transpose( (2,1,0) )
-            V_Coul = VcoulB.transpose( (2,1,0) )
-            PLQ = np.zeros( V_Paul.shape + (3,) )
-            PLQ[:,:,:,0] = V_Paul
-            PLQ[:,:,:,1] = V_Lond
-            PLQ[:,:,:,2] = V_Coul
-            full_name = path+"/Bspline_PLQd.npy"; 
-            print("test_gridFF_ocl() - save Morse to: ", full_name)
-            np.save( full_name, PLQ )
+        # Save PLQ grids (Pauli/London/Coulomb) for later reuse/caching
+        path = "./data/" + (save_name if (save_name is not None) else os.path.splitext(os.path.basename(fname))[0])
+        print( "test_gridFF_ocl() path = ", path )
+        if not os.path.exists( path ): os.makedirs( path )
+        V_Paul = V_Paul.transpose( (2,1,0) )
+        V_Lond = V_Lond.transpose( (2,1,0) )
+        V_Coul = VcoulB.transpose( (2,1,0) )
+        PLQ = np.zeros( V_Paul.shape + (3,) )
+        PLQ[:,:,:,0] = V_Paul
+        PLQ[:,:,:,1] = V_Lond
+        PLQ[:,:,:,2] = V_Coul
+        full_name = path+"/Bspline_PLQd.npy";
+        print("test_gridFF_ocl() - save PLQ to: ", full_name)
+        np.save( full_name, PLQ )
+        full_name_ocl = path+"/Bspline_PLQd_ocl.npy";
+        print("test_gridFF_ocl() - save PLQ to: ", full_name_ocl)
+        np.save( full_name_ocl, PLQ )
 
         #cmap='plasma'
         #cmap='inferno'
@@ -426,7 +428,10 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Atom_Types_name="./data
         # plt.subplot(1,3,3); plt.imshow( V_Coul[:,:,0] ); plt.colorbar(); plt.title( "V_Coul[:,:,0]" );
         plt.subplot(1,3,1); plt.imshow( V_Paul[0,:,:].transpose() ); plt.colorbar(); plt.title( "V_Paul[0,:,:]" );
         plt.subplot(1,3,2); plt.imshow( V_Lond[0,:,:].transpose() ); plt.colorbar(); plt.title( "V_Lond[0,:,:]" );
-        plt.subplot(1,3,3); plt.imshow( V_Coul[0,:,:].transpose() ); plt.colorbar(); plt.title( "V_Coul[0,:,:]" );
+        if 'V_Coul' in locals():
+            plt.subplot(1,3,3); plt.imshow( V_Coul[0,:,:].transpose() ); plt.colorbar(); plt.title( "V_Coul[0,:,:]" );
+        else:
+            plt.subplot(1,3,3); plt.imshow( VcoulB[0,:,:].transpose() ); plt.colorbar(); plt.title( "VcoulB[0,:,:]" );
         # #plt.subplot(1,2,1); plt.imshow( V_Paul[0,:,:], cmap='bwr' ); plt.colorbar(); plt.title( "V_Paul[0,:,:]" );
         # #plt.subplot(1,2,2); plt.imshow( Vcoul [0,:,:], cmap='bwr' ); plt.colorbar(); plt.title( "Vcoul [0,:,:]" );
         # #plt.subplot(1,2,1); plt.imshow( V_Paul[:,:,0], cmap='bwr' ); plt.colorbar(); plt.title( "V_Paul[0,:,:]" );

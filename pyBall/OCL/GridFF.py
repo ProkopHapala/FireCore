@@ -9,6 +9,15 @@ import matplotlib.pyplot as plt
 import time
 import math
 
+if (not hasattr(np.lib, 'arraysetops')) or (np.lib.arraysetops is None):
+    class _ArraySetOpsCompat:
+        @staticmethod
+        def setdiff1d(ar1, ar2, assume_unique=False):
+            return np.setdiff1d(ar1, ar2, assume_unique=assume_unique)
+    np.lib.arraysetops = _ArraySetOpsCompat()
+elif not hasattr(np.lib.arraysetops, 'setdiff1d'):
+    np.lib.arraysetops.setdiff1d = np.setdiff1d
+
 from . import clUtils as clu
 from .clUtils import GridShape,GridCL
 
@@ -51,7 +60,8 @@ class GridFF_cl:
         print( " local_memory_per_workgroup() size=", local_size, " __local []  ", clu.local_memory_float_per_workgroup( self.ctx.devices[0], local_size=32, sp_per_cu=128 ), " float32 " );
 
         try:
-            with open('../../cpp/common_resources/cl/GridFF.cl', 'r') as f:
+            cl_path = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../cpp/common_resources/cl/GridFF.cl'))
+            with open(cl_path, 'r') as f:
                 self.prg = cl.Program(self.ctx, f.read()).build()
         except Exception as e:
             print( "GridFF_cl() called from path=", os.getcwd() )
@@ -1061,7 +1071,9 @@ class GridFF_cl:
             Qgrid = np.zeros( (*sh,2,), dtype=np.float32 )
             cl.enqueue_copy(self.queue, Qgrid, self.Qgrid_buff )
             print("Qgrid min,max ", Qgrid[:,:,:,0].min(), Qgrid[:,:,:,0].max() )
-            np.save( "./data/NaCl_1x1_L3/Qgrid_ocl.npy", Qgrid[:,:,:,0] )
+            qdir = os.path.join(os.getcwd(), 'data', 'debug_gridff')
+            os.makedirs(qdir, exist_ok=True)
+            np.save(os.path.join(qdir, 'Qgrid_ocl.npy'), Qgrid[:,:,:,0])
         
         self.poisson( bReturn=bCheckPoisson, sh=sh, sigma=sigma )
         Vin_buff = self.laplace_real_loop_inert( bReturn=False, niter=niter, sh=sh )

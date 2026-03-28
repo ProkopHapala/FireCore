@@ -23,6 +23,7 @@ from pyBall.MolGUI_common import (
     colors_for_enames, sizes_for_enames,
     find_bonds,
 )
+from pyBall.OCL.GridFFRelaxedScan import GridFFRelaxedScan
 from pyBall.SurfaceSampling import ProbeParticle, build_surface_map
 from pyBall.VispyUtils import make_surface_mesh
 
@@ -87,6 +88,13 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
         self.last_results = None
         self.last_surface_result = None
         self.last_surface_mesh = None
+        self.relaxed_scanner = None
+        self.interactive_active = False
+        self.interactive_target = None
+        self.interactive_state = None
+        self.interactive_world_mode = False
+        self.interactive_timer = QtCore.QTimer(self)
+        self.interactive_timer.timeout.connect(self._interactive_tick)
 
         self._build_ui()
         self._init_scanner()
@@ -200,6 +208,23 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
         self.sp_rdt     = self._add_dspin(rgl, 1, "dt", 0.005, 0.001, 0.001, 0.1, 4)
         self.sp_rsteps  = self._add_ispin(rgl, 2, "N steps", 100, 10, 10, 1000)
         vbox.addWidget(grp_relax)
+
+        grp_int = QtWidgets.QGroupBox("Interactive GridFF")
+        igl = QtWidgets.QGridLayout(grp_int)
+        self.sp_int_nsub = self._add_ispin(igl, 0, "Substeps/frame", 10, 1, 1, 1000)
+        self.sp_int_step = self._add_dspin(igl, 1, "Move step (Å)", 0.2, 0.05, 0.01, 10.0, 3)
+        self.sp_int_plq_p = self._add_dspin(igl, 2, "Plot P", 1.0, 0.1, -10.0, 10.0, 3)
+        self.sp_int_plq_l = self._add_dspin(igl, 3, "Plot L", 1.0, 0.1, -10.0, 10.0, 3)
+        self.sp_int_plq_q = self._add_dspin(igl, 4, "Plot Q", 0.0, 0.1, -10.0, 10.0, 3)
+        self.btn_int_run = QtWidgets.QPushButton("Run Interactive")
+        self.btn_int_run.clicked.connect(self._toggle_interactive_relax)
+        igl.addWidget(self.btn_int_run, 5, 0, 1, 2)
+        self.btn_int_xz = QtWidgets.QPushButton("Plot GridFF XZ")
+        self.btn_int_xz.clicked.connect(self._plot_interactive_xz)
+        igl.addWidget(self.btn_int_xz, 6, 0, 1, 2)
+        self.lbl_int_anchor = QtWidgets.QLabel("anchor: ---")
+        igl.addWidget(self.lbl_int_anchor, 7, 0, 1, 2)
+        vbox.addWidget(grp_int)
 
         # --- Plot Settings ---
         grp_plot = QtWidgets.QGroupBox("Plot Settings")
@@ -331,6 +356,10 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
         self.mol_apos = None; self.mol_enames = None; self.mol_bonds = None
         self.sub_apos = None; self.sub_enames = None; self.sub_bonds = None
         self.folded_scanner = None
+        self.relaxed_scanner = None
+        self.interactive_active = False
+        self.interactive_world_mode = False
+        self.interactive_timer.stop()
         if self._mol_file:
             if not os.path.exists(self._mol_file):
                 raise FileNotFoundError(f"Molecule file not found: {self._mol_file}")
@@ -452,9 +481,104 @@ class ExplorerVisPy(QtWidgets.QMainWindow):
     def _transform_mol(self):
         """Return transformed molecule positions (N,3)."""
         if self.mol_apos is None: return None
+        if self.interactive_world_mode:
+            return np.asarray(self.mol_apos, dtype=np.float32)
         R = self._current_rotmat()
         t = self._current_translation()
         return (self.mol_apos @ R.T) + t
+
+    def _interactive_plq(self):
+        return (self.sp_int_plq_p.value(), self.sp_int_plq_l.value(), self.sp_int_plq_q.value())
+
+    def _ensure_relaxed_scanner(self):
+        if self.relaxed_scanner is not None:
+            return
+        if (self._mol_file is None) or (self._sub_file is None):
+            raise ValueError('Load molecule and substrate first')
+        root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+        out_dir = os.path.join(root, 'tests', 'tMMFF', '_explorer_gridff_cache')
+        self.relaxed_scanner = GridFFRelaxedScan(
+            mol_path=self._mol_file,
+            sub_xyz_path=self._sub_file,
+            gridff_path=(self._surface_gridff_path() if os.path.exists(self._surface_gridff_path()) else None),
+            out_dir=out_dir,
+            mol_type_map=self._mol_type_map,
+            grid_alpha=1.5,
+            dt=float(self.sp_rdt.value()),
+            damp=0.01,
+            Fconv=1e-4,
+            nstep_max=max(20, int(self.sp_rsteps.value())),
+            out_stride=max(1, int(self.sp_rsteps.value() // 10)),
+            anchor_k=float(self.sp_springk.value()),
+        )
+        self.relaxed_scanner.prepare(anchor_z_above=max(1.0, float(self.sp_tz.value())), lateral_shift=(float(self.sp_tx.value()), float(self.sp_ty.value())), generate_grid=(not os.path.exists(self._surface_gridff_path()) if self._sub_file is not None else True))
+        self.mol_apos = self.relaxed_scanner.mol.apos.copy()
+        self.mol_enames = np.array(self.relaxed_scanner.mol.enames, dtype=object)
+        self.mol_bonds = find_bonds(self.mol_apos, self.mol_enames)
+        self.sub_apos = np.asarray(self.relaxed_scanner.sub.apos[:, :3], dtype=np.float32)
+        self.sub_enames = np.array(self.relaxed_scanner.sub.enames, dtype=object)
+        self.interactive_target = self.relaxed_scanner.get_anchor_position().copy()
+        self.lbl_int_anchor.setText(f'anchor: ({self.interactive_target[0]:.3f}, {self.interactive_target[1]:.3f}, {self.interactive_target[2]:.3f})')
+        self.interactive_world_mode = True
+        self._update_visuals()
+
+    def _toggle_interactive_relax(self):
+        if self.interactive_active:
+            self.interactive_timer.stop()
+            self.interactive_active = False
+            self.btn_int_run.setText('Run Interactive')
+            self.status.setText('Interactive GridFF stopped')
+            return
+        self._ensure_relaxed_scanner()
+        self.interactive_active = True
+        self.btn_int_run.setText('Stop Interactive')
+        self.interactive_timer.start(30)
+        self.status.setText('Interactive GridFF running')
+
+    def _interactive_tick(self):
+        if (not self.interactive_active) or (self.relaxed_scanner is None) or (self.interactive_target is None):
+            return
+        self.interactive_state = self.relaxed_scanner.step_relaxation(self.interactive_target, nsub=int(self.sp_int_nsub.value()), verbose=False)
+        self.mol_apos = np.asarray(self.interactive_state['pos'], dtype=np.float32)
+        self.lbl_int_anchor.setText(f'anchor: ({self.interactive_target[0]:.3f}, {self.interactive_target[1]:.3f}, {self.interactive_target[2]:.3f}) fmax={self.interactive_state["fmax"]:.3e}')
+        self._update_mol_visual()
+        self.canvas.update()
+
+    def _plot_interactive_xz(self):
+        self._ensure_relaxed_scanner()
+        dat = self.relaxed_scanner.get_gridff_xz_slice(plq=self._interactive_plq())
+        self.ax.clear()
+        if self._last_colorbar is not None:
+            self._last_colorbar.remove()
+            self._last_colorbar = None
+        im = self.ax.pcolormesh(dat['x_edges'], dat['z_edges'], dat['VTotal'].T, shading='auto', cmap='RdBu_r')
+        self.ax.set_xlabel('x (Å)', color='black')
+        self.ax.set_ylabel('z (Å)', color='black')
+        self.ax.set_title(f'GridFF XZ slice iy={dat["iy"]}', color='black')
+        self._last_colorbar = self.fig.colorbar(im, ax=self.ax, shrink=0.7)
+        self.fig_canvas.draw()
+
+    def keyPressEvent(self, event):
+        if self.interactive_active and (self.interactive_target is not None):
+            step = float(self.sp_int_step.value())
+            key = event.key()
+            if key == QtCore.Qt.Key_Left:
+                self.interactive_target[0] -= step
+            elif key == QtCore.Qt.Key_Right:
+                self.interactive_target[0] += step
+            elif key == QtCore.Qt.Key_Up:
+                self.interactive_target[1] += step
+            elif key == QtCore.Qt.Key_Down:
+                self.interactive_target[1] -= step
+            elif key == QtCore.Qt.Key_PageUp:
+                self.interactive_target[2] += step
+            elif key == QtCore.Qt.Key_PageDown:
+                self.interactive_target[2] -= step
+            else:
+                return super().keyPressEvent(event)
+            self.lbl_int_anchor.setText(f'anchor: ({self.interactive_target[0]:.3f}, {self.interactive_target[1]:.3f}, {self.interactive_target[2]:.3f})')
+            return
+        return super().keyPressEvent(event)
 
     # ================================================================
     #  Visuals
