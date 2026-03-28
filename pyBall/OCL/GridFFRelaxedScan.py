@@ -268,17 +268,24 @@ class GridFFRelaxedScan:
         vfac = np.float32(1.0 - self.damp)
         self.md.toGPU('MDparams', np.array([self.dt, 1e+6, vfac, 0.0], dtype=np.float32), byte_offset=0)
 
-    def relax_to_constraint(self, target_pos, verbose=False):
+    def relax_to_constraint(self, target_pos, verbose=False, batch_size=100):
         self.set_constraint(target_pos)
         hist = []
         pos = None
         F = None
-        for istep in range(1, self.nstep_max + 1):
-            self.md.run_cleanForceMMFFf4()
-            self.md.run_getNonBond_GridFF_Bspline_ex2()
-            self.md.run_getMMFFf4()
-            self.md.run_updateAtomsMMFFf4()
-            want = (istep == 1) or (istep == self.nstep_max) or ((istep % self.out_stride) == 0)
+        istep = 0
+        while istep < self.nstep_max:
+            # Run batch of OpenCL iterations
+            batch_end = min(istep + batch_size, self.nstep_max)
+            for _ in range(batch_size):
+                self.md.run_cleanForceMMFFf4()
+                self.md.run_getNonBond_GridFF_Bspline_ex2()
+                self.md.run_getMMFFf4()
+                self.md.run_updateAtomsMMFFf4()
+                istep += 1
+            
+            # Download and check after batch
+            want = (istep == batch_size) or (istep == self.nstep_max) or ((istep % self.out_stride) == 0)
             if want:
                 pos, F, E = download_state(self.md, self.mm.natoms, self.mm.nvecs)
                 fmag = np.sqrt(np.sum(F * F, axis=1))
