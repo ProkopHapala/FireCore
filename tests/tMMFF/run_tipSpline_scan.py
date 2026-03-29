@@ -30,20 +30,23 @@ def parse_args():
     parser.add_argument('--optimize',       type=int,   default=0, help='Optimize spline control points (1=yes, 0=no)')
     parser.add_argument('--opt-outdir',     type=str,   default='opt_tipSpline', help='Output directory for optimizer logs and best splines')
     parser.add_argument('--opt-attempts',   type=int,   default=100, help='Number of spline mutations (attempts)')
-    parser.add_argument('--target-xyz',     type=float, nargs=3, default=[5.0, 5.0, 10.0],  help='Target position for opposite atom (x y z) in Angstrom')
-    parser.add_argument('--opt-wpos',       type=float, default=1.0, help='Weight of position loss term')
-    parser.add_argument('--opt-wforce',     type=float, default=0.0, help='Weight of force loss term')
-    parser.add_argument('--opt-fsafe',      type=float, default=5.0, help='Safe force threshold on anchor (eV/A)')
-    parser.add_argument('--opt-temp0',      type=float, default=0.0, help='Initial temperature for simulated annealing')
-    parser.add_argument('--opt-cooling',         type=float, default=1.0, help='Cooling factor per attempt')
-    parser.add_argument('--opt-step-cooling',    type=float, default=1.0, help='Cooling factor per attempt')
-    parser.add_argument('--opt-step0',      type=float, default=5.0, help='Mutation step size scale (Angstrom)')
-    parser.add_argument('--opt-seed',       type=int,   default=45454, help='Random seed for optimization')
+    #parser.add_argument('--target-xyz',     type=float, nargs=3, default=[5.0, 5.0, 10.0],  help='Target position for opposite atom (x y z) in Angstrom')
+    parser.add_argument('--target-xyz',     type=float, nargs=3, default=[5.7, 5.4, 10.0],  help='Target position for opposite atom (x y z) in Angstrom')
+
+    parser.add_argument('--opt-wpos',         type=float, default=1.0, help='Weight of position loss term')
+    parser.add_argument('--opt-wforce',       type=float, default=0.2, help='Weight of force loss term')
+    parser.add_argument('--opt-fsafe',        type=float, default=1.0, help='Safe force threshold on anchor (eV/A)')
+    parser.add_argument('--opt-temp0',        type=float, default=0.0, help='Initial temperature for simulated annealing')
+    parser.add_argument('--opt-cooling',      type=float, default=1.0, help='Cooling factor per attempt')
+    parser.add_argument('--opt-step-cooling', type=float, default=0.997, help='Cooling factor per attempt')
+    parser.add_argument('--opt-step0',        type=float, default=15.0, help='Mutation step size scale (Angstrom)')
+    parser.add_argument('--opt-seed',         type=int,   default=45454, help='Random seed for optimization')
     parser.add_argument('--opt-plot-improvements', type=int, default=1, help='Plot trajectory for each improvement (1=yes, 0=no)')
     parser.add_argument('--opt-plot-all-trials', type=int, default=0, help='Plot trajectory for EVERY trial (1=yes, 0=no) - WARNING: many plots!')
 
     # Substrate and plotting parameters
-    parser.add_argument('--substrate-shift', type=float, nargs=3, default=[-5.0, -10.0, 2.5], help='Shift of substrate atoms (x y z) in Angstroms')
+    #default=[-11.0, -11.8, 2.5]
+    parser.add_argument('--substrate-shift', type=float, nargs=3, default=[-4.8, -10.8, 2.5], help='Shift of substrate atoms (x y z) in Angstroms')
     parser.add_argument('--plot-substrate', type=int, default=1, help='Plot substrate atoms (1=yes, 0=no)')
     parser.add_argument('--plot-molecule-atoms', type=int, default=0, help='Plot molecule atoms (1=yes, 0=no)')
     parser.add_argument('--plot-molecule-bonds', type=int, default=1, help='Plot molecule bonds (1=yes, 0=no)')
@@ -56,7 +59,7 @@ def parse_args():
     parser.add_argument('--flim',  type=float, default=1000.0, help='Force limit to prevent instabilities (eV/A)')
     
     # Molecule positioning
-    parser.add_argument('--shift', type=float, nargs=3, default=[-1.0, -1.0, 10.0],  help='Initial shift of molecule (x y z) in Angstroms')
+    parser.add_argument('--shift', type=float, nargs=3, default=[0.0, 0.0, 10.0],  help='Initial shift of molecule (x y z) in Angstroms')
     
     # Trajectory and output
     parser.add_argument('--trj',        type=str, default='trj_debug_relax.xyz',  help='Base name for trajectory output files')
@@ -151,11 +154,14 @@ mmff.init(
     surf_name= surf_name,
     bMMFF=bMMFF,
     bEpairs=bEpairs,
-    bUFF=False,
+    bUFF=False,  # Keep False for initial setup
     nPBC=(0,0,0),
     gridStep=0.1,
 )
 mmff.getBuffs()
+
+# Enable GridFF explicitly after initialization
+mmff.setSwitches( GridFF=1, NonBonded=-1, MMFF=1, SurfAtoms=1 )
 
 # DEBUG: Check if molecule is already scrambled in ffl.apos
 print("=== DEBUG: Checking ffl.apos right after initialization ===")
@@ -262,6 +268,79 @@ else:
     print(f"Check final configurations trajectory file: {trj_name}")
     print(f"It contains {nconf} final relaxed configurations")
 
+# Generate GridFF potential map for background
+def generate_gridff_potential_map(mmff_instance, z_height=10.0, step=0.5):
+    """Generate 2D map of gridFF potential at specified height"""
+    print("Generating GridFF potential map for background...")
+    
+    # Initialize GridFF properly
+    print("DEBUG: Initializing GridFF with makeGridFF...")
+    try:
+        substrate_path = "common_resources/Substrates/generated_rect/CaF2_6L_Ni3_rect_nx2_nz1_L2_top"
+        mmff_instance.makeGridFF(name=substrate_path, mode=6, bRefine=True)
+        print("DEBUG: GridFF initialized successfully!")
+    except Exception as e:
+        print(f"DEBUG: GridFF initialization failed: {e}")
+        return None, None, None
+    
+    # Set up PLQ parameters for oxygen atom (from PTCDA oxygen atoms)
+    PLQH = [9.720461, 0.704148, -0.200000, 0.000000]  # Oxygen from PTCDA
+    
+    # Create grid covering manipulation area + margin
+    x_range = (-5, 15)
+    y_range = (-5, 10)
+    
+    print(f"Creating GridFF map: X={x_range}, Y={y_range}, Z={z_height}, step={step}")
+    
+    # Create grid
+    x_points = np.arange(x_range[0], x_range[1] + step, step)
+    y_points = np.arange(y_range[0], y_range[1] + step, step)
+    X, Y = np.meshgrid(x_points, y_points)
+    
+    # Flatten for evaluation
+    n_points = len(X.flatten())
+    positions = np.zeros((n_points, 3))
+    positions[:, 0] = X.flatten()
+    positions[:, 1] = Y.flatten()
+    positions[:, 2] = z_height
+    
+    print(f"Evaluating GridFF potential on {len(x_points)}x{len(y_points)} grid ({n_points} points)")
+    
+    # Evaluate GridFF potential using mode 6 (Bspline)
+    FEout = mmff_instance.sampleSurf_new(positions, PLQH, mode=6, K=-1.0, Rdamp=1.0)
+    
+    # Extract energy (column 3) and reshape to grid
+    energies = FEout[:, 3].reshape(len(y_points), len(x_points))
+    
+    print(f"GridFF energy range: {np.min(energies):.3f} to {np.max(energies):.3f} eV")
+    print(f"Non-zero points: {np.count_nonzero(energies)}/{n_points}")
+    
+    # Save the data
+    np.savez('gridff_background.npz', X=X, Y=Y, energies=energies, x_range=x_range, y_range=y_range, z_height=z_height, step=step)
+    print("Saved GridFF background data to: gridff_background.npz")
+    
+    return X, Y, energies
+
+# Generate potential map if not optimizing (for testing)
+if not do_optimize:
+    try:
+        X_grid, Y_grid, energies_grid = generate_gridff_potential_map(mmff)
+        
+        # Quick test plot
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(10, 6))
+        im = ax.imshow(energies_grid,   extent=[X_grid[0,0], X_grid[0,-1], Y_grid[0,0], Y_grid[-1,0]],origin='lower', cmap='viridis', aspect='equal')
+        plt.colorbar(im, ax=ax, label='GridFF Potential (eV)')
+        ax.set_xlabel('X (Å)')
+        ax.set_ylabel('Y (Å)')
+        ax.set_title('GridFF Potential at 10Å Height')
+        plt.savefig('gridff_background_test.png', dpi=150, bbox_inches='tight')
+        print("Saved test plot to: gridff_background_test.png")
+        plt.close()
+        
+    except Exception as e:
+        print(f"Warning: Could not generate GridFF potential map: {e}")
+
 # Optional plotting
 if args.plot and nconf > 1:
     print("Generating plots...")
@@ -273,6 +352,19 @@ if args.plot and nconf > 1:
     import sys
     sys.path.append('../../')
     from pyBall import plotUtils
+    
+    # Try to load GridFF background data
+    gridff_data = None
+    try:
+        gridff_data = np.load('gridff_background.npz')
+        print("Loaded GridFF background data")
+    except FileNotFoundError:
+        print("GridFF background data not found, generating new map...")
+        try:
+            X_grid, Y_grid, energies_grid = generate_gridff_potential_map(mmff)
+            gridff_data = {'X': X_grid, 'Y': Y_grid, 'energies': energies_grid}
+        except Exception as e:
+            print(f"Could not generate GridFF map: {e}")
     
     # Get substrate atom positions if surface is loaded
     substrate_pos = None
@@ -325,12 +417,27 @@ if args.plot and nconf > 1:
     bonds = create_bonds(initial_pos)
     
     # Plot trajectories and forces
-    plt.figure(figsize=(12, 5))
+    plt.figure(figsize=(14, 6))
     
-    # Top view (xy)
+    # Top view (xy) with GridFF background
     plt.subplot(1, 2, 1)
-    plt.plot(APs[:, iaA, 0], APs[:, iaA, 1], 'r-', label=f'Anchor {iAnchor}', linewidth=2)
-    plt.plot(APs[:, iaB, 0], APs[:, iaB, 1], 'b-', label=f'Opposite {iAnchor-2}', linewidth=2)
+    
+    # Add GridFF background if available
+    if gridff_data is not None:
+        X_grid = gridff_data['X']
+        Y_grid = gridff_data['Y'] 
+        energies_grid = gridff_data['energies']
+        
+        # Plot GridFF as background
+        im = plt.imshow(energies_grid,  extent=[X_grid[0,0], X_grid[0,-1], Y_grid[0,0], Y_grid[-1,0]],origin='lower', cmap='viridis', aspect='equal', alpha=0.7)
+        
+        # Add colorbar for GridFF
+        cbar = plt.colorbar(im, label='GridFF Potential (eV)', shrink=0.8)
+        print("Added GridFF potential background")
+    
+    # Plot trajectories on top of GridFF
+    plt.plot(APs[:, iaA, 0], APs[:, iaA, 1], 'r-', label=f'Anchor {iAnchor}', linewidth=2, zorder=5)
+    plt.plot(APs[:, iaB, 0], APs[:, iaB, 1], 'b-', label=f'Opposite {iAnchor-2}', linewidth=2, zorder=5)
     
     # Add substrate atoms if available
     if substrate_pos is not None and plot_substrate:
@@ -374,11 +481,11 @@ if args.plot and nconf > 1:
             if np.any(ca_mask):
                 ca_sizes = ca_base_size * normalized_sizes[ca_mask]
                 plt.scatter(visible_pos[ca_mask, 0], visible_pos[ca_mask, 1], 
-                           c='magenta', s=ca_sizes, alpha=0.7, label='Ca atoms')
+                           c='magenta', s=ca_sizes, alpha=0.7, label='Ca atoms', zorder=3)
             if np.any(f_mask):
                 f_sizes = f_base_size * normalized_sizes[f_mask]
                 plt.scatter(visible_pos[f_mask, 0], visible_pos[f_mask, 1], 
-                           c='green', s=f_sizes, alpha=0.5, label='F atoms')
+                           c='green', s=f_sizes, alpha=0.5, label='F atoms', zorder=3)
             
             print(f"Showing {np.sum(visible_mask)} substrate atoms (top {height_cutoff:.1f}Å)")
     
@@ -386,7 +493,7 @@ if args.plot and nconf > 1:
     if plot_molecule_atoms:
         # Initial position (light gray)
         plotUtils.plotAtoms(initial_pos, colors='lightgray', sizes=30, axes=(0,1))
-        # Final position (black)
+        # Final position (black) 
         plotUtils.plotAtoms(final_pos, colors='black', sizes=40, axes=(0,1))
     
     if plot_molecule_bonds:
@@ -409,7 +516,7 @@ if args.plot and nconf > 1:
     
     plt.xlabel('x (Å)')
     plt.ylabel('y (Å)')
-    plt.title('Top View (xy)')
+    plt.title('Top View (xy) with GridFF Background')
     plt.legend()
     plt.axis('equal')
     

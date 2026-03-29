@@ -563,20 +563,20 @@ void sampleSurf_new( int n, double* ps_, double* FEout_, int mode, double* PLQH_
     double R2Q=RQ*RQ;
 
     printf( "sampleSurf_new() n=%i mode=%i PLQH(%g,%g,%g,%g) K=%g RQ=%g \n", n, mode, PLQd.x, PLQd.y, PLQd.z, PLQd.w, K, RQ  );
-    //W.gridFF.grid.printCell();
-    //printf( "sampleSurf_new() gff.shift0(%g,%g,%g) gff.pos0(%g,%g,%g)\n", W.gridFF.shift0.x, W.gridFF.shift0.y, W.gridFF.shift0.z, W.gridFF.grid.pos0.x, W.gridFF.grid.pos0.y, W.gridFF.grid.pos0.z );
-    //printf( "sampleSurf_new() gridN(%i,%i,%i) \n", W.gridFF.gridN.x, W.gridFF.gridN.y, W.gridFF.gridN.z );
-
+    W.gridFF.grid.printCell();
+    printf( "sampleSurf_new() gff.shift0(%g,%g,%g) gff.pos0(%g,%g,%g)\n", W.gridFF.shift0.x, W.gridFF.shift0.y, W.gridFF.shift0.z, W.gridFF.grid.pos0.x, W.gridFF.grid.pos0.y, W.gridFF.grid.pos0.z );
+    printf( "sampleSurf_new() gridN(%i,%i,%i) \n", W.gridFF.grid.n.x, W.gridFF.grid.n.y, W.gridFF.grid.n.z );
+    
     //PLQd=Quat4d{1.0,0.0,0.0,0.0};
-    // {
-    //     Vec3i ng = W.gridFF.grid.n;
-    //     Vec3d g0 = W.gridFF.grid.pos0;
-    //     Vec3d dg = Vec3d{ W.gridFF.grid.dCell.xx, W.gridFF.grid.dCell.yy, W.gridFF.grid.dCell.zz };
-    //     Quat4d C = PLQd;
-    //     Quat4i* xqs = W.gridFF.cubic_xqis;
-    //     printf("CPU sampleSurf_new() ng(%i,%i,%i) g0(%g,%g,%g) dg(%g,%g,%g) C(%g,%g,%g) \n", ng.x,ng.y,ng.z,   g0.x,g0.y,g0.z,   dg.x,dg.y,dg.z,   C.x,C.y,C.z );
-    //     printf("CPU sampleSurf_new() xqs[0](%i,%i,%i,%i) xqs[1](%i,%i,%i,%i) xqs[2](%i,%i,%i,%i) xqs[3](%i,%i,%i,%i)\n", xqs[0].x, xqs[0].y, xqs[0].z, xqs[0].w,   xqs[1].x, xqs[1].y, xqs[1].z, xqs[1].w,   xqs[2].x, xqs[2].y, xqs[2].z, xqs[2].w,  xqs[3].x, xqs[3].y, xqs[3].z, xqs[3].w   );
-    // }
+    {
+        Vec3i ng = W.gridFF.grid.n;
+        Vec3d g0 = W.gridFF.grid.pos0;
+        Vec3d dg = Vec3d{ W.gridFF.grid.dCell.xx, W.gridFF.grid.dCell.yy, W.gridFF.grid.dCell.zz };
+        Quat4d C = PLQd;
+        Quat4i* xqs = W.gridFF.cubic_xqis;
+        printf("CPU sampleSurf_new() ng(%i,%i,%i) g0(%g,%g,%g) dg(%g,%g,%g) C(%g,%g,%g,%g) \n", ng.x,ng.y,ng.z,   g0.x,g0.y,g0.z,   dg.x,dg.y,dg.z,   C.x,C.y,C.z,C.w );
+        printf("CPU sampleSurf_new() xqs[0](%i,%i,%i,%i) xqs[1](%i,%i,%i,%i) xqs[2](%i,%i,%i,%i) xqs[3](%i,%i,%i,%i)\n", xqs[0].x, xqs[0].y, xqs[0].z, xqs[0].w,   xqs[1].x, xqs[1].y, xqs[1].z, xqs[1].w,   xqs[2].x, xqs[2].y, xqs[2].z, xqs[2].w,  xqs[3].x, xqs[3].y, xqs[3].z, xqs[3].w   );
+    }
 
     { // debug
         for(int i=0; i<4; i++ ){ 

@@ -55,7 +55,7 @@ export OMP_NUM_THREADS
 
 #python3 run_tipSpline_scan.py
 
-python3 run_tipSpline_scan.py --optimize 1 --nconf 40 --opt-attempts 100 --opt-outdir opt_3d_target
+python3 run_tipSpline_scan.py --optimize 1 --nconf 100 --opt-attempts 1000 --opt-outdir opt_3d_target
 
 # Test without substrate
 #echo "=== Testing without substrate ==="
