@@ -2184,7 +2184,7 @@ double eval_no_omp(){
     __attribute__((hot))  
     int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double damping=-1.0, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
         //printf( "MolWorld_sp3::run_no_omp() niter_max %i dt %g Fconv %g Flim %g damping %g out{E,vv,ff,vf}(%li,%li,%li,%li) \n", niter_max, dt, Fconv, Flim, damping, (long)outE, (long)outF, (long)outV, (long)outVF );
-        printf( "MolWorld_sp3::run_no_omp() ffl.natoms=%i \n", ffl.natoms, bExclusion2 );
+        //printf( "MolWorld_sp3::run_no_omp() ffl.natoms=%i \n", ffl.natoms, bExclusion2 );
         nloop++;
         if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
         //if(verbosity>1)[[unlikely]]{ printf( "MolWorld_sp3::run_no_omp() niter_max %i dt %g Fconv %g Flim %g damping %g out{E,vv,ff,vf}(%li,%li,%li,%li) \n", niter_max, dt, Fconv, Flim, damping, (long)outE, (long)outF, (long)outV, (long)outVF ); }
@@ -2649,13 +2649,13 @@ void scan_manipulation( int nconf, const double* ts, double* Es, Vec3d* aforces,
     if(ffl.apos==0){ printf("ERROR in MolWorld_sp3::scan_manipulation() ffl.apos==NULL => exit()\n" ); exit(0); }
     if(ffl.pipos==0){ printf("ERROR in MolWorld_sp3::scan_manipulation() ffl.pipos==NULL => exit()\n" ); exit(0); }
 
-    printf("scan_manipulation(): preparing reference copy natoms=%i nnode=%i\n", ffl.natoms, ffl.nnode );
+    //printf("scan_manipulation(): preparing reference copy natoms=%i nnode=%i\n", ffl.natoms, ffl.nnode );
     std::vector<Vec3d> apos0(ffl.natoms);
     for(int i=0; i<ffl.natoms; i++){ apos0[i]=ffl.apos[i]; }
-    printf("scan_manipulation(): copy pipos nnode=%i\n", ffl.nnode );
+    //printf("scan_manipulation(): copy pipos nnode=%i\n", ffl.nnode );
     std::vector<Vec3d> pipos0(ffl.nnode);
     for(int i=0; i<ffl.nnode; i++){ pipos0[i]=ffl.pipos[i]; }
-    printf("scan_manipulation(): reference copy done\n" );
+    //printf("scan_manipulation(): reference copy done\n" );
 
     for(int i=0; i<nconf; i++){
         const double ti = ts ? ts[i] : -1.0;
@@ -2663,13 +2663,11 @@ void scan_manipulation( int nconf, const double* ts, double* Es, Vec3d* aforces,
         if(i==0){
             ffl.setFromRef( apos0.data(), pipos0.data(), Vec3dZero, Mat3dIdentity );
         }
-
-        printf("scan_manipulation[%i/%i] t=%g target(%g,%g,%g)\n", i, nconf, ti, tipSpline.pos.x, tipSpline.pos.y, tipSpline.pos.z );
-        
+        //printf("scan_manipulation[%i/%i] t=%g target(%g,%g,%g)\n", i, nconf, ti, tipSpline.pos.x, tipSpline.pos.y, tipSpline.pos.z );
         // DEBUG: Check positions before relaxation
-        printf("DEBUG: Before eval_no_omp - first atom: (%.3f, %.3f, %.3f)\n", ffl.apos[0].x, ffl.apos[0].y, ffl.apos[0].z);
+        //printf("DEBUG: Before eval_no_omp - first atom: (%.3f, %.3f, %.3f)\n", ffl.apos[0].x, ffl.apos[0].y, ffl.apos[0].z);
         double E0 = eval_no_omp();
-        printf("DEBUG: After eval_no_omp - first atom: (%.3f, %.3f, %.3f)\n", ffl.apos[0].x, ffl.apos[0].y, ffl.apos[0].z);
+        //printf("DEBUG: After eval_no_omp - first atom: (%.3f, %.3f, %.3f)\n", ffl.apos[0].x, ffl.apos[0].y, ffl.apos[0].z);
         
         // Temporarily disable step-by-step trajectory saving
         // TODO: Add parameter to control this from Python
@@ -2691,7 +2689,7 @@ void scan_manipulation( int nconf, const double* ts, double* Es, Vec3d* aforces,
         trj_fname = 0;
 
         double E1 = eval_no_omp();
-        printf("scan_manipulation[%i] E0=%g E1=%g niter=%i |F|=%g\n", i, E0, E1, niterdone, sqrt(ffl.cvf.z) );
+        //printf("scan_manipulation[%i] E0=%g E1=%g niter=%i |F|=%g\n", i, E0, E1, niterdone, sqrt(ffl.cvf.z) );
 
         if(Es){ Es[i]=E1; }
         if(aforces){ ffl.copyForcesTo( aforces + i*ffl.natoms ); }

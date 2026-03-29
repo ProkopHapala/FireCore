@@ -25,7 +25,23 @@ def parse_args():
     parser.add_argument('--spline',  type=str, default='tipSpline_x.dat',help='Spline path definition file')
     parser.add_argument('--anchor',  type=int, default=28, help='Anchor atom index (0-based)')
     parser.add_argument('--kanchor', type=float, default=20.0,help='Spring constant for anchor constraint (eV/A²)')
-    
+
+    # Trajectory optimization parameters
+    parser.add_argument('--optimize',       type=int,   default=0, help='Optimize spline control points (1=yes, 0=no)')
+    parser.add_argument('--opt-outdir',     type=str,   default='opt_tipSpline', help='Output directory for optimizer logs and best splines')
+    parser.add_argument('--opt-attempts',   type=int,   default=100, help='Number of spline mutations (attempts)')
+    parser.add_argument('--target-xyz',     type=float, nargs=3, default=[5.0, 5.0, 10.0],  help='Target position for opposite atom (x y z) in Angstrom')
+    parser.add_argument('--opt-wpos',       type=float, default=1.0, help='Weight of position loss term')
+    parser.add_argument('--opt-wforce',     type=float, default=0.0, help='Weight of force loss term')
+    parser.add_argument('--opt-fsafe',      type=float, default=5.0, help='Safe force threshold on anchor (eV/A)')
+    parser.add_argument('--opt-temp0',      type=float, default=0.0, help='Initial temperature for simulated annealing')
+    parser.add_argument('--opt-cooling',         type=float, default=1.0, help='Cooling factor per attempt')
+    parser.add_argument('--opt-step-cooling',    type=float, default=1.0, help='Cooling factor per attempt')
+    parser.add_argument('--opt-step0',      type=float, default=5.0, help='Mutation step size scale (Angstrom)')
+    parser.add_argument('--opt-seed',       type=int,   default=45454, help='Random seed for optimization')
+    parser.add_argument('--opt-plot-improvements', type=int, default=1, help='Plot trajectory for each improvement (1=yes, 0=no)')
+    parser.add_argument('--opt-plot-all-trials', type=int, default=0, help='Plot trajectory for EVERY trial (1=yes, 0=no) - WARNING: many plots!')
+
     # Substrate and plotting parameters
     parser.add_argument('--substrate-shift', type=float, nargs=3, default=[-5.0, -10.0, 2.5], help='Shift of substrate atoms (x y z) in Angstroms')
     parser.add_argument('--plot-substrate', type=int, default=1, help='Plot substrate atoms (1=yes, 0=no)')
@@ -40,7 +56,7 @@ def parse_args():
     parser.add_argument('--flim',  type=float, default=1000.0, help='Force limit to prevent instabilities (eV/A)')
     
     # Molecule positioning
-    parser.add_argument('--shift', type=float, nargs=3, default=[0.0, 0.0, 10.0],  help='Initial shift of molecule (x y z) in Angstroms')
+    parser.add_argument('--shift', type=float, nargs=3, default=[-1.0, -1.0, 10.0],  help='Initial shift of molecule (x y z) in Angstroms')
     
     # Trajectory and output
     parser.add_argument('--trj',        type=str, default='trj_debug_relax.xyz',  help='Base name for trajectory output files')
@@ -87,6 +103,21 @@ plot_substrate = bool(args.plot_substrate)
 plot_molecule_atoms = bool(args.plot_molecule_atoms)
 plot_molecule_bonds = bool(args.plot_molecule_bonds)
 plot_connectors = bool(args.plot_connectors)
+
+do_optimize = bool(args.optimize)
+opt_outdir = args.opt_outdir
+opt_attempts = args.opt_attempts
+opt_target = args.target_xyz
+opt_wpos = args.opt_wpos
+opt_wforce = args.opt_wforce
+opt_fsafe = args.opt_fsafe
+opt_temp0 = args.opt_temp0
+opt_cooling = args.opt_cooling
+opt_step_cooling = args.opt_step_cooling
+opt_step0 = args.opt_step0
+opt_seed = args.opt_seed
+opt_plot_improvements = bool(args.opt_plot_improvements)
+opt_plot_all_trials = bool(args.opt_plot_all_trials)
 
 # Clean only specific trajectory files we're writing to
 for f in [trj_name]:
@@ -148,6 +179,60 @@ if args.invert_coulomb:
 
 # DEBUG: Run spline scan with specified parameters
 ts = np.linspace(0, 1, nconf)  # Generate time points for spline
+
+if do_optimize:
+    if opt_target is None:
+        raise RuntimeError("--optimize=1 requires --opt-target x y z")
+    print("=== DEBUG: Starting spline optimization ===")
+    print(f"opt_outdir={opt_outdir} opt_attempts={opt_attempts} opt_target={opt_target}")
+    print(f"opt_wpos={opt_wpos} opt_wforce={opt_wforce} opt_fsafe={opt_fsafe}")
+    print(f"opt_temp0={opt_temp0} opt_cooling={opt_cooling} opt_step0={opt_step0} opt_seed={opt_seed}")
+    from TipSplineOptimizer import TipSplineSAOptimizer
+    opt = TipSplineSAOptimizer(
+        ia_anchor=iAnchor,
+        ia_opposite=27-1,
+        target_pos=opt_target,
+        w_pos=opt_wpos,
+        w_force=opt_wforce,
+        f_safe=opt_fsafe,
+        temp0=opt_temp0,
+        cooling=opt_cooling,
+        step0=opt_step0,
+        step_cooling=opt_step_cooling,
+        freeze_n_ends=3,
+        seed=opt_seed,
+    )
+
+    scan_kwargs = {
+        'iAnchor': iAnchor,
+        'Kanchor': Kanchor,
+        'trjName': None,
+        'nPBC': (0,0,0),
+        'niter_max': niter_max,
+        'dt': dt,
+        'Fconv': Fconv,
+        'Flim': Flim,
+    }
+    best_spline, best = opt.optimize(
+        mmff_instance=mmff,
+        ts=ts,
+        spline_init_fname=spline_file,
+        out_dir=opt_outdir,
+        n_attempts=opt_attempts,
+        scan_kwargs=scan_kwargs,
+        save_every_improvement=True,
+        plot_improvements=opt_plot_improvements,
+        plot_all_trials=opt_plot_all_trials,
+        bold_best=True,
+        substrate_shift=substrate_shift,
+        surface_name=surf_name,
+        plot_substrate=plot_substrate,
+        plot_molecule_atoms=plot_molecule_atoms,
+        plot_molecule_bonds=plot_molecule_bonds,
+        opt_target=opt_target,
+    )
+    print(f"=== DEBUG: Optimization DONE best_spline={best_spline} best_E={best['E']:.6g} best_attempt={best['attempt']} ===")
+    spline_file = best_spline
 
 print("=== DEBUG: Running spline scan ===")
 print(f"Initial anchor atom {iAnchor} position: ({mmff.apos[iAnchor,0]:.3f}, {mmff.apos[iAnchor,1]:.3f}, {mmff.apos[iAnchor,2]:.3f})")
