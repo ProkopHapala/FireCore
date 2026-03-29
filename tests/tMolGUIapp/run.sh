@@ -86,7 +86,7 @@ fi
 #./$name -x common_resources/xyz/uracil  -iParalel 1
 
 
-./$name -x DiTetracenoHelice_conf1.mol2 -iParalel 1   -dt 0.001  -Flim 1      -nPBC 1,1,0    
+#./$name -x DiTetracenoHelice_conf1.mol2 -iParalel 1   -dt 0.001  -Flim 1      -nPBC 1,1,0    
 #./$name -x DiTetracenoHelice_conf2.mol2 -iParalel 1  -dt 0.001  -Flim 1      -nPBC 1,1,0    
 #./$name -x DiTriptyceno_helicene_3a.mol2 -iParalel 1
 
@@ -248,10 +248,9 @@ fi
 
 
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L2 -lua test_add_mols.lua
-
-
-
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3          -nPBC 0,0,0
+
+
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0 
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaHole   -nPBC 0,0,0 -e -nPBC 2,2,0
@@ -260,6 +259,12 @@ fi
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaClHole -nPBC 0,0,0
 
 
+#./$name -x common_resources/xyz/PTCDA -g common_resources/CaF2_6L_Ni3_rect_nx2_nz1_L2_top -lua test_add_mols.lua
+#./$name -x common_resources/xyz/PTCDA -g common_resources/CaF2_6L_Ni3_rect_nx2_nz1_L2_top -nPBC 0,0,0
+./$name -x common_resources/xyz/PTCDA -g common_resources/Substrates/generated_rect/CaF2_6L_Ni3_rect_nx2_nz1_L2_top -nPBC 0,0,0 -shift 0.0,0.0,5.0 -plq_factors 1.0,1.0,-2.0,1.0 -tipSpline tipSpline.dat -tipAnchor 28,20.0
+
+# Pass through all command line arguments
+#./$name -x common_resources/xyz/PTCDA -g common_resources/Substrates/generated_rect/CaF2_6L_Ni3_rect_nx2_nz1_L2_top -nPBC 0,0,0 -shift 0.0,0.0,5.0 "$@"
 
 
 # ====== Polymers

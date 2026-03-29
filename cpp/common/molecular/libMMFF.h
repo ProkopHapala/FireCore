@@ -120,6 +120,7 @@ const char* getTypeName( int ia, bool fromFF){
 // ========= Manipulation with the molecule
 
 void shift_atoms_ax ( int n, int* selection, double* d                               ){ W.shift_atoms ( n, selection,*(Vec3d*)d);                     };
+void shift_atoms_all( double* d                                                     ){ W.shift_atoms (*(Vec3d*)d);                                         };
 void rotate_atoms_ax( int n, int* selection, double* p0, double* ax, double phi      ){ W.rotate_atoms( n, selection,*(Vec3d*)p0, *(Vec3d*)ax, phi ); };
 void shift_atoms    ( int n, int* selection, int ia0, int ia1, double l              ){ W.shift_atoms ( n, selection, ia0, ia1, l );                  };
 void rotate_atoms   ( int n, int* selection, int ia0, int iax0, int iax1, double phi ){ W.rotate_atoms( n, selection, ia0, iax0, iax1, phi );         };
@@ -151,6 +152,8 @@ void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi
 void scanAngleToAxis_ax( int n, int* selection, double r, double R, double* p0, double* ax, int nstep, double* angs, double* Es, const char* trjName ){
     W.scanAngleToAxis_ax( n, selection, r, R, *(Vec3d*)p0, *(Vec3d*)ax, nstep, angs, Es, trjName );
 }
+
+void scan_manipulation( int nconf, double* ts, const char* spline_fname, int iAnchor, double Kanchor, const char* trjName, int* nPBC, double* Es, double* aforces, double* aposs, double* fconstr, int niter_max, double dt, double Fconv, double Flim );
 
 // ========= Force-Field Component Sampling  
 

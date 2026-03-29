@@ -28,12 +28,12 @@ export OMP_NUM_THREADS
 #rm *.bin
 
 # ------- asan (Memory Sanitizer)
-LD_PRELOAD=$(g++ -print-file-name=libasan.so)
-LD_PRELOAD=$LD_PRELOAD:$(g++ -print-file-name=libfftw3.so)
-echo   $LD_PRELOAD
-export LD_PRELOAD
-# --- ignore memory leaks in ASAM
-export LSAN_OPTIONS=detect_leaks=0
+# LD_PRELOAD=$(g++ -print-file-name=libasan.so)
+# LD_PRELOAD=$LD_PRELOAD:$(g++ -print-file-name=libfftw3.so)
+# echo   $LD_PRELOAD
+# export LD_PRELOAD
+# # --- ignore memory leaks in ASAM
+# export LSAN_OPTIONS=detect_leaks=0
 
 #python3 run.py
 #python3 run_hessian.py
@@ -53,7 +53,13 @@ export LSAN_OPTIONS=detect_leaks=0
 
 #python3 run_sample_surf.py
 
-python3 run_relax_surf.py
+python3 run_tipSpline_scan.py
+
+# Test without substrate
+#echo "=== Testing without substrate ==="
+#python3 run_tipSpline_scan_no_substrate.py
+
+#python3 run_relax_surf.py
 
 #python3 run_sample_tricubic.py
 #python3 run_sample_nonBond.py

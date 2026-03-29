@@ -89,7 +89,7 @@ class MMFFsp3_loc : public NBFF { public:
     bool bTorsion   = false; // if true we compute torsion energy
     
     //                           c0     Kss    Ksp    c0_e
-    Quat4d default_NeighParams{ -1.0,   1.0,   1.0,   -1.0 }; // default parameters for neighbors, c0 is cosine of equilibrium angle, Kss is bond stiffness, Ksp is pi-sigma stiffness, c0_e is cos of equilibrium angle for pi-electron interaction
+    Quat4d default_NeighParams{ -1.0,   1.0,   10.0,   -1.0 }; // default parameters for neighbors, c0 is cosine of equilibrium angle, Kss is bond stiffness, Ksp is pi-sigma stiffness, c0_e is cos of equilibrium angle for pi-electron interaction
 
     // Dynamical Varaibles;
     //Vec3d *   apos=0;   // [natom]

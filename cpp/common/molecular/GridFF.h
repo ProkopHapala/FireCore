@@ -127,6 +127,7 @@ class GridFF : public NBFF{ public:
     //Quat4f *FFtot    = 0; // total FF is not used since each atom-type has different linear combination
 
     Quat4d  FEscale{0.0,0.0,0.0,1.0};
+    Quat4d  plq_factors{1.0, 1.0, 1.0, 1.0}; // Pauli, London, Coulomb, Morse factors
     Vec3i   gridN{0,0,0};
     Quat4d   *VPLQH   = 0;
     double   *V_debug = 0;
@@ -353,6 +354,13 @@ inline float addForce_HHermit( const Vec3d& p, const Quat4d& PLQ, Vec3d& f, bool
 
 __attribute__((hot))  
 inline Quat4d getForce_Bspline( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) const {
+    // Apply PLQ modification factors to the physics
+    Quat4d PLQH_modified = PLQH;
+    PLQH_modified.x *= plq_factors.x; // Pauli factor
+    PLQH_modified.y *= plq_factors.y; // London factor  
+    PLQH_modified.z *= plq_factors.z; // Coulomb factor
+    PLQH_modified.w *= plq_factors.w; // Morse factor
+    
     //printf( "GridFF::getForce_Bspline() p(%8.4f,%8.4f,%8.4f) PLQH(%8.4f,%8.4f,%8.4f,%8.4f)\n", p.x,p.y,p.z, PLQH.x,PLQH.y,PLQH.z,PLQH.w );
     Vec3d t;
     //p.sub(shift0);
@@ -362,7 +370,7 @@ inline Quat4d getForce_Bspline( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) c
 
     //Quat4d fe = Quat4dZero;
     
-    Quat4d fe = Bspline::fe3d_pbc_comb3( t, grid.n, Bspline_PLQ, PLQH.f, cubic_xqis, cubic_yqis );
+    Quat4d fe = Bspline::fe3d_pbc_comb3( t, grid.n, Bspline_PLQ, PLQH_modified.f, cubic_xqis, cubic_yqis );
 
     // Detailed GridFF debug prints for CPU (only for atom 1 to match GPU debug)
     if(idebug != 0 && id_DBG == 1){
@@ -1668,6 +1676,7 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                     //_realloc( Bspline_PLQ, npoint*3 );
                     NumpyFile npy(fnames[0]);
                     npy.print();
+                    printf( "GridFF::tryLoad_new() LOADED: shape[%i,%i,%i,%i] dtype='%s'\n", npy.shape[0], npy.shape[1], npy.shape[2], npy.shape[3], npy.dtype );
                     Bspline_PLQ = (Vec3d*)npy.data;
                     done=true;
                 } else if( fileExist( fnames[1] ) ){

@@ -61,6 +61,8 @@ static MMFFparams* params_glob;
 
 #include "ProjectiveDynamics_d.h"
 
+#include "Manipulation.h"
+
 //#include "debugAllocator.h"
 
 
@@ -86,7 +88,10 @@ class MolWorld_sp3 : public SolverInterface { public:
     //const char* surflvs_name ="surf.lvs";
     const char* smile_name   = 0;
     const char* constr_name  = 0;
-    Vec3i nMulPBC  = Vec3iZero; 
+    Vec3i nMulPBC  = Vec3iZero;
+    
+    // Initial molecule shift
+    Vec3d initMolShift = Vec3dZero; 
 
     //const char* trj_fname    = "trj.xyz";
     const char* trj_fname    = 0;
@@ -286,6 +291,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     double Kpick  = -2.0;
     double QEpair = -0.2;
     //int nEp=0;    // number of electron pairs
+
+    SplineConstraintManager tipSpline;
 
     inline void setSurfFlatPlane( const Vec3d& pos0, const Vec3d& normal ){
         const double n2 = normal.norm2();
@@ -1350,6 +1357,14 @@ void printPBCshifts(){
         builder.printAtoms();
         builder.printBonds();
         builder.printAtomConfs();
+        
+        // Apply initial molecule shift if specified
+        if(initMolShift.x != 0.0 || initMolShift.y != 0.0 || initMolShift.z != 0.0){
+            printf( "Applying initial molecule shift (%g,%g,%g) \n", initMolShift.x, initMolShift.y, initMolShift.z );
+            for(int i=ia0; i<builder.atoms.size(); i++){
+                builder.atoms[i].pos.add(initMolShift);
+            }
+        }
         //
         //printf( "buildMolecule_xyz: nMulPBC(%i,%i,%i) \n",nMulPBC.x,nMulPBC.y,nMulPBC.z  );
         //if( nMulPBC    .totprod()>1 ){ PBC_multiply    ( nMulPBC, ifrag ); };
@@ -1467,6 +1482,7 @@ void printPBCshifts(){
                     const Vec3d fs = getForceSpringRay( p, pick_hray, pick_ray0,  Kpick ); 
                     f.add( fs );
                 }
+                tipSpline.addAnchorForce( ia, p, f );
                 
                 return E;
             };
@@ -1860,6 +1876,8 @@ bGridFF=false;
                     ffl.fapos[ia].add( f );
                 }
 
+                tipSpline.addAnchorForce( ia, ffl.apos[ia], ffl.fapos[ia] );
+
                 if(bConstrZ){
                     springbound( ffl.apos[ia].z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, ffl.fapos[ia].z );
                 }
@@ -2114,7 +2132,7 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
             double titer =  ( t*1e+6/nitr );
             if( (time_per_iter>(titer*2))||(time_per_iter<(titer*0.5)) ) time_per_iter=titer;
             time_per_iter = time_per_iter*(1-c_smooth) + titer*c_smooth;
-            printf( "MolWorld_sp3::MDloop()  (bUFF=%i,iParalel=%i,bSurfAtoms=%i,bGridFF=%i,GridFF.mode=%i,GridFF.npbc=%i,npbc=%i,bPBC=%i,bNonBonded=%i,bNonBondNeighs=%i,bExclusion2=%i,bSubtractBondNonBond=%i,bSubtractAngleNonBond=%i,go.bExploring=%i,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter] tick2second=%g)\n", bUFF,iParalel,bSurfAtoms,bGridFF,(int)gridFF.mode,gridFF.npbc,npbc,bPBC,bNonBonded,bNonBondNeighs,bExclusion2,ffl.bSubtractBondNonBond,ffl.bSubtractAngleNonBond,go.bExploring,dt_default,nitr, t*1e+3,nitr, time_per_iter, tick2second );
+            //printf( "MolWorld_sp3::MDloop()  (bUFF=%i,iParalel=%i,bSurfAtoms=%i,bGridFF=%i,GridFF.mode=%i,GridFF.npbc=%i,npbc=%i,bPBC=%i,bNonBonded=%i,bNonBondNeighs=%i,bExclusion2=%i,bSubtractBondNonBond=%i,bSubtractAngleNonBond=%i,go.bExploring=%i,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter] tick2second=%g)\n", bUFF,iParalel,bSurfAtoms,bGridFF,(int)gridFF.mode,gridFF.npbc,npbc,bPBC,bNonBonded,bNonBondNeighs,bExclusion2,ffl.bSubtractBondNonBond,ffl.bSubtractAngleNonBond,go.bExploring,dt_default,nitr, t*1e+3,nitr, time_per_iter, tick2second );
             //printf( "MolWorld_sp3::MDloop()  (bUFF=%i,iParalel=%i,bSurfAtoms=%i,bGridFF=%i,GridFF.mode=%i,GridFF.npbc=%i,npbc=%i,bPBC=%i,bNonBonded=%i,bNonBondNeighs=%i,bExclusion2=%i, bSubtractBondNonBond go.bExploring=%i,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter] tick2second=%g)\n", bUFF,iParalel,bSurfAtoms,bGridFF,(int)gridFF.mode,gridFF.npbc,npbc,bPBC,bNonBonded,bNonBondNeighs,bExclusion2,go.bExploring,dt_default,nitr, t*1e+3,nitr, time_per_iter, tick2second );
         }
 
@@ -2263,6 +2281,7 @@ double eval_no_omp(){
                     const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
                     ffl.fapos[ia].add( f );
                 }
+                tipSpline.addAnchorForce( ia, ffl.apos[ia], ffl.fapos[ia] );
             }
             // ---- assembling
             for(int ia=0; ia<ffl.natoms; ia++){
@@ -2464,6 +2483,7 @@ double eval_no_omp(){
                     const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
                     ffl.fapos[ia].add( f );
                 }
+                tipSpline.addAnchorForce( ia, ffl.apos[ia], ffl.fapos[ia] );
             }
             // if(ffl.bTorsion){
             //     #pragma omp for reduction(+:E)
@@ -2618,6 +2638,80 @@ void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforc
     }
 }
 
+void scan_manipulation( int nconf, const double* ts, double* Es, Vec3d* aforces, Vec3d* aposs, Vec3d* fconstr, const char* trjName, Vec3i nPBC, int niter_max, double dt, double Fconv=1e-6, double Flim=1000 ){
+    printf("MolWorld_sp3::scan_manipulation(nconf=%i) @ts=%li @Es=%li @aforces=%li @aposs=%li @fconstr=%li trjName=%s nPBC(%i,%i,%i)\n",
+        nconf, (long)ts, (long)Es, (long)aforces, (long)aposs, (long)fconstr, trjName?trjName:"NULL", nPBC.x,nPBC.y,nPBC.z
+    );
+    if(!tipSpline.bActive){ printf("ERROR in MolWorld_sp3::scan_manipulation() tipSpline.bActive==false => exit()\n"); exit(0); }
+    if(tipSpline.iAnchor<0){ printf("ERROR in MolWorld_sp3::scan_manipulation() tipSpline.iAnchor(%i)<0 => exit()\n", tipSpline.iAnchor ); exit(0); }
+    if(ffl.natoms<=0){ printf("ERROR in MolWorld_sp3::scan_manipulation() ffl.natoms(%i)<=0 => exit()\n", ffl.natoms ); exit(0); }
+    if(ffl.nnode <=0){ printf("ERROR in MolWorld_sp3::scan_manipulation() ffl.nnode(%i)<=0 => exit()\n", ffl.nnode  ); exit(0); }
+    if(ffl.apos==0){ printf("ERROR in MolWorld_sp3::scan_manipulation() ffl.apos==NULL => exit()\n" ); exit(0); }
+    if(ffl.pipos==0){ printf("ERROR in MolWorld_sp3::scan_manipulation() ffl.pipos==NULL => exit()\n" ); exit(0); }
+
+    printf("scan_manipulation(): preparing reference copy natoms=%i nnode=%i\n", ffl.natoms, ffl.nnode );
+    std::vector<Vec3d> apos0(ffl.natoms);
+    for(int i=0; i<ffl.natoms; i++){ apos0[i]=ffl.apos[i]; }
+    printf("scan_manipulation(): copy pipos nnode=%i\n", ffl.nnode );
+    std::vector<Vec3d> pipos0(ffl.nnode);
+    for(int i=0; i<ffl.nnode; i++){ pipos0[i]=ffl.pipos[i]; }
+    printf("scan_manipulation(): reference copy done\n" );
+
+    for(int i=0; i<nconf; i++){
+        const double ti = ts ? ts[i] : -1.0;
+        if(ts){ tipSpline.setT( ti ); tipSpline.updatePos(); }
+        if(i==0){
+            ffl.setFromRef( apos0.data(), pipos0.data(), Vec3dZero, Mat3dIdentity );
+        }
+
+        printf("scan_manipulation[%i/%i] t=%g target(%g,%g,%g)\n", i, nconf, ti, tipSpline.pos.x, tipSpline.pos.y, tipSpline.pos.z );
+        
+        // DEBUG: Check positions before relaxation
+        printf("DEBUG: Before eval_no_omp - first atom: (%.3f, %.3f, %.3f)\n", ffl.apos[0].x, ffl.apos[0].y, ffl.apos[0].z);
+        double E0 = eval_no_omp();
+        printf("DEBUG: After eval_no_omp - first atom: (%.3f, %.3f, %.3f)\n", ffl.apos[0].x, ffl.apos[0].y, ffl.apos[0].z);
+        
+        // Temporarily disable step-by-step trajectory saving
+        // TODO: Add parameter to control this from Python
+        /*
+        // Set trajectory name using proper mechanism
+        if(trjName && (trjName[0]!=0)){
+            char step_trj_name[1024];
+            sprintf(step_trj_name, "%s_steps.xyz", trjName);
+            trj_fname = step_trj_name;  // Use class member
+            savePerNsteps = 1;         // Save every step
+            nPBC_save = nPBC;          // Set PBC for saving
+            printf("DEBUG: Setting trj_fname='%s' savePerNsteps=%i\n", trj_fname, savePerNsteps);
+        }
+        */
+        
+        int niterdone = run_no_omp( niter_max, dt, Fconv, Flim, 1000.0, 0, 0, 0, 0 );
+        
+        // Clear trajectory name
+        trj_fname = 0;
+
+        double E1 = eval_no_omp();
+        printf("scan_manipulation[%i] E0=%g E1=%g niter=%i |F|=%g\n", i, E0, E1, niterdone, sqrt(ffl.cvf.z) );
+
+        if(Es){ Es[i]=E1; }
+        if(aforces){ ffl.copyForcesTo( aforces + i*ffl.natoms ); }
+        if(aposs  ){ ffl.copyPosTo   ( aposs   + i*ffl.natoms ); }
+        if(fconstr){
+            const Vec3d ap = ffl.apos[tipSpline.iAnchor];
+            Vec3d fc = tipSpline.pos - ap;
+            fc.mul( tipSpline.Kanchor );
+            fconstr[i] = fc;
+        }
+
+        if(trjName && (trjName[0]!=0)){
+            char str_tmp[1024];
+            Vec3d fc = fconstr ? fconstr[i] : Vec3dZero;
+            sprintf(str_tmp,"# %i t %g E %g |F| %g iAnchor %i K %g Fconstr(%g,%g,%g)", i, ti, E1, sqrt(ffl.cvf.z), tipSpline.iAnchor, tipSpline.Kanchor, fc.x,fc.y,fc.z );
+            saveXYZ( trjName, str_tmp, false, (i==0)?"w":"a", nPBC );
+        }
+    }
+}
+
 // void makeGridFF( bool bSaveDebugXSFs=false, Vec3i nPBC={1,1,0} ) {
 //     gridFF.bindSystem(surf.natoms, 0, surf.apos, surf.REQs );
 //     //if(verbosity>1)
@@ -2675,7 +2769,12 @@ int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=fa
     char str_tmp[1024];
     if(bPBC){ sprintf( str_tmp, "lvs %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f    %8.3f %8.3f %8.3f %s", ffl.lvec.a.x, ffl.lvec.a.y, ffl.lvec.a.z, ffl.lvec.b.x, ffl.lvec.b.y, ffl.lvec.b.z, ffl.lvec.c.x, ffl.lvec.c.y, ffl.lvec.c.z, comment ); }
     else    { sprintf( str_tmp, "%s", comment ); }
-    return params.saveXYZ( fname, (bNodeOnly ? ffl.nnode : ffl.natoms) , nbmol.atypes, nbmol.apos, str_tmp, nbmol.REQs, mode, true, nPBC, ffl.lvec ); 
+
+    //return params.saveXYZ( fname, (bNodeOnly ? ffl.nnode : ffl.natoms) , nbmol.atypes, nbmol.apos, str_tmp, nbmol.REQs, mode, true, nPBC, ffl.lvec ); 
+    int natoms_save = (bNodeOnly ? ffl.nnode : ffl.natoms);
+    // Use nPBC=(1,1,1) for writing to avoid zero atom count when simulation uses nPBC=(0,0,0)
+    Vec3i nPBC_write = (nPBC.totprod() == 0) ? Vec3i{1,1,1} : nPBC;
+    return params.saveXYZ( fname, natoms_save, ffl.atypes, ffl.apos, str_tmp, ffl.REQs, mode, true, nPBC_write, ffl.lvec ); 
 }
     //int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false){ return params.saveXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , ff.atype, ff.apos, comment, nbmol.REQs ); }
     //int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=false){ return params.saveXYZ( fname, (bNodeOnly ? ff.nnode : ff.natoms) , nbmol.atypes, nbmol.apos, comment, nbmol.REQs ); }

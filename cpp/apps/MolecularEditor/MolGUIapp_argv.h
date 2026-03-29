@@ -20,6 +20,31 @@
 	funcs["-s"]={1,[&](const char** ss){ W->smile_name=ss[0]; }}; // molecule as SMILEs
 	funcs["-x"]={1,[&](const char** ss){ W->xyz_name  =ss[0]; }}; // molecule as .xyz
 	funcs["-g"]={1,[&](const char** ss){ W->surf_name =ss[0]; }}; // substrate as .xyz
+	funcs["-tipSpline"]={1,[&](const char** ss){ 
+		printf("ARG -tipSpline `%s`\n", ss[0]);
+		W->tipSpline.loadDat(ss[0]);
+		W->tipSpline.bActive=true;
+	}};
+	funcs["-tipAnchor"]={1,[&](const char** ss){ 
+		int ia=-1; double K=10.0; 
+		int nret = sscanf(ss[0],"%i,%lf", &ia, &K);
+		if(nret<1){ printf("ERROR in -tipAnchor expects ia[,K] got `%s` => exit()\n", ss[0]); exit(0); }
+		printf("ARG -tipAnchor ia=%i K=%g\n", ia, K);
+		W->tipSpline.setAnchor(ia);
+		W->tipSpline.Kanchor=K;
+		W->tipSpline.bActive=true;
+        app->splineGUI.bEdit=true;
+	}};
+	funcs["-shift"]={1,[&](const char** ss){ 
+		Vec3d shift; 
+		int nret = sscanf(ss[0],"%lf,%lf,%lf", &shift.x, &shift.y, &shift.z); 
+		if(nret==3){ 
+			printf("ARG -shift molecule by (%g,%g,%g)\n", shift.x, shift.y, shift.z); 
+			W->initMolShift = shift; 
+		}else{ 
+			printf("ERROR in -shift expects x,y,z got `%s` => exit()\n", ss[0]); exit(0); 
+		}
+	}}; // shift molecule position
 
 	funcs["-surfFlatPlane"]={1,[&](const char** ss){ Vec3d p0,n; int nret=sscanf(ss[0],"%lf,%lf,%lf,%lf,%lf,%lf",&p0.x,&p0.y,&p0.z,&n.x,&n.y,&n.z); if(nret!=6){ printf("ERROR in -surfFlatPlane expects x,y,z,nx,ny,nz got `%s` => exit()\n", ss[0] ); exit(0); } W->setSurfFlatPlane(p0,n); }};
 	funcs["-surfFlat"]={1,[&](const char** ss){ int mode=0; double z0=1.0,eps=1.0,K=1.6; int nret=sscanf(ss[0],"%i,%lf,%lf,%lf",&mode,&z0,&eps,&K); if(nret<3){ printf("ERROR in -surfFlat expects mode,z0,eps[,K] got `%s` => exit()\n", ss[0] ); exit(0); } Quat4d REQ{z0,eps,0.0,0.0}; W->setSurfFlatParams(mode, REQ, K); }};
@@ -71,9 +96,29 @@
     	funcs["-gridffmode"]={1,[&](const char** ss){ sscanf( ss[0],"%i", (int*)&(W->gridFF.mode) );   printf( "-griffmode=%i ss(%s) \n", (int)W->gridFF.mode  );    }};
     funcs["-nogridff"]={0,[&](const char** ss){ W->bGridFF=false; }}; // AutoCharge
     funcs["-group"]={3,[&](const char** ss){  }};
-    funcs["-shift"]={1,[&](const char** ss){ }};
+    funcs["-shift"]={1,[&](const char** ss){ 
+		Vec3d shift; 
+		int nret = sscanf(ss[0],"%lf,%lf,%lf", &shift.x, &shift.y, &shift.z); 
+		if(nret==3){ 
+			printf("ARG -shift molecule by (%g,%g,%g)\n", shift.x, shift.y, shift.z); 
+			W->initMolShift = shift; 
+		}else{ 
+			printf("ERROR in -shift expects x,y,z got `%s` => exit()\n", ss[0]); exit(0); 
+		}
+	}}; // shift molecule position
 
     funcs["-nPBC"]={1,[&](const char** ss){ sscanf( ss[0],"%i,%i,%i", &(W->nPBC.x),&(W->nPBC.y),&(W->nPBC.z) ); }};
+
+    funcs["-plq_factors"]={1,[&](const char** ss){ 
+        double fP, fL, fQ, fM;
+        int nret = sscanf(ss[0],"%lf,%lf,%lf,%lf", &fP, &fL, &fQ, &fM); 
+        if(nret==4){ 
+            printf("ARG -plq_factors Pauli=%g London=%g Coulomb=%g Morse=%g\n", fP, fL, fQ, fM); 
+            W->gridFF.plq_factors = Quat4d{fP, fL, fQ, fM}; 
+        }else{ 
+            printf("ERROR in -plq_factors expects 4 factors (Pauli,London,Coulomb,Morse) got `%s` => exit()\n", ss[0]); exit(0); 
+        }
+    }}; // PLQ modification factors
 
     funcs["-surfFlatPlane"]={1,[&](const char** ss){ Vec3d p0,n; int nret=sscanf(ss[0],"%lf,%lf,%lf,%lf,%lf,%lf",&p0.x,&p0.y,&p0.z,&n.x,&n.y,&n.z); if(nret!=6){ printf("ERROR in -surfFlatPlane expects x,y,z,nx,ny,nz got `%s` => exit()\n", ss[0] ); exit(0); } W->setSurfFlatPlane(p0,n); }};
     funcs["-surfFlatParams"]={3,[&](const char** ss){ int mode=0; double z0=1.0,eps=1.0,K=1.6; int nret=sscanf(ss[0],"%i,%lf,%lf,%lf",&mode,&z0,&eps,&K); if(nret<3){ printf("ERROR in -surfFlat expects mode,z0,eps[,K] got `%s` => exit()\n", ss[0] ); exit(0); } Quat4d REQ{z0,eps,0.0,0.0}; W->setSurfFlatParams(mode, REQ, K); }};

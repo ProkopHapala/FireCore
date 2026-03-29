@@ -1091,7 +1091,7 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
     }
 
     void drawScalarField( Vec2i ns, const Quat4f* ps,const  float* data, int pitch, int offset, double vmin, double vmax, const uint32_t * colors, int ncol ){
-        printf( " Draw3D::drawScalarField() ns(%i,%i) vrange(%g,%g) @ps=%li @data=%li @colors=%li ncol=%i pitch=%i offset=%i \n", ns.x, ns.y, vmin, vmax, (long)ps, (long)data, (long)colors, ncol, pitch, offset );
+        //printf( " Draw3D::drawScalarField() ns(%i,%i) vrange(%g,%g) @ps=%li @data=%li @colors=%li ncol=%i pitch=%i offset=%i \n", ns.x, ns.y, vmin, vmax, (long)ps, (long)data, (long)colors, ncol, pitch, offset );
         double z0  = 1.5;
         double dz0 = 0.1;
         double clsc = 1./(vmax-vmin);

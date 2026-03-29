@@ -1201,6 +1201,23 @@ def scan(poss, rots=None, Es=None, aforces=None, aposs=None,  bF=False,bP=False,
     lib.scan( nconf, _np_as(poss,c_double_p), _np_as(rots,c_double_p), _np_as(Es,c_double_p), _np_as(aforces,c_double_p), _np_as(aposs,c_double_p), omp, bRelax, niter_max, dt, Fconv, Flim )
     return Es, aforces, aposs
 
+# void scan_manipulation( int nconf, double* ts, const char* spline_fname, int iAnchor, double Kanchor, const char* trjName, int* nPBC,
+#                         double* Es, double* aforces, double* aposs, double* fconstr, int niter_max, double dt, double Fconv, double Flim )
+lib.scan_manipulation.argtypes = [ c_int, c_double_p, c_char_p, c_int, c_double, c_char_p, c_int_p, c_double_p, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_double ]
+lib.scan_manipulation.restype  = None
+def scan_manipulation( ts, spline_fname, iAnchor, Kanchor, trjName=None, nPBC=(1,1,1), Es=None, aforces=None, aposs=None, fconstr=None, niter_max=10000, dt=0.05, Fconv=1e-5, Flim=100.0 ):
+    ts = np.ascontiguousarray(ts, dtype=np.float64)
+    nconf = len(ts)
+    if Es is None:       Es       = np.zeros( nconf, dtype=np.float64 )
+    if aforces is None:  aforces  = np.zeros( (nconf,natoms,3), dtype=np.float64 )
+    if aposs   is None:  aposs    = np.zeros( (nconf,natoms,3), dtype=np.float64 )
+    if fconstr is None:  fconstr  = np.zeros( (nconf,3),        dtype=np.float64 )
+    nPBC = np.array(nPBC, dtype=np.int32)
+    lib.scan_manipulation( nconf, _np_as(ts,c_double_p), cstr(spline_fname), int(iAnchor), float(Kanchor), cstr(trjName), _np_as(nPBC,c_int_p),
+                           _np_as(Es,c_double_p), _np_as(aforces,c_double_p), _np_as(aposs,c_double_p), _np_as(fconstr,c_double_p),
+                           int(niter_max), float(dt), float(Fconv), float(Flim) )
+    return Es, aforces, aposs, fconstr
+
 # int getHessian3x3( int n_atoms, int* inds, double* out_hessians, double dx, bool bDiag )
 lib.getHessian3x3.argtypes = [c_int, c_int_p, c_double_p, c_double, c_bool]
 lib.getHessian3x3.restype  = None
@@ -1283,13 +1300,20 @@ def substituteMolecule(fname, ib, ipivot, up=(0,0,1), bSwapBond=False):
 #void shift_atoms_ax( int n, int* sel, double* d                  )
 lib.shift_atoms_ax.argtypes  = [c_int, c_int_p, c_double_p]
 lib.shift_atoms_ax.restype   =  None
+#void shift_atoms_all( double* d                                   )
+lib.shift_atoms_all.argtypes = [c_double_p]
+lib.shift_atoms_all.restype  =  None
 def shift_atoms_ax(d, sel=None):
-    n=0
-    if sel is not None:
+    if sel is None:
+        # Shift all atoms - call the all-atom version
+        if d is not None: d=np.array(d)
+        return lib.shift_atoms_all(_np_as(d,c_double_p))
+    else:
+        # Shift selected atoms only
         n=len(sel)
         sel=np.array(sel,np.int32)
-    if d is not None: d=np.array(d)
-    return lib.shift_atoms_ax(n, _np_as(sel,c_int_p), _np_as(d,c_double_p))
+        if d is not None: d=np.array(d)
+        return lib.shift_atoms_ax(n, _np_as(sel,c_int_p), _np_as(d,c_double_p))
 
 #void shift_atoms( int n, int* sel, int ia0, int ia1, double l )
 lib.shift_atoms.argtypes  = [c_int, c_int_p, c_int, c_int, c_double]

@@ -4,6 +4,11 @@
 #include "AtomicConfiguration.h"
 #include "molecular_utils.h"
 
+// Forward declarations for GridFF visualization functions
+class GridFF;
+void drawGridFFSlice( const GridFF& gff, double z_level, Quat4d PLQ, double vmin=-1.0, double vmax=1.0, const uint32_t * colors=&Draw::colors_rainbow[0], int ncol=Draw::ncolors );
+void drawGridFFSliceAuto( const GridFF& gff, double z_level, Quat4d PLQ, const uint32_t * colors=&Draw::colors_rainbow[0], int ncol=Draw::ncolors );
+
 void colorRB( float f ){ glColor3f( 0.5+f, 0.5, 0.5-f ); }
 //void colorRBH( float f, float h ){ glColor3f( 0.5+f, 0.5+h, 0.5-f ); }
 void colorRBH( float f, float h ){ glColor3f( 0.5+f+h, 0.5+h, 0.5-f+h ); }
@@ -230,10 +235,54 @@ int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double 
 
 int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d PLQ, double sclr, bool bErrNan=false ){
     printf( "renderSubstrate_new() gff.mode=%i @gff.Bspline_PLQ=%li \n", gff.mode, (long)gff.Bspline_PLQ );
+    printf( "renderSubstrate_new() zrange(%g,%g) isoval=%g PLQ{%g,%g,%g,%g} sclr=%g \n", zrange.x, zrange.y, isoval, PLQ.x, PLQ.y, PLQ.z, PLQ.w, sclr );
     Quat4d PL{PLQ.x,PLQ.y,0.0,0.0};
     Quat4d Q {0.0,0.0,PLQ.y,0.0};
     Vec3i gn = gff.grid.n;
     Mat3d dCell = gff.grid.dCell;
+    printf( "renderSubstrate_new() grid.n(%i,%i,%i) dCell.a(%g,%g,%g) dCell.b(%g,%g,%g) \n", gn.x, gn.y, gn.z, dCell.a.x, dCell.a.y, dCell.a.z, dCell.b.x, dCell.b.y, dCell.b.z );
+    printf( "renderSubstrate_new() grid.pos0(%g,%g,%g) grid.dCell(%g,%g,%g) \n", gff.grid.pos0.x, gff.grid.pos0.y, gff.grid.pos0.z, gff.grid.dCell.a.x, gff.grid.dCell.a.y, gff.grid.dCell.a.z );
+    
+    // DEBUG: Print full z-slice at xy=(0,0) to see GridFF data
+    printf( "DEBUG: Full z-scan at xy=(0,0):\n" );
+    printf( "DEBUG: Grid origin at xy=(0,0) corresponds to grid cell:\n" );
+    
+    // Check what grid cell (0,0) corresponds to in real coordinates
+    Vec3d grid_origin = gff.grid.pos0;
+    printf( "DEBUG: Grid origin pos0(%g,%g,%g)\n", grid_origin.x, grid_origin.y, grid_origin.z );
+    printf( "DEBUG: Real xy=(0,0) is at grid offset: dx=%g dy=%g\n", 
+            0.0 - grid_origin.x, 0.0 - grid_origin.y );
+    
+    Vec3d p0 = {0.0, 0.0, zrange.x};
+    Vec3d p1 = {0.0, 0.0, zrange.y};
+    Vec3d fout;
+    int nz_debug = 50;
+    Vec3d dp_debug = (p1 - p0) * (1.0 / nz_debug);
+    for(int i=0; i<=nz_debug; i++){
+        Vec3d p = p0 + dp_debug * i;
+        double e = gff.addAtom( p, PL, fout);
+        printf( "  z=%8.4f e=%12.6f\n", p.z, e );
+    }
+    
+    // DEBUG: Also scan at grid origin to see if data is correct there
+    printf( "DEBUG: Scan at grid origin (%g,%g):\n", grid_origin.x, grid_origin.y );
+    Vec3d p0_orig = {grid_origin.x, grid_origin.y, zrange.x};
+    Vec3d p1_orig = {grid_origin.x, grid_origin.y, zrange.y};
+    Vec3d dp_debug_orig = (p1_orig - p0_orig) * (1.0 / nz_debug);
+    for(int i=0; i<=nz_debug; i++){
+        Vec3d p = p0_orig + dp_debug_orig * i;
+        double e = gff.addAtom( p, PL, fout);
+        printf( "  z=%8.4f e=%12.6f\n", p.z, e );
+    }
+    printf( "DEBUG: End scans\n\n" );
+    
+    // DEBUG: Check some GridFF data values
+    if(gff.Bspline_PLQ){
+        printf( "DEBUG: GridFF Bspline_PLQ[0-4]: %g %g %g %g %g\n", 
+            gff.Bspline_PLQ[0].x, gff.Bspline_PLQ[1].x, gff.Bspline_PLQ[2].x, gff.Bspline_PLQ[3].x, gff.Bspline_PLQ[4].x );
+        printf( "DEBUG: GridFF alphaMorse: %g\n", gff.alphaMorse );
+    }
+    
     int nvert = 0;
     //printf( "\n", renderSubstrate_new );
     //glNormal3f(0.0,0.0,1.0);
@@ -250,7 +299,8 @@ int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d 
             Vec3d p2 = gff.findIso( isoval, p2a, p2b, PL, 0.02, bErrNan );
 
             //printf( "renderSubstrate_new[%i,%i] xy(%g,%g) z(%g|%g,%g) \n", ia,ib, p1.x,p1.y, p1.z, zrange.x, zrange.y, isoval );
-
+            if(ia==0 && ib==1) printf( "renderSubstrate_new[%i,%i] xy(%g,%g) z(%g|%g,%g) isoval=%g \n", ia,ib, p1.x,p1.y, p1.z, zrange.x, zrange.y, isoval );
+            
             if( isnan(p1.z) ){
                 //std::vector<100> vals;
                 //double f0 = addAtom(p0, PLQ, fout)-isoval;
@@ -259,10 +309,11 @@ int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d 
                     Vec3d fout;
                     int n=100;
                     Vec3d dp=(p1b-p1a)*(1./n);
+                    printf( "renderSubstrate_new() z-scan:\n" );
                     for(int i=0;i<n;i++){
                         Vec3d p = p1a + dp*(i*1.);
                         double e = gff.addAtom( p, PL, fout);
-                        printf( "%8.4f %g\n", p.z, e );
+                        if(i%10==0 || (e-isoval)*(e-isoval)<0.01) printf( "  z=%8.4f e=%g\n", p.z, e );
                     }
                     exit(0);
                     return -1;
@@ -324,6 +375,194 @@ void viewSubstrate( Vec2i nxs, Vec2i nys, int isoOgl, Vec3d a, Vec3d b, Vec3d po
         }
     }
     glPopMatrix();
+}
+
+// GridFF visualization function - creates colormap-style plot of GridFF data
+void drawGridFFSlice( const GridFF& gff, double z_level, Quat4d PLQ, double vmin, double vmax, const uint32_t * colors, int ncol ){
+    printf("=== drawGridFFSlice CALLED ===\n");
+    Vec3i gn = gff.grid.n;
+    Mat3d dCell = gff.grid.dCell;
+    Vec3d pos0 = gff.grid.pos0;
+    
+    printf( "DEBUG drawGridFFSlice: grid.n(%i,%i,%i) pos0(%g,%g,%g) z_level=%g\n", 
+            gn.x, gn.y, gn.z, pos0.x, pos0.y, pos0.z, z_level );
+    
+    // Sample GridFF on a 2D grid at specified z_level
+    int nx_sample = std::min(gn.x, 50);  // Limit for performance
+    int ny_sample = std::min(gn.y, 50);
+    
+    // Allocate position and data arrays
+    Quat4f* positions = new Quat4f[nx_sample * ny_sample];
+    float*  data      = new float [nx_sample * ny_sample];
+    
+    Vec3d fout;
+    int idx = 0;
+    
+    for(int iy=0; iy<ny_sample; iy++){
+        for(int ix=0; ix<nx_sample; ix++){
+            // Calculate real-world position
+            Vec3d p = pos0 + dCell.a*ix + dCell.b*iy + dCell.c*z_level;
+            positions[idx] = Quat4f{ (float)p.x, (float)p.y, (float)p.z, 0.0f };
+            
+            // DIRECT ARRAY ACCESS - no GridFF interpolation
+            // Grid array layout: [nz, ny, nx, 3] where z is fastest axis
+            // Memory layout: Bspline_PLQ[iz + ny*(ix + nx*iy)] for each component
+            
+            // Convert real coordinates to grid indices
+            Vec3d t;
+            p.sub(pos0);
+            gff.grid.diCell.dot_to( p, t );
+            
+            int grid_ix = (int)t.x;
+            int grid_iy = (int)t.y; 
+            int grid_iz = (int)t.z;
+            
+            // Clamp to grid bounds
+            grid_ix = std::max(0, std::min(grid_ix, gn.x-1));
+            grid_iy = std::max(0, std::min(grid_iy, gn.y-1));
+            grid_iz = std::max(0, std::min(grid_iz, gn.z-1));
+            
+            // Calculate linear index for [nz, ny, nx, 3] layout
+            // FIXED: stride_z = 1, stride_y = nz, stride_x = nz*ny
+            // BUT we need to check if axes are transposed - let's try different ordering
+            int stride_z = 1;
+            int stride_y = gn.z;
+            int stride_x = gn.z * gn.y;
+            
+            // Try different axis orderings to find the correct one
+            // Option 1: (ix, iy, iz) - current
+            int array_idx1 = grid_iz + stride_y*grid_iy + stride_x*grid_ix;
+            
+            // Option 2: (iz, iy, ix) - swap x and z
+            int array_idx2 = grid_ix + stride_y*grid_iy + stride_x*grid_iz;
+            
+            // Option 3: (iy, ix, iz) - different ordering
+            int array_idx3 = grid_iz + stride_y*grid_ix + stride_x*grid_iy;
+            
+            // Use option 3 (iy, ix, iz) as next attempt
+            int array_idx = array_idx3;
+            
+            // Direct array access
+            Vec3d plq_data = gff.Bspline_PLQ[array_idx];
+            
+            // Combine with PLQ coefficients: E = plq.x*PLQ.x + plq.y*PLQ.y + plq.z*PLQ.z
+            double energy = plq_data.x * PLQ.x + plq_data.y * PLQ.y + plq_data.z * PLQ.z;
+            
+            // Debug first few points to see pattern
+            if(idx < 3){
+                printf("DEBUG idx[%i] grid(%i,%i,%i) array_idx=%i energy=%g plq(%g,%g,%g)\n", 
+                       idx, grid_ix, grid_iy, grid_iz, array_idx, energy, 
+                       plq_data.x, plq_data.y, plq_data.z);
+            }
+            
+            data[idx] = (float)energy;
+            idx++;
+        }
+    }
+    
+    // Draw the scalar field using existing Draw3D function
+    Draw3D::drawScalarField( {nx_sample, ny_sample}, positions, data, 1, 0, vmin, vmax, colors, ncol );
+    
+    // Clean up
+    delete [] positions;
+    delete [] data;
+}
+
+// GridFF slice visualization with automatic range detection
+void drawGridFFSliceAuto( const GridFF& gff, double z_level, Quat4d PLQ, const uint32_t * colors, int ncol ){
+    printf("=== drawGridFFSliceAuto CALLED ===\n");
+    Vec3i gn = gff.grid.n;
+    Mat3d dCell = gff.grid.dCell;
+    Vec3d pos0 = gff.grid.pos0;
+    
+    printf("drawGridFFSliceAuto: gn(%i,%i,%i) z_level=%g\n", gn.x, gn.y, gn.z, z_level);
+    
+    // Sample GridFF to find data range
+    int nx_sample = std::min(gn.x, 50);  // Limit resolution for performance
+    int ny_sample = std::min(gn.y, 50);
+    
+    printf("drawGridFFSliceAuto: sampling %ix%i grid\n", nx_sample, ny_sample);
+    
+    Vec3d fout;
+    double vmin = 1e+300, vmax = -1e+300;
+    
+    // First pass: find data range
+    for(int iy=0; iy<ny_sample; iy++){
+        for(int ix=0; ix<nx_sample; ix++){
+            Vec3d p = pos0 + dCell.a*ix + dCell.b*iy + dCell.c*z_level;
+            
+            // Use direct array access instead of gff.addAtom() to avoid B-spline issues
+            Vec3d t;
+            p.sub(pos0);
+            gff.grid.diCell.dot_to( p, t );
+            
+            int grid_ix = (int)t.x;
+            int grid_iy = (int)t.y; 
+            int grid_iz = (int)t.z;
+            
+            // Clamp to grid bounds
+            grid_ix = std::max(0, std::min(grid_ix, gn.x-1));
+            grid_iy = std::max(0, std::min(grid_iy, gn.y-1));
+            grid_iz = std::max(0, std::min(grid_iz, gn.z-1));
+            
+            // Use the same indexing as drawGridFFSlice
+            int stride_z = 1;
+            int stride_y = gn.z;
+            int stride_x = gn.z * gn.y;
+            int array_idx = grid_iz + stride_y*grid_ix + stride_x*grid_iy;
+            
+            Vec3d plq_data = gff.Bspline_PLQ[array_idx];
+            double energy = plq_data.x * PLQ.x + plq_data.y * PLQ.y + plq_data.z * PLQ.z;
+            
+            vmin = std::min(vmin, energy);
+            vmax = std::max(vmax, energy);
+        }
+    }
+    
+    printf("drawGridFFSliceAuto: range detection done vmin=%g vmax=%g\n", vmin, vmax);
+    
+    // Second pass: render with detected range
+    Quat4f* positions = new Quat4f[nx_sample * ny_sample];
+    float*  data      = new float [nx_sample * ny_sample];
+    
+    int idx = 0;
+    for(int iy=0; iy<ny_sample; iy++){
+        for(int ix=0; ix<nx_sample; ix++){
+            Vec3d p = pos0 + dCell.a*ix + dCell.b*iy + dCell.c*z_level;
+            positions[idx] = Quat4f{ (float)p.x, (float)p.y, (float)p.z, 0.0f };
+            
+            // Use direct array access instead of gff.addAtom()
+            Vec3d t;
+            p.sub(pos0);
+            gff.grid.diCell.dot_to( p, t );
+            
+            int grid_ix = (int)t.x;
+            int grid_iy = (int)t.y; 
+            int grid_iz = (int)t.z;
+            
+            // Clamp to grid bounds
+            grid_ix = std::max(0, std::min(grid_ix, gn.x-1));
+            grid_iy = std::max(0, std::min(grid_iy, gn.y-1));
+            grid_iz = std::max(0, std::min(grid_iz, gn.z-1));
+            
+            // Use the same indexing as drawGridFFSlice
+            int stride_z = 1;
+            int stride_y = gn.z;
+            int stride_x = gn.z * gn.y;
+            int array_idx = grid_iz + stride_y*grid_ix + stride_x*grid_iy;
+            
+            Vec3d plq_data = gff.Bspline_PLQ[array_idx];
+            double energy = plq_data.x * PLQ.x + plq_data.y * PLQ.y + plq_data.z * PLQ.z;
+            
+            data[idx] = (float)energy;
+            idx++;
+        }
+    }
+    
+    Draw3D::drawScalarField( {nx_sample, ny_sample}, positions, data, 1, 0, vmin, vmax, colors, ncol );
+    
+    delete [] positions;
+    delete [] data;
 }
 
 #endif

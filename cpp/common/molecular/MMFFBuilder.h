@@ -171,6 +171,10 @@ class Builder : public BuilderBase {  public:
     double Kpp_e_default = 0.25;
 
 
+    double Ksp_Scale = 3.0;
+    double Kpp_Scale = 1.0;
+
+
 
     // =================== Functions =====================
 
@@ -3562,10 +3566,10 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
                         bK [k]=bLK.y;
                     }
                     //Ksp[k]=0;
-                    if( (conf.npi>0)||(conf.ne>0) ){ Ksp[k]= atyp.Ksp;}else{ Ksp[k]=0; }
+                    if( (conf.npi>0)||(conf.ne>0) ){ Ksp[k]= atyp.Ksp*Ksp_Scale;}else{ Ksp[k]=0; }
                     int nej  = getAtom_ne (ja);
                     int npij = getAtom_npi(ja);
-                    Kpp[k]   = sqrt( atyp.Kpp * jtyp.Kpp );
+                    Kpp[k]   = sqrt( atyp.Kpp * jtyp.Kpp )*Ksp_Scale;
                 }
 
                 makeConfGeom( conf.nbond, conf.npi, hs );
@@ -3594,6 +3598,16 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
         ff.bPBC = bPBC;
         ff.makeBackNeighs();
         //if( bPBC ){ ff.initPBC(); updatePBC( ff.pbcShifts ); }
+        
+        // DEBUG: Print Ksp and Kpp values after assignment
+        printf("=== Forcefield Pi-Stiffness Parameters ===\n");
+        for(int ia=0; ia<ff.nnode; ia++){
+            const double* Kspi = ff.Ksp[ia].array;
+            const double* Kppi = ff.Kpp[ia].array;
+            printf("Atom[%2i] Ksp[%g,%g,%g,%g] Kpp[%g,%g,%g,%g]\n", ia, Kspi[0],Kspi[1],Kspi[2],Kspi[3], Kppi[0],Kppi[1],Kppi[2],Kppi[3]);
+        }
+        printf("==========================================\n");
+        
         //if(verbosity>0)
         printf(  "MM::Builder::toMMFFsp3_loc() DONE \n"  );
     }

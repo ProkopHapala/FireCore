@@ -275,6 +275,19 @@ void  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, 
     }
 }
 
+void scan_manipulation( int nconf, double* ts, const char* spline_fname, int iAnchor, double Kanchor, const char* trjName, int* nPBC, double* Es, double* aforces, double* aposs, double* fconstr, int niter_max, double dt, double Fconv, double Flim ){
+    printf("MMFF_lib::scan_manipulation(nconf=%i) spline=%s iAnchor=%i Kanchor=%g trjName=%s nPBC(%i,%i,%i)\n",
+        nconf, spline_fname?spline_fname:"NULL", iAnchor, Kanchor, trjName?trjName:"NULL", nPBC?nPBC[0]:-1, nPBC?nPBC[1]:-1, nPBC?nPBC[2]:-1
+    );
+    if(spline_fname==0){ printf("ERROR in MMFF_lib::scan_manipulation() spline_fname==NULL => exit()\n"); exit(0); }
+    W.tipSpline.loadDat( spline_fname );
+    W.tipSpline.setAnchor( iAnchor );
+    W.tipSpline.Kanchor = Kanchor;
+    W.tipSpline.bActive = true;
+    Vec3i npbc_ = nPBC ? *(Vec3i*)nPBC : Vec3i{1,1,1};
+    W.scan_manipulation( nconf, ts, Es, (Vec3d*)aforces, (Vec3d*)aposs, (Vec3d*)fconstr, trjName, npbc_, niter_max, dt, Fconv, Flim );
+}
+
 // In MMFF_lib.cpp before extern "C" closing
 void scan_atoms_rigid(int nscan, int nsel, int* inds, double* scan_pos, double* out_forces, double* out_Es, bool bRelative ){
     int na = W.nbmol.natoms;

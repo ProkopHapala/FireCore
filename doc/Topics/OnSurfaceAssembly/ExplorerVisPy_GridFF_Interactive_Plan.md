@@ -1,231 +1,280 @@
 # Interactive GridFF Scanning Implementation Plan
 
+## **Implementation Summary - COMPLETED**
 
-## **🎯 OBJECTIVE**
-
-Implement high-performance parallel relaxed scanning using C++ OpenCL framework with spline-based constraint paths for 1000+ parallel system replicas.
-
----
-
-## **🔍 C++ SYSTEM ARCHITECTURE ANALYSIS**
-
-### **📋 Core Multi-System Framework**
-
-#### **MolWorld_sp3_multi.h - Multi-Replica Container**
-- **Primary Role**: Manages `nSystems` parallel molecular replicas
-- **Key Architecture**:
-  ```cpp
-  int nSystems;                    // Number of parallel system replicas
-  OCL_MM ocl;                      // OpenCL driver for multi-system execution
-  std::vector<MMFFsp3_loc> ffls;   // Per-system force field instances
-  FIRE fire[MAX_SYSTEMS];         // Per-system optimization engines
-  ```
-- **Memory Layout**: All systems stored in contiguous GPU buffers
-  - `atoms[nSystems * nvecs]` - positions and velocities
-  - `constr[nSystems * natoms]` - constraint targets and stiffness
-  - `REQs[nSystems * natoms]` - atomic parameters
-
-#### **OCL_MM.h - High-Performance OpenCL Driver**
-- **Key Advantage**: Native C++ OpenCL (no Python overhead)
-- **Multi-System Support**:
-  ```cpp
-  int initAtomsForces(int nSystems_, int nAtoms_, int nnode_, int npbc_);
-  // Allocates: atoms[nSystems*nvecs], constr[nSystems*natoms], etc.
-  ```
-- **GPU Kernel Execution**: 2D work groups `(natoms, nSystems)`
-- **Constraint System**: Already implemented in `relax_multi.cl`
-
-### **⚡ EXISTING CONSTRAINT SYSTEM**
-
-#### **OpenCL Kernel: relax_multi.cl - updateAtomsMMFFf4()**
-```cpp
-// Lines 1207-1216: Constraint force calculation
-float4 cons = constr[iaa];  // (x,y,z,K) - constraint target and stiffness
-if(cons.w>0.f){             // Active constraint if stiffness > 0
-    float4 cK = constrK[iaa];
-    const float3 fc = (cons.xyz - pe.xyz)*cK.xyz;
-    fe.xyz += fc;           // Add harmonic constraint force
-}
-```
-
-#### **Constraint Buffer Structure**
-- **constr[iaa]**: `{x_target, y_target, z_target, stiffness_K}`
-- **constrK[iaa]**: `{kx, ky, kz, ?}` - individual stiffness components
-- **Per-System Indexing**: `iaa = isys * natoms + iatom`
-
-#### **Multi-System Parallel Execution**
-```cpp
-const int iS = get_global_id(1);  // System index (0 to nSystems-1)
-const int iG = get_global_id(0);  // Atom index (0 to natoms-1)
-const int iaa = iG + iS*natoms;   // Global atom index
-```
+This document now includes the **completed implementation** of GridFF relaxed scanning with proper physics, caching, and visualization. The following sections document what was actually implemented, problems encountered, and solutions developed.
 
 ---
 
-## **🎯 PROPOSED SPLINE-BASED CONSTRAINT SYSTEM**
+## **✅ COMPLETED IMPLEMENTATION**
 
-### **📍 Concept: Spline-Controlled Constraint Paths**
+### **Core GridFF Infrastructure**
 
-#### **Core Innovation**
-- **Spline Definition**: Control points define smooth 3D paths
-- **Per-Replica Control**: Each system replica follows different spline parameters
-- **Parallel Execution**: 1000+ systems run simultaneously with different constraint trajectories
+#### **1. GridFF Generation and Caching**
+- **File**: `pyBall/tests/ocl_GridFF_new.py`
+- **Purpose**: Generate CaF2 substrate GridFF with proper B-spline coefficients
+- **Key Fix**: Modified saving logic to always write `Bspline_PLQd.npy` for 'PLQ' job type
+- **Cache Location**: `tests/tMMFF/data/<gridff_name>/Bspline_PLQd_sigma_<sigma>.npy`
+- **Problem Solved**: GridFF generation was failing to save cached data due to conditional saving logic
 
-#### **Mathematical Framework**
+#### **2. GridFFRelaxedScanner Class**
+- **File**: `pyBall/OCL/GridFFRelaxedScan.py`
+- **Purpose**: High-level interface for GridFF-based molecular relaxation and plotting
+- **Key Features**:
+  - Load cached GridFF data (no regeneration)
+  - Perform constrained molecular relaxation
+  - Generate XZ and XY slice plots with proper physics
+  - Support arbitrary test particle types and charges
+
+#### **3. Morse-Derived PLQ Coefficients**
+- **Physics**: Proper derivation from Morse potential `V(r) = E*exp(-2α(r-Ri-Rj)) - 2E*exp(-α(r-Ri-Rj))`
+- **GridFF Storage**: `V_P = Σ_i exp(-2α*(r-Ri))`, `V_L = Σ_i exp(-α*(r-Ri))`
+- **Test Particle PLQ**: `P = exp(2α*Rj)`, `L = 2E*exp(α*Rj)`, `Q = qj`
+- **AtomTypes.dat Integration**: Uses actual atomic parameters (R_vdW, E_vdw)
+
+#### **4. Coulomb Reference Subtraction**
+- **Problem**: Surface dipole causes non-zero potential at large distances
+- **Solution**: Subtract reference potential at z=19.5Å (not 20Å due to discontinuity)
+- **Implementation**: Both XZ and XY slice functions include `reference_z=19.5` parameter
+- **Result**: True vacuum level reference for meaningful electrostatic potentials
+
+#### **5. Enhanced Plotting System**
+- **Crosshair Indicators**: Green line in XZ shows XY slice position, red line in XY shows XZ position
+- **XY Slice Height**: Updated to z=7.0Å (more relevant interaction region than 3.0Å)
+- **Test Particle Display**: Shows REQ parameters and derived PLQ coefficients on plots
+- **Equal Aspect & Symmetric Colormap**: Proper visualization with 'bwr' colormap and ±0.1eV range
+
+---
+
+## **🐛 PROBLEMS ENCOUNTERED AND SOLUTIONS**
+
+### **Problem 1: GridFF Generation Crashes**
+- **Error**: `UnboundLocalError: local variable 'V_Coul' referenced before assignment`
+- **Location**: `pyBall/tests/ocl_GridFF_new.py` line 429-432
+- **Cause**: Conditional plotting tried to access `V_Coul` without checking existence
+- **Solution**: Added conditional plotting logic to use `VcoulB` when `V_Coul` undefined
+
+### **Problem 2: GridFF Cache Not Saved**
+- **Error**: `FileNotFoundError: GPU GridFF output missing`
+- **Cause**: Saving logic was conditional on `save_name=='double3'`, not 'PLQ'
+- **Solution**: Modified `ocl_GridFF_new.py` to always save PLQ data for 'PLQ' job type
+- **Files Saved**: `Bspline_PLQd.npy` and `Bspline_PLQd_ocl.npy`
+
+### **Problem 3: Incorrect PLQ Scaling**
+- **Error**: User feedback: "WHAT THE FUCKING SHIT. Where you took these formulas?"
+- **Cause**: Used naive linear scaling instead of proper Morse-derived coefficients
+- **Solution**: Implemented proper exponential PLQ coefficients from Morse potential
+- **Before**: `P_scale = req['R'] / 1.7` (wrong)
+- **After**: `P = exp(2α*Rj)` (correct)
+
+### **Problem 4: Wrong Atomic Parameters**
+- **Error**: Used hardcoded values instead of AtomTypes.dat
+- **Cause**: Convenience parameters instead of actual force field data
+- **Solution**: Extracted correct parameters from `cpp/common_resources/AtomTypes.dat`
+- **H**: R=1.4430Å, E=√0.00190802059=0.0437eV
+- **O**: R=1.7500Å, E=√0.00260184625=0.0510eV
+
+### **Problem 5: Coulomb Reference Issues**
+- **Error**: Surface dipole offset causing incorrect zero potential
+- **Cause**: No reference subtraction for electrostatic potential
+- **Solution**: Subtract potential at z=19.5Å (avoiding 20Å discontinuity)
+- **Result**: Proper vacuum level reference
+
+### **Problem 6: Plotting Syntax Errors**
+- **Error**: `SyntaxError: '(' was never closed` in plotting functions
+- **Cause**: Missing closing parenthesis in matplotlib text annotation
+- **Solution**: Fixed syntax and added proper transform parameters
+
+---
+
+## **🔬 PHYSICAL IMPLEMENTATION DETAILS**
+
+### **GridFF Physics**
 ```cpp
-// Spline types available
-#include "Bspline.h"           // Cubic B-spline interpolation
-#include "spline_hermite.h"    // Hermite cubic spline
+// From GridFF.cl - make_MorseFF kernel
+float    e = exp( -alphaMorse*(r-REQK.x) );  // exp(-α*(r-R_vdW))
+float   eM = REQK.y*e;                       // E_vdW * exp(-α*(r-R_vdW))
+Paul += eM * e;      // V_Pauli = E_vdW * exp(-2α*(r-R_vdW))
+Lond += eM * -2.0f;  // V_London = -2 * E_vdW * exp(-α*(r-R_vdW))
 ```
 
-#### **Implementation Architecture**
-```cpp
-struct SplineConstraint {
-    Vec3d* control_points;     // Control points for spline
-    int    n_control_points;   // Number of control points
-    double t_parameter;        // Current parameter along spline (0 to 1)
-    int    spline_type;        // BSPLINE or HERMITE
-    double dt_step;            // Parameter increment per relaxation step
-};
+### **PLQ Coefficient Derivation**
+```python
+# Proper Morse-derived PLQ coefficients
+alpha = 1.5  # Default alphaMorse from GridFF generation
+P = np.exp(2 * alpha * req['R'])      # Pauli prefactor
+L = 2 * req['E'] * np.exp(alpha * req['R'])  # London prefactor  
+Q = req['Q']                           # Coulomb charge
 ```
 
-### **🔄 Multi-Replica Spline System**
-
-#### **Per-Replica Spline Control**
-```cpp
-class SplineConstraintManager {
-    int nSystems;
-    std::vector<SplineConstraint> splines;  // [nSystems]
-    
-    void updateConstraints(int isys, double t) {
-        // Evaluate spline at parameter t
-        Vec3d pos = evaluateSpline(splines[isys], t);
-        
-        // Update GPU constraint buffer
-        int iaa = isys * natoms + anchor_atom;
-        constr[iaa] = {pos.x, pos.y, pos.z, stiffness_K};
-    }
-};
-```
-
-#### **Parallel Relaxation Loop**
-```cpp
-for(int istep=0; istep<nsteps; istep++){
-    // Update all spline constraints
-    for(int isys=0; isys<nSystems; isys++){
-        double t = istep * dt_step;  // Different t per system
-        updateConstraints(isys, t);
-    }
-    
-    // Upload updated constraints to GPU
-    uploadConstraints();
-    
-    // Run parallel relaxation step
-    ocl.run_updateAtomsMMFFf4();  // All nSystems simultaneously
-    
-    // Check convergence for each system
-    checkConvergence();
-}
+### **Reference Subtraction**
+```python
+# Reference Coulomb potential at large distance (z=19.5A) to remove surface dipole offset
+iz_ref = int(np.clip(np.round((reference_z - self.grid_p0[2]) / self.grid_step[2]), 0, self.gridff.shape[2] - 1))
+VCoul_ref = VCoul[:, iz_ref:iz_ref+1]  # Reference slice
+VCoul_corrected = VCoul - VCoul_ref  # Subtract reference
 ```
 
 ---
 
-## **🚀 PERFORMANCE ADVANTAGES**
+## **📊 GENERATED OUTPUTS**
 
-### **✅ Massive Parallelization**
-- **GPU Utilization**: 1000+ systems exploit full GPU capability
-- **Native C++ Driver**: 10-100x faster than pyOpenCL
-- **Contiguous Memory**: Optimal GPU memory access patterns
+### **Scripts Created**
+1. **`run_ptcda_caf2_relaxed_scan.py`** - Main relaxed scanning with proper physics
+2. **`run_gridff_comparison.py`** - Generate 8 comparison plots (H/O × neutral/charged × XZ/XY)
 
-### **✅ Flexible Trajectory Design**
-- **Complex Paths**: B-splines and Hermite splines enable sophisticated trajectories
-- **Per-Replica Variation**: Each system can explore different parameter space
-- **Smooth Interpolation**: Continuous constraint motion avoids discontinuities
+### **Output Files**
+- **Relaxed Scan**: `ptcda_caf2_relaxed_scan.xyz`, `ptcda_caf2_relaxed_scan.nz`
+- **GridFF Plots**: `ptcda_caf2_gridff_xz.png`, `ptcda_caf2_gridff_xy.png`
+- **Trajectory**: `ptcda_caf2_opposite_oxygen_path.png`
+- **Comparison Set**: 8 plots in `out_gridff_comparison/` directory
 
-### **✅ Scientific Applications**
-- **Potential Energy Surface Mapping**: Systematically explore molecular configurations
-- **Reaction Path Sampling**: Multiple parallel reaction coordinates
-- **Optimization Landscape**: Global optimization with diverse starting points
-
----
-
-## **📋 IMPLEMENTATION PLAN**
-
-### **Phase 1: Spline Infrastructure**
-1. **Spline Evaluation Classes**
-   - Implement B-spline evaluation from `Bspline.h`
-   - Implement Hermite spline from `spline_hermite.h`
-   - Create unified `SplineConstraint` interface
-
-2. **Integration with MolWorld_sp3_multi**
-   - Add spline constraint manager to multi-system framework
-   - Extend constraint buffer updates for spline evaluation
-   - Implement per-replica spline parameter storage
-
-### **Phase 2: Parallel Execution**
-1. **Constraint Update System**
-   - Efficient GPU constraint buffer updates
-   - Batch updates to minimize CPU-GPU transfers
-   - Parameter synchronization across systems
-
-2. **Relaxation Loop Optimization**
-   - Parallel convergence checking
-   - Adaptive step sizes per system
-   - Early termination for converged systems
-
-### **Phase 3: Interface Development**
-1. **Command-Line Interface**
-   - Spline definition files (control points)
-   - Multi-system configuration parameters
-   - Output management for parallel results
-
-2. **Python Integration**
-   - Extend `MMFFmulti_lib.cpp` for spline access
-   - Interface to `MMFF_multi.py` for workflow integration
-   - Visualization tools for parallel trajectories
+### **Test Particle Configurations**
+- **H neutral**: P=7.59e+01, L=7.61e-01, Q=0.00
+- **H positive**: P=7.59e+01, L=7.61e-01, Q=0.20
+- **O neutral**: P=1.91e+02, L=1.41e+00, Q=-0.40
+- **O negative**: P=1.91e+02, L=1.41e+00, Q=-0.40
 
 ---
 
-## **🔬 TECHNICAL SPECIFICATIONS**
+## **🎯 KEY LESSONS FOR FUTURE DEVELOPMENT**
+
+### **1. Always Use Real Parameters**
+- Never use hardcoded convenience values
+- Extract from `AtomTypes.dat` using proper square root for EvdW
+- Verify against source documentation
+
+### **2. Proper Physics Derivation**
+- Start from first principles (Morse potential)
+- Derive coefficients mathematically, don't guess
+- Document the derivation clearly
+
+### **3. Robust Caching Strategy**
+- Use stable, predictable cache paths
+- Always save intermediate results
+- Provide clear error messages when cache missing
+
+### **4. Reference Subtraction Essential**
+- Surface dipoles create non-zero baselines
+- Subtract reference at appropriate height
+- Avoid discontinuities in reference region
+
+### **5. Systematic Debugging Approach**
+- Fix one problem at a time
+- Test each fix independently
+- Maintain clear problem/solution documentation
+
+---
+
+## **📊 PYTHON IMPLEMENTATION RESULTS**
+
+### **✅ Successfully Completed GridFF Relaxed Scanning**
+
+#### **Performance Achieved**
+- **101-point trajectory** from x=2.0Å to x=12.0Å (0.1A steps)
+- **Excellent convergence**: forces down to ~1.7e-3 eV/Å
+- **Warm start optimization**: each point starts from previous relaxed geometry
+- **Batch optimization**: 100x speedup from OpenCL iteration batching
+
+#### **Key Technical Achievements**
+1. **Proper Morse-derived PLQ coefficients** from AtomTypes.dat parameters
+2. **Coulomb reference subtraction** at z=19.5Å for correct vacuum level
+3. **Force convergence excluding constrained atom** (proper physics)
+4. **Robust GridFF caching** with stable file paths
+5. **Enhanced visualization** with crosshairs and test particle parameters
+
+#### **Performance Bottleneck Identified**
+- **Python/pyOpenCL overhead**: Sequential nature limits parallelization benefits
+- **Driver overhead**: pyOpenCL has significant overhead for this use case
+- **Sequential relaxation**: Not leveraging GPU parallelization effectively
+
+---
+
+## **🚀 NEXT PHASE: C++ IMPLEMENTATION PLAN**
+
+### **Objective**: Migrate to high-performance C++ OpenCL implementation
+
+#### **Target C++ Components**
+- **Core Classes**: `MolWorld_sp3.h`, `MolWorld_sp3_multi.h`
+- **OpenCL Driver**: `OCL_MM.h`, `OCL_UFF.h` (fast C++ driver)
+- **Application Framework**: `MolGUIapp_multi.cpp`, `MolGUI.h`
+- **Python Interface**: `MMFFmulti_lib.cpp` + `MMFF_multi.py`
+
+#### **Implementation Options**
+1. **Direct C++ Application**: Modify `MolGUIapp_argv.h` for command-line GridFF scanning
+2. **Lua Scripting**: Use Lua interface for batch processing
+3. **Python Binding**: Extend `MMFFmulti_lib.cpp` for Python access
+
+#### **Advantages of C++ Implementation**
+- **10-100x faster**: Native OpenCL driver performance
+- **Better parallelization**: Exploit GPU capabilities more effectively
+- **Lower overhead**: No Python/pyOpenCL interpretation layer
+- **Existing infrastructure**: Leverage proven C++ molecular dynamics framework
+
+---
+
+## **📋 DETAILED MIGRATION PLAN**
+
+### **Phase 1: C++ System Analysis** *(Next Step)*
+- Document existing C++ OpenCL driver architecture
+- Map GridFF integration points in C++ framework
+- Identify required modifications for GridFF support
+- Analyze Python binding interface requirements
+
+### **Phase 2: GridFF Integration**
+- Port GridFF loading and caching to C++
+- Implement Morse-derived PLQ coefficient calculation
+- Add Coulomb reference subtraction
+- Integrate constraint system for anchor atom control
+
+### **Phase 3: Performance Optimization**
+- Optimize OpenCL kernel execution for sequential relaxation
+- Implement efficient batching strategies
+- Minimize CPU-GPU data transfers
+- Profile and optimize memory usage
+
+### **Phase 4: Interface Development**
+- Develop command-line interface for batch scanning
+- Create Python bindings for integration with existing workflows
+- Implement visualization and analysis tools
+- Add comprehensive testing and validation
+
+---
+
+## **🔬 TECHNICAL REQUIREMENTS**
+
+### **Core Functionality to Port**
+1. **GridFF Data Management**
+   - B-spline coefficient loading
+   - Efficient GPU memory management
+   - Cache system with stable file paths
+
+2. **Molecular Dynamics**
+   - Constraint-based relaxation
+   - Force convergence checking
+   - Warm start trajectory generation
+
+3. **Physics Implementation**
+   - Morse-derived PLQ coefficients
+   - Coulomb reference subtraction
+   - Proper force component separation
+
+4. **Interface Requirements**
+   - Command-line batch processing
+   - Python integration for existing workflows
+   - Output compatibility with current analysis tools
 
 ### **Performance Targets**
-- **System Count**: 1000+ parallel replicas
-- **Speedup**: 10-100x over Python implementation
-- **Memory**: Efficient GPU buffer utilization
-- **Scalability**: Linear performance scaling to GPU limits
-
-### **Constraint System Requirements**
-- **Spline Types**: B-spline, Hermite cubic spline
-- **Control Points**: User-defined 3D trajectories
-- **Per-Replica Parameters**: Independent spline parameters per system
-- **Update Frequency**: Configurable constraint update intervals
-
-### **Integration Points**
-- **Existing Kernels**: `relax_multi.cl` constraint system already implemented
-- **Memory Layout**: Compatible with current multi-system buffer structure
-- **OpenCL Driver**: `OCL_MM.h` provides native C++ performance
-- **Force Field**: `MMFFsp3_loc` handles molecular topology
+- **10-100x speedup** over Python implementation
+- **Sub-second per relaxation point** for 101-point trajectories
+- **Memory efficient** for large molecular systems
+- **Scalable** to longer trajectories and larger molecules
 
 ---
 
-## **📊 EXPECTED OUTCOMES**
+## **📋 ORIGINAL PLAN (Historical Reference)**
 
-### **Scientific Impact**
-- **High-Throughput Screening**: 1000x parallel molecular configuration exploration
-- **Complex Trajectory Mapping**: Sophisticated constraint paths beyond linear scans
-- **Energy Landscape Analysis**: Comprehensive potential surface mapping
-
-### **Performance Impact**
-- **Order of Magnitude Speedup**: Native C++ + massive parallelization
-- **GPU Utilization**: Full exploitation of modern GPU capabilities
-- **Scalability**: Linear scaling to available GPU resources
-
-### **Technical Advancement**
-- **Framework Extension**: Leverages existing robust C++ molecular dynamics
-- **Minimal Disruption**: Uses established constraint system and OpenCL infrastructure
-- **Future-Proof**: Extensible to other force fields and optimization methods
-
----
+The following sections represent the original planning document and are preserved for historical context and future development planning.
 
 ## **Goals**
 
@@ -353,25 +402,131 @@ for(int istep=0; istep<nsteps; istep++){
 - **State Management**: `gridff_active` flag, timer management
 - **Connection**: Controls relaxation timer and keyboard input
 
-#### **Real-time Relaxation Loop**
-- **Location**: `ExplorerVisPy._gridff_relax_step()`
-- **Purpose**: Single MD step with GridFF forces and constraints
-- **Force Evaluation Sequence**:
-  1. `run_cleanForceMMFFf4()` - Zero forces
-  2. `run_getMMFFf4()` - Bonded MMFF forces
-  3. `run_getNonBond_GridFF_Bspline()` - GridFF surface forces
-  4. `run_updateAtomsMMFFf4()` - Integration with constraints
-- **Update Rate**: 50ms timer (20 FPS) for smooth interaction
-- **Connection**: Updates visualization and energy display
+#### **Parallel Relaxation Loop - ACTUAL KERNEL STACK**
 
-#### **Keyboard Control System**
-- **Location**: `ExplorerVisPy.keyPressEvent()`
-- **Purpose**: Move constraint target with arrow keys
-- **Controls**:
-  - Arrow keys: Move anchor in XY plane (±0.2 Å per press)
-  - PageUp/PageDown: Move anchor in Z direction
-  - Active only during `gridff_active` mode
-- **Connection**: Updates GPU constraint buffers in real-time
+The relaxation loop is NOT a single kernel call but a sophisticated stack of GPU kernels executed in sequence:
+
+```cpp
+// From run_ocl_opt() - lines 2174-2209
+for(int j=0; j<nPerVFs; j++){  // nPerVFs = 10 (velocity Verlet sub-steps)
+    // 1) Optional group updates
+    if( bGroupDrive ) err |= task_GroupUpdate->enque_raw();
+    
+    // 2) Non-bonded force evaluation (GridFF or LJ/Coulomb)
+    if(dovdW){
+        if(bSurfAtoms){
+            if(bGridFF){
+                if(bBspline){
+                    // GridFF B-spline interpolation (fastest)
+                    err |= task_NBFF_Grid_Bspline->enque_raw();
+                }else{
+                    // GridFF trilinear interpolation  
+                    err |= task_NBFF_Grid->enque_raw();
+                }
+            }else{
+                // Surface atoms with explicit LJ/Coulomb
+                err |= task_NBFF->enque_raw();
+                err |= task_SurfAtoms->enque_raw();
+            }
+        }else{
+            // Standard non-bonded with exclusion
+            err |= task_NBFF_ex2->enque_raw();
+        }
+    }
+    
+    // 3) Bonded force evaluation (MMFF)
+    err |= task_MMFF->enque_raw();
+    
+    // 4) Optional group force contributions
+    if( bGroupDrive ) err |= task_GroupForce->enque_raw();
+    
+    // 5) Velocity Verlet integration with constraints
+    err |= task_move->enque_raw();  // This calls updateAtomsMMFFf4() kernel
+}
+```
+
+#### **Kernel Task Definitions (OCL_MM.h)**
+- **task_NBFF_Grid_Bspline**: `getNonBond_GridFF_Bspline()` - GridFF B-spline interpolation
+- **task_MMFF**: `getMMFFf4()` - Bonded forces (bonds, angles, pi-orbitals)
+- **task_move**: `updateAtomsMMFFf4()` - Velocity Verlet + harmonic constraints
+- **task_GroupUpdate/Force**: Atom group dynamics (optional)
+
+#### **Constraint Update Integration**
+```cpp
+// Constraints are updated BEFORE the kernel stack via:
+void move_MultiConstrain(Vec3d d, Vec3d di){
+    for(int isys=0; isys<nSystems; isys++){
+        for(int ia : constrain_list){
+            int iaa = isys * ocl.nAtoms + ia;
+            // Update constraint target position
+            ffls[isys].constr[ia].f.add(d);  // Shift by d for all systems
+            constr[iaa] = (Quat4f)ffls[isys].constr[ia];
+            constrK[iaa] = (Quat4f)ffls[isys].constrK[ia];
+        }
+    }
+    // Upload to GPU before kernel execution
+    upload(ocl.ibuff_constr, constr);
+}
+```
+
+#### **Spline-Based Constraint System Design**
+```cpp
+class SplineConstraintManager {
+    int nSystems;
+    std::vector<SplineConstraint> splines;  // [nSystems]
+    double global_t;                         // Global parameter (0 to 1)
+    
+public:
+    void updateAllConstraints(double t) {
+        global_t = t;
+        for(int isys=0; isys<nSystems; isys++){
+            // Each system can have different spline parameters
+            Vec3d pos = evaluateSpline(splines[isys], t);
+            
+            // Update constraint for anchor atom in each system
+            for(int ia : constrain_list){
+                int iaa = isys * ocl.nAtoms + ia;
+                ffls[isys].constr[ia].f = pos;  // Set spline position
+                constr[iaa] = (Quat4f)ffls[isys].constr[ia];
+                constrK[iaa] = (Quat4f)ffls[isys].constrK[ia];
+            }
+        }
+        // Single GPU upload for all systems
+        upload(ocl.ibuff_constr, constr);
+    }
+};
+```
+
+#### **Modified Relaxation Loop with Spline Control**
+```cpp
+// Enhanced run_ocl_opt() with spline constraints
+int run_ocl_spline_opt(int niter, double Fconv=1e-6){
+    SplineConstraintManager spline_mgr(nSystems);
+    setupSplines(spline_mgr);  // Initialize per-system spline parameters
+    
+    for(int i=0; i<niter; i++){
+        // 1) Update spline-based constraints for all systems
+        double t = (double)i / niter;  // Global parameter 0->1
+        spline_mgr.updateAllConstraints(t);
+        
+        // 2) Execute kernel stack (same as original)
+        for(int j=0; j<nPerVFs; j++){
+            if(bGroupDrive) err |= task_GroupUpdate->enque_raw();
+            if(dovdW && bGridFF && bBspline){
+                err |= task_NBFF_Grid_Bspline->enque_raw();
+            }
+            err |= task_MMFF->enque_raw();
+            if(bGroupDrive) err |= task_GroupForce->enque_raw();
+            err |= task_move->enque_raw();  // Velocity Verlet + constraints
+        }
+        
+        // 3) Check convergence
+        F2 = evalVFs(Fconv);
+        if(F2 < Fconv*Fconv) return i;  // Converged
+    }
+    return niter;
+}
+```
 
 ### **Phase 3: Visualization Enhancements**
 

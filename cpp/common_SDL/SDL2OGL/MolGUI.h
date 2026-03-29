@@ -42,6 +42,8 @@
 
 #include "DipoleMap.h"
 
+#include "SplineGUI.h"
+
 //using Action  = std::function<void(double val)>; 
 //using CommandDict = std::unordered_map<std::string,>;
 
@@ -190,6 +192,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     double subs_iso = 0.05;
 
     MolWorld_sp3* W=0;
+
+    SplineGUI splineGUI;
 
     bool bDipoleMap = false;
     DipoleMap dipoleMap;
@@ -396,7 +400,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void tryLoadGridFF();
     //void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
     //void renderGridFF( double isoVal=0.001, int isoSurfRenderType=0, double colorScale = 50. );
-    int  renderSurfAtoms( Vec3i nPBC, bool bPointCross=false, float qsc=0.5, float Rsc=1, float Rsub=0 );
+    int  renderSurfAtoms( Vec3i nPBC, bool bPointCross=false, float qsc=0.5, float Rsc=1, float Rsub=0, bool bSurface=false );
     void renderGridFF    ( double isoVal=0.1, int isoSurfRenderType=0, double colorScale = 50. );
     void renderGridFF_new( double isoVal=0.1, int isoSurfRenderType=0, double colorScale = 0.25, Quat4d REQ=Quat4d{ 1.487, sqrt(0.0006808), 0., 0.} );
     void renderESP( Quat4d REQ=Quat4d{ 1.487, 0.02609214441, 1., 0.} );
@@ -644,6 +648,8 @@ void MolGUI::initWiggets(){
         W->builder.addCappingNeighborsToFragments();
         W->builder.printAtoms();    return 0; 
     };   // 1
+
+    mp->addPanel( "Spline.Edit", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ splineGUI.bEdit=!splineGUI.bEdit; printf("MolGUI: splineGUI.bEdit=%i\n", (int)splineGUI.bEdit ); return 0; };
     mp->addPanel( "print.nonB",  {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->ffl.print_nonbonded();    return 0; };   // 1
     mp->addPanel( "print.Aconf", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->builder.printAtomConfs(); return 0; };  // 2
     mp->addPanel( "Sel.All", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){ W->builder.selectAll();     }else{ W->selectAll();    } return 0; };  // 3
@@ -1258,6 +1264,8 @@ void MolGUI::bindMolWorld( MolWorld_sp3* W_ ){
     //dipoleMap.ff = &(W->ffl);
     dipoleMap.ff     = &(W->nbmol);
     dipoleMap.params = &(W->params);
+
+    splineGUI.bind( &(W->tipSpline) );
     //if(verbosity>0)printf("... MolGUI::bindMolWorld() DONE\n");
 }
 
@@ -1360,7 +1368,7 @@ void MolGUI::draw(){
     glEnable(GL_LIGHTING );
     glEnable(GL_DEPTH_TEST);
 
-    printf( "MolGUI::draw()[frameCount=%i] \n", frameCount );
+    //printf( "MolGUI::draw()[frameCount=%i] \n", frameCount );
     if(W->bLatScan){ lattice_scan( W->latscan_n.x, W->latscan_n.y, *W->latscan_dlvec ); quit(); }
 
     //if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF( subs_iso ); }
@@ -1399,6 +1407,8 @@ void MolGUI::draw(){
     Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
     //if(W->ipicked>=0) Draw3D::drawLine( W->ff.apos[W->ipicked], ray0); // Mouse Dragging Visualization
     if(W->ipicked>=0) Draw3D::drawLine( apos[W->ipicked], (Vec3d)ray0); // Mouse Dragging Visualization
+
+    splineGUI.draw();
     
     {   // draw mouse selection box;   ToDo:   for some reason the screen is upside-down
         //Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
@@ -1415,7 +1425,7 @@ void MolGUI::draw(){
         }
     }
 
-    printf( "bViewSubstrate %i ogl_isosurf %i W->bGridFF %i \n", bViewSubstrate, ogl_isosurf, W->bGridFF );
+    //printf( "bViewSubstrate %i ogl_isosurf %i W->bGridFF %i \n", bViewSubstrate, ogl_isosurf, W->bGridFF );
 
     if(bViewCell){ 
         //Draw3D::drawTriclinicBox( W->builder.lvec, Vec3d{0.0,0.0,0.0}, Vec3d{1.0,1.0,1.0} ); 
@@ -1431,6 +1441,14 @@ void MolGUI::draw(){
             if( (ogl_isosurf==0) ){ renderGridFF_new( subs_iso ); }
             //viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
             viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b );
+            
+            // DEBUG: Add GridFF slice visualization - DISABLED FOR NOW
+            // Quat4d REQ{1.487, 0.0260921, 0, 0};
+            // Quat4d PLQ = REQ2PLQ_d( REQ, W->gridFF.alphaMorse );
+            // glPushMatrix();
+            // glTranslatef(0.0, 0.0, 8.0); // Shift up to be visible
+            // drawGridFFSliceAuto( W->gridFF, 7.0, PLQ, Draw::colors_afmhot, Draw::ncolors );
+            // glPopMatrix();
         }else{
             if( ogl_surfatoms==0 ){
                 //ogl_surfatoms = renderSurfAtoms(  W->gridFF.nPBC, false );  
@@ -1439,7 +1457,6 @@ void MolGUI::draw(){
             glCallList( ogl_surfatoms );
         }
     }
-    DEBUG
 
     // ----- Visualization of the Groups of Atoms
     if( W->bGroups ){
@@ -1509,7 +1526,7 @@ void MolGUI::draw(){
             }
         }
     }
-    DEBUG
+
     //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 1., 0. );
     //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} ); }
     //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
@@ -1546,7 +1563,7 @@ void MolGUI::draw(){
             glCallList(ogl_MO); 
         glPopMatrix();
     }
-    DEBUG
+    
     // Draw the actual system ( molecules : atoms, bonds etc. )
     if(bDoMM){
         if( bViewBuilder ){ drawBuilder(); }   // Draw Builder 
@@ -1606,7 +1623,7 @@ void MolGUI::draw(){
             glEnd();
         }
     }
-    DEBUG
+
     glColor3f(0.0f,0.5f,0.0f); showBonds();
 
     //visual_FF_test();
@@ -1651,7 +1668,7 @@ void MolGUI::draw(){
         glColor3f( 0.f,1.f,0.f ); 
         for(int ia : W->selection         ){ Draw3D::drawSphereOctLines( 8, 0.5, W->nbmol.apos[ia]        ); } 
     }
-    DEBUG
+
 
     // --- Drawing Population of geometies overlay
     if(frameCount>=1){ 
@@ -1672,16 +1689,13 @@ void MolGUI::draw(){
             Draw3D::neighs_multi(natoms,4,M_neighs,M_neighCell,M_apos, W->pbc_shifts, isys, nvec ); 
         } } 
     }
-    DEBUG
+
     //if(iangPicked>=0){
     //    glColor3f(0.,1.,0.);      Draw3D::angle( W->ff.ang2atom[iangPicked], W->ff.ang_cs0[iangPicked], W->ff.apos, fontTex3D );
     //}
     if(useGizmo){ gizmo.draw(); }
     if(bHexDrawing)drawingHex(5.0);
     if(bViewAxis){ glLineWidth(3);  Draw3D::drawAxis(1.0); glLineWidth(1); }
-
-    DEBUG
-
 };
 
 void MolGUI::printMSystem( int isys, int perAtom, int na, int nvec, bool bNg, bool bNgC, bool bPos ){
@@ -1783,11 +1797,10 @@ Vec3d MolGUI::showNonBond( char* s, Vec2i b, bool bDraw ){
 }
 
 void MolGUI::drawHUD(){
-    DEBUG
+
     glDisable ( GL_LIGHTING );
     gui.draw();
 
-    DEBUG
     glPushMatrix();
     if(W->bCheckInvariants){
         glTranslatef( 10.0,HEIGHT-20.0,0.0 );
@@ -1804,7 +1817,7 @@ void MolGUI::drawHUD(){
         W->getStatusString( tmpstr, ntmpstr );
         Draw::drawText( tmpstr, fontTex, fontSizeDef, {100,20} );
     }
-    DEBUG
+
     if(bWriteOptimizerState){
         double T = W->evalEkTemp();   //printf( "T_kinetic=%g[K] \n", T );
         glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
@@ -1820,7 +1833,6 @@ void MolGUI::drawHUD(){
         Draw::drawText( W->info_str(tmpstr), fontTex, fontSizeDef, {100,20} );
     }
     glPopMatrix();
-    DEBUG
 
     if( W->getMolWorldVersion() == (int)MolWorldVersion::GPU ){
         glPushMatrix();
@@ -1836,7 +1848,6 @@ void MolGUI::drawHUD(){
         };
         glPopMatrix();
     }
-    DEBUG
 
     /*
     glTranslatef( 0.0,fontSizeDef*-2*2,0.0 );
@@ -1858,9 +1869,8 @@ void MolGUI::drawHUD(){
 
     mouse_pix = ((Vec2f){ 2*mouseX/float(HEIGHT) - ASPECT_RATIO,
                           2*mouseY/float(HEIGHT) - 1      });// *(1/zoom);
-    DEBUG
     if(bConsole) console.draw();
-    DEBUG
+
 }
 
 void MolGUI::drawingHex(double z0){
@@ -1923,6 +1933,7 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorScl
     //int iatom = 11;
     testREQ = Quat4d{ 1.487, sqrt(0.0006808), 0., 0.}; // H
     testPLQ = REQ2PLQ( testREQ, W->gridFF.alphaMorse );
+    
     Quat4f * FFtot = new Quat4f[ W->gridFF.grid.getNtot() ];
     W->gridFF.evalCombindGridFF ( testREQ, FFtot );
     //W->gridFF.grid.saveXSF( "E_renderGridFF.xsf",  (float*)FFtot, 4, 3, W->gridFF.natoms, W->gridFF.atypes, W->gridFF.apos );
@@ -1950,23 +1961,28 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorScl
 void MolGUI::renderGridFF_new( double isoVal, int isoSurfRenderType, double colorScale, Quat4d REQ ){
     //if(verbosity>0) 
     Quat4d PLQ = REQ2PLQ_d( REQ, W->gridFF.alphaMorse );
-    printf( "MolGUI::renderGridFF_new() isoVal=%g REQ{%g,%g,%g,%g} PLQ{%g,%g,%g,%g}\n", isoVal, REQ.x, REQ.y, REQ.z,  REQ.z, PLQ.x, PLQ.y, PLQ.z, PLQ.w );
+    
+    printf( "MolGUI::renderGridFF_new() isoVal=%g REQ{%g,%g,%g,%g} PLQ{%g,%g,%g,%g} factors{%g,%g,%g,%g}\n", isoVal, REQ.x, REQ.y, REQ.z,  REQ.z, PLQ.x, PLQ.y, PLQ.z, PLQ.w, W->gridFF.plq_factors.x, W->gridFF.plq_factors.y, W->gridFF.plq_factors.z, W->gridFF.plq_factors.w );
     ogl_isosurf = glGenLists(1);
     glNewList(ogl_isosurf, GL_COMPILE);
     glShadeModel( GL_SMOOTH );
     glEnable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
     //glDisable(GL_LIGHTING);
-    Vec2d zrange{-5.0,5.0};
-    //{  W->gridFF.getEFprofileToFile( "gridFF_EFprofile_render.log", 200, Vec3d{0.0,0.0,zrange.x}, Vec3d{0.0,0.0,zrange.y}, Quat4d{REQ.x,REQ.y,0.0,0.0} );  }  // Debug: save gridFF z-profile to file of atom[0] to "gridFF_EFprofile_render.log"
+    Vec2d zrange{-5.0,15.0};
+    //if( W->gridFF.bSurface ){ zrange = { -1.0, 3.0 }; }
+    //zrange = { -2.0, 8.0 };
+    //zrange = { -10.0, 10.0 };
+    //printf( "renderGridFF_new() zrange: %f %f \n", zrange.x, zrange.y );
+    //W->gridFF.getEFprofileToFile( "gridFF_EFprofile_render.log", 200, Vec3d{0.0,0.0,zrange.x}, Vec3d{0.0,0.0,zrange.y}, Quat4d{REQ.x,REQ.y,0.0,0.0} );  }  // Debug: save gridFF z-profile to file of atom[0] to "gridFF_EFprofile_render.log"
     //int nvert = renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, +isoVal, sign, colorSclae ); 
     //W->gridFF.findIso( isoVal, Vec3d{0.0,0.0,zrange.x}, Vec3d{0.0,0.0,zrange.y}, Quat4d{PLQ.x,PLQ.y,0.0,0.0}, 0.02 );
-    int nvert = renderSubstrate_new( W->gridFF, Vec2d{zrange.x,zrange.y}, isoVal, PLQ, colorScale );  //printf("Debug: renderGridFF() renderSubstrate() -> nvert= %i ", nvert );
+    int nvert = renderSubstrate_new( W->gridFF, Vec2d{zrange.x,zrange.y}, isoVal, PLQ, colorScale, false );  //printf("Debug: renderGridFF() renderSubstrate() -> nvert= %i ", nvert );
     glEndList();
     if(verbosity>0) printf( "... MolGUI::renderGridFF_new() DONE\n" );
 }
 
-int MolGUI::renderSurfAtoms( Vec3i nPBC, bool bPointCross, float qsc, float Rsc, float Rsub ){
+int MolGUI::renderSurfAtoms( Vec3i nPBC, bool bPointCross, float qsc, float Rsc, float Rsub, bool bSurface ){
     if(verbosity>0) printf( "MolGUI::renderSurfAtoms() nPBC(%i,%i,%i) qsc=%g Rsc=%g Rsub=%g W->gridFF.apos_.size()=%li bPointCross=%i\n", nPBC.x, nPBC.y, nPBC.z, qsc, Rsc, Rsub, W->gridFF.apos_.size(), bPointCross );
     int ogl = glGenLists(1);
     glNewList(ogl, GL_COMPILE);
@@ -2499,7 +2515,7 @@ void MolGUI::mouse_default( const SDL_Event& event ){
             } break;
         case SDL_MOUSEBUTTONUP:
             switch( event.button.button ){
-                case SDL_BUTTON_LEFT:
+                case SDL_BUTTON_LEFT: {
                     if( ray0.dist2(ray0_start)<0.1 ){ // too small for selection box 
                         int ipick = pickParticle( (Vec3d)ray0, (Vec3d)cam.rot.c, 0.5, W->nbmol.natoms, W->nbmol.apos );
                         if( ipick>=0 ){ 
@@ -2511,7 +2527,7 @@ void MolGUI::mouse_default( const SDL_Event& event ){
                             //printf( "picked atom %i \n", W->ipicked ); 
                             //printf( "MolGUI::mouse_default() SDL_BUTTON_LEFT W->selection.clear(); (B) ipick=%i W->ipicked=%i\n", ipick, W->ipicked );
                             //W->selection.clear();
-                            W->selection.push_back(W->ipicked); 
+                            W->selection.push_back(W->ipicked);
                             //if( Qpanel==0 ){ printf( "MolGUI::mouse_default() Qpanel==0 \n" ); exit(0); }
                             // printf( "MolGUI::mouse_default() @Qpanel=%li @W=%li W->nbmol.REQs=%li W->ipicked=%i \n", (long)Qpanel, (long)W, (long)W->nbmol.REQs, W->ipicked );
                             // int ip = W->ipicked;             
@@ -2521,14 +2537,12 @@ void MolGUI::mouse_default( const SDL_Event& event ){
                                 Qpanel->value = W->nbmol.REQs[W->ipicked].z;
                                 Qpanel->redraw=true;
                             }
-                            
-                        };
-                        //printf( "picked atom %i \n", W->ipicked );
+                        }
                     }else{
                         selectRect( (Vec3d)ray0_start, (Vec3d)ray0 );
                     }
                     bDragging=false;
-                    break;
+                } break;
                 case SDL_BUTTON_RIGHT:{ 
                     // int ib = W->builder.pickBond( (Vec3d)ray0, (Vec3d)cam.rot.c, 0.3 );
                     // //printf( "MolGUI::pickBond: %i \n", ib  );
@@ -2544,7 +2558,9 @@ void MolGUI::eventMode_edit( const SDL_Event& event  ){
         case SDL_MOUSEWHEEL:{
             if     (event.wheel.y > 0){ zoom/=1.2; }
             else if(event.wheel.y < 0){ zoom*=1.2; }}break;
-        case SDL_KEYDOWN : { if(gui.bKeyEvents)switch( event.key.keysym.sym ){
+        case SDL_KEYDOWN : {
+            if(splineGUI.bEdit){ splineGUI.onKeyDown( event.key.keysym.sym ); }
+            if(gui.bKeyEvents)switch( event.key.keysym.sym ){
                 case SDLK_t:{
                     affineTransform( W->ff.natoms, W->ff.apos, W->ff.apos, W->builder.lvec, W->new_lvec );
                     W->builder.updatePBC( W->ff.pbcShifts, &(W->new_lvec) );
@@ -2659,10 +2675,12 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
         case SDL_MOUSEWHEEL:{
             if     (event.wheel.y > 0){ zoom/=1.2; }
             else if(event.wheel.y < 0){ zoom*=1.2; }}break;
-        case SDL_KEYDOWN : 
-                if (bConsole){ bConsole=console.keyDown( event.key.keysym.sym ); }
-                else 
-                if(gui.bKeyEvents) switch( event.key.keysym.sym ){
+        case SDL_KEYDOWN : {
+                if (bConsole){
+                    bConsole=console.keyDown( event.key.keysym.sym );
+                }else{
+                    if(splineGUI.bEdit){ splineGUI.onKeyDown( event.key.keysym.sym ); }
+                    if(gui.bKeyEvents) switch( event.key.keysym.sym ){
                 case SDLK_KP_0: qCamera = qCamera0; break;
 
                 //case SDLK_COMMA:  which_MO--; printf("which_MO %i \n", which_MO ); break;
@@ -2838,6 +2856,8 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                     printf( "free key: 0xFF&(%i)  hex=%x \n", k, event.key.keysym.sym );
                     actions.actionDispatch( this, k );
                 } break;
+            }
+            }
             }
             break;
         case SDL_MOUSEBUTTONDOWN:
