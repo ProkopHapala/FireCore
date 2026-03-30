@@ -18,13 +18,22 @@
 
 #include "eFF_LAMMPS_funcs.h"
 
-extern int eff_dbg_on;
-extern int eff_dbg_step;
-extern int eff_dbg_kind;
-extern int eff_dbg_i;
-extern int eff_dbg_j;
-extern int eff_dbg_step_current;
-extern int eff_dbg_allpairs;
+// extern int eff_dbg_on;
+// extern int eff_dbg_step;
+// extern int eff_dbg_kind;
+// extern int eff_dbg_i;
+// extern int eff_dbg_j;
+// extern int eff_dbg_step_current;
+// extern int eff_dbg_allpairs;
+
+
+static int eff_dbg_on=0;
+static int eff_dbg_step=0;
+static int eff_dbg_kind=0; // 1=EE 2=AE 3=AA
+static int eff_dbg_i=0;
+static int eff_dbg_j=1;
+static int eff_dbg_step_current=0;
+static int eff_dbg_allpairs=0;
 
 
 /*

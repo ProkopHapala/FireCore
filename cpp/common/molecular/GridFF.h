@@ -1671,12 +1671,17 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                 npoint = ns.totprod();
                 nbyte  = npoint*sizeof(double);
                 bool done=false;
+                int loaded_points = npoint; // Default to expected size
                 if(       fileExist( fnames[0] ) ){
                     printf( "GridFF::tryLoad_new() load Bspline_PLQ from %s\n", fnames[0] );
-                    //_realloc( Bspline_PLQ, npoint*3 );
                     NumpyFile npy(fnames[0]);
                     npy.print();
                     printf( "GridFF::tryLoad_new() LOADED: shape[%i,%i,%i,%i] dtype='%s'\n", npy.shape[0], npy.shape[1], npy.shape[2], npy.shape[3], npy.dtype );
+                    
+                    // Concise validation - fails fast with clear error message
+                    if( !npy.validateGridFF(grid.n.x, grid.n.y, grid.n.z) ) exit(1);
+                    
+                    loaded_points = (npy.ntot / 3);  // Store actual loaded Vec3d count
                     Bspline_PLQ = (Vec3d*)npy.data;
                     done=true;
                 } else if( fileExist( fnames[1] ) ){
@@ -1702,7 +1707,9 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                     //printf( "GridFF::tryLoad_new() \n", grid.n.x,grid.n.y,grid.n.z,  grid.dCell.xx, grid.dCell.yy, grid.dCell.zz,  grid.cell.xx, grid.cell.yy, grid.cell.zz, grid.pos0, grid.pos0, grid.pos0 )
                     grid.printCell();
                     Vec3d vmin=Vec3dmax,vmax=Vec3dmin;
-                    for(int i=0; i<npoint; i++){ Bspline_PLQ[i].update_bounds(vmin,vmax); }
+                    // Use actual loaded data size to prevent heap overflow
+                    printf( "GridFF::tryLoad_new() Using loaded_points=%i (expected=%i)\n", loaded_points, npoint );
+                    for(int i=0; i<loaded_points; i++){ Bspline_PLQ[i].update_bounds(vmin,vmax); }
                     printf( "GridFF::tryLoad_new() Bspline_PLQ Paul(%g,%g) Lond(%g,%g) Coul(%g,%g) \n", vmin.x,vmax.x, vmin.y,vmax.y, vmin.z,vmax.z  );
                     // int ix=18, iy=18, nxy=grid.n.x*grid.n.y;
                     // for(int iz=0; iz<grid.n.z; iz++){

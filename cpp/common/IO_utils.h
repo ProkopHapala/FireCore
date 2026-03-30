@@ -462,6 +462,21 @@ class NumpyFile{ public:
         printf(")\n");
     }
 
+    inline bool validateGridFF(int expected_nx, int expected_ny, int expected_nz) const {
+        if( ndims != 4 || shape[3] != 3 || strcmp(dtype, "<f8") != 0 ) {
+            printf("ERROR NumpyFile::validateGridFF(): Expected 4D array (nx,ny,nz,3) with dtype '<f8', got %iD (%i,%i,%i,%i) dtype='%s'\n", 
+                   ndims, shape[0], shape[1], shape[2], shape[3], dtype);
+            return false;
+        }
+        if( shape[0] != expected_nx || shape[1] != expected_ny || shape[2] != expected_nz ) {
+            printf("ERROR NumpyFile::validateGridFF(): Grid size mismatch - expected (%i,%i,%i), got (%i,%i,%i)\n", 
+                   expected_nx, expected_ny, expected_nz, shape[0], shape[1], shape[2]);
+            printf("  Solution: Remove .npy file to regenerate with correct parameters\n");
+            return false;
+        }
+        return true;
+    }
+
     inline int load(const char *fname ) {
         //char cwd[128]; getcwd(cwd, 128); printf( "NumpyFile::load(%s/%s)\n", cwd, fname );
         FILE *ptr_myfile = fopen(fname, "rb");

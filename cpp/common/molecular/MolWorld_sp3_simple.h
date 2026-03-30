@@ -719,6 +719,7 @@ int substituteMolecule( const char* fname,  int ib, Vec3d up, int ipivot=0, bool
 // ======================================
 
 void shift_atoms ( int n, int* selection, Vec3d d                                  ){ move  ( n, selection, nbmol.apos, d           ); };
+void shift_atoms (                        Vec3d d                                  ){ move  ( nbmol.natoms, 0, nbmol.apos, d        ); };
 void rotate_atoms( int n, int* selection, Vec3d p0, Vec3d ax, double phi          ){ rotate( n, selection, nbmol.apos, p0, ax, phi ); };
 void shift_atoms ( int n, int* selection, int ia0, int ia1, double l              ){ Vec3d d=(nbmol.apos[ia1]-nbmol.apos[ia0]).normalized()*l; move( n, selection, nbmol.apos, d); };
 void rotate_atoms( int n, int* selection, int ia0, int iax0, int iax1, double phi ){ rotate( n, selection, nbmol.apos, nbmol.apos[ia0], (nbmol.apos[iax1]-nbmol.apos[iax0]).normalized(), phi ); };
