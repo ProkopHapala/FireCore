@@ -12,6 +12,34 @@ from pyBall import plotUtils
 from pyBall import atomicUtils
 
 # ============================================================================
+# CENTRALIZED PLOTTING CONSTANTS
+# ============================================================================
+# Axis ranges for consistent plotting across all functions
+PLOT_LIMITS = {
+    'xlim': (-5, 20),
+    'ylim': (-10, 10),  # For individual improvement plots
+    'ylim_summary': (-10, 10),  # For summary plots  
+    'zlim': (5, 20),
+    'Flim': 3.0,
+    'Elim': 3.0
+}
+
+# Line styles for consistent trajectory visualization
+LINE_STYLES = {
+    'handle': ':',      # Dotted line for handle atom (ia_handle, controlled by spline)
+    'anchor': '-',      # Solid line for anchor atom (ia_anchor, has force penalty)
+    'anchor_marker': '.',  # Point marker for anchor to show jumps
+    'anchor_markersize': 4
+}
+
+# Legend settings
+LEGEND_SETTINGS = {
+    'fontsize': 8,
+    'location': 'upper right',
+    'max_labels': 6  # Maximum number of trajectory labels to show
+}
+
+# ============================================================================
 # SHARED PLOTTING UTILITIES
 # ============================================================================
 
@@ -40,41 +68,71 @@ def load_force_optimization_data(opt_dir):
         
     return force_data, attempt_numbers
 
-def plot_force_optimization_evolution(opt_dir, ia_anchor=28, out_file="force_optimization", f_safe=1.0, plot_format="png"):
-    """Plot force magnitude evolution across improvements"""
+def plot_force_optimization_evolution(opt_dir, ia_handle=28, out_file="force_optimization", f_safe=1.0, plot_format="png"):
+    """Plot force magnitude evolution across improvements using same data as improvements plot"""
     
-    # Load force data
-    force_data, attempt_numbers = load_force_optimization_data(opt_dir)
+    # Load improvements data to match improvements plot exactly
+    improvements = []
+    pattern = os.path.join(opt_dir, "improvement_*.npy")
+    improvement_files = sorted(glob.glob(pattern))
     
-    if not force_data:
-        print(f"No force data found in {opt_dir}")
+    for imp_file in improvement_files:
+        # Extract attempt number from filename
+        basename = os.path.basename(imp_file)
+        parts = basename.split('_')
+        
+        # Strip .npy extension from the second part
+        part2 = parts[1].replace('.npy', '')
+        
+        if part2 == 'final':
+            attempt_num = 999999  # Put final at the end
+        else:
+            attempt_num = int(part2)
+        
+        # Load improvement data
+        imp_data = np.load(imp_file, allow_pickle=True).item()
+        improvements.append({
+            'attempt': attempt_num,
+            'Fcon': imp_data['Fcon'],
+            'APs': imp_data['APs']
+        })
+    
+    # Sort by attempt number
+    improvements.sort(key=lambda x: x['attempt'])
+    
+    if not improvements:
+        print(f"No improvement data found in {opt_dir}")
         return
     
-    print(f"Found {len(force_data)} force data files")
-    print(f"Attempt range: {min(attempt_numbers)} - {max(attempt_numbers)}")
+    print(f"Found {len(improvements)} improvement data files")
+    print(f"Attempt range: {improvements[0]['attempt']} - {improvements[-1]['attempt']}")
     
     # Create figure
     fig, ax = plt.subplots(figsize=(8,6))
     
-    # Create colormap for rainbow effect using reversed jet
+    # Create colormap for rainbow effect using reversed jet (same as improvements plot)
     cmap = plt.colormaps.get_cmap('jet_r')  # Reversed jet colormap
-    n_improvements = len(force_data)
+    n_improvements = len(improvements)
     colors = [cmap(i / (n_improvements - 1)) for i in range(n_improvements)]
     
     # Plot force magnitude for each improvement
     max_f_forces = []
     
-    for i, (Fcon, attempt_num, color) in enumerate(zip(force_data, attempt_numbers, colors)):
-        # Fcon is already force on anchor atom (shape: n_configs × 3)
+    for i, (imp_data, color) in enumerate(zip(improvements, colors)):
+        Fcon = imp_data['Fcon']
+        attempt_num = imp_data['attempt']
+        
+        # Fcon is force on anchor atom (shape: n_configs × 3)
         F_mag = np.linalg.norm(Fcon, axis=1)  # Force magnitude
         
         # Check if this is the final optimization (highest attempt number)
-        if attempt_num == max(attempt_numbers):
+        if imp_data is improvements[-1]:
             # Final curve: extra bold and black
-            ax.plot(F_mag, color='black', alpha=1.0, linewidth=5, label='Final optimized')
+            ax.plot(F_mag, color='black', alpha=1.0, linewidth=5, label='trj final')
         else:
             # Other curves: full opacity colors
-            ax.plot(F_mag, color=color, alpha=1.0, linewidth=1.5, label=f'Attempt {attempt_num}' if i % 3 == 0 else "")
+            label = f'trj {attempt_num}' if i % max(1, n_improvements // 6) == 0 else ""
+            ax.plot(F_mag, color=color, alpha=1.0, linewidth=1.5, label=label)
         
         # Store max force for this improvement
         max_f_forces.append(np.max(F_mag))
@@ -87,14 +145,14 @@ def plot_force_optimization_evolution(opt_dir, ia_anchor=28, out_file="force_opt
     ax.set_ylabel('Force |F| on anchor (eV/Å)', fontsize=10)
     ax.set_title('Force Optimization Evolution Across Improvements', fontsize=10, fontweight='bold')
     
-    # Set fixed limits 0-2 eV/Å
-    ax.set_ylim(0, 2)
+    # Set fixed limits using centralized constants
+    ax.set_ylim(0, PLOT_LIMITS['Flim'])
     
     # Add grid
     ax.grid(True, alpha=0.3)
     
     # Add legend
-    ax.legend(loc='upper right', fontsize=10)
+    ax.legend(loc=LEGEND_SETTINGS['location'], fontsize=10)
     
     plt.tight_layout()
     
@@ -371,28 +429,107 @@ def plot_molecule_bonds(ax, bonds, positions, axes=(0, 1), initial_color='gray',
         plotUtils.plotBonds(links=bonds, ps=positions[0], colors=initial_color, lws=lw, axes=axes)
         plotUtils.plotBonds(links=bonds, ps=positions[-1], colors=final_color, lws=lw, axes=axes)
 
-def plot_trajectory(ax, APs, ia_anchor, ia_opposite, axes=(0, 1), color_anchor='red', color_opposite='blue', 
-                   lw=2.0, alpha=0.9, markersize=4, label_anchor=None, label_opposite=None):
-    """Plot trajectory for anchor and opposite atoms"""
-    if len(axes) == 2:
-        ax.plot(APs[:, ia_anchor, axes[0]], APs[:, ia_anchor, axes[1]], 'o-', color=color_anchor, linewidth=lw, markersize=markersize,   alpha=alpha, label=label_anchor or f'Anchor {ia_anchor}')
-        ax.plot(APs[:, ia_opposite, axes[0]], APs[:, ia_opposite, axes[1]],  'o-', color=color_opposite, linewidth=lw, markersize=markersize,  alpha=alpha, label=label_opposite or f'Opposite {ia_opposite}')
+def plot_molecule_bonds_at_points(ax, bonds, positions, trajectory_points=[0.0, 0.5, 1.0], 
+                                 colors=None, alphas=None, axes=(0, 1), lw=2.0):
+    """Plot molecule bonds at specified points along trajectory
+    
+    Parameters:
+    -----------
+    trajectory_points : list of float
+        Normalized positions along trajectory (0.0 = start, 1.0 = end)
+    colors : list of str or None
+        Colors for each trajectory point. If None, uses automatic color scheme.
+    alphas : list of float or None  
+        Alpha values for each trajectory point. If None, uses [0.3, 0.6, 1.0] scheme.
+    """
+    if bonds is not None and len(trajectory_points) > 0:
+        # Set axes for plotUtils
+        ax._plot_axes = axes
+        
+        # Default colors if not provided
+        if colors is None:
+            # Create color gradient from light gray to black
+            n_points = len(trajectory_points)
+            colors = []
+            for i, t in enumerate(trajectory_points):
+                if t == 0.0:
+                    colors.append('gray')  # Start point
+                elif t == 1.0:
+                    colors.append('black')  # End point
+                else:
+                    # Intermediate points - use blue gradient
+                    intensity = 0.3 + 0.7 * (i / (n_points - 1))
+                    colors.append((0, 0, intensity))  # Blue gradient
+        
+        # Default alphas if not provided
+        if alphas is None:
+            alphas = [0.3 + 0.7 * t for t in trajectory_points]  # Increase opacity along trajectory
+        
+        # Find closest actual trajectory points for each specified t-value
+        n_frames = len(positions)
+        
+        for i, t_point in enumerate(trajectory_points):
+            # Find closest actual frame index
+            target_idx = int(round(t_point * (n_frames - 1)))
+            target_idx = max(0, min(target_idx, n_frames - 1))
+            
+            # Plot molecule at this point
+            plotUtils.plotBonds(links=bonds, ps=positions[target_idx], 
+                              colors=colors[i], lws=lw, axes=axes)
 
-def plot_all_improvements(ax, improvements, ia_anchor, ia_opposite, axes=(0, 1),  bold_best=True, color_anchor='red', color_opposite='blue'):
-    """Plot all improvement trajectories with best one bolded"""
-    for b in improvements:
+def plot_trajectory(ax, APs, ia_handle, ia_anchor, axes=(0, 1), color_anchor='red', color_opposite='blue', 
+                   lw=2.0, alpha=0.9, markersize=4, label_anchor=None, label_opposite=None):
+    """Plot trajectory for anchor and handle atoms"""
+    if len(axes) == 2:
+        ax.plot(APs[:, ia_handle, axes[0]], APs[:, ia_handle, axes[1]], 'o-', color=color_anchor, linewidth=lw, markersize=markersize,   alpha=alpha, label=label_anchor or f'Anchor {ia_handle}')
+        ax.plot(APs[:, ia_anchor, axes[0]], APs[:, ia_anchor, axes[1]],  'o-', color=color_opposite, linewidth=lw, markersize=markersize,  alpha=alpha, label=label_opposite or f'Handle {ia_anchor}')
+
+def plot_all_improvements(ax, improvements, ia_handle, ia_anchor, axes=(0, 1), bold_best=True, color_anchor='red', color_opposite='blue', show_trajectory_labels=True):
+    """Plot all improvement trajectories with rainbow colors and best one bolded
+    
+    TERMINOLOGY:
+    - ia_handle: Handle atom (controlled by spline) → dotted line, no labels
+    - ia_anchor: Anchor atom (has force penalty) → solid line with points, labels
+    """
+    # Create rainbow colormap using reversed jet (same as force plot)
+    cmap = plt.colormaps.get_cmap('jet_r')  # Reversed jet colormap
+    n_improvements = len(improvements)
+    colors = [cmap(i / (n_improvements - 1)) for i in range(n_improvements)]
+    
+    for i, b in enumerate(improvements):
         AP = b['APs']
+        color = colors[i]
+        attempt_num = b.get('attempt', i)
+        
+        # Default line properties
         lw = 1.0
-        alpha = 0.2
-        if bold_best and (b is improvements[-1]):
-            lw = 2.5
-            alpha = 0.9
+        alpha = 0.6
+        label = None
+        
+        # Check if this is the final/best improvement
+        is_final = bold_best and (b is improvements[-1])
+        
+        if show_trajectory_labels:
+            if is_final:
+                lw = 3.0
+                alpha = 1.0
+                label = 'trj final'
+            elif i % max(1, n_improvements // LEGEND_SETTINGS['max_labels']) == 0:  # Show legend for limited curves
+                label = f'trj {attempt_num}'
+        
+        # Make final line bold even if not showing labels
+        if is_final:
+            lw = 3.0
+            alpha = 1.0
         
         if len(axes) == 2:
+            # Handle trajectory (dotted line, no label) - ia_handle is controlled by spline
+            ax.plot(AP[:, ia_handle, axes[0]], AP[:, ia_handle, axes[1]], 
+                   color=color, lw=lw, alpha=alpha, linestyle=LINE_STYLES['handle'])
+            # Anchor trajectory (solid line with points, with label) - ia_anchor has force penalty
             ax.plot(AP[:, ia_anchor, axes[0]], AP[:, ia_anchor, axes[1]], 
-                   color=color_anchor, lw=lw, alpha=alpha)
-            ax.plot(AP[:, ia_opposite, axes[0]], AP[:, ia_opposite, axes[1]], 
-                   color=color_opposite, lw=lw, alpha=alpha)
+                   color=color, lw=lw, alpha=alpha, linestyle=LINE_STYLES['anchor'], 
+                   marker=LINE_STYLES['anchor_marker'], markersize=LINE_STYLES['anchor_markersize'], label=label)
 
 def plot_control_points(ax, control_pts, axes=(0, 1), color='red', markersize=10, 
                        markeredgewidth=2, add_numbers=True):
@@ -443,14 +580,15 @@ def add_penalty_decomposition_text(ax, E_total, l_pos, l_force, w_pos, w_force, 
 # MAIN PLOTTING FUNCTIONS
 # ============================================================================
 
-def plot_single_improvement_comprehensive(APs, Fcon, target_pos, ia_anchor, ia_opposite, 
+def plot_single_improvement_comprehensive(APs, Fcon, target_pos, ia_handle, ia_anchor, 
                                        attempt, out_dir=".", substrate_shift=None, 
                                        surface_name=None, plot_substrate=True, 
                                        plot_mol_atoms=False, plot_mol_bonds=True, 
                                        opt_target=None, current_control_pts=None, 
                                        suffix="", title_extra="", Es=None, 
                                        mmff_instance=None, bold_best=True,
-                                       penalty_params=None, plot_format="png"):
+                                       penalty_params=None, plot_format="png",
+                                       trajectory_points=None):
     """Comprehensive 4-panel plot for single improvement
     
     Parameters:
@@ -459,12 +597,12 @@ def plot_single_improvement_comprehensive(APs, Fcon, target_pos, ia_anchor, ia_o
         Output format for plots: 'png' (default) or 'svg' (for vector graphics)
     """
     
-    # Fixed axis ranges for stable movie
-    xlim = (-5, 20)
-    ylim = (-5, 10)
-    zlim = (5, 20)
-    Flim = 3.0
-    Elim = 3.0
+    # Fixed axis ranges for stable movie - use centralized constants
+    xlim = PLOT_LIMITS['xlim']
+    ylim = PLOT_LIMITS['ylim']
+    zlim = PLOT_LIMITS['zlim']
+    Flim = PLOT_LIMITS['Flim']
+    Elim = PLOT_LIMITS['Elim']
     
     # Set fixed layout policy to prevent automatic adjustments
     plt.rcParams['figure.autolayout'] = False
@@ -486,9 +624,12 @@ def plot_single_improvement_comprehensive(APs, Fcon, target_pos, ia_anchor, ia_o
         plot_substrate_atoms(ax1, substrate_shifted, substrate_types, substrate_shift)
     
     if plot_mol_bonds:
-        plot_molecule_bonds(ax1, bonds, APs, axes=(0, 1), initial_color='gray', final_color='black')
+        # Use enhanced plotting with trajectory points
+        if trajectory_points is None:
+            trajectory_points = [0.0, 1.0]  # Default: just start and end
+        plot_molecule_bonds_at_points(ax1, bonds, APs, trajectory_points=trajectory_points, axes=(0, 1))
     
-    plot_trajectory(ax1, APs, ia_anchor, ia_opposite, axes=(0, 1))
+    plot_trajectory(ax1, APs, ia_handle, ia_anchor, axes=(0, 1))
     plot_control_points(ax1, current_control_pts, axes=(0, 1))
     plot_target(ax1, target_pos, axes=(0, 1))
     
@@ -497,7 +638,7 @@ def plot_single_improvement_comprehensive(APs, Fcon, target_pos, ia_anchor, ia_o
     ax1.set_title(f'Improvement {attempt} - Top View{title_extra}')
     ax1.set_xlim(xlim)
     ax1.set_ylim(ylim)
-    ax1.legend(loc='upper right')
+    ax1.legend(loc=LEGEND_SETTINGS['location'], fontsize=LEGEND_SETTINGS['fontsize'])
     ax1.grid(True, alpha=0.3)
     
     # Panel 2: Side view (XZ)
@@ -508,9 +649,9 @@ def plot_single_improvement_comprehensive(APs, Fcon, target_pos, ia_anchor, ia_o
         plot_substrate_atoms(ax2, substrate_shifted, substrate_types, substrate_shift)
     
     if plot_mol_bonds:
-        plot_molecule_bonds(ax2, bonds, APs, axes=(0, 2), initial_color='gray', final_color='black')
+        plot_molecule_bonds_at_points(ax2, bonds, APs, trajectory_points=trajectory_points, axes=(0, 2))
     
-    plot_trajectory(ax2, APs, ia_anchor, ia_opposite, axes=(0, 2))
+    plot_trajectory(ax2, APs, ia_handle, ia_anchor, axes=(0, 2))
     plot_control_points(ax2, current_control_pts, axes=(0, 2))
     plot_target(ax2, target_pos, axes=(0, 2))
     
@@ -519,7 +660,7 @@ def plot_single_improvement_comprehensive(APs, Fcon, target_pos, ia_anchor, ia_o
     ax2.set_title(f'Improvement {attempt} - Side View{title_extra}')
     ax2.set_xlim(xlim)
     ax2.set_ylim(zlim)
-    ax2.legend(loc='upper right')
+    ax2.legend(loc=LEGEND_SETTINGS['location'], fontsize=LEGEND_SETTINGS['fontsize'])
     ax2.grid(True, alpha=0.3)
     
     # Panel 3: Energy along trajectory
@@ -546,7 +687,7 @@ def plot_single_improvement_comprehensive(APs, Fcon, target_pos, ia_anchor, ia_o
         F_anchor = Fcon
     else:  # All atom forces - extract anchor
         n_atoms = Fcon.shape[1] // 3
-        F_anchor = Fcon[:, ia_anchor*3:(ia_anchor+1)*3]
+        F_anchor = Fcon[:, ia_handle*3:(ia_handle+1)*3]
     
     F_mag = np.sqrt(np.sum(F_anchor**2, axis=1))
     
@@ -557,7 +698,7 @@ def plot_single_improvement_comprehensive(APs, Fcon, target_pos, ia_anchor, ia_o
     
     ax4.set_xlabel('Configuration index')
     ax4.set_ylabel('Force (eV/Å)')
-    ax4.set_title(f'Improvement {attempt} - Forces on Anchor {ia_anchor}')
+    ax4.set_title(f'Improvement {attempt} - Forces on Anchor {ia_handle}')
     ax4.set_xlim(0, len(F_anchor[:, 0])-1)
     ax4.set_ylim(-Flim, Flim)  # Fixed y-axis for consistent frames
     ax4.axhline(y=0, color='k', linestyle='--', alpha=0.5)
@@ -580,9 +721,9 @@ def plot_single_improvement_comprehensive(APs, Fcon, target_pos, ia_anchor, ia_o
     plt.close(fig)
     print(f"Saved comprehensive improvement plot: {filename}")
 
-def plot_improvements_summary(improvements, ia_anchor, ia_opposite, target_pos, 
+def plot_improvements_summary(improvements, ia_handle, ia_anchor, target_pos, 
                             substrate_shift=None, bold_best=True, out_dir=".", 
-                            suffix="", plot_format="png"):
+                            suffix="", plot_format="png", trajectory_points=None):
     """Summary plot showing all improvements with substrate and molecule bonds
     
     Parameters:
@@ -591,10 +732,14 @@ def plot_improvements_summary(improvements, ia_anchor, ia_opposite, target_pos,
         Output format for plots: 'png' (default) or 'svg' (for vector graphics)
     """
     
-    # Fixed axis ranges for stable movie
-    xlim = (-5, 20)
-    ylim = (-5, 10)
-    zlim = (5, 25)
+    # Fixed axis ranges for stable movie - use centralized constants
+    xlim = PLOT_LIMITS['xlim']
+    ylim = PLOT_LIMITS['ylim_summary']
+    zlim = PLOT_LIMITS['zlim']
+    
+    # Default trajectory points if not provided
+    if trajectory_points is None:
+        trajectory_points = [0.0, 1.0]  # Default: just start and end
     
     # Load shared resources
     element_types = load_element_types()
@@ -617,17 +762,17 @@ def plot_improvements_summary(improvements, ia_anchor, ia_opposite, target_pos,
     if substrate_shifted is not None:
         plot_substrate_atoms(ax1, substrate_shifted, substrate_types, substrate_shift)
     
-    plot_all_improvements(ax1, improvements, ia_anchor, ia_opposite, axes=(0, 1), bold_best=bold_best)
+    plot_all_improvements(ax1, improvements, ia_handle, ia_anchor, axes=(0, 1), bold_best=bold_best, show_trajectory_labels=False)
     
     if bonds is not None:
-        plot_molecule_bonds(ax1, bonds, final_AP, axes=(0, 1))
+        plot_molecule_bonds_at_points(ax1, bonds, final_AP, trajectory_points=trajectory_points, axes=(0, 1))
     
     plot_target(ax1, target_pos, axes=(0, 1))
     
     ax1.set_title('Optimization improvements (xy)')
     ax1.set_xlim(xlim)
     ax1.set_ylim(ylim)
-    ax1.legend(loc='upper right', fontsize=8)
+    ax1.legend(loc=LEGEND_SETTINGS['location'], fontsize=LEGEND_SETTINGS['fontsize'])
     
     # XZ panel
     ax2 = fig.add_subplot(1, 2, 2)
@@ -636,16 +781,17 @@ def plot_improvements_summary(improvements, ia_anchor, ia_opposite, target_pos,
     if substrate_shifted is not None:
         plot_substrate_atoms(ax2, substrate_shifted, substrate_types, substrate_shift)
     
-    plot_all_improvements(ax2, improvements, ia_anchor, ia_opposite, axes=(0, 2), bold_best=bold_best)
+    plot_all_improvements(ax2, improvements, ia_handle, ia_anchor, axes=(0, 2), bold_best=bold_best, show_trajectory_labels=True)
     
     if bonds is not None:
-        plot_molecule_bonds(ax2, bonds, final_AP, axes=(0, 2))
+        plot_molecule_bonds_at_points(ax2, bonds, final_AP, trajectory_points=trajectory_points, axes=(0, 2))
     
     plot_target(ax2, target_pos, axes=(0, 2))
     
     ax2.set_title('Optimization improvements (xz)')
     ax2.set_xlim(xlim)
     ax2.set_ylim(zlim)
+    ax2.legend(loc=LEGEND_SETTINGS['location'], fontsize=LEGEND_SETTINGS['fontsize'])
     
     # NO tight_layout - keep fixed layout for stable movies
     filename = os.path.join(out_dir, f'improvements{suffix}.{plot_format}')
@@ -663,22 +809,22 @@ def plot_improvements_summary(improvements, ia_anchor, ia_opposite, target_pos,
 # LEGACY FUNCTIONS (for backward compatibility)
 # ============================================================================
 
-def _plot_single_improvement(APs, Fcon, target_pos, ia_anchor, ia_opposite, attempt, out_dir, 
+def _plot_single_improvement(APs, Fcon, target_pos, ia_handle, ia_anchor, attempt, out_dir, 
                            mmff_instance, substrate_shift, surface_name=None, 
                            plot_substrate=True, plot_mol_atoms=True, 
                            plot_mol_bonds=True, opt_target=None, 
                            current_control_pts=None, suffix="", title_extra="", Es=None,
-                           penalty_params=None, plot_format="png"):
+                           penalty_params=None, plot_format="png", trajectory_points=None):
     """Legacy wrapper for backward compatibility"""
     plot_single_improvement_comprehensive(
-        APs=APs, Fcon=Fcon, target_pos=target_pos, ia_anchor=ia_anchor, 
-        ia_opposite=ia_opposite, attempt=attempt, out_dir=out_dir, 
+        APs=APs, Fcon=Fcon, target_pos=target_pos, ia_handle=ia_handle, 
+        ia_anchor=ia_anchor, attempt=attempt, out_dir=out_dir, 
         substrate_shift=substrate_shift, surface_name=surface_name, 
         plot_substrate=plot_substrate, plot_mol_atoms=plot_mol_atoms, 
         plot_mol_bonds=plot_mol_bonds, opt_target=opt_target, 
         current_control_pts=current_control_pts, suffix=suffix, 
         title_extra=title_extra, Es=Es, mmff_instance=mmff_instance,
-        penalty_params=penalty_params, plot_format=plot_format)
+        penalty_params=penalty_params, plot_format=plot_format, trajectory_points=trajectory_points)
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -728,8 +874,8 @@ class TipSplineSAOptimizer:
     def __init__(
         self,
         target_pos,
+        ia_handle,
         ia_anchor,
-        ia_opposite,
         w_pos=1.0,
         w_force=0.0,
         f_safe=5.0,
@@ -751,8 +897,8 @@ class TipSplineSAOptimizer:
         bbox_x, bbox_y, bbox_z: tuples defining min/max bounds for control points
         """
         self.target_pos = np.array(target_pos, dtype=np.float64)
+        self.ia_handle = ia_handle
         self.ia_anchor = ia_anchor
-        self.ia_opposite = ia_opposite
         self.w_pos = float(w_pos)
         self.w_force = float(w_force)
         self.f_safe = float(f_safe)
@@ -772,7 +918,7 @@ class TipSplineSAOptimizer:
             raise ValueError(f"target_pos must be (3,); got {self.target_pos.shape}")
 
     def _loss_components(self, APs, Fcon):
-        rB = np.array(APs[-1, self.ia_opposite, :3], dtype=np.float64)
+        rB = np.array(APs[-1, self.ia_anchor, :3], dtype=np.float64)
         d = rB - self.target_pos
         l_pos = float(np.dot(d, d))
 
@@ -872,6 +1018,8 @@ class TipSplineSAOptimizer:
         opt_target=None,
         nconf=40,
         plot_format="png",
+        trajectory_points=None,
+        verbosity=1,  # 0=minimal files, 1=normal, 2=debug
         **kwargs
     ):
         """Run simulated annealing optimization with comprehensive plotting
@@ -949,8 +1097,8 @@ class TipSplineSAOptimizer:
                 best['APs'], 
                 best['Fcon'],
                 self.target_pos, 
+                self.ia_handle, 
                 self.ia_anchor, 
-                self.ia_opposite, 
                 -1,  # Use -1 for initial/baseline
                 out_dir,
                 mmff_instance,
@@ -973,12 +1121,24 @@ class TipSplineSAOptimizer:
                     'fmax': best.get('fmax', 0.0),
                     'f_safe': self.f_safe
                 },
-                plot_format=plot_format
+                plot_format=plot_format,
+                trajectory_points=trajectory_points
             )
 
         improvements = []
         if save_every_improvement:
             improvements.append(best)
+            # Save initial improvement data for force plot consistency
+            improvement_data = {
+                'APs': best['APs'],
+                'Fcon': best['Fcon'],
+                'attempt': -1,
+                'E': best['E'],
+                'l_pos': best['l_pos'],
+                'l_force': best['l_force'],
+                'fmax': best['fmax']
+            }
+            np.save(os.path.join(out_dir, f"improvement_-0001.npy"), improvement_data)
 
         # Optimization loop
         print(f"=== Starting optimization loop: {n_attempts} attempts ===")
@@ -991,6 +1151,7 @@ class TipSplineSAOptimizer:
             
             # CRITICAL: Use unique spline filename for each attempt
             # This prevents file caching/overwrite issues that could cause non-deterministic behavior
+            # Always save attempt files, but clean them up later for minimal verbosity
             spline_attempt = f"{out_dir}/spline_attempt_{it:05d}.dat"
             save_spline_dat(spline_attempt, pts_new)
 
@@ -1002,9 +1163,16 @@ class TipSplineSAOptimizer:
 
             Es, FAs, APs, Fcon = mmff_instance.scan_manipulation(ts, spline_fname=spline_attempt, **scan_kwargs)
             
+            # Clean up attempt files immediately if verbosity is minimal (after scan completes)
+            if verbosity < 2:
+                cleanup_files = [spline_attempt]
+                for cleanup_file in cleanup_files:
+                    if os.path.exists(cleanup_file):
+                        os.remove(cleanup_file)
+            
             # DEBUG: Check t=0 positions for both anchor and opposite atoms
-            anchor_t0 = APs[0, self.ia_anchor, :]  # t=0, anchor atom
-            opposite_t0 = APs[0, self.ia_opposite, :]  # t=0, opposite atom
+            anchor_t0 = APs[0, self.ia_handle, :]  # t=0, anchor atom
+            opposite_t0 = APs[0, self.ia_anchor, :]  # t=0, opposite atom
             print(f"=== DEBUG ATTEMPT {it}: t=0 positions ===")
             print(f"    Anchor:   ({anchor_t0[0]:.6f}, {anchor_t0[1]:.6f}, {anchor_t0[2]:.6f})")
             print(f"    Opposite: ({opposite_t0[0]:.6f}, {opposite_t0[1]:.6f}, {opposite_t0[2]:.6f})")
@@ -1055,10 +1223,25 @@ class TipSplineSAOptimizer:
 
                 if save_every_improvement:
                     improvements.append(best)
-                    fn = os.path.join(out_dir, f"best_{it:05d}.dat")
-                    save_spline_dat(fn, pts_new)
-                    np.save(os.path.join(out_dir, f"best_{it:05d}_APs.npy"), best['APs'])
-                    np.save(os.path.join(out_dir, f"best_{it:05d}_Fcon.npy"), best['Fcon'])
+                    
+                    # Save combined improvement data for force plot consistency (always saved)
+                    improvement_data = {
+                        'APs': best['APs'],
+                        'Fcon': best['Fcon'],
+                        'attempt': it,
+                        'E': best['E'],
+                        'l_pos': best['l_pos'],
+                        'l_force': best['l_force'],
+                        'fmax': best['fmax']
+                    }
+                    np.save(os.path.join(out_dir, f"improvement_{it:05d}.npy"), improvement_data)
+                    
+                    # Save detailed files only in normal or debug verbosity
+                    if verbosity >= 1:
+                        fn = os.path.join(out_dir, f"best_{it:05d}.dat")
+                        save_spline_dat(fn, pts_new)
+                        np.save(os.path.join(out_dir, f"best_{it:05d}_APs.npy"), best['APs'])
+                        np.save(os.path.join(out_dir, f"best_{it:05d}_Fcon.npy"), best['Fcon'])
                     
                     # Plot individual improvement if requested
                     if plot_improvements:
@@ -1066,8 +1249,8 @@ class TipSplineSAOptimizer:
                             best['APs'], 
                             best['Fcon'],
                             self.target_pos, 
+                            self.ia_handle, 
                             self.ia_anchor, 
-                            self.ia_opposite, 
                             it, 
                             out_dir,
                             mmff_instance,
@@ -1090,7 +1273,8 @@ class TipSplineSAOptimizer:
                                 'fmax': fmax,
                                 'f_safe': self.f_safe
                             },
-                            plot_format=plot_format
+                            plot_format=plot_format,
+                            trajectory_points=trajectory_points
                         )
 
             # Plot current improvements (not best ever) using the saved flag
@@ -1126,8 +1310,8 @@ class TipSplineSAOptimizer:
                     trial_data['APs'], 
                     trial_data['Fcon'],
                     self.target_pos, 
+                    self.ia_handle, 
                     self.ia_anchor, 
-                    self.ia_opposite, 
                     it, 
                     out_dir, 
                     mmff_instance, 
@@ -1150,31 +1334,48 @@ class TipSplineSAOptimizer:
                         'fmax': fmax,
                         'f_safe': self.f_safe
                     },
-                    plot_format=plot_format
+                    plot_format=plot_format,
+                    trajectory_points=trajectory_points
                 )
 
             temp *= self.cooling
             current_step *= self.step_cooling
 
-        # Save final best spline
+        # Save final best spline (always save combined data, detailed files based on verbosity)
         best_spline = os.path.join(out_dir, "best_final.dat")
-        save_spline_dat(best_spline, best['pts'])
-        np.save(os.path.join(out_dir, "best_final_APs.npy"), best['APs'])
-        np.save(os.path.join(out_dir, "best_final_Fcon.npy"), best['Fcon'])
+        
+        # Save combined improvement data for force plot consistency (always saved)
+        final_improvement_data = {
+            'APs': best['APs'],
+            'Fcon': best['Fcon'],
+            'attempt': 999999,  # Final marker
+            'E': best['E'],
+            'l_pos': best['l_pos'],
+            'l_force': best['l_force'],
+            'fmax': best['fmax']
+        }
+        np.save(os.path.join(out_dir, "improvement_final.npy"), final_improvement_data)
+        
+        # Save detailed files only in normal or debug verbosity
+        if verbosity >= 1:
+            save_spline_dat(best_spline, best['pts'])
+            np.save(os.path.join(out_dir, "best_final_APs.npy"), best['APs'])
+            np.save(os.path.join(out_dir, "best_final_Fcon.npy"), best['Fcon'])
 
         # Plot improvements summary using clean modular function
         if plot_improvements and (len(improvements) > 0):
             print(f"Plotting improvements: {len(improvements)}")
             plot_improvements_summary(
                 improvements=improvements,
+                ia_handle=self.ia_handle,
                 ia_anchor=self.ia_anchor,
-                ia_opposite=self.ia_opposite,
                 target_pos=self.target_pos,
                 substrate_shift=substrate_shift,
                 bold_best=bold_best,
                 out_dir=out_dir,
                 suffix="",
-                plot_format=plot_format
+                plot_format=plot_format,
+                trajectory_points=trajectory_points
             )
         
         # Plot force optimization evolution
@@ -1182,7 +1383,7 @@ class TipSplineSAOptimizer:
             print(f"Plotting force optimization evolution...")
             plot_force_optimization_evolution(
                 opt_dir=out_dir,
-                ia_anchor=self.ia_anchor,
+                ia_handle=self.ia_handle,
                 out_file="force_optimization",
                 f_safe=self.f_safe,
                 plot_format=plot_format
