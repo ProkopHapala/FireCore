@@ -51,6 +51,7 @@ def parse_args():
     parser.add_argument('--plot-molecule-atoms', type=int, default=0, help='Plot molecule atoms (1=yes, 0=no)')
     parser.add_argument('--plot-molecule-bonds', type=int, default=1, help='Plot molecule bonds (1=yes, 0=no)')
     parser.add_argument('--plot-connectors', type=int, default=0, help='Plot connector lines between trajectories (1=yes, 0=no)')
+    parser.add_argument('--plot-format', type=str, default='svg', choices=['png', 'svg'], help='Output format for plots: png (raster) or svg (vector graphics)')
     
     # Molecular dynamics parameters
     parser.add_argument('--dt',    type=float, default=0.05,help='Time step for MD integration (fs)')
@@ -106,6 +107,7 @@ plot_substrate = bool(args.plot_substrate)
 plot_molecule_atoms = bool(args.plot_molecule_atoms)
 plot_molecule_bonds = bool(args.plot_molecule_bonds)
 plot_connectors = bool(args.plot_connectors)
+plot_format = args.plot_format
 
 do_optimize = bool(args.optimize)
 opt_outdir = args.opt_outdir
@@ -236,6 +238,7 @@ if do_optimize:
         plot_molecule_atoms=plot_molecule_atoms,
         plot_molecule_bonds=plot_molecule_bonds,
         opt_target=opt_target,
+        plot_format=plot_format,
     )
     print(f"=== DEBUG: Optimization DONE best_spline={best_spline} best_E={best['E']:.6g} best_attempt={best['attempt']} ===")
     spline_file = best_spline

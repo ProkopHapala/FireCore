@@ -4,6 +4,7 @@ import json
 import time
 import matplotlib.pyplot as plt
 import sys
+import glob
 
 # Add path to import plotUtils
 sys.path.append('../../')
@@ -13,6 +14,107 @@ from pyBall import atomicUtils
 # ============================================================================
 # SHARED PLOTTING UTILITIES
 # ============================================================================
+
+def load_force_optimization_data(opt_dir):
+    """Load all force data from best_XXXXX_Fcon.npy files"""
+    pattern = os.path.join(opt_dir, "best_*_Fcon.npy")
+    fcon_files = sorted(glob.glob(pattern))
+    
+    force_data = []
+    attempt_numbers = []
+    
+    for fcon_file in fcon_files:
+        # Extract attempt number from filename
+        basename = os.path.basename(fcon_file)
+        parts = basename.split('_')
+        
+        if parts[1] == 'final':
+            attempt_num = 999999  # Put final at the end
+        else:
+            attempt_num = int(parts[1].split('_')[0])
+        
+        # Load force data
+        Fcon = np.load(fcon_file)
+        force_data.append(Fcon)
+        attempt_numbers.append(attempt_num)
+        
+    return force_data, attempt_numbers
+
+def plot_force_optimization_evolution(opt_dir, ia_anchor=28, out_file="force_optimization", f_safe=1.0, plot_format="png"):
+    """Plot force magnitude evolution across improvements"""
+    
+    # Load force data
+    force_data, attempt_numbers = load_force_optimization_data(opt_dir)
+    
+    if not force_data:
+        print(f"No force data found in {opt_dir}")
+        return
+    
+    print(f"Found {len(force_data)} force data files")
+    print(f"Attempt range: {min(attempt_numbers)} - {max(attempt_numbers)}")
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(8,6))
+    
+    # Create colormap for rainbow effect using reversed jet
+    cmap = plt.colormaps.get_cmap('jet_r')  # Reversed jet colormap
+    n_improvements = len(force_data)
+    colors = [cmap(i / (n_improvements - 1)) for i in range(n_improvements)]
+    
+    # Plot force magnitude for each improvement
+    max_f_forces = []
+    
+    for i, (Fcon, attempt_num, color) in enumerate(zip(force_data, attempt_numbers, colors)):
+        # Fcon is already force on anchor atom (shape: n_configs × 3)
+        F_mag = np.linalg.norm(Fcon, axis=1)  # Force magnitude
+        
+        # Check if this is the final optimization (highest attempt number)
+        if attempt_num == max(attempt_numbers):
+            # Final curve: extra bold and black
+            ax.plot(F_mag, color='black', alpha=1.0, linewidth=5, label='Final optimized')
+        else:
+            # Other curves: full opacity colors
+            ax.plot(F_mag, color=color, alpha=1.0, linewidth=1.5, label=f'Attempt {attempt_num}' if i % 3 == 0 else "")
+        
+        # Store max force for this improvement
+        max_f_forces.append(np.max(F_mag))
+    
+    # Add penalty threshold line
+    ax.axhline(y=f_safe, color='red', linestyle='--', linewidth=2, alpha=0.7, label='Penalty threshold')
+    
+    # Formatting
+    ax.set_xlabel('Configuration index along trajectory', fontsize=10)
+    ax.set_ylabel('Force |F| on anchor (eV/Å)', fontsize=10)
+    ax.set_title('Force Optimization Evolution Across Improvements', fontsize=10, fontweight='bold')
+    
+    # Set fixed limits 0-2 eV/Å
+    ax.set_ylim(0, 2)
+    
+    # Add grid
+    ax.grid(True, alpha=0.3)
+    
+    # Add legend
+    ax.legend(loc='upper right', fontsize=10)
+    
+    plt.tight_layout()
+    
+    # Save plot with appropriate format
+    out_path = os.path.join(opt_dir, f"{out_file}.{plot_format}")
+    if plot_format.lower() == 'svg':
+        plt.savefig(out_path, format='svg', bbox_inches='tight')
+    else:  # PNG default
+        plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    
+    print(f"Saved force optimization plot to: {out_path}")
+    
+    # Print summary statistics
+    print(f"\n=== FORCE OPTIMIZATION SUMMARY ===")
+    print(f"Initial max force: {max_f_forces[0]:.3f} eV/Å")
+    print(f"Final max force: {max_f_forces[-1]:.3f} eV/Å")
+    print(f"Force reduction: {(max_f_forces[0] - max_f_forces[-1]):.3f} eV/Å")
+    print(f"Improvement: {(1 - max_f_forces[-1]/max_f_forces[0])*100:.1f}%")
+    print(f"Final force vs threshold: {max_f_forces[-1]:.3f} vs {f_safe:.1f} eV/Å")
 
 def load_element_types(molecule_xyz="../../cpp/common_resources/xyz/PTCDA.xyz"):
     """Load element types from XYZ file and convert to atomic numbers"""
@@ -211,33 +313,55 @@ def create_molecule_bonds(positions, element_types):
     return bonds
 
 def plot_substrate_atoms(ax, substrate_shifted, substrate_types, substrate_shift=None):
-    """Plot substrate atoms with proper filtering and coloring"""
+    """Plot substrate atoms with proper filtering and coloring - FIXED VERSION"""
     if substrate_shifted is None:
         return
     
-    # Find top surface atoms
+    # Find top surface atoms (highest z positions)
     top_z = np.max(substrate_shifted[:, 2])
-    height_cutoff = top_z - 3.0
-    visible_mask = substrate_shifted[:, 2] >= height_cutoff
+    height_cutoff = 3.0  # Å
+    visible_mask = substrate_shifted[:, 2] >= (top_z - height_cutoff)
     
     if np.any(visible_mask):
         visible_pos = substrate_shifted[visible_mask]
-        visible_types = [substrate_types[i] for i in range(len(substrate_types)) if visible_mask[i]]
+        visible_types = np.array(substrate_types)[visible_mask]
+        heights = visible_pos[:, 2]
         
-        # Separate Ca and F atoms
-        ca_mask = np.array([t == 'Ca' for t in visible_types])
-        f_mask = np.array([t == 'F' for t in visible_types])
+        # Normalize heights for sizing (0.3 to 1.0 range)
+        min_height = np.min(heights)
+        max_height = np.max(heights)
+        if max_height > min_height:
+            normalized_sizes = 0.3 + 0.7 * (heights - min_height) / (max_height - min_height)
+        else:
+            normalized_sizes = np.ones_like(heights) * 0.5
+        
+        # Base sizes for different atom types
+        ca_base_size = 40
+        f_base_size = 20
+        
+        # Separate Ca and F atoms for different colors (magenta/green)
+        ca_mask = visible_types == 'Ca'
+        f_mask = visible_types == 'F'
         
         # Determine axes from subplot
         axes = getattr(ax, '_plot_axes', (0, 1))  # Default to XY
         
-        # Plot with smaller sizes for background
+        # Plot with proper aspect ratio preservation
         if np.any(ca_mask):
+            ca_sizes = ca_base_size * normalized_sizes[ca_mask]
             if len(axes) == 2:
-                ax.scatter(visible_pos[ca_mask, axes[0]], visible_pos[ca_mask, axes[1]],  c='magenta', s=10, alpha=0.3, label='Ca atoms')
+                ax.scatter(visible_pos[ca_mask, axes[0]], visible_pos[ca_mask, axes[1]], 
+                          c='magenta', s=ca_sizes, alpha=0.7, label='Ca atoms')
         if np.any(f_mask):
+            f_sizes = f_base_size * normalized_sizes[f_mask]
             if len(axes) == 2:
-                ax.scatter(visible_pos[f_mask, axes[0]], visible_pos[f_mask, axes[1]], c='green', s=5, alpha=0.3, label='F atoms')
+                ax.scatter(visible_pos[f_mask, axes[0]], visible_pos[f_mask, axes[1]], 
+                          c='green', s=f_sizes, alpha=0.5, label='F atoms')
+        
+        # CRITICAL: Set equal aspect ratio for proper hexagonal lattice display
+        # This ensures Ca ions form equilateral triangles instead of distorted shapes
+        if len(axes) == 2 and axes == (0, 1):  # Only for XY plots
+            ax.set_aspect('equal', adjustable='box')
 
 def plot_molecule_bonds(ax, bonds, positions, axes=(0, 1), initial_color='gray', final_color='black', lw=2.0):
     """Plot molecule bonds for initial and final positions"""
@@ -326,8 +450,14 @@ def plot_single_improvement_comprehensive(APs, Fcon, target_pos, ia_anchor, ia_o
                                        opt_target=None, current_control_pts=None, 
                                        suffix="", title_extra="", Es=None, 
                                        mmff_instance=None, bold_best=True,
-                                       penalty_params=None):
-    """Comprehensive 4-panel plot for single improvement"""
+                                       penalty_params=None, plot_format="png"):
+    """Comprehensive 4-panel plot for single improvement
+    
+    Parameters:
+    -----------
+    plot_format : str
+        Output format for plots: 'png' (default) or 'svg' (for vector graphics)
+    """
     
     # Fixed axis ranges for stable movie
     xlim = (-5, 20)
@@ -439,15 +569,27 @@ def plot_single_improvement_comprehensive(APs, Fcon, target_pos, ia_anchor, ia_o
         add_penalty_decomposition_text(ax4, **penalty_params)
     
     # NO tight_layout - keep fixed layout for stable movies
-    filename = os.path.join(out_dir, f'improvement_{attempt:05d}{suffix}.png')
-    fig.savefig(filename, dpi=150)
+    filename = os.path.join(out_dir, f'improvement_{attempt:05d}{suffix}.{plot_format}')
+    
+    # Set appropriate parameters for different formats
+    if plot_format.lower() == 'svg':
+        fig.savefig(filename, format='svg', bbox_inches='tight')
+    else:  # PNG default
+        fig.savefig(filename, dpi=150)
+    
     plt.close(fig)
     print(f"Saved comprehensive improvement plot: {filename}")
 
 def plot_improvements_summary(improvements, ia_anchor, ia_opposite, target_pos, 
                             substrate_shift=None, bold_best=True, out_dir=".", 
-                            suffix=""):
-    """Summary plot showing all improvements with substrate and molecule bonds"""
+                            suffix="", plot_format="png"):
+    """Summary plot showing all improvements with substrate and molecule bonds
+    
+    Parameters:
+    -----------
+    plot_format : str
+        Output format for plots: 'png' (default) or 'svg' (for vector graphics)
+    """
     
     # Fixed axis ranges for stable movie
     xlim = (-5, 20)
@@ -506,8 +648,14 @@ def plot_improvements_summary(improvements, ia_anchor, ia_opposite, target_pos,
     ax2.set_ylim(zlim)
     
     # NO tight_layout - keep fixed layout for stable movies
-    filename = os.path.join(out_dir, f'improvements{suffix}.png')
-    fig.savefig(filename, dpi=150)
+    filename = os.path.join(out_dir, f'improvements{suffix}.{plot_format}')
+    
+    # Set appropriate parameters for different formats
+    if plot_format.lower() == 'svg':
+        fig.savefig(filename, format='svg', bbox_inches='tight')
+    else:  # PNG default
+        fig.savefig(filename, dpi=150)
+    
     plt.close(fig)
     print(f"Saved improvements summary plot: {filename}")
 
@@ -520,7 +668,7 @@ def _plot_single_improvement(APs, Fcon, target_pos, ia_anchor, ia_opposite, atte
                            plot_substrate=True, plot_mol_atoms=True, 
                            plot_mol_bonds=True, opt_target=None, 
                            current_control_pts=None, suffix="", title_extra="", Es=None,
-                           penalty_params=None):
+                           penalty_params=None, plot_format="png"):
     """Legacy wrapper for backward compatibility"""
     plot_single_improvement_comprehensive(
         APs=APs, Fcon=Fcon, target_pos=target_pos, ia_anchor=ia_anchor, 
@@ -530,7 +678,7 @@ def _plot_single_improvement(APs, Fcon, target_pos, ia_anchor, ia_opposite, atte
         plot_mol_bonds=plot_mol_bonds, opt_target=opt_target, 
         current_control_pts=current_control_pts, suffix=suffix, 
         title_extra=title_extra, Es=Es, mmff_instance=mmff_instance,
-        penalty_params=penalty_params)
+        penalty_params=penalty_params, plot_format=plot_format)
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -723,9 +871,16 @@ class TipSplineSAOptimizer:
         plot_molecule_bonds=True,
         opt_target=None,
         nconf=40,
+        plot_format="png",
         **kwargs
     ):
-        """Run simulated annealing optimization with comprehensive plotting"""
+        """Run simulated annealing optimization with comprehensive plotting
+        
+        Parameters:
+        -----------
+        plot_format : str
+            Output format for plots: 'png' (default) or 'svg' (for vector graphics)
+        """
         
         print(f"=== Starting TipSplineSAOptimizer.optimize() ===")
         print(f"n_attempts={n_attempts}, out_dir={out_dir}")
@@ -817,7 +972,8 @@ class TipSplineSAOptimizer:
                     'w_force': self.w_force,
                     'fmax': best.get('fmax', 0.0),
                     'f_safe': self.f_safe
-                }
+                },
+                plot_format=plot_format
             )
 
         improvements = []
@@ -933,7 +1089,8 @@ class TipSplineSAOptimizer:
                                 'w_force': self.w_force,
                                 'fmax': fmax,
                                 'f_safe': self.f_safe
-                            }
+                            },
+                            plot_format=plot_format
                         )
 
             # Plot current improvements (not best ever) using the saved flag
@@ -992,7 +1149,8 @@ class TipSplineSAOptimizer:
                         'w_force': self.w_force,
                         'fmax': fmax,
                         'f_safe': self.f_safe
-                    }
+                    },
+                    plot_format=plot_format
                 )
 
             temp *= self.cooling
@@ -1015,7 +1173,19 @@ class TipSplineSAOptimizer:
                 substrate_shift=substrate_shift,
                 bold_best=bold_best,
                 out_dir=out_dir,
-                suffix=""
+                suffix="",
+                plot_format=plot_format
+            )
+        
+        # Plot force optimization evolution
+        if plot_improvements and (len(improvements) > 0):
+            print(f"Plotting force optimization evolution...")
+            plot_force_optimization_evolution(
+                opt_dir=out_dir,
+                ia_anchor=self.ia_anchor,
+                out_file="force_optimization",
+                f_safe=self.f_safe,
+                plot_format=plot_format
             )
         
         return best_spline, best
