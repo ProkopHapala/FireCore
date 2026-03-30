@@ -1,0 +1,10 @@
+# tipSpline.dat  (x y z) in Angstrom
+# simple path near initial anchor position (5.8,-2.3,5)
+5.0 -2.0   14.0
+5.0 -1.0   14.0
+5.0  0.0   14.0
+5.0  1.0   14.0
+5.0  2.0   14.0
+5.0  3.0   14.0
+5.0  4.0   14.0
+5.0  5.0   14.0
