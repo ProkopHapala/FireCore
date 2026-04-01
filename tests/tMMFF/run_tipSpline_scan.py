@@ -31,7 +31,8 @@ def parse_args():
     parser.add_argument('--opt-outdir',     type=str,   default='opt_tipSpline', help='Output directory for optimizer logs and best splines')
     parser.add_argument('--opt-attempts',   type=int,   default=100, help='Number of spline mutations (attempts)')
     #parser.add_argument('--target-xyz',     type=float, nargs=3, default=[5.0, 5.0, 10.0],  help='Target position for opposite atom (x y z) in Angstrom')
-    parser.add_argument('--target-xyz',     type=float, nargs=3, default=[5.7, 5.4, 10.0],  help='Target position for opposite atom (x y z) in Angstrom')
+    #parser.add_argument('--target-xyz',     type=float, nargs=3, default=[5.7, 5.4, 10.0],  help='Target position for opposite atom (x y z) in Angstrom')
+    parser.add_argument('--target-xyz',     type=float, nargs=3, default=[2.0, 5.4, 10.0],  help='Target position for opposite atom (x y z) in Angstrom')
 
     parser.add_argument('--opt-wpos',         type=float, default=1.0, help='Weight of position loss term')
     parser.add_argument('--opt-wforce',       type=float, default=0.2, help='Weight of force loss term')
@@ -43,6 +44,7 @@ def parse_args():
     parser.add_argument('--opt-seed',         type=int,   default=45454, help='Random seed for optimization')
     parser.add_argument('--opt-plot-improvements', type=int, default=1, help='Plot trajectory for each improvement (1=yes, 0=no)')
     parser.add_argument('--opt-plot-all-trials', type=int, default=0, help='Plot trajectory for EVERY trial (1=yes, 0=no) - WARNING: many plots!')
+    parser.add_argument('--opt-trajectory-points', type=float, nargs='+', default=[0.0, 0.5, 1.0], help='Trajectory points to plot molecules (0.0=start, 1.0=end, e.g. --opt-trajectory-points 0.0 0.5 1.0)')
 
     # Substrate and plotting parameters
     #default=[-11.0, -11.8, 2.5]
@@ -51,6 +53,7 @@ def parse_args():
     parser.add_argument('--plot-molecule-atoms', type=int, default=0, help='Plot molecule atoms (1=yes, 0=no)')
     parser.add_argument('--plot-molecule-bonds', type=int, default=1, help='Plot molecule bonds (1=yes, 0=no)')
     parser.add_argument('--plot-connectors', type=int, default=0, help='Plot connector lines between trajectories (1=yes, 0=no)')
+    parser.add_argument('--plot-format', type=str, default='svg', choices=['png', 'svg'], help='Output format for plots: png (raster) or svg (vector graphics)')
     
     # Molecular dynamics parameters
     parser.add_argument('--dt',    type=float, default=0.05,help='Time step for MD integration (fs)')
@@ -106,6 +109,7 @@ plot_substrate = bool(args.plot_substrate)
 plot_molecule_atoms = bool(args.plot_molecule_atoms)
 plot_molecule_bonds = bool(args.plot_molecule_bonds)
 plot_connectors = bool(args.plot_connectors)
+plot_format = args.plot_format
 
 do_optimize = bool(args.optimize)
 opt_outdir = args.opt_outdir
@@ -121,6 +125,7 @@ opt_step0 = args.opt_step0
 opt_seed = args.opt_seed
 opt_plot_improvements = bool(args.opt_plot_improvements)
 opt_plot_all_trials = bool(args.opt_plot_all_trials)
+opt_trajectory_points = args.opt_trajectory_points
 
 # Clean only specific trajectory files we're writing to
 for f in [trj_name]:
@@ -195,8 +200,8 @@ if do_optimize:
     print(f"opt_temp0={opt_temp0} opt_cooling={opt_cooling} opt_step0={opt_step0} opt_seed={opt_seed}")
     from TipSplineOptimizer import TipSplineSAOptimizer
     opt = TipSplineSAOptimizer(
-        ia_anchor=iAnchor,
-        ia_opposite=27-1,
+        ia_handle=iAnchor,
+        ia_anchor=27-1,
         target_pos=opt_target,
         w_pos=opt_wpos,
         w_force=opt_wforce,
@@ -236,6 +241,9 @@ if do_optimize:
         plot_molecule_atoms=plot_molecule_atoms,
         plot_molecule_bonds=plot_molecule_bonds,
         opt_target=opt_target,
+        plot_format=plot_format,
+        trajectory_points=opt_trajectory_points,
+        verbosity=verbosity,
     )
     print(f"=== DEBUG: Optimization DONE best_spline={best_spline} best_E={best['E']:.6g} best_attempt={best['attempt']} ===")
     spline_file = best_spline
