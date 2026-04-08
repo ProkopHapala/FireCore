@@ -259,3 +259,7 @@ __kernel void mqca_groundstate_batch_W(
         occ_out[inst] = (int)occ_min_l;
     }
 }
+
+
+
+
