@@ -1,4 +1,4 @@
-﻿
+
 #ifndef MolWorld_sp3_ocl_h
 #define MolWorld_sp3_ocl_h
 
@@ -533,9 +533,6 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
 
         double cumulative_FE = 0.0;
         const int nProdStepsPerLambda = nMDsteps / nLambda;
-        const bool bTIDebugAccounting = doTI && (nSystems == 1) && (nLambda == 2)
-            && ( (nProdStepsPerLambda == 1) || ((nEQsteps >= 2000) && (nProdStepsPerLambda <= 64)) );
-
         Quat4i jeParamsInit = Quat4i{ -2, -2, -2, -2 };
         _realloc0( jeParams, nSystems, jeParamsInit );
 
@@ -546,7 +543,6 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
             bDeterministicTDrive = true;
             printf("\n=== Thermodynamic Integration ===\n");
             const int nPerVFs_bak = nPerVFs;
-            if(bTIDebugAccounting){ nPerVFs = 1; }
             
             int nBatches = (nLambda + nSystems - 1) / nSystems;
             //double cumulative_FE = 0.0;
@@ -554,6 +550,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
             double prev_dE_dlambda = 0.0;
             double prev_sigma_dE = 0.0;
             double dLambda = 1.0 / (double)(nLambda - 1);
+            nPerVFs=1;
 
             for(int batch=0; batch<nBatches; batch++){
                 printf("\n--- TI Batch %d/%d ---\n", batch+1, nBatches);
@@ -589,76 +586,15 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                     if(il >= nLambda) continue;
                     float lambda = (float)il / (float)(nLambda - 1);
                     // printf("  System %d, lambda %f, averageForces %f %f %f %f\n", isys, lambda, averageForces[isys].x, averageForces[isys].y, averageForces[isys].z, averageForces[isys].w);
-                    if(bTIDebugAccounting){
-                        printf(
-                            "TI_DEBUG_HOST_AVG batch=%d isys=%d lambda=%.17g avg=(%.17g,%.17g,%.17g,%.17g)\n",
-                            batch + 1,
-                            isys,
-                            (double)lambda,
-                            (double)averageForces[isys].x,
-                            (double)averageForces[isys].y,
-                            (double)averageForces[isys].z,
-                            (double)averageForces[isys].w
-                        );
-                    }
-                    const double force_sum = averageForces[isys].z + averageForces[isys].w;
-                    const double force_scale = 1.0*nLambda / (double)(nMDsteps);
-                    double dE = -force_sum * force_scale;
-                    if(bTIDebugAccounting){
-                        printf(
-                            "TI_DEBUG_HOST_DE batch=%d isys=%d lambda=%.9g force_sum=%.17g scale=%.17g dE=%.17g\n",
-                            batch + 1,
-                            isys,
-                            (double)lambda,
-                            force_sum,
-                            force_scale,
-                            dE
-                        );
-                    }
-                    printf("  System %d, lambda %f, dE %f\n", isys, lambda, dE);
+                    double dE = ((double)averageForces[isys].z - (double)averageForces[isys].w) * nLambda / (double)(nMDsteps);
+                    // printf("  System %d, lambda %f, dE %f\n", isys, lambda, dE);
                     double mean_sq = averageForces[isys].x * (1.0*nLambda / (double)(nMDsteps));
                     double var = mean_sq - dE * dE;
                     double SD = sqrt(fabs(var));
                     double SEM = SD / sqrt(nProdStepsPerLambda);
-                    if(bTIDebugAccounting){
-                        printf(
-                            "TI_DEBUG_HOST_STATS batch=%d isys=%d lambda=%.17g nprod=%d mean_sq=%.17g var=%.17g sd=%.17g sem=%.17g\n",
-                            batch + 1,
-                            isys,
-                            (double)lambda,
-                            nProdStepsPerLambda,
-                            mean_sq,
-                            var,
-                            SD,
-                            SEM
-                        );
-                    }
 
                     double outF, outFerr;
-                    const double prev_dE_before = prev_dE_dlambda;
-                    const double prev_sigma_before = prev_sigma_dE;
-                    const double cumulative_FE_before = cumulative_FE;
-                    const double cumulative_var_before = cumulative_var;
                     TI_step(lambda, dE, SEM, dLambda, nMDsteps, cumulative_FE, cumulative_var, prev_dE_dlambda, prev_sigma_dE, outF, outFerr);
-                    if(bTIDebugAccounting){
-                        printf(
-                            "TI_DEBUG_TI_STEP batch=%d isys=%d lambda=%.17g dLambda=%.17g prev_dE=%.17g prev_sigma=%.17g in_dE=%.17g in_sigma=%.17g cumFE_before=%.17g cumVar_before=%.17g outF=%.17g outFerr=%.17g cumFE_after=%.17g cumVar_after=%.17g\n",
-                            batch + 1,
-                            isys,
-                            (double)lambda,
-                            dLambda,
-                            prev_dE_before,
-                            prev_sigma_before,
-                            dE,
-                            SEM,
-                            cumulative_FE_before,
-                            cumulative_var_before,
-                            outF,
-                            outFerr,
-                            cumulative_FE,
-                            cumulative_var
-                        );
-                    }
                     // printf("  System %d, lambda %f, dE %f, SEM %f, outF %f, outFerr %f\n", isys, lambda, dE, SEM, outF, outFerr);
                     res_lambda[il] = lambda;
                     res_TI_dE[il] = dE;

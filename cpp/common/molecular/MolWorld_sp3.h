@@ -1,4 +1,4 @@
-﻿
+
 #ifndef MolWorld_sp3_h
 #define MolWorld_sp3_h
 /// @file MolWorld_sp3.h @brief contains MolWorld_sp3 class, which is a comprehensive class storing the state of a molecular simulation including bonding,non-bodning of molecules and molecules with substrate
@@ -3956,6 +3956,7 @@ double entropic_spring_JE(double lamda1, double lamda2, int n, int *dc, int nbPr
         ffl.doPiSigma= false;
         ffl.doBonds = true;
         ffl.bSubtractBondNonBond = true;
+        bNonBonded  = false;
         bConstrains = true;
 
         bFreeEnergyCalc = true;
@@ -4019,7 +4020,7 @@ double entropic_spring_JE(double lamda1, double lamda2, int n, int *dc, int nbPr
             Ref[L] = Ref[L - 1] + 0.5 * constant * (lamda[L] + lamda[L - 1]) * d_lamda;
         }
 
-        //store_TI("results/TI_plot_ES.dat", lamda, TI, sigmaTI, Ref);
+        store_TI("results/TI_plot_ES.dat", lamda, TI, sigmaTI, Ref);
 
         return TI[nbStep - 1];
     }
@@ -4041,7 +4042,7 @@ double entropic_spring_JE(double lamda1, double lamda2, int n, int *dc, int nbPr
         // return three_atoms_problem_TI(lamda1, lamda2, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
         // return three_atoms_problem_JE(lamda1, lamda2, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
         // return mexican_hat_JE(lamda1, lamda2, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
-        // return entropic_spring_TI(lamda1, lamda2, n, dc, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
+        return entropic_spring_TI(lamda1, lamda2, n, dc, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
 
 
         bConstrains = true;

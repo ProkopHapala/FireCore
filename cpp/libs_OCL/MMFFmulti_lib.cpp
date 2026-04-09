@@ -175,11 +175,12 @@ void init_buffers(){
 
 // int loadmol(char* fname_mol ){ return W.loadmol(fname_mol ); }
 
-void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, int* nPBC, int* grid_nPBC, double gridStep, char* sElementTypes, char* sAtomTypes, char* sBondTypes, char* sAngleTypes, double T, double gamma, int nExplore, int nRelax, double pos_kick, double vel_kick, int GridFF ){
-    printf( "MMFFmulti_lib::init() nSys=%i xyz_name(%s) surf_name(%s) bMMFF=%i bEpairs=%i T=%g gamma=%g nExplore=%i nRelax=%i pos_kick=%g vel_kick=%g \n", nSys, xyz_name, surf_name, bMMFF, bEpairs, T, gamma, nExplore, nRelax, pos_kick, vel_kick );
+void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, char* constr_name, bool bMMFF, bool bEpairs, int* nPBC, int* grid_nPBC, double gridStep, char* sElementTypes, char* sAtomTypes, char* sBondTypes, char* sAngleTypes, double T, double gamma, int nExplore, int nRelax, double pos_kick, double vel_kick, int GridFF ){
+    printf( "MMFFmulti_lib::init() nSys=%i xyz_name(%s) surf_name(%s) constr_name(%s) bMMFF=%i bEpairs=%i T=%g gamma=%g nExplore=%i nRelax=%i pos_kick=%g vel_kick=%g \n", nSys, xyz_name, surf_name, constr_name?constr_name:"", bMMFF, bEpairs, T, gamma, nExplore, nRelax, pos_kick, vel_kick );
     W.smile_name = smile_name;
     W.xyz_name   = xyz_name;
     W.surf_name  = surf_name;
+    W.constr_name = constr_name;
     W.bMMFF      = bMMFF;
     W.bEpairs    = bEpairs;
     W.gridStep   = gridStep;

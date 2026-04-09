@@ -281,6 +281,7 @@ lib.init.argtypes = [
     c_char_p,     # xyz_name
     c_char_p,     # surf_name
     c_char_p,     # smile_name
+    c_char_p,     # constr_name
     c_bool,       # bMMFF
     c_bool,       # bEpairs
     array1i,      # nPBC
@@ -304,6 +305,7 @@ def init(
         xyz_name  ="input.xyz", 
         surf_name =None, 
         smile_name=None, 
+        constr_name=None,
         sElementTypes = "data/ElementTypes.dat",
         sAtomTypes = "data/AtomTypes.dat",
         sBondTypes = "data/BondTypes.dat",
@@ -319,7 +321,7 @@ def init(
     # Convert integer tuples to numpy arrays for C compatibility
     nPBC = np.array(nPBC, dtype=np.int32)
     gridnPBC = np.array(gridnPBC, dtype=np.int32)
-    return lib.init( nSys, cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, nPBC, gridnPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), T, gamma, nExplore, nRelax, pos_kick, vel_kick, GridFF )
+    return lib.init( nSys, cstr(xyz_name), cstr(surf_name), cstr(smile_name), cstr(constr_name), bMMFF, bEpairs, nPBC, gridnPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), T, gamma, nExplore, nRelax, pos_kick, vel_kick, GridFF )
 
 def tryInit():
     if not isInitialized:

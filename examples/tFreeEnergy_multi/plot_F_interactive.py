@@ -149,15 +149,15 @@ def plot_f_interactive(filename, output_prefix=None, N_segments=None, T=300.0, b
     
     if distances is not None and N_segments is not None:
         k_spring = kB * T / (N_segments * b**2)
-        F_ref = - k_spring * distances
-        FE_ref_abs = 0.5 * k_spring * distances**2
+        F_ref = - 3*k_spring * distances
+        FE_ref_abs = 1.5 * k_spring * distances**2
         FE_ref = FE_ref_abs - FE_ref_abs[0]
         
         # Estimate dE/dlambda for reference
-        # dE/dlambda = d/dlambda (0.5 * k * d^2) = k * d * dd/dlambda
+        # dE/dlambda = d/dlambda (3 * k * d^2) = k * d * dd/dlambda
         if len(lambda_vals) > 1:
             dd_dlambda = np.gradient(distances, lambda_vals)
-            dE_ref_dlambda = k_spring * distances * dd_dlambda
+            dE_ref_dlambda = 3 *k_spring * distances * dd_dlambda
 
     # Try to load Jarzynski Delta F from work file as a backup/extra info
     je_dF_work = None
@@ -216,7 +216,7 @@ def plot_f_interactive(filename, output_prefix=None, N_segments=None, T=300.0, b
             ),
             row=plot_rows['dE/dλ'], col=1
         )
-    
+
     # Reference
     if dE_ref_dlambda is not None:
         hover_text_ref_de = [
@@ -293,7 +293,7 @@ def plot_f_interactive(filename, output_prefix=None, N_segments=None, T=300.0, b
             ),
             row=plot_rows['FE'], col=1
         )
-        
+
     # JE Data
     if je_plot is not None and not np.isnan(je_plot).all():
         errs_je = je_sigma_plot if je_sigma_plot is not None else np.zeros_like(je_plot)

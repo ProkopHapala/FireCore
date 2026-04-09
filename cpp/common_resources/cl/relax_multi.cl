@@ -342,11 +342,8 @@ __kernel void getMMFFf4(
 
             // --- Evaluate bond-length stretching energy and forces
             if(iG<ing){
-                // Bond stretching with proper MMFF parameters from bL[i] and bK[i]
-                // E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;   // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor,
-                // if(iS==0 && iG==0){printf("GPU: f1=(%g,%g,%g), fa=(%g,%g,%g), l=%g, bL[i]=%g, bK[i]=%g, h=(%g,%g,%g)\n", f1.x,f1.y,f1.z, fa.x,fa.y,fa.z, l, 1.198f, 40.f, h.x,h.y,h.z ); }
-                E+= evalBond( h.xyz, l-1.198f, 80.f, &f1 );  fbs[i]-=f1;  fa+=f1;   // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor,
-                // if(iS==0 && iG==0){printf("GPU: f1=(%g,%g,%g), fa=(%g,%g,%g)\n", f1.x,f1.y,f1.z, fa.x,fa.y,fa.z ); }
+                // Bond stretching should mirror the CPU MMFF path and use the per-bond parameters.
+                E+= evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1;
 
                 // pi-pi alignment interaction            
                 float kpp = Kppi[i];
@@ -1074,7 +1071,7 @@ __kernel void updateAtomsMMFFf4(
                 float r = length(d);
                 h = d / (r + 1e-10f);
                 const float force_proj_raw = dot(fe.xyz, h);
-                force_proj = force_proj_raw * cK.x;
+                force_proj = (-sign) * force_proj_raw * cK.x;
                 force_proj_dbg = force_proj;
                 fe_dbg = fe.xyz;
                 if( bHard ){
@@ -1114,11 +1111,10 @@ __kernel void updateAtomsMMFFf4(
                 __global float* avgF_ptr = (__global float*)(&averageForces[iS]);
                 if(nS==1){
                     printf(
-                        "TI_DEBUG_GPU iS=%d ia=%d sign=%.17g force_proj=%.17g fe=(%.17g,%.17g,%.17g) cK=(%.17g,%.17g,%.17g)\n",
-                        iS, iG, (double)sign, (double)force_proj_dbg,
-                        (double)fe_dbg.x, (double)fe_dbg.y, (double)fe_dbg.z,
-                        (double)cK.x, (double)cK.y, (double)cK.z
-                    );
+                    "TI_DEBUG_GPU iS=%d ia=%d sign=%.17g force_proj=%.17g fe=(%.17g,%.17g,%.17g) cK=(%.17g,%.17g,%.17g)\n",
+                    iS, iG, (double)sign, (double)force_proj_dbg,
+                    (double)fe_dbg.x, (double)fe_dbg.y, (double)fe_dbg.z,
+                    (double)cK.x, (double)cK.y, (double)cK.z);
                 }
                 if(sign > 0.0f){
                     if(!isnan(force_proj)) avgF_ptr[2] += force_proj;

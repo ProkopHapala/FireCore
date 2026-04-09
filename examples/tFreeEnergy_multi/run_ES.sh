@@ -6,19 +6,33 @@ ln -s ../../cpp/common_resources common_resources
 rm trajectory.xyz
 set -e  # Exit on error
 
-# Default Mode
-MODE="BOTH"  # Options: TI, JE, BOTH
-K=3.0     # Default JE force constant
+# Default comparison setup aligned with examples/tFreeEnergy/{CPU,GPU-debug}
+MODE="TI"   # Options: TI, JE, BOTH
+K=10.0
 HARD_ATOMS=""
 SOFT_ATOMS=""
 HARD_DIST=""
 SOFT_DIST=""
+NSYS=100
+NLAMBDA=100
+NMDSTEPS=10000000
+NEQSTEPS=5000
+DT=0.05
+TDAMP=100
+TEMP=300
 
 # Parse command line arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --mode) MODE="$2"; shift ;;
         --k)    K="$2"; shift ;;
+        --nSys) NSYS="$2"; shift ;;
+        --nLambda) NLAMBDA="$2"; shift ;;
+        --nMDsteps) NMDSTEPS="$2"; shift ;;
+        --nEQsteps) NEQSTEPS="$2"; shift ;;
+        --dt) DT="$2"; shift ;;
+        --t_damp) TDAMP="$2"; shift ;;
+        --temperature|-T) TEMP="$2"; shift ;;
         --hard_atoms) HARD_ATOMS="--hard_atoms";;
         --soft_atoms) SOFT_ATOMS="--soft_atoms";;
         --hard_dist) HARD_DIST="--hard_dist";;
@@ -27,6 +41,10 @@ while [[ "$#" -gt 0 ]]; do
     esac
     shift
 done
+
+if [[ -z "$HARD_ATOMS" && -z "$SOFT_ATOMS" && -z "$HARD_DIST" && -z "$SOFT_DIST" ]]; then
+    SOFT_DIST="--soft_dist"
+fi
 
 N=30
 
@@ -66,17 +84,17 @@ echo "----------------------------------------"
 #     --t_damp 150
 python3 run_ES.py \
     --mode $MODE \
-    --nSys 100 \
+    --nSys $NSYS \
     --xyz_name "../tMMFF/data/entropic_spring_$N.xyz" \
-    --nLambda 100 \
-    --nMDsteps 100000000 \
-    --nEQsteps 50000 \
+    --nLambda $NLAMBDA \
+    --nMDsteps $NMDSTEPS \
+    --nEQsteps $NEQSTEPS \
     --Fconv 1e-6 \
     --constraints "constraints_ES.txt" \
     --K $K \
-    --dt 0.05 \
-    -T 1000 \
-    --t_damp 200 \
+    --dt $DT \
+    -T $TEMP \
+    --t_damp $TDAMP \
     $HARD_ATOMS \
     $SOFT_ATOMS \
     $HARD_DIST \
