@@ -1,0 +1,3 @@
+# Bond-constraint indices passed to pyBall.MMFF.compute_Free_energy().
+# For entropic_spring_20.cons there is one bond constraint, so the index is 0.
+0

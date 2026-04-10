@@ -8,13 +8,25 @@
     "t_damp": 200.0,
     "dt": 0.05,
     "nSys": 200,
-    "nEQsteps": 5000,      
+    "nEQsteps": 5000,
     "nLambda": 200,
     "nMDsteps": 200000000,
     "mode": "TI",
     "K": 10.0
   },
   "parameter_sets": [
+        {
+      "name": "temp_10K",
+      "temperature": 10.0
+    },
+    {
+      "name": "temp_20K",
+      "temperature": 20.0
+    },
+    {
+      "name": "temp_50K",
+      "temperature": 50.0
+    },
     {
       "name": "temp_100K",
       "temperature": 100.0
@@ -34,6 +46,26 @@
     {
       "name": "temp_500K",
       "temperature": 500.0
+    },
+    {
+      "name": "temp_600K",
+      "temperature": 600.0
+    },
+    {
+      "name": "temp_700K",
+      "temperature": 700.0
+    },
+    {
+      "name": "temp_800K",
+      "temperature": 800.0
+    },
+    {
+      "name": "temp_900K",
+      "temperature": 900.0
+    },
+    {
+      "name": "temp_1000K",
+      "temperature": 1000.0
     }
   ]
 }

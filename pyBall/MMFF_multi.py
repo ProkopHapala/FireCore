@@ -696,6 +696,14 @@ def computeFreeEnergy(nCVs, initial_positions, final_positions, nLambda, nMDstep
     final_positions = np.array(final_positions, dtype=np.float32)
     return lib.computeFreeEnergy(nCVs, _np_as(initial_positions,c_float_p), _np_as(final_positions,c_float_p), nLambda, nMDsteps, nEQsteps, Fconv, mode, K, hardAtoms, softAtoms, hardDist, softDist)
 
+#  double entropic_spring_TI_gpu_debug(double lamda1, double lamda2, int n, int* dc, int nbStep, int nMDsteps, int nEQsteps, double tdamp, double T, double dt, double Fconv)
+lib.entropic_spring_TI_gpu_debug.argtypes = [c_double, c_double, c_int, c_int_p, c_int, c_int, c_int, c_double, c_double, c_double, c_double]
+lib.entropic_spring_TI_gpu_debug.restype  = c_double
+def entropic_spring_TI_gpu_debug(lamda1, lamda2, dc, nbStep=100, nMDsteps=10000, nEQsteps=1000, tdamp=100.0, T=300.0, dt=0.05, Fconv=1e-6):
+    dc = np.array(dc, dtype=np.int32)
+    return lib.entropic_spring_TI_gpu_debug(lamda1, lamda2, len(dc), _np_as(dc, c_int_p), nbStep, nMDsteps, nEQsteps, tdamp, T, dt, Fconv)
+
+
 # ====================================
 # ========= Test Functions
 # ====================================

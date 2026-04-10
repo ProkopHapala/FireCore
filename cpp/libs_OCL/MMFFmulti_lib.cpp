@@ -499,4 +499,10 @@ double computeFreeEnergy(int nCVs, float* initial_positions, float* final_positi
     return W.computeFreeEnergy(nCVs, (Vec3f*)initial_positions, (Vec3f*)final_positions, nLambda, nMDsteps, nEQsteps, Fconv, mode, K, hardAtoms, softAtoms, hardDist, softDist);
 }
 
+double entropic_spring_TI_gpu_debug(double lamda1, double lamda2, int n, int* dc, int nbStep, int nMDsteps, int nEQsteps, double tdamp, double T, double dt, double Fconv){
+    printf( "entropic_spring_TI_gpu_debug lamda1=%g lamda2=%g n=%i nbStep=%i nMDsteps=%i nEQsteps=%i tdamp=%g T=%g dt=%g Fconv=%g \n", lamda1, lamda2, n, nbStep, nMDsteps, nEQsteps, tdamp, T, dt, Fconv );
+    return W.entropic_spring_TI_gpu_debug( lamda1, lamda2, n, dc, nbStep, nMDsteps, nEQsteps, tdamp, T, dt, Fconv );
+}
+
+
 } // extern "C"

@@ -350,6 +350,224 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         OCL_checkError(err, "resetTIBatchState().upload");
     }
 
+    inline void clearSystemGPUConstraints( int isys ){
+        const int i0a = isys * ocl.nAtoms;
+        for(int ia=0; ia<ocl.nAtoms; ia++){
+            constr [i0a + ia] = Quat4f{0.0f, 0.0f, 0.0f, -1.0f};
+            constrK[i0a + ia] = Quat4fZero;
+        }
+    }
+
+    void setupTIconstraints_debug( int isys, double lambda_abs, int nCVs, int* dc ){
+        clearSystemGPUConstraints( isys );
+        const int i0a = isys * ocl.nAtoms;
+        const float ltarget = (float)(lambda_abs / (double)nCVs);
+        for(int icv=0; icv<nCVs; icv++){
+            const DistConstr& C = constrs.bonds[ dc[icv] ];
+            const int ia = C.ias.a;
+            const int ib = C.ias.b;
+            if( (ia<0) || (ib<0) || (ia>=ocl.nAtoms) || (ib>=ocl.nAtoms) ) continue;
+            // Mirror the CPU harmonic bond constraint using the existing GPU soft-distance mode.
+            constr [i0a + ia] = Quat4f{ (float)ib, ltarget, 0.0f, 7.0e6f };
+            constr [i0a + ib] = Quat4f{ (float)ia, ltarget, 0.0f, 8.0e6f };
+            // Soft-distance branch in updateAtomsMMFFf4() multiplies the projected force by cK.x,
+            // while cK.w carries the restraint stiffness. Keep both populated for TI debug parity.
+            constrK[i0a + ia] = Quat4f{ 1.0f, 0.0f, 0.0f, (float)C.ks.x };
+            constrK[i0a + ib] = Quat4f{ 1.0f, 0.0f, 0.0f, (float)C.ks.x };
+        }
+    }
+
+    int run_ocl_TI_debug( int nsteps, double dt, double T, double gamma ){
+        if(task_MMFF==0) setup_MMFFf4_ocl();
+        int err = 0;
+        for(int istep=0; istep<nsteps; istep++){
+            for(int isys=0; isys<nSystems; isys++){
+                MDpars[isys] = Quat4f{ (float)dt, 1.0f, 1.0f, 0.0f };
+                // Keep z>=0 so the OpenCL kernel takes the same Langevin velocity-Verlet path
+                // that is intended for TI sampling, but we avoid the higher-level FIRE/evalVFs logic.
+                TDrive[isys] = Quat4f{ (float)T, (float)gamma, 0.0f, randf(-1.0,1.0) };
+            }
+            err |= ocl.upload( ocl.ibuff_MDpars, MDpars );
+            err |= ocl.upload( ocl.ibuff_TDrive, TDrive );
+            err |= task_cleanF->enque_raw();
+            if(bNonBonded){
+                if(bGridFF){
+                    if(gridFF.mode == GridFFmod::BsplineDouble){
+                        err |= task_NBFF_Grid_Bspline->enque_raw();
+                    }else{
+                        err |= task_NBFF_Grid->enque_raw();
+                    }
+                }else if(bSurfAtoms){
+                    err |= task_NBFF     ->enque_raw();
+                    err |= task_SurfAtoms->enque_raw();
+                }else{
+                    err |= task_NBFF->enque_raw();
+                }
+            }
+            err |= task_MMFF->enque_raw();
+            err |= task_move->enque_raw();
+            err |= ocl.finishRaw();
+            OCL_checkError(err, "run_ocl_TI_debug()");
+            err = 0;
+            nloop++;
+        }
+        return nsteps;
+    }
+
+    double entropic_spring_TI_gpu_debug(
+        double lamda1, double lamda2, int n, int* dc,
+        int nbStep = 100, int nMDsteps = 100000, int nEQsteps = 10000,
+        double tdamp = 100.0, double T = 300, double dt = 0.05, double Fconv = 1e-6
+    ){
+        printf("Running entropic_spring_TI_gpu_debug with lamda1=%g, lamda2=%g, n=%d, nbStep=%d, nMDsteps=%d, nEQsteps=%d, tdamp=%g, T=%g, dt=%g, Fconv=%g\n",
+            lamda1, lamda2, n, nbStep, nMDsteps, nEQsteps, tdamp, T, dt, Fconv
+        );
+        if(n <= 0){
+            printf("ERROR: entropic_spring_TI_gpu_debug() requires at least one constraint index.\n");
+            return NAN;
+        }
+        if(nbStep <= 1){
+            printf("ERROR: entropic_spring_TI_gpu_debug() requires nbStep > 1.\n");
+            return NAN;
+        }
+
+        const bool prev_doAngles          = ffl.doAngles;
+        const bool prev_doPiPiI           = ffl.doPiPiI;
+        const bool prev_doPiPiT           = ffl.doPiPiT;
+        const bool prev_doPiSigma         = ffl.doPiSigma;
+        const bool prev_doBonds           = ffl.doBonds;
+        const bool prev_subBondNonBond    = ffl.bSubtractBondNonBond;
+        const bool prev_bNonBonded        = bNonBonded;
+        const bool prev_bConstrains       = bConstrains;
+        const bool prev_bFreeEnergyCalc   = bFreeEnergyCalc;
+        const bool prev_bDeterministic    = bDeterministicTDrive;
+        const bool prev_bGopt             = bGopt;
+        const double prev_gamma           = go.gamma_damp;
+        const double prev_T               = go.T_target;
+        const bool prev_goExploring       = go.bExploring;
+        std::vector<Vec2d> ls_bak(n);
+        for(int i=0; i<n; i++){ ls_bak[i] = constrs.bonds[dc[i]].ls; }
+
+        ffl.doAngles = false;
+        ffl.doPiPiI  = false;
+        ffl.doPiPiT  = false;
+        ffl.doPiSigma= false;
+        ffl.doBonds  = true;
+        ffl.bSubtractBondNonBond = false;
+        bNonBonded   = false;
+        bConstrains  = true;
+        bFreeEnergyCalc = true;
+        bDeterministicTDrive = false;
+        bGopt = true;
+        go.gamma_damp = 1.0 / (dt * tdamp);
+        go.T_target   = T;
+        go.bExploring = true;
+
+        std::vector<double> lamda(nbStep);
+        const double d_lamda = (lamda2 - lamda1) / (double)(nbStep - 1);
+        for(int i=0; i<nbStep; i++){ lamda[i] = lamda1 + d_lamda*(double)i; }
+
+        std::vector<std::vector<double>> Energy   ( nbStep, std::vector<double>(nMDsteps, 0.0) );
+        std::vector<std::vector<double>> dE_dLamda( nbStep, std::vector<double>(nMDsteps, 0.0) );
+        std::vector<std::vector<double>> dist       ( nbStep, std::vector<double>(nMDsteps, 0.0) );
+        std::vector<std::vector<double>> dist_ee    ( nbStep, std::vector<double>(nMDsteps, 0.0) );
+        std::vector<double> TI(nbStep,0.0), sigmaTI(nbStep,0.0), Ref(nbStep,0.0);
+        std::vector<double> avgF_x(nbStep,0.0), avgF_y(nbStep,0.0), avgF_z(nbStep,0.0), avgF_w(nbStep,0.0);
+
+        const DistConstr cv0 = constrs.bonds[ dc[0] ];
+        const int nBatches = (nbStep + nSystems - 1) / nSystems;
+        const int nExplore_bak = go.nExplore;
+        const int nRelax_bak   = go.nRelax;
+        go.nExplore = nEQsteps + nMDsteps + 1024;
+        go.nRelax   = 0;
+
+        for(int batch=0; batch<nBatches; batch++){
+            resetTIBatchState(true);
+            for(int isys=0; isys<nSystems; isys++){
+                const int il = isys + batch*nSystems;
+                if(il >= nbStep){
+                    TDrive[isys] = Quat4f{0.0f,-1.0f,0.0f,0.0f};
+                    clearSystemGPUConstraints(isys);
+                    continue;
+                }
+                const double lambda_abs = lamda[il];
+                setupTIconstraints_debug( isys, lambda_abs, n, dc );
+                TDrive[isys] = Quat4f{ (float)T, (float)go.gamma_damp, -1.0f, randf(-1.0,1.0) };
+                if(gopts){
+                    gopts[isys].copy(go);
+                    gopts[isys].istep = 0;
+                    gopts[isys].bExploring = true;
+                }
+            }
+            int err = 0;
+            err |= ocl.upload( ocl.ibuff_constr,  constr  );
+            err |= ocl.upload( ocl.ibuff_constrK, constrK );
+            err |= ocl.upload( ocl.ibuff_TDrive,  TDrive  );
+            err |= ocl.finishRaw();
+            OCL_checkError(err, "entropic_spring_TI_gpu_debug().uploadWindow");
+
+            if(nEQsteps > 0){ run_ocl_TI_debug( nEQsteps, dt, T, go.gamma_damp ); }
+
+            for(int istep=0; istep<nMDsteps; istep++){
+                for(int isys=0; isys<nSystems; isys++){ averageForces[isys] = Quat4fZero; }
+                err = 0;
+                err |= ocl.upload( ocl.ibuff_averageForces, averageForces );
+                err |= ocl.finishRaw();
+                OCL_checkError(err, "entropic_spring_TI_gpu_debug().zeroAverageForces");
+
+                run_ocl_TI_debug( 1, dt, T, go.gamma_damp );
+                err = 0;
+                err |= ocl.download( ocl.ibuff_averageForces, averageForces );
+                err |= ocl.download( ocl.ibuff_atoms, atoms );
+                err |= ocl.finishRaw();
+                OCL_checkError(err, "entropic_spring_TI_gpu_debug().downloadStepData");
+
+                for(int isys=0; isys<nSystems; isys++){
+                    const int il = isys + batch*nSystems;
+                    if(il >= nbStep) continue;
+                    const double lambda_abs = lamda[il];
+                    for(int i=0; i<n; i++){ constrs.bonds[dc[i]].ls.set( lambda_abs / (double)n ); }
+                    unpack_system( isys, ffls[isys], false, false );
+                    ffl.copyOf( ffls[isys] );
+                    Energy   [il][istep] = NAN;
+                    dE_dLamda[il][istep] = 0.5 * ( (double)averageForces[isys].z - (double)averageForces[isys].w );
+                    avgF_x[il] += averageForces[isys].x;
+                    avgF_y[il] += averageForces[isys].y;
+                    avgF_z[il] += averageForces[isys].z;
+                    avgF_w[il] += averageForces[isys].w;               }
+            }
+        }
+
+        thermodynamic_integration( nbStep, nMDsteps, d_lamda, dE_dLamda.data(), TI.data(), sigmaTI.data() );
+        for(int L=1; L<nbStep; L++){
+            double lamda_bar = 0.0;
+            for(int i=0; i<nMDsteps; i++){ lamda_bar += dist[L][i]; }
+            lamda_bar /= (double)nMDsteps;
+            const double constant = 3.0 * const_kB * T / ( lamda_bar*lamda_bar * (double)(ffl.natoms - 1) );
+            Ref[L] = Ref[L-1] + 0.5 * constant * ( lamda[L] + lamda[L-1] ) * d_lamda;
+        }
+        store_TI( "results/TI_plot_ES_GPU_DEBUG.dat", lamda, TI, sigmaTI, Ref );
+
+        go.nExplore = nExplore_bak;
+        go.nRelax   = nRelax_bak;
+        for(int i=0; i<n; i++){ constrs.bonds[dc[i]].ls = ls_bak[i]; }
+        ffl.doAngles = prev_doAngles;
+        ffl.doPiPiI  = prev_doPiPiI;
+        ffl.doPiPiT  = prev_doPiPiT;
+        ffl.doPiSigma= prev_doPiSigma;
+        ffl.doBonds  = prev_doBonds;
+        ffl.bSubtractBondNonBond = prev_subBondNonBond;
+        bNonBonded   = prev_bNonBonded;
+        bConstrains  = prev_bConstrains;
+        bFreeEnergyCalc = prev_bFreeEnergyCalc;
+        bDeterministicTDrive = prev_bDeterministic;
+        bGopt = prev_bGopt;
+        go.gamma_damp = prev_gamma;
+        go.T_target   = prev_T;
+        go.bExploring = prev_goExploring;
+        return TI[nbStep-1];
+    }
+
 
     void setupTIConstraints( int isys, float lambda, int nCVs, Vec3f* initial_positions, Vec3f* final_positions, bool bAlign=false, float K=10.0f ){
         const int i0a = isys * ocl.nAtoms;

@@ -1109,13 +1109,6 @@ __kernel void updateAtomsMMFFf4(
 
             if( sign != 0.0f ){
                 __global float* avgF_ptr = (__global float*)(&averageForces[iS]);
-                if(nS==1){
-                    printf(
-                    "TI_DEBUG_GPU iS=%d ia=%d sign=%.17g force_proj=%.17g fe=(%.17g,%.17g,%.17g) cK=(%.17g,%.17g,%.17g)\n",
-                    iS, iG, (double)sign, (double)force_proj_dbg,
-                    (double)fe_dbg.x, (double)fe_dbg.y, (double)fe_dbg.z,
-                    (double)cK.x, (double)cK.y, (double)cK.z);
-                }
                 if(sign > 0.0f){
                     if(!isnan(force_proj)) avgF_ptr[2] += force_proj;
                     averageForces[iS].y = force_proj;
