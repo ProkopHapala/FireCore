@@ -977,3 +977,502 @@ Online (Per MD step):
 │  (Transmission) │
 └─────────────────┘
 ```
+
+---
+
+# Phase 1 Implementation Report: STM Simulator with NEGF Transport
+
+This section documents the actual implementation completed for the STM simulator, including newly added modules, methods, mathematical relations, challenges encountered, and technical notes for future developers.
+
+## Overview of Implemented Modules
+
+### 1. Shared STM Module (`pyBall/FireballOCL/STM.py`)
+
+**Purpose:** Central module containing all common STM functions to avoid code duplication across test scripts.
+
+**Key Functions:**
+
+- `load_xyz(path)` - Load molecular geometry from XYZ file
+- `compute_dos()` - Run Fireball SCF and compute spectral function with Γ broadening
+  - Now exports generalized eigenvectors `C` and eigenvalues `eps` in addition to spectral data
+  - Uses Wide-Band Limit (WBL) self-energy: Σ = -iΓ on contact atoms
+  - Computes spectral function: A(E) = (1/π) Im[G^r(E)] where G^r = [(E+iη)S - H - Σ]^{-1}
+
+- `compute_spectral(H, S, eigen, contact_orbs, gamma, ...)` - Core spectral function computation
+  - Solves generalized eigenvalue problem: H C = S C ε
+  - Applies Lorentzian broadening to each orbital: A_μ(E) = Σ_n (Γ_n/π) C_μn² / [(E - ε_n)² + Γ_n²]
+  - Γ_n = γ Σ_{μ∈contact} C_μn² (orbital-resolved broadening)
+
+- `build_dense_HS(dims, data, atomTypes)` - Convert sparse Fireball H/S to dense NumPy matrices
+  - Handles orbital indexing from sparse format [natoms, neigh_max, numorb_max, numorb_max]
+  - Maps neighbor lists to global orbital indices
+
+- `build_inter_system_blocks_fdata()` - Build inter-system coupling using Fireball 2-center tables
+  - Reads radial functions from Fireball Fdata directory
+  - Applies Slater-Koster rotation for angular dependence
+
+- `build_inter_system_blocks_exp_sk()` - **NEW** Vacuum exponential radial + Slater-Koster angular coupling
+  - Replaces Fireball radial dependence with physical vacuum decay: exp(-β(r - r₀))
+  - Retains Slater-Koster angular factors for correct orbital symmetry
+  - Parameters: β ~1.0 Å⁻¹, r₀ ~3.0 Å (tunable)
+  - Allows independent control of radial decay vs angular structure
+
+- `assemble_combined_HS()` - Assemble combined tip+sample Hamiltonian for NEGF
+  - Stacks individual H/S matrices
+  - Inserts inter-system coupling blocks at correct positions
+  - Handles tip offset translation
+
+- `select_atoms_by_xy_radius()` - Select atoms within lateral radius of scan center
+- `select_lead_orbitals_by_atoms()` - Convert atom selection to orbital indices for lead coupling
+
+### 2. NEGF Transport Methods
+
+#### Method 1: Direct NEGF with Caroli Formula (`negf_current()`)
+
+**Mathematical Foundation:**
+```
+G^r(E) = [(E + iη)S - H - Σ_L - Σ_R]^{-1}
+T(E) = Tr[Γ_L(E) G^r(E) Γ_R(E) G^a(E)]
+I = (2e/h) ∫ T(E)[f(E-μ_L) - f(E-μ_R)] dE
+```
+
+**Implementation:**
+- Wide-Band Limit self-energies: Σ_L = -iΓ_L on tip lead orbitals, Σ_R = -iΓ_R on sample lead orbitals
+- Full matrix inversion using NumPy `solve()` (not `inv()` for numerical stability)
+- Supports energy grid integration or single-energy evaluation
+- **Challenge:** O(N³) scaling limits system size
+
+#### Method 2: Iterative NEGF with GMRES (`negf_current_iterative()`)
+
+**Purpose:** Avoid explicit matrix inversion for larger systems using iterative linear solver.
+
+**Mathematical Foundation:**
+Uses Hutchinson stochastic trace estimator to compute transmission without full Green's function:
+```
+T(E) ≈ (1/n_rand) Σ_{k=1}^{n_rand} z_k† Γ_L G^r Γ_R G^a z_k
+```
+where z_k are random Rademacher vectors (±1 entries).
+
+**Implementation:**
+- Uses `scipy.sparse.linalg.gmres` to solve (E S - H - Σ) x = b iteratively
+- Warm-start cache: reuses previous solution as initial guess for nearby energies
+- Parameters: `nrand=8` (number of random vectors), `tol=1e-6`, `maxiter=500`
+- **Advantage:** Avoids O(N³) inversion, scales better for large systems
+- **Challenge:** Convergence depends on conditioning; may need preconditioning
+
+#### Method 3: Deterministic Response Metric (`negf_response_at_energy()`)
+
+**Purpose:** Single-solve deterministic alternative to stochastic trace estimator for probing transport.
+
+**Mathematical Foundation:**
+```
+A = (E + iη)S - H - Σ_L - Σ_R
+b = source_vector (e.g., unit vector on lead L)
+x = solve(A, b)
+resp = x† Γ_measure x
+```
+
+**Interpretation:**
+- Solves for the wavefunction response to excitation on one lead
+- Measures how much of that response couples to the other lead
+- Not a transmission coefficient, but a qualitative probe of coupling strength
+- **Advantage:** Single linear solve (no sampling), deterministic
+- **CLI control:** `--source L/R` (excitation lead), `--measure L/R` (measurement lead)
+
+### 3. MO Overlap Diagnostic (`coupling_vec_tip_to_sample()`, `mo_overlap_amplitude()`)
+
+**Purpose:** Validate NEGF response against sum-over-states picture using molecular orbital overlaps.
+
+**Mathematical Foundation:**
+For a "featureless metallic tip" approximation:
+```
+v_smp(s) = Σ_{i∈tip} H_{TS}(i, :)  (reduce_tip='sum')
+         or sqrt(Σ_{i∈tip} |H_{TS}(i, :)|²)  (reduce_tip='norm')
+t_n(s) = v_smp(s) · C_{:,n}
+I_n(s) = |t_n(s)|²
+```
+where C_{:,n} is the n-th molecular orbital eigenvector (in AO basis).
+
+**Physical Interpretation:**
+- `t_n(s)` is the overlap amplitude between tip coupling vector and MO n
+- Sign of `t_n(s)` reveals nodal planes (zeros, sign flips)
+- `|t_n(s)|²` is the intensity (what STM actually measures)
+- This is the "poles of Green's function" picture: T(E) ≈ Σ_n |t_n|² / [(E - ε_n)² + Γ_n²]
+
+**Implementation:**
+- `coupling_vec_tip_to_sample()`: Builds effective tip→sample coupling vector by reducing over tip orbitals
+- `mo_overlap_amplitude()`: Computes signed amplitude and intensity for a selected MO
+- CLI flags: `--scan_mo`, `--mo` (explicit index), `--mo_win` (energy window around E), `--reduce_tip`
+- Outputs: `scan1d_xy_mo.npz` and `scan1d_xy_mo.png` with signed amplitude and intensity plots
+
+### 4. CLI Analysis Script (`tests/pyFireball/stm_analysis.py`)
+
+**Purpose:** Main user-facing script for STM analysis with flexible configuration.
+
+**Key Features:**
+- Load pre-computed DOS files for tip and sample molecules
+- Support for multiple transport methods: `--method pdos` (Phase 1 approximation) or `--method negf` (combined-system)
+- NEGF solver selection: `--solver direct` or `--solver iter`
+- NEGF mode: `--negf_mode caroli` (full transmission) or `--negf_mode response` (deterministic probe)
+- Single-energy evaluation: `--E <value>` (defaults to Fermi level)
+- Lead selection: `--source L/R`, `--measure L/R` for response metric
+- Tunneling coupling parameters: `--beta`, `--r0`, `--A_ss`, `--A_sp`, `--A_ppsig`, `--A_pppi`
+- Scanning protocols:
+  - 1D height scan: z = 3–10 Å (always runs)
+  - 1D lateral scan at constant z: `--scan_xy`, `--xy_dir diag/x/y`, `--zxy`
+  - 2D xy scan: `--no2d` to skip
+- MO overlap diagnostic: `--scan_mo` with MO selection options
+- Output management: All plots and .npz files saved to `export/stm_phase1/` with printed paths
+
+### 5. DOS Computation Script (`tests/pyFireball/stm_compute_dos.py`)
+
+**Purpose:** Thin interface to Fireball SCF for computing DOS with Γ broadening.
+
+**Key Features:**
+- Calls Fireball SCF via `pyBall.FireCore` interface
+- Computes spectral function with contact atom broadening
+- **Now exports:** `eps` (eigenvalues) and `C` (eigenvectors) in addition to spectral data
+  - Required for MO overlap diagnostic
+  - Users must regenerate DOS files after this change to get C/eps arrays
+
+## Mathematical Relations Between Methods
+
+### NEGF vs MO Overlap Picture
+
+The Caroli transmission formula can be expressed in the molecular orbital basis as:
+```
+T(E) = Tr[Γ_L G Γ_R G†]
+     = Σ_{n,m} (Γ_L)_{nm} G_{mn} (Γ_R)_{np} G*_{pn}
+     = Σ_n |t_n(E)|² L_n(E)
+```
+where:
+- `t_n(E)` is the coupling amplitude between lead states and MO n
+- `L_n(E)` is the Lorentzian lineshape: Γ_n / [(E - ε_n)² + Γ_n²]
+
+The MO overlap diagnostic computes `t_n(s)` explicitly for a single MO at a fixed energy, allowing direct comparison with the NEGF response (which sums over all MOs implicitly).
+
+### Direct vs Iterative NEGF
+
+**Direct solver:**
+```
+x = solve(A, b)  for each random vector
+T ≈ (1/N) Σ x† Γ x
+```
+- Exact (to machine precision)
+- O(N³) due to matrix factorization (implicit in `solve`)
+
+**Iterative solver:**
+```
+x = gmres(A, b, x0, tol, maxiter)  for each random vector
+T ≈ (1/N) Σ x† Γ x
+```
+- Approximate (controlled by `tol`)
+- O(N × k) where k is iteration count
+- Warm-start: `x0` from previous energy reduces iterations
+
+### Response Metric vs Transmission
+
+**Response metric:**
+```
+resp = x† Γ_measure x  where x solves A x = source_vector
+```
+- Single linear solve (no sampling)
+- Probes "how much does excitation on lead A couple to lead B?"
+- Not a transmission coefficient, but correlates with it
+- Useful for quick qualitative scans
+
+**Caroli transmission:**
+```
+T = Tr[Γ_L G Γ_R G†]
+```
+- Requires full Green's function (or stochastic trace)
+- Physically meaningful transmission coefficient
+- More expensive but rigorous
+
+## Challenges Encountered and Solutions
+
+### 1. Zero Transmission Bug
+
+**Problem:** Initial NEGF implementation gave zero transmission.
+
+**Root Cause:** Used only Fireball kinetic root for inter-system coupling, which was zero for distant atoms.
+
+**Solution:** Use full Slater-Koster angular dependence with proper radial function. The coupling must include both:
+- Radial part: distance-dependent decay
+- Angular part: Slater-Koster factors (l, m, n direction cosines)
+
+**Lesson:** Never use simplified coupling models without validating against physical expectations. Check that coupling blocks are non-zero before full NEGF solve.
+
+### 2. Performance: Full Energy Grid vs Single Energy
+
+**Problem:** Initial implementation computed transmission on 351-point energy grid, making scans extremely slow.
+
+**Solution:** For STM imaging at small bias, single-energy evaluation at Fermi level is sufficient. Changed to:
+```python
+E_grid = np.array([E_single])  # instead of np.arange(...)
+```
+
+**Lesson:** STM current at small bias is dominated by states near Fermi level. Single-energy evaluation is adequate for qualitative imaging.
+
+### 3. Radial Part: Fireball vs Vacuum Exponential
+
+**Problem:** Fireball radial functions are designed for covalent bonding (short-range), not vacuum tunneling (long-range exponential decay).
+
+**Solution:** Implemented `build_inter_system_blocks_exp_sk()` which:
+- Uses vacuum exponential decay: exp(-β(r - r₀))
+- Retains Slater-Koster angular dependence for correct orbital symmetry
+- Allows independent tuning of β and r₀
+
+**Parameters:**
+- β ~1.0 Å⁻¹ (typical vacuum decay)
+- r₀ ~3.0 Å (reference distance where coupling = A values)
+
+**Lesson:** Physical accuracy requires using appropriate radial functions for the physical regime (vacuum tunneling vs covalent bonding).
+
+### 4. Hamiltonian Assembly Complexity
+
+**Problem:** Converting sparse Fireball format to dense matrices for NEGF is error-prone due to complex orbital indexing.
+
+**Solution:** Careful implementation in `build_dense_HS()`:
+- Uses `starts` array to map atoms to orbital indices
+- Handles variable orbitals per atom (s, p, d)
+- Validates dimensions match expected values
+
+**Sparse format:** [natoms, neigh_max, numorb_max, numorb_max]
+- Each atom has `neigh_max` neighbors
+- Each neighbor pair has up to `numorb_max × numorb_max` orbital interactions
+- Need to map local orbital indices to global indices
+
+**Lesson:** Always validate matrix dimensions and print diagnostics (e.g., diagonal ranges) before using in NEGF.
+
+### 5. Missing Eigenvectors in DOS Files
+
+**Problem:** MO overlap diagnostic requires eigenvectors `C`, but initial DOS files only contained spectral data.
+
+**Solution:** Extended `compute_dos()` to export `eps` and `C`:
+```python
+eps, C = eigh(H, S)  # generalized eigenvalue problem
+result['eps'] = eps
+result['C'] = C
+```
+
+**Action required:** Users must regenerate DOS files with updated script to get C/eps arrays.
+
+**Lesson:** Plan ahead for diagnostic needs. If eigenvectors might be needed later, export them from the start.
+
+### 6. Iterative Solver Convergence
+
+**Problem:** GMRES may not converge for poorly conditioned matrices.
+
+**Current mitigation:**
+- Warm-start cache (reuse previous solution as initial guess)
+- Reasonable tolerance (tol=1e-6)
+- Max iteration limit (500)
+
+**Future improvements:**
+- Preconditioning (e.g., incomplete LU)
+- Alternative solvers (BiCGSTAB, TFQMR)
+- Hybrid approach: direct for small systems, iterative for large
+
+## Hamiltonian Assembly Details
+
+### Sparse to Dense Conversion
+
+Fireball exports H and S in sparse format:
+```
+data.h_mat[iat, ineigh, iorb, jorb] = H_{μ,ν}
+data.neigh_j[iat, ineigh] = neighbor atom index (1-based)
+data.mu, data.nu: orbital index mappings
+```
+
+Conversion steps:
+1. Compute orbital start indices per atom: `starts[i] = Σ_{k< i} norb_per[k]`
+2. For each atom `iat` and neighbor `jneigh`:
+   - Get neighbor atom index: `j = data.neigh_j[iat, ineigh] - 1`
+   - Get orbital counts: `ni = norb_per[iat]`, `nj = norb_per[j]`
+   - Copy block to dense: `H[starts[i]:starts[i]+ni, starts[j]:starts[j]+nj] = data.h_mat[iat, ineigh, :ni, :nj]`
+
+**Validation:** Check that diagonal elements are reasonable (e.g., -20 to 0 eV for valence orbitals).
+
+### Combined System Assembly
+
+For NEGF, we assemble tip and sample into a combined Hamiltonian:
+```
+H_combined = [[H_tip,     H_TS],
+              [H_ST,      H_smp ]]
+```
+
+Steps:
+1. Stack diagonal blocks: `Hc = scipy.linalg.block_diag(H_tip, H_smp)`
+2. Insert off-diagonal coupling blocks at correct positions
+3. Same for overlap matrix S
+4. Handle tip offset translation (tip position relative to sample)
+
+**Lead orbital selection:**
+- Select atoms that couple to leads (e.g., bottom atoms of sample, top atoms of tip)
+- Convert atom indices to orbital indices using `starts` array
+- Apply WBL self-energy only to these orbitals: Σ = -iΓ
+
+### Inter-System Coupling
+
+**Original approach (Fireball radial):**
+- Read 2-center tables from Fireball Fdata directory
+- Interpolate radial functions
+- Apply Slater-Koster rotation
+
+**New approach (vacuum exponential):**
+- Radial: `f(r) = A * exp(-β(r - r₀))`
+- Angular: Same Slater-Koster factors
+- Independent parameters A_ss, A_sp, A_ppσ, A_ppπ for different orbital pairs
+
+**Advantage of vacuum exponential:**
+- Physically correct for tunneling regime
+- Simple, tunable parameters
+- No dependence on Fireball tables (portable)
+
+**Slater-Koster angular factors:**
+For direction cosines (l, m, n) = (dx/r, dy/r, dz/r):
+- ssσ: Vss (isotropic)
+- spσ: l * Vsp
+- ppσ: l² * Vppσ + (1 - l²) * Vppπ
+- etc.
+
+## Remaining Problems and Future Work
+
+### 1. DOS File Regeneration
+
+**Status:** Users need to regenerate `dos_PTCDA.npz` and `dos_H2.npz` with updated `stm_compute_dos.py` to get `eps` and `C` arrays.
+
+**Action:** Run:
+```bash
+cd tests/pyFireball
+python stm_compute_dos.py --xyz PTCDA.xyz --out export/stm_phase1/dos_PTCDA.npz
+python stm_compute_dos.py --xyz H2.xyz --out export/stm_phase1/dos_H2.npz
+```
+
+### 2. GPU Acceleration
+
+**Status:** Current implementation is CPU-only (NumPy).
+
+**Plan:**
+- Port Slater-Koster coupling to OpenCL kernel
+- Port spectral function computation to GPU
+- Port NEGF solver (iterative) to GPU
+- Use batched processing for multi-replica MD
+
+**Challenges:**
+- Sparse matrix operations on GPU (need sparse linear algebra library)
+- Iterative solver on GPU (need GPU GMRES implementation)
+- Memory management for large systems
+
+### 3. Hamiltonian Rebuild Optimization
+
+**Status:** Full Hamiltonian rebuilt at each scan point (expensive).
+
+**Optimization opportunities:**
+- Only rebuild inter-system coupling blocks (H_TS, S_TS)
+- Keep tip and sample diagonal blocks constant
+- Use incremental updates for small displacements
+
+**Implementation:**
+- Cache tip and sample H/S matrices
+- Only recompute coupling blocks for moved atoms
+- For rigid translation/rotation, apply transformation instead of rebuild
+
+### 4. Normal Mode Expansion
+
+**Status:** Not yet implemented.
+
+**Plan:**
+- Compute Hessian in Fireball
+- Extract soft modes (translations, rotations, low-frequency vibrations)
+- Compute PDOS derivatives ∂A/∂Q_k via finite difference
+- On GPU: A(t) = A_0 + Σ_k Q_k(t) * ∂A/∂Q_k
+
+**Benefits:**
+- Avoid full SCF during MD
+- Capture internal deformation effects
+- Still accurate for small displacements
+
+### 5. Perturbative Transport
+
+**Status:** Not yet implemented (currently using full NEGF).
+
+**Plan:**
+- Precompute PDOS for isolated molecules with lead coupling
+- On GPU: T(E) = Σ_μν A_μ^T(E) |V_μν|² A_ν^S(E)
+- Much faster (no matrix inversion)
+- Valid for weak coupling (tunneling regime)
+
+**Validation:**
+- Compare with full NEGF for test systems
+- Establish coupling strength threshold where perturbative breaks down
+
+## Usage Examples
+
+### Basic STM Analysis (NEGF with response metric)
+
+```bash
+cd tests/pyFireball
+python stm_analysis.py --method negf --negf_mode response \
+    --E -0.8 --z2d 5.0 --xy_range 7.0 --xy_step 0.5 \
+    --scan_xy --no2d --noshow
+```
+
+Output:
+- `scan1d.png`: Height scan I(z)
+- `scan1d_xy.png`: Lateral scan I(s) at constant z
+- `scan1d.npz`, `scan1d_xy.npz`: Numerical data
+
+### MO Overlap Diagnostic
+
+```bash
+python stm_analysis.py --method negf --negf_mode response \
+    --E -0.8 --scan_xy --scan_mo --no2d --noshow
+```
+
+Output:
+- `scan1d_xy_mo.png`: Signed amplitude t(s) and intensity |t|²
+- `scan1d_xy_mo.npz`: Numerical data including MO index and energy
+
+### Full 2D STM Image
+
+```bash
+python stm_analysis.py --method negf --negf_mode response \
+    --E -0.8 --z2d 5.0 --xy_range 7.0 --xy_step 0.5 \
+    --noshow
+```
+
+Output:
+- `stm2d.png`: 2D current map I(x,y)
+- `stm2d.npz`: Numerical data
+
+## Key Parameters and Typical Values
+
+| Parameter | Description | Typical Value | CLI Flag |
+|-----------|-------------|---------------|----------|
+| β | Vacuum decay constant | 1.0 Å⁻¹ | `--beta` |
+| r₀ | Reference distance | 3.0 Å | `--r0` |
+| A_ss | s-s coupling strength | -1.0 eV | `--A_ss` |
+| A_sp | s-p coupling strength | -1.0 eV | `--A_sp` |
+| A_ppσ | p-p σ coupling | -1.0 eV | `--A_ppsig` |
+| A_ppπ | p-p π coupling | +1.0 eV | `--A_pppi` |
+| γ_L, γ_R | Lead coupling strength | 2.0 eV | `--gammaL`, `--gammaR` |
+| η | Small imaginary part | 1e-4 eV | `--eta` |
+| z2d | Height for 2D scan | 5.0 Å | `--z2d` |
+| zxy | Height for lateral scan | 5.0 Å | `--zxy` |
+| xy_range | Lateral scan range | 7.0 Å | `--xy_range` |
+| xy_step | Lateral scan step | 0.5 Å | `--xy_step` |
+
+## Summary
+
+The Phase 1 implementation provides a working STM simulator with:
+
+1. **Shared module** (`STM.py`) with common functions for DOS, hopping, and NEGF transport
+2. **Three NEGF methods**: direct Caroli, iterative GMRES, and deterministic response
+3. **Physically accurate tunneling coupling**: vacuum exponential radial + Slater-Koster angular
+4. **MO overlap diagnostic**: sum-over-states validation with signed amplitudes
+5. **Flexible CLI** for various scanning protocols and parameter exploration
+6. **Consistent output management** with printed file paths
+
+**Remaining work:** GPU acceleration, Hamiltonian rebuild optimization, normal mode expansion, and perturbative transport for production MD integration.
