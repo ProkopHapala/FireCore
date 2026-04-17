@@ -507,3 +507,126 @@ class GridProjector(OpenCLBase):
         self.queue.finish()
 
         return res
+
+    def project_orbital(self, coeffs, norb_per, atoms_dict, grid_spec, nMaxAtom=64, _debug_Fortran_order=False):
+        """
+        Project a single molecular orbital onto a 3D grid using the orbital projection kernel.
+
+        Computes ψ(r) = Σ_i C_i φ_i(r) (signed wavefunction, not density)
+
+        Args:
+            coeffs: (natoms, numorb_max) MO coefficients. If _debug_Fortran_order=True, expects
+                    Fortran order [s, py, pz, px]. Otherwise expects OpenCL order [s, px, py, pz].
+            norb_per: (natoms,) number of orbitals per atom
+            atoms_dict: dict with 'pos', 'Rcut', 'type'
+            grid_spec: dict with 'origin', 'dA', 'dB', 'dC', 'ngrid'
+            nMaxAtom: max atoms per task
+            _debug_Fortran_order: If True, coeffs are in Fortran order and will be remapped
+
+        Returns:
+            psi: (nx, ny, nz) signed wavefunction
+        """
+        import numpy as np
+        import time
+
+        # Build tasks
+        tasks_np, task_atoms_np = self.build_tasks(atoms_dict, grid_spec, nMaxAtom=64, block_res=8)
+        if self.verbosity > 0: print(f"[DEBUG] project_orbital: n_tasks={len(tasks_np)}")
+
+        # Prepare coefficient buffer with remapping from Fortran to OpenCL order
+        natoms = len(atoms_dict['pos'])
+        numorb_max = max(norb_per)
+        coeffs_flat = np.zeros(natoms * numorb_max, dtype=np.float32)
+        
+        # Remapping: Fortran [s, py, pz, px] -> OpenCL [s, px, py, pz]
+        _ORT_SPP_TO_STD = np.array([0, 3, 1, 2], dtype=np.int32)
+        
+        for ia in range(natoms):
+            i0 = ia * numorb_max
+            no = norb_per[ia]
+            if _debug_Fortran_order and no == 4:
+                # Remap p-orbitals from Fortran to OpenCL order
+                coeffs_flat[i0:i0+no] = coeffs[ia, :no][_ORT_SPP_TO_STD]
+            else:
+                coeffs_flat[i0:i0+no] = coeffs[ia, :no]
+
+        # Prepare atom data
+        atom_data = np.zeros(natoms, dtype=[
+            ('pos_rcut', 'f4', 4),
+            ('type', 'i4'),
+            ('i0orb', 'i4'),
+            ('norb', 'i4'),
+            ('pad', 'i4')
+        ])
+        for ia in range(natoms):
+            atom_data[ia]['pos_rcut'][:3] = atoms_dict['pos'][ia]
+            atom_data[ia]['pos_rcut'][3] = atoms_dict['Rcut'][ia]
+            Z = int(atoms_dict['type'][ia])
+            try:
+                atom_data[ia]['type'] = int(self.basis_meta['nz_map'][Z])
+            except Exception as e:
+                raise RuntimeError(f"GridProjector.project_orbital(): species nz={Z} not in loaded basis nz_map keys={list(self.basis_meta['nz_map'].keys())}") from e
+            atom_data[ia]['norb'] = norb_per[ia]
+            atom_data[ia]['i0orb'] = ia * numorb_max
+
+        # Grid spec
+        d_grid = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                         hostbuf=self.grid_to_np(grid_spec))
+
+        # Tasks
+        if len(tasks_np) > 0:
+            d_tasks = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                             hostbuf=tasks_np)
+        else:
+            d_tasks = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, size=32)
+
+        d_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                          hostbuf=atom_data)
+
+        if len(task_atoms_np) > 0:
+            d_task_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                                    hostbuf=task_atoms_np)
+        else:
+            d_task_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, size=nMaxAtom * 4)
+
+        d_coeffs = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                           hostbuf=coeffs_flat.astype(np.float32))
+
+        # Output grid
+        nx, ny, nz = grid_spec['ngrid'][:3]
+        out_nbytes = int(nx) * int(ny) * int(nz) * 4
+        d_out = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, out_nbytes)
+        cl.enqueue_fill_buffer(self.queue, d_out, np.float32(0), 0, out_nbytes)
+
+        # Load kernel
+        self._load_kernels()
+        n_tasks = len(tasks_np)
+
+        # Launch kernel
+        ls = (32,)
+        gs = (n_tasks * ls[0],)
+
+        T0 = time.perf_counter_ns()
+        self.prg.project_orbital(
+            self.queue, gs, ls,
+            d_grid, np.int32(n_tasks),
+            d_tasks, d_atoms, d_task_atoms,
+            d_coeffs,
+            self.d_basis,
+            np.int32(self.basis_meta['n_nodes']),
+            np.float32(self.basis_meta['dr']),
+            np.int32(self.basis_meta['max_shells']),
+            np.int32(numorb_max),
+            np.int32(nMaxAtom),
+            d_out
+        )
+        self.queue.finish()
+        T1 = time.perf_counter_ns()
+        if self.verbosity > 0: print(f"[TIME] project_orbital {(T1-T0)*1e-6:.3f} [ms]")
+
+        # Read back
+        res = np.empty((int(nx), int(ny), int(nz)), dtype=np.float32)
+        cl.enqueue_copy(self.queue, res, d_out)
+        self.queue.finish()
+
+        return res

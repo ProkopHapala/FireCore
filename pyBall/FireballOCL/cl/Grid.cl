@@ -1,5 +1,5 @@
 // OpenCL kernel for projecting sparse density matrix to a real-space grid.
-// Data layout in memory (originally Fortran column-major): 
+// Data layout in memory (originally Fortran column-major):
 // rho(imu, inu, ineigh, iatom) -> rho[iatom][ineigh][inu][imu] in C-order indexing
 
 #ifndef DEBUG_EARLY_EXIT
@@ -578,11 +578,106 @@ __kernel void project_density_sparse_tiled(
         const int gy = task.y * 8 + ly;
         const int gz = task.z * 8 + lz;
         const int3 ngrid_dim = grid->ngrid.xyz;
-        
+
         if (gx < ngrid_dim.x && gy < ngrid_dim.y && gz < ngrid_dim.z) {
             int g_idx = (gx * ngrid_dim.y + gy) * ngrid_dim.z + gz;
             out_grid[g_idx] = l_den[v];
         }
     }
 */
+}
+
+// ============================================================================
+// Orbital projection kernel (simpler than density projection)
+// Computes ψ(r) = Σ_i C_i φ_i(r) where C_i are MO coefficients
+// This is for projecting a single orbital, not density
+// 
+// IMPORTANT: Coeffs must be in OpenCL order [s, px, py, pz] (remapped from Fortran [s, py, pz, px])
+// Angular dependence: psi_s = R_s(r) * Y_00
+//                     psi_px = R_p(r) * (x/r) * PREF_P  [Y_1,+1]
+//                     psi_py = R_p(r) * (y/r) * PREF_P  [Y_1,-1]  
+//                     psi_pz = R_p(r) * (z/r) * PREF_P  [Y_1,0]
+// ============================================================================
+__kernel void project_orbital(
+    __global const GridSpec* grid,
+    const int n_tasks,
+    __global const TaskData* tasks,
+    __global const AtomData* atoms,
+    __global const int* task_atoms,
+    __global const float* coeffs,     // [natoms][numorb_max] - MO coefficients in OpenCL order [s, px, py, pz]
+    __global const float* basis_data,
+    const int n_nodes,
+    const float dr_basis,
+    const int max_shells,
+    const int numorb_max,
+    const int nMaxAtom,
+    __global float* out_grid
+) {
+    const int gid = get_global_id(0);
+    const int threads_per_task = get_local_size(0);
+    const int i_task = get_group_id(0);
+    const int t_idx = get_local_id(0);
+    if (i_task >= n_tasks) return;
+
+    const TaskData task = tasks[i_task];
+    const int na = task.na;
+
+    for (int v = t_idx; v < 512; v += threads_per_task) {
+        float3 r_vox;
+        int g_idx;
+        const int lx = v & 7;
+        const int ly = (v >> 3) & 7;
+        const int lz = (v >> 6) & 7;
+        {
+            const int gx = task.x * 8 + lx;
+            const int gy = task.y * 8 + ly;
+            const int gz = task.z * 8 + lz;
+            const int3 ngrid_dim = grid->ngrid.xyz;
+            if (gx >= ngrid_dim.x || gy >= ngrid_dim.y || gz >= ngrid_dim.z) continue;
+            g_idx = (gx * ngrid_dim.y + gy) * ngrid_dim.z + gz;
+            r_vox = grid->origin.xyz + (float)gx * grid->dA.xyz + (float)gy * grid->dB.xyz + (float)gz * grid->dC.xyz;
+        }
+
+        float psi = 0.0f;
+
+        for (int i = 0; i < na; i++) {
+            const int i_atom = task_atoms[i_task * nMaxAtom + i];
+            AtomData ad_i = atoms[i_atom];
+            float rcut_i2 = ad_i.pos_rcut.w;
+            rcut_i2 *= rcut_i2;
+
+            float3 dri;
+            dri = r_vox - ad_i.pos_rcut.xyz;
+            const float ri2 = dot(dri, dri);
+            if (ri2 > rcut_i2) continue;
+            const float ri = sqrt(ri2);
+
+            // Evaluate radial parts
+            const float rs = evaluate_radial(ri, ad_i.type, 0, basis_data, n_nodes, dr_basis, max_shells);
+            const float rp = evaluate_radial(ri, ad_i.type, 1, basis_data, n_nodes, dr_basis, max_shells);
+            
+            // Angular unit vector (x/r, y/r, z/r) for p-orbital angular dependence
+            const float3 rhat = dri / (ri + 1e-12f);
+
+            // Sum over orbitals: ψ += C_i * φ_i(r)
+            // Coeffs are in order [px, py, pz, s] matching existing FireballOCL convention
+            // See DFT/utils.py convCoefs() which produces [px, py, pz, s] order
+            const int coeff_base = i_atom * numorb_max;
+            const int norb = ad_i.norb;
+
+            // Compute basis function values: [px*rhat.x, py*rhat.y, pz*rhat.z, s]
+            // This matches sp3_tex() in myprog.cl: return (float4)(dp*ir*pref_p, pref_s)*fr
+            const float4 basis_val = (float4)(
+                rp * rhat.x * PREF_P,   // px component
+                rp * rhat.y * PREF_P,   // py component
+                rp * rhat.z * PREF_P,   // pz component
+                rs * PREF_S             // s component
+            );
+
+            // Dot product with coefficients [px, py, pz, s]
+            psi += dot(((const float4*)(coeffs))[coeff_base / 4], basis_val);
+        }
+
+        out_grid[g_idx] = psi;
+    }
 }

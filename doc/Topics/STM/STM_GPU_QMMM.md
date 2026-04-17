@@ -980,6 +980,8 @@ Online (Per MD step):
 
 ---
 
+# REPORT 1 : SWE-1.6
+
 # Phase 1 Implementation Report: STM Simulator with NEGF Transport
 
 This section documents the actual implementation completed for the STM simulator, including newly added modules, methods, mathematical relations, challenges encountered, and technical notes for future developers.
@@ -1476,3 +1478,473 @@ The Phase 1 implementation provides a working STM simulator with:
 6. **Consistent output management** with printed file paths
 
 **Remaining work:** GPU acceleration, Hamiltonian rebuild optimization, normal mode expansion, and perturbative transport for production MD integration.
+
+---
+
+# USER
+
+OK, now we should make very basic test, lets tune the energy at which we evaluate electron transision (ie e for which we compute G=(eI-H)^-1 )
+to energy of PTCDA HOMO orbital. As a tip we will use just single hydrogen atom - just s-orbital. For simplicity asume that every atom can have 4 basis functions on it (px,py,pz,s) which maps perfectly to float4 datatype, and this is how we represent our wavefuctions and density matrix in @GridFF.py 
+@GridFF.cl and in @OCL_Hamiltonian.py @hamiltonian.cl , to which we want to interface later. For compactibility and simplicity keep this structure everywhere (note that in FireBall fortran we do not use this structure so we need to convert it). We can easily just pad the unused px,py,pz by zeros wen we have just single s orbital on the tip. Later this will allow use to try different symetries (px,py,pz). Later we will also test how the denisy of states is rotatated when we rotate whole molecule.   
+
+
+And lets compute the map at height z=3.0A for the different methods and plot it. Plot also the projected density of states.
+I expect that the maps should loop like aprox the same for all the methods.
+Especially the STM computed by the method using sume over moleculer orbitals (which in this case basically sum just over HOMO) should look like HOMO
+But I do not see why also the other method should not look like HOMO.
+We should put this as another independnet shalow script which reuse in maximum degree what we already implemented in the shared module STM.py we can also consolidate the plotting ad debuging function in separate module STM_utils.py
+
+Now your job is not to write any code yet, but make clear plan with clarly defined test, and requirements, and also identify possible problem we have in current code on which we should focus. Again I hate making loops in python. For operations in python use numpy array operatin (fancy indexing, slicing, linear algebra function etc.), Later we plan to rewrite everything performance intensive to pyOpenCL but for now it is fine to make python reference which is easier to understand and debug. Make sure that you write clearly the equations what you are doing at every function (some theory background in comment string)
+
+now write the plan and implementation notes for this critical testing step. 
+
+---
+
+# SWE-1.6
+
+
+
+# Plan: Basic STM Test at HOMO Energy
+
+## Test Definition
+
+**Objective:** Validate that all STM transport methods produce maps resembling the PTCDA HOMO orbital when evaluated at the HOMO energy with a single H-atom tip at z=3.0 Å.
+
+**Test Configuration:**
+- **Tip:** Single hydrogen atom (s-orbital only, px/py/pz padded with zeros)
+- **Sample:** PTCDA molecule
+- **Energy:** PTCDA HOMO orbital energy (from eigenvalues)
+- **Height:** z = 3.0 Å above sample center
+- **Scan:** 2D xy map over sample (±7 Å range, 0.5 Å step)
+- **Methods to compare:**
+  1. NEGF Caroli (direct solver)
+  2. NEGF response metric
+  3. MO overlap (sum over states, dominated by HOMO)
+  4. Projected density of states (PDOS) at HOMO energy
+
+**Expected Outcome:** All methods should produce similar maps that visually resemble the HOMO orbital shape.
+
+---
+
+## Implementation Plan
+
+### Step 1: Create `STM_utils.py` Module
+
+**Purpose:** Consolidate plotting and debugging functions from STM.py.
+
+**Functions to extract:**
+
+```python
+def plot_2d_map(data, x_arr, y_arr, title, cmap='viridis', 
+                vmin=None, vmax=None, ax=None):
+    """
+    Plot 2D data as heatmap with proper axes.
+    
+    Theory: I(x,y) = T(E,x,y) where T is transmission or response metric
+    Visualizes spatial variation of STM signal at constant energy and height.
+    """
+    
+def plot_1d_scan(s_arr, I_arr, title, ylabel, ax=None):
+    """
+    Plot 1D scan data.
+    
+    Theory: I(s) where s is lateral position along scan line
+    Used for height scans (z) or lateral scans (x/y/diagonal)
+    """
+
+def plot_pdos(E_grid, A, E_fermi, title, ax=None):
+    """
+    Plot projected density of states.
+    
+    Theory: A_μ(E) = (1/π) Im[G^r_μμ(E)] where G^r = [(E+iη)S - H - Σ]^{-1}
+    Shows spectral density per orbital as function of energy
+    """
+
+def save_plot(fig, name, export_dir, dpi=130):
+    """Save figure to file with consistent naming."""
+
+def set_export_dir(export_dir):
+    """Create export directory if needed, return absolute path."""
+```
+
+**Requirements:**
+- No Python loops, use NumPy operations
+- Clear docstrings with theory background
+- Handle both matplotlib axes and standalone figures
+
+---
+
+### Step 2: Implement Float4 Per Atom Conversion
+
+**Problem:** Fireball format uses variable orbitals per atom (s, p, d with counts depending on species), but we need fixed float4 (s, px, py, pz) structure.
+
+**Solution:** Add conversion function to STM.py
+
+```python
+def convert_to_float4_per_atom(H, S, atomTypes, norb_per):
+    """
+    Convert sparse/dense matrices from Fireball format to float4-per-atom structure.
+    
+    Theory:
+    Fireball format: variable orbitals per atom
+    - H: [s], [s,px,py,pz], [s,px,py,pz,d...] depending on species
+    - Indexing via starts array: starts[i] = Σ_{k<i} norb_per[k]
+    
+    Target format: exactly 4 orbitals per atom (s, px, py, pz)
+    - For atoms with <4 orbitals: pad with zeros
+    - For atoms with >4 orbitals: truncate d-orbitals (not used in STM basis)
+    
+    Args:
+        H: Hamiltonian matrix [norb, norb]
+        S: Overlap matrix [norb, norb]
+        atomTypes: atom type indices [natoms]
+        norb_per: orbitals per atom from Fireball [natoms]
+    
+    Returns:
+        H4: Hamiltonian in float4 format [natoms, natoms, 4, 4]
+        S4: Overlap in float4 format [natoms, natoms, 4, 4]
+        orb_mask: Boolean mask [natoms, 4] indicating which orbitals are valid
+    """
+    natoms = len(atomTypes)
+    n4 = 4  # fixed float4 structure
+    
+    # Build mapping from Fireball orbitals to float4 positions
+    H4 = np.zeros((natoms, natoms, n4, n4), dtype=np.float64)
+    S4 = np.zeros((natoms, natoms, n4, n4), dtype=np.float64)
+    orb_mask = np.zeros((natoms, n4), dtype=bool)
+    
+    starts = _atom_orb_starts(norb_per)
+    
+    for i in range(natoms):
+        ni = min(int(norb_per[i]), n4)  # truncate if >4
+        orb_mask[i, :ni] = True
+        i0 = int(starts[i])
+        
+        for j in range(natoms):
+            nj = min(int(norb_per[j]), n4)
+            j0 = int(starts[j])
+            
+            # Copy valid orbitals, zeros remain for padding
+            H4[i, j, :ni, :nj] = H[i0:i0+ni, j0:j0+nj]
+            S4[i, j, :ni, :nj] = S[i0:i0+ni, j0:j0+nj]
+    
+    return H4, S4, orb_mask
+```
+
+**Requirements:**
+- Use NumPy slicing, no loops over orbitals
+- Preserve Hermiticity: H4[j,i] = H4[i,j].T
+- Validate: check that diagonal blocks are reasonable
+
+---
+
+### Step 3: Set Up Single H Atom Tip
+
+**Problem:** Current tip is H2 (2 atoms), need single H atom with s-orbital only.
+
+**Solution:** Create H atom geometry and compute its DOS
+
+```python
+# In test script:
+tip_types = np.array([1])  # Hydrogen
+tip_pos = np.array([[0.0, 0.0, 0.0]])  # Single atom at origin
+# After compute_dos, convert to float4 (s-orbital only, p-orbitals padded)
+```
+
+**Conversion details:**
+- H atom in Fireball: 1 orbital (s only)
+- float4 format: [s, 0, 0, 0] (px, py, pz padded with zeros)
+- This maintains compatibility with float4 structure while being physically correct
+
+---
+
+### Step 4: Identify HOMO Energy
+
+**Problem:** Need to find HOMO energy from PTCDA eigenvalues.
+
+**Solution:** Add helper function to STM.py
+
+```python
+def find_homo_index(eps, nelec_per_atom=None):
+    """
+    Find index of Highest Occupied Molecular Orbital (HOMO).
+    
+    Theory:
+    In DFT, molecular orbitals are filled with electrons up to Fermi level.
+    HOMO is the highest energy orbital that is occupied.
+    For closed-shell systems: fill 2 electrons per orbital (spin-paired).
+    
+    Args:
+        eps: Orbital eigenvalues [norb]
+        nelec_per_atom: (optional) electrons per atom for open-shell systems
+    
+    Returns:
+        homo_idx: Index of HOMO orbital
+        homo_energy: Energy of HOMO
+    """
+    if nelec_per_atom is None:
+        # Closed-shell: fill 2 electrons per orbital
+        nelec = 2 * len(eps) // 2  # Assume even number of electrons
+    else:
+        nelec = np.sum(nelec_per_atom)
+    
+    # Sort by energy, fill lowest nelec/2 orbitals
+    sorted_idx = np.argsort(eps)
+    homo_idx = sorted_idx[nelec//2 - 1]  # -1 for 0-based indexing
+    return homo_idx, eps[homo_idx]
+```
+
+**Usage:**
+```python
+homo_idx, homo_energy = find_homo_index(smp['eps'])
+print(f"HOMO: index={homo_idx}, energy={homo_energy:.4f} eV")
+```
+
+---
+
+### Step 5: Create Test Script `test_stm_homo.py`
+
+**Structure:**
+
+```python
+#!/usr/bin/env python3
+"""
+Basic STM test: Compare all transport methods at HOMO energy.
+
+Test configuration:
+- Tip: Single H atom (s-orbital only, p-orbitals padded)
+- Sample: PTCDA molecule
+- Energy: PTCDA HOMO energy
+- Height: z = 3.0 Å
+- Scan: 2D xy map ±7 Å, step 0.5 Å
+
+Expected: All methods produce HOMO-like maps.
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+from pyBall.FireballOCL.STM import (
+    compute_dos, build_dense_HS, convert_to_float4_per_atom,
+    find_homo_index, build_inter_system_blocks_exp_sk,
+    assemble_combined_HS, negf_current, negf_response_at_energy,
+    coupling_vec_tip_to_sample, mo_overlap_amplitude
+)
+from pyBall.FireballOCL.STM_utils import plot_2d_map, set_export_dir
+
+def main():
+    # Configuration
+    export_dir = set_export_dir("export/stm_homo_test")
+    z_height = 3.0  # Å
+    xy_range = 7.0  # Å
+    xy_step = 0.5  # Å
+    
+    # Load sample (PTCDA) DOS
+    smp = np.load("export/stm_phase1/dos_PTCDA.npz")
+    
+    # Find HOMO energy
+    homo_idx, homo_energy = find_homo_index(smp['eps'])
+    print(f"HOMO: index={homo_idx}, energy={homo_energy:.4f} eV")
+    
+    # Convert sample to float4 format
+    H_smp4, S_smp4, orb_mask_smp = convert_to_float4_per_atom(
+        smp['H'], smp['S'], smp['atomTypes'], smp['norb_per']
+    )
+    
+    # Create tip (single H atom)
+    tip_types = np.array([1])  # H
+    tip_pos = np.array([[0.0, 0.0, 0.0]])
+    # ... compute DOS for tip, convert to float4 ...
+    
+    # Select lead orbitals (bottom of sample, top of tip)
+    leadL_orbs = select_lead_orbitals_by_atoms(tip_types, tip_pos, ...)
+    leadR_orbs = select_lead_orbitals_by_atoms(smp_types, smp_pos, ...)
+    
+    # Scan grid
+    x_arr = np.arange(-xy_range, xy_range + xy_step*0.5, xy_step)
+    y_arr = np.arange(-xy_range, xy_range + xy_step*0.5, xy_step)
+    
+    # Method 1: NEGF Caroli
+    I_caroli = np.zeros((len(x_arr), len(y_arr)))
+    # ... loop over grid points, compute transmission ...
+    
+    # Method 2: NEGF response
+    I_response = np.zeros((len(x_arr), len(y_arr)))
+    # ... loop over grid points, compute response ...
+    
+    # Method 3: MO overlap (HOMO only)
+    I_mo = np.zeros((len(x_arr), len(y_arr)))
+    # ... loop over grid points, compute t_HOMO(s) ...
+    
+    # Method 4: PDOS at HOMO energy
+    # Project PDOS to real space grid
+    pdos_homo = smp['A'][np.argmin(np.abs(smp['E_grid'] - homo_energy))]
+    # ... project to xy plane at z=3.0 Å ...
+    
+    # Plot comparison
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    plot_2d_map(I_caroli, x_arr, y_arr, "NEGF Caroli", ax=axes[0,0])
+    plot_2d_map(I_response, x_arr, y_arr, "NEGF Response", ax=axes[0,1])
+    plot_2d_map(I_mo, x_arr, y_arr, "MO Overlap (HOMO)", ax=axes[1,0])
+    plot_2d_map(pdos_homo, x_arr, y_arr, "PDOS at HOMO", ax=axes[1,1])
+    
+    plt.tight_layout()
+    fig.savefig(f"{export_dir}/homo_comparison.png", dpi=130)
+    print(f"Saved: {export_dir}/homo_comparison.png")
+    
+    # Save numerical data
+    np.savez(f"{export_dir}/homo_comparison.npz",
+             x=x_arr, y=y_arr, 
+             caroli=I_caroli, response=I_response, mo=I_mo, pdos=pdos_homo,
+             homo_energy=homo_energy, homo_idx=homo_idx)
+    print(f"Saved: {export_dir}/homo_comparison.npz")
+
+if __name__ == "__main__":
+    main()
+```
+
+**Requirements:**
+- Use NumPy array operations for grid evaluation (vectorize where possible)
+- No Python loops over orbitals, only over grid points (unavoidable)
+- Clear comments with equations at each computation step
+
+---
+
+## Identified Problems in Current Code
+
+### 1. Data Structure Mismatch
+
+**Problem:** Fireball uses variable orbitals per atom, but we need float4 structure.
+
+**Impact:** Cannot directly interface with GridFF/OCL_Hamiltonian float4 format.
+
+**Solution:** Implement `convert_to_float4_per_atom()` as described above.
+
+**Priority:** HIGH - blocks all subsequent work.
+
+---
+
+### 2. Missing HOMO Identification
+
+**Problem:** No function to identify HOMO from eigenvalues.
+
+**Impact:** Cannot tune energy to HOMO for test.
+
+**Solution:** Implement `find_homo_index()` as described above.
+
+**Priority:** HIGH - required for test.
+
+---
+
+### 3. Tip Geometry
+
+**Problem:** Current tip is H2, need single H atom.
+
+**Impact:** Test won't match requirements.
+
+**Solution:** Create H atom geometry and compute its DOS.
+
+**Priority:** HIGH - required for test.
+
+---
+
+### 4. Orbital Padding
+
+**Problem:** H atom has only s-orbital, need to pad p-orbitals.
+
+**Impact:** float4 structure requires exactly 4 values per atom.
+
+**Solution:** `convert_to_float4_per_atom()` handles padding with zeros.
+
+**Priority:** HIGH - handled by Step 2.
+
+---
+
+### 5. Plotting Functions Scattered
+
+**Problem:** Plotting functions are in STM.py, not consolidated.
+
+**Impact:** Code duplication, harder to maintain.
+
+**Solution:** Create STM_utils.py as described in Step 1.
+
+**Priority:** MEDIUM - not blocking, but good practice.
+
+---
+
+### 6. PDOS Projection to Real Space
+
+**Problem:** Need to project PDOS to xy plane at constant z for comparison.
+
+**Impact:** Cannot visualize PDOS as 2D map.
+
+**Solution:** Use existing GridProjector from pyBall/FireballOCL/Grid.py.
+
+**Priority:** MEDIUM - can use existing infrastructure.
+
+---
+
+### 7. Grid Evaluation Performance
+
+**Problem:** Looping over grid points in Python is slow.
+
+**Impact:** Test may take long time for fine grids.
+
+**Solution:** 
+- For now: accept Python loops (reference implementation)
+- Later: vectorize with NumPy or port to OpenCL
+
+**Priority:** LOW - acceptable for basic test, optimize later.
+
+---
+
+## Mathematical Equations Summary
+
+### NEGF Caroli Formula
+```
+G^r(E) = [(E + iη)S - H - Σ_L - Σ_R]^{-1}
+T(E) = Tr[Γ_L G^r Γ_R G^a]
+```
+
+### NEGF Response Metric
+```
+A = (E + iη)S - H - Σ_L - Σ_R
+x = solve(A, b)  # b = source vector on lead L
+resp = x† Γ_R x  # measure coupling to lead R
+```
+
+### MO Overlap (Sum Over States)
+```
+v_smp(s) = Σ_{i∈tip} H_{TS}(i, :)
+t_n(s) = v_smp(s) · C_{:,n}
+I(s) = |t_n(s)|²
+```
+At HOMO energy, dominated by n = HOMO index.
+
+### PDOS
+```
+A_μ(E) = (1/π) Im[G^r_μμ(E)]
+```
+Project to real space: ρ(r, E) = Σ_μ A_μ(E) |φ_μ(r)|²
+
+---
+
+## Implementation Order
+
+1. **Create STM_utils.py** - Extract plotting functions
+2. **Add conversion functions to STM.py** - `convert_to_float4_per_atom()`, `find_homo_index()`
+3. **Create H atom tip DOS** - Run stm_compute_dos.py for single H
+4. **Create test script** - `test_stm_homo.py` with all methods
+5. **Run and validate** - Check that all methods produce HOMO-like maps
+
+---
+
+## Success Criteria
+
+1. All four methods produce 2D maps
+2. Maps are visually similar (qualitative check)
+3. MO overlap map clearly shows HOMO nodal structure
+4. NEGF maps resemble HOMO (validate physics)
+5. Code uses NumPy operations, no unnecessary Python loops
+6. All functions have clear docstrings with equations
+
+Plan complete. Ready for your feedback or approval to proceed with implementation.

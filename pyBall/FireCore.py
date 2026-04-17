@@ -349,6 +349,12 @@ def orb2points( poss, ys=None, iMO=1,  ikpoint=1 ):
     lib.firecore_orb2points( iMO, ikpoint, n, poss, ys )
     return ys
 
+# DEBUG: Print orbital coefficients from Fortran for coefficient mapping verification
+argDict["firecore_print_orb_coefs"]=( None, [c_int, c_int] )
+def print_orb_coefs( iMO=1, ikpoint=1 ):
+    """Print orbital coefficients from Fortran bbnkre array for debugging"""
+    lib.firecore_print_orb_coefs( iMO, ikpoint )
+
 # subroutine firecore_dens2points(npoints, points, f_den, f_den0, ewfaux_out) bind(c, name='firecore_dens2points')
 argDict["firecore_dens2points"]=( None, [c_int, array2d, c_double, c_double, array1d ] )
 def dens2points( points, f_den=1.0, f_den0=0.0, ewfaux_out=None ):

@@ -13,6 +13,114 @@ Usage:
   from pyBall.FireballOCL.STM import compute_dos, compute_hopping, stm_current, ...
 """
 
+"""
+Shared STM transport module for Fireball-based molecular junction simulation.
+
+PURPOSE:
+  Provides common functions for STM (Scanning Tunneling Microscopy) analysis including:
+  - DOS computation with Γ broadening
+  - Hamiltonian assembly from Fireball sparse format
+  - NEGF transport (Caroli formula, iterative solvers, response metrics)
+  - Inter-system coupling (vacuum exponential + Slater-Koster angular)
+  - MO overlap diagnostics for sum-over-states validation
+  - PDOS real-space projection
+
+PHYSICAL BACKGROUND:
+
+1) Spectral Function with Γ Broadening:
+   The retarded Green's function for a system coupled to leads is:
+     G^r(E) = [(E + iη)S - H - Σ]^{-1}
+   where Σ = -iΓ is the wide-band limit self-energy on contact atoms.
+   The spectral function (projected DOS) is:
+     A(E) = (1/π) Im[G^r(E)]
+   For each molecular orbital n with energy ε_n and coupling Γ_n:
+     A_n(E) = (Γ_n/π) / [(E - ε_n)² + Γ_n²]
+
+2) NEGF Caroli Formula (Landauer-Büttiker):
+   For a two-terminal junction with leads L and R:
+     G^r(E) = [(E + iη)S - H - Σ_L - Σ_R]^{-1}
+     T(E) = Tr[Γ_L(E) G^r(E) Γ_R(E) G^a(E)]
+     I = (2e/h) ∫ T(E) [f(E-μ_L) - f(E-μ_R)] dE
+   where Γ_{L/R} = i(Σ_{L/R} - Σ_{L/R}†) are the broadening matrices.
+
+3) Iterative Solver (GMRES + Hutchinson Trace):
+   To avoid O(N³) inversion, use iterative linear solver:
+     A x = b, where A = (E+iη)S - H - Σ_L - Σ_R
+   Hutchinson stochastic trace estimator for transmission:
+     T(E) ≈ (1/N_rand) Σ_{k=1}^{N_rand} z_k† Γ_L G^r Γ_R G^a z_k
+   where z_k are random Rademacher vectors (±1 entries).
+
+4) Deterministic Response Metric:
+   Single-solve probe of coupling strength:
+     A = (E+iη)S - H - Σ_L - Σ_R
+     b = source_vector (e.g., unit vector on lead L)
+     x = solve(A, b)
+     resp = x† Γ_measure x
+   This is not a transmission coefficient but correlates with it.
+
+5) MO Overlap (Sum Over States):
+   For a "featureless metallic tip" approximation:
+     v_smp(s) = Σ_{i∈tip} H_{TS}(i,:)  # effective coupling vector
+     t_n(s) = v_smp(s) · C_{:,n}        # overlap with MO n
+     I(s) = |t_n(s)|²
+   This is the "poles of Green's function" picture:
+     T(E) ≈ Σ_n |t_n(E)|² L_n(E), where L_n(E) is Lorentzian lineshape.
+
+6) Inter-System Coupling (Vacuum Exponential + SK Angular):
+   Tunneling matrix elements between tip and sample:
+     H_μν(r) = A_μν * exp(-β(r - r₀)) * SK_angular(l,m,n)
+   where:
+     - exp(-β(r - r₀)): vacuum radial decay (β ~1.0 Å⁻¹, r₀ ~3.0 Å)
+     - SK_angular: Slater-Koster factors (l,m,n direction cosines)
+     - A_μν: orbital-pair strengths (A_ss, A_sp, A_ppσ, A_ppπ)
+   This replaces Fireball's covalent-bond radial functions with physically
+   appropriate vacuum tunneling decay while retaining correct angular symmetry.
+
+7) Float4 Per Atom Structure:
+   For compatibility with GridFF/OCL_Hamiltonian, we pad to exactly 4 orbitals
+   per atom: (s, px, py, pz). For atoms with fewer orbitals (e.g., H with only s),
+   padded orbitals are decoupled by setting H_ii = E_pad (large) and S_ii = 1.
+
+KEY FUNCTIONS:
+  - compute_dos(): Fireball SCF + spectral function with Γ broadening
+  - build_dense_HS(): Convert sparse Fireball H/S to dense matrices
+  - build_inter_system_blocks_exp_sk(): Vacuum exponential + SK coupling
+  - assemble_combined_HS(): Build tip+sample Hamiltonian for NEGF
+  - negf_current(): Direct Caroli transmission
+  - negf_current_iterative(): GMRES + Hutchinson trace
+  - negf_response_at_energy(): Deterministic response metric
+  - coupling_vec_tip_to_sample(): Featureless tip coupling vector
+  - mo_overlap_amplitude(): MO overlap intensity
+  - find_homo_from_eps(): Identify HOMO from eigenvalues
+  - pad_HS_to_float4(): Convert to float4-per-atom structure
+  - project_pdos_to_grid(): Real-space PDOS projection
+
+USAGE EXAMPLE:
+  from pyBall.FireballOCL.STM import compute_dos, negf_response_at_energy
+
+  # Compute DOS for tip and sample
+  tip = compute_dos(tip_types, tip_pos, gamma=0.1, out_path="dos_tip.npz")
+  smp = compute_dos(smp_types, smp_pos, gamma=0.1, out_path="dos_smp.npz")
+
+  # Build inter-system coupling
+  pairs, Hb, Sb = build_inter_system_blocks_exp_sk(
+      tip_types, tip_pos, tip['norb_per'],
+      smp_types, smp_pos, smp['norb_per'],
+      beta=1.0, r0=3.0, A_ss=-1.0, A_sp=-1.0
+  )
+
+  # Assemble combined system
+  Hc, Sc = assemble_combined_HS(tip['H'], tip['S'], ..., smp['H'], smp['S'], ...)
+
+  # Compute NEGF response at Fermi level
+  resp = negf_response_at_energy(E_F, Hc, Sc, leadL, leadR, gammaL=2.0, gammaR=2.0)
+
+NOTES:
+  - All energies in eV
+  - All positions in Å
+  - Default export directory: tests/pyFireball/export/stm_phase1/
+"""
+
 import os, sys, time
 import numpy as np
 import matplotlib
@@ -256,6 +364,77 @@ def project_pdos_to_grid(A_smp, E_grid, E_F, atomTypes, atomPos, orb2atom,
     atoms_dict = {'pos':atomPos,'Rcut':np.array([RC_ANG.get(int(z),3.0) for z in atomTypes]),'type':atomTypes}
     dens3d = projector.project(rho, neighs, atoms_dict, grid_spec, nMaxAtom=64)
     return dens3d, grid_spec
+
+def find_homo_from_eps(eps, E_fermi=None):
+    """Return HOMO index/energy from eigenvalues.
+
+    Theory/intent:
+      - For our STM tests we often want to evaluate NEGF at HOMO energy.
+      - We define HOMO as the highest eigenvalue <= E_fermi (if provided).
+      - If E_fermi is None, fall back to the maximum eigenvalue (debug use only).
+    """
+    eps = np.asarray(eps, dtype=float)
+    if E_fermi is None:
+        i = int(np.argmax(eps))
+        return i, float(eps[i])
+    m = eps <= float(E_fermi) + 1e-12
+    if not np.any(m):
+        i = int(np.argmin(np.abs(eps - float(E_fermi))))
+        return i, float(eps[i])
+    i = int(np.where(m)[0][np.argmax(eps[m])])
+    return i, float(eps[i])
+
+def pad_HS_to_float4(atomTypes, atomPos, H, S, norb_per, E_pad=1e3):
+    """Pad Fireball AO basis to fixed 4 orbitals per atom: (s,px,py,pz).
+
+    This is a compatibility layer for interfacing with GridFF-like `float4` layout.
+
+    Important numerical note:
+      - Pure zero-padding of missing orbitals would make S singular.
+      - We therefore set S_ii=1 for padded orbitals, and set H_ii=E_pad (large)
+        so padded orbitals are far outside the energy window and effectively decouple.
+
+    Returns:
+      H4,S4 : dense matrices of shape (4*natoms, 4*natoms)
+      mask  : bool array (natoms,4) True where orbital exists in original basis
+      map_o : int array (natoms,4) global AO index in original basis, or -1 if padded
+    """
+    nat = len(atomTypes)
+    H = np.asarray(H, dtype=np.float64)
+    S = np.asarray(S, dtype=np.float64)
+    norb_per = np.asarray(norb_per, dtype=int)
+    starts = _atom_orb_starts(norb_per)
+    n4 = 4
+    n = nat * n4
+
+    H4 = np.zeros((n, n), dtype=np.float64)
+    S4 = np.eye(n, dtype=np.float64)
+    mask = np.zeros((nat, n4), dtype=bool)
+    map_o = -np.ones((nat, n4), dtype=int)
+
+    for ia in range(nat):
+        ni = int(min(norb_per[ia], n4))
+        mask[ia, :ni] = True
+        i0o = int(starts[ia])
+        for io in range(ni):
+            map_o[ia, io] = i0o + io
+        # set large onsite for padded orbitals (decouple)
+        for io in range(ni, n4):
+            H4[ia*n4+io, ia*n4+io] = float(E_pad)
+
+    # copy blocks for existing orbitals only
+    for ia in range(nat):
+        ni = int(min(norb_per[ia], n4))
+        i0o = int(starts[ia]); i0 = ia*n4
+        for ja in range(nat):
+            nj = int(min(norb_per[ja], n4))
+            j0o = int(starts[ja]); j0 = ja*n4
+            if (ni == 0) or (nj == 0):
+                continue
+            H4[i0:i0+ni, j0:j0+nj] = H[i0o:i0o+ni, j0o:j0o+nj]
+            S4[i0:i0+ni, j0:j0+nj] = S[i0o:i0o+ni, j0o:j0o+nj]
+
+    return H4, S4, mask, map_o
 
 # ── NEGF / Caroli transport on combined system ───────────────────────────────────
 

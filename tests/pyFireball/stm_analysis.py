@@ -1,19 +1,98 @@
 """
-Thin interface to STM module for Phase 1 analysis.
-Loads pre-computed DOS npz files and runs:
-  T3 - Sum-rule + broadening checks
-  T4 - Hopping V_mu_nu (Wolfsberg-Helmholtz)
-  T5 - 1D height scan I(z)
-  T6 - 2D xy scan I(x,y)
-  T7 - PDOS real-space projection (GridProjector)
+STM analysis CLI: Compare transport methods and generate STM images.
 
-Prerequisites (run once per molecule):
-  python stm_compute_dos.py --mol H2    --out export/stm_phase1/dos_H2.npz --gamma 0.05 --contact lowest_z
-  python stm_compute_dos.py --xyz ../../cpp/common_resources/xyz/PTCDA.xyz --out export/stm_phase1/dos_PTCDA.npz --gamma 0.1 --contact all
+PURPOSE:
+  Main user-facing script for STM transport analysis using pre-computed DOS files.
+  Supports multiple transport methods (PDOS approximation, NEGF Caroli, NEGF response),
+  scanning protocols (height scan, lateral scan, 2D xy scan), and MO overlap diagnostics.
 
-Usage:
-  cd tests/pyFireball
-  python stm_analysis.py [--no2d] [--noshow] [--export_dir PATH]
+PHYSICAL BACKGROUND:
+
+1) Transport Methods:
+
+   a) PDOS approximation (Phase 1):
+      Uses Tersoff-Hamann-like approximation with Wolfsberg-Helmholtz hopping:
+        V_μν ≈ κ * (H_μμ + H_νν)/2 * S_μν
+        I ≈ Σ_μν PDOS_μ^tip(E) |V_μν|² PDOS_ν^sample(E)
+      This is a fast perturbative approach valid for weak coupling.
+
+   b) NEGF Caroli (combined-system):
+        G^r(E) = [(E+iη)S - H - Σ_L - Σ_R]^{-1}
+        T(E) = Tr[Γ_L G^r Γ_R G^a]
+      Full quantum transport with wide-band limit self-energies on lead orbitals.
+
+   c) NEGF response metric (deterministic probe):
+        A = (E+iη)S - H - Σ_L - Σ_R
+        x = solve(A, b)  # b = source vector on lead L
+        resp = x† Γ_measure x
+      Single-solve probe of coupling strength (not a transmission coefficient).
+
+2) Inter-System Coupling:
+   Vacuum exponential radial decay + Slater-Koster angular dependence:
+        H_μν(r) = A_μν * exp(-β(r - r₀)) * SK_angular(l,m,n)
+   Parameters:
+     - β ~1.0 Å⁻¹ (vacuum decay constant)
+     - r₀ ~3.0 Å (reference distance)
+     - A_μν: orbital-pair strengths (A_ss, A_sp, A_ppsig, A_pppi)
+
+3) MO Overlap Diagnostic:
+   For "featureless metallic tip" approximation:
+        v_smp(s) = Σ_{i∈tip} H_{TS}(i,:)
+        t_n(s) = v_smp(s) · C_{:,n}
+        I(s) = |t_n(s)|²
+   Computes signed amplitude and intensity for a selected MO (e.g., HOMO).
+   The signed amplitude reveals nodal planes (sign flips), while intensity matches STM measurement.
+
+4) Scanning Protocols:
+   - Height scan: I(z) at fixed lateral position (tests tunneling decay)
+   - Lateral scan: I(s) at constant z (diagonal, x, or y direction)
+   - 2D xy scan: I(x,y) at constant z (STM image)
+
+USAGE EXAMPLES:
+
+  Basic NEGF analysis with response metric:
+    cd tests/pyFireball
+    python stm_analysis.py --method negf --negf_mode response --E -0.8
+
+  1D lateral scan at constant z:
+    python stm_analysis.py --method negf --scan_xy --zxy 5.0 --xy_dir diag
+
+  MO overlap diagnostic (requires DOS with eigenvectors):
+    python stm_analysis.py --method negf --scan_xy --scan_mo --mo 42
+
+  Full 2D STM image:
+    python stm_analysis.py --method negf --z2d 5.0 --xy_range 7.0
+
+PREREQUISITES:
+  Pre-computed DOS files (run once per molecule):
+    python stm_compute_dos.py --xyz H2.xyz --out export/stm_phase1/dos_H.npz
+    python stm_compute_dos.py --xyz PTCDA.xyz --out export/stm_phase1/dos_PTCDA.npz
+
+  Note: For MO overlap diagnostic, DOS files must contain 'eps' and 'C' arrays
+  (regenerate with updated stm_compute_dos.py after recent changes).
+
+KEY CLI OPTIONS:
+  --method {pdos,negf}       Transport method (pdos=approx, negf=full)
+  --solver {direct,iter}     NEGF solver (direct=exact, iter=GMRES)
+  --negf_mode {caroli,response}  Transmission estimator
+  --E VALUE                 Single energy (eV); default uses Fermi level
+  --source {L,R}            Response excitation lead
+  --measure {L,R}           Response measurement lead
+  --beta, --r0              Vacuum decay parameters
+  --A_ss, --A_sp, --A_ppsig, --A_pppi  Coupling strengths
+  --scan_xy                 Enable 1D lateral scan
+  --scan_mo                 Enable MO overlap diagnostic
+  --z2d, --zxy             Heights for 2D and lateral scans
+  --xy_range, --xy_step     Lateral scan parameters
+
+OUTPUTS:
+  All outputs saved to export/stm_phase1/ (or custom --export_dir):
+    - dos_plot.png: PDOS curves for tip and sample
+    - scan1d.png: Height scan I(z)
+    - scan1d_xy.png: Lateral scan I(s)
+    - scan1d_xy_mo.png: MO overlap signed amplitude and intensity
+    - stm2d.png: 2D xy scan I(x,y)
+  Corresponding .npz files with numerical data.
 """
 import argparse, os, sys, time
 import numpy as np
@@ -25,12 +104,16 @@ _REPO_ROOT = os.path.normpath(os.path.join(_THIS_DIR, "..", ".."))
 if _REPO_ROOT not in sys.path: sys.path.insert(0, _REPO_ROOT)
 
 from pyBall.FireballOCL.STM import (
-    compute_hopping, stm_current, plot_dos, save_plot,
-    project_pdos_to_grid, set_export_dir, DEFAULT_EXPORT_DIR,
+    compute_hopping, stm_current,
+    project_pdos_to_grid,
     build_inter_system_blocks_fdata, build_inter_system_blocks_exp_sk, assemble_combined_HS,
     select_atoms_by_xy_radius, select_lead_orbitals_by_atoms,
     negf_current, negf_current_iterative, negf_response_at_energy,
     coupling_vec_tip_to_sample, mo_overlap_amplitude
+)
+from pyBall.FireballOCL.STM_utils import (
+    set_export_dir, save_plot, plot_dos, plot_atoms,
+    DEFAULT_EXPORT_DIR
 )
 
 def main():
@@ -362,9 +445,8 @@ def main():
         ext=[x_arr[0],x_arr[-1],y_arr[0],y_arr[-1]]
         im4a = axes4[0].imshow(I2d.T, origin='lower', extent=ext, cmap='hot', aspect='equal')
         plt.colorbar(im4a,ax=axes4[0]); axes4[0].set_title("I(x,y)")
-        for Z,sym,c in [(6,'C','w'),(8,'O','cyan'),(1,'H','silver')]:
-            m = smp_types==Z; axes4[0].plot(smp_pos[m,0], smp_pos[m,1], '.', color=c, ms=3, label=sym)
-        axes4[0].legend(fontsize=7); axes4[0].set_xlabel("x(Å)"); axes4[0].set_ylabel("y(Å)")
+        plot_atoms(axes4[0], smp_pos, smp_types, color='green', ms=3)
+        axes4[0].set_xlabel("x(Å)"); axes4[0].set_ylabel("y(Å)")
         I2d_log = np.log10(I2d+I2d[I2d>0].min()*0.01)
         im4b = axes4[1].imshow(I2d_log.T, origin='lower', extent=ext, cmap='RdYlBu_r', aspect='equal')
         plt.colorbar(im4b,ax=axes4[1]); axes4[1].set_title("log₁₀ I(x,y)")
@@ -395,7 +477,7 @@ def main():
             step=0.2; pmin=gspec['origin']; ngrid=gspec['ngrid']
             ext_xy=[pmin[0],pmin[0]+ngrid[0]*step, pmin[1],pmin[1]+ngrid[1]*step]
             im5a = axes5[0].imshow(proj_xy.T, origin='lower', extent=ext_xy, cmap='hot')
-            axes5[0].plot(smp_pos[:,0],smp_pos[:,1],'w.',ms=2)
+            plot_atoms(axes5[0], smp_pos, smp_types, color='green', ms=2)
             axes5[0].set_title("Max-proj along z"); axes5[0].set_xlabel("x(Å)"); axes5[0].set_ylabel("y(Å)")
             plt.colorbar(im5a,ax=axes5[0])
             ext_xz=[pmin[0],pmin[0]+ngrid[0]*step, pmin[2],pmin[2]+ngrid[2]*step]

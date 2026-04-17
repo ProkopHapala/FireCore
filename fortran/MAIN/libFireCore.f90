@@ -595,18 +595,21 @@ subroutine firecore_get_wfcoef( ikp, wfcoefs )  bind(c, name='firecore_get_wfcoe
     wfcoefs(:,:) = bbnkre(:,:,ikp)
 end subroutine
 
-subroutine firecore_set_wfcoef( iMO, ikp, wfcoefs )  bind(c, name='firecore_set_wfcoef')
+subroutine firecore_set_wfcoef( iMO, ikp, wfcoefs_in )  bind(c, name='firecore_set_wfcoef')
     use iso_c_binding
     use configuration
-    use interactions
     use density
     use options
-    integer(c_int)                , intent(in),value :: ikp, iMO
-    real(c_double), dimension(norbitals), intent(in) :: wfcoefs
-    if(verbosity.gt.0)write(*,*) "firecore_set_wfcoef() ", shape(bbnkre), ikp, iMO
-    !write (*,*) "shape(bbnkre) ", shape(bbnkre), ikp, iMO
-    bbnkre(:,iMO,ikp) = wfcoefs(:)
-end subroutine
+    integer(c_int), intent(in),value :: ikp, iMO
+    real(c_double), intent(in) :: wfcoefs_in(*)  ! Assumed-size array
+    integer :: norb_actual, i
+    norb_actual = size(bbnkre, 1)
+    if (norb_actual > 0) then
+        do i = 1, norb_actual
+            bbnkre(i,iMO,ikp) = wfcoefs_in(i)
+        end do
+    end if
+end subroutine firecore_set_wfcoef
 
 subroutine firecore_setupGrid( Ecut_, ifixg0_, g0_, ngrid_, dCell  )  bind(c, name='firecore_setupGrid' )
     use iso_c_binding
@@ -761,6 +764,42 @@ subroutine firecore_orb2points( iband,ikpoint, npoints, points, ewfaux )  bind(c
     !if(verbosity.gt.0)write(*,*) "firecore_orb2points() "
     call project_orb_points( iband, ikpoint, npoints, points, ewfaux )
 end subroutine firecore_orb2points
+
+! DEBUG : TO EXPORT For checking /pyBall/FireballOCL/OCL_Hamiltonian.py
+! Print orbital coefficients for debugging coefficient mapping
+! --------------------------
+subroutine firecore_print_orb_coefs(iband, ikpoint) bind(c, name='firecore_print_orb_coefs')
+    use iso_c_binding
+    use configuration
+    use interactions
+    use density
+    use kpoints
+    implicit none
+    integer(c_int), value :: iband, ikpoint
+    integer :: iatom, in1, imu, issh, l, lmu, mmu
+    real :: dens
+    write (*,'(A,I3,A,I3)') "firecore_print_orb_coefs() MO=", iband, " ik=", ikpoint
+    call flush(6)  ! Flush stdout
+    do iatom = 1, natoms
+        in1 = imass(iatom)
+        imu = 1
+        write (*,'(A,I3,A)', advance='no') "  Atom ", iatom, ": ["
+        do issh = 1, nssh(in1)
+            l = lssh(issh, in1)
+            do lmu = 1, (2*l+1)
+                mmu = imu + degelec(iatom)
+                dens = bbnkre(mmu, iband, ikpoint)
+                write(*,'(F10.5)', advance='no') dens
+                imu = imu + 1
+            end do
+            if (issh < nssh(in1)) write(*,'(A)', advance='no') " | "
+        end do
+        write (*,*) "]"
+        call flush(6)  ! Flush stdout after each atom
+    end do
+    call flush(6)  ! Final flush
+end subroutine firecore_print_orb_coefs
+! --------------------------
 
 subroutine firecore_dens2points(npoints, points, f_den, f_den0, ewfaux_out) bind(c, name='firecore_dens2points')
     use iso_c_binding

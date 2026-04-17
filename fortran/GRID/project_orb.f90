@@ -327,17 +327,16 @@ subroutine project_orb_points(iband,ikpoint, npoints, points,ewfaux)
     real, dimension (3,5)          :: dpsiL
   
 
-    ! DEBUG ?
+    ! DEBUG ? Use firecore_print_orb_coefs() in libFireCore.f90 instead
     ! do iatom = 1, natoms
     !     in1    = imass(iatom)
     !     imu = 1
-    !     write (*,'(A,i3,A)', advance='no') "iatom ",iatom,":"
+    !     write (*,'(A,i3,A)', advance='no') "project_orb_points() iatom ",iatom,":"
     !     do issh = 1,nssh(in1)
     !         l = lssh(issh,in1)	
     !         do lmu = 1, (2*l+1)
     !             mmu = imu + degelec(iatom)
     !             dens = bbnkre(mmu,iband,ikpoint)
-    !            ! write (*,*) "iatom,issh,lmu,coef ",i,""
     !             write(*,'(F10.5)', advance='no')  dens
     !             imu = imu + 1
     !         enddo ! do lmu
@@ -359,7 +358,10 @@ subroutine project_orb_points(iband,ikpoint, npoints, points,ewfaux)
         dens = 0.0d0
         do iatom = 1, natoms
             in1    = imass(iatom)
-            dXr(:) = ratom(:,iatom) + points(:,imesh)
+            ! Vector from atom to evaluation point
+            dXr(:) = points(:,imesh) - ratom(:,iatom)
+            !dXr(:) =  ratom(:,iatom) - points(:,imesh)
+
             distX  = sqrt(dXr(1)**2 + dXr(2)**2 + dXr(3)**2)
             imu = 1
             do issh = 1,nssh(in1)
@@ -367,7 +369,7 @@ subroutine project_orb_points(iband,ikpoint, npoints, points,ewfaux)
                 l = lssh(issh,in1)	
                 call getYlm(l,dXr,psiL,dpsiL)
                 do lmu = 1, (2*l+1)
-                    psi1(imu) = psiR !* psiL(lmu)
+                    psi1(imu) = psiR * psiL(lmu)
                     imu = imu + 1
                 enddo ! do lmu
             enddo ! do issh
