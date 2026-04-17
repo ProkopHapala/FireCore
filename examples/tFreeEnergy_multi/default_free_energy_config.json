@@ -10,12 +10,25 @@
     "nSys": 200,
     "nEQsteps": 5000,
     "nLambda": 200,
-    "nMDsteps": 200000000,
+    "nMDsteps": 200000,
     "mode": "TI",
-    "K": 10.0
+    "K": 10.0,
+    "scan_mode": "both"
   },
   "parameter_sets": [
-        {
+    {
+      "name": "temp_1K",
+      "temperature": 1.0
+    },
+    {
+      "name": "temp_2K",
+      "temperature": 2.0
+    },
+    {
+      "name": "temp_5K",
+      "temperature": 5.0
+    },
+    {
       "name": "temp_10K",
       "temperature": 10.0
     },

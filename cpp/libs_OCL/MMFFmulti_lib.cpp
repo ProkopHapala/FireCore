@@ -504,5 +504,14 @@ double entropic_spring_TI_gpu_debug(double lamda1, double lamda2, int n, int* dc
     return W.entropic_spring_TI_gpu_debug( lamda1, lamda2, n, dc, nbStep, nMDsteps, nEQsteps, tdamp, T, dt, Fconv );
 }
 
+void scanRelaxed( int nCVs, float* initial_positions, float* final_positions, int nLambda, int nsteps, double Fconv, double K,
+                  int hardAtoms, int softAtoms, int hardDist, int softDist, double* Es, float* ppos ){
+    W.scan_Milan( nCVs, (Vec3f*)initial_positions, (Vec3f*)final_positions, nLambda, nsteps, Fconv, K, true, Es, ppos );
+}
+
+void scan_Milan( int nCVs, float* initial_positions, float* final_positions, int nLambda, int nsteps, double Fconv, double K, bool bRelaxed, double* Es, float* ppos ){
+    W.scan_Milan( nCVs, (Vec3f*)initial_positions, (Vec3f*)final_positions, nLambda, nsteps, Fconv, K, bRelaxed, Es, ppos );
+}
+
 
 } // extern "C"

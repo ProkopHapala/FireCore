@@ -642,7 +642,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                             // current TI window. This reduces large nonequilibrium transients caused by
                             // moving only the constrained atoms while leaving the rest of the chain at
                             // the lambda=0 geometry.
-                            if( (go.T_target > 1.0e-6) && (si_count == 0) ){
+                            if((si_count == 0) ){
                                 const Vec3f P1_ref = atoms[i0v + iSi1].f;
                                 const Vec3f P2_ref = atoms[i0v + iSi2].f;
                                 Vec3f u0 = P1_ref - P2_ref;
@@ -692,7 +692,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
             (int)bHardConstrainedDistance +
             (int)bSoftConstrainedDistance;
         if(nConstraintModes == 0){
-            bHardConstrainedAtoms = true;
+            bSoftConstrainedDistance = true;
             nConstraintModes = 1;
             printf("WARNING: computeFreeEnergy() no TI constraint mode selected; defaulting to hard atom constraints.\n");
         }
@@ -788,8 +788,16 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
 
 		                printf("  Equilibrating %d steps...\n", nEQsteps);
                 run_ocl_opt( nEQsteps, Fconv);
-
-                for(int isys=0; isys<nSystems; isys++) averageForces[isys] = Quat4fZero;
+// ocl.download( ocl.ibuff_atoms, atoms );
+// ocl.download( ocl.ibuff_aforces, aforces );
+// unpack_system( 0, ffls[0],true, false );
+// ffl.copyOf( ffls[0] );
+// eval_omp();
+// for(int ia=0; ia<ffls[0].natoms; ia++){
+//     printf("  Atom %d: (%f %f %f) fapos(%f %f %f) fapos[0]: (%f %f %f)\n", ia, atoms[ia].x, atoms[ia].y, atoms[ia].z, ffl.fapos[ia].x, ffl.fapos[ia].y, ffl.fapos[ia].z, ffls[0].fapos[ia].x, ffls[0].fapos[ia].y, ffls[0].fapos[ia].z);
+// }
+// exit(0);
+    for(int isys=0; isys<nSystems; isys++) averageForces[isys] = Quat4fZero;
                 ocl.upload( ocl.ibuff_averageForces, averageForces );
                 ocl.finishRaw();
 
@@ -829,7 +837,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
             nPerVFs = nPerVFs_bak;
         }
         bDeterministicTDrive = prevDeterministicTDrive;
-
+/*
         // --- Jarzynski Equality (JE) ---
         if(doJE){
             printf("\n=== Jarzynski Free Energy ===\n");
@@ -985,7 +993,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 Vec3f dr; dr.set_lincomb(1.0 - res_lambda[i], dr_i, res_lambda[i], dr_f);
                 res_dist[i] = dr.norm();
             }
-        }
+        }*/
 
         for(int i=0; i<nLambda; i++){
             fprintf(fti, "%10.6f %12.8f %12.8f %12.8f %12.8f %12.8f %12.8f %12.8f %12.8f %12.8f %10.6f\n", 
@@ -999,6 +1007,196 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         }
 		        fclose(fti);
         return doTI ? cumulative_FE : res_JE_F[nLambda-1];
+    }
+
+    void scan_Milan( int nCVs, Vec3f* initial_positions, Vec3f* final_positions, int nLambda, int nsteps, double Fconv, double K, bool bRelaxed=true, double* Es=0, float* ppos=0 ){
+        const bool prevDeterministicTDrive = bDeterministicTDrive;
+        const bool prevbGopt = bGopt;
+        const bool prevHardAtoms = bHardConstrainedAtoms;
+        const bool prevSoftAtoms = bSoftConstrainedAtoms;
+        const bool prevHardDist  = bHardConstrainedDistance;
+        const bool prevSoftDist  = bSoftConstrainedDistance;
+
+        auto saveScanResult = [&]( int isys, int il, const char* tag ){
+            printf("  Saving scan result for system %d, lambda index %d, mode=%s...\n", isys, il, tag);
+            /*if(strcmp(tag, "relaxed") == 0)*/ unpack_system( isys, ffls[isys], true, false );
+            ffl.copyOf( ffls[isys] );
+            char file_name[256];
+            char comment[256];
+            snprintf(file_name, sizeof(file_name), "scan_Milan_%s.xyz", tag);
+            double E = eval_no_omp();
+            if(Es) Es[il] = E;
+            int iSi1=-1, iSi2=-1;
+            float dist = -1.0f;
+            for(int ia=0; ia<ffls[isys].natoms; ia++){
+                if(ffls[isys].atypes[ia]==params.getAtomType("Si")){
+                    if(iSi1<0) iSi1=ia; else { iSi2=ia; break; }
+                }
+            }
+            if(iSi1>=0 && iSi2>=0){
+                Vec3f dp;
+                dp.x = (float)(ffls[isys].apos[iSi1].x - ffls[isys].apos[iSi2].x);
+                dp.y = (float)(ffls[isys].apos[iSi1].y - ffls[isys].apos[iSi2].y);
+                dp.z = (float)(ffls[isys].apos[iSi1].z - ffls[isys].apos[iSi2].z);
+                dist = dp.norm();
+            }
+            const float lambda = (nLambda>1) ? ((float)il / (float)(nLambda-1)) : 0.0f;
+            snprintf(comment, sizeof(comment), "il=%d lambda=%.6f E=%.9f dist_SiSi=%.6f mode=%s", il, lambda, E, dist, tag);
+            saveSysXYZ( isys, file_name, comment, false, "a" );
+            if(ppos){
+                for(int ia=0; ia<ffls[isys].natoms; ia++){
+                    ppos[il*ffls[isys].natoms*3 + ia*3 + 0] = ffls[isys].apos[ia].x;
+                    ppos[il*ffls[isys].natoms*3 + ia*3 + 1] = ffls[isys].apos[ia].y;
+                    ppos[il*ffls[isys].natoms*3 + ia*3 + 2] = ffls[isys].apos[ia].z;
+                }
+            }
+            printf("  System %d, lambda=%.4f, E=%.6f eV mode=%s\n", isys, lambda, E, tag);
+        };
+
+        // auto isNeighSi = [&]( int isys, int ia ){
+        //     if(ffls[isys].atypes[ffls[isys].neighs[ia].x] == params.getAtomType("Si")){
+        //         return ffls[isys].neighs[ia].x;
+        //     }
+        //     if(ffls[isys].atypes[ffls[isys].neighs[ia].y] == params.getAtomType("Si")){
+        //         return ffls[isys].neighs[ia].y;
+        //     }
+        //     if(ffls[isys].atypes[ffls[isys].neighs[ia].z] == params.getAtomType("Si")){
+        //         return ffls[isys].neighs[ia].z;
+        //     }
+        //     if(ffls[isys].atypes[ffls[isys].neighs[ia].w] == params.getAtomType("Si")){
+        //         return ffls[isys].neighs[ia].w;
+        //     }
+        //     return isNeighSi( isys, ffls[isys].neighs[ia].x ) ||
+        //            isNeighSi( isys, ffls[isys].neighs[ia].y ) ||
+        //            isNeighSi( isys, ffls[isys].neighs[ia].z ) ||
+        //            isNeighSi( isys, ffls[isys].neighs[ia].w );
+        // };
+
+        bDeterministicTDrive = false;
+        bGopt = false;
+        bHardConstrainedAtoms    = true;
+        bSoftConstrainedAtoms    = false;
+        bHardConstrainedDistance = false;
+        bSoftConstrainedDistance = false;
+
+        const char* modeTag = bRelaxed ? "relaxed" : "rigid";
+        printf("scan_Milan(): using simple batch scan mode=%s\n", modeTag);
+
+        if( bRelaxed ){
+            int nBatches = (nLambda + nSystems - 1) / nSystems;
+            for (int batch = 0; batch < nBatches; batch++){
+                printf("\n--- scan_Milan relaxed batch %d/%d ---\n", batch + 1, nBatches);
+                resetTIBatchState(true);
+                for (int isys = 0; isys < nSystems; isys++){
+                    int il = isys + batch * nSystems;
+                    TDrive[isys] = Quat4f{ 0.0f, 0.0f, -1.0f, 0.0f };
+                    gopts[isys].nRelax = 99999999;
+                    if (il >= nLambda){
+                        TDrive[isys].z = -1.0f;
+                        continue;
+                    }
+                    float lambda = (nLambda>1) ? ((float)il / (float)(nLambda - 1)) : 0.0f;
+                    setupTIConstraints(isys, lambda, nCVs, initial_positions, final_positions, true, K);
+                }
+                ocl.upload(ocl.ibuff_TDrive, TDrive);
+                ocl.upload(ocl.ibuff_constr, constr);
+                ocl.upload(ocl.ibuff_constrK, constrK);
+                ocl.upload(ocl.ibuff_atoms, atoms);
+
+                int nconv = run_ocl_opt(nsteps, Fconv);
+                printf("  batch %d/%d finished in %d steps\n", batch + 1, nBatches, nconv);
+                download(true, false);
+                for(int isys=0; isys<nSystems; isys++){
+                    int il = isys + batch * nSystems;
+                    if(il >= nLambda) continue;
+                    saveScanResult( isys, il, modeTag );
+                }
+            }
+        }else{
+            resetTIBatchState(true);
+            for(int isys=0; isys<nSystems; isys++){
+                TDrive[isys] = Quat4f{ 0.0f, 0.0f, -1.0f, 0.0f };
+                gopts[isys].nRelax = 99999999;
+            }
+            setupTIConstraints( 0, 0.0f, nCVs, initial_positions, final_positions, true, K );
+            ocl.upload(ocl.ibuff_TDrive, TDrive);
+            ocl.upload(ocl.ibuff_constr, constr);
+            ocl.upload(ocl.ibuff_constrK, constrK);
+            ocl.upload(ocl.ibuff_atoms, atoms);
+            int nconv = run_ocl_opt(nsteps, Fconv);
+            printf("  rigid reference relaxation finished in %d steps\n", nconv);
+            download(true, false);
+            unpack_system( 0, ffls[0], true, false );
+            MMFFsp3_loc ffl_store;
+            ffl_store.copyOf( ffls[0] );
+
+            std::vector<Vec3d> ref_apos(ffls[0].natoms);
+            for(int ia=0; ia<ffls[0].natoms; ia++){ ref_apos[ia] = ffls[0].apos[ia]; }
+
+            int nBatches = (nLambda + nSystems - 1) / nSystems;
+            for (int batch = 0; batch < nBatches; batch++){
+                printf("\n--- scan_Milan rigid batch %d/%d ---\n", batch + 1, nBatches);
+                for (int isys = 0; isys < nSystems; isys++){
+                    int il = isys + batch * nSystems;
+                    if (il >= nLambda) continue;
+                    ffls[isys].copyOf( ffl_store );
+                    Vec3d delta0, delta1;
+                    delta0.set_sub(Vec3d(final_positions[0]), Vec3d(initial_positions[0]));
+                    delta1.set_sub(Vec3d(final_positions[1]), Vec3d(initial_positions[1]));
+                    // printf("  System %d, lambda %f, applying rigid shift delta0 (%f, %f, %f) delta1 (%f, %f, %f)\n", 
+                    //     isys, (float)il/(float)(nLambda-1), 
+                    //     delta0.x, delta0.y, delta0.z,
+                    //     delta1.x, delta1.y, delta1.z
+                    // );
+                    for (int ia = 0; ia < ffls[isys].natoms; ia++)
+                    {
+                        double d2_0 = ffls[isys].apos[ia].dist2(Vec3d(initial_positions[0]));
+                        double d2_1 = ffls[isys].apos[ia].dist2(Vec3d(initial_positions[1]));
+
+                        if (d2_0 < d2_1)
+                        {
+                            if(ia==0) printf("  System %d, lambda %f, atom %d closer to initial_position[0], applying delta0\n", isys, (float)il/(float)(nLambda-1), ia);
+                            ffls[isys].apos[ia].add_mul(delta0, double(il) / double(nLambda - 1));
+                        }
+                        else
+                        {
+                            if(ia==0) printf("  System %d, lambda %f, atom %d closer to initial_position[1], applying delta1\n", isys, (float)il/(float)(nLambda-1), ia);
+                            ffls[isys].apos[ia].add_mul(delta1, double(il) / double(nLambda - 1));
+                        }
+                        if(ia==0){
+                            Vec3d apos = ffls[isys].apos[ia];
+                            printf("    After shift, atom %d position (%f, %f, %f)\n", ia, apos.x, apos.y, apos.z);
+                        }
+                        // int iSi = isNeighSi( isys, ia );
+                    }
+                }
+                pack_systems();
+                ocl.upload(ocl.ibuff_TDrive, TDrive);
+                ocl.upload(ocl.ibuff_constr, constr);
+                ocl.upload(ocl.ibuff_constrK, constrK);
+                ocl.upload(ocl.ibuff_atoms, atoms);
+                int nconv = run_ocl_opt(100, Fconv);
+                printf("  rigid reference relaxation finished in %d steps\n", nconv);
+                download(true, false);
+
+                for(int isys=0; isys<nSystems; isys++){
+                    int il = isys + batch * nSystems;
+                    if(il >= nLambda) continue;
+                    saveScanResult( isys, il, modeTag );
+                }
+            }
+        }
+
+        bDeterministicTDrive = prevDeterministicTDrive;
+        bGopt = prevbGopt;
+        bHardConstrainedAtoms    = prevHardAtoms;
+        bSoftConstrainedAtoms    = prevSoftAtoms;
+        bHardConstrainedDistance = prevHardDist;
+        bSoftConstrainedDistance = prevSoftDist;
+    }
+
+    void scan_relaxed_Milan( int nCVs, Vec3f* initial_positions, Vec3f* final_positions, int nLambda, int nsteps, double Fconv, double K, double* Es=0, float* ppos=0 ){
+        scan_Milan( nCVs, initial_positions, final_positions, nLambda, nsteps, Fconv, K, true, Es, ppos );
     }
 
 // ==================================
@@ -2605,7 +2803,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             {
                 err |= task_cleanF->enque_raw();  // Clear forces before force evaluation
                 if( bGroupDrive )err |= task_GroupUpdate->enque_raw();
-                if(0*dovdW)[[likely]]{
+                if(dovdW)[[likely]]{
                     if(bSurfAtoms)[[likely]]{
                         if  (bGridFF)[[likely]]{ 
                             if(bBspline)[[likely]]{

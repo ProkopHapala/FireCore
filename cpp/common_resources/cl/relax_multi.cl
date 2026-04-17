@@ -347,18 +347,18 @@ __kernel void getMMFFf4(
 
                 // pi-pi alignment interaction            
                 float kpp = Kppi[i];
-                // if( (ing<nnode) && (kpp>1.e-6) ){   // Only node atoms have pi-pi alignemnt interaction
-                //     epp += evalPiAling( hpi, apos[ingv+nAtoms].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;    //   pi-alignment(konjugation), fpi is force on pi-orbital, fps[i] is recoil force on i-th neighbor's pi-orbital
-                //     E+=epp;
-                // }
+                if( (ing<nnode) && (kpp>1.e-6) ){   // Only node atoms have pi-pi alignemnt interaction
+                    epp += evalPiAling( hpi, apos[ingv+nAtoms].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2;    //   pi-alignment(konjugation), fpi is force on pi-orbital, fps[i] is recoil force on i-th neighbor's pi-orbital
+                    E+=epp;
+                }
             } 
             
             // pi-sigma othogonalization interaction
             float ksp = Kspi[i];
-            // if(ksp>1.e-6){  
-            //     esp += evalAngCos( (float4){hpi,1.}, h, ksp, par.w, &f1, &f2 );   fpi+=f1; fa-=f2;  fbs[i]+=f2;    //   pi-planarization (orthogonality), fpi is force on pi-orbital, fbs[i] is recoil force on i-th neighbor
-            //     E+=epp;
-            // }
+            if(ksp>1.e-6){  
+                esp += evalAngCos( (float4){hpi,1.}, h, ksp, par.w, &f1, &f2 );   fpi+=f1; fa-=f2;  fbs[i]+=f2;    //   pi-planarization (orthogonality), fpi is force on pi-orbital, fbs[i] is recoil force on i-th neighbor
+                E+=epp;
+            }
         }
 
         // --- Store Pi-forces                      we store pi-forces here because we don't use them in the angular force evaluation
@@ -385,26 +385,26 @@ __kernel void getMMFFf4(
                 const int jnga = jng+i0a;
                 const float4 hj = hs[j];  
                       
-                // E += evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );    // evaluate angular force and energy using cos(angle/2) formulation        
-                // fa    -= f1+f2;
+                E += evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );    // evaluate angular force and energy using cos(angle/2) formulation        
+                fa    -= f1+f2;
 
-                // //if(bSubtractVdW)
-                // { // Remove non-bonded interactions from atoms that are bonded to common neighbor
-                //     float4 REQi=REQKs[inga];   // non-bonding parameters of i-th neighbor
-                //     float4 REQj=REQKs[jnga];   // non-bonding parameters of j-th neighbor
-                //     // combine non-bonding parameters of i-th and j-th neighbors using mixing rules
-                //     float4 REQij;             
-                //     REQij.x  = REQi.x  + REQj.x;
-                //     REQij.yz = REQi.yz * REQj.yz; 
+                //if(bSubtractVdW)
+                { // Remove non-bonded interactions from atoms that are bonded to common neighbor
+                    float4 REQi=REQKs[inga];   // non-bonding parameters of i-th neighbor
+                    float4 REQj=REQKs[jnga];   // non-bonding parameters of j-th neighbor
+                    // combine non-bonding parameters of i-th and j-th neighbors using mixing rules
+                    float4 REQij;             
+                    REQij.x  = REQi.x  + REQj.x;
+                    REQij.yz = REQi.yz * REQj.yz; 
                     
-                //     float3 dp = (hj.xyz/hj.w) - (hi.xyz/hi.w);   // recover vector between i-th and j-th neighbors using stored vectos and inverse bond lengths, this should be faster than dp=apos[jngv].xyz-apos[ingv].xyz; from global memory
-                //     float4 fij = getLJQH( dp, REQij, 1.0f );     // compute non-bonded interaction between i-th and j-th neighbors using Lennard-Jones and Coulomb interactions and Hydrogen bond correction
-                //     f1 -=  fij.xyz;
-                //     f2 +=  fij.xyz;
-                // }
+                    float3 dp = (hj.xyz/hj.w) - (hi.xyz/hi.w);   // recover vector between i-th and j-th neighbors using stored vectos and inverse bond lengths, this should be faster than dp=apos[jngv].xyz-apos[ingv].xyz; from global memory
+                    float4 fij = getLJQH( dp, REQij, 1.0f );     // compute non-bonded interaction between i-th and j-th neighbors using Lennard-Jones and Coulomb interactions and Hydrogen bond correction
+                    f1 -=  fij.xyz;
+                    f2 +=  fij.xyz;
+                }
 
-                // fbs[i]+= f1;
-                // fbs[j]+= f2;
+                fbs[i]+= f1;
+                fbs[j]+= f2;
             }
         }
 

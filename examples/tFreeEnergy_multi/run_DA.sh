@@ -45,14 +45,15 @@ python3 run_ES.py \
     --nSys 200 \
     --xyz_name "../../cpp/common_resources/xyz/DA.xyz" \
     --nLambda 200 \
-    --nMDsteps 200000000 \
-    --nEQsteps 100000 \
+    --nMDsteps 20000000 \
+    --nEQsteps 10000 \
     --Fconv 1e-6 \
     --constraints "constraints_DA.txt" \
     --K $K \
     --dt 0.05 \
-    -T 300 \
-    --t_damp 150
+    -T 10 \
+    --t_damp 150 \
+    --soft_dist
 # python3 run_ES.py \
 #     --mode $MODE \
 #     --nSys 1000 \
