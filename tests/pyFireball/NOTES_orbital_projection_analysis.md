@@ -722,3 +722,191 @@ python test_h2o_orbital_comparison.py --debug-atom 1 --debug-orb s --debug-val 1
 4. **Test single components first** - artificial basis functions with coeff=1.0 reveal sign/orientation issues
 5. **Compare at the coefficient level** before comparing full MO projections
 6. **Minimal basis limitations** - virtual orbitals in minimal basis are unbound artifacts, don't expect good correlation
+
+---
+
+## Final Implementation: Perfect Fortran/OpenCL Orbital Projection Parity (April 2026)
+
+### Summary
+
+Achieved **numerical parity** between Fortran (Fireball DFT) and OpenCL (pyOpenCL) orbital projection implementations for H2O molecular orbitals. After fixing coefficient packing, sampling mismatches, radial interpolation, and adding pointwise evaluation, we achieved:
+
+- **Correlation: 1.0000** for all 6 orbitals (both mockup and real DFT)
+- **Scale: 1.0000 ± 0.0000** (no residual scaling differences)
+- **Min/max values:** identical between Fortran and OpenCL
+
+### Root Causes Identified and Fixed
+
+#### 1. Coefficient Packing Truncation (Primary Issue)
+
+**Problem:** OpenCL `project_orbital` in `Grid.py` packed only `norb_per[ia]` coefficients per atom instead of always 4.
+
+**Impact:** For H atoms (1 orbital), only 1 coefficient was packed, missing the s-orbital entirely in OpenCL output.
+
+**Fix:**
+```python
+# Grid.py::project_orbital() - always pack 4 coefficients as float4
+coeffs_opencl = np.zeros((natoms, 4), dtype=np.float32)
+for ia in range(natoms):
+    if no == 1:  # H atom: pack [0,0,0,s]
+        coeffs_opencl[ia, 3] = coeffs_fortran[ia, 0]
+    elif no == 4:  # O atom: remap [s,py,pz,px] -> [px,py,pz,s]
+        coeffs_opencl[ia, 0] = coeffs_fortran[ia, 3]  # px
+        coeffs_opencl[ia, 1] = coeffs_fortran[ia, 1]  # py
+        coeffs_opencl[ia, 2] = coeffs_fortran[ia, 2]  # pz
+        coeffs_opencl[ia, 3] = coeffs_fortran[ia, 0]  # s
+```
+
+#### 2. Sampling Mismatch (Voxel Centers vs Corners)
+
+**Problem:** Fortran `orb2points` evaluates at arbitrary points (user-specified mesh), but OpenCL grid projection evaluated at voxel corners by default.
+
+**Impact:** Large scale mismatch even when qualitative shapes matched.
+
+**Fix:** Shifted OpenCL grid origin by `+0.5 * dC` (half voxel spacing) to sample at voxel centers:
+```python
+# Grid.py - shift origin to voxel centers
+grid_spec['origin'] = grid_origin + 0.5 * grid_spec['dC']
+```
+
+#### 3. Radial Interpolation Mismatch
+
+**Problem:** OpenCL used Catmull-Rom spline; Fortran uses natural cubic spline with second derivatives (`buildspline2_1d`).
+
+**Impact:** Radial basis functions were interpolated differently, causing scale differences.
+
+**Fix:**
+- Changed `Grid.cl::evaluate_radial()` to natural cubic spline using second derivatives
+- Changed `Grid.py::load_basis()` to resample radial basis using natural cubic spline on original mesh
+- Pack radial basis as `(wf, wf_spline_second_derivative)` float2 per node for OpenCL
+
+#### 4. Grid Slice Approximation
+
+**Problem:** Even with voxel-center sampling, extracting a z-plane from a 3D grid requires linear interpolation, introducing approximation error.
+
+**Impact:** Small residual scale differences after fixing above issues.
+
+**Fix:** Added new OpenCL kernel for exact pointwise evaluation:
+```c
+// Grid.cl - new kernel for arbitrary point evaluation
+__kernel void project_orbital_points(
+    __global const float4* points,
+    __global const float4* coeffs,
+    // ... other args
+    __global float* psi_out)
+{
+    // Evaluate ψ(r) at exact point locations
+    // Uses same radial interpolation and spherical harmonics as grid kernel
+}
+```
+
+### New Features Added
+
+#### 1. Pointwise OpenCL Kernel
+
+**File:** `pyBall/FireballOCL/cl/Grid.cl`
+- New kernel `project_orbital_points` evaluates orbitals at arbitrary points
+- Mirrors Fortran `project_orb_points()` logic exactly
+- Uses same coefficient convention `[px,py,pz,s]` and spherical harmonic prefactors
+
+**File:** `pyBall/FireballOCL/Grid.py`
+- New host wrapper `GridProjector.project_orbital_points()`
+- Packs coefficients and atom data same way as grid kernel
+- Returns `psi[n_points]` for arbitrary point array
+
+#### 2. Mockup Mode for Isolated Basis Testing
+
+**File:** `tests/pyFireball/test_h2o_orbital_comparison.py`
+- CLI option `--mockup` creates 6 orbitals each with one active basis function
+- Enables systematic debugging of coefficient mapping and normalization
+- Plots side-by-side Fortran vs OpenCL for each mockup orbital
+
+**Mockup orbitals created:**
+- H1_s, H2_s (hydrogen s-orbitals)
+- O_s, O_px, O_py, O_pz (oxygen orbitals)
+
+#### 3. CLI Options for Debugging
+
+- `--mockup`: Enable mockup mode (single-basis orbitals)
+- `--ocl-points`: Use pointwise OpenCL kernel instead of grid projection
+- `--debug-atom`, `--debug-orb`, `--debug-val`: Set single-basis coefficients manually
+- `-v`: Verbose output with correlation statistics
+
+### Validation Results
+
+**Mockup mode (--mockup --ocl-points):**
+| Orbital | Correlation | Scale | Range |
+|---------|-------------|-------|-------|
+| H1_s    | 1.0000      | 1.0000 | [-0.0000, 0.1993] |
+| H2_s    | 1.0000      | 1.0000 | [0.0000, 0.1993] |
+| O_s     | 1.0000      | 1.0000 | [-0.0000, 0.1715] |
+| O_px    | 1.0000      | 1.0000 | [-0.1147, 0.1147] |
+| O_py    | 1.0000      | 1.0000 | [-0.1141, 0.1132] |
+| O_pz    | 1.0000      | 1.0000 | [-0.0001, 0.3293] |
+
+**Real DFT orbitals (--ocl-points):**
+| MO | Label | Energy (eV) | Correlation | Scale |
+|----|-------|-------------|-------------|-------|
+| 1  | O1s   | -23.94      | 1.0000      | 1.0000 |
+| 2  | O2s   | -9.67       | 1.0000      | 1.0000 |
+| 3  | HOMO-2 | -6.66      | 1.0000      | 1.0000 |
+| 4  | HOMO-1 | -2.79      | 1.0000      | 1.0000 |
+| 5  | HOMO   | 14.50       | 1.0000      | 1.0000 |
+| 6  | LUMO   | 17.25       | 1.0000      | 1.0000 |
+
+### Files Modified
+
+1. **`tests/pyFireball/test_h2o_orbital_comparison.py`**
+   - Added `--mockup` CLI option for isolated basis testing
+   - Added `--ocl-points` CLI option for pointwise OpenCL evaluation
+   - Fixed coefficient remapping `[s,py,pz,px] -> [px,py,pz,s]`
+   - Removed incorrect px sign flip
+   - Added correlation and scaling factor statistics
+   - Added grid origin shift to voxel centers
+   - Added linear interpolation in z for grid-mode extraction
+
+2. **`pyBall/FireballOCL/Grid.py`**
+   - Fixed `project_orbital()` to always pack 4 coefficients per atom as float4
+   - Added `load_basis()` with defensive filtering by species Z and sorting by angular momentum l
+   - Changed radial basis resampling to natural cubic spline
+   - Added `project_orbital_points()` host wrapper for pointwise kernel
+   - Shifted grid origin by `+0.5 * dC` for voxel-center sampling
+
+3. **`pyBall/FireballOCL/cl/Grid.cl`**
+   - Replaced `evaluate_radial()` Catmull-Rom with natural cubic spline using second derivatives
+   - Added `project_orbital_points` kernel for arbitrary point evaluation
+   - Uses same coefficient convention `[px,py,pz,s]` and spherical harmonic prefactors
+
+### Key Lessons
+
+1. **Always pack fixed-size buffers for GPU kernels** - variable-length packing causes indexing errors
+2. **Sampling differences matter** - voxel centers vs corners can cause significant scale mismatches
+3. **Pointwise evaluation is essential for rigorous debugging** - grid-based evaluation is an approximation
+4. **Mockup mode is invaluable** - isolating single basis functions reveals coefficient mapping issues
+5. **Match interpolation methods exactly** - different spline types cause scale differences
+6. **Use correlation statistics** - quantitative metrics (correlation, scale) are more reliable than visual inspection
+
+### Usage Examples
+
+**Rigorous parity testing (exact point evaluation):**
+```bash
+python test_h2o_orbital_comparison.py --mockup --ocl-points -v
+python test_h2o_orbital_comparison.py --ocl-points -v
+```
+
+**Fast visualization (grid-based, may have small approximation errors):**
+```bash
+python test_h2o_orbital_comparison.py --mockup -v
+python test_h2o_orbital_comparison.py -v
+```
+
+**Debug single basis function:**
+```bash
+python test_h2o_orbital_comparison.py --debug-atom 0 --debug-orb px --debug-val 1.0 -o "0" -v
+```
+
+### Open Items
+
+- **Grid-mode optimization:** The grid-based projection (without `--ocl-points`) is faster but has small approximation errors from z-plane interpolation. Consider improving grid sampling or using higher resolution.
+- **Generalization to other molecules:** Test with larger molecules (e.g., CH4, pentacene) to ensure fixes generalize beyond H2O.
+- **CPU reference implementation:** Consider adding a Python/C++ reference using the same natural cubic spline for triple-checking.

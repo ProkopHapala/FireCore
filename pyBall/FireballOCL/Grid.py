@@ -46,7 +46,21 @@ class GridProjector(OpenCLBase):
             wfs = self.parser.find_wf(nz)
             if len(wfs)==0:
                 missing.append(nz); continue
-            self.basis_data[nz] = [self.parser.read_wf(f) for f in wfs]
+            wfs_ok = []
+            for f in wfs:
+                wf = self.parser.read_wf(f)
+                # Defensive filter: glob patterns can match unrelated files (e.g. '001' substring).
+                if int(wf.get('nzx', -1)) != int(nz):
+                    if self.verbosity > 0:
+                        print(f"[DEBUG] load_basis: skipping wf file '{f}' because header nzx={wf.get('nzx')} != requested nz={nz}")
+                    continue
+                wf['_fname'] = f
+                wfs_ok.append(wf)
+            if len(wfs_ok) == 0:
+                missing.append(nz); continue
+            # Sort shells by angular momentum (match Fortran order: s then p then d...)
+            wfs_ok.sort(key=lambda w: (int(w.get('l', 0)), str(w.get('_fname',''))))
+            self.basis_data[nz] = wfs_ok
         if missing:
             raise RuntimeError(f"No .wf files found for species {missing} under {self.fdata_dir}; ensure Fdata dir has *.ZZ.wf")
         
@@ -74,21 +88,77 @@ class GridProjector(OpenCLBase):
         n_nodes = int(np.ceil(rc_max_ang / dr)) + 1
         if self.verbosity > 0: print(f"[DEBUG] load_basis: common grid dr={dr:.6f} Å  rc_max={rc_max_ang:.3f} Å  n_nodes={n_nodes}")
         
-        packed_basis = np.zeros((len(all_nz), max_shells, n_nodes), dtype=np.float32)
+        def _spline_d2_uniform(y, h):
+            """Natural cubic spline second derivatives for uniform grid.
+            Matches the form used by Fortran getpsi() with wf_spline.
+            """
+            n = len(y)
+            if n < 3:
+                return np.zeros(n, dtype=np.float32)
+            # Tridiagonal system for natural spline on uniform grid
+            # d2[0]=d2[n-1]=0
+            a = np.ones(n-3, dtype=np.float64)
+            b = np.full(n-2, 4.0, dtype=np.float64)
+            c = np.ones(n-3, dtype=np.float64)
+            rhs = np.zeros(n-2, dtype=np.float64)
+            rhs[:] = 6.0 * (y[2:] - 2.0*y[1:-1] + y[:-2]) / (h*h)
+            # Thomas algorithm
+            for i in range(1, n-2):
+                w = a[i-1] / b[i-1]
+                b[i] -= w * c[i-1]
+                rhs[i] -= w * rhs[i-1]
+            d2_inner = np.zeros(n-2, dtype=np.float64)
+            d2_inner[-1] = rhs[-1] / b[-1]
+            for i in range(n-4, -1, -1):
+                d2_inner[i] = (rhs[i] - c[i] * d2_inner[i+1]) / b[i]
+            d2 = np.zeros(n, dtype=np.float32)
+            d2[1:-1] = d2_inner.astype(np.float32)
+            return d2
+
+        # We store (wf, wf_spline) as float2 per node
+        packed_basis = np.zeros((len(all_nz), max_shells, n_nodes, 2), dtype=np.float32)
         for i, nz in enumerate(all_nz):
             for ish, wf in enumerate(self.basis_data[nz]):
                 wf_mesh = wf['mesh']
                 wf_rc_bohr = wf['rcutoff']
                 wf_dr_ang  = ABOHR * wf_rc_bohr / (wf_mesh - 1)
                 wf_data    = wf['data']
-                # Resample from wf's own grid (Angstrom) to common grid via linear interpolation
+                # Resample from wf's own grid (Angstrom) to common grid using Fortran-compatible
+                # natural cubic spline (matches getpsi.f90).
                 r_common = np.arange(n_nodes) * dr
-                r_orig   = np.arange(wf_mesh) * wf_dr_ang
-                resampled = np.interp(r_common, r_orig, wf_data, right=0.0)
+                d2_orig = _spline_d2_uniform(wf_data.astype(np.float64), wf_dr_ang)
+                resampled = np.zeros_like(r_common, dtype=np.float64)
+                xmax = (wf_mesh - 1) * wf_dr_ang
+                for ir, rr in enumerate(r_common):
+                    if rr <= 0.0:
+                        resampled[ir] = float(wf_data[0])
+                        continue
+                    if rr >= xmax:
+                        resampled[ir] = float(wf_data[-1])
+                        continue
+                    x = rr / wf_dr_ang
+                    ii = int(np.floor(x))
+                    if ii < 0: ii = 0
+                    if ii > (wf_mesh - 2): ii = wf_mesh - 2
+                    t = x - ii
+                    a = 1.0 - t
+                    b = t
+                    ylo = wf_data[ii]
+                    yhi = wf_data[ii+1]
+                    d2lo = d2_orig[ii]
+                    d2hi = d2_orig[ii+1]
+                    resampled[ir] = a*ylo + b*yhi + ((a*a*a-a)*d2lo + (b*b*b-b)*d2hi) * (wf_dr_ang*wf_dr_ang) / 6.0
+                resampled = resampled.astype(np.float32)
                 # Verify normalization: ∫ R² r² dr should be ~1.0 with correct Angstrom grid
-                S_rad = np.trapz(resampled**2 * r_common**2, r_common)
-                packed_basis[i, ish, :] = resampled.astype(np.float32)
-                if self.verbosity > 0: print(f"[DEBUG]   species {nz} shell {ish} (l={wf.get('l','?')}): mesh={wf_mesh} rc={wf_rc_bohr:.3f} Bohr = {ABOHR*wf_rc_bohr:.3f} Å  S_rad={S_rad:.6f} (should be ~1.0)")
+                S_rad = np.trapz(resampled.astype(np.float64)**2 * r_common**2, r_common)
+                if S_rad <= 0:
+                    raise RuntimeError(f"load_basis: non-positive radial norm S_rad={S_rad} for species {nz} shell {ish}")
+
+                d2 = _spline_d2_uniform(resampled.astype(np.float64), dr)
+                packed_basis[i, ish, :, 0] = resampled.astype(np.float32)
+                packed_basis[i, ish, :, 1] = d2
+
+                if self.verbosity > 0: print(f"[DEBUG]   species {nz} shell {ish} (l={wf.get('l','?')}): mesh={wf_mesh} rc={wf_rc_bohr:.3f} Bohr = {ABOHR*wf_rc_bohr:.3f} Å  S_rad={S_rad:.6f}")
         
         self.d_basis = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=packed_basis)
         self.basis_meta = {'n_species': len(all_nz), 'max_shells': max_shells, 'n_nodes': n_nodes, 'dr': dr, 'nz_map': {nz: i for i, nz in enumerate(all_nz)}}
@@ -508,6 +578,90 @@ class GridProjector(OpenCLBase):
 
         return res
 
+
+    def project_orbital_points(self, points, coeffs, norb_per, atoms_dict, _debug_Fortran_order=False):
+        """Evaluate a single orbital at arbitrary points (debugging parity with Fortran orb2points).
+
+        This avoids any grid sampling / slicing ambiguity.
+
+        Args:
+            points: (n_points,3) float32/float64 positions in Angstrom
+            coeffs: (natoms,4) coefficients. Default expects [px,py,pz,s].
+                    If _debug_Fortran_order=True and atom has 4 orbitals, expects [s,py,pz,px].
+            norb_per: (natoms,) number of orbitals per atom (1 or 4 for H/O in H2O)
+            atoms_dict: dict with 'pos','Rcut','type'
+        Returns:
+            psi: (n_points,) float32
+        """
+        import numpy as np
+        points = np.asarray(points, dtype=np.float32)
+        if points.ndim != 2 or points.shape[1] != 3:
+            raise ValueError(f"project_orbital_points: points must be (n,3), got {points.shape}")
+        natoms = len(atoms_dict['pos'])
+
+        # Pack coefficients exactly like project_orbital()
+        numorb_max = 4
+        coeffs_flat = np.zeros(natoms * numorb_max, dtype=np.float32)
+        _ORT_SPP_TO_OCL = np.array([3, 1, 2, 0], dtype=np.int32)  # [s,py,pz,px] -> [px,py,pz,s]
+        for ia in range(natoms):
+            i0 = ia * numorb_max
+            no = int(norb_per[ia])
+            if _debug_Fortran_order and (no == 4):
+                coeffs_flat[i0:i0+4] = coeffs[ia, :4][_ORT_SPP_TO_OCL]
+            else:
+                coeffs_flat[i0:i0+4] = coeffs[ia, :4]
+
+        # AtomData
+        atom_data = np.zeros(natoms, dtype=[
+            ('pos_rcut', 'f4', 4),
+            ('type', 'i4'),
+            ('i0orb', 'i4'),
+            ('norb', 'i4'),
+            ('pad', 'i4')
+        ])
+        for ia in range(natoms):
+            atom_data[ia]['pos_rcut'][:3] = atoms_dict['pos'][ia]
+            atom_data[ia]['pos_rcut'][3]  = atoms_dict['Rcut'][ia]
+            Z = int(atoms_dict['type'][ia])
+            if Z not in self.basis_meta['nz_map']:
+                raise RuntimeError(f"project_orbital_points: species nz={Z} not loaded; loaded={list(self.basis_meta['nz_map'].keys())}")
+            atom_data[ia]['type'] = int(self.basis_meta['nz_map'][Z])
+            atom_data[ia]['norb'] = int(norb_per[ia])
+            atom_data[ia]['i0orb'] = ia * numorb_max
+
+        # Buffers
+        mf = cl.mem_flags
+        d_points = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=np.c_[points, np.zeros((len(points),1),np.float32)].astype(np.float32))
+        d_atoms  = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
+        d_coeffs = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=coeffs_flat)
+        d_out    = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=len(points)*4)
+
+        # Build program (ensures new kernel is available)
+        self._load_kernels()
+
+        # Launch
+        gs = (int(len(points)),)
+        ls = None
+        self.prg.project_orbital_points(
+            self.queue, gs, ls,
+            np.int32(len(points)),
+            d_points,
+            d_atoms,
+            np.int32(natoms),
+            d_coeffs,
+            self.d_basis,
+            np.int32(self.basis_meta['n_nodes']),
+            np.float32(self.basis_meta['dr']),
+            np.int32(self.basis_meta['max_shells']),
+            d_out
+        )
+        self.queue.finish()
+
+        out = np.empty(len(points), dtype=np.float32)
+        cl.enqueue_copy(self.queue, out, d_out)
+        self.queue.finish()
+        return out
+
     def project_orbital(self, coeffs, norb_per, atoms_dict, grid_spec, nMaxAtom=64, _debug_Fortran_order=False):
         """
         Project a single molecular orbital onto a 3D grid using the orbital projection kernel.
@@ -515,8 +669,9 @@ class GridProjector(OpenCLBase):
         Computes ψ(r) = Σ_i C_i φ_i(r) (signed wavefunction, not density)
 
         Args:
-            coeffs: (natoms, numorb_max) MO coefficients. If _debug_Fortran_order=True, expects
-                    Fortran order [s, py, pz, px]. Otherwise expects OpenCL order [s, px, py, pz].
+            coeffs: (natoms, 4) MO coefficients.
+                    By default expects FireballOCL convention [px, py, pz, s].
+                    If _debug_Fortran_order=True, expects Fortran order [s, py, pz, px] for sp3 atoms.
             norb_per: (natoms,) number of orbitals per atom
             atoms_dict: dict with 'pos', 'Rcut', 'type'
             grid_spec: dict with 'origin', 'dA', 'dB', 'dC', 'ngrid'
@@ -535,20 +690,21 @@ class GridProjector(OpenCLBase):
 
         # Prepare coefficient buffer with remapping from Fortran to OpenCL order
         natoms = len(atoms_dict['pos'])
-        numorb_max = max(norb_per)
+        numorb_max = 4
         coeffs_flat = np.zeros(natoms * numorb_max, dtype=np.float32)
-        
-        # Remapping: Fortran [s, py, pz, px] -> OpenCL [s, px, py, pz]
-        _ORT_SPP_TO_STD = np.array([0, 3, 1, 2], dtype=np.int32)
-        
+
+        # Remapping: Fortran [s, py, pz, px] -> FireballOCL [px, py, pz, s]
+        _ORT_SPP_TO_OCL = np.array([3, 1, 2, 0], dtype=np.int32)
+
         for ia in range(natoms):
             i0 = ia * numorb_max
-            no = norb_per[ia]
-            if _debug_Fortran_order and no == 4:
-                # Remap p-orbitals from Fortran to OpenCL order
-                coeffs_flat[i0:i0+no] = coeffs[ia, :no][_ORT_SPP_TO_STD]
+            no = int(norb_per[ia])
+            if _debug_Fortran_order and (no == 4):
+                coeffs_flat[i0:i0+4] = coeffs[ia, :4][_ORT_SPP_TO_OCL]
             else:
-                coeffs_flat[i0:i0+no] = coeffs[ia, :no]
+                # Expect coeffs already in [px,py,pz,s]
+                # IMPORTANT: even for H (no==1) we still need the s coefficient in slot 3.
+                coeffs_flat[i0:i0+4] = coeffs[ia, :4]
 
         # Prepare atom data
         atom_data = np.zeros(natoms, dtype=[

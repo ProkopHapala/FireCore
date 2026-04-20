@@ -101,6 +101,8 @@ Examples:
     parser.add_argument('--debug-atom', type=int, default=None, help='Debug mode: atom index for single-basis test')
     parser.add_argument('--debug-orb', type=str, default=None, help='Debug mode: orbital type (s, px, py, pz)')
     parser.add_argument('--debug-val', type=float, default=1.0, help='Debug mode: coefficient value (default: 1.0)')
+    parser.add_argument('--mockup', action='store_true', help='Mockup mode: create 6 orbitals each with one active basis function')
+    parser.add_argument('--ocl-points', action='store_true', help='Compute OpenCL orbital directly at the same points as Fortran orb2points (debug parity)')
     args = parser.parse_args()
     
     # Parse grid parameters
@@ -110,7 +112,8 @@ Examples:
     verbose = args.verbose
     
     mol_name = args.mol
-    export_dir = set_export_dir(f"export/{mol_name.lower()}_orbital_comparison")
+    mode_suffix = "_mockup" if args.mockup else ""
+    export_dir = set_export_dir(f"export/{mol_name.lower()}_orbital_comparison{mode_suffix}")
     
     # Load molecule
     xyz_path = f"../../cpp/common_resources/xyz/{mol_name}.xyz"
@@ -140,12 +143,130 @@ Examples:
     wfcoef = np.zeros((norb_total, norb_total), dtype=np.float64)
     fc.get_wfcoef(wfcoef=wfcoef, ikp=1)
     eigenvalues = fc.get_eigen(ikp=1, norb=norb_total)  # Orbital energies in eV
-    
-    # Per-atom orbital info
-    norb_per = np.array([sparse.num_orb[np.where(sparse.nzx[:dims.nspecies] == Z)[0][0]] 
+
+    # Per-atom orbital info (needed for both modes)
+    norb_per = np.array([sparse.num_orb[np.where(sparse.nzx[:dims.nspecies] == Z)[0][0]]
                          for Z in atomTypes])
     atom_coeff_offs = sparse.degelec[:natoms]
-    
+
+    # MOCKUP MODE: Create 6 orbitals each with one active basis function
+    if args.mockup:
+        print("\n" + "="*60)
+        print("MOCKUP MODE: Creating 6 orbitals with single basis functions")
+        print("="*60)
+
+        # Define mockup orbitals: (atom_idx, orb_idx, label)
+        # H2O has: atom 0 = O (4 orbitals: s, py, pz, px), atom 1 = H (s), atom 2 = H (s)
+        mockup_orbitals = [
+            (1, 0, 'H1_s'),   # s on H1
+            (2, 0, 'H2_s'),   # s on H2
+            (0, 0, 'O_s'),    # s on O
+            (0, 3, 'O_px'),   # px on O (Fortran index 3)
+            (0, 1, 'O_py'),   # py on O (Fortran index 1)
+            (0, 2, 'O_pz'),   # pz on O (Fortran index 2)
+        ]
+
+        # Create artificial wfcoef with 6 MOs
+        wfcoef_mockup = np.zeros((6, norb_total), dtype=np.float64)
+        eigenvalues_mockup = np.zeros(6, dtype=np.float64)
+
+        for mo_idx, (atom_idx, orb_idx, label) in enumerate(mockup_orbitals):
+            coeff_global_idx = atom_coeff_offs[atom_idx] + orb_idx
+            wfcoef_mockup[mo_idx, coeff_global_idx] = 1.0
+            eigenvalues_mockup[mo_idx] = 0.0  # Set all to 0 eV for mockup
+            print(f"  MO {mo_idx+1}: {label} - atom {atom_idx} ({enames[atom_idx]}), orbital {orb_idx}, global idx {coeff_global_idx}")
+
+        # Replace original wfcoef and eigenvalues
+        wfcoef = wfcoef_mockup
+        eigenvalues = eigenvalues_mockup
+        nmo_total = 6
+
+        # Override orbital selection to plot all 6 mockup orbitals
+        mo_indices = list(range(6))
+        mo_labels = [label for (_, _, label) in mockup_orbitals]
+
+        print(f"Mockup mode: plotting {len(mo_indices)} orbitals: {mo_labels}")
+    else:
+        # Normal mode: determine which MOs to plot
+        # Determine which MOs to plot
+        nmo_total = wfcoef.shape[0]
+
+        if args.orbitals == 'auto':
+            # Auto = occupied orbitals only (electrons/2)
+            nelec = nmo_total * 2  # rough estimate
+            nocc = nmo_total // 2 if nmo_total <= 10 else 5
+            mo_indices = list(range(nocc))
+            print(f"\nAuto-selected {nocc} occupied orbitals: {[i+1 for i in mo_indices]}")
+        else:
+            mo_indices = parse_orbital_indices(args.orbitals, nmo_total)
+            print(f"\nUser-selected orbitals: {[i+1 for i in mo_indices]}")
+
+        # Default labels
+        mo_labels = []
+        for idx in mo_indices:
+            if idx == 0:
+                mo_labels.append('O1s' if mol_name == 'H2O' else f'MO{idx+1}')
+            elif idx == 1:
+                mo_labels.append('O2s' if mol_name == 'H2O' else f'MO{idx+1}')
+            elif nmo_total <= 10 and idx == nmo_total - 1:
+                mo_labels.append('LUMO')
+            elif nmo_total <= 10 and idx == nmo_total - 2:
+                mo_labels.append('HOMO')
+            elif nmo_total <= 10 and idx == nmo_total - 3:
+                mo_labels.append('HOMO-1')
+            elif nmo_total <= 10 and idx == nmo_total - 4:
+                mo_labels.append('HOMO-2')
+            else:
+                mo_labels.append(f'MO{idx+1}')
+
+    # Create text file for coefficient comparison (skip in mockup mode)
+    if not args.mockup:
+        coef_comp_file = os.path.join(export_dir, 'fortran_vs_python_coefficients.txt')
+        with open(coef_comp_file, 'w') as fcomp:
+            fcomp.write("=" * 70 + "\n")
+            fcomp.write("FORT vs PYTH: COEFFICIENT EXTRACTION VERIFICATION\n")
+            fcomp.write("=" * 70 + "\n\n")
+
+            # Loop over ALL MOs to compare extraction
+            for mo_idx in range(wfcoef.shape[0]):
+                mo_fortran = mo_idx + 1
+
+                fcomp.write(f"\n{'=' * 70}\n")
+                fcomp.write(f"MO {mo_fortran} (Python index {mo_idx})\n")
+                fcomp.write(f"{'=' * 70}\n")
+
+                # Get Fortran output
+                import io
+                from contextlib import redirect_stdout
+                fort_capture = io.StringIO()
+                with redirect_stdout(fort_capture):
+                    fc.print_orb_coefs(iMO=mo_fortran, ikpoint=1)
+                fcomp.write("FORT:\n" + fort_capture.getvalue())
+
+                # Get Python extraction (row indexing)
+                fcomp.write("PYTH (wfcoef[mo_idx, :] row):\n")
+                for ia in range(natoms):
+                    i0 = atom_coeff_offs[ia]
+                    no = norb_per[ia]
+                    py_vals = wfcoef[mo_idx, i0:i0+no]
+                    fcomp.write(f"  Atom {ia} ({enames[ia]}): [{i0}:{i0+no}] = ")
+                    fcomp.write(", ".join([f"{v:+.6f}" for v in py_vals]) + "\n")
+
+                # Also try column indexing for comparison
+                if wfcoef.ndim == 2 and mo_idx < wfcoef.shape[1]:
+                    fcomp.write("PYTH_ALT (wfcoef[:, mo_idx] column):\n")
+                    for ia in range(natoms):
+                        i0 = atom_coeff_offs[ia]
+                        no = norb_per[ia]
+                        py_vals_col = wfcoef[i0:i0+no, mo_idx]
+                        fcomp.write(f"  Atom {ia} ({enames[ia]}): [{i0}:{i0+no}, {mo_idx}] = ")
+                        fcomp.write(", ".join([f"{v:+.6f}" for v in py_vals_col]) + "\n")
+
+            fcomp.write("\n" + "=" * 70 + "\n")
+            fcomp.write("END OF COMPARISON\n")
+
+        print(f"\nCoefficient comparison written to: {coef_comp_file}")
+
     # Setup OpenCL
     fdata_dir = os.path.join(os.path.dirname(__file__), "Fdata", "basis")
     projector = ocl_grid.GridProjector(fdata_dir, verbosity=0)
@@ -154,6 +275,9 @@ Examples:
     # Grid setup from CLI args
     Lz = 6.0  # Larger z extent to ensure z_height plane is inside grid
     atom_center = atomPos.mean(axis=0)
+    # IMPORTANT: Fortran orb2points() below samples at voxel centers (0.5*dx offsets).
+    # The OpenCL kernels sample at r = origin + i*dA + j*dB + k*dC, i.e. voxel corners.
+    # Shift origin by half-step so both sample the same physical points.
     grid_origin = atom_center - np.array([Lx/2.0, Ly/2.0, Lz/2.0])  # Center grid on molecule
     
     grid_spec = {
@@ -163,6 +287,8 @@ Examples:
         'dC': np.array([0.0, 0.0, Lz/nz]),
         'ngrid': np.array([nx, ny, nz], dtype=np.int32)
     }
+
+    grid_spec['origin'] = grid_spec['origin'] + 0.5 * (grid_spec['dA'] + grid_spec['dB'] + grid_spec['dC'])
     
     atoms_dict = {
         'pos': atomPos.astype(np.float32),
@@ -171,88 +297,93 @@ Examples:
     }
     
     extent = [grid_origin[0], grid_origin[0] + Lx, grid_origin[1], grid_origin[1] + Ly]
-    
-    # Determine which MOs to plot
-    nmo_total = wfcoef.shape[0]
-    
-    if args.orbitals == 'auto':
-        # Auto = occupied orbitals only (electrons/2)
-        # For H2O: 10 electrons = 5 occupied
-        # For CH4: 8 electrons = 4 occupied  
-        # Need to determine from system
-        nelec = nmo_total * 2  # rough estimate
-        nocc = nmo_total // 2 if nmo_total <= 10 else 5
-        mo_indices = list(range(nocc))
-        print(f"\nAuto-selected {nocc} occupied orbitals: {[i+1 for i in mo_indices]}")
-    else:
-        mo_indices = parse_orbital_indices(args.orbitals, nmo_total)
-        print(f"\nUser-selected orbitals: {[i+1 for i in mo_indices]}")
-    
-    # Default labels
-    mo_labels = []
-    for idx in mo_indices:
-        if idx == 0:
-            mo_labels.append('O1s' if mol_name == 'H2O' else f'MO{idx+1}')
-        elif idx == 1:
-            mo_labels.append('O2s' if mol_name == 'H2O' else f'MO{idx+1}')
-        elif nmo_total <= 10 and idx == nmo_total - 1:
-            mo_labels.append('LUMO')
-        elif nmo_total <= 10 and idx == nmo_total - 2:
-            mo_labels.append('HOMO')
-        elif nmo_total <= 10 and idx == nmo_total - 3:
-            mo_labels.append('HOMO-1')
-        elif nmo_total <= 10 and idx == nmo_total - 4:
-            mo_labels.append('HOMO-2')
-        else:
-            mo_labels.append(f'MO{idx+1}')
-    
-    # Create text file for coefficient comparison
-    coef_comp_file = os.path.join(export_dir, 'fortran_vs_python_coefficients.txt')
-    with open(coef_comp_file, 'w') as fcomp:
-        fcomp.write("=" * 70 + "\n")
-        fcomp.write("FORT vs PYTH: COEFFICIENT EXTRACTION VERIFICATION\n")
-        fcomp.write("=" * 70 + "\n\n")
+
+    # In mockup mode, mo_indices/mo_labels are already set above and must NOT be overridden.
+    if not args.mockup:
+        # Determine which MOs to plot
+        nmo_total = wfcoef.shape[0]
         
-        # Loop over ALL MOs to compare extraction
-        for mo_idx in range(wfcoef.shape[0]):
-            mo_fortran = mo_idx + 1
+        if args.orbitals == 'auto':
+            # Auto = occupied orbitals only (electrons/2)
+            # For H2O: 10 electrons = 5 occupied
+            # For CH4: 8 electrons = 4 occupied  
+            # Need to determine from system
+            nelec = nmo_total * 2  # rough estimate
+            nocc = nmo_total // 2 if nmo_total <= 10 else 5
+            mo_indices = list(range(nocc))
+            print(f"\nAuto-selected {nocc} occupied orbitals: {[i+1 for i in mo_indices]}")
+        else:
+            mo_indices = parse_orbital_indices(args.orbitals, nmo_total)
+            print(f"\nUser-selected orbitals: {[i+1 for i in mo_indices]}")
+        
+        # Default labels
+        mo_labels = []
+        for idx in mo_indices:
+            if idx == 0:
+                mo_labels.append('O1s' if mol_name == 'H2O' else f'MO{idx+1}')
+            elif idx == 1:
+                mo_labels.append('O2s' if mol_name == 'H2O' else f'MO{idx+1}')
+            elif nmo_total <= 10 and idx == nmo_total - 1:
+                mo_labels.append('LUMO')
+            elif nmo_total <= 10 and idx == nmo_total - 2:
+                mo_labels.append('HOMO')
+            elif nmo_total <= 10 and idx == nmo_total - 3:
+                mo_labels.append('HOMO-1')
+            elif nmo_total <= 10 and idx == nmo_total - 4:
+                mo_labels.append('HOMO-2')
+            else:
+                mo_labels.append(f'MO{idx+1}')
+
+        # Create text file for coefficient comparison
+        coef_comp_file = os.path.join(export_dir, 'fortran_vs_python_coefficients.txt')
+        with open(coef_comp_file, 'w') as fcomp:
+            fcomp.write("=" * 70 + "\n")
+            fcomp.write("FORT vs PYTH: COEFFICIENT EXTRACTION VERIFICATION\n")
+            fcomp.write("=" * 70 + "\n\n")
             
-            fcomp.write(f"\n{'=' * 70}\n")
-            fcomp.write(f"MO {mo_fortran} (Python index {mo_idx})\n")
-            fcomp.write(f"{'=' * 70}\n")
-            
-            # Get Fortran output
-            import io
-            from contextlib import redirect_stdout
-            fort_capture = io.StringIO()
-            with redirect_stdout(fort_capture):
-                fc.print_orb_coefs(iMO=mo_fortran, ikpoint=1)
-            fcomp.write("FORT:\n" + fort_capture.getvalue())
-            
-            # Get Python extraction (row indexing)
-            fcomp.write("PYTH (wfcoef[mo_idx, :] row):\n")
-            for ia in range(natoms):
-                i0 = atom_coeff_offs[ia]
-                no = norb_per[ia]
-                py_vals = wfcoef[mo_idx, i0:i0+no]
-                fcomp.write(f"  Atom {ia} ({enames[ia]}): [{i0}:{i0+no}] = ")
-                fcomp.write(", ".join([f"{v:+.6f}" for v in py_vals]) + "\n")
-            
-            # Also try column indexing for comparison
-            if wfcoef.ndim == 2 and mo_idx < wfcoef.shape[1]:
-                fcomp.write("PYTH_ALT (wfcoef[:, mo_idx] column):\n")
+            # Loop over ALL MOs to compare extraction
+            for mo_idx in range(wfcoef.shape[0]):
+                mo_fortran = mo_idx + 1
+                
+                fcomp.write(f"\n{'=' * 70}\n")
+                fcomp.write(f"MO {mo_fortran} (Python index {mo_idx})\n")
+                fcomp.write(f"{'=' * 70}\n")
+                
+                # Get Fortran output
+                import io
+                from contextlib import redirect_stdout
+                fort_capture = io.StringIO()
+                with redirect_stdout(fort_capture):
+                    fc.print_orb_coefs(iMO=mo_fortran, ikpoint=1)
+                fcomp.write("FORT:\n" + fort_capture.getvalue())
+                
+                # Get Python extraction (row indexing)
+                fcomp.write("PYTH (wfcoef[mo_idx, :] row):\n")
                 for ia in range(natoms):
                     i0 = atom_coeff_offs[ia]
                     no = norb_per[ia]
-                    py_vals_col = wfcoef[i0:i0+no, mo_idx]
-                    fcomp.write(f"  Atom {ia} ({enames[ia]}): [{i0}:{i0+no}, {mo_idx}] = ")
-                    fcomp.write(", ".join([f"{v:+.6f}" for v in py_vals_col]) + "\n")
+                    py_vals = wfcoef[mo_idx, i0:i0+no]
+                    fcomp.write(f"  Atom {ia} ({enames[ia]}): [{i0}:{i0+no}] = ")
+                    fcomp.write(", ".join([f"{v:+.6f}" for v in py_vals]) + "\n")
+                
+                # Also try column indexing for comparison
+                if wfcoef.ndim == 2 and mo_idx < wfcoef.shape[1]:
+                    fcomp.write("PYTH_ALT (wfcoef[:, mo_idx] column):\n")
+                    for ia in range(natoms):
+                        i0 = atom_coeff_offs[ia]
+                        no = norb_per[ia]
+                        py_vals_col = wfcoef[i0:i0+no, mo_idx]
+                        fcomp.write(f"  Atom {ia} ({enames[ia]}): [{i0}:{i0+no}, {mo_idx}] = ")
+                        fcomp.write(", ".join([f"{v:+.6f}" for v in py_vals_col]) + "\n")
+            
+            fcomp.write("\n" + "=" * 70 + "\n")
+            fcomp.write("END OF COMPARISON\n")
         
-        fcomp.write("\n" + "=" * 70 + "\n")
-        fcomp.write("END OF COMPARISON\n")
-    
-    print(f"\nCoefficient comparison written to: {coef_comp_file}")
-    
+        print(f"\nCoefficient comparison written to: {coef_comp_file}")
+
+    # Initialize results storage for scaling analysis
+    scaling_results = []
+
     for mo_idx, mo_label in zip(mo_indices, mo_labels):
         mo_fortran = mo_idx + 1  # Fortran uses 1-based
         
@@ -263,7 +394,14 @@ Examples:
             i0 = atom_coeff_offs[ia]
             no = norb_per[ia]
             coeffs_fortran[ia, :no] = wfcoef[mo_idx, i0:i0+no]
-        
+
+        # MOCKUP MODE: Set Fortran coefficients for this MO
+        if args.mockup:
+            fc.set_wfcoef(wfcoef[mo_idx, :], iMO=mo_fortran)
+            if verbose:
+                print(f"\nSetting Fortran coefficients for MO {mo_fortran} ({mo_label}):")
+                fc.print_orb_coefs(iMO=mo_fortran, ikpoint=1)
+
         # DEBUG MODE: Override coefficients for single-basis testing
         if args.debug_atom is not None and args.debug_orb is not None:
             debug_ia = args.debug_atom
@@ -326,7 +464,7 @@ Examples:
             if no == 1:  # H atom: just s
                 coeffs_opencl[ia, 3] = coeffs_fortran[ia, 0]  # s -> index 3
             elif no == 4:  # O atom: s, py, pz, px -> px, py, pz, s
-                coeffs_opencl[ia, 0] = -coeffs_fortran[ia, 3]  # px -> index 0 (FLIPPED)
+                coeffs_opencl[ia, 0] = coeffs_fortran[ia, 3]  # px -> index 0
                 coeffs_opencl[ia, 1] = coeffs_fortran[ia, 1]  # py -> index 1
                 coeffs_opencl[ia, 2] = coeffs_fortran[ia, 2]  # pz -> index 2
                 coeffs_opencl[ia, 3] = coeffs_fortran[ia, 0]  # s -> index 3
@@ -355,18 +493,33 @@ Examples:
         psi_fort_flat = fc.orb2points(points, iMO=mo_fortran, ikpoint=1)
         psi_fort = psi_fort_flat.reshape(nx, ny)
         
-        # OpenCL projection - get 3D then extract z=z_height slice
-        psi_ocl_3d = projector.project_orbital(
-            coeffs=coeffs_opencl.astype(np.float32),
-            norb_per=norb_per,
-            atoms_dict=atoms_dict,
-            grid_spec=grid_spec,
-            nMaxAtom=64
-        )
-        # Extract z=z_height slice
-        iz_target = int((atom_center[2] + z_height - grid_origin[2]) / grid_spec['dC'][2])
-        iz_target = max(0, min(iz_target, nz - 1))
-        psi_ocl = psi_ocl_3d[:, :, iz_target]
+        if args.ocl_points:
+            # Rigorous parity mode: evaluate OpenCL orbital at the exact same points as Fortran
+            psi_ocl_flat = projector.project_orbital_points(
+                points=points,
+                coeffs=coeffs_opencl.astype(np.float32),
+                norb_per=norb_per,
+                atoms_dict=atoms_dict
+            )
+            psi_ocl = psi_ocl_flat.reshape(nx, ny)
+        else:
+            # OpenCL projection - get 3D then extract z=z_height slice
+            psi_ocl_3d = projector.project_orbital(
+                coeffs=coeffs_opencl.astype(np.float32),
+                norb_per=norb_per,
+                atoms_dict=atoms_dict,
+                grid_spec=grid_spec,
+                nMaxAtom=64
+            )
+            # Extract ψ(x,y,z_plane) at the *exact* Fortran z-plane by linear interpolation in z.
+            # Fortran evaluates at z_plane = atom_center[2] + z_height.
+            z_plane = atom_center[2] + z_height
+            zf = (z_plane - grid_spec['origin'][2]) / grid_spec['dC'][2]
+            iz0 = int(np.floor(zf))
+            t = float(zf - iz0)
+            iz0 = max(0, min(iz0, nz - 2))
+            iz1 = iz0 + 1
+            psi_ocl = (1.0 - t) * psi_ocl_3d[:, :, iz0] + t * psi_ocl_3d[:, :, iz1]
         
         # Plot side-by-side
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
@@ -375,13 +528,39 @@ Examples:
         plot_orbital_comparison(axes[0], psi_fort, atomPos, atomTypes, extent, f"Fortran MO {mo_fortran} ({mo_label}) {E_str}", coeffs_text_f, enames)
         plot_orbital_comparison(axes[1], psi_ocl, atomPos, atomTypes, extent, f"OpenCL MO {mo_fortran} ({mo_label}) {E_str}", coeffs_text_o, enames)
         
-        # Compute correlation
+        # Compute correlation and scaling factors
         corr = np.corrcoef(psi_fort.flatten(), psi_ocl.flatten())[0, 1]
-        
-        # Add stats
+
+        # Estimate scaling factor (linear regression: psi_fort ≈ scale * psi_ocl)
+        # scale = sum(psi_fort * psi_ocl) / sum(psi_ocl^2)
+        flat_fort = psi_fort.flatten()
+        flat_ocl = psi_ocl.flatten()
+        scale_linreg = np.sum(flat_fort * flat_ocl) / np.sum(flat_ocl * flat_ocl)
+
+        # Alternative scaling estimates
+        scale_ratio_mean = np.mean(np.abs(flat_fort)) / np.mean(np.abs(flat_ocl))
+        scale_ratio_std = np.std(flat_fort) / np.std(flat_ocl)
+        scale_ratio_max = np.max(np.abs(flat_fort)) / np.max(np.abs(flat_ocl))
+
+        # Add stats to plot
         fig.text(0.5, 0.02, f"z={z_height}Å | Fortran: [{psi_fort.min():.3f}, {psi_fort.max():.3f}] | "
-                           f"OpenCL: [{psi_ocl.min():.3f}, {psi_ocl.max():.3f}] | Corr: {corr:.3f}",
+                           f"OpenCL: [{psi_ocl.min():.3f}, {psi_ocl.max():.3f}] | Corr: {corr:.3f} | Scale: {scale_linreg:.3f}",
                  ha='center', fontsize=10)
+
+        # Store results for summary
+        scaling_results.append({
+            'mo_label': mo_label,
+            'mo_idx': mo_idx,
+            'corr': corr,
+            'scale_linreg': scale_linreg,
+            'scale_ratio_mean': scale_ratio_mean,
+            'scale_ratio_std': scale_ratio_std,
+            'scale_ratio_max': scale_ratio_max,
+            'fort_min': psi_fort.min(),
+            'fort_max': psi_fort.max(),
+            'ocl_min': psi_ocl.min(),
+            'ocl_max': psi_ocl.max()
+        })
         
         plt.tight_layout(rect=[0, 0.03, 1, 0.97])
         
@@ -395,6 +574,58 @@ Examples:
     
     plt.close('all')
     print(f"\nAll plots saved to: {export_dir}")
+
+    # Write scaling summary to file
+    summary_file = os.path.join(export_dir, 'scaling_summary.txt')
+    with open(summary_file, 'w') as fsum:
+        fsum.write("=" * 80 + "\n")
+        fsum.write("SCALING ANALYSIS: Fortran vs OpenCL\n")
+        fsum.write("=" * 80 + "\n\n")
+
+        fsum.write(f"{'MO':<8} {'Label':<10} {'Corr':>8} {'Scale_LR':>10} {'Scale_Mean':>10} {'Scale_Std':>10} {'Scale_Max':>10}\n")
+        fsum.write("-" * 80 + "\n")
+
+        for r in scaling_results:
+            fsum.write(f"{r['mo_idx']:<8} {r['mo_label']:<10} {r['corr']:>8.4f} {r['scale_linreg']:>10.4f} "
+                      f"{r['scale_ratio_mean']:>10.4f} {r['scale_ratio_std']:>10.4f} {r['scale_ratio_max']:>10.4f}\n")
+
+        fsum.write("\n" + "=" * 80 + "\n")
+        fsum.write("SCALING FACTOR INTERPRETATION:\n")
+        fsum.write("-" * 80 + "\n")
+        fsum.write("Scale_LR:    Linear regression scale (psi_fort ≈ scale * psi_ocl)\n")
+        fsum.write("Scale_Mean:  Ratio of mean absolute values\n")
+        fsum.write("Scale_Std:   Ratio of standard deviations\n")
+        fsum.write("Scale_Max:   Ratio of max absolute values\n")
+        fsum.write("\nExpected: If agreement is perfect, all scales ≈ 1.0\n")
+        fsum.write("If scales differ consistently, there's a systematic scaling factor.\n")
+
+        # Compute average scale across all orbitals
+        avg_scale_linreg = np.mean([r['scale_linreg'] for r in scaling_results])
+        std_scale_linreg = np.std([r['scale_linreg'] for r in scaling_results])
+        avg_corr = np.mean([r['corr'] for r in scaling_results])
+
+        fsum.write("\n" + "=" * 80 + "\n")
+        fsum.write("SUMMARY STATISTICS:\n")
+        fsum.write("-" * 80 + "\n")
+        fsum.write(f"Average correlation: {avg_corr:.4f}\n")
+        fsum.write(f"Average scale (linear reg): {avg_scale_linreg:.4f} ± {std_scale_linreg:.4f}\n")
+
+        # Check for s vs p orbital scaling differences
+        s_orbitals = [r for r in scaling_results if '_s' in r['mo_label']]
+        p_orbitals = [r for r in scaling_results if any(x in r['mo_label'] for x in ['px', 'py', 'pz'])]
+
+        if s_orbitals and p_orbitals:
+            avg_s = np.mean([r['scale_linreg'] for r in s_orbitals])
+            avg_p = np.mean([r['scale_linreg'] for r in p_orbitals])
+            fsum.write(f"\nAverage scale for s-orbitals: {avg_s:.4f}\n")
+            fsum.write(f"Average scale for p-orbitals: {avg_p:.4f}\n")
+            fsum.write(f"Ratio s/p: {avg_s/avg_p:.4f}\n")
+
+        fsum.write("\n" + "=" * 80 + "\n")
+
+    print(f"\nScaling summary written to: {summary_file}")
+    print(f"Average correlation: {avg_corr:.4f}")
+    print(f"Average scale (Fortran/OpenCL): {avg_scale_linreg:.4f} ± {std_scale_linreg:.4f}")
 
 if __name__ == "__main__":
     main()

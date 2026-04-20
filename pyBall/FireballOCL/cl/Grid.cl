@@ -62,30 +62,26 @@ float evaluate_radial(
     if (ish < 0) return 0.0f;
     if (ish >= max_shells) return 0.0f;
     if (r >= (n_nodes - 1) * dr) return 0.0f;
-    float x = r / dr;
-    int i = (int)x;
-    float t = x - i;
-    
-    // index: [ityp][ish][node]
-    int base = (ityp * max_shells + ish) * n_nodes;
-    
-    int i0 = max(0, i - 1);
-    int i1 = i;
-    int i2 = min(n_nodes - 1, i + 1);
-    int i3 = min(n_nodes - 1, i + 2);
-    
-    float y0 = basis_data[base + i0];
-    float y1 = basis_data[base + i1];
-    float y2 = basis_data[base + i2];
-    float y3 = basis_data[base + i3];
-    
-    // Catmull-Rom spline
-    float a = -0.5f * y0 + 1.5f * y1 - 1.5f * y2 + 0.5f * y3;
-    float b = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
-    float c = -0.5f * y0 + 0.5f * y2;
-    float d = y1;
-    
-    return ((a * t + b) * t + c) * t + d;
+    // NOTE: basis_data is packed as float2 per node: (wf, wf_spline_second_derivative)
+    const __global float2* basis2 = (const __global float2*)basis_data;
+
+    const float x = r / dr;
+    int i = (int)floor(x);
+    if (i < 0) i = 0;
+    if (i > (n_nodes - 2)) i = (n_nodes - 2);
+    const float t = x - (float)i;
+
+    // interval [i, i+1]
+    const int base = (ityp * max_shells + ish) * n_nodes;
+    const float2 lo = basis2[base + i];
+    const float2 hi = basis2[base + i + 1];
+
+    const float a = 1.0f - t;
+    const float b = t;
+    // Fortran getpsi(): psi = a*ylo + b*yhi + ((a^3-a)*d2lo + (b^3-b)*d2hi)*(h^2)/6
+    const float h2_6 = (dr * dr) * (1.0f/6.0f);
+    const float corr = ((a*a*a - a) * lo.y + (b*b*b - b) * hi.y) * h2_6;
+    return a * lo.x + b * hi.x + corr;
 }
 
 __kernel void project_density_sparse(
@@ -680,4 +676,56 @@ __kernel void project_orbital(
 
         out_grid[g_idx] = psi;
     }
+}
+
+// ============================================================================
+// Orbital projection at arbitrary points (debugging parity with Fortran orb2points)
+// Computes ψ(p_k) = Σ_atoms Σ_orb C_{atom,orb} φ_{atom,orb}(p_k)
+// Coeff convention: [px, py, pz, s] per atom (float4)
+// basis_data: packed as float2 per node (wf, wf_spline second derivative)
+// ============================================================================
+__kernel void project_orbital_points(
+    const int n_points,
+    __global const float4* points,    // [n_points] xyz
+    __global const AtomData* atoms,   // [natoms]
+    const int natoms,
+    __global const float* coeffs,     // [natoms*4] packed as float4
+    __global const float* basis_data,
+    const int n_nodes,
+    const float dr_basis,
+    const int max_shells,
+    __global float* out_psi           // [n_points]
+) {
+    const int ip = get_global_id(0);
+    if (ip >= n_points) return;
+
+    const float3 p = points[ip].xyz;
+    float psi = 0.0f;
+
+    for (int ia = 0; ia < natoms; ia++) {
+        const AtomData ad = atoms[ia];
+        float3 d = p - ad.pos_rcut.xyz;
+        const float r2 = dot(d, d);
+        const float rcut2 = ad.pos_rcut.w * ad.pos_rcut.w;
+        if (r2 > rcut2) continue;
+        const float r = sqrt(r2);
+
+        const float rs = evaluate_radial(r, ad.type, 0, basis_data, n_nodes, dr_basis, max_shells);
+        const float rp = evaluate_radial(r, ad.type, 1, basis_data, n_nodes, dr_basis, max_shells);
+        const float invr = 1.0f / (r + 1e-12f);
+        const float3 rhat = d * invr;
+
+        const float4 basis_val = (float4)(
+            rp * rhat.x * PREF_P,
+            rp * rhat.y * PREF_P,
+            rp * rhat.z * PREF_P,
+            rs * PREF_S
+        );
+
+        const int coeff_base = ia * 4;
+        const float4 c = ((const __global float4*)(coeffs))[coeff_base / 4];
+        psi += dot(c, basis_val);
+    }
+
+    out_psi[ip] = psi;
 }
