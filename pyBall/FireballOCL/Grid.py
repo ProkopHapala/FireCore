@@ -325,7 +325,11 @@ class GridProjector(OpenCLBase):
         Partition the grid into tasks (active blocks).
         """
         nx, ny, nz = grid_spec['ngrid'][:3]
-        n_blocks = (nx // block_res, ny // block_res, nz // block_res)
+        n_blocks = (
+            (int(nx) + block_res - 1) // block_res,
+            (int(ny) + block_res - 1) // block_res,
+            (int(nz) + block_res - 1) // block_res,
+        )
         
         tasks = []
         atom_pos = atoms['pos']
@@ -658,6 +662,187 @@ class GridProjector(OpenCLBase):
         self.queue.finish()
 
         out = np.empty(len(points), dtype=np.float32)
+        cl.enqueue_copy(self.queue, out, d_out)
+        self.queue.finish()
+        return out
+
+    def project_orbital_points_exp(self, points, coeffs, norb_per, atoms_dict, beta=1.0, r0=3.0, _debug_Fortran_order=False):
+        """Evaluate a single orbital at arbitrary points using exponential radial decay.
+
+        Uses OpenCL kernel `project_orbital_points_exp` from `cl/Grid.cl`.
+
+        Args:
+            points: (n_points,3) float32/float64 positions in Angstrom
+            coeffs: (natoms,4) coefficients in [px,py,pz,s] order (or Fortran order if _debug_Fortran_order=True)
+            norb_per: (natoms,) number of orbitals per atom
+            atoms_dict: dict with 'pos','Rcut','type'
+            beta, r0: exp(-beta*(r-r0)) parameters
+        Returns:
+            psi: (n_points,) float32
+        """
+        import numpy as np
+        points = np.asarray(points, dtype=np.float32)
+        if points.ndim != 2 or points.shape[1] != 3:
+            raise ValueError(f"project_orbital_points_exp: points must be (n,3), got {points.shape}")
+        natoms = len(atoms_dict['pos'])
+
+        # Pack coefficients exactly like project_orbital_points
+        numorb_max = 4
+        coeffs_flat = np.zeros(natoms * numorb_max, dtype=np.float32)
+        _ORT_SPP_TO_OCL = np.array([3, 1, 2, 0], dtype=np.int32)  # [s,py,pz,px] -> [px,py,pz,s]
+        for ia in range(natoms):
+            i0 = ia * numorb_max
+            no = int(norb_per[ia])
+            if _debug_Fortran_order and (no == 4):
+                coeffs_flat[i0:i0+4] = coeffs[ia, :4][_ORT_SPP_TO_OCL]
+            else:
+                coeffs_flat[i0:i0+4] = coeffs[ia, :4]
+
+        atom_data = np.zeros(natoms, dtype=[
+            ('pos_rcut', 'f4', 4),
+            ('type', 'i4'),
+            ('i0orb', 'i4'),
+            ('norb', 'i4'),
+            ('pad', 'i4')
+        ])
+        for ia in range(natoms):
+            atom_data[ia]['pos_rcut'][:3] = atoms_dict['pos'][ia]
+            atom_data[ia]['pos_rcut'][3]  = atoms_dict['Rcut'][ia]
+            Z = int(atoms_dict['type'][ia])
+            if Z not in self.basis_meta['nz_map']:
+                raise RuntimeError(f"project_orbital_points_exp: species nz={Z} not loaded; loaded={list(self.basis_meta['nz_map'].keys())}")
+            atom_data[ia]['type'] = int(self.basis_meta['nz_map'][Z])
+            atom_data[ia]['norb'] = int(norb_per[ia])
+            atom_data[ia]['i0orb'] = ia * numorb_max
+
+        mf = cl.mem_flags
+        d_points = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=np.c_[points, np.zeros((len(points),1),np.float32)].astype(np.float32))
+        d_atoms  = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
+        d_coeffs = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=coeffs_flat)
+        d_out    = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=len(points)*4)
+
+        self._load_kernels()
+
+        gs = (int(len(points)),)
+        ls = None
+        self.prg.project_orbital_points_exp(
+            self.queue, gs, ls,
+            np.int32(len(points)),
+            d_points,
+            d_atoms,
+            np.int32(natoms),
+            d_coeffs,
+            np.float32(beta),
+            np.float32(r0),
+            d_out
+        )
+        self.queue.finish()
+
+        out = np.empty(len(points), dtype=np.float32)
+        cl.enqueue_copy(self.queue, out, d_out)
+        self.queue.finish()
+        return out
+
+    def response_amplitude_exp(
+        self, points, atoms_dict_s, norb_per_s, starts_s,
+        v, G0, E, eta, E_tip=0.0,
+        beta=1.0, r0=3.0, A_ss=-1.0, A_sp=-1.0, rcut=20.0
+    ):
+        """GPU-accelerated response amplitude map via OpenCL kernel `response_amplitude_exp`.
+
+        Precompute on CPU:
+            A_ss = (E + i*eta) * S_s - H_s
+            G0 = inv(A_ss)            # complex (ns, ns)
+            v  = C_MO^T @ G0          # complex (ns,)
+
+        GPU kernel builds coupling a_st = (E+iη)S_ts - H_ts per grid point
+        and computes resp = |v·a_st^H|^2 / |(E+iη-E_tip) - a_st·G0·a_st^H|^2.
+
+        Args:
+            points:      (npts, 3) float32 tip positions
+            atoms_dict_s: dict with 'pos', 'Rcut', 'type' for sample atoms
+            norb_per_s:  (natoms_s,) orbital counts
+            starts_s:    (natoms_s+1,) orbital offsets (cumsum)
+            v:           (ns,) complex64/128 precomputed v = C^T G0
+            G0:          (ns, ns) complex64/128 precomputed Green's function
+            E, eta:      float energy and broadening
+            E_tip:       float tip onsite energy
+            beta, r0, A_ss, A_sp, rcut: exponential SK parameters
+
+        Returns:
+            resp: (npts,) float32 response amplitudes
+        """
+        import numpy as np
+        import pyopencl as cl
+
+        points = np.asarray(points, dtype=np.float32)
+        if points.ndim != 2 or points.shape[1] != 3:
+            raise ValueError(f"points must be (n,3), got {points.shape}")
+        npts = len(points)
+        natoms_s = len(atoms_dict_s['pos'])
+        ns = int(starts_s[-1])
+        if ns > 256:
+            raise ValueError(f"ns={ns} > 256 kernel private array limit")
+
+        v = np.asarray(v, dtype=np.complex64)
+        G0 = np.asarray(G0, dtype=np.complex64)
+        starts_s = np.asarray(starts_s, dtype=np.int32)
+
+        atom_data = np.zeros(natoms_s, dtype=[
+            ('pos_rcut', 'f4', 4),
+            ('type', 'i4'),
+            ('i0orb', 'i4'),
+            ('norb', 'i4'),
+            ('pad', 'i4')
+        ])
+        for ia in range(natoms_s):
+            atom_data[ia]['pos_rcut'][:3] = atoms_dict_s['pos'][ia]
+            atom_data[ia]['pos_rcut'][3] = atoms_dict_s['Rcut'][ia]
+            Z = int(atoms_dict_s['type'][ia])
+            if Z not in self.basis_meta['nz_map']:
+                raise RuntimeError(f"response_amplitude_exp: species nz={Z} not loaded")
+            atom_data[ia]['type'] = int(self.basis_meta['nz_map'][Z])
+            atom_data[ia]['norb'] = int(norb_per_s[ia])
+            atom_data[ia]['i0orb'] = int(starts_s[ia])
+
+        mf = cl.mem_flags
+        d_points = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR,
+                             hostbuf=np.c_[points, np.zeros((npts, 1), np.float32)].astype(np.float32))
+        d_atoms = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
+        d_starts = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=starts_s)
+        d_vre = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=v.real.astype(np.float32))
+        d_vim = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=v.imag.astype(np.float32))
+        d_G0re = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=G0.real.astype(np.float32).ravel())
+        d_G0im = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=G0.imag.astype(np.float32).ravel())
+        d_out = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=npts * 4)
+
+        self._load_kernels()
+
+        gs = (int(npts),)
+        ls = None
+        self.prg.response_amplitude_exp(
+            self.queue, gs, ls,
+            np.int32(npts),
+            d_points,
+            np.int32(natoms_s),
+            d_atoms,
+            d_starts,
+            np.int32(ns),
+            d_vre, d_vim,
+            d_G0re, d_G0im,
+            np.float32(float(E)),
+            np.float32(float(eta)),
+            np.float32(float(E_tip)),
+            np.float32(float(beta)),
+            np.float32(float(r0)),
+            np.float32(float(A_ss)),
+            np.float32(float(A_sp)),
+            np.float32(float(rcut)),
+            d_out
+        )
+        self.queue.finish()
+
+        out = np.empty(npts, dtype=np.float32)
         cl.enqueue_copy(self.queue, out, d_out)
         self.queue.finish()
         return out

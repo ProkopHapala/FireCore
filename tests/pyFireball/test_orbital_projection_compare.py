@@ -34,26 +34,16 @@ from pyBall.FireballOCL.STM_utils import (
 
 def main():
     parser = argparse.ArgumentParser(description="Compare Fortran vs OpenCL orbital projection")
-    parser.add_argument("--xyz", default="../../cpp/common_resources/xyz/PTCDA.xyz",
-                       help="Path to XYZ file")
-    parser.add_argument("--mo", type=int, default=None,
-                       help="MO index (1-based). If None, use HOMO")
-    parser.add_argument("--orbitals", type=str, default=None,
-                       help='MO indices to compare: "0,1,2" or "0-5". If None, uses --mo or HOMO')
-    parser.add_argument("--z", type=float, default=1.0,
-                       help="Height above molecular plane for projection (Å)")
-    parser.add_argument("--size", type=float, default=20.0,
-                       help="Grid size in Å")
-    parser.add_argument("--n", type=int, default=80,
-                       help="Grid resolution (nx=ny=n)")
-    parser.add_argument("--nmax_scf", type=int, default=200,
-                       help="Max SCF iterations")
-    parser.add_argument("--verbosity", type=int, default=0,
-                       help="Fireball verbosity")
-    parser.add_argument("--outdir", default="export/orbital_projection_compare",
-                       help="Output directory")
-    parser.add_argument("--save-npz", action="store_true",
-                       help="Save numerical data to .npz file")
+    parser.add_argument("--xyz",                  default="../../cpp/common_resources/xyz/PTCDA.xyz", help="Path to XYZ file")
+    parser.add_argument("--mo",       type=int,   default=None, help="MO index (1-based). If None, use HOMO")
+    parser.add_argument("--orbitals", type=str,   default=None, help='MO indices to compare: "0,1,2" or "0-5". If None, uses --mo or HOMO')
+    parser.add_argument("--z",        type=float, default=1.0,  help="Height above molecular plane for projection (Å)")
+    parser.add_argument("--size",     type=float, default=20.0, help="Grid size in Å")
+    parser.add_argument("--n",        type=int,   default=80,   help="Grid resolution (nx=ny=n)")
+    parser.add_argument("--nmax_scf", type=int,   default=200,  help="Max SCF iterations")
+    parser.add_argument("--verbosity",type=int,   default=0,    help="Fireball verbosity")
+    parser.add_argument("--outdir",               default="export/orbital_projection_compare",  help="Output directory")
+    parser.add_argument("--save-npz", action="store_true", help="Save numerical data to .npz file")
     args = parser.parse_args()
 
     export_dir = set_export_dir(args.outdir)

@@ -123,8 +123,6 @@ OK, this is good we are on the same page. Now please clarify few things:
 
 This is where the transition from "standard physics formulas" to "efficient GPU implementation" happens. Let’s clarify these two points rigorously.
 
----
-
 ### 1. Clarification of Indices and Sets
 
 In the expression for Transmission $T(E)$:
@@ -143,8 +141,6 @@ $$T(E) = \sum_{\mu, \mu' \in \mathbb{T}} \sum_{\nu, \nu' \in \mathbb{S}} A_{\mu\
 If we assume the molecules are large and the electronic states are somewhat localized or that cross-terms average out, we discard $\mu \neq \mu'$ and $\nu \neq \nu'$. This simplifies the 4-index sum into a 2-index sum:
 $$T(E) \approx \sum_{\mu \in \mathbb{T}} \sum_{\nu \in \mathbb{S}} \text{PDOS}_\mu^T(E) \cdot |V_{\mu\nu}|^2 \cdot \text{PDOS}_\nu^S(E)$$
 This is what allows the GPU to scale linearly with the number of atoms.
-
----
 
 ### 2. The Overlap vs. Kinetic Energy (and Chen’s Rules)
 
@@ -176,8 +172,6 @@ In the vacuum gap, the potential $V_{eff}$ is roughly constant (and high). There
 #### The "Wolfsberg-Helmholz" (WH) vs. LCAO tables:
 *   The **WH approximation** ($H_{\mu\nu} \approx k S_{\mu\nu} \frac{H_{\mu\mu}+H_{\nu\nu}}{2}$) is a shortcut. It works okay for qualitative chemistry, but it can fail in STM because it forces the hopping to have the exact same spatial decay as the overlap.
 *   **The Fireball Way:** Fireball uses pre-computed Slater-Koster tables for $H_{\mu\nu}(r)$. Since you are already using Fireball, the most consistent way is to use those same tables for your perturbative $V_{\mu\nu}$ on the GPU.
-
----
 
 ### 3. Final Rigorous Prescription for the "Fast" Mode
 
@@ -294,6 +288,100 @@ To avoid running Fireball at every MD step:
 ### Critique of the "Overlap" approach for Phase 1:
 To be concrete: **Use the $H_{\mu\nu}$ (hopping) from Fireball, not the overlap $S_{\mu\nu}$.**
 The overlap $S_{\mu\nu}$ between two $p_z$ orbitals decays differently than the kinetic energy coupling. Since Fireball already provides the $H_{\mu\nu}$ tables for your specific basis set, using them ensures that the perturbative "Fast" mode is mathematically the first-order limit of the "Full" Fireball calculation.
+
+---
+
+# USER
+
+sorry I'm idiot! it is obvious that at z=10. the orbital projection and orbital overlap with true basis must be zero. So the results are OK.
+
+Now we should procede to the second method - the respose amplitude and put it there for comparison as other 2 panesl (perhsps use 2x3 layout of panels for the figure)
+
+this response method should use either true overlap and or the extended exp overlep but but it should compute the response by solving Ax=b on GPU by iterative linear scaling method 
+where A=(E-H) and b is the tip wavefucntion, and x is the response in the sample space. Is that clear plese formulate it more rigorously before you start coding, and then implemeted it in pyOpenCL frameworks using same convention and slater koster integrals as we used for orbital overlap. 
+
+---
+
+# Kimi 2.6
+
+## Rigorous Formulation: STM Response Amplitude Method
+
+**System:** Tip (1 atom, 1 s-orbital) + Sample (N atoms, Nₛ orbitals)
+
+**Combined matrices at tip position r:**
+$$H(r) = \begin{bmatrix} E_{\text{tip}} & H_{ts}^T(r) \\ H_{ts}(r) & H_s \end{bmatrix}, \quad S(r) = \begin{bmatrix} 1 & S_{ts}^T(r) \\ S_{ts}(r) & S_s \end{bmatrix}$$
+
+**Response equation at energy E (MO energy):**
+$$A(E,r) \, x = b, \quad A(E,r) = (E+i\eta)S(r) - H(r), \quad b = [1, 0, \ldots, 0]^T$$
+
+**Block structure:**
+$$A = \begin{bmatrix} a_{tt} & a_{ts}^T \\ a_{st} & A_{ss} \end{bmatrix}, \quad a_{tt} = E+i\eta-E_{\text{tip}}, \quad a_{st} = (E+i\eta)S_{ts} - H_{ts}$$
+
+**Precompute sample Green's function (once per MO energy):**
+$$G_0(E) = A_{ss}^{-1} = [(E+i\eta)S_s - H_s]^{-1}$$
+
+**Block Gaussian elimination (Dyson):**
+$$x_{\text{tip}} = \frac{1}{a_{tt} - a_{st}^T G_0 a_{st}}, \quad x_s = -G_0 a_{st} \, x_{\text{tip}}$$
+
+**STM amplitude (MO-projected):**
+$$t_{\text{resp}}(r; E) = \left| C_{\text{MO}}^T \cdot x_s \right|^2 = \left| x_{\text{tip}} \right|^2 \left| C_{\text{MO}}^T G_0 a_{st} \right|^2$$
+
+This is **O(Nₛ)** per grid point (not O(Nₛ³)), making GPU parallelization natural.
+
+**Two coupling models:**
+- **True basis:** Hₜₛ, Sₜₛ from Fireball tables ([build_inter_system_blocks_fdata](cci:1://file:///home/prokop/git/FireCore/pyBall/FireballOCL/STM.py:467:0-536:24))
+- **Exp overlap:** Hₜₛ, Sₜₛ from exponential SK ([build_inter_system_blocks_exp_sk](cci:1://file:///home/prokop/git/FireCore/pyBall/FireballOCL/STM.py:598:0-641:24))
+
+**GPU Implementation Plan:**
+1. Precompute G₀(E), v = Cₘₒᵀ G₀ on CPU
+2. OpenCL kernel: each thread → one grid point
+   - Build aₛₜ = (E+iη)Sₜₛ - Hₜₛ (sparse, atoms within rcut)
+   - Compute scalar products: `v·aₛₜ`, `aₛₜᵀ·G₀·aₛₜ`
+   - Compute tᵣₑₛₚ = |xₜᵢₚ|² |v·aₛₜ|²
+
+**Output:** 2×3 figure per MO:
+- Row 1: Orbital projection ψ(r) | True overlap ψ(r) | Exp overlap ψ(r)
+- Row 2: Response (true coupling) | Response (exp coupling) | [reserved]
+
+Is this formulation correct? Should I proceed with OpenCL kernel implementation?
+
+---
+
+# USER
+
+What you implemented does not seem to be good. It does not make sense do do detailed test before we whave correct at least one picture. And from what I see the Greens Function reponses for PTCDA are TOTAL GARBAGE! These do not even respect the symmetry of the molecule. 
+
+
+I think (no sure but it is most probable) that the problem is that you do not map the fireball hamoltionian on the atom properly. You need to understand the strucutre of Hmat in Fireball perfectly (There is sparse and dense version). So you read fireball hamiltonian in sparse version. map it to atoms and then compute the response. 
+
+Since we are still in testing on how to correctly compute response, lets forget about the tip for the momet, we can just take hamiltoanian, invert it and compute denisty of states projected on points for given orbital. Basically we can have two set of images 
+1) moleculer orbitals
+2) density of states obtained from inverted hamiltonian at given energy (corsponsing to energy of given orbital to make it easi to compare.) For starter tles do it for H2O as that is much more easy to analyse (we can print full hamiltonian as it has size only 6x6 for H2O 4basis function on O and 1 and 1 for H)
+
+Most importaint in this job is perfectly unrestand how h_mat and s_mat in Fireball is represented, look carefully on 
+
+firecore_get_HS_sparse
+firecore_get_HS_neighsPP
+firecore_get_HS_neighs
+firecore_get_HS_dims
+
+in 
+@libFireCore.f90 
+
+definitely in 
+/home/prokop/git/FireCore/tests/pyFireball/
+we have some script using it.
+
+Make detailed analysis of this notes hot it is how the maping works, and then plan how to implement this test
+
+Expected results is to have pair of panels in figure for each orbital 
+1) orbital (with sign BWR) in given z-plane z=2.0A above molecule plan
+2) desnity of states projected on same points (plane)
+
+do this first for H2O, and then for PTCDA,
+
+let me know where it is I must check if the DOS have proper symmetry of the orbital
+
 
 ---
 
@@ -473,8 +561,6 @@ This section provides a concrete implementation plan using the existing FireCore
 - Data layout: `[n_replicas][n_atoms][...]` for all arrays
 - This enables 5000+ junctions evaluated in parallel on GPU
 
----
-
 ### Phase 1: Rigid Scan (Validation)
 
 **Goal:** Reproduce orbital-symmetry-resolved STM images without MD, validate against full Fireball.
@@ -520,8 +606,6 @@ This section provides a concrete implementation plan using the existing FireCore
 - Kernel: `pyBall/FireballOCL/cl/spectral_function.cl`
 - Host: `pyBall/FireballOCL/OCL_Spectral.py`
 - Test: `tests/pyFireball/test_spectral_function.py`
-
----
 
 #### Kernel 1.2: GPU Slater-Koster Hopping
 
@@ -573,8 +657,6 @@ This section provides a concrete implementation plan using the existing FireCore
 - Host: `pyBall/FireballOCL/OCL_Transport.py`
 - Test: `tests/pyFireball/test_slater_koster.py`
 
----
-
 #### Kernel 1.3: GPU Transmission Calculation
 
 **Purpose:** Compute T(E) = Σ_μν A_μ^T(E) |V_μν|² A_ν^S(E) for all replicas
@@ -617,8 +699,6 @@ This section provides a concrete implementation plan using the existing FireCore
 - Host: `pyBall/FireballOCL/OCL_Transport.py` (extend)
 - Test: `tests/pyFireball/test_stm_rigid_scan.py`
 
----
-
 #### Kernel 1.4: Multi-Replica Batch Processing
 
 **Purpose:** Process N_replicas junctions in parallel (for production MD integration)
@@ -654,8 +734,6 @@ This section provides a concrete implementation plan using the existing FireCore
 **Files:**
 - Extend existing kernels to support replica dimension
 - Test: `tests/pyFireball/test_multi_replica.py`
-
----
 
 ### Phase 2: Static PDOS MD (Fast Dynamics)
 
@@ -698,8 +776,6 @@ This section provides a concrete implementation plan using the existing FireCore
 - Host: `pyBall/FireballOCL/OCL_Transport.py` (extend)
 - Test: `tests/pyFireball/test_pdos_rotation.py`
 
----
-
 #### Integration with FireCore MD
 
 **Purpose:** Call GPU transport kernel at each MD step
@@ -738,8 +814,6 @@ This section provides a concrete implementation plan using the existing FireCore
 **Files:**
 - Script: `tests/pyFireball/test_stm_md.py`
 - Production: integrate into FireCore MD (separate task)
-
----
 
 ### Phase 3: Soft-Mode Expansion (Accuracy)
 
@@ -808,8 +882,6 @@ This section provides a concrete implementation plan using the existing FireCore
 - Script: `tools/compute_normal_modes.py`
 - Script: `tools/compute_pdos_derivatives.py`
 
----
-
 #### Integration with MD
 
 **Purpose:** Project MD trajectory onto normal modes and use Taylor expansion
@@ -843,8 +915,6 @@ This section provides a concrete implementation plan using the existing FireCore
 **Files:**
 - Script: `tests/pyFireball/test_stm_soft_modes.py`
 
----
-
 ## Summary of Required GPU Kernels
 
 ### New Kernels to Create:
@@ -876,8 +946,6 @@ This section provides a concrete implementation plan using the existing FireCore
 
 1. **Grid Projection** (`Grid.cl`) - for PDOS visualization
 2. **Slater-Koster Rotation** (`hamiltonian.cl`) - reference for hopping computation
-
----
 
 ## Testing Strategy Summary
 
@@ -925,8 +993,6 @@ Integration Tests (per phase):
     ├── test_normal_modes.py
     └── test_stm_soft_modes.py
 ```
-
----
 
 ## Data Flow Diagram (Multi-Replica)
 
@@ -1695,8 +1761,6 @@ now write the plan and implementation notes for this critical testing step.
 
 # SWE-1.6
 
-
-
 # Plan: Basic STM Test at HOMO Energy
 
 ## Test Definition
@@ -1716,8 +1780,6 @@ now write the plan and implementation notes for this critical testing step.
   4. Projected density of states (PDOS) at HOMO energy
 
 **Expected Outcome:** All methods should produce similar maps that visually resemble the HOMO orbital shape.
-
----
 
 ## Implementation Plan
 
@@ -1764,8 +1826,6 @@ def set_export_dir(export_dir):
 - No Python loops, use NumPy operations
 - Clear docstrings with theory background
 - Handle both matplotlib axes and standalone figures
-
----
 
 ### Step 2: Implement Float4 Per Atom Conversion
 
@@ -1829,8 +1889,6 @@ def convert_to_float4_per_atom(H, S, atomTypes, norb_per):
 - Preserve Hermiticity: H4[j,i] = H4[i,j].T
 - Validate: check that diagonal blocks are reasonable
 
----
-
 ### Step 3: Set Up Single H Atom Tip
 
 **Problem:** Current tip is H2 (2 atoms), need single H atom with s-orbital only.
@@ -1848,8 +1906,6 @@ tip_pos = np.array([[0.0, 0.0, 0.0]])  # Single atom at origin
 - H atom in Fireball: 1 orbital (s only)
 - float4 format: [s, 0, 0, 0] (px, py, pz padded with zeros)
 - This maintains compatibility with float4 structure while being physically correct
-
----
 
 ### Step 4: Identify HOMO Energy
 
@@ -1892,8 +1948,6 @@ def find_homo_index(eps, nelec_per_atom=None):
 homo_idx, homo_energy = find_homo_index(smp['eps'])
 print(f"HOMO: index={homo_idx}, energy={homo_energy:.4f} eV")
 ```
-
----
 
 ### Step 5: Create Test Script `test_stm_homo.py`
 
@@ -2000,33 +2054,21 @@ if __name__ == "__main__":
 - No Python loops over orbitals, only over grid points (unavoidable)
 - Clear comments with equations at each computation step
 
----
-
 ## Identified Problems in Current Code
 
 ### 1. Data Structure Mismatch
 
 **Problem:** Fireball uses variable orbitals per atom, but we need float4 structure.
-
 **Impact:** Cannot directly interface with GridFF/OCL_Hamiltonian float4 format.
-
 **Solution:** Implement `convert_to_float4_per_atom()` as described above.
-
 **Priority:** HIGH - blocks all subsequent work.
-
----
 
 ### 2. Missing HOMO Identification
 
 **Problem:** No function to identify HOMO from eigenvalues.
-
 **Impact:** Cannot tune energy to HOMO for test.
-
 **Solution:** Implement `find_homo_index()` as described above.
-
 **Priority:** HIGH - required for test.
-
----
 
 ### 3. Tip Geometry
 
@@ -2038,43 +2080,26 @@ if __name__ == "__main__":
 
 **Priority:** HIGH - required for test.
 
----
-
 ### 4. Orbital Padding
 
 **Problem:** H atom has only s-orbital, need to pad p-orbitals.
-
 **Impact:** float4 structure requires exactly 4 values per atom.
-
 **Solution:** `convert_to_float4_per_atom()` handles padding with zeros.
-
 **Priority:** HIGH - handled by Step 2.
-
----
 
 ### 5. Plotting Functions Scattered
 
 **Problem:** Plotting functions are in STM.py, not consolidated.
-
 **Impact:** Code duplication, harder to maintain.
-
 **Solution:** Create STM_utils.py as described in Step 1.
-
 **Priority:** MEDIUM - not blocking, but good practice.
-
----
 
 ### 6. PDOS Projection to Real Space
 
 **Problem:** Need to project PDOS to xy plane at constant z for comparison.
-
 **Impact:** Cannot visualize PDOS as 2D map.
-
 **Solution:** Use existing GridProjector from pyBall/FireballOCL/Grid.py.
-
 **Priority:** MEDIUM - can use existing infrastructure.
-
----
 
 ### 7. Grid Evaluation Performance
 
@@ -2087,8 +2112,6 @@ if __name__ == "__main__":
 - Later: vectorize with NumPy or port to OpenCL
 
 **Priority:** LOW - acceptable for basic test, optimize later.
-
----
 
 ## Mathematical Equations Summary
 
@@ -2119,8 +2142,6 @@ A_μ(E) = (1/π) Im[G^r_μμ(E)]
 ```
 Project to real space: ρ(r, E) = Σ_μ A_μ(E) |φ_μ(r)|²
 
----
-
 ## Implementation Order
 
 1. **Create STM_utils.py** - Extract plotting functions
@@ -2128,8 +2149,6 @@ Project to real space: ρ(r, E) = Σ_μ A_μ(E) |φ_μ(r)|²
 3. **Create H atom tip DOS** - Run stm_compute_dos.py for single H
 4. **Create test script** - `test_stm_homo.py` with all methods
 5. **Run and validate** - Check that all methods produce HOMO-like maps
-
----
 
 ## Success Criteria
 
@@ -2141,3 +2160,569 @@ Project to real space: ρ(r, E) = Σ_μ A_μ(E) |φ_μ(r)|²
 6. All functions have clear docstrings with equations
 
 Plan complete. Ready for your feedback or approval to proceed with implementation.
+
+---
+
+## File Structure and Pipeline Documentation
+
+### Overview
+
+The STM simulation pipeline spans multiple layers: Fortran quantum backend, OpenCL GPU acceleration, Python wrappers, and user-facing test scripts.
+
+### Layer 1: Fortran Quantum Backend (Fireball)
+
+**Location:** `fortran/`
+
+**Key Files:**
+- `fortran/MAIN/libFireCore.f90` - C bindings for Python interface
+  - `firecore_set_wfcoef()` - Set orbital coefficients for debugging
+  - `firecore_print_orb_coefs()` - Debug print of MO coefficients
+  - `firecore_get_wfcoef()` - Extract MO coefficients from bbnkre
+  - `firecore_get_HS_dims()` - Get Hamiltonian dimensions
+  - `firecore_get_HS_neighs()` - Get neighbor information
+  - `firecore_get_HS_sparse()` - Extract sparse H/S matrices
+
+- `fortran/GRID/project_orb.f90` - Orbital projection to real-space grids
+  - `project_orb_points()` - Evaluate MO at arbitrary 3D points
+  - Uses spherical harmonics (getYlm) and radial functions (getpsi)
+
+- `fortran/INTERPOLATERS/getYlm.f90` - Spherical harmonics for angular dependence
+  - Order: [py, pz, px] for p-orbitals (spherical harmonics m=-1,0,+1)
+
+- `fortran/READFILES/readinfo.f90` - Reads basis function parameters from Fdata
+
+**Data Files:**
+- `Fdata_HC_minimal/` - Fireball basis set data (download from fireball-qmd.github.io)
+- `Fdata/basis/` - Radial function tables for orbital projection
+
+### Layer 2: OpenCL GPU Backend
+
+**Location:** `pyBall/FireballOCL/`
+
+**Key Files:**
+- `pyBall/FireballOCL/STM.py` - Main STM transport module
+  - `negf_current()` - NEGF Caroli formula (direct solver)
+  - `negf_current_iterative()` - NEGF Caroli (iterative GMRES)
+  - `negf_response_at_energy()` - NEGF response metric (deterministic probe)
+  - `coupling_vec_tip_to_sample()` - Build tip→sample coupling vector
+  - `mo_overlap_amplitude()` - MO overlap (sum over states)
+  - `build_inter_system_blocks_exp_sk()` - Inter-system coupling (exponential + SK)
+  - `build_inter_system_blocks_fdata()` - Inter-system coupling (Fdata tables)
+  - `assemble_combined_HS()` - Assemble combined H/S for NEGF
+  - `compute_dos()` - Compute spectral function with Γ broadening
+  - `project_pdos_to_grid()` - Project PDOS to real-space grid
+
+- `pyBall/FireballOCL/STM_utils.py` - Utility functions
+  - `project_orbital_to_points()` - OpenCL orbital projection (exact kernel)
+  - `project_orbital_to_grid()` - Grid-based orbital projection
+  - `plot_atoms()`, `plot_2d_map()`, `plot_dos()` - Plotting helpers
+  - `compute_correlation_stats()` - Compare Fortran vs OpenCL
+  - `set_export_dir()`, `save_plot()` - Output management
+
+- `pyBall/FireballOCL/cl/Grid.cl` - OpenCL kernel for orbital projection
+  - Evaluates basis functions with angular dependence
+  - Uses normalization: PREF_S=0.282095, PREF_P=0.488603
+  - Coefficient order: [px, py, pz, s] (Cartesian)
+
+### Layer 3: Python Wrappers
+
+**Location:** `pyBall/`
+
+**Key Files:**
+- `pyBall/FireCore.py` - Python interface to Fireball Fortran library
+  - `setVerbosity()`, `initialize()`, `evalForce()` - SCF control
+  - `get_wfcoef()` - Extract MO coefficients (row-major transposed from Fortran)
+  - `get_eigen()` - Get eigenvalues
+  - `orb2points()` - Call Fortran project_orb_points
+  - `set_wfcoef()` - Set MO coefficients (debug mode)
+  - `print_orb_coefs()` - Debug print of coefficients
+
+- `pyBall/AtomicSystem.py` - Molecular structure handling
+
+### Layer 4: User Scripts and Tests
+
+**Location:** `tests/pyFireball/`
+
+**Transport Method Test Scripts:**
+
+1. **`test_stm_homo.py`** - Basic STM test at HOMO energy
+   - Purpose: Validate all three transport methods produce HOMO-like maps
+   - Uses: NEGF Caroli, NEGF Response, MO Overlap
+   - Tip: Single H atom (s-orbital only)
+   - Sample: PTCDA
+   - Output: 2x2 comparison plots in `export/stm_homo_test/`
+
+2. **`stm_analysis.py`** - Main CLI tool for STM analysis
+   - Purpose: Full-featured STM analysis with multiple scanning protocols
+   - Uses: All three transport methods (configurable via CLI)
+   - Scanning: Height scan, lateral scan, 2D xy scan
+   - Output: `export/stm_phase1/` (dos_plot.png, scan1d.png, scan1d_xy.png, stm2d.png)
+
+**DOS Precomputation Script:**
+
+3. **`stm_compute_dos.py`** - Pre-compute spectral functions
+   - Purpose: Compute DOS with Γ broadening for tip and sample
+   - Uses: `compute_dos()` from STM.py
+   - Output: .npz files with H, S, A, eps, C, geometry
+   - Required by: test_stm_homo.py, stm_analysis.py
+
+**Orbital Projection Test Scripts:**
+
+4. **`test_orbital_projection_compare.py`** - Validate orbital projection
+   - Purpose: Compare Fortran orb2points vs OpenCL project_orbital_points
+   - Uses: `project_orbital_to_points()` from STM_utils.py
+   - Tests: Any molecule (PTCDA, H2O, CH4)
+   - Output: `export/orbital_projection_compare/` (comparison plots, correlation plots)
+   - Critical for: Verifying OpenCL kernel correctness
+
+5. **`test_h2o_orbital_comparison.py`** - H2O-specific orbital tests
+   - Purpose: Detailed orbital projection debugging for H2O
+   - Features: Single-basis debug mode, eigenvalue display
+   - Output: `export/h2o_orbital_comparison/`
+
+**Documentation:**
+
+6. **`NOTES_orbital_projection_analysis.md`** - Orbital projection debugging notes
+   - Documents critical bugs and fixes
+   - Matrix storage order (column-major vs row-major)
+   - Indexing base (1-based Fortran vs 0-based Python)
+   - Sign conventions for px, py, pz orbitals
+
+### Data Flow
+
+```
+User Request
+    ↓
+test_stm_homo.py or stm_analysis.py
+    ↓
+stm_compute_dos.py (pre-compute DOS)
+    ↓
+Fireball SCF (Fortran)
+    ↓
+Extract H, S, eps, C (Python/FireCore.py)
+    ↓
+Build inter-system coupling (STM.py)
+    ↓
+NEGF solver (STM.py: negf_current or negf_response)
+    ↓
+MO overlap (STM.py: mo_overlap_amplitude)
+    ↓
+Plot results (STM_utils.py)
+```
+
+### Critical Files for Each Layer
+
+| Layer | Files | Purpose |
+|-------|-------|---------|
+| **Fortran** | `fortran/MAIN/libFireCore.f90` | Python bindings |
+| **Fortran** | `fortran/GRID/project_orb.f90` | Orbital projection (reference) |
+| **OpenCL** | `pyBall/FireballOCL/STM.py` | Transport methods |
+| **OpenCL** | `pyBall/FireballOCL/cl/Grid.cl` | Orbital projection kernel |
+| **Python** | `pyBall/FireCore.py` | Fireball interface |
+| **Python** | `pyBall/FireballOCL/STM_utils.py` | Utilities and plotting |
+| **Tests** | `test_stm_homo.py` | HOMO validation |
+| **Tests** | `stm_analysis.py` | Main CLI tool |
+| **Tests** | `stm_compute_dos.py` | DOS precomputation |
+| **Tests** | `test_orbital_projection_compare.py` | Orbital projection validation |
+
+### Known Critical Bugs Fixed
+
+1. **Coefficient matrix storage order** - Fortran column-major vs Python row-major
+2. **Indexing base** - 1-based Fortran vs 0-based Python
+3. **set_wfcoef array declaration** - Used assumed-size array instead of dimension(norbitals)
+4. **OpenCL kernel coefficient indexing** - Removed incorrect `+ i_atom` bug
+5. **Coefficient order remapping** - Fortran [s, py, pz, px] vs OpenCL [px, py, pz, s]
+6. **px sign flip** - Only px orbital needs sign flip
+7. **dXr vector calculation** - Fixed points - ratom (was adding)
+8. **Python points sign** - Removed -points bug
+
+See `tests/pyFireball/NOTES_orbital_projection_analysis.md` for detailed analysis.
+
+---
+
+# REPORT 2: Fortran LDOS and OpenCL Orbital Projection Parity
+
+## Overview
+
+**Date:** April 21, 2026
+
+**Objective:** Establish robust Fortran implementation of LDOS projection from Green's function and ensure parity with Python and OpenCL projections. Verify that the mapping of atomic and basis indexes for Hamiltonian and overlap matrices is correct by reproducing Fortran LDOS and orbital projections in Python/OpenCL.
+
+**Why This Matters for STM:**
+- STM calculations rely on accurate evaluation of molecular orbitals and local density of states (LDOS)
+- Green's function-based LDOS is fundamental to NEGF transport calculations
+- Parity between Fortran reference and Python/OpenCL implementations is essential for debugging and validation
+- Incorrect matrix mapping leads to wrong nodal planes, symmetry violations, and garbage STM images
+
+## What Was Implemented
+
+### 1. Fortran LDOS Projection (`firecore_ldos2points`)
+
+**Location:** `fortran/MAIN/libFireCore.f90` (lines ~841-927)
+
+**Purpose:** Compute LDOS at arbitrary points from Green's function inversion or orbital square.
+
+**Interface:**
+```fortran
+subroutine firecore_ldos2points(mode, iband, ikpoint, npoints, points, E, eta, out) bind(c, name='firecore_ldos2points')
+```
+
+**Modes:**
+- `mode = 0`: Orbital square projection |ψ(r)|² (uses existing `project_orb_points`)
+- `mode = 1`: LDOS from Green's function G(E) = [(E+iη)S - H]^{-1}
+
+**Algorithm:**
+1. Build dense H(k), S(k) matrices using `ktransform`
+2. Form A = (E+iη)S - H
+3. Invert A using LAPACK `zgetrf` (LU factorization) + `zgetrs` (solve)
+4. For each point:
+   - Evaluate AO basis functions φ_μ(r) using `getpsi` and `getYlm`
+   - Solve A x = φ for response x
+   - LDOS = -(1/π) Im[φ† x]
+
+**Key Implementation Details:**
+- Uses LAPACK complex routines for stability
+- Evaluates AO basis at each point (same as `firecore_orb2points`)
+- Correctly handles complex arithmetic for Green's function
+
+### 2. Fortran Green's Function Export (`firecore_get_G_k`)
+
+**Location:** `fortran/MAIN/libFireCore.f90` (lines ~1437-1475)
+
+**Purpose:** Export full dense Green's function matrix G(E) for Python comparison.
+
+**Interface:**
+```fortran
+subroutine firecore_get_G_k(ikpoint, npoints, E_points, eta, G_out) bind(c, name='firecore_get_G_k')
+```
+
+**Algorithm:**
+- Build H(k), S(k) using `ktransform`
+- For each energy E:
+  - Form A = (E+iη)S - H
+  - Invert using `zgetrf` + `zgetri`
+  - Store result in output array
+
+**Purpose:** Enable direct comparison of Fortran and NumPy Green's functions to isolate whether discrepancies are in matrix inversion or spatial projection.
+
+### 3. Python Wrappers (`FireCore.py`)
+
+**Location:** `pyBall/FireCore.py` (lines ~367-402)
+
+**Added Functions:**
+```python
+def ldos2points(mode, iMO, ikpoint, points, E, eta):
+    """Compute LDOS at points from Green's function or orbital square."""
+
+def get_G_k(ikpoint, E_points, eta):
+    """Export full Green's function matrix at multiple energies."""
+```
+
+**Implementation:**
+- Uses ctypes with correct signatures (fixed `array2cd` for complex arrays)
+- Handles memory allocation and array conversion
+- Maintains consistency with existing Fortran interface
+
+### 4. Test Script Enhancements (`test_h2o_mo_vs_ldos.py`)
+
+**Location:** `tests/pyFireball/test_h2o_mo_vs_ldos.py`
+
+**Changes:**
+
+#### A. Sparse-to-Dense Matrix Mapping
+Added alternative mapping with transpose of last two axes:
+```python
+def _blocked_to_dense_T(blocked, natoms, numorb_max):
+    """Alternative: transpose last two axes [iatom,inegh,mu,nu] -> [iatom,inegh,nu,mu]"""
+    dense = np.zeros((norb_total, norb_total), dtype=np.float64)
+    # ... mapping logic ...
+```
+
+**Purpose:** Test both direct and transposed index conventions to identify correct mapping.
+
+#### B. Parity Checks
+Added automatic selection of correct mapping:
+```python
+diff_H_direct = np.max(np.abs(H_dense - Hk))
+diff_S_direct = np.max(np.abs(S_dense - Sk))
+diff_H_transT  = np.max(np.abs(H_dense_T - Hk))
+diff_S_transT  = np.max(np.abs(S_dense_T - Sk))
+
+# Select mapping with smaller differences
+if diff_H_transT + diff_S_transT < diff_H_direct + diff_S_direct:
+    print("[HS PARITY] selected mapping = transpose_last2")
+    _blocked_to_dense = _blocked_to_dense_T
+```
+
+**Result:** Identified that `transpose_last2` is the correct mapping for H and S matrices.
+
+#### C. Export Mode Setting
+Changed from `export_mode=1` to `export_mode=2`:
+```python
+data = fc.get_HS_sparse(dims, export_mode=2)  # Include VNL terms
+```
+
+**Purpose:** Include non-local potential (VNL) terms in sparse H to match Fortran `ktransform` output.
+
+#### D. 4-Panel Parity Plots
+Replaced single-panel plots with 4-panel comparison:
+```python
+fig, axes = plt.subplots(2, 2, figsize=(11, 8))
+# Top row: Fortran MO, Fortran LDOS
+# Bottom row: OpenCL MO, OpenCL LDOS
+```
+
+**Purpose:** Visual comparison of orbital and LDOS parity between Fortran and OpenCL.
+
+#### E. OpenCL Orbital Projection Fix
+Replaced ad-hoc coefficient packing with validated helper:
+```python
+from pyBall.FireballOCL.STM_utils import project_orbital_to_points
+
+psiCL_flat = project_orbital_to_points(
+    C, int(mo), atomTypes, atomPos, orb2atom, n_orb_atom,
+    os.path.join(fdata_dir, 'basis'),  # Correct basis directory
+    points=pts.astype(np.float32)
+)
+```
+
+**Why:** The helper from `test_stm_orbital_projection.py` was already validated for correct coefficient packing and AO ordering.
+
+## Problems Encountered and Solutions
+
+### 1. Python Ctypes Signature Error
+
+**Problem:** `firecore_get_G_k` failed with segmentation fault.
+
+**Root Cause:** Incorrect ctypes signature for complex array output:
+```python
+# Wrong:
+ndpointer(np.complex128, flags="C_CONTIGUOUS")
+# Correct:
+ndpointer(np.complex128, flags="C_CONTIGUOUS")  # But parameter name was wrong
+```
+
+**Fix:** Changed parameter name from `array2c` to `array2cd` in Fortran interface:
+```python
+lib.firecore_get_G_k.restype = None
+lib.firecore_get_G_k.argtypes = [
+    ctypes.c_int,  # ikpoint
+    ctypes.c_int,  # npoints
+    ndpointer(np.float64, flags="C_CONTIGUOUS"),  # E_points
+    ctypes.c_double,  # eta
+    ndpointer(np.complex128, flags="C_CONTIGUOUS"),  # G_out (fixed name)
+]
+```
+
+### 2. Missing Eigenvalues Variable
+
+**Problem:** `eig` variable undefined after `get_eigen` call.
+
+**Root Cause:** Variable was overwritten or not restored after function call.
+
+**Fix:** Restored eig variable explicitly:
+```python
+eig = fc.get_eigen(0)  # Re-fetch after SCF
+```
+
+### 3. Huge Green's Function Discrepancy
+
+**Problem:** Initial Green's function comparison showed `max|Gnp-Gfc| ≈ 7.2` (completely wrong).
+
+**Root Causes:**
+1. **Wrong sparse-to-dense mapping:** Direct mapping `[iatom,inegh,mu,nu]` was incorrect
+2. **Missing VNL terms:** `export_mode=1` excluded non-local potential terms
+
+**Solutions:**
+1. Added alternative `transpose_last2` mapping and automatic selection
+2. Changed to `export_mode=2` to include VNL
+3. Added parity checks for H and S matrices against Fortran `ktransform` output
+
+**Result:** Green's function discrepancy improved from ~7.2 to ~0.5-5e-3 (orders of magnitude better).
+
+### 4. OpenCL Orbital Projection Parity Broken
+
+**Problem:** OpenCL MO projection (bottom-left panel) showed wrong nodal planes compared to Fortran.
+
+**Root Cause:** Ad-hoc coefficient packing in test script used incorrect AO ordering assumptions:
+```python
+# Wrong approach:
+coeffs_flat[i0:i0+4] = coeffs[ia, :4][_ORT_SPP_TO_OCL]  # Manual reordering
+```
+
+**Solution:** Reused already-validated helper from `test_stm_orbital_projection.py`:
+```python
+from pyBall.FireballOCL.STM_utils import project_orbital_to_points
+```
+
+This helper was already tested and known to produce correct orbital projections.
+
+**Result:** OpenCL orbital projection parity restored to perfect match with Fortran.
+
+### 5. FileNotFoundError for info.dat
+
+**Problem:** `project_orbital_to_points` failed with "info.dat not found".
+
+**Root Cause:** Helper expects basis directory, but we passed Fdata root directory. It searches for `info.dat` in `dirname(fdata_basis_dir)`.
+
+**Fix:** Pass correct basis directory:
+```python
+# Wrong:
+project_orbital_to_points(..., fdata_dir, ...)
+# Correct:
+project_orbital_to_points(..., os.path.join(fdata_dir, 'basis'), ...)
+```
+
+## Current Status
+
+### Achieved
+- **Orbital projection parity:** Perfect match between Fortran and OpenCL
+- **LDOS projection parity:** Reasonable match (not perfect but usable)
+- **4-panel plots generated:** All 6 H2O MOs with Fortran/OpenCL comparison
+- **Sparse-to-dense mapping:** Identified correct convention (transpose_last2)
+- **Export mode:** Confirmed need for `export_mode=2` (include VNL)
+
+### Remaining Issues
+- **Green's function parity:** Still has discrepancies (~0.5-5e-3 max norm)
+  - Need to determine if this is in matrix inversion itself or spatial projection
+  - Will investigate by comparing Fortran and NumPy Green's function matrices directly
+- **PTCDA not tested yet:** Only H2O tested so far (small system, easier to debug)
+
+## Critical Index Ordering Notes (FOR FUTURE REFERENCE)
+
+### Sparse Matrix Format Convention
+
+**Fireball Fortran sparse format:** `[iatom, inegh, mu, nu]`
+- `iatom`: central atom index (1-based in Fortran)
+- `inegh`: neighbor index (0 = self-interaction)
+- `mu`: orbital index on central atom
+- `nu`: orbital index on neighbor atom
+
+**Python/C++ sparse format:** `[iatom, inegh, mu, nu]` (same shape)
+
+**CRITICAL:** The last two axes (`mu, nu`) may need transposition when converting to dense:
+- **Correct mapping for H/S:** Transpose last two axes before dense conversion
+- **Reason:** Different row/column convention between Fortran and NumPy
+
+### Dense Matrix Layout
+
+**Fortran (column-major):**
+```fortran
+! Fortran stores as column-major
+complex*16 :: Hk(norb, norb)
+! Hk(i, j) is stored at position i + j*norb in memory
+```
+
+**NumPy (row-major by default):**
+```python
+# NumPy stores as row-major by default
+Hk = np.zeros((norb, norb), dtype=np.complex128)
+# Hk[i, j] is stored at position i*norb + j in memory
+```
+
+**Solution:** Use `order='F'` (Fortran order) when creating NumPy arrays from Fortran data, OR transpose appropriately.
+
+### Orbital Coefficient Array C
+
+**Fortran:** `C(norb, nmo)` - eigenvectors as columns
+**Python:** Typically `C(nmo, norb)` from `fc.get_wfcoef()`
+
+**Mapping:**
+```python
+# Fortran: C(mu, n) where mu is orbital, n is MO
+# Python: C[n, mu] where n is MO, mu is orbital
+# To access MO n coefficients:
+C_fortran = C_python.T  # Transpose to match Fortran convention
+```
+
+### Density Matrix rho
+
+**Sparse format:** `[natoms, neigh_max, numorb_max, numorb_max]`
+
+**Index ordering (same as H/S):**
+- May need transpose of last two axes for dense conversion
+- This is consistent across rho, H, S matrices
+
+### Basis Function Ordering in OpenCL Kernels
+
+**Fireball Fortran ordering:** `[s, py, pz, px]` (or similar convention)
+**OpenCL kernel ordering:** `[px, py, pz, s]` (different convention)
+
+**Remapping needed:**
+```python
+_ORT_SPP_TO_OCL = np.array([3, 1, 2, 0], dtype=np.int32)
+# [s, py, pz, px] -> [px, py, pz, s]
+```
+
+**This remapping is already handled in:**
+- `pyBall/FireballOCL/STM_utils.py:remap_coeffs_fortran_to_grid()`
+- `pyBall/FireballOCL/Grid.py:project_orbital_points()`
+
+### Key Takeaway
+
+**ALWAYS** verify index ordering when:
+- Converting sparse to dense matrices
+- Passing arrays between Fortran and Python
+- Packing coefficients for OpenCL kernels
+- Interpreting matrix elements from different sources
+
+**Best practice:** Add parity checks against Fortran reference whenever implementing new matrix operations.
+
+## Files Modified
+
+1. **`fortran/MAIN/libFireCore.f90`**
+   - Added `firecore_ldos2points` (lines ~841-927)
+   - Added `firecore_get_G_k` (lines ~1437-1475)
+
+2. **`pyBall/FireCore.py`**
+   - Added `ldos2points` wrapper (lines ~367-381)
+   - Added `get_G_k` wrapper (lines ~393-402)
+
+3. **`tests/pyFireball/test_h2o_mo_vs_ldos.py`**
+   - Added `_blocked_to_dense_T` alternative mapping
+   - Added H/S parity checks and automatic mapping selection
+   - Changed to `export_mode=2`
+   - Added 4-panel parity plots
+   - Replaced ad-hoc OpenCL projection with `STM_utils.project_orbital_to_points`
+
+## Output Images
+
+Location: `/home/prokop/git/FireCore/tests/pyFireball/export/h2o_mo_vs_ldos/`
+
+Files:
+- `mo0001_parity.png` through `mo0006_parity.png`
+
+Each image shows:
+- **Top-left:** Fortran MO ψ(r) (signed, BWR colormap)
+- **Top-right:** Fortran LDOS (unsigned, viridis colormap)
+- **Bottom-left:** OpenCL MO ψ(r) (signed, BWR colormap)
+- **Bottom-right:** OpenCL LDOS (unsigned, viridis colormap)
+
+## Next Steps
+
+1. **Investigate Green's function discrepancy:**
+   - Compare Fortran `get_G_k` output with NumPy `inv((E+iη)S - H)` directly
+   - Determine if discrepancy is in matrix inversion or spatial projection
+   - If inversion: check LAPACK usage, complex arithmetic
+   - If projection: check AO evaluation, basis function ordering
+
+2. **Test with PTCDA:**
+   - Apply same parity checks to larger system
+   - Verify that sparse-to-dense mapping works for multi-shell atoms (C, O with d orbitals)
+   - Check that VNL inclusion is correct for larger basis
+
+3. **Document mapping conventions:**
+   - Create a separate reference document for index ordering
+   - Include examples for common operations (sparse→dense, coefficient packing)
+   - Add to codebase documentation
+
+## Lessons Learned
+
+1. **Never assume index ordering:** Always verify against Fortran reference with parity checks
+2. **Reuse tested code:** Don't reimplement coefficient packing when a validated helper exists
+3. **Export mode matters:** VNL terms are essential for correct Hamiltonian parity
+4. **Transpose convention:** Sparse block matrices often need last-two-axes transpose for dense conversion
+5. **Visual debugging:** 4-panel parity plots are invaluable for catching subtle sign/shape errors
+6. **Small systems first:** Debug with H2O (6×6 matrices) before tackling PTCDA (hundreds of orbitals)
+
+---

@@ -570,6 +570,119 @@ def mo_overlap_amplitude(v_smp, C_smp, mo_index):
     t = float(np.dot(v, C[:, mo]))
     return t, t*t
 
+
+def _blocks_to_dense_vector(pairs, blocks, starts_tip, starts_smp, norb_per_tip, norb_per_smp, ntip, nsmp, out=None):
+    """Convert list of (tip_atom, smp_atom) blocks to dense ntip×nsmp matrix (or vector if ntip=1)."""
+    if out is None:
+        out = np.zeros((ntip, nsmp), dtype=np.float64)
+    for (iT, iS), blk in zip(pairs, blocks):
+        i0 = int(starts_tip[iT]); ni = int(norb_per_tip[iT])
+        j0 = int(starts_smp[iS]); nj = int(norb_per_smp[iS])
+        out[i0:i0+ni, j0:j0+nj] += np.asarray(blk, dtype=np.float64)[:ni, :nj]
+    return out
+
+
+def response_amplitude_map(
+    points_tip, H_s, S_s, C_s, mo_index, E,
+    tip_types, tip_pos_base, tip_norb_per,
+    smp_types, smp_pos, smp_norb_per,
+    coupling_builder,
+    eta=1e-6, E_tip=0.0
+):
+    """Compute STM response amplitude map t_resp(r) = |C^T x_s|^2 via block elimination.
+
+    Solves A(E,r) x = b where A = (E+iη)S(r) - H(r), b = [1,0,...]^T on tip.
+    Uses precomputed G0 = A_ss^{-1} and block elimination for O(Ns) per point.
+
+    Args:
+        points_tip: (npts, 3) tip positions
+        H_s, S_s: (ns, ns) sample Hamiltonian and overlap (dense)
+        C_s: (ns, nmo) sample MO coefficients
+        mo_index: int, which MO to project
+        E: float, energy (typically MO eigenvalue)
+        tip_types, tip_pos_base, tip_norb_per: tip atom metadata (usually 1 H atom)
+        smp_types, smp_pos, smp_norb_per: sample atom metadata
+        coupling_builder: callable(tip_pos) -> (pairs, Hb, Sb)
+                          e.g. lambda pos: build_inter_system_blocks_exp_sk(..., tip_pos=pos)
+        eta: broadening
+        E_tip: tip onsite energy
+
+    Returns:
+        resp: (npts,) real response amplitudes |C^T x_s|^2
+    """
+    import numpy as np
+    from numpy.linalg import solve
+
+    ns = H_s.shape[0]
+    npts = len(points_tip)
+    z = float(E) + 1j * float(eta)
+
+    # Precompute sample Green's function G0 = A_ss^{-1}
+    A_ss = z * S_s.astype(np.complex128) - H_s.astype(np.complex128)
+    G0 = np.linalg.inv(A_ss)
+
+    # MO coefficient vector for this MO
+    c = np.asarray(C_s[:, int(mo_index)], dtype=np.complex128)
+
+    # Precompute v = c^T G0 (row vector)
+    v = c @ G0  # shape (ns,)
+
+    # Precompute vv = G0^H c*  (for |v·a|^2 = a^H vv vv^H a)
+    # Actually we need |v·a|^2 = |sum_i v_i a_i|^2, so we just need v
+
+    starts_tip = _atom_orb_starts(tip_norb_per)
+    starts_smp = _atom_orb_starts(smp_norb_per)
+    ntip = int(starts_tip[-1])
+
+    resp = np.zeros(npts, dtype=np.float64)
+
+    for ip, r_tip in enumerate(points_tip):
+        tip_pos = np.array([r_tip], dtype=np.float64)
+        pairs, Hb, Sb = coupling_builder(tip_pos)
+        if len(pairs) == 0:
+            resp[ip] = 0.0
+            continue
+
+        # Build dense H_ts, S_ts (tip×sample)
+        H_ts = np.zeros((ntip, ns), dtype=np.float64)
+        S_ts = np.zeros((ntip, ns), dtype=np.float64)
+        _blocks_to_dense_vector(pairs, Hb, starts_tip, starts_smp, tip_norb_per, smp_norb_per, ntip, ns, out=H_ts)
+        _blocks_to_dense_vector(pairs, Sb, starts_tip, starts_smp, tip_norb_per, smp_norb_per, ntip, ns, out=S_ts)
+
+        # a_st = z*S_ts - H_ts  (tip row, sample cols)
+        a_st = z * S_ts.astype(np.complex128) - H_ts.astype(np.complex128)  # (ntip, ns)
+
+        # For single tip orbital (ntip=1):
+        # x_tip = 1 / (a_tt - a_st G0 a_st^H)
+        # x_s = -G0 a_st^H x_tip
+        # resp = |c^T x_s|^2 = |x_tip|^2 |v a_st^H|^2
+
+        if ntip == 1:
+            a_vec = a_st[0, :]  # (ns,)
+            s1 = np.dot(v, a_vec.conj())  # v · a_st^H (complex)
+            s2 = np.dot(a_vec, G0 @ a_vec.conj())  # a_st G0 a_st^H (complex)
+            a_tt = z * 1.0 - E_tip  # tip has 1 orbital with S=1, H=E_tip
+            denom = a_tt - s2
+            if abs(denom) < 1e-30:
+                resp[ip] = 0.0
+                continue
+            x_tip = 1.0 / denom
+            resp[ip] = (abs(x_tip) ** 2) * (abs(s1) ** 2)
+        else:
+            # Multi-orbital tip: solve full system (rare)
+            A = np.zeros((ntip + ns, ntip + ns), dtype=np.complex128)
+            A[:ntip, :ntip] = z * np.eye(ntip) - E_tip * np.eye(ntip)
+            A[:ntip, ntip:] = a_st
+            A[ntip:, :ntip] = a_st.conj().T
+            A[ntip:, ntip:] = A_ss
+            b = np.zeros(ntip + ns, dtype=np.complex128)
+            b[0] = 1.0
+            x = solve(A, b)
+            x_s = x[ntip:]
+            resp[ip] = abs(np.dot(c, x_s)) ** 2
+
+    return resp
+
 def _sk_sp_block(l, m, n, Vss, Vsp, Vps, Vpp_sig, Vpp_pi):
     """Return 4x4 SK block for (s,px,py,pz) basis with given direction cosines."""
     # row: orb on atom1 (tip), col: orb on atom2 (sample)

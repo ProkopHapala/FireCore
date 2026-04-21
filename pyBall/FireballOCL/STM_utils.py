@@ -492,6 +492,64 @@ def project_orbital_to_grid_v2(C, mo_idx, atomTypes, atomPos, orb2atom, norb_per
     return psi
 
 
+def project_orbital_to_points_exp(C, mo_idx, atomTypes, atomPos, orb2atom, norb_per,
+                                 fdata_basis_dir, points, beta=1.0, r0=3.0, rcut=20.0):
+    """Evaluate a single MO at arbitrary points using OpenCL exponential radial kernel.
+
+    This mirrors project_orbital_to_points(), but replaces Fireball basis radial functions
+    with exp(-beta*(r-r0)) and uses a larger cutoff (rcut) for vacuum tunneling.
+
+    Args:
+        C: (norb, nmo) or (nmo, norb) MO eigenvectors
+        mo_idx: index of MO to project (0-based)
+        atomTypes: (natoms,) atomic numbers
+        atomPos: (natoms, 3) positions in Å
+        orb2atom: unused here (kept for API symmetry)
+        norb_per: (natoms,) orbitals per atom
+        fdata_basis_dir: path to Fdata/basis for GridProjector (used for species mapping)
+        points: (n_points, 3) points to evaluate at
+        beta, r0: exponential decay parameters
+        rcut: cutoff radius in Å for the exponential kernel
+    Returns:
+        psi: (n_points,) signed wavefunction values
+    """
+    from pyBall.FireballOCL import Grid as ocl_grid
+    from pyBall.FireballOCL.FdataParser import FdataParser
+
+    fparser = FdataParser(os.path.dirname(fdata_basis_dir))
+    fparser.parse_info()
+    z_list = sorted(set(int(z) for z in atomTypes))
+    rcut_map = {int(z): float(rcut) for z in z_list}
+
+    norb_total = sum(norb_per)
+    mo_coeffs = C[mo_idx, :].copy() if C.shape[0] > C.shape[1] else C[mo_idx, :].copy()
+    if len(mo_coeffs) != norb_total:
+        mo_coeffs = C[:, mo_idx].copy()
+        if len(mo_coeffs) != norb_total:
+            raise ValueError(f"project_orbital_to_points_exp(): MO coefficient size mismatch {len(mo_coeffs)} != {norb_total}")
+
+    norb_per_arr = np.asarray(norb_per, dtype=np.int32)
+    coeffs_atoms = remap_coeffs_fortran_to_grid(mo_coeffs, norb_per_arr)
+
+    atoms_dict = {
+        'pos': atomPos,
+        'Rcut': np.array([rcut_map[int(z)] for z in atomTypes], dtype=np.float32),
+        'type': atomTypes
+    }
+
+    projector = ocl_grid.GridProjector(fdata_basis_dir)
+    projector.load_basis(z_list)
+    psi = projector.project_orbital_points_exp(
+        points=points,
+        coeffs=coeffs_atoms,
+        norb_per=norb_per_arr,
+        atoms_dict=atoms_dict,
+        beta=float(beta),
+        r0=float(r0)
+    )
+    return psi
+
+
 def project_orbital_to_points(C, mo_idx, atomTypes, atomPos, orb2atom, norb_per,
                               fdata_basis_dir, points):
     """

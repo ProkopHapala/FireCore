@@ -672,15 +672,63 @@ __kernel void project_orbital(
 
             // Dot product with coefficients [px, py, pz, s]
             psi += dot(((const float4*)(coeffs))[coeff_base / 4], basis_val);
-        }
+    }
 
         out_grid[g_idx] = psi;
     }
 }
 
 // ============================================================================
-// Orbital projection at arbitrary points (debugging parity with Fortran orb2points)
+// Orbital projection at arbitrary points with exponential (vacuum) radial decay
 // Computes ψ(p_k) = Σ_atoms Σ_orb C_{atom,orb} φ_{atom,orb}(p_k)
+// Radial part is replaced by exp(-beta*(r-r0)) instead of Fireball basis tables.
+// Coeff convention: [px, py, pz, s] per atom (float4)
+// Angular part: cartesian p: rhat.x/y/z (same as project_orbital_points)
+// ============================================================================
+__kernel void project_orbital_points_exp(
+    const int n_points,
+    __global const float4* points,    // [n_points] xyz
+    __global const AtomData* atoms,   // [natoms]
+    const int natoms,
+    __global const float* coeffs,     // [natoms*4] packed as float4
+    const float beta,
+    const float r0,
+    __global float* out_psi           // [n_points]
+) {
+    const int ip = get_global_id(0);
+    if (ip >= n_points) return;
+
+    const float3 p = points[ip].xyz;
+    float psi = 0.0f;
+
+    for (int ia = 0; ia < natoms; ia++) {
+        const AtomData ad = atoms[ia];
+        float3 d = p - ad.pos_rcut.xyz;
+        const float r2 = dot(d, d);
+        const float rcut2 = ad.pos_rcut.w * ad.pos_rcut.w;
+        if (r2 > rcut2) continue;
+        const float r = sqrt(r2);
+
+        const float invr = 1.0f / (r + 1e-12f);
+        const float3 rhat = d * invr;
+
+        const float f = exp(-beta * (r - r0));
+        const float rs = f;
+        const float rp = f;
+
+        const float4 basis_val = (float4)(
+            rp * rhat.x * PREF_P,
+            rp * rhat.y * PREF_P,
+            rp * rhat.z * PREF_P,
+            rs * PREF_S
+        );
+
+        const int coeff_base = ad.i0orb;
+        psi += dot(((const __global float4*)(coeffs))[coeff_base / 4], basis_val);
+    }
+
+    out_psi[ip] = psi;
+}
 // Coeff convention: [px, py, pz, s] per atom (float4)
 // basis_data: packed as float2 per node (wf, wf_spline second derivative)
 // ============================================================================
@@ -728,4 +776,109 @@ __kernel void project_orbital_points(
     }
 
     out_psi[ip] = psi;
+}
+
+// ============================================================================
+// STM Response Amplitude — exponential-basis coupling, single s-tip orbital
+// ============================================================================
+// Precompute on CPU:  G0 = inv((E+iη)S_s - H_s),  v = C^T G0
+// GPU kernel builds a_st = (E+iη)S_ts - H_ts per grid point and computes:
+//   resp = |v·a_st^H|^2 / |(E+iη-E_tip) - a_st·G0·a_st^H|^2
+//
+// Buffers:
+//   points      [n_points]   float4 xyz (tip positions)
+//   atoms_s     [natoms_s]   AtomData for sample atoms
+//   starts_s    [natoms_s+1] int   orbital offsets
+//   v_re, v_im  [ns]         float  precomputed v = C^T G0
+//   G0_re, G0_im[ns*ns]      float  precomputed sample Green's function
+//   params: E_re, E_im, E_tip, beta, r0, A_ss, A_sp, rcut
+//
+// out_resp      [n_points]   float  response amplitude
+// ----------------------------------------------------------------------------
+__kernel void response_amplitude_exp(
+    const int n_points,
+    __global const float4* points,
+    const int natoms_s,
+    __global const AtomData* atoms_s,
+    __global const int* starts_s,
+    const int ns,
+    __global const float* v_re,
+    __global const float* v_im,
+    __global const float* G0_re,
+    __global const float* G0_im,
+    const float E_re,
+    const float E_im,
+    const float E_tip,
+    const float beta,
+    const float r0,
+    const float A_ss,
+    const float A_sp,
+    const float rcut,
+    __global float* out_resp
+) {
+    const int ip = get_global_id(0);
+    if (ip >= n_points) return;
+
+    const float3 p = points[ip].xyz;
+    const float rcut2 = rcut * rcut;
+
+    // Build a_st in private memory (max 256 orbitals)
+    float2 a_st[256];
+    for (int i = 0; i < ns; i++) { a_st[i] = (float2)(0.0f, 0.0f); }
+
+    for (int ia = 0; ia < natoms_s; ia++) {
+        const AtomData ad = atoms_s[ia];
+        float3 d = p - ad.pos_rcut.xyz;
+        const float r2 = dot(d, d);
+        if (r2 > rcut2 || r2 < 1e-16f) continue;
+        const float r = sqrt(r2);
+        const float invr = 1.0f / r;
+        const float3 rhat = d * invr;
+        const float l = rhat.x, m = rhat.y, n = rhat.z;
+        const float f = exp(-beta * (r - r0));
+
+        const float Vss = A_ss * f;
+        const float Vsp = A_sp * f;
+
+        const int i0 = starts_s[ia];
+        const int nj = starts_s[ia+1] - i0;
+
+        // a = z*S - H; with S=0 for tunneling => a = -H
+        // s-tip row: [Vss, l*Vsp, m*Vsp, n*Vsp]
+        a_st[i0] = (float2)(-Vss, 0.0f);
+        if (nj > 1) {
+            a_st[i0+1] = (float2)(-l * Vsp, 0.0f);
+            a_st[i0+2] = (float2)(-m * Vsp, 0.0f);
+            a_st[i0+3] = (float2)(-n * Vsp, 0.0f);
+        }
+    }
+
+    // s1 = sum_i v_i * conj(a_i) = sum_i (v_re_i * a_re_i) + i * sum_i (-v_im_i * a_re_i)
+    float s1_re = 0.0f, s1_im = 0.0f;
+    for (int i = 0; i < ns; i++) {
+        s1_re += v_re[i] * a_st[i].x;
+        s1_im += -v_im[i] * a_st[i].x;
+    }
+
+    // s2 = sum_i a_i * sum_j G0_ij * conj(a_j)
+    // conj(a_j) = a_j since a_im = 0
+    // b_i = sum_j (G0_re_ij + i*G0_im_ij) * a_j
+    float s2_re = 0.0f, s2_im = 0.0f;
+    for (int i = 0; i < ns; i++) {
+        float b_re = 0.0f, b_im = 0.0f;
+        for (int j = 0; j < ns; j++) {
+            const int ij = i * ns + j;
+            b_re += G0_re[ij] * a_st[j].x;
+            b_im += G0_im[ij] * a_st[j].x;
+        }
+        s2_re += a_st[i].x * b_re;
+        s2_im += a_st[i].x * b_im;
+    }
+
+    const float d_re = (E_re - E_tip) - s2_re;
+    const float d_im = E_im - s2_im;
+    const float d_norm2 = d_re * d_re + d_im * d_im;
+    const float s1_norm2 = s1_re * s1_re + s1_im * s1_im;
+
+    out_resp[ip] = (d_norm2 > 1e-30f) ? (s1_norm2 / d_norm2) : 0.0f;
 }

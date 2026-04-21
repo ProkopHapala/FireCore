@@ -364,6 +364,21 @@ def dens2points( points, f_den=1.0, f_den0=0.0, ewfaux_out=None ):
     lib.firecore_dens2points( n, points, f_den, f_den0, ewfaux_out )
     return ewfaux_out
 
+# subroutine firecore_ldos2points(mode, iband, ikpoint, npoints, points, E, eta, out) bind(c, name='firecore_ldos2points')
+argDict["firecore_ldos2points"]=( None, [c_int, c_int, c_int, c_int, array2d, c_double, c_double, array1d ] )
+def ldos2points(points, E=0.0, eta=1e-3, mode=1, iMO=1, ikpoint=1, out=None):
+    """Reference LDOS/|psi|^2 at arbitrary points evaluated inside Fortran.
+
+    mode:
+      0 -> |psi_iMO(r)|^2 (calls project_orb_points then squares)
+      1 -> LDOS(r;E)=-(1/pi)Im(phi^T G(E) phi) with G=((E+i*eta)S-H)^-1
+    """
+    n = len(points)
+    if out is None:
+        out = np.zeros(n, dtype=np.float64)
+    lib.firecore_ldos2points(int(mode), int(iMO), int(ikpoint), int(n), points, float(E), float(eta), out)
+    return out
+
 # eigenvalues export: firecore_get_eigen( int ikp, double* eigen_out )
 argDict["firecore_get_eigen"]=( None, [c_int, array1d] )
 def get_eigen( ikp=1, norb=None ):
@@ -374,6 +389,17 @@ def get_eigen( ikp=1, norb=None ):
     eigen = np.zeros(norb, dtype=np.float64)
     lib.firecore_get_eigen( ikp, eigen )
     return eigen
+
+# subroutine firecore_get_G_k(kpoint_vec, E, eta, G_out) bind(c, name='firecore_get_G_k')
+argDict["firecore_get_G_k"]=( None, [array1d, c_double, c_double, array2cd] )
+def get_G_k(kpoint=(0.0,0.0,0.0), E=0.0, eta=1e-3, norb=None, out=None):
+    if norb is None:
+        dims = get_HS_dims(); norb = dims.norbitals
+    if out is None:
+        out = np.zeros((norb,norb), dtype=np.complex128)
+    kvec = np.array(kpoint, dtype=np.float64)
+    lib.firecore_get_G_k(kvec, float(E), float(eta), out)
+    return out
 
 # --- Export H and S matrices ---
 

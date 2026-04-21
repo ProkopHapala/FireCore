@@ -838,6 +838,94 @@ subroutine firecore_dens2points(npoints, points, f_den, f_den0, ewfaux_out) bind
 
 end subroutine firecore_dens2points
 
+subroutine firecore_ldos2points(mode, iband, ikpoint, npoints, points, E, eta, out) bind(c, name='firecore_ldos2points')
+    use iso_c_binding
+    use configuration
+    use dimensions
+    use interactions
+    use neighbor_map
+    use density
+    use charges
+    use kpoints
+    implicit none
+    integer(c_int), value, intent(in) :: mode, iband, ikpoint, npoints
+    real(c_double), dimension(3, npoints), intent(in) :: points
+    real(c_double), value, intent(in) :: E, eta
+    real(c_double), dimension(npoints), intent(out) :: out
+
+    integer :: norb, info
+    integer :: ip, iatom, in1, imu, issh, l, lmu, mmu
+    real :: distX, psiR, dpsiR
+    real, dimension(3) :: dXr
+    real, dimension(5) :: psiL
+    real, dimension(3,5) :: dpsiL
+
+    complex*16, allocatable :: Hk(:,:), Sk(:,:), A(:,:), rhs(:)
+    integer,    allocatable :: ipiv(:)
+    real*8,     allocatable :: phi(:)
+    real :: kpt(3)
+    complex*16 :: z, vv
+
+    external :: zgetrf, zgetrs
+
+    if (npoints <= 0) return
+    norb = norbitals
+
+    if (mode == 0) then
+        call project_orb_points(iband, ikpoint, npoints, points, out)
+        out(:) = out(:) * out(:)
+        return
+    end if
+
+    if (ikpoint <= 0 .or. ikpoint > nkpoints) then
+        stop 'firecore_ldos2points: invalid ikpoint'
+    end if
+    kpt(:) = special_k(:, ikpoint)
+
+    allocate(Hk(norb,norb), Sk(norb,norb), A(norb,norb), ipiv(norb), rhs(norb), phi(norb))
+    call ktransform(kpt, norb, Sk, Hk)
+    z = dcmplx(E, eta)
+    A(:,:) = z*Sk(:,:) - Hk(:,:)
+    call zgetrf(norb, norb, A, norb, ipiv, info)
+    if (info /= 0) then
+        stop 'firecore_ldos2points: zgetrf failed'
+    end if
+
+    do ip = 1, npoints
+        phi(:) = 0.0d0
+        do iatom = 1, natoms
+            in1 = imass(iatom)
+            dXr(:) = points(:,ip) - ratom(:,iatom)
+            distX = sqrt(dXr(1)**2 + dXr(2)**2 + dXr(3)**2)
+            imu = 1
+            do issh = 1, nssh(in1)
+                call getpsi(in1, issh, distX, psiR, dpsiR)
+                l = lssh(issh, in1)
+                call getYlm(l, dXr, psiL, dpsiL)
+                do lmu = 1, (2*l+1)
+                    mmu = imu + degelec(iatom)
+                    if (mmu >= 1 .and. mmu <= norb) phi(mmu) = dble(psiR) * dble(psiL(lmu))
+                    imu = imu + 1
+                end do
+            end do
+        end do
+
+        rhs(:) = dcmplx(phi(:), 0.0d0)
+        call zgetrs('N', norb, 1, A, norb, ipiv, rhs, norb, info)
+        if (info /= 0) then
+            stop 'firecore_ldos2points: zgetrs failed'
+        end if
+
+        vv = (0.0d0, 0.0d0)
+        do imu = 1, norb
+            vv = vv + dcmplx(phi(imu), 0.0d0) * rhs(imu)
+        end do
+        out(ip) = -(1.0d0/3.141592653589793238462643d0) * dimag(vv)
+    end do
+
+    deallocate(Hk, Sk, A, ipiv, rhs, phi)
+end subroutine firecore_ldos2points
+
 subroutine firecore_getpsi( l, m, in1, issh, n, poss, ys )  bind(c, name='firecore_getpsi' )
     use iso_c_binding
     implicit none
@@ -1345,6 +1433,46 @@ subroutine firecore_get_HS_k(kpoint_vec, Hk_out, Sk_out) bind(c, name='firecore_
     Sk_out = local_Sk
 
 end subroutine firecore_get_HS_k
+
+subroutine firecore_get_G_k(kpoint_vec, E, eta, G_out) bind(c, name='firecore_get_G_k')
+    use iso_c_binding
+    use interactions, only: norbitals
+    implicit none
+    real(c_double),    dimension(3), intent(in) :: kpoint_vec
+    real(c_double),    value, intent(in) :: E, eta
+    complex(c_double), dimension(norbitals,norbitals), intent(out) :: G_out
+
+    integer :: info
+    integer, allocatable :: ipiv(:)
+    complex(c_double), allocatable :: Hk(:,:), Sk(:,:), A(:,:), work(:)
+    complex(c_double) :: z
+    integer :: lwork
+
+    external :: zgetrf, zgetri
+
+    allocate(Hk(norbitals,norbitals), Sk(norbitals,norbitals), A(norbitals,norbitals), ipiv(norbitals))
+    call ktransform(kpoint_vec, norbitals, Sk, Hk)
+
+    z = dcmplx(E, eta)
+    A(:,:) = z*Sk(:,:) - Hk(:,:)
+
+    call zgetrf(norbitals, norbitals, A, norbitals, ipiv, info)
+    if (info /= 0) stop 'firecore_get_G_k: zgetrf failed'
+
+    lwork = -1
+    allocate(work(1))
+    call zgetri(norbitals, A, norbitals, ipiv, work, lwork, info)
+    if (info /= 0) stop 'firecore_get_G_k: zgetri(work query) failed'
+    lwork = int(dble(work(1)))
+    deallocate(work)
+    allocate(work(lwork))
+    call zgetri(norbitals, A, norbitals, ipiv, work, lwork, info)
+    if (info /= 0) stop 'firecore_get_G_k: zgetri failed'
+
+    G_out = A
+
+    deallocate(Hk, Sk, A, ipiv, work)
+end subroutine firecore_get_G_k
 
 ! Helper to get nspecies for dimensioning on C side (already have norbitals)
 subroutine firecore_get_nspecies(nspecies_out) bind(c, name='firecore_get_nspecies')
