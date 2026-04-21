@@ -1339,6 +1339,199 @@ For direction cosines (l, m, n) = (dx/r, dy/r, dz/r):
 - ppσ: l² * Vppσ + (1 - l²) * Vppπ
 - etc.
 
+## CRITICAL: Orbital Mapping Conventions (Evidence from Orbital Projection Debugging)
+
+### Background
+
+The orbital projection debugging in `tests/pyFireball/test_h2o_orbital_comparison.py` revealed critical issues with orbital mapping between Fortran (Fireball) and OpenCL implementations. These issues directly affect STM transport calculations that use orbital overlaps, spectral functions, and Hamiltonian assembly.
+
+### Orbital Ordering Conventions
+
+**Fortran (Fireball) Convention:**
+- Order: `[s, py, pz, px]` for atoms with p orbitals (spherical harmonics m=-1,0,+1)
+- Source: `fortran/INTERPOLATERS/getYlm.f90`
+- p-orbitals: `psi(1)=y` (py, m=-1), `psi(2)=z` (pz, m=0), `psi(3)=x` (px, m=+1)
+- For H atoms (1 orbital): only `[s]`
+
+**OpenCL Kernel Convention (Grid.cl):**
+- Order: `[px, py, pz, s]` (Cartesian x,y,z)
+- Source: `pyBall/FireballOCL/cl/Grid.cl`
+- dri.xyz = [px, py, pz], dri.w = s
+- Used in `project_orbital` and `project_density_sparse_tiled` kernels
+
+**OpenCL Hamiltonian Convention (hamiltonian.cl):**
+- Order: `[s, px, py, pz]` (intermediate convention)
+- Source: `pyBall/FireballOCL/cl/hamiltonian.cl`
+- Used in Slater-Koster rotation `rotate_fb_matrix_sp`
+
+### Permutation Mappings
+
+**Fortran → OpenCL Grid (for orbital projection):**
+```python
+# Fortran [s, py, pz, px] → OpenCL [px, py, pz, s]
+coeffs_opencl[ia, 0] = coeffs_fortran[ia, 3]  # px
+coeffs_opencl[ia, 1] = coeffs_fortran[ia, 1]  # py
+coeffs_opencl[ia, 2] = coeffs_fortran[ia, 2]  # pz
+coeffs_opencl[ia, 3] = coeffs_fortran[ia, 0]  # s
+```
+
+**Fortran → OpenCL Hamiltonian (for SK rotation):**
+```python
+# Currently in STM.py:
+_ORT_SPP_TO_STD = np.array([0, 3, 1, 2], dtype=int)  # [s,py,pz,px] → [s,px,py,pz]
+```
+
+**IMPORTANT:** The OpenCL Grid kernel expects `[px,py,pz,s]` NOT `[s,px,py,pz]`! The current STM remapping is incorrect for orbital projection kernels.
+
+### Critical Pitfalls Discovered
+
+#### 1. Coefficient Packing Truncation (PRIMARY BUG)
+
+**Problem:** OpenCL `project_orbital` packed only `norb_per[ia]` coefficients per atom instead of always 4.
+
+**Impact:** For H atoms (1 orbital), only 1 coefficient was packed, missing the s-orbital entirely.
+
+**Fix:** Always pack 4 coefficients per atom as float4:
+```python
+coeffs_opencl = np.zeros((natoms, 4), dtype=np.float32)
+for ia in range(natoms):
+    no = norb_per[ia]
+    if no == 1:  # H atom: pack [0,0,0,s]
+        coeffs_opencl[ia, 3] = coeffs_fortran[ia, 0]
+    elif no == 4:  # O atom: remap [s,py,pz,px] → [px,py,pz,s]
+        coeffs_opencl[ia, 0] = coeffs_fortran[ia, 3]
+        coeffs_opencl[ia, 1] = coeffs_fortran[ia, 1]
+        coeffs_opencl[ia, 2] = coeffs_fortran[ia, 2]
+        coeffs_opencl[ia, 3] = coeffs_fortran[ia, 0]
+```
+
+**Evidence:** Test with mockup orbitals showed H s-orbitals absent in OpenCL output until this fix was applied.
+
+#### 2. Incorrect Sign Flip for px
+
+**Problem:** Previous implementation applied a sign flip to px orbital during remapping.
+
+**Impact:** Caused correlation of -0.99 for px orbital (correct should be +0.99).
+
+**Fix:** Remove sign flip:
+```python
+# WRONG (old):
+coeffs_opencl[ia, 0] = -coeffs_fortran[ia, 3]  # px flipped
+
+# CORRECT (new):
+coeffs_opencl[ia, 0] = coeffs_fortran[ia, 3]  # px no flip
+```
+
+**Evidence:** Single-basis orbital tests showed px correlation = -0.99 before fix, +1.0 after fix.
+
+#### 3. Sampling Mismatch (Voxel Centers vs Corners)
+
+**Problem:** Fortran evaluates at arbitrary points (user-specified mesh), OpenCL grid projection evaluated at voxel corners.
+
+**Impact:** Large scale mismatch even when qualitative shapes matched.
+
+**Fix:** Shift OpenCL grid origin by `+0.5 * dC` to sample at voxel centers:
+```python
+grid_spec['origin'] = grid_origin + 0.5 * grid_spec['dC']
+```
+
+**Evidence:** Scale mismatch reduced from ~2x to ~1.0 after origin shift.
+
+#### 4. Radial Interpolation Mismatch
+
+**Problem:** OpenCL used Catmull-Rom spline; Fortran uses natural cubic spline with second derivatives.
+
+**Impact:** Radial basis functions interpolated differently, causing scale differences.
+
+**Fix:** Change to natural cubic spline:
+- `Grid.cl::evaluate_radial()`: use natural cubic spline with second derivatives
+- `Grid.py::load_basis()`: resample with natural cubic spline
+- Pack radial basis as `(wf, wf_spline_second_derivative)` float2 per node
+
+**Evidence:** Correlation improved from ~0.95 to 1.0000 after spline fix.
+
+### Application to STM Implementation
+
+#### Current STM.py Orbital Handling
+
+**In `build_inter_system_blocks_fdata()`:**
+```python
+# Lines 525-526 in STM.py:
+bH4 = _reorder_sp_block_ortega_to_std(bH4)
+bS4 = _reorder_sp_block_ortega_to_std(bS4)
+```
+This remaps from Fortran `[s,py,pz,px]` to `[s,px,py,pz]` (intermediate convention).
+
+**In `mo_overlap_amplitude()`:**
+```python
+# Line 570 in STM.py:
+t = float(np.dot(v, C[:, mo]))
+```
+This computes overlap using eigenvector C directly from Fireball (Fortran order).
+
+**ISSUE:** The eigenvectors C are in Fortran order `[s,py,pz,px]`, but the coupling vector v is built from H blocks that were remapped to `[s,px,py,pz]`. This creates an index mismatch!
+
+#### Required Fixes for STM
+
+**Fix 1: Update Permutation for Grid Kernels**
+```python
+# Add new permutation for Fortran → OpenCL Grid:
+_ORT_SPP_TO_GRID = np.array([3, 1, 2, 0], dtype=int)  # [s,py,pz,px] → [px,py,pz,s]
+
+def _reorder_sp_block_ortega_to_grid(b4):
+    """Reorder 4x4 block from Ortega order (s,py,pz,px) to Grid (px,py,pz,s)."""
+    p = _ORT_SPP_TO_GRID
+    return b4[np.ix_(p, p)]
+```
+
+**Fix 2: Consistent Remapping in MO Overlap**
+The MO overlap method must use consistent orbital ordering:
+- If C is in Fortran order, v must also be in Fortran order
+- OR remap C to match v's order
+
+**Fix 3: Always Pack 4 Orbitals**
+When building density matrices for Grid projection:
+```python
+# In pad_HS_to_float4() or similar:
+# Always pack [px,py,pz,s] for Grid kernels
+# For H atoms: [0,0,0,s]
+```
+
+**Fix 4: Eigenvector Ordering for PDOS Projection**
+When projecting PDOS to grid using GridProjector:
+```python
+# C from Fireball is in Fortran order [s,py,pz,px]
+# Need to remap to OpenCL Grid order [px,py,pz,s] before projection
+C_grid = _remap_eigenvectors_fortran_to_grid(C, norb_per)
+```
+
+### Validation Checklist for STM
+
+Before using STM transport methods:
+
+1. **[Coefficient packing]** Verify all arrays pack 4 orbitals per atom (no truncation for H)
+2. **[Permutation consistency]** Check which permutation is used:
+   - `[0,3,1,2]` for Hamiltonian (Fortran → [s,px,py,pz])
+   - `[3,1,2,0]` for Grid projection (Fortran → [px,py,pz,s])
+3. **[Eigenvector order]** Verify C matrix order matches coupling vector order in MO overlap
+4. **[Sign convention]** No sign flip for px (removed in orbital projection fix)
+5. **[Radial interpolation]** If using OCL_Hamiltonian, verify spline type matches Fortran
+6. **[Sampling origin]** If projecting to grid, verify origin shift for voxel centers
+
+### Connection to Orbital Projection Test
+
+The test `tests/pyFireball/test_h2o_orbital_comparison.py` provides:
+- **Reference implementation:** Fortran `orb2points()` (ground truth)
+- **Validation method:** OpenCL `project_orbital_points()` (exact point evaluation)
+- **Correlation metric:** Achieved 1.0000 correlation after all fixes
+
+This test should be used to validate any STM orbital mapping changes:
+1. Create mockup orbitals (single-basis activation)
+2. Project to grid with both Fortran and OpenCL
+3. Verify correlation = 1.0000 before using in STM transport
+
+---
+
 ## Remaining Problems and Future Work
 
 ### 1. DOS File Regeneration

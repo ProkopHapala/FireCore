@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """
-Compare Fortran orb2points vs OpenCL orbital projection for PTCDA HOMO.
+Compare Fortran orb2points vs OpenCL orbital projection for any molecule.
 
 This script:
 1. Uses Fortran orb2points as reference (correct implementation)
-2. Uses OpenCL GridProjector with remapped coefficients
+2. Uses OpenCL project_orbital_points kernel with correct coefficient remapping
 3. Plots signed wavefunctions side by side (not squared)
-4. Uses plane at z=1Å above molecular plane (pi orbital is zero at atom plane)
+4. Computes correlation statistics between methods
+5. Uses plane at z-height above molecular plane
+
+Usage:
+    python test_orbital_projection_compare.py --xyz PTCDA.xyz
+    python test_orbital_projection_compare.py --xyz H2O.xyz --mo 5 --z 1.0
+    python test_orbital_projection_compare.py --xyz CH4.xyz --orbitals 0-7
 """
 
 import os
@@ -19,7 +25,11 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from pyBall.AtomicSystem import AtomicSystem
 from pyBall import FireCore as fc
-from pyBall.FireballOCL.STM_utils import set_export_dir, save_plot, plot_atoms, project_orbital_to_grid_v2
+from pyBall.FireballOCL.STM_utils import (
+    set_export_dir, save_plot, plot_atoms, compute_correlation_stats,
+    write_scaling_summary, plot_orbital_comparison, parse_orbital_indices,
+    generate_mo_labels, project_orbital_to_points, build_grid_spec
+)
 
 
 def main():
@@ -28,6 +38,8 @@ def main():
                        help="Path to XYZ file")
     parser.add_argument("--mo", type=int, default=None,
                        help="MO index (1-based). If None, use HOMO")
+    parser.add_argument("--orbitals", type=str, default=None,
+                       help='MO indices to compare: "0,1,2" or "0-5". If None, uses --mo or HOMO')
     parser.add_argument("--z", type=float, default=1.0,
                        help="Height above molecular plane for projection (Å)")
     parser.add_argument("--size", type=float, default=20.0,
@@ -40,6 +52,8 @@ def main():
                        help="Fireball verbosity")
     parser.add_argument("--outdir", default="export/orbital_projection_compare",
                        help="Output directory")
+    parser.add_argument("--save-npz", action="store_true",
+                       help="Save numerical data to .npz file")
     args = parser.parse_args()
 
     export_dir = set_export_dir(args.outdir)
@@ -57,9 +71,7 @@ def main():
     # Get dimensions
     dims = fc.get_HS_dims()
     norb = dims.norbitals
-    nelec = dims.nelec
-    homo_idx = nelec // 2
-    print(f"norb={norb}, nelec={nelec}, HOMO index (1-based)={homo_idx}")
+    print(f"norb={norb}")
 
     # Run SCF
     print(f"Running SCF (nmax_scf={args.nmax_scf})...")
@@ -70,13 +82,37 @@ def main():
     eigen = fc.get_eigen(ikp=1, norb=norb)
     print(f"Got {len(eigen)} eigenvalues")
 
-    # Select MO
-    if args.mo is None:
-        mo_idx = homo_idx
+    # Determine HOMO from eigenvalues (last occupied = last negative energy)
+    # HOMO is the highest energy orbital that is still occupied (negative or closest to zero)
+    occupied = np.where(eigen < 0)[0]
+    if len(occupied) > 0:
+        homo_idx = occupied[-1] + 1  # Convert to 1-based
     else:
-        mo_idx = args.mo
-    E_mo = eigen[mo_idx - 1]
-    print(f"Selected MO {mo_idx} (HOMO{mo_idx - homo_idx:+d}) with E={E_mo:.4f} eV")
+        # If no negative eigenvalues, use the lowest positive as LUMO, HOMO would be last "filled"
+        # This is a fallback for unusual cases
+        homo_idx = len(eigen) // 2
+    
+    nelec = homo_idx * 2  # Estimate nelec from HOMO position
+    print(f"HOMO detected: MO {homo_idx} at {eigen[homo_idx-1]:.4f} eV")
+    print(f"LUMO detected: MO {homo_idx+1} at {eigen[homo_idx]:.4f} eV")
+
+    # Determine which MOs to compare
+    if args.orbitals is not None:
+        # Multiple orbitals specified
+        mo_indices = parse_orbital_indices(args.orbitals, norb)
+        mo_indices = [i + 1 for i in mo_indices]  # Convert to 1-based
+        print(f"Selected {len(mo_indices)} orbitals: {mo_indices}")
+    elif args.mo is not None:
+        # Single MO specified
+        mo_indices = [args.mo]
+    else:
+        # Default to HOMO
+        mo_indices = [homo_idx]
+    
+    # Generate labels for all selected MOs
+    mo_labels = generate_mo_labels([i - 1 for i in mo_indices], eigen, nelec, 
+                                   mol_name=os.path.basename(args.xyz).replace('.xyz', ''))
+    print(f"MO labels: {mo_labels}")
 
     # Build grid in molecular plane
     print("Building projection grid...")
@@ -93,35 +129,30 @@ def main():
     y_axis /= np.linalg.norm(y_axis)
 
     # Grid parameters - use same for both Fortran and OpenCL
+    # IMPORTANT: Use absolute coordinates for extent to match atom positions
     step = args.size / args.n
-    xs = np.linspace(-args.size/2, args.size/2, args.n)
-    ys = np.linspace(-args.size/2, args.size/2, args.n)
-    X, Y = np.meshgrid(xs, ys)
+    # Grid bounds in absolute coordinates (centered on molecular origin)
+    # Match test_h2o_orbital_comparison.py: grid_origin = atom_center - [Lx/2, Ly/2, Lz/2]
+    grid_origin = origin - np.array([args.size/2, args.size/2, 0.0])
+    
+    xs = np.linspace(grid_origin[0] + step*0.5, grid_origin[0] + args.size - step*0.5, args.n)  # Voxel centers
+    ys = np.linspace(grid_origin[1] + step*0.5, grid_origin[1] + args.size - step*0.5, args.n)
+    X, Y = np.meshgrid(xs, ys, indexing='ij')  # IMPORTANT: indexing='ij' for correct orientation
+    
+    # Extent for plotting (absolute coordinates, matching atom positions)
+    extent_abs = [grid_origin[0], grid_origin[0] + args.size, grid_origin[1], grid_origin[1] + args.size]
 
-    # Generate 3D points at height z above plane
-    plane_origin = origin + args.z * normal
-    points = plane_origin[None, :] + X[..., None] * x_axis[None, None, :] + Y[..., None] * y_axis[None, None, :]
-    points = points.reshape(-1, 3)
+    # Generate 3D points at height z above plane - match test_h2o_orbital_comparison.py exactly
+    z_height = args.z
+    Z_plane = np.zeros_like(X) + origin[2] + z_height
+    points_c = np.stack([X.ravel(), Y.ravel(), Z_plane.ravel()], axis=1)
+    points_c = np.ascontiguousarray(points_c, dtype=np.float64)
 
-    print(f"Grid: {args.n}x{args.n} points, step={step:.3f} Å, z={args.z} Å above plane")
+    print(f"Grid: {args.n}x{args.n} points, step={step:.3f} Å, z={z_height} Å")
+    print(f"  Extent: x=[{grid_origin[0]:.2f}, {grid_origin[0] + args.size:.2f}], y=[{grid_origin[1]:.2f}, {grid_origin[1] + args.size:.2f}]")
 
-    # ═══ Fortran orb2points (reference) ═══════════════════════════════════════
-    print(f"\nProjecting MO {mo_idx} using Fortran orb2points...")
-    # Fortran expects C-contiguous array, but with swapped strides (transpose the grid)
-    # Create 2D grid, transpose it, then flatten to get correct stride order for raw pointer
-    points_2d = plane_origin[None, None, :] + X[:, :, None] * x_axis[None, None, :] + Y[:, :, None] * y_axis[None, None, :]
-    points_2d_T = points_2d.transpose(1, 0, 2)  # Swap x,y strides
-    points_c = np.ascontiguousarray(points_2d_T.reshape(-1, 3), dtype=np.float64)
-    mo_fortran = fc.orb2points(points_c, iMO=mo_idx, ikpoint=1)
-    mo_fortran_2d = mo_fortran.reshape(args.n, args.n).T  # Transpose back for plotting
-
-    print(f"Fortran range: [{mo_fortran_2d.min():.3e}, {mo_fortran_2d.max():.3e}]")
-
-    # ═══ OpenCL GridProjector with remapped coefficients ═════════════════════════
-    print(f"\nProjecting MO {mo_idx} using OpenCL GridProjector...")
-
-    # Get MO coefficients directly from Fireball (avoid running SCF again)
-    print("Getting MO coefficients from Fireball...")
+    # ═══ Get MO coefficients and orbital mapping (common for all MOs) ════════════
+    print("\nGetting MO coefficients from Fireball...")
     C_fc = fc.get_wfcoef(norb=norb)
     print(f"Got MO coefficients shape: {C_fc.shape}")
 
@@ -145,101 +176,116 @@ def main():
     orb2atom = np.array([ia for ia in range(dims.natoms) for _ in range(int(norb_per[ia]))], dtype=np.int32)
     print(f"Orbital mapping: norb_per={norb_per[:5]}..., total={sum(norb_per)}")
 
-    # Extract MO coefficients and project - use same grid as Fortran
     fdata_basis = os.path.join(os.path.dirname(__file__), "Fdata", "basis")
 
-    # Build grid spec that matches Fortran grid exactly
-    # Fortran grid: centered at origin, size x size, n x n points at z=args.z
-    # Use ngrid=[80,80,8] for task building (build_tasks needs minimum z thickness)
-    # Grid should span from z=args.z to z=args.z+step*8, take middle slice at z=args.z+step*4
-    grid_origin = plane_origin - np.array([args.size/2, args.size/2, 0.0])
-    grid_spec = {
-        'origin': grid_origin,
-        'dA': [step, 0, 0],
-        'dB': [0, step, 0],
-        'dC': [0, 0, step],
-        'ngrid': [args.n, args.n, 8]  # z=8 for task building
-    }
+    # ═══ Process each MO ═══════════════════════════════════════════════════════
+    all_results = []
+    
+    for mo_idx, mo_label in zip(mo_indices, mo_labels):
+        E_mo = eigen[mo_idx - 1]
+        print(f"\n{'='*60}")
+        print(f"Processing MO {mo_idx} ({mo_label})  E={E_mo:.4f} eV")
+        print(f"{'='*60}")
 
-    # Use new orbital projection kernel (not density kernel)
-    psi_opencl = project_orbital_to_grid_v2(
-        C_fc, mo_idx - 1,  # 0-based index
-        mol.atypes, mol.apos,
-        orb2atom, norb_per,
-        fdata_basis, grid_spec=grid_spec
-    )
+        # ═══ Fortran orb2points (reference) ═══════════════════════════════════
+        print(f"  Fortran orb2points...")
+        mo_fortran_flat = fc.orb2points(points_c, iMO=mo_idx, ikpoint=1)
+        mo_fortran_2d = mo_fortran_flat.reshape(args.n, args.n)  # NO transpose (matches test_h2o)
+        print(f"  Fortran range: [{mo_fortran_2d.min():.3e}, {mo_fortran_2d.max():.3e}]")
 
-    print(f"OpenCL output shape: {psi_opencl.shape}")
+        # ═══ OpenCL project_orbital_points (exact points kernel) ══════════════
+        print(f"  OpenCL project_orbital_points (exact kernel)...")
+        
+        psi_opencl_flat = project_orbital_to_points(
+            C_fc, mo_idx - 1,  # 0-based index
+            mol.atypes, mol.apos,
+            orb2atom, norb_per,
+            fdata_basis, points=points_c.astype(np.float32)  # Same points as Fortran
+        )
+        psi_opencl_2d = psi_opencl_flat.reshape(args.n, args.n)  # NO transpose (matches test_h2o)
+        
+        print(f"  OpenCL range: [{psi_opencl_2d.min():.3e}, {psi_opencl_2d.max():.3e}]")
 
-    # Take z-slice at z=args.z (slice index = args.z/step = 1.0/0.25 = 4)
-    z_slice_idx = int(args.z / 0.25)  # Fixed step for comparison
-    psi_opencl_2d = psi_opencl[:, :, z_slice_idx].T
+        # ═══ Comparison statistics ════════════════════════════════════════════
+        stats = compute_correlation_stats(mo_fortran_2d, psi_opencl_2d)
+        stats['mo_idx'] = mo_idx
+        stats['mo_label'] = mo_label
+        all_results.append(stats)
+        
+        print(f"  Correlation: {stats['corr']:.6f}")
+        print(f"  Scale (linreg): {stats['scale_linreg']:.4f}")
+        print(f"  RMS difference: {np.sqrt(np.mean((mo_fortran_2d - psi_opencl_2d)**2)):.3e}")
 
-    print(f"OpenCL signed range: [{psi_opencl_2d.min():.3e}, {psi_opencl_2d.max():.3e}]")
-    print(f"OpenCL non-zero count: {np.count_nonzero(psi_opencl_2d)} / {psi_opencl_2d.size}")
+        # ═══ Comparison plots ═════════════════════════════════════════════════
+        fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+        fig.suptitle(f"MO {mo_idx} ({mo_label}) E={E_mo:.4f} eV at z={args.z}Å - Fortran vs OpenCL (EXACT POINTS)")
 
-    # ═══ Comparison plots - SIGNED WAVEFUNCTIONS SIDE BY SIDE ═══════════════════
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-    fig.suptitle(f"MO {mo_idx} (HOMO{mo_idx - homo_idx:+d}) E={E_mo:.4f} eV at z={args.z}Å - Fortran vs OpenCL (SIGNED)")
+        vmax_f = max(abs(mo_fortran_2d.min()), abs(mo_fortran_2d.max()))
+        vmax_o = max(abs(psi_opencl_2d.min()), abs(psi_opencl_2d.max()))
 
-    vmax_f = max(abs(mo_fortran_2d.min()), abs(mo_fortran_2d.max()))
-    vmax_o = max(abs(psi_opencl_2d.min()), abs(psi_opencl_2d.max()))
+        # Fortran - use absolute coordinates for both extent and atom positions
+        plot_orbital_comparison(axes[0], mo_fortran_2d, mol.apos, mol.atypes,
+                              extent_abs,
+                              f"Fortran: ψ(r)", enames=mol.enames)
 
-    # Fortran
-    im0 = axes[0].imshow(mo_fortran_2d, origin='lower',
-                       extent=[xs.min(), xs.max(), ys.min(), ys.max()],
-                       cmap='bwr', vmin=-vmax_f, vmax=vmax_f, aspect='equal')
-    plot_atoms(axes[0], mol.apos, mol.atypes, color='green', ms=4)
-    axes[0].set_title("Fortran: ψ(r)")
-    axes[0].set_xlabel("x (Å)")
-    axes[0].set_ylabel("y (Å)")
-    plt.colorbar(im0, ax=axes[0])
+        # OpenCL
+        plot_orbital_comparison(axes[1], psi_opencl_2d, mol.apos, mol.atypes,
+                              extent_abs,
+                              f"OpenCL: ψ(r)", enames=mol.enames)
 
-    # OpenCL
-    im1 = axes[1].imshow(psi_opencl_2d, origin='lower',
-                       extent=[xs.min(), xs.max(), ys.min(), ys.max()],
-                       cmap='bwr', vmin=-vmax_o, vmax=vmax_o, aspect='equal')
-    plot_atoms(axes[1], mol.apos, mol.atypes, color='green', ms=4)
-    axes[1].set_title("OpenCL: ψ(r) (remapped)")
-    axes[1].set_xlabel("x (Å)")
-    axes[1].set_ylabel("y (Å)")
-    plt.colorbar(im1, ax=axes[1])
+        # Difference
+        diff = mo_fortran_2d - psi_opencl_2d
+        vmax_d = max(abs(diff.min()), abs(diff.max()))
+        im2 = axes[2].imshow(diff, origin='lower',
+                           extent=extent_abs,
+                           cmap='bwr', vmin=-vmax_d, vmax=vmax_d, aspect='equal')
+        axes[2].set_title(f"Difference (max|diff|={vmax_d:.3e})")
+        axes[2].set_xlabel("x (Å)")
+        axes[2].set_ylabel("y (Å)")
+        plt.colorbar(im2, ax=axes[2])
+        plot_atoms(axes[2], mol.apos, mol.atypes, color='green', ms=4)
 
-    # Difference
-    diff = mo_fortran_2d - psi_opencl_2d
-    vmax_d = max(abs(diff.min()), abs(diff.max()))
-    im2 = axes[2].imshow(diff, origin='lower',
-                       extent=[xs.min(), xs.max(), ys.min(), ys.max()],
-                       cmap='bwr', vmin=-vmax_d, vmax=vmax_d, aspect='equal')
-    axes[2].set_title(f"Difference (max|diff|={vmax_d:.3e})")
-    axes[2].set_xlabel("x (Å)")
-    axes[2].set_ylabel("y (Å)")
-    plt.colorbar(im2, ax=axes[2])
+        plt.tight_layout()
+        save_plot(fig, f"mo{mo_idx:04d}_{mo_label}_compare", export_dir, dpi=140)
 
-    plt.tight_layout()
-    save_plot(fig, f"mo{mo_idx:04d}_compare_signed", export_dir, dpi=140)
+        # Correlation plot
+        fig2, ax2 = plt.subplots(1, 1, figsize=(6, 6))
+        ax2.scatter(mo_fortran_2d.ravel(), psi_opencl_2d.ravel(), alpha=0.3, s=1)
+        ax2.plot([mo_fortran_2d.min(), mo_fortran_2d.max()],
+                 [mo_fortran_2d.min(), mo_fortran_2d.max()], 'r--')
+        ax2.set_xlabel("Fortran ψ")
+        ax2.set_ylabel("OpenCL ψ")
+        ax2.set_title(f"Correlation (r={stats['corr']:.6f})")
+        ax2.axis('equal')
+        plt.tight_layout()
+        save_plot(fig2, f"mo{mo_idx:04d}_{mo_label}_correlation", export_dir, dpi=140)
 
-    # Correlation plot
-    fig2, ax2 = plt.subplots(1, 1, figsize=(6, 6))
-    ax2.scatter(mo_fortran_2d.ravel(), psi_opencl_2d.ravel(), alpha=0.3, s=1)
-    ax2.plot([mo_fortran_2d.min(), mo_fortran_2d.max()],
-             [mo_fortran_2d.min(), mo_fortran_2d.max()], 'r--')
-    ax2.set_xlabel("Fortran ψ")
-    ax2.set_ylabel("OpenCL ψ")
-    ax2.set_title(f"Correlation (r={np.corrcoef(mo_fortran_2d.ravel(), psi_opencl_2d.ravel())[0,1]:.6f})")
-    ax2.axis('equal')
-    plt.tight_layout()
-    save_plot(fig2, f"mo{mo_idx:04d}_correlation", export_dir, dpi=140)
+        # Save numerical data if requested
+        if args.save_npz:
+            np.savez(os.path.join(export_dir, f"mo{mo_idx:04d}_{mo_label}_data.npz"),
+                     X=X, Y=Y, Z_fortran=mo_fortran_2d, Z_opencl=psi_opencl_2d,
+                     mo_idx=mo_idx, mo_label=mo_label, E=E_mo, z=args.z, stats=stats)
 
-    # Save numerical data
-    np.savez(os.path.join(export_dir, f"mo{mo_idx:04d}_compare_signed.npz"),
-             X=X, Y=Y, Z_fortran=mo_fortran_2d, Z_opencl=psi_opencl_2d,
-             mo_idx=mo_idx, E=E_mo, z=args.z)
+    # ═══ Summary statistics ═══════════════════════════════════════════════════
+    print(f"\n{'='*60}")
+    print("SUMMARY")
+    print(f"{'='*60}")
+    
+    for r in all_results:
+        print(f"MO {r['mo_idx']:3d} ({r['mo_label']:8s}): Corr={r['corr']:8.6f}, Scale={r['scale_linreg']:7.4f}")
+    
+    avg_corr = np.mean([r['corr'] for r in all_results])
+    avg_scale = np.mean([r['scale_linreg'] for r in all_results])
+    print(f"\nAverage correlation: {avg_corr:.6f}")
+    print(f"Average scale: {avg_scale:.4f}")
 
-    print(f"\nCorrelation coefficient: {np.corrcoef(mo_fortran_2d.ravel(), psi_opencl_2d.ravel())[0,1]:.6f}")
-    print(f"RMS difference: {np.sqrt(np.mean((mo_fortran_2d - psi_opencl_2d)**2)):.3e}")
-    print(f"Saved to {export_dir}")
+    # Write scaling summary file
+    summary_path = write_scaling_summary(all_results, export_dir, 'scaling_summary.txt')
+    print(f"\nSummary written to: {summary_path}")
+    print(f"Plots saved to: {export_dir}")
     print("Done.")
+
+    return all_results
 
 
 if __name__ == "__main__":

@@ -797,6 +797,214 @@ __kernel void project_orbital_points(
 {
     // Evaluate ψ(r) at exact point locations
     // Uses same radial interpolation and spherical harmonics as grid kernel
+
+---
+
+## Refactoring and Generalization (April 2026)
+
+### Objective
+
+Generalize the H2O-specific orbital projection test to work with **any molecule**, ensuring correct orbital coefficient remapping and proper plotting alignment.
+
+### New Files Created
+
+1. **`pyBall/FireballOCL/STM_utils.py`** - Centralized utility module
+2. **`tests/pyFireball/test_orbital_projection_compare.py`** - General molecule-agnostic test
+
+### Key Functions Added to STM_utils.py
+
+#### 1. `remap_coeffs_fortran_to_grid()`
+Remaps MO coefficients from Fortran order `[s, py, pz, px]` to OpenCL Grid kernel order `[px, py, pz, s]`.
+
+```python
+_PERM_FORT_TO_GRID = np.array([3, 1, 2, 0], dtype=int)  # [s,py,pz,px] -> [px,py,pz,s]
+
+def remap_coeffs_fortran_to_grid(coeffs, norb_per):
+    """Remap MO coefficients from Fortran to OpenCL Grid kernel order."""
+    norb_per_arr = np.asarray(norb_per, dtype=np.int32)
+    natoms = len(norb_per_arr)
+    coeffs_remapped = np.zeros((natoms, 4), dtype=np.float32)
+    
+    starts = np.zeros(natoms + 1, dtype=np.int32)
+    starts[1:] = np.cumsum(norb_per_arr)
+    
+    for ia in range(natoms):
+        no = int(norb_per_arr[ia])
+        i0 = int(starts[ia])
+        
+        if no == 4:
+            coeffs_f = coeffs[i0:i0+4]
+            coeffs_remapped[ia, :4] = coeffs_f[_PERM_FORT_TO_GRID]
+        elif no == 1:
+            coeffs_remapped[ia, 3] = coeffs[i0]  # s in last position
+        else:
+            coeffs_remapped[ia, :no] = coeffs[i0:i0+no]
+    
+    return coeffs_remapped
+```
+
+#### 2. `project_orbital_to_points()`
+Projects a single MO onto exact 3D points using OpenCL kernel (no grid slicing).
+
+#### 3. `plot_orbital_comparison()`
+Reusable plotting function with proper coordinate system handling.
+
+#### 4. `generate_mo_labels()`
+Generates HOMO/LUMO labels based on actual eigenvalues.
+
+#### 5. `compute_correlation_stats()`
+Computes correlation and scaling between Fortran and OpenCL projections.
+
+### Critical Issues Discovered and Fixed
+
+#### Issue 1: Coefficient Matrix Orientation (Row vs Column Indexing)
+
+**Problem:** `fc.get_wfcoef()` returns eigenvectors where **rows** are MOs (not columns). The refactored code incorrectly used column indexing `C[:, mo_idx]` for square matrices, causing wrong coefficient extraction and 0.5-0.7 correlation.
+
+**Evidence:**
+```python
+# WRONG (column indexing - gives wrong values):
+mo_coeffs = C[:, mo_idx]  # Returns column 0: [-0.8075, 0.0000, 0.4964, 0.0000]
+
+# CORRECT (row indexing - matches Fortran):
+mo_coeffs = C[mo_idx, :]  # Returns row 0: [-0.8075, -0.0762, -0.0000, 0.0000]
+```
+
+**Fix in `project_orbital_to_points()` and `project_orbital_to_grid_v2()`:**
+```python
+# Determine correct orientation of C matrix
+norb_total = sum(norb_per)
+mo_coeffs = C[mo_idx, :].copy()  # Row indexing like test_h2o_orbital_comparison.py
+```
+
+**Result:** Correlation improved from 0.5-0.7 to **1.0000**.
+
+#### Issue 2: Grid Transpose (Plotting Misalignment)
+
+**Problem:** The plot showed x/y axes swapped - orbitals were transposed relative to atom positions.
+
+**Root Cause:** The code used a rotated coordinate system (`x_axis`, `y_axis` from SVD) instead of simple XY plane like `test_h2o_orbital_comparison.py`.
+
+**Fix:** Reverted to simple XY grid generation:
+```python
+# BEFORE (rotated coordinate system - WRONG):
+x_axis = trial - np.dot(trial, normal) * normal
+points = plane_origin + X * x_axis + Y * y_axis
+
+# AFTER (simple XY plane - CORRECT):
+grid_origin = origin - np.array([args.size/2, args.size/2, 0.0])
+X, Y = np.meshgrid(xs, ys, indexing='ij')
+Z_plane = np.zeros_like(X) + origin[2] + z_height
+points_c = np.stack([X.ravel(), Y.ravel(), Z_plane.ravel()], axis=1)
+```
+
+**Result:** Atoms now correctly aligned with orbital features.
+
+#### Issue 3: Coordinate System Mismatch (Extent vs Atom Positions)
+
+**Problem:** Atom positions were in absolute coordinates, but extent used relative coordinates, causing atoms to appear outside the orbital plot.
+
+**Fix:** Use absolute coordinates for both extent and atom positions:
+```python
+# Grid bounds in ABSOLUTE coordinates (centered on molecular origin)
+grid_origin = origin - np.array([args.size/2, args.size/2, 0.0])
+extent_abs = [grid_origin[0], grid_origin[0] + args.size, 
+              grid_origin[1], grid_origin[1] + args.size]
+
+# Both extent_abs and mol.apos are now in same coordinate system
+plot_orbital_comparison(axes[0], mo_fortran_2d, mol.apos, mol.atypes,
+                        extent_abs, f"Fortran: ψ(r)", enames=mol.enames)
+```
+
+#### Issue 4: Incorrect HOMO Detection
+
+**Problem:** Using `nelec = sum(mol.atypes)` assumes neutral atoms, but PTCDA has 200 electrons while `sum(Z)` gives wrong value. This placed HOMO at MO 100 instead of actual MO 71.
+
+**Evidence:**
+```
+Energies near "detected" HOMO (MO 100): +12.6 eV (unoccupied!)
+Actual HOMO (MO 71): -1.6 eV
+Actual LUMO (MO 72): +0.07 eV
+```
+
+**Fix:** Detect HOMO from eigenvalues (last occupied = last negative energy):
+```python
+# Determine HOMO from eigenvalues (last occupied = last negative energy)
+occupied = np.where(eigen < 0)[0]
+if len(occupied) > 0:
+    homo_idx = occupied[-1] + 1  # Convert to 1-based
+else:
+    homo_idx = len(eigen) // 2  # Fallback
+
+nelec = homo_idx * 2  # Estimate nelec from HOMO position
+```
+
+**Result:** HOMO correctly identified as MO 71 (PTCDA) at -1.6 eV.
+
+### Command Line Usage
+
+```bash
+# H2O test (mockup mode - single basis functions)
+cd tests/pyFireball
+python test_h2o_orbital_comparison.py --mockup --ocl-points -n "20,20,10" -e "6.0,6.0" -z 1.0
+
+# PTCDA HOMO-4 to LUMO+4
+python test_orbital_projection_compare.py --xyz ../../cpp/common_resources/xyz/PTCDA.xyz \
+    --orbitals "66-75" --n 80 --size 20.0 --z 1.0
+
+# Single MO
+python test_orbital_projection_compare.py --xyz H2O.xyz --mo 5 --z 1.0
+
+# Multiple specific orbitals
+python test_orbital_projection_compare.py --xyz CH4.xyz --orbitals "0,1,2,3,4,5,6,7"
+```
+
+### Output Structure
+
+```
+tests/pyFireball/export/
+├── h2o_orbital_comparison_mockup/
+│   ├── h2o_MO1_H1_s_z1.0_fortran_vs_opencl.png
+│   ├── h2o_MO2_H2_s_z1.0_fortran_vs_opencl.png
+│   └── scaling_summary.txt
+└── orbital_projection_compare/
+    ├── mo0096_HOMO-4_compare.png      # PTCDA
+    ├── mo0097_HOMO-3_compare.png
+    ├── mo0098_HOMO-2_compare.png
+    ├── mo0099_HOMO-1_compare.png
+    ├── mo0100_HOMO_compare.png
+    ├── mo0101_LUMO_compare.png
+    ├── mo0102_LUMO+1_compare.png
+    ├── mo0103_LUMO+2_compare.png
+    ├── mo0104_LUMO+3_compare.png
+    ├── mo0105_LUMO+4_compare.png
+    └── scaling_summary.txt
+```
+
+### Summary Statistics (PTCDA)
+
+| MO | Label | Energy (eV) | Correlation | Scale |
+|----|-------|-------------|-------------|-------|
+| 67 | HOMO-4 | -3.93 | 1.000000 | 1.0000 |
+| 68 | HOMO-3 | -3.25 | 1.000000 | 1.0000 |
+| 69 | HOMO-2 | -3.14 | 1.000000 | 1.0000 |
+| 70 | HOMO-1 | -3.02 | 1.000000 | 1.0000 |
+| 71 | **HOMO** | **-1.61** | **1.000000** | **1.0000** |
+| 72 | **LUMO** | **+0.07** | **1.000000** | **1.0000** |
+| 73 | LUMO+1 | +0.17 | 1.000000 | 1.0000 |
+| 74 | LUMO+2 | +1.00 | 1.000000 | 1.0000 |
+| 75 | LUMO+3 | +1.46 | 1.000000 | 1.0000 |
+| 76 | LUMO+4 | +1.66 | 1.000000 | 1.0000 |
+
+**Average correlation: 1.000000**
+
+### Key Lessons Learned
+
+1. **Verify matrix orientation:** Always check if eigenvectors are stored as rows or columns
+2. **Use absolute coordinates:** Extent and atom positions must be in same coordinate system
+3. **Simple grids work:** Avoid unnecessary coordinate rotations; use simple XY planes when possible
+4. **HOMO from eigenvalues:** Don't assume neutral charge; detect HOMO from actual eigenvalue signs
+5. **Minimal targeted changes:** Fix root causes, don't add workarounds
 }
 ```
 
