@@ -589,11 +589,22 @@ subroutine firecore_get_wfcoef( ikp, wfcoefs )  bind(c, name='firecore_get_wfcoe
     use interactions
     use density
     use options
-    integer(c_int)                                , intent(in),value :: ikp
-    real(c_double), dimension(norbitals,norbitals), intent(out) :: wfcoefs
+    integer(c_int), value, intent(in) :: ikp
+    real(c_double), intent(out) :: wfcoefs(norbitals,norbitals)
     if(verbosity.gt.0)write(*,*) "firecore_get_wfcoef() ", shape(bbnkre), ikp
     wfcoefs(:,:) = bbnkre(:,:,ikp)
 end subroutine
+
+subroutine firecore_get_num_orb(inZ, ntip) bind(c, name='firecore_get_num_orb')
+    use iso_c_binding
+    use interactions, only: num_orb, numorb_max
+    implicit none
+    integer(c_int), value, intent(in)  :: inZ
+    integer(c_int),        intent(out) :: ntip
+    if (inZ <= 0) stop 'firecore_get_num_orb: inZ<=0'
+    ntip = num_orb(inZ)
+    if (ntip < 0 .or. ntip > numorb_max) stop 'firecore_get_num_orb: invalid num_orb'
+end subroutine firecore_get_num_orb
 
 subroutine firecore_set_wfcoef( iMO, ikp, wfcoefs_in )  bind(c, name='firecore_set_wfcoef')
     use iso_c_binding
@@ -932,6 +943,525 @@ subroutine firecore_ldos2points(mode, iband, ikpoint, npoints, points, E, eta, o
 
     deallocate(Hk, Sk, A, ipiv, rhs, phi)
 end subroutine firecore_ldos2points
+
+subroutine firecore_tipResponse2points(mode, iband, ikpoint, npoints, points, E, eta, tipZ, rcut, beta, r0, A_ss, A_sp, A_pp_sig, A_pp_pi, A_ps, overlap_scale, E_tip, out) bind(c, name='firecore_tipResponse2points')
+    use iso_c_binding
+    use configuration
+    use dimensions
+    use interactions
+    use neighbor_map
+    use density
+    use kpoints
+    use options, only: verbosity
+    implicit none
+    integer(c_int), value, intent(in) :: mode, iband, ikpoint, npoints, tipZ
+    real(c_double), dimension(3, npoints), intent(in) :: points
+    real(c_double), value, intent(in) :: E, eta, rcut, beta, r0
+    real(c_double), value, intent(in) :: A_ss, A_sp, A_pp_sig, A_pp_pi, A_ps, overlap_scale, E_tip
+    real(c_double), dimension(npoints), intent(out) :: out
+
+    integer :: norb, ntip, info
+    integer :: ip, iatom, in1, in2, imu, inu, jmu, jnu
+    real(c_double) :: zre, zim
+    complex*16 :: z, a_tt
+    complex*16, allocatable :: Hk(:,:), Sk(:,:), Ass(:,:), LU(:,:), rhs(:), c(:), v(:)
+    integer,    allocatable :: ipiv(:)
+    real(c_double), allocatable :: Hts(:,:), Sts(:,:)
+    complex*16, allocatable :: Ats(:,:), x(:,:), s2(:,:), s1(:), y(:)
+
+    real(c_double) :: r, f, l, m, n, Vss, Vsp, Vps, Vpp_sig, Vpp_pi, d
+    real(c_double), dimension(3) :: dR
+    real(c_double), dimension(3) :: r1, r2, r21, sighat
+    real(c_double), dimension(3,3) :: eps
+    real(c_double), dimension(3,3,3) :: deps
+    real :: ydist
+    real, dimension(numorb_max,numorb_max) :: sx, tx
+    real, dimension(3,numorb_max,numorb_max) :: spx, tpx
+
+    complex*16 :: Mtip(4, 9)
+    complex*16 :: piv, fac
+    integer :: i, j, k
+    real(c_double) :: hloc
+
+    external :: zgetrf, zgetrs
+
+    if (npoints <= 0) return
+    norb = norbitals
+    if (ikpoint <= 0 .or. ikpoint > nkpoints) stop 'firecore_tipResponse2points: invalid ikpoint'
+    if (iband <= 0 .or. iband > norb) stop 'firecore_tipResponse2points: invalid iband'
+
+    in2 = tipZ
+    ntip = num_orb(in2)
+    if (ntip <= 0 .or. ntip > numorb_max) stop 'firecore_tipResponse2points: invalid tipZ/num_orb'
+
+    allocate(Hk(norb,norb), Sk(norb,norb), Ass(norb,norb), LU(norb,norb), ipiv(norb), rhs(norb))
+    allocate(c(norb), v(norb))
+    allocate(Hts(ntip,norb), Sts(ntip,norb))
+    allocate(Ats(ntip,norb), x(norb,ntip), s2(ntip,ntip), s1(ntip), y(ntip))
+
+    call ktransform(special_k(:, ikpoint), norb, Sk, Hk)
+
+    zre = E
+    zim = eta
+    z = dcmplx(zre, zim)
+    Ass(:,:) = z*Sk(:,:) - Hk(:,:)
+
+    LU(:,:) = Ass(:,:)
+    call zgetrf(norb, norb, LU, norb, ipiv, info)
+    if (info /= 0) stop 'firecore_tipResponse2points: zgetrf failed'
+
+    do imu = 1, norb
+        c(imu) = dcmplx(bbnkre(imu, iband, ikpoint), 0.0d0)
+    end do
+
+    rhs(:) = c(:)
+    call zgetrs('T', norb, 1, LU, norb, ipiv, rhs, norb, info)
+    if (info /= 0) stop 'firecore_tipResponse2points: zgetrs(T) failed'
+    v(:) = rhs(:)
+
+    a_tt = z - dcmplx(E_tip, 0.0d0)
+
+    do ip = 1, npoints
+        Hts(:,:) = 0.0d0
+        Sts(:,:) = 0.0d0
+
+        do iatom = 1, natoms
+            in1 = imass(iatom)
+            dR(:) = points(:,ip) - ratom(:,iatom)
+            r = sqrt(dR(1)*dR(1) + dR(2)*dR(2) + dR(3)*dR(3))
+            if (r > rcut .or. r < 1.0d-8) cycle
+
+            if (mode == 0) then
+                l = dR(1)/r
+                m = dR(2)/r
+                n = dR(3)/r
+                f = exp(-beta * (r - r0))
+                Vss = A_ss * f
+                Vsp = A_sp * f
+                Vps = A_ps * f
+                Vpp_sig = A_pp_sig * f
+                Vpp_pi  = A_pp_pi  * f
+                d = Vpp_sig - Vpp_pi
+
+                if (ntip >= 1 .and. num_orb(in1) >= 1) then
+                    hloc = Vss
+                    Hts(1, degelec(iatom) + 1) = Hts(1, degelec(iatom) + 1) + hloc
+                    if (overlap_scale /= 0.0d0) Sts(1, degelec(iatom) + 1) = Sts(1, degelec(iatom) + 1) + overlap_scale*hloc
+                end if
+
+                if (ntip >= 4 .and. num_orb(in1) >= 4) then
+                    ! Fireball/Ortega order [s,py,pz,px]
+                    ! tip s row -> sample p cols
+                    hloc = m*Vsp; Hts(1, degelec(iatom) + 2) = Hts(1, degelec(iatom) + 2) + hloc; if (overlap_scale /= 0.0d0) Sts(1, degelec(iatom) + 2) = Sts(1, degelec(iatom) + 2) + overlap_scale*hloc
+                    hloc = n*Vsp; Hts(1, degelec(iatom) + 3) = Hts(1, degelec(iatom) + 3) + hloc; if (overlap_scale /= 0.0d0) Sts(1, degelec(iatom) + 3) = Sts(1, degelec(iatom) + 3) + overlap_scale*hloc
+                    hloc = l*Vsp; Hts(1, degelec(iatom) + 4) = Hts(1, degelec(iatom) + 4) + hloc; if (overlap_scale /= 0.0d0) Sts(1, degelec(iatom) + 4) = Sts(1, degelec(iatom) + 4) + overlap_scale*hloc
+                    ! tip p rows -> sample s col
+                    hloc = m*Vps; Hts(2, degelec(iatom) + 1) = Hts(2, degelec(iatom) + 1) + hloc; if (overlap_scale /= 0.0d0) Sts(2, degelec(iatom) + 1) = Sts(2, degelec(iatom) + 1) + overlap_scale*hloc
+                    hloc = n*Vps; Hts(3, degelec(iatom) + 1) = Hts(3, degelec(iatom) + 1) + hloc; if (overlap_scale /= 0.0d0) Sts(3, degelec(iatom) + 1) = Sts(3, degelec(iatom) + 1) + overlap_scale*hloc
+                    hloc = l*Vps; Hts(4, degelec(iatom) + 1) = Hts(4, degelec(iatom) + 1) + hloc; if (overlap_scale /= 0.0d0) Sts(4, degelec(iatom) + 1) = Sts(4, degelec(iatom) + 1) + overlap_scale*hloc
+                    ! pp block (in Ortega order: py,pz,px mapped from std px,py,pz)
+                    hloc = m*m*d + Vpp_pi; Hts(2, degelec(iatom) + 2) = Hts(2, degelec(iatom) + 2) + hloc; if (overlap_scale /= 0.0d0) Sts(2, degelec(iatom) + 2) = Sts(2, degelec(iatom) + 2) + overlap_scale*hloc
+                    hloc = n*n*d + Vpp_pi; Hts(3, degelec(iatom) + 3) = Hts(3, degelec(iatom) + 3) + hloc; if (overlap_scale /= 0.0d0) Sts(3, degelec(iatom) + 3) = Sts(3, degelec(iatom) + 3) + overlap_scale*hloc
+                    hloc = l*l*d + Vpp_pi; Hts(4, degelec(iatom) + 4) = Hts(4, degelec(iatom) + 4) + hloc; if (overlap_scale /= 0.0d0) Sts(4, degelec(iatom) + 4) = Sts(4, degelec(iatom) + 4) + overlap_scale*hloc
+
+                    hloc = m*n*d; Hts(2, degelec(iatom) + 3) = Hts(2, degelec(iatom) + 3) + hloc; if (overlap_scale /= 0.0d0) Sts(2, degelec(iatom) + 3) = Sts(2, degelec(iatom) + 3) + overlap_scale*hloc
+                    hloc = m*l*d; Hts(2, degelec(iatom) + 4) = Hts(2, degelec(iatom) + 4) + hloc; if (overlap_scale /= 0.0d0) Sts(2, degelec(iatom) + 4) = Sts(2, degelec(iatom) + 4) + overlap_scale*hloc
+                    hloc = n*m*d; Hts(3, degelec(iatom) + 2) = Hts(3, degelec(iatom) + 2) + hloc; if (overlap_scale /= 0.0d0) Sts(3, degelec(iatom) + 2) = Sts(3, degelec(iatom) + 2) + overlap_scale*hloc
+                    hloc = n*l*d; Hts(3, degelec(iatom) + 4) = Hts(3, degelec(iatom) + 4) + hloc; if (overlap_scale /= 0.0d0) Sts(3, degelec(iatom) + 4) = Sts(3, degelec(iatom) + 4) + overlap_scale*hloc
+                    hloc = l*m*d; Hts(4, degelec(iatom) + 2) = Hts(4, degelec(iatom) + 2) + hloc; if (overlap_scale /= 0.0d0) Sts(4, degelec(iatom) + 2) = Sts(4, degelec(iatom) + 2) + overlap_scale*hloc
+                    hloc = l*n*d; Hts(4, degelec(iatom) + 3) = Hts(4, degelec(iatom) + 3) + hloc; if (overlap_scale /= 0.0d0) Sts(4, degelec(iatom) + 3) = Sts(4, degelec(iatom) + 3) + overlap_scale*hloc
+                else
+                    if (ntip >= 1 .and. num_orb(in1) >= 4) then
+                        hloc = m*Vsp; Hts(1, degelec(iatom) + 2) = Hts(1, degelec(iatom) + 2) + hloc; if (overlap_scale /= 0.0d0) Sts(1, degelec(iatom) + 2) = Sts(1, degelec(iatom) + 2) + overlap_scale*hloc
+                        hloc = n*Vsp; Hts(1, degelec(iatom) + 3) = Hts(1, degelec(iatom) + 3) + hloc; if (overlap_scale /= 0.0d0) Sts(1, degelec(iatom) + 3) = Sts(1, degelec(iatom) + 3) + overlap_scale*hloc
+                        hloc = l*Vsp; Hts(1, degelec(iatom) + 4) = Hts(1, degelec(iatom) + 4) + hloc; if (overlap_scale /= 0.0d0) Sts(1, degelec(iatom) + 4) = Sts(1, degelec(iatom) + 4) + overlap_scale*hloc
+                    end if
+                    if (ntip >= 4 .and. num_orb(in1) == 1) then
+                        hloc = m*Vps; Hts(2, degelec(iatom) + 1) = Hts(2, degelec(iatom) + 1) + hloc; if (overlap_scale /= 0.0d0) Sts(2, degelec(iatom) + 1) = Sts(2, degelec(iatom) + 1) + overlap_scale*hloc
+                        hloc = n*Vps; Hts(3, degelec(iatom) + 1) = Hts(3, degelec(iatom) + 1) + hloc; if (overlap_scale /= 0.0d0) Sts(3, degelec(iatom) + 1) = Sts(3, degelec(iatom) + 1) + overlap_scale*hloc
+                        hloc = l*Vps; Hts(4, degelec(iatom) + 1) = Hts(4, degelec(iatom) + 1) + hloc; if (overlap_scale /= 0.0d0) Sts(4, degelec(iatom) + 1) = Sts(4, degelec(iatom) + 1) + overlap_scale*hloc
+                    end if
+                end if
+
+            else if (mode == 1) then
+                r1(:) = ratom(:,iatom)
+                r2(:) = points(:,ip)
+                r21(:) = r2(:) - r1(:)
+                ydist = sqrt(r21(1)*r21(1) + r21(2)*r21(2) + r21(3)*r21(3))
+                if (ydist < 1.0d-8) cycle
+                sighat(:) = r21(:) / ydist
+                call epsilon(r2, sighat, eps)
+                call deps2cent(r1, r2, eps, deps)
+                call doscentros(1, 0, 0, in1, in2, in2, ydist, eps, deps, sx, spx)
+                call doscentros(13, 0, 0, in1, in2, in2, ydist, eps, deps, tx, tpx)
+
+                do inu = 1, ntip
+                    do imu = 1, num_orb(in1)
+                        Hts(inu, degelec(iatom) + imu) = Hts(inu, degelec(iatom) + imu) + dble(tx(imu,inu))
+                        Sts(inu, degelec(iatom) + imu) = Sts(inu, degelec(iatom) + imu) + dble(sx(imu,inu))
+                    end do
+                end do
+            else
+                stop 'firecore_tipResponse2points: invalid mode'
+            end if
+        end do
+
+        do imu = 1, ntip
+            do inu = 1, norb
+                Ats(imu, inu) = z*dcmplx(Sts(imu,inu), 0.0d0) - dcmplx(Hts(imu,inu), 0.0d0)
+            end do
+        end do
+
+        do inu = 1, ntip
+            do imu = 1, norb
+                rhs(imu) = dconjg(Ats(inu, imu))
+            end do
+            call zgetrs('N', norb, 1, LU, norb, ipiv, rhs, norb, info)
+            if (info /= 0) stop 'firecore_tipResponse2points: zgetrs(N) failed'
+            x(:, inu) = rhs(:)
+        end do
+
+        do imu = 1, ntip
+            do inu = 1, ntip
+                s2(imu, inu) = (0.0d0, 0.0d0)
+                do jmu = 1, norb
+                    s2(imu, inu) = s2(imu, inu) + Ats(imu, jmu) * x(jmu, inu)
+                end do
+            end do
+        end do
+
+        do imu = 1, ntip
+            s1(imu) = (0.0d0, 0.0d0)
+            do jmu = 1, norb
+                s1(imu) = s1(imu) + v(jmu) * dconjg(Ats(imu, jmu))
+            end do
+        end do
+
+        if (ntip == 1) then
+            y(1) = s1(1) / (a_tt - s2(1,1))
+            out(ip) = dble(y(1)*dconjg(y(1)))
+        else
+            ! Solve (a_tt I - s2) y = s1  via explicit inversion by Gauss-Jordan on small ntip (<=4)
+            ! Implemented as in-place elimination on augmented matrix
+            if (ntip > 4) stop 'firecore_tipResponse2points: ntip>4 not supported'
+            Mtip(:,:) = (0.0d0, 0.0d0)
+            do i = 1, ntip
+                do j = 1, ntip
+                    if (i == j) then
+                        Mtip(i,j) = a_tt - s2(i,j)
+                    else
+                        Mtip(i,j) = -s2(i,j)
+                    end if
+                end do
+                Mtip(i, ntip+i) = (1.0d0, 0.0d0)
+                Mtip(i, 2*ntip+1) = s1(i)
+            end do
+            do i = 1, ntip
+                piv = Mtip(i,i)
+                if (abs(piv) < 1.0d-16) stop 'firecore_tipResponse2points: singular tip block'
+                do k = i, 2*ntip+1
+                    Mtip(i,k) = Mtip(i,k) / piv
+                end do
+                do j = 1, ntip
+                    if (j == i) cycle
+                    fac = Mtip(j,i)
+                    do k = i, 2*ntip+1
+                        Mtip(j,k) = Mtip(j,k) - fac*Mtip(i,k)
+                    end do
+                end do
+            end do
+            do i = 1, ntip
+                y(i) = Mtip(i, 2*ntip+1)
+            end do
+            out(ip) = 0.0d0
+            do i = 1, ntip
+                out(ip) = out(ip) + dble(y(i)*dconjg(y(i)))
+            end do
+        end if
+    end do
+
+    deallocate(Hk, Sk, Ass, LU, ipiv, rhs, c, v, Hts, Sts, Ats, x, s2, s1, y)
+end subroutine firecore_tipResponse2points
+
+subroutine firecore_tipResponseSimple2points(mode, iband, ikpoint, npoints, points, E, eta, tipZ, ntip_in, tip_src, rcut, beta, r0, A_ss, A_sp, A_pp_sig, A_pp_pi, A_ps, overlap_scale, out) bind(c, name='firecore_tipResponseSimple2points')
+    use iso_c_binding
+    use configuration
+    use dimensions
+    use interactions
+    use neighbor_map
+    use density
+    use kpoints
+    use options, only: verbosity
+    implicit none
+    integer(c_int), value, intent(in) :: mode, iband, ikpoint, npoints, tipZ, ntip_in
+    real(c_double), dimension(3, npoints), intent(in) :: points
+    real(c_double), value, intent(in) :: E, eta, rcut, beta, r0
+    real(c_double), dimension(ntip_in), intent(in) :: tip_src
+    real(c_double), value, intent(in) :: A_ss, A_sp, A_pp_sig, A_pp_pi, A_ps, overlap_scale
+    real(c_double), dimension(npoints), intent(out) :: out
+
+    integer :: norb, ntip, info
+    integer :: ip, iatom, in1, in2, imu, inu, jmu
+    real(c_double) :: zre, zim
+    complex*16 :: z
+    complex*16, allocatable :: Hk(:,:), Sk(:,:), Ass(:,:), LU(:,:), rhs(:), c(:)
+    integer,    allocatable :: ipiv(:)
+    real(c_double), allocatable :: Hts(:,:), Sts(:,:)
+    complex*16, allocatable :: Ats(:,:)
+
+    real(c_double) :: r, f, l, m, n, Vss, Vsp, Vps, Vpp_sig, Vpp_pi, d
+    real(c_double), dimension(3) :: dR
+    real(c_double), dimension(3) :: r1, r2, r21, sighat
+    real(c_double), dimension(3,3) :: eps
+    real(c_double), dimension(3,3,3) :: deps
+    real :: ydist
+    real, dimension(numorb_max,numorb_max) :: sx, tx
+    real, dimension(3,numorb_max,numorb_max) :: spx, tpx
+    real(c_double) :: hloc
+    complex*16 :: amp
+
+    external :: zgetrf, zgetrs
+
+    if (npoints <= 0) return
+    norb = norbitals
+    if (ikpoint <= 0 .or. ikpoint > nkpoints) stop 'firecore_tipResponseSimple2points: invalid ikpoint'
+    if (iband <= 0 .or. iband > norb) stop 'firecore_tipResponseSimple2points: invalid iband'
+
+    in2 = tipZ
+    ntip = num_orb(in2)
+    if (ntip <= 0 .or. ntip > numorb_max) stop 'firecore_tipResponseSimple2points: invalid tipZ/num_orb'
+    if (ntip_in /= ntip) stop 'firecore_tipResponseSimple2points: ntip_in mismatch num_orb(tipZ)'
+
+    allocate(Hk(norb,norb), Sk(norb,norb), Ass(norb,norb), LU(norb,norb), ipiv(norb), rhs(norb))
+    allocate(c(norb))
+    allocate(Hts(ntip,norb), Sts(ntip,norb))
+    allocate(Ats(ntip,norb))
+
+    call ktransform(special_k(:, ikpoint), norb, Sk, Hk)
+
+    zre = E
+    zim = eta
+    z = dcmplx(zre, zim)
+    Ass(:,:) = z*Sk(:,:) - Hk(:,:)
+
+    LU(:,:) = Ass(:,:)
+    call zgetrf(norb, norb, LU, norb, ipiv, info)
+    if (info /= 0) stop 'firecore_tipResponseSimple2points: zgetrf failed'
+
+    do imu = 1, norb
+        c(imu) = dcmplx(bbnkre(imu, iband, ikpoint), 0.0d0)
+    end do
+
+    do ip = 1, npoints
+        Hts(:,:) = 0.0d0
+        Sts(:,:) = 0.0d0
+
+        do iatom = 1, natoms
+            in1 = imass(iatom)
+            dR(:) = points(:,ip) - ratom(:,iatom)
+            r = sqrt(dR(1)*dR(1) + dR(2)*dR(2) + dR(3)*dR(3))
+            if (r > rcut .or. r < 1.0d-8) cycle
+
+            if (mode == 0) then
+                l = dR(1)/r
+                m = dR(2)/r
+                n = dR(3)/r
+                f = exp(-beta * (r - r0))
+                Vss = A_ss * f
+                Vsp = A_sp * f
+                Vps = A_ps * f
+                Vpp_sig = A_pp_sig * f
+                Vpp_pi  = A_pp_pi  * f
+                d = Vpp_sig - Vpp_pi
+
+                if (ntip >= 1 .and. num_orb(in1) >= 1) then
+                    hloc = Vss
+                    Hts(1, degelec(iatom) + 1) = Hts(1, degelec(iatom) + 1) + hloc
+                    if (overlap_scale /= 0.0d0) Sts(1, degelec(iatom) + 1) = Sts(1, degelec(iatom) + 1) + overlap_scale*hloc
+                end if
+
+                if (ntip >= 4 .and. num_orb(in1) >= 4) then
+                    ! Fireball/Ortega order [s,py,pz,px]
+                    ! tip s row -> sample p cols
+                    hloc = m*Vsp; Hts(1, degelec(iatom) + 2) = Hts(1, degelec(iatom) + 2) + hloc; if (overlap_scale /= 0.0d0) Sts(1, degelec(iatom) + 2) = Sts(1, degelec(iatom) + 2) + overlap_scale*hloc
+                    hloc = n*Vsp; Hts(1, degelec(iatom) + 3) = Hts(1, degelec(iatom) + 3) + hloc; if (overlap_scale /= 0.0d0) Sts(1, degelec(iatom) + 3) = Sts(1, degelec(iatom) + 3) + overlap_scale*hloc
+                    hloc = l*Vsp; Hts(1, degelec(iatom) + 4) = Hts(1, degelec(iatom) + 4) + hloc; if (overlap_scale /= 0.0d0) Sts(1, degelec(iatom) + 4) = Sts(1, degelec(iatom) + 4) + overlap_scale*hloc
+                    ! tip p rows -> sample s col
+                    hloc = m*Vps; Hts(2, degelec(iatom) + 1) = Hts(2, degelec(iatom) + 1) + hloc; if (overlap_scale /= 0.0d0) Sts(2, degelec(iatom) + 1) = Sts(2, degelec(iatom) + 1) + overlap_scale*hloc
+                    hloc = n*Vps; Hts(3, degelec(iatom) + 1) = Hts(3, degelec(iatom) + 1) + hloc; if (overlap_scale /= 0.0d0) Sts(3, degelec(iatom) + 1) = Sts(3, degelec(iatom) + 1) + overlap_scale*hloc
+                    hloc = l*Vps; Hts(4, degelec(iatom) + 1) = Hts(4, degelec(iatom) + 1) + hloc; if (overlap_scale /= 0.0d0) Sts(4, degelec(iatom) + 1) = Sts(4, degelec(iatom) + 1) + overlap_scale*hloc
+                    ! pp block
+                    hloc = m*m*d + Vpp_pi; Hts(2, degelec(iatom) + 2) = Hts(2, degelec(iatom) + 2) + hloc; if (overlap_scale /= 0.0d0) Sts(2, degelec(iatom) + 2) = Sts(2, degelec(iatom) + 2) + overlap_scale*hloc
+                    hloc = n*n*d + Vpp_pi; Hts(3, degelec(iatom) + 3) = Hts(3, degelec(iatom) + 3) + hloc; if (overlap_scale /= 0.0d0) Sts(3, degelec(iatom) + 3) = Sts(3, degelec(iatom) + 3) + overlap_scale*hloc
+                    hloc = l*l*d + Vpp_pi; Hts(4, degelec(iatom) + 4) = Hts(4, degelec(iatom) + 4) + hloc; if (overlap_scale /= 0.0d0) Sts(4, degelec(iatom) + 4) = Sts(4, degelec(iatom) + 4) + overlap_scale*hloc
+                    hloc = m*n*d; Hts(2, degelec(iatom) + 3) = Hts(2, degelec(iatom) + 3) + hloc; if (overlap_scale /= 0.0d0) Sts(2, degelec(iatom) + 3) = Sts(2, degelec(iatom) + 3) + overlap_scale*hloc
+                    hloc = m*l*d; Hts(2, degelec(iatom) + 4) = Hts(2, degelec(iatom) + 4) + hloc; if (overlap_scale /= 0.0d0) Sts(2, degelec(iatom) + 4) = Sts(2, degelec(iatom) + 4) + overlap_scale*hloc
+                    hloc = n*m*d; Hts(3, degelec(iatom) + 2) = Hts(3, degelec(iatom) + 2) + hloc; if (overlap_scale /= 0.0d0) Sts(3, degelec(iatom) + 2) = Sts(3, degelec(iatom) + 2) + overlap_scale*hloc
+                    hloc = n*l*d; Hts(3, degelec(iatom) + 4) = Hts(3, degelec(iatom) + 4) + hloc; if (overlap_scale /= 0.0d0) Sts(3, degelec(iatom) + 4) = Sts(3, degelec(iatom) + 4) + overlap_scale*hloc
+                    hloc = l*m*d; Hts(4, degelec(iatom) + 2) = Hts(4, degelec(iatom) + 2) + hloc; if (overlap_scale /= 0.0d0) Sts(4, degelec(iatom) + 2) = Sts(4, degelec(iatom) + 2) + overlap_scale*hloc
+                    hloc = l*n*d; Hts(4, degelec(iatom) + 3) = Hts(4, degelec(iatom) + 3) + hloc; if (overlap_scale /= 0.0d0) Sts(4, degelec(iatom) + 3) = Sts(4, degelec(iatom) + 3) + overlap_scale*hloc
+                end if
+
+            else if (mode == 1) then
+                r1(:) = ratom(:,iatom)
+                r2(:) = points(:,ip)
+                r21(:) = r2(:) - r1(:)
+                ydist = sqrt(r21(1)*r21(1) + r21(2)*r21(2) + r21(3)*r21(3))
+                if (ydist < 1.0d-8) cycle
+                sighat(:) = r21(:) / ydist
+                call epsilon(r2, sighat, eps)
+                call deps2cent(r1, r2, eps, deps)
+                call doscentros(1, 0, 0, in1, in2, in2, ydist, eps, deps, sx, spx)
+                call doscentros(13, 0, 0, in1, in2, in2, ydist, eps, deps, tx, tpx)
+                do inu = 1, ntip
+                    do imu = 1, num_orb(in1)
+                        Hts(inu, degelec(iatom) + imu) = Hts(inu, degelec(iatom) + imu) + dble(tx(imu,inu))
+                        Sts(inu, degelec(iatom) + imu) = Sts(inu, degelec(iatom) + imu) + dble(sx(imu,inu))
+                    end do
+                end do
+            else
+                stop 'firecore_tipResponseSimple2points: invalid mode'
+            end if
+        end do
+
+        do imu = 1, ntip
+            do inu = 1, norb
+                Ats(imu, inu) = z*dcmplx(Sts(imu,inu), 0.0d0) - dcmplx(Hts(imu,inu), 0.0d0)
+            end do
+        end do
+
+        rhs(:) = (0.0d0, 0.0d0)
+        do inu = 1, norb
+            do imu = 1, ntip
+                rhs(inu) = rhs(inu) + dconjg(Ats(imu, inu)) * dcmplx(tip_src(imu), 0.0d0)
+            end do
+        end do
+
+        call zgetrs('N', norb, 1, LU, norb, ipiv, rhs, norb, info)
+        if (info /= 0) stop 'firecore_tipResponseSimple2points: zgetrs(N) failed'
+
+        amp = (0.0d0, 0.0d0)
+        do jmu = 1, norb
+            amp = amp + dconjg(c(jmu)) * rhs(jmu)
+        end do
+        out(ip) = dble(amp*dconjg(amp))
+    end do
+
+    deallocate(Hk, Sk, Ass, LU, ipiv, rhs, c, Hts, Sts, Ats)
+end subroutine firecore_tipResponseSimple2points
+
+
+subroutine firecore_export_tip_coupling_point(mode, tipZ, point, rcut, beta, r0, A_ss, A_sp, A_pp_sig, A_pp_pi, A_ps, overlap_scale, ntip_in, norb_in, Hts_out, Sts_out) bind(c, name='firecore_export_tip_coupling_point')
+    use iso_c_binding
+    use configuration
+    use dimensions
+    use interactions
+    use neighbor_map
+    use density
+    use kpoints
+    use options, only: verbosity
+    implicit none
+    integer(c_int), value, intent(in) :: mode, tipZ, ntip_in, norb_in
+    real(c_double), dimension(3), intent(in) :: point
+    real(c_double), value, intent(in) :: rcut, beta, r0
+    real(c_double), value, intent(in) :: A_ss, A_sp, A_pp_sig, A_pp_pi, A_ps, overlap_scale
+    real(c_double), dimension(ntip_in*norb_in), intent(out) :: Hts_out, Sts_out
+
+    integer :: norb, ntip
+    integer :: iatom, in1, in2, imu, inu
+    integer :: idx
+    real(c_double) :: r, f, l, m, n, Vss, Vsp, Vps, Vpp_sig, Vpp_pi, d
+    real(c_double), dimension(3) :: dR
+    real(c_double), dimension(3) :: r1, r2, r21, sighat
+    real(c_double), dimension(3,3) :: eps
+    real(c_double), dimension(3,3,3) :: deps
+    real :: ydist
+    real, dimension(numorb_max,numorb_max) :: sx, tx
+    real, dimension(3,numorb_max,numorb_max) :: spx, tpx
+    real(c_double) :: hloc
+
+    norb = norbitals
+    if (norb_in /= norb) stop 'firecore_export_tip_coupling_point: norb_in mismatch'
+
+    in2 = tipZ
+    ntip = num_orb(in2)
+    if (ntip <= 0 .or. ntip > numorb_max) stop 'firecore_export_tip_coupling_point: invalid tipZ/num_orb'
+    if (ntip_in /= ntip) stop 'firecore_export_tip_coupling_point: ntip_in mismatch num_orb(tipZ)'
+
+    Hts_out(:) = 0.0d0
+    Sts_out(:) = 0.0d0
+
+    do iatom = 1, natoms
+        in1 = imass(iatom)
+        dR(:) = point(:) - ratom(:,iatom)
+        r = sqrt(dR(1)*dR(1) + dR(2)*dR(2) + dR(3)*dR(3))
+        if (r > rcut .or. r < 1.0d-8) cycle
+
+        if (mode == 0) then
+            l = dR(1)/r
+            m = dR(2)/r
+            n = dR(3)/r
+            f = exp(-beta * (r - r0))
+            Vss = A_ss * f
+            Vsp = A_sp * f
+            Vps = A_ps * f
+            Vpp_sig = A_pp_sig * f
+            Vpp_pi  = A_pp_pi  * f
+            d = Vpp_sig - Vpp_pi
+
+            if (ntip >= 1 .and. num_orb(in1) >= 1) then
+                hloc = Vss
+                idx = (1-1)*norb + (degelec(iatom) + 1 - 1) + 1
+                Hts_out(idx) = Hts_out(idx) + hloc
+                if (overlap_scale /= 0.0d0) Sts_out(idx) = Sts_out(idx) + overlap_scale*hloc
+            end if
+
+            if (ntip >= 4 .and. num_orb(in1) >= 4) then
+                ! Fireball/Ortega order [s,py,pz,px]
+                ! tip s row -> sample p cols
+                idx = (1-1)*norb + (degelec(iatom) + 2 - 1) + 1; hloc = m*Vsp; Hts_out(idx) = Hts_out(idx) + hloc; if (overlap_scale /= 0.0d0) Sts_out(idx) = Sts_out(idx) + overlap_scale*hloc
+                idx = (1-1)*norb + (degelec(iatom) + 3 - 1) + 1; hloc = n*Vsp; Hts_out(idx) = Hts_out(idx) + hloc; if (overlap_scale /= 0.0d0) Sts_out(idx) = Sts_out(idx) + overlap_scale*hloc
+                idx = (1-1)*norb + (degelec(iatom) + 4 - 1) + 1; hloc = l*Vsp; Hts_out(idx) = Hts_out(idx) + hloc; if (overlap_scale /= 0.0d0) Sts_out(idx) = Sts_out(idx) + overlap_scale*hloc
+                ! tip p rows -> sample s col
+                idx = (2-1)*norb + (degelec(iatom) + 1 - 1) + 1; hloc = m*Vps; Hts_out(idx) = Hts_out(idx) + hloc; if (overlap_scale /= 0.0d0) Sts_out(idx) = Sts_out(idx) + overlap_scale*hloc
+                idx = (3-1)*norb + (degelec(iatom) + 1 - 1) + 1; hloc = n*Vps; Hts_out(idx) = Hts_out(idx) + hloc; if (overlap_scale /= 0.0d0) Sts_out(idx) = Sts_out(idx) + overlap_scale*hloc
+                idx = (4-1)*norb + (degelec(iatom) + 1 - 1) + 1; hloc = l*Vps; Hts_out(idx) = Hts_out(idx) + hloc; if (overlap_scale /= 0.0d0) Sts_out(idx) = Sts_out(idx) + overlap_scale*hloc
+                ! pp block
+                idx = (2-1)*norb + (degelec(iatom) + 2 - 1) + 1; hloc = m*m*d + Vpp_pi; Hts_out(idx) = Hts_out(idx) + hloc; if (overlap_scale /= 0.0d0) Sts_out(idx) = Sts_out(idx) + overlap_scale*hloc
+                idx = (3-1)*norb + (degelec(iatom) + 3 - 1) + 1; hloc = n*n*d + Vpp_pi; Hts_out(idx) = Hts_out(idx) + hloc; if (overlap_scale /= 0.0d0) Sts_out(idx) = Sts_out(idx) + overlap_scale*hloc
+                idx = (4-1)*norb + (degelec(iatom) + 4 - 1) + 1; hloc = l*l*d + Vpp_pi; Hts_out(idx) = Hts_out(idx) + hloc; if (overlap_scale /= 0.0d0) Sts_out(idx) = Sts_out(idx) + overlap_scale*hloc
+                idx = (2-1)*norb + (degelec(iatom) + 3 - 1) + 1; hloc = m*n*d; Hts_out(idx) = Hts_out(idx) + hloc; if (overlap_scale /= 0.0d0) Sts_out(idx) = Sts_out(idx) + overlap_scale*hloc
+                idx = (2-1)*norb + (degelec(iatom) + 4 - 1) + 1; hloc = m*l*d; Hts_out(idx) = Hts_out(idx) + hloc; if (overlap_scale /= 0.0d0) Sts_out(idx) = Sts_out(idx) + overlap_scale*hloc
+                idx = (3-1)*norb + (degelec(iatom) + 2 - 1) + 1; hloc = n*m*d; Hts_out(idx) = Hts_out(idx) + hloc; if (overlap_scale /= 0.0d0) Sts_out(idx) = Sts_out(idx) + overlap_scale*hloc
+                idx = (3-1)*norb + (degelec(iatom) + 4 - 1) + 1; hloc = n*l*d; Hts_out(idx) = Hts_out(idx) + hloc; if (overlap_scale /= 0.0d0) Sts_out(idx) = Sts_out(idx) + overlap_scale*hloc
+                idx = (4-1)*norb + (degelec(iatom) + 2 - 1) + 1; hloc = l*m*d; Hts_out(idx) = Hts_out(idx) + hloc; if (overlap_scale /= 0.0d0) Sts_out(idx) = Sts_out(idx) + overlap_scale*hloc
+                idx = (4-1)*norb + (degelec(iatom) + 3 - 1) + 1; hloc = l*n*d; Hts_out(idx) = Hts_out(idx) + hloc; if (overlap_scale /= 0.0d0) Sts_out(idx) = Sts_out(idx) + overlap_scale*hloc
+            end if
+
+        else if (mode == 1) then
+            r1(:) = ratom(:,iatom)
+            r2(:) = point(:)
+            r21(:) = r2(:) - r1(:)
+            ydist = sqrt(r21(1)*r21(1) + r21(2)*r21(2) + r21(3)*r21(3))
+            if (ydist < 1.0d-8) cycle
+            sighat(:) = r21(:) / ydist
+            call epsilon(r2, sighat, eps)
+            call deps2cent(r1, r2, eps, deps)
+            call doscentros(1, 0, 0, in1, in2, in2, ydist, eps, deps, sx, spx)
+            call doscentros(13, 0, 0, in1, in2, in2, ydist, eps, deps, tx, tpx)
+            do inu = 1, ntip
+                do imu = 1, num_orb(in1)
+                    idx = (inu-1)*norb + (degelec(iatom) + imu - 1) + 1
+                    Hts_out(idx) = Hts_out(idx) + dble(tx(imu,inu))
+                    Sts_out(idx) = Sts_out(idx) + dble(sx(imu,inu))
+                end do
+            end do
+        else
+            stop 'firecore_export_tip_coupling_point: invalid mode'
+        end if
+    end do
+
+end subroutine firecore_export_tip_coupling_point
 
 subroutine firecore_basis2points(ikpoint, npoints, points, phi_out) bind(c, name='firecore_basis2points')
     use iso_c_binding

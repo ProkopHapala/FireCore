@@ -372,13 +372,48 @@ def ldos2points(points, E=0.0, eta=1e-3, mode=1, iMO=1, ikpoint=1, out=None):
 
     mode:
       0 -> |psi_iMO(r)|^2 (calls project_orb_points then squares)
-      1 -> LDOS(r;E)=-(1/pi)Im(phi^T G(E) phi) with G=((E+i*eta)S-H)^-1
+      1 -> LDOS(r;E)=-(1/pi)Im(phi^T G(E) phi)
     """
     n = len(points)
     if out is None:
         out = np.zeros(n, dtype=np.float64)
     lib.firecore_ldos2points(int(mode), int(iMO), int(ikpoint), int(n), points, float(E), float(eta), out)
     return out
+
+# subroutine firecore_tipResponse2points(mode, iband, ikpoint, npoints, points, E, eta, tipZ, rcut, beta, r0, A_ss, A_sp, A_pp_sig, A_pp_pi, A_ps, overlap_scale, E_tip, out)
+argDict["firecore_tipResponse2points"]=( None, [c_int, c_int, c_int, c_int, array2d, c_double, c_double, c_int, c_double, c_double, c_double, c_double, c_double, c_double, c_double, c_double, c_double, c_double, array1d ] )
+def tipResponse2points(points, E=0.0, eta=1e-3, mode=0, iMO=1, ikpoint=1, tipZ=1, rcut=8.0, beta=1.0, r0=3.0, A_ss=-1.0, A_sp=-1.0, A_pp_sig=-1.0, A_pp_pi=+1.0, A_ps=None, overlap_scale=0.0, E_tip=0.0, out=None):
+    n = len(points)
+    if out is None:
+        out = np.zeros(n, dtype=np.float64)
+    if A_ps is None: A_ps = A_sp
+    lib.firecore_tipResponse2points(int(mode), int(iMO), int(ikpoint), int(n), points, float(E), float(eta), int(tipZ), float(rcut), float(beta), float(r0), float(A_ss), float(A_sp), float(A_pp_sig), float(A_pp_pi), float(A_ps), float(overlap_scale), float(E_tip), out)
+    return out
+
+# subroutine firecore_tipResponseSimple2points(mode, iband, ikpoint, npoints, points, E, eta, tipZ, ntip_in, tip_src, rcut, beta, r0, A_ss, A_sp, A_pp_sig, A_pp_pi, A_ps, overlap_scale, out)
+argDict["firecore_tipResponseSimple2points"]=( None, [c_int, c_int, c_int, c_int, array2d, c_double, c_double, c_int, c_int, array1d, c_double, c_double, c_double, c_double, c_double, c_double, c_double, c_double, c_double, array1d ] )
+def tipResponseSimple2points(points, tip_src, E=0.0, eta=1e-3, mode=0, iMO=1, ikpoint=1, tipZ=1, rcut=8.0, beta=1.0, r0=3.0, A_ss=-1.0, A_sp=-1.0, A_pp_sig=-1.0, A_pp_pi=+1.0, A_ps=None, overlap_scale=0.0, out=None):
+    n = len(points)
+    if out is None:
+        out = np.zeros(n, dtype=np.float64)
+    if A_ps is None: A_ps = A_sp
+    tip_src = np.asarray(tip_src, dtype=np.float64)
+    ntip_in = int(tip_src.size)
+    lib.firecore_tipResponseSimple2points(int(mode), int(iMO), int(ikpoint), int(n), points, float(E), float(eta), int(tipZ), int(ntip_in), tip_src, float(rcut), float(beta), float(r0), float(A_ss), float(A_sp), float(A_pp_sig), float(A_pp_pi), float(A_ps), float(overlap_scale), out)
+    return out
+
+# subroutine firecore_export_tip_coupling_point(mode, tipZ, point, rcut, beta, r0, A_ss, A_sp, A_pp_sig, A_pp_pi, A_ps, overlap_scale, ntip_in, norb_in, Hts_out, Sts_out)
+argDict["firecore_export_tip_coupling_point"]=( None, [c_int, c_int, array1d, c_double, c_double, c_double, c_double, c_double, c_double, c_double, c_double, c_double, c_int, c_int, array1d, array1d] )
+def export_tip_coupling_point(point, mode=0, tipZ=1, rcut=8.0, beta=1.0, r0=3.0, A_ss=-1.0, A_sp=-1.0, A_pp_sig=-1.0, A_pp_pi=+1.0, A_ps=None, overlap_scale=0.0, ntip=None, norb=None, Hts=None, Sts=None):
+    if A_ps is None: A_ps = A_sp
+    point = np.asarray(point, dtype=np.float64).reshape(3)
+    dims = get_HS_dims()
+    if norb is None: norb = int(dims.norbitals)
+    if ntip is None: ntip = int(get_num_orb(int(tipZ)))
+    if Hts is None: Hts = np.zeros(ntip*norb, dtype=np.float64)
+    if Sts is None: Sts = np.zeros(ntip*norb, dtype=np.float64)
+    lib.firecore_export_tip_coupling_point(int(mode), int(tipZ), point, float(rcut), float(beta), float(r0), float(A_ss), float(A_sp), float(A_pp_sig), float(A_pp_pi), float(A_ps), float(overlap_scale), int(ntip), int(norb), Hts, Sts)
+    return Hts.reshape((ntip, norb)), Sts.reshape((ntip, norb))
 
 # subroutine firecore_basis2points(ikpoint, npoints, points, phi_out) bind(c, name='firecore_basis2points')
 argDict["firecore_basis2points"]=( None, [c_int, c_int, array2d, array2d] )
@@ -420,6 +455,13 @@ def get_eigen( ikp=1, norb=None ):
     eigen = np.zeros(norb, dtype=np.float64)
     lib.firecore_get_eigen( ikp, eigen )
     return eigen
+
+# subroutine firecore_get_num_orb(inZ, ntip) bind(c, name='firecore_get_num_orb')
+argDict["firecore_get_num_orb"]=( None, [c_int, c_int_p] )
+def get_num_orb(inZ):
+    ntip = ct.c_int(0)
+    lib.firecore_get_num_orb(int(inZ), ct.byref(ntip))
+    return int(ntip.value)
 
 # subroutine firecore_get_G_k(kpoint_vec, E, eta, G_out) bind(c, name='firecore_get_G_k')
 argDict["firecore_get_G_k"]=( None, [array1d, c_double, c_double, array2cd] )

@@ -582,6 +582,20 @@ def _blocks_to_dense_vector(pairs, blocks, starts_tip, starts_smp, norb_per_tip,
     return out
 
 
+def _get_mo_vec(C_s, mo_index, norb):
+    C_s = np.asarray(C_s)
+    mo = int(mo_index)
+    if C_s.ndim != 2:
+        raise ValueError(f"C_s must be 2D, got shape={C_s.shape}")
+    # fc.get_wfcoef() is typically returned as (nmo,norb) in this repo; tested code
+    # (STM_utils.project_orbital_to_points) uses row indexing first.
+    if C_s.shape[1] == norb and 0 <= mo < C_s.shape[0]:
+        return np.asarray(C_s[mo, :], dtype=np.complex128)
+    if C_s.shape[0] == norb and 0 <= mo < C_s.shape[1]:
+        return np.asarray(C_s[:, mo], dtype=np.complex128)
+    raise ValueError(f"Cannot extract MO vector: C_s.shape={C_s.shape} norb={norb} mo={mo}")
+
+
 def response_amplitude_map(
     points_tip, H_s, S_s, C_s, mo_index, E,
     tip_types, tip_pos_base, tip_norb_per,
@@ -622,7 +636,7 @@ def response_amplitude_map(
     G0 = np.linalg.inv(A_ss)
 
     # MO coefficient vector for this MO
-    c = np.asarray(C_s[:, int(mo_index)], dtype=np.complex128)
+    c = _get_mo_vec(C_s, mo_index, ns)
 
     # Precompute v = c^T G0 (row vector)
     v = c @ G0  # shape (ns,)
@@ -683,31 +697,91 @@ def response_amplitude_map(
 
     return resp
 
+
+def response_amplitude_simple_lu(
+    points_tip, H_s, S_s, C_s, mo_index, E,
+    tip_norb_per, smp_norb_per,
+    coupling_builder,
+    tip_src=None,
+    eta=1e-6
+):
+    from scipy.linalg import lu_factor, lu_solve
+
+    ns = H_s.shape[0]
+    npts = len(points_tip)
+    z = float(E) + 1j * float(eta)
+
+    starts_tip = _atom_orb_starts(tip_norb_per)
+    starts_smp = _atom_orb_starts(smp_norb_per)
+    ntip = int(starts_tip[-1])
+
+    if tip_src is None:
+        tip_src = np.zeros(ntip, dtype=np.complex128)
+        tip_src[0] = 1.0
+    else:
+        tip_src = np.asarray(tip_src, dtype=np.complex128)
+        if tip_src.size != ntip:
+            raise ValueError(f"tip_src size mismatch: ntip={ntip} tip_src.size={tip_src.size}")
+
+    A_ss = z * S_s.astype(np.complex128) - H_s.astype(np.complex128)
+    c = _get_mo_vec(C_s, mo_index, ns)
+    lu, piv = lu_factor(A_ss)
+
+    resp = np.zeros(npts, dtype=np.float64)
+    for ip, r_tip in enumerate(points_tip):
+        tip_pos = np.array([r_tip], dtype=np.float64)
+        pairs, Hb, Sb = coupling_builder(tip_pos)
+        if len(pairs) == 0:
+            resp[ip] = 0.0
+            continue
+        H_ts = np.zeros((ntip, ns), dtype=np.float64)
+        S_ts = np.zeros((ntip, ns), dtype=np.float64)
+        _blocks_to_dense_vector(pairs, Hb, starts_tip, starts_smp, tip_norb_per, smp_norb_per, ntip, ns, out=H_ts)
+        _blocks_to_dense_vector(pairs, Sb, starts_tip, starts_smp, tip_norb_per, smp_norb_per, ntip, ns, out=S_ts)
+        a_st = z * S_ts.astype(np.complex128) - H_ts.astype(np.complex128)  # (ntip, ns)
+        rhs = a_st.conj().T @ tip_src  # (ns,)
+        y = lu_solve((lu, piv), rhs)
+        amp = np.vdot(c, y)
+        resp[ip] = float(abs(amp) ** 2)
+
+    return resp
+
 def _sk_sp_block(l, m, n, Vss, Vsp, Vps, Vpp_sig, Vpp_pi):
-    """Return 4x4 SK block for (s,px,py,pz) basis with given direction cosines."""
-    # row: orb on atom1 (tip), col: orb on atom2 (sample)
+    """Return 4x4 SK block in standard (s,px,py,pz) basis with given direction cosines.
+
+    Row order = tip orbitals, col order = sample orbitals, both in (s,px,py,pz).
+    IMPORTANT: caller must reorder columns to match Fireball Ortega order (s,py,pz,px)
+    before inserting into H_ts that is multiplied against Fireball's H_s/S_s matrices.
+    Use _sk_sp_block_ortega() for that purpose.
+    """
+    # row: orb on atom1 (tip), col: orb on atom2 (sample), both (s,px,py,pz)
     b = np.zeros((4, 4), dtype=np.float64)
     b[0, 0] = Vss
-    # s-p (atom2)
-    b[0, 1] = l * Vsp
-    b[0, 2] = m * Vsp
-    b[0, 3] = n * Vsp
-    # p-s (atom1)
-    b[1, 0] = l * Vps
-    b[2, 0] = m * Vps
-    b[3, 0] = n * Vps
-    # p-p
+    b[0, 1] = l * Vsp; b[0, 2] = m * Vsp; b[0, 3] = n * Vsp
+    b[1, 0] = l * Vps; b[2, 0] = m * Vps; b[3, 0] = n * Vps
     d = Vpp_sig - Vpp_pi
-    b[1, 1] = l*l*d + Vpp_pi
-    b[2, 2] = m*m*d + Vpp_pi
-    b[3, 3] = n*n*d + Vpp_pi
-    b[1, 2] = l*m*d
-    b[1, 3] = l*n*d
-    b[2, 1] = m*l*d
-    b[2, 3] = m*n*d
-    b[3, 1] = n*l*d
-    b[3, 2] = n*m*d
+    b[1, 1] = l*l*d + Vpp_pi; b[2, 2] = m*m*d + Vpp_pi; b[3, 3] = n*n*d + Vpp_pi
+    b[1, 2] = l*m*d; b[1, 3] = l*n*d
+    b[2, 1] = m*l*d; b[2, 3] = m*n*d
+    b[3, 1] = n*l*d; b[3, 2] = n*m*d
     return b
+
+
+# Fireball/Ortega order: [s, py, pz, px]  (indices 0,1,2,3 in std = s,px,py,pz)
+# Ortega col permutation: std col 0->0(s), 1->2(py), 2->3(pz), 3->1(px)
+_STD_TO_ORT_COL = np.array([0, 2, 3, 1], dtype=int)  # (s,px,py,pz) -> (s,py,pz,px)
+_STD_TO_ORT_ROW = np.array([0, 2, 3, 1], dtype=int)  # same for rows
+
+
+def _sk_sp_block_ortega(l, m, n, Vss, Vsp, Vps, Vpp_sig, Vpp_pi):
+    """Return 4x4 SK block with rows in (s,py,pz,px) Fireball/Ortega order and
+    columns also in Ortega order.
+
+    This matches Fireball's internal H/S matrix convention so that H_ts blocks
+    can be directly placed into an augmented H matrix beside H_s (Fireball dense).
+    """
+    b_std = _sk_sp_block(l, m, n, Vss, Vsp, Vps, Vpp_sig, Vpp_pi)
+    return b_std[np.ix_(_STD_TO_ORT_ROW, _STD_TO_ORT_COL)]
 
 def build_inter_system_blocks_exp_sk(atomTypes_T, atomPos_T, norb_per_T, atomTypes_S, atomPos_S, norb_per_S,
                                      rcut=10.0, beta=1.0, r0=3.0,
@@ -716,15 +790,15 @@ def build_inter_system_blocks_exp_sk(atomTypes_T, atomPos_T, norb_per_T, atomTyp
     """
     Inter-system tunneling blocks with *vacuum exponential radial* and *SK angular* (sp-only).
 
-    Radial replacement (your requirement): Fireball/Fdata radial is NOT used.
+    Radial replacement: Fireball/Fdata radial is NOT used.
       V(r) = A * exp(-beta*(r-r0))
 
-    Angular:
-      SK sp formulas give all s/px/py/pz combinations.
+    Angular: SK sp formulas for all s/p combinations.
+    Orbital order: blocks are produced in Fireball/Ortega order [s,py,pz,px] for both
+    tip rows and sample columns, so they can be directly assembled beside Fireball H_s/S_s.
 
     overlap_scale:
-      If >0, we set S_TS = overlap_scale * exp(-beta*(r-r0)) * angular_block with same channel amps.
-      If 0, S_TS = 0 (common tunneling approximation).
+      If >0, S_TS = overlap_scale * H_TS.  If 0, S_TS = 0 (tunneling approximation).
     """
     if A_ps is None: A_ps = A_sp
     rcut = float(rcut); beta = float(beta); r0 = float(r0)
@@ -735,7 +809,7 @@ def build_inter_system_blocks_exp_sk(atomTypes_T, atomPos_T, norb_per_T, atomTyp
         ni = int(norb_per_T[iT])
         for iS, rS in enumerate(atomPos_S):
             nj = int(norb_per_S[iS])
-            dR = (rS - rT).astype(np.float64)
+            dR = (rT - rS).astype(np.float64)
             r = float(np.linalg.norm(dR))
             if r > rcut or r < 1e-8: continue
             l, m, n = (dR / r).tolist()
@@ -745,7 +819,10 @@ def build_inter_system_blocks_exp_sk(atomTypes_T, atomPos_T, norb_per_T, atomTyp
             Vps = float(A_ps) * f
             Vpp_sig = float(A_pp_sig) * f
             Vpp_pi  = float(A_pp_pi)  * f
-            bH4 = _sk_sp_block(l, m, n, Vss, Vsp, Vps, Vpp_sig, Vpp_pi)
+            # Use Ortega-ordered block so columns match Fireball H_s/S_s orbital basis
+            bH4 = _sk_sp_block_ortega(l, m, n, Vss, Vsp, Vps, Vpp_sig, Vpp_pi)
+            if nj == 1:
+                bH4[1:4, 0] = 0.0
             bS4 = (overlap_scale * bH4) if overlap_scale != 0.0 else np.zeros((4, 4), dtype=np.float64)
             bH = bH4[:ni, :nj].copy()
             bS = bS4[:ni, :nj].copy()
@@ -785,6 +862,139 @@ def assemble_combined_HS(H_T, S_T, orb2atom_T, norb_per_T, H_S, S_S, orb2atom_S,
     H = 0.5 * (H + H.T)
     S = 0.5 * (S + S.T)
     return H, S
+
+def response_amplitude_full_matrix(
+    points_tip, H_s, S_s, C_s, mo_index, E,
+    tip_norb_per, smp_norb_per,
+    coupling_builder,
+    eta=1e-6, E_tip=0.0
+):
+    """Phase 1: Compute STM response by explicit inversion of full augmented (tip+sample) matrix.
+
+    Builds A_full = (E+iη)S_full - H_full for each tip position and solves A x = b directly.
+    Slowest but most explicit; used for validating block elimination approaches.
+
+    A_full = [ a_tt    a_ts^T ]    b = [ 1 ]
+             [ a_st    A_ss   ]        [ 0 ]
+
+    resp = |C^T x_s|^2 where x_s = x[n_t:] from the full solve.
+    """
+    ns = H_s.shape[0]
+    npts = len(points_tip)
+    z = float(E) + 1j * float(eta)
+
+    starts_tip = _atom_orb_starts(tip_norb_per)
+    starts_smp = _atom_orb_starts(smp_norb_per)
+    ntip = int(starts_tip[-1])
+    n_full = ntip + ns
+
+    A_ss = z * S_s.astype(np.complex128) - H_s.astype(np.complex128)
+    c = _get_mo_vec(C_s, mo_index, ns)
+    a_tt = np.eye(ntip, dtype=np.complex128) * (z - float(E_tip))
+
+    resp = np.zeros(npts, dtype=np.float64)
+    b = np.zeros(n_full, dtype=np.complex128)
+    b[0] = 1.0  # excitation on first (only) tip orbital
+
+    for ip, r_tip in enumerate(points_tip):
+        tip_pos = np.array([r_tip], dtype=np.float64)
+        pairs, Hb, Sb = coupling_builder(tip_pos)
+        H_ts = np.zeros((ntip, ns), dtype=np.float64)
+        S_ts = np.zeros((ntip, ns), dtype=np.float64)
+        _blocks_to_dense_vector(pairs, Hb, starts_tip, starts_smp, tip_norb_per, smp_norb_per, ntip, ns, out=H_ts)
+        _blocks_to_dense_vector(pairs, Sb, starts_tip, starts_smp, tip_norb_per, smp_norb_per, ntip, ns, out=S_ts)
+        a_st = z * S_ts.astype(np.complex128) - H_ts.astype(np.complex128)  # (ntip, ns)
+
+        A = np.zeros((n_full, n_full), dtype=np.complex128)
+        A[:ntip, :ntip] = a_tt
+        A[:ntip, ntip:] = a_st
+        A[ntip:, :ntip] = a_st.conj().T
+        A[ntip:, ntip:] = A_ss
+
+        try:
+            x = np.linalg.solve(A, b)
+        except np.linalg.LinAlgError:
+            resp[ip] = 0.0
+            continue
+        x_s = x[ntip:]
+        resp[ip] = abs(np.dot(c, x_s)) ** 2
+
+    return resp
+
+
+def response_amplitude_lu(
+    points_tip, H_s, S_s, C_s, mo_index, E,
+    tip_norb_per, smp_norb_per,
+    coupling_builder,
+    eta=1e-6, E_tip=0.0
+):
+    """Phase 3: Compute STM response via LU precomputation of A_ss (no explicit matrix inverse).
+
+    Precomputes LU factorization of A_ss = (E+iη)S_s - H_s once.
+    Per grid point: solves A_ss · y = a_st via forward/back substitution (O(n_s^2)).
+    Then applies Schur complement / block elimination.
+
+    Algorithm per tip position:
+      y = LU_solve(A_ss, a_st)         # O(n_s^2) — LU already factorized
+      s2 = a_st^T · y                   # O(n_s)
+      x_tip = 1 / (a_tt - s2)
+      resp = |x_tip|^2 · |c^T G0 a_st^H|^2
+
+    Note: we also need v = c^T G0 = c^T LU^{-1}.
+    Precompute once: v = LU_solve(A_ss^H, c)^H (complex adjoint solve).
+    """
+    from scipy.linalg import lu_factor, lu_solve
+
+    ns = H_s.shape[0]
+    npts = len(points_tip)
+    z = float(E) + 1j * float(eta)
+
+    starts_tip = _atom_orb_starts(tip_norb_per)
+    starts_smp = _atom_orb_starts(smp_norb_per)
+    ntip = int(starts_tip[-1])
+
+    A_ss = z * S_s.astype(np.complex128) - H_s.astype(np.complex128)
+    c = _get_mo_vec(C_s, mo_index, ns)
+    a_tt = z * 1.0 - float(E_tip)   # scalar (single tip orbital)
+
+    # Precompute LU factorization once
+    lu, piv = lu_factor(A_ss)
+
+    # Precompute v = c^T G0 via adjoint solve: G0^H c* = (A_ss^H)^{-1} c*
+    # Then v = conj result conjugated back
+    # v_i = sum_j c_j [A_ss^{-1}]_{ji}  =>  v = (A_ss^{-T} c)^*  [for complex symmetric]
+    # More directly: v = c @ inv(A_ss) = (inv(A_ss)^H @ c^*)^H
+    # Use: A_ss^H y = c  =>  y = (A_ss^H)^{-1} c,  then v = y^H
+    v = lu_solve((lu, piv), c.conj(), trans=2).conj()   # v = c^T A_ss^{-1}, shape (ns,)
+
+    resp = np.zeros(npts, dtype=np.float64)
+
+    for ip, r_tip in enumerate(points_tip):
+        tip_pos = np.array([r_tip], dtype=np.float64)
+        pairs, Hb, Sb = coupling_builder(tip_pos)
+        if len(pairs) == 0:
+            resp[ip] = 0.0
+            continue
+        H_ts = np.zeros((ntip, ns), dtype=np.float64)
+        S_ts = np.zeros((ntip, ns), dtype=np.float64)
+        _blocks_to_dense_vector(pairs, Hb, starts_tip, starts_smp, tip_norb_per, smp_norb_per, ntip, ns, out=H_ts)
+        _blocks_to_dense_vector(pairs, Sb, starts_tip, starts_smp, tip_norb_per, smp_norb_per, ntip, ns, out=S_ts)
+        a_vec = (z * S_ts.astype(np.complex128) - H_ts.astype(np.complex128))[0, :]  # (ns,)
+
+        # y = A_ss^{-1} · a_vec  (via LU)
+        y = lu_solve((lu, piv), a_vec)
+
+        s1 = np.dot(v, a_vec.conj())          # v · a_st^H
+        s2 = np.dot(a_vec, y)                  # a_st · G0 · a_st^H
+        denom = a_tt - s2
+        if abs(denom) < 1e-30:
+            resp[ip] = 0.0
+            continue
+        x_tip = 1.0 / denom
+        resp[ip] = abs(x_tip) ** 2 * abs(s1) ** 2
+
+    return resp
+
 
 def wbl_self_energy(n, lead_orbs, gamma):
     """Wide-band limit self-energy Σ = -i Γ/2 on selected orbitals."""
