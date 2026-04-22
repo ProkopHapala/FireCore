@@ -759,6 +759,10 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         // --- Thermodynamic Integration (TI) ---
         if(doTI){
             bDeterministicTDrive = true;
+            for(int isys=0; isys<nSystems; isys++){
+                gopts[isys].nExplore = INT32_MAX;
+                gopts[isys].nRelax = 0;
+            }
             printf("\n=== Thermodynamic Integration ===\n");
             const int nPerVFs_bak = nPerVFs;
             
@@ -768,7 +772,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
             double prev_dE_dlambda = 0.0;
             double prev_sigma_dE = 0.0;
             double dLambda = 1.0 / (double)(nLambda - 1);
-            nPerVFs=1;
+            
 
             for(int batch=0; batch<nBatches; batch++){
                 printf("\n--- TI Batch %d/%d ---\n", batch+1, nBatches);
@@ -787,6 +791,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 ocl.upload( ocl.ibuff_atoms,   atoms   ); // Upload potentially aligned atoms
 
 		                printf("  Equilibrating %d steps...\n", nEQsteps);
+                nPerVFs = nEQsteps;
                 run_ocl_opt( nEQsteps, Fconv);
 // ocl.download( ocl.ibuff_atoms, atoms );
 // ocl.download( ocl.ibuff_aforces, aforces );
@@ -802,6 +807,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 ocl.finishRaw();
 
 		                printf("  Production %d steps...\n", nProdStepsPerLambda);
+                nPerVFs = nProdStepsPerLambda;
                 run_ocl_opt( nProdStepsPerLambda, Fconv);
 
                 ocl.download( ocl.ibuff_averageForces, averageForces );

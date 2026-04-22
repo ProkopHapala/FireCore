@@ -1309,6 +1309,7 @@ __kernel void getNonBond(
                     ^ ((uint)__float_as_int(TDrive.w))*0xC2B2AE35u
                     ^ ((uint)__float_as_int(MDpars.x))*0x27D4EB2Du
                 );
+                TDrives[iS].w = as_float(seed);
                 const float3 rnd = randn3_xorshift_box_muller( seed );
 
             //if(iS==3){  printf( "atom[%i] seed=%g rvec(%g,%g,%g) rnd(%g,%g,%g) \n", iG, TDrive.w, rvec.x,rvec.y,rvec.z, rnd.x,rnd.y,rnd.z ); }
