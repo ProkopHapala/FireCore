@@ -120,6 +120,7 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
 array3i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=3, flags='CONTIGUOUS')
 array4d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=4, flags='CONTIGUOUS')
 array2cd = np.ctypeslib.ndpointer(dtype=np.complex128, ndim=2, flags='CONTIGUOUS') # 
+array1cd = np.ctypeslib.ndpointer(dtype=np.complex128, ndim=1, flags='CONTIGUOUS')
 array2i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=2, flags='CONTIGUOUS')
 # ========= C functions
 
@@ -379,6 +380,36 @@ def ldos2points(points, E=0.0, eta=1e-3, mode=1, iMO=1, ikpoint=1, out=None):
     lib.firecore_ldos2points(int(mode), int(iMO), int(ikpoint), int(n), points, float(E), float(eta), out)
     return out
 
+# subroutine firecore_basis2points(ikpoint, npoints, points, phi_out) bind(c, name='firecore_basis2points')
+argDict["firecore_basis2points"]=( None, [c_int, c_int, array2d, array2d] )
+def basis2points(points, ikpoint=1, out=None):
+    """Export AO basis vector phi(mu,r) for each point r, evaluated inside Fortran.
+
+    Returns `phi` as shape (npoints, norb) in Python (row-major), where
+    phi[ip, mu] corresponds to Fortran phi_out(mu, ip).
+    """
+    n = len(points)
+    dims = get_HS_dims(); norb = dims.norbitals
+    if out is None:
+        # IMPORTANT: keep C-contiguous while matching Fortran linear layout for phi_out(mu,ip).
+        # Fortran column-major means mu is fastest index; therefore allocate Python as (npoints,norb)
+        # so mu is the last/fastest index in C-order.
+        out = np.zeros((n, norb), dtype=np.float64)
+    lib.firecore_basis2points(int(ikpoint), int(n), points, out)
+    return out
+
+# subroutine firecore_ldos_phi1(ikpoint, x, y, z, E, eta, phi_out, rhs_out, ldos_out) bind(c, name='firecore_ldos_phi1')
+argDict["firecore_ldos_phi1"]=( None, [c_int, c_double, c_double, c_double, c_double, c_double, array1d, array1cd, c_double_p] )
+def ldos_phi1(point, E=0.0, eta=1e-3, ikpoint=1, norb=None):
+    if norb is None:
+        dims = get_HS_dims(); norb = dims.norbitals
+    p = np.asarray(point, dtype=np.float64).reshape(3)
+    phi = np.zeros(norb, dtype=np.float64)
+    rhs = np.zeros(norb, dtype=np.complex128)
+    out_ldos = ct.c_double(0.0)
+    lib.firecore_ldos_phi1(int(ikpoint), float(p[0]), float(p[1]), float(p[2]), float(E), float(eta), phi, rhs, ct.byref(out_ldos))
+    return phi, rhs, float(out_ldos.value)
+
 # eigenvalues export: firecore_get_eigen( int ikp, double* eigen_out )
 argDict["firecore_get_eigen"]=( None, [c_int, array1d] )
 def get_eigen( ikp=1, norb=None ):
@@ -601,6 +632,17 @@ def get_rho_off_sparse(dims, data=None):
         raise TypeError("dims argument must be an instance of FireballDims")
     if data is None: data = FireballData(dims)
     lib.firecore_get_rho_off_sparse( data.rho_off )
+    return data
+
+# void firecore_get_VNL_sparse( double* vnl_out )
+argDict["firecore_get_VNL_sparse"]=( None, [array4d] )
+def get_VNL_sparse(dims, data=None):
+    if not isinstance(dims, FireballDims):
+        raise TypeError("dims argument must be an instance of FireballDims")
+    if data is None: data = FireballData(dims)
+    # vnl has different neighbor list size (neighPP_max) than h_mat/s_mat (neigh_max)
+    data.vnl = np.zeros((dims.natoms, dims.neighPP_max, dims.numorb_max, dims.numorb_max), dtype=np.float64)
+    lib.firecore_get_VNL_sparse(data.vnl)
     return data
 
 # void firecore_get_Qin_shell( double* Qin_out )   # flat [nsh_max*natoms]

@@ -87,6 +87,50 @@ def _blocked_to_dense(sparse_data, H_blocks, natoms):
     return M
 
 
+def _blocked_to_dense_mix(sparse_data, H_blocks, natoms):
+    """Evidence-based sparse->dense mapping.
+
+    Observed for FireCore sparse export (H2O):
+    - self (diagonal) blocks are already in (imu,inu)
+    - inter-atom (off-diagonal) blocks behave like (inu,imu) and need transpose
+
+    This combines the two previously tested mappings:
+    - use `_blocked_to_dense` for self blocks
+    - use `_blocked_to_dense_T` for off-diagonal blocks
+    """
+    n_orb_atom, offs = _orbital_layout(sparse_data, natoms)
+    norb = int(offs[-1])
+    M = np.zeros((norb, norb), dtype=np.float64)
+    neighn = np.array(sparse_data.neighn, dtype=np.int32)
+    neigh_j = np.array(sparse_data.neigh_j, dtype=np.int32)
+    neigh_b = np.array(sparse_data.neigh_b, dtype=np.int32)
+
+    neigh_self = np.full(natoms, -1, dtype=np.int32)
+    for i in range(natoms):
+        ii = i + 1
+        for ineigh in range(int(neighn[i])):
+            if int(neigh_j[i, ineigh]) == ii and int(neigh_b[i, ineigh]) == 0:
+                neigh_self[i] = ineigh
+                break
+
+    for i in range(natoms):
+        ni = int(n_orb_atom[i]); i0 = int(offs[i])
+        for ineigh in range(int(neighn[i])):
+            if ineigh == int(neigh_self[i]):
+                j = i
+            else:
+                j = int(neigh_j[i, ineigh]) - 1
+            if j < 0 or j >= natoms:
+                continue
+            nj = int(n_orb_atom[j]); j0 = int(offs[j])
+            if j == i:
+                blk = H_blocks[i, ineigh, :ni, :ni]
+            else:
+                blk = H_blocks[i, ineigh, :nj, :ni].T
+            M[i0:i0+ni, j0:j0+nj] += blk
+    return M
+
+
 def _blocked_to_dense_T(sparse_data, H_blocks, natoms):
     """Same as _blocked_to_dense but assumes blocks are stored as (inu, imu) and transposes last 2 axes."""
     n_orb_atom, offs = _orbital_layout(sparse_data, natoms)
@@ -149,9 +193,10 @@ def _dense_to_sparse_blocks(sparse_data, M_dense, natoms, numorb_max):
             if j < 0 or j >= natoms:
                 continue
             nj = int(n_orb_atom[j]); j0 = int(offs[j])
-            # Store as (imu, inu) so the kernel reads float4 rows correctly
+            # Kernel expects C-order rho[iatom][ineigh][inu][imu] (inu major, imu minor).
+            # Therefore store transpose (inu,imu).
             blk = M_dense[i0:i0+ni, j0:j0+nj]  # (imu_i, inu_j)
-            blocks[i, ineigh, :ni, :nj] = blk.astype(np.float32)
+            blocks[i, ineigh, :nj, :ni] = blk.T.astype(np.float32)
 
     return blocks
 
@@ -212,35 +257,23 @@ def main():
     # Do one SCF (small system)
     fc.evalForce(atomPos, nmax_scf=50)
 
-    # Make sparse HS export include VNL, to match ktransform() used by Fortran Green's function.
-    # export_mode: 0/1 without VNL, 2 with VNL added into h_mat_out where possible.
-    fc.set_export_mode(2)
-
+    # We abandon sparse Hamiltonian export (h_mat/vnl) here.
+    # Use dense Hk,Sk directly from Fortran ktransform(), then build G(E) in NumPy.
     dims = fc.get_HS_dims()
-    data = fc.get_HS_neighs(dims)
-    data = fc.get_HS_sparse(dims, data)
+    data = fc.get_HS_neighs(dims)  # neighbor metadata used only for dense->blocks packing later
 
     natoms = int(dims.natoms)
     norb = int(dims.norbitals)
     assert natoms == 3
     assert norb == 6
 
-    # Use mapping that best matches Fortran ktransform(Gamma) for diagnostic printing
-    Hk_fc, Sk_fc = fc.get_HS_k(np.array((0.0, 0.0, 0.0), dtype=np.float64), norb)
+    # Dense H,S from Fortran ktransform (Gamma)
+    kpt = np.array((0.0, 0.0, 0.0), dtype=np.float64)
+    Hk_fc, Sk_fc = fc.get_HS_k(kpt, norb)
     Hk_fc = np.asarray(Hk_fc, dtype=np.complex128)
     Sk_fc = np.asarray(Sk_fc, dtype=np.complex128)
-    H0 = _blocked_to_dense(data, data.h_mat, natoms)
-    S0 = _blocked_to_dense(data, data.s_mat, natoms)
-    H1 = _blocked_to_dense_T(data, data.h_mat, natoms)
-    S1 = _blocked_to_dense_T(data, data.s_mat, natoms)
-    dH0 = float(np.max(np.abs(H0 - np.real(Hk_fc)))); dS0 = float(np.max(np.abs(S0 - np.real(Sk_fc))))
-    dH1 = float(np.max(np.abs(H1 - np.real(Hk_fc)))); dS1 = float(np.max(np.abs(S1 - np.real(Sk_fc))))
-    use_T = (dH1 + dS1) < (dH0 + dS0)
-    H = H1 if use_T else H0
-    S = S1 if use_T else S0
-
-    print("H (6x6) =\n", H)
-    print("S (6x6) =\n", S)
+    H = Hk_fc
+    S = Sk_fc
     eig = fc.get_eigen(ikp=1, norb=norb)
     print("eigen (eV)=", np.round(eig, 6))
 
@@ -253,7 +286,7 @@ def main():
     fdata_dir = os.path.join(_THIS_DIR, "Fdata")
 
     # grid plane
-    z_plane = 2.0
+    z_plane = 1.0
     nxy = 160
     size = 8.0
     X, Y, pts, extent = _build_plane_grid(atomPos, z=z_plane, size=size, n=nxy)
@@ -288,23 +321,6 @@ def main():
 
     n_orb_atom, offs = _orbital_layout(data, natoms)
 
-    # --- HS mapping parity check vs Fortran ktransform(Gamma)
-    Hk_fc, Sk_fc = fc.get_HS_k(np.array((0.0, 0.0, 0.0), dtype=np.float64), norb)
-    Hk_fc = np.asarray(Hk_fc, dtype=np.complex128)
-    Sk_fc = np.asarray(Sk_fc, dtype=np.complex128)
-    Hs0 = _blocked_to_dense(data, data.h_mat, natoms)
-    Ss0 = _blocked_to_dense(data, data.s_mat, natoms)
-    Hs1 = _blocked_to_dense_T(data, data.h_mat, natoms)
-    Ss1 = _blocked_to_dense_T(data, data.s_mat, natoms)
-    dH0 = float(np.max(np.abs(Hs0 - np.real(Hk_fc))))
-    dS0 = float(np.max(np.abs(Ss0 - np.real(Sk_fc))))
-    dH1 = float(np.max(np.abs(Hs1 - np.real(Hk_fc))))
-    dS1 = float(np.max(np.abs(Ss1 - np.real(Sk_fc))))
-    print(f"[HS PARITY] direct : max|H-Hk|={dH0:.3e}  max|S-Sk|={dS0:.3e}")
-    print(f"[HS PARITY] transT : max|H-Hk|={dH1:.3e}  max|S-Sk|={dS1:.3e}")
-    use_T = (dH1 + dS1) < (dH0 + dS0)
-    print(f"[HS PARITY] selected mapping = {'transpose_last2' if use_T else 'direct'}")
-
     for mo in mo_list:
         E = float(eig[mo])
 
@@ -312,26 +328,60 @@ def main():
         psiF = np.asarray(fc.orb2points(pts.astype(np.float64), iMO=int(mo + 1), ikpoint=1), dtype=np.float64).reshape(nxy, nxy).T
         ldosF = np.asarray(fc.ldos2points(pts.astype(np.float64), E=E, eta=eta, mode=1, iMO=int(mo + 1), ikpoint=1), dtype=np.float64).reshape(nxy, nxy).T
 
-        # --- Python Green's function from sparse->dense mapping (checkpoint) + OpenCL projection
-        if use_T:
-            Hs = _blocked_to_dense_T(data, data.h_mat, natoms)
-            Ss = _blocked_to_dense_T(data, data.s_mat, natoms)
-        else:
-            Hs = _blocked_to_dense(data, data.h_mat, natoms)
-            Ss = _blocked_to_dense(data, data.s_mat, natoms)
+        # --- Python Green's function from sparse->dense mapping (matrix parity must be exact first)
+        Hs = H
+        Ss = S
         z = E + 1j * eta
-        Gnp = np.linalg.inv(z * Ss.astype(np.complex128) - Hs.astype(np.complex128))
+        A = z * S - H
+        Gnp = np.linalg.inv(A)
 
         # Compare against Fortran G(k) (Gamma)
-        Gfc = fc.get_G_k(kpoint=(0.0, 0.0, 0.0), E=E, eta=eta, norb=norb)
-        dG = np.max(np.abs(Gnp - Gfc))
-        print(f"MO {mo+1}  E={E:+.6f}  max|Gnp-Gfc|={dG:.3e}")
+        Gfc = np.asarray(fc.get_G_k(kpt, E=E, eta=eta, norb=norb), dtype=np.complex128)
+        dG = float(np.max(np.abs(Gnp - Gfc)))
+        print(f"[G PARITY] max|Gnp-Gfc|={dG:.3e}")
+
+        # --- Projection parity isolation (only once): Fortran ldos2points vs contraction using exported Fortran phi(r)
+        if mo == 0:
+            i_samp = np.array([0, len(pts)//3, 2*len(pts)//3, len(pts)-1], dtype=np.int32)
+            pts_samp = pts[i_samp].astype(np.float64)
+            phi_samp = np.asarray(fc.basis2points(pts_samp, ikpoint=1), dtype=np.float64)  # (npts, norb)
+            # Compare basis2points(phi) vs internal phi used in ldos2points for first sample
+            print(f"[PHI PARITY] point0 xyz={pts_samp[0]}")
+            phi_int0, rhs_int0, ldos_int0 = fc.ldos_phi1(pts_samp[0], E=E, eta=eta, ikpoint=1, norb=norb)
+            dphi0 = phi_samp[0, :] - np.asarray(phi_int0, dtype=np.float64)
+            print(f"[PHI PARITY] ip={int(i_samp[0])} max|phi_basis-phi_ldos|={float(np.max(np.abs(dphi0))):.3e}")
+            print("[PHI PARITY] phi_basis=", np.round(phi_samp[0, :], 8))
+            print("[PHI PARITY] phi_ldos =", np.round(np.asarray(phi_int0, dtype=np.float64), 8))
+            print("[PHI PARITY] dphi     =", np.round(dphi0, 8))
+            print(f"[PHI PARITY] ldos_phi1={ldos_int0:+.8e}")
+            ldosF_s = np.asarray(fc.ldos2points(pts_samp, E=E, eta=eta, mode=1, iMO=int(mo + 1), ikpoint=1), dtype=np.float64)
+            ldos_phi = np.zeros(len(pts_samp), dtype=np.float64)
+            for ip in range(len(pts_samp)):
+                v = phi_samp[ip, :].astype(np.complex128)
+                Gv = Gfc @ v
+                vv = np.dot(v, Gv)  # v^T G v (no conjugation, matches Fortran)
+                ldos_phi[ip] = -(1.0/np.pi) * np.imag(vv)
+            print("[LDOS PROJ] sample points parity (Fortran ldos2points vs v^H Gfc v):")
+            for k in range(len(pts_samp)):
+                print(f"  ip={int(i_samp[k])}  ldosF={ldosF_s[k]:+.6e}  ldos_phi={ldos_phi[k]:+.6e}  d={ldos_phi[k]-ldosF_s[k]:+.3e}")
 
         spec = -(1.0 / np.pi) * np.imag(Gnp)
+
+        # CPU reference LDOS using Fortran-exported basis vectors at all points
+        phi_all = np.asarray(fc.basis2points(pts.astype(np.float64), ikpoint=1), dtype=np.float64)  # (npts,norb)
+        # ldosCPU(ip) = phi(ip)^T * spec * phi(ip)
+        ldosCPU_flat = np.einsum('pi,ij,pj->p', phi_all, spec, phi_all, optimize=True)
+        ldosCPU = np.asarray(ldosCPU_flat, dtype=np.float64).reshape(nxy, nxy).T
+        dL_cpu = float(np.max(np.abs(ldosCPU - ldosF)))
+        print(f"[LDOS CPU] max|ldosCPU-ldosF|={dL_cpu:.3e}")
+
         rho_blocks = _dense_to_sparse_blocks(data, spec, natoms, int(dims.numorb_max))
         tasks_np, task_atoms_np = gp.build_tasks(atoms_dict, grid_spec, nMaxAtom=64)
         ldosCL3d = gp.project(rho_blocks, data, atoms_dict, grid_spec, tasks=(tasks_np, task_atoms_np), nMaxAtom=64, use_gpu_tasks=False, use_tiled=True)
         ldosCL = np.asarray(ldosCL3d[:, :, 0], dtype=np.float64).T
+
+        dL_cl = float(np.max(np.abs(ldosCL - ldosF)))
+        print(f"[LDOS CL]  max|ldosCL-ldosF|={dL_cl:.3e}")
 
         # OpenCL orbital projection: reuse the already-validated packing/mapping helper
         # (see tests/pyFireball/test_stm_orbital_projection.py)

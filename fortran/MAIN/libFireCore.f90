@@ -847,6 +847,7 @@ subroutine firecore_ldos2points(mode, iband, ikpoint, npoints, points, E, eta, o
     use density
     use charges
     use kpoints
+    use options, only: verbosity
     implicit none
     integer(c_int), value, intent(in) :: mode, iband, ikpoint, npoints
     real(c_double), dimension(3, npoints), intent(in) :: points
@@ -921,10 +922,150 @@ subroutine firecore_ldos2points(mode, iband, ikpoint, npoints, points, E, eta, o
             vv = vv + dcmplx(phi(imu), 0.0d0) * rhs(imu)
         end do
         out(ip) = -(1.0d0/3.141592653589793238462643d0) * dimag(vv)
+
+        ! DEBUG: export phi for first point to compare with firecore_basis2points
+        if (ip == 1 .and. verbosity > 0) then
+            write(*,*) '[DEBUG firecore_ldos2points] phi for first point:'
+            write(*,'(6e12.4)') phi(:)
+        end if
     end do
 
     deallocate(Hk, Sk, A, ipiv, rhs, phi)
 end subroutine firecore_ldos2points
+
+subroutine firecore_basis2points(ikpoint, npoints, points, phi_out) bind(c, name='firecore_basis2points')
+    use iso_c_binding
+    use configuration
+    use dimensions
+    use interactions
+    use neighbor_map
+    use density
+    use charges
+    use kpoints
+    use options, only: verbosity
+    implicit none
+    integer(c_int), value, intent(in) :: ikpoint, npoints
+    real(c_double), dimension(3, npoints), intent(in) :: points
+    real(c_double), dimension(norbitals, npoints), intent(out) :: phi_out
+
+    integer :: norb
+    integer :: ip, iatom, in1, imu, issh, l, lmu, mmu
+    real :: distX, psiR, dpsiR
+    real, dimension(3) :: dXr
+    real, dimension(5) :: psiL
+    real, dimension(3,5) :: dpsiL
+
+    if (npoints <= 0) return
+    norb = norbitals
+
+    if (ikpoint <= 0 .or. ikpoint > nkpoints) then
+        stop 'firecore_basis2points: invalid ikpoint'
+    end if
+
+    do ip = 1, npoints
+        phi_out(:,ip) = 0.0d0
+        do iatom = 1, natoms
+            in1 = imass(iatom)
+            dXr(:) = points(:,ip) - ratom(:,iatom)
+            distX = sqrt(dXr(1)**2 + dXr(2)**2 + dXr(3)**2)
+            imu = 1
+            do issh = 1, nssh(in1)
+                call getpsi(in1, issh, distX, psiR, dpsiR)
+                l = lssh(issh, in1)
+                call getYlm(l, dXr, psiL, dpsiL)
+                do lmu = 1, (2*l+1)
+                    mmu = imu + degelec(iatom)
+                    if (mmu >= 1 .and. mmu <= norb) phi_out(mmu,ip) = dble(psiR) * dble(psiL(lmu))
+                    imu = imu + 1
+                end do
+            end do
+        end do
+
+        ! DEBUG: export phi for first point to compare with firecore_ldos2points
+        if (ip == 1 .and. verbosity > 0) then
+            write(*,*) '[DEBUG firecore_basis2points] phi for first point:'
+            write(*,'(6e12.4)') phi_out(:,ip)
+        end if
+    end do
+end subroutine firecore_basis2points
+
+subroutine firecore_ldos_phi1(ikpoint, x, y, z, E, eta, phi_out, rhs_out, ldos_out) bind(c, name='firecore_ldos_phi1')
+    use iso_c_binding
+    use configuration
+    use dimensions
+    use interactions
+    use neighbor_map
+    use density
+    use charges
+    use kpoints
+    implicit none
+    integer(c_int), value, intent(in) :: ikpoint
+    real(c_double), value, intent(in) :: x, y, z
+    real(c_double), value, intent(in) :: E, eta
+    real(c_double), dimension(norbitals), intent(out) :: phi_out
+    complex(c_double), dimension(norbitals), intent(out) :: rhs_out
+    real(c_double), intent(out) :: ldos_out
+
+    integer :: norb, info
+    integer :: iatom, in1, imu, issh, l, lmu, mmu
+    real :: distX, psiR, dpsiR
+    real, dimension(3) :: dXr, p
+    real, dimension(5) :: psiL
+    real, dimension(3,5) :: dpsiL
+    complex*16, allocatable :: Hk(:,:), Sk(:,:), A(:,:), rhs(:)
+    integer,    allocatable :: ipiv(:)
+    real*8,     allocatable :: phi(:)
+    real :: kpt(3)
+    complex*16 :: zc, vv
+    external :: zgetrf, zgetrs
+
+    norb = norbitals
+    if (ikpoint <= 0 .or. ikpoint > nkpoints) then
+        stop 'firecore_ldos_phi1: invalid ikpoint'
+    end if
+    kpt(:) = special_k(:, ikpoint)
+
+    allocate(Hk(norb,norb), Sk(norb,norb), A(norb,norb), ipiv(norb), rhs(norb), phi(norb))
+    call ktransform(kpt, norb, Sk, Hk)
+    zc = dcmplx(E, eta)
+    A(:,:) = zc*Sk(:,:) - Hk(:,:)
+    call zgetrf(norb, norb, A, norb, ipiv, info)
+    if (info /= 0) stop 'firecore_ldos_phi1: zgetrf failed'
+
+    p(1) = real(x); p(2) = real(y); p(3) = real(z)
+    phi(:) = 0.0d0
+    do iatom = 1, natoms
+        in1 = imass(iatom)
+        dXr(:) = p(:) - ratom(:,iatom)
+        distX = sqrt(dXr(1)**2 + dXr(2)**2 + dXr(3)**2)
+        imu = 1
+        do issh = 1, nssh(in1)
+            call getpsi(in1, issh, distX, psiR, dpsiR)
+            l = lssh(issh, in1)
+            call getYlm(l, dXr, psiL, dpsiL)
+            do lmu = 1, (2*l+1)
+                mmu = imu + degelec(iatom)
+                if (mmu >= 1 .and. mmu <= norb) phi(mmu) = dble(psiR) * dble(psiL(lmu))
+                imu = imu + 1
+            end do
+        end do
+    end do
+
+    rhs(:) = dcmplx(phi(:), 0.0d0)
+    call zgetrs('N', norb, 1, A, norb, ipiv, rhs, norb, info)
+    if (info /= 0) stop 'firecore_ldos_phi1: zgetrs failed'
+
+    vv = (0.0d0, 0.0d0)
+    do imu = 1, norb
+        vv = vv + dcmplx(phi(imu), 0.0d0) * rhs(imu)
+    end do
+    ldos_out = -(1.0d0/3.141592653589793238462643d0) * dimag(vv)
+
+    phi_out(:) = phi(:)
+    rhs_out(:) = rhs(:)
+
+    deallocate(Hk, Sk, A, ipiv, rhs, phi)
+end subroutine firecore_ldos_phi1
 
 subroutine firecore_getpsi( l, m, in1, issh, n, poss, ys )  bind(c, name='firecore_getpsi' )
     use iso_c_binding
@@ -1162,6 +1303,45 @@ subroutine firecore_get_HS_sparse( h_mat_out, s_mat_out ) bind(c, name='firecore
             in2 = imass(jatom)
             nnu = num_orb(in2)
 
+            if (verbosity .gt. 0) then
+                if (iatom .eq. 1 .and. jatom .eq. 3 .and. ineigh .eq. 3) then
+                    write(*,*) '[DBG HS_sparse] iatom,jatom,ineigh,mbeta=', iatom, jatom, ineigh, mbeta
+                    write(*,*) '[DBG HS_sparse] nmu,nnu=', nmu, nnu
+                    write(*,*) '[DBG HS_sparse] components for (imu=4,inu=1):'
+                    if (ioff_T   .ne. 0) write(*,*) '  t_mat    =', t_mat(4,1,ineigh,iatom)
+                    if (ioff_Vna .ne. 0) write(*,*) '  vna      =', vna  (4,1,ineigh,iatom)
+                    if (ioff_Vxc .ne. 0) then
+                        if (itheory .eq. 3) then
+                            write(*,*) '  vxc      =', vxc    (4,1,ineigh,iatom)
+                        else
+                            write(*,*) '  vxc      =', vxc    (4,1,ineigh,iatom)
+                            write(*,*) '  vxc_1c   =', vxc_1c (4,1,ineigh,iatom)
+                        end if
+                    end if
+                    if (ioff_Vca .ne. 0) write(*,*) '  vca      =', vca  (4,1,ineigh,iatom)
+                    if (ioff_Ewald .ne. 0) write(*,*) '  ewaldlr-ewaldsr=', ewaldlr(4,1,ineigh,iatom)-ewaldsr(4,1,ineigh,iatom)
+                    if (ioff_Vxc_ca .ne. 0) write(*,*) '  vxc_ca   =', vxc_ca(4,1,ineigh,iatom)
+                end if
+                if (iatom .eq. 3 .and. jatom .eq. 1 .and. ineigh .eq. 1) then
+                    write(*,*) '[DBG HS_sparse] iatom,jatom,ineigh,mbeta=', iatom, jatom, ineigh, mbeta
+                    write(*,*) '[DBG HS_sparse] nmu,nnu=', nmu, nnu
+                    write(*,*) '[DBG HS_sparse] components for (imu=1,inu=4):'
+                    if (ioff_T   .ne. 0) write(*,*) '  t_mat    =', t_mat(1,4,ineigh,iatom)
+                    if (ioff_Vna .ne. 0) write(*,*) '  vna      =', vna  (1,4,ineigh,iatom)
+                    if (ioff_Vxc .ne. 0) then
+                        if (itheory .eq. 3) then
+                            write(*,*) '  vxc      =', vxc    (1,4,ineigh,iatom)
+                        else
+                            write(*,*) '  vxc      =', vxc    (1,4,ineigh,iatom)
+                            write(*,*) '  vxc_1c   =', vxc_1c (1,4,ineigh,iatom)
+                        end if
+                    end if
+                    if (ioff_Vca .ne. 0) write(*,*) '  vca      =', vca  (1,4,ineigh,iatom)
+                    if (ioff_Ewald .ne. 0) write(*,*) '  ewaldlr-ewaldsr=', ewaldlr(1,4,ineigh,iatom)-ewaldsr(1,4,ineigh,iatom)
+                    if (ioff_Vxc_ca .ne. 0) write(*,*) '  vxc_ca   =', vxc_ca(1,4,ineigh,iatom)
+                end if
+            end if
+
             if (ioff_T .ne. 0) then
                 h_mat_out(:nmu,:nnu,ineigh,iatom) = h_mat_out(:nmu,:nnu,ineigh,iatom) + t_mat(:nmu,:nnu,ineigh,iatom)
             end if
@@ -1203,6 +1383,15 @@ subroutine firecore_get_HS_sparse( h_mat_out, s_mat_out ) bind(c, name='firecore
                     if (ioff_S .ne. 0) s_mat_out(:nmu,:nnu,ineigh,iatom) = 0.0d0
                 end if
             end if
+
+            if (verbosity .gt. 0) then
+                if (iatom .eq. 1 .and. jatom .eq. 3 .and. ineigh .eq. 3) then
+                    write(*,*) '[DBG HS_sparse] h_mat_out(imu=4,inu=1) after base terms =', h_mat_out(4,1,ineigh,iatom)
+                end if
+                if (iatom .eq. 3 .and. jatom .eq. 1 .and. ineigh .eq. 1) then
+                    write(*,*) '[DBG HS_sparse] h_mat_out(imu=1,inu=4) after base terms =', h_mat_out(1,4,ineigh,iatom)
+                end if
+            end if
         end do
     end do
 
@@ -1227,6 +1416,18 @@ subroutine firecore_get_HS_sparse( h_mat_out, s_mat_out ) bind(c, name='firecore
                     end do
                     if (ineigh0 .gt. 0) then
                         h_mat_out(:nmu,:nnu,ineigh0,iatom) = h_mat_out(:nmu,:nnu,ineigh0,iatom) + vnl(:nmu,:nnu,ineighPP,iatom)
+                        if (verbosity .gt. 0) then
+                            if (iatom .eq. 1 .and. jatom .eq. 3 .and. ineigh0 .eq. 3) then
+                                write(*,*) '[DBG HS_sparse] VNL mapped: iatom,jatom,ineighPP,ineigh0=', iatom, jatom, ineighPP, ineigh0
+                                write(*,*) '[DBG HS_sparse] vnl(imu=4,inu=1)=', vnl(4,1,ineighPP,iatom)
+                                write(*,*) '[DBG HS_sparse] h_mat_out(imu=4,inu=1) after VNL=', h_mat_out(4,1,ineigh0,iatom)
+                            end if
+                            if (iatom .eq. 3 .and. jatom .eq. 1 .and. ineigh0 .eq. 1) then
+                                write(*,*) '[DBG HS_sparse] VNL mapped: iatom,jatom,ineighPP,ineigh0=', iatom, jatom, ineighPP, ineigh0
+                                write(*,*) '[DBG HS_sparse] vnl(imu=1,inu=4)=', vnl(1,4,ineighPP,iatom)
+                                write(*,*) '[DBG HS_sparse] h_mat_out(imu=1,inu=4) after VNL=', h_mat_out(1,4,ineigh0,iatom)
+                            end if
+                        end if
                     else
                         if (verbosity .gt. 0) write(*,*) 'Warning: VNL neighbor not found in neigh list ', iatom, jatom, mbeta
                     end if
@@ -1248,6 +1449,28 @@ subroutine firecore_get_rho_sparse( rho_out ) bind(c, name='firecore_get_rho_spa
     if( .not. allocated(rho)) write(*,*) "Error: rho not allocated in firecore_get_rho_sparse" 
     rho_out = rho
 end subroutine firecore_get_rho_sparse
+
+subroutine firecore_get_VNL_sparse( vnl_out ) bind(c, name='firecore_get_VNL_sparse')
+    use iso_c_binding
+    use configuration, only: natoms
+    use interactions,  only: numorb_max, vnl
+    use neighbor_map,  only: neighPP_max
+    implicit none
+    real(c_double), dimension(numorb_max, numorb_max, neighPP_max, natoms), intent(out) :: vnl_out
+    integer :: iatom, ineigh
+    if( .not. allocated(vnl)) then
+        write(*,*) "Error: vnl not allocated in firecore_get_VNL_sparse"
+        stop
+    end if
+    ! NOTE: internal vnl is allocated as (numorb_max,numorb_max,neighPP_max**2,natoms)
+    ! but ktransform() uses vnl(imu,inu,ineigh,iatom) with ineigh=1..neighPPn(iatom) <= neighPP_max.
+    ! Export only the first neighPP_max slices.
+    do iatom = 1, natoms
+        do ineigh = 1, neighPP_max
+            vnl_out(:,:,ineigh,iatom) = vnl(:,:,ineigh,iatom)
+        end do
+    end do
+end subroutine firecore_get_VNL_sparse
 
 subroutine firecore_get_rho_off_sparse( rho_off_out ) bind(c, name='firecore_get_rho_off_sparse')
     use iso_c_binding

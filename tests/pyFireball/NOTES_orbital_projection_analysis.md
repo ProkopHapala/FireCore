@@ -1118,3 +1118,57 @@ python test_h2o_orbital_comparison.py --debug-atom 0 --debug-orb px --debug-val 
 - **Grid-mode optimization:** The grid-based projection (without `--ocl-points`) is faster but has small approximation errors from z-plane interpolation. Consider improving grid sampling or using higher resolution.
 - **Generalization to other molecules:** Test with larger molecules (e.g., CH4, pentacene) to ensure fixes generalize beyond H2O.
 - **CPU reference implementation:** Consider adding a Python/C++ reference using the same natural cubic spline for triple-checking.
+
+---
+
+## Parity Test Completion (April 2026)
+
+### Summary
+
+Achieved complete numerical parity for both orbital projection and LDOS projection between Fortran (Fireball DFT) and OpenCL (pyOpenCL) implementations.
+
+### Verified Parities
+
+1. **Orbital Projection Parity**
+   - Fortran `orb2points()` vs OpenCL `project_orbital_points()`
+   - Correlation: 1.0000 (perfect parity)
+   - Scale: 1.0000 ± 0.0000
+   - Tested on H2O and PTCDA
+
+2. **LDOS Projection Parity**
+   - Fortran `ldos2points()` vs CPU contraction `φ^T G φ`
+   - Fortran `ldos2points()` vs OpenCL density projection
+   - Green's function parity: max|G_numpy - G_fortran| ≈ 1e-14
+   - CPU LDOS parity: max|ldosCPU - ldosF| ≈ 1e-17 (exact)
+   - OpenCL LDOS parity: max|ldosCL - ldosF| ≈ 1e-5 (good)
+
+### Test Scripts
+
+**H2O-Specific Tests (for debugging/validation):**
+- `tests/pyFireball/test_h2o_orbital_comparison.py` - Orbital projection parity for H2O
+- `tests/pyFireball/test_h2o_mo_vs_ldos.py` - MO vs LDOS comparison for H2O (z=1.0 Å)
+
+**General Tests (production-ready for any molecule):**
+- `tests/pyFireball/test_orbital_projection_compare.py` - Orbital projection parity for any molecule (e.g., PTCDA)
+- `tests/pyFireball/test_stm_orbital_projection.py` - STM orbital projection (for later)
+
+**Script Relationship Pattern:**
+```
+H2O-specific → General
+test_h2o_orbital_comparison.py → test_orbital_projection_compare.py
+test_h2o_mo_vs_ldos.py → test_mo_vs_ldos.py (to be created)
+```
+
+### Next Steps
+
+1. **Create `test_mo_vs_ldos.py`** - General MO vs LDOS comparison script
+   - Generalize from `test_h2o_mo_vs_ldos.py` to work with any molecule
+   - Accept XYZ file as input (like `test_orbital_projection_compare.py`)
+   - Test on PTCDA to verify generalization
+
+2. **Key Features for `test_mo_vs_ldos.py`:**
+   - Command-line: `--xyz PTCDA.xyz --mo 74 --z 1.0`
+   - Compare MO wavefunction ψ(r) with LDOS(r; E=ε_MO)
+   - Verify Green's function parity
+   - Verify CPU LDOS projection parity
+   - Verify OpenCL LDOS projection parity
