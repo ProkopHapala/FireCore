@@ -1172,3 +1172,97 @@ test_h2o_mo_vs_ldos.py → test_mo_vs_ldos.py (to be created)
    - Verify Green's function parity
    - Verify CPU LDOS projection parity
    - Verify OpenCL LDOS projection parity
+
+---
+
+## Implementation Completion (April 2026)
+
+### Summary
+Successfully created general MO vs LDOS comparison script and refactored codebase to use shared utility functions. The H2O-specific test scripts have been generalized to work with arbitrary molecules.
+
+### New Script: `test_mo_vs_ldos.py` ✅
+**Location:** `tests/pyFireball/test_mo_vs_ldos.py`
+
+**Features:**
+- Works with any molecule via `--xyz` argument
+- Command-line interface for flexible testing:
+  ```bash
+  python test_mo_vs_ldos.py --xyz PTCDA.xyz --mo 74 --z 1.0
+  python test_mo_vs_ldos.py --xyz H2O.xyz --orbitals "0-5"
+  ```
+- Default: plots HOMO-4 to LUMO+4 orbitals
+- Grid size: 20 Å (configurable via `--size`)
+- Resolution: 160x160 (configurable via `--n`)
+- Z-height: 1.0 Å above molecular plane (configurable via `--z`)
+
+**Parity Results (PTCDA, MO 74 HOMO):**
+- Green's function: max|Gnp-Gfc| = 2.054e-12 (excellent)
+- CPU LDOS: max|ldosCPU-ldosF| = 2.720e-15 (exact)
+- OpenCL LDOS: max|ldosCL-ldosF| = 2.425e-05 (good)
+
+**Output:**
+- `export/mo_vs_ldos/{mol_name}/moXXXX_parity.png` (2x2 panels: MO_F, MO_CL, LDOS_F, LDOS_CL)
+
+### Code Refactoring
+
+**Moved to `pyBall/FireballOCL/STM_utils.py`:**
+- `get_orbital_layout()` - orbital count per atom from sparse data
+- `sparse_to_dense()` - sparse to dense matrix conversion
+- `dense_to_sparse_blocks()` - dense to sparse blocks for GPU
+- `build_plane_grid()` - XY plane grid for projection
+
+**Refactored test scripts:**
+- `test_h2o_mo_vs_ldos.py` - now uses shared functions from STM_utils.py
+- `test_stm_orbital_projection.py` - now uses shared functions from STM_utils.py
+
+**Benefits:**
+- Eliminated code duplication
+- Consistent implementation across tests
+- Easier maintenance and debugging
+- Test scripts are now thin wrappers calling shared utilities
+
+### Script Relationship Pattern (Updated)
+
+```
+H2O-specific → General
+test_h2o_orbital_comparison.py → test_orbital_projection_compare.py
+test_h2o_mo_vs_ldos.py → test_mo_vs_ldos.py ✅ DONE
+```
+
+### Running the Tests
+
+**H2O (original test):**
+```bash
+cd tests/pyFireball
+python test_h2o_mo_vs_ldos.py
+```
+Output: `export/h2o_mo_vs_ldos/`
+
+**PTCDA (general test):**
+```bash
+cd tests/pyFireball
+python test_mo_vs_ldos.py --xyz ../../cpp/common_resources/xyz/PTCDA.xyz
+```
+Output: `export/mo_vs_ldos/PTCDA/`
+
+**Custom orbital range:**
+```bash
+python test_mo_vs_ldos.py --xyz PTCDA.xyz --orbitals "70-78"
+```
+
+**Single orbital:**
+```bash
+python test_mo_vs_ldos.py --xyz PTCDA.xyz --mo 74
+```
+
+### Files Modified/Created
+
+**Created:**
+- `tests/pyFireball/test_mo_vs_ldos.py`
+
+**Modified:**
+- `pyBall/FireballOCL/STM_utils.py` (added 4 utility functions)
+- `tests/pyFireball/test_h2o_mo_vs_ldos.py` (refactored to use STM_utils)
+- `tests/pyFireball/test_stm_orbital_projection.py` (refactored to use STM_utils)
+- `tests/pyFireball/NOTES_orbital_projection_analysis.md` (this section)
+- `doc/Topics/STM/STM_GPU_QMMM.md` (updated documentation)

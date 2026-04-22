@@ -26,7 +26,10 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from pyBall.AtomicSystem import AtomicSystem
 from pyBall import FireCore as fc
-from pyBall.FireballOCL.STM_utils import set_export_dir, save_plot, plot_atoms, project_orbital_to_points, project_orbital_to_points_exp
+from pyBall.FireballOCL.STM_utils import (
+    set_export_dir, save_plot, plot_atoms, project_orbital_to_points, project_orbital_to_points_exp,
+    get_orbital_layout, sparse_to_dense
+)
 from pyBall.FireballOCL.STM import (
     build_inter_system_blocks_fdata, build_inter_system_blocks_exp_sk,
     _atom_orb_starts, response_amplitude_map
@@ -34,65 +37,10 @@ from pyBall.FireballOCL.STM import (
 from pyBall.FireballOCL.Grid import GridProjector
 
 
-def _orbital_layout(sparse_data, natoms):
-    nzx = np.array(sparse_data.nzx, dtype=np.int32)
-    iatyp = np.array(sparse_data.iatyp, dtype=np.int32)
-    num_orb = np.array(sparse_data.num_orb, dtype=np.int32)
-    n_orb_atom = np.zeros(natoms, dtype=np.int32)
-    for ia in range(natoms):
-        Z = int(iatyp[ia])
-        w = np.where(nzx == Z)[0]
-        n_orb_atom[ia] = int(num_orb[w[0]]) if w.size > 0 else 0
-    offs = np.zeros(natoms + 1, dtype=np.int32)
-    offs[1:] = np.cumsum(n_orb_atom)
-    return n_orb_atom, offs
-
-
-def _blocked_to_dense(sparse_data, H_blocks, natoms):
-    """Map FireCore blocked sparse (iatom, ineigh, inu, imu) into dense matrix."""
-    n_orb_atom, offs = _orbital_layout(sparse_data, natoms)
-    norb = int(offs[-1])
-    M = np.zeros((norb, norb), dtype=np.float64)
-    neighn = np.array(sparse_data.neighn, dtype=np.int32)
-    neigh_j = np.array(sparse_data.neigh_j, dtype=np.int32)
-    neigh_b = np.array(sparse_data.neigh_b, dtype=np.int32)
-    neigh_self = np.full(natoms, -1, dtype=np.int32)
-    for i in range(natoms):
-        ii = i + 1
-        for ineigh in range(int(neighn[i])):
-            if int(neigh_j[i, ineigh]) == ii and int(neigh_b[i, ineigh]) == 0:
-                neigh_self[i] = ineigh
-                break
-    for i in range(natoms):
-        ni = int(n_orb_atom[i]); i0 = int(offs[i])
-        for ineigh in range(int(neighn[i])):
-            if ineigh == int(neigh_self[i]):
-                j = i
-            else:
-                j = int(neigh_j[i, ineigh]) - 1
-            if j < 0 or j >= natoms:
-                continue
-            nj = int(n_orb_atom[j]); j0 = int(offs[j])
-            blk = H_blocks[i, ineigh, :nj, :ni]
-            M[i0:i0+ni, j0:j0+nj] += blk.T
-    return M
-
-
 def _get_orbital_mapping_from_fireball(dims):
     data = fc.get_HS_neighs(dims)
     data = fc.get_HS_sparse(dims, data)
-    nzx = np.array(data.nzx, dtype=np.int32)
-    iatyp = np.array(data.iatyp, dtype=np.int32)
-    num_orb = np.array(data.num_orb, dtype=np.int32)
-    norb_per = np.zeros(dims.natoms, dtype=np.int32)
-    for ia in range(dims.natoms):
-        Z = int(iatyp[ia])
-        w = np.where(nzx == Z)[0]
-        if w.size == 0:
-            raise RuntimeError(f"Cannot map atom Z={Z} to nzx species list {nzx}")
-        norb_per[ia] = int(num_orb[w[0]])
-    starts = np.zeros(dims.natoms + 1, dtype=np.int32)
-    starts[1:] = np.cumsum(norb_per)
+    norb_per, starts = get_orbital_layout(data, dims.natoms)
     if int(starts[-1]) != int(dims.norbitals):
         raise RuntimeError(f"Orbital count mismatch: mapped {int(starts[-1])} vs dims.norbitals={int(dims.norbitals)}")
     orb2atom = np.array([ia for ia in range(dims.natoms) for _ in range(int(norb_per[ia]))], dtype=np.int32)

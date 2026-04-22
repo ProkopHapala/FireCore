@@ -23,68 +23,14 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from pyBall import FireCore as fc
 from pyBall.atomicUtils import load_xyz
 from pyBall.FireballOCL.Grid import GridProjector
-from pyBall.FireballOCL.STM_utils import set_export_dir, save_plot, plot_atoms, project_orbital_to_points
+from pyBall.FireballOCL.STM_utils import (
+    set_export_dir, save_plot, plot_atoms, project_orbital_to_points,
+    get_orbital_layout, sparse_to_dense, dense_to_sparse_blocks, build_plane_grid
+)
 
 np.set_printoptions(precision=6, suppress=True, linewidth=np.inf)
 
 _THIS_DIR = os.path.dirname(__file__)
-
-
-def _orbital_layout(sparse_data, natoms):
-    nzx = np.array(sparse_data.nzx, dtype=np.int32)
-    iatyp = np.array(sparse_data.iatyp, dtype=np.int32)
-    num_orb = np.array(sparse_data.num_orb, dtype=np.int32)
-    n_orb_atom = np.zeros(natoms, dtype=np.int32)
-    for ia in range(natoms):
-        Z = int(iatyp[ia])
-        w = np.where(nzx == Z)[0]
-        if w.size == 0:
-            raise RuntimeError(f"Cannot map atom Z={Z} to nzx={nzx}")
-        n_orb_atom[ia] = int(num_orb[int(w[0])])
-    offs = np.zeros(natoms + 1, dtype=np.int32)
-    offs[1:] = np.cumsum(n_orb_atom)
-    return n_orb_atom, offs
-
-
-def _blocked_to_dense(sparse_data, H_blocks, natoms):
-    """Map FireCore blocked sparse -> dense AO matrix.
-
-    FireCore Python wrapper keeps the *linear* Fortran layout by reversing axes,
-    so the natural view is:
-      H_blocks[iatom, ineigh, imu, inu]
-    where imu runs orbitals on iatom (row) and inu runs orbitals on jatom (col).
-    This is exactly what the OpenCL projector kernels expect as well (row-major
-    4x4 blocks when cast to float4).
-    """
-    n_orb_atom, offs = _orbital_layout(sparse_data, natoms)
-    norb = int(offs[-1])
-    M = np.zeros((norb, norb), dtype=np.float64)
-    neighn = np.array(sparse_data.neighn, dtype=np.int32)
-    neigh_j = np.array(sparse_data.neigh_j, dtype=np.int32)
-    neigh_b = np.array(sparse_data.neigh_b, dtype=np.int32)
-
-    neigh_self = np.full(natoms, -1, dtype=np.int32)
-    for i in range(natoms):
-        ii = i + 1
-        for ineigh in range(int(neighn[i])):
-            if int(neigh_j[i, ineigh]) == ii and int(neigh_b[i, ineigh]) == 0:
-                neigh_self[i] = ineigh
-                break
-
-    for i in range(natoms):
-        ni = int(n_orb_atom[i]); i0 = int(offs[i])
-        for ineigh in range(int(neighn[i])):
-            if ineigh == int(neigh_self[i]):
-                j = i
-            else:
-                j = int(neigh_j[i, ineigh]) - 1
-            if j < 0 or j >= natoms:
-                continue
-            nj = int(n_orb_atom[j]); j0 = int(offs[j])
-            # H_blocks last axes are (imu, inu) => (ni, nj)
-            blk = H_blocks[i, ineigh, :ni, :nj]
-            M[i0:i0+ni, j0:j0+nj] += blk
-    return M
 
 
 def _blocked_to_dense_mix(sparse_data, H_blocks, natoms):
@@ -95,10 +41,12 @@ def _blocked_to_dense_mix(sparse_data, H_blocks, natoms):
     - inter-atom (off-diagonal) blocks behave like (inu,imu) and need transpose
 
     This combines the two previously tested mappings:
-    - use `_blocked_to_dense` for self blocks
+    - use `sparse_to_dense` for self blocks
     - use `_blocked_to_dense_T` for off-diagonal blocks
+
+    NOTE: This function is H2O-specific and kept for debugging.
     """
-    n_orb_atom, offs = _orbital_layout(sparse_data, natoms)
+    n_orb_atom, offs = get_orbital_layout(sparse_data, natoms)
     norb = int(offs[-1])
     M = np.zeros((norb, norb), dtype=np.float64)
     neighn = np.array(sparse_data.neighn, dtype=np.int32)
@@ -132,8 +80,8 @@ def _blocked_to_dense_mix(sparse_data, H_blocks, natoms):
 
 
 def _blocked_to_dense_T(sparse_data, H_blocks, natoms):
-    """Same as _blocked_to_dense but assumes blocks are stored as (inu, imu) and transposes last 2 axes."""
-    n_orb_atom, offs = _orbital_layout(sparse_data, natoms)
+    """Same as sparse_to_dense but assumes blocks are stored as (inu, imu) and transposes last 2 axes."""
+    n_orb_atom, offs = get_orbital_layout(sparse_data, natoms)
     norb = int(offs[-1])
     M = np.zeros((norb, norb), dtype=np.float64)
     neighn = np.array(sparse_data.neighn, dtype=np.int32)
@@ -163,44 +111,6 @@ def _blocked_to_dense_T(sparse_data, H_blocks, natoms):
     return M
 
 
-def _dense_to_sparse_blocks(sparse_data, M_dense, natoms, numorb_max):
-    """Pack dense AO matrix into sparse blocks M_blocks[iatom,ineigh,nu,mu] matching Grid.cl kernel expectations."""
-    n_orb_atom, offs = _orbital_layout(sparse_data, natoms)
-    neighn = np.array(sparse_data.neighn, dtype=np.int32)
-    neigh_j = np.array(sparse_data.neigh_j, dtype=np.int32)
-    neigh_b = np.array(sparse_data.neigh_b, dtype=np.int32)
-
-    neigh_self = np.full(natoms, -1, dtype=np.int32)
-    for i in range(natoms):
-        ii = i + 1
-        for ineigh in range(int(neighn[i])):
-            if int(neigh_j[i, ineigh]) == ii and int(neigh_b[i, ineigh]) == 0:
-                neigh_self[i] = ineigh
-                break
-
-    neigh_max = int(M_dense.shape[0])  # not used
-    neigh_max = int(sparse_data.neigh_j.shape[1])
-
-    blocks = np.zeros((natoms, neigh_max, numorb_max, numorb_max), dtype=np.float32)
-
-    for i in range(natoms):
-        ni = int(n_orb_atom[i]); i0 = int(offs[i])
-        for ineigh in range(int(neighn[i])):
-            if ineigh == int(neigh_self[i]):
-                j = i
-            else:
-                j = int(neigh_j[i, ineigh]) - 1
-            if j < 0 or j >= natoms:
-                continue
-            nj = int(n_orb_atom[j]); j0 = int(offs[j])
-            # Kernel expects C-order rho[iatom][ineigh][inu][imu] (inu major, imu minor).
-            # Therefore store transpose (inu,imu).
-            blk = M_dense[i0:i0+ni, j0:j0+nj]  # (imu_i, inu_j)
-            blocks[i, ineigh, :nj, :ni] = blk.T.astype(np.float32)
-
-    return blocks
-
-
 def _dense_vec_to_atom4(Ccol, n_orb_atom, offs):
     """Pack AO coefficients (global AO order) into per-atom (natoms,4) coeffs for OpenCL orbital projector.
 
@@ -228,19 +138,6 @@ def _dense_vec_to_atom4(Ccol, n_orb_atom, offs):
         else:
             raise RuntimeError(f"_dense_vec_to_atom4: unsupported norb={no} on atom {ia} (this test assumes H2O)")
     return coeffs
-
-
-def _build_plane_grid(atomPos, z=2.0, size=8.0, n=128):
-    cen = atomPos.mean(axis=0)
-    xs = np.linspace(cen[0] - size * 0.5, cen[0] + size * 0.5, n)
-    ys = np.linspace(cen[1] - size * 0.5, cen[1] + size * 0.5, n)
-    X, Y = np.meshgrid(xs, ys, indexing='ij')
-    pts = np.zeros((n * n, 3), dtype=np.float64)
-    pts[:, 0] = X.ravel()
-    pts[:, 1] = Y.ravel()
-    pts[:, 2] = cen[2] + float(z)
-    extent = [xs[0], xs[-1], ys[0], ys[-1]]
-    return X, Y, pts, extent
 
 
 def main():
@@ -280,7 +177,7 @@ def main():
     C = fc.get_wfcoef(norb=norb)
 
     # mapping for OpenCL basis/projectors
-    n_orb_atom, offs = _orbital_layout(data, natoms)
+    n_orb_atom, offs = get_orbital_layout(data, natoms)
     norb_per = n_orb_atom.astype(np.int32)
 
     fdata_dir = os.path.join(_THIS_DIR, "Fdata")
@@ -289,7 +186,7 @@ def main():
     z_plane = 1.0
     nxy = 160
     size = 8.0
-    X, Y, pts, extent = _build_plane_grid(atomPos, z=z_plane, size=size, n=nxy)
+    X, Y, pts, extent = build_plane_grid(atomPos, z=z_plane, size=size, n=nxy)
 
     gp = GridProjector(fdata_dir=fdata_dir)
     gp.verbosity = 1
@@ -319,7 +216,7 @@ def main():
 
     eta = 1e-2  # eV
 
-    n_orb_atom, offs = _orbital_layout(data, natoms)
+    n_orb_atom, offs = get_orbital_layout(data, natoms)
 
     for mo in mo_list:
         E = float(eig[mo])
@@ -375,7 +272,7 @@ def main():
         dL_cpu = float(np.max(np.abs(ldosCPU - ldosF)))
         print(f"[LDOS CPU] max|ldosCPU-ldosF|={dL_cpu:.3e}")
 
-        rho_blocks = _dense_to_sparse_blocks(data, spec, natoms, int(dims.numorb_max))
+        rho_blocks = dense_to_sparse_blocks(data, spec, natoms, int(dims.numorb_max))
         tasks_np, task_atoms_np = gp.build_tasks(atoms_dict, grid_spec, nMaxAtom=64)
         ldosCL3d = gp.project(rho_blocks, data, atoms_dict, grid_spec, tasks=(tasks_np, task_atoms_np), nMaxAtom=64, use_gpu_tasks=False, use_tiled=True)
         ldosCL = np.asarray(ldosCL3d[:, :, 0], dtype=np.float64).T

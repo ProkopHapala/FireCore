@@ -801,6 +801,159 @@ def plot_orbital_comparison(ax, data_xy, atomPos, atomTypes, extent, title, coef
     ax.set_title(title, fontsize=10)
 
 
+# =============================================================================
+# Fireball Sparse Matrix Utilities
+# =============================================================================
+
+def get_orbital_layout(sparse_data, natoms):
+    """Get orbital count per atom and offsets from Fireball sparse data.
+    
+    Args:
+        sparse_data: Fireball sparse data structure with nzx, iatyp, num_orb
+        natoms: Number of atoms
+        
+    Returns:
+        n_orb_atom: (natoms,) orbitals per atom
+        offs: (natoms+1,) orbital offsets (cumulative sum)
+    """
+    nzx = np.array(sparse_data.nzx, dtype=np.int32)
+    iatyp = np.array(sparse_data.iatyp, dtype=np.int32)
+    num_orb = np.array(sparse_data.num_orb, dtype=np.int32)
+    n_orb_atom = np.zeros(natoms, dtype=np.int32)
+    for ia in range(natoms):
+        Z = int(iatyp[ia])
+        w = np.where(nzx == Z)[0]
+        if w.size == 0:
+            raise RuntimeError(f"Cannot map atom Z={Z} to nzx={nzx}")
+        n_orb_atom[ia] = int(num_orb[int(w[0])])
+    offs = np.zeros(natoms + 1, dtype=np.int32)
+    offs[1:] = np.cumsum(n_orb_atom)
+    return n_orb_atom, offs
+
+
+def sparse_to_dense(sparse_data, H_blocks, natoms):
+    """Map FireCore blocked sparse -> dense AO matrix.
+    
+    FireCore Python wrapper keeps the *linear* Fortran layout by reversing axes,
+    so the natural view is:
+      H_blocks[iatom, ineigh, imu, inu]
+    where imu runs orbitals on iatom (row) and inu runs orbitals on jatom (col).
+    This is exactly what the OpenCL projector kernels expect as well (row-major
+    4x4 blocks when cast to float4).
+    
+    Args:
+        sparse_data: Fireball sparse neighbor data
+        H_blocks: Hamiltonian blocks (iatom, ineigh, imu, inu)
+        natoms: Number of atoms
+        
+    Returns:
+        M: Dense (norb, norb) matrix
+    """
+    n_orb_atom, offs = get_orbital_layout(sparse_data, natoms)
+    norb = int(offs[-1])
+    M = np.zeros((norb, norb), dtype=np.float64)
+    neighn = np.array(sparse_data.neighn, dtype=np.int32)
+    neigh_j = np.array(sparse_data.neigh_j, dtype=np.int32)
+    neigh_b = np.array(sparse_data.neigh_b, dtype=np.int32)
+
+    neigh_self = np.full(natoms, -1, dtype=np.int32)
+    for i in range(natoms):
+        ii = i + 1
+        for ineigh in range(int(neighn[i])):
+            if int(neigh_j[i, ineigh]) == ii and int(neigh_b[i, ineigh]) == 0:
+                neigh_self[i] = ineigh
+                break
+
+    for i in range(natoms):
+        ni = int(n_orb_atom[i]); i0 = int(offs[i])
+        for ineigh in range(int(neighn[i])):
+            if ineigh == int(neigh_self[i]):
+                j = i
+            else:
+                j = int(neigh_j[i, ineigh]) - 1
+            if j < 0 or j >= natoms:
+                continue
+            nj = int(n_orb_atom[j]); j0 = int(offs[j])
+            # H_blocks last axes are (imu, inu) => (ni, nj)
+            blk = H_blocks[i, ineigh, :ni, :nj]
+            M[i0:i0+ni, j0:j0+nj] += blk
+    return M
+
+
+def dense_to_sparse_blocks(sparse_data, M_dense, natoms, numorb_max):
+    """Pack dense AO matrix into sparse blocks matching Grid.cl kernel expectations.
+    
+    Kernel expects C-order rho[iatom][ineigh][inu][imu] (inu major, imu minor).
+    Therefore store transpose (inu,imu).
+    
+    Args:
+        sparse_data: Fireball sparse neighbor data
+        M_dense: Dense (norb, norb) matrix
+        natoms: Number of atoms
+        numorb_max: Maximum orbitals per atom (for block size)
+        
+    Returns:
+        blocks: (natoms, neigh_max, numorb_max, numorb_max) sparse blocks
+    """
+    n_orb_atom, offs = get_orbital_layout(sparse_data, natoms)
+    neighn = np.array(sparse_data.neighn, dtype=np.int32)
+    neigh_j = np.array(sparse_data.neigh_j, dtype=np.int32)
+    neigh_b = np.array(sparse_data.neigh_b, dtype=np.int32)
+
+    neigh_self = np.full(natoms, -1, dtype=np.int32)
+    for i in range(natoms):
+        ii = i + 1
+        for ineigh in range(int(neighn[i])):
+            if int(neigh_j[i, ineigh]) == ii and int(neigh_b[i, ineigh]) == 0:
+                neigh_self[i] = ineigh
+                break
+
+    neigh_max = int(sparse_data.neigh_j.shape[1])
+    blocks = np.zeros((natoms, neigh_max, numorb_max, numorb_max), dtype=np.float32)
+
+    for i in range(natoms):
+        ni = int(n_orb_atom[i]); i0 = int(offs[i])
+        for ineigh in range(int(neighn[i])):
+            if ineigh == int(neigh_self[i]):
+                j = i
+            else:
+                j = int(neigh_j[i, ineigh]) - 1
+            if j < 0 or j >= natoms:
+                continue
+            nj = int(n_orb_atom[j]); j0 = int(offs[j])
+            # Kernel expects C-order rho[iatom][ineigh][inu][imu] (inu major, imu minor)
+            blk = M_dense[i0:i0+ni, j0:j0+nj]  # (imu_i, inu_j)
+            blocks[i, ineigh, :nj, :ni] = blk.T.astype(np.float32)
+
+    return blocks
+
+
+def build_plane_grid(atomPos, z=2.0, size=8.0, n=128):
+    """Build XY plane grid for projection at height z.
+    
+    Args:
+        atomPos: (natoms, 3) atom positions
+        z: Height above molecular center (Å)
+        size: Grid extent (Å)
+        n: Grid resolution (points per side)
+        
+    Returns:
+        X, Y: Meshgrid arrays
+        pts: (n*n, 3) point coordinates
+        extent: [xmin, xmax, ymin, ymax] for plotting
+    """
+    cen = atomPos.mean(axis=0)
+    xs = np.linspace(cen[0] - size * 0.5, cen[0] + size * 0.5, n)
+    ys = np.linspace(cen[1] - size * 0.5, cen[1] + size * 0.5, n)
+    X, Y = np.meshgrid(xs, ys, indexing='ij')
+    pts = np.zeros((n * n, 3), dtype=np.float64)
+    pts[:, 0] = X.ravel()
+    pts[:, 1] = Y.ravel()
+    pts[:, 2] = cen[2] + float(z)
+    extent = [xs[0], xs[-1], ys[0], ys[-1]]
+    return X, Y, pts, extent
+
+
 def generate_mo_labels(mo_indices, eigenvalues, nelec, mol_name=None):
     """Generate MO labels (HOMO, LUMO, etc.) based on energy and index.
 
