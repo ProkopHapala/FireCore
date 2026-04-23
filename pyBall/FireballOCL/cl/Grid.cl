@@ -832,6 +832,59 @@ __kernel void mo_overlap_points_exp_sk(
     out_t[ip] = t;
     out_I[ip] = t*t;
 }
+
+__kernel void mo_overlap_points_exp_sk_2mol(
+    // Explicit two-molecule entrypoint (tip and sample may be different molecules)
+    // NOTE: Implementation is identical to mo_overlap_points_exp_sk; we keep it separate
+    //       to avoid breaking existing workflows and to make call sites self-documenting.
+    const int n_points,
+    __global const float4* tip_centers,
+    __global const float4* tip_quat,
+    __global const float4* tip_pos_rel,
+    __global const float4* smp_pos,
+    const int ntip_atoms,
+    const int nsmp_atoms,
+    __global const float4* coeffs_tip,
+    __global const float4* coeffs_smp,
+    const float beta,
+    const float r0,
+    const float rcut,
+    __global float* out_t,
+    __global float* out_I
+){
+    const int ip = get_global_id(0);
+    if(ip >= n_points) return;
+    const float3 cen = tip_centers[ip].xyz;
+    const float4 q   = tip_quat[ip];
+    const float rcut2 = rcut*rcut;
+    float t = 0.0f;
+
+    for(int ia=0; ia<ntip_atoms; ia++){
+        const float3 pT = cen + quat_rotate3(q, tip_pos_rel[ia].xyz);
+        const float4 cT0 = coeffs_tip[ia];
+        const float3 pcoefT = quat_rotate3(q, (float3)(cT0.x,cT0.y,cT0.z));
+        const float4 cT = (float4)(pcoefT.x,pcoefT.y,pcoefT.z,cT0.w);
+        for(int ja=0; ja<nsmp_atoms; ja++){
+            const float3 d = pT - smp_pos[ja].xyz;
+            const float r2 = dot(d,d);
+            if(r2 > rcut2) continue;
+            const float r = sqrt(r2);
+            const float invr = 1.0f/(r + 1e-12f);
+            const float l = d.x*invr;
+            const float m = d.y*invr;
+            const float n = d.z*invr;
+            const float f = exp(-beta*(r - r0));
+            const float Vss = -f;
+            const float Vsp = -f;
+            const float Vps = -f;
+            const float Vpp_sig = -f;
+            const float Vpp_pi  = +f;
+            t += sk_contract_sp(cT, coeffs_smp[ja], l,m,n, Vss, Vsp, Vps, Vpp_sig, Vpp_pi);
+        }
+    }
+    out_t[ip] = t;
+    out_I[ip] = t*t;
+}
 // Coeff convention: [px, py, pz, s] per atom (float4)
 // basis_data: packed as float2 per node (wf, wf_spline second derivative)
 // ============================================================================

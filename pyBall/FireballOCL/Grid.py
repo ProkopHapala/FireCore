@@ -764,6 +764,94 @@ class GridProjector(OpenCLBase):
         self.queue.finish()
         return out_t, out_I
 
+    def mo_overlap_points_exp_sk_2mol(
+        self,
+        tip_centers,
+        tip_pos_rel,
+        smp_pos,
+        coeffs_tip,
+        coeffs_smp,
+        tip_quat=None,
+        beta=1.0,
+        r0=3.0,
+        rcut=8.0,
+    ):
+        """Same as mo_overlap_points_exp_sk, but calls an explicit two-molecule kernel entrypoint.
+
+        This is intended for workflows where the tip and sample are different molecules.
+        The math is identical; we keep a separate kernel name to avoid breaking existing
+        call sites and make scripts self-documenting.
+        """
+        import numpy as np
+        import pyopencl as cl
+
+        tip_centers = np.asarray(tip_centers, dtype=np.float32)
+        if tip_quat is None:
+            tip_quat = np.zeros((len(tip_centers), 4), dtype=np.float32)
+            tip_quat[:, 3] = 1.0
+        tip_quat = np.asarray(tip_quat, dtype=np.float32)
+        assert tip_quat.shape[0] == tip_centers.shape[0]
+        assert tip_quat.shape[1] == 4
+        tip_pos_rel = np.asarray(tip_pos_rel, dtype=np.float32)
+        smp_pos = np.asarray(smp_pos, dtype=np.float32)
+        coeffs_tip = np.asarray(coeffs_tip, dtype=np.float32)
+        coeffs_smp = np.asarray(coeffs_smp, dtype=np.float32)
+
+        if tip_centers.ndim != 2 or tip_centers.shape[1] != 3:
+            raise ValueError(f"mo_overlap_points_exp_sk_2mol: tip_centers must be (n,3), got {tip_centers.shape}")
+        if tip_pos_rel.ndim != 2 or tip_pos_rel.shape[1] != 3:
+            raise ValueError(f"mo_overlap_points_exp_sk_2mol: tip_pos_rel must be (n,3), got {tip_pos_rel.shape}")
+        if smp_pos.ndim != 2 or smp_pos.shape[1] != 3:
+            raise ValueError(f"mo_overlap_points_exp_sk_2mol: smp_pos must be (n,3), got {smp_pos.shape}")
+        if coeffs_tip.shape != (len(tip_pos_rel), 4):
+            raise ValueError(f"mo_overlap_points_exp_sk_2mol: coeffs_tip must be (ntip,4), got {coeffs_tip.shape}")
+        if coeffs_smp.shape != (len(smp_pos), 4):
+            raise ValueError(f"mo_overlap_points_exp_sk_2mol: coeffs_smp must be (nsmp,4), got {coeffs_smp.shape}")
+
+        tip_centers4 = np.c_[tip_centers, np.zeros((len(tip_centers), 1), dtype=np.float32)].astype(np.float32)
+        tip_pos_rel4 = np.c_[tip_pos_rel, np.zeros((len(tip_pos_rel), 1), dtype=np.float32)].astype(np.float32)
+        smp_pos4 = np.c_[smp_pos, np.zeros((len(smp_pos), 1), dtype=np.float32)].astype(np.float32)
+
+        mf = cl.mem_flags
+        d_tip_centers = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_centers4)
+        d_tip_quat    = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_quat)
+        d_tip_pos_rel = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_pos_rel4)
+        d_smp_pos     = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=smp_pos4)
+        d_ct = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=coeffs_tip.astype(np.float32))
+        d_cs = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=coeffs_smp.astype(np.float32))
+        d_out_t = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=len(tip_centers) * 4)
+        d_out_I = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=len(tip_centers) * 4)
+
+        self._load_kernels()
+
+        gs = (int(len(tip_centers4)),)
+        ls = None
+        self.prg.mo_overlap_points_exp_sk_2mol(
+            self.queue, gs, ls,
+            np.int32(len(tip_centers)),
+            d_tip_centers,
+            d_tip_quat,
+            d_tip_pos_rel,
+            d_smp_pos,
+            np.int32(len(tip_pos_rel)),
+            np.int32(len(smp_pos)),
+            d_ct,
+            d_cs,
+            np.float32(beta),
+            np.float32(r0),
+            np.float32(rcut),
+            d_out_t,
+            d_out_I
+        )
+        self.queue.finish()
+
+        out_t = np.empty(len(tip_centers), dtype=np.float32)
+        out_I = np.empty(len(tip_centers), dtype=np.float32)
+        cl.enqueue_copy(self.queue, out_t, d_out_t)
+        cl.enqueue_copy(self.queue, out_I, d_out_I)
+        self.queue.finish()
+        return out_t, out_I
+
     def project_orbital_points_exp(self, points, coeffs, norb_per, atoms_dict, beta=1.0, r0=3.0, _debug_Fortran_order=False):
         """Evaluate a single orbital at arbitrary points using exponential radial decay.
 

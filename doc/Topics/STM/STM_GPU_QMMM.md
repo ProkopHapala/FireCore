@@ -3849,4 +3849,211 @@ This is essentially a variant of Option C, but instead of rebuilding the entire 
 - Python wrapper: `pyBall/FireballOCL/Grid.py`
 - Rotation analysis: `tests/pyFireball/NOTES_rigid_body_rotation_analysis.md`
 
+# STM Orbital Overlap for Two Different Molecules (IMPLEMENTED)
+
+## Overview
+
+This section documents the extension of the STM orbital overlap method to support simulations where the tip and sample are **different molecules** (e.g., CH2O tip and PTCDA sample). This is implemented in a separate test script with a new kernel entrypoint to avoid breaking the existing single-molecule functionality.
+
+## Implementation
+
+### New Kernel Entrypoint
+
+**Location:** `pyBall/FireballOCL/cl/Grid.cl`
+
+**Kernel:** `mo_overlap_points_exp_sk_2mol`
+
+This is a duplicate of `mo_overlap_points_exp_sk` with a new name to make the two-molecule use case explicit. The implementation is identical; the separate name:
+- Avoids breaking existing workflows
+- Makes call sites self-documenting
+- Allows future extensions specific to two-molecule cases
+
+### New Python Wrapper
+
+**Location:** `pyBall/FireballOCL/Grid.py`
+
+**Method:** `GridProjector.mo_overlap_points_exp_sk_2mol(...)`
+
+Same arguments and behavior as `mo_overlap_points_exp_sk`, but calls the new kernel entrypoint.
+
+### New Test Script
+
+**Location:** `tests/pyFireball/test_stm_orbital_rotated_2mol.py`
+
+**Key Features:**
+- Loads two different molecules from separate XYZ files
+- Runs SCF for each molecule independently
+- Supports independent tip and sample MO selection
+- Supports independent tip and sample rotation
+- Generates 4-panel visualization (sample MO, tip MO, STM overlap, cross-correlation)
+
+### SCF Caching via Subprocesses
+
+**Problem:** FireCore Fortran side does not tolerate repeated init/SCF cycles for different molecules in a single process, causing:
+- `Attempting to allocate already allocated variable 'degelec'`
+- `free(): corrupted unsorted chunks` (memory corruption)
+
+**Solution:** The script uses subprocess caching:
+1. For each molecule, spawn a subprocess to run SCF once
+2. Save SCF results (eigenvalues, MO coefficients, orbital layout) to `.npz` cache files
+3. Main process loads caches and runs GPU overlap scan
+4. Caches are reused on subsequent runs (fast)
+
+**CLI for SCF caching (internal):**
+```bash
+python3 test_stm_orbital_rotated_2mol.py \
+  --dump_scf \
+  --xyz_one <molecule.xyz> \
+  --cache_one <output.npz> \
+  --nmax_scf 30
+```
+
+## Capabilities
+
+### Two Different Molecules
+
+Load separate tip and sample molecules:
+
+```bash
+python3 test_stm_orbital_rotated_2mol.py \
+  --xyz_tip ../../cpp/common_resources/xyz/CH2O.xyz \
+  --xyz_smp ../../cpp/common_resources/xyz/PTCDA.xyz \
+  --smp_mo 70 \
+  --tip_mo 2 \
+  --tip_axis x --tip_angles 0,30,45,60,90 \
+  --smp_axis z --smp_angles 0
+```
+
+### Independent MO Selection
+
+Different MOs for tip and sample:
+
+```bash
+--tip_mo 2    # CH2O MO2
+--smp_mo 70   # PTCDA MO70 (HOMO)
+```
+
+### Independent Rotation Control
+
+Separate rotation axes and angles:
+
+```bash
+--tip_axis x --tip_angles 0,30,45,60,90
+--smp_axis z --smp_angles 0
+```
+
+## CLI Arguments
+
+### Molecule Selection
+- `--xyz_tip <path>`: Tip molecule XYZ file (default: CH2O.xyz)
+- `--xyz_smp <path>`: Sample molecule XYZ file (default: PTCDA.xyz)
+- `--tip_mo N`: Tip MO index 1-based (default: HOMO-1)
+- `--smp_mo N`: Sample MO index 1-based (default: HOMO-1)
+- `--tip_mo_list N1,N2,...`: Multiple tip MOs
+- `--smp_mo_list N1,N2,...`: Multiple sample MOs
+
+### Rotation Control
+- `--tip_axis {x,y,z}`: Tip rotation axis
+- `--tip_angles A1,A2,...`: Tip rotation angles (degrees)
+- `--smp_axis {x,y,z}`: Sample rotation axis
+- `--smp_angles A1,A2,...`: Sample rotation angles (degrees)
+
+### SCF Parameters
+- `--nmax_scf N`: Maximum SCF iterations (default: 200)
+- Caching is automatic; first run creates `.npz` files, subsequent runs reuse them
+
+### Grid Parameters
+- `--n N`: Grid size (N×N pixels, default: 80)
+- `--size L`: Physical size in Å (default: 20.0)
+- `--ztip Z`: Tip height above sample (default: 3.0)
+- `--zmid Z`: Mid-plane z-coordinate (default: ztip/2)
+- `--beta B`: Decay parameter (default: 1.0)
+- `--r0 R0`: Cutoff radius (default: 3.0)
+- `--rcut RCUT`: Maximum cutoff (default: 8.0)
+
+## Test Results
+
+### PTCDA Sample + CH2O Tip
+
+Successfully tested with:
+- Sample: PTCDA MO70 (HOMO)
+- Tip: CH2O MO1, MO2, MO3 (various orbitals)
+- Rotation: x-axis, angles 0°, 30°, 45°, 60°, 90°
+- Grid: 80×80, 20 Å, ztip=3.0 Å, zmid=1.5 Å
+
+**Output Files:**
+- `overlap2mol_tipCH2O_MO001_smpPTCDA_MO070_..._tipx000_smpz000.png`
+- `overlap2mol_tipCH2O_MO001_smpPTCDA_MO070_..._tipx030_smpz000.png`
+- `overlap2mol_tipCH2O_MO001_smpPTCDA_MO070_..._tipx045_smpz000.png`
+- `overlap2mol_tipCH2O_MO001_smpPTCDA_MO070_..._tipx060_smpz000.png`
+- `overlap2mol_tipCH2O_MO001_smpPTCDA_MO070_..._tipx090_smpz000.png`
+- (Similar for MO2, MO3)
+
+**SCF Cache Files:**
+- `scf_tip_CH2O.npz` (3 KB)
+- `scf_smp_PTCDA.npz` (136 KB)
+
+**Location:**
+`/home/prokop/git/FireCore/tests/pyFireball/export/stm_orbital_rotated_2mol/tip_ch2o__smp_ptcda/`
+
+## Visualization
+
+Same 4-panel layout as single-molecule version:
+1. Sample MO (ψ_sample at mid-plane)
+2. Tip MO (ψ_tip at mid-plane)
+3. STM overlap |t|²
+4. Cross-correlation of sample and tip orbitals
+
+**Figure Caption:** Shows tip molecule, sample molecule, tip MO, sample MO, tip rotation (axis+angle), sample rotation (axis+angle), z-mid, z-tip.
+
+**Filename:** Includes tip molecule name, sample molecule name, tip MO, sample MO, z-mid, z-tip, tip rotation, sample rotation.
+
+## Technical Notes
+
+### Why Separate Kernel Entrypoint?
+
+The kernel `mo_overlap_points_exp_sk` already accepts separate tip and sample atom data, so mathematically it can handle two molecules. However:
+- We keep a separate entrypoint for **explicit intent**
+- Avoids breaking existing single-molecule workflows
+- Allows future extensions specific to two-molecule cases (e.g., different basis sets, explicit coupling matrices)
+
+### SCF Caching Design
+
+The subprocess caching approach:
+- **Isolates Fortran state:** Each SCF run gets a clean Fortran process
+- **Fast re-runs:** Caches are reused; no need to recompute SCF
+- **Portable:** `.npz` files can be copied between machines
+- **Transparent:** User doesn't need to manage caching manually
+
+**Cache File Contents:**
+- Atom types and positions
+- Eigenvalues
+- MO coefficients
+- Orbital layout (norb_per, starts, orb2atom)
+- Number of orbitals and atoms
+
+### Comparison with Single-Molecule Script
+
+| Feature | `test_stm_orbital_rotated.py` | `test_stm_orbital_rotated_2mol.py` |
+|---------|-------------------------------|------------------------------------|
+| Molecules | Same molecule for tip and sample | Different tip and sample molecules |
+| SCF | Single SCF run in main process | Two SCF runs via subprocess caching |
+| Kernel | `mo_overlap_points_exp_sk` | `mo_overlap_points_exp_sk_2mol` |
+| MO selection | Can select different MOs but same molecule | Can select different MOs from different molecules |
+| Use case | Single-molecule STM junction | Two-molecule STM junction |
+
+## Future Extensions
+
+1. **Multiple tip MOs:** Sum over multiple tip orbitals for more realistic tip states
+2. **PDOS integration:** Use energy-dependent PDOS instead of single MO
+3. **Explicit tip-sample coupling:** Add coupling matrices between tip and sample
+4. **Response function:** Combine with Green's function response for full transport
+
+## References
+
+- Test script: `tests/pyFireball/test_stm_orbital_rotated_2mol.py`
+- GPU kernel: `pyBall/FireballOCL/cl/Grid.cl` (kernel `mo_overlap_points_exp_sk_2mol`)
+- Python wrapper: `pyBall/FireballOCL/Grid.py` (method `mo_overlap_points_exp_sk_2mol`)
+- Single-molecule version: `tests/pyFireball/test_stm_orbital_rotated.py`
+
 ---
