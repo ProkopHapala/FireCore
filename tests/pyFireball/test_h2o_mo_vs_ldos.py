@@ -141,6 +141,14 @@ def _dense_vec_to_atom4(Ccol, n_orb_atom, offs):
 
 
 def main():
+    # ensure Fdata symlink exists (relative path for portability)
+    _FDATA_LOCAL = os.path.join(_THIS_DIR, "Fdata")
+    _FDATA_RELATIVE = "../Fireball/Fdata_HCNOS"
+    if not (os.path.lexists(_FDATA_LOCAL) and os.path.realpath(_FDATA_LOCAL).endswith("Fdata_HCNOS")):
+        if os.path.lexists(_FDATA_LOCAL):
+            os.unlink(_FDATA_LOCAL)
+        os.symlink(_FDATA_RELATIVE, _FDATA_LOCAL)
+
     xyz = os.path.join(_THIS_DIR, "..", "..", "cpp", "common_resources", "xyz", "H2O.xyz")
     atomPos, atomTypes, enames, _, _comment = load_xyz(xyz)
     atomTypes = np.array(atomTypes, dtype=np.int32)

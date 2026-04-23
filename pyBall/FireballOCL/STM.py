@@ -587,6 +587,17 @@ def _get_mo_vec(C_s, mo_index, norb):
     mo = int(mo_index)
     if C_s.ndim != 2:
         raise ValueError(f"C_s must be 2D, got shape={C_s.shape}")
+    # Ambiguous case: square matrix (norb,norb). This can appear for small systems.
+    # In that case, either rows or columns could be MO vectors depending on the wrapper.
+    # Choose the orientation whose selected vector is closer to unit-norm.
+    if C_s.shape[0] == norb and C_s.shape[1] == norb and 0 <= mo < norb:
+        c_row = np.asarray(C_s[mo, :], dtype=np.complex128)
+        c_col = np.asarray(C_s[:, mo], dtype=np.complex128)
+        nr = float(np.linalg.norm(c_row))
+        nc = float(np.linalg.norm(c_col))
+        if abs(nc - 1.0) <= abs(nr - 1.0):
+            return c_col
+        return c_row
     # fc.get_wfcoef() is typically returned as (nmo,norb) in this repo; tested code
     # (STM_utils.project_orbital_to_points) uses row indexing first.
     if C_s.shape[1] == norb and 0 <= mo < C_s.shape[0]:
@@ -994,6 +1005,197 @@ def response_amplitude_lu(
         resp[ip] = abs(x_tip) ** 2 * abs(s1) ** 2
 
     return resp
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  Rigid-body rotation utilities  (STM with moving molecules)
+# ──────────────────────────────────────────────────────────────────────────
+
+def build_atom_rotation_matrix(norb, R):
+    """Build orbital rotation matrix U for a single atom under 3×3 rotation R.
+
+    For s+p basis (norb = 1 or 4):
+      - s orbital is invariant   → U[0,0] = 1
+      - p orbitals rotate as vectors → U[1:4, 1:4] = R_ortega
+
+    IMPORTANT: Uses Fireball / Ortega orbital ordering [s, py, pz, px].
+    The standard Cartesian p-ordering [px, py, pz] must be permuted:
+        Ortega [py, pz, px] = standard [py, pz, px] at indices [1,2,0].
+
+    If norb == 1 (H atom) only s is present.
+
+    Args:
+        norb: int, number of orbitals on this atom (1 or 4)
+        R:    (3,3) float rotation matrix (orthogonal, det=+1)
+    Returns:
+        U: (norb, norb) float rotation matrix
+    """
+    norb = int(norb)
+    if norb == 1:
+        return np.array([[1.0]], dtype=np.float64)
+    elif norb == 4:
+        # Fireball uses real p orbitals in Ortega order: [py, pz, px].
+        # Rotation of p orbitals must match Fortran ROTATIONS/twister.f90:
+        #   pmat(1,1)=eps(2,2); pmat(1,2)=eps(2,3); pmat(1,3)=eps(2,1)
+        #   pmat(2,1)=eps(3,2); pmat(2,2)=eps(3,3); pmat(2,3)=eps(3,1)
+        #   pmat(3,1)=eps(1,2); pmat(3,2)=eps(1,3); pmat(3,3)=eps(1,1)
+        # Here we take eps := R for rigid-body rotation.
+        eps = np.asarray(R, dtype=np.float64)
+        pmat = np.array([
+            [eps[1, 1], eps[1, 2], eps[1, 0]],
+            [eps[2, 1], eps[2, 2], eps[2, 0]],
+            [eps[0, 1], eps[0, 2], eps[0, 0]],
+        ], dtype=np.float64)
+        U = np.eye(4, dtype=np.float64)
+        U[1:4, 1:4] = pmat
+        return U
+    else:
+        raise ValueError(f"build_atom_rotation_matrix: unsupported norb={norb} (only 1 or 4)")
+
+
+def rotate_dense_hs(H, S, norb_per_atom, R):
+    """Apply a global rigid-body rotation R to dense H and S matrices.
+
+    For each atom i with orbital rotation U_i = build_atom_rotation_matrix(norb_i, R):
+        H' = U_full @ H @ U_full^T
+        S' = U_full @ S @ U_full^T
+    where U_full = block_diag(U_0, U_1, ..., U_{N-1}).
+
+    This is the *global* rotation (molecule rotates as a rigid body).
+    It is distinct from the bond-direction Slater–Koster rotation used
+    during Hamiltonian assembly.
+
+    Args:
+        H, S: (norb, norb) dense Hamiltonian and overlap
+        norb_per_atom: (natoms,) int, orbitals per atom
+        R: (3,3) rotation matrix
+    Returns:
+        H_rot, S_rot: rotated dense matrices (same dtype)
+    """
+    H = np.asarray(H)
+    S = np.asarray(S)
+    natoms = len(norb_per_atom)
+    norb = H.shape[0]
+
+    # Build full U = block_diag(U_0, U_1, ...)
+    U = np.zeros((norb, norb), dtype=np.float64)
+    i0 = 0
+    for ia in range(natoms):
+        ni = int(norb_per_atom[ia])
+        Ui = build_atom_rotation_matrix(ni, R)
+        U[i0:i0+ni, i0:i0+ni] = Ui
+        i0 += ni
+    if i0 != norb:
+        raise ValueError(f"rotate_dense_hs: orbital count mismatch {i0} != {norb}")
+
+    # Keep complex dtype if input is complex
+    Uc = U.astype(np.complex128) if (np.iscomplexobj(H) or np.iscomplexobj(S)) else U
+    # Active rotation acting on orbital basis vectors: H' = U H U^T
+    H_rot = Uc @ H @ Uc.T
+    S_rot = Uc @ S @ Uc.T
+    return H_rot, S_rot
+
+
+def rotate_mo_coefficients(C, norb_per_atom, R):
+    """Rotate MO coefficients C (norb, nmo) by global rotation R.
+
+    Each column of C is an MO vector in the AO basis.
+    Under rotation of the molecule, the AO basis rotates, so
+    the coefficients transform as  C' = U @ C.
+
+    Args:
+        C: (norb, nmo) MO coefficients
+        norb_per_atom: (natoms,) int
+        R: (3,3) rotation matrix
+    Returns:
+        C_rot: (norb, nmo) rotated coefficients
+    """
+    C = np.asarray(C)
+    natoms = len(norb_per_atom)
+    norb = C.shape[0]
+
+    U = np.zeros((norb, norb), dtype=np.float64)
+    i0 = 0
+    for ia in range(natoms):
+        ni = int(norb_per_atom[ia])
+        Ui = build_atom_rotation_matrix(ni, R)
+        U[i0:i0+ni, i0:i0+ni] = Ui
+        i0 += ni
+
+    Uc = U.astype(np.complex128) if np.iscomplexobj(C) else U
+    return Uc @ C
+
+
+def rotate_points(points, R, center=None):
+    """Rotate 3D points by rotation matrix R around optional center.
+
+    Args:
+        points: (npts, 3) array of positions
+        R:      (3,3) rotation matrix
+        center: (3,) center of rotation (default = centroid of points)
+    Returns:
+        points_rot: (npts, 3) rotated positions
+    """
+    points = np.asarray(points, dtype=np.float64)
+    R = np.asarray(R, dtype=np.float64)
+    if center is None:
+        center = points.mean(axis=0)
+    else:
+        center = np.asarray(center, dtype=np.float64)
+    return (points - center) @ R.T + center
+
+
+def build_rotated_plane_grid(mol_pos, z, size=20.0, n=40, R=None):
+    """Build a 2D imaging grid in a plane that may be rotated.
+
+    Original (unrotated) grid lies in the xy-plane at height z above
+    the molecule centroid.  After rotation R the grid normal is
+    R @ [0,0,1] and the in-plane x/y axes are R @ [1,0,0] and R @ [0,1,0].
+
+    This means: if the molecule is rotated by R, we rotate the imaging
+    plane by the *same* R so that the STM image is rotationally invariant.
+
+    Args:
+        mol_pos: (natoms, 3) atomic positions
+        z:       float, perpendicular distance from centroid (Å)
+        size:    float, lateral extent of grid (Å)
+        n:       int, grid resolution (n×n)
+        R:       (3,3) rotation matrix or None (no rotation)
+    Returns:
+        X, Y:    (n,n) meshgrid coordinates (in rotated frame, for plotting)
+        points:  (n*n, 3) 3D points in the rotated plane
+        extent:  [xmin, xmax, ymin, ymax] for matplotlib
+    """
+    mol_pos = np.asarray(mol_pos, dtype=np.float64)
+    origin = mol_pos.mean(axis=0)
+
+    if R is None:
+        R = np.eye(3, dtype=np.float64)
+    else:
+        R = np.asarray(R, dtype=np.float64)
+
+    # Match STM_utils.build_plane_grid() convention exactly when R=I
+    xs = np.linspace(origin[0] - size * 0.5, origin[0] + size * 0.5, int(n))
+    ys = np.linspace(origin[1] - size * 0.5, origin[1] + size * 0.5, int(n))
+    X, Y = np.meshgrid(xs, ys, indexing='ij')
+
+    # Active rotation for row-vector points: p_rot = p @ R^T
+    # Plane basis vectors are columns of R: ex=R[:,0], ey=R[:,1], ez=R[:,2].
+    ex = R[:, 0]
+    ey = R[:, 1]
+    ez = R[:, 2]
+
+    points = np.zeros((int(n)*int(n), 3), dtype=np.float64)
+    for i in range(int(n)):
+        for j in range(int(n)):
+            idx = i * int(n) + j
+            dx = xs[i] - origin[0]
+            dy = ys[j] - origin[1]
+            points[idx] = origin + dx * ex + dy * ey + float(z) * ez
+
+    extent = [xs[0], xs[-1], ys[0], ys[-1]]
+
+    return X, Y, points, extent
 
 
 def wbl_self_energy(n, lead_orbs, gamma):

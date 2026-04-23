@@ -64,6 +64,62 @@ def _mo_label(i, homo, lumo):
     return f"LUMO{i-lumo:+d}"                # positive
 
 
+def _orbital_layout(sparse_data, natoms):
+    iatyp = np.array(sparse_data.iatyp, dtype=np.int32)
+    num_orb_species = np.array(sparse_data.num_orb, dtype=np.int32)
+    nzx = np.array(sparse_data.nzx, dtype=np.int32)
+    n_orb_atom = np.zeros(natoms, dtype=np.int32)
+    for ia in range(natoms):
+        Z = int(iatyp[ia])
+        w = np.where(nzx == Z)[0]
+        if w.size == 0:
+            raise RuntimeError(f"Cannot map atom Z={Z} to nzx species list {nzx}")
+        ispec = int(w[0])
+        n_orb_atom[ia] = int(num_orb_species[ispec])
+    if np.any(n_orb_atom == 0):
+        raise RuntimeError(f"Zero-orbital atom encountered: n_orb_atom={n_orb_atom}, iatyp={iatyp}, num_orb_species={num_orb_species}, nzx={nzx}")
+    offs = np.zeros(natoms + 1, dtype=np.int32)
+    offs[1:] = np.cumsum(n_orb_atom)
+    return n_orb_atom, offs
+
+
+def _blocked_to_dense(sparse_data, H_blocks, natoms):
+    n_orb_atom, offs = _orbital_layout(sparse_data, natoms)
+    norb = int(offs[-1])
+    M = np.zeros((norb, norb), dtype=np.float64)
+    neighn = np.array(sparse_data.neighn, dtype=np.int32)
+    neigh_j = np.array(sparse_data.neigh_j, dtype=np.int32)
+    neigh_b = np.array(sparse_data.neigh_b, dtype=np.int32)
+
+    # Fortran uses neigh_self(iatom) = ineigh index where (jatom==iatom && mbeta==0).
+    # Do NOT assume it is the last neighbor slot.
+    neigh_self = np.full(natoms, -1, dtype=np.int32)
+    for i in range(natoms):
+        ii = i + 1  # Fortran 1-based atom index stored in neigh_j
+        for ineigh in range(int(neighn[i])):
+            if int(neigh_j[i, ineigh]) == ii and int(neigh_b[i, ineigh]) == 0:
+                neigh_self[i] = ineigh
+                break
+        if neigh_self[i] == -1:
+            raise RuntimeError(f"No self-neighbor found for atom {i}")
+
+    for i in range(natoms):
+        ni = int(n_orb_atom[i])
+        i0 = int(offs[i])
+        for ineigh in range(int(neighn[i])):
+            if ineigh == int(neigh_self[i]):
+                j = i
+            else:
+                j = int(neigh_j[i, ineigh]) - 1
+            if j < 0 or j >= natoms:
+                continue
+            nj = int(n_orb_atom[j])
+            j0 = int(offs[j])
+            blk = H_blocks[i, ineigh, :nj, :ni]
+            M[i0:i0+ni, j0:j0+nj] += blk.T
+    return M
+
+
 def _build_xy_grid(mol_pos, z, size=20.0, n=80):
     origin = mol_pos.mean(axis=0)
     step = float(size) / int(n)
@@ -83,13 +139,12 @@ def main():
 
     # ensure Fdata symlink exists (same convention as other scripts)
     _THIS_DIR  = os.path.dirname(os.path.abspath(__file__))
-    _REPO_ROOT = os.path.normpath(os.path.join(_THIS_DIR, "..", ".."))
-    _FDATA_HCNOS = os.path.join(_REPO_ROOT, "tests", "Fireball", "Fdata_HCNOS")
     _FDATA_LOCAL = os.path.join(_THIS_DIR, "Fdata")
-    if os.path.realpath(_FDATA_LOCAL) if os.path.exists(_FDATA_LOCAL) else "" != os.path.realpath(_FDATA_HCNOS):
+    _FDATA_RELATIVE = "../Fireball/Fdata_HCNOS"  # Relative path for portability
+    if not (os.path.lexists(_FDATA_LOCAL) and os.path.realpath(_FDATA_LOCAL).endswith("Fdata_HCNOS")):
         if os.path.lexists(_FDATA_LOCAL):
             os.unlink(_FDATA_LOCAL)
-        os.symlink(_FDATA_HCNOS, _FDATA_LOCAL)
+        os.symlink(_FDATA_RELATIVE, _FDATA_LOCAL)
 
     xyz = "../../cpp/common_resources/xyz/PTCDA.xyz"
     mol = AtomicSystem(fname=xyz)

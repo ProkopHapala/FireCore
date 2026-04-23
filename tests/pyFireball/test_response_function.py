@@ -41,11 +41,12 @@ _REPO_ROOT = os.path.normpath(os.path.join(_THIS_DIR, "..", ".."))
 
 
 def _ensure_fdata():
-    src = os.path.join(_REPO_ROOT, "tests", "Fireball", "Fdata_HCNOS")
     dst = os.path.join(_THIS_DIR, "Fdata")
-    if os.path.realpath(dst) if os.path.exists(dst) else "" != os.path.realpath(src):
-        if os.path.lexists(dst): os.unlink(dst)
-        os.symlink(src, dst)
+    src_rel = "../Fireball/Fdata_HCNOS"  # Relative path for portability
+    if not (os.path.lexists(dst) and os.path.realpath(dst).endswith("Fdata_HCNOS")):
+        if os.path.lexists(dst):
+            os.unlink(dst)
+        os.symlink(src_rel, dst)
 
 
 def _homo_lumo(eigen):

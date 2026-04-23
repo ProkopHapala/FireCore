@@ -186,9 +186,11 @@ def getCharges(charges):
 #  "void firecore_getPointer_wfcoef( double* bbnkre )
 #lib.firecore_getPointer_wfcoef.argtypes  = [array2d] 
 #lib.firecore_getPointer_wfcoef.restype   =  None
-argDict["firecore_getPointer_wfcoef"]=( None, [array2d] )
-def getPointer_wfcoef(charges):
-    return lib.firecore_getPointer_wfcoef(charges) 
+argDict["firecore_getPointer_wfcoef"]=( None, [ct.POINTER(c_void_p)] )
+def getPointer_wfcoef():
+    ptr = c_void_p()
+    lib.firecore_getPointer_wfcoef(byref(ptr))
+    return ptr
 
 #"void firecore_get_wfcoef( int ikp, double* wfcoefs )",
 #  void getCharges( double* charges )
@@ -198,8 +200,34 @@ argDict["firecore_get_wfcoef"]=( None, [c_int, array2d] )
 def get_wfcoef(wfcoef=None,norb=None, ikp=1):
     if(wfcoef is None):
         wfcoef=np.zeros( (norb,norb) )
-    lib.firecore_get_wfcoef(ikp,wfcoef) 
+    wfcoef = np.asarray(wfcoef, dtype=np.float64)
+    # ctypes binding expects C-contiguous. If user provided Fortran-order array,
+    # use a temporary C buffer and transpose-copy back.
+    if not wfcoef.flags['C_CONTIGUOUS']:
+        tmp = np.zeros(wfcoef.shape, dtype=np.float64, order='C')
+        lib.firecore_get_wfcoef(ikp, tmp)
+        wfcoef[...] = tmp
+        return wfcoef
+    lib.firecore_get_wfcoef(ikp, wfcoef)
     return wfcoef
+
+# subroutine firecore_get_special_k(ikp, k_out) bind(c, name='firecore_get_special_k')
+argDict["firecore_get_special_k"]=( None, [c_int, array1d] )
+def get_special_k(ikp=1, k_out=None):
+    if k_out is None:
+        k_out = np.zeros(3, dtype=np.float64)
+    lib.firecore_get_special_k(int(ikp), k_out)
+    return k_out
+
+# subroutine firecore_get_wfcoef_vec(iband, ikp, c_out) bind(c, name='firecore_get_wfcoef_vec')
+argDict["firecore_get_wfcoef_vec"]=( None, [c_int, c_int, array1d] )
+def get_wfcoef_vec(iband=1, ikp=1, c_out=None, norb=None):
+    if c_out is None:
+        if norb is None:
+            norb = int(get_HS_dims().norbitals)
+        c_out = np.zeros(int(norb), dtype=np.float64)
+    lib.firecore_get_wfcoef_vec(int(iband), int(ikp), c_out)
+    return c_out
 
 #"void firecore_set_wfcoef( int iMO, int ikp, double* wfcoefs )",
 #lib.firecore_set_wfcoef.argtypes  = [c_int,c_int, array1d] 
@@ -400,6 +428,24 @@ def tipResponseSimple2points(points, tip_src, E=0.0, eta=1e-3, mode=0, iMO=1, ik
     tip_src = np.asarray(tip_src, dtype=np.float64)
     ntip_in = int(tip_src.size)
     lib.firecore_tipResponseSimple2points(int(mode), int(iMO), int(ikpoint), int(n), points, float(E), float(eta), int(tipZ), int(ntip_in), tip_src, float(rcut), float(beta), float(r0), float(A_ss), float(A_sp), float(A_pp_sig), float(A_pp_pi), float(A_ps), float(overlap_scale), out)
+    return out
+
+# subroutine firecore_tipResponseSimple2points_rotated(mode, iband, ikpoint, npoints, points, R, E, eta, tipZ, ntip_in, tip_src, rcut, beta, r0, A_ss, A_sp, A_pp_sig, A_pp_pi, A_ps, overlap_scale, out)
+argDict["firecore_tipResponseSimple2points_rotated"]=( None, [c_int, c_int, c_int, c_int, array2d, array2d, c_double, c_double, c_int, c_int, array1d, c_double, c_double, c_double, c_double, c_double, c_double, c_double, c_double, c_double, array1d ] )
+def tipResponseSimple2points_rotated(points, R, tip_src, E=0.0, eta=1e-3, mode=0, iMO=1, ikpoint=1, tipZ=1, rcut=8.0, beta=1.0, r0=3.0, A_ss=-1.0, A_sp=-1.0, A_pp_sig=-1.0, A_pp_pi=+1.0, A_ps=None, overlap_scale=0.0, out=None):
+    n = len(points)
+    if out is None:
+        out = np.zeros(n, dtype=np.float64)
+    if A_ps is None: A_ps = A_sp
+    tip_src = np.asarray(tip_src, dtype=np.float64)
+    ntip_in = int(tip_src.size)
+    R = np.asarray(R, dtype=np.float64)
+    if R.shape != (3,3):
+        raise ValueError(f"R must be (3,3), got {R.shape}")
+    # Fortran expects column-major (3,3). Passing a C-contiguous (row-major) array
+    # would effectively transpose the matrix on the Fortran side.
+    Rf = np.ascontiguousarray(R.T, dtype=np.float64)
+    lib.firecore_tipResponseSimple2points_rotated(int(mode), int(iMO), int(ikpoint), int(n), points, Rf, float(E), float(eta), int(tipZ), int(ntip_in), tip_src, float(rcut), float(beta), float(r0), float(A_ss), float(A_sp), float(A_pp_sig), float(A_pp_pi), float(A_ps), float(overlap_scale), out)
     return out
 
 # subroutine firecore_export_tip_coupling_point(mode, tipZ, point, rcut, beta, r0, A_ss, A_sp, A_pp_sig, A_pp_pi, A_ps, overlap_scale, ntip_in, norb_in, Hts_out, Sts_out)
@@ -731,7 +777,7 @@ def get_HS_k(kpoint_vec, norbitals):
     Sk_out = np.zeros((norbitals, norbitals), dtype=np.complex128)
     kpoint_vec_np = np.array(kpoint_vec, dtype=np.float64)
     lib.firecore_get_HS_k(kpoint_vec_np, Hk_out, Sk_out)
-    return Hk_out, Sk_out
+    return Hk_out.T, Sk_out.T
 
 cpp_utils.set_args_dict(lib, argDict)
 
