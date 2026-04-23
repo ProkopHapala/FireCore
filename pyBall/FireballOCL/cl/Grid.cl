@@ -729,6 +729,109 @@ __kernel void project_orbital_points_exp(
 
     out_psi[ip] = psi;
 }
+
+// ============================================================================
+// MO overlap for molecular tip vs molecular sample using exponential radial + SK angular
+// Each work-item corresponds to one tip-center position (scan pixel).
+//
+// For given tip center R_tip, tip atoms are at R_tip + tip_pos_rel[ia].
+// We compute overlap amplitude:
+//   t(R_tip) = Σ_{ia∈tip} Σ_{ja∈smp}  cT(ia)^T  S_ij(R_ij)  cS(ja)
+// where S_ij is a 4x4 (s,px,py,pz) SK-like block with radial f=exp(-beta*(r-r0)).
+// Coeff convention on input: float4 per atom in order [px,py,pz,s].
+// Output:
+//   out_t[ip]  = signed amplitude (float)
+//   out_I[ip]  = |t|^2 (float)
+// ============================================================================
+inline float sk_contract_sp(
+    const float4 cT_pxpy_pz_s,
+    const float4 cS_pxpy_pz_s,
+    const float l, const float m, const float n,
+    const float Vss, const float Vsp, const float Vps,
+    const float Vpp_sig, const float Vpp_pi
+){
+    // reorder [px,py,pz,s] -> (s,px,py,pz)
+    const float sT  = cT_pxpy_pz_s.w;
+    const float pxT = cT_pxpy_pz_s.x;
+    const float pyT = cT_pxpy_pz_s.y;
+    const float pzT = cT_pxpy_pz_s.z;
+    const float sS  = cS_pxpy_pz_s.w;
+    const float pxS = cS_pxpy_pz_s.x;
+    const float pyS = cS_pxpy_pz_s.y;
+    const float pzS = cS_pxpy_pz_s.z;
+
+    const float pT_dot_pS = pxT*pxS + pyT*pyS + pzT*pzS;
+    const float pT_dot_u  = pxT*l  + pyT*m  + pzT*n;
+    const float pS_dot_u  = pxS*l  + pyS*m  + pzS*n;
+
+    const float t_ss = sT * Vss * sS;
+    const float t_sp = sT * Vsp * (l*pxS + m*pyS + n*pzS);
+    const float t_ps = (l*pxT + m*pyT + n*pzT) * Vps * sS;
+    const float d = Vpp_sig - Vpp_pi;
+    const float t_pp = Vpp_pi * pT_dot_pS + d * pT_dot_u * pS_dot_u;
+    return t_ss + t_sp + t_ps + t_pp;
+}
+
+inline float3 quat_rotate3( const float4 q, const float3 v ){
+    // q = (x,y,z,w), unit quaternion; rotate v by q
+    const float3 qv = (float3)(q.x,q.y,q.z);
+    const float3 t  = 2.0f*cross(qv, v);
+    return v + q.w*t + cross(qv, t);
+}
+
+__kernel void mo_overlap_points_exp_sk(
+    // Scan grid: each work-item computes overlap for one tip-center position
+    const int n_points,                       // number of scan points (pixels)
+    __global const float4* tip_centers,      // [n_points] tip-center positions (x,y,z,NA) in Å; : These are the lateral shifts of the rigid tip relative to sample
+    __global const float4* tip_quat,         // [n_points] tip rotation quaternion (x,y,z,w), unit; : Applied per pixel/work-item (can vary across the scan)
+    __global const float4* tip_pos_rel,      // [ntip_atoms] tip atom positions relative to tip center (x,y,z,NA) in Å; :  This geometry is already rotated on the host side (if rotation is desired)
+    __global const float4* smp_pos,          // [nsmp_atoms] sample atom absolute positions (x,y,z, NA) in Å
+    const int ntip_atoms,                    // number of tip atoms
+    const int nsmp_atoms,                    // number of sample atoms
+    __global const float4* coeffs_tip,       // [ntip_atoms] MO coefficients for tip, per atom as float4 [px,py,pz,s]: Order: .x=px, .y=py, .z=pz, .w=s (cartesian p orbitals)
+    __global const float4* coeffs_smp,       // [nsmp_atoms] MO coefficients for sample, per atom as float4 [px,py,pz,s]
+    // Exponential radial decay parameters: f(r) = exp(-beta*(r - r0))
+    const float beta,                        // decay constant (Å^-1)
+    const float r0,                          // reference distance (Å) where f=1
+    const float rcut,                        // distance cutoff (Å); atom pairs beyond rcut are skipped
+    __global float* out_t,                   // [n_points] output signed overlap amplitude t = c_tip^T S_ts c_sample
+    __global float* out_I                    // [n_points] output intensity |t|^2
+){
+    const int ip = get_global_id(0);
+    if(ip >= n_points) return;
+    const float3 cen = tip_centers[ip].xyz;
+    const float4 q   = tip_quat[ip];
+    const float rcut2 = rcut*rcut;
+    float t = 0.0f;
+
+    for(int ia=0; ia<ntip_atoms; ia++){
+        const float3 pT = cen + quat_rotate3(q, tip_pos_rel[ia].xyz);
+        const float4 cT0 = coeffs_tip[ia];
+        const float3 pcoefT = quat_rotate3(q, (float3)(cT0.x,cT0.y,cT0.z));
+        const float4 cT = (float4)(pcoefT.x,pcoefT.y,pcoefT.z,cT0.w);
+        for(int ja=0; ja<nsmp_atoms; ja++){
+            const float3 d = pT - smp_pos[ja].xyz;
+            const float r2 = dot(d,d);
+            if(r2 > rcut2) continue;
+            const float r = sqrt(r2);
+            const float invr = 1.0f/(r + 1e-12f);
+            const float l = d.x*invr;
+            const float m = d.y*invr;
+            const float n = d.z*invr;
+            const float f = exp(-beta*(r - r0));
+            // Pure exp radial + SK angular (no extra per-channel amplitudes):
+            // Use fixed sign convention to keep p-p sigma/pi anisotropy.
+            const float Vss = -f;
+            const float Vsp = -f;
+            const float Vps = -f;
+            const float Vpp_sig = -f;
+            const float Vpp_pi  = +f;
+            t += sk_contract_sp(cT, coeffs_smp[ja], l,m,n, Vss, Vsp, Vps, Vpp_sig, Vpp_pi);
+        }
+    }
+    out_t[ip] = t;
+    out_I[ip] = t*t;
+}
 // Coeff convention: [px, py, pz, s] per atom (float4)
 // basis_data: packed as float2 per node (wf, wf_spline second derivative)
 // ============================================================================

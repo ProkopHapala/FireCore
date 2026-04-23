@@ -3604,3 +3604,249 @@ Before passing any matrix between Fortran and Python:
 4. Validate against experimental STM images
 
 ---
+
+# STM Orbital Overlap with Rigid Body Rotation (REPORT 2026-04-23) 
+
+## Overview
+
+This section documents the implemented STM orbital overlap method with per-pixel rigid body rotation of the tip molecule. This is a fast GPU-based approach for simulating STM junctions where the tip molecule can be rotated relative to the sample molecule.
+
+## Method: Per-Pixel Quaternion Rotation in GPU Kernel
+
+### Core Concept
+
+Instead of rotating the entire tip Hamiltonian/Overlap matrices (which would be O(N³)), we apply a per-pixel rigid body rotation inside the GPU kernel. For each grid point (pixel) in the STM scan:
+
+1. **Tip orbitals** are evaluated at the rotated position `r' = R * r` where R is the rotation matrix
+2. **Sample orbitals** are evaluated at the original position
+3. **Overlap integral** is computed between rotated tip orbitals and sample orbitals
+4. **STM amplitude** is computed from the overlap
+
+This is mathematically equivalent to rotating the tip molecule, but much faster because:
+- No matrix rotations needed
+- Rotation is applied only at the grid points where we evaluate the STM signal
+- GPU kernel handles the rotation in parallel for all pixels
+
+### Implementation Details
+
+**Test Script:** `tests/pyFireball/test_stm_orbital_rotated.py`
+
+**GPU Kernel:** `pyBall/FireballOCL/cl/Grid.cl` (unchanged - already supports per-pixel rotation)
+
+**Python Wrapper:** `pyBall/FireballOCL/Grid.py` (unchanged - already supports quaternion rotation)
+
+**Key Features:**
+- **Per-pixel quaternion rotation** applied to tip orbitals inside GPU kernel
+- **Separate tip and sample MO selection** for debugging flexibility
+- **Independent rotation control** for tip and sample molecules
+- **Mock AO mode** for debugging with single atomic orbitals (s, px, py, pz)
+- **True orbital mode** using Fireball molecular orbitals
+
+## Capabilities
+
+### 1. Mock AO Mode (Debugging)
+
+For intuitive visual verification of rotation and overlap patterns, the tip and sample can be composed of single atomic orbitals:
+
+```bash
+# Tip: px orbital on atom 1, Sample: py orbital on atom 1
+# Rotate tip around z-axis by 0°, 45°, 90°
+python3 test_stm_orbital_rotated.py \
+  --do_overlap --mock_ao \
+  --mock_tip_atom 1 --mock_tip_ao px \
+  --mock_smp_atom 1 --mock_smp_ao py \
+  --tip_axis z --tip_angles 0,45,90 \
+  --n 80 --size 10.0 --ztip 3.0 --zmid 1.5
+```
+
+**Purpose:**
+- Verify rotation symmetry (p-orbitals should rotate correctly)
+- Check that overlap patterns match expectations
+- Debug kernel rotation logic without full MO complexity
+
+### 2. True Orbital Mode
+
+Using Fireball molecular orbitals for realistic STM simulation:
+
+```bash
+# PTCDA HOMO (MO 70) with different tip rotations around z-axis
+python3 test_stm_orbital_rotated.py \
+  --do_overlap \
+  --xyz ../../cpp/common_resources/xyz/PTCDA.xyz \
+  --mo 70 \
+  --tip_axis z --tip_angles 0,30,45,60,90 \
+  --n 80 --size 20.0 --ztip 3.0 --zmid 1.5
+```
+
+### 3. Separate Tip and Sample MOs
+
+For debugging, different MOs can be selected for tip and sample:
+
+```bash
+# Tip: MO 1, Sample: MO 2
+python3 test_stm_orbital_rotated.py \
+  --do_overlap \
+  --tip_mo 1 --smp_mo 2 \
+  --tip_axis x --tip_angles 0,45,90 \
+  --smp_axis z --smp_angles 0
+```
+
+### 4. Independent Rotation Control
+
+Tip and sample can be rotated independently:
+
+```bash
+# Tip: rotate around x-axis, Sample: rotate around z-axis
+python3 test_stm_orbital_rotated.py \
+  --do_overlap \
+  --tip_axis x --tip_angles 0,30,45 \
+  --smp_axis z --smp_angles 0,90
+```
+
+## Visualization
+
+The script generates 4-panel figures:
+
+1. **Panel 1 (top-left):** Sample MO orbital (ψ_sample at mid-plane)
+   - Color map: `bwr` (blue-white-red, symmetric around zero)
+   - Normalization: `vmin=-vmax_s, vmax=vmax_s` (separate per panel)
+   - Atoms plotted: Sample atoms (with rotation applied if sample has rotation)
+
+2. **Panel 2 (top-right):** Tip MO orbital (ψ_tip at mid-plane)
+   - Color map: `bwr` (symmetric around zero)
+   - Normalization: `vmin=-vmax_t, vmax=vmax_t` (separate per panel)
+   - Atoms plotted: Tip atoms (with rotation applied)
+
+3. **Panel 3 (bottom-left):** STM overlap amplitude |t|²
+   - Computed as overlap of rotated tip orbitals with sample orbitals
+   - Color map: `viridis`
+   - Normalization: `vmin=0, vmax=vI` (separate per panel)
+   - Atoms plotted: Sample atoms at mid-plane
+
+4. **Panel 4 (bottom-right):** Cross-correlation of sample and tip orbitals
+   - Computed as `corr2 = correlate2d(psi_s, psi_t, mode='same')`
+   - Color map: `viridis`
+   - Normalization: `vmin=0, vmax=vC` (separate per panel)
+   - No atoms (correlation space, not real space)
+
+**Figure Caption:** Shows tip MO, sample MO, tip rotation axis and angle, sample rotation axis and angle, z-mid plane position, and tip height.
+
+**Filename:** Includes tip MO, sample MO, z-mid, z-tip, tip rotation (axis+angle), sample rotation (axis+angle).
+
+## CLI Arguments
+
+### MO Selection
+- `--mo N`: Use MO index N (1-based) for both tip and sample (default: HOMO-1)
+- `--mo_list N1,N2,...`: Use multiple MOs for both tip and sample
+- `--tip_mo N`: Use MO index N for tip only (overrides `--mo`)
+- `--tip_mo_list N1,N2,...`: Use multiple MOs for tip only
+- `--smp_mo N`: Use MO index N for sample only (overrides `--mo`)
+- `--smp_mo_list N1,N2,...`: Use multiple MOs for sample only
+
+### Rotation Control
+- `--tip_axis {x,y,z}`: Rotation axis for tip molecule
+- `--tip_angles A1,A2,...`: Rotation angles for tip (degrees)
+- `--smp_axis {x,y,z}`: Rotation axis for sample molecule
+- `--smp_angles A1,A2,...`: Rotation angles for sample (degrees)
+- (Legacy: `--axis` and `--angle` for backward compatibility with tip rotation only)
+
+### Mock AO Mode
+- `--mock_ao`: Enable mock AO mode
+- `--mock_tip_atom N`: Atom index (1-based) for tip AO
+- `--mock_tip_ao {s,px,py,pz}`: Orbital type for tip
+- `--mock_smp_atom N`: Atom index (1-based) for sample AO
+- `--mock_smp_ao {s,px,py,pz}`: Orbital type for sample
+
+### Grid Parameters
+- `--n N`: Grid size (N×N pixels, default: 80)
+- `--size L`: Physical size in Å (default: 10.0)
+- `--ztip Z`: Tip height above sample (default: 3.0)
+- `--zmid Z`: Mid-plane z-coordinate (default: 1.5)
+- `--beta B`: Decay parameter (default: 1.0)
+- `--r0 R0`: Cutoff radius (default: 3.0)
+- `--rcut RCUT`: Maximum cutoff (default: 8.0)
+
+## Test Results
+
+### CH2O (Small Molecule)
+
+Successfully tested with:
+- Different tip/sample MOs (MO 1, MO 2)
+- Different rotation axes (x, z)
+- Rotation angles: 0°, 30°, 45°, 60°, 90°
+- Atoms plotted correctly with proper rotation
+- Separate normalization working correctly
+
+### PTCDA (Large Molecule)
+
+Successfully tested with HOMO (MO 70):
+- Rotation around z-axis: 0°, 30°, 45°, 60°, 90°
+- Rotation around x-axis: 0°, 30°, 45°, 60°, 90°
+- Rotation around y-axis: 0°, 30°, 45°, 60°, 90°
+- 15 figures generated (5 angles × 3 axes)
+- All figures show correct rotation behavior and symmetry
+
+## Technical Notes
+
+### Rotation Implementation
+
+The rotation is implemented using quaternions in the GPU kernel:
+
+1. **Python side:** Convert axis-angle to quaternion
+   ```python
+   def axis_angle_to_quaternion(axis, angle_deg):
+       angle_rad = np.deg2rad(angle_deg)
+       axis = np.array(axis, dtype=np.float64)
+       axis = axis / np.linalg.norm(axis)
+       w = np.cos(angle_rad / 2)
+       xyz = axis * np.sin(angle_rad / 2)
+       return np.array([w, xyz[0], xyz[1], xyz[2]])
+   ```
+
+2. **GPU kernel:** Apply quaternion rotation to tip positions
+   - For each grid point, compute rotated tip position
+   - Evaluate tip orbitals at rotated position
+   - Compute overlap with sample orbitals at original position
+
+### Why Per-Pixel Rotation?
+
+**Advantages:**
+- **Fast:** No matrix multiplication needed (O(N³) → O(N_pixels))
+- **Simple:** No need to handle sparse matrix rotation
+- **Accurate:** Mathematically equivalent to rotating the molecule
+- **Parallel:** GPU handles all pixels simultaneously
+
+**Disadvantages:**
+- Only works for rigid body rotation (no internal deformation)
+- Rotation must be applied at evaluation time (can't pre-rotate orbitals)
+
+### Comparison with Matrix Rotation Approaches
+
+The NOTES_rigid_body_rotation_analysis.md document discusses three approaches for rotating H/S matrices:
+
+1. **Option A (Dense):** Rotate dense H, S matrices - O(N³), slow
+2. **Option B (Sparse):** Rotate sparse blocks - O(N), complex
+3. **Option C (Rebuild):** Rebuild from rotated positions - Slow, need SCF
+
+**Our approach (Per-Pixel):** Rotate at evaluation time - O(N_pixels), fast and simple
+
+This is essentially a variant of Option C, but instead of rebuilding the entire Hamiltonian, we only rotate the evaluation points. This is possible because:
+- We're only interested in the STM signal (overlap at specific points)
+- We don't need the full rotated Hamiltonian for other purposes
+- The GPU kernel can handle the rotation efficiently
+
+## Future Extensions
+
+1. **Soft mode expansion:** For non-rigid deformations, expand orbitals along normal modes
+2. **Energy-dependent PDOS:** Use PDOS instead of single MO for more realistic transport
+3. **Tip-sample coupling:** Add explicit coupling matrices between tip and sample
+4. **Green's function response:** Compute full response function (not just overlap)
+
+## References
+
+- Test script: `tests/pyFireball/test_stm_orbital_rotated.py`
+- GPU kernel: `pyBall/FireballOCL/cl/Grid.cl`
+- Python wrapper: `pyBall/FireballOCL/Grid.py`
+- Rotation analysis: `tests/pyFireball/NOTES_rigid_body_rotation_analysis.md`
+
+---

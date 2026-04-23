@@ -571,6 +571,57 @@ def mo_overlap_amplitude(v_smp, C_smp, mo_index):
     return t, t*t
 
 
+def make_coupling_builder_molecular_tip_exp_sk(
+    tip_types, tip_pos_rel, tip_norb_per,
+    smp_types, smp_pos, smp_norb_per,
+    rcut=8.0, beta=1.0, r0=3.0,
+    A_ss=-1.0, A_sp=-1.0, A_ps=-1.0, A_pp_sig=-1.0, A_pp_pi=+1.0,
+    overlap_scale=0.0
+):
+    """Return callable coupling_builder(tip_center) for a molecular tip.
+
+    This is a small utility for scanning: the caller provides tip geometry in a local
+    coordinate system (relative to a tip-center position that will vary during scan).
+
+    The returned callable matches the API expected by response_amplitude_simple_lu/
+    response_amplitude_map (i.e. it returns (pairs, Hb, Sb) for a given tip position).
+
+    Args:
+        tip_types:     (ntip_atoms,) Z
+        tip_pos_rel:   (ntip_atoms,3) positions relative to tip center
+        tip_norb_per:  (ntip_atoms,) orbitals per tip atom
+        smp_types:     (nsmp_atoms,) Z
+        smp_pos:       (nsmp_atoms,3) absolute positions
+        smp_norb_per:  (nsmp_atoms,) orbitals per sample atom
+        rcut,beta,r0:  exp coupling params (see build_inter_system_blocks_exp_sk)
+        A_*:           SK amplitudes (see build_inter_system_blocks_exp_sk)
+        overlap_scale: if >0, include overlap contribution; for pure H-coupling set 0
+    """
+    tip_types = np.asarray(tip_types, dtype=np.int32)
+    tip_pos_rel = np.asarray(tip_pos_rel, dtype=np.float64)
+    tip_norb_per = np.asarray(tip_norb_per, dtype=np.int32)
+    smp_types = np.asarray(smp_types, dtype=np.int32)
+    smp_pos = np.asarray(smp_pos, dtype=np.float64)
+    smp_norb_per = np.asarray(smp_norb_per, dtype=np.int32)
+
+    def coupling_builder(tip_center):
+        tip_center = np.asarray(tip_center, dtype=np.float64)
+        if tip_center.ndim == 2 and tip_center.shape[0] == 1:
+            cen = tip_center[0]
+        else:
+            cen = tip_center
+        tip_pos = tip_pos_rel + cen[None, :]
+        return build_inter_system_blocks_exp_sk(
+            tip_types, tip_pos, tip_norb_per,
+            smp_types, smp_pos, smp_norb_per,
+            rcut=float(rcut), beta=float(beta), r0=float(r0),
+            A_ss=float(A_ss), A_sp=float(A_sp), A_pp_sig=float(A_pp_sig), A_pp_pi=float(A_pp_pi), A_ps=float(A_ps),
+            overlap_scale=float(overlap_scale)
+        )
+
+    return coupling_builder
+
+
 def _blocks_to_dense_vector(pairs, blocks, starts_tip, starts_smp, norb_per_tip, norb_per_smp, ntip, nsmp, out=None):
     """Convert list of (tip_atom, smp_atom) blocks to dense ntip×nsmp matrix (or vector if ntip=1)."""
     if out is None:
@@ -707,6 +758,77 @@ def response_amplitude_map(
             resp[ip] = abs(np.dot(c, x_s)) ** 2
 
     return resp
+
+
+def molecular_mo_overlap_map(
+    points_tip,
+    C_tip, mo_tip, tip_norb_per,
+    C_smp, mo_smp, smp_norb_per,
+    coupling_builder,
+):
+    """Compute STM orbital-overlap map for a *molecular* tip.
+
+    For each tip position r in points_tip, obtain inter-system overlap blocks S_ts(r)
+    from coupling_builder(r), assemble them into dense S_ts (nT x nS), and evaluate
+
+      t(r) = c_tip^T  S_ts(r)  c_smp
+      I(r) = |t(r)|^2
+
+    where c_tip and c_smp are MO coefficient vectors in the *Fireball/Ortega* AO order
+    matching the produced blocks.
+
+    Notes:
+      - This is the "orbital overlap" debugging method, not the response-function method.
+      - coupling_builder must return (pairs, Hb, Sb); only Sb is used.
+      - This is CPU-side assembly; coupling_builder may itself use OpenCL (e.g. Fdata).
+
+    Args:
+        points_tip: (npts,3) tip center positions
+        C_tip: tip MO coefficients (nmo,nT) or (nT,nmo)
+        mo_tip: int MO index for tip
+        tip_norb_per: (ntip_atoms,) orbitals per tip atom
+        C_smp: sample MO coefficients (nmo,nS) or (nS,nmo)
+        mo_smp: int MO index for sample
+        smp_norb_per: (nsmp_atoms,) orbitals per sample atom
+        coupling_builder: callable(tip_center)->(pairs, Hb, Sb)
+
+    Returns:
+        t: (npts,) float64 signed amplitude (real)
+        I: (npts,) float64 intensity |t|^2
+    """
+    points_tip = np.asarray(points_tip, dtype=np.float64)
+    starts_tip = _atom_orb_starts(tip_norb_per)
+    starts_smp = _atom_orb_starts(smp_norb_per)
+    nT = int(starts_tip[-1])
+    nS = int(starts_smp[-1])
+
+    cT = _get_mo_vec(C_tip, mo_tip, nT).astype(np.complex128, copy=False)
+    cS = _get_mo_vec(C_smp, mo_smp, nS).astype(np.complex128, copy=False)
+
+    npts = len(points_tip)
+    t = np.zeros(npts, dtype=np.float64)
+    I = np.zeros(npts, dtype=np.float64)
+
+    S_ts = np.zeros((nT, nS), dtype=np.float64)
+
+    for ip, r_tip in enumerate(points_tip):
+        tip_center = np.array([r_tip], dtype=np.float64)
+        pairs, Hb, Sb = coupling_builder(tip_center)
+        if len(pairs) == 0:
+            t[ip] = 0.0
+            I[ip] = 0.0
+            continue
+
+        S_ts.fill(0.0)
+        _blocks_to_dense_vector(pairs, Sb, starts_tip, starts_smp, tip_norb_per, smp_norb_per, nT, nS, out=S_ts)
+
+        # complex-safe dot: (cT^T S cS)
+        amp = (cT @ (S_ts @ cS)).item()
+        amp = complex(amp)
+        t[ip] = float(np.real(amp))
+        I[ip] = float((amp.real*amp.real + amp.imag*amp.imag))
+
+    return t, I
 
 
 def response_amplitude_simple_lu(
