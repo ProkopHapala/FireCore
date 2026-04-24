@@ -1556,6 +1556,436 @@ subroutine firecore_tipResponseSimple2points_rotated(mode, iband, ikpoint, npoin
 end subroutine firecore_tipResponseSimple2points_rotated
 
 
+subroutine firecore_stm_dyson_2points(npoints, points, ntip_atoms, tip_pos_rel, nsmp_atoms, smp_pos, nt_in, GT_global, ns_in, GS_global, uT_source, beta, r0, rcut, out_current) bind(c, name='firecore_stm_dyson_2points')
+    use iso_c_binding
+    implicit none
+    integer(c_int), value, intent(in) :: npoints, ntip_atoms, nsmp_atoms, nt_in, ns_in
+    real(c_double), dimension(3, npoints), intent(in) :: points
+    real(c_double), dimension(3, ntip_atoms), intent(in) :: tip_pos_rel
+    real(c_double), dimension(3, nsmp_atoms), intent(in) :: smp_pos
+    complex(c_double_complex), dimension(nt_in, nt_in), intent(in) :: GT_global
+    complex(c_double_complex), dimension(ns_in, ns_in), intent(in) :: GS_global
+    complex(c_double_complex), dimension(nt_in), intent(in) :: uT_source
+    real(c_double), value, intent(in) :: beta, r0, rcut
+    real(c_double), dimension(npoints), intent(out) :: out_current
+
+    integer, parameter :: max_act_atoms = 8
+    integer, parameter :: max_act_orb = 32
+    integer :: ip, ia, ja, it, is, kt, ks, js, i, j, k, info
+    integer :: num_act_T, num_act_S, N_T, N_S, nt, ns
+    integer :: active_T_atoms(max_act_atoms), active_S_atoms(max_act_atoms)
+    integer :: glob_r, glob_c, ot, os
+    integer, allocatable :: ipiv(:)
+    real(c_double) :: rcut2, r2, r, invr, l, m, n, f, val, current
+    real(c_double) :: Vss, Vsp, Vps, Vpp_sig, Vpp_pi, dV
+    real(c_double), dimension(3) :: cen, pt, ps, d
+    complex(c_double_complex), allocatable :: GS_loc(:,:), GT_loc(:,:), V_ts(:,:), M1(:,:), W(:,:), rhs(:), tvec(:), svec(:)
+
+    external :: zgesv
+
+    nt = 4*ntip_atoms
+    ns = 4*nsmp_atoms
+    if (nt_in /= nt) stop 'firecore_stm_dyson_2points: nt_in mismatch'
+    if (ns_in /= ns) stop 'firecore_stm_dyson_2points: ns_in mismatch'
+    if (npoints <= 0) return
+
+    allocate(GS_loc(max_act_orb, max_act_orb), GT_loc(max_act_orb, max_act_orb), V_ts(max_act_orb, max_act_orb))
+    allocate(M1(max_act_orb, max_act_orb), W(max_act_orb, max_act_orb), rhs(max_act_orb), tvec(max_act_orb), svec(max_act_orb), ipiv(max_act_orb))
+
+    rcut2 = rcut*rcut
+    out_current(:) = 0.0d0
+
+    do ip = 1, npoints
+        cen(:) = points(:, ip)
+        num_act_T = min(ntip_atoms, max_act_atoms)
+        do ia = 1, num_act_T
+            active_T_atoms(ia) = ia
+        end do
+
+        num_act_S = 0
+        do ja = 1, nsmp_atoms
+            d(:) = smp_pos(:, ja) - cen(:)
+            r2 = d(1)*d(1) + d(2)*d(2) + d(3)*d(3)
+            if (r2 < rcut2) then
+                if (num_act_S < max_act_atoms) then
+                    num_act_S = num_act_S + 1
+                    active_S_atoms(num_act_S) = ja
+                end if
+            end if
+        end do
+
+        N_T = min(num_act_T*4, max_act_orb)
+        N_S = min(num_act_S*4, max_act_orb)
+        if ((N_T <= 0) .or. (N_S <= 0)) then
+            out_current(ip) = 0.0d0
+            cycle
+        end if
+
+        GS_loc(:,:) = (0.0d0, 0.0d0)
+        GT_loc(:,:) = (0.0d0, 0.0d0)
+        V_ts(:,:)   = (0.0d0, 0.0d0)
+        M1(:,:)     = (0.0d0, 0.0d0)
+        W(:,:)      = (0.0d0, 0.0d0)
+        rhs(:)      = (0.0d0, 0.0d0)
+        tvec(:)     = (0.0d0, 0.0d0)
+        svec(:)     = (0.0d0, 0.0d0)
+
+        do i = 1, N_S
+            glob_r = (active_S_atoms((i-1)/4 + 1)-1)*4 + mod(i-1,4) + 1
+            do j = 1, N_S
+                glob_c = (active_S_atoms((j-1)/4 + 1)-1)*4 + mod(j-1,4) + 1
+                GS_loc(i,j) = GS_global(glob_r, glob_c)
+            end do
+        end do
+        do i = 1, N_T
+            glob_r = (active_T_atoms((i-1)/4 + 1)-1)*4 + mod(i-1,4) + 1
+            do j = 1, N_T
+                glob_c = (active_T_atoms((j-1)/4 + 1)-1)*4 + mod(j-1,4) + 1
+                GT_loc(i,j) = GT_global(glob_r, glob_c)
+            end do
+            tvec(i) = uT_source(glob_r)
+        end do
+
+        do it = 1, N_T
+            ia = active_T_atoms((it-1)/4 + 1)
+            ot = mod(it-1, 4) + 1
+            pt(:) = cen(:) + tip_pos_rel(:, ia)
+            do is = 1, N_S
+                ja = active_S_atoms((is-1)/4 + 1)
+                os = mod(is-1, 4) + 1
+                ps(:) = smp_pos(:, ja)
+                d(:) = ps(:) - pt(:)
+                r2 = d(1)*d(1) + d(2)*d(2) + d(3)*d(3)
+                if ((r2 > rcut2) .or. (r2 < 1.0d-16)) cycle
+                r = sqrt(r2)
+                invr = 1.0d0/r
+                l = d(1)*invr
+                m = d(2)*invr
+                n = d(3)*invr
+                f = exp(-beta*(r-r0))
+                Vss = 1.0d0*f
+                Vsp = 1.0d0*f
+                Vps = 1.0d0*f
+                Vpp_sig = 1.0d0*f
+                Vpp_pi  = 0.2d0*f
+                dV = Vpp_sig - Vpp_pi
+                if ((ot == 4) .and. (os == 4)) then
+                    val = Vss
+                else if ((ot == 4) .and. (os /= 4)) then
+                    if (os == 1) val = Vsp*l
+                    if (os == 2) val = Vsp*m
+                    if (os == 3) val = Vsp*n
+                else if ((ot /= 4) .and. (os == 4)) then
+                    if (ot == 1) val = Vps*l
+                    if (ot == 2) val = Vps*m
+                    if (ot == 3) val = Vps*n
+                else
+                    if (ot == 1) then
+                        if (os == 1) val = Vpp_pi + dV*l*l
+                        if (os == 2) val = dV*l*m
+                        if (os == 3) val = dV*l*n
+                    else if (ot == 2) then
+                        if (os == 1) val = dV*m*l
+                        if (os == 2) val = Vpp_pi + dV*m*m
+                        if (os == 3) val = dV*m*n
+                    else
+                        if (os == 1) val = dV*n*l
+                        if (os == 2) val = dV*n*m
+                        if (os == 3) val = Vpp_pi + dV*n*n
+                    end if
+                end if
+                V_ts(it,is) = dcmplx(val, 0.0d0)
+            end do
+        end do
+
+        do it = 1, N_T
+            do is = 1, N_S
+                do kt = 1, N_T
+                    M1(it,is) = M1(it,is) + GT_loc(it,kt)*V_ts(kt,is)
+                end do
+            end do
+        end do
+
+        do is = 1, N_S
+            do js = 1, N_S
+                do ks = 1, N_S
+                    do it = 1, N_T
+                        rhs(ks) = rhs(ks) + conjg(V_ts(it,ks))*M1(it,js)
+                    end do
+                    W(is,js) = W(is,js) + GS_loc(is,ks)*rhs(ks)
+                    rhs(ks) = (0.0d0, 0.0d0)
+                end do
+                if (is == js) then
+                    W(is,js) = (1.0d0, 0.0d0) - W(is,js)
+                else
+                    W(is,js) = -W(is,js)
+                end if
+            end do
+        end do
+
+        do it = 1, N_T
+            rhs(it) = (0.0d0, 0.0d0)
+            do kt = 1, N_T
+                rhs(it) = rhs(it) + GT_loc(it,kt)*tvec(kt)
+            end do
+        end do
+        do is = 1, N_S
+            svec(is) = (0.0d0, 0.0d0)
+            do it = 1, N_T
+                svec(is) = svec(is) + conjg(V_ts(it,is))*rhs(it)
+            end do
+        end do
+        do is = 1, N_S
+            rhs(is) = (0.0d0, 0.0d0)
+            do ks = 1, N_S
+                rhs(is) = rhs(is) + GS_loc(is,ks)*svec(ks)
+            end do
+        end do
+
+        call zgesv(N_S, 1, W, max_act_orb, ipiv, rhs, max_act_orb, info)
+        if (info /= 0) stop 'firecore_stm_dyson_2points: zgesv failed'
+
+        current = 0.0d0
+        do i = 1, N_S
+            current = current + dble(rhs(i)*conjg(rhs(i)))
+        end do
+        out_current(ip) = current
+    end do
+
+    deallocate(GS_loc, GT_loc, V_ts, M1, W, rhs, tvec, svec, ipiv)
+end subroutine firecore_stm_dyson_2points
+
+
+subroutine firecore_stm_dyson_pointscan(mode, ikpoint, npoints, points, E, eta, tipZ, rcut, beta, r0, A_ss, A_sp, A_pp_sig, A_pp_pi, A_ps, overlap_scale, E_tip, out) bind(c, name='firecore_stm_dyson_pointscan')
+    use iso_c_binding
+    use configuration
+    use dimensions
+    use interactions
+    use neighbor_map
+    use density
+    use kpoints
+    implicit none
+    integer(c_int), value, intent(in) :: mode, ikpoint, npoints, tipZ
+    real(c_double), dimension(3, npoints), intent(in) :: points
+    real(c_double), value, intent(in) :: E, eta, rcut, beta, r0
+    real(c_double), value, intent(in) :: A_ss, A_sp, A_pp_sig, A_pp_pi, A_ps, overlap_scale, E_tip
+    real(c_double), dimension(npoints), intent(out) :: out
+
+    integer, parameter :: max_act_atoms = 16
+    integer, parameter :: max_tip_orb = 8
+    integer :: norb, ntip, info
+    integer :: ip, iatom, in1, imu, inu, ja, ia, is, js, it, kt, ks, i, j
+    integer :: num_act_S, active_S_atoms(max_act_atoms), active_S_orbs(4*max_act_atoms), N_S
+    integer :: lwork
+    real(c_double) :: zre, zim, r, f, l, m, n, Vss, Vsp, Vps, Vpp_sig, Vpp_pi, dV, rcut2, hloc
+    real(c_double), dimension(3) :: dR
+    complex*16 :: z, gtip
+    complex*16, allocatable :: Hk(:,:), Sk(:,:), Ass(:,:), Gs(:,:), Gsub(:,:), V_ts(:,:), M1(:,:), W(:,:), rhs(:), tvec(:), svec(:), GT(:,:), workz(:)
+    integer, allocatable :: ipiv(:)
+
+    real(c_double), dimension(3) :: r1, r2, r21, sighat
+    real(c_double), dimension(3,3) :: eps
+    real(c_double), dimension(3,3,3) :: deps
+    real :: ydist
+    real, dimension(numorb_max,numorb_max) :: sx, tx
+    real, dimension(3,numorb_max,numorb_max) :: spx, tpx
+
+    external :: zgetrf, zgetri, zgesv
+
+    if (npoints <= 0) return
+    norb = norbitals
+    if (ikpoint <= 0 .or. ikpoint > nkpoints) stop 'firecore_stm_dyson_pointscan: invalid ikpoint'
+    ntip = num_orb(tipZ)
+    if (ntip <= 0 .or. ntip > max_tip_orb) stop 'firecore_stm_dyson_pointscan: invalid tip orbital count'
+
+    allocate(Hk(norb,norb), Sk(norb,norb), Ass(norb,norb), Gs(norb,norb))
+    call ktransform(special_k(:, ikpoint), norb, Sk, Hk)
+
+    zre = E
+    zim = eta
+    z = dcmplx(zre, zim)
+    Ass(:,:) = z*Sk(:,:) - Hk(:,:)
+    Gs(:,:) = Ass(:,:)
+    allocate(ipiv(norb))
+    call zgetrf(norb, norb, Gs, norb, ipiv, info)
+    if (info /= 0) stop 'firecore_stm_dyson_pointscan: zgetrf failed'
+    lwork = max(1, 4*norb)
+    allocate(workz(lwork))
+    call zgetri(norb, Gs, norb, ipiv, workz, lwork, info)
+    if (info /= 0) stop 'firecore_stm_dyson_pointscan: zgetri failed'
+    deallocate(workz)
+    deallocate(ipiv)
+
+    rcut2 = rcut*rcut
+    gtip = 1.0d0 / (z - dcmplx(E_tip, 0.0d0))
+    out(:) = 0.0d0
+
+    do ip = 1, npoints
+        num_act_S = 0
+        N_S = 0
+        do iatom = 1, natoms
+            dR(:) = points(:,ip) - ratom(:,iatom)
+            r = sqrt(dR(1)*dR(1) + dR(2)*dR(2) + dR(3)*dR(3))
+            if (r > rcut .or. r < 1.0d-8) cycle
+            if (num_act_S >= max_act_atoms) cycle
+            num_act_S = num_act_S + 1
+            active_S_atoms(num_act_S) = iatom
+            in1 = imass(iatom)
+            do imu = 1, num_orb(in1)
+                N_S = N_S + 1
+                active_S_orbs(N_S) = degelec(iatom) + imu
+            end do
+        end do
+        if (N_S <= 0) cycle
+
+        allocate(Gsub(N_S,N_S), V_ts(ntip,N_S), M1(ntip,N_S), W(N_S,N_S), rhs(N_S), tvec(ntip), svec(N_S), GT(ntip,ntip), ipiv(N_S))
+        Gsub(:,:) = (0.0d0, 0.0d0)
+        V_ts(:,:) = (0.0d0, 0.0d0)
+        M1(:,:)   = (0.0d0, 0.0d0)
+        W(:,:)    = (0.0d0, 0.0d0)
+        rhs(:)    = (0.0d0, 0.0d0)
+        tvec(:)   = (0.0d0, 0.0d0)
+        svec(:)   = (0.0d0, 0.0d0)
+        GT(:,:)   = (0.0d0, 0.0d0)
+
+        do i = 1, N_S
+            do j = 1, N_S
+                Gsub(i,j) = Gs(active_S_orbs(i), active_S_orbs(j))
+            end do
+        end do
+        do i = 1, ntip
+            GT(i,i) = gtip
+        end do
+        tvec(1) = (1.0d0, 0.0d0)
+
+        do ja = 1, num_act_S
+            iatom = active_S_atoms(ja)
+            in1 = imass(iatom)
+            dR(:) = points(:,ip) - ratom(:,iatom)
+            r = sqrt(dR(1)*dR(1) + dR(2)*dR(2) + dR(3)*dR(3))
+            if (r > rcut .or. r < 1.0d-8) cycle
+            if (mode == 0) then
+                l = dR(1)/r
+                m = dR(2)/r
+                n = dR(3)/r
+                f = exp(-beta * (r - r0))
+                Vss = A_ss * f
+                Vsp = A_sp * f
+                Vps = A_ps * f
+                Vpp_sig = A_pp_sig * f
+                Vpp_pi  = A_pp_pi  * f
+                dV = Vpp_sig - Vpp_pi
+                if (ntip >= 1 .and. num_orb(in1) >= 1) then
+                    is = 0
+                    do i = 1, ja-1
+                        is = is + num_orb(imass(active_S_atoms(i)))
+                    end do
+                    V_ts(1, is+1) = dcmplx(Vss, 0.0d0)
+                end if
+                if (ntip >= 4 .and. num_orb(in1) >= 4) then
+                    is = 0
+                    do i = 1, ja-1
+                        is = is + num_orb(imass(active_S_atoms(i)))
+                    end do
+                    V_ts(1, is+2) = dcmplx(m*Vsp, 0.0d0)
+                    V_ts(1, is+3) = dcmplx(n*Vsp, 0.0d0)
+                    V_ts(1, is+4) = dcmplx(l*Vsp, 0.0d0)
+                    V_ts(2, is+1) = dcmplx(m*Vps, 0.0d0)
+                    V_ts(3, is+1) = dcmplx(n*Vps, 0.0d0)
+                    V_ts(4, is+1) = dcmplx(l*Vps, 0.0d0)
+                    V_ts(2, is+2) = dcmplx(m*m*dV + Vpp_pi, 0.0d0)
+                    V_ts(3, is+3) = dcmplx(n*n*dV + Vpp_pi, 0.0d0)
+                    V_ts(4, is+4) = dcmplx(l*l*dV + Vpp_pi, 0.0d0)
+                    V_ts(2, is+3) = dcmplx(m*n*dV, 0.0d0)
+                    V_ts(2, is+4) = dcmplx(m*l*dV, 0.0d0)
+                    V_ts(3, is+2) = dcmplx(n*m*dV, 0.0d0)
+                    V_ts(3, is+4) = dcmplx(n*l*dV, 0.0d0)
+                    V_ts(4, is+2) = dcmplx(l*m*dV, 0.0d0)
+                    V_ts(4, is+3) = dcmplx(l*n*dV, 0.0d0)
+                end if
+            else if (mode == 1) then
+                r1(:) = ratom(:,iatom)
+                r2(:) = points(:,ip)
+                r21(:) = r2(:) - r1(:)
+                ydist = sqrt(r21(1)*r21(1) + r21(2)*r21(2) + r21(3)*r21(3))
+                if (ydist < 1.0d-8) cycle
+                sighat(:) = r21(:) / ydist
+                call epsilon(r2, sighat, eps)
+                call deps2cent(r1, r2, eps, deps)
+                call doscentros(13, 0, 0, in1, tipZ, tipZ, ydist, eps, deps, tx, tpx)
+                is = 0
+                do i = 1, ja-1
+                    is = is + num_orb(imass(active_S_atoms(i)))
+                end do
+                do inu = 1, ntip
+                    do imu = 1, num_orb(in1)
+                        V_ts(inu, is+imu) = dcmplx(dble(tx(imu,inu)), 0.0d0)
+                    end do
+                end do
+            else
+                stop 'firecore_stm_dyson_pointscan: invalid mode'
+            end if
+        end do
+
+        do it = 1, ntip
+            do is = 1, N_S
+                do kt = 1, ntip
+                    M1(it,is) = M1(it,is) + GT(it,kt) * V_ts(kt,is)
+                end do
+            end do
+        end do
+
+        do is = 1, N_S
+            do js = 1, N_S
+                hloc = 0.0d0
+                do ks = 1, N_S
+                    rhs(ks) = (0.0d0, 0.0d0)
+                    do it = 1, ntip
+                        rhs(ks) = rhs(ks) + dconjg(V_ts(it,ks)) * M1(it,js)
+                    end do
+                    W(is,js) = W(is,js) + Gsub(is,ks) * rhs(ks)
+                end do
+                if (is == js) then
+                    W(is,js) = (1.0d0, 0.0d0) - W(is,js)
+                else
+                    W(is,js) = -W(is,js)
+                end if
+            end do
+        end do
+
+        do it = 1, ntip
+            rhs(it) = (0.0d0, 0.0d0)
+            do kt = 1, ntip
+                rhs(it) = rhs(it) + GT(it,kt) * tvec(kt)
+            end do
+        end do
+        do is = 1, N_S
+            svec(is) = (0.0d0, 0.0d0)
+            do it = 1, ntip
+                svec(is) = svec(is) + dconjg(V_ts(it,is)) * rhs(it)
+            end do
+        end do
+        do is = 1, N_S
+            rhs(is) = (0.0d0, 0.0d0)
+            do ks = 1, N_S
+                rhs(is) = rhs(is) + Gsub(is,ks) * svec(ks)
+            end do
+        end do
+
+        call zgesv(N_S, 1, W, N_S, ipiv, rhs, N_S, info)
+        if (info /= 0) stop 'firecore_stm_dyson_pointscan: zgesv failed'
+        out(ip) = 0.0d0
+        do i = 1, N_S
+            out(ip) = out(ip) + dble(rhs(i) * dconjg(rhs(i)))
+        end do
+
+        deallocate(Gsub, V_ts, M1, W, rhs, tvec, svec, GT, ipiv)
+    end do
+
+    deallocate(Hk, Sk, Ass, Gs)
+end subroutine firecore_stm_dyson_pointscan
+
+
 subroutine firecore_export_tip_coupling_point(mode, tipZ, point, rcut, beta, r0, A_ss, A_sp, A_pp_sig, A_pp_pi, A_ps, overlap_scale, ntip_in, norb_in, Hts_out, Sts_out) bind(c, name='firecore_export_tip_coupling_point')
     use iso_c_binding
     use configuration
@@ -1667,6 +2097,124 @@ subroutine firecore_export_tip_coupling_point(mode, tipZ, point, rcut, beta, r0,
     end do
 
 end subroutine firecore_export_tip_coupling_point
+
+
+subroutine firecore_stm_gf_2mol_mo_2points(npoints, points, ntip_atoms, tip_pos_rel, tip_atypes, tip_norb, tip_orb2atom, nsmp_atoms, smp_pos, smp_atypes, smp_norb, smp_orb2atom, GT_global, GS_global, c_tip, c_smp, beta, r0, rcut, overlap_scale, out_current) bind(c, name='firecore_stm_gf_2mol_mo_2points')
+    use iso_c_binding
+    use dimensions
+    use interactions
+    implicit none
+    integer(c_int), value, intent(in) :: npoints, ntip_atoms, tip_norb, nsmp_atoms, smp_norb
+    real(c_double), dimension(3, npoints), intent(in) :: points
+    real(c_double), dimension(3, ntip_atoms), intent(in) :: tip_pos_rel
+    integer(c_int), dimension(ntip_atoms), intent(in) :: tip_atypes
+    integer(c_int), dimension(tip_norb), intent(in) :: tip_orb2atom
+    real(c_double), dimension(3, nsmp_atoms), intent(in) :: smp_pos
+    integer(c_int), dimension(nsmp_atoms), intent(in) :: smp_atypes
+    integer(c_int), dimension(smp_norb), intent(in) :: smp_orb2atom
+    complex(c_double_complex), dimension(tip_norb, tip_norb), intent(in) :: GT_global
+    complex(c_double_complex), dimension(smp_norb, smp_norb), intent(in) :: GS_global
+    complex(c_double_complex), dimension(tip_norb), intent(in) :: c_tip
+    complex(c_double_complex), dimension(smp_norb), intent(in) :: c_smp
+    real(c_double), value, intent(in) :: beta, r0, rcut, overlap_scale
+    real(c_double), dimension(npoints), intent(out) :: out_current
+
+    integer :: ip, it, is, kt, ks, ia, ja
+    integer :: in1, in3, info_dummy, index
+    real(c_double) :: rcut2, r2, r, f, href, sref
+    real(c_double), dimension(3) :: cen, pt, ps, d
+    real(c_double), dimension(3) :: sighat, r2v
+    real(c_double), dimension(3,3) :: eps
+    real(c_double), dimension(ME2c_max) :: hlist_ref, slist_ref
+    real(c_double), dimension(numorb_max, numorb_max) :: hmol, hrot, smol, srot
+    complex(c_double_complex) :: amp, zfac
+    complex(c_double_complex), allocatable :: M_ts(:,:), tmpS(:), tmpT(:), tmpTG(:)
+
+    if (npoints <= 0) return
+    if (tip_norb <= 0 .or. smp_norb <= 0) stop 'firecore_stm_gf_2mol_mo_2points: invalid orbital counts'
+
+    allocate(M_ts(tip_norb, smp_norb), tmpS(smp_norb), tmpT(tip_norb), tmpTG(tip_norb))
+    rcut2 = rcut*rcut
+    out_current(:) = 0.0d0
+
+    do ip = 1, npoints
+        cen(:) = points(:, ip)
+        M_ts(:,:) = (0.0d0, 0.0d0)
+
+        do it = 1, tip_norb
+            ia = tip_orb2atom(it) + 1
+            if (ia < 1 .or. ia > ntip_atoms) stop 'firecore_stm_gf_2mol_mo_2points: tip_orb2atom out of range'
+            pt(:) = cen(:) + tip_pos_rel(:, ia)
+            in1 = tip_atypes(ia)
+            do is = 1, smp_norb
+                ja = smp_orb2atom(is) + 1
+                if (ja < 1 .or. ja > nsmp_atoms) stop 'firecore_stm_gf_2mol_mo_2points: smp_orb2atom out of range'
+                ps(:) = smp_pos(:, ja)
+                in3 = smp_atypes(ja)
+                d(:) = ps(:) - pt(:)
+                r2 = d(1)*d(1) + d(2)*d(2) + d(3)*d(3)
+                if ((r2 > rcut2) .or. (r2 < 1.0d-16)) cycle
+                r = sqrt(r2)
+                f = exp(-beta*(r-r0))
+
+                if (r > 1.0d-8) then
+                    sighat(:) = d(:)/r
+                else
+                    sighat(1) = 0.0d0
+                    sighat(2) = 0.0d0
+                    sighat(3) = 1.0d0
+                end if
+                r2v(:) = ps(:)
+                call epsilon(r2v, sighat, eps)
+
+                hlist_ref(:) = 0.0d0
+                slist_ref(:) = 0.0d0
+                do index = 1, index_max2c(in1, in3)
+                    call interpolate_1d(13, 0, in1, in3, index, 0, real(r0), href, sref)
+                    hlist_ref(index) = href * f
+                    call interpolate_1d(1, 0, in1, in3, index, 0, real(r0), href, sref)
+                    slist_ref(index) = href * f
+                end do
+                call recover_2c(in1, in3, hlist_ref, hmol)
+                call recover_2c(in1, in3, slist_ref, smol)
+                call rotate_fb(in1, in3, eps, hmol, hrot)
+                call rotate_fb(in1, in3, eps, smol, srot)
+                zfac = dcmplx(-hrot(mod(it-1, num_orb(in1))+1, mod(is-1, num_orb(in3))+1), 0.0d0)
+                if (overlap_scale /= 0.0d0) zfac = zfac + dcmplx(overlap_scale*srot(mod(it-1, num_orb(in1))+1, mod(is-1, num_orb(in3))+1), 0.0d0)
+                M_ts(it,is) = zfac
+            end do
+        end do
+
+        tmpS(:) = (0.0d0, 0.0d0)
+        do is = 1, smp_norb
+            do ks = 1, smp_norb
+                tmpS(is) = tmpS(is) + GS_global(is,ks) * c_smp(ks)
+            end do
+        end do
+
+        tmpT(:) = (0.0d0, 0.0d0)
+        do it = 1, tip_norb
+            do is = 1, smp_norb
+                tmpT(it) = tmpT(it) + M_ts(it,is) * tmpS(is)
+            end do
+        end do
+
+        tmpTG(:) = (0.0d0, 0.0d0)
+        do it = 1, tip_norb
+            do kt = 1, tip_norb
+                tmpTG(it) = tmpTG(it) + GT_global(it,kt) * tmpT(kt)
+            end do
+        end do
+
+        amp = (0.0d0, 0.0d0)
+        do it = 1, tip_norb
+            amp = amp + dconjg(c_tip(it)) * tmpTG(it)
+        end do
+        out_current(ip) = dble(amp*dconjg(amp))
+    end do
+
+    deallocate(M_ts, tmpS, tmpT, tmpTG)
+end subroutine firecore_stm_gf_2mol_mo_2points
 
 subroutine firecore_basis2points(ikpoint, npoints, points, phi_out) bind(c, name='firecore_basis2points')
     use iso_c_binding

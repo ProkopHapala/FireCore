@@ -448,6 +448,79 @@ def tipResponseSimple2points_rotated(points, R, tip_src, E=0.0, eta=1e-3, mode=0
     lib.firecore_tipResponseSimple2points_rotated(int(mode), int(iMO), int(ikpoint), int(n), points, Rf, float(E), float(eta), int(tipZ), int(ntip_in), tip_src, float(rcut), float(beta), float(r0), float(A_ss), float(A_sp), float(A_pp_sig), float(A_pp_pi), float(A_ps), float(overlap_scale), out)
     return out
 
+# subroutine firecore_stm_dyson_2points(npoints, points, ntip_atoms, tip_pos_rel, nsmp_atoms, smp_pos, nt_in, GT_global, ns_in, GS_global, uT_source, beta, r0, rcut, out_current)
+argDict["firecore_stm_dyson_2points"]=( None, [c_int, array2d, c_int, array2d, c_int, array2d, c_int, array2cd, c_int, array2cd, array1cd, c_double, c_double, c_double, array1d] )
+def stm_dyson_2points(points, tip_pos_rel, smp_pos, GT_global, GS_global, uT_source, beta=1.0, r0=3.0, rcut=8.0, out=None):
+    points = np.asarray(points, dtype=np.float64)
+    tip_pos_rel = np.asarray(tip_pos_rel, dtype=np.float64)
+    smp_pos = np.asarray(smp_pos, dtype=np.float64)
+    GT_global = np.ascontiguousarray(np.asarray(GT_global, dtype=np.complex128))
+    GS_global = np.ascontiguousarray(np.asarray(GS_global, dtype=np.complex128))
+    uT_source = np.ascontiguousarray(np.asarray(uT_source, dtype=np.complex128))
+    n = len(points)
+    ntip_atoms = int(len(tip_pos_rel))
+    nsmp_atoms = int(len(smp_pos))
+    nt_in = int(GT_global.shape[0])
+    ns_in = int(GS_global.shape[0])
+    if GT_global.shape != (nt_in, nt_in):
+        raise ValueError(f"GT_global must be square, got {GT_global.shape}")
+    if GS_global.shape != (ns_in, ns_in):
+        raise ValueError(f"GS_global must be square, got {GS_global.shape}")
+    if uT_source.shape != (nt_in,):
+        raise ValueError(f"uT_source must have shape ({nt_in},), got {uT_source.shape}")
+    if out is None:
+        out = np.zeros(n, dtype=np.float64)
+    lib.firecore_stm_dyson_2points(int(n), points, int(ntip_atoms), tip_pos_rel, int(nsmp_atoms), smp_pos, int(nt_in), GT_global, int(ns_in), GS_global, uT_source, float(beta), float(r0), float(rcut), out)
+    return out
+
+# subroutine firecore_stm_dyson_pointscan(mode, ikpoint, npoints, points, E, eta, tipZ, rcut, beta, r0, A_ss, A_sp, A_pp_sig, A_pp_pi, A_ps, overlap_scale, E_tip, out)
+argDict["firecore_stm_dyson_pointscan"]=( None, [c_int, c_int, c_int, array2d, c_double, c_double, c_int, c_double, c_double, c_double, c_double, c_double, c_double, c_double, c_double, c_double, c_double, array1d] )
+def stm_dyson_pointscan(points, E=0.0, eta=1e-3, mode=0, ikpoint=1, tipZ=1, rcut=8.0, beta=1.0, r0=3.0, A_ss=-1.0, A_sp=-1.0, A_pp_sig=-1.0, A_pp_pi=+1.0, A_ps=None, overlap_scale=0.0, E_tip=0.0, out=None):
+    points = np.asarray(points, dtype=np.float64)
+    n = len(points)
+    if out is None:
+        out = np.zeros(n, dtype=np.float64)
+    if A_ps is None:
+        A_ps = A_sp
+    lib.firecore_stm_dyson_pointscan(int(mode), int(ikpoint), int(n), points, float(E), float(eta), int(tipZ), float(rcut), float(beta), float(r0), float(A_ss), float(A_sp), float(A_pp_sig), float(A_pp_pi), float(A_ps), float(overlap_scale), float(E_tip), out)
+    return out
+
+# subroutine firecore_stm_gf_2mol_mo_2points(npoints, points, ntip_atoms, tip_pos_rel, tip_atypes, tip_norb, tip_orb2atom, nsmp_atoms, smp_pos, smp_atypes, smp_norb, smp_orb2atom, GT_global, GS_global, c_tip, c_smp, beta, r0, rcut, overlap_scale, out_current)
+argDict["firecore_stm_gf_2mol_mo_2points"]=( None, [c_int, array2d, c_int, array2d, array1i, c_int, array1i, c_int, array2d, array1i, c_int, array1i, array2cd, array2cd, array1cd, array1cd, c_double, c_double, c_double, c_double, array1d] )
+def stm_gf_2mol_mo_2points(points, tip_pos_rel, tip_atypes, tip_orb2atom, smp_pos, smp_atypes, smp_orb2atom, GT_global, GS_global, c_tip, c_smp, beta=1.0, r0=3.0, rcut=8.0, overlap_scale=0.0, out=None):
+    points = np.asarray(points, dtype=np.float64)
+    tip_pos_rel = np.asarray(tip_pos_rel, dtype=np.float64)
+    smp_pos = np.asarray(smp_pos, dtype=np.float64)
+    tip_atypes = np.asarray(tip_atypes, dtype=np.int32)
+    tip_orb2atom = np.asarray(tip_orb2atom, dtype=np.int32)
+    smp_atypes = np.asarray(smp_atypes, dtype=np.int32)
+    smp_orb2atom = np.asarray(smp_orb2atom, dtype=np.int32)
+    GT_global = np.ascontiguousarray(np.asarray(GT_global, dtype=np.complex128))
+    GS_global = np.ascontiguousarray(np.asarray(GS_global, dtype=np.complex128))
+    c_tip = np.ascontiguousarray(np.asarray(c_tip, dtype=np.complex128))
+    c_smp = np.ascontiguousarray(np.asarray(c_smp, dtype=np.complex128))
+    n = len(points)
+    ntip_atoms = int(len(tip_pos_rel))
+    nsmp_atoms = int(len(smp_pos))
+    tip_norb = int(len(tip_orb2atom))
+    smp_norb = int(len(smp_orb2atom))
+    if tip_atypes.shape != (ntip_atoms,):
+        raise ValueError(f"tip_atypes must have shape ({ntip_atoms},), got {tip_atypes.shape}")
+    if smp_atypes.shape != (nsmp_atoms,):
+        raise ValueError(f"smp_atypes must have shape ({nsmp_atoms},), got {smp_atypes.shape}")
+    if GT_global.shape != (tip_norb, tip_norb):
+        raise ValueError(f"GT_global must have shape ({tip_norb},{tip_norb}), got {GT_global.shape}")
+    if GS_global.shape != (smp_norb, smp_norb):
+        raise ValueError(f"GS_global must have shape ({smp_norb},{smp_norb}), got {GS_global.shape}")
+    if c_tip.shape != (tip_norb,):
+        raise ValueError(f"c_tip must have shape ({tip_norb},), got {c_tip.shape}")
+    if c_smp.shape != (smp_norb,):
+        raise ValueError(f"c_smp must have shape ({smp_norb},), got {c_smp.shape}")
+    if out is None:
+        out = np.zeros(n, dtype=np.float64)
+    lib.firecore_stm_gf_2mol_mo_2points(int(n), points, int(ntip_atoms), tip_pos_rel, tip_atypes, int(tip_norb), tip_orb2atom, int(nsmp_atoms), smp_pos, smp_atypes, int(smp_norb), smp_orb2atom, GT_global, GS_global, c_tip, c_smp, float(beta), float(r0), float(rcut), float(overlap_scale), out)
+    return out
+
 # subroutine firecore_export_tip_coupling_point(mode, tipZ, point, rcut, beta, r0, A_ss, A_sp, A_pp_sig, A_pp_pi, A_ps, overlap_scale, ntip_in, norb_in, Hts_out, Sts_out)
 argDict["firecore_export_tip_coupling_point"]=( None, [c_int, c_int, array1d, c_double, c_double, c_double, c_double, c_double, c_double, c_double, c_double, c_double, c_int, c_int, array1d, array1d] )
 def export_tip_coupling_point(point, mode=0, tipZ=1, rcut=8.0, beta=1.0, r0=3.0, A_ss=-1.0, A_sp=-1.0, A_pp_sig=-1.0, A_pp_pi=+1.0, A_ps=None, overlap_scale=0.0, ntip=None, norb=None, Hts=None, Sts=None):

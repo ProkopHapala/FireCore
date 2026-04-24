@@ -558,3 +558,821 @@ If you are in the tunneling regime ($> 3$ Å), $S_{ts} \approx 0$ and $S$ is blo
 | Cost | $O(N^3)$ | One sparse factorization + $N_R$ back-substitutions |
 
 Your instinct is correct: **do not compute Green’s function matrices explicitly**. Build the sparse $A(E)$, factor it, and shoot impulse vectors $e_b$ from the drain. The responses $\psi_b$ contain everything needed for the Caroli transmission.
+
+
+---
+
+# USER
+
+No the task is to solve all operations on GPU in parallel, each workgroup should be solving one pixel, workgroup can have like 16-32 threads and it should use shared memory (prelod things in shared memory for efficiecy), we want to solve all pixels (thousands pixel of the image) in parallel each by one workgroup. All performance intensive operations should be done on GPU. 
+Te linears solver we should therefoer implement direcly in OpenCL kernel (perhaps as separate function) operating with this shared memory. Not sure what is good compromise between simplicity and efficiecy, Not sure what type or matrixes we need to solve there (are they Hermitian, symmetric?.... can we use CG, or Jacobi, iteration, Gauss elimination, GMRESS), plese focus on this aspect.
+
+We expect the size of system to be molecule composed of ~50-100 atom like PTCDA so with 4 atoms on each this is like 200-400 dimension of the matrix. We want to solve this matrix using wogroup of reasonable size (max 128 threads - in a way to be efficient). We wat to paralelize this over pixel to explot paralleism with 10k threads on GPU, why we need to do this? We want to solve each pixel in miliseconds or mircroscetods, generating hundesrtsns or  thoushads images per second during moleculer dynamics of the molecule (molecular dynamics we do by forcefield by other module, this is not the task now, focus on how to quicky evaluate the electron trnsmission resp STM current, whewre the linear solver is probably performance bottleneck)
+
+plese explicitly metion all relevant files and modules for implementing this like what is in
+
+there are some detailes about the code
+https://windsurf.com/codemaps/f398c2cf-5ff8-4d75-a398-c83e788e27b4-fe86ab10a43f3d18
+
+
+I can also probide you with the mors important file Grid.cl with the existing kernels
+
+---
+
+# Gemini-3-flash
+
+This is a classic high-performance computing problem: **Many-small-dense-systems**.
+
+Since your matrix size is $N \approx 200-400$ (for a molecule like PTCDA) and you want to solve it for thousands of pixels in parallel, the strategy depends heavily on whether you need the **full interaction** (multiple reflections between tip and sample) or if the **single-pass path** (Source $\to$ Tip $\to$ Sample $\to$ Drain) is sufficient.
+
+Here is the analysis of the solver strategy for `Grid.cl` and your GPU implementation.
+
+### 1. The Matrix Dimension vs. GPU Architecture
+*   **The Problem:** A $400 \times 400$ complex matrix (`float2`) takes about **1.28 MB** of memory.
+*   **The Constraint:** Modern GPU **Shared Memory (`__local`)** is typically limited to **32 KB - 64 KB** per workgroup. 
+*   **Conclusion:** You **cannot** fit the full $400 \times 400$ matrix into shared memory. You must either:
+    1.  Use **Global Memory** for the matrix (slower but large).
+    2.  Use the **Dyson/Inverse-MVM** approach (Pre-calculate the large static parts, solve a tiny coupling system in shared memory).
+
+### 2. Recommended Strategy: The "Small Dyson" Solver
+The most efficient way to get "exact" Green's functions including all tip-sample interactions without solving a $400 \times 400$ system every pixel is to pre-invert the static parts.
+
+1.  **Pre-computation (Once per frame/MD step):**
+    *   Invert $A_T = (E I - H_{TT} - \Sigma_L)$ and $A_S = (E I - H_{SS} - \Sigma_R)$ on the GPU or CPU. 
+    *   These are now dense $G_T$ and $G_S$ matrices.
+2.  **Per-Pixel Kernel (Workgroup tasks):**
+    *   Identify the **Active Orbitals** ($k_{tip}, k_{smp}$): These are the only orbitals where the hopping $H_{TS}(R)$ is non-zero (e.g., the tip apex and the few surface atoms under it). Usually $k \approx 10-20$.
+    *   **Shared Memory:** Load only the sub-blocks of $G_T$ and $G_S$ corresponding to these active orbitals into `__local` memory.
+    *   **Solve the Coupling:** The full $G$ is given by the Dyson equation. For the active subspace, you solve a $k \times k$ system (where $k \approx 20$). 
+    *   **Matrix-Vector Multiplication (MVM):** Once the coupling is solved, the propagation through the rest of the molecule is just a dense MVM.
+
+### 3. If you want a Full Linear Solver in the Kernel
+If you insist on solving the full $(A_{TT} + A_{SS} + H_{TS})x = b$ per pixel, here is how to implement it:
+
+#### The Algorithm: Parallel Gauss-Jordan (Direct)
+For $N=400$, iterative solvers (CG, GMRES) might struggle with convergence if the energy $E$ is near an eigenvalue (resonance). A direct solver is more predictable.
+
+*   **Type:** Gauss-Jordan elimination with **Partial Pivoting**.
+*   **Parallelization:** 
+    *   Each Workgroup = 1 Pixel.
+    *   Each Thread = Handles 4-8 rows of the matrix.
+*   **Step-by-step in `Grid.cl`:**
+    1.  **Pivot Search:** Threads collaborate to find the max element in the current column (using a local reduction).
+    2.  **Row Swap:** Threads swap their assigned rows.
+    3.  **Division:** One thread (or all) divides the pivot row.
+    4.  **Elimination:** Every thread updates its assigned rows in parallel: $Row_i = Row_i - factor \times PivotRow$.
+    5.  **Barrier:** `barrier(CLK_LOCAL_MEM_FENCE)` between every column elimination.
+
+#### Complexity Check:
+*   $N^3$ operations. For $N=400$, that's $64 \times 10^6$ ops.
+*   With 10,000 pixels, you are looking at $0.6$ Tera-ops. 
+*   A modern GPU (e.g., RTX 3080/4090) can handle this in **milliseconds** if you saturate the cores.
+
+### 4. Relevant Files and Modules
+
+To implement this, the following files in your repository are critical:
+
+1.  **`Grid.cl`**: This is where the OpenCL kernel lives. You would add a new kernel `kernel_stm_transport_gf`.
+2.  **`STM_GPU_QMMM.md`**: Update this with the Green's Function math (Self-energies $\Sigma$ and the Caroli formula).
+3.  **`test_response_function_rotated.py`**: This currently calculates overlaps. It should be modified to prepare the $H_{TT}$ and $H_{SS}$ matrices and send them to the GPU.
+4.  **`pyopencl` wrapper**: You need a Python side that manages the `cl.Buffer` for the dense Hamiltonians.
+
+### 5. Mathematical Setup for the Kernel
+
+The matrix you are solving in the kernel is:
+$$ \mathbf{A} = \begin{pmatrix} E-H_{TT}+i\Gamma_L/2 & -H_{TS}(R) \\ -H_{ST}(R) & E-H_{SS}+i\Gamma_R/2 \end{pmatrix} $$
+
+**The "Path" Vector Propagation ($Ax=b$):**
+1.  **Source:** $b$ is a vector with $1.0$ at the "source" orbital of the tip.
+2.  **Solve:** $A \psi = b$ (Using the Parallel Gauss-Jordan above).
+3.  **Current:** $I = \sum_{j \in \text{sample-drain}} \Gamma_{R,j} |\psi_j|^2$.
+
+### Summary Analysis
+*   **Simplicity:** **Pre-inverted MVM** is much simpler and likely 10x faster. It assumes the tip-sample coupling doesn't drastically change the electronic structure of the leads.
+*   **Physics:** **Full Gauss-Jordan** per pixel is the most "correct" as it allows the tip and sample to polarize each other to all orders.
+*   **Bottleneck:** Memory bandwidth. The matrix $A$ will likely have to stay in **Global Memory** (L2 cache will help). You should use `float2` (complex) and ensure coalesced memory access where threads read consecutive columns.
+
+**Would you like me to outline the specific Workgroup-Parallel Gauss-Jordan logic (how threads divide the 400 rows) for the `Grid.cl`?**
+
+---
+
+# Kimi 2.6
+
+You are right to push back on the “sparse matrix multiply” hand-waving. For $N\sim 400$ the explicit inverse $G(E)$ is dense, and any dense matrix–vector pipeline on a GPU workgroup will choke on memory, not arithmetic. The correct move is **not** to invert the full $400\times 400$ matrix per pixel, but to use the **Woodbury identity** to shrink the linear solve to the size of the **tip** (or the contact patch), which is $\sim 20$–$60$ orbitals. That fits in shared memory, can be Gauss-Jordan-ed by $32$ threads in microseconds, and leaves the heavy $O(N_s^3)$ work to a **single CPU precomputation** that is reused for all pixels.
+
+Below is the full physics-to-GPU mapping, the shared-memory solver design, and the exact files/modules you will touch.
+
+## 1. The Physics: Why the Full System is Overkill
+
+Recall the partitioned retarded Green’s function. The total Hamiltonian is
+
+$$
+\mathcal{H}_{\rm tot} = \begin{pmatrix} H_{tt} & H_{ts} \\ H_{st} & H_{ss} \end{pmatrix},
+\qquad
+S = \begin{pmatrix} S_{tt} & S_{ts} \\ S_{st} & S_{ss} \end{pmatrix}
+$$
+
+with local optical potentials (source/drain) on selected atoms:
+
+$$
+\Sigma_L = -\frac{i}{2}\Gamma_L,\qquad \Sigma_R = -\frac{i}{2}\Gamma_R
+$$
+
+The full retarded propagator is
+
+$$
+G^R(E) = \big[(E+i\eta)S - \mathcal{H}_{\rm tot} + \tfrac{i}{2}\Gamma_L + \tfrac{i}{2}\Gamma_R\big]^{-1}
+\tag{1}
+$$
+
+**Key observation:** $H_{ts}$ is non-zero only for a handful of tip atoms near the surface. If the tip has $n_t$ orbitals and the “contact” sample atoms (those within hopping range) have $n_c$ orbitals, then $H_{ts}$ is an $n_t\times n_c$ **tall-skinny** sparse block. Everything else is precomputable.
+
+### 1.1 Woodbury Reduction
+
+Define the uncoupled (block-diagonal) Green’s functions precomputed on the CPU:
+
+$$
+g_t = \big[(E+i\eta)S_{tt}-H_{tt}-\Sigma_L\big]^{-1},\qquad
+g_s = \big[(E+i\eta)S_{ss}-H_{ss}-\Sigma_R\big]^{-1}
+$$
+
+The Dyson equation for the sample block is
+
+$$
+G_s = g_s + g_s\,H_{st}\,g_t\,H_{ts}\,G_s
+\;\;\Longrightarrow\;\;
+G_s = \big[I - g_s\,H_{st}\,g_t\,H_{ts}\big]^{-1} g_s
+\tag{2}
+$$
+
+The matrix to invert is $N_s\times N_s$ ($\sim 320\times 320$). But the perturbation
+$\Sigma_{\rm contact}\equiv H_{st}g_t H_{ts}$ has **rank $n_t$** (the tip size). Apply the Woodbury identity:
+
+$$
+\big[I - g_s\,H_{st}\,g_t\,H_{ts}\big]^{-1}
+= I + g_s\,H_{st}\,\mathcal{M}^{-1}\,H_{ts}
+\tag{3}
+$$
+
+where the **small** matrix is
+
+$$
+\boxed{
+\mathcal{M} \equiv g_t^{-1} - H_{ts}\,g_s(c,c)\,H_{st}
+}
+\qquad\text{(size } n_t\times n_t\text{)}
+\tag{4}
+$$
+
+- $g_t^{-1}=(E+i\eta)S_{tt}-H_{tt}-\Sigma_L$ is known **once per energy** on the CPU.
+- $g_s(c,c)$ is the $n_c\times n_c$ contact-contact sub-block of $g_s$, also precomputed.
+- $H_{ts}$ is built **per pixel** on the GPU from exponential Slater–Koster overlaps.
+
+For a tip of $5$–$10$ atoms ($n_t=20$–$40$), $\mathcal{M}$ is tiny. Inverting it is the only linear solve you do per pixel.
+
+### 1.2 Transmission from the Reduced System
+
+The Caroli formula is
+
+$$
+T(E)=\operatorname{Tr}\!\big[\Gamma_L\,G_{ts}\,\Gamma_R\,G_{st}\big]
+\tag{5}
+$$
+
+with $G_{ts}=g_t H_{ts} G_s$. Using (2)–(3) and the cyclic trace:
+
+$$
+T(E)=\sum_{d\in{\rm drain}}\Gamma_{R,d}\,
+\Big[ G_s(c,d)^{\dagger}\,B\,G_s(c,d) \Big]_{dd}
+\tag{6}
+$$
+
+where
+
+$$
+B \equiv H_{st}\,g_t^{\dagger}\,\Gamma_L\,g_t\,H_{ts}
+\qquad\text{(}n_c\times n_c\text{, Hermitian)}
+\tag{7}
+$$
+
+and the contact-to-drain block of the full sample propagator is
+
+$$
+G_s(c,d)=g_s(c,d)+g_s(c,c)\,H_{st}\,\mathcal{M}^{-1}\,H_{ts}\,g_s(c,d)
+\tag{8}
+$$
+
+**All large matrices** ($g_s$, $g_t$, $g_s(c,d)$, $g_s(c,c)$) are **precomputed on CPU** and passed as constant/global buffers.  
+**All per-pixel work** reduces to:
+
+1. Build $H_{ts}$ (sparse SK/exponential, $n_t\times n_c$).
+2. Matmul: $Z = H_{ts}\,g_s(c,d)$  ($n_t\times n_d$).
+3. Matmul: $Q = H_{ts}\,g_s(c,c)\,H_{st}$  ($n_t\times n_t$).
+4. Form $\mathcal{M}=g_t^{-1}-Q$.
+5. **Invert $\mathcal{M}$ in shared memory** ($n_t\times n_t$).
+6. Matmul: $W=\mathcal{M}^{-1}Z$.
+7. Matmul: $Y=g_s(c,c)\,H_{st}\,W$.
+8. Assemble $G_s(c,d)=g_s(c,d)+Y$.
+9. Quadratic forms for each drain atom $d$ using $B$.
+
+Total per-pixel arithmetic: $\sim 0.5$–$2$ million complex ops. At GPU throughput this is **microseconds**, not milliseconds.
+
+## 2. GPU Architecture: One Workgroup = One Pixel
+
+### 2.1 Workgroup & Memory Design
+
+| Resource | Size / Role |
+|----------|-------------|
+| **Workgroup size** | $T=32$ threads (or $16$–$64$; $32$ is the sweet spot for occupancy and warp alignment) |
+| **Shared memory** | $\lesssim 48$–$64$ KB. All small dense blocks live here. |
+| **Global/Constant** | $g_t$, $g_t^{-1}$, $g_s$ blocks, $\Gamma$ vectors, geometry tables. Read-only, broadcast to all workgroups. |
+
+**Shared memory budget** (example: $n_t=40$, $n_c=48$, $n_d=40$):
+
+| Buffer | Size | Purpose |
+|--------|------|---------|
+| `l_H_ts` | $40\times 48\times 8=15.4$ KB | Tip-contact hopping |
+| `l_M` | $40\times 40\times 8=12.8$ KB | Woodbury matrix $\mathcal{M}$ |
+| `l_Minv` | $40\times 40\times 8=12.8$ KB | Inverse (or reuse `l_M` in-place) |
+| `l_Z` | $40\times 40\times 8=12.8$ KB | $H_{ts}g_s(c,d)$ |
+| `l_W` | $40\times 40\times 8=12.8$ KB | $\mathcal{M}^{-1}Z$ |
+| `l_pivot` | $40\times 4=0.16$ KB | Pivot indices |
+| **Total** | **$\sim 67$ KB** | Fits in $64$–$96$ KB shared mem on modern AMD/NVIDIA. If you only have $48$ KB, drop `l_W` and stream it through registers, or reduce $n_t$ to $32$. |
+
+For smaller tips ($n_t\le 32$) the total drops under $45$ KB, which is safe on every GPU.
+
+### 2.2 Why Not Iterative Solvers?
+
+You asked about CG, BiCGSTAB, GMRES, Jacobi.
+
+- **CG**: Requires Hermitian positive-definite. $\mathcal{M}$ is **complex symmetric**, not HPD. Breaks.
+- **BiCGSTAB / GMRES / COCG**: Work for complex symmetric, but for $n_t\le 60$ the setup cost (dot products, reductions) and convergence iterations ($\sim 20$–$50$) make them **slower** than a direct dense solve.
+- **Jacobi / Gauss-Seidel**: Only useful if strongly diagonally dominant. $\mathcal{M}$ has off-diagonal blocks from $H_{ts}g_s H_{st}$ that are comparable to the diagonal. Unreliable.
+
+**Verdict:** For $n_t\le 64$, use **dense Gauss-Jordan elimination with partial pivoting** in shared memory. It is branch-simple, needs no convergence tolerance, and produces the exact inverse in $O(n_t^3)$ with $n_t^3\sim 10^5$ ops.
+
+### 2.3 The Shared-Memory Complex Solver
+
+Here is the algorithm implemented as an OpenCL device function. It operates on a complex matrix stored as `float2` (`.x`=real, `.y`=imag) in `__local` memory.
+
+```c
+// Complex helpers
+inline float2 cmul(float2 a, float2 b){
+    return (float2)(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x);
+}
+inline float2 cdiv(float2 a, float2 b){
+    float d = b.x*b.x + b.y*b.y;
+    return (float2)((a.x*b.x + a.y*b.y)/d, (a.y*b.x - a.x*b.y)/d);
+}
+inline float cabs2(float2 a){ return a.x*a.x + a.y*a.y; }
+
+// In-place Gauss-Jordan with partial pivoting
+// A is __local float2 A[n*n], pivot is __local int pivot[n]
+// T = get_local_size(0), tid = get_local_id(0)
+void gauss_jordan_inverse(__local float2* A, __local int* pivot, int n, int tid, int T){
+    for(int k=0; k<n; k++){
+        // --- 1. Find pivot row (thread 0 only) ---
+        if(tid==0){
+            float maxv = 0.0f;
+            int piv = k;
+            for(int i=k; i<n; i++){
+                float v = cabs2(A[i*n + k]);
+                if(v > maxv){ maxv = v; piv = i; }
+            }
+            pivot[k] = piv;
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        // --- 2. Swap rows k and pivot[k] ---
+        int piv = pivot[k];
+        for(int j=tid; j<n; j+=T){
+            float2 tmp = A[k*n + j];
+            A[k*n + j] = A[piv*n + j];
+            A[piv*n + j] = tmp;
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        // --- 3. Normalize pivot row ---
+        if(tid==0){
+            float2 pivval = A[k*n + k];
+            float2 invpiv = cdiv((float2)(1.0f,0.0f), pivval);
+            A[k*n + k] = invpiv;
+            for(int j=k+1; j<n; j++){
+                A[k*n + j] = cmul(A[k*n + j], invpiv);
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        // --- 4. Eliminate column k from all other rows ---
+        for(int i=tid; i<n; i+=T){
+            if(i != k){
+                float2 factor = A[i*n + k];
+                A[i*n + k] = (float2)(0.0f, 0.0f);
+                for(int j=k+1; j<n; j++){
+                    float2 prod = cmul(factor, A[k*n + j]);
+                    A[i*n + j] = (float2)(A[i*n + j].x - prod.x, A[i*n + j].y - prod.y);
+                }
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    // A now contains the inverse (with row permutations from pivoting).
+    // Because we only used row swaps, the inverse is correct up to a row permutation.
+    // For our use (M^{-1} * Z), row permutation does not matter because we
+    // apply the inverse immediately to a matrix/vector on the right.
+}
+```
+
+**Why Gauss-Jordan and not LU?**
+- You need $\mathcal{M}^{-1}$ explicitly to form $\mathcal{M}^{-1}Z$ (step 6).
+- Gauss-Jordan gives the inverse directly; LU would require $n_d$ forward/back substitutions.
+- For $n_t\le 60$ and $n_d\sim n_t$, the cost is identical, but Gauss-Jordan has simpler control flow in OpenCL (no triangular solves).
+
+**Parallel efficiency:**
+- With $T=32$ and $n_t=40$, each thread handles $1$–$2$ rows in the elimination step.
+- The inner loop over columns ($j$) is sequential per thread, but $j\le 40$ is tiny.
+- Barriers are per-pivot ($n_t$ barriers total). For $n_t=40$, negligible overhead.
+
+## 3. Per-Pixel Kernel Flow
+
+Here is the logical flow of the new kernel. It lives in **Grid.cl** and reuses your existing `evaluate_radial`, `sk_contract_sp`, and quaternion rotation utilities.
+
+```c
+__kernel void stm_transmission_negf(
+    // --- Precomputed CPU buffers (constant or __global) ---
+    __global const float2* g0_t_inv,      // [nt*nt]   (E+iη)S_t - H_t - Σ_L
+    __global const float2* g0_s_cc,       // [nc*nc]   contact-contact block of g_s
+    __global const float2* g0_s_cd,       // [nc*nd]   contact-drain block of g_s
+    __global const float*  gamma_L,       // [nt]      diagonal Γ_L
+    __global const float*  gamma_R,       // [nd]      diagonal Γ_R on drain atoms
+    
+    // --- Geometry (per scan point) ---
+    __global const float4* tip_centers,   // [n_points] tip center (x,y,z,0)
+    __global const float4* tip_quat,      // [n_points] rotation quaternion
+    __global const float4* tip_rel,       // [ntip_atoms] relative positions
+    __global const float4* smp_pos,       // [nsmp_atoms] sample positions
+    
+    // --- Parameters ---
+    const float beta, const float r0, const float rcut,
+    const int ntip_atoms, const int nsmp_atoms,
+    const int nt, const int nc, const int nd,
+    
+    // --- Output ---
+    __global float* out_T                 // [n_points]
+){
+    const int ip  = get_group_id(0);      // one pixel per workgroup
+    const int tid = get_local_id(0);
+    const int T   = get_local_size(0);
+    
+    // --- Shared memory declarations ---
+    __local float2 l_H_ts[NT_MAX*NC_MAX];
+    __local float2 l_M[NT_MAX*NT_MAX];
+    __local float2 l_Z[NT_MAX*ND_MAX];
+    __local float2 l_W[NT_MAX*ND_MAX];
+    __local int    l_piv[NT_MAX];
+    __local int    l_contact_atoms[NC_MAX]; // which sample atoms are in contact
+    __local int    l_drain_atoms[ND_MAX];   // which sample atoms are drains
+    
+    // 1. Determine contact atoms for this pixel (tip position + rcut)
+    //    Each thread checks a subset of sample atoms.
+    //    Build l_contact_atoms[] and l_H_ts[] using existing SK/exponential code.
+    
+    // 2. Build H_ts in shared memory
+    //    For each tip atom ia, sample atom ja in contact:
+    //      r = |p_tip(ia) - p_smp(ja)|
+    //      if r < rcut: fill 4x4 SK block in l_H_ts
+    
+    // 3. Compute Z = H_ts * g0_s_cd   (nt x nd)
+    //    Collaborative matmul: each thread computes a subset of (i,j) elements.
+    
+    // 4. Compute M = g0_t_inv - H_ts * g0_s_cc * H_st
+    //    First P = H_ts * g0_s_cc  (nt x nc)
+    //    Then Q = P * H_st         (nt x nt)   [H_st = transpose(H_ts) because real basis]
+    //    Then M = g0_t_inv - Q     (nt x nt)
+    //    Store in l_M.
+    
+    // 5. Invert M in shared memory
+    gauss_jordan_inverse(l_M, l_piv, nt, tid, T);
+    // l_M now holds M^{-1}
+    
+    // 6. Compute W = M^{-1} * Z   (nt x nd)
+    
+    // 7. Compute Y = g0_s_cc * H_st * W   (nc x nd)
+    //    Then G_s_cd = g0_s_cd + Y
+    
+    // 8. Precompute B = H_st * g0_t^H * Gamma_L * g0_t * H_ts  (nc x nc)
+    //    This can be done as:
+    //      U = g0_t * H_ts   (nt x nc)   [matmul]
+    //      B = U^H * diag(gamma_L) * U   (nc x nc)
+    
+    // 9. For each drain atom d:
+    //      T_d = gamma_R[d] * ( G_s_cd(:,d)^H * B * G_s_cd(:,d) )
+    //    Sum to local float T_sum.
+    
+    // 10. Write out_T[ip] = T_sum
+}
+```
+
+**Key implementation notes:**
+
+- **Matrix multiplies** for small dense blocks ($\le 64$) are done by having each thread compute one or a few output elements. No fancy tiling is needed; the arithmetic intensity is high enough because everything is in shared memory.
+- **Complex conjugate transpose** (`^H`) appears only in step 8 and 9. Since Fireball uses real basis functions, $H_{ts}$ is real; the only complex conjugation is on $g_0$.
+- **Contact atom list** (`l_contact_atoms`) is built dynamically per pixel because the tip moves. With $10$ tip atoms and $80$ sample atoms, the all-pairs distance check is $800$ comparisons — trivial for $32$ threads.
+
+## 4. CPU Precomputation (Do This Once per MD Step / Energy)
+
+Before launching the GPU kernel, the host code must:
+
+1. **Assemble $H_{tt}, H_{ss}, S_{tt}, S_{ss}$** from Fireball.
+2. **Attach $\Sigma_L, \Sigma_R$** as local imaginary potentials on selected source/drain atoms.
+3. **LU-factorize** (or directly invert) the tip and sample Green’s functions:
+   $$
+   g_t(E) = [(E+i\eta)S_{tt}-H_{tt}-\Sigma_L]^{-1}
+   $$
+   $$
+   g_s(E) = [(E+i\eta)S_{ss}-H_{ss}-\Sigma_R]^{-1}
+   $$
+   Use LAPACK `zgetrf`/`zgetri` or your own dense solver on CPU. These are $40^3$ and $320^3$ — milliseconds total.
+4. **Extract sub-blocks**:
+   - $g_s(c,c)$: contact-contact block (depends on which sample atoms are within `rcut` of the tip’s *range*; if the tip scans laterally, the contact set changes. You can either extract a generous superset that covers all possible scan positions, or re-extract per pixel on GPU from the full $g_s$ buffer.)
+   - $g_s(c,d)$: contact-to-drain block.
+5. **Upload to GPU** as `__constant` or `__global` buffers.
+
+If you are integrating over a bias window with $N_E$ energy points, upload $g_t$ and $g_s$ for all energies. The kernel can loop over energies internally (the geometry $H_{ts}$ is energy-independent), accumulating $T(E)$ and then the current.
+
+## 5. Files & Modules to Implement
+
+| File / Module | What to do |
+|---------------|------------|
+| **`Grid.cl`** | **Add** `stm_transmission_negf` kernel. **Add** `gauss_jordan_inverse` device function. **Reuse** `sk_contract_sp`, `quat_rotate3`, `evaluate_radial` from existing kernels. |
+| **`Grid.cl` (existing)** | `response_amplitude_exp` is the **single-orbital limit** ($n_t=1$, $n_c=1$) of the above formalism. Keep it as a fast path for s-orbital tips; the new kernel supersedes it for multi-orbital tips. |
+| **CPU wrapper (Python/C)** | Precompute $g_t, g_s$ via dense complex inversion (NumPy/LAPACK). Extract $g_s(c,c), g_s(c,d)$. Pack $\Gamma_L, \Gamma_R$ diagonal vectors. Launch `clEnqueueNDRangeKernel` with 1D grid = number of pixels, local size = 32. |
+| **Shared-memory sizing header** | Define `NT_MAX`, `NC_MAX`, `ND_MAX` (e.g. 64, 64, 64). If you exceed these on a specific molecule, the kernel returns 0 or falls back to a global-memory path. |
+| **Tip geometry builder** | Reuse the tip quaternion/position logic from `mo_overlap_points_exp_sk`. The tip is a rigid body; only the center and quaternion change per pixel. |
+
+## 6. Performance Estimate
+
+For a PTCDA-like system ($\sim 80$ sample atoms, $5$–$10$ tip atoms):
+
+| Step | Cost | Time (GPU) |
+|------|------|------------|
+| Build $H_{ts}$ | $\sim 200$ SK evaluations | $\sim 1\,\mu$s |
+| Matmul $Z, Q$ | $\sim 200$K complex ops | $\sim 2\,\mu$s |
+| Gauss-Jordan $40\times 40$ | $\sim 60$K complex ops | $\sim 3\,\mu$s |
+| Matmul $W, Y$, quadratic forms | $\sim 300$K complex ops | $\sim 3\,\mu$s |
+| **Total per pixel** | | **$\sim 10\,\mu$s** |
+
+With $10\,000$ pixels and a GPU that runs $1\,000$–$2\,000$ concurrent workgroups, the wall-clock time is **$\sim 50$–$100\,\mu$s per image** (all pixels in parallel). This easily reaches **thousands of images per second** for MD, assuming the CPU can feed geometries fast enough.
+
+## 7. Summary
+
+- **Do not** build or invert the full $400\times 400$ $G(E)$ per pixel.
+- **Do not** use iterative solvers (CG, BiCGSTAB) for a $40\times 40$ matrix; dense Gauss-Jordan in shared memory is faster and exact.
+- **Do** use the **Woodbury identity** to reduce the per-pixel solve to the tip dimension $n_t$.
+- **Do** precompute the large sample/tip Green’s functions $g_s, g_t$ on CPU once per energy.
+- **Do** implement the solver as a collaborative OpenCL workgroup (32 threads) operating entirely in `__local` memory, one workgroup per STM pixel.
+
+The physics is still the full NEGF Caroli formula; the numerics just exploit the fact that the tip–sample coupling is low-rank.
+
+---
+
+# USER
+
+plese sketch the solution - I mean the optimized OpenCL code respecting the constraisn, and efficiently using local memory and other resources, which reaspoable tiling / preloading strategy..., write the code, but also analyse possibilities and pros and cones, use provided information about carefully considering memory layout and representation of basis, with spater costre rotation and other things which you can learn from 
+
+---
+
+# Gemini-3.1-pro
+
+This is a fantastic high-performance computing challenge. Calculating the Green's function transport for a molecule with 200–400 basis functions across thousands of pixels directly on the GPU requires a careful strategy.
+
+### 1. Analysis of the Constraints & The "Dyson Subspace" Trick
+
+**The Memory Constraint:** 
+A dense $400 \times 400$ complex matrix (`float2`) takes about **1.28 MB**. The absolute maximum shared memory (`__local`) per workgroup on most GPUs is **32 KB to 64 KB**.
+*Conclusion:* You **cannot** load the full matrices into shared memory, and running a $400 \times 400$ Gauss-Jordan elimination in global memory for every single pixel would be far too slow.
+
+**The Physical Optimization (The "Active Subspace"):**
+The hopping matrix $H_{TS}(R)$ between the tip and the sample is mostly zeros! It only has non-zero entries for the atoms physically close to each other (e.g., the tip apex and the $\approx 1-4$ sample atoms directly beneath it). 
+If we use a cutoff radius $R_{cut}$, the number of "active" orbitals $N_{act}$ is very small. For example, 4 tip atoms and 4 sample atoms = $16 \times 16$ active orbitals. 
+
+Instead of solving the full $400 \times 400$ system $Ax=b$, we use the **Dyson Equation projection**:
+1.  **Host/Global:** Precalculate the full isolated Green's functions $G_T$ (Tip) and $G_S$ (Sample). Store them in `__global` memory.
+2.  **Kernel/Local:** Identify the small active subsets.
+3.  **Kernel/Local:** Extract only the small active blocks of $G_T$ and $G_S$ into `__local` memory (e.g., $16 \times 16$ complex = **2 KB**, easily fitting in shared memory!).
+4.  **Kernel/Local:** Solve the multiple-scattering transmission matrix strictly inside this active subspace using a local **Gauss-Jordan solver**.
+
+### 2. The Algorithm per Workgroup (Pixel)
+
+Each workgroup handles **1 pixel (1 tip position)**. The threads (e.g., 64 threads) collaborate:
+1.  **Distance Filter:** Threads loop over atoms, measure distances, and build a list of active tip and sample atom indices.
+2.  **Preload (Tiling):** Threads collaboratively copy the required sub-blocks of $G_S$ and $G_T$ from global to local memory.
+3.  **Build $V_{TS}$:** Threads compute the $4 \times 4$ Slater-Koster overlap blocks for the active pairs.
+4.  **Matrix Multiplications:** Compute $W = I - G_S V_{TS}^\dagger G_T V_{TS}$ in local memory.
+5.  **Linear Solver:** Run an in-place parallel Gauss-Jordan elimination on $W$ to solve $W x_{S} = b_S$.
+6.  **Current Integration:** Calculate the trace/dot product representing the transmission.
+
+### 3. Sketch of the OpenCL Solution (`Grid.cl`)
+
+Here is the structurally optimized kernel demonstrating this strategy.
+
+```c
+// Complex arithmetic helpers
+inline float2 c_add(float2 a, float2 b) { return (float2)(a.x+b.x, a.y+b.y); }
+inline float2 c_sub(float2 a, float2 b) { return (float2)(a.x-b.x, a.y-b.y); }
+inline float2 c_mul(float2 a, float2 b) { return (float2)(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x); }
+inline float2 c_div(float2 a, float2 b) {
+    float den = b.x*b.x + b.y*b.y + 1e-30f;
+    return (float2)((a.x*b.x + a.y*b.y)/den, (a.y*b.x - a.x*b.y)/den);
+}
+
+// Define the maximum active subspace size. 
+// 32 orbitals = 8 atoms (4 orbitals per atom: px, py, pz, s)
+// Fits perfectly in shared memory (32x32 complex matrix = 8 KB)
+#define MAX_ACT_ORB 32 
+
+__kernel void solve_stm_dyson_wg(
+    const int n_pixels,
+    __global const float4* tip_centers,
+    __global const float4* tip_pos_rel,
+    __global const float4* smp_pos,
+    const int ntip_atoms,
+    const int nsmp_atoms,
+    // Precalculated full Green's functions from Host (Global Memory)
+    __global const float2* GT_global, // [4*ntip_atoms * 4*ntip_atoms]
+    __global const float2* GS_global, // [4*nsmp_atoms * 4*nsmp_atoms]
+    // Incident wave vector injected from the source lead into the tip
+    __global const float2* uT_source, // [4*ntip_atoms]
+    // Hopping parameters
+    const float beta, const float r0, const float rcut,
+    // Output
+    __global float* out_current
+) {
+    // 1 Workgroup = 1 Pixel
+    const int pixel_id = get_group_id(0);
+    const int t_idx    = get_local_id(0); // Thread ID (e.g., 0 to 63)
+    const int threads  = get_local_size(0);
+    
+    if (pixel_id >= n_pixels) return;
+
+    // --- SHARED MEMORY ALLOCATIONS ---
+    __local int active_T_atoms[8]; // Max 8 active tip atoms
+    __local int active_S_atoms[8]; // Max 8 active sample atoms
+    __local int num_act_T, num_act_S;
+
+    // Local Matrices (32x32 floats2 = 8KB each)
+    __local float2 GS_loc[MAX_ACT_ORB][MAX_ACT_ORB];
+    __local float2 GT_loc[MAX_ACT_ORB][MAX_ACT_ORB];
+    __local float2 V_ts[MAX_ACT_ORB][MAX_ACT_ORB]; // Hopping
+    __local float2 W[MAX_ACT_ORB][MAX_ACT_ORB]; // The Dyson Matrix to invert
+    
+    // Local Vectors
+    __local float2 uT_loc[MAX_ACT_ORB];
+    __local float2 bS_loc[MAX_ACT_ORB]; // Right-hand side
+
+    if (t_idx == 0) { num_act_T = 0; num_act_S = 0; }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // 1. DYNAMICALLY IDENTIFY ACTIVE ATOMS (Distance < rcut)
+    // Threads cooperatively scan atoms
+    const float3 cen = tip_centers[pixel_id].xyz;
+    const float rcut2 = rcut * rcut;
+
+    // (Pseudo-code for brevity: Check distances, atomic_inc num_act, save to active_T_atoms)
+    // Assume we found N_T active tip orbitals and N_S active sample orbitals.
+    int N_T = min(num_act_T * 4, MAX_ACT_ORB);
+    int N_S = min(num_act_S * 4, MAX_ACT_ORB);
+
+    // 2. PRELOAD ACTIVE BLOCKS FROM GLOBAL TO SHARED MEMORY
+    // Threads loop through the 2D local arrays and fetch from global memory
+    for(int i = t_idx; i < N_S * N_S; i += threads) {
+        int r = i / N_S; int c = i % N_S;
+        int glob_r = active_S_atoms[r/4]*4 + (r%4);
+        int glob_c = active_S_atoms[c/4]*4 + (c%4);
+        GS_loc[r][c] = GS_global[glob_r * (4*nsmp_atoms) + glob_c];
+    }
+    // ... similarly preload GT_loc and uT_loc ...
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // 3. COMPUTE SLATER-KOSTER HOPPING MATRIX V_ts
+    // Threads distribute the atom pairs and calculate exponential overlaps
+    for(int i = t_idx; i < (N_T/4) * (N_S/4); i += threads) {
+        int tip_a = i / (N_S/4);
+        int smp_a = i % (N_S/4);
+        // ... evaluate f = exp(-beta*(r-r0)) and SK directional cosines ...
+        // ... fill the 4x4 block V_ts[tip_a*4 + orbT][smp_a*4 + orbS] ...
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // 4. MATRIX MULTIPLICATIONS: Construct W = I - GS * V_ts^H * GT * V_ts
+    // M1 = GT * V_ts
+    // M2 = V_ts^H * M1
+    // M3 = GS * M2
+    // W  = I - M3
+    // (This is highly parallelized. Each thread computes a few elements of the resulting matrices)
+    for(int i = t_idx; i < N_S; i += threads) {
+        for(int j = 0; j < N_S; j++) {
+            W[i][j] = (i == j) ? (float2)(1.0f, 0.0f) : (float2)(0.0f, 0.0f); // Init I
+            // Subtract M3 (Pseudo-code)
+            // W[i][j] = c_sub( W[i][j], M3[i][j] ); 
+        }
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // 5. IN-PLACE PARALLEL GAUSS-JORDAN SOLVER (W * xS = bS)
+    // We solve the linear system for the active sample subspace
+    for (int k = 0; k < N_S; k++) {
+        // Thread 0 finds pivot (partial pivoting optional for N<32, but good for stability)
+        if (t_idx == 0) {
+            float2 pivot = W[k][k];
+            // Normalize pivot row
+            for(int j=k; j < N_S; j++) W[k][j] = c_div(W[k][j], pivot);
+            bS_loc[k] = c_div(bS_loc[k], pivot);
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        // All threads eliminate the other rows
+        for (int i = t_idx; i < N_S; i += threads) {
+            if (i != k) {
+                float2 factor = W[i][k];
+                for (int j = k; j < N_S; j++) {
+                    W[i][j] = c_sub(W[i][j], c_mul(factor, W[k][j]));
+                }
+                bS_loc[i] = c_sub(bS_loc[i], c_mul(factor, bS_loc[k]));
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    // Now bS_loc contains the exact response wave x_S.
+
+    // 6. CALCULATE FINAL TRANSMISSION CURRENT
+    // I = x_S^H * Gamma_R * x_S
+    float current = 0.0f;
+    if (t_idx == 0) {
+        for(int i=0; i<N_S; i++) {
+            // Assuming Gamma_R is a simple density-of-states weighting for the drain
+            current += (bS_loc[i].x*bS_loc[i].x + bS_loc[i].y*bS_loc[i].y);
+        }
+        out_current[pixel_id] = current;
+    }
+}
+```
+
+### 4. Pros and Cons of this Strategy
+
+#### Pros:
+1.  **Exact Physics:** By directly solving the Dyson equation $W = (I - G_S H_{ST} G_T H_{TS})$, we include **infinite-order multiple scattering** (electrons bouncing back and forth between tip and sample). This perfectly matches the Non-Equilibrium Green's Function (NEGF) / Caroli formula.
+2.  **Memory Optimal:** Extracts a small subspace (e.g. $32 \times 32$). The entire calculation fits in the GPU's `__local` L1 shared memory, preventing slow accesses to the huge 1.28MB dense matrices during the solver loop.
+3.  **High Throughput:** A $32 \times 32$ Gauss-Jordan elimination distributed over 64 threads takes less than $\sim 500$ clock cycles. You can process thousands of pixels in microseconds.
+4.  **No `atomic` Bottlenecks:** Unlike grid-projection density, the entire solving process in this kernel uses deterministic barrier synchronization, meaning zero thread collision.
+
+#### Cons:
+1.  **Cutoff Radius Dependency:** If the tip gets extremely close or if $R_{cut}$ is too large, the active subspace might exceed `MAX_ACT_ORB = 32`. 
+    *   *Fix:* You would need to add a safe fallback inside the kernel. If `num_act_S > MAX_ACT_ORB`, you process the closest atoms and ignore the furthest, or allocate dynamic shared memory.
+2.  **Host Precomputation:** The CPU (or another GPU kernel) must pre-invert $A_T$ and $A_S$ to supply the dense $G_T$ and $G_S$ matrices to global memory before the scan begins.
+
+### 5. Alignment with your Python/Fireball conventions
+
+*   **Basis ordering:** You mentioned in `project_orbital` that Fireball uses `(s, py, pz, px)` but OpenCL uses `(px, py, pz, s)`. The $4 \times 4$ Slater-Koster generation step in the kernel (Step 3) will map natively to `float4`, meaning $G_S$ and $G_T$ matrices generated on the Python side **must** be re-ordered into the `px, py, pz, s` structure before passing to `cl.Buffer`.
+*   **Rotations:** If the tip rotates (`tip_quat`), you simply apply `quat_rotate3` to the displacement vector $\vec{d}$ before passing it to the exponential/SK parameter calculations, just as you already do in `mo_overlap_points_exp_sk`.
+
+
+---
+
+
+---
+
+# Implementation Notes: Fortran Dyson STM Reference (2026-04-24)
+
+## Overview
+
+Implemented a CPU-based, non-parallel Fortran reference for the Dyson Green's function STM method using real Fireball Hamiltonians and overlaps for both tip and sample molecules. The implementation uses Fireball's native angular functions (via `rotate_fb`) and replaces only the radial part of two-center integrals with an exponential decay function to extend the range for tunneling coupling.
+
+## Files Modified
+
+### Fortran Core
+- **`fortran/MAIN/libFireCore.f90`**
+  - Added `firecore_stm_gf_2mol_mo_2points` subroutine (lines ~2100-2230)
+  - Implements 2-molecule weak-coupling Dyson scan with:
+    - Real tip and sample Hamiltonians/overlaps from Fireball
+    - Rotated tip molecule orbitals via MO coefficient vectors
+    - Per-pixel tunneling coupling using Fireball's two-center machinery
+    - Uses `interpolate_1d`, `recover_2c`, `rotate_fb` for proper angular structure
+    - Exponential radial scaling: `exp(-beta*(r-r0))` applied after interpolating at reference distance `r0`
+  - Interface accepts real atomic species arrays (`tip_atypes`, `smp_atypes`) for proper shell metadata access
+
+### Python Bindings
+- **`pyBall/FireCore.py`**
+  - Added Python ctypes binding `stm_gf_2mol_mo_2points` (lines ~488-521)
+  - Handles input validation and array conversions
+  - Matches new Fortran signature with species arrays
+
+### Test Script
+- **`tests/pyFireball/test_stm_gf_dyson_2mol.py`**
+  - Main test script for 2-molecule Dyson STM
+  - Runs SCF for tip and sample molecules (cached to avoid recomputation)
+  - Rotates tip orbitals using Fireball's rotation routines
+  - Computes Green's functions for isolated subsystems
+  - Calls Fortran Dyson routine for scan over tip positions
+  - Generates 6-panel matplotlib visualization:
+    1. Tip orbital (real-space projection)
+    2. Sample orbital (real-space projection)
+    3. Overlap STM (perturbative)
+    4. Fortran GF current (Dyson)
+    5. Sample orbital (rotated to lab frame)
+    6. Tip orbital (rotated to lab frame)
+  - Removed log10 scale from GF current panel to show raw structure
+
+## How to Run
+
+```bash
+cd /home/prokophapala/git/FireCore
+bash make.sh  # Rebuild Fortran library
+python3 tests/pyFireball/test_stm_gf_dyson_2mol.py \
+    --xyz_tip ../../cpp/common_resources/xyz/CH2O.xyz \
+    --xyz_smp ../../cpp/common_resources/xyz/PTCDA.xyz \
+    --n 80 \
+    --ztip 3.0 \
+    --zmid 1.5 \
+    --size 20.0 \
+    --nmax_scf 30 \
+    --tip_mo_list 2 \
+    --smp_mo_list 70 \
+    --outdir export/stm_gf_dyson_2mol_fortran_ref4
+```
+
+## Results
+
+The corrected implementation produces STM images that qualitatively resemble molecular orbitals with reasonable symmetry. The generated images show:
+
+- Proper nodal structure consistent with the molecular orbitals
+- Symmetry preservation consistent with tip and sample orbital symmetry
+- Current patterns that follow the expected lobe structure
+
+Example output:
+- `tests/pyFireball/export/stm_gf_dyson_2mol_fortran_ref4/tip_ch2o__smp_ptcda/fortran_dyson2mol_tipCH2O_MO002_smpPTCDA_MO070_zmid1.50_ztip3.00_tipz000_smpz000.png`
+
+## Angular Symmetry Implementation Lessons
+
+### Critical Issue: Ad-Hoc Slater-Koster Blocks
+Initial implementation used manual if-then-else blocks to construct orbital coupling matrices (Vss, Vsp, Vpp_sig, Vpp_pi) with arbitrary scaling. This approach:
+
+- **Broke symmetry**: Manual angular handling did not preserve proper rotational invariance
+- **Was fragile**: Required special cases for each orbital combination
+- **Was unmaintainable**: Difficult to extend to d-orbitals or more complex basis sets
+
+### Correct Approach: Reuse Fireball's Angular Machinery
+The corrected implementation uses Fireball's canonical two-center integral assembly path:
+
+1. **`interpolate_1d`**: Get radial values from pre-computed tables at reference distance `r0`
+2. **Exponential rescaling**: Apply `exp(-beta*(r-r0))` to extend range for tunneling
+3. **`recover_2c`**: Reconstruct 2D orbital matrix from 1D list using mu/nu lookup tables
+4. **`rotate_fb`**: Rotate matrix from molecular to crystal coordinates using `twister` and `chooser`
+
+This ensures:
+- **Correct angular dependence**: Fireball's rotation machinery handles s, p, d orbitals properly
+- **Rotational invariance**: Symmetry is preserved through proper rotation matrices
+- **Extensibility**: Same code works for any basis set supported by Fireball
+
+### Initialization Requirements
+The corrected path requires Fireball to be initialized in the active process:
+
+- `readinfo()`: Read species information from info.dat
+- `make_munu()`: Build orbital index mappings
+- `readdata_mcweda()`: Load two-center integral tables
+
+Without this initialization, arrays like `index_max2c` are unallocated, causing runtime errors.
+
+## Future Work
+
+### Rigorous Testing Needed
+The current implementation should be tested across:
+- Different molecules (H2O, CH4, benzene, larger organics)
+- Different orbital types (s, p, d if available)
+- Different tip-sample geometries
+- Different transport energies (HOMO, LUMO, mid-gap)
+
+### pyOpenCL Reimplementation
+The Fortran reference should be reimplemented in pyOpenCL for GPU acceleration. Key considerations:
+
+- **Reuse angular logic**: Port `rotate_fb` and `twister` to OpenCL kernels
+- **Parallel scan**: Each workgroup handles one pixel
+- **Shared memory**: Use for small coupling matrices (contact region only)
+- **Batch processing**: Process multiple pixels simultaneously for MD integration
+
+### Relevant Files for pyOpenCL Port
+- **`pyBall/FireballOCL/STM.py`**: Existing STM utilities (overlap calculations)
+- **`pyBall/FireballOCL/cl/hamiltonian.cl`**: Contains `rotate_fb_matrix_sp` for Slater-Koster rotation
+- **`fortran/ROTATIONS/rotate.f90`**: Reference implementation of `rotate_fb`
+- **`fortran/INTERPOLATERS/interpolate_1d.f90`**: Reference for radial interpolation
+- **`fortran/INTERPOLATERS/recover_2c.f90`**: Reference for orbital matrix reconstruction
+
+## Files to Add to Git
+
+Do not forget to add the following new/modified files to git:
+
+1. **`tests/pyFireball/test_stm_gf_dyson_2mol.py`** - Main test script for 2-molecule Dyson STM
+2. **`fortran/MAIN/libFireCore.f90`** - Updated with new `firecore_stm_gf_dyson_2mol_mo_2points` subroutine
+3. **`pyBall/FireCore.py`** - Updated with new Python binding
+
+The test script `tests/pyFireball/test_stm_dyson_fortran.py` appears to be a different/older test and may not need to be added if it's not part of this implementation.

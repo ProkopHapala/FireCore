@@ -764,6 +764,107 @@ class GridProjector(OpenCLBase):
         self.queue.finish()
         return out_t, out_I
 
+
+    def stm_dyson_wg_scan(
+        self,
+        tip_centers,
+        tip_pos_rel,
+        smp_pos,
+        GT_global=None,
+        GS_global=None,
+        uT_source=None,
+        beta=1.0,
+        r0=3.0,
+        rcut=8.0,
+        local_size=32,
+    ):
+        import numpy as np
+        import pyopencl as cl
+
+        tip_centers = np.asarray(tip_centers, dtype=np.float32)
+        tip_pos_rel = np.asarray(tip_pos_rel, dtype=np.float32)
+        smp_pos     = np.asarray(smp_pos, dtype=np.float32)
+
+        if tip_centers.ndim != 2 or tip_centers.shape[1] != 3:
+            raise ValueError(f"stm_dyson_wg_scan: tip_centers must be (n,3), got {tip_centers.shape}")
+        if tip_pos_rel.ndim != 2 or tip_pos_rel.shape[1] != 3:
+            raise ValueError(f"stm_dyson_wg_scan: tip_pos_rel must be (n,3), got {tip_pos_rel.shape}")
+        if smp_pos.ndim != 2 or smp_pos.shape[1] != 3:
+            raise ValueError(f"stm_dyson_wg_scan: smp_pos must be (n,3), got {smp_pos.shape}")
+
+        n_pixels   = int(tip_centers.shape[0])
+        ntip_atoms = int(tip_pos_rel.shape[0])
+        nsmp_atoms = int(smp_pos.shape[0])
+        nt = 4 * ntip_atoms
+        ns = 4 * nsmp_atoms
+
+        if GT_global is None:
+            GT_global = np.eye(nt, dtype=np.complex64)
+        else:
+            GT_global = np.asarray(GT_global)
+        if GS_global is None:
+            GS_global = np.eye(ns, dtype=np.complex64)
+        else:
+            GS_global = np.asarray(GS_global)
+
+        if GT_global.shape != (nt, nt):
+            raise ValueError(f"stm_dyson_wg_scan: GT_global must be ({nt},{nt}), got {GT_global.shape}")
+        if GS_global.shape != (ns, ns):
+            raise ValueError(f"stm_dyson_wg_scan: GS_global must be ({ns},{ns}), got {GS_global.shape}")
+
+        if uT_source is None:
+            uT_source = np.zeros(nt, dtype=np.complex64)
+            uT_source[3] = 1.0 + 0.0j
+        else:
+            uT_source = np.asarray(uT_source)
+        if uT_source.shape != (nt,):
+            raise ValueError(f"stm_dyson_wg_scan: uT_source must be ({nt},), got {uT_source.shape}")
+
+        tip_centers4 = np.c_[tip_centers, np.zeros((n_pixels, 1), dtype=np.float32)].astype(np.float32)
+        tip_pos_rel4 = np.c_[tip_pos_rel, np.zeros((ntip_atoms, 1), dtype=np.float32)].astype(np.float32)
+        smp_pos4     = np.c_[smp_pos,     np.zeros((nsmp_atoms, 1), dtype=np.float32)].astype(np.float32)
+
+        # Pack complex64 -> float2
+        GT_f2 = np.asarray(GT_global, dtype=np.complex64).view(np.float32).reshape(nt*nt, 2)
+        GS_f2 = np.asarray(GS_global, dtype=np.complex64).view(np.float32).reshape(ns*ns, 2)
+        uT_f2 = np.asarray(uT_source, dtype=np.complex64).view(np.float32).reshape(nt, 2)
+
+        mf = cl.mem_flags
+        d_tip_centers = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_centers4)
+        d_tip_pos_rel = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_pos_rel4)
+        d_smp_pos     = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=smp_pos4)
+        d_GT          = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=GT_f2.astype(np.float32))
+        d_GS          = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=GS_f2.astype(np.float32))
+        d_uT          = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=uT_f2.astype(np.float32))
+        d_out         = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=n_pixels * 4)
+
+        self._load_kernels()
+
+        ls = (int(local_size),)
+        gs = (int(n_pixels) * int(local_size),)
+        self.prg.solve_stm_dyson_wg(
+            self.queue, gs, ls,
+            np.int32(n_pixels),
+            d_tip_centers,
+            d_tip_pos_rel,
+            d_smp_pos,
+            np.int32(ntip_atoms),
+            np.int32(nsmp_atoms),
+            d_GT,
+            d_GS,
+            d_uT,
+            np.float32(beta),
+            np.float32(r0),
+            np.float32(rcut),
+            d_out,
+        )
+        self.queue.finish()
+
+        out = np.empty(n_pixels, dtype=np.float32)
+        cl.enqueue_copy(self.queue, out, d_out)
+        self.queue.finish()
+        return out
+
     def mo_overlap_points_exp_sk_2mol(
         self,
         tip_centers,

@@ -4057,3 +4057,96 @@ The subprocess caching approach:
 - Single-molecule version: `tests/pyFireball/test_stm_orbital_rotated.py`
 
 ---
+
+# Implementation Notes: Fortran Dyson STM Reference (2026-04-24)
+
+## Overview
+
+Implemented a CPU-based, non-parallel Fortran reference for the Dyson Green's function STM method using real Fireball Hamiltonians and overlaps for both tip and sample molecules. This serves as a reference implementation for future GPU (pyOpenCL) acceleration.
+
+## Key Implementation Details
+
+### Angular Symmetry: Critical Lesson
+**Do NOT use ad-hoc Slater-Koster blocks.** Initial implementation used manual if-then-else blocks for Vss, Vsp, Vpp_sig, Vpp_pi with arbitrary scaling. This broke symmetry and was unmaintainable.
+
+**Correct approach**: Reuse Fireball's native angular machinery:
+- `interpolate_1d`: Get radial values from pre-computed tables
+- `recover_2c`: Reconstruct 2D orbital matrix from 1D list
+- `rotate_fb`: Rotate using `twister` and `chooser` for s, p, d orbitals
+- Only replace radial part with exponential decay: `exp(-beta*(r-r0))`
+
+This ensures rotational invariance and extensibility to any basis set.
+
+### Files Modified
+
+**Fortran Core:**
+- **`fortran/MAIN/libFireCore.f90`**
+  - Added `firecore_stm_gf_2mol_mo_2points` (lines ~2100-2230)
+  - Uses Fireball's `interpolate_1d`, `recover_2c`, `rotate_fb`
+  - Exponential radial scaling for tunneling range extension
+  - Accepts real atomic species arrays for proper shell metadata
+
+**Python Bindings:**
+- **`pyBall/FireCore.py`**
+  - Added `stm_gf_2mol_mo_2points` binding (lines ~488-521)
+
+**Test Script:**
+- **`tests/pyFireball/test_stm_gf_dyson_2mol.py`**
+  - 2-molecule Dyson STM test with 6-panel visualization
+  - SCF caching for tip and sample
+  - Orbital rotation using Fireball routines
+  - Green's function computation for isolated subsystems
+
+### How to Run
+
+```bash
+cd /home/prokophapala/git/FireCore
+bash make.sh
+python3 tests/pyFireball/test_stm_gf_dyson_2mol.py \
+    --xyz_tip ../../cpp/common_resources/xyz/CH2O.xyz \
+    --xyz_smp ../../cpp/common_resources/xyz/PTCDA.xyz \
+    --n 80 --ztip 3.0 --zmid 1.5 --size 20.0 \
+    --nmax_scf 30 --tip_mo_list 2 --smp_mo_list 70 \
+    --outdir export/stm_gf_dyson_2mol_fortran_ref4
+```
+
+### Results
+Produces STM images with proper nodal structure and symmetry consistent with molecular orbitals. Example output in `export/stm_gf_dyson_2mol_fortran_ref4/`.
+
+## Future pyOpenCL Reimplementation
+
+The Fortran reference should be ported to pyOpenCL for GPU acceleration. Key components to port:
+
+### Kernels to Implement
+1. **Radial interpolation**: Port `interpolate_1d` logic to OpenCL
+2. **Orbital matrix recovery**: Port `recover_2c` with mu/nu lookup
+3. **Rotation**: Port `rotate_fb` / `twister` / `chooser` for s, p, d orbitals
+4. **Exponential scaling**: Apply `exp(-beta*(r-r0))` after interpolation
+
+### Existing Reference Code
+- **`pyBall/FireballOCL/cl/hamiltonian.cl`**: Already has `rotate_fb_matrix_sp` for s+p rotation
+- **`fortran/ROTATIONS/rotate.f90`**: Full reference implementation
+- **`fortran/INTERPOLATERS/interpolate_1d.f90`**: Radial interpolation reference
+- **`fortran/INTERPOLATERS/recover_2c.f90`**: Matrix reconstruction reference
+
+### GPU Parallelization Strategy
+- Each workgroup handles one pixel (tip position)
+- Shared memory for small coupling matrices (contact region only)
+- Batch processing for MD integration (multiple pixels simultaneously)
+- Precompute tip/sample Green's functions on CPU, reuse on GPU
+
+### Testing Required
+Before pyOpenCL port, test Fortran reference across:
+- Different molecules (H2O, CH4, benzene, PTCDA)
+- Different orbital types
+- Different geometries
+- Different transport energies
+
+## Files to Add to Git
+
+Do not forget to add:
+1. **`tests/pyFireball/test_stm_gf_dyson_2mol.py`** - Main test script
+2. **`fortran/MAIN/libFireCore.f90`** - Updated with new Dyson subroutine
+3. **`pyBall/FireCore.py`** - Updated with new binding
+
+The script `tests/pyFireball/test_stm_dyson_fortran.py` appears to be a separate/older test and may not need to be added if not part of this implementation.
