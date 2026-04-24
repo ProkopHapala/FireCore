@@ -865,6 +865,150 @@ class GridProjector(OpenCLBase):
         self.queue.finish()
         return out
 
+    def stm_gf_dyson_2mol_mo_scan(
+        self,
+        tip_centers,
+        tip_pos_rel,
+        smp_pos,
+        GT_global,
+        GS_global,
+        c_tip,
+        c_smp,
+        tip_norb_per,
+        smp_norb_per,
+        beta=1.0,
+        r0=3.0,
+        rcut=8.0,
+    ):
+        """GPU GF-Dyson MO scan for 2-molecule STM (work-item per pixel).
+
+        Math: amp(p) = c_tip^H · GT · M_ts(p) · GS · c_smp
+
+        Precomputes on CPU:
+          v_S = GS @ c_smp   (remapped Fortran→OCL [px,py,pz,s] order)
+          u_T = c_tip^H @ GT (remapped Fortran→OCL [px,py,pz,s] order)
+
+        GPU kernel computes M_ts via simplified exponential SK hopping and
+        accumulates amp = Σ_{it,is} u_T[it] * V_{it,is} * v_S[is].
+
+        Args:
+            tip_centers:  (n_pixels, 3) float32 tip center positions in Å
+            tip_pos_rel:  (ntip_atoms, 3) float32 tip atom positions relative to center
+            smp_pos:      (nsmp_atoms, 3) float32 sample atom positions in Å
+            GT_global:    (tip_norb_fort, tip_norb_fort) complex Green's fcn (Fortran conv)
+            GS_global:    (smp_norb_fort, smp_norb_fort) complex Green's fcn (Fortran conv)
+            c_tip:        (tip_norb_fort,) complex MO coefficients (Fortran conv)
+            c_smp:        (smp_norb_fort,) complex MO coefficients (Fortran conv)
+            tip_norb_per: (ntip_atoms,) int32 orbitals per tip atom
+            smp_norb_per: (nsmp_atoms,) int32 orbitals per sample atom
+            beta, r0, rcut: exponential SK parameters
+
+        Returns:
+            out: (n_pixels,) float32 current intensity |amp|^2
+        """
+        import numpy as np
+        import pyopencl as cl
+
+        tip_centers = np.asarray(tip_centers, dtype=np.float32)
+        tip_pos_rel = np.asarray(tip_pos_rel, dtype=np.float32)
+        smp_pos     = np.asarray(smp_pos, dtype=np.float32)
+        GT_global   = np.asarray(GT_global, dtype=np.complex128)
+        GS_global   = np.asarray(GS_global, dtype=np.complex128)
+        c_tip       = np.asarray(c_tip, dtype=np.complex128)
+        c_smp       = np.asarray(c_smp, dtype=np.complex128)
+        tip_norb_per = np.asarray(tip_norb_per, dtype=np.int32)
+        smp_norb_per = np.asarray(smp_norb_per, dtype=np.int32)
+
+        n_pixels    = int(tip_centers.shape[0])
+        ntip_atoms  = int(tip_pos_rel.shape[0])
+        nsmp_atoms  = int(smp_pos.shape[0])
+
+        # --- Remap Fortran→OCL utility ---
+        # Fortran per-atom: [s, py, pz, px] (Ortega)
+        # OpenCL Grid:      [px, py, pz, s]  (Cartesian, padded to 4)
+        _PERM_F2O = np.array([3, 1, 2, 0], dtype=np.int32)  # Fort[r] → OCL[perm[r]]
+
+        def _remap_vec_fortran_to_ocl(v_fort, norb_per):
+            natoms = len(norb_per)
+            v_ocl = np.zeros(natoms * 4, dtype=np.complex128)
+            starts = np.zeros(natoms + 1, dtype=np.int32)
+            starts[1:] = np.cumsum(norb_per)
+            for ia in range(natoms):
+                no = int(norb_per[ia])
+                i0f = int(starts[ia])
+                i0o = ia * 4
+                if no == 1:
+                    v_ocl[i0o + 3] = v_fort[i0f]  # s → OCL slot 3
+                elif no == 4:
+                    for k in range(4):
+                        v_ocl[i0o + k] = v_fort[i0f + int(_PERM_F2O[k])]
+                else:
+                    v_ocl[i0o:i0o + no] = v_fort[i0f:i0f + no]
+            return v_ocl
+
+        # Precompute vectors in Fortran convention
+        v_S_fort = GS_global @ c_smp       # (smp_norb_fort,)
+        u_T_fort = np.conj(c_tip) @ GT_global  # (tip_norb_fort,)  row vector result
+
+        # Remap to OCL [px,py,pz,s] order
+        v_S_ocl = _remap_vec_fortran_to_ocl(v_S_fort, smp_norb_per)
+        u_T_ocl = _remap_vec_fortran_to_ocl(u_T_fort, tip_norb_per)
+
+        # Build orb2atom in OpenCL convention (padded to 4 per atom)
+        tip_norb_ocl = ntip_atoms * 4
+        smp_norb_ocl = nsmp_atoms * 4
+        tip_orb2atom_ocl = np.repeat(np.arange(ntip_atoms, dtype=np.int32), 4)
+        smp_orb2atom_ocl = np.repeat(np.arange(nsmp_atoms, dtype=np.int32), 4)
+
+        # Pack float4 buffers
+        tip_centers4 = np.c_[tip_centers, np.zeros((n_pixels, 1), dtype=np.float32)].astype(np.float32)
+        tip_pos_rel4 = np.c_[tip_pos_rel, np.zeros((ntip_atoms, 1), dtype=np.float32)].astype(np.float32)
+        smp_pos4     = np.c_[smp_pos,     np.zeros((nsmp_atoms, 1), dtype=np.float32)].astype(np.float32)
+
+        # Pack complex → float2
+        uT_f2 = np.asarray(u_T_ocl, dtype=np.complex64).view(np.float32).reshape(tip_norb_ocl, 2)
+        vS_f2 = np.asarray(v_S_ocl, dtype=np.complex64).view(np.float32).reshape(smp_norb_ocl, 2)
+
+        mf = cl.mem_flags
+        d_tip_centers = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_centers4)
+        d_tip_pos_rel = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_pos_rel4)
+        d_smp_pos     = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=smp_pos4)
+        d_tip_o2a     = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_orb2atom_ocl.astype(np.int32))
+        d_smp_o2a     = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=smp_orb2atom_ocl.astype(np.int32))
+        d_uT = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=uT_f2.astype(np.float32))
+        d_vS = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=vS_f2.astype(np.float32))
+        d_out = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=n_pixels * 4)
+
+        self._load_kernels()
+
+        gs = (int(n_pixels),)
+        ls = None
+        self.prg.stm_gf_dyson_2mol_mo_scan(
+            self.queue, gs, ls,
+            np.int32(n_pixels),
+            d_tip_centers,
+            d_tip_pos_rel,
+            d_smp_pos,
+            d_tip_o2a,
+            d_smp_o2a,
+            d_uT,
+            d_vS,
+            np.int32(ntip_atoms),
+            np.int32(nsmp_atoms),
+            np.int32(tip_norb_ocl),
+            np.int32(smp_norb_ocl),
+            np.float32(float(beta)),
+            np.float32(float(r0)),
+            np.float32(float(rcut)),
+            d_out,
+        )
+        self.queue.finish()
+
+        out = np.empty(n_pixels, dtype=np.float32)
+        cl.enqueue_copy(self.queue, out, d_out)
+        self.queue.finish()
+        return out
+
     def mo_overlap_points_exp_sk_2mol(
         self,
         tip_centers,

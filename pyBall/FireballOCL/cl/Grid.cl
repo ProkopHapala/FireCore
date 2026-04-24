@@ -1343,3 +1343,100 @@ __kernel void solve_stm_dyson_wg(
         out_current[pixel_id] = current;
     }
 }
+
+// ======================================================================
+// STM GF Dyson 2-molecule MO scan — full-matrix GF approach (work-item per pixel)
+//
+// Math: amp = c_tip^H · GT · M_ts · GS · c_smp
+// Precompute on CPU:
+//   v_S = GS @ c_smp        (smp_norb_ocl vector, remapped to OCL [px,py,pz,s] order)
+//   u_T = c_tip^H @ GT      (tip_norb_ocl vector, remapped to OCL [px,py,pz,s] order)
+//
+// On GPU per pixel:
+//   amp = Σ_{it∈tip, is∈smp} u_T[it] · H_hop(it,is) · v_S[is]
+//   out = |amp|²
+//
+// H_hop is computed via simplified exponential Slater-Koster:
+//   f = exp(-beta*(r-r0))
+//   SK with Vss=1, Vsp=1, Vps=1, Vpp_sig=1, Vpp_pi=0.2 all multiplied by f
+//
+// Orbital convention in this kernel: OpenCL Grid order [px,py,pz,s] per atom.
+// All vectors (u_T, v_S) and orb2atom arrays are already remapped on CPU.
+// ======================================================================
+__kernel void stm_gf_dyson_2mol_mo_scan(
+    const int n_points,
+    __global const float4* tip_centers,
+    __global const float4* tip_pos_rel,
+    __global const float4* smp_pos,
+    __global const int* tip_orb2atom,     // [tip_norb_ocl] 0-based atom index per orbital
+    __global const int* smp_orb2atom,     // [smp_norb_ocl]
+    __global const float2* u_T,            // [tip_norb_ocl] c_tip^H @ GT  in OCL order
+    __global const float2* v_S,            // [smp_norb_ocl] GS @ c_smp   in OCL order
+    const int ntip_atoms,
+    const int nsmp_atoms,
+    const int tip_norb_ocl,                // = ntip_atoms * 4
+    const int smp_norb_ocl,                // = nsmp_atoms * 4
+    const float beta,
+    const float r0,
+    const float rcut,
+    __global float* out_current
+) {
+    const int ip = get_global_id(0);
+    if (ip >= n_points) return;
+
+    const float3 cen = tip_centers[ip].xyz;
+    const float rcut2 = rcut * rcut;
+    float2 amp = (float2)(0.0f, 0.0f);
+
+    for (int it = 0; it < tip_norb_ocl; it++) {
+        const int ia = tip_orb2atom[it];
+        if (ia < 0 || ia >= ntip_atoms) continue;
+        const float2 uTit = u_T[it];
+        if (uTit.x == 0.0f && uTit.y == 0.0f) continue;  // skip zero-padded orbitals (e.g. H px,py,pz)
+
+        const float3 pt = cen + tip_pos_rel[ia].xyz;
+        const int ot = it & 3;  // 0=px, 1=py, 2=pz, 3=s in OCL convention
+
+        for (int is = 0; is < smp_norb_ocl; is++) {
+            const int ja = smp_orb2atom[is];
+            if (ja < 0 || ja >= nsmp_atoms) continue;
+            const float2 vSis = v_S[is];
+            if (vSis.x == 0.0f && vSis.y == 0.0f) continue;
+
+            const float3 ps = smp_pos[ja].xyz;
+            const float3 d = pt - ps;
+            const float r2 = dot(d, d);
+            if (r2 > rcut2 || r2 < 1e-16f) continue;
+
+            const float r = sqrt(r2);
+            const float invr = 1.0f / r;
+            const float l = d.x * invr;
+            const float m = d.y * invr;
+            const float n = d.z * invr;
+            const float f = exp(-beta * (r - r0));
+            const int os = is & 3;
+
+            // Simplified exponential SK hopping (real, symmetric)
+            float V = 0.0f;
+            if (ot == 3 && os == 3) {
+                V = f;                                   // Vss
+            } else if (ot == 3 && os != 3) {
+                V = f * ((os == 0) ? l : (os == 1) ? m : n);  // Vsp * dir
+            } else if (ot != 3 && os == 3) {
+                V = f * ((ot == 0) ? l : (ot == 1) ? m : n);  // Vps * dir
+            } else {
+                const float ut = (ot == 0) ? l : (ot == 1) ? m : n;
+                const float us = (os == 0) ? l : (os == 1) ? m : n;
+                const float Vpp_pi = 0.2f * f;
+                const float dV = f - Vpp_pi;              // Vpp_sig - Vpp_pi
+                const float delta = (ot == os) ? 1.0f : 0.0f;
+                V = Vpp_pi * delta + dV * ut * us;
+            }
+
+            // amp += u_T[it] * V * v_S[is]   (V is real, stored as scalar)
+            amp.x += uTit.x * V * vSis.x - uTit.y * V * vSis.y;
+            amp.y += uTit.x * V * vSis.y + uTit.y * V * vSis.x;
+        }
+    }
+    out_current[ip] = amp.x * amp.x + amp.y * amp.y;
+}

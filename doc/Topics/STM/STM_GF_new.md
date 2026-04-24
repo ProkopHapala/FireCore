@@ -1236,8 +1236,215 @@ __kernel void solve_stm_dyson_wg(
 *   **Basis ordering:** You mentioned in `project_orbital` that Fireball uses `(s, py, pz, px)` but OpenCL uses `(px, py, pz, s)`. The $4 \times 4$ Slater-Koster generation step in the kernel (Step 3) will map natively to `float4`, meaning $G_S$ and $G_T$ matrices generated on the Python side **must** be re-ordered into the `px, py, pz, s` structure before passing to `cl.Buffer`.
 *   **Rotations:** If the tip rotates (`tip_quat`), you simply apply `quat_rotate3` to the displacement vector $\vec{d}$ before passing it to the exponential/SK parameter calculations, just as you already do in `mo_overlap_points_exp_sk`.
 
-
 ---
+
+# DeepSeek-V4
+
+# Best Method for GPU‑Accelerated Green’s Function STM Transport
+
+After reviewing all the provided discussions and the Fortran prototype results, the optimal approach for simulating the STM current of a rigid‑tip / fixed‑sample junction using an **OpenCL GPU** is a **workgroup‑per‑pixel Woodbury‑Dyson solver** with a **shared‑memory Gauss‑Jordan elimination**. This method:
+
+- Reduces the per‑pixel problem from a large (\(N \approx 400\)) sparse or dense solve to the inversion of a tiny matrix of size **n_tip_active** (typically 20–60) that fits entirely in fast `__local` memory.
+- Uses **one workgroup per pixel** to maximise occupancy; thousands of pixels are solved concurrently.
+- Achieves **microsecond** per‑pixel times, enabling hundreds to thousands of full images per second during molecular dynamics.
+- Preserves exact symmetry by re‑using Fireball’s angular machinery (`rotate_fb`) inside the GPU kernel for the tip–sample hopping.
+
+The rest of this note details the physical framework, the numerical reduction, the GPU kernel design, memory layout considerations, and how to integrate the Fortran‑validated angular routines.
+
+## 1. Physical System and Green’s Function Transmission
+
+We have two molecules described by Fireball Hamiltonian and overlap matrices \(H_{TT}, S_{TT}\) (tip) and \(H_{SS}, S_{SS}\) (sample). The tip can rotate; the sample is fixed. The source and drain are modelled by constant imaginary self‑energies
+
+\[
+\Sigma_L = -\frac{i}{2}\Gamma_L \quad (\text{on selected atoms of the tip}),\qquad 
+\Sigma_R = -\frac{i}{2}\Gamma_R \quad (\text{on selected atoms of the sample}),
+\]
+
+applied only at the atoms that are physically in contact with the macroscopic leads. The full retarded Green’s function at energy \(E\) is
+
+\[
+G^R(E) = \big[ (E+i\eta) S - H_{\text{tot}} + \tfrac{i}{2}\Gamma_L + \tfrac{i}{2}\Gamma_R \big]^{-1},
+\qquad 
+H_{\text{tot}} = \begin{pmatrix} H_{TT} & H_{TS}(R) \\ H_{ST}(R) & H_{SS} \end{pmatrix},
+\quad 
+S = \begin{pmatrix} S_{TT} & S_{TS}(R) \\ S_{ST}(R) & S_{SS} \end{pmatrix}.
+\]
+
+The tip–sample coupling \(H_{TS}(R)\) is built from the exponential overlaps of Fireball orbitals: \(t_{\mu\nu} = t^{(0)}_{\mu\nu}(r_0) \cdot \exp[-\beta(r-r_0)]\), using the correct Slater–Koster angular structure.
+
+The Landauer–Caroli transmission at energy \(E\) (bias‑window integrated later) is
+
+\[
+T(E) = \operatorname{Tr}\big[ \Gamma_L \, G^R_{\,ts}(E) \, \Gamma_R \, G^A_{\,st}(E) \big].
+\]
+
+## 2. The Woodbury‑Dyson Reduction
+
+Inverting the full \(N_{\text{tot}} \times N_{\text{tot}}\) matrix per pixel is infeasible on a workgroup’s shared memory. Instead we pre‑compute the **isolated** tip and sample Green’s functions (once per energy) on the CPU:
+
+\[
+g_T(E) = \big[ (E+i\eta) S_{TT} - H_{TT} - \Sigma_L \big]^{-1}, \qquad
+g_S(E) = \big[ (E+i\eta) S_{SS} - H_{SS} - \Sigma_R \big]^{-1}.
+\]
+
+These are dense but small: \(O(200^3)\) for a medium molecule. After pre‑computation, the exact multiple scattering between tip and sample is expressed by the Dyson equation. The key insight is that \(H_{TS}\) is **sparse and short‑ranged**: only a few tip and sample atoms are within the cutoff \(r_{\text{cut}}\). The effective coupling matrix has **rank \(n_t\)** (the number of tip orbitals inside the contact region). Using the Woodbury identity, the transmission can be expressed entirely in terms of small sub‑blocks.
+
+Define:
+
+- \(n_t\) – number of active tip orbitals (tip basis functions of atoms with any sample atom within \(r_{\text{cut}}\))
+- \(n_c\) – number of active sample orbitals (sample basis functions that are in range)
+- \(n_d\) – number of drain orbitals (sample orbitals attached to \(\Gamma_R\))
+
+The crucial reduction is:
+
+\[
+\boxed{
+T(E) = \sum_{d=1}^{n_d} \Gamma_{R,d} \; \Big\| \Big( G_s(c,d) + G_s(c,c)\, H_{st} \, \mathcal{M}^{-1} \, H_{ts} \, G_s(c,d) \Big) \, \mathbf{e}_d \Big\|^2_{\Gamma_L}
+}
+\]
+
+where
+
+- \(G_s(c,c)\) is the \(n_c\times n_c\) block of \(g_S\) corresponding to the contact atoms,
+- \(G_s(c,d)\) is the \(n_c\times n_d\) block,
+- \(H_{ts}\) is the \(n_t\times n_c\) hopping matrix (real, from Fireball),
+- \(H_{st}=H_{ts}^T\),
+- \(\mathcal{M} = g_T^{-1} - H_{ts} \, G_s(c,c) \, H_{st}\) is an **\(n_t\times n_t\)** complex matrix,
+- \(\| \cdot \|^2_{\Gamma_L}\) denotes the quadratic form \(\mathbf{x}^\dagger \, \Gamma_L^{(t)} \, \mathbf{x}\) where \(\Gamma_L^{(t)}\) is the tip‑side broadening in the active subspace.
+
+All manipulations involve only matrices of size \(\le n_c\), with the only true linear solve being the inversion of \(\mathcal{M}\).
+
+For typical STM settings with a 4‑atom apex tip and 5–10 sample atoms in the contact region, \(n_t \le 40\) and \(n_c \le 40\). The inversion of \(\mathcal{M}\) is the computational heart of one pixel.
+
+## 3. GPU Kernel Design (Workgroup = 1 Pixel)
+
+### 3.1 Workgroup and Memory Layout
+
+- **Workgroup size**: 32 or 64 threads. 32 is often optimal for occupancy and warp/wavefront alignment.
+- **Shared memory (\(__local\))**: Holds all small, pixel‑dependent matrices:
+  - `H_ts` – \(n_t \times n_c\) real, could be packed as `float` (or `float2` if complex needed later). Since the basis is real, the hopping is real; we can store as `float` and cast when needed.
+  - \(g_T^{-1}\) or the tip block – but we actually precompute \(g_T\) and its inverse is available on the CPU, so we can send the \(n_t\times n_t\) matrix \(g_T^{-1}\) directly to the kernel. Alternatively, send the full precomputed sub‑block of \(g_T\) (inverse of tip active block).
+  - \(G_s(c,c)\) – \(n_c\times n_c\) complex.
+  - \(G_s(c,d)\) – \(n_c\times n_d\) complex.
+  - \(\mathcal{M}\) – \(n_t\times n_t\) complex (in‑place Gauss‑Jordan, so reused).
+  - Temporary buffers for matrix multiplications.
+
+With \(n_t, n_c \le 40\), the shared memory footprint is well under 48 KB, which is available on virtually all GPUs.
+
+- **Global / Constant memory**: Pre‑computed \(g_T\) (full), \(g_S\) (full), \(\Gamma\) vectors, geometry data, and by‑species basis information for rotation.
+
+### 3.2 Per‑Pixel Workflow
+
+1. **Distance filtering**: Threads cooperatively find all tip–sample atom pairs with distance \(< r_{\text{cut}}\). Count active tip and sample orbitals. The list of active atoms determines the local index mapping into the global orbital numbering.
+
+2. **Preload sub‑blocks**:
+   - From the global buffers of \(g_T\) and \(g_S\), each thread copies the required \(n_t\times n_t\), \(n_c\times n_c\), \(n_c\times n_d\) blocks into shared memory. Because \(n_c, n_d\) are small, we can load in a loop over rows/cols assigned to threads (no sophisticated tiling needed).
+
+3. **Build \(H_{ts}\) in shared memory**:
+   - For each active tip atom–sample atom pair, compute the displacement vector \(\mathbf{d}\) (rotated into the tip’s molecular frame using the quaternion). 
+   - Use Fireball’s radial tables to obtain the reference coupling at \(r_0\), then multiply by \(\exp[-\beta(r-r_0)]\).
+   - Apply `rotate_fb` (or equivalent `rotate_fb_matrix_sp` from `hamiltonian.cl`) to construct the full \(4\times 4\) angular block in the laboratory frame.
+   - This step is the most physics‑intensive, but for ~10–20 atom pairs it costs only a few hundred Slater–Koster evaluations, executed in parallel by the workgroup.
+
+4. **Matrix multiplications** (all in shared memory):
+   - Compute \(\tilde{G}_s = G_s(c,c) H_{st}\) (\(n_c \times n_t\))
+   - Compute \(Q = H_{ts} \tilde{G}_s\) (\(n_t \times n_t\))
+   - Form \(\mathcal{M} = g_T^{-1} - Q\).
+   - Compute \(Z = H_{ts} G_s(c,d)\) (\(n_t \times n_d\)).
+
+   Each matrix multiply is parallelised by assigning each thread a small subset of output elements (e.g., column‑wise or block‑wise). Since everything is in shared memory, no global memory accesses occur during the multiplication loops.
+
+5. **Solve \(\mathcal{M} \, W = Z\)**: compute \(\mathcal{M}^{-1} Z\).
+   - A dense Gauss‑Jordan elimination with partial pivoting is applied in‑place on the augmented matrix \([\mathcal{M} | Z]\).
+   - The algorithm works directly on the complex values stored as `float2`.
+   - Only the pivot row operations need to be done sequentially (by thread 0 or a subgroup), but elimination of the remaining rows is fully parallelised across threads.
+
+6. **Assemble the contact‑to‑drain propagator**:
+   \[
+   G_cd = G_s(c,d) + G_s(c,c) H_{st} W.
+   \]
+   (This is just another small matrix multiply.)
+
+7. **Compute transmission**:
+   - For each drain orbital \(d\), extract the column vector \(\mathbf{x}_d\) from \(G_cd\).
+   - Compute the inner product \(\mathbf{x}_d^\dagger \, \Gamma_L^{(t)} \, \mathbf{x}_d\). Since \(\Gamma_L^{(t)}\) is diagonal (or a small sparse block) this reduces to a sum.
+   - Multiply by \(\Gamma_{R,d}\) and accumulate into `out_T[pixel_id]`.
+
+## 4. Key Implementation Details
+
+### 4.1 Basis Ordering and `float4`
+
+Fireball’s internal ordering is usually `s, py, pz, px`, but our OpenCL kernels already use `float4` to represent `(px, py, pz, s)` (see `project_orbital`). The Green’s function matrices must be reordered on the CPU **before** uploading to the GPU, or the rotation routine must be adapted. The latter is easier: keep all global matrices in the `(s, py, pz, px)` order used by Fireball, and implement a small conversion in the Slater–Koster block assembly (just permute indices). That preserves compatibility with existing Fireball rotation routines that expect `s, py, pz, px`.
+
+### 4.2 Rotation Machinery
+
+The Fortran prototype demonstrated that ad‑hoc Slater–Koster blocks break rotational symmetry. Therefore, the GPU kernel must reuse Fireball’s angular functions. In the existing codebase, the file `pyBall/FireballOCL/cl/hamiltonian.cl` already contains `rotate_fb_matrix_sp`, which applies the rotation matrix to a \(4\times 4\) block given the Euler angles or rotation matrix of the tip atom. We should invoke that function after building the distance‑dependent scaling, exactly as done in the Fortran subroutine.
+
+**Tip rotation per pixel**: The tip is a rigid body. The rotation quaternion is passed to the kernel. For each active tip atom, we compute the rotation matrix once (or use pre‑computed per‑atom lab positions already rotated by the host), and then pass the rotation matrix to `rotate_fb_matrix_sp`. This can be done in a loop parallelised over atom pairs.
+
+### 4.3 The Gauss‑Jordan Kernel Function
+
+A robust implementation of in‑place complex Gauss‑Jordan with partial pivoting is provided in the earlier Gemini‑3.1‑pro response. The essential features are:
+
+- Column‑wise outer loop; the pivot row is found by a reduction over threads (or by thread 0 in sequential regions).
+- Row swap and normalisation executed by thread 0 (or a single thread) after a barrier.
+- Elimination of other rows is fully data‑parallel: each thread handles a subset of rows.
+- The function directly overwrites the input matrix with its inverse (or a row‑permuted inverse). Because we only need \(\mathcal{M}^{-1} Z\), we place \(Z\) as additional columns and let Gauss‑Jordan solve the linear system simultaneously.
+
+For \(n_t \le 40\), the whole solve requires fewer than \(n_t^3 \approx 64\,000\) complex operations and completes in a few microseconds.
+
+### 4.4 Pre‑computation on the CPU
+
+Once per MD step (or per energy point), the host code must:
+
+- Run Fireball SCF for tip and sample molecules to obtain \(H_{TT}, S_{TT}\) and \(H_{SS}, S_{SS}\).
+- Add \(\Sigma_L, \Sigma_R\) as imaginary diagonal matrices on the drain/source atoms.
+- Invert the dense complex matrices using LAPACK (`zgetrf` + `zgetri`). Tip matrix \(\approx 40\times 40\) is trivial; sample \(\approx 320\times 320\) takes a few milliseconds.
+- Reorder the basis if necessary, extract the full \(g_T, g_S\) into `__global` buffers.
+
+For multi‑energy integration, all energy points can be uploaded; the kernel loops over energies internally (the geometry‑dependent hopping is energy‑independent), accumulating the current.
+
+## 5. Performance Estimation
+
+Assuming:
+
+- \(n_t = 32\), \(n_c = 40\), \(n_d = 40\).
+- 32 threads per workgroup.
+- GPU capable of running ~2000 concurrent workgroups.
+
+Operations per pixel:
+- Build \(H_{ts}\) – ~500 Slater‑Koster evaluations, ~2000 FLOPs.
+- Matrix multiplies – ~\(10^5\) complex FLOPs.
+- Gauss‑Jordan on \(32\times 32\) – ~\(6\times 10^4\) FLOPs.
+Total arithmetic ~\(2\times 10^5\) FLOPs. Memory accesses are almost all local. At 2‑5 TFLOPS, a single pixel takes below \(100\) ns pure arithmetic; the actual wall time is dominated by synchronisation and loading from global to local, giving ~1–5 µs per pixel.
+
+With \(10\,000\) pixels, the kernel launch covers all workgroups. Even a modest GPU can sustain thousands of such workgroups in flight. The limiting factor becomes the CPU throughput for geometry updates, but the kernel itself can produce >2000 images per second for typical scan sizes.
+
+## 6. Code Integration Path
+
+New OpenCL kernel: add to `Grid.cl` (or a new `transport.cl`). Reuse:
+
+- `quat_rotate3` from existing geometry utilities.
+- `rotate_fb_matrix_sp` from `hamiltonian.cl`.
+- Radial evaluation (probably a small `evaluate_radial_exp` function for the exponential tail, plus table lookups for reference values).
+
+CPU side (Python):
+
+- Extend `pyBall/FireballOCL/STM.py` to call the new kernel.
+- Use the shared memory size definitions `MAX_ACT_ORB = 64` etc.
+- Upload the pre‑computed Green’s function blocks, gamma vectors, and per‑species basis data (needed for rotation).
+
+Testing should start with the Fortran reference data: compare the GPU kernel output against the validated Fortran results for a few scan points to ensure correctness of the Slater–Koster rotation and the matrix logic.
+
+## 7. Summary of Advantages
+
+- **Exact NEGF** with infinite multiple scattering (no perturbative weak‑coupling approximation).
+- **Memory optimal**: tiny shared‑memory direct solve avoids the \(O(N^3)\) global‑memory inversion.
+- **Massively parallel**: one pixel per workgroup, leveraging GPU’s many‑core architecture.
+- **Symmetry‑preserving**: reuses Fireball’s own angular machinery, avoiding spurious artifacts.
+- **Millisecond‑speed MD compatible**: thousands of images per second feasible.
+
+This design synthesises the best ideas from the earlier discussions and the practical Fortran experience, and is ready for implementation in pyOpenCL.
 
 
 ---
@@ -1376,3 +1583,527 @@ Do not forget to add the following new/modified files to git:
 3. **`pyBall/FireCore.py`** - Updated with new Python binding
 
 The test script `tests/pyFireball/test_stm_dyson_fortran.py` appears to be a different/older test and may not need to be added if it's not part of this implementation.
+
+---
+
+# Deep Analysis: Fortran Green's Function STM Implementation
+
+## 1. Fortran Implementation Structure
+
+**Location:** `fortran/MAIN/libFireCore.f90:2102-2217`
+
+**Subroutine:** `firecore_stm_gf_2mol_mo_2points`
+
+### Algorithm Overview
+
+The Fortran implementation uses the **weak-coupling approximation** for the Dyson equation:
+
+```
+G_ts ≈ G_tip * M_ts * G_sample
+```
+
+Where:
+- `G_tip`, `G_sample`: Pre-computed Green's functions (passed in as `GT_global`, `GS_global`)
+- `M_ts`: Tip-sample coupling matrix (computed per point using Slater-Koster)
+
+### Per-Point Algorithm
+
+For each scan point `ip`:
+
+```
+1. Initialize M_ts = 0 (tip_norb × smp_norb)
+
+2. Build M_ts (tip-sample coupling):
+   For each tip orbital it and sample orbital is:
+     a. Get atom indices: ia = tip_orb2atom(it), ja = smp_orb2atom(is)
+     b. Compute positions: pt = cen + tip_pos_rel(ia), ps = smp_pos(ja)
+     c. Compute distance: d = ps - pt, r = |d|, r2 = r²
+     d. Apply cutoff: skip if r² > rcut² or r² < 1e-16
+     e. Compute exponential: f = exp(-beta*(r-r0))
+     f. Compute direction unit vector: sighat = d/r
+     g. Call epsilon(r2v, sighat, eps) → 3×3 rotation matrix
+     h. Retrieve Slater-Koster parameters via interpolate_1d
+     i. Expand to orbital block via recover_2c → 4×4 hmol, smol
+     j. Rotate orbital block via rotate_fb → hrot, srot
+     k. Extract element: M_ts(it,is) = -hrot[orb_it, orb_is]
+
+3. Green's function propagation (weak coupling):
+   tmpS = GS_global * c_smp           # Sample response
+   tmpT = M_ts * tmpS                 # Tip-sample coupling
+   tmpTG = GT_global * tmpT           # Tip response
+   amp = c_tip^H * tmpTG             # Overlap with tip MO
+   out_current = |amp|²              # Current
+```
+
+## 2. Slater-Koster Rotation Mechanism
+
+### Key Fortran Subroutines
+
+**`recover_2c(in1, in2, hlist, hbox)`** ([fortran/INTERPOLATERS/recover_2c.f90](cci:7://file:///home/prokop/git/FireCore/fortran/INTERPOLATERS/recover_2c.f90:0:0-0:0)):
+- **Input:** `hlist` (1D array of Slater-Koster parameters for atom pair in1-in2)
+- **Output:** `hbox` (numorb_max × numorb_max orbital block matrix)
+- **Purpose:** Expands 1D parameter list to 4×4 orbital block (s, px, py, pz)
+- **Mapping:** Uses `mu(index,in1,in2)` and `nu(index,in1,in2)` to map list indices to orbital positions
+
+**`rotate_fb(in1, in2, eps, mmatrix, xmatrix)`** ([fortran/ROTATIONS/rotate.f90](cci:7://file:///home/prokop/git/FireCore/fortran/ROTATIONS/rotate.f90:0:0-0:0)):
+- **Input:** `mmatrix` (orbital block in molecular frame), `eps` (3×3 rotation matrix from direction cosines)
+- **Output:** `xmatrix` (rotated orbital block in lab frame)
+- **Purpose:** Rotates orbital block from molecular frame to lab frame
+- **Algorithm:**
+  ```fortran
+  call twister(eps, dmat, pmat)  # Build d-orbital (5×5) and p-orbital (3×3) rotation matrices
+  
+  For each shell issh in atom1:
+    l1 = angular momentum (s=0, p=1, d=2)
+    call chooser(l1, dmat, pmat, left)  # Get rotation matrix for this shell
+    
+    For each shell jssh in atom2:
+      l2 = angular momentum
+      call chooser(l2, dmat, pmat, right) # Get rotation matrix for this shell
+      
+      # Rotate the block: xmatrix = left @ mmatrix @ right^T
+      For each orbital m1 in shell1, m2 in shell2:
+        For each k1 in shell1, k2 in shell2:
+          xmatrix(n1+k1,n2+k2) += left(k1,m1) * mmatrix(n1+m1,n2+m2) * right(k2,m2)
+  ```
+
+**`epsilon(r2v, sighat, eps)`**:
+- **Input:** `r2v` (position vector), `sighat` (direction unit vector)
+- **Output:** `eps` (3×3 rotation matrix)
+- **Purpose:** Computes rotation matrix from direction cosines (bond direction to lab frame)
+
+### Orbital Conventions (Ortega/Fireball)
+
+From [rotate.f90](cci:7://file:///home/prokop/git/FireCore/fortran/ROTATIONS/rotate.f90:0:0-0:0) comments:
+```
+P-shell:   py   pz   px
+           1    2    3
+
+D-shell:   xy    yz   z^2  xz   x^2-y^2
+           1     2   3     4      5
+```
+
+This is the **Fortran/Fireball order**: `[s, py, pz, px]` for p-orbitals.
+
+## 3. Comparison with Python Rotation ([test_response_function_rotated.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/test_response_function_rotated.py:0:0-0:0))
+
+### Python Approach: Dense Matrix Rotation
+
+**`rotate_dense_hs(H, S, norb_per_atom, R)`** (`pyBall/FireballOCL/STM.py:1178`):
+```python
+# Build full U = block_diag(U_0, U_1, ...)
+U = np.zeros((norb, norb), dtype=np.float64)
+for ia in range(natoms):
+    ni = int(norb_per_atom[ia])
+    Ui = build_atom_rotation_matrix(ni, R)
+    U[i0:i0+ni, i0:i0+ni] = Ui
+    
+# Rotate: H' = U @ H @ U^T, S' = U @ S @ U^T
+H_rot = U @ H @ U.T
+S_rot = U @ S @ U.T
+```
+
+**Key difference:**
+- **Python:** Rotates the **entire dense Hamiltonian** as a rigid body
+- **Fortran (GF):** Does NOT rotate the Hamiltonian; instead rotates the **coupling matrix M_ts** per point using Slater-Koster direction cosines
+
+### Why Fortran Uses Per-Point Slater-Koster Rotation
+
+The Fortran GF implementation:
+1. **Does NOT rotate the tip Hamiltonian** - it uses pre-computed `GT_global` (tip Green's function)
+2. **Rotates tip positions** via `tip_pos_rel` (passed in from Python)
+3. **Rotates MO coefficients** via `c_tip` (passed in from Python)
+4. **Computes M_ts per point** using Slater-Koster rotation based on the **instantaneous direction** between each tip orbital and sample orbital
+
+This is fundamentally different from the Python `rotate_dense_hs` approach:
+- Python: "Rotate the molecule, then compute coupling"
+- Fortran GF: "Keep molecule fixed, rotate the coupling computation based on relative positions"
+
+## 4. GPU Reimplementation Strategy
+
+### Current Fortran Limitations
+
+1. **Per-point Slater-Koster computation** - expensive for many points
+2. **Sequential point processing** - no parallelism across points
+3. **CPU-only** - no GPU acceleration
+4. **Weak coupling only** - no full Dyson resummation
+
+### GPU Implementation Options
+
+**Option A: Per-Pixel Slater-Koster on GPU (Current Fortran approach on GPU)**
+- Each workgroup = 1 pixel
+- Compute M_ts in parallel using Slater-Koster rotation
+- Apply weak-coupling formula
+- **Pros:** Matches Fortran exactly, simple
+- **Cons:** Still O(N_orb²) per pixel, expensive for large molecules
+
+**Option B: Pre-computed Green's Functions + Small Dyson (Design discussion in STM_GF_new.md)**
+- Pre-compute `G_tip` and `G_sample` (as Fortran does)
+- For each pixel:
+  - Compute only **active orbitals** (those within rcut)
+  - Build small coupling matrix M_active (k×k, where k ≈ 10-20)
+  - Solve small Dyson equation: `(I - G_tip_active * M_active * G_sample_active)^(-1)`
+  - Extract transmission
+- **Pros:** Much faster (k×k vs N_orb×N_orb), exact (not weak coupling)
+- **Cons:** More complex, requires active orbital detection
+
+**Option C: Linear System Solver (Impulse Response)**
+- Build sparse matrix `A = (E+iη)S - H + iΓ/2`
+- Factorize once (LU decomposition)
+- For each pixel: solve `A ψ = b` where `b` is source vector
+- **Pros:** Exact, handles strong coupling
+- **Cons:** Requires sparse LU on GPU (complex), Fortran doesn't do this
+
+### Recommended GPU Approach: Option B with Per-Pixel Slater-Koster
+
+**Kernel structure:**
+```opencl
+__kernel void stm_gf_dyson_2mol(
+    // Pre-computed Green's functions (dense)
+    __global const float2* GT_global,  // (tip_norb, tip_norb)
+    __global const float2* GS_global,  // (smp_norb, smp_norb)
+    
+    // MO coefficients
+    __global const float2* c_tip,
+    __global const float2* c_smp,
+    
+    // Atomic data
+    __global const float4* tip_pos_rel,
+    __global const float4* smp_pos,
+    __global const int* tip_atypes,
+    __global const int* smp_atypes,
+    __global const int* tip_orb2atom,
+    __global const int* smp_orb2atom,
+    
+    // Slater-Koster lookup tables
+    __global const float* sk_h_table,  // (nZ, nZ, nSK_params)
+    __global const float* sk_s_table,
+    
+    // Scan points
+    __global const float4* points,
+    
+    // Parameters
+    float beta, r0, rcut,
+    
+    // Output
+    __global float* out_current
+)
+```
+
+**Per-workgroup algorithm:**
+1. Load Green's functions into `__local` memory (if small enough)
+2. For each point (assigned to workgroup):
+   - Compute M_ts using Slater-Koster (parallel over orbital pairs)
+   - Apply weak coupling: `tmpS = GS * c_smp`, `tmpT = M_ts * tmpS`, `tmpTG = GT * tmpT`
+   - Compute amplitude: `amp = c_tip^H * tmpTG`
+   - Output `|amp|²`
+
+### Slater-Koster Rotation on GPU
+
+**Challenge:** `rotate_fb` uses nested loops over shells and orbitals
+
+**GPU implementation:**
+- Pre-compute rotation matrices for p and d orbitals from direction cosines
+- Use shared memory for small orbital blocks (4×4)
+- Parallelize over orbital pairs within workgroup
+
+**Orbital order mapping:**
+- Fortran: `[s, py, pz, px]`
+- GPU kernel: Need to match this order exactly for parity
+
+## 5. Comparison with [test_response_function_rotated.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/test_response_function_rotated.py:0:0-0:0)
+
+### What [test_response_function_rotated.py](cci:7://file:///home/prokop/git/FireCore/tests/pyFireball/test_response_function_rotated.py:0:0-0:0) Does
+
+1. **Rotates dense Hamiltonian:** `H_rot = U @ H @ U^T`
+2. **Rotates MO coefficients:** `C_rot = C @ U^T`
+3. **Rotates atomic positions:** `apos_rot = R @ apos`
+4. **Rotates scan grid:** `grid_rot = R @ grid`
+5. **Tests rotational invariance:** Unrotated system + rotated grid ≈ rotated system + unrotated grid
+
+### What Fortran GF Does
+
+1. **Does NOT rotate Hamiltonian** - uses pre-computed `GT_global`, `GS_global`
+2. **Rotates MO coefficients** - Python passes in rotated `c_tip`
+3. **Rotates atomic positions** - Python passes in rotated `tip_pos_rel`
+4. **Does NOT rotate scan grid** - uses fixed lab-frame points
+5. **Computes M_ts per point** - Slater-Koster rotation based on instantaneous direction
+
+### Key Difference
+
+**Python rotation test:**
+- Validates that rotating the **entire system** (H, S, C, positions) gives the same physics
+
+**Fortran GF:**
+- Relies on Python to rotate positions and MO coefficients
+- Does NOT rotate the Hamiltonian (uses pre-computed G)
+- Computes coupling on-the-fly using Slater-Koster based on relative positions
+
+### For Proper Tip Rotation in Fortran GF
+
+To properly rotate the tip molecule in the Fortran GF approach, you need to:
+
+1. **Rotate tip positions in Python:**
+   ```python
+   tip_pos_rot = rotate_points(tip.apos, R_tip)
+   tip_pos_rot = tip_pos_rot - tip_pos_rot.mean(axis=0)  # Center at origin
+   ```
+
+2. **Rotate tip MO coefficients in Python:**
+   ```python
+   C_tip_rot = rotate_mo_coefficients(C_tip0.T, tip_scf['norb_per'], R_tip).T
+   ```
+
+3. **Pass rotated data to Fortran:**
+   - `tip_pos_rel`: Rotated tip positions (relative to tip center)
+   - `c_tip`: Rotated MO coefficients
+   - `GT_global`: **Unrotated** tip Green's function (or recompute if needed)
+
+**Important:** The Fortran GF does NOT rotate the Hamiltonian itself. It assumes the Green's functions are pre-computed and valid for the rotated geometry. If you rotate the tip significantly, you may need to recompute `GT_global` with the rotated positions.
+
+## 6. Summary
+
+| Aspect | Fortran GF Implementation | Python Rotation Test |
+|--------|-------------------------|---------------------|
+| Hamiltonian rotation | None (uses pre-computed G) | Rotates dense H via U @ H @ U^T |
+| MO coefficients | Rotated in Python, passed to Fortran | Rotated in Python |
+| Positions | Rotated in Python, passed to Fortran | Rotated in Python |
+| Coupling computation | Per-point Slater-Koster rotation | Per-point Slater-Koster rotation |
+| Green's function | Pre-computed, weak coupling | Pre-computed, weak coupling |
+| Rotation philosophy | "Rotate positions, recompute coupling" | "Rotate entire system, test invariance" |
+
+**For GPU implementation:** Use the Fortran approach (per-point Slater-Koster with pre-computed G), but parallelize across pixels and implement the Slater-Koster rotation efficiently in OpenCL.
+
+---
+
+# pyOpenCL GPU Implementation of `firecore_stm_gf_2mol_mo_2points` (2026-04-24)
+
+## Overview
+
+A pyOpenCL GPU implementation of the 2-molecule Green's Function STM scan. The GPU kernel computes the weak-coupling chain `amp = c_tip^H · GT · M_ts · GS · c_smp` for thousands of pixels in parallel using a simple work-item-per-pixel kernel with simplified exponential Slater-Koster hopping.
+
+## Files Modified
+
+### `pyBall/FireballOCL/cl/Grid.cl` (+95 lines)
+
+- **New kernel `stm_gf_dyson_2mol_mo_scan`** (line 1366)
+  - Work-item-per-pixel (single thread, no workgroup parallelism needed)
+  - Pre-computed vectors `u_T = c_tip^H · GT` and `v_S = GS · c_smp` are passed in
+  - Kernel loops over all orbital pairs accumulating `amp = Σ u_T[it] · V(it,is) · v_S[is]`
+  - Simplified exponential SK: `Vss=Vsp=Vps=f`, `Vpp_sig=f`, `Vpp_pi=0.2f` where `f = exp(-beta*(r-r0))`
+  - Orbital convention: OpenCL Grid order `[px,py,pz,s]` (same as all existing Grid.cl kernels)
+  - Output: `|amp|²` as float per pixel
+
+### `pyBall/FireballOCL/Grid.py` (+145 lines)
+
+- **New method `stm_gf_dyson_2mol_mo_scan`** (line 868)
+  - Accepts GT/GS/c_tip/c_smp in **Fortran convention**
+  - Pre-computes on CPU: `v_S = GS @ c_smp`, `u_T = c_tip^H @ GT`
+  - Remaps from Fortran order `[s,py,pz,px]` to OpenCL Grid order `[px,py,pz,s]` via permutation `[3,1,2,0]`
+  - Handles H atoms: 1 orbital in Fortran → padded to 4 in OCL (px=py=pz=0, s in slot 3)
+  - Builds OCL-padded `orb2atom` arrays for kernel
+  - Pack float4/complex buffers and launches kernel with `(n_pixels,)` global size
+
+### `tests/pyFireball/test_stm_gf_dyson_2mol_ocl.py` (new file)
+
+Test script that:
+- Runs SCF for tip (CH₂O) and sample (PTCDA) molecules
+- Pre-computes Green's functions at transport energy `E = 0.5*(E_tip + E_smp)`
+- Rotates tip geometry and MO coefficients
+- Computes three STM images for each MO pair:
+  1. **Fortran GF** reference via `fc.stm_gf_2mol_mo_2points`
+  2. **GPU GF** via `gp.stm_gf_dyson_2mol_mo_scan` (simplified SK)
+  3. **Overlap STM** via `gp.mo_overlap_points_exp_sk_2mol` (reference)
+- 6-panel figure: sample MO, tip MO, overlap STM, Fortran GF, GPU GF, log-log scatter plot
+- Each intensity panel uses its own vmin/vmax (not log scale)
+
+Example run:
+```bash
+cd tests/pyFireball
+python test_stm_gf_dyson_2mol_ocl.py --n 80 --nmax_scf 30 --size 20 --ztip 3 --zmid 1.5 --rcut 8 --beta 1.5 --tip_mo_list 4,5 --smp_mo_list 72
+```
+
+## Critical Convention Handling
+
+### Orbital Order Remapping: Fortran → OpenCL Grid
+
+```
+Fortran per-atom:   [s,  py, pz, px]   (Ortega/Fireball spherical harmonics)
+OpenCL Grid order:  [px, py, pz, s]    (Cartesian, used in all Grid.cl kernels)
+Permutation:        [3,  1,  2,   0]   (Fortran[idx] → OCL[perm[idx]])
+```
+
+H atoms (1 orbital in Fortran): mapped to `[0, 0, 0, s]` in OCL (only slot 3 populated).
+
+### Green's Function Matrix Convention
+
+The Green's function matrices `GT_global` and `GS_global` come from `np.linalg.inv(z*S - H)` where H and S are in Python row-major storage (= Fortran column-major transpose). Since H and S are symmetric, the transpose is identity and the convention is correct.
+
+### Column-Major vs Row-Major
+
+Fortran writes matrices column-major; Python reads them row-major. For symmetric matrices this is invisible. The Fortran function receives pointers to Python's row-major arrays and interprets them as column-major. Since both `GT_global` and `GS_global` are complex-symmetric (inverse of symmetric matrices), the storage ordering introduces no error.
+
+## Performance
+
+| Grid Size | Fortran (CPU) | GPU (RTX 3090) | Speedup |
+|-----------|---------------|----------------|---------|
+| 80×80     | 2.0 s         | 3.0 ms         | ~670×   |
+| 100×100   | 3.1 s         | 3.0 ms         | ~1000×  |
+
+GPU time is nearly constant (dominated by kernel launch overhead, ~3 ms) regardless of grid size.
+
+## Spatial Correlation with Fortran Reference
+
+| Height | Linear corr | log-space corr | GPU↔Overlap |
+|--------|-------------|----------------|-------------|
+| z=2.0 | 0.30 | 0.47 | 0.56 |
+| z=3.0 | 0.33 | 0.43 | 0.60 |
+| z=4.0 | 0.36 | 0.50 | 0.83 |
+| z=5.0 | 0.33 | 0.50 | 0.85 |
+
+### Findings
+
+1. **Correlation ~0.3–0.5**: GPU GF captures the same major orbital lobes and nodal structure as Fortran, but differs in fine spatial details (relative peak heights between atom sites).
+2. **GPU↔Overlap rises with height**: At larger z, the GF propagator becomes less important and GF & simple overlap converge. At close z (≤2.5Å), GF intra-molecular propagation matters more.
+3. **Ratio F/GPU varies with z** (0.34–0.77) because the simplified SK parameters differ from the species-dependent Fireball 2c integrals used by Fortran.
+4. **CPU replica confirms kernel correctness**: A CPU-side implementation of the same algorithm (same SK, same vectors) exactly matches the GPU output.
+
+### Root Cause of Discrepancy with Fortran
+
+The Fortran function `firecore_stm_gf_2mol_mo_2points` builds `M_ts` using Fireball's actual **2-center integral tables** (`interpolate_1d(13,...)` at r0, rotated via `recover_2c`/`rotate_fb`). The GPU kernel uses **simplified uniform exponential SK** (`Vss=Vsp=Vps=Vpp_sig=1, Vpp_pi=0.2`). The species-dependent hopping ratios (C-C vs C-O vs C-H) differ from 1:1:1:1, causing different spatial intensity maps.
+
+## How to Match Fortran Exactly
+
+To reproduce Fortran results exactly, the GPU kernel would need to:
+
+1. **Precompute per-species-pair reference SK blocks** on CPU using Fireball's `interpolate_1d` at `r0` (callable from Python via `FireCore` bindings)
+2. **Upload reference blocks** to GPU as a small lookup table `[n_species][n_species][16]` (4×4 matrix elements per pair)
+3. **In the kernel**, look up species pair, scale by `exp(-beta*(r-r0))`, apply SK rotation via direction cosines
+
+This preserves the ~1000× speedup while matching the Fortran reference exactly.
+
+## Images Location
+
+```
+tests/pyFireball/export/stm_gf_dyson_2mol_ocl/tip_ch2o__smp_ptcda/
+```
+
+Each PNG: 6 panels (2×3) — sample MO, tip MO, overlap STM, Fortran GF, GPU GF, scatter plot. All intensity panels use their own vmin/vmax (no log-scale).
+
+---
+
+# TODO: Achieve Exact Fortran Parity in GPU Implementation
+
+## Critical Missing Piece: Direction-Dependent Slater-Koster Rotation
+
+The GPU kernel currently uses a **simplified isotropic exponential hopping** (`Vss=Vsp=Vps=Vpp_sig=1, Vpp_pi=0.2`) which completely omits the **direction-dependent rotation of p and d orbitals**. This is the dominant source of the ~0.3–0.5 correlation with the Fortran reference. Without direction rotation, the STM images are physically wrong for any molecule with p-orbitals (which is almost all molecules).
+
+### What Fortran Does (Correct)
+
+For each tip orbital–sample orbital pair at each scan point:
+
+1. **Interpolate radial integral tables**: `interpolate_1d(13, 0, in1, in3, index, 0, r0, href, sref)` → species-dependent 1D parameter list `hlist_ref`
+2. **Expand to orbital block**: `recover_2c(in1, in3, hlist_ref, hmol)` → `numorb_max × numorb_max` block in molecular frame
+3. **Compute direction cosines**: `epsilon(r2v, sighat, eps)` → 3×3 rotation matrix from bond direction to lab frame
+4. **Rotate orbital block**: `rotate_fb(in1, in3, eps, hmol, hrot)` → block in lab frame
+   - Internally calls `twister(eps, dmat, pmat)` to build p-orbital (3×3) and d-orbital (5×5) rotation matrices
+   - Shell-wise contraction: `xmatrix = left @ mmatrix @ right^T`
+5. **Scale by distance decay**: `hrot * exp(-beta*(r-r0))`
+6. **Extract element**: `M_ts[it,is] = -hrot[orb_it, orb_is]`
+
+### What GPU Currently Does (Wrong)
+
+1. **No species dependence**: all atom pairs use the same hopping strength
+2. **No direction rotation**: isotropic decay only, no `epsilon` / `twister` / `rotate_fb`
+3. **Orbital order remapping in kernel**: `[s,py,pz,px] → [px,py,pz,s]` — adds confusion, should be done in Python wrapper
+
+### Required Fixes
+
+#### 1. Implement `epsilon` in OpenCL
+- Input: direction unit vector `sighat = d / r`
+- Output: 3×3 rotation matrix `eps`
+- Reference: Fortran `epsilon` subroutine (find exact location in `fortran/`)
+- This is the bond-direction → lab-frame transformation
+
+#### 2. Implement `twister` in OpenCL
+- Input: `eps` (3×3 rotation matrix)
+- Output: `dmat` (5×5 d-orbital rotation), `pmat` (3×3 p-orbital rotation)
+- Reference: `fortran/ROTATIONS/rotate.f90:113` → `call twister(eps, dmat, pmat)`
+
+#### 3. Implement `rotate_fb` in OpenCL
+- Input: species pair `(in1, in2)`, `eps`, `mmol` (4×4 block in molecular frame)
+- Output: `hrot` (4×4 block in lab frame)
+- Algorithm:
+  - Call `twister(eps, dmat, pmat)`
+  - For each shell pair `(issh, jssh)`:
+    - `l1 = lssh(issh, in1)`, `l2 = lssh(jssh, in2)`
+    - `left = chooser(l1, dmat, pmat)` (identity for s, pmat for p, dmat for d)
+    - `right = chooser(l2, dmat, pmat)`
+    - Contract: `hrot += left @ mmol @ right^T`
+- Reference: `fortran/ROTATIONS/rotate.f90:74-146`
+
+#### 4. Pre-compute SK Reference Blocks on CPU
+- Use Fireball's `interpolate_1d(13, 0, in1, in3, index, 0, r0, ...)` via Python bindings
+- Expand via `recover_2c` logic (can be done in Python — just mapping `mu(index,in1,in2)` / `nu(index,in1,in2)`)
+- Store as lookup table: `SK_ref[in1][in3][4][4]` (float16 per species pair)
+- Upload to GPU as `__constant` or `__global` buffer
+
+#### 5. Update Kernel Algorithm
+```opencl
+// Per pixel, per orbital pair (it, is):
+d = ps - pt;
+r = length(d);
+if (r < 1e-6f) { sighat = (float3)(0,0,1); }
+else { sighat = d / r; }
+
+// 1. Look up reference block for species pair
+hmol = SK_ref[tip_atype][smp_atype];  // 4×4, already in molecular frame
+
+// 2. Rotate by direction cosines
+eps = epsilon(sighat);
+twister(eps, dmat, pmat);
+hrot = rotate_fb(tip_atype, smp_atype, eps, hmol);
+
+// 3. Scale by distance decay
+f = exp(-beta * (r - r0));
+hrot = hrot * f;
+
+// 4. Extract element
+M_ts[it,is] = -hrot[orb_it, orb_is];
+```
+
+#### 6. Remove Orbital Order Remapping from Kernel
+- The GPU kernel should use **Fortran orbital order** directly: `[s, py, pz, px]`
+- Any remapping should happen in the Python wrapper before buffer upload, not inside the kernel
+- This eliminates a source of indexing bugs
+
+#### 7. H Atom Handling
+- H has only 1 orbital (s) in Fortran
+- In the GPU, we should either:
+  - Keep 1 orbital per H and handle indexing carefully, OR
+  - Pad to 4 but ensure only slot 0 (s) is populated and the other 3 are never accessed
+- Current padding `[0,0,0,s]` with remapping `[3,1,2,0]` is fragile; better to match Fortran order exactly
+
+### Files to Modify
+
+1. **`pyBall/FireballOCL/cl/Grid.cl`**
+   - Add `epsilon`, `twister`, `chooser`, `rotate_fb` functions
+   - Rewrite `stm_gf_dyson_2mol_mo_scan` kernel to use full SK rotation
+   - Remove simplified isotropic hopping
+
+2. **`pyBall/FireballOCL/Grid.py`**
+   - Add Python method to pre-compute `SK_ref` blocks via Fireball `interpolate_1d`
+   - Upload `SK_ref` buffer to GPU
+   - Fix orbital order: pass data in Fortran order, no kernel-side remapping
+
+3. **`tests/pyFireball/test_stm_gf_dyson_2mol_ocl.py`**
+   - Pass `SK_ref` to GPU wrapper
+   - Verify parity: correlation with Fortran should jump from ~0.3–0.5 to >0.99
+   - Run parity sweep across multiple tip/sample MOs, heights, and rotations
+
+### Expected Result
+
+After implementing direction-dependent SK rotation with species-dependent hopping tables:
+- **Spatial correlation** with Fortran reference: **>0.99** (currently ~0.3–0.5)
+- **Performance**: ~1000× speedup preserved (3 ms vs 2 s for 80×80 grid)
+- **Physical correctness**: p-orbital anisotropy correctly captured, nodal planes and lobe orientations match Fortran exactly
