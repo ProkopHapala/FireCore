@@ -335,14 +335,18 @@ void rigid_body_gridff_kernel(
             if anchors.shape[0] != self.total_atoms:
                 raise ValueError(f"anchors array length {anchors.shape[0]} does not match total atoms {self.total_atoms}")
             anchors = anchors.copy()
-        anchors[:, :3] = world_atoms_flat[:, :3]
-        self.toGPU('anchors', anchors)
+        
+        self.anchors = anchors
+        self.upload_anchors()
 
         self.toGPU('apos_world', world_atoms_flat)
         self.toGPU('atom_force', np.zeros_like(world_atoms_flat))
         self.toGPU('body_force', np.zeros((self.n_bodies, 4), dtype=np.float32))
         self.toGPU('body_torque', np.zeros((self.n_bodies, 4), dtype=np.float32))
         self.queue.finish()
+
+    def upload_anchors(self):
+        self.toGPU('anchors', self.anchors)
 
     def init_gridff(self, bspline_data, grid_p0, grid_step):
         arr = np.asarray(bspline_data)
@@ -599,13 +603,9 @@ void rigid_body_gridff_kernel(
         )
 
     def update_anchors(self, anchors_world):
-        """
-        Updates the anchor positions/stiffness for all atoms.
-        anchors_world should have shape (total_atoms, 4) with [x,y,z,stiffness].
-        Stiffness <= 0 means no anchor.
-        """
-        anchors = _ensure_float4(anchors_world, w_value=-1.0)
-        if anchors.shape[0] != self.total_atoms:
-            raise ValueError(f"anchors array length {anchors.shape[0]} does not match total atoms {self.total_atoms}")
-        self.toGPU('anchors', anchors)
+        self.anchors = _ensure_float4(anchors_world, w_value=-1.0)
+        self.upload_anchors()
+
+    def upload_anchors(self):
+        self.toGPU('anchors', self.anchors)
         self.queue.finish()

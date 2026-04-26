@@ -981,3 +981,48 @@ def test_parallel_afm_image():
 5. Add CLI and GUI frontends
 
 This architecture maximizes code reuse, follows existing patterns, and provides a clear path from backend to frontends.
+
+## Progress Notes (2026-04-26)
+
+### Achievements
+1.  **Parallel Grid Sampler**: Implemented `sample_gridff_single_atom` for ultra-fast grid verification. It evaluates forces/energies for 1D/2D scans in parallel on GPU.
+2.  **Diagnostic Tools**: Added `plot_gridff_diagnostics` to `RigidBodyAFM.py` to visualize XY/XZ potential slices with substrate atom overlays.
+3.  **Extended Scans**: Simulation script `run_rigid_afm_scan.py` now supports long scans and automated projection plotting (COM and corner atoms).
+
+### Identified Issues with CaF2 Grid
+1.  **Non-Periodicity**: `CaF2_6L_Ni3_rect` grid has a large discontinuity at the X/Y boundaries (~12.6 in Pauli, ~33.2 in London). The last voxel is effectively empty/zero, creating a "strip" artifact.
+2.  **Alignment Shift**: The GridFF was generated centered in XY ($p_0 = -0.5 \times L_s$), while the substrate atoms are in the original coordinate system. This causes a half-box shift if not accounted for.
+3.  **Electrostatic Sign**: Above the F-terminated surface ($Z > 4.87\text{\AA}$), the potential is negative everywhere, repelling $Q=-0.2$ atoms. This is physically consistent for an anion-terminated surface but explains the "inverse effect" observed.
+4.  **Isotropy**: Suspected anisotropic scaling if lattice vectors and voxel counts are mismatched.
+
+### Next Steps
+- Switch to **NaCl (100)** surface to verify if these artifacts are specific to the CaF2 grid generation.
+- Correct $p_0$ handling in `RigidBodyDynamics.from_xyz_and_grid` once generation parameters are standardized.
+
+### Final Implementation (2026-04-26)
+
+1.  **Consolidated CLI**: `run_rigid_afm_scan.py` now integrates diagnostics, single-atom tests, and full molecule simulations (both 1D trajectory and 2D parallel images).
+2.  **Parallel Image Simulation**: The `--scan2d` mode relaxes thousands of molecules simultaneously on the GPU (one per pixel), enabling rapid generation of high-resolution AFM images.
+3.  **Host-Side Sync**: `RigidBodyDynamics.py` now correctly manages `self.anchors` on the host, ensuring that multiple tip updates in a loop are properly uploaded to the GPU.
+4.  **Lattice Autodetect**: All tools now automatically detect lattice vectors from substrate `.xyz` files to ensure proper scaling, periodicity, and aspect ratios in plots.
+
+### **How to Use**
+
+All simulation and diagnostic tasks are now consolidated into a single script:
+`tests/tMMFF/run_rigid_afm_scan.py`
+
+#### **1. Full All-in-One Run**
+Run diagnostics, single-atom alignment tests, 1D trajectory, and 2D parallel images in one command:
+```bash
+python3 run_rigid_afm_scan.py --sub NaCl_1x1_L3 --mol xyz/PTCDA.xyz --all --outdir results_nacl
+```
+
+#### **2. Standalone Tasks**
+- **Grid Diagnostics**: `python3 run_rigid_afm_scan.py --sub NaCl_1x1_L3 --diag`
+- **One-Atom Alignment Test**: `python3 run_rigid_afm_scan.py --sub NaCl_1x1_L3 --test_grid --test_z 5.0`
+- **1D Relaxed Trajectory**: `python3 run_rigid_afm_scan.py --sub NaCl_1x1_L3 --scan1d`
+- **2D Parallel AFM Image**: `python3 run_rigid_afm_scan.py --sub NaCl_1x1_L3 --scan2d`
+
+### **Results Summary (NaCl vs CaF2)**
+- **NaCl (100)**: Verified perfect periodicity ($4\text{\AA}$ unit cell) and correct alignment between GridFF wells and Na/Cl ion positions.
+- **CaF2**: Identified significant non-periodicity and XY centering artifacts in the current `Bspline_PLQd.npy` grid. Future work should regenerate this grid using the standardized centered origin ($p_0 = -0.5 \times L_s$) and ensure periodic padding.
