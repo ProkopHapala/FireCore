@@ -211,6 +211,7 @@ void rigid_body_gridff_kernel(
     __global float4*         atom_force,
     __global float4*         body_force,
     __global float4*         body_torque,
+    __global const float4*   anchors,
     const int4               grid_ns,
     const float4             grid_invStep,
     const float4             grid_p0,
@@ -530,16 +531,38 @@ void rigid_body_gridff_kernel(
             grid = np.load(grid_file)
         except Exception:
             grid = _load_npy_legacy(grid_file)
-        _, _, _, _, lvec = load_xyz_with_REQs(substrate_xyz, type_map=type_map)
-        if lvec is None:
-            raise ValueError(f"Substrate lattice vectors missing in {substrate_xyz}")
+        
+        # Read lattice vectors from comment line manually
+        with open(substrate_xyz, 'r') as f:
+            lines = f.readlines()
+            comment = lines[1].strip()
+            lvec = None
+            if "lvec:" in comment:
+                idx = comment.find("lvec:") + 5
+                parts = comment[idx:].split()
+            elif "lvs" in comment:
+                idx = comment.find("lvs") + 3
+                parts = comment[idx:].split()
+            else:
+                parts = []
+            
+            try:
+                vals = [float(v) for v in parts if v.strip()]
+                if len(vals) >= 9:
+                    lvec = np.array(vals[:9]).reshape(3,3).astype(np.float32)
+            except ValueError:
+                pass
+            
+            if lvec is None:
+                raise ValueError(f"Substrate lattice vectors missing in {substrate_xyz}")
+                
         ax = float(np.linalg.norm(lvec[0]))
         ay = float(np.linalg.norm(lvec[1]))
         az = float(np.linalg.norm(lvec[2]))
         if abs(lvec[0][1]) > 1e-6 or abs(lvec[1][0]) > 1e-6 or abs(lvec[0][2]) > 1e-6 or abs(lvec[1][2]) > 1e-6:
             raise ValueError(f"Only orthorhombic xy substrate cells supported for now, got lvec={lvec}")
         grid_step = (ax / grid.shape[0], ay / grid.shape[1], az / grid.shape[2])
-        grid_p0 = (-0.5 * ax, -0.5 * ay, 0.0)
+        grid_p0 = (0.0, 0.0, 0.0)
         rbd = cls(debug=debug)
         rbd.realloc(n_bodies=n_bodies, num_atoms=len(enames))
         rbd.enames = list(enames)
@@ -574,3 +597,15 @@ void rigid_body_gridff_kernel(
             self.atom_body_host.reshape(self.n_bodies, self.num_atoms, 4)[:, :, :3],
             atom_PLQ=self.atom_PLQ,
         )
+
+    def update_anchors(self, anchors_world):
+        """
+        Updates the anchor positions/stiffness for all atoms.
+        anchors_world should have shape (total_atoms, 4) with [x,y,z,stiffness].
+        Stiffness <= 0 means no anchor.
+        """
+        anchors = _ensure_float4(anchors_world, w_value=-1.0)
+        if anchors.shape[0] != self.total_atoms:
+            raise ValueError(f"anchors array length {anchors.shape[0]} does not match total atoms {self.total_atoms}")
+        self.toGPU('anchors', anchors)
+        self.queue.finish()

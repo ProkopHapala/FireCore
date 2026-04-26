@@ -324,6 +324,7 @@ void rigid_body_gridff_kernel(
     __global       float4*   atom_force,
     __global       float4*   body_force,
     __global       float4*   body_torque,
+    __global const float4*   anchors,
     const int4               grid_ns,
     const float4             grid_invStep,
     const float4             grid_p0,
@@ -376,6 +377,11 @@ void rigid_body_gridff_kernel(
             const float3 p_world = pos.xyz + r_world;
             const float4 fe = fe3d_pbc_comb((p_world - grid_p0.xyz) * inv_dg, grid_ns.xyz, BsplinePLQ, atom_PLQ[ia], xqs, yqs);
             float3 f = fe.xyz * (-inv_dg);
+            float4 anchor = anchors[ia];
+            if(anchor.w > 0.0f){
+                float3 d = p_world - anchor.xyz;
+                f += d * -anchor.w;
+            }
             total_force.xyz += f;
             total_torque.xyz += cross(r_world, f);
             apos_world[ia] = (float4)(p_world, fe.w);
