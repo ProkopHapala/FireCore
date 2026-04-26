@@ -43,6 +43,13 @@ def main():
     ap.add_argument('--x1', type=float, default=50.0)
     ap.add_argument('--y0', type=float, default=2.0)
     ap.add_argument('--z0', type=float, default=6.0)
+    # 2D scan parameters
+    ap.add_argument('--nx', type=int, default=40, help='Number of X pixels for 2D scan')
+    ap.add_argument('--ny', type=int, default=40, help='Number of Y pixels for 2D scan')
+    ap.add_argument('--x0_2d', type=float, default=0.0, help='X start for 2D scan')
+    ap.add_argument('--x1_2d', type=float, default=None, help='X end for 2D scan (default: lattice vector ax)')
+    ap.add_argument('--y0_2d', type=float, default=0.0, help='Y start for 2D scan')
+    ap.add_argument('--y1_2d', type=float, default=None, help='Y end for 2D scan (default: lattice vector ay)')
     ap.add_argument('--dt', type=float, default=0.05)
     ap.add_argument('--nsteps', type=int, default=1000)
     ap.add_argument('--fconv', type=float, default=1e-3)
@@ -53,11 +60,12 @@ def main():
     ap.add_argument('--scan1d', action='store_true', help='Run 1D relaxed AFM scan (whole molecule)')
     ap.add_argument('--scan2d', action='store_true', help='Run 2D relaxed AFM scan (parallel molecule relaxation)')
     ap.add_argument('--all', action='store_true', help='Run everything')
+    ap.add_argument('--debug', action='store_true', help='Enable diagnostic plots (diag and test_grid) with scan2d')
     args = ap.parse_args()
 
     # Determine tasks
-    do_diag = args.diag or args.all
-    do_test_grid = args.test_grid or args.all
+    do_diag = args.diag or args.all or (args.debug and args.scan2d)
+    do_test_grid = args.test_grid or args.all or (args.debug and args.scan2d)
     do_scan1d = args.scan1d or args.all or (not (args.diag or args.test_grid or args.scan2d))
     do_scan2d = args.scan2d or args.all
 
@@ -180,10 +188,14 @@ def main():
     # Task 4: 2D Parallel AFM Scan (Images)
     if do_scan2d:
         print("\n[4/4] Running 2D Parallel AFM Scan (Full Relaxation per Pixel)...")
-        nx, ny = 40, 40
-        xs = np.linspace(0, ax, nx); ys = np.linspace(0, ay, ny)
+        nx, ny = args.nx, args.ny
+        x0_2d, x1_2d = args.x0_2d, (args.x1_2d if args.x1_2d is not None else ax)
+        y0_2d, y1_2d = args.y0_2d, (args.y1_2d if args.y1_2d is not None else ay)
+        xs = np.linspace(x0_2d, x1_2d, nx); ys = np.linspace(y0_2d, y1_2d, ny)
         X, Y = np.meshgrid(xs, ys)
         n_bodies = nx * ny
+        print(f"2D Scan: {nx}×{ny} = {n_bodies} pixels over X=[{x0_2d:.2f}, {x1_2d:.2f}] Y=[{y0_2d:.2f}, {y1_2d:.2f}] Å")
+        
         mol_apos, mol_enames = read_xyz(mol_path)
         r_anchor = mol_apos[args.anchor]
         initial_coms = np.zeros((n_bodies, 3), dtype=np.float32)
@@ -198,12 +210,116 @@ def main():
         print(f"Relaxing {n_bodies} molecules in parallel...")
         outputs, converged = afm.relax_to_constraint(nsteps=args.nsteps, dt=args.dt, fconv=args.fconv, tconv=args.tconv)
         
+        # Diagnostics: check anchor displacement after relaxation
+        apos_final = outputs['atom_positions']
+        anchor_final = apos_final[:, args.anchor, :3]
+        anchor_target = np.vstack([X.flatten(), Y.flatten(), np.full(n_bodies, args.z0)]).T
+        anchor_disp = np.linalg.norm(anchor_final - anchor_target, axis=1)
+        print(f"Anchor displacement after relaxation: mean={anchor_disp.mean():.4f} Å, max={anchor_disp.max():.4f} Å")
+        print(f"Converged replicas: {np.sum(converged)}/{n_bodies}")
+        
         force_z = outputs['atom_force'][:, args.anchor, 2].reshape(ny, nx)
         energy = outputs['atom_force'][:, args.anchor, 3].reshape(ny, nx)
         
+        # Extract COM positions and quaternions
+        pos = outputs['pos'][:, :3]
+        quat = outputs['quats']
+        
+        # COM shift from initial positions
+        com_shift_x = (pos[:, 0] - initial_coms[:, 0]).reshape(ny, nx)
+        com_shift_y = (pos[:, 1] - initial_coms[:, 1]).reshape(ny, nx)
+        com_shift_z = (pos[:, 2] - initial_coms[:, 2]).reshape(ny, nx)
+        
+        # Convert quaternion to rotation angle (in degrees)
+        # quat = [qx, qy, qz, qw], angle = 2 * acos(|qw|)
+        quat_w = np.abs(quat[:, 3])
+        quat_w = np.clip(quat_w, -1.0, 1.0)
+        rot_angle = 2.0 * np.arccos(quat_w) * 180.0 / np.pi
+        rot_angle = rot_angle.reshape(ny, nx)
+        
+        # Rotation axis (normalized) for tilt direction
+        quat_xyz = quat[:, :3]
+        axis_norm = np.linalg.norm(quat_xyz, axis=1)
+        axis_norm[axis_norm < 1e-10] = 1.0  # Avoid division by zero
+        axis_x = (quat_xyz[:, 0] / axis_norm).reshape(ny, nx)
+        axis_y = (quat_xyz[:, 1] / axis_norm).reshape(ny, nx)
+        axis_z = (quat_xyz[:, 2] / axis_norm).reshape(ny, nx)
+        
+        # Create comprehensive figure
+        fig = plt.figure(figsize=(18, 12))
+        
+        # Row 1: Force and Energy
+        ax1 = plt.subplot(3, 4, 1)
+        im1 = ax1.imshow(force_z, extent=[x0_2d, x1_2d, y0_2d, y1_2d], origin='lower', cmap='afmhot')
+        ax1.set_title("Force Z (eV/Å)"); plt.colorbar(im1, ax=ax1)
+        
+        ax2 = plt.subplot(3, 4, 2)
+        im2 = ax2.imshow(energy, extent=[x0_2d, x1_2d, y0_2d, y1_2d], origin='lower', cmap='viridis')
+        ax2.set_title("Energy (eV)"); plt.colorbar(im2, ax=ax2)
+        
+        # Row 1: Convergence
+        conv_map = converged.reshape(ny, nx)
+        ax3 = plt.subplot(3, 4, 3)
+        im3 = ax3.imshow(conv_map, extent=[x0_2d, x1_2d, y0_2d, y1_2d], origin='lower', cmap='RdYlGn')
+        ax3.set_title("Converged"); plt.colorbar(im3, ax=ax3)
+        
+        # Row 2: COM shifts
+        ax4 = plt.subplot(3, 4, 4)
+        im4 = ax4.imshow(com_shift_z, extent=[x0_2d, x1_2d, y0_2d, y1_2d], origin='lower', cmap='coolwarm')
+        ax4.set_title("COM Z Shift (Å)"); plt.colorbar(im4, ax=ax4)
+        
+        # XY COM shift as complex (HSV) plot
+        ax5 = plt.subplot(3, 4, 5)
+        # Combine X and Y shifts as complex number for HSV color
+        com_shift_complex = com_shift_x + 1j * com_shift_y
+        magnitude = np.abs(com_shift_complex)
+        angle = np.angle(com_shift_complex)
+        # Use HSV: Hue = angle, Saturation = 1, Value = magnitude (normalized)
+        from matplotlib.colors import hsv_to_rgb
+        hue = (angle + np.pi) / (2 * np.pi)  # Normalize to [0, 1]
+        saturation = np.ones_like(hue)
+        value = magnitude / (magnitude.max() + 1e-10)
+        hsv = np.stack([hue, saturation, value], axis=-1)
+        rgb = hsv_to_rgb(hsv)
+        im5 = ax5.imshow(rgb, extent=[x0_2d, x1_2d, y0_2d, y1_2d], origin='lower')
+        ax5.set_title("COM XY Shift (HSV: angle=magnitude)")
+        # Add colorbar for magnitude
+        sm = plt.cm.ScalarMappable(cmap='hsv', norm=plt.Normalize(vmin=0, vmax=magnitude.max()))
+        sm.set_array([])
+        plt.colorbar(sm, ax=ax5, label='Magnitude (Å)')
+        
+        ax6 = plt.subplot(3, 4, 6)
+        im6 = ax6.imshow(com_shift_x, extent=[x0_2d, x1_2d, y0_2d, y1_2d], origin='lower', cmap='RdBu')
+        ax6.set_title("COM X Shift (Å)"); plt.colorbar(im6, ax=ax6)
+        
+        ax7 = plt.subplot(3, 4, 7)
+        im7 = ax7.imshow(com_shift_y, extent=[x0_2d, x1_2d, y0_2d, y1_2d], origin='lower', cmap='RdBu')
+        ax7.set_title("COM Y Shift (Å)"); plt.colorbar(im7, ax=ax7)
+        
+        # Row 3: Quaternion tilt
+        ax8 = plt.subplot(3, 4, 8)
+        im8 = ax8.imshow(rot_angle, extent=[x0_2d, x1_2d, y0_2d, y1_2d], origin='lower', cmap='plasma')
+        ax8.set_title("Rotation Angle (deg)"); plt.colorbar(im8, ax=ax8)
+        
+        ax9 = plt.subplot(3, 4, 9)
+        im9 = ax9.imshow(axis_x, extent=[x0_2d, x1_2d, y0_2d, y1_2d], origin='lower', cmap='RdBu', vmin=-1, vmax=1)
+        ax9.set_title("Tilt Axis X"); plt.colorbar(im9, ax=ax9)
+        
+        ax10 = plt.subplot(3, 4, 10)
+        im10 = ax10.imshow(axis_y, extent=[x0_2d, x1_2d, y0_2d, y1_2d], origin='lower', cmap='RdBu', vmin=-1, vmax=1)
+        ax10.set_title("Tilt Axis Y"); plt.colorbar(im10, ax=ax10)
+        
+        ax11 = plt.subplot(3, 4, 11)
+        im11 = ax11.imshow(axis_z, extent=[x0_2d, x1_2d, y0_2d, y1_2d], origin='lower', cmap='RdBu', vmin=-1, vmax=1)
+        ax11.set_title("Tilt Axis Z"); plt.colorbar(im11, ax=ax11)
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(args.outdir, 'scan_molecule_2d_full.png'), dpi=150)
+        
+        # Also save the simple 2-panel plot for quick reference
         plt.figure(figsize=(12, 5))
-        plt.subplot(1, 2, 1); plt.imshow(force_z, extent=[0, ax, 0, ay], origin='lower', cmap='afmhot'); plt.title("Force Z"); plt.colorbar()
-        plt.subplot(1, 2, 2); plt.imshow(energy, extent=[0, ax, 0, ay], origin='lower', cmap='viridis'); plt.title("Energy"); plt.colorbar()
+        plt.subplot(1, 2, 1); plt.imshow(force_z, extent=[x0_2d, x1_2d, y0_2d, y1_2d], origin='lower', cmap='afmhot'); plt.title("Force Z"); plt.colorbar()
+        plt.subplot(1, 2, 2); plt.imshow(energy, extent=[x0_2d, x1_2d, y0_2d, y1_2d], origin='lower', cmap='viridis'); plt.title("Energy"); plt.colorbar()
         plt.savefig(os.path.join(args.outdir, 'scan_molecule_2d.png'))
 
     print(f"\nDone! All results saved to: {args.outdir}")

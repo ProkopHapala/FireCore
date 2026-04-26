@@ -1026,3 +1026,79 @@ python3 run_rigid_afm_scan.py --sub NaCl_1x1_L3 --mol xyz/PTCDA.xyz --all --outd
 ### **Results Summary (NaCl vs CaF2)**
 - **NaCl (100)**: Verified perfect periodicity ($4\text{\AA}$ unit cell) and correct alignment between GridFF wells and Na/Cl ion positions.
 - **CaF2**: Identified significant non-periodicity and XY centering artifacts in the current `Bspline_PLQd.npy` grid. Future work should regenerate this grid using the standardized centered origin ($p_0 = -0.5 \times L_s$) and ensure periodic padding.
+
+### **Advanced Visualization Features (2026-04-26)**
+
+The 2D parallel AFM scan now generates comprehensive 11-panel visualizations in `scan_molecule_2d_full.png`:
+
+**Panel Layout**:
+- **Row 1**: Force Z, Energy, Convergence map
+- **Row 2**: COM Z shift, COM XY shift (HSV), COM X shift, COM Y shift
+- **Row 3**: Rotation angle (from quaternion), Tilt axis X, Tilt axis Y, Tilt axis Z
+
+**COM XY Shift (HSV Plot)**:
+- **Hue**: Direction of XY shift (angle in XY plane)
+- **Brightness**: Magnitude of shift
+- **Purpose**: Visualize both direction and magnitude of lateral displacement in a single plot
+
+**Quaternion Tilt Visualization**:
+- **Rotation Angle**: $2 \times \arccos(|q_w|) \times 180/\pi$ degrees
+- **Tilt Axis**: Normalized rotation axis from quaternion $(q_x, q_y, q_z)$ components
+- **Purpose**: Characterize molecular reorientation during relaxation
+
+**Diagnostic Output**:
+- Anchor displacement after relaxation (mean and max in Å)
+- Convergence rate (number of converged replicas / total)
+
+### **2D Scan Parameters**
+
+Customizable scan area and resolution:
+```bash
+--nx 160 --ny 160                    # Number of pixels (160×160 = 25,600 replicas)
+--x0_2d 0.0 --x1_2d 16.0            # X range in Å
+--y0_2d 0.0 --y1_2d 16.0            # Y range in Å
+```
+
+**Example**: Scan 16×16 Å area with 0.1 Å resolution:
+```bash
+python3 run_rigid_afm_scan.py --scan2d --nx 160 --ny 160 \
+    --x0_2d 0.0 --x1_2d 16.0 --y0_2d 0.0 --y1_2d 16.0 \
+    --sub NaCl_1x1_L2
+```
+
+**Note**: Large scans (e.g., 160×160 = 25,600 replicas) require significant GPU memory and computation time. Start with smaller tests (e.g., 40×40) to verify convergence.
+
+### **Debug Mode**
+
+Enable diagnostic plots with 2D scan using `--debug` flag:
+```bash
+python3 run_rigid_afm_scan.py --scan2d --debug \
+    --nx 160 --ny 160 --x0_2d 0.0 --x1_2d 16.0 \
+    --y0_2d 0.0 --y1_2d 16.0 --sub NaCl_1x1_L2
+```
+
+The `--debug` flag enables:
+- GridFF diagnostics (`diag_raw_grids.png`)
+- Single-atom 2D alignment test (`test_single_atom_2d.png`)
+- 2D relaxed AFM scan with full visualization
+
+### **Convergence Optimization**
+
+Current convergence rate is low (238/25600 = 0.9% for default parameters). To improve:
+
+1. **Relax convergence criteria**:
+   ```bash
+   --fconv 1e-2 --tconv 1e-2    # Less strict (default: 1e-3)
+   ```
+
+2. **Increase relaxation steps**:
+   ```bash
+   --nsteps 2000                 # More steps (default: 1000)
+   ```
+
+3. **Adjust anchor stiffness**:
+   ```bash
+   --kanchor 50.0                # Softer spring (default: 20.0)
+   ```
+
+**Diagnostic check**: The script outputs anchor displacement after relaxation. Mean displacement should be small (<0.01 Å) if the anchor constraint is working correctly.
