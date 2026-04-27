@@ -357,27 +357,33 @@ void getHessian3x3( int n, int* inds, double* Hess_, double dx, bool bDiag ){
     for(int i=0;i<n;i++){ int ia=inds[i]; W.nbmol.apos[ia]=orig[i]; }
 }
 
-// Hessian: full 3N×3N for selected atoms
 void getHessian3Nx3N(int n,int* inds,double* out_hessian,double dx){
     std::vector<Vec3d> orig(n);
+    int dim = n * 3;
     // save original positions
     for(int i=0;i<n;i++){ int ia=inds[i]; orig[i]=W.nbmol.apos[ia]; }
     for(int p=0;p<n;p++){
         int ip=inds[p];
-        Vec3d fp,fm;
         for(int k=0;k<3;k++){
-            double v=orig[ip].array[k];
-            W.nbmol.apos[ip].array[k]=v+dx; W.eval_no_omp(); fp=W.nbmol.fapos[ip];
-            W.nbmol.apos[ip].array[k]=v-dx; W.eval_no_omp(); fm=W.nbmol.fapos[ip];
-            W.nbmol.apos[ip].array[k]=v;
-            int col=p*3+k;
-            for(int o=0;o<n;o++){
-                int io=inds[o];
-                for(int l=0;l<3;l++){
-                    int row=o*3+l;
-                    //out_hessian_full[row*dim+col]=(fp[io].array[l]-fm[io].array[l])/(2*dx);
+            double v=orig[p].array[k]; // p is index in inds, so orig[p] is apos[ip]
+            
+            W.nbmol.apos[ip].array[k]=v+dx; W.eval_no_omp(); 
+            for(int o=0; o<n; o++){
+                int io = inds[o];
+                for(int l=0; l<3; l++){
+                    out_hessian[(o*3+l)*dim + (p*3+k)] = -W.nbmol.fapos[io].array[l]; // f_plus
                 }
             }
+
+            W.nbmol.apos[ip].array[k]=v-dx; W.eval_no_omp();
+            for(int o=0; o<n; o++){
+                int io = inds[o];
+                for(int l=0; l<3; l++){
+                    // H = -(f_plus - f_minus) / (2*dx)
+                    out_hessian[(o*3+l)*dim + (p*3+k)] = (out_hessian[(o*3+l)*dim + (p*3+k)] + W.nbmol.fapos[io].array[l]) / (2*dx);
+                }
+            }
+            W.nbmol.apos[ip].array[k]=v;
         }
     }
     // restore original positions
