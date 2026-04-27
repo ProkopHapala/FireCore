@@ -1062,8 +1062,6 @@ __kernel void updateAtomsMMFFf4(
 
             float3 h = (float3){0.0f, 0.0f, 0.0f};
             float force_proj = 0.0f;
-            float force_proj_dbg = 0.0f;
-            float3 fe_dbg = fe.xyz;
             if( bDist ){
                 int ing = (int)cons.x;
                 float3 pj = apos[ing + iS*nvec].xyz;
@@ -1072,8 +1070,6 @@ __kernel void updateAtomsMMFFf4(
                 h = d / (r + 1e-10f);
                 const float force_proj_raw = dot(fe.xyz, h);
                 force_proj = (-sign) * force_proj_raw * cK.x;
-                force_proj_dbg = force_proj;
-                fe_dbg = fe.xyz;
                 if( bHard ){
                     // Geometric correction
                     pe.xyz -= h * (0.5f * (r - cons.y)); 
@@ -1081,30 +1077,23 @@ __kernel void updateAtomsMMFFf4(
                     float v_proj = dot(ve.xyz, h);
                     ve.xyz -= h * v_proj;
                     fe.xyz -= h * force_proj_raw; 
-                    // if(iS==0 && iG==0) printf( "GPU:hard constr dist force %g,%g,%g \n", fe.x, fe.y, fe.z );
+                    // printf( "GPU:hard constr dist force %g,%g,%g, cK=(%g,%g,%g) \n", fe.x, fe.y, fe.z, cK.x, cK.y, cK.z );
                 } else {
                     const float3 fc = h * (-stiffness.x * (r - cons.y));
                     fe.xyz += fc;
+                    // printf( "GPU:soft constr dist force %g,%g,%g, cK=(%g,%g,%g) \n", fe.x, fe.y, fe.z, cK.x, cK.y, cK.z );
                 }
             } else {
+                force_proj = (-sign) * dot(fe.xyz, cK.xyz);
                 if( bHard ){
                     pe.xyz = cons.xyz; // move to fixed position
                     ve.xyz = 0.0f;
-                    force_proj = dot(fe.xyz, cK.xyz);
-                    force_proj_dbg = force_proj;
-                    fe_dbg = fe.xyz;
                     fe.xyz = 0.0f; // wipe force for pinned atom
-                    // printf( "GPU:hard constr atoms force %g,%g,%g \n", fe.x, fe.y, fe.z );
                 } else {
                     const float3 fc = (cons.xyz - pe.xyz) * stiffness;
-                    // if(iS==0 && iG==0) printf( "GPU:soft constr force %g,%g,%g \n", fc.x, fc.y, fc.z );
-                    force_proj = dot(fe.xyz, cK.xyz);
-                    force_proj_dbg = force_proj;
-                    fe_dbg = fe.xyz;
                     fe.xyz += fc; // add constraint force
                     
                 }
-                h = cK.xyz; // For Atoms, cK.xyz stores the fixed projection direction
             }
 
             if( sign != 0.0f ){

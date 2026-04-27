@@ -8,12 +8,14 @@ set -e  # Exit on error
 # Default Mode
 MODE="BOTH"  # Options: TI, JE, BOTH
 K=10.0     # Default JE force constant
+SURF_NAME="none"
 
 # Parse command line arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --mode) MODE="$2"; shift ;;
         --k)    K="$2"; shift ;;
+        --surf_name|--surface|--surf) SURF_NAME="$2"; shift ;;
         *) ;; # Ignore unknown args
     esac
     shift
@@ -40,20 +42,22 @@ echo ""
 # Run the calculation
 echo "Step 2: Running Free Energy Calculation for DA (Mode: $MODE)..."
 echo "----------------------------------------"
+echo "Surface: $SURF_NAME"
 python3 run_ES.py \
     --mode $MODE \
     --nSys 200 \
     --xyz_name "../../cpp/common_resources/xyz/DA.xyz" \
+    --surf_name "$SURF_NAME" \
     --nLambda 200 \
-    --nMDsteps 20000000 \
-    --nEQsteps 10000 \
+    --nMDsteps 2000000 \
+    --nEQsteps 1000 \
     --Fconv 1e-6 \
     --constraints "constraints_DA.txt" \
     --K $K \
     --dt 0.05 \
-    -T 10 \
+    -T 300 \
     --t_damp 150 \
-    --soft_dist
+    --soft_atoms
 # python3 run_ES.py \
 #     --mode $MODE \
 #     --nSys 1000 \

@@ -23,7 +23,7 @@ echo ""
 # Step 2: Run the sweep
 echo "Step 2: Running Free Energy Calculation Sweep with config: $CONFIG"
 echo "----------------------------------------"
-python3 run_general_sweep.py --config "$CONFIG"
+python3 free_energy_runner.py --config "$CONFIG"
 if [ $? -ne 0 ]; then
     echo "ERROR: Sweep failed!"
     exit 1

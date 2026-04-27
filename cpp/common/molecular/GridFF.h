@@ -171,6 +171,7 @@ class GridFF : public NBFF{ public:
     int iDebugEvalR = 0;
     bool bCellSet    = false;
     bool bSymetrized = false;
+    bool bBorrowedSystem = false;
 
     
 
@@ -178,6 +179,21 @@ class GridFF : public NBFF{ public:
 
     void bindSystem(int natoms_, int* atypes_, Vec3d* apos_, Quat4d* REQs_ ){
         natoms=natoms_; atypes=atypes_; apos=apos_; REQs=REQs_;
+        bBorrowedSystem = true;
+    }
+
+    void releaseBorrowedSystem(){
+        if(!bBorrowedSystem) return;
+        natoms = 0;
+        atypes = 0;
+        apos   = 0;
+        REQs   = 0;
+        bBorrowedSystem = false;
+    }
+
+    ~GridFF(){
+        clear();
+        releaseBorrowedSystem();
     }
 
     void allocateFFs( bool bDouble=false ){

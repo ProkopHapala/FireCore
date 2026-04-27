@@ -3,23 +3,25 @@
   "common": {
     "xyz_name": "../../cpp/common_resources/xyz/DA.xyz",
     "constraints": "constraints_DA.txt",
+    "surf_name": "../../cpp/common_resources/xyz/NaCl_3x3_L3",
     "Fconv": 1e-06,
+    "hard_atoms": false,
+    "soft_atoms": false,
+    "hard_dist": false,
+    "soft_dist": true,
     "temperature": 300.0,
     "t_damp": 200.0,
     "dt": 0.05,
     "nSys": 200,
-    "nEQsteps": 5000,
+    "nEQsteps": 50000,
     "nLambda": 200,
-    "nMDsteps": 200000,
+    "nMDsteps": 20000000,
     "mode": "TI",
     "K": 10.0,
-    "scan_mode": "both"
+    "scan_mode": "both",
+    "scan_nsteps": 50000
   },
   "parameter_sets": [
-    {
-      "name": "temp_1K",
-      "temperature": 1.0
-    },
     {
       "name": "temp_2K",
       "temperature": 2.0

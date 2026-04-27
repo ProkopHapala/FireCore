@@ -40,6 +40,7 @@ def main():
     parser.add_argument("--nEQsteps", type=int, default=5000, help="Number of equilibration steps per window")
     parser.add_argument("--Fconv", type=float, default=1e-6, help="Force convergence criterion")
     parser.add_argument("--constraints", type=str, default="constraints.txt", help="Path to constraints file")
+    parser.add_argument("--surf_name", type=str, default="../../cpp/common_resources/xyz/NaCl_3x3_L3", help="Path to the surface file; use 'none' to disable the surface")
     parser.add_argument("--mode", type=str, default="TI", choices=["TI", "JE", "BOTH"], help="Mode of calculation: TI, JE, or BOTH")
     parser.add_argument("--K", type=float, default=5.0, help="Jarzynski Equality force constant")
     parser.add_argument("-T", "--temperature", type=float, default=300.0, help="Temperature in Kelvin")
@@ -51,11 +52,13 @@ def main():
     parser.add_argument("--soft_dist",  action="store_true", help="Use soft distance constraints")
 
     args = parser.parse_args()
+    surf_name = None if args.surf_name.lower() in ("none", "null", "off") else args.surf_name
 
     # Initialize MMFF_multi
     mmff.init(
         nSys_=args.nSys,
         xyz_name=args.xyz_name,
+        surf_name=surf_name,
         sElementTypes="../../cpp/common_resources/ElementTypes.dat",
         sAtomTypes="../../cpp/common_resources/AtomTypes.dat",
         sBondTypes="../../cpp/common_resources/BondTypes.dat",
@@ -63,7 +66,8 @@ def main():
         bMMFF=True,
         bEpairs=False,
         T=args.temperature,
-        gamma=1/(args.t_damp*args.dt)  # dt_deafult is 0.05 and 100 steps are used for termalization
+        gamma=1/(args.t_damp*args.dt),
+        GridFF=6
     )
     mmff.set_opt(
         dt_max=args.dt,
@@ -116,6 +120,7 @@ def main():
         hardDist  = 1 if args.hard_dist  else -1,
         softDist  = 1 if args.soft_dist  else -1
     )
+    print(f"Raw free energy change: {result:.6f} eV")
 
     out_base = os.path.splitext(os.path.basename(args.xyz_name))[0]
     out_data = f"{out_base}_free_energy.dat"

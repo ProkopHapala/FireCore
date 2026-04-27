@@ -1097,6 +1097,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                     int il = isys + batch * nSystems;
                     TDrive[isys] = Quat4f{ 0.0f, 0.0f, -1.0f, 0.0f };
                     gopts[isys].nRelax = 99999999;
+                    gopts[isys].nExplore = 0;
                     if (il >= nLambda){
                         TDrive[isys].z = -1.0f;
                         continue;
@@ -1123,6 +1124,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
             for(int isys=0; isys<nSystems; isys++){
                 TDrive[isys] = Quat4f{ 0.0f, 0.0f, -1.0f, 0.0f };
                 gopts[isys].nRelax = 99999999;
+                gopts[isys].nExplore = 0;
             }
             setupTIConstraints( 0, 0.0f, nCVs, initial_positions, final_positions, true, K );
             ocl.upload(ocl.ibuff_TDrive, TDrive);
@@ -2725,6 +2727,8 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     if(initial){
         for(int isys=0; isys<nSystems; isys++){
             float lambda = (nSystems > 1) ? (float)isys / (float)(nSystems - 1) : 0.0f;
+            gopts[isys].nExplore = INT32_MAX;
+            gopts[isys].nRelax = 0;
             
             // For 'initial' setup via GUI/manual, we derive anchor points from current positions
             std::vector<Vec3f> p_init, p_final;
@@ -2733,12 +2737,12 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
                 if(ffls[isys].atypes[ia]==params.getAtomType("Si")){
                     if(iSi1 == -1){ iSi1 = ia; }
                     else{
-                        Vec3f p1 = (Vec3f){-0.5f, 0, 0};
-                        Vec3f p2 = (Vec3f){+0.5f, 0, 0};
+                        Vec3f p1 = (Vec3f){-5.5f, 0, 2.5f}; // ToDo: we should probably use actual positions of Si atoms rather than fixed values
+                        Vec3f p2 = (Vec3f){+5.5f, 0, 2.5f};
                         p_init.push_back(p1); p_init.push_back(p2);
                         // Default final positions: stretched by 15A along X
-                        p_final.push_back(p1 + (Vec3f){-7.5f, 0, 0});
-                        p_final.push_back(p2 + (Vec3f){ 7.5f, 0, 0});
+                        p_final.push_back(p1 + (Vec3f){-30.f, 0, 2.5f});
+                        p_final.push_back(p2 + (Vec3f){ 30.f, 0, 2.5f});
                         iSi1 = -1;
                     }
                 }
