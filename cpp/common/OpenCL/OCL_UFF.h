@@ -189,7 +189,7 @@ public:
         task->local.y = 1;
         task->global.y = nSystems;
         useKernel( task->ikernel );
-        Quat4f pos0 = {grid_shift0.x, grid_shift0.y, grid_p0.z,0.f};
+        Quat4f pos0 = {0.0f, 0.0f, 0.0f, 0.0f};
         err |= _useArg   ( nDOFs );
         err |= useArgBuff( ibuff_apos      );
         err |= useArgBuff( ibuff_REQs       );

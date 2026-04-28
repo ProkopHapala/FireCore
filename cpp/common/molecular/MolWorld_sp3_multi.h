@@ -3100,7 +3100,7 @@ virtual void MDloop( int nIter, double Ftol = -1, double elapse_time = 0.0 ) ove
     if(iParalel<-100){ iParalel=iParalel_default; };
 
     if(Ftol<0)  Ftol = Ftol_default;
-    printf( "MolWorld_sp3_multi::MDloop(%i) bGridFF %i bOcl %i bMMFF %i bUFF %i iParalel=%i \n", nIter, bGridFF, bOcl, bMMFF, bUFF, iParalel );
+    //printf( "MolWorld_sp3_multi::MDloop(%i) bGridFF %i bOcl %i bMMFF %i bUFF %i iParalel=%i \n", nIter, bGridFF, bOcl, bMMFF, bUFF, iParalel );
 
     //bMMFF=false;
     if(first){ zeroT = getCPUticks(); first=false;
