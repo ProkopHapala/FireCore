@@ -14,10 +14,12 @@ std::unordered_map<std::string, bool*>    bbuffers;
 extern "C"{
 
 void printBuffNames(){
+    printf( ">>> printBuffNames()\n");
     printf( "#=== Buffers:  \n"); for (auto& it:  buffers) { printf( "%s: %li\n", it.first.c_str(), it.second ); };
     printf( "#=== fBuffers: \n"); for (auto& it: fbuffers) { printf( "%s: %li\n", it.first.c_str(), it.second ); };
     printf( "#=== IBuffers: \n"); for (auto& it: ibuffers) { printf( "%s: %li\n", it.first.c_str(), it.second ); };
     printf( "#=== bBuffers: \n"); for (auto& it: bbuffers) { printf( "%s: %li\n", it.first.c_str(), it.second ); };
+    printf( "<<< printBuffNames() DONE\n");
 }
 
 double* getBuff(const char* name){ 

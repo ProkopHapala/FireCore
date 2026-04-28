@@ -139,6 +139,21 @@ inline Vec3d rayPlane_hit( const Vec3d& ray0, const Vec3d& hRay, const Vec3d& no
 	return ray0 + hRay*rayPlane( ray0, hRay, normal, point );
 }
 
+// =========== Circle (annulus) on plane
+
+inline double rayCircleRange( const Vec3d& ray0, const Vec3d& hRay, const Vec3d& normal, const Vec3d& center, double rmin, double rmax ){
+    // Ray-plane intersection with squared-radius check (no sqrt for performance)
+    double nh = normal.dot( hRay );
+    if( fabs(nh) < 1e-300 ) return t_inf;                   // nearly parallel -> no hit
+    double t = ( normal.dot(center) - normal.dot(ray0) ) / nh; // same as rayPlane(), avoids duplicate dot
+    if( t < 0 ) return t_inf;                                // behind ray origin
+    Vec3d d; d.set_sub( ray0, center ); d.add_mul( hRay, t ); // (ro + t*hRay) - center
+    double r2    = d.norm2();
+    double rmin2 = rmin*rmin;
+    double rmax2 = rmax*rmax;
+    return ( r2>=rmin2 && r2<=rmax2 ) ? t : t_inf;
+}
+
 // =========== Triangle
 
 inline bool pointInTriangleEdges( const Vec3d& pa, const Vec3d& pb, const Vec3d& ab, const Vec3d& bc, const Vec3d& ca ){

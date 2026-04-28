@@ -1,0 +1,25 @@
+6 3
+---
+HF-A1_HBr-D1.xyz
+HF-A1_HCl-D1.xyz
+HF-A1_HF-D1.xyz
+---
+HCl-A1_HBr-D1.xyz
+HCl-A1_HCl-D1.xyz
+HCl-A1_HF-D1.xyz
+---
+HBr-A1_HBr-D1.xyz
+HBr-A1_HCl-D1.xyz
+HBr-A1_HF-D1.xyz
+---
+HF-D1_HBr-A1.xyz
+HF-D1_HCl-A1.xyz
+HF-D1_HF-A1.xyz
+---
+HCl-D1_HBr-A1.xyz
+HCl-D1_HCl-A1.xyz
+HCl-D1_HF-A1.xyz
+---
+HBr-D1_HBr-A1.xyz
+HBr-D1_HCl-A1.xyz
+HBr-D1_HF-A1.xyz

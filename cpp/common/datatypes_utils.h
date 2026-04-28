@@ -18,6 +18,7 @@ inline Quat4i add_except(Quat4i q, int di, int ino=-1){
 
 void     copy_add(int n, Quat4i* from, Quat4i* to, int i0, int ino=-1 ){ for(int i=0; i<n; i++){ to[i]= add_except( from[i],i0,ino); } }
 
+void     copy    (int n, int*    from, int*    to){ for(int i=0; i<n; i++){ to[i]=from[i]; } }
 void     copy    (int n, Quat4i* from, Quat4i* to){ for(int i=0; i<n; i++){ to[i]=from[i]; } }
 void     copy    (int n, Quat4f* from, Quat4f* to){ for(int i=0; i<n; i++){ to[i]=from[i]; } }
 

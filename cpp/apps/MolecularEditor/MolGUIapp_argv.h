@@ -46,6 +46,7 @@
 
     funcs["-e"]={0,[&](const char** ss){ W->bEpairs=true; }}; // add explicit electron pair
     funcs["-EachAngle"]={0,[&](const char** ss){ W->ffl.bEachAngle=true;                          }};
+    funcs["-ex2"]={0,[&](const char** ss){ W->bExclusion2=true;                                   }};
     funcs["-torsions"]={0,[&](const char** ss){ W->ffl.bTorsion=true; W->ffl.doPiPiI=false;  }};
     
     funcs["-substr_iso"]={1,[&](const char** ss){ sscanf( ss[0], "%lf", &app->subs_iso ); }};
@@ -70,7 +71,7 @@
 
     funcs["-nPBC"]={1,[&](const char** ss){ sscanf( ss[0],"%i,%i,%i", &(W->nPBC.x),&(W->nPBC.y),&(W->nPBC.z) );}};
     funcs["-grid_nPBC"]={1,[&](const char** ss){ sscanf( ss[0],"%i,%i,%i", &(W->gridFF.nPBC.x),&(W->gridFF.nPBC.y),&(W->gridFF.nPBC.z) ); }};
-    
+    funcs["-database"]={0,[&](const char** ss){ W->bSaveToDatabase=true; }};
     
 
     // ==== funcs2 are executed after initialization MolWorld_sp3 ( therefore may have no effect on initialization process )

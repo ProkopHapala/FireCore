@@ -49,7 +49,7 @@ Inherits from `NBFF` to leverage non-bonded force field functionalities.
 ##### System Configuration
 - `int nbonds`: Number of bond interactions in the system.
 - `int i0dih`: Index offset for proper dihedral forces.
-- `double SubNBTorstionFactor`: Factor to subtract torsion energy from non-bonded energy if greater than zero.
+- `double SubNBTorsionFactor`: Factor to subtract torsion energy from non-bonded energy if greater than zero.
 
 ##### Data Structures
 - `Vec3d* fint`: Temporary storage of forces on atoms before assembling them into final force arrays.

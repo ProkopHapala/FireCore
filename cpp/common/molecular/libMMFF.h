@@ -715,10 +715,6 @@ void orient( const char* fname, int fw1,int fw2,  int up1,int up2,  int i0,  int
     fclose(fout);
 }
 
-//
-
-
-
 void setOptLog( int n, double* cos, double* f, double* v, double* dt, double* damp ){
     W.opt_log.n    = n;
     W.opt_log.cos  = cos;

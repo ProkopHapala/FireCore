@@ -23,6 +23,24 @@ namespace Draw{
         glColor3f( ((i>>16)&0xFF)*inv255, ((i>>8)&0xFF)*inv255, (i&0xFF)*inv255  );
     };
 
+    inline void setRGB2( uint32_t i ){
+        constexpr float inv255 = 1.0f/255.0f;
+        //glColor3f( (i&0xFF)*inv255, ((i>>8)&0xFF)*inv255, ((i>>16)&0xFF)*inv255 );
+        float r = ((i>>16)&0xFF)*inv255;
+        float g = ((i>>8)&0xFF )*inv255;
+        float b = (i&0xFF      )*inv255;
+        glColor3f( r*r, g*g, b*b );
+    };
+
+    inline void setRGB2( uint32_t i, Vec3f& color ){
+        constexpr float inv255 = 1.0f/255.0f;
+        //glColor3f( (i&0xFF)*inv255, ((i>>8)&0xFF)*inv255, ((i>>16)&0xFF)*inv255 );
+        float r = ((i>>16)&0xFF)*inv255;
+        float g = ((i>>8)&0xFF )*inv255;
+        float b = (i&0xFF      )*inv255;
+        color.set( r*r, g*g, b*b );
+    };
+
     inline void setRGB( uint32_t i, Vec3f& color ){
         constexpr float inv255 = 1.0f/255.0f;
         //glColor3f( (i&0xFF)*inv255, ((i>>8)&0xFF)*inv255, ((i>>16)&0xFF)*inv255 );
@@ -43,14 +61,14 @@ namespace Draw{
 
     inline void color_of_hash( int i ){
         //constexpr float inv255 = 1.0f/255.0f;
-        int h = hash_Wang( i );
-        Draw::setRGB( h );
+        int h = hash_Wang( i*158 + 6546787 );
+        Draw::setRGB2( h );
         //glColor3f( (h&0xFF)*inv255, ((h>>8)&0xFF)*inv255, ((h>>16)&0xFF)*inv255 );
     };
 
     inline void color_of_hash( int i, Vec3f& color ){
-        int h = hash_Wang( i );
-        Draw::setRGB( h, color );
+        int h = hash_Wang( i*158 + 6546787 );
+        Draw::setRGB2( h, color );
     };
 
     constexpr int     ncolors = 5;

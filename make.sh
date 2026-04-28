@@ -9,9 +9,9 @@ dr=`pwd`
 #make
 #cd $dr
 
-python3 pyBall/gen_makefile.py VERY_OPT
+#python3 pyBall/gen_makefile.py VERY_OPT
 #python3 pyBall/gen_makefile.py OPT
-#python3 pyBall/gen_makefile.py DEBUG
+python3 pyBall/gen_makefile.py DEBUG
 #ln -s Makefile ../build/Makefile
 
 mkdir build  || true

@@ -5,6 +5,7 @@
 #include "fastmath.h"
 #include "Vec2.h"
 #include "Vec3.h"
+#include "quaternion.h"
 
 #include "physics_constants.h"
 
@@ -13,7 +14,18 @@
 #define F2MAX   10.0f
 
 
-
+inline double getMorseP4(Vec3d dp, Vec3d& f, double R, double E0, double K ){
+    double r2 = dp.norm2();
+    double r  = sqrt(r2);
+    double u  = 1.0 - (K * (r-R)) / 4;
+    double u2 = u*u;
+    double u4 = u2*u2;
+    double u8 = u4*u4;
+    double E  =      u8*u2 - 2*u4*u;
+    double F  = (-10*u8*u  + 8*u4    )*(K/4);
+    f.set_mul( dp, -F );
+    return E;
+}
 
 inline bool clampForce( Vec3d& f, const double f2max ){
     const double f2   = f.norm2();
@@ -26,6 +38,18 @@ inline bool clampForce( Vec3d& f, const double f2max ){
 
 
 // ================= Trashold functions
+
+double linstep_up(double x_, double xmin, double xmax) {
+    if      (x_<xmin){ return 0; }
+    else if (x_>xmax){ return 1; }
+    return (x_-xmin)/(xmax-xmin);
+}
+
+double linstep_down(double x_, double xmin, double xmax) {
+    if      (x_<xmin){ return 1; }
+    else if (x_>xmax){ return 0; }
+    return  (xmax-x_)/(xmax-xmin);
+}
 
 double smoothstep_up(double x_, double xmin, double xmax) {
     if      (x_<xmin){ return 0; }

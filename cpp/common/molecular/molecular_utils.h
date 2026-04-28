@@ -50,7 +50,12 @@ bool checkNumRange( int i, T val, T min, T max, const char* pre, bool bPrint=tru
 }
 
 template<typename T>
-bool ckeckRange(int n, int m, T* xs, T min, T max, const char* pre, bool bPrint=true ){
+bool ckeckRange(int n, int m, T* xs, T min, T max, const char* pre, bool bPrint=true, bool bExit=false ){
+    if(xs==0){
+        if(bPrint){ printf("%s: xs=%p  => exit()\n", pre, xs); }
+        if(bExit)exit(0);
+        return true;
+    }
     bool ret = false;
     for(int i=0; i<n;i++){ 
         bool b=false;
@@ -70,7 +75,40 @@ bool ckeckRange(int n, int m, T* xs, T min, T max, const char* pre, bool bPrint=
     return ret;
 }
 
-bool ckeckNaN_d(int n, int m, double* xs, const char* pre, bool bPrint=true ){
+template<typename T>
+bool ckeckRange_2(int n, int m, T* xs, T* min, T* max, const char* pre, bool bPrint=true, bool bExit=false ){
+    if(xs==0){
+        if(bPrint){ printf("%s: @xs=%p  => exit()\n", pre, xs); }
+        if(bExit)exit(0);
+        return true;
+    }
+    bool ret = false;
+    for(int i=0; i<n;i++){ 
+        bool b=false;
+        for(int j=0; j<m;j++){  
+            int ij=i*m+j;
+            T val = xs[ij];
+            b|=((val<min[j])||(val>max[j])); 
+        }
+        if(b && bPrint ){
+            printf("%s[%i](", pre, i );
+            for(int j=0; j<m;j++){  int ij=i*m+j; printf("%g,", xs[ij] );   }
+            //printf(") outof (%g,%g)\n", (double)min, (double)max );
+        }
+        ret |= b;
+        //ret |= checkNumRange<T>(i,m, xs[ij],min,max,pre,bPrint); 
+    }
+    if(ret && bPrint){ printf("ckeckRange_2[%s] limits: ", pre); for(int j=0; j<m;j++) printf("(%g|%g) ",min[j],max[j]); printf("\n");}
+    return ret;
+}
+
+
+bool ckeckNaN_d(int n, int m, double* xs, const char* pre, bool bPrint=true, bool bExit=false){
+    if(xs==0){
+        if(bPrint){ printf("%s: xs==0\n", pre); }
+        if(bExit)exit(0);
+        return true;
+    }
     bool ret = false;
     for(int i=0; i<n;i++){
         bool b=false;

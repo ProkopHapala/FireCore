@@ -441,6 +441,7 @@ class OCLsystem{ public:
         check_contextSet();
         buffers.push_back( OCLBuffer( name, n, typesize, p_cpu, flags ) );
         int i=buffers.size()-1;
+        printf( "newBuffer( %-16s) ibuff=%4i nbyte=%8li  n %6li typesize %3li \n", name, i, buffers[i].byteSize(), n, typesize );
         buffer_dict.insert( { name, i } );
         int err=buffers[i].initOnGPU(context); OCL_checkError__(err, "newBuffer",i,name);
         return i;
@@ -492,7 +493,7 @@ class OCLsystem{ public:
         return source;
     }
 
-    int buildProgram( const char * fname, cl_program& program_ ){       // TODO : newProgram instead ?
+    int buildProgram( const char * fname, cl_program& program_, const char* build_options = "-I. -cl-std=CL2.0" ){       // TODO : newProgram instead ?
         int err=0;
         char * kernelsource = getKernelSource( fname );
         program_ = clCreateProgramWithSource(context, 1, (const char **) & kernelsource, NULL, &err);
@@ -500,7 +501,7 @@ class OCLsystem{ public:
         sprintf(tmpstr,"Creating program with %s", fname);
         OCL_checkError(err, tmpstr);
         free(kernelsource);
-        err =      clBuildProgram(program_, 0,         NULL,      "-I. -cl-std=CL2.0", NULL, NULL);
+        err =      clBuildProgram(program_, 0,         NULL,      build_options, NULL, NULL);
         //free(kernelsource);     // Why it crashes ?
         if (err != CL_SUCCESS){
             printf( " ERROR in clBuildProgram %s \n", fname);
@@ -513,9 +514,16 @@ class OCLsystem{ public:
         return err;
     }
     int buildProgram( const char * fname ){ return buildProgram( fname, program ); }
+    int buildProgram( const char * fname, const char* build_options ){ return buildProgram( fname, program, build_options ); }
  
-    inline int upload  (int i, const void* cpu_data, int n=-1,int i0=0 ){ return buffers[i].toGPU  (commands,cpu_data,n,i0); };
-    inline int download(int i,       void* cpu_data, int n=-1,int i0=0 ){ return buffers[i].fromGPU(commands,cpu_data,n,i0); };
+    inline int upload  (int i, const void* cpu_data, int n=-1,int i0=0, bool bPrint=false ){ 
+        if(bPrint){ printf("OCL::upload %4i %-12s %12li %12i\n", i, buffers[i].name.c_str(), n, i0); } 
+        return buffers[i].toGPU  (commands,cpu_data,n,i0); 
+    };
+    inline int download(int i,       void* cpu_data, int n=-1,int i0=0, bool bPrint=false ){ 
+        if(bPrint){ printf("OCL::download %4i %-12s %12li %12i\n", i, buffers[i].name.c_str(), n, i0); } 
+        return buffers[i].fromGPU(commands,cpu_data,n,i0); 
+    };
     //inline int upload  (int i, void* p_cpu ){ buffers[i].p_cpu=p_cpu; return buffers[i].toGPU  (commands); };
     //inline int download(int i, void* p_cpu ){ buffers[i].p_cpu=p_cpu; return buffers[i].fromGPU(commands); };
 
@@ -589,6 +597,7 @@ class OCLsystem{ public:
         printf( "OCL_DEF::release_OCL() context \n" );
         clReleaseContext(context);
         printf( "OCL_DEF::release_OCL() --- DONE \n" );
+        printf( "NOTE: Do not worry about \"double free or corruption\" error message now! It is because of python, we will solve it later. \n" );
     }
     ~OCLsystem(){ 
         release_OCL();

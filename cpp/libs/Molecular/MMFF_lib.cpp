@@ -1,4 +1,4 @@
-﻿
+
 #include  "globals.h"
 
 #include "testUtils.h"
@@ -20,7 +20,6 @@ GridShape grid;
 double* grid_data=0;
 
 extern "C"{
-
 void get_gridFF_info( int* int_data, double* float_data ){
     int_data[0]=W.gridFF.natoms;
     // int_data[1]=W.gridFF.natoms.size();
@@ -58,15 +57,50 @@ int get_molecule_natoms() {
     return W.nbmol.natoms;
 }
 
+void init_buffers_UFF(){
+    printf( "init_buffers_UFF() \n" );
+    // Common buffers
+    buffers.insert( { "apos",   (double*)W.nbmol.apos  } );
+    buffers.insert( { "fapos",  (double*)W.nbmol.fapos } );
+    buffers.insert( { "REQs",   (double*)W.nbmol.REQs  } );
+    //buffers.insert( { "PLQs",   (double*)W.nbmol.PLQs  } );
+    // UFF-specific buffers
+    if(W.bUFF){ // UFF-specific buffers
+        buffers.insert(  { "hneigh",    (double*)W.ffu.hneigh } );
+        buffers.insert(  { "fint",      (double*)W.ffu.fint   } );
+        buffers.insert(  { "bonParams", (double*)W.ffu.bonParams } );
+        buffers.insert(  { "angParams", (double*)W.ffu.angParams } );
+        buffers.insert(  { "dihParams", (double*)W.ffu.dihParams } );
+        buffers.insert(  { "invParams", (double*)W.ffu.invParams } );
+
+        ibuffers.insert( { "neighs",    (int*)W.ffu.neighs    } );
+        ibuffers.insert( { "neighBs",   (int*)W.ffu.neighBs   } );
+        ibuffers.insert( { "bonAtoms",  (int*)W.ffu.bonAtoms  } );
+        ibuffers.insert( { "angAtoms",  (int*)W.ffu.angAtoms  } );
+        ibuffers.insert( { "dihAtoms",  (int*)W.ffu.dihAtoms  } );
+        ibuffers.insert( { "invAtoms",  (int*)W.ffu.invAtoms  } );
+
+        // neighbor indices for angles, dihedrals, inversions
+        ibuffers.insert( { "angNgs",    (int*)W.ffu.angNgs    } );
+        ibuffers.insert( { "dihNgs",    (int*)W.ffu.dihNgs    } );
+        ibuffers.insert( { "invNgs",    (int*)W.ffu.invNgs    } );
+    }
+    // UFF-specific dimensions
+    if(W.bUFF){
+        ibuffers.insert( { "ndims", &W.ffu._natoms } ); // 
+        buffers.insert ( { "Es",    &W.ffu.Etot    } );
+    }
+    ibuffers.insert( { "selection", W.manipulation_sel  } );
+    bbuffers.insert( { "ffflags",  &W.doBonded  } );
+    // int _natoms, nbonds, nangles, ndihedrals, ninversions, nf; // 5
+    // int i0dih,i0inv,i0ang,i0bon;                               // 4
+    // double Etot, Eb, Ea, Ed, Ei;                               // 5
+    printf( "MMFF_lib.cpp::init_buffers_UFF() ndims{natoms=%i, nbonds=%i, nangles=%i, ndihedrals=%i, ninversions=%i, nf=%i, i0dih=%i,i0inv=%i,i0ang=%i,i0bon=%i, }\n", W.ffu._natoms, W.ffu.nbonds, W.ffu.nangles, W.ffu.ndihedrals, W.ffu.ninversions, W.ffu.nf, W.ffu.i0dih, W.ffu.i0inv, W.ffu.i0ang, W.ffu.i0bon );
+    printf( "MMFF_lib.cpp::init_buffers_UFF() Es{ Etot=%f, Eb=%f, Ea=%f, Ed=%f, Ei=%f, }\n", W.ffu.Etot, W.ffu.Eb, W.ffu.Ea, W.ffu.Ed, W.ffu.Ei );
+}
+
 void init_buffers(){
-    //printf( "init_buffers() \n" );
-
-    // buffers .insert( { "gridff_apos",   (double*)W.gridFF.apos    } );
-    // // buffers .insert( { "gridff_apos_",   (double*)W.gridFF.apos_  } );
-    //  buffers.insert(std::make_pair(std::string("gridff_apos_"), (double*)W.gridFF.apos_.data()));
-    // buffers .insert( { "gridff_Bspline_PLQ",   (double*)W.gridFF.Bspline_PLQ  } );
-
-
+    printf( "init_buffers() \n" );
     buffers .insert( { "apos",   (double*)W.nbmol.apos  } );
     buffers .insert( { "fapos",  (double*)W.nbmol.fapos } );
     buffers .insert( { "REQs",   (double*)W.nbmol.REQs  } );
@@ -79,18 +113,44 @@ void init_buffers(){
         if(!W.bUFF){
             buffers .insert( { "pipos",  (double*)W.ffl.pipos   } );
             buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
-            ibuffers.insert( { "neighs",      (int*)W.ffl.neighs  } );
-        }
+            ibuffers.insert( { "neighs",    (int*)W.ffl.neighs  } );
+        } // else{ // UFF-specific}
     }else{
         W.ff.natoms=W.nbmol.natoms;
     }
     printf( "MMFF_lib.cpp::init_buffers() ndims{nDOFs=%i,natoms=%i,nnode=%i,ncap=%i,npi=%i,nbonds=%i,nvecs=%i,ne=%i,ie0=%i}\n", W.ff.nDOFs, W.ff.natoms, W.ff.nnode, W.ff.ncap, W.ff.npi, W.ff.nbonds, W.ff.nvecs, W.ff.ne, W.ff.ie0 );
-    ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
+        ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
     buffers .insert( { "Es",       &W.ff.Etot  } );
     ibuffers.insert( { "selection", W.manipulation_sel  } );
     bbuffers.insert( { "ffflags", &W.doBonded  } );
     //printBuffNames();
 }
+
+
+void print_debugs( bool bParams, bool bNeighs, bool bShifts, bool bAtoms ){
+    printf("print_debugs() W.bUFF=%i, bParams=%i, bNeighs=%i, bShifts=%i, bAtoms=%i \n", W.bUFF, bParams, bNeighs, bShifts, bAtoms);
+    if(W.bUFF){
+        W.ffu.printSizes();
+        if(bParams) W.ffu.printAllParams(true, true, true, true, true);
+        if(bAtoms ) W.ffu.print();
+    } else {
+        W.ffl.printSizes();
+        if( bParams ) W.ffl.printAtomParams();
+        if( bNeighs ) W.ffl.printNeighs();
+        if( bShifts ) W.ffl.print_pbc_shifts();
+        if( bAtoms  ) W.ffl.print();
+    }
+}
+
+void print_setup(){
+    if(W.bUFF){
+        W.ffu.printSimulationSetup();
+    }else{
+        printf("MMFF_lib::print_setup() bUFF=false\n");
+       //W.ffl.printSimulationSetup();
+    }
+}
+    
 
 // int loadmol(char* fname_mol ){ return W.loadmol(fname_mol ); }
 //lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name),  cstr(constr_name),     bMMFF,      bEpairs,      bUFF,      b141,      bSimple,      bConj,      bCumulene,      nPBC,        gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
@@ -114,13 +174,18 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, char* constr_name
     //W.params.init( sElementTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
     // bring names of atom types into builder (H is capping atom, E is electron pair)
 	//W.builder.bindParams(&W.params);
+
+    // unbuffered printf()
+    setbuf(stdout, NULL);
+    setbuf(stderr, NULL);
+
     W.initParams( sElementTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
     bool bGrid = gridStep>0;
     // initialize the main
     //W.init( bGrid, bUFF );
     W.bGridFF=bGrid;
     W.init();
-    init_buffers();
+    //init_buffers();
     return &W;
 }
 
@@ -213,8 +278,14 @@ int    run( int nstepMax, double dt, double Fconv, int ialg, double damping, dou
     //printf( "bOpenMP = %i \n", omp );
     //W.rum_omp_ocl( nstepMax, dt, Fconv, 1000.0, 1000 ); 
     // run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0 ){
-    if(omp){ return W.run_omp   (nstepMax,dt,Fconv,   10.0, -1.0, outE, outF, outV, outVF ); }
-    else   { return W.run_no_omp(nstepMax,dt,Fconv, 1000.0,  damping, outE, outF, outV, outVF ); }
+
+    if(W.bUFF){
+        if(omp){ return W.ffu.run_omp(nstepMax,dt,Fconv,   10.0, -1.0,     outE, outF, outV, outVF ); }
+        else   { return W.ffu.run    (nstepMax,dt,Fconv, 1000.0,  damping, outE, outF, outV, outVF ); }
+    }else{
+        if(omp){ return W.run_omp   (nstepMax,dt,Fconv,   10.0, -1.0,     outE, outF, outV, outVF ); }
+        else   { return W.run_no_omp(nstepMax,dt,Fconv, 1000.0,  damping, outE, outF, outV, outVF ); }
+    }
     //else   { return W.run       (nstepMax,dt,Fconv,ialg,       outE, outF, outV, outVF ); }
 }
 
@@ -230,6 +301,101 @@ void  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, 
     }
 }
 
+// In MMFF_lib.cpp before extern "C" closing
+void scan_atoms_rigid(int nscan, int nsel, int* inds, double* scan_pos, double* out_forces, double* out_Es, bool bRelative ){
+    int na = W.nbmol.natoms;
+    std::vector<Vec3d> orig(na);
+    for(int i=0; i<na; i++){ orig[i] = W.nbmol.apos[i]; }
+    for(int i=0; i<nscan; i++){
+        Vec3d* ps = (Vec3d*)(scan_pos+i*nsel*3);
+        for(int j=0; j<nsel; j++){ 
+            int ia = inds[j];  
+            Vec3d p = ps[j]; 
+            if(bRelative){ p.add(orig[ia]); }
+            W.nbmol.apos[ia] = p; 
+        }
+        if(out_Es){ out_Es[i] = W.eval_no_omp(); }
+        if(out_forces){ for(int j=0; j<nsel; j++){ int ia = inds[j];  out_forces[i*nsel*3 + j*3] = W.nbmol.fapos[ia].x; } }
+    }
+    for(int j=0; j<nsel; j++){ int ia = inds[j];  W.nbmol.apos[ia] = orig[ia]; }
+}
+
+// Hessian: independent 3×3 blocks for selected atoms
+void getHessian3x3( int n, int* inds, double* Hess_, double dx, bool bDiag ){
+    int na=W.nbmol.natoms;
+    printf("getHessian3x3(n=%i) na=%i dx=%g    bMMFF=%i bNonBonded=%i bSurfAtoms=%i bGridFF=%i bPBC=%i bNonBondNeighs=%i \n", n, na, dx, W.bMMFF, W.bNonBonded, W.bSurfAtoms, W.bGridFF, W.bPBC, W.bNonBondNeighs);
+    // save original positions
+    DEBUG
+    std::vector<Vec3d> orig(n);
+    for(int i=0;i<n;i++){ int ia=inds[i]; orig[i]=W.nbmol.apos[ia]; }
+    double denom = 1.0/(2*dx);
+    DEBUG
+    W.saveXYZ("getHessian3x3.xyz");
+    DEBUG
+    Mat3d H, U;
+    Vec3d Ks;
+    for(int i=0;i<n;i++){
+        printf( "getHessian3x3() i=%i \n", i );
+        int ia=inds[i];
+        printf( "getHessian3x3() i=%i ia=%i  \n", i, ia );
+        Vec3d  p0=orig[i];
+        Vec3d& p=W.nbmol.apos[ia];
+        //double* H = out_hessians+i*9;
+        //Vec3d* Hess = ((Vec3d*)out_hessians)+(i*3); 
+        printf( "getHessian3x3() ia=%i p=(%g,%g,%g)\n", ia, p.x,p.y,p.z );
+        for(int k=0;k<3;k++){
+            p.array[k]=p0.array[k]+dx; W.eval_no_omp(); Vec3d df=W.nbmol.fapos[ia];
+            p.array[k]=p0.array[k]-dx; W.eval_no_omp(); df.sub(  W.nbmol.fapos[ia] );
+            p.array[k]=p0.array[k];                     df.mul(denom);
+            printf( "getHessian3x3() ia=%i k=%i p=(%g,%g,%g) df=(%g,%g,%g)\n", ia, k, p.x,p.y,p.z, df.x,df.y,df.z );
+            //Hess[k]=df;
+            H.vecs[k]=df;
+            //for(int l=0;l<3;l++) H[l*3+k]=(fp.array[l]-fm.array[l])*denom;
+        }
+        if(bDiag){
+            H.eigenvals(Ks);
+            printf( "getHessian3x3() ia=%i Ks=(%g,%g,%g)\n", ia, Ks.x,Ks.y,Ks.z );
+            H.eigenvec(Ks.x,U.a);
+            H.eigenvec(Ks.y,U.b);
+            H.eigenvec(Ks.z,U.c);
+            printf( "getHessian3x3() ia=%i u1(%g,%g,%g) u2(%g,%g,%g) u3(%g,%g,%g)\n", ia, U.a.x,U.a.y,U.a.z,   U.b.x,U.b.y,U.b.z,   U.c.x,U.c.y,U.c.z );
+            *((Mat3d*)(Hess_ + i*12   ))=U;
+            *((Vec3d*)(Hess_ + i*12 +9))=Ks;
+        }else{
+            *((Mat3d*)(Hess_ + i*12))=H;
+        }
+    }
+    DEBUG
+    // restore original positions
+    for(int i=0;i<n;i++){ int ia=inds[i]; W.nbmol.apos[ia]=orig[i]; }
+}
+
+// Hessian: full 3N×3N for selected atoms
+void getHessian3Nx3N(int n,int* inds,double* out_hessian,double dx){
+    std::vector<Vec3d> orig(n);
+    // save original positions
+    for(int i=0;i<n;i++){ int ia=inds[i]; orig[i]=W.nbmol.apos[ia]; }
+    for(int p=0;p<n;p++){
+        int ip=inds[p];
+        Vec3d fp,fm;
+        for(int k=0;k<3;k++){
+            double v=orig[ip].array[k];
+            W.nbmol.apos[ip].array[k]=v+dx; W.eval_no_omp(); fp=W.nbmol.fapos[ip];
+            W.nbmol.apos[ip].array[k]=v-dx; W.eval_no_omp(); fm=W.nbmol.fapos[ip];
+            W.nbmol.apos[ip].array[k]=v;
+            int col=p*3+k;
+            for(int o=0;o<n;o++){
+                int io=inds[o];
+                for(int l=0;l<3;l++){
+                    int row=o*3+l;
+                    //out_hessian_full[row*dim+col]=(fp[io].array[l]-fm[io].array[l])/(2*dx);
+                }
+            }
+        }
+    }
+    // restore original positions
+    for(int i=0;i<n;i++){ int ia=inds[i]; W.nbmol.apos[ia]=orig[i]; }
+}
 
 void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeighs,  int SurfAtoms, int GridFF, int MMFF, int Angles, int PiSigma, int PiPiI ){
     #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
@@ -253,8 +419,19 @@ void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeigh
     #undef _setbool
 }
 
-
-
+void setSwitchesUFF( int DoBond, int DoAngle, int DoDihedral, int DoInversion, int DoAssemble, int SubtractBondNonBond, int ClampNonBonded ){
+    // bool bDoBond=true, bDoAngle=true, bDoDihedral=true, bDoInversion=true; bSubtractBondNonBond, bClampNonBonded
+    #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
+    _setbool( W.ffu.bDoBond,              DoBond );
+    _setbool( W.ffu.bDoAngle,             DoAngle );
+    _setbool( W.ffu.bDoDihedral,          DoDihedral );
+    _setbool( W.ffu.bDoInversion,         DoInversion );
+    _setbool( W.ffu.bDoAssemble,          DoAssemble );
+    _setbool( W.ffu.bSubtractBondNonBond, SubtractBondNonBond );
+    _setbool( W.ffu.bClampNonBonded,      ClampNonBonded );
+    printf( "setSwitchesUFF() bDoBond=%i bDoAngle=%i bDoDihedral=%i bDoInversion=%i bDoAssemble=%i bSubtractBondNonBond=%i bClampNonBonded=%i \n", W.ffu.bDoBond, W.ffu.bDoAngle, W.ffu.bDoDihedral, W.ffu.bDoInversion, W.ffu.bDoAssemble, W.ffu.bSubtractBondNonBond, W.ffu.bClampNonBonded );
+    #undef _setbool
+}
 
 int substituteMolecule( const char* fname, int ib, double* up, int ipivot, bool bSwapBond ){
     return W.substituteMolecule( fname, ib, *(Vec3d*)up, ipivot, bSwapBond );
@@ -569,12 +746,7 @@ int sampleHbond( int ib, int n, double* rs, double* Es, double* fs, int kind, do
     return nb;
 }
 
-void print_debugs( bool bParams, bool bNeighs, bool bShifts ){
-    W.ffl.printSizes();
-    if( bParams ) W.ffl.printAtomParams();
-    if( bNeighs ) W.ffl.printNeighs();
-    if( bShifts ) W.ffl.print_pbc_shifts();
-}
+
 
 //void sampleSurf_vecs(char* name, int n, double* poss_, double* FEs_, int kind, int ityp, double RvdW, double EvdW, double Q, double K, double RQ, double* pos0_, int npbc, bool bSave){
 void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, double RvdW, double EvdW, double Q, double K, double RQ, int npbc, bool bSave){    
@@ -716,5 +888,6 @@ double compute_Free_energy(double l1, double l2, int n=0, int* dc=0, int nbSteps
     }
     return W.compute_Free_energy(l1, l2, n, dc, nbSteps, nMDsteps, nEQsteps, t_damp, T, dt);
 }
+
 
 } // extern "C"

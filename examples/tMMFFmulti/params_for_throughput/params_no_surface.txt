@@ -1,0 +1,34 @@
+# Parameters for simulations without surface
+# These parameters generate data for molecules without surface interaction
+
+# Basic Parameters
+dovdW=1
+doSurfAtoms=0
+bGridFF=0
+bTex=0
+bSaveToDatabase=-1
+xyz_name=data/xyz/xylitol_WO_gridFF
+surf_name=
+Fconv=1e-4
+
+# Advanced Parameters
+replicas=1000,5000
+perframes=20,500
+perVF=20,50
+nPBC=(0,0,0)
+Ns=0
+
+# Local Memory Parameters
+nlocMMFFs=32
+nlocmoves=32
+nlocNBFFs=--
+nlocSurfs=--
+nlocGridFFs=--
+nlocGridFFbSplines=--
+
+# Description
+# These parameters are designed for simulations of molecules without surface interaction.
+# doSurfAtoms=0 disables surface atoms
+# bGridFF=0 disables Grid Force Field
+# nPBC=(0,0,0) disables periodic boundary conditions
+# Ns=0 means no surface (no surface size)

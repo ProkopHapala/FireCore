@@ -124,8 +124,9 @@ subroutine set_default_params ()
 !        ibias = 0
         rescal = 1.0d0
         xyz2line = 2
-        verbosity = 0
-        idebugwrite = 0
+        ! NOTE: if we set verbosity and idebugwrite here we overide it in firecore_preinit
+        !verbosity = 0
+        !idebugwrite = 0
         timing_verbosity = 0
         ntpr = 1
         restartxyz = 0

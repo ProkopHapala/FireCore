@@ -45,6 +45,32 @@
 //using Action  = std::function<void(double val)>; 
 //using CommandDict = std::unordered_map<std::string,>;
 
+// void drawBuilderAtoms( const MM::Builder& builder, char* id_ptr, float sz, uint32_t* colors=0){
+//     int offset= (int)((char*)id_ptr-(char*)&(builder.atoms[0]));
+//     //printf( "offset %i \n", offset );
+//     for(int i=0; i<builder.atoms.size(); i++){
+//         int id = *(int*)( (char*)&(builder.atoms[i]) + offset );
+//         if(id<0) continue;
+//         if(colors){ Draw::setRGB(colors[id]); }
+//         else       { Draw::color_of_hash(id); }
+//         Draw3D::drawPointCross( builder.atoms[i].pos, sz );
+//     }
+// }
+
+namespace SelectionKind{ enum{ Atom=1, Bond=2, Angle=3, Torsion=4, Fragment=5 }; }
+namespace Gui_Mode     { enum{ base=0, edit=1, scan=2 }; }
+
+// Safer overload using pointer-to-member; avoids pointer arithmetic.
+inline void drawBuilderAtoms( const MM::Builder& builder, int MM::Atom::* field, float sz, uint32_t* colors=0 ){
+    for(int i=0; i<builder.atoms.size(); i++){
+        int id = builder.atoms[i].*field;
+        if(id<0) continue;
+        if(colors){ Draw::setRGB(colors[id]); }
+        else      { Draw::color_of_hash(id);  }
+        Draw3D::drawPointCross( builder.atoms[i].pos, sz );
+    }
+}
+
 void plotNonBondLine( const NBFF& ff, Quat4d REQi, double Rdamp, Vec3d p1, Vec3d p2, int n, Vec3d up=Vec3dZ, bool bForce=false ){
     Vec3d d = (p2-p1)*(1.0/n);
     Vec3d p = p1;
@@ -148,6 +174,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     double cameraMoveSpeed = 1.0;
     //bool useGizmo=true;
     bool useGizmo=false;
+    bool gizmoAutoPivotCOG = false; // auto-place gizmo at COG of current selection (builder)
     bool bDrawHexGrid=true;
     bool bHexDrawing=false; 
 
@@ -174,9 +201,12 @@ class MolGUI : public AppSDL2OGL_3D { public:
     GUIPanel*    Qpanel=0;
     EditorGizmo  gizmo;
     SimplexRuler ruler; // Helps paiting organic molecules
-    enum class Gui_Mode { base, edit, scan };
-    Gui_Mode  gui_mode = Gui_Mode::base;
+    //enum class Gui_Mode { base, edit, scan };
+    //Gui_Mode  gui_mode = Gui_Mode::base;
     //int gui_mode = Gui_Mode::edit;
+    int gui_mode = Gui_Mode::base;
+    int selection_mode = SelectionKind::Atom;
+    
     DropDownList* panel_Frags=0;
     GUIPanel*     panel_iMO  =0;
     GUIPanel*     panel_AFM  =0;
@@ -611,7 +641,12 @@ void MolGUI::initWiggets(){
     //     else            { std::unordered_set<int> s(W->selection.begin(),        W->selection.end());         W->selection.clear();         for(int i=0; i<W->nbmol.natoms;         i++) if( !s.contains(i) )W->selection.push_back(i);       return 0;  }
     // };
 
-    mp->addPanel( "print.nonB",  {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->ffl.print_nonbonded();   return 0; };   // 1
+    mp->addPanel( "print.builder.atoms",  {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ 
+        W->builder.assignPiFragments();    
+        W->builder.addCappingNeighborsToFragments();
+        W->builder.printAtoms();    return 0; 
+    };   // 1
+    mp->addPanel( "print.nonB",  {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->ffl.print_nonbonded();    return 0; };   // 1
     mp->addPanel( "print.Aconf", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->builder.printAtomConfs(); return 0; };  // 2
     mp->addPanel( "Sel.All", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){ W->builder.selectAll();     }else{ W->selectAll();    } return 0; };  // 3
     mp->addPanel( "Sel.Inv", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){ W->builder.selectInverse(); }else{ W->selectInverse();} return 0; };  // 4
@@ -657,6 +692,40 @@ void MolGUI::initWiggets(){
     mp->addPanel( "scanSurfFF",  {-3.0,3.0,0.0}, 1,1,0,1,1 )->command = lamb_scanSurf;   // 12
     mp->addPanel( "SurfFF_view", {-0.01,1.01,0}, 1,1,1,1,1 )->command = lamb_scanSurf;   // 13
     mp->addPanel( "SurfFF_scan", {-0.01,1.01,0}, 1,1,1,1,1 )->command = lamb_scanSurf;   // 14
+    ylay.step( (mp->nsubs+1)*2 ); ylay.step( 2 );
+
+    // ------ MultiPanel(   Gizmo Control   )
+    mp = new MultiPanel( "Gizmo", gx.x0, ylay.x0, gx.x1, 0, -5 ); gui.addPanel( mp );
+    // Toggle Gizmo On/Off
+    mp->addPanel( "On/Off", {0.0,1.0,0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ useGizmo = !useGizmo; return 0; };
+    // Switch modes
+    mp->addPanel( "Mode:Trans", {0.0,1.0,0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ gizmo.mTrans='m'; return 0; };
+    mp->addPanel( "Mode:Rot",   {0.0,1.0,0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ gizmo.mTrans='r'; return 0; };
+    // Auto pivot to COG toggle
+    mp->addPanel( "AutoCOG", {0.0,1.0,0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ gizmoAutoPivotCOG = !gizmoAutoPivotCOG; printf("Gizmo AutoCOG = %d\n", (int)gizmoAutoPivotCOG); return 0; };
+    // Adjust rotation annulus inner fraction for picking (0.5..0.95)
+    mp->addPanel( "ArcPick rmin", {0.5,0.95,0.0}, 1,1,1,1,1 )->command = [&](GUIAbstractPanel* p){ gizmo.rotPickRminFrac = ((GUIPanel*)p)->value; printf("Gizmo rotPickRminFrac=%.3f\n", gizmo.rotPickRminFrac); return 0; };
+    // Set Gizmo position to center of current selection (COG)
+    mp->addPanel( "Pos=SelCOG", {0.0,1.0,0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){
+        if(bViewBuilder){ W->selectionFromBuilder(); }
+        int n = (int)W->selection.size();
+        if(n<=0) return 0;
+        Vec3d c = W->center(false);
+        gizmo.pose.pos = c;
+        return 0;
+    };
+    // Select all atoms in fragment of picked atom
+    mp->addPanel( "SelFragOfPick", {0.0,1.0,0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){
+        int ia = W->ipicked; if(ia<0) return 0;
+        if( ia >= (int)W->builder.atoms.size() ) return 0;
+        int ifrag = W->builder.atoms[ia].frag; if(ifrag<0) return 0;
+        W->selectFragment( ifrag );
+        if(bViewBuilder){
+            W->builder.selection.clear();
+            for(int i=0; i<(int)W->builder.atoms.size(); i++) if(W->builder.atoms[i].frag==ifrag) W->builder.selection.insert(i);
+        }
+        return 0;
+    };
     ylay.step( (mp->nsubs+1)*2 ); ylay.step( 2 );
 
     // mp= new MultiPanel( "Run", gx.x0, ylay.x0, gx.x1, 0,-2); gui.addPanel( mp ); //panel_NonBondPlot=mp;
@@ -728,9 +797,11 @@ void MolGUI::initWiggets(){
     }
 
     MolGUI::nonBondGUI();
+    printf( "MolGUI::initWiggets() DONE\n" );
 }
 
 void MolGUI::nonBondGUI(){
+    printf( "MolGUI::nonBondGUI()\n" );
     GUI_stepper gx(100,6);
     //bDrawNonBond = true;
     // ---- NonBond plot Options
@@ -787,6 +858,7 @@ void MolGUI::nonBondGUI(){
     mp->addPanel( "Charge: ", {-0.5,0.5, 0.0    },  1,0,0,1,0 );
     mp->addPanel( "Hbond : ", {-1.0,1.0, 0.0    },  1,0,0,1,0 );
 
+    printf( "MolGUI::nonBondGUI() DONE\n" );
 }
 
 void MolGUI::plotNonBondLines(){
@@ -1136,7 +1208,7 @@ void MolGUI::initGUI(){
     //gizmo.bindPoints(W->ff.natoms, W->ff.apos      );
     //gizmo.bindEdges (W->ff.nbonds, W->ff.bond2atom );
     gizmo.pointSize = 0.5;
-    //gizmo.iDebug    = 2;
+    gizmo.iDebug    = 2; // enable gizmo debug logs
     ruler.setStep( 1.5 * sqrt(3) );
 
 }
@@ -1144,6 +1216,13 @@ void MolGUI::initGUI(){
 void MolGUI::updateGUI(){
     gizmo.bindPoints( natoms, apos      );
     gizmo.bindEdges ( nbonds, bond2atom );
+    // Route rotation updates to Builder when in builder view
+    gizmo.onRotateSelection = [this](const Vec3d& axis, double dphi, const Vec3d& pivot){
+        if(!bViewBuilder) return; // only act in builder mode per request
+        double ca = cos(dphi), sa = sin(dphi);
+        for(int ia : W->builder.selection){ W->builder.atoms[ia].pos.rotate_csa( ca, sa, axis, pivot ); }
+        bBuilderChanged = true;
+    };
     if(panel_Frags){
         panel_Frags->labels.clear();
         for(int i=0; i<W->builder.frags.size(); i++){
@@ -1362,6 +1441,7 @@ void MolGUI::draw(){
             glCallList( ogl_surfatoms );
         }
     }
+    //DEBUG
 
     // ----- Visualization of the Groups of Atoms
     if( W->bGroups ){
@@ -1405,34 +1485,34 @@ void MolGUI::draw(){
                 glColor3f(0.0,0.0,1.0); Draw3D::drawVecInPos( cross(gfw[ig].f,gup[ig].f), gpos[ig].f );
             }
         }
-    }
 
-    if( bViewGroupBoxes ){
-        Vec6d* BBs; 
-        Buckets* pointBBs;
-        int nBBs = W->getGroupBoxes( BBs, pointBBs );
-        //printf( "MolGUI::draw(). nBBs %i \n", nBBs );
-        for(int i=0; i<nBBs; i++){
-            Vec6d& bb = BBs[i];
-            Draw::color_of_hash(i*76461+1459);
-            //printf( "MolGUI::draw(). BB %i  pmin(%16.8f,%16.8f,%16.8f) pmax(%16.8f,%16.8f,%16.8f) \n", i, bb.lo.x, bb.lo.y, bb.lo.z, bb.hi.x, bb.hi.y, bb.hi.z  );
-            Draw3D::drawBBox( bb.lo, bb.hi );
-        }        
-        int ib=0; // pivot Box (Group of atoms)
-        int    inds [natoms];
-        Vec3d  ps   [natoms];
-        Quat4d paras[natoms];
-        int n = W->ffl.selectFromOtherBucketsInBox( ib ,6.0, ps,paras,inds );
-        //printf( "MolGUI::draw(). n %i \n", n );
-        glColor3f(0.0,1.0,1.0);
-        for(int ia=0; ia<n; ia++){
-            //Draw::color_of_hash(ia*76461+1459);
-            Draw3D::drawSphereOctLines(8,1.0,ps[ia]);
+
+        if( bViewGroupBoxes ){
+            Vec6d*   BBs; 
+            Buckets* pointBBs;
+            int nBBs = W->getGroupBoxes( BBs, pointBBs );
+            //printf( "MolGUI::draw(). nBBs %i \n", nBBs );
+            for(int i=0; i<nBBs; i++){
+                Vec6d& bb = BBs[i];
+                Draw::color_of_hash(i*76461+1459);
+                //printf( "MolGUI::draw(). BB %i  pmin(%16.8f,%16.8f,%16.8f) pmax(%16.8f,%16.8f,%16.8f) \n", i, bb.lo.x, bb.lo.y, bb.lo.z, bb.hi.x, bb.hi.y, bb.hi.z  );
+                Draw3D::drawBBox( bb.lo, bb.hi );
+            }
+            int ib=0; // pivot Box (Group of atoms)
+            int    inds [natoms];
+            Vec3d  ps   [natoms];
+            Quat4d paras[natoms];
+            int n = W->ffl.selectFromOtherBucketsInBox( ib ,6.0, ps,paras,inds );
+            //printf( "MolGUI::draw(). n %i \n", n );
+            glColor3f(0.0,1.0,1.0);
+            for(int ia=0; ia<n; ia++){
+                //Draw::color_of_hash(ia*76461+1459);
+                Draw3D::drawSphereOctLines(8,1.0,ps[ia]);
+            }
         }
 
-
     }
-
+    //DEBUG
     //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 1., 0. );
     //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} ); }
     //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
@@ -1469,7 +1549,7 @@ void MolGUI::draw(){
             glCallList(ogl_MO); 
         glPopMatrix();
     }
-
+    //DEBUG
     // Draw the actual system ( molecules : atoms, bonds etc. )
     if(bDoMM){
         if( bViewBuilder ){ drawBuilder(); }   // Draw Builder 
@@ -1529,7 +1609,7 @@ void MolGUI::draw(){
             glEnd();
         }
     }
-
+    //DEBUG
     glColor3f(0.0f,0.5f,0.0f); showBonds();
 
     //visual_FF_test();
@@ -1565,8 +1645,16 @@ void MolGUI::draw(){
         debug_scanSurfFF( ny, p0-b+a*0.5, p0+b*2.+a*0.5 );
     }
 
-    if(bViewBuilder){ glColor3f( 0.f,1.f,0.f ); for(int ia : W->builder.selection ){ Draw3D::drawSphereOctLines( 8, 0.5, W->builder.atoms[ia].pos ); } }
-    else            { glColor3f( 0.f,1.f,0.f ); for(int ia : W->selection         ){ Draw3D::drawSphereOctLines( 8, 0.5, W->nbmol.apos[ia]        ); } }
+    //printf( "bViewBuilder %i \n", bViewBuilder );
+    if(bViewBuilder){ 
+        glColor3f( 0.f,1.f,0.f ); 
+        for(int ia : W->builder.selection ){ Draw3D::drawSphereOctLines( 8, 0.5, W->builder.atoms[ia].pos ); } 
+        drawBuilderAtoms( W->builder, &MM::Atom::frag, 0.5 ); 
+    }else{ 
+        glColor3f( 0.f,1.f,0.f ); 
+        for(int ia : W->selection         ){ Draw3D::drawSphereOctLines( 8, 0.5, W->nbmol.apos[ia]        ); } 
+    }
+    //DEBUG
 
     // --- Drawing Population of geometies overlay
     if(frameCount>=1){ 
@@ -1606,13 +1694,15 @@ void MolGUI::draw(){
             glPopAttrib();
         } 
     }
-
+    //DEBUG
     //if(iangPicked>=0){
     //    glColor3f(0.,1.,0.);      Draw3D::angle( W->ff.ang2atom[iangPicked], W->ff.ang_cs0[iangPicked], W->ff.apos, fontTex3D );
     //}
     if(useGizmo){ gizmo.draw(); }
     if(bHexDrawing)drawingHex(5.0);
     if(bViewAxis){ glLineWidth(3);  Draw3D::drawAxis(1.0); glLineWidth(1); }
+
+    //DEBUG
 
 };
 
@@ -1715,9 +1805,11 @@ Vec3d MolGUI::showNonBond( char* s, Vec2i b, bool bDraw ){
 }
 
 void MolGUI::drawHUD(){
+    //DEBUG
     glDisable ( GL_LIGHTING );
     gui.draw();
 
+    //DEBUG
     glPushMatrix();
     if(W->bCheckInvariants){
         glTranslatef( 10.0,HEIGHT-20.0,0.0 );
@@ -1734,6 +1826,7 @@ void MolGUI::drawHUD(){
         W->getStatusString( tmpstr, ntmpstr );
         Draw::drawText( tmpstr, fontTex, fontSizeDef, {100,20} );
     }
+    //DEBUG
     if(bWriteOptimizerState){
         double T = W->evalEkTemp();   //printf( "T_kinetic=%g[K] \n", T );
         glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
@@ -1749,7 +1842,7 @@ void MolGUI::drawHUD(){
         Draw::drawText( W->info_str(tmpstr), fontTex, fontSizeDef, {100,20} );
     }
     glPopMatrix();
-
+    //DEBUG
 
     if( W->getMolWorldVersion() == (int)MolWorldVersion::GPU ){
         glPushMatrix();
@@ -1765,6 +1858,7 @@ void MolGUI::drawHUD(){
         };
         glPopMatrix();
     }
+    //DEBUG
 
     /*
     glTranslatef( 0.0,fontSizeDef*-2*2,0.0 );
@@ -1786,8 +1880,9 @@ void MolGUI::drawHUD(){
 
     mouse_pix = ((Vec2f){ 2*mouseX/float(HEIGHT) - ASPECT_RATIO,
                           2*mouseY/float(HEIGHT) - 1      });// *(1/zoom);
-
+    //DEBUG
     if(bConsole) console.draw();
+    //DEBUG
 }
 
 void MolGUI::drawingHex(double z0){
@@ -2535,7 +2630,52 @@ void MolGUI::eventMode_scan( const SDL_Event& event  ){
 }
 
 void MolGUI::eventMode_default( const SDL_Event& event ){
-    if(useGizmo)gizmo.onEvent( mouse_pix, event );
+    // Only use gizmo in builder view for this feature; and never modify selection while interacting
+    if(useGizmo && bViewBuilder){
+        // Middle mouse: set pivot to nearest builder atom under cursor
+        if(event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_MIDDLE){
+            Vec3d ro = (Vec3d)mouseRay0();
+            Vec3d rd = (Vec3d)cam.rot.c;
+            int    imin = -1; double dmin = 1e+300; double tmin = 0;
+            for(size_t ia=0; ia<W->builder.atoms.size(); ++ia){
+                double t;
+                double d2 = rayPointDistance2( ro, rd, W->builder.atoms[ia].pos, t );
+                if(d2 < dmin){ dmin = d2; tmin = t; imin = (int)ia; }
+            }
+            if(imin>=0 && dmin < 0.25){ // radius ~0.5
+                gizmo.pose.pos = W->builder.atoms[imin].pos;
+                if(verbosity>0) printf("MolGUI: Pivot set to atom %d at (%.3f,%.3f,%.3f) d=%.3f t=%.3f\n", imin, gizmo.pose.pos.x, gizmo.pose.pos.y, gizmo.pose.pos.z, sqrt(dmin), tmin);
+                return; // consume the event
+            }
+        }
+        if(gizmo.mTrans=='r'){
+            if(event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT){
+                // Mirror builder selection to gizmo; do NOT change builder selection and do NOT move gizmo
+                gizmo.selection.clear();
+                for(int ia : W->builder.selection){ gizmo.selection[ia] = 0; }
+                if(verbosity>0) printf("MolGUI: mirrored %zu builder selections to gizmo on LMB down\n", gizmo.selection.size());
+                // Auto-pivot to selection COG if enabled
+                if(gizmoAutoPivotCOG && !W->builder.selection.empty()){
+                    Vec3d c{0,0,0}; int n=0;
+                    for(int ia : W->builder.selection){ c.add( W->builder.atoms[ia].pos ); n++; }
+                    if(n>0){ c.mul(1.0/n); gizmo.pose.pos = c; if(verbosity>0) printf("MolGUI: AutoCOG pivot=(%.3f,%.3f,%.3f)\n", c.x,c.y,c.z); }
+                }
+            }
+        }
+        gizmo.onEvent( mouse_pix, event );
+        // If gizmo is engaged with left button (down/move/up), consume event to prevent deselection
+        bool leftEngaged = false;
+        switch(event.type){
+            case SDL_MOUSEBUTTONDOWN:
+            case SDL_MOUSEBUTTONUP:   leftEngaged = (event.button.button == SDL_BUTTON_LEFT); break;
+            case SDL_MOUSEMOTION:     leftEngaged = (event.motion.state & SDL_BUTTON_LMASK); break;
+            default: break;
+        }
+        if( gizmo.mTrans=='r' && leftEngaged && (gizmo.dragged || gizmo.iAxisRot>=0) ){
+            if(verbosity>0) printf("MolGUI: consume event (rotate): leftEngaged=%d dragged=%d iAxisRot=%d\n", (int)leftEngaged, (int)gizmo.dragged, gizmo.iAxisRot);
+            return;
+        }
+    }
     //printf( "MolGUI::eventMode_default() bConsole=%i \n", bConsole );
     switch( event.type ){
         case SDL_MOUSEWHEEL:{
@@ -2637,7 +2777,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_LEFTBRACKET:  myAngle-=0.1; printf( "myAngle %g \n", myAngle ); break;
                 //case SDLK_RIGHTBRACKET: myAngle+=0.1; printf( "myAngle %g \n", myAngle );  break;
 
-                //case SDLK_g: useGizmo=!useGizmo; break;
+                case SDLK_g: useGizmo=!useGizmo; break;
                 //case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 //case SDLK_g: W->swith_gridFF(); break;
                 case SDLK_c: W->autoCharges(); break;
@@ -2666,7 +2806,6 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 case SDLK_k: bViewColorFrag ^= 1; break;
                 case SDLK_j: bViewBuilder   ^= 1; break;
 
-                case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 //case SDLK_c: W->bOcl=!W->bOcl;       break;
                 case SDLK_m: W->swith_method();      break;
                 //case SDLK_h: W->ff4.bAngleCosHalf = W->ffl.bAngleCosHalf = !W->ffl.bAngleCosHalf; break;

@@ -1,0 +1,5 @@
+# typename comp   Min Max     xlo  xhi        Klo   Khi   K0       xstart
+#
+#F    3     -1e-6    1e-6         -0.90  -0.50     1.0   1.0   0.5    -0.0
+#
+H    3     -1e-6    1e-6          0.50   0.90     1.0   1.0   0.5    +0.0

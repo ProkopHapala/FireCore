@@ -9,6 +9,10 @@ import copy
 
 neg_types_set = { "O", "N" }
 
+def normalize(v):
+    n = np.linalg.norm(v)
+    return v / n if n > 1e-8 else v
+
 def findAllBonds( atoms, Rcut=3.0, RvdwCut=0.7 ):
     bonds     = []
     bondsVecs = []
@@ -199,12 +203,13 @@ def makeKinkAtomSamples( neighs, apos, where=[-0.6, +0.6 ] ):
 def getAtomRadius( atypes, eparams=elements.ELEMENTS, icol=6 ):
     # icol=7 RvdW, icol=6 covalent radius
     #print( eparams[ 6 ][7], eparams[ 6 ] )
+
     return [ eparams[ ei ][icol] for ei in atypes ]
 
 def getAtomRadiusNP( atypes, eparams=elements.ELEMENTS ):
     return np.array( getAtomRadius( atypes, eparams ) ) 
 
-def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=1.5, RvdWs=None, byRvdW=True ):
+def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=0.5, RvdWs=None, byRvdW=True ):
     bonds  = []
     rbs    = []
     iatoms = np.arange( len(apos), dtype=int )
@@ -457,12 +462,56 @@ def makeRotMatAng( ang, ax=(0,1) ):
     rot[ax1,ax2]=-sa; rot[ax2,ax1]=sa
     return rot 
 
-def makeRotMat( fw, up ):    
+# def rotation_matrix( axis, angle ):
+#     axis = axis/np.linalg.norm(axis)
+#     ca = np.cos(angle)
+#     sa = np.sin(angle)
+#     rot = np.eye(3)
+#     kx, ky, kz = axis
+#     v = 1 - ca
+#     rot[0, 0] = kx * kx * v + ca
+#     rot[0, 1] = kx * ky * v - kz * sa
+#     rot[0, 2] = kx * kz * v + ky * sa
+#     rot[1, 0] = kx * ky * v + kz * sa
+#     rot[1, 1] = ky * ky * v + ca
+#     rot[1, 2] = ky * kz * v - kx * sa
+#     rot[2, 0] = kx * kz * v - ky * sa
+#     rot[2, 1] = ky * kz * v + kx * sa
+#     rot[2, 2] = kz * kz * v + ca
+#     return rot
+
+def rotation_matrix(axis, angle):
+    '''
+    create rotation matrix from arbitrary axis and angle using 'Rodrigues' rotation formula
+    '''
+    axis = axis / np.linalg.norm(axis)
+    ca = np.cos(angle)
+    sa = np.sin(angle)
+    kx, ky, kz = axis
+    v = 1 - ca
+    rot = np.array([
+        [ kx*kx*v + ca,     kx*ky*v - kz*sa,  kx*kz*v + ky*sa ],
+        [ kx*ky*v + kz*sa,  ky*ky*v + ca,     ky*kz*v - kx*sa ],
+        [ kx*kz*v - ky*sa,  ky*kz*v + kx*sa,  kz*kz*v + ca    ]
+    ])
+    return rot
+
+# def rotation_matrix(axis, angle):
+#     axis = axis / np.linalg.norm(axis)
+#     ca, sa = np.cos(angle), np.sin(angle)
+#     K = np.array(
+#         [[ 0      , -axis[2],  axis[1]],
+#          [ axis[2],  0      , -axis[0]],
+#          [-axis[1],  axis[0],  0     ]])
+#     return ca * np.eye(3) + (1 - ca) * np.outer(axis, axis) + sa * K    
+
+def makeRotMat( fw, up=None ):    
     fw   = fw/np.linalg.norm(fw)
+    if up is None: up = np.array([0.,0.,1.])
     up   = up - fw*np.dot(up,fw)
     ru   = np.linalg.norm(up)
     if ru<1e-4:  # if colinear
-        print("WARRNING: makeRotMat() up,fw are colinear => randomize up ")
+        #print(f"WARRNING: makeRotMat() up{up},fw{fw} are colinear => randomize up ")
         up = np.random.rand(3)
         up = up - fw*np.dot(up,fw)
         ru = np.linalg.norm(up)
@@ -476,7 +525,7 @@ def makeRotMatAng2( fw, up, ang ):
     up   = up - fw*np.dot(up,fw)
     ru   = np.linalg.norm(up)
     if ru<1e-4:  # if colinear
-        print("WARRNING: makeRotMat() up,fw are colinear => randomize up ")
+        #print(f"WARRNING: makeRotMat() up{up},fw{fw} are colinear => randomize up ")
         up = np.random.rand(3)
         up = up - fw*np.dot(up,fw)
         ru = np.linalg.norm(up)
@@ -1483,28 +1532,77 @@ def loadAtoms( name ):
     f.close()
     return [ e,x,y,z,q ]
 
-
 def load_xyz_movie( fname ):
     f = open(fname,"r")
     il=0
-    imgs=[]
+    trj=[]
+    comment=None
     while True:
-        line = f.readline()
         if il==0:
-            n=int(line.split()[0]) 
+            line = f.readline()
+            if not line: break
+            parts = line.split()
+            if not parts:
+                continue # Skip empty lines
+            try:
+                n = int(parts[0])
+            except (ValueError, IndexError):
+                print(f"Warning: Could not parse atom count from line: '{line.strip()}' in {fname}. Skipping frame.")
+                continue 
+            comment=f.readline()
+            #print("line(comment)",comment)
+            il+=1
         else:
-            apos=np.array((n,3))
-            es  =[]
+            es  = [] 
+            apos=np.zeros((n,3))
+            qs  =np.zeros(n)
+            rs  =np.full(n,np.nan)
             for i in range(n):
                 line = f.readline()
+                #print("line(atoms)", i,line,)
                 words=line.split()
                 es.append( words[0] )
                 apos[i,0] = float(words[1])
-                apos[i,1] = float(words[1])
-                apos[i,2] = float(words[1])
+                apos[i,1] = float(words[2])
+                apos[i,2] = float(words[3])
+                if len(words)>4:
+                    qs[i] = float(words[4])
+                if len(words)>5:
+                    rs[i] = float(words[5])
                 il+=1
-            imgs.append( (apos,es) )
-    return imgs
+            il=0
+            trj.append( (es,apos,qs,rs,comment) )
+    return trj
+
+def trj_to_ename(trj):
+    for i in range(len(trj)):
+        es,apos,qs,rs,comment = trj[i]
+        for j in range(len(es)):
+            e = es[j]
+            try:
+                iZ=int(e)
+                ename = elements.ELEMENTS[iZ-1][1]
+            except:
+                ename = e
+            es[j] = ename
+        trj[i] = (es,apos,qs,rs,comment)
+    return trj
+
+def trj_fill_radius(trj, bOnlyNAN=True, rFactor=1.0, bVdw=False, rmin=0.1 ):
+    if bVdw:
+        index_R = elements.index_Rvdw
+    else:
+        index_R = elements.index_Rcov
+    for i in range(len(trj)):
+        es,apos,qs,rs,comment = trj[i]
+        for j in range(len(es)):
+            typ = elements.ELEMENT_DICT[es[j]]
+            if bOnlyNAN and not np.isnan(rs[j]): continue
+            r = typ[index_R]
+            #print( "trj_fill_radius", es[j], r, rs[j] )
+            rs[j] = max(r*rFactor, rmin)
+        trj[i] = (es,apos,qs,rs,comment)
+    return trj
 
 #def loadCoefs( characters=['s','px','py','pz'] ):
 def loadCoefs( characters=['s'] ):

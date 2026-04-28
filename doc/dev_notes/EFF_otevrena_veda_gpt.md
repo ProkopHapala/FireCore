@@ -108,8 +108,46 @@ Je třeba zvolit vhodnou reprezentaci funkcí $E_{ae}(r_{ae}, s_e)$ a $E_{ij}(r_
    - Matplotlib, OpenGL ?
 - Napsat jednoduchý Monte Carlo optimalizační algoritmus v Pythonu.
 
----
 
+## Technicke detaily
+
+### Metrika poloh elektronů
+
+Jak už jsem řekl, problém porovnávání molekulárních struktur z EFF a referečními strukturami z DFT jsou skryté parametry (konkrétně polohy $r_i$ a poloměry $s_i$ elektronů v DFT nejsou). Otázkou tedy je jak je porovnat.
+
+#### Fitování elektronů
+
+Intuitivně (zdánlivně) nejednoduží přístup je nejdříve z DFT výpočtu nějak odhadnout polohy a poloměry lokalizovaných elektronů ($r'_i, a $s'_i$ $) a pak jednoduše spočítat root-mean square error. 
+$$RMSE = \sum_i ( |r_i - r'_i|^2 + (s_i - s'_i)^2 ) | )$$
+Tento přístup je v principu mořný ale naráží na dvě komplikace:
+* Hlavní problém smazdřejmě je to jak z DFT výpočtu polohy elektronů extrahovat. Existuje na to několik metod, žádná z nich ale není úplně jednoduchá, například:
+   * To je možné udělat pomocí [Natural Bodn Orbitals](https://en.wikipedia.org/wiki/Natural_bond_orbital) analyzy, která se používá v članku [Modeling Electronic Response Properties with an Explicit-Electron Machine Learning Potential](https://pubs.acs.org/doi/10.1021/acs.jctc.1c00978)
+   * Další možnost je fitovat elektronovou hustotu pomocí gaussianů, což se v DFT výpočtech běžně dělá pro zrychlení výpočtu, viz např- [Fast periodic Gaussian density fitting by range separation](https://pubs.aip.org/aip/jcp/article/154/13/131104/1013204/Fast-periodic-Gaussian-density-fitting-by-range)
+* Další problém je jak elektrony očíslovat (jak přiřadit indexy $i$)? Výsledná penalty function (chyba) by měla být nezávislá k permutaci pořadí elektronů.
+   * Můžeme jednoduše spočítat minimum ze všem možných párů  
+     $$R_RMSE = \sum_i min_j( |r_i - r'_j|^2| )$$
+    ale to je jednak už výpočetně náročnější ( $O(n^2)$ ) 
+* Problém je ale také to že tato metrika úplně nereflektuje jak se s polohou elektronů mění fyzikální vlastnosti. Například, pro elektrony s velkým poloměrem daleko od jádra nezákleží tolik kde jsou přesně, zatímco u lokalizovýnch elektronů blízko u jádra i malá změna polohy výrazně změní valastnosti. Ve skutečnosti totiž energie závisí na celkové elektronové hustotě která je součtem všech elektornů, nikoli na polohách jednotlivých elektronů.
+
+#### Samplování Hustory
+
+Proto by bylo mnohem výhodnější porovnávat přímo elektronvou hustotu, která jak název napovídá je z DFT snadno dostupná, a v kvantové mechanice má (na rozdíl od poloh jednotlivých elektronů) jasný výzmam (definuje energii a další vlastnosti). Nejjednoduží způsob je jednoduše vyjádřit hustotu v nějakých vybraných bodech v prostoru $R_j$. A pak jednoduše spočítat $$RMSE = \sum_i ( \rho_{EFF}(R_j) - \rho_{DFT}(R_j)' )^2$$. Referenční hustotu $\rho_{DFT}(R_i)$ je možné v kvantově mechanických programech snadno vypočíst. EFF hustotu $\rho_{EFF}(R_j)$ je možné v EFF vypočíst také snadno jako součet přes všechny jednoelektronové gaussiany
+$\rho_{EFF}(R_j) = sum_i exp(- (|r_i-R_j|/s_i)^2 )$
+
+Tato metoda je velice přímočará a robustní, jedný problém je že pro dobré porovnání může být potřeba velké množství bodů, které by měly být v prostoru nějak rozumně rovnoměrně rozmístěny.
+  * Nejjednoduží by mohlo být rozmístit body jednoduše na 3D mřížku. To ale často není ideální. Pokud jsou boddy rozmísteny málo hustě, je taková metrika nepřesná (především proto že neměří efektivně hustotu okolo jádra a v chemických vazbách). Jednoduché řešení prostě jen zvýšit hustotu mřížky může být výpočetně náročné (rychle se dostatnem na tisíce a miliony vzorkovacích bodů)
+  * Efektivní řešení by bylo umístit tyto samplovací do středů atomů a mezi ně. To lze udělat relativně snadno. Nicméně takové samplování může špatně popsat situaci kdy nějaký elektron "uteče pryč", tedy mimo vazby a třeba dál od molekuly (ionizovaný systém). Tyto elektrony bývají často velmi delokalizované
+  * Kombinace obojího - jednoduchý a relativně přesný způsob je prostě zkombinovat oba přístupy. Můžeme mít velmi hrubou mřížku pro popis vzdálených (volných, rozprostřených) elektronů, a k tomu vzorkovací body ve středech atomů a vazeb.  
+
+#### Multipolový rozvoj
+
+Jasný fyzikální význam má elektrický dipol a quadrupol, které se dají snadno spočíst z DFT. Matematicky je dipol a quadrupol první a druhý [statistický moment](https://en.wikipedia.org/wiki/Moment_(mathematics)) funckce elektronové hustoty.
+Dipolovy moment pro gaussovske funcke lze spočítat jako derivaci potenciálu, kde potenciál je $V(\vec{r}) = \frac{\text{erf}(\sqrt{2\alpha} r)}{r}$, tedy přesněji: 
+$$V_\text{dip}(\vec{r}) \sim - \vec{p} \cdot \nabla \left( \frac{\text{erf}(\sqrt{a}r)}{r} \right)$$ 
+  což dá:
+  $$  V(\vec{r}) = - (\vec{p} \cdot \hat{r}) \left( \frac{2a e^{-a r^2}}{\sqrt{\pi} r} - \frac{\text{erf}(\sqrt{a}r)}{r^2} \right)$$
+[viz. odvozeni v chatGPT](https://chatgpt.com/share/686cdf2d-dfa4-8003-aa96-41d68190af71)
+ 
 ## Teoreticke Pozadí
 
 ### Interakce elektronů v EFF

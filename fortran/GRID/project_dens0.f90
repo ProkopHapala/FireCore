@@ -214,3 +214,58 @@
     end do ! do iatom
     return
   end subroutine initdenmat0
+
+! ===========================================================================
+! Projects non-self-consistent neutral atom density (rho_NA or rho_0)
+! onto a specific list of points
+! ===========================================================================
+subroutine project_dens0_points(npts, points, rho_out, factor_mul)
+  use iso_c_binding
+  use configuration
+  use dimensions
+  use interactions
+  use density
+  !use project_dens, only: getAtomBasis ! For wavefunction basis
+  implicit none
+
+  integer(c_int), intent(in) :: npts
+  real(c_double), dimension(3, npts), intent(in) :: points
+  real(c_double), dimension(npts), intent(inout) :: rho_out
+  real(c_double), intent(in) :: factor_mul
+
+  ! Local Variables
+  integer :: ipoint, iatom
+  integer :: imu
+  integer :: in1
+
+  real(c_double) :: dist_X_point
+  real(c_double) :: dens
+  real(c_double) :: densi
+
+  real(c_double), dimension(3) :: dXr ! Vector from atom X to evaluation point P
+
+  real(c_double), dimension(numorb_max) :: psi1_val
+
+  if (npts == 0) return
+
+  do ipoint = 1, npts
+    dens = 0.0_c_double
+    do iatom = 1, natoms
+      in1 = imass(iatom)
+      
+      ! Vector from iatom (X0) to the evaluation point P
+      dXr(:) = points(:, ipoint) - ratom(:, iatom)
+      dist_X_point = sqrt(sum(dXr(:)**2))
+      
+      densi = 0.0_c_double
+      !if (dist_X_point < Rc_max) then ! Check cutoff
+        call getAtomBasis(in1, dist_X_point, dXr, psi1_val) ! Assuming getAtomBasis handles real(c_double) for dist, dXr, psi
+        do imu = 1, num_orb(in1)
+          densi = densi + rhoA(imu, iatom) * psi1_val(imu) * psi1_val(imu)
+        enddo
+      !endif
+      dens = dens + densi
+    enddo ! iatom
+    rho_out(ipoint) = rho_out(ipoint) + dens * factor_mul
+  enddo ! ipoint
+end subroutine project_dens0_points

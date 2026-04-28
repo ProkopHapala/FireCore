@@ -1,4 +1,3 @@
-
 import numpy as np
 from   ctypes import c_int, c_double, c_bool, c_float, c_char_p, c_bool, c_void_p, c_char_p
 import ctypes
@@ -123,7 +122,7 @@ def getBuffs( ):
 #  void load_xyz( const char* fname ){
 lib.load_fgo.argtypes  = [c_char_p, c_bool, c_double] 
 lib.load_fgo.restype   =  c_bool
-def load_fgo(fname, bVel_=False, fUnits=1.):
+def load_fgo(fname, bVel_=True, fUnits=1.):
     global bVel
     bVel=bVel_
     return lib.load_fgo( cstr(fname), bVel, fUnits)
@@ -177,6 +176,12 @@ def evalFuncDerivs( r, s, Es=None, Fs=None, Fr=None, ie=0 ):
     return Es,Fr,Fs
 
 #  void info(){
+
+lib.printSwitches.argtypes  = [] 
+lib.printSwitches.restype   =  None
+def printSwitches():
+    return lib.printSwitches() 
+
 lib.info.argtypes  = [] 
 lib.info.restype   =  None
 def info():
@@ -245,12 +250,25 @@ lib.setKPauli.restype   =  None
 def setKPauli(KPauli):
     return lib.setKPauli(KPauli) 
 
-#void setSwitches_(int bNormalize, int bNormForce, int bEvalKinetic, int bEvalCoulomb, int  bEvalExchange, int  bEvalPauli, int bEvalAA, int bEvalAE, int bEvalAECoulomb, int bEvalAEPauli ){
-lib.setSwitches.argtypes = [ c_int, c_int, c_int, c_int, c_int, c_int, c_int ]
-lib.setSwitches.restype  = None
-def setSwitches( kinetic=0, coulomb=0, pauli=0, AA=0, AE=0, AECoulomb=0, AEPauli=0 ):
-    lib.setSwitches( kinetic, coulomb, pauli, AA, AE, AECoulomb, AEPauli )
+# void setAtomParams( int n, const double* params_, bool bCopy=true, int mode=1 ){ 
+lib.setAtomParams.argtypes = [ c_int, c_double_p, c_bool, c_int ]
+lib.setAtomParams.restype  = None
+def setAtomParams( params, bCopy=True, mode=1 ):
+    n = len(params)
+    if bCopy: params = np.array(params, dtype=np.double)
+    return lib.setAtomParams( n, _np_as(params,c_double_p), bCopy, mode )
 
+#void setSwitches( int bEvalKinetic, int bEvalCoulomb, int  bEvalPauli, int bEvalAA, int bEvalAE, int bEvalAECoulomb, int bEvalAEPauli, int bCoreCoul, int bEvalCoreCorect ){
+lib.setSwitches.argtypes = [ c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int ]
+lib.setSwitches.restype  = None
+def setSwitches( kinetic=0, coulomb=0, pauli=0, AA=0, AE=0, AECoulomb=0, AEPauli=0, coreCoul=0, coreCorect=0 ):
+    lib.setSwitches( kinetic, coulomb, pauli, AA, AE, AECoulomb, AEPauli, coreCoul, coreCorect )
+
+#void setup( int isetup ){
+lib.setup.argtypes = [ c_int ]
+lib.setup.restype  = None
+def setup( isetup ):
+    lib.setup( isetup )
 
 #  void initOpt( double dt, double damping, double f_limit ){
 lib.initOpt.argtypes  = [c_double, c_double, c_double, c_bool ] 
@@ -263,10 +281,30 @@ def initOpt(dt=0.1, damping=0.1, f_limit=1000.0, bMass=False ):
 #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
 lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p] 
 lib. run.restype   =  c_int
-def  run(nstepMax=1000, dt=None, Fconv=1e-6, ialg=0, outE=None, outF=None):
+def  run(nstepMax=1000, dt=None, Fconv=1e-6, ialg=0, outE=None, outF=None, bOutE=True, bOutF=True):
     if dt is None: dt=dt_glob
-    return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
+    if (outE is None) and bOutE: outE=np.full(nstepMax, np.nan)
+    if (outF is None) and bOutF: outF=np.full(nstepMax, np.nan)
+    lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
+    return  outE, outF
 
+
+# void set_constrains( int nfix, Quat4d* fixed_poss, Vec2i* fixed_inds, bool bRealloc=true  ){
+lib.set_constrains.argtypes  = [c_int, c_double_p, c_int_p, c_bool ]
+lib.set_constrains.restype   =  None
+def set_constrains( nfix, fixed_poss, fixed_inds, bRealloc=True ):
+    return lib.set_constrains( nfix, _np_as(fixed_poss, c_double_p), _np_as(fixed_inds, c_int_p), bRealloc )
+
+#void relaxed_scan( int nconf, int nfix, double* fixed_poss, int* fixed_inds_, double* outEs, double* apos_, double* epos_, int nstepMax, double dt, double Fconv, int ialg, char* scan_trj_name ){
+lib.relaxed_scan.argtypes  = [c_int, c_int, c_double_p, c_int_p, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_char_p ]
+lib.relaxed_scan.restype   =  None
+def relaxed_scan( fixed_poss, fixed_inds, outEs=None, apos=None, epos=None, nstepMax=1000, dt=1e-2, Fconv=1e-6, ialg=0, scan_trj_name="scan.xyz" ):
+    nconf, nfix, _ = fixed_poss.shape
+    if apos is None:  apos  = np.zeros( (nconf, na, 3) )
+    if epos is None:  epos  = np.zeros( (nconf, ne, 4) )
+    if outEs is None: outEs = np.zeros( (nconf,8) )
+    lib.relaxed_scan( nconf, nfix, _np_as(fixed_poss, c_double_p), _np_as(fixed_inds, c_int_p), _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg, cstr(scan_trj_name) )
+    return apos, epos, outEs
 
 # void evalNumDerivs( double* Fnum, double d ){
 lib. evalNumDerivs.argtypes  = [array1d, c_double] 
@@ -302,6 +340,63 @@ def sample_EA( RSs, FEout=None, KRSrho=[1.125,0.9,-0.2], aPar=[4.,0.1,0.1,2.0], 
     lib.sample_EA(n, RSs, FEout, KRSrho, aPar, bEvalAECoulomb, bCoreCoul, bEvalAEPauli)
     return FEout
 
+#int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo" ){
+lib.processXYZ.argtypes  = [c_char_p, c_double, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_bool, c_bool, c_bool, c_bool, c_char_p, c_char_p ]
+lib.processXYZ.restype   =  c_int
+def processXYZ( fname, Rfac=-1.35, outEs=None, apos=None, epos=None, nstepMax=1000, dt=0.5e-2, Fconv=1e-3, ialg=2, bAddEpairs=False, bCoreElectrons=False, bChangeCore=True, bChangeEsize=True,xyz_out="processXYZ.xyz", fgo_out="processXYZ.fgo",  bOutputs=(0,0,0) ):
+    if bOutputs[0] and outEs is None: outEs = np.zeros(8, dtype=np.float64)
+    if bOutputs[1] and apos  is None: apos  = np.zeros( (na, 3) )
+    if bOutputs[2] and epos  is None: epos  = np.zeros( (ne, 4) )
+    lib.processXYZ( cstr(fname), Rfac, _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg, bAddEpairs, bCoreElectrons, bChangeCore, bChangeEsize, cstr(xyz_out), cstr(fgo_out) )
+    return outEs, apos, epos
+
+#int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int optAlg=2, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo" ){
+lib.processXYZ_e.argtypes  = [c_char_p, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_char_p, c_char_p ]
+lib.processXYZ_e.restype   =  c_int
+def processXYZ_e( fname, outEs=None, apos=None, epos=None, nstepMax=0, dt=0.001, Fconv=1e-3, optAlg=2, xyz_out="processXYZ.xyz", fgo_out="processXYZ.fgo", bOutputs=(0,0,0) ):
+    """
+    Process XYZ file with electrons
+    Returns: outEs, apos, epos
+    """    
+    # Get number of atoms and electrons from file (first and second line)
+    if (bOutputs[1] and apos  is None) or (bOutputs[2] and epos  is None):
+        with open(fname) as f:
+            nae = int(f.readline().strip().split()[0])
+            ws  = f.readline().strip().split()
+            na  = int(ws[1])
+            ne  = int(ws[2])
+            if nae != na + ne: raise Exception(f"nae({nae}) != na({na}) + ne({ne}) while reading `{fname}`" )
+            nconf = 1
+            for line in f:
+                ws = line.strip().split()
+                if len(ws) == 1: nconf += 1
+    if bOutputs[0] and outEs is None: outEs = np.zeros( (nconf,5) )
+    if bOutputs[1] and apos  is None: apos  = np.zeros( (nconf, na, 3) )
+    if bOutputs[2] and epos  is None: epos  = np.zeros( (nconf, ne, 4) )
+    lib.processXYZ_e( cstr(fname), _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, optAlg, cstr(xyz_out), cstr(fgo_out) )
+    return outEs, apos, epos
+
+
+#int preAllocateXYZ(const char* fname, double Rfac=-0.5, bool bCoreElectrons=true )
+lib.preAllocateXYZ.argtypes = [c_char_p, c_double, c_bool]
+lib.preAllocateXYZ.restype  = c_int
+def preAllocateXYZ(fname, Rfac=-0.5, bCoreElectrons=True):
+    """Pre-initialize eFF from a single-config XYZ without dynamics"""
+    return lib.preAllocateXYZ(cstr(fname), Rfac, bCoreElectrons)
+
+#int preAllocateFGO(const char* fname, bool bVel, double fUnits)
+lib.preAllocateFGO.argtypes = [c_char_p, c_bool, c_double]
+lib.preAllocateFGO.restype  = c_int
+def preAllocateFGO(fname, bVel_=True, fUnits=1.):
+    global bVel
+    bVel = bVel_
+    return lib.preAllocateFGO(cstr(fname), bVel, fUnits)
+
+#int processFGO(const char* fname, bool bVel, double fUnits, double* outEs, double* apos, Quat4d* epos, int nstepMax, double dt, double Fconv, int ialg, bool bOutXYZ, bool bOutFGO)
+lib.processFGO.argtypes = [c_char_p, c_double, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_bool, c_bool]
+lib.processFGO.restype  = c_int
+def processFGO(fname, fUnits=1., outEs=None, apos=None, epos=None, nstepMax=1000, dt=0.001, Fconv=1e-3, ialg=2, bOutXYZ=False, bOutFGO=False):
+    return lib.processFGO(cstr(fname), fUnits, _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg, bOutXYZ, bOutFGO)
 
 # =========  Tests
 
@@ -335,7 +430,7 @@ def getNearestAtoms( apos, bPrint=False ):
     return imins, rmins
     
 def eval_mol(name, fUnits=1., bPrint=True ):
-    load_fgo(default_path+name+".fgo", False, fUnits=fUnits )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
+    load_fgo(default_path+name+".fgo" )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
     eval()
     if bPrint:
         getBuffs()
@@ -479,8 +574,8 @@ def check_H2(bRelax=True, name="H2_eFF", bPyeff=True):
         print( "check_H2 E %g [eV] lbond %g [A]" %(Etot, bond_length) )
     else:
         if bPyeff:
-            from pyBall import eFF_terms as pyeff
-            print(  "effpy.run_H2_molecule.__doc__:\n", pyeff.run_H2_molecule.__doc__ )
+            from pyBall import eFF_terms as effpy
+            print(  "effpy.run_H2_molecule.__doc__:\n", effpy.run_H2_molecule.__doc__ )
             r = np.sqrt(((epos[0]-epos[1])**2).sum())
             pyeff.pyeff_E_up_up( 1.125*np.sqrt(r**2+1e-8)/0.5291772105638411, 0.9*esize[0]/0.5291772105638411, 0.9*esize[1]/0.5291772105638411, rho=-0.2)
             Euu,Eud,DT,S = pyeff.pyeff_EPaul( r, esize[0], esize[1], rho=-0.2 );           # print( "!!!!! pyeff_EPaul():   Euu",Euu, "Eud",Eud, "DT",DT, "S",S )

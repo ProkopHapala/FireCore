@@ -91,12 +91,7 @@ _template_T void println(const char* s,const T& t){ printf("%s",s);t.print(); pu
 // CPU ticks timer
 // http://stackoverflow.com/questions/6432669/variance-in-rdtsc-overhead
 
-#define DEBUG   printf( "DEBUG #l %i %s \n",    __LINE__, __FUNCTION__ );
-#define DEBUGF  printf( "DEBUG #l %i %s %s \n", __LINE__, __FUNCTION__, __FILE__ );
 
-//void dbg(char* s){ printf("DEBUG (%s) \n", s); };
-
-#define DBG(format,args...) { printf("DEBUG "); printf(format,## args); }
 
 /*
 int  dbg(int priority, const char *format, ...){

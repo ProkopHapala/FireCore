@@ -31,13 +31,14 @@ int main(int argc, char *argv[]){
 
     #include "MolGUIapp_argv.h"
     funcs["-m"]={1,[&](const char** ss){ sscanf( ss[0], "%i", &W->nSystems ); }}; // number of systems
+    funcs["-tex"]={1,[&](const char** ss){ int i; sscanf( ss[0], "%i", &i ); printf("ARG -tex=%i \n", i); W->ocl.bUseTexture=i; printf("W->ocl.bUseTexture=%i \n", W->ocl.bUseTexture); }}; // use texture for gridFF, boolean
 
 #ifdef WITH_LUA
     theLua = initMyLua();
     initMyLua_multi( theLua );
     funcs["-lua0"]={1,[&](const char** ss){ if( Lua::dofile(theLua,ss[0]) ){ printf( "ERROR in funcs[-lua0] dofile(%s) => exit()\n", ss[0] ); exit(0); }; }};
 #endif // WITH_LUA
-
+    
 	process_args( argc, argv, funcs );
     //W->go.constrs.printSizes();
     W->init();
@@ -70,7 +71,7 @@ int main(int argc, char *argv[]){
 
     W->pre_loop();
 	app->loop( 1000000 );
-    W->database->print();
+    //W->database->print();
 	return 0;
 }
 

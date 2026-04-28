@@ -40,36 +40,37 @@ class Dict{ public:
     std::unordered_map<std::string,int> map;
     std::vector<T>                     vec;
 
-    int getId( const char* name, const int def = -1 )const{
+    int getId( const std::string& name, const int def = -1 )const{
         auto it = map.find(name);
         if( it != map.end() ){ return it->second; }else{ return def; }
     }
 
-    T get( const char* name, const T def )const{
+    T get( const std::string& name, const T def )const{
         auto it = map.find(name);
         if( it != map.end() ){ return vec[it->second]; }else{ return def; }
     }
 
-    int getTo( const char* name, T& out )const{
+    int getTo( const std::string& name, T& out )const{
         auto it = map.find(name);
         if( it != map.end() ){ out=vec[it->second]; return it->second; }else{ return -1; }
     }
 
-    int add( const std::string& name, T t, bool bDel=true ){
+    int add( const std::string& name, T t,  bool bDel=true, bool bReplace=true ){
         auto it = map.find( name );
         if( it == map.end() ){    // not found
             int i=vec.size(); vec.push_back(t); 
-            map.insert({name,i}); return i; 
+            map.insert({name,i}); 
+            return i; 
         }else{    // found
             if constexpr (std::is_pointer<T>::value){
                 if(bDel)delete vec[it->second]; 
             }
-            vec[it->second] = t; 
-            return -1; 
+            if(bReplace){vec[it->second] = t; }
+            return -it->second-1; 
         }
     }
 
-    bool insert( const char* name, T t, int i, bool bDel=true ){
+    bool insert( const std::string& name, T t, int i, bool bDel=true ){
         if( vec.size(i)<=i ) vec.resize(i+1);
         vec[i] = t;
         auto it = map.find(name);
@@ -88,13 +89,19 @@ class Dict{ public:
         }
     }
 
-    void rebind( const char* name, int i ){
+    void rebind( const std::string& name, int i ){
         auto it = map.find(name);
         if( it != map.end() ){ 
             it->second = i; 
         }else{ 
             map.insert({name,i}); 
         }
+    }
+
+    bool clear(){
+        map.clear();
+        vec.clear();
+        return true;
     }
 
 };

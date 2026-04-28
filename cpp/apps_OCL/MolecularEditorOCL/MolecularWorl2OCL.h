@@ -611,8 +611,6 @@ class GridFF_OCL{ public:
         nAtoms = nAtoms_;
         nGridTot  = nGrid_;
 
-        DEBUG
-
         id_atoms      = cl->newBuffer( "atoms",      nAtoms*8, sizeof(float), NULL, CL_MEM_READ_ONLY  );
         id_gridPoints = cl->newBuffer( "gridPoints", nGridTot*4,  sizeof(float), NULL, CL_MEM_READ_ONLY ); 
         //id_FFPaul   = cl->newBuffer( "FFPaul",     nGridTot*4, sizeof(float), NULL, CL_MEM_READ_WRITE );
@@ -622,13 +620,10 @@ class GridFF_OCL{ public:
         id_FFLond     = cl->newBuffer( "FFLond",     nGridTot*4, sizeof(float), NULL, CL_MEM_WRITE_ONLY );
         id_FFelec     = cl->newBuffer( "FFelec",     nGridTot*4, sizeof(float), NULL, CL_MEM_WRITE_ONLY )
 
-        DEBUG
-
         //task_FFPLE->global[0] = nGrid;
         //task_FFPLE->args = { INTarg(nAtoms), BUFFarg(id_atoms), BUFFarg(id_gridPoints), BUFFarg(id_FFPaul), BUFFarg(id_FFLond), BUFFarg(id_FFelec) };
         //task_FFPLE->print_arg_list();
 
-        DEBUG
     }
 
     void setupKernel( GridFF& gridFF ){
@@ -730,13 +725,13 @@ class GridFF_OCL{ public:
 
     int evalGridFFs( GridFF& gridFF, const Vec3i& nPBC ){
         printf( "gridFF.natoms %i \n", gridFF.natoms );
-        prepareBuffers( gridFF.natoms, gridFF.grid.getNtot() ); DEBUG
+        prepareBuffers( gridFF.natoms, gridFF.grid.getNtot() );
         setupKernel( gridFF );
-        uploadAtoms( gridFF.natoms, gridFF.apos, gridFF.REQs ); DEBUG
-        task_FFPLE->enque(); DEBUG
+        uploadAtoms( gridFF.natoms, gridFF.apos, gridFF.REQs );
+        task_FFPLE->enque();
         //downloadFF( gridFF.grid.getNtot(), gridFF.FFPaul, gridFF.FFLond, gridFF.FFelec ); DEBUG;
         downloadFF( gridFF );
-        return clFinish(cl->commands); DEBUG;
+        return clFinish(cl->commands);
     }
 
 };

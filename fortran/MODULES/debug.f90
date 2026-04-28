@@ -99,37 +99,62 @@ subroutine debug_writeMatFile_cmp( fname, mat, n, m, iname )
     close(ifile)
 end subroutine debug_writeMatFile_cmp
 
-subroutine debug_writeBlockedMat( name, M )
+subroutine debug_writeBlockedMat( name, M, unit  )
     use configuration
     use neighbor_map
     use interactions
+    use, intrinsic :: iso_fortran_env
     ! allocate (s_mat (numorb_max, numorb_max, neigh_max, natoms))
     ! ===== Parameters
     character(len=*)                                               , intent(in)  :: name
     real, dimension( numorb_max, numorb_max, neigh_max, natoms ), intent (in) :: M
     ! ===== Variables
     integer iatom, jatom, ineigh, inu, imu,  jnu, jmu, in1,in2
+    integer ioff, joff, nnu, nmu, nng
+    integer unit
+    logical is_file_output
     ! ===== Body
-    open( 164646, file=name, status='unknown' ) 
+
+    write(*,*) "Standard output unit:", OUTPUT_UNIT
+
+    is_file_output = (unit /= OUTPUT_UNIT)
+    if (is_file_output) then
+        open(unit, file=name, status='unknown')
+    else
+        write(*,*) "  "
+        write(*,*) "debug_writeBlockedMat(name= ", name, " )"
+    end if
     do iatom = 1, natoms
-        in1 = imass(iatom)
-        do ineigh = 1, neighn(iatom)
+        in1  = imass(iatom)
+        ioff = degelec(iatom)
+        nmu  = num_orb(in1)
+        nng  = neighn(iatom)
+        do ineigh = 1, nng
          !mbeta = neigh_b(ineigh,iatom)
          jatom = neigh_j(ineigh,iatom)
-         in2 = imass(jatom)
-         write(164646,*) "iatom ",iatom," ineigh ",ineigh 
-         do inu = 1, num_orb(in2)
-          jnu = inu + degelec(jatom)
-          do imu = 1, num_orb(in1)
+         in2   = imass(jatom)
+         joff  = degelec(jatom)
+         nnu   = num_orb(in2)
+         write(unit,*) "iatom ",iatom," ineigh ",ineigh, &
+                      " jatom ",jatom," in1 ",in1," in2 ",in2, &
+                      " nmu ",nmu," nnu ",nnu," ioff ",ioff," joff ",joff 
+         do inu = 1, nnu
+          jnu = inu + joff
+          do imu = 1, nmu
            jmu = imu + degelec(iatom)
            !write(*,'(A,e20.10,e20.10,A)',advance='no') M(imu,inu,ineigh,iatom)
-           write(164646,'(e20.10)',advance='no') real(M(imu,inu,ineigh,iatom))
+           write(unit,'(e20.10)',advance='no') real(M(imu,inu,ineigh,iatom))
           end do ! do inu
-          write(164646,*) 
+          write(unit,*) 
          end do ! do imu
         end do ! do ineigh
     end do ! do iatom
-    close(164646)
+    if (is_file_output) then
+       close(unit)
+    else
+         write(*,*) "debug_writeBlockedMat(name= ", name, " ) DONE"
+         write(*,*) "  "
+    end if
 end subroutine debug_writeBlockedMat
 
 subroutine debug_writeIntegral( ifile, interaction, isub, in1, in2, index )
