@@ -2690,7 +2690,8 @@ void setup_UFF_ocl(){
             uff_ocl->task_NBFF_ex2 = uff_ocl->setup_getNonBond_ex2(ffu.natoms, nPBC_, uff_ocl->task_NBFF_ex2);
         //}
     }
-    if(!uff_ocl->task_updateAtoms) uff_ocl->setup_updateAtomsMMFFf4( ffu.natoms, 0 );
+    //if(!uff_ocl->task_updateAtoms) 
+    uff_ocl->setup_updateAtomsMMFFf4( ffu.natoms, 0 );
     uff_ocl->bSetUp = true;
 }
 
