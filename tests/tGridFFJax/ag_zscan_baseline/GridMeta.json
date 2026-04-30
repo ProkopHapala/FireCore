@@ -1,0 +1,97 @@
+{
+  "cell": [
+    [
+      8.636757,
+      0.0,
+      0.0
+    ],
+    [
+      4.318378,
+      7.479651,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      37.051882
+    ]
+  ],
+  "grid_shape_xyz": [
+    128,
+    128,
+    540
+  ],
+  "grid_shape_zyx": [
+    540,
+    128,
+    128
+  ],
+  "voxel": [
+    0.0674746640625,
+    0.06747466232376322,
+    0.06861459629629629
+  ],
+  "origin": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "channel_order": [
+    "Pauli",
+    "London",
+    "Coulomb"
+  ],
+  "reactive_channel_order": [
+    "C",
+    "H",
+    "N",
+    "O"
+  ],
+  "reference_plane": 22.056355472606,
+  "image_plane": 23.0564,
+  "sample_shift_z": 0.0,
+  "coulomb_shift_z": 0.0,
+  "enabled_terms": {
+    "use_density_charge": true,
+    "use_locpot": true,
+    "use_ct_qeq": false,
+    "use_image_charge": false,
+    "use_image_charge_fixed": false,
+    "use_reactive_grid": false,
+    "use_teacher_residual": true
+  },
+  "teacher_backend": "madsurf",
+  "interpolation_export": "xyzc_bspline_cubic_coefficients",
+  "interpolation_runtime": "bspline_cubic",
+  "builder_metadata": {
+    "builder_mode": "metal_density_plq",
+    "coulomb_source": "locpot",
+    "reactive_elements": [
+      "C",
+      "H",
+      "N",
+      "O"
+    ],
+    "z_ref": 22.056355472606,
+    "interpolation_order": 3,
+    "alpha_morse": 1.5,
+    "morse_rcut": 20.0,
+    "coulomb_rcut": 80.0,
+    "req_scale_radius": {},
+    "req_scale_energy": {},
+    "metal_density_pauli_power": 1.0,
+    "metal_density_london_power": 0.5,
+    "metal_bulk_electron_density": 0.053,
+    "london_damping_d0": 3.7,
+    "london_damping_width": 0.35,
+    "use_pairwise_c6": true,
+    "c6_rcut": 15.0,
+    "c6_s_r": 0.94,
+    "c6_pair_values": [
+      43.84485878762208,
+      16.359830504243202,
+      32.3673904149339,
+      26.063494942535993
+    ]
+  }
+}

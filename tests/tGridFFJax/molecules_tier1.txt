@@ -1,0 +1,23 @@
+# Tier 1: Core organic molecules for transferable parameter fitting
+# Format: <name_or_path>  [name=<display_name>]  [anchor=<idx>]  [charges=<true|false>]
+#
+# Built-in molecules (defined in pyBall/gridff_jax/pose_sampling/molecules.py):
+H
+C
+O
+N
+CO
+H2O
+CHONH2
+
+# To add custom molecules from XYZ files, use absolute paths:
+# /path/to/methane.xyz          name=CH4     anchor=0
+# /path/to/ethylene.xyz         name=C2H4    anchor=0
+# /path/to/benzene.xyz          name=C6H6    anchor=0
+# /path/to/ammonia.xyz          name=NH3     anchor=0
+# /path/to/pyridine.xyz         name=C5H5N   anchor=0
+# /path/to/acetonitrile.xyz     name=CH3CN   anchor=0
+# /path/to/formaldehyde.xyz     name=CH2O    anchor=0
+# /path/to/furan.xyz            name=C4H4O   anchor=0
+# /path/to/methanol.xyz         name=CH3OH   anchor=0
+# /path/to/acetone.xyz          name=C3H6O   anchor=0
