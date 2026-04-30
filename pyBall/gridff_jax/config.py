@@ -173,6 +173,43 @@ class ExportConfig:
 
 
 @dataclass
+class Sampler6DConfig:
+    """Configuration for the 6D rigid-body pose sampler.
+
+    This mirrors ``pose_sampling.sampler_6d.Sampler6DConfig`` but lives here
+    for JSON serialization alongside the rest of RunConfig.
+    """
+    n_u: int = 10
+    n_v: int = 10
+    n_z: int = 20
+    z_range: tuple[float, float] = (1.5, 5.5)
+    z_bias_power: float = 1.5
+    n_orient: int = 8
+    tilt_max_deg: float = 60.0
+    n_yaw: int = 4
+    include_high_symmetry_sites: bool = True
+    random_fraction: float = 0.1
+    seed: int = 42
+    molecule_list_path: str | None = None
+
+
+@dataclass
+class DiagnosticsConfig:
+    """Configuration for MLIP diagnostic tools."""
+    fd_step_angstrom: float = 0.005
+    fd_n_poses: int = 50
+    smoothness_z_heights: list[float] = field(
+        default_factory=lambda: [2.0, 2.5, 3.0, 3.5, 4.0]
+    )
+    smoothness_n_grid: int = 25
+    corrugation_z_heights: list[float] = field(
+        default_factory=lambda: [2.0, 2.5, 3.0, 4.0, 5.0]
+    )
+    corrugation_n_grid: int = 25
+    report_format: str = "json"
+
+
+@dataclass
 class RunConfig:
     surface: SurfaceConfig = field(default_factory=SurfaceConfig)
     adsorbates: list[AdsorbateConfig] = field(
@@ -189,6 +226,8 @@ class RunConfig:
     hybrid_model: HybridModelConfig = field(default_factory=HybridModelConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
     export: ExportConfig = field(default_factory=ExportConfig)
+    sampler_6d: Sampler6DConfig = field(default_factory=Sampler6DConfig)
+    diagnostics: DiagnosticsConfig = field(default_factory=DiagnosticsConfig)
 
 
 def _coerce_dataclass(cls, payload: dict[str, Any]):

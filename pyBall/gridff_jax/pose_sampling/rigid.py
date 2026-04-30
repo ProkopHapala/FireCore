@@ -7,6 +7,7 @@ import math
 import numpy as np
 
 from ..interfaces import AdsorbateDefinition, DensityData, PoseBatch
+from ..pbc import wrap_anchor_into_cell
 from ..utils import (
     fractional_to_cartesian,
     normalize_quaternion,
@@ -100,10 +101,18 @@ def transform_adsorbate(
     rot = quaternion_to_matrix(quaternion)
     local = adsorbate.positions - adsorbate.positions[adsorbate.anchor_index]
     rotated = local @ rot.T
-    anchor_frac = np.array([uv[0], uv[1], 0.0], dtype=float)
+    # Wrap (u,v) into [0, 1) before converting to Cartesian
+    uv_w = np.asarray(uv, dtype=float).copy()
+    uv_w[:2] = uv_w[:2] - np.floor(uv_w[:2])
+    anchor_frac = np.array([uv_w[0], uv_w[1], 0.0], dtype=float)
     anchor_cart = fractional_to_cartesian(anchor_frac, density.cell)
     anchor_cart[2] = z_ref + z_height
-    return rotated + anchor_cart[None, :]
+    positions = rotated + anchor_cart[None, :]
+    # PBC: translate entire molecule so anchor is inside cell
+    positions = wrap_anchor_into_cell(
+        positions, adsorbate.anchor_index, density.cell, density.origin,
+    )
+    return positions
 
 
 def _constrain_quaternions(adsorbate: AdsorbateDefinition, quats, tilt_deg: float):

@@ -4,6 +4,7 @@ from .array_api import HAS_JAX, HAS_OPTAX, backend_summary
 from .config import (
     AdsorbateConfig,
     DensityBackendConfig,
+    DiagnosticsConfig,
     ExportConfig,
     FeatureToggles,
     GridConfig,
@@ -15,6 +16,8 @@ from .config import (
     load_config,
     save_config,
 )
+from .config import Sampler6DConfig as Sampler6DConfigJSON
+from .pbc import PBCInfo
 from .interfaces import (
     AdsorbateDefinition,
     DensityData,
