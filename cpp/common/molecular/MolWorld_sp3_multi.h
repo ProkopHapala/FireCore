@@ -1397,14 +1397,6 @@ virtual void init() override {
     printf("# ========== MolWorld_sp3_multi::init() START\n");
     gopt.msolver = this;
     int i_nvidia = ocl.print_devices(true);
-// <<<<<<< HEAD
-//     ocl.init(i_nvidia);
-//     ocl.makeKrenels_MM("common_resources/cl" );
-//     MolWorld_sp3::init();
-//         ffl0.clone( ffl, true, true );
-//         ffl0.makePBCshifts( nPBC, true );
-// =======
-// >>>>>>> prokop_and_master
 
     // Temporarily set surf_name to null to prevent base class from calling initGridFF
     const char* original_surf_name = surf_name;
@@ -1416,6 +1408,10 @@ virtual void init() override {
     MolWorld_sp3::init(); // loading of .xyz and .mol/.mo2 is done here, look what is done hare and respcet it
 
     printf("DEBUG MolWorld_sp3_multi::init() AFTER base init, &ffu=%p\n", &ffu);
+    if(!bUFF){
+        ffl0.clone( ffl, true, true );
+        ffl0.makePBCshifts( nPBC, true );
+    }
 
     // Restore surf_name
     surf_name = original_surf_name;

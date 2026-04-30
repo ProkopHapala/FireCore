@@ -1630,8 +1630,13 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         for(int ia=0; ia<na; ia++){
             const Atom& A = atoms[ia];
             const AtomType& t = params->atypes[A.type];
+            const bool bElectronPair = (t.iZ==200);
             //printf( "checkNumberOfBonds nbonds[%i]=%i\n", ia, nbonds[ia] );
             if(bAllAtomsBonded) { if( nbonds[ia]<=0 ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` has no bonds nbond(%i)<1 bonds\n", ia, t.name, nbonds[ia] ); } } }
+            if(bElectronPair){
+                if( nbonds[ia]>1 ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` electron pair has %i>1 bonds\n", ia, t.name, nbonds[ia] ); } }
+                continue;
+            }
             if(A.iconf>=0){
                 const AtomConf& c = confs[A.iconf];
                 int nb = nbonds[ia];

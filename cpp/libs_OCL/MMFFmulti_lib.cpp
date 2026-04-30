@@ -263,7 +263,7 @@ void print_setup(){
 
 
 void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, char* constr_name, bool bMMFF, bool bEpairs, bool bUFF, int* nPBC, int* grid_nPBC, double gridStep, char* sElementTypes, char* sAtomTypes, char* sBondTypes, char* sAngleTypes,  char* sDihedralTypes, double T, double gamma, int nExplore, int nRelax, double pos_kick, double vel_kick, int GridFF ){
-    printf( "MMFFmulti_lib::init() nSys=%i xyz_name(%s) surf_name(%s) constr_name(%s) bMMFF=%i bEpairs=%i bUFF=%i T=%g gamma=%g nExplore=%i nRelax=%i pos_kick=%g vel_kick=%g \n", nSys, xyz_name, surf_name, bMMFF, bEpairs, bUFF, T, gamma, nExplore, nRelax, pos_kick, vel_kick );
+    printf( "MMFFmulti_lib::init() nSys=%i xyz_name(%s) surf_name(%s) constr_name(%s) bMMFF=%i bEpairs=%i bUFF=%i T=%g gamma=%g nExplore=%i nRelax=%i pos_kick=%g vel_kick=%g \n", nSys, xyz_name ? xyz_name : "none", surf_name ? surf_name : "none", constr_name ? constr_name : "none", bMMFF, bEpairs, bUFF, T, gamma, nExplore, nRelax, pos_kick, vel_kick );
     W.smile_name = smile_name; // <<<< bool b141, bool bSimple, bool bConj, bool bCumulene,
     W.xyz_name   = xyz_name;
     W.surf_name  = surf_name;
