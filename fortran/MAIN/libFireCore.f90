@@ -73,6 +73,23 @@ subroutine firecore_set_lvs( lvs_ )  bind(c, name='firecore_set_lvs')
     a3vec = lvs_(:,3)
 end subroutine
 
+subroutine firecore_set_kpoints( nkpoints_, special_k_, weight_k_ ) bind(c, name='firecore_set_kpoints')
+    use iso_c_binding
+    use kpoints
+    implicit none
+    integer(c_int), value, intent(in) :: nkpoints_
+    real(c_double), dimension(3,nkpoints_), intent(in) :: special_k_
+    real(c_double), dimension(nkpoints_), intent(in) :: weight_k_
+    if (nkpoints_ <= 0) stop 'firecore_set_kpoints: nkpoints_ <= 0'
+    nkpoints = nkpoints_
+    if (allocated(special_k)) deallocate(special_k)
+    if (allocated(weight_k )) deallocate(weight_k )
+    allocate(special_k(3,nkpoints))
+    allocate(weight_k (nkpoints))
+    special_k(:,:) = special_k_(:,:)
+    weight_k (:)   = weight_k_ (:)
+end subroutine
+
 subroutine firecore_initdir( )  bind(c, name='firecore_initdir' )
     use iso_c_binding
     use options

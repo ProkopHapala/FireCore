@@ -61,10 +61,14 @@ subroutine init_wfs( norb, nkpt )
     bbnkre = 0.0d0
 
     ! --- Kpoints
-    allocate (special_k(3,nkpoints))
-    allocate (weight_k (nkpoints))
-    special_k(:,:) = 0
-    weight_k (:)   = 1
+    if (.not. allocated(special_k)) then
+        allocate (special_k(3,nkpoints))
+        special_k(:,:) = 0
+    end if
+    if (.not. allocated(weight_k)) then
+        allocate (weight_k (nkpoints))
+        weight_k (:)   = 1
+    end if
 
 end subroutine init_wfs
 

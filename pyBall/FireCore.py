@@ -36,6 +36,7 @@ header_strings = [
 "void firecore_getCharges( double* charges )",
 "void firecore_preinit( ) ",
 "void firecore_set_lvs( double* lvs )" ,
+"void firecore_set_kpoints( int nkpoints, double* special_k, double* weight_k )",
 "void firecore_init( int natoms, int* atomTypes, double* atomsPos )",
 "void firecore_assembleH( int iforce, int Kscf, double* positions )",
 "void firecore_solveH( double* k_temp, int ikpoint )",
@@ -249,6 +250,19 @@ def preinit():
 argDict["firecore_set_lvs"]=( None, [array2d] )
 def set_lvs(lvs):
     return lib.firecore_set_lvs(lvs) 
+
+argDict["firecore_set_kpoints"]=( None, [c_int, array2d, array1d] )
+def set_kpoints(kpoints, weights=None):
+    kpoints = np.asarray(kpoints, dtype=np.float64)
+    if kpoints.ndim != 2 or kpoints.shape[1] != 3:
+        raise ValueError(f"set_kpoints() expects kpoints.shape=(nk,3), got {kpoints.shape}")
+    if weights is None:
+        weights = np.ones(kpoints.shape[0], dtype=np.float64) / kpoints.shape[0]
+    else:
+        weights = np.asarray(weights, dtype=np.float64)
+    if weights.shape != (kpoints.shape[0],):
+        raise ValueError(f"set_kpoints() expects weights.shape=({kpoints.shape[0]},), got {weights.shape}")
+    return lib.firecore_set_kpoints(int(kpoints.shape[0]), np.ascontiguousarray(kpoints.T), np.ascontiguousarray(weights))
 
 #  void assembleH( int iforce, int Kscf, double* positions )
 #lib.firecore_assembleH.argtypes  = [c_int, c_int, array2d ] 
@@ -1054,11 +1068,15 @@ def scanHamPiece3c_batch( interaction, isorp, in1, in2, indna, dRjs, dRks, apply
     lib.firecore_scanHamPiece3c_batch( interaction, isorp, in1, in2, indna, npoints, _np_as(dRjs_np.ravel(), c_double_p), _np_as(dRks_np.ravel(), c_double_p), int(applyRotation), _np_as(bcnax_out,c_double_p) )
     return bcnax_out
 
-def initialize( atomType=None, atomPos=None, verbosity=1 ):
+def initialize( atomType=None, atomPos=None, verbosity=1, lvs=None, kpoints=None, kweights=None ):
     global norb
     #if verbosity is not None: 
     setVerbosity(verbosity=verbosity)  # NOTE: verbosity must be set here, because previous values would be overwritten by preinit()
     preinit()
+    if lvs is not None:
+        set_lvs(np.ascontiguousarray(np.asarray(lvs, dtype=np.float64).T))
+    if kpoints is not None:
+        set_kpoints(kpoints, kweights)
     norb = init( atomType, atomPos )
     _get_norb(norb)
     return norb
