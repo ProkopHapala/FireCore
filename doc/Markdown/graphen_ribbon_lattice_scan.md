@@ -981,3 +981,200 @@ L_H=1.5000 E=-466.143700 eV F_fixed=277.682 Lx=2.40 Ly=11.70 Lz=20.00
 - `tests/pyFireball/neb_h_transfer.py` - NEB attempt (not recommended)
 - `pyBall/dftb_utils.py` - DFTB+ utilities with atom fixing support
 - `pyBall/plotUtils.py` - Plotting utilities (extended for force arrows)
+
+---
+
+# DFTB+ Utilities Refactoring (May 2026)
+
+## Overview
+
+Major refactoring effort to consolidate DFTB+ Python utilities into reusable modules (`pyBall/dftb_utils.py`, `pyBall/plotUtils.py`) to eliminate code duplication across ribbon-related scripts. This refactoring directly affects the ribbon calculation workflows by providing shared, tested functions for DFTB+ I/O, plotting, and geometry manipulation.
+
+## Shared Modules for Ribbon Calculations
+
+### pyBall/dftb_utils.py - DFTB+ Utilities
+
+#### Atom Selection and Path Generation (Used in Ribbon H-Transfer)
+
+**`identify_hbond_transfer(enames, apos, h_symbol='H', heavy_symbol='N', ...)`**
+- Identifies H-bond transfer atoms (donor, acceptor, H atoms)
+- Used in `scan_constrained.py` to automatically find donor N, acceptor N, and scanning H
+- Distance-based selection: finds two closest N atoms to a given H atom
+- Returns: `h_scan_idx, n_donor_idx, n_acceptor_idx, fixed_idx`
+
+**`select_atom_index(enames, apos, symbol, axis=1, mode='abs_min', value=0.0)`**
+- Select atom by symbol and position criteria
+- Generic helper for atom selection in constrained scans
+
+**`find_closest_indices(enames, apos, target_idx, symbol, n=2)`**
+- Find N closest atoms of given symbol to target
+- Used to identify donor/acceptor pairs in H-bond transfer
+
+**`make_axis_path(p0, p1, svals)`**
+- Generate linear path between two points with spacing values
+- Used in `scan_constrained.py` to define reaction coordinate along N-N axis
+- Returns array of positions for scanning H atom
+
+#### DFTB+ I/O and Execution (Used in All Ribbon Scripts)
+
+**`load_molecule(filename, use_ase=True)`**
+- Load molecule from XYZ/GEN using ASE or AtomicSystem
+- Used in ribbon scripts to load initial geometries
+- Supports both XYZ and GenFormat files
+
+**`run_pbc(apos, enames, lvs, ...)`**
+- Unified function for periodic DFTB+ calculations
+- Writes input, runs DFTB+, parses energy/forces
+- Used in `scan_LHb.py` for single-point and relaxed calculations
+- Supports atom constraints via `fixed_atoms` parameter
+- Supports custom convergence parameters (Temperature, MixingParameter, etc.)
+
+**`constrained_scan(apos0, enames, lvs, moved_idx, path, fixed_idx=None, ...)`**
+- General-purpose constrained geometry scan with fixed/moved atoms
+- Used in `scan_constrained.py` for H-transfer scans
+- Handles both rigid and relaxed scans
+- Supports custom plotting callbacks for per-step visualization
+- Returns results with energies, geometries, forces
+
+**`save_xyz_movie(results, fname, lvs=None, ...)`**
+- Save scan trajectory as XYZ movie
+- Used in `scan_constrained.py` and `scan_LHb.py`
+- Includes lattice vectors in comment lines for reconstruction
+- Comment format: `L_H=... E=... eV Lx=... Ly=... Lz=...`
+
+**`parse_energy_out(fname, allow_unconverged=False)`**
+- Parse total energy from DFTB+ OUT file
+- Supports fallback parsing for unconverged SCC (with warning)
+- Used in all ribbon scripts for energy extraction
+
+**`parse_forces(fname, natoms)`**
+- Parse forces from detailed.out
+- Used in constrained scans to monitor residual forces on fixed atoms
+
+#### Hessian and Vibrational Analysis (For Ribbon Dynamics)
+
+**`read_hessian(filename, n_atoms=None)`**
+- Read Hessian matrix from hessian.out
+- Used in `example_hessian.py` for vibrational analysis
+
+**`hessian_hartree_bohr_to_eV_angstrom(hessian)`**
+- Convert Hessian units (Hartree/Bohr² → eV/Å²)
+- Used for frequency calculations
+
+**`hessian_to_frequencies(hessian, masses)`**
+- Compute vibrational frequencies from Hessian
+- Used to analyze ribbon vibrational modes
+
+### pyBall/plotUtils.py - Plotting Utilities
+
+#### Ribbon Geometry Visualization
+
+**`plotGeometry(apos, atypes, lvs=None, bond_dist=1.8, ...)`**
+- Plots atomic geometry with bonds and periodic replication
+- Used in `scan_ribbon.py` for initial geometry visualization
+- Supports element-specific colors, bond length labels
+- Draws unit cell boundary (optional)
+
+**`plotGeometryWithForces(apos, enames, forces=None, ...)`**
+- Plot geometry with force arrows
+- Used in `scan_constrained.py` for per-step visualization
+- Supports highlighting specific atoms (donor, acceptor, scanning H)
+- Force vector scaling and coloring
+
+#### Scan Profile Plotting
+
+**`plot_scan_profile(L_vals, E_vals, fname, title, xlabel, ylabel)`**
+- Plot energy vs reaction coordinate
+- Used in `scan_constrained.py` and `scan_LHb.py`
+- Generates energy profile PNG files
+
+#### Cube File Visualization (For Orbital Analysis)
+
+**`plot_cube_slice(cube_file, atoms=None, plane='xy', ...)`**
+- Plot 2D slice of cube data with atom overlay
+- Supports xy, xz, yz projections
+- Automatic atom labeling (symbol + index)
+- Used in `example_orbitals.py` for molecular orbital visualization
+
+## Refactored Ribbon Scripts
+
+### tests/pyFireball/scan_constrained.py
+
+**Changes:**
+- Removed local geometry builders (now uses `GrapheneRibbonBuilder.build_two_ribbon_cell`)
+- Removed local DFTB run wrapper (now uses `dftb_utils.constrained_scan`)
+- Removed local plotting code (now uses `plotUtils.plot_scan_profile`, `plotGeometryWithForces`)
+- Removed local atom selection (now uses `dftb_utils.identify_hbond_transfer`)
+- Removed local path generation (now uses `dftb_utils.make_axis_path`)
+- Added CLI options for flexible testing (`--rigid`, `--n_steps`, `--L_min`, `--L_max`, `--outdir`)
+- Script reduced from ~260 lines to ~140 lines
+
+**Tested:** 3-step and 10-step rigid scans work correctly.
+
+### tests/pyFireball/scan_LHb.py
+
+**Changes:**
+- Removed local geometry builders (now uses `GrapheneRibbonBuilder.build_two_ribbon_cell`)
+- Removed local DFTB run wrapper (now uses `dftb_utils.run_pbc`)
+- Removed local XYZ movie saving (now uses `dftb_utils.save_xyz_movie`)
+- Removed local plotting (now uses `plotUtils.plot_scan_profile`)
+- Added CLI options for scan parameters (`--width`, `--Lx`, `--LHb_min`, `--LHb_max`, `--n_steps`)
+- Added convergence control options (`--nk`, `--Temperature`, `--MixingParameter`, `--MaxScc`, `--SCCTolerance`)
+- Added `--allow_unconverged` flag for debugging SCC failures
+- Fixed SCC convergence by updating defaults: `nk=16`, `Temperature=300K`, `MixingParameter=0.1`
+
+**Tested:** 20-point scan (1.5-2.5 Å) with 18/20 points converged successfully.
+
+### doc/Topics/Kekule_Topology/GrapheneRibbonBuilder.py
+
+**Purpose:** Centralized geometry builder for graphene ribbons.
+
+**Key Functions:**
+
+**`build_two_ribbon_cell(width_chains, length_cells, Lx, a_CC, L_Hb, shift_x)`**
+- Builds N-passivated ribbon (bottom) and NH-passivated ribbon (top)
+- Positions ribbons with specified hydrogen bond length `L_Hb`
+- Calculates cell size: `Ly = y_span_N + y_span_NH + 2 * L_Hb`
+- Supports optional x-shift for registry control
+- Returns atomic positions, types, elements, and lattice vectors
+
+**Usage in Scripts:**
+- `scan_constrained.py`: Uses for H-transfer scan geometry
+- `scan_LHb.py`: Uses for L_Hb scan geometry
+- `build_two_ribbons.py`: Standalone script for geometry generation
+
+**Element Maps:**
+- `ELEM_MAP`: Maps element names to atomic types
+- `ELEM_MAP_INV`: Maps atomic types to element names
+
+## Removed Files
+
+- `tests/pyFireball/ribbon_utils.py` - Functions moved to `GrapheneRibbonBuilder.py`
+- `tests/pyFireball/scan_constrained_legacy.py` - Legacy backup of original scan_constrained.py
+
+## Benefits for Ribbon Calculations
+
+1. **Reduced Code Duplication** - Common DFTB+ I/O, plotting, and geometry building now in shared modules
+2. **Improved Maintainability** - Bug fixes in shared functions automatically benefit all ribbon scripts
+3. **Consistent API** - All ribbon scripts use same function signatures and parameter defaults
+4. **Better Testing** - Shared functions can be tested independently
+5. **Lightweight Scripts** - Ribbon scripts focus on workflow, not implementation details
+6. **Centralized Geometry Building** - `GrapheneRibbonBuilder.py` provides single source of truth for ribbon geometries
+
+## Testing Summary
+
+All refactored ribbon scripts tested with small sweeps:
+- `scan_constrained.py`: 3-step and 10-step rigid scans ✓
+- `scan_LHb.py`: 20-point scan (18/20 converged) ✓
+- `scan_ribbon.py`: Already clean, uses FireCore functions ✓
+
+## References
+
+- `pyBall/dftb_utils.py` - DFTB+ shared utilities
+- `pyBall/plotUtils.py` - Shared plotting utilities
+- `doc/Topics/Kekule_Topology/GrapheneRibbonBuilder.py` - Ribbon geometry builder
+- `tests/pyFireball/scan_constrained.py` - Refactored constrained scan
+- `tests/pyFireball/scan_LHb.py` - Refactored L_Hb scan
+- `tests/pyFireball/scan_ribbon.py` - Universal lattice scan
+- `tests/dftb/DFTB_docs.md` - Full refactoring documentation
+

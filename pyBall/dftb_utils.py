@@ -6,6 +6,9 @@ from . import elements
 from . import atomicUtils as au
 from textwrap import dedent,indent
 
+DFTB_EXE        = os.environ.get('DFTB_EXE', 'dftb+')
+DEFAULT_SK_PATH = os.environ.get('DFTB_SK_PATH', '/home/prokophapala/SIMULATIONS/dftbplus/slakos/3ob-3-1/')
+
 methods=[  'GFN2' ]
 
 methods_XTB  = { 'GFN1', 'GFN2', 'IPEA1' }
@@ -33,6 +36,346 @@ default_params={
     "GradElem": 1E-4
     #'Temperature' : 300
 }
+
+# >>> Fromn scan_utils.py
+
+def select_atom_index(enames, apos, symbol, axis=1, mode='abs_min', value=0.0):
+    idx = [i for i, e in enumerate(enames) if e == symbol]
+    assert idx, f"No atoms with symbol '{symbol}'"
+    if mode == 'abs_min':
+        return idx[int(np.argmin([abs(apos[i, axis] - value) for i in idx]))]
+    if mode == 'min':
+        return idx[int(np.argmin([apos[i, axis] for i in idx]))]
+    if mode == 'max':
+        return idx[int(np.argmax([apos[i, axis] for i in idx]))]
+    raise ValueError(f"Unknown mode '{mode}'")
+
+
+def find_closest_indices(enames, apos, target_idx, symbol, n=2):
+    idx = [i for i, e in enumerate(enames) if e == symbol]
+    assert idx, f"No atoms with symbol '{symbol}'"
+    dists = [(i, float(np.linalg.norm(apos[target_idx] - apos[i]))) for i in idx if i != target_idx]
+    dists.sort(key=lambda x: x[1])
+    assert len(dists) >= n, f"Need at least {n} atoms '{symbol}' (excluding target), got {len(dists)}"
+    return [p[0] for p in dists[:n]], [p[1] for p in dists[:n]]
+
+
+def make_axis_path(p0, p1, svals):
+    p0 = np.array(p0, dtype=float)
+    p1 = np.array(p1, dtype=float)
+    axis = p1 - p0
+    L = float(np.linalg.norm(axis))
+    assert L > 1e-8, "Axis length too small"
+    axis_hat = axis / L
+    svals = np.array(svals, dtype=float)
+    path = np.zeros((len(svals), 3), dtype=float)
+    for i, s in enumerate(svals):
+        path[i, :] = p0 + axis_hat * s
+    return path
+
+
+def identify_hbond_transfer(enames, apos, h_symbol='H', heavy_symbol='N', h_select_axis=1, h_select_mode='abs_min', h_select_value=0.0, verbose=True):
+    apos = np.array(apos, dtype=float)
+    h_scan_idx = select_atom_index(enames, apos, h_symbol, axis=h_select_axis, mode=h_select_mode, value=h_select_value)
+    (heavy_idx, heavy_dists) = find_closest_indices(enames, apos, h_scan_idx, heavy_symbol, n=2)
+    donor_idx, acceptor_idx = heavy_idx[0], heavy_idx[1]
+    fixed_idx = [i for i, e in enumerate(enames) if e == heavy_symbol] + [h_scan_idx]
+    if verbose:
+        h_idx = [i for i, e in enumerate(enames) if e == h_symbol]
+        n_idx = [i for i, e in enumerate(enames) if e == heavy_symbol]
+        print(f"  {h_symbol} atoms: {h_idx}  positions y={[f'{apos[i,1]:.2f}' for i in h_idx]}")
+        print(f"  {heavy_symbol} atoms: {n_idx}  positions y={[f'{apos[i,1]:.2f}' for i in n_idx]}")
+        print(f"  Scanning {h_symbol}: idx={h_scan_idx}, y={apos[h_scan_idx,1]:.3f}")
+        print(f"  Donor {heavy_symbol}:    idx={donor_idx}, y={apos[donor_idx,1]:.2f}, d={heavy_dists[0]:.2f}Å")
+        print(f"  Acceptor {heavy_symbol}: idx={acceptor_idx}, y={apos[acceptor_idx,1]:.2f}, d={heavy_dists[1]:.2f}Å")
+        dNN = np.linalg.norm(apos[donor_idx] - apos[acceptor_idx])
+        print(f"  {heavy_symbol}-{heavy_symbol} distance: {dNN:.3f} Å")
+        print(f"  H-bond: {heavy_symbol}{donor_idx+1}-{h_symbol}{h_scan_idx+1}...{heavy_symbol}{acceptor_idx+1}  -->  {heavy_symbol}{donor_idx+1}...{h_symbol}{h_scan_idx+1}-{heavy_symbol}{acceptor_idx+1}")
+    return h_scan_idx, donor_idx, acceptor_idx, fixed_idx
+
+# <<< Fromn scan_utils.py
+
+def load_molecule(filename, use_ase=True):
+    from ase import Atoms
+    from ase.io import read
+    from pyBall.AtomicSystem import AtomicSystem
+    if use_ase:
+        return read(filename)
+    mol = AtomicSystem(fname=filename)
+    return Atoms(symbols=mol.enames, positions=mol.apos, cell=mol.lvec if mol.lvec is not None else None, pbc=(mol.lvec is not None))
+
+def get_max_angular_momentum(enames):
+    return {ename: elements.ELEMENT_DICT[ename][4] for ename in sorted(set(enames))}
+
+def write_dftb_input_hessian(enames, gname="geo.xyz", fname='dftb_in.hsd', basis_path=DEFAULT_SK_PATH, delta=1e-4, SCCTolerance=1e-7):
+    max_angular = get_max_angular_momentum(enames)
+    max_angular_str = '\n'.join([f'        {elem} = "{max_angular[elem]}"' for elem in max_angular])
+    with open(fname, 'w') as f:
+        f.write(f'''Geometry = xyzFormat {{
+    <<< "{gname}"
+}}
+
+Driver = SecondDerivatives {{
+    Delta = {delta}
+    Atoms = 1:-1
+}}
+
+Hamiltonian = DFTB {{
+    Scc = Yes
+    SlaterKosterFiles = Type2FileNames {{
+        Prefix = {basis_path}
+        Separator = "-"
+        Suffix = ".skf"
+    }}
+    MaxAngularMomentum {{
+{max_angular_str}
+    }}
+    SCCTolerance = {SCCTolerance:.6e}
+}}
+''')
+
+def write_dftb_input_orbitals(enames, gname="geo.xyz", fname='dftb_in.hsd', basis_path=DEFAULT_SK_PATH, SCCTolerance=1e-7):
+    max_angular = get_max_angular_momentum(enames)
+    max_angular_str = '\n'.join([f'        {elem} = "{max_angular[elem]}"' for elem in max_angular])
+    with open(fname, 'w') as f:
+        f.write(f'''Geometry = xyzFormat {{
+    <<< "{gname}"
+}}
+
+Options {{
+  WriteDetailedXml = Yes
+}}
+
+Analysis {{
+  WriteEigenvectors = Yes
+}}
+
+Hamiltonian = DFTB {{
+  Scc = Yes
+  SlaterKosterFiles = Type2FileNames {{
+    Prefix = "{basis_path}"
+    Separator = "-"
+    Suffix = ".skf"
+  }}
+  MaxAngularMomentum {{
+{max_angular_str}
+  }}
+  SCCTolerance = {SCCTolerance:.6e}
+}}
+''')
+
+def read_hessian(filename='hessian.out', n_atoms=None):
+    numbers = []
+    with open(filename, 'r') as f:
+        for line in f:
+            for part in line.split():
+                try:
+                    numbers.append(float(part))
+                except ValueError:
+                    pass
+    data = np.array(numbers)
+    if n_atoms is None:
+        n_total = int(np.sqrt(len(data)))
+        if n_total * n_total != len(data):
+            raise ValueError(f"Cannot infer n_atoms from {len(data)} elements")
+        n_atoms = n_total // 3
+    expected = (3 * n_atoms) ** 2
+    if len(data) != expected:
+        raise ValueError(f"Expected {expected} elements for {n_atoms} atoms, got {len(data)}")
+    return data.reshape((3 * n_atoms, 3 * n_atoms))
+
+def hessian_hartree_bohr_to_eV_angstrom(hessian):
+    return hessian * (27.2114 / (0.529177 ** 2))
+
+def parse_energy_out(fname='OUT', allow_unconverged=False):
+    with open(fname, 'r') as f:
+        lines = f.readlines()
+    hits = [line for line in lines if "Total Energy" in line]
+    if hits:
+        return float(hits[-1][51:70].strip())
+    if not allow_unconverged:
+        raise AssertionError(f"Could not parse Total Energy from {fname}")
+    # Fallback: parse last SCC iteration electronic energy (not a proper total energy).
+    # We do NOT hide this: print loud warning.
+    print(f"WARNING parse_energy_out(): 'Total Energy' not found in {fname}; using last SCC electronic energy (SCC not converged)")
+    in_scc = False
+    last_e = None
+    for line in lines:
+        if 'iSCC Total electronic' in line:
+            in_scc = True
+            continue
+        if in_scc:
+            ws = line.split()
+            if len(ws) >= 2:
+                try:
+                    # columns: iSCC, TotalElectronic, DiffElectronic, SCCError
+                    last_e = float(ws[1])
+                except ValueError:
+                    pass
+    assert last_e is not None, f"Could not parse SCC electronic energy from {fname}"
+    return last_e
+
+def parse_forces(fname='detailed.out', natoms=None):
+    assert natoms is not None, "parse_forces() requires natoms"
+    forces = np.zeros((natoms, 3))
+    HAU2EVA = 51.422067
+    with open(fname, 'r') as f:
+        lines = f.readlines()
+    in_forces = False
+    idx = 0
+    for line in lines:
+        if 'Total Forces' in line:
+            in_forces = True
+            continue
+        if in_forces and idx < natoms:
+            parts = line.split()
+            if len(parts) >= 3:
+                try:
+                    forces[idx] = [float(parts[0]), float(parts[1]), float(parts[2])]
+                    forces[idx] *= HAU2EVA
+                    idx += 1
+                except ValueError:
+                    continue
+    return forces
+
+def read_relaxed_geometry(apos, do_relax=False):
+    apos_out = apos.copy()
+    if not do_relax:
+        return apos_out
+    if os.path.exists('geom.out.gen'):
+        with open('geom.out.gen') as fgen:
+            lines = fgen.readlines()
+        n = int(lines[0].split()[0])
+        apos_out = np.zeros((n, 3))
+        for j in range(n):
+            parts = lines[2+j].split()
+            apos_out[j] = [float(parts[2]), float(parts[3]), float(parts[4])]
+    elif os.path.exists('geom.out.xyz'):
+        with open('geom.out.xyz') as fxyz:
+            n = int(fxyz.readline())
+            fxyz.readline()
+            apos_out = np.zeros((n, 3))
+            for j in range(n):
+                parts = fxyz.readline().split()
+                if len(parts) >= 4:
+                    apos_out[j] = [float(parts[1]), float(parts[2]), float(parts[3])]
+    return apos_out
+
+def run_pbc(apos, enames, lvs, basis_path=DEFAULT_SK_PATH, do_relax=False, fixed_atoms=None, nk=(16,1,1), k_shift=(0.5,0.0,0.0), dftb_exe=DFTB_EXE, workdir=None, Temperature=300, MixingParameter=0.2, MaxScc=200, SCCTolerance=1e-5, params=None, allow_unconverged_energy=False):
+    if params is None:
+        params = default_params
+    cwd = os.getcwd()
+    if workdir is not None:
+        os.makedirs(workdir, exist_ok=True)
+        os.chdir(workdir)
+    try:
+        makeDFTBjob_pbc(enames=enames, apos=apos, lvs=lvs, fname='dftb_in.hsd', basis_path=basis_path, nk=nk, k_shift=k_shift, opt=do_relax, params=params, Temperature=Temperature, MixingParameter=MixingParameter, MaxScc=MaxScc, SCCTolerance=SCCTolerance, fixed_atoms=fixed_atoms)
+        ierr = os.system(f'{dftb_exe} > OUT')
+        assert ierr == 0, f"DFTB+ command failed with code {ierr}: {dftb_exe}"
+        E = parse_energy_out('OUT', allow_unconverged=allow_unconverged_energy)
+        apos_out = read_relaxed_geometry(apos, do_relax=do_relax)
+        forces = parse_forces('detailed.out', len(enames)) if os.path.exists('detailed.out') else None
+        return E, apos_out, forces
+    finally:
+        if workdir is not None:
+            os.chdir(cwd)
+
+def constrained_scan(apos0, enames, lvs, moved_idx, path, fixed_idx=None, outdir='.', do_relax=True, use_prev_relaxed=True, basis_path=DEFAULT_SK_PATH, dftb_exe=DFTB_EXE, nk=(16,1,1), k_shift=(0.5,0.0,0.0), Temperature=300, MixingParameter=0.2, MaxScc=500, SCCTolerance=1e-6, params=None, step_prefix='tmp_scan', results_prefix='scan', save_xyz=True, xyz_fname=None, key_func=None, key_name='s', plot_step_func=None):
+    """General constrained scan over a path for selected atoms.
+
+    Args:
+        apos0: (natoms,3) starting geometry [Å]
+        enames: list[str] length natoms
+        lvs: (3,3) lattice vectors [Å]
+        moved_idx: list[int] indices of atoms to move according to `path`
+        path: ndarray (nMoved, nstep, 3) positions [Å] for moved atoms
+        fixed_idx: list[int] indices to keep fixed during relaxation (passed to DFTB+)
+        outdir: output directory
+        do_relax: if True run geometry optimization with constraints
+        use_prev_relaxed: if True, each step starts from previous relaxed geometry
+        key_func: optional callable(step, apos_out, forces, energy) -> scalar key to store
+        plot_step_func: optional callable(step, apos_out, forces, meta_dict) for per-step plots
+
+    Returns:
+        results: list of dicts per step with keys: 'E','apos','enames','forces','fixed_idx', plus optional key_name
+    """
+    os.makedirs(outdir, exist_ok=True)
+    apos0 = np.array(apos0, dtype=float)
+    path = np.array(path, dtype=float)
+    moved_idx = list(moved_idx)
+    nMoved = len(moved_idx)
+    assert path.ndim == 3 and path.shape[0] == nMoved and path.shape[2] == 3, f"path must be (nMoved,nstep,3); got {path.shape} for nMoved={nMoved}"
+    nstep = path.shape[1]
+    if fixed_idx is None:
+        fixed_idx = []
+    fixed_idx = list(fixed_idx)
+
+    if params is None:
+        params = default_params
+
+    results = []
+    for istep in range(nstep):
+        print(f"\n[constrained_scan] step {istep+1}/{nstep}")
+        if use_prev_relaxed and results and do_relax:
+            apos_step = results[-1]['apos'].copy()
+        else:
+            apos_step = apos0.copy()
+        for im, ia in enumerate(moved_idx):
+            apos_step[ia, :] = path[im, istep, :]
+
+        wdir = os.path.join(outdir, f"{step_prefix}_{istep:03d}")
+        E, apos_out, forces = run_pbc(
+            apos_step, enames, lvs,
+            basis_path=basis_path,
+            do_relax=do_relax,
+            fixed_atoms=fixed_idx,
+            nk=nk, k_shift=k_shift,
+            dftb_exe=dftb_exe,
+            workdir=wdir,
+            Temperature=Temperature,
+            MixingParameter=MixingParameter,
+            MaxScc=MaxScc,
+            SCCTolerance=SCCTolerance,
+            params=params,
+        )
+
+        r = {'istep': istep, 'E': E, 'apos': apos_out, 'enames': enames, 'forces': forces, 'fixed_idx': fixed_idx}
+        if key_func is not None:
+            r[key_name] = key_func(istep, apos_out, forces, E)
+        results.append(r)
+
+        if plot_step_func is not None:
+            plot_step_func(istep, apos_out, forces, r)
+
+    if save_xyz:
+        if xyz_fname is None:
+            xyz_fname = os.path.join(outdir, f"{results_prefix}.xyz")
+        save_xyz_movie(results, xyz_fname, lvs=lvs, key_order=[key_name, 'E'] if key_func is not None else ['E'])
+    return results
+
+def save_xyz_movie(results, fname, lvs=None, label=None, key_order=None):
+    with open(fname, 'w') as f:
+        for r in results:
+            apos = r['apos']; enames = r['enames']
+            fields = []
+            if label is not None:
+                fields.append(str(label))
+            keys = key_order
+            if keys is None:
+                keys = [k for k in ('L_Hb', 'L_H', 'E') if k in r]
+            for k in keys:
+                v = r[k]
+                fields.append(f"{k}={v:.6f}" if isinstance(v, (float, np.floating)) else f"{k}={v}")
+            if r.get('forces') is not None and r.get('fixed_idx'):
+                ff = [np.linalg.norm(r['forces'][i]) for i in r['fixed_idx']]
+                fields.append(f"F_fixed={np.mean(ff):.3f}")
+            if lvs is not None:
+                fields.append(f"Lx={lvs[0,0]:.2f} Ly={lvs[1,1]:.2f} Lz={lvs[2,2]:.2f}")
+            f.write(f"{len(enames)}\n")
+            f.write(" ".join(fields) + "\n")
+            for e, pos in zip(enames, apos):
+                f.write(f"{e} {pos[0]:.6f} {pos[1]:.6f} {pos[2]:.6f}\n")
+    print(f"Saved XYZ movie: {fname}")
 
 # ============ Setup
 

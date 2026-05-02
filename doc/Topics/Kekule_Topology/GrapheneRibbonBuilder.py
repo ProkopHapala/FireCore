@@ -404,6 +404,44 @@ class GrapheneRibbonBuilder:
         return a1, a2, a3
 
 
+ELEM_MAP = {'H': 1, 'C': 6, 'N': 7, 'O': 8}
+ELEM_MAP_INV = {v: k for k, v in ELEM_MAP.items()}
+
+def build_ribbon(passivation, width_chains, length_cells, Lx, a_CC=1.42):
+    from doc.Topics.Kekule_Topology.GrapheneRibbonBuilder import GrapheneRibbonBuilder
+    xa_nom = a_CC * np.cos(np.pi / 6)
+    b = GrapheneRibbonBuilder(a_CC=a_CC)
+    scale_x = Lx / (2.0 * xa_nom)
+    pos2d, elems, bonds = b.build_zigzag_ribbon(width_chains=width_chains, length_cells=length_cells, passivation=passivation, scale_x=scale_x)
+    atypes = np.array([ELEM_MAP[e] for e in elems], dtype=np.int32)
+    return np.array(pos2d), atypes, elems
+
+def build_two_ribbon_cell(width_chains=4, length_cells=1, Lx=2.4, a_CC=1.42, L_Hb=2.0, shift_x=0.0):
+    pos2d_N,  atypes_N,  elems_N  = build_ribbon('N',  width_chains, length_cells, Lx, a_CC)
+    pos2d_NH, atypes_NH, elems_NH = build_ribbon('NH', width_chains, length_cells, Lx, a_CC)
+    apos_N  = np.zeros((len(atypes_N),  3));  apos_N[:,  0:2] = pos2d_N
+    apos_NH = np.zeros((len(atypes_NH), 3));  apos_NH[:, 0:2] = pos2d_NH
+    apos_N[:,  1] -= np.mean(apos_N[:,  1])
+    apos_NH[:, 1] -= np.mean(apos_NH[:, 1])
+    apos_NH[:, 0] += shift_x * Lx
+    y_max_N  = np.max(apos_N[:,  1])
+    y_min_NH = np.min(apos_NH[:, 1])
+    apos_NH[:, 1] += (y_max_N + L_Hb) - y_min_NH
+    y_span_N  = np.max(apos_N[:,  1]) - np.min(apos_N[:,  1])
+    y_span_NH = np.max(apos_NH[:, 1]) - np.min(apos_NH[:, 1])
+    Ly = y_span_N + y_span_NH + 2 * L_Hb
+    apos  = np.vstack([apos_N, apos_NH])
+    atypes = np.concatenate([atypes_N, atypes_NH])
+    elems  = list(elems_N) + list(elems_NH)
+    apos[:, 2]  = 0.0
+    apos[:, 1] -= np.mean(apos[:, 1])
+    Lz = 20.0
+    apos[:, 2] += 0.5 * Lz
+    lvs = np.array([[Lx, 0.0, 0.0], [0.0, Ly, 0.0], [0.0, 0.0, Lz]])
+    return apos, atypes, elems, lvs
+
+
+
 if __name__ == "__main__":
     # Test the builder
     builder = GrapheneRibbonBuilder(a_CC=1.42)

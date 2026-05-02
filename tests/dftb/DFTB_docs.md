@@ -3161,3 +3161,140 @@ If DFTB+ fails with "SK file does not exist":
 - **Physical consistency**: For meaningful orbital/density analysis, always use complete parameter sets
 
 ---
+
+# Code Refactoring Summary (May 2026)
+
+## Overview
+
+Major refactoring effort to consolidate DFTB+ Python utilities into reusable modules (`pyBall/dftb_utils.py`, `pyBall/plotUtils.py`) and eliminate code duplication across example scripts.
+
+## Changes to pyBall/dftb_utils.py
+
+### New Functions Added
+
+#### Atom Selection and Path Generation
+- `select_atom_index(enames, apos, symbol, axis=1, mode='abs_min', value=0.0)` - Select atom by symbol and position criteria
+- `find_closest_indices(enames, apos, target_idx, symbol, n=2)` - Find N closest atoms of given symbol to target
+- `make_axis_path(p0, p1, svals)` - Generate linear path between two points with spacing values
+- `identify_hbond_transfer(enames, apos, ...)` - Identify H-bond transfer atoms (donor, acceptor, H atoms)
+
+#### DFTB+ I/O and Execution
+- `load_molecule(filename, use_ase=True)` - Load molecule from XYZ/GEN using ASE or AtomicSystem
+- `write_dftb_input_hessian(...)` - Write DFTB+ input for Hessian calculation with SecondDerivatives driver
+- `write_dftb_input_orbitals(...)` - Write DFTB+ input for orbital calculation with eigenvector output
+- `parse_energy_out(fname, allow_unconverged=False)` - Parse total energy from DFTB+ OUT file (with fallback for unconverged SCC)
+- `parse_forces(fname, natoms)` - Parse forces from detailed.out
+- `read_relaxed_geometry(apos, do_relax)` - Read relaxed geometry from geo_end.gen or return original
+- `run_pbc(...)` - Unified function for periodic DFTB+ calculations (write input, run, parse energy/forces)
+- `constrained_scan(...)` - General-purpose constrained geometry scan with fixed/moved atoms
+- `save_xyz_movie(results, fname, lvs=None, ...)` - Save scan trajectory as XYZ movie
+
+#### Hessian and Vibrational Analysis
+- `read_hessian(filename, n_atoms=None)` - Read Hessian matrix from hessian.out
+- `hessian_hartree_bohr_to_eV_angstrom(hessian)` - Convert Hessian units (Hartree/Bohr² → eV/Å²)
+- `hessian_to_mass_weighted(hessian, masses)` - Convert Hessian to mass-weighted dynamical matrix
+- `hessian_to_frequencies(hessian, masses)` - Compute vibrational frequencies from Hessian
+- `write_vibration_modes_jmol(...)` - Write vibration modes in Jmol XYZ format
+
+#### Waveplot and Cube Files
+- `run_waveplot(...)` - Run waveplot to generate cube files from DFTB+ results
+- `read_cube(filename)` - Read Gaussian cube file using ASE
+- `read_cube_with_grid(filename)` - Read cube file with full grid information (origin, spacing)
+- `evaluate_orbital_at_points(...)` - Evaluate molecular orbitals at arbitrary points using DFTB+ C API
+- `interpolate_orbital(cube_file, points)` - Interpolate orbital values from cube file at points
+
+### Default Parameters Centralized
+```python
+DEFAULT_SK_PATH = '/home/prokophapala/SIMULATIONS/dftbplus/slakos/3ob-3-1/'
+DFTB_EXE = '/home/prokophapala/miniconda3/bin/dftb+'
+default_params = { ... }  # Standard DFTB+ parameters
+```
+
+## Changes to pyBall/plotUtils.py
+
+### New Functions Added
+
+#### Cube File Visualization
+- `plot_cube_slice(cube_file, atoms=None, plane='xy', ...)` - Plot 2D slice of cube data with atom overlay
+  - Supports xy, xz, yz projections
+  - Automatic atom labeling (symbol + index)
+  - Colorbar and extent handling
+
+#### Scan Profile Plotting
+- `plot_scan_profile(L_vals, E_vals, fname, title, xlabel, ylabel)` - Plot energy vs reaction coordinate
+
+#### Geometry with Forces
+- `plotGeometryWithForces(apos, enames, forces=None, ...)` - Plot geometry with force arrows
+  - Supports highlighting specific atoms
+  - Force vector scaling and coloring
+
+### Helper Functions
+- `_cube_slice_data(data, origin, spacing, plane)` - Extract 2D slice and metadata from 3D cube data
+
+## Refactored Scripts
+
+### tests/pyFireball/scan_constrained.py
+**Changes:**
+- Removed local geometry builders (now uses `GrapheneRibbonBuilder.build_two_ribbon_cell`)
+- Removed local DFTB run wrapper (now uses `dftb_utils.constrained_scan`)
+- Removed local plotting code (now uses `plotUtils.plot_scan_profile`, `plotGeometryWithForces`)
+- Removed local atom selection (now uses `dftb_utils.identify_hbond_transfer`)
+- Removed local path generation (now uses `dftb_utils.make_axis_path`)
+- Added CLI options for flexible testing (`--rigid`, `--n_steps`, `--L_min`, `--L_max`, `--outdir`)
+- Script reduced from ~260 lines to ~140 lines
+
+**Tested:** 3-step and 10-step rigid scans work correctly.
+
+### tests/pyFireball/scan_LHb.py
+**Changes:**
+- Removed local geometry builders (now uses `GrapheneRibbonBuilder.build_two_ribbon_cell`)
+- Removed local DFTB run wrapper (now uses `dftb_utils.run_pbc`)
+- Removed local XYZ movie saving (now uses `dftb_utils.save_xyz_movie`)
+- Removed local plotting (now uses `plotUtils.plot_scan_profile`)
+- Added CLI options for scan parameters (`--width`, `--Lx`, `--LHb_min`, `--LHb_max`, `--n_steps`)
+- Added convergence control options (`--nk`, `--Temperature`, `--MixingParameter`, `--MaxScc`, `--SCCTolerance`)
+- Added `--allow_unconverged` flag for debugging SCC failures
+- Fixed SCC convergence by updating defaults: `nk=16`, `Temperature=300K`, `MixingParameter=0.1`
+
+**Tested:** 20-point scan (1.5-2.5 Å) with 18/20 points converged successfully.
+
+### tests/dftb/example_hessian.py
+**Changes:**
+- Removed redundant `load_molecule_xyz()` (now uses `dftb_utils.load_molecule`)
+- Removed redundant `read_hessian()` (now uses `dftb_utils.read_hessian`)
+- Removed redundant `hessian_hartree_bohr_to_eV_angstrom()` (now uses `dftb_utils.hessian_hartree_bohr_to_eV_angstrom`)
+- Already used shared functions for Hessian conversion and frequency calculation
+
+**Tested:** H2O Hessian calculation works correctly with built-in and loaded molecules.
+
+### tests/dftb/example_orbitals.py
+**Changes:**
+- Already uses `dftb_utils.load_molecule()` for molecule loading
+- Already uses `dftb_utils.run_waveplot()` for cube generation
+- Already uses `plotUtils.plot_cube_slice()` for 2D orbital projections
+- Removed specialized `plot_orbitals_2d()` and `plot_density_at_points()` (kept simpler `plot_cube_slice`)
+
+**Tested:** H2O orbital calculation with waveplot works correctly.
+
+## Removed Files
+
+- `tests/pyFireball/ribbon_utils.py` - Functions moved to `doc/Topics/Kekule_Topology/GrapheneRibbonBuilder.py`
+- `tests/pyFireball/scan_constrained_legacy.py` - Legacy backup of original scan_constrained.py
+
+## Key Benefits
+
+1. **Reduced Code Duplication** - Common DFTB+ I/O, plotting, and geometry building now in shared modules
+2. **Improved Maintainability** - Bug fixes in shared functions automatically benefit all scripts
+3. **Consistent API** - All scripts use same function signatures and parameter defaults
+4. **Better Testing** - Shared functions can be tested independently
+5. **Lightweight Scripts** - Example scripts focus on workflow, not implementation details
+
+## Testing Summary
+
+All refactored scripts tested with small sweeps:
+- `scan_constrained.py`: 3-step and 10-step rigid scans ✓
+- `scan_LHb.py`: 20-point scan (18/20 converged) ✓
+- `example_hessian.py`: H2O Hessian with/without frequency calculation ✓
+- `example_orbitals.py`: H2O orbitals with waveplot ✓
+
+

@@ -12,6 +12,31 @@ def plotEF( xs, EFs, label='' ):
     plt.subplot(2,1,1); plt.plot( xs, EFs[:,0], label="E "+label ); plt.legend();plt.grid()
     plt.subplot(2,1,2); plt.plot( xs, EFs[:,1], label="F "+label ); plt.legend();plt.grid()
 
+def plot_scan_profile(x, y, xlabel='x', ylabel='E', title=None, label=None, color='blue', marker='o', fname=None, ax=None, annotate_min=False, relative=False, dpi=150):
+    x = np.asarray(x); y = np.asarray(y)
+    if relative:
+        y = y - np.nanmin(y)
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 6))
+    else:
+        fig = ax.figure
+    ax.plot(x, y, marker+'-', color=color, lw=2, ms=6, label=label)
+    if label is not None:
+        ax.legend()
+    ax.set_xlabel(xlabel); ax.set_ylabel(ylabel)
+    if title is not None:
+        ax.set_title(title)
+    ax.grid(True, alpha=0.3)
+    if annotate_min and np.any(np.isfinite(y)):
+        i = np.nanargmin(y)
+        ax.axvline(x[i], color=color, ls='--', alpha=0.5)
+        ax.annotate(f'min\\n{x[i]:.4f}, {y[i]:.4f}', xy=(x[i], y[i]), xytext=(x[i], y[i]), color=color)
+    fig.tight_layout()
+    if fname is not None:
+        fig.savefig(fname, dpi=dpi, bbox_inches='tight')
+        plt.close(fig)
+    return fig, ax
+
 def numDeriv(x, y):
     """Numerical derivative using central difference"""
     dx = x[2:]-x[:-2]
@@ -249,6 +274,38 @@ def read_dat( fname, ni=0, nf=1, iname=0, toRemove=None ):
         names     .append( name )
     return ints,floats,names
 
+def _cube_slice_data(data, origin, spacing, plane='xy'):
+    nx, ny, nz = data.shape
+    if plane == 'xy':
+        return data[:, :, nz//2], [origin[0], origin[0] + nx*spacing[0], origin[1], origin[1] + ny*spacing[1]], ('x (Å)', 'y (Å)'), (0, 1)
+    if plane == 'xz':
+        return data[:, ny//2, :], [origin[0], origin[0] + nx*spacing[0], origin[2], origin[2] + nz*spacing[2]], ('x (Å)', 'z (Å)'), (0, 2)
+    if plane == 'yz':
+        return data[nx//2, :, :], [origin[1], origin[1] + ny*spacing[1], origin[2], origin[2] + nz*spacing[2]], ('y (Å)', 'z (Å)'), (1, 2)
+    raise ValueError(f"Invalid plane: {plane}")
+
+def plot_cube_slice(cube_file, atoms=None, plane='xy', cmap='RdBu_r', title=None, fname=None, colorbar_label='value', dpi=150):
+    from pyBall import dftb_utils as dftbu
+    data, atoms_cube, origin, spacing = dftbu.read_cube_with_grid(cube_file)
+    slice_data, extent, labels, axes = _cube_slice_data(data, origin, spacing, plane=plane)
+    fig, ax = plt.subplots(figsize=(8, 6))
+    im = ax.imshow(slice_data.T, origin='lower', cmap=cmap, aspect='auto', extent=extent)
+    fig.colorbar(im, ax=ax, label=colorbar_label)
+    ax.set_xlabel(labels[0]); ax.set_ylabel(labels[1])
+    ax.set_title(title if title is not None else f'{cube_file} - {plane.upper()}')
+    if atoms is not None:
+        apos2d = atoms.positions[:, axes]
+        for i, (x, y) in enumerate(apos2d):
+            symbol = atoms.get_chemical_symbols()[i]
+            ax.scatter(x, y, c='red', s=20, marker='+', zorder=10)
+            ax.text(x, y, f'{symbol}{i}', ha='center', va='center', color='white', fontsize=8, fontweight='bold', bbox=dict(boxstyle='round,pad=0.2', facecolor='black', alpha=0.5), zorder=11)
+    fig.tight_layout()
+    if fname is not None:
+        fig.savefig(fname, dpi=dpi, bbox_inches='tight')
+        plt.close(fig)
+    return fig, ax, data
+
+
 ############################################
 #   Ploting atoms and bonds ( Molecules )  #
 ############################################
@@ -453,6 +510,65 @@ def plotGeometry(apos, atypes, lvs=None, bond_dist=1.8, bBondLabels=True,  repli
         plt.close()
     else:
         plt.show()
+
+def plotGeometryWithForces(apos, atypes, lvs=None, forces=None, fixed_idx=None, highlight=None, scan_path=None, bond_dist=2.0, axes=(0,1), title=None, fname=None, figsize=(12,10), dpi=120):
+    ax1, ax2 = axes
+    if fixed_idx is None:
+        fixed_idx = []
+    if highlight is None:
+        highlight = {}
+    elem_colors = {'H': 'gray', 'C': 'black', 'N': 'blue', 'O': 'red'}
+    elem_sizes  = {'H': 80,     'C': 120,     'N': 120,    'O': 120}
+    fig, ax = plt.subplots(figsize=figsize)
+    if scan_path is not None:
+        i, j = scan_path
+        p1 = apos[i]; p2 = apos[j]
+        ax.plot([p1[ax1], p2[ax1]], [p1[ax2], p2[ax2]], 'g--', lw=3, alpha=0.5, zorder=1, label='Scan path')
+    for i, (e, pos) in enumerate(zip(atypes, apos)):
+        h = highlight.get(i, {})
+        c  = h.get('color', elem_colors.get(e, 'green'))
+        s  = h.get('size', elem_sizes.get(e, 80))
+        ec = h.get('edgecolor', 'red' if i in fixed_idx else 'black')
+        lw = h.get('linewidth', 3 if i in fixed_idx else 1)
+        lab = h.get('label', f'{e}{i+1}')
+        ax.scatter(pos[ax1], pos[ax2], c=c, s=s, edgecolors=ec, linewidths=lw, zorder=10)
+        ax.text(pos[ax1], pos[ax2], lab, color='white', ha='center', va='center', fontsize=7, zorder=11)
+    natoms = len(atypes)
+    shifts = [np.zeros(3)]
+    if lvs is not None:
+        shifts = [np.array([six, siy, 0]) @ lvs for six in range(-1, 2) for siy in range(-1, 2)]
+    for i in range(natoms):
+        for j in range(i+1, natoms):
+            for shift in shifts:
+                d = np.linalg.norm(apos[i] - (apos[j] + shift))
+                if d < bond_dist:
+                    pi = apos[i]; pj = apos[j] + shift
+                    ax.plot([pi[ax1], pj[ax1]], [pi[ax2], pj[ax2]], 'k-', lw=2, zorder=5)
+                    mx, my = 0.5*(pi[ax1]+pj[ax1]), 0.5*(pi[ax2]+pj[ax2])
+                    ax.text(mx, my, f'{d:.2f}', color='darkred', fontsize=7, ha='center', va='center', bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.7), zorder=12)
+    if forces is not None:
+        fmax = np.max(np.linalg.norm(forces, axis=1))
+        scale = 1.5 / max(fmax, 0.1)
+        for pos, frc in zip(apos, forces):
+            if np.linalg.norm(frc) < 0.005:
+                continue
+            ax.annotate('', xy=(pos[ax1] + frc[ax1]*scale, pos[ax2] + frc[ax2]*scale), xytext=(pos[ax1], pos[ax2]), arrowprops=dict(arrowstyle='->', color='red', lw=1.5))
+        ax.scatter([], [], c='red', marker=r'$\rightarrow$', s=100, label=f'Force (max={fmax:.3f} eV/Å)')
+    if lvs is not None:
+        corners = np.array([[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,0]]) @ lvs
+        ax.plot(corners[:, ax1], corners[:, ax2], 'b--', lw=1.5, alpha=0.6, label='Unit cell')
+    ax.set_aspect('equal')
+    ax.set_xlabel(f"{'xyz'[ax1]} (Å)"); ax.set_ylabel(f"{'xyz'[ax2]} (Å)")
+    if title is not None:
+        ax.set_title(title)
+    ax.legend(loc='upper right', fontsize=8)
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    if fname is not None:
+        fig.savefig(fname, dpi=dpi, bbox_inches='tight')
+        plt.close(fig)
+        print(f"  Saved plot: {fname}")
+    return fig, ax
 
 
 def plotSystem( sys , bBonds=True, colors=None, sizes=None, extent=None, sz=50., RvdwCut=0.5, axes=(0,1), bLabels=True, labels=None, _0=1, HBs=None, bHBlabels=True, bBLabels=False,bAtoms=True  ):    

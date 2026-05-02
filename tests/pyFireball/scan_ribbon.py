@@ -9,11 +9,12 @@ Usage examples:
 Passivation types: N, NH, CH, C=O, C-OH (see GrapheneRibbonBuilder)
 """
 import sys
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
 
-sys.path.append("../../")
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from pyBall import FireCore as fc
 
 ELEM_MAP = {'H': 1, 'C': 6, 'N': 7, 'O': 8}
