@@ -81,11 +81,11 @@ program fireball
             call timer_start_i(1)
             call assemble_mcweda()
             call timer_stop_i(1)
-            !call debug_writeBlockedMat( "S_mat.log", s_mat )
-            !call debug_writeBlockedMat( "H_mat.log", h_mat )
-            k_temp(:) = special_k(:,ikpoint)
             call timer_start_i(2)
-            call solveH ( ikpoint, k_temp )
+            do ikpoint = 1, nkpoints
+                k_temp(:) = special_k(:,ikpoint)
+                call solveH ( ikpoint, k_temp )
+            end do
             call timer_stop_i(2)
             call timer_start_i(3)
             call denmat ()

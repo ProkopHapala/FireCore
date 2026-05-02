@@ -261,6 +261,7 @@
          mbeta_max = lbeta
          if (verbosity .ge. 3) write(*,*) 'mbeta_max = ', mbeta_max
 ! allocate xl
+         if (allocated(xl)) deallocate(xl)
          allocate ( xl(3,0:mbeta_max) )
 
 ! put xxl into xl with real angstrom units.

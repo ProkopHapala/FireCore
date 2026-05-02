@@ -137,6 +137,12 @@ def setVerbosity( verbosity=0, idebugWrite=0 ):
 #  subroutine firecore_init( natoms_, atomTypes, atomsPos )
 # lib.firecore_init.argtypes  = [c_int, array1i, array2d ] 
 # lib.firecore_init.restype   =  None
+
+#  void firecore_set_param( char* name, double val )
+argDict["firecore_set_param"]=( None, [c_char_p, c_double] )
+def setParam(name, val):
+    lib.firecore_set_param(name.encode(), val)
+
 argDict["firecore_init"]=( None, [c_int, array1i, array2d ]  )
 def init(atomTypes, atomPos ):
     #atomTypes = np.array( atomTypes , np.int32   )
@@ -1299,3 +1305,166 @@ if __name__ == "__main__":
         Hk, Sk = get_HS_k(kvec, dims.norbitals)
         print("Hk shape:", Hk.shape)
         print("Sk shape:", Sk.shape)
+
+
+# ==============================================================
+# LATTICE SCAN FUNCTIONS
+# ==============================================================
+
+ELEM_MAP = {'H': 1, 'C': 6, 'N': 7, 'O': 8}
+ELEM_SYM  = {1: 'H', 6: 'C', 7: 'N', 8: 'O'}
+
+def write_xyz_frame(fname, atypes, apos, comment, append=False):
+    """Append one xyz frame to fname with a custom comment line."""
+    mode = 'a' if append else 'w'
+    with open(fname, mode) as f:
+        f.write(f"{len(atypes)}\n")
+        f.write(f"{comment}\n")
+        for aty, pos in zip(atypes, apos):
+            sym = ELEM_SYM.get(int(aty), 'X')
+            f.write(f"{sym:4s}  {pos[0]:16.8f}  {pos[1]:16.8f}  {pos[2]:16.8f}\n")
+
+
+def lattice_scan_worker(key, label, geometry_builder, Lx, nk, nmax_scf, do_relax, nstep_relax, results_dict, prev_apos=None, prev_Lx=None, Ly=20.0, Lz=20.0, geom_label=""):
+    """General worker function for 1D lattice scan - runs in separate process.
+    
+    Args:
+        key: unique key for this scan point (stored in results_dict)
+        label: string label for filenames (e.g. passivation type)
+        geometry_builder: callable(Lx) -> (apos_2d, atypes) returning initial 2D geometry
+        Lx: lattice constant in x (Angstroms)
+        prev_apos/prev_Lx: previous relaxed geometry for continuous relaxation path
+        Ly, Lz: cell size in y and z directions (vacuum padding)
+        geom_label: additional label for geometry dimensions (e.g. "w6_l1")
+    """
+    pos2d, atypes = geometry_builder(Lx)
+    natoms = len(atypes)
+    
+    if prev_apos is not None and prev_Lx is not None:
+        # Use previous relaxed geometry, scale x-coordinates to new Lx
+        apos = prev_apos.copy()
+        apos[:, 0] *= (Lx / prev_Lx)
+        apos[:, 1] -= np.mean(apos[:, 1]);  apos[:, 1] += 0.5 * Ly
+    else:
+        apos = np.zeros((natoms, 3), dtype=np.float64)
+        apos[:, 0:2] = pos2d
+        apos[:, 1] -= np.mean(apos[:, 1]);  apos[:, 1] += 0.5 * Ly
+        apos[:, 2] += 0.5 * Lz
+    
+    lvs = np.diag([Lx, Ly, Lz]).astype(np.float64)
+    
+    kpoints        = np.zeros((nk, 3), dtype=np.float64)
+    kpoints[:, 0]  = np.arange(nk) / float(nk)
+    weights        = np.ones(nk, dtype=np.float64) / float(nk)
+    
+    # Save initial geometry for debugging
+    label_safe = label.replace('=', '').replace('-', '')
+    geom_label_safe = f"_{geom_label}" if geom_label else ""
+    init_fname = f"init_geom_{label_safe}{geom_label_safe}_Lx{Lx:.2f}.xyz"
+    write_xyz_frame(init_fname, atypes, apos, f"Initial geometry Lx={Lx:.4f}", append=False)
+    print(f"  Saved initial geometry to {init_fname}")
+    
+    # Plot initial geometry with bonds using plotUtils.plotGeometry
+    try:
+        from pyBall import plotUtils
+        plot_fname = f"init_geom_{label_safe}{geom_label_safe}_Lx{Lx:.2f}.png"
+        title_geom = f" {geom_label}" if geom_label else ""
+        plotUtils.plotGeometry(apos, atypes, lvs=lvs, bond_dist=1.8, bBondLabels=True,
+                                replicate=(3,1,0), axes=(0,1), 
+                                title=f"Initial Geometry: {label}{title_geom} Lx={Lx:.2f} Å",
+                                fname=plot_fname, figsize=(8,6), bDrawBox=True)
+        print(f"  Saved initial geometry plot to {plot_fname}")
+    except Exception as e:
+        print(f"  Warning: Could not plot initial geometry: {e}")
+    
+    initialize(atomType=atypes, atomPos=apos, verbosity=0,
+              lvs=lvs, kpoints=kpoints, kweights=weights)
+    
+    if do_relax:
+        Es     = np.zeros(8, dtype=np.float64)
+        forces = relax(apos, nstepf=nstep_relax, nmax_scf=nmax_scf, Es=Es)
+        fmax   = float(np.max(np.abs(forces)))
+        e_tot  = float(Es[0])
+        e_bs   = float(Es[1])
+        n_ion  = nstep_relax
+        n_scf  = nmax_scf
+        converged = (fmax < 0.01)
+    else:
+        forces, Es = evalForce(apos, nmax_scf=nmax_scf)
+        fmax  = float(np.max(np.abs(forces)))
+        e_tot = float(Es[0]);  e_bs = float(Es[1])
+        n_ion = 0;  n_scf = nmax_scf
+    
+    results_dict[key] = dict(label=label, Lx=Lx,
+                             E_tot=e_tot, E_bs=e_bs, Fmax=fmax,
+                             apos=apos.tolist(), atypes=atypes.tolist())
+    
+    fire_dt = 0.125
+    if do_relax:
+        comment = f"Lx={Lx:.4f} E_tot={e_tot:.6f} E_bs={e_bs:.6f} Fmax={fmax:.6f} conv={converged} FIRE_dt={fire_dt} n_ion_max={n_ion} n_scf={n_scf}"
+    else:
+        comment = f"Lx={Lx:.4f} E_tot={e_tot:.6f} E_bs={e_bs:.6f} Fmax={fmax:.6f} n_ion={n_ion} n_scf={n_scf}"
+    label_safe = label.replace('=', '').replace('-', '')
+    fname = f"lattice_scan_{label_safe}_{'relax' if do_relax else 'fixed'}.xyz"
+    write_xyz_frame(fname, atypes, apos, comment, append=True)
+
+
+def run_lattice_scan(label, geometry_builder, Lx_vals, nk=16, nmax_scf=200, do_relax=False, nstep_relax=100, use_continuous_path=False, Ly=20.0, Lz=20.0, geom_label=""):
+    """General 1D lattice scan using any geometry_builder.
+    
+    Args:
+        label: string label for filenames and output
+        geometry_builder: callable(Lx) -> (apos_2d, atypes) providing initial geometry
+        Lx_vals: array of lattice constants to scan
+        use_continuous_path: use previous relaxed geometry as starting point (continuous path)
+        Ly, Lz: vacuum cell size in y and z
+        geom_label: additional label for geometry dimensions (e.g. "w6_l1")
+    Returns:
+        (results_array, results_dict) where results_array is (nLx, 4) with [Lx, E_tot, E_bs, Fmax]
+    """
+    import multiprocessing as mp
+    import os
+    
+    manager = mp.Manager()
+    results_dict = manager.dict()
+    
+    label_safe = label.replace('=', '').replace('-', '')
+    geom_label_safe = f"_{geom_label}" if geom_label else ""
+    fname = f"lattice_scan_{label_safe}{geom_label_safe}_{'relax' if do_relax else 'fixed'}.xyz"
+    if os.path.exists(fname): os.remove(fname)
+    
+    print(f"\n{'Relaxed' if do_relax else 'Fixed'} scan: {label}  nk={nk}")
+    if use_continuous_path:
+        print(f"  Using continuous relaxation path (multiprocessing with geometry transfer)")
+    print(f"  {'Lx':>8}  {'E_tot':>14}  {'E_bs':>14}  {'Fmax':>12}")
+    
+    for i, Lx in enumerate(Lx_vals):
+        key = i
+        
+        prev_apos = None
+        prev_Lx = None
+        if use_continuous_path and do_relax and i > 0:
+            prev_key = i - 1
+            if prev_key in results_dict:
+                prev_apos = np.array(results_dict[prev_key]['apos'])
+                prev_Lx = results_dict[prev_key]['Lx']
+        
+        p = mp.Process(target=lattice_scan_worker,
+                       args=(key, label, geometry_builder, Lx, nk, nmax_scf, do_relax, nstep_relax,
+                             results_dict, prev_apos, prev_Lx, Ly, Lz, geom_label))
+        p.start(); p.join()
+        if key in results_dict:
+            r = results_dict[key]
+            print(f"  {r['Lx']:8.4f}  {r['E_tot']:14.6f}  {r['E_bs']:14.6f}  {r['Fmax']:12.6f}")
+        else:
+            print(f"  {Lx:8.4f}  ERROR")
+    
+    arr = []
+    for i, Lx in enumerate(Lx_vals):
+        if i in results_dict:
+            r = results_dict[i]
+            arr.append([r['Lx'], r['E_tot'], r['E_bs'], r['Fmax']])
+        else:
+            arr.append([Lx, np.nan, np.nan, np.nan])
+    
+    return np.array(arr), results_dict

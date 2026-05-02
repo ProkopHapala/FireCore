@@ -313,6 +313,148 @@ def plotAngles( iangs, angs, ps, axes=(0,1), colors='k', labels=None, bPoly=True
         ax.annotate( "%3.0f˚" %(angs[i]*180.0/np.pi), p[ax_inds], color=colors[i] )
 
 
+def plotGeometry(apos, atypes, lvs=None, bond_dist=1.8, bBondLabels=True,  replicate=(1,1,0), axes=(0,1), title=None, fname=None, figsize=(8,6),  bDrawBox=False):
+    """Plot atomic geometry with bonds and bond length labels.
+    
+    Args:
+        apos: (natoms, 3) array of atomic positions
+        atypes: list of atomic types (element symbols or atomic numbers)
+        lvs: (3,3) lattice vectors for periodic system (optional)
+        bond_dist: maximum distance for bond detection
+        bBondLabels: whether to show bond length labels
+        replicate: tuple (nx, ny, nz) for periodic replication
+        axes: which axes to plot (e.g., (0,1) for xy)
+        title: plot title
+        fname: output filename (if None, display but don't save)
+        figsize: figure size
+        bDrawBox: whether to draw unit cell outline
+    """
+    import matplotlib.pyplot as plt
+    from itertools import combinations
+    
+    # Convert atomic numbers to symbols if needed
+    ELEM_SYM = {1: 'H', 6: 'C', 7: 'N', 8: 'O'}
+    if isinstance(atypes[0], (int, np.integer)):
+        enames = [ELEM_SYM.get(int(aty), 'X') for aty in atypes]
+    else:
+        enames = atypes
+    
+    # Element colors and sizes
+    elem_colors = {'H': 'gray', 'C': 'black', 'N': 'blue', 'O': 'red'}
+    elem_sizes = {'H': 50, 'C': 100, 'N': 100, 'O': 100}
+    
+    # Replicate system if requested
+    apos_rep = []
+    enames_rep = []
+    nx, ny, nz = replicate
+    nx = max(nx, 1);  ny = max(ny, 1);  nz = max(nz, 1)  # at least 1 cell in each direction
+    
+    # Ensure apos is 2D
+    if apos.ndim == 1:
+        apos = apos.reshape(1, -1)
+    
+    for ix in range(nx):
+        for iy in range(ny):
+            for iz in range(nz):
+                shift = np.array([ix, iy, iz])
+                if lvs is not None:
+                    shift = shift @ lvs
+                apos_rep.append(apos + shift)
+                enames_rep.extend(enames)
+    
+    if len(apos_rep) > 0:
+        apos_rep = np.vstack(apos_rep)
+    else:
+        apos_rep = apos
+    
+    # Plot atoms
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    for ename, pos in zip(enames_rep, apos_rep):
+        color = elem_colors.get(ename, 'green')
+        size = elem_sizes.get(ename, 50)
+        ax.scatter(pos[axes[0]], pos[axes[1]], c=color, s=size, edgecolors='black', zorder=10)
+        ax.text(pos[axes[0]], pos[axes[1]], ename, color='white', ha='center', va='center', 
+                fontsize=8, zorder=11)
+    
+    # Detect bonds: ALL images within cutoff (not just best one)
+    bonds = []  # list of (i, j, shift_j, dist) where shift_j is the periodic shift applied to atom j
+    if lvs is not None:
+        for i in range(len(apos)):
+            for j in range(len(apos)):
+                if j < i: continue  # avoid double-counting within same image
+                for six in range(-1, 2):
+                    for siy in range(-1, 2):
+                        for siz in range(-1, 2):
+                            if i == j and six == 0 and siy == 0 and siz == 0: continue  # skip self
+                            shift = np.array([six, siy, siz]) @ lvs
+                            dist = np.linalg.norm(apos[i] - (apos[j] + shift))
+                            if dist < bond_dist:
+                                bonds.append((i, j, shift, dist))
+    else:
+        for i, j in combinations(range(len(apos)), 2):
+            dist = np.linalg.norm(apos[i] - apos[j])
+            if dist < bond_dist:
+                bonds.append((i, j, np.zeros(3), dist))
+    
+    # Plot bonds - replicate across all periodic cells
+    label_set = set()  # track labels already drawn to avoid duplicates
+    for i, j, shift, dist in bonds:
+        pos_i = apos[i]
+        pos_j = apos[j] + shift
+        
+        for cix in range(nx):
+            for ciy in range(ny):
+                for ciz in range(nz):
+                    cell_shift = np.array([cix, ciy, ciz])
+                    if lvs is not None:
+                        cell_shift = cell_shift @ lvs
+                    pos_i_rep = pos_i + cell_shift
+                    pos_j_rep = pos_j + cell_shift
+                    
+                    ax.plot([pos_i_rep[axes[0]], pos_j_rep[axes[0]]], 
+                            [pos_i_rep[axes[1]], pos_j_rep[axes[1]]], 
+                            'k-', lw=2, zorder=5)
+                    
+                    if bBondLabels:
+                        mid_x = (pos_i_rep[axes[0]] + pos_j_rep[axes[0]]) / 2
+                        mid_y = (pos_i_rep[axes[1]] + pos_j_rep[axes[1]]) / 2
+                        label_key = (round(mid_x, 2), round(mid_y, 2))
+                        if label_key not in label_set:
+                            label_set.add(label_key)
+                            ax.text(mid_x, mid_y, f'{dist:.2f}', color='red', fontsize=8,
+                                    ha='center', va='center',
+                                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8), zorder=12)
+    
+    # Auto-set plot limits to include all atoms (must be done before box drawing)
+    x_min = apos_rep[:, axes[0]].min()
+    x_max = apos_rep[:, axes[0]].max()
+    y_min = apos_rep[:, axes[1]].min()
+    y_max = apos_rep[:, axes[1]].max()
+    padding = 1.0
+    
+    ax.set_xlim(x_min - padding, x_max + padding)
+    ax.set_ylim(y_min - padding, y_max + padding)
+    ax.set_aspect('equal', adjustable='box')
+    
+    # Draw unit cell box AFTER limits are fixed; scalex/scaley=False prevents limit expansion
+    if lvs is not None:
+        corners = np.array([[0,0,0], [1,0,0], [1,1,0], [0,1,0], [0,0,0]]) @ lvs
+        ax.plot(corners[:, axes[0]], corners[:, axes[1]], 'b--', lw=1.5, alpha=0.7,
+                scalex=False, scaley=False, solid_capstyle='round')
+    if title:
+        ax.set_title(title)
+    ax.set_xlabel(f"{['x','y','z'][axes[0]]} (Å)")
+    ax.set_ylabel(f"{['x','y','z'][axes[1]]} (Å)")
+    ax.grid(True, alpha=0.3)
+    
+    if fname:
+        plt.savefig(fname, dpi=150, bbox_inches='tight')
+        plt.close()
+    else:
+        plt.show()
+
+
 def plotSystem( sys , bBonds=True, colors=None, sizes=None, extent=None, sz=50., RvdwCut=0.5, axes=(0,1), bLabels=True, labels=None, _0=1, HBs=None, bHBlabels=True, bBLabels=False,bAtoms=True  ):    
     if( bBonds ):
         if sys.bonds is None:

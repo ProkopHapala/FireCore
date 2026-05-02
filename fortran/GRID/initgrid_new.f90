@@ -221,6 +221,11 @@ subroutine init_extended_mesh
     em3 = np(3)
     nem = em1*em2*em3
     ! =======   Map the Extended mesh to the Regular grid   ========
+    if (allocated(e2r)) deallocate(e2r)
+    if (allocated(e2r)) deallocate(e2r)
+    if (allocated(e2r)) deallocate(e2r)
+    if (allocated(e2r)) deallocate(e2r)
+    if (allocated(e2r)) deallocate(e2r)
     allocate (e2r(nem))
     do k = 0, em3-1    ! Loops over each axis
     do j = 0, em2-1
@@ -265,8 +270,20 @@ subroutine init_atomic_mesh
             enddo ! do i
         enddo ! do j
     enddo ! do k
+    if (allocated(am2rc)) deallocate(am2rc)
+    if (allocated(am2rc)) deallocate(am2rc)
+    if (allocated(am2rc)) deallocate(am2rc)
+    if (allocated(am2rc)) deallocate(am2rc)
     allocate (am2rc(nam))       ! allocate arrays related to atomic mesh
+    if (allocated(ram2rc)) deallocate(ram2rc)
+    if (allocated(ram2rc)) deallocate(ram2rc)
+    if (allocated(ram2rc)) deallocate(ram2rc)
+    if (allocated(ram2rc)) deallocate(ram2rc)
     allocate (ram2rc(3,nam))
+    if (allocated(ratom2g)) deallocate(ratom2g)
+    if (allocated(ratom2g)) deallocate(ratom2g)
+    if (allocated(ratom2g)) deallocate(ratom2g)
+    if (allocated(ratom2g)) deallocate(ratom2g)
     allocate (ratom2g(3,natoms))
     index = 0
     do k = -emx3,emx3
@@ -337,7 +354,15 @@ d1f(3,2) = -1.0d0 / 2.0d0
 d1f(4,1) =  0.0d0
 d1f(4,2) =  0.0d0
 ! end-modified by honza
+if (allocated(e2n)) deallocate(e2n)
+if (allocated(e2n)) deallocate(e2n)
+if (allocated(e2n)) deallocate(e2n)
+if (allocated(e2n)) deallocate(e2n)
 allocate (e2n (0:nmfd-1))
+if (allocated(n2e)) deallocate(n2e)
+if (allocated(n2e)) deallocate(n2e)
+if (allocated(n2e)) deallocate(n2e)
+if (allocated(n2e)) deallocate(n2e)
 allocate (n2e (0:nrm-1))
 ! ==============  set up mapping NORMAL(REGULAR) mesh INTO EXTENDED-FD mesh
 index = 0
@@ -396,10 +421,30 @@ subroutine initgrid_new( bAutoGridSize ) !(icluster)
     call init_extended_mesh()
     call init_atomic_mesh()
     call init_fdm_mesh()
+    if (allocated(vnaG)) deallocate(vnaG)
+    if (allocated(vnaG)) deallocate(vnaG)
+    if (allocated(vnaG)) deallocate(vnaG)
+    if (allocated(vnaG)) deallocate(vnaG)
     allocate (vnaG  (0:nrm-1))
+    if (allocated(drhoG)) deallocate(drhoG)
+    if (allocated(drhoG)) deallocate(drhoG)
+    if (allocated(drhoG)) deallocate(drhoG)
+    if (allocated(drhoG)) deallocate(drhoG)
     allocate (drhoG (0:nrm-1))
+    if (allocated(rhoG0)) deallocate(rhoG0)
+    if (allocated(rhoG0)) deallocate(rhoG0)
+    if (allocated(rhoG0)) deallocate(rhoG0)
+    if (allocated(rhoG0)) deallocate(rhoG0)
     allocate (rhoG0 (0:nrm-1))
+    if (allocated(vcaG)) deallocate(vcaG)
+    if (allocated(vcaG)) deallocate(vcaG)
+    if (allocated(vcaG)) deallocate(vcaG)
+    if (allocated(vcaG)) deallocate(vcaG)
     allocate (vcaG  (0:nrm-1))
+    if (allocated(vxcG)) deallocate(vxcG)
+    if (allocated(vxcG)) deallocate(vxcG)
+    if (allocated(vxcG)) deallocate(vxcG)
+    if (allocated(vxcG)) deallocate(vxcG)
     allocate (vxcG  (0:nrm-1))
     vnaG  = 0.0d0
     drhoG = 0.0d0

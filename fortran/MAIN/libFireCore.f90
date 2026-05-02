@@ -167,17 +167,28 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
         write(*,*) "em1,em2,em3,nem ", rm1,rm2,rm3, nem
     endif ! verbosity
  ! Allocate more arrays.
+    if (allocated(degelec)) deallocate(degelec)
     allocate (degelec (natoms))
+    if (allocated(iatyp)) deallocate(iatyp)
     allocate (iatyp (natoms))
+    if (allocated(imass)) deallocate(imass)
     allocate (imass (natoms))
+    if (allocated(ratom)) deallocate(ratom)
     allocate (ratom (3, natoms))
+    if (allocated(nowMinusInitialPos)) deallocate(nowMinusInitialPos)
     allocate (nowMinusInitialPos (3, natoms))
+    if (allocated(initialPosition)) deallocate(initialPosition)
     allocate (initialPosition (3, natoms))
+    if (allocated(vatom)) deallocate(vatom)
     allocate (vatom (3, natoms))
+    if (allocated(fragxyz)) deallocate(fragxyz)
     allocate (fragxyz(3, natoms))
     fragxyz(:,:) = 0
+    if (allocated(symbol)) deallocate(symbol)
     allocate (symbol (natoms))
+    if (allocated(xmass)) deallocate(xmass)
     allocate (xmass (natoms))
+    if (allocated(ximage)) deallocate(ximage)
     allocate (ximage (3, natoms))
     ximage = 0.0d0
     iatyp(:) = atomTypes(:)
@@ -202,6 +213,7 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     call get_info_orbital (natoms)
     if (itheory .eq. 2) call make_mu2shell (nspecies)
     call initamat(nspecies)
+    if (allocated(xdot)) deallocate(xdot)
     allocate (xdot (0:5, 3, natoms)) ! Initialized below
  ! Allocate the stuff that depends on natoms, neigh_max, and numorb_max
     call allocate_neigh()
@@ -312,15 +324,16 @@ subroutine firecore_SCF( nmax_scf, positions_, iforce_  )  bind(c, name='firecor
     ratom(:,:) = positions_(:,:)
 
     iforce  = iforce_
-    ikpoint = 1
     scf_achieved = .false.
     max_scf_iterations = nmax_scf
     if(verbosity.gt.0)write(*,*) "!!!! SCF LOOP max_scf_iterations ", max_scf_iterations, scf_achieved
     do Kscf = 1, max_scf_iterations
         if(idebugWrite.gt.0)write(*,*) "! ======== Kscf ", Kscf
         call assemble_mcweda ()
-        k_temp(:) = special_k(:,ikpoint)
-        call solveH ( ikpoint, k_temp )
+        do ikpoint = 1, nkpoints
+            k_temp(:) = special_k(:,ikpoint)
+            call solveH ( ikpoint, k_temp )
+        end do
         call denmat ()
         sigma = sqrt(sum((Qin(:,:) - Qout(:,:))**2))
         if(verbosity.gt.0)write (*,*) "### SCF converged? ", scf_achieved, " Kscf ", Kscf, " |Qin-Oout| ",sigma," < tol ", sigmatol
@@ -363,12 +376,6 @@ subroutine firecore_evalForce( nmax_scf, positions_, forces_, energies, ixyzfile
     ratom(:,:) = positions_(:,:)
     iforce    = 1
     ftot(:,:) = 0
-    ikpoint   = 1
-
-    !do i=1,natoms  
-    !    !write (*,*) "DEBUG firecore_evalForce() atom ", i, positions_(1,i), positions_(2,i), positions_(3,i)
-    !    write (*,*) "DEBUG firecore_evalForce() atom ", i, iatyp(i), ratom(1,i), ratom(2,i), ratom(3,i)
-    !end do
 
     scf_achieved = .false.
     max_scf_iterations = nmax_scf
@@ -378,8 +385,10 @@ subroutine firecore_evalForce( nmax_scf, positions_, forces_, energies, ixyzfile
         call assemble_mcweda ()
         !call debug_writeBlockedMat( "S_mat.log", s_mat )
         !call debug_writeBlockedMat( "H_mat.log", h_mat )
-        k_temp(:) = special_k(:,ikpoint)
-        call solveH ( ikpoint, k_temp )
+        do ikpoint = 1, nkpoints
+            k_temp(:) = special_k(:,ikpoint)
+            call solveH ( ikpoint, k_temp )
+        end do
         call denmat ()
         sigma = sqrt(sum((Qin(:,:) - Qout(:,:))**2))
         if(verbosity.gt.0)write (*,*) "### SCF converged? ", scf_achieved, " Kscf ", Kscf, " |Qin-Oout| ",sigma," < tol ", sigmatol
@@ -445,7 +454,6 @@ subroutine firecore_relax( nstep, nmax_scf, positions_, forces_, fixPos, energie
     character (40) namewf
     ! ====== Body
     !write(*,*) "DEBUG firecore_relax() verbosity=", verbosity
-    ikpoint = 1
     fragxyz(:,:) = fixPos(:,:)
     ratom(:,:)   = positions_(:,:) 
     forces_(:,:) = 0.0
@@ -459,8 +467,10 @@ subroutine firecore_relax( nstep, nmax_scf, positions_, forces_, fixPos, energie
         scf_achieved = .false.
         do Kscf = 1, nmax_scf
             call assemble_mcweda()
-            k_temp(:) = special_k(:,ikpoint)
-            call solveH ( ikpoint, k_temp )
+            do ikpoint = 1, nkpoints
+                k_temp(:) = special_k(:,ikpoint)
+                call solveH ( ikpoint, k_temp )
+            end do
             call denmat ()
             sigma = sqrt(sum((Qin(:,:) - Qout(:,:))**2))
             if(verbosity.gt.1)write (*,*) "### SCF converged? ", scf_achieved, " Kscf ", Kscf, " |Qin-Oout| ",sigma," < tol ", sigmatol
@@ -2922,6 +2932,42 @@ subroutine firecore_set_export_mode( export_mode_ ) bind(c, name='firecore_set_e
     implicit none
     integer(c_int), intent(in), value :: export_mode_
     export_mode = export_mode_
+end subroutine
+
+subroutine firecore_set_param( name_, val_ ) bind(c, name='firecore_set_param')
+    use iso_c_binding
+    use configuration
+    use options
+    use kpoints
+    use charges
+    use loops
+    implicit none
+    character(kind=c_char), intent(in) :: name_(*)
+    real(c_double), intent(in), value :: val_
+    character(len=32) :: name
+    integer :: i
+    
+    ! Convert C-string to Fortran string
+    name = ''
+    do i = 1, 32
+        if (name_(i) == c_null_char) exit
+        name(i:i) = name_(i)
+    end do
+    name = adjustl(name)
+    write(*,*) "firecore_set_param() name: [", trim(name), "] val: ", val_
+
+    if      (name == 'alpha' .or. name == 'bmix') then; bmix = val_
+    else if (name == 'etature' .or. name == 'tempfe') then; tempfe = val_
+    else if (name == 'max_scf_iterations') then; max_scf_iterations = int(val_)
+    else if (name == 'idmix'             ) then; idmix = int(val_)
+    else if (name == 'sigmatol'          ) then; sigmatol = val_
+    else if (name == 'dt'                ) then; dt = val_
+    else if (name == 'nstepf'            ) then; nstepf = int(val_)
+    else if (name == 'verbosity'         ) then; verbosity = int(val_)
+    else if (name == 'idebugWrite'       ) then; idebugWrite = int(val_)
+    else
+        write(*,*) "Error: firecore_set_param() unknown parameter: ", trim(name)
+    end if
 end subroutine
 
 subroutine firecore_get_eigen( ikpoint, eigen_out ) bind(c, name='firecore_get_eigen')

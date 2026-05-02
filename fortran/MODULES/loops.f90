@@ -18,7 +18,7 @@ real  sigma
 
 ! idmix: Defines the mixing procedure: idmix=1 means simple mixing
 ! For larger idmix values, the choice of bmix becomes less important
- integer, parameter ::  idmix = 6
+ integer ::  idmix = 6
 
 ! Ionic  steps (MD )
 

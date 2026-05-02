@@ -125,11 +125,29 @@
         if (verbosity .ge. 3) write (*,*) ' Number of species in database = ', nspecies
 
 ! Allocate nzx /
+        if (allocated(nzx)) deallocate(nzx)
+        if (allocated(nzx)) deallocate(nzx)
+        if (allocated(nzx)) deallocate(nzx)
         allocate (nzx (nspecies))
+        if (allocated(symbolA)) deallocate(symbolA)
+        if (allocated(symbolA)) deallocate(symbolA)
+        if (allocated(symbolA)) deallocate(symbolA)
         allocate (symbolA (nspecies)) 
+        if (allocated(etotatom)) deallocate(etotatom)
+        if (allocated(etotatom)) deallocate(etotatom)
+        if (allocated(etotatom)) deallocate(etotatom)
         allocate (etotatom (nspecies)) 
+        if (allocated(smass)) deallocate(smass)
+        if (allocated(smass)) deallocate(smass)
+        if (allocated(smass)) deallocate(smass)
         allocate (smass (nspecies)) 
+        if (allocated(rc_PP)) deallocate(rc_PP)
+        if (allocated(rc_PP)) deallocate(rc_PP)
+        if (allocated(rc_PP)) deallocate(rc_PP)
         allocate (rc_PP (nspecies)) 
+        if (allocated(rcutoff)) deallocate(rcutoff)
+        if (allocated(rcutoff)) deallocate(rcutoff)
+        if (allocated(rcutoff)) deallocate(rcutoff)
         allocate (rcutoff (nspecies, nsh_max)) 
         rcutoff = 0.0d0
 
@@ -206,16 +224,43 @@
         end if
 
 ! allocate interactions
+        if (allocated(cl_PP)) deallocate(cl_PP)
+        if (allocated(cl_PP)) deallocate(cl_PP)
+        if (allocated(cl_PP)) deallocate(cl_PP)
         allocate (cl_PP (0:nsh_max - 1, temp_nsup))
+        if (allocated(nssh)) deallocate(nssh)
+        if (allocated(nssh)) deallocate(nssh)
+        if (allocated(nssh)) deallocate(nssh)
         allocate (nssh (temp_nsup))
+        if (allocated(lssh)) deallocate(lssh)
+        if (allocated(lssh)) deallocate(lssh)
+        if (allocated(lssh)) deallocate(lssh)
         allocate (lssh (nsh_max, temp_nsup))
+        if (allocated(nsshPP)) deallocate(nsshPP)
+        if (allocated(nsshPP)) deallocate(nsshPP)
+        if (allocated(nsshPP)) deallocate(nsshPP)
         allocate (nsshPP (temp_nsup))
+        if (allocated(lsshPP)) deallocate(lsshPP)
+        if (allocated(lsshPP)) deallocate(lsshPP)
+        if (allocated(lsshPP)) deallocate(lsshPP)
         allocate (lsshPP (nsh_max, temp_nsup))
+        if (allocated(Qneutral)) deallocate(Qneutral)
+        if (allocated(Qneutral)) deallocate(Qneutral)
+        if (allocated(Qneutral)) deallocate(Qneutral)
         allocate (Qneutral (nsh_max, temp_nsup))
 
 ! allocate local arrays
+        if (allocated(cutoff)) deallocate(cutoff)
+        if (allocated(cutoff)) deallocate(cutoff)
+        if (allocated(cutoff)) deallocate(cutoff)
         allocate (cutoff (nsh_max, temp_nsup))
+        if (allocated(wavefxn)) deallocate(wavefxn)
+        if (allocated(wavefxn)) deallocate(wavefxn)
+        if (allocated(wavefxn)) deallocate(wavefxn)
         allocate (wavefxn (nsh_max, temp_nsup)) ! IF_DEF_GRID_END
+        if (allocated(napot)) deallocate(napot)
+        if (allocated(napot)) deallocate(napot)
+        if (allocated(napot)) deallocate(napot)
         allocate (napot (0:nsh_max, temp_nsup)) ! IF_DEF_GRID_END
 
 ! Now read in the data

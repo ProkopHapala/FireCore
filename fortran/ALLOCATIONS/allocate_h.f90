@@ -89,18 +89,50 @@
  
 ! Procedure
 ! ===========================================================================
+        if (allocated(h_mat)) deallocate(h_mat)
+        if (allocated(h_mat)) deallocate(h_mat)
+        if (allocated(h_mat)) deallocate(h_mat)
+        if (allocated(h_mat)) deallocate(h_mat)
         allocate (h_mat (numorb_max, numorb_max, neigh_max, natoms))
+        if (allocated(s_mat)) deallocate(s_mat)
+        if (allocated(s_mat)) deallocate(s_mat)
+        if (allocated(s_mat)) deallocate(s_mat)
+        if (allocated(s_mat)) deallocate(s_mat)
         allocate (s_mat (numorb_max, numorb_max, neigh_max, natoms))
+        if (allocated(t_mat)) deallocate(t_mat)
+        if (allocated(t_mat)) deallocate(t_mat)
+        if (allocated(t_mat)) deallocate(t_mat)
+        if (allocated(t_mat)) deallocate(t_mat)
         allocate (t_mat (numorb_max, numorb_max, neigh_max, natoms))
 
 
 
 ! PP part
+        if (allocated(sVNL)) deallocate(sVNL)
+        if (allocated(sVNL)) deallocate(sVNL)
+        if (allocated(sVNL)) deallocate(sVNL)
+        if (allocated(sVNL)) deallocate(sVNL)
         allocate (sVNL (numorb_max, numorb_max, neighPP_max, natoms))
+        if (allocated(vnl)) deallocate(vnl)
+        if (allocated(vnl)) deallocate(vnl)
+        if (allocated(vnl)) deallocate(vnl)
+        if (allocated(vnl)) deallocate(vnl)
         allocate (vnl (numorb_max, numorb_max, neighPP_max**2, natoms))
 
+        if (allocated(vna)) deallocate(vna)
+        if (allocated(vna)) deallocate(vna)
+        if (allocated(vna)) deallocate(vna)
+        if (allocated(vna)) deallocate(vna)
         allocate (vna (numorb_max, numorb_max, neigh_max, natoms))
+        if (allocated(vxc)) deallocate(vxc)
+        if (allocated(vxc)) deallocate(vxc)
+        if (allocated(vxc)) deallocate(vxc)
+        if (allocated(vxc)) deallocate(vxc)
         allocate (vxc (numorb_max, numorb_max, neigh_max, natoms))
+        if (allocated(vxc_1c)) deallocate(vxc_1c)
+        if (allocated(vxc_1c)) deallocate(vxc_1c)
+        if (allocated(vxc_1c)) deallocate(vxc_1c)
+        if (allocated(vxc_1c)) deallocate(vxc_1c)
         allocate (vxc_1c (numorb_max, numorb_max, neigh_max, natoms))
 
 ! Interactions needed for gaussian approximation to three-center
@@ -119,10 +151,30 @@
 
 ! Interactions needed for SCF algorithms - either DOGS or extended-Hubbard
         if (itheory .ne. 0) then
+         if (allocated(ewald)) deallocate(ewald)
+         if (allocated(ewald)) deallocate(ewald)
+         if (allocated(ewald)) deallocate(ewald)
+         if (allocated(ewald)) deallocate(ewald)
          allocate (ewald (natoms, natoms))
+         if (allocated(ewaldlr)) deallocate(ewaldlr)
+         if (allocated(ewaldlr)) deallocate(ewaldlr)
+         if (allocated(ewaldlr)) deallocate(ewaldlr)
+         if (allocated(ewaldlr)) deallocate(ewaldlr)
          allocate (ewaldlr (numorb_max, numorb_max, neigh_max, natoms))
+         if (allocated(ewaldsr)) deallocate(ewaldsr)
+         if (allocated(ewaldsr)) deallocate(ewaldsr)
+         if (allocated(ewaldsr)) deallocate(ewaldsr)
+         if (allocated(ewaldsr)) deallocate(ewaldsr)
          allocate (ewaldsr (numorb_max, numorb_max, neigh_max, natoms))
+         if (allocated(vca)) deallocate(vca)
+         if (allocated(vca)) deallocate(vca)
+         if (allocated(vca)) deallocate(vca)
+         if (allocated(vca)) deallocate(vca)
          allocate (vca (numorb_max, numorb_max, neigh_max, natoms))
+         if (allocated(vxc_ca)) deallocate(vxc_ca)
+         if (allocated(vxc_ca)) deallocate(vxc_ca)
+         if (allocated(vxc_ca)) deallocate(vxc_ca)
+         if (allocated(vxc_ca)) deallocate(vxc_ca)
          allocate (vxc_ca (numorb_max, numorb_max, neigh_max, natoms))
          ! allocate (ewaldqmmm (numorb_max, numorb_max, neigh_max,natoms))
         end if
@@ -135,9 +187,21 @@
 
 ! Interactions needed only for DOGS
         if (itheory .eq. 1 .or. idipole .eq. 1) then
+         if (allocated(dip)) deallocate(dip)
+         if (allocated(dip)) deallocate(dip)
+         if (allocated(dip)) deallocate(dip)
+         if (allocated(dip)) deallocate(dip)
          allocate (dip (numorb_max, numorb_max, neigh_max, natoms))
 ! JIMM
+         if (allocated(dipcm)) deallocate(dipcm)
+         if (allocated(dipcm)) deallocate(dipcm)
+         if (allocated(dipcm)) deallocate(dipcm)
+         if (allocated(dipcm)) deallocate(dipcm)
          allocate (dipcm (3, numorb_max, numorb_max))
+         if (allocated(dipc)) deallocate(dipc)
+         if (allocated(dipc)) deallocate(dipc)
+         if (allocated(dipc)) deallocate(dipc)
+         if (allocated(dipc)) deallocate(dipc)
          allocate (dipc (3, numorb_max, numorb_max, neigh_max, natoms))
         endif
 !Intra-atomic dipolar potential
@@ -156,6 +220,10 @@
 
 ! Interactions needed for Sankey-Niklewski type average densities.
         if (itheory_xc .eq. 1 .or. itheory_xc .eq. 2 .or. itheory_xc .eq. 4) then
+         if (allocated(sm_mat)) deallocate(sm_mat)
+         if (allocated(sm_mat)) deallocate(sm_mat)
+         if (allocated(sm_mat)) deallocate(sm_mat)
+         if (allocated(sm_mat)) deallocate(sm_mat)
          allocate (sm_mat (nsh_max, nsh_max, neigh_max, natoms))
         end if
 
