@@ -381,6 +381,40 @@ cmake -DWITH_PYTHON=1 \
 
 Produces `libdftbplus.so` and ASI libraries .
 
+### Installation Example (FireCore Setup)
+
+**Library path**: `/home/prokophapala/git_SW/dftbplus/_build/src/dftbp/libdftbplus.so`
+
+**Add to ~/.bashrc**:
+```bash
+export LD_LIBRARY_PATH=/home/prokophapala/git_SW/dftbplus/_build/src/dftbp:/home/prokophapala/git_SW/dftbplus/_build/external/mudpack:/home/prokophapala/git_SW/dftbplus/_build/external/libnegf/origin/src:$LD_LIBRARY_PATH
+source ~/.bashrc
+```
+
+**Python API**: Install from `tools/pythonapi`:
+```bash
+cd /home/prokophapala/git_SW/dftbplus/tools/pythonapi
+python -m pip install -e .
+```
+
+**Test import**:
+```python
+from dftbplus import DftbPlus
+calc = DftbPlus(libpath='/home/prokophapala/git_SW/dftbplus/_build/src/dftbp/libdftbplus.so')
+```
+
+**Available methods** (Level 2 API):
+- `get_energy()` - Total energy
+- `get_gradients()` - Forces
+- `get_gross_charges()` - Mulliken charges
+- `get_cm5_charges()` - CM5 charges
+- `set_geometry(coords, latvecs)` - Set atomic coordinates (coords in Bohr)
+- `set_external_potential()` - Set external potential
+- `register_ext_pot_generator()` - Register external potential callback
+- `get_nr_atoms()` - Number of atoms
+
+**Note**: Coordinates must be in Bohr when using `set_geometry()`.
+
 ### API Layers
 
 | Layer | Access | Use Case |
@@ -1997,3 +2031,438 @@ current = negf.calculate_current(temperature=300)
 2. **Production transport**: Use DFTB+'s built-in `GreensFunction` solver for standard NEGF calculations 
 3. **Advanced/GPU**: Integrate with libNEGF directly for inelastic scattering, large systems, or GPU acceleration 
 4. **STM**: Start with Tersoff-Hamann using waveplot-generated cube files, then implement Bardeen with ASI-extracted wavefunctions for quantitative results 
+
+---
+
+# USER
+
+Can we somehow integrate with these?
+
+and these are some modules I need to install separately ?
+
+**Advanced Features (not yet wrapped in dftb_lib.py):**
+- Transport/NEGF functions
+- Time-dependent TD-DFTB
+- REKS multi-reference
+- xTB integration
+- CHIMES ML force fields
+- PLUMED metadynamics
+- D4 dispersion
+- Custom eigensolvers (via ASI)
+
+
+---
+
+# Kimi 2.6
+  
+Here is a comprehensive tutorial for integrating DFTB+ with these advanced computational chemistry tools through Python interfaces.
+
+# Advanced DFTB+ Integration Tutorial
+
+## 1. PLUMED Metadynamics Integration
+
+PLUMED is a plugin for free-energy calculations that works with DFTB+ for metadynamics, umbrella sampling, and enhanced sampling .
+
+### 1.1 Building DFTB+ with PLUMED Support
+
+**Prerequisites**: Install PLUMED2 first:
+
+```bash
+# Option A: From conda (easiest)
+conda install -c conda-forge plumed
+
+# Option B: From source (for latest features)
+git clone https://github.com/plumed/plumed2.git
+cd plumed2
+./configure --prefix=$HOME/opt/plumed
+make -j$(nproc)
+make install
+```
+
+**Build DFTB+ with PLUMED**:
+
+```bash
+cd ~/git_SW/dftbplus/_build
+
+# Clean and reconfigure with PLUMED
+rm -rf *
+
+export FC=gfortran-12
+export CC=gcc-12
+export CXX=g++-12
+export PLUMED_PREFIX=$HOME/opt/plumed  # or conda path
+
+cmake \
+    -DCMAKE_INSTALL_PREFIX=$HOME/opt/dftb+ \
+    -DWITH_PYTHON=1 \
+    -DWITH_API=1 \
+    -DWITH_ASI=1 \
+    -DENABLE_DYNAMIC_LOADING=1 \
+    -DBUILD_SHARED_LIBS=1 \
+    -DWITH_PLUMED=1 \
+    -DPLUMED_INCLUDE_DIR=$PLUMED_PREFIX/include \
+    -DPLUMED_LIBRARY=$PLUMED_PREFIX/lib/libplumed.so \
+    -DWITH_TRANSPORT=1 \
+    -DWITH_TBLITE=1 \
+    -DWITH_ARPACK=1 \
+    -DWITH_OMP=1 \
+    ..
+
+cmake --build . -- -j$(nproc)
+cmake --install .
+```
+
+### 1.2 Running Metadynamics with DFTB+
+
+**Input file** (`dftb_in.hsd`):
+
+```hsd
+Driver = VelocityVerlet {
+    TimeStep [fs] = 1.0
+    Plumed = Yes
+    Thermostat = NoseHoover {
+        Temperature [Kelvin] = 400
+        CouplingStrength [cm^-1] = 3050
+    }
+    Steps = 100000
+}
+
+Hamiltonian = DFTB {
+    Scc = Yes
+    SlaterKosterFiles = Type2FileNames {
+        Prefix = "./slakos/mio-ext/"
+        Separator = "-"
+        Suffix = ".skf"
+    }
+    MaxAngularMomentum {
+        O = "p"
+        H = "s"
+    }
+}
+```
+
+**PLUMED input** (`plumed.dat`):
+
+```plumed
+# Define collective variables
+DISTANCE ATOMS=4,9 LABEL=d1
+DISTANCE ATOMS=5,9 LABEL=d2
+
+# Metadynamics bias
+METAD ...
+LABEL=met
+ARG=d1,d2
+PACE=100
+HEIGHT=3
+SIGMA=0.01,0.01
+FILE=HILLS
+BIASFACTOR=4
+TEMP=400
+... METAD
+
+PRINT ARG=d1,d2 STRIDE=100 FILE=plumed_o.dat
+
+ENDPLUMED
+```
+
+### 1.3 Python Analysis of Metadynamics Results
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Read HILLS file
+hills = np.loadtxt('HILLS', skiprows=1)
+
+# Extract CVs and bias
+cv1, cv2, bias = hills[:, 1], hills[:, 2], hills[:, 3]
+
+# Free energy surface (simple sum_hills approximation)
+from scipy.ndimage import gaussian_filter
+
+# Create 2D histogram
+H, xedges, yedges = np.histogram2d(cv1, cv2, bins=50, 
+                                    weights=bias, 
+                                    range=[[0, 3], [0, 3]])
+
+# Smooth and plot
+F = -gaussian_filter(H, sigma=2)
+plt.contourf(F.T, extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]], 
+             levels=20, cmap='viridis')
+plt.colorbar(label='Free Energy (kJ/mol)')
+plt.xlabel('CV1: d(O1-H)')
+plt.ylabel('CV2: d(O2-H)')
+plt.title('Metadynamics Free Energy Surface')
+plt.savefig('fes.png', dpi=150)
+```
+
+## 2. xTB via tblite (Python Native)
+
+The `tblite` Python package provides **native** xTB calculations without needing DFTB+ at all. This is the easiest path for xTB .
+
+### 2.1 Installation
+
+```bash
+# Using conda/mamba (recommended)
+mamba create -n xtb -c conda-forge tblite-python qcelemental
+mamba activate xtb
+
+# Or pip
+pip install tblite
+```
+
+### 2.2 Single-Point Calculation
+
+```python
+from tblite.interface import Calculator
+import numpy as np
+
+# Caffeine molecule (atomic numbers and positions in Bohr)
+elements = np.array([6,7,6,7,6,6,6,8,7,6,8,7,6,6,1,1,1,1,1,1,1,1,1,1])
+coordinates = np.array([
+    [ 2.028,  0.092, -0.143],
+    [ 4.750,  0.024, -0.143],
+    # ... (full coordinates from tblite docs)
+])
+
+# Create calculator
+calc = Calculator("GFN2-xTB", elements, coordinates)
+
+# Run single point
+res = calc.singlepoint()
+
+print(f"Energy: {res.get('energy'):.6f} Hartree")
+print(f"Dipole: {res.get('dipole')} e·Bohr")
+```
+
+### 2.3 Geometry Optimization
+
+```python
+from tblite.interface import Calculator
+from berny import Berny, geomlib
+import numpy as np
+
+# Read geometry
+optimizer = Berny(geomlib.readfile("caffeine.xyz"))
+geom = next(optimizer)
+elements = [symbol for symbol, _ in geom]
+coords = np.asarray([coordinate for _, coordinate in geom])
+
+# Setup calculator (convert Angstrom to Bohr)
+calc = Calculator("GFN2-xTB", 
+                  Calculator.symbols_to_numbers(elements), 
+                  coords * 1.889726)
+
+# Optimization loop
+calc.set("verbosity", 0)
+for geom in optimizer:
+    coordinates = np.asarray([coordinate for _, coordinate in geom])
+    calc.update(positions=coordinates * 1.889726)
+    res = calc.singlepoint()
+    energy = res.get("energy")
+    gradient = res.get("gradient")
+    optimizer.send((energy, gradient / 1.889726))
+```
+
+### 2.4 Extracting Hamiltonian and Density Matrix
+
+```python
+# After singlepoint calculation
+res = calc.singlepoint()
+
+# Get matrices directly as NumPy arrays
+H = res.get("hamiltonian-matrix")      # Core Hamiltonian
+S = res.get("overlap-matrix")           # Overlap
+DM = res.get("density-matrix")          # Density matrix
+
+print(f"H shape: {H.shape}")
+print(f"Tr(S·DM) = {np.trace(S @ DM):.4f}")
+```
+
+**Note**: The Hamiltonian from `tblite` is the **core Hamiltonian**, not the full converged Hamiltonian. To get the full Hamiltonian, transform orbital energies using coefficients .
+
+## 3. TD-DFTB Excited States
+
+### 3.1 Via DFTB+ Input (Standard Approach)
+
+```hsd
+Hamiltonian = DFTB {
+    Scc = Yes
+    # ... standard DFTB settings ...
+}
+
+Analysis {
+    ExcitedState {
+        StateOfInterest = 1
+        Symmetry = Singlet
+        NrOfExcitations = 10
+        WriteTransitions = Yes
+    }
+}
+```
+
+Output: `excitations.log` with transition energies, oscillator strengths, and dipole moments.
+
+### 3.2 Via MLatom Python Interface
+
+MLatom provides a high-level Python interface to TD-DFTB :
+
+```python
+import mlatom as ml
+
+# Setup DFTB method
+dftb = ml.models.methods(method="DFTB")
+
+# Ground state
+dftb.predict(molecule=mymol, 
+             calculate_energy=True, 
+             calculate_energy_gradients=True)
+
+# Excited state (10th state out of 20)
+dftb.predict(molecule=mymol,
+             calculate_energy=True,
+             calculate_energy_gradients=True,
+             nstates=20,
+             current_state=10)
+```
+
+### 3.3 Via DFTBaby (Pure Python)
+
+DFTBaby is a pure-Python DFTB implementation with TD-DFTB :
+
+```python
+from DFTB.LR_TDDFTB import ExcitedStates
+
+# Setup ground state first
+# ... (DFTBaby ground state calculation) ...
+
+# Calculate excited states
+excited = ExcitedStates(ground_state, nstates=10)
+excited.solve()
+
+print(f"Transition energies: {excited.energies} eV")
+print(f"Oscillator strengths: {excited.oscillator_strengths}")
+```
+
+## 4. REKS Multi-Reference Calculations
+
+REKS (Restricted Ensemble Kohn-Sham) is built into DFTB+ for ground and low-lying excited states .
+
+### 4.1 DFTB+ Input
+
+```hsd
+Hamiltonian = DFTB {
+    Scc = Yes
+    # ... standard settings ...
+}
+
+Analysis {
+    REKS = SA-REKS {
+        Energy = {
+            Functional = {
+                "PPS" "OSS"
+            }
+        }
+        StateInteractions = Yes
+        Shift = 0.3
+    }
+}
+```
+
+### 4.2 Python Interface
+
+Currently, REKS is **not directly exposed** in the Python API. You must:
+1. Write HSD input with REKS block
+2. Run via `dftbplus` executable or Python API with `run()` method
+3. Parse output files for results
+
+```python
+import dftbplus
+
+cdftb = dftbplus.DftbPlus(libpath=LIB_PATH, hsdpath='reks_input.hsd')
+cdftb.run()  # Runs calculation, no geometry changes
+
+# Parse results from output files
+with open('detailed.out', 'r') as f:
+    for line in f:
+        if 'REKS' in line and 'Energy' in line:
+            print(line.strip())
+
+cdftb.close()
+```
+
+## 5. CHIMES Machine Learning Force Fields
+
+CHIMES is supported in DFTB+ for machine learning corrections .
+
+### 5.1 Building with CHIMES
+
+```bash
+cmake \
+    -DWITH_CHIMES=1 \
+    -DCHIMES_INCLUDE_DIR=$HOME/opt/chimes/include \
+    -DCHIMES_LIBRARY=$HOME/opt/chimes/lib/libchimes.so \
+    ..
+```
+
+### 5.2 Input Usage
+
+```hsd
+Hamiltonian = DFTB {
+    Scc = Yes
+    # ... standard DFTB ...
+    
+    Chimes = Yes {
+        ParamFile = "chimes_params.txt"
+    }
+}
+```
+
+### 5.3 Python Integration
+
+CHIMES corrections are applied automatically during DFTB+ calculations. Access via standard Python API:
+
+```python
+cdftb = dftbplus.DftbPlus(libpath=LIB_PATH, hsdpath='chimes_input.hsd')
+cdftb.set_geometry(coords)
+energy = cdftb.get_energy()  # Includes CHIMES correction
+forces = cdftb.get_gradients()
+```
+
+## 6. Complete Integration Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Python Workflow Layer                    │
+├─────────────┬─────────────┬─────────────┬───────────────────┤
+│   PLUMED    │   tblite    │  TD-DFTB    │     REKS/CHIMES   │
+│  (MetaD)    │   (xTB)     │  (Excited)  │   (Multi-ref/ML)  │
+├─────────────┼─────────────┼─────────────┼───────────────────┤
+│  ASE/PLUMED │  tblite-py  │  MLatom/    │   DFTB+ HSD       │
+│  interface  │  native     │  DFTBaby    │   + file I/O      │
+├─────────────┴─────────────┴─────────────┴───────────────────┤
+│              DFTB+ libdftbplus.so (your build)               │
+│         WITH_PLUMED=1  WITH_TBLITE=1  WITH_CHIMES=1          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Summary Table: Integration Paths
+
+| Feature | Python Access | Build Flag | External Dependency |
+|---------|--------------|------------|---------------------|
+| **PLUMED** | ASE + PLUMED.dat | `-DWITH_PLUMED=1` | PLUMED2 library |
+| **xTB** | `tblite` package (native) | N/A (separate package) | `pip install tblite` |
+| **TD-DFTB** | MLatom / DFTBaby | N/A | `pip install mlatom` |
+| **REKS** | File I/O only | Built-in | None |
+| **CHIMES** | Standard Python API | `-DWITH_CHIMES=1` | CHIMES library |
+| **H/S/DM** | `tblite` or ASI | `-DWITH_ASI=1` | ASI library |
+
+## Quick Start Recommendations
+
+1. **For metadynamics**: Build DFTB+ with `-DWITH_PLUMED=1`, use ASE for setup, PLUMED for bias
+2. **For xTB**: Skip DFTB+ entirely, use `tblite` Python package directly — it has the best Python API with native NumPy matrix access 
+3. **For excited states**: Use MLatom for TD-DFTB or DFTBaby for pure-Python implementation
+4. **For multi-reference**: Use DFTB+ REKS via HSD input, parse output files
+5. **For ML corrections**: Build with CHIMES, use standard Python API
+
+The `tblite` package is particularly powerful for your use case because it provides **direct NumPy access to Hamiltonian, overlap, and density matrices** without needing ASI or file I/O .
