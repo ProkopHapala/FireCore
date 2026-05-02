@@ -52,6 +52,7 @@ def main():
     parser.add_argument('--reverse',     action='store_true',      help='Scan from Lx_max down to Lx_min')
     parser.add_argument('--Ly',          type=float, default=20.0, help='Cell size y (vacuum)')
     parser.add_argument('--Lz',          type=float, default=20.0, help='Cell size z (vacuum)')
+    parser.add_argument('--save_debug',  action='store_true',      help='Save debug init_geom_*.xyz and *.png files')
     args = parser.parse_args()
 
     passivation = args.passivation
@@ -78,7 +79,8 @@ def main():
         nk=args.nk, nmax_scf=args.nmax_scf,
         do_relax=args.do_relax, nstep_relax=args.nstep_relax,
         use_continuous_path=args.do_relax,
-        Ly=args.Ly, Lz=args.Lz, geom_label=geom_label)
+        Ly=args.Ly, Lz=args.Lz, geom_label=geom_label,
+        save_debug_files=args.save_debug)
 
     # Sort results by Lx for plotting (in case of reverse scan)
     sort_idx = np.argsort(res[:, 0])

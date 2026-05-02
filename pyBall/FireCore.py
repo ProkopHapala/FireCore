@@ -1325,7 +1325,7 @@ def write_xyz_frame(fname, atypes, apos, comment, append=False):
             f.write(f"{sym:4s}  {pos[0]:16.8f}  {pos[1]:16.8f}  {pos[2]:16.8f}\n")
 
 
-def lattice_scan_worker(key, label, geometry_builder, Lx, nk, nmax_scf, do_relax, nstep_relax, results_dict, prev_apos=None, prev_Lx=None, Ly=20.0, Lz=20.0, geom_label=""):
+def lattice_scan_worker(key, label, geometry_builder, Lx, nk, nmax_scf, do_relax, nstep_relax, results_dict, prev_apos=None, prev_Lx=None, Ly=20.0, Lz=20.0, geom_label="", save_debug_files=False):
     """General worker function for 1D lattice scan - runs in separate process.
     
     Args:
@@ -1357,25 +1357,26 @@ def lattice_scan_worker(key, label, geometry_builder, Lx, nk, nmax_scf, do_relax
     kpoints[:, 0]  = np.arange(nk) / float(nk)
     weights        = np.ones(nk, dtype=np.float64) / float(nk)
     
-    # Save initial geometry for debugging
-    label_safe = label.replace('=', '').replace('-', '')
-    geom_label_safe = f"_{geom_label}" if geom_label else ""
-    init_fname = f"init_geom_{label_safe}{geom_label_safe}_Lx{Lx:.2f}.xyz"
-    write_xyz_frame(init_fname, atypes, apos, f"Initial geometry Lx={Lx:.4f}", append=False)
-    print(f"  Saved initial geometry to {init_fname}")
-    
-    # Plot initial geometry with bonds using plotUtils.plotGeometry
-    try:
-        from pyBall import plotUtils
-        plot_fname = f"init_geom_{label_safe}{geom_label_safe}_Lx{Lx:.2f}.png"
-        title_geom = f" {geom_label}" if geom_label else ""
-        plotUtils.plotGeometry(apos, atypes, lvs=lvs, bond_dist=1.8, bBondLabels=True,
-                                replicate=(3,1,0), axes=(0,1), 
-                                title=f"Initial Geometry: {label}{title_geom} Lx={Lx:.2f} Å",
-                                fname=plot_fname, figsize=(8,6), bDrawBox=True)
-        print(f"  Saved initial geometry plot to {plot_fname}")
-    except Exception as e:
-        print(f"  Warning: Could not plot initial geometry: {e}")
+    # Save initial geometry for debugging (optional)
+    if save_debug_files:
+        label_safe = label.replace('=', '').replace('-', '')
+        geom_label_safe = f"_{geom_label}" if geom_label else ""
+        init_fname = f"init_geom_{label_safe}{geom_label_safe}_Lx{Lx:.2f}.xyz"
+        write_xyz_frame(init_fname, atypes, apos, f"Initial geometry Lx={Lx:.4f}", append=False)
+        print(f"  Saved initial geometry to {init_fname}")
+        
+        # Plot initial geometry with bonds using plotUtils.plotGeometry
+        try:
+            from pyBall import plotUtils
+            plot_fname = f"init_geom_{label_safe}{geom_label_safe}_Lx{Lx:.2f}.png"
+            title_geom = f" {geom_label}" if geom_label else ""
+            plotUtils.plotGeometry(apos, atypes, lvs=lvs, bond_dist=1.8, bBondLabels=True,
+                                    replicate=(3,1,0), axes=(0,1), 
+                                    title=f"Initial Geometry: {label}{title_geom} Lx={Lx:.2f} Å",
+                                    fname=plot_fname, figsize=(8,6), bDrawBox=True)
+            print(f"  Saved initial geometry plot to {plot_fname}")
+        except Exception as e:
+            print(f"  Warning: Could not plot initial geometry: {e}")
     
     initialize(atomType=atypes, atomPos=apos, verbosity=0,
               lvs=lvs, kpoints=kpoints, kweights=weights)
@@ -1409,7 +1410,7 @@ def lattice_scan_worker(key, label, geometry_builder, Lx, nk, nmax_scf, do_relax
     write_xyz_frame(fname, atypes, apos, comment, append=True)
 
 
-def run_lattice_scan(label, geometry_builder, Lx_vals, nk=16, nmax_scf=200, do_relax=False, nstep_relax=100, use_continuous_path=False, Ly=20.0, Lz=20.0, geom_label=""):
+def run_lattice_scan(label, geometry_builder, Lx_vals, nk=16, nmax_scf=200, do_relax=False, nstep_relax=100, use_continuous_path=False, Ly=20.0, Lz=20.0, geom_label="", save_debug_files=False):
     """General 1D lattice scan using any geometry_builder.
     
     Args:
@@ -1451,7 +1452,7 @@ def run_lattice_scan(label, geometry_builder, Lx_vals, nk=16, nmax_scf=200, do_r
         
         p = mp.Process(target=lattice_scan_worker,
                        args=(key, label, geometry_builder, Lx, nk, nmax_scf, do_relax, nstep_relax,
-                             results_dict, prev_apos, prev_Lx, Ly, Lz, geom_label))
+                             results_dict, prev_apos, prev_Lx, Ly, Lz, geom_label, save_debug_files))
         p.start(); p.join()
         if key in results_dict:
             r = results_dict[key]
@@ -1466,5 +1467,21 @@ def run_lattice_scan(label, geometry_builder, Lx_vals, nk=16, nmax_scf=200, do_r
             arr.append([r['Lx'], r['E_tot'], r['E_bs'], r['Fmax']])
         else:
             arr.append([Lx, np.nan, np.nan, np.nan])
+    
+    # Write XYZ file with all geometries from the scan
+    if results_dict:
+        with open(fname, 'w') as f:
+            for i in sorted(results_dict.keys()):
+                r = results_dict[i]
+                apos = np.array(r['apos'])
+                atypes = np.array(r['atypes'])
+                natoms = len(atypes)
+                # Write header
+                f.write(f"{natoms}\n")
+                f.write(f"Lx={r['Lx']:.4f} E_tot={r['E_tot']:.6f} E_bs={r['E_bs']:.6f} Fmax={r['Fmax']:.6f}\n")
+                # Write atoms
+                for j in range(natoms):
+                    elem = ELEM_SYM.get(atypes[j], 'X')
+                    f.write(f"{elem} {apos[j,0]:.6f} {apos[j,1]:.6f} {apos[j,2]:.6f}\n")
     
     return np.array(arr), results_dict

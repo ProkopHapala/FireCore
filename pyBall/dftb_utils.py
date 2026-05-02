@@ -124,6 +124,100 @@ def makeDFTBjob( enames=None, fname='dftb_in.hsd', gname="input.xyz", method='D3
     #ParserOptions { ParserVersion = 10 }
     #Parallel { UseOmpThreads = Yes }
 
+def makeDFTBjob_pbc( enames, apos, lvs, fname='dftb_in.hsd', basis_path='/home/prokop/SIMULATIONS/dftbplus/slakos/3ob-3-1/', 
+                     nk=(1,1,1), k_shift=(0.5,0.0,0.0), opt=False, params=default_params, SCCTolerance=1e-5, MaxScc=200, Temperature=300, MixingParameter=0.2, fixed_atoms=None ):
+    """Write a DFTB+ input for a periodic calculation using GenFormat (supercell type S).
+    
+    Args:
+        enames: list of element names per atom
+        apos:   (natoms,3) array of Cartesian atomic positions [Angstrom]
+        lvs:    (3,3) lattice vectors (rows are a1, a2, a3) [Angstrom]
+        fname:  output HSD filename
+        basis_path: path to Slater-Koster files
+        nk:     (3,) k-point folding along a1, a2, a3
+        k_shift: (3,) k-point shift (0.5 for Monkhorst-Pack half-shift)
+        opt:    if True, add geometry optimization driver
+        params: dict with optimizer settings (uses default_params keys)
+        SCCTolerance: SCC convergence threshold
+        MaxScc: max SCC iterations
+        Temperature: electronic temperature [K]
+        MixingParameter: Broyden mixing parameter (0.0-1.0)
+        fixed_atoms: list of 0-based atom indices to fix during relaxation (adds Constraint block)
+    """
+    enameset = sorted(set(enames))
+    ename_to_idx = {e: i+1 for i, e in enumerate(enameset)}  # GenFormat: 1-indexed
+    natoms = len(enames)
+    lvs = np.array(lvs)
+
+    with open(fname, 'w') as hsd:
+        # GenFormat geometry block
+        hsd.write('Geometry = GenFormat {\n')
+        hsd.write(f'  {natoms}  S\n')
+        hsd.write('  ' + ' '.join(enameset) + '\n')
+        for i, (ename, pos) in enumerate(zip(enames, apos)):
+            idx = ename_to_idx[ename]
+            hsd.write(f'  {i+1} {idx}   {pos[0]:.10f}   {pos[1]:.10f}   {pos[2]:.10f}\n')
+        # Origin + lattice vectors
+        hsd.write('  0.000000000  0.000000000  0.000000000\n')
+        for row in lvs:
+            hsd.write(f'  {row[0]:.10f}  {row[1]:.10f}  {row[2]:.10f}\n')
+        hsd.write('}\n\n')
+
+        # Geometry optimization driver
+        if opt:
+            # MovedAtoms: all atoms except fixed ones
+            if fixed_atoms:
+                fixed_1based = sorted([i+1 for i in fixed_atoms])  # 1-based for DFTB+
+                # Build MovedAtoms as range excluding fixed
+                all_idx = set(range(1, natoms+1))
+                moved_idx = sorted(all_idx - set(fixed_1based))
+                if moved_idx:
+                    # Compact representation: list of ranges
+                    moved_str = ' '.join(str(i) for i in moved_idx)
+                else:
+                    moved_str = "1:-1"  # fallback
+            else:
+                moved_str = "1:-1"
+            hsd.write(dedent(f"""Driver = GeometryOptimization {{
+    Optimizer = {params["Optimizer"]}
+    MovedAtoms = {moved_str}
+    MaxSteps = {params["MaxSteps"]}
+    OutputPrefix = "geom.out"
+    LatticeOpt = No
+    Convergence {{ GradElem = {params["GradElem"]} }}
+}}\n\n"""))
+        
+        # Force calculation (always, needed to monitor constraints)
+        hsd.write('\nAnalysis {\n  CalculateForces = Yes\n}\n\n')
+
+        # Hamiltonian
+        hsd.write('Hamiltonian = DFTB {\n')
+        hsd.write('  Scc = Yes\n')
+        hsd.write('  SlaterKosterFiles = Type2FileNames {\n')
+        hsd.write(f'    Prefix = {basis_path}\n')
+        hsd.write('    Separator = "-"\n')
+        hsd.write('    Suffix = ".skf"\n')
+        hsd.write('  }\n')
+        hsd.write('  MaxAngularMomentum {\n')
+        for ename in enameset:
+            hsd.write(f'    {ename} = "{elements.ELEMENT_DICT[ename][4]}"\n')
+        hsd.write('  }\n')
+        # K-points via SupercellFolding (Monkhorst-Pack)
+        hsd.write('  KPointsAndWeights = SupercellFolding {\n')
+        hsd.write(f'    {nk[0]} 0 0\n')
+        hsd.write(f'    0 {nk[1]} 0\n')
+        hsd.write(f'    0 0 {nk[2]}\n')
+        hsd.write(f'    {k_shift[0]:.1f} {k_shift[1]:.1f} {k_shift[2]:.1f}\n')
+        hsd.write('  }\n')
+        hsd.write(f'  SCCTolerance = {SCCTolerance:.2e}\n')
+        hsd.write(f'  MaxSccIterations = {MaxScc}\n')
+        hsd.write(f'  Filling = Fermi {{ Temperature [K] = {Temperature} }}\n')
+        hsd.write('  Mixer = Broyden {\n')
+        hsd.write(f'    MixingParameter = {MixingParameter}\n')
+        hsd.write('  }\n')
+        hsd.write('}\n')
+
+
 def run( geom=None, params=None, id=0 ):
     idstr = "%03i" %id 
     print( idstr )

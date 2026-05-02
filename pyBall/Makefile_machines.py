@@ -52,7 +52,7 @@ _FFLAGS = {
 }
 '''
 
-FFLAG_ALL = " -fPIC -freal-4-real-8 -fopenmp"
+FFLAG_ALL = " -fPIC -freal-4-real-8"
 _FFLAGS = {
     'F77'      : FFLAG_ALL+" ",
     'F90'      : FFLAG_ALL+" -ffree-form -ffree-line-length-none ",
