@@ -2014,7 +2014,106 @@ current = negf.calculate_current(temperature=300)
 
 **Note**: libNEGF's Python API is actively developed but may require building from source. The Fortran/C API is stable and well-tested .
 
-## 5. Summary and Recommendations
+## 5. Hessian and Vibrational Analysis
+
+### 5.1 Overview
+
+DFTB+ provides built-in Hessian computation via the `SecondDerivatives` driver, which computes second derivatives of energy with respect to atomic coordinates using finite differences.
+
+### 5.2 Method: DFTB+ Native SecondDerivatives Driver
+
+**Example script:** `tests/dftb/example_hessian.py`
+
+**CLI usage:**
+```bash
+python3 tests/dftb/example_hessian.py molecule.xyz
+python3 tests/dftb/example_hessian.py molecule.xyz --modes-output modes.xyz --vector-scale 2.0
+```
+
+**Output files:**
+- `hessian.out` - Raw Hessian matrix (Hartree/Bohr²)
+- `modes.xyz` - Vibration modes in Jmol format
+- Frequencies printed to console (cm⁻¹)
+
+**Key functions in `pyBall/dftb_utils.py`:**
+- `read_hessian()` - Read DFTB+ hessian.out file
+- `hessian_hartree_bohr_to_eV_angstrom()` - Unit conversion
+- `hessian_to_mass_weighted()` - Convert to dynamical matrix
+- `hessian_to_frequencies()` - Compute vibrational frequencies
+- `write_vibration_modes_jmol()` - Export modes for Jmol visualization
+
+**CLI options:**
+```
+  molecule.xyz          XYZ file to load (default: built-in H2O)
+  --use-ase             Use ASE to load XYZ (default: AtomicSystem)
+  --sk-path PATH        Path to Slater-Koster files
+  --delta FLOAT         Finite difference step in atomic units (default: 1e-4)
+  --no-freq             Skip frequency calculation
+  --workdir DIR         Working directory (default: hessian_calc)
+  --modes-output FILE   Output file for vibration modes (default: vibration_modes.xyz)
+  --vector-scale FLOAT  Scaling factor for vibration vectors (default: 1.0)
+```
+
+### 5.3 Hessian File Format
+
+DFTB+ `hessian.out` contains a flattened (3N × 3N) matrix in Hartree/Bohr²:
+```
+∂²E/∂x₁∂x₁  ∂²E/∂y₁∂x₁  ∂²E/∂z₁∂x₁  ∂²E/∂x₂∂x₁  ...
+```
+
+The file uses formatted output with varying columns per line. The reader in `dftb_utils.py` extracts all numbers and reshapes them.
+
+### 5.4 Unit Conversions
+
+- **DFTB+ output:** Hartree/Bohr²
+- **Converted to:** eV/Å²
+- **Conversion factor:** 97.207 (27.2114 / 0.529177²)
+
+### 5.5 Vibrational Frequencies
+
+Computed from mass-weighted Hessian:
+```
+D = M^(-1/2) * H * M^(-1/2)
+ω², v = eig(D)
+freq = ω / (2πc)  [cm⁻¹]
+```
+
+Where:
+- M is diagonal mass matrix (repeated 3× per atom)
+- c = 2.998×10¹⁰ cm/s
+- Frequencies in wavenumbers (cm⁻¹)
+
+### 5.6 Jmol Visualization
+
+Vibration modes are exported in multi-model XYZ format:
+```
+3
+Vibration Frequency: 1600.00 cm^-1
+O 0.000 0.000 0.000 0.000 0.000 0.050
+H 0.957 0.000 0.000 0.000 0.100 0.000
+H -0.240 0.927 0.000 0.000 0.100 0.000
+```
+
+Each line: `element x y z vx vy vz`
+
+**Jmol commands:**
+```jmol
+load "modes.xyz"
+vectors on
+vibrate on
+vectorScale 2.0
+```
+
+### 5.7 Molecular Orbitals
+
+See the waveplot section in this document for generating cube files of molecular orbitals.
+
+**Key functions:**
+- `run_waveplot()` - Python wrapper for waveplot utility
+- `read_cube()` - Read cube files using ASE
+- `plot_orbital()` - Plot orbital slices
+
+## 6. Summary and Recommendations
 
 | Goal | Method | Python Access | Performance |
 |------|--------|-------------|-------------|
@@ -2466,3 +2565,599 @@ forces = cdftb.get_gradients()
 5. **For ML corrections**: Build with CHIMES, use standard Python API
 
 The `tblite` package is particularly powerful for your use case because it provides **direct NumPy access to Hamiltonian, overlap, and density matrices** without needing ASI or file I/O .
+
+---
+
+# USER
+
+what can I do about this?
+
+Waveplot is failing because it requires wavefunction coefficient files (wfc.*.hsd) that match the Slater-Koster parameter set. The test SK files we're using don't have the corresponding wavefunction coefficient files.
+
+**Issue:** Waveplot needs wfc files that are specific to each Slater-Koster parameter set (mio, 3ob, etc.). The test directory has SK files but not the matching wfc files.
+
+**Solution:** You need to use a complete DFTB+ parameter set that includes both SK files and wavefunction coefficient files. The script found wfc files at:
+
+- `/home/prokophapala/SIMULATIONS/dftbplus/recipes/slakos/wfc/wfc.mio-1-1.hsd`
+
+But these are for the mio parameter set, while we're using the test SK files which may be incompatible.
+
+**To use waveplot properly:**
+
+1. Install a complete DFTB+ parameter set (e.g., mio-1-1) with both SK and wfc files
+2. Update the script to use the matching SK path
+3. Run with the correct wfc path
+
+The script structure is correct - it's just a file availability issue with the test parameter set. Would you like me to modify the script to use the mio parameter set instead, or document this limitation in the DFTB_docs.md?
+
+---
+
+# Kimi 2.6
+
+The issue is that **waveplot requires wavefunction coefficient files (`wfc.*.hsd`) that match your Slater-Koster parameter set**. The test SK files (`testparams`) do **not** include these WFC files — they are only for testing DFTB+ core functionality, not for visualization .
+
+The WFC files contain the Slater-type orbital exponents and contraction coefficients needed to reconstruct wavefunctions in real space. They are parameter-set-specific and must be downloaded separately .
+
+## Solution: Download Complete Parameter Sets with WFC Files
+
+### Option 1: Use DFTB+ Recipes Script (Recommended)
+
+The DFTB+ recipes repository includes a script that downloads both SK files **and** WFC files:
+
+```bash
+# If you have the recipes directory
+cd ~/git_SW/dftbplus/recipes
+./scripts/get_slakos
+
+# Or download manually from dftb.org
+wget https://www.dftb.org/fileadmin/DFTB/public/slako-packed.tar
+tar xf slako-packed.tar
+```
+
+This gives you complete parameter sets like `mio-1-1`, `3ob-3-1`, etc., each with matching `wfc.*.hsd` files .
+
+### Option 2: Direct Download from dftb.org
+
+```bash
+mkdir -p ~/dftb_params
+cd ~/dftb_params
+
+# Download packed parameters (includes WFC files)
+wget https://www.dftb.org/fileadmin/DFTB/public/slako-packed.tar
+tar xf slako-packed.tar
+
+# Or unpacked (larger download, individual files)
+wget https://www.dftb.org/fileadmin/DFTB/public/slako-unpacked.tar.xz
+tar xf slako-unpacked.tar.xz
+```
+
+After extraction, you'll have:
+```
+slako/
+├── mio/
+│   ├── mio-1-1/
+│   │   ├── C-C.skf
+│   │   ├── C-H.skf
+│   │   └── ...
+│   └── wfc/
+│       └── wfc.mio-1-1.hsd   # ← WFC file for waveplot
+├── 3ob/
+│   ├── 3ob-3-1/
+│   └── wfc/
+│       └── wfc.3ob-3-1.hsd
+└── ...
+```
+
+## Updated Python Script Using Complete Parameter Set
+
+```python
+import os
+import subprocess
+from pathlib import Path
+
+# Configuration: use COMPLETE parameter set with WFC files
+PARAM_SET = "mio-1-1"  # or "3ob-3-1", "ob2-1-1", etc.
+PARAM_BASE = Path.home() / "dftb_params" / "slako"  # Where you extracted slako-packed.tar
+
+SK_PATH = PARAM_BASE / PARAM_SET / PARAM_SET
+WFC_PATH = PARAM_BASE / "wfc" / f"wfc.{PARAM_SET}.hsd"
+
+def run_dftb_waveplot(workdir, geometry, sk_path, wfc_path):
+    """
+    Run DFTB+ calculation and waveplot with proper WFC files.
+    """
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+    
+    # Write DFTB+ input
+    dftb_input = f'''
+Geometry = GenFormat {{
+{geometry}
+}}
+
+Hamiltonian = DFTB {{
+    Scc = Yes
+    SccTolerance = 1.0e-5
+    SlaterKosterFiles = Type2FileNames {{
+        Prefix = "{sk_path}/"
+        Separator = "-"
+        Suffix = ".skf"
+    }}
+    MaxAngularMomentum = {{
+        O = "p"
+        H = "s"
+    }}
+}}
+
+Options {{
+    WriteDetailedXml = Yes
+}}
+
+Analysis {{
+    WriteEigenvectors = Yes
+}}
+
+ParserOptions {{
+    ParserVersion = 14
+}}
+'''
+    with open(workdir / "dftb_in.hsd", "w") as f:
+        f.write(dftb_input)
+    
+    # Run DFTB+
+    subprocess.run(["dftb+"], cwd=workdir, check=True)
+    
+    # Write waveplot input with WFC file
+    waveplot_input = f'''
+Options {{
+    TotalChargeDensity = Yes
+    TotalChargeDifference = Yes
+    ChargeDensity = Yes
+    RealComponent = Yes
+    PlottedSpins = 1 -1
+    PlottedLevels = 1:-1
+    PlottedRegion = OptimalCuboid {{}}
+    NrOfPoints = 50 50 50
+    NrOfCachedGrids = -1
+    Verbose = Yes
+}}
+
+DetailedXml = "detailed.xml"
+EigenvecBin = "eigenvec.bin"
+
+Basis {{
+    Resolution = 0.01
+    <<+ "{wfc_path}"
+}}
+'''
+    with open(workdir / "waveplot_in.hsd", "w") as f:
+        f.write(waveplot_input)
+    
+    # Run waveplot
+    subprocess.run(["waveplot"], cwd=workdir, check=True)
+    
+    # Collect output
+    cubes = list(workdir.glob("wp-*.cube"))
+    return cubes
+
+# Example: H2O molecule
+geometry = '''3  C
+ O H
+     1    1    0.00000000000E+00  -0.10000000000E+01   0.00000000000E+00
+     2    2    0.00000000000E+00   0.00000000000E+00   0.78306400000E+00
+     3    2    0.00000000000E+00   0.00000000000E+00  -0.78306400000E+00'''
+
+cubes = run_dftb_waveplot(
+    workdir="./h2o_waveplot",
+    geometry=geometry,
+    sk_path=SK_PATH,
+    wfc_path=WFC_PATH
+)
+
+print(f"Generated {len(cubes)} cube files:")
+for c in cubes:
+    print(f"  {c.name}")
+```
+
+## Key Points
+
+| Issue | Solution |
+|-------|----------|
+| **Missing WFC files** | Download complete parameter sets from dftb.org, not just testparams  |
+| **WFC must match SK set** | Use `wfc.mio-1-1.hsd` with `mio-1-1` SK files, `wfc.3ob-3-1.hsd` with `3ob-3-1`, etc.  |
+| **Test params incomplete** | `testparams` are for regression testing only, lack WFC and may give unphysical results  |
+| **WFC location** | Usually in `slako/wfc/` directory alongside the SK parameter folders  |
+
+---
+
+## Quick Fix for Your Existing Setup
+
+If you already have the recipes repository or DFTB+ source:
+
+```bash
+# The DFTB+ source includes a utility to get externals
+cd ~/git_SW/dftbplus
+./utils/get_opt_externals ALL  # Downloads SK + WFC + everything
+
+# This creates external/slakos/ with complete parameter sets
+ls external/slakos/
+# Should show: mio-1-1/, 3ob-3-1/, wfc/, etc.
+```
+
+Then update your script to use `~/git_SW/dftbplus/external/slakos/` as the parameter base path.
+
+---
+
+# Gemini
+
+This is a classic \"mismatch\" hurdle in DFTB+. Because DFTB+ is a semi-empirical method, the radial part of the wavefunction isn't stored in the `.skf` files (which only contain the pre-calculated integrals). To plot densities or orbitals, you need those supplemental `.hsd` files that describe the basis set shape.
+
+Here is how you can resolve this and structure your documentation to save future-you from this headache.
+
+### 1. Fix the Immediate Error: Using the `mio` set
+The `mio-1-1` set is the most common \"standard\" set for organic molecules. If your test system consists of atoms supported by `mio` (H, C, N, O, S, P), you should switch to it entirely.
+
+**Modify your `dftb_in.hsd` or script to point here:**
+*   **SK Files:** `/home/prokophapala/SIMULATIONS/dftbplus/recipes/slakos/mio-1-1/`
+*   **WFC Files:** `/home/prokophapala/SIMULATIONS/dftbplus/recipes/slakos/wfc/`
+
+### 2. Understanding the Waveplot Requirement
+In your `waveplot_in.hsd`, the `Basis` block must point to the directory containing those `wfc.*.hsd` files. 
+
+```hsd
+Basis {
+  Resolution = 0.01
+  # This folder MUST contain wfc.H.hsd, wfc.C.hsd, etc.
+  ReadWfc {
+    InputPrefix = \"/home/prokophapala/SIMULATIONS/dftbplus/recipes/slakos/wfc/wfc\"
+  }
+}
+```
+
+### 3. How to \"Hack\" or Find missing WFC files
+If you are using a parameter set (like `3ob` or `pbc`) and can't find the `wfc` files:
+1.  **Check [dftb.org](https://dftb.org/parameters):** When you download a parameter set, look for a \"Wavefunction coefficients\" or \"Additional files\" download link.
+2.  **The `mio` fallback:** Many parameter sets use the same confinement potentials as `mio`. In a pinch, developers often use `mio` wfc files for other sets, though this technically introduces a small inconsistency in the visual representation of the density.
+
+### 4. Updating your `DFTB_docs.md`
+I recommend documenting this under a **\"Troubleshooting & Basis Sets\"** section. Here is a snippet you can copy-paste:
+
+## Troubleshooting: Waveplot & Basis Functions
+**Problem:** `Waveplot` fails with \"Missing wavefunction coefficient files.\"
+**Cause:** DFTB+ requires specific radial basis function descriptions (`wfc.Element.hsd`) to project data onto a real-space grid. These are separate from the `.skf` files.
+
+**The Fix:**
+*   Ensure the `Basis` block in `waveplot_in.hsd` points to the correct prefix.
+*   **Standard Path:** Always maintain a `slakos/wfc/` directory in your environment.
+*   **Mapping:** 
+    *   `mio-1-1` parameters $\rightarrow$ use `wfc.mio-1-1` files.
+    *   `3ob` parameters $\rightarrow$ use `wfc.3ob-1-1` files.
+
+### 5. Strategy: Modify Script vs. Documenting
+**I recommend modifying the script to use `mio-1-1` for your current tests.** 
+Why? Because using \"test\" SK files is only useful for verifying the code runs; for any meaningful density or orbital analysis, you need the physical consistency of a complete set like `mio`.
+
+---
+
+# Tutorial: Solving Waveplot Missing WFC Files
+
+## Problem
+Waveplot fails with error: "Missing wavefunction coefficient files" or parsing error when trying to read `wfc.*.hsd` files.
+
+## Root Cause
+DFTB+ requires wavefunction coefficient files (`wfc.*.hsd`) to reconstruct wavefunctions in real space. These are separate from the Slater-Koster `.skf` files and must match the parameter set being used.
+
+## Solution Steps
+
+### Step 1: Download Complete Parameter Set
+
+```bash
+# Download complete parameter set from dftb.org
+mkdir -p ~/dftb_params
+cd ~/dftb_params
+wget https://www.dftb.org/fileadmin/DFTB/public/slako-packed.tar
+tar xf slako-packed.tar
+```
+
+This creates a directory structure like:
+```
+slako/
+├── mio-1-1/          # SK files
+├── 3ob-3-1/          # SK files
+└── wfc/              # Wavefunction coefficient files
+    ├── wfc.mio-1-1.hsd
+    └── wfc.3ob-3-1.hsd
+```
+
+### Step 2: Update Script Paths
+
+Modify `example_orbitals.py` to use the complete parameter set:
+
+```bash
+python3 example_orbitals.py \
+  --sk-path ~/dftb_params/slako/mio-1-1/ \
+  --sk-wfc-path ~/dftb_params/slako/wfc/wfc.mio-1-1.hsd
+```
+
+### Step 3: Verify WFC File Exists
+
+```bash
+ls ~/dftb_params/slako/wfc/wfc.mio-1-1.hsd
+```
+
+### Step 4: Run the Script
+
+```bash
+cd tests/dftb
+python3 example_orbitals.py \
+  --sk-path ~/dftb_params/slako/mio-1-1/ \
+  --sk-wfc-path ~/dftb_params/slako/wfc/wfc.mio-1-1.hsd
+```
+
+## Alternative: Use Existing DFTB+ Installation
+
+If you have DFTB+ source installed:
+
+```bash
+cd ~/git_SW/dftbplus
+./utils/get_opt_externals ALL
+```
+
+Then use:
+```bash
+--sk-path ~/git_SW/dftbplus/external/slakos/mio-1-1/ \
+--sk-wfc-path ~/git_SW/dftbplus/external/slakos/wfc/wfc.mio-1-1.hsd
+```
+
+## Quick Reference
+
+| Parameter Set | SK Path | WFC File |
+|--------------|---------|----------|
+| mio-1-1 | `mio-1-1/` | `wfc.mio-1-1.hsd` |
+| 3ob-3-1 | `3ob-3-1/` | `wfc.3ob-3-1.hsd` |
+
+---
+
+# Tutorial: Orbital Plotting Approaches
+
+## Overview
+
+Two approaches are available for plotting molecular orbitals from DFTB+:
+
+1. **Cube file approach (recommended)** - Using waveplot to generate cube files
+2. **C API approach (limited)** - Direct access to DFTB+ matrices via C API
+
+## Why C API Approach Does Not Work for Orbital Plotting
+
+The DFTB+ C API provides access to:
+- Hamiltonian matrix (H)
+- Overlap matrix (S)
+- Density matrix (DM)
+- System information
+
+However, **it does NOT expose basis function evaluation routines**.
+
+### The Problem
+
+To evaluate molecular orbitals at arbitrary points, you need:
+
+ψ(r) = Σᵢ Cᵢ · φᵢ(r)
+
+Where:
+- Cᵢ = Molecular orbital coefficients (available via eigenvectors from H and S)
+- φᵢ(r) = Basis function values at point r (**NOT available in C API**)
+
+Without basis function evaluation, you cannot compute orbital values at arbitrary points, even if you have the coefficients.
+
+### What the C API Can Do
+
+The C API approach (see `example_orbitals_c_api.py`) can:
+- Extract H, S, and DM matrices during SCF calculation
+- Solve generalized eigenvalue problem to get eigenvectors
+- Compute eigenvalues
+- Calculate electron count
+
+But it cannot:
+- Evaluate orbitals at arbitrary points
+- Generate orbital density maps
+- Create orbital visualizations
+
+### Why Cube File Approach Works
+
+The cube file approach (see `example_orbitals.py`) works because:
+- waveplot has **internal access to DFTB+ basis function routines**
+- waveplot evaluates orbitals on a grid using these routines
+- Cube files contain pre-evaluated orbital values
+- Interpolation from cube files is fast and accurate
+
+### Comparison
+
+| Feature | C API | Cube Files |
+|---------|--------|------------|
+| Get Hamiltonian/Overlap | ✓ Yes | ✗ No |
+| Get eigenvectors | ✓ Yes (via diagonalization) | ✗ No |
+| Evaluate orbitals at points | ✗ No (basis functions not exposed) | ✓ Yes (via waveplot) |
+| Generate orbital plots | ✗ No | ✓ Yes |
+| Performance | Fast for matrix extraction | Fast for plotting |
+| Complexity | Requires C bindings | Simple (waveplot + interpolation) |
+
+## Recommendation
+
+**Use the cube file approach** (`example_orbitals.py`) for orbital plotting:
+- It's the only working approach for visualization
+- waveplot has proper access to internal DFTB+ routines
+- Interpolation from cube files is efficient
+- No need to modify DFTB+ source code
+
+**Use the C API approach** (`example_orbitals_c_api.py`) only if you need:
+- Hamiltonian/Overlap matrices for analysis
+- Density matrix extraction
+- Custom matrix operations
+
+## Example Usage
+
+### Cube File Approach (Recommended)
+
+```bash
+python3 example_orbitals.py \
+  --sk-path ~/dftb_params/slako/mio-1-1/ \
+  --sk-wfc-path ~/dftb_params/slako/wfc/wfc.mio-1-1.hsd \
+  --plot-2d \
+  --plane xy \
+  --points "0,0,0"
+```
+
+This generates:
+- Cube files with orbital/density data
+- 2D projections with atom overlays
+- Proper Angstrom coordinate scaling
+
+### C API Approach (Limited)
+
+```bash
+python3 example_orbitals_c_api.py input.dftb --lib-path /path/to/libdftbplus.so
+```
+
+This extracts matrices but cannot plot orbitals directly.
+
+## Future Work
+
+To enable true C API orbital evaluation, you would need to:
+1. Modify DFTB+ source code to expose basis evaluation functions
+2. Add C API functions for basis function evaluation
+3. Recompile DFTB+ with custom API
+4. Write Python bindings for the new functions
+
+This requires DFTB+ development expertise and is not recommended for general use.
+
+---
+
+# Orbital Plotting Scripts
+
+## Available Scripts
+
+### example_orbitals.py
+**Location:** `/home/prokophapala/git/FireCore/tests/dftb/example_orbitals.py`
+
+**Purpose:** Plot molecular orbitals and electron density from DFTB+ using waveplot cube files.
+
+**Features:**
+- 2D orbital projections (xy, xz, yz planes)
+- Electron density plotting with atom overlays
+- Proper Angstrom coordinate scaling (Bohr → Angstrom conversion)
+- Small atom markers with symbols and indices (e.g., H0, H1, O2)
+- CLI support for loading molecules (H2O, PTCDA, or custom XYZ files)
+- Automatic DFTB+ calculation and waveplot execution
+
+**Usage:**
+```bash
+# Basic usage with built-in H2O
+python3 example_orbitals.py --plot-2d --points "0,0,0"
+
+# Load specific molecule
+python3 example_orbitals.py --molecule H2O --plot-2d --points "0,0,0"
+python3 example_orbitals.py --molecule PTCDA --plot-2d --points "0,0,0"
+
+# Custom XYZ file
+python3 example_orbitals.py --molecule /path/to/molecule.xyz --plot-2d --points "0,0,0"
+
+# Select projection plane
+python3 example_orbitals.py --molecule H2O --plot-2d --plane xz --points "0,0,0"
+
+# Skip DFTB+ calculation (use existing results)
+python3 example_orbitals.py --skip-dftb --skip-waveplot --plot-2d
+```
+
+**Output:**
+- Cube files: `orbital_calc/wp-*.cube`
+- 2D plots: `orbital_plots/*_xy.png`, `*_xz.png`, `*_yz.png`
+- Density plot: `orbital_plots/density_*.png`
+
+**Requirements:**
+- DFTB+ executable
+- waveplot executable
+- Slater-Koster files (e.g., 3ob-3-1)
+- Wavefunction coefficient file (wfc.hsd)
+- ASE (for XYZ loading and cube reading)
+
+### example_orbitals_c_api.py
+**Location:** `/home/prokophapala/git/FireCore/tests/dftb/example_orbitals_c_api.py`
+
+**Purpose:** Demonstrate DFTB+ C API for matrix extraction (limited for orbital plotting).
+
+**Features:**
+- Extract Hamiltonian, Overlap, Density matrices
+- Compute molecular orbital coefficients (eigenvectors)
+- Calculate eigenvalues
+- **Cannot** evaluate orbitals at arbitrary points (basis functions not exposed in C API)
+
+**Usage:**
+```bash
+python3 example_orbitals_c_api.py input.dftb --lib-path /path/to/libdftbplus.so
+```
+
+**Limitations:**
+- Cannot generate orbital visualizations
+- Cannot evaluate orbitals at arbitrary points
+- Only useful for matrix analysis
+
+**Recommendation:** Use `example_orbitals.py` for orbital plotting.
+
+## Key Implementation Details
+
+### Bohr to Angstrom Conversion
+Cube files store coordinates in Bohr. The script automatically converts:
+```python
+BOHR_TO_ANG = 0.529177210903
+origin_ang = origin * BOHR_TO_ANG
+spacing_ang = spacing * BOHR_TO_ANG
+```
+
+### Atom Position Handling
+- Original input atoms (from XYZ file) are used for plotting
+- ASE's `read_cube_data` returns atoms in Angstrom
+- Grid extent from cube header is converted from Bohr to Angstrom
+- This ensures atoms and density/orbital data are in the same coordinate system
+
+### Plotting Style
+- Small red `+` markers for atoms (s=20)
+- Labels: symbol + index (e.g., H0, H1, O2)
+- Black semi-transparent box around labels for readability
+- Proper extent parameter in `imshow` for Angstrom coordinates
+
+## Molecule Library
+Pre-configured molecules available via `--molecule` argument:
+- **H2O**: `cpp/common_resources/xyz/H2O.xyz`
+- **PTCDA**: `cpp/common_resources/xyz/PTCDA.xyz`
+
+Custom XYZ files can be specified with full path or relative path.
+
+## Troubleshooting
+
+### Coordinate System Mismatch
+If atoms appear at wrong positions:
+- Check that Bohr → Angstrom conversion is applied to origin/spacing
+- Verify original input atoms are used (not cube file atoms)
+- Ensure extent parameter uses converted Angstrom values
+
+### Waveplot WFC File Errors
+If waveplot fails with "Missing wavefunction coefficient files":
+- Download complete parameter set from dftb.org
+- Ensure WFC file matches SK set (e.g., wfc.mio-1-1.hsd with mio-1-1 SK files)
+- Use `--sk-path` and `--sk-wfc-path` arguments
+
+### SK File Not Found
+If DFTB+ fails with "SK file does not exist":
+- Check `--sk-path` argument points to valid SK directory
+- Verify SK files exist for all elements in molecule
+- For organic molecules, use 3ob-3-1 or mio-1-1 parameter sets
+
+| ob2-1-1 | `ob2-1-1/` | `wfc.ob2-1-1.hsd` |
+
+## Important Notes
+
+- **WFC files must match SK set**: Using `wfc.mio-1-1.hsd` with `3ob-3-1` SK files is not recommended
+- **Test params incomplete**: The test SK files in `git_SW/asi/tests/testcases/` lack WFC files and are only for regression testing
+- **Physical consistency**: For meaningful orbital/density analysis, always use complete parameter sets
+
+---
