@@ -501,13 +501,25 @@ class AtomicSystem( ):
         self.apos[idx] = (rot @ shifted.T).T + pivot[None, :]
 
     def delete_atoms(self, lst ):
+        if not lst: return
         st = set(lst)
+        # Handle bonds before shifting atom indices
+        if self.bonds is not None:
+            # Remove bonds involving deleted atoms
+            mask = ~np.any(np.isin(self.bonds, lst), axis=1)
+            self.bonds = self.bonds[mask]
+            # Update remaining bond indices
+            lst_sorted = sorted(list(st))
+            for i in reversed(lst_sorted):
+                self.bonds[self.bonds > i] -= 1
+
         if( self.apos   is not None ): self.apos   =  np.delete( self.apos,   lst, axis=0 )
         if( self.atypes is not None ): self.atypes =  np.delete( self.atypes, lst )
         if( self.qs     is not None ): self.qs     =  np.delete( self.qs,     lst )
         if( self.Rs     is not None ): self.Rs     =  np.delete( self.Rs,     lst )
         if( self.enames is not None ): self.enames =  np.delete( self.enames, lst )
-        if( self.aux_labels is not None ): self.aux_labels = [ v for i,v in enumerate(self.aux_labels) if i not in st ] 
+        if( self.aux_labels is not None ): self.aux_labels = [ v for i,v in enumerate(self.aux_labels) if i not in st ]
+        self.natoms = len(self.apos)
 
 
     def preinitialize_atomic_properties(self):
@@ -876,18 +888,8 @@ class AtomicSystem( ):
         
         return R, X_b, A2
 
-    def delete_atoms(self, to_remove):
-            rem = sorted(to_remove, reverse=True)
-            for idx in rem:
-                self.apos   = np.delete(self.apos,   idx, axis=0)
-                self.atypes = np.delete(self.atypes, idx)
-                self.enames = np.delete(self.enames, idx)
-                if self.qs is not None:
-                    self.qs = np.delete(self.qs, idx)
-                if self.Rs is not None:
-                    self.Rs = np.delete(self.Rs, idx)
-                if self.aux_labels is not None:
-                    self.aux_labels = np.delete(self.aux_labels, idx)
+    def delete_atoms_by_list(self, to_remove):
+        self.delete_atoms(to_remove)
 
     def attach_group_by_marker(self, G, markerX="Xe", markerY="He", _0=1):
         """Attach an end–group G to this backbone using marker atoms and connectivity.
@@ -1048,3 +1050,265 @@ class AtomicSystem( ):
         if self.ngs is not None:
             self.ngs[i][len(self.apos) - 1] = 1  # Add to neighbors
             self.ngs.append({i: 1})  # Add new neighbor list for electron pair
+
+# ========= Kekule / sp2 Passivation
+
+    def find_undercoordinated(self, target_valence=None, ignore={'H','E'}):
+        """Find atoms that have fewer heavy neighbors than their target sigma-valence.
+        
+        Args:
+            target_valence: dict mapping element->target_sigma_bonds. 
+                           Default: sp2 aromatic: C=3, N=3, O=2
+            ignore: set of element names to skip (H, electron pairs)
+        Returns:
+            list of (atom_index, n_missing) tuples
+        """
+        if target_valence is None:
+            target_valence = {'C': 3, 'N': 3, 'O': 2}
+        
+        if self.ngs is None: self.neighs()
+        result = []
+        natoms = len(self.apos)
+        
+        for ia in range(natoms):
+            e = self.enames[ia]
+            if e in ignore: continue
+            
+            # Get target valence for this specific atom
+            if isinstance(target_valence, dict):
+                # Try atom index first, then element name
+                tv = target_valence.get(ia, target_valence.get(e, None))
+            elif isinstance(target_valence, (list, np.ndarray)):
+                tv = target_valence[ia]
+            else:
+                tv = None
+                
+            if tv is None: continue
+            
+            # count heavy neighbors only
+            n_heavy = sum(1 for j in self.ngs[ia] if self.enames[j] not in ignore)
+            n_missing = tv - n_heavy
+            if n_missing > 0:
+                result.append((ia, n_missing))
+        return result
+
+    def add_capping_h_sp2(self, target_valence=None, bond_length_CH=1.09, bond_length_NH=1.01, bond_length_OH=0.97, ignore={'H','E'}):
+        """Add H atoms to unsaturated sp2 atoms. Reuses direction logic from make_epair_geom.
+        
+        For each undercoordinated atom, calculates the missing bond direction(s) using
+        the same VSEPR-like approach as make_epair_geom, then places H atoms.
+        
+        Args:
+            target_valence: dict mapping element->target_sigma_bonds (default sp2 aromatic)
+            bond_length_CH, bond_length_NH, bond_length_OH: bond lengths per element pair
+            ignore: elements to skip
+        Returns:
+            list of indices of newly added H atoms
+        """
+        bond_lengths = {'C': bond_length_CH, 'N': bond_length_NH, 'O': bond_length_OH}
+        undercoord = self.find_undercoordinated(target_valence=target_valence, ignore=ignore)
+        added_indices = []
+        for ia, n_missing in undercoord:
+            e = self.enames[ia]
+            bl = bond_lengths.get(e, bond_length_CH)
+            pos_a = self.apos[ia]
+            # get neighbor directions (heavy only)
+            neighbors = [j for j in self.ngs[ia] if self.enames[j] not in ignore]
+            nb = len(neighbors)
+            for im in range(n_missing):
+                direction = self._missing_sp2_direction(ia, neighbors, nb, im)
+                h_pos = pos_a + direction * bl
+                new_idx = len(self.apos)
+                self.apos   = np.append(self.apos, [h_pos], axis=0)
+                self.atypes = np.append(self.atypes, 1)  # H
+                self.enames = np.append(self.enames, ['H'])
+                if self.qs is not None: self.qs = np.append(self.qs, 0.0)
+                if self.Rs is not None: self.Rs = np.append(self.Rs, 0.5)
+                if self.bonds is not None:
+                    if self.bonds.ndim == 1 or self.bonds.shape[0] == 0:
+                        self.bonds = np.array([[ia, new_idx]], dtype=np.int32)
+                    else:
+                        self.bonds = np.concatenate([self.bonds, np.array([[ia, new_idx]], dtype=np.int32)], axis=0)
+                if self.ngs is not None:
+                    self.ngs[ia][new_idx] = len(self.bonds)-1 if self.bonds is not None else 1
+                    self.ngs.append({ia: len(self.bonds)-1 if self.bonds is not None else 1})
+                added_indices.append(new_idx)
+        self.natoms = len(self.apos)
+        return added_indices
+
+    def _missing_sp2_direction(self, ia, heavy_neighs, nb, imissing):
+        """Calculate the direction for a missing bond on an sp2 atom.
+        
+        Uses the same approach as make_epair_geom: for 2 neighbors, invert the bisector;
+        for 1 neighbor, pick the two sp2 directions in-plane; for 0, use default axes.
+        """
+        pos = self.apos[ia]
+        if nb == 0:
+            # No neighbors at all - place along default directions
+            angles = [0, 2*np.pi/3, 4*np.pi/3]
+            ang = angles[imissing % 3]
+            return np.array([np.cos(ang), np.sin(ang), 0.0])
+        elif nb == 1:
+            # One neighbor: place missing bonds at +/-120 degrees from existing bond
+            v1 = au.normalize(self.apos[heavy_neighs[0]] - pos)
+            # in-plane rotation by +-120 degrees
+            # Use cross product with z to get perpendicular direction in-plane
+            perp = np.array([-v1[1], v1[0], 0.0])  # 90-degree rotation in xy-plane
+            if np.linalg.norm(perp) < 1e-8:
+                perp = np.array([0.0, 1.0, 0.0])
+            perp = au.normalize(perp)
+            ca = np.cos(2*np.pi/3)  # cos(120)
+            sa = np.sin(2*np.pi/3)  # sin(120)
+            if imissing == 0:
+                return au.normalize(-v1 * 0.5 + perp * (np.sqrt(3)/2))
+            else:
+                return au.normalize(-v1 * 0.5 - perp * (np.sqrt(3)/2))
+        elif nb >= 2:
+            # Two or more neighbors: place in direction opposite to bisector (sp2 trigonal)
+            v1 = au.normalize(self.apos[heavy_neighs[0]] - pos)
+            v2 = au.normalize(self.apos[heavy_neighs[1]] - pos)
+            bisect = v1 + v2
+            if np.linalg.norm(bisect) < 1e-8:
+                # Neighbors are opposite - pick perpendicular
+                return np.array([-v1[1], v1[0], 0.0])
+            return au.normalize(-bisect)
+        return np.array([1.0, 0.0, 0.0])  # fallback
+
+    def toggle_h_state(self, ia, target_valence=None):
+        """Toggle H-passivation state for an atom (N or O).
+        
+        For N: Pyridinic (2 neighbors) <-> Pyrrolic (3 neighbors).
+        For O: Ketone (1 neighbor) <-> Hydroxyl (2 neighbors).
+        
+        If the atom is currently under-passivated, adds H. 
+        If it has an H neighbor, removes it.
+        """
+        if self.ngs is None: self.neighs()
+        e = self.enames[ia]
+        if e not in {'N', 'O'}: return
+        
+        # Find existing H neighbors
+        h_neighs = [j for j in self.ngs[ia] if self.enames[j] == 'H']
+        
+        if h_neighs:
+            # Remove H atoms
+            self.delete_atoms(h_neighs)
+            self.neighs() # Rebuild neighbors after deletion
+        else:
+            # Add H atom
+            # Determine target valence based on current heavy neighbors
+            heavy_neighs = [j for j in self.ngs[ia] if self.enames[j] not in {'H', 'E'}]
+            nb = len(heavy_neighs)
+            # If N has 2 neighbors, we want to add 1 H (pyrrolic)
+            # If O has 1 neighbor, we want to add 1 H (hydroxyl)
+            # The add_capping_h_sp2 logic already does this if we set target_valence correctly
+            tv = {'C':3, 'N':3, 'O':2} # Force addition
+            self.add_capping_h_sp2(target_valence={e: nb + 1})
+            self.neighs()
+
+    # ========= AtomQuery / Selection Logic
+
+    def parse_query_set(self, s):
+        """Parse string like '{1,2}' into a set of integers."""
+        s = s.strip()
+        if not (s.startswith('{') and s.endswith('}')): return set()
+        try:
+            return {int(x.strip()) for x in s[1:-1].split(',') if x.strip()}
+        except:
+            return set()
+
+    def match_atom(self, ia, q_tokens):
+        """Check if atom ia matches the query tokens.
+        
+        Tokens: ['C', 'deg{2}', 'n{H}{1}']
+        """
+        e = self.enames[ia]
+        # First token is always element(s)
+        elements = q_tokens[0].split('|')
+        if '*' not in elements and e not in elements: return False
+        
+        for tok in q_tokens[1:]:
+            if tok.startswith('deg'):
+                # deg{1,2}
+                i1 = tok.find('{')
+                i2 = tok.find('}')
+                if i1 >= 0 and i2 > i1:
+                    cset = self.parse_query_set(tok[i1:i2+1])
+                    if cset and len(self.ngs[ia]) not in cset: return False
+            elif tok.startswith('n{'):
+                # n{Element}{CountSet}
+                i_end_elem = tok.find('}')
+                if i_end_elem < 0: continue
+                nei_elements = tok[2:i_end_elem].split('|')
+                
+                rest = tok[i_end_elem+1:]
+                i1 = rest.find('{')
+                i2 = rest.find('}')
+                if i1 >= 0 and i2 > i1:
+                    cset = self.parse_query_set(rest[i1:i2+1])
+                    count = 0
+                    for ja in self.ngs[ia]:
+                        if '*' in nei_elements or self.enames[ja] in nei_elements:
+                            count += 1
+                    if cset and count not in cset: return False
+        return True
+
+    def select_atoms(self, query):
+        """Select atoms matching a query string.
+        
+        Query format: "Elem1|Elem2 deg{Count} n{NeiElem}{Count}"
+        Example: "N deg{2}" selects pyridinic nitrogens.
+        """
+        if self.ngs is None: self.neighs()
+        tokens = query.split()
+        if not tokens: return []
+        indices = []
+        for ia in range(len(self.apos)):
+            if self.match_atom(ia, tokens):
+                indices.append(ia)
+        return indices
+
+    def find_hbonds(self, d_max=2.5, a_min=150.0, bPrint=True):
+        """Find hydrogen bonds using AtomQuery to identify donors and acceptors.
+        
+        H-bond: D-H ... A
+        D, A are N or O.
+        """
+        # Potential donors: H atoms attached to N or O
+        h_atoms = self.select_atoms("H n{N|O}{1}")
+        # Potential acceptors: N or O atoms
+        acceptors = self.select_atoms("N|O")
+        
+        if bPrint:
+            print(f"find_hbonds: h_atoms={h_atoms} acceptors={acceptors}")
+        
+        hbonds = []
+        for ih in h_atoms:
+            # Donor is the neighbor of H
+            neighs = list(self.ngs[ih].keys())
+            if not neighs: continue
+            donor_idx = neighs[0]
+            pos_h = self.apos[ih]
+            pos_d = self.apos[donor_idx]
+            vec_dh = pos_h - pos_d
+            len_dh = np.linalg.norm(vec_dh)
+            
+            for ia in acceptors:
+                if ia == donor_idx: continue
+                pos_a = self.apos[ia]
+                vec_ha = pos_a - pos_h
+                dist_ha = np.linalg.norm(vec_ha)
+                
+                if bPrint:
+                    print(f"  Checking H({ih})...A({ia}) dist={dist_ha:.3f}")
+                
+                if dist_ha < d_max:
+                    # Check angle D-H...A (angle at H)
+                    vec_hd = pos_d - pos_h
+                    cos_angle = np.dot(vec_hd, vec_ha) / (len_dh * dist_ha)
+                    angle = np.degrees(np.arccos(np.clip(cos_angle, -1.0, 1.0)))
+                    if bPrint:
+                        print(f"    In range! angle={angle:.1f}")
+                    if angle > a_min:
+                        hbonds.append((donor_idx, ih, ia, dist_ha, angle))
+        return hbonds

@@ -144,6 +144,7 @@ class AtomScene(QtCore.QObject):
         if pos.ndim != 2 or pos.shape[1] != 3:
             raise ValueError(f"AtomScene.set_data: pos.shape={pos.shape} expected (n,3)")
         self._pos = pos
+        self._render_mask = None
         if (self._fixed is None) or (self._fixed.shape[0] != self._pos.shape[0]):
             self._fixed = np.zeros((self._pos.shape[0],), dtype=bool)
         self._colors = None if colors is None else _as_f32(colors)
@@ -474,9 +475,11 @@ class AtomScene(QtCore.QObject):
 
     def _ray_from_mouse(self, mouse_pos, z0=0.0, z1=1.0):
         # mouse_pos in canvas pixels
+        # If the view is shifted (e.g. in a Grid), we must use local coordinates
+        view_pos = np.array(mouse_pos) - self.view.pos[:2]
         tr = self.view.scene.transform
-        p0 = np.array(tr.imap((mouse_pos[0], mouse_pos[1], float(z0)))[:3], dtype=np.float32)
-        p1 = np.array(tr.imap((mouse_pos[0], mouse_pos[1], float(z1)))[:3], dtype=np.float32)
+        p0 = np.array(tr.imap((view_pos[0], view_pos[1], float(z0)))[:3], dtype=np.float32)
+        p1 = np.array(tr.imap((view_pos[0], view_pos[1], float(z1)))[:3], dtype=np.float32)
         d = p1 - p0
         dn = float(np.linalg.norm(d))
         if dn <= 1e-20:
