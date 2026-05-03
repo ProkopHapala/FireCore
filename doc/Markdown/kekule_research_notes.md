@@ -309,8 +309,8 @@ We will follow a "Backend-First" approach, validating all logic headlessly befor
     - Build `KekuleExplorer.py` (PyQt5) and hook it to the validated `KekuleBackend`.
 - **Test**: Manual user testing of ring/atom toggling and real-time visualization updates.
 
-
 ---
+
 
 # USER
 
@@ -325,42 +325,156 @@ kekule_research_notes.md
 
 ---
 
-# Gemini--flash
+## 8. Architectural Analysis: Current vs. Required
 
+### 8.1 Current Architecture — Detailed Audit
 
+The current `KekuleBackend` follows a **Grid-First / Rebuild-Every-Frame** pattern. Here is an exact inventory of what is persistent and what is transient:
 
+#### Persistent State (survives across actions):
 
-## 8. Architectural Analysis & Stateful Topology Proposal
+| Variable | Type | What it stores |
+|---|---|---|
+| `self.rings` | `set` of `(q,r)` | Which hex cells exist (axial coords) |
+| `self.nodes` | `dict {(rx,ry): str}` | Element name at each grid node (rounded Cartesian key) |
+| `self.node_valences` | `dict {(rx,ry): int}` | Target valence override per node |
+| `self.node_offsets` | `dict {(rx,ry): ndarray}` | Manual displacement (drag/relax distortion) per node |
+| `self.pbc_x, pbc_y` | `bool` | Periodic boundary conditions |
+| `self.a_CC` | `float` | Bond length parameter |
 
-### 8.1 Current "Stateless" Architecture (Flaws)
-The current implementation uses a **Grid-First / On-the-Fly** approach:
-- **Authoritative Source**: A set of `rings` (coordinates) and a dict of `nodes` (elements).
-- **Reconstruction**: Every UI action triggers `build_system()`, which iterates over rings/nodes to generate a fresh `AtomicSystem`.
-- **The "Epiphenomenon" Problem**: Hydrogens, bonds, and relaxed coordinates are computed dynamically. This means:
-    - Manual deletion of a specific Hydrogen is impossible (it is re-generated next frame).
-    - Specific chemical states (e.g., Pyrrolic vs Pyridinic Nitrogen) must be inferred every time, which is ambiguous.
-    - "Relaxed" positions are stored as `node_offsets`, which only works for atoms pinned to the grid.
+#### Transient / Rebuilt Every Frame:
 
-### 8.2 Proposed "Stateful" Architecture
-We need to transition to an **Atom-First / Persistent-Graph** approach:
-1. **Persistent Atom Registry**:
-   - Instead of rebuilding, we maintain a persistent list of `Atom` objects.
-   - Each `Atom` stores: `element`, `pos`, `node_key` (optional pinning), and `subtype`.
-2. **Topology Persistence**:
-   - Bonds are stored explicitly as a graph, not re-found by distance every time (except when requested).
-   - This allows for stable "Manual Bond Edits".
-3. **Grid-Pinning Mechanism**:
-   - When a ring is added to the grid, the backend checks which grid-pinned atoms already exist.
-   - It only adds *missing* atoms and links them to the new topology.
-4. **Hydrogen Ownership**:
-   - Hydrogens are persistent atoms with a `parent_index` reference.
-   - They "belong" to a heavy atom. If the heavy atom moves (drag/relax), the Hydrogen follows via a relative coordinate or re-VSEPR, but its *existence* is stateful.
+Every call to `build_system()` (triggered by `refresh_view()` on every single UI action) creates a **brand new** `AtomicSystem` from scratch:
 
-### 8.3 Required Data Structures
-- `self.atoms`: List of dicts/objects `{ 'element': 'C', 'pos': [x,y,z], 'pin': (q,r), 'parent': None, 'state': 'sp2' }`.
-- `self.bonds`: List of `(i, j)` pairs.
-- `self.node_to_atom`: Mapping from grid coordinates back to the persistent atom index.
+1. Iterates `sorted(self.nodes.keys())` → builds fresh `apos`, `enames`, `atypes` arrays
+2. Calls `sys.findBonds(Rcut=3.0)` → bonds found by distance, **not** stored
+3. Calls `sys.neighs()` → neighbor lists computed, **not** stored
+4. If `bPassivate`: calls `sys.add_capping_h_sp2()` → H atoms generated, **never stored back**
+5. Returns the new `AtomicSystem` which is used for rendering, then discarded (or cached temporarily)
 
+#### What Is Lost On Each Rebuild:
 
-----
+- **All Hydrogen atoms** — they are re-generated from VSEPR rules every frame
+- **All bond assignments** — re-found by distance every frame  
+- **Relaxed coordinates** — only partially preserved via `node_offsets` hack (and only for heavy atoms pinned to grid nodes; any un-pinned atom or H is lost)
+- **Chemical state specifics** — e.g. whether a Nitrogen is pyridinic (=N−, 2-coord) vs pyrrolic (−NH−, 3-coord) is encoded only as `node_valences[key]`, not as a property of the atom itself
+
+#### Data Flow Diagram (Current):
+
+```
+User clicks "Add Ring" 
+  → backend.toggle_ring(q,r)           # mutates self.rings, self.nodes
+  → GUI calls refresh_view()
+    → backend.build_system()            # CREATES NEW AtomicSystem from scratch
+      → iterate self.nodes → apos[]
+      → findBonds() by distance
+      → add_capping_h_sp2()            # H atoms appear here, never saved
+    → GUI renders the new AtomicSystem
+    → AtomicSystem is discarded (or cached but overwritten next action)
+
+User clicks "Adjust H"
+  → refresh_view(bPassivate=True)
+    → build_system(bPassivate=True)     # AGAIN from scratch, H generated fresh
+    → rendered
+    
+User clicks "Add Ring" again
+  → refresh_view()
+    → build_system(bPassivate=False)    # H atoms GONE — they were never stored
+```
+
+#### Core Problem:
+
+The `AtomicSystem` (which holds the actual atoms, positions, bonds) is treated as a **disposable view** computed from the grid state. But it should be the **authoritative, persistent store**. The grid/ring information should be auxiliary metadata on top of it, not the other way around.
+
+---
+
+### 8.2 Required Architecture — Stateful Persistent Topology
+
+#### Design Principle:
+
+**`AtomicSystem` IS the authoritative state.** Everything — heavy atoms, hydrogens, bonds, positions, element types — lives persistently in the `AtomicSystem`. The hexagonal grid, ring membership, and node-pinning are **auxiliary mapping arrays** that index into the `AtomicSystem`.
+
+#### Persistent State (new design):
+
+| Variable | Type | What it stores |
+|---|---|---|
+| `self.sys` | `AtomicSystem` | **THE** authoritative geometry+topology: `apos`, `enames`, `atypes`, `bonds`, `ngs` |
+| `self.atom_pin` | `list[tuple or None]` | For each atom `i`: the grid node `(rx,ry)` it is pinned to, or `None` if unpinned (e.g. free H, manually placed atom) |
+| `self.atom_parent` | `list[int or None]` | For each atom `i`: index of parent heavy atom (for H atoms), or `None` |
+| `self.atom_subtype` | `list[str]` | For each atom `i`: chemical subtype string, e.g. `'C_sp2'`, `'N_pyridinic'`, `'N_pyrrolic'`, `'H_cap'`, `'O_ether'` |
+| `self.rings` | `set` of `(q,r)` | Which hex cells exist (metadata, not authoritative for atoms) |
+| `self.ring_atoms` | `dict {(q,r): list[int]}` | For each ring: list of atom indices that belong to it |
+| `self.node_to_atom` | `dict {(rx,ry): int}` | Grid node → atom index (reverse of `atom_pin`) |
+
+#### What Does NOT Exist Anymore:
+
+- ~~`self.nodes`~~ → replaced by `self.sys.enames` + `self.node_to_atom`
+- ~~`self.node_valences`~~ → replaced by `self.atom_subtype` (encodes valence implicitly)
+- ~~`self.node_offsets`~~ → atom positions ARE the positions in `self.sys.apos`; grid-ideal positions can be computed from `atom_pin` when needed (e.g. for "Snap to Grid")
+- ~~`build_system()`~~ → no more wholesale rebuild; each action performs a targeted edit
+
+#### Actions as Discrete Edits:
+
+Every user action maps to exactly ONE well-defined mutation of the persistent state. No action triggers multiple unrelated side-effects.
+
+| Action (trigger) | Mutation |
+|---|---|
+| **Add Ring** (LMB in Ring mode) | For each of the 6 ring nodes: if `node_to_atom[nk]` exists, just register in `ring_atoms`; if not, append new C atom to `sys`, set `atom_pin[i]=nk`, `node_to_atom[nk]=i`, add bonds to adjacent existing atoms. Add ring to `self.rings`. |
+| **Remove Ring** (RMB in Ring mode) | Remove ring from `self.rings` and `ring_atoms`. For each atom in that ring: if atom belongs to no other ring (check `ring_atoms`), remove it from `sys` (and any attached H). If atom is shared, keep it. |
+| **Set Atom Type** (LMB in Atom mode) | Change `sys.enames[i]` and `sys.atypes[i]` for the atom at that node. Update `atom_subtype[i]`. |
+| **Adjust H** (button) | Run `find_undercoordinated()` on `self.sys`. For each undercoordinated atom, call `add_capping_h_sp2()` which APPENDS new H atoms to `self.sys`. Set `atom_parent[h_idx] = parent_idx`, `atom_pin[h_idx] = None`, `atom_subtype[h_idx] = 'H_cap'`. These H atoms are now persistent. |
+| **Remove H** (manual or via reducing valence) | Find H atoms with `atom_parent == target`, remove them from `self.sys`. |
+| **Toggle H state** (middle-click on N/O) | Change `atom_subtype` (e.g. `'N_pyridinic'` ↔ `'N_pyrrolic'`), then add or remove one H accordingly. |
+| **Drag Atom** (mouse drag) | Directly update `self.sys.apos[i]`. No rebuild. |
+| **Snap to Grid** (button) | For each atom where `atom_pin[i]` is not None: set `self.sys.apos[i, :2] = atom_pin[i]`. Recompute H positions from VSEPR for their parents. |
+| **Recalc Bonds** (button) | Call `self.sys.findBonds()` and `self.sys.neighs()`. This is the ONLY time bonds are recomputed. |
+| **Relax (DFTB+)** (button) | Export `self.sys` to DFTB+, run relaxation, import relaxed positions back into `self.sys.apos`. All atom identities, types, bonds are preserved. |
+| **Export XYZ** (button) | Write `self.sys` directly — what you see is what you get. |
+
+#### Rendering (GUI `refresh_view`):
+
+Rendering reads `self.sys` and draws it. **It does not modify the state.** It is a pure read operation:
+1. Read `self.sys.apos` → vertex positions
+2. Read `self.sys.enames` → colors/sizes
+3. Read `self.sys.bonds` → line segments
+4. Read `self.rings` → (optionally highlight ring membership)
+5. Draw guide grid from `get_guide_points()` (purely cosmetic, no state mutation)
+
+#### Atom Removal / Index Stability:
+
+When atoms are removed (ring deletion, H removal), indices shift. Two strategies:
+
+- **Option A (simple)**: Use numpy delete + rebuild all mapping arrays. Acceptable for small systems (<1000 atoms).
+- **Option B (stable)**: Use a "tombstone" approach — mark atoms as deleted but keep arrays the same size. Compact periodically. More complex but avoids index invalidation.
+
+**Recommendation**: Start with Option A. Our systems are small enough that re-indexing is cheap.
+
+#### Consistency Invariants:
+
+At all times, the following must hold:
+1. `len(self.atom_pin) == len(self.atom_parent) == len(self.atom_subtype) == len(self.sys.apos)`
+2. For every `(q,r)` in `self.rings`: all atom indices in `self.ring_atoms[(q,r)]` are valid indices into `self.sys`
+3. For every node key `nk` in `self.node_to_atom`: `self.atom_pin[self.node_to_atom[nk]] == nk`
+4. `self.sys.bonds` is always in sync with the actual connectivity (or explicitly marked stale until "Recalc Bonds")
+
+### 8.3 Migration Path
+
+The refactoring should be done incrementally:
+
+1. **Step 1**: Create new `KekuleBackend` with `self.sys = AtomicSystem(...)` as persistent store. Implement `add_ring()` as an edit that appends to `self.sys`. Implement `remove_ring()` as an edit that removes from `self.sys`. Test headlessly.
+2. **Step 2**: Implement `adjust_h()` as an edit that appends H atoms persistently. Test headlessly.  
+3. **Step 3**: Wire GUI to the new backend. `refresh_view()` becomes a pure render (read-only). Each button/click calls exactly one backend method.
+4. **Step 4**: Implement relaxation as position-update-only on the persistent `self.sys`.
+
+### 8.4 Key Rule: One Action = One Mutation
+
+The GUI must enforce that each user interaction triggers **exactly one** backend method call. No implicit side-effects, no "auto-rebuild", no "auto-passivate on every frame." The mapping is:
+
+```
+UI Event  →  exactly 1 backend.method()  →  GUI.render(backend.sys)
+```
+
+If the user wants H atoms: they press "Adjust H" once, it adds them, they stay forever until explicitly removed. If the user wants bonds recalculated: they press "Recalc Bonds" once. If they want to relax: "Relax" button, positions update in-place.
+
+---
 

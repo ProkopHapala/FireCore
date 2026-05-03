@@ -873,10 +873,13 @@ class AtomScene(QtCore.QObject):
         p = self._pos.copy()
 
         if self._pick_mode == '2d':
-            new_xy = self._mouse_to_world_xy(ev.pos, z=0.0)
-            p[i, 0] = new_xy[0]
-            p[i, 1] = new_xy[1]
-            p[i, 2] = self._pick_z
+            # Use ray casting for consistent coordinate handling with axis widgets
+            r0, rd = self._ray_from_mouse(ev.pos)
+            new_xy = self._intersect_ray_plane(r0, rd, np.zeros(3), np.array([0,0,1]))
+            if new_xy is not None:
+                p[i, 0] = new_xy[0]
+                p[i, 1] = new_xy[1]
+                p[i, 2] = self._pick_z
         else:
             if (self._drag_plane_p0 is None) or (self._drag_plane_n is None):
                 return

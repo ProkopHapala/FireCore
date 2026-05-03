@@ -22,14 +22,12 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
 
         self.backend = KekuleBackend()
         self.cur_atom_type = 'C'
-        self.edit_mode = 'Ring' # 'Ring' or 'Atom'
-        self.bAutoPassivate = False
-        self.bAutoRecalcBonds = False
-        self.cached_sys = None
+        self.edit_mode = 'Ring' # 'Ring', 'Atom', or 'pi'
+        self.last_clicked_node = None
+        self.label_mode = 'Element+Index'
         
         self.initUI()
         self.scene.sig_atom_dragged.connect(self.on_atom_dragged)
-        self.idx_to_node = {}
         self.refresh_view()
 
     def initUI(self):
@@ -54,6 +52,12 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         
         self.axis_x.link_view(self.scene.view)
         self.axis_y.link_view(self.scene.view)
+        
+        # Configure axis after linking to view
+        self.axis_x.axis.text_color = 'black'
+        self.axis_y.axis.text_color = 'black'
+        self.axis_x.axis.tick_color = 'black'
+        self.axis_y.axis.tick_color = 'black'
 
         self.setCentralWidget(self.scene.widget)
         
@@ -62,12 +66,25 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         self.grid_markers.set_gl_state('translucent', depth_test=False)
         self.grid_markers.order = -1  # Behind everything
 
+        # Add mouse cursor (cross) for debugging
+        self.cursor_markers = scene.visuals.Markers(parent=self.scene.view.scene)
+        self.cursor_markers.set_gl_state('translucent', depth_test=False)
+        self.cursor_markers.order = 10  # On top
+        self.cursor_markers.set_data(
+            pos=np.zeros((1, 3)),
+            symbol='cross',
+            edge_width=2,
+            edge_color='red',
+            face_color='transparent',
+            size=10
+        )
+
         # --- Sidebar / ToolBar ---
         toolbar = self.addToolBar("Controls")
         
         # Mode Selection
         self.mode_combo = QtWidgets.QComboBox()
-        self.mode_combo.addItems(["Ring", "Atom"])
+        self.mode_combo.addItems(["Ring", "Atom", "pi"])
         self.mode_combo.currentTextChanged.connect(self.set_edit_mode)
         toolbar.addWidget(QtWidgets.QLabel(" Mode: "))
         toolbar.addWidget(self.mode_combo)
@@ -85,12 +102,6 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         relax_btn = QtWidgets.QPushButton("Relax (DFTB+)")
         relax_btn.clicked.connect(self.run_relaxation)
         toolbar.addWidget(relax_btn)
-
-        # Auto-passivate checkbox
-        self.passivate_cb = QtWidgets.QCheckBox("Auto-Passivate")
-        self.passivate_cb.stateChanged.connect(self.toggle_passivate)
-        self.passivate_cb.setChecked(self.bAutoPassivate)
-        toolbar.addWidget(self.passivate_cb)
 
         toolbar.addSeparator()
 
@@ -112,6 +123,15 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
 
         toolbar.addSeparator()
 
+        # Label Mode Selection
+        self.label_combo = QtWidgets.QComboBox()
+        self.label_combo.addItems(["Element+Index", "Atomic Type", "Pi Orbitals", "Z-Height", "Charge"])
+        self.label_combo.currentTextChanged.connect(self.set_label_mode)
+        toolbar.addWidget(QtWidgets.QLabel(" Labels: "))
+        toolbar.addWidget(self.label_combo)
+
+        toolbar.addSeparator()
+
         # XYZ Buttons
         show_xyz_btn = QtWidgets.QPushButton("Show XYZ")
         show_xyz_btn.clicked.connect(self.show_xyz)
@@ -126,6 +146,8 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
 
         # --- Connect Mouse Events ---
         self.scene.canvas.events.mouse_press.connect(self.on_mouse_press)
+        self.scene.canvas.events.mouse_move.connect(self.on_mouse_move)
+        self.scene.canvas.events.draw.connect(self.on_draw)
 
     def set_edit_mode(self, mode):
         self.edit_mode = mode
@@ -135,9 +157,31 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         self.cur_atom_type = atype
         print(f"Atom Type: {atype}")
 
-    def toggle_passivate(self, state):
-        self.bAutoPassivate = (state == QtCore.Qt.Checked)
+    def set_label_mode(self, mode):
+        self.label_mode = mode
+        print(f"Label Mode: {mode}")
         self.refresh_view()
+
+    def on_mouse_move(self, event):
+        """Update cursor cross position on mouse move."""
+        r0, rd = self.scene._ray_from_mouse(event.pos)
+        p_world = self.scene._intersect_ray_plane(r0, rd, np.zeros(3), np.array([0,0,1]))
+        if p_world is not None:
+            self.cursor_markers.set_data(
+                pos=np.array([p_world]),
+                symbol='cross',
+                edge_width=2,
+                edge_color='red',
+                face_color='transparent',
+                size=10
+            )
+
+    def on_draw(self, event):
+        """Re-render labels when canvas is redrawn (zoom/pan)."""
+        # Only re-render if showing atom labels (not bond distances)
+        atom_label_modes = ['Element+Index', 'Atomic Type', 'Pi Orbitals', 'Z-Height', 'Charge']
+        if self.label_mode in atom_label_modes:
+            self.refresh_view()
 
     def on_mouse_press(self, event):
         # Guard: If Vispy's AtomScene already picked an atom for dragging, skip grid editing
@@ -153,25 +197,20 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
             self.handle_click(event.pos, action='toggle_h')
 
     def on_atom_dragged(self, idx, pos):
-        """Update backend offset when an atom is dragged in the UI."""
-        if idx in self.idx_to_node:
-            node_key = self.idx_to_node[idx]
-            offset = pos[:2] - np.array(node_key)
-            self.backend.update_node_offset(node_key, offset)
-            # We don't call refresh_view here to avoid flickering during drag
-            # but we update the bond labels if needed
+        """Update backend atom position when dragged in the UI."""
+        pin = self.backend.atom_pin[idx]
+        if pin is not None:
+            self.backend.sys.apos[idx, 0] = pos[0]
+            self.backend.sys.apos[idx, 1] = pos[1]
             self.update_bond_labels()
 
     def reset_offsets(self):
-        self.backend.reset_offsets()
+        self.backend.snap_atoms_to_grid()
         self.refresh_view()
 
     def show_xyz(self):
         """Show current structure in a text dialog."""
-        # Use cached_sys if available and matches passivate setting
-        sys = self.cached_sys if self.cached_sys else self.backend.build_system(bPassivate=self.bAutoPassivate)
-        xyz_str = self.backend.get_xyz_string(sys=sys)
-        
+        xyz_str = self.backend.get_xyz_string()
         dialog = QtWidgets.QDialog(self)
         dialog.setWindowTitle("Current XYZ Structure")
         layout = QtWidgets.QVBoxLayout(dialog)
@@ -189,17 +228,18 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         """Export current structure to an XYZ file."""
         fname, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Export XYZ", "", "XYZ Files (*.xyz)")
         if fname:
-            sys = self.cached_sys if self.cached_sys else self.backend.build_system(bPassivate=self.bAutoPassivate)
-            self.backend.save_xyz(fname, sys=sys)
+            self.backend.save_xyz(fname)
             self.statusBar().showMessage(f"Exported to {fname}")
 
     def adjust_h(self):
-        """Manually trigger H passivation and make it persistent."""
-        self.passivate_cb.setChecked(True) # This will trigger refresh_view(bPassivate=True)
+        """Manually trigger H passivation."""
+        self.backend.adjust_h()
+        self.refresh_view()
 
     def recalc_bonds(self):
         """Manually trigger bond recalculation and refresh view."""
-        self.refresh_view(bRecalcBonds=True)
+        self.backend.recalc_bonds()
+        self.refresh_view()
 
     def handle_click(self, mouse_pos, action='add'):
         # 1. Get world coordinates on z=0 plane
@@ -225,55 +265,51 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         
         print(f"Click at ({x:.2f}, {y:.2f}) -> Mode={self.edit_mode} Ring={(q,r)} Node={node_key} | Action: {action}")
 
+        # Track last clicked node for pi mode
+        if node_key:
+            self.last_clicked_node = node_key
+
         # 3. Modify backend
         if action == 'add':
             if self.edit_mode == 'Ring':
                 self.backend.toggle_ring(q, r)
+            elif self.edit_mode == 'pi':
+                # Cycle pi orbitals: 0 -> 1 -> 2 -> 0
+                if node_key:
+                    ia = self.backend.node_to_atom.get(node_key)
+                    if ia is not None:
+                        subtype = self.backend.atom_subtype[ia]
+                        current_npi = self.backend._get_npi_from_subtype(subtype)
+                        new_npi = (current_npi + 1) % 3
+                        self.backend.set_atom_valency(node_key, new_npi)
+                        print(f"Set atom {node_key} to npi={new_npi}")
             elif node_key:
                 print(f"DEBUG: Setting node {node_key} to {self.cur_atom_type}")
-                self.backend.set_atom(node_key, self.cur_atom_type)
+                self.backend.set_atom_type(node_key, self.cur_atom_type)
         elif action == 'remove':
             if self.edit_mode == 'Ring':
                 self.backend.remove_ring(q, r)
             elif node_key:
                 self.backend.remove_atom(node_key)
         elif action == 'toggle_h':
-            # For toggle_h, we always snap to the nearest node regardless of mode
             nk = self.backend.snap_to_node(x, y)
             if nk:
                 self.backend.toggle_h_state(nk)
         
         self.refresh_view()
 
-    def refresh_view(self, bPassivate=None, bRecalcBonds=None):
-        # Use defaults if not specified
-        if bPassivate is None: bPassivate = self.bAutoPassivate
-        if bRecalcBonds is None: bRecalcBonds = self.bAutoRecalcBonds
-
+    def refresh_view(self):
         # 0. Update Guide Grid
         guides = self.backend.get_guide_points()
-        print(f"DEBUG: refresh_view guides={len(guides)} bPassivate={bPassivate}", flush=True)
         self.grid_markers.set_data(
             pos=np.column_stack([guides, np.full(len(guides), -0.1)]).astype(np.float32),
             symbol='disc', edge_width=0, size=5,
             face_color=(0.3, 0.3, 0.3, 0.8)
         )
 
-        # 1. Build system
-        sys = self.backend.build_system(bPassivate=bPassivate)
-        self.cached_sys = sys # store for manual bond reuse if we want
-        
-        # 2. Prepare visual data
+        # 1. Use persistent sys directly
+        sys = self.backend.sys
         pos = sys.apos.astype(np.float32)
-        
-        # Build index-to-node mapping for heavy atoms
-        self.idx_to_node = {}
-        node_keys = sorted(self.backend.nodes.keys())
-        print(f"DEBUG: refresh_view backend_nodes={len(node_keys)} sys_atoms={len(sys.apos)} sys_enames[:10]={sys.enames[:10]}")
-        for i, nk in enumerate(node_keys):
-            self.idx_to_node[i] = nk
-            if i < len(sys.enames) and sys.enames[i] != self.backend.nodes[nk]:
-                print(f"WARNING: Element mismatch at node {nk}: Backend={self.backend.nodes[nk]} System={sys.enames[i]}")
 
         if pos.size == 0:
             self.scene.set_data(np.zeros((0,3)))
@@ -285,7 +321,6 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         for e in sys.enames:
             c = elements.getColor(e)
             if e == 'H':
-                # Make Hydrogen darker gray for visibility on light background
                 colors.append((0.4, 0.4, 0.4, 1.0))
                 sizes.append(8.0)
             else:
@@ -297,11 +332,6 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         
         # Bonds
         if sys.bonds is not None:
-            # 1. Heavy-Heavy Bonds (Thick)
-            # 2. Heavy-H Bonds (Thin)
-            # 3. H-H Bonds (Thin)
-            
-            # Identify bond types
             is_heavy = np.array([sys.enames[i] != 'H' for i in range(len(sys.enames))])
             bonds_heavy = []
             bonds_h = []
@@ -312,19 +342,14 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
                 else:
                     bonds_h.append(b)
             
-            # We use 'bond_lines' for heavy-heavy and 'neigh_lines' for H-involved
-            # AtomScene.set_data doesn't expose neigh_lines easily, so we use _line_set
-            
             self.scene.set_data(pos, colors=colors, sizes=sizes, bonds=bonds_heavy)
             
-            # Add H-bonds/C-H bonds using neigh_lines
             if bonds_h:
                 h_segs = pos[np.array(bonds_h)].reshape(-1, 3)
                 self.scene._line_set("CH-bonds", self.scene.neigh_lines, h_segs, color=(0.4, 0.4, 0.4, 0.6), width=1.0)
             else:
                 self.scene.neigh_lines.set_data(np.zeros((0, 3), dtype=np.float32))
 
-            # 3. H-bonds (Halo lines)
             hbonds = sys.find_hbonds(bPrint=False)
             if hbonds:
                 hb_segs = []
@@ -336,37 +361,121 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
             else:
                 self.scene.halo_lines.set_data(np.zeros((0, 3), dtype=np.float32))
 
-            # 4. Bond Labels (Bond lengths)
-            if len(bonds_heavy) > 0:
-                bls = []
+            # Labels based on label_mode
+            if self.label_mode == 'Element+Index':
+                # Show element + index (e.g. N1, C12)
                 lbl_pos = []
                 lbl_texts = []
-                lbl_colors = []
-                for b in bonds_heavy:
-                    ia, ja = b
-                    p1, p2 = pos[ia], pos[ja]
-                    d = np.linalg.norm(p1 - p2)
-                    bls.append(d)
-                    lbl_pos.append((p1 + p2) * 0.5)
-                    lbl_texts.append(f"{d:.3f}")
-                
-                bls = np.array(bls)
-                vmin, vmax = bls.min(), bls.max()
-                if abs(vmax - vmin) < 1e-4:
-                    f = np.zeros_like(bls)
+                for i, e in enumerate(sys.enames):
+                    if e != 'H':  # Only show for heavy atoms
+                        lbl_pos.append(pos[i])
+                        lbl_texts.append(f"{e}{i}")
+                if lbl_pos:
+                    self.scene.text_labels.text = lbl_texts
+                    self.scene.text_labels.pos = np.array(lbl_pos, dtype=np.float32)
+                    self.scene.text_labels.color = np.array([(0, 0, 0, 1)] * len(lbl_texts), dtype=np.float32)
+                    self.scene.text_labels.visible = True
                 else:
-                    f = (bls - vmin) / (vmax - vmin)
-                
-                # Color labels by length (Blue to Red)
-                for fi in f:
-                    lbl_colors.append((fi, 0.5 * (1-fi), 1.0 - fi, 1.0))
-                
-                self.scene.text_labels.text = lbl_texts
-                self.scene.text_labels.pos = np.array(lbl_pos, dtype=np.float32)
-                self.scene.text_labels.color = np.array(lbl_colors, dtype=np.float32)
-                self.scene.text_labels.visible = True
+                    self.scene.text_labels.visible = False
+            elif self.label_mode == 'Atomic Type':
+                # Show atomic type (sp1, sp2, sp3)
+                lbl_pos = []
+                lbl_texts = []
+                for i, subtype in enumerate(self.backend.atom_subtype):
+                    if sys.enames[i] != 'H':
+                        lbl_pos.append(pos[i])
+                        if 'sp3' in subtype:
+                            lbl_texts.append('sp3')
+                        elif 'sp2' in subtype:
+                            lbl_texts.append('sp2')
+                        elif 'sp' in subtype:
+                            lbl_texts.append('sp')
+                        else:
+                            lbl_texts.append(subtype)
+                if lbl_pos:
+                    self.scene.text_labels.text = lbl_texts
+                    self.scene.text_labels.pos = np.array(lbl_pos, dtype=np.float32)
+                    self.scene.text_labels.color = np.array([(0, 0, 0, 1)] * len(lbl_texts), dtype=np.float32)
+                    self.scene.text_labels.visible = True
+                else:
+                    self.scene.text_labels.visible = False
+            elif self.label_mode == 'Pi Orbitals':
+                # Show number of pi orbitals
+                lbl_pos = []
+                lbl_texts = []
+                for i, subtype in enumerate(self.backend.atom_subtype):
+                    if sys.enames[i] != 'H':
+                        lbl_pos.append(pos[i])
+                        npi = self.backend._get_npi_from_subtype(subtype)
+                        lbl_texts.append(str(npi))
+                if lbl_pos:
+                    self.scene.text_labels.text = lbl_texts
+                    self.scene.text_labels.pos = np.array(lbl_pos, dtype=np.float32)
+                    self.scene.text_labels.color = np.array([(0, 0, 0, 1)] * len(lbl_texts), dtype=np.float32)
+                    self.scene.text_labels.visible = True
+                else:
+                    self.scene.text_labels.visible = False
+            elif self.label_mode == 'Z-Height':
+                # Show Z coordinate
+                lbl_pos = []
+                lbl_texts = []
+                for i, e in enumerate(sys.enames):
+                    if e != 'H':
+                        lbl_pos.append(pos[i])
+                        lbl_texts.append(f"{pos[i, 2]:.2f}")
+                if lbl_pos:
+                    self.scene.text_labels.text = lbl_texts
+                    self.scene.text_labels.pos = np.array(lbl_pos, dtype=np.float32)
+                    self.scene.text_labels.color = np.array([(0, 0, 0, 1)] * len(lbl_texts), dtype=np.float32)
+                    self.scene.text_labels.visible = True
+                else:
+                    self.scene.text_labels.visible = False
+            elif self.label_mode == 'Charge':
+                # Show charge (placeholder - not implemented yet)
+                lbl_pos = []
+                lbl_texts = []
+                for i, e in enumerate(sys.enames):
+                    if e != 'H':
+                        lbl_pos.append(pos[i])
+                        lbl_texts.append("0")  # Placeholder
+                if lbl_pos:
+                    self.scene.text_labels.text = lbl_texts
+                    self.scene.text_labels.pos = np.array(lbl_pos, dtype=np.float32)
+                    self.scene.text_labels.color = np.array([(0, 0, 0, 1)] * len(lbl_texts), dtype=np.float32)
+                    self.scene.text_labels.visible = True
+                else:
+                    self.scene.text_labels.visible = False
             else:
-                self.scene.text_labels.visible = False
+                # Default: show bond distances
+                if len(bonds_heavy) > 0:
+                    bls = []
+                    lbl_pos = []
+                    lbl_texts = []
+                    lbl_colors = []
+                    for b in bonds_heavy:
+                        ia, ja = b
+                        p1, p2 = pos[ia], pos[ja]
+                        d = np.linalg.norm(p1 - p2)
+                        bls.append(d)
+                        lbl_pos.append((p1 + p2) * 0.5)
+                        lbl_texts.append(f"{d:.3f}")
+                    
+                    bls = np.array(bls)
+                    vmin, vmax = bls.min(), bls.max()
+                    if abs(vmax - vmin) < 1e-4:
+                        f = np.zeros_like(bls)
+                    else:
+                        f = (bls - vmin) / (vmax - vmin)
+                    
+                    for fi in f:
+                        lbl_colors.append((fi, 0.5 * (1-fi), 1.0 - fi, 1.0))
+                    
+                    self.scene.text_labels.text = lbl_texts
+                    self.scene.text_labels.pos = np.array(lbl_pos, dtype=np.float32)
+                    self.scene.text_labels.color = np.array(lbl_colors, dtype=np.float32)
+                    self.scene.text_labels.visible = True
+                else:
+                    self.scene.text_labels.visible = False
         else:
             self.scene.set_data(pos, colors=colors, sizes=sizes)
             self.scene.neigh_lines.set_data(np.zeros((0, 3), dtype=np.float32))
@@ -377,7 +486,7 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         """Update bond labels (distances) based on current scene positions (e.g., during dragging)."""
         if self.scene.text_labels.visible:
             pos = self.scene._pos
-            sys = self.backend.build_system(bPassivate=self.bAutoPassivate)
+            sys = self.backend.sys
             if sys.bonds is not None:
                 lbl_pos = []
                 lbl_texts = []
@@ -398,47 +507,9 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         QtWidgets.QApplication.processEvents()
         
         try:
-            # Build system and track original CoG to undo shift
-            sys_init = self.backend.build_system(bPassivate=self.bAutoPassivate)
-            cog0 = sys_init.apos.mean(axis=0) if len(sys_init.apos)>0 else np.zeros(3)
-            
-            E, apos_new, forces, lvs = self.backend.run_relaxation(sys_init, workdir='gui_relax')
+            E, forces, lvs = self.backend.run_relaxation(workdir='gui_relax')
             self.statusBar().showMessage(f"Relaxation done. E = {E:.4f} eV")
-            
-            # Undo centering shift if backend did it
-            # run_relaxation centers atoms in cell. We want to preserve absolute coordinates.
-            cog1 = apos_new.mean(axis=0) if len(apos_new)>0 else np.zeros(3)
-            # Actually, the backend centers based on LVs. 
-            # We just want to ensure that the difference relative to the grid nodes is correct.
-            
-            # Save relaxed positions back to grid offsets for persistence
-            for i, nk in self.idx_to_node.items():
-                if i < len(apos_new):
-                    # We need the absolute position relative to the grid
-                    # If the whole molecule shifted, the offset should NOT include the shift
-                    # but should represent the distortion.
-                    # Wait, if we undo the shift on apos_new, we are back to original coordinate system.
-                    
-                    # Better: calculate distortion from sys_init.apos
-                    # distortion = apos_new[i] - sys_init.apos[i]
-                    # This way it doesn't matter where it is in space.
-                    
-                    p_new = apos_new[i]
-                    p_old = sys_init.apos[i]
-                    distortion = p_new - p_old
-                    
-                    # Current offset in backend
-                    off_old = self.backend.node_offsets.get(nk, np.zeros(2))
-                    off_new = off_old + distortion[:2]
-                    self.backend.update_node_offset(nk, off_new)
-            
             self.refresh_view()
-            # We'll just update the view with relaxed coords.
-            
-            # To update the view while keeping the grid logic, we might need a "relaxed" mode.
-            # For now, let's just refresh with the new apos.
-            self.scene.set_data(apos_new.astype(np.float32), bonds=sys_init.bonds)
-            
         except Exception as e:
             self.statusBar().showMessage(f"Relaxation FAILED: {e}")
             QtWidgets.QMessageBox.critical(self, "Relaxation Error", str(e))
