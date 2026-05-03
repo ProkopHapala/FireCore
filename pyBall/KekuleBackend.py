@@ -163,37 +163,16 @@ class KekuleBackend:
             return 'H_cap'
         return f'{element}_sp2'
     
-    def _element_target_valence(self, element, npi):
-        """Calculate target sigma bonds using electron counting: nvalence = nsigma + npi + nepair.
-        
-        For aromatic sp2 systems:
-        - C: needs 3 sigma bonds (nvalence=4, nepair=0, npi=1) -> nsigma=3
-        - N: pyrrolic needs 3 sigma (nvalence=5, nepair=1 in pi, npi=1) -> nsigma=3
-             pyridinic needs 2 sigma (nvalence=5, nepair=2, npi=1) -> nsigma=2
-        - O: ketone needs 1 sigma (nvalence=6, nepair=2, npi=1) -> nsigma=3? No, ketone=1
-             hydroxyl needs 2 sigma (nvalence=6, nepair=2, npi=1) -> nsigma=3? No, hydroxyl=2
-        
-        Returns: target number of sigma bonds (nsigma)
+    def _target_sigma(self, element, npi):
+        """Target sigma bonds: nsigma = nval - npi - nepair.
+
+        All 2nd-period atoms (C,N,O) want octet = 4 electron pairs.
+        nval = 4 for C,N,O; nval = 1 for H (duet = 1 pair).
+        nepair = 0 (C,H), 1 (N), 2 (O).
         """
-        # Use subtype-based logic for aromatic systems (more robust)
-        subtype = f"{element}_sp2" if npi == 1 else f"{element}_sp3"
-        if 'pyridinic' in subtype:
-            return 2
-        elif 'pyrrolic' in subtype or 'N_sp2' in subtype:
-            return 3
-        elif 'ketone' in subtype or 'O_sp2' in subtype:
-            return 1
-        elif 'hydroxyl' in subtype:
-            return 2
-        elif 'C_sp2' in subtype:
-            return 3
-        elif 'C_sp3' in subtype:
-            return 4
-        elif 'N_sp3' in subtype:
-            return 3
-        elif 'O_sp3' in subtype:
-            return 2
-        return 3
+        nval = 1 if element == 'H' else 4
+        nepair = {'C': 0, 'N': 1, 'O': 2, 'H': 0}.get(element, 0)
+        return nval - npi - nepair
     
     # --- Public mutation methods (each = exactly one mutation) ---
     
@@ -304,58 +283,24 @@ class KekuleBackend:
             self.sys.atypes[ia] = elements.ELEMENT_DICT[element][0]
             self.atom_subtype[ia] = self._get_element_default_subtype(element)
         else:
-            # Try to find H atom near this position
-            nk = snap_to_grid(node_key, self.a_CC)
-            nk_3d = np.array([nk[0], nk[1], 0.0])
-            found_h = False
-            for i, (pin, parent) in enumerate(zip(self.atom_pin, self.atom_parent)):
-                if pin is None and parent is not None and self.sys.enames[i] == 'H':
-                    p = self.sys.apos[i]
-                    if np.linalg.norm(p - nk_3d) < 0.5:
-                        # Replace H with new element at grid position
-                        self.sys.enames[i] = element
-                        self.sys.atypes[i] = elements.ELEMENT_DICT[element][0]
-                        self.atom_pin[i] = nk
-                        self.atom_parent[i] = None
-                        self.atom_subtype[i] = self._get_element_default_subtype(element)
-                        self._rebuild_ring_atoms()
-                        found_h = True
-                        break
-            # If no H found and node is empty, add new atom
-            if not found_h:
-                self._append_atom(
-                    pos=[nk[0], nk[1], 0.0],
-                    ename=element,
-                    pin=nk,
-                    parent=None,
-                    subtype=self._get_element_default_subtype(element)
-                )
-                self._rebuild_ring_atoms()
-                self.recalc_bonds()
-                self.adjust_h()
+            self._append_atom(
+                pos=[node_key[0], node_key[1], 0.0],
+                ename=element,
+                pin=node_key,
+                parent=None,
+                subtype=self._get_element_default_subtype(element)
+            )
+            self._rebuild_ring_atoms()
+            self.recalc_bonds()
+            self.adjust_h()
 
     def set_atom_valency(self, node_key, npi):
-        """Set the number of pi bonds for an atom (npi).
-        
-        Electron counting: nvalence = nsigma + npi + nepair
-        - nvalence: 8 for N,O (octet), 4 for C
-        - nsigma: number of sigma bonds (neighbors)
-        - nepair: number of lone pairs (1 for N, 2 for O, 0 for C)
-        - npi: number of pi bonds (0=sp3, 1=sp2, 2=sp)
-        
-        Setting npi changes the target valence and triggers H passivation.
-        """
-        if node_key not in self.node_to_atom:
-            return
-        ia = self.node_to_atom[node_key]
+        """Set npi (pi bond count) for atom at node_key. npi in {0,1,2}."""
+        ia = self.node_to_atom.get(node_key)
+        if ia is None: return
         e = self.sys.enames[ia]
-        if e == 'H':
-            return
-        # Store npi in subtype as f"{element}_sp{npi+3}" for compatibility
-        # but the actual logic should use the electron counting
         sp_map = {0: 'sp3', 1: 'sp2', 2: 'sp'}
         self.atom_subtype[ia] = f"{e}_{sp_map.get(npi, 'sp2')}"
-        # Trigger H passivation to adjust to new valency
         self.adjust_h()
 
     def add_atom_at_position(self, pos, element, npi=1):
@@ -429,49 +374,22 @@ class KekuleBackend:
         self._rebuild_after_delete(to_remove)
         self.recalc_bonds()
 
-    def toggle_h_state(self, node_key):
-        """Toggle H-passivation state for an atom at a node (N or O) using electron counting."""
-        if node_key not in self.node_to_atom:
-            return
-        ia = self.node_to_atom[node_key]
-        e = self.sys.enames[ia]
-        subtype = self.atom_subtype[ia]
-        npi = self._get_npi_from_subtype(subtype)
-        
-        if e == 'N':
-            # Toggle between pyridinic (npi=1, target sigma=2) and pyrrolic (npi=1, target sigma=3)
-            if 'pyridinic' in subtype:
-                self.atom_subtype[ia] = 'N_pyrrolic'
-            else:
-                self.atom_subtype[ia] = 'N_pyridinic'
-        elif e == 'O':
-            # Toggle between ketone (npi=1, target sigma=1) and hydroxyl (npi=1, target sigma=2)
-            if 'ketone' in subtype:
-                self.atom_subtype[ia] = 'O_hydroxyl'
-            else:
-                self.atom_subtype[ia] = 'O_ketone'
-        
-        # Rebuild H passivation with new subtype
-        self.adjust_h()
-
     def adjust_h(self):
-        """Rebuild H passivation from scratch using electron counting."""
+        """Add/remove H caps based on electron counting: nsigma = nvalence - npi - nepair."""
         if self.sys.ngs is None: self.sys.neighs()
-        
-        # Remove all existing H_cap atoms
+        # Remove existing H caps
         h_indices = [i for i, st in enumerate(self.atom_subtype) if st == 'H_cap']
         if h_indices:
             self._rebuild_after_delete(h_indices)
             self.recalc_bonds()
-        
-        # Build target valence dict using electron counting
+        # Build target sigma count per atom
         tv = {}
         for i, subtype in enumerate(self.atom_subtype):
-            if self.sys.enames[i] in {'H', 'E'}: continue
-            element = self.sys.enames[i]
+            e = self.sys.enames[i]
+            if e in {'H', 'E'}: continue
             npi = self._get_npi_from_subtype(subtype)
-            tv[i] = self._element_target_valence(element, npi)
-        
+            tv[i] = self._target_sigma(e, npi)
+        # Add H where needed
         added = self.sys.add_capping_h_sp2(target_valence=tv)
         for h_idx in added:
             parent = None

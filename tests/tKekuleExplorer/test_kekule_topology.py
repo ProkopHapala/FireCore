@@ -13,7 +13,7 @@ import sys, os, argparse, io
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 import numpy as np
-from pyBall.KekuleBackend import KekuleBackend
+from pyBall.KekuleBackend import KekuleBackend, snap_to_grid, honeycomb_ring_nodes
 from pyBall.AtomicSystem import AtomicSystem
 from pyBall import plotUtils as pu
 
@@ -117,27 +117,25 @@ def test_adjust_h():
     print("  PASSED")
 
 def test_toggle_h_state():
-    """Toggle N/O subtypes and verify H is added/removed persistently."""
+    """Test changing npi on N atoms using set_atom_valency (uniform electron counting)."""
     print("\n=== test_toggle_h_state ===")
-    b = KekuleBackend()
-    b.add_ring(0, 0)
-    node_keys = list(b.node_to_atom.keys())
-    b.set_atom_type(node_keys[0], 'N')
-    b.adjust_h()
-    n_H_init = sum(1 for e in b.sys.enames if e == 'H')
-    print(f"  Pyrrolic N (default): H={n_H_init}")
-    # Toggle to pyridinic (remove H)
-    b.toggle_h_state(node_keys[0])
-    n_H_pyri = sum(1 for e in b.sys.enames if e == 'H')
-    print(f"  Pyridinic N: H={n_H_pyri}")
-    assert n_H_pyri == n_H_init - 1, f"Should lose 1 H, got {n_H_pyri}"
-    # Toggle back to pyrrolic (add H)
-    b.toggle_h_state(node_keys[0])
-    n_H_back = sum(1 for e in b.sys.enames if e == 'H')
-    print(f"  Back to pyrrolic: H={n_H_back}")
-    assert n_H_back == n_H_init, f"Should restore H, got {n_H_back}"
-    _save_outputs(b, 'toggle_h_state')
-    b.report_state()
+    backend = KekuleBackend()
+    backend.add_ring(0, 0)
+    backend.adjust_h()
+    # Change one C to N (defaults to sp2, npi=1)
+    nk = snap_to_grid(honeycomb_ring_nodes(0, 0, backend.a_CC)[0], backend.a_CC)
+    backend.set_atom_type(nk, 'N')
+    backend.adjust_h()
+    n_H_sp2 = sum(1 for e in backend.sys.enames if e == 'H')
+    print(f"N_sp2 (npi=1): H={n_H_sp2}")
+    # Change to sp3 (npi=0) - should have different H count
+    backend.set_atom_valency(nk, 0)
+    n_H_sp3 = sum(1 for e in backend.sys.enames if e == 'H')
+    print(f"N_sp3 (npi=0): H={n_H_sp3}")
+    # sp3 N should need more H than sp2 N (nsigma: 3 vs 2)
+    assert n_H_sp3 > n_H_sp2, f"sp3 should have more H than sp2, got {n_H_sp3} vs {n_H_sp2}"
+    _save_outputs(backend, 'toggle_h_state')
+    backend.report_state()
     print("  PASSED")
 
 def test_recalc_bonds():

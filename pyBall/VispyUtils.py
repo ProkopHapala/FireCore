@@ -26,6 +26,8 @@ class AtomScene(QtCore.QObject):
     sig_atom_picked = QtCore.pyqtSignal(int)
     sig_atom_dragged = QtCore.pyqtSignal(int, object)  # idx, new_pos3
     sig_drag_state = QtCore.pyqtSignal(int, int, object)  # active(0/1), idx, pos3
+    sig_rmb_remove = QtCore.pyqtSignal(int)  # idx to remove
+    sig_selection_changed = QtCore.pyqtSignal(object)  # set of selected indices
 
     def __init__(self, *, bgcolor='white'):
         super().__init__(parent=None)
@@ -59,6 +61,8 @@ class AtomScene(QtCore.QObject):
         self.atom_markers = visuals.Markers(parent=self.view.scene)
         self.axes = visuals.XYZAxis(parent=self.view.scene)
         self.text_labels = visuals.Text(parent=self.view.scene, color='black', font_size=10, anchor_x='left', anchor_y='bottom')
+        # Selection rectangle (Line visual) - create lazily to avoid initialization issues
+        self.selection_rect = None
 
         # Enforce z-order when supported
         for o, v in enumerate((self.radius_markers, self.bbox_lines, self.inbox_lines, self.halo_lines, self.neigh_lines, self.port_lines, self.port_target_lines, self.dpos_lines, self.dpos_neigh_lines, self.bond_lines, self.force_lines, self.atom_markers, self.axes, self.text_labels)):
@@ -124,6 +128,13 @@ class AtomScene(QtCore.QObject):
         self._lock_top_view = True
         self._clamp_xy = False
         self._fixed = None
+
+        # Selection state
+        self._selection_mode = False  # If True, RMB drags to select atoms instead of camera rotation
+        self._selected_indices = set()
+        self._selection_start = None
+        self._selection_end = None
+        self._selected_colors_backup = None  # Store original colors for selected atoms
 
         self._drag_plane_p0 = None
         self._drag_plane_n = None
@@ -809,6 +820,28 @@ class AtomScene(QtCore.QObject):
 
     def _on_mouse_press(self, ev):
         if ev.button in (2, 3):
+            if self._selection_mode:
+                # Create selection rectangle (Line visual) on first use
+                if self.selection_rect is None:
+                    self.selection_rect = visuals.Line(parent=self.view.scene, color=(0.2, 0.6, 1.0, 1.0), width=2.0)
+                    self.selection_rect.visible = False
+                # Start selection rectangle - use same method as picking for consistency
+                r0, rd = self._ray_from_mouse(ev.pos)
+                p = self._intersect_ray_plane(r0, rd, np.zeros(3), np.array([0,0,1]))
+                if p is not None:
+                    self._selection_start = np.array([p[0], p[1]], dtype=np.float32)
+                else:
+                    self._selection_start = self._mouse_to_world_xy(ev.pos, z=0.0)
+                self._selection_end = self._selection_start.copy()
+                self.selection_rect.visible = True
+                self._update_selection_rect()
+                ev.handled = True
+                return
+            i = self._pick_idx_from_mouse(ev.pos)
+            if i >= 0:
+                self.sig_rmb_remove.emit(i)
+                ev.handled = True
+                return
             self._rmb_down = True
             self._rmb_last = np.array(ev.pos, dtype=np.float32)
             self._cam_print('rmb_down')
@@ -816,9 +849,44 @@ class AtomScene(QtCore.QObject):
             return
         if ev.button != 1:
             return
+
+        # In selection mode, always drag selected atoms regardless of where you click
+        if self._selection_mode and self._selected_indices:
+            self._pick_active = True
+            self._pick_idx = -1  # No specific atom clicked
+            self._pick_z = 0.0
+            # Store initial positions of all selected atoms
+            self._selected_initial_pos = {idx: self._pos[idx].copy() for idx in self._selected_indices}
+            # Store initial mouse position for delta calculation
+            r0, rd = self._ray_from_mouse(ev.pos)
+            self._drag_start_mouse = np.array(ev.pos, dtype=np.float32)
+            if int(self._cam_debug) > 0:
+                print(f"[DRAG] down selected={len(self._selected_indices)} atoms (selection mode)")
+            ev.handled = True
+            return
+
         i = self._pick_idx_from_mouse(ev.pos)
         if i < 0:
             return
+
+        # If atoms are selected and we click on one of them, drag all selected
+        if self._selected_indices and i in self._selected_indices:
+            self._pick_active = True
+            self._pick_idx = i  # Track which atom was clicked for delta calculation
+            self._pick_z = 0.0 if self._clamp_xy else float(self._pos[i, 2])
+            # Store initial positions of all selected atoms
+            self._selected_initial_pos = {idx: self._pos[idx].copy() for idx in self._selected_indices}
+            self.sig_atom_picked.emit(i)
+            self.sig_drag_state.emit(1, i, self._pos[i].copy())
+            if int(self._cam_debug) > 0:
+                print(f"[DRAG] down selected={len(self._selected_indices)} atoms, anchor idx={int(i)}")
+            if self._pick_mode == '3d':
+                r0, rd = self._ray_from_mouse(ev.pos)
+                self._drag_plane_p0 = self._pos[i].copy()
+                self._drag_plane_n = rd.copy()
+            ev.handled = True
+            return
+
         if self.is_fixed(i):
             # still allow pick, but not drag
             self._pick_active = False
@@ -843,6 +911,12 @@ class AtomScene(QtCore.QObject):
 
     def _on_mouse_release(self, ev):
         if ev.button in (2, 3):
+            if self._selection_mode and self.selection_rect is not None and self.selection_rect.visible:
+                # Finalize selection
+                self.selection_rect.visible = False
+                self._finalize_selection()
+                ev.handled = True
+                return
             self._rmb_down = False
             self._rmb_last = None
             self._cam_print('rmb_up')
@@ -857,8 +931,22 @@ class AtomScene(QtCore.QObject):
         self._pick_idx = -1
         self._drag_plane_p0 = None
         self._drag_plane_n = None
+        # Clean up selected initial positions
+        if hasattr(self, '_selected_initial_pos'):
+            del self._selected_initial_pos
 
     def _on_mouse_move(self, ev):
+        if self._selection_mode and self.selection_rect is not None and self.selection_rect.visible:
+            # Update selection rectangle - use same method as picking for consistency
+            r0, rd = self._ray_from_mouse(ev.pos)
+            p = self._intersect_ray_plane(r0, rd, np.zeros(3), np.array([0,0,1]))
+            if p is not None:
+                self._selection_end = np.array([p[0], p[1]], dtype=np.float32)
+            else:
+                self._selection_end = self._mouse_to_world_xy(ev.pos, z=0.0)
+            self._update_selection_rect()
+            ev.handled = True
+            return
         if self._rmb_down:
             if self._rmb_last is not None:
                 cur = np.array(ev.pos, dtype=np.float32)
@@ -877,9 +965,27 @@ class AtomScene(QtCore.QObject):
             r0, rd = self._ray_from_mouse(ev.pos)
             new_xy = self._intersect_ray_plane(r0, rd, np.zeros(3), np.array([0,0,1]))
             if new_xy is not None:
-                p[i, 0] = new_xy[0]
-                p[i, 1] = new_xy[1]
-                p[i, 2] = self._pick_z
+                # If dragging selected atoms, move all of them
+                if self._selected_indices and hasattr(self, '_selected_initial_pos'):
+                    if i >= 0:
+                        # Clicked on an atom - use its position as reference
+                        delta = new_xy[:2] - self._selected_initial_pos[i][:2]
+                    else:
+                        # Selection mode - calculate delta from mouse movement
+                        r0_start, rd_start = self._ray_from_mouse(self._drag_start_mouse)
+                        start_xy = self._intersect_ray_plane(r0_start, rd_start, np.zeros(3), np.array([0,0,1]))
+                        if start_xy is not None:
+                            delta = new_xy[:2] - start_xy[:2]
+                        else:
+                            delta = np.array([0.0, 0.0])
+                    for idx in self._selected_indices:
+                        p[idx, 0] = self._selected_initial_pos[idx][0] + delta[0]
+                        p[idx, 1] = self._selected_initial_pos[idx][1] + delta[1]
+                        p[idx, 2] = self._selected_initial_pos[idx][2]
+                else:
+                    p[i, 0] = new_xy[0]
+                    p[i, 1] = new_xy[1]
+                    p[i, 2] = self._pick_z
         else:
             if (self._drag_plane_p0 is None) or (self._drag_plane_n is None):
                 return
@@ -889,7 +995,13 @@ class AtomScene(QtCore.QObject):
                 return
             if self._clamp_xy:
                 x[2] = 0.0
-            p[i, :] = x
+            # If dragging selected atoms, move all of them
+            if self._selected_indices and hasattr(self, '_selected_initial_pos'):
+                delta = x - self._selected_initial_pos[i]
+                for idx in self._selected_indices:
+                    p[idx] = self._selected_initial_pos[idx] + delta
+            else:
+                p[i, :] = x
 
         self._pos = p
         self._redraw()
@@ -943,6 +1055,93 @@ class AtomScene(QtCore.QObject):
             return
         self._cam_zoom(delta)
         ev.handled = True
+
+    def _update_selection_rect(self):
+        """Update selection rectangle visualization (Line visual)."""
+        if self._selection_start is None or self._selection_end is None:
+            return
+        x0, y0 = self._selection_start
+        x1, y1 = self._selection_end
+        # Ensure proper ordering
+        x_min, x_max = min(x0, x1), max(x0, x1)
+        y_min, y_max = min(y0, y1), max(y0, y1)
+        # Create rectangle vertices (5 points to close the loop)
+        vertices = np.array([
+            [x_min, y_min, 0],
+            [x_max, y_min, 0],
+            [x_max, y_max, 0],
+            [x_min, y_max, 0],
+            [x_min, y_min, 0]
+        ], dtype=np.float32)
+        self.selection_rect.set_data(pos=vertices)
+        self.canvas.update()
+
+    def _finalize_selection(self):
+        """Finalize selection and select atoms within rectangle."""
+        if self._selection_start is None or self._selection_end is None:
+            return
+        x0, y0 = self._selection_start
+        x1, y1 = self._selection_end
+        x_min, x_max = min(x0, x1), max(x0, x1)
+        y_min, y_max = min(y0, y1), max(y0, y1)
+
+        # Find atoms within rectangle
+        selected = set()
+        for i in range(len(self._pos)):
+            x, y = self._pos[i, 0], self._pos[i, 1]
+            if x_min <= x <= x_max and y_min <= y <= y_max:
+                selected.add(i)
+
+        # Update selection
+        self._selected_indices = selected
+        self._highlight_selected()
+        self.sig_selection_changed.emit(selected)
+
+        self._selection_start = None
+        self._selection_end = None
+
+    def _highlight_selected(self):
+        """Highlight selected atoms by changing their color."""
+        if self._colors is None:
+            return
+        # Restore original colors (only if sizes match)
+        if self._selected_colors_backup is not None and self._selected_colors_backup.shape == self._colors.shape:
+            self._colors[:] = self._selected_colors_backup
+        # Store original colors if first selection or if sizes don't match
+        else:
+            self._selected_colors_backup = self._colors.copy()
+        # Highlight selected atoms
+        for i in self._selected_indices:
+            if i < len(self._colors):
+                self._colors[i] = (1.0, 0.5, 0.0, 1.0)  # Orange highlight
+        self.atom_markers.set_data(self._pos, edge_color=None, face_color=self._colors, size=self._sizes)
+        self.canvas.update()
+
+    def set_selection_mode(self, enabled):
+        """Enable or disable selection mode."""
+        self._selection_mode = enabled
+        # Clear selection when exiting selection mode
+        if not enabled:
+            self.clear_selection()
+
+    def get_selected_indices(self):
+        """Return set of selected atom indices."""
+        return self._selected_indices.copy()
+
+    def set_selected_indices(self, indices):
+        """Set selected atom indices."""
+        self._selected_indices = set(indices)
+        self._highlight_selected()
+        self.sig_selection_changed.emit(self._selected_indices)
+
+    def clear_selection(self):
+        """Clear selection and restore original colors."""
+        self._selected_indices.clear()
+        if self._selected_colors_backup is not None:
+            self._colors[:] = self._selected_colors_backup
+            self.atom_markers.set_data(self._pos, edge_color=None, face_color=self._colors, size=self._sizes)
+        self.canvas.update()
+        self.sig_selection_changed.emit(set())
 
 
 def normalize_scalar_field(vals, vmin=None, vmax=None, symmetric=False):

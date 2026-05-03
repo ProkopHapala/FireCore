@@ -28,6 +28,7 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         
         self.initUI()
         self.scene.sig_atom_dragged.connect(self.on_atom_dragged)
+        self.scene.sig_rmb_remove.connect(self.on_atom_remove)
         self.refresh_view()
 
     def initUI(self):
@@ -84,7 +85,7 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         
         # Mode Selection
         self.mode_combo = QtWidgets.QComboBox()
-        self.mode_combo.addItems(["Ring", "Atom", "pi"])
+        self.mode_combo.addItems(["Ring", "Atom", "pi", "Select"])
         self.mode_combo.currentTextChanged.connect(self.set_edit_mode)
         toolbar.addWidget(QtWidgets.QLabel(" Mode: "))
         toolbar.addWidget(self.mode_combo)
@@ -147,11 +148,24 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         # --- Connect Mouse Events ---
         self.scene.canvas.events.mouse_press.connect(self.on_mouse_press)
         self.scene.canvas.events.mouse_move.connect(self.on_mouse_move)
-        self.scene.canvas.events.draw.connect(self.on_draw)
+        self.scene.sig_selection_changed.connect(self.on_selection_changed)
+
+        # Copy/paste buffer
+        self.copied_atoms = None  # (enames, apos) tuple
+
+        # Keyboard shortcuts
+        self.scene.canvas.events.key_press.connect(self.on_key_press)
 
     def set_edit_mode(self, mode):
         self.edit_mode = mode
         print(f"Edit Mode: {mode}")
+        # Enable/disable selection mode in Vispy scene
+        if mode == 'Select':
+            self.scene.set_selection_mode(True)
+            self.statusBar().showMessage("Selection Mode: RMB drag to select | Delete: Remove | Ctrl-C: Copy | Ctrl-V: Paste | LMB: Drag selected")
+        else:
+            self.scene.set_selection_mode(False)
+            self.statusBar().showMessage("LMB: Add/Toggle | RMB: Remove | Middle-Click: Toggle H | Scroll: Zoom")
 
     def set_atom_type(self, atype):
         self.cur_atom_type = atype
@@ -161,6 +175,83 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         self.label_mode = mode
         print(f"Label Mode: {mode}")
         self.refresh_view()
+
+    def on_selection_changed(self, selected_indices):
+        """Handle selection change from Vispy scene."""
+        n_selected = len(selected_indices)
+        if n_selected > 0:
+            self.statusBar().showMessage(f"Selected {n_selected} atoms | Delete: Remove | Ctrl-C: Copy | Ctrl-V: Paste | LMB: Drag selected")
+        elif self.edit_mode == 'Select':
+            self.statusBar().showMessage("Selection Mode: RMB drag to select | Delete: Remove | Ctrl-C: Copy | Ctrl-V: Paste | LMB: Drag selected")
+
+    def on_key_press(self, event):
+        """Handle keyboard shortcuts."""
+        selected = self.scene.get_selected_indices()
+        if not selected:
+            return
+
+        # Check for Control modifier (Vispy uses tuple of strings)
+        ctrl_pressed = 'Control' in event.modifiers if isinstance(event.modifiers, (tuple, list)) else False
+
+        # Delete key - remove selected atoms
+        if event.key == 'Delete':
+            self.delete_selected_atoms()
+        # Ctrl-C - copy selected atoms
+        elif event.key == 'C' and ctrl_pressed:
+            self.copy_selected_atoms()
+        # Ctrl-V - paste copied atoms
+        elif event.key == 'V' and ctrl_pressed:
+            self.paste_copied_atoms()
+
+    def delete_selected_atoms(self):
+        """Delete currently selected atoms."""
+        selected = list(self.scene.get_selected_indices())
+        if not selected:
+            return
+        # Sort in descending order to avoid index issues
+        selected.sort(reverse=True)
+        for idx in selected:
+            self.backend._rebuild_after_delete([idx])
+        self.backend.recalc_bonds()
+        self.scene.clear_selection()
+        self.refresh_view()
+        print(f"Deleted {len(selected)} atoms")
+
+    def copy_selected_atoms(self):
+        """Copy currently selected atoms to clipboard."""
+        selected = list(self.scene.get_selected_indices())
+        if not selected:
+            return
+        enames = [self.backend.sys.enames[i] for i in selected]
+        apos = [self.backend.sys.apos[i].copy() for i in selected]
+        self.copied_atoms = (enames, apos)
+        print(f"Copied {len(selected)} atoms")
+
+    def paste_copied_atoms(self):
+        """Paste copied atoms at original position (duplicate in place)."""
+        if self.copied_atoms is None:
+            print("No atoms copied")
+            return
+        enames, apos_orig = self.copied_atoms
+        # Track indices of newly added atoms
+        new_indices = []
+        # Add atoms at original positions using _append_atom to avoid adjust_h()
+        for ename, pos in zip(enames, apos_orig):
+            idx = self.backend._append_atom(
+                pos=list(pos.copy()),
+                ename=ename,
+                pin=None,
+                parent=None,
+                subtype=f"{ename}_sp2"
+            )
+            new_indices.append(idx)
+        self.backend.recalc_bonds()
+        # Don't call adjust_h() - it adds H atoms and shifts indices
+        # Refresh view first to update scene arrays
+        self.refresh_view()
+        # Select the newly pasted atoms
+        self.scene.set_selected_indices(new_indices)
+        print(f"Pasted {len(enames)} atoms at original positions")
 
     def on_mouse_move(self, event):
         """Update cursor cross position on mouse move."""
@@ -176,18 +267,57 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
                 size=10
             )
 
-    def on_draw(self, event):
-        """Re-render labels when canvas is redrawn (zoom/pan)."""
-        # Only re-render if showing atom labels (not bond distances)
-        atom_label_modes = ['Element+Index', 'Atomic Type', 'Pi Orbitals', 'Z-Height', 'Charge']
-        if self.label_mode in atom_label_modes:
-            self.refresh_view()
+    def on_atom_remove(self, idx):
+        """Remove atom at index and refresh view."""
+        # Find which node_key corresponds to this atom index
+        node_to_remove = None
+        for nk, ia in list(self.backend.node_to_atom.items()):
+            if ia == idx:
+                node_to_remove = nk
+                break
+        if node_to_remove:
+            self.backend.remove_atom(node_to_remove)
+        else:
+            # Atom not pinned to grid (e.g. H) - remove by index
+            # Use backend's _rebuild_after_delete to keep tracking arrays consistent
+            self.backend._rebuild_after_delete([idx])
+            self.backend.recalc_bonds()
+        self.refresh_view()
 
     def on_mouse_press(self, event):
-        # Guard: If Vispy's AtomScene already picked an atom for dragging, skip grid editing
-        if self.scene._pick_idx >= 0:
-            print(f"DEBUG: Mouse press ignored (picked atom {self.scene._pick_idx})")
+        # In Select mode, let Vispy handle everything (RMB selection, LMB drag)
+        if self.edit_mode == 'Select':
             return
+
+        # If selection mode and atoms selected, skip normal LMB handling
+        selected = self.scene.get_selected_indices()
+        if self.edit_mode == 'Select' and selected and event.button == 1:
+            # Let Vispy handle dragging of selected atoms
+            return
+
+        # If atom picked and LMB in atom/pi mode, handle atom change instead of drag
+        picked = self.scene._pick_idx
+        if picked >= 0 and event.button == 1:
+            if self.edit_mode == 'Atom':
+                # Change atom type at picked position
+                self.backend.sys.enames[picked] = self.cur_atom_type
+                self.backend.sys.atypes[picked] = elements.ELEMENT_DICT[self.cur_atom_type][0]
+                self.backend.atom_subtype[picked] = self.backend._get_element_default_subtype(self.cur_atom_type)
+                self.backend.recalc_bonds()
+                self.backend.adjust_h()
+                self.refresh_view()
+                return
+            elif self.edit_mode == 'pi':
+                # Cycle pi orbitals on picked atom
+                subtype = self.backend.atom_subtype[picked]
+                current_npi = self.backend._get_npi_from_subtype(subtype)
+                new_npi = (current_npi + 1) % 3
+                e = self.backend.sys.enames[picked]
+                sp_map = {0: 'sp3', 1: 'sp2', 2: 'sp'}
+                self.backend.atom_subtype[picked] = f"{e}_{sp_map.get(new_npi, 'sp2')}"
+                self.backend.adjust_h()
+                self.refresh_view()
+                return
 
         if event.button == 1: # LMB
             self.handle_click(event.pos, action='add')
@@ -198,11 +328,11 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
 
     def on_atom_dragged(self, idx, pos):
         """Update backend atom position when dragged in the UI."""
-        pin = self.backend.atom_pin[idx]
-        if pin is not None:
-            self.backend.sys.apos[idx, 0] = pos[0]
-            self.backend.sys.apos[idx, 1] = pos[1]
-            self.update_bond_labels()
+        # Update ALL atoms, not just pinned ones
+        self.backend.sys.apos[idx, 0] = pos[0]
+        self.backend.sys.apos[idx, 1] = pos[1]
+        self.backend.sys.apos[idx, 2] = pos[2]
+        self.update_bond_labels()
 
     def reset_offsets(self):
         self.backend.snap_atoms_to_grid()
@@ -403,11 +533,13 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
                 # Show number of pi orbitals
                 lbl_pos = []
                 lbl_texts = []
-                for i, subtype in enumerate(self.backend.atom_subtype):
-                    if sys.enames[i] != 'H':
-                        lbl_pos.append(pos[i])
-                        npi = self.backend._get_npi_from_subtype(subtype)
-                        lbl_texts.append(str(npi))
+                for i in range(len(sys.enames)):
+                    if i < len(self.backend.atom_subtype):
+                        subtype = self.backend.atom_subtype[i]
+                        if sys.enames[i] != 'H':
+                            lbl_pos.append(pos[i])
+                            npi = self.backend._get_npi_from_subtype(subtype)
+                            lbl_texts.append(str(npi))
                 if lbl_pos:
                     self.scene.text_labels.text = lbl_texts
                     self.scene.text_labels.pos = np.array(lbl_pos, dtype=np.float32)

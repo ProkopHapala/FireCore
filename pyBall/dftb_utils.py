@@ -270,8 +270,14 @@ def run_pbc(apos, enames, lvs, basis_path=DEFAULT_SK_PATH, do_relax=False, fixed
         os.chdir(workdir)
     try:
         makeDFTBjob_pbc(enames=enames, apos=apos, lvs=lvs, fname='dftb_in.hsd', basis_path=basis_path, nk=nk, k_shift=k_shift, opt=do_relax, params=params, Temperature=Temperature, MixingParameter=MixingParameter, MaxScc=MaxScc, SCCTolerance=SCCTolerance, fixed_atoms=fixed_atoms)
-        ierr = os.system(f'{dftb_exe} > OUT')
-        assert ierr == 0, f"DFTB+ command failed with code {ierr}: {dftb_exe}"
+        # Capture both stdout and stderr
+        ierr = os.system(f'{dftb_exe} > OUT 2> ERR')
+        if ierr != 0:
+            with open('ERR', 'r') as f:
+                err_msg = f.read()
+            with open('OUT', 'r') as f:
+                out_msg = f.read()
+            raise RuntimeError(f"DFTB+ command failed with code {ierr}\n=== STDERR ===\n{err_msg}\n=== STDOUT (last 50 lines) ===\n{out_msg[-5000:]}")
         E = parse_energy_out('OUT', allow_unconverged=allow_unconverged_energy)
         apos_out = read_relaxed_geometry(apos, do_relax=do_relax)
         forces = parse_forces('detailed.out', len(enames)) if os.path.exists('detailed.out') else None
