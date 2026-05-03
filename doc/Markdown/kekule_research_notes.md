@@ -474,7 +474,246 @@ The GUI must enforce that each user interaction triggers **exactly one** backend
 UI Event  →  exactly 1 backend.method()  →  GUI.render(backend.sys)
 ```
 
-If the user wants H atoms: they press "Adjust H" once, it adds them, they stay forever until explicitly removed. If the user wants bonds recalculated: they press "Recalc Bonds" once. If they want to relax: "Relax" button, positions update in-place.
+If the user wants H atoms: they press "Adjust H" once, it adds them, they stay forever until explicitly removed. If the user want bonds recalculated: they press "Recalc Bonds" once. If they want to relax: "Relax" button, positions update in-place.
 
 ---
 
+## 9. Development Report: Kekule Explorer GUI Implementation (May 3, 2026)
+
+### 9.1 Complete Feature Overview
+
+The Kekule Explorer GUI provides an interactive environment for building, editing, and visualizing Kekule structures (aromatic systems) on a hexagonal honeycomb grid. The application consists of a main Vispy canvas for rendering and a toolbar with controls for all operations.
+
+### 9.2 Edit Modes
+
+The application supports four edit modes, selectable via the "Mode" dropdown:
+
+#### 9.2.1 Ring Mode
+- **Purpose**: Add or remove benzene rings on the hexagonal grid
+- **LMB**: Click on a hexagon center to toggle (add/remove) a benzene ring at that position
+- **RMB**: Remove the ring at the clicked hexagon center
+- **Behavior**: When a ring is added, 6 carbon atoms are automatically placed at the hexagon vertices. If a vertex already has an atom, it is shared between rings.
+
+#### 9.2.2 Atom Mode
+- **Purpose**: Add, change, or remove individual atoms on grid nodes
+- **Atom Selection**: Choose element type (C, N, O) via "Atom" dropdown
+- **LMB on empty node**: Place atom of selected type at the nearest grid node
+- **LMB on existing atom**: Change atom type to currently selected type
+- **RMB on atom**: Remove the atom from that grid node
+- **Behavior**: Atoms are pinned to grid nodes. When placed, they automatically snap to the ideal honeycomb lattice positions.
+
+#### 9.2.3 Pi Mode
+- **Purpose**: Modify the pi-orbital count (valence) of atoms to study different hybridization states
+- **LMB on atom**: Cycle through pi-orbital states (0 → 1 → 2 → 0)
+- **Mapping**:
+  - 0 pi orbitals → sp3 hybridization (tetrahedral)
+  - 1 pi orbital → sp2 hybridization (trigonal planar)
+  - 2 pi orbitals → sp hybridization (linear)
+- **Effect**: Changes the number of hydrogen atoms automatically added during passivation (via "Adjust H" button)
+
+#### 9.2.4 Select Mode
+- **Purpose**: Select, move, copy, paste, and delete groups of atoms
+- **RMB drag**: Draw selection rectangle to select multiple atoms
+- **LMB on selected atom**: Drag to move selected atoms together
+- **LMB on empty space**: Clear selection
+- **Keyboard shortcuts**:
+  - `Delete`: Remove selected atoms
+  - `Ctrl-C`: Copy selected atoms to clipboard
+  - `Ctrl-V`: Paste copied atoms (duplicates in place)
+- **Behavior**: Selected atoms are highlighted. Operations affect all selected atoms simultaneously.
+
+### 9.3 Mouse Button Actions (Summary)
+
+| Button | Ring Mode | Atom Mode | Pi Mode | Select Mode |
+|--------|-----------|-----------|---------|-------------|
+| **LMB** | Toggle ring at hex center | Place/change atom at node | Cycle pi-orbital count | Drag selected atoms |
+| **RMB** | Remove ring at hex center | Remove atom at node | Remove atom at node | Drag selection rectangle |
+| **Middle/Scroll Click** | Toggle H state on nearest atom | Toggle H state on nearest atom | Toggle H state on nearest atom | Toggle H state on nearest atom |
+| **Scroll Wheel** | Zoom in/out at cursor | Zoom in/out at cursor | Zoom in/out at cursor | Zoom in/out at cursor |
+
+### 9.4 Toolbar Buttons
+
+#### 9.4.1 Mode Controls
+- **Mode dropdown**: Select edit mode (Ring, Atom, pi, Select)
+- **Atom dropdown**: Select element type for Atom mode (C, N, O)
+
+#### 9.4.2 Structure Operations
+- **Relax (DFTB+)**: Run DFTB+ geometry optimization on current structure
+  - Exports structure to DFTB+ input format
+  - Runs relaxation calculation
+  - Imports relaxed positions back into GUI
+  - Updates visualization automatically
+
+- **Snap to Grid**: Reset all pinned atoms to their ideal grid positions
+  - Clears any manual offsets from dragging or relaxation
+  - Useful for restoring perfect honeycomb lattice
+
+- **Adjust H**: Automatically add/remove hydrogen atoms to satisfy valence
+  - For each heavy atom (C, N, O), counts current neighbors
+  - Adds H atoms to reach target valence based on pi-orbital state
+  - Uses VSEPR geometry to determine H placement directions
+  - Persistent: H atoms are added to the topology and saved
+
+- **Recalc Bonds**: Re-compute bond assignments based on current geometry
+  - Finds bonds by distance (Rcut=3.0Å)
+  - Updates bond list in AtomicSystem
+  - Triggers H-bond detection
+
+#### 9.4.3 Visualization Controls
+- **Labels dropdown**: Select label display mode
+  - **Element+Index**: Show element symbol + atom index (e.g., "C0", "N12")
+  - **Atomic Type**: Show hybridization state (sp3, sp2, sp)
+  - **Pi Orbitals**: Show number of pi orbitals (0, 1, 2)
+  - **Z-Height**: Show Z-coordinate (for 3D structures)
+  - **Charge**: Show atomic charge (placeholder, not yet implemented)
+  - **Bond Lengths**: Show bond lengths at bond midpoints (NEW)
+
+- **Bond Colors**: Toggle bond visualization mode (NEW)
+  - When ON: Renders heavy-heavy bonds with color-coded thickness
+  - Blue for short bonds (~1.3Å), red for long bonds (~1.5Å)
+  - Thicker lines (width=5.0) for better visibility
+  - Capping bonds (C-H, N-H, O-H) remain thin gray lines
+
+#### 9.4.4 Export/Import
+- **Show XYZ**: Display current structure in a text dialog
+  - Shows XYZ format in a read-only text edit
+  - Useful for quick inspection
+
+- **Export XYZ**: Save current structure to XYZ file
+  - Opens file dialog to choose save location
+  - Exports all atoms (including H) with current positions
+
+### 9.5 Visual Elements
+
+#### 9.5.1 Atoms
+- Rendered as colored circles (markers) in Vispy
+- Color based on element type (C: gray, N: blue, O: red, H: white)
+- Size proportional to atomic radius
+- Labels can be shown at atom positions based on label mode
+
+#### 9.5.2 Bonds
+- **Heavy-heavy bonds** (C-C, C-N, C-O, N-N, N-O, O-O):
+  - Rendered as gray lines in normal mode
+  - Rendered as colored thick lines in Bond Colors mode
+- **Capping bonds** (C-H, N-H, O-H):
+  - Rendered as thin gray lines (width=1.0)
+  - Not included in bond visualization color scale
+- **Hydrogen bonds** (H-bonds like O-H...N):
+  - Rendered as purple dashed lines (color=(0.8, 0.2, 0.8, 0.5))
+  - Automatically detected by distance and angle criteria
+  - Thickness=1.5
+
+#### 9.5.3 Grid
+- **Guide grid**: Small gray dots at all honeycomb lattice nodes
+- Rendered at z=-0.1 (behind atoms)
+- Helps user see where atoms can be placed
+- Does not affect structure or calculations
+
+#### 9.5.4 Cursor
+- Red crosshair follows mouse position
+- Shows exact world coordinates
+- Helps with precise placement
+
+### 9.6 Backend Integration
+
+The GUI operates on a persistent `AtomicSystem` object via `KekuleBackend`:
+
+#### 9.6.1 Persistent State
+- `sys.apos`: Atom positions (N×3 array)
+- `sys.enames`: Element names (list of strings)
+- `sys.atypes`: Atomic types (list of integers)
+- `sys.bonds`: Bond connectivity (list of index pairs)
+- `atom_pin`: For each atom, the grid node it's pinned to (or None)
+- `atom_parent`: For each H atom, index of parent heavy atom (or None)
+- `atom_subtype`: Chemical subtype string (e.g., "C_sp2", "N_pyridinic")
+
+#### 9.6.2 Data Flow
+- User action → Backend method → State mutation → GUI refresh
+- No implicit side-effects or auto-rebuild
+- Each action is a discrete, well-defined mutation
+- Rendering is a pure read operation on the persistent state
+
+### 9.7 New Functionality Implemented (May 3, 2026)
+
+#### 9.7.1 Bond Visualization Mode
+- **Feature**: Color-scale bond thickness for heavy-heavy bonds based on bond length
+- **Implementation**:
+  - Added toggle button "Bond Colors" in GUI toolbar
+  - Blue-to-red colormap: blue for short bonds (~1.3Å), red for long bonds (~1.5Å)
+  - Thicker lines (width=5.0) for colored bonds
+  - Only renders bonds between heavy atoms; capping bonds excluded
+- **Location**: `KekuleExplorerGUI.py:515-526`
+
+#### 9.7.2 Bond Length Label Mode
+- **Feature**: Display bond lengths as text labels at bond midpoints
+- **Implementation**:
+  - Added "Bond Lengths" option to label mode dropdown
+  - Labels positioned at midpoint of each heavy-heavy bond
+  - Format: 3 decimal places (e.g., "1.420")
+- **Location**: `KekuleExplorerGUI.py:636-648`
+
+### 9.8 Problems Faced & Solutions
+
+#### 9.8.1 Bonds Disappearing on Camera Changes
+- **Problem**: When zooming/panning, CH-bonds and H-bonds disappeared, random lines appeared between grid points
+- **Root Cause**: 
+  - GUI was using `neigh_lines` for CH-bonds and `halo_lines` for H-bonds
+  - Scene's `_redraw()` method also uses these visuals internally for neighbor/halo rendering
+  - Every camera change triggers `_redraw()`, which cleared these visuals with `set_data(np.zeros((0,3)))`
+- **Solution**:
+  - Added dedicated visuals in `VispyUtils.py:62-63`: `ch_bond_lines` and `hbond_lines`
+  - Updated GUI to render CH-bonds to `ch_bond_lines` and H-bonds to `hbond_lines`
+  - These new visuals are NOT touched by `_redraw()`, preventing conflicts
+- **Files Modified**: `VispyUtils.py`, `KekuleExplorerGUI.py`
+
+#### 9.8.2 Normal Bonds Not Showing
+- **Problem**: After fixing CH/H-bond conflicts, normal heavy-heavy bonds stopped rendering
+- **Root Cause**: Bond rendering in `_redraw()` was completely disabled (`bond_lines` always set to zeros)
+- **Solution**: Restored bond rendering in `_redraw()` for normal mode, but kept it disabled when bond viz mode is active (GUI handles colored bonds via `bond_colored_lines`)
+- **Files Modified**: `VispyUtils.py:731-745`
+
+#### 9.8.3 Labels Disappearing on Camera Changes
+- **Problem**: Bond length labels and other text labels disappeared when zooming/panning
+- **Root Cause**: Scene's `_redraw()` has internal label management that overwrites `text_labels` on every render. When `_label_mode == 'none'`, it explicitly hides labels, overriding GUI's label settings
+- **Solution**: Modified `_redraw()` to skip label management when `self.backend is not None` (indicating GUI manages labels externally)
+- **Files Modified**: `VispyUtils.py:787-811`
+
+#### 9.8.4 Vispy Vertex Buffer Size Mismatch
+- **Problem**: `RuntimeError: All attributes must have the same size` when bond viz mode enabled with no bonds
+- **Root Cause**: When switching between bond viz modes, the `bond_colored_lines` visual retained stale color data from previous render, causing size mismatch with empty position buffer
+- **Solution**: Added explicit clearing of `bond_colored_lines` when bond viz mode is active but no bonds exist
+- **Files Modified**: `KekuleExplorerGUI.py:522-526`
+
+#### 9.8.5 TypeError in `_redraw()` with Render Mask
+- **Problem**: `TypeError: 'NoneType' object is not subscriptable` when rendering bonds with render mask
+- **Root Cause**: `_redraw()` tried to use render mask `m` to filter bonds without checking if `m is None`
+- **Solution**: Added check `if m is not None:` before using render mask for bond filtering
+- **Files Modified**: `VispyUtils.py:730-736`
+
+### 9.9 Architecture Insights
+
+#### 9.9.1 Scene vs. GUI Visual Ownership
+- **Lesson**: Scene visuals (`bond_lines`, `neigh_lines`, `halo_lines`) have internal uses and should not be repurposed for GUI-specific rendering
+- **Best Practice**: Add dedicated visuals for GUI-specific rendering that are never touched by scene's internal `_redraw()` logic
+- **Pattern**: When `backend is not None`, GUI manages certain visuals externally; scene should skip those visuals
+
+#### 9.9.2 Camera Change Signal
+- **Decision**: Keep `sig_camera_changed` signal connected to `refresh_view()` for label updates
+- **Rationale**: Labels need to be re-rendered when camera zoom changes to maintain readability
+- **Trade-off**: More frequent refresh calls, but necessary for proper label visibility
+
+### 9.10 Code Changes Summary
+
+**VispyUtils.py**:
+- Line 62-63: Added `ch_bond_lines` and `hbond_lines` visuals
+- Line 72, 79: Added new visuals to z-order and GL state initialization
+- Line 609-610: Clear new visuals in `idx.size == 0` case
+- Line 730-736: Fixed render mask check for bond rendering
+- Line 731-745: Restored bond rendering in `_redraw()`
+- Line 787-811: Skip label management when backend present
+
+**KekuleExplorerGUI.py**:
+- Line 515-526: Bond viz mode with colored bonds (width=5.0)
+- Line 533-537: CH-bonds rendered to `ch_bond_lines`
+- Line 539-548: H-bonds rendered to `hbond_lines`
+- Line 636-648: Bond length label mode implementation

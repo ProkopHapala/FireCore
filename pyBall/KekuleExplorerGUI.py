@@ -27,13 +27,14 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         self.label_mode = 'Element+Index'
         
         self.initUI()
-        self.scene.sig_atom_dragged.connect(self.on_atom_dragged)
+        # Scene now operates directly on backend.sys.apos, no drag signal needed
         self.scene.sig_rmb_remove.connect(self.on_atom_remove)
+        self.scene.sig_camera_changed.connect(self.refresh_view)
         self.refresh_view()
 
     def initUI(self):
         # --- Central Widget (Vispy Scene) ---
-        self.scene = vu.AtomScene(bgcolor=(0.95, 0.95, 0.95))
+        self.scene = vu.AtomScene(bgcolor=(0.95, 0.95, 0.95), backend=self.backend)
         
         # Link axes to view
         self.scene.view.parent = None # Re-parent from central_widget to grid
@@ -126,10 +127,19 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
 
         # Label Mode Selection
         self.label_combo = QtWidgets.QComboBox()
-        self.label_combo.addItems(["Element+Index", "Atomic Type", "Pi Orbitals", "Z-Height", "Charge"])
+        self.label_combo.addItems(["Element+Index", "Atomic Type", "Pi Orbitals", "Z-Height", "Charge", "Bond Lengths"])
         self.label_combo.currentTextChanged.connect(self.set_label_mode)
         toolbar.addWidget(QtWidgets.QLabel(" Labels: "))
         toolbar.addWidget(self.label_combo)
+
+        toolbar.addSeparator()
+
+        # Bond Visualization Mode
+        self.bond_viz_mode = False
+        bond_viz_btn = QtWidgets.QPushButton("Bond Colors")
+        bond_viz_btn.setCheckable(True)
+        bond_viz_btn.clicked.connect(self.toggle_bond_viz)
+        toolbar.addWidget(bond_viz_btn)
 
         toolbar.addSeparator()
 
@@ -172,8 +182,13 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         print(f"Atom Type: {atype}")
 
     def set_label_mode(self, mode):
+        """Set label display mode."""
         self.label_mode = mode
-        print(f"Label Mode: {mode}")
+        self.refresh_view()
+
+    def toggle_bond_viz(self):
+        """Toggle bond color visualization mode."""
+        self.bond_viz_mode = not self.bond_viz_mode
         self.refresh_view()
 
     def on_selection_changed(self, selected_indices):
@@ -326,14 +341,6 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         elif event.button == 3: # Middle / Scroll click
             self.handle_click(event.pos, action='toggle_h')
 
-    def on_atom_dragged(self, idx, pos):
-        """Update backend atom position when dragged in the UI."""
-        # Update ALL atoms, not just pinned ones
-        self.backend.sys.apos[idx, 0] = pos[0]
-        self.backend.sys.apos[idx, 1] = pos[1]
-        self.backend.sys.apos[idx, 2] = pos[2]
-        self.update_bond_labels()
-
     def reset_offsets(self):
         self.backend.snap_atoms_to_grid()
         self.refresh_view()
@@ -472,13 +479,62 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
                 else:
                     bonds_h.append(b)
             
-            self.scene.set_data(pos, colors=colors, sizes=sizes, bonds=bonds_heavy)
+            # Bond color visualization mode
+            if self.bond_viz_mode and bonds_heavy:
+                # Calculate bond lengths and colorscale
+                bond_lengths = []
+                for b in bonds_heavy:
+                    ia, ja = b
+                    p1, p2 = pos[ia], pos[ja]
+                    d = np.linalg.norm(p1 - p2)
+                    bond_lengths.append(d)
+
+                bond_lengths = np.array(bond_lengths)
+                vmin, vmax = bond_lengths.min(), bond_lengths.max()
+
+                # Create colored bond segments
+                bond_segs = []
+                bond_colors = []
+                for i, b in enumerate(bonds_heavy):
+                    ia, ja = b
+                    p1, p2 = pos[ia], pos[ja]
+                    bond_segs.append(p1)
+                    bond_segs.append(p2)
+
+                    # Colorscale: blue (short) -> red (long)
+                    if abs(vmax - vmin) < 1e-4:
+                        f = 0.5
+                    else:
+                        f = (bond_lengths[i] - vmin) / (vmax - vmin)
+                    # Blue to red colormap
+                    color = (f, 0.0, 1.0 - f, 0.8)
+                    bond_colors.append(color)
+                    bond_colors.append(color)
+
+                bond_segs = np.array(bond_segs, dtype=np.float32)
+                bond_colors = np.array(bond_colors, dtype=np.float32)
+                self.scene._line_set("bonds-colored", self.scene.bond_colored_lines, bond_segs, color=bond_colors, width=5.0)
+                self.scene.bond_colored_lines.visible = True
+                self.scene.bond_lines.visible = False
+
+                # Don't pass bonds to set_data since we're rendering them separately
+                self.scene.set_data(pos, colors=colors, sizes=sizes, bonds=None)
+            elif self.bond_viz_mode:
+                # Bond viz mode but no bonds - hide both bond visuals
+                self.scene.bond_colored_lines.visible = False
+                self.scene.bond_lines.visible = False
+                self.scene.set_data(pos, colors=colors, sizes=sizes, bonds=None)
+            else:
+                # Normal bond rendering - use standard bond_lines
+                self.scene.bond_colored_lines.visible = False
+                self.scene.bond_lines.visible = True
+                self.scene.set_data(pos, colors=colors, sizes=sizes, bonds=bonds_heavy)
             
             if bonds_h:
                 h_segs = pos[np.array(bonds_h)].reshape(-1, 3)
-                self.scene._line_set("CH-bonds", self.scene.neigh_lines, h_segs, color=(0.4, 0.4, 0.4, 0.6), width=1.0)
+                self.scene._line_set("CH-bonds", self.scene.ch_bond_lines, h_segs, color=(0.4, 0.4, 0.4, 0.6), width=1.0)
             else:
-                self.scene.neigh_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+                self.scene.ch_bond_lines.set_data(np.zeros((0, 3), dtype=np.float32))
 
             hbonds = sys.find_hbonds(bPrint=False)
             if hbonds:
@@ -487,9 +543,9 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
                     hb_segs.append(pos[h])
                     hb_segs.append(pos[a])
                 hb_segs = np.array(hb_segs, dtype=np.float32)
-                self.scene._line_set("H-bonds", self.scene.halo_lines, hb_segs, color=(0.8, 0.2, 0.8, 0.5), width=1.5)
+                self.scene._line_set("H-bonds", self.scene.hbond_lines, hb_segs, color=(0.8, 0.2, 0.8, 0.5), width=1.5)
             else:
-                self.scene.halo_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+                self.scene.hbond_lines.set_data(np.zeros((0, 3), dtype=np.float32))
 
             # Labels based on label_mode
             if self.label_mode == 'Element+Index':
@@ -577,35 +633,24 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
                     self.scene.text_labels.visible = True
                 else:
                     self.scene.text_labels.visible = False
-            else:
-                # Default: show bond distances
+            elif self.label_mode == 'Bond Lengths':
+                # Show bond distances for heavy-heavy bonds
                 if len(bonds_heavy) > 0:
-                    bls = []
                     lbl_pos = []
                     lbl_texts = []
-                    lbl_colors = []
                     for b in bonds_heavy:
                         ia, ja = b
                         p1, p2 = pos[ia], pos[ja]
                         d = np.linalg.norm(p1 - p2)
-                        bls.append(d)
                         lbl_pos.append((p1 + p2) * 0.5)
                         lbl_texts.append(f"{d:.3f}")
-                    
-                    bls = np.array(bls)
-                    vmin, vmax = bls.min(), bls.max()
-                    if abs(vmax - vmin) < 1e-4:
-                        f = np.zeros_like(bls)
+                    if lbl_texts:
+                        self.scene.text_labels.text = lbl_texts
+                        self.scene.text_labels.pos = np.array(lbl_pos, dtype=np.float32)
+                        self.scene.text_labels.color = np.array([(0, 0, 0, 1)] * len(lbl_texts), dtype=np.float32)
+                        self.scene.text_labels.visible = True
                     else:
-                        f = (bls - vmin) / (vmax - vmin)
-                    
-                    for fi in f:
-                        lbl_colors.append((fi, 0.5 * (1-fi), 1.0 - fi, 1.0))
-                    
-                    self.scene.text_labels.text = lbl_texts
-                    self.scene.text_labels.pos = np.array(lbl_pos, dtype=np.float32)
-                    self.scene.text_labels.color = np.array(lbl_colors, dtype=np.float32)
-                    self.scene.text_labels.visible = True
+                        self.scene.text_labels.visible = False
                 else:
                     self.scene.text_labels.visible = False
         else:

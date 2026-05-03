@@ -24,13 +24,14 @@ class AtomScene(QtCore.QObject):
     """
 
     sig_atom_picked = QtCore.pyqtSignal(int)
-    sig_atom_dragged = QtCore.pyqtSignal(int, object)  # idx, new_pos3
     sig_drag_state = QtCore.pyqtSignal(int, int, object)  # active(0/1), idx, pos3
     sig_rmb_remove = QtCore.pyqtSignal(int)  # idx to remove
     sig_selection_changed = QtCore.pyqtSignal(object)  # set of selected indices
+    sig_camera_changed = QtCore.pyqtSignal()  # camera changed (zoom/pan/rotate)
 
-    def __init__(self, *, bgcolor='white'):
+    def __init__(self, *, bgcolor='white', backend=None):
         super().__init__(parent=None)
+        self.backend = backend  # Reference to backend for authoritative geometry
 
         self.canvas = scene.SceneCanvas(keys='interactive', bgcolor=bgcolor, show=False)
         self.view = self.canvas.central_widget.add_view()
@@ -57,6 +58,9 @@ class AtomScene(QtCore.QObject):
         self.dpos_lines = visuals.Line(parent=self.view.scene, color=(0.9, 0.0, 0.0, 0.75), width=1.6, antialias=True, method='gl')
         self.dpos_neigh_lines = visuals.Line(parent=self.view.scene, color=(0.2, 0.2, 1.0, 0.75), width=1.6, antialias=True, method='gl')
         self.bond_lines = visuals.Line(parent=self.view.scene, color='gray', width=1.5, antialias=True, method='gl')
+        self.bond_colored_lines = visuals.Line(parent=self.view.scene, color='gray', width=3.0, antialias=True, method='gl')
+        self.ch_bond_lines = visuals.Line(parent=self.view.scene, color=(0.4, 0.4, 0.4, 0.6), width=1.0, antialias=True, method='gl')
+        self.hbond_lines = visuals.Line(parent=self.view.scene, color=(0.8, 0.2, 0.8, 0.5), width=1.5, antialias=True, method='gl')
         self.force_lines = visuals.Line(parent=self.view.scene, color=(1, 0, 0, 0.8), width=2.0, antialias=True, method='gl')
         self.atom_markers = visuals.Markers(parent=self.view.scene)
         self.axes = visuals.XYZAxis(parent=self.view.scene)
@@ -65,14 +69,14 @@ class AtomScene(QtCore.QObject):
         self.selection_rect = None
 
         # Enforce z-order when supported
-        for o, v in enumerate((self.radius_markers, self.bbox_lines, self.inbox_lines, self.halo_lines, self.neigh_lines, self.port_lines, self.port_target_lines, self.dpos_lines, self.dpos_neigh_lines, self.bond_lines, self.force_lines, self.atom_markers, self.axes, self.text_labels)):
+        for o, v in enumerate((self.radius_markers, self.bbox_lines, self.inbox_lines, self.halo_lines, self.neigh_lines, self.port_lines, self.port_target_lines, self.dpos_lines, self.dpos_neigh_lines, self.bond_lines, self.bond_colored_lines, self.ch_bond_lines, self.hbond_lines, self.force_lines, self.atom_markers, self.axes, self.text_labels)):
             if hasattr(v, 'order'):
                 v.order = int(o)
 
         # GL state: radius translucent and never blocks other overlays
         try:
             self.radius_markers.set_gl_state('translucent', depth_test=False)
-            for v in (self.bbox_lines, self.inbox_lines, self.halo_lines, self.neigh_lines, self.port_lines, self.port_target_lines, self.dpos_lines, self.dpos_neigh_lines, self.bond_lines, self.force_lines):
+            for v in (self.bbox_lines, self.inbox_lines, self.halo_lines, self.neigh_lines, self.port_lines, self.port_target_lines, self.dpos_lines, self.dpos_neigh_lines, self.bond_lines, self.bond_colored_lines, self.ch_bond_lines, self.hbond_lines, self.force_lines):
                 v.set_gl_state('translucent', depth_test=False)
             self.atom_markers.set_gl_state('translucent', depth_test=False)
             self.text_labels.set_gl_state('translucent', depth_test=False)
@@ -154,7 +158,12 @@ class AtomScene(QtCore.QObject):
         pos = _as_f32(pos)
         if pos.ndim != 2 or pos.shape[1] != 3:
             raise ValueError(f"AtomScene.set_data: pos.shape={pos.shape} expected (n,3)")
-        self._pos = pos
+        # If backend is provided, use its authoritative positions as reference (not copy)
+        # But keep a copy for rendering to avoid issues during camera changes
+        if self.backend is not None:
+            self._pos = self.backend.sys.apos.astype(np.float32).copy()
+        else:
+            self._pos = pos
         self._render_mask = None
         if (self._fixed is None) or (self._fixed.shape[0] != self._pos.shape[0]):
             self._fixed = np.zeros((self._pos.shape[0],), dtype=bool)
@@ -378,6 +387,7 @@ class AtomScene(QtCore.QObject):
             z = self._cam_zoom_max
         cam.scale_factor = z
         self._redraw()
+        self.sig_camera_changed.emit()
 
     def reset_view(self):
         cam = self.view.camera
@@ -465,6 +475,7 @@ class AtomScene(QtCore.QObject):
         if cam.elevation < -89.0:
             cam.elevation = -89.0
         self._redraw()
+        self.sig_camera_changed.emit()
         self._cam_print('rotate')
 
     def _cam_zoom(self, delta):
@@ -569,12 +580,22 @@ class AtomScene(QtCore.QObject):
         return r0 + rd * t
 
     def _redraw(self):
-        n = self._pos.shape[0]
-        if n == 0:
+        # Don't sync _pos from backend here - causes stale bond index issues during camera changes
+        # The GUI should call refresh_view() when atoms actually change
+        # Camera changes should only re-render, not re-sync data
+
+        if self._pos.size == 0:
+            idx = np.array([], dtype=int)
+        else:
+            m = self._render_mask
+            if m is None:
+                idx = np.arange(self._pos.shape[0], dtype=int)
+            else:
+                idx = np.where(m)[0].astype(int)
+
+        if idx.size == 0:
             self.atom_markers.set_data(np.zeros((0, 3), dtype=np.float32))
             self.radius_markers.set_data(np.zeros((0, 3), dtype=np.float32))
-            self.bond_lines.set_data(np.zeros((0, 3), dtype=np.float32))
-            self.force_lines.set_data(np.zeros((0, 3), dtype=np.float32))
             self.bbox_lines.set_data(np.zeros((0, 3), dtype=np.float32))
             self.inbox_lines.set_data(np.zeros((0, 3), dtype=np.float32))
             self.halo_lines.set_data(np.zeros((0, 3), dtype=np.float32))
@@ -583,26 +604,21 @@ class AtomScene(QtCore.QObject):
             self.port_target_lines.set_data(np.zeros((0, 3), dtype=np.float32))
             self.dpos_lines.set_data(np.zeros((0, 3), dtype=np.float32))
             self.dpos_neigh_lines.set_data(np.zeros((0, 3), dtype=np.float32))
-            # vispy Text requires at least one position; keep a hidden dummy.
-            self.text_labels.text = ['']
-            self.text_labels.pos = np.zeros((1, 3), dtype=np.float32)
-            self.text_labels.visible = False
-            self.canvas.update();
+            self.bond_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+            self.bond_colored_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+            self.ch_bond_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+            self.hbond_lines.set_data(np.zeros((0, 3), dtype=np.float32))
+            self.force_lines.set_data(np.zeros((0, 3), dtype=np.float32))
             return
 
-        if self._render_mask is None:
-            m = np.isfinite(self._pos).all(axis=1)
-            if not np.all(m):
-                raise RuntimeError("AtomScene._redraw: found NaN/Inf in positions but no render_mask set")
-            self._render_mask = np.ones((n,), dtype=bool)
-
-        # Strict rule: never render invalid atoms; if any non-masked atom is invalid -> crash loudly.
-        finite = np.isfinite(self._pos).all(axis=1)
-        if np.any((~finite) & (self._render_mask)):
-            bad = np.where((~finite) & (self._render_mask))[0]
-            raise RuntimeError(f"AtomScene._redraw: invalid pos for render_mask atoms; bad indices (first 10)={bad[:10]}")
-        m = self._render_mask & finite
-        idx = np.where(m)[0]
+        # Colors
+        if self._colors is None:
+            # Default coloring
+            face_color = np.zeros((idx.size, 4), dtype=np.float32)
+            face_color[:, 0] = 0.5
+            face_color[:, 1] = 0.5
+            face_color[:, 2] = 0.5
+            face_color[:, 3] = 1.0
 
         if self._color_by_group:
             # deterministic HSV-like palette per group
@@ -712,11 +728,12 @@ class AtomScene(QtCore.QObject):
         else:
             self.dpos_neigh_lines.set_data(np.zeros((0, 3), dtype=np.float32))
 
-        # Bonds: draw segment pairs
+        # Bonds: draw segment pairs (normal bonds - GUI handles CH/H-bonds separately)
         if (self._bonds is not None) and (self._bonds.size > 0):
             b = self._bonds
-            mb = m[b[:, 0]] & m[b[:, 1]]
-            b = b[mb]
+            if m is not None:
+                mb = m[b[:, 0]] & m[b[:, 1]]
+                b = b[mb]
             if b.size > 0:
                 segs = np.empty((b.shape[0] * 2, 3), dtype=np.float32)
                 segs[0::2] = self._pos[b[:, 0]]
@@ -767,30 +784,31 @@ class AtomScene(QtCore.QObject):
         else:
             self.bbox_lines.set_data(np.zeros((0, 3), dtype=np.float32))
 
-        # Labels
-        if self._label_mode == 'none':
-            self.text_labels.text = ['']
-            self.text_labels.pos = np.zeros((1, 3), dtype=np.float32)
-            self.text_labels.visible = False
-        else:
-            if self._labels_text is None:
-                txt = []
-                for ii in idx:
-                    if self._label_mode == 'global':
-                        txt.append(str(int(ii)))
-                    elif self._label_mode == 'local':
-                        txt.append(str(int(ii % int(self._group_size))))
-                    elif self._label_mode == 'radius':
-                        if self._radius is None:
-                            txt.append('nan')
+        # Labels - only manage internally if no backend (GUI manages labels externally)
+        if self.backend is None:
+            if self._label_mode == 'none':
+                self.text_labels.text = ['']
+                self.text_labels.pos = np.zeros((1, 3), dtype=np.float32)
+                self.text_labels.visible = False
+            else:
+                if self._labels_text is None:
+                    txt = []
+                    for ii in idx:
+                        if self._label_mode == 'global':
+                            txt.append(str(int(ii)))
+                        elif self._label_mode == 'local':
+                            txt.append(str(int(ii % int(self._group_size))))
+                        elif self._label_mode == 'radius':
+                            if self._radius is None:
+                                txt.append('nan')
+                            else:
+                                txt.append(f"{float(self._radius[ii]):.2f}")
                         else:
-                            txt.append(f"{float(self._radius[int(ii)]):.3f}")
-                    else:
-                        txt.append(f"{int(ii//int(self._group_size))},{int(ii%int(self._group_size))}")
-                self._labels_text = txt
-            self.text_labels.text = self._labels_text
-            self.text_labels.pos = (self._pos[idx] + np.array([0.02, 0.02, 0.02], dtype=np.float32)[None, :]).astype(np.float32)
-            self.text_labels.visible = True
+                            txt.append(f"{int(ii//int(self._group_size))},{int(ii%int(self._group_size))}")
+                    self._labels_text = txt
+                self.text_labels.text = self._labels_text
+                self.text_labels.pos = (self._pos[idx] + np.array([0.02, 0.02, 0.02], dtype=np.float32)[None, :]).astype(np.float32)
+                self.text_labels.visible = True
 
         self.canvas.update()
 
@@ -958,7 +976,12 @@ class AtomScene(QtCore.QObject):
         if not self._pick_active:
             return
         i = self._pick_idx
-        p = self._pos.copy()
+
+        # Use authoritative geometry directly if backend is available
+        if self.backend is not None:
+            p = self.backend.sys.apos
+        else:
+            p = self._pos.copy()
 
         if self._pick_mode == '2d':
             # Use ray casting for consistent coordinate handling with axis widgets
@@ -1003,9 +1026,12 @@ class AtomScene(QtCore.QObject):
             else:
                 p[i, :] = x
 
-        self._pos = p
+        # If using backend proxy, update _pos for rendering (but backend is authoritative)
+        if self.backend is not None:
+            self._pos = self.backend.sys.apos.astype(np.float32)
+        else:
+            self._pos = p
         self._redraw()
-        self.sig_atom_dragged.emit(i, p[i].copy())
         ev.handled = True
 
     def _on_mouse_wheel(self, ev):
@@ -1138,8 +1164,13 @@ class AtomScene(QtCore.QObject):
         """Clear selection and restore original colors."""
         self._selected_indices.clear()
         if self._selected_colors_backup is not None:
-            self._colors[:] = self._selected_colors_backup
-            self.atom_markers.set_data(self._pos, edge_color=None, face_color=self._colors, size=self._sizes)
+            # Check shape consistency before restoring (atoms may have been added/removed)
+            if self._selected_colors_backup.shape == self._colors.shape:
+                self._colors[:] = self._selected_colors_backup
+                self.atom_markers.set_data(self._pos, edge_color=None, face_color=self._colors, size=self._sizes)
+            else:
+                # Shape mismatch - refresh colors from backend
+                self._selected_colors_backup = None
         self.canvas.update()
         self.sig_selection_changed.emit(set())
 
