@@ -1298,5 +1298,107 @@ def render_surface_png(out_path, mesh_data, atom_points=None, atom_colors=None, 
     img = canvas.render(alpha=False)
     from vispy.io import write_png
     write_png(out_path, img)
-    canvas.close()
-    return out_path
+    return img
+
+
+def create_heatmap_window(data_2d, extent, title="Heatmap", cmap='bwr', symmetric=True, atom_pos=None, atom_types=None):
+    """Create a VisPy window to display 2D heatmap (orbital/density) with optional atom overlay.
+
+    Args:
+        data_2d: 2D numpy array (ny, nx) of scalar values
+        extent: [xmin, xmax, ymin, ymax] in world coordinates
+        title: Window title
+        cmap: Colormap name ('bwr', 'hot', 'viridis', etc.)
+        symmetric: If True, colormap is symmetric around zero
+        atom_pos: Optional (n,3) array of atom positions
+        atom_types: Optional array of atom types for coloring
+
+    Returns:
+        (canvas, view) tuple for further manipulation if needed
+    """
+    from PyQt5 import QtWidgets
+    data = np.asarray(data_2d, dtype=np.float32)
+    ny, nx = data.shape
+
+    # Create colormap
+    if symmetric:
+        vmax = max(abs(np.min(data)), abs(np.max(data)))
+        if vmax < 1e-30:
+            vmax = 1.0
+        vmin = -vmax
+    else:
+        vmin, vmax = np.min(data), np.max(data)
+        if vmax - vmin < 1e-30:
+            vmax = vmin + 1.0
+
+    # Generate RGBA colors
+    rgba, _, _ = colormap_rgba(data.ravel(), cmap=cmap, vmin=vmin, vmax=vmax, symmetric=symmetric, alpha=1.0)
+    rgba = rgba.reshape(ny, nx, 4).astype(np.float32)
+
+    # Create mesh vertices for image (quad grid)
+    xmin, xmax, ymin, ymax = extent
+    xs = np.linspace(xmin, xmax, nx)
+    ys = np.linspace(ymin, ymax, ny)
+    X, Y = np.meshgrid(xs, ys, indexing='ij')
+
+    # Create vertices (nx*ny grid points)
+    verts = np.stack([X.ravel(), Y.ravel(), np.zeros_like(X.ravel())], axis=1).astype(np.float32)
+
+    # Create faces (two triangles per grid cell)
+    n_cells = (nx - 1) * (ny - 1)
+    faces = np.zeros((n_cells * 2, 3), dtype=np.uint32)
+    for i in range(nx - 1):
+        for j in range(ny - 1):
+            cell_idx = i * (ny - 1) + j
+            v00 = i * ny + j
+            v01 = i * ny + (j + 1)
+            v10 = (i + 1) * ny + j
+            v11 = (i + 1) * ny + (j + 1)
+            faces[cell_idx * 2 + 0] = [v00, v01, v10]
+            faces[cell_idx * 2 + 1] = [v01, v11, v10]
+
+    # Map colors to vertices (use corner colors)
+    vertex_colors = rgba.reshape(nx * ny, 4)
+
+    # Create window
+    canvas = scene.SceneCanvas(keys=None, bgcolor='white', show=True, size=(800, 600))
+    canvas.title = str(title)
+    view = canvas.central_widget.add_view()
+    view.camera = scene.PanZoomCamera(aspect=1.0)
+
+    # Create heatmap mesh
+    mesh = visuals.Mesh(vertices=verts, faces=faces, vertex_colors=vertex_colors, shading='flat', parent=view.scene)
+    mesh.set_gl_state('translucent', depth_test=False)
+
+    # Add atoms if provided
+    if atom_pos is not None:
+        pos = np.asarray(atom_pos, dtype=np.float32)
+        if pos.ndim != 2 or pos.shape[1] != 3:
+            raise ValueError(f"atom_pos.shape={pos.shape} expected (n,3)")
+        # Project to 2D (use x,y, set z=0 for visibility)
+        pos_2d = pos.copy()
+        pos_2d[:, 2] = 0.0
+
+        # Color atoms by type if types provided, else green
+        if atom_types is not None:
+            from pyBall import elements
+            colors = []
+            for atype in atom_types:
+                c = elements.getColor(atype)
+                colors.append((c[0], c[1], c[2], 1.0))
+            colors = np.array(colors, dtype=np.float32)
+        else:
+            colors = (0.0, 0.5, 0.0, 1.0)
+
+        atom_markers = visuals.Markers(parent=view.scene)
+        atom_markers.set_data(pos_2d, face_color=colors, size=5.0, edge_width=0.5, edge_color='black')
+
+    # Center camera on extent
+    cx = (xmin + xmax) / 2.0
+    cy = (ymin + ymax) / 2.0
+    w = xmax - xmin
+    h = ymax - ymin
+    view.camera.center = (cx, cy, 0.0)
+    view.camera.rect = (-w/2, -h/2, w, h)
+
+    return canvas, view

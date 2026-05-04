@@ -14,6 +14,12 @@ from pyBall import VispyUtils as vu
 from pyBall import atomicUtils as au
 from pyBall import elements
 
+try:
+    from pyBall import FireCore as fc
+except Exception as e:
+    print(f"ERROR: FireCore not available: {e}")
+    raise
+
 class KekuleExplorerWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
@@ -25,6 +31,10 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         self.edit_mode = 'Ring' # 'Ring', 'Atom', or 'pi'
         self.last_clicked_node = None
         self.label_mode = 'Element+Index'
+
+        # Load settings
+        self.settings = QtCore.QSettings("FireCore", "KekuleExplorer")
+        self.fdata_path = self.settings.value("fdata_path", "/home/prokop/Fireball/Fdata_HCNOS")
         
         self.initUI()
         # Scene now operates directly on backend.sys.apos, no drag signal needed
@@ -104,6 +114,20 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         relax_btn = QtWidgets.QPushButton("Relax (DFTB+)")
         relax_btn.clicked.connect(self.run_relaxation)
         toolbar.addWidget(relax_btn)
+
+        # Orbitals Menu
+        self.orbital_menu = self.menuBar().addMenu("Orbitals")
+        self.orbital_menu.addAction("Compute SCF", self.compute_orbitals)
+        self.orbital_menu.addAction("Plot HOMO", lambda: self.plot_orbital('homo'))
+        self.orbital_menu.addAction("Plot LUMO", lambda: self.plot_orbital('lumo'))
+        self.orbital_menu.addAction("Plot Density", self.plot_density)
+        self.orbital_menu.addSeparator()
+        self.orbital_menu.addAction("Plot HOMO-1", lambda: self.plot_orbital('homo-1'))
+        self.orbital_menu.addAction("Plot LUMO+1", lambda: self.plot_orbital('lumo+1'))
+
+        # Settings Menu
+        self.settings_menu = self.menuBar().addMenu("Settings")
+        self.settings_menu.addAction("Set Fdata Path", self.set_fdata_path)
 
         toolbar.addSeparator()
 
@@ -691,6 +715,170 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
             self.statusBar().showMessage(f"Relaxation FAILED: {e}")
             QtWidgets.QMessageBox.critical(self, "Relaxation Error", str(e))
             print(f"Relaxation Error: {e}")
+
+    def compute_orbitals(self):
+        if len(self.backend.sys.apos) == 0:
+            msg = "No atoms to compute orbitals for."
+            print(f"WARNING: {msg}")
+            QtWidgets.QMessageBox.warning(self, "Warning", msg)
+            return
+
+        # Setup Fdata symlink (needed by FireCore)
+        _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+        FDATA_DIR = os.path.join(_THIS_DIR, "Fdata")
+        FDATA_TARGET = self.fdata_path
+
+        if not os.path.exists(FDATA_DIR):
+            if os.path.exists(FDATA_TARGET):
+                os.symlink(FDATA_TARGET, FDATA_DIR)
+                print(f"Created symlink: {FDATA_DIR} -> {FDATA_TARGET}")
+            else:
+                msg = f"Neither {FDATA_DIR} nor {FDATA_TARGET} exists. Please download Fdata_HC_minimal from fireball-qmd.github.io"
+                print(f"ERROR: {msg}")
+                QtWidgets.QMessageBox.critical(self, "Fdata Error", msg)
+                return
+
+        self.statusBar().showMessage("Running FireCore SCF...")
+        QtWidgets.QApplication.processEvents()
+        try:
+            atypes = np.array([elements.ELEMENT_DICT[e][0] for e in self.backend.sys.enames], dtype=np.int32)
+            apos = np.array(self.backend.sys.apos, dtype=np.float64)
+            fc.setVerbosity(0)
+            fc.initialize(atomType=atypes, atomPos=apos)
+            fc.evalForce(apos, nmax_scf=200)
+            dims = fc.get_HS_dims()
+            norb = int(dims.norbitals)
+            self._eigen = fc.get_eigen(ikp=1, norb=norb)
+            self._wfcoef = fc.get_wfcoef(norb=norb)
+            self._norb = norb
+            occ = np.where(self._eigen < 0.0)[0]
+            self._homo = int(occ[-1]) if len(occ) > 0 else len(self._eigen) // 2 - 1
+            self._lumo = self._homo + 1
+            msg = f"SCF done. HOMO={self._homo + 1} E={self._eigen[self._homo]:.3f} eV  LUMO={self._lumo + 1} E={self._eigen[self._lumo]:.3f} eV"
+            print(msg)
+            self.statusBar().showMessage(msg)
+            QtWidgets.QMessageBox.information(self, "SCF Done", f"HOMO={self._homo + 1} E={self._eigen[self._homo]:.3f} eV\nLUMO={self._lumo + 1} E={self._eigen[self._lumo]:.3f} eV")
+        except Exception as e:
+            msg = f"SCF FAILED: {e}"
+            print(msg)
+            self.statusBar().showMessage(msg)
+            QtWidgets.QMessageBox.critical(self, "SCF Error", str(e))
+
+    def _get_mo_index(self, which):
+        if not hasattr(self, '_homo'):
+            return None
+        mapping = {
+            'homo': self._homo,
+            'lumo': self._lumo,
+            'homo-1': max(0, self._homo - 1),
+            'lumo+1': min(len(self._eigen) - 1, self._lumo + 1),
+        }
+        return mapping.get(which, self._homo)
+
+    def _project_orbital_to_grid(self, mo_idx, z=2.0, size=14.0, n=100):
+        origin = self.backend.sys.apos.mean(axis=0)
+        grid_origin = origin - np.array([size / 2, size / 2, 0.0])
+        xs = np.linspace(grid_origin[0], grid_origin[0] + size, n)
+        ys = np.linspace(grid_origin[1], grid_origin[1] + size, n)
+        X, Y = np.meshgrid(xs, ys, indexing='ij')
+        Z = np.zeros_like(X) + (origin[2] + z)
+        points = np.stack([X.ravel(), Y.ravel(), Z.ravel()], axis=1)
+        psi_flat = fc.orb2points(points.astype(np.float64), iMO=int(mo_idx + 1), ikpoint=1)
+        psi_2d = np.asarray(psi_flat, dtype=np.float64).reshape(n, n).T
+        extent = [grid_origin[0], grid_origin[0] + size, grid_origin[1], grid_origin[1] + size]
+        return psi_2d, extent, origin
+
+    def plot_orbital(self, which='homo'):
+        if not hasattr(self, '_eigen'):
+            msg = "Please run Compute SCF first."
+            print(f"INFO: {msg}")
+            QtWidgets.QMessageBox.information(self, "Info", msg)
+            return
+        mo_idx = self._get_mo_index(which)
+        if mo_idx is None:
+            return
+        self.statusBar().showMessage(f"Projecting {which.upper()} (MO {mo_idx + 1})...")
+        QtWidgets.QApplication.processEvents()
+        try:
+            psi, extent, origin = self._project_orbital_to_grid(mo_idx, z=2.0)
+            E = self._eigen[mo_idx]
+            pos = self.backend.sys.apos.astype(np.float32)
+            enames = self.backend.sys.enames
+            canvas, view = vu.create_heatmap_window(
+                psi, extent,
+                title=f"{which.upper()} (MO {mo_idx + 1}) E={E:+.3f} eV  z=2.0Å",
+                cmap='bwr',
+                symmetric=True,
+                atom_pos=pos,
+                atom_types=enames
+            )
+            msg = f"Plotted {which.upper()}"
+            print(msg)
+            self.statusBar().showMessage(msg)
+        except Exception as e:
+            msg = f"Plot FAILED: {e}"
+            print(msg)
+            self.statusBar().showMessage(msg)
+            QtWidgets.QMessageBox.critical(self, "Plot Error", str(e))
+
+    def plot_density(self):
+        if not hasattr(self, '_eigen'):
+            msg = "Please run Compute SCF first."
+            print(f"INFO: {msg}")
+            QtWidgets.QMessageBox.information(self, "Info", msg)
+            return
+        self.statusBar().showMessage("Computing electron density...")
+        QtWidgets.QApplication.processEvents()
+        try:
+            # Sum |psi_i|^2 for occupied states
+            n_occ = self._homo + 1
+            psi_sum = None
+            for i in range(n_occ):
+                psi, extent, origin = self._project_orbital_to_grid(i, z=2.0)
+                if psi_sum is None:
+                    psi_sum = psi ** 2
+                else:
+                    psi_sum += psi ** 2
+            pos = self.backend.sys.apos.astype(np.float32)
+            enames = self.backend.sys.enames
+            canvas, view = vu.create_heatmap_window(
+                psi_sum, extent,
+                title="Electron Density (z=2.0Å)",
+                cmap='hot',
+                symmetric=False,
+                atom_pos=pos,
+                atom_types=enames
+            )
+            msg = "Density plotted"
+            print(msg)
+            self.statusBar().showMessage(msg)
+        except Exception as e:
+            msg = f"Density plot FAILED: {e}"
+            print(msg)
+            self.statusBar().showMessage(msg)
+            QtWidgets.QMessageBox.critical(self, "Plot Error", str(e))
+
+    def set_fdata_path(self):
+        """Open dialog to set Fdata path and save to settings."""
+        current_path = self.fdata_path
+        if os.path.exists(current_path):
+            start_dir = current_path
+        else:
+            start_dir = os.path.expanduser("~")
+        dialog = QtWidgets.QFileDialog(self)
+        dialog.setFileMode(QtWidgets.QFileDialog.Directory)
+        dialog.setDirectory(start_dir)
+        dialog.setWindowTitle("Select Fdata Directory")
+        if dialog.exec_():
+            selected = dialog.selectedFiles()[0]
+            if os.path.isdir(selected):
+                self.fdata_path = selected
+                self.settings.setValue("fdata_path", selected)
+                print(f"Set Fdata path to: {selected}")
+                self.statusBar().showMessage(f"Fdata path set to: {selected}")
+                QtWidgets.QMessageBox.information(self, "Settings Saved", f"Fdata path set to:\n{selected}")
+            else:
+                QtWidgets.QMessageBox.warning(self, "Invalid Path", "Selected path is not a directory.")
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)

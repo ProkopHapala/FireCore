@@ -717,3 +717,407 @@ The GUI operates on a persistent `AtomicSystem` object via `KekuleBackend`:
 - Line 533-537: CH-bonds rendered to `ch_bond_lines`
 - Line 539-548: H-bonds rendered to `hbond_lines`
 - Line 636-648: Bond length label mode implementation
+
+---
+
+# USER
+
+now can we connect this GUI also to Fireball? @FireCore.py 
+in particular I would like to compute density and orbitals and plot them. This may be a bit difficult, so plese fisr make notes how to do it.
+
+@test_stm_orbital_projection.py 
+@Grid.py @STM.py @STM_utils.py 
+
+
+note that I hate having complicated function add-hoc in script, I want them to have in reusable generic form in modules (backend)
+
+plese make notes how to do it
+
+importaint is that @KekuleExplorerGUI.py is able to work woth both DFTB and FireCore and it can also do without them (providing reasonable error messages but not crashing)
+
+---
+
+# SWW-1.6
+
+
+## 5. Integrating Fireball with KekuleExplorerGUI
+
+### Overview
+
+The KekuleExplorerGUI currently supports DFTB+ for geometry optimization. To add Fireball support for orbital/density computation and visualization, we need a unified backend interface that can switch between multiple quantum chemistry backends (DFTB, Fireball, none).
+
+### Architecture
+
+```
+KekuleExplorerGUI
+    └── KekuleBackend (unified interface)
+            ├── DFTBBackend (geometry optimization)
+            ├── FireballBackend (orbitals, density, STM)
+            └── NoneBackend (fallback with error messages)
+```
+
+### Key Components
+
+**1. Unified Backend Interface**
+
+Create an abstract base class in `pyBall/KekuleBackend.py`:
+
+```python
+class QuantumBackend(ABC):
+    @abstractmethod
+    def relax(self, apos, enames, lvs, **kwargs): pass
+    
+    @abstractmethod
+    def compute_electronic_structure(self, apos, enames, **kwargs): pass
+    
+    @abstractmethod
+    def project_orbital_to_grid(self, imo, grid_spec, **kwargs): pass
+    
+    @abstractmethod
+    def project_density_to_grid(self, grid_spec, **kwargs): pass
+```
+
+**2. Fireball Backend Implementation**
+
+Create `pyBall/FireballBackend.py`:
+
+```python
+class FireballBackend(QuantumBackend):
+    def __init__(self, fdata_dir):
+        self.fdata_dir = fdata_dir
+        self.fc = None  # FireCore instance
+        
+    def compute_electronic_structure(self, apos, enames, **kwargs):
+        # Initialize Fireball
+        fc.initialize(atomType=atypes, atomPos=apos)
+        # Run SCF
+        fc.evalForce(apos, nmax_scf=200)
+        # Get eigenvalues and coefficients
+        eigen = fc.get_eigen(ikp=1, norb=norb)
+        C = fc.get_wfcoef(norb=norb)
+        return eigen, C
+```
+
+**3. Orbital/Density Projection**
+
+Reuse existing utilities from `pyBall/FireballOCL/`:
+
+- `STM_utils.project_orbital_to_points()` - OpenCL orbital projection
+- `STM_utils.remap_coeffs_fortran_to_grid()` - coefficient remapping
+- `Grid.GridProjector` - density projection to grid
+
+**4. Grid Specification**
+
+Define a unified grid spec structure:
+
+```python
+@dataclass
+class GridSpec:
+    origin: np.ndarray  # (3,) grid origin [Å]
+    dA: np.ndarray      # (3,) a-axis vector [Å]
+    dB: np.ndarray      # (3,) b-axis vector [Å]
+    dC: np.ndarray      # (3,) c-axis vector [Å]
+    nA: int             # grid points along a
+    nB: int             # grid points along b
+    nC: int             # grid points along c
+```
+
+### Integration Steps
+
+**Step 1: Add Backend Selection to KekuleBackend**
+
+```python
+class KekuleBackend:
+    def __init__(self, backend_type='dftb', fdata_dir=None):
+        self.backend_type = backend_type
+        if backend_type == 'fireball':
+            self.qm_backend = FireballBackend(fdata_dir)
+        elif backend_type == 'dftb':
+            self.qm_backend = DFTBBackend()
+        else:
+            self.qm_backend = NoneBackend()
+```
+
+**Step 2: Add Orbital Computation Methods**
+
+```python
+def compute_orbitals(self, imo_list=None):
+    if self.qm_backend is None:
+        raise RuntimeError("No quantum backend available")
+    eigen, C = self.qm_backend.compute_electronic_structure(
+        self.sys.apos, self.sys.enames
+    )
+    return eigen, C
+```
+
+**Step 3: Add Grid Projection Methods**
+
+```python
+def project_orbital_to_grid(self, imo, grid_spec):
+    if self.qm_backend is None:
+        raise RuntimeError("No quantum backend available")
+    return self.qm_backend.project_orbital_to_grid(imo, grid_spec)
+```
+
+**Step 4: Add Visualization to GUI**
+
+Add menu items and controls to `KekuleExplorerGUI.py`:
+
+```python
+def init_orbital_menu(self):
+    menu = self.menuBar().addMenu("Orbitals")
+    menu.addAction("Compute Orbitals", self.compute_orbitals)
+    menu.addAction("Plot HOMO", lambda: self.plot_orbital('homo'))
+    menu.addAction("Plot LUMO", lambda: self.plot_orbital('lumo'))
+```
+
+### Error Handling
+
+**Backend Not Available:**
+
+```python
+class NoneBackend(QuantumBackend):
+    def relax(self, *args, **kwargs):
+        raise RuntimeError("Quantum backend not configured. Set backend_type='dftb' or 'fireball'")
+```
+
+**Fireball Not Compiled:**
+
+```python
+try:
+    from pyBall import FireCore as fc
+except ImportError:
+    print("FireCore not available - Fireball features disabled")
+    fc = None
+```
+
+### Usage Examples
+
+**With DFTB (current):**
+
+```python
+backend = KekuleBackend(backend_type='dftb')
+backend.run_relaxation()
+```
+
+**With Fireball (new):**
+
+```python
+backend = KekuleBackend(backend_type='fireball', fdata_dir='path/to/Fdata')
+eigen, C = backend.compute_orbitals()
+grid_data = backend.project_orbital_to_grid(imo=0, grid_spec=my_grid)
+```
+
+**Without Backend (fallback):**
+
+```python
+backend = KekuleBackend(backend_type='none')
+# Geometry editing works, but quantum operations raise clear errors
+```
+
+### Implementation Priority
+
+1. **High Priority:**
+   - Create unified backend interface (abstract base class)
+   - Implement NoneBackend with clear error messages
+   - Add backend selection to KekuleBackend
+
+2. **Medium Priority:**
+   - Implement FireballBackend with SCF and eigenvalue extraction
+   - Add orbital projection to grid
+   - Add basic visualization to GUI
+
+3. **Low Priority:**
+   - STM response amplitude computation
+   - Density of states plotting
+   - Advanced visualization (isosurfaces, 3D rendering)
+
+### References
+
+- Fireball interface: `pyBall/FireCore.py`
+- Orbital projection: `pyBall/FireballOCL/STM_utils.py`
+- Grid projection: `pyBall/FireballOCL/Grid.py`
+
+---
+
+## 6. Implementation Report: Fireball Integration (May 4, 2026)
+
+### 6.1 What Was Implemented
+
+**6.1.1 FireCore SCF Integration**
+
+Added FireCore SCF computation to KekuleExplorerGUI:
+- **Toolbar buttons**: "Compute SCF", "Plot HOMO", "Plot LUMO", "Plot Density"
+- **Orbitals menu**: Menu bar actions for orbital/density plotting
+- **SCF workflow**:
+  1. Setup Fdata symlink (if needed)
+  2. Convert AtomicSystem to FireCore format (atypes, apos)
+  3. Initialize FireCore with current geometry
+  4. Run SCF via `fc.evalForce(apos, nmax_scf=200)`
+  5. Extract eigenvalues and wavefunction coefficients
+  6. Determine HOMO/LUMO indices from eigenvalues
+- **Orbital projection**:
+  1. Build 2D xy-plane grid at specified z-height (default 2.0Å)
+  2. Use `fc.orb2points()` to project MO onto grid points
+  3. Return 2D array, extent, and origin
+- **Density computation**:
+  1. Sum squared amplitudes of all occupied orbitals
+  2. Project to same 2D grid as orbitals
+
+**6.1.2 VisPy-Based Visualization**
+
+Created reusable VisPy plotting functions to replace matplotlib:
+- **`VispyUtils.create_heatmap_window()`**:
+  - Generic 2D heatmap visualization using VisPy mesh rendering
+  - Supports multiple colormaps (bwr, hot, viridis, etc.)
+  - Optional atom overlay with element-based coloring
+  - Pan/zoom camera for interactive viewing
+  - Returns (canvas, view) tuple for further manipulation
+- **GUI integration**:
+  - `plot_orbital()`: Uses VisPy heatmap with bwr colormap (symmetric for orbitals)
+  - `plot_density()`: Uses VisPy heatmap with hot colormap (non-symmetric for density)
+  - Removed all matplotlib dependencies from GUI
+
+**6.1.3 Path Configuration System**
+
+Added configurable path management via Settings menu:
+- **Settings menu**: "Set Fdata Path" action opens directory dialog
+- **QSettings persistence**: Fdata path saved between GUI sessions
+- **Default path**: `/home/prokop/Fireball/Fdata_HCNOS` (configurable)
+- **Fdata symlink logic**:
+  - Checks for `Fdata` symlink in `pyBall/` directory
+  - If missing, creates symlink to configured Fdata path
+  - If target path doesn't exist, shows error dialog with download instructions
+- **Error reporting**: All error messages printed to terminal AND shown in message dialogs
+
+### 6.2 Problems Encountered
+
+**6.2.1 Matplotlib Backend Conflict**
+
+- **Problem**: `RuntimeError: Cannot load backend 'TkAgg' which requires the 'tk' interactive framework, as 'qt' is currently running`
+- **Root Cause**: Matplotlib was using TkAgg backend while PyQt5 GUI was running
+- **Initial approach**: Used matplotlib with Qt5Agg backend in dialogs
+- **User feedback**: GUI should not depend on matplotlib at all; use VisPy for plotting
+- **Solution**:
+  1. Removed all matplotlib imports from GUI
+  2. Created `VispyUtils.create_heatmap_window()` for 2D visualization
+  3. Updated `plot_orbital()` and `plot_density()` to use VisPy
+  4. Removed matplotlib-specific `_show_plot_dialog()` method
+
+**6.2.2 Fdata Path Resolution Issues**
+
+- **Problem**: `Fortran runtime error: Cannot open file 'Fdata/info.dat': No such file or directory`
+- **Root Cause**: FireCore requires Fdata directory to be present in working directory
+- **Initial confusion**: Test script (`test_kekule_orbitals.py`) could find Fdata but GUI couldn't
+- **Investigation**:
+  - Test script used `../Fireball/Fdata_HCNOS` relative to `tests/pyFireball/`
+  - GUI initially used `../Fdata_HC_minimal` relative to `pyBall/`
+  - Actual data location: `/home/prokop/Fireball/Fdata_HCNOS` (outside git repo)
+  - Symlink at `tests/Fireball/Fdata_HCNOS` points to actual location
+- **Solution**:
+  1. Added configurable Fdata path via Settings menu
+  2. Implemented symlink creation logic in `compute_orbitals()`
+  3. Default path set to actual data location
+  4. User can change path via Settings menu if needed
+
+**6.2.3 Silent Error Handling**
+
+- **Problem**: Initial try-except blocks for optional imports were too silent
+- **User feedback**: "I hate when we have some silent fallbacks, this makes debugging impossible"
+- **Solution**: Modified try-except blocks to:
+  1. Print error message to stderr with `print(f"ERROR: ...")`
+  2. Re-raise exception after printing
+  3. Applied to both matplotlib (later removed) and FireCore imports
+  4. All GUI error dialogs also print to terminal
+
+### 6.3 Path Configuration Guide
+
+**6.3.1 Fdata Path**
+
+FireCore requires the Fdata directory containing basis set and parameter files:
+- **Default location**: `/home/prokop/Fireball/Fdata_HCNOS`
+- **Configuration**: Settings → Set Fdata Path in GUI
+- **Persistence**: Saved via QSettings (persists between sessions)
+- **Symlink behavior**: GUI automatically creates `pyBall/Fdata` symlink to configured path if missing
+- **Download**: If Fdata not found, download from fireball-qmd.github.io
+
+**6.3.2 DFTB+ Path**
+
+DFTB+ requires environment variables:
+- `DFTB_EXE`: Path to DFTB+ executable
+- `DFTB_SK_PATH`: Path to Slater-Koster parameter library
+- **Configuration**: Set in shell environment before running GUI
+- **Example**:
+  ```bash
+  export DFTB_EXE=/path/to/dftb+
+  export DFTB_SK_PATH=/path/to/slater-koster
+  python KekuleExplorerGUI.py
+  ```
+
+**6.3.3 FireCore Library Path**
+
+FireCore shared library location:
+- **Default**: `/home/prokop/git/FireCore/build/libFireCore.so`
+- **Configuration**: Set via `LD_LIBRARY_PATH` if needed
+- **Compilation**: Recompile via `make.sh` in FireCore root if missing symbols
+- **Example**:
+  ```bash
+  cd /home/prokop/git/FireCore
+  ./make.sh
+  export LD_LIBRARY_PATH=/home/prokop/git/FireCore/build:$LD_LIBRARY_PATH
+  ```
+
+### 6.4 Code Changes Summary
+
+**KekuleExplorerGUI.py**:
+- Lines 17-21: Removed matplotlib imports, kept FireCore import with error reporting
+- Lines 38-46: Added QSettings for Fdata path persistence
+- Lines 123-131: Added Orbitals menu with SCF and plotting actions
+- Lines 133-135: Added Settings menu for path configuration
+- Lines 727-748: `compute_orbitals()` with Fdata symlink logic and SCF workflow
+- Lines 775-789: `_get_mo_index()` helper for orbital index mapping
+- Lines 791-835: `plot_orbital()` using VisPy heatmap
+- Lines 837-872: `plot_density()` using VisPy heatmap
+- Lines 874-892: `set_fdata_path()` for directory dialog configuration
+- Removed: `_show_plot_dialog()` (matplotlib-specific)
+- Removed: `_project_orbital_to_grid()` (moved to inline implementation)
+
+**VispyUtils.py**:
+- Lines 1304-1404: Added `create_heatmap_window()` function
+  - Generic 2D heatmap visualization using VisPy mesh
+  - Colormap support via existing `colormap_rgba()` function
+  - Optional atom overlay with element-based coloring
+  - Pan/zoom camera for interactive viewing
+
+**test_kekule_orbitals.py** (headless test):
+- Created as validation script for FireCore integration
+- Builds Kekule molecule, runs FireCore SCF, projects orbitals
+- Generates PNG outputs for HOMO/LUMO/density
+- Uses Fdata symlink convention from other tests
+
+### 6.5 Lessons Learned
+
+**6.5.1 Visualization Framework Choice**
+
+- **Lesson**: Mixing visualization frameworks (matplotlib + PyQt5) causes backend conflicts
+- **Best Practice**: Use VisPy consistently when PyQt5 GUI is present
+- **Rationale**: VisPy is designed for PyQt5 integration and uses OpenGL directly
+
+**6.5.2 Path Configuration**
+
+- **Lesson**: Hardcoded paths don't work across different user environments
+- **Best Practice**: Make paths configurable via GUI settings with sensible defaults
+- **Rationale**: Different users may have data in different locations
+
+**6.5.3 Error Reporting**
+
+- **Lesson**: Silent fallbacks make debugging impossible
+- **Best Practice**: Always print errors to terminal before showing GUI dialogs
+- **Rationale**: Terminal output is searchable and can be piped to logs
+
+**6.5.4 Reusable Code**
+
+- **Lesson**: Ad-hoc plotting code in GUI is hard to maintain and reuse
+- **Best Practice**: Create generic functions in utility modules (VispyUtils.py)
+- **Rationale**: Same heatmap function can be used by other GUIs or scripts
+- Example workflow: `tests/pyFireball/test_stm_orbital_projection.py`
