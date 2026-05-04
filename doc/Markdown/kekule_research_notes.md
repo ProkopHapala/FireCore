@@ -1030,6 +1030,37 @@ Added configurable path management via Settings menu:
   3. Applied to both matplotlib (later removed) and FireCore imports
   4. All GUI error dialogs also print to terminal
 
+**6.2.4 Density Plotting Broadcasting Error**
+
+- **Problem**: `Density plot FAILED: operands could not be broadcast together with shapes (10000,) (3,)`
+- **Context**: Orbital plotting worked fine with VisPy heatmap, but density plotting failed
+- **Investigation**:
+  - Debug output showed `dens_flat` had correct shape (10000,) from `fc.dens2points()`
+  - Error occurred in `VispyUtils.create_heatmap_window()` during colormap mapping
+  - Orbital used `cmap='bwr'` (MatplotlibColormap) - worked correctly
+  - Density used `cmap='hot'` (VisPy built-in colormap) - failed
+- **Root Cause**: VisPy's built-in 'hot' colormap has a bug where it expects RGB input (shape with 3 components) instead of scalar values, causing numpy broadcasting error
+- **Solution**:
+  1. Changed density plotting to use `cmap='bwr'` instead of `cmap='hot'`
+  2. 'bwr' is a MatplotlibColormap that correctly handles scalar input
+  3. Both orbital and density now use same colormap type for consistency
+- **Note**: The 'hot' colormap bug is a VisPy issue, not a FireCore or data issue
+
+**6.2.5 Grid Indexing and Transpose Confusion**
+
+- **Problem**: Initial confusion about whether to use `indexing='ij'` in meshgrid and `.T` transpose after reshape
+- **Context**: Comparing orbital projection code between test script and GUI
+- **Investigation**:
+  - Test script used `indexing='ij'` and `.T` transpose
+  - GUI code used default indexing (xy) and no transpose
+  - Both produced correct results for orbital plotting
+- **User feedback**: "density projection works the same way as orbital projection, what is the problem then just copy how orbital projection works"
+- **Resolution**:
+  1. Confirmed GUI orbital projection already worked correctly without `indexing='ij'` and `.T`
+  2. Applied same pattern to density projection (no indexing='ij', no transpose)
+  3. Both orbital and density now use identical grid generation code
+- **Best Practice**: Keep orbital and density projection code identical to avoid confusion
+
 ### 6.3 Path Configuration Guide
 
 **6.3.1 Fdata Path**

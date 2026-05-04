@@ -1246,7 +1246,8 @@ def make_grid_mesh_data(xs, ys, zs, colors=None, mask=None):
 def colormap_rgba(vals, cmap='coolwarm', vmin=None, vmax=None, symmetric=False, alpha=1.0):
     t, vmin, vmax = normalize_scalar_field(vals, vmin=vmin, vmax=vmax, symmetric=symmetric)
     cm = Colormap(cmap) if isinstance(cmap, (list, tuple)) else vispy.color.get_colormap(cmap)
-    rgba = np.asarray(cm.map(t.ravel()), dtype=np.float32).reshape(t.shape + (4,))
+    mapped = cm.map(t.ravel())
+    rgba = np.asarray(mapped, dtype=np.float32).reshape(t.shape + (4,))
     rgba[..., 3] = float(alpha)
     return rgba, vmin, vmax
 
@@ -1305,7 +1306,7 @@ def create_heatmap_window(data_2d, extent, title="Heatmap", cmap='bwr', symmetri
     """Create a VisPy window to display 2D heatmap (orbital/density) with optional atom overlay.
 
     Args:
-        data_2d: 2D numpy array (ny, nx) of scalar values
+        data_2d: 2D numpy array (ny, nx) of scalar values where data[i,j] corresponds to (x[j], y[i])
         extent: [xmin, xmax, ymin, ymax] in world coordinates
         title: Window title
         cmap: Colormap name ('bwr', 'hot', 'viridis', etc.)
@@ -1339,7 +1340,7 @@ def create_heatmap_window(data_2d, extent, title="Heatmap", cmap='bwr', symmetri
     xmin, xmax, ymin, ymax = extent
     xs = np.linspace(xmin, xmax, nx)
     ys = np.linspace(ymin, ymax, ny)
-    X, Y = np.meshgrid(xs, ys, indexing='ij')
+    X, Y = np.meshgrid(xs, ys)
 
     # Create vertices (nx*ny grid points)
     verts = np.stack([X.ravel(), Y.ravel(), np.zeros_like(X.ravel())], axis=1).astype(np.float32)
@@ -1373,6 +1374,7 @@ def create_heatmap_window(data_2d, extent, title="Heatmap", cmap='bwr', symmetri
     # Add atoms if provided
     if atom_pos is not None:
         pos = np.asarray(atom_pos, dtype=np.float32)
+        print(f"DEBUG create_heatmap_window atom_pos: pos.shape={pos.shape}, pos.ndim={pos.ndim}")
         if pos.ndim != 2 or pos.shape[1] != 3:
             raise ValueError(f"atom_pos.shape={pos.shape} expected (n,3)")
         # Project to 2D (use x,y, set z=0 for visibility)
@@ -1387,9 +1389,12 @@ def create_heatmap_window(data_2d, extent, title="Heatmap", cmap='bwr', symmetri
                 c = elements.getColor(atype)
                 colors.append((c[0], c[1], c[2], 1.0))
             colors = np.array(colors, dtype=np.float32)
+            print(f"DEBUG create_heatmap_window atom_types: atom_types={atom_types}, colors.shape={colors.shape}")
         else:
             colors = (0.0, 0.5, 0.0, 1.0)
+            print(f"DEBUG create_heatmap_window atom_types: using default colors")
 
+        print(f"DEBUG create_heatmap_window: calling atom_markers.set_data with pos_2d.shape={pos_2d.shape}, face_color type={type(colors)}")
         atom_markers = visuals.Markers(parent=view.scene)
         atom_markers.set_data(pos_2d, face_color=colors, size=5.0, edge_width=0.5, edge_color='black')
 

@@ -71,8 +71,29 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         self.axis_x.axis.tick_color = 'black'
         self.axis_y.axis.tick_color = 'black'
 
-        self.setCentralWidget(self.scene.widget)
+        # --- Main Layout with Side Panel ---
+        main_widget = QtWidgets.QWidget()
+        main_layout = QtWidgets.QHBoxLayout(main_widget)
         
+        # Create side panel
+        side_panel = QtWidgets.QFrame()
+        side_panel.setFrameStyle(QtWidgets.QFrame.StyledPanel)
+        side_panel.setFixedWidth(280)
+        side_layout = QtWidgets.QVBoxLayout(side_panel)
+        
+        # Add sections
+        side_layout.addWidget(self.create_builder_section())
+        side_layout.addWidget(self.create_editor_section())
+        side_layout.addWidget(self.create_dftb_section())
+        side_layout.addWidget(self.create_fireball_section())
+        side_layout.addStretch()
+        
+        # Add to main layout
+        main_layout.addWidget(side_panel)
+        main_layout.addWidget(self.scene.canvas.native)
+        
+        self.setCentralWidget(main_widget)
+
         # Add grid guide markers
         self.grid_markers = scene.visuals.Markers(parent=self.scene.view.scene)
         self.grid_markers.set_gl_state('translucent', depth_test=False)
@@ -91,91 +112,6 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
             size=10
         )
 
-        # --- Sidebar / ToolBar ---
-        toolbar = self.addToolBar("Controls")
-        
-        # Mode Selection
-        self.mode_combo = QtWidgets.QComboBox()
-        self.mode_combo.addItems(["Ring", "Atom", "pi", "Select"])
-        self.mode_combo.currentTextChanged.connect(self.set_edit_mode)
-        toolbar.addWidget(QtWidgets.QLabel(" Mode: "))
-        toolbar.addWidget(self.mode_combo)
-
-        # Atom Selection
-        self.atom_combo = QtWidgets.QComboBox()
-        self.atom_combo.addItems(["C", "N", "O"])
-        self.atom_combo.currentTextChanged.connect(self.set_atom_type)
-        toolbar.addWidget(QtWidgets.QLabel(" Atom: "))
-        toolbar.addWidget(self.atom_combo)
-
-        toolbar.addSeparator()
-
-        # Relaxation Button
-        relax_btn = QtWidgets.QPushButton("Relax (DFTB+)")
-        relax_btn.clicked.connect(self.run_relaxation)
-        toolbar.addWidget(relax_btn)
-
-        # Orbitals Menu
-        self.orbital_menu = self.menuBar().addMenu("Orbitals")
-        self.orbital_menu.addAction("Compute SCF", self.compute_orbitals)
-        self.orbital_menu.addAction("Plot HOMO", lambda: self.plot_orbital('homo'))
-        self.orbital_menu.addAction("Plot LUMO", lambda: self.plot_orbital('lumo'))
-        self.orbital_menu.addAction("Plot Density", self.plot_density)
-        self.orbital_menu.addSeparator()
-        self.orbital_menu.addAction("Plot HOMO-1", lambda: self.plot_orbital('homo-1'))
-        self.orbital_menu.addAction("Plot LUMO+1", lambda: self.plot_orbital('lumo+1'))
-
-        # Settings Menu
-        self.settings_menu = self.menuBar().addMenu("Settings")
-        self.settings_menu.addAction("Set Fdata Path", self.set_fdata_path)
-
-        toolbar.addSeparator()
-
-        # Snap to grid button
-        snap_btn = QtWidgets.QPushButton("Snap to Grid")
-        snap_btn.clicked.connect(self.reset_offsets)
-        toolbar.addWidget(snap_btn)
-
-        toolbar.addSeparator()
-
-        # Manual control buttons
-        h_btn = QtWidgets.QPushButton("Adjust H")
-        h_btn.clicked.connect(self.adjust_h)
-        toolbar.addWidget(h_btn)
-
-        bonds_btn = QtWidgets.QPushButton("Recalc Bonds")
-        bonds_btn.clicked.connect(self.recalc_bonds)
-        toolbar.addWidget(bonds_btn)
-
-        toolbar.addSeparator()
-
-        # Label Mode Selection
-        self.label_combo = QtWidgets.QComboBox()
-        self.label_combo.addItems(["Element+Index", "Atomic Type", "Pi Orbitals", "Z-Height", "Charge", "Bond Lengths"])
-        self.label_combo.currentTextChanged.connect(self.set_label_mode)
-        toolbar.addWidget(QtWidgets.QLabel(" Labels: "))
-        toolbar.addWidget(self.label_combo)
-
-        toolbar.addSeparator()
-
-        # Bond Visualization Mode
-        self.bond_viz_mode = False
-        bond_viz_btn = QtWidgets.QPushButton("Bond Colors")
-        bond_viz_btn.setCheckable(True)
-        bond_viz_btn.clicked.connect(self.toggle_bond_viz)
-        toolbar.addWidget(bond_viz_btn)
-
-        toolbar.addSeparator()
-
-        # XYZ Buttons
-        show_xyz_btn = QtWidgets.QPushButton("Show XYZ")
-        show_xyz_btn.clicked.connect(self.show_xyz)
-        toolbar.addWidget(show_xyz_btn)
-
-        export_xyz_btn = QtWidgets.QPushButton("Export XYZ")
-        export_xyz_btn.clicked.connect(self.export_xyz)
-        toolbar.addWidget(export_xyz_btn)
-
         # Help / Status
         self.statusBar().showMessage("LMB: Add/Toggle | RMB: Remove | Middle-Click: Toggle H | Scroll: Zoom")
 
@@ -189,6 +125,211 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
 
         # Keyboard shortcuts
         self.scene.canvas.events.key_press.connect(self.on_key_press)
+
+        # Create menus
+        self.create_menus()
+
+    def create_builder_section(self):
+        group = QtWidgets.QGroupBox("Builder")
+        layout = QtWidgets.QVBoxLayout()
+        
+        # Mode Selection
+        layout.addWidget(QtWidgets.QLabel("Edit Mode:"))
+        self.mode_combo = QtWidgets.QComboBox()
+        self.mode_combo.addItems(["Ring", "Atom", "pi", "Select"])
+        self.mode_combo.currentTextChanged.connect(self.set_edit_mode)
+        layout.addWidget(self.mode_combo)
+        
+        # Atom Selection
+        layout.addWidget(QtWidgets.QLabel("Atom Type:"))
+        self.atom_combo = QtWidgets.QComboBox()
+        self.atom_combo.addItems(["C", "N", "O"])
+        self.atom_combo.currentTextChanged.connect(self.set_atom_type)
+        layout.addWidget(self.atom_combo)
+        
+        group.setLayout(layout)
+        return group
+
+    def create_editor_section(self):
+        group = QtWidgets.QGroupBox("Editor")
+        layout = QtWidgets.QVBoxLayout()
+        
+        # Structure operations
+        snap_btn = QtWidgets.QPushButton("Snap to Grid")
+        snap_btn.clicked.connect(self.reset_offsets)
+        layout.addWidget(snap_btn)
+        
+        h_btn = QtWidgets.QPushButton("Adjust H")
+        h_btn.clicked.connect(self.adjust_h)
+        layout.addWidget(h_btn)
+        
+        bonds_btn = QtWidgets.QPushButton("Recalc Bonds")
+        bonds_btn.clicked.connect(self.recalc_bonds)
+        layout.addWidget(bonds_btn)
+        
+        layout.addSpacing(10)
+        
+        # Visualization
+        layout.addWidget(QtWidgets.QLabel("Labels:"))
+        self.label_combo = QtWidgets.QComboBox()
+        self.label_combo.addItems(["Element+Index", "Atomic Type", "Pi Orbitals", "Z-Height", "Charge", "Bond Lengths"])
+        self.label_combo.currentTextChanged.connect(self.set_label_mode)
+        layout.addWidget(self.label_combo)
+        
+        self.bond_viz_mode = False
+        bond_viz_btn = QtWidgets.QPushButton("Bond Colors")
+        bond_viz_btn.setCheckable(True)
+        bond_viz_btn.clicked.connect(self.toggle_bond_viz)
+        layout.addWidget(bond_viz_btn)
+        
+        layout.addSpacing(10)
+        
+        # Export
+        show_xyz_btn = QtWidgets.QPushButton("Show XYZ")
+        show_xyz_btn.clicked.connect(self.show_xyz)
+        layout.addWidget(show_xyz_btn)
+        
+        export_xyz_btn = QtWidgets.QPushButton("Export XYZ")
+        export_xyz_btn.clicked.connect(self.export_xyz)
+        layout.addWidget(export_xyz_btn)
+        
+        group.setLayout(layout)
+        return group
+
+    def create_dftb_section(self):
+        group = QtWidgets.QGroupBox("DFTB+")
+        layout = QtWidgets.QVBoxLayout()
+        
+        # Relaxation button
+        relax_btn = QtWidgets.QPushButton("Relax (DFTB+)")
+        relax_btn.clicked.connect(self.run_relaxation)
+        layout.addWidget(relax_btn)
+        
+        # Status label
+        self.dftb_status_label = QtWidgets.QLabel("Status: Ready")
+        self.dftb_status_label.setWordWrap(True)
+        layout.addWidget(self.dftb_status_label)
+        
+        group.setLayout(layout)
+        return group
+
+    def create_fireball_section(self):
+        group = QtWidgets.QGroupBox("Fireball")
+        layout = QtWidgets.QVBoxLayout()
+
+        # Compute SCF
+        scf_btn = QtWidgets.QPushButton("Compute SCF")
+        scf_btn.clicked.connect(self.compute_orbitals)
+        layout.addWidget(scf_btn)
+
+        # Orbital info labels
+        self.orbital_info_label = QtWidgets.QLabel("Orbitals: Not computed")
+        self.orbital_info_label.setWordWrap(True)
+        layout.addWidget(self.orbital_info_label)
+
+        layout.addSpacing(10)
+
+        # Z-height control
+        layout.addWidget(QtWidgets.QLabel("Z-height (Å):"))
+        self.z_height_spinbox = QtWidgets.QDoubleSpinBox()
+        self.z_height_spinbox.setRange(-10.0, 20.0)
+        self.z_height_spinbox.setSingleStep(0.5)
+        self.z_height_spinbox.setValue(2.0)
+        layout.addWidget(self.z_height_spinbox)
+
+        layout.addSpacing(10)
+
+        # Orbital selector
+        layout.addWidget(QtWidgets.QLabel("Orbital Index:"))
+        self.orbital_spinbox = QtWidgets.QSpinBox()
+        self.orbital_spinbox.setRange(0, 999)
+        self.orbital_spinbox.setValue(0)
+        self.orbital_spinbox.setEnabled(False)
+        self.orbital_spinbox.valueChanged.connect(self.update_orbital_energy_label)
+        layout.addWidget(self.orbital_spinbox)
+
+        # Orbital energy label
+        self.orbital_energy_label = QtWidgets.QLabel("E: N/A")
+        layout.addWidget(self.orbital_energy_label)
+
+        # Plot orbital button
+        plot_orb_btn = QtWidgets.QPushButton("Plot Orbital")
+        plot_orb_btn.clicked.connect(self.plot_orbital_from_spinbox)
+        plot_orb_btn.setEnabled(False)
+        self.plot_orb_btn = plot_orb_btn
+        layout.addWidget(plot_orb_btn)
+
+        layout.addSpacing(10)
+
+        # Density plot
+        plot_density_btn = QtWidgets.QPushButton("Plot Density")
+        plot_density_btn.clicked.connect(self.plot_density)
+        plot_density_btn.setEnabled(False)
+        self.plot_density_btn = plot_density_btn
+        layout.addWidget(plot_density_btn)
+
+        layout.addSpacing(10)
+
+        # Fdata path
+        fdata_btn = QtWidgets.QPushButton("Set Fdata Path")
+        fdata_btn.clicked.connect(self.set_fdata_path)
+        layout.addWidget(fdata_btn)
+
+        group.setLayout(layout)
+        return group
+
+    def create_menus(self):
+        # Settings Menu
+        self.settings_menu = self.menuBar().addMenu("Settings")
+        # Fdata path is now in Fireball section, but keep menu for convenience
+        self.settings_menu.addAction("Set Fdata Path", self.set_fdata_path)
+
+    def update_orbital_energy_label(self, value):
+        """Update orbital energy label when spinbox value changes."""
+        if hasattr(self, '_eigen'):
+            idx = int(value)
+            if 0 <= idx < len(self._eigen):
+                self.orbital_energy_label.setText(f"E: {self._eigen[idx]:.3f} eV")
+            else:
+                self.orbital_energy_label.setText("E: Invalid index")
+
+    def plot_orbital_from_spinbox(self):
+        """Plot orbital at the index selected in spinbox."""
+        if not hasattr(self, '_eigen'):
+            msg = "Please run Compute SCF first."
+            print(f"INFO: {msg}")
+            QtWidgets.QMessageBox.information(self, "Info", msg)
+            return
+        mo_idx = self.orbital_spinbox.value()
+        if mo_idx < 0 or mo_idx >= len(self._eigen):
+            msg = f"Invalid orbital index: {mo_idx}"
+            print(f"WARNING: {msg}")
+            QtWidgets.QMessageBox.warning(self, "Warning", msg)
+            return
+        z_height = self.z_height_spinbox.value()
+        self.statusBar().showMessage(f"Projecting MO {mo_idx + 1}...")
+        QtWidgets.QApplication.processEvents()
+        try:
+            psi, extent, origin = self._project_orbital_to_grid(mo_idx, z=z_height)
+            E = self._eigen[mo_idx]
+            pos = self.backend.sys.apos.astype(np.float32)
+            enames = self.backend.sys.enames
+            canvas, view = vu.create_heatmap_window(
+                psi, extent,
+                title=f"MO {mo_idx + 1} E={E:+.3f} eV  z={z_height:.1f}Å",
+                cmap='bwr',
+                symmetric=True,
+                atom_pos=pos,
+                atom_types=enames
+            )
+            msg = f"Plotted MO {mo_idx + 1}"
+            print(msg)
+            self.statusBar().showMessage(msg)
+        except Exception as e:
+            msg = f"Plot FAILED: {e}"
+            print(msg)
+            self.statusBar().showMessage(msg)
+            QtWidgets.QMessageBox.critical(self, "Plot Error", str(e))
 
     def set_edit_mode(self, mode):
         self.edit_mode = mode
@@ -704,15 +845,20 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
                     self.scene.text_labels.pos = np.array(lbl_pos, dtype=np.float32)
 
     def run_relaxation(self):
+        self.dftb_status_label.setText("Status: Relaxing...")
         self.statusBar().showMessage("Relaxing... please wait")
         QtWidgets.QApplication.processEvents()
-        
+
         try:
             E, forces, lvs = self.backend.run_relaxation(workdir='gui_relax')
-            self.statusBar().showMessage(f"Relaxation done. E = {E:.4f} eV")
+            msg = f"Relaxation done. E = {E:.4f} eV"
+            self.statusBar().showMessage(msg)
+            self.dftb_status_label.setText(f"Status: Done\nE = {E:.4f} eV")
             self.refresh_view()
         except Exception as e:
-            self.statusBar().showMessage(f"Relaxation FAILED: {e}")
+            msg = f"Relaxation FAILED: {e}"
+            self.statusBar().showMessage(msg)
+            self.dftb_status_label.setText(f"Status: FAILED\n{e}")
             QtWidgets.QMessageBox.critical(self, "Relaxation Error", str(e))
             print(f"Relaxation Error: {e}")
 
@@ -754,6 +900,29 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
             occ = np.where(self._eigen < 0.0)[0]
             self._homo = int(occ[-1]) if len(occ) > 0 else len(self._eigen) // 2 - 1
             self._lumo = self._homo + 1
+
+            # Calculate total valence electrons
+            valence_dict = {'H': 1, 'C': 4, 'N': 5, 'O': 6}
+            total_electrons = sum([valence_dict.get(e, 0) for e in self.backend.sys.enames])
+            occupied_orbitals = total_electrons // 2
+
+            # Update orbital info label
+            info_text = (f"Total Orbitals: {norb}\n"
+                        f"HOMO: {self._homo + 1} (E={self._eigen[self._homo]:.3f} eV)\n"
+                        f"LUMO: {self._lumo + 1} (E={self._eigen[self._lumo]:.3f} eV)\n"
+                        f"Occupied: {occupied_orbitals} (e-/2)")
+            self.orbital_info_label.setText(info_text)
+
+            # Enable orbital controls
+            self.orbital_spinbox.setEnabled(True)
+            self.orbital_spinbox.setRange(0, norb - 1)
+            self.orbital_spinbox.setValue(self._homo)
+            self.plot_orb_btn.setEnabled(True)
+            self.plot_density_btn.setEnabled(True)
+
+            # Update orbital energy label for current selection
+            self.update_orbital_energy_label(self._homo)
+
             msg = f"SCF done. HOMO={self._homo + 1} E={self._eigen[self._homo]:.3f} eV  LUMO={self._lumo + 1} E={self._eigen[self._lumo]:.3f} eV"
             print(msg)
             self.statusBar().showMessage(msg)
@@ -764,62 +933,35 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
             self.statusBar().showMessage(msg)
             QtWidgets.QMessageBox.critical(self, "SCF Error", str(e))
 
-    def _get_mo_index(self, which):
-        if not hasattr(self, '_homo'):
-            return None
-        mapping = {
-            'homo': self._homo,
-            'lumo': self._lumo,
-            'homo-1': max(0, self._homo - 1),
-            'lumo+1': min(len(self._eigen) - 1, self._lumo + 1),
-        }
-        return mapping.get(which, self._homo)
-
     def _project_orbital_to_grid(self, mo_idx, z=2.0, size=14.0, n=100):
-        origin = self.backend.sys.apos.mean(axis=0)
-        grid_origin = origin - np.array([size / 2, size / 2, 0.0])
+        # Use actual molecular bounds for better consistency with molecular view
+        apos = self.backend.sys.apos
+        if len(apos) > 0:
+            apos_2d = apos[:, :2]  # Only x,y
+            min_pos = apos_2d.min(axis=0)
+            max_pos = apos_2d.max(axis=0)
+            center_xy = (min_pos + max_pos) / 2
+            center_z = apos[:, 2].mean()
+            # Add padding (10% on each side)
+            padding = (max_pos - min_pos) * 0.1
+            grid_origin = min_pos - padding
+            size = (max_pos - min_pos + 2 * padding).max()
+        else:
+            # Fallback to mean position if no atoms
+            origin = apos.mean(axis=0) if len(apos) > 0 else np.zeros(3)
+            grid_origin = origin - np.array([size / 2, size / 2, 0.0])
+            center_xy = grid_origin[:2]
+            center_z = origin[2]
+
         xs = np.linspace(grid_origin[0], grid_origin[0] + size, n)
         ys = np.linspace(grid_origin[1], grid_origin[1] + size, n)
-        X, Y = np.meshgrid(xs, ys, indexing='ij')
-        Z = np.zeros_like(X) + (origin[2] + z)
+        X, Y = np.meshgrid(xs, ys)
+        Z = np.zeros_like(X) + (center_z + z)
         points = np.stack([X.ravel(), Y.ravel(), Z.ravel()], axis=1)
         psi_flat = fc.orb2points(points.astype(np.float64), iMO=int(mo_idx + 1), ikpoint=1)
-        psi_2d = np.asarray(psi_flat, dtype=np.float64).reshape(n, n).T
+        psi_2d = np.asarray(psi_flat, dtype=np.float64).reshape(n, n)
         extent = [grid_origin[0], grid_origin[0] + size, grid_origin[1], grid_origin[1] + size]
-        return psi_2d, extent, origin
-
-    def plot_orbital(self, which='homo'):
-        if not hasattr(self, '_eigen'):
-            msg = "Please run Compute SCF first."
-            print(f"INFO: {msg}")
-            QtWidgets.QMessageBox.information(self, "Info", msg)
-            return
-        mo_idx = self._get_mo_index(which)
-        if mo_idx is None:
-            return
-        self.statusBar().showMessage(f"Projecting {which.upper()} (MO {mo_idx + 1})...")
-        QtWidgets.QApplication.processEvents()
-        try:
-            psi, extent, origin = self._project_orbital_to_grid(mo_idx, z=2.0)
-            E = self._eigen[mo_idx]
-            pos = self.backend.sys.apos.astype(np.float32)
-            enames = self.backend.sys.enames
-            canvas, view = vu.create_heatmap_window(
-                psi, extent,
-                title=f"{which.upper()} (MO {mo_idx + 1}) E={E:+.3f} eV  z=2.0Å",
-                cmap='bwr',
-                symmetric=True,
-                atom_pos=pos,
-                atom_types=enames
-            )
-            msg = f"Plotted {which.upper()}"
-            print(msg)
-            self.statusBar().showMessage(msg)
-        except Exception as e:
-            msg = f"Plot FAILED: {e}"
-            print(msg)
-            self.statusBar().showMessage(msg)
-            QtWidgets.QMessageBox.critical(self, "Plot Error", str(e))
+        return psi_2d, extent, np.array([center_xy[0], center_xy[1], center_z])
 
     def plot_density(self):
         if not hasattr(self, '_eigen'):
@@ -830,21 +972,43 @@ class KekuleExplorerWindow(QtWidgets.QMainWindow):
         self.statusBar().showMessage("Computing electron density...")
         QtWidgets.QApplication.processEvents()
         try:
-            # Sum |psi_i|^2 for occupied states
-            n_occ = self._homo + 1
-            psi_sum = None
-            for i in range(n_occ):
-                psi, extent, origin = self._project_orbital_to_grid(i, z=2.0)
-                if psi_sum is None:
-                    psi_sum = psi ** 2
-                else:
-                    psi_sum += psi ** 2
+            # Use same extent calculation as orbital plots for consistency
+            apos = self.backend.sys.apos
+            z_height = self.z_height_spinbox.value()
+            if len(apos) > 0:
+                apos_2d = apos[:, :2]  # Only x,y
+                min_pos = apos_2d.min(axis=0)
+                max_pos = apos_2d.max(axis=0)
+                center_z = apos[:, 2].mean()
+                # Add padding (10% on each side)
+                padding = (max_pos - min_pos) * 0.1
+                grid_origin = min_pos - padding
+                size = (max_pos - min_pos + 2 * padding).max()
+            else:
+                # Fallback to mean position if no atoms
+                origin = apos.mean(axis=0) if len(apos) > 0 else np.zeros(3)
+                grid_origin = origin - np.array([7.0, 7.0, 0.0])
+                size = 14.0
+                center_z = origin[2]
+
+            n = 100
+            xs = np.linspace(grid_origin[0], grid_origin[0] + size, n)
+            ys = np.linspace(grid_origin[1], grid_origin[1] + size, n)
+            X, Y = np.meshgrid(xs, ys)
+            Z = np.zeros_like(X) + (center_z + z_height)
+            points = np.stack([X.ravel(), Y.ravel(), Z.ravel()], axis=1)
+
+            # FireCore dens2points computes total electron density directly
+            dens_flat = fc.dens2points(points.astype(np.float64), f_den=1.0, f_den0=0.0)
+            dens_2d = np.asarray(dens_flat, dtype=np.float64).reshape(n, n)
+
+            extent = [grid_origin[0], grid_origin[0] + size, grid_origin[1], grid_origin[1] + size]
             pos = self.backend.sys.apos.astype(np.float32)
-            enames = self.backend.sys.enames
+            enames = list(self.backend.sys.enames)
             canvas, view = vu.create_heatmap_window(
-                psi_sum, extent,
-                title="Electron Density (z=2.0Å)",
-                cmap='hot',
+                dens_2d, extent,
+                title=f"Electron Density (z={z_height:.1f}Å)",
+                cmap='bwr',
                 symmetric=False,
                 atom_pos=pos,
                 atom_types=enames
