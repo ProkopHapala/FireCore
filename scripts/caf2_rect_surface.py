@@ -14,7 +14,7 @@ from pyBall.AtomicSystem import AtomicSystem
 
 
 COLORS = {
-    'Ca': '#1f77b4',
+    'Ca': '#9b59b6',
     'F':  '#2ca02c',
 }
 
@@ -272,6 +272,25 @@ def select_layers(apos, enames, atypes, qs, n_keep=None, keep_from='top', ztol=0
     return out
 
 
+def cut_fractional(apos, enames, atypes, qs, lvec, fx=1.0, fy=1.0):
+    """Cut to fractional portion of the cell [0,fx) x [0,fy)"""
+    if fx <= 0 or fx > 1 or fy <= 0 or fy > 1:
+        raise ValueError(f'cut_fractional(): fx,fy must be in (0,1], got fx={fx} fy={fy}')
+    L = np.array(lvec, dtype=float)
+    f = cart_to_frac(apos, L)
+    mask = (f[:, 0] >= 0) & (f[:, 0] < fx) & (f[:, 1] >= 0) & (f[:, 1] < fy)
+    out = {
+        'apos': apos[mask].copy(),
+        'enames': [enames[i] for i in np.where(mask)[0]],
+        'atypes': atypes[mask].copy() if atypes is not None else None,
+        'qs': qs[mask].copy() if qs is not None else None,
+    }
+    L_cut = np.array(lvec, dtype=float)
+    L_cut[0] *= fx
+    L_cut[1] *= fy
+    return out, L_cut
+
+
 def replicate_rectangular(apos, enames, atypes, qs, lvec, nx=1, ny=1):
     if nx <= 0 or ny <= 0:
         raise ValueError(f'replicate_rectangular(): invalid nx,ny=({nx},{ny})')
@@ -323,19 +342,39 @@ def assign_caf2_charges(enames, q):
     return qs
 
 
-def plot_structure(apos, enames, lvec, png_path, title=''):
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
-    ax0, ax1 = axes
+def plot_structure(apos, enames, lvec, png_path, title='', show_replicas=True):
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5), constrained_layout=True)
+    ax0, ax1, ax2 = axes
+    
+    L = np.array(lvec, dtype=float)
+    Lx = L[0, 0]
+    Ly = L[1, 1]
+    Lz = L[2, 2]
+    
+    # Scale atom sizes by z-height (larger = top)
+    zmin, zmax = apos[:, 2].min(), apos[:, 2].max()
+    zrange = zmax - zmin if zmax > zmin else 1.0
+    
+    # Plot main cell
     for e in sorted(set(enames)):
         m = np.array([x == e for x in enames], dtype=bool)
         c = COLORS.get(e, '#444444')
-        ax0.scatter(apos[m, 0], apos[m, 1], s=20, c=c, label=e, alpha=0.8)
-        ax1.scatter(apos[m, 0], apos[m, 2], s=20, c=c, label=e, alpha=0.8)
-    Lx = lvec[0, 0]
-    Ly = lvec[1, 1]
-    Lz = lvec[2, 2]
-    ax0.plot([0, Lx, Lx, 0, 0], [0, 0, Ly, Ly, 0], 'k-', lw=1.0)
-    ax1.plot([0, Lx, Lx, 0, 0], [0, 0, Lz, Lz, 0], 'k-', lw=1.0)
+        # Scale sizes: 20-100 based on z-height
+        z_norm = (apos[m, 2] - zmin) / zrange
+        sizes = 20 + 80 * z_norm
+        ax0.scatter(apos[m, 0], apos[m, 1], s=sizes, c=c, label=e, alpha=0.8)
+        ax1.scatter(apos[m, 0], apos[m, 2], s=sizes, c=c, label=e, alpha=0.8)
+    
+    # Draw lattice vectors on xy plot
+    ax0.arrow(0, 0, Lx, 0, head_width=0.5, head_length=0.5, fc='r', ec='r', lw=2)
+    ax0.arrow(0, 0, 0, Ly, head_width=0.5, head_length=0.5, fc='b', ec='b', lw=2)
+    ax0.text(Lx/2, -0.5, 'A', color='r', ha='center', fontsize=12, fontweight='bold')
+    ax0.text(-0.5, Ly/2, 'B', color='b', va='center', fontsize=12, fontweight='bold')
+    
+    # Draw cell boundaries
+    ax0.plot([0, Lx, Lx, 0, 0], [0, 0, Ly, Ly, 0], 'k-', lw=2)
+    ax1.plot([0, Lx, Lx, 0, 0], [0, 0, Lz, Lz, 0], 'k-', lw=2)
+    
     ax0.set_xlabel('x [A]')
     ax0.set_ylabel('y [A]')
     ax1.set_xlabel('x [A]')
@@ -343,8 +382,50 @@ def plot_structure(apos, enames, lvec, png_path, title=''):
     ax0.set_aspect('equal', adjustable='box')
     ax1.set_aspect('equal', adjustable='box')
     ax0.legend(loc='best')
+    
+    # Replica plot for periodicity check
+    if show_replicas:
+        # Generate replicas in 3x3 grid
+        A = L[0]
+        B = L[1]
+        for ix in range(-1, 2):
+            for iy in range(-1, 2):
+                shift = ix * A + iy * B
+                apos_shifted = apos + shift[None, :]
+                for e in sorted(set(enames)):
+                    m = np.array([x == e for x in enames], dtype=bool)
+                    c = COLORS.get(e, '#444444')
+                    z_norm = (apos_shifted[m, 2] - zmin) / zrange
+                    sizes = 20 + 80 * z_norm
+                    alpha = 0.3 if (ix == 0 and iy == 0) else 0.15
+                    ax2.scatter(apos_shifted[m, 0], apos_shifted[m, 1], s=sizes, c=c, alpha=alpha)
+        
+        # Draw lattice vectors for replicas
+        ax2.arrow(0, 0, Lx, 0, head_width=0.5, head_length=0.5, fc='r', ec='r', lw=2)
+        ax2.arrow(0, 0, 0, Ly, head_width=0.5, head_length=0.5, fc='b', ec='b', lw=2)
+        
+        # Draw main cell boundary thicker
+        ax2.plot([0, Lx, Lx, 0, 0], [0, 0, Ly, Ly, 0], 'k-', lw=3)
+        # Draw neighboring cell boundaries thinner
+        for ix in range(-1, 2):
+            for iy in range(-1, 2):
+                if ix == 0 and iy == 0:
+                    continue
+                ox, oy = ix * Lx, iy * Ly
+                ax2.plot([ox, ox+Lx, ox+Lx, ox, ox], [oy, oy, oy+Ly, oy+Ly, oy], 'k--', lw=1, alpha=0.5)
+        
+        ax2.set_xlabel('x [A]')
+        ax2.set_ylabel('y [A]')
+        ax2.set_aspect('equal', adjustable='box')
+        ax2.set_title('3x3 replicas (periodicity check)')
+    else:
+        ax2.axis('off')
+    
+    ax0.set_title('Top view (xy)')
+    ax1.set_title('Side view (xz)')
+    
     if title:
-        fig.suptitle(title)
+        fig.suptitle(title, fontsize=14)
     fig.savefig(png_path, dpi=150)
     plt.close(fig)
 
@@ -355,6 +436,8 @@ def parse_args():
     ap.add_argument('--nx', type=int, default=1, help='Number of repeats along rectangular a direction')
     ap.add_argument('--ny', type=int, default=None, help='Number of repeats along rectangular b direction')
     ap.add_argument('--nz', type=int, default=None, help='Alias for repeats along rectangular second in-plane direction')
+    ap.add_argument('--fx', type=float, default=1.0, help='Fraction of cell to keep along a direction (0 < fx <= 1)')
+    ap.add_argument('--fy', type=float, default=1.0, help='Fraction of cell to keep along b direction (0 < fy <= 1)')
     ap.add_argument('--layers', type=int, default=None, help='How many detected z-layer groups to keep; default keeps all')
     ap.add_argument('--layers_from', choices=['top', 'bottom'], default='top', help='Which side of the slab to preserve when trimming layers')
     ap.add_argument('--z_tol', type=float, default=0.12, help='Tolerance for clustering atoms into z-planes [A]')
@@ -365,6 +448,7 @@ def parse_args():
     ap.add_argument('--coeff_search', type=int, default=4, help='Max integer coefficient when searching rectangular in-plane supercell')
     ap.add_argument('--Q', type=float, default=1.0, help='Assign ionic charges +2Q to Ca and -Q to F in the output xyz')
     ap.add_argument('--no_charges', action='store_true', help='Do not write charges into the xyz output')
+    ap.add_argument('--no_replicas', action='store_true', help='Do not show replica plot in output png')
     return ap.parse_args()
 
 
@@ -389,28 +473,46 @@ def main():
         raise ValueError(f'vacuum must be >=0, got {vacuum}')
 
     apos_trim, lvec_trim, thickness = make_output_lvec(lvec_rect0, layer_sel['apos'], vacuum=vacuum)
-    apos_out, enames_out, atypes_out, qs_out, lvec_out = replicate_rectangular(apos_trim, layer_sel['enames'], layer_sel['atypes'], layer_sel['qs'], lvec_trim, nx=args.nx, ny=ny)
+    
+    # Apply fractional cuts if requested
+    if args.fx < 1.0 or args.fy < 1.0:
+        cut_data, lvec_cut = cut_fractional(apos_trim, layer_sel['enames'], layer_sel['atypes'], layer_sel['qs'], lvec_trim, fx=args.fx, fy=args.fy)
+        apos_trim = cut_data['apos']
+        enames_trim = cut_data['enames']
+        atypes_trim = cut_data['atypes']
+        qs_trim = cut_data['qs']
+        lvec_trim = lvec_cut
+    else:
+        enames_trim = layer_sel['enames']
+        atypes_trim = layer_sel['atypes']
+        qs_trim = layer_sel['qs']
+    
+    apos_out, enames_out, atypes_out, qs_out, lvec_out = replicate_rectangular(apos_trim, enames_trim, atypes_trim, qs_trim, lvec_trim, nx=args.nx, ny=ny)
     qs_out = assign_caf2_charges(enames_out, args.Q)
 
     out_dir = args.out_dir or os.path.join(os.path.dirname(os.path.abspath(args.in_xyz)), 'generated_rect')
     os.makedirs(out_dir, exist_ok=True)
     stem = os.path.splitext(os.path.basename(args.in_xyz))[0]
-    prefix = args.out_prefix or f'{stem}_rect_nx{args.nx}_nz{ny}_L{args.layers if args.layers is not None else len(layer_sel["layers"])}_{args.layers_from}'
+    frac_str = f'_fx{args.fx}_fy{args.fy}' if (args.fx < 1.0 or args.fy < 1.0) else ''
+    prefix = args.out_prefix or f'{stem}_rect_nx{args.nx}_nz{ny}{frac_str}_L{args.layers if args.layers is not None else len(layer_sel["layers"])}_{args.layers_from}'
     xyz_path = os.path.join(out_dir, prefix + '.xyz')
     png_path = os.path.join(out_dir, prefix + '.png')
 
     sys_out = AtomicSystem(apos=apos_out, atypes=atypes_out, enames=enames_out, lvec=lvec_out, qs=qs_out, bPreinit=False)
     sys_out.saveXYZ(xyz_path, blvec=True, bQs=(not args.no_charges))
-    plot_structure(apos_out, enames_out, lvec_out, png_path, title=prefix)
+    plot_structure(apos_out, enames_out, lvec_out, png_path, title=prefix, show_replicas=not args.no_replicas)
 
     print('Input        :', args.in_xyz)
     print('Rect coeff_B :', info['coeff_B'])
     print('Base atoms   :', len(base['apos']))
     print('Planes       :', len(layer_sel['planes']), 'counts=', layer_sel['counts'].tolist())
     print('Layer groups :', len(layer_sel['layers']), 'kept=', layer_sel['kept_layer_ids'].tolist())
+    print('Fractional cut:', f'fx={args.fx} fy={args.fy}')
     print('Supercell    :', f'nx={args.nx} nz={ny}')
     print('Vacuum [A]   :', vacuum)
     print('Thickness[A] :', thickness)
+    print('Output atoms :', len(apos_out))
+    print('Lattice [A]  :', f'[{lvec_out[0,0]:.3f}, {lvec_out[1,1]:.3f}, {lvec_out[2,2]:.3f}]')
     print('Output xyz   :', xyz_path)
     print('Output png   :', png_path)
 

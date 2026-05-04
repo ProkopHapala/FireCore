@@ -24,10 +24,97 @@ https://dftbplus-recipes.readthedocs.io/en/stable/interfaces/ase/neb/index.html
 # Comprehensive DFTB+ Documentation for Power Users
 
 ## Table of Contents
+0. [Setup and Configuration](#0-setup-and-configuration)
 1. [Phonon Spectra with Phonopy](#1-phonon-spectra-with-phonopy)
 2. [Reaction Paths (Nudged Elastic Band - NEB)](#2-reaction-paths-nudged-elastic-band---neb)
 3. [Reading Internal Variables (Hamiltonian, Charges, Density Matrix)](#3-reading-internal-variables-hamiltonian-charges-density-matrix)
 4. [Deep Python Integration (Developer/Hacker Level)](#4-deep-python-integration-developerhacker-level)
+
+## 0. Setup and Configuration
+
+### Environment Variables
+
+DFTB+ integration in FireCore uses two environment variables:
+
+- **`DFTB_EXE`**: Path to DFTB+ executable
+- **`DFTB_SK_PATH`**: Path to library directory containing Slater-Koster parametrization subdirectories
+
+Set these in `~/.bashrc`:
+
+```bash
+export DFTB_EXE=/path/to/dftb+
+export DFTB_SK_PATH=/path/to/slakos/library/
+```
+
+Example:
+```bash
+export DFTB_EXE=/home/prokop/git_SW/dftbplus/Build/app/dftb+/dftb+
+export DFTB_SK_PATH=/home/prokop/SIMULATIONS/dftbplus/slakos/library/
+```
+
+### Slater-Koster Parameter Sets
+
+DFTB+ requires Slater-Koster (`.skf`) files for element interactions. The library-based design allows multiple parametrizations in one directory.
+
+**Download parameter sets:**
+
+```bash
+mkdir -p ~/SIMULATIONS/dftbplus/slakos/library
+cd ~/SIMULATIONS/dftbplus/slakos/library
+
+# 3ob-3-1 (bio/organic, Br-C-Ca-Cl-F-H-I-K-Mg-N-Na-O-P-S-Zn)
+wget https://github.com/dftbparams/3ob/releases/download/v3.1.0/3ob-3-1.tar.xz
+tar xf 3ob-3-1.tar.xz
+
+# mio-1-1 (simpler, H-C-N-O-S-P)
+wget https://github.com/dftbparams/mio/releases/download/v1.1.0/mio-1-1.tar.xz
+tar xf mio-1-1.tar.xz
+```
+
+Directory structure:
+```
+~/SIMULATIONS/dftbplus/slakos/library/
+├── 3ob-3-1/
+│   ├── C-C.skf
+│   ├── C-H.skf
+│   ├── H-H.skf
+│   └── ...
+└── mio-1-1/
+    ├── C-C.skf
+    ├── C-H.skf
+    ├── H-H.skf
+    └── ...
+```
+
+See https://dftb.org/parameters/download.html for all available sets.
+
+### Using Parametrizations in Code
+
+The `pyBall/dftb_utils.py` module provides a library-based interface:
+
+```python
+from pyBall import dftb_utils
+
+# Use default parametrization (first available)
+dftb_utils.run_pbc(apos, enames, lvs)
+
+# Specify which parametrization to use
+dftb_utils.run_pbc(apos, enames, lvs, sk_set='mio-1-1')
+dftb_utils.run_pbc(apos, enames, lvs, sk_set='3ob-3-1')
+
+# Check available sets
+print(dftb_utils.AVAILABLE_SK_SETS)  # ['3ob-3-1', 'mio-1-1']
+print(dftb_utils.DEFAULT_SK_SET)      # '3ob-3-1'
+```
+
+### Validation
+
+The module validates at import time:
+- Checks `DFTB_EXE` exists and is executable
+- Checks `DFTB_SK_PATH` directory exists
+- Checks for at least one parametrization subdirectory with `.skf` files
+
+Error messages provide setup instructions and download URLs.
 
 ## 1. Phonon Spectra with Phonopy
 

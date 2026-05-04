@@ -6,8 +6,36 @@ from . import elements
 from . import atomicUtils as au
 from textwrap import dedent,indent
 
-DFTB_EXE        = os.environ.get('DFTB_EXE', 'dftb+')
-DEFAULT_SK_PATH = os.environ.get('DFTB_SK_PATH', '/home/prokophapala/SIMULATIONS/dftbplus/slakos/3ob-3-1/')
+def _check_dftb_exe():
+    dftb_exe = os.environ.get('DFTB_EXE')
+    if dftb_exe is None:                 raise RuntimeError("DFTB_EXE not set. Set: export DFTB_EXE=/path/to/dftb+")
+    if not os.path.isfile(dftb_exe):     raise RuntimeError(f"DFTB+ not found: {dftb_exe}")
+    if not os.access(dftb_exe, os.X_OK): raise RuntimeError(f"DFTB+ not executable: {dftb_exe}")
+    return dftb_exe
+
+def _check_sk_path():
+    sk_lib_path = os.environ.get('DFTB_SK_PATH')
+    if sk_lib_path is None:            raise RuntimeError("DFTB_SK_PATH not set. Set: export DFTB_SK_PATH=/path/to/library/ (e.g. ~/SIMULATIONS/dftbplus/slakos/library/). Download: wget https://github.com/dftbparams/3ob/releases/download/v3.1.0/3ob-3-1.tar.xz && tar xf 3ob-3-1.tar.xz. See https://dftb.org/parameters/download.html")
+    if not os.path.isdir(sk_lib_path): raise RuntimeError(f"SK library not found: {sk_lib_path}")
+    sk_lib_path = sk_lib_path.rstrip('/') + '/'
+    available_sets = [d for d in os.listdir(sk_lib_path) if os.path.isdir(os.path.join(sk_lib_path, d)) and any(f.endswith('.skf') for f in os.listdir(os.path.join(sk_lib_path, d)))]
+    if not available_sets:             raise RuntimeError(f"No .skf files in {sk_lib_path}. Contents: {os.listdir(sk_lib_path)}")
+    return sk_lib_path, available_sets
+
+# Validate at module load time
+DFTB_EXE = _check_dftb_exe()
+SK_LIB_PATH, AVAILABLE_SK_SETS = _check_sk_path()
+DEFAULT_SK_SET = AVAILABLE_SK_SETS[0] if AVAILABLE_SK_SETS else None
+
+def get_sk_path(sk_set=None):
+    sk_set = sk_set or DEFAULT_SK_SET
+    if sk_set is None:             raise RuntimeError(f"No SK set specified. Available: {AVAILABLE_SK_SETS}")
+    sk_path = os.path.join(SK_LIB_PATH, sk_set)
+    if not os.path.isdir(sk_path): raise RuntimeError(f"SK set not found: {sk_path}. Available: {AVAILABLE_SK_SETS}")
+    return sk_path.rstrip('/') + '/'
+
+# For backward compatibility - deprecated
+DEFAULT_SK_PATH = get_sk_path()
 
 methods=[  'GFN2' ]
 
@@ -107,7 +135,14 @@ def load_molecule(filename, use_ase=True):
 def get_max_angular_momentum(enames):
     return {ename: elements.ELEMENT_DICT[ename][4] for ename in sorted(set(enames))}
 
-def write_dftb_input_hessian(enames, gname="geo.xyz", fname='dftb_in.hsd', basis_path=DEFAULT_SK_PATH, delta=1e-4, SCCTolerance=1e-7):
+def write_dftb_input_hessian(enames, gname="geo.xyz", fname='dftb_in.hsd', sk_set=None, delta=1e-4, SCCTolerance=1e-7):
+    """Write DFTB+ input for Hessian calculation.
+    
+    Args:
+        sk_set: Slater-Koster parametrization name (e.g., '3ob-3-1', 'mio-1-1').
+                If None, uses DEFAULT_SK_SET.
+    """
+    basis_path = get_sk_path(sk_set)
     max_angular = get_max_angular_momentum(enames)
     max_angular_str = '\n'.join([f'        {elem} = "{max_angular[elem]}"' for elem in max_angular])
     with open(fname, 'w') as f:
@@ -134,7 +169,14 @@ Hamiltonian = DFTB {{
 }}
 ''')
 
-def write_dftb_input_orbitals(enames, gname="geo.xyz", fname='dftb_in.hsd', basis_path=DEFAULT_SK_PATH, SCCTolerance=1e-7):
+def write_dftb_input_orbitals(enames, gname="geo.xyz", fname='dftb_in.hsd', sk_set=None, SCCTolerance=1e-7):
+    """Write DFTB+ input for orbital analysis.
+    
+    Args:
+        sk_set: Slater-Koster parametrization name (e.g., '3ob-3-1', 'mio-1-1').
+                If None, uses DEFAULT_SK_SET.
+    """
+    basis_path = get_sk_path(sk_set)
     max_angular = get_max_angular_momentum(enames)
     max_angular_str = '\n'.join([f'        {elem} = "{max_angular[elem]}"' for elem in max_angular])
     with open(fname, 'w') as f:
@@ -261,7 +303,14 @@ def read_relaxed_geometry(apos, do_relax=False):
                     apos_out[j] = [float(parts[1]), float(parts[2]), float(parts[3])]
     return apos_out
 
-def run_pbc(apos, enames, lvs, basis_path=DEFAULT_SK_PATH, do_relax=False, fixed_atoms=None, nk=(16,1,1), k_shift=(0.5,0.0,0.0), dftb_exe=DFTB_EXE, workdir=None, Temperature=300, MixingParameter=0.2, MaxScc=200, SCCTolerance=1e-5, params=None, allow_unconverged_energy=False):
+def run_pbc(apos, enames, lvs, sk_set=None, do_relax=False, fixed_atoms=None, nk=(16,1,1), k_shift=(0.5,0.0,0.0), dftb_exe=DFTB_EXE, workdir=None, Temperature=300, MixingParameter=0.2, MaxScc=200, SCCTolerance=1e-5, params=None, allow_unconverged_energy=False):
+    """Run DFTB+ calculation for periodic systems.
+    
+    Args:
+        sk_set: Slater-Koster parametrization name (e.g., '3ob-3-1', 'mio-1-1').
+                If None, uses DEFAULT_SK_SET.
+    """
+    basis_path = get_sk_path(sk_set)
     if params is None:
         params = default_params
     cwd = os.getcwd()
@@ -269,7 +318,7 @@ def run_pbc(apos, enames, lvs, basis_path=DEFAULT_SK_PATH, do_relax=False, fixed
         os.makedirs(workdir, exist_ok=True)
         os.chdir(workdir)
     try:
-        makeDFTBjob_pbc(enames=enames, apos=apos, lvs=lvs, fname='dftb_in.hsd', basis_path=basis_path, nk=nk, k_shift=k_shift, opt=do_relax, params=params, Temperature=Temperature, MixingParameter=MixingParameter, MaxScc=MaxScc, SCCTolerance=SCCTolerance, fixed_atoms=fixed_atoms)
+        makeDFTBjob_pbc(enames=enames, apos=apos, lvs=lvs, fname='dftb_in.hsd', sk_set=sk_set, nk=nk, k_shift=k_shift, opt=do_relax, params=params, Temperature=Temperature, MixingParameter=MixingParameter, MaxScc=MaxScc, SCCTolerance=SCCTolerance, fixed_atoms=fixed_atoms)
         # Capture both stdout and stderr
         ierr = os.system(f'{dftb_exe} > OUT 2> ERR')
         if ierr != 0:
@@ -286,7 +335,7 @@ def run_pbc(apos, enames, lvs, basis_path=DEFAULT_SK_PATH, do_relax=False, fixed
         if workdir is not None:
             os.chdir(cwd)
 
-def constrained_scan(apos0, enames, lvs, moved_idx, path, fixed_idx=None, outdir='.', do_relax=True, use_prev_relaxed=True, basis_path=DEFAULT_SK_PATH, dftb_exe=DFTB_EXE, nk=(16,1,1), k_shift=(0.5,0.0,0.0), Temperature=300, MixingParameter=0.2, MaxScc=500, SCCTolerance=1e-6, params=None, step_prefix='tmp_scan', results_prefix='scan', save_xyz=True, xyz_fname=None, key_func=None, key_name='s', plot_step_func=None):
+def constrained_scan(apos0, enames, lvs, moved_idx, path, fixed_idx=None, outdir='.', do_relax=True, use_prev_relaxed=True, sk_set=None, dftb_exe=DFTB_EXE, nk=(16,1,1), k_shift=(0.5,0.0,0.0), Temperature=300, MixingParameter=0.2, MaxScc=500, SCCTolerance=1e-6, params=None, step_prefix='tmp_scan', results_prefix='scan', save_xyz=True, xyz_fname=None, key_func=None, key_name='s', plot_step_func=None):
     """General constrained scan over a path for selected atoms.
 
     Args:
@@ -299,12 +348,15 @@ def constrained_scan(apos0, enames, lvs, moved_idx, path, fixed_idx=None, outdir
         outdir: output directory
         do_relax: if True run geometry optimization with constraints
         use_prev_relaxed: if True, each step starts from previous relaxed geometry
+        sk_set: Slater-Koster parametrization name (e.g., '3ob-3-1', 'mio-1-1').
+                If None, uses DEFAULT_SK_SET.
         key_func: optional callable(step, apos_out, forces, energy) -> scalar key to store
         plot_step_func: optional callable(step, apos_out, forces, meta_dict) for per-step plots
 
     Returns:
         results: list of dicts per step with keys: 'E','apos','enames','forces','fixed_idx', plus optional key_name
     """
+    basis_path = get_sk_path(sk_set)
     os.makedirs(outdir, exist_ok=True)
     apos0 = np.array(apos0, dtype=float)
     path = np.array(path, dtype=float)
@@ -385,7 +437,14 @@ def save_xyz_movie(results, fname, lvs=None, label=None, key_order=None):
 
 # ============ Setup
 
-def makeDFTBjob( enames=None, fname='dftb_in.hsd', gname="input.xyz", method='D3H5', cell=None, basis_path='/home/prokop/SIMULATIONS/dftbplus/slakos/3ob-3-1/', params=default_params, opt=True ):
+def makeDFTBjob( enames=None, fname='dftb_in.hsd', gname="input.xyz", method='D3H5', cell=None, sk_set=None, params=default_params, opt=True ):
+    """Write DFTB+ input file.
+    
+    Args:
+        sk_set: Slater-Koster parametrization name (e.g., '3ob-3-1', 'mio-1-1').
+                If None, uses DEFAULT_SK_SET.
+    """
+    basis_path = get_sk_path(sk_set)
     enameset = set( enames )
     #print( "enameset = ", enameset )
     hsd = open(fname,'w')
@@ -473,7 +532,7 @@ def makeDFTBjob( enames=None, fname='dftb_in.hsd', gname="input.xyz", method='D3
     #ParserOptions { ParserVersion = 10 }
     #Parallel { UseOmpThreads = Yes }
 
-def makeDFTBjob_pbc( enames, apos, lvs, fname='dftb_in.hsd', basis_path='/home/prokop/SIMULATIONS/dftbplus/slakos/3ob-3-1/', 
+def makeDFTBjob_pbc( enames, apos, lvs, fname='dftb_in.hsd', sk_set=None,
                      nk=(1,1,1), k_shift=(0.5,0.0,0.0), opt=False, params=default_params, SCCTolerance=1e-5, MaxScc=200, Temperature=300, MixingParameter=0.2, fixed_atoms=None ):
     """Write a DFTB+ input for a periodic calculation using GenFormat (supercell type S).
     
@@ -482,7 +541,8 @@ def makeDFTBjob_pbc( enames, apos, lvs, fname='dftb_in.hsd', basis_path='/home/p
         apos:   (natoms,3) array of Cartesian atomic positions [Angstrom]
         lvs:    (3,3) lattice vectors (rows are a1, a2, a3) [Angstrom]
         fname:  output HSD filename
-        basis_path: path to Slater-Koster files
+        sk_set: Slater-Koster parametrization name (e.g., '3ob-3-1', 'mio-1-1').
+                If None, uses DEFAULT_SK_SET.
         nk:     (3,) k-point folding along a1, a2, a3
         k_shift: (3,) k-point shift (0.5 for Monkhorst-Pack half-shift)
         opt:    if True, add geometry optimization driver
@@ -493,6 +553,7 @@ def makeDFTBjob_pbc( enames, apos, lvs, fname='dftb_in.hsd', basis_path='/home/p
         MixingParameter: Broyden mixing parameter (0.0-1.0)
         fixed_atoms: list of 0-based atom indices to fix during relaxation (adds Constraint block)
     """
+    basis_path = get_sk_path(sk_set)
     enameset = sorted(set(enames))
     ename_to_idx = {e: i+1 for i, e in enumerate(enameset)}  # GenFormat: 1-indexed
     natoms = len(enames)
