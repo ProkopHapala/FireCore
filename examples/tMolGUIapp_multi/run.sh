@@ -221,12 +221,12 @@ touch minima.dat
 #./$name -m 2000    -x common_resources/xyz/xylitol_WO_gridFF                 -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 -grid_nPBC 2,2,0 # -nogridff
 
 
-# ./$name -m 50 -x common_resources/DA.mol2 -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0
-# ./$name -m 50 -x common_resources/xyz/DA.xyz -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0
+# ./$name -m 50 -uff -x common_resources/DA.mol2 -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0
+# ./$name -m 50 -uff -x common_resources/xyz/DA.xyz -g common_resources/xyz/surfaces_for_throughput/NaCl_1x1_L3 -iParalel 3 -T 300 0.2 -gopt 10000,100000 0.25,1.0
 # ./$name -m 50 -x common_resources/entropic_spring_30.xyz -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0 -dt 0.0005
-# ./$name -m 2 -x common_resources/xyz/nHexadecan.xyz -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0
+# ./$name -m 5 -uff -x common_resources/xyz/nHexadecan.xyz -iParalel 3 -T 300 0.2 -gopt 10000,100000 0.25,1.0
 
 
 
 # ./$name -m 500   -x common_resources/xyz/nHexadecan_dicarboxylic   -g common_resources/xyz/surfaces_for_throughput/NaCl_3x3_Cl_hole    -Ftol 1e-4     -iParalel 3 -T 1000 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 -dt 0.05 -nogridff
-./$name -m 2000  -uff  -x common_resources/xyz/xylitol_WO_gridFF        -g common_resources/xyz/surfaces_for_throughput/NaCl_3x3_Cl_hole          -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 -grid_nPBC 2,2,0 # -nogridff
+./$name -m 2000  -uff  -x common_resources/xyz/xylitol_WO_gridFF        -g common_resources/xyz/surfaces_for_throughput/NaCl_1x1_L3          -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 -grid_nPBC 2,2,0  -nogridff

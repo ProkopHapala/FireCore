@@ -4,11 +4,16 @@ set -e  # Exit on error
 
 # Default Mode
 MODE="BOTH"  # Options: TI, JE, BOTH
+FF="MMFF"   # Options: MMFF, UFF
 K=10.0     # Default JE force constant
 SURF_NAME="none"
+HARD_ATOMS=""
+SOFT_ATOMS=""
+HARD_DIST=""
+SOFT_DIST=""
 NSYS=200
 NLAMBDA=200
-NMDSTEPS=2000000
+NMDSTEPS=20000000
 NEQSTEPS=1000
 DT=0.05
 TDAMP=150
@@ -18,6 +23,7 @@ TEMP=300
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --mode) MODE="$2"; shift ;;
+        --ff)   FF="$2"; shift ;;
         --k)    K="$2"; shift ;;
         --surf_name|--surface|--surf) SURF_NAME="$2"; shift ;;
         --nSys) NSYS="$2"; shift ;;
@@ -27,10 +33,18 @@ while [[ "$#" -gt 0 ]]; do
         --dt) DT="$2"; shift ;;
         --t_damp) TDAMP="$2"; shift ;;
         --temperature|-T) TEMP="$2"; shift ;;
+        --hard_atoms) HARD_ATOMS="--hard_atoms";;
+        --soft_atoms) SOFT_ATOMS="--soft_atoms";;
+        --hard_dist) HARD_DIST="--hard_dist";;
+        --soft_dist) SOFT_DIST="--soft_dist";;
         *) ;; # Ignore unknown args
     esac
     shift
 done
+
+if [[ -z "$HARD_ATOMS" && -z "$SOFT_ATOMS" && -z "$HARD_DIST" && -z "$SOFT_DIST" ]]; then
+    SOFT_ATOMS="--soft_atoms"
+fi
 
 # Ensure we are in the script directory
 cd "$(dirname "$0")"
@@ -53,11 +67,12 @@ echo "Build successful!"
 echo ""
 
 # Run the calculation
-echo "Step 2: Running Free Energy Calculation for DA (Mode: $MODE)..."
+echo "Step 2: Running Free Energy Calculation for DA (Force field: $FF, Mode: $MODE)..."
 echo "----------------------------------------"
 echo "Surface: $SURF_NAME"
 python3 run_ES.py \
     --mode $MODE \
+    --ff $FF \
     --nSys $NSYS \
     --xyz_name "../../cpp/common_resources/xyz/DA.xyz" \
     --surf_name "$SURF_NAME" \
@@ -70,20 +85,10 @@ python3 run_ES.py \
     --dt $DT \
     -T $TEMP \
     --t_damp $TDAMP \
-    --soft_atoms
-# python3 run_ES.py \
-#     --mode $MODE \
-#     --nSys 1000 \
-#     --xyz_name "../../cpp/common_resources/xyz/DA.xyz" \
-#     --nLambda 100000 \
-#     --nMDsteps 100000000 \
-#     --nEQsteps 20000 \
-#     --Fconv 1e-6 \
-#     --constraints "constraints_DA.txt" \
-#     --K $K \
-#     --dt 0.05 \
-#     -T 300 \
-#     --t_damp 150
+    $HARD_ATOMS \
+    $SOFT_ATOMS \
+    $HARD_DIST \
+    $SOFT_DIST
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Calculation failed!"

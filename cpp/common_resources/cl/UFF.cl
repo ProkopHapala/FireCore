@@ -868,6 +868,40 @@ __kernel void assembleForces_UFF(
 
 
 
+// ===== Langevin RNG helpers (mirrors relax_multi.cl, used by Langevin thermostat) =====
+unsigned int hash_wang(unsigned int bits) {
+    bits = (bits ^ 61) ^ (bits >> 16);
+    bits *= 9;
+    bits = bits ^ (bits >> 4);
+    bits *= 0x27d4eb2d;
+    bits = bits ^ (bits >> 15);
+    return bits;
+}
+inline uint xorshift32( uint state ){
+    if(state==0u) state = 0x6D2B79F5u;
+    state ^= (state << 13);
+    state ^= (state >> 17);
+    state ^= (state << 5 );
+    return state;
+}
+inline float rand01_xorshift( __private uint* state ){
+    *state = xorshift32(*state);
+    return ((float)(*state) + 1.0f) * 2.3283064365386963e-10f;
+}
+inline float2 randn2_box_muller( __private uint* state ){
+    const float u1  = fmax( rand01_xorshift(state), 1e-7f );
+    const float u2  = rand01_xorshift(state);
+    const float amp = sqrt( -2.0f * log(u1) );
+    const float phi = 6.283185307179586f * u2;
+    return (float2)( amp*cos(phi), amp*sin(phi) );
+}
+inline float3 randn3_xorshift_box_muller( uint seed ){
+    uint rng = xorshift32(seed);
+    const float2 g01 = randn2_box_muller( &rng );
+    const float2 g23 = randn2_box_muller( &rng );
+    return (float3)( g01.x, g01.y, g23.x );
+}
+
 // Assemble recoil forces from neighbors and  update atoms positions and velocities
 //__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void updateAtomsMMFFf4(
@@ -880,7 +914,9 @@ __kernel void updateAtomsMMFFf4(
     __global float4*  constr,       // 8 // constraints (x,y,z,K) for each atom
     __global float4*  constrK,      // 9 // constraints stiffness (kx,ky,kz,?) for each atom
     __global float4*  MDparams,     // 10 // MD parameters (dt,damp,Flimit)
-    __global float4*  TDrives       // 11 // Thermal driving (T,gamma_damp,seed,?)
+    __global float4*  TDrives,      // 11 // Thermal driving (T,gamma_damp,lambda-index/flag,seed)
+    __global float4*  averageForces,// 12 // accumulated TI force moments per system
+    __global float4*  fprev         // 13 // previous force for deterministic TI velocity-Verlet
     //__global cl_Mat3* bboxes,     // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
 ){
     const int natoms=n.x;           // number of atoms
@@ -947,30 +983,109 @@ __kernel void updateAtomsMMFFf4(
         // if(B.c.z>0.0f){ if(pe.z<B.a.z){ fe.z+=(B.a.z-pe.z)*B.c.z; }else if(pe.z>B.b.z){ fe.z+=(B.b.z-pe.z)*B.c.z; }; }
         // ------- constrains
         float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
-        if( cons.w>0.f ){            // if stiffness is positive, we have constraint
-            float4 cK = constrK[ iaa ];
-            cK = max( cK, (float4){0.0f,0.0f,0.0f,0.0f} );
-            const float3 fc = (cons.xyz - pe.xyz)*cK.xyz;
-            fe.xyz += fc; // add constraint force
-            //if(iS==0){printf( "GPU::constr[ia=%i|iS=%i] (%g,%g,%g|K=%g) fc(%g,%g,%g) cK(%g,%g,%g)\n", iG, iS, cons.x,cons.y,cons.z,cons.w, fc.x,fc.y,fc.z , cK.x, cK.y, cK.z ); }
+        float4 cK   = constrK[ iaa ];
+        if(iS==0 && iG==0){
+                // printf( "GPU:sys[%i]atom[%i]  apos(%g,%g,%g) constr(%g,%g,%g|%g) constrK(%g,%g,%g|%g)\n", iS, iG, pe.x,pe.y,pe.z, cons.x,cons.y,cons.z,cons.w,   cK.x,cK.y,cK.z,cK.w  );
+        }
+        if( cons.w > 0.0f ){
+            float3 stiffness = (float3){0.0f, 0.0f, 0.0f};
+            bool bHard = false;
+            float sign = 0.0f;
+            bool bDist = false;
+            if( (cons.w > 0.0f) && (cons.w < 1e3f) ){
+                stiffness = (float3){cons.w, cons.w, cons.w};
+            } else if ( cons.w >= 1e6f && cons.w < 3e6f ){
+                bHard = true;
+                sign = (cons.w < 1.5e6f) ? 1.0f : -1.0f;
+            } else if ( cons.w >= 3e6f && cons.w < 5e6f ){
+                stiffness = (float3){cK.w, cK.w, cK.w};
+                sign = (cons.w < 3.5e6f) ? 1.0f : -1.0f;
+            } else if ( cons.w >= 5e6f && cons.w < 7e6f ){
+                bHard = true; bDist = true;
+                sign = (cons.w < 5.5e6f) ? 1.0f : -1.0f;
+            } else if ( cons.w >= 7e6f && cons.w < 9e6f ){
+                bDist = true;
+                stiffness = (float3){cK.w, cK.w, cK.w};
+                sign = (cons.w < 7.5e6f) ? 1.0f : -1.0f;
+            }
+            float force_proj = 0.0f;
+            if( bDist ){
+                int ing = (int)cons.x;
+                float3 pj = apos[ing + iS*natoms].xyz;
+                float3 d = pe.xyz - pj;
+                float r = length(d);
+                float3 h = d / (r + 1e-10f);
+                const float force_proj_raw = dot(fe.xyz, h);
+                force_proj = (-sign) * force_proj_raw * cK.x;
+                if( bHard ){
+                    pe.xyz -= h * (0.5f * (r - cons.y));
+                    float v_proj = dot(ve.xyz, h);
+                    ve.xyz -= h * v_proj;
+                    fe.xyz -= h * force_proj_raw;
+                } else {
+                    fe.xyz += h * (-stiffness.x * (r - cons.y));
+                }
+            } else {
+                force_proj = (-sign) * dot(fe.xyz, cK.xyz);
+                if( bHard ){
+                    pe.xyz = cons.xyz;
+                    ve.xyz = 0.0f;
+                    fe.xyz = 0.0f;
+                } else {
+                    fe.xyz += (cons.xyz - pe.xyz) * stiffness;
+                }
+            }
+            // printf( "GPU:sys[%i]atom[%i] constr(%g,%g,%g|%g) cK(%g,%g,%g|%g) force_proj=%g sign=%g stiffness=(%g,%g,%g) bHard=%d bDist=%d\n", iS, iG, cons.x,cons.y,cons.z,cons.w, cK.x,cK.y,cK.z,cK.w, force_proj, sign, stiffness.x,stiffness.y,stiffness.z, bHard?1:0, bDist?1:0 );
+            if( sign != 0.0f ){
+                __global float* avgF_ptr = (__global float*)(&averageForces[iS]);
+                if(sign > 0.0f){
+                    if(!isnan(force_proj)) avgF_ptr[2] += force_proj;
+                    averageForces[iS].y = force_proj;
+                }else{
+                    if(!isnan(force_proj)) avgF_ptr[3] += force_proj;
+                    float force_diff = averageForces[iS].y - force_proj;
+                    volatile __global float* addr = &avgF_ptr[0];
+                    float old_val, new_val;
+                    do {
+                        old_val = *addr;
+                        new_val = old_val + force_diff * force_diff;
+                    } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
+                }
+            }
+            if( bHard && !bDist ){
+                pe.w=0; ve.w=0;
+                fprev[iaa] = float4Zero;
+                apos[iaa] = pe;
+                avel[iaa] = ve;
+                return;
+            }
         }
     }
 
     // Thermal driving  - Langevin thermostat, see C++ MMFFsp3_loc::move_atom_Langevin()
     if( TDrive.y > 0.0f ){ // if gamma>0
         fe.xyz    += ve.xyz * -TDrive.y ;  // damping,  check the untis  ... cdamp/dt = gamma
-        //const float3 rnd = (float3){ hashf_wang(ve.x+TDrive.w,-1.0,1.0),hashf_wang(ve.y+TDrive.w,-1.0,1.0),hashf_wang(ve.z+TDrive.w,-1.0,1.0)};
-        __private float3 ix;
-        // + (float3){TDrive.w,TDrive.w,TDrive.w}
-        //const float4 rnd = fract( (ve*541547.1547987f + TDrive.wwww), &ix )*2.f - (float4){1.0,1.0,1.0,1.0};  // changes every frame
-        const float3 rvec = (float3){  // random vector depending on the index
-            (((iG+136  + (int)(1000.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f,
-            (((iG+778  + (int)(1013.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f,
-            (((iG+4578 + (int)( 998.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f
-        };
-        //const float3 rnd = fract( ( rvec + TDrive.www)*12.4565f, &ix )*2.f - (float3){1.0,1.0,1.0};
-        const float3 rnd = sin( ( rvec + TDrive.www )*124.4565f );
-        //if(iS==3){  printf( "atom[%i] seed=%g rvec(%g,%g,%g) rnd(%g,%g,%g) \n", iG, TDrive.w, rvec.x,rvec.y,rvec.z, rnd.x,rnd.y,rnd.z ); }
+        // //const float3 rnd = (float3){ hashf_wang(ve.x+TDrive.w,-1.0,1.0),hashf_wang(ve.y+TDrive.w,-1.0,1.0),hashf_wang(ve.z+TDrive.w,-1.0,1.0)};
+        // __private float3 ix;
+        // // + (float3){TDrive.w,TDrive.w,TDrive.w}
+        // //const float4 rnd = fract( (ve*541547.1547987f + TDrive.wwww), &ix )*2.f - (float4){1.0,1.0,1.0,1.0};  // changes every frame
+        // const float3 rvec = (float3){  // random vector depending on the index
+        //     (((iG+136  + (int)(1000.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f,
+        //     (((iG+778  + (int)(1013.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f,
+        //     (((iG+4578 + (int)( 998.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f
+        // };
+        // //const float3 rnd = fract( ( rvec + TDrive.www)*12.4565f, &ix )*2.f - (float3){1.0,1.0,1.0};
+        // const float3 rnd = sin( ( rvec + TDrive.www )*124.4565f );
+        // //if(iS==3){  printf( "atom[%i] seed=%g rvec(%g,%g,%g) rnd(%g,%g,%g) \n", iG, TDrive.w, rvec.x,rvec.y,rvec.z, rnd.x,rnd.y,rnd.z ); }
+        const uint sys_or_lambda_id = (TDrive.z >= 0.0f) ? 1u : ((uint)(iS + 1));
+        const uint seed = hash_wang(
+            ((uint)(iG + 1))*0x9E3779B9u
+            ^ sys_or_lambda_id*0x85EBCA6Bu
+            ^ ((uint)as_int(TDrive.w))*0xC2B2AE35u
+            ^ ((uint)as_int(MDpars.x))*0x27D4EB2Du
+        );
+        TDrives[iS].w = as_float(seed);
+        const float3 rnd = randn3_xorshift_box_muller( seed );
         fe.xyz    += rnd.xyz * sqrt( 2*const_kB*TDrive.x*TDrive.y/MDpars.x );
     }
 
@@ -984,9 +1099,19 @@ __kernel void updateAtomsMMFFf4(
     //     //printf( "GPU::updateAtomsUFF() iaa=%i isys=%i iG=%i cvf(%10.4e,%10.4e,%10.4e) \n", iaa, iS, iG, cvf.x,cvf.y,cvf.z );
     // }
 
-    ve.xyz *=        MDpars.z;      // friction, velocity damping
-    ve.xyz += fe.xyz*MDpars.x;      // acceleration
-    pe.xyz += ve.xyz*MDpars.x;      // move
+    const bool bTIVelocityVerlet = (TDrive.y > 0.0f) && (TDrive.z >= 0.0f);
+    if( bTIVelocityVerlet ){
+        const float3 f_old = fprev[iaa].xyz;
+        ve.xyz += (f_old + fe.xyz) * (0.5f*MDpars.x);
+        pe.xyz += ve.xyz*MDpars.x;
+        pe.xyz += fe.xyz*(0.5f*MDpars.x*MDpars.x);
+        fprev[iaa] = (float4)(fe.xyz, 0.0f);
+    }else{
+        ve.xyz *=        MDpars.z;      // friction, velocity damping
+        ve.xyz += fe.xyz*MDpars.x;      // acceleration
+        pe.xyz += ve.xyz*MDpars.x;      // move
+        fprev[iaa] = float4Zero;
+    }
     //ve     *= 0.99f;              // friction, velocity damping
     //ve.xyz += fe.xyz*0.1f;        // acceleration
     //pe.xyz += ve.xyz*0.1f;        // move

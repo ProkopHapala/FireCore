@@ -352,10 +352,12 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         const Quat4f tdrive0 = bDeterministicTDrive
             ? Quat4f{ (float)go.T_target, (float)go.gamma_damp, 0.0f, 0.0f }
             : Quat4f{ 0.0f, -1.0f, 0.0f, 0.0f };
+        const int nvec_active = bUFF ? ffu.natoms : ocl.nvecs;
         for(int isys=0; isys<nSystems; isys++){
-            const int i0v = isys * ocl.nvecs;
-            pack_system(isys, ffl0, false, false, false, true);
-            for(int i=0; i<ocl.nvecs; i++){
+            const int i0v = isys * nvec_active;
+            if(bUFF){ pack_uff_system(isys, ffu, false, false, false, true); }
+            else    { pack_system(isys, ffl0, false, false, false, true);    }
+            for(int i=0; i<nvec_active; i++){
                 aforces[i0v+i] = Quat4fZero;
                 avel   [i0v+i] = Quat4fZero;
                 cvfs   [i0v+i] = Quat4fZero;
@@ -377,26 +379,43 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         }
         if(!bUploadToGPU) return;
         int err = 0;
-        err |= ocl.upload( ocl.ibuff_atoms, atoms );
-        err |= ocl.upload( ocl.ibuff_aforces, aforces );
-        err |= ocl.upload( ocl.ibuff_avel, avel );
-        err |= ocl.upload( ocl.ibuff_cvf, cvfs );
-        err |= ocl.upload( ocl.ibuff_fprev, fprev );
-        err |= ocl.upload( ocl.ibuff_constr, constr );
-        err |= ocl.upload( ocl.ibuff_constrK, constrK );
-        err |= ocl.upload( ocl.ibuff_lvecs, lvecs );
-        err |= ocl.upload( ocl.ibuff_ilvecs, ilvecs );
-        err |= ocl.upload( ocl.ibuff_pbcshifts, pbcshifts );
-        err |= ocl.upload( ocl.ibuff_MDpars, MDpars );
-        err |= ocl.upload( ocl.ibuff_TDrive, TDrive );
-        err |= ocl.upload( ocl.ibuff_averageForces, averageForces );
-        err |= ocl.finishRaw();
+        if(bUFF){
+            err |= uff_ocl->upload( uff_ocl->ibuff_apos, atoms );
+            err |= uff_ocl->upload( uff_ocl->ibuff_fapos, aforces );
+            err |= uff_ocl->upload( uff_ocl->ibuff_avel, avel );
+            err |= uff_ocl->upload( uff_ocl->ibuff_cvf, cvfs );
+            err |= uff_ocl->upload( uff_ocl->ibuff_fprev, fprev );
+            err |= uff_ocl->upload( uff_ocl->ibuff_constr, constr );
+            err |= uff_ocl->upload( uff_ocl->ibuff_constrK, constrK );
+            err |= uff_ocl->upload( uff_ocl->ibuff_lvecs, lvecs );
+            err |= uff_ocl->upload( uff_ocl->ibuff_pbcshifts, pbcshifts, nSystems*((npbc>0)?npbc:1) );
+            err |= uff_ocl->upload( uff_ocl->ibuff_MDpars, MDpars );
+            err |= uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
+            err |= uff_ocl->upload( uff_ocl->ibuff_averageForces, averageForces );
+            err |= uff_ocl->finishRaw();
+        }else{
+            err |= ocl.upload( ocl.ibuff_atoms, atoms );
+            err |= ocl.upload( ocl.ibuff_aforces, aforces );
+            err |= ocl.upload( ocl.ibuff_avel, avel );
+            err |= ocl.upload( ocl.ibuff_cvf, cvfs );
+            err |= ocl.upload( ocl.ibuff_fprev, fprev );
+            err |= ocl.upload( ocl.ibuff_constr, constr );
+            err |= ocl.upload( ocl.ibuff_constrK, constrK );
+            err |= ocl.upload( ocl.ibuff_lvecs, lvecs );
+            err |= ocl.upload( ocl.ibuff_ilvecs, ilvecs );
+            err |= ocl.upload( ocl.ibuff_pbcshifts, pbcshifts );
+            err |= ocl.upload( ocl.ibuff_MDpars, MDpars );
+            err |= ocl.upload( ocl.ibuff_TDrive, TDrive );
+            err |= ocl.upload( ocl.ibuff_averageForces, averageForces );
+            err |= ocl.finishRaw();
+        }
         OCL_checkError(err, "resetTIBatchState().upload");
     }
 
     inline void clearSystemGPUConstraints( int isys ){
-        const int i0a = isys * ocl.nAtoms;
-        for(int ia=0; ia<ocl.nAtoms; ia++){
+        const int natoms_active = bUFF ? ffu.natoms : ocl.nAtoms;
+        const int i0a = isys * natoms_active;
+        for(int ia=0; ia<natoms_active; ia++){
             constr [i0a + ia] = Quat4f{0.0f, 0.0f, 0.0f, -1.0f};
             constrK[i0a + ia] = Quat4fZero;
         }
@@ -614,16 +633,20 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
 
 
     void setupTIConstraints( int isys, float lambda, int nCVs, Vec3f* initial_positions, Vec3f* final_positions, bool bAlign=false, float K=10.0f ){
-        const int i0a = isys * ocl.nAtoms;
-        for(int ia=0; ia<ocl.nAtoms; ia++){
+        const int natoms_active = bUFF ? ffu.natoms : ocl.nAtoms;
+        const int nvec_active   = bUFF ? ffu.natoms : ocl.nvecs;
+        const int* atypes_active = bUFF ? ffu.atypes : ffls[isys].atypes;
+        const int i0a = isys * natoms_active;
+        const int itype_Si = params.getAtomType("Si");
+        for(int ia=0; ia<natoms_active; ia++){
             constr [i0a + ia] = Quat4f{0.0f, 0.0f, 0.0f, -1.0f};
             constrK[i0a + ia] = Quat4fZero;
         }
         
         int iSi1 = -1;
         int si_count = 0; // counts pairs of Si atoms
-        for(int ia=0; ia<ffls[isys].natoms; ia++){
-            if(ffls[isys].atypes[ia]==params.getAtomType("Si")){
+        for(int ia=0; ia<natoms_active; ia++){
+            if(atypes_active[ia]==itype_Si){
                 if(iSi1 == -1){ iSi1 = ia; }
                 else {
                     int iSi2 = ia;
@@ -681,7 +704,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                         constrK[i0a + iSi2] = aconK2;
 
                         if( bAlign ){
-                            int i0v = isys * ocl.nvecs;
+                            int i0v = isys * nvec_active;
                             // Precondition the whole system from the reference endpoint geometry to the
                             // current TI window. This reduces large nonequilibrium transients caused by
                             // moving only the constrained atoms while leaving the rest of the chain at
@@ -700,8 +723,8 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                                     const Vec3f e1   = u1*(1.0f/L1);
                                     const float stretch = L1/L0;
                                     const Mat3f rot = ti_rotation_between_dirs( u0, u1 );
-                                    for(int i=0; i<ocl.nvecs; i++){
-                                        if(i < ocl.nAtoms){
+                                    for(int i=0; i<nvec_active; i++){
+                                        if(i < natoms_active){
                                             atoms[i0v + i].f = ti_precondition_atom_position( atoms[i0v + i].f, mid0, e0, rot, mid1, e1, stretch );
                                         }else{
                                             atoms[i0v + i].f = rot.dot( atoms[i0v + i].f );
@@ -723,6 +746,9 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
     double computeFreeEnergy(int nCVs, Vec3f* initial_positions, Vec3f* final_positions, int nLambda, int nMDsteps = 100000, int nEQsteps = 10000, double Fconv = 1e-6, int mode = 0, double K = 5.0, 
         int hardAtoms=-1, int softAtoms=-1, int hardDist=-1, int softDist=-1 ){
         
+        const bool prev_bFreeEnergyCalc = bFreeEnergyCalc;
+        bFreeEnergyCalc = true;
+
         #define _setbool(b,i) { if(i>=0){b=(i>0);} }
         _setbool( bHardConstrainedAtoms,    hardAtoms );
         _setbool( bSoftConstrainedAtoms,    softAtoms );
@@ -741,7 +767,8 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
             printf("WARNING: computeFreeEnergy() no TI constraint mode selected; defaulting to hard atom constraints.\n");
         }
         if(nConstraintModes > 1){
-            printf("ERROR: computeFreeEnergy() expects exactly one TI constraint mode, got %d.\n", nConstraintModes);
+            printf("ERROR: computeFreeEnergy() expects exactly one TI constraint mode, got %d. (hardA=%d softA=%d hardD=%d softD=%d)\n", 
+                nConstraintModes, (int)bHardConstrainedAtoms, (int)bSoftConstrainedAtoms, (int)bHardConstrainedDistance, (int)bSoftConstrainedDistance);
             return NAN;
         }
 
@@ -803,10 +830,10 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         // --- Thermodynamic Integration (TI) ---
         if(doTI){
             bDeterministicTDrive = true;
-            for(int isys=0; isys<nSystems; isys++){
-                gopts[isys].nExplore = INT32_MAX;
-                gopts[isys].nRelax = 0;
-            }
+            const int nExplore_bak = go.nExplore;
+            const int nRelax_bak   = go.nRelax;
+            go.nExplore = INT32_MAX;
+            go.nRelax   = 0;
             printf("\n=== Thermodynamic Integration ===\n");
             const int nPerVFs_bak = nPerVFs;
             
@@ -829,33 +856,46 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                     float lambda = (float)il / (float)(nLambda - 1);
                     setupTIConstraints( isys, lambda, nCVs, initial_positions, final_positions, true, K );
                 }
-                ocl.upload( ocl.ibuff_TDrive, TDrive );
-                ocl.upload( ocl.ibuff_constr,  constr  );
-                ocl.upload( ocl.ibuff_constrK, constrK );
-                ocl.upload( ocl.ibuff_atoms,   atoms   ); // Upload potentially aligned atoms
+                if(bUFF){
+                    uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
+                    uff_ocl->upload( uff_ocl->ibuff_constr,  constr  );
+                    uff_ocl->upload( uff_ocl->ibuff_constrK, constrK );
+                    uff_ocl->upload( uff_ocl->ibuff_apos,    atoms   );
+                    uff_ocl->finishRaw();
+                }else{
+                    ocl.upload( ocl.ibuff_TDrive, TDrive );
+                    ocl.upload( ocl.ibuff_constr,  constr  );
+                    ocl.upload( ocl.ibuff_constrK, constrK );
+                    ocl.upload( ocl.ibuff_atoms,   atoms   );
+                    ocl.finishRaw();
+                }
 
-		                printf("  Equilibrating %d steps...\n", nEQsteps);
+                printf("  Equilibrating %d steps...\n", nEQsteps);
                 nPerVFs = nEQsteps;
-                run_ocl_opt( nEQsteps, Fconv);
-// ocl.download( ocl.ibuff_atoms, atoms );
-// ocl.download( ocl.ibuff_aforces, aforces );
-// unpack_system( 0, ffls[0],true, false );
-// ffl.copyOf( ffls[0] );
-// eval_omp();
-// for(int ia=0; ia<ffls[0].natoms; ia++){
-//     printf("  Atom %d: (%f %f %f) fapos(%f %f %f) fapos[0]: (%f %f %f)\n", ia, atoms[ia].x, atoms[ia].y, atoms[ia].z, ffl.fapos[ia].x, ffl.fapos[ia].y, ffl.fapos[ia].z, ffls[0].fapos[ia].x, ffls[0].fapos[ia].y, ffls[0].fapos[ia].z);
-// }
-// exit(0);
-    for(int isys=0; isys<nSystems; isys++) averageForces[isys] = Quat4fZero;
-                ocl.upload( ocl.ibuff_averageForces, averageForces );
-                ocl.finishRaw();
+                if(bUFF){ run_uff_ocl( nEQsteps, dt_default, opt.damping, Fconv, 1000.0 ); }
+                else    { run_ocl_opt( nEQsteps, Fconv); }
 
-		                printf("  Production %d steps...\n", nProdStepsPerLambda);
+                for(int isys=0; isys<nSystems; isys++) averageForces[isys] = Quat4fZero;
+                if(bUFF){
+                    uff_ocl->upload( uff_ocl->ibuff_averageForces, averageForces );
+                    uff_ocl->finishRaw();
+                }else{
+                    ocl.upload( ocl.ibuff_averageForces, averageForces );
+                    ocl.finishRaw();
+                }
+
+                printf("  Production %d steps...\n", nProdStepsPerLambda);
                 nPerVFs = nProdStepsPerLambda;
-                run_ocl_opt( nProdStepsPerLambda, Fconv);
+                if(bUFF){ run_uff_ocl( nProdStepsPerLambda, dt_default, opt.damping, Fconv, 1000.0 ); }
+                else    { run_ocl_opt( nProdStepsPerLambda, Fconv); }
 
-                ocl.download( ocl.ibuff_averageForces, averageForces );
-                ocl.finishRaw();
+                if(bUFF){
+                    uff_ocl->download( uff_ocl->ibuff_averageForces, averageForces );
+                    uff_ocl->finishRaw();
+                }else{
+                    ocl.download( ocl.ibuff_averageForces, averageForces );
+                    ocl.finishRaw();
+                }
 
                 for(int isys=0; isys<nSystems; isys++){
                     int il = isys + batch*nSystems;
@@ -885,6 +925,8 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 }
             }
             nPerVFs = nPerVFs_bak;
+            go.nExplore = nExplore_bak;
+            go.nRelax   = nRelax_bak;
         }
         bDeterministicTDrive = prevDeterministicTDrive;
 /*
@@ -1055,7 +1097,8 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 res_dist[i]
             );
         }
-		        fclose(fti);
+		fclose(fti);
+        bFreeEnergyCalc = prev_bFreeEnergyCalc;
         return doTI ? cumulative_FE : res_JE_F[nLambda-1];
     }
 
@@ -1301,7 +1344,7 @@ void realloc( int nSystems_ ){
         _realloc0( constr,    uff_ocl->nAtomsTot , Quat4fOnes*-1. );
         _realloc0( constrK,   uff_ocl->nAtomsTot , Quat4fOnes*-1. );
 
-        _realloc0( fprev,     ocl.nvecs*nSystems  , Quat4fZero );
+        _realloc0( fprev,     uff_ocl->nAtomsTot  , Quat4fZero );
     }else{
         printf( "MolWorld_sp3_multi::realloc() MMFF Systems %i nAtoms %i nnode %i \n", nSystems, ffl.natoms,  ffl.nnode );
         ocl.initAtomsForces( nSystems, ffl.natoms,  ffl.nnode, npbc+1 );
@@ -3379,43 +3422,93 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
     if(!uff_ocl){ printf("MolWorld_sp3_multi::run_uff_ocl(): uff_ocl==nullptr\n"); return 0; } // This should not happen, uff_ocl is initialized in init()
     if(verbosity>0)printf("MolWorld_sp3_multi::run_uff_ocl( bSurfAtoms=%i,  bGridFF=%i, bNonBonded=%i | niter=%i, dt=%f, damping=%f, Fconv=%f, Flim=%f) \n",bSurfAtoms, bGridFF, bNonBonded,  niter, dt, damping, Fconv, Flim);
     picked2GPU( ipicked, 1.0f );
-    if(initial){
-        for(int i=0; i<nSystems; i++){
-            MDpars[i].x = dt;               // dt
-            MDpars[i].y = Flim;             // Flimit
-            MDpars[i].z = 1.0f-damping;   // velocity damping factor (1.0 - damping)
-            fire[i].dt = dt;
-            fire[i].damping = damping;
-            fire[i].ff=1e300;
-            MDpars[i].w = 0.0f;     
-            // Only start exploring if nExplore is actually greater than 0
-            bool allowExplore = (!bOnlyRelax) && (gopts[i].nExplore > 0);
-            float temp = allowExplore ? (float)go.T_target : 0.0f;
-            float gamma = allowExplore ? (float)go.gamma_damp : -1.0f;
-            float seed = allowExplore ? randf(-1.0f,1.0f) : 0.0f;
-            TDrive[i]   = (Quat4f){temp,gamma,0.0f,seed};
-            if(!allowExplore){
-                gopts[i].bExploring = false;
-                gopts[i].istep = 0;
-            }else{
-                gopts[i].bExploring = true;
+    // if(initial){
+    //     for(int i=0; i<nSystems; i++){
+    //         MDpars[i].x = dt;               // dt
+    //         MDpars[i].y = Flim;             // Flimit
+    //         MDpars[i].z = 1.0f-damping;   // velocity damping factor (1.0 - damping)
+    //         fire[i].dt = dt;
+    //         fire[i].damping = damping;
+    //         fire[i].ff=1e300;
+    //         MDpars[i].w = 0.0f;     
+    //         // Only start exploring if nExplore is actually greater than 0
+    //         bool allowExplore = (!bOnlyRelax) && (gopts[i].nExplore > 0);
+    //         float temp = allowExplore ? (float)go.T_target : 0.0f;
+    //         float gamma = allowExplore ? (float)go.gamma_damp : -1.0f;
+    //         float seed = allowExplore ? randf(-1.0f,1.0f) : 0.0f;
+    //         TDrive[i]   = (Quat4f){temp,gamma,0.0f,seed};
+    //         if(!allowExplore){
+    //             gopts[i].bExploring = false;
+    //             gopts[i].istep = 0;
+    //         }else{
+    //             gopts[i].bExploring = true;
+    //         }
+    //     }
+
+    //     uff_ocl->upload( uff_ocl->ibuff_MDpars, MDpars );
+    //     uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
+    //     uff_ocl->setup_updateAtomsMMFFf4( uff_ocl->nAtoms, 0 ); // nNode==0 for UFF
+
+    //     // Initialize dynamic buffers
+    //     uff_ocl->upload( uff_ocl->ibuff_avel, avel );   // zero initial velocities
+    //     uff_ocl->upload( uff_ocl->ibuff_cvf , cvfs_d );   // clear accumulators (UFF double precision)
+
+    //     // Clear timing file and write header
+    //     FILE* f = fopen("times_run_uff_ocl.dat", "w");
+    //     if(f){
+    //         fprintf(f, "# Timing data for run_uff_ocl (all times in seconds)\n");
+    //         fprintf(f, "# %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n", "t_total", "t_updateME", "t_bonding", "t_gridff", "t_surfatoms", "t_nonbond", "t_updateAt", "t_trajSave", "t_evalVFs", "nloop");
+    //         fclose(f);
+    //     }
+
+    //     initial = false;
+    // }
+    for(int isys=0; isys<nSystems; isys++){
+            gopts[isys].nExplore = INT32_MAX;
+            gopts[isys].nRelax = 0;
+    }
+    if(initial && !bFreeEnergyCalc){
+        for(int isys=0; isys<nSystems; isys++){
+            float lambda = (nSystems > 1) ? (float)isys / (float)(nSystems - 1) : 0.0f;
+            gopts[isys].nExplore = 0;
+            gopts[isys].nRelax = 100000;
+            niter = 100000;
+            
+            // For 'initial' setup via GUI/manual, we derive anchor points from current positions
+            // Use ffu.atypes for UFF, ffls[isys].atypes for MMFF
+            std::vector<Vec3f> p_init, p_final;
+            int iSi1 = -1;
+            const int natoms_init = bUFF ? ffu.natoms : ffls[isys].natoms;
+            const int* atypes_init = bUFF ? ffu.atypes : ffls[isys].atypes;
+            for(int ia=0; ia<natoms_init; ia++){
+                if(atypes_init[ia]==params.getAtomType("Si")){
+                    if(iSi1 == -1){ iSi1 = ia; }
+                    else{
+                        Vec3f p1 = (Vec3f){-5.5f, 0, 2.5f}; // ToDo: we should probably use actual positions of Si atoms rather than fixed values
+                        Vec3f p2 = (Vec3f){+5.5f, 0, 2.5f};
+                        p_init.push_back(p1); p_init.push_back(p2);
+                        // Default final positions: stretched by 15A along X
+                        p_final.push_back(p1 + (Vec3f){ -30.f, 0, 0.f});
+                        p_final.push_back(p2 + (Vec3f){ 30.f, 0, 0.f});
+                        iSi1 = -1;
+                    }
+                }
+            }
+            setupTIConstraints( isys, lambda, p_init.size()/2, p_init.data(), p_final.data(), true );            
+            for(int ia=0; ia<natoms_init; ia++){
+                if(atypes_init[ia]==params.getAtomType("Si")){
+                    printf( "constr[%i]: (%7.3f,%7.3f,%7.3f |K=%7.3f) \n", isys*natoms_init+ia, constr[isys*natoms_init+ia].x, constr[isys*natoms_init+ia].y, constr[isys*natoms_init+ia].z, constr[isys*natoms_init+ia].w );
+                }
             }
         }
-
-        uff_ocl->upload( uff_ocl->ibuff_MDpars, MDpars );
-        uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
-        uff_ocl->setup_updateAtomsMMFFf4( uff_ocl->nAtoms, 0 ); // nNode==0 for UFF
-
-        // Initialize dynamic buffers
-        uff_ocl->upload( uff_ocl->ibuff_avel, avel );   // zero initial velocities
-        uff_ocl->upload( uff_ocl->ibuff_cvf , cvfs_d );   // clear accumulators (UFF double precision)
-
-        // Clear timing file and write header
-        FILE* f = fopen("times_run_uff_ocl.dat", "w");
-        if(f){
-            fprintf(f, "# Timing data for run_uff_ocl (all times in seconds)\n");
-            fprintf(f, "# %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n", "t_total", "t_updateME", "t_bonding", "t_gridff", "t_surfatoms", "t_nonbond", "t_updateAt", "t_trajSave", "t_evalVFs", "nloop");
-            fclose(f);
+        if(bUFF){
+            uff_ocl->upload( uff_ocl->ibuff_constr,  constr  );
+            uff_ocl->upload( uff_ocl->ibuff_constrK, constrK );
+            uff_ocl->upload( uff_ocl->ibuff_apos,   atoms   );
+        }else{
+            ocl.upload( ocl.ibuff_constr,  constr  );
+            ocl.upload( ocl.ibuff_constrK, constrK );
+            ocl.upload( ocl.ibuff_atoms,   atoms   );
         }
 
         initial = false;
@@ -3587,7 +3680,7 @@ if(initial){
 }
     double F2conv = Fconv*Fconv;
     // picked2GPU( ipicked,  1.0 );
-    if(initial){
+    if(initial && !bFreeEnergyCalc){  // In TI mode, constraints are set by computeFreeEnergy; skip this GUI-only init
         for(int isys=0; isys<nSystems; isys++){
             float lambda = (nSystems > 1) ? (float)isys / (float)(nSystems - 1) : 0.0f;
             gopts[isys].nExplore = INT32_MAX;

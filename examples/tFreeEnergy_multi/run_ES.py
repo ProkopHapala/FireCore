@@ -42,6 +42,7 @@ def main():
     parser.add_argument("--constraints", type=str, default="constraints.txt", help="Path to constraints file")
     parser.add_argument("--surf_name", type=str, default="../../cpp/common_resources/xyz/NaCl_3x3_L3", help="Path to the surface file; use 'none' to disable the surface")
     parser.add_argument("--mode", type=str, default="TI", choices=["TI", "JE", "BOTH"], help="Mode of calculation: TI, JE, or BOTH")
+    parser.add_argument("--ff", type=str, default="MMFF", choices=["MMFF", "UFF"], help="Force field backend: MMFF or UFF")
     parser.add_argument("--K", type=float, default=5.0, help="Jarzynski Equality force constant")
     parser.add_argument("-T", "--temperature", type=float, default=300.0, help="Temperature in Kelvin")
     parser.add_argument("--dt", type=float, default=0.05, help="Time step")
@@ -54,6 +55,9 @@ def main():
     args = parser.parse_args()
     surf_name = None if args.surf_name.lower() in ("none", "null", "off") else args.surf_name
 
+    ff_name = args.ff.upper()
+    bUFF = (ff_name == "UFF")
+
     # Initialize MMFF_multi
     mmff.init(
         nSys_=args.nSys,
@@ -64,6 +68,7 @@ def main():
         sBondTypes="../../cpp/common_resources/BondTypes.dat",
         sAngleTypes="../../cpp/common_resources/AngleTypes.dat",
         bMMFF=True,
+        bUFF=bUFF,
         bEpairs=False,
         T=args.temperature,
         gamma=1/(args.t_damp*args.dt),
@@ -98,7 +103,7 @@ def main():
         final_positions.extend(final_pos)
         print(f"  CV {i+1}: ({init_pos[0]:.1f}, {init_pos[1]:.1f}, {init_pos[2]:.1f}) → ({final_pos[0]:.1f}, {final_pos[1]:.1f}, {final_pos[2]:.1f})")
 
-    print(f"\nParameters: nLambda={args.nLambda}, nMDsteps={args.nMDsteps}, nEQsteps={args.nEQsteps}, Mode={args.mode}\n")
+    print(f"\nParameters: ff={ff_name}, nLambda={args.nLambda}, nMDsteps={args.nMDsteps}, nEQsteps={args.nEQsteps}, Mode={args.mode}\n")
 
     # Map mode to integer
     mode_map = {"TI": 0, "JE": 1, "BOTH": 2}

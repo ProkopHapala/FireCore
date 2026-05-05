@@ -117,10 +117,12 @@ public:
     // --- Buffers for atom updates (shared with MM path naming)
     int ibuff_avel      = -1; // velocities (x,y,z,m)
     int ibuff_cvf       = -1; // accumulators for FIRE damping { |f|^2, |v|^2, <f|v>, 0 }
+    int ibuff_fprev     = -1; // previous force for deterministic TI velocity-Verlet
     int ibuff_constr    = -1; // constraints target positions (x,y,z,K)
     int ibuff_constrK   = -1; // constraint stiffness (kx,ky,kz,unused)
     int ibuff_MDpars    = -1; // per-system MD parameters (dt, damp, Flimit, reserved)
     int ibuff_TDrive    = -1; // per-system thermal driving (T, gamma, seed, reserved)
+    int ibuff_averageForces = -1; // per-system TI force accumulators
     int ibuff_bboxes    = -1; // per-system bounding boxes (cl_Mat3)
     int ibuff_sysneighs = -1; // optional inter-system neighbor list
     int ibuff_sysbonds  = -1; // optional inter-system bond parameters
@@ -306,11 +308,13 @@ public:
         // Note: For UFF we do not use pi orbitals; vectors count equals atoms count per system
         ibuff_avel     = newBuffer("avel",      nAtomsTot, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
         ibuff_cvf      = newBuffer("cvf",       nAtomsTot, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
+        ibuff_fprev    = newBuffer("fprev",     nAtomsTot, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
         //ibuff_cvf      = newBuffer("cvf",       nAtomsTot, sizeof(cl_double4), 0, CL_MEM_READ_WRITE);
         ibuff_constr   = newBuffer("constr",    nAtomsTot, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
         ibuff_constrK  = newBuffer("constrK",   nAtomsTot, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
         ibuff_MDpars   = newBuffer("MDpars",    nSystems,  sizeof(cl_float4), 0, CL_MEM_READ_ONLY );
-        ibuff_TDrive   = newBuffer("TDrive",    nSystems,  sizeof(cl_float4), 0, CL_MEM_READ_ONLY );
+        ibuff_TDrive   = newBuffer("TDrive",    nSystems,  sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
+        ibuff_averageForces = newBuffer("averageForces", nSystems, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
         ibuff_bboxes   = newBuffer("bboxes",    nSystems,  sizeof(cl_Mat3),   0, CL_MEM_READ_ONLY );
         // Inter-system coupling (optional); allocate minimal placeholders
         ibuff_sysneighs= newBuffer("sysneighs", nSystems,  sizeof(cl_int),    0, CL_MEM_READ_ONLY );
@@ -674,6 +678,8 @@ public:
     // 6: __global float4* constrK
     // 7: __global float4* MDparams
     // 8: __global float4* TDrives
+    // 9: __global float4* averageForces
+    // 10: __global float4* fprev
     OCLtask* setup_updateAtomsMMFFf4(int natoms, int nNode=0){
         if(!task_updateAtoms){ task_updateAtoms = getTask("updateAtomsMMFFf4"); }
         if(!task_updateAtoms) return nullptr;
@@ -695,6 +701,8 @@ public:
         err |= useArgBuff( ibuff_constrK); OCL_checkError(err, "setup_updateAtomsMMFFf4.arg 6"); // 6 constraint stiffness
         err |= useArgBuff( ibuff_MDpars ); OCL_checkError(err, "setup_updateAtomsMMFFf4.arg 7"); // 7 MD params per system
         err |= useArgBuff( ibuff_TDrive ); OCL_checkError(err, "setup_updateAtomsMMFFf4.arg 8"); // 8 thermal driving per system
+        err |= useArgBuff( ibuff_averageForces ); OCL_checkError(err, "setup_updateAtomsMMFFf4.arg 9"); // 9 TI accumulators
+        err |= useArgBuff( ibuff_fprev ); OCL_checkError(err, "setup_updateAtomsMMFFf4.arg 10"); // 10 previous forces
         OCL_checkError(err, "OCL_UFF::setup_updateAtomsMMFFf4");
         return task_updateAtoms;
     }

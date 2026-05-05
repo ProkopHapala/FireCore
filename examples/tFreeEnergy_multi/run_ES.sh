@@ -1,14 +1,16 @@
 #!/bin/bash
 
-ln -s ../../cpp/common_resources data
-ln -s ../../cpp/common_resources common_resources 
+ln -sfn ../../cpp/common_resources data
+ln -sfn ../../cpp/common_resources common_resources 
 
-rm trajectory.xyz
+rm -f trajectory.xyz
 set -e  # Exit on error
 
 # Default comparison setup aligned with examples/tFreeEnergy/{CPU,GPU-debug}
 MODE="TI"   # Options: TI, JE, BOTH
+FF="MMFF"   # Options: MMFF, UFF
 K=10.0
+SURF_NAME="none"
 HARD_ATOMS=""
 SOFT_ATOMS=""
 HARD_DIST=""
@@ -25,7 +27,9 @@ TEMP=300
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --mode) MODE="$2"; shift ;;
+        --ff)   FF="$2"; shift ;;
         --k)    K="$2"; shift ;;
+        --surf_name|--surface|--surf) SURF_NAME="$2"; shift ;;
         --nSys) NSYS="$2"; shift ;;
         --nLambda) NLAMBDA="$2"; shift ;;
         --nMDsteps) NMDSTEPS="$2"; shift ;;
@@ -67,25 +71,15 @@ echo "Build successful!"
 echo ""
 
 # Run calculation
-echo "Step 2: Running Free Energy Calculation (Mode: $MODE)..."
+echo "Step 2: Running Free Energy Calculation (Force field: $FF, Mode: $MODE)..."
 echo "----------------------------------------"
-# python3 run_ES.py \
-#     --mode $MODE \
-#     --nSys 100 \
-#     --xyz_name "../tMMFF/data/entropic_spring_$N.xyz" \
-#     --nLambda 100000 \
-#     --nMDsteps 10000000 \
-#     --nEQsteps 50000 \
-#     --Fconv 1e-6 \
-#     --constraints "constraints_ES.txt" \
-#     --K $K \
-#     --dt 0.05 \
-#     -T 300 \
-#     --t_damp 150
+echo "Surface: $SURF_NAME"
 python3 run_ES.py \
     --mode $MODE \
+    --ff $FF \
     --nSys $NSYS \
     --xyz_name "../tMMFF/data/entropic_spring_$N.xyz" \
+    --surf_name "$SURF_NAME" \
     --nLambda $NLAMBDA \
     --nMDsteps $NMDSTEPS \
     --nEQsteps $NEQSTEPS \
@@ -99,19 +93,7 @@ python3 run_ES.py \
     $SOFT_ATOMS \
     $HARD_DIST \
     $SOFT_DIST
-# python3 run_ES.py \
-#     --mode $MODE \
-#     --nSys 2 \
-#     --xyz_name "../tMMFF/data/entropic_spring_$N.xyz" \
-#     --nLambda 2 \
-#     --nMDsteps 40 \
-#     --nEQsteps 20000 \
-#     --Fconv 1e-6 \
-#     --constraints "constraints_ES.txt" \
-#     --K $K \
-#     --dt 0.05 \
-#     -T 300 \
-#     --t_damp 150
+
 if [ $? -ne 0 ]; then
     echo "ERROR: Calculation failed!"
     exit 1
@@ -124,6 +106,7 @@ echo "----------------------------------------"
 python3 plot_F_interactive.py --input entropic_spring_${N}_free_energy.dat
 if [ $? -ne 0 ]; then
     echo "ERROR: Plotting failed!"
+    exit 1
     exit 1
 fi
 echo ""

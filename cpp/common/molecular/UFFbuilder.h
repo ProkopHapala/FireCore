@@ -113,6 +113,13 @@ class UFFBuilder : public BuilderBase {public:
     
     }
 
+    inline char hyb(int type) const {
+        const char* nm = params->atypes[type].name;
+        if(nm[2]) return nm[2];
+        if(nm[0]=='S' && nm[1]=='i') return '3';
+        return 0;
+    }
+
     void assignUFFtypes_trivial( int* neighs, double* BOs, int* BOs_int, bool* set_atom, bool* set_bond ){
 
         for(int ia=0; ia<atoms.size(); ia++){
@@ -126,6 +133,24 @@ class UFFBuilder : public BuilderBase {public:
                 BOs[ib] = 1.0;
                 BOs_int[ib] = 1;
                 set_bond[ib] = true;
+            } else if( params->atypes[Ai.type].name[0] == 'E' ){ // electron-pair pseudo atom (treat like H, single bond)
+                Ai.type = params->getAtomType("E", true);
+                set_atom[ia] = true;
+                int ja = neighs[ia*4];
+                int ib = getBondByAtoms( ia, ja );
+                BOs[ib] = 1.0;
+                BOs_int[ib] = 1;
+                set_bond[ib] = true;
+            } else if( params->atypes[Ai.type].name[0] == 'S' && params->atypes[Ai.type].name[1] == 'i' ){ // silicon: only "Si" type available in AtomTypes.dat, treat as sp3
+                Ai.type = params->getAtomType("Si", true);
+                set_atom[ia] = true;
+                for(int in=ia*4; in<ia*4+Ci.nbond; in++){
+                    int ja = neighs[in];
+                    int ib = getBondByAtoms( ia, ja );
+                    BOs[ib] = 1.0;
+                    BOs_int[ib] = 1;
+                    set_bond[ib] = true;
+                }
             } else {
                 AtomConf& Ci = confs[Ai.iconf];
                 if( params->atypes[Ai.type].name[0] == 'C' && Ci.nbond == 4 ){ // all sp3 carbons
@@ -401,7 +426,7 @@ class UFFBuilder : public BuilderBase {public:
                 if( n > 1 ){
                     // set atoms
                     if ( set_atom[ia] ) {
-                        if ( params->atypes[A.type].name[2] != 'R' ) printf("WARNING SIMPLERULE: atom %i would be set to resonant but it has already a type of %s\n", ia+1, params->atypes[A.type].name);
+                        if ( hyb(A.type) != 'R' ) printf("WARNING SIMPLERULE: atom %i would be set to resonant but it has already a type of %s\n", ia+1, params->atypes[A.type].name);
                         continue;
                     }
                     if ( params->atypes[A.type].name[0] == 'C' ){ 
@@ -615,7 +640,7 @@ class UFFBuilder : public BuilderBase {public:
                 AtomConf& Cj = confs[Aj.iconf];
                 int ib = getBondByAtoms( nb[i], neighs[in] );
                 if ( params->atypes[Aj.type].name[0] == 'O' && Cj.nbond == 1 ) { // delocalized carbonyl
-                    if ( set_atom[neighs[in]] && params->atypes[Aj.type].name[2] != 'R' ) {
+                    if ( set_atom[neighs[in]] && hyb(Aj.type) != 'R' ) {
                         printf("WARNING SETAROMA: carbonyl atom %c %i would be set to resonant but it has already a type of %i\n", params->atypes[Aj.type].name[0], neighs[in]+1, Aj.type);
                         continue;
                     }
@@ -824,7 +849,7 @@ class UFFBuilder : public BuilderBase {public:
                 for(int in=ia*4; in<ia*4+C.nbond; in++){
                     int ja = neighs[in];
                     Atom& Aj = atoms[ja];
-                    if ( params->atypes[Aj.type].name[2]=='R' ) {
+                    if ( hyb(Aj.type)=='R' ) {
                         if ( params->atypes[A.type].name[0] == 'N' ) { A.type = params->getAtomType("N_R", true); } 
                         else if ( params->atypes[A.type].name[0] == 'O' ) { A.type = params->getAtomType("O_R", true); }
                         int ib = getBondByAtoms( ia, ja );
@@ -851,7 +876,7 @@ class UFFBuilder : public BuilderBase {public:
         for(int ia=0; ia<atoms.size(); ia++){
             Atom& A = atoms[ia];
             // check that resonant atoms have at least one 1.5 bond
-            if ( params->atypes[A.type].name[2]=='R' ) { 
+            if ( hyb(A.type)=='R' ) { 
                 AtomConf& C = confs[A.iconf]; 
                 bool found = false;
                 for(int in=ia*4; in<ia*4+C.nbond; in++){
@@ -868,7 +893,7 @@ class UFFBuilder : public BuilderBase {public:
                     exit(0);
                 }
             // check that sp2 atoms have one localized double bond
-            } else if ( params->atypes[A.type].name[2]=='2' ) { 
+            } else if ( hyb(A.type)=='2' ) { 
                 AtomConf& C = confs[A.iconf]; 
                 bool found = false;
                 for(int in=ia*4; in<ia*4+C.nbond; in++){
@@ -1093,23 +1118,23 @@ class UFFBuilder : public BuilderBase {public:
                     double rjk = assignUFFparams_calcrij(a.bonds.y);
                     double rik = sqrt( rij*rij + rjk*rjk - 2.0*rij*rjk*ct );
                     double kappa = 28.7989689090648 * Ei.Quff * Ek.Quff / (sq(rik)*sq(rik)*rik) * ( 3.0*rij*rjk*st2 - sq(rik)*ct );
-                    if ( params->atypes[Aj.type].name[2]=='1' || params->atypes[Aj.type].name[2]=='2' || 
-                    params->atypes[Aj.type].name[2]=='R' ) { // cosine/periodic
-                        if ( params->atypes[Aj.type].name[2]=='1' ) {
+                    if ( hyb(Aj.type)=='1' || hyb(Aj.type)=='2' || 
+                    hyb(Aj.type)=='R' ) { // cosine/periodic
+                        if ( hyb(Aj.type)=='1' ) {
                             //a.k = 0.5 * kappa;
                             a.k = kappa;
                             a.C0 = 1.0;
                             a.C1 = 1.0;
                             a.C2 = 0.0;
                             a.C3 = 0.0;
-                        } else if ( params->atypes[Aj.type].name[2]=='2' || params->atypes[Aj.type].name[2]=='R' ) {
+                        } else if ( hyb(Aj.type)=='2' || hyb(Aj.type)=='R' ) {
                             a.k = kappa / 9.0;
                             a.C0 = 1.0;
                             a.C1 = 0.0;
                             a.C2 = 0.0;
                             a.C3 = -1.0;
                         } 
-                    } else if ( params->atypes[Aj.type].name[2]=='3' ) { // fourier
+                    } else if ( hyb(Aj.type)=='3' ) { // fourier
                         a.k = kappa;
                         a.C2 = 1.0 / ( 4.0 * st2 );
                         a.C1 = -4.0 * a.C2 * ct;
@@ -1135,14 +1160,14 @@ class UFFBuilder : public BuilderBase {public:
                 int i2 = neighs[in1];
                 Atom& A2 = atoms[i2];
                 if ( params->atypes[A2.type].name[0] == 'H' ) continue;
-                if ( params->atypes[A2.type].name[2] == '1' ) continue; // Torsional potentials for central bonds involving sp-hybridized centers X-1 were assigned a value of zero
+                if ( hyb(A2.type) == '1' ) continue; // Torsional potentials for central bonds involving sp-hybridized centers X-1 were assigned a value of zero
                 AtomConf& C2 = confs[A2.iconf];
                 for(int in2=i2*4; in2<i2*4+C2.nbond; in2++){
                     int i3 = neighs[in2];
                     if ( i3 != i1 ) {
                         Atom& A3 = atoms[i3];
                         if ( params->atypes[A3.type].name[0] == 'H' ) continue;
-                        if ( params->atypes[A3.type].name[2] == '1' ) continue; // Torsional potentials for central bonds involving sp-hybridized centers X-1 were assigned a value of zero
+                        if ( hyb(A3.type) == '1' ) continue; // Torsional potentials for central bonds involving sp-hybridized centers X-1 were assigned a value of zero
                         AtomConf& C3 = confs[A3.iconf];
                         for(int in3=i3*4; in3<i3*4+C3.nbond; in3++){
                             int i4 = neighs[in3];
@@ -1159,7 +1184,7 @@ class UFFBuilder : public BuilderBase {public:
                                 const ElementType& E2 = *params->elementOfAtomType(atoms[i2].type);
                                 const ElementType& E3 = *params->elementOfAtomType(atoms[i3].type);
                                 // specific general case (a): * - sp3 - sp3 - *
-                                if ( params->atypes[A2.type].name[2] == '3' && params->atypes[A3.type].name[2] == '3' ){
+                                if ( hyb(A2.type) == '3' && hyb(A3.type) == '3' ){
                                     d.k = sqrt( E2.Vuff * E3.Vuff );
                                     d.d = 1;
                                     d.n = 3;
@@ -1176,14 +1201,14 @@ class UFFBuilder : public BuilderBase {public:
                                     }
                                 } 
                                 // specific general case (b): * - sp3 - sp2 - *
-                                else if ( (params->atypes[A2.type].name[2]=='3'&&(params->atypes[A3.type].name[2]=='2'||params->atypes[A3.type].name[2]=='R')) ||
-                                ((params->atypes[A2.type].name[2]=='2'||params->atypes[A2.type].name[2]=='R')&&params->atypes[A3.type].name[2]=='3') ){
+                                else if ( (hyb(A2.type)=='3'&&(hyb(A3.type)=='2'||hyb(A3.type)=='R')) ||
+                                ((hyb(A2.type)=='2'||hyb(A2.type)=='R')&&hyb(A3.type)=='3') ){
                                     d.k = 4.1840/60.2214076/1.602176634; // 1 kcal/mol to eV
                                     d.d = -1;
                                     d.n = 6;
                                     // special case of * - group 16 sp3 - sp2 - *
-                                    if ( (params->atypes[A2.type].name[2]=='3'&&(params->atypes[A2.type].name[0]=='O'||params->atypes[A2.type].name[0]=='S')) ||
-                                        (params->atypes[A3.type].name[2]=='3'&&(params->atypes[A3.type].name[0]=='O'||params->atypes[A3.type].name[0]=='S')) ){
+                                    if ( (hyb(A2.type)=='3'&&(params->atypes[A2.type].name[0]=='O'||params->atypes[A2.type].name[0]=='S')) ||
+                                        (hyb(A3.type)=='3'&&(params->atypes[A3.type].name[0]=='O'||params->atypes[A3.type].name[0]=='S')) ){
                                         int ib = getBondByAtoms( i2, i3 );
                                         Bond& B = bonds[ib];
                                         d.k = 5.0 * sqrt( E2.Uuff * E3.Uuff ) * ( 1.0 + 4.18 * log( B.order ) );
@@ -1191,11 +1216,11 @@ class UFFBuilder : public BuilderBase {public:
                                         d.n = 2;
                                     }
                                     // special case of * - sp3 - sp2 bounded to another sp2 atom
-                                    if ( params->atypes[A2.type].name[2]=='3' ){
+                                    if ( hyb(A2.type)=='3' ){
                                         bool found = false;
                                         for(int in=i3*4; in<i3*4+C3.nbond; in++){
                                             Atom& A = atoms[neighs[in]];
-                                            if ( params->atypes[A.type].name[2]=='2' || params->atypes[A.type].name[2]=='R' ) {
+                                            if ( hyb(A.type)=='2' || hyb(A.type)=='R' ) {
                                                 found = true;
                                                 break;
                                             }
@@ -1205,11 +1230,11 @@ class UFFBuilder : public BuilderBase {public:
                                             d.d = 1;
                                             d.n = 3;
                                         }
-                                    } else if ( params->atypes[A3.type].name[2]=='3' ){
+                                    } else if ( hyb(A3.type)=='3' ){
                                         bool found = false;
                                         for(int in=i2*4; in<i2*4+C2.nbond; in++){
                                             Atom& A = atoms[neighs[in]];
-                                            if ( params->atypes[A.type].name[2]=='2' || params->atypes[A.type].name[2]=='R' ) {
+                                            if ( hyb(A.type)=='2' || hyb(A.type)=='R' ) {
                                                 found = true;
                                                 break;
                                             }
@@ -1222,8 +1247,8 @@ class UFFBuilder : public BuilderBase {public:
                                     }
                                 }
                                 // specific general case (c): * - sp2 - sp2 - *
-                                else if ( (params->atypes[A2.type].name[2]=='2'||params->atypes[A2.type].name[2]=='R') &&
-                                        (params->atypes[A3.type].name[2]=='2'||params->atypes[A3.type].name[2]=='R') ){
+                                else if ( (hyb(A2.type)=='2'||hyb(A2.type)=='R') &&
+                                        (hyb(A3.type)=='2'||hyb(A3.type)=='R') ){
                                     int ib = getBondByAtoms( i2, i3 );
                                     Bond& B = bonds[ib];
                                     d.k = 5.0 * sqrt( E2.Uuff * E3.Uuff ) * ( 1.0 + 4.18 * log( B.order ) );
@@ -1261,11 +1286,11 @@ class UFFBuilder : public BuilderBase {public:
         i.bonds.y = getBondByAtoms( i1, i3 );
         i.bonds.z = getBondByAtoms( i1, i4 );
         // sp2 carbon
-        if ( params->atypes[A1.type].name[0] == 'C' && (params->atypes[A1.type].name[2]=='2'||params->atypes[A1.type].name[2]=='R') ){
+        if ( params->atypes[A1.type].name[0] == 'C' && (hyb(A1.type)=='2'||hyb(A1.type)=='R') ){
             // carbonyl
-            if ( ( params->atypes[A2.type].name[0] == 'O' && params->atypes[A2.type].name[2] == '2' ) ||
-                 ( params->atypes[A3.type].name[0] == 'O' && params->atypes[A3.type].name[2] == '2' ) ||
-                 ( params->atypes[A4.type].name[0] == 'O' && params->atypes[A4.type].name[2] == '2' ) ){
+            if ( ( params->atypes[A2.type].name[0] == 'O' && hyb(A2.type) == '2' ) ||
+                 ( params->atypes[A3.type].name[0] == 'O' && hyb(A3.type) == '2' ) ||
+                 ( params->atypes[A4.type].name[0] == 'O' && hyb(A4.type) == '2' ) ){
                 i.k = 50.0 * 4.1840/60.2214076/1.602176634; } // 50 kcal/mol to eV
             else { i.k = 6.0 * 4.1840/60.2214076/1.602176634; } // 6 kcal/mol to eV
             i.C0 = 1.0;
@@ -1273,14 +1298,14 @@ class UFFBuilder : public BuilderBase {public:
             i.C2 = 0.0;
         }
         // sp2 nitrogen
-        else if ( params->atypes[A1.type].name[0] == 'N' && (params->atypes[A1.type].name[2]=='2'||params->atypes[A1.type].name[2]=='R') ){
+        else if ( params->atypes[A1.type].name[0] == 'N' && (hyb(A1.type)=='2'||hyb(A1.type)=='R') ){
             i.k = 6.0 * 4.1840/60.2214076/1.602176634; // 6 kcal/mol to eV
             i.C0 = 1.0;
             i.C1 = -1.0;
             i.C2 = 0.0;
         }
         // sp3 nitrogen
-        else if ( params->atypes[A1.type].name[0] == 'N' && params->atypes[A1.type].name[2]=='3' ){
+        else if ( params->atypes[A1.type].name[0] == 'N' && hyb(A1.type)=='3' ){
             i.k = 0.0;
             i.C0 = 0.0;
             i.C1 = 0.0;
@@ -1403,26 +1428,26 @@ class UFFBuilder : public BuilderBase {public:
             for( int ia=0; ia<angles.size(); ia++){
                 Angle& A = angles[ia];
                 int i = A.atoms.j;
-                if ( params->atypes[atoms[i].type].name[2] == '1' || params->atypes[atoms[i].type].name[2] == '2' || params->atypes[atoms[i].type].name[2] == 'R' ) { bCosine = true; }
-                if ( params->atypes[atoms[i].type].name[2] == '3' ) { bFourier = true; }
+                if ( hyb(atoms[i].type) == '1' || hyb(atoms[i].type) == '2' || hyb(atoms[i].type) == 'R' ) { bCosine = true; }
+                if ( hyb(atoms[i].type) == '3' ) { bFourier = true; }
             }
             for( int ia=0; ia<angles.size(); ia++){
                 Angle& A = angles[ia];
                 int i = A.atoms.j;
                 if ( bFourier && bCosine ) { 
-                    if ( params->atypes[atoms[i].type].name[2] == '1' ) { // cosine/periodic
+                    if ( hyb(atoms[i].type) == '1' ) { // cosine/periodic
                         fprintf( f, "%i cosine/periodic %f 1 1 # %s %s %s\n", ia+1, A.k*tokcal, params->atypes[atoms[A.atoms.x].type].name, params->atypes[atoms[A.atoms.y].type].name, params->atypes[atoms[A.atoms.z].type].name );
-                    } else if ( params->atypes[atoms[i].type].name[2] == '2' || params->atypes[atoms[i].type].name[2] == 'R' ) { // cosine/periodic
+                    } else if ( hyb(atoms[i].type) == '2' || hyb(atoms[i].type) == 'R' ) { // cosine/periodic
                         fprintf( f, "%i cosine/periodic %f -1 3 # %s %s %s\n", ia+1, 9.0*A.k*tokcal, params->atypes[atoms[A.atoms.x].type].name, params->atypes[atoms[A.atoms.y].type].name, params->atypes[atoms[A.atoms.z].type].name );
-                    } else if ( params->atypes[atoms[i].type].name[2] == '3' ) { // fourier
+                    } else if ( hyb(atoms[i].type) == '3' ) { // fourier
                         fprintf( f, "%i fourier %f %f %f %f # %s %s %s\n", ia+1, A.k*tokcal, A.C0, A.C1, A.C2, params->atypes[atoms[A.atoms.x].type].name, params->atypes[atoms[A.atoms.y].type].name, params->atypes[atoms[A.atoms.z].type].name );
                     }
                 } else {
-                    if ( params->atypes[atoms[i].type].name[2] == '1' ) { // cosine/periodic
+                    if ( hyb(atoms[i].type) == '1' ) { // cosine/periodic
                         fprintf( f, "%i %f 1 1 # %s %s %s\n", ia+1, A.k*tokcal, params->atypes[atoms[A.atoms.x].type].name, params->atypes[atoms[A.atoms.y].type].name, params->atypes[atoms[A.atoms.z].type].name );
-                    } else if ( params->atypes[atoms[i].type].name[2] == '2' || params->atypes[atoms[i].type].name[2] == 'R' ) { // cosine/periodic
+                    } else if ( hyb(atoms[i].type) == '2' || hyb(atoms[i].type) == 'R' ) { // cosine/periodic
                         fprintf( f, "%i %f -1 3 # %s %s %s\n", ia+1, 9.0*A.k*tokcal, params->atypes[atoms[A.atoms.x].type].name, params->atypes[atoms[A.atoms.y].type].name, params->atypes[atoms[A.atoms.z].type].name );
-                    } else if ( params->atypes[atoms[i].type].name[2] == '3' ) { // fourier
+                    } else if ( hyb(atoms[i].type) == '3' ) { // fourier
                         fprintf( f, "%i %f %f %f %f # %s %s %s\n", ia+1, A.k*tokcal, A.C0, A.C1, A.C2, params->atypes[atoms[A.atoms.x].type].name, params->atypes[atoms[A.atoms.y].type].name, params->atypes[atoms[A.atoms.z].type].name );
                     }
                 }
