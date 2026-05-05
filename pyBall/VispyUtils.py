@@ -12,6 +12,111 @@ def _as_f32(x):
     return np.asarray(x, dtype=np.float32)
 
 
+def compute_bond_colors_by_length(bonds, pos, color_range=(0.0, 1.0)):
+    """Compute bond colors based on bond length (blue=short, red=long).
+    
+    Args:
+        bonds: List/array of (ia, ja) bond indices
+        pos: (n,3) array of positions
+        color_range: (min, max) color values for blue-red mapping
+    
+    Returns:
+        bond_segs: (2*m, 3) array of segment endpoints
+        bond_colors: (2*m, 4) array of RGBA colors
+    """
+    bond_lengths = []
+    for b in bonds:
+        ia, ja = b
+        p1, p2 = pos[ia], pos[ja]
+        d = np.linalg.norm(p1 - p2)
+        bond_lengths.append(d)
+    bond_lengths = np.array(bond_lengths)
+    vmin, vmax = bond_lengths.min(), bond_lengths.max()
+    
+    bond_segs = []
+    bond_colors = []
+    for i, b in enumerate(bonds):
+        ia, ja = b
+        p1, p2 = pos[ia], pos[ja]
+        bond_segs.append(p1)
+        bond_segs.append(p2)
+        
+        if abs(vmax - vmin) < 1e-4:
+            f = 0.5
+        else:
+            f = (bond_lengths[i] - vmin) / (vmax - vmin)
+        color = (f, 0.0, 1.0 - f, 0.8)
+        bond_colors.append(color)
+        bond_colors.append(color)
+    
+    return np.array(bond_segs, dtype=np.float32), np.array(bond_colors, dtype=np.float32)
+
+
+def generate_atom_labels(label_mode, pos, enames, atom_subtype=None, backend=None, bonds=None):
+    """Generate text labels for atoms based on label_mode.
+    
+    Args:
+        label_mode: String specifying label type
+        pos: (n,3) array of positions
+        enames: List/array of element names
+        atom_subtype: Optional list of atom subtypes
+        backend: Optional backend object for subtype queries
+        bonds: Optional list of bonds for bond length labels
+    
+    Returns:
+        lbl_pos: List of label positions
+        lbl_texts: List of label text strings
+    """
+    lbl_pos = []
+    lbl_texts = []
+    
+    if label_mode == 'Element+Index':
+        for i, e in enumerate(enames):
+            if e != 'H':
+                lbl_pos.append(pos[i])
+                lbl_texts.append(f"{e}{i}")
+    elif label_mode == 'Atomic Type':
+        for i, subtype in enumerate(atom_subtype or []):
+            if enames[i] != 'H':
+                lbl_pos.append(pos[i])
+                if 'sp3' in subtype:
+                    lbl_texts.append('sp3')
+                elif 'sp2' in subtype:
+                    lbl_texts.append('sp2')
+                elif 'sp' in subtype:
+                    lbl_texts.append('sp')
+                else:
+                    lbl_texts.append(subtype)
+    elif label_mode == 'Pi Orbitals':
+        for i in range(len(enames)):
+            if i < len(atom_subtype or []):
+                subtype = atom_subtype[i]
+                if enames[i] != 'H':
+                    lbl_pos.append(pos[i])
+                    npi = backend._get_npi_from_subtype(subtype) if backend else 0
+                    lbl_texts.append(str(npi))
+    elif label_mode == 'Z-Height':
+        for i, e in enumerate(enames):
+            if e != 'H':
+                lbl_pos.append(pos[i])
+                lbl_texts.append(f"{pos[i, 2]:.2f}")
+    elif label_mode == 'Charge':
+        for i, e in enumerate(enames):
+            if e != 'H':
+                lbl_pos.append(pos[i])
+                lbl_texts.append("0")
+    elif label_mode == 'Bond Lengths':
+        if bonds:
+            for b in bonds:
+                ia, ja = b
+                p1, p2 = pos[ia], pos[ja]
+                d = np.linalg.norm(p1 - p2)
+                lbl_pos.append((p1 + p2) * 0.5)
+                lbl_texts.append(f"{d:.3f}")
+    
+    return lbl_pos, lbl_texts
+
+
 class AtomScene(QtCore.QObject):
     """Reusable Vispy widget for atoms (+ optional bonds) with orthographic top-down view.
 

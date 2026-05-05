@@ -1117,6 +1117,7 @@ FireCore shared library location:
 - Lines 1304-1404: Added `create_heatmap_window()` function
   - Generic 2D heatmap visualization using VisPy mesh
   - Colormap support via existing `colormap_rgba()` function
+
   - Optional atom overlay with element-based coloring
   - Pan/zoom camera for interactive viewing
 
@@ -1152,3 +1153,40 @@ FireCore shared library location:
 - **Best Practice**: Create generic functions in utility modules (VispyUtils.py)
 - **Rationale**: Same heatmap function can be used by other GUIs or scripts
 - Example workflow: `tests/pyFireball/test_stm_orbital_projection.py`
+
+
+
+### 6.5 Delta-Rho Plotting & Refactoring (2026-05-05)
+
+**6.5.1 Delta-Rho Feature**
+
+Added differential electron density (ρ_SCF - ρ_NA) plotting:
+- "Plot Delta-Rho" button in Fireball section
+- Uses `fc.dens2points(f_den=1.0, f_den0=-1.0)`
+- Symmetric bwr colormap (blue=depletion, red=accumulation)
+- Reuses existing grid/plotting helpers for consistency
+
+**6.5.2 Code Refactoring (~200 lines reduced)**
+
+**VispyUtils.py additions**:
+- `compute_bond_colors_by_length(bonds, pos)` - bond length colorscale
+- `generate_atom_labels(label_mode, ...)` - handles all label modes (replaces 100-line if-else)
+
+**BaseGUI.py consolidation**:
+- `spinBox(int_mode=True)` - merged spinBox+spinBoxInt
+- `textEdit(plain=True)` - merged textEdit+plainTextEdit  
+- `fileDialog(mode='save'|'open'|'directory')` - merged selectDirectory+saveFile
+- `comboBox` - passes text by default (was index), added `pass_index` param
+- Added missing `os` import
+
+**KekuleExplorerGUI.py reductions**:
+- Replaced all widget creations with BaseGUI helpers (button, comboBox, spinBox, textEdit, fileDialog)
+- Replaced 30-line bond color calc with `compute_bond_colors_by_length()`
+- Replaced 100-line label labyrinth with `generate_atom_labels()`
+
+**6.5.3 Bug Fixes**
+
+- QSpinBox step type error (int vs float conversion)
+- Missing closing parenthesis in hbonds code
+- comboBox callback passing index instead of text
+- Missing os import in BaseGUI
