@@ -480,8 +480,7 @@ def plotGeometry(apos, atypes, lvs=None, bond_dist=1.8, bBondLabels=True,  repli
                         if label_key not in label_set:
                             label_set.add(label_key)
                             ax.text(mid_x, mid_y, f'{dist:.2f}', color='red', fontsize=8,
-                                    ha='center', va='center',
-                                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8), zorder=12)
+                                    ha='center', va='center', zorder=12)
     
     # Auto-set plot limits to include all atoms (must be done before box drawing)
     x_min = apos_rep[:, axes[0]].min()
@@ -496,9 +495,14 @@ def plotGeometry(apos, atypes, lvs=None, bond_dist=1.8, bBondLabels=True,  repli
     
     # Draw unit cell box AFTER limits are fixed; scalex/scaley=False prevents limit expansion
     if lvs is not None:
-        corners = np.array([[0,0,0], [1,0,0], [1,1,0], [0,1,0], [0,0,0]]) @ lvs
-        ax.plot(corners[:, axes[0]], corners[:, axes[1]], 'b--', lw=1.5, alpha=0.7,
-                scalex=False, scaley=False, solid_capstyle='round')
+        # Draw box for each replicated cell
+        for cix in range(nx):
+            for ciy in range(ny):
+                for ciz in range(nz):
+                    cell_shift = np.array([cix, ciy, ciz]) @ lvs
+                    corners = np.array([[0,0,0], [1,0,0], [1,1,0], [0,1,0], [0,0,0]]) @ lvs + cell_shift
+                    ax.plot(corners[:, axes[0]], corners[:, axes[1]], 'b--', lw=1.5, alpha=0.7,
+                            scalex=False, scaley=False, solid_capstyle='round')
     if title:
         ax.set_title(title)
     ax.set_xlabel(f"{['x','y','z'][axes[0]]} (Å)")

@@ -22,17 +22,13 @@ ELEM_MAP = {'H': 1, 'C': 6, 'N': 7, 'O': 8}
 
 def make_ribbon_builder(passivation, width_chains, length_cells=1, a_CC=1.42):
     """Return a geometry_builder callable(Lx) -> (pos2d, atypes) for a zigzag ribbon."""
-    from doc.Topics.Kekule_Topology.GrapheneRibbonBuilder import GrapheneRibbonBuilder
-    xa_nom = a_CC * np.cos(np.pi / 6)
+    from pyBall.KekuleBackend import build_ribbon
 
     def builder(Lx):
-        b = GrapheneRibbonBuilder(a_CC=a_CC)
-        scale_x = Lx / (2.0 * xa_nom)
-        pos2d, elems, bonds = b.build_zigzag_ribbon(
-            width_chains=width_chains, length_cells=length_cells,
-            passivation=passivation, scale_x=scale_x)
-        atypes = np.array([ELEM_MAP[e] for e in elems], dtype=np.int32)
-        return np.array(pos2d), atypes
+        pos2d, atypes, elems = build_ribbon(
+            passivation=passivation, width_chains=width_chains, length_cells=length_cells,
+            Lx=Lx, a_CC=a_CC)
+        return pos2d, atypes
 
     return builder
 

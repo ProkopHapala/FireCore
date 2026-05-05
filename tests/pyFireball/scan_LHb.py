@@ -13,7 +13,7 @@ import argparse
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from pyBall import dftb_utils as dftbu
 from pyBall import plotUtils
-from doc.Topics.Kekule_Topology.GrapheneRibbonBuilder import build_two_ribbon_cell
+from pyBall.KekuleBackend import build_two_ribbon_cell
 
 def run_dftb_calculation(apos, enames, lvs, basis_path, do_relax=False, nk_x=16, workdir=None,
                          Temperature=300, MixingParameter=0.1, MaxScc=500, SCCTolerance=1e-4, allow_unconverged_energy=False):

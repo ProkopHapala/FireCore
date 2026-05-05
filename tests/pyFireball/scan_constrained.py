@@ -16,7 +16,7 @@ import argparse
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from pyBall import dftb_utils as dftbu
 import pyBall.plotUtils as plotUtils
-from doc.Topics.Kekule_Topology.GrapheneRibbonBuilder import build_two_ribbon_cell
+from pyBall.KekuleBackend import build_two_ribbon_cell
 
 DFTB_PATH    = '/home/prokophapala/miniconda3/bin/dftb+'
 BASIS_PATH   = '/home/prokophapala/SIMULATIONS/dftbplus/slakos/3ob-3-1/'
