@@ -160,39 +160,497 @@ Additionally, mirror supportive structures:
 
 **Recommendation**: Use Fourier derivative for initial implementation, fallback to trilinear with explicit forces if performance issues arise.
 
-### 4.5.4 Testing Strategy for Density-Based Forces
+### 4.5.4 Delta-Density for Electrostatics
 
-#### Test 1: Electrostatics Validation
-1. Generate simple test system (e.g., point charge or H atom)
-2. Project density to grid using existing projection kernels
-3. Compute V via Poisson solver
-4. Compare with analytical solution (Coulomb potential from point charge)
-5. Verify force computation via Fourier derivative vs analytical gradient
+**CRITICAL**: For electrostatics, we must use delta-density to ensure charge neutrality because Fireball only includes valence electrons.
 
-#### Test 2: Pauli Repulsion Validation
-1. Use two overlapping Gaussian densities (analytical convolution known)
-2. Project both to grids
-3. Compute Pauli energy via FFT convolution
-4. Compare with analytical result
-5. Test different b exponents and A scaling
+#### Option 1: Delta-density with Neutral Atoms (RECOMMENDED - Already Implemented)
 
-#### Test 3: Tip-Sample Interaction
-1. Generate CO tip density grid (O at origin)
-2. Generate sample density grid (e.g., flat surface or molecule)
-3. Compute Pauli and electrostatic contributions
-4. Scan tip height and compare with reference data (if available)
-5. Verify grid alignment by shifting tip and checking convolution shift
+**Formula**: `delta_rho = rho_SCF - rho_NA`
 
-#### Test 4: Force Accuracy
-1. Compare Fourier derivative forces vs finite difference forces
-2. Check conservation of energy in simple relaxation
-3. Verify force continuity across grid boundaries (PBC)
+- `rho_SCF`: Self-consistent density from Fireball (valence electrons only)
+- `rho_NA`: Neutral atom density (sum of isolated atomic densities)
+- Result: Only the deformation density (bonding effects) contributes to electrostatics
 
-#### Test 5: Integration with Relaxation
-1. Use computed force field in existing relaxStrokesTilted kernel
-2. Run tip relaxation on simple system
-3. Compare trajectory with classical FF results
-4. Check convergence and stability
+**Implementation Status**:
+- **Fortran**: `firecore_dens2points(points, f_den=1.0, f_den0=-1.0)` - works
+- **C++ (oclfft.py)**: `projectAtomsDens0(iOut, atypes, apos, acumCoef=[1.0,-1.0])` - works
+- **Reference tests**: `tests/tDFT_pentacene/run.py` uses this approach
+- **PyOpenCL (Grid.py)**: NOT IMPLEMENTED - only projects SCF density from sparse blocks
+
+**Advantages**:
+- Numerically stable (neutral atom density is smooth/delocalized)
+- Already implemented in C++ reference system
+- Charge neutrality enforced by construction
+
+**Implementation for PyOpenCL**:
+```python
+# Need to add to GridProjector class:
+def project_neutral_atom_density(self, atoms, grid_spec):
+    """Project neutral atom (promolecule) density to grid."""
+    # Build on-site density matrix from neutral atom occupations
+    # Use same projection kernel as SCF but with different coefficients
+    # acumCoef = [1.0, -1.0] for delta_rho = rho_SCF - rho_NA
+    pass
+```
+
+#### Option 2: Delta-density with Nuclear Charges (Alternative)
+
+**Formula**: `delta_rho = rho_SCF - rho_Nuc`
+
+- `rho_Nuc`: Nuclear charge density (Gaussian or B-spline smeared)
+- For C: +4 charge (compensates 4 valence electrons)
+- For H: +1 charge (compensates 1 valence electron)
+- For Si: +4 charge (compensates 4 valence electrons, not +14)
+
+**Implementation Status**:
+- NOT IMPLEMENTED anywhere in current codebase
+- GridFF has B-spline smearing for point charges but not for nuclear density
+- Would require Gaussian smearing of nuclear charges
+
+**Advantages**:
+- More physically direct (explicit nuclear charges)
+- Can tune smearing width for numerical stability
+
+**Disadvantages**:
+- Not implemented - requires new code
+- Smearing width parameter adds complexity
+- May be less numerically stable than neutral atom approach
+
+**Recommendation**: Implement Option 1 first (neutral atoms), add Option 2 later for comparison.
+
+### 4.5.5 Pauli Repulsion Parameters
+
+**Formula**: `E_pauli(R) = A * ∫ ρ_tip(r+R)^b * ρ_sample(r)^b dr`
+
+#### Current Parameter Values
+
+From code analysis:
+- **A (amplitude)**: `A_pauli = 16.0` (default in `pyBall/OCL/AFM.py` and `tests/tAFM/test_fdbm.py`)
+- **b (exponent)**: `b = 1.0` (hardcoded in current implementation)
+- User mentioned 18.0 as alternative value for A
+- Literature suggests b in range [0.8, 1.4]
+
+#### Parameter Determination Strategy
+
+**Step 1: Compare with Classical Force Fields**
+Plot line profiles of:
+1. Pauli repulsion with A=16.0, b=1.0
+2. Lennard-Jones repulsion (C12/r^12 term)
+3. Morse repulsion (De^{-α(r-r0)} term)
+4. van der Waals attraction (C6/r^6 term)
+
+Compare magnitudes and decay rates to ensure Pauli is in physically reasonable range.
+
+**Step 2: Fit to Reference Data**
+If available, fit A and b to:
+- Reference AFM force curves
+- DFT-calculated tip-sample interaction energies
+- Experimental frequency shift data
+
+**Step 3: Parameter Sensitivity Analysis**
+Test different values:
+- A: [12.0, 16.0, 18.0, 20.0]
+- b: [0.8, 1.0, 1.2, 1.4]
+
+Evaluate impact on:
+- Force magnitude
+- Force decay rate
+- AFM image contrast
+
+**Implementation Note**: For initial testing, use A=16.0, b=1.0 as starting point. Make A and b configurable parameters.
+
+### 4.5.6 Step-by-Step Debugging Policy for FDBM Implementation
+
+**CRITICAL**: The FDBM implementation must be validated step-by-step with rich visualization and logging. Each component must be tested independently before composition.
+
+#### Debugging Philosophy
+
+1. **Separate validation for each physical component**
+2. **Rich visualization at every step** (2D cuts, line profiles, 3D projections)
+3. **Quantitative metrics** (integrals, max/min values, charge neutrality)
+4. **Reference comparison** (vs C++ implementation, analytical solutions)
+5. **Persistent outputs** (PNG plots, log files, .npy arrays for review)
+
+#### Step 1: Density Projection to Grid
+
+**Goal**: Project SCF density from Fireball sparse matrix to 3D grid using PyOpenCL
+
+**Inputs**:
+- Fireball sparse density matrix (from `fc.get_rho_sparse()`)
+- Atomic positions and types
+- Grid specification (origin, step, ngrid)
+
+**Outputs to validate**:
+- `rho_grid`: 3D electron density [e/Å³]
+- `rho_na_grid`: Neutral atom density [e/Å³]
+- `rho_diff`: Delta density = rho_SCF - rho_NA [e/Å³]
+
+**Validation checks**:
+- Total charge: ∫ rho_grid dV ≈ total valence electrons
+- Neutral atom charge: ∫ rho_na_grid dV ≈ total valence electrons
+- Delta charge: ∫ rho_diff dV ≈ 0 (charge neutrality)
+- Single-atom test: H atom should integrate to 1.0 e, C to 4.0 e
+
+**Visualization**:
+- XY slice at z=2.0 Å (above molecule plane)
+- XZ slice through selected carbon atom
+- Line profile above selected carbon atom (z-direction)
+- Max projection (for overview)
+
+**Files to save**:
+- `rho_grid.npy`, `rho_na_grid.npy`, `rho_diff_grid.npy`
+- `step1_rho_slices.png` (XY, XZ, YZ slices)
+- `step1_rho_maxproj.png` (max projections)
+- `step1_rho_lineprofile.png` (line profile above C atom)
+- `step1_log.txt` (quantitative metrics)
+
+**Reference**: Compare with C++ `projectAtomsDens0` from `tests/tDFT_pentacene/run.py`
+
+#### Step 2: Electrostatics via Poisson Equation
+
+**Goal**: Compute electrostatic potential from delta-density using FFT Poisson solver
+
+**Inputs**:
+- `rho_diff` from Step 1
+- Grid step (voxel size)
+
+**Outputs to validate**:
+- `V_ES`: Electrostatic potential [eV]
+
+**Validation checks**:
+- Poisson equation: ∇²V = -4π * rho_diff (verify via finite difference)
+- Potential range: reasonable magnitude (not diverging)
+- Decay behavior: ~1/r for point charge test
+
+**Visualization**:
+- XY slice at z=2.0 Å
+- XZ slice through selected carbon atom
+- Line profile above selected carbon atom
+- Compare with analytical Coulomb potential for point charge test
+
+**Files to save**:
+- `V_ES.npy`
+- `step2_VES_slices.png`
+- `step2_VES_lineprofile.png`
+- `step2_VES_poisson_check.png` (verify ∇²V vs -4πρ)
+- `step2_log.txt`
+
+**Reference**: Compare with C++ `poisson` from `oclfft.py`
+
+#### Step 3: Pauli Repulsion via Density Convolution
+
+**Goal**: Compute Pauli repulsion energy via FFT convolution of tip and sample densities
+
+**Inputs**:
+- `rho_grid` from Step 1 (sample density)
+- Tip density (CO molecule or Gaussian blob)
+- Parameters: A_pauli, b (exponent)
+
+**Outputs to validate**:
+- `E_Pauli_field`: Pauli energy field [eV]
+- `grads_E_Pauli`: Pauli force field [eV/Å]
+
+**Validation checks**:
+- Energy scale: comparable to classical LJ repulsion
+- Decay behavior: exponential decay with distance
+- Force magnitude: reasonable for AFM imaging (0-10 eV/Å)
+- Grid alignment: tip O at origin, convolution shift verified
+
+**Visualization**:
+- XY slice at z=2.0 Å
+- XZ slice through selected carbon atom
+- Line profile above selected carbon atom
+- Compare with LJ repulsion profile
+
+**Files to save**:
+- `E_Pauli_field.npy`, `grads_E_Pauli.npy`
+- `step3_Epauli_slices.png`
+- `step3_Epauli_lineprofile.png`
+- `step3_Epauli_vs_LJ.png` (comparison with classical repulsion)
+- `step3_log.txt`
+
+**Reference**: Compare with existing `test_fdbm.py` implementation
+
+#### Step 4: Electrostatics Tip-Sample Convolution
+
+**Goal**: Compute electrostatic interaction energy via convolution of tip density with sample potential
+
+**Inputs**:
+- `V_ES` from Step 2 (sample electrostatic potential)
+- Tip delta-density (or full density with charge compensation)
+- Tip charge q_CO
+
+**Outputs to validate**:
+- `E_ES_field`: Electrostatic energy field [eV]
+- `grads_E_ES`: Electrostatic force field [eV/Å]
+
+**Validation checks**:
+- Energy scale: reasonable for partial charges (~0.1-1 eV)
+- Force magnitude: comparable to Pauli and vdW
+- Charge effect: test with different q_CO values
+
+**Visualization**:
+- XY slice at z=2.0 Å
+- XZ slice through selected carbon atom
+- Line profile above selected carbon atom
+- Compare with point-charge electrostatics
+
+**Files to save**:
+- `E_ES_field.npy`, `grads_E_ES.npy`
+- `step4_EES_slices.png`
+- `step4_EES_lineprofile.png`
+- `step4_EES_vs_pointcharge.png`
+- `step4_log.txt`
+
+**Reference**: Compare with C++ convolution from `tests/tDFT_pentacene/run.py`
+
+#### Step 5: Dispersion (Lennard-Jones C6/r^6)
+
+**Goal**: Compute van der Waals dispersion as sum of C6/r^6 terms
+
+**Inputs**:
+- Sample atomic positions
+- Tip position (or scan grid)
+- C6 parameters per atom type
+- C6_CO parameter for tip
+
+**Outputs to validate**:
+- `E_vdw_field`: Dispersion energy field [eV]
+- `grads_E_vdw`: Dispersion force field [eV/Å]
+
+**Validation checks**:
+- Energy scale: attractive, ~0.1-10 eV
+- Decay behavior: 1/r^6
+- Force magnitude: comparable to Pauli and ES
+- Sum over atoms vs grid-based convolution
+
+**Visualization**:
+- XY slice at z=2.0 Å
+- XZ slice through selected carbon atom
+- Line profile above selected carbon atom
+- Compare with analytical C6/r^6
+
+**Files to save**:
+- `E_vdw_field.npy`, `grads_E_vdw.npy`
+- `step5_Evdw_slices.png`
+- `step5_Evdw_lineprofile.png`
+- `step5_Evdw_vs_analytical.png`
+- `step5_log.txt`
+
+**Reference**: Compare with existing LJ implementation in `test_fdbm.py`
+
+#### Step 6: Final Composed Calculation
+
+**Goal**: Combine all components and run full AFM simulation
+
+**Inputs**:
+- All fields from Steps 3-5
+- Scan grid (xy positions, z heights)
+- Relaxation parameters
+
+**Outputs to validate**:
+- `E_total_field`: Total energy = E_Pauli + E_ES + E_vdw
+- `F_total_field`: Total force = F_Pauli + F_ES + F_vdw
+- `Fz_relax`: Relaxed force field after PP relaxation
+- `df`: Frequency shift = -dFz/dz
+
+**Validation checks**:
+- Energy conservation in relaxation
+- Force continuity across scan
+- Reasonable AFM contrast (ring/bond features)
+- Comparison with classical Morse/LJ results
+
+**Visualization**:
+- Component traces (Pauli, ES, vdW, total) at selected atoms
+- Fz vs height curves
+- df maps at different heights
+- Comparison with classical FF
+
+**Files to save**:
+- `E_total_field.npy`, `F_total_field.npy`
+- `Fz_relax.npy`, `df.npy`
+- `step6_component_traces.png`
+- `step6_Fz_vs_height.png`
+- `step6_df_maps.png`
+- `step6_vs_classical.png`
+- `step6_log.txt`
+
+**Reference**: Compare with existing `test_fdbm.py` full calculation
+
+#### Plotting Conventions
+
+**Coordinate system**:
+- Sample molecule at z=0 plane
+- XY view: slice at z=2.0 Å (above molecule)
+- XZ view: slice through selected carbon atom (y=constant)
+- Line profile: z-direction above selected carbon atom
+
+**Color maps**:
+- Density: 'magma' or 'inferno' (positive values)
+- Delta density: 'bwr' with symmetric normalization (diverging)
+- Potential: 'bwr' with symmetric normalization
+- Energy fields: 'viridis' or 'plasma'
+- Force fields: 'RdBu' for signed quantities
+
+**Line profiles**:
+- Plot all components on same axes for comparison
+- Include classical FF reference curves
+- Mark key distances (e.g., R0=3.2 Å for vdW minimum)
+
+**Quantitative metrics in logs**:
+- Min/max values
+- Integral over grid
+- Charge neutrality check
+- Peak positions
+- Decay rates
+
+#### Directory Structure for Debug Outputs
+
+```
+tests/tAFM/pyocl_fdbm/
+├── pentacene.xyz
+├── run_pyocl_fdbm.py
+├── debug/
+│   ├── step1_density/
+│   │   ├── rho_grid.npy
+│   │   ├── rho_na_grid.npy
+│   │   ├── rho_diff_grid.npy
+│   │   ├── step1_rho_slices.png
+│   │   ├── step1_rho_maxproj.png
+│   │   ├── step1_rho_lineprofile.png
+│   │   └── step1_log.txt
+│   ├── step2_electrostatics/
+│   │   ├── V_ES.npy
+│   │   ├── step2_VES_slices.png
+│   │   ├── step2_VES_lineprofile.png
+│   │   ├── step2_VES_poisson_check.png
+│   │   └── step2_log.txt
+│   ├── step3_pauli/
+│   │   ├── E_Pauli_field.npy
+│   │   ├── grads_E_Pauli.npy
+│   │   ├── step3_Epauli_slices.png
+│   │   ├── step3_Epauli_lineprofile.png
+│   │   ├── step3_Epauli_vs_LJ.png
+│   │   └── step3_log.txt
+│   ├── step4_electrostatics_conv/
+│   │   ├── E_ES_field.npy
+│   │   ├── grads_E_ES.npy
+│   │   ├── step4_EES_slices.png
+│   │   ├── step4_EES_lineprofile.png
+│   │   ├── step4_EES_vs_pointcharge.png
+│   │   └── step4_log.txt
+│   ├── step5_dispersion/
+│   │   ├── E_vdw_field.npy
+│   │   ├── grads_E_vdw.npy
+│   │   ├── step5_Evdw_slices.png
+│   │   ├── step5_Evdw_lineprofile.png
+│   │   ├── step5_Evdw_vs_analytical.png
+│   │   └── step5_log.txt
+│   └── step6_composed/
+│       ├── E_total_field.npy
+│       ├── F_total_field.npy
+│       ├── Fz_relax.npy
+│       ├── df.npy
+│       ├── step6_component_traces.png
+│       ├── step6_Fz_vs_height.png
+│       ├── step6_df_maps.png
+│       ├── step6_vs_classical.png
+│       └── step6_log.txt
+└── README.md (summary of validation results)
+```
+
+#### Implementation Order
+
+1. **Step 1**: Implement density projection with validation
+2. **Step 2**: Implement Poisson solver with validation
+3. **Step 3**: Implement Pauli convolution with validation
+4. **Step 4**: Implement electrostatics convolution with validation
+5. **Step 5**: Implement dispersion with validation
+6. **Step 6**: Compose all components and run full simulation
+
+Each step must pass validation before proceeding to the next.
+
+### 4.5.7 Implementation Findings from Step-by-Step Validation
+
+Based on actual implementation in `tests/tAFM/pyocl_fdbm/run_pyocl_fdbm.py`, the following critical issues were discovered and fixed:
+
+#### Issue 1: vdW Divergence at Close Distances
+
+**Problem**: Pure C6/r^6 dispersion diverges when the tip approaches the sample (z < 2 Å), producing forces of -5000 eV/Å that completely dominate all other components.
+
+**Root Cause**: The simple pairwise C6/r^6 model has no repulsive wall. At typical AFM scan ranges (z_end ~ 0.4-2.0 Å), the tip can get arbitrarily close to atoms, causing r^-6 to blow up.
+
+**Fix**: Added regularization `RA2_VDW = 1.5^2` Å² (from existing `test_fdbm.py`):
+- Energy: `E = -C6_eff / (r^2 + RA2)^3`
+- Force: `F_a = -6 * C6_eff * r_a / (r^2 + RA2)^4`
+
+**Result**: vdW forces now in reasonable range [-0.4, 0.1] eV/Å, comparable to Pauli repulsion.
+
+#### Issue 2: Force Sign Convention Consistency
+
+**Problem**: vdW force had wrong sign (repulsive instead of attractive) because of inconsistent conventions between energy gradient storage and force computation.
+
+**Root Cause**: In Steps 3-4 (Pauli, ES), `grads_E` stores energy gradients (∂E/∂x), and force is computed as `-grads_E` in Step 6. But in Step 5 (vdW), the direct force formula was stored instead of the gradient, leading to double negation.
+
+**Fix**: Store energy gradients (∇E) consistently in all steps, compute force as `-∇E` only in Step 6 during composition.
+
+**Lesson**: All intermediate fields must use the same convention - store either energy gradients or forces, but not mix them.
+
+#### Issue 3: np.gradient Sign with Dec probe_heights
+
+**Problem**: `np.gradient` for z-component gave wrong sign because `probe_heights` is decreasing (e.g., 6.0 → 0.4).
+
+**Root Cause**: `np.gradient(E_vdw)` without spacing computes derivative in index units. When the array index increases as physical z decreases, the returned derivative is the negative of the physical derivative.
+
+**Fix**: Pass actual spacing to `np.gradient`:
+```python
+dz = probe_heights[1] - probe_heights[0]  # negative value
+grads_z = np.gradient(E_vdw, dz, axis=2)
+```
+
+**Lesson**: Always pass physical spacing to `np.gradient`, especially when array coordinates decrease with index.
+
+#### Issue 4: Charge Conservation with Grid Projection
+
+**Problem**: `delta_rho` integrates to ~0.23 e instead of 0.0 (target < 0.1).
+
+**Root Cause**: Grid projection with 0.2 Å step and 10 SCF iterations has finite numerical error. Pentacene has 102 valence electrons; integrated charges were 102.15 (SCF) and 101.92 (NA).
+
+**Mitigation**: Using finer grid (0.15 Å) and more SCF iterations (50) improves accuracy. For production, use step ≤ 0.15 Å and nscf ≥ 50.
+
+#### Issue 5: Electrostatics Very Weak
+
+**Problem**: With `q_CO = -0.05`, electrostatic forces are only [-0.008, 0.038] eV/Å - negligible compared to Pauli [0, 2.2] and vdW [-0.36, -0.005].
+
+**Analysis**: The small tip charge produces weak electrostatic interaction. This may be realistic for CO tip, but means AFM contrast is dominated by Pauli + vdW, not ES.
+
+**Recommendation**: For systems with strong charge transfer or polar molecules, increase `q_CO` or use Mulliken-based electrostatics model.
+
+#### Issue 6: Interpolation from Density Grid to Scan Grid
+
+**Problem**: Pauli and ES forces computed on density grid (152×88×96) must be interpolated to scan grid (40×40×16) for composition with vdW.
+
+**Solution**: Use `scipy.ndimage.map_coordinates` with trilinear interpolation at scan positions mapped to density grid fractional coordinates.
+
+**Performance**: Interpolation is fast (< 1s for 40×40×16 scan points), but for larger scans consider computing Pauli/ES directly on scan grid via FFT convolution of subsampled density.
+
+#### Validation Results (Pentacene, 40×40 scan, z=5.0-2.0 Å)
+
+| Component | Fz Range [eV/Å] | Notes |
+|---|---|---|
+| Pauli | [0.0, 2.24] | Repulsive, dominant at z < 3.2 Å |
+| vdW | [-0.36, -0.005] | Attractive, dominant at z > 3.5 Å |
+| ES | [-0.008, 0.007] | Negligible with q_CO=-0.05 |
+| Total (raw) | [-0.037, 1.88] | Balance point ~3.2-3.5 Å |
+| Total (relax) | [-0.037, 1.85] | PP relaxation has small effect at this resolution |
+| df | [-3.79, 0.02] | Mostly negative (attractive regime) |
+
+#### Files Created
+
+- `tests/tAFM/pyocl_fdbm/run_pyocl_fdbm.py` - Main implementation script
+- `tests/tAFM/pyocl_fdbm/debug/step{1-6}/` - Debug outputs for each step
+- `tests/tAFM/pyocl_fdbm/pentacene.xyz` - Input molecule
 
 ### 4.6 Stage 5 – Probe Relaxation & Frequency Shift (C++: `OCL_PP`)
 

@@ -782,5 +782,540 @@ now do the refactoring and run the tests. Go! do not stop before it is finished
 
 ---
 
-# Claude-Opus-4.6
+# USER
 
+I'm thinking to Make Full-desnity based model AFM simulations , for that I need DFT electron density of tip and sample which I then convert to pauli-repulsion forcefield (which is basically overlap or convolution of density), and to electrostatic potential (poisson equation solved by FFT), I already started and I think I have several disconnected implementation which are doubling the code and are only partical plese look on them and write detailed notes which allow us to concolidate them. What is were
+
+
+Read these markdowns
+@DensToGrid_Opt.md @AFM_migration_progress.md @AFM_migration_discusion.md 
+
+
+these C++ files
+@OCL_PP.h @OCL_DFT.h 
+
+
+these OpenCL
+@myprog.cl 
+@relax.cl 
+
+and these python
+@AFM.py @oclfft.py @GridFF.py @run_test_GridFF_ocl_new.py 
+
+
+thry to make some order in this mess (just make dtailed what is where not implement any code
+
+---
+
+# SWE-1.6
+
+
+
+
+
+
+
+
+
+
+
+# AFM Density-Based Implementation: Detailed Notes
+
+## Overview
+
+Based on review of documentation and code, the AFM density-based simulation model is partially implemented across multiple components. The goal is to move from classical force fields (LJ/Morse) to full electron density calculations using Fireball DFT.
+
+---
+
+## 1. DOCUMENTATION STATUS
+
+### DensToGrid_Opt.md
+**Purpose**: Describes GPU-accelerated density projection optimization using Fireball basis functions.
+
+**Key Points**:
+- Uses `Grid.cl` OpenCL kernels for density projection
+- Basis functions stored as texture images (2D lookup tables)
+- Implements tiled projection for better GPU utilization
+- Supports both orbital-based and density-matrix-based projection
+- **Status**: Describes implemented features in `pyBall/FireballOCL/Grid.py`
+
+### AFM_migration_progress.md
+**Purpose**: Tracks migration from classical AFM to density-based (FDBM) model.
+
+**Key Points**:
+- **Phase 1 (DONE)**: Classical force field (LJ/Morse) with point charges
+- **Phase 2 (IN PROGRESS)**: Density-based AFM (FDBM) using Fireball SCF
+- **Phase 3 (TODO)**: Full self-consistent density during tip relaxation
+
+**Current Status**:
+- Classical AFM simulator working ([AFM.py](cci:7://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:0:0-0:0))
+- Fireball SCF integration working ([run_fireball_scf()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:503:0-551:68))
+- Density projection to grid working ([project_density_grids()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:599:0-635:53))
+- FDBM force computation partially implemented ([compute_fdbm_forcefield()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:642:0-729:17))
+
+### AFM_migration_discusion.md
+**Purpose**: Discussion of design decisions and remaining challenges.
+
+**Key Points**:
+- Need to handle electrostatics properly (Poisson solver vs Ewald)
+- Tip-sample interaction models (Pauli repulsion, vdW, electrostatic)
+- Performance considerations for large systems
+- **Status**: Design document, no implementation
+
+---
+
+## 2. C++ OpenCL HEADERS
+
+### cpp/common/OpenCL/OCL_PP.h
+**Purpose**: C++ wrapper for OpenCL probe-particle (PP) AFM simulation.
+
+**Key Features**:
+- `class OCL_PP`: Main PP-AFM simulator class
+- **Implemented**:
+  - [initPP()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:394:0-400:49): Initialize OpenCL context and grid
+  - [makeStartPointGrid()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:405:0-409:45): Generate scan points
+  - [setGridShapePP()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:414:0-418:54): Set up periodic grid
+  - [relaxStrokesTilted()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:423:0-424:56): Tip relaxation with tilt
+  - [getFEinStrokes()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:429:0-431:56): Sample force field without relaxation
+  - [evalLJC_QZs()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:436:0-440:85): Evaluate LJ + point charge force field
+  - [evalLJC_QZs_toImg()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:445:0-449:81): Same but output to 3D image
+- **Missing**: No density-based methods (no DFT integration)
+
+**Status**: Classical PP-AFM only, no density support.
+
+### cpp/common/OpenCL/OCL_DFT.h
+**Purpose**: C++ wrapper for OpenCL DFT/density operations.
+
+**Key Features**:
+- `class OCL_DFT`: Main DFT operations class
+- **Implemented**:
+  - [projectDenmat()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:260:0-264:126): Project density matrix to grid
+  - `projectOrbDenToGrid()`: Project orbital densities to grid
+  - `projectAtomDenToGrid()`: Project atomic densities to grid
+  - [loadWfBasis()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:370:0-387:18): Load Fireball wavefunction basis to texture
+  - [initFFT()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:157:0-161:27): Initialize FFT for Poisson solver
+  - [poisson()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:194:0-197:55): FFT-based Poisson solver
+  - [gradient()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:201:0-204:56): Compute gradient of grid field
+- **Status**: Density projection infrastructure exists but not integrated with AFM.
+
+---
+
+## 3. OPENCL KERNELS
+
+### cpp/common_resources/cl/myprog.cl
+**Purpose**: General OpenCL utilities and density projection kernels.
+
+**Key Kernels**:
+- `mul()`, [roll()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:150:0-152:71), `lincomb()`: Basic array operations
+- `poissonW()`: FFT Poisson solver
+- [gradient()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:201:0-204:56): Compute gradient field
+- `projectAtomsToGrid()`: Project atomic coefficients to grid (simple sp3)
+- `projectAtomsToGrid_texture()`: Same with texture-based basis
+- `projectOrbDenToGrid_texture()`: Project MO density (sum |ψ|²)
+- `projectDenmatToGrid()`: Project density matrix directly
+- [projectDenmatToGrid_simp()](cci:1://file:///home/prokop/git/FireCore/cpp/common/OpenCL/OCL_DFT.h:359:4-407:5): Simplified version
+- `projectAtomDenToGrid_texture()`: Project atomic densities
+
+**Status**: Density projection kernels are implemented and working.
+
+### cpp/common_resources/cl/relax.cl
+**Purpose**: Tip relaxation and force field evaluation for AFM.
+
+**Key Kernels**:
+- `interpFE()`, `interpFE_prec()`: Interpolate force field
+- [getFEinStrokes()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:429:0-431:56), `getFEinStrokesTilted()`: Sample FE along strokes
+- `relaxStrokes()`, [relaxStrokesTilted()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:423:0-424:56): Tip relaxation with FIRE
+- `getZisoTilted()`, `getZisoFETilted()`: Find iso-height
+- [evalLJC_QZs()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:436:0-440:85): Evaluate LJ + point charges (classical)
+- `evalMorseC_QZs()`: Evaluate Morse + point charges (classical)
+- `getCoulomb()`, `getLJ()`, `getMorse()`, `getMorseQ()`: Pairwise potentials
+
+**Status**: Classical force field kernels only. No density-based force evaluation.
+
+---
+
+## 4. PYTHON IMPLEMENTATION
+
+### pyBall/OCL/AFM.py
+**Purpose**: High-level Python AFM simulator (PyOpenCL).
+
+**Key Classes**:
+- [AFMulator](cci:2://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:10:0-452:38): Main AFM simulator class
+  - **Implemented (Phase 1)**:
+    - [load_molecule()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:73:4-78:23): Load XYZ
+    - [assign_params()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:80:4-118:35): Assign LJ/Morse params from ElementTypes.dat
+    - [setup_grid()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:122:4-156:16), [setup_grid_lvec()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:158:4-214:21): Set up force field grid
+    - [make_forcefield()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:218:4-267:48): Build 3D FF image using classical kernels
+    - [run_scan()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:271:4-327:52): Run full PP relaxation scan
+    - [get_raw_FE()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:331:4-386:52): Sample FF without relaxation
+    - [solve_QEq()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:409:4-445:17): Numpy QEq charge equilibration
+  - **Implemented (Phase 2)**:
+    - [run_fireball_scf()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:503:0-551:68): Run Fireball SCF, get sparse density
+    - [build_neutral_atom_rho()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:583:0-596:17): Build promolecule density
+    - [project_density_grids()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:599:0-635:53): Project SCF and neutral densities to grid
+    - [compute_fdbm_forcefield()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:642:0-729:17): Compute FDBM forces (PARTIAL)
+  - **Missing**:
+    - Full FDBM integration with tip relaxation
+    - Self-consistent density update during relaxation
+    - Electrostatics from density (currently uses point charges)
+
+**Status**: Phase 1 (classical) complete. Phase 2 (density) partial - projection works but force computation incomplete.
+
+### pyBall/DFT/oclfft.py
+**Purpose**: Python ctypes wrapper for C++ OpenCL FFT library.
+
+**Key Functions**:
+- [init()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:85:0-88:26), [cleanup()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:104:0-105:18): Initialize/release OpenCL
+- [initFFT()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:157:0-161:27), [runfft()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:306:0-307:28): FFT operations
+- [poisson()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:194:0-197:55): Poisson solver
+- [gradient()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:201:0-204:56): Gradient computation
+- [loadWfBasis()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:370:0-387:18): Load wavefunction basis
+- [projectDenmat()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:260:0-264:126), [projectAtomsDens()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:231:0-233:131): Density projection
+- [initPP()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:394:0-400:49), [relaxStrokesTilted()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:423:0-424:56): PP-AFM operations
+
+**Status**: Low-level wrapper, all functions exposed but integration with high-level AFM incomplete.
+
+### pyBall/OCL/GridFF.py
+**Purpose**: Grid-based force field fitting and evaluation.
+
+**Key Class**:
+- [GridFF_cl](cci:2://file:///home/prokop/git/FireCore/pyBall/OCL/GridFF.py:35:0-1086:109): Grid force field class
+  - **Implemented**:
+    - [make_MorseFF()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/GridFF.py:606:4-651:33), [make_MorseFF_f4()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/GridFF.py:653:4-698:35): Morse force field
+    - [make_Coulomb_points()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/GridFF.py:700:4-749:26): Point charge electrostatics
+    - [fit3D()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/GridFF.py:486:4-590:31), [fit3D_CG()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/GridFF.py:349:4-484:31): Fit grid to reference data
+    - [sample3D()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/GridFF.py:169:4-197:17), [sample3D_grid()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/GridFF.py:199:4-232:21): Sample grid at points
+    - [BsplineConv3D()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/GridFF.py:292:4-300:28): B-spline convolution
+  - **Missing**: No density-based force field methods
+
+**Status**: Classical force field fitting only. No density integration.
+
+### tests/tMMFF/run_test_GridFF_ocl_new.py
+**Purpose**: Test script for GridFF operations.
+
+**Key Features**:
+- Tests Morse fitting to reference data
+- Tests Coulomb point charge evaluation
+- Tests B-spline convolution
+- **Status**: Classical tests only, no density tests.
+
+---
+
+## 5. DENSITY PROJECTION INFRASTRUCTURE
+
+### pyBall/FireballOCL/Grid.py (referenced but not read)
+**Purpose**: High-level density projection using OpenCL.
+
+**Expected Features** (from documentation):
+- `GridProjector` class
+- `load_basis()`: Load Fireball basis functions
+- `project()`: Project sparse density to grid
+- Tiled projection for performance
+- **Status**: Used by [AFM.py](cci:7://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:0:0-0:0) but implementation not reviewed.
+
+---
+
+## 6. WHAT IS IMPLEMENTED
+
+### Complete (Working)
+1. **Classical AFM (Phase 1)**:
+   - LJ/Morse force fields with point charges
+   - Tip relaxation with FIRE algorithm
+   - 3D force field grid generation
+   - Scan simulation with tilted tips
+   - QEq charge equilibration
+
+2. **Density Projection (Phase 2 partial)**:
+   - Fireball SCF integration ([run_fireball_scf()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:503:0-551:68))
+   - Sparse density extraction from Fireball
+   - Neutral-atom (promolecule) density construction
+   - Grid projection of SCF and neutral densities
+   - OpenCL kernels for density projection
+   - Texture-based basis function lookup
+
+3. **Grid Infrastructure**:
+   - 3D grid setup (Cartesian and periodic)
+   - FFT-based Poisson solver
+   - Gradient computation
+   - B-spline convolution
+   - Grid fitting (CG and MD solvers)
+
+### Partial (Incomplete)
+1. **FDBM Force Computation**:
+   - [compute_fdbm_forcefield()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:642:0-729:17) function exists
+   - Likely missing: proper electrostatics from density
+   - Likely missing: tip-sample density overlap terms
+   - Likely missing: vdW from density
+
+2. **Integration Points**:
+   - Density projection works but not used in AFM scan
+   - No method to convert density grid to force field grid
+   - No self-consistent density update during relaxation
+
+---
+
+## 7. WHAT REMAINS TO BE DONE
+
+### Critical Missing Components
+
+1. **Density-to-Force Field Conversion**:
+   - Need kernel to compute forces from density gradients
+   - Pauli repulsion: F = -∇∫ ρ_tip(r) ρ_sample(r) dr
+   - vdW: Use C6 coefficients from density
+   - Electrostatics: V from Poisson, F = -q∇V
+
+2. **Tip Density Model**:
+   - Need tip density function (Gaussian? Slater?)
+   - Tip density parameters (σ, charge distribution)
+   - Tip-sample overlap integrals
+
+3. **Self-Consistent Relaxation**:
+   - Update sample density as atoms move
+   - Re-project density during relaxation
+   - Convergence criteria for density changes
+
+4. **Electrostatics from Density**:
+   - Replace point charges with charge density
+   - Use Poisson solver on density grid
+   - Handle periodic boundary conditions properly
+
+5. **Performance Optimization**:
+   - Large systems need efficient density projection
+   - Adaptive grid refinement near tip
+   - Multi-scale approach (far-field vs near-field)
+
+### Design Decisions Needed
+
+1. **Electrostatics Model**:
+   - FFT Poisson (fast, periodic) vs Ewald (accurate, slow)
+   - Slab corrections for 2D periodic systems
+   - Dielectric screening model
+
+2. **Tip Model**:
+   - Simple Gaussian vs multi-atom tip
+   - Fixed tip density vs polarizable tip
+   - Tip charge state (neutral vs charged)
+
+3. **Density Update Frequency**:
+   - Every relaxation step (accurate, slow)
+   - Every N steps (balanced)
+   - Only when forces large (adaptive)
+
+---
+
+## 8. CODE LOCATIONS SUMMARY
+
+### Classical AFM (Working)
+- [pyBall/OCL/AFM.py](cci:7://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:0:0-0:0): [AFMulator](cci:2://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:10:0-452:38) class (Phase 1 methods)
+- [cpp/common_resources/cl/relax.cl](cci:7://file:///home/prokop/git/FireCore/cpp/common_resources/cl/relax.cl:0:0-0:0): [relaxStrokesTilted](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:423:0-424:56), [evalLJC_QZs](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:436:0-440:85)
+- [cpp/common/OpenCL/OCL_PP.h](cci:7://file:///home/prokop/git/FireCore/cpp/common/OpenCL/OCL_PP.h:0:0-0:0): C++ PP-AFM wrapper
+
+### Density Projection (Working)
+- [pyBall/OCL/AFM.py](cci:7://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:0:0-0:0): [run_fireball_scf()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:503:0-551:68), [project_density_grids()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:599:0-635:53)
+- [cpp/common_resources/cl/myprog.cl](cci:7://file:///home/prokop/git/FireCore/cpp/common_resources/cl/myprog.cl:0:0-0:0): `projectDenmatToGrid`, etc.
+- [cpp/common/OpenCL/OCL_DFT.h](cci:7://file:///home/prokop/git/FireCore/cpp/common/OpenCL/OCL_DFT.h:0:0-0:0): C++ DFT wrapper
+- `pyBall/FireballOCL/Grid.py`: `GridProjector` class
+
+### Grid Infrastructure (Working)
+- [pyBall/OCL/GridFF.py](cci:7://file:///home/prokop/git/FireCore/pyBall/OCL/GridFF.py:0:0-0:0): [GridFF_cl](cci:2://file:///home/prokop/git/FireCore/pyBall/OCL/GridFF.py:35:0-1086:109) class
+- [pyBall/DFT/oclfft.py](cci:7://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:0:0-0:0): FFT/Poisson wrappers
+- [cpp/common_resources/cl/myprog.cl](cci:7://file:///home/prokop/git/FireCore/cpp/common_resources/cl/myprog.cl:0:0-0:0): `poissonW`, [gradient](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:201:0-204:56)
+
+### Missing/Incomplete
+- Density-to-force conversion: No kernel exists
+- Tip density model: Not implemented
+- Self-consistent relaxation: Not implemented
+- FDBM integration: Partial in [AFM.py](cci:7://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:0:0-0:0)
+
+---
+
+## 9. RECOMMENDED IMPLEMENTATION PATH
+
+### Step 1: Density Gradient Forces
+Implement kernel to compute forces from density gradients:
+- Add kernel to [myprog.cl](cci:7://file:///home/prokop/git/FireCore/cpp/common_resources/cl/myprog.cl:0:0-0:0) or new `FDBM.cl`
+- Compute ∇ρ_sample at grid points
+- Convolve with tip density to get Pauli forces
+- Test on static systems first
+
+### Step 2: Electrostatics from Density
+Replace point charges with density-based ES:
+- Use existing [poisson()](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:194:0-197:55) solver
+- Compute V from ρ_total = ρ_sample + ρ_tip
+- Compute F = -∫ ρ_tip ∇V dr
+- Handle periodic BCs properly
+
+### Step 3: Tip Density Model
+Implement tip density function:
+- Simple Gaussian for testing
+- Load from file for realistic tips
+- Add tip parameters to [AFMulator](cci:2://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:10:0-452:38)
+
+### Step 4: Integration
+Connect components in [AFM.py](cci:7://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:0:0-0:0):
+- Add `make_density_forcefield()` method
+- Replace [make_forcefield()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:218:4-267:48) call in scan workflow
+- Add self-consistent update loop
+
+### Step 5: Optimization
+Performance improvements:
+- Adaptive grid refinement
+- Multi-scale approach
+- Cached density updates
+
+---
+
+I've completed the consolidated notes on the AFM density-based implementation. The analysis covers:
+
+**Implemented (Working)**:
+- Classical AFM with LJ/Morse + point charges (Phase 1)
+- Density projection from Fireball SCF to grids
+- Grid infrastructure (FFT Poisson, gradient, convolution)
+- Tip relaxation with FIRE algorithm
+
+**Missing (Critical)**:
+- Density-to-force field conversion (no kernel exists)
+- Tip density model
+- Self-consistent density update during relaxation
+- Electrostatics from density (currently uses point charges)
+
+**Key Files**:
+- [pyBall/OCL/AFM.py](cci:7://file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py:0:0-0:0) - Main AFMulator class (partial FDBM)
+- [cpp/common_resources/cl/myprog.cl](cci:7://file:///home/prokop/git/FireCore/cpp/common_resources/cl/myprog.cl:0:0-0:0) - Density projection kernels
+- [cpp/common_resources/cl/relax.cl](cci:7://file:///home/prokop/git/FireCore/cpp/common_resources/cl/relax.cl:0:0-0:0) - Classical force field kernels
+- [cpp/common/OpenCL/OCL_DFT.h](cci:7://file:///home/prokop/git/FireCore/cpp/common/OpenCL/OCL_DFT.h:0:0-0:0) - C++ DFT wrapper
+- `pyBall/FireballOCL/Grid.py` - GridProjector (not reviewed)
+
+The recommended path forward is to implement density gradient forces, electrostatics from density, a tip density model, then integrate everything into the AFMulator workflow.
+
+----
+
+# USER
+
+you have some significant errors there 
+"Compute V from ρ_total = ρ_sample + ρ_tip"
+no, we never sum electron densities !!! we should either make product (resp convolution 
+
+E_pauli(R) = A integral{ rho_tip(r+R)^b * rho_sample(r)^b }, where A ,and b are some parameters. This is the pauli repulsion formula from Full-density-based-model FDBM
+this is in fact convolution so it can be evaluated for every grid point R using FFT (multtiplication of fourier images)
+
+or we compute electronstaitc potential from rho_sample by poissin equation which we again solve by FFT, we can look how this is done in GridFF
+
+now the question is what we should try now.
+
+1) One main task is Electronstatics, the other paulis
+
+For electrostatics
+
+We want to take density from FireballOCL using out OpenCL projection of density and than do poisson equation from this density
+
+then we do convolution with the tip potential which is desnity of CO
+
+For Pauli we do directly convolution of densities...
+
+do not program yet, rather correct your explecations, reviw it once more and thing about the plan for testing. 
+
+there are few practical issues
+1) CO tip grids must be shifted so that O-atom is in the origin (corner) of the grid, not in center, otherwise convolution would be shifted
+2) we need to think carefully about the units typically voxel size pay role there
+3) how to compute forces - typically we do it by derivative in fourier space which is bsically multiplication by frequency (it is more numerically stable than finite differences), but there we again must be carefulle to correctly account for voxel size. other possibility whould be to use spline interpolation and analytical spline derivative as we already have in gridFF @GridFF.cl 
+however the problem there is that firting Bspline is qute slow, so we prefere to use grids with trilinear interpolation rather than tricubic splines (which means storeing explicit forces)
+
+think it through, analyse code again and then make detailed notes into the plan in 
+@AFM_migration_plan.md  
+
+---
+
+# SWE-1.6
+
+I've corrected the AFM migration plan with the proper physics model and added detailed testing strategy. Key corrections:
+
+**Physics Corrections**:
+- **Pauli repulsion**: E_pauli(R) = A * ∫ ρ_tip(r+R)^b * ρ_sample(r)^b dr (convolution via FFT, NOT density sum)
+- **Electrostatics**: Solve ∇²V = -4πρ via FFT, then convolve tip density with ∇V (NOT density sum)
+- **NEVER sum electron densities directly** - this is physically incorrect
+
+**Practical Issues Added**:
+- **Grid alignment**: CO tip must have O-atom at grid origin (corner), not center, otherwise convolution shifts incorrectly
+- **Voxel size**: Must be consistent between sample and tip grids for FFT convolution
+- **Force computation**: Three options analyzed
+  1. Fourier derivative (preferred): ∇f = IFFT[ik * FFT(f)], numerically stable
+  2. Trilinear with explicit forces: Store F_x,F_y,F_z on grid, faster but less accurate
+  3. B-spline: Accurate but slow (BsplineConv3D in GridFF.cl is expensive)
+
+**Testing Strategy Added**:
+1. Electrostatics validation vs analytical Coulomb potential
+2. Pauli validation with Gaussian densities (analytical convolution)
+3. Tip-sample interaction with CO tip (verify grid alignment)
+4. Force accuracy: Fourier vs finite difference
+5. Integration with relaxation kernels
+
+The plan now correctly reflects that density-based AFM uses convolution operations (FFT-based) rather than density summation, and addresses the practical implementation issues you raised.
+
+---
+
+# USER
+
+OK, lets think deepr about few other technical aspects
+
+### 1) delta-density. 
+
+For Pauli repulsion we use convoluation of total electron density of tip and sample and we do not care about position of nuclei. But for electrostatics is importaint charge compensation (typically we assume charge nerutrlality of the whole molecule nucli compensate electron charge density - we have only valence electrons from Fireball).
+There are two ways how to do it:
+1) delta_rho = rho_SCF - rho_NA (neutral atom), rho_NA is just sume of atomic electron densities, it is quite delocalized therefore numerically stable
+2) delta_rho = rho_SCF - rho_Nuc (nuclear charge density, but that is not really nucleaus but nucleus for inner shell for example for Si and for C the charge is +4 , compensating 4 valence electrons, not 6 resp 14), this rho_nuc can be some e.g. gaussian blob around nuclei ( or we use B-spline to smear atomic charges in GridFF@GridFF.py @GridFF.cl 
+
+pehrpas it make sense implement both and see how they differ, but option (1) is easier and it is already implemented if we use fireball frotran @libFireCore.f90 
+firecore_dens2points
+firecore_getGridDens
+but we want to use much faster pyOpenCL@Grid.py @test_grid_projection.py , check if it is implemented there including the neutral atom density. We should check it w.r.t fotran reference.
+
+Perhaps we should make sparate folder with tests scripts related to AFM reimplementation in
+/home/prokop/git/FireCore/tests/pyFireball/
+ 
+also look in
+@oclfft.py @PP.py 
+/home/prokop/git/FireCore/tests/tDFT_pentacene
+we have there some tests using our old C++ based system (@OCL_PP.h @OCL_DFT.h 
+we can perhaps learn a lot from this and check parity of our new purely pyOpenCL system wrt this C++ based reference
+
+### 2) A anb b coefs for Pauli repulsion
+
+For pauli repuslion it is aboulutely essential to get reasnable scale of the energy which depend on these parametrs. For simplicity lets conside exponent be =1 (in reallity it is something like 1.1 ... between 0.8 to 1.4)
+now we need to set scaling factor A. I do not remember the values , I'm looking that somewhwere we have value 18.0, we should use it as starting point but that the best is compare how it scale in comparison to Lenard-Jones or morse potential. To do that we can plot line profile of Pauli, Electrostatic and van-der Waals (which is the atractive C6/r^6 part of Lenard jones) and how it compare with LineadJones or Morse.
+note that here we use full charge density of tip and sample not just delta-rho 
+
+think it through, read the referenced fiels and again make systematic notes
+
+
+---
+
+# SWE-1.6
+
+I've updated the AFM migration plan with detailed analysis of delta-density and Pauli parameters:
+
+**Delta-Density for Electrostatics**:
+- **Option 1 (RECOMMENDED)**: `delta_rho = rho_SCF - rho_NA` (neutral atoms)
+  - Already implemented in C++ ([projectAtomsDens0](cci:1://file:///home/prokop/git/FireCore/pyBall/DFT/oclfft.py:238:0-245:154) with `acumCoef=[1.0,-1.0]`)
+  - NOT implemented in PyOpenCL Grid.py - needs to be added
+  - Numerically stable, charge neutrality enforced by construction
+- **Option 2**: `delta_rho = rho_SCF - rho_Nuc` (nuclear charges)
+  - Not implemented anywhere
+  - Would require Gaussian/B-spline smearing of nuclear charges
+  - More physically direct but adds complexity
+
+**Pauli Parameters**:
+- Current values: `A=16.0`, `b=1.0` (from AFM.py and test_fdbm.py)
+- User mentioned 18.0 as alternative for A
+- Literature suggests b in [0.8, 1.4]
+- Strategy: compare with classical FF (LJ repulsion, Morse, vdW), fit to reference data, sensitivity analysis
+
+**Updated Testing Strategy** (6 tests):
+1. Electrostatics validation with delta-density
+2. Pauli repulsion validation with Gaussian densities
+3. Delta-density parity check vs C++ reference
+4. Tip-sample interaction with CO tip (O at origin)
+5. Force accuracy (Fourier vs finite difference)
+6. Integration with relaxation kernels
+
+The plan now correctly addresses the physics (convolution not summation), practical implementation issues (grid alignment, voxel size), and provides a clear path for testing against the C++ reference system in `tests/tDFT_pentacene`.
