@@ -1,3 +1,10 @@
+AFM Density-Based Simulation: Classical Force Fields and Density Projection Workflows
+https://windsurf.com/codemaps/7a2c010f-2075-4a19-893c-1b54ec8df995-fe86ab10a43f3d18
+
+AFM PyOpenCL System: Morse/LJ Path and FDBM Density-Based Path
+https://windsurf.com/codemaps/9bb4c2a5-0c38-4943-abe9-254cfdcc75af-fe86ab10a43f3d18
+
+
 # AFM PyOpenCL Migration Plan (2025 Update)
 
 This plan describes how to replace the `libOCL_GridFF.so` C/C++ host layer with a pure Python implementation that relies on NumPy for data preparation and PyOpenCL for GPU execution. It expands previous drafts by synchronizing with the verified documentation in @/doc/Topics/AFM/AFM.md and enumerating every C/C++ function, class, and data dependency that must be re-created in Python.
@@ -83,17 +90,109 @@ Additionally, mirror supportive structures:
 - **Coefficient conversion**: reproduce the `convCoefs` logic for s/p decomposition; include assertions for expected orbital counts to "fail loudly" per user rules.
 - **Atom boxing**: implement `atoms2box` in Python for chunk-wise processing; optional but needed for large systems.
 
-### 4.5 Stage 4 – Potential & Energy Kernels (C++: `OCL_GridFF.cpp` functions)
+### 4.5 Stage 4 – Density-Based Force Fields (FDBM)
 
-| Python Function | Responsibilities | Replacement Details |
+### 4.5.1 Physics Model Corrections
+
+**CRITICAL**: The following corrections apply to the density-based AFM (FDBM) model:
+
+1. **Pauli Repulsion** (NOT density summation):
+   - Formula: E_pauli(R) = A * ∫ ρ_tip(r+R)^b * ρ_sample(r)^b dr
+   - This is a **convolution** operation, not a sum of densities
+   - Can be evaluated efficiently via FFT: FFT(ρ_tip^b) * FFT(ρ_sample^b), then inverse FFT
+   - Parameters A and b are fitted to reference data
+
+2. **Electrostatics** (NOT density summation):
+   - Compute electrostatic potential V from sample density ρ_sample via Poisson equation:
+     ∇²V = -4π * ρ_sample
+   - Solve via FFT: V = IFFT[ -4π * FFT(ρ_sample) / |k|² ]
+   - Then convolve with tip potential (tip charge density, e.g., CO molecule)
+   - Force: F = -∫ ρ_tip(r) ∇V(r+R) dr (convolution of tip density with potential gradient)
+
+3. **NEVER sum electron densities directly** - this is physically incorrect
+
+### 4.5.2 Implementation Details
+
+| Python Function | Responsibilities | Implementation Notes |
 |---|---|---|
-| `potentials.poisson()` | FFT density, apply `poissonW`, inverse FFT | Follow C++ sequence; parameterize `dcell` (float4) handling. |
-| `potentials.convolve()` | FFT two buffers, call `mul`, inverse FFT | Ensure optional scaling factors match legacy behavior. |
-| `potentials.gradient()` | Launch `gradient` kernel | Provide Python wrapper for gradient magnitude vector fields. |
-| `potentials.eval_ljc_qzs()` | Launch `evalLJC_QZs` | Accept atom arrays, LJ parameters, charges; handle `float4` output (xyz force + energy). |
-| `potentials.eval_ljc_qzs_to_img()` | Launch image variant | Create or reuse 3D image; ensure sampler setup matches existing usage. |
+| `potentials.poisson()` | Solve ∇²V = -4πρ via FFT | FFT density, multiply by -4π/|k|², inverse FFT. Handle k=0 singularity (set to 0). |
+| `potentials.convolve()` | Convolution via FFT | FFT both inputs, multiply element-wise, inverse FFT. Scaling factors must account for voxel size. |
+| `potentials.pauli_convolution()` | Pauli repulsion via FFT | Raise densities to power b, FFT, multiply, inverse FFT, scale by A. |
+| `potentials.gradient()` | Compute ∇V or ∇E fields | Two options: (1) Fourier derivative (multiply by ik), (2) Finite differences on grid. |
+| `potentials.eval_ljc_qzs()` | Classical LJ + point charges | Legacy classical FF - keep for comparison. |
+| `potentials.eval_ljc_qzs_to_img()` | Classical FF to 3D image | Legacy - keep for comparison. |
 
-If the project chooses to expose `make_MorseFF` (currently only through PyOpenCL demos), provide optional wrapper using the same infrastructure.
+### 4.5.3 Practical Implementation Issues
+
+#### Grid Alignment for Convolution
+- **CO tip grid must have O-atom at grid origin (corner)**, not center
+- Otherwise convolution result will be shifted incorrectly
+- When generating tip density grid, ensure tip is positioned so O-atom is at (0,0,0) in grid coordinates
+- Sample grid origin should be at corner (standard OpenCL convention)
+
+#### Voxel Size and Units
+- Voxel size (dA, dB, dC) must be consistent between sample and tip grids
+- FFT convolution assumes same voxel spacing - resample if needed
+- Units: density in e/Å³, potential in eV, forces in eV/Å
+- When using Fourier derivatives, multiply by ik accounts for 1/Å units automatically
+
+#### Force Computation Methods
+
+**Option 1: Fourier Derivative (Preferred)**
+- Compute gradient in Fourier space: ∇f = IFFT[ ik * FFT(f) ]
+- More numerically stable than finite differences
+- Must correctly account for voxel size: k values depend on grid dimensions and physical size
+- Implementation: k_x = 2π * n_x / (N_x * dA), etc.
+- Force on tip: F = -∇E(R) where E is the convolution result
+
+**Option 2: Trilinear Interpolation with Explicit Forces**
+- Store pre-computed force field on grid (F_x, F_y, F_z at each voxel)
+- Interpolate forces at tip position using trilinear interpolation
+- Avoids slow B-spline fitting (BsplineConv3D in GridFF.cl is expensive)
+- Forces computed once, then sampled during relaxation
+- Less accurate than B-spline but much faster
+
+**Option 3: B-spline Interpolation (Accurate but Slow)**
+- GridFF.cl implements cubic B-spline interpolation (basis(), dbasis() functions)
+- Requires BsplineConv3D preprocessing step
+- Analytical derivatives are accurate
+- Too slow for real-time use in large systems
+
+**Recommendation**: Use Fourier derivative for initial implementation, fallback to trilinear with explicit forces if performance issues arise.
+
+### 4.5.4 Testing Strategy for Density-Based Forces
+
+#### Test 1: Electrostatics Validation
+1. Generate simple test system (e.g., point charge or H atom)
+2. Project density to grid using existing projection kernels
+3. Compute V via Poisson solver
+4. Compare with analytical solution (Coulomb potential from point charge)
+5. Verify force computation via Fourier derivative vs analytical gradient
+
+#### Test 2: Pauli Repulsion Validation
+1. Use two overlapping Gaussian densities (analytical convolution known)
+2. Project both to grids
+3. Compute Pauli energy via FFT convolution
+4. Compare with analytical result
+5. Test different b exponents and A scaling
+
+#### Test 3: Tip-Sample Interaction
+1. Generate CO tip density grid (O at origin)
+2. Generate sample density grid (e.g., flat surface or molecule)
+3. Compute Pauli and electrostatic contributions
+4. Scan tip height and compare with reference data (if available)
+5. Verify grid alignment by shifting tip and checking convolution shift
+
+#### Test 4: Force Accuracy
+1. Compare Fourier derivative forces vs finite difference forces
+2. Check conservation of energy in simple relaxation
+3. Verify force continuity across grid boundaries (PBC)
+
+#### Test 5: Integration with Relaxation
+1. Use computed force field in existing relaxStrokesTilted kernel
+2. Run tip relaxation on simple system
+3. Compare trajectory with classical FF results
+4. Check convergence and stability
 
 ### 4.6 Stage 5 – Probe Relaxation & Frequency Shift (C++: `OCL_PP`)
 

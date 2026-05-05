@@ -21,7 +21,7 @@ from vispy import scene
 # Add FireCore to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from pyBall.KekuleBackend import KekuleBackend
+from pyBall.KekuleBackend import KekuleBackend, parse_passivation_string
 from pyBall.AtomicSystem import AtomicSystem
 from pyBall import VispyUtils as vu
 from pyBall import atomicUtils as au
@@ -96,6 +96,7 @@ class KekuleExplorerWindow(BaseGUI):
         side_layout = QtWidgets.QVBoxLayout(side_panel)
         
         # Add sections
+        side_layout.addWidget(self.create_ribbon_section())
         side_layout.addWidget(self.create_builder_section())
         side_layout.addWidget(self.create_editor_section())
         side_layout.addWidget(self.create_dftb_section())
@@ -212,6 +213,187 @@ class KekuleExplorerWindow(BaseGUI):
         layout.addSpacing(10)
         self.button("Set Fdata Path", self.set_fdata_path, layout=layout)
         return self.group("Fireball", layout)
+
+    def create_ribbon_section(self):
+        layout = QtWidgets.QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+        
+        # Shared inputs (used by both single and two-ribbon)
+        shared_layout = QtWidgets.QHBoxLayout()
+        shared_layout.setContentsMargins(0, 0, 0, 0)
+        shared_layout.setSpacing(2)
+        
+        rows_label = QtWidgets.QLabel("Rows:")
+        rows_label.setFixedWidth(30)
+        self.ribbon_rows_spinbox = self.spinBox(4, 1.0, max_width=50, vmin=1, vmax=20, int_mode=True)
+        shared_layout.addWidget(rows_label)
+        shared_layout.addWidget(self.ribbon_rows_spinbox)
+        
+        bottom_label = QtWidgets.QLabel("Bot:")
+        bottom_label.setFixedWidth(25)
+        self.ribbon_bottom_edit = QtWidgets.QLineEdit()
+        self.ribbon_bottom_edit.setPlaceholderText("n/N/o/O/H/h")
+        self.ribbon_bottom_edit.setMaximumWidth(80)
+        shared_layout.addWidget(bottom_label)
+        shared_layout.addWidget(self.ribbon_bottom_edit)
+        
+        top_label = QtWidgets.QLabel("Top:")
+        top_label.setFixedWidth(25)
+        self.ribbon_top_edit = QtWidgets.QLineEdit()
+        self.ribbon_top_edit.setPlaceholderText("n/N/o/O/H/h")
+        self.ribbon_top_edit.setMaximumWidth(80)
+        shared_layout.addWidget(top_label)
+        shared_layout.addWidget(self.ribbon_top_edit)
+        
+        layout.addLayout(shared_layout)
+        
+        # Generate buttons side by side
+        btn_layout = QtWidgets.QHBoxLayout()
+        btn_layout.setContentsMargins(0, 0, 0, 0)
+        btn_layout.setSpacing(2)
+        self.button("Single", self.generate_single_ribbon, layout=btn_layout)
+        self.button("Two", self.generate_two_ribbons, layout=btn_layout)
+        layout.addLayout(btn_layout)
+        
+        # Two-ribbon specific inputs (collapsible)
+        two_ribbon_group = QtWidgets.QGroupBox("Two-Ribbon Options")
+        two_ribbon_group.setCheckable(True)
+        two_ribbon_group.setChecked(False)
+        two_ribbon_group.toggled.connect(lambda checked: two_ribbon_group.setVisible(checked))
+        two_ribbon_layout = QtWidgets.QVBoxLayout()
+        two_ribbon_layout.setContentsMargins(0, 0, 0, 0)
+        two_ribbon_layout.setSpacing(2)
+        
+        # Ribbon 2 inputs
+        r2_layout = QtWidgets.QHBoxLayout()
+        r2_layout.setContentsMargins(0, 0, 0, 0)
+        r2_layout.setSpacing(2)
+        
+        r2_rows_label = QtWidgets.QLabel("R2:")
+        r2_rows_label.setFixedWidth(20)
+        self.ribbon2_rows_spinbox = self.spinBox(4, 1.0, max_width=50, vmin=1, vmax=20, int_mode=True)
+        r2_layout.addWidget(r2_rows_label)
+        r2_layout.addWidget(self.ribbon2_rows_spinbox)
+        
+        r2_bottom_label = QtWidgets.QLabel("Bot:")
+        r2_bottom_label.setFixedWidth(25)
+        self.ribbon2_bottom_edit = QtWidgets.QLineEdit()
+        self.ribbon2_bottom_edit.setPlaceholderText("n/N/o/O/H/h")
+        self.ribbon2_bottom_edit.setMaximumWidth(80)
+        r2_layout.addWidget(r2_bottom_label)
+        r2_layout.addWidget(self.ribbon2_bottom_edit)
+        
+        r2_top_label = QtWidgets.QLabel("Top:")
+        r2_top_label.setFixedWidth(25)
+        self.ribbon2_top_edit = QtWidgets.QLineEdit()
+        self.ribbon2_top_edit.setPlaceholderText("n/N/o/O/H/h")
+        self.ribbon2_top_edit.setMaximumWidth(80)
+        r2_layout.addWidget(r2_top_label)
+        r2_layout.addWidget(self.ribbon2_top_edit)
+        
+        two_ribbon_layout.addLayout(r2_layout)
+        
+        # H-bond spacing
+        hb_layout = QtWidgets.QHBoxLayout()
+        hb_layout.setContentsMargins(0, 0, 0, 0)
+        hb_layout.setSpacing(2)
+        hb_label = QtWidgets.QLabel("H-bond:")
+        hb_label.setFixedWidth(50)
+        self.ribbon_L_Hb_spinbox = self.spinBox(3.0, 0.1, max_width=60, vmin=2.0, vmax=10.0)
+        hb_layout.addWidget(hb_label)
+        hb_layout.addWidget(self.ribbon_L_Hb_spinbox)
+        two_ribbon_layout.addLayout(hb_layout)
+        
+        two_ribbon_group.setLayout(two_ribbon_layout)
+        layout.addWidget(two_ribbon_group)
+        
+        return self.group("Ribbon", layout)
+
+    def generate_single_ribbon(self):
+        """Generate single periodic ribbon from passivation strings."""
+        bottom_str = self.ribbon_bottom_edit.text().strip()
+        top_str = self.ribbon_top_edit.text().strip()
+        
+        if not bottom_str or not top_str:
+            QtWidgets.QMessageBox.warning(self, "Warning", "Please provide passivation strings for both bottom and top edges.")
+            return
+        
+        try:
+            bottom_passivation = parse_passivation_string(bottom_str)
+            top_passivation = parse_passivation_string(top_str)
+            length_cells = len(bottom_passivation)
+            width_chains = self.ribbon_rows_spinbox.value()
+            Lx = 2.4
+            
+            self.backend = KekuleBackend()
+            self.backend.build_zigzag_ribbon(width_chains=width_chains, length_cells=length_cells, passivation_bottom=bottom_passivation, passivation_top=top_passivation, scale_x=Lx / (2.0 * 1.42 * np.cos(np.pi / 6)), bPeriodicX=True)
+            
+            self.backend.recalc_bonds()
+            self.scene.backend = self.backend
+            
+            n_C = sum(1 for e in self.backend.sys.enames if e == 'C')
+            n_N = sum(1 for e in self.backend.sys.enames if e == 'N')
+            n_O = sum(1 for e in self.backend.sys.enames if e == 'O')
+            n_H = sum(1 for e in self.backend.sys.enames if e == 'H')
+            
+            msg = f"Generated single ribbon: C={n_C}, N={n_N}, O={n_O}, H={n_H}"
+            print(msg)
+            self.statusBar().showMessage(msg)
+            self.refresh_view()
+            
+        except Exception as e:
+            self._raise(f"Ribbon generation FAILED: {e}", title="Ribbon Error")
+
+    def generate_two_ribbons(self):
+        """Generate two-ribbon system from passivation strings."""
+        bottom1_str = self.ribbon_bottom_edit.text().strip()
+        top1_str = self.ribbon_top_edit.text().strip()
+        bottom2_str = self.ribbon2_bottom_edit.text().strip()
+        top2_str = self.ribbon2_top_edit.text().strip()
+        
+        if not all([bottom1_str, top1_str, bottom2_str, top2_str]):
+            QtWidgets.QMessageBox.warning(self, "Warning", "Please provide passivation strings for all four edges.")
+            return
+        
+        try:
+            bottom1_passivation = parse_passivation_string(bottom1_str)
+            top1_passivation = parse_passivation_string(top1_str)
+            bottom2_passivation = parse_passivation_string(bottom2_str)
+            top2_passivation = parse_passivation_string(top2_str)
+            length_cells = len(bottom1_passivation)
+            width_chains1 = self.ribbon_rows_spinbox.value()
+            width_chains2 = self.ribbon2_rows_spinbox.value()
+            Lx = 2.4
+            L_Hb = self.ribbon_L_Hb_spinbox.value()
+            
+            # Build bottom ribbon
+            bottom_ribbon = KekuleBackend()
+            bottom_ribbon.build_zigzag_ribbon(width_chains=width_chains1, length_cells=length_cells, passivation_bottom=bottom1_passivation, passivation_top=top1_passivation, scale_x=Lx / (2.0 * 1.42 * np.cos(np.pi / 6)), bPeriodicX=True)
+            
+            # Build top ribbon
+            top_ribbon = KekuleBackend()
+            top_ribbon.build_zigzag_ribbon(width_chains=width_chains2, length_cells=length_cells, passivation_bottom=bottom2_passivation, passivation_top=top2_passivation,  scale_x=Lx / (2.0 * 1.42 * np.cos(np.pi / 6)), bPeriodicX=True)
+            
+            # Combine ribbons
+            self.backend = KekuleBackend()
+            self.backend.combine_ribbons(bottom_ribbon, top_ribbon, L_Hb=L_Hb, shift_x=0.0)
+            
+            self.backend.recalc_bonds()
+            self.scene.backend = self.backend
+            
+            n_C = sum(1 for e in self.backend.sys.enames if e == 'C')
+            n_N = sum(1 for e in self.backend.sys.enames if e == 'N')
+            n_O = sum(1 for e in self.backend.sys.enames if e == 'O')
+            n_H = sum(1 for e in self.backend.sys.enames if e == 'H')
+            
+            msg = f"Generated two-ribbon system: C={n_C}, N={n_N}, O={n_O}, H={n_H}"
+            print(msg)
+            self.statusBar().showMessage(msg)
+            self.refresh_view()
+            
+        except Exception as e:
+            self._raise(f"Two-ribbon generation FAILED: {e}", title="Ribbon Error")
 
     def create_menus(self):
         # Settings Menu

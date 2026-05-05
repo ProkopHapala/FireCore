@@ -15,7 +15,7 @@ import sys, os, argparse
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 import numpy as np
-from pyBall.KekuleBackend import KekuleBackend, build_ribbon, build_two_ribbon_cell
+from pyBall.KekuleBackend import KekuleBackend, parse_passivation_string
 from pyBall import plotUtils as pu
 
 OUT_DIR = os.path.join(os.path.dirname(__file__), 'out_ribbon_parity')
@@ -302,13 +302,11 @@ def test_two_ribbon_cell_composable():
     
     # Build bottom ribbon with N on both edges
     bottom_ribbon = KekuleBackend()
-    bottom_ribbon.build_zigzag_ribbon(width_chains=4, length_cells=2, passivation_bottom='N', passivation_top='N', 
-                                      scale_x=2.4 / (2.0 * 1.42 * np.cos(np.pi / 6)), bPeriodicX=True)
+    bottom_ribbon.build_zigzag_ribbon(width_chains=4, length_cells=2, passivation_bottom='N', passivation_top='N',  scale_x=2.4 / (2.0 * 1.42 * np.cos(np.pi / 6)), bPeriodicX=True)
     
     # Build top ribbon with NH on both edges
     top_ribbon = KekuleBackend()
-    top_ribbon.build_zigzag_ribbon(width_chains=4, length_cells=2, passivation_bottom='NH', passivation_top='NH',
-                                   scale_x=2.4 / (2.0 * 1.42 * np.cos(np.pi / 6)), bPeriodicX=True)
+    top_ribbon.build_zigzag_ribbon(width_chains=4, length_cells=2, passivation_bottom='NH', passivation_top='NH', scale_x=2.4 / (2.0 * 1.42 * np.cos(np.pi / 6)), bPeriodicX=True)
     
     # Combine ribbons
     b = KekuleBackend()
@@ -399,15 +397,91 @@ if __name__ == '__main__':
     parser.add_argument('--test', type=str, default='all', help=f"Comma-separated test names or 'all'. Available: {','.join(ALL_TESTS)}")
     parser.add_argument('--rows', type=int, default=4, help='Number of rows (default: 4)')
     parser.add_argument('--cols', type=int, default=4, help='Number of columns (default: 4)')
-    parser.add_argument('--passivation', type=str, default='N', 
-                       choices=['N', 'NH', 'CH', 'H', 'O', 'C=O', 'C-OH'],
-                       help='Passivation type (default: N)')
+    parser.add_argument('--passivation', type=str, default='N',  choices=['N', 'NH', 'CH', 'H', 'O', 'C=O', 'C-OH'],help='Passivation type (default: N)')
     parser.add_argument('--L_Hb', type=float, default=2.0, help='Hydrogen bond length (default: 2.0)')
+    
+    # CLI mode for string-based passivation ribbons (always PBC)
+    parser.add_argument('--single', action='store_true', help='Generate single PBC ribbon with string passivation')
+    parser.add_argument('--bottom', type=str, help='Bottom edge passivation string (e.g., NnOOH)')
+    parser.add_argument('--top', type=str, help='Top edge passivation string (e.g., NnOOH)')
+    parser.add_argument('--bottom1', type=str, help='Bottom ribbon bottom edge (for two-ribbon)')
+    parser.add_argument('--top1', type=str, help='Bottom ribbon top edge (for two-ribbon)')
+    parser.add_argument('--bottom2', type=str, help='Top ribbon bottom edge (for two-ribbon)')
+    parser.add_argument('--top2', type=str, help='Top ribbon top edge (for two-ribbon)')
+    
     args = parser.parse_args()
     CLI_ROWS = args.rows
     CLI_COLS = args.cols
     CLI_PASSIVATION = args.passivation
     CLI_L_Hb = args.L_Hb
+
+    # CLI mode: generate single PBC ribbon with string passivation
+    if args.single:
+        if args.bottom is None or args.top is None:
+            print("ERROR: --single requires --bottom and --top passivation strings")
+            sys.exit(1)
+        
+        bottom_passivation = parse_passivation_string(args.bottom)
+        top_passivation = parse_passivation_string(args.top)
+        length_cells = len(bottom_passivation)
+        width_chains = CLI_ROWS
+        Lx = 2.4
+        
+        b = KekuleBackend()
+        b.build_zigzag_ribbon(width_chains=width_chains, length_cells=length_cells, passivation_bottom=bottom_passivation, passivation_top=top_passivation, scale_x=Lx / (2.0 * 1.42 * np.cos(np.pi / 6)), bPeriodicX=True)
+        
+        n_C = sum(1 for e in b.sys.enames if e == 'C')
+        n_N = sum(1 for e in b.sys.enames if e == 'N')
+        n_O = sum(1 for e in b.sys.enames if e == 'O')
+        n_H = sum(1 for e in b.sys.enames if e == 'H')
+        print(f"Single ribbon: C={n_C}, N={n_N}, O={n_O}, H={n_H}")
+        
+        tag = f'single_w{width_chains}_{args.bottom}_{args.top}'
+        Lx_scaled = Lx * length_cells
+        Ly = b.sys.apos[:, 1].max() - b.sys.apos[:, 1].min() + 15.0
+        lvs = np.array([[Lx_scaled, 0.0, 0.0], [0.0, Ly, 0.0], [0.0, 0.0, 20.0]])
+        _save_outputs(b, tag, lvs=lvs)
+        sys.exit(0)
+    
+    # CLI mode: generate two-ribbon system with string passivation
+    if args.bottom1 is not None or args.top1 is not None or args.bottom2 is not None or args.top2 is not None:
+        if args.bottom1 is None or args.top1 is None or args.bottom2 is None or args.top2 is None:
+            print("ERROR: Two-ribbon mode requires --bottom1, --top1, --bottom2, --top2")
+            sys.exit(1)
+        
+        bottom1_passivation = parse_passivation_string(args.bottom1)
+        top1_passivation = parse_passivation_string(args.top1)
+        bottom2_passivation = parse_passivation_string(args.bottom2)
+        top2_passivation = parse_passivation_string(args.top2)
+        length_cells = len(bottom1_passivation)
+        width_chains = CLI_ROWS
+        Lx = 2.4
+        L_Hb = CLI_L_Hb
+        
+        # Build bottom ribbon
+        bottom_ribbon = KekuleBackend()
+        bottom_ribbon.build_zigzag_ribbon(width_chains=width_chains, length_cells=length_cells, passivation_bottom=bottom1_passivation, passivation_top=top1_passivation, scale_x=Lx / (2.0 * 1.42 * np.cos(np.pi / 6)), bPeriodicX=True)
+        
+        # Build top ribbon
+        top_ribbon = KekuleBackend()
+        top_ribbon.build_zigzag_ribbon(width_chains=width_chains, length_cells=length_cells, passivation_bottom=bottom2_passivation, passivation_top=top2_passivation, scale_x=Lx / (2.0 * 1.42 * np.cos(np.pi / 6)), bPeriodicX=True)
+        
+        # Combine ribbons
+        b = KekuleBackend()
+        b.combine_ribbons(bottom_ribbon, top_ribbon, L_Hb=L_Hb, shift_x=0.0)
+        
+        n_C = sum(1 for e in b.sys.enames if e == 'C')
+        n_N = sum(1 for e in b.sys.enames if e == 'N')
+        n_O = sum(1 for e in b.sys.enames if e == 'O')
+        n_H = sum(1 for e in b.sys.enames if e == 'H')
+        print(f"Two-ribbon system: C={n_C}, N={n_N}, O={n_O}, H={n_H}")
+        
+        tag = f'two_w{width_chains}_{args.bottom1}_{args.top1}_{args.bottom2}_{args.top2}'
+        Lx_scaled = Lx * length_cells
+        Ly = b.sys.apos[:, 1].max() - b.sys.apos[:, 1].min() + 15.0
+        lvs = np.array([[Lx_scaled, 0.0, 0.0], [0.0, Ly, 0.0], [0.0, 0.0, 20.0]])
+        _save_outputs(b, tag, lvs=lvs)
+        sys.exit(0)
 
     if args.test == 'all':
         tests = ALL_TESTS

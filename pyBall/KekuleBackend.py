@@ -54,6 +54,39 @@ PASSIVATION_GROUPS = {
     'C-OH': [('O', 0.0, 1.43, 0.0), ('H', 0.31, 2.34, 0.0)],  # H at 109.5° from y-axis
 }
 
+# Passivation string encoding mapping for CLI
+# Each character in the string represents one passivation group at one site along the edge
+PASSIVATION_ENCODING = {
+    'n': 'NH',
+    'N': 'N',
+    'o': 'C=O',
+    'O': 'O',
+    'H': 'CH',
+    'h': 'C-OH'
+}
+
+def parse_passivation_string(s):
+    """Convert passivation string to list of passivation group names.
+    
+    Encoding:
+    - n -> NH
+    - N -> N
+    - o -> C=O
+    - O -> O
+    - H -> CH
+    - h -> C-OH
+    
+    Each character in the string represents one passivation group at one site.
+    """
+    if s is None:
+        return None
+    result = []
+    for char in s:
+        if char not in PASSIVATION_ENCODING:
+            raise ValueError(f"Unknown passivation character: '{char}'. Valid: {list(PASSIVATION_ENCODING.keys())}")
+        result.append(PASSIVATION_ENCODING[char])
+    return result
+
 class KekuleBackend:
     """Manages persistent AtomicSystem with hexagonal grid metadata.
     
@@ -759,8 +792,7 @@ class KekuleBackend:
 
         if bPeriodicX:
             # PBC mode: use strip-based construction
-            # For now, use passivation_bottom for both (strip-based doesn't support separate top/bottom)
-            self._build_strip_ribbon(width_chains, length_cells, passivation_bottom,
+            self._build_strip_ribbon(width_chains, length_cells, passivation_bottom, passivation_top,
                                      start_with_A, y_top_offset, y_bottom_offset, scale_x, scale_y)
         else:
             # Non-periodic mode: build using rings, then apply selective passivation
@@ -839,9 +871,16 @@ class KekuleBackend:
         """Passivate only top/bottom edge atoms (zigzag edges), not side edges (armchair edges).
         
         Allows different passivation for top vs bottom edges.
+        Supports list-based passivation where each element is applied to successive edge sites.
         """
         if self.sys.ngs is None:
             self.sys.neighs()
+
+        # Convert strings to single-element lists for uniform handling
+        if isinstance(passivation_bottom, str):
+            passivation_bottom = [passivation_bottom]
+        if isinstance(passivation_top, str):
+            passivation_top = [passivation_top]
 
         # Find edge atoms (less than 3 heavy neighbors)
         edge_atoms = []
@@ -878,14 +917,20 @@ class KekuleBackend:
             else:
                 top_edge_atoms.append(ia)
 
+        # Sort by x position to apply passivation in order along the edge
+        bottom_edge_atoms.sort(key=lambda ia: self.sys.apos[ia, 0])
+        top_edge_atoms.sort(key=lambda ia: self.sys.apos[ia, 0])
+
         # Apply passivation using PASSIVATION_GROUPS
-        for ia in bottom_edge_atoms:
-            if passivation_bottom and passivation_bottom in PASSIVATION_GROUPS:
-                self._apply_passivation_group(ia, passivation_bottom, is_top=False)
+        for idx, ia in enumerate(bottom_edge_atoms):
+            p = passivation_bottom[idx % len(passivation_bottom)] if passivation_bottom else None
+            if p and p in PASSIVATION_GROUPS:
+                self._apply_passivation_group(ia, p, is_top=False)
         
-        for ia in top_edge_atoms:
-            if passivation_top and passivation_top in PASSIVATION_GROUPS:
-                self._apply_passivation_group(ia, passivation_top, is_top=True)
+        for idx, ia in enumerate(top_edge_atoms):
+            p = passivation_top[idx % len(passivation_top)] if passivation_top else None
+            if p and p in PASSIVATION_GROUPS:
+                self._apply_passivation_group(ia, p, is_top=True)
         self.recalc_bonds()
 
     def _passivate_edges_top_bottom_only(self, passivation):
@@ -956,10 +1001,11 @@ class KekuleBackend:
             for q in range(length_cells):
                 self.add_ring(q, r)
 
-    def _build_strip_ribbon(self, width_chains, length_cells, passivation,  start_with_A, y_top_offset, y_bottom_offset, scale_x, scale_y):
+    def _build_strip_ribbon(self, width_chains, length_cells, passivation_bottom, passivation_top, start_with_A, y_top_offset, y_bottom_offset, scale_x, scale_y):
         """Strip-based construction for periodic ribbons (mirrors GrapheneRibbonBuilder logic).
         
         For PBC along x, only creates atoms within one periodicity (x < x_periodicity).
+        Supports list-based passivation for variable passivation per site along edges.
         """
         L = self.a_CC
         xa = L * np.cos(np.pi / 6)
@@ -1035,25 +1081,34 @@ class KekuleBackend:
                 self.sys.apos[start_idx + i, 1] += y_top_offset
 
         # Passivate top and bottom rows only (zigzag edges)
-        self._strip_passivate(width_chains, length_cells, passivation)
+        self._strip_passivate(width_chains, length_cells, passivation_bottom, passivation_top)
 
-    def _strip_passivate(self, width_chains, length_cells, passivation):
+    def _strip_passivate(self, width_chains, length_cells, passivation_bottom, passivation_top):
         """Passivate only top and bottom rows for strip-based construction (zigzag edges).
 
         For periodic x, passivate ALL atoms in top/bottom rows (zigzag edges).
         The armchair edges (left/right) wrap in PBC, so they are not separate edges.
+        
+        Supports list-based passivation where each element is applied to successive sites.
         """
-        if passivation is None:
-            return  # No passivation requested
+        # Convert strings to single-element lists for uniform handling
+        if isinstance(passivation_bottom, str):
+            passivation_bottom = [passivation_bottom]
+        if isinstance(passivation_top, str):
+            passivation_top = [passivation_top]
 
         # Bottom row (row 0)
         for i in range(length_cells):
-            self._strip_passivate_atom(i, passivation, is_top=False)
+            pb = passivation_bottom[i % len(passivation_bottom)] if passivation_bottom else None
+            if pb is not None:
+                self._strip_passivate_atom(i, pb, is_top=False)
 
         # Top row (last row)
         start_idx = (width_chains - 1) * length_cells
         for i in range(length_cells):
-            self._strip_passivate_atom(start_idx + i, passivation, is_top=True)
+            pt = passivation_top[i % len(passivation_top)] if passivation_top else None
+            if pt is not None:
+                self._strip_passivate_atom(start_idx + i, pt, is_top=True)
 
         self.sys.neighs()
 
@@ -1062,14 +1117,9 @@ class KekuleBackend:
 
         Args:
             ia: atom index to passivate
-            passivation: passivation type (string or list)
+            passivation: passivation type (string)
             is_top: True for top edge, False for bottom edge
         """
-        # Handle list-based passivation
-        if isinstance(passivation, list):
-            # For strip-based construction, use first element
-            passivation = passivation[0]
-
         if passivation not in PASSIVATION_GROUPS:
             raise ValueError(f"Unknown passivation type: {passivation}")
 
