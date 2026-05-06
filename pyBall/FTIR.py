@@ -182,3 +182,276 @@ def save_xyz_vib(fname, elements, pos, vecs, comments=None):
                 f.write(f"{elements[j]:3s} {pos[j,0]:10.5f} {pos[j,1]:10.5f} {pos[j,2]:10.5f} "
                         f"{vec[j,0]:10.5f} {vec[j,1]:10.5f} {vec[j,2]:10.5f}\n")
 
+
+# =========================== Hessian Parameter Fitting
+
+def build_design_matrix_from_basis(bond_bases, bond_atoms, angle_bases, angle_atoms, natoms):
+    """
+    Build design matrix A for linear least squares Hessian fitting.
+    
+    The linear model is: H_target = sum_p k_p * B_p
+    where B_p are the geometric basis matrices (computed at equilibrium geometry).
+    
+    Parameters:
+    -----------
+    bond_bases : ndarray (nbonds, 4, 3, 3)
+        Basis matrices for bonds [Bii, Bij, Bji, Bjj]
+    bond_atoms : ndarray (nbonds, 2)
+        Atom indices [i, j] for each bond
+    angle_bases : ndarray (nangles, 9, 9)
+        Basis matrices for angles (9x9 block for 3 atoms)
+    angle_atoms : ndarray (nangles, 3)
+        Atom indices [i, j, k] for each angle
+    natoms : int
+        Total number of atoms
+        
+    Returns:
+    --------
+    A : ndarray (n_observations, n_params)
+        Design matrix where each column is a flattened basis Hessian
+    atom_pairs : list
+        List of (param_type, atom_indices) for each parameter
+    """
+    nb = len(bond_bases) if bond_bases is not None else 0
+    na = len(angle_bases) if angle_bases is not None else 0
+    n_params = nb + na
+    dim = natoms * 3
+    
+    # Upper triangle indices (including diagonal)
+    # H is symmetric, so we only need unique elements
+    triu_idx = np.triu_indices(dim)
+    n_obs = len(triu_idx[0])
+    
+    A = np.zeros((n_obs, n_params))
+    atom_pairs = []
+    
+    # Add bond contributions
+    for ib in range(nb):
+        B_blocks = bond_bases[ib]  # (4, 3, 3) = [Bii, Bij, Bji, Bjj]
+        i, j = bond_atoms[ib]
+        
+        # Assemble sparse block into full 3N x 3N, then extract upper triangle
+        B_full = np.zeros((dim, dim))
+        # Bii at (i,i)
+        B_full[i*3:(i+1)*3, i*3:(i+1)*3] += B_blocks[0]
+        # Bij at (i,j)
+        B_full[i*3:(i+1)*3, j*3:(j+1)*3] += B_blocks[1]
+        # Bji at (j,i)
+        B_full[j*3:(j+1)*3, i*3:(i+1)*3] += B_blocks[2]
+        # Bjj at (j,j)
+        B_full[j*3:(j+1)*3, j*3:(j+1)*3] += B_blocks[3]
+        
+        A[:, ib] = B_full[triu_idx]
+        atom_pairs.append(('bond', (i, j)))
+    
+    # Add angle contributions
+    for ia in range(na):
+        B = angle_bases[ia]  # (9, 9) block
+        i, j, k = angle_atoms[ia]
+        atoms = [i, j, k]
+        
+        # Assemble 9x9 block into full 3N x 3N
+        B_full = np.zeros((dim, dim))
+        for r in range(9):
+            for c in range(9):
+                atom_r = atoms[r // 3]
+                atom_c = atoms[c // 3]
+                coord_r = r % 3
+                coord_c = c % 3
+                B_full[atom_r*3+coord_r, atom_c*3+coord_c] += B[r, c]
+        
+        A[:, nb + ia] = B_full[triu_idx]
+        atom_pairs.append(('angle', (i, j, k)))
+    
+    return A, atom_pairs, triu_idx
+
+
+def fit_hessian_parameters(H_target, bond_bases, bond_atoms, angle_bases, angle_atoms, 
+                            natoms, lam=1e-6, method='ridge'):
+    """
+    Fit force field stiffness parameters to match target Hessian.
+    
+    Solves: min || sum_p k_p * B_p - H_target ||²_F + λ * ||k||²
+    
+    Parameters:
+    -----------
+    H_target : ndarray (3N, 3N)
+        Target Hessian matrix (e.g., from DFT)
+    bond_bases : ndarray (nbonds, 4, 3, 3)
+        Bond basis matrices from getBondHessianBases()
+    bond_atoms : ndarray (nbonds, 2)
+        Bond atom indices from getBondAtomsHess()
+    angle_bases : ndarray (nangles, 9, 9)
+        Angle basis matrices from getAngleHessianBases()
+    angle_atoms : ndarray (nangles, 3)
+        Angle atom indices from getAngleAtomsHess()
+    natoms : int
+        Number of atoms
+    lam : float
+        Ridge regularization parameter (default 1e-6)
+    method : str
+        'ridge' for Tikhonov regularization, 'lstsq' for simple least squares
+        
+    Returns:
+    --------
+    result : dict with keys:
+        'k_opt': optimal parameters [k_bonds..., k_angles...]
+        'k_bonds': bond parameters only
+        'k_angles': angle parameters only
+        'H_fit': fitted Hessian = sum_p k_p * B_p
+        'residual': Frobenius norm of (H_fit - H_target)
+        'r2': R² coefficient of determination
+        'A': design matrix
+        'condition_number': condition number of A.T @ A
+    """
+    # Build design matrix
+    A, atom_pairs, triu_idx = build_design_matrix_from_basis(
+        bond_bases, bond_atoms, angle_bases, angle_atoms, natoms
+    )
+    
+    # Target vector (upper triangle of H_target)
+    b = H_target[triu_idx]
+    
+    n_params = A.shape[1]
+    nb = len(bond_bases) if bond_bases is not None else 0
+    
+    # Solve linear least squares with regularization
+    if method == 'ridge':
+        # Tikhonov: (A.T @ A + λI) k = A.T @ b
+        ATA = A.T @ A
+        ATb = A.T @ b
+        k_opt = np.linalg.solve(ATA + lam * np.eye(n_params), ATb)
+    elif method == 'lstsq':
+        k_opt, residuals, rank, s = np.linalg.lstsq(A, b, rcond=None)
+    else:
+        raise ValueError(f"Unknown method: {method}")
+    
+    # Assemble fitted Hessian
+    H_fit = np.zeros_like(H_target)
+    
+    # Add bond contributions
+    for ib in range(nb):
+        k = k_opt[ib]
+        B_blocks = bond_bases[ib]
+        i, j = bond_atoms[ib]
+        H_fit[i*3:(i+1)*3, i*3:(i+1)*3] += k * B_blocks[0]
+        H_fit[i*3:(i+1)*3, j*3:(j+1)*3] += k * B_blocks[1]
+        H_fit[j*3:(j+1)*3, i*3:(i+1)*3] += k * B_blocks[2]
+        H_fit[j*3:(j+1)*3, j*3:(j+1)*3] += k * B_blocks[3]
+    
+    # Add angle contributions
+    na = len(angle_bases) if angle_bases is not None else 0
+    for ia in range(na):
+        k = k_opt[nb + ia]
+        B = angle_bases[ia]
+        i, j, k_atoms = angle_atoms[ia]
+        atoms = [i, j, k_atoms]
+        
+        for r in range(9):
+            for c in range(9):
+                atom_r = atoms[r // 3]
+                atom_c = atoms[c // 3]
+                coord_r = r % 3
+                coord_c = c % 3
+                H_fit[atom_r*3+coord_r, atom_c*3+coord_c] += k * B[r, c]
+    
+    # Compute metrics
+    residual = np.linalg.norm(H_fit - H_target, 'fro')
+    H_norm = np.linalg.norm(H_target, 'fro')
+    r2 = 1.0 - (residual**2) / (H_norm**2) if H_norm > 0 else 0.0
+    
+    # Condition number for diagnostics
+    cond_num = np.linalg.cond(A.T @ A) if A.shape[1] <= A.shape[0] else np.inf
+    
+    return {
+        'k_opt': k_opt,
+        'k_bonds': k_opt[:nb],
+        'k_angles': k_opt[nb:] if na > 0 else np.array([]),
+        'H_fit': H_fit,
+        'residual': residual,
+        'r2': r2,
+        'A': A,
+        'condition_number': cond_num,
+        'atom_pairs': atom_pairs
+    }
+
+
+def fit_hessian_parameters_ctx(H_target, ctx, lam=1e-6, method='ridge'):
+    """
+    Fit force field stiffness parameters using context from getHessianContext().
+    
+    This is a convenience wrapper that extracts data from the context dict
+    and calls fit_hessian_parameters().
+    
+    Parameters:
+    -----------
+    H_target : ndarray (3N, 3N)
+        Target Hessian matrix (e.g., from DFT)
+    ctx : dict
+        Context dictionary from MMFF.getHessianContext()
+    lam : float
+        Ridge regularization parameter (default 1e-6)
+    method : str
+        'ridge' for Tikhonov regularization, 'lstsq' for simple least squares
+        
+    Returns:
+    --------
+    result : dict with fitting results (see fit_hessian_parameters)
+    """
+    return fit_hessian_parameters(
+        H_target,
+        ctx['bond_bases'], ctx['bond_atoms'],
+        ctx['angle_bases'], ctx['angle_atoms'],
+        ctx['n_atoms'], lam=lam, method=method
+    )
+
+
+def validate_hessian_fit(mmff, H_target, k_opt, inds, dx=1e-4):
+    """
+    Validate fitted parameters by computing Hessian with new parameters
+    and comparing to target.
+    
+    Parameters:
+    -----------
+    mmff : MMFF module
+        Initialized MMFF with UFF forcefield
+    H_target : ndarray (3N, 3N)
+        Target Hessian
+    k_opt : ndarray
+        Fitted parameters [k_bonds..., k_angles...]
+    inds : ndarray
+        Atom indices passed to getHessian3Nx3N
+    dx : float
+        Finite difference step for validation Hessian
+        
+    Returns:
+    --------
+    dict with validation metrics
+    """
+    # Set fitted parameters
+    nb = mmff.getNBondsHess()
+    na = mmff.getNAnglesHess()
+    
+    mmff.setBondParamsHess(k_opt[:nb])
+    if na > 0:
+        mmff.setAngleParamsHess(k_opt[nb:])
+    
+    # Compute Hessian with fitted parameters
+    H_fitted = mmff.getHessian3Nx3N(inds, dx=dx)
+    H_fitted = 0.5 * (H_fitted + H_fitted.T)  # Symmetrize
+    
+    # Compare
+    diff = H_fitted - H_target
+    rel_error = np.linalg.norm(diff, 'fro') / np.linalg.norm(H_target, 'fro')
+    
+    max_diff = np.max(np.abs(diff))
+    mean_diff = np.mean(np.abs(diff))
+    
+    return {
+        'H_fitted': H_fitted,
+        'relative_error': rel_error,
+        'max_absolute_diff': max_diff,
+        'mean_absolute_diff': mean_diff,
+        'diff_matrix': diff
+    }
+

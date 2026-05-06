@@ -1,5 +1,5 @@
 import numpy as np
-from   ctypes import c_int, c_double, c_bool, c_float, c_char_p, c_bool, c_void_p, c_char_p
+from   ctypes import c_int, c_double, c_bool, c_float, c_char_p, c_bool, c_void_p, c_char_p, byref
 import ctypes
 import os
 import sys
@@ -1237,6 +1237,151 @@ def getHessian3Nx3N(inds, dx=1e-4):
     dim    = 3 * n
     out    = np.zeros((dim,dim), dtype=np.float64)
     lib.getHessian3Nx3N( n, _np_as(inds_c, c_int_p), _np_as(out,    c_double_p), dx )
+    return out
+
+# =========================== Hessian Basis Matrix Functions (for parameter fitting)
+# Consolidated API: getHessianContext() gets all data, setParams() updates parameters
+
+# void getHessianContext(int* n_bonds, int* n_angles, int* n_atoms,
+#                        double* bond_bases, int* bond_atoms, double* bond_params,
+#                        double* angle_bases, int* angle_atoms, double* angle_params)
+lib.getHessianContext.argtypes = [c_int_p, c_int_p, c_int_p,  # n_bonds, n_angles, n_atoms
+                                    c_double_p, c_int_p, c_double_p,  # bond data
+                                    c_double_p, c_int_p, c_double_p]  # angle data
+lib.getHessianContext.restype = None
+
+def getHessianContext(get_bases=True, get_atoms=True, get_params=True):
+    """
+    Get all information needed for Hessian parameter fitting in ONE call.
+    
+    Returns a dictionary with:
+        n_bonds: int
+        n_angles: int  
+        n_atoms: int
+        bond_bases: ndarray (nbonds, 4, 3, 3) - [Bii, Bij, Bji, Bjj] per bond, or None
+        bond_atoms: ndarray (nbonds, 2) - [i, j] indices per bond, or None
+        bond_params: ndarray (nbonds,) - current k values, or None
+        angle_bases: ndarray (nangles, 9, 9) - 9x9 blocks per angle, or None
+        angle_atoms: ndarray (nangles, 3) - [i, j, k] indices per angle, or None
+        angle_params: ndarray (nangles,) - current k values, or None
+        
+    The linear model is: H = sum_i k_i * B_i where B_i are geometric basis matrices.
+    Basis matrices are WITHOUT the k factor (just geometry).
+    
+    Parameters:
+    -----------
+    get_bases : bool
+        If True, compute and return basis matrices B_i (may be expensive)
+    get_atoms : bool  
+        If True, return atom indices for each bond/angle
+    get_params : bool
+        If True, return current stiffness parameters
+    """
+    n_b = c_int(0)
+    n_a = c_int(0)
+    n_at = c_int(0)
+    
+    # First call to get counts
+    lib.getHessianContext(byref(n_b), byref(n_a), byref(n_at),
+                          None, None, None, None, None, None)
+    
+    nb, na, nat = n_b.value, n_a.value, n_at.value
+    
+    # Allocate output arrays based on what we need
+    bond_bases_arr = np.zeros(nb * 36, dtype=np.float64) if get_bases and nb > 0 else None
+    bond_atoms_arr = np.zeros(nb * 2, dtype=np.int32) if get_atoms and nb > 0 else None
+    bond_params_arr = np.zeros(nb, dtype=np.float64) if get_params and nb > 0 else None
+    
+    angle_bases_arr = np.zeros(na * 81, dtype=np.float64) if get_bases and na > 0 else None
+    angle_atoms_arr = np.zeros(na * 3, dtype=np.int32) if get_atoms and na > 0 else None
+    angle_params_arr = np.zeros(na, dtype=np.float64) if get_params and na > 0 else None
+    
+    # Second call to get actual data
+    lib.getHessianContext(byref(n_b), byref(n_a), byref(n_at),
+        _np_as(bond_bases_arr, c_double_p) if bond_bases_arr is not None else None,
+        _np_as(bond_atoms_arr, c_int_p) if bond_atoms_arr is not None else None,
+        _np_as(bond_params_arr, c_double_p) if bond_params_arr is not None else None,
+        _np_as(angle_bases_arr, c_double_p) if angle_bases_arr is not None else None,
+        _np_as(angle_atoms_arr, c_int_p) if angle_atoms_arr is not None else None,
+        _np_as(angle_params_arr, c_double_p) if angle_params_arr is not None else None)
+    
+    return {
+        'n_bonds': nb,
+        'n_angles': na,
+        'n_atoms': nat,
+        'bond_bases': bond_bases_arr.reshape(nb, 4, 3, 3) if bond_bases_arr is not None else None,
+        'bond_atoms': bond_atoms_arr.reshape(nb, 2) if bond_atoms_arr is not None else None,
+        'bond_params': bond_params_arr if bond_params_arr is not None else None,
+        'angle_bases': angle_bases_arr.reshape(na, 9, 9) if angle_bases_arr is not None else None,
+        'angle_atoms': angle_atoms_arr.reshape(na, 3) if angle_atoms_arr is not None else None,
+        'angle_params': angle_params_arr if angle_params_arr is not None else None
+    }
+
+
+# void setParams(int n_bonds, const double* bond_params, int n_angles, const double* angle_params)
+lib.setParams.argtypes = [c_int, c_double_p, c_int, c_double_p]
+lib.setParams.restype = None
+
+def setParams(bond_params=None, angle_params=None):
+    """
+    Set force field stiffness parameters after fitting.
+    
+    Parameters:
+    -----------
+    bond_params : ndarray (nbonds,) or None
+        New bond stiffness k values. If None, bonds are not modified.
+    angle_params : ndarray (nangles,) or None
+        New angle stiffness k values. If None, angles are not modified.
+        
+    Example:
+    --------
+        ctx = getHessianContext()
+        k_opt = fit_hessian_parameters(H_target, ctx)  # Your fitting function
+        setParams(k_opt[:ctx['n_bonds']], k_opt[ctx['n_bonds']:])
+    """
+    if bond_params is not None:
+        bond_params = np.ascontiguousarray(bond_params, dtype=np.float64)
+        nb = len(bond_params)
+        bond_ptr = _np_as(bond_params, c_double_p)
+    else:
+        nb = 0
+        bond_ptr = None
+        
+    if angle_params is not None:
+        angle_params = np.ascontiguousarray(angle_params, dtype=np.float64)
+        na = len(angle_params)
+        angle_ptr = _np_as(angle_params, c_double_p)
+    else:
+        na = 0
+        angle_ptr = None
+        
+    lib.setParams(nb, bond_ptr, na, angle_ptr)
+
+
+# void assembleHessianFromParams(int n_params, const double* params, double* out_hessian)
+lib.assembleHessianFromParams.argtypes = [c_int, c_double_p, c_double_p]
+lib.assembleHessianFromParams.restype = None
+
+def assembleHessianFromParams(params, natoms):
+    """
+    Assemble full Hessian from parameter values (for validation).
+    
+    Parameters:
+    -----------
+    params : ndarray (n_params,)
+        Array of [k_bonds..., k_angles...] 
+    natoms : int
+        Number of atoms
+        
+    Returns:
+    --------
+    H : ndarray (3N, 3N)
+        Assembled Hessian matrix H = sum_i k_i * B_i
+    """
+    params = np.ascontiguousarray(params, dtype=np.float64)
+    dim = natoms * 3
+    out = np.zeros((dim, dim), dtype=np.float64)
+    lib.assembleHessianFromParams(len(params), _np_as(params, c_double_p), _np_as(out, c_double_p))
     return out
 
 # void scan_atoms_rigid(int nscan, int nsel, int* inds, double* scan_pos, double* out_forces, double* out_Es, bool bRelative){

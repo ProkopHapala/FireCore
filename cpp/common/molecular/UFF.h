@@ -1922,6 +1922,213 @@ class UFF : public NBFF { public:
     }
    */
 
+    // =========================== Hessian Basis Matrix Computation (for parameter fitting)
+    // Following the linear relationship: H_total = sum_p k_p * B_p
+    // where B_p is the geometric basis matrix for parameter p
+    // At equilibrium: d²E/dx² = k * B_geom, so B_geom is independent of k
+
+    /// @brief Compute bond Hessian basis matrix B_bond for a single bond (rank-1)
+    /// At equilibrium: H_ii = 2*k*u_hat*u_hat^T, H_ij = -2*k*u_hat*u_hat^T, H_jj = 2*k*u_hat*u_hat^T
+    /// Returns the geometric factor (without k): B = 2 * u_hat * u_hat^T for diagonal blocks
+    /// @param ib bond index
+    /// @param Bii output 3x3 matrix for atom i (i is first atom in bonAtoms[ib])
+    /// @param Bij output 3x3 matrix for cross term
+    /// @param Bjj output 3x3 matrix for atom j
+    void getBondHessianBasis(int ib, double* Bii, double* Bij, double* Bjj) {
+        const Vec2i& aij = bonAtoms[ib];
+        const int ia = aij.x;  // atom i
+        const int ja = aij.y;  // atom j
+        
+        // Get bond unit vector from hneigh (computed by evalAtomBonds or directly)
+        Vec3d u_hat;
+        bool found = false;
+        // Try to find in hneigh from ia's perspective
+        for(int in=0; in<4; in++){
+            if(neighs[ia].array[in] == ja){
+                u_hat = hneigh[ia*4+in].f;
+                found = true;
+                break;
+            }
+        }
+        if(!found){
+            // Compute directly from positions
+            Vec3d dp; dp.set_sub(apos[ja], apos[ia]);
+            if(bPBC && shifts){
+                // Find correct PBC image (simplified - assumes makeNeighCells was called)
+                for(int in=0; in<4; in++){
+                    if(neighs[ia].array[in] == ja){
+                        int ipbc = neighCell[ia].array[in];
+                        dp.add(shifts[ipbc]);
+                        break;
+                    }
+                }
+            }
+            u_hat = dp.normalized();
+        }
+        
+        // B = 2 * u_hat * u_hat^T (outer product, symmetric rank-1)
+        // Store as 3x3 row-major: B[row*3+col]
+        for(int r=0; r<3; r++){
+            for(int c=0; c<3; c++){
+                double val = 2.0 * u_hat.array[r] * u_hat.array[c];
+                if(Bii) Bii[r*3+c] = val;
+                if(Bij) Bij[r*3+c] = -val;
+                if(Bjj) Bjj[r*3+c] = val;
+            }
+        }
+    }
+
+    /// @brief Compute angle Hessian basis matrix B_angle for a single angle
+    /// At equilibrium: H_angle = -1/4 * g * g^T where g = dθ/dx (gradient of angle wrt positions)
+    /// This is the geometric factor (without k_a): B_angle = -1/4 * g * g^T
+    /// @param ia angle index  
+    /// @param g output 9-element vector (3 atoms * 3 coords) = [gi, gj, gk] where gi = dθ/dxi
+    /// @param B output 9x9 matrix (row-major) for the 3-atom block, or nullptr to skip
+    void getAngleHessianBasis(int ia, double* g_out, double* B_out) {
+        const Vec3i& ijk = angAtoms[ia];
+        const int i = ijk.x;  // atom 1
+        const int j = ijk.y;  // central atom
+        const int k = ijk.z;  // atom 3
+        
+        // Get unit vectors from hneigh (computed by bakeAngleNeighs)
+        Vec3d u_ji, u_jk;  // unit vectors from j to i and j to k
+        double l_ji, l_jk; // bond lengths
+        bool found_i = false, found_k = false;
+        
+        for(int in=0; in<4; in++){
+            int ing = neighs[j].array[in];
+            if(ing == i){
+                u_ji = hneigh[j*4+in].f;
+                l_ji = 1.0 / hneigh[j*4+in].e;
+                found_i = true;
+            }else if(ing == k){
+                u_jk = hneigh[j*4+in].f;
+                l_jk = 1.0 / hneigh[j*4+in].e;
+                found_k = true;
+            }
+        }
+        
+        if(!found_i || !found_k){
+            // Fallback: compute directly
+            Vec3d r_ji; r_ji.set_sub(apos[i], apos[j]);
+            Vec3d r_jk; r_jk.set_sub(apos[k], apos[j]);
+            l_ji = r_ji.normalize();
+            l_jk = r_jk.normalize();
+            u_ji = r_ji;
+            u_jk = r_jk;
+        }
+        
+        // Compute angle cosine and sine
+        double c = u_ji.dot(u_jk);
+        c = clamp(c, -1.0, 1.0);
+        double s = sqrt(1.0 - c*c + 1e-14);  // sin(theta)
+        
+        // Compute angle gradient g = dθ/dx for each atom
+        // Using Wilson B-matrix formulas (see Molecular Vibrations, Wilson et al.)
+        // dθ/dri = (1/(l_ji * sin(theta))) * (u_jk - c*u_ji)  [perpendicular direction]
+        Vec3d e_perp_i; e_perp_i.set_lincomb(-c, u_ji, 1.0, u_jk);
+        e_perp_i.mul(1.0/s);
+        
+        Vec3d e_perp_k; e_perp_k.set_lincomb(1.0, u_ji, -c, u_jk);
+        e_perp_k.mul(1.0/s);
+        
+        Vec3d gi = e_perp_i * (1.0/l_ji);
+        Vec3d gk = e_perp_k * (1.0/l_jk);
+        Vec3d gj = (gi + gk) * -1.0;  // constraint: gi + gj + gk = 0
+        
+        // Output gradient g = [gi, gj, gk] as 9-element array
+        if(g_out){
+            for(int d=0; d<3; d++) g_out[0*3+d] = gi.array[d];
+            for(int d=0; d<3; d++) g_out[1*3+d] = gj.array[d];
+            for(int d=0; d<3; d++) g_out[2*3+d] = gk.array[d];
+        }
+        
+        // Compute B = -1/4 * g * g^T (outer product, symmetric rank-1)
+        if(B_out){
+            double g_vec[9];
+            for(int d=0; d<3; d++) g_vec[0*3+d] = gi.array[d];
+            for(int d=0; d<3; d++) g_vec[1*3+d] = gj.array[d];
+            for(int d=0; d<3; d++) g_vec[2*3+d] = gk.array[d];
+            
+            for(int r=0; r<9; r++){
+                for(int c=0; c<9; c++){
+                    B_out[r*9+c] = -0.25 * g_vec[r] * g_vec[c];
+                }
+            }
+        }
+    }
+
+    /// @brief Get full system dimension (3*natoms)
+    int getSystemDim() const { return natoms * 3; }
+
+    /// @brief Compute all bond Hessian basis matrices and write to flat array
+    /// Output format: for each bond ib, write 2x2 blocks of 3x3 matrices
+    /// [B_ii(3x3), B_ij(3x3); B_ji(3x3), B_jj(3x3)] where B_ji = B_ij^T = Bij (symmetric)
+    /// Actually B_ij = B_ji^T = -2*u*u^T, and since u*u^T is symmetric, B_ij = B_ji
+    /// Total per bond: 4 * 9 = 36 doubles
+    /// Output array size: nbonds * 36
+    void getAllBondHessianBases(double* out_bases) {
+        for(int ib=0; ib<nbonds; ib++){
+            double Bii[9], Bij[9], Bjj[9];
+            getBondHessianBasis(ib, Bii, Bij, Bjj);
+            
+            const Vec2i& aij = bonAtoms[ib];
+            int i = aij.x;
+            int j = aij.y;
+            
+            // Write in global 3N x 3N indices: rows (o*3+l), cols (p*3+k)
+            // For now, write compact per-bond format that Python will expand
+            int off = ib * 36;
+            for(int k=0; k<9; k++) out_bases[off + 0*9 + k] = Bii[k];  // B_ii
+            for(int k=0; k<9; k++) out_bases[off + 1*9 + k] = Bij[k];  // B_ij
+            for(int k=0; k<9; k++) out_bases[off + 2*9 + k] = Bij[k];  // B_ji = Bij (symmetric)
+            for(int k=0; k<9; k++) out_bases[off + 3*9 + k] = Bjj[k];  // B_jj
+        }
+    }
+
+    /// @brief Compute all angle Hessian basis matrices and write to flat array  
+    /// Output format: for each angle ia, write 3x3 blocks of 3x3 matrices (9x9 total)
+    /// Total per angle: 9 * 9 = 81 doubles
+    void getAllAngleHessianBases(double* out_bases){
+        bakeAngleNeighs();  // Ensure hneigh is populated
+        for(int ia=0; ia<nangles; ia++){
+            double g[9], B[81];
+            getAngleHessianBasis(ia, g, B);
+            for(int i=0; i<81; i++) out_bases[ia*81 + i] = B[i];
+        }
+    }
+
+    /// @brief Assemble sparse contributions into full 3N x 3N Hessian basis matrix
+    /// Adds B_m (for parameter m) to H at correct positions for atoms involved
+    void assembleBondHessianBasis(int ib, double k_bond, double* H_full_3Nx3N) {
+        double Bii[9], Bij[9], Bjj[9];
+        getBondHessianBasis(ib, Bii, Bij, Bjj);
+        
+        const Vec2i& aij = bonAtoms[ib];
+        int i = aij.x;
+        int j = aij.y;
+        int dim = natoms * 3;
+        
+        // Scale by k and add to global H
+        // H[row*dim + col] where row = atom_i*3 + r, col = atom_j*3 + c
+        auto idx = [dim](int atom_row, int r, int atom_col, int c){ 
+            return (atom_row*3+r)*dim + (atom_col*3+c); 
+        };
+        
+        for(int r=0; r<3; r++){
+            for(int c=0; c<3; c++){
+                double val_ii = Bii[r*3+c] * k_bond;
+                double val_ij = Bij[r*3+c] * k_bond;
+                double val_jj = Bjj[r*3+c] * k_bond;
+                
+                H_full_3Nx3N[idx(i,r,i,c)] += val_ii;  // H_ii
+                H_full_3Nx3N[idx(i,r,j,c)] += val_ij;  // H_ij
+                H_full_3Nx3N[idx(j,r,i,c)] += val_ij;  // H_ji = H_ij (symmetric)
+                H_full_3Nx3N[idx(j,r,j,c)] += val_jj;  // H_jj
+            }
+        }
+    }
+
 };
 
 #endif

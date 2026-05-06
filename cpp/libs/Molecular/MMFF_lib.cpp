@@ -790,7 +790,155 @@ void computeDistance(int i, int j, double* dist){
     *dist = W.computeDistance(i,j);
 }
 
+// =========================== Hessian Basis Matrix Functions (for parameter fitting)
+// Consolidated API: just 2 functions - getHessianContext() and setParams()
 
+/// @brief Get all information needed for Hessian parameter fitting in one call
+/// 
+/// Returns: basis matrices, atom indices, and current parameters for bonds and angles.
+/// The linear model is: H = sum_i k_i * B_i where B_i are geometric basis matrices.
+///
+/// @param[out] n_bonds       Number of bonds (0 if not UFF)
+/// @param[out] n_angles      Number of angles (0 if not UFF)
+/// @param[out] n_atoms       Number of atoms
+/// @param[out] bond_bases    Bond basis matrices, size nbonds*36 (4 blocks: Bii,Bij,Bji,Bjj each 3x3)
+/// @param[out] bond_atoms    Bond atom indices [i,j] per bond, size nbonds*2
+/// @param[out] bond_params   Current bond stiffness k values, size nbonds
+/// @param[out] angle_bases   Angle basis matrices, size nangles*81 (9x9 block per angle)
+/// @param[out] angle_atoms   Angle atom indices [i,j,k] per angle, size nangles*3  
+/// @param[out] angle_params  Current angle stiffness k values, size nangles
+///
+/// Arrays can be NULL if that data is not needed. All outputs are only written if W.bUFF.
+void getHessianContext(int* n_bonds, int* n_angles, int* n_atoms,
+                       double* bond_bases, int* bond_atoms, double* bond_params,
+                       double* angle_bases, int* angle_atoms, double* angle_params){
+    if(!W.bUFF){
+        if(n_bonds) *n_bonds = 0;
+        if(n_angles) *n_angles = 0;
+        if(n_atoms) *n_atoms = W.nbmol.natoms;
+        return;
+    }
+    
+    int nb = W.ffu.nbonds;
+    int na = W.ffu.nangles;
+    int nat = W.ffu.natoms;
+    
+    if(n_bonds) *n_bonds = nb;
+    if(n_angles) *n_angles = na;
+    if(n_atoms) *n_atoms = nat;
+    
+    // Bond basis matrices (geometric, without k factor)
+    if(bond_bases){
+        W.ffu.getAllBondHessianBases(bond_bases);
+    }
+    
+    // Bond atom indices [i,j]
+    if(bond_atoms){
+        for(int ib=0; ib<nb; ib++){
+            bond_atoms[ib*2+0] = W.ffu.bonAtoms[ib].x;
+            bond_atoms[ib*2+1] = W.ffu.bonAtoms[ib].y;
+        }
+    }
+    
+    // Current bond parameters (k values)
+    if(bond_params){
+        for(int ib=0; ib<nb; ib++){
+            bond_params[ib] = W.ffu.bonParams[ib].x;
+        }
+    }
+    
+    // Angle basis matrices (geometric, without k factor)
+    if(angle_bases){
+        W.ffu.getAllAngleHessianBases(angle_bases);
+    }
+    
+    // Angle atom indices [i,j,k]
+    if(angle_atoms){
+        for(int ia=0; ia<na; ia++){
+            angle_atoms[ia*3+0] = W.ffu.angAtoms[ia].x;
+            angle_atoms[ia*3+1] = W.ffu.angAtoms[ia].y;
+            angle_atoms[ia*3+2] = W.ffu.angAtoms[ia].z;
+        }
+    }
+    
+    // Current angle parameters (k values)
+    if(angle_params){
+        for(int ia=0; ia<na; ia++){
+            angle_params[ia] = W.ffu.angParams[ia].k;
+        }
+    }
+}
 
+/// @brief Set force field stiffness parameters after fitting
+/// 
+/// @param n_bonds     Number of bonds (must match system, or 0 to skip)
+/// @param bond_params New bond stiffness k values [k_0, k_1, ...], size n_bonds, or NULL
+/// @param n_angles    Number of angles (must match system, or 0 to skip)  
+/// @param angle_params New angle stiffness k values [k_0, k_1, ...], size n_angles, or NULL
+///
+/// Only updates parameters if W.bUFF and counts match.
+void setParams(int n_bonds, const double* bond_params, int n_angles, const double* angle_params){
+    if(!W.bUFF) return;
+    
+    // Update bond parameters
+    if(bond_params && n_bonds > 0){
+        if(n_bonds != W.ffu.nbonds){
+            printf("WARNING setParams: n_bonds=%d != system nbonds=%d\n", n_bonds, W.ffu.nbonds);
+            return;
+        }
+        for(int ib=0; ib<n_bonds; ib++){
+            W.ffu.bonParams[ib].x = bond_params[ib];
+        }
+    }
+    
+    // Update angle parameters
+    if(angle_params && n_angles > 0){
+        if(n_angles != W.ffu.nangles){
+            printf("WARNING setParams: n_angles=%d != system nangles=%d\n", n_angles, W.ffu.nangles);
+            return;
+        }
+        for(int ia=0; ia<n_angles; ia++){
+            W.ffu.angParams[ia].k = angle_params[ia];
+        }
+    }
+}
+
+/// @brief Assemble full Hessian from parameter values (for validation)
+/// @param n_params total number of parameters (nbonds + nangles)
+/// @param params array of parameter values [k_bonds..., k_angles...]
+/// @param out_hessian output 3N x 3N Hessian matrix (row-major, size 3*natoms)
+void assembleHessianFromParams(int n_params, const double* params, double* out_hessian){
+    if(!W.bUFF) return;
+    int dim = W.ffu.natoms * 3;
+    // Initialize to zero
+    for(int i=0; i<dim*dim; i++) out_hessian[i] = 0.0;
+    
+    // Add bond contributions
+    for(int ib=0; ib<W.ffu.nbonds; ib++){
+        W.ffu.assembleBondHessianBasis(ib, params[ib], out_hessian);
+    }
+    
+    // Add angle contributions (similar pattern)
+    int offset = W.ffu.nbonds;
+    for(int ia=0; ia<W.ffu.nangles; ia++){
+        double B[81], g[9];
+        W.ffu.getAngleHessianBasis(ia, g, B);
+        double k = params[offset + ia];
+        const Vec3i& ijk = W.ffu.angAtoms[ia];
+        int atoms[3] = {ijk.x, ijk.y, ijk.z};
+        
+        // Scale and add 9x9 block to global Hessian
+        for(int r=0; r<9; r++){
+            for(int c=0; c<9; c++){
+                double val = B[r*9+c] * k;
+                int atom_r = atoms[r/3];
+                int atom_c = atoms[c/3];
+                int idx_r = atom_r*3 + (r%3);
+                int idx_c = atom_c*3 + (c%3);
+                out_hessian[idx_r*dim + idx_c] += val;
+            }
+        }
+    }
+}
 
 } // extern "C"
