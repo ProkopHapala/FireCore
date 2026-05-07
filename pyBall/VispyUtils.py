@@ -232,6 +232,7 @@ class AtomScene(QtCore.QObject):
         self._pick_active = False
         self._pick_idx = -1
         self._pick_z = 0.0
+        self.lock_drag = False       # Set True externally to suppress all atom drag
 
         self._pick_mode = '2d'   # '2d' or '3d'
         self._lock_top_view = True
@@ -971,6 +972,13 @@ class AtomScene(QtCore.QObject):
             ev.handled = True
             return
         if ev.button != 1:
+            return
+
+        # External lock: suppress all drag (e.g. Ring mode)
+        if self.lock_drag:
+            i = self._pick_idx_from_mouse(ev.pos)
+            self._pick_idx = i  # still allow pick detection
+            self._pick_active = False
             return
 
         # In selection mode, always drag selected atoms regardless of where you click

@@ -42,7 +42,7 @@ class KekuleExplorerWindow(BaseGUI):
 
         self.backend = KekuleBackend()
         self.cur_atom_type = 'C'
-        self.edit_mode = 'Ring' # 'Ring', 'Atom', or 'pi'
+        self.edit_mode = 'Hex1'  # 'Hex1' (paint), 'Hex2' (toggle), 'Atom', 'pi', 'Select'
         self.last_clicked_node = None
         self.label_mode = 'Element+Index'
 
@@ -127,8 +127,24 @@ class KekuleExplorerWindow(BaseGUI):
             size=10
         )
 
+        # Add debug markers for grid node -> atom mappings (cyan)
+        self.debug_markers = scene.visuals.Markers(parent=self.scene.view.scene)
+        self.debug_markers.set_gl_state('translucent', depth_test=False)
+        self.debug_markers.order = 5  # Behind atoms but in front of grid
+
+        # Add hover markers for highlighting hexagon under mouse
+        self.hover_markers = scene.visuals.Markers(parent=self.scene.view.scene)
+        self.hover_markers.set_gl_state('translucent', depth_test=False)
+        self.hover_markers.order = 6  # On top of debug markers
+
+        # Add debug lines for node -> atom connections
+        self.debug_lines = scene.visuals.Line(parent=self.scene.view.scene)
+        self.debug_lines.set_gl_state('translucent', depth_test=False)
+        self.debug_lines.order = 4  # Behind debug markers
+
         # Help / Status
         self.statusBar().showMessage("LMB: Add/Toggle | RMB: Remove | Middle-Click: Toggle H | Scroll: Zoom")
+        self.scene.lock_drag = True   # Default mode is Ring, no dragging
         self.scene.canvas.events.mouse_press.connect(self.on_mouse_press)
         self.scene.canvas.events.mouse_move.connect(self.on_mouse_move)
         self.scene.sig_selection_changed.connect(self.on_selection_changed)
@@ -165,7 +181,7 @@ class KekuleExplorerWindow(BaseGUI):
     def create_builder_section(self):
         layout = QtWidgets.QVBoxLayout()
         self.label("Edit Mode:", layout=layout)
-        self.mode_combo = self.comboBox(["Ring", "Atom", "pi", "Select"], self.set_edit_mode, layout=layout)
+        self.mode_combo = self.comboBox(["Hex1", "Hex2", "Atom", "pi", "Select"], self.set_edit_mode, layout=layout)
         self.label("Atom Type:", layout=layout)
         self.atom_combo = self.comboBox(["C", "N", "O"], self.set_atom_type, layout=layout)
         return self.group("Builder", layout)
@@ -180,6 +196,11 @@ class KekuleExplorerWindow(BaseGUI):
         self.label_combo = self.comboBox(["Element+Index", "Atomic Type", "Pi Orbitals", "Z-Height", "Charge", "Bond Lengths"], self.set_label_mode, layout=layout)
         self.bond_viz_mode = False
         self.button("Bond Colors", self.toggle_bond_viz, layout=layout).setCheckable(True)
+        layout.addSpacing(10)
+        self.debug_view_mode = True
+        self.debug_btn = self.button("Debug View", self.toggle_debug_view, layout=layout)
+        self.debug_btn.setCheckable(True)
+        self.debug_btn.setChecked(True)
         layout.addSpacing(10)
         self.button("Show XYZ", self.show_xyz, layout=layout)
         self.button("Export XYZ", self.export_xyz, layout=layout)
@@ -445,12 +466,27 @@ class KekuleExplorerWindow(BaseGUI):
     def set_edit_mode(self, mode):
         self.edit_mode = mode
         print(f"Edit Mode: {mode}")
-        # Enable/disable selection mode in Vispy scene
+        # Sync backend hex_mode when switching Hex1/Hex2
+        if mode == 'Hex1':
+            self.backend.hex_mode = 'Hex1'
+        elif mode == 'Hex2':
+            self.backend.hex_mode = 'Hex2'
+        # Auto-switch label mode to Pi Orbitals when in pi mode
+        if mode == 'pi':
+            self.set_label_mode('Pi Orbitals')
+        # Scene and UI settings
         if mode == 'Select':
             self.scene.set_selection_mode(True)
+            self.scene.lock_drag = False
             self.statusBar().showMessage("Selection Mode: RMB drag to select | Delete: Remove | Ctrl-C: Copy | Ctrl-V: Paste | LMB: Drag selected")
+        elif mode in ('Hex1', 'Hex2'):
+            self.scene.set_selection_mode(False)
+            self.scene.lock_drag = True   # No atom dragging in hex mode
+            mode_str = "Hex1 (paint: force add/remove)" if mode == 'Hex1' else "Hex2 (toggle: preserve shared)"
+            self.statusBar().showMessage(f"{mode_str}: LMB: Add | RMB: Remove")
         else:
             self.scene.set_selection_mode(False)
+            self.scene.lock_drag = False
             self.statusBar().showMessage("LMB: Add/Toggle | RMB: Remove | Middle-Click: Toggle H | Scroll: Zoom")
 
     def set_atom_type(self, atype):
@@ -460,11 +496,22 @@ class KekuleExplorerWindow(BaseGUI):
     def set_label_mode(self, mode):
         """Set label display mode."""
         self.label_mode = mode
+        # Update combo box to reflect current mode
+        index = self.label_combo.findText(mode)
+        if index >= 0:
+            self.label_combo.blockSignals(True)
+            self.label_combo.setCurrentIndex(index)
+            self.label_combo.blockSignals(False)
         self.refresh_view()
 
     def toggle_bond_viz(self):
         """Toggle bond color visualization mode."""
         self.bond_viz_mode = not self.bond_viz_mode
+        self.refresh_view()
+
+    def toggle_debug_view(self):
+        """Toggle debug visualization mode."""
+        self.debug_view_mode = not self.debug_view_mode
         self.refresh_view()
 
     def on_selection_changed(self, selected_indices):
@@ -539,27 +586,49 @@ class KekuleExplorerWindow(BaseGUI):
         print(f"Pasted {len(enames)} atoms at original positions")
 
     def on_mouse_move(self, event):
-        """Update cursor cross position on mouse move."""
+        """Update cursor cross position on mouse move and highlight hexagon under cursor."""
         r0, rd = self.scene._ray_from_mouse(event.pos)
         p_world = self.scene._intersect_ray_plane(r0, rd, np.zeros(3), np.array([0,0,1]))
         if p_world is not None:
             self.cursor_markers.set_data(pos=np.array([p_world]),symbol='cross',edge_width=2,edge_color='red',face_color='transparent',size=10 )
 
+            # Highlight hexagon under mouse if in hex mode
+            if self.edit_mode in ('Hex1', 'Hex2') and hasattr(self.backend, 'snap_to_ring'):
+                from pyBall.KekuleBackend import honeycomb_ring_nodes, snap_to_grid
+                q, r = self.backend.snap_to_ring(p_world[0], p_world[1])
+                ring_nodes = honeycomb_ring_nodes(q, r, self.backend.a_CC)
+                hover_pos = []
+                for node in ring_nodes:
+                    nk = snap_to_grid(node, self.backend.a_CC)
+                    hover_pos.append([nk[0], nk[1], -0.08])
+                if hover_pos:
+                    self.hover_markers.set_data(
+                        pos=np.array(hover_pos, dtype=np.float32),
+                        symbol='disc', edge_width=2, edge_color='orange', face_color='transparent', size=12
+                    )
+                    self.hover_markers.visible = True
+                else:
+                    self.hover_markers.visible = False
+            else:
+                self.hover_markers.visible = False
+
     def on_atom_remove(self, idx):
-        """Remove atom at index and refresh view."""
+        """Remove atom at index and refresh view. Only in non-Hex modes."""
+        if self.edit_mode in ('Hex1', 'Hex2'):
+            return   # In Hex modes, RMB on atoms is ignored (hex removal handled by handle_click)
         # Find which node_key corresponds to this atom index
         node_to_remove = None
-        for nk, ia in list(self.backend.node_to_atom.items()):
-            if ia == idx:
-                node_to_remove = nk
-                break
+        if idx < len(self.backend.atom_pin):
+            node_to_remove = self.backend.atom_pin[idx]
         if node_to_remove:
             self.backend.remove_atom(node_to_remove)
         else:
-            # Atom not pinned to grid (e.g. H) - remove by index
-            # Use backend's _rebuild_after_delete to keep tracking arrays consistent
-            self.backend._rebuild_after_delete([idx])
-            self.backend.recalc_bonds()
+            # Atom not pinned to grid (e.g. H) - remove by object reference
+            atom_list, *_ = self.backend.graph.to_arrays()
+            if 0 <= idx < len(atom_list):
+                atom = atom_list[idx]
+                self.backend.graph.remove_atom(atom)
+                self.backend.recalc_bonds()
         self.refresh_view()
 
     def on_mouse_press(self, event):
@@ -567,11 +636,15 @@ class KekuleExplorerWindow(BaseGUI):
         if self.edit_mode == 'Select':
             return
 
-        # If selection mode and atoms selected, skip normal LMB handling
-        selected = self.scene.get_selected_indices()
-        if self.edit_mode == 'Select' and selected and event.button == 1:
-            # Let Vispy handle dragging of selected atoms
-            return
+        # In Hex modes, prevent dragging - we only want add/remove hex operations
+        if self.edit_mode in ('Hex1', 'Hex2'):
+            # Continue to handle_click for hex operations, but don't let Vispy handle drag
+            pass
+        else:
+            # For non-ring modes, if atoms are selected and LMB, let Vispy handle dragging
+            selected = self.scene.get_selected_indices()
+            if selected and event.button == 1:
+                return
 
         # If atom picked and LMB in atom/pi mode, handle atom change instead of drag
         picked = self.scene._pick_idx
@@ -595,6 +668,9 @@ class KekuleExplorerWindow(BaseGUI):
                 self.backend.atom_subtype[picked] = f"{e}_{sp_map.get(new_npi, 'sp2')}"
                 self.backend.adjust_h()
                 self.refresh_view()
+                return
+            elif self.edit_mode == 'Ring':
+                # In ring mode, don't allow dragging atoms - ignore atom picks
                 return
 
         if event.button == 1: # LMB
@@ -650,7 +726,7 @@ class KekuleExplorerWindow(BaseGUI):
         x, y = p_world[0], p_world[1]
         
         # 2. Snap to grid
-        if self.edit_mode == 'Ring':
+        if self.edit_mode in ('Hex1', 'Hex2'):
             q, r = self.backend.snap_to_ring(x, y)
             node_key = None
         else:
@@ -665,12 +741,13 @@ class KekuleExplorerWindow(BaseGUI):
 
         # 3. Modify backend
         if action == 'add':
-            if self.edit_mode == 'Ring':
-                self.backend.toggle_ring(q, r)
+            if self.edit_mode in ('Hex1', 'Hex2'):
+                if q is not None and r is not None:
+                    self.backend.add_ring(q, r)
             elif self.edit_mode == 'pi':
                 # Cycle pi orbitals: 0 -> 1 -> 2 -> 0
                 if node_key:
-                    ia = self.backend.node_to_atom.get(node_key)
+                    ia = self.backend._build_node_to_atom().get(node_key)
                     if ia is not None:
                         subtype = self.backend.atom_subtype[ia]
                         current_npi = self.backend._get_npi_from_subtype(subtype)
@@ -681,8 +758,9 @@ class KekuleExplorerWindow(BaseGUI):
                 print(f"DEBUG: Setting node {node_key} to {self.cur_atom_type}")
                 self.backend.set_atom_type(node_key, self.cur_atom_type)
         elif action == 'remove':
-            if self.edit_mode == 'Ring':
-                self.backend.remove_ring(q, r)
+            if self.edit_mode in ('Hex1', 'Hex2'):
+                if q is not None and r is not None:
+                    self.backend.remove_ring(q, r)
             elif node_key:
                 self.backend.remove_atom(node_key)
         elif action == 'toggle_h':
@@ -697,9 +775,36 @@ class KekuleExplorerWindow(BaseGUI):
         guides = self.backend.get_guide_points()
         self.grid_markers.set_data(
             pos=np.column_stack([guides, np.full(len(guides), -0.1)]).astype(np.float32),
-            symbol='disc', edge_width=0, size=5,
-            face_color=(0.3, 0.3, 0.3, 0.8)
+            symbol='disc', edge_width=0, size=2,
+            face_color=(0.3, 0.3, 0.3, 0.3)
         )
+
+        # 0.5. Debug view: for each atom, draw its pin node (cyan disc) and a line atom->pin
+        if self.debug_view_mode and hasattr(self.backend, 'atom_pin'):
+            pin_pos = []
+            line_segs = []
+            for ia, pin in enumerate(self.backend.atom_pin):
+                if pin is not None and ia < len(self.backend.sys.apos):
+                    atom_pos = self.backend.sys.apos[ia]
+                    pin_pos.append([pin[0], pin[1], 0.05])          # pin node in z=0 plane
+                    line_segs.append([pin[0], pin[1], 0.05])        # line: pin -> atom
+                    line_segs.append([atom_pos[0], atom_pos[1], atom_pos[2]])
+            if pin_pos:
+                self.debug_markers.set_data(
+                    pos=np.array(pin_pos, dtype=np.float32),
+                    symbol='disc', edge_width=0, face_color=(0.0, 1.0, 1.0, 0.7), size=6
+                )
+                self.debug_markers.visible = True
+                segs = np.array(line_segs, dtype=np.float32)
+                conn = np.zeros(len(segs), dtype=bool); conn[0::2] = True  # isolated pairs
+                self.debug_lines.set_data(pos=segs, connect=conn, color=(0.0, 1.0, 1.0, 0.6), width=1.5)
+                self.debug_lines.visible = True
+            else:
+                self.debug_markers.visible = False
+                self.debug_lines.visible = False
+        else:
+            self.debug_markers.visible = False
+            self.debug_lines.visible = False
 
         # 1. Use persistent sys directly
         sys = self.backend.sys

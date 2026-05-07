@@ -1190,3 +1190,227 @@ Added differential electron density (ρ_SCF - ρ_NA) plotting:
 - Missing closing parenthesis in hbonds code
 - comboBox callback passing index instead of text
 - Missing os import in BaseGUI
+
+---
+
+## 10. Development Report: AtomicGraph Implementation & Hybridization-Aware Passivation (May 7, 2026)
+
+### 10.1 AtomicGraph Implementation
+
+#### 10.1.1 Overview
+
+Implemented `AtomicGraph.py` as a persistent, object-oriented molecular topology representation to replace the previous grid-first, rebuild-every-frame architecture. The graph stores atoms, bonds, and rings as Python objects with stable references, enabling stateful editing without wholesale reconstruction.
+
+#### 10.1.2 Core Classes
+
+**Atom Class** (`AtomicGraph.py:28-44`):
+- Stores position (`pos`), element name (`ename`), atomic type (`atype`)
+- Maintains grid pin (`pin`) - `(rx, ry)` tuple or `None` for unpinned atoms
+- Tracks parent atom (`parent`) - for H atoms bound to heavy atoms
+- Stores chemical subtype (`subtype`) - e.g., `'C_sp2'`, `'N_pyridinic'`, `'H_cap'`
+- Maintains list of bond objects (`bonds`)
+- Uses `__slots__` for memory efficiency
+
+**Bond Class** (`AtomicGraph.py:47-58`):
+- Connects two Atom objects (`a`, `b`)
+- Stores bond order (`order`) for single/double/triple bonds
+- Provides `other(atom)` helper to get the opposite atom in the bond
+- Uses `__slots__` for memory efficiency
+
+**Ring Class** (`AtomicGraph.py:61-71`):
+- Stores hexagonal ring coordinates (`q`, `r`) in axial system
+- Maintains list of Atom objects (`atoms`) belonging to the ring
+- Uses `__slots__` for memory efficiency
+
+**AtomicGraph Class** (`AtomicGraph.py:74-300`):
+- Manages collections of atoms, bonds, and rings (dicts keyed by object ID)
+- Provides CRUD operations: `add_atom()`, `remove_atom()`, `add_bond()`, `remove_bond()`, `add_ring()`, `remove_ring()`
+- Maintains bidirectional relationships (atom↔bond, atom↔ring)
+- Implements `recalc_bonds()` for distance-based bond detection
+- Provides `to_arrays()` to export to numpy format for AtomicSystem
+
+#### 10.1.3 Key Design Decisions
+
+**Object References Over Indices**:
+- Atoms, bonds, rings are stored as Python objects in dictionaries
+- References are stable across edits (no index renumbering on deletions)
+- Enables parent-child relationships (H→heavy atom) without index tracking
+
+**Persistent State**:
+- Graph is the authoritative store of topology
+- No automatic rebuild on every action
+- Each user action performs targeted mutations only
+
+**Grid as Auxiliary Metadata**:
+- Grid coordinates (`pin`) are optional metadata on atoms
+- Atoms can exist without grid pins (e.g., manually placed H atoms)
+- Grid is used for snapping and initial placement, not for identity
+
+### 10.2 Hex1 and Hex2 Ring Modes
+
+#### 10.2.1 Motivation
+
+Previous "Ring Mode" had a single toggle behavior that was ambiguous for shared atoms. Users needed two distinct interaction patterns:
+- **Paint mode**: Force add/remove regardless of shared atoms (destructive)
+- **Toggle mode**: Preserve shared atoms, only add/remove unshared atoms (conservative)
+
+#### 10.2.2 Mode Definitions
+
+**Hex1 Mode (Paint)**:
+- **LMB on hex center**: Force-add ring at that position
+  - If any vertex already has an atom, it is reused (shared)
+  - If a vertex has no atom, a new C atom is created
+  - All 6 vertices get atoms after the operation
+- **RMB on hex center**: Force-remove ring at that position
+  - Removes all 6 atoms belonging to the ring
+  - Even if atoms are shared with other rings, they are deleted
+  - Destructive: may leave neighboring rings incomplete
+
+**Hex2 Mode (Toggle)**:
+- **LMB on hex center**: Toggle ring presence
+  - If ring exists: remove it, but preserve atoms shared with other rings
+  - If ring doesn't exist: add it, reusing existing atoms at vertices
+  - Conservative: never deletes atoms that belong to other rings
+- **RMB on hex center**: Same as LMB (toggle behavior)
+
+#### 10.2.3 Implementation Details
+
+**KekuleBackend.hex_mode flag** (`KekuleBackend.py:101-121`):
+- Stores current mode: `'Hex1'` (paint) or `'Hex2'` (toggle)
+- Set by GUI via `set_edit_mode()`
+
+**add_ring() logic** (`KekuleBackend.py:219-262`):
+- For each of 6 ring vertices:
+  - Check if node already has atom via `node_to_atom` lookup
+  - If yes: reuse existing atom, add to ring's atom list
+  - If no: create new C atom, set pin, add to graph and ring
+- Add ring to `rings` set and `ring_atoms` dict
+- Recompute bonds after addition
+
+**remove_ring() logic** (`KekuleBackend.py:264-299`):
+- **Hex1 (paint)**: Remove all atoms in the ring
+  - For each atom in ring: call `remove_atom()` which also removes attached H
+  - Delete ring from `rings` and `ring_atoms`
+- **Hex2 (toggle)**: Preserve shared atoms
+  - For each atom in ring: check if it belongs to other rings
+  - If shared: keep atom, only remove from this ring's atom list
+  - If unshared: remove atom and attached H
+  - Delete ring from `rings` and `ring_atoms`
+
+**GUI Integration** (`KekuleExplorerGUI.py:35-55, 174-194`):
+- Replaced "Ring" mode in Edit Mode dropdown with "Hex1" and "Hex2"
+- Hex1 is default (most common use case)
+- Mode switching updates `backend.hex_mode` flag
+
+### 10.3 Hybridization-Aware Hydrogen Passivation
+
+#### 10.3.1 Motivation
+
+Previous hydrogen placement used generic 120° trigonal planar geometry for all atoms, which is incorrect for:
+- **sp-hybridized atoms** (npi=2, acetylene-like): Should be linear (180°)
+- **sp3-hybridized atoms** (npi=0, tetrahedral): Should be 109.5°
+- **sp2-hybridized atoms** (npi=1, trigonal planar): Should be 120°, but oxygen uses 109° water-like geometry
+
+#### 10.3.2 Implementation
+
+**adjust_h() method** (`KekuleBackend.py:399-469`):
+- Removes all existing H caps (atoms with `subtype='H_cap'`)
+- Finds undercoordinated heavy atoms based on valence rules:
+  - Target sigma bonds = nvalence - npi - nepair
+  - C: nvalence=4, N: nvalence=3, O: nvalence=2
+- For each undercoordinated atom:
+  - Calculates H placement directions via `_calc_h_directions()`
+  - Places H atoms at appropriate bond lengths (C-H: 1.09Å, N-H: 1.01Å, O-H: 0.97Å)
+  - Adds H atoms to graph with `parent` reference and `subtype='H_cap'`
+- Syncs to AtomicSystem and updates neighbor lists
+
+**_calc_h_directions() helper** (`KekuleBackend.py:471-538`):
+Implements hybridization-aware geometry for 2D systems (xy-plane, pi along z):
+
+**sp (npi=2, linear)**:
+- nb=0: Two directions along x-axis (±x)
+- nb=1: One direction opposite to existing neighbor (180° linear)
+
+**sp3 (npi=0, tetrahedral)**:
+- nb=0: Three directions at 120° in xy-plane (for isolated atom)
+- nb=1: Three directions using C++ makeConfGeom constants
+  - First 2: symmetric in-plane at ±109.5° from bond direction
+  - Third: out-of-plane along z (placed last in direction list)
+  - For NH2 (needs 2 H): uses first 2 in-plane directions
+  - For CH3 (needs 3 H): uses all 3 directions
+- nb=2: Two directions symmetrically in-plane at ±109.5° from bisector
+- nb=3: One direction opposite to centroid of three neighbors
+
+**sp2 (npi=1, trigonal planar)**:
+- nb=0: Three directions at 120° in xy-plane
+- nb=1: Two directions at ±120° from bond in-plane
+- nb=2: One direction opposite to bisector in-plane
+
+**Special Case: Oxygen with npi=1**:
+- Uses sp3 geometry (109.5°) instead of sp2 (120°)
+- Mimics water-like H-O-H angle
+
+#### 10.3.3 Geometry Constants
+
+Uses proven constants from C++ `makeConfGeom` in `MMFFBuilderBase.h`:
+- `ca = 0.81649658092` (sqrt(2/3))
+- `cb = 0.47140452079` (sqrt(2/9))
+- `cc = -0.33333333333` (1/3)
+
+These constants ensure tetrahedral angles of 109.5° and proper geometric relationships.
+
+#### 10.3.4 2D System Considerations
+
+For 2D graphene-like systems:
+- Pi orbitals are along z-axis (out of plane)
+- Sigma bonds are in xy-plane
+- H atoms for sp2 are placed in xy-plane
+- H atoms for sp3 are placed with 2 in-plane symmetric and 1 along z
+- Perpendicular directions calculated via 90° rotation in xy-plane, not cross product (which gives z)
+
+### 10.4 Integration with GUI
+
+#### 10.4.1 Mode Switching
+
+**KekuleExplorerGUI.set_edit_mode()** (`KekuleExplorerGUI.py:459-493`):
+- When mode is 'Hex1': sets `backend.hex_mode = 'Hex1'`
+- When mode is 'Hex2': sets `backend.hex_mode = 'Hex2'`
+- When mode is 'pi': auto-switches label mode to 'Pi Orbitals'
+- Updates status bar with current mode description
+
+#### 10.4.2 Hydrogen Toggle
+
+**Middle-click / Scroll-click** on atom toggles H state:
+- Calls `backend.toggle_h(node_key)`
+- For N/O atoms: cycles between H-capped and non-H-capped states
+- Automatically triggers `adjust_h()` to recompute H placement
+
+#### 10.4.3 Pi Mode Interaction
+
+**LMB on atom** in pi mode:
+- Cycles pi-orbital count: 0 → 1 → 2 → 0
+- Calls `backend.set_atom_valency(node_key, new_npi)`
+- Triggers `adjust_h()` to update H placement based on new hybridization
+
+### 10.5 Summary of Changes
+
+**Files Created**:
+- `pyBall/AtomicGraph.py` - New persistent graph topology module
+
+**Files Modified**:
+- `pyBall/KekuleBackend.py`:
+  - Added `hex_mode` flag and Hex1/Hex2 mode logic
+  - Rewrote `adjust_h()` for hybridization-aware H placement
+  - Added `_calc_h_directions()` helper for geometry calculation
+  - Updated `add_ring()` and `remove_ring()` for mode-dependent behavior
+- `pyBall/KekuleExplorerGUI.py`:
+  - Replaced "Ring" mode with "Hex1" and "Hex2" in dropdown
+  - Updated `set_edit_mode()` to sync hex_mode and auto-switch label mode
+  - Made grid markers smaller (size=2, alpha=0.3)
+
+**Key Improvements**:
+1. Persistent object-oriented topology (no rebuild-every-frame)
+2. Two distinct ring interaction modes (paint vs toggle)
+3. Chemically accurate hydrogen placement based on hybridization
+4. Robust geometry calculations using proven C++ constants
+5. 2D-aware direction calculations for graphene-like systems

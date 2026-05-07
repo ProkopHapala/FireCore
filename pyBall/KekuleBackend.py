@@ -10,6 +10,7 @@ import numpy as np
 from . import atomicUtils as au
 from . import elements
 from .AtomicSystem import AtomicSystem
+from .AtomicGraph import AtomicGraph, Atom
 
 # ============ Honeycomb geometry helpers ============
 
@@ -88,107 +89,109 @@ def parse_passivation_string(s):
     return result
 
 class KekuleBackend:
-    """Manages persistent AtomicSystem with hexagonal grid metadata.
-    
-    Persistent State:
-        self.sys          = AtomicSystem()  # Authoritative: apos, enames, atypes, bonds, ngs
-        self.atom_pin     = []            # For each atom i: grid node (rx,ry) or None
-        self.atom_parent  = []            # For each atom i: parent heavy atom index or None
-        self.atom_subtype = []            # For each atom i: e.g. 'C_sp2', 'N_pyridinic', 'H_cap'
-        self.rings        = set()         # Set of (q,r) axial coords
-        self.ring_atoms   = {}            # Dict {(q,r): [atom_indices]}
-        self.node_to_atom = {}            # Dict {(rx,ry): atom_index}
+    """Manages molecular editing state on a hexagonal grid.
+
+    Authoritative state: self.graph (AtomicGraph) — object graph, no integer indices.
+    Render state:        self.sys  (AtomicSystem) — synced on demand via _sync_sys().
+
+    AtomicGraph contains Atom objects.  Each Atom carries:
+        .pin     : (rx,ry) grid node key, or None for H caps
+        .parent  : Atom object (heavy atom this H belongs to), or None
+        .subtype : 'C_sp2', 'H_cap', etc.
+    Rings are stored in graph.rings as {(q,r): Ring(atoms=[Atom,...])}
     """
-    
+
     def __init__(self, a_CC=1.42):
         self.a_CC = a_CC
-        self.sys = AtomicSystem(apos=np.zeros((0,3)), atypes=np.array([],dtype=np.int32), enames=np.array([],dtype=object))
-        self.atom_pin = []
-        self.atom_parent = []
-        self.atom_subtype = []
-        self.rings = set()
-        self.ring_atoms = {}
-        self.node_to_atom = {}
+        self.graph = AtomicGraph()
+        self.sys   = AtomicSystem(apos=np.zeros((0,3)), atypes=np.array([],dtype=np.int32), enames=np.array([],dtype=object))
         self.pbc_x = False
         self.pbc_y = False
         self.vacuum_gap = 15.0
-    
-    # --- Internal helpers ---
-    
+        self.hex_mode = 'Hex1'  # 'Hex1' = paint mode (force add/remove), 'Hex2' = toggle mode (preserve shared)
+
+    # ── Properties for GUI compatibility ─────────────────────────────────────
+
+    @property
+    def rings(self):
+        return set(self.graph.rings.keys())
+
+    @property
+    def atom_pin(self):
+        """List of pin values in same order as to_arrays() atom_list."""
+        atom_list, *_ = self.graph.to_arrays()
+        return [a.pin for a in atom_list]
+
+    @property
+    def atom_parent(self):
+        atom_list, *_ = self.graph.to_arrays()
+        idx = {a._id: i for i, a in enumerate(atom_list)}
+        return [idx.get(a.parent._id) if a.parent is not None else None for a in atom_list]
+
+    @property
+    def atom_subtype(self):
+        atom_list, *_ = self.graph.to_arrays()
+        return [a.subtype for a in atom_list]
+
+    @atom_subtype.setter
+    def atom_subtype(self, value):
+        """Allow list assignment (used by adjust_h legacy path)."""
+        atom_list, *_ = self.graph.to_arrays()
+        for i, a in enumerate(atom_list):
+            if i < len(value):
+                a.subtype = value[i]
+
+    @property
+    def ring_atoms(self):
+        """Dict {(q,r): [int indices]} for legacy code."""
+        atom_list, *_ = self.graph.to_arrays()
+        idx = {a._id: i for i, a in enumerate(atom_list)}
+        result = {}
+        for key, ring in self.graph.rings.items():
+            result[key] = [idx[a._id] for a in ring.atoms if a._id in idx]
+        return result
+
+    # ── Internal helpers ──────────────────────────────────────────────────────
+
+    def _build_node_to_atom(self):
+        """Return {pin_key: int_index} built fresh from graph."""
+        atom_list, *_ = self.graph.to_arrays()
+        return {a.pin: i for i, a in enumerate(atom_list) if a.pin is not None}
+
+    def _build_node_to_atom_obj(self):
+        """Return {pin_key: Atom} — the fast O(1) version backed by graph._pin_to_atom."""
+        return self.graph._pin_to_atom  # already maintained by AtomicGraph
+
     def _append_atom(self, pos, ename, pin=None, parent=None, subtype=''):
-        """Append a new atom to self.sys and tracking arrays."""
+        """Add atom to graph. parent may be int index (legacy) or Atom object."""
         atype = elements.ELEMENT_DICT[ename][0]
-        if self.sys.apos is None or len(self.sys.apos) == 0:
-            self.sys.apos = np.array([pos])
-            self.sys.atypes = np.array([atype], dtype=np.int32)
-            self.sys.enames = np.array([ename], dtype=object)
-            self.sys.natoms = 1
-        else:
-            self.sys.apos = np.append(self.sys.apos, [pos], axis=0)
-            self.sys.atypes = np.append(self.sys.atypes, atype)
-            self.sys.enames = np.append(self.sys.enames, [ename])
-            self.sys.natoms += 1
-        self.atom_pin.append(pin)
-        self.atom_parent.append(parent)
-        self.atom_subtype.append(subtype)
-        return len(self.sys.apos) - 1
-    
+        if isinstance(parent, int):
+            atom_list, *_ = self.graph.to_arrays()
+            parent = atom_list[parent] if 0 <= parent < len(atom_list) else None
+        a = self.graph.add_atom(np.array([pos[0], pos[1], pos[2] if len(pos) > 2 else 0.0]),
+                                ename, atype, pin=pin, parent=parent, subtype=subtype)
+        return a  # return Atom object; callers that need int index use graph.to_arrays()
+
     def _rebuild_ring_atoms(self):
-        """Rebuild node_to_atom and ring_atoms from atom_pin and rings."""
-        self.node_to_atom = {}
-        for i, pin in enumerate(self.atom_pin):
-            if pin is not None:
-                self.node_to_atom[pin] = i
-        
-        self.ring_atoms = {}
-        for q, r in self.rings:
-            ring_nodes = honeycomb_ring_nodes(q, r, self.a_CC)
-            atom_set = set()
-            for node in ring_nodes:
+        """Rebuild Ring.atoms lists for all rings from current graph._pin_to_atom."""
+        n2a = self.graph._pin_to_atom
+        for key, ring in self.graph.rings.items():
+            ring.atoms = []
+            for node in honeycomb_ring_nodes(key[0], key[1], self.a_CC):
                 nk = snap_to_grid(node, self.a_CC)
-                if nk in self.node_to_atom:
-                    atom_set.add(self.node_to_atom[nk])
-            self.ring_atoms[(q, r)] = sorted(list(atom_set))
-    
-    def _rebuild_after_delete(self, to_remove):
-        """Remove atoms from sys and rebuild all mapping arrays."""
-        if not to_remove:
-            return
-        
-        to_remove = sorted(list(set(to_remove)))
-        
-        # Build old->new index mapping
-        old_to_new = {}
-        shift = 0
-        for i in range(len(self.sys.apos)):
-            if i in to_remove:
-                shift += 1
-                old_to_new[i] = None
-            else:
-                old_to_new[i] = i - shift
-        
-        # Delete from AtomicSystem
-        self.sys.delete_atoms(to_remove)
-        
-        # Rebuild tracking arrays
-        new_atom_pin = []
-        new_atom_parent = []
-        new_atom_subtype = []
-        for i in range(len(self.atom_pin)):
-            if i not in to_remove:
-                new_atom_pin.append(self.atom_pin[i])
-                parent = self.atom_parent[i]
-                if parent is not None:
-                    parent = old_to_new.get(parent)
-                new_atom_parent.append(parent)
-                new_atom_subtype.append(self.atom_subtype[i])
-        
-        self.atom_pin = new_atom_pin
-        self.atom_parent = new_atom_parent
-        self.atom_subtype = new_atom_subtype
-        
-        # Rebuild derived mappings
-        self._rebuild_ring_atoms()
+                a = n2a.get(nk)
+                if a is not None:
+                    ring.atoms.append(a)
+
+    def _sync_sys(self):
+        """Rebuild self.sys arrays from graph for rendering/export. Called before any sys read."""
+        atom_list, enames, apos, atypes, bonds = self.graph.to_arrays()
+        self.sys.apos    = apos.astype(np.float64)
+        self.sys.enames  = enames
+        self.sys.atypes  = atypes
+        self.sys.natoms  = len(atom_list)
+        self.sys.bonds   = bonds if len(bonds) else None
+        self.sys.ngs     = None  # invalidate neighbor cache
     
     def _get_npi_from_subtype(self, subtype):
         """Extract npi (number of pi bonds) from subtype string."""
@@ -221,62 +224,76 @@ class KekuleBackend:
         return nval - npi - nepair
     
     # --- Public mutation methods (each = exactly one mutation) ---
-    
+
     def add_ring(self, q, r):
-        """Add a benzene ring at axial position (q, r). Idempotent if already present."""
+        """Add a benzene ring at axial position (q, r).
+
+        Behavior depends on self.hex_mode:
+        - Hex1 (paint): Add atoms at all 6 nodes if not present, do NOT track ring.
+        - Hex2 (toggle): Add atoms only at empty nodes, track ring. Idempotent if already present.
+        """
         key = (q, r)
-        if key in self.rings:
-            return
-        
-        ring_nodes = honeycomb_ring_nodes(q, r, self.a_CC)
-        added_indices = []
-        
-        for node in ring_nodes:
+        n2a = self.graph._pin_to_atom
+        new_atoms = []
+        for node in honeycomb_ring_nodes(q, r, self.a_CC):
             nk = snap_to_grid(node, self.a_CC)
-            if nk not in self.node_to_atom:
-                ia = self._append_atom(
-                    pos=[nk[0], nk[1], 0.0],
-                    ename='C',
-                    pin=nk,
-                    parent=None,
-                    subtype='C_sp2'
-                )
-                added_indices.append(ia)
-                self.node_to_atom[nk] = ia
-        
-        self.rings.add(key)
-        self._rebuild_ring_atoms()
-        
-        if added_indices:
+            if nk not in n2a:
+                a = self.graph.add_atom(np.array([nk[0], nk[1], 0.0]),
+                                        'C', elements.ELEMENT_DICT['C'][0],
+                                        pin=nk, parent=None, subtype='C_sp2')
+                new_atoms.append(a)
+        if self.hex_mode == 'Hex2':
+            # Toggle mode: track the ring
+            if key in self.rings:
+                return
+            ring_atoms = [n2a[snap_to_grid(nd, self.a_CC)]
+                          for nd in honeycomb_ring_nodes(q, r, self.a_CC)
+                          if snap_to_grid(nd, self.a_CC) in n2a]
+            self.graph.add_ring(q, r, ring_atoms)
+        # Hex1 (paint): no ring tracking
+        if new_atoms:
             self.recalc_bonds()
     
     def remove_ring(self, q, r):
-        """Remove a benzene ring at axial position (q, r). Shared atoms are preserved."""
+        """Remove atoms at the 6 node positions of hexagon at axial (q,r).
+
+        Behavior depends on self.hex_mode:
+        - Hex1 (paint): Remove all atoms at 6 nodes (no sharing check), no ring tracking.
+        - Hex2 (toggle): Remove only atoms NOT shared with other rings, remove ring from tracking.
+
+        In both modes, H atoms attached to removed heavy atoms are also removed.
+        """
         key = (q, r)
-        if key not in self.rings:
-            return
-        
-        ring_atoms = self.ring_atoms.get(key, [])
-        to_remove = set()
-        
-        for ia in ring_atoms:
-            shared = False
-            for other_key, other_atoms in self.ring_atoms.items():
-                if other_key == key:
-                    continue
-                if ia in other_atoms:
-                    shared = True
-                    break
-            if not shared:
-                to_remove.add(ia)
-                for j, parent in enumerate(self.atom_parent):
-                    if parent == ia:
-                        to_remove.add(j)
-        
-        self.rings.discard(key)
-        self._rebuild_after_delete(to_remove)
+        n2a = self.graph._pin_to_atom
+        to_remove = []   # Atom objects
+        for node in honeycomb_ring_nodes(q, r, self.a_CC):
+            nk = snap_to_grid(node, self.a_CC)
+            atom = n2a.get(nk)
+            if atom is not None and atom not in to_remove:
+                if self.hex_mode == 'Hex2':
+                    # Toggle mode: preserve shared atoms
+                    shared = any(
+                        atom in other_ring.atoms
+                        for other_key, other_ring in self.graph.rings.items()
+                        if other_key != key
+                    )
+                    if not shared:
+                        to_remove.append(atom)
+                        print(f"  remove_ring({q},{r}) atom {atom._id} pin={atom.pin}: will remove (not shared)")
+                else:
+                    # Paint mode: remove all atoms
+                    to_remove.append(atom)
+                    print(f"  remove_ring({q},{r}) atom {atom._id} pin={atom.pin}: will remove (paint mode)")
+        if self.hex_mode == 'Hex2':
+            # Toggle mode: remove ring from tracking
+            self.graph.remove_ring(q, r)
+        # Remove atoms and their H children
+        for atom in to_remove:
+            for h in self.graph.h_children(atom):
+                self.graph.remove_atom(h)
+            self.graph.remove_atom(atom)
         self.recalc_bonds()
-    
+
     def toggle_ring(self, q, r):
         """Toggle a benzene ring at axial position (q, r)."""
         if (q, r) in self.rings:
@@ -323,30 +340,26 @@ class KekuleBackend:
 
     def set_atom_type(self, node_key, element):
         """Set or change the element at a pinned grid node. Adds new atom if node is empty."""
-        if node_key in self.node_to_atom:
-            ia = self.node_to_atom[node_key]
-            self.sys.enames[ia] = element
-            self.sys.atypes[ia] = elements.ELEMENT_DICT[element][0]
-            self.atom_subtype[ia] = self._get_element_default_subtype(element)
+        a = self.graph._pin_to_atom.get(node_key)
+        if a is not None:
+            a.ename   = element
+            a.atype   = elements.ELEMENT_DICT[element][0]
+            a.subtype = self._get_element_default_subtype(element)
         else:
-            self._append_atom(
-                pos=[node_key[0], node_key[1], 0.0],
-                ename=element,
-                pin=node_key,
-                parent=None,
-                subtype=self._get_element_default_subtype(element)
-            )
+            self.graph.add_atom(np.array([node_key[0], node_key[1], 0.0]),
+                                element, elements.ELEMENT_DICT[element][0],
+                                pin=node_key, parent=None,
+                                subtype=self._get_element_default_subtype(element))
             self._rebuild_ring_atoms()
-            self.recalc_bonds()
-            self.adjust_h()
+        self.recalc_bonds()
+        self.adjust_h()
 
     def set_atom_valency(self, node_key, npi):
         """Set npi (pi bond count) for atom at node_key. npi in {0,1,2}."""
-        ia = self.node_to_atom.get(node_key)
-        if ia is None: return
-        e = self.sys.enames[ia]
+        a = self.graph._pin_to_atom.get(node_key)
+        if a is None: return
         sp_map = {0: 'sp3', 1: 'sp2', 2: 'sp'}
-        self.atom_subtype[ia] = f"{e}_{sp_map.get(npi, 'sp2')}"
+        a.subtype = f"{a.ename}_{sp_map.get(npi, 'sp2')}"
         self.adjust_h()
 
     def add_atom_at_position(self, pos, element, npi=1):
@@ -369,87 +382,168 @@ class KekuleBackend:
         return ia
 
     def remove_atom(self, node_key):
-        """Remove the atom at a grid node and any attached H atoms."""
-        if node_key not in self.node_to_atom:
+        """Remove atom at grid node and its H children. Also removes any incomplete rings."""
+        atom = self.graph._pin_to_atom.get(node_key)
+        if atom is None:
             return
-        ia = self.node_to_atom[node_key]
-        to_remove = {ia}
-        for j, parent in enumerate(self.atom_parent):
-            if parent == ia:
-                to_remove.add(j)
-        # Remove rings that would become empty or invalid
-        rings_to_remove = []
-        for key, atoms in self.ring_atoms.items():
-            remaining = [a for a in atoms if a not in to_remove]
-            if len(remaining) < len(atoms):
-                ring_nodes = honeycomb_ring_nodes(key[0], key[1], self.a_CC)
-                has_all_nodes = True
-                for node in ring_nodes:
-                    nk = snap_to_grid(node, self.a_CC)
-                    if nk not in self.node_to_atom or self.node_to_atom[nk] in to_remove:
-                        has_all_nodes = False
-                        break
-                if not has_all_nodes:
-                    rings_to_remove.append(key)
-        for key in rings_to_remove:
-            self.rings.discard(key)
-        self._rebuild_after_delete(to_remove)
+        # Remove rings that contain this atom (they'd be incomplete)
+        for key in [k for k, ring in self.graph.rings.items() if atom in ring.atoms]:
+            self.graph.remove_ring(*key)
+        for h in self.graph.h_children(atom):
+            self.graph.remove_atom(h)
+        self.graph.remove_atom(atom)
         self.recalc_bonds()
 
-    def remove_ring(self, q, r):
-        """Remove a benzene ring at axial position (q, r). Shared atoms are preserved."""
-        key = (q, r)
-        if key not in self.rings:
-            return
-        ring_atoms = self.ring_atoms.get(key, [])
-        to_remove = set()
-        for ia in ring_atoms:
-            shared = False
-            for other_key, other_atoms in self.ring_atoms.items():
-                if other_key == key:
-                    continue
-                if ia in other_atoms:
-                    shared = True
-                    break
-            if not shared:
-                to_remove.add(ia)
-                for j, parent in enumerate(self.atom_parent):
-                    if parent == ia:
-                        to_remove.add(j)
-        self.rings.discard(key)
-        self._rebuild_after_delete(to_remove)
-        self.recalc_bonds()
+    # (remove_ring duplicate removed — see above)
 
     def adjust_h(self):
-        """Add/remove H caps based on electron counting: nsigma = nvalence - npi - nepair."""
+        """Add/remove H caps based on electron counting: nsigma = nvalence - npi - nepair.
+        
+        Uses robust geometry from make_epair_geom (AtomicSystem.py) for direction calculation.
+        - sp (npi=2, acetylene-like): 180° linear
+        - sp3 (npi=0): 109.5° tetrahedral
+        - sp2 (npi=1): 120° trigonal planar (O uses 109° water-like)
+        """
+        # Remove existing H caps (object references, no index bookkeeping)
+        for h in [a for a in list(self.graph.atoms.values()) if a.subtype == 'H_cap']:
+            self.graph.remove_atom(h)
+        self.recalc_bonds()
+        self._sync_sys()
         if self.sys.ngs is None: self.sys.neighs()
-        # Remove existing H caps
-        h_indices = [i for i, st in enumerate(self.atom_subtype) if st == 'H_cap']
-        if h_indices:
-            self._rebuild_after_delete(h_indices)
-            self.recalc_bonds()
-        # Build target sigma count per atom
+        
+        # Build target sigma count per heavy atom (by object ref)
+        atom_list, *_ = self.graph.to_arrays()
         tv = {}
-        for i, subtype in enumerate(self.atom_subtype):
-            e = self.sys.enames[i]
-            if e in {'H', 'E'}: continue
-            npi = self._get_npi_from_subtype(subtype)
-            tv[i] = self._target_sigma(e, npi)
-        # Add H where needed
-        added = self.sys.add_capping_h_sp2(target_valence=tv)
-        for h_idx in added:
-            parent = None
-            if self.sys.bonds is not None:
-                for b in self.sys.bonds:
-                    if b[0] == h_idx: parent = b[1]; break
-                    elif b[1] == h_idx: parent = b[0]; break
-            self.atom_pin.append(None); self.atom_parent.append(parent); self.atom_subtype.append('H_cap')
+        npi_map = {}
+        for i, a in enumerate(atom_list):
+            if a.ename in {'H', 'E'}: continue
+            npi = self._get_npi_from_subtype(a.subtype)
+            tv[i] = self._target_sigma(a.ename, npi)
+            npi_map[i] = npi
+        
+        # Find undercoordinated atoms and place H using make_epair_geom logic
+        bond_lengths = {'C': 1.09, 'N': 1.01, 'O': 0.97}
+        added_indices = []
+        for i, a in enumerate(atom_list):
+            if a.ename in {'H', 'E'}: continue
+            target = tv.get(i, 4)
+            current = len([n for n in self.sys.ngs[i] if self.sys.enames[n] not in {'H','E'}])
+            n_missing = target - current
+            if n_missing <= 0:
+                continue
+            
+            npi = npi_map[i]
+            ename = a.ename
+            bl = bond_lengths.get(ename, 1.09)
+            pos_a = self.sys.apos[i]
+            neighbors = [j for j in self.sys.ngs[i] if self.sys.enames[j] not in {'H','E'}]
+            nb = len(neighbors)
+            
+            # Calculate directions using make_epair_geom logic
+            directions = self._calc_h_directions(i, npi, nb, neighbors)
+            
+            for direction in directions[:n_missing]:
+                h_pos = pos_a + direction * bl
+                new_idx = len(self.sys.apos)
+                self.sys.apos   = np.append(self.sys.apos, [h_pos], axis=0)
+                self.sys.atypes = np.append(self.sys.atypes, 1)  # H
+                self.sys.enames = np.append(self.sys.enames, ['H'])
+                if self.sys.qs is not None: self.sys.qs = np.append(self.sys.qs, 0.0)
+                if self.sys.Rs is not None: self.sys.Rs = np.append(self.sys.Rs, 0.5)
+                if self.sys.bonds is not None:
+                    if self.sys.bonds.ndim == 1 or self.sys.bonds.shape[0] == 0:
+                        self.sys.bonds = np.array([[i, new_idx]], dtype=np.int32)
+                    else:
+                        self.sys.bonds = np.concatenate([self.sys.bonds, np.array([[i, new_idx]], dtype=np.int32)], axis=0)
+                if self.sys.ngs is not None:
+                    self.sys.ngs[i][new_idx] = len(self.sys.bonds)-1 if self.sys.bonds is not None else 1
+                    self.sys.ngs.append({i: len(self.sys.bonds)-1 if self.sys.bonds is not None else 1})
+                added_indices.append(new_idx)
+                # Add to graph
+                self.graph.add_atom(h_pos, 'H', elements.ELEMENT_DICT['H'][0],
+                                    pin=None, parent=a, subtype='H_cap')
+        
+        self.sys.natoms = len(self.sys.apos)
+        self._sync_sys()
         self.sys.neighs()
-        return added
+        return added_indices
+
+    def _calc_h_directions(self, i, npi, nb, neighbors):
+        """Calculate H placement directions for 2D systems (xy-plane, pi along z)."""
+        pos = self.sys.apos[i]
+        if nb == 0:
+            # No neighbors: use default directions based on hybridization
+            if npi == 2:  # sp (linear in-plane)
+                return [np.array([1.0, 0.0, 0.0]), np.array([-1.0, 0.0, 0.0])]
+            elif npi == 0:  # sp3 (tetrahedral, but 2D: 3 in-plane directions)
+                return [
+                    np.array([1.0, 0.0, 0.0]),
+                    np.array([-0.5, np.sqrt(3)/2, 0.0]),
+                    np.array([-0.5, -np.sqrt(3)/2, 0.0])
+                ]
+            else:  # sp2 (trigonal planar in-plane)
+                angles = [0, 2*np.pi/3, 4*np.pi/3]
+                return [np.array([np.cos(a), np.sin(a), 0.0]) for a in angles]
+        
+        v1 = au.normalize(self.sys.apos[neighbors[0]] - pos)
+        if nb > 1: v2 = au.normalize(self.sys.apos[neighbors[1]] - pos)
+        if nb > 2: v3 = au.normalize(self.sys.apos[neighbors[2]] - pos)
+        
+        if npi == 0:  # sp3 (2D: tetrahedral geometry shifted along bond direction)
+            if nb == 3:  # NH3-like - place H opposite to centroid of neighbors
+                centroid = au.normalize(v1 + v2 + v3)
+                return [-centroid]
+            elif nb == 2:  # H2O-like / -NH2 - 2 H symmetrically on side in-plane
+                bisect = au.normalize(v1 + v2)
+                perp = np.cross(v1, v2)
+                perp = au.normalize(perp)
+                # 2 H at +/-109.5° from bisector in-plane (symmetric on side)
+                angle = np.arccos(-1/3)  # 109.5°
+                ca = np.cos(angle)
+                sa = np.sin(angle)
+                return [au.normalize(-bisect * ca + perp * sa), au.normalize(-bisect * ca - perp * sa)]
+            elif nb == 1:  # CH3-like / -NH2-like - depends on element
+                perp = np.array([-v1[1], v1[0], 0.0])
+                if np.linalg.norm(perp) < 1e-8: perp = np.array([0.0, 1.0, 0.0])
+                perp = au.normalize(perp)
+                perp2 = np.cross(v1, perp)
+                perp2 = au.normalize(perp2)
+                # Tetrahedral directions symmetric around bond (2 H on sides, 1 in center)
+                # Use C++ makeConfGeom constants rotated 90°
+                ca = 0.81649658092
+                cb = 0.47140452079
+                cc = -0.33333333333
+                return [
+                    au.normalize(v1 * cc - perp2 * cb + perp * ca),  # in-plane
+                    au.normalize(v1 * cc - perp2 * cb - perp * ca),  # in-plane
+                    au.normalize(v1 * cc + perp2 * (cb * 2)),  # out-of-plane (last)
+                ]
+        elif npi == 1:  # sp2 (2D: H in-plane)
+            if nb == 2:  # =N- like - H opposite to bisector in-plane
+                bisect = au.normalize(v1 + v2)
+                return [-bisect]
+            elif nb == 1:  # =O like - 2 H at 120° in-plane
+                perp = np.array([-v1[1], v1[0], 0.0])
+                if np.linalg.norm(perp) < 1e-8: perp = np.array([0.0, 1.0, 0.0])
+                perp = au.normalize(perp)
+                # 2 H at +/-120° from -v1 in-plane
+                return [
+                    au.normalize(-v1 * 0.5 + perp * (np.sqrt(3)/2)),
+                    au.normalize(-v1 * 0.5 - perp * (np.sqrt(3)/2))
+                ]
+        elif npi == 2:  # sp (linear in-plane)
+            if nb == 1:
+                return [au.normalize(pos - self.sys.apos[neighbors[0]])]
+            else:
+                return [au.normalize(-v1)]
+        
+        return []
 
     def recalc_bonds(self):
-        """Recompute bonds and neighbor lists from current positions."""
-        if len(self.sys.apos) > 0:
+        """Recompute bonds in graph AND sync to sys."""
+        self.graph.recalc_bonds(bond_length=self.a_CC)
+        self._sync_sys()
+        if self.sys.apos is not None and len(self.sys.apos) > 0:
             self.sys.findBonds(Rcut=3.0, RvdwCut=1.2)
             self.sys.neighs()
         else:
@@ -457,20 +551,16 @@ class KekuleBackend:
 
     def update_node_offset(self, node_key, offset):
         """Set absolute position of a pinned atom relative to its grid node."""
-        if node_key in self.node_to_atom:
-            ia = self.node_to_atom[node_key]
-            pin = self.atom_pin[ia]
-            if pin is not None:
-                self.sys.apos[ia, 0] = pin[0] + offset[0]
-                self.sys.apos[ia, 1] = pin[1] + offset[1]
+        a = self.graph._pin_to_atom.get(node_key)
+        if a is not None and a.pin is not None:
+            a.pos[0] = a.pin[0] + offset[0]
+            a.pos[1] = a.pin[1] + offset[1]
 
     def snap_atoms_to_grid(self):
         """Snap all pinned atoms back to their grid node positions."""
-        for i, pin in enumerate(self.atom_pin):
-            if pin is not None:
-                self.sys.apos[i, 0] = pin[0]
-                self.sys.apos[i, 1] = pin[1]
-                self.sys.apos[i, 2] = 0.0
+        for a in self.graph.atoms.values():
+            if a.pin is not None:
+                a.pos[0] = a.pin[0]; a.pos[1] = a.pin[1]; a.pos[2] = 0.0
     
     def build_system(self):
         """Return the persistent AtomicSystem (sys is now the authoritative state)."""
@@ -549,74 +639,57 @@ class KekuleBackend:
 
     def load_xyz(self, fname):
         """Load a system from an XYZ file and map it back to the grid."""
-        self.rings = set(); self.ring_atoms = {}; self.node_to_atom = {}
-        self.atom_pin = []; self.atom_parent = []; self.atom_subtype = []
+        self.graph = AtomicGraph()   # full reset
         from . import atomicUtils as au
         apos, Zs, es, qs, comment = au.load_xyz(fname)
-        heavy_atoms = {}
+        # Add heavy atoms snapped to grid
         for i, e in enumerate(es):
             if e in ('H', 'E'): continue
-            p = apos[i]
-            nk = snap_to_grid(p, self.a_CC)
-            heavy_atoms[nk] = (i, e)
-        for nk, (orig_idx, e) in heavy_atoms.items():
-            ia = self._append_atom(
-                pos=[nk[0], nk[1], 0.0],
-                ename=e,
-                pin=nk,
-                parent=None,
-                subtype=self._get_element_default_subtype(e)
-            )
-            self.node_to_atom[nk] = ia
+            nk = snap_to_grid(apos[i], self.a_CC)
+            if nk not in self.graph._pin_to_atom:
+                self.graph.add_atom(np.array([nk[0], nk[1], 0.0]),
+                                    e, elements.ELEMENT_DICT[e][0],
+                                    pin=nk, parent=None,
+                                    subtype=self._get_element_default_subtype(e))
         self.recalc_bonds()
-        # Guess rings from topology
         self._guess_rings()
-        # Map H atoms
+        # Add H atoms, finding nearest heavy atom by object ref
+        heavy = [a for a in self.graph.atoms.values() if a.ename not in ('H', 'E')]
         for i, e in enumerate(es):
             if e != 'H': continue
             p = apos[i]
-            # Find nearest heavy atom
-            best_d, best_ia = float('inf'), None
-            for j in range(len(self.sys.apos)):
-                if self.sys.enames[j] in ('H', 'E'): continue
-                d = np.linalg.norm(apos[i] - self.sys.apos[j])
-                if d < best_d:
-                    best_d = d; best_ia = j
-            if best_ia is not None and best_d < 1.5:
-                self._append_atom(
-                    pos=p,
-                    ename='H',
-                    pin=None,
-                    parent=best_ia,
-                    subtype='H_cap'
-                )
+            best_d, best_a = float('inf'), None
+            for a in heavy:
+                d = float(np.linalg.norm(p - a.pos))
+                if d < best_d: best_d = d; best_a = a
+            if best_a is not None and best_d < 1.5:
+                self.graph.add_atom(np.array(p, dtype=np.float64), 'H',
+                                    elements.ELEMENT_DICT['H'][0],
+                                    pin=None, parent=best_a, subtype='H_cap')
         self.recalc_bonds()
 
     def _guess_rings(self):
         """Heuristic: infer ring axial coords from heavy atom grid positions."""
-        seen_nodes = set()
-        for nk in self.node_to_atom:
-            seen_nodes.add(nk)
-        s3 = np.sqrt(3.0)
+        n2a = self.graph._pin_to_atom
         for q in range(-20, 21):
             for r in range(-20, 21):
+                if (q, r) in self.graph.rings: continue
                 ring_nodes = honeycomb_ring_nodes(q, r, self.a_CC)
-                nodes_ok = True
-                for node in ring_nodes:
-                    nk = snap_to_grid(node, self.a_CC)
-                    if nk not in seen_nodes:
-                        nodes_ok = False; break
-                if nodes_ok:
-                    self.rings.add((q, r))
-        self._rebuild_ring_atoms()
+                ring_atom_objs = [n2a[snap_to_grid(nd, self.a_CC)]
+                                  for nd in ring_nodes
+                                  if snap_to_grid(nd, self.a_CC) in n2a]
+                if len(ring_atom_objs) == 6:
+                    self.graph.add_ring(q, r, ring_atom_objs)
 
     # ============ Ribbon construction (replaces GrapheneRibbonBuilder) ============
 
     def _set_atom_element(self, ia, element):
-        """Set element of atom ia, updating sys and atom_subtype tracking."""
-        self.sys.enames[ia] = element
-        self.sys.atypes[ia] = elements.ELEMENT_DICT[element][0]
-        self.atom_subtype[ia] = self._get_element_default_subtype(element)
+        """Set element of atom ia (int index into to_arrays() order)."""
+        atom_list, *_ = self.graph.to_arrays()
+        a = atom_list[ia]
+        a.ename   = element
+        a.atype   = elements.ELEMENT_DICT[element][0]
+        a.subtype = self._get_element_default_subtype(element)
 
     def _add_passivation_h(self, ia, bond_length=1.09):
         """Add a single H atom in the missing bond direction of atom ia."""
