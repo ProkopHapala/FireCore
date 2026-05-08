@@ -216,12 +216,103 @@ def test_load_save_xyz():
     b2.report_state()
     print("  PASSED")
 
+def test_insert_atom_into_bond():
+    """Test inserting an atom into a bond (A-B -> A-C-B)."""
+    print("\n=== test_insert_atom_into_bond ===")
+    backend = KekuleBackend()
+    backend.auto_h_cap = False  # Disable to prevent extra bond creation from adjust_h
+    backend.add_ring(0, 0)  # Creates 6 C atoms in a ring
+    _assert_atoms(backend, {'C': 6}, "Initial benzene ring")
+    
+    # Get alive bonds from the graph
+    bonds = [bd for bd in backend.graph.bonds.values() if bd.alive]
+    assert len(bonds) == 6, f"Expected 6 bonds, got {len(bonds)}"
+    
+    # Pick the first bond
+    bond = bonds[0]
+    atom_a = bond.a
+    atom_b = bond.b
+    print(f"  Selected bond {bond._id} between Atom({atom_a._id}) and Atom({atom_b._id})")
+    
+    # Insert atom into bond
+    new_atom = backend.insert_atom_into_bond(bond, 'C')
+    print(f"  Inserted new Atom({new_atom._id})")
+    
+    # Should now have 7 C atoms
+    _assert_atoms(backend, {'C': 7}, "After inserting atom into bond")
+    
+    # Should have 7 alive bonds (removed 1, added 2)
+    bonds_after = [bd for bd in backend.graph.bonds.values() if bd.alive]
+    print(f"  Alive bonds after: {len(bonds_after)}")
+    assert len(bonds_after) == 7, f"Expected 7 alive bonds, got {len(bonds_after)}"
+    
+    # Verify the new atom is bonded to both original atoms (alive bonds only)
+    new_atom_bonds = [bd for bd in new_atom.bonds if bd.alive]
+    assert len(new_atom_bonds) == 2, f"New atom should have 2 alive bonds, got {len(new_atom_bonds)}"
+    
+    # Check that original bond is marked dead
+    assert not bond.alive, "Original bond should be marked as dead"
+    
+    _save_outputs(backend, 'insert_atom_into_bond')
+    backend.report_state()
+    print("  PASSED")
+
+def test_collapse_bond():
+    """Test collapsing a bond (A-B -> A with neighbors of B transferred to A)."""
+    print("\n=== test_collapse_bond ===")
+    backend = KekuleBackend()
+    backend.auto_h_cap = False  # Disable to prevent extra bond creation from adjust_h
+    backend.add_ring(0, 0)  # Creates 6 C atoms in a ring
+    _assert_atoms(backend, {'C': 6}, "Initial benzene ring")
+    
+    # Get alive bonds from the graph
+    bonds = [bd for bd in backend.graph.bonds.values() if bd.alive]
+    assert len(bonds) == 6, f"Expected 6 bonds, got {len(bonds)}"
+    
+    # Pick the first bond
+    bond = bonds[0]
+    atom_a = bond.a
+    atom_b = bond.b
+    print(f"  Selected bond {bond._id} between Atom({atom_a._id}) and Atom({atom_b._id})")
+    
+    # Record positions before collapse
+    pos_a_before = atom_a.pos.copy()
+    pos_b_before = atom_b.pos.copy()
+    center = (pos_a_before + pos_b_before) / 2.0
+    
+    # Collapse bond - simulate mouse click far from atom_a (so atom_a survives)
+    mouse_pos = pos_b_before[:2] + np.array([1.0, 1.0])  # Far from atom_a
+    survivor = backend.collapse_bond(bond, mouse_pos)
+    
+    print(f"  Survivor: Atom({survivor._id})")
+    
+    # Should now have 5 C atoms (one removed)
+    _assert_atoms(backend, {'C': 5}, "After collapsing bond")
+    
+    # Survivor should be at the center of the original bond
+    survivor_pos = survivor.pos
+    dist_to_center = np.linalg.norm(survivor_pos - center)
+    assert dist_to_center < 0.01, f"Survivor should be at bond center, distance={dist_to_center}"
+    
+    # Original bond should be dead
+    assert not bond.alive, "Original bond should be marked as dead"
+    
+    # In benzene ring, each C has 2 bonds. After collapse, survivor should have 2 bonds (its original other bond + transferred bond)
+    survivor_bonds = [bd for bd in survivor.bonds if bd.alive]
+    print(f"  Survivor has {len(survivor_bonds)} alive bonds")
+    assert len(survivor_bonds) == 2, f"Survivor should have 2 bonds (original + transferred), got {len(survivor_bonds)}"
+    
+    _save_outputs(backend, 'collapse_bond')
+    backend.report_state()
+    print("  PASSED")
+
 # ==================== CLI ====================
 
 ALL_TESTS = [
     'add_ring', 'remove_ring', 'fused_rings', 'set_atom_type',
     'adjust_h', 'toggle_h_state', 'recalc_bonds', 'relax',
-    'remove_atom', 'load_save_xyz'
+    'remove_atom', 'load_save_xyz',
+    'insert_atom_into_bond', 'collapse_bond'
 ]
 
 def run_tests(tests):

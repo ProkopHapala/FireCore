@@ -128,6 +128,7 @@ class KekuleBackend:
         self.hex_tiles = set()  # set of (q,r) tuples
         self._rings_dirty = True  # flag to re-detect geometry rings
         self.auto_h_cap = True  # auto-adjust hydrogen caps when structure changes
+        self.auto_recalc_bonds = False  # auto-recalculate bonds based on distance (DANGEROUS - can create spurious bonds)
 
     # ── Properties for GUI compatibility ─────────────────────────────────────
 
@@ -186,6 +187,26 @@ class KekuleBackend:
     def _build_node_to_atom_obj(self):
         """Return {pin_key: Atom} — the fast O(1) version backed by graph._pin_to_atom."""
         return self.graph._pin_to_atom  # already maintained by AtomicGraph
+
+    def _atom_to_index(self, atom):
+        """Convert Atom object to int index in sys arrays."""
+        atom_list, *_ = self.graph.to_arrays()
+        idx_map = {a._id: i for i, a in enumerate(atom_list)}
+        return idx_map.get(atom._id)
+
+    def _rebuild_after_delete(self, indices_to_remove):
+        """Remove atoms by index and rebuild sys arrays from graph."""
+        # Remove atoms from graph
+        atom_list, *_ = self.graph.to_arrays()
+        for idx in sorted(indices_to_remove, reverse=True):
+            if idx < len(atom_list):
+                a = atom_list[idx]
+                # Remove H children first
+                for h in self.graph.h_children(a):
+                    self.graph.remove_atom(h)
+                self.graph.remove_atom(a)
+        # Rebuild sys from graph
+        self._sync_sys()
 
     def _append_atom(self, pos, ename, pin=None, parent=None, subtype=''):
         """Add atom to graph. parent may be int index (legacy) or Atom object."""
@@ -424,30 +445,222 @@ class KekuleBackend:
         return ia
 
     def remove_atom(self, node_key):
-        """Remove atom at grid node and its H children. Also removes any incomplete rings."""
-        atom = self.graph._pin_to_atom.get(node_key)
-        if atom is None:
+        """Remove atom at snapped grid position node_key.
+        
+        Also removes any H atoms attached to the removed heavy atom.
+        """
+        n2a = self.graph._pin_to_atom
+        a = n2a.get(node_key)
+        if a is None:
             return
-        # Remove H children
-        for h in self.graph.h_children(atom):
-            self.graph.remove_atom(h)
-        # Remove the atom
-        self.graph.remove_atom(atom)
+        ia = self._atom_to_index(a)
+        self._rebuild_after_delete([ia])
         self.recalc_bonds()
+        if self.auto_h_cap:
+            self.adjust_h()
+
+    def insert_atom_into_bond(self, bond, new_ename='C'):
+        """Insert a new atom into the middle of a bond, pushing original atoms aside.
+        
+        Original bond A-B becomes A-C-B where:
+        - C is at the center of original A-B bond
+        - A and B are pushed aside to satisfy A-C and B-C bond lengths
+        
+        Args:
+            bond: Bond object (from graph.pick_bond())
+            new_ename: Element name for new atom (default 'C')
+        
+        Returns:
+            The newly created Atom object
+        """
+        if bond is None or not bond.alive:
+            raise ValueError("Invalid bond (None or not alive)")
+        
+        # Get atom objects from bond (using object references, not indices!)
+        atom_a = bond.a
+        atom_b = bond.b
+        
+        debug_print(1, f"Inserting atom into bond {bond._id} between Atom({atom_a._id}) and Atom({atom_b._id})")
+        
+        pos_a = atom_a.pos
+        pos_b = atom_b.pos
+        
+        # Center of original bond
+        center = (pos_a + pos_b) / 2.0
+        
+        # Bond length for new element
+        bond_lengths = {'C': 1.42, 'N': 1.33, 'O': 1.36, 'H': 1.09}
+        bl = bond_lengths.get(new_ename, 1.42)
+        
+        # Direction from center to A
+        dir_a = au.normalize(pos_a - center)
+        # Direction from center to B (opposite)
+        dir_b = -dir_a
+        
+        # Push A and B aside to satisfy bond lengths
+        new_pos_a = center + dir_a * bl
+        new_pos_b = center + dir_b * bl
+        
+        # Update positions of A and B (in the Atom objects!)
+        atom_a.pos = new_pos_a
+        atom_b.pos = new_pos_b
+        
+        debug_print(1, f"  Moved Atom({atom_a._id}) to {new_pos_a[:2]}")
+        debug_print(1, f"  Moved Atom({atom_b._id}) to {new_pos_b[:2]}")
+        
+        # Mark original bond as dead (soft delete)
+        bond.alive = False
+        debug_print(1, f"  Marked bond {bond._id} as dead")
+        
+        # Add new atom C at center (using graph!)
+        new_atom = self.graph.add_atom(center, new_ename, elements.ELEMENT_DICT[new_ename][0],
+                                       pin=None, parent=None, subtype=f'{new_ename}_sp2')
+        debug_print(1, f"  Created new Atom({new_atom._id}) at center {center[:2]}")
+        
+        # Add new bonds A-C and B-C (using graph!)
+        bond_ac = self.graph.add_bond(atom_a, new_atom)
+        bond_bc = self.graph.add_bond(atom_b, new_atom)
+        debug_print(1, f"  Created new bonds: {bond_ac._id} (A-C), {bond_bc._id} (B-C)")
+        
+        # Cleanup dead objects
+        n_atoms, n_bonds, n_rings = self.graph.cleanup_invalid()
+        debug_print(1, f"  Cleanup removed: {n_atoms} atoms, {n_bonds} bonds, {n_rings} rings")
+        
+        # Sync sys from graph
+        self._sync_sys()
         self._rings_dirty = True
+        
+        # NOTE: We do NOT auto-adjust H or recalc bonds here.
+        # The user should control this explicitly via GUI toggles/buttons.
+        # Bond editing operations should preserve the explicit bond topology.
+        
+        return new_atom
+
+    def collapse_bond(self, bond, mouse_pos):
+        """Collapse a bond by removing one atom and transferring its bonds to the other.
+        
+        Original bond A-B becomes A (or B) where:
+        - The atom farther from mouse position survives
+        - The surviving atom is moved to the center of original A-B bond
+        - All neighbors of the removed atom are transferred to the survivor
+        
+        Args:
+            bond: Bond object (from graph.pick_bond())
+            mouse_pos: Mouse position (x, y) to determine which atom survives
+        
+        Returns:
+            The surviving Atom object
+        """
+        if bond is None or not bond.alive:
+            raise ValueError("Invalid bond (None or not alive)")
+        
+        # Get atom objects from bond (using object references, not indices!)
+        atom_a = bond.a
+        atom_b = bond.b
+        
+        debug_print(1, f"Collapsing bond {bond._id} between Atom({atom_a._id}) and Atom({atom_b._id})")
+        
+        pos_a = atom_a.pos
+        pos_b = atom_b.pos
+        center = (pos_a + pos_b) / 2.0
+        
+        # Determine which atom survives (farther from mouse)
+        dist_a = np.linalg.norm(pos_a[:2] - mouse_pos)
+        dist_b = np.linalg.norm(pos_b[:2] - mouse_pos)
+        
+        if dist_a > dist_b:
+            # A survives, B is removed
+            survivor = atom_a
+            to_remove = atom_b
+            debug_print(1, f"  Atom({atom_a._id}) survives (farther from mouse), Atom({atom_b._id}) removed")
+        else:
+            # B survives, A is removed
+            survivor = atom_b
+            to_remove = atom_a
+            debug_print(1, f"  Atom({atom_b._id}) survives (farther from mouse), Atom({atom_a._id}) removed")
+        
+        # Move survivor to center (in the Atom object!)
+        survivor.pos = center
+        debug_print(1, f"  Moved survivor Atom({survivor._id}) to center {center[:2]}")
+        
+        # Mark original bond as dead
+        bond.alive = False
+        debug_print(1, f"  Marked bond {bond._id} as dead")
+        
+        # Transfer bonds from removed atom to survivor
+        # Find all bonds involving the removed atom (excluding the bond we're collapsing)
+        bonds_to_transfer = []
+        
+        # Debug: show all bonds of removed atom
+        debug_print(1, f"  Atom({to_remove._id}) has {len(to_remove.bonds)} bonds: {[(b._id, b.alive, b.a._id, b.b._id) for b in to_remove.bonds]}")
+        
+        for b in to_remove.bonds:
+            if b is bond:
+                debug_print(1, f"    Skipping bond {b._id} (is the bond being collapsed)")
+                continue  # Skip the bond being collapsed
+            if not b.alive:
+                debug_print(1, f"    Skipping bond {b._id} (already dead)")
+                continue  # Skip already dead bonds
+            # Get the other atom in this bond
+            other = b.other(to_remove)
+            if other is not survivor:
+                bonds_to_transfer.append((b, other))
+                debug_print(1, f"  Will transfer bond {b._id} (to Atom({other._id})) to survivor")
+            else:
+                debug_print(1, f"    Skipping bond {b._id} (other atom is survivor)")
+        
+        # Mark bonds to removed atom as dead (they'll be recreated from survivor)
+        for b, _ in bonds_to_transfer:
+            b.alive = False
+            debug_print(1, f"  Marked bond {b._id} as dead (will recreate)")
+        
+        # Create new bonds from survivor to other atoms
+        for _, other in bonds_to_transfer:
+            new_bond = self.graph.add_bond(survivor, other)
+            debug_print(1, f"  Created new bond {new_bond._id} between survivor({survivor._id}) and Atom({other._id})")
+            debug_print(1, f"    Survivor now has bonds: {[b._id for b in survivor.bonds]}")
+            debug_print(1, f"    Other atom now has bonds: {[b._id for b in other.bonds]}")
+        
+        # Note: survivor's existing bonds (to atoms other than to_remove) are preserved
+        # Only the bond between survivor and to_remove is marked dead
+        
+        # Mark removed atom as dead (soft delete)
+        to_remove.alive = False
+        debug_print(1, f"  Marked Atom({to_remove._id}) as dead")
+        
+        # Cleanup dead objects
+        n_atoms, n_bonds, n_rings = self.graph.cleanup_invalid()
+        debug_print(1, f"  Cleanup removed: {n_atoms} atoms, {n_bonds} bonds, {n_rings} rings")
+        
+        # Sync sys from graph
+        self._sync_sys()
+        self._rings_dirty = True
+        
+        # NOTE: We do NOT auto-adjust H or recalc bonds here.
+        # The user should control this explicitly via GUI toggles/buttons.
+        
+        return survivor
 
     def adjust_h(self):
         """Add/remove H caps based on electron counting: nsigma = nvalence - npi - nepair.
+        
 
         Uses robust geometry from make_epair_geom (AtomicSystem.py) for direction calculation.
         - sp (npi=2, acetylene-like): 180° linear
         - sp3 (npi=0): 109.5° tetrahedral
         - sp2 (npi=1): 120° trigonal planar (O uses 109° water-like)
+        
+        NOTE: This only recalculates bonds if auto_recalc_bonds is True.
+        Otherwise it uses the existing bond topology from the graph.
         """
         # Remove existing H caps (object references, no index bookkeeping)
         for h in [a for a in list(self.graph.atoms.values()) if a.subtype == 'H_cap']:
             self.graph.remove_atom(h)
-        self.recalc_bonds()
+        
+        # Only recalc bonds if explicitly enabled (DANGEROUS - can create spurious bonds)
+        if self.auto_recalc_bonds:
+            self.recalc_bonds()
+        
         self._sync_sys()
         self._rings_dirty = True
         if self.sys.ngs is None: self.sys.neighs()

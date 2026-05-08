@@ -23,12 +23,13 @@ import numpy as np
 # ─── Atom ───────────────────────────────────────────────────────────────────
 
 class Atom:
-    __slots__ = ('pos', 'ename', 'atype', 'pin', 'parent', 'subtype', 'bonds', '_id')
+    __slots__ = ('pos', 'ename', 'atype', 'pin', 'parent', 'subtype', 'bonds', '_id', 'alive')
     _counter = 0
 
     def __init__(self, pos, ename, atype, pin=None, parent=None, subtype=''):
         Atom._counter += 1
         self._id = Atom._counter
+        self.alive   = True         # False = marked for deletion, will be cleaned up
         self.pos     = np.asarray(pos, dtype=np.float64)   # (3,)
         self.ename   = ename        # element symbol string
         self.atype   = atype        # integer Z
@@ -38,33 +39,36 @@ class Atom:
         self.bonds   = []           # list of Bond objects involving this atom
 
     def __repr__(self):
-        return f"Atom({self._id} {self.ename} pin={self.pin} pos={self.pos[:2]})"
+        status = "" if self.alive else "[DEAD]"
+        return f"Atom({self._id}{status} {self.ename} pin={self.pin} pos={self.pos[:2]})"
 
 
 # ─── Bond ───────────────────────────────────────────────────────────────────
 
 class Bond:
-    __slots__ = ('a', 'b', 'order', '_id')
+    __slots__ = ('a', 'b', 'order', '_id', 'alive')
     _counter = 0
 
     def __init__(self, a: Atom, b: Atom, order=1):
         Bond._counter += 1
-        self._id  = Bond._counter
-        self.a    = a
-        self.b    = b
+        self._id   = Bond._counter
+        self.alive = True           # False = marked for deletion, will be cleaned up
+        self.a     = a
+        self.b     = b
         self.order = order
 
     def other(self, atom: Atom) -> Atom:
         return self.b if atom is self.a else self.a
 
     def __repr__(self):
-        return f"Bond({self.a._id}-{self.b._id} o={self.order})"
+        status = "" if self.alive else "[DEAD]"
+        return f"Bond({self._id}{status} {self.a._id}-{self.b._id} o={self.order})"
 
 
 # ─── Ring ───────────────────────────────────────────────────────────────────
 
 class Ring:
-    __slots__ = ('atoms', 'bonds', 'cog', '_id')
+    __slots__ = ('atoms', 'bonds', 'cog', '_id', 'alive')
     _counter = 0
 
     def __init__(self, atoms, bonds):
@@ -75,19 +79,23 @@ class Ring:
         """
         Ring._counter += 1
         self._id   = Ring._counter
+        self.alive = True           # False = marked for deletion, will be cleaned up
         self.atoms = list(atoms)    # [Atom, ...] — ordered cyclically
         self.bonds = list(bonds)    # [Bond, ...] — ordered cyclically
         self.cog   = self._compute_cog()
 
     def _compute_cog(self):
         """Compute center of geometry as average of atom positions."""
-        if not self.atoms:
+        # Only count alive atoms
+        alive_atoms = [a for a in self.atoms if a.alive]
+        if not alive_atoms:
             return np.zeros(3)
-        positions = np.array([a.pos for a in self.atoms])
+        positions = np.array([a.pos for a in alive_atoms])
         return np.mean(positions, axis=0)
 
     def __repr__(self):
-        return f"Ring({self._id} natoms={len(self.atoms)})"
+        status = "" if self.alive else "[DEAD]"
+        return f"Ring({self._id}{status} natoms={len(self.atoms)})"
 
 
 # ─── AtomicGraph ────────────────────────────────────────────────────────────
@@ -113,15 +121,52 @@ class AtomicGraph:
             self._pin_to_atom[pin] = a
         return a
 
-    def remove_atom(self, atom: Atom):
-        """Remove atom, its bonds, and its pin mapping. Does NOT touch rings."""
+    def remove_atom(self, atom: Atom, soft=True):
+        """Remove atom. If soft=True, mark as dead and cleanup later.
+        If soft=False, immediate hard removal."""
         if atom._id not in self.atoms:
             return
-        for b in list(atom.bonds):
-            self._remove_bond_internal(b)
-        if atom.pin is not None:
-            self._pin_to_atom.pop(atom.pin, None)
-        del self.atoms[atom._id]
+        if soft:
+            # Soft deletion: mark as dead, will be cleaned up later
+            atom.alive = False
+            # Also mark all its bonds as dead
+            for b in atom.bonds:
+                b.alive = False
+        else:
+            # Hard deletion: immediate removal
+            for b in list(atom.bonds):
+                self._remove_bond_internal(b, hard=True)
+            if atom.pin is not None:
+                self._pin_to_atom.pop(atom.pin, None)
+            del self.atoms[atom._id]
+
+    def cleanup_invalid(self):
+        """Remove all dead (alive=False) atoms, bonds, and rings.
+        Clean up references from other objects."""
+        # First, remove dead bonds from atom bond lists
+        for atom in self.atoms.values():
+            if atom.alive:
+                atom.bonds = [b for b in atom.bonds if b.alive]
+        
+        # Remove dead rings
+        dead_ring_ids = [rid for rid, r in self.rings.items() if not r.alive]
+        for rid in dead_ring_ids:
+            del self.rings[rid]
+        
+        # Remove dead bonds from main bonds dict
+        dead_bond_ids = [bid for bid, b in self.bonds.items() if not b.alive]
+        for bid in dead_bond_ids:
+            del self.bonds[bid]
+        
+        # Remove dead atoms and update pin mapping
+        dead_atom_ids = [aid for aid, a in self.atoms.items() if not a.alive]
+        for aid in dead_atom_ids:
+            atom = self.atoms[aid]
+            if atom.pin is not None:
+                self._pin_to_atom.pop(atom.pin, None)
+            del self.atoms[aid]
+        
+        return len(dead_atom_ids), len(dead_bond_ids), len(dead_ring_ids)
 
     def atom_at_pin(self, pin) -> 'Atom | None':
         return self._pin_to_atom.get(pin)
@@ -141,12 +186,15 @@ class AtomicGraph:
     def remove_bond(self, bond: Bond):
         self._remove_bond_internal(bond)
 
-    def _remove_bond_internal(self, bond: Bond):
+    def _remove_bond_internal(self, bond: Bond, hard=False):
         if bond._id not in self.bonds:
             return
-        bond.a.bonds = [b for b in bond.a.bonds if b is not bond]
-        bond.b.bonds = [b for b in bond.b.bonds if b is not bond]
-        del self.bonds[bond._id]
+        if hard:
+            bond.a.bonds = [b for b in bond.a.bonds if b is not bond]
+            bond.b.bonds = [b for b in bond.b.bonds if b is not bond]
+            del self.bonds[bond._id]
+        else:
+            bond.alive = False
 
     def get_bond(self, a: Atom, b: Atom) -> 'Bond | None':
         for bond in a.bonds:
@@ -173,8 +221,8 @@ class AtomicGraph:
         """Detect all rings (cycles) in the bond graph using DFS.
         Returns list of Ring objects.
         """
-        # Build adjacency list
-        adj = {a._id: [b.other(a) for b in a.bonds] for a in self.atoms.values()}
+        # Build adjacency list (only for alive atoms with alive bonds)
+        adj = {a._id: [b.other(a) for b in a.bonds if b.alive] for a in self.atoms.values() if a.alive}
         visited = set()
         rings = []
 
@@ -199,7 +247,7 @@ class AtomicGraph:
                         visited_edges | {edge_key})
 
         for atom in self.atoms.values():
-            if atom._id in visited:
+            if atom._id in visited or not atom.alive:
                 continue
             dfs(atom, atom, [], [], set())
 
@@ -209,9 +257,11 @@ class AtomicGraph:
 
     def recalc_bonds(self, bond_length=1.42, tol_factor=0.35):
         """Remove all bonds and recompute from distance threshold."""
+        # Use hard delete to immediately remove bonds from atom bond lists
         for bond in list(self.bonds.values()):
-            self._remove_bond_internal(bond)
-        atoms = list(self.atoms.values())
+            self._remove_bond_internal(bond, hard=True)
+        # Only consider alive atoms
+        atoms = [a for a in self.atoms.values() if a.alive]
         threshold = bond_length * (1.0 + tol_factor)
         threshold_sq = threshold ** 2
         for i, a in enumerate(atoms):
@@ -230,47 +280,63 @@ class AtomicGraph:
         bond_list[i] is the Bond object at index i (parallel to bonds_idx).
         ring_list is list of Ring objects.
         Index assignment is stable within one call; call again after mutations.
+        Only alive objects are included.
         """
-        atom_list = list(self.atoms.values())
+        # Only include alive atoms
+        atom_list = [a for a in self.atoms.values() if a.alive]
         idx = {a._id: i for i, a in enumerate(atom_list)}
         enames = np.array([a.ename for a in atom_list], dtype=object)
         apos   = np.array([a.pos   for a in atom_list], dtype=np.float64)
         atypes = np.array([a.atype for a in atom_list], dtype=np.int32)
+        
+        # Only include alive bonds between alive atoms
         bond_pairs = []
         bond_list = []
         for bond in self.bonds.values():
+            if not bond.alive:
+                continue
+            # Both atoms must be alive
+            if not bond.a.alive or not bond.b.alive:
+                continue
             ia = idx.get(bond.a._id)
             ib = idx.get(bond.b._id)
             if ia is not None and ib is not None:
                 bond_pairs.append((ia, ib))
                 bond_list.append(bond)
         bonds = np.array(bond_pairs, dtype=np.int32).reshape(-1, 2) if bond_pairs else np.zeros((0, 2), dtype=np.int32)
-        ring_list = list(self.rings.values())
+        
+        # Only include alive rings
+        ring_list = [r for r in self.rings.values() if r.alive]
         return atom_list, enames, apos, atypes, bonds, bond_list, ring_list
 
     # ── Convenience queries ───────────────────────────────────────────────────
 
     def heavy_atoms(self):
-        return [a for a in self.atoms.values() if a.ename not in ('H', 'E')]
+        return [a for a in self.atoms.values() if a.alive and a.ename not in ('H', 'E')]
 
     def h_children(self, atom: Atom):
-        return [a for a in self.atoms.values() if a.parent is atom]
+        return [a for a in self.atoms.values() if a.alive and a.parent is atom]
 
     def neighbors(self, atom: Atom):
-        return [b.other(atom) for b in atom.bonds]
+        return [b.other(atom) for b in atom.bonds if b.alive]
 
     # ── Picking helpers ────────────────────────────────────────────────────────
 
     def pick_atom(self, pos, radius=0.5):
         """Find atom within radius of position. Returns Atom or None."""
         for atom in self.atoms.values():
-            if np.linalg.norm(atom.pos - pos) < radius:
+            if atom.alive and np.linalg.norm(atom.pos - pos) < radius:
                 return atom
         return None
 
     def pick_bond(self, pos, radius=0.5):
         """Find bond whose center is within radius of position. Returns Bond or None."""
         for bond in self.bonds.values():
+            if not bond.alive:
+                continue
+            # Both atoms must be alive
+            if not bond.a.alive or not bond.b.alive:
+                continue
             center = (bond.a.pos + bond.b.pos) / 2
             if np.linalg.norm(center - pos) < radius:
                 return bond
@@ -279,7 +345,7 @@ class AtomicGraph:
     def pick_ring(self, pos, radius=1.0):
         """Find ring whose COG is within radius of position. Returns Ring or None."""
         for ring in self.rings.values():
-            if np.linalg.norm(ring.cog - pos) < radius:
+            if ring.alive and np.linalg.norm(ring.cog - pos) < radius:
                 return ring
         return None
 

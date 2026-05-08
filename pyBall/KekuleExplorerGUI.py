@@ -199,7 +199,7 @@ class KekuleExplorerWindow(BaseGUI):
         layout = QtWidgets.QVBoxLayout()
         layout.setSpacing(3)
         self.label("Edit Mode:", layout=layout)
-        self.mode_combo = self.comboBox(["Hex1", "Hex2", "Atom", "pi", "Select"], self.set_edit_mode, layout=layout)
+        self.mode_combo = self.comboBox(["Hex1", "Hex2", "Atom", "Bond", "pi", "Select"], self.set_edit_mode, layout=layout)
         # Compact row for atom type and auto h-cap
         row = QtWidgets.QHBoxLayout()
         self.label("Type:", layout=row)
@@ -207,6 +207,9 @@ class KekuleExplorerWindow(BaseGUI):
         self.auto_h_cap_btn = self.button("Auto H", self.toggle_auto_h_cap, layout=row)
         self.auto_h_cap_btn.setCheckable(True)
         self.auto_h_cap_btn.setChecked(self.backend.auto_h_cap)
+        self.auto_bonds_btn = self.button("Auto Bonds", self.toggle_auto_recalc_bonds, layout=row)
+        self.auto_bonds_btn.setCheckable(True)
+        self.auto_bonds_btn.setChecked(self.backend.auto_recalc_bonds)
         layout.addLayout(row)
         return self.group("Builder", layout)
 
@@ -513,7 +516,11 @@ class KekuleExplorerWindow(BaseGUI):
         if mode == 'Select':
             self.scene.set_selection_mode(True)
             self.scene.lock_drag = False
-            self.statusBar().showMessage("Selection Mode: RMB drag to select | Delete: Remove | Ctrl-C: Copy | Ctrl-V: Paste | LMB: Drag selected")
+            self.statusBar().showMessage("LMB: Select/Deselect | RMB: Delete | Scroll: Zoom")
+        elif mode == 'Bond':
+            self.scene.set_selection_mode(False)
+            self.scene.lock_drag = True   # No atom dragging in bond mode
+            self.statusBar().showMessage("LMB: Insert atom into bond | RMB: Collapse bond | Scroll: Zoom")
         elif mode in ('Hex1', 'Hex2'):
             self.scene.set_selection_mode(False)
             self.scene.lock_drag = True   # No atom dragging in hex mode
@@ -531,6 +538,10 @@ class KekuleExplorerWindow(BaseGUI):
     def toggle_auto_h_cap(self):
         self.backend.auto_h_cap = self.auto_h_cap_btn.isChecked()
         debug_print(2, f"Auto H-cap: {self.backend.auto_h_cap}")
+
+    def toggle_auto_recalc_bonds(self):
+        self.backend.auto_recalc_bonds = self.auto_bonds_btn.isChecked()
+        debug_print(2, f"Auto Recalc Bonds: {self.backend.auto_recalc_bonds}")
 
     def set_label_mode(self, mode):
         """Set label display mode."""
@@ -689,9 +700,9 @@ class KekuleExplorerWindow(BaseGUI):
                 self.hover_markers.visible = False
 
     def on_atom_remove(self, idx):
-        """Remove atom at index and refresh view. Only in non-Hex modes."""
-        if self.edit_mode in ('Hex1', 'Hex2'):
-            return   # In Hex modes, RMB on atoms is ignored (hex removal handled by handle_click)
+        """Remove atom at index and refresh view. Only in Atom/pi/Select modes."""
+        if self.edit_mode in ('Hex1', 'Hex2', 'Bond'):
+            return   # In Hex/Bond modes, RMB is handled by handle_click (hex removal / bond collapse)
         # Find which node_key corresponds to this atom index
         node_to_remove = None
         if idx < len(self.backend.atom_pin):
@@ -805,6 +816,11 @@ class KekuleExplorerWindow(BaseGUI):
         if self.edit_mode in ('Hex1', 'Hex2'):
             q, r = self.backend.snap_to_ring(x, y)
             node_key = None
+        elif self.edit_mode == 'Bond':
+            # Bond mode: pick bond
+            bond = self.backend.pick_bond(p_world)
+            node_key = None
+            q, r = (None, None)
         else:
             node_key = self.backend.snap_to_node(x, y)
             q, r = (None, None)
@@ -820,6 +836,11 @@ class KekuleExplorerWindow(BaseGUI):
             if self.edit_mode in ('Hex1', 'Hex2'):
                 if q is not None and r is not None:
                     self.backend.add_ring(q, r)
+            elif self.edit_mode == 'Bond':
+                if bond is not None:
+                    # Pass Bond object directly (not index!)
+                    new_atom = self.backend.insert_atom_into_bond(bond, self.cur_atom_type)
+                    debug_print(2, f"Inserted atom into bond {bond._id}, new atom {new_atom._id}")
             elif self.edit_mode == 'pi':
                 # Cycle pi orbitals: 0 -> 1 -> 2 -> 0
                 if node_key:
@@ -837,6 +858,11 @@ class KekuleExplorerWindow(BaseGUI):
             if self.edit_mode in ('Hex1', 'Hex2'):
                 if q is not None and r is not None:
                     self.backend.remove_ring(q, r)
+            elif self.edit_mode == 'Bond':
+                if bond is not None:
+                    # Pass Bond object directly (not index!)
+                    survivor = self.backend.collapse_bond(bond, np.array([x, y]))
+                    debug_print(2, f"Collapsed bond {bond._id}, survivor atom {survivor._id}")
             elif node_key:
                 self.backend.remove_atom(node_key)
         elif action == 'toggle_h':
