@@ -1413,4 +1413,308 @@ For 2D graphene-like systems:
 2. Two distinct ring interaction modes (paint vs toggle)
 3. Chemically accurate hydrogen placement based on hybridization
 4. Robust geometry calculations using proven C++ constants
+
+---
+
+# Session: Bond-Centric and Ring-Centric Editing with Visualization
+
+## Overview
+
+This session implemented bond-centric and ring-centric editing features with interactive visualization for the Kekule Structure Explorer. The focus was on:
+1. Geometry-based ring detection and visualization (not just hex grid tiles)
+2. Interactive picking for atoms, bonds, and rings
+3. Hover visualization to debug and visualize the picking system
+4. GUI compactification for better space utilization
+5. Verbosity-controlled debug output system
+
+## Design Motivation and Goals
+
+### Motivation
+
+The original hex grid system (Hex1/Hex2 modes) was limited to benzene rings (6-membered) on a fixed hexagonal lattice. This made it impossible to:
+- Create rings with different sizes (5-membered pyrrole, 7-membered azulene fragments, etc.)
+- Visualize and interact with actual molecular rings detected from the bond graph
+- Edit bonds directly (bond-centric editing)
+- Have accurate visualization of what the user is hovering over
+
+### Design Goals
+
+1. **Geometry-based rings**: Detect rings from the actual bond graph using cycle detection, not from axial coordinates
+2. **Interactive picking**: Allow users to pick atoms, bonds, and rings by geometric proximity
+3. **Visual feedback**: Provide hover visualization to show what's being picked
+4. **Backward compatibility**: Keep the hex grid system for Hex1/Hex2 modes while adding geometry-based rings
+5. **Compact GUI**: Reduce vertical space usage in the side panel
+6. **Controlled verbosity**: Reduce terminal noise with verbosity levels
+
+## Implementation Details
+
+### 1. Geometry-Based Ring System (AtomicGraph.py)
+
+#### Modified Ring Class
+
+**Location**: `pyBall/AtomicGraph.py:Ring` class
+
+**Changes**:
+- Added `bonds` list to store bonds in the ring (ordered cycle)
+- Added `atoms` list to store ordered atoms in the ring (n-gon cycle)
+- Added `cog` (center of geometry) computed from atom positions
+- Added `_id` for unique identification
+
+**Design Decision**: Store rings as ordered n-gons (cycles) with bonds and atoms, not as axial coordinate-based tiles. This allows rings of any size (4, 5, 6, 7, etc.) and accurate geometry.
+
+#### Ring Detection Algorithm
+
+**Location**: `pyBall/AtomicGraph.py:detect_rings(max_ring_size=8)`
+
+**Implementation**:
+- Uses DFS (depth-first search) to find cycles in the bond graph
+- Starts from each atom, explores neighbors up to `max_ring_size` depth
+- Detects cycles by checking if we return to the starting atom with the correct path length
+- Filters duplicates by canonical representation (sorted atom IDs)
+- Returns list of Ring objects with ordered atoms, bonds, and COG
+
+**Design Decision**: Use DFS with max_ring_size=8 to detect rings up to 8-membered rings. This covers most organic molecules while avoiding exponential explosion for large graphs.
+
+### 2. Picking System
+
+#### Atom Picking
+
+**Location**: `pyBall/AtomicGraph.py:pick_atom(pos, radius=0.5)`
+
+**Implementation**:
+- Finds atom within `radius` of position
+- Returns Atom object or None
+
+#### Bond Picking
+
+**Location**: `pyBall/AtomicGraph.py:pick_bond(pos, radius=0.5)`
+
+**Implementation**:
+- Computes center of each bond (midpoint of atom positions)
+- Finds bond whose center is within `radius` of position
+- Returns Bond object or None
+
+**Design Decision**: Pick bonds by center point with radius, not by line distance. This is simpler and more intuitive for users.
+
+#### Ring Picking
+
+**Location**: `pyBall/AtomicGraph.py:pick_ring(pos, radius=1.0)`
+
+**Implementation**:
+- Finds ring whose COG is within `radius` of position
+- Returns Ring object or None
+
+**Design Decision**: Pick rings by COG with larger radius (1.0) to make it easier to select rings.
+
+### 3. Backend Integration (KekuleBackend.py)
+
+#### Separation of Hex Tiles and Geometry Rings
+
+**Location**: `pyBall/KekuleBackend.py:__init__`
+
+**Changes**:
+- Added `hex_tiles` set to store axial coordinates (q,r) for Hex1/Hex2 modes
+- Added `geometry_rings` property to return detected Ring objects from `graph.rings`
+- Modified `rings` property to return `hex_tiles` for legacy compatibility
+- Added `_rings_dirty` flag to optimize ring detection (only re-detect when structure changes)
+
+**Design Decision**: Separate hex grid tiles (for Hex1/Hex2 editing) from geometry rings (detected from bonds). This allows both systems to coexist without conflict.
+
+#### Ring Detection Optimization
+
+**Location**: `pyBall/KekuleBackend.py:detect_geometry_rings(max_ring_size=8)`
+
+**Implementation**:
+- Only re-detects rings if `_rings_dirty` flag is set
+- Clears existing geometry rings and re-runs detection
+- Sets `_rings_dirty = False` after detection
+
+**Design Decision**: Use dirty flag to avoid expensive ring detection on every mouse move. Only detect when structure changes (add/remove atoms, recalc bonds).
+
+#### Picking Helpers
+
+**Location**: `pyBall/KekuleBackend.py:pick_atom()`, `pick_bond()`, `pick_ring()`
+
+**Implementation**:
+- Delegates to `AtomicGraph` methods
+- Centralized picking interface for GUI
+
+### 4. Hover Visualization (VispyUtils.py)
+
+#### New Visual Elements
+
+**Location**: `pyBall/VispyUtils.py:AtomScene.__init__`
+
+**Added Visuals**:
+- `hover_bond_line`: Line visual for hovered bond (lime color, thick)
+- `hover_ring_lines`: Line visual for ring polygon (cyan color)
+- `hover_ring_markers`: Markers visual for COG-to-atom lines
+- `hover_ring_text`: Text visual for atom count at COG
+
+**Z-order and GL State**:
+- Added to z-order enumeration (behind atoms but in front of bonds)
+- Set GL state for transparency
+
+**Design Decision**: Use lime for bonds, cyan for rings to distinguish from regular rendering. Show polygon, COG lines, and atom count for comprehensive ring visualization.
+
+### 5. GUI Integration (KekuleExplorerGUI.py)
+
+#### Mouse Move Handler
+
+**Location**: `pyBall/KekuleExplorerGUI.py:on_mouse_move()`
+
+**Implementation**:
+- Calls `backend.detect_geometry_rings()` (optimized with dirty flag)
+- Picks atom, bond, ring using backend helpers
+- Clears hover visuals
+- Updates hover visuals:
+  - Bond: lime thick line between bond atoms
+  - Ring: cyan polygon + cyan lines from COG to atoms + atom count text at COG
+  - Hex mode: orange discs for hex grid nodes (legacy)
+
+**Design Decision**: Detect rings on every mouse move but use dirty flag optimization. This ensures rings are always up-to-date without performance penalty.
+
+### 6. Capping Hydrogen Bonds Fix
+
+**Problem**: Capping hydrogens showed visible bonds to host atoms, which was visually incorrect.
+
+**Location**: `pyBall/KekuleBackend.py:adjust_h()`
+
+**Fix**:
+- Removed H cap bonds from `sys.bonds` array
+- Marked H caps with `-1` in `ngs` (neighbor graph) to indicate virtual bonds
+- H caps are still added to the graph with `parent` relationship
+
+**Design Decision**: H caps are virtual caps, not real bonds. They should not be rendered as bonds but should still be tracked in the graph for removal.
+
+### 7. Auto H-Cap Toggle
+
+**Location**: `pyBall/KekuleBackend.py` and `pyBall/KekuleExplorerGUI.py`
+
+**Implementation**:
+- Added `auto_h_cap` flag to backend (default True)
+- Made `adjust_h()` calls conditional on this flag in:
+  - `set_atom_type()`
+  - `set_atom_valency()`
+  - `add_atom_at_position()`
+- Added "Auto H" checkbox to Builder section in GUI
+- Added `toggle_auto_h_cap()` method to control the flag
+
+**Design Decision**: Allow users to disable automatic hydrogen adjustment for manual control. Default to True for convenience.
+
+### 8. GUI Compactification
+
+**Location**: `pyBall/KekuleExplorerGUI.py:create_*_section()`
+
+**Changes**:
+- **Builder section**: Put atom type and Auto H button in horizontal row
+- **Editor section**: Packed buttons into 4 horizontal rows:
+  - Row 1: Snap, Adj H, Bond
+  - Row 2: Labels combo
+  - Row 3: Bond Colors, Debug View
+  - Row 4: Show XYZ, Export XYZ
+- **Fireball section**: Packed Z-height/Orbital index and plot buttons into horizontal rows
+- **Side panel**: Reduced spacing between sections from 10px to 1px
+- **Button text**: Shortened text ("Snap to Grid"→"Snap", "Adjust H"→"Adj H", etc.)
+
+**Design Decision**: Use horizontal layouts to pack buttons tightly. This reduces vertical space usage significantly while maintaining functionality.
+
+### 9. Verbosity-Controlled Debug Output
+
+**Location**: `pyBall/KekuleExplorerGUI.py` and `pyBall/KekuleBackend.py`
+
+**Implementation**:
+- Added global `VERBOSITY_LEVEL = 2` (default)
+- Added `debug_print(level, message)` function
+- Updated all print statements to use `debug_print()` with appropriate levels
+
+**Verbosity Levels**:
+- **Level 0**: Only exceptions and explicit prints (no verbosity check)
+- **Level 1**: Warnings and complex operation reports (INFO, WARNING, ribbon generation, SCF, plots)
+- **Level 2**: Click and action prints (default - Edit Mode, Atom Type, Auto H-cap, Click at, Deleted/Copied/Pasted atoms)
+- **Level 3**: Hovered prints (most verbose - Hovered bond/ring)
+
+**Design Decision**: Use 4-level verbosity system with default level 2. This reduces terminal noise while keeping important action feedback. Level 3 for hovered items is too verbose for normal use.
+
+## Files Modified
+
+### AtomicGraph.py
+- Modified `Ring` class to store bonds, ordered atoms, and compute COG
+- Added `detect_rings(max_ring_size=8)` method using DFS cycle detection
+- Added `pick_atom()`, `pick_bond()`, `pick_ring()` methods
+- Modified `to_arrays()` to return bond_list and ring_list
+
+### KekuleBackend.py
+- Added `hex_tiles` set for hex grid tile storage
+- Added `geometry_rings` property for detected Ring objects
+- Added `_rings_dirty` flag for ring detection optimization
+- Added `detect_geometry_rings()` method with dirty flag optimization
+- Added picking helpers: `pick_atom()`, `pick_bond()`, `pick_ring()`
+- Modified `adjust_h()` to not add H cap bonds to sys.bonds (virtual bonds)
+- Added `auto_h_cap` flag for automatic hydrogen adjustment
+- Made `adjust_h()` calls conditional on `auto_h_cap`
+- Added verbosity system with VERBOSITY_LEVEL and debug_print()
+- Updated all print statements to use debug_print()
+
+### VispyUtils.py
+- Added hover visuals: hover_bond_line, hover_ring_lines, hover_ring_markers, hover_ring_text
+- Updated z-order and GL state for new visuals
+
+### KekuleExplorerGUI.py
+- Updated `on_mouse_move()` to detect rings and pick atoms/bonds/rings
+- Added hover visualization for bonds (lime thick line)
+- Added hover visualization for rings (cyan polygon + COG lines + atom count)
+- Added "Auto H" checkbox to Builder section
+- Added `toggle_auto_h_cap()` method
+- Compactified GUI with horizontal button layouts
+- Reduced spacing between sections
+- Shortened button text
+- Added verbosity system with VERBOSITY_LEVEL and debug_print()
+- Updated all print statements to use debug_print()
+
+## Future Plans
+
+### Rings with Different Sizes
+
+The geometry-based ring detection system now supports rings of any size (up to max_ring_size). This enables:
+
+1. **5-membered rings**: Pyrrole, furan, thiophene, etc.
+2. **4-membered rings**: Cyclobutane, square planar complexes
+3. **7-membered rings**: Azulene fragments, cycloheptatriene
+4. **Fused ring systems**: Azulene (5+7), indene (6+5), etc.
+
+### Bond-Centric Editing
+
+With bond picking and visualization implemented, future work includes:
+- Select and delete bonds directly
+- Change bond order (single/double/triple)
+- Insert atoms between bonds
+- Bond length constraints during relaxation
+
+### Ring-Centric Editing
+
+With ring detection and visualization implemented, future work includes:
+- Select rings by clicking (COG-based picking already works)
+- Delete rings (remove all atoms in ring)
+- Insert rings at specific positions
+- Ring fusion operations
+
+### Enhanced Visualization
+
+Future visualization improvements:
+- Highlight all bonds in a ring
+- Show bond orders (single/double/triple) with different colors/widths
+- Show aromatic rings with special highlighting
+- 3D visualization for out-of-plane rings
+
+## Summary
+
+This session implemented a comprehensive geometry-based ring detection and visualization system that:
+- Separates hex grid editing (Hex1/Hex2) from molecular ring detection
+- Provides interactive picking for atoms, bonds, and rings
+- Offers hover visualization for debugging and user feedback
+- Compacts the GUI for better space utilization
+- Controls debug output with verbosity levels
+
+The foundation is now in place to support rings of any size and enable bond-centric and ring-centric editing features.
 5. 2D-aware direction calculations for graphene-like systems

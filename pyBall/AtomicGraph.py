@@ -64,18 +64,30 @@ class Bond:
 # ─── Ring ───────────────────────────────────────────────────────────────────
 
 class Ring:
-    __slots__ = ('q', 'r', 'atoms', '_id')
+    __slots__ = ('atoms', 'bonds', 'cog', '_id')
     _counter = 0
 
-    def __init__(self, q: int, r: int, atoms):
+    def __init__(self, atoms, bonds):
+        """Ring as real geometry cycle (n-gon).
+        Args:
+            atoms: list[Atom] - ordered list of atoms in the cycle
+            bonds: list[Bond] - ordered list of bonds in the cycle
+        """
         Ring._counter += 1
-        self._id  = Ring._counter
-        self.q    = q
-        self.r    = r
-        self.atoms = list(atoms)    # [Atom, ...] — object refs, not indices
+        self._id   = Ring._counter
+        self.atoms = list(atoms)    # [Atom, ...] — ordered cyclically
+        self.bonds = list(bonds)    # [Bond, ...] — ordered cyclically
+        self.cog   = self._compute_cog()
+
+    def _compute_cog(self):
+        """Compute center of geometry as average of atom positions."""
+        if not self.atoms:
+            return np.zeros(3)
+        positions = np.array([a.pos for a in self.atoms])
+        return np.mean(positions, axis=0)
 
     def __repr__(self):
-        return f"Ring({self._id} ({self.q},{self.r}) natoms={len(self.atoms)})"
+        return f"Ring({self._id} natoms={len(self.atoms)})"
 
 
 # ─── AtomicGraph ────────────────────────────────────────────────────────────
@@ -88,7 +100,7 @@ class AtomicGraph:
     def __init__(self):
         self.atoms  = {}    # id -> Atom
         self.bonds  = {}    # id -> Bond
-        self.rings  = {}    # (q,r) -> Ring   (axial key is the natural unique key)
+        self.rings  = {}    # id -> Ring
         self._pin_to_atom = {}   # (rx,ry) -> Atom  — kept in sync with every add/remove
 
     # ── Atom operations ──────────────────────────────────────────────────────
@@ -144,18 +156,54 @@ class AtomicGraph:
 
     # ── Ring operations ──────────────────────────────────────────────────────
 
-    def add_ring(self, q: int, r: int, atoms) -> Ring:
-        key = (q, r)
-        assert key not in self.rings, f"Ring {key} already exists"
-        ring = Ring(q, r, atoms)
-        self.rings[key] = ring
+    def add_ring(self, atoms, bonds) -> Ring:
+        """Add a geometry-based ring (n-gon cycle).
+        Args:
+            atoms: list[Atom] - ordered list of atoms in the cycle
+            bonds: list[Bond] - ordered list of bonds in the cycle
+        """
+        ring = Ring(atoms, bonds)
+        self.rings[ring._id] = ring
         return ring
 
-    def remove_ring(self, q: int, r: int):
-        self.rings.pop((q, r), None)
+    def remove_ring(self, ring: Ring):
+        self.rings.pop(ring._id, None)
 
-    def ring_at(self, q: int, r: int) -> 'Ring | None':
-        return self.rings.get((q, r))
+    def detect_rings(self, max_ring_size=8):
+        """Detect all rings (cycles) in the bond graph using DFS.
+        Returns list of Ring objects.
+        """
+        # Build adjacency list
+        adj = {a._id: [b.other(a) for b in a.bonds] for a in self.atoms.values()}
+        visited = set()
+        rings = []
+
+        def dfs(start, current, path_atoms, path_bonds, visited_edges):
+            if len(path_atoms) > max_ring_size:
+                return
+            if current._id in visited:
+                return
+            for neighbor in adj[current._id]:
+                edge = self.get_bond(current, neighbor)
+                if edge is None:
+                    continue
+                edge_key = frozenset((current._id, neighbor._id))
+                if edge_key in visited_edges:
+                    continue
+                if neighbor._id == start._id and len(path_atoms) >= 3:
+                    # Found a cycle
+                    rings.append(self.add_ring(path_atoms + [neighbor], path_bonds + [edge]))
+                    continue
+                if neighbor._id not in [a._id for a in path_atoms]:
+                    dfs(start, neighbor, path_atoms + [neighbor], path_bonds + [edge],
+                        visited_edges | {edge_key})
+
+        for atom in self.atoms.values():
+            if atom._id in visited:
+                continue
+            dfs(atom, atom, [], [], set())
+
+        return rings
 
     # ── Bulk bond rebuild ─────────────────────────────────────────────────────
 
@@ -176,9 +224,11 @@ class AtomicGraph:
     # ── Export for numpy/vispy ─────────────────────────────────────────────────
 
     def to_arrays(self):
-        """Return (atom_list, enames, apos, bonds_idx) for rendering.
+        """Return (atom_list, enames, apos, atypes, bonds_idx, bond_list, ring_list) for rendering.
         atom_list[i] is the Atom object at index i.
         bonds_idx is (N,2) int array of indices into atom_list.
+        bond_list[i] is the Bond object at index i (parallel to bonds_idx).
+        ring_list is list of Ring objects.
         Index assignment is stable within one call; call again after mutations.
         """
         atom_list = list(self.atoms.values())
@@ -187,13 +237,16 @@ class AtomicGraph:
         apos   = np.array([a.pos   for a in atom_list], dtype=np.float64)
         atypes = np.array([a.atype for a in atom_list], dtype=np.int32)
         bond_pairs = []
+        bond_list = []
         for bond in self.bonds.values():
             ia = idx.get(bond.a._id)
             ib = idx.get(bond.b._id)
             if ia is not None and ib is not None:
                 bond_pairs.append((ia, ib))
+                bond_list.append(bond)
         bonds = np.array(bond_pairs, dtype=np.int32).reshape(-1, 2) if bond_pairs else np.zeros((0, 2), dtype=np.int32)
-        return atom_list, enames, apos, atypes, bonds
+        ring_list = list(self.rings.values())
+        return atom_list, enames, apos, atypes, bonds, bond_list, ring_list
 
     # ── Convenience queries ───────────────────────────────────────────────────
 
@@ -205,6 +258,30 @@ class AtomicGraph:
 
     def neighbors(self, atom: Atom):
         return [b.other(atom) for b in atom.bonds]
+
+    # ── Picking helpers ────────────────────────────────────────────────────────
+
+    def pick_atom(self, pos, radius=0.5):
+        """Find atom within radius of position. Returns Atom or None."""
+        for atom in self.atoms.values():
+            if np.linalg.norm(atom.pos - pos) < radius:
+                return atom
+        return None
+
+    def pick_bond(self, pos, radius=0.5):
+        """Find bond whose center is within radius of position. Returns Bond or None."""
+        for bond in self.bonds.values():
+            center = (bond.a.pos + bond.b.pos) / 2
+            if np.linalg.norm(center - pos) < radius:
+                return bond
+        return None
+
+    def pick_ring(self, pos, radius=1.0):
+        """Find ring whose COG is within radius of position. Returns Ring or None."""
+        for ring in self.rings.values():
+            if np.linalg.norm(ring.cog - pos) < radius:
+                return ring
+        return None
 
     def __repr__(self):
         return f"AtomicGraph(atoms={len(self.atoms)}, bonds={len(self.bonds)}, rings={len(self.rings)})"

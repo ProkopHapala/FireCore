@@ -6,11 +6,26 @@ AtomicSystem is the authoritative store; grid mappings are auxiliary.
 Each UI action triggers exactly one mutation of the backend state.
 """
 
+import sys
+import os
 import numpy as np
-from . import atomicUtils as au
-from . import elements
-from .AtomicSystem import AtomicSystem
-from .AtomicGraph import AtomicGraph, Atom
+from pyBall.AtomicSystem import AtomicSystem
+from pyBall.AtomicGraph import AtomicGraph
+from pyBall import elements
+from pyBall import atomicUtils as au
+
+# Global verbosity level for debug prints (sync with KekuleExplorerGUI)
+# 0: Only exceptions and explicit prints
+# 1: Warnings and complex operation reports
+# 2: Click and action prints (default)
+# 3: Hovered prints (most verbose)
+VERBOSITY_LEVEL = 2
+
+def debug_print(level, message):
+    """Print message if verbosity level is >= specified level."""
+    global VERBOSITY_LEVEL
+    if VERBOSITY_LEVEL >= level:
+        print(message)
 
 # ============ Honeycomb geometry helpers ============
 
@@ -109,12 +124,22 @@ class KekuleBackend:
         self.pbc_y = False
         self.vacuum_gap = 15.0
         self.hex_mode = 'Hex1'  # 'Hex1' = paint mode (force add/remove), 'Hex2' = toggle mode (preserve shared)
+        # Separate storage for hex grid tiles (for Hex1/Hex2 editing)
+        self.hex_tiles = set()  # set of (q,r) tuples
+        self._rings_dirty = True  # flag to re-detect geometry rings
+        self.auto_h_cap = True  # auto-adjust hydrogen caps when structure changes
 
     # ── Properties for GUI compatibility ─────────────────────────────────────
 
     @property
     def rings(self):
-        return set(self.graph.rings.keys())
+        """Return set of hex tile coordinates for Hex1/Hex2 mode (legacy)."""
+        return self.hex_tiles
+
+    @property
+    def geometry_rings(self):
+        """Return list of geometry-based Ring objects from bond graph."""
+        return list(self.graph.rings.values())
 
     @property
     def atom_pin(self):
@@ -143,12 +168,12 @@ class KekuleBackend:
 
     @property
     def ring_atoms(self):
-        """Dict {(q,r): [int indices]} for legacy code."""
+        """Dict {ring_id: [int indices]} for geometry rings."""
         atom_list, *_ = self.graph.to_arrays()
         idx = {a._id: i for i, a in enumerate(atom_list)}
         result = {}
-        for key, ring in self.graph.rings.items():
-            result[key] = [idx[a._id] for a in ring.atoms if a._id in idx]
+        for ring_id, ring in self.graph.rings.items():
+            result[ring_id] = [idx[a._id] for a in ring.atoms if a._id in idx]
         return result
 
     # ── Internal helpers ──────────────────────────────────────────────────────
@@ -172,26 +197,45 @@ class KekuleBackend:
                                 ename, atype, pin=pin, parent=parent, subtype=subtype)
         return a  # return Atom object; callers that need int index use graph.to_arrays()
 
-    def _rebuild_ring_atoms(self):
-        """Rebuild Ring.atoms lists for all rings from current graph._pin_to_atom."""
-        n2a = self.graph._pin_to_atom
-        for key, ring in self.graph.rings.items():
-            ring.atoms = []
-            for node in honeycomb_ring_nodes(key[0], key[1], self.a_CC):
-                nk = snap_to_grid(node, self.a_CC)
-                a = n2a.get(nk)
-                if a is not None:
-                    ring.atoms.append(a)
-
     def _sync_sys(self):
         """Rebuild self.sys arrays from graph for rendering/export. Called before any sys read."""
-        atom_list, enames, apos, atypes, bonds = self.graph.to_arrays()
+        atom_list, enames, apos, atypes, bonds, bond_list, ring_list = self.graph.to_arrays()
         self.sys.apos    = apos.astype(np.float64)
         self.sys.enames  = enames
         self.sys.atypes  = atypes
         self.sys.natoms  = len(atom_list)
         self.sys.bonds   = bonds if len(bonds) else None
         self.sys.ngs     = None  # invalidate neighbor cache
+        # Store bond_list and ring_list for picking/visualization
+        self._bond_list = bond_list
+        self._ring_list = ring_list
+
+    def detect_geometry_rings(self, max_ring_size=8):
+        """Detect geometry rings from bond graph and store them in graph.rings.
+        Only re-detects if _rings_dirty flag is set (structure changed).
+        """
+        if not self._rings_dirty:
+            return list(self.graph.rings.values())
+        # Clear existing geometry rings (but keep hex tiles)
+        self.graph.rings.clear()
+        # Detect rings from bond graph
+        rings = self.graph.detect_rings(max_ring_size=max_ring_size)
+        self._rings_dirty = False
+        return rings
+
+    # ── Picking helpers ────────────────────────────────────────────────────────
+
+    def pick_atom(self, pos, radius=0.5):
+        """Find atom within radius of position. Returns Atom or None."""
+        return self.graph.pick_atom(pos, radius)
+
+    def pick_bond(self, pos, radius=0.5):
+        """Find bond whose center is within radius of position. Returns Bond or None."""
+        return self.graph.pick_bond(pos, radius)
+
+    def pick_ring(self, pos, radius=1.0):
+        """Find ring whose COG is within radius of position. Returns Ring or None."""
+        return self.graph.pick_ring(pos, radius)
     
     def _get_npi_from_subtype(self, subtype):
         """Extract npi (number of pi bonds) from subtype string."""
@@ -229,8 +273,8 @@ class KekuleBackend:
         """Add a benzene ring at axial position (q, r).
 
         Behavior depends on self.hex_mode:
-        - Hex1 (paint): Add atoms at all 6 nodes if not present, do NOT track ring.
-        - Hex2 (toggle): Add atoms only at empty nodes, track ring. Idempotent if already present.
+        - Hex1 (paint): Add atoms at all 6 nodes if not present.
+        - Hex2 (toggle): Add atoms only at empty nodes. Idempotent if already present.
         """
         key = (q, r)
         n2a = self.graph._pin_to_atom
@@ -242,24 +286,17 @@ class KekuleBackend:
                                         'C', elements.ELEMENT_DICT['C'][0],
                                         pin=nk, parent=None, subtype='C_sp2')
                 new_atoms.append(a)
-        if self.hex_mode == 'Hex2':
-            # Toggle mode: track the ring
-            if key in self.rings:
-                return
-            ring_atoms = [n2a[snap_to_grid(nd, self.a_CC)]
-                          for nd in honeycomb_ring_nodes(q, r, self.a_CC)
-                          if snap_to_grid(nd, self.a_CC) in n2a]
-            self.graph.add_ring(q, r, ring_atoms)
-        # Hex1 (paint): no ring tracking
+        self.hex_tiles.add(key)
         if new_atoms:
             self.recalc_bonds()
+        self._rings_dirty = True
     
     def remove_ring(self, q, r):
         """Remove atoms at the 6 node positions of hexagon at axial (q,r).
 
         Behavior depends on self.hex_mode:
-        - Hex1 (paint): Remove all atoms at 6 nodes (no sharing check), no ring tracking.
-        - Hex2 (toggle): Remove only atoms NOT shared with other rings, remove ring from tracking.
+        - Hex1 (paint): Remove all atoms at 6 nodes (no sharing check).
+        - Hex2 (toggle): Remove only atoms NOT shared with other hex tiles.
 
         In both modes, H atoms attached to removed heavy atoms are also removed.
         """
@@ -271,28 +308,31 @@ class KekuleBackend:
             atom = n2a.get(nk)
             if atom is not None and atom not in to_remove:
                 if self.hex_mode == 'Hex2':
-                    # Toggle mode: preserve shared atoms
-                    shared = any(
-                        atom in other_ring.atoms
-                        for other_key, other_ring in self.graph.rings.items()
-                        if other_key != key
-                    )
+                    # Toggle mode: preserve atoms shared with other hex tiles
+                    shared = False
+                    for other_q, other_r in self.hex_tiles:
+                        if (other_q, other_r) == key:
+                            continue
+                        for other_node in honeycomb_ring_nodes(other_q, other_r, self.a_CC):
+                            other_nk = snap_to_grid(other_node, self.a_CC)
+                            if other_nk == nk:
+                                shared = True
+                                break
+                        if shared:
+                            break
                     if not shared:
                         to_remove.append(atom)
-                        print(f"  remove_ring({q},{r}) atom {atom._id} pin={atom.pin}: will remove (not shared)")
                 else:
                     # Paint mode: remove all atoms
                     to_remove.append(atom)
-                    print(f"  remove_ring({q},{r}) atom {atom._id} pin={atom.pin}: will remove (paint mode)")
-        if self.hex_mode == 'Hex2':
-            # Toggle mode: remove ring from tracking
-            self.graph.remove_ring(q, r)
+        self.hex_tiles.discard(key)
         # Remove atoms and their H children
         for atom in to_remove:
             for h in self.graph.h_children(atom):
                 self.graph.remove_atom(h)
             self.graph.remove_atom(atom)
         self.recalc_bonds()
+        self._rings_dirty = True
 
     def toggle_ring(self, q, r):
         """Toggle a benzene ring at axial position (q, r)."""
@@ -350,9 +390,9 @@ class KekuleBackend:
                                 element, elements.ELEMENT_DICT[element][0],
                                 pin=node_key, parent=None,
                                 subtype=self._get_element_default_subtype(element))
-            self._rebuild_ring_atoms()
         self.recalc_bonds()
-        self.adjust_h()
+        if self.auto_h_cap:
+            self.adjust_h()
 
     def set_atom_valency(self, node_key, npi):
         """Set npi (pi bond count) for atom at node_key. npi in {0,1,2}."""
@@ -360,11 +400,12 @@ class KekuleBackend:
         if a is None: return
         sp_map = {0: 'sp3', 1: 'sp2', 2: 'sp'}
         a.subtype = f"{a.ename}_{sp_map.get(npi, 'sp2')}"
-        self.adjust_h()
+        if self.auto_h_cap:
+            self.adjust_h()
 
     def add_atom_at_position(self, pos, element, npi=1):
         """Add an atom at arbitrary position (not on grid).
-        
+
         Args:
             pos: (x, y, z) position
             element: element symbol (C, N, O, H)
@@ -378,7 +419,8 @@ class KekuleBackend:
             subtype=f"{element}_sp2" if npi == 1 else f"{element}_sp3"
         )
         self.recalc_bonds()
-        self.adjust_h()
+        if self.auto_h_cap:
+            self.adjust_h()
         return ia
 
     def remove_atom(self, node_key):
@@ -386,19 +428,17 @@ class KekuleBackend:
         atom = self.graph._pin_to_atom.get(node_key)
         if atom is None:
             return
-        # Remove rings that contain this atom (they'd be incomplete)
-        for key in [k for k, ring in self.graph.rings.items() if atom in ring.atoms]:
-            self.graph.remove_ring(*key)
+        # Remove H children
         for h in self.graph.h_children(atom):
             self.graph.remove_atom(h)
+        # Remove the atom
         self.graph.remove_atom(atom)
         self.recalc_bonds()
-
-    # (remove_ring duplicate removed — see above)
+        self._rings_dirty = True
 
     def adjust_h(self):
         """Add/remove H caps based on electron counting: nsigma = nvalence - npi - nepair.
-        
+
         Uses robust geometry from make_epair_geom (AtomicSystem.py) for direction calculation.
         - sp (npi=2, acetylene-like): 180° linear
         - sp3 (npi=0): 109.5° tetrahedral
@@ -409,6 +449,7 @@ class KekuleBackend:
             self.graph.remove_atom(h)
         self.recalc_bonds()
         self._sync_sys()
+        self._rings_dirty = True
         if self.sys.ngs is None: self.sys.neighs()
         
         # Build target sigma count per heavy atom (by object ref)
@@ -450,14 +491,10 @@ class KekuleBackend:
                 self.sys.enames = np.append(self.sys.enames, ['H'])
                 if self.sys.qs is not None: self.sys.qs = np.append(self.sys.qs, 0.0)
                 if self.sys.Rs is not None: self.sys.Rs = np.append(self.sys.Rs, 0.5)
-                if self.sys.bonds is not None:
-                    if self.sys.bonds.ndim == 1 or self.sys.bonds.shape[0] == 0:
-                        self.sys.bonds = np.array([[i, new_idx]], dtype=np.int32)
-                    else:
-                        self.sys.bonds = np.concatenate([self.sys.bonds, np.array([[i, new_idx]], dtype=np.int32)], axis=0)
+                # Don't add H cap bonds to sys.bonds (they're virtual caps, not real bonds)
                 if self.sys.ngs is not None:
-                    self.sys.ngs[i][new_idx] = len(self.sys.bonds)-1 if self.sys.bonds is not None else 1
-                    self.sys.ngs.append({i: len(self.sys.bonds)-1 if self.sys.bonds is not None else 1})
+                    self.sys.ngs[i][new_idx] = -1  # Mark as H cap (virtual bond)
+                    self.sys.ngs.append({i: -1})
                 added_indices.append(new_idx)
                 # Add to graph
                 self.graph.add_atom(h_pos, 'H', elements.ELEMENT_DICT['H'][0],
@@ -540,8 +577,9 @@ class KekuleBackend:
         return []
 
     def recalc_bonds(self):
-        """Recompute bonds in graph AND sync to sys."""
-        self.graph.recalc_bonds(bond_length=self.a_CC)
+        """Recompute bonds from distance threshold."""
+        self.graph.recalc_bonds(self.a_CC)
+        self._rings_dirty = True
         self._sync_sys()
         if self.sys.apos is not None and len(self.sys.apos) > 0:
             self.sys.findBonds(Rcut=3.0, RvdwCut=1.2)
@@ -601,7 +639,7 @@ class KekuleBackend:
             center = 0.5 * (lvs[0] + lvs[1] + lvs[2])
             self.sys.apos += (center - cog_orig)[None, :]
         enames = list(self.sys.enames)
-        print(f"DEBUG: run_relaxation starting with {len(self.sys.apos)} atoms: {dict(zip(*np.unique(enames, return_counts=True)))}")
+        debug_print(1, f"DEBUG: run_relaxation starting with {len(self.sys.apos)} atoms: {dict(zip(*np.unique(enames, return_counts=True)))}")
         nk_x = max(1, int(8 / max(1, lvs[0,0] / 2.46))) if self.pbc_x else 1
         nk_y = max(1, int(8 / max(1, lvs[1,1] / 2.46))) if self.pbc_y else 1
         E, apos_out, forces = dftb_utils.run_pbc(
@@ -1457,15 +1495,15 @@ class KekuleBackend:
 
     def report_state(self):
         """Print summary of the backend state for debugging."""
-        print("=== KekuleBackend State ===")
-        print(f"  rings={self.rings}")
-        print(f"  natoms={len(self.sys.apos)}")
+        debug_print(2, "=== KekuleBackend State ===")
+        debug_print(2, f"  rings={self.rings}")
+        debug_print(2, f"  natoms={len(self.sys.apos)}")
         if len(self.sys.apos) > 0:
             elems = dict(zip(*np.unique(self.sys.enames, return_counts=True)))
-            print(f"  elements={elems}")
-        print(f"  n_pinned={sum(1 for p in self.atom_pin if p is not None)}")
-        print(f"  n_hydrogens={sum(1 for e in self.sys.enames if e == 'H')}")
-        print(f"  n_bonds={len(self.sys.bonds) if self.sys.bonds is not None else 0}")
+            debug_print(2, f"  elements={elems}")
+        debug_print(2, f"  n_pinned={sum(1 for p in self.atom_pin if p is not None)}")
+        debug_print(2, f"  n_hydrogens={sum(1 for e in self.sys.enames if e == 'H')}")
+        debug_print(2, f"  n_bonds={len(self.sys.bonds) if self.sys.bonds is not None else 0}")
 
 
 # ============ Module-level convenience functions ============

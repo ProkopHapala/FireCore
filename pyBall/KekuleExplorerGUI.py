@@ -14,16 +14,32 @@ CODE STYLE POLICIES:
 
 import sys
 import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import numpy as np
 from PyQt5 import QtWidgets, QtCore, QtGui
+from pyBall.GUI.BaseGUI import BaseGUI
+from pyBall.VispyUtils import AtomScene
+from pyBall.KekuleBackend import KekuleBackend
+import pyBall.KekuleBackend as KB
+from pyBall import atomicUtils as au
 from vispy import scene
 
-# Add FireCore to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+# Global verbosity level for debug prints
+# 0: Only exceptions and explicit prints
+# 1: Warnings and complex operation reports
+# 2: Click and action prints (default)
+# 3: Hovered prints (most verbose)
+VERBOSITY_LEVEL = 2
 
-from pyBall.KekuleBackend import KekuleBackend, parse_passivation_string
-from pyBall.AtomicSystem import AtomicSystem
+def debug_print(level, message):
+    """Print message if verbosity level is >= specified level."""
+    global VERBOSITY_LEVEL
+    if VERBOSITY_LEVEL >= level:
+        print(message)
+
 from pyBall import VispyUtils as vu
+from pyBall import elements
 from pyBall import atomicUtils as au
 from pyBall import elements
 from pyBall.GUI.BaseGUI import BaseGUI
@@ -94,6 +110,7 @@ class KekuleExplorerWindow(BaseGUI):
         side_panel.setFrameStyle(QtWidgets.QFrame.StyledPanel)
         side_panel.setFixedWidth(280)
         side_layout = QtWidgets.QVBoxLayout(side_panel)
+        side_layout.setSpacing(1)
         
         # Add sections
         side_layout.addWidget(self.create_ribbon_section())
@@ -180,30 +197,47 @@ class KekuleExplorerWindow(BaseGUI):
 
     def create_builder_section(self):
         layout = QtWidgets.QVBoxLayout()
+        layout.setSpacing(3)
         self.label("Edit Mode:", layout=layout)
         self.mode_combo = self.comboBox(["Hex1", "Hex2", "Atom", "pi", "Select"], self.set_edit_mode, layout=layout)
-        self.label("Atom Type:", layout=layout)
-        self.atom_combo = self.comboBox(["C", "N", "O"], self.set_atom_type, layout=layout)
+        # Compact row for atom type and auto h-cap
+        row = QtWidgets.QHBoxLayout()
+        self.label("Type:", layout=row)
+        self.atom_combo = self.comboBox(["C", "N", "O"], self.set_atom_type, layout=row)
+        self.auto_h_cap_btn = self.button("Auto H", self.toggle_auto_h_cap, layout=row)
+        self.auto_h_cap_btn.setCheckable(True)
+        self.auto_h_cap_btn.setChecked(self.backend.auto_h_cap)
+        layout.addLayout(row)
         return self.group("Builder", layout)
 
     def create_editor_section(self):
         layout = QtWidgets.QVBoxLayout()
-        self.button("Snap to Grid", self.reset_offsets, layout=layout)
-        self.button("Adjust H", self.adjust_h, layout=layout)
-        self.button("Recalc Bonds", self.recalc_bonds, layout=layout)
-        layout.addSpacing(10)
-        self.label("Labels:", layout=layout)
-        self.label_combo = self.comboBox(["Element+Index", "Atomic Type", "Pi Orbitals", "Z-Height", "Charge", "Bond Lengths"], self.set_label_mode, layout=layout)
+        layout.setSpacing(3)
+        # Compact button row 1
+        row1 = QtWidgets.QHBoxLayout()
+        self.button("Snap", self.reset_offsets, layout=row1)
+        self.button("Adj H", self.adjust_h, layout=row1)
+        self.button("Bond", self.recalc_bonds, layout=row1)
+        layout.addLayout(row1)
+        # Labels combo
+        row2 = QtWidgets.QHBoxLayout()
+        self.label("Labels:", layout=row2)
+        self.label_combo = self.comboBox(["Element+Index", "Atomic Type", "Pi Orbitals", "Z-Height", "Charge", "Bond Lengths"], self.set_label_mode, layout=row2)
+        layout.addLayout(row2)
+        # Compact button row 3
+        row3 = QtWidgets.QHBoxLayout()
         self.bond_viz_mode = False
-        self.button("Bond Colors", self.toggle_bond_viz, layout=layout).setCheckable(True)
-        layout.addSpacing(10)
+        self.button("Bond Colors", self.toggle_bond_viz, layout=row3).setCheckable(True)
         self.debug_view_mode = True
-        self.debug_btn = self.button("Debug View", self.toggle_debug_view, layout=layout)
+        self.debug_btn = self.button("Debug View", self.toggle_debug_view, layout=row3)
         self.debug_btn.setCheckable(True)
         self.debug_btn.setChecked(True)
-        layout.addSpacing(10)
-        self.button("Show XYZ", self.show_xyz, layout=layout)
-        self.button("Export XYZ", self.export_xyz, layout=layout)
+        layout.addLayout(row3)
+        # Compact button row 4
+        row4 = QtWidgets.QHBoxLayout()
+        self.button("Show XYZ", self.show_xyz, layout=row4)
+        self.button("Export XYZ", self.export_xyz, layout=row4)
+        layout.addLayout(row4)
         return self.group("Editor", layout)
 
     def create_dftb_section(self):
@@ -214,25 +248,26 @@ class KekuleExplorerWindow(BaseGUI):
 
     def create_fireball_section(self):
         layout = QtWidgets.QVBoxLayout()
+        layout.setSpacing(3)
         self.button("Compute SCF", self.compute_orbitals, layout=layout)
         self.orbital_info_label = self.label("Orbitals: Not computed", layout=layout, word_wrap=True)
-        layout.addSpacing(10)
-        self.label("Z-height (Å):", layout=layout)
-        self.z_height_spinbox = self.spinBox(2.0, 0.5, layout=layout, vmin=-10.0, vmax=20.0)
-        layout.addSpacing(10)
-        self.label("Orbital Index:", layout=layout)
-        self.orbital_spinbox = self.spinBox(0, vmin=0, vmax=999, enabled=False, callback=self.update_orbital_energy_label, layout=layout, int_mode=True)
-        layout.addSpacing(10)
-        self.plot_orb_btn = self.button("Plot Orbital", self.plot_orbital_from_spinbox, layout=layout)
+        # Compact row for Z-height and orbital index
+        row1 = QtWidgets.QHBoxLayout()
+        self.label("Z:", layout=row1)
+        self.z_height_spinbox = self.spinBox(2.0, 0.5, layout=row1, vmin=-10.0, vmax=20.0)
+        self.label("Orb:", layout=row1)
+        self.orbital_spinbox = self.spinBox(0, vmin=0, vmax=999, enabled=False, callback=self.update_orbital_energy_label, layout=row1, int_mode=True)
+        layout.addLayout(row1)
+        # Compact row for plot buttons
+        row2 = QtWidgets.QHBoxLayout()
+        self.plot_orb_btn = self.button("Plot Orb", self.plot_orbital_from_spinbox, layout=row2)
         self.plot_orb_btn.setEnabled(False)
-        layout.addSpacing(10)
-        self.plot_density_btn = self.button("Plot Density", self.plot_density, layout=layout)
+        self.plot_density_btn = self.button("Plot Dens", self.plot_density, layout=row2)
         self.plot_density_btn.setEnabled(False)
-        layout.addSpacing(10)
-        self.plot_delta_btn = self.button("Plot Delta-Rho", self.plot_delta_rho, layout=layout)
+        self.plot_delta_btn = self.button("Plot Delta", self.plot_delta_rho, layout=row2)
         self.plot_delta_btn.setEnabled(False)
-        layout.addSpacing(10)
-        self.button("Set Fdata Path", self.set_fdata_path, layout=layout)
+        layout.addLayout(row2)
+        self.button("Set Fdata", self.set_fdata_path, layout=layout)
         return self.group("Fireball", layout)
 
     def create_ribbon_section(self):
@@ -359,7 +394,7 @@ class KekuleExplorerWindow(BaseGUI):
             n_H = sum(1 for e in self.backend.sys.enames if e == 'H')
             
             msg = f"Generated single ribbon: C={n_C}, N={n_N}, O={n_O}, H={n_H}"
-            print(msg)
+            debug_print(1, msg)
             self.statusBar().showMessage(msg)
             self.refresh_view()
             
@@ -409,7 +444,7 @@ class KekuleExplorerWindow(BaseGUI):
             n_H = sum(1 for e in self.backend.sys.enames if e == 'H')
             
             msg = f"Generated two-ribbon system: C={n_C}, N={n_N}, O={n_O}, H={n_H}"
-            print(msg)
+            debug_print(1, msg)
             self.statusBar().showMessage(msg)
             self.refresh_view()
             
@@ -435,13 +470,13 @@ class KekuleExplorerWindow(BaseGUI):
         """Plot orbital at the index selected in spinbox."""
         if not hasattr(self, '_eigen'):
             msg = "Please run Compute SCF first."
-            print(f"INFO: {msg}")
+            debug_print(1, f"INFO: {msg}")
             QtWidgets.QMessageBox.information(self, "Info", msg)
             return
         mo_idx = self.orbital_spinbox.value()
         if mo_idx < 0 or mo_idx >= len(self._eigen):
             msg = f"Invalid orbital index: {mo_idx}"
-            print(f"WARNING: {msg}")
+            debug_print(1, f"WARNING: {msg}")
             QtWidgets.QMessageBox.warning(self, "Warning", msg)
             return
         z_height = self.z_height_spinbox.value()
@@ -458,14 +493,14 @@ class KekuleExplorerWindow(BaseGUI):
             enames = self.backend.sys.enames
             self._plot_2d_projection(data_2d, extent, title=f"MO {mo_idx + 1} E={E:+.3f} eV  z={z_height:.1f}Å", cmap='bwr', symmetric=True, atom_pos=pos, atom_types=enames)
             msg = f"Plotted MO {mo_idx + 1}"
-            print(msg)
+            debug_print(1, msg)
             self.statusBar().showMessage(msg)
         except Exception as e:
             self._raise(f"Plot FAILED: {e}", title="Plot Error")
 
     def set_edit_mode(self, mode):
         self.edit_mode = mode
-        print(f"Edit Mode: {mode}")
+        debug_print(2, f"Edit Mode: {mode}")
         # Sync backend hex_mode when switching Hex1/Hex2
         if mode == 'Hex1':
             self.backend.hex_mode = 'Hex1'
@@ -491,7 +526,11 @@ class KekuleExplorerWindow(BaseGUI):
 
     def set_atom_type(self, atype):
         self.cur_atom_type = atype
-        print(f"Atom Type: {atype}")
+        debug_print(2, f"Atom Type: {atype}")
+
+    def toggle_auto_h_cap(self):
+        self.backend.auto_h_cap = self.auto_h_cap_btn.isChecked()
+        debug_print(2, f"Auto H-cap: {self.backend.auto_h_cap}")
 
     def set_label_mode(self, mode):
         """Set label display mode."""
@@ -553,7 +592,7 @@ class KekuleExplorerWindow(BaseGUI):
         self.backend.recalc_bonds()
         self.scene.clear_selection()
         self.refresh_view()
-        print(f"Deleted {len(selected)} atoms")
+        debug_print(2, f"Deleted {len(selected)} atoms")
 
     def copy_selected_atoms(self):
         """Copy currently selected atoms to clipboard."""
@@ -563,12 +602,12 @@ class KekuleExplorerWindow(BaseGUI):
         enames = [self.backend.sys.enames[i] for i in selected]
         apos = [self.backend.sys.apos[i].copy() for i in selected]
         self.copied_atoms = (enames, apos)
-        print(f"Copied {len(selected)} atoms")
+        debug_print(2, f"Copied {len(selected)} atoms")
 
     def paste_copied_atoms(self):
         """Paste copied atoms at original position (duplicate in place)."""
         if self.copied_atoms is None:
-            print("No atoms copied")
+            debug_print(2, "No atoms copied")
             return
         enames, apos_orig = self.copied_atoms
         # Track indices of newly added atoms
@@ -583,14 +622,51 @@ class KekuleExplorerWindow(BaseGUI):
         self.refresh_view()
         # Select the newly pasted atoms
         self.scene.set_selected_indices(new_indices)
-        print(f"Pasted {len(enames)} atoms at original positions")
+        debug_print(2, f"Pasted {len(enames)} atoms at original positions")
 
     def on_mouse_move(self, event):
-        """Update cursor cross position on mouse move and highlight hexagon under cursor."""
+        """Update cursor cross position on mouse move and highlight atom/bond/ring on hover."""
         r0, rd = self.scene._ray_from_mouse(event.pos)
         p_world = self.scene._intersect_ray_plane(r0, rd, np.zeros(3), np.array([0,0,1]))
         if p_world is not None:
             self.cursor_markers.set_data(pos=np.array([p_world]),symbol='cross',edge_width=2,edge_color='red',face_color='transparent',size=10 )
+
+            # Detect geometry rings before picking
+            self.backend.detect_geometry_rings()
+
+            # Picking: atom, bond, ring (in priority order)
+            hovered_atom = self.backend.pick_atom(p_world, radius=0.5)
+            hovered_bond = self.backend.pick_bond(p_world, radius=0.5)
+            hovered_ring = self.backend.pick_ring(p_world, radius=1.0)
+
+            # Clear hover visuals
+            self.scene.hover_bond_line.set_data(pos=np.zeros((0,3)))
+            self.scene.hover_ring_lines.set_data(pos=np.zeros((0,3)))
+            self.scene.hover_ring_markers.set_data(pos=np.zeros((0,3)))
+            self.scene.hover_ring_text.text = ''
+
+            # Highlight hovered bond
+            if hovered_bond:
+                pos_a = hovered_bond.a.pos
+                pos_b = hovered_bond.b.pos
+                self.scene.hover_bond_line.set_data(pos=np.array([pos_a, pos_b], dtype=np.float32))
+                debug_print(3, f"Hovered bond: {hovered_bond}")
+
+            # Highlight hovered ring (polygon + CoG lines + atom count)
+            if hovered_ring:
+                # Draw polygon around ring
+                ring_pos = np.array([a.pos for a in hovered_ring.atoms] + [hovered_ring.atoms[0].pos], dtype=np.float32)
+                self.scene.hover_ring_lines.set_data(pos=ring_pos)
+                # Draw lines from CoG to each atom
+                cog_lines = []
+                for atom in hovered_ring.atoms:
+                    cog_lines.append(hovered_ring.cog)
+                    cog_lines.append(atom.pos)
+                self.scene.hover_ring_markers.set_data(pos=np.array(cog_lines, dtype=np.float32))
+                # Show atom count at CoG
+                self.scene.hover_ring_text.pos = hovered_ring.cog
+                self.scene.hover_ring_text.text = str(len(hovered_ring.atoms))
+                debug_print(3, f"Hovered ring: {hovered_ring} (n={len(hovered_ring.atoms)})")
 
             # Highlight hexagon under mouse if in hex mode
             if self.edit_mode in ('Hex1', 'Hex2') and hasattr(self.backend, 'snap_to_ring'):
@@ -733,7 +809,7 @@ class KekuleExplorerWindow(BaseGUI):
             node_key = self.backend.snap_to_node(x, y)
             q, r = (None, None)
         
-        print(f"Click at ({x:.2f}, {y:.2f}) -> Mode={self.edit_mode} Ring={(q,r)} Node={node_key} | Action: {action}")
+        debug_print(2, f"Click at ({x:.2f}, {y:.2f}) -> Mode={self.edit_mode} Ring={(q,r)} Node={node_key} | Action: {action}")
 
         # Track last clicked node for pi mode
         if node_key:
@@ -753,9 +829,9 @@ class KekuleExplorerWindow(BaseGUI):
                         current_npi = self.backend._get_npi_from_subtype(subtype)
                         new_npi = (current_npi + 1) % 3
                         self.backend.set_atom_valency(node_key, new_npi)
-                        print(f"Set atom {node_key} to npi={new_npi}")
+                        debug_print(2, f"Set atom {node_key} to npi={new_npi}")
             elif node_key:
-                print(f"DEBUG: Setting node {node_key} to {self.cur_atom_type}")
+                debug_print(2, f"DEBUG: Setting node {node_key} to {self.cur_atom_type}")
                 self.backend.set_atom_type(node_key, self.cur_atom_type)
         elif action == 'remove':
             if self.edit_mode in ('Hex1', 'Hex2'):
@@ -906,7 +982,7 @@ class KekuleExplorerWindow(BaseGUI):
     def compute_orbitals(self):
         if len(self.backend.sys.apos) == 0:
             msg = "No atoms to compute orbitals for."
-            print(f"WARNING: {msg}")
+            debug_print(1, f"WARNING: {msg}")
             QtWidgets.QMessageBox.warning(self, "Warning", msg)
             return
 
@@ -918,7 +994,7 @@ class KekuleExplorerWindow(BaseGUI):
         if not os.path.exists(FDATA_DIR):
             if os.path.exists(FDATA_TARGET):
                 os.symlink(FDATA_TARGET, FDATA_DIR)
-                print(f"Created symlink: {FDATA_DIR} -> {FDATA_TARGET}")
+                debug_print(1, f"Created symlink: {FDATA_DIR} -> {FDATA_TARGET}")
             else:
                 msg = f"Neither {FDATA_DIR} nor {FDATA_TARGET} exists. Please download Fdata_HC_minimal from fireball-qmd.github.io"
                 print(f"ERROR: {msg}")
@@ -965,7 +1041,7 @@ class KekuleExplorerWindow(BaseGUI):
             self.update_orbital_energy_label(self._homo)
 
             msg = f"SCF done. HOMO={self._homo + 1} E={self._eigen[self._homo]:.3f} eV  LUMO={self._lumo + 1} E={self._eigen[self._lumo]:.3f} eV"
-            print(msg)
+            debug_print(1, msg)
             self.statusBar().showMessage(msg)
             QtWidgets.QMessageBox.information(self, "SCF Done", f"HOMO={self._homo + 1} E={self._eigen[self._homo]:.3f} eV\nLUMO={self._lumo + 1} E={self._eigen[self._lumo]:.3f} eV")
         except Exception as e:
@@ -1029,7 +1105,7 @@ class KekuleExplorerWindow(BaseGUI):
     def plot_density(self):
         if not hasattr(self, '_eigen'):
             msg = "Please run Compute SCF first."
-            print(f"INFO: {msg}")
+            debug_print(1, f"INFO: {msg}")
             QtWidgets.QMessageBox.information(self, "Info", msg)
             return
         self.statusBar().showMessage("Computing electron density...")
@@ -1045,7 +1121,7 @@ class KekuleExplorerWindow(BaseGUI):
             enames = list(self.backend.sys.enames)
             self._plot_2d_projection( data_2d, extent,title=f"Electron Density (z={z_height:.1f}Å)",cmap='bwr',   symmetric=False,  atom_pos=pos, atom_types=enames  )
             msg = "Density plotted"
-            print(msg)
+            debug_print(1, msg)
             self.statusBar().showMessage(msg)
         except Exception as e:
             self._raise(f"Density plot FAILED: {e}", title="Plot Error")
@@ -1053,7 +1129,7 @@ class KekuleExplorerWindow(BaseGUI):
     def plot_delta_rho(self):
         if not hasattr(self, '_eigen'):
             msg = "Please run Compute SCF first."
-            print(f"INFO: {msg}")
+            debug_print(1, f"INFO: {msg}")
             QtWidgets.QMessageBox.information(self, "Info", msg)
             return
         self.statusBar().showMessage("Computing delta-rho (rho_SCF - rho_NA)...")
@@ -1069,7 +1145,7 @@ class KekuleExplorerWindow(BaseGUI):
             enames = list(self.backend.sys.enames)
             self._plot_2d_projection(data_2d, extent, title=f"Delta-Rho (z={z_height:.1f}Å)", cmap='bwr', symmetric=True, atom_pos=pos, atom_types=enames)
             msg = "Delta-rho plotted"
-            print(msg)
+            debug_print(1, msg)
             self.statusBar().showMessage(msg)
         except Exception as e:
             self._raise(f"Delta-rho plot FAILED: {e}", title="Plot Error")
@@ -1080,7 +1156,7 @@ class KekuleExplorerWindow(BaseGUI):
         if selected:
             self.fdata_path = selected
             self.settings.setValue("fdata_path", selected)
-            print(f"Set Fdata path to: {selected}")
+            debug_print(2, f"Set Fdata path to: {selected}")
             self.statusBar().showMessage(f"Fdata path set to: {selected}")
             QtWidgets.QMessageBox.information(self, "Settings Saved", f"Fdata path set to:\n{selected}")
 
