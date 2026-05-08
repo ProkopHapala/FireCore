@@ -970,6 +970,9 @@ class KekuleBackend:
             self.sys.apos[:] = apos_out - (cog_relaxed - cog_orig)[None, :]
         else:
             self.sys.apos[:] = apos_out
+        # Sync relaxed positions back to AtomicGraph (authoritative source)
+        # This ensures topological operations don't lose the relaxed geometry
+        self.graph.update_positions_from_array(self.sys.apos)
         return E, forces, lvs
 
     def get_xyz_string(self):

@@ -45,17 +45,15 @@ from pyBall import elements
 from pyBall.GUI.BaseGUI import BaseGUI
 from pyBall.VispyUtils import compute_bond_colors_by_length, generate_atom_labels
 
-try:
-    from pyBall import FireCore as fc
-except Exception as e:
-    print(f"ERROR: FireCore not available: {e}")
-    raise
+from pyBall.ExtensionManager import ExtensionManager, ExtensionNotAvailableError
+from pyBall.GUI.CollapsibleSection import CollapsibleSection
 
 class KekuleExplorerWindow(BaseGUI):
     def __init__(self):
         super().__init__("Kekule Structure Explorer")
         self.resize(1024, 768)
 
+        self.extensions = ExtensionManager()
         self.backend = KekuleBackend()
         self.cur_atom_type = 'C'
         self.edit_mode = 'Hex1'  # 'Hex1' (paint), 'Hex2' (toggle), 'Atom', 'pi', 'Select'
@@ -65,9 +63,11 @@ class KekuleExplorerWindow(BaseGUI):
         # Load settings
         self.settings = QtCore.QSettings("FireCore", "KekuleExplorer")
         self.fdata_path = self.settings.value("fdata_path", "/home/prokop/Fireball/Fdata_HCNOS")
-        
+        # Sync fdata_path into ExtensionManager config so FireCore/Grid can find it
+        self.extensions.set_config('firecore', 'fdata_dir', self.fdata_path)
         self.initUI()
-        # Scene now operates directly on backend.sys.apos, no drag signal needed
+        # Scene drag signal: update AtomicGraph and sys.apos after drag end
+        self.scene.sig_drag_state.connect(self.on_drag_state)
         self.scene.sig_rmb_remove.connect(self.on_atom_remove)
         self.scene.sig_camera_changed.connect(self.refresh_view)
         self.refresh_view()
@@ -116,8 +116,7 @@ class KekuleExplorerWindow(BaseGUI):
         side_layout.addWidget(self.create_ribbon_section())
         side_layout.addWidget(self.create_builder_section())
         side_layout.addWidget(self.create_editor_section())
-        side_layout.addWidget(self.create_dftb_section())
-        side_layout.addWidget(self.create_fireball_section())
+        self._build_extension_panels(side_layout)
         side_layout.addStretch()
         
         # Add to main layout
@@ -243,35 +242,38 @@ class KekuleExplorerWindow(BaseGUI):
         layout.addLayout(row4)
         return self.group("Editor", layout)
 
-    def create_dftb_section(self):
-        layout = QtWidgets.QVBoxLayout()
-        self.button("Relax (DFTB+)", self.run_relaxation, layout=layout)
-        self.dftb_status_label = self.label("Status: Ready", layout=layout, word_wrap=True)
-        return self.group("DFTB+", layout)
+    def _build_extension_panels(self, side_layout):
+        """Dynamically add collapsible panels for each enabled extension."""
+        # Register edit/view mode lists for dynamic dispatch
+        self._ext_edit_modes = {}   # label -> callback
+        self._ext_view_modes = {}   # label -> callback
 
-    def create_fireball_section(self):
-        layout = QtWidgets.QVBoxLayout()
-        layout.setSpacing(3)
-        self.button("Compute SCF", self.compute_orbitals, layout=layout)
-        self.orbital_info_label = self.label("Orbitals: Not computed", layout=layout, word_wrap=True)
-        # Compact row for Z-height and orbital index
-        row1 = QtWidgets.QHBoxLayout()
-        self.label("Z:", layout=row1)
-        self.z_height_spinbox = self.spinBox(2.0, 0.5, layout=row1, vmin=-10.0, vmax=20.0)
-        self.label("Orb:", layout=row1)
-        self.orbital_spinbox = self.spinBox(0, vmin=0, vmax=999, enabled=False, callback=self.update_orbital_energy_label, layout=row1, int_mode=True)
-        layout.addLayout(row1)
-        # Compact row for plot buttons
-        row2 = QtWidgets.QHBoxLayout()
-        self.plot_orb_btn = self.button("Plot Orb", self.plot_orbital_from_spinbox, layout=row2)
-        self.plot_orb_btn.setEnabled(False)
-        self.plot_density_btn = self.button("Plot Dens", self.plot_density, layout=row2)
-        self.plot_density_btn.setEnabled(False)
-        self.plot_delta_btn = self.button("Plot Delta", self.plot_delta_rho, layout=row2)
-        self.plot_delta_btn.setEnabled(False)
-        layout.addLayout(row2)
-        self.button("Set Fdata", self.set_fdata_path, layout=layout)
-        return self.group("Fireball", layout)
+        for name in self.extensions.enabled_extensions():
+            ui = self.extensions.build_ui(name, self)
+            sec = CollapsibleSection(name.capitalize(), collapsed=False, parent=self)
+            if ui.panel is not None:
+                sec.setContent(ui.panel)
+                ok = self.extensions.is_loaded(name)
+                sec.set_status(ok, '' if ok else self.extensions.status(name).replace('error: ', '')[:30])
+            else:
+                # Extension failed to load: show reason
+                reason = self.extensions.status(name)
+                lbl = QtWidgets.QLabel(reason.replace('error: ', ''))
+                lbl.setWordWrap(True)
+                lbl.setStyleSheet('color: gray; font-style: italic;')
+                sec.setContent(lbl)
+                sec.set_status(False)
+            side_layout.addWidget(sec)
+
+            for label, cb in ui.edit_modes:
+                self._ext_edit_modes[label] = cb
+                self.mode_combo.addItem(label)
+            for label, cb in ui.view_modes:
+                self._ext_view_modes[label] = cb
+
+    def set_view_mode(self, mode: str):
+        """Called by extension view-mode callbacks."""
+        debug_print(2, f"View mode: {mode}")
 
     def create_ribbon_section(self):
         layout = QtWidgets.QVBoxLayout()
@@ -500,6 +502,13 @@ class KekuleExplorerWindow(BaseGUI):
             self._raise(f"Plot FAILED: {e}", title="Plot Error")
 
     def set_edit_mode(self, mode):
+        # Dispatch to extension edit mode callbacks first
+        if hasattr(self, '_ext_edit_modes') and mode in self._ext_edit_modes:
+            try:
+                self._ext_edit_modes[mode]()
+            except ExtensionNotAvailableError as e:
+                self.statusBar().showMessage(str(e))
+            return
         self.edit_mode = mode
         debug_print(2, f"Edit Mode: {mode}")
         # Sync backend hex_mode when switching Hex1/Hex2
@@ -639,6 +648,35 @@ class KekuleExplorerWindow(BaseGUI):
         # Select the newly pasted atoms
         self.scene.set_selected_indices(new_indices)
         debug_print(2, f"Pasted {len(enames)} atoms at original positions")
+
+    def on_drag_state(self, state, idx, pos):
+        """Handle drag state changes from scene.
+        
+        Args:
+            state: 1 = drag start, 0 = drag end
+            idx: atom index being dragged
+            pos: position of dragged atom
+        
+        On drag end (state=0), sync scene positions back to AtomicGraph (authoritative)
+        and then to sys.apos via _sync_sys(). This ensures all geometry sources stay in sync.
+        Then refresh view to update bond visualization immediately.
+        """
+        if state == 0:  # Drag end
+            # Update AtomicGraph atom positions from scene._pos
+            atom_list, enames, apos, atypes, bonds, bond_list, ring_list = self.backend.graph.to_arrays()
+            scene_pos = self.scene._pos
+            if len(atom_list) != len(scene_pos):
+                debug_print(1, f"WARNING: on_drag_state: atom count mismatch {len(atom_list)} vs {len(scene_pos)}")
+                return
+            for i, atom in enumerate(atom_list):
+                atom.pos[:] = scene_pos[i]
+            # Sync sys.apos from AtomicGraph (now authoritative)
+            self.backend._sync_sys()
+            # Update scene's internal _pos array from sys.apos to keep in sync
+            self.scene.update_positions(self.backend.sys.apos.astype(np.float32))
+            # Refresh view to update bond visualization immediately
+            self.refresh_view()
+            debug_print(2, f"Drag end: synced {len(atom_list)} atom positions to graph and sys")
 
     def on_mouse_move(self, event):
         """Update cursor cross position on mouse move and highlight atom/bond/ring on hover."""
@@ -1056,6 +1094,7 @@ class KekuleExplorerWindow(BaseGUI):
         try:
             atypes = np.array([elements.ELEMENT_DICT[e][0] for e in self.backend.sys.enames], dtype=np.int32)
             apos = np.array(self.backend.sys.apos, dtype=np.float64)
+            fc = self.extensions.require('firecore')
             fc.setVerbosity(0)
             fc.initialize(atomType=atypes, atomPos=apos)
             fc.evalForce(apos, nmax_scf=200)
@@ -1135,6 +1174,7 @@ class KekuleExplorerWindow(BaseGUI):
         Returns:
             flat array of evaluated values
         """
+        fc = self.extensions.require('firecore')
         points_f64 = points.astype(np.float64)
         if what == 'orbital':
             if orb_index is None:
@@ -1206,6 +1246,8 @@ class KekuleExplorerWindow(BaseGUI):
         if selected:
             self.fdata_path = selected
             self.settings.setValue("fdata_path", selected)
+            self.extensions.set_config('firecore', 'fdata_dir', selected)
+            self.extensions.save_config()
             debug_print(2, f"Set Fdata path to: {selected}")
             self.statusBar().showMessage(f"Fdata path set to: {selected}")
             QtWidgets.QMessageBox.information(self, "Settings Saved", f"Fdata path set to:\n{selected}")

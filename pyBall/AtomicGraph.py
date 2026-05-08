@@ -330,6 +330,23 @@ class AtomicGraph:
         ring_list = [r for r in self.rings.values() if r.alive]
         return atom_list, enames, apos, atypes, bonds, bond_list, ring_list
 
+    # ── Position update ───────────────────────────────────────────────────────
+
+    def update_positions_from_array(self, apos):
+        """Update atom positions from array (same order as to_arrays()).
+        
+        Args:
+            apos: (N,3) array of positions, where N matches len(atoms) and order matches to_arrays()
+        
+        This updates geometry only (atom positions), not topology (bonds, rings).
+        Used after external geometry relaxation (e.g., DFTB) to sync relaxed positions back to graph.
+        """
+        atom_list = [a for a in self.atoms.values() if a.alive]
+        if len(atom_list) != len(apos):
+            raise ValueError(f"Position array length {len(apos)} does not match number of alive atoms {len(atom_list)}")
+        for i, atom in enumerate(atom_list):
+            atom.pos[:] = apos[i]
+
     # ── Convenience queries ───────────────────────────────────────────────────
 
     def heavy_atoms(self):

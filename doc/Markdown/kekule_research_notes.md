@@ -2260,3 +2260,130 @@ This session completed the architectural shift to a fully topology-first design 
 4. **Context-aware bond creation**: Hexagon rings use specialized bond creation that bonds all neighbors
 
 The architecture now follows the principle: **topology-first, not distance-first**. The graph is the authoritative source of truth, and distance-based detection is only used when explicitly requested by the user via the AutoBonds button.
+
+---
+
+# Geometry Synchronization Issues
+
+## Problem: Multiple Geometry Sources
+
+The KekuleExplorerGUI maintains geometry in multiple places for efficiency reasons:
+
+1. **AtomicGraph** (`self.graph.atoms[id].pos`) - Authoritative source (topology + geometry)
+2. **AtomicSystem** (`self.sys.apos`) - Render/export state (derived from graph via `_sync_sys()`)
+3. **AtomScene** (`self.scene._pos`) - Scene's internal position array (for fast rendering/dragging)
+
+This multi-source design creates synchronization challenges:
+- External operations (DFTB relaxation) may update only one source
+- User interactions (atom dragging) may update only one source
+- Topological operations may trigger sync that overwrites geometry
+- Visualization may read from stale source
+
+## Issue 1: DFTB Relaxation Geometry Loss
+
+### Problem
+When DFTB relaxation was called:
+1. `run_relaxation()` updated `self.sys.apos` with relaxed positions
+2. `self.graph` (AtomicGraph) was NOT updated
+3. When topological operations triggered `_sync_sys()`, it rebuilt `sys.apos` from the stale `self.graph`
+4. The relaxed geometry was lost
+
+### Root Cause
+Architecture specifies that `self.sys` should be **derived from** `self.graph` via `_sync_sys()`. However, DFTB relaxation violated this by updating `self.sys.apos` directly without updating `self.graph`.
+
+### Solution
+Added `AtomicGraph.update_positions_from_array(apos)` method that updates atom positions in the graph from an array. Modified `KekuleBackend.run_relaxation()` to call this after updating `self.sys.apos`:
+
+```python
+# Sync relaxed positions back to AtomicGraph (authoritative source)
+self.graph.update_positions_from_array(self.sys.apos)
+```
+
+This ensures that the authoritative source (AtomicGraph) is updated after external geometry changes.
+
+## Issue 2: Atom Drag Visualization Lag
+
+### Problem
+When atoms were dragged in Atom edit mode:
+1. Scene updated `self.scene._pos` during drag (fast visualization)
+2. Bond visualization (`on_mouse_move`) read from `self.graph.atoms[id].pos`
+3. `self.graph` atom positions were NEVER updated during drag
+4. Bond visualization showed old positions until another operation triggered sync
+
+### Root Cause
+Scene drag handling updated only `self._pos` (scene's internal array), not the authoritative AtomicGraph. Bond visualization read from AtomicGraph directly, creating a mismatch.
+
+### Solution
+Connected to `AtomScene.sig_drag_state` signal in `KekuleExplorerGUI`. On drag end (mouse release):
+
+```python
+def on_drag_state(self, state, idx, pos):
+    if state == 0:  # Drag end
+        # Update AtomicGraph atom positions from scene._pos
+        atom_list, enames, apos, atypes, bonds, bond_list, ring_list = self.backend.graph.to_arrays()
+        scene_pos = self.scene._pos
+        for i, atom in enumerate(atom_list):
+            atom.pos[:] = scene_pos[i]
+        # Sync sys.apos from AtomicGraph (now authoritative)
+        self.backend._sync_sys()
+        # Update scene's internal _pos array from sys.apos to keep in sync
+        self.scene.update_positions(self.backend.sys.apos.astype(np.float32))
+        # Refresh view to update bond visualization immediately
+        self.refresh_view()
+```
+
+### Design Rationale
+- **During drag**: Only update `self.scene._pos` (fastest for immediate visualization)
+- **On drag end**: Sync to AtomicGraph (authoritative) → then to `sys.apos` → then back to scene
+- This maintains efficiency during interaction while ensuring consistency after interaction
+
+## Architectural Considerations
+
+### Current Design (Multi-Source for Efficiency)
+
+**Hierarchy:**
+1. **AtomicGraph** (authoritative) - topology + geometry
+2. **AtomicSystem** (derived) - render/export state, synced via `_sync_sys()`
+3. **AtomScene** (cache) - scene's internal array, updated during drag
+
+**Pros:**
+- Fast drag visualization (no graph access during drag)
+- Efficient rendering (scene uses internal array)
+- Clean separation (graph for topology, sys for export)
+
+**Cons:**
+- Complex synchronization logic required
+- Multiple sync points where errors can occur
+- Hard to reason about which source is "current"
+- Risk of stale data if sync is missed
+
+### Future Considerations
+
+**Option A: Single Source of Truth**
+- Remove `self.sys.apos` and `self.scene._pos` as separate geometry stores
+- Always read/write through AtomicGraph
+- Pros: No sync issues, single source of truth
+- Cons: Performance overhead (graph access for every render)
+
+**Option B: Explicit Sync API**
+- Create clear sync methods: `sync_to_graph()`, `sync_from_graph()`, `sync_all()`
+- Document when each source should be updated
+- Add assertions to detect sync violations
+- Pros: Maintains efficiency, makes sync explicit
+- Cons: More API surface, still requires discipline
+
+**Option C: Reactive Sync**
+- Use observer pattern to automatically propagate changes
+- When AtomicGraph changes, automatically update derived sources
+- Pros: Automatic sync, less manual code
+- Cons: More complex infrastructure, harder to debug
+
+### Recommendation
+
+For now, keep the current multi-source design for efficiency, but:
+1. **Document sync points clearly** (as done in this section)
+2. **Add debug assertions** to detect sync violations
+3. **Consider Option B** (Explicit Sync API) if sync complexity grows
+4. **Reserve Option A** (Single Source) for future if performance becomes acceptable
+
+The key insight is that multi-source designs are powerful but require discipline. Every operation must explicitly consider which sources it modifies and which it reads from.

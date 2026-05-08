@@ -920,4 +920,223 @@ def toggle_realtime_relax(self):
 3. **Settings dialog granularity:** Should each extension define its own settings UI or use a generic form?
    - **Recommendation:** Generic form based on required_paths/optional_paths from registry
 
+---
+
+# Implementation: Separating GUI Code from Low-Level Modules
+
+## Decision
+
+GUI-related functions (particularly `build_ui` functions) should not be added to low-level modules like `pyBall/FireCore.py` or `pyBall/dftb_utils.py`. These modules should contain only core functionality, while GUI code should be centralized in `pyBall/ExtensionManager.py`.
+
+## Implementation
+
+### Pattern for Extensions with GUI in ExtensionManager
+
+For extensions where the UI builder is simple and doesn't require complex integration with the extension's internal state, the `build_ui` function is moved to `ExtensionManager.py`:
+
+1. **EXTENSION_REGISTRY entry**: Use a descriptive function name that indicates it's local to ExtensionManager
+   ```python
+   'firecore': dict(
+       module='pyBall.FireCore', class_name=None,
+       dependencies=[], req_paths=['fdata_dir'],
+       build_ui='build_fireball_ui',  # Local function in ExtensionManager
+   ),
+   ```
+
+2. **Local UI builder in ExtensionManager.py**: Add the function with a descriptive name
+   ```python
+   def build_fireball_ui(window):
+       """Build Fireball panel for KekuleExplorerGUI.
+       Returns ExtensionManager.UIComponents.
+       """
+       from PyQt5 import QtWidgets
+       # ... UI building code ...
+       return UIComponents(panel=panel, view_modes=view_modes)
+   ```
+
+3. **build_ui() method update**: Check for local function names before falling back to extension module
+   ```python
+   def build_ui(self, name: str, window) -> UIComponents:
+       """Import the extension module and call its build_ui(window) -> UIComponents."""
+       ext = self.get(name)
+       if not ext:
+           return UIComponents()
+       meta = EXTENSION_REGISTRY.get(name, {})
+       builder_name = meta.get('build_ui', 'build_ui')
+       try:
+           # Check if builder is a function in this module (for extensions with UI here)
+           if builder_name == 'build_fireball_ui':
+               return build_fireball_ui(window)
+           elif builder_name == 'build_dftb_ui':
+               return build_dftb_ui(window)
+           # Otherwise, import from the extension module
+           mod = importlib.import_module(meta['module'])
+           builder = getattr(mod, builder_name, None)
+           if builder is None:
+               return UIComponents()
+           return builder(window)
+       except Exception as e:
+           print(f"ExtensionManager: build_ui({name}) failed: {e}")
+           return UIComponents()
+   ```
+
+### Examples
+
+**Moved from FireCore.py to ExtensionManager.py:**
+- `build_ui()` → `build_fireball_ui()`
+
+**Moved from dftb_utils.py to ExtensionManager.py:**
+- `build_ui()` → `build_dftb_ui()`
+
+### Benefits
+
+1. **Clean separation of concerns**: Low-level modules (FireCore.py, dftb_utils.py) contain only core functionality
+2. **Centralized GUI code**: All extension UI builders are in one place (ExtensionManager.py)
+3. **Easier maintenance**: GUI changes don't require touching low-level modules
+4. **Consistent pattern**: Clear naming convention (`build_<extension>_ui`) for local UI builders
+5. **Flexibility**: Extensions with complex UI requirements can still keep their `build_ui` in their own module
+
+### When to Use Local vs Module-Local UI Builders
+
+**Use local UI builder in ExtensionManager.py when:**
+- UI is simple (buttons, labels, basic controls)
+- UI doesn't require deep integration with extension state
+- Extension is primarily a library/utility (like FireCore, DFTB+)
+
+**Keep `build_ui` in extension module when:**
+- UI is complex and tightly coupled to extension state
+- UI requires access to extension-specific classes or data structures
+- Extension is primarily a GUI application (like MolecularDynamics)
+
 This design provides maximum flexibility for extensions while still giving them the infrastructure they need for safe loading, configuration, and dynamic UI integration.
+
+---
+
+# How It Works (Runtime Flow)
+
+## 1. Initialization (KekuleExplorerWindow.__init__)
+
+```python
+self.extensions = ExtensionManager()
+self.extensions.set_config('firecore', 'fdata_dir', self.fdata_path)
+```
+
+- `ExtensionManager()` loads `DEFAULT_CONFIG` and merges any `extensions_config.json` if present
+- Config stores per-extension settings: `enabled` (bool), paths like `fdata_dir`, etc.
+- No modules are imported yet — lazy loading
+
+## 2. GUI Building (initUI → _build_extension_panels)
+
+```python
+for name in self.extensions.enabled_extensions():
+    ui = self.extensions.build_ui(name, self)
+    sec = CollapsibleSection(name.capitalize(), collapsed=False, parent=self)
+    sec.setContent(ui.panel)
+    side_layout.addWidget(sec)
+```
+
+- Loops over extensions where `config['enabled'] == True`
+- For each:
+  - Calls `ExtensionManager.build_ui(name, window)`
+  - This checks registry for `build_ui` function name:
+    - If local (e.g., `build_fireball_ui`): calls function directly from ExtensionManager
+    - Otherwise: imports extension module and calls its `build_ui(window)`
+  - Returns `UIComponents(panel, edit_modes, view_modes)`
+  - Wraps panel in `CollapsibleSection` (foldable widget)
+  - Registers edit/view mode callbacks into `_ext_edit_modes` / `_ext_view_modes`
+  - Adds section to side panel
+
+**Note:** If extension fails to load (deps missing, bad path), `build_ui` returns empty `UIComponents` and section shows error message.
+
+## 3. Using Extensions (e.g., compute_orbitals)
+
+```python
+fc = self.extensions.require('firecore')
+fc.setVerbosity(0)
+fc.initialize(atomType=atypes, atomPos=apos)
+fc.evalForce(apos, nmax_scf=200)
+```
+
+- `self.extensions.require('firecore')` triggers lazy load:
+  - Validates dependencies (Python packages)
+  - Validates required paths (e.g., `fdata_dir` exists)
+  - Imports `pyBall.FireCore` module
+  - Caches loaded module for future calls
+  - Raises `ExtensionLoadError` if anything fails
+- Returns actual module (not proxy) for direct use
+
+## 4. Extension Not Available
+
+```python
+fc = self.extensions.get('firecore')  # Returns module OR ExtensionProxy
+if fc:
+    fc.some_function()  # OK
+else:
+    # fc is ExtensionProxy — raises ExtensionNotAvailableError on access
+```
+
+- `get()` never raises; returns proxy if unavailable
+- Proxy raises `ExtensionNotAvailableError` on any attribute access
+- Use `require()` when you need the extension and want a loud failure
+
+## 5. Configuration Persistence
+
+```python
+self.extensions.set_config('firecore', 'fdata_dir', new_path)
+self.extensions.save_config()  # writes to pyBall/extensions_config.json
+```
+
+- Config changes are in-memory until `save_config()` called
+- `extensions_config.json` is read on next `ExtensionManager()` init
+
+## 6. Edit/View Mode Dispatch
+
+```python
+def set_edit_mode(self, mode):
+    if hasattr(self, '_ext_edit_modes') and mode in self._ext_edit_modes:
+        self._ext_edit_modes[mode]()  # Extension callback
+        return
+    # Fall through to built-in modes (Hex1, Hex2, Atom, etc.)
+```
+
+- Extensions register edit/view modes via `UIComponents(edit_modes=[...], view_modes=[...])`
+- These are added to `_ext_edit_modes` / `_ext_view_modes` dicts during panel building
+- `set_edit_mode()` / `set_view_mode()` dispatch to extension callbacks first
+
+## 7. Example: Adding a New Extension
+
+To add a new extension (e.g., AFM):
+
+1. **Add to EXTENSION_REGISTRY** (ExtensionManager.py):
+   ```python
+   'afm': dict(
+       module='pyBall.OCL.AFM', class_name='AFMulator',
+       dependencies=['pyopencl'], req_paths=['cl_src_dir'],
+       build_ui='build_ui',  # or 'build_afm_ui' if UI is simple
+   ),
+   ```
+
+2. **Add to DEFAULT_CONFIG**:
+   ```python
+   'afm': dict(enabled=False, cl_src_dir='../../cpp/common_resources/cl'),
+   ```
+
+3. **Add UI builder** (either in ExtensionManager.py for simple UI, or in AFM.py for complex):
+   ```python
+   def build_afm_ui(window):
+       from pyBall.ExtensionManager import UIComponents
+       from PyQt5 import QtWidgets
+       panel = QtWidgets.QWidget()
+       # ... build panel ...
+       return UIComponents(panel=panel)
+   ```
+
+4. **Enable in config** (set `enabled=True` or edit `extensions_config.json`)
+
+5. **Use in code**:
+   ```python
+   afm = window.extensions.require('afm')
+   afm.run_simulation(...)
+   ```
+
+The extension will appear as a collapsible panel in the GUI, load lazily on first use, and fail loudly if dependencies or paths are missing.
