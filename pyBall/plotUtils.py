@@ -306,6 +306,78 @@ def plot_cube_slice(cube_file, atoms=None, plane='xy', cmap='RdBu_r', title=None
     return fig, ax, data
 
 
+#############################
+#   Orbital comparison plotting   #
+#############################
+
+def plot_comparison_2d(wp_vals, ocl_vals, diff_vals, extent, title_prefix, plane_desc, 
+                      method_tag, mo_indices, energies, homo, output_path, dpi=150, 
+                      atom_coords=None):
+    """
+    Plot 2D orbital comparison: libwaveplot vs OpenCL vs difference.
+    
+    Args:
+        wp_vals: (nstates, npoints, npoints) libwaveplot values
+        ocl_vals: (nstates, npoints, npoints) OpenCL values
+        diff_vals: (nstates, npoints, npoints) difference (wp - ocl)
+        extent: [xmin, xmax, ymin, ymax] for imshow
+        title_prefix: e.g., "H2O"
+        plane_desc: e.g., "XY plane  z=0.000 Å"
+        method_tag: e.g., "orb2points"
+        mo_indices: list of MO indices
+        energies: list of energies (eV)
+        homo: HOMO index
+        output_path: path to save PNG
+        dpi: resolution
+        atom_coords: (natoms, 3) atomic positions in Å (optional, for overlay)
+    """
+    import matplotlib.pyplot as plt
+    nstates = len(mo_indices)
+    s2 = wp_vals.shape[1:]
+    ncols = 3
+    fig, axes = plt.subplots(nstates, ncols, figsize=(5*ncols, 4*nstates))
+    if nstates == 1: axes = axes[np.newaxis, :]
+    
+    # Determine which axes to plot from plane_desc
+    if 'xy' in plane_desc.lower():
+        x_idx, y_idx = 0, 1
+    elif 'xz' in plane_desc.lower():
+        x_idx, y_idx = 0, 2
+    else:  # yz
+        x_idx, y_idx = 1, 2
+    
+    for i in range(nstates):
+        wp2  = wp_vals[i]
+        oc2  = ocl_vals[i]
+        df2  = diff_vals[i]
+        clim = max(np.abs(wp2).max(), np.abs(oc2).max()) or 1e-12
+        mo_idx = mo_indices[i]
+        tag  = " [HOMO]" if mo_idx == homo else (" [LUMO]" if mo_idx == homo+1 else "")
+        plane_title = f"{plane_desc}  [{method_tag}]"
+        
+        for ax, dat, ttl, cm, vl, vh in [
+            (axes[i,0], wp2, f"libwaveplot MO{mo_idx}{tag}\nE={energies[i]:.2f}eV  {plane_title}", 'RdBu_r', -clim, clim),
+            (axes[i,1], oc2, f"OpenCL MO{mo_idx}{tag}\n{plane_title}",                              'RdBu_r', -clim, clim),
+            (axes[i,2], df2, f"diff (lib−OCL)\nRMS={np.sqrt(np.mean(diff_vals[i]**2)):.2e}", 'bwr', -clim*0.1, clim*0.1),
+        ]:
+            im = ax.imshow(dat, origin='lower', cmap=cm, vmin=vl, vmax=vh,
+                           extent=extent, aspect='equal')
+            ax.set_xlabel(extent[0] if extent[0] == extent[2] else 'x (Å)')
+            ax.set_ylabel('y (Å)' if extent[0] == extent[2] else 'z (Å)')
+            ax.set_title(ttl, fontsize=7)
+            plt.colorbar(im, ax=ax, fraction=0.046)
+            
+            # Overlay atomic positions if provided
+            if atom_coords is not None:
+                ax.scatter(atom_coords[:, x_idx], atom_coords[:, y_idx], 
+                          c='black', marker='.', s=10, alpha=0.5, zorder=10)
+    
+    fig.suptitle(f"{title_prefix}: libwaveplot vs OpenCL  [{method_tag}]  {plane_desc}  (MO{mo_indices[0]}–{mo_indices[-1]})", fontsize=9)
+    fig.tight_layout()
+    fig.savefig(str(output_path), dpi=dpi)
+    plt.close(fig)
+
+
 ############################################
 #   Ploting atoms and bonds ( Molecules )  #
 ############################################
