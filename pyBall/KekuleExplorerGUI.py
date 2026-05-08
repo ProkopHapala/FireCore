@@ -220,7 +220,7 @@ class KekuleExplorerWindow(BaseGUI):
         row1 = QtWidgets.QHBoxLayout()
         self.button("Snap", self.reset_offsets, layout=row1)
         self.button("Adj H", self.adjust_h, layout=row1)
-        self.button("Bond", self.recalc_bonds, layout=row1)
+        self.button("AutoBonds", self.recalc_bonds, layout=row1)
         layout.addLayout(row1)
         # Labels combo
         row2 = QtWidgets.QHBoxLayout()
@@ -388,7 +388,6 @@ class KekuleExplorerWindow(BaseGUI):
             self.backend = KekuleBackend()
             self.backend.build_zigzag_ribbon(width_chains=width_chains, length_cells=length_cells, passivation_bottom=bottom_passivation, passivation_top=top_passivation, scale_x=Lx / (2.0 * 1.42 * np.cos(np.pi / 6)), bPeriodicX=True)
             
-            self.backend.recalc_bonds()
             self.scene.backend = self.backend
             
             n_C = sum(1 for e in self.backend.sys.enames if e == 'C')
@@ -438,7 +437,6 @@ class KekuleExplorerWindow(BaseGUI):
             self.backend = KekuleBackend()
             self.backend.combine_ribbons(bottom_ribbon, top_ribbon, L_Hb=L_Hb, shift_x=0.0)
             
-            self.backend.recalc_bonds()
             self.scene.backend = self.backend
             
             n_C = sum(1 for e in self.backend.sys.enames if e == 'C')
@@ -600,7 +598,9 @@ class KekuleExplorerWindow(BaseGUI):
         selected.sort(reverse=True)
         for idx in selected:
             self.backend._rebuild_after_delete([idx])
-        self.backend.recalc_bonds()
+        # Clean up dead bonds and sync (no recalc_bonds!)
+        self.backend.graph.cleanup_invalid()
+        self.backend.graph.sync_neighbor_lists()
         self.scene.clear_selection()
         self.refresh_view()
         debug_print(2, f"Deleted {len(selected)} atoms")
@@ -624,10 +624,15 @@ class KekuleExplorerWindow(BaseGUI):
         # Track indices of newly added atoms
         new_indices = []
         # Add atoms at original positions using _append_atom to avoid adjust_h()
+        new_atoms = []
         for ename, pos in zip(enames, apos_orig):
-            idx = self.backend._append_atom(pos=list(pos.copy()), ename=ename, pin=None,parent=None,subtype=f"{ename}_sp2"  )
-            new_indices.append(idx)
-        self.backend.recalc_bonds()
+            a = self.backend._append_atom(pos=list(pos.copy()), ename=ename, pin=None,parent=None,subtype=f"{ename}_sp2"  )
+            new_indices.append(a._id if hasattr(a, '_id') else a)
+            new_atoms.append(a)
+        # Create bonds for new atoms (no recalc_bonds!)
+        for a in new_atoms:
+            self.backend._create_bond_to_nearest_heavy(a)
+        self.backend.graph.sync_neighbor_lists()
         # Don't call adjust_h() - it adds H atoms and shifts indices
         # Refresh view first to update scene arrays
         self.refresh_view()
@@ -715,7 +720,9 @@ class KekuleExplorerWindow(BaseGUI):
             if 0 <= idx < len(atom_list):
                 atom = atom_list[idx]
                 self.backend.graph.remove_atom(atom)
-                self.backend.recalc_bonds()
+                # Clean up dead bonds and sync (no recalc_bonds!)
+                self.backend.graph.cleanup_invalid()
+                self.backend.graph.sync_neighbor_lists()
         self.refresh_view()
 
     def on_mouse_press(self, event):
@@ -737,12 +744,12 @@ class KekuleExplorerWindow(BaseGUI):
         picked = self.scene._pick_idx
         if picked >= 0 and event.button == 1:
             if self.edit_mode == 'Atom':
-                # Change atom type at picked position
-                self.backend.sys.enames[picked] = self.cur_atom_type
-                self.backend.sys.atypes[picked] = elements.ELEMENT_DICT[self.cur_atom_type][0]
-                self.backend.atom_subtype[picked] = self.backend._get_element_default_subtype(self.cur_atom_type)
-                self.backend.recalc_bonds()
-                self.backend.adjust_h()
+                # Change atom type at picked position using graph-based method
+                # Find the node_key for this atom
+                pos = self.backend.sys.apos[picked]
+                node_key = self.backend.snap_to_node(pos[0], pos[1])
+                if node_key:
+                    self.backend.set_atom_type(node_key, self.cur_atom_type)
                 self.refresh_view()
                 return
             elif self.edit_mode == 'pi':
@@ -753,7 +760,8 @@ class KekuleExplorerWindow(BaseGUI):
                 e = self.backend.sys.enames[picked]
                 sp_map = {0: 'sp3', 1: 'sp2', 2: 'sp'}
                 self.backend.atom_subtype[picked] = f"{e}_{sp_map.get(new_npi, 'sp2')}"
-                self.backend.adjust_h()
+                if self.backend.auto_h_cap:
+                    self.backend.adjust_h()
                 self.refresh_view()
                 return
             elif self.edit_mode == 'Ring':
@@ -794,8 +802,20 @@ class KekuleExplorerWindow(BaseGUI):
         self.refresh_view()
 
     def recalc_bonds(self):
-        """Manually trigger bond recalculation and refresh view."""
+        """Manually trigger bond recalculation and refresh view.
+        
+        Removes H caps before recalc, then adds H caps based on new topology.
+        """
+        # Step 1: Remove all H caps
+        self.backend.remove_h_caps()
+        
+        # Step 2: Recalculate bonds from distance
         self.backend.recalc_bonds()
+        
+        # Step 3: Add H caps based on new topology (if auto-H is enabled)
+        if self.backend.auto_h_cap:
+            self.backend.add_h_caps()
+        
         self.refresh_view()
 
     def handle_click(self, mouse_pos, action='add'):
@@ -987,6 +1007,10 @@ class KekuleExplorerWindow(BaseGUI):
                 self.scene.text_labels.visible = True
             else:
                 self.scene.text_labels.visible = False
+        
+        # Force immediate canvas update to avoid async rendering lag
+        self.scene.canvas.update()
+        QtWidgets.QApplication.processEvents()
 
     def run_relaxation(self):
         self.dftb_status_label.setText("Status: Relaxing...")

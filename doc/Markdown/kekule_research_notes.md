@@ -1718,3 +1718,545 @@ This session implemented a comprehensive geometry-based ring detection and visua
 
 The foundation is now in place to support rings of any size and enable bond-centric and ring-centric editing features.
 5. 2D-aware direction calculations for graphene-like systems
+
+---
+
+# Session: Auto-H Lagging Visualization Fix
+
+## Overview
+
+This session fixed a critical bug where hydrogen caps added via the "Auto H" feature were not immediately visible in the GUI. The H caps would appear one update behind - when adding an atom, it would show the wrong number of hydrogens initially, and only after adding another atom would the previous atom's H caps correct themselves.
+
+## Problem Description
+
+### Symptoms
+- When adding atoms in Atom mode with "Auto H" enabled, new atoms appeared with incorrect hydrogen counts
+- The correct H caps would only appear after adding the next atom (one step behind)
+- The visualization lagged behind the actual backend state
+
+### Initial Investigation
+Initially suspected the issue was visualization synchronization between `AtomicGraph` and the Vispy rendering pipeline. Added debug prints to trace the order of operations and confirmed that:
+1. Backend data was correct when `refresh_view()` read it
+2. `adjust_h()` was being called in the correct order
+3. The issue was NOT with Vispy's async rendering
+
+### Root Cause Analysis
+The real issue was identified as **brute-force distance-based bond recalculation** in `recalc_bonds()`:
+
+```python
+def recalc_bonds(self, bond_length=1.42, tol_factor=0.35):
+    """Remove all bonds and recompute from distance threshold."""
+    # Use hard delete to immediately remove bonds from atom bond lists
+    for bond in list(self.bonds.values()):
+        self._remove_bond_internal(bond, hard=True)  # <-- REMOVES ALL BONDS
+    # Only consider alive atoms
+    atoms = [a for a in self.atoms.values() if a.alive]
+    threshold = bond_length * (1.0 + tol_factor)
+    threshold_sq = threshold ** 2
+    for i, a in enumerate(atoms):
+        for j in range(i + 1, len(atoms)):
+            b = atoms[j]
+            d2 = float(np.sum((a.pos - b.pos) ** 2))
+            if d2 < threshold_sq:
+                self.add_bond(a, b)  # <-- RECREATES BONDS FROM DISTANCE
+```
+
+**The Problem**:
+1. When adding a new atom at a grid position, if it was too far from existing atoms (due to distance threshold), no bond was created
+2. `adjust_h()` would then add H caps for an undercoordinated atom (wrong count)
+3. Later, when another atom was added nearby, `recalc_bonds()` would recreate the bond
+4. `adjust_h()` would run again and correct the H count
+
+This brute-force approach was used in two places:
+1. `set_atom_type()` in `KekuleBackend.py` - called `recalc_bonds()` after adding atoms
+2. `on_mouse_press()` in `KekuleExplorerGUI.py` - directly modified `sys` and called `recalc_bonds()` when picking atoms in Atom mode
+
+## Solution
+
+### 1. Replace Distance-Based Bond Creation with Nearest-Neighbor Approach
+
+**Location**: `pyBall/KekuleBackend.py`
+
+**New Method**: `_create_bond_to_nearest_heavy(atom)`
+
+```python
+def _create_bond_to_nearest_heavy(self, atom):
+    """Create bond to nearest heavy atom within bond length cutoff.
+    
+    This is used when adding atoms to ensure bonds are created immediately
+    without the brute-force recalc_bonds that removes all bonds.
+    """
+    bond_length_cutoff = 2.0  # Slightly larger than typical C-C bond (1.42)
+    nearest_atom = None
+    min_dist = float('inf')
+    
+    # Find nearest heavy atom (not H cap)
+    for a in self.graph.atoms.values():
+        if not a.alive or a == atom or a.subtype == 'H_cap':
+            continue
+        dist = np.linalg.norm(atom.pos - a.pos)
+        if dist < min_dist:
+            min_dist = dist
+            nearest_atom = a
+    
+    # Create bond if within cutoff
+    if nearest_atom and min_dist < bond_length_cutoff:
+        # Check if bond already exists
+        bond_exists = False
+        for bond in atom.bonds:
+            if bond.alive and (bond.a == nearest_atom or bond.b == nearest_atom):
+                bond_exists = True
+                break
+        if not bond_exists:
+            self.graph.add_bond(atom, nearest_atom)
+```
+
+**Design Decision**: 
+- Find nearest heavy atom (not H cap) within 2.0 Å cutoff
+- Create bond only if within cutoff and doesn't already exist
+- This is robust and simple - no grid assumptions, just distance-based nearest neighbor
+
+### 2. Update `set_atom_type()` to Use New Bond Creation
+
+**Location**: `pyBall/KekuleBackend.py:set_atom_type()`
+
+**Before**:
+```python
+else:
+    self.graph.add_atom(...)
+    self.recalc_bonds(skip_sync=True)  # <-- Brute-force, removes all bonds
+if self.auto_h_cap:
+    self.adjust_h()
+```
+
+**After**:
+```python
+else:
+    self.graph.add_atom(...)
+    # Create bond to nearest heavy atom (not H cap) within cutoff
+    a = self.graph._pin_to_atom[node_key]
+    self._create_bond_to_nearest_heavy(a)
+    # Sync neighbor lists after adding bonds
+    self.graph.sync_neighbor_lists()
+
+if self.auto_h_cap:
+    self.adjust_h()
+```
+
+**Design Decision**: 
+- Replace `recalc_bonds()` with targeted bond creation
+- Only create bond to nearest heavy atom, don't disturb existing bonds
+- Sync neighbor lists before `adjust_h()` so H caps are calculated with correct topology
+
+### 3. Fix Direct `sys` Modification in GUI
+
+**Location**: `pyBall/KekuleExplorerGUI.py:on_mouse_press()`
+
+**Problem**: When picking an atom in Atom mode, the GUI was directly modifying `sys` arrays and calling `recalc_bonds()`:
+
+```python
+# OLD CODE (WRONG):
+if self.edit_mode == 'Atom':
+    self.backend.sys.enames[picked] = self.cur_atom_type  # <-- Direct sys modification
+    self.backend.sys.atypes[picked] = elements.ELEMENT_DICT[self.cur_atom_type][0]
+    self.backend.atom_subtype[picked] = self.backend._get_element_default_subtype(self.cur_atom_type)
+    self.backend.recalc_bonds()  # <-- Brute-force bond recalculation
+    if self.backend.auto_h_cap:
+        self.backend.adjust_h()
+```
+
+**Fix**: Redirect to graph-based `set_atom_type()` method:
+
+```python
+# NEW CODE (CORRECT):
+if self.edit_mode == 'Atom':
+    # Change atom type at picked position using graph-based method
+    # Find the node_key for this atom
+    pos = self.backend.sys.apos[picked]
+    node_key = self.backend.snap_to_node(pos[0], pos[1])
+    if node_key:
+        self.backend.set_atom_type(node_key, self.cur_atom_type)  # <-- Use graph method
+```
+
+**Design Decision**: 
+- All atom modifications should go through graph-based methods
+- Direct `sys` modification bypasses the graph topology and requires brute-force bond recalculation
+- Graph-based methods maintain topology consistency
+
+### 4. Add Global Bond Length Cutoff
+
+**Location**: `pyBall/KekuleBackend.py` (module level)
+
+```python
+bond_length_cutoff = 2.0  # Slightly larger than typical C-C bond (1.42)
+```
+
+**Design Decision**: 
+- Make cutoff a module-level constant for easy tuning
+- 2.0 Å is generous enough to catch C-C bonds (1.42 Å), C-N (1.47 Å), C-O (1.43 Å)
+- Not so large that it creates spurious long-range bonds
+
+## Files Modified
+
+### KekuleBackend.py
+- Added module-level `bond_length_cutoff = 2.0` constant
+- Added `_create_bond_to_nearest_heavy(atom)` method
+- Modified `set_atom_type()` to use new bond creation instead of `recalc_bonds()`
+- Removed `recalc_bonds()` call from `set_atom_type()`
+
+### KekuleExplorerGUI.py
+- Modified `on_mouse_press()` Atom mode branch to use graph-based `set_atom_type()` instead of direct `sys` modification
+- Removed direct `sys` array manipulation and `recalc_bonds()` call
+
+## Design Principles Reinforced
+
+### 1. Topology-First, Not Distance-First
+- **Before**: Distance-based bond detection as primary mechanism
+- **After**: Explicit bond creation based on graph topology, distance only for nearest-neighbor validation
+- **Rule**: `recalc_bonds()` should only be used when explicitly requested by user (e.g., "Recalc Bonds" button), not automatically during topology edits
+
+### 2. Graph-Based Methods, Not Direct Array Modification
+- **Before**: GUI directly modified `sys` arrays for atom type changes
+- **After**: All modifications go through graph-based methods (`set_atom_type()`, `add_atom_at_position()`, etc.)
+- **Rule**: Never directly modify `sys` arrays from GUI - always use backend methods that maintain graph consistency
+
+### 3. Targeted Mutations, Not Wholesale Rebuilds
+- **Before**: `recalc_bonds()` removed ALL bonds and recreated them from scratch
+- **After**: `_create_bond_to_nearest_heavy()` only creates the specific bond needed
+- **Rule**: Each action should perform the minimal mutation required, not rebuild entire topology
+
+## Testing
+
+### Manual Testing
+- Added atoms in Atom mode with "Auto H" enabled
+- Verified H caps appear immediately with correct count
+- Verified no lagging behavior - H caps visible as soon as atom is placed
+- Tested with C, N, O atoms at various positions
+- Verified bonds are created correctly to nearest heavy atoms
+
+### Verification
+- Bond count now increases when adding atoms (not decreases)
+- `adjust_h()` is called after bond creation, so H caps are calculated with correct topology
+- Visualization is now synchronous with backend state
+
+## Future Improvements
+
+### 1. Eliminate `recalc_bonds()` from All Automatic Operations
+- Currently `recalc_bonds()` is still called in some operations (ring addition/removal, bond insertion/collapse)
+- Future: Replace all automatic `recalc_bonds()` calls with targeted bond creation/deletion
+- Reserve `recalc_bonds()` only for explicit user invocation via "Recalc Bonds" button
+
+### 2. Bond Creation for Multiple Neighbors
+- Current `_create_bond_to_nearest_heavy()` only creates one bond to the nearest atom
+- Future: For atoms that should have multiple bonds (e.g., adding atom between two existing atoms), create bonds to all nearby atoms within cutoff
+- This would handle cases like adding an atom in the middle of a chain
+
+### 3. Adaptive Cutoff
+- Current cutoff is fixed at 2.0 Å
+- Future: Use element-specific cutoffs (e.g., C-C 1.6 Å, C-N 1.7 Å, C-O 1.7 Å)
+- Or use adaptive cutoff based on typical bond lengths from periodic table
+
+## Summary
+
+The Auto-H lagging bug was caused by brute-force distance-based bond recalculation that removed all bonds and recreated them from scratch. This caused new atoms to temporarily have no bonds, leading to incorrect H cap counts. The fix replaced this with targeted nearest-neighbor bond creation that:
+
+1. Only creates bonds when needed (doesn't disturb existing topology)
+2. Is robust and simple (no grid assumptions, just distance-based nearest neighbor)
+3. Maintains graph consistency (all modifications go through graph-based methods)
+4. Eliminates the lag (bonds exist before `adjust_h()` is called)
+
+This reinforces the architectural principle: **topology-first, not distance-first**. The graph should be the authoritative source of truth for connectivity, and distance should only be used for validation, not as the primary mechanism.
+
+---
+
+# Session: Comprehensive Topology-First Architecture Refactor
+
+## Overview
+
+This session completed the architectural shift to a fully topology-first design by:
+1. Fixing RMB atom removal to properly clean up dead bonds
+2. Renaming "Bond" button to "AutoBonds" to clarify its purpose
+3. Creating separate `remove_h_caps()` and `add_h_caps()` functions for explicit control
+4. Removing all automatic `recalc_bonds()` calls (only allowed in AutoBonds button)
+5. Adding `_create_bonds_for_ring_atoms()` for proper hexagon ring bonding
+
+## Problem Description
+
+### RMB Atom Removal Issue
+When removing atoms via RMB in Atom mode, multiple atoms would be removed. The issue was that dead bonds weren't being cleaned up, causing stale neighbor lists that affected `adjust_h()`.
+
+### Hexagon Ring Bonding Issue
+After removing automatic `recalc_bonds()` calls, the Hex1 mode (drawing hexagons) didn't create proper bonds between all carbon atoms in the benzene ring. Instead, spurious hydrogen atoms were placed where bonds should be.
+
+### AutoBonds First-Press Issue
+The AutoBonds button didn't work properly on the first press - it only worked on the second press. This was due to improper sequencing of H cap removal and addition.
+
+## Solution
+
+### 1. Fix RMB Atom Removal
+
+**Location**: `pyBall/KekuleBackend.py:remove_atom()`
+
+**Before**:
+```python
+self._rebuild_after_delete([ia])
+# No recalc_bonds() call - just sync from graph
+if self.auto_h_cap:
+    self.adjust_h()
+```
+
+**After**:
+```python
+self._rebuild_after_delete([ia])
+# Clean up dead bonds and sync (no recalc_bonds!)
+self.graph.cleanup_invalid()
+self.graph.sync_neighbor_lists()
+if self.auto_h_cap:
+    self.adjust_h()
+```
+
+**Design Decision**: After removing atoms, explicitly call `cleanup_invalid()` to remove dead bonds and `sync_neighbor_lists()` to rebuild neighbor lists. This ensures `adjust_h()` sees correct topology.
+
+### 2. Rename "Bond" Button to "AutoBonds"
+
+**Location**: `pyBall/KekuleExplorerGUI.py:create_editor_section()`
+
+**Change**: Renamed button from "Bond" to "AutoBonds" to clarify that it performs automatic distance-based bond recalculation.
+
+### 3. Create Separate H Cap Functions
+
+**Location**: `pyBall/KekuleBackend.py`
+
+**New Methods**:
+```python
+def remove_h_caps(self):
+    """Remove all H cap atoms from the graph (soft delete)."""
+    for h in [a for a in list(self.graph.atoms.values()) if a.subtype == 'H_cap']:
+        h.alive = False
+    self.graph.cleanup_invalid()
+
+def add_h_caps(self):
+    """Add H caps to undercoordinated heavy atoms based on current topology."""
+    # Bond lengths for H caps
+    bond_lengths = {'C': 1.09, 'N': 1.01, 'O': 0.97}
+    added_h_atoms = []
+    
+    # Find undercoordinated heavy atoms and add H caps
+    heavy_atoms = [a for a in self.graph.atoms.values() if a.alive and a.ename not in {'H', 'E'}]
+    for a in heavy_atoms:
+        if not a.alive or a.ename in {'H', 'E'}:
+            continue
+        
+        npi = self._get_npi_from_subtype(a.subtype)
+        target = self._target_sigma(a.ename, npi)
+        
+        # Count heavy atom neighbors (excluding H caps) using graph.neighbors
+        heavy_neighbors = [n for n in a.neighbors if n.subtype != 'H_cap']
+        current = len(heavy_neighbors)
+        n_missing = target - current
+        
+        if n_missing <= 0:
+            continue
+        
+        # Calculate directions and add H caps
+        directions = self._calc_h_directions_atom(a, npi, nb, heavy_neighbors)
+        
+        for direction in directions[:n_missing]:
+            h_pos = pos_a + direction * bl
+            h_atom = self.graph.add_atom(h_pos, 'H', elements.ELEMENT_DICT['H'][0],
+                                        pin=None, parent=a, subtype='H_cap')
+            self.graph.add_bond(a, h_atom)
+            added_h_atoms.append(h_atom)
+    
+    self.graph.sync_neighbor_lists()
+    self._sync_sys()
+    return added_h_atoms
+```
+
+**Modified `adjust_h()`**:
+```python
+def adjust_h(self):
+    """Add/remove H caps based on electron counting."""
+    self.remove_h_caps()
+    self.add_h_caps()
+    # Note: add_h_caps() already calls _sync_sys()
+```
+
+**Design Decision**: Separate functions allow explicit control over H cap removal and addition. This enables the AutoBonds workflow: remove H → recalc bonds → add H.
+
+### 4. Remove All Automatic `recalc_bonds()` Calls
+
+**Locations**: All automatic bond recalculation calls replaced with targeted operations:
+- `add_ring()`: Use `_create_bonds_for_ring_atoms()` instead
+- `remove_ring()`: Use `cleanup_invalid()` + `sync_neighbor_lists()`
+- `remove_atom()`: Use `cleanup_invalid()` + `sync_neighbor_lists()`
+- `load_xyz()`: Use `_create_bond_to_nearest_heavy()` for each atom
+- `_passivate_edges()`: Use `cleanup_invalid()` + `sync_neighbor_lists()`
+- `_apply_passivation_group()`: Use `_create_bond_to_nearest_heavy()` for each added atom
+- `_passivate_edges_top_bottom_only_separate()`: Use `sync_neighbor_lists()`
+- `_passivate_edges_top_bottom_only()`: Use `cleanup_invalid()` + `sync_neighbor_lists()`
+- `combine_ribbons()`: Use `_create_bond_to_nearest_heavy()` for each atom
+- GUI `init_zigzag_ribbon()`: Removed call
+- GUI `init_combined_ribbon()`: Removed call
+- GUI `delete_selected_atoms()`: Use `cleanup_invalid()` + `sync_neighbor_lists()`
+- GUI `paste_copied_atoms()`: Use `_create_bond_to_nearest_heavy()` for each atom
+- GUI `on_atom_remove()`: Use `cleanup_invalid()` + `sync_neighbor_lists()`
+- GUI `on_mouse_press` (Atom mode): Use graph-based `set_atom_type()`
+
+**Design Decision**: `recalc_bonds()` (distance-based bond detection) is now ONLY called from the AutoBonds button handler. All other operations use targeted bond creation or proper cleanup.
+
+### 5. Fix AutoBonds Button Handler
+
+**Location**: `pyBall/KekuleExplorerGUI.py:recalc_bonds()`
+
+**Before**:
+```python
+def recalc_bonds(self):
+    """Manually trigger bond recalculation and refresh view."""
+    self.backend.recalc_bonds()
+    self.refresh_view()
+```
+
+**After**:
+```python
+def recalc_bonds(self):
+    """Manually trigger bond recalculation and refresh view.
+    
+    Removes H caps before recalc, then adds H caps based on new topology.
+    """
+    # Step 1: Remove all H caps
+    self.backend.remove_h_caps()
+    
+    # Step 2: Recalculate bonds from distance
+    self.backend.recalc_bonds()
+    
+    # Step 3: Add H caps based on new topology (if auto-H is enabled)
+    if self.backend.auto_h_cap:
+        self.backend.add_h_caps()
+    
+    self.refresh_view()
+```
+
+**Design Decision**: Three-step process ensures proper sequencing: remove old H → recalc bonds from distance → add new H based on new topology.
+
+### 6. Add Hexagon Ring Bond Creation
+
+**Location**: `pyBall/KekuleBackend.py`
+
+**New Method**:
+```python
+def _create_bonds_for_ring_atoms(self, ring_atoms):
+    """Create bonds between all ring atoms that are at proper C-C bond distance.
+    
+    For a hexagon ring, each atom should be bonded to its two neighbors
+    at ~1.42 Å distance (C-C bond length).
+    """
+    cc_bond_sq = (self.a_CC * 1.1) ** 2  # Slightly larger than a_CC for tolerance
+    
+    for i, a in enumerate(ring_atoms):
+        if not a.alive:
+            continue
+        for j, b in enumerate(ring_atoms):
+            if i >= j or not b.alive:
+                continue
+            dist_sq = np.sum((a.pos - b.pos) ** 2)
+            if dist_sq < cc_bond_sq:
+                # Check if bond already exists
+                bond_exists = False
+                for bond in a.bonds:
+                    if bond.alive and (bond.a == b or bond.b == b):
+                        bond_exists = True
+                        break
+                if not bond_exists:
+                    self.graph.add_bond(a, b)
+```
+
+**Modified `add_ring()`**:
+```python
+if new_atoms:
+    # Create bonds between all ring atoms at proper C-C distance
+    # This bonds new atoms to each other AND to existing ring atoms
+    all_ring_atoms = [n2a[snap_to_grid(node, self.a_CC)] 
+                     for node in honeycomb_ring_nodes(q, r, self.a_CC)
+                     if snap_to_grid(node, self.a_CC) in n2a]
+    self._create_bonds_for_ring_atoms(all_ring_atoms)
+    self.graph.sync_neighbor_lists()
+```
+
+**Design Decision**: Instead of only bonding to the nearest atom, create bonds between ALL ring atoms at proper C-C bond distance. This ensures each carbon is bonded to its two neighbors in the hexagon.
+
+## Files Modified
+
+### KekuleBackend.py
+- Added `remove_h_caps()` method to explicitly remove all H caps
+- Added `add_h_caps()` method to add H caps based on current topology
+- Modified `adjust_h()` to call `remove_h_caps()` then `add_h_caps()`
+- Added `_create_bonds_for_ring_atoms()` for hexagon ring bonding
+- Modified `add_ring()` to use `_create_bonds_for_ring_atoms()`
+- Modified `remove_ring()` to use `cleanup_invalid()` + `sync_neighbor_lists()`
+- Modified `remove_atom()` to use `cleanup_invalid()` + `sync_neighbor_lists()`
+- Modified `load_xyz()` to use `_create_bond_to_nearest_heavy()` for each atom
+- Modified `_passivate_edges()` to use `cleanup_invalid()` + `sync_neighbor_lists()`
+- Modified `_apply_passivation_group()` to use `_create_bond_to_nearest_heavy()`
+- Modified `_passivate_edges_top_bottom_only_separate()` to use `sync_neighbor_lists()`
+- Modified `_passivate_edges_top_bottom_only()` to use `cleanup_invalid()` + `sync_neighbor_lists()`
+- Modified `combine_ribbons()` to use `_create_bond_to_nearest_heavy()` for each atom
+- Removed ALL automatic `recalc_bonds()` calls
+
+### KekuleExplorerGUI.py
+- Renamed "Bond" button to "AutoBonds"
+- Modified `recalc_bonds()` to use three-step process (remove H → recalc bonds → add H)
+- Removed `recalc_bonds()` from `init_zigzag_ribbon()`
+- Removed `recalc_bonds()` from `init_combined_ribbon()`
+- Modified `delete_selected_atoms()` to use `cleanup_invalid()` + `sync_neighbor_lists()`
+- Modified `paste_copied_atoms()` to use `_create_bond_to_nearest_heavy()` for each atom
+- Modified `on_atom_remove()` to use `cleanup_invalid()` + `sync_neighbor_lists()`
+- Modified `on_mouse_press` (Atom mode) to use graph-based `set_atom_type()`
+
+## Design Principles Reinforced
+
+### 1. Topology-First, Not Distance-First (Complete)
+- **Before**: Distance-based bond detection was used automatically throughout
+- **After**: Distance-based bond detection (`recalc_bonds()`) is ONLY called when explicitly requested via AutoBonds button
+- **Rule**: All automatic operations use targeted bond creation or proper cleanup
+
+### 2. Explicit Control Over H Caps
+- **Before**: `adjust_h()` did both remove and add in one operation
+- **After**: Separate `remove_h_caps()` and `add_h_caps()` functions for explicit control
+- **Rule**: Complex operations should be broken down into discrete, controllable steps
+
+### 3. Proper Cleanup After Mutations
+- **Before**: Dead bonds and atoms were left in inconsistent state after mutations
+- **After**: Always call `cleanup_invalid()` and `sync_neighbor_lists()` after mutations
+- **Rule**: After any topology mutation, clean up dead objects and sync neighbor lists
+
+### 4. Context-Aware Bond Creation
+- **Before**: Generic "nearest neighbor" bond creation for all cases
+- **After**: Context-specific bond creation (ring atoms use `_create_bonds_for_ring_atoms()`, single atoms use `_create_bond_to_nearest_heavy()`)
+- **Rule**: Use context-aware algorithms when the structure is known (e.g., hexagon rings)
+
+## Testing
+
+### Manual Testing
+- RMB atom removal now correctly removes only the clicked atom
+- Hex1 mode (drawing hexagons) now creates proper bonds between all ring carbons
+- No spurious H caps appear where bonds should be
+- AutoBonds button works on first press (removes H → recalc bonds → adds H)
+- All automatic operations maintain topology consistency without `recalc_bonds()`
+
+### Verification
+- All `recalc_bonds()` calls removed from automatic operations
+- Only remaining call is in GUI's `recalc_bonds()` (AutoBonds button handler)
+- Bond creation in hexagon rings creates all 6 C-C bonds
+- H cap removal and addition are now separate, controllable operations
+
+## Summary
+
+This session completed the architectural shift to a fully topology-first design by:
+
+1. **Eliminated automatic distance-based bond detection**: `recalc_bonds()` is now ONLY called from the AutoBonds button
+2. **Created explicit H cap control**: Separate `remove_h_caps()` and `add_h_caps()` functions
+3. **Fixed mutation cleanup**: All mutations now properly clean up dead objects and sync neighbor lists
+4. **Context-aware bond creation**: Hexagon rings use specialized bond creation that bonds all neighbors
+
+The architecture now follows the principle: **topology-first, not distance-first**. The graph is the authoritative source of truth, and distance-based detection is only used when explicitly requested by the user via the AutoBonds button.

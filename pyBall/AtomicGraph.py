@@ -23,7 +23,7 @@ import numpy as np
 # ─── Atom ───────────────────────────────────────────────────────────────────
 
 class Atom:
-    __slots__ = ('pos', 'ename', 'atype', 'pin', 'parent', 'subtype', 'bonds', '_id', 'alive')
+    __slots__ = ('pos', 'ename', 'atype', 'pin', 'parent', 'subtype', 'bonds', 'neighbors', '_id', 'alive')
     _counter = 0
 
     def __init__(self, pos, ename, atype, pin=None, parent=None, subtype=''):
@@ -37,6 +37,7 @@ class Atom:
         self.parent  = parent       # Atom object (heavy atom this H belongs to) or None
         self.subtype = subtype      # 'C_sp2', 'N_sp3', 'H_cap', etc.
         self.bonds   = []           # list of Bond objects involving this atom
+        self.neighbors = []         # list of neighboring Atoms (derived from bonds)
 
     def __repr__(self):
         status = "" if self.alive else "[DEAD]"
@@ -168,6 +169,24 @@ class AtomicGraph:
         
         return len(dead_atom_ids), len(dead_bond_ids), len(dead_ring_ids)
 
+    def sync_neighbor_lists(self):
+        """Rebuild neighbor lists from alive bonds.
+        Call this after any bond topology change."""
+        # Clear all neighbor lists
+        for atom in self.atoms.values():
+            if atom.alive:
+                atom.neighbors = []
+        # Rebuild from alive bonds
+        for bond in self.bonds.values():
+            if bond.alive:
+                bond.a.neighbors.append(bond.b)
+                bond.b.neighbors.append(bond.a)
+
+    def h_children(self, heavy_atom: Atom) -> list:
+        """Return list of H atoms (subtype='H_cap') that have parent=heavy_atom."""
+        return [a for a in self.atoms.values() 
+                if a.alive and a.subtype == 'H_cap' and a.parent is heavy_atom]
+
     def atom_at_pin(self, pin) -> 'Atom | None':
         return self._pin_to_atom.get(pin)
 
@@ -221,8 +240,8 @@ class AtomicGraph:
         """Detect all rings (cycles) in the bond graph using DFS.
         Returns list of Ring objects.
         """
-        # Build adjacency list (only for alive atoms with alive bonds)
-        adj = {a._id: [b.other(a) for b in a.bonds if b.alive] for a in self.atoms.values() if a.alive}
+        # Build adjacency list (only for alive atoms with alive bonds to alive atoms)
+        adj = {a._id: [b.other(a) for b in a.bonds if b.alive and b.other(a).alive] for a in self.atoms.values() if a.alive}
         visited = set()
         rings = []
 
@@ -231,7 +250,9 @@ class AtomicGraph:
                 return
             if current._id in visited:
                 return
-            for neighbor in adj[current._id]:
+            for neighbor in adj.get(current._id, []):
+                if neighbor._id not in adj:
+                    continue  # Skip dead/removed neighbors
                 edge = self.get_bond(current, neighbor)
                 if edge is None:
                     continue

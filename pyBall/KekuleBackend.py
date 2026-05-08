@@ -103,6 +103,7 @@ def parse_passivation_string(s):
         result.append(PASSIVATION_ENCODING[char])
     return result
 
+bond_length_cutoff = 2.0  # Slightly larger than typical C-C bond (1.42)
 class KekuleBackend:
     """Manages molecular editing state on a hexagonal grid.
 
@@ -309,8 +310,16 @@ class KekuleBackend:
                 new_atoms.append(a)
         self.hex_tiles.add(key)
         if new_atoms:
-            self.recalc_bonds()
+            # Create bonds between all ring atoms at proper C-C distance
+            # This bonds new atoms to each other AND to existing ring atoms
+            all_ring_atoms = [n2a[snap_to_grid(node, self.a_CC)] 
+                             for node in honeycomb_ring_nodes(q, r, self.a_CC)
+                             if snap_to_grid(node, self.a_CC) in n2a]
+            self._create_bonds_for_ring_atoms(all_ring_atoms)
+            self.graph.sync_neighbor_lists()  # Sync neighbors after bond creation
         self._rings_dirty = True
+        if self.auto_h_cap:
+            self.adjust_h()
     
     def remove_ring(self, q, r):
         """Remove atoms at the 6 node positions of hexagon at axial (q,r).
@@ -352,8 +361,12 @@ class KekuleBackend:
             for h in self.graph.h_children(atom):
                 self.graph.remove_atom(h)
             self.graph.remove_atom(atom)
-        self.recalc_bonds()
+        # Clean up dead bonds and sync (no recalc_bonds!)
+        self.graph.cleanup_invalid()
+        self.graph.sync_neighbor_lists()
         self._rings_dirty = True
+        if self.auto_h_cap:
+            self.adjust_h()
 
     def toggle_ring(self, q, r):
         """Toggle a benzene ring at axial position (q, r)."""
@@ -411,9 +424,68 @@ class KekuleBackend:
                                 element, elements.ELEMENT_DICT[element][0],
                                 pin=node_key, parent=None,
                                 subtype=self._get_element_default_subtype(element))
-        self.recalc_bonds()
+            # Create bond to nearest heavy atom (not H cap) within cutoff
+            a = self.graph._pin_to_atom[node_key]
+            self._create_bond_to_nearest_heavy(a)
+            # Sync neighbor lists after adding bonds
+            self.graph.sync_neighbor_lists()
+        
         if self.auto_h_cap:
             self.adjust_h()
+
+    def _create_bond_to_nearest_heavy(self, atom):
+        """Create bond to nearest heavy atom within bond length cutoff.
+        
+        This is used when adding atoms to ensure bonds are created immediately
+        without the brute-force recalc_bonds that removes all bonds.
+        """
+        nearest_atom = None
+        min_dist = float('inf')
+        
+        # Find nearest heavy atom (not H cap)
+        for a in self.graph.atoms.values():
+            if not a.alive or a == atom or a.subtype == 'H_cap':
+                continue
+            dist = np.linalg.norm(atom.pos - a.pos)
+            if dist < min_dist:
+                min_dist = dist
+                nearest_atom = a
+        
+        # Create bond if within cutoff
+        if nearest_atom and min_dist < bond_length_cutoff:
+            # Check if bond already exists
+            bond_exists = False
+            for bond in atom.bonds:
+                if bond.alive and (bond.a == nearest_atom or bond.b == nearest_atom):
+                    bond_exists = True
+                    break
+            if not bond_exists:
+                self.graph.add_bond(atom, nearest_atom)
+
+    def _create_bonds_for_ring_atoms(self, ring_atoms):
+        """Create bonds between all ring atoms that are at proper C-C bond distance.
+        
+        For a hexagon ring, each atom should be bonded to its two neighbors
+        at ~1.42 Å distance (C-C bond length).
+        """
+        cc_bond_sq = (self.a_CC * 1.1) ** 2  # Slightly larger than a_CC for tolerance
+        
+        for i, a in enumerate(ring_atoms):
+            if not a.alive:
+                continue
+            for j, b in enumerate(ring_atoms):
+                if i >= j or not b.alive:
+                    continue
+                dist_sq = np.sum((a.pos - b.pos) ** 2)
+                if dist_sq < cc_bond_sq:
+                    # Check if bond already exists
+                    bond_exists = False
+                    for bond in a.bonds:
+                        if bond.alive and (bond.a == b or bond.b == b):
+                            bond_exists = True
+                            break
+                    if not bond_exists:
+                        self.graph.add_bond(a, b)
 
     def set_atom_valency(self, node_key, npi):
         """Set npi (pi bond count) for atom at node_key. npi in {0,1,2}."""
@@ -439,7 +511,7 @@ class KekuleBackend:
             parent=None,
             subtype=f"{element}_sp2" if npi == 1 else f"{element}_sp3"
         )
-        self.recalc_bonds()
+        self.recalc_bonds(skip_sync=True)
         if self.auto_h_cap:
             self.adjust_h()
         return ia
@@ -448,6 +520,7 @@ class KekuleBackend:
         """Remove atom at snapped grid position node_key.
         
         Also removes any H atoms attached to the removed heavy atom.
+        Does NOT call recalc_bonds() - just removes from graph and syncs.
         """
         n2a = self.graph._pin_to_atom
         a = n2a.get(node_key)
@@ -455,7 +528,9 @@ class KekuleBackend:
             return
         ia = self._atom_to_index(a)
         self._rebuild_after_delete([ia])
-        self.recalc_bonds()
+        # Clean up dead bonds and sync neighbor lists (no recalc_bonds!)
+        self.graph.cleanup_invalid()
+        self.graph.sync_neighbor_lists()
         if self.auto_h_cap:
             self.adjust_h()
 
@@ -526,13 +601,16 @@ class KekuleBackend:
         n_atoms, n_bonds, n_rings = self.graph.cleanup_invalid()
         debug_print(1, f"  Cleanup removed: {n_atoms} atoms, {n_bonds} bonds, {n_rings} rings")
         
+        # Sync neighbor lists from bonds (derived data)
+        self.graph.sync_neighbor_lists()
+        
         # Sync sys from graph
         self._sync_sys()
         self._rings_dirty = True
         
-        # NOTE: We do NOT auto-adjust H or recalc bonds here.
-        # The user should control this explicitly via GUI toggles/buttons.
-        # Bond editing operations should preserve the explicit bond topology.
+        # Auto-adjust H if enabled (after topology operation completes)
+        if self.auto_h_cap:
+            self.adjust_h()
         
         return new_atom
 
@@ -590,10 +668,6 @@ class KekuleBackend:
         # Transfer bonds from removed atom to survivor
         # Find all bonds involving the removed atom (excluding the bond we're collapsing)
         bonds_to_transfer = []
-        
-        # Debug: show all bonds of removed atom
-        debug_print(1, f"  Atom({to_remove._id}) has {len(to_remove.bonds)} bonds: {[(b._id, b.alive, b.a._id, b.b._id) for b in to_remove.bonds]}")
-        
         for b in to_remove.bonds:
             if b is bond:
                 debug_print(1, f"    Skipping bond {b._id} (is the bond being collapsed)")
@@ -618,11 +692,15 @@ class KekuleBackend:
         for _, other in bonds_to_transfer:
             new_bond = self.graph.add_bond(survivor, other)
             debug_print(1, f"  Created new bond {new_bond._id} between survivor({survivor._id}) and Atom({other._id})")
-            debug_print(1, f"    Survivor now has bonds: {[b._id for b in survivor.bonds]}")
-            debug_print(1, f"    Other atom now has bonds: {[b._id for b in other.bonds]}")
         
         # Note: survivor's existing bonds (to atoms other than to_remove) are preserved
         # Only the bond between survivor and to_remove is marked dead
+        
+        # Remove H children of the atom being removed (they become orphans)
+        h_children = self.graph.h_children(to_remove)
+        for h in h_children:
+            h.alive = False
+            debug_print(1, f"  Marked H child Atom({h._id}) as dead (orphan)")
         
         # Mark removed atom as dead (soft delete)
         to_remove.alive = False
@@ -632,95 +710,98 @@ class KekuleBackend:
         n_atoms, n_bonds, n_rings = self.graph.cleanup_invalid()
         debug_print(1, f"  Cleanup removed: {n_atoms} atoms, {n_bonds} bonds, {n_rings} rings")
         
+        # Sync neighbor lists from bonds (derived data)
+        self.graph.sync_neighbor_lists()
+        
         # Sync sys from graph
         self._sync_sys()
         self._rings_dirty = True
         
-        # NOTE: We do NOT auto-adjust H or recalc bonds here.
-        # The user should control this explicitly via GUI toggles/buttons.
+        # Auto-adjust H if enabled (after topology operation completes)
+        if self.auto_h_cap:
+            self.adjust_h()
         
         return survivor
+
+    def remove_h_caps(self):
+        """Remove all H cap atoms from the graph (soft delete)."""
+        for h in [a for a in list(self.graph.atoms.values()) if a.subtype == 'H_cap']:
+            h.alive = False
+        self.graph.cleanup_invalid()
+
+    def add_h_caps(self):
+        """Add H caps to undercoordinated heavy atoms based on current topology."""
+        # Bond lengths for H caps
+        bond_lengths = {'C': 1.09, 'N': 1.01, 'O': 0.97}
+        added_h_atoms = []
+        
+        # Find undercoordinated heavy atoms and add H caps
+        # Collect atoms first to avoid dict-changed-during-iteration error
+        heavy_atoms = [a for a in self.graph.atoms.values() if a.alive and a.ename not in {'H', 'E'}]
+        for a in heavy_atoms:
+            if not a.alive or a.ename in {'H', 'E'}:
+                continue
+            
+            npi = self._get_npi_from_subtype(a.subtype)
+            target = self._target_sigma(a.ename, npi)
+            
+            # Count heavy atom neighbors (excluding H caps) using graph.neighbors
+            heavy_neighbors = [n for n in a.neighbors if n.subtype != 'H_cap']
+            current = len(heavy_neighbors)
+            n_missing = target - current
+            
+            if n_missing <= 0:
+                continue
+            
+            ename = a.ename
+            bl = bond_lengths.get(ename, 1.09)
+            pos_a = a.pos
+            nb = len(heavy_neighbors)
+            
+            # Calculate directions using make_epair_geom logic (now using atom objects)
+            directions = self._calc_h_directions_atom(a, npi, nb, heavy_neighbors)
+            
+            for direction in directions[:n_missing]:
+                h_pos = pos_a + direction * bl
+                # Add H cap to graph with explicit bond
+                h_atom = self.graph.add_atom(h_pos, 'H', elements.ELEMENT_DICT['H'][0],
+                                            pin=None, parent=a, subtype='H_cap')
+                self.graph.add_bond(a, h_atom)  # Explicit bond between heavy atom and H
+                added_h_atoms.append(h_atom)
+                debug_print(1, f"  Added H cap to Atom({a._id}) at {h_pos[:2]}")
+        
+        # Sync neighbor lists to include new H atoms
+        self.graph.sync_neighbor_lists()
+        self._sync_sys()
+        return added_h_atoms
 
     def adjust_h(self):
         """Add/remove H caps based on electron counting: nsigma = nvalence - npi - nepair.
         
-
-        Uses robust geometry from make_epair_geom (AtomicSystem.py) for direction calculation.
+        Uses graph.neighbors (derived from bond topology) for neighbor counting.
         - sp (npi=2, acetylene-like): 180° linear
         - sp3 (npi=0): 109.5° tetrahedral
         - sp2 (npi=1): 120° trigonal planar (O uses 109° water-like)
         
-        NOTE: This only recalculates bonds if auto_recalc_bonds is True.
-        Otherwise it uses the existing bond topology from the graph.
+        NOTE: This uses the persistent bond topology from the graph, NOT distance-based detection.
         """
-        # Remove existing H caps (object references, no index bookkeeping)
-        for h in [a for a in list(self.graph.atoms.values()) if a.subtype == 'H_cap']:
-            self.graph.remove_atom(h)
-        
-        # Only recalc bonds if explicitly enabled (DANGEROUS - can create spurious bonds)
-        if self.auto_recalc_bonds:
-            self.recalc_bonds()
-        
-        self._sync_sys()
-        self._rings_dirty = True
-        if self.sys.ngs is None: self.sys.neighs()
-        
-        # Build target sigma count per heavy atom (by object ref)
-        atom_list, *_ = self.graph.to_arrays()
-        tv = {}
-        npi_map = {}
-        for i, a in enumerate(atom_list):
-            if a.ename in {'H', 'E'}: continue
-            npi = self._get_npi_from_subtype(a.subtype)
-            tv[i] = self._target_sigma(a.ename, npi)
-            npi_map[i] = npi
-        
-        # Find undercoordinated atoms and place H using make_epair_geom logic
-        bond_lengths = {'C': 1.09, 'N': 1.01, 'O': 0.97}
-        added_indices = []
-        for i, a in enumerate(atom_list):
-            if a.ename in {'H', 'E'}: continue
-            target = tv.get(i, 4)
-            current = len([n for n in self.sys.ngs[i] if self.sys.enames[n] not in {'H','E'}])
-            n_missing = target - current
-            if n_missing <= 0:
-                continue
-            
-            npi = npi_map[i]
-            ename = a.ename
-            bl = bond_lengths.get(ename, 1.09)
-            pos_a = self.sys.apos[i]
-            neighbors = [j for j in self.sys.ngs[i] if self.sys.enames[j] not in {'H','E'}]
-            nb = len(neighbors)
-            
-            # Calculate directions using make_epair_geom logic
-            directions = self._calc_h_directions(i, npi, nb, neighbors)
-            
-            for direction in directions[:n_missing]:
-                h_pos = pos_a + direction * bl
-                new_idx = len(self.sys.apos)
-                self.sys.apos   = np.append(self.sys.apos, [h_pos], axis=0)
-                self.sys.atypes = np.append(self.sys.atypes, 1)  # H
-                self.sys.enames = np.append(self.sys.enames, ['H'])
-                if self.sys.qs is not None: self.sys.qs = np.append(self.sys.qs, 0.0)
-                if self.sys.Rs is not None: self.sys.Rs = np.append(self.sys.Rs, 0.5)
-                # Don't add H cap bonds to sys.bonds (they're virtual caps, not real bonds)
-                if self.sys.ngs is not None:
-                    self.sys.ngs[i][new_idx] = -1  # Mark as H cap (virtual bond)
-                    self.sys.ngs.append({i: -1})
-                added_indices.append(new_idx)
-                # Add to graph
-                self.graph.add_atom(h_pos, 'H', elements.ELEMENT_DICT['H'][0],
-                                    pin=None, parent=a, subtype='H_cap')
-        
-        self.sys.natoms = len(self.sys.apos)
-        self._sync_sys()
-        self.sys.neighs()
-        return added_indices
+        self.remove_h_caps()
+        self.add_h_caps()
+        # Note: add_h_caps() already calls _sync_sys() and _rings_dirty = True
 
-    def _calc_h_directions(self, i, npi, nb, neighbors):
-        """Calculate H placement directions for 2D systems (xy-plane, pi along z)."""
-        pos = self.sys.apos[i]
+    def _calc_h_directions_atom(self, atom, npi, nb, heavy_neighbors):
+        """Calculate H placement directions for 2D systems using atom objects.
+        
+        Args:
+            atom: The heavy atom to place H caps on
+            npi: Number of pi orbitals (0=sp3, 1=sp2, 2=sp)
+            nb: Number of heavy atom neighbors
+            heavy_neighbors: List of neighboring Atom objects (not H caps)
+        
+        Returns:
+            List of direction vectors for H placement
+        """
+        pos = atom.pos
         if nb == 0:
             # No neighbors: use default directions based on hybridization
             if npi == 2:  # sp (linear in-plane)
@@ -735,9 +816,9 @@ class KekuleBackend:
                 angles = [0, 2*np.pi/3, 4*np.pi/3]
                 return [np.array([np.cos(a), np.sin(a), 0.0]) for a in angles]
         
-        v1 = au.normalize(self.sys.apos[neighbors[0]] - pos)
-        if nb > 1: v2 = au.normalize(self.sys.apos[neighbors[1]] - pos)
-        if nb > 2: v3 = au.normalize(self.sys.apos[neighbors[2]] - pos)
+        v1 = au.normalize(heavy_neighbors[0].pos - pos)
+        if nb > 1: v2 = au.normalize(heavy_neighbors[1].pos - pos)
+        if nb > 2: v3 = au.normalize(heavy_neighbors[2].pos - pos)
         
         if npi == 0:  # sp3 (2D: tetrahedral geometry shifted along bond direction)
             if nb == 3:  # NH3-like - place H opposite to centroid of neighbors
@@ -783,17 +864,37 @@ class KekuleBackend:
                 ]
         elif npi == 2:  # sp (linear in-plane)
             if nb == 1:
-                return [au.normalize(pos - self.sys.apos[neighbors[0]])]
+                return [au.normalize(pos - heavy_neighbors[0].pos)]
             else:
                 return [au.normalize(-v1)]
         
         return []
 
-    def recalc_bonds(self):
-        """Recompute bonds from distance threshold."""
+    def _calc_h_directions(self, i, npi, nb, neighbors):
+        """Calculate H placement directions for 2D systems (xy-plane, pi along z).
+        
+        Legacy function - now wraps _calc_h_directions_atom for compatibility.
+        """
+        # Create dummy Atom object with position from sys
+        class DummyAtom:
+            def __init__(self, pos, _id):
+                self.pos = pos
+                self._id = _id
+        
+        atom = DummyAtom(self.sys.apos[i], i)
+        heavy_neighbors = [DummyAtom(self.sys.apos[j], j) for j in neighbors]
+        return self._calc_h_directions_atom(atom, npi, nb, heavy_neighbors)
+
+    def recalc_bonds(self, skip_sync=False):
+        """Recompute bonds from distance threshold.
+        
+        Args:
+            skip_sync: If True, skip _sync_sys() call (use when adjust_h will be called after)
+        """
         self.graph.recalc_bonds(self.a_CC)
         self._rings_dirty = True
-        self._sync_sys()
+        if not skip_sync:
+            self._sync_sys()
         if self.sys.apos is not None and len(self.sys.apos) > 0:
             self.sys.findBonds(Rcut=3.0, RvdwCut=1.2)
             self.sys.neighs()
@@ -902,7 +1003,11 @@ class KekuleBackend:
                                     e, elements.ELEMENT_DICT[e][0],
                                     pin=nk, parent=None,
                                     subtype=self._get_element_default_subtype(e))
-        self.recalc_bonds()
+        # Create bonds for all heavy atoms (no recalc_bonds!)
+        heavy_atoms = [a for a in self.graph.atoms.values() if a.alive and a.ename not in ('H', 'E')]
+        for a in heavy_atoms:
+            self._create_bond_to_nearest_heavy(a)
+        self.graph.sync_neighbor_lists()
         self._guess_rings()
         # Add H atoms, finding nearest heavy atom by object ref
         heavy = [a for a in self.graph.atoms.values() if a.ename not in ('H', 'E')]
@@ -917,7 +1022,8 @@ class KekuleBackend:
                 self.graph.add_atom(np.array(p, dtype=np.float64), 'H',
                                     elements.ELEMENT_DICT['H'][0],
                                     pin=None, parent=best_a, subtype='H_cap')
-        self.recalc_bonds()
+        # Sync after loading H atoms (bonds already created above)
+        self.graph.sync_neighbor_lists()
 
     def _guess_rings(self):
         """Heuristic: infer ring axial coords from heavy atom grid positions."""
@@ -1043,7 +1149,9 @@ class KekuleBackend:
         h_indices = [i for i, e in enumerate(self.sys.enames) if e == 'H']
         if h_indices:
             self._rebuild_after_delete(h_indices)
-            self.recalc_bonds()
+            # Clean up and re-find edge atoms after H removal (no recalc_bonds!)
+            self.graph.cleanup_invalid()
+            self.graph.sync_neighbor_lists()
             edge_atoms = [i for i in range(len(self.sys.apos))
                           if self.sys.enames[i] not in ('H', 'E') and
                           len([j for j in self.sys.ngs[i] if self.sys.enames[j] not in ('H', 'E')]) < 3]
@@ -1065,7 +1173,8 @@ class KekuleBackend:
             is_top = pos_C[1] > y_center
             direction = 1.0 if is_top else -1.0
             self._apply_passivation_group(ia, passivation, is_top)
-        self.recalc_bonds()
+        # Sync after passivation (no recalc_bonds!)
+        self.graph.sync_neighbor_lists()
 
     def _apply_y_offsets(self, y_bottom_offset, y_top_offset):
         """Apply y offsets to top/bottom edge atoms."""
@@ -1187,9 +1296,11 @@ class KekuleBackend:
                     # Add atom at C_pos + coords (swap x and y for side edges)
                     # y becomes x-direction for side edges
                     pos_new = [pos_C[0] + y * direction, pos_C[1] + x, pos_C[2] + z]
-                    self._append_atom(pos_new, elem, subtype='H_cap')
+                    a = self._append_atom(pos_new, elem, subtype='H_cap')
+                    # Create bond to nearest heavy atom
+                    self._create_bond_to_nearest_heavy(a)
 
-        self.recalc_bonds()
+        self.graph.sync_neighbor_lists()
 
     def _passivate_edges_top_bottom_only_separate(self, passivation_bottom, passivation_top):
         """Passivate only top/bottom edge atoms (zigzag edges), not side edges (armchair edges).
@@ -1255,7 +1366,8 @@ class KekuleBackend:
             p = passivation_top[idx % len(passivation_top)] if passivation_top else None
             if p and p in PASSIVATION_GROUPS:
                 self._apply_passivation_group(ia, p, is_top=True)
-        self.recalc_bonds()
+        # Sync after passivation (no recalc_bonds!)
+        self.graph.sync_neighbor_lists()
 
     def _passivate_edges_top_bottom_only(self, passivation):
         """Passivate only top/bottom edge atoms (zigzag edges), not side edges (armchair edges)."""
@@ -1297,7 +1409,9 @@ class KekuleBackend:
         h_indices = [i for i, e in enumerate(self.sys.enames) if e == 'H']
         if h_indices:
             self._rebuild_after_delete(h_indices)
-            self.recalc_bonds()
+            # Clean up and re-find edge atoms after H removal (no recalc_bonds!)
+            self.graph.cleanup_invalid()
+            self.graph.sync_neighbor_lists()
             # Re-find edge atoms after deletion
             edge_atoms = []
             for i in range(len(self.sys.apos)):
@@ -1317,7 +1431,8 @@ class KekuleBackend:
             pos_C = self.sys.apos[ia]
             is_top = pos_C[1] > y_center
             self._apply_passivation_group(ia, passivation, is_top)
-        self.recalc_bonds()
+        # Sync after passivation (no recalc_bonds!)
+        self.graph.sync_neighbor_lists()
 
     def _build_ribbon_from_rings(self, width_chains, length_cells, start_with_A):
         """Build ribbon using ring-based construction (for non-PBC mode)."""
@@ -1499,12 +1614,17 @@ class KekuleBackend:
 
         # Combine into this backend
         self.__init__(a_CC=self.a_CC)
+        added_atoms = []
         for pos, ename in zip(apos_N, enames_N):
-            self._append_atom(pos, ename)
+            a = self._append_atom(pos, ename)
+            added_atoms.append(a)
         for pos, ename in zip(apos_NH, enames_NH):
-            self._append_atom(pos, ename)
-
-        self.recalc_bonds()
+            a = self._append_atom(pos, ename)
+            added_atoms.append(a)
+        # Create bonds for all added atoms (no recalc_bonds!)
+        for a in added_atoms:
+            self._create_bond_to_nearest_heavy(a)
+        self.graph.sync_neighbor_lists()
         return self
 
     def build_two_ribbon_cell(self, width_chains=4, length_cells=1, Lx=2.4, L_Hb=2.0, shift_x=0.0, 
