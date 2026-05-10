@@ -323,17 +323,23 @@ def step2_electrostatics(rho_diff, step, origin, ngrid):
     plot_field_slices(V_ES, "Electrostatic Potential [eV]", "step2_VES_slices.png", step_dir, origin=origin, step=step, sym=True, cmap='bwr')
     return V_ES
 
-def step3_pauli(rho_grid, origin, step, rho_tip_total, A_pauli=16.0):
+def step3_pauli(rho_grid, origin, step, rho_tip_total, A_pauli=16.0, beta_pauli=1.0):
     step_dir = os.path.join(_DEBUG_DIR, 'step3_pauli')
     log = lambda msg: log_step(step_dir, msg)
     log("="*60); log("STEP 3: Pauli Repulsion Convolution"); log("="*60)
     dV = step**3
     nx_t, ny_t, nz_t = rho_tip_total.shape
     tip_kernel = np.roll(np.roll(np.roll(rho_tip_total[::-1,::-1,::-1], -(nx_t//2), axis=0), -(ny_t//2), axis=1), -(nz_t//2), axis=2)
-    E_pauli_field = A_pauli * dV * np.real(np.fft.ifftn(np.fft.fftn(rho_grid) * np.fft.fftn(tip_kernel))).astype(np.float32)
+    # Raw overlap from FFT convolution (without any prefactor)
+    overlap_raw = dV * np.real(np.fft.ifftn(np.fft.fftn(rho_grid) * np.fft.fftn(tip_kernel))).astype(np.float32)
+    # Clip to avoid numerical issues with fractional powers
+    overlap_safe = np.clip(overlap_raw, 1e-30, None)
+    E_pauli_field = A_pauli * (overlap_safe ** beta_pauli)
     grads_E_Pauli = np.stack([np.gradient(E_pauli_field, step, axis=i) for i in range(3)], axis=-1)
     save_npy(step_dir, 'E_Pauli_field.npy', E_pauli_field)
-    plot_field_slices(E_pauli_field, "Pauli Energy [eV]", "step3_Epauli_slices.png", step_dir, origin=origin, step=step)
+    save_npy(step_dir, 'overlap_raw.npy', overlap_raw)
+    plot_field_slices(E_pauli_field, f"Pauli Energy [eV] (A={A_pauli:.1f}, b={beta_pauli:.3f})", "step3_Epauli_slices.png", step_dir, origin=origin, step=step)
+    log(f"Pauli field range: [{E_pauli_field.min():.4f}, {E_pauli_field.max():.4f}] eV")
     return E_pauli_field, grads_E_Pauli
 
 def step4_electrostatics_conv(V_ES, origin, step, rho_tip_delta):
@@ -421,6 +427,8 @@ def main():
     parser.add_argument('--step', type=float, default=0.15)
     parser.add_argument('--output_dir', type=str, default=None, help='Custom output directory name (e.g., debug_dftb_pentacene_step0.1)')
     parser.add_argument('--basis', type=str, default='mio-1-1', help='Basis set: mio-1-1 or 3ob-3-1')
+    parser.add_argument('--A_pauli', type=float, default=None, help='Pauli prefactor A (default: fitted per basis)')
+    parser.add_argument('--beta_pauli', type=float, default=None, help='Pauli exponent beta (default: fitted per basis)')
     args = parser.parse_args()
     
     # Override debug directory if custom output_dir specified
@@ -438,9 +446,18 @@ def main():
     else:
         raise ValueError(f"Unknown basis: {args.basis}. Use 'mio-1-1' or '3ob-3-1'")
     
+    # Fitted defaults per basis (from fit_fdbm_pauli.py multi-atom mean)
+    FITTED_DEFAULTS = {
+        'mio-1-1': {'A': 965.0, 'beta': 0.871},
+        '3ob-3-1': {'A': 643.0, 'beta': 0.796},
+    }
+    A_pauli = args.A_pauli if args.A_pauli is not None else FITTED_DEFAULTS[args.basis]['A']
+    beta_pauli = args.beta_pauli if args.beta_pauli is not None else FITTED_DEFAULTS[args.basis]['beta']
+
     print(f"Using basis: {args.basis}")
     print(f"SLAKO_PREFIX: {SLAKO_PREFIX}")
     print(f"BASIS_HSD: {BASIS_HSD}")
+    print(f"Pauli params: A={A_pauli:.2f}, beta={beta_pauli:.4f}")
     
     setup_debug_dirs()
     atomTypes, atomPos = load_xyz(_XYZ_PATH)
@@ -481,7 +498,7 @@ def main():
     save_npy(os.path.join(_DEBUG_DIR, 'co_tip'), 'co_rho_delta.npy', rho_tip_delta)
     
     # Steps 3-5
-    _, grads_pauli = step3_pauli(rho_grid, origin, args.step, rho_tip_total)
+    _, grads_pauli = step3_pauli(rho_grid, origin, args.step, rho_tip_total, A_pauli=A_pauli, beta_pauli=beta_pauli)
     _, grads_es    = step4_electrostatics_conv(V_ES, origin, args.step, rho_tip_delta)
     _, grads_vdw   = step5_dispersion(atomPos, atomTypes, origin, args.step, ngrid)
     
