@@ -494,7 +494,32 @@ def build_gaussian_tip(grid_shape, step, sigma):
 def _interp3(g, coords):
     """Trilinear interpolation of 3D grid g at fractional coords (N,3). Returns (N,) float32."""
     from scipy.ndimage import map_coordinates
-    return map_coordinates(g, coords.T, order=1, mode='nearest').astype(np.float32)
+    return _mc(g, coords.T, order=1, mode='nearest').reshape(coords.shape[:-1]).astype(np.float32)
+
+def get_tip_kernel(rho_t):
+    """
+    Prepare tip density kernel for convolution.
+    Reverse the tip density (for correlation) and roll to center it at index (0,0,0).
+    """
+    nx, ny, nz = rho_t.shape
+    rho_t_rev = rho_t[::-1, ::-1, ::-1]
+    return np.roll(np.roll(np.roll(rho_t_rev, -(nx//2), axis=0), -(ny//2), axis=1), -(nz//2), axis=2)
+
+def get_pauli_convolution(rho_s, rho_t, dV, A_pauli=16.0, beta_pauli=1.0):
+    """
+    Compute Pauli repulsion field using FFT convolution.
+    E_pauli = A_pauli * dV * (rho_s**beta * rho_t**beta)
+    """
+    if beta_pauli != 1.0:
+        rho_s = rho_s**beta_pauli
+        rho_t = rho_t**beta_pauli
+    
+    rho_s_k = np.fft.fftn(rho_s.astype(np.float64))
+    kernel  = get_tip_kernel(rho_t)
+    rho_t_k = np.fft.fftn(kernel.astype(np.float64))
+    
+    conv = np.real(np.fft.ifftn(rho_s_k * rho_t_k))
+    return (A_pauli * dV * conv).astype(np.float32)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

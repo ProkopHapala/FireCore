@@ -37,7 +37,7 @@ COULOMB_CONST = 14.3996448915
 ELEM_Z = {'H':1, 'C':6, 'N':7, 'O':8, 'P':15, 'S':16}
 
 _XYZ_PATH = os.path.join(_THIS_DIR, 'pentacene.xyz')
-_DEBUG_DIR = os.path.join(_THIS_DIR, 'debug_dftb_pentacene')
+_DEBUG_DIR = os.path.join(_THIS_DIR, 'debug_dftb_pentacene')  # Default, can be overridden
 SLAKO_PREFIX = "/home/prokop/SIMULATIONS/dftbplus/slakos/mio-1-1/"
 BASIS_HSD = "/home/prokop/git/dftbplus/tests/grid/dftb_ptcda/waveplot_in.hsd"
 
@@ -377,7 +377,13 @@ def step6_composed(grads_pauli, grads_es, grads_vdw, origin, step, atomPos, scan
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--step', type=float, default=0.15)
+    parser.add_argument('--output_dir', type=str, default=None, help='Custom output directory name (e.g., debug_dftb_pentacene_step0.1)')
     args = parser.parse_args()
+    
+    # Override debug directory if custom output_dir specified
+    global _DEBUG_DIR
+    if args.output_dir:
+        _DEBUG_DIR = os.path.join(_THIS_DIR, args.output_dir)
     
     setup_debug_dirs()
     atomTypes, atomPos = load_xyz(_XYZ_PATH)

@@ -290,3 +290,19 @@ class PotentialFitter:
 - Memory usage profiling
 - Scaling behavior with system size
 
+---
+
+# Electrostatics Solution Note
+
+**Important**: The long-range electrostatic potential problem has been rigorously solved in `pyBall/Ewald2D.py`. This was the main computational bottleneck for the folded atomic function framework because:
+
+- **Morse potential** (short-range van der Waals) can be fitted easily in real space with a small number of exponentials
+- **Electrostatic potential** (long-range 1/r Coulomb) converges very slowly in real space, requiring many periodic images for accurate results
+
+The `Ewald2D` module provides:
+- Exact 2D Fourier representation of periodic slab electrostatics
+- Vectorized NumPy implementation for vacuum and interior potentials
+- Direct coefficient computation from ionic positions and charges
+- Integration with the GPU folded-basis framework (see `tests/tEwald2D/test_ewald_2d_ocl.py`)
+
+This solution eliminates the need for empirical fitting of electrostatics and provides a rigorous foundation for surface potential calculations.

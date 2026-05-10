@@ -87,6 +87,34 @@ def plot1d(x, ys, derivs=None, labels=None, colors=None, bNumDeriv=True, ls='-',
             if bLegend: ax2.legend()
     return fig, (ax1, ax2)
 
+def plot_compare_1d(x1, y1, x2, y2, labels=["Ref", "New"], title="Comparison", xlabel="z [A]", ylabel="Value", log=True, ylim=None, xlim=None, fname=None):
+    """Generic 1D comparison plot (linear or log)."""
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.plot(x1, y1, 'b-', label=labels[0], lw=2)
+    ax.plot(x2, y2, 'r--', label=labels[1], lw=2)
+    if log:
+        ax.set_yscale('log')
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    if ylim: ax.set_ylim(ylim)
+    if xlim: ax.set_xlim(xlim)
+    ax.legend()
+    ax.grid(True, which='both', alpha=0.3)
+    fig.tight_layout()
+    if fname:
+        fig.savefig(fname, dpi=150)
+        plt.close(fig)
+    return fig, ax
+
+def plot_density_comparison(z1, rho1, z2, rho2, labels=["Fireball", "DFTB+"], title="Electron Density Comparison", fname=None):
+    """Side-by-side density comparison (log scale)."""
+    return plot_compare_1d(z1, rho1, z2, rho2, labels=labels, title=title, ylabel="Density [e/A^3]", log=True, ylim=[1e-6, 10], xlim=[0, 5], fname=fname)
+
+def plot_pauli_comparison(z1, e1, z2, e2, labels=["Fireball", "DFTB+"], title="Pauli Potential Comparison", fname=None):
+    """Side-by-side Pauli energy comparison (log scale)."""
+    return plot_compare_1d(z1, e1, z2, e2, labels=labels, title=title, ylabel="Energy [eV]", log=True, ylim=[1e-6, 100], xlim=[0, 5], fname=fname)
+
 def plot1d_zip(x, funcs):
     ys,dys,labels = [],[],[]
     for func in funcs:

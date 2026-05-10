@@ -6,6 +6,7 @@ including plotting utilities and RMS error calculations.
 """
 
 import numpy as np
+import os
 from pathlib import Path
 
 
@@ -262,3 +263,71 @@ def print_eigenvecs(eigenvec_path, detailed_xml_path=None, waveplot_in_path=None
         coeffs = [f"{coeff:{col_width}.6f}" for coeff in evecs[istate, :]]
         row_str = f"{mo_label:<6}  {'':<12}  |  " + "  ".join(coeffs)
         print(row_str)
+
+
+
+def load_xyz(fname):
+    """Simple XYZ parser for atomic types and positions."""
+    ELEM_Z = {'H':1, 'C':6, 'N':7, 'O':8, 'P':15, 'S':16}
+    with open(fname, 'r') as f:
+        lines = f.readlines()
+    natoms = int(lines[0])
+    atomTypes = []; atomPos = []
+    for line in lines[2:2+natoms]:
+        p = line.split()
+        sym = p[0]
+        z = ELEM_Z.get(sym, 0)
+        atomTypes.append(z)
+        atomPos.append([float(p[1]), float(p[2]), float(p[3])])
+    return np.array(atomTypes, dtype=np.int32), np.array(atomPos, dtype=np.float64)
+
+def check_density_integration(rho, step, expected_n=None, label=""):
+    """Check and print the integrated electron density."""
+    dV = step**3
+    total_q = np.sum(rho) * dV
+    msg = f"[{label}] Integrated electrons: {total_q:.4f}"
+    if expected_n is not None:
+        msg += f" (expected: {expected_n:.2f})"
+    print(msg)
+    return total_q
+
+def get_z_profile(rho, pos, origin, step):
+    """Extract 1D z-profile from 3D grid above a specific XY position."""
+    nx, ny, nz = rho.shape
+    ix = int(round((pos[0] - origin[0]) / step))
+    iy = int(round((pos[1] - origin[1]) / step))
+    ix = np.clip(ix, 0, nx-1)
+    iy = np.clip(iy, 0, ny-1)
+    
+    profile = rho[ix, iy, :]
+    z = origin[2] + np.arange(nz) * step
+    return z, profile
+    
+def get_dftb_zscan_energies(log_path):
+    """Parse DFTB total energies from a z-scan log file."""
+    zvals = []
+    energies = []
+    if not os.path.exists(log_path):
+        return None, None
+    with open(log_path, 'r') as f:
+        lines = f.readlines()
+    
+    # Simple parser for the table format in zscan_results.txt
+    start_line = -1
+    for i, line in enumerate(lines):
+        if ('z [' in line and 'E [' in line) or ('-------' in line and i > 5):
+            if 'z [' in line:
+                start_line = i + 2
+            else:
+                start_line = i + 1
+            break
+    
+    if start_line != -1:
+        for line in lines[start_line:]:
+            if not line.strip() or '---' in line: break
+            p = line.split()
+            if len(p) >= 3:
+                zvals.append(float(p[0]))
+                energies.append(float(p[2]))
+    
+    return np.array(zvals), np.array(energies)
