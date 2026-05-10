@@ -93,15 +93,24 @@ class OpenCLBase:
     def load_program(self, kernel_path=None, rel_path=None, base_path=None, bPrint=False, bMakeHeaders=True, build_options=None):
         """
         Load and compile an OpenCL program.
-        
+        Only compiles if program is not already loaded.
+
         Args:
             kernel_path (str): Absolute path to the kernel file
             rel_path (str): Relative path to the kernel file from base_path
             base_path (str): Base directory path (defaults to this file's directory)
-            
+            bPrint (bool): Print debug info
+            bMakeHeaders (bool): Extract kernel headers
+            build_options (str): OpenCL build options
+
         Returns:
             bool: True if successful, False otherwise
         """
+        # Return early if program is already loaded
+        if self.prg is not None:
+            print(f"load_program({kernel_path!r} - already loaded)")
+            return True
+
         if kernel_path is None and rel_path is not None:
             if base_path is None:
                 base_path = os.path.dirname(os.path.abspath(__file__))
@@ -112,10 +121,12 @@ class OpenCLBase:
         with open(kernel_path, 'r') as f:
             try:
                 kernel_source = f.read()
+                print(f"[OpenCLBase] Starting compilation for {kernel_path}...")
                 if build_options is None:
                     self.prg = cl.Program(self.ctx, kernel_source).build()
                 else:
                     self.prg = cl.Program(self.ctx, kernel_source).build(options=build_options)
+                print(f"[OpenCLBase] Compilation complete for {kernel_path}")
                 # Extract kernel headers automatically
                 if bMakeHeaders:
                     self.kernelheaders = self.extract_kernel_headers(kernel_source)

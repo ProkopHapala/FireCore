@@ -12,12 +12,13 @@ if _ROOT not in sys.path:
 from pyBall.DFTB import TestUtils as tu
 from pyBall import plotUtils as pu
 from pyBall.OCL import AFM as afm
+from scipy.optimize import curve_fit
 
-def run_comparison():
+def run_comparison(basis='mio-1-1', output_dir=None):
     # --- Config ---
     FB_DIR = 'debug'
-    DB_DIR = 'debug_dftb_pentacene'
-    OUT_DIR = 'debug_comparison_v2'
+    DB_DIR = f'debug_dftb_pentacene' if basis == 'mio-1-1' else f'debug_dftb_pentacene_{basis.replace("-", "_")}'
+    OUT_DIR = output_dir if output_dir else f'debug_comparison_{basis.replace("-", "_")}'
     os.makedirs(OUT_DIR, exist_ok=True)
 
     # Fireball grid config
@@ -77,25 +78,63 @@ def run_comparison():
         # Relative energy (binding energy)
         e_ref = e_ref - e_ref[-1]
         
-        # Compare DFTB Ref vs FDBM Pauli (scaled)
-        # Note: ep_db is already a z-slice. We need to align it with z_ref.
-        ep_interp = np.interp(z_ref, z_db, ep_db)
+        # --- Formal Fitting ---
+        print("\n--- Fitting Pauli Parameters (z=2.1 - 3.0 A) ---")
+        # Mask for fitting range
+        mask_ref = (z_ref >= 2.0) & (z_ref <= 3.0)
+        z_fit = z_ref[mask_ref]
+        e_fit = e_ref[mask_ref]
         
-        path_fit = os.path.join(OUT_DIR, 'fitted_comparison.png')
-        pu.plot_compare_1d(z_ref, e_ref, z_ref, ep_interp * (1500/16.0), 
-                           labels=["DFTB Total", "FDBM Pauli (A=1500)"],
-                           title="Fitted Pauli vs DFTB Reference",
+        # We assume E_pauli = A * overlap^beta
+        # ln(E) = ln(A) + beta * ln(overlap)
+        # However, it's easier to fit: ln(E) = -alpha_ref * z + C_ref
+        # And ln(overlap) = -alpha_ovl * z + C_ovl
+        
+        # Log of reference energy
+        log_e_ref = np.log(e_fit)
+        # Interpolate overlap to z_fit
+        # ep_db is A_old * overlap. Let's get raw overlap by dividing by 16.0
+        ovl_fit = np.interp(z_fit, z_db, ep_db) / 16.0
+        log_ovl = np.log(ovl_fit)
+        
+        # Slopes
+        slope_ref, intercept_ref = np.polyfit(z_fit, log_e_ref, 1)
+        slope_ovl, intercept_ovl = np.polyfit(z_fit, log_ovl, 1)
+        
+        beta_fitted = slope_ref / slope_ovl
+        # ln(A_fitted) = intercept_ref - beta_fitted * intercept_ovl
+        A_fitted = np.exp(intercept_ref - beta_fitted * intercept_ovl)
+        
+        print(f"  Fitted beta_pauli: {beta_fitted:10.4f}")
+        print(f"  Fitted A_pauli:    {A_fitted:10.2f}")
+        
+        # Generate fitted curve
+        e_fitted = A_fitted * (ovl_fit**beta_fitted)
+        
+        path_final = os.path.join(OUT_DIR, 'final_fit_comparison.png')
+        pu.plot_compare_1d(z_fit, e_fit, z_fit, e_fitted, 
+                           labels=["DFTB Ref", f"FDBM (A={A_fitted:.0f}, b={beta_fitted:.2f})"],
+                           title="Final Pauli Fit (Log Scale)",
                            ylabel="Energy [eV]",
-                           fname=path_fit)
-        print(f"  Produced: {path_fit}")
+                           fname=path_final)
+        print(f"  Produced: {path_final}")
         
-        val_ref = np.interp(z_contact, z_ref, e_ref)
-        val_fit = np.interp(z_contact, z_ref, ep_interp * (1500/16.0))
-        print(f"  DFTB Total Ref: {val_ref:12.6f} eV")
-        print(f"  FDBM Pauli (A=1500): {val_fit:12.6f} eV")
-        print(f"  Error at contact: {val_fit - val_ref:10.4f} eV")
+        # Linear scale plot for verification
+        path_final_lin = os.path.join(OUT_DIR, 'final_fit_comparison_lin.png')
+        pu.plot_compare_1d(z_fit, e_fit, z_fit, e_fitted, 
+                           labels=["DFTB Ref", "FDBM Fitted"],
+                           title="Final Pauli Fit (Linear Scale)",
+                           ylabel="Energy [eV]",
+                           log=False,
+                           fname=path_final_lin)
+        print(f"  Produced: {path_final_lin}")
 
     print(f"\nAll plots and summary files are saved in: {os.path.abspath(OUT_DIR)}")
 
 if __name__ == "__main__":
-    run_comparison()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--basis', type=str, default='mio-1-1', help='Basis set: mio-1-1 or 3ob-3-1')
+    parser.add_argument('--output_dir', type=str, default=None, help='Custom output directory')
+    args = parser.parse_args()
+    run_comparison(basis=args.basis, output_dir=args.output_dir)

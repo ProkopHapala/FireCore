@@ -607,6 +607,46 @@ def evaluate_sto_2d(x_grid, y_grid, l, exps, coeffs, origin=(0, 0)):
     return evaluate_sto_1d(r, l, exps, coeffs)
 
 
+def convert_wfc_to_species_list_ang(basis_data, resolution_bohr=0.04):
+    """
+    Convert wfc basis data (Bohr units) to species_list format (Angstrom units)
+    ready for GridProjector.load_basis_sto().
+
+    Args:
+        basis_data: dict from parse_wfc_hsd() with Bohr units
+        resolution_bohr: grid resolution in Bohr (default 0.04)
+
+    Returns:
+        list of species dicts with Angstrom units
+    """
+    B = BOHR2ANG
+    species_list = []
+    for sp_name, sp_data in basis_data.items():
+        orbitals = []
+        for orb in sp_data['orbitals']:
+            l = orb['AngularMomentum']
+            exps_b = np.asarray(orb['Exponents'], dtype=np.float64)  # in Bohr^-1
+            coeffs_b = np.asarray(orb['Coefficients'], dtype=np.float64)  # (nPow, nAlpha) in Bohr
+            cutoff_b = orb['Cutoff']  # in Bohr
+            nPow = coeffs_b.shape[0]
+            # Each power term j contributes r^(l+j), so scale by B^(l+j)
+            scale_factors = np.array([B ** (l + j) for j in range(nPow)])
+            coeffs_scaled = coeffs_b / scale_factors[:, None]  # (nPow, 1) broadcasting
+            orbitals.append({
+                'l': l,
+                'cutoff': cutoff_b * B,
+                'exponents': exps_b / B,
+                'coefficients': coeffs_scaled,
+            })
+        species_list.append({
+            'name': sp_name,
+            'atomic_number': sp_data['AtomicNumber'],
+            'orbitals': orbitals,
+            'resolution': resolution_bohr * B,
+        })
+    return species_list
+
+
 def parse_basis_hsd_ang(hsd_path):
     """
     Parse waveplot_in.hsd Basis block and return species_list ready for load_basis_sto().
@@ -634,36 +674,11 @@ def parse_basis_hsd_ang(hsd_path):
         if wfc_path.exists():
             print(f"[parse_basis_hsd_ang] Using included wfc file: {wfc_path}")
             basis_data = parse_wfc_hsd(str(wfc_path))
-            # Convert from Bohr to Angstrom for OCL kernels
-            species_list = []
-            for sp_name, sp_data in basis_data.items():
-                orbitals = []
-                for orb in sp_data['orbitals']:
-                    l = orb['AngularMomentum']
-                    exps_b = np.asarray(orb['Exponents'], dtype=np.float64)  # in Bohr^-1
-                    coeffs_b = np.asarray(orb['Coefficients'], dtype=np.float64)  # (nPow, nAlpha) in Bohr
-                    cutoff_b = orb['Cutoff']  # in Bohr
-                    nPow = coeffs_b.shape[0]
-                    # Each power term j contributes r^(l+j), so scale by B^(l+j)
-                    scale_factors = np.array([B ** (l + j) for j in range(nPow)])
-                    coeffs_scaled = coeffs_b / scale_factors[:, None]  # (nPow, 1) broadcasting
-                    orbitals.append({
-                        'l': l,
-                        'cutoff': cutoff_b * B,
-                        'exponents': exps_b / B,
-                        'coefficients': coeffs_scaled,
-                    })
-                species_list.append({
-                    'name': sp_name,
-                    'atomic_number': sp_data['AtomicNumber'],
-                    'orbitals': orbitals,
-                    'resolution': 0.04 * B,  # Default resolution, convert to Angstrom
-                })
             # Parse top-level Resolution from original HSD
             res_match = re.search(r'Basis\s*\{[^}]*Resolution\s*=\s*(\S+)', content, re.DOTALL)
             res_bohr = float(res_match.group(1)) if res_match else 0.04
-            for sp in species_list:
-                sp['resolution'] = res_bohr * B
+            # Convert from Bohr to Angstrom for OCL kernels
+            species_list = convert_wfc_to_species_list_ang(basis_data, resolution_bohr=res_bohr)
             return species_list
         else:
             print(f"[WARNING] wfc file not found: {wfc_path}, falling back to inline HSD parsing")
@@ -1082,6 +1097,44 @@ def evec_to_kernel_coeffs(evec_row, natoms, species_per_atom, species_names, spe
                 c[ia, 0] = chunk[2]  # px -> slot 0
             offset += nm
     return c
+
+
+def precompute_coeff_gather(natoms, species_per_atom, species_names, species_list_ang):
+    """
+    One-time precomputation of index arrays for fast eigenvector -> coeffs_flat mapping.
+    Replaces the per-orbital Python loop in evec_to_kernel_coeffs.
+
+    Returns:
+        src_evec_idx : (norb,) int32 - linear index into eigenvector (identity permutation in practice)
+        dst_flat_idx : (norb,) int32 - index into coeffs_flat[natoms*4] (ia*4 + ocl_slot)
+
+    Usage (per orbital):
+        coeffs_flat[:] = 0.0
+        coeffs_flat[dst_flat_idx] = evec[src_evec_idx]
+    """
+    sp_by_name = {sp['name']: sp for sp in species_list_ang}
+    src_evec_idx = []
+    dst_flat_idx = []
+    offset = 0
+    for ia in range(natoms):
+        sp = sp_by_name[species_names[species_per_atom[ia]]]
+        for orb in sp['orbitals']:
+            l = orb['l']
+            nm = 2 * l + 1
+            if l == 0:
+                dst_flat_idx.append(ia * 4 + 3)        # s  -> slot 3
+                src_evec_idx.append(offset)
+                offset += 1
+            elif l == 1:
+                dst_flat_idx.extend([ia*4+1, ia*4+2, ia*4+0])  # py,pz,px -> slots 1,2,0
+                src_evec_idx.extend([offset, offset+1, offset+2])
+                offset += 3
+            else:  # d/f: map all to slot 0 as fallback (higher-l not yet in kernel)
+                for m in range(nm):
+                    dst_flat_idx.append(ia * 4)
+                    src_evec_idx.append(offset + m)
+                offset += nm
+    return np.array(src_evec_idx, dtype=np.int32), np.array(dst_flat_idx, dtype=np.int32)
 
 
 def mask_sto_coefficients(species_list_ang, species_name, orbital_idx, active_pow, active_alpha):

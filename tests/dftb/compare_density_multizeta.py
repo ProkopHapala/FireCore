@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from pyBall.DFTB.DFTBplusParser import (
     parse_basis_hsd_ang, parse_detailed_xml_custom, parse_eigenvec_bin_custom,
-    build_wp_basis, evec_to_kernel_coeffs
+    build_wp_basis, evec_to_kernel_coeffs, precompute_coeff_gather
 )
 from pyBall.DFTB.Grid_dftb import setup_gridprojector_from_dftb
 from pyBall.DFTB.TestUtils import generate_2d_point_grid
@@ -175,14 +175,23 @@ def get_pyopencl_results(dftb_dir, points_ang):
     npoints = int(np.sqrt(len(points_ang)))
     
     # Get occupied orbitals
-    occupied_idx = [i for i, occ in enumerate(occupations) if occ > 0]
-    
+    occupied_idx = [i for i, occ in enumerate(occupations) if occ > 1e-6]
+
+    # Setup for fast projection
+    src_idx, dst_idx = precompute_coeff_gather(natoms, species_per_atom, species_names, basis)
+    proj_ctx = projector.prepare_orbital_points_projection(points_ang, atoms_dict)
+    coeffs_flat = np.zeros(natoms * 4, dtype=np.float32)
+
     # Project each occupied orbital
     mo_values = []
+    import time
+    t0 = time.time()
     for imo in occupied_idx:
-        coeffs = evec_to_kernel_coeffs(evecs[imo], natoms, species_per_atom, species_names, basis)
-        psi = projector.project_orbital_points(points_ang.astype(np.float32), coeffs, np.array(norb_per_atom, dtype=np.int32), atoms_dict).reshape(npoints, npoints)
+        coeffs_flat[:] = 0.0
+        coeffs_flat[dst_idx] = evecs[imo][src_idx]
+        psi = projector.project_orbital_points_prepped(coeffs_flat, proj_ctx).reshape(npoints, npoints)
         mo_values.append(psi)
+    print(f"  PyOpenCL: projected {len(occupied_idx)} orbitals in {time.time()-t0:.3f}s ({(time.time()-t0)/len(occupied_idx)*1000:.1f} ms/orbital)")
     
     # Compute density using sum of orbitals
     density_sum = np.zeros(len(points_ang), dtype=np.float64)

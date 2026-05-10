@@ -21,8 +21,9 @@ if _ROOT not in sys.path:
 
 from pyBall.DFTB.DFTBcore import DFTBcore
 from pyBall.DFTB.DFTBplusParser import (
-    parse_basis_hsd_ang, parse_detailed_xml_custom, parse_eigenvec_bin_custom,
-    evec_to_kernel_coeffs
+    parse_basis_hsd_ang, parse_wfc_hsd, convert_wfc_to_species_list_ang,
+    parse_detailed_xml_custom, parse_eigenvec_bin_custom, evec_to_kernel_coeffs,
+    precompute_coeff_gather
 )
 from pyBall.DFTB.Grid_dftb import setup_gridprojector_from_dftb
 from pyBall.OCL import AFM as afm
@@ -39,7 +40,7 @@ ELEM_Z = {'H':1, 'C':6, 'N':7, 'O':8, 'P':15, 'S':16}
 _XYZ_PATH = os.path.join(_THIS_DIR, 'pentacene.xyz')
 _DEBUG_DIR = os.path.join(_THIS_DIR, 'debug_dftb_pentacene')  # Default, can be overridden
 SLAKO_PREFIX = "/home/prokop/SIMULATIONS/dftbplus/slakos/mio-1-1/"
-BASIS_HSD = "/home/prokop/git/dftbplus/tests/grid/dftb_ptcda/waveplot_in.hsd"
+BASIS_HSD = "/home/prokop/git/FireCore/pyBall/DFTB/data/wfc.mio-1-1.hsd"
 
 # Normalization factor for density in Angstrom grid
 # If orbitals are normalized in Bohr, density integral in Angstrom is B^3.
@@ -188,41 +189,67 @@ def run_isolated_scf(atomTypes, atomPos, work_dir):
     return res
 
 def project_dftb_density(geo, evecs, projector, atoms_dict, grid_spec, basis):
-    natoms = geo['natoms']
-    species_per_atom = geo['species_per_atom']
-    species_names = geo['species_names']
-    occs = geo['occupations'][:, 0, 0]
-    
-    sp_by_name = {sp['name']: sp for sp in basis}
-    norb_per_atom = np.array([sum(2*o['l']+1 for o in sp_by_name[species_names[si]]['orbitals']) for si in species_per_atom], dtype=np.int32)
-    
-    rho_grid = np.zeros(grid_spec['ngrid'][:3], dtype=np.float32)
-    occ_indices = np.where(occs > 1e-6)[0]
-    for i in occ_indices:
-        coeffs = evec_to_kernel_coeffs(evecs[i], natoms, species_per_atom, species_names, basis)
-        psi = projector.project_orbital(coeffs, norb_per_atom, atoms_dict, grid_spec)
-        rho_grid += occs[i] * (psi**2)
+    natoms    = geo['natoms']
+    occs      = geo['occupations'][:, 0, 0]
+    occ_idx   = np.where(occs > 1e-6)[0]
+    print(f"[project_dftb_density] {len(occ_idx)} occupied states")
+
+    t0 = time.time()
+    src_idx, dst_idx = precompute_coeff_gather(natoms, geo['species_per_atom'], geo['species_names'], basis)
+    proj_ctx = projector.prepare_orbital_projection(atoms_dict, grid_spec)
+    print(f"[project_dftb_density] Setup: {time.time()-t0:.3f}s")
+
+    nx, ny, nz = proj_ctx['nx'], proj_ctx['ny'], proj_ctx['nz']
+    rho_grid   = np.zeros((nx, ny, nz), dtype=np.float32)
+    coeffs_flat = np.zeros(natoms * 4, dtype=np.float32)
+
+    t1 = time.time()
+    for idx, i in enumerate(occ_idx):
+        coeffs_flat[:] = 0.0
+        coeffs_flat[dst_idx] = evecs[i][src_idx]
+        psi = projector.project_orbital_prepped(coeffs_flat, proj_ctx)
+        rho_grid += occs[i] * (psi ** 2)
+    n = len(occ_idx)
+    print(f"[project_dftb_density] Loop: {time.time()-t1:.3f}s  ({(time.time()-t1)/n*1e3:.1f} ms/orbital)")
     return rho_grid * B3_FACTOR
 
 def project_neutral_density(geo, projector, atoms_dict, grid_spec, basis):
-    natoms = geo['natoms']
+    natoms          = geo['natoms']
     species_per_atom = geo['species_per_atom']
-    species_names = geo['species_names']
-    sp_by_name = {sp['name']: sp for sp in basis}
-    norb_per_atom = np.array([sum(2*o['l']+1 for o in sp_by_name[species_names[si]]['orbitals']) for si in species_per_atom], dtype=np.int32)
-    
-    rho_na_grid = np.zeros(grid_spec['ngrid'][:3], dtype=np.float32)
-    eye = np.eye(geo['norb'])
+    species_names   = geo['species_names']
+    sp_by_name      = {sp['name']: sp for sp in basis}
+
+    src_idx, dst_idx = precompute_coeff_gather(natoms, species_per_atom, species_names, basis)
+    proj_ctx = projector.prepare_orbital_projection(atoms_dict, grid_spec)
+
+    nx, ny, nz    = proj_ctx['nx'], proj_ctx['ny'], proj_ctx['nz']
+    rho_na_grid   = np.zeros((nx, ny, nz), dtype=np.float32)
+    coeffs_flat   = np.zeros(natoms * 4, dtype=np.float32)
+
+    # Neutral atomic orbital occupations:  {Z: {l: f_per_orbital}}
+    OCC_NA = {1: {0: 1.0}, 6: {0: 2.0, 1: 2/3}, 7: {0: 2.0, 1: 1.0}, 8: {0: 2.0, 1: 4/3}}
+
+    t0 = time.time()
+    # dst_idx[k] = flat GPU index for eigenvector component k
+    # For neutral density: orbital k has evec = e_k (identity row), so:
+    #   coeffs_flat[dst_idx[k]] = 1.0, rest zero
+    orb_offset = 0
     for ia in range(natoms):
-        sp_name = species_names[species_per_atom[ia]]
-        occ_na = afm._onsite_occ(ELEM_Z[sp_name])
-        orb_start = norb_per_atom[:ia].sum()
-        for i_orb in range(orb_start, orb_start + norb_per_atom[ia]):
-            l = 0 if (i_orb - orb_start) == 0 else 1
-            f_na = occ_na[0] if l == 0 else occ_na[1]
-            coeffs = evec_to_kernel_coeffs(eye[i_orb], natoms, species_per_atom, species_names, basis)
-            psi = projector.project_orbital(coeffs, norb_per_atom, atoms_dict, grid_spec)
-            rho_na_grid += f_na * (psi**2)
+        Z  = int(atoms_dict['type'][ia])
+        sp = sp_by_name[species_names[species_per_atom[ia]]]
+        occ_by_l = OCC_NA.get(Z, {0: 2.0, 1: 2/3})
+        for orb in sp['orbitals']:
+            l  = orb['l']
+            nm = 2 * l + 1
+            f_na = occ_by_l.get(l, 0.0)
+            if f_na > 0:
+                for m in range(nm):
+                    coeffs_flat[:] = 0.0
+                    coeffs_flat[dst_idx[orb_offset + m]] = 1.0
+                    psi = projector.project_orbital_prepped(coeffs_flat, proj_ctx)
+                    rho_na_grid += f_na * (psi ** 2)
+            orb_offset += nm
+    print(f"[project_neutral_density] Loop: {time.time()-t0:.3f}s")
     return rho_na_grid * B3_FACTOR
 
 # ==============================================================================
@@ -235,26 +262,41 @@ def step1_density_projection(atomTypes, atomPos, basis, step=0.15, margin=4.0, z
     log("="*60); log("STEP 1: Density Projection to Grid (DFTB+)"); log("="*60)
     
     log("\n1a. Running DFTB+ SCF (isolated process)...")
+    t0 = time.time()
     geo, evecs = run_isolated_scf(atomTypes, atomPos, os.path.join(step_dir, "pentacene_work"))
+    print(f"[step1] DFTB SCF completed in {time.time()-t0:.2f}s")
     
     log("\n1b. Setting up density grid...")
+    t1 = time.time()
     pos_ang = atomPos
     grid_spec, origin, ngrid = afm.setup_density_grid(pos_ang, step=step, margin=margin, z_extra=z_extra)
     log(f"Grid: origin={origin.round(2)} ngrid={ngrid}")
+    print(f"[step1] Grid setup completed in {time.time()-t1:.2f}s")
     
     log("\n1c. Projecting densities...")
+    t2 = time.time()
     dftb_data = {'coords_bohr': geo['coords_bohr'], 'species_per_atom': geo['species_per_atom'], 'species_names': geo['species_names']}
+    print("[step1] Setting up projector...")
+    t2a = time.time()
     projector, atoms_dict = setup_gridprojector_from_dftb(dftb_data, basis, verbosity=0)
+    print(f"[step1] Projector setup completed in {time.time()-t2a:.2f}s")
     
+    print("[step1] Projecting total density...")
+    t2b = time.time()
     rho_grid = project_dftb_density(geo, evecs, projector, atoms_dict, grid_spec, basis)
-    dV = step**3
-    log(f"  rho_grid: integral={rho_grid.sum()*dV:.4f} e")
+    print(f"[step1] Total density projection completed in {time.time()-t2b:.2f}s")
     
+    print("[step1] Projecting neutral density...")
+    t2c = time.time()
     rho_na_grid = project_neutral_density(geo, projector, atoms_dict, grid_spec, basis)
-    log(f"  rho_NA:   integral={rho_na_grid.sum()*dV:.4f} e")
+    print(f"[step1] Neutral density projection completed in {time.time()-t2c:.2f}s")
     
     rho_diff = (rho_grid - rho_na_grid).astype(np.float32)
-    log(f"  delta_rho: integral={rho_diff.sum()*dV:.4f} e")
+    print(f"[step1] Step 1 total time: {time.time()-t0:.2f}s")
+    
+    log(f"  rho_grid: integral={rho_grid.sum()*step**3:.4f} e")
+    log(f"  rho_NA:   integral={rho_na_grid.sum()*step**3:.4f} e")
+    log(f"  delta_rho: integral={rho_diff.sum()*step**3:.4f} e")
     
     save_npy(step_dir, 'rho_grid.npy', rho_grid)
     save_npy(step_dir, 'rho_na_grid.npy', rho_na_grid)
@@ -378,18 +420,39 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--step', type=float, default=0.15)
     parser.add_argument('--output_dir', type=str, default=None, help='Custom output directory name (e.g., debug_dftb_pentacene_step0.1)')
+    parser.add_argument('--basis', type=str, default='mio-1-1', help='Basis set: mio-1-1 or 3ob-3-1')
     args = parser.parse_args()
     
     # Override debug directory if custom output_dir specified
-    global _DEBUG_DIR
+    global _DEBUG_DIR, SLAKO_PREFIX, BASIS_HSD
     if args.output_dir:
         _DEBUG_DIR = os.path.join(_THIS_DIR, args.output_dir)
+    
+    # Set basis-specific paths
+    if args.basis == '3ob-3-1':
+        SLAKO_PREFIX = "/home/prokop/SIMULATIONS/dftbplus/slakos/3ob-3-1/"
+        BASIS_HSD = "/home/prokop/git/dftbplus/tests/grid/dftb_ptcda/wfc.3ob-3-1.hsd"
+    elif args.basis == 'mio-1-1':
+        SLAKO_PREFIX = "/home/prokop/SIMULATIONS/dftbplus/slakos/mio-1-1/"
+        BASIS_HSD = "/home/prokop/git/dftbplus/tests/grid/dftb_ptcda/waveplot_in.hsd"
+    else:
+        raise ValueError(f"Unknown basis: {args.basis}. Use 'mio-1-1' or '3ob-3-1'")
+    
+    print(f"Using basis: {args.basis}")
+    print(f"SLAKO_PREFIX: {SLAKO_PREFIX}")
+    print(f"BASIS_HSD: {BASIS_HSD}")
     
     setup_debug_dirs()
     atomTypes, atomPos = load_xyz(_XYZ_PATH)
     
     # Load Basis once
-    basis = parse_basis_hsd_ang(BASIS_HSD)
+    if args.basis == '3ob-3-1':
+        # Use parse_wfc_hsd for 3ob-3-1 (wfc.*.hsd format) and convert
+        basis_data = parse_wfc_hsd(BASIS_HSD)
+        basis = convert_wfc_to_species_list_ang(basis_data, resolution_bohr=0.04)
+    else:
+        # Use parse_basis_hsd_ang for mio-1-1 (waveplot_in.hsd format)
+        basis = parse_basis_hsd_ang(BASIS_HSD)
     print(f"Loaded basis for species: {[sp['name'] for sp in basis]}")
     
     # Step 1-2: Pentacene

@@ -143,7 +143,9 @@ class GridProjector(OpenCLBase):
         if hasattr(self, 'basis_meta') and ('max_shells' in self.basis_meta):
             build_opts.append(f"-DMAX_ORBS={self.basis_meta['max_shells'] * 9}") # conservative upper bound
 
+        print(f"[GridProjector] Loading program from {cl_path}...")
         self.load_program(kernel_path=cl_path, build_options=build_opts if len(build_opts)>0 else None)
+        print(f"[GridProjector] Program load complete")
 
     def check_overlap_sphere_aabb(self, center, radius, box_min, box_max):
         """ Fast AABB-Sphere collision: Find closest point in box to sphere center """
@@ -373,7 +375,7 @@ class GridProjector(OpenCLBase):
         
         return grid_spec_np
 
-    def project(self, rho, neighs, atoms, grid_spec, tasks=None, nMaxAtom=64, use_gpu_tasks=False, use_tiled=True):
+    def project_density(self, rho, neighs, atoms, grid_spec, tasks=None, nMaxAtom=64, use_gpu_tasks=False, use_tiled=True):
         """
         Main entry point for density projection using the tiled kernel.
         """
@@ -619,6 +621,76 @@ class GridProjector(OpenCLBase):
 
         out = np.empty(len(points), dtype=np.float32)
         cl.enqueue_copy(self.queue, out, d_out)
+        self.queue.finish()
+        return out
+
+    def prepare_orbital_points_projection(self, points, atoms_dict, nMaxAtom=64):
+        """
+        One-time setup for batched orbital projection at arbitrary points.
+        Pre-uploads all static GPU buffers (points, atoms).
+        """
+        mf = cl.mem_flags
+        t0 = time.perf_counter_ns()
+
+        points = np.asarray(points, dtype=np.float32)
+        n_points = len(points)
+        natoms   = len(atoms_dict['pos'])
+        numorb_max = 4
+
+        atom_data = np.zeros(natoms, dtype=[
+            ('pos_rcut', 'f4', 4), ('type', 'i4'), ('i0orb', 'i4'), ('norb', 'i4'), ('pad', 'i4')
+        ])
+        for ia in range(natoms):
+            atom_data[ia]['pos_rcut'][:3] = atoms_dict['pos'][ia]
+            atom_data[ia]['pos_rcut'][3]  = atoms_dict['Rcut'][ia]
+            Z = int(atoms_dict['type'][ia])
+            atom_data[ia]['type']  = int(self.basis_meta['nz_map'][Z])
+            atom_data[ia]['norb']  = int(4) # numorb_max
+            atom_data[ia]['i0orb'] = ia * numorb_max
+
+        # Upload static buffers
+        # points are expanded to float4 for alignment
+        points_f4 = np.zeros((n_points, 4), dtype=np.float32)
+        points_f4[:, :3] = points
+        d_points = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=points_f4)
+        d_atoms  = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
+
+        # Mutable/Reused buffers
+        d_coeffs = cl.Buffer(self.ctx, mf.READ_ONLY,  size=natoms * numorb_max * 4)
+        d_out    = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=n_points * 4)
+
+        self._load_kernels()
+        t1 = time.perf_counter_ns()
+        print(f"[prepare_orbital_points_projection] Setup: {(t1-t0)*1e-6:.1f} ms, n_points={n_points}")
+        return dict(
+            n_points=n_points, natoms=natoms, numorb_max=numorb_max,
+            d_points=d_points, d_atoms=d_atoms, d_coeffs=d_coeffs, d_out=d_out
+        )
+
+    def project_orbital_points_prepped(self, coeffs_flat, ctx):
+        """
+        Project orbital at pre-loaded points.
+        """
+        cl.enqueue_copy(self.queue, ctx['d_coeffs'], coeffs_flat.astype(np.float32))
+        
+        gs = (ctx['n_points'],)
+        ls = None
+        self.prg.project_orbital_points(
+            self.queue, gs, ls,
+            np.int32(ctx['n_points']),
+            ctx['d_points'],
+            ctx['d_atoms'],
+            np.int32(ctx['natoms']),
+            ctx['d_coeffs'],
+            self.d_basis,
+            np.int32(self.basis_meta['n_nodes']),
+            np.float32(self.basis_meta['dr']),
+            np.int32(self.basis_meta['max_shells']),
+            ctx['d_out']
+        )
+        self.queue.finish()
+        out = np.empty(ctx['n_points'], dtype=np.float32)
+        cl.enqueue_copy(self.queue, out, ctx['d_out'])
         self.queue.finish()
         return out
 
@@ -1354,6 +1426,84 @@ class GridProjector(OpenCLBase):
         cl.enqueue_copy(self.queue, res, d_out)
         self.queue.finish()
 
+        return res
+
+    def prepare_orbital_projection(self, atoms_dict, grid_spec, nMaxAtom=64):
+        """
+        One-time setup for batched orbital projection.
+        Pre-uploads all static GPU buffers (tasks, atom_data, grid_spec).
+        Returns a context dict to pass to project_orbital_prepped() in a loop.
+        Eliminates ~6 buffer allocations + build_tasks per orbital call.
+        """
+        mf = cl.mem_flags
+        t0 = time.perf_counter_ns()
+
+        tasks_np, task_atoms_np = self.build_tasks(atoms_dict, grid_spec, nMaxAtom=nMaxAtom)
+        n_tasks = len(tasks_np)
+        natoms   = len(atoms_dict['pos'])
+        numorb_max = 4
+        nx, ny, nz = [int(x) for x in grid_spec['ngrid'][:3]]
+        out_nbytes    = nx * ny * nz * 4
+        coeffs_nbytes = natoms * numorb_max * 4
+
+        atom_data = np.zeros(natoms, dtype=[
+            ('pos_rcut', 'f4', 4), ('type', 'i4'), ('i0orb', 'i4'), ('norb', 'i4'), ('pad', 'i4')
+        ])
+        for ia in range(natoms):
+            atom_data[ia]['pos_rcut'][:3] = atoms_dict['pos'][ia]
+            atom_data[ia]['pos_rcut'][3]  = atoms_dict['Rcut'][ia]
+            Z = int(atoms_dict['type'][ia])
+            atom_data[ia]['type']  = int(self.basis_meta['nz_map'][Z])
+            atom_data[ia]['norb']  = numorb_max
+            atom_data[ia]['i0orb'] = ia * numorb_max
+
+        # Upload static buffers once
+        d_grid       = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.grid_to_np(grid_spec))
+        d_tasks      = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tasks_np)      if n_tasks > 0            else cl.Buffer(self.ctx, mf.READ_ONLY, size=32)
+        d_atoms      = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
+        d_task_atoms = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=task_atoms_np) if len(task_atoms_np) > 0 else cl.Buffer(self.ctx, mf.READ_ONLY, size=nMaxAtom * 4)
+
+        # Mutable buffers: reused every orbital (only coeffs changes)
+        d_coeffs = cl.Buffer(self.ctx, mf.READ_ONLY,  size=coeffs_nbytes)
+        d_out    = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=out_nbytes)
+
+        self._load_kernels()
+        t1 = time.perf_counter_ns()
+        print(f"[prepare_orbital_projection] Setup: {(t1-t0)*1e-6:.1f} ms, n_tasks={n_tasks}")
+        return dict(
+            n_tasks=n_tasks, natoms=natoms, numorb_max=numorb_max,
+            nx=nx, ny=ny, nz=nz, out_nbytes=out_nbytes, nMaxAtom=nMaxAtom,
+            d_grid=d_grid, d_tasks=d_tasks, d_atoms=d_atoms,
+            d_task_atoms=d_task_atoms, d_coeffs=d_coeffs, d_out=d_out,
+        )
+
+    def project_orbital_prepped(self, coeffs_flat, ctx):
+        """
+        Project a single orbital using pre-built GPU buffers from prepare_orbital_projection().
+        Only uploads coeffs_flat per call. Returns (nx,ny,nz) psi grid (float32).
+        """
+        cl.enqueue_copy(self.queue, ctx['d_coeffs'], coeffs_flat.astype(np.float32))
+        cl.enqueue_fill_buffer(self.queue, ctx['d_out'], np.float32(0), 0, ctx['out_nbytes'])
+
+        ls = (32,)
+        gs = (ctx['n_tasks'] * ls[0],)
+        self.prg.project_orbital(
+            self.queue, gs, ls,
+            ctx['d_grid'], np.int32(ctx['n_tasks']),
+            ctx['d_tasks'], ctx['d_atoms'], ctx['d_task_atoms'],
+            ctx['d_coeffs'],
+            self.d_basis,
+            np.int32(self.basis_meta['n_nodes']),
+            np.float32(self.basis_meta['dr']),
+            np.int32(self.basis_meta['max_shells']),
+            np.int32(ctx['numorb_max']),
+            np.int32(ctx['nMaxAtom']),
+            ctx['d_out']
+        )
+        self.queue.finish()
+        res = np.empty((ctx['nx'], ctx['ny'], ctx['nz']), dtype=np.float32)
+        cl.enqueue_copy(self.queue, res, ctx['d_out'])
+        self.queue.finish()
         return res
 
 # ================================================================

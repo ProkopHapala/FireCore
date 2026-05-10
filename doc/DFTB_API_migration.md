@@ -841,3 +841,27 @@ The DFTB Python interface migration is complete and fully functional. All import
 
 ---
 
+
+## Performance Optimization (May 2026)
+
+When migrating the Grid Projection logic, ensure you use the **"Prepped" API** for high-throughput tasks (e.g., AFM scans, density loops). 
+
+### Problem:
+Naïve orbital-by-orbital projection in Python introduces catastrophic overhead (~100x slowdown) due to:
+- Redundant OpenCL kernel re-compilation.
+- Redundant spatial task building (`build_tasks`).
+- Redundant GPU buffer allocation and static data upload (atom positions, grid spec).
+
+### Solution:
+Use the following pattern for sub-second projection:
+
+1. **Precompute Gather Map**: 
+   Use `DFTBplusParser.precompute_coeff_gather()` to get index arrays for fast coefficient mapping.
+2. **Persistent GPU Context**: 
+   Call `projector.prepare_orbital_projection()` (grid) or `prepare_orbital_points_projection()` (arbitrary points) once before the loop. This returns a `ctx` dict containing persistent GPU buffers.
+3. **Optimized Inner Loop**:
+   Inside the loop, use numpy indexing to fill the coefficient buffer and call `projector.project_orbital_prepped(coeffs, ctx)`.
+
+**Benchmarks:**
+- Orbital projection time: **~0.7 - 1.5 ms** (RTX 3090).
+- Full pentacene density (51 states): **< 0.1 s**.
