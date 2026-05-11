@@ -727,6 +727,55 @@ def plotTrj( trj, bBonds=True, sz=50., numbers=None, axes=(0,1), extent=None, pr
         plt.savefig( prefix+("%03i.png" %numbers[i]), bbox_inches='tight' )
         plt.close(fig)
 
+def plot_field_slice(ax, field, origin, step, z, cmap='magma', title='', sym=False):
+    """Plot 2D XY slice of 3D field at given z-height with colorbar.
+
+    Args:
+        ax: matplotlib Axes
+        field: (nx, ny, nz) 3D array
+        origin: (3,) grid origin
+        step: grid spacing in Angstrom
+        z: z-height for slice in Angstrom
+        cmap: colormap name
+        title: subplot title
+        sym: if True, use symmetric TwoSlopeNorm around zero
+
+    Returns:
+        iz: integer z-index used
+    """
+    from matplotlib.colors import TwoSlopeNorm
+    nx, ny, nz = field.shape
+    iz = int(np.clip(np.round((z - origin[2]) / step), 0, nz-1))
+    slice_xy = field[:, :, iz].T
+    extent_xy = [float(origin[0]), float(origin[0]) + (nx-1)*step,
+                 float(origin[1]), float(origin[1]) + (ny-1)*step]
+    if sym:
+        vabs = max(abs(float(slice_xy.min())), abs(float(slice_xy.max())), 1e-12)
+        norm = TwoSlopeNorm(vmin=-vabs, vcenter=0, vmax=vabs)
+    else:
+        norm = None
+    im = ax.imshow(slice_xy, origin='lower', cmap=cmap, norm=norm, extent=extent_xy, aspect='equal')
+    ax.set_title(title)
+    plt.colorbar(im, ax=ax, shrink=0.6)
+    return iz
+
+def plot_field_panel(axes, field, origin, step, z_heights, cmap='magma', sym=False, title_prefix=''):
+    """Plot 2D XY slices of 3D field at multiple z-heights across axes.
+
+    Args:
+        axes: iterable of matplotlib Axes (one per z)
+        field: (nx, ny, nz) 3D array
+        origin: (3,) grid origin
+        step: grid spacing
+        z_heights: list of z values for slices
+        cmap: colormap name
+        sym: use symmetric norm
+        title_prefix: prefix for subplot titles
+    """
+    for ax, z in zip(axes, z_heights):
+        plot_field_slice(ax, field, origin, step, z, cmap=cmap, sym=sym,
+                        title=f'{title_prefix} z={z:.1f}A')
+
 def render_POVray(
     sys, filename, 
     # Atom and bond parameters

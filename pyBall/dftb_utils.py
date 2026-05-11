@@ -435,6 +435,76 @@ def save_xyz_movie(results, fname, lvs=None, label=None, key_order=None):
                 f.write(f"{e} {pos[0]:.6f} {pos[1]:.6f} {pos[2]:.6f}\n")
     print(f"Saved XYZ movie: {fname}")
 
+# ============ AFM / FDBM shared paths
+SK_PATHS = {
+    'mio-1-1': '/home/prokop/SIMULATIONS/dftbplus/slakos/mio-1-1/',
+    '3ob-3-1': '/home/prokop/SIMULATIONS/dftbplus/slakos/3ob-3-1/',
+}
+
+WFC_HSD_PATHS = {
+    'mio-1-1': '/home/prokop/git/dftbplus/tests/grid/dftb_ptcda/waveplot_in.hsd',  # wrapper with <<+ include
+    '3ob-3-1': '/home/prokop/git/dftbplus/tests/grid/dftb_ptcda/wfc.3ob-3-1.hsd',
+}
+
+def write_dftb_input_sp(enames, xyz_path, out_path, sk_prefix, scctol=1e-7, maxscc=200):
+    """Write minimal DFTB+ input for single-point SCF calculation.
+
+    Args:
+        enames: list of element symbols
+        xyz_path: path to XYZ geometry file (used as basename in hsd)
+        out_path: output .hsd file path
+        sk_prefix: Slater-Koster file prefix directory
+        scctol: SCC convergence tolerance
+        maxscc: max SCC iterations
+    """
+    species = sorted(set(enames))
+    max_ang = {s: '"s"' if s == 'H' else '"p"' for s in species}
+    max_ang_str = '\n    '.join([f'{s} = {max_ang[s]}' for s in species])
+    hsd = f"""Geometry = xyzFormat {{
+  <<< "{os.path.basename(xyz_path)}"
+}}
+Hamiltonian = DFTB {{
+  SCC = Yes
+  SlaterKosterFiles = Type2FileNames {{
+    Prefix = "{sk_prefix}"
+    Separator = "-"
+    Suffix = ".skf"
+  }}
+  MaxAngularMomentum {{
+    {max_ang_str}
+  }}
+  SCCTolerance = {scctol}
+  MaxSccIterations = {maxscc}
+}}
+Analysis {{
+  CalculateForces = Yes
+}}
+"""
+    with open(out_path, 'w') as f:
+        f.write(hsd)
+
+def run_dftb_sp(work_dir, enames, apos, sk_prefix, xyz_fname='geom.xyz'):
+    """Run DFTB+ single-point calculation in work_dir.
+
+    Returns energy in Ha.  Raises RuntimeError on failure.
+    """
+    import os
+    from pyBall import atomicUtils as au
+    os.makedirs(work_dir, exist_ok=True)
+    xyz_path = os.path.join(work_dir, xyz_fname)
+    hsd_path = os.path.join(work_dir, 'dftb_in.hsd')
+    au.save_xyz(xyz_path, enames, apos)
+    write_dftb_input_sp(enames, xyz_path, hsd_path, sk_prefix)
+    cwd = os.getcwd()
+    os.chdir(work_dir)
+    try:
+        ret = os.system('dftb+ > OUT 2> ERR')
+        if ret != 0:
+            raise RuntimeError(f"DFTB+ failed in {work_dir}")
+        return parse_energy_out('OUT')
+    finally:
+        os.chdir(cwd)
+
 # ============ Setup
 
 def makeDFTBjob( enames=None, fname='dftb_in.hsd', gname="input.xyz", method='D3H5', cell=None, sk_set=None, params=default_params, opt=True ):

@@ -302,7 +302,50 @@ def get_z_profile(rho, pos, origin, step):
     profile = rho[ix, iy, :]
     z = origin[2] + np.arange(nz) * step
     return z, profile
-    
+
+def atom_to_grid_idx(atom_pos, origin, step, ngrid):
+    """Convert atom position to nearest grid indices.
+
+    Args:
+        atom_pos: (3,) array of position in Angstrom
+        origin: (3,) array of grid origin
+        step: grid spacing in Angstrom
+        ngrid: (3,) array of grid dimensions or int for 1D
+
+    Returns:
+        (ix, iy, iz) clipped to [0, ngrid-1]
+    """
+    frac = (np.asarray(atom_pos) - np.asarray(origin)) / step
+    idx = np.round(frac).astype(np.int32)
+    ngrid_arr = np.array(ngrid, dtype=np.int32)
+    if ngrid_arr.size == 1:
+        ngrid_arr = np.array([ngrid_arr, ngrid_arr, ngrid_arr], dtype=np.int32)
+    idx = np.clip(idx, [0, 0, 0], ngrid_arr - 1)
+    return idx[0], idx[1], idx[2]
+
+def extract_z_profile(field, atom_pos, origin, step, z_distances=None):
+    """Extract z-profile from 3D field at atom XY position.
+
+    Args:
+        field: (nx, ny, nz) 3D array
+        atom_pos: (3,) target position in Angstrom
+        origin: (3,) grid origin
+        step: grid spacing
+        z_distances: optional 1D array of z offsets from atom_pos[2];
+                     if None returns full grid column (z_grid, values)
+
+    Returns:
+        If z_distances is None: (z_grid, column)
+        If z_distances given: interpolated values at z = atom_pos[2] + z_distances
+    """
+    tix, tiy, _ = atom_to_grid_idx(atom_pos, origin, step, field.shape)
+    z_grid_vals = origin[2] + np.arange(field.shape[2]) * step
+    col = field[tix, tiy, :]
+    if z_distances is None:
+        return z_grid_vals, col
+    z_abs = atom_pos[2] + z_distances
+    return np.interp(z_abs, z_grid_vals, col, left=col[0], right=col[-1])
+
 def get_dftb_zscan_energies(log_path):
     """Parse DFTB total energies from a z-scan log file."""
     zvals = []

@@ -1896,3 +1896,17 @@ def save_mol2( fname, enames, apos, bonds, qs=None, comment="", lvec=None, atom_
                 a2 = bond[1] + 1
                 bond_type = 1
                 fout.write("{:>6d} {:>5d} {:>5d} {:>4d}\n".format(bond_id, a1, a2, bond_type ))
+
+def save_xyz(fname, enames, apos, comment="Generated"):
+    """Write XYZ file.
+
+    Args:
+        fname: output file path
+        enames: list of element symbols (str)
+        apos: (natoms, 3) array of positions in Angstrom
+        comment: comment line (second line)
+    """
+    with open(fname, 'w') as f:
+        f.write(f"{len(enames)}\n{comment}\n")
+        for e, p in zip(enames, apos):
+            f.write(f"{e} {p[0]:.10f} {p[1]:.10f} {p[2]:.10f}\n")

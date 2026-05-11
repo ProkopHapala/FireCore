@@ -12,7 +12,7 @@ For each basis set (mio-1-1, 3ob-3-1) and each target atom:
 Usage:
     cd tests/tAFM/pyocl_fdbm
     PYTHONPATH=/path/to/FireCore:$PYTHONPATH python fit_fdbm_pauli.py --basis mio-1-1 --target_indices 0,1,20,21
-    PYTHONPATH=/path/to/FireCore:$PYTHONPATH python fit_fdbm_pauli.py --basis all --target_indices 0,1,20,21
+    PYTHONPATH=/path/to/FireCore:$PYTHONPATH python fit_fdbm_pauli.py --basis all --target_indices 0,1,20,21 --xyz mymol.xyz
 """
 
 import os, sys, argparse, json, time
@@ -21,30 +21,20 @@ import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 
-# ── Paths ────────────────────────────────────────────────────────────────────
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_PENTACENE_XYZ = os.path.join(_THIS_DIR, 'pentacene.xyz')
+_ROOT = os.path.realpath(os.path.join(_THIS_DIR, '..', '..', '..'))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
-# ── Constants ────────────────────────────────────────────────────────────────
+from pyBall import atomicUtils as au
+from pyBall.DFTB import TestUtils as tu
+from pyBall.OCL import AFM as afm
+
 A_PAULI_DEFAULT = 16.0
 
-GRID_STEP   = 0.15
-GRID_ORIGIN = np.array([-11.36, -6.6, -4.2], dtype=np.float32)
-GRID_NGRID  = np.array([152, 88, 96], dtype=np.int32)
-
 BASIS_CONFIG = {
-    'mio-1-1': {
-        'fdbm_dir': 'debug_dftb_pentacene',
-        'grid_step': 0.15,
-        'grid_origin': GRID_ORIGIN,
-        'grid_ngrid': GRID_NGRID,
-    },
-    '3ob-3-1': {
-        'fdbm_dir': 'debug_dftb_pentacene_3ob',
-        'grid_step': 0.15,
-        'grid_origin': GRID_ORIGIN,
-        'grid_ngrid': GRID_NGRID,
-    },
+    'mio-1-1': {'fdbm_dir': 'debug_dftb_mio_1_1'},
+    '3ob-3-1': {'fdbm_dir': 'debug_dftb_3ob_3_1'},
 }
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -52,23 +42,6 @@ def log(msg, log_path):
     print(msg)
     with open(log_path, 'a') as f:
         f.write(msg + '\n')
-
-def load_xyz(fname):
-    with open(fname, 'r') as f:
-        lines = f.readlines()
-    natoms = int(lines[0].strip())
-    enames, apos = [], []
-    for line in lines[2:2+natoms]:
-        p = line.split()
-        enames.append(p[0])
-        apos.append([float(p[1]), float(p[2]), float(p[3])])
-    return np.array(enames), np.array(apos, dtype=np.float64)
-
-def atom_to_grid_idx(atom_pos, origin=GRID_ORIGIN, step=GRID_STEP, ngrid=GRID_NGRID):
-    frac = (atom_pos - origin) / step
-    idx = np.round(frac).astype(np.int32)
-    idx = np.clip(idx, [0, 0, 0], ngrid - 1)
-    return idx
 
 def load_fdbm_grids(fdbm_dir):
     paths = {
@@ -89,19 +62,6 @@ def load_dftb_zscan(zscan_dir):
     z = np.load(z_path)
     e = np.load(e_path)
     return z, e - e[-1]
-
-def extract_profiles(z_distances, target_pos, origin, step, ngrid, grids):
-    tix, tiy, _ = atom_to_grid_idx(target_pos, origin, step, ngrid)
-    z_grid_vals = origin[2] + np.arange(ngrid[2]) * step
-    profiles = {'z_grid': z_grid_vals}
-    for key, grid in grids.items():
-        if grid is None:
-            profiles[key] = None
-            continue
-        col = grid[tix, tiy, :]
-        z_abs = target_pos[2] + z_distances
-        profiles[key] = np.interp(z_abs, z_grid_vals, col, left=col[0], right=col[-1])
-    return profiles
 
 # ── Fitting ──────────────────────────────────────────────────────────────────
 def fit_pauli_powerlaw(z, overlap_raw, e_ref, z_min=2.0, z_max=3.5):
@@ -214,17 +174,12 @@ def plot_summary(all_results, fname, basis, z_min, z_max):
     print(f"  Saved summary: {fname}")
 
 # ── Main workflow ──────────────────────────────────────────────────────────
-def process_atom(basis, target_idx, target_name, target_pos, grids, zscan_dir, atom_out_dir, args):
+def process_atom(basis, target_idx, target_name, target_pos, grids, zscan_dir, atom_out_dir, origin, step, ngrid, args):
     """Fit one target atom."""
     os.makedirs(atom_out_dir, exist_ok=True)
     log_path = os.path.join(atom_out_dir, 'fit.log')
     if os.path.exists(log_path):
         os.remove(log_path)
-
-    cfg = BASIS_CONFIG[basis]
-    origin = cfg['grid_origin']
-    step = cfg['grid_step']
-    ngrid = cfg['grid_ngrid']
 
     log(f"Atom {target_idx} ({target_name}) at [{target_pos[0]:.4f}, {target_pos[1]:.4f}, {target_pos[2]:.4f}]", log_path)
 
@@ -234,10 +189,8 @@ def process_atom(basis, target_idx, target_name, target_pos, grids, zscan_dir, a
         log(f"  ERROR: No z-scan found in {zscan_dir}", log_path)
         return None
 
-    # Extract profiles
-    tix, tiy, tiz = atom_to_grid_idx(target_pos, origin, step, ngrid)
-    profiles = extract_profiles(z_ref, target_pos, origin, step, ngrid, grids)
-    e_pauli = profiles['pauli']
+    # Extract profiles using shared helper
+    e_pauli = tu.extract_z_profile(grids['pauli'], target_pos, origin, step, z_distances=z_ref - target_pos[2])
     if e_pauli is None:
         log("  ERROR: Pauli field missing", log_path)
         return None
@@ -295,14 +248,16 @@ def process_basis(basis, out_dir, args):
     t0 = time.time()
     os.makedirs(out_dir, exist_ok=True)
 
-    pen_names, pen_pos = load_xyz(_PENTACENE_XYZ)
+    xyz_path = os.path.join(_THIS_DIR, args.xyz)
+    mol_pos, _, mol_names, _, _ = au.load_xyz(xyz_path)
+    mol_pos = np.array(mol_pos, dtype=np.float64)
     target_indices = [int(x.strip()) for x in args.target_indices.split(',')]
     for idx in target_indices:
-        if idx < 0 or idx >= len(pen_names):
-            raise ValueError(f"Target index {idx} out of range (0-{len(pen_names)-1})")
+        if idx < 0 or idx >= len(mol_names):
+            raise ValueError(f"Target index {idx} out of range (0-{len(mol_names)-1})")
 
-    cfg = BASIS_CONFIG[basis]
-    fdbm_dir = os.path.join(_THIS_DIR, cfg['fdbm_dir'])
+    # Use explicit fdbm_dir if given, otherwise from BASIS_CONFIG
+    fdbm_dir = os.path.join(_THIS_DIR, args.fdbm_dir) if args.fdbm_dir else os.path.join(_THIS_DIR, BASIS_CONFIG[basis]['fdbm_dir'])
     if not os.path.exists(fdbm_dir):
         raise FileNotFoundError(f"FDBM directory not found: {fdbm_dir}")
 
@@ -310,21 +265,32 @@ def process_basis(basis, out_dir, args):
     if grids['pauli'] is None:
         raise FileNotFoundError(f"Pauli field not found in {fdbm_dir}")
 
+    # Read grid spec from FDBM step1 log (molecule-agnostic)
+    log_path_grid = os.path.join(fdbm_dir, 'step1_density', 'log.txt')
+    origin, ngrid, step = afm.read_grid_spec_from_log(log_path_grid)
+    if origin is None:
+        # Fallback: compute from molecule positions
+        grid_spec, origin, ngrid = afm.setup_density_grid(mol_pos, step=0.15)
+        step = 0.15
+        print(f"  WARNING: Could not read grid from {log_path_grid}, computed from molecule")
+    print(f"  Grid: origin={origin.round(2)} ngrid={ngrid} step={step}")
+
     zscan_dir_base = os.path.join(_THIS_DIR, args.zscan_dir) if args.zscan_dir else os.path.join(_THIS_DIR, f'zscan_{basis.replace("-", "_")}')
 
     log(f"{'='*70}", os.path.join(out_dir, 'fit.log'))
     log(f"FDBM Pauli Fitting: basis={basis}, atoms={target_indices}", os.path.join(out_dir, 'fit.log'))
+    log(f"Molecule: {args.xyz} ({len(mol_names)} atoms)", os.path.join(out_dir, 'fit.log'))
     log(f"FDBM dir: {fdbm_dir}", os.path.join(out_dir, 'fit.log'))
     log(f"Output dir: {out_dir}", os.path.join(out_dir, 'fit.log'))
 
     all_results = []
     for target_idx in target_indices:
-        target_name = pen_names[target_idx]
-        target_pos = pen_pos[target_idx]
+        target_name = mol_names[target_idx]
+        target_pos = mol_pos[target_idx]
         atom_out_dir = os.path.join(out_dir, f'atom_{target_idx}')
         zscan_dir = os.path.join(zscan_dir_base, f'atom_{target_idx}')
 
-        result = process_atom(basis, target_idx, target_name, target_pos, grids, zscan_dir, atom_out_dir, args)
+        result = process_atom(basis, target_idx, target_name, target_pos, grids, zscan_dir, atom_out_dir, origin, step, ngrid, args)
         if result:
             all_results.append(result)
 
@@ -353,6 +319,10 @@ def main():
     parser.add_argument('--basis', type=str, default='mio-1-1',
                         choices=['mio-1-1', '3ob-3-1', 'all'],
                         help='Basis set to fit')
+    parser.add_argument('--xyz', type=str, default='pentacene.xyz',
+                        help='Molecule XYZ file')
+    parser.add_argument('--fdbm_dir', type=str, default=None,
+                        help='FDBM pipeline output directory (default: debug_dftb_pentacene per basis)')
     parser.add_argument('--output_prefix', type=str, default='fit_pauli',
                         help='Output directory prefix')
     parser.add_argument('--zscan_dir', type=str, default=None,

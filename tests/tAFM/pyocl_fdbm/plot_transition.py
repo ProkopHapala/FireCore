@@ -2,14 +2,10 @@
 """
 plot_transition.py - Visualize the attractive->repulsive transition at multiple z-heights.
 
-Produces:
-1. Panel plot: rows=[Pauli, vdW, ES, Total], columns=[z distances]
-2. 1D line plots: total energy vs x-position along molecule at each z
-
 Usage:
     cd tests/tAFM/pyocl_fdbm
     python3 plot_transition.py --basis mio-1-1
-    python3 plot_transition.py --basis 3ob-3-1
+    python3 plot_transition.py --basis 3ob-3-1 --xyz mymol.xyz --src_dir my_afm_output
 """
 
 import os, sys, argparse
@@ -18,17 +14,15 @@ import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.realpath(os.path.join(_THIS_DIR, '..', '..', '..')))
+_ROOT = os.path.realpath(os.path.join(_THIS_DIR, '..', '..', '..'))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
+from pyBall import atomicUtils as au
+from pyBall.OCL import AFM as afm
+from pyBall.DFTB import TestUtils as tu
 
-def atom_to_grid_idx(atom_pos, origin, step, ngrid):
-    frac = (atom_pos - origin) / step
-    idx = np.round(frac).astype(np.int32)
-    idx = np.clip(idx, [0, 0, 0], np.array(ngrid) - 1)
-    return idx
-
-
-def plot_transition(src_dir, out_dir, basis, A, beta):
+def plot_transition(src_dir, out_dir, basis, A, beta, xyz_path, target_indices=None, step=0.15):
     os.makedirs(out_dir, exist_ok=True)
 
     # Load fields
@@ -37,27 +31,28 @@ def plot_transition(src_dir, out_dir, basis, A, beta):
     E_vdw = np.load(os.path.join(src_dir, 'E_vdw_field.npy'))
     E_total = E_pauli + E_es + E_vdw
 
-    origin = np.array([-11.36, -6.6, -4.2], dtype=np.float32)
-    step = 0.15
-    ngrid = E_total.shape
+    # Read grid spec from FDBM log (or fallback)
+    fdbm_dir = os.path.dirname(src_dir) if os.path.basename(src_dir).startswith('afm_fitted_') else src_dir
+    log_path = os.path.join(fdbm_dir, 'step1_density', 'log.txt')
+    origin, ngrid, step_read = afm.read_grid_spec_from_log(log_path)
+    if origin is None:
+        origin = np.array([-11.36, -6.6, -4.2], dtype=np.float32)
+        ngrid = E_total.shape
+        print(f"WARNING: Could not read grid from {log_path}, using fallback origin={origin}")
+    if step_read is not None:
+        step = step_read
+    ngrid = np.array(E_total.shape)
 
     # Atom positions
-    atom_names, atom_pos = [], []
-    with open(os.path.join(_THIS_DIR, 'pentacene.xyz'), 'r') as f:
-        lines = f.readlines()
-    natoms = int(lines[0].strip())
-    for line in lines[2:2+natoms]:
-        p = line.split()
-        atom_names.append(p[0])
-        atom_pos.append([float(p[1]), float(p[2]), float(p[3])])
+    atom_pos, _, atom_names, _, _ = au.load_xyz(xyz_path)
     atom_pos = np.array(atom_pos, dtype=np.float64)
 
-    # Target atoms
-    target_indices = [0, 1, 20, 21]
+    # Default target atoms: first and last few carbons
+    if target_indices is None:
+        target_indices = [0, 1, len(atom_names)-2, len(atom_names)-1]
+
     z_list = [2.5, 2.8, 3.0, 3.2, 3.5]
     n_z = len(z_list)
-
-    # z-grid values for extraction
     z_grid_vals = origin[2] + np.arange(ngrid[2]) * step
 
     # ── Panel plot: rows=fields, cols=z with colorbars ──────────────
@@ -77,7 +72,6 @@ def plot_transition(src_dir, out_dir, basis, A, beta):
             nx, ny = field.shape[:2]
             extent_xy = [float(origin[0]), float(origin[0]) + (nx - 1) * step,
                          float(origin[1]), float(origin[1]) + (ny - 1) * step]
-            # Per-subplot vmin/vmax
             if sym:
                 vabs = max(abs(float(sl.min())), abs(float(sl.max())), 1e-12)
                 norm = plt.matplotlib.colors.TwoSlopeNorm(vmin=-vabs, vcenter=0, vmax=vabs)
@@ -86,7 +80,6 @@ def plot_transition(src_dir, out_dir, basis, A, beta):
                 vmax = float(sl.max())
                 norm = plt.matplotlib.colors.Normalize(vmin=vmin, vmax=vmax)
             im = ax.imshow(sl, origin='lower', cmap=cmap, norm=norm, extent=extent_xy, aspect='equal')
-            # Colorbar on each subplot
             cb = fig.colorbar(im, ax=ax, shrink=0.6, pad=0.02)
             cb.ax.tick_params(labelsize=6)
             if irow == 0:
@@ -102,11 +95,10 @@ def plot_transition(src_dir, out_dir, basis, A, beta):
     plt.close()
     print(f"  Saved: {fname}")
 
-    # ── Per-atom z-scan: Pauli, vdW, ES, Total vs z ───────────────────
+    # ── Per-atom z-scan ───────────────────
     for target_idx in target_indices:
-        tix, tiy, _ = atom_to_grid_idx(atom_pos[target_idx], origin, step, ngrid)
+        tix, tiy, _ = tu.atom_to_grid_idx(atom_pos[target_idx], origin, step, ngrid)
         z = z_grid_vals
-        # Extract profiles at this grid column
         ep = E_pauli[tix, tiy, :]
         ev = E_vdw[tix, tiy, :]
         ee = E_es[tix, tiy, :]
@@ -132,12 +124,12 @@ def plot_transition(src_dir, out_dir, basis, A, beta):
         plt.close()
         print(f"  Saved: {fname}")
 
-    # ── Combined z-scan: all atoms on one plot ──────────────────────
+    # ── Combined z-scan ──────────────────────
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
     axes = axes.flatten()
     for iax, target_idx in enumerate(target_indices):
         ax = axes[iax]
-        tix, tiy, _ = atom_to_grid_idx(atom_pos[target_idx], origin, step, ngrid)
+        tix, tiy, _ = tu.atom_to_grid_idx(atom_pos[target_idx], origin, step, ngrid)
         z = z_grid_vals
         ep = E_pauli[tix, tiy, :]
         ev = E_vdw[tix, tiy, :]
@@ -156,14 +148,14 @@ def plot_transition(src_dir, out_dir, basis, A, beta):
         ax.grid(True, alpha=0.3)
         ax.set_xlim([2.0, 6.0])
         ax.set_ylim([-0.5, 0.5])
-    fig.suptitle(f'{basis}: z-scan components at 4 peripheral carbons (A={A:.0f}, b={beta:.3f})', fontsize=12)
+    fig.suptitle(f'{basis}: z-scan components at peripheral atoms (A={A:.0f}, b={beta:.3f})', fontsize=12)
     plt.tight_layout()
     fname = os.path.join(out_dir, 'zscan_all_atoms.png')
     plt.savefig(fname, dpi=150, bbox_inches='tight')
     plt.close()
     print(f"  Saved: {fname}")
 
-    # ── Max energy vs z (keep this) ─────────────────────────────────
+    # ── Max energy vs z ─────────────────────────────────
     z_fine = np.arange(2.0, 5.0, 0.1)
     ny = E_total.shape[1]
     iy = ny // 2
@@ -196,17 +188,25 @@ def plot_transition(src_dir, out_dir, basis, A, beta):
 
     print(f"\nAll transition plots in: {out_dir}/")
 
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--basis', type=str, default='mio-1-1', choices=['mio-1-1', '3ob-3-1'])
+    parser.add_argument('--xyz', type=str, default='pentacene.xyz', help='Molecule XYZ file')
+    parser.add_argument('--src_dir', type=str, default=None, help='AFM fitted output directory')
+    parser.add_argument('--target_indices', type=str, default=None, help='Comma-separated target atom indices')
     args = parser.parse_args()
 
-    FITTED = {'mio-1-1': {'A': 965.0, 'beta': 0.871}, '3ob-3-1': {'A': 643.0, 'beta': 0.796}}
-    src_dir = os.path.join(_THIS_DIR, 'afm_fitted_' + args.basis.replace('-', '_'))
+    if args.src_dir:
+        src_dir = os.path.join(_THIS_DIR, args.src_dir)
+    else:
+        src_dir = os.path.join(_THIS_DIR, f'afm_fitted_{args.basis.replace("-", "_")}')
     out_dir = os.path.join(src_dir, 'transition')
-    plot_transition(src_dir, out_dir, args.basis, FITTED[args.basis]['A'], FITTED[args.basis]['beta'])
 
+    xyz_path = os.path.join(_THIS_DIR, args.xyz)
+    target_indices = [int(x.strip()) for x in args.target_indices.split(',')] if args.target_indices else None
+    A = afm.PAULI_FITTED_DEFAULTS[args.basis]['A']
+    beta = afm.PAULI_FITTED_DEFAULTS[args.basis]['beta']
+    plot_transition(src_dir, out_dir, args.basis, A, beta, xyz_path, target_indices)
 
 if __name__ == "__main__":
     main()

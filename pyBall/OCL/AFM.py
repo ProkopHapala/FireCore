@@ -835,6 +835,126 @@ def pp_relax_2d(force_func, scan_xs, scan_ys, probe_heights, mol_z=0.0,
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# FDBM AFM field computation helpers
+# ═══════════════════════════════════════════════════════════════════════════════
+
+PAULI_FITTED_DEFAULTS = {
+    'mio-1-1': {'A': 965.0, 'beta': 0.871},
+    '3ob-3-1': {'A': 643.0, 'beta': 0.796},
+}
+
+def compute_pauli_field(rho_grid, rho_tip_total, step, A_pauli=16.0, beta_pauli=1.0):
+    """Compute Pauli repulsion field via FFT convolution.
+
+    E = A * (overlap)^beta  where overlap = dV * IFFT(FFT(rho)*FFT(tip_kernel))
+
+    Returns (E_pauli_field, grads_E_pauli) where grads shape is (nx,ny,nz,3).
+    """
+    dV = step**3
+    nx_t, ny_t, nz_t = rho_tip_total.shape
+    tip_kernel = np.roll(np.roll(np.roll(rho_tip_total[::-1,::-1,::-1], -(nx_t//2), axis=0), -(ny_t//2), axis=1), -(nz_t//2), axis=2)
+    overlap_raw = dV * np.real(np.fft.ifftn(np.fft.fftn(rho_grid) * np.fft.fftn(tip_kernel))).astype(np.float32)
+    overlap_safe = np.clip(overlap_raw, 1e-30, None)
+    E_pauli = A_pauli * (overlap_safe ** beta_pauli)
+    grads = np.stack([np.gradient(E_pauli, step, axis=i) for i in range(3)], axis=-1)
+    return E_pauli, grads
+
+def compute_es_conv_field(V_ES, rho_tip_delta, step):
+    """Convolve electrostatic potential with tip delta-density.
+
+    Returns (E_es_field, grads_E_es).
+    """
+    dV = step**3
+    nx_t, ny_t, nz_t = rho_tip_delta.shape
+    tip_kernel = np.roll(np.roll(np.roll(rho_tip_delta[::-1,::-1,::-1], -(nx_t//2), axis=0), -(ny_t//2), axis=1), -(nz_t//2), axis=2)
+    E_es = dV * np.real(np.fft.ifftn(np.fft.fftn(V_ES) * np.fft.fftn(tip_kernel))).astype(np.float32)
+    grads = np.stack([np.gradient(E_es, step, axis=i) for i in range(3)], axis=-1)
+    return E_es, grads
+
+def compute_vdw_field(atomPos, atomTypes, origin, step, ngrid, C6_table=None, C6_CO=30.0, RA=1.5):
+    """Compute vdW dispersion field C6/r^6 on grid.
+
+    Args:
+        atomPos: (natoms, 3) positions in Angstrom
+        atomTypes: list/array of atomic Z numbers or element symbols
+        origin: (3,) grid origin
+        step: grid spacing
+        ngrid: (3,) grid dimensions
+        C6_table: dict mapping Z -> C6 value. Default: {1:6.5, 6:24.0, 7:20.0, 8:15.0}
+        C6_CO: C6 value for CO tip
+        RA: damping radius in Angstrom
+
+    Returns (E_vdw, grads_vdw).
+    """
+    if C6_table is None:
+        C6_table = {1: 6.5, 6: 24.0, 7: 20.0, 8: 15.0}
+    nx, ny, nz = [int(i) for i in ngrid[:3]]
+    xs = origin[0] + np.arange(nx)*step
+    ys = origin[1] + np.arange(ny)*step
+    zs = origin[2] + np.arange(nz)*step
+    XX, YY, ZZ = np.meshgrid(xs, ys, zs, indexing='ij')
+    E_vdw = np.zeros((nx, ny, nz), dtype=np.float32)
+    RA2 = RA**2
+    for ia in range(len(atomPos)):
+        Z = C6_table.get(atomTypes[ia], 10.0)
+        E_vdw -= np.sqrt(Z * C6_CO) / ((XX-atomPos[ia,0])**2 + (YY-atomPos[ia,1])**2 + (ZZ-atomPos[ia,2])**2 + RA2)**3
+    grads = np.stack([np.gradient(E_vdw, step, axis=i) for i in range(3)], axis=-1)
+    return E_vdw, grads
+
+def read_grid_spec_from_log(log_path):
+    """Read grid origin and ngrid from FDBM step1_density/log.txt.
+
+    Args:
+        log_path: path to log.txt file
+
+    Returns:
+        (origin, ngrid, step) as numpy arrays, or (None, None, None) if not found
+    """
+    if not os.path.exists(log_path):
+        return None, None, None
+    with open(log_path, 'r') as f:
+        for line in f:
+            if 'Grid:' in line and 'origin=' in line and 'ngrid=' in line:
+                parts = line.split('ngrid=')
+                origin_str = parts[0].split('origin=')[1].strip()
+                ngrid_str = parts[1].strip()
+                origin = np.array([float(x) for x in origin_str.strip('[]').split()])
+                ngrid = np.array([int(x) for x in ngrid_str.strip('[]').split()])
+                # step is usually after ngrid, e.g. "ngrid=[152 88 96] step=0.15"
+                step = 0.15
+                if 'step=' in line:
+                    step_parts = line.split('step=')
+                    if len(step_parts) > 1:
+                        try:
+                            step = float(step_parts[1].split()[0])
+                        except ValueError:
+                            pass
+                return origin, ngrid, step
+    return None, None, None
+
+def save_afm_images(df, scan_xs, scan_ys, heights, out_dir, prefix='df'):
+    """Save AFM frequency-shift images at first, middle, last heights.
+
+    Args:
+        df: (nx, ny, nz) frequency-shift array
+        scan_xs, scan_ys: 1D scan coordinate arrays
+        heights: 1D probe height array
+        out_dir: directory for PNG output
+        prefix: filename prefix (e.g. 'df' -> df_h3.0.png)
+    """
+    import matplotlib.pyplot as plt
+    for i in [0, len(heights)//2, -1]:
+        h = heights[i]
+        plt.figure(figsize=(6,5))
+        plt.imshow(df[:,:,i].T, origin='lower', extent=[scan_xs[0], scan_xs[-1], scan_ys[0], scan_ys[-1]], cmap='afmhot')
+        plt.title(f"{prefix} at h={h:.1f} A")
+        plt.colorbar(label=f"{prefix} [Hz]")
+        fname = os.path.join(out_dir, f"{prefix}_h{h:.1f}.png")
+        plt.savefig(fname, dpi=150, bbox_inches='tight')
+        plt.close()
+        print(f"  Saved: {fname}")
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Single-atom projection test helper
 # ═══════════════════════════════════════════════════════════════════════════════
 

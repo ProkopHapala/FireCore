@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-import os
-import sys
+import os, sys, argparse
 import numpy as np
 
-# Add project root to path
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.realpath(os.path.join(_THIS_DIR, '..', '..', '..'))
 if _ROOT not in sys.path:
@@ -12,24 +10,39 @@ if _ROOT not in sys.path:
 from pyBall.DFTB import TestUtils as tu
 from pyBall import plotUtils as pu
 from pyBall.OCL import AFM as afm
+from pyBall import atomicUtils as au
 from scipy.optimize import curve_fit
 
-def run_comparison(basis='mio-1-1', output_dir=None):
-    # --- Config ---
-    FB_DIR = 'debug'
-    DB_DIR = f'debug_dftb_pentacene' if basis == 'mio-1-1' else f'debug_dftb_pentacene_{basis.replace("-", "_")}'
+def run_comparison(basis='mio-1-1', output_dir=None, xyz_path=None, target_idx=0, fb_dir=None, db_dir=None):
+    FB_DIR = fb_dir if fb_dir else 'debug'
+    DB_DIR = db_dir if db_dir else (f'debug_dftb_pentacene' if basis == 'mio-1-1' else f'debug_dftb_pentacene_{basis.replace("-", "_")}')
     OUT_DIR = output_dir if output_dir else f'debug_comparison_{basis.replace("-", "_")}'
     os.makedirs(OUT_DIR, exist_ok=True)
 
-    # Fireball grid config
-    orig_fb = np.array([-11.16, -6.8, -4.2])
-    step_fb = 0.10
-    # DFTB grid config
-    orig_db = np.array([-11.36, -6.6, -4.2])
-    step_db = 0.15
-    
-    # Target atom (Carbon in Pentacene)
-    pos_atom = np.array([-6.0056, -0.8000, 0.0000])
+    # Read grid specs from logs (molecule-agnostic)
+    orig_fb, ngrid_fb, step_fb = afm.read_grid_spec_from_log(os.path.join(FB_DIR, 'step1_density', 'log.txt'))
+    if orig_fb is None:
+        orig_fb = np.array([-11.16, -6.8, -4.2]); step_fb = 0.10
+        print(f"WARNING: Could not read Fireball grid spec, using fallback")
+    else:
+        step_fb = step_fb if step_fb is not None else 0.10
+
+    orig_db, ngrid_db, step_db = afm.read_grid_spec_from_log(os.path.join(DB_DIR, 'step1_density', 'log.txt'))
+    if orig_db is None:
+        orig_db = np.array([-11.36, -6.6, -4.2]); step_db = 0.15
+        print(f"WARNING: Could not read DFTB grid spec, using fallback")
+    else:
+        step_db = step_db if step_db is not None else 0.15
+
+    # Target atom position from XYZ
+    if xyz_path and os.path.exists(xyz_path):
+        pos, _, names, _, _ = au.load_xyz(xyz_path)
+        pos = np.array(pos, dtype=np.float64)
+        pos_atom = pos[target_idx]
+        print(f"Target atom {target_idx} ({names[target_idx]}) at {pos_atom}")
+    else:
+        pos_atom = np.array([-6.0056, -0.8000, 0.0000])
+        print(f"Using fallback target position: {pos_atom}")
 
     print("--- Loading Densities ---")
     rho_fb = np.load(os.path.join(FB_DIR, 'step1_density/rho_grid.npy'))
@@ -132,9 +145,14 @@ def run_comparison(basis='mio-1-1', output_dir=None):
     print(f"\nAll plots and summary files are saved in: {os.path.abspath(OUT_DIR)}")
 
 if __name__ == "__main__":
-    import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--basis', type=str, default='mio-1-1', help='Basis set: mio-1-1 or 3ob-3-1')
+    parser.add_argument('--xyz', type=str, default='pentacene.xyz', help='Molecule XYZ file')
+    parser.add_argument('--target_idx', type=int, default=0, help='Target atom index')
+    parser.add_argument('--fb_dir', type=str, default=None, help='Fireball output directory')
+    parser.add_argument('--db_dir', type=str, default=None, help='DFTB output directory')
     parser.add_argument('--output_dir', type=str, default=None, help='Custom output directory')
     args = parser.parse_args()
-    run_comparison(basis=args.basis, output_dir=args.output_dir)
+    xyz_path = os.path.join(_THIS_DIR, args.xyz) if args.xyz else None
+    run_comparison(basis=args.basis, output_dir=args.output_dir, xyz_path=xyz_path,
+                   target_idx=args.target_idx, fb_dir=args.fb_dir, db_dir=args.db_dir)

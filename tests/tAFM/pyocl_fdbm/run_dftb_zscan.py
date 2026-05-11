@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-run_dftb_zscan.py - Run DFTB rigid z-scan for CO tip approaching pentacene.
+run_dftb_zscan.py - Run DFTB rigid z-scan for CO tip approaching molecule.
 
 Produces zscan_z.npy and zscan_energy_eV.npy in the output directory.
 Can use any DFTB+ basis set (mio-1-1, 3ob-3-1, etc.).
@@ -8,105 +8,27 @@ Can use any DFTB+ basis set (mio-1-1, 3ob-3-1, etc.).
 Usage:
     cd tests/tAFM/pyocl_fdbm
     PYTHONPATH=/path/to/FireCore:$PYTHONPATH python run_dftb_zscan.py --basis mio-1-1
-    PYTHONPATH=/path/to/FireCore:$PYTHONPATH python run_dftb_zscan.py --basis 3ob-3-1
+    PYTHONPATH=/path/to/FireCore:$PYTHONPATH python run_dftb_zscan.py --basis 3ob-3-1 --xyz mymol.xyz
 """
 
 import os, sys, argparse, time
 import numpy as np
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_PENTACENE_XYZ = os.path.join(_THIS_DIR, 'pentacene.xyz')
-_CO_XYZ        = os.path.join(_THIS_DIR, 'CO.xyz')
+_ROOT = os.path.realpath(os.path.join(_THIS_DIR, '..', '..', '..'))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
-BOHR2ANG = 0.5291772109
-HAU2EV   = 27.211386245988
+from pyBall import atomicUtils as au
+from pyBall import dftb_utils as du
 
-SLAKO_PREFIXES = {
-    'mio-1-1': '/home/prokop/SIMULATIONS/dftbplus/slakos/mio-1-1/',
-    '3ob-3-1': '/home/prokop/SIMULATIONS/dftbplus/slakos/3ob-3-1/',
-}
-
-# ── XYZ helpers ────────────────────────────────────────────────────────────
-def load_xyz(fname):
-    with open(fname, 'r') as f:
-        lines = f.readlines()
-    natoms = int(lines[0].strip())
-    enames = []; apos = []
-    for line in lines[2:2+natoms]:
-        parts = line.split()
-        enames.append(parts[0])
-        apos.append([float(parts[1]), float(parts[2]), float(parts[3])])
-    return np.array(enames), np.array(apos, dtype=np.float64)
-
-def write_xyz(fname, enames, apos, comment="Generated"):
-    with open(fname, 'w') as f:
-        f.write(f"{len(enames)}\n{comment}\n")
-        for e, p in zip(enames, apos):
-            f.write(f"{e} {p[0]:.10f} {p[1]:.10f} {p[2]:.10f}\n")
-
-# ── DFTB+ helpers ─────────────────────────────────────────────────────────
-def write_dftb_input(enames, xyz_path, out_path, sk_prefix):
-    species = sorted(set(enames))
-    max_ang = {}
-    for s in species:
-        max_ang[s] = '"s"' if s == 'H' else '"p"'
-    max_ang_str = '\n    '.join([f'{s} = {max_ang[s]}' for s in species])
-
-    hsd = f"""Geometry = xyzFormat {{
-  <<< "{os.path.basename(xyz_path)}"
-}}
-
-Hamiltonian = DFTB {{
-  SCC = Yes
-  SlaterKosterFiles = Type2FileNames {{
-    Prefix = "{sk_prefix}"
-    Separator = "-"
-    Suffix = ".skf"
-  }}
-  MaxAngularMomentum {{
-    {max_ang_str}
-  }}
-  SCCTolerance = 1e-7
-  MaxSccIterations = 200
-}}
-
-Analysis {{
-  CalculateForces = Yes
-}}
-"""
-    with open(out_path, 'w') as f:
-        f.write(hsd)
-
-def run_dftb_single_point(work_dir, enames, apos, sk_prefix):
-    os.makedirs(work_dir, exist_ok=True)
-    xyz_path = os.path.join(work_dir, "geom.xyz")
-    hsd_path = os.path.join(work_dir, "dftb_in.hsd")
-    write_xyz(xyz_path, enames, apos)
-    write_dftb_input(enames, xyz_path, hsd_path, sk_prefix)
-
-    cwd = os.getcwd()
-    os.chdir(work_dir)
-    try:
-        ret = os.system('dftb+ > OUT 2> ERR')
-        if ret != 0:
-            raise RuntimeError(f"DFTB+ failed in {work_dir}")
-
-        energy = None
-        with open('OUT', 'r') as f:
-            for line in f:
-                if "Total Energy" in line:
-                    energy = float(line[51:70].strip())
-        if energy is None:
-            raise RuntimeError(f"Could not parse energy from {work_dir}/OUT")
-        return energy
-    finally:
-        os.chdir(cwd)
+HAU2EV = 27.211386245988
 
 # ── Main z-scan ───────────────────────────────────────────────────────────
-def run_zscan_for_atom(target_idx, pen_names, pen_pos, co_names, sk_prefix, z_distances, out_dir):
+def run_zscan_for_atom(target_idx, mol_names, mol_pos, tip_names, sk_prefix, z_distances, out_dir):
     """Run DFTB z-scan for a single target atom. Returns z_vals, e_vals."""
-    target_name = pen_names[target_idx]
-    target_pos = pen_pos[target_idx]
+    target_name = mol_names[target_idx]
+    target_pos = mol_pos[target_idx]
     atom_dir = os.path.join(out_dir, f'atom_{target_idx}')
     os.makedirs(atom_dir, exist_ok=True)
 
@@ -128,18 +50,18 @@ def run_zscan_for_atom(target_idx, pen_names, pen_pos, co_names, sk_prefix, z_di
             print("  Cache z-range mismatch, recomputing")
 
     if len(results) != len(z_distances):
-        combined_names = list(pen_names) + list(co_names)
+        combined_names = list(mol_names) + list(tip_names)
         for iz, z in enumerate(z_distances):
             print(f"\n[z-scan {iz+1}/{len(z_distances)}] z = {z:.2f} Å")
             o_pos = np.array([target_pos[0], target_pos[1], target_pos[2] + z])
             c_pos = np.array([target_pos[0], target_pos[1], target_pos[2] + z + 1.13])
             co_pos_shifted = np.array([o_pos, c_pos])
-            combined_pos = np.vstack([pen_pos, co_pos_shifted])
+            combined_pos = np.vstack([mol_pos, co_pos_shifted])
 
             work_dir = os.path.join(atom_dir, f'zscan_z{z:.2f}')
             t_start = time.time()
             try:
-                energy_ha = run_dftb_single_point(work_dir, combined_names, combined_pos, sk_prefix)
+                energy_ha = du.run_dftb_sp(work_dir, combined_names, combined_pos, sk_prefix)
                 energy_ev = energy_ha * HAU2EV
                 t_elapsed = time.time() - t_start
                 print(f"  Energy: {energy_ha:.8f} Ha = {energy_ev:.6f} eV  ({t_elapsed:.1f}s)")
@@ -174,6 +96,8 @@ def run_zscan_for_atom(target_idx, pen_names, pen_pos, co_names, sk_prefix, z_di
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--basis', type=str, default='mio-1-1', choices=['mio-1-1', '3ob-3-1'])
+    parser.add_argument('--xyz', type=str, default='pentacene.xyz', help='Molecule XYZ file')
+    parser.add_argument('--tip_xyz', type=str, default='CO.xyz', help='Tip molecule XYZ file')
     parser.add_argument('--output_dir', type=str, default=None)
     parser.add_argument('--target_indices', type=str, default='0',
                         help='Comma-separated list of target atom indices (e.g., "0,1,20,21")')
@@ -183,7 +107,7 @@ def main():
     args = parser.parse_args()
 
     basis = args.basis
-    sk_prefix = SLAKO_PREFIXES[basis]
+    sk_prefix = du.SK_PATHS[basis]
     out_dir = os.path.join(_THIS_DIR, args.output_dir) if args.output_dir else os.path.join(_THIS_DIR, f'zscan_{basis.replace("-", "_")}')
     os.makedirs(out_dir, exist_ok=True)
 
@@ -194,16 +118,19 @@ def main():
     print(f"Output: {out_dir}")
     print(f"="*60)
 
-    pen_names, pen_pos = load_xyz(_PENTACENE_XYZ)
-    co_names,   _       = load_xyz(_CO_XYZ)
-    print(f"Pentacene: {len(pen_names)} atoms")
-    print(f"CO tip:    {len(co_names)} atoms")
+    xyz_path = os.path.join(_THIS_DIR, args.xyz)
+    tip_path = os.path.join(_THIS_DIR, args.tip_xyz)
+    mol_pos, _, mol_names, _, _ = au.load_xyz(xyz_path)
+    mol_pos = np.array(mol_pos, dtype=np.float64)
+    tip_pos, _, tip_names, _, _ = au.load_xyz(tip_path)
+    print(f"Molecule: {len(mol_names)} atoms ({args.xyz})")
+    print(f"Tip:      {len(tip_names)} atoms ({args.tip_xyz})")
 
     z_distances = np.arange(args.z_min, args.z_max + args.z_step*0.5, args.z_step)
     print(f"Z-scan: {len(z_distances)} points from {z_distances.min():.2f} to {z_distances.max():.2f} Å")
 
     for target_idx in target_indices:
-        run_zscan_for_atom(target_idx, pen_names, pen_pos, co_names, sk_prefix, z_distances, out_dir)
+        run_zscan_for_atom(target_idx, mol_names, mol_pos, tip_names, sk_prefix, z_distances, out_dir)
 
     print(f"\nAll atoms done. Outputs in: {out_dir}/")
 
