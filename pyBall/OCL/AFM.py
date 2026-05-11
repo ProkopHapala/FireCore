@@ -577,23 +577,26 @@ def run_fireball_scf(xyz_path, fdata_dir, nscf=200, verbosity=0):
                 neighs=neighs, q_mulliken=q_mulliken, natoms=natoms)
 
 
-def setup_density_grid(atomPos, step=0.15, margin=4.0, z_extra=6.0, block=8):
+def setup_density_grid(atomPos, step=0.1, margin=4.0, z_extra=6.0, block=8):
     """
     Setup 3D grid spec for density projection.
+    Grid dimensions are rounded up to multiples of block for GPU performance.
+    Margin is increased to accommodate rounding, ensuring at least specified margin around molecule.
     Returns (grid_spec, origin, ngrid).
     """
-    pos_min = atomPos.min(axis=0) - margin
-    pos_max = atomPos.max(axis=0) + np.array([margin, margin, margin + z_extra])
-    span    = pos_max - pos_min
-    ngrid   = (np.ceil(np.ceil(span / step) / block).astype(int) * block)
+    pos_min_raw = atomPos.min(axis=0) - margin
+    pos_max_raw = atomPos.max(axis=0) + np.array([margin, margin, margin + z_extra])
+    span_raw = pos_max_raw - pos_min_raw
+    ngrid_raw = np.ceil(span_raw / step)
+    ngrid = (np.ceil(ngrid_raw / block).astype(int) * block)
     total_span = ngrid * step
-    origin  = (0.5*(pos_min + pos_max) - 0.5*total_span).astype(np.float32)
+    # Center grid on molecule, extending equally on both sides to accommodate rounding
+    origin = (0.5*(pos_min_raw + pos_max_raw) - 0.5*total_span).astype(np.float32)
     grid_spec = {
         'origin': origin,
         'dA': [step, 0., 0.], 'dB': [0., step, 0.], 'dC': [0., 0., step],
         'ngrid': ngrid.astype(int),
     }
-    print(f"Density grid: origin={origin.round(2)} step={step} ngrid={ngrid} span={total_span.round(2)}")
     return grid_spec, origin, ngrid
 
 
@@ -838,35 +841,60 @@ def pp_relax_2d(force_func, scan_xs, scan_ys, probe_heights, mol_z=0.0,
 # FDBM AFM field computation helpers
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# Pauli parameters fitted against DFTB z-scan with raw overlap (A=1,beta=1 convolution)
+# E_pauli = A_pauli * overlap_raw^beta_pauli
 PAULI_FITTED_DEFAULTS = {
-    'mio-1-1': {'A': 965.0, 'beta': 0.871},
-    '3ob-3-1': {'A': 643.0, 'beta': 0.796},
+    'mio-1-1': {'A': 787.22, 'beta': 1.2371},  # fitted for pentacene atom 0, raw overlap (A=1,beta=1 convolution)
+    '3ob-3-1': {'A': 509.28, 'beta': 1.0586},  # fitted for pentacene atom 0, raw overlap (A=1,beta=1 convolution)
 }
 
-def compute_pauli_field(rho_grid, rho_tip_total, step, A_pauli=16.0, beta_pauli=1.0):
-    """Compute Pauli repulsion field via FFT convolution.
+def compute_pauli_overlap(rho_grid, rho_tip_total, step, tip_rolled=False):
+    """Compute raw Pauli overlap via FFT cross-correlation (A=1, beta=1).
 
-    E = A * (overlap)^beta  where overlap = dV * IFFT(FFT(rho)*FFT(tip_kernel))
+    overlap(R) = dV * IFFT(FFT(rho_grid) * conj(FFT(rho_tip)))
+    This is the pure density-density overlap integral at each tip position R.
+    Clipped to [1e-30, inf] to allow safe power-law scaling.
+
+    If tip_rolled=True the tip already has O at index (0,0,0).
+    Returns overlap_raw (nx,ny,nz) float32.
+    """
+    dV = step**3
+    overlap_raw = dV * np.real(np.fft.ifftn(np.fft.fftn(rho_grid) * np.conj(np.fft.fftn(rho_tip_total)))).astype(np.float32)
+    return np.clip(overlap_raw, 1e-30, None)
+
+
+def scale_pauli_field(overlap_raw, step, A_pauli, beta_pauli):
+    """Scale raw overlap into energy field: E_pauli = A_pauli * overlap^beta_pauli.
 
     Returns (E_pauli_field, grads_E_pauli) where grads shape is (nx,ny,nz,3).
     """
-    dV = step**3
-    nx_t, ny_t, nz_t = rho_tip_total.shape
-    tip_kernel = np.roll(np.roll(np.roll(rho_tip_total[::-1,::-1,::-1], -(nx_t//2), axis=0), -(ny_t//2), axis=1), -(nz_t//2), axis=2)
-    overlap_raw = dV * np.real(np.fft.ifftn(np.fft.fftn(rho_grid) * np.fft.fftn(tip_kernel))).astype(np.float32)
-    overlap_safe = np.clip(overlap_raw, 1e-30, None)
-    E_pauli = A_pauli * (overlap_safe ** beta_pauli)
+    E_pauli = A_pauli * (overlap_raw ** beta_pauli)
     grads = np.stack([np.gradient(E_pauli, step, axis=i) for i in range(3)], axis=-1)
     return E_pauli, grads
 
-def compute_es_conv_field(V_ES, rho_tip_delta, step):
+
+def compute_pauli_field(rho_grid, rho_tip_total, step, A_pauli=1.0, beta_pauli=1.0, tip_rolled=False):
+    """Compute Pauli repulsion field via FFT cross-correlation.
+
+    Convenience wrapper: compute_pauli_overlap then scale_pauli_field.
+    Default A=1, beta=1 returns raw overlap as energy field.
+    Returns (E_pauli_field, grads_E_pauli) where grads shape is (nx,ny,nz,3).
+    """
+    overlap_raw = compute_pauli_overlap(rho_grid, rho_tip_total, step, tip_rolled=tip_rolled)
+    return scale_pauli_field(overlap_raw, step, A_pauli, beta_pauli)
+
+def compute_es_conv_field(V_ES, rho_tip_delta, step, tip_rolled=False):
     """Convolve electrostatic potential with tip delta-density.
 
     Returns (E_es_field, grads_E_es).
     """
     dV = step**3
     nx_t, ny_t, nz_t = rho_tip_delta.shape
-    tip_kernel = np.roll(np.roll(np.roll(rho_tip_delta[::-1,::-1,::-1], -(nx_t//2), axis=0), -(ny_t//2), axis=1), -(nz_t//2), axis=2)
+    flipped = rho_tip_delta[::-1,::-1,::-1]
+    if tip_rolled:
+        tip_kernel = flipped
+    else:
+        tip_kernel = np.roll(np.roll(np.roll(flipped, -(nx_t//2), axis=0), -(ny_t//2), axis=1), -(nz_t//2), axis=2)
     E_es = dV * np.real(np.fft.ifftn(np.fft.fftn(V_ES) * np.fft.fftn(tip_kernel))).astype(np.float32)
     grads = np.stack([np.gradient(E_es, step, axis=i) for i in range(3)], axis=-1)
     return E_es, grads

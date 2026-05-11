@@ -690,13 +690,20 @@ def parse_basis_hsd_ang(hsd_path):
     res_bohr = float(res_match.group(1)) if res_match else 0.04
 
     # Find Basis block (handles nested braces via simple depth tracking)
+    # If no Basis block found, treat entire content as basis content (for files like 3ob-3-1.hsd)
     start = content.find('Basis')
-    depth = 0; basis_content = ''
-    for i, ch in enumerate(content[start:], start):
-        if ch == '{': depth += 1
-        elif ch == '}':
-            depth -= 1
-            if depth == 0: basis_content = content[start:i+1]; break
+    if start == -1:
+        # No Basis block wrapper - treat entire content as basis content
+        basis_content = content
+        search_start = 0  # Start from beginning, don't skip any brace
+    else:
+        depth = 0; basis_content = ''
+        for i, ch in enumerate(content[start:], start):
+            if ch == '{': depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0: basis_content = content[start:i+1]; break
+        search_start = basis_content.find('{') + 1  # skip opening Basis {
 
     species_list = []
     # Match species blocks: 'Name = {' or 'Name{' — skip HSD keywords
@@ -704,8 +711,9 @@ def parse_basis_hsd_ang(hsd_path):
              'Resolution', 'AtomicNumber', 'AngularMomentum', 'Occupation',
              'Cutoff', 'Exponents', 'Coefficients', 'NrOfPoints', 'RealComponent',
              'Verbose', 'PlottedLevels', 'PlottedKPoints', 'PlottedSpins', 'GroundState'}
-    sp_pat = re.compile(r'\b([A-Z][a-zA-Z0-9]*)\s*=\s*\{')  # species: capital letter, then = {
-    i = basis_content.find('{') + 1  # skip opening Basis {
+    # Handle both 'Name = {' and 'Name {' patterns (for 3ob-3-1.hsd)
+    sp_pat = re.compile(r'([A-Z][a-zA-Z0-9]*)\s*(?:=\s*)?\{')  # species: capital letter, optional =, then {
+    i = search_start
     while i < len(basis_content) - 1:
         m = sp_pat.search(basis_content, i)
         if not m: break
@@ -726,7 +734,7 @@ def parse_basis_hsd_ang(hsd_path):
         atomic_number = int(an_m.group(1)) if an_m else 0
 
         orbitals = []
-        orb_pat = re.compile(r'Orbital\s*=\s*\{')
+        orb_pat = re.compile(r'Orbital\s*(?:=\s*)?\{')  # Handle both 'Orbital = {' and 'Orbital {'
         oi = 0
         while True:
             om = orb_pat.search(sp_block, oi)
@@ -740,39 +748,38 @@ def parse_basis_hsd_ang(hsd_path):
             orb_block = sp_block[om.start():oe+1]
             oi = oe + 1
 
-            l_m   = re.search(r'AngularMomentum\s*=\s*(\d+)', orb_block)
+            l_m = re.search(r'AngularMomentum\s*=\s*(\d+)', orb_block)
             cut_m = re.search(r'Cutoff\s*=\s*(\S+)', orb_block)
-            exp_m = re.search(r'Exponents\s*=\s*\{([^}]*)\}', orb_block)
-            cof_m = re.search(r'Coefficients\s*=\s*\{([^}]*)\}', orb_block)
+            exp_m = re.search(r'Exponents\s*(?:=\s*)?\{([^}]+)\}', orb_block, re.DOTALL)
+            coef_m = re.search(r'Coefficients\s*(?:=\s*)?\{([^}]+)\}', orb_block, re.DOTALL)
 
-            l      = int(l_m.group(1)) if l_m else 0
-            cutoff_b = float(cut_m.group(1)) if cut_m else 10.0
-            exps_b = np.array([float(x) for x in exp_m.group(1).split()]) if exp_m else np.array([1.0])
-            if cof_m:
-                all_c = np.array([float(x) for x in cof_m.group(1).split()])
-                nexp  = len(exps_b)
-                npow  = len(all_c) // nexp
-                coef_b = all_c.reshape(nexp, npow).T  # (nPow, nAlpha)
-            else:
-                coef_b = np.ones((1, len(exps_b)))
+            if l_m and cut_m and exp_m and coef_m:
+                l = int(l_m.group(1))
+                cutoff = float(cut_m.group(1))
+                exp_vals = [float(x) for x in exp_m.group(1).split()]
+                coef_vals = [float(x) for x in coef_m.group(1).split()]
+                n_exp = len(exp_vals)
+                n_coef = len(coef_vals)
+                n_pow = n_coef // n_exp
+                coeffs = np.array(coef_vals).reshape(n_pow, n_exp)
 
-            # Convert Bohr -> Angstrom with proper power term scaling
-            nPow = coef_b.shape[0]
-            scale_factors = np.array([B ** (l + j) for j in range(nPow)])
-            coef_scaled = coef_b / scale_factors[:, None]
-            orbitals.append({
-                'l':            l,
-                'cutoff':       cutoff_b * B,
-                'exponents':    exps_b   / B,
-                'coefficients': coef_scaled,
-            })
+                orbitals.append({
+                    'l': l,
+                    'cutoff': cutoff * B,
+                    'exponents': np.array(exp_vals) / B,
+                    'coefficients': coeffs / (B ** l)
+                })
 
         species_list.append({
-            'name':          sp_name,
+            'name': sp_name,
             'atomic_number': atomic_number,
-            'resolution':    res_bohr * B,
-            'orbitals':      orbitals,
+            'orbitals': orbitals,
+            'resolution': res_bohr * B,
         })
+
+    print(f"[parse_basis_hsd_ang] Parsed {len(species_list)} species")
+    for sp in species_list:
+        print(f"  {sp['name']} Z={sp['atomic_number']} orbitals={len(sp['orbitals'])}")
 
     return species_list
 

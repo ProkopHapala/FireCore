@@ -691,6 +691,7 @@ python3 fit_fdbm_pauli.py --basis all --target_indices 0,1,20,21
 ```
 
 ## Notes
+
 - Grid origin `[-11.36, -6.6, -4.2] Å`, step `0.15 Å`, shape `(152, 88, 96)` is identical for both basis sets to ensure fair comparison.
 - The Pauli power-law fit quality is excellent across all atoms (R² > 0.9999).
 - The ES and vdW components are much smaller than Pauli in the contact region and are not included in the compact plots.
@@ -854,3 +855,322 @@ The fitted Pauli parameters successfully reproduce physically realistic forcefie
 - AFM images show reasonable contrast and atom resolution in the transition zone
 
 The 3ob-3-1 basis produces stronger repulsion and higher AFM contrast, consistent with its tighter basis functions. Both basis sets produce qualitatively correct LJ-like total interaction curves.
+
+
+
+---
+
+# Pipeline Restructure: Raw Overlap as Fundamental Quantity (2026-05-11)
+
+## Problem Identified
+
+The original FDBM pipeline had a **critical inconsistency** in how Pauli parameters were handled:
+- `compute_pauli_field()` was called with arbitrary `A_pauli` and `beta_pauli` values (e.g., A=16, beta=1, or A=965, beta=0.871)
+- The fitting code assumed the stored field was computed with `A=16, beta=1` and divided by 16 to extract "raw overlap"
+- This was **fundamentally wrong**: if the field was computed with A=965, beta=0.871, dividing by 16 does not recover the true raw overlap
+- The fitted parameters (A=2.34, beta=1.4176) were meaningless because they were fitted against the wrong quantity
+
+**Symptom:** Diagnostic panel showed Pauli ~1e-4 at z=3.0 Å, but fit plot showed ~1e-1 at the same z — a 1000× discrepancy.
+
+## Root Cause
+
+The Pauli field is computed as:
+```
+E_pauli = A_pauli * overlap_raw^beta_pauli
+where overlap_raw = dV * IFFT(FFT(rho_grid) * conj(FFT(rho_tip)))
+```
+
+The fitting code was doing:
+```python
+overlap_extracted = E_pauli_stored / A_DEFAULT  # WRONG!
+```
+
+But this only works if `E_pauli_stored` was computed with `A_DEFAULT` and `beta=1`. If the stored field used different parameters, this extraction is invalid.
+
+## Solution: Rigorous Pipeline Restructure
+
+The pipeline now follows a **physically meaningful sequence**:
+
+### Step 1: Compute Raw Overlap (A=1, β=1)
+```python
+overlap_raw = compute_pauli_overlap(rho_grid, rho_tip_total, step)
+# This is the pure density convolution: overlap(R) = ∫ρ_grid(r)·ρ_tip(r-R) dV
+# Save as: overlap_raw.npy
+```
+
+### Step 2: Fit A and β Against DFTB Reference
+```python
+# Extract overlap column at target atom XY position
+overlap_col = extract_z_profile(overlap_raw, target_pos, origin, step, z_distances=z_ref)
+
+# Fit: E_DFTB = A_fit * overlap_col^beta_fit
+A_fit, beta_fit, R2, RMSE = fit_pauli_powerlaw(z_ref, overlap_col, e_ref)
+```
+
+### Step 3: Scale to Energy Field
+```python
+# E_pauli = A_fit * overlap_raw^beta_fit
+E_pauli_field, grads_pauli = scale_pauli_field(overlap_raw, step, A_fit, beta_fit)
+# Save as: E_Pauli_field.npy
+```
+
+### Step 4: Use Scaled Field for AFM Simulation
+- Diagnostics plot `E_pauli_field` (already scaled)
+- AFM simulation uses `E_pauli_field` and its gradients
+
+## Key Changes to Code
+
+### 1. `AFM.py`: Split Computation
+```python
+# New function: always returns raw overlap (A=1, β=1)
+def compute_pauli_overlap(rho_grid, rho_tip_total, step, tip_rolled=False):
+    dV = step**3
+    overlap_raw = dV * np.real(np.fft.ifftn(np.fft.fftn(rho_grid) * np.conj(np.fft.fftn(rho_tip_total)))).astype(np.float32)
+    return np.clip(overlap_raw, 1e-30, None)
+
+# New function: scales raw overlap to energy field
+def scale_pauli_field(overlap_raw, step, A_pauli, beta_pauli):
+    E_pauli = A_pauli * (overlap_raw ** beta_pauli)
+    grads = np.stack([np.gradient(E_pauli, step, axis=i) for i in range(3)], axis=-1)
+    return E_pauli, grads
+
+# Legacy wrapper (now defaults to A=1, β=1)
+def compute_pauli_field(rho_grid, rho_tip_total, step, A_pauli=1.0, beta_pauli=1.0, tip_rolled=False):
+    overlap_raw = compute_pauli_overlap(rho_grid, rho_tip_total, step, tip_rolled=tip_rolled)
+    return scale_pauli_field(overlap_raw, step, A_pauli, beta_pauli)
+```
+
+### 2. `AFM_utils.py`: Restructured `run_afm_pipeline`
+```python
+# Step 3a: Compute raw overlap
+overlap_raw = afm.compute_pauli_overlap(rho_grid, rho_tip_total, step, tip_rolled=True)
+np.save('overlap_raw.npy', overlap_raw)
+
+# Step 3b: Get A, β (from CLI, fitted results, or defaults)
+A_pauli = pauli_params.get('A')
+beta_pauli = pauli_params.get('beta')
+if pauli_fit_params is not None:
+    A_pauli, beta_pauli = pauli_fit_params['A'], pauli_fit_params['beta']
+
+# Step 3c: Scale
+E_pauli_field, grads_pauli = afm.scale_pauli_field(overlap_raw, step, A_pauli, beta_pauli)
+```
+
+### 3. `AFM_utils.py`: Fixed `fit_pauli_parameters`
+```python
+# Load overlap_raw.npy directly (not E_Pauli_field.npy)
+grids = _load_fdbm_grids(fdbm_dir)
+overlap_col = tu.extract_z_profile(grids['overlap_raw'], target_pos, origin, step_grid, z_distances=z_ref)
+
+# Fit directly on raw overlap (no A_DEFAULT division)
+A_fit, beta_fit, R2, RMSE = _fit_pauli_powerlaw(z_ref, overlap_col, e_ref)
+```
+
+### 4. Updated Default Parameters
+```python
+# AFM.py
+PAULI_FITTED_DEFAULTS = {
+    'mio-1-1': {'A': 787.22, 'beta': 1.2371},  # fitted on raw overlap
+    '3ob-3-1': {'A': None,   'beta': None},     # TODO: needs fitting
+}
+```
+
+**Note:** The old values (A=965, β=0.871 for mio-1-1) were fitted on the wrong quantity (`E_pauli(A=16)/16`). The new values (A=787, β=1.237) are fitted on the true raw overlap.
+
+## Results
+
+### Internal Consistency Verification
+```
+=== CONSISTENCY CHECK: E_pauli == A * overlap_raw^beta ===
+  Max absolute difference: 0.0000e+00
+  Mean absolute difference: 0.0000e+00
+
+  z [A]  | overlap_raw | E_pauli   | A*overlap^beta | diff
+  z=2.0:   7.5745e-02   6.0337e-02   6.0337e-02   6.47e-09
+  z=2.5:   9.1325e-03   3.0071e-03   3.0071e-03   7.29e-10
+  z=3.0:   8.3264e-04   1.0085e-04   1.0085e-04   2.72e-11
+```
+
+**Perfect numerical precision** — the scaling is exact.
+
+### Final Consistency Check (vs DFTB Reference)
+```
+=== E_pauli(used for imaging) vs E_DFTB(reference) ===
+A=787.22, beta=1.2371
+
+  z_ref | overlap | E_pauli(sim) | E_DFTB     | ratio
+  z=2.00:  7.5745e-02    3.2340e+01   3.2422e+01   0.997
+  z=2.15:  4.1766e-02    1.5581e+01   1.5179e+01   1.026
+  z=2.30:  2.1774e-02    6.9177e+00   7.1947e+00   0.961
+  z=2.45:  1.1649e-02    3.2126e+00   3.2545e+00   0.987
+  z=2.60:  5.8251e-03    1.3538e+00   1.3905e+00   0.974
+  z=2.75:  2.9742e-03    5.9415e-01   5.6328e-01   1.055
+  z=2.90:  1.3902e-03    2.3004e-01   2.2041e-01   1.044
+  z=3.05:  6.6078e-04    9.2579e-02   8.4355e-02   1.097
+```
+
+**Excellent agreement in fit range (z=2.0–3.0 Å):**
+- Error < 6% throughout
+- At z=3.0 Å (edge of fit range): 9.7% error
+
+### AFM Simulation Results
+With the correct parameters:
+- df range: [-0.0313, 13.49] Hz (reasonable contrast)
+- Fz_relax: min=-0.1709, max=0.0001 eV/Å (physically meaningful forces)
+
+## Insights
+
+1. **Raw overlap is the fundamental quantity** — it's the pure density convolution, basis-set independent
+2. **A and β are empirical scaling factors** that compensate for basis set differences (STO vs numerical orbitals)
+3. **The pipeline must be single-source-of-truth:** raw overlap computed once, then scaled with fitted parameters
+4. **Diagnostic prints are essential** — the added checks (grid z-range, overlap at specific z, A*overlap^β verification) caught the bug immediately
+
+## Coordinate System Handling
+
+The fitting uses `extract_z_profile` which computes:
+```python
+z_abs = atom_pos[2] + z_distances
+```
+
+Where:
+- `z_distances` are the distances **above the atom** (e.g., 2.0–10.0 Å from DFTB z-scan)
+- `atom_pos[2]` is the atom's absolute z position
+- `z_abs` is the absolute z coordinate for grid interpolation
+
+This is correct and consistent with how the diagnostic panel slices are computed.
+
+## Updated Usage
+
+```bash
+cd tests/tAFM/pyocl_fdbm
+
+# Run pipeline with fitted defaults (automatically loads PAULI_FITTED_DEFAULTS)
+python3 test_full_pipeline.py pentacene.xyz --output_dir YOUR_OUTPUT_FOLDER --step 0.1 --margin 4.0 --z_extra 2.0
+
+# Or fit from scratch
+python3 test_full_pipeline.py pentacene.xyz --output_dir YOUR_OUTPUT_FOLDER --step 0.1 --margin 4.0 --z_extra 2.0 --fit_pauli --fit_generate_ref --fit_target_indices 0
+
+# Or use custom parameters
+python3 test_full_pipeline.py pentacene.xyz --output_dir YOUR_OUTPUT_FOLDER --step 0.1 --margin 4.0 --z_extra 2.0 --pauli_A 100.0 --pauli_beta 1.5
+```
+
+## Summary
+
+The pipeline is now **rigorous and consistent**:
+1. Raw overlap (A=1, β=1) is computed once and saved
+2. Fitting uses this raw overlap directly against DFTB reference
+3. Scaling applies fitted A and β to produce the energy field used for imaging
+4. Diagnostics confirm consistency at every step
+5. The same grid, same coordinate system, same parameters are used throughout
+
+The previous confusion (1000× discrepancy between diagnostic panel and fit plot) is eliminated.
+
+## Single-Run Fitting Workflow (2026-05)
+
+The pipeline has been restructured to support **single-run fitting** without requiring two separate executions:
+
+### Previous Workflow (Two-Run)
+1. Run `fit_pauli_parameters` externally → generates FDBM grids with A=1,β=1, fits A,β, saves results
+2. Run `run_afm_from_xyz` with fitted params → uses saved grids and params for AFM simulation
+
+**Problem:** Required two separate runs, grid regeneration if missing, manual coordination.
+
+### New Workflow (Single-Run)
+1. Call `run_afm_from_xyz` with `fit_pauli=True` and `fit_pauli_params` dict
+2. Inside `run_afm_pipeline`:
+   - Step 3a: Compute raw overlap (A=1, β=1)
+   - Step 3b: If `fit_pauli=True`, internally load DFTB reference, extract overlap profiles, fit A,β using `_fit_pauli_powerlaw`
+   - Step 3c: Scale with fitted A,β
+   - Steps 4-6: ES, vdW, AFM simulation
+
+**Advantages:**
+- Single execution: fitting happens immediately after raw overlap computation
+- No external grid regeneration: raw overlap is already computed in step 3a
+- Cleaner interface: all fitting parameters passed via dict
+- Basis-agnostic: works with any basis set (mio-1-1, 3ob-3-1, etc.)
+
+### Implementation Details
+
+**`run_afm_pipeline` signature:**
+```python
+def run_afm_pipeline(
+    ...,  # densities, grid, scan params
+    pauli_params={'A': None, 'beta': None},
+    pauli_fit_params=None,  # externally fitted params
+    fit_pauli=False,         # enable internal fitting
+    fit_pauli_params=None,   # dict: zscan_dir, target_indices, z_min, z_max, basis
+    ...
+)
+```
+
+**Step 3b logic:**
+```python
+if fit_pauli and fit_pauli_params is not None:
+    # Load DFTB reference for each target atom
+    for idx in target_indices:
+        z_ref = np.load(f'{zscan_dir}/atom_{idx}/zscan_z.npy')
+        e_ref = np.load(f'{zscan_dir}/atom_{idx}/zscan_energy_eV.npy')
+        overlap_profile = extract_z_profile(overlap_raw, atomPos[idx], origin, step, z_distances=z_ref)
+        A_fit, beta_fit, r2_fit, _ = _fit_pauli_powerlaw(z_ref, overlap_profile, e_ref, z_min, z_max)
+    A_pauli = np.mean(all_A)
+    beta_pauli = np.mean(all_beta)
+```
+
+**`run_afm_from_xyz` signature:**
+```python
+def run_afm_from_xyz(
+    ...,  # xyz, basis, etc.
+    pauli_params=None,
+    pauli_fit_params=None,
+    fit_pauli=False,
+    fit_pauli_params=None,
+    ...
+)
+```
+
+**`test_full_pipeline.py` usage:**
+```python
+# Prepare fit_pauli_params if fitting is requested
+fit_pauli_params = None
+if args.fit_pauli:
+    fit_pauli_params = {
+        'zscan_dir': args.fit_zscan_dir,
+        'target_indices': args.fit_target_indices,
+        'z_min': args.fit_z_min,
+        'z_max': args.fit_z_max,
+        'basis': SK
+    }
+
+results = afm_utils.run_afm_from_xyz(
+    ...,
+    pauli_params={'A': pauli_A, 'beta': pauli_beta} if pauli_A is not None else None,
+    fit_pauli=args.fit_pauli,
+    fit_pauli_params=fit_pauli_params,
+    ...
+)
+```
+
+### Command-Line Usage
+
+```bash
+# Single-run with fitting
+python3 test_full_pipeline.py pentacene.xyz --output_dir OUT --basis 3ob-3-1 \
+  --fit_pauli --fit_zscan_dir OLD_results/zscan_3ob_3_1 --fit_target_indices 0
+
+# Use pre-fitted defaults (no fitting)
+python3 test_full_pipeline.py pentacene.xyz --output_dir OUT --basis mio-1-1
+
+# Custom parameters (no fitting)
+python3 test_full_pipeline.py pentacene.xyz --output_dir OUT --basis mio-1-1 \
+  --pauli_A 100.0 --pauli_beta 1.5
+```
+
+### Verification
+
+Test with 3ob-3-1 basis and internal fitting:
+- Step 3a: overlap_raw range=[1e-30, 9.31]
+- Step 3b: Fitted A=509.28, β=1.0586 (R2=0.9999)
+- Step 3c: E_pauli range=[8.9e-30, 5.40e+03]
+- Check: A*overlap_max^β = 509.28*9.31^1.0586 = 5401 eV ✓
+
+Matches previous external fit, confirming consistency.

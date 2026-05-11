@@ -442,24 +442,28 @@ SK_PATHS = {
 }
 
 WFC_HSD_PATHS = {
-    'mio-1-1': '/home/prokop/git/dftbplus/tests/grid/dftb_ptcda/waveplot_in.hsd',  # wrapper with <<+ include
-    '3ob-3-1': '/home/prokop/git/dftbplus/tests/grid/dftb_ptcda/wfc.3ob-3-1.hsd',
+    'mio-1-1': '/home/prokop/git/dftbplus/tests/grid/dftb_h2o/waveplot_in.hsd',
+    '3ob-3-1': '/home/prokop/git/dftbplus/tests/grid/dftb_h2o_3ob/waveplot_in.hsd',
 }
 
-def write_dftb_input_sp(enames, xyz_path, out_path, sk_prefix, scctol=1e-7, maxscc=200):
-    """Write minimal DFTB+ input for single-point SCF calculation.
-
+def _write_dftb_input_base(enames, xyz_path, out_path, sk_prefix, scctol=1e-7, maxscc=200, 
+                           analysis_block="", options_block=""):
+    """Base function to write DFTB+ input HSD file.
+    
     Args:
         enames: list of element symbols
-        xyz_path: path to XYZ geometry file (used as basename in hsd)
+        xyz_path: path to XYZ geometry file
         out_path: output .hsd file path
         sk_prefix: Slater-Koster file prefix directory
         scctol: SCC convergence tolerance
         maxscc: max SCC iterations
+        analysis_block: additional Analysis block content
+        options_block: additional Options block content
     """
     species = sorted(set(enames))
     max_ang = {s: '"s"' if s == 'H' else '"p"' for s in species}
     max_ang_str = '\n    '.join([f'{s} = {max_ang[s]}' for s in species])
+    
     hsd = f"""Geometry = xyzFormat {{
   <<< "{os.path.basename(xyz_path)}"
 }}
@@ -477,42 +481,24 @@ Hamiltonian = DFTB {{
   MaxSccIterations = {maxscc}
 }}
 Analysis {{
-  CalculateForces = Yes
+{analysis_block}
+}}
+Options {{
+{options_block}
 }}
 """
     with open(out_path, 'w') as f:
         f.write(hsd)
 
+
+def write_dftb_input_sp(enames, xyz_path, out_path, sk_prefix, scctol=1e-7, maxscc=200):
+    """Write minimal DFTB+ input for single-point SCF calculation."""
+    _write_dftb_input_base(enames, xyz_path, out_path, sk_prefix, scctol, maxscc, analysis_block="  CalculateForces = Yes")
+
+
 def write_dftb_input_for_density(enames, xyz_path, out_path, sk_prefix, scctol=1e-7, maxscc=200):
     """Write DFTB+ input for density projection (adds WriteEigenvectors + WriteDetailedXml)."""
-    species = sorted(set(enames))
-    max_ang = {s: '"s"' if s == 'H' else '"p"' for s in species}
-    max_ang_str = '\n    '.join([f'{s} = {max_ang[s]}' for s in species])
-    hsd = f"""Geometry = xyzFormat {{
-  <<< "{os.path.basename(xyz_path)}"
-}}
-Hamiltonian = DFTB {{
-  SCC = Yes
-  SlaterKosterFiles = Type2FileNames {{
-    Prefix = "{sk_prefix}"
-    Separator = "-"
-    Suffix = ".skf"
-  }}
-  MaxAngularMomentum {{
-    {max_ang_str}
-  }}
-  SCCTolerance = {scctol}
-  MaxSccIterations = {maxscc}
-}}
-Analysis {{
-  WriteEigenvectors = Yes
-}}
-Options {{
-  WriteDetailedXml = Yes
-}}
-"""
-    with open(out_path, 'w') as f:
-        f.write(hsd)
+    _write_dftb_input_base(enames, xyz_path, out_path, sk_prefix, scctol, maxscc,  analysis_block="  WriteEigenvectors = Yes", options_block="  WriteDetailedXml = Yes")
 
 
 def run_dftb_for_density(work_dir, enames, apos, sk_prefix, xyz_fname='geom.xyz'):
@@ -533,6 +519,16 @@ def run_dftb_for_density(work_dir, enames, apos, sk_prefix, xyz_fname='geom.xyz'
     hsd_path = os.path.join(work_dir, 'dftb_in.hsd')
     au.save_xyz(xyz_path, enames, apos)
     write_dftb_input_for_density(enames, xyz_path, hsd_path, sk_prefix)
+    
+    # Copy required SK files to work directory (both orders to be safe)
+    import shutil
+    species = sorted(set(enames))
+    for i, elem1 in enumerate(species):
+        for elem2 in species[i:]:
+            for sk_file in [f"{elem1}-{elem2}.skf", f"{elem2}-{elem1}.skf"]:
+                src = os.path.join(sk_prefix, sk_file)
+                if os.path.exists(src):
+                    shutil.copy(src, work_dir)
 
     def _worker(work_dir, queue):
         cwd = os.getcwd()
