@@ -1578,3 +1578,83 @@ def setup_gridprojector_from_dftb(dftb_data, species_list_ang, ctx=None, queue=N
     }
     
     return projector, atoms_dict
+
+
+BOHR2ANG = 0.5291772109
+B3_FACTOR = 1.0 / (BOHR2ANG**3)   # orbital-normalized-in-Bohr → density in Ang^-3
+
+
+def project_dftb_density(geo, evecs, projector, atoms_dict, grid_spec, basis, B3_FACTOR=B3_FACTOR):
+    """
+    Project SCF electron density onto a real-space grid.
+    Occupied MOs are accumulated as sum_i occ_i * |psi_i|^2.
+
+    Returns rho_grid (nx,ny,nz) float32 in e/Å³.
+    """
+    from .DFTBplusParser import precompute_coeff_gather
+    import time
+    natoms = geo['natoms']
+    occs   = geo['occupations'][:, 0, 0]
+    occ_idx = np.where(occs > 1e-6)[0]
+    print(f"[project_dftb_density] {len(occ_idx)} occupied states")
+
+    src_idx, dst_idx = precompute_coeff_gather(natoms, geo['species_per_atom'], geo['species_names'], basis)
+    proj_ctx = projector.prepare_orbital_projection(atoms_dict, grid_spec)
+
+    nx, ny, nz = proj_ctx['nx'], proj_ctx['ny'], proj_ctx['nz']
+    rho_grid    = np.zeros((nx, ny, nz), dtype=np.float32)
+    coeffs_flat = np.zeros(natoms * 4, dtype=np.float32)
+
+    t0 = time.time()
+    for i in occ_idx:
+        coeffs_flat[:] = 0.0
+        coeffs_flat[dst_idx] = evecs[i][src_idx]
+        psi = projector.project_orbital_prepped(coeffs_flat, proj_ctx)
+        rho_grid += occs[i] * (psi ** 2)
+    n = len(occ_idx)
+    print(f"[project_dftb_density] {time.time()-t0:.2f}s  ({(time.time()-t0)/n*1e3:.1f} ms/orbital)")
+    return (rho_grid * B3_FACTOR).astype(np.float32)
+
+
+def project_neutral_density(geo, projector, atoms_dict, grid_spec, basis, B3_FACTOR=B3_FACTOR):
+    """
+    Project superposition of neutral atom densities onto a real-space grid.
+    Uses reference valence occupations per (l, Z).
+
+    Returns rho_na_grid (nx,ny,nz) float32 in e/Å³.
+    """
+    from .DFTBplusParser import precompute_coeff_gather
+    import time
+    OCC_NA = {1: {0: 1.0}, 6: {0: 2.0, 1: 2/3}, 7: {0: 2.0, 1: 1.0}, 8: {0: 2.0, 1: 4/3}}
+
+    natoms          = geo['natoms']
+    species_per_atom = geo['species_per_atom']
+    species_names   = geo['species_names']
+    sp_by_name      = {sp['name']: sp for sp in basis}
+
+    src_idx, dst_idx = precompute_coeff_gather(natoms, species_per_atom, species_names, basis)
+    proj_ctx = projector.prepare_orbital_projection(atoms_dict, grid_spec)
+
+    nx, ny, nz  = proj_ctx['nx'], proj_ctx['ny'], proj_ctx['nz']
+    rho_na      = np.zeros((nx, ny, nz), dtype=np.float32)
+    coeffs_flat = np.zeros(natoms * 4, dtype=np.float32)
+
+    t0 = time.time()
+    orb_offset = 0
+    for ia in range(natoms):
+        Z  = int(atoms_dict['type'][ia])
+        sp = sp_by_name[species_names[species_per_atom[ia]]]
+        occ_by_l = OCC_NA.get(Z, {0: 2.0, 1: 2/3})
+        for orb in sp['orbitals']:
+            l  = orb['l']
+            nm = 2 * l + 1
+            f_na = occ_by_l.get(l, 0.0)
+            if f_na > 0:
+                for m in range(nm):
+                    coeffs_flat[:] = 0.0
+                    coeffs_flat[dst_idx[orb_offset + m]] = 1.0
+                    psi = projector.project_orbital_prepped(coeffs_flat, proj_ctx)
+                    rho_na += f_na * (psi ** 2)
+            orb_offset += nm
+    print(f"[project_neutral_density] {time.time()-t0:.2f}s")
+    return (rho_na * B3_FACTOR).astype(np.float32)

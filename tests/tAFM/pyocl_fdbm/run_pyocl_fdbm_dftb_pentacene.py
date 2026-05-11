@@ -27,6 +27,7 @@ from pyBall.DFTB.DFTBplusParser import (
 )
 from pyBall.DFTB.Grid_dftb import setup_gridprojector_from_dftb
 from pyBall.OCL import AFM as afm
+from pyBall.OCL import AFM_utils as afm_utils
 from pyBall.OCL import clUtils as clu
 from pyBall import atomicUtils as au
 from pyBall import dftb_utils as du
@@ -383,7 +384,7 @@ def step6_composed(grads_pauli, grads_es, grads_vdw, origin, step, atomPos, scan
 
     df = afm.compute_df(Fz_relax, heights[1]-heights[0])
     save_npy(step_dir, 'df.npy', df)
-    afm.save_afm_images(df, scan_xs, scan_ys, heights, step_dir, prefix='df')
+    afm_utils.save_afm_images(df, scan_xs, scan_ys, heights, step_dir, prefix='df')
 
     log("Step 6 COMPLETE.")
     return df

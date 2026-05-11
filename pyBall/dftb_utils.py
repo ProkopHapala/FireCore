@@ -483,6 +483,83 @@ Analysis {{
     with open(out_path, 'w') as f:
         f.write(hsd)
 
+def write_dftb_input_for_density(enames, xyz_path, out_path, sk_prefix, scctol=1e-7, maxscc=200):
+    """Write DFTB+ input for density projection (adds WriteEigenvectors + WriteDetailedXml)."""
+    species = sorted(set(enames))
+    max_ang = {s: '"s"' if s == 'H' else '"p"' for s in species}
+    max_ang_str = '\n    '.join([f'{s} = {max_ang[s]}' for s in species])
+    hsd = f"""Geometry = xyzFormat {{
+  <<< "{os.path.basename(xyz_path)}"
+}}
+Hamiltonian = DFTB {{
+  SCC = Yes
+  SlaterKosterFiles = Type2FileNames {{
+    Prefix = "{sk_prefix}"
+    Separator = "-"
+    Suffix = ".skf"
+  }}
+  MaxAngularMomentum {{
+    {max_ang_str}
+  }}
+  SCCTolerance = {scctol}
+  MaxSccIterations = {maxscc}
+}}
+Analysis {{
+  WriteEigenvectors = Yes
+}}
+Options {{
+  WriteDetailedXml = Yes
+}}
+"""
+    with open(out_path, 'w') as f:
+        f.write(hsd)
+
+
+def run_dftb_for_density(work_dir, enames, apos, sk_prefix, xyz_fname='geom.xyz'):
+    """Run DFTB+ SCF in isolated subprocess for density projection.
+
+    Writes input, runs DFTB+ in isolated Process (to avoid library state issues),
+    then parses detailed.xml and eigenvec.bin.
+
+    Returns (geo, evecs) where geo is the dict from parse_detailed_xml_custom
+    and evecs is from parse_eigenvec_bin_custom.
+    """
+    from multiprocessing import Process, Queue
+    from pyBall import atomicUtils as au
+    from pyBall.DFTB.DFTBplusParser import parse_detailed_xml_custom, parse_eigenvec_bin_custom
+
+    os.makedirs(work_dir, exist_ok=True)
+    xyz_path = os.path.join(work_dir, xyz_fname)
+    hsd_path = os.path.join(work_dir, 'dftb_in.hsd')
+    au.save_xyz(xyz_path, enames, apos)
+    write_dftb_input_for_density(enames, xyz_path, hsd_path, sk_prefix)
+
+    def _worker(work_dir, queue):
+        cwd = os.getcwd()
+        os.chdir(work_dir)
+        try:
+            ret = os.system('dftb+ > OUT 2> ERR')
+            if ret != 0:
+                raise RuntimeError(f"DFTB+ failed in {work_dir}, see ERR file")
+            from pyBall.DFTB.DFTBplusParser import parse_detailed_xml_custom, parse_eigenvec_bin_custom
+            geo   = parse_detailed_xml_custom('detailed.xml')
+            evecs = parse_eigenvec_bin_custom('eigenvec.bin', geo['nstates'], geo['norb'])
+            queue.put((geo, evecs))
+        except Exception as e:
+            import traceback
+            queue.put((False, traceback.format_exc()))
+        finally:
+            os.chdir(cwd)
+
+    q = Queue()
+    p = Process(target=_worker, args=(work_dir, q))
+    p.start()
+    res = q.get(); p.join()
+    if isinstance(res, tuple) and res[0] is False:
+        raise RuntimeError(f"run_dftb_for_density failed:\n{res[1]}")
+    return res   # (geo, evecs)
+
+
 def run_dftb_sp(work_dir, enames, apos, sk_prefix, xyz_fname='geom.xyz'):
     """Run DFTB+ single-point calculation in work_dir.
 

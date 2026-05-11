@@ -932,28 +932,6 @@ def read_grid_spec_from_log(log_path):
                 return origin, ngrid, step
     return None, None, None
 
-def save_afm_images(df, scan_xs, scan_ys, heights, out_dir, prefix='df'):
-    """Save AFM frequency-shift images at first, middle, last heights.
-
-    Args:
-        df: (nx, ny, nz) frequency-shift array
-        scan_xs, scan_ys: 1D scan coordinate arrays
-        heights: 1D probe height array
-        out_dir: directory for PNG output
-        prefix: filename prefix (e.g. 'df' -> df_h3.0.png)
-    """
-    import matplotlib.pyplot as plt
-    for i in [0, len(heights)//2, -1]:
-        h = heights[i]
-        plt.figure(figsize=(6,5))
-        plt.imshow(df[:,:,i].T, origin='lower', extent=[scan_xs[0], scan_xs[-1], scan_ys[0], scan_ys[-1]], cmap='afmhot')
-        plt.title(f"{prefix} at h={h:.1f} A")
-        plt.colorbar(label=f"{prefix} [Hz]")
-        fname = os.path.join(out_dir, f"{prefix}_h{h:.1f}.png")
-        plt.savefig(fname, dpi=150, bbox_inches='tight')
-        plt.close()
-        print(f"  Saved: {fname}")
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # Single-atom projection test helper
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -992,8 +970,7 @@ def project_single_atom(Z, rho_4x4, step, margin, fdata_basis_dir, use_tiled=Tru
     projector = ocl_grid.GridProjector(fdata_dir=fdata_basis_dir, verbosity=verbosity)
     projector.load_basis([Z])
     print(f"  [project_single_atom] Z={Z} rho_diag={np.diag(rho_4x4)} grid={n}^3 step={step}")
-    rho_grid = projector.project(rho_sparse, neighs, atoms_dict, grid_spec,
-                                  nMaxAtom=64, use_tiled=use_tiled)
+    rho_grid = projector.project(rho_sparse, neighs, atoms_dict, grid_spec, nMaxAtom=64, use_tiled=use_tiled)
     dV = step**3
     integral = float(rho_grid.sum() * dV)
     print(f"  rho_grid shape={rho_grid.shape}  range=[{rho_grid.min():.6f}, {rho_grid.max():.6f}]")
@@ -1001,59 +978,39 @@ def project_single_atom(Z, rho_4x4, step, margin, fdata_basis_dir, use_tiled=Tru
     return rho_grid, grid_spec, integral, projector
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Plot utilities (lazy matplotlib import)
-# ═══════════════════════════════════════════════════════════════════════════════
+def compute_dispersion_grid(atomPos, atomTypes, origin, step, ngrid, C6_atom_dict=None, C6_CO=30.0, RA=1.5):
+    """
+    Compute C6/r^6 dispersion energy grid for CO tip.
+    
+    Args:
+        atomPos: (natoms, 3) atom positions in Angstrom
+        atomTypes: (natoms,) atomic numbers
+        origin: (3,) grid origin
+        step: grid spacing in Angstrom
+        ngrid: (3,) grid dimensions
+        C6_atom_dict: dict mapping Z to C6 coefficients (default: {1:6.5, 6:24.0, 7:20.0, 8:15.0})
+        C6_CO: C6 coefficient for CO tip
+        RA: damping radius in Angstrom
+        
+    Returns:
+        (E_vdw, grads_E_vdw): Dispersion energy and gradients
+    """
+    if C6_atom_dict is None:
+        C6_atom_dict = {1: 6.5, 6: 24.0, 7: 20.0, 8: 15.0}
+    
+    nx, ny, nz = [int(i) for i in ngrid[:3]]
+    xs = origin[0] + np.arange(nx)*step
+    ys = origin[1] + np.arange(ny)*step
+    zs = origin[2] + np.arange(nz)*step
+    XX, YY, ZZ = np.meshgrid(xs, ys, zs, indexing='ij')
+    E_vdw = np.zeros((nx, ny, nz), dtype=np.float32)
+    
+    C6_atom = np.array([C6_atom_dict.get(z, 1.0) for z in atomTypes])
+    RA2 = RA**2
+    for ia in range(len(atomPos)):
+        r2 = (XX-atomPos[ia,0])**2 + (YY-atomPos[ia,1])**2 + (ZZ-atomPos[ia,2])**2
+        E_vdw -= np.sqrt(C6_atom[ia]*C6_CO) / (r2 + RA2)**3
+    
+    grads_E_vdw = np.stack([np.gradient(E_vdw, step, axis=i) for i in range(3)], axis=-1)
+    return E_vdw, grads_E_vdw
 
-def safe_norm(data_2d, pct=99):
-    """Symmetric ±vabs TwoSlopeNorm for diverging colormaps."""
-    from matplotlib.colors import TwoSlopeNorm
-    vabs = max(float(np.percentile(np.abs(data_2d), pct)), 1e-6)
-    return TwoSlopeNorm(vmin=-vabs, vcenter=0, vmax=vabs)
-
-def plot_slices(data, title, fname, sym=False, cmap='magma', save_dir='.'):
-    """Plot central XY/XZ/YZ slices + 1D profiles of a 3D field."""
-    import matplotlib; matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-    nx, ny, nz = data.shape
-    cx, cy, cz = nx//2, ny//2, nz//2
-    if sym: cmap = 'bwr'
-    fig, axes = plt.subplots(2, 3, figsize=(16, 8)); fig.suptitle(title)
-    norm = safe_norm(data) if sym else None
-    kw = dict(origin='lower', cmap=cmap, aspect='auto', norm=norm)
-    for ax, sl, tl in zip(axes[0],
-        [data[cx,:,:].T, data[:,cy,:].T, data[:,:,cz].T],
-        [f'ix={cx} (YZ)', f'iy={cy} (XZ)', f'iz={cz} (XY)']):
-        im = ax.imshow(sl, **kw); ax.set_title(tl); plt.colorbar(im, ax=ax, shrink=0.8)
-    axes[1,0].plot(data[cx,cy,:]); axes[1,0].set_xlabel('iz'); axes[1,0].set_title('z-profile center')
-    axes[1,1].plot(data[:,cy,cz]); axes[1,1].set_xlabel('ix'); axes[1,1].set_title('x-profile center')
-    axes[1,2].plot(data[cx,:,cz]); axes[1,2].set_xlabel('iy'); axes[1,2].set_title('y-profile center')
-    for ax in axes[1]: ax.axhline(0, color='k', lw=0.5)
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, fname), dpi=90, bbox_inches='tight'); plt.close()
-    print(f"Saved {fname}")
-
-def plot_grid_Fz(Fz, heights, label, fname, x_ext=None, y_ext=None, ncols=7, save_dir='.'):
-    """Plot grid of 2D Fz images at all heights with per-slice colorbars."""
-    import matplotlib; matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-    nz_p = len(heights)
-    nrows = int(np.ceil(nz_p / ncols))
-    fig, axes = plt.subplots(nrows, ncols, figsize=(2.5*ncols, 2.8*nrows))
-    axes = np.array(axes).reshape(nrows, ncols)
-    fig.suptitle(f"{label} (eV/Å) [per-slice]", fontsize=10)
-    ext = [x_ext[0], x_ext[1], y_ext[0], y_ext[1]] if x_ext is not None and y_ext is not None else None
-    kw = dict(origin='lower', cmap='bwr', aspect='auto')
-    if ext: kw['extent'] = ext
-    for k in range(nz_p):
-        r, c = divmod(k, ncols); ax = axes[r, c]
-        vabs = max(float(np.percentile(np.abs(Fz[:,:,k]), 99)), 1e-6)
-        norm = safe_norm(Fz[:,:,k])
-        im = ax.imshow(Fz[:,:,k].T, norm=norm, **kw)
-        ax.set_title(f"h={heights[k]:.1f}Å ±{vabs:.2g}", fontsize=6); ax.tick_params(labelsize=4)
-        plt.colorbar(im, ax=ax, shrink=0.8)
-    for k in range(nz_p, nrows*ncols):
-        r, c = divmod(k, ncols); axes[r, c].set_visible(False)
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, fname), dpi=90, bbox_inches='tight'); plt.close()
-    print(f"Saved {fname}")
