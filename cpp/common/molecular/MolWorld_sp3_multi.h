@@ -363,7 +363,11 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 cvfs   [i0v+i] = Quat4fZero;
                 fprev  [i0v+i] = Quat4fZero;
             }
-            averageForces[isys] = Quat4fZero;
+            int natoms_active = bUFF ? ffu.natoms : ocl.nAtoms;
+            for(int ia=0; ia<nvec_active; ia++){
+                if(ia < natoms_active)
+                    averageForces[isys * natoms_active + ia] = Quat4fZero;
+            }
             TDrive[isys] = tdrive0;
             fire[isys].bind_params( &fire_setup );
             fire[isys].id = isys;
@@ -423,13 +427,14 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
 
     void setupTIconstraints_debug( int isys, double lambda_abs, int nCVs, int* dc ){
         clearSystemGPUConstraints( isys );
-        const int i0a = isys * ocl.nAtoms;
+        int natoms_active = bUFF ? ffu.natoms : ocl.nAtoms;
+        const int i0a = isys * natoms_active;
         const float ltarget = (float)(lambda_abs / (double)nCVs);
         for(int icv=0; icv<nCVs; icv++){
             const DistConstr& C = constrs.bonds[ dc[icv] ];
             const int ia = C.ias.a;
             const int ib = C.ias.b;
-            if( (ia<0) || (ib<0) || (ia>=ocl.nAtoms) || (ib>=ocl.nAtoms) ) continue;
+            if( (ia<0) || (ib<0) || (ia>=natoms_active) || (ib>=natoms_active) ) continue;
             // Mirror the CPU harmonic bond constraint using the existing GPU soft-distance mode.
             constr [i0a + ia] = Quat4f{ (float)ib, ltarget, 0.0f, 7.0e6f };
             constr [i0a + ib] = Quat4f{ (float)ia, ltarget, 0.0f, 8.0e6f };
@@ -572,7 +577,12 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
             if(nEQsteps > 0){ run_ocl_TI_debug( nEQsteps, dt, T, go.gamma_damp ); }
 
             for(int istep=0; istep<nMDsteps; istep++){
-                for(int isys=0; isys<nSystems; isys++){ averageForces[isys] = Quat4fZero; }
+                for(int isys=0; isys<nSystems; isys++){ 
+                    int natoms_active = bUFF ? ffu.natoms : ocl.nAtoms;
+                    for(int ia=0; ia<natoms_active; ia++){
+                        averageForces[isys * natoms_active + ia] = Quat4fZero;
+                    }
+                }
                 err = 0;
                 err |= ocl.upload( ocl.ibuff_averageForces, averageForces );
                 err |= ocl.finishRaw();
@@ -593,7 +603,20 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                     unpack_system( isys, ffls[isys], false, false );
                     ffl.copyOf( ffls[isys] );
                     Energy   [il][istep] = NAN;
-                    dE_dLamda[il][istep] = 0.5 * ( (double)averageForces[isys].z - (double)averageForces[isys].w );
+                    
+                    int natoms_active = bUFF ? ffu.natoms : ocl.nAtoms;
+                    double sum_pos = 0.0;
+                    double sum_neg = 0.0;
+                    for(int ia=0; ia<natoms_active; ia++){
+                        int iaa = isys * natoms_active + ia;
+                        double force_proj = averageForces[iaa].x;
+                        double sign = averageForces[iaa].y;
+                        if(sign > 0.0) sum_pos += force_proj;
+                        else if(sign < 0.0) sum_neg += force_proj;
+                    }
+                    double dE = 0.5 * (sum_pos - sum_neg);
+                    dE_dLamda[il][istep] = dE;
+                    
                     avgF_x[il] += averageForces[isys].x;
                     avgF_y[il] += averageForces[isys].y;
                     avgF_z[il] += averageForces[isys].z;
@@ -875,7 +898,12 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 if(bUFF){ run_uff_ocl( nEQsteps, dt_default, opt.damping, Fconv, 1000.0 ); }
                 else    { run_ocl_opt( nEQsteps, Fconv); }
 
-                for(int isys=0; isys<nSystems; isys++) averageForces[isys] = Quat4fZero;
+                for(int isys=0; isys<nSystems; isys++){
+                    int natoms_active = bUFF ? ffu.natoms : ocl.nAtoms;
+                    for(int ia=0; ia<natoms_active; ia++){
+                        averageForces[isys * natoms_active + ia] = Quat4fZero;
+                    }
+                }
                 if(bUFF){
                     uff_ocl->upload( uff_ocl->ibuff_averageForces, averageForces );
                     uff_ocl->finishRaw();
@@ -902,7 +930,21 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                     if(il >= nLambda) continue;
                     float lambda = (float)il / (float)(nLambda - 1);
                     // printf("  System %d, lambda %f, averageForces %f %f %f %f\n", isys, lambda, averageForces[isys].x, averageForces[isys].y, averageForces[isys].z, averageForces[isys].w);
-                    double dE = ((double)averageForces[isys].z - (double)averageForces[isys].w) * nLambda / (double)(nMDsteps);
+                    
+                    // double dE_old = ((double)averageForces[isys].z - (double)averageForces[isys].w) * nLambda / (double)(nMDsteps);
+                    
+                    double sum_pos = 0.0;
+                    double sum_neg = 0.0;
+                    int natoms_active = bUFF ? ffu.natoms : ocl.nAtoms;
+                    for(int ia=0; ia<natoms_active; ia++){
+                        int iaa = isys * natoms_active + ia;
+                        double force_proj = averageForces[iaa].x;
+                        double sign = averageForces[iaa].y;
+                        if(sign > 0.0) sum_pos += force_proj;
+                        else if(sign < 0.0) sum_neg += force_proj;
+                    }
+                    double dE = (sum_pos - sum_neg) * nLambda / (double)(nMDsteps);
+                    
                     // printf("  System %d, lambda %f, dE %f\n", isys, lambda, dE);
                     double mean_sq = averageForces[isys].x * (1.0*nLambda / (double)(nMDsteps));
                     double var = mean_sq - dE * dE;
@@ -1380,7 +1422,7 @@ void realloc( int nSystems_ ){
     _realloc0( TDrive,   nSystems, TDrive0 );
 
     // Initialize averageForces buffer for thermodynamic integration
-    _realloc0( averageForces, nSystems, Quat4fZero );        
+    _realloc0( averageForces, nSystems * (bUFF ? ffu.natoms : ocl.nAtoms), Quat4fZero );
     Quat4i jeParamsInit = Quat4i{ -2, -2, -2, -2 };
     _realloc0( jeParams, nSystems, jeParamsInit );
 
@@ -2619,11 +2661,13 @@ virtual void setConstrains(bool bClear=true, double Kfix=1.0 ){
     printf("MolWorld_sp3_multi::setConstrains()\n");
     //printConstrains();
     MolWorld_sp3::setConstrains( bClear, Kfix );
+        int natoms_active = bUFF ? ffu.natoms : ocl.nAtoms;
+        int nvec_active   = bUFF ? ffu.natoms : ocl.nvecs;
     for(int isys=0; isys<nSystems; isys++){
-        int i0a   = isys * ocl.nAtoms;
-        int i0v   = isys * ocl.nvecs;
+            int i0a   = isys * natoms_active;
+            int i0v   = isys * nvec_active;
         // set it to GPU buffers
-        for( int i=0; i<ocl.nAtoms; i++ ){ constr[i+i0a].w=-1;                                    }
+            for( int i=0; i<natoms_active; i++ ){ constr[i+i0a].w=-1;                                    }
         for( int i : constrain_list     ){ constr[i+i0a].w=Kfix; constr[i+i0a].f= atoms[i+i0v].f; }
         // set it to CPU ffls
         for( int i=0; i<ffls[isys].natoms; i++ ){ ffls[isys].constr[i].w=-1;                            }

@@ -915,7 +915,7 @@ __kernel void updateAtomsMMFFf4(
     __global float4*  constrK,      // 9 // constraints stiffness (kx,ky,kz,?) for each atom
     __global float4*  MDparams,     // 10 // MD parameters (dt,damp,Flimit)
     __global float4*  TDrives,      // 11 // Thermal driving (T,gamma_damp,lambda-index/flag,seed)
-    __global float4*  averageForces,// 12 // accumulated TI force moments per system
+    __global float4*  averageForces,// 12 // per-atom buffer for force projections
     __global float4*  fprev         // 13 // previous force for deterministic TI velocity-Verlet
     //__global cl_Mat3* bboxes,     // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
 ){
@@ -1037,19 +1037,10 @@ __kernel void updateAtomsMMFFf4(
             }
             // printf( "GPU:sys[%i]atom[%i] constr(%g,%g,%g|%g) cK(%g,%g,%g|%g) force_proj=%g sign=%g stiffness=(%g,%g,%g) bHard=%d bDist=%d\n", iS, iG, cons.x,cons.y,cons.z,cons.w, cK.x,cK.y,cK.z,cK.w, force_proj, sign, stiffness.x,stiffness.y,stiffness.z, bHard?1:0, bDist?1:0 );
             if( sign != 0.0f ){
-                __global float* avgF_ptr = (__global float*)(&averageForces[iS]);
-                if(sign > 0.0f){
-                    if(!isnan(force_proj)) avgF_ptr[2] += force_proj;
-                    averageForces[iS].y = force_proj;
-                }else{
-                    if(!isnan(force_proj)) avgF_ptr[3] += force_proj;
-                    float force_diff = averageForces[iS].y - force_proj;
-                    volatile __global float* addr = &avgF_ptr[0];
-                    float old_val, new_val;
-                    do {
-                        old_val = *addr;
-                        new_val = old_val + force_diff * force_diff;
-                    } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
+                if(!isnan(force_proj)){
+                    // Akumulujeme force_proj přes všechny MD kroky; pole bylo vynulováno v C++
+                    averageForces[iaa].x += force_proj;
+                    averageForces[iaa].y = sign;
                 }
             }
             if( bHard && !bDist ){

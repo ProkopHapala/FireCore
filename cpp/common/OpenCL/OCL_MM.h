@@ -241,7 +241,7 @@ class OCL_MM: public OCLsystem { public:
         ibuff_BLs        = newBuffer( "BLs",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
 
         // Buffer for thermodynamic integration - stores accumulated force differences
-        ibuff_averageForces   = newBuffer( "averageForces",   nSystems, sizeof(float4), 0, CL_MEM_READ_WRITE );
+        ibuff_averageForces   = newBuffer( "averageForces",   nSystems*nAtoms, sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_work            = newBuffer( "work",            nSystems, sizeof(float),  0, CL_MEM_READ_WRITE );
         ibuff_jeParams        = newBuffer( "jeParams",        nSystems, sizeof(int4),   0, CL_MEM_READ_WRITE  );
         ibuff_BKs        = newBuffer( "BKs",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
@@ -729,10 +729,10 @@ class OCL_MM: public OCLsystem { public:
         err |= useArgBuff( ibuff_bboxes     ); // 12
         err |= useArgBuff( ibuff_sysneighs  ); // 13
         err |= useArgBuff( ibuff_sysbonds   ); // 14
-        err |= useArgBuff( ibuff_averageForces);// 15
-        err |= useArgBuff( ibuff_work       ); // 16
-        err |= useArgBuff( ibuff_jeParams   ); // 17
-        err |= useArgBuff( ibuff_fprev      ); // 18
+        err |= useArgBuff( ibuff_work       ); // 15
+        err |= useArgBuff( ibuff_jeParams   ); // 16
+        err |= useArgBuff( ibuff_fprev      ); // 17
+        err |= useArgBuff( ibuff_averageForces ); // 18
         OCL_checkError(err, "setup_updateAtomsMMFFf4");
         return task;
         // const int4        n,            // 1 // (natoms,nnode) dimensions of the system

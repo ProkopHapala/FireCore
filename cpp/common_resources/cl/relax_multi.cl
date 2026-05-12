@@ -930,9 +930,9 @@ inline float rand01_xorshift( __private uint* state ){
 inline float2 randn2_box_muller( __private uint* state ){
     const float u1  = fmax( rand01_xorshift(state), 1e-7f );
     const float u2  = rand01_xorshift(state);
-    const float amp = sqrt( -2.0f * log(u1) );
+    const float amp = native_sqrt( -2.0f * native_log(u1) );
     const float phi = 6.283185307179586f * u2;
-    return (float2)( amp*cos(phi), amp*sin(phi) );
+    return (float2)( amp*native_cos(phi), amp*native_sin(phi) );
 }
 
 inline float3 randn3_xorshift_box_muller( uint seed ){
@@ -959,10 +959,10 @@ __kernel void updateAtomsMMFFf4(
     __global cl_Mat3* bboxes,       // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
     __global int*     sysneighs,    // 13 // // for each system contains array int[nMaxSysNeighs] of nearby other systems
     __global float4*  sysbonds,      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
-    __global float4*  averageForces, // 15 // contains average forces on atoms for Thermodynamic Integration
-    __global float*   work,          // 16 // contains work recorded at each step for Jarzynski Equality
-    __global int4*    jeParams,      // 17 // parameters for Jarzynski Equality per system
-    __global float4*  fprev          // 18 // previous forces for velocity-Verlet in deterministic TI Langevin
+    __global float*   work,          // 15 // contains work recorded at each step for Jarzynski Equality
+    __global int4*    jeParams,      // 16 // parameters for Jarzynski Equality per system
+    __global float4*  fprev,         // 17 // previous forces for velocity-Verlet in deterministic TI Langevin
+    __global float4*  averageForces  // 18 // per-atom buffer for force projections
 ){
     const int natoms=n.x;           // number of atoms
     const int nnode =n.y;           // number of node atoms
@@ -1114,20 +1114,10 @@ __kernel void updateAtomsMMFFf4(
             }
 
             if( sign != 0.0f ){
-                __global float* avgF_ptr = (__global float*)(&averageForces[iS]);
-                if(sign > 0.0f){
-                    if(!isnan(force_proj)) avgF_ptr[2] += force_proj;
-                    averageForces[iS].y = force_proj;
-                }
-                else{
-                    if(!isnan(force_proj)) avgF_ptr[3] += force_proj;
-                    float force_diff = averageForces[iS].y - force_proj; 
-                    volatile __global float* addr = &avgF_ptr[0];
-                    float old_val, new_val;
-                    do {
-                        old_val = *addr;
-                        new_val = old_val + force_diff * force_diff;
-                    } while (atomic_cmpxchg((volatile __global int*)addr, as_int(old_val), as_int(new_val)) != as_int(old_val));
+                if(!isnan(force_proj)){
+                    // Akumulujeme force_proj přes všechny MD kroky; pole bylo vynulováno v C++
+                    averageForces[iaa].x += force_proj;
+                    averageForces[iaa].y = sign;
                 }
             }
 

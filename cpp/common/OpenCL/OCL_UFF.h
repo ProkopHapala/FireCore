@@ -314,7 +314,7 @@ public:
         ibuff_constrK  = newBuffer("constrK",   nAtomsTot, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
         ibuff_MDpars   = newBuffer("MDpars",    nSystems,  sizeof(cl_float4), 0, CL_MEM_READ_ONLY );
         ibuff_TDrive   = newBuffer("TDrive",    nSystems,  sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
-        ibuff_averageForces = newBuffer("averageForces", nSystems, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
+        ibuff_averageForces = newBuffer("averageForces", nAtomsTot, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
         ibuff_bboxes   = newBuffer("bboxes",    nSystems,  sizeof(cl_Mat3),   0, CL_MEM_READ_ONLY );
         // Inter-system coupling (optional); allocate minimal placeholders
         ibuff_sysneighs= newBuffer("sysneighs", nSystems,  sizeof(cl_int),    0, CL_MEM_READ_ONLY );
