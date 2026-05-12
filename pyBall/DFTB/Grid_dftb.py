@@ -1160,7 +1160,12 @@ class GridProjector(OpenCLBase):
         res = np.empty((int(nx), int(ny), int(nz)), dtype=np.float32)
         cl.enqueue_copy(self.queue, res, d_out)
         self.queue.finish()
-        return res
+        
+        # Apply B3_FACTOR to convert from Bohr-normalized to Ang^-3 density
+        # This matches project_dftb_density() and project_neutral_density()
+        BOHR2ANG = 0.5291772109
+        B3_FACTOR = 1.0 / (BOHR2ANG**3)
+        return (res * B3_FACTOR).astype(np.float32)
 
     def stm_dyson_wg_scan(
             self,
@@ -1993,7 +1998,20 @@ def project_neutral_density(geo, projector, atoms_dict, grid_spec, basis, B3_FAC
     """
     from .DFTBplusParser import precompute_coeff_gather
     import time
-    OCC_NA = {1: {0: 1.0}, 6: {0: 2.0, 1: 2/3}, 7: {0: 2.0, 1: 1.0}, 8: {0: 2.0, 1: 4/3}}
+    # Valence occupations per element (Z) and angular momentum (l)
+    # These are DFTB valence electron counts (frozen core approximation)
+    OCC_NA = {
+        1:  {0: 1.0},           # H: 1s1
+        6:  {0: 2.0, 1: 2/3},   # C: 2s2 2p2 -> p: 2/3 per orbital
+        7:  {0: 2.0, 1: 1.0},   # N: 2s2 2p3 -> p: 3/3 = 1 per orbital
+        8:  {0: 2.0, 1: 4/3},   # O: 2s2 2p4 -> p: 4/3 per orbital
+        9:  {0: 2.0, 1: 5/3},   # F: 2s2 2p5 -> p: 5/3 per orbital
+        15: {0: 2.0, 1: 3/3},   # P: 3s2 3p3 -> p: 3/3 = 1 per orbital
+        16: {0: 2.0, 1: 4/3},   # S: 3s2 3p4 -> p: 4/3 per orbital
+        17: {0: 2.0, 1: 5/3},   # Cl: 3s2 3p5 -> p: 5/3 per orbital
+        35: {0: 2.0, 1: 5/3},   # Br: 4s2 4p5 -> p: 5/3 per orbital (3d frozen)
+        53: {0: 2.0, 1: 5/3},   # I: 5s2 5p5 -> p: 5/3 per orbital (4d frozen)
+    }
 
     natoms          = geo['natoms']
     species_per_atom = geo['species_per_atom']

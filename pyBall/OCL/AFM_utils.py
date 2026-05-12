@@ -147,6 +147,200 @@ def _project_densities(geo, evecs, basis, grid_spec, verbosity=0):
     return rho_scf, rho_na, (rho_scf - rho_na).astype(np.float32)
 
 
+def build_orbital_layout(basis_data, enames):
+    """Build norb_per_atom and orb_offsets from basis data.
+
+    Args:
+        basis_data: dict from parse_wfc_hsd (keys are element names)
+        enames: list of element names for each atom
+
+    Returns:
+        norb_per_atom: (natoms,) number of orbitals per atom
+        orb_offsets: (natoms+1,) cumulative orbital offsets
+        max_l: maximum angular momentum in system
+    """
+    norb_per_atom = []
+    orb_offsets = [0]
+    max_l = 0
+    for name in enames:
+        sp = basis_data[name]
+        norb = sum(2 * orb['AngularMomentum'] + 1 for orb in sp['orbitals'])
+        for orb in sp['orbitals']:
+            max_l = max(max_l, orb['AngularMomentum'])
+        norb_per_atom.append(norb)
+        orb_offsets.append(orb_offsets[-1] + norb)
+    return (np.array(norb_per_atom, dtype=np.int32),
+            np.array(orb_offsets, dtype=np.int32),
+            max_l)
+
+
+def get_density_from_dftb_dense(atomPos, atomTypes, basis_hsd_path, work_dir,
+                                 grid_spec=None, step=0.1, margin=4.0, z_extra=6.0,
+                                 verbosity=0, max_shells=None):
+    """Get density grids using DFTBcore dense matrix projection (supports d-orbitals).
+
+    Uses direct DFTBcore library access (no file parsing) and dense density matrix
+    projection, enabling support for d-orbitals (e.g., Br in 3ob-3-1 basis).
+
+    Args:
+        atomPos: (natoms, 3) positions in Angstrom
+        atomTypes: (natoms,) atomic numbers
+        basis_hsd_path: path to basis HSD file (e.g., 'wfc.3ob-3-1.hsd')
+        work_dir: DFTB+ scratch directory for SCF
+        grid_spec: dict with 'origin', 'dA', 'dB', 'dC', 'ngrid' (optional)
+        step/margin/z_extra: grid parameters (used if grid_spec is None)
+        verbosity: logging level
+        max_shells: int (2=sp, 3=spd); auto-detected from basis if None
+
+    Returns:
+        dict with 'rho_scf', 'rho_na', 'rho_diff', 'V_ES', 'origin', 'ngrid', 'grid_spec'
+    """
+    from pyBall.DFTB.DFTBcore import DFTBcore
+    from pyBall.DFTB.DFTBplusParser import parse_wfc_hsd, convert_wfc_to_species_list_ang
+    from pyBall.DFTB import Grid_dftb as dg
+    from pyBall import atomicUtils as au
+    import multiprocessing as mp
+    import shutil
+
+    ELEM_Z = {'H':1,'C':6,'N':7,'O':8,'P':15,'S':16,'Br':35,'I':53}
+    inv_z = {v:k for k,v in ELEM_Z.items()}
+    enames = [inv_z.get(int(z), 'C') for z in atomTypes]
+
+    # Ensure work_dir exists (use absolute path for subprocess)
+    work_dir = os.path.abspath(work_dir)
+    os.makedirs(work_dir, exist_ok=True)
+
+    # Setup grid
+    if grid_spec is None:
+        grid_spec, origin, ngrid, step = _make_grid_spec(atomPos, step, margin, z_extra)
+    else:
+        origin, ngrid, step = grid_spec['origin'], grid_spec['ngrid'], grid_spec['dA'][0]
+
+    # Load basis
+    basis_data = parse_wfc_hsd(basis_hsd_path)
+    basis_ang = convert_wfc_to_species_list_ang(basis_data, resolution_bohr=0.04)
+
+    # Build orbital layout
+    norb_per_atom, orb_offsets, max_l = build_orbital_layout(basis_data, enames)
+    if max_shells is None:
+        max_shells = 3 if max_l >= 2 else 2
+
+    # Prepare DFTB data for projector and neutral density
+    coords_bohr = atomPos * 1.8897259886  # Ang -> Bohr
+    species_per_atom = list(range(len(enames)))  # Each atom is unique species index
+    dftb_data = {
+        'coords_bohr': coords_bohr,
+        'species_per_atom': species_per_atom,
+        'species_names': enames
+    }
+
+    # Setup projector with max_shells for d-orbital support
+    projector, atoms_dict = dg.setup_gridprojector_from_dftb(dftb_data, basis_ang, verbosity=verbosity, max_shells=max_shells)
+
+    # Run DFTBcore SCF directly (single molecule - no Fortran state conflicts expected)
+    basis_name = os.path.basename(basis_hsd_path).replace('wfc.', '').replace('.hsd', '')
+
+    # Prepare DFTBcore input (minimal, no Analysis/Options blocks like DFTB+ needs)
+    from pyBall import dftb_utils as du
+    sk_dir = du.SK_PATHS.get(basis_name, os.path.join(os.environ.get('DFTB_SK_PATH', ''), basis_name))
+    xyz_path = os.path.join(work_dir, 'geom.xyz')
+    hsd_path = os.path.join(work_dir, 'dftb_in.hsd')
+
+    # Write XYZ file
+    au.save_xyz(xyz_path, enames, atomPos)
+
+    # Compute MaxAngularMomentum from basis_data for each element
+    species = sorted(set(enames))
+    max_am_map = {0: 's', 1: 'p', 2: 'd'}
+    max_ang_lines = []
+    for elem in species:
+        elem_data = basis_data[elem]
+        max_l = max(orb['AngularMomentum'] for orb in elem_data['orbitals'])
+        max_ang_lines.append(f'    {elem} = "{max_am_map[max_l]}"')
+
+    # Write minimal DFTBcore-compatible HSD (no Analysis/Options blocks)
+    max_ang_str = '\n'.join(max_ang_lines)
+    with open(hsd_path, 'w') as f:
+        f.write(f'''Geometry = xyzFormat {{
+  <<< "geom.xyz"
+}}
+Hamiltonian = DFTB {{
+  SCC = Yes
+  SCCTolerance = 1e-7
+  MaxSCCIterations = 200
+  SlaterKosterFiles = Type2FileNames {{
+    Prefix = "{sk_dir}/"
+    Separator = "-"
+    Suffix = ".skf"
+    LowerCaseTypeName = No
+  }}
+  MaxAngularMomentum = {{
+{max_ang_str}
+  }}
+}}
+''')
+
+    # Copy required SK files to work directory (same as sparse method)
+    for i, elem1 in enumerate(species):
+        for elem2 in species[i:]:
+            for sk_file in [f"{elem1}-{elem2}.skf", f"{elem2}-{elem1}.skf"]:
+                src = os.path.join(sk_dir, sk_file)
+                if os.path.exists(src):
+                    shutil.copy(src, work_dir)
+
+    # Run SCF
+    old_cwd = os.getcwd()
+    try:
+        os.chdir(work_dir)
+        dftb = DFTBcore()
+        dftb.init('dftb_in.hsd')
+        dftb.enable_matrix_collection(dm=True, h=False, s=False)
+        energy = dftb.run_scf()
+        dm_dense = dftb.get_dm_dense()
+        eigvecs, eigvals = dftb.get_eigvecs_dense()  # Get eigenvectors for STM
+        dftb.finalize()
+        # Note: DM is in non-orthogonal basis, GPU kernel handles this correctly
+
+    finally:
+        os.chdir(old_cwd)
+
+    # Project SCF density using dense method (supports d-orbitals)
+    rho_scf = projector.project_density_dense(dm_dense.astype(np.float32), norb_per_atom, orb_offsets, atoms_dict, grid_spec)
+
+    # Build geo dict for neutral density projection (sparse method)
+    geo = {
+        'natoms': len(enames),
+        'species_per_atom': species_per_atom,
+        'species_names': enames,
+        'coords_bohr': coords_bohr
+    }
+    # Use sparse project_neutral_density for rho_na (same as in sparse method)
+    rho_na = dg.project_neutral_density(geo, projector, atoms_dict, grid_spec, basis_ang)
+
+    rho_diff = (rho_scf - rho_na).astype(np.float32)
+
+    # CRITICAL: Check charge conservation - rho_diff should integrate to ~0
+    # Both rho_scf and rho_na should contain the same total number of electrons
+    cell_volume = step**3
+    q_scf = rho_scf.sum() * cell_volume
+    q_na = rho_na.sum() * cell_volume
+    q_diff_val = rho_diff.sum() * cell_volume
+    print(f"  [CHARGE CHECK] step={step:.3f} Å, cell_vol={cell_volume:.6f} Å³")
+    print(f"  [CHARGE CHECK] rho_scf.sum={rho_scf.sum():.1f}, rho_na.sum={rho_na.sum():.1f}")
+    print(f"  [CHARGE CHECK] q_scf={q_scf:.3f}, q_na={q_na:.3f}, q_diff={q_diff_val:.6f} (should be ~0)")
+    if abs(q_diff_val) > 2.0:  # More than 2.0 electron discrepancy is serious
+        print(f"  WARNING: Large charge imbalance in rho_diff! Electrostatics may be unreliable.")
+        print(f"           Consider increasing grid resolution or checking basis consistency.")
+
+    V_ES = afm.fft_poisson(rho_diff, step)
+
+    return {'rho_scf': rho_scf, 'rho_na': rho_na, 'rho_diff': rho_diff, 'V_ES': V_ES,
+            'origin': origin, 'ngrid': ngrid, 'grid_spec': grid_spec,
+            'eigvecs': eigvecs, 'eigvals': eigvals,
+            'norb_per_atom': norb_per_atom, 'orb_offsets': orb_offsets, 'atoms_dict': atoms_dict,
+            'projector': projector}
+
+
 def get_density_from_dftb_plus(atomPos, atomTypes, basis, slako_prefix, work_dir,
                                 grid_spec=None, step=0.1, margin=4.0, z_extra=6.0, verbosity=0):
     """
@@ -474,6 +668,177 @@ def plot_tip_displacement(tip_disp, scan_xs, scan_ys, heights, output_dir, prefi
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# STM Computation Functions
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def compute_stm(projector, eigvecs, eigvals, scan_xs, scan_ys, heights,
+                norb_per_atom, orb_offsets, atoms_dict,
+                lumo_offsets=None, use_exp_basis=True,
+                exp_beta=1.0, exp_r0=3.0):
+    """
+    Compute STM signal by projecting LUMO orbitals with exponential radial decay.
+
+    Args:
+        projector: GridProjector instance
+        eigvecs: (nstates, norb_total) eigenvector matrix
+        eigvals: (nstates,) eigenvalue array
+        scan_xs: (nx_s,) scan x coordinates
+        scan_ys: (ny_s,) scan y coordinates
+        heights: (nz_s,) probe heights
+        norb_per_atom: (natoms,) orbital counts
+        orb_offsets: (natoms+1,) orbital offsets
+        atoms_dict: atom data dict
+        lumo_offsets: list of HOMO offsets (e.g., [1,2,3] for HOMO+1,+2,+3)
+        use_exp_basis: use exponential decay (True) or spline basis (False)
+        exp_beta: exponential decay constant (Å^-1)
+        exp_r0: reference distance (Å)
+
+    Returns:
+        stm_grid: (nx_s, ny_s, nz_s) STM signal (sum of LUMO^2)
+    """
+    if lumo_offsets is None:
+        lumo_offsets = [1, 2, 3]
+
+    nx_s, ny_s, nz_s = len(scan_xs), len(scan_ys), len(heights)
+
+    # Determine HOMO index from electron count (closed-shell assumption)
+    n_electrons = int(np.sum(eigvals < 0)) * 2  # Approximate for closed-shell
+    homo_idx = n_electrons // 2 - 1
+    lumo_indices = [min(len(eigvals) - 1, homo_idx + offset) for offset in lumo_offsets]
+
+    print(f"  [STM] HOMO index: {homo_idx}, LUMO indices: {lumo_indices}")
+
+    # Generate 2D point grid for each height
+    XX, YY = np.meshgrid(scan_xs, scan_ys, indexing='ij')
+    stm_grid = np.zeros((nx_s, ny_s, nz_s), dtype=np.float32)
+
+    for iz, h in enumerate(heights):
+        points = np.stack([XX.ravel(), YY.ravel(), np.full_like(XX.ravel(), h)], axis=1)
+        points = points.astype(np.float32)
+
+        # Project each LUMO orbital
+        for imo in lumo_indices:
+            coeffs = eigvecs[imo].astype(np.float32)
+            if use_exp_basis:
+                psi = projector.project_orbital_dense_points_exp(
+                    points, coeffs, norb_per_atom, orb_offsets, atoms_dict,
+                    beta=exp_beta, r0=exp_r0
+                )
+            else:
+                psi = projector.project_orbital_dense_points(
+                    points, coeffs, norb_per_atom, orb_offsets, atoms_dict
+                )
+            psi_2d = psi.reshape(nx_s, ny_s)
+            stm_grid[:, :, iz] += psi_2d ** 2
+
+    print(f"  [STM] STM grid shape: {stm_grid.shape}, range: [{stm_grid.min():.4e}, {stm_grid.max():.4e}]")
+    return stm_grid
+
+
+def compute_bond_resolved_stm(projector, eigvecs, eigvals, scan_xs, scan_ys, heights,
+                               tip_disp, norb_per_atom, orb_offsets, atoms_dict,
+                               lumo_offsets=None, use_exp_basis=True,
+                               exp_beta=1.0, exp_r0=3.0):
+    """
+    Compute bond-resolved STM: STM at tip-displaced positions.
+
+    The AFM relaxation displaces the tip laterally (dx, dy). This function
+    computes the STM signal at these displaced positions, simulating the
+    effect of CO tip bending on the STM image.
+
+    Args:
+        tip_disp: dict with 'dx' and 'dy' arrays (nx_s, ny_s, nz_s)
+        [other args same as compute_stm]
+
+    Returns:
+        stm_grid: (nx_s, ny_s, nz_s) STM signal at displaced positions
+    """
+    if lumo_offsets is None:
+        lumo_offsets = [1, 2, 3]
+
+    nx_s, ny_s, nz_s = len(scan_xs), len(scan_ys), len(heights)
+
+    # Determine HOMO index
+    n_electrons = int(np.sum(eigvals < 0)) * 2
+    homo_idx = n_electrons // 2 - 1
+    lumo_indices = [min(len(eigvals) - 1, homo_idx + offset) for offset in lumo_offsets]
+
+    print(f"  [BR-STM] HOMO index: {homo_idx}, LUMO indices: {lumo_indices}")
+    print(f"  [BR-STM] Applying tip displacement from AFM relaxation")
+
+    XX, YY = np.meshgrid(scan_xs, scan_ys, indexing='ij')
+    stm_grid = np.zeros((nx_s, ny_s, nz_s), dtype=np.float32)
+
+    for iz, h in enumerate(heights):
+        # Apply displacement to grid positions
+        X_disp = XX + tip_disp['dx'][:, :, iz]
+        Y_disp = YY + tip_disp['dy'][:, :, iz]
+
+        points = np.stack([X_disp.ravel(), Y_disp.ravel(), np.full_like(X_disp.ravel(), h)], axis=1)
+        points = points.astype(np.float32)
+
+        # Project each LUMO orbital at displaced positions
+        for imo in lumo_indices:
+            coeffs = eigvecs[imo].astype(np.float32)
+            if use_exp_basis:
+                psi = projector.project_orbital_dense_points_exp(
+                    points, coeffs, norb_per_atom, orb_offsets, atoms_dict,
+                    beta=exp_beta, r0=exp_r0
+                )
+            else:
+                psi = projector.project_orbital_dense_points(
+                    points, coeffs, norb_per_atom, orb_offsets, atoms_dict
+                )
+            psi_2d = psi.reshape(nx_s, ny_s)
+            stm_grid[:, :, iz] += psi_2d ** 2
+
+    print(f"  [BR-STM] STM grid shape: {stm_grid.shape}, range: [{stm_grid.min():.4e}, {stm_grid.max():.4e}]")
+    return stm_grid
+
+
+def plot_stm(stm_grid, scan_xs, scan_ys, heights, output_dir, prefix='stm'):
+    """Plot STM signal for each height.
+
+    Args:
+        stm_grid: (nx_s, ny_s, nz_s) STM signal array
+        scan_xs: (nx_s,) scan x coordinates
+        scan_ys: (ny_s,) scan y coordinates
+        heights: (nz_s,) probe heights
+        output_dir: directory for output plots
+        prefix: filename prefix
+    """
+    nz = len(heights)
+    ncols = min(7, nz)
+    nrows = int(np.ceil(nz / ncols))
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(2.5*ncols, 2.8*nrows))
+    axes = np.array(axes).reshape(nrows, ncols)
+    fig.suptitle(f"STM Signal (LUMO^2)", fontsize=10)
+
+    ext = [scan_xs[0], scan_xs[-1], scan_ys[0], scan_ys[-1]]
+    kw = dict(origin='lower', cmap='viridis', aspect='equal', extent=ext)
+
+    for k in range(nz):
+        r, c = divmod(k, ncols)
+        ax = axes[r, c]
+        im = ax.imshow(stm_grid[:, :, k].T, **kw)
+        ax.set_title(f"h={heights[k]:.1f}Å", fontsize=8)
+        ax.tick_params(labelsize=4)
+        plt.colorbar(im, ax=ax, shrink=0.8)
+
+    # Hide unused subplots
+    for k in range(nz, nrows*ncols):
+        r, c = divmod(k, ncols)
+        axes[r, c].set_visible(False)
+
+    plt.tight_layout()
+    fname = os.path.join(output_dir, f'{prefix}.png')
+    plt.savefig(fname, dpi=120, bbox_inches='tight')
+    plt.close()
+    print(f"  Saved STM plot: {fname}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # I/O Utilities
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -516,14 +881,22 @@ def run_afm_pipeline(
     fit_pauli_params=None,  # Dict with zscan_dir, target_indices, z_min, z_max, basis
     vdw_params={'C6_CO': 30.0},
     relax_params={'K_LAT': 0.5},
-    plot_steps=True
+    plot_steps=True,
+    stm_params=None,  # Dict with STM parameters for Step 7
+    projector=None,  # GridProjector for STM (required if stm_params is set)
+    norb_per_atom=None,  # Required for STM
+    orb_offsets=None,  # Required for STM
+    atoms_dict=None,  # Required for STM
+    eigvecs=None,  # Required for STM
+    eigvals=None  # Required for STM
 ):
     """
     High-level AFM simulation pipeline using pre-computed densities.
-    
+
     This function runs steps 2-6 of the AFM simulation, assuming step 1
     (density projection) has already been done separately.
-    
+    Optionally computes Step 7: STM simulation.
+
     Args:
         rho_grid: (nx, ny, nz) sample SCF density
         rho_na_grid: (nx, ny, nz) neutral atom density
@@ -547,7 +920,20 @@ def run_afm_pipeline(
         vdw_params: dict with 'C6_CO'
         relax_params: dict with 'K_LAT'
         plot_steps: whether to generate plots
-        
+        stm_params: dict with STM parameters:
+            - 'compute': bool (default: False)
+            - 'lumo_offsets': list (default: [1,2,3])
+            - 'use_exp_basis': bool (default: True)
+            - 'exp_beta': float (default: 1.0)
+            - 'exp_r0': float (default: 3.0)
+            - 'bond_resolved': bool (default: False)
+        projector: GridProjector instance (required for STM)
+        norb_per_atom: (natoms,) orbital counts (required for STM)
+        orb_offsets: (natoms+1,) orbital offsets (required for STM)
+        atoms_dict: atom data dict (required for STM)
+        eigvecs: (nstates, norb_total) eigenvectors (required for STM)
+        eigvals: (nstates,) eigenvalues (required for STM)
+
     Returns:
         dict with 'df', 'intermediates', 'grid_spec'
     """
@@ -664,15 +1050,49 @@ def run_afm_pipeline(
     np.save(os.path.join(output_dir, 'tip_disp_dy.npy'), tip_disp['dy'])
     if plot_steps:
         plot_step6_outputs(df, scan_xs, scan_ys, heights, output_dir)
-    
+
+    # Step 7: STM (optional)
+    stm_grid = None
+    if stm_params and stm_params.get('compute', False):
+        print("\nStep 7: Computing STM...")
+        if projector is None or eigvecs is None or eigvals is None:
+            raise ValueError("STM computation requires projector, eigvecs, and eigvals")
+
+        lumo_offsets = stm_params.get('lumo_offsets', [1, 2, 3])
+        use_exp_basis = stm_params.get('use_exp_basis', True)
+        exp_beta = stm_params.get('exp_beta', 1.0)
+        exp_r0 = stm_params.get('exp_r0', 3.0)
+        bond_resolved = stm_params.get('bond_resolved', False)
+
+        if bond_resolved:
+            print(f"  Computing bond-resolved STM (displaced positions)...")
+            stm_grid = compute_bond_resolved_stm(
+                projector, eigvecs, eigvals, scan_xs, scan_ys, heights,
+                tip_disp, norb_per_atom, orb_offsets, atoms_dict,
+                lumo_offsets=lumo_offsets, use_exp_basis=use_exp_basis,
+                exp_beta=exp_beta, exp_r0=exp_r0
+            )
+        else:
+            print(f"  Computing standard STM...")
+            stm_grid = compute_stm(
+                projector, eigvecs, eigvals, scan_xs, scan_ys, heights,
+                norb_per_atom, orb_offsets, atoms_dict,
+                lumo_offsets=lumo_offsets, use_exp_basis=use_exp_basis,
+                exp_beta=exp_beta, exp_r0=exp_r0
+            )
+
+        np.save(os.path.join(output_dir, 'stm_grid.npy'), stm_grid)
+        if plot_steps:
+            plot_stm(stm_grid, scan_xs, scan_ys, heights, output_dir, prefix='stm')
+
     # Return results
     grid_spec_out = {
         'origin': origin,
         'dA': [step, 0., 0.], 'dB': [0., step, 0.], 'dC': [0., 0., step],
         'ngrid': ngrid.astype(int),
     }
-    
-    return {
+
+    result = {
         'df': df,
         'scan_xs': scan_xs,
         'scan_ys': scan_ys,
@@ -689,6 +1109,11 @@ def run_afm_pipeline(
         },
         'grid_spec': grid_spec_out,
     }
+
+    if stm_grid is not None:
+        result['intermediates']['stm_grid'] = stm_grid
+
+    return result
 
 
 def _compute_co_tip_grid(step=0.1, margin=4.0):
@@ -815,7 +1240,10 @@ def run_afm_from_xyz(
     fit_pauli_params=None,
     vdw_params={'C6_CO': 30.0},
     relax_params={'K_LAT': 0.5},
-    plot_steps=True
+    plot_steps=True,
+    use_dense_projection=False,
+    max_shells=None,
+    stm_params=None
 ):
     """
     Full AFM simulation pipeline from .xyz to AFM images via DFTB+ density.
@@ -834,12 +1262,15 @@ def run_afm_from_xyz(
         scan_range/scan_points/height_range/height_step: scan parameters
         pauli_params/vdw_params/relax_params: physics parameters
         plot_steps: save intermediate plots
+        use_dense_projection: use dense matrix projection (supports d-orbitals, faster)
+        max_shells: max angular momentum shells (2=sp, 3=spd); auto-detected if None
+        stm_params: dict with STM parameters for optional STM computation
 
     Returns:
         dict with 'df', 'intermediates', 'grid_spec'
     """
     import pyBall.atomicUtils as au
-    ELEM_Z = {'H':1,'C':6,'N':7,'O':8,'P':15,'S':16}
+    ELEM_Z = {'H':1,'C':6,'N':7,'O':8,'P':15,'S':16,'Br':35,'I':53}
 
     os.makedirs(output_dir, exist_ok=True)
     if work_dir is None:
@@ -867,12 +1298,31 @@ def run_afm_from_xyz(
         slako_prefix = du.SK_PATHS.get('mio-1-1', slako_prefix)
     elif slako_prefix == '3ob-3-1':
         slako_prefix = du.SK_PATHS.get('3ob-3-1', slako_prefix)
-    
-    # Get densities from DFTB+
+
+    # Get densities from DFTB+ (sparse or dense method)
     if work_dir is None:
         work_dir = os.path.join(output_dir, 'dftb_work')
-    d = get_density_from_dftb_plus(atomPos, atomTypes, basis, slako_prefix, work_dir,
-                                    step=step, margin=margin, z_extra=z_extra)
+
+    if use_dense_projection:
+        # Use dense matrix projection (supports d-orbitals, faster)
+        print("\nUsing dense matrix projection (supports d-orbitals)")
+        # Use wfc.*.hsd file from pyBall/DFTB/data/ (STO basis parameters, not waveplot_in.hsd)
+        # Extract basis name from slako_prefix path (e.g., '/path/to/3ob-3-1/' -> '3ob-3-1')
+        basis_name = slako_prefix.rstrip('/').split('/')[-1] if '/' in slako_prefix else slako_prefix
+        if not basis_name:
+            basis_name = '3ob-3-1'  # Default fallback
+        _ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+        basis_hsd_path = os.path.join(_ROOT, 'pyBall', 'DFTB', 'data', f'wfc.{basis_name}.hsd')
+        if not os.path.exists(basis_hsd_path):
+            raise FileNotFoundError(f"Basis file not found: {basis_hsd_path}. Make sure wfc.{basis_name}.hsd exists in pyBall/DFTB/data/")
+        print(f"  Using basis file: {basis_hsd_path}")
+        d = get_density_from_dftb_dense(atomPos, atomTypes, basis_hsd_path, work_dir,
+                                          step=step, margin=margin, z_extra=z_extra,
+                                          verbosity=1 if plot_steps else 0, max_shells=max_shells)
+    else:
+        # Use standard sparse projection
+        d = get_density_from_dftb_plus(atomPos, atomTypes, basis, slako_prefix, work_dir,
+                                          step=step, margin=margin, z_extra=z_extra)
 
     # Plot density slices to check anisotropy
     if plot_steps:
@@ -955,6 +1405,20 @@ def run_afm_from_xyz(
         plt.close()
         print(f"  CO tip profiles: {prof_path}")
 
+    # Prepare STM parameters for run_afm_pipeline
+    stm_kwargs = {}
+    if stm_params and stm_params.get('compute', False):
+        # STM requires dense projection data
+        if not use_dense_projection:
+            raise ValueError("STM computation requires use_dense_projection=True")
+        stm_kwargs['stm_params'] = stm_params
+        stm_kwargs['projector'] = d.get('projector')
+        stm_kwargs['norb_per_atom'] = d.get('norb_per_atom')
+        stm_kwargs['orb_offsets'] = d.get('orb_offsets')
+        stm_kwargs['atoms_dict'] = d.get('atoms_dict')
+        stm_kwargs['eigvecs'] = d.get('eigvecs')
+        stm_kwargs['eigvals'] = d.get('eigvals')
+
     return run_afm_pipeline(
         d['rho_scf'], d['rho_na'], d['rho_diff'], d['V_ES'],
         co_rho_total, co_rho_delta,
@@ -964,7 +1428,8 @@ def run_afm_from_xyz(
         output_dir,
         pauli_params=pauli_params, pauli_fit_params=pauli_fit_params,
         fit_pauli=fit_pauli, fit_pauli_params=fit_pauli_params,
-        vdw_params=vdw_params, relax_params=relax_params, plot_steps=plot_steps
+        vdw_params=vdw_params, relax_params=relax_params, plot_steps=plot_steps,
+        **stm_kwargs
     )
 
 

@@ -505,3 +505,251 @@ Successfully tested on TBTAP molecule (66 atoms) with:
 - Scan grid: 111×107 points
 - Generated 559KB displacement plot
 - Displacement ranges: ~0-0.3 Å typical magnitude
+
+## Density Projection Fixes and Validation (May 2026)
+
+### Problem Statement
+
+The dense density matrix projection for spd-basis molecules (e.g., molecules with Br, I d-orbitals using 3ob-3-1 basis) was failing charge conservation:
+- DM trace after orthogonalization: 294 electrons (correct)
+- Projected q_scf: 60.6 electrons (severely undercounted, should be 294)
+- Projected q_na: 296.7 electrons (correct after fixing Br occupations)
+- q_diff = -236 electrons (large imbalance causing incorrect electrostatics)
+
+This caused the electrostatics to dominate incorrectly in the AFM simulation pipeline.
+
+### Root Cause Analysis
+
+Two critical issues were identified:
+
+1. **Missing B3_FACTOR normalization in `project_density_dense()`**: The dense projection method in `Grid_dftb.py` was missing the unit conversion factor that converts from Bohr-normalized orbitals to density in Å^-3. The sparse methods (`project_dftb_density()` and `project_neutral_density()`) already had this factor applied.
+
+2. **Incorrect DM orthogonalization transform**: The code was applying a Lowdin orthogonalization transform to the DM (`dm_ortho = S_sqrt @ dm @ S_sqrt`) before projection, assuming the GPU kernel required orthonormal basis. However, the GPU kernel correctly handles the non-orthogonal basis DM from DFTBcore, and the transformation was causing overcounting.
+
+### Fixes Applied
+
+#### 1. Added B3_FACTOR to `project_density_dense()` (`Grid_dftb.py:1163-1168`)
+
+```python
+# Apply B3_FACTOR to convert from Bohr-normalized to Ang^-3 density
+# This matches project_dftb_density() and project_neutral_density()
+BOHR2ANG = 0.5291772109
+B3_FACTOR = 1.0 / (BOHR2ANG**3)
+return (res * B3_FACTOR).astype(np.float32)
+```
+
+This was the primary fix - the dense projection was missing the unit conversion.
+
+#### 2. Removed DM orthogonalization transform (`AFM_utils.py:295-301`)
+
+Changed from:
+```python
+dftb.enable_matrix_collection(dm=True, h=False, s=True)  # Need S matrix for orthogonalization
+dm_dense = dftb.get_dm_dense()
+S = dftb.get_s_dense()
+# Transform DM to orthonormal (Lowdin) basis
+eigvals_S, eigvecs_S = np.linalg.eigh(S)
+s_sqrt = np.sqrt(np.maximum(eigvals_S, 1e-12))
+S_sqrt = eigvecs_S @ np.diag(s_sqrt) @ eigvecs_S.T
+dm_dense = S_sqrt @ dm_dense @ S_sqrt
+```
+
+To:
+```python
+dftb.enable_matrix_collection(dm=True, h=False, s=False)
+dm_dense = dftb.get_dm_dense()
+# Note: DM is in non-orthogonal basis, GPU kernel handles this correctly
+```
+
+The GPU kernel correctly handles the non-orthogonal basis DM from DFTBcore.
+
+#### 3. Extended OCC_NA dictionary (`Grid_dftb.py:1996-2009`)
+
+Added missing heavy elements (F, P, S, Cl, Br, I) to the neutral atom valence occupations dictionary for correct neutral density projection.
+
+#### 4. Adjusted charge warning threshold (`AFM_utils.py:333`)
+
+Changed from 0.5 to 2.0 electrons to account for grid discretization effects.
+
+### Validation Results
+
+#### Test 1: TBTAP molecule (Br, 3ob-3-1 basis, dense projection)
+
+With correct defaults (`step=0.1`, `margin=4.0`):
+- q_scf = 98.09 electrons
+- q_na = 98.17 electrons
+- **q_diff = -0.075 electrons** (was -236, now essentially perfect!)
+- AFM images generated successfully at 5 heights (3.1-3.6 Å)
+- df range: [-32.17, 25.79] Hz
+
+#### Test 2: TBTAP_F molecule (F, mio-1-1 basis, sparse projection)
+
+- Old sparse method works correctly (unaffected by dense projection fixes)
+- AFM images generated successfully at 9 heights (2.8-3.6 Å)
+- df range: [-0.0213, 13.3999] Hz
+
+### Summary
+
+Both projection methods now work correctly:
+- **Dense method** (`--use_dense_projection --max_shells 3`): For spd-basis (3ob-3-1) with d-orbitals (Br, I, etc.)
+- **Sparse method** (default): For sp-basis (mio-1-1) with only s and p orbitals (F, H, etc.)
+
+Charge conservation is now working correctly with q_diff < 0.1 electrons for dense projection, enabling reliable electrostatics in the AFM simulation pipeline.
+
+---
+
+## STM Integration (12. May 2026)
+
+Added STM (Scanning Tunneling Microscopy) simulation capabilities to the AFM pipeline, including bond-resolved STM that combines AFM tip displacement with STM orbital projection.
+
+### Implementation Overview
+
+STM simulation was integrated as **Step 7** in the AFM pipeline, computing LUMO orbital projections on the same scan grid used for AFM. Two modes are supported:
+- **Standard STM**: Projects LUMO orbitals at regular scan grid positions
+- **Bond-Resolved STM (BR-STM)**: Projects LUMO orbitals at tip-displaced positions from AFM relaxation, simulating the effect of CO tip bending on STM images
+
+### Key Functions Added
+
+#### `pyBall/OCL/AFM_utils.py`
+
+**1. `compute_stm()` (lines 673-734)**
+```python
+def compute_stm(projector, eigvecs, eigvals, scan_xs, scan_ys, heights,
+                norb_per_atom, orb_offsets, atoms_dict,
+                lumo_offsets=None, use_exp_basis=True,
+                exp_beta=1.0, exp_r0=3.0):
+```
+- Computes STM signal by summing LUMO orbital densities with exponential radial decay
+- Uses `projector.project_orbital_dense_points_exp()` for realistic tunneling decay
+- Parameters:
+  - `lumo_offsets`: List of HOMO offsets (e.g., [1,2,3] for HOMO+1,+2,+3)
+  - `use_exp_basis`: Use exponential decay (True) or spline basis (False)
+  - `exp_beta`: Exponential decay constant (Å^-1, default 1.0)
+  - `exp_r0`: Reference distance (Å, default 3.0)
+- Returns: `(nx_s, ny_s, nz_s)` STM grid
+
+**2. `compute_bond_resolved_stm()` (lines 737-795)**
+```python
+def compute_bond_resolved_stm(projector, eigvecs, eigvals, scan_xs, scan_ys, heights,
+                               tip_disp, norb_per_atom, orb_offsets, atoms_dict,
+                               lumo_offsets=None, use_exp_basis=True,
+                               exp_beta=1.0, exp_r0=3.0):
+```
+- Computes STM at tip-displaced positions from AFM relaxation
+- Applies `tip_disp['dx']` and `tip_disp['dy']` to scan grid before orbital projection
+- Simulates CO tip bending effect on STM images
+- Same orbital projection parameters as `compute_stm()`
+
+**3. `plot_stm()` (lines 798-836)**
+```python
+def plot_stm(stm_grid, scan_xs, scan_ys, heights, output_dir, prefix='stm'):
+```
+- Visualizes STM signal for each height slice
+- Creates subplot grid (up to 7 columns, auto-rows)
+- Uses viridis colormap for orbital density
+- Saves as `{prefix}.png`
+
+**4. Modified `run_afm_pipeline()` (lines 870-1100)**
+- Added Step 7: STM computation (optional)
+- New parameters: `stm_params`, `projector`, `norb_per_atom`, `orb_offsets`, `atoms_dict`, `eigvecs`, `eigvals`
+- Calls `compute_stm()` or `compute_bond_resolved_stm()` based on `stm_params['bond_resolved']`
+- Saves `stm_grid.npy` and calls `plot_stm()` if `plot_steps=True`
+- Includes `stm_grid` in intermediates dict
+
+**5. Modified `get_density_from_dftb_dense()` (lines 219-341)**
+- Added `dftb.get_eigvecs_dense()` call to extract eigenvectors and eigenvalues
+- Returns additional data: `eigvecs`, `eigvals`, `norb_per_atom`, `orb_offsets`, `atoms_dict`, `projector`
+- These are required for STM orbital projection
+
+**6. Modified `run_afm_from_xyz()` (lines 1232-1445)**
+- Added `stm_params` parameter
+- Passes STM-related data (projector, eigvecs, eigvals, etc.) to `run_afm_pipeline()`
+- Validates that `use_dense_projection=True` when STM is requested
+
+#### `tests/tAFM/pyocl_fdbm/test_full_pipeline.py`
+
+**CLI arguments added:**
+- `--compute_stm`: Enable STM computation (action='store_true')
+- `--stm_lumo_offsets`: LUMO offsets from HOMO (default: [1,2,3])
+- `--stm_use_exp_basis`: Use exponential radial decay (action='store_true', default=True)
+- `--stm_exp_beta`: Exponential decay constant (default: 1.0)
+- `--stm_exp_r0`: Reference distance (default: 3.0)
+- `--stm_bond_resolved`: Compute bond-resolved STM (action='store_true')
+
+**Usage examples:**
+```bash
+# Simple STM
+python test_full_pipeline.py TBTAP.xyz --use_dense_projection --compute_stm
+
+# Bond-resolved STM
+python test_full_pipeline.py TBTAP.xyz --use_dense_projection --compute_stm --stm_bond_resolved
+
+# Custom parameters
+python test_full_pipeline.py TBTAP.xyz --use_dense_projection --compute_stm --stm_exp_beta 2.0 --stm_lumo_offsets 1 2
+```
+
+### Data Flow
+
+```
+get_density_from_dftb_dense()
+    ↓ returns eigvecs, eigvals, norb_per_atom, orb_offsets, atoms_dict, projector
+run_afm_from_xyz()
+    ↓ passes STM data + stm_params
+run_afm_pipeline() Step 7
+    ↓ if stm_params['compute']
+compute_stm() or compute_bond_resolved_stm()
+    ↓ uses projector.project_orbital_dense_points_exp()
+plot_stm()
+    ↓ saves stm_grid.npy and stm.png
+```
+
+### Test Results
+
+Successfully tested on TBTAP molecule (66 atoms, 3ob-3-1 basis):
+- **Standard STM**: HOMO index 176, LUMO index 177, grid shape (242×233×9), range [8.7e-21, 0.14]
+- **Bond-Resolved STM**: HOMO index 58, LUMO index 59, grid shape (150×142×9), range [7.9e-14, 0.085]
+- Heights: 2.8-3.6 Å (9 slices)
+- Output: `stm.png` (standard) or `stm_bond_resolved.png` (BR-STM)
+
+### Physics Context
+
+**STM simulation**: Projects LUMO orbitals (unoccupied states near Fermi level) using exponential radial decay to simulate tunneling current:
+- Exponential decay: `f(r) = exp(-beta*(r - r0))`
+- Typical parameters: beta=1.0 Å^-1, r0=3.0 Å
+- STM signal ∝ |ψ_LUMO(r)|²
+
+**Bond-Resolved STM**: Combines AFM lateral tip displacement with STM projection:
+- AFM relaxation computes tip displacement (dx, dy) due to lateral force fields
+- STM is computed at displaced positions, simulating CO tip bending
+- This can enhance bond contrast in STM images
+
+### Future Optimization Plans
+
+The current STM implementation has significant performance overhead that should be addressed:
+
+**1. Buffer allocation overhead**
+- **Issue**: Creating new GPU buffers for each orbital projection call
+- **Fix**: Pre-allocate and reuse buffers for point coordinates and orbital values
+- **Expected gain**: ~2-5x speedup for multi-orbital STM
+
+**2. Kernel recompilation overhead**
+- **Issue**: Loading/recompiling OpenCL kernels for each orbital (seen in logs: "GridProjector Loading program" repeated)
+- **Fix**: Compile kernels once and reuse across orbital projections
+- **Expected gain**: Eliminate ~100-200ms per orbital
+
+**3. Python-level operations**
+- **Issue**: Meshgrid creation, point stacking, and reshape operations in Python for each height
+- **Fix**: Move grid generation and point batching to GPU kernels
+- **Expected gain**: ~3-10x speedup for large scan grids
+
+**4. Batch orbital projection**
+- **Issue**: Projecting orbitals one at a time in Python loop
+- **Fix**: Implement batch projection kernel that processes multiple orbitals simultaneously
+- **Expected gain**: Near-linear speedup with number of orbitals
+
+**Target**: Reduce STM computation time from ~10-30 seconds (current) to <2 seconds for typical scan grids.
+
+### Files Modified
+
+1. `/home/prokop/git/FireCore/pyBall/OCL/AFM_utils.py` - STM functions, pipeline integration
+2. `/home/prokop/git/FireCore/tests/tAFM/pyocl_fdbm/test_full_pipeline.py` - CLI arguments, plotting

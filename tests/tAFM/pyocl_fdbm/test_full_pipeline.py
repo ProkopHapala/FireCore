@@ -20,6 +20,22 @@ import numpy as np
 HOW TO USE IT:
 
 python3 test_full_pipeline.py pentacene.xyz --output_dir YOUR_OUTPUT_FOLDER --step 0.1 --margin 2.0 --z_extra 2.0 --scan_range 3.0 --scan_step 0.1 --height_range 2.8 3.6 --height_step 0.1 --plot_steps
+
+
+# Simple STM on TBTAP
+python test_full_pipeline.py TBTAP.xyz --use_dense_projection --compute_stm
+
+# Bond-resolved STM (AFM tip displacement affects STM)
+python test_full_pipeline.py TBTAP.xyz --use_dense_projection --compute_stm --stm_bond_resolved
+
+# Custom STM parameters
+python test_full_pipeline.py TBTAP.xyz --use_dense_projection --compute_stm --stm_exp_beta 2.0 --stm_lumo_offsets 1 2
+
+
+python test_full_pipeline.py TBTAP.xyz --basis 3ob-3-1 --use_dense_projection --max_shells 3 --compute_stm --stm_exp_beta 1.0 --stm_lumo_offsets 1
+
+
+python test_full_pipeline.py /home/prokop/git/FireCore/cpp/common_resources/xyz/TBTAP.xyz --basis 3ob-3-1 --use_dense_projection --max_shells 3 --compute_stm --stm_bond_resolved --stm_exp_beta 1.0 --stm_lumo_offsets 1
 '''
 
 def main():
@@ -47,6 +63,15 @@ def main():
     parser.add_argument('--fit_z_max', type=float, default=3.0, help='Fit range maximum z (Å)')
     parser.add_argument('--fit_zscan_dir', type=str, default=None, help='Pre-computed DFTB z-scan directory')
     parser.add_argument('--plot_tip_disp', action='store_true', default=False, help='Plot tip displacement during relaxation')
+    parser.add_argument('--use_dense_projection', action='store_true', default=False, help='Use dense matrix projection (supports d-orbitals, faster)')
+    parser.add_argument('--max_shells', type=int, default=None, help='Max angular momentum shells (2=sp, 3=spd); auto-detected if not set')
+    # STM arguments
+    parser.add_argument('--compute_stm', action='store_true', default=False, help='Compute STM signal')
+    parser.add_argument('--stm_lumo_offsets', type=int, nargs='+', default=[1, 2, 3], help='LUMO offsets from HOMO (default: 1 2 3)')
+    parser.add_argument('--stm_use_exp_basis', action='store_true', default=True, help='Use exponential radial decay for STM')
+    parser.add_argument('--stm_exp_beta', type=float, default=1.0, help='STM exponential decay constant (Å^-1)')
+    parser.add_argument('--stm_exp_r0', type=float, default=3.0, help='STM reference distance (Å)')
+    parser.add_argument('--stm_bond_resolved', action='store_true', default=False, help='Compute bond-resolved STM (STM at displaced tip positions)')
     args = parser.parse_args()
 
     SK = args.basis
@@ -83,6 +108,18 @@ def main():
         }
         print(f"Will fit Pauli parameters using DFTB reference from {args.fit_zscan_dir}")
     
+    # Prepare STM parameters
+    stm_params = None
+    if args.compute_stm:
+        stm_params = {
+            'compute': True,
+            'lumo_offsets': args.stm_lumo_offsets,
+            'use_exp_basis': args.stm_use_exp_basis,
+            'exp_beta': args.stm_exp_beta,
+            'exp_r0': args.stm_exp_r0,
+            'bond_resolved': args.stm_bond_resolved
+        }
+
     results = afm_utils.run_afm_from_xyz(
         xyz_file=args.xyz_file,
         output_dir=args.output_dir,
@@ -98,7 +135,10 @@ def main():
         fit_pauli_params=fit_pauli_params,
         vdw_params={'C6_CO': args.vdw_C6},
         relax_params={'K_LAT': args.relax_K},
-        plot_steps=args.plot_steps
+        plot_steps=args.plot_steps,
+        use_dense_projection=args.use_dense_projection,
+        max_shells=args.max_shells,
+        stm_params=stm_params
     )
 
     print(f"\ndf shape: {results['df'].shape}")
@@ -129,6 +169,18 @@ def main():
             scan_ys,
             heights,
             args.output_dir
+        )
+
+    # Plot STM results
+    if args.compute_stm and 'stm_grid' in inter:
+        print(f"\nSTM range: [{inter['stm_grid'].min():.4e}, {inter['stm_grid'].max():.4e}]")
+        afm_utils.plot_stm(
+            inter['stm_grid'],
+            scan_xs,
+            scan_ys,
+            heights,
+            args.output_dir,
+            prefix='stm_bond_resolved' if args.stm_bond_resolved else 'stm'
         )
 
 if __name__ == "__main__":

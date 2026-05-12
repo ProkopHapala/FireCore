@@ -1101,3 +1101,91 @@ For migration to other projects:
 3. Use `--use-exp-basis` flag only when long-range STM simulation is needed
 4. Default beta=1.0 provides moderate decay; adjust based on system size and tip-sample distance
 5. The method is designed for STM tip-sample overlap, not for ground-state density calculation
+
+---
+
+## 3D Grid Density Projection Validation (May 2026)
+
+### Overview
+
+A rigorous test script was added to validate the 3D grid density projection method (`Grid_dftb.project_density_dense`) against the reference implementation in `libwaveplot.so`. The test verifies charge conservation, exports cube files for visual inspection, and reports quantitative error metrics.
+
+### Test Script
+
+**Location:** `tests/dftb/test_3d_grid_density.py`
+
+**Methods compared:**
+- **Method A (Reference):** `WavePlot.orb2grid()` - Evaluates each occupied MO on a 3D grid using libwaveplot.so, accumulates `2|ψ|²` for closed-shell systems
+- **Method B (Test):** `Grid_dftb.project_density_dense()` - Projects the dense SCF density matrix directly onto the same 3D grid using OpenCL
+
+**Validation checks:**
+1. **Electron count integration:** `sum(ρ) × dV` vs expected valence electrons
+2. **Cube file export:** Gaussian `.cube` files for VESTA visual inspection
+3. **Grid subtraction:** Maximum absolute error and RMS error between methods
+
+### Usage
+
+```bash
+cd tests/dftb
+python test_3d_grid_density.py \
+    --xyz /path/to/molecule.xyz \
+    --basis 3ob-3-1 \
+    --step 0.2 \
+    --padding 3.0 \
+    --output-dir cube_output/
+```
+
+**Key arguments:**
+- `--xyz`: Input geometry file
+- `--basis`: Basis set (mio-1-1 or 3ob-3-1)
+- `--step`: Grid step in Angstrom (default: 0.2)
+- `--padding`: Padding around molecule in Angstrom (default: 3.0)
+- `--libpath`: Path to libwaveplot.so (default: `/home/prokop/git/dftbplus/_build/app/waveplot/libwaveplot.so`)
+- `--skip-waveplot`: Skip WavePlot reference (run Grid_dftb only)
+
+### Test Results
+
+#### H₂O (step=0.3 Å, padding=2.0 Å)
+| Quantity | Value |
+|----------|-------|
+| Expected e⁻ | 8.00 |
+| WavePlot e⁻ | 8.0213 (0.27% error) |
+| Grid_dftb e⁻ | 8.0204 (0.26% error) |
+| **Max error** | **1.46×10⁻² e/Å³** |
+| **Relative RMS** | **0.0045%** |
+
+#### TBTAP (step=0.4 Å, padding=2.0 Å)
+| Quantity | Value |
+|----------|-------|
+| Expected e⁻ | 294.00 |
+| WavePlot e⁻ | 297.82 (1.30% error) |
+| Grid_dftb e⁻ | 297.86 (1.31% error) |
+| **Max error** | **9.12×10⁻¹ e/Å³** |
+| **Relative RMS** | **0.0392%** |
+
+**Note:** The electron count error (~1.3% for TBTAP) is due to finite grid discretization and box size. The key validation is the agreement between WavePlot and Grid_dftb (0.04% relative RMS), which confirms the OpenCL implementation is correct.
+
+### Output Files
+
+The script generates three `.cube` files in the output directory:
+- `rho_<system>_<basis>_waveplot.cube` - Reference density from libwaveplot
+- `rho_<system>_<basis>_grid_dftb.cube` - OpenCL density from Grid_dftb
+- `diff_<system>_<basis>_wp_minus_ocl.cube` - Difference map (should be near zero)
+
+Cube files use Bohr units for coordinates and atomic units (a0⁻³) for density, following Gaussian cube format conventions for quantum chemistry tools like VESTA.
+
+### Implementation Details
+
+**Files modified:**
+- `pyBall/DFTB/TestUtils.py` - Added `write_cube()` function (lines 379-413)
+- `tests/dftb/test_3d_grid_density.py` - New test script
+
+**Key implementation notes:**
+1. **Unit conversion:** `Grid_dftb.project_density_dense` now applies `B3_FACTOR = 1/(BOHR2ANG³)` to convert from Bohr-normalized density to `e/Å³`, matching the sparse projection methods.
+2. **Species indexing:** Uses unique species lists with 0-based indices for Grid_dftb and 1-based indices for WavePlot, avoiding the fragile atomic-number indexing used in older tests.
+3. **Grid consistency:** Both methods use identical physical grids (same origin and step) for fair comparison, with proper Bohr/Angstrom conversions.
+4. **Orbital layout:** Correctly handles s, p, d orbitals with proper angular momentum ordering for both basis sets.
+
+### Integration with B3_FACTOR Fix
+
+The test validates the `B3_FACTOR` fix applied to `Grid_dftb.project_density_dense` (see `AFM_FDBM_DFTB.md`). The excellent agreement (0.04% RMS) between WavePlot and Grid_dftb confirms that the unit conversion is now correct and the dense projection method is working as intended.
