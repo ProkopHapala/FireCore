@@ -291,6 +291,7 @@ def compose_and_relax(grads_pauli, grads_es, grads_vdw, scan_xs, scan_ys, height
         
     Returns:
         df: (nx_s, ny_s, nz_s) frequency shift array
+        tip_disp: dict with 'dx' and 'dy' displacement arrays (nx_s, ny_s, nz_s)
     """
     from scipy.ndimage import map_coordinates
     
@@ -309,9 +310,9 @@ def compose_and_relax(grads_pauli, grads_es, grads_vdw, scan_xs, scan_ys, height
         return np.stack([fx, fy, fz], axis=-1)
     
     mol_z = atomPos[:,2].max()
-    FEs_relax = afm.pp_relax_2d(force_func, scan_xs, scan_ys, heights, mol_z=mol_z, K_LAT=K_LAT, N_RELAX=50, step=step)
+    FEs_relax, tip_disp = afm.pp_relax_2d(force_func, scan_xs, scan_ys, heights, mol_z=mol_z, K_LAT=K_LAT, N_RELAX=50, step=step)
     df = afm.compute_df(FEs_relax[:,:,:,2], heights[1]-heights[0])
-    return df
+    return df, tip_disp
 
 
 
@@ -401,6 +402,75 @@ def plot_step6_outputs(df, scan_xs, scan_ys, heights, step_dir):
     """Plot step 6 final AFM images."""
     save_afm_images(df, scan_xs, scan_ys, heights, step_dir, prefix='df')
     print(f"  Saved step6 AFM images")
+
+
+def plot_tip_displacement(tip_disp, scan_xs, scan_ys, heights, output_dir, prefix='tip_disp'):
+    """Plot tip displacement (dx, dy, total) for each height.
+
+    For each height, creates a row of 3 images:
+    - dx displacement (seismic colormap, symmetric around zero)
+    - dy displacement (seismic colormap, symmetric around zero)
+    - total displacement r = sqrt(dx^2 + dy^2)
+
+    Args:
+        tip_disp: dict with 'dx' and 'dy' arrays, each (nx_s, ny_s, nz_s)
+        scan_xs: (nx_s,) scan x coordinates
+        scan_ys: (ny_s,) scan y coordinates
+        heights: (nz_s,) probe heights
+        output_dir: directory for PNG output
+        prefix: filename prefix
+    """
+    dx = tip_disp['dx']
+    dy = tip_disp['dy']
+    nz = len(heights)
+    
+    # Total displacement
+    r = np.sqrt(dx**2 + dy**2)
+    
+    # Create figure with nz rows, 3 columns
+    fig, axes = plt.subplots(nz, 3, figsize=(15, 5*nz))
+    if nz == 1:
+        axes = axes.reshape(1, 3)
+    
+    for iz in range(nz):
+        h = heights[iz]
+        
+        # dx with seismic colormap (symmetric)
+        vmax_dx = max(abs(dx[:,:,iz].min()), abs(dx[:,:,iz].max()))
+        norm_dx = TwoSlopeNorm(vmin=-vmax_dx, vcenter=0, vmax=vmax_dx)
+        im_dx = axes[iz, 0].imshow(dx[:,:,iz].T, origin='lower',
+                                   extent=[scan_xs[0], scan_xs[-1], scan_ys[0], scan_ys[-1]],
+                                   cmap='seismic', norm=norm_dx, aspect='equal')
+        axes[iz, 0].set_title(f'dx at h={h:.1f} Å')
+        axes[iz, 0].set_xlabel('x [Å]')
+        axes[iz, 0].set_ylabel('y [Å]')
+        plt.colorbar(im_dx, ax=axes[iz, 0], fraction=0.03, pad=0.02)
+        
+        # dy with seismic colormap (symmetric)
+        vmax_dy = max(abs(dy[:,:,iz].min()), abs(dy[:,:,iz].max()))
+        norm_dy = TwoSlopeNorm(vmin=-vmax_dy, vcenter=0, vmax=vmax_dy)
+        im_dy = axes[iz, 1].imshow(dy[:,:,iz].T, origin='lower',
+                                   extent=[scan_xs[0], scan_xs[-1], scan_ys[0], scan_ys[-1]],
+                                   cmap='seismic', norm=norm_dy, aspect='equal')
+        axes[iz, 1].set_title(f'dy at h={h:.1f} Å')
+        axes[iz, 1].set_xlabel('x [Å]')
+        axes[iz, 1].set_ylabel('y [Å]')
+        plt.colorbar(im_dy, ax=axes[iz, 1], fraction=0.03, pad=0.02)
+        
+        # total displacement (magma colormap, non-negative)
+        im_r = axes[iz, 2].imshow(r[:,:,iz].T, origin='lower',
+                                 extent=[scan_xs[0], scan_xs[-1], scan_ys[0], scan_ys[-1]],
+                                 cmap='magma', aspect='equal')
+        axes[iz, 2].set_title(f'r = sqrt(dx²+dy²) at h={h:.1f} Å')
+        axes[iz, 2].set_xlabel('x [Å]')
+        axes[iz, 2].set_ylabel('y [Å]')
+        plt.colorbar(im_r, ax=axes[iz, 2], fraction=0.03, pad=0.02)
+    
+    plt.tight_layout()
+    fname = os.path.join(output_dir, f'{prefix}.png')
+    plt.savefig(fname, dpi=120, bbox_inches='tight')
+    plt.close()
+    print(f"  Saved tip displacement plot: {fname}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -584,12 +654,14 @@ def run_afm_pipeline(
     
     # Step 6: Compose and relax
     print("\nStep 6: Composing force fields and running probe relaxation...")
-    df = compose_and_relax(
+    df, tip_disp = compose_and_relax(
         grads_pauli, grads_ES, grads_vdw,
         scan_xs, scan_ys, heights,
         origin, step, atomPos, K_LAT=relax_params['K_LAT']
     )
     np.save(os.path.join(output_dir, 'df.npy'), df)
+    np.save(os.path.join(output_dir, 'tip_disp_dx.npy'), tip_disp['dx'])
+    np.save(os.path.join(output_dir, 'tip_disp_dy.npy'), tip_disp['dy'])
     if plot_steps:
         plot_step6_outputs(df, scan_xs, scan_ys, heights, output_dir)
     
@@ -602,6 +674,9 @@ def run_afm_pipeline(
     
     return {
         'df': df,
+        'scan_xs': scan_xs,
+        'scan_ys': scan_ys,
+        'heights': heights,
         'intermediates': {
             'V_ES': V_ES,
             'E_pauli_field': E_pauli_field,
@@ -610,6 +685,7 @@ def run_afm_pipeline(
             'grads_ES': grads_ES,
             'E_vdw': E_vdw,
             'grads_vdw': grads_vdw,
+            'tip_disp': tip_disp,
         },
         'grid_spec': grid_spec_out,
     }

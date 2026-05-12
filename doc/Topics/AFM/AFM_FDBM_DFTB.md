@@ -316,54 +316,192 @@ Successfully implemented and ran DFTB-based FDBM AFM test on first try.
 
 All step-by-step outputs saved to `tests/tAFM/pyocl_fdbm/debug_dftb/step{1-6}/`
 
-319: The framework is functional - pipeline runs end-to-end. The density projection normalization needs debugging for accurate results.
-320: 
-321: ---
-322: 
-323: # Implementation Report (May 2026) - Pentacene FDBM AFM with DFTB+
-324: 
-325: Following the initial framework setup, the FDBM AFM pipeline has been fully implemented and validated for a Pentacene molecule system using the DFTB+ backend.
-326: 
-327: ## Key Improvements and Fixes
-328: 
-329: ### 1. Density Normalization ($B^{-3}$ factor)
-330: A critical scaling issue was identified in the density projection step. When projecting Slater-Type Orbitals (STOs) onto a grid in Angstrom units, the integrated electron count was approximately $1/6.75$ of the expected value. 
-331: - **Fix**: Applied a scaling factor of $B^{-3} = 1/(0.529177^3) \approx 6.753$ to the projected density.
-332: - **Result**: The Pentacene system now integrates to **101.96 e** (Target: 102.0), confirming numerical parity for the total density.
-333: 
-334: ### 2. Isolated Process SCF Execution
-335: The `libdftbcore.so` library uses global Fortran state which prevents multiple `init()` calls within the same process (causing `Attempting to allocate already allocated variable 'env'`).
-336: - **Fix**: Wrapped the `DFTBcore` SCF execution in a Python `multiprocessing.Process`. This ensures that each SCF run (Sample and CO Tip) starts with a fresh library state.
-337: - **Benefit**: Allows on-the-fly calculation of sample and tip densities within a single pipeline run without library conflicts.
-338: 
-339: ### 3. Realistic CO Tip Model
-340: Instead of a generic Gaussian tip, the pipeline now performs a full SCF calculation for a CO molecule.
-341: - **Delta Density**: Computes $\Delta\rho_{tip} = \rho_{total} - \rho_{neutral\_atoms}$ to capture the chemical polarization of the tip for electrostatic convolution.
-342: - **Alignment**: The CO molecule is centered at the grid center to facilitate proper FFT circular convolution.
-343: 
-344: ## Final Workflow (6 Steps)
-345: 
-346: | Step | Physics | Implementation | Output |
-347: |------|---------|----------------|--------|
-348: | **1** | Density | `DFTBcore` SCF + `GridProjector.project_orbital` | `rho_grid.npy`, `rho_diff.npy` |
-349: | **2** | Poisson | FFT solver for $\nabla^2 V_{ES} = -4\pi \Delta\rho$ | `V_ES.npy` |
-350: | **3** | Pauli | $E_{Pauli} = A_{Pauli} \int \rho_s \rho_t dV$ (FFT Conv) | `E_Pauli_field.npy` |
-351: | **4** | ES | $E_{ES} = \int \Delta\rho_t V_{ES} dV$ (FFT Conv) | `E_ES_field.npy` |
-352: | **5** | vdW | Pairwise $-C_6/r^6$ with $R_{A2}$ softening | `E_vdw_field.npy` |
-353: | **6** | Relax | PP Relaxation + Frequency Shift ($\Delta f$) | `df_h*.png`, `df.npy` |
-354: 
-355: ## Technical Parameters
-356: - **$A_{Pauli}$**: Default set to 16.0 (consistent with Fireball version).
-357: - **$C_6$**: 30.0 for CO tip interaction.
-358: - **K_LAT**: 0.5 N/m (Probe Particle lateral stiffness).
-359: - **Units**: Forces in eV/Å, Energy in eV, Distances in Å.
-360: 
-361: ## Verification and Results
-362: The implementation was tested on a **Pentacene** molecule (22 atoms). 
-363: - **Diagnostic Plots**: All intermediate steps generate 3-slice XY/XZ/Line-profile plots for visual debugging.
-364: - **AFM Contrast**: Final $\Delta f$ images at $h=3.0\text{\AA}$ and $h=4.2\text{\AA}$ show clear sub-molecular resolution, consistent with experimental and Fireball-based simulations.
-365: 
-366: ## Ongoing / To-Do
-367: - [ ] Fine-tune $A_{Pauli}$ against experimental contrast benchmarks.
-368: - [ ] Validate $C_6$ parameters for different tip-sample combinations.
-369: - [ ] Optimize the memory usage of `project_orbital` for very large systems.
+The framework is functional - pipeline runs end-to-end. The density projection normalization needs debugging for accurate results.
+
+---
+
+# Implementation Report (May 2026) - Pentacene FDBM AFM with DFTB+
+
+Following the initial framework setup, the FDBM AFM pipeline has been fully implemented and validated for a Pentacene molecule system using the DFTB+ backend.
+
+## Key Improvements and Fixes
+
+### 1. Density Normalization ($B^{-3}$ factor)
+A critical scaling issue was identified in the density projection step. When projecting Slater-Type Orbitals (STOs) onto a grid in Angstrom units, the integrated electron count was approximately $1/6.75$ of the expected value.
+- **Fix**: Applied a scaling factor of $B^{-3} = 1/(0.529177^3) \approx 6.753$ to the projected density.
+- **Result**: The Pentacene system now integrates to **101.96 e** (Target: 102.0), confirming numerical parity for the total density.
+
+### 2. Isolated Process SCF Execution
+The `libdftbcore.so` library uses global Fortran state which prevents multiple `init()` calls within the same process (causing `Attempting to allocate already allocated variable 'env'`).
+- **Fix**: Wrapped the `DFTBcore` SCF execution in a Python `multiprocessing.Process`. This ensures that each SCF run (Sample and CO Tip) starts with a fresh library state.
+- **Benefit**: Allows on-the-fly calculation of sample and tip densities within a single pipeline run without library conflicts.
+
+### 3. Realistic CO Tip Model
+Instead of a generic Gaussian tip, the pipeline now performs a full SCF calculation for a CO molecule.
+- **Delta Density**: Computes $\Delta\rho_{tip} = \rho_{total} - \rho_{neutral\_atoms}$ to capture the chemical polarization of the tip for electrostatic convolution.
+- **Alignment**: The CO molecule is centered at the grid center to facilitate proper FFT circular convolution.
+
+## Final Workflow (6 Steps)
+
+| Step | Physics | Implementation | Output |
+|------|---------|----------------|--------|
+| **1** | Density | `DFTBcore` SCF + `GridProjector.project_orbital` | `rho_grid.npy`, `rho_diff.npy` |
+| **2** | Poisson | FFT solver for $\nabla^2 V_{ES} = -4\pi \Delta\rho$ | `V_ES.npy` |
+| **3** | Pauli | $E_{Pauli} = A_{Pauli} \int \rho_s \rho_t dV$ (FFT Conv) | `E_Pauli_field.npy` |
+| **4** | ES | $E_{ES} = \int \Delta\rho_t V_{ES} dV$ (FFT Conv) | `E_ES_field.npy` |
+| **5** | vdW | Pairwise $-C_6/r^6$ with $R_{A2}$ softening | `E_vdw_field.npy` |
+| **6** | Relax | PP Relaxation + Frequency Shift ($\Delta f$) | `df_h*.png`, `df.npy` |
+
+## Technical Parameters
+- **$A_{Pauli}$**: Default set to 16.0 (consistent with Fireball version).
+- **$C_6$**: 30.0 for CO tip interaction.
+- **K_LAT**: 0.5 N/m (Probe Particle lateral stiffness).
+- **Units**: Forces in eV/Å, Energy in eV, Distances in Å.
+
+## Verification and Results
+The implementation was tested on a **Pentacene** molecule (22 atoms).
+- **Diagnostic Plots**: All intermediate steps generate 3-slice XY/XZ/Line-profile plots for visual debugging.
+- **AFM Contrast**: Final $\Delta f$ images at $h=3.0\text{\AA}$ and $h=4.2\text{\AA}$ show clear sub-molecular resolution, consistent with experimental and Fireball-based simulations.
+
+## Ongoing / To-Do
+- [ ] Fine-tune $A_{Pauli}$ against experimental contrast benchmarks.
+- [ ] Validate $C_6$ parameters for different tip-sample combinations.
+- [ ] Optimize the memory usage of `project_orbital` for very large systems.
+- [ ] Implement tip displacement plotting
+
+## Tip Displacement Plotting Implementation (May 2026)
+
+Added functionality to track and visualize lateral tip displacement during probe-particle relaxation in AFM simulations. During the relaxation step (Step 6), the tip position is iteratively adjusted based on the lateral force field and spring stiffness. The displacement between initial and final positions provides insight into how the tip responds to the sample's lateral force gradients.
+
+## Implementation Details
+
+### 1. Core Physics Layer - `pyBall/OCL/AFM.py`
+
+**Modified function**: `pp_relax_2d` (lines 792-844)
+
+**Changes**:
+- Added `tip_disp` dict to return value containing:
+  - `dx`: (nx_s, ny_s, nz_s) array of x-displacement for each scan point and height
+  - `dy`: (nx_s, ny_s, nz_s) array of y-displacement for each scan point and height
+- Displacement computed as `probe_x - XX2` and `probe_y - YY2` after relaxation loop
+- Updated docstring to reflect new return signature: `(FEs_relax, tip_disp)`
+
+**Code snippet**:
+```python
+tip_disp = {'dx': np.zeros((nx_s, ny_s, nz), dtype=np.float32),
+            'dy': np.zeros((nx_s, ny_s, nz), dtype=np.float32)}
+# ... relaxation loop ...
+tip_disp['dx'][:,:,iz] = probe_x - XX2
+tip_disp['dy'][:,:,iz] = probe_y - YY2
+return FEs_relax, tip_disp
+```
+
+### 2. Orchestration Layer - `pyBall/OCL/AFM_utils.py`
+
+**Modified functions**:
+
+#### `compose_and_relax` (lines 273-315)
+- Updated to unpack both `FEs_relax` and `tip_disp` from `pp_relax_2d`
+- Returns tuple: `(df, tip_disp)` instead of just `df`
+- Updated docstring to document tip_disp return value
+
+#### `run_afm_pipeline` (lines 586-619)
+- Unpacks `tip_disp` from `compose_and_relax`
+- Saves displacement arrays to disk:
+  - `tip_disp_dx.npy`
+  - `tip_disp_dy.npy`
+- Includes `tip_disp` in intermediates dict for downstream use
+- Adds `scan_xs`, `scan_ys`, `heights` to results dict for plotting
+
+#### New function: `plot_tip_displacement` (lines 407-473)
+**Purpose**: Visualize tip displacement for all heights in a single figure
+
+**Features**:
+- Creates figure with `nz` rows (one per height) × 3 columns
+- Column 1: dx displacement (seismic colormap, symmetric around zero)
+- Column 2: dy displacement (seismic colormap, symmetric around zero)
+- Column 3: Total displacement `r = sqrt(dx² + dy²)` (magma colormap)
+- Each image uses per-slice normalization (vmin=-vmax for dx/dy)
+- Extent labels with physical units (Å)
+
+**Parameters**:
+```python
+def plot_tip_displacement(tip_disp, scan_xs, scan_ys, heights, output_dir, prefix='tip_disp')
+```
+
+**Visualization details**:
+- Uses `TwoSlopeNorm` for symmetric normalization of dx/dy
+- Extent derived from scan_xs/scan_ys for correct physical scaling
+- Colorbars for each subplot
+- Figure size: (15, 5*nz) inches
+
+### 3. Test Script - `tests/tAFM/pyocl_fdbm/test_full_pipeline.py`
+
+**Changes**:
+- Added CLI argument `--plot_tip_disp` (action='store_true', default=False)
+- Conditional plotting call:
+  ```python
+if args.plot_tip_disp and 'tip_disp' in inter:
+    afm_utils.plot_tip_displacement(inter['tip_disp'], scan_xs, scan_ys, heights, args.output_dir)
+```
+- Uses scan coordinates from results dict (no need to recompute)
+
+## Data Flow
+
+```
+pp_relax_2d (AFM.py)
+    ↓ returns (FEs_relax, tip_disp)
+compose_and_relax (AFM_utils.py)
+    ↓ returns (df, tip_disp)
+run_afm_pipeline (AFM_utils.py)
+    ↓ saves tip_disp_dx.npy, tip_disp_dy.npy
+    ↓ includes in intermediates
+test_full_pipeline.py
+    ↓ if --plot_tip_disp flag
+plot_tip_displacement (AFM_utils.py)
+    ↓ generates tip_disp.png
+```
+
+## Usage Example
+
+```bash
+# Run with tip displacement plotting
+python3 test_full_pipeline.py molecule.xyz \
+    --output_dir output \
+    --plot_tip_disp \
+    --height_range 3.0 4.0 --height_step 0.2
+
+# Run without tip displacement plotting (default)
+python3 test_full_pipeline.py molecule.xyz \
+    --output_dir output \
+    --height_range 3.0 4.0 --height_step 0.2
+```
+
+## Output
+When enabled, generates `tip_disp.png` in the output directory showing:
+- For each height: dx, dy, and total displacement maps
+- Displacement magnitude typically ranges from 0-0.5 Å depending on K_LAT and force field strength
+- Patterns correlate with molecular features (atoms, bonds) where lateral force gradients are strongest
+
+## Physics Context
+The tip displacement during relaxation is governed by:
+- **Lateral force field**: `-∇_⊥ E_total` (Pauli + ES + vdW contributions)
+- **Spring restoring force**: `-K_LAT * (r - r₀)`
+- **Equilibrium**: When lateral force balances spring force
+
+The displacement magnitude provides a diagnostic for:
+- Force field strength and spatial variation
+- Appropriateness of K_LAT parameter
+- Numerical convergence of relaxation algorithm
+
+## Files Modified
+1. `/home/prokop/git/FireCore/pyBall/OCL/AFM.py` - Core relaxation function
+2. `/home/prokop/git/FireCore/pyBall/OCL/AFM_utils.py` - Orchestration and plotting
+3. `/home/prokop/git/FireCore/tests/tAFM/pyocl_fdbm/test_full_pipeline.py` - CLI interface
+
+## Testing
+Successfully tested on TBTAP molecule (66 atoms) with:
+- 5 height slices (3.0-3.8 Å, step 0.2 Å)
+- Scan grid: 111×107 points
+- Generated 559KB displacement plot
+- Displacement ranges: ~0-0.3 Å typical magnitude

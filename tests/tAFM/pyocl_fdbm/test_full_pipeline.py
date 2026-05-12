@@ -46,6 +46,7 @@ def main():
     parser.add_argument('--fit_z_min', type=float, default=2.0, help='Fit range minimum z (Å)')
     parser.add_argument('--fit_z_max', type=float, default=3.0, help='Fit range maximum z (Å)')
     parser.add_argument('--fit_zscan_dir', type=str, default=None, help='Pre-computed DFTB z-scan directory')
+    parser.add_argument('--plot_tip_disp', action='store_true', default=False, help='Plot tip displacement during relaxation')
     args = parser.parse_args()
 
     SK = args.basis
@@ -105,7 +106,9 @@ def main():
 
     # Plot diagnostic panel with field components
     inter = results['intermediates']
-    heights = np.arange(args.height_range[0], args.height_range[1], args.height_step)
+    scan_xs = results['scan_xs']
+    scan_ys = results['scan_ys']
+    heights = results['heights']
     afm_utils.plot_diagnostic_panel(
         inter['E_pauli_field'], inter['E_ES_field'], inter['E_vdw'],
         inter['E_pauli_field'] + inter['E_ES_field'] + inter['E_vdw'],
@@ -117,6 +120,16 @@ def main():
         results['grid_spec']['origin'], args.step, heights,
         args.output_dir
     )
+    
+    # Plot tip displacement
+    if args.plot_tip_disp and 'tip_disp' in inter:
+        afm_utils.plot_tip_displacement(
+            inter['tip_disp'],
+            scan_xs,
+            scan_ys,
+            heights,
+            args.output_dir
+        )
 
 if __name__ == "__main__":
     main()

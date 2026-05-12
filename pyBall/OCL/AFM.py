@@ -794,7 +794,9 @@ def pp_relax_2d(force_func, scan_xs, scan_ys, probe_heights, mol_z=0.0,
     """
     2D lateral PP relaxation per height slice.
     force_func(positions_Nx3) → (N,3) forces.
-    Returns FEs_relax (nx_s, ny_s, nz, 4).
+    Returns (FEs_relax, tip_disp) where:
+        FEs_relax: (nx_s, ny_s, nz, 4) forces at relaxed positions
+        tip_disp: dict with 'dx' (nx_s, ny_s, nz) and 'dy' (nx_s, ny_s, nz) displacement arrays
     """
     from scipy.ndimage import map_coordinates as _mc
     nx_s = len(scan_xs); ny_s = len(scan_ys); nz = len(probe_heights)
@@ -812,6 +814,8 @@ def pp_relax_2d(force_func, scan_xs, scan_ys, probe_heights, mol_z=0.0,
         cy = np.clip((py - pp_y0) / step, 0, F2d.shape[1]-1.001)
         return _mc(F2d, [cx.ravel(), cy.ravel()], order=1, mode='nearest').reshape(px.shape).astype(np.float32)
     FEs_relax = np.zeros((nx_s, ny_s, nz, 4), dtype=np.float32)
+    tip_disp = {'dx': np.zeros((nx_s, ny_s, nz), dtype=np.float32),
+                'dy': np.zeros((nx_s, ny_s, nz), dtype=np.float32)}
     for iz in range(nz):
         probe_z = probe_heights[iz] + mol_z
         PP_Z = np.full_like(PP_X, probe_z)
@@ -829,12 +833,15 @@ def pp_relax_2d(force_func, scan_xs, scan_ys, probe_heights, mol_z=0.0,
             Fy_s = _interp2d(FF_y, probe_x, probe_y) - K_LAT*(probe_y - YY2)
             vx = 0.8*vx + 0.3*Fx_s;  probe_x += vx*0.3
             vy = 0.8*vy + 0.3*Fy_s;  probe_y += vy*0.3
+        # Store displacement (final - initial position)
+        tip_disp['dx'][:,:,iz] = probe_x - XX2
+        tip_disp['dy'][:,:,iz] = probe_y - YY2
         FEs_relax[:,:,iz,0] = _interp2d(FF_x, probe_x, probe_y)
         FEs_relax[:,:,iz,1] = _interp2d(FF_y, probe_x, probe_y)
         FEs_relax[:,:,iz,2] = _interp2d(FF_z, probe_x, probe_y)
     Fz_relax = FEs_relax[:,:,:,2]
     print(f"Fz_relax: min={Fz_relax.min():.4f}  max={Fz_relax.max():.4f}  mean={Fz_relax.mean():.4f} eV/Å")
-    return FEs_relax
+    return FEs_relax, tip_disp
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
