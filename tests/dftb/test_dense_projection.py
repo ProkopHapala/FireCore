@@ -45,7 +45,10 @@ def parse_args():
     p.add_argument('--z-offset', type=float, default=2.0, help='Z offset for XY plane')
     p.add_argument('--no-plot', action='store_true', help='Disable plot generation')
     p.add_argument('--output-dir', type=str, default=None, help='Output directory')
-    p.add_argument('--dpi', type=int, default=150)
+    p.add_argument('--dpi', type=int, default=100, help='Plot DPI')
+    p.add_argument('--use-exp-basis', action='store_true', help='Use exponential radial decay for STM (LUMO orbitals only)')
+    p.add_argument('--exp-beta', type=float, default=1.0, help='Exponential decay constant (Å^-1), higher = steeper decay')
+    p.add_argument('--exp-r0', type=float, default=3.0, help='Reference distance (Å) where f=1')
     return p.parse_args()
 
 
@@ -187,13 +190,20 @@ def main():
     }
     projector, atoms_dict = setup_gridprojector_from_dftb(dftb_data, basis, verbosity=1, max_shells=max_shells)
 
-    # 7. Generate grid
+    # 7. Generate grid for density (always at z=2.0 with original basis)
     rmin = coords_ang.min() - 2.0
     rmax = coords_ang.max() + 2.0
     ngrid = int(np.ceil((rmax - rmin) / args.step))
-    print(f"\nGrid: {ngrid}x{ngrid} at z={args.z_offset} Å, step={args.step} Å")
-    points, extent = generate_2d_point_grid(plane='xy', npoints=ngrid, z_offset=args.z_offset, xy_range=(rmin, rmax))
+    z_offset_density = 2.0  # Always use z=2.0 for density projection
+    print(f"\nDensity grid: {ngrid}x{ngrid} at z={z_offset_density} Å, step={args.step} Å")
+    points, extent = generate_2d_point_grid(plane='xy', npoints=ngrid, z_offset=z_offset_density, xy_range=(rmin, rmax))
     points = points.astype(np.float32)
+
+    # 7b. Generate grid for STM (LUMO) at user-specified z-offset
+    ngrid_stm = int(np.ceil((rmax - rmin) / args.step))
+    print(f"\nSTM grid: {ngrid_stm}x{ngrid_stm} at z={args.z_offset} Å, step={args.step} Å")
+    points_stm, extent_stm = generate_2d_point_grid(plane='xy', npoints=ngrid_stm, z_offset=args.z_offset, xy_range=(rmin, rmax))
+    points_stm = points_stm.astype(np.float32)
 
     # 8. Determine occupied orbitals
     n_electrons = sum(VALENCE.get(n, 0) for n in enames)
@@ -206,10 +216,10 @@ def main():
     rho = projector.project_density_dense_points(points, dm, norb_per_atom, orb_offsets, atoms_dict)
     print(f"  rho: min={rho.min():.4e}, max={rho.max():.4e}, sum={rho.sum():.4e}")
 
-    # 10. Project orbitals around HOMO
+    # 10. Project orbitals around HOMO (always use original basis at z=2.0)
     homo_idx = nocc - 1
     mo_indices = [max(0, homo_idx - 1), homo_idx, min(len(eigvals) - 1, homo_idx + 1)]
-    print(f"\nProjecting orbitals {mo_indices} (HOMO={homo_idx})")
+    print(f"\nProjecting orbitals {mo_indices} (HOMO={homo_idx}) at z={z_offset_density} Å")
     orb_results = {}
     for imo in mo_indices:
         coeffs = eigvecs[imo].astype(np.float32)
@@ -217,19 +227,24 @@ def main():
         orb_results[imo] = psi
         print(f"  MO{imo + 1}: E={eigvals[imo] * 27.2114:.4f} eV")
 
-    # 10b. Project specific orbitals for partial density (LUMO+1,+2,+3)
+    # 10b. Project LUMO orbitals for STM (use exponential if requested)
     lumo_offsets = [1, 2, 3]  # HOMO+1, HOMO+2, HOMO+3
     lumo_indices = [min(len(eigvals) - 1, homo_idx + offset) for offset in lumo_offsets]
-    print(f"\nProjecting LUMO orbitals {lumo_indices} for partial density (HOMO+1,+2,+3)")
+    print(f"\nProjecting LUMO orbitals {lumo_indices} for STM (HOMO+1,+2,+3) at z={args.z_offset} Å")
+    if args.use_exp_basis:
+        print(f"  Using exponential radial decay: beta={args.exp_beta} Å^-1, r0={args.exp_r0} Å")
     lumo_results = {}
     for imo in lumo_indices:
         coeffs = eigvecs[imo].astype(np.float32)
-        psi = projector.project_orbital_dense_points(points, coeffs, norb_per_atom, orb_offsets, atoms_dict)
+        if args.use_exp_basis:
+            psi = projector.project_orbital_dense_points_exp(points_stm, coeffs, norb_per_atom, orb_offsets, atoms_dict, beta=args.exp_beta, r0=args.exp_r0)
+        else:
+            psi = projector.project_orbital_dense_points(points_stm, coeffs, norb_per_atom, orb_offsets, atoms_dict)
         lumo_results[imo] = psi
         print(f"  MO{imo + 1}: E={eigvals[imo] * 27.2114:.4f} eV")
 
     # Sum squares of LUMO orbitals for partial density
-    rho_lumo = np.zeros_like(rho)
+    rho_lumo = np.zeros_like(points_stm[:, 0], dtype=np.float32)
     for imo in lumo_indices:
         rho_lumo += lumo_results[imo] ** 2
     print(f"  LUMO partial density: min={rho_lumo.min():.4e}, max={rho_lumo.max():.4e}, sum={rho_lumo.sum():.4e}")
@@ -240,58 +255,57 @@ def main():
         print("Generating Plots")
         print("=" * 70)
 
-        # Density plot
+        # Density plot (always at z=2.0 with original basis)
         rho_grid = rho.reshape(ngrid, ngrid)
         fig, ax = plt.subplots(figsize=(8, 6))
         im = ax.imshow(rho_grid, origin='lower', extent=extent, cmap='viridis')
-        ax.set_title(f'Density from DM\n{system_name} | {args.basis} | z={args.z_offset} Å')
-        ax.set_xlabel('X (Å)')
-        ax.set_ylabel('Y (Å)')
-        plt.colorbar(im, ax=ax)
-        ax.scatter(coords_ang[:, 0], coords_ang[:, 1], c='black', marker='o', s=15, alpha=0.5, zorder=10)
-        plt.tight_layout()
-        density_file = output_dir / f'density_{system_name}_{args.basis}_z{args.z_offset}.png'
-        plt.savefig(density_file, dpi=args.dpi)
-        print(f"  Saved: {density_file}")
+        ax.set_title(f"Electron Density - {system_name} ({args.basis}) z={z_offset_density:.1f} Å")
+        ax.set_xlabel("x (Å)")
+        ax.set_ylabel("y (Å)")
+        plt.colorbar(im, ax=ax, label="rho (e/Å³)")
+        density_path = os.path.join(output_dir, f"density_{system_name}_{args.basis}_z{z_offset_density:.1f}.png")
+        plt.savefig(density_path, dpi=args.dpi)
         plt.close()
+        print(f"  Saved: {density_path}")
 
-        # LUMO partial density plot
-        rho_lumo_grid = rho_lumo.reshape(ngrid, ngrid)
+        # LUMO partial density plot (at STM z-offset, exponential if requested)
+        rho_lumo_grid = rho_lumo.reshape(ngrid_stm, ngrid_stm)
         fig, ax = plt.subplots(figsize=(8, 6))
-        im = ax.imshow(rho_lumo_grid, origin='lower', extent=extent, cmap='viridis')
-        ax.set_title(f'LUMO Partial Density (HOMO+1,+2,+3)\n{system_name} | {args.basis} | z={args.z_offset} Å')
-        ax.set_xlabel('X (Å)')
-        ax.set_ylabel('Y (Å)')
-        plt.colorbar(im, ax=ax)
-        ax.scatter(coords_ang[:, 0], coords_ang[:, 1], c='black', marker='o', s=15, alpha=0.5, zorder=10)
-        plt.tight_layout()
-        lumo_density_file = output_dir / f'density_lumo_{system_name}_{args.basis}_z{args.z_offset}.png'
-        plt.savefig(lumo_density_file, dpi=args.dpi)
-        print(f"  Saved: {lumo_density_file}")
+        im = ax.imshow(rho_lumo_grid, origin='lower', extent=extent_stm, cmap='viridis')
+        mode_str = "exp" if args.use_exp_basis else "basis"
+        beta_str = f"beta={args.exp_beta:.1f}" if args.use_exp_basis else ""
+        title = f"STM (LUMO HOMO+1,+2,+3) - {system_name} ({args.basis}) z={args.z_offset:.1f} Å ({mode_str}"
+        if beta_str:
+            title += f", {beta_str}"
+        title += ")"
+        ax.set_title(title)
+        ax.set_xlabel("x (Å)")
+        ax.set_ylabel("y (Å)")
+        plt.colorbar(im, ax=ax, label="rho_LUMO (e/Å³)")
+        stm_filename = f"STM_{system_name}_{args.basis}_z{args.z_offset:.1f}"
+        if args.use_exp_basis:
+            stm_filename += f"_beta{args.exp_beta:.1f}"
+        stm_path = os.path.join(output_dir, f"{stm_filename}.png")
+        plt.savefig(stm_path, dpi=args.dpi)
         plt.close()
+        print(f"  Saved: {stm_path}")
 
-        # Orbital plots
-        fig, axes = plt.subplots(1, len(mo_indices), figsize=(5 * len(mo_indices), 4))
-        if len(mo_indices) == 1:
-            axes = [axes]
+        # Orbitals plot (always at z=2.0 with original basis)
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
         for i, imo in enumerate(mo_indices):
             psi_grid = orb_results[imo].reshape(ngrid, ngrid)
-            vmax = np.max(np.abs(psi_grid))
-            im = axes[i].imshow(psi_grid, origin='lower', extent=extent, cmap='RdBu_r', vmin=-vmax, vmax=vmax)
-            # Calculate relative index to HOMO
+            im = axes[i].imshow(psi_grid, origin='lower', extent=extent, cmap='RdBu_r')
             rel_idx = imo - homo_idx
-            rel_label = f'HOMO{rel_idx:+d}' if rel_idx != 0 else 'HOMO'
-            axes[i].set_title(f'MO{imo + 1} ({rel_label})\nE={eigvals[imo] * 27.2114:.2f} eV')
-            axes[i].set_xlabel('X (Å)')
-            axes[i].set_ylabel('Y (Å)')
+            label = "HOMO" if rel_idx == 0 else f"HOMO{rel_idx:+d}"
+            axes[i].set_title(f"MO{imo + 1} ({label})\nE={eigvals[imo] * 27.2114:.4f} eV")
+            axes[i].set_xlabel("x (Å)")
+            axes[i].set_ylabel("y (Å)")
             plt.colorbar(im, ax=axes[i])
-            axes[i].scatter(coords_ang[:, 0], coords_ang[:, 1], c='black', marker='o', s=15, alpha=0.5, zorder=10)
-        plt.suptitle(f'Orbital Projection\n{system_name} | {args.basis} | z={args.z_offset} Å', fontsize=14)
         plt.tight_layout()
-        orbitals_file = output_dir / f'orbitals_{system_name}_{args.basis}_z{args.z_offset}.png'
-        plt.savefig(orbitals_file, dpi=args.dpi)
-        print(f"  Saved: {orbitals_file}")
+        orb_path = os.path.join(output_dir, f"orbitals_{system_name}_{args.basis}_z{z_offset_density:.1f}.png")
+        plt.savefig(orb_path, dpi=args.dpi)
         plt.close()
+        print(f"  Saved: {orb_path}")
 
     # Cleanup
     shutil.rmtree(work_dir)

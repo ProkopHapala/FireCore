@@ -1063,6 +1063,56 @@ __kernel void project_orbital_dense_points(
 }
 
 // ============================================================================
+// Orbital projection at arbitrary points using dense MO coefficient vector
+// with exponential radial decay (for STM at large distances).
+// Computes psi(p) = sum_{atoms} sum_{mu} coeffs[i0orb+mu] * phi_mu(p)
+// Uses f(r) = exp(-beta*(r - r0)) instead of spline basis.
+// NO CUTOFF - truly long-range for STM simulation.
+// Supports arbitrary number of orbitals per atom (s, p, d) via i0orb/norb.
+// ============================================================================
+__kernel void project_orbital_dense_points_exp(
+    const int n_points,
+    __global const float4* points,
+    __global const AtomData* atoms,
+    const int natoms,
+    __global const float* coeffs,       // [norb_total] dense coefficient vector
+    const float beta,                   // exponential decay constant (Å^-1), must be > 0
+    const float r0,                     // reference distance (Å) where f=1
+    const int max_shells,
+    __global float* out_psi
+) {
+    const int ip = get_global_id(0);
+    if (ip >= n_points) return;
+
+    const float3 p = points[ip].xyz;
+    float psi = 0.0f;
+
+    for (int ia = 0; ia < natoms; ++ia) {
+        AtomData ad = atoms[ia];
+        float3 d = p - ad.pos_rcut.xyz;
+        float r = sqrt(dot(d, d));
+        float3 rhat = d / (r + 1e-12f);
+
+        // Exponential radial decay: f(r) = exp(-beta*(r - r0))
+        // beta > 0 ensures decaying function
+        float R = exp(-beta * (r - r0));
+
+        int i0 = ad.i0orb;
+        int norb = ad.norb;
+        int iorb = 0;
+        for (int ish = 0; ish < max_shells && iorb < norb; ++ish) {
+            int l = ish;
+            for (int mm = -l; mm <= l && iorb < norb; ++mm, ++iorb) {
+                float ang = eval_angular_dense(l, mm, rhat);
+                psi += coeffs[i0 + iorb] * R * ang;
+            }
+        }
+    }
+
+    out_psi[ip] = psi;
+}
+
+// ============================================================================
 // Density projection at arbitrary points using dense density matrix.
 // Computes rho(p) = sum_{i,j} sum_{mu,nu} coeffs[i0_i+mu] * coeffs[i0_j+nu] * phi_mu(p) * phi_nu(p)
 // For diagonal density matrix (MO occupancy): dm is a 1D vector of diagonal elements

@@ -975,3 +975,129 @@ For migration to other projects:
 3. Use `parse_wfc_hsd()` and `convert_wfc_to_species_list_ang()` from `DFTBplusParser.py` to load basis parameters
 4. Set `max_shells=2` for sp systems, `max_shells=3` for spd systems
 5. The dense projection methods are now the preferred approach for general systems; sparse sp3-basis methods remain for backward compatibility
+
+---
+
+## STM Imaging with Single-Zeta Exponential Orbitals (May 2026)
+
+### Overview
+
+Added exponential radial decay functionality for long-range STM (Scanning Tunneling Microscopy) simulation. This replaces the standard DFTB spline basis functions with a simple single-zeta exponential STO (Slater-Type Orbital) for tip-sample overlap calculations at large tip-sample distances where the original DFTB basis functions are too short-ranged.
+
+### Motivation
+
+The original DFTB basis functions (from wfc.3ob-3-1.hsd) have finite cutoffs (~3-6 Å) which limits their usefulness for STM simulation at typical tip-sample distances (5-10 Å). The exponential radial decay provides:
+- No artificial cutoffs - truly long-range behavior
+- User-controllable decay constant via CLI
+- Suitable for STM simulation where the tip orbital is a simple exponential STO
+
+### Changes Made
+
+#### 1. OpenCL Kernel Implementation (`pyBall/DFTB/cl/Grid_dftb.cl`)
+
+**Added exponential radial decay kernel:**
+```c
+__kernel void project_orbital_dense_points_exp(
+    const int n_points,
+    __global const float4* points,
+    __global const AtomData* atoms,
+    const int natoms,
+    __global const float* coeffs,       // [norb_total] dense coefficient vector
+    const float beta,                   // exponential decay constant (Å^-1), must be > 0
+    const float r0,                     // reference distance (Å) where f=1
+    const int max_shells,
+    __global float* out_psi
+)
+```
+
+**Key features:**
+- Uses f(r) = exp(-beta*(r - r0)) instead of spline basis
+- NO artificial cutoff - truly long-range for STM simulation
+- Supports s, p, d orbitals via shell-based angular function evaluation
+- Maintains correct DFTB orbital ordering (s, py, pz, px for p-orbitals)
+
+#### 2. Python Interface (`pyBall/DFTB/Grid_dftb.py`)
+
+**Added exponential projection method:**
+```python
+def project_orbital_dense_points_exp(
+    self, points, coeffs_dense, norb_per_atom, orb_offsets, atoms_dict,
+    beta=1.0, r0=3.0
+)
+```
+
+**Parameters:**
+- `beta`: Exponential decay constant (Å^-1), default 1.0, higher = steeper decay
+- `r0`: Reference distance (Å) where f=1, default 3.0
+
+**Returns:** (n_points,) float32 orbital values
+
+#### 3. Test Script Integration (`tests/dftb/test_dense_projection.py`)
+
+**Added CLI flags:**
+- `--use-exp-basis`: Enable exponential radial decay for STM (LUMO orbitals only)
+- `--exp-beta`: Exponential decay constant (Å^-1), default 1.0
+- `--exp-r0`: Reference distance (Å) where f=1, default 3.0
+
+**Workflow changes:**
+- Density projection: Always uses original DFTB basis at z=2.0 Å
+- STM (LUMO) projection: Uses exponential decay at user-specified z-offset when `--use-exp-basis` is set
+- Separate grids: Density grid at z=2.0, STM grid at user-specified z-offset
+- Output filename: `STM_{system}_{basis}_z{z}_beta{beta}.png`
+- Plot title includes beta value for identification
+
+### Usage Example
+
+```bash
+# STM simulation at z=5.0 Å with exponential decay (beta=1.0)
+python test_dense_projection.py \
+    --xyz tests/tAFM/pyocl_fdbm/TBTAP_3mols_c3h.xyz \
+    --basis 3ob-3-1 \
+    --step 0.2 \
+    --z-offset 5.0 \
+    --use-exp-basis \
+    --exp-beta 1.0
+```
+
+**Output files:**
+- `density_TBTAP_3mols_c3h_3ob-3-1_z2.0.png` - Electron density (original basis, z=2.0 Å)
+- `STM_TBTAP_3mols_c3h_3ob-3-1_z5.0_beta1.0.png` - STM LUMO density (exponential, z=5.0 Å)
+- `orbitals_TBTAP_3mols_c3h_3ob-3-1_z2.0.png` - MO orbitals (original basis, z=2.0 Å)
+
+### Test Results
+
+**System tested:** TBTAP_3mols_c3h (Bromine-containing molecule)
+**Basis set:** 3ob-3-1 (supports d-orbitals)
+**STM parameters:** z=5.0 Å, beta=1.0 Å^-1, r0=3.0 Å
+
+**LUMO partial density (HOMO+1,+2,+3):**
+- max: 3.9471e-05
+- sum: 7.0257e-02
+
+The exponential decay provides natural long-range behavior without sharp cutoffs, suitable for STM simulation at tip-sample distances beyond the original DFTB basis range.
+
+### Key Features
+
+1. **Long-range capability:** No artificial cutoffs - pure exponential decay for true long-range STM
+2. **User control:** Decay constant (beta) and reference distance (r0) configurable via CLI
+3. **Dual-mode workflow:** Density uses original basis at z=2.0, STM uses exponential at user z
+4. **d-orbital support:** Maintains full support for d-orbitals with correct DFTB ordering
+5. **Descriptive output:** Filenames and plot titles include beta value for easy identification
+
+### Files Modified
+
+**Core implementation:**
+- `pyBall/DFTB/cl/Grid_dftb.cl` - Added `project_orbital_dense_points_exp` kernel (lines 1073-1115)
+- `pyBall/DFTB/Grid_dftb.py` - Added `project_orbital_dense_points_exp()` method (lines 894-952)
+
+**Test script:**
+- `tests/dftb/test_dense_projection.py` - Added CLI flags, dual-grid workflow, exponential projection integration
+
+### Migration Notes
+
+For migration to other projects:
+1. Include the `project_orbital_dense_points_exp` kernel from `Grid_dftb.cl`
+2. The exponential method is optional - original basis projection remains the default
+3. Use `--use-exp-basis` flag only when long-range STM simulation is needed
+4. Default beta=1.0 provides moderate decay; adjust based on system size and tip-sample distance
+5. The method is designed for STM tip-sample overlap, not for ground-state density calculation

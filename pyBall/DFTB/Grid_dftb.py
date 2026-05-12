@@ -891,6 +891,65 @@ class GridProjector(OpenCLBase):
         self.queue.finish()
         return out
 
+    def project_orbital_dense_points_exp(self, points, coeffs_dense, norb_per_atom, orb_offsets, atoms_dict, beta=1.0, r0=3.0):
+        """Evaluate a single orbital at arbitrary points using dense MO coefficient vector with exponential radial decay.
+        
+        Uses f(r) = exp(-beta*(r - r0)) instead of spline basis for long-range STM simulation.
+        Supports s, p, d orbitals via shell-based angular function evaluation.
+        
+        Args:
+            points: (n_points, 3) float32 positions in Angstrom
+            coeffs_dense: (norb_total,) dense MO coefficient vector in C row-major order.
+                          Orbital ordering per atom follows Fortran convention:
+                          s, py, pz, px, dxy, dyz, dz2, dxz, dx2-y2
+            norb_per_atom: (natoms,) number of orbitals per atom
+            orb_offsets: (natoms+1,) cumulative orbital offsets
+            atoms_dict: dict with 'pos', 'Rcut', 'type'
+            beta: exponential decay constant (Å^-1)
+            r0: reference distance (Å) where f=1
+        
+        Returns:
+            psi: (n_points,) float32 orbital values
+        """
+        points = np.asarray(points, dtype=np.float32)
+        if points.ndim != 2 or points.shape[1] != 3:
+            raise ValueError(f"project_orbital_dense_points_exp: points must be (n,3), got {points.shape}")
+        
+        natoms = len(atoms_dict['pos'])
+        norb_total = int(orb_offsets[-1])
+        coeffs_dense = np.asarray(coeffs_dense, dtype=np.float32).ravel()
+        if coeffs_dense.shape[0] != norb_total:
+            raise ValueError(f"coeffs_dense shape {coeffs_dense.shape} != norb_total {norb_total}")
+        
+        atom_data = self._build_atom_data_dense(atoms_dict, norb_per_atom, orb_offsets)
+        
+        mf = cl.mem_flags
+        d_points = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR,  hostbuf=np.c_[points, np.zeros((len(points), 1), np.float32)].astype(np.float32))
+        d_atoms  = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
+        d_coeffs = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=coeffs_dense)
+        d_out    = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=len(points) * 4)
+        
+        self._load_kernels()
+        
+        gs = (int(len(points)),)
+        ls = None
+        self.prg.project_orbital_dense_points_exp(
+            self.queue, gs, ls,
+            np.int32(len(points)),
+            d_points, d_atoms, np.int32(natoms),
+            d_coeffs,
+            np.float32(beta),
+            np.float32(r0),
+            np.int32(self.basis_meta['max_shells']),
+            d_out
+        )
+        self.queue.finish()
+        
+        out = np.empty(len(points), dtype=np.float32)
+        cl.enqueue_copy(self.queue, out, d_out)
+        self.queue.finish()
+        return out
+
     def project_density_dense_points(self, points, dm_dense, norb_per_atom, orb_offsets, atoms_dict):
         """Evaluate density at arbitrary points using dense density matrix.
         
