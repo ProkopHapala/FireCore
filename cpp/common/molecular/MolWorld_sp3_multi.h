@@ -1679,8 +1679,8 @@ virtual void pre_loop() override {
             //if(isys==0){    printf( "pre_loop() ffl[ia=%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g) \n", isys, ia, ffl.constr[ia].x,ffl.constr[ia].y,ffl.constr[ia].z,ffl.constr[ia].w, ffl.constrK[ia].x,ffl.constrK[ia].y,ffl.constrK[ia].z ); }
         }
     }
-    //spread_replicas_grid(10,10, 5, 5 );
-    spread_replicas_random(5, 5 );
+    // spread_replicas_grid(10,10, 5, 5 );
+    // spread_replicas_random(30, 30 );
     //printConstrains();
     // for(int ic : constrain_list ){
     //     for(int isys=0; isys<nSystems; isys++){
@@ -3484,8 +3484,8 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
                 if(atypes_init[ia]==params.getAtomType("Si")){
                     if(iSi1 == -1){ iSi1 = ia; }
                     else{
-                        Vec3f p1 = (Vec3f){-5.5f, 0, 2.5f}; // ToDo: we should probably use actual positions of Si atoms rather than fixed values
-                        Vec3f p2 = (Vec3f){+5.5f, 0, 2.5f};
+                        Vec3f p1 = (Vec3f){-5.5f, 32.f, 2.5f}; // ToDo: we should probably use actual positions of Si atoms rather than fixed values
+                        Vec3f p2 = (Vec3f){+5.5f, 32.f, 2.5f};
                         p_init.push_back(p1); p_init.push_back(p2);
                         // Default final positions: stretched by 15A along X
                         p_final.push_back(p1 + (Vec3f){ -30.f, 0, 0.f});
@@ -3667,17 +3667,17 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
 
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
     //debug_eval(); return 0;
-if(initial){
-            // Clear timing file and write header
-        FILE* f = fopen("times_run_ocl_opt.dat", "w");
-        if(f){
-            fprintf(f, "# Timing data for run_ocl_opt (all times in seconds)\n");
-            fprintf(f, "# %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n",
-                "t_total", "t_updateME", "t_bonding", "t_gridff", "t_nonbond", "t_surfatoms", "t_updateAt", "t_trajSave", "t_evalVFs");
-            fclose(f);
-            initial = false;
-        }
-}
+// if(initial){
+//             // Clear timing file and write header
+//         FILE* f = fopen("times_run_ocl_opt.dat", "w");
+//         if(f){
+//             fprintf(f, "# Timing data for run_ocl_opt (all times in seconds)\n");
+//             fprintf(f, "# %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n",
+//                 "t_total", "t_updateME", "t_bonding", "t_gridff", "t_nonbond", "t_surfatoms", "t_updateAt", "t_trajSave", "t_evalVFs");
+//             fclose(f);
+//             initial = false;
+//         }
+// }
     double F2conv = Fconv*Fconv;
     // picked2GPU( ipicked,  1.0 );
     if(initial && !bFreeEnergyCalc){  // In TI mode, constraints are set by computeFreeEnergy; skip this GUI-only init
@@ -3693,12 +3693,12 @@ if(initial){
                 if(ffls[isys].atypes[ia]==params.getAtomType("Si")){
                     if(iSi1 == -1){ iSi1 = ia; }
                     else{
-                        Vec3f p1 = (Vec3f){-5.5f, 0, 2.5f}; // ToDo: we should probably use actual positions of Si atoms rather than fixed values
-                        Vec3f p2 = (Vec3f){+5.5f, 0, 2.5f};
+                        Vec3f p1 = (Vec3f){0, 0, 0.5f}; // ToDo: we should probably use actual positions of Si atoms rather than fixed values
+                        Vec3f p2 = (Vec3f){+11.f, 0, 0.5f};
                         p_init.push_back(p1); p_init.push_back(p2);
                         // Default final positions: stretched by 15A along X
-                        p_final.push_back(p1 + (Vec3f){-30.f, 0, 2.5f});
-                        p_final.push_back(p2 + (Vec3f){ 30.f, 0, 2.5f});
+                        p_final.push_back(p1 + (Vec3f){0, 0, 0});
+                        p_final.push_back(p2 + (Vec3f){ 19.f, 0, 0});
                         iSi1 = -1;
                     }
                 }
