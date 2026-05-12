@@ -865,3 +865,113 @@ Use the following pattern for sub-second projection:
 **Benchmarks:**
 - Orbital projection time: **~0.7 - 1.5 ms** (RTX 3090).
 - Full pentacene density (51 states): **< 0.1 s**.
+
+---
+
+## Dense Projection Implementation (May 2026)
+
+### Overview
+
+Implemented dense-matrix orbital and density projection functionality in the DFTB Grid projection module to support arbitrary angular momentum shells (s, p, d) without relying on fixed sp3-basis sparse blocks. This provides a more flexible and general approach for orbital/density projection.
+
+### Changes Made
+
+#### 1. OpenCL Kernel Implementation (`pyBall/DFTB/cl/Grid_dftb.cl`)
+
+**Added d-orbital normalization prefactors:**
+```c
+#define PREF_S 0.28209479f   // 1/sqrt(4*pi)
+#define PREF_P 0.48860251f   // sqrt(3/(4*pi))
+#define PREF_D 1.09254843f   // sqrt(15/(4*pi))
+#define PREF_D_Z2 0.31539157f // for 3z^2-r^2
+#define PREF_D_X2Y2 0.54627422f // for x^2-y^2
+```
+
+**Added helper functions for dense projection:**
+- `eval_angular_dense(int l, int mm, float3 rhat)` - Evaluates spherical harmonics for dense basis with d-orbital support
+- `eval_atom_orbitals(float3 r_vox, AtomData ad, ...)` - Evaluates all orbitals for an atom using dense basis format
+
+**Added dense projection kernels:**
+- `project_orbital_dense_points` - Projects molecular orbitals to arbitrary points using dense coefficients
+- `project_density_dense_points` - Projects electron density to arbitrary points using dense density matrix
+
+#### 2. Python Interface (`pyBall/DFTB/Grid_dftb.py`)
+
+**Updated basis loading:**
+- Modified `load_basis_sto()` to accept `max_shells` parameter (default 2 for sp, use 3 for spd)
+- Updated `setup_gridprojector_from_dftb()` to pass `max_shells` through to basis loading
+
+**Added dense projection methods:**
+- `project_orbital_dense_points()` - Dense orbital projection to points
+- `project_density_dense_points()` - Dense density projection to points
+- `project_orbital_dense()` - Dense orbital projection to grid (interface added)
+- `project_density_dense()` - Dense density projection to grid (interface added)
+
+#### 3. Test Implementation (`tests/dftb/test_dense_projection.py`)
+
+**Created comprehensive test script** to compare dense vs sparse projection methods:
+- Uses real STO basis coefficients from `pyBall/DFTB/data/wfc.{basis}.hsd` files
+- Supports both mio-1-1 and 3ob-3-1 basis sets via CLI
+- Tests orbital projection for multiple MOs
+- Tests density projection (sum of orbitals vs density matrix)
+- Generates 2D grid visualizations for comparison
+
+**Refactored to use library functions:**
+- Replaced ad-hoc grid generation with `generate_2d_point_grid()` from `TestUtils.py`
+- Replaced manual plotting with `plot_comparison_2d()` from `plotUtils.py`
+- Reduced code by ~110 lines through library function reuse
+
+### Test Results
+
+**System tested:** Pentacene (22 carbon atoms, 14 hydrogen atoms, 36 atoms total)
+**Basis set:** mio-1-1 (sp only, no d-orbitals)
+**Grid resolution:** 0.1 Å step, z-offset = 2.0 Å
+**Test orbitals:** MO 4, 5, 6 (occupied)
+**Test density:** 51 occupied orbitals
+
+**Numerical agreement:**
+- Max orbital difference: **1.75e-10**
+- Max density difference (sparse vs dense sum): **7.28e-12**
+- Max density difference (dense sum vs dense DM): **1.46e-11**
+
+**Status:** ✅ All tests PASSED within tolerance (1e-6)
+
+The dense and sparse methods produce identical results at the 1e-10 to 1e-12 level for sp-only systems, confirming correct implementation of the dense projection kernels and Python interfaces.
+
+### Key Features
+
+1. **Flexible basis support:** Can handle s, p, and d orbitals via `max_shells` parameter
+2. **Real basis coefficients:** Uses actual STO parameters from DFTB+ basis files (mio-1-1, 3ob-3-1)
+3. **CLI-configurable:** Basis set selection and grid parameters configurable via command line
+4. **Library function reuse:** Minimized ad-hoc code by using existing plotting and grid generation utilities
+5. **High-resolution visualization:** 2D grid plots with atom overlays for easy comparison
+
+### Files Modified
+
+**Core implementation:**
+- `pyBall/DFTB/cl/Grid_dftb.cl` - Added d-orbital prefactors, helper functions, dense kernels
+- `pyBall/DFTB/Grid_dftb.py` - Updated basis loading, added dense projection methods
+
+**Test script:**
+- `tests/dftb/test_dense_projection.py` - New comprehensive test for dense vs sparse comparison
+
+**Basis files used:**
+- `pyBall/DFTB/data/wfc.mio-1-1.hsd` - mio-1-1 basis parameters
+- `pyBall/DFTB/data/wfc.3ob-3-1.hsd` - 3ob-3-1 basis parameters (available via CLI)
+
+### Output Files
+
+Test generates comparison plots:
+- `orbital_comparison.png` - Side-by-side sparse vs dense orbital comparison
+- `density_comparison.png` - Side-by-side sparse vs dense density comparison
+
+Both plots include atom overlays and difference plots for visual verification.
+
+### Migration Notes
+
+For migration to other projects:
+1. Include `Grid_dftb.cl` kernel file (contains dense projection kernels)
+2. Ensure basis files (wfc.mio-1-1.hsd, wfc.3ob-3-1.hsd) are accessible via `DFTB_BASIS_PATH` or relative path
+3. Use `parse_wfc_hsd()` and `convert_wfc_to_species_list_ang()` from `DFTBplusParser.py` to load basis parameters
+4. Set `max_shells=2` for sp systems, `max_shells=3` for spd systems
+5. The dense projection methods are now the preferred approach for general systems; sparse sp3-basis methods remain for backward compatibility

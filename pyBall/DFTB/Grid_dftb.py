@@ -30,13 +30,14 @@ class GridProjector(OpenCLBase):
         self._load_kernels()
         self.basis_data = {}
 
-    def load_basis_sto(self, species_list, dr=None, rc_max=None):
+    def load_basis_sto(self, species_list, dr=None, rc_max=None, max_shells=None):
         """
         Load STO (Slater-type orbital) basis for DFTB+ into the same GPU buffer as load_basis().
         
         Evaluates STO analytically on a uniform grid: R_l(r) = sum_i c_i * r^(l+pow-1) * exp(-alpha_i*r)
         Packs identically to load_basis() as float2(value, d2) per node.
-        Always uses max_shells=2 (s and p) so the kernel is uniform (H p-shell = zeros).
+        Default max_shells=2 (s and p) so the kernel is uniform (H p-shell = zeros).
+        Set max_shells=3 to include d-orbitals.
         
         Args:
             species_list: list of dicts with keys:
@@ -45,11 +46,13 @@ class GridProjector(OpenCLBase):
                 'resolution': float (Å, grid spacing hint)
             dr: override common grid spacing (Å); if None, uses min resolution/2
             rc_max: override max cutoff (Å); if None, uses max across all shells
+            max_shells: int, max angular momentum shells (default 2 for sp, use 3 for spd)
         """
         from .DFTBplusParser import _spline_d2_uniform, compute_sto_radial
 
         all_nz = sorted(set(sp['atomic_number'] for sp in species_list))
-        max_shells = 2  # Fixed: always s (shell 0) and p (shell 1), pad missing with zeros
+        if max_shells is None:
+            max_shells = 2  # Fixed: always s (shell 0) and p (shell 1), pad missing with zeros
 
         # Determine common grid
         all_rc = []
@@ -794,6 +797,311 @@ class GridProjector(OpenCLBase):
         self.queue.finish()
         return out_t, out_I
 
+
+
+    # ============================================================================
+    # Dense-matrix orbital/density projection (d-orbital support)
+    # ============================================================================
+
+    def _build_atom_data_dense(self, atoms_dict, norb_per_atom, orb_offsets):
+        """Build AtomData with correct i0orb and norb for dense-matrix kernels.
+        
+        Args:
+            atoms_dict: dict with 'pos', 'Rcut', 'type'
+            norb_per_atom: (natoms,) number of orbitals per atom
+            orb_offsets: (natoms+1,) cumulative orbital offsets
+        
+        Returns:
+            atom_data: structured numpy array with i0orb and norb set correctly
+        """
+        natoms = len(atoms_dict['pos'])
+        atom_data = np.zeros(natoms, dtype=[
+            ('pos_rcut', 'f4', 4),
+            ('type', 'i4'),
+            ('i0orb', 'i4'),
+            ('norb', 'i4'),
+            ('pad', 'i4')
+        ])
+        for ia in range(natoms):
+            atom_data[ia]['pos_rcut'][:3] = atoms_dict['pos'][ia]
+            atom_data[ia]['pos_rcut'][3] = atoms_dict['Rcut'][ia]
+            Z = int(atoms_dict['type'][ia])
+            if Z not in self.basis_meta['nz_map']:
+                raise RuntimeError(f"_build_atom_data_dense: species nz={Z} not loaded")
+            atom_data[ia]['type'] = int(self.basis_meta['nz_map'][Z])
+            atom_data[ia]['i0orb'] = int(orb_offsets[ia])
+            atom_data[ia]['norb'] = int(norb_per_atom[ia])
+        return atom_data
+
+    def project_orbital_dense_points(self, points, coeffs_dense, norb_per_atom, orb_offsets, atoms_dict):
+        """Evaluate a single orbital at arbitrary points using dense MO coefficient vector.
+        
+        Supports s, p, d orbitals via shell-based angular function evaluation.
+        
+        Args:
+            points: (n_points, 3) float32 positions in Angstrom
+            coeffs_dense: (norb_total,) dense MO coefficient vector in C row-major order.
+                          Orbital ordering per atom follows Fortran convention:
+                          s, py, pz, px, dxy, dyz, dz2, dxz, dx2-y2
+            norb_per_atom: (natoms,) number of orbitals per atom
+            orb_offsets: (natoms+1,) cumulative orbital offsets
+            atoms_dict: dict with 'pos', 'Rcut', 'type'
+        
+        Returns:
+            psi: (n_points,) float32 orbital values
+        """
+        points = np.asarray(points, dtype=np.float32)
+        if points.ndim != 2 or points.shape[1] != 3:
+            raise ValueError(f"project_orbital_dense_points: points must be (n,3), got {points.shape}")
+        
+        natoms = len(atoms_dict['pos'])
+        norb_total = int(orb_offsets[-1])
+        coeffs_dense = np.asarray(coeffs_dense, dtype=np.float32).ravel()
+        if coeffs_dense.shape[0] != norb_total:
+            raise ValueError(f"coeffs_dense shape {coeffs_dense.shape} != norb_total {norb_total}")
+        
+        atom_data = self._build_atom_data_dense(atoms_dict, norb_per_atom, orb_offsets)
+        
+        mf = cl.mem_flags
+        d_points = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR,
+                             hostbuf=np.c_[points, np.zeros((len(points), 1), np.float32)].astype(np.float32))
+        d_atoms = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
+        d_coeffs = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=coeffs_dense)
+        d_out = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=len(points) * 4)
+        
+        self._load_kernels()
+        
+        gs = (int(len(points)),)
+        ls = None
+        self.prg.project_orbital_dense_points(
+            self.queue, gs, ls,
+            np.int32(len(points)),
+            d_points, d_atoms, np.int32(natoms),
+            d_coeffs,
+            self.d_basis,
+            np.int32(self.basis_meta['n_nodes']),
+            np.float32(self.basis_meta['dr']),
+            np.int32(self.basis_meta['max_shells']),
+            d_out
+        )
+        self.queue.finish()
+        
+        out = np.empty(len(points), dtype=np.float32)
+        cl.enqueue_copy(self.queue, out, d_out)
+        self.queue.finish()
+        return out
+
+    def project_density_dense_points(self, points, dm_dense, norb_per_atom, orb_offsets, atoms_dict):
+        """Evaluate density at arbitrary points using dense density matrix.
+        
+        Supports s, p, d orbitals via shell-based angular function evaluation.
+        
+        Args:
+            points: (n_points, 3) float32 positions in Angstrom
+            dm_dense: (norb_total, norb_total) dense density matrix in C row-major order
+            norb_per_atom: (natoms,) number of orbitals per atom
+            orb_offsets: (natoms+1,) cumulative orbital offsets
+            atoms_dict: dict with 'pos', 'Rcut', 'type'
+        
+        Returns:
+            rho: (n_points,) float32 density values
+        """
+        points = np.asarray(points, dtype=np.float32)
+        if points.ndim != 2 or points.shape[1] != 3:
+            raise ValueError(f"project_density_dense_points: points must be (n,3), got {points.shape}")
+        
+        natoms = len(atoms_dict['pos'])
+        norb_total = int(orb_offsets[-1])
+        dm_dense = np.asarray(dm_dense, dtype=np.float32)
+        if dm_dense.ndim == 2:
+            dm_dense = dm_dense.ravel()
+        if dm_dense.shape[0] != norb_total * norb_total:
+            raise ValueError(f"dm_dense shape {dm_dense.shape} != {norb_total*norb_total}")
+        
+        atom_data = self._build_atom_data_dense(atoms_dict, norb_per_atom, orb_offsets)
+        
+        mf = cl.mem_flags
+        d_points = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR,
+                             hostbuf=np.c_[points, np.zeros((len(points), 1), np.float32)].astype(np.float32))
+        d_atoms = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
+        d_dm = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=dm_dense)
+        d_out = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=len(points) * 4)
+        
+        self._load_kernels()
+        
+        gs = (int(len(points)),)
+        ls = None
+        self.prg.project_density_dense_points(
+            self.queue, gs, ls,
+            np.int32(len(points)),
+            d_points, d_atoms, np.int32(natoms),
+            d_dm, np.int32(norb_total),
+            self.d_basis,
+            np.int32(self.basis_meta['n_nodes']),
+            np.float32(self.basis_meta['dr']),
+            np.int32(self.basis_meta['max_shells']),
+            d_out
+        )
+        self.queue.finish()
+        
+        out = np.empty(len(points), dtype=np.float32)
+        cl.enqueue_copy(self.queue, out, d_out)
+        self.queue.finish()
+        return out
+
+    def project_orbital_dense(self, coeffs_dense, norb_per_atom, orb_offsets, atoms_dict, grid_spec, nMaxAtom=64):
+        """Project a single molecular orbital onto a 3D grid using dense MO coefficient vector.
+        
+        Args:
+            coeffs_dense: (norb_total,) dense MO coefficient vector
+            norb_per_atom: (natoms,) number of orbitals per atom
+            orb_offsets: (natoms+1,) cumulative orbital offsets
+            atoms_dict: dict with 'pos', 'Rcut', 'type'
+            grid_spec: dict with 'origin', 'dA', 'dB', 'dC', 'ngrid'
+            nMaxAtom: max atoms per task
+        
+        Returns:
+            psi: (nx, ny, nz) float32 signed wavefunction
+        """
+        import time
+        
+        tasks_np, task_atoms_np = self.build_tasks(atoms_dict, grid_spec, nMaxAtom=nMaxAtom, block_res=8)
+        if self.verbosity > 0: print(f"[DEBUG] project_orbital_dense: n_tasks={len(tasks_np)}")
+        
+        natoms = len(atoms_dict['pos'])
+        norb_total = int(orb_offsets[-1])
+        coeffs_dense = np.asarray(coeffs_dense, dtype=np.float32).ravel()
+        if coeffs_dense.shape[0] != norb_total:
+            raise ValueError(f"coeffs_dense shape {coeffs_dense.shape} != norb_total {norb_total}")
+        
+        atom_data = self._build_atom_data_dense(atoms_dict, norb_per_atom, orb_offsets)
+        
+        d_grid = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                           hostbuf=self.grid_to_np(grid_spec))
+        
+        n_tasks = len(tasks_np)
+        if n_tasks > 0:
+            d_tasks = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=tasks_np)
+        else:
+            d_tasks = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, size=32)
+        
+        d_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=atom_data)
+        if len(task_atoms_np) > 0:
+            d_task_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=task_atoms_np)
+        else:
+            d_task_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, size=nMaxAtom * 4)
+        
+        d_coeffs = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=coeffs_dense)
+        
+        nx, ny, nz = grid_spec['ngrid'][:3]
+        out_nbytes = int(nx) * int(ny) * int(nz) * 4
+        d_out = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, out_nbytes)
+        cl.enqueue_fill_buffer(self.queue, d_out, np.float32(0), 0, out_nbytes)
+        
+        self._load_kernels()
+        
+        ls = (32,)
+        gs = (n_tasks * ls[0],)
+        
+        T0 = time.perf_counter_ns()
+        self.prg.project_orbital_dense(
+            self.queue, gs, ls,
+            d_grid, np.int32(n_tasks),
+            d_tasks, d_atoms, d_task_atoms,
+            d_coeffs,
+            self.d_basis,
+            np.int32(self.basis_meta['n_nodes']),
+            np.float32(self.basis_meta['dr']),
+            np.int32(self.basis_meta['max_shells']),
+            np.int32(nMaxAtom),
+            d_out
+        )
+        self.queue.finish()
+        T1 = time.perf_counter_ns()
+        if self.verbosity > 0: print(f"[TIME] project_orbital_dense {(T1-T0)*1e-6:.3f} [ms]")
+        
+        res = np.empty((int(nx), int(ny), int(nz)), dtype=np.float32)
+        cl.enqueue_copy(self.queue, res, d_out)
+        self.queue.finish()
+        return res
+
+    def project_density_dense(self, dm_dense, norb_per_atom, orb_offsets, atoms_dict, grid_spec, nMaxAtom=64):
+        """Project dense density matrix onto a 3D grid.
+        
+        Args:
+            dm_dense: (norb_total, norb_total) dense density matrix in C row-major order
+            norb_per_atom: (natoms,) number of orbitals per atom
+            orb_offsets: (natoms+1,) cumulative orbital offsets
+            atoms_dict: dict with 'pos', 'Rcut', 'type'
+            grid_spec: dict with 'origin', 'dA', 'dB', 'dC', 'ngrid'
+            nMaxAtom: max atoms per task
+        
+        Returns:
+            rho: (nx, ny, nz) float32 density
+        """
+        import time
+        
+        tasks_np, task_atoms_np = self.build_tasks(atoms_dict, grid_spec, nMaxAtom=nMaxAtom, block_res=8)
+        if self.verbosity > 0: print(f"[DEBUG] project_density_dense: n_tasks={len(tasks_np)}")
+        
+        natoms = len(atoms_dict['pos'])
+        norb_total = int(orb_offsets[-1])
+        dm_dense = np.asarray(dm_dense, dtype=np.float32)
+        if dm_dense.ndim == 2:
+            dm_dense = dm_dense.ravel()
+        if dm_dense.shape[0] != norb_total * norb_total:
+            raise ValueError(f"dm_dense shape {dm_dense.shape} != {norb_total*norb_total}")
+        
+        atom_data = self._build_atom_data_dense(atoms_dict, norb_per_atom, orb_offsets)
+        
+        d_grid = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
+                           hostbuf=self.grid_to_np(grid_spec))
+        
+        n_tasks = len(tasks_np)
+        if n_tasks > 0:
+            d_tasks = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=tasks_np)
+        else:
+            d_tasks = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, size=32)
+        
+        d_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=atom_data)
+        if len(task_atoms_np) > 0:
+            d_task_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=task_atoms_np)
+        else:
+            d_task_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, size=nMaxAtom * 4)
+        
+        d_dm = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=dm_dense)
+        
+        nx, ny, nz = grid_spec['ngrid'][:3]
+        out_nbytes = int(nx) * int(ny) * int(nz) * 4
+        d_out = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, out_nbytes)
+        cl.enqueue_fill_buffer(self.queue, d_out, np.float32(0), 0, out_nbytes)
+        
+        self._load_kernels()
+        
+        ls = (32,)
+        gs = (n_tasks * ls[0],)
+        
+        T0 = time.perf_counter_ns()
+        self.prg.project_density_dense(
+            self.queue, gs, ls,
+            d_grid, np.int32(n_tasks),
+            d_tasks, d_atoms, d_task_atoms,
+            d_dm, np.int32(norb_total),
+            self.d_basis,
+            np.int32(self.basis_meta['n_nodes']),
+            np.float32(self.basis_meta['dr']),
+            np.int32(self.basis_meta['max_shells']),
+            np.int32(nMaxAtom),
+            d_out
+        )
+        self.queue.finish()
+        T1 = time.perf_counter_ns()
+        if self.verbosity > 0: print(f"[TIME] project_density_dense {(T1-T0)*1e-6:.3f} [ms]")
+        
+        res = np.empty((int(nx), int(ny), int(nz)), dtype=np.float32)
+        cl.enqueue_copy(self.queue, res, d_out)
+        self.queue.finish()
+        return res
 
     def stm_dyson_wg_scan(
             self,
@@ -1542,7 +1850,7 @@ def evaluate_mos_on_points(projector, mo_indices, points, evecs, natoms, species
     return point_vals
 
 
-def setup_gridprojector_from_dftb(dftb_data, species_list_ang, ctx=None, queue=None, verbosity=0):
+def setup_gridprojector_from_dftb(dftb_data, species_list_ang, ctx=None, queue=None, verbosity=0, max_shells=None):
     """
     Configure GridProjector instance from parsed DFTB+ data.
     
@@ -1555,13 +1863,14 @@ def setup_gridprojector_from_dftb(dftb_data, species_list_ang, ctx=None, queue=N
         ctx: OpenCL context (optional)
         queue: OpenCL command queue (optional)
         verbosity: verbosity level
+        max_shells: int, max angular momentum shells (default 2 for sp, use 3 for spd)
     
     Returns:
         projector: configured GridProjector instance
         atoms_dict: dict with 'pos', 'Rcut', 'type' for projection
     """
     projector = GridProjector(fdata_dir=None, ctx=ctx, queue=queue, verbosity=verbosity)
-    projector.load_basis_sto(species_list_ang)
+    projector.load_basis_sto(species_list_ang, max_shells=max_shells)
     
     # Build atoms dict
     coords_ang = dftb_data['coords_bohr'] * 0.5291772109  # Bohr -> Angstrom

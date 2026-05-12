@@ -50,6 +50,9 @@ typedef struct {
 // Y_00 = pref_s, Y_1m = pref_p * (x,y,z)/r
 #define PREF_S 0.28209479f   // 1/sqrt(4*pi)
 #define PREF_P 0.48860251f   // sqrt(3/(4*pi))
+#define PREF_D 1.09254843f   // sqrt(15/(4*pi))
+#define PREF_D_Z2 0.31539157f // for 3z^2-r^2
+#define PREF_D_X2Y2 0.54627422f // for x^2-y^2
 
 // Cubic B-spline interpolation for radial part
 float evaluate_radial(
@@ -82,6 +85,67 @@ float evaluate_radial(
     const float h2_6 = (dr * dr) * (1.0f/6.0f);
     const float corr = ((a*a*a - a) * lo.y + (b*b*b - b) * hi.y) * h2_6;
     return a * lo.x + b * hi.x + corr;
+}
+
+// ============================================================================
+// Dense-matrix orbital/density projection helpers with d-orbital support
+// ============================================================================
+
+// Evaluate real spherical harmonic (tesseral) for given (l, mm) and unit vector rhat.
+// mm ranges from -l to +l, following Fortran realTessY ordering.
+// For l=2 (d orbitals): mm=-2(xy), -1(yz), 0(z2), 1(xz), 2(x2-y2)
+inline float eval_angular_dense(int l, int mm, float3 rhat) {
+    switch(l) {
+    case 0:
+        return PREF_S;
+    case 1:
+        switch(mm) {
+        case -1: return rhat.y * PREF_P;  // py
+        case 0:  return rhat.z * PREF_P;  // pz
+        case 1:  return rhat.x * PREF_P;  // px
+        }
+        break;
+    case 2:
+        switch(mm) {
+        case -2: return rhat.x * rhat.y * PREF_D;                                    // d_xy
+        case -1: return rhat.y * rhat.z * PREF_D;                                    // d_yz
+        case 0:  return (2.0f*rhat.z*rhat.z - rhat.x*rhat.x - rhat.y*rhat.y) * PREF_D_Z2; // d_z2
+        case 1:  return rhat.x * rhat.z * PREF_D;                                    // d_xz
+        case 2:  return (rhat.x*rhat.x - rhat.y*rhat.y) * PREF_D_X2Y2;                // d_x2y2
+        }
+        break;
+    }
+    return 0.0f;
+}
+
+// Evaluate all basis functions for one atom at a point, returning psi values into out_buf.
+// out_buf must have at least norb slots. Returns number of orbitals written.
+inline int eval_atom_orbitals(
+    float3 r_vox,
+    AtomData ad,
+    __global const float* basis_data,
+    int n_nodes, float dr_basis, int max_shells,
+    float* out_buf
+) {
+    float3 d = r_vox - ad.pos_rcut.xyz;
+    float r2 = dot(d, d);
+    float rcut = ad.pos_rcut.w;
+    if (r2 > rcut*rcut) return 0;
+    float r = sqrt(r2);
+    float3 rhat = d / (r + 1e-12f);
+
+    int norb = ad.norb;
+    int i0orb = ad.i0orb;
+    int iorb = 0;
+    for (int ish = 0; ish < max_shells && iorb < norb; ++ish) {
+        float R = evaluate_radial(r, ad.type, ish, basis_data, n_nodes, dr_basis, max_shells);
+        int l = ish;  // shell index = angular momentum for STO basis
+        int n_m = 2*l + 1;
+        for (int mm = -l; mm <= l && iorb < norb; ++mm, ++iorb) {
+            out_buf[iorb] = R * eval_angular_dense(l, mm, rhat);
+        }
+    }
+    return iorb;
 }
 
 __kernel void project_density_sparse(
@@ -946,6 +1010,258 @@ __kernel void project_orbital_points(
 
     out_psi[ip] = psi;
 }
+
+
+
+// ============================================================================
+// Orbital projection at arbitrary points using dense MO coefficient vector.
+// Computes psi(p) = sum_{atoms} sum_{mu} coeffs[i0orb+mu] * phi_mu(p)
+// Supports arbitrary number of orbitals per atom (s, p, d) via i0orb/norb.
+// ============================================================================
+__kernel void project_orbital_dense_points(
+    const int n_points,
+    __global const float4* points,
+    __global const AtomData* atoms,
+    const int natoms,
+    __global const float* coeffs,       // [norb_total] dense coefficient vector
+    __global const float* basis_data,
+    const int n_nodes,
+    const float dr_basis,
+    const int max_shells,
+    __global float* out_psi
+) {
+    const int ip = get_global_id(0);
+    if (ip >= n_points) return;
+
+    const float3 p = points[ip].xyz;
+    float psi = 0.0f;
+
+    for (int ia = 0; ia < natoms; ++ia) {
+        AtomData ad = atoms[ia];
+        float3 d = p - ad.pos_rcut.xyz;
+        float r2 = dot(d, d);
+        float rcut2 = ad.pos_rcut.w * ad.pos_rcut.w;
+        if (r2 > rcut2) continue;
+
+        float r = sqrt(r2);
+        float3 rhat = d / (r + 1e-12f);
+
+        int i0 = ad.i0orb;
+        int norb = ad.norb;
+        int iorb = 0;
+        for (int ish = 0; ish < max_shells && iorb < norb; ++ish) {
+            float R = evaluate_radial(r, ad.type, ish, basis_data, n_nodes, dr_basis, max_shells);
+            int l = ish;
+            for (int mm = -l; mm <= l && iorb < norb; ++mm, ++iorb) {
+                float ang = eval_angular_dense(l, mm, rhat);
+                psi += coeffs[i0 + iorb] * R * ang;
+            }
+        }
+    }
+
+    out_psi[ip] = psi;
+}
+
+// ============================================================================
+// Density projection at arbitrary points using dense density matrix.
+// Computes rho(p) = sum_{i,j} sum_{mu,nu} coeffs[i0_i+mu] * coeffs[i0_j+nu] * phi_mu(p) * phi_nu(p)
+// For diagonal density matrix (MO occupancy): dm is a 1D vector of diagonal elements
+// For full density matrix: dm is a 2D matrix flattened as [norb_total][norb_total]
+// ============================================================================
+__kernel void project_density_dense_points(
+    const int n_points,
+    __global const float4* points,
+    __global const AtomData* atoms,
+    const int natoms,
+    __global const float* dm,          // dense density matrix [norb_total*norb_total]
+    const int norb_total,
+    __global const float* basis_data,
+    const int n_nodes,
+    const float dr_basis,
+    const int max_shells,
+    __global float* out_rho
+) {
+    const int ip = get_global_id(0);
+    if (ip >= n_points) return;
+
+    const float3 p = points[ip].xyz;
+
+    // Evaluate all orbitals at this point into private arrays
+    // Max orbitals per atom = 9 (spd), max atoms in a typical task = 64
+    // We use a fixed-size buffer for simplicity; for very large systems,
+    // this kernel should be called with smaller point batches.
+    float phi_i[9];  // max orbitals per atom (s=1, p=3, d=5)
+    float phi_j[9];
+
+    float density = 0.0f;
+
+    for (int ia = 0; ia < natoms; ++ia) {
+        AtomData ad_i = atoms[ia];
+        int i0_i = ad_i.i0orb;
+        int norb_i = eval_atom_orbitals(p, ad_i, basis_data, n_nodes, dr_basis, max_shells, phi_i);
+        if (norb_i == 0) continue;
+
+        for (int ja = ia; ja < natoms; ++ja) {
+            AtomData ad_j = atoms[ja];
+            int i0_j = ad_j.i0orb;
+            int norb_j = eval_atom_orbitals(p, ad_j, basis_data, n_nodes, dr_basis, max_shells, phi_j);
+            if (norb_j == 0) continue;
+
+            float pairsym = (ia == ja) ? 1.0f : 2.0f;
+
+            for (int mu = 0; mu < norb_i; ++mu) {
+                for (int nu = 0; nu < norb_j; ++nu) {
+                    float rho_munu = dm[(i0_i + mu) * norb_total + (i0_j + nu)];
+                    density += pairsym * rho_munu * phi_i[mu] * phi_j[nu];
+                }
+            }
+        }
+    }
+
+    out_rho[ip] = density;
+}
+
+// ============================================================================
+// Orbital projection onto 3D grid using dense MO coefficient vector.
+// Same execution model as project_orbital: one workgroup per 8x8x8 task block.
+// ============================================================================
+__kernel void project_orbital_dense(
+    __global const GridSpec* grid,
+    const int n_tasks,
+    __global const TaskData* tasks,
+    __global const AtomData* atoms,
+    __global const int* task_atoms,
+    __global const float* coeffs,       // [norb_total] dense coefficient vector
+    __global const float* basis_data,
+    const int n_nodes,
+    const float dr_basis,
+    const int max_shells,
+    const int nMaxAtom,
+    __global float* out_grid
+) {
+    const int i_task = get_group_id(0);
+    const int t_idx  = get_local_id(0);
+    const int threads_per_task = get_local_size(0);
+
+    if (i_task >= n_tasks) return;
+
+    const TaskData task = tasks[i_task];
+    const int na = task.na;
+
+    for (int v = t_idx; v < 512; v += threads_per_task) {
+        const int lx = v & 7;
+        const int ly = (v >> 3) & 7;
+        const int lz = (v >> 6) & 7;
+        const int gx = task.x * 8 + lx;
+        const int gy = task.y * 8 + ly;
+        const int gz = task.z * 8 + lz;
+        const int3 ngrid_dim = grid->ngrid.xyz;
+        if (gx >= ngrid_dim.x || gy >= ngrid_dim.y || gz >= ngrid_dim.z) continue;
+        const int g_idx = (gx * ngrid_dim.y + gy) * ngrid_dim.z + gz;
+        float3 r_vox = grid->origin.xyz + (float)gx * grid->dA.xyz + (float)gy * grid->dB.xyz + (float)gz * grid->dC.xyz;
+
+        float psi = 0.0f;
+        for (int i = 0; i < na; ++i) {
+            const int i_atom = task_atoms[i_task * nMaxAtom + i];
+            AtomData ad = atoms[i_atom];
+            float3 d = r_vox - ad.pos_rcut.xyz;
+            float r2 = dot(d, d);
+            float rcut2 = ad.pos_rcut.w * ad.pos_rcut.w;
+            if (r2 > rcut2) continue;
+            float r = sqrt(r2);
+            float3 rhat = d / (r + 1e-12f);
+
+            int i0 = ad.i0orb;
+            int norb = ad.norb;
+            int iorb = 0;
+            for (int ish = 0; ish < max_shells && iorb < norb; ++ish) {
+                float R = evaluate_radial(r, ad.type, ish, basis_data, n_nodes, dr_basis, max_shells);
+                int l = ish;
+                for (int mm = -l; mm <= l && iorb < norb; ++mm, ++iorb) {
+                    float ang = eval_angular_dense(l, mm, rhat);
+                    psi += coeffs[i0 + iorb] * R * ang;
+                }
+            }
+        }
+        out_grid[g_idx] = psi;
+    }
+}
+
+// ============================================================================
+// Density projection onto 3D grid using dense density matrix.
+// Same execution model as project_density_sparse: one workgroup per 8x8x8 task block.
+// ============================================================================
+__kernel void project_density_dense(
+    __global const GridSpec* grid,
+    const int n_tasks,
+    __global const TaskData* tasks,
+    __global const AtomData* atoms,
+    __global const int* task_atoms,
+    __global const float* dm,          // [norb_total*norb_total] dense density matrix
+    const int norb_total,
+    __global const float* basis_data,
+    const int n_nodes,
+    const float dr_basis,
+    const int max_shells,
+    const int nMaxAtom,
+    __global float* out_grid
+) {
+    const int i_task = get_group_id(0);
+    const int t_idx  = get_local_id(0);
+    const int threads_per_task = get_local_size(0);
+
+    if (i_task >= n_tasks) return;
+
+    const TaskData task = tasks[i_task];
+    const int na = task.na;
+
+    for (int v = t_idx; v < 512; v += threads_per_task) {
+        const int lx = v & 7;
+        const int ly = (v >> 3) & 7;
+        const int lz = (v >> 6) & 7;
+        const int gx = task.x * 8 + lx;
+        const int gy = task.y * 8 + ly;
+        const int gz = task.z * 8 + lz;
+        const int3 ngrid_dim = grid->ngrid.xyz;
+        if (gx >= ngrid_dim.x || gy >= ngrid_dim.y || gz >= ngrid_dim.z) continue;
+        const int g_idx = (gx * ngrid_dim.y + gy) * ngrid_dim.z + gz;
+        float3 r_vox = grid->origin.xyz + (float)gx * grid->dA.xyz + (float)gy * grid->dB.xyz + (float)gz * grid->dC.xyz;
+
+        float phi_i[9];  // max orbitals per atom (s=1, p=3, d=5)
+        float phi_j[9];
+        float density = 0.0f;
+
+        for (int i = 0; i < na; ++i) {
+            const int i_atom = task_atoms[i_task * nMaxAtom + i];
+            AtomData ad_i = atoms[i_atom];
+            int i0_i = ad_i.i0orb;
+            int norb_i = eval_atom_orbitals(r_vox, ad_i, basis_data, n_nodes, dr_basis, max_shells, phi_i);
+            if (norb_i == 0) continue;
+
+            for (int j = i; j < na; ++j) {
+                const int j_atom = task_atoms[i_task * nMaxAtom + j];
+                AtomData ad_j = atoms[j_atom];
+                int i0_j = ad_j.i0orb;
+                int norb_j = eval_atom_orbitals(r_vox, ad_j, basis_data, n_nodes, dr_basis, max_shells, phi_j);
+                if (norb_j == 0) continue;
+
+                float pairsym = (i_atom == j_atom) ? 1.0f : 2.0f;
+                for (int mu = 0; mu < norb_i; ++mu) {
+                    for (int nu = 0; nu < norb_j; ++nu) {
+                        float rho_munu = dm[(i0_i + mu) * norb_total + (i0_j + nu)];
+                        density += pairsym * rho_munu * phi_i[mu] * phi_j[nu];
+                    }
+                }
+            }
+        }
+        out_grid[g_idx] = density;
+    }
+}
+
+
+
+
+
 
 // ============================================================================
 // STM Response Amplitude — exponential-basis coupling, single s-tip orbital
