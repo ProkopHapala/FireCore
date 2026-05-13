@@ -156,7 +156,53 @@ class GridProjector(OpenCLBase):
         distance_sq = np.sum((center - closest_p)**2)
         return distance_sq < (radius**2)
 
-    def build_tasks_gpu(self, atoms, grid_spec, block_res=8, nMaxAtom=64):
+    def realloc_task_buffers(self, natoms, n_blocks_total, nMaxAtom):
+        """(Re-)allocate GPU buffers for build_tasks_gpu using try_make_buffers."""
+        sz_i = 4  # int32
+        # AtomData struct: float4 pos_rcut + 4x int32 = 32 bytes per atom
+        buffs = {
+            "gtask_grid":            5 * 4 * 4,                          # grid_spec_np: 5x float4 = 80 bytes
+            "gtask_atoms":           32 * natoms,                        # AtomData structs
+            "gtask_block_counts":    sz_i * n_blocks_total,
+            "gtask_task_atoms_raw":  sz_i * n_blocks_total * nMaxAtom,
+            "gtask_block_fill":      sz_i * n_blocks_total,
+            "gtask_task_offsets":    sz_i * n_blocks_total,
+            "gtask_tasks_out":       32 * n_blocks_total,                # TaskData struct = 32 bytes each
+            "gtask_task_atoms_out":  sz_i * n_blocks_total * nMaxAtom,
+        }
+        self.try_make_buffers(buffs, suffix="_buff")
+
+    def realloc_projection_buffers(self, natoms, n_tasks, nMaxAtom, nx, ny, nz, neigh_max, numorb_max):
+        """(Re-)allocate GPU buffers for project_density using try_make_buffers."""
+        sz_f = 4  # float32
+        sz_i = 4  # int32
+        buffs = {
+            "proj_grid":        5 * 16,                                  # grid_spec_np: 5x float4 = 80 bytes
+            "proj_atoms":       32 * natoms,                             # AtomData structs
+            "proj_tasks":       max(32 * n_tasks, 32),                   # TaskData structs
+            "proj_task_atoms":  max(sz_i * n_tasks * nMaxAtom, sz_i * nMaxAtom),
+            "proj_rho":         sz_f * natoms * neigh_max * numorb_max * numorb_max,
+            "proj_neigh_j":     sz_i * natoms * neigh_max,
+            "proj_species_info":sz_i * 10 * 4,                          # placeholder
+            "proj_out":         sz_f * nx * ny * nz,
+        }
+        self.try_make_buffers(buffs, suffix="_buff")
+
+    def realloc_dense_projection_buffers(self, natoms, n_tasks, nMaxAtom, nx, ny, nz, norb_total):
+        """(Re-)allocate GPU buffers for project_density_dense / project_orbital_dense."""
+        sz_f = 4
+        sz_i = 4
+        buffs = {
+            "dproj_grid":       5 * 16,                                  # grid_spec_np: 5x float4 = 80 bytes
+            "dproj_atoms":      32 * natoms,
+            "dproj_tasks":      max(32 * n_tasks, 32),
+            "dproj_task_atoms": max(sz_i * n_tasks * nMaxAtom, sz_i * nMaxAtom),
+            "dproj_dm":         sz_f * norb_total * norb_total,         # density matrix or coeffs (largest case)
+            "dproj_out":        sz_f * nx * ny * nz,
+        }
+        self.try_make_buffers(buffs, suffix="_buff")
+
+    def build_tasks_gpu(self, atoms, grid_spec, block_res=8, nMaxAtom=64, bAlloc=True):
         """
         GPU-based task building using OpenCL kernels.
         Pseudocode:
@@ -191,19 +237,20 @@ class GridProjector(OpenCLBase):
         if natoms > 0 and self.verbosity > 0:
             print(f"[DEBUG] atom_data[0]: pos_rcut={atom_data[0]['pos_rcut']} type={atom_data[0]['type']}")
 
-        mf = cl.mem_flags
-        d_grid  = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.grid_to_np(grid_spec))
-        d_atoms = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
-        
+        if bAlloc:
+            self.realloc_task_buffers(natoms, n_blocks_total, nMaxAtom)
+
+        self.toGPU_(self.gtask_grid_buff,  self.grid_to_np(grid_spec))
+        self.toGPU_(self.gtask_atoms_buff, atom_data)
+
         T0 = time.perf_counter_ns()
         # 2. Kernel 1: Count atoms per block
-        d_block_counts = cl.Buffer(self.ctx, mf.READ_WRITE, n_blocks_total * 4)
-        cl.enqueue_fill_buffer(self.queue, d_block_counts, np.int32(0), 0, n_blocks_total * 4)
+        cl.enqueue_fill_buffer(self.queue, self.gtask_block_counts_buff, np.int32(0), 0, n_blocks_total * 4)
         self.prg.count_atoms_per_block(
             self.queue, (natoms,), None,
-            d_grid, np.int32(natoms), d_atoms, np.int32(block_res),
+            self.gtask_grid_buff, np.int32(natoms), self.gtask_atoms_buff, np.int32(block_res),
             np.int32(n_blocks_xyz[0]), np.int32(n_blocks_xyz[1]), np.int32(n_blocks_xyz[2]),
-            d_block_counts
+            self.gtask_block_counts_buff
         )
         self.queue.finish()
         T1 = time.perf_counter_ns()
@@ -211,21 +258,18 @@ class GridProjector(OpenCLBase):
 
         T0 = time.perf_counter_ns()
         # 3. Kernel 2: Fill task_atoms
-        d_task_atoms_raw = cl.Buffer(self.ctx, mf.READ_WRITE, n_blocks_total * nMaxAtom * 4)
-        cl.enqueue_fill_buffer(self.queue, d_task_atoms_raw, np.int32(-1), 0, n_blocks_total * nMaxAtom * 4)
-        # We need a secondary counter for atomic increments during filling
-        d_block_fill_counts = cl.Buffer(self.ctx, mf.READ_WRITE, n_blocks_total * 4)
-        cl.enqueue_fill_buffer(self.queue, d_block_fill_counts, np.int32(0), 0, n_blocks_total * 4)
+        cl.enqueue_fill_buffer(self.queue, self.gtask_task_atoms_raw_buff, np.int32(-1), 0, n_blocks_total * nMaxAtom * 4)
+        cl.enqueue_fill_buffer(self.queue, self.gtask_block_fill_buff, np.int32(0), 0, n_blocks_total * 4)
         self.prg.fill_task_atoms(
             self.queue, (natoms,), None,
-            d_grid, np.int32(natoms), d_atoms, np.int32(block_res),
+            self.gtask_grid_buff, np.int32(natoms), self.gtask_atoms_buff, np.int32(block_res),
             np.int32(n_blocks_xyz[0]), np.int32(n_blocks_xyz[1]), np.int32(n_blocks_xyz[2]),
-            d_block_fill_counts, d_task_atoms_raw, np.int32(nMaxAtom)
+            self.gtask_block_fill_buff, self.gtask_task_atoms_raw_buff, np.int32(nMaxAtom)
         )
         # 4. Compact tasks
         # Read back counts to host to identify non-empty blocks and compute stats
         h_block_counts = np.empty(n_blocks_total, dtype=np.int32)
-        cl.enqueue_copy(self.queue, h_block_counts, d_block_counts)
+        cl.enqueue_copy(self.queue, h_block_counts, self.gtask_block_counts_buff)
         self.queue.finish()
         T1 = time.perf_counter_ns()
         print(f"[TIME] count_atoms_per_block.compact_tasks {(T1-T0)*1e-6:.3f} [ms]")
@@ -254,22 +298,20 @@ class GridProjector(OpenCLBase):
         # Compute task offsets for compaction
         h_task_offsets = np.zeros(n_blocks_total, dtype=np.int32)
         h_task_offsets[mask] = np.arange(n_tasks, dtype=np.int32)
-        d_task_offsets   = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=h_task_offsets)
-        d_tasks_out      = cl.Buffer(self.ctx, mf.READ_WRITE, n_tasks * 32) # TaskData size is 32 bytes
-        d_task_atoms_out = cl.Buffer(self.ctx, mf.READ_WRITE, n_tasks * nMaxAtom * 4)
+        self.toGPU_(self.gtask_task_offsets_buff, h_task_offsets)
 
         T0 = time.perf_counter_ns()
         self.prg.compact_tasks(
             self.queue, (int(n_blocks_xyz[0]), int(n_blocks_xyz[1]), int(n_blocks_xyz[2])), None,
             np.int32(n_blocks_xyz[0]), np.int32(n_blocks_xyz[1]), np.int32(n_blocks_xyz[2]),
-            d_block_counts, d_task_offsets, d_task_atoms_raw,
-            d_tasks_out, d_task_atoms_out, np.int32(nMaxAtom)
+            self.gtask_block_counts_buff, self.gtask_task_offsets_buff, self.gtask_task_atoms_raw_buff,
+            self.gtask_tasks_out_buff, self.gtask_task_atoms_out_buff, np.int32(nMaxAtom)
         )
         # 5. Read back results
         tasks_np      = np.empty(n_tasks, dtype=self.task_dtype_np)
         task_atoms_np = np.empty((n_tasks, nMaxAtom), dtype=np.int32)
-        cl.enqueue_copy(self.queue, tasks_np,      d_tasks_out     )
-        cl.enqueue_copy(self.queue, task_atoms_np, d_task_atoms_out)
+        cl.enqueue_copy(self.queue, tasks_np,      self.gtask_tasks_out_buff)
+        cl.enqueue_copy(self.queue, task_atoms_np, self.gtask_task_atoms_out_buff)
         self.queue.finish()
         T1 = time.perf_counter_ns()
         print(f"[TIME] compact_tasks + readback {(T1-T0)*1e-6:.3f} [ms]")
@@ -378,7 +420,7 @@ class GridProjector(OpenCLBase):
         
         return grid_spec_np
 
-    def project_density(self, rho, neighs, atoms, grid_spec, tasks=None, nMaxAtom=64, use_gpu_tasks=False, use_tiled=True):
+    def project_density(self, rho, neighs, atoms, grid_spec, tasks=None, nMaxAtom=64, use_gpu_tasks=False, use_tiled=True, bAlloc=True):
         """
         Main entry point for density projection using the tiled kernel.
         """
@@ -448,38 +490,29 @@ class GridProjector(OpenCLBase):
         if it_min < 0 or it_max >= int(self.basis_meta['n_species']):
             raise RuntimeError(f"GridProjector.project(): atom_data.type out of range [0,{self.basis_meta['n_species']-1}] got range=[{it_min},{it_max}]")
 
-        # 2. Buffers
-        mf = cl.mem_flags
-        
+        # 2. Buffers - allocate persistently via try_make_buffers, only if bAlloc or not yet allocated
+        neigh_max   = rho.shape[1]
+        numorb_max  = rho.shape[2]
+        if bAlloc:
+            self.realloc_projection_buffers(natoms, n_tasks, nMaxAtom, nx, ny, nz, neigh_max, numorb_max)
+
         # DEBUG: check tasks_np size and dtype
         if self.verbosity > 0: print(f"[DEBUG] tasks_np: len={len(tasks_np)} itemsize={tasks_np.dtype.itemsize} nbytes={tasks_np.nbytes}")
-        
-        d_grid = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.grid_to_np(grid_spec))
-        
+
+        self.toGPU_(self.proj_grid_buff,  self.grid_to_np(grid_spec))
+        self.toGPU_(self.proj_atoms_buff, atom_data)
         if len(tasks_np) > 0:
-            d_tasks = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tasks_np)
-        else:
-            # Fallback for empty buffer to avoid INVALID_BUFFER_SIZE
-            d_tasks = cl.Buffer(self.ctx, mf.READ_ONLY, size=32) 
-            
-        d_atoms = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
-        if len(task_atoms_np) > 0:
-            d_task_atoms = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=task_atoms_np)
-        else:
-            d_task_atoms = cl.Buffer(self.ctx, mf.READ_ONLY, size=nMaxAtom * 4)
-        
+            self.toGPU_(self.proj_tasks_buff,      tasks_np)
+            self.toGPU_(self.proj_task_atoms_buff, task_atoms_np)
         rho32 = rho.astype(np.float32)
-        d_rho = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=rho32)
-        d_neigh_j = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=neighs.neigh_j.astype(np.int32))
-        
-        # species_info placeholder
+        self.toGPU_(self.proj_rho_buff,     rho32)
+        self.toGPU_(self.proj_neigh_j_buff, neighs.neigh_j.astype(np.int32))
         species_info = np.zeros((10, 4), dtype=np.int32)
-        d_species_info = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=species_info)
+        self.toGPU_(self.proj_species_info_buff, species_info)
 
         out_nbytes = int(nx) * int(ny) * int(nz) * 4
-        if self.verbosity > 0: print(f"[DEBUG] allocating d_out: nx,ny,nz=({nx},{ny},{nz}) out_nbytes={out_nbytes}")
-        d_out = cl.Buffer(self.ctx, mf.WRITE_ONLY, out_nbytes)
-        cl.enqueue_fill_buffer(self.queue, d_out, np.float32(0), 0, out_nbytes)
+        if self.verbosity > 0: print(f"[DEBUG] using persistent d_out: nx,ny,nz=({nx},{ny},{nz}) out_nbytes={out_nbytes}")
+        cl.enqueue_fill_buffer(self.queue, self.proj_out_buff, np.float32(0), 0, out_nbytes)
 
         # 3. Kernel launch
         ls = (32,)  # local size
@@ -487,7 +520,7 @@ class GridProjector(OpenCLBase):
         
         # d_basis placeholder
         if not hasattr(self, 'd_basis'):
-             self.d_basis = cl.Buffer(self.ctx, mf.READ_ONLY, size=4)
+             self.d_basis = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, size=4)
              self.basis_meta = {'n_nodes': 0, 'dr': 0.0, 'max_shells': 0}
 
         if use_tiled:
@@ -499,46 +532,46 @@ class GridProjector(OpenCLBase):
         if use_tiled:
             self.prg.project_density_sparse_tiled(
                 self.queue, gs, ls,
-                d_grid,
+                self.proj_grid_buff,
                 np.int32(n_tasks),
-                d_tasks, d_atoms, d_task_atoms,
-                d_rho, 
-                d_neigh_j,
+                self.proj_tasks_buff, self.proj_atoms_buff, self.proj_task_atoms_buff,
+                self.proj_rho_buff,
+                self.proj_neigh_j_buff,
                 self.d_basis,
-                d_species_info,
+                self.proj_species_info_buff,
                 np.int32(self.basis_meta['n_nodes']),
                 np.float32(self.basis_meta['dr']),
                 np.int32(self.basis_meta['max_shells']),
-                np.int32(rho.shape[1]), # neigh_max
-                np.int32(rho.shape[2]), # numorb_max
+                np.int32(neigh_max),
+                np.int32(numorb_max),
                 np.int32(nMaxAtom),
-                d_out
+                self.proj_out_buff
             )
         else:
             self.prg.project_density_sparse(
                 self.queue, gs, ls,
-                d_grid,
+                self.proj_grid_buff,
                 np.int32(n_tasks),
-                d_tasks, d_atoms, d_task_atoms,
-                d_rho, 
-                d_neigh_j,
+                self.proj_tasks_buff, self.proj_atoms_buff, self.proj_task_atoms_buff,
+                self.proj_rho_buff,
+                self.proj_neigh_j_buff,
                 self.d_basis,
-                d_species_info,
+                self.proj_species_info_buff,
                 np.int32(self.basis_meta['n_nodes']),
                 np.float32(self.basis_meta['dr']),
                 np.int32(self.basis_meta['max_shells']),
-                np.int32(rho.shape[1]), # neigh_max
-                np.int32(rho.shape[2]), # numorb_max
+                np.int32(neigh_max),
+                np.int32(numorb_max),
                 np.int32(nMaxAtom),
-                d_out
+                self.proj_out_buff
             )
         self.queue.finish()
         dt_ns = time.perf_counter_ns() - T0_ns
         if self.verbosity > 0: print(f"[TIME] project_tiled finished in {dt_ns*1e-6:.9f} [ms]")
 
-        if self.verbosity > 0: print(f"[DEBUG] allocating host res: shape=({nx},{ny},{nz}) nbytes={int(nx)*int(ny)*int(nz)*4}")
+        if self.verbosity > 0: print(f"[DEBUG] reading back host res: shape=({nx},{ny},{nz}) nbytes={int(nx)*int(ny)*int(nz)*4}")
         res = np.empty((int(nx), int(ny), int(nz)), dtype=np.float32)
-        cl.enqueue_copy(self.queue, res, d_out)
+        cl.enqueue_copy(self.queue, res, self.proj_out_buff)
         self.queue.finish()
 
         return res
@@ -1084,7 +1117,7 @@ class GridProjector(OpenCLBase):
         self.queue.finish()
         return res
 
-    def project_density_dense(self, dm_dense, norb_per_atom, orb_offsets, atoms_dict, grid_spec, nMaxAtom=64):
+    def project_density_dense(self, dm_dense, norb_per_atom, orb_offsets, atoms_dict, grid_spec, nMaxAtom=64, bAlloc=True):
         """Project dense density matrix onto a 3D grid.
         
         Args:
@@ -1094,6 +1127,7 @@ class GridProjector(OpenCLBase):
             atoms_dict: dict with 'pos', 'Rcut', 'type'
             grid_spec: dict with 'origin', 'dA', 'dB', 'dC', 'ngrid'
             nMaxAtom: max atoms per task
+            bAlloc: if True (default), reallocate GPU buffers if sizes changed
         
         Returns:
             rho: (nx, ny, nz) float32 density
@@ -1112,53 +1146,46 @@ class GridProjector(OpenCLBase):
             raise ValueError(f"dm_dense shape {dm_dense.shape} != {norb_total*norb_total}")
         
         atom_data = self._build_atom_data_dense(atoms_dict, norb_per_atom, orb_offsets)
-        
-        d_grid = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
-                           hostbuf=self.grid_to_np(grid_spec))
-        
-        n_tasks = len(tasks_np)
-        if n_tasks > 0:
-            d_tasks = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=tasks_np)
-        else:
-            d_tasks = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, size=32)
-        
-        d_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=atom_data)
-        if len(task_atoms_np) > 0:
-            d_task_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=task_atoms_np)
-        else:
-            d_task_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, size=nMaxAtom * 4)
-        
-        d_dm = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=dm_dense)
-        
         nx, ny, nz = grid_spec['ngrid'][:3]
+        n_tasks = len(tasks_np)
+
+        if bAlloc:
+            self.realloc_dense_projection_buffers(natoms, n_tasks, nMaxAtom, int(nx), int(ny), int(nz), norb_total)
+
+        self.toGPU_(self.dproj_grid_buff,  self.grid_to_np(grid_spec))
+        self.toGPU_(self.dproj_atoms_buff, atom_data)
+        if n_tasks > 0:
+            self.toGPU_(self.dproj_tasks_buff,      tasks_np)
+            self.toGPU_(self.dproj_task_atoms_buff, task_atoms_np)
+        self.toGPU_(self.dproj_dm_buff, dm_dense)
+
         out_nbytes = int(nx) * int(ny) * int(nz) * 4
-        d_out = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, out_nbytes)
-        cl.enqueue_fill_buffer(self.queue, d_out, np.float32(0), 0, out_nbytes)
+        cl.enqueue_fill_buffer(self.queue, self.dproj_out_buff, np.float32(0), 0, out_nbytes)
         
         self._load_kernels()
         
         ls = (32,)
-        gs = (n_tasks * ls[0],)
+        gs = (max(n_tasks, 1) * ls[0],)
         
         T0 = time.perf_counter_ns()
         self.prg.project_density_dense(
             self.queue, gs, ls,
-            d_grid, np.int32(n_tasks),
-            d_tasks, d_atoms, d_task_atoms,
-            d_dm, np.int32(norb_total),
+            self.dproj_grid_buff, np.int32(n_tasks),
+            self.dproj_tasks_buff, self.dproj_atoms_buff, self.dproj_task_atoms_buff,
+            self.dproj_dm_buff, np.int32(norb_total),
             self.d_basis,
             np.int32(self.basis_meta['n_nodes']),
             np.float32(self.basis_meta['dr']),
             np.int32(self.basis_meta['max_shells']),
             np.int32(nMaxAtom),
-            d_out
+            self.dproj_out_buff
         )
         self.queue.finish()
         T1 = time.perf_counter_ns()
         if self.verbosity > 0: print(f"[TIME] project_density_dense {(T1-T0)*1e-6:.3f} [ms]")
         
         res = np.empty((int(nx), int(ny), int(nz)), dtype=np.float32)
-        cl.enqueue_copy(self.queue, res, d_out)
+        cl.enqueue_copy(self.queue, res, self.dproj_out_buff)
         self.queue.finish()
         
         # Apply B3_FACTOR to convert from Bohr-normalized to Ang^-3 density

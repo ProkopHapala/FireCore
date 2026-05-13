@@ -2,6 +2,7 @@ import numpy as np
 import pyopencl as cl
 import os, sys
 from pyBall.globals import debug_print
+from .OpenCLBase import OpenCLBase
 
 COULOMB_CONST = 14.3996448915  # [eV*Ang/e^2]
 
@@ -9,7 +10,7 @@ COULOMB_CONST = 14.3996448915  # [eV*Ang/e^2]
 def _bytes_to_gb(nbytes):
     return nbytes / (1024.0**3)
 
-class AFMulator:
+class AFMulator(OpenCLBase):
     """
     PyOpenCL AFM simulator (Phase 1: LJ/Morse + point charges).
     Reuses evalLJC_QZs_toImg / evalMorseC_QZs_toImg + relaxStrokesTilted from relax.cl.
@@ -29,27 +30,21 @@ class AFMulator:
     DEFAULT_tipQZs     = np.array([ 0., 1.8, 3.6, 0.], dtype=np.float32)
 
     def __init__(self, cl_src_dir=None, use_morse=False, nloc=32):
+        super().__init__(nloc=nloc, preferred_vendor='nvidia', bPrint=True)
         self.use_morse = use_morse
-        self.nloc = nloc
         self._vram_bytes = 0
         if cl_src_dir is None:
             d = os.path.dirname(os.path.abspath(__file__))
             cl_src_dir = os.path.realpath(os.path.join(d,'..','..','cpp','common_resources','cl'))
         self.cl_src_dir = cl_src_dir
         print(f"AFMulator: cl_src_dir={cl_src_dir}")
-        from . import clUtils as clu
-        self.ctx, self.queue = clu.get_nvidia_device()
-        if self.ctx is None:
-            print("AFMulator: no NVIDIA device, using default context")
-            self.ctx   = cl.create_some_context()
-            self.queue = cl.CommandQueue(self.ctx)
         dev = self.ctx.devices[0]
         self._max_alloc = dev.get_info(cl.device_info.MAX_MEM_ALLOC_SIZE)
         self._global_mem = dev.get_info(cl.device_info.GLOBAL_MEM_SIZE)
         print(f"AFMulator: device max_alloc={_bytes_to_gb(self._max_alloc):.3f} GB global_mem={_bytes_to_gb(self._global_mem):.3f} GB")
         relax_cl = os.path.join(cl_src_dir, 'relax.cl')
         print(f"AFMulator: compiling {relax_cl}")
-        self.prg = cl.Program(self.ctx, open(relax_cl).read()).build()
+        self.load_program(kernel_path=relax_cl)
         print("AFMulator: relax.cl compiled OK")
         # State
         self.mol = self.elem_types = None
@@ -69,6 +64,27 @@ class AFMulator:
         self.surfFF     = self.DEFAULT_surfFF.copy()
         self.tipQs      = self.DEFAULT_tipQs.copy()
         self.tipQZs     = self.DEFAULT_tipQZs.copy()
+
+    # ── buffer management ─────────────────────────────────────────────────────
+
+    def realloc_forcefield_buffers(self, na):
+        """(Re-)allocate persistent GPU buffers for make_forcefield via try_make_buffers."""
+        sz_f = 4
+        clJ_cols = 4 if self.use_morse else 2
+        buffs = {
+            "atoms": sz_f * 4 * na,       # float4 per atom (pos + charge)
+            "cLJs":  sz_f * clJ_cols * na, # LJ or Morse params per atom
+        }
+        self.try_make_buffers(buffs, suffix="_cl")
+
+    def realloc_scan_buffers(self, n_scan, nz):
+        """(Re-)allocate persistent GPU buffers for run_scan / get_raw_FE via try_make_buffers."""
+        sz_f = 4
+        buffs = {
+            "scan_pts": sz_f * 4 * n_scan,         # float4 per scan point
+            "scan_FEs": sz_f * 4 * n_scan * nz,    # float4 per (scan_point, z_step)
+        }
+        self.try_make_buffers(buffs, suffix="_cl")
 
     # ── molecule loading ──────────────────────────────────────────────────────
 
@@ -217,20 +233,15 @@ class AFMulator:
 
     # ── force field ───────────────────────────────────────────────────────────
 
-    def make_forcefield(self):
+    def make_forcefield(self, bAlloc=True):
         """Upload atom data to GPU and run evalLJC_QZs_toImg (or evalMorseC_QZs_toImg)."""
         assert self.n is not None, "call setup_grid() first"
         nx,ny,nz = self.n
         na = len(self.atoms_arr)
         nMax = int(nx*ny*nz)
         mf = cl.mem_flags
-        # estimate allocations
-        atoms_bytes = self.atoms_arr.nbytes
-        cLJs_bytes  = self.cLJs_arr.nbytes
-        img_bytes   = nx*ny*nz*4*4
-        alloc = atoms_bytes + cLJs_bytes + img_bytes
-        self._vram_bytes += alloc
-        print(f"AFMulator.make_forcefield: alloc atoms={_bytes_to_gb(atoms_bytes):.3f} GB cLJs={_bytes_to_gb(cLJs_bytes):.3f} GB img={_bytes_to_gb(img_bytes):.3f} GB | cumulative ~{_bytes_to_gb(self._vram_bytes):.3f} GB")
+        img_bytes = nx*ny*nz*4*4
+        print(f"AFMulator.make_forcefield: na={na} grid=({nx},{ny},{nz}) img={_bytes_to_gb(img_bytes):.3f} GB")
         if img_bytes > self._max_alloc:
             raise MemoryError(f"FF image needs {img_bytes} bytes ({_bytes_to_gb(img_bytes):.3f} GB) > device max_alloc {_bytes_to_gb(self._max_alloc):.3f} GB")
         # 3D image dimension guard
@@ -239,14 +250,19 @@ class AFMulator:
         max_d = self.ctx.devices[0].get_info(cl.device_info.IMAGE3D_MAX_DEPTH)
         if nx > max_w or ny > max_h or nz > max_d:
             raise MemoryError(f"FF image dims {nx}x{ny}x{nz} exceed device limits {max_w}x{max_h}x{max_d}; reduce spacing/margin/z_top")
-        self.atoms_cl = cl.Buffer(self.ctx, mf.READ_ONLY|mf.COPY_HOST_PTR, hostbuf=self.atoms_arr)
-        self.cLJs_cl  = cl.Buffer(self.ctx, mf.READ_ONLY|mf.COPY_HOST_PTR, hostbuf=self.cLJs_arr)
+        # Persistent atom/cLJ buffers
+        if bAlloc:
+            self.realloc_forcefield_buffers(na)
+        self.toGPU_(self.atoms_cl, self.atoms_arr)
+        self.toGPU_(self.cLJs_cl,  self.cLJs_arr)
+        # img_FF is a cl.Image (not a Buffer) -- reallocate only when shape changes
         fmt = cl.ImageFormat(cl.channel_order.RGBA, cl.channel_type.FLOAT)
-        try:
-            self.img_FF = cl.Image(self.ctx, mf.READ_WRITE, fmt, shape=(nx,ny,nz))
-        except Exception as e:
-            print(f"AFMulator.make_forcefield: cl.Image allocation failed for shape {nx}x{ny}x{nz} : {e}")
-            raise
+        if self.img_FF is None or getattr(self.img_FF, 'shape', None) != (nx, ny, nz):
+            try:
+                self.img_FF = cl.Image(self.ctx, mf.READ_WRITE, fmt, shape=(nx,ny,nz))
+            except Exception as e:
+                print(f"AFMulator.make_forcefield: cl.Image allocation failed for shape {nx}x{ny}x{nz} : {e}")
+                raise
         gs  = (self._roundup(nMax, self.nloc),)
         ls  = (self.nloc,)
         nGrid = np.array([nx,ny,nz,nMax], dtype=np.int32)
@@ -271,7 +287,7 @@ class AFMulator:
     # ── scan ──────────────────────────────────────────────────────────────────
 
     def run_scan(self, nxy=(50,50), nz=60, dtip=-0.1,
-                 scan_p0=None, scan_da=None, scan_db=None):
+                 scan_p0=None, scan_da=None, scan_db=None, bAlloc=True):
         """
         Run relaxStrokesTilted for (nx_scan × ny_scan) scan points.
         Returns FEs (nx_scan, ny_scan, nz, 4) and pts (nx_scan, ny_scan, 3).
@@ -299,30 +315,26 @@ class AFMulator:
             for iy in range(ny_s):
                 pts[k,:3] = scan_p0 + scan_da*ix + scan_db*iy
                 k += 1
-        mf = cl.mem_flags
         FEs_bytes = n_scan*nz*4*4
-        pts_bytes = pts.nbytes
-        if not hasattr(self, '_vram_bytes'): self._vram_bytes = 0
         if FEs_bytes > self._max_alloc:
             raise MemoryError(f"run_scan: FEs buffer needs {FEs_bytes} bytes ({_bytes_to_gb(FEs_bytes):.3f} GB) > device max_alloc {_bytes_to_gb(self._max_alloc):.3f} GB")
-        self._vram_bytes += FEs_bytes + pts_bytes
-        print(f"AFMulator.run_scan: alloc pts={_bytes_to_gb(pts_bytes):.3f} GB FEs={_bytes_to_gb(FEs_bytes):.3f} GB | cumulative ~{_bytes_to_gb(self._vram_bytes):.3f} GB")
-        pts_cl = cl.Buffer(self.ctx, mf.READ_ONLY|mf.COPY_HOST_PTR, hostbuf=pts)
+        if bAlloc:
+            self.realloc_scan_buffers(n_scan, nz)
+        self.toGPU_(self.scan_pts_cl, pts)
         FEs_h  = np.zeros((n_scan*nz, 4), dtype=np.float32)
-        FEs_cl = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=FEs_h.nbytes)
         tipC = self.tipC.copy(); tipC[3] = np.float32(dtip)
         gs = (self._roundup(n_scan, 1),)
         ls = (1,)
         self.prg.relaxStrokesTilted(
             self.queue, gs, ls,
-            self.img_FF, pts_cl, FEs_cl,
+            self.img_FF, self.scan_pts_cl, self.scan_FEs_cl,
             self.dinvA, self.dinvB, self.dinvC,
             self.tipA, self.tipB, tipC,
             self.stiffness, self.dpos0, self.relax_pars, self.surfFF,
             np.int32(nz)
         )
         self.queue.finish()
-        cl.enqueue_copy(self.queue, FEs_h, FEs_cl)
+        self.fromGPU_(self.scan_FEs_cl, FEs_h)
         self.queue.finish()
         FEs = FEs_h.reshape(nx_s, ny_s, nz, 4)
         print(f"AFMulator.run_scan: done FEs.shape={FEs.shape}")
@@ -331,7 +343,7 @@ class AFMulator:
     # ── raw FF (no PP relaxation) ─────────────────────────────────────────────
 
     def get_raw_FE(self, nxy=(60,60), nz=21, dtip=-0.2,
-                   scan_p0=None, scan_da=None, scan_db=None):
+                   scan_p0=None, scan_da=None, scan_db=None, bAlloc=True):
         """
         Sample force field WITHOUT probe-particle relaxation using getFEinStrokesTilted.
         Probe moves at fixed offset dpos0 below tip, no spring/FIRE minimisation.
@@ -358,30 +370,26 @@ class AFMulator:
             for iy in range(ny_s):
                 pts[k,:3] = scan_p0 + scan_da*ix + scan_db*iy
                 k += 1
-        mf = cl.mem_flags
         FEs_bytes = n_scan*nz*4*4
-        pts_bytes = pts.nbytes
-        if not hasattr(self, '_vram_bytes'): self._vram_bytes = 0
         if FEs_bytes > self._max_alloc:
             raise MemoryError(f"get_raw_FE: FEs buffer needs {FEs_bytes} bytes ({_bytes_to_gb(FEs_bytes):.3f} GB) > device max_alloc {_bytes_to_gb(self._max_alloc):.3f} GB")
-        self._vram_bytes += FEs_bytes + pts_bytes
-        print(f"AFMulator.get_raw_FE: alloc pts={_bytes_to_gb(pts_bytes):.3f} GB FEs={_bytes_to_gb(FEs_bytes):.3f} GB | cumulative ~{_bytes_to_gb(self._vram_bytes):.3f} GB")
-        pts_cl = cl.Buffer(self.ctx, mf.READ_ONLY|mf.COPY_HOST_PTR, hostbuf=pts)
+        if bAlloc:
+            self.realloc_scan_buffers(n_scan, nz)
+        self.toGPU_(self.scan_pts_cl, pts)
         FEs_h  = np.zeros((n_scan*nz, 4), dtype=np.float32)
-        FEs_cl = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=FEs_h.nbytes)
         dTip = np.array([0., 0., dtip, 0.], dtype=np.float32)
         gs = (self._roundup(n_scan, 1),)
         ls = (1,)
         self.prg.getFEinStrokesTilted(
             self.queue, gs, ls,
-            self.img_FF, pts_cl, FEs_cl,
+            self.img_FF, self.scan_pts_cl, self.scan_FEs_cl,
             self.dinvA, self.dinvB, self.dinvC,
             self.tipA, self.tipB, self.tipC,
             dTip, self.dpos0,
             np.int32(nz)
         )
         self.queue.finish()
-        cl.enqueue_copy(self.queue, FEs_h, FEs_cl)
+        self.fromGPU_(self.scan_FEs_cl, FEs_h)
         self.queue.finish()
         FEs = FEs_h.reshape(nx_s, ny_s, nz, 4)
         print(f"AFMulator.get_raw_FE: done FEs.shape={FEs.shape}")
