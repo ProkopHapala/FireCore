@@ -509,6 +509,49 @@ def compose_and_relax(grads_pauli, grads_es, grads_vdw, scan_xs, scan_ys, height
     return df, tip_disp
 
 
+def compose_and_relax_total(grads_total, scan_xs, scan_ys, heights,
+                          origin, step, atomPos, K_LAT=0.5):
+    """
+    Compose force field from total gradient and run probe particle relaxation.
+
+    This is the optimized version that uses a single total gradient instead of
+    computing and summing three separate gradients (Pauli, ES, vdW).
+
+    Args:
+        grads_total: (nx, ny, nz, 3) total gradient of combined potential
+        scan_xs: (nx_s,) scan x coordinates
+        scan_ys: (ny_s,) scan y coordinates
+        heights: (nz_s,) probe heights
+        origin: (3,) grid origin
+        step: grid spacing
+        atomPos: (natoms, 3) atom positions (for mol_z)
+        K_LAT: lateral stiffness
+
+    Returns:
+        df: (nx_s, ny_s, nz_s) frequency shift array
+        tip_disp: dict with 'dx' and 'dy' displacement arrays (nx_s, ny_s, nz_s)
+    """
+    from scipy.ndimage import map_coordinates
+
+    # F = -grad E (total gradient already contains all contributions)
+    F_total = -grads_total
+
+    def force_func(positions):
+        """Interpolate forces at arbitrary positions from scan-grid force field."""
+        ix = (positions[:, 0] - origin[0]) / step
+        iy = (positions[:, 1] - origin[1]) / step
+        iz = (positions[:, 2] - origin[2]) / step
+        coords = np.vstack([ix, iy, iz])
+        fx = map_coordinates(F_total[..., 0], coords, order=1)
+        fy = map_coordinates(F_total[..., 1], coords, order=1)
+        fz = map_coordinates(F_total[..., 2], coords, order=1)
+        return np.stack([fx, fy, fz], axis=-1)
+
+    mol_z = atomPos[:,2].max()
+    FEs_relax, tip_disp = afm.pp_relax_2d(force_func, scan_xs, scan_ys, heights, mol_z=mol_z, K_LAT=K_LAT, N_RELAX=50, step=step)
+    df = afm.compute_df(FEs_relax[:,:,:,2], heights[1]-heights[0])
+    return df, tip_disp
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Step Plotting Functions (separate from computation)
@@ -865,9 +908,6 @@ def load_grid_spec(step_dir):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# High-Level Orchestration Function
-# ═══════════════════════════════════════════════════════════════════════════════
-
 def run_afm_pipeline(
     rho_grid, rho_na_grid, rho_diff, V_ES,
     rho_tip_total, rho_tip_delta,
@@ -883,6 +923,8 @@ def run_afm_pipeline(
     relax_params={'K_LAT': 0.5},
     plot_steps=True,
     stm_params=None,  # Dict with STM parameters for Step 7
+    use_gpu_gradient=True,  # Use GPU for total gradient computation
+    afmulator=None,  # AFMulator instance for GPU gradient (created if None)
     projector=None,  # GridProjector for STM (required if stm_params is set)
     norb_per_atom=None,  # Required for STM
     orb_offsets=None,  # Required for STM
@@ -1008,46 +1050,68 @@ def run_afm_pipeline(
     else:
         print(f"\nStep 3b: Using provided Pauli params: A={A_pauli:.4f}, beta={beta_pauli:.4f}")
     
-    # Step 3c: Scale overlap into energy field
+    # Step 3c: Scale overlap into energy field (energy only, no gradients)
     print(f"\nStep 3c: Scaling E_pauli = {A_pauli:.4f} * overlap^{beta_pauli:.4f}")
-    E_pauli_field, grads_pauli = afm.scale_pauli_field(overlap_raw, step, A_pauli, beta_pauli)
-    
+    E_pauli_field = afm.scale_pauli_field(overlap_raw, step, A_pauli, beta_pauli, return_grads=False)
+
     # Consistency diagnostics
     print(f"  overlap_raw at max: {overlap_raw.max():.4e}")
     print(f"  E_pauli_field: range=[{E_pauli_field.min():.4e}, {E_pauli_field.max():.4e}]")
     print(f"  Check: A*overlap_max^beta = {A_pauli:.4f}*{overlap_raw.max():.4e}^{beta_pauli:.4f} = {A_pauli * float(overlap_raw.max())**beta_pauli:.4e}")
-    
+
     if plot_steps:
-        plot_step3_outputs(E_pauli_field, grads_pauli, output_dir, origin, step, A_pauli, beta_pauli)
+        plot_step3_outputs(E_pauli_field, None, output_dir, origin, step, A_pauli, beta_pauli)
     if debug_save_enabled(2):
         np.save(os.path.join(output_dir, 'E_Pauli_field.npy'), E_pauli_field)
-        np.save(os.path.join(output_dir, 'grads_E_Pauli.npy'), grads_pauli)
-    
-    # Step 4: Electrostatic convolution
+
+    # Step 4: Electrostatic convolution (energy only, no gradients)
     print("\nStep 4: Computing electrostatic convolution...")
-    E_ES_field, grads_ES = afm.compute_es_conv_field(V_ES, rho_tip_delta, step, tip_rolled=True)
+    E_ES_field = afm.compute_es_conv_field(V_ES, rho_tip_delta, step, tip_rolled=True, return_grads=False)
     if plot_steps:
-        plot_step4_outputs(E_ES_field, grads_ES, output_dir, origin, step)
+        plot_step4_outputs(E_ES_field, None, output_dir, origin, step)
     if debug_save_enabled(2):
         np.save(os.path.join(output_dir, 'E_ES_field.npy'), E_ES_field)
-        np.save(os.path.join(output_dir, 'grads_E_ES.npy'), grads_ES)
-    
-    # Step 5: Dispersion
+
+    # Step 5: Dispersion (energy only, no gradients)
     print("\nStep 5: Computing dispersion...")
-    E_vdw, grads_vdw = afm.compute_dispersion_grid(
+    E_vdw = afm.compute_dispersion_grid(
         atomPos, atomTypes, origin, step, ngrid,
-        C6_CO=vdw_params['C6_CO']
+        C6_CO=vdw_params['C6_CO'], return_grads=False
     )
     if plot_steps:
-        plot_step5_outputs(E_vdw, grads_vdw, output_dir, origin, step)
+        plot_step5_outputs(E_vdw, None, output_dir, origin, step)
     if debug_save_enabled(2):
         np.save(os.path.join(output_dir, 'E_vdw_field.npy'), E_vdw)
-        np.save(os.path.join(output_dir, 'grads_E_vdw.npy'), grads_vdw)
-    
-    # Step 6: Compose and relax
+
+    # Step 5b: Compute total energy and gradient
+    print("\nStep 5b: Computing total energy field and gradient...")
+    E_total = E_pauli_field + E_ES_field + E_vdw
+    print(f"  E_total range: [{E_total.min():.4e}, {E_total.max():.4e}]")
+
+    # Compute gradient of total energy (CPU or GPU)
+    if use_gpu_gradient:
+        print("  Using GPU for gradient computation...")
+        if afmulator is None:
+            # Create AFMulator instance if not provided
+            afmulator = afm.AFMulator(use_morse=False, nloc=32)
+        grads_cl = afmulator.compute_gradient_cl(E_total, step, bAlloc=True)
+        # Extract gradients (negate forces): grad = -F
+        grads_total = grads_cl[..., :3]  # Already (Fx, Fy, Fz) where F = -grad
+        # We need grad, so negate: grad = -F
+        grads_total = -grads_total
+    else:
+        print("  Using CPU (numpy) for gradient computation...")
+        grads_total = np.stack([np.gradient(E_total, step, axis=i) for i in range(3)], axis=-1)
+
+    # Save intermediates
+    if debug_save_enabled(2):
+        np.save(os.path.join(output_dir, 'E_total_field.npy'), E_total)
+        np.save(os.path.join(output_dir, 'grads_E_total.npy'), grads_total)
+
+    # Step 6: Compose and relax using total gradient
     print("\nStep 6: Composing force fields and running probe relaxation...")
-    df, tip_disp = compose_and_relax(
-        grads_pauli, grads_ES, grads_vdw,
+    df, tip_disp = compose_and_relax_total(
+        grads_total,
         scan_xs, scan_ys, heights,
         origin, step, atomPos, K_LAT=relax_params['K_LAT']
     )
@@ -1108,11 +1172,12 @@ def run_afm_pipeline(
         'intermediates': {
             'V_ES': V_ES,
             'E_pauli_field': E_pauli_field,
-            'grads_pauli': grads_pauli,
+            'grads_pauli': None,  # Not computed in optimized mode (use grads_total)
             'E_ES_field': E_ES_field,
-            'grads_ES': grads_ES,
+            'grads_ES': None,  # Not computed in optimized mode (use grads_total)
             'E_vdw': E_vdw,
-            'grads_vdw': grads_vdw,
+            'grads_vdw': None,  # Not computed in optimized mode (use grads_total)
+            'grads_total': grads_total,  # Total gradient of combined potential
             'tip_disp': tip_disp,
         },
         'grid_spec': grid_spec_out,

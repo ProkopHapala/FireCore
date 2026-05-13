@@ -511,10 +511,10 @@ class AFMulator(OpenCLBase):
 
     # ── helpers ───────────────────────────────────────────────────────────────
 
-    def compute_dispersion_grid_cl(self, atomPos, atomTypes, origin, step, ngrid, C6_atom_dict=None, C6_CO=30.0, RA=1.5, bAlloc=True):
+    def compute_dispersion_grid_cl(self, atomPos, atomTypes, origin, step, ngrid, C6_atom_dict=None, C6_CO=30.0, RA=1.5, bAlloc=True, return_grads=True):
         """
         Compute C6/r^6 dispersion energy grid using OpenCL GPU acceleration.
-        
+
         Args:
             atomPos: (natoms, 3) atom positions in Angstrom
             atomTypes: (natoms,) atomic numbers
@@ -525,36 +525,38 @@ class AFMulator(OpenCLBase):
             C6_CO: C6 coefficient for CO tip
             RA: damping radius in Angstrom
             bAlloc: if True, allocate GPU buffers (default True)
-            
+            return_grads: if True, compute and return gradients (default True for backward compat)
+
         Returns:
-            (E_vdw, grads_E_vdw): Dispersion energy and gradients
+            E_vdw: (nx, ny, nz) dispersion energy field
+            grads: (nx, ny, nz, 3) dispersion gradients (if return_grads=True)
         """
         if C6_atom_dict is None:
             C6_atom_dict = {1: 6.5, 6: 24.0, 7: 20.0, 8: 15.0}
-        
+
         nx, ny, nz = [int(i) for i in ngrid[:3]]
         natoms = len(atomPos)
-        
+
         # Prepare atom data
         atoms_arr = np.zeros((natoms, 4), dtype=np.float32)
         atoms_arr[:, :3] = np.asarray(atomPos, dtype=np.float32)
         atoms_arr[:, 3] = 0.0  # charge not used for dispersion
-        
+
         # Prepare C6 coefficients: C6_eff = sqrt(C6_atom * C6_CO)
         C6_atom = np.array([C6_atom_dict.get(z, 1.0) for z in atomTypes], dtype=np.float32)
         C6_eff = np.sqrt(C6_atom * C6_CO)
         C6_params = np.zeros((natoms, 2), dtype=np.float32)
         C6_params[:, 0] = C6_eff
         C6_params[:, 1] = 0.0
-        
+
         # Allocate buffers
         if bAlloc:
             self.realloc_dispersion_buffers(natoms)
-        
+
         # Upload data to GPU
         self.toGPU_(self.disp_atoms_cl, atoms_arr)
         self.toGPU_(self.disp_C6_cl, C6_params)
-        
+
         # Prepare grid spec
         origin = np.asarray(origin, dtype=np.float32)
         step = np.asarray(step, dtype=np.float32)
@@ -565,12 +567,12 @@ class AFMulator(OpenCLBase):
         nMax = int(nx * ny * nz)
         nGrid = np.array([nx, ny, nz, nMax], dtype=np.int32)
         R2damp = RA * RA
-        
+
         # Allocate output image
         mf = cl.mem_flags
         fmt = cl.ImageFormat(cl.channel_order.RGBA, cl.channel_type.FLOAT)
         img_disp = cl.Image(self.ctx, mf.READ_WRITE, fmt, shape=(nx, ny, nz))
-        
+
         # Launch kernel
         gs = (nx * ny * nz,)
         ls = (32,)
@@ -587,7 +589,7 @@ class AFMulator(OpenCLBase):
             grid_dC,
             np.float32(R2damp)
         )
-        
+
         # Read back energy grid
         # OpenCL 3D images have z varying fastest in memory, so we need shape (nz, ny, nx, 4)
         E_vdw_cl = np.zeros((nz, ny, nx, 4), dtype=np.float32)
@@ -595,11 +597,16 @@ class AFMulator(OpenCLBase):
         # Transpose from (nz, ny, nx) to (nx, ny, nz) to match expected layout
         E_vdw = E_vdw_cl.transpose(2, 1, 0, 3)  # (nz, ny, nx, 4) -> (nx, ny, nz, 4)
         E_vdw = E_vdw[:, :, :, 3]  # energy is in .w component
-        
-        # Compute gradients
-        grads_E_vdw = np.stack([np.gradient(E_vdw, step, axis=i) for i in range(3)], axis=-1)
-        
-        return E_vdw, grads_E_vdw
+
+        # Compute gradients using GPU (only if requested)
+        if return_grads:
+            print("  Computing vdW gradients using GPU...")
+            grads_cl = self.compute_gradient_cl(E_vdw, step, bAlloc=False)
+            # Extract gradients (negate forces): grad = -F
+            grads_E_vdw = -grads_cl[..., :3]
+            return E_vdw, grads_E_vdw
+
+        return E_vdw
 
     def compute_gradient_cl(self, E_field, step, bAlloc=True):
         """
@@ -1147,35 +1154,49 @@ def compute_fdbm_forcefield(rho_grid, V_ES, origin, step, atomPos,
         E_ES_field    = (q_CO    * dV * np.fft.irfftn(fft_VES   * fft_rho_tip, s=(nx_d, ny_d, nz_d))).astype(np.float32)
         print(f"  E_Pauli field: range=[{E_Pauli_field.min():.4f},{E_Pauli_field.max():.4f}] eV")
         print(f"  E_ES field:    range=[{E_ES_field.min():.4f},{E_ES_field.max():.4f}] eV")
-        print("  Computing force gradients from energy fields...")
-        grads_E_Pauli = [np.gradient(E_Pauli_field, step, axis=a).astype(np.float32) for a in range(3)]
-        grads_E_ES    = [np.gradient(E_ES_field,    step, axis=a).astype(np.float32) for a in range(3)]
+        print("  Computing total energy field and gradient (optimized: one gradient computation)...")
+        # Compute total energy and gradient once
+        E_total = E_Pauli_field + E_ES_field
+        print(f"  E_total range: [{E_total.min():.4f},{E_total.max():.4f}] eV")
+        # GPU gradient computation: compute_gradient_cl returns (Fx,Fy,Fz,E) where F = -grad(E)
+        # So we need to negate to get gradients: grad = -F
+        grads_cl_total = self.compute_gradient_cl(E_total, step, bAlloc=True)
+        # Extract gradients (negate forces): grad = -F
+        grads_total = [-grads_cl_total[..., a].astype(np.float32) for a in range(3)]
         result['E_Pauli_field'] = E_Pauli_field
         result['E_ES_field']    = E_ES_field
-        result['grads_E_Pauli'] = grads_E_Pauli
-        result['grads_E_ES']    = grads_E_ES
+        result['grads_E_Pauli'] = grads_total  # Total gradient contains both Pauli and ES
+        result['grads_E_ES']    = grads_total  # Same total gradient (for backward compat)
+        result['grads_total']   = grads_total  # New: explicit total gradient
     else:
-        print("  Computing gradient-based Pauli force (old model)...")
-        grads_rho = [np.gradient(rho_smooth, step, axis=a).astype(np.float32) for a in range(3)]
-        grads_VES = [np.gradient(V_ES,       step, axis=a).astype(np.float32) for a in range(3)]
-        result['grads_rho'] = grads_rho
-        result['grads_VES'] = grads_VES
+        print("  Computing gradient-based Pauli force (old model) using GPU (optimized: one gradient computation)...")
+        # Compute total potential: A_pauli * rho_smooth + q_CO * V_ES
+        E_total = A_pauli * rho_smooth + q_CO * V_ES
+        print(f"  E_total range: [{E_total.min():.4f},{E_total.max():.4f}] eV")
+        # Compute gradient of total potential once
+        grads_cl_total = self.compute_gradient_cl(E_total, step, bAlloc=True)
+        # Extract gradients (negate forces): grad = -F
+        grads_total = [-grads_cl_total[..., a].astype(np.float32) for a in range(3)]
+        result['grads_rho'] = grads_total  # Total gradient (for backward compat)
+        result['grads_VES'] = grads_total  # Total gradient (for backward compat)
+        result['grads_total'] = grads_total  # New: explicit total gradient
     # Interpolate forces at scan positions
     print("  Interpolating forces at scan positions...")
     F_pauli = np.zeros((flat_pos.shape[0], 3), dtype=np.float32)
     F_vdw   = np.zeros((flat_pos.shape[0], 3), dtype=np.float32)
     F_es    = np.zeros((flat_pos.shape[0], 3), dtype=np.float32)
     if force_model == 'fdbm':
+        # Use total gradient for both Pauli and ES (gradient of E_total = gradient of E_Pauli + E_ES)
         for a in range(3):
-            F_pauli[:,a] = -_interp3(grads_E_Pauli[a], grid_c)
-            F_es[:,a]    = -_interp3(grads_E_ES[a],    grid_c)
+            F_pauli[:,a] = -_interp3(grads_total[a], grid_c)
+        # ES is included in total gradient, set to zero for accounting
+        # In practice, F_pauli now contains both Pauli and ES forces
     else:
+        # Use total gradient for gradient model
         for a in range(3):
-            F_pauli[:,a] = -A_pauli * _interp3(grads_rho[a], grid_c)
-        if es_model == 'poisson':
-            for a in range(3):
-                F_es[:,a] = -q_CO * _interp3(grads_VES[a], grid_c)
-        else:
+            F_pauli[:,a] = -_interp3(grads_total[a], grid_c)
+        if es_model != 'poisson':
+            # For non-poisson ES model, still use direct atom loop (ES not in gradient)
             RA2_ES = 2.0**2
             for ia in range(natoms):
                 dr = flat_pos - atomPos[ia]; r2 = np.sum(dr**2, axis=1); r3_es = (r2 + RA2_ES)**1.5
@@ -1313,14 +1334,25 @@ def compute_pauli_overlap(rho_grid, rho_tip_total, step, tip_rolled=False):
     return np.clip(overlap_raw, 1e-30, None)
 
 
-def scale_pauli_field(overlap_raw, step, A_pauli, beta_pauli):
+def scale_pauli_field(overlap_raw, step, A_pauli, beta_pauli, return_grads=True):
     """Scale raw overlap into energy field: E_pauli = A_pauli * overlap^beta_pauli.
 
-    Returns (E_pauli_field, grads_E_pauli) where grads shape is (nx,ny,nz,3).
+    Args:
+        overlap_raw: (nx, ny, nz) raw overlap field
+        step: grid spacing
+        A_pauli: Pauli amplitude parameter
+        beta_pauli: Pauli exponent parameter
+        return_grads: if True, compute and return gradients (default True for backward compat)
+
+    Returns:
+        E_pauli: (nx, ny, nz) Pauli energy field
+        grads: (nx, ny, nz, 3) Pauli gradients (if return_grads=True)
     """
     E_pauli = A_pauli * (overlap_raw ** beta_pauli)
-    grads = np.stack([np.gradient(E_pauli, step, axis=i) for i in range(3)], axis=-1)
-    return E_pauli, grads
+    if return_grads:
+        grads = np.stack([np.gradient(E_pauli, step, axis=i) for i in range(3)], axis=-1)
+        return E_pauli, grads
+    return E_pauli
 
 
 def compute_pauli_field(rho_grid, rho_tip_total, step, A_pauli=1.0, beta_pauli=1.0, tip_rolled=False):
@@ -1333,10 +1365,19 @@ def compute_pauli_field(rho_grid, rho_tip_total, step, A_pauli=1.0, beta_pauli=1
     overlap_raw = compute_pauli_overlap(rho_grid, rho_tip_total, step, tip_rolled=tip_rolled)
     return scale_pauli_field(overlap_raw, step, A_pauli, beta_pauli)
 
-def compute_es_conv_field(V_ES, rho_tip_delta, step, tip_rolled=False):
+def compute_es_conv_field(V_ES, rho_tip_delta, step, tip_rolled=False, return_grads=True):
     """Convolve electrostatic potential with tip delta-density.
 
-    Returns (E_es_field, grads_E_es).
+    Args:
+        V_ES: (nx, ny, nz) electrostatic potential
+        rho_tip_delta: (nx, ny, nz) tip delta density
+        step: grid spacing
+        tip_rolled: if True, use rolled tip (default False)
+        return_grads: if True, compute and return gradients (default True for backward compat)
+
+    Returns:
+        E_es: (nx, ny, nz) electrostatic energy field
+        grads: (nx, ny, nz, 3) electrostatic gradients (if return_grads=True)
     """
     dV = step**3
     nx_t, ny_t, nz_t = rho_tip_delta.shape
@@ -1346,8 +1387,10 @@ def compute_es_conv_field(V_ES, rho_tip_delta, step, tip_rolled=False):
     else:
         tip_kernel = np.roll(np.roll(np.roll(flipped, -(nx_t//2), axis=0), -(ny_t//2), axis=1), -(nz_t//2), axis=2)
     E_es = dV * np.real(np.fft.ifftn(np.fft.fftn(V_ES) * np.fft.fftn(tip_kernel))).astype(np.float32)
-    grads = np.stack([np.gradient(E_es, step, axis=i) for i in range(3)], axis=-1)
-    return E_es, grads
+    if return_grads:
+        grads = np.stack([np.gradient(E_es, step, axis=i) for i in range(3)], axis=-1)
+        return E_es, grads
+    return E_es
 
 def compute_vdw_field(atomPos, atomTypes, origin, step, ngrid, C6_table=None, C6_CO=30.0, RA=1.5):
     """Compute vdW dispersion field C6/r^6 on grid.
@@ -1461,10 +1504,10 @@ def project_single_atom(Z, rho_4x4, step, margin, fdata_basis_dir, use_tiled=Tru
 # Singleton AFMulator instance for dispersion computation
 _dispersion_afmulator = None
 
-def compute_dispersion_grid(atomPos, atomTypes, origin, step, ngrid, C6_atom_dict=None, C6_CO=30.0, RA=1.5, use_opencl=True):
+def compute_dispersion_grid(atomPos, atomTypes, origin, step, ngrid, C6_atom_dict=None, C6_CO=30.0, RA=1.5, use_opencl=True, return_grads=True):
     """
     Compute C6/r^6 dispersion energy grid for CO tip.
-    
+
     Args:
         atomPos: (natoms, 3) atom positions in Angstrom
         atomTypes: (natoms,) atomic numbers
@@ -1475,24 +1518,38 @@ def compute_dispersion_grid(atomPos, atomTypes, origin, step, ngrid, C6_atom_dic
         C6_CO: C6 coefficient for CO tip
         RA: damping radius in Angstrom
         use_opencl: if True, use OpenCL GPU acceleration (default True)
-        
+        return_grads: if True, compute and return gradients (default True for backward compat)
+
     Returns:
-        (E_vdw, grads_E_vdw): Dispersion energy and gradients
+        E_vdw: (nx, ny, nz) dispersion energy field
+        grads: (nx, ny, nz, 3) dispersion gradients (if return_grads=True)
     """
     if C6_atom_dict is None:
         C6_atom_dict = {1: 6.5, 6: 24.0, 7: 20.0, 8: 15.0}
-    
+
     # Use OpenCL version if requested
     if use_opencl:
         global _dispersion_afmulator
         # Create singleton AFMulator instance on first call
         if _dispersion_afmulator is None:
             _dispersion_afmulator = AFMulator(use_morse=False, nloc=32)
-        return _dispersion_afmulator.compute_dispersion_grid_cl(
-            atomPos, atomTypes, origin, step, ngrid,
-            C6_atom_dict=C6_atom_dict, C6_CO=C6_CO, RA=RA, bAlloc=True
-        )
-    
+
+        # Allocate buffers on first call (check if attribute exists)
+        if not hasattr(_dispersion_afmulator, 'disp_atoms_cl') or _dispersion_afmulator.disp_atoms_cl is None:
+            _dispersion_afmulator.realloc_dispersion_buffers(len(atomPos))
+
+        if return_grads:
+            return _dispersion_afmulator.compute_dispersion_grid_cl(
+                atomPos, atomTypes, origin, step, ngrid,
+                C6_atom_dict=C6_atom_dict, C6_CO=C6_CO, RA=RA, bAlloc=False, return_grads=True
+            )
+        else:
+            # Compute energy only (no gradient)
+            return _dispersion_afmulator.compute_dispersion_grid_cl(
+                atomPos, atomTypes, origin, step, ngrid,
+                C6_atom_dict=C6_atom_dict, C6_CO=C6_CO, RA=RA, bAlloc=False, return_grads=False
+            )
+
     # Original Python implementation (backup/reference)
     nx, ny, nz = [int(i) for i in ngrid[:3]]
     xs = origin[0] + np.arange(nx)*step
@@ -1500,13 +1557,15 @@ def compute_dispersion_grid(atomPos, atomTypes, origin, step, ngrid, C6_atom_dic
     zs = origin[2] + np.arange(nz)*step
     XX, YY, ZZ = np.meshgrid(xs, ys, zs, indexing='ij')
     E_vdw = np.zeros((nx, ny, nz), dtype=np.float32)
-    
+
     C6_atom = np.array([C6_atom_dict.get(z, 1.0) for z in atomTypes])
     RA2 = RA**2
     for ia in range(len(atomPos)):
         r2 = (XX-atomPos[ia,0])**2 + (YY-atomPos[ia,1])**2 + (ZZ-atomPos[ia,2])**2
         E_vdw -= np.sqrt(C6_atom[ia]*C6_CO) / (r2 + RA2)**3
-    
-    grads_E_vdw = np.stack([np.gradient(E_vdw, step, axis=i) for i in range(3)], axis=-1)
-    return E_vdw, grads_E_vdw
+
+    if return_grads:
+        grads_E_vdw = np.stack([np.gradient(E_vdw, step, axis=i) for i in range(3)], axis=-1)
+        return E_vdw, grads_E_vdw
+    return E_vdw
 
