@@ -1,3 +1,49 @@
+"""
+AFMulator: OpenCL-Accelerated AFM Simulation
+============================================
+
+Purpose:
+--------
+AFMulator simulates atomic force microscopy (AFM) imaging using OpenCL GPU acceleration.
+It computes tip-sample interactions (van der Waals, electrostatic, Pauli repulsion) and
+relaxes the tip to generate constant-force or constant-height images. Used for STM/AFM
+image prediction and interpretation.
+
+Major Functionality:
+-------------------
+1. Force Field Computation
+   - make_forcefield(): Compute LJ/Morse force field on 3D grid
+   - realloc_forcefield_buffers(): Reallocate atom and parameter buffers
+   - Supports both Lennard-Jones and Morse potentials
+   - Includes electrostatic convolution with tip charge distribution
+   - Dispersion correction via C6/R^6 integration
+
+2. Tip Relaxation
+   - run_scan(): Relax tip at each scan point to constant-force equilibrium
+   - realloc_scan_buffers(): Reallocate scan point and FE buffers
+   - relaxStrokesTilted(): GPU kernel for tip relaxation with tilt
+   - get_raw_FE(): Get raw force/energy without relaxation
+   - Supports CO-functionalized tip with quadrupole charge distribution
+
+3. Molecule Loading
+   - load_molecule(): Load molecular structure from XYZ file
+   - assign_params(): Assign LJ/Morse parameters from ElementTypes.dat
+   - Combination rules for tip-sample parameters
+
+4. Scan Management
+   - Generate scan grid over sample surface
+   - Compute force/energy at each scan point
+   - Output AFM images (constant-force or constant-height)
+
+Optimization Policy:
+-------------------
+- Load kernels once during initialization (load_program in __init__)
+- Use persistent GPU buffers via realloc_forcefield_buffers and realloc_scan_buffers
+- Add bAlloc guards in calling functions (make_forcefield, run_scan) to skip allocation
+- Default bAlloc=True for safety, set False for hot paths with fixed buffer sizes
+- See OpenCLBase.py for full policy details
+"""
+
 import numpy as np
 import pyopencl as cl
 import os, sys

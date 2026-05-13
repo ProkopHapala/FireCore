@@ -1,3 +1,109 @@
+"""
+OpenCLBase: PyOpenCL Utility Base Class
+========================================
+
+Purpose:
+--------
+OpenCLBase is a base class for PyOpenCL-accelerated computations in FireCore.
+It provides common infrastructure for:
+- OpenCL device selection and context management
+- Kernel program loading and caching
+- GPU buffer allocation and reuse
+- Data transfer between host and device
+- Kernel launch utilities
+
+Major Functionality:
+-------------------
+1. Device Management
+   - Select GPU device by vendor or index
+   - Create OpenCL context and command queue
+   - Print device information for debugging
+
+2. Kernel Program Management
+   - Load and compile OpenCL kernel files (.cl)
+   - Cache compiled programs to avoid recompilation
+   - Extract kernel headers for introspection
+   - Support build options for conditional compilation
+
+3. Buffer Management
+   - try_make_buffers(): Allocate buffers with size checking
+   - try_make_buff(): Allocate single buffer with size checking
+   - toGPU_(): Copy host data to GPU buffer
+   - fromGPU_(): Copy GPU buffer to host data
+   - buffer_dict: Centralized buffer storage for reuse
+
+4. Utility Functions
+   - _flat32(): Convert array to C-contiguous float32
+   - _int32(): Convert array to C-contiguous int32
+   - extract_kernel_headers(): Parse kernel signatures from source
+
+Design Pattern:
+--------------
+Subclasses inherit from OpenCLBase and implement domain-specific kernels
+(e.g., AFM, Grid projection, Hubbard solver). The base class handles all
+boilerplate for device management, buffer allocation, and data transfer.
+
+PyOpenCL Resource Management and Optimization Policy
+==================================================
+
+Core Principle:
+--------------
+Kernel calls are expected to be invoked many times with similar or only slightly changed input.
+Python operations (memory allocation, dict creation, kernel compilation) are costly overhead that must be minimized.
+
+Optimization Strategies:
+-----------------------
+
+1. Kernel Caching (load_program)
+   - Compile kernels once during initialization, not per-call
+   - Cache compiled program in self.prg
+   - Skip compilation if program already loaded
+   - Print messages only when actually compiling, not when using cached program
+
+2. Persistent Buffer Management (try_make_buffers, realloc_* methods)
+   - Allocate buffers once and reuse across calls
+   - Use try_make_buffers() which checks if buffer exists and has correct size
+   - Only reallocate if size changes or buffer doesn't exist
+   - Store buffers in self.buffer_dict for centralized management
+
+3. bTryAllocate Guards (calling functions)
+   - Add bTryAllocate=True parameter to run functions (default True for safety)
+   - Guard dict creation and buffer allocation with "if bTryAllocate:"
+   - When False, skip dict creation and try_make_buffers call entirely
+   - Allows zero-allocation hot paths for repeated calls with same buffer sizes
+   - Pattern: guard in calling function, NOT in realloc_* helper function
+
+4. Separation of Initialization vs Runtime
+   - Load kernels during __init__ or load_basis_sto, not in per-call methods
+   - Allocate buffers during first call or when sizes change, not every call
+   - Use bAlloc/bTryAllocate flags to control when reallocation happens
+
+Example Pattern:
+--------------
+def my_kernel_function(self, data, bTryAllocate=True):
+    # Guard buffer allocation - skip dict creation when not needed
+    if bTryAllocate:
+        buffs = {"input": sz, "output": sz}
+        self.try_make_buffers(buffs, suffix="_buff")
+    
+    # Data transfer (always needed)
+    self.toGPU_(self.input_buff, data)
+    
+    # Kernel launch
+    self.prg.my_kernel(self.queue, gs, ls, self.input_buff, self.output_buff)
+    
+    # Read back (always needed)
+    return self.fromGPU_(self.output_buff)
+
+Usage:
+------
+# First call: allocates buffers
+result = my_kernel_function(data, bTryAllocate=True)
+
+# Subsequent calls with same buffer sizes: skips allocation
+result = my_kernel_function(new_data, bTryAllocate=False)
+"""
+
 import os
 import re
 import numpy as np

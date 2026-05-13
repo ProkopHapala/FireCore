@@ -1,3 +1,54 @@
+"""
+GridProjector: OpenCL-Accelerated Density and Orbital Projection
+====================================================================
+
+Purpose:
+--------
+GridProjector projects DFTB+ wavefunctions and density matrices onto real-space grids
+using OpenCL GPU acceleration. It supports both sparse neighbor-based projection and
+dense orbital projection for STM imaging, charge density visualization, and force field
+computation.
+
+Major Functionality:
+-------------------
+1. Basis Loading
+   - load_basis_sto(): Load Slater-type orbital (STO) basis functions
+   - _load_kernels(): Load and compile OpenCL kernels (called in __init__)
+   - Evaluates STO analytically on uniform grid, packs as float2(value, d2)
+   - Supports sp (max_shells=2) and spd (max_shells=3) basis sets
+   - Caches basis data in GPU buffer for reuse
+
+2. Grid Projection Methods
+   - project_density_dense(): Project sparse density matrix to 3D grid
+   - project_orbital_dense(): Project single MO to 3D grid (dense coeffs)
+   - project_density_dense_points(): Evaluate density at arbitrary points
+   - project_orbital_dense_points(): Evaluate orbital at arbitrary points
+   - project_orbital(): Project orbital using sparse neighbor tasks
+   - project_orbital_points(): Evaluate orbital at points (sp basis)
+   - realloc_projection_buffers(): Reallocate sparse projection buffers
+   - realloc_dense_projection_buffers(): Reallocate dense projection buffers
+
+3. STM Imaging
+   - mo_overlap_points_exp_sk(): MO overlap scan with exponential SK hopping
+   - stm_dyson_wg_scan(): Dyson Green's function STM scan
+   - stm_gf_dyson_2mol_mo_scan(): Two-molecule GF-Dyson STM
+   - mo_overlap_points_exp_sk_2mol(): Two-molecule MO overlap (explicit kernel)
+   - response_amplitude_exp(): Response amplitude mapping
+
+4. Task Building
+   - build_tasks_gpu(): GPU-accelerated task generation for sparse projection
+   - realloc_task_buffers(): Reallocate task generation buffers
+   - Uses AABB-sphere collision detection to find overlapping grid blocks
+
+Optimization Policy:
+-------------------
+- Load kernels once during initialization (_load_kernels in __init__)
+- Use persistent GPU buffers via realloc_* methods (realloc_* methods do NOT have guards)
+- Add bTryAllocate guards in calling functions to skip dict creation/buffer allocation
+- Default bTryAllocate=True for safety, set False for hot paths with fixed buffer sizes
+- See OpenCLBase.py for full policy details
+"""
+
 import numpy as np
 import pyopencl as cl
 import pyopencl.cltypes
@@ -146,9 +197,7 @@ class GridProjector(OpenCLBase):
         if hasattr(self, 'basis_meta') and ('max_shells' in self.basis_meta):
             build_opts.append(f"-DMAX_ORBS={self.basis_meta['max_shells'] * 9}") # conservative upper bound
 
-        print(f"[GridProjector] Loading program from {cl_path}...")
         self.load_program(kernel_path=cl_path, build_options=build_opts if len(build_opts)>0 else None)
-        print(f"[GridProjector] Program load complete")
 
     def check_overlap_sphere_aabb(self, center, radius, box_min, box_max):
         """ Fast AABB-Sphere collision: Find closest point in box to sphere center """
@@ -577,7 +626,7 @@ class GridProjector(OpenCLBase):
         return res
 
 
-    def project_orbital_points(self, points, coeffs, norb_per, atoms_dict, _debug_Fortran_order=False):
+    def project_orbital_points(self, points, coeffs, norb_per, atoms_dict, _debug_Fortran_order=False, bTryAllocate=True):
         """Evaluate a single orbital at arbitrary points (debugging parity with Fortran orb2points).
 
         This avoids any grid sampling / slicing ambiguity.
@@ -597,66 +646,55 @@ class GridProjector(OpenCLBase):
             raise ValueError(f"project_orbital_points: points must be (n,3), got {points.shape}")
         natoms = len(atoms_dict['pos'])
 
-        # Pack coefficients exactly like project_orbital()
+        # Pack coefficients (vectorized)
         numorb_max = 4
-        coeffs_flat = np.zeros(natoms * numorb_max, dtype=np.float32)
         _ORT_SPP_TO_OCL = np.array([3, 1, 2, 0], dtype=np.int32)  # [s,py,pz,px] -> [px,py,pz,s]
-        for ia in range(natoms):
-            i0 = ia * numorb_max
-            no = int(norb_per[ia])
-            if _debug_Fortran_order and (no == 4):
-                coeffs_flat[i0:i0+4] = coeffs[ia, :4][_ORT_SPP_TO_OCL]
-            else:
-                coeffs_flat[i0:i0+4] = coeffs[ia, :4]
+        coeffs_flat = np.zeros((natoms, numorb_max), dtype=np.float32)
+        c4 = np.asarray(coeffs[:natoms, :4], dtype=np.float32)
+        if _debug_Fortran_order:
+            mask4 = (np.asarray(norb_per[:natoms], dtype=np.int32) == 4)
+            coeffs_flat[mask4]  = c4[mask4][:, _ORT_SPP_TO_OCL]
+            coeffs_flat[~mask4] = c4[~mask4]
+        else:
+            coeffs_flat[:] = c4
+        coeffs_flat = coeffs_flat.ravel()
 
-        # AtomData
-        atom_data = np.zeros(natoms, dtype=[
-            ('pos_rcut', 'f4', 4),
-            ('type', 'i4'),
-            ('i0orb', 'i4'),
-            ('norb', 'i4'),
-            ('pad', 'i4')
-        ])
-        for ia in range(natoms):
-            atom_data[ia]['pos_rcut'][:3] = atoms_dict['pos'][ia]
-            atom_data[ia]['pos_rcut'][3]  = atoms_dict['Rcut'][ia]
-            Z = int(atoms_dict['type'][ia])
-            if Z not in self.basis_meta['nz_map']:
-                raise RuntimeError(f"project_orbital_points: species nz={Z} not loaded; loaded={list(self.basis_meta['nz_map'].keys())}")
-            atom_data[ia]['type'] = int(self.basis_meta['nz_map'][Z])
-            atom_data[ia]['norb'] = int(norb_per[ia])
-            atom_data[ia]['i0orb'] = ia * numorb_max
+        # AtomData (vectorized)
+        atom_data = np.zeros(natoms, dtype=[('pos_rcut','f4',4),('type','i4'),('i0orb','i4'),('norb','i4'),('pad','i4')])
+        atom_data['pos_rcut'][:, :3] = np.asarray(atoms_dict['pos'][:natoms], dtype=np.float32)
+        atom_data['pos_rcut'][:,  3] = np.asarray(atoms_dict['Rcut'][:natoms], dtype=np.float32)
+        Zs = np.asarray(atoms_dict['type'][:natoms], dtype=np.int32)
+        nz_map = self.basis_meta['nz_map']
+        missing = [int(Z) for Z in Zs if int(Z) not in nz_map]
+        assert len(missing) == 0, f"project_orbital_points: species {missing} not loaded; loaded={list(nz_map.keys())}"
+        atom_data['type']  = np.array([nz_map[int(Z)] for Z in Zs], dtype=np.int32)
+        atom_data['norb']  = np.asarray(norb_per[:natoms], dtype=np.int32)
+        atom_data['i0orb'] = np.arange(natoms, dtype=np.int32) * numorb_max
 
-        # Buffers
-        mf = cl.mem_flags
-        d_points = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=np.c_[points, np.zeros((len(points),1),np.float32)].astype(np.float32))
-        d_atoms  = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
-        d_coeffs = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=coeffs_flat)
-        d_out    = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=len(points)*4)
-
-        # Build program (ensures new kernel is available)
-        self._load_kernels()
+        # Persistent buffers
+        if bTryAllocate:
+            self.realloc_sp_point_buffers(len(points), natoms)
+        points_f4 = np.ascontiguousarray(np.c_[points, np.zeros((len(points),1), np.float32)], dtype=np.float32)
+        self.toGPU_(self.sp_points_buff, points_f4)
+        self.toGPU_(self.sp_atoms_buff,  atom_data)
+        self.toGPU_(self.sp_coeffs_buff, coeffs_flat)
 
         # Launch
         gs = (int(len(points)),)
-        ls = None
         self.prg.project_orbital_points(
-            self.queue, gs, ls,
+            self.queue, gs, None,
             np.int32(len(points)),
-            d_points,
-            d_atoms,
-            np.int32(natoms),
-            d_coeffs,
+            self.sp_points_buff, self.sp_atoms_buff, np.int32(natoms),
+            self.sp_coeffs_buff,
             self.d_basis,
             np.int32(self.basis_meta['n_nodes']),
             np.float32(self.basis_meta['dr']),
             np.int32(self.basis_meta['max_shells']),
-            d_out
+            self.sp_out_buff
         )
         self.queue.finish()
-
         out = np.empty(len(points), dtype=np.float32)
-        cl.enqueue_copy(self.queue, out, d_out)
+        self.fromGPU_(self.sp_out_buff, out)
         self.queue.finish()
         return out
 
@@ -695,7 +733,6 @@ class GridProjector(OpenCLBase):
         d_coeffs = cl.Buffer(self.ctx, mf.READ_ONLY,  size=natoms * numorb_max * 4)
         d_out    = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=n_points * 4)
 
-        self._load_kernels()
         t1 = time.perf_counter_ns()
         print(f"[prepare_orbital_points_projection] Setup: {(t1-t0)*1e-6:.1f} ms, n_points={n_points}")
         return dict(
@@ -744,6 +781,7 @@ class GridProjector(OpenCLBase):
             beta=1.0,
             r0=3.0,
             rcut=8.0,
+            bTryAllocate=True,
         ):
         """GPU orbital-overlap scan map for molecular tip vs sample using exp+SK.
 
@@ -790,43 +828,52 @@ class GridProjector(OpenCLBase):
         tip_pos_rel4 = np.c_[tip_pos_rel, np.zeros((len(tip_pos_rel), 1), dtype=np.float32)].astype(np.float32)
         smp_pos4 = np.c_[smp_pos, np.zeros((len(smp_pos), 1), dtype=np.float32)].astype(np.float32)
 
-        mf = cl.mem_flags
-        d_tip_centers = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_centers4)
-        d_tip_quat    = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_quat)
-        d_tip_pos_rel = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_pos_rel4)
-        d_smp_pos     = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=smp_pos4)
-        d_ct = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=coeffs_tip.astype(np.float32))
-        d_cs = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=coeffs_smp.astype(np.float32))
-        d_out_t = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=len(tip_centers) * 4)
-        d_out_I = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=len(tip_centers) * 4)
+        sz_f = 4
+        npts = len(tip_centers)
+        ntip = len(tip_pos_rel)
+        nsmp = len(smp_pos)
+        if bTryAllocate:
+            buffs = {
+                "mosk_tip_centers": sz_f * 4 * npts,
+                "mosk_tip_quat":    sz_f * 4 * npts,
+                "mosk_tip_pos_rel": sz_f * 4 * ntip,
+                "mosk_smp_pos":     sz_f * 4 * nsmp,
+                "mosk_ct":          sz_f * 4 * ntip,
+                "mosk_cs":          sz_f * 4 * nsmp,
+                "mosk_out_t":       sz_f * npts,
+                "mosk_out_I":       sz_f * npts,
+            }
+            self.try_make_buffers(buffs, suffix="_buff")
+        self.toGPU_(self.mosk_tip_centers_buff, tip_centers4)
+        self.toGPU_(self.mosk_tip_quat_buff,    tip_quat)
+        self.toGPU_(self.mosk_tip_pos_rel_buff, tip_pos_rel4)
+        self.toGPU_(self.mosk_smp_pos_buff,     smp_pos4)
+        self.toGPU_(self.mosk_ct_buff,          coeffs_tip.astype(np.float32))
+        self.toGPU_(self.mosk_cs_buff,          coeffs_smp.astype(np.float32))
 
-        self._load_kernels()
-
-        gs = (int(len(tip_centers4)),)
-        ls = None
+        gs = (int(npts),)
         self.prg.mo_overlap_points_exp_sk(
-            self.queue, gs, ls,
-            np.int32(len(tip_centers)),
-            d_tip_centers,
-            d_tip_quat,
-            d_tip_pos_rel,
-            d_smp_pos,
-            np.int32(len(tip_pos_rel)),
-            np.int32(len(smp_pos)),
-            d_ct,
-            d_cs,
+            self.queue, gs, None,
+            np.int32(npts),
+            self.mosk_tip_centers_buff,
+            self.mosk_tip_quat_buff,
+            self.mosk_tip_pos_rel_buff,
+            self.mosk_smp_pos_buff,
+            np.int32(ntip),
+            np.int32(nsmp),
+            self.mosk_ct_buff,
+            self.mosk_cs_buff,
             np.float32(beta),
             np.float32(r0),
             np.float32(rcut),
-            d_out_t,
-            d_out_I
+            self.mosk_out_t_buff,
+            self.mosk_out_I_buff
         )
         self.queue.finish()
-
-        out_t = np.empty(len(tip_centers), dtype=np.float32)
-        out_I = np.empty(len(tip_centers), dtype=np.float32)
-        cl.enqueue_copy(self.queue, out_t, d_out_t)
-        cl.enqueue_copy(self.queue, out_I, d_out_I)
+        out_t = np.empty(npts, dtype=np.float32)
+        out_I = np.empty(npts, dtype=np.float32)
+        self.fromGPU_(self.mosk_out_t_buff, out_t)
+        self.fromGPU_(self.mosk_out_I_buff, out_I)
         self.queue.finish()
         return out_t, out_I
 
@@ -837,36 +884,45 @@ class GridProjector(OpenCLBase):
     # ============================================================================
 
     def _build_atom_data_dense(self, atoms_dict, norb_per_atom, orb_offsets):
-        """Build AtomData with correct i0orb and norb for dense-matrix kernels.
-        
-        Args:
-            atoms_dict: dict with 'pos', 'Rcut', 'type'
-            norb_per_atom: (natoms,) number of orbitals per atom
-            orb_offsets: (natoms+1,) cumulative orbital offsets
-        
-        Returns:
-            atom_data: structured numpy array with i0orb and norb set correctly
-        """
+        """Build AtomData with correct i0orb and norb for dense-matrix kernels (vectorized)."""
         natoms = len(atoms_dict['pos'])
-        atom_data = np.zeros(natoms, dtype=[
-            ('pos_rcut', 'f4', 4),
-            ('type', 'i4'),
-            ('i0orb', 'i4'),
-            ('norb', 'i4'),
-            ('pad', 'i4')
-        ])
-        for ia in range(natoms):
-            atom_data[ia]['pos_rcut'][:3] = atoms_dict['pos'][ia]
-            atom_data[ia]['pos_rcut'][3] = atoms_dict['Rcut'][ia]
-            Z = int(atoms_dict['type'][ia])
-            if Z not in self.basis_meta['nz_map']:
-                raise RuntimeError(f"_build_atom_data_dense: species nz={Z} not loaded")
-            atom_data[ia]['type'] = int(self.basis_meta['nz_map'][Z])
-            atom_data[ia]['i0orb'] = int(orb_offsets[ia])
-            atom_data[ia]['norb'] = int(norb_per_atom[ia])
+        atom_data = np.zeros(natoms, dtype=[('pos_rcut','f4',4),('type','i4'),('i0orb','i4'),('norb','i4'),('pad','i4')])
+        atom_data['pos_rcut'][:, :3] = np.asarray(atoms_dict['pos'][:natoms], dtype=np.float32)
+        atom_data['pos_rcut'][:,  3] = np.asarray(atoms_dict['Rcut'][:natoms], dtype=np.float32)
+        Zs = np.asarray(atoms_dict['type'][:natoms], dtype=np.int32)
+        nz_map = self.basis_meta['nz_map']
+        missing = [int(Z) for Z in Zs if int(Z) not in nz_map]
+        assert len(missing) == 0, f"_build_atom_data_dense: species {missing} not loaded; loaded={list(nz_map.keys())}"
+        atom_data['type']  = np.array([nz_map[int(Z)] for Z in Zs], dtype=np.int32)
+        atom_data['i0orb'] = np.asarray(orb_offsets[:natoms], dtype=np.int32)
+        atom_data['norb']  = np.asarray(norb_per_atom[:natoms], dtype=np.int32)
         return atom_data
 
-    def project_orbital_dense_points(self, points, coeffs_dense, norb_per_atom, orb_offsets, atoms_dict):
+    def realloc_orbital_point_buffers(self, n_points, natoms, norb_total):
+        """(Re-)allocate persistent GPU buffers for project_orbital_dense_points* and project_density_dense_points."""
+        sz_f = 4
+        buffs = {
+            "opt_points": sz_f * 4 * n_points,      # float4 per point
+            "opt_atoms":  32 * natoms,               # AtomData struct per atom
+            "opt_coeffs": sz_f * norb_total,         # dense coeffs vector
+            "opt_dm":     sz_f * norb_total * norb_total,  # density matrix (largest case)
+            "opt_out":    sz_f * n_points,
+        }
+        self.try_make_buffers(buffs, suffix="_buff")
+
+    def realloc_sp_point_buffers(self, n_points, natoms):
+        """(Re-)allocate persistent GPU buffers for project_orbital_points* (sp basis, 4-wide packed coeffs)."""
+        sz_f = 4
+        numorb_max = 4
+        buffs = {
+            "sp_points": sz_f * 4 * n_points,       # float4 per point
+            "sp_atoms":  32 * natoms,                # AtomData struct per atom
+            "sp_coeffs": sz_f * numorb_max * natoms, # packed [px,py,pz,s] per atom
+            "sp_out":    sz_f * n_points,
+        }
+        self.try_make_buffers(buffs, suffix="_buff")
+
+    def project_orbital_dense_points(self, points, coeffs_dense, norb_per_atom, orb_offsets, atoms_dict, bAlloc=True):
         """Evaluate a single orbital at arbitrary points using dense MO coefficient vector.
         
         Supports s, p, d orbitals via shell-based angular function evaluation.
@@ -894,37 +950,31 @@ class GridProjector(OpenCLBase):
             raise ValueError(f"coeffs_dense shape {coeffs_dense.shape} != norb_total {norb_total}")
         
         atom_data = self._build_atom_data_dense(atoms_dict, norb_per_atom, orb_offsets)
-        
-        mf = cl.mem_flags
-        d_points = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR,
-                             hostbuf=np.c_[points, np.zeros((len(points), 1), np.float32)].astype(np.float32))
-        d_atoms = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
-        d_coeffs = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=coeffs_dense)
-        d_out = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=len(points) * 4)
-        
-        self._load_kernels()
+        if bAlloc: self.realloc_orbital_point_buffers(len(points), natoms, norb_total)
+        points_f4 = np.ascontiguousarray(np.c_[points, np.zeros((len(points),1), np.float32)], dtype=np.float32)
+        self.toGPU_(self.opt_points_buff, points_f4)
+        self.toGPU_(self.opt_atoms_buff,  atom_data)
+        self.toGPU_(self.opt_coeffs_buff, coeffs_dense)
         
         gs = (int(len(points)),)
-        ls = None
         self.prg.project_orbital_dense_points(
-            self.queue, gs, ls,
+            self.queue, gs, None,
             np.int32(len(points)),
-            d_points, d_atoms, np.int32(natoms),
-            d_coeffs,
+            self.opt_points_buff, self.opt_atoms_buff, np.int32(natoms),
+            self.opt_coeffs_buff,
             self.d_basis,
             np.int32(self.basis_meta['n_nodes']),
             np.float32(self.basis_meta['dr']),
             np.int32(self.basis_meta['max_shells']),
-            d_out
+            self.opt_out_buff
         )
         self.queue.finish()
-        
         out = np.empty(len(points), dtype=np.float32)
-        cl.enqueue_copy(self.queue, out, d_out)
+        self.fromGPU_(self.opt_out_buff, out)
         self.queue.finish()
         return out
 
-    def project_orbital_dense_points_exp(self, points, coeffs_dense, norb_per_atom, orb_offsets, atoms_dict, beta=1.0, r0=3.0):
+    def project_orbital_dense_points_exp(self, points, coeffs_dense, norb_per_atom, orb_offsets, atoms_dict, beta=1.0, r0=3.0, bAlloc=True):
         """Evaluate a single orbital at arbitrary points using dense MO coefficient vector with exponential radial decay.
         
         Uses f(r) = exp(-beta*(r - r0)) instead of spline basis for long-range STM simulation.
@@ -955,35 +1005,30 @@ class GridProjector(OpenCLBase):
             raise ValueError(f"coeffs_dense shape {coeffs_dense.shape} != norb_total {norb_total}")
         
         atom_data = self._build_atom_data_dense(atoms_dict, norb_per_atom, orb_offsets)
-        
-        mf = cl.mem_flags
-        d_points = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR,  hostbuf=np.c_[points, np.zeros((len(points), 1), np.float32)].astype(np.float32))
-        d_atoms  = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
-        d_coeffs = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=coeffs_dense)
-        d_out    = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=len(points) * 4)
-        
-        self._load_kernels()
+        if bAlloc: self.realloc_orbital_point_buffers(len(points), natoms, norb_total)
+        points_f4 = np.ascontiguousarray(np.c_[points, np.zeros((len(points),1), np.float32)], dtype=np.float32)
+        self.toGPU_(self.opt_points_buff, points_f4)
+        self.toGPU_(self.opt_atoms_buff,  atom_data)
+        self.toGPU_(self.opt_coeffs_buff, coeffs_dense)
         
         gs = (int(len(points)),)
-        ls = None
         self.prg.project_orbital_dense_points_exp(
-            self.queue, gs, ls,
+            self.queue, gs, None,
             np.int32(len(points)),
-            d_points, d_atoms, np.int32(natoms),
-            d_coeffs,
+            self.opt_points_buff, self.opt_atoms_buff, np.int32(natoms),
+            self.opt_coeffs_buff,
             np.float32(beta),
             np.float32(r0),
             np.int32(self.basis_meta['max_shells']),
-            d_out
+            self.opt_out_buff
         )
         self.queue.finish()
-        
         out = np.empty(len(points), dtype=np.float32)
-        cl.enqueue_copy(self.queue, out, d_out)
+        self.fromGPU_(self.opt_out_buff, out)
         self.queue.finish()
         return out
 
-    def project_density_dense_points(self, points, dm_dense, norb_per_atom, orb_offsets, atoms_dict):
+    def project_density_dense_points(self, points, dm_dense, norb_per_atom, orb_offsets, atoms_dict, bAlloc=True):
         """Evaluate density at arbitrary points using dense density matrix.
         
         Supports s, p, d orbitals via shell-based angular function evaluation.
@@ -1005,43 +1050,36 @@ class GridProjector(OpenCLBase):
         natoms = len(atoms_dict['pos'])
         norb_total = int(orb_offsets[-1])
         dm_dense = np.asarray(dm_dense, dtype=np.float32)
-        if dm_dense.ndim == 2:
-            dm_dense = dm_dense.ravel()
+        if dm_dense.ndim == 2: dm_dense = dm_dense.ravel()
         if dm_dense.shape[0] != norb_total * norb_total:
             raise ValueError(f"dm_dense shape {dm_dense.shape} != {norb_total*norb_total}")
         
         atom_data = self._build_atom_data_dense(atoms_dict, norb_per_atom, orb_offsets)
-        
-        mf = cl.mem_flags
-        d_points = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR,
-                             hostbuf=np.c_[points, np.zeros((len(points), 1), np.float32)].astype(np.float32))
-        d_atoms = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
-        d_dm = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=dm_dense)
-        d_out = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=len(points) * 4)
-        
-        self._load_kernels()
+        if bAlloc: self.realloc_orbital_point_buffers(len(points), natoms, norb_total)
+        points_f4 = np.ascontiguousarray(np.c_[points, np.zeros((len(points),1), np.float32)], dtype=np.float32)
+        self.toGPU_(self.opt_points_buff, points_f4)
+        self.toGPU_(self.opt_atoms_buff,  atom_data)
+        self.toGPU_(self.opt_dm_buff,     dm_dense)
         
         gs = (int(len(points)),)
-        ls = None
         self.prg.project_density_dense_points(
-            self.queue, gs, ls,
+            self.queue, gs, None,
             np.int32(len(points)),
-            d_points, d_atoms, np.int32(natoms),
-            d_dm, np.int32(norb_total),
+            self.opt_points_buff, self.opt_atoms_buff, np.int32(natoms),
+            self.opt_dm_buff, np.int32(norb_total),
             self.d_basis,
             np.int32(self.basis_meta['n_nodes']),
             np.float32(self.basis_meta['dr']),
             np.int32(self.basis_meta['max_shells']),
-            d_out
+            self.opt_out_buff
         )
         self.queue.finish()
-        
         out = np.empty(len(points), dtype=np.float32)
-        cl.enqueue_copy(self.queue, out, d_out)
+        self.fromGPU_(self.opt_out_buff, out)
         self.queue.finish()
         return out
 
-    def project_orbital_dense(self, coeffs_dense, norb_per_atom, orb_offsets, atoms_dict, grid_spec, nMaxAtom=64):
+    def project_orbital_dense(self, coeffs_dense, norb_per_atom, orb_offsets, atoms_dict, grid_spec, nMaxAtom=64, bTryAllocate=True):
         """Project a single molecular orbital onto a 3D grid using dense MO coefficient vector.
         
         Args:
@@ -1068,52 +1106,38 @@ class GridProjector(OpenCLBase):
         
         atom_data = self._build_atom_data_dense(atoms_dict, norb_per_atom, orb_offsets)
         
-        d_grid = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
-                           hostbuf=self.grid_to_np(grid_spec))
-        
+        nx, ny, nz = [int(x) for x in grid_spec['ngrid'][:3]]
         n_tasks = len(tasks_np)
-        if n_tasks > 0:
-            d_tasks = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=tasks_np)
-        else:
-            d_tasks = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, size=32)
-        
-        d_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=atom_data)
-        if len(task_atoms_np) > 0:
-            d_task_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=task_atoms_np)
-        else:
-            d_task_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, size=nMaxAtom * 4)
-        
-        d_coeffs = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=coeffs_dense)
-        
-        nx, ny, nz = grid_spec['ngrid'][:3]
-        out_nbytes = int(nx) * int(ny) * int(nz) * 4
-        d_out = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, out_nbytes)
-        cl.enqueue_fill_buffer(self.queue, d_out, np.float32(0), 0, out_nbytes)
-        
-        self._load_kernels()
+        if bTryAllocate:
+            self.realloc_dense_projection_buffers(natoms, n_tasks, nMaxAtom, nx, ny, nz, norb_total)
+        self.toGPU_(self.dproj_grid_buff,        self.grid_to_np(grid_spec))
+        self.toGPU_(self.dproj_atoms_buff,       atom_data)
+        self.toGPU_(self.dproj_dm_buff,          coeffs_dense)   # coeffs reuse dm slot
+        if n_tasks > 0: self.toGPU_(self.dproj_tasks_buff,  tasks_np)
+        if len(task_atoms_np) > 0: self.toGPU_(self.dproj_task_atoms_buff, task_atoms_np)
+        out_nbytes = nx * ny * nz * 4
+        cl.enqueue_fill_buffer(self.queue, self.dproj_out_buff, np.float32(0), 0, out_nbytes)
         
         ls = (32,)
         gs = (n_tasks * ls[0],)
-        
         T0 = time.perf_counter_ns()
         self.prg.project_orbital_dense(
             self.queue, gs, ls,
-            d_grid, np.int32(n_tasks),
-            d_tasks, d_atoms, d_task_atoms,
-            d_coeffs,
+            self.dproj_grid_buff, np.int32(n_tasks),
+            self.dproj_tasks_buff, self.dproj_atoms_buff, self.dproj_task_atoms_buff,
+            self.dproj_dm_buff,
             self.d_basis,
             np.int32(self.basis_meta['n_nodes']),
             np.float32(self.basis_meta['dr']),
             np.int32(self.basis_meta['max_shells']),
             np.int32(nMaxAtom),
-            d_out
+            self.dproj_out_buff
         )
         self.queue.finish()
         T1 = time.perf_counter_ns()
         if self.verbosity > 0: print(f"[TIME] project_orbital_dense {(T1-T0)*1e-6:.3f} [ms]")
-        
-        res = np.empty((int(nx), int(ny), int(nz)), dtype=np.float32)
-        cl.enqueue_copy(self.queue, res, d_out)
+        res = np.empty((nx, ny, nz), dtype=np.float32)
+        self.fromGPU_(self.dproj_out_buff, res)
         self.queue.finish()
         return res
 
@@ -1162,7 +1186,6 @@ class GridProjector(OpenCLBase):
         out_nbytes = int(nx) * int(ny) * int(nz) * 4
         cl.enqueue_fill_buffer(self.queue, self.dproj_out_buff, np.float32(0), 0, out_nbytes)
         
-        self._load_kernels()
         
         ls = (32,)
         gs = (max(n_tasks, 1) * ls[0],)
@@ -1205,6 +1228,7 @@ class GridProjector(OpenCLBase):
             beta=1.0,
             r0=3.0,
             rcut=8.0,
+            bTryAllocate=True,
             local_size=32,
         ):
         import numpy as np
@@ -1258,39 +1282,46 @@ class GridProjector(OpenCLBase):
         GS_f2 = np.asarray(GS_global, dtype=np.complex64).view(np.float32).reshape(ns*ns, 2)
         uT_f2 = np.asarray(uT_source, dtype=np.complex64).view(np.float32).reshape(nt, 2)
 
-        mf = cl.mem_flags
-        d_tip_centers = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_centers4)
-        d_tip_pos_rel = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_pos_rel4)
-        d_smp_pos     = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=smp_pos4)
-        d_GT          = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=GT_f2.astype(np.float32))
-        d_GS          = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=GS_f2.astype(np.float32))
-        d_uT          = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=uT_f2.astype(np.float32))
-        d_out         = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=n_pixels * 4)
-
-        self._load_kernels()
+        sz_f = 4
+        if bTryAllocate:
+            buffs = {
+                "dyson_tip_centers": sz_f * 4 * n_pixels,
+                "dyson_tip_pos_rel": sz_f * 4 * ntip_atoms,
+                "dyson_smp_pos":     sz_f * 4 * nsmp_atoms,
+                "dyson_GT":          sz_f * 2 * nt * nt,
+                "dyson_GS":          sz_f * 2 * ns * ns,
+                "dyson_uT":          sz_f * 2 * nt,
+                "dyson_out":         sz_f * n_pixels,
+            }
+            self.try_make_buffers(buffs, suffix="_buff")
+        self.toGPU_(self.dyson_tip_centers_buff, tip_centers4)
+        self.toGPU_(self.dyson_tip_pos_rel_buff, tip_pos_rel4)
+        self.toGPU_(self.dyson_smp_pos_buff,     smp_pos4)
+        self.toGPU_(self.dyson_GT_buff,          GT_f2.astype(np.float32))
+        self.toGPU_(self.dyson_GS_buff,          GS_f2.astype(np.float32))
+        self.toGPU_(self.dyson_uT_buff,          uT_f2.astype(np.float32))
 
         ls = (int(local_size),)
         gs = (int(n_pixels) * int(local_size),)
         self.prg.solve_stm_dyson_wg(
             self.queue, gs, ls,
             np.int32(n_pixels),
-            d_tip_centers,
-            d_tip_pos_rel,
-            d_smp_pos,
+            self.dyson_tip_centers_buff,
+            self.dyson_tip_pos_rel_buff,
+            self.dyson_smp_pos_buff,
             np.int32(ntip_atoms),
             np.int32(nsmp_atoms),
-            d_GT,
-            d_GS,
-            d_uT,
+            self.dyson_GT_buff,
+            self.dyson_GS_buff,
+            self.dyson_uT_buff,
             np.float32(beta),
             np.float32(r0),
             np.float32(rcut),
-            d_out,
+            self.dyson_out_buff,
         )
         self.queue.finish()
-
         out = np.empty(n_pixels, dtype=np.float32)
-        cl.enqueue_copy(self.queue, out, d_out)
+        self.fromGPU_(self.dyson_out_buff, out)
         self.queue.finish()
         return out
 
@@ -1308,6 +1339,7 @@ class GridProjector(OpenCLBase):
             beta=1.0,
             r0=3.0,
             rcut=8.0,
+            bTryAllocate=True,
         ):
         """GPU GF-Dyson MO scan for 2-molecule STM (work-item per pixel).
 
@@ -1398,30 +1430,38 @@ class GridProjector(OpenCLBase):
         uT_f2 = np.asarray(u_T_ocl, dtype=np.complex64).view(np.float32).reshape(tip_norb_ocl, 2)
         vS_f2 = np.asarray(v_S_ocl, dtype=np.complex64).view(np.float32).reshape(smp_norb_ocl, 2)
 
-        mf = cl.mem_flags
-        d_tip_centers = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_centers4)
-        d_tip_pos_rel = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_pos_rel4)
-        d_smp_pos     = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=smp_pos4)
-        d_tip_o2a     = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_orb2atom_ocl.astype(np.int32))
-        d_smp_o2a     = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=smp_orb2atom_ocl.astype(np.int32))
-        d_uT = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=uT_f2.astype(np.float32))
-        d_vS = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=vS_f2.astype(np.float32))
-        d_out = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=n_pixels * 4)
-
-        self._load_kernels()
+        sz_f = 4
+        if bTryAllocate:
+            buffs = {
+                "gf2_tip_centers": sz_f * 4 * n_pixels,
+                "gf2_tip_pos_rel": sz_f * 4 * ntip_atoms,
+                "gf2_smp_pos":     sz_f * 4 * nsmp_atoms,
+                "gf2_tip_o2a":     sz_f * tip_norb_ocl,
+                "gf2_smp_o2a":     sz_f * smp_norb_ocl,
+                "gf2_uT":          sz_f * 2 * tip_norb_ocl,
+                "gf2_vS":          sz_f * 2 * smp_norb_ocl,
+                "gf2_out":         sz_f * n_pixels,
+            }
+            self.try_make_buffers(buffs, suffix="_buff")
+        self.toGPU_(self.gf2_tip_centers_buff, tip_centers4)
+        self.toGPU_(self.gf2_tip_pos_rel_buff, tip_pos_rel4)
+        self.toGPU_(self.gf2_smp_pos_buff,     smp_pos4)
+        self.toGPU_(self.gf2_tip_o2a_buff,     tip_orb2atom_ocl.astype(np.int32))
+        self.toGPU_(self.gf2_smp_o2a_buff,     smp_orb2atom_ocl.astype(np.int32))
+        self.toGPU_(self.gf2_uT_buff,          uT_f2.astype(np.float32))
+        self.toGPU_(self.gf2_vS_buff,          vS_f2.astype(np.float32))
 
         gs = (int(n_pixels),)
-        ls = None
         self.prg.stm_gf_dyson_2mol_mo_scan(
-            self.queue, gs, ls,
+            self.queue, gs, None,
             np.int32(n_pixels),
-            d_tip_centers,
-            d_tip_pos_rel,
-            d_smp_pos,
-            d_tip_o2a,
-            d_smp_o2a,
-            d_uT,
-            d_vS,
+            self.gf2_tip_centers_buff,
+            self.gf2_tip_pos_rel_buff,
+            self.gf2_smp_pos_buff,
+            self.gf2_tip_o2a_buff,
+            self.gf2_smp_o2a_buff,
+            self.gf2_uT_buff,
+            self.gf2_vS_buff,
             np.int32(ntip_atoms),
             np.int32(nsmp_atoms),
             np.int32(tip_norb_ocl),
@@ -1429,12 +1469,11 @@ class GridProjector(OpenCLBase):
             np.float32(float(beta)),
             np.float32(float(r0)),
             np.float32(float(rcut)),
-            d_out,
+            self.gf2_out_buff,
         )
         self.queue.finish()
-
         out = np.empty(n_pixels, dtype=np.float32)
-        cl.enqueue_copy(self.queue, out, d_out)
+        self.fromGPU_(self.gf2_out_buff, out)
         self.queue.finish()
         return out
 
@@ -1449,6 +1488,7 @@ class GridProjector(OpenCLBase):
             beta=1.0,
             r0=3.0,
             rcut=8.0,
+            bTryAllocate=True,
         ):
         """Same as mo_overlap_points_exp_sk, but calls an explicit two-molecule kernel entrypoint.
 
@@ -1471,62 +1511,66 @@ class GridProjector(OpenCLBase):
         coeffs_tip = np.asarray(coeffs_tip, dtype=np.float32)
         coeffs_smp = np.asarray(coeffs_smp, dtype=np.float32)
 
-        if tip_centers.ndim != 2 or tip_centers.shape[1] != 3:
-            raise ValueError(f"mo_overlap_points_exp_sk_2mol: tip_centers must be (n,3), got {tip_centers.shape}")
-        if tip_pos_rel.ndim != 2 or tip_pos_rel.shape[1] != 3:
-            raise ValueError(f"mo_overlap_points_exp_sk_2mol: tip_pos_rel must be (n,3), got {tip_pos_rel.shape}")
-        if smp_pos.ndim != 2 or smp_pos.shape[1] != 3:
-            raise ValueError(f"mo_overlap_points_exp_sk_2mol: smp_pos must be (n,3), got {smp_pos.shape}")
-        if coeffs_tip.shape != (len(tip_pos_rel), 4):
-            raise ValueError(f"mo_overlap_points_exp_sk_2mol: coeffs_tip must be (ntip,4), got {coeffs_tip.shape}")
-        if coeffs_smp.shape != (len(smp_pos), 4):
-            raise ValueError(f"mo_overlap_points_exp_sk_2mol: coeffs_smp must be (nsmp,4), got {coeffs_smp.shape}")
+        if tip_centers.ndim != 2 or tip_centers.shape[1] != 3: raise ValueError(f"mo_overlap_points_exp_sk_2mol: tip_centers must be (n,3), got {tip_centers.shape}")
+        if tip_pos_rel.ndim != 2 or tip_pos_rel.shape[1] != 3: raise ValueError(f"mo_overlap_points_exp_sk_2mol: tip_pos_rel must be (n,3), got {tip_pos_rel.shape}")
+        if smp_pos.ndim != 2 or smp_pos.shape[1] != 3: raise ValueError(f"mo_overlap_points_exp_sk_2mol: smp_pos must be (n,3), got {smp_pos.shape}")
+        if coeffs_tip.shape != (len(tip_pos_rel), 4):  raise ValueError(f"mo_overlap_points_exp_sk_2mol: coeffs_tip must be (ntip,4), got {coeffs_tip.shape}")
+        if coeffs_smp.shape != (len(smp_pos), 4): raise ValueError(f"mo_overlap_points_exp_sk_2mol: coeffs_smp must be (nsmp,4), got {coeffs_smp.shape}")
 
         tip_centers4 = np.c_[tip_centers, np.zeros((len(tip_centers), 1), dtype=np.float32)].astype(np.float32)
         tip_pos_rel4 = np.c_[tip_pos_rel, np.zeros((len(tip_pos_rel), 1), dtype=np.float32)].astype(np.float32)
         smp_pos4 = np.c_[smp_pos, np.zeros((len(smp_pos), 1), dtype=np.float32)].astype(np.float32)
 
-        mf = cl.mem_flags
-        d_tip_centers = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_centers4)
-        d_tip_quat    = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_quat)
-        d_tip_pos_rel = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=tip_pos_rel4)
-        d_smp_pos     = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=smp_pos4)
-        d_ct = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=coeffs_tip.astype(np.float32))
-        d_cs = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=coeffs_smp.astype(np.float32))
-        d_out_t = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=len(tip_centers) * 4)
-        d_out_I = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=len(tip_centers) * 4)
+        sz_f = 4
+        npts = len(tip_centers)
+        ntip = len(tip_pos_rel)
+        nsmp = len(smp_pos)
+        if bTryAllocate:
+            buffs = {
+                "mosk2_tip_centers": sz_f * 4 * npts,
+                "mosk2_tip_quat":    sz_f * 4 * npts,
+                "mosk2_tip_pos_rel": sz_f * 4 * ntip,
+                "mosk2_smp_pos":     sz_f * 4 * nsmp,
+                "mosk2_ct":          sz_f * 4 * ntip,
+                "mosk2_cs":          sz_f * 4 * nsmp,
+                "mosk2_out_t":       sz_f * npts,
+                "mosk2_out_I":       sz_f * npts,
+            }
+            self.try_make_buffers(buffs, suffix="_buff")
+        self.toGPU_(self.mosk2_tip_centers_buff, tip_centers4)
+        self.toGPU_(self.mosk2_tip_quat_buff,    tip_quat)
+        self.toGPU_(self.mosk2_tip_pos_rel_buff, tip_pos_rel4)
+        self.toGPU_(self.mosk2_smp_pos_buff,     smp_pos4)
+        self.toGPU_(self.mosk2_ct_buff,          coeffs_tip.astype(np.float32))
+        self.toGPU_(self.mosk2_cs_buff,          coeffs_smp.astype(np.float32))
 
-        self._load_kernels()
-
-        gs = (int(len(tip_centers4)),)
-        ls = None
+        gs = (int(npts),)
         self.prg.mo_overlap_points_exp_sk_2mol(
-            self.queue, gs, ls,
-            np.int32(len(tip_centers)),
-            d_tip_centers,
-            d_tip_quat,
-            d_tip_pos_rel,
-            d_smp_pos,
-            np.int32(len(tip_pos_rel)),
-            np.int32(len(smp_pos)),
-            d_ct,
-            d_cs,
+            self.queue, gs, None,
+            np.int32(npts),
+            self.mosk2_tip_centers_buff,
+            self.mosk2_tip_quat_buff,
+            self.mosk2_tip_pos_rel_buff,
+            self.mosk2_smp_pos_buff,
+            np.int32(ntip),
+            np.int32(nsmp),
+            self.mosk2_ct_buff,
+            self.mosk2_cs_buff,
             np.float32(beta),
             np.float32(r0),
             np.float32(rcut),
-            d_out_t,
-            d_out_I
+            self.mosk2_out_t_buff,
+            self.mosk2_out_I_buff
         )
         self.queue.finish()
-
-        out_t = np.empty(len(tip_centers), dtype=np.float32)
-        out_I = np.empty(len(tip_centers), dtype=np.float32)
-        cl.enqueue_copy(self.queue, out_t, d_out_t)
-        cl.enqueue_copy(self.queue, out_I, d_out_I)
+        out_t = np.empty(npts, dtype=np.float32)
+        out_I = np.empty(npts, dtype=np.float32)
+        self.fromGPU_(self.mosk2_out_t_buff, out_t)
+        self.fromGPU_(self.mosk2_out_I_buff, out_I)
         self.queue.finish()
         return out_t, out_I
 
-    def project_orbital_points_exp(self, points, coeffs, norb_per, atoms_dict, beta=1.0, r0=3.0, _debug_Fortran_order=False):
+    def project_orbital_points_exp(self, points, coeffs, norb_per, atoms_dict, beta=1.0, r0=3.0, _debug_Fortran_order=False, bTryAllocate=True):
         """Evaluate a single orbital at arbitrary points using exponential radial decay.
 
         Uses OpenCL kernel `project_orbital_points_exp` from `cl/Grid.cl`.
@@ -1546,67 +1590,61 @@ class GridProjector(OpenCLBase):
             raise ValueError(f"project_orbital_points_exp: points must be (n,3), got {points.shape}")
         natoms = len(atoms_dict['pos'])
 
-        # Pack coefficients exactly like project_orbital_points
+        # Pack coefficients (vectorized)
         numorb_max = 4
-        coeffs_flat = np.zeros(natoms * numorb_max, dtype=np.float32)
         _ORT_SPP_TO_OCL = np.array([3, 1, 2, 0], dtype=np.int32)  # [s,py,pz,px] -> [px,py,pz,s]
-        for ia in range(natoms):
-            i0 = ia * numorb_max
-            no = int(norb_per[ia])
-            if _debug_Fortran_order and (no == 4):
-                coeffs_flat[i0:i0+4] = coeffs[ia, :4][_ORT_SPP_TO_OCL]
-            else:
-                coeffs_flat[i0:i0+4] = coeffs[ia, :4]
+        coeffs_flat = np.zeros((natoms, numorb_max), dtype=np.float32)
+        c4 = np.asarray(coeffs[:natoms, :4], dtype=np.float32)
+        if _debug_Fortran_order:
+            mask4 = (np.asarray(norb_per[:natoms], dtype=np.int32) == 4)
+            coeffs_flat[mask4]  = c4[mask4][:, _ORT_SPP_TO_OCL]
+            coeffs_flat[~mask4] = c4[~mask4]
+        else:
+            coeffs_flat[:] = c4
+        coeffs_flat = coeffs_flat.ravel()
 
-        atom_data = np.zeros(natoms, dtype=[
-            ('pos_rcut', 'f4', 4),
-            ('type', 'i4'),
-            ('i0orb', 'i4'),
-            ('norb', 'i4'),
-            ('pad', 'i4')
-        ])
-        for ia in range(natoms):
-            atom_data[ia]['pos_rcut'][:3] = atoms_dict['pos'][ia]
-            atom_data[ia]['pos_rcut'][3]  = atoms_dict['Rcut'][ia]
-            Z = int(atoms_dict['type'][ia])
-            if Z not in self.basis_meta['nz_map']:
-                raise RuntimeError(f"project_orbital_points_exp: species nz={Z} not loaded; loaded={list(self.basis_meta['nz_map'].keys())}")
-            atom_data[ia]['type'] = int(self.basis_meta['nz_map'][Z])
-            atom_data[ia]['norb'] = int(norb_per[ia])
-            atom_data[ia]['i0orb'] = ia * numorb_max
+        # AtomData (vectorized)
+        atom_data = np.zeros(natoms, dtype=[('pos_rcut','f4',4),('type','i4'),('i0orb','i4'),('norb','i4'),('pad','i4')])
+        atom_data['pos_rcut'][:, :3] = np.asarray(atoms_dict['pos'][:natoms], dtype=np.float32)
+        atom_data['pos_rcut'][:,  3] = np.asarray(atoms_dict['Rcut'][:natoms], dtype=np.float32)
+        Zs = np.asarray(atoms_dict['type'][:natoms], dtype=np.int32)
+        nz_map = self.basis_meta['nz_map']
+        missing = [int(Z) for Z in Zs if int(Z) not in nz_map]
+        assert len(missing) == 0, f"project_orbital_points_exp: species {missing} not loaded; loaded={list(nz_map.keys())}"
+        atom_data['type']  = np.array([nz_map[int(Z)] for Z in Zs], dtype=np.int32)
+        atom_data['norb']  = np.asarray(norb_per[:natoms], dtype=np.int32)
+        atom_data['i0orb'] = np.arange(natoms, dtype=np.int32) * numorb_max
 
-        mf = cl.mem_flags
-        d_points = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=np.c_[points, np.zeros((len(points),1),np.float32)].astype(np.float32))
-        d_atoms  = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
-        d_coeffs = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=coeffs_flat)
-        d_out    = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=len(points)*4)
-
-        self._load_kernels()
+        # Persistent buffers
+        if bTryAllocate:
+            self.realloc_sp_point_buffers(len(points), natoms)
+        points_f4 = np.ascontiguousarray(np.c_[points, np.zeros((len(points),1), np.float32)], dtype=np.float32)
+        self.toGPU_(self.sp_points_buff, points_f4)
+        self.toGPU_(self.sp_atoms_buff,  atom_data)
+        self.toGPU_(self.sp_coeffs_buff, coeffs_flat)
 
         gs = (int(len(points)),)
-        ls = None
         self.prg.project_orbital_points_exp(
-            self.queue, gs, ls,
+            self.queue, gs, None,
             np.int32(len(points)),
-            d_points,
-            d_atoms,
+            self.sp_points_buff,
+            self.sp_atoms_buff,
             np.int32(natoms),
-            d_coeffs,
+            self.sp_coeffs_buff,
             np.float32(beta),
             np.float32(r0),
-            d_out
+            self.sp_out_buff
         )
         self.queue.finish()
-
         out = np.empty(len(points), dtype=np.float32)
-        cl.enqueue_copy(self.queue, out, d_out)
+        self.fromGPU_(self.sp_out_buff, out)
         self.queue.finish()
         return out
 
     def response_amplitude_exp(
         self, points, atoms_dict_s, norb_per_s, starts_s,
         v, G0, E, eta, E_tip=0.0,
-        beta=1.0, r0=3.0, A_ss=-1.0, A_sp=-1.0, rcut=20.0
+        beta=1.0, r0=3.0, A_ss=-1.0, A_sp=-1.0, rcut=20.0, bTryAllocate=True
     ):
         """GPU-accelerated response amplitude map via OpenCL kernel `response_amplitude_exp`.
 
@@ -1648,48 +1686,52 @@ class GridProjector(OpenCLBase):
         G0 = np.asarray(G0, dtype=np.complex64)
         starts_s = np.asarray(starts_s, dtype=np.int32)
 
-        atom_data = np.zeros(natoms_s, dtype=[
-            ('pos_rcut', 'f4', 4),
-            ('type', 'i4'),
-            ('i0orb', 'i4'),
-            ('norb', 'i4'),
-            ('pad', 'i4')
-        ])
-        for ia in range(natoms_s):
-            atom_data[ia]['pos_rcut'][:3] = atoms_dict_s['pos'][ia]
-            atom_data[ia]['pos_rcut'][3] = atoms_dict_s['Rcut'][ia]
-            Z = int(atoms_dict_s['type'][ia])
-            if Z not in self.basis_meta['nz_map']:
-                raise RuntimeError(f"response_amplitude_exp: species nz={Z} not loaded")
-            atom_data[ia]['type'] = int(self.basis_meta['nz_map'][Z])
-            atom_data[ia]['norb'] = int(norb_per_s[ia])
-            atom_data[ia]['i0orb'] = int(starts_s[ia])
+        # AtomData (vectorized)
+        atom_data = np.zeros(natoms_s, dtype=[('pos_rcut','f4',4),('type','i4'),('i0orb','i4'),('norb','i4'),('pad','i4')])
+        atom_data['pos_rcut'][:, :3] = np.asarray(atoms_dict_s['pos'][:natoms_s], dtype=np.float32)
+        atom_data['pos_rcut'][:,  3] = np.asarray(atoms_dict_s['Rcut'][:natoms_s], dtype=np.float32)
+        Zs = np.asarray(atoms_dict_s['type'][:natoms_s], dtype=np.int32)
+        nz_map = self.basis_meta['nz_map']
+        missing = [int(Z) for Z in Zs if int(Z) not in nz_map]
+        assert len(missing) == 0, f"response_amplitude_exp: species {missing} not loaded"
+        atom_data['type']  = np.array([nz_map[int(Z)] for Z in Zs], dtype=np.int32)
+        atom_data['norb']  = np.asarray(norb_per_s[:natoms_s], dtype=np.int32)
+        atom_data['i0orb'] = starts_s[:natoms_s].astype(np.int32)
 
-        mf = cl.mem_flags
-        d_points = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR,
-                                hostbuf=np.c_[points, np.zeros((npts, 1), np.float32)].astype(np.float32))
-        d_atoms = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=atom_data)
-        d_starts = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=starts_s)
-        d_vre = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=v.real.astype(np.float32))
-        d_vim = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=v.imag.astype(np.float32))
-        d_G0re = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=G0.real.astype(np.float32).ravel())
-        d_G0im = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=G0.imag.astype(np.float32).ravel())
-        d_out = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=npts * 4)
-
-        self._load_kernels()
+        # Persistent buffers
+        sz_f = 4
+        if bTryAllocate:
+            buffs = {
+                "resp_points": sz_f * 4 * npts,
+                "resp_atoms":  32 * natoms_s,
+                "resp_starts": sz_f * (natoms_s + 1),
+                "resp_vre":    sz_f * ns,
+                "resp_vim":    sz_f * ns,
+                "resp_G0re":   sz_f * ns * ns,
+                "resp_G0im":   sz_f * ns * ns,
+                "resp_out":    sz_f * npts,
+            }
+            self.try_make_buffers(buffs, suffix="_buff")
+        points_f4 = np.ascontiguousarray(np.c_[points, np.zeros((npts,1), np.float32)], dtype=np.float32)
+        self.toGPU_(self.resp_points_buff, points_f4)
+        self.toGPU_(self.resp_atoms_buff,  atom_data)
+        self.toGPU_(self.resp_starts_buff, starts_s)
+        self.toGPU_(self.resp_vre_buff,    v.real.astype(np.float32))
+        self.toGPU_(self.resp_vim_buff,    v.imag.astype(np.float32))
+        self.toGPU_(self.resp_G0re_buff,   G0.real.astype(np.float32).ravel())
+        self.toGPU_(self.resp_G0im_buff,   G0.imag.astype(np.float32).ravel())
 
         gs = (int(npts),)
-        ls = None
         self.prg.response_amplitude_exp(
-            self.queue, gs, ls,
+            self.queue, gs, None,
             np.int32(npts),
-            d_points,
+            self.resp_points_buff,
             np.int32(natoms_s),
-            d_atoms,
-            d_starts,
+            self.resp_atoms_buff,
+            self.resp_starts_buff,
             np.int32(ns),
-            d_vre, d_vim,
-            d_G0re, d_G0im,
+            self.resp_vre_buff, self.resp_vim_buff,
+            self.resp_G0re_buff, self.resp_G0im_buff,
             np.float32(float(E)),
             np.float32(float(eta)),
             np.float32(float(E_tip)),
@@ -1698,16 +1740,15 @@ class GridProjector(OpenCLBase):
             np.float32(float(A_ss)),
             np.float32(float(A_sp)),
             np.float32(float(rcut)),
-            d_out
+            self.resp_out_buff
         )
         self.queue.finish()
-
         out = np.empty(npts, dtype=np.float32)
-        cl.enqueue_copy(self.queue, out, d_out)
+        self.fromGPU_(self.resp_out_buff, out)
         self.queue.finish()
         return out
 
-    def project_orbital(self, coeffs, norb_per, atoms_dict, grid_spec, nMaxAtom=64, _debug_Fortran_order=False):
+    def project_orbital(self, coeffs, norb_per, atoms_dict, grid_spec, nMaxAtom=64, _debug_Fortran_order=False, bTryAllocate=True):
         """
         Project a single molecular orbital onto a 3D grid using the orbital projection kernel.
 
@@ -1733,98 +1774,67 @@ class GridProjector(OpenCLBase):
         tasks_np, task_atoms_np = self.build_tasks(atoms_dict, grid_spec, nMaxAtom=64, block_res=8)
         if self.verbosity > 0: print(f"[DEBUG] project_orbital: n_tasks={len(tasks_np)}")
 
-        # Prepare coefficient buffer with remapping from Fortran to OpenCL order
+        # Coefficient packing (vectorized)
         natoms = len(atoms_dict['pos'])
         numorb_max = 4
-        coeffs_flat = np.zeros(natoms * numorb_max, dtype=np.float32)
-
-        # Remapping: Fortran [s, py, pz, px] -> FireballOCL [px, py, pz, s]
         _ORT_SPP_TO_OCL = np.array([3, 1, 2, 0], dtype=np.int32)
-
-        for ia in range(natoms):
-            i0 = ia * numorb_max
-            no = int(norb_per[ia])
-            if _debug_Fortran_order and (no == 4):
-                coeffs_flat[i0:i0+4] = coeffs[ia, :4][_ORT_SPP_TO_OCL]
-            else:
-                # Expect coeffs already in [px,py,pz,s]
-                # IMPORTANT: even for H (no==1) we still need the s coefficient in slot 3.
-                coeffs_flat[i0:i0+4] = coeffs[ia, :4]
-
-        # Prepare atom data
-        atom_data = np.zeros(natoms, dtype=[
-            ('pos_rcut', 'f4', 4),
-            ('type', 'i4'),
-            ('i0orb', 'i4'),
-            ('norb', 'i4'),
-            ('pad', 'i4')
-        ])
-        for ia in range(natoms):
-            atom_data[ia]['pos_rcut'][:3] = atoms_dict['pos'][ia]
-            atom_data[ia]['pos_rcut'][3] = atoms_dict['Rcut'][ia]
-            Z = int(atoms_dict['type'][ia])
-            try:
-                atom_data[ia]['type'] = int(self.basis_meta['nz_map'][Z])
-            except Exception as e:
-                raise RuntimeError(f"GridProjector.project_orbital(): species nz={Z} not in loaded basis nz_map keys={list(self.basis_meta['nz_map'].keys())}") from e
-            atom_data[ia]['norb'] = norb_per[ia]
-            atom_data[ia]['i0orb'] = ia * numorb_max
-
-        # Grid spec
-        d_grid = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=self.grid_to_np(grid_spec))
-
-        # Tasks
-        if len(tasks_np) > 0:
-            d_tasks = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,  hostbuf=tasks_np)
+        coeffs_flat = np.zeros((natoms, numorb_max), dtype=np.float32)
+        c4 = np.asarray(coeffs[:natoms, :4], dtype=np.float32)
+        if _debug_Fortran_order:
+            mask4 = (np.asarray(norb_per[:natoms], dtype=np.int32) == 4)
+            coeffs_flat[mask4]  = c4[mask4][:, _ORT_SPP_TO_OCL]
+            coeffs_flat[~mask4] = c4[~mask4]
         else:
-            d_tasks = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, size=32)
+            coeffs_flat[:] = c4
+        coeffs_flat = coeffs_flat.ravel()
 
-        d_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=atom_data)
+        # AtomData (vectorized)
+        atom_data = np.zeros(natoms, dtype=[('pos_rcut','f4',4),('type','i4'),('i0orb','i4'),('norb','i4'),('pad','i4')])
+        atom_data['pos_rcut'][:, :3] = np.asarray(atoms_dict['pos'][:natoms], dtype=np.float32)
+        atom_data['pos_rcut'][:,  3] = np.asarray(atoms_dict['Rcut'][:natoms], dtype=np.float32)
+        Zs = np.asarray(atoms_dict['type'][:natoms], dtype=np.int32)
+        nz_map = self.basis_meta['nz_map']
+        missing = [int(Z) for Z in Zs if int(Z) not in nz_map]
+        assert len(missing) == 0, f"project_orbital: species {missing} not loaded; loaded={list(nz_map.keys())}"
+        atom_data['type']  = np.array([nz_map[int(Z)] for Z in Zs], dtype=np.int32)
+        atom_data['norb']  = np.asarray(norb_per[:natoms], dtype=np.int32)
+        atom_data['i0orb'] = np.arange(natoms, dtype=np.int32) * numorb_max
 
-        if len(task_atoms_np) > 0:
-            d_task_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,  hostbuf=task_atoms_np)
-        else:
-            d_task_atoms = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, size=nMaxAtom * 4)
-
-        d_coeffs = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=coeffs_flat.astype(np.float32))
-
-        # Output grid
-        nx, ny, nz = grid_spec['ngrid'][:3]
-        out_nbytes = int(nx) * int(ny) * int(nz) * 4
-        d_out = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, out_nbytes)
-        cl.enqueue_fill_buffer(self.queue, d_out, np.float32(0), 0, out_nbytes)
-
-        # Load kernel
-        self._load_kernels()
+        # Persistent buffers (reuse projection_buffers slot — sp coeffs fit in proj_rho buffer)
+        nx, ny, nz = [int(x) for x in grid_spec['ngrid'][:3]]
         n_tasks = len(tasks_np)
+        if bTryAllocate:
+            self.realloc_projection_buffers(natoms, n_tasks, nMaxAtom, nx, ny, nz, neigh_max=1, numorb_max=numorb_max)
+        self.toGPU_(self.proj_grid_buff,       self.grid_to_np(grid_spec))
+        self.toGPU_(self.proj_atoms_buff,      atom_data)
+        self.toGPU_(self.proj_rho_buff,        coeffs_flat)   # reuse rho slot for sp coeffs
+        if n_tasks > 0: self.toGPU_(self.proj_tasks_buff, tasks_np)
+        if len(task_atoms_np) > 0: self.toGPU_(self.proj_task_atoms_buff, task_atoms_np)
+        out_nbytes = nx * ny * nz * 4
+        cl.enqueue_fill_buffer(self.queue, self.proj_out_buff, np.float32(0), 0, out_nbytes)
 
-        # Launch kernel
         ls = (32,)
         gs = (n_tasks * ls[0],)
-
         T0 = time.perf_counter_ns()
         self.prg.project_orbital(
             self.queue, gs, ls,
-            d_grid, np.int32(n_tasks),
-            d_tasks, d_atoms, d_task_atoms,
-            d_coeffs,
+            self.proj_grid_buff, np.int32(n_tasks),
+            self.proj_tasks_buff, self.proj_atoms_buff, self.proj_task_atoms_buff,
+            self.proj_rho_buff,
             self.d_basis,
             np.int32(self.basis_meta['n_nodes']),
             np.float32(self.basis_meta['dr']),
             np.int32(self.basis_meta['max_shells']),
             np.int32(numorb_max),
             np.int32(nMaxAtom),
-            d_out
+            self.proj_out_buff
         )
         self.queue.finish()
         T1 = time.perf_counter_ns()
         if self.verbosity > 0: print(f"[TIME] project_orbital {(T1-T0)*1e-6:.3f} [ms]")
-
-        # Read back
-        res = np.empty((int(nx), int(ny), int(nz)), dtype=np.float32)
-        cl.enqueue_copy(self.queue, res, d_out)
+        res = np.empty((nx, ny, nz), dtype=np.float32)
+        self.fromGPU_(self.proj_out_buff, res)
         self.queue.finish()
-
         return res
 
     def prepare_orbital_projection(self, atoms_dict, grid_spec, nMaxAtom=64):
@@ -1866,7 +1876,6 @@ class GridProjector(OpenCLBase):
         d_coeffs = cl.Buffer(self.ctx, mf.READ_ONLY,  size=coeffs_nbytes)
         d_out    = cl.Buffer(self.ctx, mf.WRITE_ONLY, size=out_nbytes)
 
-        self._load_kernels()
         t1 = time.perf_counter_ns()
         print(f"[prepare_orbital_projection] Setup: {(t1-t0)*1e-6:.1f} ms, n_tasks={n_tasks}")
         return dict(

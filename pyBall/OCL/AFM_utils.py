@@ -349,9 +349,9 @@ def get_density_from_dftb_plus(atomPos, atomTypes, basis, slako_prefix, work_dir
     Returns dict with 'rho_scf', 'rho_na', 'rho_diff', 'V_ES', 'origin', 'ngrid', 'grid_spec'.
     """
     from pyBall import dftb_utils as du
-    ELEM_Z = {'H':1,'C':6,'N':7,'O':8,'P':15,'S':16}
-    inv_z  = {v: k for k, v in ELEM_Z.items()}
-    enames = [inv_z[int(z)] for z in atomTypes]
+    ELEM_Z = {'H':1,'C':6,'N':7,'O':8,'P':15,'S':16,'Br':35,'I':53}
+    inv_z = {v:k for k,v in ELEM_Z.items()}
+    enames = [inv_z.get(int(z), 'C') for z in atomTypes]
 
     if grid_spec is None:
         grid_spec, origin, ngrid, step = _make_grid_spec(atomPos, step, margin, z_extra)
