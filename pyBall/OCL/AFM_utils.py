@@ -938,6 +938,7 @@ def run_afm_pipeline(
         dict with 'df', 'intermediates', 'grid_spec'
     """
     os.makedirs(output_dir, exist_ok=True)
+    from pyBall.globals import debug_save_enabled
     
     # Step 2: Electrostatics (if V_ES not provided)
     if V_ES is None:
@@ -945,7 +946,8 @@ def run_afm_pipeline(
         V_ES = afm.fft_poisson(rho_diff, step)
         if plot_steps:
             plot_step2_outputs(V_ES, output_dir, origin, step)
-        np.save(os.path.join(output_dir, 'V_ES.npy'), V_ES)
+        if debug_save_enabled(2):
+            np.save(os.path.join(output_dir, 'V_ES.npy'), V_ES)
     else:
         print("\nStep 2: Using provided V_ES")
         if plot_steps:
@@ -954,7 +956,8 @@ def run_afm_pipeline(
     # Step 3a: Compute raw Pauli overlap (A=1, beta=1 — pure density convolution)
     print("\nStep 3a: Computing raw Pauli overlap (A=1, beta=1)...")
     overlap_raw = afm.compute_pauli_overlap(rho_grid, rho_tip_total, step, tip_rolled=True)
-    np.save(os.path.join(output_dir, 'overlap_raw.npy'), overlap_raw)
+    if debug_save_enabled(2):
+        np.save(os.path.join(output_dir, 'overlap_raw.npy'), overlap_raw)
     print(f"  overlap_raw: shape={overlap_raw.shape}  range=[{overlap_raw.min():.4e}, {overlap_raw.max():.4e}]")
     
     # Step 3b: Fit Pauli parameters or use provided / default values
@@ -1016,16 +1019,18 @@ def run_afm_pipeline(
     
     if plot_steps:
         plot_step3_outputs(E_pauli_field, grads_pauli, output_dir, origin, step, A_pauli, beta_pauli)
-    np.save(os.path.join(output_dir, 'E_Pauli_field.npy'), E_pauli_field)
-    np.save(os.path.join(output_dir, 'grads_E_Pauli.npy'), grads_pauli)
+    if debug_save_enabled(2):
+        np.save(os.path.join(output_dir, 'E_Pauli_field.npy'), E_pauli_field)
+        np.save(os.path.join(output_dir, 'grads_E_Pauli.npy'), grads_pauli)
     
     # Step 4: Electrostatic convolution
     print("\nStep 4: Computing electrostatic convolution...")
     E_ES_field, grads_ES = afm.compute_es_conv_field(V_ES, rho_tip_delta, step, tip_rolled=True)
     if plot_steps:
         plot_step4_outputs(E_ES_field, grads_ES, output_dir, origin, step)
-    np.save(os.path.join(output_dir, 'E_ES_field.npy'), E_ES_field)
-    np.save(os.path.join(output_dir, 'grads_E_ES.npy'), grads_ES)
+    if debug_save_enabled(2):
+        np.save(os.path.join(output_dir, 'E_ES_field.npy'), E_ES_field)
+        np.save(os.path.join(output_dir, 'grads_E_ES.npy'), grads_ES)
     
     # Step 5: Dispersion
     print("\nStep 5: Computing dispersion...")
@@ -1035,8 +1040,9 @@ def run_afm_pipeline(
     )
     if plot_steps:
         plot_step5_outputs(E_vdw, grads_vdw, output_dir, origin, step)
-    np.save(os.path.join(output_dir, 'E_vdw_field.npy'), E_vdw)
-    np.save(os.path.join(output_dir, 'grads_E_vdw.npy'), grads_vdw)
+    if debug_save_enabled(2):
+        np.save(os.path.join(output_dir, 'E_vdw_field.npy'), E_vdw)
+        np.save(os.path.join(output_dir, 'grads_E_vdw.npy'), grads_vdw)
     
     # Step 6: Compose and relax
     print("\nStep 6: Composing force fields and running probe relaxation...")
@@ -1045,9 +1051,10 @@ def run_afm_pipeline(
         scan_xs, scan_ys, heights,
         origin, step, atomPos, K_LAT=relax_params['K_LAT']
     )
-    np.save(os.path.join(output_dir, 'df.npy'), df)
-    np.save(os.path.join(output_dir, 'tip_disp_dx.npy'), tip_disp['dx'])
-    np.save(os.path.join(output_dir, 'tip_disp_dy.npy'), tip_disp['dy'])
+    if debug_save_enabled(2):
+        np.save(os.path.join(output_dir, 'df.npy'), df)
+        np.save(os.path.join(output_dir, 'tip_disp_dx.npy'), tip_disp['dx'])
+        np.save(os.path.join(output_dir, 'tip_disp_dy.npy'), tip_disp['dy'])
     if plot_steps:
         plot_step6_outputs(df, scan_xs, scan_ys, heights, output_dir)
 
@@ -1081,7 +1088,8 @@ def run_afm_pipeline(
                 exp_beta=exp_beta, exp_r0=exp_r0
             )
 
-        np.save(os.path.join(output_dir, 'stm_grid.npy'), stm_grid)
+        if debug_save_enabled(2):
+            np.save(os.path.join(output_dir, 'stm_grid.npy'), stm_grid)
         if plot_steps:
             plot_stm(stm_grid, scan_xs, scan_ys, heights, output_dir, prefix='stm')
 
@@ -1131,6 +1139,44 @@ def _compute_co_tip_grid(step=0.1, margin=4.0):
         'ngrid': ngrid,
     }
     return grid_spec, ngrid, origin
+
+
+def _co_tip_cache_dir():
+    """Return global CO tip cache directory."""
+    return os.path.join(os.path.expanduser('~'), '.cache', 'firecore', 'co_tips')
+
+
+def _co_tip_cache_key(step, margin, fdata_dir, fdata_basis):
+    """Compute a deterministic cache key for CO tip parameters."""
+    import hashlib
+    # Normalize paths for portability
+    fdata_dir_abs = os.path.normpath(os.path.abspath(fdata_dir))
+    fdata_basis_abs = os.path.normpath(os.path.abspath(fdata_basis))
+    # Hash includes step, margin, and fdata paths (basis files rarely change)
+    key_str = f"step={step:.6f}:margin={margin:.6f}:fdata={fdata_dir_abs}:basis={fdata_basis_abs}"
+    return hashlib.sha256(key_str.encode('utf-8')).hexdigest()[:16]
+
+
+def _get_cached_co_tip(step, margin, fdata_dir, fdata_basis):
+    """Load cached CO tip if available; return (co_rho_total, co_rho_delta) or None."""
+    cache_dir = _co_tip_cache_dir()
+    key = _co_tip_cache_key(step, margin, fdata_dir, fdata_basis)
+    cache_subdir = os.path.join(cache_dir, key)
+    total_path = os.path.join(cache_subdir, 'co_rho_total.npy')
+    delta_path = os.path.join(cache_subdir, 'co_rho_delta.npy')
+    if os.path.isfile(total_path) and os.path.isfile(delta_path):
+        return np.load(total_path), np.load(delta_path)
+    return None
+
+
+def _save_cached_co_tip(co_rho_total, co_rho_delta, step, margin, fdata_dir, fdata_basis):
+    """Save CO tip densities to global cache."""
+    cache_dir = _co_tip_cache_dir()
+    key = _co_tip_cache_key(step, margin, fdata_dir, fdata_basis)
+    cache_subdir = os.path.join(cache_dir, key)
+    os.makedirs(cache_subdir, exist_ok=True)
+    np.save(os.path.join(cache_subdir, 'co_rho_total.npy'), co_rho_total)
+    np.save(os.path.join(cache_subdir, 'co_rho_delta.npy'), co_rho_delta)
 
 
 def _call_compute_co_tip_script(out_dir, grid_spec, step, nscf, fdata_dir, fdata_basis):
@@ -1350,19 +1396,30 @@ def run_afm_from_xyz(
         co_rho_delta_raw = np.load(os.path.join(co_tip_dir, 'co_rho_delta.npy'))
         print(f"  Raw CO tip shape: {co_rho_total_raw.shape}")
     else:
-        print(f"\nComputing CO tip on-the-fly (step={step})...")
+        # Check global cache first
         if fdata_dir is None or fdata_basis is None:
             _ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
             fdata_dir = fdata_dir or os.path.join(_ROOT, 'tests', 'pyFireball', 'Fdata')
             fdata_basis = fdata_basis or os.path.join(fdata_dir, 'basis')
-        co_tip_work = os.path.join(output_dir, 'co_tip_work')
-        os.makedirs(co_tip_work, exist_ok=True)
-        co_grid_spec, co_ngrid, co_origin = _compute_co_tip_grid(step=step, margin=margin)
-        print(f"  CO grid: ngrid={co_ngrid}, origin={co_origin}")
-        _call_compute_co_tip_script(co_tip_work, co_grid_spec, step, 100, fdata_dir, fdata_basis)
-        co_rho_total_raw = np.load(os.path.join(co_tip_work, 'co_rho_total.npy'))
-        co_rho_delta_raw = np.load(os.path.join(co_tip_work, 'co_rho_delta.npy'))
-        print(f"  Raw CO tip shape: {co_rho_total_raw.shape}")
+
+        cached = _get_cached_co_tip(step, margin, fdata_dir, fdata_basis)
+        if cached is not None:
+            print(f"\nLoading cached CO tip (step={step}, margin={margin})...")
+            co_rho_total_raw, co_rho_delta_raw = cached
+            print(f"  Raw CO tip shape: {co_rho_total_raw.shape}")
+        else:
+            print(f"\nComputing CO tip on-the-fly (step={step})...")
+            co_tip_work = os.path.join(output_dir, 'co_tip_work')
+            os.makedirs(co_tip_work, exist_ok=True)
+            co_grid_spec, co_ngrid, co_origin = _compute_co_tip_grid(step=step, margin=margin)
+            print(f"  CO grid: ngrid={co_ngrid}, origin={co_origin}")
+            _call_compute_co_tip_script(co_tip_work, co_grid_spec, step, 100, fdata_dir, fdata_basis)
+            co_rho_total_raw = np.load(os.path.join(co_tip_work, 'co_rho_total.npy'))
+            co_rho_delta_raw = np.load(os.path.join(co_tip_work, 'co_rho_delta.npy'))
+            print(f"  Raw CO tip shape: {co_rho_total_raw.shape}")
+            # Save to global cache for future runs
+            _save_cached_co_tip(co_rho_total_raw, co_rho_delta_raw, step, margin, fdata_dir, fdata_basis)
+            print(f"  Cached CO tip for future runs.")
 
     # Pad with zeros and roll so O atom is at index 0
     print(f"  Padding CO tip to target shape {target_shape}...")

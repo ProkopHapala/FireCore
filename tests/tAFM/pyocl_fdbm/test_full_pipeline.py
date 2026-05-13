@@ -14,6 +14,8 @@ from pyBall.OCL import AFM as afm_mod
 from pyBall.DFTB.DFTBplusParser import parse_basis_hsd_ang
 from pyBall import dftb_utils as du
 import numpy as np
+from pyBall.globals import debug_plot_enabled
+from pyBall.DFTB.TestUtils import CheckpointManager
 
 
 '''
@@ -72,7 +74,25 @@ def main():
     parser.add_argument('--stm_exp_beta', type=float, default=1.0, help='STM exponential decay constant (Å^-1)')
     parser.add_argument('--stm_exp_r0', type=float, default=3.0, help='STM reference distance (Å)')
     parser.add_argument('--stm_bond_resolved', action='store_true', default=False, help='Compute bond-resolved STM (STM at displaced tip positions)')
+    # Parity checkpoint system (for optimization validation)
+    parser.add_argument('--save-checkpoints', action='store_true', default=False, help='Save parity checkpoints to --checkpoint-dir')
+    parser.add_argument('--verify-checkpoints', action='store_true', default=False, help='Verify parity against checkpoints in --checkpoint-dir')
+    parser.add_argument('--checkpoint-dir', type=str, default=None, help='Directory for reference checkpoints')
     args = parser.parse_args()
+
+    def _load_xyz_for_types(xyz_path: str):
+        # Keep element mapping aligned with pyBall/OCL/AFM_utils.py:run_afm_from_xyz().
+        ELEM_Z = {'H': 1, 'C': 6, 'N': 7, 'O': 8, 'P': 15, 'S': 16, 'Br': 35, 'I': 53}
+        with open(xyz_path, "r") as f:
+            lines = f.readlines()
+        natoms = int(lines[0])
+        pos = []
+        types = []
+        for line in lines[2:2 + natoms]:
+            p = line.split()
+            types.append(ELEM_Z.get(p[0], 6))
+            pos.append([float(p[1]), float(p[2]), float(p[3])])
+        return np.array(pos, dtype=np.float64), np.array(types, dtype=np.int32)
 
     SK = args.basis
     slako_prefix = du.SK_PATHS[SK]
@@ -149,20 +169,23 @@ def main():
     scan_xs = results['scan_xs']
     scan_ys = results['scan_ys']
     heights = results['heights']
-    afm_utils.plot_diagnostic_panel(
-        inter['E_pauli_field'], inter['E_ES_field'], inter['E_vdw'],
-        inter['E_pauli_field'] + inter['E_ES_field'] + inter['E_vdw'],
-        results['grid_spec']['origin'], args.step, heights,
-        args.output_dir
-    )
-    afm_utils.plot_diagnostic_slices(
-        inter['E_pauli_field'], inter['E_ES_field'], inter['E_vdw'],
-        results['grid_spec']['origin'], args.step, heights,
-        args.output_dir
-    )
+
+    atomPos, atomTypes = _load_xyz_for_types(args.xyz_file)
+    if args.plot_steps and debug_plot_enabled(2):
+        afm_utils.plot_diagnostic_panel(
+            inter['E_pauli_field'], inter['E_ES_field'], inter['E_vdw'],
+            inter['E_pauli_field'] + inter['E_ES_field'] + inter['E_vdw'],
+            results['grid_spec']['origin'], args.step, heights,
+            args.output_dir
+        )
+        afm_utils.plot_diagnostic_slices(
+            inter['E_pauli_field'], inter['E_ES_field'], inter['E_vdw'],
+            results['grid_spec']['origin'], args.step, heights,
+            args.output_dir
+        )
     
     # Plot tip displacement
-    if args.plot_tip_disp and 'tip_disp' in inter:
+    if args.plot_tip_disp and 'tip_disp' in inter and args.plot_steps and debug_plot_enabled(2):
         afm_utils.plot_tip_displacement(
             inter['tip_disp'],
             scan_xs,
@@ -172,7 +195,7 @@ def main():
         )
 
     # Plot STM results
-    if args.compute_stm and 'stm_grid' in inter:
+    if args.compute_stm and 'stm_grid' in inter and args.plot_steps and debug_plot_enabled(1):
         print(f"\nSTM range: [{inter['stm_grid'].min():.4e}, {inter['stm_grid'].max():.4e}]")
         afm_utils.plot_stm(
             inter['stm_grid'],
@@ -182,6 +205,90 @@ def main():
             args.output_dir,
             prefix='stm_bond_resolved' if args.stm_bond_resolved else 'stm'
         )
+
+    # Optional: save/verify parity checkpoints
+    if args.save_checkpoints or args.verify_checkpoints:
+        if not args.checkpoint_dir:
+            raise ValueError("--checkpoint-dir is required when using --save-checkpoints/--verify-checkpoints")
+
+        # Checkpoint loading requires intermediate .npy files to be saved
+        from pyBall import globals
+        if globals.DEBUG_SAVE_LEVEL < 2:
+            raise ValueError(
+                "Checkpoints require AFM_DEBUG_SAVE_LEVEL >= 2 to save intermediate .npy files. "
+                "Set AFM_DEBUG_SAVE_LEVEL=2 in environment."
+            )
+
+        # Use the output_dir itself as base input for arrays saved during the run.
+        # The library already writes the required auxiliary npy files into args.output_dir.
+        checkpoint_mgr = CheckpointManager(args.checkpoint_dir, 'afm_pipeline_ref')
+
+        grid_spec = results['grid_spec']
+        base_config = {
+            'xyz_file': args.xyz_file,
+            'step': args.step,
+            'origin': grid_spec['origin'].tolist(),
+            'ngrid': grid_spec['ngrid'].tolist(),
+            'pauli_params': {'A': pauli_A, 'beta': pauli_beta} if pauli_A is not None else None,
+            'vdw_params': {'C6_CO': args.vdw_C6},
+            'relax_params': {'K_LAT': args.relax_K},
+        }
+
+        # Load arrays produced by run_afm_pipeline (guarded by DEBUG_SAVE_LEVEL).
+        # For checkpoint runs we expect DEBUG_SAVE_LEVEL >= 2.
+        overlap_raw = np.load(os.path.join(args.output_dir, 'overlap_raw.npy'))
+        # V_ES is an input from DFTB, not saved by AFM pipeline - get from intermediates
+        V_ES = inter['V_ES']
+        E_pauli_field = np.load(os.path.join(args.output_dir, 'E_Pauli_field.npy'))
+        grads_pauli = np.load(os.path.join(args.output_dir, 'grads_E_Pauli.npy'))
+        E_ES_field = np.load(os.path.join(args.output_dir, 'E_ES_field.npy'))
+        grads_ES = np.load(os.path.join(args.output_dir, 'grads_E_ES.npy'))
+        E_vdw = np.load(os.path.join(args.output_dir, 'E_vdw_field.npy'))
+        grads_vdw = np.load(os.path.join(args.output_dir, 'grads_E_vdw.npy'))
+
+        df = np.load(os.path.join(args.output_dir, 'df.npy'))
+        tip_disp_dx = np.load(os.path.join(args.output_dir, 'tip_disp_dx.npy'))
+        tip_disp_dy = np.load(os.path.join(args.output_dir, 'tip_disp_dy.npy'))
+
+        checkpoints_to_handle = [
+            ('pauli_overlap', {'overlap_raw': overlap_raw}, {'tip_rolled': True}),
+            ('pauli_field', {'E_pauli_field': E_pauli_field, 'grads_pauli': grads_pauli}, {'step': args.step}),
+            ('es_field', {'E_ES_field': E_ES_field, 'grads_ES': grads_ES, 'V_ES': V_ES}, {'step': args.step, 'tip_rolled': True}),
+            ('dispersion_field', {
+                'E_vdw': E_vdw,
+                'grads_vdw': grads_vdw,
+                'atomPos': atomPos,
+                'atomTypes': atomTypes,
+            }, {'C6_CO': args.vdw_C6, 'RA': 1.5}),
+            ('relaxation', {
+                'df': df,
+                'tip_disp_dx': tip_disp_dx,
+                'tip_disp_dy': tip_disp_dy,
+            }, {'K_LAT': args.relax_K, 'N_RELAX': 50, 'step': args.step}),
+        ]
+
+        def _save_checkpoint(name, data):
+            if not checkpoint_mgr.exists(name):
+                checkpoint_mgr.save(name, data, config=base_config, overwrite=False)
+
+        def _verify_checkpoint(name, data, tolerances):
+            result = checkpoint_mgr.compare(
+                name, data, config=base_config, tolerances=tolerances, strict_config=True, verbose=True
+            )
+            if not result['match']:
+                raise AssertionError(f"Checkpoint verification failed for '{name}': {result['details']}")
+
+        if args.save_checkpoints:
+            for name, data, _conf in checkpoints_to_handle:
+                _save_checkpoint(name, data)
+
+        if args.verify_checkpoints:
+            # Use generous tolerances for float32 CPU/GPU parity.
+            tolerances = {
+                'default': 1e-3,
+            }
+            for name, data, _conf in checkpoints_to_handle:
+                _verify_checkpoint(name, data, tolerances=tolerances)
 
 if __name__ == "__main__":
     main()

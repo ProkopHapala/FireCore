@@ -1,6 +1,7 @@
 import numpy as np
 import pyopencl as cl
 import os, sys
+from pyBall.globals import debug_print
 
 COULOMB_CONST = 14.3996448915  # [eV*Ang/e^2]
 
@@ -820,7 +821,7 @@ def pp_relax_2d(force_func, scan_xs, scan_ys, probe_heights, mol_z=0.0,
         probe_z = probe_heights[iz] + mol_z
         PP_Z = np.full_like(PP_X, probe_z)
         pp_flat = np.stack([PP_X.ravel(), PP_Y.ravel(), PP_Z.ravel()], axis=1)
-        print(f"  iz={iz:2d} h={probe_heights[iz]:.1f} Å  probe_z={probe_z:.2f} Å  building {pp_nx}x{pp_ny} force map...")
+        debug_print(1, f"  iz={iz:2d} h={probe_heights[iz]:.1f} Å  probe_z={probe_z:.2f} Å  building {pp_nx}x{pp_ny} force map...")
         FF = force_func(pp_flat)
         FF_x = FF[:,0].reshape(pp_nx, pp_ny)
         FF_y = FF[:,1].reshape(pp_nx, pp_ny)
@@ -840,7 +841,7 @@ def pp_relax_2d(force_func, scan_xs, scan_ys, probe_heights, mol_z=0.0,
         FEs_relax[:,:,iz,1] = _interp2d(FF_y, probe_x, probe_y)
         FEs_relax[:,:,iz,2] = _interp2d(FF_z, probe_x, probe_y)
     Fz_relax = FEs_relax[:,:,:,2]
-    print(f"Fz_relax: min={Fz_relax.min():.4f}  max={Fz_relax.max():.4f}  mean={Fz_relax.mean():.4f} eV/Å")
+    debug_print(1, f"Fz_relax: min={Fz_relax.min():.4f}  max={Fz_relax.max():.4f}  mean={Fz_relax.mean():.4f} eV/Å")
     return FEs_relax, tip_disp
 
 
