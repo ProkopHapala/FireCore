@@ -739,6 +739,19 @@ float4 getLJQ( float3 dp, float3 REQ, float R2damp ){
     return  (float4){ dp*fr, E };
 }
 
+float4 getLondon( float3 dp, float2 RE, float R2damp ){
+    // --- LJ 
+    float   r2 = dot(dp,dp) + R2damp;
+    float  ir2 = 1.f/r2;
+    float  u2  = RE.x*RE.x*ir2;
+    float  u6  = u2*u2*u2;
+    float vdW  = u6*RE.y;
+    float E    =      -2.f*vdW    ;
+    float fr   = 12.f*-1.f*vdW*ir2;
+    return  (float4){ dp*fr, E };
+}
+
+
 /*
 inline double addAtomicForceMorseQ( const Vec3d& dp, Vec3d& f, double r0, double E0, double qq, double K=-1., double R2damp=1. ){
     double r2    = dp.norm2();
@@ -1008,7 +1021,64 @@ __kernel void evalMorseC_QZs_toImg(
     write_imagef( imgOut, (int4){ia,ib,ic,0}, fe );
 }
 
-// ========================== 
+// ========================== evalDispersion_toImg
+// Compute C6/r^6 London dispersion energy grid (attractive part only)
+// Uses getLondon() function for damped C6/r^6 calculation
+// Parameters:
+//   atoms: (x,y,z,q) - atom positions
+//   C6_params: (C6_eff, 0) per atom - C6_eff = sqrt(C6_atom * C6_CO)
+//   imgOut: 3D image output (energy in .w component)
+//   R2damp: RA^2 - damping radius squared to avoid singularity
+__kernel void evalDispersion_toImg(
+    const int nAtoms,
+    __global float4* atoms,         // (x,y,z,q) - positions
+    __global float2* C6_params,     // (C6_eff, 0) per atom
+    __write_only image3d_t imgOut,  // output energy grid
+    const int4 nGrid,               // grid dimensions
+    const float4 grid_p0,           // grid origin
+    const float4 grid_dA,           // grid vectors
+    const float4 grid_dB,
+    const float4 grid_dC,
+    const float R2damp              // RA^2 - damping radius squared
+){
+    __local float4 LATOMS[32];
+    __local float2 LC6s[32];
+    const int iG = get_global_id(0);
+    const int iL = get_local_id(0);
+    const int nL = get_local_size(0);
+    const int nab = nGrid.x*nGrid.y;
+    const int ia = iG%nGrid.x;
+    const int ib = (iG%nab)/nGrid.x;
+    const int ic = iG/nab;
+    const int nMax = nab*nGrid.z;
+    if(iG>=nMax) return;
+
+    float4 fe = float4Zero;
+    float3 pos = grid_p0.xyz + grid_dA.xyz*ia + grid_dB.xyz*ib + grid_dC.xyz*ic;
+
+    // Loop over atoms in batches using local memory
+    for(int i0=0; i0<nAtoms; i0+=nL){
+        int i = i0 + iL;
+        LATOMS[iL] = atoms[i];
+        LC6s[iL] = C6_params[i];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for(int j=0; j<nL; j++){
+            if((j+i0)<nAtoms){
+                float4 xyzq = LATOMS[j];
+                float3 dp = pos - xyzq.xyz;
+                // getLondon computes: E = -2 * C6_eff / (r^2 + R2damp)^3
+                // with RE.x=1, RE.y=C6_eff/2
+                float2 RE = (float2)(1.0f, LC6s[j].x * 0.5f);
+                fe += getLondon(dp, RE, R2damp);
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    write_imagef(imgOut, (int4){ia,ib,ic,0}, fe);
+}
+
+// ==========================
 //         GridFF
 // ==========================
 

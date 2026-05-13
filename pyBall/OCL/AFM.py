@@ -132,6 +132,15 @@ class AFMulator(OpenCLBase):
         }
         self.try_make_buffers(buffs, suffix="_cl")
 
+    def realloc_dispersion_buffers(self, natoms):
+        """(Re-)allocate persistent GPU buffers for dispersion computation via try_make_buffers."""
+        sz_f = 4
+        buffs = {
+            "disp_atoms": sz_f * 4 * natoms,      # float4 per atom (pos + charge)
+            "disp_C6": sz_f * 2 * natoms,          # float2 per atom (C6_eff, 0)
+        }
+        self.try_make_buffers(buffs, suffix="_cl")
+
     # ── molecule loading ──────────────────────────────────────────────────────
 
     def load_molecule(self, xyz_path):
@@ -501,6 +510,96 @@ class AFMulator(OpenCLBase):
         return qs
 
     # ── helpers ───────────────────────────────────────────────────────────────
+
+    def compute_dispersion_grid_cl(self, atomPos, atomTypes, origin, step, ngrid, C6_atom_dict=None, C6_CO=30.0, RA=1.5, bAlloc=True):
+        """
+        Compute C6/r^6 dispersion energy grid using OpenCL GPU acceleration.
+        
+        Args:
+            atomPos: (natoms, 3) atom positions in Angstrom
+            atomTypes: (natoms,) atomic numbers
+            origin: (3,) grid origin
+            step: grid spacing in Angstrom
+            ngrid: (3,) grid dimensions
+            C6_atom_dict: dict mapping Z to C6 coefficients (default: {1:6.5, 6:24.0, 7:20.0, 8:15.0})
+            C6_CO: C6 coefficient for CO tip
+            RA: damping radius in Angstrom
+            bAlloc: if True, allocate GPU buffers (default True)
+            
+        Returns:
+            (E_vdw, grads_E_vdw): Dispersion energy and gradients
+        """
+        if C6_atom_dict is None:
+            C6_atom_dict = {1: 6.5, 6: 24.0, 7: 20.0, 8: 15.0}
+        
+        nx, ny, nz = [int(i) for i in ngrid[:3]]
+        natoms = len(atomPos)
+        
+        # Prepare atom data
+        atoms_arr = np.zeros((natoms, 4), dtype=np.float32)
+        atoms_arr[:, :3] = np.asarray(atomPos, dtype=np.float32)
+        atoms_arr[:, 3] = 0.0  # charge not used for dispersion
+        
+        # Prepare C6 coefficients: C6_eff = sqrt(C6_atom * C6_CO)
+        C6_atom = np.array([C6_atom_dict.get(z, 1.0) for z in atomTypes], dtype=np.float32)
+        C6_eff = np.sqrt(C6_atom * C6_CO)
+        C6_params = np.zeros((natoms, 2), dtype=np.float32)
+        C6_params[:, 0] = C6_eff
+        C6_params[:, 1] = 0.0
+        
+        # Allocate buffers
+        if bAlloc:
+            self.realloc_dispersion_buffers(natoms)
+        
+        # Upload data to GPU
+        self.toGPU_(self.disp_atoms_cl, atoms_arr)
+        self.toGPU_(self.disp_C6_cl, C6_params)
+        
+        # Prepare grid spec
+        origin = np.asarray(origin, dtype=np.float32)
+        step = np.asarray(step, dtype=np.float32)
+        grid_p0 = np.array([origin[0], origin[1], origin[2], 0.0], dtype=np.float32)
+        grid_dA = np.array([step, 0.0, 0.0, 0.0], dtype=np.float32)
+        grid_dB = np.array([0.0, step, 0.0, 0.0], dtype=np.float32)
+        grid_dC = np.array([0.0, 0.0, step, 0.0], dtype=np.float32)
+        nMax = int(nx * ny * nz)
+        nGrid = np.array([nx, ny, nz, nMax], dtype=np.int32)
+        R2damp = RA * RA
+        
+        # Allocate output image
+        mf = cl.mem_flags
+        fmt = cl.ImageFormat(cl.channel_order.RGBA, cl.channel_type.FLOAT)
+        img_disp = cl.Image(self.ctx, mf.READ_WRITE, fmt, shape=(nx, ny, nz))
+        
+        # Launch kernel
+        gs = (nx * ny * nz,)
+        ls = (32,)
+        self.prg.evalDispersion_toImg(
+            self.queue, gs, ls,
+            np.int32(natoms),
+            self.disp_atoms_cl,
+            self.disp_C6_cl,
+            img_disp,
+            nGrid,
+            grid_p0,
+            grid_dA,
+            grid_dB,
+            grid_dC,
+            np.float32(R2damp)
+        )
+        
+        # Read back energy grid
+        # OpenCL 3D images have z varying fastest in memory, so we need shape (nz, ny, nx, 4)
+        E_vdw_cl = np.zeros((nz, ny, nx, 4), dtype=np.float32)
+        cl.enqueue_copy(self.queue, E_vdw_cl, img_disp, origin=(0, 0, 0), region=(nx, ny, nz))
+        # Transpose from (nz, ny, nx) to (nx, ny, nz) to match expected layout
+        E_vdw = E_vdw_cl.transpose(2, 1, 0, 3)  # (nz, ny, nx, 4) -> (nx, ny, nz, 4)
+        E_vdw = E_vdw[:, :, :, 3]  # energy is in .w component
+        
+        # Compute gradients
+        grads_E_vdw = np.stack([np.gradient(E_vdw, step, axis=i) for i in range(3)], axis=-1)
+        
+        return E_vdw, grads_E_vdw
 
     @staticmethod
     def _roundup(n, loc):
@@ -1068,7 +1167,12 @@ def project_single_atom(Z, rho_4x4, step, margin, fdata_basis_dir, use_tiled=Tru
     return rho_grid, grid_spec, integral, projector
 
 
-def compute_dispersion_grid(atomPos, atomTypes, origin, step, ngrid, C6_atom_dict=None, C6_CO=30.0, RA=1.5):
+
+
+# Singleton AFMulator instance for dispersion computation
+_dispersion_afmulator = None
+
+def compute_dispersion_grid(atomPos, atomTypes, origin, step, ngrid, C6_atom_dict=None, C6_CO=30.0, RA=1.5, use_opencl=True):
     """
     Compute C6/r^6 dispersion energy grid for CO tip.
     
@@ -1081,6 +1185,7 @@ def compute_dispersion_grid(atomPos, atomTypes, origin, step, ngrid, C6_atom_dic
         C6_atom_dict: dict mapping Z to C6 coefficients (default: {1:6.5, 6:24.0, 7:20.0, 8:15.0})
         C6_CO: C6 coefficient for CO tip
         RA: damping radius in Angstrom
+        use_opencl: if True, use OpenCL GPU acceleration (default True)
         
     Returns:
         (E_vdw, grads_E_vdw): Dispersion energy and gradients
@@ -1088,6 +1193,18 @@ def compute_dispersion_grid(atomPos, atomTypes, origin, step, ngrid, C6_atom_dic
     if C6_atom_dict is None:
         C6_atom_dict = {1: 6.5, 6: 24.0, 7: 20.0, 8: 15.0}
     
+    # Use OpenCL version if requested
+    if use_opencl:
+        global _dispersion_afmulator
+        # Create singleton AFMulator instance on first call
+        if _dispersion_afmulator is None:
+            _dispersion_afmulator = AFMulator(use_morse=False, nloc=32)
+        return _dispersion_afmulator.compute_dispersion_grid_cl(
+            atomPos, atomTypes, origin, step, ngrid,
+            C6_atom_dict=C6_atom_dict, C6_CO=C6_CO, RA=RA, bAlloc=True
+        )
+    
+    # Original Python implementation (backup/reference)
     nx, ny, nz = [int(i) for i in ngrid[:3]]
     xs = origin[0] + np.arange(nx)*step
     ys = origin[1] + np.arange(ny)*step

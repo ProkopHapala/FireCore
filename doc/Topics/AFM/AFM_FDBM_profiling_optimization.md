@@ -1677,7 +1677,6 @@ Based on the profiling documentation, here are the optimization phases from easi
 
 This order maximizes ROI while keeping each phase manageable and testable with the checkpoint system.
 
-
 ---
 
 # USER
@@ -2081,3 +2080,66 @@ While the test run (single scan) doesn't show dramatic timing improvement (since
 - Buffer size calculations match the original code exactly (e.g., `grid_spec_np` struct = 5×float4 = 80 bytes)
 - The `bAlloc` flag pattern matches `HubbardSolver` usage — allows explicit control over reallocation
 - All methods use `toGPU_()`/`fromGPU_()` for data transfer, consistent with `OpenCLBase` pattern
+
+---
+
+## **Phase 3 Implementation Report: Dispersion Grid OpenCL**
+
+**Status:** ✅ Completed
+
+**Files Modified:**
+- `/home/prokop/git/FireCore/cpp/common_resources/cl/relax.cl` - Added `evalDispersion_toImg` kernel
+- `/home/prokop/git/FireCore/pyBall/OCL/AFM.py` - Added OpenCL dispersion computation methods
+
+### **Implementation Details**
+
+#### **1. OpenCL Kernel (relax.cl)**
+Added `evalDispersion_toImg` kernel (lines 1024-1080):
+- Uses existing `getLondon()` device function for damped C6/r^6 calculation
+- Local memory tiling for atom batches (32 atoms per work-group)
+- Grid indexing: `ia = iG%nGrid.x`, `ib = (iG%nab)/nGrid.x`, `ic = iG/nab` (C-order: x fastest, z slowest)
+- Writes energy to `.w` component of RGBA float4 image
+- Parameters: atoms (float4), C6_params (float2), nGrid (int4), grid vectors, R2damp
+
+#### **2. Python Integration (AFM.py)**
+Added methods to AFMulator class:
+- `realloc_dispersion_buffers(natoms)` - Allocates persistent GPU buffers (disp_atoms_cl, disp_C6_cl)
+- `compute_dispersion_grid_cl(...)` - Runs OpenCL kernel and reads back results
+
+Modified module-level `compute_dispersion_grid(...)`:
+- Added `use_opencl=True` parameter (default: use OpenCL)
+- Singleton pattern: caches `_dispersion_afmulator` to avoid recompilation
+- Falls back to Python implementation when `use_opencl=False`
+
+#### **3. Critical Bug Fix: Memory Layout Issue**
+
+**Problem:** Initial implementation produced pixelated/scrambled dispersion field.
+
+**Root Cause:** OpenCL 3D images store data with **z varying fastest** in memory (similar to Fortran/GL texture layout), while numpy C-contiguous arrays have the **last dimension varying fastest**. When copying from `(nx, ny, nz)` image to `(nx, ny, nz, 4)` numpy array, the data was scrambled.
+
+**Solution:**
+```python
+# Create numpy array with reversed shape to match OpenCL memory layout
+E_vdw_cl = np.zeros((nz, ny, nx, 4), dtype=np.float32)
+cl.enqueue_copy(self.queue, E_vdw_cl, img_disp, origin=(0, 0, 0), region=(nx, ny, nz))
+# Transpose to get correct x-y-z indexing
+E_vdw = E_vdw_cl.transpose(2, 1, 0, 3)  # (nz, ny, nx, 4) -> (nx, ny, nz, 4)
+```
+
+This pattern matches the existing GridFF_new.py implementation (lines 217-220, 460-462, 507-509) which uses `ns[::-1]` for readback.
+
+**Validation:**
+- TBTAP test (176×168×144 grid, 60 atoms)
+- Dispersion range: [-3.77 eV, -3.28e-05 eV] (negative as expected for attractive C6/r^6)
+- Center value changed from -9.75e-03 to -1.03e-01 after fix (correct magnitude)
+- df range improved from [-166.8, 208.8] to [-32.2, 25.8] (physically reasonable)
+
+#### **4. Performance Impact**
+Expected gain: ~0.6s (7%) on large systems by eliminating Python loop over grid points.
+
+### **Lessons Learned**
+
+1. **OpenCL 3D image memory layout is counter-intuitive** - z varies fastest, not x
+2. **Always check existing patterns** - GridFF_new.py already had the correct transpose pattern
+3. **Single precision float4 requirement** - OpenCL images require RGBA FLOAT format
+4. **nGrid 4th component matters** - Should be `nMax` not `0` to match existing kernels
