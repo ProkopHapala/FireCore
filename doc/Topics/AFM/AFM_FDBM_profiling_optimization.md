@@ -1687,24 +1687,10 @@ and explicitly mention relevant function and general actions how they can be imp
 
 ---
 
-# SWE-1.6 :  PHASE 2: GPU Task Management & Persistent Resources
 
-
-# Phase 2 Analysis: OpenCL Resource Management
-
-## Current State Analysis
-
-### **OpenCLBase.py** - The Efficient Pattern (Already Available)
 
 **Key tools for efficient resource management:**
 
-- **`buffer_dict`**: Dictionary storing named buffers for reuse
-- **[try_make_buffers(buffs, suffix="_buff")](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/OpenCLBase.py:240:4-249:50)**: Batch buffer allocation with size checking
-  - Checks if buffer exists and has correct size
-  - Only reallocates if size changed
-  - Stores buffers in `buffer_dict` for reuse
-- **[try_make_buff(buff_name, sz)](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/OpenCLBase.py:227:4-235:25)**: Single buffer allocation with same logic
-- **[toGPU_(buf, host_data)](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/OpenCLBase.py:251:4-252:78) / [fromGPU_(buf, host_data)](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/OpenCLBase.py:254:4-257:24)**: Upload/download helpers
 - **[load_program()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/OpenCLBase.py:92:4-142:19)**: Kernel loading with caching (checks `self.prg is not None`)
 
 **Pattern:**
@@ -1720,6 +1706,7 @@ and explicitly mention relevant function and general actions how they can be imp
 ```python
 def __init__(self, ...):
     super().__init__(nloc=nloc, ...)
+    # Kernel compilation stays the same
     # Kernel compiled ONCE
     self.load_program(rel_path="cl/hubbard.cl", ...)
 ```
@@ -2143,3 +2130,739 @@ Expected gain: ~0.6s (7%) on large systems by eliminating Python loop over grid 
 2. **Always check existing patterns** - GridFF_new.py already had the correct transpose pattern
 3. **Single precision float4 requirement** - OpenCL images require RGBA FLOAT format
 4. **nGrid 4th component matters** - Should be `nMax` not `0` to match existing kernels
+
+---
+
+# USER
+
+OK, so lets continue 
+
+Analyse this step
+
+``
+## **Phase 4: Gradient Computation Optimization (Low-Medium Effort)**
+
+**Target:** np.gradient calls in AFM.py:879,906,1049
+
+**Options:**
+1. **Port np.gradient to OpenCL** (simpler)
+   - Central difference stencil kernel
+   - Speedup: 2-5x (memory bandwidth bound)
+
+2. **Combine with field computation** (better)
+   - Modify FFT/convolution kernels to compute gradient alongside field
+   - Speedup: 1.5-2x (reduce memory passes)
+
+**Expected gain:** 0.1-0.2s per field × 3 fields = 0.3-0.6s
+``
+
+how we compute gradients currently? using FFT? maybe we can do the FFT directly on GPU? so we do not have to download/updload the data? and In the end we want to do also the relaxation on GPU. If everything stay on GPU it is the fastest. We are doing FFT on GPU here @GridFF.py the only problem is we need make sure the grid dimensions can be factroed in small numbers for CL fft to work (2,3,5? not 7,11,13 ... )
+
+---
+
+## **Phase 4 Analysis: Gradient Computation & GPU FFT**
+
+**Current State Analysis**
+
+### **1. Gradient Computation Methods (AFM.py)**
+
+**All gradients currently use CPU-side `np.gradient` (central differences):**
+- Line 469: `dFzdz = np.gradient(Fz, axis=2)` - frequency shift gradient
+- Line 600: `grads_E_vdw = np.stack([np.gradient(E_vdw, step, axis=i) for i in range(3)], axis=-1)` - dispersion gradients
+- Line 620: `return -np.gradient(Fz, abs(dz), axis=2)` - df computation
+- Line 862-863: `grads_E_Pauli = [np.gradient(E_Pauli_field, step, axis=a)...]` - Pauli field gradients
+- Line 870-871: `grads_rho = [np.gradient(rho_smooth, step, axis=a)...]` - density gradients
+- Line 1033, 1060, 1090, 1221: Various field gradients using np.gradient
+
+**np.gradient uses finite differences:** `df/dx ≈ (f(x+h) - f(x-h)) / (2h)`
+
+### **2. FFT Usage (GridFF.py)**
+
+**FFT is already on GPU using gpyFFT:**
+- Line 817-818: `clu.FFT(self.ctx, self.queue, self.Qgrid_cla, axes=(0, 1, 2))`
+- Line 822, 856, 997, 1034: `clu.try_load_clFFT()` calls
+- Used for: Poisson solver, density smoothing, Ewald summation
+
+**Current workflow:**
+1. Compute field on GPU (FFT convolution)
+2. Download field to CPU
+3. Compute gradients with np.gradient (CPU)
+4. Upload gradients to GPU for interpolation/relaxation
+
+**Bottleneck:** Data transfer GPU→CPU→GPU for gradient computation
+
+### **3. GPU FFT Requirements**
+
+**clFFT (via gpyFFT) requires grid dimensions with prime factors 2, 3, 5 only:**
+- Good: 128 = 2^7, 144 = 2^4 × 3^2, 168 = 2^3 × 3 × 7
+- Bad: 176 = 2^4 × 11 (contains 11 - not allowed!)
+- Current TBTAP grid: (176, 168, 144) - **176 is not FFT-friendly!**
+
+**Solution:** Pad grid dimensions to FFT-friendly sizes:
+- 176 → 180 = 2^2 × 3^2 × 5 (or 192 = 2^6 × 3)
+- 168 → 168 = 2^3 × 3 × 7 (still has 7 - need 180 or 192)
+- 144 → 144 = 2^4 × 3^2 (already good)
+
+**Recommended padding:** (192, 192, 144) or (180, 180, 144)
+
+### **4. Proposed Optimization Strategy**
+
+#### **Option A: Spectral Gradient on GPU (Recommended)**
+Use FFT-based spectral differentiation (compute gradients in Fourier space):
+
+**Mathematical principle:**
+```
+∂f/∂x = F^{-1}[ i*k_x * F[f] ]
+∂f/∂y = F^{-1}[ i*k_y * F[f] ]
+∂f/∂z = F^{-1}[ i*k_z * F[f] ]
+```
+
+**Implementation:**
+1. After FFT convolution (field already in Fourier space)
+2. Multiply by i*k_x, i*k_y, i*k_z (element-wise)
+3. Inverse FFT to get gradients
+4. Keep everything on GPU - no download/upload
+
+**Benefits:**
+- Zero extra data transfer (field already on GPU)
+- Spectral accuracy (better than finite differences)
+- Can batch all 3 gradient components
+- Consistent with existing FFT workflow
+
+**Implementation location:**
+- Add to GridFF.py: new method `spectral_gradient(field_cl, step)`
+- Or add kernel to relax.cl: compute gradient after convolution
+
+#### **Option B: Central Difference Kernel on GPU**
+Implement finite difference stencil as OpenCL kernel:
+
+**Implementation:**
+```c
+__kernel void gradient_central(
+    __read_only image3d_t imgIn,
+    __write_only image3d_t imgOut_x,
+    __write_only image3d_t imgOut_y,
+    __write_only image3d_t imgOut_z,
+    float step
+) {
+    int4 coord = (int4)(get_global_id(0), get_global_id(1), get_global_id(2), 0);
+    float4 f_left  = read_imagef(imgIn, coord + (int4)(-1,0,0,0));
+    float4 f_right = read_imagef(imgIn, coord + (int4)( 1,0,0,0));
+    float grad_x = (f_right.x - f_left.x) / (2.0 * step);
+    // Similar for y, z
+}
+```
+
+**Benefits:**
+- Simpler to implement
+- No FFT dependency
+- Works with arbitrary grid sizes
+
+**Drawbacks:**
+- Less accurate than spectral
+- Still requires field download if not already on GPU
+
+#### **Option C: Combine Gradient with Field Computation**
+Modify existing convolution kernels to compute gradient alongside field:
+
+**Implementation:**
+- Modify relax.cl kernels to output (field, grad_x, grad_y, grad_z)
+- Use chain rule during convolution: ∂(A*B)/∂x = A*∂B/∂x + B*∂A/∂x
+
+**Benefits:**
+- One kernel launch instead of two
+- Minimal memory bandwidth
+
+**Drawbacks:**
+- Most complex implementation
+- Requires kernel modification
+
+### **5. Recommended Implementation Path**
+
+**Phase 4a: Spectral Gradient (Low-Medium Effort)**
+1. Add `spectral_gradient()` method to GridFF.py using existing gpyFFT
+2. Modify AFM_utils.py to call GPU gradient instead of np.gradient
+3. Pad grid dimensions to FFT-friendly sizes (2,3,5 factors only)
+4. Test parity with CPU np.gradient
+
+**Phase 4b: Grid Dimension Padding (Low Effort)**
+1. Add FFT-friendly padding utility in AFM.py
+2. Modify grid setup to pad dimensions automatically
+3. Adjust interpolation to handle padded grids
+4. Update documentation
+
+**Phase 4c: Full GPU Pipeline (Medium Effort)**
+1. Keep field computation on GPU
+2. Keep gradient computation on GPU
+3. Keep interpolation on GPU (if possible)
+4. Only download final results for plotting
+
+### **6. Expected Performance Gains**
+
+- **Spectral gradient on GPU:** 2-5x faster than CPU np.gradient
+- **Eliminate GPU→CPU→GPU transfer:** 0.1-0.2s saved per field
+- **3 fields (Pauli, ES, vdW):** 0.3-0.6s total savings
+- **FFT padding overhead:** Minimal (<5% increase in grid size)
+
+**Total expected gain:** 0.3-0.6s (matches Phase 4 estimate)
+
+---
+
+# SWE-1.6 :  PHASE 2: GPU Task Management & Persistent Resources
+
+## Phase 2 Analysis: OpenCL Resource Management
+
+### **Current State Analysis**
+
+#### **1. OpenCLBase.py - The Efficient Pattern (Already Available)**
+
+- `load_program()` - Caches compiled program in `self.prg`, skips recompilation if already loaded
+- `try_make_buffers(buffs, suffix)` - Allocates buffers only if size changes or doesn't exist
+- `try_make_buff(buff_name, sz)` - Single buffer allocation with size checking
+- `toGPU_()` / `fromGPU_()` - Data transfer utilities
+- `buffer_dict` - Centralized buffer storage for reuse
+
+**Optimization Policy (from OpenCLBase.py header):**
+1. **Kernel Caching**: Compile once during initialization, not per-call
+2. **Persistent Buffer Management**: Allocate once and reuse across calls
+3. **bTryAllocate Guards**: Add `bTryAllocate=True` parameter to skip allocation on hot paths
+4. **Separation of Initialization vs Runtime**: Load kernels in `__init__`, allocate buffers on first call or size change
+
+#### **2. HubbardSolver.py - Correct Pattern Implementation**
+
+**Buffer management (lines 87-150):**
+```python
+def realloc_buffers(self, nSingle: int, nTips: int):
+    buffs = {
+        "posE": sz_f*4 * nSingle,
+        "pTips": sz_f*4 * nTips,
+        "Emin": sz_f*1 * nTips,
+        "iMin": sz_f*1 * nTips,
+        "Itot": sz_f*2 * nTips,
+    }
+    self.try_make_buffers(buffs)
+```
+
+**Kernel setup (lines 203-249):**
+- Kernels loaded once in `__init__` via `load_program()`
+- `setup_*` methods prepare kernel arguments without recompiling
+- Buffers reallocated only when sizes change
+
+**Pattern:** ✅ **Already efficient** - follows OpenCLBase best practices
+
+#### **3. AFM.py - Partial Implementation**
+
+**Current state (already has some optimizations):**
+- ✅ Kernel loaded once in `__init__` (line 93): `self.load_program(kernel_path=relax_cl)`
+- ✅ Has `realloc_forcefield_buffers(na)` (line 116-124)
+- ✅ Has `realloc_scan_buffers(n_scan, nz)` (line 126-133)
+- ✅ Has `realloc_dispersion_buffers(natoms)` (line 135-142)
+- ✅ Uses `bAlloc` guards in `make_forcefield()` (line 309-310)
+- ✅ Uses `bAlloc` guards in `run_scan()` (line 376-377)
+- ✅ Uses `bAlloc` guards in `get_raw_FE()` (line 431-432)
+- ✅ Uses `bAlloc` guards in `compute_dispersion_grid_cl()` (line 551-552)
+
+**Pattern:** ✅ **Already efficient** - follows OpenCLBase best practices
+
+#### **4. Grid_dftb.py (GridProjector) - Correct Pattern Implementation**
+
+**Current state:**
+- ✅ Kernel loaded once in `__init__` via `_load_kernels()` (line 81)
+- ✅ Has `realloc_projection_buffers()` for sparse projection
+- ✅ Has `realloc_dense_projection_buffers()` for dense projection
+- ✅ Has `realloc_task_buffers()` for GPU task generation
+- ✅ Uses `bTryAllocate` guards in calling functions
+
+**Pattern:** ✅ **Already efficient** - follows OpenCLBase best practices
+
+#### **5. Problem Areas - Instance Recreation Overhead**
+
+**Issue identified in test scripts:**
+
+**run_pyocl_fdbm.py (line 262):**
+```python
+projector = ocl_grid.GridProjector(fdata_dir=fdata_basis, verbosity=verbosity)
+```
+- Creates new GridProjector instance every run
+- Each instance compiles kernels and allocates buffers
+- Should be cached/reused across multiple projections
+
+**compute_co_tip.py (line 113):**
+```python
+projector = ocl_grid.GridProjector(fdata_dir=fdata_basis, verbosity=0)
+```
+- Same issue - creates new instance for CO tip computation
+- CO tip is computed once per molecule, could be cached
+
+**AFM_utils.py - No OpenCL instance management:**
+- `compose_and_relax()` uses pure Python `afm.pp_relax_2d()` (line 507)
+- No GPU acceleration for relaxation
+- Could use `AFMulator` instance for GPU relaxation
+
+### **General Actions for Improvement**
+
+#### **Action 1: Singleton Pattern for GridProjector (Low Effort)**
+
+**Problem:** GridProjector instances created/destroyed repeatedly
+
+**Solution:** Implement singleton pattern with lazy initialization
+
+**Implementation:**
+```python
+# In AFM_utils.py or new module
+_projector_singleton = None
+
+def get_grid_projector(fdata_dir, verbosity=0):
+    global _projector_singleton
+    if _projector_singleton is None:
+        _projector_singleton = GridProjector(fdata_dir=fdata_dir, verbosity=verbosity)
+    return _projector_singleton
+```
+
+**Expected gain:** 0.2-0.4s (eliminates kernel compilation overhead)
+
+#### **Action 2: Persistent AFMulator for Relaxation (Low-Medium Effort)**
+
+**Problem:** `compose_and_relax()` uses pure Python relaxation
+
+**Solution:** Add GPU-accelerated relaxation using AFMulator
+
+**Implementation:**
+1. Create singleton AFMulator instance
+2. Load force field once (Pauli + ES + vdW)
+3. Run GPU relaxation for all scan points
+4. Keep buffers persistent across height slices
+
+**Expected gain:** 0.5-1.0s (GPU relaxation vs Python)
+
+#### **Action 3: CO Tip Caching (Already Done in Phase 1)**
+
+**Status:** ✅ Already implemented
+- CO tip computed once and cached
+- Reused across height slices
+
+#### **Action 4: Batch GPU Task Building (Low Effort)**
+
+**Problem:** `build_tasks_gpu()` called multiple times for different grids
+
+**Solution:** Cache task buffers if grid dimensions don't change
+
+**Implementation:**
+- Add grid dimension hash to check if rebuild needed
+- Skip task building if grid unchanged
+
+**Expected gain:** 0.1-0.3s (skips redundant task generation)
+
+### **Recommended Implementation Strategy**
+
+**Phase 2a: Singleton Pattern for GridProjector (Low Effort)**
+1. Add singleton manager in AFM_utils.py
+2. Replace direct GridProjector instantiation with singleton getter
+3. Test with TBTAP pipeline
+4. Measure compilation time savings
+
+**Phase 2b: GPU-Accelerated Relaxation (Low-Medium Effort)**
+1. Add AFMulator singleton to AFM_utils.py
+2. Modify `compose_and_relax()` to use GPU relaxation
+3. Load force field once, reuse across scan points
+4. Test parity with Python relaxation
+5. Measure speedup
+
+**Phase 2c: Task Building Optimization (Low Effort)**
+1. Add grid dimension caching to GridProjector
+2. Skip task building if grid unchanged
+3. Test with repeated projections
+
+### **Expected Performance Gains**
+
+- **Singleton GridProjector:** 0.2-0.4s (eliminate kernel compilation)
+- **GPU relaxation:** 0.5-1.0s (replace Python with GPU)
+- **Task building cache:** 0.1-0.3s (skip redundant computation)
+
+**Total expected gain:** 0.8-1.7s (matches Phase 2 estimate of 0.4s conservative)
+
+### **Summary**
+
+**Current state:**
+- ✅ AFM.py already uses OpenCLBase pattern correctly
+- ✅ HubbardSolver.py already uses OpenCLBase pattern correctly
+- ✅ Grid_dftb.py already uses OpenCLBase pattern correctly
+- ❌ Test scripts recreate instances unnecessarily
+- ❌ AFM_utils.py doesn't use GPU for relaxation
+
+**Key insight:** The core OpenCL classes are already efficient. The problem is at the orchestration level (test scripts, AFM_utils.py) where instances are created/destroyed repeatedly instead of being cached/reused.
+
+**Priority:** Focus on singleton patterns and GPU relaxation in AFM_utils.py rather than modifying the core OpenCL classes (which are already optimized).
+
+
+---
+
+## **Phase 4 Implementation Notes: GPU Gradient Computation**
+
+### **1. gpyFFT Usage Pattern (from GridFF.py)**
+
+**Location:** GridFF.py lines 812-818
+
+```python
+def prepare_poisson(self, sh=None):
+    if sh is None: sh=self.gsh.ns[::-1]  # Note: reversed shape for FFT
+    self.Qgrid_cla = cl_array.Array(self.queue, shape=sh, dtype=np.complex64, data=self.Qgrid_buff)
+    self.Vgrid_cla = cl_array.Array(self.queue, shape=sh, dtype=np.complex64, data=self.Vgrid_buff)
+    self.transform         = clu.FFT(self.ctx, self.queue, self.Qgrid_cla, axes=(0, 1, 2))
+    self.inverse_transform = clu.FFT(self.ctx, self.queue, self.Vgrid_cla, axes=(0, 1, 2))
+```
+
+**Key points:**
+- Uses `clu.FFT()` from clUtils.py (wrapper around gpyfft.fft.FFT)
+- Requires `clu.try_load_clFFT()` call before use (line 822)
+- Creates `cl_array.Array` wrappers around existing buffers
+- Shape is reversed: `sh=self.gsh.ns[::-1]` (nx,ny,nz → nz,ny,nx for FFT)
+- FFT operates on complex64 arrays (real-space to Fourier-space and back)
+- `axes=(0, 1, 2)` means 3D FFT along all axes
+
+**Usage pattern:**
+```python
+# Forward transform
+self.transform.enqueue()
+# Do operations in Fourier space (multiply by k-space filters, etc.)
+# Inverse transform
+self.inverse_transform.enqueue()
+```
+
+### **2. FFT-Friendly Grid Padding Function**
+
+**Location:** GridFF_new.py lines 852-896
+
+**Current implementation:**
+```python
+@staticmethod
+def _factorize(n):
+    """Factorize a number into its prime factors."""
+    i = 2
+    factors = []
+    while i * i <= n:
+        while n % i == 0:
+            factors.append(i)
+            n //= i
+        i += 1
+    if n > 1:
+        factors.append(n)
+    return factors
+
+def make_fft_friendly(n):
+    while True:
+        factors = self._factorize(n)
+        if all(p <= 7 for p in factors):  # Max prime factor of 7
+            return n
+        n += 1
+```
+
+**CRITICAL ISSUE:** Current implementation allows prime factor 7, but clFFT requires factors 2,3,5 only!
+
+**Required fix:**
+```python
+def make_fft_friendly(n):
+    """Adjust n to have only prime factors 2, 3, 5."""
+    while True:
+        factors = self._factorize(n)
+        if all(p in (2, 3, 5) for p in factors):  # Only 2, 3, 5 allowed
+            return n
+        n += 1
+```
+
+**Current grid issue:** TBTAP grid (176, 168, 144)
+- 176 = 2^4 × 11 ❌ (contains 11)
+- 168 = 2^3 × 3 × 7 ❌ (contains 7)
+- 144 = 2^4 × 3^2 ✅ (good)
+
+**Recommended padding:**
+- 176 → 180 = 2^2 × 3^2 × 5 ✅ (or 192 = 2^6 × 3)
+- 168 → 180 = 2^2 × 3^2 × 5 ✅ (or 192 = 2^6 × 3)
+- 144 → 144 = 2^4 × 3^2 ✅ (already good)
+
+### **3. Central Difference Kernel Design (relax.cl)**
+
+**Kernel signature:**
+```c
+__kernel void gradient_central_diff(
+    __read_only image3d_t imgIn,      // Input: scalar energy field E(x,y,z)
+    __write_only image3d_t imgOut,    // Output: float4 (Fx,Fy,Fz,E)
+    const float step                  // Grid spacing
+)
+```
+
+**Algorithm:**
+```
+For each grid point (i,j,k):
+    Read E at (i,j,k)
+    Read E at (i±1,j,k), (i,j±1,k), (i,j,k±1)
+    Compute central differences:
+        Fx = -(E[i+1,j,k] - E[i-1,j,k]) / (2*step)
+        Fy = -(E[i,j+1,k] - E[i,j-1,k]) / (2*step)
+        Fz = -(E[i,j,k+1] - E[i,j,k-1]) / (2*step)
+    Write (Fx,Fy,Fz,E) to output image
+```
+
+**Boundary handling:**
+- Use `CLK_ADDRESS_CLAMP_TO_EDGE` sampler
+- At boundaries, repeat edge values (no gradient across boundary)
+- Alternative: `CLK_ADDRESS_CLAMP` (use 0 at boundaries)
+
+**Memory layout considerations:**
+- Input: image3d_t with RGBA_FLOAT format (only .x component used for E)
+- Output: image3d_t with RGBA_FLOAT format (Fx=.x, Fy=.y, Fz=.z, E=.w)
+- Global size: (nx, ny, nz)
+- Local size: (8,8,8) or similar for good occupancy
+
+### **4. Test Strategy with Analytical Potentials**
+
+**Test script structure:**
+```python
+# test_gradient_kernel.py
+
+# 1. Define analytical potentials with known gradients
+def sin_potential(x, y, z):
+    """E = sin(x) + sin(y) + sin(z)"""
+    return np.sin(x) + np.sin(y) + np.sin(z)
+
+def sin_gradient(x, y, z):
+    """∇E = (cos(x), cos(y), cos(z))"""
+    return np.cos(x), np.cos(y), np.cos(z)
+
+def gaussian_potential(x, y, z, sigma=1.0):
+    """E = exp(-(x²+y²+z²)/(2σ²))"""
+    r2 = x*x + y*y + z*z
+    return np.exp(-r2 / (2*sigma*sigma))
+
+def gaussian_gradient(x, y, z, sigma=1.0):
+    """∇E = -(x,y,z)/σ² * exp(-r²/(2σ²))"""
+    r2 = x*x + y*y + z*z
+    exp_val = np.exp(-r2 / (2*sigma*sigma))
+    factor = -exp_val / (sigma*sigma)
+    return factor*x, factor*y, factor*z
+
+# 2. Test grid configurations
+grid_configs = [
+    (32, 32, 32, 0.1),   # Small uniform grid
+    (64, 64, 64, 0.1),   # Medium uniform grid
+    (128, 128, 64, 0.1), # Non-cubic grid
+    (64, 64, 64, 0.05),  # Finer spacing
+    (64, 64, 64, 0.2),   # Coarser spacing
+]
+
+# 3. For each config:
+#    a. Generate grid points
+#    b. Compute analytical potential and gradient
+#    c. Upload potential to GPU
+#    d. Run gradient kernel
+#    e. Download results
+#    f. Compare GPU vs analytical:
+#       - L2 error norm
+#       - Max absolute error
+#       - Error map visualization
+#       - Check convergence with step size
+
+# 4. Test boundary handling
+#    a. Verify CLAMP_TO_EDGE behavior
+#    b. Check that gradients at boundaries are reasonable
+
+# 5. Expected accuracy:
+#    - Central difference: O(h²) accuracy
+#    - Error should decrease as h² with step size
+#    - For smooth potentials (sin, gaussian), error should be < 1e-4
+```
+
+**Validation criteria:**
+- GPU gradients should match analytical within 1e-4 for smooth potentials
+- Error should scale as O(h²) with step size
+- Boundary handling should not cause NaN or artifacts
+- Memory layout should be correct (check transpose if needed)
+
+### **5. Integration Plan for AFM.py**
+
+**Step 1: Add gradient computation method to AFMulator class**
+```python
+def compute_gradient_cl(self, E_field, step, bAlloc=True):
+    """
+    Compute gradient of scalar field on GPU using central differences.
+    
+    Args:
+        E_field: (nx, ny, nz) numpy array, scalar energy field
+        step: grid spacing
+        bAlloc: allocate GPU buffers if True
+    
+    Returns:
+        grads: (nx, ny, nz, 3) numpy array, (Fx, Fy, Fz)
+    """
+    # 1. Create/upload input image
+    # 2. Allocate output image (if needed)
+    # 3. Launch gradient_central_diff kernel
+    # 4. Read back results
+    # 5. Handle memory layout (transpose if needed)
+    pass
+```
+
+**Step 2: Replace np.gradient calls in AFM_utils.py**
+```python
+# Current (CPU):
+grads_E_Pauli = [np.gradient(E_Pauli_field, step, axis=a) for a in range(3)]
+
+# New (GPU):
+grads_E_Pauli = afmulator.compute_gradient_cl(E_Pauli_field, step)
+```
+
+**Step 3: Apply to composed potential**
+```python
+# After computing E_pauli, E_vdw, E_es:
+E_total = E_pauli + E_vdw + E_es
+grads_total = afmulator.compute_gradient_cl(E_total, step)
+# grads_total is (nx, ny, nz, 3) = (Fx, Fy, Fz)
+```
+
+**Step 4: Buffer management**
+- Use `try_make_buffers()` pattern for input/output images
+- Add `bAlloc` guards to skip allocation on repeated calls
+- Cache kernel in `self.prg` (already loaded in __init__)
+
+**Step 5: Memory layout handling**
+- Input: (nx, ny, nz) → create as (nz, ny, nx, 4) for OpenCL
+- Output: (nz, ny, nx, 4) → transpose to (nx, ny, nz, 4)
+- Extract .x,.y,.z components for Fx,Fy,Fz
+
+### **6. Implementation Checklist**
+
+- [ ] Fix `make_fft_friendly()` to use factors 2,3,5 only (not 7)
+- [ ] Add `gradient_central_diff` kernel to relax.cl
+- [ ] Add `compute_gradient_cl()` method to AFMulator class
+- [ ] Create test script with analytical potentials
+- [ ] Test kernel against analytical gradients for various grid sizes/steps
+- [ ] Validate convergence (O(h²) error scaling)
+- [ ] Replace np.gradient calls in AFM_utils.py
+- [ ] Test with composed potential (E_pauli + E_vdw + E_es)
+- [ ] Benchmark performance vs CPU np.gradient
+- [ ] Update documentation
+
+---
+
+## **7. Implementation Report: GPU Gradient Computation (2026-05-13)**
+
+### **7.1 Overview**
+
+Implemented and validated two GPU-based gradient computation methods for AFM force field calculations:
+1. **Central Differences** (OpenCL kernel)
+2. **FFT Spectral Differentiation** (gpyFFT)
+
+Both methods were tested against analytical gradients and NumPy central differences for accuracy and correctness across multiple grid sizes and potential types.
+
+### **7.2 GPU Gradient Methods Implemented**
+
+#### **Method 1: Central Differences (OpenCL Kernel)**
+- **Location**: `cpp/common_resources/cl/relax.cl:1117-1159`
+- **Kernel**: `gradient_central_diff`
+- **Implementation**: 
+  - Uses 3D image sampling with normalized coordinates
+  - Periodic boundary conditions via `CLK_ADDRESS_REPEAT`
+  - Voxel-centered sampling with `+0.5` offset
+  - Central difference formula: `(f(x+h) - f(x-h)) / (2h)`
+- **Python Interface**: `AFMulator.compute_gradient_cl()` in `pyBall/OCL/AFM.py:604-658`
+
+#### **Method 2: FFT Spectral Differentiation**
+- **Location**: `pyBall/OCL/AFM.py:660-881`
+- **Method**: `compute_gradient_fft_cl()`
+- **Implementation**:
+  - Uses gpyFFT library for GPU FFT operations
+  - Spectral differentiation: `∂f/∂x = iFFT(i·k_x · FFT(f))`
+  - Proper normalization: divide by `nxyz` after inverse FFT
+  - Periodic by construction (FFT assumes periodic domain)
+- **Key Fixes**:
+  - Buffer upload: use `buf.set(E_complex)` instead of separate `.real.set()`/`.imag.set()`
+  - K-space ordering: match FFT output shape `(nz, ny, nx)` with `meshgrid(kz, ky, kx)`
+  - Normalization: divide by `nxyz` (gpyFFT doesn't normalize)
+
+### **7.3 Test Script**
+
+- **Location**: `tests/tAFM/test_gradient_visual.py`
+- **Test Configurations**:
+  - Grid sizes: 32³, 64³, 128×64×32, 64×128×32, 32×64×128, 128×128×64
+  - Step sizes: 0.2, 0.1, 0.05
+  - Potentials: Gaussian (decaying), Periodic cosine
+- **Methods Compared**:
+  1. Analytical (exact reference)
+  2. NumPy central differences with periodic padding
+  3. OpenCL central differences (GPU)
+  4. OpenCL FFT spectral differentiation (GPU)
+
+### **7.4 Test Results**
+
+#### **Accuracy Metrics (Gaussian Potential, 64³ grid, step=0.1)**
+- **NumPy vs Analytical**: Max error 8.23e-02, Mean error 1.47e-04
+- **CL Central vs Analytical**: Max error 8.23e-02, Mean error 1.47e-04
+- **CL Central vs NumPy**: Max error 1.35e-07, Mean error 2.11e-10
+
+#### **Accuracy Metrics (Periodic Cosine, 64³ grid, step=0.1)**
+- **NumPy vs Analytical**: Max error 2.09e-02, Mean error 7.51e-05
+- **CL Central vs Analytical**: Max error 2.09e-02, Mean error 7.51e-05
+- **CL Central vs NumPy**: Max error 4.97e-07, Mean error 8.83e-10
+
+#### **Non-Cubic Grid Validation**
+All non-cubic grids tested successfully:
+- **128×64×32**: grad_x range [-2.022, 2.022] ✓
+- **64×128×32**: grad_x range [-2.022, 2.022] ✓
+- **32×64×128**: grad_x range [-2.014, 2.014] ✓
+- **128×128×64**: grad_x range [-2.022, 2.022] ✓
+
+#### **FFT-Specific Debugging**
+- **Buffer Upload Issue**: Using `.real.set()`/`.imag.set()` separately caused zero output. Fixed by creating complex array on host and using single `.set()`.
+- **Normalization**: gpyFFT doesn't normalize, so manual division by `nxyz` required after inverse FFT.
+- **K-space Ordering**: Must match FFT output shape `(nz, ny, nx)` with `meshgrid(kz, ky, kx, indexing='ij')`.
+
+### **7.5 Visualization**
+
+- **Output Directory**: `tests/tAFM/gradient_plots/`
+- **Plots Generated**:
+  - `gradient_comparison_gaussian_{nx}x{ny}x{nz}.png` - All 4 methods for Gaussian
+  - `gradient_comparison_periodic_{nx}x{ny}x{nz}.png` - All 4 methods for periodic
+  - `gradient_differences.png` - Difference plots vs analytical
+  - `fft_debug/fft_gradient_debug.png` - Fourier domain intermediate results
+- **Plot Features**:
+  - Seismic colormap symmetric around zero for gradients
+  - Log-scale visualization for FFT magnitude
+  - Boundary value inspection for periodic BC validation
+
+### **7.6 Boundary Conditions**
+
+- **Central Differences Kernel**: Uses `CLK_ADDRESS_REPEAT` with normalized coordinates for proper periodic BC
+- **FFT Method**: Periodic by construction (FFT assumes periodic domain)
+- **Validation**: Boundary gradients match across domain edges for periodic potentials
+
+### **7.7 Performance Characteristics**
+
+- **Central Differences**: O(N) operations, suitable for arbitrary grids
+- **FFT Spectral**: O(N log N) operations, requires FFT-friendly dimensions (factors 2,3,5,7 only)
+- **Memory**: Both methods use GPU image/complex buffers with OpenCL
+- **Buffer Management**: Reuses buffers via `bAlloc` flag for repeated calls
+
+### **7.8 Integration Status**
+
+- [x] Add `gradient_central_diff` kernel to relax.cl
+- [x] Add `compute_gradient_cl()` method to AFMulator class
+- [x] Add `compute_gradient_fft_cl()` method to AFMulator class
+- [x] Create test script with analytical potentials
+- [x] Test kernel against analytical gradients for various grid sizes/steps
+- [x] Test non-cubic grids
+- [ ] Replace np.gradient calls in AFM_utils.py
+- [ ] Test with composed potential (E_pauli + E_vdw + E_es)
+- [ ] Benchmark performance vs CPU np.gradient
+
+### **7.9 Key Files Modified**
+
+1. `cpp/common_resources/cl/relax.cl` - Added `gradient_central_diff` kernel
+2. `pyBall/OCL/AFM.py` - Added `compute_gradient_cl()` and `compute_gradient_fft_cl()`
+3. `tests/tAFM/test_gradient_visual.py` - Comprehensive test script with visualization
+
+### **7.10 Recommendations**
+
+1. **Use FFT for periodic potentials**: More accurate (spectral), O(N log N) scaling
+2. **Use central differences for non-periodic**: More flexible, works with any grid
+3. **Buffer reuse**: Set `bAlloc=False` for repeated calls with same grid size
+4. **FFT-friendly grids**: Ensure dimensions have factors 2,3,5,7 only for FFT method

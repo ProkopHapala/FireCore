@@ -1110,6 +1110,58 @@ vL =   Sum_i ei
 
 
 
+// ==========================
+//   Gradient Computation
+// ==========================
+
+__kernel void gradient_central_diff(
+    __read_only image3d_t imgIn,      // Input scalar field (energy)
+    __write_only image3d_t imgOut,    // Output float4 (Fx,Fy,Fz,E)
+    const float step                  // Grid spacing
+) {
+    // Use normalized coordinates with periodic addressing for proper BC handling
+    // Pixel centers are at (i+0.5)/size in normalized coordinates
+    const sampler_t sampler = CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_REPEAT | CLK_FILTER_NEAREST;
+
+    int4 coord = (int4)(get_global_id(0), get_global_id(1), get_global_id(2), 0);
+    int4 size = get_image_dim(imgIn);
+
+    // Check bounds
+    if (coord.x >= size.x || coord.y >= size.y || coord.z >= size.z) return;
+
+    // Convert to normalized coordinates at pixel centers
+    // Pixel i is centered at (i + 0.5) / size
+    float4 fcoord = convert_float4(coord) + (float4)(0.5f, 0.5f, 0.5f, 0.0f);
+    float4 norm = (float4)(1.0f / size.x, 1.0f / size.y, 1.0f / size.z, 0.0f);
+    float4 center = fcoord * norm;
+
+    // Neighbor offsets in normalized units (one pixel = 1/size)
+    float4 dx = (float4)(norm.x, 0.0f, 0.0f, 0.0f);
+    float4 dy = (float4)(0.0f, norm.y, 0.0f, 0.0f);
+    float4 dz = (float4)(0.0f, 0.0f, norm.z, 0.0f);
+
+    // Sample with periodic BC handled by CLK_ADDRESS_REPEAT
+    float4 f_center = read_imagef(imgIn, sampler, center);
+    float4 f_left_x = read_imagef(imgIn, sampler, center - dx);
+    float4 f_right_x = read_imagef(imgIn, sampler, center + dx);
+    float4 f_left_y = read_imagef(imgIn, sampler, center - dy);
+    float4 f_right_y = read_imagef(imgIn, sampler, center + dy);
+    float4 f_left_z = read_imagef(imgIn, sampler, center - dz);
+    float4 f_right_z = read_imagef(imgIn, sampler, center + dz);
+
+    // Compute gradients (negative because force = -gradient of energy)
+    float grad_x = -(f_right_x.x - f_left_x.x) / (2.0f * step);
+    float grad_y = -(f_right_y.x - f_left_y.x) / (2.0f * step);
+    float grad_z = -(f_right_z.x - f_left_z.x) / (2.0f * step);
+
+    // Output: (Fx, Fy, Fz, E)
+    write_imagef(imgOut, coord, (float4)(grad_x, grad_y, grad_z, f_center.x));
+}
+
+// ==========================
+//         GridFF
+// ==========================
+
 __kernel void make_GridFF(
     const int nAtoms,                // 1
     __global float4*  atoms,         // 2

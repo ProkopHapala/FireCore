@@ -601,6 +601,295 @@ class AFMulator(OpenCLBase):
         
         return E_vdw, grads_E_vdw
 
+    def compute_gradient_cl(self, E_field, step, bAlloc=True):
+        """
+        Compute gradient of scalar field on GPU using central differences.
+        
+        Args:
+            E_field: (nx, ny, nz) numpy array, scalar energy field
+            step: grid spacing
+            bAlloc: allocate GPU buffers if True
+        
+        Returns:
+            grads: (nx, ny, nz, 4) numpy array, (Fx, Fy, Fz, E) where F = -grad(E)
+        """
+        import numpy as np
+        import pyopencl as cl
+
+        nx, ny, nz = E_field.shape
+        print(f"AFMulator.compute_gradient_cl: grid={nx}x{ny}x{nz}, step={step}")
+        print(f"  Input E_field range: [{E_field.min():.6f}, {E_field.max():.6f}]")
+
+        # Create input image (copy E_field to GPU)
+        # Note: OpenCL images have z varying fastest, so we need shape (nz, ny, nx, 4)
+        E_cl = np.zeros((nz, ny, nx, 4), dtype=np.float32)
+        E_cl[:, :, :, 0] = E_field.transpose(2, 1, 0)  # (nx,ny,nz) -> (nz,ny,nx)
+        
+        mf = cl.mem_flags
+        fmt = cl.ImageFormat(cl.channel_order.RGBA, cl.channel_type.FLOAT)
+        
+        if bAlloc or not hasattr(self, 'img_E_in') or getattr(self, 'img_E_in', None) is None:
+            self.img_E_in = cl.Image(self.ctx, mf.READ_ONLY, fmt, shape=(nx, ny, nz))
+        if bAlloc or not hasattr(self, 'img_F_out') or getattr(self, 'img_F_out', None) is None:
+            self.img_F_out = cl.Image(self.ctx, mf.WRITE_ONLY, fmt, shape=(nx, ny, nz))
+
+        # Upload input field
+        origin = (0, 0, 0)
+        region = (nx, ny, nz)
+        cl.enqueue_copy(self.queue, self.img_E_in, E_cl, origin=origin, region=region)
+
+        # Launch kernel
+        gs = (self._roundup(nx, 8), self._roundup(ny, 8), self._roundup(nz, 4))
+        ls = (8, 8, 4)
+        self.prg.gradient_central_diff(self.queue, gs, ls, self.img_E_in, self.img_F_out, np.float32(step))
+
+        # Read back results
+        # Output is (Fx, Fy, Fz, E) in .xyzw
+        F_cl = np.zeros((nz, ny, nx, 4), dtype=np.float32)
+        cl.enqueue_copy(self.queue, F_cl, self.img_F_out, origin=origin, region=region)
+        
+        # Transpose back to (nx, ny, nz, 4)
+        grads = F_cl.transpose(2, 1, 0, 3)
+        
+        print(f"AFMulator.compute_gradient_cl: done. grads shape={grads.shape}, range=[{grads.min():.4f},{grads.max():.4f}]")
+        print(f"  Output Fx range: [{grads[...,0].min():.6f}, {grads[...,0].max():.6f}]")
+        print(f"  Output Fy range: [{grads[...,1].min():.6f}, {grads[...,1].max():.6f}]")
+        print(f"  Output Fz range: [{grads[...,2].min():.6f}, {grads[...,2].max():.6f}]")
+        return grads
+
+    def compute_gradient_fft_cl(self, E_field, step, bAlloc=True, bDebug=True, debug_dir='./fft_debug'):
+        """
+        Compute gradient of scalar field on GPU using FFT spectral differentiation.
+        
+        Uses gpyFFT for efficient spectral differentiation:
+        ∂f/∂x = iFFT(ik_x * FFT(f))
+        
+        Args:
+            E_field: (nx, ny, nz) numpy array, scalar energy field
+            step: grid spacing
+            bAlloc: allocate GPU buffers if True
+            bDebug: enable debugging plots and prints
+            debug_dir: directory to save debug plots
+        
+        Returns:
+            grads: (nx, ny, nz, 4) numpy array, (Fx, Fy, Fz, E) where F = -grad(E)
+        """
+        import numpy as np
+        import pyopencl as cl
+        import pyopencl.array as cl_array
+        from . import clUtils as clu
+        import matplotlib.pyplot as plt
+        import os
+        
+        nx, ny, nz = E_field.shape
+        nxyz = nx * ny * nz
+        print(f"AFMulator.compute_gradient_fft_cl: grid={nx}x{ny}x{nz}, step={step}")
+        print(f"  Input E_field range: [{E_field.min():.6f}, {E_field.max():.6f}]")
+        
+        # Debug: Check input field for non-zero values
+        idx_max = np.unravel_index(np.argmax(np.abs(E_field)), E_field.shape)
+        print(f"  Input max abs at: {idx_max}, value: {E_field[idx_max]:.6f}")
+        
+        # Check grid size is FFT-friendly (clFFT requires 2,3,5,7 only)
+        def check_fft_friendly(n):
+            factors = []
+            d = 2
+            while d * d <= n:
+                while n % d == 0:
+                    factors.append(d)
+                    n //= d
+                d += 1
+            if n > 1:
+                factors.append(n)
+            return all(p <= 7 for p in factors)
+        
+        for dim, name in [(nx, 'nx'), (ny, 'ny'), (nz, 'nz')]:
+            if not check_fft_friendly(dim):
+                print(f"WARNING: {name}={dim} not FFT-friendly (factors must be 2,3,5,7 only)")
+        
+        # Load gpyFFT
+        clu.try_load_clFFT()
+        FFT = clu.FFT
+        
+        # FFT requires complex buffers with reversed shape (nz, ny, nx)
+        shape_fft = (nz, ny, nx)
+        
+        # Create or reuse buffers
+        if bAlloc or not hasattr(self, 'fft_field_buf') or self.fft_field_buf is None:
+            self.fft_field_buf = cl_array.Array(self.queue, shape_fft, dtype=np.complex64)
+            self.fft_kx_buf = cl_array.Array(self.queue, shape_fft, dtype=np.complex64)
+            self.fft_ky_buf = cl_array.Array(self.queue, shape_fft, dtype=np.complex64)
+            self.fft_kz_buf = cl_array.Array(self.queue, shape_fft, dtype=np.complex64)
+        
+        # Upload real field to complex buffer (imaginary part = 0)
+        # Note: transpose from (nx,ny,nz) to (nz,ny,nx) for FFT
+        E_transposed = E_field.transpose(2, 1, 0).astype(np.float32)
+        
+        # Debug: Check transposed data
+        print(f"  E_transposed shape: {E_transposed.shape}, range: [{E_transposed.min():.4f}, {E_transposed.max():.4f}]")
+        
+        # Create complex data on host and upload
+        E_complex = np.zeros(shape_fft, dtype=np.complex64)
+        E_complex.real = E_transposed
+        self.fft_field_buf.set(E_complex)
+        
+        # Debug: Verify buffer contents
+        buf_check = self.fft_field_buf.get()
+        print(f"  Buffer after upload - shape: {buf_check.shape}, range: [{buf_check.real.min():.4f}, {buf_check.real.max():.4f}]")
+        
+        # Setup FFT plans
+        fft_forward = FFT(self.ctx, self.queue, self.fft_field_buf, axes=(0, 1, 2))
+        
+        # Compute FFT
+        event, = fft_forward.enqueue()
+        event.wait()
+        
+        # Get FFT result for debugging
+        fft_result = self.fft_field_buf.get()
+        print(f"  FFT output shape: {fft_result.shape}, dtype: {fft_result.dtype}")
+        print(f"  FFT output range: [{fft_result.real.min():.4e}, {fft_result.real.max():.4e}] + i[{fft_result.imag.min():.4e}, {fft_result.imag.max():.4e}]")
+        
+        # Find max abs value position in FFT
+        fft_abs = np.abs(fft_result)
+        idx_fft_max = np.unravel_index(np.argmax(fft_abs), fft_abs.shape)
+        print(f"  FFT max abs at: {idx_fft_max}, value: {fft_abs[idx_fft_max]:.6e}")
+        
+        # Check if FFT has non-zero elements
+        non_zero_fft = np.sum(fft_abs > 1e-10)
+        print(f"  FFT non-zero elements (|val|>1e-10): {non_zero_fft} / {nxyz}")
+        
+        # Compute wave numbers for spectral differentiation
+        # k = 2π * [0, 1, ..., N/2-1, -N/2, ..., -1] / (N * step)
+        kx = 2.0 * np.pi * np.fft.fftfreq(nx, step)
+        ky = 2.0 * np.pi * np.fft.fftfreq(ny, step)
+        kz = 2.0 * np.pi * np.fft.fftfreq(nz, step)
+        
+        # Create 3D k-space grids
+        # IMPORTANT: FFT output is (nz, ny, nx), so k-grids must match this ordering
+        KZ, KY, KX = np.meshgrid(kz, ky, kx, indexing='ij')
+        KX = KX.astype(np.complex64)
+        KY = KY.astype(np.complex64)
+        KZ = KZ.astype(np.complex64)
+        
+        print(f"  KX range: [{KX.min():.4f}, {KX.max():.4f}]")
+        print(f"  KY range: [{KY.min():.4f}, {KY.max():.4f}]")
+        print(f"  KZ range: [{KZ.min():.4f}, {KZ.max():.4f}]")
+        
+        # Multiply by ik in k-space (spectral differentiation)
+        # ∂f/∂x → i * k_x * FFT(f) / nxyz (normalization for inverse FFT)
+        # Note: Force = -gradient, so we multiply by -i*k
+        fft_data = self.fft_field_buf.get()
+        
+        # Apply spectral derivative with proper normalization
+        # The normalization 1/nxyz is needed because gpyFFT doesn't normalize
+        kx_deriv = fft_data * (-1j * KX)  # / nxyz
+        ky_deriv = fft_data * (-1j * KY)  # / nxyz
+        kz_deriv = fft_data * (-1j * KZ)  # / nxyz
+        
+        print(f"  kx_deriv range: [{np.abs(kx_deriv).min():.4e}, {np.abs(kx_deriv).max():.4e}]")
+        
+        # Upload back to GPU
+        self.fft_kx_buf.set(kx_deriv)
+        self.fft_ky_buf.set(ky_deriv)
+        self.fft_kz_buf.set(kz_deriv)
+        
+        # Create output buffers for inverse FFT
+        grad_x_complex = cl_array.Array(self.queue, shape_fft, dtype=np.complex64)
+        grad_y_complex = cl_array.Array(self.queue, shape_fft, dtype=np.complex64)
+        grad_z_complex = cl_array.Array(self.queue, shape_fft, dtype=np.complex64)
+        
+        # Copy k-space data to output buffers
+        grad_x_complex.set(self.fft_kx_buf.get())
+        grad_y_complex.set(self.fft_ky_buf.get())
+        grad_z_complex.set(self.fft_kz_buf.get())
+        
+        # Inverse FFTs
+        ifft_x = FFT(self.ctx, self.queue, grad_x_complex, axes=(0, 1, 2))
+        ifft_y = FFT(self.ctx, self.queue, grad_y_complex, axes=(0, 1, 2))
+        ifft_z = FFT(self.ctx, self.queue, grad_z_complex, axes=(0, 1, 2))
+        
+        event, = ifft_x.enqueue()
+        event.wait()
+        event, = ifft_y.enqueue()
+        event.wait()
+        event, = ifft_z.enqueue()
+        event.wait()
+        
+        # Get inverse FFT results
+        grad_x_arr = grad_x_complex.get()
+        grad_y_arr = grad_y_complex.get()
+        grad_z_arr = grad_z_complex.get()
+        
+        print(f"  After IFFT - grad_x range: [{grad_x_arr.real.min():.4e}, {grad_x_arr.real.max():.4e}]")
+        
+        # Normalize by 1/nxyz (gpyFFT forward transform is unnormalized)
+        grad_x_arr = grad_x_arr / nxyz
+        grad_y_arr = grad_y_arr / nxyz
+        grad_z_arr = grad_z_arr / nxyz
+        
+        print(f"  After norm - grad_x range: [{grad_x_arr.real.min():.4e}, {grad_x_arr.real.max():.4e}]")
+        
+        # Extract real parts and transpose back to (nx, ny, nz)
+        grad_x = grad_x_arr.real.transpose(2, 1, 0)
+        grad_y = grad_y_arr.real.transpose(2, 1, 0)
+        grad_z = grad_z_arr.real.transpose(2, 1, 0)
+        
+        print(f"  Final grad_x range: [{grad_x.min():.4e}, {grad_x.max():.4e}]")
+        
+        # Debug plots
+        if bDebug:
+            os.makedirs(debug_dir, exist_ok=True)
+            
+            # Plot FFT magnitude (middle slice)
+            mid_z = nz // 2
+            mid_y = ny // 2
+            mid_x = nx // 2
+            
+            fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+            
+            # Input field
+            im0 = axes[0, 0].imshow(E_field[:, :, mid_z], cmap='seismic', origin='lower')
+            axes[0, 0].set_title(f'Input E_field (z={mid_z})')
+            plt.colorbar(im0, ax=axes[0, 0])
+            
+            # FFT magnitude (log scale)
+            fft_mag = np.abs(fft_result)
+            im1 = axes[0, 1].imshow(np.log10(fft_mag[:, :, mid_x] + 1e-20), cmap='viridis', origin='lower')
+            axes[0, 1].set_title(f'FFT magnitude log10 (x={mid_x})')
+            plt.colorbar(im1, ax=axes[0, 1])
+            
+            # k-space derivative magnitude
+            im2 = axes[0, 2].imshow(np.log10(np.abs(kx_deriv[:, :, mid_x]) + 1e-20), cmap='viridis', origin='lower')
+            axes[0, 2].set_title(f'k-space d/dx log10 (x={mid_x})')
+            plt.colorbar(im2, ax=axes[0, 2])
+            
+            # Output gradients
+            im3 = axes[1, 0].imshow(grad_x[:, :, mid_z], cmap='seismic', origin='lower')
+            axes[1, 0].set_title(f'grad_x (z={mid_z})')
+            plt.colorbar(im3, ax=axes[1, 0])
+            
+            im4 = axes[1, 1].imshow(grad_y[:, :, mid_z], cmap='seismic', origin='lower')
+            axes[1, 1].set_title(f'grad_y (z={mid_z})')
+            plt.colorbar(im4, ax=axes[1, 1])
+            
+            im5 = axes[1, 2].imshow(grad_z[:, :, mid_z], cmap='seismic', origin='lower')
+            axes[1, 2].set_title(f'grad_z (z={mid_z})')
+            plt.colorbar(im5, ax=axes[1, 2])
+            
+            plt.tight_layout()
+            plt.savefig(os.path.join(debug_dir, 'fft_gradient_debug.png'), dpi=150)
+            plt.close()
+            print(f"  Saved debug plot to {debug_dir}/fft_gradient_debug.png")
+        
+        # Stack into output format (Fx, Fy, Fz, E)
+        grads = np.stack([grad_x, grad_y, grad_z, E_field], axis=-1)
+        
+        print(f"AFMulator.compute_gradient_fft_cl: done. grads shape={grads.shape}, range=[{grads.min():.4f},{grads.max():.4f}]")
+        print(f"  Output Fx range: [{grads[...,0].min():.6f}, {grads[...,0].max():.6f}]")
+        print(f"  Output Fy range: [{grads[...,1].min():.6f}, {grads[...,1].max():.6f}]")
+        print(f"  Output Fz range: [{grads[...,2].min():.6f}, {grads[...,2].max():.6f}]")
+        return grads
+
     @staticmethod
     def _roundup(n, loc):
         loc = max(loc, 1)
