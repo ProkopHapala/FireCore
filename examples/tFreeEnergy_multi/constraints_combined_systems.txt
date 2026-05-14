@@ -1,0 +1,11 @@
+# Constraint positions for combined_systems thermodynamic integration
+#
+# Format: atom_index  initial_x  initial_y  initial_z  final_x  final_y  final_z
+#
+# The first column is descriptive here; run_ES.py passes endpoint positions and
+# MolWorld_sp3_multi maps them onto Si pairs found in the loaded geometry.
+# Initial endpoints match the two Si atoms in cpp/common_resources/polymers/combined_systems.xyz
+# to avoid preconditioning the 420-atom structure from the unrelated DA distance.
+
+95    -9.84574    4.44503    2.5  -9.84574    4.44503    2.5
+305    2.0    4.44503    2.5   30.0    4.44503    2.5

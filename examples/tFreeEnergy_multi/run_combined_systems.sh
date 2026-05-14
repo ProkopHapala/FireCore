@@ -13,13 +13,13 @@ HARD_DIST=""
 SOFT_DIST=""
 NSYS=200
 NLAMBDA=200
-NMDSTEPS=200000000
+NMDSTEPS=20000000
 NEQSTEPS=1000
 DT=0.05
 TDAMP=150
 TEMP=300
-XYZ_NAME="../../cpp/common_resources/polymers/combined_systems.xyz"
-CONSTRAINTS="constraints_DA.txt"
+XYZ_NAME="../../cpp/common_resources/polymers/combined_systems_alkane.xyz"
+CONSTRAINTS="constraints_combined_systems.txt"
 OUT_BASE="combined_systems"
 
 # Parse command line arguments
@@ -57,6 +57,15 @@ ln -sfn ../../cpp/common_resources data
 ln -sfn ../../cpp/common_resources common_resources
 wd=`pwd`
 
+if [ ! -f "$XYZ_NAME" ]; then
+    echo "ERROR: XYZ file not found: $XYZ_NAME"
+    exit 1
+fi
+if [ ! -f "$CONSTRAINTS" ]; then
+    echo "ERROR: Constraints file not found: $CONSTRAINTS"
+    exit 1
+fi
+
 # Build the library
 echo "Step 1: Building libMMFFmulti_lib.so..."
 cd ../../cpp/Build/libs_OCL/
@@ -76,6 +85,7 @@ echo "----------------------------------------"
 echo "XYZ: $XYZ_NAME"
 echo "Constraints: $CONSTRAINTS"
 echo "Surface: $SURF_NAME"
+echo "Constraint mode: ${HARD_ATOMS}${SOFT_ATOMS}${HARD_DIST}${SOFT_DIST}"
 python3 run_ES.py \
     --mode $MODE \
     --ff $FF \
@@ -98,6 +108,10 @@ python3 run_ES.py \
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Calculation failed!"
+    exit 1
+fi
+if [ ! -s "${OUT_BASE}_free_energy.dat" ] || ! grep -q '^[[:space:]]*[-+0-9.]' "${OUT_BASE}_free_energy.dat"; then
+    echo "ERROR: Calculation did not write data rows to ${OUT_BASE}_free_energy.dat"
     exit 1
 fi
 echo ""
