@@ -33,6 +33,88 @@ matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
+# VisPy for 3D molecular visualization
+import vispy
+vispy.use('pyqt5')
+from vispy import scene
+from vispy.scene import visuals as vispy_visuals
+
+
+class SimpleMoleculeViewer(QtWidgets.QWidget):
+    """Simple 3D molecular viewer with camera rotation."""
+    
+    def __init__(self):
+        super().__init__()
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Create VisPy canvas
+        self.canvas = scene.SceneCanvas(keys='interactive', bgcolor='white')
+        self.view = self.canvas.central_widget.add_view()
+        self.view.camera = scene.TurntableCamera(elevation=30, azimuth=45, distance=20)
+        
+        # Create visual elements
+        self.markers = vispy_visuals.Markers(parent=self.view.scene)
+        self.lines = vispy_visuals.Line(parent=self.view.scene, connect='segments', 
+                                         color='gray', width=1.5, antialias=True)
+        self.text = vispy_visuals.Text(parent=self.view.scene, color='black', 
+                                       font_size=10, anchor_x='center', anchor_y='center')
+        
+        # Add axes
+        vispy_visuals.XYZAxis(parent=self.view.scene)
+        
+        layout.addWidget(self.canvas.native)
+    
+    def set_molecule(self, positions, enames, bonds=None):
+        """Set molecule data for visualization."""
+        # Element colors (CPK-like)
+        element_colors = {
+            'H': (1.0, 1.0, 1.0, 1.0),    # White
+            'C': (0.5, 0.5, 0.5, 1.0),    # Gray
+            'N': (0.0, 0.0, 1.0, 1.0),    # Blue
+            'O': (1.0, 0.0, 0.0, 1.0),    # Red
+            'E': (0.0, 1.0, 0.0, 0.5),    # Green (E-pairs)
+        }
+        
+        # Element sizes (van der Waals radii scaled)
+        element_sizes = {
+            'H': 10,
+            'C': 20,
+            'N': 20,
+            'O': 20,
+            'E': 12,
+        }
+        
+        # Get colors and sizes
+        colors = np.array([element_colors.get(e, (0.5, 0.5, 0.5, 1.0)) for e in enames], dtype=np.float32)
+        sizes = np.array([element_sizes.get(e, 10) for e in enames], dtype=np.float32)
+        
+        # Set atom markers
+        self.markers.set_data(pos=positions, face_color=colors, size=sizes, edge_width=0)
+        
+        # Set bonds
+        if bonds is not None and len(bonds) > 0:
+            bond_segments = []
+            for i, j in bonds:
+                bond_segments.append(positions[i])
+                bond_segments.append(positions[j])
+            self.lines.set_data(pos=np.array(bond_segments, dtype=np.float32))
+        else:
+            self.lines.set_data(pos=np.zeros((0, 3), dtype=np.float32))
+        
+        # Set atom labels
+        lbl_texts = [f"{ename}{i}" for i, ename in enumerate(enames)]
+        self.text.text = lbl_texts
+        self.text.pos = positions.astype(np.float32)
+        
+        # Center camera on molecule
+        center = np.mean(positions, axis=0)
+        self.view.camera.center = center
+        self.view.camera.distance = np.max(np.ptp(positions, axis=0)) * 3
+        
+        self.canvas.update()
+
+
 # Default parameter values - matching atom types in XYZ file (O_3 and H_O)
 # E values are stored as sqrt(EvdW) in GPU, but we input absolute values here
 DEFAULT_SIMPLE_PARAMS = """# Oxygen O_3 parameters
@@ -150,9 +232,39 @@ class FitREQInteractiveWindow(BaseGUI):
         self.status_label = QtWidgets.QLabel("Status: Ready")
         left_layout.addWidget(self.status_label)
         
+        # --- Pixel Selection Controls ---
+        left_layout.addWidget(QtWidgets.QLabel("Pixel Selection (row, col):"))
+        pixel_layout = QtWidgets.QHBoxLayout()
+        
+        self.pixel_row_spin = QtWidgets.QSpinBox()
+        self.pixel_row_spin.setRange(0, 9999)
+        self.pixel_row_spin.setValue(0)
+        self.pixel_row_spin.valueChanged.connect(self.on_pixel_changed)
+        pixel_layout.addWidget(QtWidgets.QLabel("Row:"))
+        pixel_layout.addWidget(self.pixel_row_spin)
+        
+        self.pixel_col_spin = QtWidgets.QSpinBox()
+        self.pixel_col_spin.setRange(0, 9999)
+        self.pixel_col_spin.setValue(0)
+        self.pixel_col_spin.valueChanged.connect(self.on_pixel_changed)
+        pixel_layout.addWidget(QtWidgets.QLabel("Col:"))
+        pixel_layout.addWidget(self.pixel_col_spin)
+        
+        left_layout.addLayout(pixel_layout)
+        
+        # Show 3D and Decomposition buttons
+        self.button("Show 3D Geometry", self.show_3d_geometry, layout=left_layout)
+        self.button("Show Interaction Matrix", self.show_interaction_matrix, layout=left_layout)
+        
         left_layout.addStretch()
         
-        # --- Right panel: matplotlib canvas (with blitting for speed) ---
+        # --- Right panel: Tab widget with multiple views ---
+        self.tab_widget = QtWidgets.QTabWidget()
+        
+        # Tab 1: Energy Maps (matplotlib)
+        self.energy_tab = QtWidgets.QWidget()
+        energy_layout = QtWidgets.QVBoxLayout(self.energy_tab)
+        
         self.fig = Figure(figsize=(14, 5), dpi=100)
         self.fig.patch.set_facecolor('white')
         self.canvas = FigureCanvas(self.fig)
@@ -184,9 +296,49 @@ class FitREQInteractiveWindow(BaseGUI):
         self.canvas.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.canvas.wheelEvent = self.on_matplotlib_wheel
         
+        # Connect click event for pixel selection
+        self.canvas.mpl_connect('button_press_event', self.on_plot_click)
+        
+        energy_layout.addWidget(self.canvas)
+        self.tab_widget.addTab(self.energy_tab, "Energy Maps")
+        
+        # Tab 2: 3D Geometry (VisPy)
+        self.geometry_tab = QtWidgets.QWidget()
+        geometry_layout = QtWidgets.QVBoxLayout(self.geometry_tab)
+        
+        # Create SimpleMoleculeViewer for 3D visualization
+        self.molecule_viewer = SimpleMoleculeViewer()
+        geometry_layout.addWidget(self.molecule_viewer)
+        
+        self.tab_widget.addTab(self.geometry_tab, "3D Geometry")
+        
+        # Tab 3: Interaction Matrix (matplotlib)
+        self.matrix_tab = QtWidgets.QWidget()
+        matrix_layout = QtWidgets.QVBoxLayout(self.matrix_tab)
+        
+        self.fig_matrix = Figure(figsize=(14, 5), dpi=100)
+        self.fig_matrix.patch.set_facecolor('white')
+        self.canvas_matrix = FigureCanvas(self.fig_matrix)
+        
+        # Create 4 subplots for each interaction component
+        self.ax_pauli = self.fig_matrix.add_subplot(141)
+        self.ax_london = self.fig_matrix.add_subplot(142)
+        self.ax_elec = self.fig_matrix.add_subplot(143)
+        self.ax_hbond = self.fig_matrix.add_subplot(144)
+        
+        self.ax_pauli.set_title('Pauli Repulsion')
+        self.ax_london.set_title('London Dispersion')
+        self.ax_elec.set_title('Electrostatic')
+        self.ax_hbond.set_title('H-Bond')
+        
+        self.fig_matrix.tight_layout()
+        matrix_layout.addWidget(self.canvas_matrix)
+        
+        self.tab_widget.addTab(self.matrix_tab, "Interaction Matrix")
+        
         # Add panels to main layout
         main_layout.addWidget(left_panel)
-        main_layout.addWidget(self.canvas)
+        main_layout.addWidget(self.tab_widget)
         
         self.setCentralWidget(main_widget)
         
@@ -530,6 +682,18 @@ class FitREQInteractiveWindow(BaseGUI):
                     print(f"Grid shape: Vref={self.Vref.shape}, rows={len(self.rows)}")
                     print(f"  Distance range: [{self.rv.min():.2f}, {self.rv.max():.2f}] A")
                     print(f"  Angle range: [{self.Arow.min():.1f}, {self.Arow.max():.1f}] deg")
+                    
+                    # Update pixel spin box ranges
+                    ny, nx = self.Vref.shape
+                    self.pixel_row_spin.setRange(0, ny - 1)
+                    self.pixel_col_spin.setRange(0, nx - 1)
+                    
+                    # Load and store all XYZ configurations
+                    self._load_xyz_configurations()
+                    
+                    # Create pixel to index mapping
+                    self._create_pixel_mapping()
+                    
                     self.update_plots(self.Vref, self.Vref)
             
             # Apply current parameters to FittingDriver
@@ -642,6 +806,316 @@ class FitREQInteractiveWindow(BaseGUI):
         # Update canvas (fast - only redraws changed artists)
         self.im_ref.axes.figure.canvas.draw_idle()
         self.canvas.draw()
+    
+    def _load_xyz_configurations(self):
+        """Load all XYZ configurations from file."""
+        self.xyz_data = []
+        
+        try:
+            with open(self.xyz_file, 'r') as f:
+                content = f.read()
+            
+            # Split into blocks (each configuration is a block)
+            lines = content.strip().split('\n')
+            i = 0
+            config_idx = 0
+            
+            while i < len(lines):
+                # Read number of atoms
+                if not lines[i].strip():
+                    i += 1
+                    continue
+                    
+                try:
+                    natoms = int(lines[i].strip())
+                except ValueError:
+                    i += 1
+                    continue
+                
+                # Read comment line
+                i += 1
+                comment = lines[i].strip() if i < len(lines) else ""
+                
+                # Read atom lines
+                i += 1
+                atoms = []
+                for j in range(natoms):
+                    if i >= len(lines):
+                        break
+                    parts = lines[i].split()
+                    if len(parts) >= 4:
+                        atom_name = parts[0]
+                        x, y, z = float(parts[1]), float(parts[2]), float(parts[3])
+                        atoms.append({
+                            'name': atom_name,
+                            'pos': np.array([x, y, z], dtype=np.float32)
+                        })
+                    i += 1
+                
+                if atoms:
+                    self.xyz_data.append({
+                        'idx': config_idx,
+                        'natoms': natoms,
+                        'comment': comment,
+                        'atoms': atoms
+                    })
+                    config_idx += 1
+            
+            print(f"Loaded {len(self.xyz_data)} XYZ configurations")
+            
+        except Exception as e:
+            print(f"Error loading XYZ configurations: {e}")
+            self.xyz_data = []
+    
+    def _create_pixel_mapping(self):
+        """Create mapping from (row, col) pixel to configuration index."""
+        self.pixel_to_idx = {}
+        
+        if not hasattr(self, 'rows') or self.Vref is None:
+            return
+        
+        ny, nx = self.Vref.shape
+        idx = 0
+        
+        # Map each pixel to its corresponding configuration index
+        for row in range(ny):
+            for col in range(nx):
+                if idx < len(self.xyz_data):
+                    self.pixel_to_idx[(row, col)] = idx
+                    idx += 1
+                else:
+                    break
+        
+        print(f"Created pixel mapping for {len(self.pixel_to_idx)} pixels")
+    
+    def on_plot_click(self, event):
+        """Handle click on matplotlib plot to select pixel."""
+        if event.inaxes in [self.ax_ref, self.ax_mod, self.ax_diff]:
+            # Get pixel coordinates from data coordinates
+            x, y = event.xdata, event.ydata
+            if x is None or y is None:
+                return
+            
+            # Convert to pixel indices using extent
+            if hasattr(self, 'rv') and hasattr(self, 'Arow') and self.Vref is not None:
+                ny, nx = self.Vref.shape
+                r_min, r_max = np.nanmin(self.rv), np.nanmax(self.rv)
+                a_min, a_max = np.nanmin(self.Arow), np.nanmax(self.Arow)
+                
+                # Map data coordinates to pixel indices
+                col = int((x - r_min) / (r_max - r_min) * (nx - 1))
+                row = int((y - a_min) / (a_max - a_min) * (ny - 1))
+                
+                # Clamp to valid range
+                col = max(0, min(col, nx - 1))
+                row = max(0, min(row, ny - 1))
+                
+                # Update spin boxes
+                self.pixel_row_spin.blockSignals(True)
+                self.pixel_col_spin.blockSignals(True)
+                self.pixel_row_spin.setValue(row)
+                self.pixel_col_spin.setValue(col)
+                self.pixel_row_spin.blockSignals(False)
+                self.pixel_col_spin.blockSignals(False)
+                
+                # Trigger pixel change
+                self.on_pixel_changed()
+                
+                print(f"Selected pixel: row={row}, col={col}")
+    
+    def on_pixel_changed(self):
+        """Handle pixel selection change."""
+        row = self.pixel_row_spin.value()
+        col = self.pixel_col_spin.value()
+        
+        # Update status
+        self.status_label.setText(f"Selected pixel: ({row}, {col})")
+    
+    def show_3d_geometry(self):
+        """Display 3D geometry for selected pixel."""
+        if not hasattr(self, 'xyz_data') or not self.xyz_data:
+            print("No XYZ data loaded")
+            return
+        
+        row = self.pixel_row_spin.value()
+        col = self.pixel_col_spin.value()
+        
+        # Map pixel to configuration index
+        if hasattr(self, 'pixel_to_idx'):
+            idx = self.pixel_to_idx.get((row, col), 0)
+        else:
+            # Fallback: assume regular grid
+            if self.Vref is not None:
+                ny, nx = self.Vref.shape
+                idx = row * nx + col
+            else:
+                idx = 0
+        
+        # Get configuration data
+        if idx >= len(self.xyz_data):
+            print(f"Invalid config index: {idx}")
+            return
+        
+        config = self.xyz_data[idx]
+        atoms = config['atoms']
+        
+        # Extract positions and element names
+        positions = []
+        enames = []
+        
+        for i, atom in enumerate(atoms):
+            ename = atom['name']
+            pos = atom['pos']
+            positions.append(pos)
+            enames.append(ename)
+        
+        positions = np.array(positions, dtype=np.float32)
+        
+        # Compute bonds (simple distance-based)
+        bonds = self._compute_bonds(positions, enames)
+        
+        # Update molecule viewer
+        self.molecule_viewer.set_molecule(positions, enames, bonds)
+        
+        # Switch to geometry tab
+        self.tab_widget.setCurrentIndex(1)
+        
+        print(f"Showing 3D geometry for config {idx} (pixel {row},{col}) with {len(positions)} atoms")
+    
+    def _compute_bonds(self, positions, enames, max_bond_length=2.0):
+        """Compute bonds based on distance."""
+        bonds = []
+        n = len(positions)
+        for i in range(n):
+            for j in range(i + 1, n):
+                dist = np.linalg.norm(positions[i] - positions[j])
+                # Simple bond detection: H-X bonds shorter, others longer
+                if enames[i] == 'H' or enames[j] == 'H':
+                    if dist < 1.2:
+                        bonds.append((i, j))
+                else:
+                    if dist < max_bond_length:
+                        bonds.append((i, j))
+        return np.array(bonds, dtype=np.int32) if bonds else np.zeros((0, 2), dtype=np.int32)
+    
+    def _get_atom_styles(self, enames):
+        """Get atom colors and sizes based on element names."""
+        colors = []
+        sizes = []
+        
+        # Element colors (CPK-like)
+        element_colors = {
+            'H': (1.0, 1.0, 1.0, 1.0),    # White
+            'C': (0.5, 0.5, 0.5, 1.0),    # Gray
+            'N': (0.0, 0.0, 1.0, 1.0),    # Blue
+            'O': (1.0, 0.0, 0.0, 1.0),    # Red
+            'E': (0.0, 1.0, 0.0, 0.5),    # Green (E-pairs, transparent)
+        }
+        
+        # Element sizes (van der Waals radii scaled)
+        element_sizes = {
+            'H': 5,
+            'C': 15,
+            'N': 15,
+            'O': 15,
+            'E': 8,  # E-pairs smaller
+        }
+        
+        for ename in enames:
+            color = element_colors.get(ename, (0.5, 0.5, 0.5, 1.0))
+            size = element_sizes.get(ename, 10)
+            colors.append(color)
+            sizes.append(size)
+        
+        return np.array(colors, dtype=np.float32), np.array(sizes, dtype=np.float32)
+    
+    def _generate_labels(self, positions, enames):
+        """Generate atom labels with indices."""
+        lbl_pos = []
+        lbl_texts = []
+        
+        for i, ename in enumerate(enames):
+            lbl_pos.append(positions[i])
+            lbl_texts.append(f"{ename}{i}")
+        
+        return lbl_pos, lbl_texts
+    
+    def show_interaction_matrix(self):
+        """Display interaction matrix for selected pixel."""
+        if not hasattr(self, 'drv') or self.drv is None:
+            print("FittingDriver not initialized")
+            return
+        
+        if not hasattr(self, 'pixel_to_idx'):
+            print("No pixel mapping available. Recompute energy first.")
+            return
+        
+        row = self.pixel_row_spin.value()
+        col = self.pixel_col_spin.value()
+        
+        # Map pixel to configuration index
+        idx = self.pixel_to_idx.get((row, col), 0)
+        
+        try:
+            print(f"Evaluating interaction matrix for config {idx} (pixel {row},{col})...")
+            
+            # Call the decomposition kernel
+            interactions = self.drv.evaluate_interaction_matrix(idx)
+            
+            print(f"Got interaction matrix: shape={interactions.shape}")
+            print(f"  Pauli: [{interactions[:,:,0].min():.6f}, {interactions[:,:,0].max():.6f}]")
+            print(f"  London: [{interactions[:,:,1].min():.6f}, {interactions[:,:,1].max():.6f}]")
+            print(f"  Electro: [{interactions[:,:,2].min():.6f}, {interactions[:,:,2].max():.6f}]")
+            print(f"  H-bond: [{interactions[:,:,3].min():.6f}, {interactions[:,:,3].max():.6f}]")
+            
+            # Update plots
+            self._update_interaction_plots(interactions)
+            
+            # Switch to matrix tab
+            self.tab_widget.setCurrentIndex(2)
+            
+            self.status_label.setText(f"Interaction matrix for pixel ({row}, {col})")
+            
+        except Exception as e:
+            print(f"Error evaluating interaction matrix: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _update_interaction_plots(self, interactions):
+        """Update interaction matrix plots."""
+        ni, nj, _ = interactions.shape
+        
+        # Clear previous plots
+        self.ax_pauli.clear()
+        self.ax_london.clear()
+        self.ax_elec.clear()
+        self.ax_hbond.clear()
+        
+        # Plot each component
+        im1 = self.ax_pauli.imshow(interactions[:,:,0], aspect='auto', cmap='hot', origin='lower')
+        im2 = self.ax_london.imshow(interactions[:,:,1], aspect='auto', cmap='cool', origin='lower')
+        im3 = self.ax_elec.imshow(interactions[:,:,2], aspect='auto', cmap='seismic', origin='lower')
+        im4 = self.ax_hbond.imshow(interactions[:,:,3], aspect='auto', cmap='viridis', origin='lower')
+        
+        # Add colorbars
+        self.fig_matrix.colorbar(im1, ax=self.ax_pauli, fraction=0.046, pad=0.04)
+        self.fig_matrix.colorbar(im2, ax=self.ax_london, fraction=0.046, pad=0.04)
+        self.fig_matrix.colorbar(im3, ax=self.ax_elec, fraction=0.046, pad=0.04)
+        self.fig_matrix.colorbar(im4, ax=self.ax_hbond, fraction=0.046, pad=0.04)
+        
+        # Set titles
+        self.ax_pauli.set_title(f'Pauli [{interactions[:,:,0].min():.3f}, {interactions[:,:,0].max():.3f}]')
+        self.ax_london.set_title(f'London [{interactions[:,:,1].min():.3f}, {interactions[:,:,1].max():.3f}]')
+        self.ax_elec.set_title(f'Electro [{interactions[:,:,2].min():.3f}, {interactions[:,:,2].max():.3f}]')
+        self.ax_hbond.set_title(f'H-bond [{interactions[:,:,3].min():.3f}, {interactions[:,:,3].max():.3f}]')
+        
+        # Set labels
+        for ax in [self.ax_pauli, self.ax_london, self.ax_elec, self.ax_hbond]:
+            ax.set_xlabel('Fragment 2 Atom')
+            ax.set_ylabel('Fragment 1 Atom')
+        
+        # Update canvas
+        self.canvas_matrix.draw()
 
 
 def main():

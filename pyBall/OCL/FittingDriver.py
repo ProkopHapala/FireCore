@@ -819,6 +819,94 @@ class FittingDriver(OpenCLBase):
         Emols = self.fromGPU_(self.Emols_buff, shape=(self.n_samples,), dtype='f4')
         self.queue.finish()
         return Emols
+    
+    def evaluate_interaction_matrix(self, config_idx, workgroup_size=16):
+        """Evaluate interaction matrix for a single configuration.
+        
+        Decomposes total energy into components for each atom pair:
+        - Pauli repulsion (r^-12 term)
+        - London attraction (r^-6 term, without H-bond)
+        - Electrostatic (Coulomb)
+        - Hydrogen bond correction (H-dependent r^-6 term)
+        
+        Args:
+            config_idx: Index of configuration to evaluate (0 to n_samples-1)
+            workgroup_size: OpenCL workgroup size (default 16)
+            
+        Returns:
+            interactions: numpy array shape (ni, nj, 4) where:
+                ni = number of atoms in fragment 1
+                nj = number of atoms in fragment 2
+                Channel 0: Pauli repulsion
+                Channel 1: London attraction
+                Channel 2: Electrostatic
+                Channel 3: Hydrogen bond
+        """
+        if not hasattr(self, 'host_ranges'):
+            raise RuntimeError("Data not loaded. Call load_data() first.")
+        
+        if config_idx < 0 or config_idx >= self.n_samples:
+            raise ValueError(f"config_idx {config_idx} out of range [0, {self.n_samples-1}]")
+        
+        # Get configuration dimensions
+        nsi = self.host_ranges[config_idx]
+        ni = nsi[2]  # atoms in fragment 1
+        nj = nsi[3]  # atoms in fragment 2
+        
+        # Create output buffer
+        interactions_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, ni * nj * 4 * 4)
+        
+        # Compile decomposition kernel if not already done
+        if not hasattr(self, 'interact_kern'):
+            if 'evalInteractionMatrix_template' not in getattr(self, 'kernelheaders', {}):
+                # Need to compile with decomposition macro
+                from pyBall.OCL.NonBondFitting import extract_macro_block
+                base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                forces_path = os.path.join(base_path, '../../cpp/common_resources/cl/Forces.cl')
+                # Extract decomposition macro (use same model as energy but with _DECOMP suffix)
+                energy_model = getattr(self, 'energy_model_name', 'ENERGY_MorseQ_PAIR')
+                decomp_model = energy_model.replace('ENERGY_', '') + '_DECOMP'
+                try:
+                    macro_code = extract_macro_block(forces_path, decomp_model)
+                except ValueError:
+                    # Fallback to LJQH2_DECOMP if specific model not found
+                    macro_code = extract_macro_block(forces_path, 'MODEL_LJQH2_PAIR_DECOMP')
+                
+                macros = {'MODEL_PAIR_DECOMP': macro_code}
+                fitreq_path = os.path.join(base_path, '../../cpp/common_resources/cl/FitREQ.cl')
+                src = open(fitreq_path).read()
+                pre_src = self.preprocess_opencl_source(src, macros=macros)
+                self.prg = cl.Program(self.ctx, pre_src).build()
+                self.kernelheaders = self.extract_kernel_headers(pre_src)
+                if self.verbose > 0:
+                    print(f"Compiled interaction matrix kernel with {decomp_model}")
+            
+            self.interact_kern = self.prg.evalInteractionMatrix_template
+        
+        # Set kernel arguments
+        use_type_q = int(getattr(self, 'use_type_charges', 0))
+        self.interact_kern.set_args(
+            self.ranges_buff,
+            self.tREQHs_buff,
+            self.atypes_buff,
+            self.ieps_buff,
+            self.atoms_buff,
+            interactions_buff,
+            np.int32(config_idx),
+            np.int32(use_type_q)
+        )
+        
+        # Run kernel (2D: ni x nj work items)
+        global_size = (ni * workgroup_size, nj * workgroup_size)
+        local_size = (workgroup_size, workgroup_size)
+        cl.enqueue_nd_range_kernel(self.queue, self.interact_kern, global_size, local_size)
+        
+        # Read back results
+        interactions = self.fromGPU_(interactions_buff, shape=(ni * nj, 4), dtype='f4')
+        interactions = interactions.reshape((ni, nj, 4))
+        self.queue.finish()
+        
+        return interactions
 
     def update_tREQHs_from_dofs(self, dofs_vec):
         """Return a fresh tREQHs array updated from DOF vector.

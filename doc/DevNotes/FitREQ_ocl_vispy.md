@@ -378,6 +378,7 @@ python FitREQInteractiveGUI.py --xyz <path> --atom-types <path> --model <name>
 - Consider overlay of molecular geometry on energy maps
 - Consider contour plots in addition to imshow
 
+
 ### 9. Dependencies
 
 **Required:**
@@ -409,3 +410,354 @@ python FitREQInteractiveGUI.py --xyz <path> --atom-types <path> --model <name>
 `FitREQInteractiveGUI.py` successfully implements an interactive parameter fitting system for pyOpenCL FitREQ. It enables real-time parameter adjustment with instant visualization of energy maps. The key technical achievement is the integration of pyOpenCL energy evaluation with matplotlib-based fast plotting, providing a responsive and intuitive interface for force field parameter exploration.
 
 The implementation overcame significant challenges in grid reshaping, visualization library selection, and parameter override API integration. The result is a robust tool for interactive force field development.
+
+
+---
+
+# USER
+
+OK, now I would like implemenr few more advanced features
+1) plot the 3D geoemtry of the fited molecule for selected pixel int the 2D graph. the pixel can be selected either by clicking into the graph, or by sime input box. We should plot the molecule including E-pairs with atoms type and number (index) inthe file, e.g. H1, O3, H14 etc
+2) it would be good to have possibility to decompose the total energy into components and different atoms. This should produce something like interaction matrix (each atom from molecule 1 with each atom from molecule 2), the components can be electrostatic (Q,Q), the Pauli repulsion, London atraction, and the H correction (which are non-zero for the electron pairs right?) Can we decompose this?
+
+Notice - currently the kernel can be inefficient if we write all the compoentns for every configuration (pixel) therefore we perhaps should make separate kernel which mimic exactly the evaluation of the kernel we use, but with the exception that it runs only for one system and outputs whole interaction matrix with all 4 components, so the size of the ouptut should bne line [n1,n2,4] where n1 and n2 are numbr of atoms (including epairs) in the molecule 1 and 2, and 4 are the 4 interaction type channels - Pauli, London, Electrostatic, Hydrogen Bond. Does it make sense? 
+
+Now do not program anything yet, just make notes how it is done and how it can be done efficiently
+
+---
+
+# Advanced Features Planning
+
+## Feature 1: 3D Geometry Visualization for Selected Pixel
+
+### Goal
+Plot the 3D molecular geometry for a selected pixel in the 2D energy map. The pixel can be selected by:
+- Clicking on the 2D graph
+- Input box to specify pixel coordinates (row, col)
+
+### Requirements
+- Display molecule including electron pairs (E-pairs)
+- Label atoms with type and index (e.g., H1, O3, H14)
+- Interactive 3D rotation/zoom
+- Update geometry when pixel selection changes
+
+### Implementation Approach
+
+**Option A: VisPy 3D Viewer**
+- Use VisPy's 3D scene capabilities (already in FireCore via `VispyUtils.py`)
+- Reuse `AtomScene` class from `pyBall/VispyUtils.py`
+- Add to GUI as separate tab or dock widget
+- Pros: Fast 3D rendering, already integrated with FireCore
+- Cons: Need to integrate with matplotlib event system
+
+**Option B: Matplotlib 3D**
+- Use `mpl_toolkits.mplot3d` for 3D plotting
+- Integrate with existing matplotlib canvas
+- Pros: Consistent with current plotting, no new dependencies
+- Cons: Slower than VisPy for 3D, limited interactivity
+
+**Recommended: Option A (VisPy)**
+- Better performance for 3D
+- Already has atom rendering infrastructure
+- Can be embedded in PyQt as separate widget
+
+### Data Flow
+1. User selects pixel (click or input)
+2. Map pixel (row, col) to XYZ configuration index
+3. Load atomic positions for that configuration from XYZ file
+4. Identify electron pairs (dummy atoms)
+5. Render 3D scene with atom labels
+6. Update viewer
+
+### Technical Details
+
+**Pixel to Configuration Mapping:**
+- Grid reshaping uses `detect_rows_by_r()` and `reshape_to_grid()`
+- Need reverse mapping: (row, col) → flat index in XYZ file
+- Store mapping during initial reshaping: `pixel_to_idx[row, col] = xyz_index`
+
+**Atom Labeling:**
+- Parse atom names from XYZ file (e.g., "H", "O", "E")
+- Add index based on position in molecule
+- Format: `"{element}{index}"` (e.g., H1, O3, E14)
+- Distinguish real atoms vs electron pairs
+
+**Geometry Display:**
+- Atoms: spheres colored by element type
+- Bonds: lines between bonded atoms
+- Electron pairs: smaller spheres, different color
+- Labels: text at atom positions
+
+### Integration with GUI
+- Add "3D Viewer" tab to main window
+- Add pixel selection input box (row, col)
+- Connect matplotlib click event to pixel selection
+- Update 3D viewer when pixel changes
+
+---
+
+## Feature 2: Energy Decomposition into Interaction Components
+
+### Goal
+Decompose total energy into components for each atom pair interaction:
+- Pauli repulsion
+- London attraction (dispersion)
+- Electrostatic (Q·Q)
+- Hydrogen bond correction
+
+Produce interaction matrix of shape `[n1, n2, 4]` where:
+- `n1`: number of atoms (including E-pairs) in molecule 1
+- `n2`: number of atoms (including E-pairs) in molecule 2
+- 4: interaction type channels (Pauli, London, Electrostatic, H-bond)
+
+### Why Separate Kernel?
+
+**Current Kernel Limitations:**
+- Energy kernel computes total energy per configuration
+- Writing all components for every configuration would be inefficient
+- Output size would be `[n_configs, n1, n2, 4]` - too large for GPU memory
+- Most components not needed for fitting (only total energy)
+
+**Separate Kernel Benefits:**
+- Runs only for single selected configuration
+- Outputs interaction matrix for that configuration
+- Much smaller output: `[n1, n2, 4]`
+- Can be called on-demand when user selects pixel
+- Enables detailed energy analysis
+
+### Implementation Approach
+
+**Step 1: Analyze Current Energy Kernel**
+
+Locate energy computation in `FitREQ.cl` or `Forces.cl`:
+```
+ENERGY_MorseQ_PAIR kernel:
+- Computes total energy as sum over atom pairs
+- Uses REQH model: Pauli + London + Electrostatic + H-bond
+- Components summed together in kernel
+```
+
+**Step 2: Create Decomposition Kernel**
+
+New kernel `ENERGY_MorseQ_PAIR_DECOMP`:
+- Same computation as energy kernel
+- Instead of summing components, output each separately
+- Output buffer: `float4 interactions[n1 * n2]`
+- Each float4 contains: (Pauli, London, Electrostatic, H-bond)
+
+**Kernel Structure:**
+```opencl
+__kernel void ENERGY_MorseQ_PAIR_DECOMP(
+    __global const float4* atoms,      // atom positions and types
+    __global const float4* tREQHs,      // type parameters
+    __global float4* interactions,    // output: [n1*n2] float4
+    const int n1,                      // atoms in molecule 1
+    const int n2,                      // atoms in molecule 2
+    const int offset1,                 // offset for molecule 1 atoms
+    const int offset2                  // offset for molecule 2 atoms
+) {
+    int i = get_global_id(0);  // atom index in molecule 1
+    int j = get_global_id(1);  // atom index in molecule 2
+    
+    if (i >= n1 || j >= n2) return;
+    
+    // Get atom positions and types
+    float4 atom1 = atoms[offset1 + i];
+    float4 atom2 = atoms[offset2 + j];
+    
+    // Get type parameters
+    int type1 = atom1.w;
+    int type2 = atom2.w;
+    float4 reqh1 = tREQHs[type1];
+    float4 reqh2 = tREQHs[type2];
+    
+    // Compute distance
+    float r = distance(atom1.xyz, atom2.xyz);
+    
+    // Compute REQH components
+    // ... (same as current energy kernel)
+    
+    // Store components separately (not summed)
+    interactions[i * n2 + j] = (float4)(pauli, london, electro, hbond);
+}
+```
+
+**Step 3: Add to FittingDriver**
+
+Add method to FittingDriver:
+```python
+def evaluate_interaction_matrix(self, config_idx):
+    """
+    Evaluate interaction matrix for a single configuration.
+    
+    Returns:
+        interactions: numpy array shape (n1, n2, 4)
+            Channel 0: Pauli repulsion
+            Channel 1: London attraction
+            Channel 2: Electrostatic
+            Channel 3: Hydrogen bond
+    """
+    # Load configuration data
+    atoms_config = self.load_single_config(config_idx)
+    
+    # Set up kernel arguments
+    # ... (atoms, tREQHs, output buffer, dimensions)
+    
+    # Run decomposition kernel
+    self.decomp_kernel.set_args(...)
+    cl.enqueue_nd_range_kernel(self.queue, ...)
+    
+    # Read back results
+    interactions = np.empty((n1, n2, 4), dtype=np.float32)
+    cl.enqueue_copy(self.queue, interactions, self.interactions_buff)
+    
+    return interactions
+```
+
+**Step 4: Visualization in GUI**
+
+Add "Energy Decomposition" tab:
+- Heatmap of interaction matrix for each component
+- 4 subplots (Pauli, London, Electrostatic, H-bond)
+- Or single interactive plot with component selector
+- Update when pixel selection changes
+
+### Performance Considerations
+
+**Kernel Launch Overhead:**
+- Decomposition kernel is small (n1*n2 work items)
+- Launch overhead dominates for small molecules
+- Consider batch processing if needed
+
+**Memory:**
+- Output size: `n1 * n2 * 4 * 4 bytes` (float4)
+- For typical molecules (n1≈10, n2≈10): ~1.6 KB - negligible
+- No memory issues
+
+**Optimization:**
+- Can reuse existing atom buffers (no need to reload)
+- Only need to upload configuration-specific data
+- Kernel compilation once at startup
+
+### Integration with Feature 1
+
+Combine both features:
+- User selects pixel → shows 3D geometry AND interaction matrix
+- Click on atom in 3D view → highlight corresponding row/col in matrix
+- Click on matrix cell → highlight corresponding atoms in 3D view
+- Cross-linking for intuitive exploration
+
+### Implementation Order
+
+**Phase 1: 3D Geometry Viewer**
+1. Add pixel selection mechanism
+2. Implement 3D viewer using VisPy AtomScene
+3. Load and display geometry for selected configuration
+4. Add atom labels with indices
+
+**Phase 2: Energy Decomposition**
+1. Analyze current energy kernel components
+2. Create decomposition kernel in OpenCL
+3. Add evaluation method to FittingDriver
+4. Implement interaction matrix visualization
+5. Integrate with pixel selection
+
+**Phase 3: Integration**
+1. Link 3D viewer with decomposition view
+2. Add cross-linking (click atom → highlight matrix cell)
+3. Add component selection in 3D view
+4. Optimize performance
+
+### Technical Challenges
+
+**Challenge 1: Kernel Component Separation**
+- Current kernel may not have clean separation of components
+- May need to refactor existing kernel
+- Ensure numerical consistency with total energy
+
+**Challenge 2: Configuration Index Mapping**
+- Need robust mapping from pixel to XYZ index
+- Handle irregular grids from scan data
+- Cache mapping for performance
+
+**Challenge 3: Electron Pair Identification**
+- Need to distinguish real atoms from E-pairs
+- E-pairs may have special naming convention
+- May need to parse from DOF selection
+
+**Challenge 4: GUI Layout**
+- Adding multiple tabs/widgets may clutter interface
+- Consider collapsible panels or separate windows
+- Balance between features and usability
+
+---
+
+### 9. Advanced Features (Implemented)
+
+#### 9.1 3D Molecular Geometry Visualization
+
+**Purpose:** Visualize molecular geometry for selected configurations in the scan.
+
+**Implementation:**
+- **SimpleMoleculeViewer class:** Custom VisPy-based 3D widget with:
+  - TurntableCamera for 3D rotation (mouse drag) and zoom (scroll)
+  - Atom markers with CPK-like coloring (H=white, O=red, E=green)
+  - Bond lines based on distance
+  - Atom labels with indices (e.g., H0, O1, H2)
+  - Automatic camera centering on molecule
+
+- **Pixel Selection:**
+  - Click on energy plots to select pixel
+  - Row/col spin boxes for manual selection
+  - Pixel-to-configuration index mapping for scan data
+
+- **XYZ Configuration Loading:**
+  - `_load_xyz_configurations()`: Parses all XYZ configurations from scan file
+  - `_create_pixel_mapping()`: Maps (row, col) pixels to configuration indices
+  - Supports both regular grids and irregular scan geometries
+
+**Files Modified:**
+- `pyBall/GUI/FitREQInteractiveGUI.py`: Added SimpleMoleculeViewer class, pixel selection, XYZ loading
+
+#### 9.2 Energy Decomposition Analysis
+
+**Purpose:** Decompose total interaction energy into physical components per atom pair.
+
+**Implementation:**
+- **OpenCL Decomposition Kernel (`evalInteractionMatrix_template`):**
+  - Computes 4 interaction components for each atom pair:
+    - Pauli repulsion (r^-12 term for LJ, e^2 term for Morse)
+    - London attraction (r^-6 term for LJ, -2*e term for Morse)
+    - Electrostatic (Coulomb Q/r)
+    - Hydrogen bond correction (H-dependent term)
+  - Uses 2D work items (ni × nj) for parallel computation
+  - Single configuration evaluation (efficient for interactive use)
+
+- **Decomposition Macros (Forces.cl):**
+  - `MODEL_MorseQ_PAIR_DECOMP`: Decomposes Morse potential
+  - `MODEL_LJQH2_PAIR_DECOMP`: Decomposes LJ 12-6 potential
+  - Uses same macro templating as energy kernel for consistency
+
+- **FittingDriver Method:**
+  - `evaluate_interaction_matrix(config_idx)`: Evaluates decomposition for single config
+  - Compiles decomposition kernel with model-specific macro
+  - Returns numpy array shape (ni, nj, 4)
+
+- **Interaction Matrix Visualization:**
+  - 4 heatmap subplots (Pauli, London, Electrostatic, H-bond)
+  - Color-coded interaction strength between atom pairs
+  - Updates when pixel selected
+
+**Files Modified:**
+- `cpp/common_resources/cl/FitREQ.cl`: Added evalInteractionMatrix_template kernel
+- `cpp/common_resources/cl/Forces.cl`: Added MODEL_MorseQ_PAIR_DECOMP and MODEL_LJQH2_PAIR_DECOMP macros
+- `pyBall/OCL/FittingDriver.py`: Added evaluate_interaction_matrix() method
+- `pyBall/GUI/FitREQInteractiveGUI.py`: Added interaction matrix tab and visualization
+
+#### 9.3 Current Limitations
+
+1. **XYZ File Format:** Currently uses wb97m_input (no electron pairs). E-pairs are in wb97m_output but not default.
+2. **Tab Switching:** Must manually click "Show 3D Geometry" or "Show Interaction Matrix" buttons
+3. **Decomposition Kernel:** Overwrites self.prg (breaks energy kernel) - needs separate program object
+4. **E-pair Visibility:** Semi-transparent (alpha=0.5), may be hard to see
+5. **No Auto-update:** Must click buttons to update views after pixel selection
