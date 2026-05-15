@@ -288,11 +288,13 @@ Following the DeepSeek-V4 cgroup solution, the persistent memory limit was set u
 1. **`/usr/local/bin/limit_lsp.sh`** - Daemon script that auto-detects and moves the Windsurf language server into the memory-limited cgroup
 2. **`~/.config/systemd/user/limit-lsp.service`** - Systemd user service that auto-starts the daemon script
 3. **`/etc/sudoers.d/limit-lsp`** - Sudoers entry allowing passwordless writes to the cgroup.procs file
+4. **`/usr/local/bin/create_limit_lsp_cgroup.sh`** - Boot-time script to create the cgroup directory and set memory limits
+5. **`/etc/systemd/system/create-limit-lsp-cgroup.service`** - Systemd system service that runs the cgroup creation script at boot
 
 ### Cgroup Configuration
 - **Cgroup path**: `/sys/fs/cgroup/limit_lsp`
-- **Memory limit**: 8 GB (initially 5 GB, changed to 8 GB)
-- **Swap limit**: 8 GB
+- **Memory limit**: 16 GB (initially 5 GB, changed to 8 GB, then 14 GB, then 16 GB)
+- **Swap limit**: 16 GB
 - **Check interval**: 2 seconds (script polls every 2 seconds for new language server processes)
 
 ### Service Status
@@ -303,16 +305,21 @@ Following the DeepSeek-V4 cgroup solution, the persistent memory limit was set u
 
 ## Current Configuration
 
-**Memory limit**: 8 GB (hard kill when exceeded)
+**Memory limit**: 16 GB (hard kill when exceeded)
 **Username**: prokop (used in sudoers entry)
+**Boot-time persistence**: Enabled via system service `create-limit-lsp-cgroup.service`
 
 ## How to Reconfigure
 
 ### Change Memory Limit
 ```bash
-# Change to new value (e.g., 10G)
+# Change to new value (e.g., 10G) - takes effect immediately
 echo "10G" | sudo tee /sys/fs/cgroup/limit_lsp/memory.max
 echo "10G" | sudo tee /sys/fs/cgroup/limit_lsp/memory.swap.max
+
+# To make it persistent across reboots, also edit the boot-time script:
+sudo nano /usr/local/bin/create_limit_lsp_cgroup.sh
+# Change the "16G" values to your desired limit in both memory.max and memory.swap.max lines
 ```
 
 ### Change Check Interval
@@ -330,19 +337,30 @@ journalctl --user -u limit-lsp.service -f
 
 ## How to Undo (Remove the Solution)
 
-### Stop and Disable the Service
+### Stop and Disable the Services
 ```bash
+# Stop and disable user service
 systemctl --user stop limit-lsp.service
 systemctl --user disable limit-lsp.service
+
+# Stop and disable boot-time system service
+sudo systemctl stop create-limit-lsp-cgroup.service
+sudo systemctl disable create-limit-lsp-cgroup.service
 ```
 
 ### Remove Files
 ```bash
-# Remove the script
+# Remove the daemon script
 sudo rm /usr/local/bin/limit_lsp.sh
 
-# Remove the service file
+# Remove the boot-time cgroup creation script
+sudo rm /usr/local/bin/create_limit_lsp_cgroup.sh
+
+# Remove the user service file
 rm ~/.config/systemd/user/limit-lsp.service
+
+# Remove the system service file
+sudo rm /etc/systemd/system/create-limit-lsp-cgroup.service
 
 # Remove the sudoers entry
 sudo rm /etc/sudoers.d/limit-lsp
@@ -353,20 +371,24 @@ sudo rmdir /sys/fs/cgroup/limit_lsp
 
 ### Reload Systemd
 ```bash
+# Reload user systemd
 systemctl --user daemon-reload
+
+# Reload system systemd
+sudo systemctl daemon-reload
 ```
 
 ## Important Notes
 
 ### After System Reboot
-The cgroup directory `/sys/fs/cgroup/limit_lsp` is removed on reboot. The service will still run but will fail to move processes into the cgroup until it's recreated. To recreate after reboot:
-```bash
-sudo mkdir -p /sys/fs/cgroup/limit_lsp
-echo "8G" | sudo tee /sys/fs/cgroup/limit_lsp/memory.max
-echo "8G" | sudo tee /sys/fs/cgroup/limit_lsp/memory.swap.max
-```
+The cgroup directory `/sys/fs/cgroup/limit_lsp` is removed on reboot. A system service `create-limit-lsp-cgroup.service` has been implemented to automatically recreate the cgroup at boot time with the configured memory limits.
 
-For full persistence across reboots, a system service (not user service) would be needed to create the cgroup at boot time. This was not implemented yet.
+**Boot-time persistence is now fully implemented.** The system service runs before the user service and ensures the cgroup exists before the daemon tries to move processes into it.
+
+To verify the boot-time service is working:
+```bash
+sudo systemctl status create-limit-lsp-cgroup.service
+```
 
 ### What Happens When Limit Is Exceeded
 - The kernel immediately kills the language server process (SIGKILL)
