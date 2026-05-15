@@ -3597,3 +3597,50 @@ python test_relax_parity.py
 - Requires `test_pipeline_output/E_total_field.npy` and `grid_spec.txt` from a previous full pipeline run
 - Uses TBTAP.xyz from `cpp/common_resources/xyz/`
 
+
+## Spherical PPM Mode Implementation (May 2026)
+
+### Overview
+Implemented spherical PPM mode using the existing `relaxStrokes` kernel with proper tip parameters:
+- **Bond length**: L=4Å
+- **Stiffness vector**: K=(Kx, Ky, 0, Kr) with Kr=1.0
+- **Anchor point**: dpos=(0,0,-L,L)
+
+### Mode Selection
+The existing `ppm_mode` flag controls the relaxation mode:
+- `ppm_mode=False` (default): 2D lateral-only relaxation using `relaxStrokes2D` kernel
+- `ppm_mode=True`: Spherical PPM relaxation using `relaxStrokes` kernel with radial bond
+
+### Integration Points
+- `AFM_utils.py:compose_and_relax_total()`: Switches between kernels based on `ppm_mode`
+- `AFM_utils.py:run_afm_from_xyz()`: Passes `ppm_mode` through the pipeline
+- `test_full_pipeline.py`: CLI flag `--ppm_mode` to control mode from command line
+
+### Parameters
+For spherical PPM mode (L=4Å, Kr=1.0):
+- `dt=0.1`, `damp=0.1` (smaller timestep for stability with weak forces)
+- `N_RELAX_STEP_MAX=512` (increased from 128 for better convergence)
+- `K_LAT=0.5`, `K_RAD=20.0` (empirically determined values)
+
+### Unit/Scaling Issue
+**Problem**: The stiffness values that produce good results (K_LAT=0.5, K_RAD=20.0) make sense in N/m but appear to be in eV/Å² in the code.
+
+**Evidence**:
+- Code comments claimed: K_LAT=0.0031 eV/Å² (0.5 N/m), K_RAD=0.1248 eV/Å² (20 N/m)
+- These conversion factors are wrong (1 eV/Å² = 16.02 N/m, not ~160)
+- Working values are K_LAT=0.5, K_RAD=20.0, which are the N/m values, not eV/Å²
+- Force field magnitude: ~9000 eV/Å (very large, typical atomic forces are 1-10 eV/Å)
+
+**Hypothesis**: The force field is likely wrongly scaled, possibly in kcal/mol/Å instead of eV/Å:
+- 1 kcal/mol = 0.043 eV
+- 9000 kcal/mol/Å = 387 eV/Å (more reasonable)
+
+**Note**: Large forces near atom centers are expected and not problematic. The issue is the absolute scale, not the relative distribution.
+
+**Action Taken**: Removed incorrect N/m conversion comments from AFM.py and updated default values to match empirically correct values (K_LAT=0.5, K_RAD=20.0). The ratio between stiffness and force field is what matters for the physics, not the absolute units.
+
+### Testing
+- Full pipeline runs successfully with `--ppm_mode` flag
+- Spherical PPM produces weaker contrast than 2D mode due to L=4Å bond constraint
+- Both modes are now accessible via CLI for comparison and validation
+

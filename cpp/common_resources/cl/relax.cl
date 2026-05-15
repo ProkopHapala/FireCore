@@ -371,11 +371,11 @@ __kernel void relaxStrokes(
             float3 f  = fe.xyz;
             f        += tipForce( pos-tipPos, stiffness, dpos0 );
             
-            #if OPT_FIRE
-            v = update_FIRE( f, v, &dt, &damp, dtmin, dtmax, damp0 );
-            #else
+            //#if OPT_FIRE
+            //v = update_FIRE( f, v, &dt, &damp, dtmin, dtmax, damp0 );
+            //#else
             v        *=    (1 - damp);
-            #endif
+            //#endif
             v        += f * dt;
             pos.xyz  += v * dt;
 

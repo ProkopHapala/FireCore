@@ -509,14 +509,12 @@ def compose_and_relax(grads_pauli, grads_es, grads_vdw, scan_xs, scan_ys, height
     return df, tip_disp
 
 
-def compose_and_relax_total(grads_total, scan_xs, scan_ys, heights,
-                          origin, step, atomPos, K_LAT=0.5,
-                          use_gpu_relax=True, ppm_mode=False, afmulator=None):
+def compose_and_relax_total(F_total, scan_xs, scan_ys, heights, origin, step, atomPos, K_LAT=0.5,  K_RAD=20.0, bond_length=4.0,  use_gpu_relax=True, ppm_mode=False, afmulator=None):
     """
-    Compose force field from total gradient and run probe particle relaxation.
+    Compose force field from total force field and run probe particle relaxation.
 
     Args:
-        grads_total:   (nx, ny, nz, 3) total gradient of combined potential
+        F_total:       (nx, ny, nz, 4) total force field (Fx, Fy, Fz, E) where F = -grad(E)
         scan_xs:       (nx_s,) scan x coordinates
         scan_ys:       (ny_s,) scan y coordinates
         heights:       (nz_s,) probe/tip-apex heights above mol_z
@@ -525,8 +523,8 @@ def compose_and_relax_total(grads_total, scan_xs, scan_ys, heights,
         atomPos:       (natoms, 3) atom positions (for mol_z)
         K_LAT:         lateral stiffness [eV/Ang^2]
         use_gpu_relax: True (default) = GPU relaxStrokes; False = legacy CPU scipy
-        ppm_mode:      False (default) = linear harmonic (K_LAT isotropic);
-                       True = PPM radial bond (CO-tip, L=3 Ang)
+        ppm_mode:      False (default) = 2D lateral-only relaxation (z fixed per slice);
+                       True = spherical PPM radial bond (CO-tip, L=4 Ang, Kr=1.0)
         afmulator:     AFMulator instance; created if None
 
     Returns:
@@ -534,24 +532,34 @@ def compose_and_relax_total(grads_total, scan_xs, scan_ys, heights,
         tip_disp: dict with 'dx','dy' (nx_s, ny_s, nz_s) tip displacement
     """
     mol_z     = float(atomPos[:,2].max())
-    nx, ny, nz_ff = grads_total.shape[:3]
-    F_total_3 = -grads_total  # F = -grad(E)
+    nx, ny, nz_ff = F_total.shape[:3]
 
     if use_gpu_relax:
-        mode_str = "PPM radial-bond" if ppm_mode else "harmonic pin-z"
-        print(f"  [compose_and_relax_total] GPU relaxStrokes  mode={mode_str}")
-        F_total_4 = np.zeros((nx, ny, nz_ff, 4), dtype=np.float32)
-        F_total_4[..., :3] = F_total_3
-        if afmulator is None:
-            afmulator = afm.AFMulator(use_morse=False, nloc=32, use_fire=False)
-        afmulator.setup_fdbm_grid(F_total_4, origin, step)
-        FEs_relax = afmulator.scan_fdbm_2d(scan_xs, scan_ys, heights, mol_z=mol_z, K_LAT=K_LAT)
-        nx_s, ny_s, nz_s = FEs_relax.shape[:3]
-        tip_disp = {'dx': np.zeros((nx_s, ny_s, nz_s), dtype=np.float32),
-                    'dy': np.zeros((nx_s, ny_s, nz_s), dtype=np.float32)}
+        if ppm_mode:
+            print("  [compose_and_relax_total] GPU relaxStrokes spherical PPM (L=4, Kr=1.0)")
+            if afmulator is None:
+                afmulator = afm.AFMulator(use_morse=False, nloc=32, use_fire=False)
+            afmulator.setup_fdbm_grid(F_total, origin, step)
+            # Spherical PPM: dpos=(0,0,-L,L) with L=4, K=(Kx,Ky,0,Kr) with Kr=1.0
+            # Smaller dt=0.1, damp=0.3 for stability with weak forces (probe far from surface)
+            relax_pars_ppm = [0.1, 0.1, 0.03, 0.1]  # dt, damp, alpha, dt_fire
+            FEs_relax = afmulator.scan_fdbm( scan_xs, scan_ys, heights, mol_z=mol_z,  K_LAT=K_LAT, K_RAD=K_RAD, bond_length=bond_length,  relax_pars=relax_pars_ppm )
+            nx_s, ny_s, nz_s = FEs_relax.shape[:3]
+            tip_disp = {'dx': np.zeros((nx_s, ny_s, nz_s), dtype=np.float32),
+                        'dy': np.zeros((nx_s, ny_s, nz_s), dtype=np.float32)}
+        else:
+            print("  [compose_and_relax_total] GPU relaxStrokes2D 2D lateral-only")
+            if afmulator is None:
+                afmulator = afm.AFMulator(use_morse=False, nloc=32, use_fire=False)
+            afmulator.setup_fdbm_grid(F_total, origin, step)
+            FEs_relax = afmulator.scan_fdbm_2d(scan_xs, scan_ys, heights, mol_z=mol_z, K_LAT=K_LAT)
+            nx_s, ny_s, nz_s = FEs_relax.shape[:3]
+            tip_disp = {'dx': np.zeros((nx_s, ny_s, nz_s), dtype=np.float32),
+                        'dy': np.zeros((nx_s, ny_s, nz_s), dtype=np.float32)}
     else:
         print("  [compose_and_relax_total] CPU scipy relaxation (legacy)")
         from scipy.ndimage import map_coordinates
+        F_total_3 = F_total[..., :3]  # Extract (Fx,Fy,Fz) for CPU interpolation
         def force_func(positions):
             # -0.5 offset to match GPU corner convention (cell-center vs cell-corner)
             ix = (positions[:, 0] - origin[0]) / step - 0.5
@@ -1530,23 +1538,27 @@ def run_afm_pipeline(
             # Create AFMulator instance if not provided
             afmulator = afm.AFMulator(use_morse=False, nloc=32)
         grads_cl = afmulator.compute_gradient_cl(E_total, step, bAlloc=True)
-        # Extract gradients (negate forces): grad = -F
-        grads_total = grads_cl[..., :3]  # Already (Fx, Fy, Fz) where F = -grad
-        # We need grad, so negate: grad = -F
-        grads_total = -grads_total
+        # grads_cl is (Fx, Fy, Fz, E) where F = -grad(E)
+        # This is already the force field F_total we need
+        F_total = grads_cl  # (Fx, Fy, Fz, E) - full force field
     else:
         print("  Using CPU (numpy) for gradient computation...")
-        grads_total = np.stack([np.gradient(E_total, step, axis=i) for i in range(3)], axis=-1)
+        # Compute gradient, then convert to force F = -grad(E)
+        grads = np.stack([np.gradient(E_total, step, axis=i) for i in range(3)], axis=-1)
+        # Build full array (Fx, Fy, Fz, E) where F = -grad
+        F_total = np.zeros(E_total.shape + (4,), dtype=np.float32)
+        F_total[..., :3] = -grads  # F = -grad(E)
+        F_total[..., 3] = E_total   # E
 
     # Save intermediates
     if debug_save_enabled(2):
         np.save(os.path.join(output_dir, 'E_total_field.npy'), E_total)
-        np.save(os.path.join(output_dir, 'grads_E_total.npy'), grads_total)
+        np.save(os.path.join(output_dir, 'F_total.npy'), F_total)
 
-    # Step 6: Compose and relax using total gradient
+    # Step 6: Compose and relax using total force field
     print("\nStep 6: Composing force fields and running probe relaxation...")
     df, tip_disp = compose_and_relax_total(
-        grads_total,
+        F_total,
         scan_xs, scan_ys, heights,
         origin, step, atomPos, K_LAT=relax_params['K_LAT'],
         use_gpu_relax=use_gpu_relax, ppm_mode=ppm_mode, afmulator=afmulator
@@ -1608,12 +1620,12 @@ def run_afm_pipeline(
         'intermediates': {
             'V_ES': V_ES,
             'E_pauli_field': E_pauli_field,
-            'grads_pauli': None,  # Not computed in optimized mode (use grads_total)
+            'grads_pauli': None,  # Not computed in optimized mode (use F_total)
             'E_ES_field': E_ES_field,
-            'grads_ES': None,  # Not computed in optimized mode (use grads_total)
+            'grads_ES': None,  # Not computed in optimized mode (use F_total)
             'E_vdw': E_vdw,
-            'grads_vdw': None,  # Not computed in optimized mode (use grads_total)
-            'grads_total': grads_total,  # Total gradient of combined potential
+            'grads_vdw': None,  # Not computed in optimized mode (use F_total)
+            'F_total': F_total,  # Full force field (Fx,Fy,Fz,E) from GPU
             'tip_disp': tip_disp,
         },
         'grid_spec': grid_spec_out,
@@ -1790,7 +1802,8 @@ def run_afm_from_xyz(
     plot_steps=True,
     use_dense_projection=False,
     max_shells=None,
-    stm_params=None
+    stm_params=None,
+    ppm_mode=False
 ):
     """
     Full AFM simulation pipeline from .xyz to AFM images via DFTB+ density.
@@ -1987,6 +2000,7 @@ def run_afm_from_xyz(
         pauli_params=pauli_params, pauli_fit_params=pauli_fit_params,
         fit_pauli=fit_pauli, fit_pauli_params=fit_pauli_params,
         vdw_params=vdw_params, relax_params=relax_params, plot_steps=plot_steps,
+        ppm_mode=ppm_mode,
         **stm_kwargs
     )
 

@@ -1140,3 +1140,231 @@ To add a new extension (e.g., AFM):
    ```
 
 The extension will appear as a collapsible panel in the GUI, load lazily on first use, and fail loudly if dependencies or paths are missing.
+
+---
+
+---
+
+# AFM Extension Implementation (May 2026)
+
+## Overview
+
+Successfully implemented a fully functional AFM (Atomic Force Microscopy) extension for KekuleExplorerGUI using the FDBM (Force-Density-Based Model) PPAFM (Probe Particle AFM) pipeline. The extension integrates with the existing extension manager system and provides interactive AFM simulation visualization.
+
+## Extension Registration
+
+The AFM extension is registered in the extension system with the following metadata:
+
+```python
+'afm': {
+    'module': 'pyBall.AFMExtension',
+    'class': 'AFMExtension',
+    'required_paths': ['co_tip_dir'],
+    'optional_paths': ['fdata_dir', 'fdata_basis'],
+    'dependencies': ['pyopencl', 'numpy', 'matplotlib'],
+    'ui_builder': 'build_afm_extension_ui',
+}
+```
+
+## Backend Components
+
+The AFM extension uses three core backend modules:
+
+1. **pyBall/OCL/AFM.py** - Core AFM simulation engine
+   - GPU-accelerated gradient computation via OpenCL
+   - FFT Poisson solver for electrostatics
+   - Probe particle relaxation (pp_relax_2d)
+   - CO tip density computation
+
+2. **pyBall/OCL/AFM_utils.py** - High-level pipeline orchestration
+   - `run_afm_pipeline()` - Main 6-step AFM pipeline
+   - `compose_and_relax_total()` - Force field composition and relaxation
+   - `run_afm_from_xyz()` - Entry point from XYZ files
+   - `get_density_from_dftb_plus()` - DFTB+ density extraction
+
+3. **pyBall/DFTB/Grid_dftb.py** - Density projection
+   - OpenCL-accelerated Slater-Type Orbital (STO) projection
+   - Supports both sparse (mio-1-1) and dense (3ob-3-1) basis sets
+   - Handles s, p, and d orbitals with proper normalization
+
+## Extension File: pyBall/AFMExtension.py
+
+The extension provides:
+
+### Main Functions
+
+- `build_afm_extension_ui(window)` - Creates the collapsible UI panel
+- `run_afm_full_pipeline(window)` - Executes the complete AFM pipeline
+- `update_afm_plot(window)` - Interactive slice visualization
+- `_get_z_slice(grid_spec, step, z_height)` - Converts physical z-height to grid index
+
+### UI Components
+
+**Collapsible Panel** (using `CollapsibleSection` widget):
+- **Molecule Selection**: XYZ file picker for sample molecule
+- **Basis Selection**: Dropdown for DFTB+ basis (mio-1-1, 3ob-3-1)
+- **Slako Prefix**: Input for Slater-Koster parameter set
+- **CO Tip Directory**: Path to pre-computed CO tip data
+- **Grid Parameters**: Step size, margin, z-extra for grid construction
+- **Scan Parameters**: Range and step for XY scan
+- **Height Parameters**: Min, max, step for Z-height scan
+- **Pauli Parameters**: A (amplitude), beta (decay) for Pauli repulsion
+- **vdW Parameters**: C6 coefficient for van der Waals
+- **Relax Parameters**: K_LAT (lateral stiffness)
+- **Buttons**: "Run Full Pipeline", "Update Visualization"
+- **Live Update Checkbox**: Auto-update plot on z-height change
+
+**Interactive Plot Window** (embedded matplotlib):
+- Z-height spinbox for slice selection
+- Component dropdown: AFM Image (df), SCF Density, Neutral Density, Delta Density, Pauli Energy, Electrostatic Energy, vdW Energy, Total Potential, Total Z-Force
+- Real-time slice updates with proper color scaling
+- Data range and mean displayed in title
+- Symmetric colormaps for forces/potentials (seismic)
+
+### Visualization Features
+
+The extension provides interactive 3D data visualization:
+
+**AFM Image (df)**:
+- Frequency shift at multiple heights
+- Z-slicing uses scan heights array directly
+- Shows sub-molecular resolution
+
+**Densities**:
+- SCF Density (total electron density)
+- Neutral Density (atomic reference)
+- Delta Density (chemical polarization)
+- Z-slicing uses grid origin + step
+
+**Energy Fields**:
+- Pauli Repulsion Energy
+- Electrostatic Energy
+- van der Waals Energy
+- Total Potential (E from GPU gradient)
+- Total Z-Force (negated Fz, repulsive = red)
+
+**Interactive Controls**:
+- Z-height spinbox changes slice
+- Live update checkbox for automatic refresh
+- Component dropdown selects data type
+- Reuses single plot window (no memory leaks)
+
+## Pipeline Implementation
+
+The extension calls `AFM_utils.run_afm_pipeline()` which executes:
+
+**Step 1: Density Projection**
+- Runs DFTB+ SCF via `DFTBcore` (isolated process)
+- Projects density to grid using `GridProjector.project_density_dense()`
+- Computes neutral atom density
+- Calculates delta density for electrostatics
+
+**Step 2: Electrostatics**
+- FFT Poisson solver: ∇²V_ES = -4πΔρ
+- Returns electrostatic potential V_ES
+
+**Step 3: Pauli Repulsion**
+- FFT convolution: E_Pauli = A_Pauli ∫ ρ_sample ρ_tip dV
+- Uses CO tip density or Gaussian tip
+
+**Step 4: Electrostatic Tip-Sample**
+- FFT convolution: E_ES = ∫ Δρ_tip V_ES dV
+
+**Step 5: Dispersion**
+- Pairwise C6/r^6 with R_A2 softening
+- GPU-accelerated for speed
+
+**Step 6: Composition & Relaxation**
+- GPU gradient computation returns full (Fx, Fy, Fz, E) array
+- Probe particle relaxation (2D lateral-only mode)
+- Frequency shift calculation: Δf = -f₀/(2k) * ∂F_z/∂z
+
+**Step 7: STM (Optional)**
+- LUMO orbital projection
+- Bond-resolved STM with tip displacement
+
+## Data Flow
+
+```
+KekuleExplorerGUI (geometry)
+    ↓
+AFMExtension.run_afm_full_pipeline()
+    ↓
+AFM_utils.run_afm_from_xyz()
+    ↓
+AFM_utils.run_afm_pipeline()
+    ├→ Step 1: DFTBcore SCF + GridProjector
+    ├→ Step 2: FFT Poisson
+    ├→ Step 3: FFT Pauli convolution
+    ├→ Step 4: FFT ES convolution
+    ├→ Step 5: GPU dispersion
+    └→ Step 6: GPU gradient + relaxation
+        ↓
+    Returns: df, intermediates (F_total, E_pauli, E_ES, E_vdw, etc.)
+    ↓
+AFMExtension stores in _afm_results and _afm_potentials
+    ↓
+AFMExtension.update_afm_plot()
+    ↓
+Interactive matplotlib visualization
+```
+
+## GPU Acceleration
+
+The extension uses GPU acceleration for:
+1. **Gradient computation**: `AFMulator.compute_gradient_cl()` returns (Fx, Fy, Fz, E)
+2. **Probe relaxation**: `AFMulator.scan_fdbm_2d()` with relaxStrokes2D kernel
+3. **Dispersion**: Pairwise C6/r^6 computation
+4. **Density projection**: OpenCL kernels for STO evaluation
+
+Full 4D array (Fx, Fy, Fz, E) is stored throughout pipeline for:
+- Total potential visualization (index 3)
+- Total force visualization (indices 0-2)
+- Probe particle relaxation
+
+## Error Handling
+
+The extension implements robust error handling:
+- **Missing CO tip data**: Clear error message with path suggestion
+- **DFTB+ not available**: Extension load fails gracefully
+- **GPU not available**: Falls back to CPU (slower)
+- **Missing variables**: Descriptive error messages for missing intermediates
+- **OpenCL buffer errors**: Automatic reallocation on molecule change
+
+## Configuration
+
+Extension configuration stored in `_afm_config` dict:
+- Basis set selection (mio-1-1, 3ob-3-1)
+- Slako prefix for Slater-Koster parameters
+- CO tip directory
+- Grid parameters (step, margin, z_extra)
+- Scan parameters (range, step)
+- Pauli parameters (A, beta)
+- vdW parameters (C6)
+- Relax parameters (K_LAT)
+
+## Status Display
+
+The `CollapsibleSection` widget shows:
+- Extension name: "AFM FDBM Simulation"
+- Status indicator: "Ready" or current operation
+- Progress updates during pipeline execution
+
+## Testing
+
+The extension has been tested with:
+- **Pentacene** (22 atoms, mio-1-1 basis)
+- **TBTAP** (66 atoms, 3ob-3-1 basis)
+- **Water** (3 atoms, small test case)
+
+All visualization components work correctly with interactive z-height slicing.
+
+## Future Enhancements
+
+Potential improvements:
+- Add real-time AFM scan (drag molecule while computing)
+- Export AFM images to standard formats
+- Compare multiple tips (CO, Xe, etc.)
+- Batch processing for multiple heights
+- 3D volumetric rendering of force fields
+- Integration with experimental data fitting

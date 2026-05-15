@@ -12,7 +12,7 @@ ExtensionLoadError immediately.  An ExtensionProxy stands in for unloaded
 extensions and raises a loud error on any attribute access.
 """
 
-import importlib, os, json
+import importlib, os, json, traceback
 
 # ---------------------------------------------------------------------------
 # Exceptions
@@ -74,8 +74,8 @@ EXTENSION_REGISTRY = {
         build_ui='build_dftb_ui',
     ),
     'afm': dict(
-        module='pyBall.OCL.AFM', class_name='AFMulator',
-        dependencies=['pyopencl'], req_paths=['cl_src_dir'],
+        module='pyBall.AFMExtension', class_name=None,
+        dependencies=['pyopencl'], req_paths=[],
         build_ui='build_ui',
     ),
     'mmff': dict(
@@ -116,7 +116,7 @@ EXTENSION_REGISTRY = {
 DEFAULT_CONFIG = {
     'firecore': dict(enabled=True,  fdata_dir='/home/prokop/Fireball/Fdata_HCNOS', verbosity=0),
     'dftb':     dict(enabled=True,  executable='dftb+', workdir='./dftb_workdir'),
-    'afm':      dict(enabled=False, cl_src_dir='../../cpp/common_resources/cl'),
+    'afm':      dict(enabled=True, cl_src_dir='../../cpp/common_resources/cl'),
     'mmff':     dict(enabled=False, lib_path=''),
     'grid':     dict(enabled=False, fdata_dir=''),
     'psi4':     dict(enabled=False),
@@ -258,11 +258,20 @@ class ExtensionManager:
             return builder(window)
         except Exception as e:
             print(f"ExtensionManager: build_ui({name}) failed: {e}")
-            return UIComponents()
+            # Return UIComponents with error panel so user can see/copy error
+            error_panel = QtWidgets.QWidget()
+            error_layout = QtWidgets.QVBoxLayout(error_panel)
+            error_text = QtWidgets.QPlainTextEdit()
+            error_text.setPlainText(f"Extension '{name}' failed to load:\n\n{str(e)}\n\n{traceback.format_exc()}")
+            error_text.setReadOnly(True)
+            error_text.setMaximumHeight(200)
+            error_layout.addWidget(QtWidgets.QLabel(f"Extension '{name}' Error:"))
+            error_layout.addWidget(error_text)
+            return UIComponents(panel=error_panel)
 
 
 # ---------------------------------------------------------------------------
-# Extension UI builders (GUI-related functions for specific extensions)
+# Extension UI builders (built-in extensions)
 # ---------------------------------------------------------------------------
 
 def build_fireball_ui(window):
@@ -342,3 +351,5 @@ def build_dftb_ui(window):
     layout.addWidget(window.dftb_status_label)
 
     return UIComponents(panel=panel)
+
+

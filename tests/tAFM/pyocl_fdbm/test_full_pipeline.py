@@ -158,7 +158,8 @@ def main():
         plot_steps=args.plot_steps,
         use_dense_projection=args.use_dense_projection,
         max_shells=args.max_shells,
-        stm_params=stm_params
+        stm_params=stm_params,
+        ppm_mode=True  # Test spherical PPM mode (L=4, Kr=1.0)
     )
 
     print(f"\ndf shape: {results['df'].shape}")

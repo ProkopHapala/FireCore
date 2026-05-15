@@ -753,3 +753,318 @@ The current STM implementation has significant performance overhead that should 
 
 1. `/home/prokop/git/FireCore/pyBall/OCL/AFM_utils.py` - STM functions, pipeline integration
 2. `/home/prokop/git/FireCore/tests/tAFM/pyocl_fdbm/test_full_pipeline.py` - CLI arguments, plotting
+
+---
+
+# KekuleExplorerGUI Integration (May 2026)
+
+## Overview
+
+The FDBM AFM pipeline has been successfully integrated into KekuleExplorerGUI as an extension, providing a fully interactive graphical interface for AFM simulation. Users can now run AFM simulations directly from the GUI without writing scripts or using command-line tools.
+
+## Extension Architecture
+
+The AFM extension is implemented in `pyBall/AFMExtension.py` and integrates with the KekuleExplorerGUI extension manager system. It provides:
+
+- **Collapsible UI panel** with all AFM parameters
+- **Interactive matplotlib visualization** embedded in PyQt5
+- **Real-time slice updates** as z-height changes
+- **Multiple visualization components** (df, densities, energies, forces)
+
+## GUI Features
+
+### Main UI Panel
+
+The extension adds a collapsible section titled "AFM FDBM Simulation" to the KekuleExplorerGUI sidebar with the following controls:
+
+**Molecule Setup:**
+- XYZ file picker for sample molecule selection
+- Basis set dropdown (mio-1-1, 3ob-3-1, etc.)
+- Slako prefix input for Slater-Koster parameters
+
+**Tip Configuration:**
+- CO tip directory path (pre-computed tip data)
+- Falls back to Gaussian tip if CO tip unavailable
+
+**Grid Parameters:**
+- Step size (default 0.1 Å)
+- Margin around molecule (default 4.0 Å)
+- Z-extra above highest atom (default 6.0 Å)
+
+**Scan Parameters:**
+- XY scan range (default 3.0 Å)
+- XY scan step (default 0.1 Å)
+
+**Height Parameters:**
+- Minimum height (default 2.0 Å)
+- Maximum height (default 6.5 Å)
+- Height step (default 0.1 Å)
+
+**Physics Parameters:**
+- Pauli A (amplitude, default from fitted values)
+- Pauli beta (decay, default from fitted values)
+- vdW C6 coefficient (default 30.0 for CO tip)
+- K_LAT lateral stiffness (default 0.5 N/m)
+
+**Action Buttons:**
+- "Run Full Pipeline" - Executes complete AFM simulation
+- "Update Visualization" - Refreshes plot with current parameters
+
+**Live Update:**
+- Checkbox to auto-update plot when z-height spinbox changes
+
+### Interactive Visualization Window
+
+The extension creates a dedicated plot window with:
+
+**Z-Height Control:**
+- Spinbox for selecting z-height slice
+- Range matches configured height parameters
+- Updates slice in real-time if live update enabled
+
+**Component Dropdown:**
+- AFM Image (df) - Frequency shift at each height
+- SCF Density - Total electron density
+- Neutral Density - Atomic reference density
+- Delta Density - Chemical polarization (SCF - Neutral)
+- Pauli Energy - Pauli repulsion field
+- Electrostatic Energy - Electrostatic interaction
+- vdW Energy - van der Waals dispersion
+- Total Potential - Full potential from GPU (Fx,Fy,Fz,E)[3]
+- Total Z-Force - Full z-force from GPU (negated Fz)
+
+**Plot Features:**
+- Symmetric colormaps for forces/potentials (seismic)
+- Data range and mean displayed in title
+- Per-slice color scaling (auto vmin/vmax)
+- Extent labels with physical units (Å)
+- Reuses single plot window (no memory leaks)
+
+**Debug Output:**
+- Slice index (iz) and actual z-height printed
+- Data range [min, max] and mean shown
+- Colormap limits (vmin, vmax) displayed
+
+## Pipeline Integration
+
+The GUI extension calls the same backend functions as the CLI test script:
+
+```python
+# From AFMExtension.run_afm_full_pipeline()
+results = afm_utils.run_afm_from_xyz(
+    xyz_file=xyz_file,
+    output_dir=work_dir,
+    basis=basis,
+    slako_prefix=slako_prefix,
+    co_tip_dir=co_tip_dir,
+    step=step,
+    margin=margin,
+    z_extra=z_extra,
+    scan_range=scan_range,
+    scan_step=scan_step,
+    height_range=(h_min, h_max),
+    height_step=h_step,
+    pauli_params={'A': pauli_A, 'beta': pauli_beta},
+    vdw_params={'C6_CO': c6_co},
+    relax_params={'K_LAT': k_lat},
+    plot_steps=True
+)
+```
+
+The extension stores results in two dictionaries:
+
+**_afm_results:**
+- `df` - Frequency shift array (nx_s, ny_s, nz_s)
+- `scan_xs` - X scan coordinates
+- `scan_ys` - Y scan coordinates
+- `heights` - Z scan heights
+
+**_afm_potentials:**
+- `E_pauli_field` - Pauli energy field (nx, ny, nz)
+- `E_ES_field` - Electrostatic energy field (nx, ny, nz)
+- `E_vdw` - van der Waals energy field (nx, ny, nz)
+- `F_total` - Full force field (nx, ny, nz, 4) with (Fx, Fy, Fz, E)
+- `V_ES` - Electrostatic potential (nx, ny, nz)
+- `origin` - Grid origin (3,)
+- `step` - Grid spacing
+- `grid_spec` - Full grid specification
+
+## Visualization Logic
+
+### Z-Slicing
+
+Two different slicing methods are used depending on the component:
+
+**AFM Image (df):**
+- Uses `heights` array directly from scan configuration
+- Index: `iz = int((z_height - h_min) / h_step)`
+- Actual z: `actual_z = heights[iz]`
+
+**Potentials and Forces:**
+- Uses grid origin and step for physical coordinate conversion
+- Index: `iz = int((z_height - origin[2]) / step)`
+- Actual z: `actual_z = origin[2] + iz * step`
+
+This ensures correct slicing for both scan data (irregular heights) and grid data (regular grid).
+
+### Color Scaling
+
+- **Symmetric data** (forces, potentials): `vmax = max(abs(data_min), abs(data_max))`, `vmin = -vmax`
+- **Positive data** (densities): `vmin = data_min`, `vmax = data_max`
+- **Auto-update**: Color scale recalculated for each slice
+
+### Force Sign Convention
+
+Forces are negated for visualization so that repulsive forces appear positive (red):
+- Total Z-Force: `data_3d = -F_total[..., 2]`
+- This makes repulsive regions (positive force) appear red in seismic colormap
+
+## GPU Acceleration
+
+The GUI extension uses the same GPU-accelerated pipeline as the CLI version:
+
+1. **Density projection**: OpenCL kernels in `GridProjector`
+2. **Gradient computation**: `AFMulator.compute_gradient_cl()` returns (Fx, Fy, Fz, E)
+3. **Probe relaxation**: `AFMulator.scan_fdbm_2d()` with relaxStrokes2D kernel
+4. **Dispersion**: Pairwise C6/r^6 on GPU
+
+Full 4D array (Fx, Fy, Fz, E) is stored and used for:
+- Total potential visualization (index 3)
+- Total force visualization (indices 0-2)
+- Probe particle relaxation
+
+## Error Handling
+
+The extension implements comprehensive error handling:
+
+**Missing CO tip data:**
+```python
+if not os.path.exists(co_tip_dir):
+    raise FileNotFoundError(f"CO tip directory not found: {co_tip_dir}")
+```
+
+**Missing intermediates:**
+```python
+if window._afm_potentials is None or window._afm_potentials.get(key) is None:
+    raise ValueError(f"{key} data not available. Run full pipeline first.")
+```
+
+**OpenCL buffer errors:**
+- Automatic reallocation when molecule size changes
+- Dispersion AFMulator recreated on each run to avoid stale buffers
+
+**Variable scope errors:**
+- All branches set `iz`, `actual_z`, and `data` variables
+- Debug prints track variable state
+
+## Usage Workflow
+
+### Typical Session
+
+1. **Launch KekuleExplorerGUI**
+   - Load or draw molecule in main window
+   - AFM extension panel appears in sidebar
+
+2. **Configure AFM Parameters**
+   - Select sample molecule XYZ file
+   - Choose basis set (mio-1-1 for sp, 3ob-3-1 for spd)
+   - Set CO tip directory or use Gaussian tip
+   - Adjust grid/scan/height parameters if needed
+   - Verify Pauli and vdW parameters
+
+3. **Run Full Pipeline**
+   - Click "Run Full Pipeline" button
+   - Status shows progress through 6 steps
+   - Results stored in _afm_results and _afm_potentials
+   - Plot window opens automatically
+
+4. **Explore Results**
+   - Select component from dropdown
+   - Adjust z-height with spinbox
+   - Enable live update for automatic refresh
+   - Examine different heights and components
+
+5. **Modify and Rerun**
+   - Change parameters (e.g., height range, Pauli A)
+   - Click "Update Visualization" to rerun
+   - Compare results with different settings
+
+## Integration with KekuleExplorerGUI
+
+The extension integrates seamlessly with the main GUI:
+
+**Geometry Source:**
+- Uses current molecule from KekuleExplorerGUI backend
+- Atom positions and element types automatically extracted
+
+**Extension Manager:**
+- Registered in extension system with metadata
+- Lazy loading of dependencies (pyopencl, DFTBcore)
+- Safe error handling if dependencies missing
+
+**Collapsible Panel:**
+- Uses `CollapsibleSection` widget from `GUI/CollapsibleSection.py`
+- Can be collapsed to save space
+- Status indicator shows extension state
+
+**Plot Window:**
+- Embedded matplotlib figure in PyQt5 dialog
+- Reuses single window to avoid memory leaks
+- Proper layout management for clean UI
+
+## Testing
+
+The GUI extension has been tested with:
+
+**Molecules:**
+- Pentacene (22 atoms, mio-1-1 basis)
+- TBTAP (66 atoms, 3ob-3-1 basis)
+- Water (3 atoms, small test case)
+
+**Components:**
+- All 9 visualization components tested
+- Interactive z-height slicing verified
+- Color scaling confirmed for each component
+
+**Error Cases:**
+- Missing CO tip directory handled correctly
+- Empty molecule rejected with clear error
+- Missing intermediates raise descriptive errors
+
+## Advantages Over CLI
+
+The GUI provides several benefits over the CLI test script:
+
+1. **No programming required** - All parameters accessible via UI
+2. **Immediate feedback** - Plot updates as you change parameters
+3. **Visual exploration** - Easy to scan through heights and components
+4. **Integrated workflow** - Works directly with KekuleExplorerGUI geometry
+5. **Parameter persistence** - Settings remembered between sessions (via QSettings)
+6. **Error clarity** - GUI shows errors in status bar with clear messages
+
+## Future Enhancements
+
+Potential improvements to the GUI extension:
+
+- **Real-time AFM scan** - Drag molecule while computing live AFM
+- **Export functionality** - Save AFM images to PNG/SVG
+- **Tip comparison** - Compare CO, Xe, and other tips side-by-side
+- **Batch processing** - Run multiple height ranges automatically
+- **3D visualization** - Volumetric rendering of force fields
+- **Parameter fitting** - Fit Pauli parameters to experimental data
+- **Animation** - Create height-sweep animations
+- **Comparison mode** - Overlay different simulations
+
+## Files Modified
+
+1. **pyBall/AFMExtension.py** - New extension file (GUI integration)
+2. **pyBall/ExtensionManager.py** - Extension registration and loading
+3. **pyBall/KekuleExplorerGUI.py** - Extension UI integration
+4. **pyBall/GUI/CollapsibleSection.py** - Collapsible panel widget
+5. **pyBall/OCL/AFM_utils.py** - Backend pipeline (unchanged)
+6. **pyBall/OCL/AFM.py** - Core AFM engine (unchanged)
+7. **pyBall/DFTB/Grid_dftb.py** - Density projection (unchanged)
+
+## Summary
+
+The KekuleExplorerGUI integration brings the full power of the FDBM AFM pipeline to a user-friendly graphical interface. Users can now perform sophisticated AFM simulations without writing code, with interactive visualization and immediate feedback. The extension follows the established extension manager pattern and integrates seamlessly with the existing GUI architecture.

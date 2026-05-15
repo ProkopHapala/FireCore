@@ -172,7 +172,7 @@ class AFMulator(OpenCLBase):
 
     def scan_fdbm(self, scan_xs, scan_ys, probe_heights, mol_z=0.0,
                   ppm_mode=True, use_fire=True,
-                  K_LAT=0.0031, K_RAD=0.1248, bond_length=3.0,
+                  K_LAT=0.5, K_RAD=20.0, bond_length=3.0,
                   stiffness=None, dpos0=None, relax_pars=None):
         """
         GPU probe-particle relaxation over a 2D scan using relaxStrokes kernel.
@@ -184,7 +184,8 @@ class AFMulator(OpenCLBase):
             dpos0 = (0, 0, -bond_length, bond_length)
             stiffness = (-K_LAT, -K_LAT, -K_LAT, -K_RAD)
             Scan heights are tip-apex heights; probe sits ~bond_length below.
-            Typical: K_LAT=0.0031 eV/Ang^2 (0.5 N/m), K_RAD=0.1248 eV/Ang^2 (20 N/m), L=3 Ang.
+            Stiffness units: eV/Ang^2
+            Typical: K_LAT=0.5, K_RAD=20.0, L=3 Ang.
 
           ppm_mode=False (linear harmonic):
             Pure 3D harmonic spring, no radial bond (stiffness.w=0).
@@ -221,20 +222,12 @@ class AFMulator(OpenCLBase):
         n_scan = nx_s * ny_s
         origin = self.fdbm_origin
 
-        # --- tip model parameters ---
-        if ppm_mode:
-            # Physical PPM: probe hangs bond_length below tip-apex.
-            # probe_heights are the desired probe positions above mol_z.
-            # Tip-apex must be bond_length higher so probe lands at probe_heights.
-            stiffness_v  = np.array([-K_LAT, -K_LAT, -K_LAT, -K_RAD], dtype=np.float32) if stiffness is None else np.array(stiffness, dtype=np.float32)
-            dpos0_v      = np.array([0., 0., -bond_length, bond_length], dtype=np.float32) if dpos0 is None else np.array(dpos0, dtype=np.float32)
-            z_start = float(np.max(probe_heights)) + mol_z + bond_length  # tip-apex = probe_z + L
-        else:
-            # Linear mode: pure 3D harmonic spring, no radial bond (stiffness.w=0)
-            # dpos0.z=-0.001 avoids r=0 in tipForce (prevents 0/0=NaN)
-            stiffness_v  = np.array([-K_LAT, -K_LAT, -K_LAT, 0.], dtype=np.float32) if stiffness is None else np.array(stiffness, dtype=np.float32)
-            dpos0_v      = np.array([0., 0., -0.001, 0.], dtype=np.float32) if dpos0 is None else np.array(dpos0, dtype=np.float32)
-            z_start = float(np.max(probe_heights)) + mol_z
+        # Physical PPM: probe hangs bond_length below tip-apex.
+        # probe_heights are the desired probe positions above mol_z.
+        # Tip-apex must be bond_length higher so probe lands at probe_heights.
+        stiffness_v  = np.array([-K_LAT, -K_LAT, -K_LAT, -K_RAD], dtype=np.float32) if stiffness is None else np.array(stiffness, dtype=np.float32)
+        dpos0_v      = np.array([0., 0., -bond_length, bond_length], dtype=np.float32) if dpos0 is None else np.array(dpos0, dtype=np.float32)
+        z_start = float(np.max(probe_heights)) + mol_z + bond_length  # tip-apex = probe_z + L
 
         # --- integrator parameters ---
         if relax_pars is not None:
@@ -294,6 +287,7 @@ class AFMulator(OpenCLBase):
         Exactly matches CPU pp_relax_2d: z fixed per slice, only x,y relax with damped MD.
         Damped update: v *= (1-damp); v += F*dt; pos += v*dt
         Probe resets to anchor at start of each height slice (same as CPU).
+        Stiffness units: eV/Ang^2
 
         Args:
             scan_xs:       (nx_s,) x scan positions [Ang, world coords]
@@ -322,8 +316,6 @@ class AFMulator(OpenCLBase):
         pts[:, 0] = gx.ravel()
         pts[:, 1] = gy.ravel()
         pts[:, 2] = z_start
-
-        print( "!!!!! scan_fdbm_2d() !!!!!" )
 
         self.realloc_scan_buffers(n_scan, nz_s)
         self.toGPU_(self.scan_pts_cl, pts)
@@ -1525,13 +1517,13 @@ def pp_relax_2d(force_func, scan_xs, scan_ys, probe_heights, mol_z=0.0,
 
 def pp_relax_2d_cl(afmulator, F_total, origin, step,
                    scan_xs, scan_ys, probe_heights, mol_z=0.0,
-                   K_LAT=0.0031, dpos0=None, stiffness=None, relax_pars=None,
+                   K_LAT=0.5, dpos0=None, stiffness=None, relax_pars=None,
                    ppm_mode=True):
     """
     Backward-compat wrapper: calls AFMulator.setup_fdbm_grid + scan_fdbm.
     Prefer calling those methods directly for repeated scans (avoids re-uploading image).
 
-    ppm_mode=True:  physical PPM with radial CO bond (L=3 Ang, K_RAD=0.1248 eV/Ang^2).
+    ppm_mode=True:  physical PPM with radial CO bond (L=3 Ang, K_RAD=20.0 N/m : there seems to be som confusion beteen units).
     ppm_mode=False: simplified harmonic, probe pinned at scan heights.
     """
     afmulator.setup_fdbm_grid(F_total, origin, step)
@@ -1768,13 +1760,17 @@ def compute_dispersion_grid(atomPos, atomTypes, origin, step, ngrid, C6_atom_dic
     # Use OpenCL version if requested
     if use_opencl:
         global _dispersion_afmulator
-        # Create singleton AFMulator instance on first call
-        if _dispersion_afmulator is None:
+        
+        # Check if we need to recreate (first run or molecule/grid changed)
+        need_recreate = _dispersion_afmulator is None
+        if not need_recreate and hasattr(_dispersion_afmulator, '_disp_n_atoms'):
+            # Recreate if atom count changed - avoid buffer size mismatches
+            need_recreate = _dispersion_afmulator._disp_n_atoms != len(atomPos)
+        
+        if need_recreate:
             _dispersion_afmulator = AFMulator(use_morse=False, nloc=32)
-
-        # Allocate buffers on first call (check if attribute exists)
-        if not hasattr(_dispersion_afmulator, 'disp_atoms_cl') or _dispersion_afmulator.disp_atoms_cl is None:
             _dispersion_afmulator.realloc_dispersion_buffers(len(atomPos))
+            _dispersion_afmulator._disp_n_atoms = len(atomPos)
 
         if return_grads:
             return _dispersion_afmulator.compute_dispersion_grid_cl(
