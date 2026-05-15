@@ -97,17 +97,17 @@ float4 read_imagef_trilin_( __read_only image3d_t imgIn, float4 coord ){
 }; 
 
 
-float4 interpFE( float3 pos, float3 dinvA, float3 dinvB, float3 dinvC, __read_only image3d_t imgIn ){
-    const float4 coord = (float4)( dot(pos,dinvA),dot(pos,dinvB),dot(pos,dinvC), 0.0f );
+float4 interpFE( float3 pos, float4 dinvA, float4 dinvB, float4 dinvC, __read_only image3d_t imgIn ){
+    // coord = (pos - origin) / L using 4-vector dot: dot([x,y,z,1], [1/L,0,0,-origin/L])
+    float4 pos4 = (float4)(pos, 1.0f);
+    const float4 coord = (float4)( dot(pos4,dinvA), dot(pos4,dinvB), dot(pos4,dinvC), 0.0f );
     return read_imagef( imgIn, sampler_1, coord );
-    //return coord;
 }
 
-float4 interpFE_prec( float3 pos, float3 dinvA, float3 dinvB, float3 dinvC, __read_only image3d_t imgIn ){
-    const float4 coord = (float4)( dot(pos,dinvA),dot(pos,dinvB),dot(pos,dinvC), 0.0f );
+float4 interpFE_prec( float3 pos, float4 dinvA, float4 dinvB, float4 dinvC, __read_only image3d_t imgIn ){
+    float4 pos4 = (float4)(pos, 1.0f);
+    const float4 coord = (float4)( dot(pos4,dinvA), dot(pos4,dinvB), dot(pos4,dinvC), 0.0f );
     return read_imagef_trilin( imgIn, coord ); 
-    // read_imagef( imgIn, sampler_1, coord );
-    //return coord;
 }
 
 // this should be macro, to pass values by reference
@@ -166,7 +166,7 @@ __kernel void getFEinPoints(
 ){
     //const float4 coord     = points[get_global_id(0)];
     //vals[get_global_id(0)] = read_imagef(imgIn, sampler_1, coord);
-    FEs[get_global_id(0)]    = interpFE( points[get_global_id(0)].xyz, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+    FEs[get_global_id(0)]    = interpFE( points[get_global_id(0)].xyz, dinvA, dinvB, dinvC, imgIn );
 }
 
 __kernel void getFEinPointsShifted(
@@ -178,7 +178,7 @@ __kernel void getFEinPointsShifted(
     float4 dinvC,
     float4 dpos0
 ){
-    FEs[get_global_id(0)] = interpFE( points[get_global_id(0)].xyz+dpos0.xyz, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+    FEs[get_global_id(0)] = interpFE( points[get_global_id(0)].xyz+dpos0.xyz, dinvA, dinvB, dinvC, imgIn );
 }
 
 __kernel void getFEinStrokes(
@@ -197,7 +197,7 @@ __kernel void getFEinStrokes(
     float3 pos    =  points[get_global_id(0)].xyz + dpos0.xyz; 
     for(int iz=0; iz<nz; iz++){
         float4 fe  =  read_imagef( imgIn, sampler_1, (float4){pos.x,pos.y,pos.z,0} );
-        //float4 fe  = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+        //float4 fe  = interpFE( pos, dinvA, dinvB, dinvC, imgIn );
         if(get_global_id(0)==100)printf( "GPU %li %i (%f,%f,%f) -> fe(%g,%g,%g,%g) \n", get_global_id(0), iz, pos.x, pos.y, pos.z, fe.x,fe.y,fe.z,fe.w );
         //if(get_global_id(0)==0)printf( "GPU iz %i (%f,%f,%f) -> fe(%g,%g,%g,%g) \n", iz, pos.x, pos.y, pos.z, fe.x,fe.y,fe.z,fe.w );
         FEs[get_global_id(0)*nz + iz] = fe;
@@ -222,7 +222,7 @@ __kernel void getFEinStrokesTilted(
     float3 pos    =  points[get_global_id(0)].xyz + dpos0.xyz; 
     for(int iz=0; iz<nz; iz++){
         //printf( " %li %i (%f,%f,%f) \n", get_global_id(0), iz, pos.x, pos.y, pos.z );
-        float4 fe   = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+        float4 fe   = interpFE( pos, dinvA, dinvB, dinvC, imgIn );
         float4 fe_  = fe;
         fe_.xyz = rotMat( fe.xyz, tipA.xyz, tipB.xyz, tipC.xyz );
         FEs[get_global_id(0)*nz + iz]    = fe_;
@@ -246,11 +246,11 @@ __kernel void getZisoTilted(
 ){
     float3 pos     = points[get_global_id(0)].xyz + dpos0.xyz; 
     float4 ofe,fe;
-    ofe     = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+    ofe     = interpFE( pos, dinvA, dinvB, dinvC, imgIn );
     ofe.xyz = rotMat( ofe.xyz, tipA.xyz, tipB.xyz, tipC.xyz );
     for(int iz=1; iz<nz; iz++){
         pos    += dTip.xyz;
-        fe     = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+        fe     = interpFE( pos, dinvA, dinvB, dinvC, imgIn );
         fe.xyz = rotMat( fe.xyz, tipA.xyz, tipB.xyz, tipC.xyz );
         //if( get_global_id(0) == 6050 ) printf( "iz %i fe %g iso %g \n", iz, fe.z, iso );
         if( fe.z/iso > 1.0 ){
@@ -281,17 +281,17 @@ __kernel void getZisoFETilted(
 ){
     float3 pos     = points[get_global_id(0)].xyz + dpos0.xyz; 
     float4 ofe,fe;
-    ofe     = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+    ofe     = interpFE( pos, dinvA, dinvB, dinvC, imgIn );
     ofe.xyz = rotMat( ofe.xyz, tipA.xyz, tipB.xyz, tipC.xyz );
     for(int iz=1; iz<nz; iz++){
         pos    += dTip.xyz;
-        fe     = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+        fe     = interpFE( pos, dinvA, dinvB, dinvC, imgIn );
         fe.xyz = rotMat( fe.xyz, tipA.xyz, tipB.xyz, tipC.xyz );
         //if( get_global_id(0) == 6050 ) printf( "iz %i fe %g iso %g \n", iz, fe.z, iso );
         if( fe.z/iso > 1.0 ){
             float t = (iso - ofe.z)/(fe.z - ofe.z);
             zMap [get_global_id(0)] = iz + t;
-            fe     = interpFE( pos+dTip.xyz*t, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgFE );
+            fe     = interpFE( pos+dTip.xyz*t, dinvA, dinvB, dinvC, imgFE );
             fe.xyz = rotMat( fe.xyz, tipA.xyz, tipB.xyz, tipC.xyz );
             feMap[get_global_id(0)] = fe;
             return;
@@ -367,15 +367,15 @@ __kernel void relaxStrokes(
         float4 fe;
         float3 v   = 0.0f;
         for(int i=0; i<N_RELAX_STEP_MAX; i++){
-            fe        = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+            fe        = interpFE( pos, dinvA, dinvB, dinvC, imgIn );
             float3 f  = fe.xyz;
             f        += tipForce( pos-tipPos, stiffness, dpos0 );
             
-            #if OPT_FIRE
-            v = update_FIRE( f, v, &dt, &damp, dtmin, dtmax, damp0 );
-            #else
+            //#if OPT_FIRE
+            //v = update_FIRE( f, v, &dt, &damp, dtmin, dtmax, damp0 );
+            //#else
             v        *=    (1 - damp);
-            #endif
+            //#endif
             v        += f * dt;
             pos.xyz  += v * dt;
 
@@ -385,6 +385,59 @@ __kernel void relaxStrokes(
         //FEs[get_global_id(0)*nz + iz].xyz = pos;
         tipPos += dTip.xyz;
         pos    += dTip.xyz;
+    }
+}
+
+// relaxStrokes2D: 2D lateral-only damped MD relaxation.
+// Matches CPU pp_relax_2d exactly: z is fixed per height slice, only x,y relax.
+// Damped velocity update: v *= (1-damp); v += F*dt; pos += v*dt
+// Lateral spring: F_spring = -K_lat * (pos.xy - anchor.xy)
+// Args:
+//   imgIn    - 3D force field image (Fx,Fy,Fz,E)
+//   points   - (n_scan,4) tip anchor positions (world coords); w=start_z for first height
+//   FEs      - (n_scan*nz,4) output: interpolated (Fx,Fy,Fz,E) at relaxed position
+//   dinvA/B/C - inverse cell vectors for normalized image coords
+//   K_lat    - lateral spring stiffness [eV/Ang^2]
+//   dh       - z step downward between height slices [Ang]  (dh>0 means descending)
+//   dt       - time step
+//   damp     - velocity damping coefficient  (v *= 1-damp each step)
+//   nz       - number of height slices
+__kernel void relaxStrokes2D(
+    __read_only image3d_t  imgIn,
+    __global  float4*      points,
+    __global  float4*      FEs,
+    float4 dinvA,
+    float4 dinvB,
+    float4 dinvC,
+    float K_lat,
+    float dh,
+    float dt,
+    float damp,
+    int   nz
+){
+    int gid = get_global_id(0);
+    float4 tip0 = points[gid];              // anchor: (ax, ay, az_start, _)
+    float  ax   = tip0.x;
+    float  ay   = tip0.y;
+    float  az   = tip0.z;                   // z of first (highest) height slice
+
+    for(int iz=0; iz<nz; iz++){
+        float pz = az - iz*dh;              // z fixed for this slice (descend by dh per step)
+        float px = ax, py = ay;             // reset per slice (matches CPU pp_relax_2d lines 1448-1450)
+        float vx = 0.0f, vy = 0.0f;
+
+        for(int i=0; i<N_RELAX_STEP_MAX; i++){
+            float4 fe = interpFE( (float3)(px, py, pz), dinvA, dinvB, dinvC, imgIn );
+            float  fx = fe.x - K_lat * (px - ax);
+            float  fy = fe.y - K_lat * (py - ay);
+            vx = vx*(1.0f - damp) + fx*dt;
+            vy = vy*(1.0f - damp) + fy*dt;
+            px += vx*dt;
+            py += vy*dt;
+            if( (fx*fx + fy*fy) < F2CONV ) break;
+        }
+        float4 fe_out = interpFE( (float3)(px, py, pz), dinvA, dinvB, dinvC, imgIn );
+        FEs[gid*nz + iz] = fe_out;
     }
 }
 
@@ -461,7 +514,7 @@ __kernel void relaxStrokesTilted(
         float3 v   = (float3){0.f,0.f,0.f};
         
         for(int i=0; i<N_RELAX_STEP_MAX; i++){
-            fe            = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+            fe            = interpFE( pos, dinvA, dinvB, dinvC, imgIn );
             float3 f      = fe.xyz;
             float3 dpos   = pos-tipPos;
             float3 dpos_  = rotMat  ( dpos, tipA.xyz, tipB.xyz, tipC.xyz );    // to tip-coordinates
@@ -482,7 +535,7 @@ __kernel void relaxStrokesTilted(
 
             if(dot(f,f)<F2CONV) break;
         }
-        fe            = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+        fe            = interpFE( pos, dinvA, dinvB, dinvC, imgIn );
         if(1){ // output tip-rotated force
             float4 fe_  = fe;
             fe_.xyz = rotMat( fe.xyz, tipA.xyz, tipB.xyz, tipC.xyz );
@@ -557,8 +610,8 @@ __kernel void relaxStrokesTilted_convZ(
         float3 v   = 0.0f;
         for(int i=0; i<N_RELAX_STEP_MAX; i++){
         //for(int i=0; i<1; i++){ // DEBUG
-            fe            = interpFE( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
-            //fe            = interpFE_prec( pos, dinvA.xyz, dinvB.xyz, dinvC.xyz, imgIn );
+            fe            = interpFE( pos, dinvA, dinvB, dinvC, imgIn );
+            //fe            = interpFE_prec( pos, dinvA, dinvB, dinvC, imgIn );
             float3 f      = fe.xyz;
             float3 dpos   = pos-tipPos;
             float3 dpos_  = rotMat  ( dpos, tipA.xyz, tipB.xyz, tipC.xyz );    // to tip-coordinates

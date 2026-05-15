@@ -75,7 +75,8 @@ class AFMulator(OpenCLBase):
     DEFAULT_tipQs      = np.array([ 0.,-0.1, 0.1, 0.], dtype=np.float32)
     DEFAULT_tipQZs     = np.array([ 0., 1.8, 3.6, 0.], dtype=np.float32)
 
-    def __init__(self, cl_src_dir=None, use_morse=False, nloc=32):
+
+    def __init__(self, cl_src_dir=None, use_morse=False, nloc=32, use_fire=True):
         super().__init__(nloc=nloc, preferred_vendor='nvidia', bPrint=True)
         self.use_morse = use_morse
         self._vram_bytes = 0
@@ -90,8 +91,10 @@ class AFMulator(OpenCLBase):
         print(f"AFMulator: device max_alloc={_bytes_to_gb(self._max_alloc):.3f} GB global_mem={_bytes_to_gb(self._global_mem):.3f} GB")
         relax_cl = os.path.join(cl_src_dir, 'relax.cl')
         print(f"AFMulator: compiling {relax_cl}")
-        self.load_program(kernel_path=relax_cl)
-        print("AFMulator: relax.cl compiled OK")
+        # Build options: -DOPT_FIRE=0 for damped velocity (matches CPU), -DOPT_FIRE=1 for FIRE
+        build_options = ['-D', f'OPT_FIRE={1 if use_fire else 0}']
+        self.load_program(kernel_path=relax_cl, build_options=build_options)
+        print(f"AFMulator: relax.cl compiled OK (use_fire={use_fire})")
         # State
         self.mol = self.elem_types = None
         self.atoms_arr = self.cLJs_arr = None
@@ -110,6 +113,14 @@ class AFMulator(OpenCLBase):
         self.surfFF     = self.DEFAULT_surfFF.copy()
         self.tipQs      = self.DEFAULT_tipQs.copy()
         self.tipQZs     = self.DEFAULT_tipQZs.copy()
+        # FDBM scan state (set by setup_fdbm_grid)
+        self.img_FF_fdbm  = None   # cl.Image holding F_total (Fx,Fy,Fz,E)
+        self.fdbm_dinvA   = None   # float4 for interpFE normalized coords
+        self.fdbm_dinvB   = None
+        self.fdbm_dinvC   = None
+        self.fdbm_origin  = None   # (3,) grid origin [Ang]
+        self.fdbm_step    = None   # grid spacing [Ang]
+        self.fdbm_shape   = None   # (nx,ny,nz)
 
     # ── buffer management ─────────────────────────────────────────────────────
 
@@ -131,6 +142,202 @@ class AFMulator(OpenCLBase):
             "scan_FEs": sz_f * 4 * n_scan * nz,    # float4 per (scan_point, z_step)
         }
         self.try_make_buffers(buffs, suffix="_cl")
+
+    def setup_fdbm_grid(self, F_total, origin, step):
+        """
+        Upload FDBM force-field image to GPU and precompute lattice vectors.
+        Call once per new force field; then call scan_fdbm() repeatedly.
+
+        Args:
+            F_total: (nx,ny,nz,4) float32  columns=(Fx,Fy,Fz,E), F = -grad(E_total)
+            origin:  (3,) float  grid origin [Ang]
+            step:    float  grid spacing [Ang]
+        """
+        nx, ny, nz = F_total.shape[:3]
+        Lx, Ly, Lz = nx*step, ny*step, nz*step
+        # Reorder (nx,ny,nz,4) -> (nz,ny,nx,4) for OpenCL 3D image layout
+        F_img = np.ascontiguousarray(F_total.transpose(2, 1, 0, 3), dtype=np.float32)
+        mf  = cl.mem_flags
+        fmt = cl.ImageFormat(cl.channel_order.RGBA, cl.channel_type.FLOAT)
+        self.img_FF_fdbm = cl.Image(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, fmt, shape=(nx, ny, nz), hostbuf=F_img)
+        # Coordinate transform: coord = (pos - origin) / L = pos/L - origin/L
+        # dinvA/B/C dot pos gives normalized coord 0..1 within grid
+        self.fdbm_dinvA  = np.array([1./Lx, 0.,    0.,    -origin[0]/Lx], dtype=np.float32)
+        self.fdbm_dinvB  = np.array([0.,    1./Ly, 0.,    -origin[1]/Ly], dtype=np.float32)
+        self.fdbm_dinvC  = np.array([0.,    0.,    1./Lz, -origin[2]/Lz], dtype=np.float32)
+        self.fdbm_origin = np.asarray(origin, dtype=np.float32)
+        self.fdbm_step   = float(step)
+        self.fdbm_shape  = (nx, ny, nz)
+        print(f"AFMulator.setup_fdbm_grid: grid={nx}x{ny}x{nz}  step={step:.3f}  L=({Lx:.1f},{Ly:.1f},{Lz:.1f}) Ang")
+
+    def scan_fdbm(self, scan_xs, scan_ys, probe_heights, mol_z=0.0,
+                  ppm_mode=True, use_fire=True,
+                  K_LAT=0.5, K_RAD=20.0, bond_length=3.0,
+                  stiffness=None, dpos0=None, relax_pars=None):
+        """
+        GPU probe-particle relaxation over a 2D scan using relaxStrokes kernel.
+        Requires setup_fdbm_grid() to be called first.
+
+        Two tip models (ppm_mode switch):
+          ppm_mode=True  (default, physical PPM):
+            Probe on a radial bond of length L below tip-apex.
+            dpos0 = (0, 0, -bond_length, bond_length)
+            stiffness = (-K_LAT, -K_LAT, -K_LAT, -K_RAD)
+            Scan heights are tip-apex heights; probe sits ~bond_length below.
+            Stiffness units: eV/Ang^2
+            Typical: K_LAT=0.5, K_RAD=20.0, L=3 Ang.
+
+          ppm_mode=False (linear harmonic):
+            Pure 3D harmonic spring, no radial bond (stiffness.w=0).
+            dpos0 = (0, 0, 0, 0)  probe at tip position.
+            stiffness = (-K_LAT, -K_LAT, -K_LAT, 0)  isotropic lateral spring.
+            Scan heights are probe heights directly.
+
+        Integrator modes (use_fire switch):
+          use_fire=True  (default): Use FIRE optimizer (fast convergence)
+          use_fire=False: Use damped velocity (matches CPU pp_relax_2d behavior)
+            CPU uses: v = 0.8*v + 0.3*f, pos += v*0.3
+            GPU equivalent: damp=0.2, dt=0.3 (for 50 steps N_RELAX_STEP_MAX)
+
+        Args:
+            scan_xs:       (nx_s,) x scan positions [Ang, world coords]
+            scan_ys:       (ny_s,) y scan positions [Ang]
+            probe_heights: (nz_s,) tip-apex heights above mol_z [Ang]
+            mol_z:         float  z of molecule top [Ang]
+            ppm_mode:      bool  True=PPM radial bond, False=simple harmonic
+            use_fire:      bool  True=FIRE integrator, False=damped velocity
+            K_LAT:         float  lateral stiffness [eV/Ang^2]  (ppm_mode=True)
+            K_RAD:         float  radial bond stiffness [eV/Ang^2]  (ppm_mode=True)
+            bond_length:   float  CO bond length [Ang]  (ppm_mode=True)
+            stiffness:     (4,) float4 override; None -> auto from mode
+            dpos0:         (4,) float4 override; None -> auto from mode
+            relax_pars:    (4,) float4 (dt,damp,tmin,tmax); None -> auto from mode/use_fire
+
+        Returns:
+            FEs_relax: (nx_s, ny_s, nz_s, 4) float32  relaxed (Fx,Fy,Fz,E) at probe pos
+                       iz=0 corresponds to probe_heights[0] (lowest z)
+        """
+        assert self.img_FF_fdbm is not None, "call setup_fdbm_grid() first"
+        nx_s, ny_s, nz_s = len(scan_xs), len(scan_ys), len(probe_heights)
+        n_scan = nx_s * ny_s
+        origin = self.fdbm_origin
+
+        # Physical PPM: probe hangs bond_length below tip-apex.
+        # probe_heights are the desired probe positions above mol_z.
+        # Tip-apex must be bond_length higher so probe lands at probe_heights.
+        stiffness_v  = np.array([-K_LAT, -K_LAT, -K_LAT, -K_RAD], dtype=np.float32) if stiffness is None else np.array(stiffness, dtype=np.float32)
+        dpos0_v      = np.array([0., 0., -bond_length, bond_length], dtype=np.float32) if dpos0 is None else np.array(dpos0, dtype=np.float32)
+        z_start = float(np.max(probe_heights)) + mol_z + bond_length  # tip-apex = probe_z + L
+
+        # --- integrator parameters ---
+        if relax_pars is not None:
+            relax_pars_v = np.array(relax_pars, dtype=np.float32)
+        elif use_fire:
+            relax_pars_v = self.relax_pars.copy()  # FIRE: default (dt=0.5, damp=0.1)
+        else:
+            # Damped velocity: match CPU pp_relax_2d (v=0.8*v+0.3*f, pos+=v*0.3)
+            # OpenCL: v*=(1-damp), v+=f*dt, pos+=v*dt -> damp=0.2, dt=0.3
+            relax_pars_v = np.array([0.3, 0.2, 0.03, 0.3], dtype=np.float32)
+
+        # --- build scan point buffer (grid-local coordinates) ---
+        # Tip starts at highest z, steps down
+        heights_desc = np.sort(probe_heights)[::-1]   # descending
+        dh = float(heights_desc[0] - heights_desc[-1]) / max(nz_s - 1, 1) if nz_s > 1 else 0.
+        dTip = np.array([0., 0., -dh, 0.], dtype=np.float32)
+
+        # vectorised: outer product of scan_xs, scan_ys -> (nx_s*ny_s, 4)
+        # pts must be world coordinates (Ang); interpFE applies the full dinv transform internally
+        gx, gy = np.meshgrid(scan_xs, scan_ys, indexing='ij')
+        pts = np.zeros((n_scan, 4), dtype=np.float32)
+        pts[:, 0] = gx.ravel()
+        pts[:, 1] = gy.ravel()
+        pts[:, 2] = z_start
+
+        # --- allocate/reuse GPU scan buffers ---
+        self.realloc_scan_buffers(n_scan, nz_s)
+        self.toGPU_(self.scan_pts_cl, pts)
+
+        # --- launch relaxStrokes ---
+        self.prg.relaxStrokes(
+            self.queue, (max(n_scan, 1),), (1,),
+            self.img_FF_fdbm,
+            self.scan_pts_cl,
+            self.scan_FEs_cl,
+            self.fdbm_dinvA, self.fdbm_dinvB, self.fdbm_dinvC,
+            dTip,
+            stiffness_v, dpos0_v, relax_pars_v,
+            np.int32(nz_s)
+        )
+        self.queue.finish()
+
+        # --- download and reshape ---
+        FEs_h = np.zeros((n_scan * nz_s, 4), dtype=np.float32)
+        self.fromGPU_(self.scan_FEs_cl, FEs_h)
+        self.queue.finish()
+
+        # relaxStrokes: FEs[gid*nz+iz] where iz=0=highest z; flip to iz=0=lowest
+        FEs_relax = FEs_h.reshape(nx_s, ny_s, nz_s, 4)[:, :, ::-1, :]
+        Fz = FEs_relax[:,:,:,2]
+        print(f"  AFMulator.scan_fdbm: Fz min={Fz.min():.4f}  max={Fz.max():.4f}  mean={Fz.mean():.4f} eV/Ang  ppm_mode={ppm_mode}")
+        return FEs_relax
+
+    def scan_fdbm_2d(self, scan_xs, scan_ys, probe_heights, mol_z=0.0, K_LAT=0.5, dt=0.3, damp=0.2):
+        """
+        2D lateral-only relaxation using relaxStrokes2D kernel.
+        Exactly matches CPU pp_relax_2d: z fixed per slice, only x,y relax with damped MD.
+        Damped update: v *= (1-damp); v += F*dt; pos += v*dt
+        Probe resets to anchor at start of each height slice (same as CPU).
+        Stiffness units: eV/Ang^2
+
+        Args:
+            scan_xs:       (nx_s,) x scan positions [Ang, world coords]
+            scan_ys:       (ny_s,) y scan positions [Ang]
+            probe_heights: (nz_s,) probe heights above mol_z, ascending [Ang]
+            mol_z:         float  z of molecule top [Ang]
+            K_LAT:         float  lateral stiffness [eV/Ang^2]
+            dt:            float  time step
+            damp:          float  damping coefficient (v *= 1-damp)
+
+        Returns:
+            FEs_relax: (nx_s, ny_s, nz_s, 4) float32  (Fx,Fy,Fz,E) at relaxed pos
+                       iz=0 = probe_heights[0] (lowest z)
+        """
+        assert self.img_FF_fdbm is not None, "call setup_fdbm_grid() first"
+        nx_s, ny_s, nz_s = len(scan_xs), len(scan_ys), len(probe_heights)
+        n_scan = nx_s * ny_s
+
+        # heights descending: iz=0 = highest, iz=nz-1 = lowest
+        heights_desc = np.sort(probe_heights)[::-1]
+        dh = float(heights_desc[0] - heights_desc[-1]) / max(nz_s - 1, 1) if nz_s > 1 else 0.
+        z_start = float(heights_desc[0]) + mol_z   # world z of first (highest) slice
+
+        gx, gy = np.meshgrid(scan_xs, scan_ys, indexing='ij')
+        pts = np.zeros((n_scan, 4), dtype=np.float32)
+        pts[:, 0] = gx.ravel()
+        pts[:, 1] = gy.ravel()
+        pts[:, 2] = z_start
+
+        self.realloc_scan_buffers(n_scan, nz_s)
+        self.toGPU_(self.scan_pts_cl, pts)
+        self.prg.relaxStrokes2D(
+            self.queue, (n_scan,), (1,),
+            self.img_FF_fdbm,
+            self.scan_pts_cl,
+            self.scan_FEs_cl,
+            self.fdbm_dinvA, self.fdbm_dinvB, self.fdbm_dinvC,
+            np.float32(K_LAT), np.float32(dh),
+            np.float32(dt),    np.float32(damp),
+            np.int32(nz_s)
+        )
+        self.queue.finish()
+        FEs_h = np.zeros((n_scan * nz_s, 4), dtype=np.float32)
+        self.fromGPU_(self.scan_FEs_cl, FEs_h)
+        self.queue.finish()
+        # flip iz so iz=0 = lowest z (matches CPU pp_relax_2d order)
+        FEs_relax = FEs_h.reshape(nx_s, ny_s, nz_s, 4)[:, :, ::-1, :]
+        Fz = FEs_relax[:,:,:,2]
+        print(f"  AFMulator.scan_fdbm_2d: Fz min={Fz.min():.4f}  max={Fz.max():.4f}  mean={Fz.mean():.4f} eV/Ang")
+        return FEs_relax
 
     def realloc_dispersion_buffers(self, natoms):
         """(Re-)allocate persistent GPU buffers for dispersion computation via try_make_buffers."""
@@ -1308,6 +1515,29 @@ def pp_relax_2d(force_func, scan_xs, scan_ys, probe_heights, mol_z=0.0,
     return FEs_relax, tip_disp
 
 
+def pp_relax_2d_cl(afmulator, F_total, origin, step,
+                   scan_xs, scan_ys, probe_heights, mol_z=0.0,
+                   K_LAT=0.5, dpos0=None, stiffness=None, relax_pars=None,
+                   ppm_mode=True):
+    """
+    Backward-compat wrapper: calls AFMulator.setup_fdbm_grid + scan_fdbm.
+    Prefer calling those methods directly for repeated scans (avoids re-uploading image).
+
+    ppm_mode=True:  physical PPM with radial CO bond (L=3 Ang, K_RAD=20.0 N/m : there seems to be som confusion beteen units).
+    ppm_mode=False: simplified harmonic, probe pinned at scan heights.
+    """
+    afmulator.setup_fdbm_grid(F_total, origin, step)
+    FEs_relax = afmulator.scan_fdbm(
+        scan_xs, scan_ys, probe_heights, mol_z=mol_z,
+        ppm_mode=ppm_mode, K_LAT=K_LAT,
+        stiffness=stiffness, dpos0=dpos0, relax_pars=relax_pars
+    )
+    nx_s, ny_s, nz_s = FEs_relax.shape[:3]
+    tip_disp = {'dx': np.zeros((nx_s, ny_s, nz_s), dtype=np.float32),
+                'dy': np.zeros((nx_s, ny_s, nz_s), dtype=np.float32)}
+    return FEs_relax, tip_disp
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # FDBM AFM field computation helpers
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1530,13 +1760,17 @@ def compute_dispersion_grid(atomPos, atomTypes, origin, step, ngrid, C6_atom_dic
     # Use OpenCL version if requested
     if use_opencl:
         global _dispersion_afmulator
-        # Create singleton AFMulator instance on first call
-        if _dispersion_afmulator is None:
+        
+        # Check if we need to recreate (first run or molecule/grid changed)
+        need_recreate = _dispersion_afmulator is None
+        if not need_recreate and hasattr(_dispersion_afmulator, '_disp_n_atoms'):
+            # Recreate if atom count changed - avoid buffer size mismatches
+            need_recreate = _dispersion_afmulator._disp_n_atoms != len(atomPos)
+        
+        if need_recreate:
             _dispersion_afmulator = AFMulator(use_morse=False, nloc=32)
-
-        # Allocate buffers on first call (check if attribute exists)
-        if not hasattr(_dispersion_afmulator, 'disp_atoms_cl') or _dispersion_afmulator.disp_atoms_cl is None:
             _dispersion_afmulator.realloc_dispersion_buffers(len(atomPos))
+            _dispersion_afmulator._disp_n_atoms = len(atomPos)
 
         if return_grads:
             return _dispersion_afmulator.compute_dispersion_grid_cl(

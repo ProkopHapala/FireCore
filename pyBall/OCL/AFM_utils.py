@@ -509,48 +509,489 @@ def compose_and_relax(grads_pauli, grads_es, grads_vdw, scan_xs, scan_ys, height
     return df, tip_disp
 
 
-def compose_and_relax_total(grads_total, scan_xs, scan_ys, heights,
-                          origin, step, atomPos, K_LAT=0.5):
+def compose_and_relax_total(F_total, scan_xs, scan_ys, heights, origin, step, atomPos, K_LAT=0.5,  K_RAD=20.0, bond_length=4.0,  use_gpu_relax=True, ppm_mode=False, afmulator=None):
     """
-    Compose force field from total gradient and run probe particle relaxation.
-
-    This is the optimized version that uses a single total gradient instead of
-    computing and summing three separate gradients (Pauli, ES, vdW).
+    Compose force field from total force field and run probe particle relaxation.
 
     Args:
-        grads_total: (nx, ny, nz, 3) total gradient of combined potential
-        scan_xs: (nx_s,) scan x coordinates
-        scan_ys: (ny_s,) scan y coordinates
-        heights: (nz_s,) probe heights
-        origin: (3,) grid origin
-        step: grid spacing
-        atomPos: (natoms, 3) atom positions (for mol_z)
-        K_LAT: lateral stiffness
+        F_total:       (nx, ny, nz, 4) total force field (Fx, Fy, Fz, E) where F = -grad(E)
+        scan_xs:       (nx_s,) scan x coordinates
+        scan_ys:       (ny_s,) scan y coordinates
+        heights:       (nz_s,) probe/tip-apex heights above mol_z
+        origin:        (3,) grid origin
+        step:          grid spacing
+        atomPos:       (natoms, 3) atom positions (for mol_z)
+        K_LAT:         lateral stiffness [eV/Ang^2]
+        use_gpu_relax: True (default) = GPU relaxStrokes; False = legacy CPU scipy
+        ppm_mode:      False (default) = 2D lateral-only relaxation (z fixed per slice);
+                       True = spherical PPM radial bond (CO-tip, L=4 Ang, Kr=1.0)
+        afmulator:     AFMulator instance; created if None
 
     Returns:
-        df: (nx_s, ny_s, nz_s) frequency shift array
-        tip_disp: dict with 'dx' and 'dy' displacement arrays (nx_s, ny_s, nz_s)
+        df:       (nx_s, ny_s, nz_s) frequency shift array
+        tip_disp: dict with 'dx','dy' (nx_s, ny_s, nz_s) tip displacement
     """
-    from scipy.ndimage import map_coordinates
+    mol_z     = float(atomPos[:,2].max())
+    nx, ny, nz_ff = F_total.shape[:3]
 
-    # F = -grad E (total gradient already contains all contributions)
-    F_total = -grads_total
+    if use_gpu_relax:
+        if ppm_mode:
+            print("  [compose_and_relax_total] GPU relaxStrokes spherical PPM (L=4, Kr=1.0)")
+            if afmulator is None:
+                afmulator = afm.AFMulator(use_morse=False, nloc=32, use_fire=False)
+            afmulator.setup_fdbm_grid(F_total, origin, step)
+            # Spherical PPM: dpos=(0,0,-L,L) with L=4, K=(Kx,Ky,0,Kr) with Kr=1.0
+            # Smaller dt=0.1, damp=0.3 for stability with weak forces (probe far from surface)
+            relax_pars_ppm = [0.1, 0.1, 0.03, 0.1]  # dt, damp, alpha, dt_fire
+            FEs_relax = afmulator.scan_fdbm( scan_xs, scan_ys, heights, mol_z=mol_z,  K_LAT=K_LAT, K_RAD=K_RAD, bond_length=bond_length,  relax_pars=relax_pars_ppm )
+            nx_s, ny_s, nz_s = FEs_relax.shape[:3]
+            tip_disp = {'dx': np.zeros((nx_s, ny_s, nz_s), dtype=np.float32),
+                        'dy': np.zeros((nx_s, ny_s, nz_s), dtype=np.float32)}
+        else:
+            print("  [compose_and_relax_total] GPU relaxStrokes2D 2D lateral-only")
+            if afmulator is None:
+                afmulator = afm.AFMulator(use_morse=False, nloc=32, use_fire=False)
+            afmulator.setup_fdbm_grid(F_total, origin, step)
+            FEs_relax = afmulator.scan_fdbm_2d(scan_xs, scan_ys, heights, mol_z=mol_z, K_LAT=K_LAT)
+            nx_s, ny_s, nz_s = FEs_relax.shape[:3]
+            tip_disp = {'dx': np.zeros((nx_s, ny_s, nz_s), dtype=np.float32),
+                        'dy': np.zeros((nx_s, ny_s, nz_s), dtype=np.float32)}
+    else:
+        print("  [compose_and_relax_total] CPU scipy relaxation (legacy)")
+        from scipy.ndimage import map_coordinates
+        F_total_3 = F_total[..., :3]  # Extract (Fx,Fy,Fz) for CPU interpolation
+        def force_func(positions):
+            # -0.5 offset to match GPU corner convention (cell-center vs cell-corner)
+            ix = (positions[:, 0] - origin[0]) / step - 0.5
+            iy = (positions[:, 1] - origin[1]) / step - 0.5
+            iz = (positions[:, 2] - origin[2]) / step - 0.5
+            coords = np.vstack([ix, iy, iz])
+            fx = map_coordinates(F_total_3[..., 0], coords, order=1)
+            fy = map_coordinates(F_total_3[..., 1], coords, order=1)
+            fz = map_coordinates(F_total_3[..., 2], coords, order=1)
+            return np.stack([fx, fy, fz], axis=-1)
+        FEs_relax, tip_disp = afm.pp_relax_2d(force_func, scan_xs, scan_ys, heights, mol_z=mol_z, K_LAT=K_LAT, N_RELAX=50, step=step)
 
-    def force_func(positions):
-        """Interpolate forces at arbitrary positions from scan-grid force field."""
-        ix = (positions[:, 0] - origin[0]) / step
-        iy = (positions[:, 1] - origin[1]) / step
-        iz = (positions[:, 2] - origin[2]) / step
-        coords = np.vstack([ix, iy, iz])
-        fx = map_coordinates(F_total[..., 0], coords, order=1)
-        fy = map_coordinates(F_total[..., 1], coords, order=1)
-        fz = map_coordinates(F_total[..., 2], coords, order=1)
-        return np.stack([fx, fy, fz], axis=-1)
-
-    mol_z = atomPos[:,2].max()
-    FEs_relax, tip_disp = afm.pp_relax_2d(force_func, scan_xs, scan_ys, heights, mol_z=mol_z, K_LAT=K_LAT, N_RELAX=50, step=step)
     df = afm.compute_df(FEs_relax[:,:,:,2], heights[1]-heights[0])
     return df, tip_disp
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GPU vs CPU Interpolation Debugging Functions
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def compare_gpu_cpu_interpolation(grads_total, origin, step, atomPos,
+                                  z_levels=[2.5, 3.0, 3.5], nxy=(80, 80),
+                                  marker_point=None,
+                                  output_path='/tmp/gpu_cpu_interp_comparison.png'):
+    """
+    Compare GPU OpenCL image sampling vs CPU scipy map_coordinates interpolation.
+    
+    Uses EXACT same scan box as AFM.run_scan():
+    - Scan covers 90% of molecule span with 5% margins
+    - Each panel has independent symmetric diverging colormap (vmin=-vmax, vcenter=0)
+    - Shows CPU vs GPU for XY slices and XZ/YZ cross-sections
+    
+    Args:
+        grads_total: (nx, ny, nz, 3) total gradient
+        origin: (3,) grid origin
+        step: grid spacing
+        atomPos: (natoms, 3) atom positions
+        z_levels: list of heights above molecule to sample for XY slices
+        nxy: (nx, ny) scan grid resolution
+        marker_point: (x, y) tuple to mark on XY slices
+        output_path: path to save comparison plot
+    """
+    from scipy.ndimage import map_coordinates
+    from pyBall.OCL import AFM as afm
+    import pyopencl as cl
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    
+    F_total = -grads_total  # F = -grad(E)
+    nx, ny, nz = F_total.shape[:3]
+    mol_z = atomPos[:,2].max()
+    
+    # Compute scan box with 4A margin (consistent with AFM conventions)
+    MARGIN = 4.0  # Angstrom margin around molecule
+    mn, mx = atomPos.min(axis=0), atomPos.max(axis=0)
+    x0 = mn[0] - MARGIN
+    y0 = mn[1] - MARGIN
+    x1 = mx[0] + MARGIN
+    y1 = mx[1] + MARGIN
+    dx = (x1 - x0) / max(nxy[0]-1, 1)
+    dy = (y1 - y0) / max(nxy[1]-1, 1)
+    
+    xs = np.array([x0 + dx*ix for ix in range(nxy[0])])
+    ys = np.array([y0 + dy*iy for iy in range(nxy[1])])
+    XX, YY = np.meshgrid(xs, ys, indexing='ij')
+    
+    print(f"Molecule bbox: x=[{mn[0]:.2f},{mx[0]:.2f}], y=[{mn[1]:.2f},{mx[1]:.2f}], z_max={mol_z:.2f}")
+    print(f"Scan box (4A margin): x=[{xs[0]:.2f},{xs[-1]:.2f}], y=[{ys[0]:.2f},{ys[-1]:.2f}]")
+    print(f"Force field: {nx}x{ny}x{nz}, origin={origin}, step={step}")
+    
+    # Setup GPU
+    afmulator = afm.AFMulator(use_morse=False, nloc=32, use_fire=False)
+    F_total_4 = np.zeros((nx, ny, nz, 4), dtype=np.float32)
+    F_total_4[..., :3] = F_total
+    afmulator.setup_fdbm_grid(F_total_4, origin, step)
+    
+    # GPU sampling using the same interpFE from relax.cl as used in relaxStrokes
+    import os as _os
+    relax_cl_path = _os.path.join(_os.path.dirname(afm.__file__), '..', '..', 'cpp', 'common_resources', 'cl', 'relax.cl')
+    with open(relax_cl_path) as f: relax_cl_src = f.read()
+    kernel_src = relax_cl_src + '''
+__kernel void sampleFE(__read_only image3d_t img, __global float4* pts, __global float4* out, float4 dA, float4 dB, float4 dC){
+    int gid = get_global_id(0);
+    out[gid] = interpFE(pts[gid].xyz, dA, dB, dC, img);
+}'''
+    prg = cl.Program(afmulator.ctx, kernel_src).build()
+
+    def sample_gpu(pts_flat):
+        """Sample force field at given points using GPU interpFE (same as relaxStrokes)."""
+        n_pts = pts_flat.shape[0]
+        pts_buf = cl.Buffer(afmulator.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=pts_flat)
+        out_buf = cl.Buffer(afmulator.ctx, cl.mem_flags.WRITE_ONLY, size=n_pts * 16)
+        prg.sampleFE(afmulator.queue, (n_pts,), (1,), afmulator.img_FF_fdbm, pts_buf, out_buf,
+                     afmulator.fdbm_dinvA, afmulator.fdbm_dinvB, afmulator.fdbm_dinvC)
+        fe_out = np.zeros(n_pts * 4, dtype=np.float32)
+        cl.enqueue_copy(afmulator.queue, fe_out, out_buf)
+        return fe_out.reshape(n_pts, 4)
+    
+    # Z grid for XZ/YZ cuts - relative to mol_z (probe positions, not tip positions)
+    z_range = 8.0  # z span for cuts
+    zs_cut = np.linspace(mol_z - 1.0, mol_z + z_range, 60)
+    y_cut = (mn[1] + mx[1]) * 0.5  # Center y of molecule
+    x_cut = (mn[0] + mx[0]) * 0.5  # Center x of molecule
+    
+    # Create figure: rows for z_levels, columns: XY_CPU, XY_GPU, XZ_CPU, XZ_GPU, YZ_CPU, YZ_GPU
+    n_z = len(z_levels)
+    fig, axes = plt.subplots(n_z, 6, figsize=(24, 4*n_z))
+    if n_z == 1:
+        axes = axes.reshape(1, -1)
+    
+    for iz, z_level in enumerate(z_levels):
+        probe_z = z_level + mol_z
+        iz_coord = (probe_z - origin[2]) / step
+        
+        # CPU XY interpolation at this height (with -0.5 offset for GPU corner convention)
+        ix_coords = (XX - origin[0]) / step - 0.5
+        iy_coords = (YY - origin[1]) / step - 0.5
+        coords = np.array([ix_coords.ravel(), iy_coords.ravel(), np.full(ix_coords.size, iz_coord - 0.5)])
+        fz_cpu_xy = map_coordinates(F_total[..., 2], coords, order=1).reshape(XX.shape)
+        
+        # GPU XY sampling
+        pts_xy = np.zeros((XX.size, 4), dtype=np.float32)
+        pts_xy[:, 0] = XX.ravel()
+        pts_xy[:, 1] = YY.ravel()
+        pts_xy[:, 2] = probe_z
+        fe_gpu_xy = sample_gpu(pts_xy)
+        fz_gpu_xy = fe_gpu_xy[:, 2].reshape(XX.shape)
+        
+        # XZ cut at y=y_cut (2D: x vs z)
+        XX_xz, ZZ_xz = np.meshgrid(xs, zs_cut, indexing='ij')
+        coords_xz = np.array([(XX_xz.ravel() - origin[0]) / step - 0.5,
+                              np.full(XX_xz.size, (y_cut - origin[1]) / step - 0.5),
+                              (ZZ_xz.ravel() - origin[2]) / step - 0.5])
+        fz_cpu_xz = map_coordinates(F_total[..., 2], coords_xz, order=1).reshape(XX_xz.shape)
+        
+        pts_xz = np.zeros((XX_xz.size, 4), dtype=np.float32)
+        pts_xz[:, 0] = XX_xz.ravel()
+        pts_xz[:, 1] = y_cut
+        pts_xz[:, 2] = ZZ_xz.ravel()
+        fe_gpu_xz = sample_gpu(pts_xz)
+        fz_gpu_xz = fe_gpu_xz[:, 2].reshape(XX_xz.shape)
+        
+        # YZ cut at x=x_cut (2D: y vs z)
+        YY_yz, ZZ_yz = np.meshgrid(ys, zs_cut, indexing='ij')
+        coords_yz = np.array([np.full(YY_yz.size, (x_cut - origin[0]) / step - 0.5),
+                              (YY_yz.ravel() - origin[1]) / step - 0.5,
+                              (ZZ_yz.ravel() - origin[2]) / step - 0.5])
+        fz_cpu_yz = map_coordinates(F_total[..., 2], coords_yz, order=1).reshape(YY_yz.shape)
+        
+        pts_yz = np.zeros((YY_yz.size, 4), dtype=np.float32)
+        pts_yz[:, 0] = x_cut
+        pts_yz[:, 1] = YY_yz.ravel()
+        pts_yz[:, 2] = ZZ_yz.ravel()
+        fe_gpu_yz = sample_gpu(pts_yz)
+        fz_gpu_yz = fe_gpu_yz[:, 2].reshape(YY_yz.shape)
+        
+        # Helper to plot with per-panel symmetric diverging colormap
+        def plot_panel(ax, data, title, extent):
+            vmax = max(np.abs(data.min()), np.abs(data.max()), 1e-6)
+            im = ax.imshow(data.T, origin='lower', cmap='RdBu_r', 
+                          vmin=-vmax, vmax=vmax, extent=extent, aspect='auto')
+            ax.set_title(f'{title}\n±{vmax:.2f}')
+            plt.colorbar(im, ax=ax, shrink=0.7)
+            return vmax
+        
+        ext_xy = [xs[0], xs[-1], ys[0], ys[-1]]
+        ext_xz = [xs[0], xs[-1], zs_cut[0], zs_cut[-1]]
+        ext_yz = [ys[0], ys[-1], zs_cut[0], zs_cut[-1]]
+        
+        # Row iz: XY_CPU, XY_GPU, XZ_CPU, XZ_GPU, YZ_CPU, YZ_GPU
+        plot_panel(axes[iz, 0], fz_cpu_xy, f'CPU XY z={z_level:.1f}A', ext_xy)
+        plot_panel(axes[iz, 1], fz_gpu_xy, f'GPU XY z={z_level:.1f}A', ext_xy)
+        plot_panel(axes[iz, 2], fz_cpu_xz, f'CPU XZ y={y_cut:.1f}A', ext_xz)
+        plot_panel(axes[iz, 3], fz_gpu_xz, f'GPU XZ y={y_cut:.1f}A', ext_xz)
+        plot_panel(axes[iz, 4], fz_cpu_yz, f'CPU YZ x={x_cut:.1f}A', ext_yz)
+        plot_panel(axes[iz, 5], fz_gpu_yz, f'GPU YZ x={x_cut:.1f}A', ext_yz)
+        
+        axes[iz, 0].set_ylabel('y [A]')
+        for col in [2, 3]:
+            axes[iz, col].set_ylabel('z [A]')
+        for col in [4, 5]:
+            axes[iz, col].set_ylabel('z [A]')
+        
+        if iz == n_z - 1:
+            for col in range(6):
+                axes[iz, col].set_xlabel('x [A]' if col < 4 else 'y [A]')
+        
+        # Stats
+        print(f"\nz={z_level:.1f}A: CPU [{fz_cpu_xy.min():.2f}, {fz_cpu_xy.max():.2f}], "
+              f"GPU [{fz_gpu_xy.min():.2f}, {fz_gpu_xy.max():.2f}]")
+        diff = fz_gpu_xy - fz_cpu_xy
+        print(f"  Diff: RMS={np.sqrt(np.mean(diff**2)):.3f}, max|diff|={np.abs(diff).max():.3f}")
+    
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    print(f'\nSaved comparison to {output_path}')
+    
+    # Additional: Separate figure for XY slices only
+    fig_xy, axes_xy = plt.subplots(n_z, 3, figsize=(18, 4*n_z))
+    if n_z == 1:
+        axes_xy = axes_xy.reshape(1, -1)
+    for iz, z_level in enumerate(z_levels):
+        probe_z = z_level + mol_z
+        ix_coords = (XX - origin[0]) / step - 0.5
+        iy_coords = (YY - origin[1]) / step - 0.5
+        iz_coord = (probe_z - origin[2]) / step - 0.5
+        coords = np.array([ix_coords.ravel(), iy_coords.ravel(), np.full(ix_coords.size, iz_coord)])
+        fz_cpu = map_coordinates(F_total[..., 2], coords, order=1).reshape(XX.shape)
+        pts_xy = np.zeros((XX.size, 4), dtype=np.float32)
+        pts_xy[:, 0] = XX.ravel(); pts_xy[:, 1] = YY.ravel(); pts_xy[:, 2] = probe_z
+        fz_gpu = sample_gpu(pts_xy)[:, 2].reshape(XX.shape)
+        diff = fz_gpu - fz_cpu
+        for col, (data, title) in enumerate([(fz_cpu, f'CPU Fz z={z_level:.1f}Å'),
+                                              (fz_gpu, f'GPU Fz z={z_level:.1f}Å'),
+                                              (diff, f'Diff z={z_level:.1f}Å')]):
+            ax = axes_xy[iz, col]
+            vmax = max(np.abs(data.min()), np.abs(data.max()), 1e-6)
+            im = ax.imshow(data.T, origin='lower', cmap='RdBu_r', vmin=-vmax, vmax=vmax,
+                          extent=[xs[0], xs[-1], ys[0], ys[-1]], aspect='auto')
+            ax.set_title(title)
+            plt.colorbar(im, ax=ax, shrink=0.7)
+            # Add marker if specified
+            if marker_point is not None:
+                ax.plot(marker_point[0], marker_point[1], 'g+', markersize=15, markeredgewidth=2)
+    plt.tight_layout()
+    fig_xy_path = output_path.replace('.png', '_XYonly.png')
+    plt.savefig(fig_xy_path, dpi=150)
+    plt.close()
+    print(f'Saved XY only to {fig_xy_path}')
+    
+    # Additional: Separate figure for XZ/YZ center cuts only
+    fig_cuts, axes_cuts = plt.subplots(2, 2, figsize=(14, 12))
+    # XZ cut (with -0.5 offset)
+    XX_xz, ZZ_xz = np.meshgrid(xs, zs_cut, indexing='ij')
+    coords_xz = np.array([(XX_xz.ravel() - origin[0]) / step - 0.5, np.full(XX_xz.size, (y_cut - origin[1]) / step - 0.5), (ZZ_xz.ravel() - origin[2]) / step - 0.5])
+    fz_cpu_xz = map_coordinates(F_total[..., 2], coords_xz, order=1).reshape(XX_xz.shape)
+    pts_xz = np.zeros((XX_xz.size, 4), dtype=np.float32); pts_xz[:, 0] = XX_xz.ravel(); pts_xz[:, 1] = y_cut; pts_xz[:, 2] = ZZ_xz.ravel()
+    fz_gpu_xz = sample_gpu(pts_xz)[:, 2].reshape(XX_xz.shape)
+    # YZ cut (with -0.5 offset)
+    YY_yz, ZZ_yz = np.meshgrid(ys, zs_cut, indexing='ij')
+    coords_yz = np.array([np.full(YY_yz.size, (x_cut - origin[0]) / step - 0.5), (YY_yz.ravel() - origin[1]) / step - 0.5, (ZZ_yz.ravel() - origin[2]) / step - 0.5])
+    fz_cpu_yz = map_coordinates(F_total[..., 2], coords_yz, order=1).reshape(YY_yz.shape)
+    pts_yz = np.zeros((YY_yz.size, 4), dtype=np.float32); pts_yz[:, 0] = x_cut; pts_yz[:, 1] = YY_yz.ravel(); pts_yz[:, 2] = ZZ_yz.ravel()
+    fz_gpu_yz = sample_gpu(pts_yz)[:, 2].reshape(YY_yz.shape)
+    for row, (name, x_coords, z_coords, f_cpu, f_gpu) in enumerate([('XZ', xs, zs_cut, fz_cpu_xz, fz_gpu_xz), ('YZ', ys, zs_cut, fz_cpu_yz, fz_gpu_yz)]):
+        for col, (data, title) in enumerate([(f_cpu, f'{name} CPU'), (f_gpu, f'{name} GPU')]):
+            ax = axes_cuts[row, col]
+            vmax = max(np.abs(data.min()), np.abs(data.max()), 1e-6)
+            im = ax.imshow(data.T, origin='lower', cmap='RdBu_r', vmin=-vmax, vmax=vmax,
+                          extent=[x_coords[0], x_coords[-1], z_coords[0], z_coords[-1]], aspect='auto')
+            ax.set_title(f'{title} (center cut)')
+            ax.axhline(y=mol_z, color='g', linestyle='--', linewidth=0.5)
+            plt.colorbar(im, ax=ax, shrink=0.7)
+    plt.tight_layout()
+    fig_cuts_path = output_path.replace('.png', '_Cuts.png')
+    plt.savefig(fig_cuts_path, dpi=150)
+    plt.close()
+    print(f'Saved center cuts to {fig_cuts_path}')
+    
+    # Additional: High-res 1D profiles at center (all force components)
+    x_center = (mn[0] + mx[0]) * 0.5
+    y_center = (mn[1] + mx[1]) * 0.5
+    z_range_1d = np.arange(mol_z - 1.0, mol_z + 8.0, 0.02)  # 0.02A step
+    # CPU (with -0.5 offset)
+    coords_1d = np.array([np.full(z_range_1d.size, (x_center - origin[0]) / step - 0.5), np.full(z_range_1d.size, (y_center - origin[1]) / step - 0.5), (z_range_1d - origin[2]) / step - 0.5])
+    fx_cpu_1d = map_coordinates(F_total[..., 0], coords_1d, order=1)
+    fy_cpu_1d = map_coordinates(F_total[..., 1], coords_1d, order=1)
+    fz_cpu_1d = map_coordinates(F_total[..., 2], coords_1d, order=1)
+    # GPU
+    pts_1d = np.zeros((z_range_1d.size, 4), dtype=np.float32)
+    pts_1d[:, 0] = x_center; pts_1d[:, 1] = y_center; pts_1d[:, 2] = z_range_1d
+    fe_gpu_1d = sample_gpu(pts_1d)
+    fx_gpu_1d, fy_gpu_1d, fz_gpu_1d = fe_gpu_1d[:, 0], fe_gpu_1d[:, 1], fe_gpu_1d[:, 2]
+    # Plot
+    fig_1d, axes_1d = plt.subplots(2, 2, figsize=(14, 10))
+    for i, (comp, f_cpu, f_gpu) in enumerate([('Fx', fx_cpu_1d, fx_gpu_1d), ('Fy', fy_cpu_1d, fy_gpu_1d), ('Fz', fz_cpu_1d, fz_gpu_1d)]):
+        ax = axes_1d[i // 2, i % 2]
+        ax.plot(z_range_1d - mol_z, f_cpu, 'b-', linewidth=0.5, label='CPU')
+        ax.plot(z_range_1d - mol_z, f_gpu, 'r-', linewidth=0.5, label='GPU')
+        diff = f_gpu - f_cpu
+        ax.set_title(f'{comp} 1D profile center (x={x_center:.2f}, y={y_center:.2f})  RMS={np.sqrt(np.mean(diff**2)):.4f}')
+        ax.set_xlabel('z - mol_z [Å]'); ax.set_ylabel(f'{comp} [eV/Å]')
+        ax.axvline(x=0, color='g', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.legend(loc='best'); ax.grid(True, alpha=0.3)
+    # 4th panel: all |F| together
+    ax = axes_1d[1, 1]
+    ax.plot(z_range_1d - mol_z, np.abs(fx_cpu_1d), 'b-', linewidth=0.5, label='|Fx| CPU')
+    ax.plot(z_range_1d - mol_z, np.abs(fx_gpu_1d), 'r-', linewidth=0.5, label='|Fx| GPU')
+    ax.plot(z_range_1d - mol_z, np.abs(fy_cpu_1d), 'b--', linewidth=0.5, label='|Fy| CPU')
+    ax.plot(z_range_1d - mol_z, np.abs(fy_gpu_1d), 'r--', linewidth=0.5, label='|Fy| GPU')
+    ax.plot(z_range_1d - mol_z, np.abs(fz_cpu_1d), 'b:', linewidth=0.5, label='|Fz| CPU')
+    ax.plot(z_range_1d - mol_z, np.abs(fz_gpu_1d), 'r:', linewidth=0.5, label='|Fz| GPU')
+    ax.set_title('|F| components at center'); ax.set_xlabel('z - mol_z [Å]'); ax.set_ylabel('|F| [eV/Å]')
+    ax.axvline(x=0, color='g', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(loc='best', fontsize=8); ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    fig_1d_path = output_path.replace('.png', '_1D.png')
+    plt.savefig(fig_1d_path, dpi=150)
+    plt.close()
+    print(f'Saved 1D profiles to {fig_1d_path}')
+    
+    return output_path
+
+
+def compare_1d_at_position(grads_total, origin, step, atomPos, x_pos, y_pos, mol_z=0.0,
+                          z_min=-1.0, z_max=8.0, z_step=0.02, E_total=None,
+                          output_path='/tmp/gpu_cpu_1d_test.png'):
+    """Test CPU vs GPU 1D profiles at specific (x,y) position using existing interpFE kernel.
+    
+    Args:
+        grads_total: (nx, ny, nz, 3) gradient of total energy
+        origin: (3,) grid origin
+        step: grid spacing
+        atomPos: (natoms, 3) atom positions
+        x_pos, y_pos: position for 1D scan
+        mol_z: molecule z reference
+        z_min, z_max, z_step: z range and step
+        E_total: (nx, ny, nz) total energy field (optional, for energy interpolation)
+        output_path: path to save plot
+    """
+    import sys
+    sys.path.insert(0, '/home/prokop/git/FireCore')
+    from pyBall.OCL import AFM as afm
+    import pyopencl as cl
+    from scipy.ndimage import map_coordinates
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    F_total = -grads_total
+    afmulator = afm.AFMulator(use_morse=False, nloc=32, use_fire=False)
+    nx, ny, nz = F_total.shape[:3]
+    F_total_4 = np.zeros((nx, ny, nz, 4), dtype=np.float32)
+    F_total_4[..., :3] = F_total
+    if E_total is not None:
+        F_total_4[..., 3] = E_total  # Energy in 4th component
+    afmulator.setup_fdbm_grid(F_total_4, origin, step)
+
+    z_range = np.arange(mol_z + z_min, mol_z + z_max, z_step)
+
+    # CPU sampling - interpolate from SAME F_total_4 array as GPU
+    # Adjust by -0.5 to match GPU corner-based interpolation
+    coords_1d = np.array([
+        np.full(z_range.size, (x_pos - origin[0]) / step - 0.5),
+        np.full(z_range.size, (y_pos - origin[1]) / step - 0.5),
+        (z_range - origin[2]) / step - 0.5
+    ])
+    fx_cpu = map_coordinates(F_total_4[..., 0], coords_1d, order=1)
+    fy_cpu = map_coordinates(F_total_4[..., 1], coords_1d, order=1)
+    fz_cpu = map_coordinates(F_total_4[..., 2], coords_1d, order=1)
+    if E_total is not None:
+        E_cpu = map_coordinates(F_total_4[..., 3], coords_1d, order=1)
+
+    # GPU sampling using existing interpFE kernel from relax.cl
+    pts_1d = np.zeros((z_range.size, 4), dtype=np.float32)
+    pts_1d[:, 0] = x_pos
+    pts_1d[:, 1] = y_pos
+    pts_1d[:, 2] = z_range
+    pts_1d[:, 3] = 1.0  # w component for coordinate transform
+
+    # Include full relax.cl source to use interpFE function
+    import os
+    relax_cl_path = os.path.join(os.path.dirname(afm.__file__), '..', '..', 'cpp', 'common_resources', 'cl', 'relax.cl')
+    with open(relax_cl_path) as f:
+        relax_cl_src = f.read()
+    
+    # Add sampling kernel at end of relax.cl source
+    kernel_src = relax_cl_src + '''
+__kernel void sample_interpFE(__read_only image3d_t img, __global float4* pts, __global float4* out, float4 dA, float4 dB, float4 dC, int n){
+    int gid = get_global_id(0);
+    if (gid >= n) return;
+    float3 p = pts[gid].xyz;
+    out[gid] = interpFE(p, dA, dB, dC, img);
+}'''
+    prg = cl.Program(afmulator.ctx, kernel_src).build()
+    n_pts = z_range.size
+    pts_buf = cl.Buffer(afmulator.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=pts_1d)
+    out_buf = cl.Buffer(afmulator.ctx, cl.mem_flags.WRITE_ONLY, size=n_pts * 16)
+    prg.sample_interpFE(afmulator.queue, (n_pts,), (1,), afmulator.img_FF_fdbm, pts_buf, out_buf,
+                        afmulator.fdbm_dinvA, afmulator.fdbm_dinvB, afmulator.fdbm_dinvC, np.int32(n_pts))
+    fe_out = np.zeros(n_pts * 4, dtype=np.float32)
+    cl.enqueue_copy(afmulator.queue, fe_out, out_buf)
+    fe_out = fe_out.reshape(n_pts, 4)
+    fx_gpu, fy_gpu, fz_gpu = fe_out[:, 0], fe_out[:, 1], fe_out[:, 2]
+    if E_total is not None:
+        E_gpu = fe_out[:, 3]
+
+    # Plot - 4 panels: Fx, Fy, Fz, E (matching float4 layout)
+    fig, axes = plt.subplots(1, 4, figsize=(20, 5))
+    
+    # Fx, Fy, Fz
+    for i, (comp, f_cpu, f_gpu) in enumerate([('Fx', fx_cpu, fx_gpu), ('Fy', fy_cpu, fy_gpu), ('Fz', fz_cpu, fz_gpu)]):
+        ax = axes[i]
+        ax.plot(z_range - mol_z, f_cpu, 'b-', linewidth=0.5, label='CPU')
+        ax.plot(z_range - mol_z, f_gpu, 'r-', linewidth=0.5, label='GPU')
+        diff = f_gpu - f_cpu
+        rms = np.sqrt(np.mean(diff**2))
+        ratio = np.abs(f_gpu).max() / (np.abs(f_cpu).max() + 1e-10)
+        ax.set_title(f'{comp} at ({x_pos:.1f},{y_pos:.1f})\\nRMS={rms:.4f}, ratio={ratio:.2f}')
+        ax.set_xlabel('z - mol_z [Å]')
+        ax.set_ylabel(f'{comp} [eV/Å]')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+    # Energy (4th component)
+    ax = axes[3]
+    if E_total is not None:
+        ax.plot(z_range - mol_z, E_cpu, 'b-', linewidth=0.5, label='CPU')
+        ax.plot(z_range - mol_z, E_gpu, 'r-', linewidth=0.5, label='GPU')
+        diff = E_gpu - E_cpu
+        rms = np.sqrt(np.mean(diff**2))
+        ax.set_title(f'E at ({x_pos:.1f},{y_pos:.1f})\\nRMS={rms:.4f}')
+        ax.set_xlabel('z - mol_z [Å]')
+        ax.set_ylabel('E [eV]')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+    else:
+        ax.text(0.5, 0.5, 'Energy not available\\n(pass E_total parameter)', 
+                ha='center', va='center', transform=ax.transAxes)
+        ax.set_title('E (not available)')
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    plt.close()
+
+    print(f'Saved {output_path}')
+    print(f'  Fx: CPU={np.abs(fx_cpu).max():.3f}, GPU={np.abs(fx_gpu).max():.3f}, ratio={np.abs(fx_gpu).max()/np.abs(fx_cpu).max():.2f}')
+    print(f'  Fy: CPU={np.abs(fy_cpu).max():.3f}, GPU={np.abs(fy_gpu).max():.3f}, ratio={np.abs(fy_gpu).max()/np.abs(fy_cpu).max():.2f}')
+    print(f'  Fz: CPU={np.abs(fz_cpu).max():.3f}, GPU={np.abs(fz_gpu).max():.3f}, ratio={np.abs(fz_gpu).max()/np.abs(fz_cpu).max():.2f}')
+
+    return output_path
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -924,7 +1365,9 @@ def run_afm_pipeline(
     plot_steps=True,
     stm_params=None,  # Dict with STM parameters for Step 7
     use_gpu_gradient=True,  # Use GPU for total gradient computation
-    afmulator=None,  # AFMulator instance for GPU gradient (created if None)
+    use_gpu_relax=True,     # Use GPU relaxStrokes kernel (now with damped velocity matching CPU)
+    ppm_mode=False,         # True = PPM radial bond (CO-tip, L=3A); False = linear harmonic
+    afmulator=None,  # AFMulator instance for GPU gradient/relax (created if None)
     projector=None,  # GridProjector for STM (required if stm_params is set)
     norb_per_atom=None,  # Required for STM
     orb_offsets=None,  # Required for STM
@@ -1095,25 +1538,30 @@ def run_afm_pipeline(
             # Create AFMulator instance if not provided
             afmulator = afm.AFMulator(use_morse=False, nloc=32)
         grads_cl = afmulator.compute_gradient_cl(E_total, step, bAlloc=True)
-        # Extract gradients (negate forces): grad = -F
-        grads_total = grads_cl[..., :3]  # Already (Fx, Fy, Fz) where F = -grad
-        # We need grad, so negate: grad = -F
-        grads_total = -grads_total
+        # grads_cl is (Fx, Fy, Fz, E) where F = -grad(E)
+        # This is already the force field F_total we need
+        F_total = grads_cl  # (Fx, Fy, Fz, E) - full force field
     else:
         print("  Using CPU (numpy) for gradient computation...")
-        grads_total = np.stack([np.gradient(E_total, step, axis=i) for i in range(3)], axis=-1)
+        # Compute gradient, then convert to force F = -grad(E)
+        grads = np.stack([np.gradient(E_total, step, axis=i) for i in range(3)], axis=-1)
+        # Build full array (Fx, Fy, Fz, E) where F = -grad
+        F_total = np.zeros(E_total.shape + (4,), dtype=np.float32)
+        F_total[..., :3] = -grads  # F = -grad(E)
+        F_total[..., 3] = E_total   # E
 
     # Save intermediates
     if debug_save_enabled(2):
         np.save(os.path.join(output_dir, 'E_total_field.npy'), E_total)
-        np.save(os.path.join(output_dir, 'grads_E_total.npy'), grads_total)
+        np.save(os.path.join(output_dir, 'F_total.npy'), F_total)
 
-    # Step 6: Compose and relax using total gradient
+    # Step 6: Compose and relax using total force field
     print("\nStep 6: Composing force fields and running probe relaxation...")
     df, tip_disp = compose_and_relax_total(
-        grads_total,
+        F_total,
         scan_xs, scan_ys, heights,
-        origin, step, atomPos, K_LAT=relax_params['K_LAT']
+        origin, step, atomPos, K_LAT=relax_params['K_LAT'],
+        use_gpu_relax=use_gpu_relax, ppm_mode=ppm_mode, afmulator=afmulator
     )
     if debug_save_enabled(2):
         np.save(os.path.join(output_dir, 'df.npy'), df)
@@ -1172,12 +1620,12 @@ def run_afm_pipeline(
         'intermediates': {
             'V_ES': V_ES,
             'E_pauli_field': E_pauli_field,
-            'grads_pauli': None,  # Not computed in optimized mode (use grads_total)
+            'grads_pauli': None,  # Not computed in optimized mode (use F_total)
             'E_ES_field': E_ES_field,
-            'grads_ES': None,  # Not computed in optimized mode (use grads_total)
+            'grads_ES': None,  # Not computed in optimized mode (use F_total)
             'E_vdw': E_vdw,
-            'grads_vdw': None,  # Not computed in optimized mode (use grads_total)
-            'grads_total': grads_total,  # Total gradient of combined potential
+            'grads_vdw': None,  # Not computed in optimized mode (use F_total)
+            'F_total': F_total,  # Full force field (Fx,Fy,Fz,E) from GPU
             'tip_disp': tip_disp,
         },
         'grid_spec': grid_spec_out,
@@ -1354,7 +1802,8 @@ def run_afm_from_xyz(
     plot_steps=True,
     use_dense_projection=False,
     max_shells=None,
-    stm_params=None
+    stm_params=None,
+    ppm_mode=False
 ):
     """
     Full AFM simulation pipeline from .xyz to AFM images via DFTB+ density.
@@ -1551,6 +2000,7 @@ def run_afm_from_xyz(
         pauli_params=pauli_params, pauli_fit_params=pauli_fit_params,
         fit_pauli=fit_pauli, fit_pauli_params=fit_pauli_params,
         vdw_params=vdw_params, relax_params=relax_params, plot_steps=plot_steps,
+        ppm_mode=ppm_mode,
         **stm_kwargs
     )
 
