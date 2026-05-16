@@ -356,8 +356,20 @@ class FitREQInteractiveWindow(BaseGUI):
         self.ax_elec.set_title('Electrostatic')
         self.ax_hbond.set_title('H-Bond')
         
+        self.im_pauli = self.ax_pauli.imshow([[0]], aspect='auto', cmap='seismic', origin='lower')
+        self.im_london = self.ax_london.imshow([[0]], aspect='auto', cmap='seismic', origin='lower')
+        self.im_elec = self.ax_elec.imshow([[0]], aspect='auto', cmap='seismic', origin='lower')
+        self.im_hbond = self.ax_hbond.imshow([[0]], aspect='auto', cmap='seismic', origin='lower')
+        
+        self.cb_pauli = self.fig_matrix.colorbar(self.im_pauli, ax=self.ax_pauli, fraction=0.046, pad=0.04)
+        self.cb_london = self.fig_matrix.colorbar(self.im_london, ax=self.ax_london, fraction=0.046, pad=0.04)
+        self.cb_elec = self.fig_matrix.colorbar(self.im_elec, ax=self.ax_elec, fraction=0.046, pad=0.04)
+        self.cb_hbond = self.fig_matrix.colorbar(self.im_hbond, ax=self.ax_hbond, fraction=0.046, pad=0.04)
+        
         self.fig_matrix.tight_layout()
         matrix_layout.addWidget(self.canvas_matrix)
+        
+        self.tab_widget.addTab(self.matrix_tab, "Interaction Matrix")
         
         main_layout.addWidget(left_panel)
         main_layout.addWidget(self.tab_widget)
@@ -696,7 +708,7 @@ class FitREQInteractiveWindow(BaseGUI):
                 
                 # Reshape reference energies to grid
                 if self.Erefs is not None:
-                    self.Vref, self.Rg, self.Arow, self.rv = reshape_to_grid_proper(
+                    self.Vref, Rg, self.Arow, self.rv, self.rows = reshape_to_grid_proper(
                         self.Erefs, self.r, self.a, self.rows
                     )
                     
@@ -725,8 +737,8 @@ class FitREQInteractiveWindow(BaseGUI):
             # Apply current parameters to FittingDriver
             self.apply_current_params()
             
-            # Apply current parameters to FittingDriver
-            self.apply_current_params()
+            # Initial UI update for everything (cursor, cuts, 3D, matrix)
+            self.on_pixel_changed()
             
             # Evaluate model energies
             print(f"    calling drv.evaluate_energies()...")
@@ -736,7 +748,9 @@ class FitREQInteractiveWindow(BaseGUI):
             # Reshape model energies using same geometry
             print(f"    reshaping model energies...")
             if hasattr(self, 'r') and hasattr(self, 'rows'):
-                Vmod, _, _, _ = reshape_to_grid_proper(Em, self.r, self.a, self.rows)
+                Vmod, _, _, _, _ = reshape_to_grid_proper(
+                    Em, self.r, self.a, self.rows
+                )
                 print(f"    reshaped to: Vmod shape={Vmod.shape}")
             else:
                 print(f"    WARNING: using fallback reshape (no geometry)")
@@ -796,7 +810,7 @@ class FitREQInteractiveWindow(BaseGUI):
         
         # Calculate limits based on user request (symmetric around 0)
         vref_min = np.nanmin(Vref) if Vref is not None else np.nanmin(Vmod)
-        vmin = 1.5 * vref_min if vref_min < 0 else -10.0
+        vmin = 1.2 * vref_min if vref_min < 0 else -10.0
         vmax = -vmin
         vdif_max = 0.10 * vmax
         
@@ -805,39 +819,55 @@ class FitREQInteractiveWindow(BaseGUI):
             for ax in [self.ax_ref, self.ax_mod, self.ax_diff]:
                 ax.clear()
                 
-            if hasattr(self, 'rv') and hasattr(self, 'Arow'):
-                R_grid, A_grid = np.meshgrid(self.rv, self.Arow)
-            else:
-                # Fallback to simple indices
-                ny, nx = Vref.shape
-                R_grid, A_grid = np.meshgrid(np.arange(nx), np.arange(ny))
-                
-            self.im_ref_mesh = self.ax_ref.pcolormesh(R_grid, A_grid, Vref, shading='auto', cmap='viridis', animated=True)
-            self.im_mod_mesh = self.ax_mod.pcolormesh(R_grid, A_grid, Vmod, shading='auto', cmap='viridis', animated=True)
-            self.im_diff_mesh = self.ax_diff.pcolormesh(R_grid, A_grid, Vdif, shading='auto', cmap='bwr', animated=True)
+            ny, nx = Vref.shape
             
-            self.cursor_ref,  = self.ax_ref.plot([], [], 'wo', ms=8, mew=1.5, mfc='none', animated=True)
-            self.cursor_mod,  = self.ax_mod.plot([], [], 'wo', ms=8, mew=1.5, mfc='none', animated=True)
-            self.cursor_diff, = self.ax_diff.plot([], [], 'ko', ms=8, mew=1.5, mfc='none', animated=True)
+            # Use imshow instead of pcolormesh to fix blank screen issues with blitting in some backends
+            self.im_ref_mesh = self.ax_ref.imshow(Vref, origin='lower', aspect='auto', cmap='seismic', animated=True)
+            self.im_mod_mesh = self.ax_mod.imshow(Vmod, origin='lower', aspect='auto', cmap='seismic', animated=True)
+            self.im_diff_mesh = self.ax_diff.imshow(Vdif, origin='lower', aspect='auto', cmap='bwr', animated=True)
+            
+            self.cursor_ref,  = self.ax_ref.plot([], [], 'w+', ms=15, mew=2.5, animated=True, zorder=10)
+            self.cursor_mod,  = self.ax_mod.plot([], [], 'w+', ms=15, mew=2.5, animated=True, zorder=10)
+            self.cursor_diff, = self.ax_diff.plot([], [], 'k+', ms=15, mew=2.5, animated=True, zorder=10)
+            
+            self.hline_ref = self.ax_ref.axhline(-1, color='w', ls='--', alpha=0.5, animated=True, zorder=9)
+            self.vline_ref = self.ax_ref.axvline(-1, color='w', ls='--', alpha=0.5, animated=True, zorder=9)
+            self.hline_mod = self.ax_mod.axhline(-1, color='w', ls='--', alpha=0.5, animated=True, zorder=9)
+            self.vline_mod = self.ax_mod.axvline(-1, color='w', ls='--', alpha=0.5, animated=True, zorder=9)
+            self.hline_diff = self.ax_diff.axhline(-1, color='k', ls='--', alpha=0.5, animated=True, zorder=9)
+            self.vline_diff = self.ax_diff.axvline(-1, color='k', ls='--', alpha=0.5, animated=True, zorder=9)
             
             for ax in [self.ax_ref, self.ax_mod, self.ax_diff]:
                 ax.set_xlabel('Distance (A)')
                 ax.set_ylabel('Angle (deg)')
                 
+                if hasattr(self, 'rv') and self.rv is not None:
+                    # Ticks every 5th pixel for distance
+                    tick_indices = np.arange(0, nx, 5)
+                    ax.set_xticks(tick_indices)
+                    ax.set_xticklabels([f"{self.rv[i]:.2f}" for i in tick_indices])
+                    
+                if hasattr(self, 'Arow') and self.Arow is not None:
+                    # The angle axis can stay as it is now conceptually, but plotted via pixels
+                    y_tick_indices = np.arange(0, ny, max(1, ny // 10))
+                    ax.set_yticks(y_tick_indices)
+                    ax.set_yticklabels([f"{self.Arow[i]:.1f}" for i in y_tick_indices])
+                
             self.cbar_ref.update_normal(self.im_ref_mesh)
             self.cbar_mod.update_normal(self.im_mod_mesh)
             self.cbar_diff.update_normal(self.im_diff_mesh)
             
-            self.blit_manager.artists = [
+            self.blit_manager._artists = [
                 self.im_ref_mesh, self.im_mod_mesh, self.im_diff_mesh,
-                self.cursor_ref, self.cursor_mod, self.cursor_diff
+                self.cursor_ref, self.cursor_mod, self.cursor_diff,
+                self.hline_ref, self.vline_ref, self.hline_mod, self.vline_mod, self.hline_diff, self.vline_diff
             ]
             self.canvas.draw() # Full redraw to establish background
         else:
-            # Update data efficiently using set_array
-            self.im_ref_mesh.set_array(Vref.ravel())
-            self.im_mod_mesh.set_array(Vmod.ravel())
-            self.im_diff_mesh.set_array(Vdif.ravel())
+            # Update data efficiently using set_data
+            self.im_ref_mesh.set_data(Vref)
+            self.im_mod_mesh.set_data(Vmod)
+            self.im_diff_mesh.set_data(Vdif)
         
         # Apply limits
         self.im_ref_mesh.set_clim(vmin, vmax)
@@ -848,11 +878,13 @@ class FitREQInteractiveWindow(BaseGUI):
         if hasattr(self, 'rv') and hasattr(self, 'Arow'):
             row = self.pixel_row_spin.value()
             col = self.pixel_col_spin.value()
-            r_val = self.rv[col]
-            a_val = self.Arow[row]
-            self.cursor_ref.set_data([r_val], [a_val])
-            self.cursor_mod.set_data([r_val], [a_val])
-            self.cursor_diff.set_data([r_val], [a_val])
+            
+            # Plotted in pixel coordinates
+            self.cursor_ref.set_data([col], [row])
+            self.cursor_mod.set_data([col], [row])
+            self.cursor_diff.set_data([col], [row])
+            
+            
             
         # Update blit
         self.blit_manager.update()
@@ -1025,15 +1057,14 @@ class FitREQInteractiveWindow(BaseGUI):
             if x is None or y is None:
                 return
             
-            # Convert to pixel indices using extent
-            if hasattr(self, 'rv') and hasattr(self, 'Arow') and self.Vref is not None:
+            # Since we now use imshow with origin='lower' and aspect='auto',
+            # the data coordinates are already in pixel indices.
+            if self.Vref is not None:
                 ny, nx = self.Vref.shape
-                r_min, r_max = np.nanmin(self.rv), np.nanmax(self.rv)
-                a_min, a_max = np.nanmin(self.Arow), np.nanmax(self.Arow)
                 
-                # Map data coordinates to pixel indices
-                col = int((x - r_min) / (r_max - r_min) * (nx - 1))
-                row = int((y - a_min) / (a_max - a_min) * (ny - 1))
+                # Simply round to nearest integer to get the pixel index
+                col = int(round(x))
+                row = int(round(y))
                 
                 # Clamp to valid range
                 col = max(0, min(col, nx - 1))
@@ -1062,11 +1093,18 @@ class FitREQInteractiveWindow(BaseGUI):
         
         # Update cursor positions on 2D plots
         if hasattr(self, 'rv') and hasattr(self, 'Arow'):
-            r_val = self.rv[col]
-            a_val = self.Arow[row]
-            self.cursor_ref.set_data([r_val], [a_val])
-            self.cursor_mod.set_data([r_val], [a_val])
-            self.cursor_diff.set_data([r_val], [a_val])
+            self.cursor_ref.set_data([col], [row])
+            self.cursor_mod.set_data([col], [row])
+            self.cursor_diff.set_data([col], [row])
+            
+            if hasattr(self, 'hline_ref'):
+                self.hline_ref.set_ydata([row, row])
+                self.vline_ref.set_xdata([col, col])
+                self.hline_mod.set_ydata([row, row])
+                self.vline_mod.set_xdata([col, col])
+                self.hline_diff.set_ydata([row, row])
+                self.vline_diff.set_xdata([col, col])
+                
             self.blit_manager.update()
             
         # Update all diagnostic views
@@ -1132,9 +1170,6 @@ class FitREQInteractiveWindow(BaseGUI):
         
         # Update molecule viewer
         self.molecule_viewer.set_molecule(positions, enames, bonds)
-        
-        # Switch to geometry tab
-        self.tab_widget.setCurrentIndex(1)
         
         print(f"Showing 3D geometry for config {idx} (pixel {row},{col}) with {len(positions)} atoms")
     
@@ -1241,34 +1276,23 @@ class FitREQInteractiveWindow(BaseGUI):
         """Update interaction matrix plots."""
         ni, nj, _ = interactions.shape
         
-        # Clear previous plots
-        self.ax_pauli.clear()
-        self.ax_london.clear()
-        self.ax_elec.clear()
-        self.ax_hbond.clear()
+        # Use set_data instead of clear() + imshow() + colorbar()
+        self.im_pauli.set_data(interactions[:,:,0])
+        self.im_london.set_data(interactions[:,:,1])
+        self.im_elec.set_data(interactions[:,:,2])
+        self.im_hbond.set_data(interactions[:,:,3])
         
-        # Plot each component
-        im1 = self.ax_pauli.imshow(interactions[:,:,0], aspect='auto', cmap='hot', origin='lower')
-        im2 = self.ax_london.imshow(interactions[:,:,1], aspect='auto', cmap='cool', origin='lower')
-        im3 = self.ax_elec.imshow(interactions[:,:,2], aspect='auto', cmap='seismic', origin='lower')
-        im4 = self.ax_hbond.imshow(interactions[:,:,3], aspect='auto', cmap='viridis', origin='lower')
-        
-        # Add colorbars
-        self.fig_matrix.colorbar(im1, ax=self.ax_pauli, fraction=0.046, pad=0.04)
-        self.fig_matrix.colorbar(im2, ax=self.ax_london, fraction=0.046, pad=0.04)
-        self.fig_matrix.colorbar(im3, ax=self.ax_elec, fraction=0.046, pad=0.04)
-        self.fig_matrix.colorbar(im4, ax=self.ax_hbond, fraction=0.046, pad=0.04)
-        
-        # Set titles
-        self.ax_pauli.set_title(f'Pauli [{interactions[:,:,0].min():.3f}, {interactions[:,:,0].max():.3f}]')
-        self.ax_london.set_title(f'London [{interactions[:,:,1].min():.3f}, {interactions[:,:,1].max():.3f}]')
-        self.ax_elec.set_title(f'Electro [{interactions[:,:,2].min():.3f}, {interactions[:,:,2].max():.3f}]')
-        self.ax_hbond.set_title(f'H-bond [{interactions[:,:,3].min():.3f}, {interactions[:,:,3].max():.3f}]')
-        
-        # Set labels
-        for ax in [self.ax_pauli, self.ax_london, self.ax_elec, self.ax_hbond]:
-            ax.set_xlabel('Fragment 2 Atom')
-            ax.set_ylabel('Fragment 1 Atom')
+        # Set titles and symmetric limits
+        for i, (ax, im, name) in enumerate(zip(
+            [self.ax_pauli, self.ax_london, self.ax_elec, self.ax_hbond],
+            [self.im_pauli, self.im_london, self.im_elec, self.im_hbond],
+            ['Pauli', 'London', 'Electro', 'H-bond']
+        )):
+            v = interactions[:,:,i]
+            vmax = max(abs(np.nanmin(v)), abs(np.nanmax(v)))
+            if vmax == 0: vmax = 1.0 # avoid singular norm
+            im.set_clim(-vmax, vmax)
+            ax.set_title(f'{name} [{np.nanmin(v):.3f}, {np.nanmax(v):.3f}]')
         
         # Update canvas
         self.canvas_matrix.draw()

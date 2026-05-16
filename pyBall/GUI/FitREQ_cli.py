@@ -35,11 +35,11 @@ def run_cli(xyz_file, atom_types_file, model_name='ENERGY_MorseQ_PAIR', group1="
         if Erefs.ndim > 1: Erefs = Erefs[:, 0]
         Erefs = Erefs * EV_TO_KCAL # Convert to kcal/mol
     
-    Vref, Rg, Arow, rv = reshape_to_grid_proper(Erefs, r, a, rows)
+    Vref, Rg, Arow, rv, rows = reshape_to_grid_proper(Erefs, r, a, rows)
     
     drv.apply_type_overrides() # Ensure defaults are applied
     Em = drv.evaluate_energies() * EV_TO_KCAL # Convert to kcal/mol
-    Vmod, _, _, _ = reshape_to_grid_proper(Em, r, a, rows)
+    Vmod, _, _, _, _ = reshape_to_grid_proper(Em, r, a, rows)
     
     # 3. Find Global Minimum of Reference
     if Vref is not None and np.any(np.isfinite(Vref)):
@@ -55,32 +55,42 @@ def run_cli(xyz_file, atom_types_file, model_name='ENERGY_MorseQ_PAIR', group1="
     
     # Calculate symmetric limits based on reference minimum
     vmin_ref = np.nanmin(Vref) if Vref is not None else np.nanmin(Vmod)
-    vmin_val = 1.5 * vmin_ref if vmin_ref < 0 else -10.0 # fallback if min is positive or 0
+    vmin_val = 1.2 * vmin_ref if vmin_ref < 0 else -10.0 # fallback if min is positive or 0
     vmax_val = -vmin_val
     vdif_max = 0.10 * vmax_val
     
-    # Use pcolormesh to handle non-uniform r/a grids correctly
-    R_grid, A_grid = np.meshgrid(rv, Arow)
+    ny, nx = Vref.shape
     
-    im1 = axs[0].pcolormesh(R_grid, A_grid, Vref, cmap='viridis', vmin=vmin_val, vmax=vmax_val, shading='auto')
-    axs[0].plot(rv[col], Arow[row], 'wo', ms=8, mew=1.5, mfc='none') # Hollow circle for visibility
+    # Use imshow to plot pixel grid and avoid non-monotonic grid issues
+    im1 = axs[0].imshow(Vref, origin='lower', aspect='auto', cmap='seismic', vmin=vmin_val, vmax=vmax_val)
+    axs[0].plot(col, row, 'wo', ms=8, mew=1.5, mfc='none') # Hollow circle for visibility
     axs[0].set_title('Reference Energy (kcal/mol)')
     plt.colorbar(im1, ax=axs[0])
     
-    im2 = axs[1].pcolormesh(R_grid, A_grid, Vmod, cmap='viridis', vmin=vmin_val, vmax=vmax_val, shading='auto')
-    axs[1].plot(rv[col], Arow[row], 'wo', ms=8, mew=1.5, mfc='none')
+    im2 = axs[1].imshow(Vmod, origin='lower', aspect='auto', cmap='seismic', vmin=vmin_val, vmax=vmax_val)
+    axs[1].plot(col, row, 'wo', ms=8, mew=1.5, mfc='none')
     axs[1].set_title('Model (kcal/mol)')
     plt.colorbar(im2, ax=axs[1])
     
     Vdiff = Vmod - Vref
-    im3 = axs[2].pcolormesh(R_grid, A_grid, Vdiff, cmap='bwr', vmin=-vdif_max, vmax=vdif_max, shading='auto')
-    axs[2].plot(rv[col], Arow[row], 'ko', ms=8, mew=1.5, mfc='none')
+    im3 = axs[2].imshow(Vdiff, origin='lower', aspect='auto', cmap='bwr', vmin=-vdif_max, vmax=vdif_max)
+    axs[2].plot(col, row, 'ko', ms=8, mew=1.5, mfc='none')
     axs[2].set_title('Difference (kcal/mol)')
     plt.colorbar(im3, ax=axs[2])
     
     for ax in axs:
         ax.set_xlabel('Distance (A)')
         ax.set_ylabel('Angle (deg)')
+        
+        # Ticks every 5th pixel for distance
+        tick_indices = np.arange(0, nx, 5)
+        ax.set_xticks(tick_indices)
+        ax.set_xticklabels([f"{rv[i]:.2f}" for i in tick_indices])
+        
+        # Ticks for angle
+        y_tick_indices = np.arange(0, ny, max(1, ny // 10))
+        ax.set_yticks(y_tick_indices)
+        ax.set_yticklabels([f"{Arow[i]:.1f}" for i in y_tick_indices])
     
     plt.tight_layout()
     plt.savefig(f"{out_dir}/energy_maps.png")

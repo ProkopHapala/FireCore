@@ -92,6 +92,15 @@ def reshape_to_grid_proper(vals, r, a, rows):
                 A[iy] = np.nan
         except:
             A[iy] = np.nanmean(a[s:e])
-        if iy == 0:
-            rv[:n] = r[s:e]
-    return V, R, A, rv
+            
+    # Always extract rv from the first row BEFORE sorting
+    rv = R[0, :].copy()
+    
+    # Sort by angle to make the grid continuous
+    order = np.argsort(A)
+    A = A[order]
+    V = V[order, :]
+    R = R[order, :]
+    sorted_rows = [rows[i] for i in order]
+    
+    return V, R, A, rv, sorted_rows
