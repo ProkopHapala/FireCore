@@ -239,7 +239,7 @@ class FittingDriver(OpenCLBase):
         system_params = []
 
         # Regex for robust parsing
-        reE  = re.compile(r"(?:#\s*E\s*=\s*|\bEtot\s+)([+-]?(?:\d*\.\d+|\d+)(?:[Ee][+-]?\d+)?)")
+        reE  = re.compile(r"(?:#\s*E\s*=\s*|\bE_?tot\s+)([+-]?(?:\d*\.\d+|\d+)(?:[Ee][+-]?\d+)?)")
         reN0 = re.compile(r"\bn0\s+(\d+)")
         reX  = re.compile(r"\bx0\s+([+-]?(?:\d*\.\d+|\d+)(?:[Ee][+-]?\d+)?)")
         reZ  = re.compile(r"\bz\s+([+-]?(?:\d*\.\d+|\d+)(?:[Ee][+-]?\d+)?)")
@@ -268,26 +268,49 @@ class FittingDriver(OpenCLBase):
                 z = float(mZ.group(1)) if mZ else float('nan')
                 molname = ws[-1] if len(ws) > 0 and not ws[-1].startswith('eV') else ''
 
-                system_params.append((molname, (x, z), Etot))
-                ranges_list.append((ia, ia + n0, n0, natoms - n0))
-                ErefW.append(Etot)
-
+                sample_atoms = []
+                sample_atypes = []
+                sample_valid = np.isfinite(Etot)
+                
                 for _ in range(natoms):
-                    parts = f.readline().strip().split()
+                    line_atom = f.readline().strip()
+                    if not sample_valid: continue
+                    parts = line_atom.split()
                     if len(parts) < 4:
+                        sample_valid = False
                         continue
-                    type_name = parts[0]
-                    if type_name not in self.atom_type_map:
-                        self.atom_type_map[type_name] = len(self.atom_type_names)
-                        self.atom_type_names.append(type_name)
-                    type_names.append(type_name)
-                    atypes_list.append(self.atom_type_map[type_name])
-                    # Expect up to 4 floats; pad if missing to keep float4 layout
-                    floats = [float(p) for p in parts[1:5]]
-                    if len(floats) < 4:
-                        floats += [0.0] * (4 - len(floats))
-                    atoms_list.append(floats)
-                ia += natoms
+                    
+                    try:
+                        type_name = parts[0]
+                        coords = [float(p) for p in parts[1:4]]
+                        if not np.all(np.isfinite(coords)):
+                            sample_valid = False
+                            continue
+                        
+                        charge = float(parts[4]) if len(parts) > 4 else 0.0
+                        if not np.isfinite(charge):
+                            charge = 0.0 # Fallback for corrupted charge data
+                        
+                        floats = coords + [charge]
+                        
+                        if type_name not in self.atom_type_map:
+                            self.atom_type_map[type_name] = len(self.atom_type_names)
+                            self.atom_type_names.append(type_name)
+                        
+                        sample_atoms.append(floats)
+                        sample_atypes.append(self.atom_type_map[type_name])
+                    except ValueError:
+                        sample_valid = False
+
+                if sample_valid and len(sample_atoms) == natoms:
+                    system_params.append((molname, (x, z), Etot))
+                    ranges_list.append((ia, ia + n0, n0, natoms - n0))
+                    ErefW.append(Etot)
+                    atoms_list.extend(sample_atoms)
+                    atypes_list.extend(sample_atypes)
+                    ia += natoms
+                else:
+                    if self.verbose > 0: print(f"  load_data(): skipping sample due to NaNs or malformed data")
 
         # Pack reference energies and weights into float2 array: [Eref, W]
         # Default weight W=1.0 unless provided elsewhere
@@ -678,18 +701,20 @@ class FittingDriver(OpenCLBase):
         )
 
     def set_kernel_args(self):
-        """Bind arguments for templated derivative and assembly kernels. No fallback."""
-        if 'evalSampleDerivatives_template' not in getattr(self, 'kernelheaders', {}):
-            raise RuntimeError("Templated kernels not available. Call compile_with_model(macros=...) before binding args.")
-
+        """Bind arguments for templated kernels. Only bind those available in the program and with allocated buffers."""
+        headers = getattr(self, 'kernelheaders', {})
+        
         # Derivative kernel (templated)
-        self.setup_derivative_kernel()
+        if 'evalSampleDerivatives_template' in headers and hasattr(self, 'dEdREQs_buff'):
+            self.setup_derivative_kernel()
 
         # Assembly + regularization kernel
-        self.setup_assembly_kernel()
-        
-        # Energy kernel
-        self.setup_energy_kernel()
+        if 'assembleAndRegularize' in headers and hasattr(self, 'fDOFs_buff'):
+            self.setup_assembly_kernel()
+            
+        # Energy kernel (templated)
+        if 'evalSampleEnergy_template' in headers and hasattr(self, 'Emols_buff'):
+            self.setup_energy_kernel()
         
         if self.verbose>0:
             print("Templated kernel arguments bound.")
@@ -733,6 +758,33 @@ class FittingDriver(OpenCLBase):
         self.set_kernel_args()
         if bPrint:
             print(f"compile_with_model(): kernels available: {list(self.kernelheaders.keys())}")
+
+    def compile_all_with_model(self, model_name, bPrint=False):
+        """Compile all template kernels (derivatives, energy, interaction matrix) with a given model name.
+        This ensures all kernels are available in the same program object (self.prg).
+        """
+        from pyBall.OCL.NonBondFitting import extract_macro_block
+        # __file__ is .../FireCore/pyBall/OCL/FittingDriver.py
+        # root is .../FireCore
+        root_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        forces_path = os.path.join(root_path, 'cpp/common_resources/cl/Forces.cl')
+        
+        self.energy_model_name = model_name
+        model_base = model_name.replace('ENERGY_', '').replace('MODEL_', '').replace('_PAIR', '')
+        
+        macros = {}
+        # 1. Derivatives accumulation
+        macros['MODEL_PAIR_ACCUMULATION'] = extract_macro_block(forces_path, f'MODEL_{model_base}_PAIR')
+        # 2. Energy accumulation
+        macros['MODEL_PAIR_ENERGY'] = extract_macro_block(forces_path, f'ENERGY_{model_base}_PAIR')
+        # 3. Decomposition (Interaction Matrix)
+        try:
+            macros['MODEL_PAIR_DECOMP'] = extract_macro_block(forces_path, f'MODEL_{model_base}_PAIR_DECOMP')
+        except ValueError:
+            # Fallback to LJQH2 if specific model decomposition is missing
+            macros['MODEL_PAIR_DECOMP'] = extract_macro_block(forces_path, 'MODEL_LJQH2_PAIR_DECOMP')
+            
+        self.compile_with_model(macros=macros, bPrint=bPrint)
 
     def compile_energy_with_model(self, macros=None, output_path=None, bPrint=False):
         """
@@ -856,31 +908,11 @@ class FittingDriver(OpenCLBase):
         # Create output buffer
         interactions_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, ni * nj * 4 * 4)
         
-        # Compile decomposition kernel if not already done
+        # Get decomposition kernel from program
         if not hasattr(self, 'interact_kern'):
             if 'evalInteractionMatrix_template' not in getattr(self, 'kernelheaders', {}):
-                # Need to compile with decomposition macro
-                from pyBall.OCL.NonBondFitting import extract_macro_block
-                base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                forces_path = os.path.join(base_path, '../../cpp/common_resources/cl/Forces.cl')
-                # Extract decomposition macro (use same model as energy but with _DECOMP suffix)
-                energy_model = getattr(self, 'energy_model_name', 'ENERGY_MorseQ_PAIR')
-                decomp_model = energy_model.replace('ENERGY_', '') + '_DECOMP'
-                try:
-                    macro_code = extract_macro_block(forces_path, decomp_model)
-                except ValueError:
-                    # Fallback to LJQH2_DECOMP if specific model not found
-                    macro_code = extract_macro_block(forces_path, 'MODEL_LJQH2_PAIR_DECOMP')
-                
-                macros = {'MODEL_PAIR_DECOMP': macro_code}
-                fitreq_path = os.path.join(base_path, '../../cpp/common_resources/cl/FitREQ.cl')
-                src = open(fitreq_path).read()
-                pre_src = self.preprocess_opencl_source(src, macros=macros)
-                self.prg = cl.Program(self.ctx, pre_src).build()
-                self.kernelheaders = self.extract_kernel_headers(pre_src)
-                if self.verbose > 0:
-                    print(f"Compiled interaction matrix kernel with {decomp_model}")
-            
+                # If not already compiled, re-compile everything
+                self.compile_all_with_model(getattr(self, 'energy_model_name', 'ENERGY_MorseQ_PAIR'))
             self.interact_kern = self.prg.evalInteractionMatrix_template
         
         # Set kernel arguments
@@ -902,13 +934,68 @@ class FittingDriver(OpenCLBase):
         cl.enqueue_nd_range_kernel(self.queue, self.interact_kern, global_size, local_size)
         
         # Read back results
-        interactions = self.fromGPU_(interactions_buff, shape=(ni * nj, 4), dtype='f4')
-        interactions = interactions.reshape((ni, nj, 4))
+        interactions = self.fromGPU_(interactions_buff, shape=(ni, nj, 4), dtype='f4')
         self.queue.finish()
-        
         return interactions
 
-    def update_tREQHs_from_dofs(self, dofs_vec):
+    def sum_interaction_matrix(self, M, mask1=None, mask2=None):
+        """Sum interaction matrix components for given atom groups.
+        M: [ni, nj, 4] interaction matrix
+        mask1, mask2: 64-bit masks or lists of indices. If None, use all atoms.
+        Returns: [4] components (pauli, london, electro, hbond)
+        """
+        ni, nj, _ = M.shape
+        # Convert masks to numpy boolean arrays
+        def to_bool(m, n):
+            if m is None: return np.ones(n, dtype=bool)
+            if isinstance(m, (int, np.integer)): return np.array([(m >> i) & 1 for i in range(n)], dtype=bool)
+            res = np.zeros(n, dtype=bool)
+            res[m] = True
+            return res
+        m1 = to_bool(mask1, ni)
+        m2 = to_bool(mask2, nj)
+        # Extract subset and sum
+        return np.sum(M[m1][:, m2], axis=(0,1))
+
+    def evaluate_interaction_matrices_along_cut(self, config_indices):
+        """Evaluate interaction matrices for a list of configuration indices.
+        Returns: [len(indices), ni, nj, 4] array
+        """
+        if len(config_indices) == 0: return np.zeros((0,0,0,4), dtype=np.float32)
+        sample0 = self.host_ranges[config_indices[0]]
+        ni, nj = sample0[2], sample0[3]
+        out = np.zeros((len(config_indices), ni, nj, 4), dtype=np.float32)
+        for i, idx in enumerate(config_indices):
+            out[i] = self.evaluate_interaction_matrix(idx)
+        return out
+
+    def load_scan_geometry(self, xyz_file):
+        """Load scan geometry (r, a) and detect rows using split_scan_imshow_new utilities."""
+        import sys
+        import os
+        # Ensure tests are in path for split_scan_imshow_new
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        import tests.tFitREQ.split_scan_imshow_new as scan_utils
+        
+        Es_geo, Ps = scan_utils.read_scan_atomicutils(xyz_file)
+        n0 = None
+        if Es_geo.size == 0:
+            if hasattr(scan_utils, 'parse_xyz_with_headers'):
+                Es_geo, _, Ps, N0s = scan_utils.parse_xyz_with_headers(xyz_file, natoms=None)
+                if N0s.size > 0: n0 = int(N0s[0])
+            else:
+                _, _, Ps = scan_utils.parse_xyz_blocks(xyz_file, natoms=None)
+            
+        r, a = scan_utils.compute_ra_vec(Ps, h=n0, signed=True)
+        Eh_header, Rh, Ah = scan_utils.parse_headers_ra(xyz_file)
+        
+        if Rh.size == r.size and np.any(np.isfinite(Rh)):
+            r = np.where(np.isfinite(Rh), Rh, r)
+        if Ah.size == a.size and np.any(np.isfinite(Ah)):
+            a = np.where(np.isfinite(Ah), Ah, a)
+            
+        rows, _ = scan_utils.detect_rows_by_r(r)
+        return r, a, rows, Ps
         """Return a fresh tREQHs array updated from DOF vector.
         DOF order follows `self.dof_definitions`. Comp 1 (EvdW) is stored as sqrt(E).
         """

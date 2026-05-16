@@ -748,8 +748,16 @@ __kernel void evalInteractionMatrix_template(
     // Compute distance
     float3 dij = atomj.xyz - atomi.xyz;
     float  r   = length(dij);
-    float  ir  = 1.f/r;
+    float  inv_r = 1.f/fmax(r, R2SAFE);
     
+    // Mixing rules
+    float R0 = REQi.x + REQj.x;
+    float E0 = REQi.y * REQj.y;
+    float Q  = REQi.z * REQj.z;
+    float H  = REQi.w * REQj.w;
+    float sH = S_H(H);
+    H = APPLY_H_GATE(H);
+
     // Initialize component accumulators
     float pauli  = 0.f;
     float london = 0.f;
@@ -757,7 +765,7 @@ __kernel void evalInteractionMatrix_template(
     float hbond  = 0.f;
     
     // Model-specific decomposition is injected here
-    // It should use: atomi, atomj, REQi, REQj, dij, r, ir
+    // It should use: atomi, atomj, REQi, REQj, dij, r, inv_r, R0, E0, Q, H
     // And accumulate into: pauli, london, electro, hbond
     //<<<MODEL_PAIR_DECOMP
     

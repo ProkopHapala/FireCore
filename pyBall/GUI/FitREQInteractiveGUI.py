@@ -19,13 +19,7 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 from pyBall.GUI.BaseGUI import BaseGUI
 from pyBall.OCL.FittingDriver import FittingDriver
 from pyBall.OCL.NonBondFitting import extract_macro_block
-
-# Import proper XYZ parsing for grid reshaping
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
-from tests.tFitREQ.split_scan_imshow_new import (
-    parse_headers_ra, read_scan_atomicutils, parse_xyz_blocks,
-    compute_ra_vec, detect_rows_by_r, reshape_to_grid as reshape_to_grid_proper
-)
+from pyBall.GUI.FitREQUtil import BlitManager, plot_stacked_1d, extract_cuts, reshape_to_grid_proper, EV_TO_KCAL
 
 # Use matplotlib for proper axes
 import matplotlib
@@ -143,7 +137,7 @@ class FitREQInteractiveWindow(BaseGUI):
         self.resize(1400, 900)
         
         # File paths
-        self.xyz_file = xyz_file or 'wb97m_input/H2O-A1_H2O-D1.xyz'
+        self.xyz_file = xyz_file or 'wb97m_output/CH2O-A1_H2O-D1.xyz'
         self.atom_types_file = atom_types_file or '../../cpp/common_resources/AtomTypes.dat'
         self.model_name = model_name
         
@@ -256,6 +250,24 @@ class FitREQInteractiveWindow(BaseGUI):
         self.button("Show 3D Geometry", self.show_3d_geometry, layout=left_layout)
         self.button("Show Interaction Matrix", self.show_interaction_matrix, layout=left_layout)
         
+        # --- Energy Decomposition Group Selection ---
+        left_layout.addWidget(QtWidgets.QLabel("Decomposition Groups (atom indices):"))
+        group_layout = QtWidgets.QHBoxLayout()
+        
+        self.group1_edit = QtWidgets.QLineEdit("0,1,2")
+        self.group1_edit.setToolTip("Indices in Fragment 1 (e.g. 0,1,2)")
+        self.group1_edit.textChanged.connect(self.update_1d_plots)
+        group_layout.addWidget(QtWidgets.QLabel("G1:"))
+        group_layout.addWidget(self.group1_edit)
+        
+        self.group2_edit = QtWidgets.QLineEdit("0,1,2")
+        self.group2_edit.setToolTip("Indices in Fragment 2 (e.g. 0,1,2)")
+        self.group2_edit.textChanged.connect(self.update_1d_plots)
+        group_layout.addWidget(QtWidgets.QLabel("G2:"))
+        group_layout.addWidget(self.group2_edit)
+        
+        left_layout.addLayout(group_layout)
+        
         left_layout.addStretch()
         
         # --- Right panel: Tab widget with multiple views ---
@@ -279,15 +291,28 @@ class FitREQInteractiveWindow(BaseGUI):
         self.im_mod = self.ax_mod.imshow([[0]], aspect='auto', cmap='viridis', origin='lower')
         self.im_diff = self.ax_diff.imshow([[0]], aspect='auto', cmap='bwr', origin='lower')
         
+        # Add dot cursor artists
+        self.cursor_ref,  = self.ax_ref.plot([], [], 'wo', ms=5, animated=True)
+        self.cursor_mod,  = self.ax_mod.plot([], [], 'wo', ms=5, animated=True)
+        self.cursor_diff, = self.ax_diff.plot([], [], 'ko', ms=5, animated=True)
+        
         # Add colorbars once
         self.cbar_ref = self.fig.colorbar(self.im_ref, ax=self.ax_ref, fraction=0.046, pad=0.04)
         self.cbar_mod = self.fig.colorbar(self.im_mod, ax=self.ax_mod, fraction=0.046, pad=0.04)
         self.cbar_diff = self.fig.colorbar(self.im_diff, ax=self.ax_diff, fraction=0.046, pad=0.04)
         
+        self.blit_manager = BlitManager(self.canvas, [
+            self.im_ref, self.im_mod, self.im_diff,
+            self.cursor_ref, self.cursor_mod, self.cursor_diff
+        ])
+        
         # Set labels once
         for ax in [self.ax_ref, self.ax_mod, self.ax_diff]:
             ax.set_xlabel('Distance (A)')
             ax.set_ylabel('Angle (deg)')
+        self.ax_ref.set_title('Ref (kcal/mol)')
+        self.ax_mod.set_title('Mod (kcal/mol)')
+        self.ax_diff.set_title('Diff (kcal/mol)')
         
         # Tight layout once
         self.fig.tight_layout()
@@ -334,11 +359,24 @@ class FitREQInteractiveWindow(BaseGUI):
         self.fig_matrix.tight_layout()
         matrix_layout.addWidget(self.canvas_matrix)
         
-        self.tab_widget.addTab(self.matrix_tab, "Interaction Matrix")
-        
-        # Add panels to main layout
         main_layout.addWidget(left_panel)
         main_layout.addWidget(self.tab_widget)
+        
+        # Tab 4: 1D Cuts (matplotlib)
+        self.cuts_tab = QtWidgets.QWidget()
+        cuts_layout = QtWidgets.QVBoxLayout(self.cuts_tab)
+        
+        self.fig_cuts = Figure(figsize=(14, 5), dpi=100)
+        self.fig_cuts.patch.set_facecolor('white')
+        self.canvas_cuts = FigureCanvas(self.fig_cuts)
+        
+        self.ax_radial = self.fig_cuts.add_subplot(121)
+        self.ax_angular = self.fig_cuts.add_subplot(122)
+        
+        self.fig_cuts.tight_layout()
+        cuts_layout.addWidget(self.canvas_cuts)
+        
+        self.tab_widget.addTab(self.cuts_tab, "1D Cuts")
         
         self.setCentralWidget(main_widget)
         
@@ -369,15 +407,15 @@ class FitREQInteractiveWindow(BaseGUI):
             self.drv = FittingDriver(verbose=1)
             self.drv.load_atom_types(self.atom_types_file)
             
-            # Compile energy kernel template (required before evaluate_energies)
-            # Go up 3 levels: GUI -> pyBall -> FireCore root
-            base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            forces_path = os.path.join(base_path, 'cpp/common_resources/cl/Forces.cl')
-            macro_code = extract_macro_block(forces_path, self.model_name)
-            macros = {'MODEL_PAIR_ENERGY': macro_code}
-            self.drv.compile_energy_with_model(macros=macros, bPrint=False)
+            # Compile all kernels at once
+            self.drv.compile_all_with_model(self.model_name, bPrint=True)
+            
+            # Note: init_and_upload* will be called in load_data_from_xyz
             
             self.status_label.setText("FittingDriver initialized")
+            
+            # Evaluate at startup
+            QtCore.QTimer.singleShot(500, self.recompute_energy)
             
         except Exception as e:
             self.status_label.setText(f"Error: {e}")
@@ -650,58 +688,49 @@ class FitREQInteractiveWindow(BaseGUI):
                 # Extract reference energies
                 self.Erefs = self.drv.host_ErefW if hasattr(self.drv, 'host_ErefW') else None
                 if self.Erefs is not None:
-                    # Handle 2D case (n_samples, 2) - take first column
-                    if self.Erefs.ndim > 1:
-                        self.Erefs = self.Erefs[:, 0]
+                    if self.Erefs.ndim > 1: self.Erefs = self.Erefs[:, 0]
+                    self.Erefs = self.Erefs * EV_TO_KCAL # Convert to kcal/mol
                 
-                # Parse XYZ geometry (r=radius/distance, a=angle) from headers
-                # Try atomicUtils first, fallback to local parser
-                Es_geo, Ps = read_scan_atomicutils(self.xyz_file)
-                if Es_geo.size == 0:
-                    # Fallback to local parser
-                    _, _, Ps = parse_xyz_blocks(self.xyz_file, natoms=None)
-                
-                # Compute r, a vectors from positions
-                self.r, self.a = compute_ra_vec(Ps, signed=True)
-                
-                # Parse headers for r, a overrides (returns Eh, Rh, Ah)
-                Eh_header, Rh, Ah = parse_headers_ra(self.xyz_file)
-                if Rh.size == self.r.size and np.any(np.isfinite(Rh)):
-                    self.r = np.where(np.isfinite(Rh), Rh, self.r)
-                if Ah.size == self.a.size and np.any(np.isfinite(Ah)):
-                    self.a = np.where(np.isfinite(Ah), Ah, self.a)
-                
-                # Detect rows by r values
-                self.rows, _ = detect_rows_by_r(self.r)
+                # Load scan geometry using FittingDriver helper
+                self.r, self.a, self.rows, Ps = self.drv.load_scan_geometry(self.xyz_file)
                 
                 # Reshape reference energies to grid
                 if self.Erefs is not None:
                     self.Vref, self.Rg, self.Arow, self.rv = reshape_to_grid_proper(
                         self.Erefs, self.r, self.a, self.rows
                     )
-                    print(f"Grid shape: Vref={self.Vref.shape}, rows={len(self.rows)}")
-                    print(f"  Distance range: [{self.rv.min():.2f}, {self.rv.max():.2f}] A")
-                    print(f"  Angle range: [{self.Arow.min():.1f}, {self.Arow.max():.1f}] deg")
                     
                     # Update pixel spin box ranges
                     ny, nx = self.Vref.shape
                     self.pixel_row_spin.setRange(0, ny - 1)
                     self.pixel_col_spin.setRange(0, nx - 1)
                     
-                    # Load and store all XYZ configurations
                     self._load_xyz_configurations()
-                    
-                    # Create pixel to index mapping
                     self._create_pixel_mapping()
                     
+                    # Find global minimum of reference and set as default selection
+                    if self.Vref is not None and np.any(np.isfinite(self.Vref)):
+                        min_idx = np.nanargmin(self.Vref)
+                        row, col = np.unravel_index(min_idx, self.Vref.shape)
+                        print(f"  Default selection at global min: row={row}, col={col}")
+                        self.pixel_row_spin.blockSignals(True)
+                        self.pixel_col_spin.blockSignals(True)
+                        self.pixel_row_spin.setValue(row)
+                        self.pixel_col_spin.setValue(col)
+                        self.pixel_row_spin.blockSignals(False)
+                        self.pixel_col_spin.blockSignals(False)
+
                     self.update_plots(self.Vref, self.Vref)
+            
+            # Apply current parameters to FittingDriver
+            self.apply_current_params()
             
             # Apply current parameters to FittingDriver
             self.apply_current_params()
             
             # Evaluate model energies
             print(f"    calling drv.evaluate_energies()...")
-            Em = self.drv.evaluate_energies()
+            Em = self.drv.evaluate_energies() * EV_TO_KCAL # Convert to kcal/mol
             print(f"    evaluate_energies returned: shape={Em.shape}, min={np.nanmin(Em):.6f}, max={np.nanmax(Em):.6f}")
             
             # Reshape model energies using same geometry
@@ -713,21 +742,21 @@ class FitREQInteractiveWindow(BaseGUI):
                 print(f"    WARNING: using fallback reshape (no geometry)")
                 Vmod = self.reshape_to_grid_simple(Em)
             
+            self.Vmod = Vmod # Store for 1D cuts
+            
             # Update plots
             print(f"    updating plots...")
             if self.Vref is not None:
                 self.update_plots(self.Vref, Vmod)
+                self.update_1d_plots()
                 
                 # Compute and display error
                 diff = Vmod - self.Vref
                 rmse = np.sqrt(np.nanmean(diff**2))
-                print(f"    RMSE: {rmse:.6f} eV")
-                self.status_label.setText(f"RMSE: {rmse:.6f} eV")
-                self.statusBar().showMessage(f"Recompute done - RMSE: {rmse:.6f} eV")
+                self.status_label.setText(f"RMSE: {rmse:.6f} kcal/mol")
             else:
-                print(f"    no reference data, plotting model only")
-                self.status_label.setText("No reference data")
                 self.update_plots(Vmod, Vmod)
+                self.update_1d_plots()
             print(f"  [recompute_energy] DONE\n")
                 
         except Exception as e:
@@ -765,46 +794,146 @@ class FitREQInteractiveWindow(BaseGUI):
         """Update matplotlib plots with new data using blitting."""
         Vdif = Vmod - Vref
         
-        # Get extent for proper axis scaling
-        if hasattr(self, 'rv') and hasattr(self, 'Arow'):
-            r_min, r_max = np.nanmin(self.rv), np.nanmax(self.rv)
-            a_min, a_max = np.nanmin(self.Arow), np.nanmax(self.Arow)
-            extent = [r_min, r_max, a_min, a_max]
+        # Calculate limits based on user request (symmetric around 0)
+        vref_min = np.nanmin(Vref) if Vref is not None else np.nanmin(Vmod)
+        vmin = 1.5 * vref_min if vref_min < 0 else -10.0
+        vmax = -vmin
+        vdif_max = 0.10 * vmax
+        
+        # Rebuild if pcolormesh is missing or shapes changed
+        if not hasattr(self, 'im_ref_mesh') or self.im_ref_mesh.get_array().size != Vref.size:
+            for ax in [self.ax_ref, self.ax_mod, self.ax_diff]:
+                ax.clear()
+                
+            if hasattr(self, 'rv') and hasattr(self, 'Arow'):
+                R_grid, A_grid = np.meshgrid(self.rv, self.Arow)
+            else:
+                # Fallback to simple indices
+                ny, nx = Vref.shape
+                R_grid, A_grid = np.meshgrid(np.arange(nx), np.arange(ny))
+                
+            self.im_ref_mesh = self.ax_ref.pcolormesh(R_grid, A_grid, Vref, shading='auto', cmap='viridis', animated=True)
+            self.im_mod_mesh = self.ax_mod.pcolormesh(R_grid, A_grid, Vmod, shading='auto', cmap='viridis', animated=True)
+            self.im_diff_mesh = self.ax_diff.pcolormesh(R_grid, A_grid, Vdif, shading='auto', cmap='bwr', animated=True)
+            
+            self.cursor_ref,  = self.ax_ref.plot([], [], 'wo', ms=8, mew=1.5, mfc='none', animated=True)
+            self.cursor_mod,  = self.ax_mod.plot([], [], 'wo', ms=8, mew=1.5, mfc='none', animated=True)
+            self.cursor_diff, = self.ax_diff.plot([], [], 'ko', ms=8, mew=1.5, mfc='none', animated=True)
+            
+            for ax in [self.ax_ref, self.ax_mod, self.ax_diff]:
+                ax.set_xlabel('Distance (A)')
+                ax.set_ylabel('Angle (deg)')
+                
+            self.cbar_ref.update_normal(self.im_ref_mesh)
+            self.cbar_mod.update_normal(self.im_mod_mesh)
+            self.cbar_diff.update_normal(self.im_diff_mesh)
+            
+            self.blit_manager.artists = [
+                self.im_ref_mesh, self.im_mod_mesh, self.im_diff_mesh,
+                self.cursor_ref, self.cursor_mod, self.cursor_diff
+            ]
+            self.canvas.draw() # Full redraw to establish background
         else:
-            extent = None
+            # Update data efficiently using set_array
+            self.im_ref_mesh.set_array(Vref.ravel())
+            self.im_mod_mesh.set_array(Vmod.ravel())
+            self.im_diff_mesh.set_array(Vdif.ravel())
         
-        # Update data only (fast blitting)
-        self.im_ref.set_data(Vref)
-        self.im_mod.set_data(Vmod)
-        self.im_diff.set_data(Vdif)
+        # Apply limits
+        self.im_ref_mesh.set_clim(vmin, vmax)
+        self.im_mod_mesh.set_clim(vmin, vmax)
+        self.im_diff_mesh.set_clim(-vdif_max, vdif_max)
         
-        # Update extents
-        if extent:
-            self.im_ref.set_extent(extent)
-            self.im_mod.set_extent(extent)
-            self.im_diff.set_extent(extent)
+        # Update cursor positions
+        if hasattr(self, 'rv') and hasattr(self, 'Arow'):
+            row = self.pixel_row_spin.value()
+            col = self.pixel_col_spin.value()
+            r_val = self.rv[col]
+            a_val = self.Arow[row]
+            self.cursor_ref.set_data([r_val], [a_val])
+            self.cursor_mod.set_data([r_val], [a_val])
+            self.cursor_diff.set_data([r_val], [a_val])
+            
+        # Update blit
+        self.blit_manager.update()
+
+    def parse_group_mask(self, text):
+        """Parse comma-separated indices into a list of integers."""
+        try:
+            return [int(i.strip()) for i in text.split(',') if i.strip()]
+        except ValueError:
+            return []
+
+    def update_1d_plots(self):
+        """Update 1D cuts with energy decomposition using interaction matrix."""
+        if not hasattr(self, 'Vmod') or self.Vmod is None: return
         
-        # Update clim (color limits)
-        vref_min, vref_max = np.nanmin(Vref), np.nanmax(Vref)
-        vmod_min, vmod_max = np.nanmin(Vmod), np.nanmax(Vmod)
-        vdif_min, vdif_max = np.nanmin(Vdif), np.nanmax(Vdif)
+        row = self.pixel_row_spin.value()
+        col = self.pixel_col_spin.value()
         
-        self.im_ref.set_clim(vref_min, vref_max)
-        self.im_mod.set_clim(vmod_min, vmod_max)
-        self.im_diff.set_clim(vdif_min, vdif_max)
+        mask1 = self.parse_group_mask(self.group1_edit.text())
+        mask2 = self.parse_group_mask(self.group2_edit.text())
         
-        # Update colorbar limits (mappable.set_clim updates the colorbar)
-        self.im_ref.set_clim(vref_min, vref_max)
-        self.im_mod.set_clim(vmod_min, vmod_max)
-        self.im_diff.set_clim(vdif_min, vdif_max)
+        # --- Radial Cut ---
+        s, e = self.rows[row]
+        indices = list(range(s, e))
+        Ms = self.drv.evaluate_interaction_matrices_along_cut(indices)
+        
+        E_total = np.array([M.sum() for M in Ms]) * EV_TO_KCAL
+        E_group = np.array([self.drv.sum_interaction_matrix(M, mask1, mask2).sum() for M in Ms]) * EV_TO_KCAL
+        E_other = E_total - E_group
+        
+        rv_cut = self.rv[:len(indices)]
+        Vref_cut = self.Vref[row, :len(indices)] if self.Vref is not None else None
+        
+        plot_stacked_1d(self.ax_radial, rv_cut, E_total, [E_group, E_other], 
+                       ['Group', 'Other'], ['green', 'blue'], ref=Vref_cut,
+                       title=f'Radial Cut (Angle={self.Arow[row]:.1f})',
+                       xlabel='Distance (A)', ylabel='Energy (kcal/mol)')
+        
+        # --- Angular Cut ---
+        # For angular cut, we need indices at constant 'col' across all rows
+        # We need to find the sample index for each row at column 'col'
+        ang_indices = []
+        for r_idx, (s, e) in enumerate(self.rows):
+            if col < (e - s):
+                ang_indices.append(s + col)
+            else:
+                ang_indices.append(-1) # Placeholder
+                
+        # Filter valid indices
+        valid_rows = [i for i, idx in enumerate(ang_indices) if idx >= 0]
+        valid_indices = [ang_indices[i] for i in valid_rows]
+        
+        if valid_indices:
+            Ms_ang = self.drv.evaluate_interaction_matrices_along_cut(valid_indices)
+            E_total_ang = np.array([M.sum() for M in Ms_ang]) * EV_TO_KCAL
+            E_group_ang = np.array([self.drv.sum_interaction_matrix(M, mask1, mask2).sum() for M in Ms_ang]) * EV_TO_KCAL
+            E_other_ang = E_total_ang - E_group_ang
+            
+            A_cut = self.Arow[valid_rows]
+            Vref_ang = self.Vref[valid_rows, col] if self.Vref is not None else None
+            
+            plot_stacked_1d(self.ax_angular, A_cut, E_total_ang, [E_group_ang, E_other_ang], 
+                           ['Group', 'Other'], ['green', 'blue'], ref=Vref_ang,
+                           title=f'Angular Cut (Dist={self.rv[col]:.2f})',
+                           xlabel='Angle (deg)', ylabel='Energy (kcal/mol)')
+        
+        self.canvas_cuts.draw_idle()
         
         # Update titles
+        vref_min, vref_max = np.nanmin(self.Vref), np.nanmax(self.Vref)
+        vmod_min, vmod_max = np.nanmin(self.Vmod), np.nanmax(self.Vmod)
+        Vdif = self.Vmod - self.Vref
+        vdif_min, vdif_max = np.nanmin(Vdif), np.nanmax(Vdif)
+
         self.ax_ref.set_title(f'Ref [{vref_min:.3f}, {vref_max:.3f}]')
         self.ax_mod.set_title(f'Mod [{vmod_min:.3f}, {vmod_max:.3f}]')
         self.ax_diff.set_title(f'Diff [{vdif_min:.3f}, {vdif_max:.3f}]')
         
         # Update canvas (fast - only redraws changed artists)
-        self.im_ref.axes.figure.canvas.draw_idle()
+        if hasattr(self, 'im_ref_mesh'):
+            self.im_ref_mesh.axes.figure.canvas.draw_idle()
         self.canvas.draw()
     
     def _load_xyz_configurations(self):
@@ -930,6 +1059,33 @@ class FitREQInteractiveWindow(BaseGUI):
         
         # Update status
         self.status_label.setText(f"Selected pixel: ({row}, {col})")
+        
+        # Update cursor positions on 2D plots
+        if hasattr(self, 'rv') and hasattr(self, 'Arow'):
+            r_val = self.rv[col]
+            a_val = self.Arow[row]
+            self.cursor_ref.set_data([r_val], [a_val])
+            self.cursor_mod.set_data([r_val], [a_val])
+            self.cursor_diff.set_data([r_val], [a_val])
+            self.blit_manager.update()
+            
+        # Update all diagnostic views
+        self.update_1d_plots()
+        self.show_3d_geometry()
+        self.update_interaction_matrix_data()
+
+    def update_interaction_matrix_data(self):
+        """Update interaction matrix data without switching tabs."""
+        if not hasattr(self, 'drv') or self.drv is None: return
+        if not hasattr(self, 'pixel_to_idx'): return
+        row = self.pixel_row_spin.value()
+        col = self.pixel_col_spin.value()
+        idx = self.pixel_to_idx.get((row, col), 0)
+        try:
+            interactions = self.drv.evaluate_interaction_matrix(idx)
+            self._update_interaction_plots(interactions)
+        except Exception as e:
+            print(f"Error updating interaction matrix: {e}")
     
     def show_3d_geometry(self):
         """Display 3D geometry for selected pixel."""
@@ -1060,13 +1216,13 @@ class FitREQInteractiveWindow(BaseGUI):
             print(f"Evaluating interaction matrix for config {idx} (pixel {row},{col})...")
             
             # Call the decomposition kernel
-            interactions = self.drv.evaluate_interaction_matrix(idx)
+            interactions = self.drv.evaluate_interaction_matrix(idx) * EV_TO_KCAL # Convert to kcal/mol
             
             print(f"Got interaction matrix: shape={interactions.shape}")
-            print(f"  Pauli: [{interactions[:,:,0].min():.6f}, {interactions[:,:,0].max():.6f}]")
-            print(f"  London: [{interactions[:,:,1].min():.6f}, {interactions[:,:,1].max():.6f}]")
-            print(f"  Electro: [{interactions[:,:,2].min():.6f}, {interactions[:,:,2].max():.6f}]")
-            print(f"  H-bond: [{interactions[:,:,3].min():.6f}, {interactions[:,:,3].max():.6f}]")
+            print(f"  Pauli: [{interactions[:,:,0].min():.6f}, {interactions[:,:,0].max():.6f}] kcal/mol")
+            print(f"  London: [{interactions[:,:,1].min():.6f}, {interactions[:,:,1].max():.6f}] kcal/mol")
+            print(f"  Electro: [{interactions[:,:,2].min():.6f}, {interactions[:,:,2].max():.6f}] kcal/mol")
+            print(f"  H-bond: [{interactions[:,:,3].min():.6f}, {interactions[:,:,3].max():.6f}] kcal/mol")
             
             # Update plots
             self._update_interaction_plots(interactions)

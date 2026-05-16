@@ -754,10 +754,66 @@ Combine both features:
 - `pyBall/OCL/FittingDriver.py`: Added evaluate_interaction_matrix() method
 - `pyBall/GUI/FitREQInteractiveGUI.py`: Added interaction matrix tab and visualization
 
-#### 9.3 Current Limitations
+#### 9.3 Robust Diagnostics & Electron-Pair Stability (Latest)
 
-1. **XYZ File Format:** Currently uses wb97m_input (no electron pairs). E-pairs are in wb97m_output but not default.
-2. **Tab Switching:** Must manually click "Show 3D Geometry" or "Show Interaction Matrix" buttons
-3. **Decomposition Kernel:** Overwrites self.prg (breaks energy kernel) - needs separate program object
-4. **E-pair Visibility:** Semi-transparent (alpha=0.5), may be hard to see
-5. **No Auto-update:** Must click buttons to update views after pixel selection
+**Purpose:** Ensure numerical stability and physical correctness when modeling complex systems containing electron pairs and lone pairs.
+
+**Implementation Highlights:**
+- **Robust Geometry Parsing:** Implemented `parse_xyz_with_headers` to automatically detect fragment split indices (`n0`) from file metadata, preventing atomic overlaps that caused non-physical energy spikes.
+- **Non-Uniform Grid Handling:** Switched to `pcolormesh` for 2D energy maps. This correctly handles scans with non-constant step sizes (e.g., fine steps at H-bond distance, coarse steps at long range), ensuring the cursor and physical minimum align perfectly.
+- **Corrupted Data Recovery:** Implemented NaN filtering in `FittingDriver.py`. Corrupted charge data (e.g., `-nan` in XYZ files) is automatically substituted with `0.0`, preventing total calculation failure.
+- **Unit Consistency:** All energies are standardized to `kcal/mol` across both Reference and Model views.
+- **Symmetric Visual Scaling:** Implemented automatic scaling where `vmax = -vmin = 1.5 * E_min(ref)`. This ensures consistent color gradients for comparing Reference and Model potentials while clipping extreme repulsive outliers.
+
+---
+
+### 10. Migration & Deployment Guide
+
+To migrate the FitREQ Interactive Diagnostic system to a different repository, ensure the following files and dependencies are included.
+
+#### 10.1 Exhaustive File List
+| Category | File Path | Description |
+| :--- | :--- | :--- |
+| **GUI & CLI Apps** | `pyBall/GUI/FitREQInteractiveGUI.py` | Main VisPy + Matplotlib interactive app |
+| | `pyBall/GUI/FitREQ_cli.py` | Headless diagnostic CLI for plotting |
+| **OpenCL Drivers** | `pyBall/OCL/FittingDriver.py` | Main driver and scan data loader |
+| | `pyBall/OCL/OpenCLBase.py` | Base class for OpenCL management |
+| | `pyBall/OCL/clUtils.py` | Low-level OpenCL & device utilities |
+| | `pyBall/OCL/NonBondFitting.py` | Macro extraction & fitting helpers |
+| **Utilities** | `pyBall/GUI/FitREQUtil.py` | BlitManager, 1D plotting, and grid reshaping |
+| | `pyBall/GUI/BaseGUI.py` | Base PyQt5 widget templates |
+| | `pyBall/atomicUtils.py` | Geometry processing and bond detection |
+| | `pyBall/elements.py` | Chemical element properties and colors |
+| | `tests/tFitREQ/split_scan_imshow_new.py` | Reference geometry and scan parsing |
+| **OpenCL Kernels** | `cpp/common_resources/cl/FitREQ.cl` | Interaction kernels (Energy, Force, Decomp) |
+| | `cpp/common_resources/cl/Forces.cl` | Potential model definitions (Morse, LJ) |
+| **Data** | `cpp/common_resources/AtomTypes.dat` | Default element parameters (R, E, Q, H) |
+
+#### 10.2 External Dependencies
+- **Core:** `python 3.10+`, `numpy`, `scipy`
+- **Visualization:** `matplotlib`, `vispy`
+- **GUI:** `PyQt5` (or `PySide2`)
+- **Compute:** `pyopencl` + OpenCL Runtime (NVIDIA CUDA or Intel OpenCL)
+- **Symbolic:** `sympy` (required by `FittingDriver` for some metrics)
+
+#### 10.3 How to Run
+
+**Headless Diagnostics (CLI):**
+Use this to quickly verify a new scan file and generate diagnostic plots.
+```bash
+export PYTHONPATH=$PYTHONPATH:/path/to/FireCore
+python3 pyBall/GUI/FitREQ_cli.py --xyz path/to/scan.xyz --out ./output_plots
+```
+*Outputs: `energy_maps.png`, `interaction_matrix.png`, and `1d_cuts.png`.*
+
+**Interactive GUI:**
+Use this for real-time parameter tweaking and 3D visualization.
+```bash
+python3 pyBall/GUI/FitREQInteractiveGUI.py
+```
+*Features: Real-time slider-based fitting, 3D molecule rotation, and synchronized energy decomposition.*
+
+#### 10.4 Key Integration Points
+- **Fragment Splitting:** The system assumes two fragments. Detection is automatic if `# n0 <count>` is present in the XYZ comment line.
+- **Coordinate Mapping:** Radial ($r$) and Angular ($a$) coordinates are derived in 3D. The scan plane is detected automatically via SVD or provided headers.
+- **Electron Pairs:** Particles named `E` (electron pair) or `E_h` (hole) are treated as auxiliary sites for the REPS model. Their visibility is toggled automatically in the 3D viewer.
