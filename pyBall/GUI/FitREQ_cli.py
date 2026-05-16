@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from pyBall.OCL.FittingDriver import FittingDriver
+from pyBall.OCL.NonBondFitting import optimizer_montecarlo, plot_mc_convergence, plot_mc_energy_maps, plot_mc_error_maps
 from pyBall.GUI.FitREQUtil import plot_stacked_1d, reshape_to_grid_proper, EV_TO_KCAL
 
 def run_cli(xyz_file, atom_types_file, model_name='ENERGY_MorseQ_PAIR', group1="0,1,2", group2="0,1,2", out_dir="plots_headless"):
@@ -167,20 +168,133 @@ def run_cli(xyz_file, atom_types_file, model_name='ENERGY_MorseQ_PAIR', group1="
     
     print(f"--- SUCCESS: Plots saved to '{out_dir}/' ---")
 
+def run_mc_cli(xyz_file, atom_types_file, dof_file, model_name='ENERGY_MorseQ_PAIR',
+               max_steps=500, step_size=0.1, temperature=0.0,
+               soft_clamp=False, clamp_start=4.0, clamp_max=6.0,
+               out_dir="plots_mc"):
+    """Run Monte Carlo optimizer and save convergence + energy-map plots."""
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    print(f"--- FitREQ Monte Carlo Optimizer ---")
+    print(f"  XYZ:       {xyz_file}")
+    print(f"  AtomTypes: {atom_types_file}")
+    print(f"  DOFs:      {dof_file}")
+    print(f"  Model:     {model_name}")
+    print(f"  max_steps={max_steps}  step_size={step_size}  temperature={temperature}")
+    if soft_clamp:
+        print(f"  Soft clamp: start={clamp_start}, max={clamp_max}")
+
+    # 1. Setup driver (energy-only path)
+    drv = FittingDriver(verbose=0)
+    drv.load_atom_types(atom_types_file)
+    drv.compile_all_with_model(model_name, bPrint=False)
+    drv.load_data(xyz_file)
+    drv.load_dofs(dof_file)
+    drv.init_and_upload_energy_only()
+    drv.setup_energy_kernel()
+
+    # 2. Load geometry for 2D energy maps
+    r, a, rows, Ps = drv.load_scan_geometry(xyz_file)
+    Erefs = drv.host_ErefW[:, 0] * EV_TO_KCAL
+    Vref, _, Arow, rv, rows = reshape_to_grid_proper(Erefs, r, a, rows)
+
+    # 3. Evaluate initial model energies
+    initial_dofs = np.array([d['xstart'] for d in drv.dof_definitions], dtype=np.float64)
+    Em_initial = drv.evaluate_energies() * EV_TO_KCAL
+    Vmod_initial, _, _, _, _ = reshape_to_grid_proper(Em_initial, r, a, rows)
+
+    # 4. Run Monte Carlo
+    history = optimizer_montecarlo(drv, initial_dofs,
+                                   max_steps=max_steps, step_size=step_size,
+                                   temperature=temperature,
+                                   soft_clamp=soft_clamp, clamp_start=clamp_start, clamp_max=clamp_max,
+                                   verbose=max(1, max_steps // 20))
+
+    # 5. Evaluate final model energies with best DOFs
+    Em_final = drv.evaluate_energies() * EV_TO_KCAL   # tREQHs already updated by last evaluate_objective call
+    # Re-evaluate explicitly with best DOFs to be sure
+    drv.evaluate_objective(history['best_dofs'])
+    Em_final = drv.evaluate_energies() * EV_TO_KCAL
+    Vmod_final, _, _, _, _ = reshape_to_grid_proper(Em_final, r, a, rows)
+
+    # 6. Compute per-sample errors for error maps
+    J_initial_per_sample = drv.evaluate_objective_per_sample(initial_dofs, soft_clamp=False)
+    J_final_per_sample = drv.evaluate_objective_per_sample(history['best_dofs'], soft_clamp=False)
+    if soft_clamp:
+        J_softclamp_per_sample = drv.evaluate_objective_per_sample(history['best_dofs'],
+                                                                    soft_clamp=True, clamp_start=clamp_start, clamp_max=clamp_max)
+    else:
+        J_softclamp_per_sample = J_final_per_sample
+
+    # Reshape to 2D grid
+    J_initial_grid, _, _, _, _ = reshape_to_grid_proper(J_initial_per_sample, r, a, rows)
+    J_final_grid, _, _, _, _ = reshape_to_grid_proper(J_final_per_sample, r, a, rows)
+    J_softclamp_grid, _, _, _, _ = reshape_to_grid_proper(J_softclamp_per_sample, r, a, rows)
+
+    # 7. Save plots
+    conv_path = os.path.join(out_dir, "mc_convergence.png")
+    maps_path = os.path.join(out_dir, "mc_energy_maps.png")
+    err_path = os.path.join(out_dir, "mc_error_maps.png")
+
+    fig_conv = plot_mc_convergence(history, out_path=conv_path)
+    plt.close(fig_conv)
+
+    fig_maps = plot_mc_energy_maps(Vref, Vmod_initial, Vmod_final, rv, Arow, out_path=maps_path)
+    plt.close(fig_maps)
+
+    fig_err = plot_mc_error_maps(J_initial_grid, J_final_grid, J_softclamp_grid,
+                                  rv, Arow, r, a,
+                                  soft_clamp=soft_clamp, clamp_start=clamp_start, clamp_max=clamp_max,
+                                  out_path=err_path)
+    plt.close(fig_err)
+
+    print(f"\n--- MC Results ---")
+    print(f"  Initial error : {history['initial_error']:.6e}")
+    print(f"  Best error    : {history['best_error']:.6e}")
+    print(f"  Steps accepted: {history['n_accepted']} / {history['n_steps']}")
+    comp_labels = {0:'R', 1:'E', 2:'Q', 3:'H'}
+    print(f"  Best DOFs:")
+    for i, d in enumerate(drv.dof_definitions):
+        print(f"    {d['typename']:8s} {comp_labels.get(d['comp'],'?')} : {initial_dofs[i]:.6f} -> {history['best_dofs'][i]:.6f}  (range [{d['min']:.4f}, {d['max']:.4f}])")
+    print(f"\n  Plots saved to: {os.path.abspath(out_dir)}/")
+    print(f"    {conv_path}")
+    print(f"    {maps_path}")
+    print(f"    {err_path}")
+    return history
+
+
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="FitREQ Headless Diagnostic Tool")
+    parser = argparse.ArgumentParser(description="FitREQ Headless Diagnostic / MC Optimizer Tool")
+    parser.add_argument("--mode", type=str, default="diag", choices=["diag", "mc"],
+                        help="Run mode: 'diag' = energy diagnostics, 'mc' = Monte Carlo optimizer")
     parser.add_argument("--xyz", type=str, default="../../tests/tFitREQ_PN/wb97m-split/H2O-A1_H2O-D1-y.xyz", help="Input XYZ scan file")
     parser.add_argument("--atypes", type=str, default="../../tests/tFitREQ_PN/data/AtomTypes.dat", help="Atom types parameter file")
+    parser.add_argument("--dofs", type=str, default="../../tests/tFitREQ_PN/data/dofSelection_H2O.dat", help="DOF selection file (for MC mode)")
     parser.add_argument("--model", type=str, default="ENERGY_MorseQ_PAIR", help="Energy model macro name")
     parser.add_argument("--g1", type=str, default="0,1,2", help="Atom indices in group 1 (comma separated)")
     parser.add_argument("--g2", type=str, default="0,1,2", help="Atom indices in group 2 (comma separated)")
     parser.add_argument("--out", type=str, default="plots_headless", help="Output directory")
+    parser.add_argument("--max_steps", type=int, default=500, help="MC: max number of trial steps")
+    parser.add_argument("--step_size", type=float, default=0.1, help="MC: step size as fraction of parameter range")
+    parser.add_argument("--temperature", type=float, default=0.0, help="MC: temperature for simulated annealing (0=greedy)")
+    parser.add_argument("--soft_clamp", action="store_true", help="Enable soft clamp on energy differences")
+    parser.add_argument("--clamp_start", type=float, default=4.0, help="Soft clamp: start clamping when |dE| > start")
+    parser.add_argument("--clamp_max", type=float, default=6.0, help="Soft clamp: saturate toward max value")
     args = parser.parse_args()
-    
-    # Resolve relative paths relative to script location if needed
+
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    xyz = os.path.abspath(os.path.join(base_dir, args.xyz)) if not os.path.isabs(args.xyz) else args.xyz
-    atypes = os.path.abspath(os.path.join(base_dir, args.atypes)) if not os.path.isabs(args.atypes) else args.atypes
-    
-    run_cli(xyz, atypes, args.model, args.g1, args.g2, args.out)
+    def _abs(p): return os.path.abspath(os.path.join(base_dir, p)) if not os.path.isabs(p) else p
+    xyz    = _abs(args.xyz)
+    atypes = _abs(args.atypes)
+    dofs   = _abs(args.dofs)
+
+    if args.mode == "mc":
+        run_mc_cli(xyz, atypes, dofs, args.model,
+                   max_steps=args.max_steps, step_size=args.step_size,
+                   temperature=args.temperature,
+                   soft_clamp=args.soft_clamp, clamp_start=args.clamp_start, clamp_max=args.clamp_max,
+                   out_dir=args.out)
+    else:
+        run_cli(xyz, atypes, args.model, args.g1, args.g2, args.out)

@@ -996,6 +996,8 @@ class FittingDriver(OpenCLBase):
             
         rows, _ = scan_utils.detect_rows_by_r(r)
         return r, a, rows, Ps
+
+    def tREQHs_from_dofs(self, dofs_vec):
         """Return a fresh tREQHs array updated from DOF vector.
         DOF order follows `self.dof_definitions`. Comp 1 (EvdW) is stored as sqrt(E).
         """
@@ -1008,6 +1010,56 @@ class FittingDriver(OpenCLBase):
             if ci == 1: x = float(np.sqrt(max(x, 0.0)))
             T[ti, ci] = x
         return T.astype(np.float32, copy=False)
+
+    @staticmethod
+    def _soft_clamp(dE, y1, y2):
+        """Apply soft clamp to energy differences.
+        If dE <= y1: return dE (identity)
+        If dE > y1: smooth saturation toward y2 using rational function.
+        Formula: dE_clamped = y1 + y12 * (1 - 1/(1+z)) where z = (dE-y1)/y12
+        """
+        dE = np.asarray(dE)
+        y12 = y2 - y1
+        z = np.where(dE > y1, (dE - y1) / y12, 0.0)
+        dE_clamped = np.where(dE > y1, y1 + y12 * (1.0 - 1.0 / (1.0 + z)), dE)
+        return dE_clamped
+
+    def evaluate_objective(self, dofs_vec, soft_clamp=False, clamp_start=4.0, clamp_max=6.0):
+        """Evaluate fitting objective J = sum_i( 0.5 * W_i * (dE_i)^2 )
+        for a given DOF vector, using the energy-only GPU kernel.
+        Optionally applies soft clamp to energy differences before squaring.
+        Requires init_and_upload_energy_only() and setup_energy_kernel() already called.
+        """
+        T = self.tREQHs_from_dofs(dofs_vec)
+        self.toGPU_(self.tREQHs_buff, T)
+        Emols = self.evaluate_energies()
+        Eref = self.host_ErefW[:, 0]
+        W    = self.host_ErefW[:, 1]
+        dE   = Emols - Eref
+
+        if soft_clamp:
+            dE = self._soft_clamp(dE, clamp_start, clamp_max)
+
+        J    = 0.5 * np.sum(W * dE * dE)
+        return float(J)
+
+    def evaluate_objective_per_sample(self, dofs_vec, soft_clamp=False, clamp_start=4.0, clamp_max=6.0):
+        """Evaluate fitting error per sample (for error maps).
+        Returns array of J_i = 0.5 * W_i * (dE_i)^2 for each sample.
+        Optionally applies soft clamp to energy differences.
+        """
+        T = self.tREQHs_from_dofs(dofs_vec)
+        self.toGPU_(self.tREQHs_buff, T)
+        Emols = self.evaluate_energies()
+        Eref = self.host_ErefW[:, 0]
+        W    = self.host_ErefW[:, 1]
+        dE   = Emols - Eref
+
+        if soft_clamp:
+            dE = self._soft_clamp(dE, clamp_start, clamp_max)
+
+        J_per_sample = 0.5 * W * dE * dE
+        return J_per_sample
 
     def getErrorDerivs(self, dofs_vec, niter=1, bDownload=True, bBothSides=False):
         """Calculate both objective (J) and its derivatives (g) for given DOF vector.

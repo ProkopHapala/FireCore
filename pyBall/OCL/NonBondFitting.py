@@ -128,6 +128,229 @@ def optimizer_FIRE(driver, initial_dofs, max_steps=1000, dt_start=0.01, fmax=1e-
 
     return dofs
 
+def optimizer_montecarlo(driver, initial_dofs, max_steps=500, step_size=0.1, temperature=0.0,
+                          soft_clamp=False, clamp_start=4.0, clamp_max=6.0, verbose=10):
+    """
+    Monte Carlo random optimizer for fitting parameters.
+    At each step, randomly perturbs all DOFs and accepts if error improves
+    (or with Boltzmann probability if temperature > 0).
+    Logs parameters and error only when error improves.
+    Optionally applies soft clamp to energy differences.
+    Returns a history dict.
+    """
+    print(f"\n--- Starting Monte Carlo Optimization (max_steps={max_steps}, step_size={step_size}) ---")
+    if soft_clamp:
+        print(f"  Soft clamp enabled: start={clamp_start}, max={clamp_max}")
+    dof_defs = driver.dof_definitions
+    n_dofs   = len(dof_defs)
+
+    lo  = np.array([d['min']    for d in dof_defs], dtype=np.float64)
+    hi  = np.array([d['max']    for d in dof_defs], dtype=np.float64)
+    rng = hi - lo
+
+    dofs     = np.array(initial_dofs, dtype=np.float64)
+    J_cur    = driver.evaluate_objective(dofs, soft_clamp, clamp_start, clamp_max)
+    J_best   = J_cur
+    best_dofs = dofs.copy()
+
+    param_history = [dofs.copy()]
+    error_history = [J_cur]
+    step_indices  = [0]
+    n_accepted    = 0
+
+    for step in range(1, max_steps + 1):
+        # Random perturbation scaled by parameter range
+        delta    = (np.random.rand(n_dofs) - 0.5) * 2.0 * step_size * rng
+        new_dofs = np.clip(dofs + delta, lo, hi)
+
+        J_new = driver.evaluate_objective(new_dofs, soft_clamp, clamp_start, clamp_max)
+
+        accept = J_new < J_cur
+        if not accept and temperature > 0.0:
+            prob   = np.exp(-(J_new - J_cur) / temperature)
+            accept = np.random.rand() < prob
+
+        if accept:
+            dofs  = new_dofs
+            J_cur = J_new
+            n_accepted += 1
+            if J_new < J_best:
+                J_best    = J_new
+                best_dofs = new_dofs.copy()
+                param_history.append(new_dofs.copy())
+                error_history.append(J_new)
+                step_indices.append(step)
+
+        if verbose > 0 and step % verbose == 0:
+            print(f"MC step {step:5d}/{max_steps}  J_cur={J_cur:.6e}  J_best={J_best:.6e}  accepted={n_accepted}")
+
+    print(f"MC done: {n_accepted}/{max_steps} accepted  J_initial={error_history[0]:.6e}  J_final={J_best:.6e}")
+    return {
+        'initial_dofs'   : initial_dofs,
+        'initial_error'  : error_history[0],
+        'best_dofs'      : best_dofs,
+        'best_error'     : J_best,
+        'n_steps'        : max_steps,
+        'n_accepted'     : n_accepted,
+        'param_history'  : np.array(param_history),
+        'error_history'  : np.array(error_history),
+        'step_indices'   : np.array(step_indices),
+        'dof_defs'       : dof_defs,
+        'soft_clamp'     : soft_clamp,
+        'clamp_start'    : clamp_start,
+        'clamp_max'      : clamp_max,
+    }
+
+
+def plot_mc_convergence(history, out_path=None):
+    """Plot MC optimization convergence: error curve + per-DOF parameter evolution."""
+    import matplotlib.pyplot as plt
+    ph  = history['param_history']      # [n_logged, n_dofs]
+    eh  = history['error_history']      # [n_logged]
+    si  = history['step_indices']       # [n_logged]
+    defs = history['dof_defs']
+    n_dofs = ph.shape[1]
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+
+    # --- Error evolution ---
+    ax1.semilogy(si, eh, 'o-', color='crimson', lw=1.5, ms=4)
+    ax1.axhline(eh[0],  color='gray',  ls='--', lw=1, label=f'Initial J={eh[0]:.4e}')
+    ax1.axhline(eh[-1], color='navy',  ls='--', lw=1, label=f'Best   J={eh[-1]:.4e}')
+    ax1.set_xlabel('MC step (logged at improvements)')
+    ax1.set_ylabel('Objective J (log scale)')
+    ax1.set_title('Error convergence')
+    ax1.legend(fontsize=8)
+    ax1.grid(True, ls=':')
+
+    # --- Parameter evolution ---
+    colors = plt.cm.tab10(np.linspace(0, 1, n_dofs))
+    comp_labels = {0:'R', 1:'E', 2:'Q', 3:'H'}
+    for i, dof in enumerate(defs):
+        label = f"{dof['typename']} {comp_labels.get(dof['comp'], dof['comp'])}"
+        ax2.plot(si, ph[:, i], 'o-', color=colors[i], lw=1.2, ms=3, label=label)
+        ax2.axhline(dof['min'], color=colors[i], ls=':', lw=0.7, alpha=0.5)
+        ax2.axhline(dof['max'], color=colors[i], ls=':', lw=0.7, alpha=0.5)
+    ax2.set_xlabel('MC step (logged at improvements)')
+    ax2.set_ylabel('DOF value')
+    ax2.set_title('Parameter evolution (logged only on improvement)')
+    ax2.legend(fontsize=7, ncol=2)
+    ax2.grid(True, ls=':')
+
+    plt.tight_layout()
+    if out_path:
+        plt.savefig(out_path, dpi=150)
+        print(f"  Saved: {out_path}")
+    return fig
+
+
+def plot_mc_energy_maps(Vref, Vmod_initial, Vmod_final, rv, Arow, out_path=None):
+    """Plot 2D energy imshow panels: Reference | Initial model | Final model | Difference (final)."""
+    import matplotlib.pyplot as plt
+
+    vmin_ref = np.nanmin(Vref)
+    vmin_val = 1.2 * vmin_ref if vmin_ref < 0 else -10.0
+    vmax_val = -vmin_val
+    vdif_max = max(0.1 * vmax_val, 0.1)
+
+    ny, nx = Vref.shape
+
+    def _ticks(ax, rv, Arow):
+        tick_x = np.arange(0, nx, max(1, nx // 8))
+        ax.set_xticks(tick_x)
+        ax.set_xticklabels([f"{rv[i]:.2f}" for i in tick_x], fontsize=7)
+        tick_y = np.arange(0, ny, max(1, ny // 8))
+        ax.set_yticks(tick_y)
+        ax.set_yticklabels([f"{Arow[i]:.1f}" for i in tick_y], fontsize=7)
+        ax.set_xlabel('r (Å)', fontsize=8)
+        ax.set_ylabel('angle (deg)', fontsize=8)
+
+    fig, axs = plt.subplots(1, 4, figsize=(22, 5))
+
+    im0 = axs[0].imshow(Vref,         origin='lower', aspect='auto', cmap='seismic', vmin=vmin_val, vmax=vmax_val)
+    axs[0].set_title('Reference (kcal/mol)'); plt.colorbar(im0, ax=axs[0]); _ticks(axs[0], rv, Arow)
+
+    im1 = axs[1].imshow(Vmod_initial, origin='lower', aspect='auto', cmap='seismic', vmin=vmin_val, vmax=vmax_val)
+    axs[1].set_title('Model initial');        plt.colorbar(im1, ax=axs[1]); _ticks(axs[1], rv, Arow)
+
+    im2 = axs[2].imshow(Vmod_final,   origin='lower', aspect='auto', cmap='seismic', vmin=vmin_val, vmax=vmax_val)
+    axs[2].set_title('Model optimized');      plt.colorbar(im2, ax=axs[2]); _ticks(axs[2], rv, Arow)
+
+    Vdiff = Vmod_final - Vref
+    im3 = axs[3].imshow(Vdiff,        origin='lower', aspect='auto', cmap='bwr',     vmin=-vdif_max, vmax=vdif_max)
+    axs[3].set_title('Diff optimized-ref');   plt.colorbar(im3, ax=axs[3]); _ticks(axs[3], rv, Arow)
+
+    plt.suptitle('MC Optimization — Energy Maps (kcal/mol)', fontsize=11)
+    plt.tight_layout()
+    if out_path:
+        plt.savefig(out_path, dpi=150)
+        print(f"  Saved: {out_path}")
+    return fig
+
+
+def plot_mc_error_maps(J_initial, J_final, J_softclamp, rv, Arow, rv_arr, Arow_arr,
+                       soft_clamp=False, clamp_start=4.0, clamp_max=6.0, out_path=None):
+    """Plot 2D error (objective contribution per sample) maps.
+    Shows: Initial error | Final error | Error after soft clamp | Difference.
+    Each plot uses its own vmin/vmax for better visibility.
+    """
+    import matplotlib.pyplot as plt
+
+    ny, nx = J_initial.shape
+
+    def _ticks(ax, rv, Arow):
+        tick_x = np.arange(0, nx, max(1, nx // 8))
+        ax.set_xticks(tick_x)
+        ax.set_xticklabels([f"{rv[i]:.2f}" for i in tick_x], fontsize=7)
+        tick_y = np.arange(0, ny, max(1, ny // 8))
+        ax.set_yticks(tick_y)
+        ax.set_yticklabels([f"{Arow[i]:.1f}" for i in tick_y], fontsize=7)
+        ax.set_xlabel('r (Å)', fontsize=8)
+        ax.set_ylabel('angle (deg)', fontsize=8)
+
+    if soft_clamp:
+        fig, axs = plt.subplots(1, 4, figsize=(22, 5))
+    else:
+        fig, axs = plt.subplots(1, 3, figsize=(16, 5))
+
+    # Each plot uses its own color scale
+    vmin0, vmax0 = 0, np.nanmax(J_initial)
+    im0 = axs[0].imshow(J_initial, origin='lower', aspect='auto', cmap='hot', vmin=vmin0, vmax=vmax0)
+    axs[0].set_title(f'Error Initial (max={vmax0:.2e})'); plt.colorbar(im0, ax=axs[0]); _ticks(axs[0], rv, Arow)
+
+    vmin1, vmax1 = 0, np.nanmax(J_final)
+    im1 = axs[1].imshow(J_final, origin='lower', aspect='auto', cmap='hot', vmin=vmin1, vmax=vmax1)
+    axs[1].set_title(f'Error Optimized (max={vmax1:.2e})'); plt.colorbar(im1, ax=axs[1]); _ticks(axs[1], rv, Arow)
+
+    if soft_clamp:
+        vmin2, vmax2 = 0, np.nanmax(J_softclamp)
+        im2 = axs[2].imshow(J_softclamp, origin='lower', aspect='auto', cmap='hot', vmin=vmin2, vmax=vmax2)
+        axs[2].set_title(f'Error Soft Clamp (max={vmax2:.2e})')
+        plt.colorbar(im2, ax=axs[2]); _ticks(axs[2], rv, Arow)
+
+        # Show difference: soft_clamp vs regular
+        diff = J_softclamp - J_final
+        vmin3, vmax3 = -np.nanmax(np.abs(diff)), np.nanmax(np.abs(diff))
+        im3 = axs[3].imshow(diff, origin='lower', aspect='auto', cmap='bwr', vmin=vmin3, vmax=vmax3)
+        axs[3].set_title('Soft Clamp - Regular'); plt.colorbar(im3, ax=axs[3]); _ticks(axs[3], rv, Arow)
+    else:
+        # Show difference: final - initial
+        diff = J_final - J_initial
+        vmin2, vmax2 = -np.nanmax(np.abs(diff)), np.nanmax(np.abs(diff))
+        im2 = axs[2].imshow(diff, origin='lower', aspect='auto', cmap='bwr', vmin=vmin2, vmax=vmax2)
+        axs[2].set_title('Error Change (final - initial)'); plt.colorbar(im2, ax=axs[2]); _ticks(axs[2], rv, Arow)
+
+    title = 'MC Optimization — Error Contribution Maps per Sample'
+    if soft_clamp:
+        title += f' (soft clamp: start={clamp_start}, max={clamp_max})'
+    plt.suptitle(title, fontsize=11)
+    plt.tight_layout()
+    if out_path:
+        plt.savefig(out_path, dpi=150)
+        print(f"  Saved: {out_path}")
+    return fig
+
+
 def setup_driver(
     model_name='ENERGY_MorseQ_PAIR',
     atom_types_file="/home/prokop/git/FireCore/cpp/common_resources/AtomTypes.dat",
