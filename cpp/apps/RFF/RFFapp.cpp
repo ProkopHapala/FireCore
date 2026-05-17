@@ -115,7 +115,7 @@ void generate_quad_row(RARFF_SR& ff, int ntypes, RigidAtomType* types, Quat4i ca
 }
 
 void generateDiamond111Surface( RARFF_SR& ff, double alat, Vec3i n, int ntypes, RigidAtomType* types, Quat4i capsBrush ) {
-    print( "generateDiamond111Surface() \n" );
+    printf( "generateDiamond111Surface() \n" );
     //n=Vec3i{3,3,4};
     n=Vec3i{5,5,4};
     //double a = 5.43; // Silicon lattice constant, use 3.57 for diamond
@@ -173,7 +173,7 @@ void generateDiamond111Surface( RARFF_SR& ff, double alat, Vec3i n, int ntypes, 
 
     ff.map.setup_Buckets3D( pmin, pmax, step );
     printf( "generateDiamond111Surface() pmin(%g,%g,%g) pmax(%g,%g,%g) ntot=%i n(%i,%i,%i) \n", pmin.x,pmin.y,pmin.z, pmax.x,pmax.y,pmax.z, ff.map.ntot, ff.map.n.x,ff.map.n.y,ff.map.n.z );
-    print( "generateDiamond111Surface() DONE\n" );
+    printf( "generateDiamond111Surface() DONE\n" );
 }
 
 template< typename FF>

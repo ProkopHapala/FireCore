@@ -10,8 +10,10 @@ option(WITH_OMP    "build with OpenMP paralelization for multiple CPUs"         
 option(WITH_AVX    "build with AVX256 SIMD intrinstic ? up to 10x speedup on 1CPU"         OFF)
 option(RELEASE     "build optimized release (-O3/-Ofast) rather than debug? (-g -Og)"      OFF)
 option(WITH_ASAN   "use runtime memory sanitizer (asan) to trace segfaults and mem-leaks?" OFF)
+option(WITH_UBSAN  "use runtime undefined behavior sanitizer (ubsan) to trace segfaults and mem-leaks?" OFF)
 
-message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_OPENCL=${WITH_OPENCL} -DWITH_OMP=${WITH_OMP} -DWITH_AVX=${WITH_AVX} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN}" )
+
+message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_OPENCL=${WITH_OPENCL} -DWITH_OMP=${WITH_OMP} -DWITH_AVX=${WITH_AVX} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN} -DWITH_UBSAN=${WITH_UBSAN}" )
 
 # ==============================
 # ==== FLAGS
@@ -49,6 +51,9 @@ if (  CMAKE_BUILD_TYPE MATCHES Debug )
         ### flags for debug
         SET( AXULIARY_COMPILE_FLAGS "-g -Og -march=native")
     endif()
+    if ( WITH_UBSAN )
+        SET( AXULIARY_COMPILE_FLAGS "${AXULIARY_COMPILE_FLAGS} -fsanitize=undefined -fno-sanitize-recover=all")
+    endif()
     #set(CMAKE_CXX_CPPCHECK "cppcheck")
     message("DEBUG BUILD FFLAGS : " )
 else()
@@ -76,6 +81,18 @@ message ( ${CMAKE_CXX_FLAGS} )
 
 ### this is for compile_commands.json   (it should help various IDEs and other tool to understand the project)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Keep compile_commands.json available for clangd in the source tree
+if(CMAKE_EXPORT_COMPILE_COMMANDS)
+    set(BUILD_COMPILE_COMMANDS  "${CMAKE_BINARY_DIR}/compile_commands.json")
+    set(SOURCE_COMPILE_COMMANDS "${CMAKE_SOURCE_DIR}/compile_commands.json")
+    add_custom_target(copy_compile_commands ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${BUILD_COMPILE_COMMANDS}"
+            "${SOURCE_COMPILE_COMMANDS}"
+        COMMENT "Copying compile_commands.json to source directory for clangd"
+    )
+endif()
 
 # ==============================
 # ==== Functions

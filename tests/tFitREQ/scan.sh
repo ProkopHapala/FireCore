@@ -35,8 +35,9 @@ echo "Current PATH: $PATH"
 echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
 
 #python3 -u opt_2D.py    2>&1 | tee OUT-fit
-python3 -u opt_2D_new.py # 2>&1 | tee OUT-fit-new
-#python3 -u opt_2D_multi.py 2>&1 | tee OUT-fit-multi
+#python3 -u opt_2D_new.py # 2>&1 | tee OUT-fit-new
+python3 -u opt_2D_new.py --input /home/niko/work/HBOND/REFERENCE/2-pairs_small_small/4-to_firecore/confs_wb97m/H2O-A1_H2O-D1-y.xyz \
+   --mode scan --scan_dofs 1 --scan_range 0.0 1.0 100 2>&1 | tee OUT-fit-multi
 #python3 sample_damped_coulomb.py | tee OUT-sample
 
 #python3 -u opt_2D.py 2> asan.log | tee OUT

@@ -50,7 +50,7 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
 # ====================================
 # ========= Globals
 # ====================================
-ev2kcal = 23.060548
+ev2kcal = 23.060547831
 bWeightsSet = False
 #isInitialized = False
 #nfound = -1
@@ -64,16 +64,21 @@ def cstr( s ):
     return s.encode('utf8')
 
 #  void setVerbosity( int verbosity_, int idebug_, int PrintDOFs, int PrintfDOFs, int PrintBeforReg, int PrintAfterReg ){
-lib.setVerbosity.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int]
+lib.setVerbosity.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int, c_int]
 lib.setVerbosity.restype   =  None
-def setVerbosity(verbosity=1, idebug=0, PrintDOFs=0, PrintfDOFs=0, PrintBeforReg=0, PrintAfterReg=0):
-    return lib.setVerbosity(verbosity, idebug, PrintDOFs, PrintfDOFs, PrintBeforReg, PrintAfterReg)
+def setVerbosity(verbosity=1, idebug=0, PrintDOFs=0, PrintfDOFs=0, PrintBeforReg=0, PrintAfterReg=0, PrintOverRepulsive=0):
+    return lib.setVerbosity(verbosity, idebug, PrintDOFs, PrintfDOFs, PrintBeforReg, PrintAfterReg, PrintOverRepulsive)
+
+lib.setModel.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_double, c_double, c_double, c_bool]
+lib.setModel.restype   =  None
+def setModel(ivdW=1, iCoul=1, iHbond=0, Epairs=0, iEpairs=0, kMorse=1.8, Lepairs=0.5, hScale=1.0, bPN=True):
+    return lib.setModel(ivdW, iCoul, iHbond, Epairs, iEpairs, kMorse, Lepairs, hScale, bPN)
 
 # void setGlobalParams( double kMorse, double Lepairs, double EijMax, double softClamp_start, double softClamp_max ){
-lib.setGlobalParams.argtypes  = [c_double, c_double, c_double, c_double, c_double]
+lib.setGlobalParams.argtypes  = [c_double, c_double, c_double, c_double, c_double, c_double]
 lib.setGlobalParams.restype   =  None
-def setGlobalParams(kMorse=1.6, Lepairs=0.5, EijMax=5.0, softClamp_start=4.0, softClamp_max=6.0):
-    return lib.setGlobalParams(kMorse, Lepairs, EijMax, softClamp_start, softClamp_max)
+def setGlobalParams(kMorse=1.6, Lepairs=0.5, EijMax=5.0, softClamp_start=4.0, softClamp_max=6.0, hScale=1.0):
+    return lib.setGlobalParams(kMorse, Lepairs, EijMax, softClamp_start, softClamp_max, hScale)
 
 #                   1          2          3               4                 5                 6                  7              8              9                   10                    11                     12                    13
 # void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int RegCountWeight, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds, int EvalOnlyCorrections, int SaveJustElementXYZ, int SoftClamp){
@@ -117,10 +122,14 @@ lib.setTrjBuffs.restype   =  None
 def setTrjBuffs( niter, trj_E=None, trj_F=None, trj_DOFs=None, trj_fDOFs=None, nDOFs_=None, bE=True, bF=True, bDOFs=True, bfDOFs=False ):
     if nDOFs_     is None: nDOFs_ = nDOFs
     print("setTrjBuffs(): niter=%i nDOFs=%i bE=%i bF=%i bDOFs=%i bfDOFs=%i" % (niter, nDOFs_, bE, bF, bDOFs, bfDOFs))
-    if (trj_E     is None) and bE     : trj_E     = np.zeros( niter )
-    if (trj_F     is None) and bF     : trj_F     = np.zeros( niter )
-    if (trj_DOFs  is None) and bDOFs  : trj_DOFs  = np.zeros( (niter, nDOFs_) )
-    if (trj_fDOFs is None) and bfDOFs : trj_fDOFs = np.zeros( (niter, nDOFs_) )
+    #if (trj_E     is None) and bE     : trj_E     = np.zeros( niter )
+    #if (trj_F     is None) and bF     : trj_F     = np.zeros( niter )
+    #if (trj_DOFs  is None) and bDOFs  : trj_DOFs  = np.zeros( (niter, nDOFs_) )
+    #if (trj_fDOFs is None) and bfDOFs : trj_fDOFs = np.zeros( (niter, nDOFs_) )
+    if (trj_E     is None) and bE     : trj_E     = np.full( niter, np.nan )
+    if (trj_F     is None) and bF     : trj_F     = np.full( niter, np.nan )
+    if (trj_DOFs  is None) and bDOFs  : trj_DOFs  = np.full( (niter, nDOFs_), np.nan )
+    if (trj_fDOFs is None) and bfDOFs : trj_fDOFs = np.full( (niter, nDOFs_), np.nan )
     lib.setTrjBuffs(_np_as(trj_E,c_double_p), _np_as(trj_F,c_double_p), _np_as(trj_DOFs,c_double_p), _np_as(trj_fDOFs,c_double_p))
     return trj_E, trj_F, trj_DOFs, trj_fDOFs
 
@@ -363,8 +372,6 @@ def EnergyFromXYZ(fname):
     xs = np.array(xs)
     return Es,xs
 
-
-
 def check_array_difference(arr1, arr2, name, max_error=1e-8, err_message="arrays differs" ):
     dmax = (arr1-arr2).max()
     print(f"{name} dmax={dmax}")
@@ -515,7 +522,6 @@ def add_epair_types(types):
     types.update(epair_types)
     return types
 
-
 def comment_non_matching_lines( type_names, fname_in, bWriteAsComment=False, fname_out="dofSelection.dat"):
     with open(fname_in, 'r') as file:
         lines = file.readlines()
@@ -535,17 +541,25 @@ def comment_non_matching_lines( type_names, fname_in, bWriteAsComment=False, fna
 
 def read_xyz_data(fname="input_all.xyz"):
     """Read XYZ file and extract Etot and x0 values from comment lines"""
-    #print("read_xyz_data()\n")
-    #print("Reading XYZ file:", fname)
+    #print(f"DEBUG: read_xyz_data() reading file: {fname}", flush=True)
     Erefs = []
     x0s = []
+    line_count = 0
+    matched_count = 0
+    sample_lines = []
+    
     with open(fname, 'r') as f:
         while True:
             line = f.readline()
-            #print(line)
+            line_count += 1
             if not line: break
+            
+            # Keep first 5 comment lines as samples
+            if line.startswith('#') and len(sample_lines) < 5:
+                sample_lines.append(line.strip())
+            
             if line.startswith('# n0'):
-                #print(line)
+                matched_count += 1
                 # Parse line like "# n0 5 Etot .70501356708840164618 x0 1.40"
                 parts = line.split()
                 Etot  = float(parts[4])
@@ -556,6 +570,16 @@ def read_xyz_data(fname="input_all.xyz"):
             #natoms = int(line) if line[0].isdigit() else 0
             #for _ in range(natoms):
             #    f.readline()
+    
+    #print(f"DEBUG: Total lines read: {line_count}", flush=True)
+    #print(f"DEBUG: Lines matched with '# n0': {matched_count}", flush=True)
+    #print(f"DEBUG: Sample comment lines:", flush=True)
+    #for sl in sample_lines:
+    #    print(f"  {sl}", flush=True)
+    #print(f"DEBUG: Erefs array length: {len(Erefs)}, x0s array length: {len(x0s)}", flush=True)
+    #if len(Erefs) > 0:
+    #    print(f"DEBUG: First Eref: {Erefs[0]}, First x0: {x0s[0]}", flush=True)
+    
     return np.array(Erefs), np.array(x0s)
 
 def loadDOFnames( fname, comps="REQH" ):
@@ -650,17 +674,18 @@ def split_and_weight_curves(Erefs, x0s, n_before_min=4, weight_func=None, EminMi
     # Add start and end indices to process all segments
     all_splits = np.concatenate(([0], curve_starts, [len(x0s)]))
 
-    lens = []
     # Process each curve segment
+    lens = []
+    #segment_counter = 0
     for start, end in zip(all_splits[:-1], all_splits[1:]):
         segment = Erefs[start:end]
         n = len(segment)
         lens.append(n)
-        #print(  )
         if len(segment) == 0: continue
+                
         imin = np.argmin(segment) + start
-
         Emin = np.min(segment)
+
         if Emin < EminMin:
             icut = imin - n_before_min
             weight_start = max(icut, start)
@@ -674,7 +699,11 @@ def split_and_weight_curves(Erefs, x0s, n_before_min=4, weight_func=None, EminMi
                 weights[start:end] = 1.0
             else:
                 weights[start:end] = weight_func( Erefs[start:end] )
-                #weights[start:end] = 1.0
+        
+        #for i in range(start, end):
+        #    print(f"    {segment_counter:6d} {i:6d} {x0s[i]:12.6f} {Erefs[i]:15.8f} {weights[i]:10.6f}", flush=True)
+
+        #segment_counter += 1
     
     return weights, lens
 
@@ -717,7 +746,7 @@ def numDeriv( x, y):
     xs = x[1:-1]
     return dy/dx, xs
 
-def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans", bEvalSamples=True, bPrint=False ):
+def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans", bEvalSamples=True, bPrint=False, outfile=None ):
     plt.figure(figsize=(8,10.0))
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
     ncol = len(color_cycle)
@@ -726,15 +755,23 @@ def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans
         #print( f"#======= DOF[{iDOF}]: {xs}" )
         Es,Fs = scanParam( iDOF, xs, bEvalSamples=bEvalSamples )   # do 1D scan
         #print( f"#======= fDOF[{iDOF}]: {Efs}" )
-        #print( "iDOF", iDOF, DOFnames[iDOF], "Es", Es )
+
+        #print( "iDOF", iDOF, DOFnames[iDOF], " Fitness       \n", Es )
+        #print( "iDOF", iDOF, DOFnames[iDOF], " dFitness/dDOF \n", Fs )
+        Fs_num, xs_num = numDeriv(xs,Es)
+        if outfile is not None:
+            fname = f"{outfile}_DOF{iDOF}_ana.dat"
+            np.savetxt( fname, np.array([xs, Es,Fs]).T, fmt="%23.15g", header=f"DOF {iDOF} {DOFnames[iDOF]} x[a.u.]  E[eV]  F[eV/a.u.] " )
+            fname = f"{outfile}_DOF{iDOF}_num.dat"
+            np.savetxt( fname, np.array([xs_num, -Fs_num]).T, fmt="%23.15g", header=f"DOF {iDOF} {DOFnames[iDOF]} x[a.u.]  F[eV/a.u.] " )
         # take color from standard matplotlib color cycle
         c = color_cycle[iDOF % ncol]
         if bEs: 
             plt.subplot(2,1,1); plt.plot(xs,Es, '-', color=c, label="E "+DOFnames[iDOF] )       # plot 1D scan
         if bFs: 
             Fs_num, xs_num = numDeriv(xs,Es)
-            plt.subplot(2,1,2); plt.plot(xs,Fs,    '-', lw=1.0, color=c, label="F "+DOFnames[iDOF] )       # This is error in the E_O3 charge derivative
-            plt.subplot(2,1,2); plt.plot(xs_num,-Fs_num, ':', lw=1.5, color=c, label="F "+DOFnames[iDOF] ) 
+            plt.subplot(2,1,2); plt.plot(xs,Fs,    '-', lw=1.0, color=c, label="F_ana "+DOFnames[iDOF] )       # This is error in the E_O3 charge derivative
+            plt.subplot(2,1,2); plt.plot(xs_num,-Fs_num, ':', lw=1.5, color=c, label="F_num "+DOFnames[iDOF] ) 
             if bPrint:
                 print ( "# plotDOFscans DOF ", iDOF, DOFnames[iDOF], " dx= ", xs[1]-xs[0] ); 
                 print ( "#  i          x              E            F_ana=-dE/dDOF     F_num          F_ana-F_num          // F_num=-(E[i+1]-E[i-1])/(x[i+1]-x[i-1])" ); 
@@ -744,16 +781,16 @@ def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans
     plt.subplot(2,1,1);
     plt.legend()
     plt.xlabel("DOF value")
-    plt.ylabel("E [kcal/mol]")   
+    plt.ylabel("E [eV]")   
     plt.grid()
 
     plt.subplot(2,1,2);
     plt.xlabel("DOF value")
-    plt.ylabel("F [kcal/mol/A]")   
+    plt.ylabel("F [eV/a.u.]")   
+    plt.legend()
     plt.grid()
 
     plt.suptitle( title )
-
 
 def checkDOFderiv( iDOF, x0=0.5, d=0.001, bEvalSamples=True ):
         xs = np.array([x0-d,x0,x0+d])
@@ -1059,7 +1096,6 @@ def plot_energy_2d_from_xyz(
         plt.savefig(save_path, dpi=200, bbox_inches='tight')
     return GS
 
-
 def parse_xyz_mapping(xyz_path, distances=None, angles=None):
     """Parse .xyz to build:
     - ref_grid (angles x distances) filled with Etot where present, NaN otherwise
@@ -1124,10 +1160,10 @@ def parse_xyz_mapping(xyz_path, distances=None, angles=None):
                 seq.append((idist, iang))
                 if vals["Etot"] is not None:
                     Gref[idist, iang] = vals["Etot"]
+                    #print("Etot", vals["Etot"], " at x0=", vals["x0"], " angle=", vals["angle"])
             for _ in range(n):
                 _ = f.readline()
     return Gref, seq, axis, distances, angles
-
 
 def compute_model_grid(xyz_path, seq, shape, do_fit=False, bAddEpairs=True, run_params=None, bOutXYZ=False):
     """Load the .xyz into FitREQ, optionally run fitting, compute model energies for each frame and map to grid.
@@ -1149,18 +1185,20 @@ def compute_model_grid(xyz_path, seq, shape, do_fit=False, bAddEpairs=True, run_
         Gm[idist, iang] = Es[i]
     return Gm
 
-
 def shift_grid(G):
     import numpy as _np
-    if G.size == 0:
+    if G is None or G.size == 0:
         return G, 0.0, 0.0
-    last = G[-1, :] if (G.ndim == 2 and G.shape[0] > 0) else np.array([0.0])
+    # Clean up garbage
+    G_clean = np.copy(G)
+    G_clean[np.abs(G_clean) > 1e10] = np.nan
+    
+    last = G_clean[-1, :] if (G_clean.ndim == 2 and G_clean.shape[0] > 0) else np.array([0.0])
     ref = float(np.nanmin(last[np.isfinite(last)])) if np.any(np.isfinite(last)) else 0.0
-    GS = G - ref
+    GS = G_clean - ref
     mloc = float(np.nanmin(GS)) if np.any(np.isfinite(GS)) else 0.0
     if np.isfinite(mloc) and mloc > 0: mloc = 0.0
     return GS, ref, mloc
-
 
 def extract_min_curves(angles, distances, G, rmax=None):
     nA = len(angles)
@@ -1176,7 +1214,6 @@ def extract_min_curves(angles, distances, G, rmax=None):
                 rmin[j] = np.nan; emin[j] = np.nan
     return rmin, emin
 
-
 def save_grid_npz(angles, distances, grid, filepath):
     """Save 2D map to NPZ with keys a, d, g."""
     folder = os.path.dirname(filepath)
@@ -1185,7 +1222,6 @@ def save_grid_npz(angles, distances, grid, filepath):
         except Exception: pass
     print("save_grid_npz(): saving to", filepath)
     np.savez_compressed(filepath, a=np.asarray(angles), d=np.asarray(distances), g=np.asarray(grid))
-
 
 def save_grid_gnuplot(angles, distances, grid, filepath):
     """Save 2D map as gnuplot-friendly triplets: angle distance energy per row. NaNs -> 'nan'."""
@@ -1205,14 +1241,12 @@ def save_grid_gnuplot(angles, distances, grid, filepath):
                     f.write(f"{a:<12.6g} {d:<12.6g} {e:<12.12g}\n")
             f.write(f"\n")
 
-
 def save_min_lines_npz(angles, rmin, emin, filepath):
     folder = os.path.dirname(filepath)
     if folder:
         try: os.makedirs(folder, exist_ok=True)
         except Exception: pass
     np.savez_compressed(filepath, a=np.asarray(angles), r=np.asarray(rmin), e=np.asarray(emin))
-
 
 def save_min_lines_gnuplot(angles, rmin, emin, filepath):
     folder = os.path.dirname(filepath)
@@ -1225,7 +1259,6 @@ def save_min_lines_gnuplot(angles, rmin, emin, filepath):
             rs = "nan" if (r is None or not np.isfinite(r)) else f"{r:.12g}"
             es = "nan" if (e is None or not np.isfinite(e)) else f"{e:.12g}"
             f.write(f"{a:.6g} {rs} {es}\n")
-
 
 def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=None, vmax=None, line=False, kcal=False, save_data_prefix=None, save_fmt="both"):
     import matplotlib.pyplot as plt
@@ -1319,6 +1352,130 @@ def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=
         #except Exception as e:
         #    print(f"Warning: failed saving grids: {e}")
 
+def plot_compare_combined(Gref, Gmodel, angles, distances, title, save_path=None, kcal=False, params_text=None):
+    import matplotlib.pyplot as plt
+    Gref_raw = np.array(Gref, copy=True) if Gref is not None else None
+    GRS, refR, mlocR = shift_grid(Gref)
+    GMS = None
+    if Gmodel is not None:
+        GMS, refM, mlocM = shift_grid(Gmodel)
+        
+    if kcal:
+        if GRS is not None: GRS *= ev2kcal
+        if GMS is not None: GMS *= ev2kcal
+
+    vmin = float(np.nanmin(GRS)) if np.any(np.isfinite(GRS)) else None
+    if vmin is not None and vmin > 0: vmin = 0.0
+    vmax = -vmin if vmin is not None else None
+
+    # Energy margins (kcal) for normalization
+    E_MARGIN_KCAL = 1.0
+    E_SPAN_KCAL   = 2.0
+    E_MARGIN = E_MARGIN_KCAL if kcal else (E_MARGIN_KCAL / ev2kcal)
+    E_SPAN   = E_SPAN_KCAL   if kcal else (E_SPAN_KCAL   / ev2kcal)
+
+    # Get lines
+    Epanel_ref = GRS.T
+    Xpanel = np.tile(np.asarray(distances, dtype=float), (len(angles), 1))
+    rR, eR = compute_min_lines_from_panel(Epanel_ref, Xpanel, angles)
+    rM = eM = None
+    if GMS is not None:
+        Epanel_mod = GMS.T
+        rM, eM = compute_min_lines_from_panel(Epanel_mod, Xpanel, angles)
+
+    # Zero line per angle: first +→≤0 crossing along distance
+    zero_r = []
+    if Gref_raw is not None:
+        Epanel_raw = np.asarray(Gref_raw, dtype=float).T  # angles x distances, unshifted
+        r_vec = np.asarray(distances, dtype=float)
+        for row in Epanel_raw:
+            e = np.asarray(row, dtype=float)
+            r0 = np.nan
+            for j in range(len(r_vec)-1):
+                if not (np.isfinite(e[j]) and np.isfinite(e[j+1])):
+                    continue
+                if e[j] > 0 and e[j+1] <= 0:
+                    r0 = r_vec[j] - e[j]*(r_vec[j+1]-r_vec[j])/(e[j+1]-e[j])
+                    break
+            zero_r.append(r0)
+    else:
+        zero_r = [np.nan]*len(angles)
+    # Convert distances to pixel indices for imshow y-axis
+    zero_r_pixels = []
+    for r in zero_r:
+        if np.isnan(r):
+            zero_r_pixels.append(np.nan)
+        else:
+            zero_r_pixels.append(int(np.argmin(np.abs(np.asarray(distances) - r))))
+
+    fig = plt.figure(figsize=(10, 8), constrained_layout=True)
+    gs = fig.add_gridspec(3, 2, width_ratios=[1, 1])
+    
+    axs_2d = [fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[1, 0]), fig.add_subplot(gs[2, 0])]
+    axR = fig.add_subplot(gs[0, 1])
+    axE = fig.add_subplot(gs[1, 1])
+    axTxt = fig.add_subplot(gs[2, 1])
+    
+    # Ref 2D
+    im0 = axs_2d[0].imshow(GRS, origin='lower', aspect='auto', cmap='bwr', vmin=vmin, vmax=vmax)
+    xt = np.linspace(0, GRS.shape[1]-1, min(6, GRS.shape[1])).astype(int)
+    yt = np.linspace(0, GRS.shape[0]-1, min(6, GRS.shape[0])).astype(int)
+    axs_2d[0].set_xticks(xt); axs_2d[0].set_yticks(yt)
+    x_ticks=[f"{angles[i]:.0f}" for i in xt]
+    y_ticks=[f"{distances[i]:.2f}" for i in yt]
+    axs_2d[0].set_xticklabels(x_ticks); axs_2d[0].set_yticklabels(y_ticks)
+    axs_2d[0].set_ylabel('Distance (Å)')
+    axs_2d[0].set_title('Reference')
+    plt.colorbar(im0, ax=axs_2d[0])
+
+    if GMS is not None:
+        im1 = axs_2d[1].imshow(GMS, origin='lower', aspect='auto', cmap='bwr', vmin=vmin, vmax=vmax)
+        axs_2d[1].set_xticks(xt); axs_2d[1].set_yticks(yt)
+        axs_2d[1].set_xticklabels(x_ticks); axs_2d[1].set_yticklabels(y_ticks)
+        axs_2d[1].set_ylabel('Distance (Å)')
+        axs_2d[1].set_title('Model')
+        plt.colorbar(im1, ax=axs_2d[1])
+        axs_2d[1].plot(range(len(angles)), zero_r_pixels, linestyle=':', color='k', alpha=0.7, label='E_DFT=0')
+        axs_2d[1].legend(fontsize=8)
+
+        D = GMS - GRS
+        im2 = axs_2d[2].imshow(D, origin='lower', aspect='auto', cmap='bwr', vmin=-E_MARGIN, vmax=E_MARGIN)
+        axs_2d[2].set_xticks(xt); axs_2d[2].set_yticks(yt)
+        axs_2d[2].set_xticklabels(x_ticks); axs_2d[2].set_yticklabels(y_ticks)
+        axs_2d[2].set_xlabel('Angle (deg)')
+        axs_2d[2].set_ylabel('Distance (Å)')
+        axs_2d[2].set_title('Difference')
+        plt.colorbar(im2, ax=axs_2d[2])
+        axs_2d[2].plot(range(len(angles)), zero_r_pixels, linestyle=':', color='k', alpha=0.7)
+
+    # Add params text panel
+    axTxt.axis('off')
+    if params_text:
+        axTxt.text(0.0, 1.0, params_text, va='top', ha='left', family='monospace', fontsize=9)
+    else:
+        axTxt.text(0.0, 0.5, 'Params', va='center', ha='left', alpha=0.4)
+
+    # Lines
+    lw = 1.0; ms = 4
+    axR.plot(angles, rR, '.-k', lw=lw, ms=ms, label='Ref')
+    if rM is not None: axR.plot(angles, rM, '.-r', lw=lw, ms=ms, label='Model')
+    axR.set_title('r_min(angle)'); axR.set_xlabel('Angle (deg)'); axR.set_ylabel('Distance x0 [Å]')
+    axR.set_ylim(1.5, 3.0); axR.grid(alpha=0.3, linestyle='--'); axR.legend(fontsize=8)
+    
+    axE.plot(angles, eR, '.-k', lw=lw, ms=ms, label='Ref')
+    if eM is not None: axE.plot(angles, eM, '.-r', lw=lw, ms=ms, label='Model')
+    axE.set_title('E_min(angle)'); axE.set_xlabel('Angle (deg)')
+    axE.set_ylabel('Energy [{}]'.format('kcal/mol' if kcal else 'eV'))
+    axE.grid(alpha=0.3, linestyle='--'); axE.legend(fontsize=8)
+    emin_ref = np.nanmin(eR) if np.any(np.isfinite(eR)) else 0.0
+    axE.set_ylim(emin_ref - E_MARGIN, emin_ref + E_SPAN + E_MARGIN)
+
+    fig.suptitle(title, fontsize=12)
+    if save_path:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+
+
 # ===== Reusable helpers for Rmin/Emin from panel-shaped data (angles x distances)
 
 def _distances_from_Xpanel(Xpanel):
@@ -1334,7 +1491,6 @@ def _distances_from_Xpanel(Xpanel):
         if np.any(mask):
             dists[j] = col[np.where(mask)[0][0]]
     return dists
-
 
 def compute_min_lines_from_panel(Epanel, Xpanel, angles, rmax=None, do_shift=True):
     """Compute Rmin(angle) and Emin(angle) from panel-shaped data.
@@ -1356,7 +1512,6 @@ def compute_min_lines_from_panel(Epanel, Xpanel, angles, rmax=None, do_shift=Tru
         G, _, _ = shift_grid(G)
     rmin, emin = extract_min_curves(angles=np.asarray(angles), distances=distances, G=G, rmax=rmax)
     return rmin, emin
-
 
 def plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save_path=None, to_kcal=False, ms=2, lw=0.5, save_data_prefix=None, save_fmt="both"):
     """Plot Rmin(angle) and Emin(angle) lines for a ref/model pair using panel-shaped inputs.
@@ -1408,8 +1563,8 @@ def plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save
         print(f"Warning: failed saving lines: {e}")
     return fig
 
-
-def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None, save_path=None):
+#def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None, save_path=None):
+def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None, save_path=None, n_steps=None):
     """Plot trajectories of DOFs over optimization iterations.
 
     Args:
@@ -1425,6 +1580,15 @@ def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None, save
     import matplotlib.pyplot as plt
     if trj_DOFs is None: return None
     niter, nDOFs_ = trj_DOFs.shape
+    
+    if n_steps is None:
+        nans = np.isnan(trj_DOFs[:,0])
+        if np.any(nans):
+            n_steps = np.argmax(nans)
+        else:
+            n_steps = niter
+    n_plot = min(niter, int(n_steps))
+
     if DOFnames is None: DOFnames = [f"DOF {i}" for i in range(nDOFs_)]
     if lss      is None: lss = ['-','--',":",'-','--',":",'-','-']
     if clrs     is None: clrs = ['b','b','b','r','r','r','c','m']
@@ -1432,7 +1596,8 @@ def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None, save
     for i in range(min(nDOFs_, len(DOFnames))):
         ls = lss[i % len(lss)]
         c  = clrs[i % len(clrs)]
-        plt.plot(trj_DOFs[:, i], ls, c=c, lw=1.0, ms=2.0, label=DOFnames[i])
+        #plt.plot(trj_DOFs[:, i], ls, c=c, lw=1.0, ms=2.0, label=DOFnames[i])
+        plt.plot(trj_DOFs[:n_plot, i], ls, c=c, lw=1.0, ms=2.0, label=DOFnames[i])
     if title:
         plt.title(title)
     plt.legend(fontsize=8)
@@ -1441,3 +1606,103 @@ def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None, save
         print("Saving plot to:", save_path)
         fig.savefig(save_path, bbox_inches='tight')
     return fig
+
+#def save_trj_dofs(trj_DOFs, DOFnames=None, folder=None):
+def save_trj_dofs(trj_DOFs, DOFnames=None, folder=None, n_steps=None):
+    """
+    Save each DOF trajectory as a separate .dat file in a folder.
+
+    Each file will contain two columns:
+        iteration_index   DOF_value
+
+    Example output file (for DOF_0.dat):
+        # iter   DOF_0
+        0  0.12345
+        1  0.12789
+        2  0.13001
+    """
+    if trj_DOFs is None or folder is None:
+        return
+
+    niter, nDOFs_ = trj_DOFs.shape
+    
+    if n_steps is None:
+        nans = np.isnan(trj_DOFs[:,0])
+        if np.any(nans):
+            n_steps = np.argmax(nans)
+        else:
+            n_steps = niter
+    n_save = min(niter, int(n_steps))
+
+    if DOFnames is None:
+        DOFnames = [f"DOF_{i}" for i in range(nDOFs_)]
+
+    # Ensure the folder exists
+    try:
+        os.makedirs(folder, exist_ok=True)
+    except Exception:
+        pass
+
+    # Iteration indices for first column
+    #iters = np.arange(niter)
+    iters = np.arange(n_save)
+
+    # Write each DOF file
+    for i in range(nDOFs_):
+        filename = os.path.join(folder, f"{DOFnames[i]}.dat")
+        #data = np.column_stack((iters, trj_DOFs[:, i]))
+        data = np.column_stack((iters, trj_DOFs[:n_save, i]))
+        header = f"# iter  {DOFnames[i]}"
+        np.savetxt(filename, data, header=header, comments="", fmt="%.12g")
+        print(f"Saved {DOFnames[i]}.dat trajectory file with iteration indices to: {folder}")
+    print(f"Saved {nDOFs_} trajectory files with iteration indices to: {folder}")
+
+def save_data(Gref, Gmodel, angles, distances, save_data_prefix=None, save_fmt="both", kcal=False, line=False):
+
+    # Shift each by its own baseline and determine symmetric limits from reference
+    GRS, refR, mlocR = shift_grid(Gref)
+    GMS = None
+    if Gmodel is not None: 
+        GMS, refM, mlocM = shift_grid(Gmodel)
+        print( "save_data() Gmodel min,max", Gmodel.min(), Gmodel.max() )
+        print( "save_data() GMS    min,max", GMS.min(), GMS.max() )
+
+    if kcal:
+        if GRS is not None: GRS *= ev2kcal
+        if GMS is not None: GMS *= ev2kcal
+
+    if save_data_prefix is None:
+        print("No save_data_prefix specified, nothing written.")
+        return
+
+    # Ensure output folder exists
+    folder = os.path.dirname(save_data_prefix)
+    if folder:
+        os.makedirs(folder, exist_ok=True)
+
+    if GRS is not None:
+        if save_fmt in ("both", "npz"):     save_grid_npz(angles, distances, GRS, save_data_prefix + "__ref.npz")
+        if save_fmt in ("both", "gnuplot"): save_grid_gnuplot(angles, distances, GRS, save_data_prefix + "__ref.dat")
+    if GMS is not None:
+        if save_fmt in ("both", "npz"):     save_grid_npz(angles, distances, GMS, save_data_prefix + "__model.npz")
+        if save_fmt in ("both", "gnuplot"): save_grid_gnuplot(angles, distances, GMS, save_data_prefix + "__model.dat")
+        D = GMS - GRS
+        if save_fmt in ("both", "npz"):     save_grid_npz(angles, distances, D, save_data_prefix + "__diff.npz")
+        if save_fmt in ("both", "gnuplot"): save_grid_gnuplot(angles, distances, D, save_data_prefix + "__diff.dat")
+
+    if line:
+        # Reuse plot_min_lines_pair by building panel-shaped inputs (angles x distances)
+        Epanel_ref = GRS.T
+        if GMS is not None:
+            Epanel_mod = GMS.T 
+        # Xpanel: replicate distances across all angles
+        Xpanel = np.tile(np.asarray(distances, dtype=float), (len(angles), 1))
+        rR, eR = compute_min_lines_from_panel(Epanel_ref, Xpanel, angles)
+        if GMS is not None:
+            rM, eM = compute_min_lines_from_panel(Epanel_mod, Xpanel, angles)
+        if save_fmt in ("both","npz"):         save_min_lines_npz(angles, rR, eR, save_data_prefix + "__ref_lines.npz")
+        if save_fmt in ("both","gnuplot"):     save_min_lines_gnuplot(angles, rR, eR, save_data_prefix + "__ref_lines.dat")
+        if GMS is not None:
+            if save_fmt in ("both","npz"):     save_min_lines_npz(angles, rM, eM, save_data_prefix + "__model_lines.npz")
+            if save_fmt in ("both","gnuplot"): save_min_lines_gnuplot(angles, rM, eM, save_data_prefix + "__model_lines.dat")
+

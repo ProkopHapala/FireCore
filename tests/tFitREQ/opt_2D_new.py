@@ -45,7 +45,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot and compare 2D energy surfaces from a single .xyz file or scan DOFs")
     parser.add_argument("--mode", choices=["plot", "model", "fit", "scan"], default="fit", help="Action: plot ref only, compare model (no fit), fit then compare, or scan DOFs")
     #parser.add_argument("-i", "--input",           default="/home/prokophapala/Desktop/CARBSIS/wb97m-split/H2O-A1_H2O-D1-y.xyz", help="Input .xyz file (single movie)")
-    parser.add_argument("-i", "--input",           default="/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/HbondFit_small_mols_2025_08_15/confs/wb97m-split/H2O-A1_H2O-D1-y.xyz", help="Input .xyz file (single movie)")
+    #parser.add_argument("-i", "--input",           default="/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/HbondFit_small_mols_2025_08_15/confs/wb97m-split/H2O-A1_H2O-D1-y.xyz", help="Input .xyz file (single movie)")
+    parser.add_argument("-i", "--input",           default="../tFitREQ_PN/wb97m-split/H2O-A1_H2O-D1-y.xyz", help="Input .xyz file (single movie)")
     parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O.dat", help="DOF selection file")
     parser.add_argument("--verbosity", type=int,   default=2,    help="Verbosity for FitREQ")
     parser.add_argument("--nstep",     type=int,   default=100, help="Fitting steps")
@@ -55,7 +56,7 @@ if __name__ == "__main__":
     parser.add_argument("--damping",   type=float, default=0.0,  help="Damping")
     # Global model params
     parser.add_argument("--kMorse",    type=float, default=1.7,  help="Global kMorse parameter")
-    parser.add_argument("--Lepairs",   type=float, default=1.2,  help="Global Lepairs parameter")
+    parser.add_argument("--Lepairs",   type=float, default=0.9,  help="Global Lepairs parameter")
     parser.add_argument("--model",     type=int,   default=7,    help="Model type: 1=LJ, 5=MorseQ_SR, 7=MorseQ_SR_boys  8=MorseQ_SR_softclamp ")
     # Weighting controls
     parser.add_argument("--n_before",        type=int,   default=100,    help="#points before min to weight")
@@ -72,6 +73,7 @@ if __name__ == "__main__":
     # Scan arguments
     parser.add_argument("--scan_dofs",         type=int,  nargs='+', default=None,             help="List of DOF indices to scan. If None, all from dof-selection are scanned.")
     parser.add_argument("--scan_range",        type=float, nargs=3,  default=[-1.0, 1.0, 100], help="Scan range: min max n_steps")
+    parser.add_argument("--scan_outfile",      type=str,   default="DOF_scan",                 help="Base name for scan output data files")
     parser.add_argument("--soft_clamp",        type=int,             default=1,                help="Enable soft clamp during scan")
     parser.add_argument("--user_weights",      type=int,             default=1,                help="Enable user weights during scan")
     parser.add_argument("--regularization",    type=int,             default=0,                help="Enable regularization during scan")
@@ -109,17 +111,10 @@ if __name__ == "__main__":
         scan_dofs = args.scan_dofs
         if scan_dofs is None:
             scan_dofs = list(range(fit.nDOFs))
-        xs = np.linspace(args.scan_range[0], args.scan_range[1], int(args.scan_range[2]))
-        for iDOF in scan_dofs:
-            Es, Fs = fit.scanParam(iDOF, xs)
-            plt.figure()
-            plt.plot(xs, Es)
-            plt.xlabel("DOF value")
-            plt.ylabel("Energy")
-            plt.title(f"DOF Scan: {DOFnames[iDOF]}")
-            plt.grid(True)
-            if args.save:
-                plt.savefig(f"{args.save}_DOF_{iDOF}.png")
+        xs = np.linspace(args.scan_range[0], args.scan_range[1], int(args.scan_range[2])) 
+        fit.plotDOFscans(scan_dofs, xs, DOFnames, title="DOF scan 1D", bFs=True, bEvalSamples=True, bPrint=True, outfile=args.scan_outfile)
+        if args.save:
+            plt.savefig(f"{args.save}_DOF_scan.png")
     elif args.mode == "plot":
         Gref, seq, axis, distances, angles = fit.parse_xyz_mapping(args.input)
         title = os.path.basename(args.input)
