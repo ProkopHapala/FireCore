@@ -624,3 +624,205 @@ The auto-search path looks for `AtomTypes.dat` in:
   script will skip files with `_bak` or `_Epairs` in the name.
 - For molecules with no N or O atoms (e.g., HF dimers), `--mode epairs` adds nothing;
   use `--mode sigma` or `--mode both` to add sigma holes instead.
+
+
+# Part 5: Reference Energy Map Plotting (`plot_ref.py`)
+
+## 5.1 Purpose
+
+The script `tests/tFitREQ/plot_ref.py` produces publication-style multi-panel figures
+for 2D angle–distance scan data. Given one or more multi-frame XYZ files it can
+generate a grid of:
+
+- **Row 1** — 2D imshow of the reference energy as a function of angle (x) and
+  distance (y), with a white `+` at the global minimum and an optional black
+  R_min(angle) curve overlaid.
+- **Row 2** — Line plot of E_min(angle) (black solid) and the angular energy
+  slice at the distance of the global minimum (red dashed).
+- **Row 3** — Ball-and-stick geometry of the dimer at the global-minimum frame,
+  coloured by element (dummy `E` atoms in purple, others by
+  `elements.ELEMENT_DICT[e][8]`), labelled with 1-based indices (primed `'` for
+  the acceptor fragment when n0 is known).
+
+## 5.2 Files and Dependencies
+
+| File | Role |
+|------|------|
+| `tests/tFitREQ/plot_ref.py` | The main script (CLI entry point) |
+| `pyBall/FitREQutils.py` | Pure-Python utilities extracted from `FitREQ.py` + `split_scan_imshow_new.py` |
+| `pyBall/elements.py` | Element colour / radius look-up tables |
+| `pyBall/atomicUtils.py` | `findBondsNP()`, `load_xyz_movie()`, etc. |
+
+The script requires **no C library** and **no OpenCL** — it works entirely in
+Python + numpy + matplotlib.
+
+## 5.3 Usage
+
+```
+python tests/tFitREQ/plot_ref.py -i <input>... [options]
+```
+
+### Arguments
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `-i, --input` | required | One or more XYZ file paths (or names with `--dir`) |
+| `--dir` | — | Directory to resolve partial names in `--input` |
+| `--glob` | — | Glob pattern to select files inside `--dir` (e.g. `"*HCN*"`) |
+| `-o, --output` | — | Save figure to this PNG path (otherwise `plt.show()`) |
+| `--kcal` | off | Convert energies to kcal/mol |
+| `--sym` | off | Symmetric colour scale `vmin = min(E), vmax = -vmin` |
+| `--min-lines` | off | Overlay R_min curve + show energy panel + molecule geometry |
+| `--ncols` | auto | Number of columns in the subplot grid |
+
+### Examples
+
+```bash
+# Simple 2D maps (one row per system):
+python tests/tFitREQ/plot_ref.py \\
+    -i HCN-D1_CH2NH-A1-y H2O-D1_NH3-A1-y \\
+    --dir /path/to/scans/ --kcal
+
+# Full three-row layout:
+python tests/tFitREQ/plot_ref.py -i scan.xyz --min-lines --kcal
+
+# 8 systems, 4 columns:
+python tests/tFitREQ/plot_ref.py -i system1.xyz ... system8.xyz \\
+    --min-lines --kcal --ncols 4 -o out.png
+
+# Using a glob:
+python tests/tFitREQ/plot_ref.py --dir /path/to/scans/ --glob "*H2O*"
+```
+
+## 5.4 How It Works
+
+### 5.4.1 Pipeline
+
+For each XYZ file, `plot_ref.py` calls `_build_frame_grid()` which replicates
+the processing inside `compute_panel_data()` but additionally builds a
+**frame-index grid**:
+
+1. **Parse** the XYZ via `read_scan_atomicutils()` (or `parse_xyz_blocks()` as
+   fallback) → `(Es, Ps)` or `(Es, Ts, Ps)`.
+2. **Geometry** → `compute_ra_vec(Ps)` → `r` (distance per frame), `a` (angle
+   per frame).
+3. **Rows** → `detect_rows_by_r(r)` → list of `(start, end)` frame ranges, one
+   per unique angle, sorted by appearance in the file.
+4. **Frame-index grid** — a `(ny, nx)` integer array where cell `[iy, ix]`
+   holds the original frame index `frame_idx[iy, ix]`, and `-1` for NaN-padded
+   cells.
+5. **Reshape** → `reshape_to_grid(Es, r, a, rows)` → `(Vraw, R, A, rv)`.
+6. **Shift** → `compute_shift_from_grid(Vraw)` → `V = Vraw - shift`.
+
+The resulting `V` (shifted energy grid) and `frame_idx` are then used for all
+three rows.
+
+### 5.4.2 Row 1 — 2D imshow
+
+`plot_imshow()` from `FitREQutils.py` is called with `bSym=False`, then the
+returned `im` object has its colour limits overridden:
+
+```python
+vmin_ref = np.nanmin(V) * conv
+if vmin_ref < 0:
+    im.set_clim(vmin_ref, -vmin_ref)       # symmetric around the well
+else:
+    im.set_clim(-vabs, vabs)               # all-positive → symmetric max|V|
+```
+
+The **global minimum** is marked with a white `+` symbol at the pixel centre
+(`y0 + (ix + 0.5) * (y1 - y0) / nx`), matching the imshow `extent`.
+
+The **R_min(angle) curve** overlaid on the image is drawn by converting the
+pixel column index of each row's minimum into a data y-coordinate via the same
+extent formula, then plotting `x = A[sorted], y = pixel_center_y`.
+
+### 5.4.3 Row 2 — Energy curves
+
+`extract_min_curves(A, rv, V.T)` returns `(rmin, emin)` — the per-angle minimum
+distance and energy. The global minimum indices `(iy_g, ix_g)` give the
+fixed-r slice: `V[:, ix_g]` plotted against `A`, with a legend entry "E @
+r=xx.xx".
+
+### 5.4.4 Row 3 — Molecule geometry
+
+The frame index at the global minimum `frame_idx[iy_g, ix_g]` is used to
+extract atom type names and positions from `Ts_raw[frame]` and `Ps_raw[frame]`.
+The function `plot_molecule()` draws:
+
+- **Scatter markers** coloured by element symbol (`E` → `'#9932CC'` purple,
+  others → `elements.ELEMENT_DICT[e][8]` hex colour).
+- **Atom labels** as 1-based indices; if `n0` is known, the acceptor fragment
+  indices are primed (`1', 2', …`).
+- **n0 separator** — a vertical dotted line at the midpoint between the two
+  fragments, with "Donor" / "Acceptor" annotations.
+
+## 5.5 Colour Scaling
+
+The default auto-scale (`--sym` or implied by `--min-lines`) is:
+
+    vmin = min(E_map)              # most negative (deepest well)
+    vmax = -vmin                   # symmetric
+
+If every data point is repulsive (`min > 0`), `vmax = max|V|` is used instead,
+avoiding an inverted colour range.
+
+This differs from matplotlib's auto-scale which would centre on the data mean.
+The symmetric scaling ensures attractive wells are clearly visible even when
+the repulsive wall is much larger.
+
+## 5.6 Known Pitfalls and Future Work
+
+### 5.6.1 Frame-index mismatch for certain files
+
+Files such as `H2O-A1_HCN-D1-y.xyz` and `H2O-A1_HCN-D1-z.xyz` produce a
+mismatch between the shift-subtracted grid `V` and the frame-index grid built
+from the raw energy array `Es`. The likely cause is that `compute_panel_data()`
+internally replaces `Es` with header-derived energies `Eh` when they have the
+same size and finite values (`if Eh.size == Es.size and
+np.any(np.isfinite(Eh)): Es = Eh`).  The header energies come from
+`parse_headers_ra()`, while the frame indexing uses the raw geometry parsing.
+If the ordering or count of header-derived values differs from the raw parse,
+the frame index no longer points to the correct configuration.
+
+**Workaround**: these files still render the 2D map and energy curves
+correctly; only the molecule geometry in row 3 may show a wrong or empty
+frame.  A proper fix would require `compute_panel_data()` to also return (or
+accept) a frame-index grid so that the energy replacement does not desync the
+indices.
+
+### 5.6.2 All-zero angles (single-angle scans)
+
+Some scan files contain data at only one angle (e.g. `CH2O-A1_HCN-D1-y.xyz`
+where all `A` values are `0`).  In that case:
+
+- The 2D imshow still displays correctly (the extent pads to avoid zero
+  width).
+- The R_min overlay is skipped (all angles identical).
+- The molecule geometry panel still shows the correct frame.
+
+### 5.6.3 E (dummy) atom bond detection
+
+`findBondsNP()` from `pyBall.atomicUtils` calls `getAtomRadiusNP()` which
+indexes into `elements.ELEMENTS` by atomic number.  Dummy `E` atoms have
+Z=200, which is beyond the 113-element table.  The script avoids this by not
+drawing bonds — only scatter markers are used for the geometry panel.
+
+If bond lines are ever needed again, they must be computed while skipping `E`
+atoms or by treating each fragment separately with the host–epair connectivity
+defined by `n0`.
+
+### 5.6.4 Speed
+
+Parsing a 703-frame XYZ file and building the three-row figure takes ~1–2
+seconds per system. For 8 systems at 4 columns this yields a figure in under
+15 seconds.
+
+### 5.6.5 `pyBall/FitREQutils.py` maintenance
+
+All pure-Python functions from `pyBall/FitREQ.py` and
+`tests/tFitREQ/split_scan_imshow_new.py` have been consolidated into
+`pyBall/FitREQutils.py`.  The file `split_scan_imshow_new.py` now imports from
+`FitREQutils` and only keeps its own `if __name__ == '__main__':` CLI block.
+When adding new features to any shared parsing/plotting function, edit
+`FitREQutils.py` directly.
