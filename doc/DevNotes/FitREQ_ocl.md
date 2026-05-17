@@ -451,3 +451,176 @@ Notes:
 This plan keeps the investigation strictly within MorseQ, isolates the LdE scaling from the pairwise derivatives, and verifies host-side DOF mapping so we can eliminate the zero-derivatives failure mode.
 
 NOTE: but is this really a problem? Because anyway we accumulate this derivative 2x (?) if we accumulate derivatives from both atoms (both fragments) ????
+
+# Part 4: Electron Pair & Sigma Hole Addition (`add_epairs.py`)
+
+## 4.1 Purpose
+
+The script `tests/tFitREQ/add_epairs.py` adds dummy atoms representing **electron pairs**
+(lone pairs on O, N, F) and **sigma holes** (positive regions on H, F, Cl, Br) to
+multi-frame XYZ dimer files. This is a preprocessing step: the resulting XYZ files with
+explicit `E` atoms can be loaded by the fitting pipeline (`loadXYZ(fname, bAddEpairs=False)`)
+without needing the C++ builder to add them on-the-fly.
+
+The script is separate from the main fitting pipeline and works purely in Python using
+`AtomicSystem` from `pyBall`.
+
+## 4.2 What Gets Added
+
+The script reads `AtomTypes.dat` to decide per atom type:
+
+| Type | Electron pairs (nepair) | Sigma-hole epair_name |
+|------|------------------------|----------------------|
+| O_3 (water oxygen) | 2 | — |
+| O_2 (carbonyl oxygen) | 2 | — |
+| N_3 (ammonia N) | 1 | — |
+| N_2 (pyridine N) | 1 | — |
+| N_1 (HCN nitrile N) | 1 | — |
+| F_ (fluorine) | 1 | — |
+| H_O (hydroxyl H) | 0 | E_H_O |
+| H_N (amine H) | 0 | E_H_N |
+| H_F (HF H) | 0 | E_H_F |
+| H_C1 (alkyne H) | 0 | E_H_C1 |
+| C, H_a, etc. | 0 | none |
+
+**Geometry rules** (implemented in `AtomicSystem.make_epair_geom`):
+
+| Hybridization | Example | npi | nσ | Geometry |
+|---------------|---------|-----|-----|----------|
+| sp³ (nb=3) | NH₃ | 0 | 3 | 1 epair opposite the 3-bond average |
+| sp³ (nb=2) | H₂O | 0 | 2 | 2 epairs in tetrahedral positions |
+| sp² (nb=2) | =N− | 1 | 2 | 1 epair along bisector |
+| sp² (nb=1) | =O | 1 | 1 | 2 epairs in pi-plane |
+| sp (nb=1) | ≡N | 2 | 1 | 1 epair opposite the bond |
+
+Sigma holes are placed along the bond direction, outward from the atom (opposite its
+single neighbor).
+
+## 4.3 Usage
+
+```
+python tests/tFitREQ/add_epairs.py -i <input> -o <output> [options]
+```
+
+### Arguments
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `-i, --input` | required | Input .xyz file or directory of .xyz files |
+| `-o, --output` | `output` | Output file or directory |
+| `--mode` | `epairs` | What to add: `epairs`, `sigma`, or `both` |
+| `--lepair` | `1.0` | Distance (Å) of epair dummy atoms from host |
+| `--sigma-dist` | `0.5` | Distance (Å) of sigma-hole dummy atoms from host |
+| `--atypes` | auto | Path to `AtomTypes.dat` |
+| `--simple-names` | off | Output simple element names (C, N, O, H, E) instead of full type names |
+| `-v, --verbose` | off | Show per-frame details |
+
+### Examples
+
+```bash
+# Single file, electron pairs only:
+python tests/tFitREQ/add_epairs.py -i scan.xyz -o scan_ep.xyz
+
+# Single file, both epairs and sigma-holes, custom distances:
+python tests/tFitREQ/add_epairs.py -i scan.xyz -o scan_full.xyz \
+    --mode both --lepair 1.2 --sigma-dist 0.6
+
+# Process all .xyz files in a directory, output to another directory:
+python tests/tFitREQ/add_epairs.py \
+    -i /path/to/confs/wb97m-split/ \
+    -o /path/to/output/ \
+    --mode both --lepair 1.0
+
+# With simple names for Jmol visualization:
+python tests/tFitREQ/add_epairs.py -i scan.xyz -o scan_ep.xyz \
+    --mode both --simple-names
+
+# Verbose output (shows each file and frame detail):
+python tests/tFitREQ/add_epairs.py -i input_dir/ -o out_dir/ -v
+
+# Re-run a sub-set that was already processed (skips _bak and _Epairs files):
+python tests/tFitREQ/add_epairs.py -i input_dir/ -o output_dir/ --mode both
+```
+
+## 4.4 Output Format
+
+Each frame in the output follows the same multi-frame XYZ format as the input:
+
+```
+<natoms_after_addition>
+# n0 <n0_updated> Etot <energy> x0 <dist> z <angle> <molname>
+<atom_type_1> <x1> <y1> <z1> <charge1>
+...
+<E_dummy> <x> <y> <z> <charge=0>
+...
+```
+
+Key differences from input:
+
+- **n0 is updated** to `n0_original + n_added_to_molA`
+- Added dummy atoms are listed **after** all their host molecule's real atoms, in the order:
+  `[molA_real] [molA_epairs] [molA_sigma] [molB_real] [molB_epairs] [molB_sigma]`
+- Atom type names for real atoms are preserved (e.g., `N_3`, `C_2`, `H_O`)
+- Added dummies are labeled `E` (atomic number 200)
+- Charges on real atoms are preserved; dummies get `0.0`
+
+## 4.5 Implementation Details
+
+### 4.5.1 File: `tests/tFitREQ/add_epairs.py`
+
+**Build-fragment loop** (for each of molecule A and B in each frame):
+
+1. Create an `AtomicSystem` from the fragment's atoms
+2. Compute bonds via distance-based detection (`findBondsNP`)
+3. For each atom with `nepair > 0` in `AtomTypes.dat`: call `make_epair_geom(i, npi, nb, distance)`
+4. For each atom with `nepair == 0` but an explicit `epair_name`: place a sigma-hole dummy
+   opposite its single bond
+5. Restore original type names for real atoms
+6. Concatenate both fragments and update `n0`
+
+### 4.5.2 File: `pyBall/AtomicSystem.py` (methods used)
+
+| Method | Lines | Role |
+|--------|-------|------|
+| `add_electron_pairs(distance)` | 951-964 | Iterates atoms, dispatches to `make_epair_geom` |
+| `make_epair_geom(i, npi, nb, distance)` | 980-1025 | Places 1-2 dummies per atom depending on hybridization |
+| `place_electron_pair(i, dir, distance)` | 1027-1052 | Appends dummy atom to arrays |
+| `neighs()` | 171-175 | Builds neighbor list from bonds |
+
+### 4.5.3 Distance conventions
+
+The `--lepair` default is **1.0 Å** (matching the C++ `Lepairs` default in `FitREQ.h`
+line 490). The `--sigma-dist` default is **0.5 Å** (matching the C++ sigma-hole placement
+convention).
+
+### 4.5.4 Dependency on `AtomTypes.dat`
+
+The script reads columns 5 (nepair) and 4 (epair_name) to decide what each atom type gets:
+
+```
+#name parent element epair  nv ne npi sym  Ruff   RvdW    EvdW   Qbase  Hb ...
+O_3    O      O      E_O_3  2  2   0   0   0.658  1.7500  0.0026 -0.1  -0.9  ...
+H_O    H_     H      E_H_O  1  0   0   0   0.354  1.4430  0.0019  0.1   0.9  ...
+```
+
+- `column 5` (nv/valence): total bond order
+- `column 6` (nepair): number of lone pairs
+- `column 4` (epair_name): for atoms with nepair=0, if this is not `*`, the atom is a
+  sigma-hole donor and gets 1 dummy opposite its bond
+
+The auto-search path looks for `AtomTypes.dat` in:
+1. `tests/tFitREQ_PN/data/`
+2. `tests/tFitREQ/data/`
+3. `tests/tFitREQ/` (same directory as the script)
+
+## 4.6 Practical Notes
+
+- The script is **fast**: ~260k frames in under 2 minutes on a modern CPU.
+- Output files can be large: each frame grows by ~5–15 atoms depending on molecule size.
+- The `--simple-names` option is useful for visualizing in Jmol, Avogadro, or VMD where
+  type names like `H_O` are not recognized.
+- If you get an error about `ELEMENT_DICT` lookup failing for `E` atoms, you are trying
+  to process a file that already contains dummy atoms. Use a fresh input file, or the
+  script will skip files with `_bak` or `_Epairs` in the name.
+- For molecules with no N or O atoms (e.g., HF dimers), `--mode epairs` adds nothing;
+  use `--mode sigma` or `--mode both` to add sigma holes instead.

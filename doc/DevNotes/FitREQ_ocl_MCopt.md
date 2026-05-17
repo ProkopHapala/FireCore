@@ -498,4 +498,165 @@ Steps accepted: 4 / 300
 5. **GPU-side soft clamp**: Implement in OpenCL kernel for gradient-based optimizers (FIRE)
 6. **Regularization**: Add K0*(x-x0)^2 penalty to objective for stability
 
+# Practical Troubleshooting & Robustness Guide
+
+## Common Runtime Errors
+
+### 1. Missing Forces.cl Kernel File
+```
+FileNotFoundError: .../cpp/common_resources/cl/Forces.cl
+```
+**Cause**: `compile_all_with_model()` in `FittingDriver.py:769-770` constructs the path as
+`root/cpp/common_resources/cl/Forces.cl` (where root is the git repo root). The file actually
+lives in `pyBall/OCL/cl/Forces.cl` but is **not** present in `cpp/common_resources/cl/`.
+
+**Fix**: Copy the file:
+```bash
+cp pyBall/OCL/cl/Forces.cl cpp/common_resources/cl/Forces.cl
+```
+
+**Robustness suggestion**: Fix the path in `FittingDriver.py:770` to look in the correct
+location, or add a fallback search path. The `compile_energy_with_model()` method (line 800)
+uses a different path resolution (`../../cpp/common_resources/cl/FitREQ.cl` from `pyBall/OCL/`)
+which works — `compile_all_with_model()` should be made consistent.
+
+### 2. GPU Debug Verbosity Flood
+```
+GPU energy_eval: tREQHs[0] = (1.83000004e+00, 5.47003001e-02, ...)
+(printed for every sample on every objective evaluation)
+```
+**Cause**: Debug print statements in the OpenCL kernel `evalSampleEnergy_template` (likely in
+`FitREQ.cl` or `Forces.cl`). These are compiled into the kernel and print for every GPU thread
+on every evaluation.
+
+**Impact**: Slows down MC iterations significantly (hundreds of thousands of lines printed).
+Makes output unreadable.
+
+**Fix**: Remove or comment out `printf()` calls in the OpenCL kernel source files:
+- Check `cpp/common_resources/cl/FitREQ.cl` for `printf("GPU energy_eval: ...")`
+- Check `pyBall/OCL/cl/Forces.cl` for the same
+
+**Robustness suggestion**: Wrap debug prints in a preprocessor flag:
+```opencl
+#ifdef DEBUG
+  printf("GPU energy_eval: ...");
+#endif
+```
+Then control via `#define DEBUG` or compile flags. Better yet, move debug printing to the
+host side (Python) after downloading results.
+
+## Required Input Files
+
+### 1. XYZ Scan File (`--xyz`)
+**Format**: Multi-frame XYZ with reference energies in comment lines.
+```
+<num_atoms>
+# n0 <N> Etot <eV> x0 <dist> z <angle> <molname>
+<atom_type> <x> <y> <z> <charge>
+...
+```
+
+- Each frame represents one geometry in a 2D scan (distance x angle)
+- `Etot` in the comment is the **reference energy** (DFT energy in eV) — this is the target
+- `n0` = number of atoms in molecule A (used to split dimer into two groups)
+- Frame ordering must be monotonic in the scan coordinates (x0 = distance, z = angle)
+- The two variants `-y.xyz` and `-z.xyz` represent different scan dimensions
+
+**Source**: Pre-generated scan geometries (e.g., `confs/wb97m-split/` or `confs/wb97m/`).
+
+### 2. AtomTypes.dat (`--atypes`)
+**Format**: Whitespace-delimited columns defining non-bonded parameters per atom type.
+```
+#name parent element epair  nv ne npi sym  Ruff  RvdW[Å]  EvdW[eV]  Q[e]  H[eV]  ...
+H_O    H_     H      E_H_O  1  0   0   0   0.354 1.4430  0.001908021  0.1   0.9    180.0
+O_3    O      O      E_O_3  2  2   0   0   0.658 1.7500  0.002601846 -0.1  -0.9    104.51 ...
+```
+
+**Critical columns** (0-indexed, used by `load_atom_types`):
+- Col 0: type name
+- Col 9: RvdW
+- Col 10: EvdW
+- Col 11: Qbase
+- Col 12: Hb
+
+**Location**: Typically `tests/tFitREQ_PN/data/AtomTypes.dat` (comprehensive, covers many
+atom types). The same file works for any molecule whose atom types are defined in it. If you
+get `Warning: Atom type 'XXX' from XYZ data not found in AtomTypes.dat. Using zeros.`, you
+need to add the missing type definition.
+
+### 3. DOF Selection File (`--dofs`)
+**Format**: One line per fitted parameter.
+```
+#typename component   Min         Max         xlo    xhi    Klo  Khi  K0  xstart  InvMass
+H_O       3           0.01        20.0        0.2    1.2    0.0  0.0  0.0  0.55    1.0
+E_H_O     0           1.0e-10     5.0         0.1    2.5    0.0  0.0  0.0  1.0     1.0
+```
+
+- `typename` must match an atom type name in AtomTypes.dat that also appears in the XYZ data
+- `component`: 0=R, 1=E (sqrt storage!), 2=Q, 3=H
+- `Min/Max`: hard bounds for clamping
+- `xstart`: initial value for optimization
+- Only lines with `typename` present in the molecule are active; others are silently skipped
+
+**Naming convention**: The test directory has `dofSelection_H2O.dat` (specific to H2O system)
+and `dofSelection_run.dat` (comprehensive, using variable references). For MC mode, use a file
+with direct numeric values (like `dofSelection_H2O.dat`).
+
+### 4. ElementTypes.dat (for reference, not required by MC mode)
+Defines element-level parameters. Not loaded by the MC pipeline, but consulted by some
+diagnostic tools.
+
+## Example: Complete Working Command
+
+```bash
+python -m pyBall.GUI.FitREQ_cli \
+  --mode mc \
+  --xyz /path/to/confs/wb97m-split/C4H3NO2-A1_H2O-D1-y.xyz \
+  --atypes /path/to/tests/tFitREQ_PN/data/AtomTypes.dat \
+  --dofs /path/to/dofSelection_C4H3NO2-A1_H2O-D1.dat \
+  --model ENERGY_MorseQ_PAIR \
+  --max_steps 500 \
+  --step_size 0.1 \
+  --temperature 0.0 \
+  --out /tmp/mc_results
+```
+
+## Robustness Improvements for the Codebase
+
+### Path Resolution
+The project has **inconsistent path resolution** across different functions:
+- `run_mc_cli()` in `FitREQ_cli.py:287-291`: resolves relative paths from the script's own
+  directory using `_abs()`. This is correct.
+- `compile_all_with_model()` in `FittingDriver.py:769-770`: uses `os.path.dirname` three times
+  to reach the repo root, then appends `cpp/common_resources/cl/Forces.cl`. Fragile.
+- `compile_energy_with_model()` in `FittingDriver.py:799-801`: uses a relative path
+  `../../cpp/common_resources/cl/FitREQ.cl` from the file's directory. Works but different
+  approach.
+
+**Recommendation**: Add a central `get_cl_path(filename)` utility function in a shared module
+that all kernels use, or store the CL directory as a class constant in `FittingDriver`.
+
+### Required vs Optional Files
+The MC pipeline currently **requires** when run via CLI:
+1. `--xyz`: multi-frame scan XYZ with Etot in comments
+2. `--atypes`: AtomTypes.dat with type definitions
+3. `--dofs`: DOF selection file
+
+It does **not** require separate `.dat` or `.npz` energy files — the reference energies are
+parsed from the XYZ comment lines.
+
+### Data Consistency Checks
+Before running MC, verify:
+- Atom types in XYZ file have entries in AtomTypes.dat (check for "Warning: ... not found")
+- DOF typenames match atom types actually present in the molecule
+- Number of frames in XYZ is reasonable (e.g., >= 10 for meaningful 2D scan)
+- Reference energies in XYZ comments are finite (model cannot fit NaN/Inf targets)
+
+### Suggested Auto-Diagnostics
+Add a `--check` mode that validates all inputs:
+1. Reads XYZ → lists atom types found
+2. Reads AtomTypes.dat → shows which are defined vs missing
+3. Reads DOFs → shows active vs inactive parameters
+4. Reports first/last reference energy range for sanity
+
 
