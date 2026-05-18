@@ -1519,6 +1519,110 @@ def plot_polar(V, rv, A, emin=None, vmax=None, title=None, cmap='bwr', kcal=Fals
         ax.set_title(title)
     return cs
 
+def plot_polar_symmetric(V, rv, A, title=None, cmap='seismic', kcal=False, ax=None, bColorbar=True, rmax=6.0, R=None, vmin=None, vmax=None, geometry=None, n0=None, plane='xy'):
+    """Plot 2D energy grid in polar coordinates with symmetric color scale and fixed Rcut.
+    
+    Creates polar plot with:
+    - Symmetric color scale (vmax = -vmin) for balanced visualization
+    - Real distances and angles from grid
+    - Fixed radial limit at Rcut = 6.0A to focus on relevant interaction range
+    - Optional geometry overlay for first fragment (atoms and electron pairs)
+    
+    Args:
+        V: 2D energy grid V[angle, distance]
+        rv: Distance values (1D array)
+        A: Angle values in degrees (1D array)
+        title: Plot title
+        cmap: Colormap name (default: 'bwr')
+        kcal: If True, convert energies to kcal/mol
+        ax: Matplotlib axes (if None, creates new polar subplot)
+        bColorbar: If True, add colorbar
+        rmax: Maximum radial distance in Angstrom (default: 6.0)
+        R: Optional per-row distance grid (if None, uses rv)
+        vmin: Minimum color limit (if None, computed from data)
+        vmax: Maximum color limit (if None, computed from data)
+        geometry: Optional tuple (enames, apos) to plot fragment A geometry
+        n0: Optional split index for geometry (fragment A atoms are indices < n0)
+        plane: Which plane to project geometry onto ('xy' or 'xz', default: 'xy')
+    """
+    fac = 23.060548 if kcal else 1.0
+    # Sort rows by angle to make contours well-behaved
+    order = np.argsort(A)
+    A = A[order]
+    V = V[order, :]
+    if R is not None:
+        R = R[order, :]
+    Z = V * fac
+    # Build theta (radians), shift by -pi to show -90..+90 within 90..270 window
+    thetas = np.radians(A) - np.pi
+    # Build coordinate grids matching V's shape. Use per-row R if available to avoid NaN padding in rv
+    ny, nx = V.shape
+    if R is not None:
+        Rg = R
+        Tg = np.repeat(thetas[:, None], nx, axis=1)
+    else:
+        Rg, Tg = np.meshgrid(rv, thetas)
+    # Replace NaN in coordinate grids with large value (outside plot range) to avoid pcolormesh error
+    Rg = np.nan_to_num(Rg, nan=rmax * 2)
+    Tg = np.nan_to_num(Tg, nan=0.0)
+    # Symmetric color scale: if vmin/vmax not provided, compute from data
+    if vmin is None or vmax is None:
+        zmax = np.nanmax(np.abs(Z))
+        vmin = -zmax
+        vmax = +zmax
+    if ax is None:
+        ax = plt.subplot(111, projection='polar')
+    # Plot with symmetric color scale - clip values and replace NaN to show oversaturation instead of white spots
+    Zp = np.clip(np.nan_to_num(Z, nan=vmin), vmin, vmax)
+    # If everything masked (all NaN), skip plotting to avoid matplotlib errors
+    if not np.any(np.isfinite(Zp)):
+        ax.text(0.5, 0.5, 'No finite data', transform=ax.transAxes, ha='center', va='center')
+        if title: ax.set_title(title)
+        return ax
+    # Use pcolormesh instead of contourf to handle irregular grids and avoid white spots
+    cs = ax.pcolormesh(Tg, Rg, Zp, cmap=cmap, vmin=vmin, vmax=vmax, shading='auto')
+    # Half circle setup: 90..270 window
+    ax.set_thetamin(90)
+    ax.set_thetamax(270)
+    # Fixed radial limit at Rcut
+    ax.set_ylim(0.0, rmax)
+    # Add radial grid lines for distance reference (1, 2, 3, 4, 5 Angstrom)
+    ax.grid(True, linestyle='--', linewidth=0.5, alpha=0.5)
+    # Plot geometry if provided
+    if geometry is not None and len(geometry) == 2:
+        enames, apos = geometry
+        # Get fragment A atoms (indices < n0 if n0 provided, else all)
+        if n0 is not None and n0 > 0:
+            apos_A = apos[:n0]
+            enames_A = enames[:n0]
+        else:
+            apos_A = apos
+            enames_A = enames
+        
+        # Convert to polar coordinates based on specified plane
+        if plane == 'xz':
+            # Use xz plane for z-scans
+            r_geo = np.sqrt(apos_A[:, 0]**2 + apos_A[:, 2]**2)
+            theta_geo = np.arctan2(apos_A[:, 2], apos_A[:, 0]) - np.pi
+        else:
+            # Default to xy plane for y-scans
+            r_geo = np.sqrt(apos_A[:, 0]**2 + apos_A[:, 1]**2)
+            theta_geo = np.arctan2(apos_A[:, 1], apos_A[:, 0]) - np.pi  # Shift by -pi to match plot
+        
+        # Plot atoms with colors by element
+        for i, (ename, r, theta) in enumerate(zip(enames_A, r_geo, theta_geo)):
+            elem = ename.split('_')[0]
+            color = _element_color(elem)
+            size = _element_size(elem) if elem != 'E' else 15  # Smaller for electron pairs
+            ax.scatter(theta, r, c=color, s=size, zorder=10, alpha=0.8, edgecolors='black', linewidth=0.5)
+    
+    if bColorbar:
+        cbar = plt.colorbar(cs, ax=ax)
+        cbar.set_label('E [kcal/mol]' if kcal else 'E [eV]')
+    if title:
+        ax.set_title(title)
+    return cs
+
 def plot_profiles(V, rv, A, R=None, rmax=None, kcal=False, ax=None, title=None, vmin=None, vmax=None):
     """Plot multiple 1D profiles on a single axes for given 2D grid V[r, a].
     Plots:
@@ -1758,8 +1862,6 @@ def plot_list(list_path, emin=None, emax=None, sym=False, kcal=False, cmap='bwr'
     return fig
 
 
-
-
 def _build_frame_grid(fp):
     """Parse XYZ, build V grid + frame-index grid + atom data."""
     Es, Ps = read_scan_atomicutils(fp)
@@ -1776,15 +1878,16 @@ def _build_frame_grid(fp):
     _, _, _, N0s = parse_xyz_with_headers(fp)
     h = int(N0s[0]) if len(N0s) > 0 and N0s[0] > 0 else None
 
-    # Geometry-derived r/a using correct fragment split h=n0
-    r, a = compute_ra_vec(Ps, h=h, signed=True)
+    # Use header energy values if available and Es is all NaN (fallback from read_scan_atomicutils)
+    if np.sum(np.isfinite(Es)) == 0 and np.sum(np.isfinite(Eh)) > 0:
+        Es = Eh[:len(Es)] if len(Eh) >= len(Es) else Eh
 
-    # If geometry-derived r or a are degenerate (all same), prefer header values
+    # Use header values for r (x0) and a (y or z) - mandatory, no fallback
     n = len(Es)
-    if len(np.unique(np.round(r, 3))) <= 1 and np.sum(np.isfinite(Rh)) == n:
-        r = Rh[:n]
-    if len(np.unique(np.round(a, 1))) <= 1 and np.sum(np.isfinite(Ah)) == n:
-        a = Ah[:n]
+    if np.sum(np.isfinite(Rh)) != n: raise ValueError(f"Header distance (x0) values not available for all {n} samples")
+    if np.sum(np.isfinite(Ah)) != n: raise ValueError(f"Header angle (y or z) values not available for all {n} samples")
+    r = Rh[:n]
+    a = Ah[:n]
 
     rows, _ = detect_rows_by_r(r)
     ny = len(rows)
@@ -1875,12 +1978,12 @@ def plot_molecule(ax, enames, apos, n0=None, title=""):
         ax.set_ylim(center[1] - half, center[1] + half)
 
 
-def plot_system_panel(V, rv, A, ax, label, kcal, sym, overlay_rmin=False):
+def plot_system_panel(V, rv, A, ax, label, kcal, sym, overlay_rmin=False, cmap='seismic'):
     """Row 1: 2D imshow + Rmin overlay + global min marker."""
     if not np.any(np.isfinite(V)):
         ax.set_axis_off()
         return None
-    im = plot_imshow(V, rv, A, title=label, kcal=kcal, ax=ax, bColorbar=True, rtick_step=5, bSym=False)
+    im = plot_imshow(V, rv, A, title=label, cmap=cmap, kcal=kcal, ax=ax, bColorbar=True, rtick_step=5, bSym=False)
     if sym and im is not None:
         conv = 23.060548 if kcal else 1.0
         vmin_ref = np.nanmin(V) * conv
@@ -2132,7 +2235,7 @@ def build_fragment(apos, enames, qs, atom_types, lepair, sigma_dist, do_epairs, 
     valid = []
     for i, e in enumerate(enames):
         en = element_from_typename(e)
-        if en in elements.ELEMENT_DICT:
+        if (en in elements.ELEMENT_DICT) and (en != 'E'):
             elem.append(en)
             atypes_list.append(elements.ELEMENT_DICT[en][0])
             valid.append(i)
@@ -2202,12 +2305,33 @@ def build_fragment(apos, enames, qs, atom_types, lepair, sigma_dist, do_epairs, 
             if len(neighs) != 1: continue
             j = neighs[0]
             direction = au.normalize(sys.apos[i] - sys.apos[j])
-            sys.place_electron_pair(  i, direction, distance=sigma_dist, ename="E", atype=200, qs=0.0, Rs=1.0, )
+            at = atom_types.get(enames[i])
+            ep_tname = (at.epair_name if (at is not None) else "")
+            if not ep_tname or ep_tname in ("*", "E"):
+                ep_tname = "E"
+            sys.place_electron_pair(  i, direction, distance=sigma_dist, ename=ep_tname, atype=200, qs=0.0, Rs=1.0, )
             n_added += 1
 
     # Restore original type names
     for i in range(len(enames)):
+        # Keep epair placeholders ("E") to be relabeled below
+        if element_from_typename(enames[i]) == 'E':
+            continue
         sys.enames[i] = enames[i]
+
+    # Assign specific epair type names (for both pre-existing and newly added epairs)
+    for iep in range(len(sys.enames)):
+        # Candidate epair atoms: either originally provided as 'E', or newly added as 'E'
+        if sys.enames[iep] != 'E': continue
+        ng = sys.ngs[iep] if (sys.ngs is not None and iep < len(sys.ngs)) else None
+        if not ng: continue
+        ih = next(iter(ng.keys()))
+        if ih < 0 or ih >= len(enames): continue
+        at = atom_types.get(enames[ih])
+        if at is None: continue
+        ep_tname = at.epair_name
+        if not ep_tname or ep_tname == "*":  continue
+        sys.enames[iep] = ep_tname
 
     return sys, n_added
 

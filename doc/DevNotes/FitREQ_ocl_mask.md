@@ -512,3 +512,219 @@ The script generates a 4-panel figure:
 2. **Model Etot**: Total model energy (all components)
 3. **Model Ein**: H-bond component only
 4. **Model Eout**: Baseline (total - H-bond)
+
+---
+
+## Epairs Model Implementation (May 2026)
+
+### Overview
+
+Implemented a new radial basis function epair model (`iEpairs=4`) with robust parameter handling and plotting support. The new model uses polynomial radial dependence instead of exponential decay, providing more flexibility for fitting H-bond interactions.
+
+### New Epair Model: MODEL_Ep4_PAIR_DECOMP
+
+**Radial basis function formula**:
+```
+f(r) = 1 - (r/R0)^2
+g(r) = f(r)^4
+E = f(r) * Yep + g(r) * Xep
+```
+
+**Parameters** (stored in REQH columns for epair types):
+- `R0ep` (H column, REQH.w): Radial cutoff distance
+- `Xep` (R column, REQH.x): Coefficient for g(r) (longer-range term)
+- `Yep` (E column, REQH.y): Coefficient for f(r) (shorter-range term)
+- `Qep` (Q column, REQH.z): Charge for epair charge subtraction
+
+**Implementation in Forces.cl**:
+```opencl
+//>>>macro MODEL_Ep4_PAIR_DECOMP
+{
+    float R0_ = fmax(R0ep, R2SAFE);
+    if(r > R0_){ /* Skip if beyond cutoff */ } else {
+        float u   = r / R0_;
+        float f   = 1.0f - u * u;
+        if(f < 0.0f) f = 0.0f;  // Truncate negative values
+        f = f * f;
+        float g   = f * f;  // f(r)^4
+        E_components.w += sEpairs * (f * Yep + g * Xep);
+    }
+}
+```
+
+**Key differences from existing models**:
+- `iEpairs=1`: Exponential decay `Hep * exp(-r/R0ep)`
+- `iEpairs=2`: Gaussian decay `Hep * exp(-(r/R0ep)^2)`
+- `iEpairs=3`: Sigmoid-like `Hep * 2/(exp(r/R0ep) + exp(-r/R0ep))`
+- `iEpairs=4`: Polynomial radial basis (NEW) with separate Xep, Yep coefficients
+
+### Parameter Handling Improvements
+
+**Problem**: Previous implementation applied `sqrt(E)` to all atom types, which was incorrect for epair types where `E` is a direct coefficient.
+
+**Solution**: Conditional sqrt application based on atom type:
+```python
+if isinstance(type_name, str) and type_name.startswith('E'):
+    self.tREQHs_base[i, 1] = params['E']  # Store directly for epairs
+else:
+    self.tREQHs_base[i, 1] = np.sqrt(params['E'])  # sqrt for normal types
+```
+
+**Applied consistently in**:
+- `prepare_host_data()`: Initial parameter loading
+- `prepare_host_data_energy_only()`: Energy-only path
+- `apply_type_overrides()`: JSON parameter overrides
+- `dump_used_type_params()`: Parameter printing
+
+**Runtime warnings** (for epair types only):
+- Warn if `Q==0`: Epair charge subtraction disabled → baseline Coulomb may be too attractive
+- Warn if `R==0 and E==0`: Epair coefficients zero → Ein will be ~0
+
+### Kernel Compilation Fix
+
+**Problem**: `MODEL_Ep4_PAIR_DECOMP` macro was not being extracted from Forces.cl and passed to the compiler, causing undefined macro errors when `iEpairs=4`.
+
+**Solution**: Added `MODEL_Ep4_PAIR_DECOMP` to macro extraction in `compile_with_model()`:
+```python
+if 'MODEL_Ep4_PAIR_DECOMP' not in macros and 'MODEL_Ep4_PAIR_DECOMP' in mlib:
+    macros['MODEL_Ep4_PAIR_DECOMP'] = mlib['MODEL_Ep4_PAIR_DECOMP']
+```
+
+### Epair Detection Fix
+
+**Problem**: `host_isEpair` array was only initialized in `load_data()`, but `init_and_upload_energy_only()` was called directly in `plot_masked_energy.py`, so epair atoms weren't being flagged.
+
+**Solution**: Added epair detection initialization in `prepare_host_data_energy_only()`:
+```python
+if not hasattr(self, 'host_isEpair'):
+    self.host_isEpair = np.zeros((len(self.host_atypes),), dtype=np.int32)
+    if len(self.atom_type_names) > 0:
+        ep_type_ids = [i for i, n in enumerate(self.atom_type_names) if (isinstance(n, str) and n.startswith('E'))]
+        if ep_type_ids:
+            m = np.isin(self.host_atypes, np.array(ep_type_ids, dtype=np.int32))
+            self.host_isEpair[m] = 1
+```
+
+### Kernel Macro Fix
+
+**Problem**: Initial implementation used `return` statement in `MODEL_Ep4_PAIR_DECOMP` macro, which exits the entire kernel (not just the macro), skipping all subsequent pair calculations.
+
+**Solution**: Changed to `if-else` block to avoid early return:
+```opencl
+if(r > R0_){ /* Skip if beyond cutoff */ } else {
+    // Compute epair energy
+}
+```
+
+### Plotting Enhancements
+
+**Added support for multiple plotting modes in `plot_masked_energy.py`**:
+- `--polar 0`: Non-polar mode (default)
+- `--polar 1`: Polar mode with angle-dependent visualization
+- Automatic plane detection: xz, zy, or xy based on geometry
+- Consistent axis handling to avoid duplicate axes and IndexError
+
+**Refactored plotting code**:
+- Created reusable function `plot_profile_row()` for second row of profile plots
+- Fixed axis handling in both polar and non-polar modes
+- Consistent axes array usage across plot calls
+
+### Parameter Override System
+
+**Added JSON-based parameter override** in `epair_defaults.json`:
+```json
+{
+  "iEpairs": 4,
+  "sEpairs": 1.0,
+  "O_3": { "H": 0.0 },
+  "E_O3": { "R": -0.2, "E": -0.2, "Q": 0.0, "H": 2.0 }
+}
+```
+
+**Features**:
+- Global epair settings: `iEpairs` (model type), `sEpairs` (global scaling)
+- Per-atom type overrides: R, E, Q, H parameters
+- Applied via `apply_type_overrides()` in FittingDriver
+- Supports both normal atom types and epair types (names starting with 'E')
+
+### Epair Type Distinguishing
+
+**Previously**: Epair types used constant parameters across all systems.
+
+**Now**: Epair types have system-specific parameters:
+- `E_O3`: Oxygen lone pairs in water
+- `E_N1`, `E_N2`, `E_N3`: Nitrogen lone pairs in different bonding environments
+- `E_O1`, `E_O2`, `E_OR`: Oxygen lone pairs in different bonding environments
+- `E_F`, `E_HO`, `E_HN`, `E_HC1`, `E_HF`, `E_Ha`: Various other epair types
+
+**Benefits**:
+- More accurate modeling of directionality
+- Different epair types can have different radial cutoffs and coefficients
+- Flexible fitting to QM data
+
+### Baseline Energy Consistency
+
+**Problem**: Toggling `iEpairs` between 3 and 4 caused baseline energy (Eout) to change unexpectedly.
+
+**Root cause**: Inconsistent sqrt application - `iEpairs==4` stored raw E for all types, breaking baseline.
+
+**Solution**: Removed `iEpairs` dependency from sqrt logic:
+- Epair types (name starts with 'E'): Always store E directly
+- Normal types: Always store sqrt(E)
+- Baseline now independent of `iEpairs` setting
+
+### Verification
+
+**Test results with `iEpairs=4` and `E_O3: {R: -0.2, E: -0.2, Q: 0.0, H: 2.0}`**:
+```
+Energy Statistics:
+  Reference: min=-0.196003, max=0.489446, mean=-0.068214
+  Model Total: min=-0.170498, max=1.164019, mean=0.014476
+  Model H-bond: min=-0.387343, max=0.000000, mean=-0.077862
+  Model Eout: min=-0.105115, max=1.367815, mean=0.092339
+Reference-Model correlation: 0.927035
+```
+
+**Key observations**:
+- Ein (H-bond) now has non-zero values (min=-0.387343, mean=-0.077862)
+- Baseline (Eout) remains consistent when toggling `iEpairs`
+- Total energy correlation improved to 0.93
+
+### Usage Example
+
+```bash
+# Run with new epair model (iEpairs=4)
+cd tests/tFitREQ
+python plot_masked_energy.py \
+  --xyz add_epairs_full/H2O-A1_H2O-D1-y.xyz \
+  --params epair_defaults.json \
+  --polar 0
+
+# Test baseline consistency by toggling iEpairs
+# Edit epair_defaults.json: change "iEpairs": 4 to 3
+# Run again - Eout should be identical
+```
+
+### Files Modified
+
+1. **Forces.cl**: Added `MODEL_Ep4_PAIR_DECOMP` macro with radial basis function
+2. **FitREQ.cl**: Added `iEpairs==4` case in epair pair decomposition, passes Xep and Yep parameters
+3. **FittingDriver.py**:
+   - Conditional sqrt application (epairs vs normal types)
+   - Added `MODEL_Ep4_PAIR_DECOMP` to macro extraction
+   - Added epair detection in `prepare_host_data_energy_only()`
+   - Added runtime warnings for epair parameter issues
+4. **plot_masked_energy.py**: Enhanced plotting with polar/non-polar modes, plane detection
+5. **epair_defaults.json**: Parameter override file with epair type-specific settings
+
+### Summary
+
+Successfully implemented a new polynomial radial basis epair model with:
+- Flexible radial dependence (f(r) = 1 - (r/R0)^2, g(r) = f(r)^4)
+- Separate Xep and Yep coefficients for different radial ranges
+- Robust parameter handling (epairs store E directly, normal types store sqrt(E))
+- Baseline energy independent of `iEpairs` setting
+- JSON-based parameter override system
+- System-specific epair type parameters
+- Enhanced plotting with multiple modes and plane detection
+- Runtime warnings for parameter misconfiguration

@@ -64,6 +64,8 @@ class FittingDriver(OpenCLBase):
         self.type_scale = []
         self.pair_like_scale = []
         self.charge_overrides = {}
+        self.iEpairs = 2
+        self.sEpairs = 1.0
         print("FittingDriver.__init__(): END")
 
     @staticmethod
@@ -95,7 +97,11 @@ class FittingDriver(OpenCLBase):
             i = self.atom_type_map[name]
             ci = self._comp_index(comp)
             x = float(val)
-            if ci == 1: x = float(np.sqrt(x))  # store sqrt(E)
+            if ci == 1:
+                if isinstance(name, str) and name.startswith('E'):
+                    pass
+                else:
+                    x = float(np.sqrt(x))  
             self.tREQHs_base[i, ci] = x
         # Apply type_scale
         for name, comp, fac in list(self.type_scale):
@@ -103,8 +109,11 @@ class FittingDriver(OpenCLBase):
             i = self.atom_type_map[name]
             ci = self._comp_index(comp)
             f = float(fac)
-            if ci == 1:  # scale EvdW -> scale stored sqrt(E) by sqrt(f)
-                self.tREQHs_base[i, ci] *= float(np.sqrt(f))
+            if ci == 1:
+                if isinstance(name, str) and name.startswith('E'):
+                    self.tREQHs_base[i, ci] *= f
+                else:
+                    self.tREQHs_base[i, ci] *= float(np.sqrt(f))
             else:
                 self.tREQHs_base[i, ci] *= f
 
@@ -116,6 +125,80 @@ class FittingDriver(OpenCLBase):
         for i, q in self.charge_overrides.items():
             if 0 <= int(i) < self.host_atoms.shape[0]:
                 self.host_atoms[int(i), 3] = float(q)
+
+    def apply_parameter_overrides(self, json_path, verbose=True):
+        """Load parameter overrides from JSON file and apply to driver state.
+        
+        Overrides can include:
+        - Global epair parameters: 'iEpairs', 'sEpairs'
+        - Atom type parameters: nested dict with type name as key, then 'R','E','Q','H' as subkeys
+        
+        Args:
+            json_path: Path to JSON file with parameter overrides
+            verbose: Whether to print override information
+        """
+        import json
+        import os
+        if not os.path.exists(json_path):
+            if verbose:print(f"Warning: Parameter override file not found: {json_path}")
+            return
+        if verbose: print(f"\nLoading parameter overrides from {json_path}...")
+        with open(json_path, 'r') as f:  overrides = json.load(f)
+        if verbose:   print(f"Loaded overrides: {overrides}")
+        # Apply global epair parameter overrides
+        if 'iEpairs' in overrides:
+            self.iEpairs = overrides['iEpairs']
+            if verbose:  print(f"  Override: iEpairs = {self.iEpairs}")
+        if 'sEpairs' in overrides:
+            self.sEpairs = overrides['sEpairs']
+            if verbose: print(f"  Override: sEpairs = {self.sEpairs}")
+        # Apply atom type parameter overrides
+        for type_name, type_overrides in overrides.items():
+            if type_name in ['iEpairs', 'sEpairs']:
+                continue  # Skip global parameters, already handled
+            if type_name in self.base_params:
+                for param, value in type_overrides.items():
+                    if param in self.base_params[type_name]:
+                        self.base_params[type_name][param] = value
+                        if verbose:  print(f"  Override: {type_name}.{param} = {value}")
+                    else:
+                        if verbose: print(f"  Warning: {type_name} has no parameter '{param}'")
+            else:
+                if verbose: print(f"  Warning: Atom type '{type_name}' not found in AtomTypes.dat")
+
+        for type_name, params in self.base_params.items():
+            if not (isinstance(type_name, str) and type_name.startswith('E')): continue
+            q = float(params.get('Q', 0.0))
+            r = float(params.get('R', 0.0))
+            e = float(params.get('E', 0.0))
+            if q == 0.0:
+                print(f"WARNING: {type_name}.Q==0 => epair charge subtraction disabled; baseline Coulomb (Eout) may become too attractive")
+            if (r == 0.0) and (e == 0.0):
+                print(f"WARNING: {type_name}.R==0 and {type_name}.E==0 => epair coefficients are zero; Ein will be ~0")
+
+    def extract_macro_from_forces(self, macro_name, forces_path=None):
+        """Extract a macro definition from Forces.cl file.
+        
+        Uses the existing parse_cl_lib method from OpenCLBase to parse the file
+        and extract the requested macro.
+        
+        Args:
+            macro_name: Name of the macro to extract (e.g., 'MODEL_MorseQ_PAIR_DECOMP')
+            forces_path: Path to Forces.cl file (auto-detected if None)
+            
+        Returns:
+            String containing the macro definition (without the //>>>macro wrapper)
+            
+        Raises:
+            ValueError if macro not found in Forces.cl
+        """
+        if forces_path is None:
+            base_path = os.path.dirname(os.path.abspath(__file__))
+            forces_path = os.path.abspath(os.path.join(base_path, "../../cpp/common_resources/cl/Forces.cl"))
+        lib = self.parse_cl_lib(forces_path)
+        macros = lib.get('macros', {})
+        if macro_name not in macros:    raise ValueError(f"Macro '{macro_name}' not found in {forces_path}")
+        return macros[macro_name]
 
     def dump_used_type_params(self, out=None):
         """Print a compact table of used atom types and their REQH just before upload.
@@ -129,7 +212,10 @@ class FittingDriver(OpenCLBase):
         print(f"#   id  name         R[Å]          E[eV]            Q              H", file=out)
         for i, name in enumerate(self.atom_type_names):
             R, sE, Q, H = self.tREQHs_base[i]
-            E = float(sE)*float(sE)
+            if isinstance(name, str) and name.startswith('E'):
+                E = float(sE)
+            else:
+                E = float(sE)*float(sE)
             print(f"{i:4d}  {name:>4s}  {R:12.6f}  {E:12.6f}  {Q:12.6f}  {H:12.6f}", file=out)
 
     def dump_dof_regularization(self, out=None):
@@ -324,6 +410,16 @@ class FittingDriver(OpenCLBase):
         self.host_atypes   = np.array(atypes_list, dtype=np.int32)
         self.host_ranges   = np.array(ranges_list, dtype=np.int32)
 
+        self.host_isEpair = np.zeros((len(self.host_atypes),), dtype=np.int32)
+        if len(self.atom_type_names) > 0:
+            try:
+                ep_type_ids = [i for i, n in enumerate(self.atom_type_names) if (isinstance(n, str) and n.startswith('E'))]
+                if ep_type_ids:
+                    m = np.isin(self.host_atypes, np.array(ep_type_ids, dtype=np.int32))
+                    self.host_isEpair[m] = 1
+            except Exception:
+                pass
+
         host_ranges2      = self.host_ranges.copy()
         host_ranges2[:,:] = self.host_ranges[:,[1,0,3,2]] # flip i0,j0 and ni,nj
         self.host_ranges2 = host_ranges2
@@ -411,8 +507,10 @@ class FittingDriver(OpenCLBase):
             params = self.base_params.get(type_name)
             if params:
                 self.tREQHs_base[i, 0] = params['R']
-                # Store sqrt(EvdW) to realize geometric mixing Eij = sqrt(Eii*Ejj) via product in kernel
-                self.tREQHs_base[i, 1] = np.sqrt(params['E'])
+                if isinstance(type_name, str) and type_name.startswith('E'):
+                    self.tREQHs_base[i, 1] = params['E']
+                else:
+                    self.tREQHs_base[i, 1] = np.sqrt(params['E'])
                 self.tREQHs_base[i, 2] = params['Q']
                 self.tREQHs_base[i, 3] = params['H']
             else:
@@ -553,6 +651,7 @@ class FittingDriver(OpenCLBase):
             "atypes":           self.host_atypes,
             "ieps":             self.host_ieps,
             "atoms":            self.host_atoms,
+            "isEpair":          self.host_isEpair,
             "ErefW":            self.host_ErefW,
             "dEdREQs":          self.host_dEdREQs,
             "DOFnis":           self.host_dof_nis,
@@ -579,6 +678,7 @@ class FittingDriver(OpenCLBase):
         self.toGPU_(self.atypes_buff,    self.host_atypes)
         self.toGPU_(self.ieps_buff,      self.host_ieps)
         self.toGPU_(self.atoms_buff,     self.host_atoms)
+        self.toGPU_(self.isEpair_buff,   self.host_isEpair)
         self.toGPU_(self.tREQHs_buff,    self.tREQHs_base)
         self.toGPU_(self.ErefW_buff,     self.host_ErefW)
         self.toGPU_(self.DOFnis_buff,    self.host_dof_nis)
@@ -667,41 +767,82 @@ class FittingDriver(OpenCLBase):
         
         Sets self.energy_kern to evalSampleEnergy_template and binds its arguments.
         """
-        if 'evalSampleEnergy_template' not in getattr(self, 'kernelheaders', {}):
-            raise RuntimeError("Energy kernel not available. Call compile_energy_with_model() first.")
-        self.energy_kern = self.prg.evalSampleEnergy_template
+        headers = getattr(self, 'kernelheaders', {})
+        use_ep = hasattr(self, 'host_isEpair') and (self.host_isEpair is not None) and (np.any(self.host_isEpair != 0))
+        if use_ep:
+            if 'evalSampleEnergyEp_template' not in headers:
+                raise RuntimeError("Energy epair kernel not available. Recompile FitREQ.cl (compile_with_model) to include evalSampleEnergyEp_template.")
+            self.energy_kern = self.prg.evalSampleEnergyEp_template
+        else:
+            if 'evalSampleEnergy_template' not in headers:
+                raise RuntimeError("Energy kernel not available. Call compile_energy_with_model() first.")
+            self.energy_kern = self.prg.evalSampleEnergy_template
         globParams = np.array( [self.alphaMorse,0.0,0.0,0.0], dtype=np.float32)
         
         if bMask and mask_buff is not None:
-            # Setup with masking
             if not hasattr(self, 'Emols_masked_buff'):
                 self.try_make_buffers({"Emols_masked": self.n_samples*4})
-            self.energy_kern.set_args(
-                self.ranges_buff, 
-                self.tREQHs_buff, 
-                self.atypes_buff, 
-                self.ieps_buff,
-                self.atoms_buff,
-                mask_buff,
-                self.Emols_buff,
-                self.Emols_masked_buff,
-                np.int32(1),  # bMask=true
-                np.int32(self.use_type_charges), globParams
-            )
+            if use_ep:
+                self.energy_kern.set_args(
+                    self.ranges_buff,
+                    self.tREQHs_buff,
+                    self.atypes_buff,
+                    self.ieps_buff,
+                    self.atoms_buff,
+                    self.isEpair_buff,
+                    mask_buff,
+                    self.Emols_buff,
+                    self.Emols_masked_buff,
+                    np.int32(1),
+                    np.int32(self.use_type_charges),
+                    globParams,
+                    np.int32(self.iEpairs),
+                    np.float32(self.sEpairs)
+                )
+            else:
+                self.energy_kern.set_args(
+                    self.ranges_buff,
+                    self.tREQHs_buff,
+                    self.atypes_buff,
+                    self.ieps_buff,
+                    self.atoms_buff,
+                    mask_buff,
+                    self.Emols_buff,
+                    self.Emols_masked_buff,
+                    np.int32(1),
+                    np.int32(self.use_type_charges), globParams
+                )
         else:
-            # Setup without masking (bMask=false)
-            self.energy_kern.set_args(
-                self.ranges_buff, 
-                self.tREQHs_buff, 
-                self.atypes_buff, 
-                self.ieps_buff,
-                self.atoms_buff,
-                None,  # mask buffer (can be None when bMask=false)
-                self.Emols_buff,
-                None,  # Emols_masked buffer (can be None when bMask=false)
-                np.int32(0),  # bMask=false
-                np.int32(self.use_type_charges), globParams
-            )
+            if use_ep:
+                self.energy_kern.set_args(
+                    self.ranges_buff,
+                    self.tREQHs_buff,
+                    self.atypes_buff,
+                    self.ieps_buff,
+                    self.atoms_buff,
+                    self.isEpair_buff,
+                    None,
+                    self.Emols_buff,
+                    None,
+                    np.int32(0),
+                    np.int32(self.use_type_charges),
+                    globParams,
+                    np.int32(self.iEpairs),
+                    np.float32(self.sEpairs)
+                )
+            else:
+                self.energy_kern.set_args(
+                    self.ranges_buff,
+                    self.tREQHs_buff,
+                    self.atypes_buff,
+                    self.ieps_buff,
+                    self.atoms_buff,
+                    None,
+                    self.Emols_buff,
+                    None,
+                    np.int32(0),
+                    np.int32(self.use_type_charges), globParams
+                )
 
     def setup_assembly_kernel(self):
         """Setup and configure the assembly and regularization kernel.
@@ -748,6 +889,19 @@ class FittingDriver(OpenCLBase):
         """
         if macros is None:
             macros = {}
+
+        if ('MODEL_Ep1_PAIR_DECOMP' not in macros) or ('MODEL_Ep2_PAIR_DECOMP' not in macros) or ('MODEL_Ep3_PAIR_DECOMP' not in macros) or ('MODEL_Ep4_PAIR_DECOMP' not in macros):
+            base_path_ = os.path.dirname(os.path.abspath(__file__))
+            forces_path = os.path.abspath(os.path.join(base_path_, "../../cpp/common_resources/cl/Forces.cl"))
+            try:
+                lib = self.parse_cl_lib(forces_path)
+                mlib = lib.get('macros', {})
+                if 'MODEL_Ep1_PAIR_DECOMP' not in macros and 'MODEL_Ep1_PAIR_DECOMP' in mlib: macros['MODEL_Ep1_PAIR_DECOMP'] = mlib['MODEL_Ep1_PAIR_DECOMP']
+                if 'MODEL_Ep2_PAIR_DECOMP' not in macros and 'MODEL_Ep2_PAIR_DECOMP' in mlib: macros['MODEL_Ep2_PAIR_DECOMP'] = mlib['MODEL_Ep2_PAIR_DECOMP']
+                if 'MODEL_Ep3_PAIR_DECOMP' not in macros and 'MODEL_Ep3_PAIR_DECOMP' in mlib: macros['MODEL_Ep3_PAIR_DECOMP'] = mlib['MODEL_Ep3_PAIR_DECOMP']
+                if 'MODEL_Ep4_PAIR_DECOMP' not in macros and 'MODEL_Ep4_PAIR_DECOMP' in mlib: macros['MODEL_Ep4_PAIR_DECOMP'] = mlib['MODEL_Ep4_PAIR_DECOMP']
+            except Exception:
+                pass
         base_path = os.path.dirname(os.path.abspath(__file__))
         rel_path = "../../cpp/common_resources/cl/FitREQ.cl"
         source_path = os.path.abspath(os.path.join(base_path, rel_path))
@@ -843,14 +997,25 @@ class FittingDriver(OpenCLBase):
             params = self.base_params.get(type_name)
             if params:
                 self.tREQHs_base[i, 0] = params['R']
-                # Store sqrt(EvdW) to realize geometric mixing via product in kernel
-                self.tREQHs_base[i, 1] = np.sqrt(params['E'])
+                if isinstance(type_name, str) and type_name.startswith('E'):
+                    self.tREQHs_base[i, 1] = params['E']
+                else:
+                    self.tREQHs_base[i, 1] = np.sqrt(params['E'])
                 self.tREQHs_base[i, 2] = params['Q']
                 self.tREQHs_base[i, 3] = params['H']
             else:
                 print(f"Warning: Atom type '{type_name}' from XYZ data not found in AtomTypes.dat. Using zeros.")
         # Optional user overrides
         self.apply_type_overrides()
+        
+        # Initialize host_isEpair if not already set (needed for energy-only path)
+        if not hasattr(self, 'host_isEpair'):
+            self.host_isEpair = np.zeros((len(self.host_atypes),), dtype=np.int32)
+            if len(self.atom_type_names) > 0:
+                ep_type_ids = [i for i, n in enumerate(self.atom_type_names) if (isinstance(n, str) and n.startswith('E'))]
+                if ep_type_ids:
+                    m = np.isin(self.host_atypes, np.array(ep_type_ids, dtype=np.int32))
+                    self.host_isEpair[m] = 1
 
     def init_and_upload_energy_only(self):
         """Allocate and upload minimal buffers for energy evaluation."""
@@ -863,6 +1028,7 @@ class FittingDriver(OpenCLBase):
             "atypes": self.host_atypes.nbytes,
             "ieps":   self.host_ieps.nbytes,
             "atoms":  self.host_atoms.nbytes,
+            "isEpair": getattr(self, 'host_isEpair', np.zeros((self.n_atoms_total,), dtype=np.int32)).nbytes,
             "Emols":  self.n_samples*4,
         }
         self.try_make_buffers(buffs)
@@ -872,6 +1038,8 @@ class FittingDriver(OpenCLBase):
         # Apply any per-atom charge overrides before upload
         self.apply_charge_overrides()
         self.toGPU_(self.atoms_buff,  self.host_atoms)
+        if hasattr(self, 'host_isEpair'):
+            self.toGPU_(self.isEpair_buff, self.host_isEpair)
         self.toGPU_(self.tREQHs_buff, self.tREQHs_base)
 
     def set_charge_source(self, use_type_charges=False):

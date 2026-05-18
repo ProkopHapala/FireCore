@@ -41,12 +41,21 @@ from pyBall.FitREQutils import (read_atom_types, process_one_file, find_data_pat
 
 # ── CLI ──
 
+'''
+HOW TO USE (examples):
+
+
+'''
+
+
+
 def main():
     parser = argparse.ArgumentParser( description="Add electron pairs and sigma holes to multi-frame XYZ dimer files", formatter_class=argparse.RawTextHelpFormatter, )
     parser.add_argument("-i", "--input", required=True, help="Input .xyz file or directory of .xyz files")
     parser.add_argument("-o", "--output", default="output",  help="Output file or directory (default: output)")
     parser.add_argument("--mode", choices=["epairs", "sigma", "both"], default="epairs",  help="What to add (default: epairs)")
     parser.add_argument("--lepair", type=float, default=1.0,  help="Epair distance from host in Angstrom (default: 1.0)")
+    #parser.add_argument("--lepair", type=float, default=1.5,  help="Epair distance from host in Angstrom (default: 1.0)")
     parser.add_argument("--sigma-dist", type=float, default=0.5,  help="Sigma-hole distance from host in Angstrom (default: 0.5)")
     parser.add_argument("--atypes", default=None,  help="Path to AtomTypes.dat (auto-searched if not given)")
     parser.add_argument("--simple-names", action="store_true",   help="Output simple element names (N, O, H) instead of full type names (N_3, O_2, H_O)")

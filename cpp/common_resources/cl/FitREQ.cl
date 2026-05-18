@@ -617,6 +617,159 @@ __kernel void evalSampleEnergy_template(
 }
 
 // -----------------------------------------------------------------------------
+// Energy-only template variant with explicit epair treatment.
+// - Epairs are identified by per-atom flag isEpair[i]!=0 (e.g. type name 'E' on Python side)
+// - Epair-epair interactions are skipped
+// - Epair-atom interaction uses short-range PN functions (Ep1/Ep2/Ep3) and is accumulated into E_components.w (H-component)
+// - For epair interactions we use ungated Hep = REQi.w*REQj.w (no APPLY_H_GATE)
+// - For standard interactions we keep existing MODEL_PAIR_DECOMP path (with APPLY_H_GATE)
+// -----------------------------------------------------------------------------
+__attribute__((reqd_work_group_size(32,1,1)))
+__kernel void evalSampleEnergyEp_template(
+    __global int4*    ranges,
+    __global float4*  tREQHs,
+    __global int*     atypes,
+    __global int2*    ieps,
+    __global float4*  atoms,
+    __global int*     isEpair,
+    __global float4*  mask,
+    __global float*   Emols,
+    __global float*   Emols_masked,
+    int      bMask,
+    int      useTypeQ,
+    float4   globParams,
+    int      iEpairs,
+    float    sEpairs
+){
+    __local float4 LATOMS[32];
+    __local float4 LREQKS[32];
+    __local int    LEPAIR[32];
+    __local int    LTYPES[32];
+
+    const int iS = get_group_id   (0);
+    const int iL = get_local_id   (0);
+    const int nL = get_local_size (0);
+
+    const int4 nsi = ranges[iS];
+    const int i0   = nsi.x;
+    const int ni   = nsi.z;
+    const int j0   = nsi.y;
+    const int nj   = nsi.w;
+
+    const int    i      = i0 + iL;
+    const int    active = (iL < ni);
+    int    ti    = 0;
+    float4 atomi = (float4)(0.0f,0.0f,0.0f,0.0f);
+    float4 REQi  = (float4)(0.0f,0.0f,0.0f,0.0f);
+    int    bEpi  = 0;
+    if(active){
+        ti    = atypes[i];
+        atomi = atoms [i];
+        REQi  = tREQHs[ti];
+        ASSIGN_Q_FROM_SOURCE(REQi, atomi, REQi, useTypeQ);
+        const int2 iep = ieps[i];
+        if( iep.x >= 0 ){ REQi.z -= tREQHs[iep.x].z; }
+        if( iep.y >= 0 ){ REQi.z -= tREQHs[iep.y].z; }
+        bEpi = isEpair[i] != 0;
+    }
+
+    float Ei = 0.0f;
+    float Ei_masked = 0.0f;
+
+    for(int off=0; off<nj; off+=nL){
+        const int local_j = off + iL;
+        if(local_j<nj){
+            const int jj       = j0 + local_j;
+            const int    tj    = atypes[jj];
+            const float4 atomj = atoms [jj];
+                  float4 REQj  = tREQHs[tj];
+            ASSIGN_Q_FROM_SOURCE(REQj, atomj, REQj, useTypeQ);
+            const int2   jep   = ieps[jj];
+            if( jep.x >= 0 ){ REQj.z -= tREQHs[jep.x].z; }
+            if( jep.y >= 0 ){ REQj.z -= tREQHs[jep.y].z; }
+            LATOMS[iL] = atomj;
+            LREQKS[iL] = REQj;
+            LEPAIR[iL] = isEpair[jj] != 0;
+            LTYPES[iL] = tj;
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        for(int jl=0; jl<nL; jl++){
+            const int local_j2 = off + jl;
+            if(local_j2 < nj){
+                const float4 atomj = LATOMS[jl];
+                const float4 REQj  = LREQKS[jl];
+                const int    bEpj  = LEPAIR[jl];
+                const int    tj    = LTYPES[jl];
+
+                float3 dij  = atomj.xyz - atomi.xyz;
+                float r     = length(dij);
+                float inv_r = 1.f/fmax(r, R2SAFE);
+
+                if(active){
+                    float4 E_components = (float4)(0.0f, 0.0f, 0.0f, 0.0f);
+
+                    if(bEpi || bEpj){
+                        if(bEpi && bEpj){
+                            // skip epair-epair
+                        }else{
+                            float R0ep = bEpi ? tREQHs[ti].w : tREQHs[tj].w;
+                            float Qep  = bEpi ? tREQHs[ti].z : tREQHs[tj].z;
+                            float Qat  = bEpi ? atomj.w : atomi.w;
+                            float Hep  = Qep * Qat;
+                            float Xep  = bEpi ? tREQHs[ti].x : tREQHs[tj].x;
+                            float Yep  = bEpi ? tREQHs[ti].y : tREQHs[tj].y;
+                            if(iEpairs==1){
+                                //<<<MODEL_Ep1_PAIR_DECOMP
+                            }else if(iEpairs==2){
+                                //<<<MODEL_Ep2_PAIR_DECOMP
+                            }else if(iEpairs==3){
+                                //<<<MODEL_Ep3_PAIR_DECOMP
+                            }else if(iEpairs==4){
+                                //<<<MODEL_Ep4_PAIR_DECOMP
+                            }
+                        }
+                    }else{
+                        float R0 = REQi.x + REQj.x;
+                        float E0 = REQi.y * REQj.y;
+                        float Q  = REQi.z * REQj.z;
+                        float H  = REQi.w * REQj.w;
+                        float sH = S_H(H);
+                        H = APPLY_H_GATE(H);
+                        //<<<MODEL_PAIR_DECOMP
+                    }
+
+                    float E_pair = E_components.x + E_components.y + E_components.z + E_components.w;
+                    Ei += E_pair;
+                    if(bMask){
+                        int mask_idx = iL * nj + jl;
+                        float4 m = mask[mask_idx];
+                        Ei_masked += dot(m, E_components);
+                    }
+                }
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+    LATOMS[iL].x = active ? Ei : 0.0f;
+    LATOMS[iL].y = active ? Ei_masked : 0.0f;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if(iL==0){
+        float Emol = 0.0f;
+        float Emol_masked = 0.0f;
+        for(int ii=0; ii<ni; ii++){
+            Emol += LATOMS[ii].x;
+            if(bMask) Emol_masked += LATOMS[ii].y;
+        }
+        Emols[iS] = Emol;
+        if(bMask) Emols_masked[iS] = Emol_masked;
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Rest of the code remains the same
 // -----------------------------------------------------------------------------
 

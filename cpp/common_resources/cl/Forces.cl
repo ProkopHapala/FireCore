@@ -134,6 +134,47 @@ inline float4 getMorseQH( float3 dp,  float4 REQH, float K, float R2damp ){
     E_components.w +=  3.0f * E0 * H * u8;     // H-bond correction (H-dependent)
 }
 
+//>>>macro MODEL_Ep1_PAIR_DECOMP
+{
+    float R0_ = fmax(R0ep, R2SAFE);
+    float u   = r / R0_;
+    E_components.w += sEpairs * Hep * exp(-u);
+}
+
+//>>>macro MODEL_Ep2_PAIR_DECOMP
+{
+    float R0_ = fmax(R0ep, R2SAFE);
+    float u   = r / R0_;
+    E_components.w += sEpairs * Hep * exp(-(u*u));
+}
+
+//>>>macro MODEL_Ep3_PAIR_DECOMP
+{
+    float R0_ = fmax(R0ep, R2SAFE);
+    float u   = r / R0_;
+    float ep  = exp(u);
+    float em  = 1.0f / ep;
+    float s   = 1.0f / (ep + em);
+    E_components.w += sEpairs * Hep * (2.0f * s);
+}
+
+//>>>macro MODEL_Ep4_PAIR_DECOMP
+{
+    // Radial basis function: f(r) = (1 - (r/REQH.w)^2)
+    // g(r) = f(r)^4
+    // E = f(r)*REQH.y + g(r)*REQH.x
+    float R0_ = fmax(R0ep, R2SAFE);
+    if(r > R0_){ /* Skip if beyond cutoff */ } else {
+        float u   = r / R0_;
+        float f   = 1.0f - u * u;
+        f=f*f;
+        float g   = f * f;  // f(r)^4
+        g=g*g;
+        // Use Xep and Yep as coefficients for g(r) and f(r) respectively
+        E_components.w += sEpairs * (f * Yep + g * Xep);
+    }
+}
+
 //>>>macro MODEL_MorseQ_PAIR
 {
     // Electrostatic
