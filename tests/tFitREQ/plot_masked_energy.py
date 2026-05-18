@@ -7,77 +7,131 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from pyBall.OCL.FittingDriver import FittingDriver
-from pyBall.FitREQutils import (plot_system_panel, plot_polar_symmetric, _build_frame_grid, 
-                                 parse_xyz_with_headers, plot_energy_panel, plot_profiles, plot_molecule,
-                                 extract_min_curves)
+from pyBall.FitREQutils import (plot_system_panel, plot_polar_symmetric, _build_frame_grid, parse_xyz_with_headers, plot_profile_row)
 
-def plot_profile_row(fig, axes, V_ref, V_model_total, V_model_hbond, V_model_eout, rv, A, 
-                    frame_idx, Ps_raw, Ts_raw, n0_first, kcal, Rmax1D):
-    """Plot second row with radial slice, angular slice, E_min(angle), and geometry."""
-    # Use existing axes from row 2
-    ax_radial = axes[1, 0]
-    ax_angular = axes[1, 1]
-    ax_emin = axes[1, 2]
-    ax_geom = axes[1, 3]
+def generate_dof_file(drv, output_path):
+    """
+    Auto-generate DOF file from current driver parameters.
+    Creates reasonable bounds based on current parameter values.
+    """
+    comp_labels = {0:'R', 1:'E', 2:'Q', 3:'H'}
     
-    # Find global minimum indices from Reference
-    iy_g, ix_g = np.unravel_index(np.nanargmin(V_ref), V_ref.shape)
-    angle_min = A[iy_g]
-    r_min = rv[ix_g] if ix_g < len(rv) else np.nan
+    # Get unique atom types present in the loaded data
+    unique_types = set(drv.host_atypes)
+    type_names_present = [drv.atom_type_names[i] for i in unique_types if i < len(drv.atom_type_names)]
     
-    # 1) Radial slice at minimum angle (Eref, Etot, Ein, Eout)
-    fac = 23.060548 if kcal else 1.0
-    ax_radial.plot(rv, V_ref[iy_g, :] * fac, 'k:', lw=1.5, label='Eref')
-    ax_radial.plot(rv, V_model_total[iy_g, :] * fac, 'r-', lw=0.5, label='Etot')
-    ax_radial.plot(rv, V_model_hbond[iy_g, :] * fac, 'b-', lw=0.5, label='Ein')
-    ax_radial.plot(rv, V_model_eout[iy_g, :] * fac, 'g-', lw=0.5, label='Eout')
-    ax_radial.axvline(r_min, color='gray', linestyle='--', alpha=0.5, label='r_min')
-    ax_radial.set_xlabel('Distance (Å)')
-    ax_radial.set_ylabel('E (kcal/mol)' if kcal else 'E (eV)')
-    ax_radial.set_title(f'Radial slice @ {angle_min:.1f}°')
-    ax_radial.set_xlim(1.4, Rmax1D)
-    ax_radial.legend(fontsize=8)
-    ax_radial.grid(alpha=0.3)
+    lines = []
+    lines.append("# Auto-generated DOF file for MC optimization")
+    lines.append("# typename component   Min         Max         xlo    xhi    Klo  Khi  K0  xstart  InvMass")
     
-    # 2) Angular slice at minimum radius (Eref, Etot, Ein, Eout)
-    o = np.argsort(A)
-    ax_angular.plot(A[o], V_ref[:, ix_g][o] * fac, 'k:', lw=1.5, label='Eref')
-    ax_angular.plot(A[o], V_model_total[:, ix_g][o] * fac, 'r-', lw=0.5, label='Etot')
-    ax_angular.plot(A[o], V_model_hbond[:, ix_g][o] * fac, 'b-', lw=0.5, label='Ein')
-    ax_angular.plot(A[o], V_model_eout[:, ix_g][o] * fac, 'g-', lw=0.5, label='Eout')
-    ax_angular.axvline(angle_min, color='gray', linestyle='--', alpha=0.5, label='angle_min')
-    ax_angular.set_xlabel('Angle (deg)')
-    ax_angular.set_ylabel('E (kcal/mol)' if kcal else 'E (eV)')
-    ax_angular.set_title(f'Angular slice @ r={r_min:.2f}Å')
-    ax_angular.legend(fontsize=8)
-    ax_angular.grid(alpha=0.3)
+    for typename in type_names_present:
+        if not isinstance(typename, str):
+            continue
+        
+        # Get current parameters for this type
+        params = drv.base_params.get(typename)
+        if params is None:
+            continue
+        
+        # Generate DOF entries for each component
+        for comp in range(4):
+            comp_name = comp_labels[comp]
+            current_val = params[comp_name]
+            
+            # Skip if value is zero (likely not used)
+            if abs(current_val) < 1e-10 and comp != 2:  # Q can be zero
+                continue
+            
+            # Set reasonable bounds (20% around current value)
+            if comp == 1:  # E parameter (always positive)
+                min_val = max(1e-10, current_val * 0.5)
+                max_val = current_val * 2.0
+            elif comp == 2:  # Q parameter (can be negative)
+                min_val = current_val - 2.0
+                max_val = current_val + 2.0
+            else:  # R and H
+                min_val = current_val - 1.0
+                max_val = current_val + 1.0
+            
+            line = f"{typename:12s} {comp:1d}           {min_val:10.6f}  {max_val:10.6f}  0.0    0.0    0.0  0.0  0.0  {current_val:10.6f}  1.0"
+            lines.append(line)
     
-    # 3) E_min(angle) using plot_energy_panel for reference
-    plot_energy_panel(V_ref, rv, A, ax_emin, kcal)
-    # Overlay model curves on top
-    _, emin_tot = extract_min_curves(A, rv, V_model_total.T)
-    _, emin_hbond = extract_min_curves(A, rv, V_model_hbond.T)
-    _, emin_eout = extract_min_curves(A, rv, V_model_eout.T)
-    ax_emin.plot(A[o], emin_tot[o] * fac, 'r-', lw=0.5, label='Etot')
-    ax_emin.plot(A[o], emin_hbond[o] * fac, 'b-', lw=0.5, label='Ein')
-    ax_emin.plot(A[o], emin_eout[o] * fac, 'g-', lw=0.5, label='Eout')
-    ax_emin.legend(fontsize=8)
+    with open(output_path, 'w') as f:
+        f.write('\n'.join(lines) + '\n')
     
-    # 4) Geometry at global minimum using plot_molecule (2D)
-    iframe = frame_idx[iy_g, ix_g]
-    if iframe >= 0 and iframe < len(Ps_raw):
-        apos_mol = Ps_raw[iframe]
-        enames_mol = (Ts_raw[iframe] if Ts_raw is not None and iframe < len(Ts_raw) else ["?"] * len(apos_mol))
-        n0_mol = n0_first
-        plot_molecule(ax_geom, enames_mol, apos_mol, n0=n0_mol, title=f"Geometry @ min\nFrame {iframe}")
-    else:
-        ax_geom.text(0.5, 0.5, 'No geometry', transform=ax_geom.transAxes, ha='center', va='center')
+    print(f"Generated DOF file: {output_path}")
+    print(f"  Found {len([l for l in lines if not l.startswith('#')])} DOF entries")
+
+def mc_history_to_json(history, atom_type_names):
+    """
+    Convert MC history (best DOFs) to JSON format compatible with epair_defaults.json.
+    Maps DOF definitions back to type names and components.
+    """
+    json_out = {}
+    comp_labels = {0:'R', 1:'E', 2:'Q', 3:'H'}
+    
+    for i, dof_def in enumerate(history['dof_defs']):
+        typename = dof_def['typename']
+        comp = dof_def['comp']
+        value = history['best_dofs'][i]
+        
+        if typename not in json_out:
+            json_out[typename] = {}
+        
+        json_out[typename][comp_labels[comp]] = value
+    
+    return json_out
+
+def run_mc_optimization(drv, dof_file,
+                        max_steps=500, step_size=0.1, temperature=0.0,
+                        out_dir="mc_output"):
+    """
+    Run Monte Carlo optimization directly using optimizer_montecarlo.
+    Returns history dict and optimized parameters.
+    """
+    # Import here to avoid circular dependency
+    from pyBall.OCL.NonBondFitting import optimizer_montecarlo, plot_mc_convergence
+    
+    print(f"\n{'='*70}")
+    print(f"RUNNING MC OPTIMIZATION")
+    print(f"  DOFs: {dof_file}")
+    print(f"  max_steps={max_steps}, step_size={step_size}, temperature={temperature}")
+    print(f"{'='*70}")
+    
+    # Load DOF definitions
+    drv.load_dofs(dof_file)
+    
+    # Re-initialize driver for MC optimization (energy-only path with DOFs loaded)
+    drv.init_and_upload_energy_only()
+    drv.setup_energy_kernel()
+    
+    # Get initial DOFs
+    initial_dofs = np.array([d['xstart'] for d in drv.dof_definitions], dtype=np.float64)
+    
+    # Run Monte Carlo optimization
+    history = optimizer_montecarlo(
+        drv, initial_dofs,
+        max_steps=max_steps, step_size=step_size,
+        temperature=temperature,
+        verbose=max(1, max_steps // 20)
+    )
+    
+    # Generate convergence plot
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    conv_path = os.path.join(out_dir, "mc_convergence.png")
+    fig_conv = plot_mc_convergence(history, out_path=conv_path)
+    plt.close(fig_conv)
+    print(f"  Saved convergence plot: {conv_path}")
+    
+    return history
 
 def main():
     parser = argparse.ArgumentParser(description='Plot masked energy visualization')
@@ -92,10 +146,16 @@ def main():
     parser.add_argument('--same-scale',  type=int, default=1, help='Force same color scale for Reference vs Model Etot panels')
     parser.add_argument('--polar',       type=int, default=1, help='Use polar plotting with symmetric color scale and Rcut=6.0A')
     parser.add_argument('--rcut',        type=float, default=5.0, help='Radial cutoff for polar plots in Angstrom (default: 6.0)')
-    parser.add_argument('--Rmax1D',       type=float, default=10.0, help='Maximum distance for 1D profile plots (default: 10.0)')
+    parser.add_argument('--Rmax1D',      type=float, default=10.0, help='Maximum distance for 1D profile plots (default: 10.0)')
     parser.add_argument('--Erange',      type=float, default=None, help='Energy range for color scale (if None, use symmetric vmax=-vmin)')
     parser.add_argument('--Emin_factor', type=float, default=1.0, help='Factor to multiply min(E_ref) for vmin (default: 1.0)')
-    parser.add_argument('--cmap',         default='seismic', help='Colormap for plots (default: seismic)')
+    parser.add_argument('--cmap',        default='seismic', help='Colormap for plots (default: seismic)')
+    parser.add_argument('--mc_before',   action='store_true', help='Run MC optimization before plotting')
+    parser.add_argument('--mc_after',    action='store_true', help='Run MC optimization after plotting')
+    parser.add_argument('--dofs',        help='DOF selection file for MC optimization (auto-generated if not provided)')
+    parser.add_argument('--max_steps',   type=int, default=500, help='MC max steps (default: 500)')
+    parser.add_argument('--step_size',   type=float, default=0.1, help='MC step size (default: 0.1)')
+    parser.add_argument('--temperature', type=float, default=0.0, help='MC temperature for simulated annealing (default: 0.0 = greedy)')
     args = parser.parse_args()
     
     print(f"Loading data from {args.xyz}")
@@ -142,6 +202,44 @@ def main():
         drv.apply_parameter_overrides(params_path)
     
     drv.init_and_upload_energy_only()
+    
+    # MC Optimization: Before (if requested)
+    history_before = None
+    if args.mc_before:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Generate DOF file if not provided
+        if args.dofs is None:
+            dof_file = os.path.join(script_dir, "auto_dof.dat")
+            generate_dof_file(drv, dof_file)
+        else:
+            dof_file = args.dofs
+            if not os.path.isabs(dof_file):
+                dof_file = os.path.join(script_dir, dof_file)
+        
+        # Run MC optimization
+        history_before = run_mc_optimization(
+            drv, dof_file,
+            max_steps=args.max_steps, step_size=args.step_size,
+            temperature=args.temperature, out_dir="mc_before_output"
+        )
+        
+        # Convert MC results to JSON and apply
+        optimized_json = mc_history_to_json(history_before, drv.atom_type_names)
+        
+        # Save optimized parameters to temporary JSON file
+        temp_params_path = os.path.join(script_dir, "mc_optimized_before.json")
+        with open(temp_params_path, 'w') as f:
+            json.dump(optimized_json, f, indent=2)
+        
+        # Apply optimized parameters
+        drv.apply_parameter_overrides(temp_params_path)
+        drv.init_and_upload_energy_only()  # Re-upload with new parameters
+        
+        print(f"\nMC Before Results:")
+        print(f"  Initial error: {history_before['initial_error']:.6e}")
+        print(f"  Best error:    {history_before['best_error']:.6e}")
+        print(f"  Steps accepted: {history_before['n_accepted']} / {history_before['n_steps']}")
     
     # Print parameters used for epair calculation
     print("\n" + "="*70)
@@ -325,6 +423,115 @@ def main():
     if np.any(valid_mask):
         correlation = np.corrcoef(V_ref[valid_mask], V_model_total[valid_mask])[0, 1]
         print(f"\nReference-Model correlation: {correlation:.6f}")
+    
+    # MC Optimization: After (if requested)
+    if args.mc_after:
+        print(f"\n{'='*70}")
+        print(f"RUNNING MC OPTIMIZATION AFTER PLOTTING")
+        print(f"{'='*70}")
+        
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # Generate DOF file if not provided
+        if args.dofs is None:
+            dof_file = os.path.join(script_dir, "auto_dof.dat")
+            generate_dof_file(drv, dof_file)
+        else:
+            dof_file = args.dofs
+            if not os.path.isabs(dof_file):
+                dof_file = os.path.join(script_dir, dof_file)
+        
+        # Run MC optimization
+        history_after = run_mc_optimization(
+            drv, dof_file,
+            max_steps=args.max_steps, step_size=args.step_size,
+            temperature=args.temperature, out_dir="mc_after_output"
+        )
+        
+        # Convert MC results to JSON and apply
+        optimized_json = mc_history_to_json(history_after, drv.atom_type_names)
+        
+        # Save optimized parameters to temporary JSON file
+        temp_params_path = os.path.join(script_dir, "mc_optimized_after.json")
+        with open(temp_params_path, 'w') as f:
+            json.dump(optimized_json, f, indent=2)
+        
+        # Apply optimized parameters
+        drv.apply_parameter_overrides(temp_params_path)
+        drv.init_and_upload_energy_only()
+        
+        # Re-compute energies with optimized parameters
+        _, Em_all_opt      = drv.evaluate_energies_masked(mask_all)
+        _, Em_hbond_opt    = drv.evaluate_energies_masked(mask_hbond)
+        _, Em_baseline_opt = drv.evaluate_energies_masked(mask_baseline)
+        
+        # Reshape optimized energies to match grid
+        V_model_total_opt    = np.full((ny, nx), np.nan, dtype=np.float32)
+        V_model_hbond_opt    = np.full((ny, nx), np.nan, dtype=np.float32)
+        V_model_baseline_opt = np.full((ny, nx), np.nan, dtype=np.float32)
+        
+        for iy in range(ny):
+            for ix in range(nx):
+                isamp = int(frame_idx[iy, ix])
+                if isamp >= 0 and isamp < n_samples:
+                    V_model_total_opt[iy, ix]    = Em_all_opt[isamp]
+                    V_model_hbond_opt[iy, ix]    = Em_hbond_opt[isamp]
+                    V_model_baseline_opt[iy, ix] = Em_baseline_opt[isamp]
+        
+        V_model_eout_opt = V_model_total_opt - V_model_hbond_opt
+        
+        print(f"\nMC After Results:")
+        print(f"  Initial error: {history_after['initial_error']:.6e}")
+        print(f"  Best error:    {history_after['best_error']:.6e}")
+        print(f"  Steps accepted: {history_after['n_accepted']} / {history_after['n_steps']}")
+        
+        # Create before/after comparison figure
+        print("\nCreating before/after comparison plot...")
+        fig_comp, axes_comp = plt.subplots(2, 4, figsize=(16, 8))
+        
+        # Row 1: Before optimization
+        plot_system_panel(V_ref, rv, A, axes_comp[0,0], 'Reference\n(Total)', args.kcal, sym=False, overlay_rmin=False, cmap=args.cmap)
+        plot_system_panel(V_model_total, rv, A, axes_comp[0,1], 'Model Etot\n(Before)', args.kcal, sym=False, overlay_rmin=False, cmap=args.cmap)
+        plot_system_panel(V_model_hbond, rv, A, axes_comp[0,2], 'Model Ein\n(Before)', args.kcal, sym=False, overlay_rmin=False, cmap=args.cmap)
+        plot_system_panel(V_model_eout, rv, A, axes_comp[0,3], 'Model Eout\n(Before)', args.kcal, sym=False, overlay_rmin=False, cmap=args.cmap)
+        
+        # Row 2: After optimization
+        plot_system_panel(V_ref, rv, A, axes_comp[1,0], 'Reference\n(Total)', args.kcal, sym=False, overlay_rmin=False, cmap=args.cmap)
+        plot_system_panel(V_model_total_opt, rv, A, axes_comp[1,1], 'Model Etot\n(After)', args.kcal, sym=False, overlay_rmin=False, cmap=args.cmap)
+        plot_system_panel(V_model_hbond_opt, rv, A, axes_comp[1,2], 'Model Ein\n(After)', args.kcal, sym=False, overlay_rmin=False, cmap=args.cmap)
+        plot_system_panel(V_model_eout_opt, rv, A, axes_comp[1,3], 'Model Eout\n(After)', args.kcal, sym=False, overlay_rmin=False, cmap=args.cmap)
+        
+        # Apply symmetric color limits to all panels
+        for ax_row in axes_comp:
+            for ax in ax_row:
+                if ax.images:
+                    ax.images[0].set_clim(vmin, vmax)
+        
+        # Build parameter caption
+        caption_comp = f"MC Optimization: {args.max_steps} steps, step_size={args.step_size}, T={args.temperature}"
+        plt.suptitle(f'Before/After Comparison: {os.path.basename(args.xyz)}', fontsize=14)
+        plt.figtext(0.5, 0.02, caption_comp, ha='center', fontsize=10, bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        plt.tight_layout()
+        
+        if args.output:
+            comp_output = args.output.replace('.png', '_comparison.png')
+            plt.savefig(comp_output, dpi=200, bbox_inches='tight')
+            print(f"Saved comparison plot: {comp_output}")
+        else:
+            plt.show()
+        
+        # Print statistics for optimized parameters
+        print("\nOptimized Energy Statistics:")
+        print(f"  Model Total (After): min={np.nanmin(V_model_total_opt):.6f}, max={np.nanmax(V_model_total_opt):.6f}, mean={np.nanmean(V_model_total_opt):.6f}")
+        print(f"  Model H-bond (After): min={np.nanmin(V_model_hbond_opt):.6f}, max={np.nanmax(V_model_hbond_opt):.6f}, mean={np.nanmean(V_model_hbond_opt):.6f}")
+        print(f"  Model Eout (After): min={np.nanmin(V_model_eout_opt):.6f}, max={np.nanmax(V_model_eout_opt):.6f}, mean={np.nanmean(V_model_eout_opt):.6f}")
+        
+        # Compute correlation for optimized parameters
+        valid_mask_opt = np.isfinite(V_ref) & np.isfinite(V_model_total_opt)
+        if np.any(valid_mask_opt):
+            correlation_opt = np.corrcoef(V_ref[valid_mask_opt], V_model_total_opt[valid_mask_opt])[0, 1]
+            print(f"\nReference-Model correlation (After): {correlation_opt:.6f}")
+            print(f"Correlation improvement: {correlation_opt - correlation:.6f}")
 
 if __name__ == "__main__":
     main()

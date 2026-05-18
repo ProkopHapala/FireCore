@@ -2409,3 +2409,66 @@ def find_data_path(script_dir):
         if os.path.isfile(os.path.join(d, "AtomTypes.dat")):
             return d
     return None
+
+
+def plot_profile_row(fig, axes, V_ref, V_model_total, V_model_hbond, V_model_eout, rv, A, 
+                    frame_idx, Ps_raw, Ts_raw, n0_first, kcal, Rmax1D):
+    """Plot second row with radial slice, angular slice, E_min(angle), and geometry."""
+    # Use existing axes from row 2
+    ax_radial = axes[1, 0]
+    ax_angular = axes[1, 1]
+    ax_emin = axes[1, 2]
+    ax_geom = axes[1, 3]
+    
+    # Find global minimum indices from Reference
+    iy_g, ix_g = np.unravel_index(np.nanargmin(V_ref), V_ref.shape)
+    angle_min = A[iy_g]
+    r_min = rv[ix_g] if ix_g < len(rv) else np.nan
+    
+    # 1) Radial slice at minimum angle (Eref, Etot, Ein, Eout)
+    fac = 23.060548 if kcal else 1.0
+    ax_radial.plot(rv, V_ref[iy_g, :] * fac, 'k:', lw=1.5, label='Eref')
+    ax_radial.plot(rv, V_model_total[iy_g, :] * fac, 'r-', lw=0.5, label='Etot')
+    ax_radial.plot(rv, V_model_hbond[iy_g, :] * fac, 'b-', lw=0.5, label='Ein')
+    ax_radial.plot(rv, V_model_eout[iy_g, :] * fac, 'g-', lw=0.5, label='Eout')
+    ax_radial.axvline(r_min, color='gray', linestyle='--', alpha=0.5, label='r_min')
+    ax_radial.set_xlabel('Distance (Å)')
+    ax_radial.set_ylabel('E (kcal/mol)' if kcal else 'E (eV)')
+    ax_radial.set_title(f'Radial slice @ {angle_min:.1f}°')
+    ax_radial.set_xlim(1.4, Rmax1D)
+    ax_radial.legend(fontsize=8)
+    ax_radial.grid(alpha=0.3)
+    
+    # 2) Angular slice at minimum radius (Eref, Etot, Ein, Eout)
+    o = np.argsort(A)
+    ax_angular.plot(A[o], V_ref[:, ix_g][o] * fac, 'k:', lw=1.5, label='Eref')
+    ax_angular.plot(A[o], V_model_total[:, ix_g][o] * fac, 'r-', lw=0.5, label='Etot')
+    ax_angular.plot(A[o], V_model_hbond[:, ix_g][o] * fac, 'b-', lw=0.5, label='Ein')
+    ax_angular.plot(A[o], V_model_eout[:, ix_g][o] * fac, 'g-', lw=0.5, label='Eout')
+    ax_angular.axvline(angle_min, color='gray', linestyle='--', alpha=0.5, label='angle_min')
+    ax_angular.set_xlabel('Angle (deg)')
+    ax_angular.set_ylabel('E (kcal/mol)' if kcal else 'E (eV)')
+    ax_angular.set_title(f'Angular slice @ r={r_min:.2f}Å')
+    ax_angular.legend(fontsize=8)
+    ax_angular.grid(alpha=0.3)
+    
+    # 3) E_min(angle) using plot_energy_panel for reference
+    plot_energy_panel(V_ref, rv, A, ax_emin, kcal)
+    # Overlay model curves on top
+    _, emin_tot = extract_min_curves(A, rv, V_model_total.T)
+    _, emin_hbond = extract_min_curves(A, rv, V_model_hbond.T)
+    _, emin_eout = extract_min_curves(A, rv, V_model_eout.T)
+    ax_emin.plot(A[o], emin_tot[o] * fac, 'r-', lw=0.5, label='Etot')
+    ax_emin.plot(A[o], emin_hbond[o] * fac, 'b-', lw=0.5, label='Ein')
+    ax_emin.plot(A[o], emin_eout[o] * fac, 'g-', lw=0.5, label='Eout')
+    ax_emin.legend(fontsize=8)
+    
+    # 4) Geometry at global minimum using plot_molecule (2D)
+    iframe = frame_idx[iy_g, ix_g]
+    if iframe >= 0 and iframe < len(Ps_raw):
+        apos_mol = Ps_raw[iframe]
+        enames_mol = (Ts_raw[iframe] if Ts_raw is not None and iframe < len(Ts_raw) else ["?"] * len(apos_mol))
+        n0_mol = n0_first
+        plot_molecule(ax_geom, enames_mol, apos_mol, n0=n0_mol, title=f"Geometry @ min\nFrame {iframe}")
+    else:
+        ax_geom.text(0.5, 0.5, 'No geometry', transform=ax_geom.transAxes, ha='center', va='center')
