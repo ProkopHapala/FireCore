@@ -1978,12 +1978,15 @@ def plot_molecule(ax, enames, apos, n0=None, title=""):
         ax.set_ylim(center[1] - half, center[1] + half)
 
 
-def plot_system_panel(V, rv, A, ax, label, kcal, sym, overlay_rmin=False, cmap='seismic'):
-    """Row 1: 2D imshow + Rmin overlay + global min marker."""
+def plot_system_panel(V, rv, A, ax, label, kcal, sym, overlay_rmin=False, cmap='seismic', unit_label=None):
+    """Row 1: 2D imshow + Rmin overlay + global min marker.
+    If unit_label is provided, overrides the default colorbar label."""
     if not np.any(np.isfinite(V)):
         ax.set_axis_off()
         return None
     im = plot_imshow(V, rv, A, title=label, cmap=cmap, kcal=kcal, ax=ax, bColorbar=True, rtick_step=5, bSym=False)
+    if unit_label is not None and im is not None and im.colorbar is not None:
+        im.colorbar.set_label(unit_label)
     if sym and im is not None:
         conv = 23.060548 if kcal else 1.0
         vmin_ref = np.nanmin(V) * conv

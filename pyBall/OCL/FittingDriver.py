@@ -176,6 +176,21 @@ class FittingDriver(OpenCLBase):
             if (r == 0.0) and (e == 0.0):
                 print(f"WARNING: {type_name}.R==0 and {type_name}.E==0 => epair coefficients are zero; Ein will be ~0")
 
+        # CRITICAL FIX: Rebuild tREQHs_base from updated base_params
+        # Otherwise tREQHs_base remains stale with old parameter values
+        if hasattr(self, 'tREQHs_base') and self.tREQHs_base is not None:
+            n_types_in_data = len(self.atom_type_names)
+            for i, type_name in enumerate(self.atom_type_names):
+                params = self.base_params.get(type_name)
+                if params:
+                    self.tREQHs_base[i, 0] = params['R']
+                    if isinstance(type_name, str) and type_name.startswith('E'):
+                        self.tREQHs_base[i, 1] = params['E']
+                    else:
+                        self.tREQHs_base[i, 1] = np.sqrt(params['E'])
+                    self.tREQHs_base[i, 2] = params['Q']
+                    self.tREQHs_base[i, 3] = params['H']
+
     def extract_macro_from_forces(self, macro_name, forces_path=None):
         """Extract a macro definition from Forces.cl file.
         
@@ -1056,7 +1071,11 @@ class FittingDriver(OpenCLBase):
         # Lazily allocate Emols buffer and bind args if needed (when using full init path)
         if not hasattr(self, 'Emols_buff'):
             self.try_make_buffers({"Emols": self.n_samples*4})
-            self.setup_energy_kernel()
+            self.setup_energy_kernel(bMask=False)
+        else:
+            # Always rebind as unmasked: previous calls to evaluate_energies_masked() leave the kernel bound with bMask=1
+            # and a non-null mask buffer. That can silently break consistency between masked/unmasked Etot.
+            self.setup_energy_kernel(bMask=False)
         cl.enqueue_nd_range_kernel(self.queue, self.energy_kern, (self.n_samples*workgroup_size,), (workgroup_size,))
         Emols = self.fromGPU_(self.Emols_buff, shape=(self.n_samples,), dtype='f4')
         self.queue.finish()
@@ -1342,6 +1361,9 @@ class FittingDriver(OpenCLBase):
             x  = float(dofs_vec[i])
             if ci == 1: x = float(np.sqrt(max(x, 0.0)))
             T[ti, ci] = x
+            # DEBUG: Print H-component updates
+            if ci == 3:
+                print(f"tREQHs_from_dofs: {dof['typename']}.H = {x:.6f} (was {self.tREQHs_base[ti, ci]:.6f})")
         return T.astype(np.float32, copy=False)
 
     @staticmethod
@@ -1357,29 +1379,22 @@ class FittingDriver(OpenCLBase):
         dE_clamped = np.where(dE > y1, y1 + y12 * (1.0 - 1.0 / (1.0 + z)), dE)
         return dE_clamped
 
-    def evaluate_objective(self, dofs_vec, soft_clamp=False, clamp_start=4.0, clamp_max=6.0):
+    def evaluate_objective(self, dofs_vec, soft_clamp=False, clamp_start=4.0, clamp_max=6.0, kcal_objective=False):
         """Evaluate fitting objective J = sum_i( 0.5 * W_i * (dE_i)^2 )
         for a given DOF vector, using the energy-only GPU kernel.
         Optionally applies soft clamp to energy differences before squaring.
+        If kcal_objective=True, converts dE from eV to kcal before computing J (J units become kcal^2).
         Requires init_and_upload_energy_only() and setup_energy_kernel() already called.
         """
-        T = self.tREQHs_from_dofs(dofs_vec)
-        self.toGPU_(self.tREQHs_buff, T)
-        Emols = self.evaluate_energies()
-        Eref = self.host_ErefW[:, 0]
-        W    = self.host_ErefW[:, 1]
-        dE   = Emols - Eref
+        J_per_sample = self.evaluate_objective_per_sample(dofs_vec, soft_clamp, clamp_start, clamp_max, kcal_objective)
+        return float(np.sum(J_per_sample))
 
-        if soft_clamp:
-            dE = self._soft_clamp(dE, clamp_start, clamp_max)
-
-        J    = 0.5 * np.sum(W * dE * dE)
-        return float(J)
-
-    def evaluate_objective_per_sample(self, dofs_vec, soft_clamp=False, clamp_start=4.0, clamp_max=6.0):
+    def evaluate_objective_per_sample(self, dofs_vec, soft_clamp=False, clamp_start=4.0, clamp_max=6.0, kcal_objective=False):
         """Evaluate fitting error per sample (for error maps).
         Returns array of J_i = 0.5 * W_i * (dE_i)^2 for each sample.
         Optionally applies soft clamp to energy differences.
+        If kcal_objective=True, converts dE from eV to kcal before computing J (J units become kcal^2).
+        Order of operations: convert units first, then soft-clamp, then square.
         """
         T = self.tREQHs_from_dofs(dofs_vec)
         self.toGPU_(self.tREQHs_buff, T)
@@ -1388,6 +1403,9 @@ class FittingDriver(OpenCLBase):
         W    = self.host_ErefW[:, 1]
         dE   = Emols - Eref
 
+        # IMPORTANT: Convert units FIRST, then soft-clamp (clamp parameters are in the final units)
+        if kcal_objective:
+            dE = dE * 23.060548  # Convert eV to kcal/mol
         if soft_clamp:
             dE = self._soft_clamp(dE, clamp_start, clamp_max)
 

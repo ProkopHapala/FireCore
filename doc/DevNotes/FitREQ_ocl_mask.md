@@ -728,3 +728,213 @@ Successfully implemented a new polynomial radial basis epair model with:
 - System-specific epair type parameters
 - Enhanced plotting with multiple modes and plane detection
 - Runtime warnings for parameter misconfiguration
+
+---
+
+## Energy Fitting Consistency Debugging (May 2026)
+
+### Objective
+Ensure **absolute consistency** between the energy components used in Monte Carlo optimization of epair parameters and their plotted diagnostics. The goal was to verify that:
+- Total model energy (Etot), reference energy (Eref), and their difference (dE) are computed from **exactly the same parameter sets** and kernel states
+- No double computation, parameter mismatch, or unit conversion errors exist
+- The baseline energy (Eout) remains invariant when only epair parameters affecting Ein are optimized
+- Plotted dE matches the dE used in the optimizer sample-wise
+
+### Input Files
+- **`tests/tFitREQ/mc_config.json`**: MC optimization configuration, specifies which parameters to optimize (e.g., `{"E_O3": ["R", "E"]}`)
+- **`tests/tFitREQ/epair_defaults.json`**: Initial parameter overrides (e.g., `{"E_O3": {"R": -0.1, "E": -0.1, "H": 4.0}}`)
+- **`tests/tFitREQ/add_epairs_full/H2O-A1_H2O-D1-y.xyz`**: Reference energy grid data (H2O dimer scan)
+- **`tests/tFitREQ/data/AtomTypes.dat`**: Base atom type parameters
+
+### How to Run
+```bash
+cd tests/tFitREQ
+python plot_masked_energy.py \
+  --xyz add_epairs_full/H2O-A1_H2O-D1-y.xyz \
+  --params epair_defaults.json \
+  --polar 0 \
+  --output mc_dbg22.png \
+  --mc_after \
+  --mc_config mc_config.json \
+  --max_steps 20 \
+  --step_size 0.2
+```
+
+This produces three outputs:
+- **`mc_dbg22_before.png`**: Single plot with 1D cuts + geometry for MC-initial state (T0)
+- **`mc_dbg22_after.png`**: Single plot with 1D cuts + geometry for MC-best state (T1)
+- **`mc_dbg22_comparison.png`**: 2×6 diagnostic grid with before/after comparison
+
+### Problems Faced
+
+#### 1. Inconsistency Between Optimizer and Plotted Energies
+**Symptom**: The plotted Etot (column 2) and Eref (column 1) implied `dE = Etot - Eref` was negative almost everywhere, but the dE panel (column 5) showed positive values. This was a **visual contradiction** indicating that the plotted energies were computed from a different parameter state than the optimizer.
+
+**Root Cause**: The single-plot path (`mc_dbg22.png`) was evaluating energies using `tREQHs_base` uploaded via `init_and_upload_energy_only()`, while the MC optimizer was using DOF-derived `tREQHs` (`tREQHs_from_dofs`). These two parameter paths were **not equivalent**, leading to ~0.433 eV shifts in Etot/Ein while Eout remained unchanged.
+
+**Diagnostic Added**:
+```python
+# RIGOROUS CHECK - main plot (single) vs MC-initial (T0) grids
+max|Etot_plot - Etot_T0| = 4.33e-01   # FAILED
+max|Ein_plot  - Ein_T0 | = 4.33e-01   # FAILED
+max|Eout_plot - Eout_T0| = 2.38e-07   # OK (baseline consistent)
+```
+
+**Fix**: When `--mc_after` is enabled, the single-plot path now:
+- Builds DOF definitions from current parameters (same function MC uses)
+- Constructs `initial_dofs_plot` from DOF `xstart`s
+- Uploads `T_plot = drv.tREQHs_from_dofs(initial_dofs_plot)` to GPU
+- This ensures the initial plot uses the **same DOF-derived tREQHs mechanism** as MC's T0
+
+#### 2. Multiple Unit Conversions Causing Confusion
+**Symptom**: Unclear whether energies were in eV or kcal, and whether unit conversions were applied once or multiple times. This made debugging difficult because the numerical values didn't match expectations.
+
+**Root Cause**: 
+- Objective function J was computed with kcal conversion: `dE_kcal = dE_eV * 23.060548`
+- Soft clamping parameters were in kcal
+- Plots could optionally convert to kcal with `--kcal` flag
+- Early code had **double unit conversions** (convert to kcal, then convert again)
+
+**Fix**:
+- Store raw dE in eV (unclamped) for diagnostics and plotting
+- Compute J with kcal conversion **internally** in the objective function
+- Apply soft clamping **after** unit conversion (order: unit convert → soft clamp → square → weighted sum)
+- Avoid double conversions by ensuring each energy is converted at most once
+
+#### 3. Recomputing Instead of Storing/Reusing Data
+**Symptom**: The same energies were recomputed multiple times with different parameter states, leading to inconsistencies and wasted computation.
+
+**Root Cause**:
+- Single plot path called `evaluate_energies_masked()` with `mask_all`, `mask_hbond`, and `mask_baseline` separately (3 kernel calls)
+- MC path called `evaluate_energies_masked(mask_hbond)` again
+- Comparison plot recomputed energies from MC history instead of reusing computed arrays
+- No single source of truth for Etot/Ein/Eout
+
+**Fix**:
+- **Single kernel call per state**: `Etot, Ein = evaluate_energies_masked(mask_hbond)` returns both total and masked energies
+- Derive `Eout = Etot - Ein` (no separate kernel call)
+- Store `Etot0/Ein0/Eout0` and `Etot1/Ein1/Eout1` from MC DOF uploads and reuse for:
+  - Single before/after plots
+  - Comparison plot
+  - All diagnostics
+- Eliminated redundant `mask_all` and `mask_baseline` evaluations
+
+#### 4. Stale GPU Parameter State
+**Symptom**: Even after calling `init_and_upload_energy_only()`, the GPU buffer `tREQHs_buff` contained stale parameters from a previous operation, causing the first plot to use wrong epair values.
+
+**Root Cause**: `init_and_upload_energy_only()` does **not guarantee** that `tREQHs_base` is uploaded into `tREQHs_buff`. The driver can retain stale GPU state across calls.
+
+**Fix**: Added explicit upload after parameter overrides:
+```python
+assert hasattr(drv, 'tREQHs_base')
+drv.toGPU_(drv.tREQHs_buff, np.array(drv.tREQHs_base, dtype=np.float32, copy=False))
+```
+
+#### 5. Wrong Return Value from evaluate_energies_masked
+**Symptom**: The single plot was using the **second return value** (`Emasked`) as Etot instead of the **first return value** (`Etot`).
+
+**Root Cause**: Misunderstanding of `evaluate_energies_masked(mask)` return signature: it returns `(Etot, Emasked)`. With `mask_all`, `Emasked` happens to equal total-ish, but it's not the authoritative Etot.
+
+**Fix**: Always use the first return value for Etot:
+```python
+# WRONG (old):
+_, Em_all = drv.evaluate_energies_masked(mask_all)  # Em_all is masked, not total
+
+# CORRECT (new):
+Em_tot, Em_hbond = drv.evaluate_energies_masked(mask_hbond)  # Em_tot is authoritative Etot
+```
+
+#### 6. Eout Invariance Test Failure
+**Symptom**: Eout should remain invariant when only epair parameters (inside mask) change, but it showed small numerical drift due to parameter state mismatches.
+
+**Root Cause**: Eout was computed from different parameter states in different code paths, so the invariance test was comparing apples to oranges.
+
+**Fix**: Enforce single kernel call per state:
+```python
+T0 = drv.tREQHs_from_dofs(dofs0)
+drv.toGPU_(drv.tREQHs_buff, T0)
+Etot0, Ein0 = drv.evaluate_energies_masked(mask_hbond)
+Eout0 = Etot0 - Ein0  # Derived from same kernel call
+```
+
+Then test:
+```python
+dEout = Eout1 - Eout0
+if max|dEout| > 1e-4: raise RuntimeError("Eout changed - mask does not capture all epair effects")
+```
+
+### Rigorous Checks Implemented
+
+1. **Per-sample energy consistency**:
+   - `max|Etot0(masked) - Emols0_obj(history)|` → must be ~0
+   - `max|Etot0(masked) - Emols0_now(unmasked)|` → must be ~0
+   - Ensures masked and unmasked kernels agree under identical parameters
+
+2. **Grid-level panel identity**:
+   - `max|dE_grid - (Etot_grid - Eref_grid)|` → must be ~0
+   - Ensures the dE panel visually equals (Etot panel - Eref panel)
+   - Catches unit conversion or source mismatches
+
+3. **Main plot vs MC-initial consistency**:
+   - `max|Etot_plot - Etot_T0|` → must be ~0
+   - `max|Ein_plot - Ein_T0|` → must be ~0
+   - Ensures single-plot uses same DOF-derived parameters as MC
+
+4. **Eout invariance**:
+   - `max|Eout_after - Eout_before|` → must be < 1e-4
+   - Ensures mask captures all epair effects
+
+5. **Objective formula check**:
+   - `max|J_per_sample - 0.5 * W * dE_clamped^2|` → must be ~0
+   - Verifies the objective formula matches the stored per-sample errors
+
+### Files Modified
+
+1. **`tests/tFitREQ/plot_masked_energy.py`**:
+   - Added `_save_main_plot()` helper to avoid code duplication
+   - When `--mc_after`: use DOF-derived `tREQHs` for initial plot (match MC T0)
+   - Compute energies **once per state** (T0 and T1) and reuse for all plots
+   - Save three outputs: `*_before.png`, `*_after.png`, `*_comparison.png`
+   - Added all rigorous checks with hard failures on inconsistency
+   - Fixed scoping bug (`vmin/vmax` undefined in comparison plot)
+   - Removed redundant `mask_all` and `mask_baseline` evaluations
+
+2. **`pyBall/OCL/FittingDriver.py`**:
+   - Fixed `evaluate_energies()` to always rebind with `bMask=False` to avoid stale masked bindings
+
+3. **`pyBall/OCL/NonBondFitting.py`**:
+   - In MC optimizer, initialize energy kernel and epair flags before objective evaluation
+   - Ensure kernel is in well-defined unmasked state
+
+### Lessons Learned
+
+1. **Never trust implicit state**: GPU buffers can retain stale state across calls. Always make parameter uploads **explicit**.
+2. **Single source of truth**: Compute each quantity exactly once and store it. Recomputing with different parameter states is a recipe for inconsistency.
+3. **Fail loudly on inconsistency**: Add hard checks (raise RuntimeError) rather than silent warnings. This forces root cause fixes rather than cosmetic patches.
+4. **Unit conversions are dangerous**: Apply them in exactly one place with clear documentation. Avoid double conversions.
+5. **Return value semantics matter**: Always verify function return signatures (e.g., `evaluate_energies_masked` returns `(Etot, Emasked)`, not `(Emasked, Etot)`).
+6. **DOF-derived vs base parameters**: `tREQHs_base` (from JSON/AtomTypes.dat) is **not equivalent** to `tREQHs_from_dofs(initial_dofs)`. Use the same mechanism everywhere.
+
+### Verification
+
+The final run passes all rigorous checks:
+```
+MC DIAG: RIGOROUS CHECK - Etot consistency across masked/unmasked/objective
+  Before: max|Etot0(masked)-Emols0_obj(history)| = 0.000000e+00
+  After : max|Etot1(masked)-Emols1_obj(history)| = 0.000000e+00
+
+MC DIAG: RIGOROUS CHECK - grid identity dE == Etot_panel - Eref_panel
+  Before: max|Δ|=0.000000e+00
+  After : max|Δ|=0.000000e+00
+
+MC DIAG: RIGOROUS CHECK - main plot (single) vs MC-initial (T0) grids
+  max|Etot_plot - Etot_T0| = 0.000000e+00
+  max|Ein_plot  - Ein_T0 | = 0.000000e+00
+  max|Eout_plot - Eout_T0| = 2.384186e-07
+
+MC DIAG: RIGOROUS CHECK - Eout invariance
+  max|Eout_after - Eout_before| = 3.576279e-07
+  OK: Eout invariant within tolerance
+```
+
+All energies are now computed from a **single kernel call per state** with **explicit DOF-derived parameter uploads**, ensuring absolute consistency between optimizer and plotted diagnostics.

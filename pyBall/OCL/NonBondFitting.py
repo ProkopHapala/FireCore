@@ -129,7 +129,7 @@ def optimizer_FIRE(driver, initial_dofs, max_steps=1000, dt_start=0.01, fmax=1e-
     return dofs
 
 def optimizer_montecarlo(driver, initial_dofs, max_steps=500, step_size=0.1, temperature=0.0,
-                          soft_clamp=False, clamp_start=4.0, clamp_max=6.0, verbose=10):
+                           soft_clamp=False, clamp_start=4.0, clamp_max=6.0, kcal_objective=False, verbose=10):
     """
     Monte Carlo random optimizer for fitting parameters.
     At each step, randomly perturbs all DOFs and accepts if error improves
@@ -144,14 +144,32 @@ def optimizer_montecarlo(driver, initial_dofs, max_steps=500, step_size=0.1, tem
     dof_defs = driver.dof_definitions
     n_dofs   = len(dof_defs)
 
+    # Ensure energy kernel is bound in a well-defined, unmasked state.
+    # Without this, previous masked calls can leave the kernel bound with bMask=1/mask buffer and break consistency.
+    # Also ensure epair flags exist so we don't silently run the wrong kernel variant.
+    driver.init_and_upload_energy_only()
+    assert hasattr(driver, 'host_isEpair') and (driver.host_isEpair is not None)
+    driver.setup_energy_kernel(bMask=False)
+
     lo  = np.array([d['min']    for d in dof_defs], dtype=np.float64)
     hi  = np.array([d['max']    for d in dof_defs], dtype=np.float64)
     rng = hi - lo
 
-    dofs     = np.array(initial_dofs, dtype=np.float64)
-    J_cur    = driver.evaluate_objective(dofs, soft_clamp, clamp_start, clamp_max)
-    J_best   = J_cur
+    dofs      = np.array(initial_dofs, dtype=np.float64)
+    J_cur     = driver.evaluate_objective(dofs, soft_clamp, clamp_start, clamp_max, kcal_objective)
+    J_best    = J_cur
     best_dofs = dofs.copy()
+
+    # Store exact per-sample quantities used by objective for initial state
+    # NOTE: evaluate_objective_per_sample() internally evaluates energies using the energy kernel currently bound on driver.
+    J_per_sample_initial = driver.evaluate_objective_per_sample(dofs, soft_clamp, clamp_start, clamp_max, kcal_objective)
+    Emols_initial = driver.evaluate_energies()
+    Eref = driver.host_ErefW[:, 0].copy()
+    W    = driver.host_ErefW[:, 1].copy()
+    dE_initial = (Emols_initial - Eref).astype(np.float32)
+
+    # Store dE in eV (raw) for plotting - plotting will handle conversion based on args.kcal
+    # Do NOT apply any conversion here
 
     param_history = [dofs.copy()]
     error_history = [J_cur]
@@ -162,8 +180,11 @@ def optimizer_montecarlo(driver, initial_dofs, max_steps=500, step_size=0.1, tem
         # Random perturbation scaled by parameter range
         delta    = (np.random.rand(n_dofs) - 0.5) * 2.0 * step_size * rng
         new_dofs = np.clip(dofs + delta, lo, hi)
+        J_new    = driver.evaluate_objective(new_dofs, soft_clamp, clamp_start, clamp_max, kcal_objective)
 
-        J_new = driver.evaluate_objective(new_dofs, soft_clamp, clamp_start, clamp_max)
+        # DEBUG: Print DOF values and energy change for first few steps
+        if step <= 5:
+            print(f"MC DEBUG step {step}: dofs={dofs}, new_dofs={new_dofs}, delta={delta}, J_cur={J_cur:.6e}, J_new={J_new:.6e}")
 
         accept = J_new < J_cur
         if not accept and temperature > 0.0:
@@ -184,6 +205,14 @@ def optimizer_montecarlo(driver, initial_dofs, max_steps=500, step_size=0.1, tem
         if verbose > 0 and step % verbose == 0:
             print(f"MC step {step:5d}/{max_steps}  J_cur={J_cur:.6e}  J_best={J_best:.6e}  accepted={n_accepted}")
 
+    # Store exact per-sample quantities used by objective for best state
+    J_per_sample_best = driver.evaluate_objective_per_sample(best_dofs, soft_clamp, clamp_start, clamp_max, kcal_objective)
+    Emols_best = driver.evaluate_energies()
+    dE_best = (Emols_best - Eref).astype(np.float32)
+
+    # Store dE in eV (raw) for plotting - plotting will handle conversion based on args.kcal
+    # Do NOT apply any conversion here
+
     print(f"MC done: {n_accepted}/{max_steps} accepted  J_initial={error_history[0]:.6e}  J_final={J_best:.6e}")
     return {
         'initial_dofs'   : initial_dofs,
@@ -199,6 +228,15 @@ def optimizer_montecarlo(driver, initial_dofs, max_steps=500, step_size=0.1, tem
         'soft_clamp'     : soft_clamp,
         'clamp_start'    : clamp_start,
         'clamp_max'      : clamp_max,
+        'kcal_objective' : kcal_objective,
+        'Eref'           : Eref,
+        'W'              : W,
+        'Emols_initial'  : Emols_initial,
+        'Emols_best'     : Emols_best,
+        'dE_initial'     : dE_initial,
+        'dE_best'        : dE_best,
+        'J_per_sample_initial': J_per_sample_initial,
+        'J_per_sample_best'   : J_per_sample_best,
     }
 
 
