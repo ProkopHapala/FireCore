@@ -826,3 +826,94 @@ All pure-Python functions from `pyBall/FitREQ.py` and
 `FitREQutils` and only keeps its own `if __name__ == '__main__':` CLI block.
 When adding new features to any shared parsing/plotting function, edit
 `FitREQutils.py` directly.
+
+
+# Part 6: Frame Reordering (`reorder_frames.py`)
+
+## 6.1 Purpose
+
+The script `tests/tFitREQ/reorder_frames.py` reorders frames in multi-frame XYZ
+files based on geometric parameters extracted from comment headers. This is
+useful when scan data is generated with frames in a non-sequential order (e.g.,
+angle=0 appears at the start instead of in the middle of the -90...+90 sequence).
+
+The script sorts frames by:
+1. **Angle** (y or z field) - ascending order
+2. **Distance** (x0 field) - ascending order
+
+This ensures that subsequent analysis and plotting tools receive data in the
+expected sequential order.
+
+## 6.2 Usage
+
+```
+python tests/tFitREQ/reorder_frames.py -i <input> [options]
+```
+
+### Arguments
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `-i, --input` | required | Input .xyz file or directory |
+| `-o, --output` | overwrite input | Output .xyz file path |
+| `--dir` | off | Process all .xyz files in input directory |
+
+### Examples
+
+```bash
+# Reorder single file (overwrites input):
+python tests/tFitREQ/reorder_frames.py -i scan.xyz
+
+# Reorder single file to new output:
+python tests/tFitREQ/reorder_frames.py -i scan.xyz -o scan_reordered.xyz
+
+# Reorder all .xyz files in a directory (in-place):
+python tests/tFitREQ/reorder_frames.py -i /path/to/scans/ --dir
+```
+
+## 6.3 Implementation
+
+The script uses `reorder_frames_by_angle()` from `pyBall/FitREQutils.py` which:
+
+1. Parses the XYZ file to extract:
+   - Number of atoms (natoms)
+   - Comment line containing: `n0`, `Etot`, `x0` (distance), and `y` or `z` (angle)
+   - Atom lines for each frame
+2. Extracts geometric parameters from comments using regex:
+   - `energy_re`: matches `Etot` or `E=` followed by a float
+   - `reR`: matches `x0` followed by a float
+   - `reAy`/`reAz`: matches `y` or `z` followed by a float
+3. Stores each frame as a dict with: `natoms`, `comment`, `atoms`, `angle`, `distance`
+4. Sorts frames by `(angle, distance)` tuple
+5. Writes reordered frames back to the output file
+
+The parsing correctly handles XYZ files where the `natoms` line appears **before**
+the comment line (standard format).
+
+## 6.4 Integration with `add_epairs.py`
+
+Typical workflow:
+
+```bash
+# 1. Generate electron-paired files:
+python tests/tFitREQ/add_epairs.py -i scans/ -o scans_ep/ --mode both
+
+# 2. Reorder frames for proper sequential ordering:
+python tests/tFitREQ/reorder_frames.py -i scans_ep/ --dir
+
+# 3. Plot reordered data:
+python tests/tFitREQ/plot_ref.py --dir scans_ep/ --min-lines --kcal
+```
+
+The reordering step is necessary because some scan generators produce frames with
+angle=0 at the beginning of the file, which breaks the expected -90...0...+90
+sequence used by plotting tools.
+
+## 6.5 Notes
+
+- The script preserves all frame data exactly, only reordering the sequence
+- Comment lines are preserved with their original content (including molecule names)
+- The sorting is stable: frames with identical (angle, distance) maintain their
+  original relative order
+- For directories, the script processes files in alphabetical order
+- The script reports the number of frames reordered for each file

@@ -1166,7 +1166,11 @@ def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000, comments=None ):
                 ename = elements.ELEMENTS[iz-1][1]
             except:
                 ename = wds[0]
-                iz    = elements.ELEMENT_DICT[ename][0]
+                base_name = ename.split('_')[0]
+                try:
+                    iz = elements.ELEMENT_DICT[base_name][0]
+                except (KeyError, IndexError):
+                    iz = -1
             enames.append( ename )
             Zs    .append( iz    )
             qs    .append( q     )
@@ -1216,7 +1220,11 @@ def load_xyz(fname=None, fin=None, bReadN=False, bReadComment=True, nmax=10000 )
                 ename = elements.ELEMENTS[iz-1][1]
             except:
                 ename = wds[0]
-                iz    = elements.ELEMENT_DICT[ename][0]
+                base_name = ename.split('_')[0]
+                try:
+                    iz = elements.ELEMENT_DICT[base_name][0]
+                except (KeyError, IndexError):
+                    iz = 0
             enames.append( ename )
             Zs    .append( iz    )
             qs    .append( q     )

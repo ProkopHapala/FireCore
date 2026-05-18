@@ -1,8 +1,88 @@
 """
-Pure-Python plotting utilities for FitREQ energy maps.
-No C/OpenCL dependency — only numpy + matplotlib + re + os.
+Utilities for FitREQ energy map analysis, XYZ file processing, and electron pair handling.
 
-Copied verbatim from pyBall/FitREQ.py (pure-Python functions only).
+Data I/O and file operations:
+- read_xyz_data: Extract energy and distance data from concatenated XYZ comment lines
+- mark_molecule_blocks: Identify molecule boundaries in multi-molecule XYZ files
+- slice_and_reshape: Slice and reshape data arrays based on molecule block marks
+- concatenate_xyz_files: Concatenate XYZ files from multiple directories
+- concatenate_xyz_files_flat: Concatenate XYZ files from a flat list
+- find_all_dirs: Find all subdirectories in a base path
+- read_file_comments: Extract comment lines from a file
+- extract_comments_and_types: Extract comments and atom type counts from XYZ files
+- parse_xyz_blocks: Parse XYZ file into blocks of (es, apos, qs, comment)
+- parse_xyz_with_headers: Parse XYZ file with header (n0, Etot, x0, angle) extraction
+- read_scan_atomicutils: Read scan data using atomicUtils.load_xyz_movie
+- parse_panel_list: Parse list file for batch plotting
+
+Grid manipulation and reshaping:
+- shift_grid: Shift grid values to make minimum zero
+- reshape_to_grid: Reshape 1D arrays into 2D grid based on row detection
+- compute_ref_shift: Compute reference shift from energy and distance arrays
+- compute_shift_from_grid: Compute shift from 2D energy grid
+
+Energy analysis and extraction:
+- extract_min_curves: Extract minimum energy curves along distance axis
+- compute_min_lines_from_panel: Compute minimum energy lines from panel data
+- _distances_from_Xpanel: Extract distances from Xpanel array
+
+Plotting utilities:
+- plot_Epanels: Plot energy panels from multiple reference directories
+- plot_Epanels_diff: Plot energy panel differences between model and reference
+- plot2Dlong_diff: Plot 2D energy difference as long format
+- plot_Epanels_diff_separate: Plot separate energy panel differences
+- plot_energy_2d_from_xyz: Plot 2D energy map directly from XYZ file
+- plot_compare: Compare reference and model energy grids
+- plot_compare_combined: Combined comparison plot with multiple subplots
+- plot_min_lines_pair: Plot minimum energy lines for reference and model
+- plot_imshow: Plot 2D energy grid as imshow
+- plot_polar: Plot 2D energy grid in polar coordinates
+- plot_profiles: Plot energy profiles along distance axis
+- plot_list: Batch plotting from a list file
+- plot_molecule: Plot molecule geometry with atom colors and sizes
+- plot_system_panel: Plot system energy panel with Rmin overlay
+- plot_energy_panel: Plot energy minimum curve panel
+
+XYZ parsing and geometry analysis:
+- _parse_comment: Parse XYZ comment line for energy and geometry info
+- parse_xyz_mapping: Parse XYZ file to extract distance/angle mapping
+- derive_ra_from_block: Derive distance and angle from atomic positions
+- compute_ra_vec: Compute distance and angle vectors between fragments
+- parse_headers_ra: Parse comment headers to extract energy, distance, angle
+- detect_rows_by_r: Detect row boundaries based on distance values
+
+Frame grid building:
+- compute_panel_data: Compute panel data from XYZ file for plotting
+- _build_frame_grid: Build frame grid and extract energy/geometry data
+
+Element helpers:
+- _element_color: Get color for atom element
+- _element_size: Get size for atom element
+
+Frame reordering:
+- reorder_frames_by_angle: Reorder XYZ frames by angle then distance
+
+Electron pair processing:
+- AtomType: Data class for atom type properties
+- read_atom_types: Read AtomTypes.dat file
+- parse_n0_from_comment: Parse n0 (fragment split) from comment
+- update_n0_in_comment: Update n0 value in comment string
+- element_from_typename: Extract base element name from type name
+- count_epairs_from_type: Get number of electron pairs for atom type
+- has_sigma_hole_type: Check if atom type is a sigma-hole donor
+- _z_to_qs: Get atomic charge from atomic number
+- _z_to_rs: Get atomic radius from atomic number
+- build_fragment: Build AtomicSystem for one fragment with epairs/sigma holes
+- process_frame: Process single XYZ frame to add epairs/sigma holes
+- process_one_file: Process entire XYZ file to add epairs/sigma holes
+- find_data_path: Find AtomTypes.dat data directory
+
+File I/O (saving):
+- save_grid_npz: Save energy grid to NumPy format
+- save_grid_gnuplot: Save energy grid to gnuplot format
+- save_min_lines_npz: Save minimum energy curves to NumPy format
+- save_min_lines_gnuplot: Save minimum energy curves to gnuplot format
+- save_data: Save comparison data in multiple formats
 """
 from pathlib import Path
 import numpy as np
@@ -10,7 +90,10 @@ import os
 import re
 import matplotlib.pyplot as plt
 
-from pyBall.atomicUtils import scan_xyz
+from pyBall.atomicUtils import scan_xyz, load_xyz_movie, normalize, writeToXYZ
+from pyBall import elements
+from pyBall.AtomicSystem import AtomicSystem
+import pyBall.atomicUtils as au
 
 ev2kcal = 23.060547831
 
@@ -76,10 +159,12 @@ def mark_molecule_blocks(lines):
 
 
 def slice_and_reshape(Es, marks, angle_data):
+    """Slice and reshape data arrays based on molecule block marks.
+    
+    Takes energy arrays and block marks to slice them into per-molecule
+    chunks, then reshapes based on angle data for 2D grid representation.
     """
-    Reshape flat energy array E into panels, one per molecule block.
-    Each panel: (n_angles, n_distances) with NaN for missing points.
-    """
+
     Eplots = []
     for (i0,i1),nxs in zip(marks,angle_data):
         nx = np.max(nxs)
@@ -94,10 +179,10 @@ def slice_and_reshape(Es, marks, angle_data):
 
 
 def concatenate_xyz_files(directories=None, base_path='./', fname="all.xyz", output_file="all.xyz", mode='w'):
-    """
-    Concatenate per-molecule all.xyz files into one file,
-    tagging comment lines with source directory name.
-    Returns marks: list of (i0,i1) per molecule block.
+    """Concatenate XYZ files from multiple directories into single output.
+    
+    Finds specified file in each subdirectory and concatenates them.
+    Useful for combining results from multiple calculations.
     """
     marks=[]
     if directories is None:
@@ -128,7 +213,10 @@ def concatenate_xyz_files(directories=None, base_path='./', fname="all.xyz", out
 
 
 def concatenate_xyz_files_flat(names=None, base_path='./', output_file="all.xyz", mode='w'):
-    """
+    """Concatenate XYZ files from a flat list of filenames.
+    
+    Simpler version for when files are in a single directory.
+
     Concatenate .xyz files from a flat directory (no subdirs).
     """
     marks=[]
@@ -153,7 +241,9 @@ def concatenate_xyz_files_flat(names=None, base_path='./', output_file="all.xyz"
 
 
 def find_all_dirs(base_path):
-    """Return all subdirectories containing an all.xyz file."""
+    """Find all subdirectories in a base path.
+    
+    Return all subdirectories containing an all.xyz file."""
     dirs = [d for d in os.listdir(base_path)
             if os.path.isdir(os.path.join(base_path, d))]
     dirs_with_xyz = []
@@ -204,7 +294,12 @@ def extract_comments_and_types(fname, comment_sign='#'):
 # ─────────────────────────────────────────────────────────
 
 def shift_grid(G):
-    """Shift grid by subtracting asymptotic baseline (min at largest distance)."""
+    """Shift grid values to make minimum zero by subtracting asymptotic baseline.
+    
+    Subtracts the minimum value at the largest distance from the entire grid
+    to set the baseline to zero, useful for energy landscape visualization.
+    Returns shifted grid, reference value, and minimum location.
+    """
     # Clean garbage
     G[np.abs(G) > 1e10] = np.nan
     last = G[-1, :]
@@ -219,9 +314,11 @@ def shift_grid(G):
 
 
 def extract_min_curves(angles, distances, G, rmax=None):
-    """
-    For each angle column, find distance and energy at minimum.
-    G: (n_distances, n_angles) grid.
+    """Extract minimum energy curves along distance axis.
+    
+    For each angle, finds the distance and energy at the minimum.
+    Returns arrays of rmin and emin for each angle, optionally filtered by rmax.
+    G: (n_distances, n_angles) energy grid.
     """
     nA = len(angles)
     rmin = np.full(nA, np.nan)
@@ -240,7 +337,12 @@ def extract_min_curves(angles, distances, G, rmax=None):
 
 
 def compute_min_lines_from_panel(Epanel, Xpanel, angles, rmax=None, do_shift=True):
-    """Extract rmin(angle) and emin(angle) from panel-shaped data."""
+    """Compute minimum energy lines from panel data.
+    
+    Extracts minimum energy curves from 2D energy panel data,
+    optionally shifting to zero baseline and filtering by rmax.
+    Returns rmin, emin arrays.
+    """
     G = Epanel.T
     ny, nx = G.shape
     distances = np.full(nx, np.nan)
@@ -257,7 +359,11 @@ def compute_min_lines_from_panel(Epanel, Xpanel, angles, rmax=None, do_shift=Tru
 
 
 def _distances_from_Xpanel(Xpanel):
-    """Extract 1D distance array from a panel."""
+    """Extract distances from Xpanel array.
+    
+    Xpanel contains distance values for each angle/distance point.
+    Returns unique distance values.
+    """
     ny, nx = Xpanel.shape
     distances = np.full(nx, np.nan)
     for j in range(nx):
@@ -273,9 +379,18 @@ def _distances_from_Xpanel(Xpanel):
 # ─────────────────────────────────────────────────────────
 
 def save_grid_npz(angles, distances, grid, filepath):
+    """Save energy grid to NumPy format.
+    
+    Stores angles, distances, and energy grid in .npz file
+    for later loading and analysis.
+    """
     np.savez(filepath, angles=angles, distances=distances, grid=grid)
 
 def save_grid_gnuplot(angles, distances, grid, filepath):
+    """Save energy grid to gnuplot format.
+    
+    Writes grid data in format suitable for gnuplot plotting.
+    """
     with open(filepath, 'w') as f:
         f.write("# angle distance value\n")
         ny, nx = grid.shape
@@ -286,9 +401,17 @@ def save_grid_gnuplot(angles, distances, grid, filepath):
                     f.write(f"{angles[j]:8.1f} {distances[i]:8.3f} {v:15.8e}\n")
 
 def save_min_lines_npz(angles, rmin, emin, filepath):
+    """Save minimum energy curves to NumPy format.
+    
+    Stores angles, Rmin distances, and minimum energies.
+    """
     np.savez(filepath, angles=angles, rmin=rmin, emin=emin)
 
 def save_min_lines_gnuplot(angles, rmin, emin, filepath):
+    """Save minimum energy curves to gnuplot format.
+    
+    Writes min curve data in format suitable for gnuplot.
+    """
     with open(filepath, 'w') as f:
         f.write("# angle rmin emin\n")
         for i in range(len(angles)):
@@ -300,6 +423,11 @@ def save_min_lines_gnuplot(angles, rmin, emin, filepath):
 # ─────────────────────────────────────────────────────────
 
 def plot_Epanels(Eplots, ref_dirs, bColorbar=True, Emin=-5.0, bKcal=False):
+    """Plot energy panels from multiple reference directories.
+    
+    Creates a row of subplots showing energy panels for each reference directory.
+    Useful for comparing energy landscapes across different calculations.
+    """
     E_units = 1.0
     if bKcal:
         E_units = ev2kcal
@@ -309,8 +437,7 @@ def plot_Epanels(Eplots, ref_dirs, bColorbar=True, Emin=-5.0, bKcal=False):
         return
     fig, axs = plt.subplots(1, nmols, figsize=(20, 3))
     for i in range(nmols):
-        im = axs[i].imshow(Eplots[i].T * E_units, aspect='auto', origin='lower',
-                           vmin=Emin, vmax=-Emin, cmap='bwr')
+        im = axs[i].imshow(Eplots[i].T * E_units, aspect='auto', origin='lower', vmin=Emin, vmax=-Emin, cmap='bwr')
         axs[i].set_title(f"Ref: {ref_dirs[i]}")
         axs[i].set_ylabel('Reference Energies')
         if bColorbar:
@@ -319,7 +446,28 @@ def plot_Epanels(Eplots, ref_dirs, bColorbar=True, Emin=-5.0, bKcal=False):
     return fig
 
 
+def plot2Dlong_diff(Erefs, Es, lens):
+    """Plot 2D energy difference as long format.
+    
+    Plots reference vs model energies as scatter plot for comparison.
+    """
+    plt.figure(figsize=(10, 6))
+    for i, (eref, emod, l) in enumerate(zip(Erefs, Es, lens)):
+        plt.plot(eref, emod, 'o', label=f'len={l}')
+    plt.xlabel('Reference Energy')
+    plt.ylabel('Model Energy')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    return plt.gcf()
+
+
 def plot_Epanels_diff(Emodels, Erefs, ref_dirs, bColorbar=True, Emin=-5.0, bKcal=False):
+    """Plot energy panel differences between model and reference.
+    
+    For single molecule: shows ref, model, and diff in 3 rows.
+    For multiple molecules: shows diff in single row.
+    """
     E_units = 1.0
     if bKcal:
         E_units = ev2kcal
@@ -327,39 +475,33 @@ def plot_Epanels_diff(Emodels, Erefs, ref_dirs, bColorbar=True, Emin=-5.0, bKcal
     if nmols == 1:
         fig, axs = plt.subplots(3, 1, figsize=(6, 9))
         for i in range(nmols):
-            im0 = axs[0].imshow(Erefs[i].T * E_units, aspect='auto', origin='lower',
-                                vmin=Emin, vmax=-Emin, cmap='bwr')
+            im0 = axs[0].imshow(Erefs[i].T * E_units, aspect='auto', origin='lower',  vmin=Emin, vmax=-Emin, cmap='bwr')
             axs[0].set_title(f"Ref: {ref_dirs[i]}")
             if bColorbar: plt.colorbar(im0, ax=axs[0])
 
-            im1 = axs[1].imshow(Emodels[i].T * E_units, aspect='auto', origin='lower',
-                                vmin=Emin, vmax=-Emin, cmap='bwr')
+            im1 = axs[1].imshow(Emodels[i].T * E_units, aspect='auto', origin='lower', vmin=Emin, vmax=-Emin, cmap='bwr')
             axs[1].set_title(f"Model: {ref_dirs[i]}")
             if bColorbar: plt.colorbar(im1, ax=axs[1])
 
             Ediff = (Emodels[i] - Erefs[i]) * E_units
             dmax = np.nanmax(np.abs(Ediff))
-            im2 = axs[2].imshow(Ediff.T, aspect='auto', origin='lower',
-                                vmin=-dmax, vmax=dmax, cmap='bwr')
+            im2 = axs[2].imshow(Ediff.T, aspect='auto', origin='lower', vmin=-dmax, vmax=dmax, cmap='bwr')
             axs[2].set_title(f"Diff: {ref_dirs[i]}")
             if bColorbar: plt.colorbar(im2, ax=axs[2])
     else:
         fig, axs = plt.subplots(3, nmols, figsize=(6 * nmols, 9))
         for i in range(nmols):
-            im0 = axs[0, i].imshow(Erefs[i].T * E_units, aspect='auto', origin='lower',
-                                   vmin=Emin, vmax=-Emin, cmap='bwr')
+            im0 = axs[0, i].imshow(Erefs[i].T * E_units, aspect='auto', origin='lower',  vmin=Emin, vmax=-Emin, cmap='bwr')
             axs[0, i].set_title(f"Ref: {ref_dirs[i]}")
             if bColorbar: plt.colorbar(im0, ax=axs[0, i])
 
-            im1 = axs[1, i].imshow(Emodels[i].T * E_units, aspect='auto', origin='lower',
-                                   vmin=Emin, vmax=-Emin, cmap='bwr')
+            im1 = axs[1, i].imshow(Emodels[i].T * E_units, aspect='auto', origin='lower', vmin=Emin, vmax=-Emin, cmap='bwr')
             axs[1, i].set_title(f"Model: {ref_dirs[i]}")
             if bColorbar: plt.colorbar(im1, ax=axs[1, i])
 
             Ediff = (Emodels[i] - Erefs[i]) * E_units
             dmax = np.nanmax(np.abs(Ediff))
-            im2 = axs[2, i].imshow(Ediff.T, aspect='auto', origin='lower',
-                                   vmin=-dmax, vmax=dmax, cmap='bwr')
+            im2 = axs[2, i].imshow(Ediff.T, aspect='auto', origin='lower', vmin=-dmax, vmax=dmax, cmap='bwr')
             axs[2, i].set_title(f"Diff: {ref_dirs[i]}")
             if bColorbar: plt.colorbar(im2, ax=axs[2, i])
     plt.tight_layout()
@@ -367,6 +509,10 @@ def plot_Epanels_diff(Emodels, Erefs, ref_dirs, bColorbar=True, Emin=-5.0, bKcal
 
 
 def plot2Dlong_diff(Erefs, Es, lens):
+    """Plot 2D energy difference as long format with ref and diff panels.
+    
+    Creates 2-row plot showing reference energies and differences.
+    """
     nmols = len(lens)
     fig, axs = plt.subplots(2, nmols, figsize=(6 * nmols, 8))
     if nmols == 1:
@@ -382,8 +528,12 @@ def plot2Dlong_diff(Erefs, Es, lens):
     return fig
 
 
-def plot_Epanels_diff_separate(Emodels, Erefs, ref_dirs, save_prefix=None,
-                               bColorbar=True, Emin=-5.0, bKcal=False, bClose=False):
+def plot_Epanels_diff_separate(Emodels, Erefs, ref_dirs, save_prefix=None, bColorbar=True, Emin=-5.0, bKcal=False, bClose=False):
+    """Plot separate energy panel differences for each reference directory.
+    
+    Creates individual files for each molecule showing ref, model, and diff.
+    Useful for detailed per-molecule analysis.
+    """
     E_units = 1.0
     if bKcal:
         E_units = ev2kcal
@@ -391,20 +541,17 @@ def plot_Epanels_diff_separate(Emodels, Erefs, ref_dirs, save_prefix=None,
     figs = []
     for i in range(nmols):
         fig, axs = plt.subplots(1, 3, figsize=(18, 4))
-        im0 = axs[0].imshow(Erefs[i].T * E_units, aspect='auto', origin='lower',
-                            vmin=Emin, vmax=-Emin, cmap='bwr')
+        im0 = axs[0].imshow(Erefs[i].T * E_units, aspect='auto', origin='lower', vmin=Emin, vmax=-Emin, cmap='bwr')
         axs[0].set_title(f"Ref: {ref_dirs[i]}")
         if bColorbar: plt.colorbar(im0, ax=axs[0])
 
-        im1 = axs[1].imshow(Emodels[i].T * E_units, aspect='auto', origin='lower',
-                            vmin=Emin, vmax=-Emin, cmap='bwr')
+        im1 = axs[1].imshow(Emodels[i].T * E_units, aspect='auto', origin='lower',  vmin=Emin, vmax=-Emin, cmap='bwr')
         axs[1].set_title(f"Model: {ref_dirs[i]}")
         if bColorbar: plt.colorbar(im1, ax=axs[1])
 
         Ediff = (Emodels[i] - Erefs[i]) * E_units
         dmax = np.nanmax(np.abs(Ediff))
-        im2 = axs[2].imshow(Ediff.T, aspect='auto', origin='lower',
-                            vmin=-dmax, vmax=dmax, cmap='bwr')
+        im2 = axs[2].imshow(Ediff.T, aspect='auto', origin='lower',  vmin=-dmax, vmax=dmax, cmap='bwr')
         axs[2].set_title(f"Diff: {ref_dirs[i]}")
         if bColorbar: plt.colorbar(im2, ax=axs[2])
         plt.tight_layout()
@@ -416,8 +563,7 @@ def plot_Epanels_diff_separate(Emodels, Erefs, ref_dirs, save_prefix=None,
     return figs
 
 
-def plot_energy_2d_from_xyz(xyz_path, distances=None, angles=None, title=None,
-                            cmap='bwr', vmin=None, vmax=None, save_path=None):
+def plot_energy_2d_from_xyz(xyz_path, distances=None, angles=None, title=None,  cmap='bwr', vmin=None, vmax=None, save_path=None):
     """Read XYZ, build 2D grid, shift by baseline, and plot."""
     if distances is None:
         distances = np.arange(1.40, 20.05, 0.05)
@@ -474,9 +620,7 @@ def plot_energy_2d_from_xyz(xyz_path, distances=None, angles=None, title=None,
 
     fig, ax = plt.subplots(figsize=(8, 5))
     extent = [angles[0], angles[-1], distances[0], distances[-1]]
-    im = ax.imshow(GS, origin='lower', aspect='auto', cmap=cmap,
-                   vmin=vmin, vmax=vmax, interpolation='nearest',
-                   extent=extent)
+    im = ax.imshow(GS, origin='lower', aspect='auto', cmap=cmap, vmin=vmin, vmax=vmax, interpolation='nearest',  extent=extent)
     plt.colorbar(im, ax=ax, label="Energy [a.u.]")
     ax.set_xlabel(f"angle ({direction_found or '?'}) [deg]")
     ax.set_ylabel("distance x0 [A]")
@@ -491,7 +635,11 @@ def plot_energy_2d_from_xyz(xyz_path, distances=None, angles=None, title=None,
 
 
 def _parse_comment(comment):
-    """Parse comment line for Etot, x0, angle, and axis direction."""
+    """Parse XYZ comment line for energy and geometry info.
+    
+    Extracts Etot, x0 (distance), and angle (y or z) from comment string.
+    """
+    # comment format: "# n0 N Etot E x0 R y A" or "# n0 N Etot E x0 R z A"
     etot = None; x0 = None; angle = None; direction = None
     toks = comment.strip().split()
     for i, t in enumerate(toks):
@@ -510,7 +658,12 @@ def _parse_comment(comment):
 
 
 def parse_xyz_mapping(xyz_path, distances=None, angles=None):
-    """Parse XYZ file to get reference grid and frame-to-grid mapping."""
+    """Parse XYZ file to extract distance/angle mapping.
+    
+    Reads scan data and extracts the mapping between frames and their
+    geometric parameters (distance and angle).
+    """
+    Es, Ps = read_scan_atomicutils(xyz_path)
     if distances is None:
         distances = np.arange(1.40, 20.05, 0.05)
     if angles is None:
@@ -585,9 +738,7 @@ def extract_min_curves(angles, distances, G, rmax=None):
     return rmin, emin
 
 
-def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None,
-                vmin=None, vmax=None, line=False, kcal=False,
-                save_data_prefix=None, save_fmt="both"):
+def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None,vmin=None, vmax=None, line=False, kcal=False,  save_data_prefix=None, save_fmt="both"):
     """Plot reference/model/difference 2D maps, optionally with min lines."""
     conv = ev2kcal if kcal else 1.0
     unit = "kcal" if kcal else "eV"
@@ -609,26 +760,22 @@ def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None,
         EpanelM = GMS.T
         ny, nx = EpanelR.shape
         Xpanel = np.tile(distances, (ny, 1))  # same distances for all angles
-        plot_min_lines_pair(EpanelR, EpanelM, Xpanel, angles, title=title,
-                           to_kcal=False, save_fmt=save_fmt)
+        plot_min_lines_pair(EpanelR, EpanelM, Xpanel, angles, title=title,to_kcal=False, save_fmt=save_fmt)
 
     fig, axs = plt.subplots(3, 1, figsize=(8, 10))
     extent = [angles[0], angles[-1], distances[0], distances[-1]]
 
-    im0 = axs[0].imshow(GRS, origin='lower', aspect='auto', cmap='bwr',
-                        vmin=vmin, vmax=vmax, interpolation='nearest', extent=extent)
+    im0 = axs[0].imshow(GRS, origin='lower', aspect='auto', cmap='bwr', vmin=vmin, vmax=vmax, interpolation='nearest', extent=extent)
     axs[0].set_title(f"Reference ({unit})")
     plt.colorbar(im0, ax=axs[0])
 
-    im1 = axs[1].imshow(GMS, origin='lower', aspect='auto', cmap='bwr',
-                        vmin=vmin, vmax=vmax, interpolation='nearest', extent=extent)
+    im1 = axs[1].imshow(GMS, origin='lower', aspect='auto', cmap='bwr', vmin=vmin, vmax=vmax, interpolation='nearest', extent=extent)
     axs[1].set_title(f"Model ({unit})")
     plt.colorbar(im1, ax=axs[1])
 
     D = GMS - GRS
     dmax = max(-np.nanmin(D), np.nanmax(D))
-    im2 = axs[2].imshow(D, origin='lower', aspect='auto', cmap='bwr',
-                        vmin=-dmax, vmax=dmax, interpolation='nearest', extent=extent)
+    im2 = axs[2].imshow(D, origin='lower', aspect='auto', cmap='bwr',  vmin=-dmax, vmax=dmax, interpolation='nearest', extent=extent)
     axs[2].set_title(f"Difference ({unit})")
     plt.colorbar(im2, ax=axs[2])
 
@@ -647,8 +794,7 @@ def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None,
     return fig
 
 
-def plot_compare_combined(Gref, Gmodel, angles, distances, title, save_path=None,
-                          kcal=False, params_text=None):
+def plot_compare_combined(Gref, Gmodel, angles, distances, title, save_path=None, kcal=False, params_text=None):
     """3x2 layout: 2D maps + min lines + text panel."""
     conv = ev2kcal if kcal else 1.0
     unit = "kcal" if kcal else "eV"
@@ -685,8 +831,7 @@ def plot_compare_combined(Gref, Gmodel, angles, distances, title, save_path=None
 
     # Ref 2D
     ax00 = fig.add_subplot(gs[0, 0])
-    im00 = ax00.imshow(GRS, origin='lower', aspect='auto', cmap='bwr',
-                       vmin=vmin, vmax=vmax, interpolation='nearest', extent=extent)
+    im00 = ax00.imshow(GRS, origin='lower', aspect='auto', cmap='bwr',  vmin=vmin, vmax=vmax, interpolation='nearest', extent=extent)
     ax00.set_title(f"Reference ({unit})")
     ax00.set_ylabel("Distance (A)")
     plt.colorbar(im00, ax=ax00)
@@ -703,8 +848,7 @@ def plot_compare_combined(Gref, Gmodel, angles, distances, title, save_path=None
 
     # Model 2D
     ax10 = fig.add_subplot(gs[1, 0])
-    im10 = ax10.imshow(GMS, origin='lower', aspect='auto', cmap='bwr',
-                       vmin=vmin, vmax=vmax, interpolation='nearest', extent=extent)
+    im10 = ax10.imshow(GMS, origin='lower', aspect='auto', cmap='bwr',  vmin=vmin, vmax=vmax, interpolation='nearest', extent=extent)
     ax10.set_title(f"Model ({unit})")
     ax10.set_ylabel("Distance (A)")
     plt.colorbar(im10, ax=ax10)
@@ -721,8 +865,7 @@ def plot_compare_combined(Gref, Gmodel, angles, distances, title, save_path=None
 
     # Diff 2D
     ax20 = fig.add_subplot(gs[2, 0])
-    im20 = ax20.imshow(D, origin='lower', aspect='auto', cmap='bwr',
-                       vmin=-dmax, vmax=dmax, interpolation='nearest', extent=extent)
+    im20 = ax20.imshow(D, origin='lower', aspect='auto', cmap='bwr',  vmin=-dmax, vmax=dmax, interpolation='nearest', extent=extent)
     ax20.set_title(f"Difference ({unit})")
     ax20.set_xlabel("Angle (deg)")
     ax20.set_ylabel("Distance (A)")
@@ -732,8 +875,7 @@ def plot_compare_combined(Gref, Gmodel, angles, distances, title, save_path=None
     ax21 = fig.add_subplot(gs[2, 1])
     ax21.axis('off')
     if params_text:
-        ax21.text(0.05, 0.95, params_text, transform=ax21.transAxes,
-                 fontsize=10, verticalalignment='top', fontfamily='monospace')
+        ax21.text(0.05, 0.95, params_text, transform=ax21.transAxes, fontsize=10, verticalalignment='top', fontfamily='monospace')
 
     plt.suptitle(title)
     plt.tight_layout()
@@ -745,7 +887,12 @@ def plot_compare_combined(Gref, Gmodel, angles, distances, title, save_path=None
 
 
 def compute_min_lines_from_panel(Epanel, Xpanel, angles, rmax=None, do_shift=True):
-    """Extract rmin(angle) and emin(angle) from panel-shaped data."""
+    """Compute minimum energy lines from panel data.
+    
+    Extracts minimum energy curves from 2D energy panel data,
+    optionally shifting to zero baseline and filtering by rmax.
+    Returns rmin, emin arrays.
+    """
     G = Epanel.T
     ny, nx = G.shape
     distances = np.full(nx, np.nan)
@@ -761,9 +908,7 @@ def compute_min_lines_from_panel(Epanel, Xpanel, angles, rmax=None, do_shift=Tru
     return extract_min_curves(angles, distances, GS, rmax)
 
 
-def plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None,
-                        save_path=None, to_kcal=False, ms=2, lw=0.5,
-                        save_data_prefix=None, save_fmt="both"):
+def plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save_path=None, to_kcal=False, ms=2, lw=0.5, save_data_prefix=None, save_fmt="both"):
     """Plot rmin(angle) and emin(angle) comparing reference vs model."""
     conv = ev2kcal if to_kcal else 1.0
     rR, eR = compute_min_lines_from_panel(Epanel_ref, Xpanel, angles)
@@ -1091,16 +1236,19 @@ def compute_ra_vec(P, h=None, signed=True):
 
 def parse_headers_ra(fname):
     """
-    Parse comment headers to extract per-block Etot (energy), radius (x0) and angle (z).
+    Parse comment headers to extract per-block Etot (energy), radius (x0) and angle (y or z).
     Supports both old energy-only headers and new enriched headers.
+    The angle field can be 'y' or 'z'; both are tried and the non-zero value is preferred.
     Returns (Eh, Rh, Ah) as float arrays; values may be NaN if missing.
     """
     Eh = []
     Rh = []
     Ah = []
-    reE = re.compile(r"(?:#\s*E\s*=\s*|\bEtot\s+)([+-]?(?:\d*\.\d+|\d+)(?:[Ee][+-]?\d+)?)")
-    reR = re.compile(r"\bx0\s+([+-]?(?:\d*\.\d+|\d+)(?:[Ee][+-]?\d+)?)")
-    reA = re.compile(r"\bz\s+([+-]?(?:\d*\.\d+|\d+)(?:[Ee][+-]?\d+)?)")
+    _num = r'([+-]?(?:\d*\.\d+|\d+)(?:[Ee][+-]?\d+)?)'
+    reE = re.compile(r'(?:#\s*E\s*=\s*|\bEtot\s+)' + _num)
+    reR = re.compile(r'\bx0\s+' + _num)
+    reAy = re.compile(r'\by\s+' + _num)
+    reAz = re.compile(r'\bz\s+' + _num)
     with open(fname, 'r') as f:
         for ln in f:
             s = ln.lstrip()
@@ -1108,10 +1256,21 @@ def parse_headers_ra(fname):
                 continue
             mE = reE.search(s)
             mR = reR.search(s)
-            mA = reA.search(s)
+            mAy = reAy.search(s)
+            mAz = reAz.search(s)
             Eh.append(float(mE.group(1)) if mE else np.nan)
             Rh.append(float(mR.group(1)) if mR else np.nan)
-            Ah.append(float(mA.group(1)) if mA else np.nan)
+            # prefer the non-zero angle field; if both present pick the one != 0
+            ay = float(mAy.group(1)) if mAy else np.nan
+            az = float(mAz.group(1)) if mAz else np.nan
+            if np.isfinite(ay) and ay != 0:
+                Ah.append(ay)
+            elif np.isfinite(az):
+                Ah.append(az)
+            elif np.isfinite(ay):
+                Ah.append(ay)
+            else:
+                Ah.append(np.nan)
     return np.array(Eh, dtype=float), np.array(Rh, dtype=float), np.array(Ah, dtype=float)
 
 # ----------------------------
@@ -1175,8 +1334,12 @@ def reshape_to_grid(vals, r, a, rows):
 # ----------------------------
 
 def compute_ref_shift(Es, r, rows):
-    """
-    Reference shift: choose, for each row, the energy at its maximum r, then
+    """Compute reference shift from energy and distance arrays.
+    
+    Calculates baseline shift from the last distance point in each row.
+    Used to shift energy grids to zero baseline.
+
+        Reference shift: choose, for each row, the energy at its maximum r, then
     return the minimum among those as the asymptotic reference.
     """
     refs = []
@@ -1203,6 +1366,11 @@ def compute_shift_from_grid(V):
 # ----------------------------
 
 def plot_imshow(V, rv, A, emin=None, vmax=None, title=None, cmap='bwr', kcal=False, ax=None, bColorbar=True, rtick_step=5, bSym=False, bByMin=False):
+    """Plot 2D energy grid as imshow.
+    
+    Creates a 2D heatmap of energy values with distance and angle axes.
+    Supports various styling options like colormap, units, and symmetry.
+    """
     fac = 23.060548 if kcal else 1.0
 
     print(f"plot_imshow title({title}) V.shape", V.shape)
@@ -1283,8 +1451,10 @@ def plot_imshow(V, rv, A, emin=None, vmax=None, title=None, cmap='bwr', kcal=Fal
     return im
 
 def plot_polar(V, rv, A, emin=None, vmax=None, title=None, cmap='bwr', kcal=False, ax=None, bColorbar=True, rmax=None, half='right', R=None):
-    """Polar plot using angles A (deg) and distances rv. V is [ny,nx].
-    half: 'right' shows -90..+90 deg, 'left' shows 90..270 deg.
+    """Plot 2D energy grid in polar coordinates.
+    
+    Creates polar plot with angle as theta and distance as radius.
+    Useful for visualizing directional energy landscapes.
     """
     fac = 23.060548 if kcal else 1.0
     # Sort rows by angle to make contours well-behaved
@@ -1476,9 +1646,13 @@ def parse_panel_list(list_path):
 # ----------------------------
 
 def compute_panel_data(xyz, natoms=None, debug=False, unsigned_angle=False):
-    # Header-derived values (may be NaN where missing)
-    Eh, Rh, Ah = parse_headers_ra(xyz)
+    """Compute panel data from XYZ file for plotting.
+    
+    Parses XYZ file, extracts energies and geometry, and builds
+    2D grid data suitable for panel plotting.
+    """
     Es, Ps = read_scan_atomicutils(xyz)
+    Eh, Rh, Ah = parse_headers_ra(xyz)
     if Es.size == 0:
         print(f"WARNING: atomicUtils.scan_xyz() failed to parse {xyz} => fallback to local parse_xyz_blocks()")
         _, _, Ps_local = parse_xyz_blocks(xyz, natoms=natoms)
@@ -1527,6 +1701,11 @@ def compute_panel_data(xyz, natoms=None, debug=False, unsigned_angle=False):
     return V, rv, A, shift, R
 
 def plot_list(list_path, emin=None, emax=None, sym=False, kcal=False, cmap='bwr', bColorbar=True, natoms=None, debug=False, unsigned_angle=False, transpose=False, polar=False, rmax=None, half='right', lines=False, rtick_step=5):
+    """Batch plotting from a list file.
+    
+    Reads a list file and creates a grid of plots for multiple XYZ files.
+    Supports various plot types (imshow, polar, profiles) and styling.
+    """
     nrows, ncols, entries = parse_panel_list(list_path)
     # For line mode we want normal Cartesian axes; ignore polar projection
     subplot_kw = {'projection':'polar'} if (polar and not lines) else None
@@ -1577,3 +1756,532 @@ def plot_list(list_path, emin=None, emax=None, sym=False, kcal=False, cmap='bwr'
             plot_imshow(V, rv, A, emin=vmin_plot, vmax=vmax_plot, title=title, cmap=cmap, kcal=kcal, ax=ax, bColorbar=bColorbar, rtick_step=rtick_step)
     fig.tight_layout()
     return fig
+
+
+
+
+def _build_frame_grid(fp):
+    """Parse XYZ, build V grid + frame-index grid + atom data."""
+    Es, Ps = read_scan_atomicutils(fp)
+    Ts = None
+    if Es.size == 0:
+        Es, Ts, Ps = parse_xyz_blocks(fp)
+    else:
+        # read_scan_atomicutils works but doesn't give types — get them separately
+        _, Ts2, _ = parse_xyz_blocks(fp)
+        Ts = Ts2 if len(Ts2) == len(Ps) else None
+
+    # Extract n0 (fragment split) and header-derived r/a from comment lines
+    Eh, Rh, Ah = parse_headers_ra(fp)
+    _, _, _, N0s = parse_xyz_with_headers(fp)
+    h = int(N0s[0]) if len(N0s) > 0 and N0s[0] > 0 else None
+
+    # Geometry-derived r/a using correct fragment split h=n0
+    r, a = compute_ra_vec(Ps, h=h, signed=True)
+
+    # If geometry-derived r or a are degenerate (all same), prefer header values
+    n = len(Es)
+    if len(np.unique(np.round(r, 3))) <= 1 and np.sum(np.isfinite(Rh)) == n:
+        r = Rh[:n]
+    if len(np.unique(np.round(a, 1))) <= 1 and np.sum(np.isfinite(Ah)) == n:
+        a = Ah[:n]
+
+    rows, _ = detect_rows_by_r(r)
+    ny = len(rows)
+    nx = max(e - s for s, e in rows)
+    frame_idx = np.full((ny, nx), -1, dtype=int)
+    for iy, (s, e) in enumerate(rows):
+        n = e - s
+        frame_idx[iy, :n] = np.arange(s, e)
+
+    Vraw, R, A, rv = reshape_to_grid(Es, r, a, rows)
+    shift = compute_shift_from_grid(Vraw)
+    V = Vraw - shift
+    return V, rv, A, shift, frame_idx, Ps, Ts
+
+
+def _element_color(elem):
+    """Get color for atom element.
+    
+    Returns matplotlib color for element based on CPK coloring scheme.
+    """
+    # CPK coloring: O red, N blue, C gray, H white, etc.
+    if elem == 'E':
+        return '#9932CC'  # purple
+    try:
+        return elements.ELEMENT_DICT[elem][8]
+    except (KeyError, IndexError):
+        return '#808080'
+
+
+def _element_size(elem):
+    """Get size for atom element.
+    
+    Returns marker size for atom based on element type.
+    Dummy atoms (E) get smaller size.
+    """
+    if elem == 'E':
+        return 25
+    try:
+        return elements.ELEMENT_DICT[elem][6] * 30
+    except (KeyError, IndexError):
+        return 30
+
+
+def plot_molecule(ax, enames, apos, n0=None, title=""):
+    """Draw molecular geometry on ax.
+    
+    Colors by element (E=purple). Labels = 1-based atom indices.
+    n0 splits donor/acceptor groups (labels shown per fragment).
+    """
+    if enames is None or apos is None or len(apos) == 0:
+        ax.text(0.5, 0.5, "No geometry", ha='center', va='center',  transform=ax.transAxes)
+        ax.set_axis_off()
+        return
+
+    elem = [e.split('_')[0] for e in enames]
+    nat = len(apos)
+    if nat == 0:
+        ax.set_axis_off()
+        return
+
+    # Colors and sizes by element (E = electron pair = purple)
+    colors = [_element_color(e) for e in elem]
+    sizes  = [_element_size(e) for e in elem]
+
+    ax.scatter(apos[:, 0], apos[:, 1], c=colors, s=sizes, zorder=5)
+    # Labels: 1-based index, numbered per fragment if n0 given
+    if n0 is not None and 0 < n0 < nat:
+        for i in range(n0):
+            ax.annotate(str(i + 1), apos[i, :2], textcoords="offset points", xytext=(0, 6), fontsize=6, ha='center', color='blue',fontweight='bold')
+        for i in range(n0, nat):
+            ax.annotate(str(i + 1 - n0) + "'", apos[i, :2],textcoords="offset points", xytext=(0, 6), fontsize=6, ha='center', color='red',fontweight='bold')
+        # Separator line
+        mid_x = (apos[:n0, 0].max() + apos[n0:, 0].min()) / 2
+        ax.axvline(x=mid_x, color='gray', ls=':', lw=1, alpha=0.5)
+    else:
+        for i in range(nat):
+            ax.annotate(str(i + 1), apos[i, :2], textcoords="offset points",xytext=(0, 6), fontsize=6, ha='center',color='black', fontweight='bold')
+    ax.set_aspect('equal')
+    ax.set_xticks([])
+    ax.set_yticks([])
+    if title:
+        ax.set_title(title, fontsize=8)
+    if nat > 0:
+        ptp = np.ptp(apos[:, :2], axis=0)
+        half = max(ptp.max() / 2, 1.5) + 0.7
+        center = apos[:, :2].mean(axis=0)
+        ax.set_xlim(center[0] - half, center[0] + half)
+        ax.set_ylim(center[1] - half, center[1] + half)
+
+
+def plot_system_panel(V, rv, A, ax, label, kcal, sym, overlay_rmin=False):
+    """Row 1: 2D imshow + Rmin overlay + global min marker."""
+    if not np.any(np.isfinite(V)):
+        ax.set_axis_off()
+        return None
+    im = plot_imshow(V, rv, A, title=label, kcal=kcal, ax=ax, bColorbar=True, rtick_step=5, bSym=False)
+    if sym and im is not None:
+        conv = 23.060548 if kcal else 1.0
+        vmin_ref = np.nanmin(V) * conv
+        if vmin_ref < 0:
+            im.set_clim(vmin_ref, -vmin_ref)
+        else:
+            vabs = np.nanmax(np.abs(V)) * conv
+            im.set_clim(-vabs, vabs)
+        cb = im.colorbar
+        if cb is not None:
+            cb.update_normal(im)
+    glob_min = None
+    if np.any(np.isfinite(V)):
+        iy_g, ix_g = np.unravel_index(np.nanargmin(V), V.shape)
+        glob_min = (iy_g, ix_g)
+        yr = rv[np.isfinite(rv)]
+        if yr.size >= 2 and len(A) > iy_g:
+            y0, y1 = np.nanmin(yr), np.nanmax(yr)
+            if y1 > y0:
+                y_mark = y0 + (ix_g + 0.5) * (y1 - y0) / V.shape[1]
+                ax.plot(A[iy_g], y_mark, '+', color='white', ms=12, mew=2)
+    if overlay_rmin:
+        ny, nx = V.shape
+        pix = np.full(ny, np.nan)
+        for iy in range(ny):
+            if np.isfinite(V[iy, :]).any():
+                pix[iy] = np.nanargmin(V[iy, :])
+        o = np.argsort(A)
+        As, ps = A[o], pix[o]
+        if np.isfinite(ps).any() and np.nanmin(As) != np.nanmax(As):
+            yr = rv[np.isfinite(rv)]
+            if yr.size >= 2:
+                y0, y1 = np.nanmin(yr), np.nanmax(yr)
+                if y1 > y0:
+                    ax.plot(As, y0 + (ps + 0.5) * (y1 - y0) / nx,  'k-', lw=1.5, alpha=0.8)
+    return glob_min
+
+
+def plot_energy_panel(V, rv, A, ax, kcal):
+    """Row 2: E_min(angle) + fixed-r slice."""
+    conv = 23.060548 if kcal else 1.0
+    unit = "kcal/mol" if kcal else "eV"
+    _, emin = extract_min_curves(A, rv, V.T)
+    o = np.argsort(A)
+    ax.plot(A[o], emin[o] * conv, 'k-', lw=1.5, label="E$_{min}$")
+    if np.any(np.isfinite(V)):
+        iy_g, ix_g = np.unravel_index(np.nanargmin(V), V.shape)
+        r_glob = rv[ix_g] if ix_g < len(rv) else np.nan
+        sl = V[:, ix_g] * conv
+        so = np.argsort(A)
+        lbl = "E @ r=%.2f" % r_glob if np.isfinite(r_glob) else ""
+        ax.plot(A[so], sl[so], 'r--', lw=1.5, label=lbl)
+    ax.set_xlabel("Angle (deg)")
+    ax.set_ylabel("E (%s)" % unit)
+    ax.legend(fontsize=7)
+    ax.grid(alpha=0.2)
+
+def reorder_frames_by_angle(inpath, outpath=None):
+    """Reorder XYZ frames by angle (y or z field) then distance (x0 field).
+    
+    Reads the file, parses angle and distance from comment headers,
+    sorts by angle ascending, then distance ascending, and writes back.
+    """
+    _num = r'([+-]?(?:\d*\.\d+|\d+)(?:[Ee][+-]?\d+)?)'
+    reE = re.compile(r'(?:#\s*E\s*=\s*|\bEtot\s+)' + _num)
+    reR = re.compile(r'\bx0\s+' + _num)
+    reAy = re.compile(r'\by\s+' + _num)
+    reAz = re.compile(r'\bz\s+' + _num)
+    reN0 = re.compile(r'\bn0\s+(\d+)')
+    
+    frames = []
+    with open(inpath, 'r') as f:
+        lines = f.readlines()
+    
+    i = 0
+    nline = len(lines)
+    while i < nline:
+        # Read natoms line
+        if not lines[i].strip().isdigit():
+            i += 1
+            continue
+        natoms = int(lines[i].strip())
+        i += 1
+        if i >= nline: break
+        
+        # Read comment line
+        if not lines[i].lstrip().startswith('#'):
+            i += 1
+            continue
+        comment = lines[i].strip()
+        mE = reE.search(comment)
+        if not mE:
+            i += 1
+            continue
+        
+        # Parse angle and distance
+        mR = reR.search(comment)
+        mAy = reAy.search(comment)
+        mAz = reAz.search(comment)
+        
+        r = float(mR.group(1)) if mR else 0.0
+        ay = float(mAy.group(1)) if mAy else np.nan
+        az = float(mAz.group(1)) if mAz else np.nan
+        # Prefer non-zero angle, default to 0
+        a = ay if (np.isfinite(ay) and ay != 0) else (az if np.isfinite(az) else 0.0)
+        
+        i += 1
+        
+        # Read atom lines
+        atom_lines = []
+        taken = 0
+        while i < nline and taken < natoms:
+            line = lines[i].strip()
+            if line and not line.isdigit():
+                atom_lines.append(line)
+                taken += 1
+            i += 1
+        
+        if taken == natoms:
+            frames.append({
+                'comment': comment,
+                'natoms': natoms,
+                'atoms': atom_lines,
+                'angle': a,
+                'distance': r
+            })
+    
+    # Sort by angle, then distance
+    frames.sort(key=lambda f: (f['angle'], f['distance']))
+    
+    # Write back
+    if outpath is None:
+        outpath = inpath
+    with open(outpath, 'w') as f:
+        for frame in frames:
+            f.write(str(frame['natoms']) + '\n')
+            f.write(frame['comment'] + '\n')
+            for atom_line in frame['atoms']:
+                f.write(atom_line + '\n')
+    
+    print(f"Reordered {len(frames)} frames: {inpath} -> {outpath}")
+    return len(frames)
+
+# ── Data structures for AtomTypes.dat / ElementTypes.dat ──
+
+class AtomType:
+    def __init__(self, name, parent_name="*", element_name="", epair_name="",
+                 valence=0, nepair=0, npi=0, sym=0,
+                 Ruff=0.0, RvdW=0.0, EvdW=0.0, Qbase=0.0, Hb=0.0):
+        self.name = name
+        self.parent_name = parent_name
+        self.element_name = element_name
+        self.epair_name = epair_name
+        self.valence = valence
+        self.nepair = nepair
+        self.npi = npi
+        self.sym = sym
+        self.Ruff = Ruff
+        self.RvdW = RvdW
+        self.EvdW = EvdW
+        self.Qbase = Qbase
+        self.Hb = Hb
+
+
+def read_atom_types(filepath):
+    """Read AtomTypes.dat file and return dictionary of AtomType objects."""
+    atom_types = {}
+    with open(filepath, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith('#') or not line:
+                continue
+            parts = line.split()
+            if len(parts) < 5:
+                continue
+            name = parts[0]
+            at = AtomType(name=name, parent_name=parts[1], element_name=parts[2], epair_name=parts[3])
+            try:
+                at.valence = int(parts[4])
+                at.nepair = int(parts[5])
+                at.npi = int(parts[6])
+                at.sym = int(parts[7])
+                at.Ruff = float(parts[8])
+                at.RvdW = float(parts[9])
+                at.EvdW = float(parts[10])
+                at.Qbase = float(parts[11])
+                at.Hb = float(parts[12])
+            except (ValueError, IndexError):
+                continue
+            atom_types[name] = at
+    return atom_types
+
+
+# ── Core logic ──
+
+def parse_n0_from_comment(comment):
+    m = re.search(r"\bn0\s+(\d+)", comment)
+    return int(m.group(1)) if m else None
+
+
+def update_n0_in_comment(comment, new_n0):
+    return re.sub(r"\bn0\s+\d+", f"n0 {new_n0}", comment)
+
+
+def element_from_typename(tname):
+    """Extract base element name from type name (e.g., O_2 -> O)."""
+    return tname.split("_")[0] if "_" in tname else tname
+
+
+def count_epairs_from_type(tname, atom_types):
+    """Return how many epairs this atom type should have, or 0 if unknown."""
+    at = atom_types.get(tname)
+    if at is None:
+        return 0
+    return max(0, at.nepair)
+
+
+def has_sigma_hole_type(tname, atom_types):
+    """Return True if this atom type is a sigma-hole donor (has epair_name, nepair==0)."""
+    at = atom_types.get(tname)
+    if at is None:
+        return False
+    return at.nepair == 0 and at.epair_name not in ("*", "", "E")
+
+
+def _z_to_qs(z):
+    """Get atomic charge from atomic number."""
+    try:
+        return elements.ELEMENTS[z - 1][9]
+    except (IndexError, KeyError):
+        return 0.0
+
+
+def _z_to_rs(z):
+    """Get atomic radius from atomic number."""
+    try:
+        return elements.ELEMENTS[z - 1][7]
+    except (IndexError, KeyError):
+        return 1.0
+
+
+def build_fragment(apos, enames, qs, atom_types, lepair, sigma_dist, do_epairs, do_sigma):
+    """
+    Build an AtomicSystem for one fragment, add epairs and/or sigma holes.
+    Returns (sys, n_added).
+    """
+    elem = []
+    atypes_list = []
+    valid = []
+    for i, e in enumerate(enames):
+        en = element_from_typename(e)
+        if en in elements.ELEMENT_DICT:
+            elem.append(en)
+            atypes_list.append(elements.ELEMENT_DICT[en][0])
+            valid.append(i)
+        else:
+            # Unknown type (e.g., 'E' dummy from previous run) — keep but use Z=0
+            elem.append(en)
+            atypes_list.append(0)
+            valid.append(i)
+
+    atypes = np.array(atypes_list, dtype=np.int32)
+    elem_list = list(elem)
+
+    sys = AtomicSystem(
+        apos=apos.copy(),
+        atypes=atypes,
+        enames=elem_list,
+        qs=qs.copy() if qs is not None else None,
+        bPreinit=False,
+    )
+    if sys.qs is None:
+        sys.qs = np.array([_z_to_qs(z) for z in sys.atypes])
+    if sys.Rs is None:
+        sys.Rs = np.array([_z_to_rs(z) for z in sys.atypes])
+    sys.neighs()
+
+    n_orig = len(sys.apos)
+    n_added = 0
+
+    # ── Electron pairs ──
+    if do_epairs:
+        # Override VALENCE_DICT in the AtomicSystem instance so it knows
+        # which atoms get epairs from AtomTypes.dat (not just O/N).
+        # VALENCE_DICT is a module-level dict; we temporarily replace it.
+        from pyBall.AtomicSystem import VALENCE_DICT as _orig_vd
+
+        valence_map = {}
+        for i, tname in enumerate(enames):
+            at = atom_types.get(tname)
+            if at is not None and at.nepair > 0:
+                elem_name = elem[i]
+                nb = at.valence
+                nsigma = len(sys.ngs[i]) if (sys.ngs is not None and i < len(sys.ngs)) else 0
+                npi = nb - nsigma
+                valence_map[elem_name] = (nb, at.nepair, npi)
+
+        # Patch VALENCE_DICT so add_electron_pairs uses our data
+        import pyBall.AtomicSystem as _asmod
+        _backup = dict(_asmod.VALENCE_DICT)
+        for ename, (nb, nep, _) in valence_map.items():
+            _asmod.VALENCE_DICT[ename] = (nb, nep)
+
+        # Need to also set npi per atom. add_electron_pairs/dd_epair uses npi from
+        # difference between valence and sigma neighbors, which we already did above.
+        # The VALENCE_DICT only gives (nb, nep), npi is derived.
+        # So we just need the correct (nb, nep) entries.
+        sys.add_electron_pairs(distance=lepair)
+        _asmod.VALENCE_DICT.clear()
+        _asmod.VALENCE_DICT.update(_backup)
+
+        n_added += len(sys.apos) - n_orig
+
+    # ── Sigma holes ──
+    if do_sigma:
+        for i in range(n_orig):
+            if not has_sigma_hole_type(enames[i], atom_types): continue
+            neighs = (list(sys.ngs[i].keys()) if (sys.ngs is not None and i < len(sys.ngs)) else [])
+            if len(neighs) != 1: continue
+            j = neighs[0]
+            direction = au.normalize(sys.apos[i] - sys.apos[j])
+            sys.place_electron_pair(  i, direction, distance=sigma_dist, ename="E", atype=200, qs=0.0, Rs=1.0, )
+            n_added += 1
+
+    # Restore original type names
+    for i in range(len(enames)):
+        sys.enames[i] = enames[i]
+
+    return sys, n_added
+
+
+def derive_ra_from_block(P):
+    """Derive distance and angle from atomic positions.
+    
+    Computes distance between fragment centers and angle of approach
+    from atomic coordinates.
+    """
+    n = len(P)
+    if n < 2:
+        return None, None
+
+
+def process_frame(es, apos, qs, rs, comment, atom_types, lepair, sigma_dist, do_epairs, do_sigma):
+    comment = comment.strip()
+    n0 = parse_n0_from_comment(comment)
+    if n0 is None:
+        return None, None
+    natoms = len(es)
+    if n0 > natoms:
+        return None, None
+
+    esA, esB = es[:n0], es[n0:]
+    aposA, aposB = apos[:n0].copy(), apos[n0:].copy()
+    qsA = qs[:n0].copy() if qs is not None else None
+    qsB = qs[n0:].copy() if qs is not None else None
+
+    sysA, nA = build_fragment(aposA, esA, qsA, atom_types, lepair, sigma_dist, do_epairs, do_sigma)
+    sysB, nB = build_fragment(aposB, esB, qsB, atom_types, lepair, sigma_dist, do_epairs, do_sigma)
+
+    new_es = list(sysA.enames) + list(sysB.enames)
+    new_apos = np.vstack([sysA.apos, sysB.apos])
+    new_qs = (np.concatenate([sysA.qs, sysB.qs]) if (sysA.qs is not None and sysB.qs is not None) else None)
+    new_comment = update_n0_in_comment(comment, n0 + nA)
+    return (new_es, new_apos, new_qs, None, new_comment), (nA, nB)
+
+
+def process_one_file(inpath, outpath, atom_types, lepair, sigma_dist, do_epairs, do_sigma, verbose, simple_names):
+    """Process entire XYZ file to add epairs/sigma holes."""
+    trj = au.load_xyz_movie(inpath)
+    if not trj:
+        return 0, 0, 0
+    if verbose:
+        print(f"    {len(trj)} frames")
+
+    fout = open(outpath, "w")
+    total_frames = 0
+    total_A = 0
+    total_B = 0
+    for es, apos, qs, rs, comment in trj:
+        res = process_frame(es, apos, qs, rs, comment, atom_types, lepair, sigma_dist, do_epairs, do_sigma)
+        if res is None:  continue
+        (new_es, new_apos, new_qs, _, new_comment), (nA, nB) = res
+        out_es = [element_from_typename(e) for e in new_es] if simple_names else new_es
+        au.writeToXYZ(fout, out_es, new_apos, qs=new_qs, comment=new_comment, bHeader=True)
+        total_frames += 1
+        total_A += nA
+        total_B += nB
+        if verbose: print(f"      frame -> {len(new_es)} atoms, n0→{parse_n0_from_comment(new_comment)}, +{nA}/+{nB}")
+    fout.close()
+    return total_frames, total_A, total_B
+
+
+def find_data_path(script_dir):
+    """Find AtomTypes.dat data directory."""
+    candidates = [
+        os.path.join(script_dir, "..", "..", "tests", "tFitREQ_PN", "data"),
+        os.path.join(script_dir, "..", "..", "tests", "tFitREQ", "data"),
+        os.path.join(script_dir, "data"),
+    ]
+    for d in candidates:
+        d = os.path.abspath(d)
+        if os.path.isfile(os.path.join(d, "AtomTypes.dat")):
+            return d
+    return None
