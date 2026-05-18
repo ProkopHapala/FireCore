@@ -5,6 +5,8 @@
 #define R2SAFE          1e-4f
 #define COULOMB_CONST   14.3996448915f  // [eV*Ang/e^2]
 
+// Force field macros will be injected via preprocessing
+
 #define iDBG 0
 //<<<HBOND_GATE_DEFINE
 #ifndef HBOND_GATE
@@ -462,7 +464,10 @@ __kernel void evalSampleEnergy_template(
     __global int*     atypes,    // [nAtomTot]
     __global int2*    ieps,      // [nAtomTot]
     __global float4*  atoms,     // [nAtomTot]
-    __global float*   Emols,      // [nSamples] output molecular energies
+    __global float4*  mask,      // [ni*nj] per-pair mask
+    __global float*   Emols,     // [nSamples] output molecular energies (total)
+    __global float*   Emols_masked,  // [nSamples] output molecular energies (masked)
+    int      bMask,             // boolean flag to gate masking
     int      useTypeQ,           // runtime switch: 0=per-atom atoms.w, 1=type-based REQH.z
     float4   globParams  // {alpha,?,?,?} global parameters (min,max, xlo,xhi, Klo,Khi, K0,x0)
 ){
@@ -502,6 +507,7 @@ __kernel void evalSampleEnergy_template(
     }
 
     float  Ei    = 0.0f;
+    float  Ei_masked = 0.0f;  // masked energy accumulator
 
     float alpha = globParams.x;
 
@@ -569,7 +575,21 @@ __kernel void evalSampleEnergy_template(
                 //if((iS==iDBG) && (iL==0)){  printf("GPU: evalSampleEnergy_template() ia,ja (%3i,%3i) R0 %16.8f E0 %16.8f Q %16.8f H %16.8f\n", i, jl+j0, R0, E0, Q, H);}
 
                 if(active){
-                    //<<<MODEL_PAIR_ENERGY
+                    // Initialize component accumulators
+                    float4 E_components = (float4)(0.0f, 0.0f, 0.0f, 0.0f);  // {pauli, london, electro, hbond}                    
+                    // Compute energy components
+                    //<<<MODEL_PAIR_DECOMP
+                    // Always add total energy
+                    float E_pair = E_components.x + E_components.y + E_components.z + E_components.w;
+                    Ei += E_pair;
+                    
+                    // Conditionally add masked energy
+                    if(bMask){
+                        int mask_idx = iL * nj + jl;  // i from frag1, j from frag2
+                        float4 m = mask[mask_idx];
+                        float E_masked = dot(m, E_components);
+                        Ei_masked += E_masked;
+                    }
                 }
             }
         }
@@ -578,13 +598,21 @@ __kernel void evalSampleEnergy_template(
 
     barrier(CLK_LOCAL_MEM_FENCE);
     LATOMS[iL].x = active ? Ei : 0.0f;
+    LATOMS[iL].y = active ? Ei_masked : 0.0f;  // Store masked energy in .y component
     barrier(CLK_LOCAL_MEM_FENCE);
 
     if (iL == 0) {
         float Emol = 0.0f;
-        for(int i=0; i<ni; i++){ Emol += LATOMS[i].x; }
+        float Emol_masked = 0.0f;
+        for(int i=0; i<ni; i++){ 
+            Emol += LATOMS[i].x;
+            if(bMask) Emol_masked += LATOMS[i].y;
+        }
         Emols[iS] = Emol;
-        //if(iS == iDBG){ printf("GPU: iS=%d Emol=%g\n", iS, Emol); }
+        if(bMask){
+            Emols_masked[iS] = Emol_masked;
+        }
+        //if(iS == iDBG){ printf("GPU: iS=%d Emol=%g Emol_masked=%g\n", iS, Emol, Emol_masked); }
     }
 }
 
@@ -763,6 +791,7 @@ __kernel void evalInteractionMatrix_template(
     float london = 0.f;
     float electro = 0.f;
     float hbond  = 0.f;
+    float4 E_components = (float4)(0.0f, 0.0f, 0.0f, 0.0f);
     
     // Model-specific decomposition is injected here
     // It should use: atomi, atomj, REQi, REQj, dij, r, inv_r, R0, E0, Q, H

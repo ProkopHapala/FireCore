@@ -662,7 +662,7 @@ class FittingDriver(OpenCLBase):
         #self.kernel_deriv.set_args(*args)
         #self.kernel_deriv_serial.set_args(*args)
 
-    def setup_energy_kernel(self):
+    def setup_energy_kernel(self, mask_buff=None, bMask=False):
         """Setup and configure the energy evaluation kernel.
         
         Sets self.energy_kern to evalSampleEnergy_template and binds its arguments.
@@ -671,15 +671,37 @@ class FittingDriver(OpenCLBase):
             raise RuntimeError("Energy kernel not available. Call compile_energy_with_model() first.")
         self.energy_kern = self.prg.evalSampleEnergy_template
         globParams = np.array( [self.alphaMorse,0.0,0.0,0.0], dtype=np.float32)
-        self.energy_kern.set_args(
-            self.ranges_buff, 
-            self.tREQHs_buff, 
-            self.atypes_buff, 
-            self.ieps_buff,
-            self.atoms_buff, 
-            self.Emols_buff,
-            np.int32(self.use_type_charges), globParams
-        )
+        
+        if bMask and mask_buff is not None:
+            # Setup with masking
+            if not hasattr(self, 'Emols_masked_buff'):
+                self.try_make_buffers({"Emols_masked": self.n_samples*4})
+            self.energy_kern.set_args(
+                self.ranges_buff, 
+                self.tREQHs_buff, 
+                self.atypes_buff, 
+                self.ieps_buff,
+                self.atoms_buff,
+                mask_buff,
+                self.Emols_buff,
+                self.Emols_masked_buff,
+                np.int32(1),  # bMask=true
+                np.int32(self.use_type_charges), globParams
+            )
+        else:
+            # Setup without masking (bMask=false)
+            self.energy_kern.set_args(
+                self.ranges_buff, 
+                self.tREQHs_buff, 
+                self.atypes_buff, 
+                self.ieps_buff,
+                self.atoms_buff,
+                None,  # mask buffer (can be None when bMask=false)
+                self.Emols_buff,
+                None,  # Emols_masked buffer (can be None when bMask=false)
+                np.int32(0),  # bMask=false
+                np.int32(self.use_type_charges), globParams
+            )
 
     def setup_assembly_kernel(self):
         """Setup and configure the assembly and regularization kernel.
@@ -871,6 +893,149 @@ class FittingDriver(OpenCLBase):
         Emols = self.fromGPU_(self.Emols_buff, shape=(self.n_samples,), dtype='f4')
         self.queue.finish()
         return Emols
+    
+    def evaluate_energies_masked(self, mask, workgroup_size=32):
+        """Run energy kernel with masking and return per-sample energies.
+        
+        Args:
+            mask: numpy array shape (ni, nj, 4) with mask values for each pair
+            workgroup_size: OpenCL workgroup size
+            
+        Returns:
+            tuple: (Emols, Emols_masked) where:
+                Emols: total energies (shape: n_samples)
+                Emols_masked: masked energies (shape: n_samples)
+        """
+        # Prepare mask buffer
+        mask_buff = self.prepare_mask_buffer(mask)
+        
+        # Setup kernel with masking
+        self.setup_energy_kernel(mask_buff=mask_buff, bMask=True)
+        
+        # Run kernel
+        cl.enqueue_nd_range_kernel(self.queue, self.energy_kern, (self.n_samples*workgroup_size,), (workgroup_size,))
+        
+        # Get results
+        Emols = self.fromGPU_(self.Emols_buff, shape=(self.n_samples,), dtype='f4')
+        Emols_masked = self.fromGPU_(self.Emols_masked_buff, shape=(self.n_samples,), dtype='f4')
+        self.queue.finish()
+        
+        return Emols, Emols_masked
+    
+    def prepare_mask_buffer(self, mask):
+        """Convert mask array to GPU buffer.
+        
+        Args:
+            mask: numpy array shape (ni, nj, 4) or (ni*nj, 4)
+            
+        Returns:
+            OpenCL buffer with mask data
+        """
+        # Ensure mask is contiguous and float32
+        if mask.ndim == 3:
+            mask = mask.reshape(-1, 4)
+        mask = np.ascontiguousarray(mask.astype(np.float32))
+        
+        # Create GPU buffer
+        mask_buff = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=mask)
+        return mask_buff
+    
+    def create_mask(self, ni, nj, pauli=1.0, london=1.0, electro=1.0, hbond=1.0):
+        """Create uniform mask array for all pairs.
+        
+        Args:
+            ni, nj: dimensions of interaction matrix
+            pauli, london, electro, hbond: mask values for each component
+            
+        Returns:
+            numpy array shape (ni, nj, 4)
+        """
+        mask = np.zeros((ni, nj, 4), dtype=np.float32)
+        mask[:,:,0] = pauli
+        mask[:,:,1] = london
+        mask[:,:,2] = electro
+        mask[:,:,3] = hbond
+        return mask
+    
+    # def create_mask_baseline(self, ni, nj):
+    #     """Classical non-covalent only (no H-bond)."""
+    #     return self.create_mask(ni, nj, pauli=1.0, london=1.0, electro=1.0, hbond=0.0)
+    
+    # def create_mask_hbond_only(self, ni, nj):
+    #     """Only H-bond correction."""
+    #     return self.create_mask(ni, nj, pauli=0.0, london=0.0, electro=0.0, hbond=1.0)
+    
+    def filter_by_atom_indices(self, mask, include_indices_i=None, include_indices_j=None):
+        """Filter mask to only include specific atom indices.
+        i is always from fragment 1, j is always from fragment 2.
+        
+        Args:
+            mask: input mask array shape (ni, nj, 4)
+            include_indices_i: list of atom indices from fragment 1 to include
+            include_indices_j: list of atom indices from fragment 2 to include
+            
+        Returns:
+            filtered mask array
+        """
+        mask_filtered = mask.copy()
+        ni, nj, _ = mask.shape
+        
+        if include_indices_i is not None:
+            for i in range(ni):
+                if i not in include_indices_i:
+                    mask_filtered[i,:] = 0.0
+                    
+        if include_indices_j is not None:
+            for j in range(nj):
+                if j not in include_indices_j:
+                    mask_filtered[:,j] = 0.0
+                    
+        return mask_filtered
+    
+    def filter_epair_interactions(self, mask, ieps):
+        """Filter mask to only include pairs involving epairs.
+        
+        Args:
+            mask: input mask array shape (ni, nj, 4)
+            ieps: ieps array from host data
+            
+        Returns:
+            filtered mask array
+        """
+        mask_filtered = mask.copy()
+        ni, nj, _ = mask.shape
+        
+        for i in range(ni):
+            for j in range(nj):
+                is_epair_i = (ieps[i][0] >= 0 or ieps[i][1] >= 0)
+                is_epair_j = (ieps[j][0] >= 0 or ieps[j][1] >= 0)
+                if not (is_epair_i or is_epair_j):
+                    mask_filtered[i,j] = 0.0
+                    
+        return mask_filtered
+    
+    def filter_homogeneous_H(self, mask, tREQHs, atypes):
+        """Filter mask to only include pairs where both atoms have H-component (REQH.w != 0).
+        
+        Args:
+            mask: input mask array shape (ni, nj, 4)
+            tREQHs: REQH parameters array
+            atypes: atom types array
+            
+        Returns:
+            filtered mask array
+        """
+        mask_filtered = mask.copy()
+        ni, nj, _ = mask.shape
+        
+        for i in range(ni):
+            for j in range(nj):
+                ti = atypes[i]
+                tj = atypes[j]
+                if tREQHs[ti][3] == 0.0 or tREQHs[tj][3] == 0.0:
+                    mask_filtered[i,j] = 0.0
+                    
+        return mask_filtered
     
     def evaluate_interaction_matrix(self, config_idx, workgroup_size=16):
         """Evaluate interaction matrix for a single configuration.

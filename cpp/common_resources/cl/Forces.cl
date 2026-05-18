@@ -64,53 +64,6 @@ inline float4 getMorseQH( float3 dp,  float4 REQH, float K, float R2damp ){
     Ei += ELJ + Eel;
 }
 
-//>>>macro MODEL_MorseQ_PAIR_DECOMP
-{
-    // Morse potential decomposition
-    // E_morse = E0 * [(1+H)*e^2 - 2*e] + Q/r
-    // where e = exp(-alpha*(r-R0))
-    
-    const float alpha = 1.8f;
-    float e    = exp( -alpha * ( r - R0 ) );
-    float e2   = e * e;
-    
-    // Pauli: repulsive part (e^2 term without H)
-    pauli  += E0 * e2;
-    
-    // London: attractive part (-2*e term)
-    london += -2.f * E0 * e;
-    
-    // H-bond: H-dependent correction (H*e^2 term)
-    hbond  += E0 * H * e2;
-    
-    // Electrostatic: Coulomb term
-    electro += Q * inv_r * COULOMB_CONST;
-}
-
-//>>>macro MODEL_LJQH2_PAIR_DECOMP
-{
-    // Distance safeguards
-    float r_safe  = fmax(r, R2SAFE);
-    float inv_r = 1.0f / r_safe;
-    
-    // Electrostatic
-    electro += Q * inv_r * COULOMB_CONST;
-    
-    // Lennard-Jones 12-6 with H2 scaling
-    float u   = R0 * inv_r;
-    float u3  = u*u*u;
-    float u6  = u3*u3;
-    float u12 = u6*u6;
-    
-    // Decompose LJ energy:
-    // ELJ = E0 * u6 * ((1+H)*u6 - 2.f)
-    //     = E0 * (1+H) * u12 - 2*E0 * u6
-    //     = E0*u12 + E0*H*u12 - 2*E0*u6
-    
-    pauli  += E0 * u12;           // Repulsive r^-12 term
-    london += -2.f * E0 * u6;     // Attractive r^-6 term (without H)
-    hbond  += E0 * H * u12;       // H-bond correction (H-dependent)
-}
 
 //>>>macro MODEL_LJr8QH2_PAIR
 {
@@ -135,6 +88,50 @@ inline float4 getMorseQH( float3 dp,  float4 REQH, float K, float R2damp ){
     fREQi.y +=  -dE_dE0 *        REQj.y;
     fREQi.z +=  -dE_dQ  *        REQj.z;
     fREQi.w +=  dE_dH  *        REQj.w * sH;
+}
+
+//>>>macro MODEL_MorseQ_PAIR_DECOMP
+{
+    // Morse potential decomposition
+    // E_morse = E0 * [(1+H)*e^2 - 2*e] + Q/r
+    // where e = exp(-alpha*(r-R0))
+    
+    const float alpha = 1.8f;
+    float e    = exp( -alpha * ( r - R0 ) );
+    float e2   = e * e;
+    
+    //E_components = {pauli, london, electro, hbond}
+    E_components.x += E0 * e2;                    // Pauli: repulsive part (e^2 term without H)
+    E_components.y += -2.f * E0 * e;              // London: attractive part (-2*e term)
+    E_components.z += Q * inv_r * COULOMB_CONST;  // Electrostatic: Coulomb term
+    E_components.w += E0 * H * e2;                // H-bond: H-dependent correction (H*e^2 term)
+}
+
+
+//>>>macro MODEL_LJr8QH2_PAIR_DECOMP
+{
+    // Electrostatic
+    E_components.z += Q * inv_r * COULOMB_CONST;
+    
+    // r^-8 variant (8-6 like) with H2 scaling of r^-2 factor
+    float u   = R0 * inv_r;
+    float u2  = u*u;
+    float u4  = u2*u2;
+    float u6  = u4*u2;
+    float u8  = u6*u2;
+    
+    // Decompose LJr8 energy:
+    // ELJ = E0 * u6 * (3*(1+H)*u2 - 4)
+    //     = 3*E0*u8 + 3*E0*H*u8 - 4*E0*u6
+    //     = 3*E0*u8 - 4*E0*u6 + 3*E0*H*u8
+    // Pauli: repulsive u8 term (3*E0*u8)
+    // London: attractive u6 term (-4*E0*u6)
+    // H-bond: H-dependent u8 term (3*E0*H*u8)
+
+    //E_components = {pauli, london, electro, hbond}          
+    E_components.x +=  3.0f * E0 * u8;         // Repulsive u8 term
+    E_components.y += -4.0f * E0 * u6;        // Attractive u6 term (without H)
+    E_components.w +=  3.0f * E0 * H * u8;     // H-bond correction (H-dependent)
 }
 
 //>>>macro MODEL_MorseQ_PAIR
