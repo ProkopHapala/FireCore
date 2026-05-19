@@ -34,7 +34,7 @@ def parse_xyz_blocks(fname, natoms=None):
     Ps   = []
 
     # Support both old '# E = ...' and new 'Etot ...' formats
-    energy_re = re.compile(r"(?:#\s*E\s*=\s*|\bEtot\s+)([+-]?(?:\d*\.\d+|\d+)(?:[Ee][+-]?\d+)?)")
+    energy_re = re.compile(r"(?:#\s*E\s*=\s*|\bE_?tot\s+)([+-]?(?:\d*\.\d+|\d+)(?:[Ee][+-]?\d+)?)")
     with open(fname, 'r') as f: lines = f.readlines()
     i = 0
     nline = len(lines)
@@ -110,13 +110,65 @@ def parse_xyz_blocks(fname, natoms=None):
     Ps = np.array(Ps, dtype=float)  # shape [n, natoms, 3]
     return Es, Ts, Ps
 
+def parse_xyz_with_headers(fname, natoms=None):
+    """
+    Like parse_xyz_blocks, but also returns header-derived info like n0.
+    """
+    energy_re = re.compile(r"(?:#\s*E\s*=\s*|\bE_?tot\s+)([+-]?(?:\d*\.\d+|\d+)(?:[Ee][+-]?\d+)?)")
+    n0_re = re.compile(r"n0\s+(\d+)")
+    
+    Es, Ts, Ps, N0s = [], [], [], []
+    with open(fname, 'r') as f: lines = f.readlines()
+    i = 0
+    nline = len(lines)
+    
+    # Try infer natoms if not provided
+    if natoms is None:
+        while i < nline and not lines[i].lstrip().startswith('#'): i += 1
+        n_guess = None
+        if i-1 >= 0 and lines[i-1].strip().isdigit(): n_guess = int(lines[i-1].strip())
+        natoms = n_guess if n_guess is not None else 4
+        i = 0 # reset
+    
+    while i < nline:
+        s = lines[i].lstrip()
+        if not s.startswith('#'):
+            i += 1
+            continue
+        mE = energy_re.search(s)
+        if not mE:
+            i += 1
+            continue
+        E = float(mE.group(1))
+        
+        mN = n0_re.search(s)
+        n0 = int(mN.group(1)) if mN else natoms // 2
+        
+        i += 1
+        taken, types, pos = 0, [], []
+        while i < nline and taken < natoms:
+            t = lines[i].strip()
+            if t == "" or t.isdigit():
+                i += 1
+                continue
+            parts = t.split()
+            if len(parts) >= 4:
+                types.append(parts[0])
+                pos.append([float(x) for x in parts[1:4]])
+                taken += 1
+            i += 1
+        if taken == natoms:
+            Es.append(E); Ts.append(types); Ps.append(pos); N0s.append(n0)
+    
+    return np.array(Es), Ts, np.array(Ps, dtype=float), np.array(N0s)
+
 def read_scan_atomicutils(fname):
     """
     Read a packed XYZ using pyBall.atomicUtils.scan_xyz() and extract
     energies from the comment lines. Returns (Es [n], Ps [n,nat,3]).
     """
     # Support both old '# E = ...' and new 'Etot ...' formats
-    energy_re = re.compile(r"(?:#\s*E\s*=\s*|\bEtot\s+)([+-]?(?:\d*\.\d+|\d+)(?:[Ee][+-]?\d+)?)")
+    energy_re = re.compile(r"(?:#\s*E\s*=\s*|\bE_?tot\s+)([+-]?(?:\d*\.\d+|\d+)(?:[Ee][+-]?\d+)?)")
 
     def _cb(block, id=None, comment=None):
         apos, _es = block  # _es is element names list from load_xyz
@@ -176,23 +228,42 @@ def derive_ra_from_block(P):
     return r, a
 
 
-def compute_ra_vec(P, signed=True):
-    """Compute r and a from the moving molecule's first atom in the XZ plane.
+def compute_ra_vec(P, h=None, signed=True):
+    """Compute r and a from the moving molecule's first atom.
     Convention:
     - Pivot is the first atom of molecule A (index 0).
     - Moving point is the first atom of molecule B (index h).
-    - r = sqrt((x_B0-x_A0)^2 + (z_B0-z_A0)^2)
-    - a = atan2(z_B0-x_A0, x_B0-x_A0) in degrees; signed in [-180,180], or |a| if unsigned.
+    - r = |B0 - A0|
+    - a = angle in degrees (detects primary plane of scan)
     """
     n, nat, _ = P.shape
-    h = nat // 2
+    if h is None:
+        h = nat // 2
     A0 = P[:, 0, :]
-    B0 = P[:, h + 0, :]
+    B0 = P[:, h, :]
     V  = B0 - A0
-    x = V[:, 0]
-    z = V[:, 2]
-    r = np.sqrt(x*x + z*z)
-    a = np.degrees(np.arctan2(z, x))
+    
+    r = np.linalg.norm(V, axis=1)
+    
+    # Detect which plane to use for angle (the one with most variation)
+    vx = V[:, 0]
+    vy = V[:, 1]
+    vz = V[:, 2]
+    
+    std_x = np.std(vx)
+    std_y = np.std(vy)
+    std_z = np.std(vz)
+    
+    # Default to XZ if it looks like the scan plane
+    if std_y < min(std_x, std_z) * 0.1:
+        a = np.degrees(np.arctan2(vz, vx))
+    elif std_z < min(std_x, std_y) * 0.1:
+        a = np.degrees(np.arctan2(vy, vx))
+    else:
+        # Fallback to whatever has most variation vs the largest component
+        # This is a bit heuristic but better than hardcoded XZ
+        a = np.degrees(np.arctan2(vz, np.sqrt(vx**2 + vy**2)))
+        
     if not signed:
         a = np.abs(a)
     return r, a

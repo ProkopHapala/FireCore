@@ -10,6 +10,34 @@ from sympy.ntheory import is_abundant
 from .OpenCLBase import OpenCLBase
 from .FittingDriver import FittingDriver
 
+def extract_macro_block(cl_file, macro_name):
+    """Extract a macro block from an OpenCL kernel file.
+    
+    Args:
+        cl_file: Path to the OpenCL kernel file
+        macro_name: Name of the macro to extract (e.g., 'ENERGY_MorseQ_PAIR')
+    
+    Returns:
+        String containing the macro code block
+    """
+    with open(cl_file, 'r') as f:
+        content = f.read()
+    
+    # Find the macro block using //>>>macro pattern
+    pattern = rf'//>>>macro\s+{macro_name}\s*\n(.*?)\n//'
+    match = re.search(pattern, content, re.DOTALL)
+    
+    if match:
+        return match.group(1).strip()
+    else:
+        # Try alternative pattern (without closing //)
+        pattern2 = rf'//>>>macro\s+{macro_name}\s*\n((?:.|\n)*?)(?=\n//>>>macro|$)'
+        match2 = re.search(pattern2, content, re.DOTALL)
+        if match2:
+            return match2.group(1).strip()
+        else:
+            raise ValueError(f"Macro '{macro_name}' not found in {cl_file}")
+
 def run_derivative_test(
     model_name='MODEL_MorseQ_PAIR',
     energy_model_name='ENERGY_MorseQ_PAIR',
@@ -36,7 +64,7 @@ def run_derivative_test(
     macros = { 'MODEL_PAIR_ACCUMULATION': macro_der, 'MODEL_PAIR_ENERGY': macro_en }
     drv.compile_with_model(macros=macros, bPrint=False)
     # Bind energy kernel args (derivative kernel args are bound in set_kernel_args() during init/compile)
-    drv.set_energy_kernel_args()
+    drv.setup_energy_kernel()
 
     x0 = np.array([d['xstart'] for d in drv.dof_definitions], dtype=np.float32)
     g_an = drv.get_forces(x0)
@@ -150,7 +178,7 @@ def run_energy_imshow(model_name='ENERGY_MorseQ_PAIR',
     # 2) Evaluate model energies in the same order
     # Now that data is loaded, allocate/upload minimal buffers and bind kernel args
     drv.init_and_upload_energy_only()
-    drv.set_energy_kernel_args()
+    drv.setup_energy_kernel()
 
 
     Em = drv.evaluate_energies()
@@ -361,7 +389,7 @@ def run_energy_example(model_name='ENERGY_MorseQ_PAIR',
     macro_code = extract_macro_block(forces_path, model_name)
     macros = { 'MODEL_PAIR_ENERGY': macro_code }
     drv.compile_energy_with_model(macros=macros, bPrint=True)
-    drv.set_energy_kernel_args()
+    drv.setup_energy_kernel()
 
     Emols = drv.evaluate_energies()
     print("\n" + "="*40)

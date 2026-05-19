@@ -680,3 +680,96 @@ __kernel void assembleAndRegularize(
         }
     }
 }
+
+// ============================================================================
+// Energy Decomposition Kernel - for detailed interaction analysis
+// ============================================================================
+
+// Template variant for interaction matrix evaluation.
+// The model-specific pair energy code is injected at the marker:
+//     //<<<MODEL_PAIR_DECOMP
+// The injected code should compute and accumulate into:
+//   - pauli, london, electro, hbond (floats): per-component energies
+// using in-scope variables: atomi, atomj, REQi, REQj, dij, r, ir
+// Produces [ni, nj, 4] interaction matrix for a single configuration.
+//
+// NOTE: The injected code must be modified to output components separately
+// rather than accumulating into a single energy. See Forces.cl for model macros.
+
+__attribute__((reqd_work_group_size(16,16,1)))
+__kernel void evalInteractionMatrix_template(
+    __global int4*    ranges,      // [nsamp] (i0,ni, j0,nj) start and number of atoms in fragments 1,2
+    __global float4*  tREQHs,      // [ntypes] non-bonded parameters (R,E,Q,H)
+    __global int*     atypes,      // [natomTot] atom types
+    __global int2*    ieps,        // [natomTot] {iep1,iep2} index of electron pair type
+    __global float4*  atoms,       // [natomTot] positions and charge of each atom (x,y,z,Q)
+    __global float4*  interactions,// Output: [ni*nj] float4 per pair (pauli, london, electro, hbond)
+    int               iS,          // System (configuration) index to evaluate
+    int               useTypeQ     // runtime switch: 0=per-atom Q, 1=type-based Q
+){
+    const int iG = get_global_id(0); // index of atom in fragment 1
+    const int jG = get_global_id(1); // index of atom in fragment 2
+    
+    const int4 nsi = ranges[iS];
+    const int i0   = nsi.x;  // first atom in fragment 1
+    const int ni   = nsi.z;  // number of atoms in fragment 1
+    const int j0   = nsi.y;  // first atom in fragment 2
+    const int nj   = nsi.w;  // number of atoms in fragment 2
+    
+    // Check bounds
+    if(iG >= ni || jG >= nj) return;
+    
+    // Get atom indices
+    int ia = i0 + iG;
+    int ja = j0 + jG;
+    
+    // Get atom data
+    const int    ti    = atypes[ia];
+    const int    tj    = atypes[ja];
+    const float4 atomi = atoms [ia];
+    const float4 atomj = atoms [ja];
+    
+    // Get REQ parameters
+    float4 REQi = tREQHs[ti];
+    float4 REQj = tREQHs[tj];
+    
+    // Assign charges
+    ASSIGN_Q_FROM_SOURCE(REQi, atomi, REQi, useTypeQ);
+    ASSIGN_Q_FROM_SOURCE(REQj, atomj, REQj, useTypeQ);
+    
+    // Subtract electron pair charges
+    const int2 iep_i = ieps[ia];
+    const int2 iep_j = ieps[ja];
+    if(iep_i.x >= 0) REQi.z -= tREQHs[iep_i.x].z;
+    if(iep_i.y >= 0) REQi.z -= tREQHs[iep_i.y].z;
+    if(iep_j.x >= 0) REQj.z -= tREQHs[iep_j.x].z;
+    if(iep_j.y >= 0) REQj.z -= tREQHs[iep_j.y].z;
+    
+    // Compute distance
+    float3 dij = atomj.xyz - atomi.xyz;
+    float  r   = length(dij);
+    float  inv_r = 1.f/fmax(r, R2SAFE);
+    
+    // Mixing rules
+    float R0 = REQi.x + REQj.x;
+    float E0 = REQi.y * REQj.y;
+    float Q  = REQi.z * REQj.z;
+    float H  = REQi.w * REQj.w;
+    float sH = S_H(H);
+    H = APPLY_H_GATE(H);
+
+    // Initialize component accumulators
+    float pauli  = 0.f;
+    float london = 0.f;
+    float electro = 0.f;
+    float hbond  = 0.f;
+    
+    // Model-specific decomposition is injected here
+    // It should use: atomi, atomj, REQi, REQj, dij, r, inv_r, R0, E0, Q, H
+    // And accumulate into: pauli, london, electro, hbond
+    //<<<MODEL_PAIR_DECOMP
+    
+    // Store components in output buffer
+    int out_idx = iG * nj + jG;
+    interactions[out_idx] = (float4){pauli, london, electro, hbond};
+}
