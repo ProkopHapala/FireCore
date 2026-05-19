@@ -2387,3 +2387,163 @@ For now, keep the current multi-source design for efficiency, but:
 4. **Reserve Option A** (Single Source) for future if performance becomes acceptable
 
 The key insight is that multi-source designs are powerful but require discipline. Every operation must explicitly consider which sources it modifies and which it reads from.
+
+---
+
+## STM Integration in AFM Panel (May 19, 2026)
+
+### 10.1 Background
+
+The AFM panel in KekuleExplorerGUI was extended to include STM (Scanning Tunneling Microscopy) plotting capabilities. This allows users to visualize molecular orbital projections at different heights above the molecule.
+
+### 10.2 Implementation Summary
+
+#### Files Modified
+- `pyBall/AFMExtension.py` - Added STM UI controls and pipeline integration
+- `pyBall/OCL/AFM_utils.py` - Added STM computation functions (`compute_stm`, `compute_bond_resolved_stm`)
+- `pyBall/KekuleExplorerGUI.py` - Added shared screenshot context menu for matplotlib canvases
+
+#### UI Changes
+- Added top-level "STM" collapsible section in AFM panel (independent of Visualization section)
+- Controls added:
+  - `Compute STM` checkbox
+  - `Use HOMO range` checkbox with `HOMO off0` and `nMOs` spinboxes
+  - `LUMO offsets` text input (fallback)
+  - `MO indices` text input (explicit absolute indices)
+  - `field` combo box: `ldos`, `psi2`, `psi`
+  - `exp_beta`, `exp_r0` exponential decay parameters
+  - `Bond-resolved` checkbox (uses AFM tip displacement)
+  - `info_label` showing orbital metadata after computation
+
+#### Pipeline Integration
+- STM computation integrated into `run_afm_pipeline()` in `AFM_utils.py`
+- Requires `use_dense_projection=True` to access DFTB+ eigenvectors/eigenvalues
+- STM metadata (`stm_meta`) returned in pipeline results:
+  - `nmo`, `norb`, `nocc`
+  - `homo`, `lumo` indices
+  - `E_homo`, `E_lumo` energies
+  - `mo_list` (actual MO indices used)
+  - `mode` (selection mode: `mo_indices` or `lumo_offsets`)
+  - `field` (output field: `ldos`, `psi2`, `psi`)
+  - `bond_resolved`
+  - height range
+
+#### Field Selection
+Three output modes implemented:
+- `ldos`: Local density of states - sum of `psi^2` over selected MOs (default, always non-negative)
+- `psi2`: Squared amplitude of a single MO (non-negative)
+- `psi`: Signed amplitude of a single MO (shows nodal structure, requires exactly 1 MO)
+
+#### Diagnostics Added
+- Coefficient sanity check: prints `min`, `max`, `norm` of eigenvector coefficients
+- UI debug prints on parameter changes: shows selected mode and values
+- Plot titles include: `field`, `MOs`, `z-height`, `iz`
+- Stdout prints include: `field`, `MOs`, `HOMO`, `LUMO`, `actual_z`
+
+#### Bug Fixes
+1. Fixed `UnboundLocalError` in `plot_afm_slice()` for density plotting
+2. Fixed `NameError: nx_s is not defined` in `compute_bond_resolved_stm()`
+3. Fixed STM not running by ensuring `use_dense_projection=True` when STM enabled
+4. Fixed z-height range to use actual returned heights instead of hardcoded `np.arange()`
+
+### 10.3 Problem / Misunderstanding
+
+#### Issue: Full Pipeline Re-run Required for STM Parameter Changes
+
+**Current Behavior:**
+Every time the user changes STM orbital selection (e.g., changing `HOMO off0`, `nMOs`, or explicit `MO indices`), they must re-run the entire AFM pipeline:
+- DFTB+ SCF calculation
+- Density projection
+- Force field computation (Pauli, electrostatic, dispersion)
+- Probe relaxation
+- THEN STM computation
+
+This is slow (seconds to minutes) when only the STM orbital selection changed.
+
+**Root Cause:**
+STM computation is tightly coupled to the full AFM pipeline in `run_afm_pipeline()`. The pipeline:
+1. Runs expensive AFM force field calculations
+2. Stores `eigvecs`, `eigvals`, `projector` in intermediates
+3. Computes STM at the end if enabled
+
+But the eigenvectors/projector are discarded after the pipeline completes. To recompute STM with different MOs, the entire pipeline must run again to regenerate these.
+
+**Why This Was Done:**
+The original design assumed STM would be computed once per AFM simulation. The UI was added later, and the coupling was not separated.
+
+**Impact:**
+- Poor UX for orbital exploration (slow iteration)
+- Unnecessary computation (AFM fields don't change when only MO selection changes)
+- Makes STM less useful as a diagnostic tool
+
+### 10.4 What Works Well
+
+- STM computation itself is correct and fast (milliseconds for a single MO)
+- Orbital selection logic (HOMO-relative vs absolute indices) works correctly
+- Field selection (`ldos`/`psi2`/`psi`) allows visualization of nodal structure
+- Metadata display (nMO, HOMO, LUMO, energies) provides clear feedback
+- Coefficient diagnostics confirm eigenvectors are not mockups (real values with proper norm)
+- Z-height changes correctly update the plot slice
+- Bond-resolved STM (with tip displacement) works when enabled
+
+### 10.5 Planned Fix
+
+**Goal:** Separate STM computation from the expensive AFM pipeline so orbital selection changes are fast.
+
+**Proposed Architecture:**
+
+1. **Cache DFTB+ Results:**
+   - After full pipeline, persist `eigvecs`, `eigvals`, `projector`, `norb_per_atom`, `orb_offsets`, `atoms_dict` in `window._afm_results`
+   - These are the only inputs needed for STM computation
+
+2. **Add Fast STM Re-computation Function:**
+   - New function `recompute_stm_only()` in `AFM_utils.py`:
+     - Takes cached eigenvectors/projector + new STM parameters (field, MO selection)
+     - Computes only STM grid (no AFM fields, no relaxation)
+     - Returns updated `stm_grid` and `stm_meta`
+   - Called from GUI when STM parameters change (without running full pipeline)
+
+3. **UI Changes:**
+   - Add "Recompute STM" button (or auto-trigger on parameter change)
+   - When clicked, calls `recompute_stm_only()` with current UI values
+   - Updates `window._afm_results['stm_grid']` and `stm_meta`
+   - Triggers plot refresh
+
+4. **When to Run Full Pipeline:**
+   - Only when molecule geometry changes (atoms moved/added/removed)
+   - Only when AFM parameters change (height range, scan area, force field params)
+   - STM parameter changes should NOT trigger full pipeline
+
+**Implementation Steps:**
+1. Extract STM computation logic from `run_afm_pipeline()` into standalone function
+2. Modify `run_afm_full_pipeline()` to cache DFTB+ results
+3. Implement `recompute_stm_only()` using cached results
+4. Add UI button to trigger fast re-computation
+5. Test with benzene: change MO selection, verify fast update (no DFTB+ re-run)
+
+### 10.6 Technical Notes
+
+#### Dense Projection Requirement
+STM requires `use_dense_projection=True` because:
+- Sparse projection (default) does not include all eigenvectors
+- Dense projection returns full `eigvecs` matrix (nstates × norb)
+- This is needed to access arbitrary MO indices
+
+#### Exponential Decay Basis
+STM uses `project_orbital_dense_points_exp()` with:
+- `exp_beta`: Decay rate (default 1.0)
+- `exp_r0`: Cutoff radius (default 3.0 Å)
+- This models the tip's finite spatial extent
+
+#### Bond-Resolved STM
+When `bond_resolved=True`:
+- Uses tip displacement from AFM relaxation (`tip_disp['dx']`, `tip_disp['dy']`)
+- Projects orbitals at displaced positions
+- Simulates CO tip bending effects
+- Requires full AFM pipeline (cannot be fast-recomputed without relaxation)
+
+#### Grid Dimensions
+STM grid may be smaller than AFM grid:
+- AFM grid: full scan area with margins
+- STM grid: scan area cropped to molecule bounding box
+- Heights: shared between AFM and STM

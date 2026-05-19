@@ -1157,7 +1157,7 @@ def plot_tip_displacement(tip_disp, scan_xs, scan_ys, heights, output_dir, prefi
 
 def compute_stm(projector, eigvecs, eigvals, scan_xs, scan_ys, heights,
                 norb_per_atom, orb_offsets, atoms_dict,
-                lumo_offsets=None, use_exp_basis=True,
+                lumo_offsets=None, mo_indices=None, field='ldos', use_exp_basis=True,
                 exp_beta=1.0, exp_r0=3.0):
     """
     Compute STM signal by projecting LUMO orbitals with exponential radial decay.
@@ -1180,17 +1180,32 @@ def compute_stm(projector, eigvecs, eigvals, scan_xs, scan_ys, heights,
     Returns:
         stm_grid: (nx_s, ny_s, nz_s) STM signal (sum of LUMO^2)
     """
-    if lumo_offsets is None:
-        lumo_offsets = [1, 2, 3]
-
     nx_s, ny_s, nz_s = len(scan_xs), len(scan_ys), len(heights)
 
-    # Determine HOMO index from electron count (closed-shell assumption)
-    n_electrons = int(np.sum(eigvals < 0)) * 2  # Approximate for closed-shell
-    homo_idx = n_electrons // 2 - 1
-    lumo_indices = [min(len(eigvals) - 1, homo_idx + offset) for offset in lumo_offsets]
+    homo_idx = None
+    if mo_indices is not None:
+        mo_list = [int(i) for i in mo_indices]
+    else:
+        if lumo_offsets is None:
+            lumo_offsets = [1, 2, 3]
+        occ = np.where(eigvals < 0.0)[0]
+        if len(occ) == 0:
+            raise ValueError("STM: No occupied states found (eigvals < 0)")
+        homo_idx = int(occ[-1])
+        mo_list = [homo_idx + int(off) for off in lumo_offsets]
 
-    print(f"  [STM] HOMO index: {homo_idx}, LUMO indices: {lumo_indices}")
+    nmo = int(eigvecs.shape[0])
+    bad = [int(i) for i in mo_list if (int(i) < 0 or int(i) >= nmo)]
+    if len(bad) > 0:
+        raise ValueError(f"STM: MO indices out of range {bad}; valid=[0,{nmo-1}]")
+
+    if field != 'ldos' and len(mo_list) != 1:
+        raise ValueError(f"STM: field='{field}' requires exactly 1 MO, got mo_list={mo_list}")
+
+    if homo_idx is None:
+        print(f"  [STM] MOs: {mo_list}")
+    else:
+        print(f"  [STM] HOMO index: {homo_idx}, MOs: {mo_list}")
 
     # Generate 2D point grid for each height
     XX, YY = np.meshgrid(scan_xs, scan_ys, indexing='ij')
@@ -1200,9 +1215,12 @@ def compute_stm(projector, eigvecs, eigvals, scan_xs, scan_ys, heights,
         points = np.stack([XX.ravel(), YY.ravel(), np.full_like(XX.ravel(), h)], axis=1)
         points = points.astype(np.float32)
 
-        # Project each LUMO orbital
-        for imo in lumo_indices:
+        # Project each selected MO
+        for imo_i, imo in enumerate(mo_list):
             coeffs = eigvecs[imo].astype(np.float32)
+            if iz == 0 and imo_i == 0:
+                cmin = float(np.min(coeffs)); cmax = float(np.max(coeffs)); cn = float(np.linalg.norm(coeffs))
+                print(f"  [STM] coeffs MO#{imo}: min={cmin:+.3e} max={cmax:+.3e} norm={cn:.6f}")
             if use_exp_basis:
                 psi = projector.project_orbital_dense_points_exp(
                     points, coeffs, norb_per_atom, orb_offsets, atoms_dict,
@@ -1213,16 +1231,21 @@ def compute_stm(projector, eigvecs, eigvals, scan_xs, scan_ys, heights,
                     points, coeffs, norb_per_atom, orb_offsets, atoms_dict
                 )
             psi_2d = psi.reshape(nx_s, ny_s)
-            stm_grid[:, :, iz] += psi_2d ** 2
+            if field == 'psi':
+                stm_grid[:, :, iz] += psi_2d
+            elif field == 'psi2':
+                stm_grid[:, :, iz] += psi_2d ** 2
+            else:  # 'ldos'
+                stm_grid[:, :, iz] += psi_2d ** 2
 
     print(f"  [STM] STM grid shape: {stm_grid.shape}, range: [{stm_grid.min():.4e}, {stm_grid.max():.4e}]")
     return stm_grid
 
 
 def compute_bond_resolved_stm(projector, eigvecs, eigvals, scan_xs, scan_ys, heights,
-                               tip_disp, norb_per_atom, orb_offsets, atoms_dict,
-                               lumo_offsets=None, use_exp_basis=True,
-                               exp_beta=1.0, exp_r0=3.0):
+                              tip_disp, norb_per_atom, orb_offsets, atoms_dict,
+                              lumo_offsets=None, mo_indices=None, field='ldos', use_exp_basis=True,
+                              exp_beta=1.0, exp_r0=3.0):
     """
     Compute bond-resolved STM: STM at tip-displaced positions.
 
@@ -1237,18 +1260,35 @@ def compute_bond_resolved_stm(projector, eigvecs, eigvals, scan_xs, scan_ys, hei
     Returns:
         stm_grid: (nx_s, ny_s, nz_s) STM signal at displaced positions
     """
-    if lumo_offsets is None:
-        lumo_offsets = [1, 2, 3]
+    homo_idx = None
+    if mo_indices is not None:
+        mo_list = [int(i) for i in mo_indices]
+    else:
+        if lumo_offsets is None:
+            lumo_offsets = [1, 2, 3]
+        occ = np.where(eigvals < 0.0)[0]
+        if len(occ) == 0:
+            raise ValueError("BR-STM: No occupied states found (eigvals < 0)")
+        homo_idx = int(occ[-1])
+        mo_list = [homo_idx + int(off) for off in lumo_offsets]
 
-    nx_s, ny_s, nz_s = len(scan_xs), len(scan_ys), len(heights)
+    nmo = int(eigvecs.shape[0])
+    bad = [int(i) for i in mo_list if (int(i) < 0 or int(i) >= nmo)]
+    if len(bad) > 0:
+        raise ValueError(f"BR-STM: MO indices out of range {bad}; valid=[0,{nmo-1}]")
 
-    # Determine HOMO index
-    n_electrons = int(np.sum(eigvals < 0)) * 2
-    homo_idx = n_electrons // 2 - 1
-    lumo_indices = [min(len(eigvals) - 1, homo_idx + offset) for offset in lumo_offsets]
+    if field != 'ldos' and len(mo_list) != 1:
+        raise ValueError(f"BR-STM: field='{field}' requires exactly 1 MO, got mo_list={mo_list}")
 
-    print(f"  [BR-STM] HOMO index: {homo_idx}, LUMO indices: {lumo_indices}")
+    if homo_idx is None:
+        print(f"  [BR-STM] MOs: {mo_list}")
+    else:
+        print(f"  [BR-STM] HOMO index: {homo_idx}, MOs: {mo_list}")
     print(f"  [BR-STM] Applying tip displacement from AFM relaxation")
+
+    nx_s = len(scan_xs)
+    ny_s = len(scan_ys)
+    nz_s = len(heights)
 
     XX, YY = np.meshgrid(scan_xs, scan_ys, indexing='ij')
     stm_grid = np.zeros((nx_s, ny_s, nz_s), dtype=np.float32)
@@ -1261,9 +1301,12 @@ def compute_bond_resolved_stm(projector, eigvecs, eigvals, scan_xs, scan_ys, hei
         points = np.stack([X_disp.ravel(), Y_disp.ravel(), np.full_like(X_disp.ravel(), h)], axis=1)
         points = points.astype(np.float32)
 
-        # Project each LUMO orbital at displaced positions
-        for imo in lumo_indices:
+        # Project each selected MO at displaced positions
+        for imo_i, imo in enumerate(mo_list):
             coeffs = eigvecs[imo].astype(np.float32)
+            if iz == 0 and imo_i == 0:
+                cmin = float(np.min(coeffs)); cmax = float(np.max(coeffs)); cn = float(np.linalg.norm(coeffs))
+                print(f"  [BR-STM] coeffs MO#{imo}: min={cmin:+.3e} max={cmax:+.3e} norm={cn:.6f}")
             if use_exp_basis:
                 psi = projector.project_orbital_dense_points_exp(
                     points, coeffs, norb_per_atom, orb_offsets, atoms_dict,
@@ -1274,7 +1317,12 @@ def compute_bond_resolved_stm(projector, eigvecs, eigvals, scan_xs, scan_ys, hei
                     points, coeffs, norb_per_atom, orb_offsets, atoms_dict
                 )
             psi_2d = psi.reshape(nx_s, ny_s)
-            stm_grid[:, :, iz] += psi_2d ** 2
+            if field == 'psi':
+                stm_grid[:, :, iz] += psi_2d
+            elif field == 'psi2':
+                stm_grid[:, :, iz] += psi_2d ** 2
+            else:
+                stm_grid[:, :, iz] += psi_2d ** 2
 
     print(f"  [BR-STM] STM grid shape: {stm_grid.shape}, range: [{stm_grid.min():.4e}, {stm_grid.max():.4e}]")
     return stm_grid
@@ -1572,23 +1620,54 @@ def run_afm_pipeline(
 
     # Step 7: STM (optional)
     stm_grid = None
+    stm_meta = None
     if stm_params and stm_params.get('compute', False):
         print("\nStep 7: Computing STM...")
         if projector is None or eigvecs is None or eigvals is None:
             raise ValueError("STM computation requires projector, eigvecs, and eigvals")
 
         lumo_offsets = stm_params.get('lumo_offsets', [1, 2, 3])
+        mo_indices   = stm_params.get('mo_indices', None)
         use_exp_basis = stm_params.get('use_exp_basis', True)
         exp_beta = stm_params.get('exp_beta', 1.0)
         exp_r0 = stm_params.get('exp_r0', 3.0)
         bond_resolved = stm_params.get('bond_resolved', False)
+        stm_field = stm_params.get('field', 'ldos')
+
+        occ = np.where(eigvals < 0.0)[0]
+        homo = int(occ[-1]) if len(occ) > 0 else None
+        lumo = (homo + 1) if (homo is not None and (homo + 1) < len(eigvals)) else None
+        if mo_indices is not None:
+            mo_list = [int(i) for i in mo_indices]
+            mode = 'mo_indices'
+        else:
+            mo_list = [int(homo) + int(off) for off in (lumo_offsets or [])] if homo is not None else []
+            mode = 'lumo_offsets'
+        E_homo = float(eigvals[homo]) if homo is not None else None
+        E_lumo = float(eigvals[lumo]) if lumo is not None else None
+        stm_meta = {
+            'nmo': int(eigvecs.shape[0]),
+            'norb': int(eigvecs.shape[1]),
+            'nocc': int(len(occ)),
+            'homo': homo,
+            'lumo': lumo,
+            'E_homo': E_homo,
+            'E_lumo': E_lumo,
+            'mo_list': mo_list,
+            'mode': mode,
+            'bond_resolved': bool(bond_resolved),
+            'field': str(stm_field),
+            'height_min': float(heights[0]) if len(heights) > 0 else None,
+            'height_max': float(heights[-1]) if len(heights) > 0 else None,
+            'n_heights': int(len(heights)),
+        }
 
         if bond_resolved:
             print(f"  Computing bond-resolved STM (displaced positions)...")
             stm_grid = compute_bond_resolved_stm(
                 projector, eigvecs, eigvals, scan_xs, scan_ys, heights,
                 tip_disp, norb_per_atom, orb_offsets, atoms_dict,
-                lumo_offsets=lumo_offsets, use_exp_basis=use_exp_basis,
+                lumo_offsets=lumo_offsets, mo_indices=mo_indices, field=stm_field, use_exp_basis=use_exp_basis,
                 exp_beta=exp_beta, exp_r0=exp_r0
             )
         else:
@@ -1596,7 +1675,7 @@ def run_afm_pipeline(
             stm_grid = compute_stm(
                 projector, eigvecs, eigvals, scan_xs, scan_ys, heights,
                 norb_per_atom, orb_offsets, atoms_dict,
-                lumo_offsets=lumo_offsets, use_exp_basis=use_exp_basis,
+                lumo_offsets=lumo_offsets, mo_indices=mo_indices, field=stm_field, use_exp_basis=use_exp_basis,
                 exp_beta=exp_beta, exp_r0=exp_r0
             )
 
@@ -1633,6 +1712,8 @@ def run_afm_pipeline(
 
     if stm_grid is not None:
         result['intermediates']['stm_grid'] = stm_grid
+        if stm_meta is not None:
+            result['intermediates']['stm_meta'] = stm_meta
 
     return result
 
@@ -1982,6 +2063,9 @@ def run_afm_from_xyz(
         # STM requires dense projection data
         if not use_dense_projection:
             raise ValueError("STM computation requires use_dense_projection=True")
+        print(f"[run_afm_from_xyz] STM requested: stm_params keys={list(stm_params.keys())} use_dense_projection={use_dense_projection}")
+        if d.get('projector') is None or d.get('eigvecs') is None or d.get('eigvals') is None:
+            raise ValueError(f"STM requested but missing dense projection outputs: projector={d.get('projector') is not None} eigvecs={d.get('eigvecs') is not None} eigvals={d.get('eigvals') is not None}. This indicates get_density_from_dftb_plus() didn't return them.")
         stm_kwargs['stm_params'] = stm_params
         stm_kwargs['projector'] = d.get('projector')
         stm_kwargs['norb_per_atom'] = d.get('norb_per_atom')

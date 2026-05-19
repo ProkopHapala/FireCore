@@ -47,6 +47,73 @@ def run_afm_full_pipeline(window):
         h_max = window.afm_hmax_spin.value()
         h_step = window.afm_hstep_spin.value()
 
+        stm_params = None
+        stm_enable = False
+        if hasattr(window, 'afm_stm_enable'):
+            try:
+                stm_enable = bool(window.afm_stm_enable.isChecked())
+            except Exception:
+                stm_enable = False
+        # Convenience: if user selected STM Signal for plotting, auto-enable STM compute
+        if (not stm_enable) and hasattr(window, 'afm_component_combo'):
+            try:
+                stm_enable = (str(window.afm_component_combo.currentText()) == 'STM Signal')
+            except Exception:
+                pass
+
+        print(f"[AFM] STM enabled={stm_enable}")
+
+        if stm_enable:
+            mo_indices = None
+            if hasattr(window, 'afm_stm_mo_indices'):
+                try:
+                    mo_indices = [int(s) for s in window.afm_stm_mo_indices.text().replace(',', ' ').split() if s.strip()]
+                except Exception:
+                    mo_indices = None
+                if mo_indices is not None and len(mo_indices) == 0:
+                    mo_indices = None
+
+            lumo_offsets = None
+            if mo_indices is None:
+                if hasattr(window, 'afm_stm_use_homo_range') and window.afm_stm_use_homo_range.isChecked():
+                    off0 = int(window.afm_stm_homo_off0.value())
+                    nsel = int(window.afm_stm_homo_n.value())
+                    lumo_offsets = list(range(off0, off0 + max(1, nsel)))
+                else:
+                    try:
+                        lumo_offsets = [int(s) for s in window.afm_stm_lumo_offsets.text().replace(',', ' ').split() if s.strip()]
+                    except Exception:
+                        lumo_offsets = None
+                    if (lumo_offsets is None) or (len(lumo_offsets) == 0):
+                        lumo_offsets = [1, 2, 3]
+
+            stm_field = 'ldos'
+            if hasattr(window, 'afm_stm_field_combo'):
+                stm_field = str(window.afm_stm_field_combo.currentText())
+            if stm_field != 'ldos':
+                if mo_indices is not None:
+                    if len(mo_indices) != 1:
+                        raise ValueError(f"STM field='{stm_field}' requires exactly 1 MO index, got {mo_indices}")
+                else:
+                    if len(lumo_offsets) != 1:
+                        raise ValueError(f"STM field='{stm_field}' requires exactly 1 MO (set nMOs=1), got lumo_offsets={lumo_offsets}")
+            stm_params = {
+                'compute': True,
+                'lumo_offsets': lumo_offsets,
+                'field': stm_field,
+                'use_exp_basis': True,
+                'exp_beta': float(window.afm_stm_exp_beta.value()),
+                'exp_r0': float(window.afm_stm_exp_r0.value()),
+                'bond_resolved': bool(window.afm_stm_bond_resolved.isChecked()),
+            }
+            if mo_indices is not None:
+                stm_params['mo_indices'] = mo_indices
+
+        if stm_params is not None:
+            _update_afm_status(window, f"STM enabled: field={stm_params.get('field','ldos')}  {'mo_indices='+str(stm_params.get('mo_indices')) if 'mo_indices' in stm_params else 'lumo_offsets='+str(stm_params['lumo_offsets'])}")
+        else:
+            _update_afm_status(window, "STM disabled")
+
         _update_afm_status(window, "Running full AFM pipeline (DFTB+ SCF + projection + fields + relax)...")
 
         # Use tested run_afm_from_xyz with proper CO tip handling
@@ -73,16 +140,13 @@ def run_afm_full_pipeline(window):
             vdw_params={'C6_CO': window.afm_vdw_c6_spin.value()},
             relax_params={'K_LAT': window.afm_klat_spin.value()},
             plot_steps=False,
-            use_dense_projection=False,
+            use_dense_projection=(stm_params is not None),
             ppm_mode=True
+            ,stm_params=stm_params
         )
 
         window._afm_results = results
-        # Also store heights array for proper z-slicing
-        h_min = window.afm_hmin_spin.value()
-        h_max = window.afm_hmax_spin.value()
-        h_step = window.afm_hstep_spin.value()
-        window._afm_results['heights'] = np.arange(h_min, h_max, h_step)
+        # Do not overwrite heights returned by pipeline (it defines STM/AFM z-slices)
         
         # Note: run_afm_pipeline doesn't return densities in intermediates (they were inputs)
         # Store what we do get
@@ -96,6 +160,21 @@ def run_afm_full_pipeline(window):
             'step': step,
             'grid_spec': results['grid_spec']
         }
+
+        # STM (optional)
+        if stm_params is not None:
+            inter = results.get('intermediates', {})
+            if 'stm_grid' in inter:
+                window._afm_results['stm_grid'] = inter['stm_grid']
+            if 'stm_meta' in inter:
+                window._afm_results['stm_meta'] = inter['stm_meta']
+                if hasattr(window, 'afm_stm_info_label'):
+                    try:
+                        m = inter['stm_meta']
+                        txt = f"nMO={m.get('nmo','?')}  nOcc={m.get('nocc','?')}  HOMO={m.get('homo','?')}  LUMO={m.get('lumo','?')}\nE(HOMO)={m.get('E_homo','?')} eV  E(LUMO)={m.get('E_lumo','?')} eV\nMOs={m.get('mo_list','?')}  mode={m.get('mode','?')}  field={m.get('field','?')}"
+                        window.afm_stm_info_label.setText(txt)
+                    except Exception:
+                        pass
         
         # Also compute and store density for visualization (re-run DFTB quickly)
         _update_afm_status(window, "Computing density for visualization...")
@@ -106,9 +185,13 @@ def run_afm_full_pipeline(window):
         window._afm_density = d
 
         nz = results['df'].shape[2]
-        # Set z-height to middle of scan range for viewing
-        mid_z = (window.afm_hmin_spin.value() + window.afm_hmax_spin.value()) / 2
-        window.afm_z_height_spin.setValue(mid_z)
+        # Set z-height to middle of actual returned scan heights for viewing
+        heights = window._afm_results.get('heights', None)
+        if heights is not None and len(heights) > 0:
+            window.afm_z_height_spin.setValue(float(heights[len(heights)//2]))
+        else:
+            mid_z = (window.afm_hmin_spin.value() + window.afm_hmax_spin.value()) / 2
+            window.afm_z_height_spin.setValue(mid_z)
 
         msg = f"AFM complete: {nz} slices, df range [{results['df'].min():.2f}, {results['df'].max():.2f}] Hz"
         _update_afm_status(window, msg)
@@ -360,6 +443,25 @@ def plot_afm_slice(window):
             data_label = "Frequency Shift (Hz)"
             # Extract slice data
             data = data_3d[:, :, iz]
+
+        elif component == "STM Signal":
+            if window._afm_results is None or 'stm_grid' not in window._afm_results:
+                raise ValueError("No STM results. Enable 'STM' and run full AFM pipeline.")
+            data_3d = window._afm_results['stm_grid']
+            heights = window._afm_results.get('heights', [])
+            if len(heights) == 0:
+                raise ValueError("No heights in AFM results")
+            h_idx = np.argmin(np.abs(heights - z_height))
+            actual_z = heights[h_idx]
+            iz = h_idx
+            step = heights[1] - heights[0] if len(heights) > 1 else 0.1
+            cmap = 'viridis'
+            symmetric = False
+            data_label = "STM Signal (arb.)"
+            data = data_3d[:, :, iz]
+            stm_meta = window._afm_results.get('stm_meta', None)
+            if stm_meta is not None:
+                print(f"[STM Plot] Z={z_height:.2f}A -> iz={iz}, actual_z={actual_z:.2f}A  field={stm_meta.get('field',None)}  MOs={stm_meta.get('mo_list',None)}  HOMO={stm_meta.get('homo',None)} LUMO={stm_meta.get('lumo',None)}")
             
         elif component in ["SCF Density", "Neutral Density", "Delta Density"]:
             if window._afm_density is None:
@@ -375,6 +477,8 @@ def plot_afm_slice(window):
             step = float(grid_spec['dA'][0])
             # Get slice at requested z-height
             iz, actual_z = _get_z_slice(grid_spec, step, z_height)
+            # Extract slice data
+            data = data_3d[:, :, iz]
             
         elif component in ["Pauli Energy", "Electrostatic Energy", "vdW Energy"]:
             if window._afm_potentials is None:
@@ -446,6 +550,10 @@ def plot_afm_slice(window):
 
         # Title with data range
         title = f"{component}\nZ={actual_z:.2f}A (iz={iz}) | Range: [{data_min:.3f}, {data_max:.3f}] Mean: {data_mean:.3f}"
+        if component == 'STM Signal':
+            stm_meta = window._afm_results.get('stm_meta', None) if (window._afm_results is not None) else None
+            if stm_meta is not None:
+                title = f"{component}  field={stm_meta.get('field',None)}  MOs={stm_meta.get('mo_list',None)}\nZ={actual_z:.2f}A (iz={iz}) | Range: [{data_min:.3f}, {data_max:.3f}] Mean: {data_mean:.3f}"
         ax.set_title(title, fontsize=10)
         
         fig.colorbar(im, ax=ax, label=data_label)
@@ -471,6 +579,11 @@ def plot_afm_slice(window):
         
         # Add new canvas
         canvas = FigureCanvas(fig)
+        if hasattr(window, 'install_mpl_canvas_screenshot_menu'):
+            try:
+                window.install_mpl_canvas_screenshot_menu(canvas, fig, default_name=f"{component.replace(' ','_')}.png")
+            except Exception:
+                pass
         window._afm_plot_layout.addWidget(canvas)
         window._afm_plot_window.setWindowTitle(f"AFM Slice - {component} Z={z_height:.2f}A")
         window._afm_plot_window.show()
@@ -700,6 +813,7 @@ def build_ui(window):
     window.afm_component_combo = QtWidgets.QComboBox()
     window.afm_component_combo.addItems([
         "AFM Image (df)",           # Default - the actual AFM result
+        "STM Signal",               # Optional (requires compute enabled in full pipeline)
         "SCF Density",              # Debug: rho_scf
         "Neutral Density",          # Debug: rho_na
         "Delta Density",            # Debug: rho_diff
@@ -742,7 +856,7 @@ def build_ui(window):
     def on_z_height_changed():
         if window.afm_live_update.isChecked():
             # Check if we have data to plot
-            has_data = (window._afm_results is not None and 'df' in window._afm_results) or \
+            has_data = (window._afm_results is not None and (('df' in window._afm_results) or ('stm_grid' in window._afm_results))) or \
                       window._afm_potentials is not None or window._afm_density is not None
             if has_data:
                 try:
@@ -790,6 +904,86 @@ def build_ui(window):
 
     viz_sec.setContent(viz_widget)
     layout.addWidget(viz_sec)
+
+    # STM section (top-level, separate from Visualization)
+    stm_sec = CollapsibleSection("STM", collapsed=True, parent=panel)
+    stm_widget = QtWidgets.QWidget()
+    stm_grid = QtWidgets.QGridLayout(stm_widget)
+    window.afm_stm_enable = QtWidgets.QCheckBox("Compute STM")
+    window.afm_stm_enable.setChecked(False)
+    stm_grid.addWidget(window.afm_stm_enable, 0, 0, 1, 2)
+
+    window.afm_stm_use_homo_range = QtWidgets.QCheckBox("Use HOMO range")
+    window.afm_stm_use_homo_range.setChecked(True)
+    stm_grid.addWidget(window.afm_stm_use_homo_range, 1, 0, 1, 2)
+
+    stm_grid.addWidget(QtWidgets.QLabel("HOMO off0:"), 2, 0)
+    window.afm_stm_homo_off0 = QtWidgets.QSpinBox()
+    window.afm_stm_homo_off0.setRange(-50, 50)
+    window.afm_stm_homo_off0.setValue(1)
+    stm_grid.addWidget(window.afm_stm_homo_off0, 2, 1)
+    stm_grid.addWidget(QtWidgets.QLabel("nMOs:"), 3, 0)
+    window.afm_stm_homo_n = QtWidgets.QSpinBox()
+    window.afm_stm_homo_n.setRange(1, 50)
+    window.afm_stm_homo_n.setValue(3)
+    stm_grid.addWidget(window.afm_stm_homo_n, 3, 1)
+
+    stm_grid.addWidget(QtWidgets.QLabel("LUMO offsets:"), 4, 0)
+    window.afm_stm_lumo_offsets = QtWidgets.QLineEdit("1 2 3")
+    stm_grid.addWidget(window.afm_stm_lumo_offsets, 4, 1)
+    stm_grid.addWidget(QtWidgets.QLabel("MO indices:"), 5, 0)
+    window.afm_stm_mo_indices = QtWidgets.QLineEdit("")
+    stm_grid.addWidget(window.afm_stm_mo_indices, 5, 1)
+
+    stm_grid.addWidget(QtWidgets.QLabel("field:"), 6, 0)
+    window.afm_stm_field_combo = QtWidgets.QComboBox()
+    window.afm_stm_field_combo.addItems(['ldos', 'psi2', 'psi'])
+    window.afm_stm_field_combo.setCurrentText('ldos')
+    stm_grid.addWidget(window.afm_stm_field_combo, 6, 1)
+
+    stm_grid.addWidget(QtWidgets.QLabel("exp_beta:"), 7, 0)
+    window.afm_stm_exp_beta = QtWidgets.QDoubleSpinBox()
+    window.afm_stm_exp_beta.setRange(0.1, 10.0)
+    window.afm_stm_exp_beta.setValue(1.0)
+    window.afm_stm_exp_beta.setDecimals(3)
+    stm_grid.addWidget(window.afm_stm_exp_beta, 7, 1)
+    stm_grid.addWidget(QtWidgets.QLabel("exp_r0:"), 8, 0)
+    window.afm_stm_exp_r0 = QtWidgets.QDoubleSpinBox()
+    window.afm_stm_exp_r0.setRange(0.0, 10.0)
+    window.afm_stm_exp_r0.setValue(3.0)
+    window.afm_stm_exp_r0.setDecimals(3)
+    stm_grid.addWidget(window.afm_stm_exp_r0, 8, 1)
+    window.afm_stm_bond_resolved = QtWidgets.QCheckBox("Bond-resolved")
+    window.afm_stm_bond_resolved.setChecked(False)
+    stm_grid.addWidget(window.afm_stm_bond_resolved, 9, 0, 1, 2)
+
+    window.afm_stm_info_label = QtWidgets.QLabel("")
+    window.afm_stm_info_label.setWordWrap(True)
+    stm_grid.addWidget(window.afm_stm_info_label, 10, 0, 1, 2)
+
+    def _stm_ui_debug_print(*args):
+        try:
+            field = str(window.afm_stm_field_combo.currentText()) if hasattr(window, 'afm_stm_field_combo') else 'ldos'
+            if window.afm_stm_mo_indices.text().strip() != '':
+                print(f"[STM UI] field={field}  mode=mo_indices  mo_indices='{window.afm_stm_mo_indices.text()}'")
+            elif window.afm_stm_use_homo_range.isChecked():
+                print(f"[STM UI] field={field}  mode=homo_range  off0={int(window.afm_stm_homo_off0.value())}  n={int(window.afm_stm_homo_n.value())}")
+            else:
+                print(f"[STM UI] field={field}  mode=lumo_offsets  lumo_offsets='{window.afm_stm_lumo_offsets.text()}'")
+        except Exception:
+            pass
+
+    window.afm_stm_enable.stateChanged.connect(_stm_ui_debug_print)
+    window.afm_stm_use_homo_range.stateChanged.connect(_stm_ui_debug_print)
+    window.afm_stm_homo_off0.valueChanged.connect(_stm_ui_debug_print)
+    window.afm_stm_homo_n.valueChanged.connect(_stm_ui_debug_print)
+    window.afm_stm_lumo_offsets.textChanged.connect(_stm_ui_debug_print)
+    window.afm_stm_mo_indices.textChanged.connect(_stm_ui_debug_print)
+    window.afm_stm_field_combo.currentIndexChanged.connect(_stm_ui_debug_print)
+    window.afm_stm_bond_resolved.stateChanged.connect(_stm_ui_debug_print)
+
+    stm_sec.setContent(stm_widget)
+    layout.addWidget(stm_sec)
 
     # AFM state variables
     window._afm_density = None

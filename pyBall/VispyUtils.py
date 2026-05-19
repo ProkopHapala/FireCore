@@ -151,6 +151,7 @@ class AtomScene(QtCore.QObject):
         self._cam_zoom_speed = 0.12
         self._cam_zoom_min = 1e-4
         self._cam_zoom_max = 1e+4
+        self._cam_pan_speed = 2.0  # world units per key press
 
         # Draw ordering: radius behind everything, then bboxes/links/lines, then atom centers, then labels.
         self.radius_markers = visuals.Markers(parent=self.view.scene)
@@ -260,6 +261,7 @@ class AtomScene(QtCore.QObject):
         self.canvas.events.mouse_release.connect(self._on_mouse_release)
         self.canvas.events.mouse_move.connect(self._on_mouse_move)
         self.canvas.events.mouse_wheel.connect(self._on_mouse_wheel)
+        self.canvas.events.key_press.connect(self._on_key_press)
 
         self._apply_camera_mode()
 
@@ -607,6 +609,20 @@ class AtomScene(QtCore.QObject):
         self._redraw()
         if int(self._cam_debug) > 0:
             print(f"[CAM] zoom delta={float(delta):.6g} scale:{z0:.6g}->{z1:.6g}")
+
+    def _cam_pan(self, dx, dy):
+        cam = self.view.camera
+        if cam is None:
+            return
+        # Pan camera center by dx, dy in world units
+        center = np.array(cam.center)
+        center[0] += float(dx) * float(self._cam_pan_speed)
+        center[1] += float(dy) * float(self._cam_pan_speed)
+        cam.center = tuple(center)
+        self._redraw()
+        self.sig_camera_changed.emit()
+        if int(self._cam_debug) > 0:
+            print(f"[CAM] pan dx={float(dx):.3f} dy={float(dy):.3f} center={tuple(center)}")
 
     def _ray_from_mouse(self, mouse_pos, z0=0.0, z1=1.0):
         # mouse_pos in canvas pixels
@@ -1201,6 +1217,34 @@ class AtomScene(QtCore.QObject):
             return
         self._cam_zoom(delta)
         ev.handled = True
+
+    def _on_key_press(self, ev):
+        """Handle keyboard events for camera panning with arrow keys."""
+        if int(self._cam_debug) > 0:
+            print(f"[KEY] key={ev.key} text={ev.text}")
+        if ev.key == 'ArrowUp':
+            self._cam_pan(0, 1)
+            ev.handled = True
+        elif ev.key == 'ArrowDown':
+            self._cam_pan(0, -1)
+            ev.handled = True
+        elif ev.key == 'ArrowLeft':
+            self._cam_pan(-1, 0)
+            ev.handled = True
+        elif ev.key == 'ArrowRight':
+            self._cam_pan(1, 0)
+            ev.handled = True
+        elif ev.key in ('Up', 'Down', 'Left', 'Right'):
+            # Try alternative key names
+            if ev.key == 'Up':
+                self._cam_pan(0, 1)
+            elif ev.key == 'Down':
+                self._cam_pan(0, -1)
+            elif ev.key == 'Left':
+                self._cam_pan(-1, 0)
+            elif ev.key == 'Right':
+                self._cam_pan(1, 0)
+            ev.handled = True
 
     def _update_selection_rect(self):
         """Update selection rectangle visualization (Line visual)."""

@@ -113,9 +113,8 @@ class KekuleExplorerWindow(BaseGUI):
         side_layout.setSpacing(1)
         
         # Add sections
+        side_layout.addWidget(self.create_editors_section())
         side_layout.addWidget(self.create_ribbon_section())
-        side_layout.addWidget(self.create_builder_section())
-        side_layout.addWidget(self.create_editor_section())
         self._build_extension_panels(side_layout)
         side_layout.addStretch()
         
@@ -159,7 +158,7 @@ class KekuleExplorerWindow(BaseGUI):
         self.debug_lines.order = 4  # Behind debug markers
 
         # Help / Status
-        self.statusBar().showMessage("LMB: Add/Toggle | RMB: Remove | Middle-Click: Toggle H | Scroll: Zoom")
+        self.statusBar().showMessage("LMB: Add/Toggle | RMB: Remove | Middle-Click: Toggle H | Scroll: Zoom | Arrow Keys: Pan")
         self.scene.lock_drag = True   # Default mode is Ring, no dragging
         self.scene.canvas.events.mouse_press.connect(self.on_mouse_press)
         self.scene.canvas.events.mouse_move.connect(self.on_mouse_move)
@@ -194,12 +193,42 @@ class KekuleExplorerWindow(BaseGUI):
         if self.error_raise:
             raise RuntimeError(msg)
 
-    def create_builder_section(self):
+    def install_mpl_canvas_screenshot_menu(self, canvas, fig, *, default_name='plot.png'):
+        def _on_menu(pos):
+            menu = QtWidgets.QMenu(canvas)
+            act_save = menu.addAction('Save Screenshot...')
+            action = menu.exec_(canvas.mapToGlobal(pos))
+            if action is act_save:
+                start_dir = os.getcwd()
+                if hasattr(self, 'settings'):
+                    try:
+                        start_dir = str(self.settings.value('last_screenshot_dir', start_dir))
+                    except Exception:
+                        pass
+                start_path = os.path.join(start_dir, default_name)
+                fname, _ = QtWidgets.QFileDialog.getSaveFileName(self, 'Save Screenshot', start_path, 'PNG (*.png);;PDF (*.pdf);;SVG (*.svg);;All Files (*)')
+                if not fname:
+                    return
+                if hasattr(self, 'settings'):
+                    try:
+                        self.settings.setValue('last_screenshot_dir', os.path.dirname(fname))
+                    except Exception:
+                        pass
+                fig.savefig(fname, dpi=200, bbox_inches='tight')
+
+        canvas.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        canvas.customContextMenuRequested.connect(_on_menu)
+
+    def create_editors_section(self):
+        """Merged Builder and Editor section as collapsible panel."""
         layout = QtWidgets.QVBoxLayout()
         layout.setSpacing(3)
+        
+        # Edit Mode (from Builder)
         self.label("Edit Mode:", layout=layout)
         self.mode_combo = self.comboBox(["Hex1", "Hex2", "Atom", "Bond", "pi", "Select"], self.set_edit_mode, layout=layout)
-        # Compact row for atom type and auto h-cap
+        
+        # Atom type and auto h-cap (from Builder)
         row = QtWidgets.QHBoxLayout()
         self.label("Type:", layout=row)
         self.atom_combo = self.comboBox(["C", "N", "O"], self.set_atom_type, layout=row)
@@ -210,23 +239,21 @@ class KekuleExplorerWindow(BaseGUI):
         self.auto_bonds_btn.setCheckable(True)
         self.auto_bonds_btn.setChecked(self.backend.auto_recalc_bonds)
         layout.addLayout(row)
-        return self.group("Builder", layout)
-
-    def create_editor_section(self):
-        layout = QtWidgets.QVBoxLayout()
-        layout.setSpacing(3)
-        # Compact button row 1
+        
+        # Editor buttons (from Editor)
         row1 = QtWidgets.QHBoxLayout()
         self.button("Snap", self.reset_offsets, layout=row1)
         self.button("Adj H", self.adjust_h, layout=row1)
         self.button("AutoBonds", self.recalc_bonds, layout=row1)
         layout.addLayout(row1)
-        # Labels combo
+        
+        # Labels combo (from Editor)
         row2 = QtWidgets.QHBoxLayout()
         self.label("Labels:", layout=row2)
         self.label_combo = self.comboBox(["Element+Index", "Atomic Type", "Pi Orbitals", "Z-Height", "Charge", "Bond Lengths"], self.set_label_mode, layout=row2)
         layout.addLayout(row2)
-        # Compact button row 3
+        
+        # Visualization buttons (from Editor)
         row3 = QtWidgets.QHBoxLayout()
         self.bond_viz_mode = False
         self.button("Bond Colors", self.toggle_bond_viz, layout=row3).setCheckable(True)
@@ -235,12 +262,21 @@ class KekuleExplorerWindow(BaseGUI):
         self.debug_btn.setCheckable(True)
         self.debug_btn.setChecked(True)
         layout.addLayout(row3)
-        # Compact button row 4
+        
+        # Export buttons (from Editor)
         row4 = QtWidgets.QHBoxLayout()
         self.button("Show XYZ", self.show_xyz, layout=row4)
         self.button("Export XYZ", self.export_xyz, layout=row4)
         layout.addLayout(row4)
-        return self.group("Editor", layout)
+        
+        # Wrap layout in QWidget for CollapsibleSection
+        widget = QtWidgets.QWidget()
+        widget.setLayout(layout)
+        
+        # Wrap in CollapsibleSection
+        sec = CollapsibleSection("Editors", collapsed=False, parent=self)
+        sec.setContent(widget)
+        return sec
 
     def _build_extension_panels(self, side_layout):
         """Dynamically add collapsible panels for each enabled extension."""
@@ -369,7 +405,14 @@ class KekuleExplorerWindow(BaseGUI):
         two_ribbon_group.setLayout(two_ribbon_layout)
         layout.addWidget(two_ribbon_group)
         
-        return self.group("Ribbon", layout)
+        # Wrap layout in QWidget for CollapsibleSection
+        widget = QtWidgets.QWidget()
+        widget.setLayout(layout)
+        
+        # Wrap in CollapsibleSection
+        sec = CollapsibleSection("Ribbon", collapsed=True, parent=self)
+        sec.setContent(widget)
+        return sec
 
     def generate_single_ribbon(self):
         """Generate single periodic ribbon from passivation strings."""
