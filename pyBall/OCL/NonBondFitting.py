@@ -151,9 +151,12 @@ def optimizer_montecarlo(driver, initial_dofs, max_steps=500, step_size=0.1, tem
     assert hasattr(driver, 'host_isEpair') and (driver.host_isEpair is not None)
     driver.setup_energy_kernel(bMask=False)
 
-    lo  = np.array([d['min']    for d in dof_defs], dtype=np.float64)
-    hi  = np.array([d['max']    for d in dof_defs], dtype=np.float64)
-    rng = hi - lo
+    lo  = np.array([d['min'] for d in dof_defs], dtype=np.float64)
+    hi  = np.array([d['max'] for d in dof_defs], dtype=np.float64)
+    # NOTE: Bounds are optional and must not control proposal scale.
+    # If bounds are huge (e.g. +/-1e300 used as 'no bound'), using (hi-lo) would create
+    # massive deltas and effectively stall optimization (NaN/Inf J_new, zero acceptances).
+    bounded = np.isfinite(lo) & np.isfinite(hi) & (np.abs(lo) < 1e100) & (np.abs(hi) < 1e100)
 
     dofs      = np.array(initial_dofs, dtype=np.float64)
     J_cur     = driver.evaluate_objective(dofs, soft_clamp, clamp_start, clamp_max, kcal_objective)
@@ -176,31 +179,51 @@ def optimizer_montecarlo(driver, initial_dofs, max_steps=500, step_size=0.1, tem
     step_indices  = [0]
     n_accepted    = 0
 
+    accepted_dofs  = []
+    accepted_error = []
+    accepted_steps = []
+
+    J_trace = np.empty(max_steps + 1, dtype=np.float64)
+    J_trace[0] = float(J_cur)
+    Jbest_trace = np.empty(max_steps + 1, dtype=np.float64)
+    Jbest_trace[0] = float(J_best)
+    accepted_trace = np.zeros(max_steps + 1, dtype=np.int8)
+
     for step in range(1, max_steps + 1):
-        # Random perturbation scaled by parameter range
-        delta    = (np.random.rand(n_dofs) - 0.5) * 2.0 * step_size * rng
-        new_dofs = np.clip(dofs + delta, lo, hi)
+        # Random perturbation: absolute step_size in parameter units (independent of bounds)
+        delta    = (np.random.rand(n_dofs) - 0.5) * 2.0 * step_size
+        new_dofs = dofs + delta
+        if np.any(bounded):
+            new_dofs[bounded] = np.clip(new_dofs[bounded], lo[bounded], hi[bounded])
         J_new    = driver.evaluate_objective(new_dofs, soft_clamp, clamp_start, clamp_max, kcal_objective)
 
-        # DEBUG: Print DOF values and energy change for first few steps
-        if step <= 5:
-            print(f"MC DEBUG step {step}: dofs={dofs}, new_dofs={new_dofs}, delta={delta}, J_cur={J_cur:.6e}, J_new={J_new:.6e}")
-
-        accept = J_new < J_cur
+        J_prev = float(J_cur)
+        accept = J_new < J_prev
         if not accept and temperature > 0.0:
             prob   = np.exp(-(J_new - J_cur) / temperature)
             accept = np.random.rand() < prob
 
         if accept:
+            if (temperature <= 0.0) and not (J_new < J_prev):
+                raise RuntimeError(f"BUG: optimizer_montecarlo accepted uphill move at T<=0: J_prev={J_prev:.6e} J_new={float(J_new):.6e}")
             dofs  = new_dofs
             J_cur = J_new
             n_accepted += 1
+
+            accepted_dofs.append(dofs.copy())
+            accepted_error.append(float(J_cur))
+            accepted_steps.append(int(step))
+
             if J_new < J_best:
                 J_best    = J_new
                 best_dofs = new_dofs.copy()
                 param_history.append(new_dofs.copy())
                 error_history.append(J_new)
                 step_indices.append(step)
+
+        J_trace[step] = float(J_cur)
+        Jbest_trace[step] = float(J_best)
+        accepted_trace[step] = 1 if accept else 0
 
         if verbose > 0 and step % verbose == 0:
             print(f"MC step {step:5d}/{max_steps}  J_cur={J_cur:.6e}  J_best={J_best:.6e}  accepted={n_accepted}")
@@ -237,6 +260,12 @@ def optimizer_montecarlo(driver, initial_dofs, max_steps=500, step_size=0.1, tem
         'dE_best'        : dE_best,
         'J_per_sample_initial': J_per_sample_initial,
         'J_per_sample_best'   : J_per_sample_best,
+        'accepted_dofs'  : accepted_dofs,
+        'accepted_error' : accepted_error,
+        'accepted_steps' : accepted_steps
+        ,'J_trace'       : J_trace
+        ,'Jbest_trace'   : Jbest_trace
+        ,'accepted_trace': accepted_trace
     }
 
 
@@ -249,17 +278,36 @@ def plot_mc_convergence(history, out_path=None):
     defs = history['dof_defs']
     n_dofs = ph.shape[1]
 
+    Jt  = history.get('J_trace', None)
+    Jbt = history.get('Jbest_trace', None)
+    at  = history.get('accepted_trace', None)
+
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
 
     # --- Error evolution ---
-    ax1.semilogy(si, eh, 'o-', color='crimson', lw=1.5, ms=4)
-    ax1.axhline(eh[0],  color='gray',  ls='--', lw=1, label=f'Initial J={eh[0]:.4e}')
-    ax1.axhline(eh[-1], color='navy',  ls='--', lw=1, label=f'Best   J={eh[-1]:.4e}')
-    ax1.set_xlabel('MC step (logged at improvements)')
-    ax1.set_ylabel('Objective J (log scale)')
-    ax1.set_title('Error convergence')
-    ax1.legend(fontsize=8)
-    ax1.grid(True, ls=':')
+    if (Jt is not None) and (Jbt is not None):
+        x = np.arange(len(Jt))
+        ax1.semilogy(x, Jt, '-', color='0.6', lw=0.8, label='J_cur (each step)')
+        ax1.semilogy(x, Jbt, '-', color='navy', lw=1.5, label='J_best (running)')
+        if at is not None:
+            acc = (at.astype(bool))
+            ax1.semilogy(x[acc], Jt[acc], 'o', color='crimson', ms=2.5, label='accepted')
+        ax1.axhline(float(Jt[0]),  color='gray', ls='--', lw=1, label=f'Initial J={float(Jt[0]):.4e}')
+        ax1.axhline(float(Jbt[-1]), color='k',  ls='--', lw=1, label=f'Best J={float(Jbt[-1]):.4e}')
+        ax1.set_xlabel('MC step')
+        ax1.set_ylabel('Objective J (log scale)')
+        ax1.set_title('Error convergence (full trace)')
+        ax1.legend(fontsize=8)
+        ax1.grid(True, ls=':')
+    else:
+        ax1.semilogy(si, eh, 'o-', color='crimson', lw=1.5, ms=4)
+        ax1.axhline(eh[0],  color='gray',  ls='--', lw=1, label=f'Initial J={eh[0]:.4e}')
+        ax1.axhline(eh[-1], color='navy',  ls='--', lw=1, label=f'Best   J={eh[-1]:.4e}')
+        ax1.set_xlabel('MC step (logged at improvements)')
+        ax1.set_ylabel('Objective J (log scale)')
+        ax1.set_title('Error convergence')
+        ax1.legend(fontsize=8)
+        ax1.grid(True, ls=':')
 
     # --- Parameter evolution ---
     colors = plt.cm.tab10(np.linspace(0, 1, n_dofs))
@@ -267,8 +315,12 @@ def plot_mc_convergence(history, out_path=None):
     for i, dof in enumerate(defs):
         label = f"{dof['typename']} {comp_labels.get(dof['comp'], dof['comp'])}"
         ax2.plot(si, ph[:, i], 'o-', color=colors[i], lw=1.2, ms=3, label=label)
-        ax2.axhline(dof['min'], color=colors[i], ls=':', lw=0.7, alpha=0.5)
-        ax2.axhline(dof['max'], color=colors[i], ls=':', lw=0.7, alpha=0.5)
+        # Do not plot gigantic placeholder bounds (e.g. +/-1e300), they destroy autoscaling.
+        vmin = float(dof.get('min', np.nan))
+        vmax = float(dof.get('max', np.nan))
+        if np.isfinite(vmin) and np.isfinite(vmax) and (abs(vmin) < 1e100) and (abs(vmax) < 1e100):
+            ax2.axhline(vmin, color=colors[i], ls=':', lw=0.7, alpha=0.5)
+            ax2.axhline(vmax, color=colors[i], ls=':', lw=0.7, alpha=0.5)
     ax2.set_xlabel('MC step (logged at improvements)')
     ax2.set_ylabel('DOF value')
     ax2.set_title('Parameter evolution (logged only on improvement)')

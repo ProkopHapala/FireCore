@@ -1,5 +1,5 @@
 {
-  "E_O3": ["R", "E"],
+  "E_O3": ["E"],
   "O_3": ["H"],
   "soft_clamp": true,
   "clamp_start": 0.5,

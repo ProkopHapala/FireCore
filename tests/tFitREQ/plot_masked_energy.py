@@ -30,6 +30,17 @@ def create_dof_definitions_from_current(drv, config=None):
     unique_types = set(drv.host_atypes)
     type_names_present = [drv.atom_type_names[i] for i in unique_types if i < len(drv.atom_type_names)]
     
+    # If config provided, also include typenames from config even if not in data
+    if config:
+        type_names_from_config = [k for k in config.keys() if isinstance(k, str) and k not in ['soft_clamp', 'clamp_start', 'clamp_max', 'kcal_objective']]
+        type_names_present = list(set(type_names_present + type_names_from_config))
+        
+        # IMPORTANT: Add config typenames to atom_type_map so backend doesn't skip them
+        for typename in type_names_from_config:
+            if typename not in drv.atom_type_map:
+                drv.atom_type_map[typename] = len(drv.atom_type_names)
+                drv.atom_type_names.append(typename)
+    
     dof_definitions = []
     
     for typename in type_names_present:
@@ -87,23 +98,23 @@ def create_dof_definitions_from_current(drv, config=None):
             else:  # H
                 current_val = treqh[3]
             
-            # Skip if value is zero (likely not used)
-            if abs(current_val) < 1e-10 and comp != 2:  # Q can be zero
+            # Skip if value is zero (likely not used) - ONLY when no config provided
+            # When config is provided, user explicitly chooses what to optimize
+            if not config and abs(current_val) < 1e-10 and comp != 2:  # Q can be zero
                 continue
             
-            # Set reasonable bounds (20% around current value)
-            if comp == 1:  # E parameter (always positive)
-                min_val = max(1e-10, current_val * 0.5)
-                max_val = current_val * 2.0
-            elif comp == 2:  # Q parameter (can be negative)
-                min_val = current_val - 2.0
-                max_val = current_val + 2.0
-            elif comp == 0:  # R parameter (always positive)
-                min_val = max(0.1, current_val * 0.5)
-                max_val = current_val * 2.0
-            else:  # H parameter (homogeneous correction - can be positive or negative)
-                min_val = current_val - 2.0
-                max_val = current_val + 2.0
+            # Set bounds: extremely wide (no obstruction) - allow full exploration
+            if comp == 0:  # R parameter
+                if is_epair:
+                    min_val, max_val = -1e300, 1e300
+                else:  # Regular types: R must be positive
+                    min_val, max_val = 1e-10, 1e300
+            elif comp == 1:  # E parameter
+                min_val, max_val = -1e300, 1e300
+            elif comp == 2:  # Q parameter
+                min_val, max_val = -1e300, 1e300
+            else:  # H parameter
+                min_val, max_val = -1e300, 1e300
             
             dof_definitions.append({
                 'typename': typename,
@@ -117,7 +128,6 @@ def create_dof_definitions_from_current(drv, config=None):
                 'K0': 0.0,
                 'xstart': current_val
             })
-            print(f"  DOF: {typename}.{comp_labels[comp]} = {current_val:.6f}  range=[{min_val:.6f}, {max_val:.6f}]")
     
     print(f"Created {len(dof_definitions)} DOF definitions from current parameters")
     return dof_definitions
@@ -184,11 +194,79 @@ def _set_im_clim(im, v0, v1, kcal=False):
     fac = 23.060548 if kcal else 1.0
     im.set_clim(v0 * fac, v1 * fac)
 
+
+def _save_mc_comparison_png(drv, frame_idx, V_ref, rv, A, mask_hbond, args, dofs0, dofs1, J0, J1, out_path, title_suffix="", soft_clamp=False, clamp_start=4.0, clamp_max=6.0, kcal_objective=False):
+    # Evaluate accepted state only
+    T1 = drv.tREQHs_from_dofs(dofs1)
+    drv.toGPU_(drv.tREQHs_buff, T1)
+    Etot1, Ein1 = drv.evaluate_energies_masked(mask_hbond)
+    Eout1 = Etot1 - Ein1
+
+    # Map to grids
+    Eref = drv.host_ErefW[:, 0]
+    V_Eref = _map_samples_to_grid(frame_idx, V_ref.shape, Eref)
+    V_model_total1 = _map_samples_to_grid(frame_idx, V_ref.shape, Etot1)
+    V_model_hbond1 = _map_samples_to_grid(frame_idx, V_ref.shape, Ein1)
+    V_model_eout1  = _map_samples_to_grid(frame_idx, V_ref.shape, Eout1)
+
+    # dE panels
+    dE1 = (Etot1 - Eref).astype(np.float32)
+    V_diff1 = _map_samples_to_grid(frame_idx, V_ref.shape, dE1)
+
+    # Objective-like per-sample J (use the same settings as the optimizer run)
+    Jps1 = drv.evaluate_objective_per_sample(dofs1, soft_clamp=soft_clamp, clamp_start=clamp_start, clamp_max=clamp_max, kcal_objective=kcal_objective)
+    V_Jps1 = _map_samples_to_grid(frame_idx, V_ref.shape, Jps1)
+
+    import matplotlib.pyplot as plt
+    fig, axes = plt.subplots(1, 6, figsize=(24, 4.5))
+
+    plot_system_panel(V_Eref, rv, A, axes[0], 'Reference\n(Total)', args.kcal, sym=False, overlay_rmin=False, cmap=args.cmap)
+    plot_system_panel(V_model_total1, rv, A, axes[1], 'Model Etot', args.kcal, sym=False, overlay_rmin=False, cmap=args.cmap)
+    plot_system_panel(V_model_hbond1, rv, A, axes[2], 'Model Ein', args.kcal, sym=False, overlay_rmin=False, cmap=args.cmap)
+    plot_system_panel(V_model_eout1, rv, A, axes[3], 'Model Eout', args.kcal, sym=False, overlay_rmin=False, cmap=args.cmap)
+    plot_system_panel(V_diff1, rv, A, axes[4], f'Etot-Ref\nJ={J1:.2f}', args.kcal, sym=False, overlay_rmin=False, cmap=args.cmap)
+    j_unit_label = "kcal²" if kcal_objective else "eV²"
+    plot_system_panel(V_Jps1, rv, A, axes[5], f'Weighted Error\nJ={J1:.2f}', False, sym=False, overlay_rmin=False, cmap='inferno', unit_label=j_unit_label)
+
+    # Apply color limits: Reference and Etot use reference-derived, Ein/Eout use their own symmetric
+    vmin_ref = float(np.nanmin(V_Eref))
+    if args.kcal:
+        vmin_ref *= 23.060548
+    vmin = args.Emin_factor * vmin_ref
+    vmax = -vmin
+    axes[0].images[0].set_clim(vmin, vmax)  # Reference
+    axes[1].images[0].set_clim(vmin, vmax)  # Etot (same as reference)
+    # Ein and Eout use their own symmetric limits
+    vmin_ein = float(np.nanmin(V_model_hbond1))
+    if args.kcal:
+        vmin_ein *= 23.060548
+    vmax_ein = -vmin_ein
+    vmin_eout = float(np.nanmin(V_model_eout1))
+    if args.kcal:
+        vmin_eout *= 23.060548
+    vmax_eout = -vmin_eout
+    axes[2].images[0].set_clim(vmin_ein, vmax_ein)  # Ein
+    axes[3].images[0].set_clim(vmin_eout, vmax_eout)  # Eout
+    # dE panel: symmetric around 0
+    dEmax = float(np.nanmax(np.abs(V_diff1)))
+    if dEmax > 0:
+        _set_im_clim(axes[4].images[0], -dEmax, dEmax, kcal=args.kcal)
+    # Weighted error: non-negative, no kcal conversion (already energy^2)
+    Jmax = float(np.nanmax(V_Jps1))
+    if Jmax > 0:
+        _set_im_clim(axes[5].images[0], 0.0, Jmax, kcal=False)
+
+    plt.suptitle(f'MC accepted step{title_suffix}: {os.path.basename(args.xyz)}', fontsize=14)
+    plt.tight_layout(rect=[0, 0.06, 1, 0.92])
+    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+
 def run_mc_optimization(drv,
                         max_steps=500, step_size=0.1, temperature=0.0,
                         soft_clamp=False, clamp_start=4.0, clamp_max=6.0,
                         kcal_objective=False,
-                        out_dir="mc_output", config_file=None):
+                        out_dir="mc_output", config_file=None,
+                        output_basename=None):
     """
     Run Monte Carlo optimization directly using optimizer_montecarlo.
     Creates DOF definitions programmatically from current driver state (no DOF file needed).
@@ -232,11 +310,17 @@ def run_mc_optimization(drv,
     
     # Store DOF definitions in history for later conversion
     history['dof_defs'] = dof_definitions
-    
+
     # Generate convergence plot
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
-    conv_path = os.path.join(out_dir, "mc_convergence.png")
+    # Use output_basename if provided, otherwise default to "mc_convergence.png"
+    if output_basename:
+        base_no_ext = os.path.splitext(output_basename)[0]
+        conv_filename = f"{base_no_ext}_convergence.png"
+    else:
+        conv_filename = "mc_convergence.png"
+    conv_path = os.path.join(out_dir, conv_filename)
     fig_conv = plot_mc_convergence(history, out_path=conv_path)
     plt.close(fig_conv)
     print(f"  Convergence plot: {os.path.abspath(conv_path)}")
@@ -278,6 +362,8 @@ def main():
     parser.add_argument('--soft_clamp',  action='store_true', help='Enable soft-clamping of energy differences before squaring')
     parser.add_argument('--clamp_start', type=float, default=4.0, help='Soft-clamp start threshold (default: 4.0)')
     parser.add_argument('--clamp_max',   type=float, default=6.0, help='Soft-clamp maximum threshold (default: 6.0)')
+    parser.add_argument('--plot_accept', action='store_true', help='Save a comparison PNG after every accepted MC step (debug)')
+    parser.add_argument('--plot_accept_max', type=int, default=50, help='Max number of accepted-step plots to save (default: 50)')
     args = parser.parse_args()
     
     print(f"Loading data from {args.xyz}")
@@ -305,16 +391,6 @@ def main():
     drv.load_atom_types(args.atypes)
     drv.load_data(args.xyz)
     
-    # Apply parameter overrides from JSON BEFORE compilation
-    # This ensures tREQHs_base is updated before DOF definitions are created
-    if args.params:
-        # Resolve path relative to script directory if not absolute
-        params_path = args.params
-        if not os.path.isabs(params_path):
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            params_path = os.path.join(script_dir, params_path)
-        drv.apply_parameter_overrides(params_path)
-    
     # Step 3: Compile with MODEL_MorseQ_PAIR_DECOMP macro
     print("Step 3: Compiling with Morse decomposition macro...")
     
@@ -327,6 +403,16 @@ def main():
         'MODEL_PAIR_DECOMP': morse_decomp,
         'HBOND_GATE_DEFINE': '#define HBOND_GATE 0'
     })
+    
+    # Apply parameter overrides from JSON BEFORE init_and_upload_energy_only
+    # This ensures base_params are updated before tREQHs_base is built
+    if args.params:
+        # Resolve path relative to script directory if not absolute
+        params_path = args.params
+        if not os.path.isabs(params_path):
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            params_path = os.path.join(script_dir, params_path)
+        drv.apply_parameter_overrides(params_path)
     
     drv.init_and_upload_energy_only()
 
@@ -481,8 +567,17 @@ def main():
 
             plot_polar_symmetric(V_ref_, rv, A, title='Reference\n(Total)', cmap=args.cmap, kcal=args.kcal, ax=axes[0,0], bColorbar=True, rmax=args.rcut, vmin=vmin, vmax=vmax, geometry=geometry_first, n0=n0_first, plane=scan_plane)
             plot_polar_symmetric(V_model_total_, rv, A, title='Model Etot\n(Total)', cmap=args.cmap, kcal=args.kcal, ax=axes[0,1], bColorbar=False, rmax=args.rcut, vmin=vmin, vmax=vmax, geometry=geometry_first, n0=n0_first, plane=scan_plane)
-            plot_polar_symmetric(V_model_hbond_, rv, A, title='Model Ein\n(H-bond)', cmap=args.cmap, kcal=args.kcal, ax=axes[0,2], bColorbar=False, rmax=args.rcut, vmin=vmin, vmax=vmax, geometry=geometry_first, n0=n0_first, plane=scan_plane)
-            plot_polar_symmetric(V_model_eout_, rv, A, title='Model Eout\n(Baseline)', cmap=args.cmap, kcal=args.kcal, ax=axes[0,3], bColorbar=False, rmax=args.rcut, vmin=vmin, vmax=vmax, geometry=geometry_first, n0=n0_first, plane=scan_plane)
+            # Ein and Eout use their own symmetric limits
+            vmin_ein = float(np.nanmin(V_model_hbond_))
+            if args.kcal:
+                vmin_ein *= 23.060548
+            vmax_ein = -vmin_ein
+            vmin_eout = float(np.nanmin(V_model_eout_))
+            if args.kcal:
+                vmin_eout *= 23.060548
+            vmax_eout = -vmin_eout
+            plot_polar_symmetric(V_model_hbond_, rv, A, title='Model Ein\n(H-bond)', cmap=args.cmap, kcal=args.kcal, ax=axes[0,2], bColorbar=False, rmax=args.rcut, vmin=vmin_ein, vmax=vmax_ein, geometry=geometry_first, n0=n0_first, plane=scan_plane)
+            plot_polar_symmetric(V_model_eout_, rv, A, title='Model Eout\n(Baseline)', cmap=args.cmap, kcal=args.kcal, ax=axes[0,3], bColorbar=False, rmax=args.rcut, vmin=vmin_eout, vmax=vmax_eout, geometry=geometry_first, n0=n0_first, plane=scan_plane)
 
             for i in range(4):
                 axes[1,i].axis('off')
@@ -512,9 +607,20 @@ def main():
             plot_system_panel(V_model_hbond_, rv, A, axes[0,2], 'Model Ein\n(H-bond)', args.kcal, sym=False, overlay_rmin=False, cmap=args.cmap)
             plot_system_panel(V_model_eout_, rv, A, axes[0,3], 'Model Eout\n(Baseline)', args.kcal, sym=False, overlay_rmin=False, cmap=args.cmap)
 
-            for ax in axes[0]:
-                if ax.images:
-                    ax.images[0].set_clim(vmin, vmax)
+            # Apply color limits: Etot uses reference-derived, Ein/Eout use their own symmetric
+            axes[0,0].images[0].set_clim(vmin, vmax)  # Reference
+            axes[0,1].images[0].set_clim(vmin, vmax)  # Etot (same as reference)
+            # Ein and Eout use their own symmetric limits
+            vmin_ein = float(np.nanmin(V_model_hbond_))
+            if args.kcal:
+                vmin_ein *= 23.060548
+            vmax_ein = -vmin_ein
+            vmin_eout = float(np.nanmin(V_model_eout_))
+            if args.kcal:
+                vmin_eout *= 23.060548
+            vmax_eout = -vmin_eout
+            axes[0,2].images[0].set_clim(vmin_ein, vmax_ein)  # Ein
+            axes[0,3].images[0].set_clim(vmin_eout, vmax_eout)  # Eout
 
             plot_profile_row(fig, axes, V_ref_, V_model_total_, V_model_hbond_, V_model_eout_, rv, A, frame_idx, Ps_raw, Ts_raw, n0_first, args.kcal, args.Rmax1D)
 
@@ -570,7 +676,8 @@ def main():
                                              clamp_start=clamp_start_use,
                                              clamp_max=clamp_max_use,
                                              kcal_objective=args.kcal,
-                                             config_file=mc_config_dict)
+                                             config_file=mc_config_dict,
+                                             output_basename=os.path.basename(args.output))
         
         # Convert MC results to JSON and apply
         optimized_json = mc_history_to_json(history_after, drv.atom_type_names)
@@ -681,6 +788,24 @@ def main():
         print(f"  Initial error: {history_after['initial_error']:.6e}")
         print(f"  Best error:    {history_after['best_error']:.6e}")
         print(f"  Steps accepted: {history_after['n_accepted']} / {history_after['n_steps']}")
+
+        if (args.temperature <= 0.0) and args.plot_accept:
+            acc_dofs  = history_after.get('accepted_dofs', [])
+            acc_err   = history_after.get('accepted_error', [])
+            acc_steps = history_after.get('accepted_steps', [])
+            out_dir_acc = os.path.splitext(args.output)[0] + '_accepted'
+            out_dir_acc_abs = os.path.abspath(out_dir_acc)
+            os.makedirs(out_dir_acc_abs, exist_ok=True)
+            dofs0 = history_after['initial_dofs']
+            J0    = float(history_after['initial_error'])
+            nacc = min(len(acc_dofs), len(acc_err), len(acc_steps), int(args.plot_accept_max))
+            print(f"MC DIAG: saving accepted-step comparison PNGs: {nacc} to {out_dir_acc_abs}")
+            for k in range(nacc):
+                dofs1 = np.array(acc_dofs[k], dtype=np.float64, copy=False)
+                J1    = float(acc_err[k])
+                istep = int(acc_steps[k])
+                out_path = os.path.join(out_dir_acc_abs, f"accept_{k:04d}_step{istep:06d}_J{J1:.3f}.png")
+                _save_mc_comparison_png(drv, frame_idx, V_ref, rv, A, mask_hbond, args, dofs0, dofs1, J0, J1, out_path, title_suffix=f" {istep} (#{k+1})", soft_clamp=history_after.get('soft_clamp', False), clamp_start=float(history_after.get('clamp_start', 4.0)), clamp_max=float(history_after.get('clamp_max', 6.0)), kcal_objective=bool(history_after.get('kcal_objective', False)))
 
         # --- RIGOROUS DIAGNOSTICS: verify what optimizer actually used ---
         W = history_after.get('W', None)
@@ -885,9 +1010,20 @@ def main():
                 ax = axes_comp[irow, icol]
                 if not ax.images: continue
                 im = ax.images[0]
-                if icol in (0, 1, 2, 3):
-                    # Use same symmetric limits as main plot (reference-derived)
+                if icol in (0, 1):
+                    # Reference and Etot use reference-derived limits
                     im.set_clim(vmin, vmax)
+                elif icol in (2, 3):
+                    # Ein and Eout use their own symmetric limits
+                    if irow == 0:  # Before
+                        V_data = V_model_hbond if icol == 2 else V_model_eout
+                    else:  # After
+                        V_data = V_model_hbond_opt if icol == 2 else V_model_eout_opt
+                    vmin_data = float(np.nanmin(V_data))
+                    if args.kcal:
+                        vmin_data *= 23.060548
+                    vmax_data = -vmin_data
+                    im.set_clim(vmin_data, vmax_data)
                 elif icol == 4:
                     # dE map: symmetric around 0 with its own range
                     dEmax = float(np.nanmax(np.abs(V_diff_before)))

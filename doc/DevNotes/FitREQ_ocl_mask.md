@@ -937,4 +937,135 @@ MC DIAG: RIGOROUS CHECK - Eout invariance
   OK: Eout invariant within tolerance
 ```
 
-All energies are now computed from a **single kernel call per state** with **explicit DOF-derived parameter uploads**, ensuring absolute consistency between optimizer and plotted diagnostics.
+---
+
+---
+
+## Critical Bug Fixes (May 2026)
+
+### Bug 1: tREQHs_from_dofs sqrt corruption for epair types
+**Location**: `pyBall/OCL/FittingDriver.py:tREQHs_from_dofs()`
+
+**Problem**: The function was applying `sqrt` to the E component for ALL atom types. But epair types (starting with 'E') store E directly without sqrt. This corrupted epair parameters during MC optimization, making the energy landscape nonsensical.
+
+**Fix**: Apply sqrt only to non-epair types:
+```python
+if ci == 1:  # E component
+    typename = dof['typename']
+    is_epair = isinstance(typename, str) and typename.startswith('E')
+    if not is_epair:
+        x = float(np.sqrt(max(x, 0.0)))
+```
+
+### Bug 2: DOF bounds forcing positivity for epair parameters
+**Location**: `tests/tFitREQ/plot_masked_energy.py` (DOF bounds creation)
+
+**Problem**: The bounds creation code assumed E and R components were always positive:
+```python
+elif comp == 0:  # R parameter (always positive)
+    min_val = max(0.1, current_val * 0.5)
+    max_val = current_val * 2.0
+```
+
+For epair types, both E and R can legitimately be negative. This clipped the search space and prevented proper exploration.
+
+**Fix**: Allow symmetric +/- bounds for epair types:
+```python
+elif comp == 0:  # R parameter
+    if is_epair:
+        min_val = current_val - 2.0
+        max_val = current_val + 2.0
+    else:  # Regular types: R is always positive
+        min_val = max(0.1, current_val * 0.5)
+        max_val = current_val * 2.0
+```
+
+### Bug 3: Fail-loud check for uphill acceptance at T=0
+**Location**: `pyBall/OCL/NonBondFitting.py:optimizer_montecarlo()`
+
+**Problem**: No verification that MC with temperature=0 actually only accepts downhill moves. If a bug caused uphill acceptance, it would be silent.
+
+**Fix**: Add explicit check:
+```python
+if accept:
+    if (temperature <= 0.0) and not (J_new < J_prev):
+        raise RuntimeError(f"BUG: optimizer_montecarlo accepted uphill move at T<=0: J_prev={J_prev:.6e} J_new={float(J_new):.6e}")
+```
+
+---
+
+## Convergence Plotting Enhancements (May 2026)
+
+### Full MC Trace Recording
+**Previous behavior**: `plot_mc_convergence()` only plotted "improvements only" (sparse points at parameter improvements). This hid stagnation and acceptance dynamics.
+
+**New behavior**: Record full traces in MC history:
+- `history['J_trace']`: J_cur after every MC step
+- `history['Jbest_trace']`: Running best J after every step
+- `history['accepted_trace']`: 0/1 per step indicating acceptance
+
+**Enhanced plotting**: `plot_mc_convergence()` now shows:
+- Gray line: J_cur(step) for every step
+- Blue line: J_best(step) running best
+- Red dots: Accepted steps
+
+This immediately reveals:
+- Whether the optimizer is stagnating
+- How often it accepts moves
+- Whether it's truly greedy downhill
+
+### Convergence Plot Location
+**File**: `tests/tFitREQ/mc_output/mc_convergence.png`
+
+Generated automatically by `run_mc_optimization()` after MC finishes. The file is saved in the MC output directory, not the current working directory.
+
+---
+
+## Soft Clamp Asymmetry (Physical Justification)
+
+**One-sided clamp is intentional and physically motivated**:
+- Over-repulsive regions (short distances) are rarely visited in molecular dynamics
+- Clamping positive residuals prevents outlier domination without risking collapse
+- Large negative residuals (over-attractive) are NOT clamped to prevent atoms from collapsing
+- This asymmetry is a design choice, not a bug
+
+**Implementation**: `_soft_clamp(dE, y1, y2)` in FittingDriver.py
+```python
+if dE <= y1: return dE  # identity for negative or small positive
+if dE >  y1: clamp toward y2  # smooth saturation for large positive only
+```
+
+**Effect on optimization**: The optimizer is strongly incentivized to push energies upward so residuals become positive-ish (protected by clamp). This explains why `frac(dE>0)` often jumps from ~0.15 to ~0.94+ after optimization.
+
+---
+
+## Accepted-Step Diagnostic Plots (May 2026)
+
+### Purpose
+Visual verification that each accepted step actually improves the objective and changes the energy meaningfully.
+
+### Implementation
+**Location**: `tests/tFitREQ/plot_masked_energy.py`
+
+**CLI flags**:
+- `--plot_accept`: Enable saving diagnostic PNGs after every accepted step
+- `--plot_accept_max N`: Limit number of plots to save (default 50)
+
+**Output**: Single-row comparison plots showing:
+- Reference (Total)
+- Model Etot (accepted state)
+- Model Ein (H-bond)
+- Model Eout (baseline)
+- Etot-Ref (difference)
+- Weighted Error (autoscaled per-step for visibility)
+
+**Output directory**: `tests/tFitREQ/<output_basename>_accepted/`
+
+**Example filename**: `accept_0004_step000006_J176.499.png`
+
+### Key Features
+- Single-row layout (no redundant "before" row)
+- Weighted error autoscales per-step (no forced common clim)
+- Uses same softclamp/kcal settings as the optimizer run
+- Enables visual verification of downhill progress
+

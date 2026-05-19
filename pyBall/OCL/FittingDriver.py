@@ -176,21 +176,6 @@ class FittingDriver(OpenCLBase):
             if (r == 0.0) and (e == 0.0):
                 print(f"WARNING: {type_name}.R==0 and {type_name}.E==0 => epair coefficients are zero; Ein will be ~0")
 
-        # CRITICAL FIX: Rebuild tREQHs_base from updated base_params
-        # Otherwise tREQHs_base remains stale with old parameter values
-        if hasattr(self, 'tREQHs_base') and self.tREQHs_base is not None:
-            n_types_in_data = len(self.atom_type_names)
-            for i, type_name in enumerate(self.atom_type_names):
-                params = self.base_params.get(type_name)
-                if params:
-                    self.tREQHs_base[i, 0] = params['R']
-                    if isinstance(type_name, str) and type_name.startswith('E'):
-                        self.tREQHs_base[i, 1] = params['E']
-                    else:
-                        self.tREQHs_base[i, 1] = np.sqrt(params['E'])
-                    self.tREQHs_base[i, 2] = params['Q']
-                    self.tREQHs_base[i, 3] = params['H']
-
     def extract_macro_from_forces(self, macro_name, forces_path=None):
         """Extract a macro definition from Forces.cl file.
         
@@ -1351,7 +1336,8 @@ class FittingDriver(OpenCLBase):
 
     def tREQHs_from_dofs(self, dofs_vec):
         """Return a fresh tREQHs array updated from DOF vector.
-        DOF order follows `self.dof_definitions`. Comp 1 (EvdW) is stored as sqrt(E).
+        DOF order follows `self.dof_definitions`. Comp 1 (EvdW) is stored as sqrt(E) for regular types,
+        but for epair types (starting with 'E'), E is stored directly without sqrt.
         """
         T = np.array(self.tREQHs_base, copy=True)
         for i, dof in enumerate(self.dof_definitions):
@@ -1359,11 +1345,14 @@ class FittingDriver(OpenCLBase):
             if ti is None: continue
             ci = int(dof['comp'])
             x  = float(dofs_vec[i])
-            if ci == 1: x = float(np.sqrt(max(x, 0.0)))
+            # CRITICAL FIX: Only apply sqrt to E component for NON-epair types
+            # Epair types (starting with 'E') store E directly without sqrt
+            if ci == 1:
+                typename = dof['typename']
+                is_epair = isinstance(typename, str) and typename.startswith('E')
+                if not is_epair:
+                    x = float(np.sqrt(max(x, 0.0)))
             T[ti, ci] = x
-            # DEBUG: Print H-component updates
-            if ci == 3:
-                print(f"tREQHs_from_dofs: {dof['typename']}.H = {x:.6f} (was {self.tREQHs_base[ti, ci]:.6f})")
         return T.astype(np.float32, copy=False)
 
     @staticmethod

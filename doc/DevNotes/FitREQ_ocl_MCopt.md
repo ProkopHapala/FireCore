@@ -659,4 +659,233 @@ Add a `--check` mode that validates all inputs:
 3. Reads DOFs → shows active vs inactive parameters
 4. Reports first/last reference energy range for sanity
 
+---
 
+## Critical Bug Fixes (May 2026)
+
+### Bug 1: tREQHs_from_dofs sqrt corruption for epair types
+**Location**: `pyBall/OCL/FittingDriver.py:tREQHs_from_dofs()`
+
+**Problem**: The function was applying `sqrt` to the E component for ALL atom types. But epair types (starting with 'E') store E directly without sqrt. This corrupted epair parameters during MC optimization, making the energy landscape nonsensical.
+
+**Fix**: Apply sqrt only to non-epair types:
+```python
+if ci == 1:  # E component
+    typename = dof['typename']
+    is_epair = isinstance(typename, str) and typename.startswith('E')
+    if not is_epair:
+        x = float(np.sqrt(max(x, 0.0)))
+```
+
+### Bug 2: DOF bounds forcing positivity for epair parameters
+**Location**: `tests/tFitREQ/plot_masked_energy.py` (DOF bounds creation)
+
+**Problem**: The bounds creation code assumed E and R components were always positive:
+```python
+elif comp == 0:  # R parameter (always positive)
+    min_val = max(0.1, current_val * 0.5)
+    max_val = current_val * 2.0
+```
+
+For epair types, both E and R can legitimately be negative. This clipped the search space and prevented proper exploration.
+
+**Fix**: Allow symmetric +/- bounds for epair types:
+```python
+elif comp == 0:  # R parameter
+    if is_epair:
+        min_val = current_val - 2.0
+        max_val = current_val + 2.0
+    else:  # Regular types: R is always positive
+        min_val = max(0.1, current_val * 0.5)
+        max_val = current_val * 2.0
+```
+
+### Bug 3: Fail-loud check for uphill acceptance at T=0
+**Location**: `pyBall/OCL/NonBondFitting.py:optimizer_montecarlo()`
+
+**Problem**: No verification that MC with temperature=0 actually only accepts downhill moves. If a bug caused uphill acceptance, it would be silent.
+
+**Fix**: Add explicit check:
+```python
+if accept:
+    if (temperature <= 0.0) and not (J_new < J_prev):
+        raise RuntimeError(f"BUG: optimizer_montecarlo accepted uphill move at T<=0: J_prev={J_prev:.6e} J_new={float(J_new):.6e}")
+```
+
+---
+
+## Convergence Plotting Enhancements (May 2026)
+
+### Full MC Trace Recording
+**Previous behavior**: `plot_mc_convergence()` only plotted "improvements only" (sparse points at parameter improvements). This hid stagnation and acceptance dynamics.
+
+**New behavior**: Record full traces in MC history:
+- `history['J_trace']`: J_cur after every MC step
+- `history['Jbest_trace']`: Running best J after every step
+- `history['accepted_trace']`: 0/1 per step indicating acceptance
+
+**Enhanced plotting**: `plot_mc_convergence()` now shows:
+- Gray line: J_cur(step) for every step
+- Blue line: J_best(step) running best
+- Red dots: Accepted steps
+
+This immediately reveals:
+- Whether the optimizer is stagnating
+- How often it accepts moves
+- Whether it's truly greedy downhill
+
+### Convergence Plot Location
+**File**: `tests/tFitREQ/mc_output/mc_convergence.png`
+
+Generated automatically by `run_mc_optimization()` after MC finishes. The file is saved in the MC output directory, not the current working directory.
+
+---
+
+## Soft Clamp Asymmetry (Physical Justification)
+
+**One-sided clamp is intentional and physically motivated**:
+- Over-repulsive regions (short distances) are rarely visited in molecular dynamics
+- Clamping positive residuals prevents outlier domination without risking collapse
+- Large negative residuals (over-attractive) are NOT clamped to prevent atoms from collapsing
+- This asymmetry is a design choice, not a bug
+
+**Implementation**: `_soft_clamp(dE, y1, y2)` in FittingDriver.py
+```python
+if dE <= y1: return dE  # identity for negative or small positive
+if dE >  y1: clamp toward y2  # smooth saturation for large positive only
+```
+
+**Effect on optimization**: The optimizer is strongly incentivized to push energies upward so residuals become positive-ish (protected by clamp). This explains why `frac(dE>0)` often jumps from ~0.15 to ~0.94+ after optimization.
+
+---
+
+## Accepted-Step Diagnostic Plots (May 2026)
+
+### Purpose
+Visual verification that each accepted step actually improves the objective and changes the energy meaningfully.
+
+### Implementation
+**Location**: `tests/tFitREQ/plot_masked_energy.py`
+
+**CLI flags**:
+- `--plot_accept`: Enable saving diagnostic PNGs after every accepted step
+- `--plot_accept_max N`: Limit number of plots to save (default 50)
+
+**Output**: Single-row comparison plots showing:
+- Reference (Total)
+- Model Etot (accepted state)
+- Model Ein (H-bond)
+- Model Eout (baseline)
+- Etot-Ref (difference)
+- Weighted Error (autoscaled per-step for visibility)
+
+**Output directory**: `tests/tFitREQ/<output_basename>_accepted/`
+
+**Example filename**: `accept_0004_step000006_J176.499.png`
+
+### Key Features
+- Single-row layout (no redundant "before" row)
+- Weighted error autoscales per-step (no forced common clim)
+- Uses same softclamp/kcal settings as the optimizer run
+- Enables visual verification of downhill progress
+
+---
+
+### Bug 4: MC proposal step scaled by arbitrary DOF bounds
+**Location**: `pyBall/OCL/NonBondFitting.py:optimizer_montecarlo()`
+
+**Problem**: The optimizer was scaling proposal steps by the DOF parameter range:
+```python
+rng = hi - lo
+delta = (np.random.rand(n_dofs) - 0.5) * 2.0 * step_size * rng
+new_dofs = np.clip(dofs + delta, lo, hi)
+```
+
+When bounds were set to huge sentinel values (e.g., `±1e300` intended as "no bound"), this caused:
+- `rng ~ 2e300`
+- `delta ~ step_size * 2e300` → absurdly huge proposal steps
+- Energies/objective went to Inf/NaN or astronomically worse
+- Greedy T=0 acceptance rejected everything → `accepted = 0`, `J_best == J_initial`
+
+This was a **stupid hidden assumption**: bounds were meant to be optional constraints, but they were **driving the proposal magnitude**.
+
+**Fix**: Make proposals independent of bounds. Use absolute step_size in parameter units:
+```python
+# Random perturbation: absolute step_size in parameter units (independent of bounds)
+delta = (np.random.rand(n_dofs) - 0.5) * 2.0 * step_size
+new_dofs = dofs + delta
+if np.any(bounded):
+    new_dofs[bounded] = np.clip(new_dofs[bounded], lo[bounded], hi[bounded])
+```
+
+Where `bounded = np.isfinite(lo) & np.isfinite(hi) & (np.abs(lo) < 1e100) & (np.abs(hi) < 1e100)` detects reasonable finite bounds. Clipping is only applied to bounded DOFs.
+
+Now `±1e300` truly behaves as "no bounds" and does not break the optimizer.
+
+### Bug 5: Convergence plot y-axis destroyed by huge bound lines
+**Location**: `pyBall/OCL/NonBondFitting.py:plot_mc_convergence()`
+
+**Problem**: The convergence plot was drawing horizontal lines at DOF min/max bounds:
+```python
+ax2.axhline(dof['min'], color=colors[i], ls=':', lw=0.7, alpha=0.5)
+ax2.axhline(dof['max'], color=colors[i], ls=':', lw=0.7, alpha=0.5)
+```
+
+With bounds set to `±1e300`, matplotlib expanded the y-limits to include these lines, causing:
+- Y-range ~ `±1e300`
+- Actual DOF trace (values near 0) appeared as a flat line
+- Plot became useless for visualizing parameter evolution
+
+**Fix**: Only draw min/max lines if bounds are reasonable finite values:
+```python
+vmin = float(dof.get('min', np.nan))
+vmax = float(dof.get('max', np.nan))
+if np.isfinite(vmin) and np.isfinite(vmax) and (abs(vmin) < 1e100) and (abs(vmax) < 1e100):
+    ax2.axhline(vmin, color=colors[i], ls=':', lw=0.7, alpha=0.5)
+    ax2.axhline(vmax, color=colors[i], ls=':', lw=0.7, alpha=0.5)
+```
+
+Now the y-axis autoscales based on the actual DOF trace, not the placeholder bounds.
+
+### Bug 6: DOF generation skipping zero-valued parameters despite config
+**Location**: `tests/tFitREQ/plot_masked_energy.py:create_dof_definitions_from_current()`
+
+**Problem**: The DOF generation code was skipping parameters with value zero:
+```python
+if abs(current_val) < 1e-10 and comp != 2:  # Q can be zero
+    continue
+```
+
+This was intended to skip unused parameters, but it also skipped parameters explicitly listed in the MC config that legitimately started at zero. When users set `E_O3.R = 0` in `epair_defaults.json` and listed `"E_O3": ["R"]` in `mc_config.json`, the optimizer would silently ignore this DOF.
+
+**Fix**: Only skip zero-valued parameters when **no config is provided**:
+```python
+# Skip if value is zero (likely not used) - ONLY when no config provided
+# When config is provided, user explicitly chooses what to optimize
+if not config and abs(current_val) < 1e-10 and comp != 2:  # Q can be zero
+    continue
+```
+
+When config is present, the user's explicit parameter list takes precedence over the zero-skip heuristic.
+
+### Bug 7: Backend silently skipping DOFs for atom types not in loaded data
+**Location**: `pyBall/OCL/FittingDriver.py:prepare_host_data()`
+
+**Problem**: The backend builds `atom_type_map` only from atom types present in the loaded XYZ data. When a DOF definition references a typename not in this map, the backend silently skips it:
+```python
+if typename not in self.atom_type_map:
+    continue  # Skip unknown typename
+```
+
+This meant parameters listed in `mc_config.json` but not present in the XYZ data were ignored without warning. For example, if the data contains only H_O and O_3 types, but the config specifies E_O3 (a different epair type), the backend would skip E_O3 DOFs entirely.
+
+**Fix**: In `create_dof_definitions_from_current()`, add all config typenames to the backend's `atom_type_map` before DOF generation:
+```python
+# Add config typenames to atom_type_map so backend doesn't skip them
+for typename in type_names_from_config:
+    if typename not in drv.atom_type_map:
+        drv.atom_type_map[typename] = len(drv.atom_type_names)
+        drv.atom_type_names.append(typename)
+```
+
+Now any parameter listed in the config is included in optimization, regardless of whether its atom type appears in the loaded data.
