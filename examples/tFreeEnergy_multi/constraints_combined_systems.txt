@@ -7,5 +7,5 @@
 # Initial endpoints match the two Si atoms in cpp/common_resources/polymers/combined_systems.xyz
 # to avoid preconditioning the 420-atom structure from the unrelated DA distance.
 
-95    -9.84574    4.44503    2.5  -9.84574    4.44503    2.5
-305    2.0    4.44503    2.5   30.0    4.44503    2.5
+36    -9.84574    4.44503    2.5  -9.84574    4.44503    2.5
+81    2.0    4.44503    2.5   30.0    4.44503    2.5

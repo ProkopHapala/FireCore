@@ -222,7 +222,7 @@ touch minima.dat
 
 
 # ./$name -m 50 -uff -x common_resources/DA.mol2 -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0
-# ./$name -m 50 -uff -x common_resources/xyz/DA.xyz -g common_resources/xyz/surfaces_for_throughput/NaCl_16x16_Cl_hole -iParalel 3 -T 300 0.2 -gopt 10000,100000 0.25,1.0 -dt 0.005
+./$name -m 5  -x common_resources/xyz/DA.xyz -g common_resources/xyz/surfaces_for_throughput/NaCl_16x16_Cl_hole -iParalel 3 -T 300 0.2 -gopt 10000,100000 0.25,1.0 -dt 0.005
 # ./$name -m 50 -x common_resources/entropic_spring_30.xyz -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0 -dt 0.0005
 # ./$name -m 5 -uff -x common_resources/xyz/nHexadecan.xyz -iParalel 3 -T 300 0.2 -gopt 10000,100000 0.25,1.0
 
@@ -234,9 +234,4 @@ touch minima.dat
 
 # ./$name -m 1 -x common_resources/NNO-hh_2_POZOR_noXx_all -Ftol 1e-4     -iParalel 3 -T 1000 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 -dt 0.05
 
-# ./$name -m 1 -x common_resources/polymers/my_anchor_polymer.xyz
-# ./$name -m 1 -x common_resources/polymers/polymer_and_molecule/attached_H-h_1_noXx_1
-# ./$name -m 1 -x common_resources/polymers/polymer_and_molecule/attached_O-h_noXx_1
-# ./$name -m 20 -x common_resources/polymers/combined_systems -g common_resources/xyz/surfaces_for_throughput/NaCl_1x1_L3 -iParalel 3 -T 300 0.2 -gopt 10000,100000 0.25,1.0
-# ./$name -m 1 -x common_resources/polymers/my_pna_polymer.xyz
-./$name -m 20 -x common_resources/polymers/gui_builder/output/generated_system.xyz -g common_resources/xyz/surfaces_for_throughput/NaCl_1x1_L3 -iParalel 3 -T 300 0.2 -gopt 10000,100000 0.25,1.0
+# ./$name -m 20 -x common_resources/polymers/gui_builder/output/generated_system.xyz -g common_resources/xyz/surfaces_for_throughput/NaCl_1x1_L3 -iParalel 3 -T 300 0.2 -gopt 10000,100000 0.25,1.0

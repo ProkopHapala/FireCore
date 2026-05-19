@@ -18,7 +18,7 @@ NEQSTEPS=1000
 DT=0.05
 TDAMP=150
 TEMP=300
-XYZ_NAME="../../cpp/common_resources/polymers/combined_systems_alkane.xyz"
+XYZ_NAME="../../cpp/common_resources/polymers/gui_builder/output/generated_system.xyz"
 CONSTRAINTS="constraints_combined_systems.txt"
 OUT_BASE="combined_systems"
 

@@ -9,6 +9,7 @@ from pyBall import MMFF_multi as mmff
 
 def load_constraints(filename="constraints.txt"):
     constraints = []
+    cv_atoms = []
 
     with open(filename, 'r') as f:
         for line in f:
@@ -26,9 +27,11 @@ def load_constraints(filename="constraints.txt"):
             initial_pos = [float(parts[1]), float(parts[2]), float(parts[3])]
             final_pos = [float(parts[4]), float(parts[5]), float(parts[6])]
             constraints.append((initial_pos, final_pos))
+            cv_atoms.append(atom_idx)
 
-
-    return constraints if constraints else None
+    if not constraints:
+        return None, None
+    return constraints, cv_atoms
 
 # Thermodynamic Integration for Entropic Spring
 def main():
@@ -86,7 +89,7 @@ def main():
         cvf_max=+0.1,
     )
 
-    constraints = load_constraints(args.constraints)
+    constraints, cv_atoms = load_constraints(args.constraints)
 
     if constraints is None or len(constraints) == 0:
         print("ERROR: No constraints loaded!")
@@ -123,7 +126,8 @@ def main():
         hardAtoms = 1 if args.hard_atoms else -1,
         softAtoms = 1 if args.soft_atoms else -1,
         hardDist  = 1 if args.hard_dist  else -1,
-        softDist  = 1 if args.soft_dist  else -1
+        softDist  = 1 if args.soft_dist  else -1,
+        cv_atoms=cv_atoms
     )
     print(f"Raw free energy change: {result:.6f} eV")
 

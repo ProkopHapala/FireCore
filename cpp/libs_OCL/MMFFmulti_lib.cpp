@@ -819,8 +819,8 @@ void setConstraints( int hardAtoms, int softAtoms, int hardDist, int softDist, i
     #undef _setbool
 }
 
-double computeFreeEnergy(int nCVs, float* initial_positions, float* final_positions, int nLambda, int nMDsteps, int nEQsteps, double Fconv, int mode, double K, int hardAtoms, int softAtoms, int hardDist, int softDist){
-    return W.computeFreeEnergy(nCVs, (Vec3f*)initial_positions, (Vec3f*)final_positions, nLambda, nMDsteps, nEQsteps, Fconv, mode, K, hardAtoms, softAtoms, hardDist, softDist);
+double computeFreeEnergy(int nCVs, float* initial_positions, float* final_positions, int nLambda, int nMDsteps, int nEQsteps, double Fconv, int mode, double K, int hardAtoms, int softAtoms, int hardDist, int softDist, int* cv_atoms){
+    return W.computeFreeEnergy(nCVs, (Vec3f*)initial_positions, (Vec3f*)final_positions, nLambda, nMDsteps, nEQsteps, Fconv, mode, K, hardAtoms, softAtoms, hardDist, softDist, cv_atoms);
 }
 
 double entropic_spring_TI_gpu_debug(double lamda1, double lamda2, int n, int* dc, int nbStep, int nMDsteps, int nEQsteps, double tdamp, double T, double dt, double Fconv){
@@ -829,12 +829,12 @@ double entropic_spring_TI_gpu_debug(double lamda1, double lamda2, int n, int* dc
 }
 
 void scanRelaxed( int nCVs, float* initial_positions, float* final_positions, int nLambda, int nsteps, double Fconv, double K,
-                  int hardAtoms, int softAtoms, int hardDist, int softDist, double* Es, float* ppos ){
-    W.scan_Milan( nCVs, (Vec3f*)initial_positions, (Vec3f*)final_positions, nLambda, nsteps, Fconv, K, true, Es, ppos );
+                  int hardAtoms, int softAtoms, int hardDist, int softDist, double* Es, float* ppos, int* cv_atoms ){
+    W.scan_Milan( nCVs, (Vec3f*)initial_positions, (Vec3f*)final_positions, nLambda, nsteps, Fconv, K, true, Es, ppos, cv_atoms );
 }
 
-void scan_Milan( int nCVs, float* initial_positions, float* final_positions, int nLambda, int nsteps, double Fconv, double K, bool bRelaxed, double* Es, float* ppos ){
-    W.scan_Milan( nCVs, (Vec3f*)initial_positions, (Vec3f*)final_positions, nLambda, nsteps, Fconv, K, bRelaxed, Es, ppos );
+void scan_Milan( int nCVs, float* initial_positions, float* final_positions, int nLambda, int nsteps, double Fconv, double K, bool bRelaxed, double* Es, float* ppos, int* cv_atoms ){
+    W.scan_Milan( nCVs, (Vec3f*)initial_positions, (Vec3f*)final_positions, nLambda, nsteps, Fconv, K, bRelaxed, Es, ppos, cv_atoms );
 }
 
 

@@ -655,119 +655,199 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
     }
 
 
-    void setupTIConstraints( int isys, float lambda, int nCVs, Vec3f* initial_positions, Vec3f* final_positions, bool bAlign=false, float K=10.0f ){
+    void applyConstraintPair(int isys, float lambda, int ia1, int ia2, Vec3f p1_0, Vec3f p1_1, Vec3f p2_0, Vec3f p2_1, bool bAlign, float K, int natoms_active, int nvec_active, bool is_first_pair) {
+        int i0a = isys * natoms_active;
+        int i0v = isys * nvec_active;
+        
+        Vec3f T1, T2;
+        T1.set_sub(p1_1, p1_0); T1.mul(lambda); T1.add(p1_0);
+        T2.set_sub(p2_1, p2_0); T2.mul(lambda); T2.add(p2_0);
+        float L_target = (T1 - T2).norm();
+        
+        Quat4f acon1=Quat4fZero, acon2=Quat4fZero;
+        Quat4f aconK1=Quat4fZero, aconK2=Quat4fZero;
+        
+        if( bHardConstrainedAtoms || bSoftConstrainedAtoms ){
+            acon1.f = T1; acon2.f = T2;
+            float type_offset = bHardConstrainedAtoms ? 0.0e6f : 2.0e6f;
+            acon1.w = 1e6f + type_offset;
+            acon2.w = 2e6f + type_offset;
+            if( bSoftConstrainedAtoms ){
+                aconK1.w = K;
+                aconK2.w = K;
+            }
+            aconK1.f.set_sub(p1_1, p1_0);
+            aconK2.f.set_sub(p2_1, p2_0);
+        } 
+        else if ( bHardConstrainedDistance || bSoftConstrainedDistance ){
+            float type_offset = bHardConstrainedDistance ? 4.0e6f : 6.0e6f;
+            acon1.w = 1e6f + type_offset;
+            acon2.w = 2e6f + type_offset;
+            acon1.x = (float)ia2; acon1.y = L_target;
+            acon2.x = (float)ia1; acon2.y = L_target;
+            Vec3f dT1, dT2, dD, h;
+            dT1.set_sub(p1_1, p1_0);
+            dT2.set_sub(p2_1, p2_0);
+            dD.set_sub(dT1, dT2);
+            h.set_sub(T1, T2);
+            const float invL = (L_target > 1e-8f) ? (1.0f / L_target) : 0.0f;
+            const float dLdl = h.dot(dD) * invL;
+            aconK1.x = 0.5f * dLdl;
+            aconK2.x = 0.5f * dLdl;
+            if( bSoftConstrainedDistance ){
+                aconK1.w = K;
+                aconK2.w = K;
+            }
+        }
+        constr [i0a + ia1] = acon1;
+        constr [i0a + ia2] = acon2;
+        constrK[i0a + ia1] = aconK1;
+        constrK[i0a + ia2] = aconK2;
+        
+        if( bAlign ){
+            if(is_first_pair){
+                const Vec3f P1_ref = atoms[i0v + ia1].f;
+                const Vec3f P2_ref = atoms[i0v + ia2].f;
+                Vec3f u0 = P1_ref - P2_ref;
+                Vec3f u1 = T1 - T2;
+                const float L0 = u0.norm();
+                const float L1 = u1.norm();
+                if( (L0 > 1.0e-6f) && (L1 > 1.0e-6f) ){
+                    const Vec3f mid0 = (P1_ref + P2_ref)*0.5f;
+                    const Vec3f mid1 = (T1 + T2)*0.5f;
+                    const Vec3f e0   = u0*(1.0f/L0);
+                    const Vec3f e1   = u1*(1.0f/L1);
+                    const float stretch = L1/L0;
+                    const Mat3f rot = ti_rotation_between_dirs( u0, u1 );
+                    for(int i=0; i<nvec_active; i++){
+                        if(i < natoms_active){
+                            atoms[i0v + i].f = ti_precondition_atom_position( atoms[i0v + i].f, mid0, e0, rot, mid1, e1, stretch );
+                        }else{
+                            atoms[i0v + i].f = rot.dot( atoms[i0v + i].f );
+                        }
+                    }
+                }
+            }
+            atoms[i0v + ia1] = (Quat4f){T1.x, T1.y, T1.z, 0.0f};
+            atoms[i0v + ia2] = (Quat4f){T2.x, T2.y, T2.z, 0.0f};
+        }
+    }
+
+    void setupTIConstraints( int isys, float lambda, int nCVs, Vec3f* initial_positions, Vec3f* final_positions, int* cv_atoms=nullptr, bool bAlign=false, float K=10.0f ){
         const int natoms_active = bUFF ? ffu.natoms : ocl.nAtoms;
         const int nvec_active   = bUFF ? ffu.natoms : ocl.nvecs;
         const int* atypes_active = bUFF ? ffu.atypes : ffls[isys].atypes;
         const int i0a = isys * natoms_active;
         const int itype_Si = params.getAtomType("Si");
+        
         for(int ia=0; ia<natoms_active; ia++){
             constr [i0a + ia] = Quat4f{0.0f, 0.0f, 0.0f, -1.0f};
             constrK[i0a + ia] = Quat4fZero;
         }
-        
-        int iSi1 = -1;
-        int si_count = 0; // counts pairs of Si atoms
-        for(int ia=0; ia<natoms_active; ia++){
-            if(atypes_active[ia]==itype_Si){
-                if(iSi1 == -1){ iSi1 = ia; }
-                else {
-                    int iSi2 = ia;
-                    if( si_count < nCVs ){
-                        Vec3f p1_0 = initial_positions[si_count*2];
-                        Vec3f p1_1 = final_positions  [si_count*2];
-                        Vec3f p2_0 = initial_positions[si_count*2+1];
-                        Vec3f p2_1 = final_positions  [si_count*2+1];
 
-                        Vec3f T1, T2;
-                        T1.set_sub(p1_1, p1_0); T1.mul(lambda); T1.add(p1_0);
-                        T2.set_sub(p2_1, p2_0); T2.mul(lambda); T2.add(p2_0);
-                        float L_target = (T1 - T2).norm();
-
-                        Quat4f acon1=Quat4fZero, acon2=Quat4fZero;
-                        Quat4f aconK1=Quat4fZero, aconK2=Quat4fZero;
-
-                        if( bHardConstrainedAtoms || bSoftConstrainedAtoms ){
-                            acon1.f = T1; acon2.f = T2;
-                            float type_offset = bHardConstrainedAtoms ? 0.0e6f : 2.0e6f;
-                            acon1.w = 1e6f + type_offset;
-                            acon2.w = 2e6f + type_offset;
-                            if( bSoftConstrainedAtoms ){
-                                aconK1.w = K;
-                                aconK2.w = K;
-                            }
-                            aconK1.f.set_sub(p1_1, p1_0);
-                            aconK2.f.set_sub(p2_1, p2_0);
-                        } 
-                        else if ( bHardConstrainedDistance || bSoftConstrainedDistance ){
-                            float type_offset = bHardConstrainedDistance ? 4.0e6f : 6.0e6f;
-                            acon1.w = 1e6f + type_offset;
-                            acon2.w = 2e6f + type_offset;
-                            acon1.x = (float)iSi2; acon1.y = L_target;
-                            acon2.x = (float)iSi1; acon2.y = L_target;
-                            Vec3f dT1, dT2, dD, h;
-                            dT1.set_sub(p1_1, p1_0);
-                            dT2.set_sub(p2_1, p2_0);
-                            dD.set_sub(dT1, dT2);
-                            h.set_sub(T1, T2);
-                            const float invL = (L_target > 1e-8f) ? (1.0f / L_target) : 0.0f;
-                            const float dLdl = h.dot(dD) * invL;
-                            // Each atom contributes the same radial projection; store half on each side
-                            // so the host-side sum reconstructs dU/dlambda only once per constrained pair.
-                            aconK1.x = 0.5f * dLdl;
-                            aconK2.x = 0.5f * dLdl;
-                            if( bSoftConstrainedDistance ){
-                                aconK1.w = K;
-                                aconK2.w = K;
-                            }
-                        }
-                        constr [i0a + iSi1] = acon1;
-                        constr [i0a + iSi2] = acon2;
-                        constrK[i0a + iSi1] = aconK1;
-                        constrK[i0a + iSi2] = aconK2;
-
-                        if( bAlign ){
-                            int i0v = isys * nvec_active;
-                            // Precondition the whole system from the reference endpoint geometry to the
-                            // current TI window. This reduces large nonequilibrium transients caused by
-                            // moving only the constrained atoms while leaving the rest of the chain at
-                            // the lambda=0 geometry.
-                            if((si_count == 0) ){
-                                const Vec3f P1_ref = atoms[i0v + iSi1].f;
-                                const Vec3f P2_ref = atoms[i0v + iSi2].f;
-                                Vec3f u0 = P1_ref - P2_ref;
-                                Vec3f u1 = T1 - T2;
-                                const float L0 = u0.norm();
-                                const float L1 = u1.norm();
-                                if( (L0 > 1.0e-6f) && (L1 > 1.0e-6f) ){
-                                    const Vec3f mid0 = (P1_ref + P2_ref)*0.5f;
-                                    const Vec3f mid1 = (T1 + T2)*0.5f;
-                                    const Vec3f e0   = u0*(1.0f/L0);
-                                    const Vec3f e1   = u1*(1.0f/L1);
-                                    const float stretch = L1/L0;
-                                    const Mat3f rot = ti_rotation_between_dirs( u0, u1 );
-                                    for(int i=0; i<nvec_active; i++){
-                                        if(i < natoms_active){
-                                            atoms[i0v + i].f = ti_precondition_atom_position( atoms[i0v + i].f, mid0, e0, rot, mid1, e1, stretch );
-                                        }else{
-                                            atoms[i0v + i].f = rot.dot( atoms[i0v + i].f );
-                                        }
-                                    }
-                                }
-                            }
-                            atoms[i0v + iSi1] = (Quat4f){T1.x, T1.y, T1.z, 0.0f};
-                            atoms[i0v + iSi2] = (Quat4f){T2.x, T2.y, T2.z, 0.0f};
-                        }
-                    }
-                    si_count++;
-                    iSi1 = -1;
+        bool bUseAtomPermut = false;
+        std::vector<int> uff_atom_map;
+        if(bUFF && ((int)builder.atoms.size() >= natoms_active)){
+            uff_atom_map.assign(natoms_active, -1);
+            for(int ia=0; ia<natoms_active; ia++){
+                int id = builder.atoms[ia].id;
+                if((id >= 0) && (id < natoms_active)){ uff_atom_map[id] = ia; }
+            }
+        }
+        if(!bUFF && ((int)builder.atom_permut.size() >= natoms_active) && ((int)builder.atoms.size() >= natoms_active)){
+            bUseAtomPermut = true;
+            std::vector<int> seen(natoms_active, 0);
+            for(int ia=0; ia<natoms_active; ia++){
+                int id = builder.atoms[ia].id;
+                int ip = builder.atom_permut[ia];
+                if((id < 0) || (id >= natoms_active) || (ip < 0) || (ip >= natoms_active) || seen[id]){
+                    bUseAtomPermut = false;
+                    break;
                 }
+                seen[id] = 1;
+            }
+        }
+
+        int next_si_search = 0;
+        auto get_next_si = [&]() -> int {
+            for(int ia = next_si_search; ia < natoms_active; ia++){
+                if(atypes_active[ia] == itype_Si){
+                    next_si_search = ia + 1;
+                    return ia;
+                }
+            }
+            return -1;
+        };
+        auto get_valid_ia = [&](int orig_ia, int icv) -> int {
+            if(orig_ia >= 0){
+                int ia = -1;
+                if(bUFF){
+                    if(orig_ia < (int)uff_atom_map.size()){ ia = uff_atom_map[orig_ia]; }
+                }else{
+                    ia = orig_ia;
+                    if(bUseAtomPermut && (orig_ia < (int)builder.atom_permut.size())){ ia = builder.atom_permut[orig_ia]; }
+                    if((ia < 0) || (ia >= natoms_active)){
+                        if(orig_ia < natoms_active){ ia = orig_ia; }
+                    }
+                }
+                if((ia >= 0) && (ia < natoms_active)){ return ia; }
+                printf("WARNING: setupTIConstraints invalid atom index for CV %d: original=%d mapped=%d natoms=%d; trying Si fallback\n", icv, orig_ia, ia, natoms_active);
+            }
+            int ia_si = get_next_si();
+            if(ia_si >= 0){ return ia_si; }
+            printf("ERROR: setupTIConstraints could not resolve CV %d: atom index %d is invalid and no unused Si atom was found\n", icv, orig_ia);
+            return -1;
+        };
+
+        int nPairs = nCVs / 2;
+        for(int icv = 0; icv < nPairs; icv++) {
+            int orig_ia1 = cv_atoms ? cv_atoms[icv * 2] : -1;
+            int orig_ia2 = cv_atoms ? cv_atoms[icv * 2 + 1] : -1;
+            int ia1 = get_valid_ia(orig_ia1, icv*2);
+            int ia2 = get_valid_ia(orig_ia2, icv*2+1);
+            
+            if (ia1 < 0 || ia2 < 0) {
+                printf("WARNING: setupTIConstraints could not resolve atom indices for pair %d\n", icv);
+                continue;
+            }
+
+            Vec3f p1_0 = initial_positions[icv*2];
+            Vec3f p1_1 = final_positions  [icv*2];
+            Vec3f p2_0 = initial_positions[icv*2+1];
+            Vec3f p2_1 = final_positions  [icv*2+1];
+            
+            applyConstraintPair(isys, lambda, ia1, ia2, p1_0, p1_1, p2_0, p2_1, bAlign, K, natoms_active, nvec_active, icv == 0);
+        }
+        
+        // Apply an odd leftover atom independently when nCVs is not even.
+        if (nCVs % 2 != 0) {
+            int icv = nCVs - 1;
+            int orig_ia = cv_atoms ? cv_atoms[icv] : -1;
+            int ia = get_valid_ia(orig_ia, icv);
+            if (ia >= 0) {
+                Vec3f p_0 = initial_positions[icv];
+                Vec3f p_1 = final_positions  [icv];
+                
+                Vec3f T; T.set_sub(p_1, p_0); T.mul(lambda); T.add(p_0);
+                
+                Quat4f acon = Quat4fZero;
+                Quat4f aconK = Quat4fZero;
+                float type_offset = bHardConstrainedAtoms ? 0.0e6f : 2.0e6f;
+                acon.f = T;
+                acon.w = 1e6f + type_offset;
+                
+                if( bSoftConstrainedAtoms ) aconK.w = K;
+                aconK.f.set_sub(p_1, p_0);
+                
+                constr [i0a + ia] = acon;
+                constrK[i0a + ia] = aconK;
+                if( bAlign ) atoms[isys * nvec_active + ia] = (Quat4f){T.x, T.y, T.z, 0.0f};
             }
         }
     }
 
     double computeFreeEnergy(int nCVs, Vec3f* initial_positions, Vec3f* final_positions, int nLambda, int nMDsteps = 100000, int nEQsteps = 10000, double Fconv = 1e-6, int mode = 0, double K = 5.0, 
-        int hardAtoms=-1, int softAtoms=-1, int hardDist=-1, int softDist=-1 ){
+        int hardAtoms=-1, int softAtoms=-1, int hardDist=-1, int softDist=-1, int* cv_atoms=nullptr ){
         
         const bool prev_bFreeEnergyCalc = bFreeEnergyCalc;
         bFreeEnergyCalc = true;
@@ -877,7 +957,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                     TDrive[isys].z = (il < nLambda) ? (float)il : -1.0f;
                     if(il >= nLambda) continue;
                     float lambda = (float)il / (float)(nLambda - 1);
-                    setupTIConstraints( isys, lambda, nCVs, initial_positions, final_positions, true, K );
+                    setupTIConstraints( isys, lambda, nCVs, initial_positions, final_positions, cv_atoms, true, K );
                 }
                 if(bUFF){
                     uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
@@ -1144,7 +1224,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         return doTI ? cumulative_FE : res_JE_F[nLambda-1];
     }
 
-    void scan_Milan( int nCVs, Vec3f* initial_positions, Vec3f* final_positions, int nLambda, int nsteps, double Fconv, double K, bool bRelaxed=true, double* Es=0, float* ppos=0 ){
+    void scan_Milan( int nCVs, Vec3f* initial_positions, Vec3f* final_positions, int nLambda, int nsteps, double Fconv, double K, bool bRelaxed=true, double* Es=0, float* ppos=0, int* cv_atoms=nullptr ){
         const bool prevDeterministicTDrive = bDeterministicTDrive;
         const bool prevbGopt = bGopt;
         const bool prevHardAtoms = bHardConstrainedAtoms;
@@ -1232,7 +1312,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                         continue;
                     }
                     float lambda = (nLambda>1) ? ((float)il / (float)(nLambda - 1)) : 0.0f;
-                    setupTIConstraints(isys, lambda, nCVs, initial_positions, final_positions, true, K);
+                    setupTIConstraints(isys, lambda, nCVs, initial_positions, final_positions, cv_atoms, true, K);
                 }
                 ocl.upload(ocl.ibuff_TDrive, TDrive);
                 ocl.upload(ocl.ibuff_constr, constr);
@@ -1255,7 +1335,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 gopts[isys].nRelax = 99999999;
                 gopts[isys].nExplore = 0;
             }
-            setupTIConstraints( 0, 0.0f, nCVs, initial_positions, final_positions, true, K );
+                setupTIConstraints( 0, 0.0f, nCVs, initial_positions, final_positions, cv_atoms, true, K );
             ocl.upload(ocl.ibuff_TDrive, TDrive);
             ocl.upload(ocl.ibuff_constr, constr);
             ocl.upload(ocl.ibuff_constrK, constrK);
@@ -1332,8 +1412,8 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         bSoftConstrainedDistance = prevSoftDist;
     }
 
-    void scan_relaxed_Milan( int nCVs, Vec3f* initial_positions, Vec3f* final_positions, int nLambda, int nsteps, double Fconv, double K, double* Es=0, float* ppos=0 ){
-        scan_Milan( nCVs, initial_positions, final_positions, nLambda, nsteps, Fconv, K, true, Es, ppos );
+    void scan_relaxed_Milan( int nCVs, Vec3f* initial_positions, Vec3f* final_positions, int nLambda, int nsteps, double Fconv, double K, double* Es=0, float* ppos=0, int* cv_atoms=nullptr ){
+        scan_Milan( nCVs, initial_positions, final_positions, nLambda, nsteps, Fconv, K, true, Es, ppos, cv_atoms );
     }
 
 // ==================================
@@ -3281,8 +3361,13 @@ void picked2GPU(int ipick, float K){
             acon.w = K;
             aconK = Quat4f{K,K,K,K};
         }else{
-            for(int i=0; i<uff_ocl->nAtoms; i++){ constr[i0a + i].w=-1.0;  };
-            for(int i=0; i<uff_ocl->nAtoms; i++){ constrK[i0a + i]=Quat4fZero; };
+            for(int i=0; i<uff_ocl->nAtoms; i++){
+                int iaa = i0a + i;
+                if((constr[iaa].w > 0.0f) && (constr[iaa].w < 1.0e3f)){
+                    constr [iaa].w = -1.0f;
+                    constrK[iaa]   = Quat4fZero;
+                }
+            }
         }
         uff_ocl->upload( uff_ocl->ibuff_constr,  constr  );
         uff_ocl->upload( uff_ocl->ibuff_constrK, constrK );
@@ -3300,14 +3385,13 @@ void picked2GPU(int ipick, float K){
             acon.w = K;
             aconK = Quat4f{K,K,K,K};
         }else{
-            for(int i=0; i<ocl.nAtoms; i++){ constr[i0a + i].w=-1.0;  };
-            for(int i=0; i<ocl.nAtoms; i++){ constrK[i0a + i]=Quat4fZero; };
-            //for(int i: constrain_list     ){ constr[i0a + i].w=Kfix;  };
             for(int ia=0; ia<ocl.nAtoms; ia++){
                 int iaa = i0a + ia;
-                constr [iaa]=(Quat4f)ffls[iSystemCur].constr [ia];
-                constrK[iaa]=(Quat4f)ffls[iSystemCur].constrK[ia];
-            };
+                if((constr[iaa].w > 0.0f) && (constr[iaa].w < 1.0e3f)){
+                    constr [iaa]=(Quat4f)ffls[iSystemCur].constr [ia];
+                    constrK[iaa]=(Quat4f)ffls[iSystemCur].constrK[ia];
+                }
+            }
         }
         //for(int i=0; i<ocl.nAtoms; i++){ printf( "CPU:constr[%i](%7.3f,%7.3f,%7.3f |K= %7.3f) \n", i, constr[i0a+i].x,constr[i0a+i].y,constr[i0a+i].z,  constr[i0a+i].w   ); }
         ocl.upload( ocl.ibuff_constr,  constr  );   // ToDo: instead of updating the whole buffer we may update just relevant part?
@@ -3518,27 +3602,50 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
             gopts[isys].nRelax = 100000;
             niter = 100000;
             
-            // For 'initial' setup via GUI/manual, we derive anchor points from current positions
-            // Use ffu.atypes for UFF, ffls[isys].atypes for MMFF
             std::vector<Vec3f> p_init, p_final;
-            int iSi1 = -1;
+            int constr_TI[2] = {14, 30};
+            int* cv_atoms_init = nullptr;
             const int natoms_init = bUFF ? ffu.natoms : ffls[isys].natoms;
             const int* atypes_init = bUFF ? ffu.atypes : ffls[isys].atypes;
-            for(int ia=0; ia<natoms_init; ia++){
-                if(atypes_init[ia]==params.getAtomType("Si")){
-                    if(iSi1 == -1){ iSi1 = ia; }
-                    else{
-                        Vec3f p1 = (Vec3f){-5.5f, 32.f, 2.5f}; // ToDo: we should probably use actual positions of Si atoms rather than fixed values
-                        Vec3f p2 = (Vec3f){+5.5f, 32.f, 2.5f};
-                        p_init.push_back(p1); p_init.push_back(p2);
-                        // Default final positions: stretched by 15A along X
-                        p_final.push_back(p1 + (Vec3f){ -30.f, 0, 0.f});
-                        p_final.push_back(p2 + (Vec3f){ 30.f, 0, 0.f});
-                        iSi1 = -1;
+            int ia1 = constr_TI[0];
+            int ia2 = constr_TI[1];
+            auto map_uff_initial_index = [&](int orig_ia) -> int {
+                if((orig_ia < 0) || (orig_ia >= natoms_init)){ return -1; }
+                for(int ia=0; ia<natoms_init; ia++){
+                    if(builder.atoms[ia].id == orig_ia){ return ia; }
+                }
+                return -1;
+            };
+            int ia1_active = map_uff_initial_index(ia1);
+            int ia2_active = map_uff_initial_index(ia2);
+            if((ia1_active>=0) && (ia1_active<natoms_init) && (ia2_active>=0) && (ia2_active<natoms_init)){
+                Vec3f p1 = atoms[isys*natoms_init + ia1_active].f;
+                Vec3f p2 = atoms[isys*natoms_init + ia2_active].f;
+                p_init.push_back(p1); p_init.push_back(p2);
+                p_final.push_back(p1 + (Vec3f){0.0f, 0.0f, 0.0f});
+                p_final.push_back(p2 + (Vec3f){28.0f, 0.0f, 0.0f});
+                cv_atoms_init = constr_TI;
+                printf("run_uff_ocl(): TI anchors from atom indices %d,%d mapped to UFF indices %d,%d\n", ia1, ia2, ia1_active, ia2_active);
+            }else{
+                int iSi1 = -1;
+                for(int ia=0; ia<natoms_init; ia++){
+                    if(atypes_init[ia]==params.getAtomType("Si")){
+                        if(iSi1 == -1){ iSi1 = ia; }
+                        else{
+                            Vec3f p1 = (Vec3f){-5.5f, 32.f, 2.5f};
+                            Vec3f p2 = (Vec3f){+5.5f, 32.f, 2.5f};
+                            p_init.push_back(p1); p_init.push_back(p2);
+                            p_final.push_back(p1 + (Vec3f){ -30.f, 0, 0.f});
+                            p_final.push_back(p2 + (Vec3f){ 30.f, 0, 0.f});
+                            iSi1 = -1;
+                        }
                     }
                 }
+                if(p_init.size()==0){
+                    printf("ERROR: run_uff_ocl() invalid TI atom indices %d,%d for natoms=%d and no Si anchor pair was found\n", ia1, ia2, natoms_init);
+                }
             }
-            setupTIConstraints( isys, lambda, p_init.size()/2, p_init.data(), p_final.data(), true );            
+            setupTIConstraints( isys, lambda, p_init.size(), p_init.data(), p_final.data(), cv_atoms_init, true );            
             for(int ia=0; ia<natoms_init; ia++){
                 if(atypes_init[ia]==params.getAtomType("Si")){
                     printf( "constr[%i]: (%7.3f,%7.3f,%7.3f |K=%7.3f) \n", isys*natoms_init+ia, constr[isys*natoms_init+ia].x, constr[isys*natoms_init+ia].y, constr[isys*natoms_init+ia].z, constr[isys*natoms_init+ia].w );
@@ -3554,10 +3661,8 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
             ocl.upload( ocl.ibuff_constrK, constrK );
             ocl.upload( ocl.ibuff_atoms,   atoms   );
         }
-
         initial = false;
     }
-
     bBonding = ffu.bDoBond;
     //nPerVFs = _min(10,niter);
     if(nPerVFs>niter)nPerVFs=niter;
@@ -3723,32 +3828,47 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
 //         }
 // }
     double F2conv = Fconv*Fconv;
-    // picked2GPU( ipicked,  1.0 );
-    if(initial && !bFreeEnergyCalc){  // In TI mode, constraints are set by computeFreeEnergy; skip this GUI-only init
-        for(int isys=0; isys<nSystems; isys++){
-            float lambda = (nSystems > 1) ? (float)isys / (float)(nSystems - 1) : 0.0f;
-            gopts[isys].nExplore = INT32_MAX;
-            gopts[isys].nRelax = 0;
-            
-            // For 'initial' setup via GUI/manual, we derive anchor points from current positions
-            std::vector<Vec3f> p_init, p_final;
-            int iSi1 = -1;
-            for(int ia=0; ia<ffls[isys].natoms; ia++){
-                if(ffls[isys].atypes[ia]==params.getAtomType("Si")){
-                    if(iSi1 == -1){ iSi1 = ia; }
-                    else{
-                        Vec3f p1 = (Vec3f){0, 0, 0.5f}; // ToDo: we should probably use actual positions of Si atoms rather than fixed values
-                        Vec3f p2 = (Vec3f){+11.f, 0, 0.5f};
+    picked2GPU( ipicked,  1.0f );
+	        if(initial && !bFreeEnergyCalc){  // In TI mode, constraints are set by computeFreeEnergy; skip this GUI-only init
+	        for(int isys=0; isys<nSystems; isys++){
+	            float lambda = (nSystems > 1) ? (float)isys / (float)(nSystems - 1) : 0.0f;
+	            gopts[isys].nExplore = INT32_MAX;
+	            gopts[isys].nRelax = 0;
+	            
+	            // For 'initial' setup via GUI/manual, we derive anchor points from current positions
+	            std::vector<Vec3f> p_init, p_final;
+	            int constr_TI[2] = {14, 30};
+	            int iSi1 = -1;
+	            for(int ia=0; ia<ffls[isys].natoms; ia++){
+	                if(ffls[isys].atypes[ia]==params.getAtomType("Si")){
+	                    if(iSi1 == -1){ iSi1 = ia; }
+	                    else{
+                        Vec3f p1 = (Vec3f){-9.84574,    4.44503,    2.5};
+                        Vec3f p2 = (Vec3f){2.0,    4.44503,    2.5};
                         p_init.push_back(p1); p_init.push_back(p2);
                         // Default final positions: stretched by 15A along X
                         p_final.push_back(p1 + (Vec3f){0, 0, 0});
-                        p_final.push_back(p2 + (Vec3f){ 19.f, 0, 0});
+                        p_final.push_back(p2 + (Vec3f){ 28.0, 0, 0});
                         iSi1 = -1;
-                    }
-                }
-            }
-            setupTIConstraints( isys, lambda, p_init.size()/2, p_init.data(), p_final.data(), true );
-        }
+	                    }
+	                }
+	            }
+	            if((p_init.size()==0) && (constr_TI[0]>=0) && (constr_TI[1]>=0)){
+	                int ia1 = constr_TI[0];
+	                int ia2 = constr_TI[1];
+	                if((ia1>=0) && (ia1<ffls[isys].natoms) && (ia2>=0) && (ia2<ffls[isys].natoms)){
+	                    Vec3f p1 = (Vec3f)ffls[isys].apos[ia1];
+	                    Vec3f p2 = (Vec3f)ffls[isys].apos[ia2];
+	                    p_init.push_back(p1); p_init.push_back(p2);
+	                    p_final.push_back(p1 + (Vec3f){0.0f, 0.0f, 0.0f});
+	                    p_final.push_back(p2 + (Vec3f){28.0f, 0.0f, 0.0f});
+	                    printf("run_ocl_opt(): TI anchors from atom indices %d,%d because no Si anchor pair was found\n", ia1, ia2);
+	                }else{
+	                    printf("ERROR: run_ocl_opt() invalid TI atom indices %d,%d for natoms=%d and no Si anchor pair was found\n", ia1, ia2, ffls[isys].natoms);
+	                }
+	            }
+	            setupTIConstraints( isys, lambda, p_init.size(), p_init.data(), p_final.data(), constr_TI, true );
+	        }
         upload( ocl.ibuff_constr,  constr  );
         upload( ocl.ibuff_constrK, constrK );
         upload( ocl.ibuff_atoms,   atoms   );

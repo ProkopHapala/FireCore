@@ -879,35 +879,41 @@ def setConstraints(hardAtoms=-1, softAtoms=-1, hardDist=-1, softDist=-1, initial
     return lib.setConstraints(hardAtoms, softAtoms, hardDist, softDist, initial)
 
 #  double computeFreeEnergy(int nCVs, float* initial_positions, float* final_positions, int nLambda, int nMDsteps, int nEQsteps, double Fconv, int mode, double K, int hardAtoms, int softAtoms, int hardDist, int softDist)
-lib.computeFreeEnergy.argtypes  = [c_int, c_float_p, c_float_p, c_int, c_int, c_int, c_double, c_int, c_double, c_int, c_int, c_int, c_int]
+lib.computeFreeEnergy.argtypes  = [c_int, c_float_p, c_float_p, c_int, c_int, c_int, c_double, c_int, c_double, c_int, c_int, c_int, c_int, c_int_p]
 lib.computeFreeEnergy.restype   =  c_double
-def computeFreeEnergy(nCVs, initial_positions, final_positions, nLambda, nMDsteps=100000, nEQsteps=10000, Fconv=1e-6, mode=0, K=5.0, hardAtoms=-1, softAtoms=-1, hardDist=-1, softDist=-1):
+def computeFreeEnergy(nCVs, initial_positions, final_positions, nLambda, nMDsteps=100000, nEQsteps=10000, Fconv=1e-6, mode=0, K=5.0, hardAtoms=-1, softAtoms=-1, hardDist=-1, softDist=-1, cv_atoms=None):
     initial_positions = np.array(initial_positions, dtype=np.float32)
     final_positions = np.array(final_positions, dtype=np.float32)
-    return lib.computeFreeEnergy(nCVs, _np_as(initial_positions,c_float_p), _np_as(final_positions,c_float_p), nLambda, nMDsteps, nEQsteps, Fconv, mode, K, hardAtoms, softAtoms, hardDist, softDist)
+    
+    cv_atoms = np.array(cv_atoms, dtype=np.int32) if cv_atoms is not None else None
+    return lib.computeFreeEnergy(nCVs, _np_as(initial_positions,c_float_p), _np_as(final_positions,c_float_p), nLambda, nMDsteps, nEQsteps, Fconv, mode, K, hardAtoms, softAtoms, hardDist, softDist, _np_as(cv_atoms, c_int_p))
 
 #  void scanRelaxed( int nCVs, float* initial_positions, float* final_positions, int nLambda, int nsteps, double Fconv, double K, int hardAtoms, int softAtoms, int hardDist, int softDist, double* Es, float* ppos )
-lib.scanRelaxed.argtypes = [c_int, c_float_p, c_float_p, c_int, c_int, c_double, c_double, c_int, c_int, c_int, c_int, c_void_p, c_void_p]
+lib.scanRelaxed.argtypes = [c_int, c_float_p, c_float_p, c_int, c_int, c_double, c_double, c_int, c_int, c_int, c_int, c_void_p, c_void_p, c_int_p]
 lib.scanRelaxed.restype  = None
 def scan_relaxed(nCVs, initial_positions, final_positions, nLambda, nsteps=1000, Fconv=1e-6, K=10.0,
-                 hardAtoms=-1, softAtoms=-1, hardDist=-1, softDist=-1, Es=None, ppos=None):
+                 hardAtoms=-1, softAtoms=-1, hardDist=-1, softDist=-1, Es=None, ppos=None, cv_atoms=None):
     initial_positions = np.array(initial_positions, dtype=np.float32)
     final_positions   = np.array(final_positions,   dtype=np.float32)
     if Es is None:
         Es = np.zeros(nLambda, dtype=np.float64)
+        
+    cv_atoms = np.array(cv_atoms, dtype=np.int32) if cv_atoms is not None else None
     lib.scanRelaxed(nCVs, _np_as(initial_positions,c_float_p), _np_as(final_positions,c_float_p), nLambda, nsteps, Fconv, K,
                     hardAtoms, softAtoms, hardDist, softDist,
-                    Es.ctypes.data, ppos.ctypes.data if ppos is not None else None)
+                    Es.ctypes.data, ppos.ctypes.data if ppos is not None else None, _np_as(cv_atoms, c_int_p))
     return Es, ppos
 
 #  void scan_Milan( int nCVs, float* initial_positions, float* final_positions, int nLambda, int nsteps, double Fconv, double K, bool bRelaxed, double* Es, float* ppos )
-lib.scan_Milan.argtypes = [c_int, c_void_p, c_void_p, c_int, c_int, c_double, c_double, c_bool, c_void_p, c_void_p]
+lib.scan_Milan.argtypes = [c_int, c_void_p, c_void_p, c_int, c_int, c_double, c_double, c_bool, c_void_p, c_void_p, c_int_p]
 lib.scan_Milan.restype  = None
-def scan_Milan(nCVs, initial_positions, final_positions, nLambda, nsteps=1000, Fconv=1e-6, K=10.0, bRelaxed=True, Es=None, ppos=None):
+def scan_Milan(nCVs, initial_positions, final_positions, nLambda, nsteps=1000, Fconv=1e-6, K=10.0, bRelaxed=True, Es=None, ppos=None, cv_atoms=None):
     initial_positions = np.array(initial_positions, dtype=np.float32)
     final_positions   = np.array(final_positions,   dtype=np.float32)
     if Es is None:
         Es = np.zeros(nLambda, dtype=np.float64)
+    
+    cv_atoms = np.array(cv_atoms, dtype=np.int32) if cv_atoms is not None else None
     lib.scan_Milan(
         nCVs,
         initial_positions.ctypes.data,
@@ -919,6 +925,7 @@ def scan_Milan(nCVs, initial_positions, final_positions, nLambda, nsteps=1000, F
         bRelaxed,
         Es.ctypes.data,
         ppos.ctypes.data if ppos is not None else None,
+        _np_as(cv_atoms, c_int_p)
     )
     return Es, ppos
 

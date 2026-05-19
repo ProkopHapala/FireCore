@@ -1038,7 +1038,7 @@ __kernel void updateAtomsMMFFf4(
             // printf( "GPU:sys[%i]atom[%i] constr(%g,%g,%g|%g) cK(%g,%g,%g|%g) force_proj=%g sign=%g stiffness=(%g,%g,%g) bHard=%d bDist=%d\n", iS, iG, cons.x,cons.y,cons.z,cons.w, cK.x,cK.y,cK.z,cK.w, force_proj, sign, stiffness.x,stiffness.y,stiffness.z, bHard?1:0, bDist?1:0 );
             if( sign != 0.0f ){
                 if(!isnan(force_proj)){
-                    // Akumulujeme force_proj přes všechny MD kroky; pole bylo vynulováno v C++
+        // Accumulate force_proj over all MD steps; the array was zeroed in C++.
                     averageForces[iaa].x += force_proj;
                     averageForces[iaa].y = sign;
                 }
