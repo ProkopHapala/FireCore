@@ -122,9 +122,17 @@ def compute_pairwise_c6_grid(ag_positions, cell, grid_shape, voxel, origin, pbc_
 
 
 def _make_config(d0=3.70, width=0.35):
+    import os as _os
     config = RunConfig()
-    config.density_backend.chgcar_path = "/home/niel/git/ORR_HER_Ag_Colab/results/Ag_ORR_HER/slab_clean/final_scf_12x12x1/CHGCAR"
-    config.density_backend.locpot_path = "/home/niel/git/ORR_HER_Ag_Colab/results/Ag_ORR_HER/slab_clean/workfunc_12x12x1/LOCPOT"
+    chgcar = _os.environ.get("GRIDFF_JAX_CHGCAR")
+    locpot = _os.environ.get("GRIDFF_JAX_LOCPOT")
+    if not chgcar or not locpot:
+        raise RuntimeError(
+            "test_pairwise_c6_correction.py needs GRIDFF_JAX_CHGCAR and "
+            "GRIDFF_JAX_LOCPOT env vars."
+        )
+    config.density_backend.chgcar_path = chgcar
+    config.density_backend.locpot_path = locpot
     config.grid.builder_mode = "metal_density_plq"
     config.grid.interpolation_order = 3
     config.grid.metal_density_pauli_power = 1.0

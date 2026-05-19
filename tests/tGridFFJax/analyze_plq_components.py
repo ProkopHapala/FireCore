@@ -44,9 +44,18 @@ TEACHER_CACHE = Path(__file__).resolve().parent / "damping_sweep" / "teacher_cac
 
 
 def _make_config(d0=3.70, width=0.35, interp_order=3):
+    import os as _os
     config = RunConfig()
-    config.density_backend.chgcar_path = "/home/niel/git/ORR_HER_Ag_Colab/results/Ag_ORR_HER/slab_clean/final_scf_12x12x1/CHGCAR"
-    config.density_backend.locpot_path = "/home/niel/git/ORR_HER_Ag_Colab/results/Ag_ORR_HER/slab_clean/workfunc_12x12x1/LOCPOT"
+    chgcar = _os.environ.get("GRIDFF_JAX_CHGCAR")
+    locpot = _os.environ.get("GRIDFF_JAX_LOCPOT")
+    if not chgcar or not locpot:
+        raise RuntimeError(
+            "analyze_plq_components.py needs GRIDFF_JAX_CHGCAR and GRIDFF_JAX_LOCPOT "
+            "env vars (point at your VASP slab outputs). Old hardcoded "
+            "workstation paths have been removed."
+        )
+    config.density_backend.chgcar_path = chgcar
+    config.density_backend.locpot_path = locpot
     config.grid.builder_mode = "metal_density_plq"
     config.grid.interpolation_order = interp_order
     config.grid.metal_density_pauli_power = 1.0

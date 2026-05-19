@@ -40,3 +40,4 @@ cpp/build-*
 cpp/common_resources/*/Bspline_PLQd.npy
 *.npz
 tests/tGridFFJax/mad-surf_data/
+tests/tGridFFJax/runs/

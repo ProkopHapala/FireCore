@@ -51,10 +51,11 @@ EXTXYZ     = os.path.join(HERE, "mad-surf_data",
                           "full_train_test_std_config_types.extxyz")
 MACE_MODEL = os.path.join(HERE, "mad-surf_data", "models",
                           "full_dataset_config_weights", "MACE_model.model")
-CHGCAR     = ("/home/niel/git/ORR_HER_Ag_Colab/results/"
-              "Ag_ORR_HER/slab_clean/final_scf_12x12x1/CHGCAR")
-LOCPOT     = ("/home/niel/git/ORR_HER_Ag_Colab/results/"
-              "Ag_ORR_HER/slab_clean/workfunc_12x12x1/LOCPOT")
+import os as _os
+# DFT slab paths come from environment (no hardcoded workstation paths).
+# Set GRIDFF_JAX_CHGCAR and GRIDFF_JAX_LOCPOT in your shell.
+CHGCAR     = _os.environ.get("GRIDFF_JAX_CHGCAR", "")
+LOCPOT     = _os.environ.get("GRIDFF_JAX_LOCPOT", "")
 MADSURF_MAIN = os.path.join(HERE, "MAD-SURF-main")
 OUT_DIR    = os.path.join(HERE, "dft_plq_analysis")
 

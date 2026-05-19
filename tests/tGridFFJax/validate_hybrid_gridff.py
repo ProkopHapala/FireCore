@@ -71,15 +71,28 @@ def _load_params(path):
 
 
 def _mode_toggles(mode: str):
+    # Keyword construction only — positional FeatureToggles(...) silently
+    # misaligns 6th arg onto use_reactive_grid (dataclass field #6).
+    base = dict(
+        use_density_charge=True, use_locpot=True,
+        use_ct_qeq=False, use_image_charge=False,
+        use_image_charge_fixed=False, use_reactive_grid=False,
+        use_teacher_residual=True,
+    )
     if mode == "plq":
-        return FeatureToggles(True, True, False, False, False, True)
+        return FeatureToggles(**base)
     if mode == "plq_reactive":
-        return FeatureToggles(True, True, False, False, True, True)
+        return FeatureToggles(**{**base, "use_reactive_grid": True})
     if mode == "plq_ct":
-        return FeatureToggles(True, True, True, False, False, True)
+        return FeatureToggles(**{**base, "use_ct_qeq": True})
     if mode == "plq_ct_image":
-        return FeatureToggles(True, True, True, True, False, True)
-    return FeatureToggles(True, True, True, True, True, True)
+        return FeatureToggles(**{**base, "use_ct_qeq": True, "use_image_charge": True})
+    return FeatureToggles(
+        use_density_charge=True, use_locpot=True,
+        use_ct_qeq=True, use_image_charge=True,
+        use_image_charge_fixed=True, use_reactive_grid=True,
+        use_teacher_residual=True,
+    )
 
 
 def _z_bin_metrics(z_values, energy_errors, force_errors, edges):

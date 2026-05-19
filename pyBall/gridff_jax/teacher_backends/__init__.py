@@ -1,10 +1,14 @@
 """Teacher backend registry."""
 
+from .generic_calc import GenericASECalcBackend
 from .madsurf import MADSurfTeacherBackend
+from .precomputed import PrecomputedTeacherBackend
 from .synthetic import SyntheticTeacherBackend
 
 BACKENDS = {
     "madsurf": MADSurfTeacherBackend,
+    "generic_calc": GenericASECalcBackend,
+    "precomputed": PrecomputedTeacherBackend,
     "synthetic": SyntheticTeacherBackend,
 }
 

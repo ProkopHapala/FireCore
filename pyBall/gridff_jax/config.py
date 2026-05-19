@@ -110,6 +110,18 @@ class GridConfig:
 
 @dataclass
 class HybridModelConfig:
+    """Hybrid-model configuration.
+
+    .. note::
+       The flags ``use_qeq``, ``use_image``, ``use_reactive_grid`` are
+       **informational** — the runtime energy assembly in
+       ``hybrid_energy/model.py`` reads ``FeatureToggles`` (see
+       ``RunConfig.toggles``), NOT these fields. Only ``use_req_plq`` is read
+       directly by the model (controls REQ-PLQ parameterisation). The flags
+       are still set by ``apply_substrate_class()`` so that downstream
+       exporters and provenance logs reflect the substrate-class choice
+       consistently.
+    """
     use_qeq: bool = False
     use_image: bool = False
     use_reactive_grid: bool = False
@@ -122,8 +134,18 @@ class HybridModelConfig:
 
 @dataclass
 class TrainingConfig:
+    """Training-loop configuration.
+
+    .. note::
+       ``batch_size`` is currently **unused** — the JAX optimiser packs the
+       full split into one JIT'd loss call (see ``fit/optimize.py``). For
+       very large 6D datasets this can OOM the device; use
+       ``--max-abs-teacher-eV`` to drop catastrophic outliers and/or reduce
+       the pose-grid size. The field is retained for forward compatibility
+       in case mini-batched training is added later.
+    """
     seed: int = 12345
-    batch_size: int = 64
+    batch_size: int = 64    # informational — see class docstring
     learning_rate: float = 1.0e-2
     max_steps: int = 400
     early_stopping_patience: int = 40

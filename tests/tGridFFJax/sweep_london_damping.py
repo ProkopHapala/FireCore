@@ -40,9 +40,12 @@ from pyBall.gridff_jax.teacher_backends import make_teacher_backend
 from pyBall.gridff_jax.utils import ensure_dir, save_json
 from pyBall.gridff_jax.validation import compute_error_metrics
 
-DEFAULT_CHGCAR = "/home/niel/git/ORR_HER_Ag_Colab/results/Ag_ORR_HER/slab_clean/final_scf_12x12x1/CHGCAR"
-DEFAULT_LOCPOT = "/home/niel/git/ORR_HER_Ag_Colab/results/Ag_ORR_HER/slab_clean/workfunc_12x12x1/LOCPOT"
-DEFAULT_MODEL  = str(Path(__file__).resolve().parent / "mad-surf_data" / "models" / "full_dataset_config_weights" / "MACE_model.model")
+import os as _os
+# Defaults pulled from environment (no hardcoded workstation paths).
+DEFAULT_CHGCAR = _os.environ.get("GRIDFF_JAX_CHGCAR") or None
+DEFAULT_LOCPOT = _os.environ.get("GRIDFF_JAX_LOCPOT") or None
+_MACE_REPO = Path(__file__).resolve().parent / "mad-surf_data" / "models" / "full_dataset_config_weights" / "MACE_model.model"
+DEFAULT_MODEL = _os.environ.get("GRIDFF_JAX_MODEL_PATH") or (str(_MACE_REPO) if _MACE_REPO.exists() else None)
 
 
 def parse_args():

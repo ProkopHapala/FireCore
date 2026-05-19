@@ -68,15 +68,25 @@ class SurfaceXYZBackend(DensityBackend):
         else:
             raise ValueError(f"Unsupported surface_z0_mode '{self.grid.surface_z0_mode}'")
 
-        lengths = tuple(float(lvec[i, i]) if abs(lvec[i, i]) > 1.0e-12 else np.linalg.norm(lvec[i]) for i in range(3))
+        # Preserve the FULL lattice geometry (including off-diagonal entries).
+        # Previously we collapsed to diag(lengths), which silently corrupted
+        # skewed / stepped / rotated supercells. The voxel triplet is the
+        # spacing-projected-along-each-lattice-vector, not the Cartesian
+        # spacing — same convention as voxel_spacing_from_cell().
+        lvec_full = np.asarray(lvec, dtype=float)
+        lengths = tuple(float(np.linalg.norm(lvec_full[i])) for i in range(3))
         if self.config.grid_shape is None:
             ns, dg = _adjust_dimensions(lengths, float(self.grid.spacing))
             grid_shape_xyz = tuple(int(v) for v in ns)
         else:
             grid_shape_xyz = tuple(int(v) for v in self.config.grid_shape)
-            dg = voxel_spacing_from_cell(np.diag(lengths), grid_shape_xyz)
-        cell = np.diag(lengths).astype(float)
-        origin = np.array([-0.5 * lengths[0], -0.5 * lengths[1], z0], dtype=float)
+            dg = voxel_spacing_from_cell(lvec_full, grid_shape_xyz)
+        cell = lvec_full
+        # Origin: centre the cell laterally about the origin in the
+        # diagonal/orthogonal case; for skewed cells the same centre-shift
+        # along a and b vectors keeps the convention consistent.
+        origin = (-0.5 * cell[0] - 0.5 * cell[1]).astype(float)
+        origin[2] = z0
         voxel = np.asarray(dg, dtype=float)
         metadata = {
             "backend": "surface_xyz",

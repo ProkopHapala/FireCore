@@ -51,7 +51,15 @@ def main():
         builder_mode="parity_core",
         interpolation_order=3,
     )
-    toggles = FeatureToggles(True, True, False, False, False, True)
+    # Keyword construction only — positional FeatureToggles silently maps the
+    # 6th positional arg onto use_reactive_grid (dataclass field #6) which
+    # ENABLES the reactive grid instead of the intended use_teacher_residual.
+    toggles = FeatureToggles(
+        use_density_charge=True, use_locpot=True,
+        use_ct_qeq=False, use_image_charge=False,
+        use_image_charge_fixed=False, use_reactive_grid=False,
+        use_teacher_residual=True,
+    )
     density = make_density_backend(density_cfg, grid=grid_cfg).load()
     model = HybridGridFFModel(
         density=density,

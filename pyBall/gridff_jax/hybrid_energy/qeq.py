@@ -64,19 +64,34 @@ def solve_qeq_with_reservoir(
     phi_external = np.asarray(phi_external, dtype=float)
     n_atoms = positions.shape[0]
 
-    interaction = build_coulomb_matrix(positions, damping=image_damping)
+    # Build the bare coulomb-only matrix for the energy-decomposition convention:
+    # we return ``energy`` as everything EXCEPT the image term, and
+    # ``image_energy`` separately. Both contributions are still included when
+    # SOLVING for equilibrium charges (the equilibrium depends on the full
+    # interaction).  Bug fix (2026-05): previously ``energy`` was computed
+    # with the image term folded into ``interaction``, AND ``image_energy``
+    # was returned separately, causing the model to double-count the image
+    # contribution when summing total energy.
+    coulomb_only = build_coulomb_matrix(positions, damping=image_damping)
+    coulomb_only[np.diag_indices(n_atoms)] += hardness
+
+    image_matrix = None
     if include_image:
-        interaction += build_image_matrix(
+        image_matrix = build_image_matrix(
             positions,
             image_plane=image_plane,
             damping=image_damping,
             scale=image_scale,
         )
-    interaction[np.diag_indices(n_atoms)] += hardness
+
+    # Full interaction (used only for solving the linear system)
+    interaction_full = coulomb_only.copy()
+    if image_matrix is not None:
+        interaction_full = interaction_full + image_matrix
 
     matrix = np.zeros((n_atoms + 2, n_atoms + 2), dtype=float)
     rhs = np.zeros(n_atoms + 2, dtype=float)
-    matrix[:n_atoms, :n_atoms] = interaction
+    matrix[:n_atoms, :n_atoms] = interaction_full
     matrix[n_atoms, n_atoms] = reservoir_hardness
     matrix[:n_atoms, n_atoms + 1] = 1.0
     matrix[n_atoms, n_atoms + 1] = 1.0
@@ -89,27 +104,23 @@ def solve_qeq_with_reservoir(
     solution = np.linalg.solve(matrix, rhs)
     charges = solution[:n_atoms]
     reservoir_charge = solution[n_atoms]
+    # Compute the COULOMB-only energy (no image) so the model can sum
+    # ``energy + image_energy`` without double counting.
     energy = (
         np.dot(charges, chi + phi_external)
-        + 0.5 * np.dot(charges, interaction @ charges)
+        + 0.5 * np.dot(charges, coulomb_only @ charges)
         + reservoir_chi * reservoir_charge
         + 0.5 * reservoir_hardness * reservoir_charge * reservoir_charge
     )
     image_energy = 0.0
-    if include_image:
-        image_matrix = build_image_matrix(
-            positions,
-            image_plane=image_plane,
-            damping=image_damping,
-            scale=image_scale,
-        )
+    if image_matrix is not None:
         image_energy = 0.5 * np.dot(charges, image_matrix @ charges)
     return {
         "charges": charges,
         "reservoir_charge": reservoir_charge,
         "energy": energy,
         "image_energy": image_energy,
-        "interaction": interaction,
+        "interaction": interaction_full,
     }
 
 
@@ -159,8 +170,12 @@ if HAS_JAX:
         n_atoms = positions.shape[0]
         eye = jnp.eye(n_atoms, dtype=jnp.float64)
 
-        interaction = build_coulomb_matrix_jax(positions, damping=image_damping)
-        image_matrix = jnp.zeros_like(interaction)
+        # Bug fix (2026-05): mirror the NumPy fix — return ``energy`` WITHOUT
+        # the image contribution, and ``image_energy`` separately, so the
+        # model can sum both without double counting.
+        coulomb_only = build_coulomb_matrix_jax(positions, damping=image_damping)
+        coulomb_only = coulomb_only + jnp.diag(hardness)
+
         if include_image:
             image_matrix = build_image_matrix_jax(
                 positions,
@@ -168,12 +183,14 @@ if HAS_JAX:
                 damping=image_damping,
                 scale=image_scale,
             )
-            interaction = interaction + image_matrix
-        interaction = interaction + jnp.diag(hardness)
+        else:
+            image_matrix = jnp.zeros_like(coulomb_only)
+
+        interaction_full = coulomb_only + image_matrix
 
         matrix = jnp.zeros((n_atoms + 2, n_atoms + 2), dtype=jnp.float64)
         rhs = jnp.zeros((n_atoms + 2,), dtype=jnp.float64)
-        matrix = matrix.at[:n_atoms, :n_atoms].set(interaction)
+        matrix = matrix.at[:n_atoms, :n_atoms].set(interaction_full)
         matrix = matrix.at[n_atoms, n_atoms].set(reservoir_hardness)
         matrix = matrix.at[:n_atoms, n_atoms + 1].set(1.0)
         matrix = matrix.at[n_atoms, n_atoms + 1].set(1.0)
@@ -186,17 +203,22 @@ if HAS_JAX:
         solution = jnp.linalg.solve(matrix, rhs)
         charges = solution[:n_atoms]
         reservoir_charge = solution[n_atoms]
+        # Coulomb-only energy (no image) — image goes in image_energy below.
         energy = (
             jnp.dot(charges, chi + phi_external)
-            + 0.5 * jnp.dot(charges, interaction @ charges)
+            + 0.5 * jnp.dot(charges, coulomb_only @ charges)
             + reservoir_chi * reservoir_charge
             + 0.5 * reservoir_hardness * reservoir_charge * reservoir_charge
         )
-        image_energy = 0.5 * jnp.dot(charges, image_matrix @ charges) if include_image else jnp.array(0.0, dtype=jnp.float64)
+        image_energy = jnp.where(
+            jnp.asarray(include_image, dtype=bool),
+            0.5 * jnp.dot(charges, image_matrix @ charges),
+            jnp.array(0.0, dtype=jnp.float64),
+        )
         return {
             "charges": charges,
             "reservoir_charge": reservoir_charge,
             "energy": energy,
             "image_energy": image_energy,
-            "interaction": interaction,
+            "interaction": interaction_full,
         }
