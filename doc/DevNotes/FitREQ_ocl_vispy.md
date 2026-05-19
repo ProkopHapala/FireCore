@@ -817,3 +817,590 @@ python3 pyBall/GUI/FitREQInteractiveGUI.py
 - **Fragment Splitting:** The system assumes two fragments. Detection is automatic if `# n0 <count>` is present in the XYZ comment line.
 - **Coordinate Mapping:** Radial ($r$) and Angular ($a$) coordinates are derived in 3D. The scan plane is detected automatically via SVD or provided headers.
 - **Electron Pairs:** Particles named `E` (electron pair) or `E_h` (hole) are treated as auxiliary sites for the REPS model. Their visibility is toggled automatically in the 3D viewer.
+
+---
+
+# USER
+
+read code of on @FitREQInteractiveGUI.py and @plot_masked_energy.py 
+
+our goal it to introduce functionality from @plot_masked_energy.py into @FitREQInteractiveGUI.py with minimal code duplication and maximal code reuse, also it should be accurate reproduction of the ploting style and functionality, so read the code carefully and do nor reinvent the wheel do not write code from scrath based on your wrong assumption, we spend considerable time to debug it, do not want to repeate
+
+the chaveate it sthat the interactive GUI should use fast Blitting ploting with matplotlib for fast updates.
+
+Namely the functionality you should not miss
+1) button doing optimization musing monte carlo pyOpenCL of the parameters of atomtypes REQH
+2) replot interactive both 2D plots and 1D plots (pasing cursor which is by default in the global minimum until usre move it elsewhere by mous), this reploting should be done fast using matplotlib blit, because pyOpenCL evaluation is super fast, we do not want to waste time by slow matplotlib figure re-creation
+3) very importaint is the plot also energy decomposition (Ein Eout by mask) and the raw Error map dE=Etot-Eref, and the weighted error map J which is actually used for computing the finetss function. It is extremely importaint that these are obtained directly for the function used in optimizer to evaluate the error, not by some sideway mockup, because we faced serousi problem before that the data from different code pats where insocistent which destroy debugging. Cosnistency of data is paramout, which means we should stroe data and be sure they are computed with same parametrs, and don;t mess up unit conversion. Everything should be done centraly minimizng redudncy and possibiltiy for error and bugs.
+
+now this is comples task, so first make detailed notes how to do it, with concrate metioned of modules and function to reuse to minimize code duplicity and build on top of well tested functionality instead of reinventing the wheel
+
+
+---
+
+CODEMAP: FitREQ Interactive GUI: Monte Carlo Optimization & Energy Decomposition Integration
+https://windsurf.com/codemaps/e25a0dfc-f9a8-42ab-b8bb-1d959037ca68-fe86ab10a43f3d18
+
+# SWE-1.6 : Detailed Integration Notes: plot_masked_energy.py → FitREQInteractiveGUI.py
+
+## Overview
+
+The goal is to integrate Monte Carlo optimization, energy decomposition, and error map visualization from [plot_masked_energy.py](cci:7://file:///home/prokop/git/FireCore-fitREQH/tests/tFitREQ/plot_masked_energy.py:0:0-0:0) into the interactive GUI while:
+- **Maximizing code reuse** by calling existing functions directly
+- **Ensuring data consistency** by using the same evaluation paths as the optimizer
+- **Maintaining fast blitting** for interactive updates
+- **Reproducing plotting style** accurately from tested code
+
+---
+
+## Key Modules and Functions to Reuse
+
+### 1. Monte Carlo Optimization (from plot_masked_energy.py)
+
+**Functions to import/use directly:**
+- [create_dof_definitions_from_current(drv, config=None)](cci:1://file:///home/prokop/git/FireCore-fitREQH/tests/tFitREQ/plot_masked_energy.py:18:0-122:26) (lines 19-123)
+  - Creates DOF definitions programmatically from current `tREQHs_base`
+  - Handles config file for selective parameter optimization
+  - Sets reasonable bounds (20% around current values)
+  - **Reuse**: Call this before MC optimization to set up `drv.dof_definitions`
+
+- [run_mc_optimization(drv, max_steps, step_size, temperature, soft_clamp, clamp_start, clamp_max, kcal_objective, out_dir, config_file)](cci:1://file:///home/prokop/git/FireCore-fitREQH/tests/tFitREQ/plot_masked_energy.py:186:0-243:18) (lines 187-244)
+  - Calls `optimizer_montecarlo` from `pyBall.OCL.NonBondFitting`
+  - Returns history dict with optimized parameters
+  - Generates convergence plot
+  - **Reuse**: Wrap this in a GUI method, run in background thread to avoid blocking UI
+
+- [mc_history_to_json(history, atom_type_names)](cci:1://file:///home/prokop/git/FireCore-fitREQH/tests/tFitREQ/plot_masked_energy.py:124:0-142:19) (lines 125-143)
+  - Converts MC history to JSON format
+  - **Reuse**: To apply optimized parameters back to driver
+
+- [load_mc_config_with_softclamp(config_file)](cci:1://file:///home/prokop/git/FireCore-fitREQH/tests/tFitREQ/plot_masked_energy.py:144:0-169:53) (lines 145-170)
+  - Loads MC config and extracts soft-clamp parameters
+  - **Reuse**: For MC parameter configuration UI
+
+### 2. Energy Decomposition (from plot_masked_energy.py)
+
+**FittingDriver methods to use:**
+- `drv.create_mask(ni, nj, pauli=1.0, london=1.0, electro=1.0, hbond=1.0)` (FittingDriver.py:1130)
+  - Creates component weight masks
+  - **Reuse**: Create hbond-only mask for Ein/Eout decomposition
+
+- `drv.evaluate_energies_masked(mask, workgroup_size=32)` (FittingDriver.py:1084)
+  - Returns `(Etot, Emasked)` tuple
+  - **Critical consistency**: Etot from this call is the same as unmasked `evaluate_energies()`
+  - **Reuse**: Call ONCE per parameter set to get both total and masked energies
+  - Compute: `Ein = Emasked`, `Eout = Etot - Ein`
+
+**Helper function to reuse:**
+- [_map_samples_to_grid(frame_idx, V_ref_shape, values_1d, fill=np.nan)](cci:1://file:///home/prokop/git/FireCore-fitREQH/tests/tFitREQ/plot_masked_energy.py:171:0-180:12) (lines 172-181)
+  - Maps 1D sample arrays to 2D grid using frame_idx
+  - **Reuse**: Map Etot, Ein, Eout, dE, J to grids for plotting
+
+### 3. Error Maps and Weighted Error (from plot_masked_energy.py)
+
+**Critical consistency requirement:**
+- Error maps must use the **same data** that the optimizer used
+- From MC history: `dE_initial`, `dE_best`, `J_per_sample_initial`, `J_per_sample_best`, `Eref`, `W`
+- Formula: `J = 0.5 * sum(W * soft_clamp(dE)^2)` where `dE = Etot - Eref`
+
+**Integration approach:**
+- Store MC history in GUI after optimization
+- Use stored arrays for error map visualization
+- Compute grid maps via [_map_samples_to_grid()](cci:1://file:///home/prokop/git/FireCore-fitREQH/tests/tFitREQ/plot_masked_energy.py:171:0-180:12)
+
+### 4. Plotting Functions (from pyBall/FitREQutils.py)
+
+**Functions to import for accurate style reproduction:**
+- [plot_system_panel(V, rv, A, ax, label, kcal, sym, overlay_rmin=False, cmap='seismic', unit_label=None)](cci:1://file:///home/prokop/git/FireCore-fitREQH/pyBall/FitREQutils.py:1980:0-2024:19) (line 1981)
+  - Standard 2D energy panel with Rmin overlay
+  - **Reuse**: For main energy map panels (Ref, Etot, Ein, Eout, dE, J)
+
+- [plot_polar_symmetric(V, rv, A, title, cmap, kcal, ax, bColorbar, rmax, vmin, vmax, geometry, n0, plane)](cci:1://file:///home/prokop/git/FireCore-fitREQH/pyBall/FitREQutils.py:1521:0-1623:13) (line 1522)
+  - Polar coordinate plotting
+  - **Reuse**: Optional polar view tab
+
+- [plot_profile_row(fig, axes, V_ref, V_model_total, V_model_hbond, V_model_eout, rv, A, frame_idx, Ps_raw, Ts_raw, n0, kcal, Rmax1D)](cci:1://file:///home/prokop/git/FireCore-fitREQH/pyBall/FitREQutils.py:2416:0-2476:100) (line 2417)
+  - 1D profile cuts with geometry
+  - **Reuse**: For 1D cuts tab (replace current implementation)
+
+**Data structures needed from plot_masked_energy.py:**
+- `frame_idx` from [_build_frame_grid()](cci:1://file:///home/prokop/git/FireCore-fitREQH/pyBall/FitREQutils.py:1864:0-1902:45) - maps grid positions to sample indices
+- `rv, A` - distance and angle arrays for axes
+- `Ps_raw, Ts_raw` - positions and types for geometry visualization
+
+### 5. Reference Grid Building (from pyBall/FitREQutils.py)
+
+**Function to reuse:**
+- [_build_frame_grid(xyz_file)](cci:1://file:///home/prokop/git/FireCore-fitREQH/pyBall/FitREQutils.py:1864:0-1902:45) (referenced in plot_masked_energy.py line 287)
+  - Extracts V_ref, rv, A, shift, frame_idx, Ps_raw, Ts_raw
+  - **Reuse**: Call once at initialization to get reference data structure
+
+---
+
+## Integration Architecture
+
+### Phase 1: Data Structure Initialization (in [init_fitting_driver](cci:1://file:///home/prokop/git/FireCore-fitREQH/pyBall/GUI/FitREQInteractiveGUI.py:405:4-433:59))
+
+```python
+# After loading data with drv.load_data()
+from pyBall.FitREQutils import _build_frame_grid, parse_xyz_with_headers
+
+# Build reference grid structure
+self.Vref, self.rv, self.A, self.shift, self.frame_idx, self.Ps_raw, self.Ts_raw = _build_frame_grid(self.xyz_file)
+self.n_samples = int(drv.n_samples)
+
+# Get fragment dimensions for mask creation
+ni = drv.host_ranges[0][2]  # atoms in fragment 1
+nj = drv.host_ranges[0][3]  # atoms in fragment 2
+self.ni, self.nj = ni, nj
+
+# Create hbond mask for decomposition (reuse in all evaluations)
+self.mask_hbond = drv.create_mask(ni, nj, pauli=0.0, london=0.0, electro=0.0, hbond=1.0)
+
+# Storage for decomposition grids
+self.V_tot = None    # Total energy grid
+self.V_ein = None    # H-bond energy grid (Ein)
+self.V_eout = None   # Baseline energy grid (Eout)
+self.V_diff = None   # dE = Etot - Eref
+self.V_J = None      # Weighted error grid
+
+# Storage for MC optimization history
+self.mc_history = None
+```
+
+### Phase 2: Energy Evaluation with Decomposition (replace [recompute_energy](cci:1://file:///home/prokop/git/FireCore-fitREQH/pyBall/GUI/FitREQInteractiveGUI.py:682:4-780:33))
+
+**Current approach:**
+```python
+Em = self.drv.evaluate_energies() * EV_TO_KCAL
+```
+
+**New approach (consistent with optimizer):**
+```python
+def recompute_energy_with_decomposition(self):
+    """Recompute with energy decomposition using same kernel as optimizer."""
+    # Apply current parameters
+    self.apply_current_params()
+    
+    # SINGLE kernel call for decomposition (critical for consistency)
+    Etot_eV, Ein_eV = self.drv.evaluate_energies_masked(self.mask_hbond)
+    Eout_eV = Etot_eV - Ein_eV
+    
+    # Convert to kcal/mol for display
+    Etot = Etot_eV * EV_TO_KCAL
+    Ein = Ein_eV * EV_TO_KCAL
+    Eout = Eout_eV * EV_TO_KCAL
+    
+    # Map to grids using frame_idx (same as plot_masked_energy.py)
+    ny, nx = self.Vref.shape
+    self.V_tot = _map_samples_to_grid(self.frame_idx, self.Vref.shape, Etot)
+    self.V_ein = _map_samples_to_grid(self.frame_idx, self.Vref.shape, Ein)
+    self.V_eout = _map_samples_to_grid(self.frame_idx, self.Vref.shape, Eout)
+    
+    # Compute error map
+    dE = Etot_eV - (self.Vref / EV_TO_KCAL)  # Keep in eV for consistency with optimizer
+    self.V_diff = _map_samples_to_grid(self.frame_idx, self.Vref.shape, dE * EV_TO_KCAL)
+    
+    # Update plots with decomposition
+    self.update_plots_with_decomposition()
+```
+
+### Phase 3: Add MC Optimization Tab/Button
+
+**UI additions:**
+```python
+# In initUI(), add MC controls to left panel:
+mc_group = QtWidgets.QGroupBox("Monte Carlo Optimization")
+mc_layout = QtWidgets.QVBoxLayout()
+
+# MC parameters
+self.mc_max_steps_spin = QtWidgets.QSpinBox()
+self.mc_max_steps_spin.setRange(10, 10000)
+self.mc_max_steps_spin.setValue(500)
+mc_layout.addWidget(QtWidgets.QLabel("Max Steps:"))
+mc_layout.addWidget(self.mc_max_steps_spin)
+
+self.mc_step_size_spin = QtWidgets.QDoubleSpinBox()
+self.mc_step_size_spin.setRange(0.001, 1.0)
+self.mc_step_size_spin.setValue(0.1)
+mc_layout.addWidget(QtWidgets.QLabel("Step Size:"))
+mc_layout.addWidget(self.mc_step_size_spin)
+
+self.mc_temp_spin = QtWidgets.QDoubleSpinBox()
+self.mc_temp_spin.setRange(0.0, 100.0)
+self.mc_temp_spin.setValue(0.0)
+mc_layout.addWidget(QtWidgets.QLabel("Temperature:"))
+mc_layout.addWidget(self.mc_temp_spin)
+
+# Soft clamp controls
+self.mc_soft_clamp_check = QtWidgets.QCheckBox("Enable Soft Clamp")
+mc_layout.addWidget(self.mc_soft_clamp_check)
+
+self.mc_clamp_start_spin = QtWidgets.QDoubleSpinBox()
+self.mc_clamp_start_spin.setRange(0.0, 20.0)
+self.mc_clamp_start_spin.setValue(4.0)
+mc_layout.addWidget(QtWidgets.QLabel("Clamp Start:"))
+mc_layout.addWidget(self.mc_clamp_start_spin)
+
+self.mc_clamp_max_spin = QtWidgets.QDoubleSpinBox()
+self.mc_clamp_max_spin.setRange(0.0, 20.0)
+self.mc_clamp_max_spin.setValue(6.0)
+mc_layout.addWidget(QtWidgets.QLabel("Clamp Max:"))
+mc_layout.addWidget(self.mc_clamp_max_spin)
+
+# Config file
+self.mc_config_edit = QtWidgets.QLineEdit()
+self.mc_config_edit.setPlaceholderText("mc_config.json (optional)")
+mc_layout.addWidget(QtWidgets.QLabel("Config File:"))
+mc_layout.addWidget(self.mc_config_edit)
+
+# Run button
+self.button("Run MC Optimization", self.run_mc_optimization_gui, layout=mc_layout)
+
+mc_group.setLayout(mc_layout)
+left_layout.addWidget(mc_group)
+```
+
+**MC optimization method (run in thread):**
+```python
+def run_mc_optimization_gui(self):
+    """Run MC optimization in background thread."""
+    from PyQt5.QtCore import QThread, pyqtSignal
+    
+    class MCWorker(QThread):
+        progress = pyqtSignal(str)
+        finished = pyqtSignal(dict)
+        error = pyqtSignal(str)
+        
+        def __init__(self, drv, max_steps, step_size, temperature, 
+                     soft_clamp, clamp_start, clamp_max, config_file):
+            super().__init__()
+            self.drv = drv
+            self.max_steps = max_steps
+            self.step_size = step_size
+            self.temperature = temperature
+            self.soft_clamp = soft_clamp
+            self.clamp_start = clamp_start
+            self.clamp_max = clamp_max
+            self.config_file = config_file
+            
+        def run(self):
+            try:
+                # Import functions from plot_masked_energy.py
+                from tests.tFitREQ.plot_masked_energy import (
+                    run_mc_optimization, load_mc_config_with_softclamp
+                )
+                
+                self.progress.emit("Loading MC config...")
+                config, sc_use, cs_use, cm_use = load_mc_config_with_softclamp(self.config_file)
+                
+                # Use UI values if set, otherwise config values
+                soft_clamp_use = self.soft_clamp if self.soft_clamp else sc_use
+                clamp_start_use = self.clamp_start if self.clamp_start != 4.0 else cs_use
+                clamp_max_use = self.clamp_max if self.clamp_max != 6.0 else cm_use
+                
+                self.progress.emit("Running MC optimization...")
+                history = run_mc_optimization(
+                    self.drv,
+                    max_steps=self.max_steps,
+                    step_size=self.step_size,
+                    temperature=self.temperature,
+                    soft_clamp=soft_clamp_use,
+                    clamp_start=clamp_start_use,
+                    clamp_max=clamp_max_use,
+                    kcal_objective=True,  # GUI uses kcal/mol
+                    out_dir="mc_gui_output",
+                    config_file=config
+                )
+                
+                self.finished.emit(history)
+            except Exception as e:
+                self.error.emit(str(e))
+    
+    # Create and start worker
+    self.status_label.setText("Starting MC optimization...")
+    worker = MCWorker(
+        self.drv,
+        self.mc_max_steps_spin.value(),
+        self.mc_step_size_spin.value(),
+        self.mc_temp_spin.value(),
+        self.mc_soft_clamp_check.isChecked(),
+        self.mc_clamp_start_spin.value(),
+        self.mc_clamp_max_spin.value(),
+        self.mc_config_edit.text() or None
+    )
+    worker.progress.connect(lambda msg: self.status_label.setText(msg))
+    worker.finished.connect(self.on_mc_finished)
+    worker.error.connect(lambda err: self.status_label.setText(f"Error: {err}"))
+    worker.start()
+```
+
+```python
+def on_mc_finished(self, history):
+    """Handle MC optimization completion."""
+    from tests.tFitREQ.plot_masked_energy import mc_history_to_json
+    
+    self.mc_history = history
+    
+    # Convert to JSON and apply
+    optimized_json = mc_history_to_json(history, self.drv.atom_type_names)
+    
+    # Apply to driver
+    import tempfile
+    import json
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        json.dump(optimized_json, f)
+        temp_path = f.name
+    
+    self.drv.apply_parameter_overrides(temp_path)
+    self.drv.init_and_upload_energy_only()
+    
+    # Update simple params text area
+    self.update_simple_params_from_driver()
+    
+    # Recompute with new parameters
+    self.recompute_energy_with_decomposition()
+    
+    self.status_label.setText(f"MC done: J={history['best_error']:.4f}")
+```
+
+### Phase 4: Update Plotting to Show Decomposition
+
+**Add new tab for decomposition panels:**
+```python
+# In initUI(), add new tab after Energy Maps
+self.decomp_tab = QtWidgets.QWidget()
+decomp_layout = QtWidgets.QVBoxLayout(self.decomp_tab)
+
+self.fig_decomp = Figure(figsize=(14, 5), dpi=100)
+self.fig_decomp.patch.set_facecolor('white')
+self.canvas_decomp = FigureCanvas(self.fig_decomp)
+
+# Create 6 subplots: Ref, Etot, Ein, Eout, dE, J
+self.ax_decomp_ref = self.fig_decomp.add_subplot(161)
+self.ax_decomp_tot = self.fig_decomp.add_subplot(162)
+self.ax_decomp_ein = self.fig_decomp.add_subplot(163)
+self.ax_decomp_eout = self.fig_decomp.add_subplot(164)
+self.ax_decomp_diff = self.fig_decomp.add_subplot(165)
+self.ax_decomp_J = self.fig_decomp.add_subplot(166)
+
+# Initialize images
+self.im_decomp_ref = self.ax_decomp_ref.imshow([[0]], aspect='auto', cmap='seismic', origin='lower')
+self.im_decomp_tot = self.ax_decomp_tot.imshow([[0]], aspect='auto', cmap='seismic', origin='lower')
+self.im_decomp_ein = self.ax_decomp_ein.imshow([[0]], aspect='auto', cmap='seismic', origin='lower')
+self.im_decomp_eout = self.ax_decomp_eout.imshow([[0]], aspect='auto', cmap='seismic', origin='lower')
+self.im_decomp_diff = self.ax_decomp_diff.imshow([[0]], aspect='auto', cmap='bwr', origin='lower')
+self.im_decomp_J = self.ax_decomp_J.imshow([[0]], aspect='auto', cmap='inferno', origin='lower')
+
+# Add colorbars
+for ax, im in zip([self.ax_decomp_ref, self.ax_decomp_tot, self.ax_decomp_ein, 
+                    self.ax_decomp_eout, self.ax_decomp_diff, self.ax_decomp_J],
+                   [self.im_decomp_ref, self.im_decomp_tot, self.im_decomp_ein,
+                    self.im_decomp_eout, self.im_decomp_diff, self.im_decomp_J]):
+    self.fig_decomp.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+# Set titles
+self.ax_decomp_ref.set_title('Reference')
+self.ax_decomp_tot.set_title('Etot')
+self.ax_decomp_ein.set_title('Ein (H-bond)')
+self.ax_decomp_eout.set_title('Eout (Baseline)')
+self.ax_decomp_diff.set_title('dE = Etot-Ref')
+self.ax_decomp_J.set_title('Weighted Error J')
+
+# Setup blit manager for decomposition tab
+self.blit_manager_decomp = BlitManager(self.canvas_decomp, [
+    self.im_decomp_ref, self.im_decomp_tot, self.im_decomp_ein,
+    self.im_decomp_eout, self.im_decomp_diff, self.im_decomp_J
+])
+
+decomp_layout.addWidget(self.canvas_decomp)
+self.tab_widget.addTab(self.decomp_tab, "Decomposition")
+```
+
+**Update method using plot_system_panel for accuracy:**
+```python
+def update_decomposition_plots(self):
+    """Update decomposition plots using plot_system_panel for style consistency."""
+    from pyBall.FitREQutils import plot_system_panel
+    
+    # Use plot_system_panel for each panel (reproduces exact style from plot_masked_energy.py)
+    plot_system_panel(self.Vref, self.rv, self.A, self.ax_decomp_ref, 
+                      'Reference', kcal=True, sym=False, cmap='seismic')
+    plot_system_panel(self.V_tot, self.rv, self.A, self.ax_decomp_tot,
+                      'Etot', kcal=True, sym=False, cmap='seismic')
+    plot_system_panel(self.V_ein, self.rv, self.A, self.ax_decomp_ein,
+                      'Ein (H-bond)', kcal=True, sym=False, cmap='seismic')
+    plot_system_panel(self.V_eout, self.rv, self.A, self.ax_decomp_eout,
+                      'Eout (Baseline)', kcal=True, sym=False, cmap='seismic')
+    plot_system_panel(self.V_diff, self.rv, self.A, self.ax_decomp_diff,
+                      'dE', kcal=True, sym=False, cmap='bwr')
+    
+    # Weighted error has different units (energy^2), no kcal conversion
+    plot_system_panel(self.V_J, self.rv, self.A, self.ax_decomp_J,
+                      'J (weighted error)', kcal=False, sym=False, cmap='inferno', unit_label='kcal²')
+    
+    # Sync color limits for energy panels (0-4)
+    vmin = 1.2 * np.nanmin(self.Vref)
+    vmax = -vmin
+    for im in [self.im_decomp_ref, self.im_decomp_tot, self.im_decomp_ein, self.im_decomp_eout]:
+        im.set_clim(vmin, vmax)
+    
+    # dE symmetric around 0
+    dmax = max(abs(np.nanmin(self.V_diff)), abs(np.nanmax(self.V_diff)))
+    self.im_decomp_diff.set_clim(-dmax, dmax)
+    
+    # J non-negative
+    jmax = np.nanmax(self.V_J)
+    self.im_decomp_J.set_clim(0, jmax)
+    
+    self.canvas_decomp.draw()
+```
+
+### Phase 5: Update 1D Cuts to Use plot_profile_row
+
+**Replace current update_1d_plots implementation:**
+```python
+def update_1d_plots_with_profile_row(self):
+    """Update 1D cuts using plot_profile_row for consistency with plot_masked_energy.py."""
+    from pyBall.FitREQutils import plot_profile_row
+    
+    row = self.pixel_row_spin.value()
+    col = self.pixel_col_spin.value()
+    
+    # Use plot_profile_row which handles geometry and cuts properly
+    plot_profile_row(
+        self.fig_cuts, 
+        [self.ax_radial, self.ax_angular],
+        self.Vref,
+        self.V_tot,
+        self.V_ein,
+        self.V_eout,
+        self.rv,
+        self.A,
+        self.frame_idx,
+        self.Ps_raw,
+        self.Ts_raw,
+        None,  # n0_first (can extract from headers if needed)
+        True,  # kcal
+        10.0   # Rmax1D
+    )
+    
+    self.canvas_cuts.draw_idle()
+```
+
+### Phase 6: Cursor and Blitting Updates
+
+**Ensure cursor works on all tabs:**
+- Current BlitManager only handles Energy Maps tab
+- Need separate BlitManager for Decomposition tab
+- Cursor position should update all tabs simultaneously
+
+**Add cursor to decomposition tab:**
+```python
+# In update_decomposition_plots(), add cursor artist
+if not hasattr(self, 'cursor_decomp_tot'):
+    self.cursor_decomp_tot, = self.ax_decomp_tot.plot([], [], 'w+', ms=15, mew=2.5, animated=True, zorder=10)
+    # Add to blit manager
+    self.blit_manager_decomp._artists.append(self.cursor_decomp_tot)
+
+# Update cursor position
+row = self.pixel_row_spin.value()
+col = self.pixel_col_spin.value()
+self.cursor_decomp_tot.set_data([col], [row])
+```
+
+---
+
+## Critical Data Consistency Requirements
+
+### 1. Single Source of Truth for Energies
+
+**Problem addressed in plot_masked_energy.py (lines 584-631):**
+- Different evaluation paths can give different results
+- Must use same kernel call for both plotting and optimization
+
+**Solution:**
+- Always use `evaluate_energies_masked(mask_hbond)` for both Etot and Ein
+- Store the returned arrays and derive Eout = Etot - Ein
+- Never call `evaluate_energies()` separately for the same parameter set
+
+### 2. Error Maps from Optimizer Data
+
+**Problem:**
+- Computing dE = V_mod - V_ref after the fact can have unit inconsistencies
+- Optimizer uses soft-clamping and specific weight arrays
+
+**Solution:**
+- After MC optimization, extract from history:
+  - `dE_initial`, `dE_best` (raw errors in eV)
+  - `J_per_sample_initial`, `J_per_sample_best` (weighted errors)
+  - `Eref` (reference energies used by optimizer)
+  - `W` (weights used by optimizer)
+- Map these to grids using [_map_samples_to_grid()](cci:1://file:///home/prokop/git/FireCore-fitREQH/tests/tFitREQ/plot_masked_energy.py:171:0-180:12)
+- Display these authoritative values, not recomputed ones
+
+### 3. Parameter Upload Consistency
+
+**Problem addressed in plot_masked_energy.py (lines 336-338, 403-409):**
+- `tREQHs_base` may not be uploaded to `tREQHs_buff` automatically
+- Need explicit upload to ensure GPU state matches Python state
+
+**Solution:**
+```python
+# After any parameter change:
+drv.toGPU_(drv.tREQHs_buff, np.array(drv.tREQHs_base, dtype=np.float32, copy=False))
+drv.queue.finish()
+```
+
+---
+
+## Summary of Changes Required
+
+### New Imports
+```python
+from pyBall.FitREQutils import (
+    _build_frame_grid, plot_system_panel, plot_polar_symmetric, 
+    plot_profile_row, parse_xyz_with_headers
+)
+# Import functions from plot_masked_energy.py (or move them to a shared module)
+from tests.tFitREQ.plot_masked_energy import (
+    create_dof_definitions_from_current, run_mc_optimization,
+    mc_history_to_json, load_mc_config_with_softclamp, _map_samples_to_grid
+)
+```
+
+### New Data Members
+- `frame_idx`, `Ps_raw`, `Ts_raw` (from _build_frame_grid)
+- `mask_hbond` (for decomposition)
+- `V_tot`, `V_ein`, `V_eout`, `V_diff`, `V_J` (decomposition grids)
+- `mc_history` (MC optimization results)
+
+### New UI Elements
+- MC optimization parameter controls (spin boxes, checkboxes)
+- MC "Run" button
+- Decomposition tab with 6 panels
+
+### New Methods
+- `recompute_energy_with_decomposition()` - replaces current recompute_energy
+- `run_mc_optimization_gui()` - runs MC in background thread
+- `on_mc_finished()` - applies MC results
+- `update_decomposition_plots()` - updates decomposition tab using plot_system_panel
+- `update_1d_plots_with_profile_row()` - replaces current 1D cuts
+
+### Modified Methods
+- [init_fitting_driver()](cci:1://file:///home/prokop/git/FireCore-fitREQH/pyBall/GUI/FitREQInteractiveGUI.py:405:4-433:59) - initialize frame grid and masks
+- [on_pixel_changed()](cci:1://file:///home/prokop/git/FireCore-fitREQH/pyBall/GUI/FitREQInteractiveGUI.py:1085:4-1112:45) - update cursor on decomposition tab
+- [apply_current_params()](cci:1://file:///home/prokop/git/FireCore-fitREQH/pyBall/GUI/FitREQInteractiveGUI.py:623:4-680:70) - ensure GPU upload
+
+---
+
+## Testing Checklist
+
+1. **Data consistency**: Verify that `V_tot - Vref` equals `V_diff` (within numerical tolerance)
+2. **MC optimization**: Run MC and verify parameters are applied correctly
+3. **Blitting performance**: Ensure cursor updates are fast on all tabs
+4. **Plot style**: Compare decomposition plots to plot_masked_energy.py output
+5. **Error maps**: After MC, verify J map matches optimizer's best_error
+6. **Unit consistency**: Verify kcal/mol conversions are applied consistently
+
+This plan maximizes code reuse by directly calling tested functions from plot_masked_energy.py and pyBall/FitREQutils.py, ensuring accurate reproduction of functionality and plotting style while maintaining fast interactive updates.
