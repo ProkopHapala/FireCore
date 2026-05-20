@@ -343,6 +343,7 @@ __kernel void relaxStrokes(
     __read_only image3d_t  imgIn,
     __global  float4*      points,
     __global  float4*      FEs,
+    __global  float4*      disps,
     float4 dinvA,
     float4 dinvB,
     float4 dinvC,
@@ -381,8 +382,9 @@ __kernel void relaxStrokes(
 
             if(dot(f,f)<F2CONV) break;
         }
-        FEs[get_global_id(0)*nz + iz] = fe;
-        //FEs[get_global_id(0)*nz + iz].xyz = pos;
+        int idx = get_global_id(0)*nz + iz;
+        FEs[idx] = fe;
+        disps[idx] = (float4)(pos - (tipPos + dpos0.xyz), 0.0f);
         tipPos += dTip.xyz;
         pos    += dTip.xyz;
     }
@@ -406,6 +408,7 @@ __kernel void relaxStrokes2D(
     __read_only image3d_t  imgIn,
     __global  float4*      points,
     __global  float4*      FEs,
+    __global  float4*      disps,
     float4 dinvA,
     float4 dinvB,
     float4 dinvC,
@@ -437,7 +440,9 @@ __kernel void relaxStrokes2D(
             if( (fx*fx + fy*fy) < F2CONV ) break;
         }
         float4 fe_out = interpFE( (float3)(px, py, pz), dinvA, dinvB, dinvC, imgIn );
-        FEs[gid*nz + iz] = fe_out;
+        int idx = gid*nz + iz;
+        FEs[idx] = fe_out;
+        disps[idx] = (float4)(px - ax, py - ay, 0.0f, 0.0f);
     }
 }
 

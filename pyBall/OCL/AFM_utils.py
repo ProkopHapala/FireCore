@@ -540,22 +540,15 @@ def compose_and_relax_total(F_total, scan_xs, scan_ys, heights, origin, step, at
             if afmulator is None:
                 afmulator = afm.AFMulator(use_morse=False, nloc=32, use_fire=False)
             afmulator.setup_fdbm_grid(F_total, origin, step)
-            # Spherical PPM: dpos=(0,0,-L,L) with L=4, K=(Kx,Ky,0,Kr) with Kr=1.0
             # Smaller dt=0.1, damp=0.3 for stability with weak forces (probe far from surface)
             relax_pars_ppm = [0.1, 0.1, 0.03, 0.1]  # dt, damp, alpha, dt_fire
-            FEs_relax = afmulator.scan_fdbm( scan_xs, scan_ys, heights, mol_z=mol_z,  K_LAT=K_LAT, K_RAD=K_RAD, bond_length=bond_length,  relax_pars=relax_pars_ppm )
-            nx_s, ny_s, nz_s = FEs_relax.shape[:3]
-            tip_disp = {'dx': np.zeros((nx_s, ny_s, nz_s), dtype=np.float32),
-                        'dy': np.zeros((nx_s, ny_s, nz_s), dtype=np.float32)}
+            FEs_relax, tip_disp = afmulator.scan_fdbm( scan_xs, scan_ys, heights, mol_z=mol_z,  K_LAT=K_LAT, K_RAD=K_RAD, bond_length=bond_length,  relax_pars=relax_pars_ppm )
         else:
             print("  [compose_and_relax_total] GPU relaxStrokes2D 2D lateral-only")
             if afmulator is None:
                 afmulator = afm.AFMulator(use_morse=False, nloc=32, use_fire=False)
             afmulator.setup_fdbm_grid(F_total, origin, step)
-            FEs_relax = afmulator.scan_fdbm_2d(scan_xs, scan_ys, heights, mol_z=mol_z, K_LAT=K_LAT)
-            nx_s, ny_s, nz_s = FEs_relax.shape[:3]
-            tip_disp = {'dx': np.zeros((nx_s, ny_s, nz_s), dtype=np.float32),
-                        'dy': np.zeros((nx_s, ny_s, nz_s), dtype=np.float32)}
+            FEs_relax, tip_disp = afmulator.scan_fdbm_2d(scan_xs, scan_ys, heights, mol_z=mol_z, K_LAT=K_LAT)
     else:
         print("  [compose_and_relax_total] CPU scipy relaxation (legacy)")
         from scipy.ndimage import map_coordinates

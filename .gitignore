@@ -31,3 +31,4 @@ tests/*/common_resources/
 tests/*/data/
 .aider*
 .env
+node_modules

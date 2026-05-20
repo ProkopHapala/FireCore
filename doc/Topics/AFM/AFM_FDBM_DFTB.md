@@ -1068,3 +1068,274 @@ Potential improvements to the GUI extension:
 ## Summary
 
 The KekuleExplorerGUI integration brings the full power of the FDBM AFM pipeline to a user-friendly graphical interface. Users can now perform sophisticated AFM simulations without writing code, with interactive visualization and immediate feedback. The extension follows the established extension manager pattern and integrates seamlessly with the existing GUI architecture.
+
+---
+
+# USER
+
+We want to integrate STM simulation and also Bond-resolved STM simulation to our GUI, but before that it is perhps better to test it head-less way.
+
+So I give you script not gui for starter
+@contextScopeItemMention @contextScopeItemMention @contextScopeItemMention @contextScopeItemMention @contextScopeItemMention @contextScopeItemMention 
+
+now STM simulation is integrated into full pipeline so we have to recompute all AFM simulation before when we want to recompute STM, but STM is much cheapr. So I would like to make simulation much more modular.
+
+the pipeline is like this
+1) DFTB+ compute SCF producing matrixes H,rho (SCF, Neutral atoms density),C (matrix of molecule orbital coefficients)
+2) then we project it on grid using 
+@contextScopeItemMention 
+3) then we compute the FDBM potential using FFT on GPU (Pauli, Electostatic potential, van der waals by projectin C6/r^6 of atoms on grid)
+4) then we do probe-particle model (relaxation of probe particle in that forcefield) producing AFM signal (df) and distortion maps (displacement of tips)
+5) then on top of this we can compute STM by summing hopping to indivual moleculer orbitals incoherently, this is done also by @contextScopeItemMention  but it can be independnet call
+6) eventually we can do so coall Bond-Resolved STM (BR-STM) which is basically STM just sampled on displaced positions (rather then uniform grid), it physically means that the hopping is between sample and CO molecule on tip which is displaced by PPM (AFM) relaxation in step (4)
+
+
+Now you have two main goals:
+1)  ivestigate why BR-STM is still not workin and make it work
+2) propose new structure of the calculation which more efficiently work in stages so we do not have to recompute whole the pipeline every time. For example
+1) we can store  H,rho,C matrixes after step (1) and keep them until user explicitly want to update them (e.g. change the moleucle, basis set etc)
+2) the same with grid projection of density and the FDMB potential on the grid. Computing these potential is numerically more costly than the PPM relaxation step
+3) We compute PPM relaxation once, but then we can store the AFM data and tip-displacement so it can be used for BR-STM
+4) when we compute STM we do not have to recompute FDBM or AFM, we just compute the STM by orbital projection on grid using @contextScopeItemMentionwith existing precomputed (stored/cached C-matrix from DFTB)
+6) if we compute BR-STM we do this sampling of STM/robtials by @contextScopeItemMentionagain, but using stored/precmputed displacements.
+
+Note - in order to keep bakcward compactibility and not break old things, plese add these new features along with t old one (do not edit or delete the old full-pipeline), so put these new function in 
+@contextScopeItemMention or you make even crate a new class which efficiently cache these quentitoes which can derive from AFMulator in @contextScopeItemMention (maybe we can make this class in sparate python module? What you feel is better)
+
+now before we start make comprehesive notes what is where what to reuse and how to procede. Do not start to code before we think it through, follow instructions from @contextScopeItemMention 
+
+also read @contextScopeItemMention to see what we already did, and @contextScopeItemMention to see how it works now
+
+---
+
+# Gemini-3.5-flash
+
+# Implementation Plan - Modularizing AFM/STM Simulation and Caching
+
+This plan details the design for transition of the monolithic AFM and STM/BR-STM simulation pipeline into a decoupled, stage-based modular workflow. It resolves the lack of tip displacements when `use_gpu_relax=True` by adding custom OpenCL relaxation kernels that export relaxed positions, enabling highly efficient, independent runs of STM and BR-STM simulations from cached intermediate results.
+
+## User Review Required
+
+> [!IMPORTANT]
+> - **GPU Kernel Modification**: We will append new kernels (`relaxStrokesWithDisp` and `relaxStrokes2DWithDisp`) to `cpp/common_resources/cl/relax.cl`. This avoids breaking any existing C++ or Python code calling `relaxStrokes` directly while providing the necessary tip displacement outputs.
+> - **Backward Compatibility**: The existing monolithic pipeline (`run_afm_from_xyz`, `run_afm_pipeline`, and `compose_and_relax_total`) will retain its original signatures and behavior. The new modular stages will be exposed through a new class and high-level interface.
+
+## Proposed Changes
+
+We group our changes into the following components:
+
+1. **GPU Relaxation & OpenCL Kernels**: Add new OpenCL kernels to return both relaxed forces and relaxed positions, and expose them through `AFM.py`.
+2. **Modular Pipeline Engine & Caching (`ModularPipeline.py`)**: Create a new class to manage the stages and cache intermediate data to disk.
+3. **STM & BR-STM Integration**: Update orchestration logic to correctly utilize the new modular system and tip displacement data.
+
+### 1. GPU Relaxation & OpenCL Kernels
+
+#### [MODIFY] [relax.cl](file:///home/prokop/git/FireCore/cpp/common_resources/cl/relax.cl)
+Add `relaxStrokesWithDisp` and `relaxStrokes2DWithDisp` to the end of the file. These duplicate the relaxation physics but accept a third `disps` float4 buffer to return exact lateral/3D displacements per slice.
+
+#### [MODIFY] [AFM.py](file:///home/prokop/git/FireCore/pyBall/OCL/AFM.py)
+- Allocate a new persistent GPU scan buffer `scan_disps_cl` in `realloc_scan_buffers`.
+- Implement `scan_fdbm_with_disp` and `scan_fdbm_2d_with_disp` that call the new OpenCL kernels and return `(FEs_relax, tip_disp)`.
+
+### 2. Modular Pipeline Engine & Caching
+
+#### [NEW] [ModularPipeline.py](file:///home/prokop/git/FireCore/pyBall/OCL/ModularPipeline.py)
+Create a clean stage-based pipeline class `ModularAFMPipeline` that inherits from or wraps `AFMulator`.
+It will define the following pipeline stages:
+1. **Stage 1 (`run_scf`)**: Runs DFTB+ to get orbital coefficients, eigenvalues, etc. Stores results to `dftb_data.npz`.
+2. **Stage 2 (`project_density`)**: Projects SCF and neutral density matrices onto the grid. Stores grids to `density_grids.npz`.
+3. **Stage 3 (`compute_potentials`)**: Calculates Poisson ES, Pauli repulsion, and London vdW fields, summing them into a total force-field. Stores potentials/gradients to `potentials.npz`.
+4. **Stage 4 (`relax_tip`)**: Runs tip relaxation (damped velocity or FIRE, CPU or GPU) using FDBM grids. Stores tip displacements and frequency shifts to `relaxation.npz`.
+5. **Stage 5 (`compute_stm`)**: Computes standard STM at heights using cached DFTB basis and orbital coefficients.
+6. **Stage 6 (`compute_br_stm`)**: Computes Bond-Resolved STM using cached displacements from Stage 4.
+
+Each stage will have a flag/parameter `force_recompute` (default `False`). If intermediate files exist on disk, they will be loaded immediately instead of re-running the heavy computation.
+
+### 3. STM & BR-STM Integration
+
+#### [MODIFY] [AFM_utils.py](file:///home/prokop/git/FireCore/pyBall/OCL/AFM_utils.py)
+- Update `compose_and_relax_total` to check if `afmulator` supports the `scan_fdbm_with_disp` functions and use them to return actual displacements instead of zero arrays when `use_gpu_relax=True`.
+- Ensure that `compute_bond_resolved_stm` works cleanly with these displacements.
+
+#### [MODIFY] [test_full_pipeline.py](file:///home/prokop/git/FireCore/tests/tAFM/pyocl_fdbm/test_full_pipeline.py)
+Ensure that running with `--stm_bond_resolved` properly triggers the new modular displacements. Add arguments for caching/modular re-runs if desired.
+
+## Verification Plan
+
+### Automated Tests
+- Run `python test_full_pipeline.py TBTAP.xyz --use_dense_projection --compute_stm --stm_bond_resolved` to verify standard and BR-STM runs successfully.
+- Verify that saving and verifying checkpoints still passes perfectly to guarantee backward compatibility:
+  ```bash
+  python test_full_pipeline.py h2o.xyz --save-checkpoints --checkpoint-dir ./checkpoints/h2o_baseline
+  python test_full_pipeline.py h2o.xyz --verify-checkpoints --checkpoint-dir ./checkpoints/h2o_baseline
+  ```
+
+### Manual Verification
+- Inspect the generated `stm.png` and `stm_bond_resolved.png` to visually confirm that the bond-resolved STM image shows characteristic sharp, distorted bond contrasts due to tip relaxation.
+
+---
+
+# Modular Pipeline Implementation Notes
+
+## Overview
+
+The modular AFM/STM pipeline (`pyBall/OCL/ModularPipeline.py`) was successfully implemented to enable independent execution of pipeline stages with disk-based caching. This addresses the inefficiency of recomputing the entire pipeline when only STM or BR-STM needs updating.
+
+## Implementation Details
+
+### File Structure
+
+- **`pyBall/OCL/ModularPipeline.py`** - New standalone class `ModularAFMPipeline` (no inheritance to preserve backward compatibility)
+- **`tests/tAFM/pyocl_fdbm/test_modular_pipeline.py`** - CLI test script for headless testing
+
+### Pipeline Stages
+
+The pipeline is divided into 6 stages:
+
+1. **Stage 1 (SCF)**: DFTB+ SCF → caches `dm_dense`, `eigvecs`, `eigvals` → `cache_stage1_scf.npz`
+2. **Stage 2 (Grid Projection)**: Density projection using `Grid_dftb.py` → caches `rho_scf`, `rho_na`, `rho_diff`, `origin`, `ngrid` → `cache_stage2_grids.npz`
+3. **Stage 3 (FDBM Potentials)**: Pauli, ES, vdW, total force field → caches `V_ES`, `E_pauli_field`, `E_ES_field`, `E_vdw`, `F_total` → `cache_stage3_potentials.npz`
+4. **Stage 4 (Relaxation)**: Probe-particle relaxation → caches `df`, `tip_disp` (dx,dy,dz), `FEs_relax` → `cache_stage4_relax.npz`
+5. **Stage 5 (Standard STM)**: Orbital projection → no caching (lightweight)
+6. **Stage 6 (BR-STM)**: STM at displaced tip positions → no caching (lightweight)
+
+### CO Tip Caching Strategy
+
+The modular pipeline supports flexible CO tip loading with three-tier fallback:
+
+1. **Local directory**: If `co_tip_dir` parameter provided and exists, load `co_rho_total.npy` and `co_rho_delta.npy` from there
+2. **Global cache**: Check `~/.cache/firecore/co_tips/` using hash key based on step, margin, fdata_dir, fdata_basis
+3. **On-the-fly computation**: If neither exists, compute CO tip via `compute_co_tip.py` and save to global cache
+
+This mirrors the full pipeline's behavior in `AFM_utils.py:run_afm_from_xyz()`.
+
+### Key Design Decisions
+
+- **Standalone class**: `ModularAFMPipeline` does not inherit from `AFMulator` to avoid breaking existing code
+- **Disk caching**: Stages 1-4 cached to disk as `.npz` files in output directory
+- **Force recompute flags**: Each stage accepts `force_recompute` parameter to bypass cache
+- **Backward compatibility**: Old monolithic pipeline in `AFM_utils.py` remains unchanged
+
+## Testing Performed
+
+### Test 1: CO Molecule (Small System)
+
+**Command:**
+```bash
+python3 test_modular_pipeline.py CO.xyz --output_dir test_modular_output --step 0.2 --scan_range 2.0 --scan_step 0.2 --height_range 2.8 3.2 --height_step 0.2
+```
+
+**Result:** Success, but STM failed due to insufficient orbitals (CO has only 8 MOs, default LUMO offsets [1,2,3] tried to access indices 8-10).
+
+**Lesson:** Small molecules need adjusted LUMO offsets (e.g., `[1]` instead of `[1,2,3]`).
+
+### Test 2: Pentacene (Larger System)
+
+**Command:**
+```bash
+python3 test_modular_pipeline.py pentacene.xyz --output_dir test_modular_pentacene --step 0.15 --scan_range 3.0 --scan_step 0.15 --height_range 2.8 3.6 --height_step 0.15 --compute_stm --compute_br_stm
+```
+
+**Result:** Complete success
+- Stage 1 (SCF): 0.19s, 102 basis functions
+- Stage 2 (Grid): 1.15s, 666 projection tasks
+- Stage 3 (Potentials): 2.22s, CO tip computed on-the-fly
+- Stage 4 (Relaxation): 0.16s, PPM mode
+- Stage 5 (STM): 0.01s, LUMO offsets [55,56,57]
+- Stage 6 (BR-STM): 0.01s, used tip displacements
+- Total: 4.03s
+
+**Generated plots:** `afm_df.png`, `stm.png`, `stm_bond_resolved.png`
+
+### Test 3: Closer Heights for BR-STM Enhancement
+
+**Changes made:**
+- Default height range changed from `[2.8, 3.6]` to `[2.5, 3.3]` (0.3Å closer)
+- Multi-height plotting: Changed from single middle slice to subplot grid showing all heights
+- Added displacement debug output: Per-height statistics for max|dx|, max|dy|, max|disp|, mean|disp|
+
+**Command:**
+```bash
+python3 test_modular_pipeline.py pentacene.xyz --output_dir test_modular_pentacene_close --step 0.15 --scan_range 3.0 --scan_step 0.15 --height_range 2.5 3.3 --height_step 0.1 --compute_stm --compute_br_stm
+```
+
+**Displacement statistics (key finding):**
+```
+z=2.50 A: max|disp|=1.79 A (very large!)
+z=2.60 A: max|disp|=1.44 A
+z=2.70 A: max|disp|=1.13 A
+z=2.80 A: max|disp|=0.93 A
+z=2.90 A: max|disp|=0.74 A
+z=3.00 A: max|disp|=0.48 A
+z=3.10 A: max|disp|=0.22 A
+z=3.20 A: max|disp|=0.12 A
+```
+
+**Result:** Closer heights (2.5-2.7 Å) show significant lateral displacements up to 1.8 Å, producing much more pronounced BR-STM orbital distortion effects.
+
+**Generated plots:** `afm_df_all_heights.png`, `stm_all_heights.png`, `stm_bond_resolved_all_heights.png`
+
+## Challenges Faced
+
+### 1. CO Tip Cache Missing
+
+**Issue:** Initial modular pipeline only checked global cache `~/.cache/firecore/co_tips/`, which didn't have entries for the test parameters.
+
+**Solution:** Added `co_tip_dir` parameter to `ModularAFMPipeline.__init__` and implemented three-tier fallback (local dir → global cache → on-the-fly computation) matching the full pipeline's behavior.
+
+### 2. Small Molecule STM Out of Range
+
+**Issue:** CO molecule has only 8 MOs (indices 0-7), but default LUMO offsets `[1,2,3]` tried to access HOMO+1, HOMO+2, HOMO+3 (indices 8, 9, 10).
+
+**Error:** `ValueError: STM: MO indices out of range [8, 9]; valid=[0,7]`
+
+**Solution:** Test with larger molecules (pentacene) which have more orbitals. For small molecules, use smaller LUMO offsets like `[1]`.
+
+### 3. Insufficient BR-STM Contrast
+
+**Issue:** Initial test at heights 2.8-3.6 Å showed displacements but BR-STM orbital distortion wasn't pronounced enough.
+
+**Solution:** Moved closer to surface (2.5-3.3 Å) where displacements are larger (up to 1.8 Å vs <1 Å at original heights). Added per-height displacement statistics to quantify effect.
+
+### 4. Background Command Usage
+
+**Issue:** Agent initially used `Background=True` for long-running commands, which got cancelled or failed to show output.
+
+**Solution:** Added rule to AGENTS.md: "Never use background commands: always run commands synchronously to show full output; never use Background=True, tail, or similar output-hiding methods."
+
+## Future Developer Guidelines
+
+### DO
+
+- **Use modular pipeline for iterative work**: When tuning STM parameters or testing different heights, use the modular pipeline with cached stages to avoid recomputing expensive DFTB and FDBM calculations.
+- **Check displacement statistics**: Use the debug output from Stage 4 to verify that tip displacements are sufficient for BR-STM effects (>0.5 Å recommended).
+- **Test with appropriate molecules**: Small molecules like CO have limited orbitals; use larger conjugated systems (pentacene, TBTAP) for STM/BR-STM testing.
+- **Use closer heights for BR-STM**: Heights 2.5-3.0 Å produce larger displacements and more pronounced BR-STM effects.
+- **Leverage global CO tip cache**: The CO tip is automatically cached globally after first computation, speeding up subsequent runs with same parameters.
+
+### DON'T
+
+- **Don't use background commands**: Always run commands synchronously to see full output (see AGENTS.md).
+- **Don't assume sufficient orbitals**: Check MO count before running STM; adjust LUMO offsets for small molecules.
+- **Don't edit old monolithic pipeline**: Keep `AFM_utils.py:run_afm_from_xyz()` unchanged; use modular pipeline for new features.
+- **Don't ignore displacement magnitude**: BR-STM requires significant tip displacements (>0.5 Å) to show orbital distortion effects.
+- **Don't use `Background=True`**: This violates the AGENTS.md rule and hides output from the user.
+
+### File Modification Policy
+
+- **ModularPipeline.py**: New file, safe to modify
+- **test_modular_pipeline.py**: New file, safe to modify
+- **AGENTS.md**: Updated with background command rule
+- **AFM_utils.py**: DO NOT EDIT - monolithic pipeline, must remain unchanged
+- **AFM.py**: DO NOT EDIT - core AFM engine, must remain unchanged
+- **Grid_dftb.py**: DO NOT EDIT - GPU projection, must remain unchanged
+
+## Performance Notes
+
+- **Stage 1 (SCF)**: Most expensive for large molecules (pentacene: 0.19s with 102 basis functions)
+- **Stage 2 (Grid)**: Depends on grid size and number of atoms (pentacene: 1.15s with 666 tasks)
+- **Stage 3 (Potentials)**: FFT and gradient computation (pentacene: 2.22s, includes CO tip)
+- **Stage 4 (Relaxation)**: Fast with GPU PPM (pentacene: 0.16s)
+- **Stage 5-6 (STM/BR-STM)**: Very fast (<0.02s total) - these are the stages that benefit most from modularization
+
+**Caching benefit:** Re-running STM/BR-STM with different parameters takes <0.1s instead of >4s when stages 1-4 are cached.

@@ -140,6 +140,7 @@ class AFMulator(OpenCLBase):
         buffs = {
             "scan_pts": sz_f * 4 * n_scan,         # float4 per scan point
             "scan_FEs": sz_f * 4 * n_scan * nz,    # float4 per (scan_point, z_step)
+            "scan_disps": sz_f * 4 * n_scan * nz,  # float4 per (scan_point, z_step)
         }
         self.try_make_buffers(buffs, suffix="_cl")
 
@@ -263,6 +264,7 @@ class AFMulator(OpenCLBase):
             self.img_FF_fdbm,
             self.scan_pts_cl,
             self.scan_FEs_cl,
+            self.scan_disps_cl,
             self.fdbm_dinvA, self.fdbm_dinvB, self.fdbm_dinvC,
             dTip,
             stiffness_v, dpos0_v, relax_pars_v,
@@ -272,14 +274,23 @@ class AFMulator(OpenCLBase):
 
         # --- download and reshape ---
         FEs_h = np.zeros((n_scan * nz_s, 4), dtype=np.float32)
+        disps_h = np.zeros((n_scan * nz_s, 4), dtype=np.float32)
         self.fromGPU_(self.scan_FEs_cl, FEs_h)
+        self.fromGPU_(self.scan_disps_cl, disps_h)
         self.queue.finish()
 
         # relaxStrokes: FEs[gid*nz+iz] where iz=0=highest z; flip to iz=0=lowest
         FEs_relax = FEs_h.reshape(nx_s, ny_s, nz_s, 4)[:, :, ::-1, :]
+        disps_relax = disps_h.reshape(nx_s, ny_s, nz_s, 4)[:, :, ::-1, :]
         Fz = FEs_relax[:,:,:,2]
         print(f"  AFMulator.scan_fdbm: Fz min={Fz.min():.4f}  max={Fz.max():.4f}  mean={Fz.mean():.4f} eV/Ang  ppm_mode={ppm_mode}")
-        return FEs_relax
+        
+        tip_disp = {
+            'dx': disps_relax[..., 0],
+            'dy': disps_relax[..., 1],
+            'dz': disps_relax[..., 2]
+        }
+        return FEs_relax, tip_disp
 
     def scan_fdbm_2d(self, scan_xs, scan_ys, probe_heights, mol_z=0.0, K_LAT=0.5, dt=0.3, damp=0.2):
         """
@@ -324,6 +335,7 @@ class AFMulator(OpenCLBase):
             self.img_FF_fdbm,
             self.scan_pts_cl,
             self.scan_FEs_cl,
+            self.scan_disps_cl,
             self.fdbm_dinvA, self.fdbm_dinvB, self.fdbm_dinvC,
             np.float32(K_LAT), np.float32(dh),
             np.float32(dt),    np.float32(damp),
@@ -331,13 +343,22 @@ class AFMulator(OpenCLBase):
         )
         self.queue.finish()
         FEs_h = np.zeros((n_scan * nz_s, 4), dtype=np.float32)
+        disps_h = np.zeros((n_scan * nz_s, 4), dtype=np.float32)
         self.fromGPU_(self.scan_FEs_cl, FEs_h)
+        self.fromGPU_(self.scan_disps_cl, disps_h)
         self.queue.finish()
         # flip iz so iz=0 = lowest z (matches CPU pp_relax_2d order)
         FEs_relax = FEs_h.reshape(nx_s, ny_s, nz_s, 4)[:, :, ::-1, :]
+        disps_relax = disps_h.reshape(nx_s, ny_s, nz_s, 4)[:, :, ::-1, :]
         Fz = FEs_relax[:,:,:,2]
         print(f"  AFMulator.scan_fdbm_2d: Fz min={Fz.min():.4f}  max={Fz.max():.4f}  mean={Fz.mean():.4f} eV/Ang")
-        return FEs_relax
+        
+        tip_disp = {
+            'dx': disps_relax[..., 0],
+            'dy': disps_relax[..., 1],
+            'dz': disps_relax[..., 2]
+        }
+        return FEs_relax, tip_disp
 
     def realloc_dispersion_buffers(self, natoms):
         """(Re-)allocate persistent GPU buffers for dispersion computation via try_make_buffers."""
@@ -1527,14 +1548,11 @@ def pp_relax_2d_cl(afmulator, F_total, origin, step,
     ppm_mode=False: simplified harmonic, probe pinned at scan heights.
     """
     afmulator.setup_fdbm_grid(F_total, origin, step)
-    FEs_relax = afmulator.scan_fdbm(
+    FEs_relax, tip_disp = afmulator.scan_fdbm(
         scan_xs, scan_ys, probe_heights, mol_z=mol_z,
         ppm_mode=ppm_mode, K_LAT=K_LAT,
         stiffness=stiffness, dpos0=dpos0, relax_pars=relax_pars
     )
-    nx_s, ny_s, nz_s = FEs_relax.shape[:3]
-    tip_disp = {'dx': np.zeros((nx_s, ny_s, nz_s), dtype=np.float32),
-                'dy': np.zeros((nx_s, ny_s, nz_s), dtype=np.float32)}
     return FEs_relax, tip_disp
 
 

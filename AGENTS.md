@@ -219,3 +219,4 @@ These rules apply to any autonomous assistant working inside this repo:
 - **Respect existing structure**: extend modules in-place rather than rewriting or rearranging unless explicitly authorized.
 - **Use official scripts**: when commands are required, rely on the provided `run.sh`/`make.sh` helpers; never invoke `make` directly.
 - **Document parity work**: when mirroring Python ↔ JS features, cite the reference file/function in comments so future maintainers can diff implementations quickly.
+- **Never use background commands**: always run commands synchronously to show full output; never use `Background=True`, tail, or similar output-hiding methods.
