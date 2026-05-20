@@ -578,7 +578,7 @@ def plot_orbital_map(window):
         ax  = fig.add_subplot(111)
         vmax = np.abs(psi_2d).max() or 1.0
         im = ax.imshow(psi_2d.T, origin='lower', cmap='seismic', vmin=-vmax, vmax=vmax,
-                       extent=[xs[0], xs[-1], ys[0], ys[-1]], aspect='auto')
+                       extent=[xs[0], xs[-1], ys[0], ys[-1]], aspect='equal')
         fig.colorbar(im, ax=ax, label='psi (a.u.)')
         rel = mo_idx - homo
         label = f"HOMO{rel:+d}" if rel != 0 else "HOMO"
@@ -709,9 +709,8 @@ def plot_afm_slice(window):
             data_3d = window._afm_density[key]
             grid_spec = window._afm_density['grid_spec']
             step = float(grid_spec['dA'][0])
-            # Get slice at requested z-height
+            # Get slice at requested z-height (may be zero if in vacuum)
             iz, actual_z = _get_z_slice(grid_spec, step, z_height)
-            # Extract slice data
             data = data_3d[:, :, iz]
             
         elif component in ["Pauli Energy", "Electrostatic Energy", "vdW Energy"]:
@@ -802,7 +801,7 @@ def plot_afm_slice(window):
             extent = None
 
         im = ax.imshow(data.T, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax,
-                       extent=extent, aspect='auto')
+                       extent=extent, aspect='equal')
         ax.set_title(f"{component}\nZ={actual_z:.2f}A (iz={iz}) | [{data_min:.3f}, {data_max:.3f}]", fontsize=10)
         ax.set_xlabel('x (A)'); ax.set_ylabel('y (A)')
         fig.colorbar(im, ax=ax, label=data_label)
@@ -1074,7 +1073,7 @@ def build_ui(window):
     z_layout = QtWidgets.QHBoxLayout()
     z_layout.addWidget(QtWidgets.QLabel("Z-height (A):"))
     window.afm_z_height_spin = QtWidgets.QDoubleSpinBox()
-    window.afm_z_height_spin.setRange(-2.0, 10.0); window.afm_z_height_spin.setValue(3.0)
+    window.afm_z_height_spin.setRange(-20.0, 20.0); window.afm_z_height_spin.setValue(3.0)
     window.afm_z_height_spin.setSingleStep(0.1); window.afm_z_height_spin.setDecimals(2)
     z_layout.addWidget(window.afm_z_height_spin)
     window.afm_live_update = QtWidgets.QCheckBox("Live")

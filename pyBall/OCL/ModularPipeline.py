@@ -207,6 +207,7 @@ Hamiltonian = DFTB {{
             data = np.load(self.cache_stage2)
             self.origin = data['origin']
             self.ngrid = data['ngrid']
+            rho_scf, rho_na, rho_diff = data['rho_scf'], data['rho_na'], data['rho_diff']
             # Reconstruct grid_spec
             self.grid_spec = {
                 'origin': self.origin,
@@ -215,7 +216,11 @@ Hamiltonian = DFTB {{
                 'dC': np.array([0.0, 0.0, self.step], dtype=np.float32),
                 'ngrid': self.ngrid,
             }
-            return data['rho_scf'], data['rho_na'], data['rho_diff']
+            z_profile = rho_scf.sum(axis=(0, 1))
+            iz_max = int(np.argmax(z_profile))
+            print(f"  [Stage2 cache] rho_scf: shape={rho_scf.shape} range=[{rho_scf.min():.4e},{rho_scf.max():.4e}] sum={rho_scf.sum():.4e}")
+            print(f"  [Stage2 cache] density z-peak at iz={iz_max}, z={float(self.origin[2]) + iz_max*self.step:.3f} A")
+            return rho_scf, rho_na, rho_diff
             
         print(f"\n[ModularPipeline] Projecting Stage 2 (density grids)...")
         from pyBall.DFTB.DFTBplusParser import parse_wfc_hsd, convert_wfc_to_species_list_ang
@@ -252,6 +257,7 @@ Hamiltonian = DFTB {{
         basis_ang = convert_wfc_to_species_list_ang(basis_data, resolution_bohr=0.04)
         
         rho_scf = self.projector.project_density_dense(dm_dense.astype(np.float32), self.norb_per_atom, self.orb_offsets, self.atoms_dict, self.grid_spec)
+        print(f"  [Stage2] rho_scf: shape={rho_scf.shape} range=[{rho_scf.min():.4e},{rho_scf.max():.4e}] sum={rho_scf.sum():.4e}")
         
         coords_bohr = self.atomPos * 1.8897259886
         species_per_atom = list(range(len(self.enames)))
@@ -262,7 +268,13 @@ Hamiltonian = DFTB {{
             'coords_bohr': coords_bohr
         }
         rho_na = dg.project_neutral_density(geo, self.projector, self.atoms_dict, self.grid_spec, basis_ang)
+        print(f"  [Stage2] rho_na:  shape={rho_na.shape} range=[{rho_na.min():.4e},{rho_na.max():.4e}] sum={rho_na.sum():.4e}")
         rho_diff = (rho_scf - rho_na).astype(np.float32)
+        print(f"  [Stage2] rho_diff:range=[{rho_diff.min():.4e},{rho_diff.max():.4e}] sum={rho_diff.sum():.4e}")
+        # z-profile to show where density lives
+        z_profile = rho_scf.sum(axis=(0,1))
+        iz_max = int(np.argmax(z_profile))
+        print(f"  [Stage2] density z-peak at iz={iz_max}, z={float(self.origin[2]) + iz_max*self.step:.3f} A (mol z range [{self.atomPos[:,2].min():.2f},{self.atomPos[:,2].max():.2f}])")
         
         np.savez_compressed(self.cache_stage2, rho_scf=rho_scf, rho_na=rho_na, rho_diff=rho_diff, origin=self.origin, ngrid=self.ngrid)
         print(f"  Stage 2 complete and cached.")
