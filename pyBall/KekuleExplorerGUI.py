@@ -49,6 +49,8 @@ from pyBall.ExtensionManager import ExtensionManager, ExtensionNotAvailableError
 from pyBall.GUI.CollapsibleSection import CollapsibleSection
 
 class KekuleExplorerWindow(BaseGUI):
+    sig_geometry_changed = QtCore.pyqtSignal()  # Emitted whenever atom geometry changes
+
     def __init__(self):
         super().__init__("Kekule Structure Explorer")
         self.resize(1024, 768)
@@ -719,6 +721,7 @@ class KekuleExplorerWindow(BaseGUI):
             self.scene.update_positions(self.backend.sys.apos.astype(np.float32))
             # Refresh view to update bond visualization immediately
             self.refresh_view()
+            self.sig_geometry_changed.emit()
             debug_print(2, f"Drag end: synced {len(atom_list)} atom positions to graph and sys")
 
     def on_mouse_move(self, event):
@@ -805,6 +808,7 @@ class KekuleExplorerWindow(BaseGUI):
                 self.backend.graph.cleanup_invalid()
                 self.backend.graph.sync_neighbor_lists()
         self.refresh_view()
+        self.sig_geometry_changed.emit()
 
     def on_mouse_press(self, event):
         # In Select mode, let Vispy handle everything (RMB selection, LMB drag)
@@ -972,6 +976,7 @@ class KekuleExplorerWindow(BaseGUI):
                 self.backend.toggle_h_state(nk)
         
         self.refresh_view()
+        self.sig_geometry_changed.emit()
 
     def refresh_view(self):
         # 0. Update Guide Grid

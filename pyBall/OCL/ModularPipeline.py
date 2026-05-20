@@ -12,9 +12,12 @@ class ModularAFMPipeline:
     def __init__(self, xyz_file, output_dir, basis='mio-1-1', slako_prefix='mio-1-1',
                  work_dir=None, step=0.1, margin=4.0, z_extra=6.0,
                  scan_range=3.0, scan_step=0.1, height_range=(2.8, 3.6), height_step=0.1,
-                 co_tip_dir=None):
+                 co_tip_dir=None,
+                 atomPos=None, enames=None):  # Optional: inject geometry directly instead of xyz_file
         self.xyz_file = xyz_file
         self.output_dir = output_dir
+        self._injected_atomPos = atomPos   # If provided, skip loading xyz_file
+        self._injected_enames = enames
         self.basis = basis
         self.slako_prefix = slako_prefix
         self.co_tip_dir = co_tip_dir
@@ -62,11 +65,17 @@ class ModularAFMPipeline:
         ELEM_Z = {'H':1,'C':6,'N':7,'O':8,'P':15,'S':16,'Br':35,'I':53}
         inv_z = {v:k for k,v in ELEM_Z.items()}
         
-        print(f"\n[ModularPipeline] Loading molecule from {self.xyz_file}")
-        pos, _, names, _, _ = au.load_xyz(self.xyz_file)
-        self.atomPos  = np.array(pos, dtype=np.float64)
-        self.atomTypes = np.array([ELEM_Z.get(e, 6) for e in names], dtype=np.int32)
-        self.enames = [inv_z.get(int(z), 'C') for z in self.atomTypes]
+        if self._injected_atomPos is not None and self._injected_enames is not None:
+            print(f"\n[ModularPipeline] Using injected geometry ({len(self._injected_atomPos)} atoms)")
+            self.atomPos   = np.array(self._injected_atomPos, dtype=np.float64)
+            self.enames    = list(self._injected_enames)
+            self.atomTypes = np.array([ELEM_Z.get(e, 6) for e in self.enames], dtype=np.int32)
+        else:
+            print(f"\n[ModularPipeline] Loading molecule from {self.xyz_file}")
+            pos, _, names, _, _ = au.load_xyz(self.xyz_file)
+            self.atomPos  = np.array(pos, dtype=np.float64)
+            self.atomTypes = np.array([ELEM_Z.get(e, 6) for e in names], dtype=np.int32)
+            self.enames = [inv_z.get(int(z), 'C') for z in self.atomTypes]
         print(f"  {len(self.atomPos)} atoms loaded.")
         
         # Scan grid coordinates
