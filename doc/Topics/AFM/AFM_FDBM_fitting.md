@@ -1167,6 +1167,142 @@ python3 test_full_pipeline.py pentacene.xyz --output_dir OUT --basis mio-1-1 \
 
 ### Verification
 
+## pySCF Backend Pauli Fitting (2026-05)
+
+For the pySCF backend, Pauli parameters must also be fitted since pySCF uses different basis sets and density representations than DFTB. The fitting workflow is similar to DFTB but uses pySCF for both reference z-scans and FDBM grid computation.
+
+### Fitting Model (NO Magic Numbers)
+
+The pySCF fitting uses the same physically grounded model without arbitrary scaling constants:
+
+```
+E_ref(z) = A * overlap(z)^beta
+```
+
+where `overlap(z)` is the **raw density overlap integral** computed with A=1, β=1.
+
+**Key difference from DFTB approach:**
+- DFTB fitting previously used `overlap_raw = E_pauli / 16.0` (magic number)
+- pySCF fitting uses `overlap_raw` directly from pipeline with A=1, β=1
+- No arbitrary scaling - fitted A, β are the only parameters
+
+### Backend Functions
+
+**Location:** `pyBall/OCL/AFM_utils.py`
+
+**Key functions:**
+- `fit_pauli_parameters_pyscf()` - Main fitting function for pySCF
+- `_run_pyscf_zscan_for_atom()` - Generate pySCF reference z-scan for isolated atom
+- `_load_pyscf_zscan()` - Load pySCF z-scan reference data
+- `_fit_pauli_powerlaw()` - Shared fitting function (same as DFTB)
+
+### Workflow
+
+1. **Generate FDBM grids with pySCF backend**
+   - Uses `ModularAFMPipeline` with `backend='pyscf'`
+   - Runs Stages 1-3 (SCF, density, potentials)
+   - Computes `overlap_raw` with A=1, β=1 (no scaling)
+   - Saves to `fdbm_grids_pyscf_{basis}/overlap_raw.npy`
+
+2. **Generate pySCF reference z-scan** (if `generate_ref=True`)
+   - For each target atom, run isolated atom SCF with pySCF
+   - Scan CO tip at heights z=[2.0, 10.0] Å
+   - Compute interaction energy: E_int = E_combined - E_atom - E_tip
+   - Saves to `zscan_pyscf_{basis}/atom_{idx}/zscan_z.npy` and `zscan_energy_eV.npy`
+
+3. **Fit Pauli parameters**
+   - Extract overlap profile from FDBM grid at atom position
+   - Fit: E_pySCF(z) = A * overlap(z)^beta in range z=[2.0, 3.0] Å
+   - Save per-atom results and summary plots
+
+### Test Script
+
+**Location:** `tests/tAFM/pyocl_fdbm/test_fit_pauli_pyscf.py`
+
+**Usage:**
+```bash
+# Fit with pre-computed grids and reference
+python3 test_fit_pauli_pyscf.py pentacene.xyz --basis sto-3g --target_indices 0,1,20,21 \
+    --fdbm_dir ./fdbm_grids_pyscf_sto3g --zscan_dir ./zscan_pyscf_sto3g
+
+# Generate grids and reference on-the-fly, then fit
+python3 test_fit_pauli_pyscf.py pentacene.xyz --basis sto-3g --target_indices 0,1,20,21 \
+    --generate_ref
+
+# Use RKS with DFT functional
+python3 test_fit_pauli_pyscf.py pentacene.xyz --basis sto-3g --method RKS --xc lda,vwn \
+    --target_indices 0,1,20,21 --generate_ref
+```
+
+### Programmatic Usage
+
+```python
+from pyBall.OCL import AFM_utils as afm_utils
+
+results = afm_utils.fit_pauli_parameters_pyscf(
+    xyz_file='pentacene.xyz',
+    pyscf_basis='sto-3g',
+    pyscf_method='RHF',
+    pyscf_xc=None,  # For RKS: 'lda,vwn', 'pbe', etc.
+    target_indices=[0, 1, 20, 21],
+    fdbm_dir=None,  # Generate on-the-fly
+    zscan_dir=None,  # Generate if generate_ref=True
+    output_dir='fit_pauli_pyscf',
+    z_min=2.0,
+    z_max=3.0,
+    generate_ref=True,
+    step=0.15,
+    margin=4.0,
+    z_extra=5.0
+)
+
+print(f"A_pauli: {results['A_mean']:.2f} ± {results['A_std']:.2f}")
+print(f"beta:    {results['beta_mean']:.4f} ± {results['beta_std']:.4f}")
+```
+
+### Output Structure
+
+```
+fit_pauli_pyscf/
+├── atom_0/
+│   ├── params.json          # Fitted A, beta, R2, RMSE
+│   ├── z_ref.npy            # Reference z positions
+│   ├── e_ref.npy            # Reference energies (pySCF)
+│   ├── overlap_col.npy      # Extracted overlap profile
+│   ├── e_fitted.npy         # Fitted energies
+│   └── fit_pauli.png        # Fit plot (linear + log)
+├── atom_1/
+│   └── ...
+├── summary_all_atoms.png    # Multi-atom comparison
+└── summary.txt              # Tabulated results
+```
+
+### Basis Set Dependence
+
+Different pySCF basis sets will yield different optimal A, β parameters:
+
+| Basis | Expected A_pauli | Expected beta | Notes |
+|-------|-----------------|---------------|-------|
+| sto-3g | ~100-500 | ~1.0-1.5 | Minimal basis, diffuse density |
+| 6-31g | ~50-200 | ~1.0-1.5 | Better basis, more compact |
+| cc-pVTZ | ~10-50 | ~1.0-1.5 | High-quality basis |
+
+These values need to be determined by fitting for each basis set.
+
+### Integration with ModularPipeline
+
+After fitting, use parameters in `test_modular_pipeline.py`:
+
+```bash
+python3 test_modular_pipeline.py pentacene.xyz --backend pyscf --pyscf_basis sto-3g \
+    --pauli_A <fitted_A> --pauli_beta <fitted_beta> \
+    --output_dir pentacene_pyscf_output
+```
+
+Future work: Add fitted pySCF defaults to `PAULI_FITTED_DEFAULTS` in `ModularPipeline.py`.
+
+### Verification
+
 Test with 3ob-3-1 basis and internal fitting:
 - Step 3a: overlap_raw range=[1e-30, 9.31]
 - Step 3b: Fitted A=509.28, β=1.0586 (R2=0.9999)

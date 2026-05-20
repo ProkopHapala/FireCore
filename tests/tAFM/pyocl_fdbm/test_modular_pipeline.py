@@ -35,6 +35,12 @@ def main():
     parser.add_argument('--no_ppm_mode', action='store_false', dest='ppm_mode', help='Disable PPM mode')
     parser.add_argument('--co_tip_dir', type=str, default=None, help='CO tip directory (if not provided, uses global cache or computes on-the-fly)')
     
+    # Backend selection (DFTB or pySCF)
+    parser.add_argument('--backend', type=str, default='dftb', choices=['dftb', 'pyscf'], help='Quantum chemistry backend (dftb or pyscf)')
+    parser.add_argument('--pyscf_method', type=str, default='RHF', choices=['RHF', 'RKS'], help='pySCF SCF method')
+    parser.add_argument('--pyscf_basis', type=str, default='sto-3g', help='pySCF basis set')
+    parser.add_argument('--pyscf_xc', type=str, default=None, help='pySCF DFT XC functional (e.g., lda,vwn, pbe)')
+    
     # Force recompute flags for modularity
     parser.add_argument('--force_scf', action='store_true', help='Force SCF (Stage 1) recompute')
     parser.add_argument('--force_project', action='store_true', help='Force projection (Stage 2) recompute')
@@ -54,6 +60,19 @@ def main():
     
     SK = args.basis
     slako_prefix = du.SK_PATHS[SK]
+    
+    # Backend-specific configuration
+    backend = args.backend
+    pyscf_params = None
+    if backend == 'pyscf':
+        pyscf_params = {
+            'method': args.pyscf_method,
+            'basis': args.pyscf_basis,
+            'xc': args.pyscf_xc
+        }
+        print(f"Using pySCF backend: method={args.pyscf_method}, basis={args.pyscf_basis}")
+    else:
+        print(f"Using DFTB backend: basis={SK}")
     
     # Resolve Pauli parameters
     pauli_A = args.pauli_A
@@ -84,7 +103,9 @@ def main():
         scan_step=args.scan_step,
         height_range=args.height_range,
         height_step=args.height_step,
-        co_tip_dir=args.co_tip_dir
+        co_tip_dir=args.co_tip_dir,
+        backend=backend,
+        pyscf_params=pyscf_params
     )
     
     # Determine recomputation needs
@@ -152,12 +173,15 @@ def main():
     print(f"  Saved AFM plots (all heights) to {os.path.join(args.output_dir, 'afm_df_all_heights.png')}")
     
     if args.compute_stm:
-        t_stm0 = time.time()
-        stm_map = pipeline.stage5_stm(
-            eigvecs, eigvals, lumo_offsets=args.stm_lumo_offsets,
-            use_exp_basis=args.stm_use_exp_basis, exp_beta=args.stm_exp_beta, exp_r0=args.stm_exp_r0
-        )
-        print(f"Stage 5 STM time: {time.time() - t_stm0:.2f} s")
+        if backend == 'pyscf':
+            print("WARNING: STM not supported with pySCF backend (Phase 1). Skipping STM computation.")
+        else:
+            t_stm0 = time.time()
+            stm_map = pipeline.stage5_stm(
+                eigvecs, eigvals, lumo_offsets=args.stm_lumo_offsets,
+                use_exp_basis=args.stm_use_exp_basis, exp_beta=args.stm_exp_beta, exp_r0=args.stm_exp_r0
+            )
+            print(f"Stage 5 STM time: {time.time() - t_stm0:.2f} s")
         
         # Plot STM for all heights
         fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*3, nrows*2.5))
@@ -178,12 +202,15 @@ def main():
         print(f"  Saved Standard STM plots (all heights) to {os.path.join(args.output_dir, 'stm_all_heights.png')}")
         
     if args.compute_br_stm:
-        t_br0 = time.time()
-        br_stm_map = pipeline.stage6_br_stm(
-            eigvecs, eigvals, tip_disp, lumo_offsets=args.stm_lumo_offsets,
-            use_exp_basis=args.stm_use_exp_basis, exp_beta=args.stm_exp_beta, exp_r0=args.stm_exp_r0
-        )
-        print(f"Stage 6 BR-STM time: {time.time() - t_br0:.2f} s")
+        if backend == 'pyscf':
+            print("WARNING: Bond-Resolved STM not supported with pySCF backend (Phase 1). Skipping BR-STM computation.")
+        else:
+            t_br0 = time.time()
+            br_stm_map = pipeline.stage6_br_stm(
+                eigvecs, eigvals, tip_disp, lumo_offsets=args.stm_lumo_offsets,
+                use_exp_basis=args.stm_use_exp_basis, exp_beta=args.stm_exp_beta, exp_r0=args.stm_exp_r0
+            )
+            print(f"Stage 6 BR-STM time: {time.time() - t_br0:.2f} s")
         
         # Plot BR-STM for all heights
         fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*3, nrows*2.5))

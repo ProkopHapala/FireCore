@@ -341,6 +341,182 @@ Hamiltonian = DFTB {{
             'projector': projector}
 
 
+# Cache for atomic density matrices (neutral atom density computation)
+_ATOMIC_DM_CACHE = {}
+
+def get_density_from_pyscf(atomPos, atomTypes, grid_spec=None, step=0.1, margin=4.0, z_extra=6.0,
+                            basis='sto-3g', method='RHF', xc=None, verbosity=0):
+    """Get density grids using pySCF for SCF and direct grid evaluation (CPU-based).
+
+    This is the Phase 1 pySCF backend: uses pySCF's eval_ao/eval_rho on CPU.
+    Phase 2 (GPU-accelerated GTO projection) would use Grid_dftb with GTO kernels.
+
+    Args:
+        atomPos: (natoms, 3) positions in Angstrom
+        atomTypes: (natoms,) atomic numbers
+        grid_spec: dict with 'origin', 'dA', 'dB', 'dC', 'ngrid' (optional)
+        step/margin/z_extra: grid parameters (used if grid_spec is None)
+        basis: basis set name (default 'sto-3g' for minimal basis)
+        method: 'RHF' or 'RKS' (DFT)
+        xc: XC functional for DFT (e.g., 'lda,vwn', 'pbe')
+        verbosity: pySCF verbosity level (0=silent)
+
+    Returns:
+        dict with 'rho_scf', 'rho_na', 'rho_diff', 'V_ES', 'origin', 'ngrid', 'grid_spec',
+                 'eigvecs', 'eigvals', 'dm', 'mol', 'mf' (latter three for Phase 2 extension)
+    """
+    from pyscf import gto, scf, dft
+    from pyscf.dft import numint
+    import time
+
+    BOHR_PER_ANGSTROM = 1.8897259886
+
+    ELEM_Z = {'H': 1, 'C': 6, 'N': 7, 'O': 8, 'P': 15, 'S': 16, 'Br': 35, 'I': 53}
+    inv_z = {v: k for k, v in ELEM_Z.items()}
+    enames = [inv_z.get(int(z), 'C') for z in atomTypes]
+
+    # Setup grid
+    if grid_spec is None:
+        grid_spec, origin, ngrid, step = _make_grid_spec(atomPos, step, margin, z_extra)
+    else:
+        origin, ngrid, step = grid_spec['origin'], grid_spec['ngrid'], grid_spec['dA'][0]
+
+    t0 = time.time()
+
+    # Build pySCF molecule from atomPos (Angstrom) and enames
+    atom_list = [[enames[i], atomPos[i]] for i in range(len(enames))]
+    mol = gto.Mole()
+    mol.atom = atom_list
+    mol.basis = basis
+    mol.verbose = verbosity
+    mol.spin = 0
+    mol.charge = 0
+    mol.build()
+
+    # Run SCF
+    if method.upper() == 'RHF':
+        mf = scf.RHF(mol)
+    elif method.upper() == 'RKS':
+        mf = dft.RKS(mol)
+        if xc is not None:
+            mf.xc = xc
+    else:
+        raise ValueError(f"Unknown method: {method}. Use 'RHF' or 'RKS'.")
+
+    mf.kernel()
+    dm = mf.make_rdm1()
+    eigvecs = mf.mo_coeff
+    eigvals = mf.mo_energy
+
+    t1 = time.time()
+    print(f"  [pySCF] SCF converged in {t1-t0:.3f}s, energy={mf.e_tot:.6f} Hartree")
+
+    # Generate grid points from grid_spec
+    nx, ny, nz = ngrid
+    origin_bohr = origin * BOHR_PER_ANGSTROM
+    dA_bohr = np.array(grid_spec['dA']) * BOHR_PER_ANGSTROM
+    dB_bohr = np.array(grid_spec['dB']) * BOHR_PER_ANGSTROM
+    dC_bohr = np.array(grid_spec['dC']) * BOHR_PER_ANGSTROM
+
+    # Build flattened (N, 3) array of grid points in Bohr
+    ix = np.arange(nx)
+    iy = np.arange(ny)
+    iz = np.arange(nz)
+    mesh_ix, mesh_iy, mesh_iz = np.meshgrid(ix, iy, iz, indexing='ij')
+
+    # Vectorized grid point computation: r = origin + ix*dA + iy*dB + iz*dC
+    grid_points_bohr = (
+        origin_bohr +
+        mesh_ix[..., None] * dA_bohr +
+        mesh_iy[..., None] * dB_bohr +
+        mesh_iz[..., None] * dC_bohr
+    ).reshape(-1, 3)
+
+    # Evaluate SCF density on grid
+    ao = numint.eval_ao(mol, grid_points_bohr, deriv=0)
+    rho_flat = numint.eval_rho(mol, ao, dm, xctype='LDA')
+    rho_scf = rho_flat.reshape(nx, ny, nz).astype(np.float32)
+
+    t2 = time.time()
+    print(f"  [pySCF] Density evaluation: {t2-t1:.3f}s for {len(grid_points_bohr)} points")
+
+    # Compute neutral atom density (rho_NA) by summing isolated atoms
+    rho_na = np.zeros_like(rho_scf)
+
+    # Atomic numbers for determining spin
+    ATOMIC_NUMBERS = {'H': 1, 'He': 2, 'Li': 3, 'Be': 4, 'B': 5, 'C': 6, 'N': 7, 'O': 8, 'F': 9, 'Ne': 10}
+
+    # Cache atomic density matrices per element to avoid re-running SCF
+    unique_elements = list(set(enames))
+    for elem in unique_elements:
+        if elem not in _ATOMIC_DM_CACHE:
+            # Determine spin for atom (odd electron count = doublet)
+            nelec = ATOMIC_NUMBERS.get(elem, 6)
+            spin = 1 if nelec % 2 == 1 else 0
+            # Run single-atom SCF and cache the density matrix
+            atm = gto.M(atom=f'{elem} 0 0 0', basis=basis, verbose=0, spin=spin)
+            atm.build()
+            mf_atm = scf.RHF(atm)
+            mf_atm.kernel()
+            dm_atm = mf_atm.make_rdm1()
+            _ATOMIC_DM_CACHE[elem] = (atm, dm_atm, spin)
+
+    # Evaluate each atom's density at molecular positions
+    for i, (elem, pos) in enumerate(zip(enames, atomPos)):
+        atm_cache, dm_cache, spin = _ATOMIC_DM_CACHE[elem]
+        # Rebuild atom at molecular position with correct spin
+        atm_i = gto.M(atom=[[elem, pos]], basis=basis, verbose=0, spin=spin)
+        atm_i.build()
+        mf_i = scf.RHF(atm_i)
+        mf_i.kernel()
+        dm_i = mf_i.make_rdm1()
+        ao_i = numint.eval_ao(atm_i, grid_points_bohr, deriv=0)
+        rho_i = numint.eval_rho(atm_i, ao_i, dm_i, xctype='LDA')
+        rho_na += rho_i.reshape(nx, ny, nz)
+
+    rho_na = rho_na.astype(np.float32)
+
+    t3 = time.time()
+    print(f"  [pySCF] Neutral atom density: {t3-t2:.3f}s")
+
+    rho_diff = (rho_scf - rho_na).astype(np.float32)
+
+    # Charge check (same as DFTB path)
+    cell_volume = step**3
+    q_scf = rho_scf.sum() * cell_volume
+    q_na = rho_na.sum() * cell_volume
+    q_diff_val = rho_diff.sum() * cell_volume
+    print(f"  [pySCF CHARGE CHECK] q_scf={q_scf:.3f}, q_na={q_na:.3f}, q_diff={q_diff_val:.6f}")
+
+    # Electrostatic potential from rho_diff
+    V_ES = afm.fft_poisson(rho_diff, step)
+
+    print(f"  [pySCF] Total time: {time.time()-t0:.3f}s")
+
+    # Return same format as get_density_from_dftb_dense
+    # For Phase 1, we don't have a projector (CPU-based)
+    # Phase 2 would include GTO basis data and a GTO-capable projector
+    return {
+        'rho_scf': rho_scf,
+        'rho_na': rho_na,
+        'rho_diff': rho_diff,
+        'V_ES': V_ES,
+        'origin': origin,
+        'ngrid': ngrid,
+        'grid_spec': grid_spec,
+        'eigvecs': eigvecs,
+        'eigvals': eigvals,
+        'dm': dm,
+        'mol': mol,
+        'mf': mf,
+        # These are None for pySCF backend (no STO projector)
+        'norb_per_atom': None,
+        'orb_offsets': None,
+        'atoms_dict': None,
+        'projector': None
+    }
+
+
 def get_density_from_dftb_plus(atomPos, atomTypes, basis, slako_prefix, work_dir,
                                 grid_spec=None, step=0.1, margin=4.0, z_extra=6.0, verbosity=0):
     """
@@ -2259,14 +2435,14 @@ def _load_dftb_zscan(zscan_dir):
     return z, e - e[-1]  # Relative energy
 
 
-def _plot_pauli_fit(z, e_ref, e_fitted, A, beta, fname, title, z_min=2.0, z_max=3.5):
+def _plot_pauli_fit(z, e_ref, e_fitted, A, beta, fname, title, z_min=2.0, z_max=3.5, ref_label='Ref'):
     """Plot per-atom Pauli fit (linear + log)."""
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
     mask = (z >= z_min) & (z <= z_max)
     # Linear
     ax = axes[0]
-    ax.plot(z, e_ref, 'o-', color='tab:blue', markersize=3, label='DFTB Ref', zorder=3)
-    ax.plot(z[mask], e_fitted[mask], 's--', color='tab:red', markersize=3, label=f'Fit A={A:.0f} b={beta:.3f}', zorder=2)
+    ax.plot(z, e_ref, 'o-', color='tab:blue', markersize=3, label=ref_label, zorder=3)
+    ax.plot(z[mask], e_fitted[mask], 's--', color='tab:red', markersize=3, label=f'Fit A={A:.2f} b={beta:.3f}', zorder=2)
     ax.axvspan(z_min, z_max, alpha=0.08, color='gray', label='Fit range')
     ax.set_xlabel('z [Å]')
     ax.set_ylabel('Energy [eV]')
@@ -2276,7 +2452,7 @@ def _plot_pauli_fit(z, e_ref, e_fitted, A, beta, fname, title, z_min=2.0, z_max=
     # Log
     ax = axes[1]
     pos = e_ref > 1e-12
-    ax.semilogy(z[pos], e_ref[pos], 'o-', color='tab:blue', markersize=3, label='DFTB Ref')
+    ax.semilogy(z[pos], e_ref[pos], 'o-', color='tab:blue', markersize=3, label=ref_label)
     ax.semilogy(z[mask], e_fitted[mask], 's--', color='tab:red', markersize=3, label='Fit')
     ax.axvspan(z_min, z_max, alpha=0.08, color='gray')
     ax.set_xlabel('z [Å]')
@@ -2650,6 +2826,422 @@ def fit_pauli_parameters(xyz_file, basis='mio-1-1', target_indices=[0],
     # Return structured results
     result_dict = {
         'basis': basis,
+        'atoms': all_results,
+        'A_mean': np.mean([r['A'] for r in all_results]) if all_results else None,
+        'beta_mean': np.mean([r['beta'] for r in all_results]) if all_results else None,
+        'A_std': np.std([r['A'] for r in all_results]) if all_results else None,
+        'beta_std': np.std([r['beta'] for r in all_results]) if all_results else None,
+    }
+    return result_dict
+
+
+# =============================================================================
+# pySCF-Specific Pauli Fitting
+# =============================================================================
+
+def _run_pyscf_zscan_for_atom(atom_name, atom_pos, tip_pos, tip_names, 
+                              z_distances, output_dir, pyscf_method='RHF', 
+                              pyscf_basis='sto-3g', pyscf_xc=None):
+    """Run pySCF z-scan for isolated atom with CO tip.
+    
+    Computes interaction energy between isolated atom and CO tip at various heights.
+    
+    Args:
+        atom_name: Element symbol (e.g., 'C', 'H', 'O')
+        atom_pos: Atom position (3,) array in Angstrom
+        tip_pos: CO tip atomic positions (N,3) array in Angstrom
+        tip_names: CO tip element names (list of N strings)
+        z_distances: Array of tip heights above atom (in Angstrom)
+        output_dir: Directory to save results
+        pyscf_method: pySCF SCF method ('RHF' or 'RKS')
+        pyscf_basis: pySCF basis set (e.g., 'sto-3g', '6-31g')
+        pyscf_xc: DFT XC functional for RKS (e.g., 'lda,vwn', 'pbe')
+    
+    Returns:
+        z_array: Array of z distances (Å)
+        e_array: Array of interaction energies (eV)
+    """
+    import pyscf
+    from pyscf import gto, scf, dft
+    import time
+    
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Build isolated atom pySCF molecule at origin
+    atom_z = int(gto.charge(atom_name))
+    mol_atom = gto.M(
+        atom=f'{atom_name} 0.0 0.0 0.0',
+        basis=pyscf_basis,
+        charge=0,
+        spin=1 if atom_z % 2 == 1 else 0,  # Handle odd-electron atoms
+        unit='Ang'
+    )
+    
+    # Run SCF for isolated atom
+    if pyscf_method.upper() == 'RHF':
+        mf_atom = scf.RHF(mol_atom)
+    elif pyscf_method.upper() == 'RKS':
+        mf_atom = dft.RKS(mol_atom)
+        if pyscf_xc is not None:
+            mf_atom.xc = pyscf_xc
+    else:
+        raise ValueError(f"Unknown method: {pyscf_method}")
+    
+    mf_atom.kernel()
+    e_atom = mf_atom.e_tot
+    
+    # Tip-only SCF (CO at origin)
+    tip_str = '\n'.join([f'{name} {pos[0]:.6f} {pos[1]:.6f} {pos[2]:.6f}' 
+                         for name, pos in zip(tip_names, tip_pos)])
+    mol_tip = gto.M(
+        atom=tip_str,
+        basis=pyscf_basis,
+        charge=0,
+        spin=0,  # CO is closed-shell
+        unit='Ang'
+    )
+    
+    if pyscf_method.upper() == 'RHF':
+        mf_tip = scf.RHF(mol_tip)
+    elif pyscf_method.upper() == 'RKS':
+        mf_tip = dft.RKS(mol_tip)
+        if pyscf_xc is not None:
+            mf_tip.xc = pyscf_xc
+    
+    mf_tip.kernel()
+    e_tip = mf_tip.e_tot
+    
+    # Scan tip heights
+    z_array = []
+    e_array = []
+    
+    print(f"  Running pySCF z-scan for {atom_name}: {len(z_distances)} heights")
+    t0 = time.time()
+    
+    for i, z in enumerate(z_distances):
+        # Position tip above atom at height z (oxygen at z above atom)
+        # Maintain relative tip geometry
+        tip_pos_shifted = tip_pos.copy()
+        tip_pos_shifted[:, 2] = tip_pos_shifted[:, 2] + z  # Add z offset to maintain relative geometry
+        
+        tip_str_shifted = '\n'.join([f'{name} {pos[0]:.6f} {pos[1]:.6f} {pos[2]:.6f}' 
+                                     for name, pos in zip(tip_names, tip_pos_shifted)])
+        
+        # Combined system
+        mol_combined = gto.M(
+            atom=f'{atom_name} 0.0 0.0 0.0\n' + tip_str_shifted,
+            basis=pyscf_basis,
+            charge=0,
+            spin=1 if atom_z % 2 == 1 else 0,  # Use atom spin
+            unit='Ang'
+        )
+        
+        if pyscf_method.upper() == 'RHF':
+            mf_combined = scf.RHF(mol_combined)
+        elif pyscf_method.upper() == 'RKS':
+            mf_combined = dft.RKS(mol_combined)
+            if pyscf_xc is not None:
+                mf_combined.xc = pyscf_xc
+        
+        mf_combined.kernel()
+        e_combined = mf_combined.e_tot
+        
+        # Interaction energy (Hartree -> eV)
+        HARTREE_TO_EV = 27.2114
+        e_int = (e_combined - e_atom - e_tip) * HARTREE_TO_EV
+        
+        z_array.append(z)
+        e_array.append(e_int)
+        
+        if (i + 1) % 5 == 0:
+            print(f"    {i+1}/{len(z_distances)}: z={z:.2f} Å, E_int={e_int:.4f} eV")
+    
+    print(f"  pySCF z-scan done in {time.time()-t0:.1f}s")
+    
+    # Reference energies to farthest distance (makes all positive, like DFTB)
+    e_array = np.array(e_array)
+    e_array = e_array - e_array[-1]
+    
+    # Take absolute value for Pauli repulsion (always repulsive)
+    e_array = np.abs(e_array)
+    
+    # Save results
+    np.save(os.path.join(output_dir, 'zscan_z.npy'), np.array(z_array))
+    np.save(os.path.join(output_dir, 'zscan_energy_eV.npy'), e_array)
+    
+    return np.array(z_array), np.array(e_array)
+
+
+def _load_pyscf_zscan(zscan_dir):
+    """Load pySCF z-scan reference data."""
+    z_path = os.path.join(zscan_dir, 'zscan_z.npy')
+    e_path = os.path.join(zscan_dir, 'zscan_energy_eV.npy')
+    if not (os.path.exists(z_path) and os.path.exists(e_path)):
+        return None, None
+    z = np.load(z_path)
+    e = np.load(e_path)
+    return z, e - e[-1]  # Reference to farthest distance
+
+
+def fit_pauli_parameters_pyscf(xyz_file, pyscf_basis='sto-3g', pyscf_method='RHF', 
+                                pyscf_xc=None, target_indices=[0], 
+                                fdbm_dir=None, zscan_dir=None, output_dir='fit_pauli_pyscf',
+                                z_min=2.0, z_max=3.0, generate_ref=False,
+                                step=0.15, margin=4.0, z_extra=5.0,
+                                tip_xyz='CO.xyz',
+                                scan_range=3.0, scan_step=0.15, 
+                                height_range=[2.8, 3.6], height_step=0.15):
+    """Fit Pauli parameters for pySCF backend against pySCF reference.
+    
+    This function integrates the full fitting workflow for pySCF:
+    1. If fdbm_dir is None/missing: run FDBM pipeline with pySCF backend
+    2. If zscan_dir is None/missing and generate_ref=True: run pySCF z-scan
+    3. Load FDBM grids (raw overlap) and pySCF z-scan data
+    4. For each target atom: extract profile, fit power-law, save results
+    5. Generate summary plots and table
+    
+    Fitting model (NO magic numbers):
+        E_ref(z) = A * overlap(z)^beta
+    where overlap(z) is the raw density overlap integral (A=1, beta=1)
+    
+    Args:
+        xyz_file: Path to molecule XYZ file
+        pyscf_basis: pySCF basis set (sto-3g, 6-31g, etc.)
+        pyscf_method: pySCF SCF method ('RHF' or 'RKS')
+        pyscf_xc: DFT XC functional for RKS (e.g., 'lda,vwn', 'pbe')
+        target_indices: List of atom indices to fit (e.g., [0, 1, 20, 21])
+        fdbm_dir: Pre-computed FDBM grid directory (if None, generates on-the-fly)
+        zscan_dir: Pre-computed pySCF z-scan directory (if None and generate_ref=True, generates)
+        output_dir: Output directory for fitting results
+        z_min, z_max: Fit range in Å (contact region)
+        generate_ref: Whether to generate pySCF z-scan if missing
+        step, margin, z_extra: Grid parameters for FDBM generation
+        tip_xyz: Tip molecule XYZ file (default: CO.xyz)
+        scan_range, scan_step: AFM scan parameters (for FDBM grid generation)
+        height_range, height_step: AFM height parameters (for FDBM grid generation)
+    
+    Returns:
+        dict: Fitting results with keys:
+            - 'basis': pySCF basis set name
+            - 'method': pySCF SCF method
+            - 'atoms': list of per-atom results (dict with A, beta, rmse, etc.)
+            - 'A_mean', 'beta_mean': mean values across atoms
+            - 'A_std', 'beta_std': standard deviations
+    """
+    import json
+    import time
+    from pyBall import atomicUtils as au
+    from pyBall.DFTB import TestUtils as tu
+    
+    t0 = time.time()
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Load molecule
+    mol_pos, _, mol_names, _, _ = au.load_xyz(xyz_file)
+    mol_pos = np.array(mol_pos, dtype=np.float64)
+    for idx in target_indices:
+        if idx < 0 or idx >= len(mol_names):
+            raise ValueError(f"Target index {idx} out of range (0-{len(mol_names)-1})")
+    
+    # Load CO tip
+    tip_path = os.path.join(os.path.dirname(xyz_file), tip_xyz)
+    tip_pos, _, tip_names, _, _ = au.load_xyz(tip_path)
+    tip_pos = np.array(tip_pos, dtype=np.float64)
+    
+    # Step 1: Generate FDBM grids with pySCF backend if needed
+    if fdbm_dir is None or not os.path.isdir(fdbm_dir):
+        print(f"\nGenerating FDBM grids with pySCF backend ({pyscf_basis})...")
+        fdbm_dir = os.path.join(output_dir, f'fdbm_grids_pyscf_{pyscf_basis}')
+        os.makedirs(fdbm_dir, exist_ok=True)
+        
+        # Use ModularPipeline with pySCF backend
+        from pyBall.OCL import ModularPipeline as mp_mod
+        
+        pipeline = mp_mod.ModularAFMPipeline(
+            xyz_file=xyz_file,
+            output_dir=fdbm_dir,
+            basis=None,  # Not used for pySCF
+            slako_prefix=None,
+            step=step, margin=margin, z_extra=z_extra,
+            scan_range=scan_range, scan_step=scan_step,
+            height_range=height_range, height_step=height_step,
+            backend='pyscf',
+            pyscf_params={'method': pyscf_method, 'basis': pyscf_basis, 'xc': pyscf_xc}
+        )
+        
+        # Run stages 1-3 (SCF, density, potentials) to get overlap_raw
+        dm_dense, eigvecs, eigvals = pipeline.stage1_scf(force_recompute=True)
+        rho_scf, rho_na, rho_diff = pipeline.stage2_project(dm_dense, force_recompute=True)
+        V_ES, E_pauli, E_ES, E_vdw, F_total = pipeline.stage3_potentials(
+            rho_scf, rho_na, rho_diff, force_recompute=True,
+            pauli_params={'A': 1.0, 'beta': 1.0}  # Raw overlap (no scaling)
+        )
+        
+        # Save raw overlap for fitting
+        np.save(os.path.join(fdbm_dir, 'overlap_raw.npy'), E_pauli)
+        np.save(os.path.join(fdbm_dir, 'E_Pauli_field.npy'), E_pauli)
+        np.save(os.path.join(fdbm_dir, 'E_ES_field.npy'), E_ES)
+        np.save(os.path.join(fdbm_dir, 'E_vdw_field.npy'), E_vdw)
+        
+        # Save grid spec
+        np.savez(os.path.join(fdbm_dir, 'grid_spec.npz'),
+                 origin=pipeline.origin, ngrid=pipeline.ngrid, step=pipeline.step)
+        
+        print(f"  FDBM grids saved to: {fdbm_dir}")
+    
+    # Load FDBM grids
+    grids = _load_fdbm_grids(fdbm_dir)
+    if grids['overlap_raw'] is None:
+        raise FileNotFoundError(f"overlap_raw.npy not found in {fdbm_dir}")
+    
+    # Read grid spec
+    grid_spec_path = os.path.join(fdbm_dir, 'grid_spec.npz')
+    if os.path.exists(grid_spec_path):
+        grid_data = np.load(grid_spec_path, allow_pickle=True)
+        origin = grid_data['origin']
+        ngrid = grid_data['ngrid']
+        step_grid = float(grid_data['step'])
+    else:
+        # Fallback: estimate from grid shape
+        pauli_shape = grids['overlap_raw'].shape
+        ngrid = pauli_shape
+        step_grid = step
+        mol_center = mol_pos.mean(axis=0)
+        grid_size = np.array(ngrid) * step_grid
+        origin = mol_center - 0.5 * grid_size
+        print(f"  WARNING: Could not read grid spec, estimated from molecule center")
+    
+    print(f"  Grid: origin={origin.round(2)} ngrid={ngrid} step={step_grid}")
+    
+    # Step 2: Generate pySCF z-scan if needed
+    zscan_dir_base = zscan_dir if zscan_dir else os.path.join(output_dir, f'zscan_pyscf_{pyscf_basis}')
+    
+    if generate_ref:
+        print(f"\nGenerating pySCF z-scan reference ({pyscf_basis})...")
+        z_distances = np.arange(2.0, 30.0 + 0.15*0.5, 0.15)
+        print(f"  Z-scan: {len(z_distances)} points from {z_distances.min():.2f} to {z_distances.max():.2f} Å")
+        
+        for target_idx in target_indices:
+            target_name = mol_names[target_idx]
+            atom_out_dir = os.path.join(zscan_dir_base, f'atom_{target_idx}')
+            os.makedirs(atom_out_dir, exist_ok=True)
+            
+            _run_pyscf_zscan_for_atom(
+                target_name, mol_pos[target_idx], tip_pos, tip_names,
+                z_distances, atom_out_dir, pyscf_method, pyscf_basis, pyscf_xc
+            )
+        print(f"  pySCF z-scan saved to: {zscan_dir_base}")
+    
+    # Step 3: Fit each atom
+    all_results = []
+    for target_idx in target_indices:
+        target_name = mol_names[target_idx]
+        target_pos = mol_pos[target_idx]
+        atom_out_dir = os.path.join(output_dir, f'atom_{target_idx}')
+        zscan_atom_dir = os.path.join(zscan_dir_base, f'atom_{target_idx}')
+        os.makedirs(atom_out_dir, exist_ok=True)
+        
+        print(f"\nAtom {target_idx} ({target_name}) at [{target_pos[0]:.4f}, {target_pos[1]:.4f}, {target_pos[2]:.4f}]")
+        
+        # Load pySCF z-scan
+        z_ref, e_ref = _load_pyscf_zscan(zscan_atom_dir)
+        if z_ref is None:
+            raise FileNotFoundError(f"No z-scan found in {zscan_atom_dir}. Generate with generate_ref=True or provide valid zscan_dir")
+        
+        # Extract raw overlap profile at atom XY
+        overlap_col = tu.extract_z_profile(grids['overlap_raw'], target_pos, origin, step_grid, z_distances=z_ref)
+        if overlap_col is None:
+            raise ValueError(f"overlap_raw extraction failed for atom {target_idx}")
+        overlap_safe = np.clip(overlap_col, 1e-30, None)
+        
+        # Diagnostics
+        grid_z_range = [origin[2], origin[2] + grids['overlap_raw'].shape[2] * step_grid]
+        print(f"  Grid z: [{grid_z_range[0]:.2f}, {grid_z_range[1]:.2f}] Å")
+        print(f"  z_ref: [{z_ref.min():.2f}, {z_ref.max():.2f}] Å (above atom at z={target_pos[2]:.2f})")
+        print(f"  overlap at z_ref[0]={z_ref[0]:.2f}: {overlap_col[0]:.4e}")
+        idx_z3 = np.argmin(np.abs(z_ref - 3.0))
+        print(f"  overlap at z_ref~3.0 (={z_ref[idx_z3]:.2f}): {overlap_col[idx_z3]:.4e}")
+        print(f"  e_ref at z_ref~3.0: {e_ref[idx_z3]:.4e} eV")
+        
+        # Fit: E_pySCF = A_fit * overlap^beta_fit (NO magic numbers)
+        A_fit, beta_fit, r2, e_fitted_range = _fit_pauli_powerlaw(
+            z_ref, overlap_safe, e_ref, z_min=z_min, z_max=z_max
+        )
+        
+        e_fitted_all = A_fit * overlap_safe**beta_fit
+        mask_fit = (z_ref >= z_min) & (z_ref <= z_max)
+        rmse_fit = np.sqrt(np.mean((e_ref[mask_fit] - e_fitted_range)**2))
+        rmse_all = np.sqrt(np.mean((e_ref - e_fitted_all)**2))
+        
+        print(f"  Fit: A={A_fit:.4f}, beta={beta_fit:.4f}, R2={r2:.6f}, RMSE(fit)={rmse_fit:.4e} eV")
+        print(f"  Consistency check at z_ref~3.0: E_fit={e_fitted_all[idx_z3]:.4e} vs E_pySCF={e_ref[idx_z3]:.4e} eV")
+        
+        # Save
+        params = {
+            'basis': pyscf_basis, 'method': pyscf_method, 'xc': pyscf_xc,
+            'atom_idx': target_idx, 'atom_name': target_name,
+            'A_pauli': float(A_fit), 'beta_pauli': float(beta_fit),
+            'R2_fit': float(r2), 'RMSE_fit': float(rmse_fit), 'RMSE_all': float(rmse_all),
+            'fit_z_min': z_min, 'fit_z_max': z_max,
+        }
+        with open(os.path.join(atom_out_dir, 'params.json'), 'w') as f:
+            json.dump(params, f, indent=2)
+        
+        np.save(os.path.join(atom_out_dir, 'z_ref.npy'), z_ref)
+        np.save(os.path.join(atom_out_dir, 'e_ref.npy'), e_ref)
+        np.save(os.path.join(atom_out_dir, 'overlap_col.npy'), overlap_col)
+        np.save(os.path.join(atom_out_dir, 'e_fitted.npy'), e_fitted_all)
+        
+        # Plot
+        _plot_pauli_fit(
+            z_ref, e_ref, e_fitted_all, A_fit, beta_fit,
+            fname=os.path.join(atom_out_dir, 'fit_pauli.png'),
+            title=f'{target_name}{target_idx} (pySCF {pyscf_basis})',
+            z_min=z_min, z_max=z_max,
+            ref_label='pySCF Ref'
+        )
+        
+        all_results.append({
+            'idx': target_idx, 'name': target_name, 'pos': target_pos,
+            'A': A_fit, 'beta': beta_fit, 'r2': r2,
+            'rmse_fit': rmse_fit, 'rmse_all': rmse_all,
+            'z': z_ref, 'e_fitted': e_fitted_all, 'e_ref': e_ref,
+        })
+    
+    # Step 4: Summary
+    if len(all_results) > 1:
+        _plot_fitting_summary(all_results, os.path.join(output_dir, 'summary_all_atoms.png'), 
+                            f'pySCF {pyscf_basis}', z_min, z_max)
+    
+    # Write summary table
+    with open(os.path.join(output_dir, 'summary.txt'), 'w') as f:
+        f.write("pySCF Pauli Fitting Summary\n")
+        f.write("="*70 + "\n")
+        f.write(f"Basis: {pyscf_basis}\n")
+        f.write(f"Method: {pyscf_method}\n")
+        f.write(f"XC: {pyscf_xc if pyscf_xc else 'N/A'}\n")
+        f.write(f"Atoms: {[r['idx'] for r in all_results]}\n")
+        f.write(f"Fit range: z=[{z_min}, {z_max}] Å\n\n")
+        f.write(f"{'Atom':>6} {'Name':>4} {'A_pauli':>10} {'beta':>8} {'R2':>10} {'RMSE_fit':>10} {'RMSE_all':>10}\n")
+        f.write("-"*70 + "\n")
+        for r in all_results:
+            f.write(f"{r['idx']:6d} {r['name']:>4} {r['A']:10.2f} {r['beta']:8.4f} {r['r2']:10.6f} {r['rmse_fit']:10.4f} {r['rmse_all']:10.4f}\n")
+        
+        if len(all_results) > 1:
+            As = [r['A'] for r in all_results]
+            betas = [r['beta'] for r in all_results]
+            f.write(f"\nMean ± std:\n")
+            f.write(f"  A_pauli: {np.mean(As):.2f} ± {np.std(As):.2f}\n")
+            f.write(f"  beta:    {np.mean(betas):.4f} ± {np.std(betas):.4f}\n")
+        f.write(f"\nTime: {time.time()-t0:.1f}s\n")
+    
+    print(f"\nAll results saved to: {output_dir}/")
+    
+    # Return structured results
+    result_dict = {
+        'basis': pyscf_basis,
+        'method': pyscf_method,
+        'xc': pyscf_xc,
         'atoms': all_results,
         'A_mean': np.mean([r['A'] for r in all_results]) if all_results else None,
         'beta_mean': np.mean([r['beta'] for r in all_results]) if all_results else None,

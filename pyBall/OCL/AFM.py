@@ -1565,6 +1565,7 @@ def pp_relax_2d_cl(afmulator, F_total, origin, step,
 PAULI_FITTED_DEFAULTS = {
     'mio-1-1': {'A': 787.22, 'beta': 1.2371},  # fitted for pentacene atom 0, raw overlap (A=1,beta=1 convolution)
     '3ob-3-1': {'A': 509.28, 'beta': 1.0586},  # fitted for pentacene atom 0, raw overlap (A=1,beta=1 convolution)
+    'pyscf_sto-3g': {'A': 1.15, 'beta': 0.36},  # fitted for pentacene atom 0, pySCF sto-3g, fit range 3.0-6.0 Å
 }
 
 def compute_pauli_overlap(rho_grid, rho_tip_total, step, tip_rolled=False):
