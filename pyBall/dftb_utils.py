@@ -5,6 +5,7 @@ import numpy as np
 from . import elements
 from . import atomicUtils as au
 from textwrap import dedent,indent
+from .config_utils import get_config, get_path, get_dftb_basis_path, get_dftb_sk_path
 
 def _check_dftb_exe():
     dftb_exe = os.environ.get('DFTB_EXE')
@@ -14,8 +15,11 @@ def _check_dftb_exe():
     return dftb_exe
 
 def _check_sk_path():
-    sk_lib_path = os.environ.get('DFTB_SK_PATH')
-    if sk_lib_path is None:            raise RuntimeError("DFTB_SK_PATH not set. Set: export DFTB_SK_PATH=/path/to/library/ (e.g. ~/SIMULATIONS/dftbplus/slakos/library/). Download: wget https://github.com/dftbparams/3ob/releases/download/v3.1.0/3ob-3-1.tar.xz && tar xf 3ob-3-1.tar.xz. See https://dftb.org/parameters/download.html")
+    # Try config.json first, then environment variable
+    config = get_config()
+    sk_lib_path = get_path('dftb_sk_path') or os.environ.get('DFTB_SK_PATH')
+    if sk_lib_path is None:
+        raise RuntimeError("DFTB_SK_PATH not set. Set in firecore_config.json or via: export DFTB_SK_PATH=/path/to/library/ (e.g. ~/SIMULATIONS/dftbplus/slakos/). Download: wget https://github.com/dftbparams/3ob/releases/download/v3.1.0/3ob-3-1.tar.xz && tar xf 3ob-3-1.tar.xz. See https://dftb.org/parameters/download.html")
     if not os.path.isdir(sk_lib_path): raise RuntimeError(f"SK library not found: {sk_lib_path}")
     sk_lib_path = sk_lib_path.rstrip('/') + '/'
     available_sets = [d for d in os.listdir(sk_lib_path) if os.path.isdir(os.path.join(sk_lib_path, d)) and any(f.endswith('.skf') for f in os.listdir(os.path.join(sk_lib_path, d)))]
@@ -436,15 +440,41 @@ def save_xyz_movie(results, fname, lvs=None, label=None, key_order=None):
     print(f"Saved XYZ movie: {fname}")
 
 # ============ AFM / FDBM shared paths
-SK_PATHS = {
-    'mio-1-1': '/home/prokop/SIMULATIONS/dftbplus/slakos/mio-1-1/',
-    '3ob-3-1': '/home/prokop/SIMULATIONS/dftbplus/slakos/3ob-3-1/',
-}
+# These are now loaded from config.json, with fallback to hardcoded paths for backward compatibility
+def _get_sk_paths():
+    """Load SK paths from config.json or use defaults."""
+    config = get_config()
+    sk_paths = {}
+    if 'dftb' in config and 'basis_sets' in config['dftb']:
+        for basis_name, basis_info in config['dftb']['basis_sets'].items():
+            if 'sk_path' in basis_info:
+                sk_paths[basis_name] = basis_info['sk_path']
+    # Fallback to hardcoded paths if config doesn't have them
+    if not sk_paths:
+        sk_paths = {
+            'mio-1-1': '/home/prokop/SIMULATIONS/dftbplus/slakos/mio-1-1/',
+            '3ob-3-1': '/home/prokop/SIMULATIONS/dftbplus/slakos/3ob-3-1/',
+        }
+    return sk_paths
 
-WFC_HSD_PATHS = {
-    'mio-1-1': '/home/prokop/git/dftbplus/tests/grid/dftb_h2o/waveplot_in.hsd',
-    '3ob-3-1': '/home/prokop/git/dftbplus/tests/grid/dftb_h2o_3ob/waveplot_in.hsd',
-}
+def _get_wfc_hsd_paths():
+    """Load WFC HSD paths from config.json or use defaults."""
+    config = get_config()
+    wfc_paths = {}
+    if 'dftb' in config and 'basis_sets' in config['dftb']:
+        for basis_name, basis_info in config['dftb']['basis_sets'].items():
+            if 'wfc_path' in basis_info:
+                wfc_paths[basis_name] = basis_info['wfc_path']
+    # Fallback to hardcoded paths if config doesn't have them
+    if not wfc_paths:
+        wfc_paths = {
+            'mio-1-1': '/home/prokop/git/dftbplus/tests/grid/dftb_h2o/waveplot_in.hsd',
+            '3ob-3-1': '/home/prokop/git/dftbplus/tests/grid/dftb_h2o_3ob/waveplot_in.hsd',
+        }
+    return wfc_paths
+
+SK_PATHS = _get_sk_paths()
+WFC_HSD_PATHS = _get_wfc_hsd_paths()
 
 def _write_dftb_input_base(enames, xyz_path, out_path, sk_prefix, scctol=1e-7, maxscc=200, 
                            analysis_block="", options_block=""):

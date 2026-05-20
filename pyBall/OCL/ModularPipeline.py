@@ -3,6 +3,7 @@ import numpy as np
 import pyBall.atomicUtils as au
 from pyBall.OCL import AFM as afm
 from pyBall.OCL import AFM_utils as afm_utils
+from pyBall.config_utils import get_config, get_path, get_dftb_basis_path
 
 class ModularAFMPipeline:
     """
@@ -123,8 +124,13 @@ class ModularAFMPipeline:
         if not basis_name:
             basis_name = '3ob-3-1'
 
-        _ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
-        basis_hsd_path = os.path.join(_ROOT, 'pyBall', 'DFTB', 'data', f'wfc.{basis_name}.hsd')
+        # Use config system to find basis file
+        basis_hsd_path = get_dftb_basis_path(basis_name)
+        if basis_hsd_path is None:
+            # Fallback to old hardcoded path
+            _ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+            basis_hsd_path = os.path.join(_ROOT, 'pyBall', 'DFTB', 'data', f'wfc.{basis_name}.hsd')
+        
         if os.path.exists(basis_hsd_path):
             basis_data = parse_wfc_hsd(basis_hsd_path)
             basis_ang = convert_wfc_to_species_list_ang(basis_data, resolution_bohr=0.04)
@@ -180,8 +186,13 @@ class ModularAFMPipeline:
         basis_name = self.slako_prefix.rstrip('/').split('/')[-1] if '/' in self.slako_prefix else self.slako_prefix
         if not basis_name:
             basis_name = '3ob-3-1'
-        _ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
-        basis_hsd_path = os.path.join(_ROOT, 'pyBall', 'DFTB', 'data', f'wfc.{basis_name}.hsd')
+        
+        # Use config system to find basis file
+        basis_hsd_path = get_dftb_basis_path(basis_name)
+        if basis_hsd_path is None:
+            # Fallback to old hardcoded path
+            _ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+            basis_hsd_path = os.path.join(_ROOT, 'pyBall', 'DFTB', 'data', f'wfc.{basis_name}.hsd')
 
         sk_dir = du.SK_PATHS.get(basis_name, os.path.join(os.environ.get('DFTB_SK_PATH', ''), basis_name))
 
@@ -373,8 +384,13 @@ Hamiltonian = DFTB {{
         basis_name = self.slako_prefix.rstrip('/').split('/')[-1] if '/' in self.slako_prefix else self.slako_prefix
         if not basis_name:
             basis_name = '3ob-3-1'
-        _ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
-        basis_hsd_path = os.path.join(_ROOT, 'pyBall', 'DFTB', 'data', f'wfc.{basis_name}.hsd')
+        
+        # Use config system to find basis file
+        basis_hsd_path = get_dftb_basis_path(basis_name)
+        if basis_hsd_path is None:
+            # Fallback to old hardcoded path
+            _ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+            basis_hsd_path = os.path.join(_ROOT, 'pyBall', 'DFTB', 'data', f'wfc.{basis_name}.hsd')
 
         basis_data = parse_wfc_hsd(basis_hsd_path)
         basis_ang = convert_wfc_to_species_list_ang(basis_data, resolution_bohr=0.04)

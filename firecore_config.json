@@ -1,0 +1,29 @@
+{
+  "paths": {
+    "dftb_sk_path": "/home/prokophapala/SIMULATIONS/dftbplus/slakos",
+    "dftb_exe": null,
+    "dftb_basis_path": "/home/prokophapala/git/FireCore/pyBall/DFTB/data",
+    "fdata_dir": "/home/prokophapala/git/FireCore/tests/pyFireball/Fdata",
+    "firecore_root": "/home/prokophapala/git/FireCore"
+  },
+  "dftb": {
+    "default_sk_set": "mio-1-1",
+    "available_sk_sets": ["mio-1-1", "3ob-3-1"],
+    "basis_sets": {
+      "mio-1-1": {
+        "sk_path": "/home/prokophapala/SIMULATIONS/dftbplus/slakos/mio/mio-1-1",
+        "wfc_path": "/home/prokophapala/git/FireCore/pyBall/DFTB/data/wfc.mio-1-1.hsd"
+      },
+      "3ob-3-1": {
+        "sk_path": "/home/prokophapala/SIMULATIONS/dftbplus/slakos/3ob-3-1",
+        "wfc_path": "/home/prokophapala/git/FireCore/pyBall/DFTB/data/wfc.3ob-3-1.hsd"
+      }
+    }
+  },
+  "environment_variables": {
+    "DFTB_SK_PATH": "Override paths.dftb_sk_path",
+    "DFTB_EXE": "Override paths.dftb_exe",
+    "DFTB_BASIS_PATH": "Override paths.dftb_basis_path",
+    "FIRECORE_ROOT": "Override paths.firecore_root"
+  }
+}
