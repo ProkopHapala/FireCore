@@ -523,7 +523,8 @@ Options {{
 
 def write_dftb_input_sp(enames, xyz_path, out_path, sk_prefix, scctol=1e-7, maxscc=200):
     """Write minimal DFTB+ input for single-point SCF calculation."""
-    _write_dftb_input_base(enames, xyz_path, out_path, sk_prefix, scctol, maxscc, analysis_block="  CalculateForces = Yes")
+    # Removed CalculateForces for DFTB+ compatibility with newer versions
+    _write_dftb_input_base(enames, xyz_path, out_path, sk_prefix, scctol, maxscc, analysis_block="")
 
 
 def write_dftb_input_for_density(enames, xyz_path, out_path, sk_prefix, scctol=1e-7, maxscc=200):
@@ -770,8 +771,14 @@ def makeDFTBjob_pbc( enames, apos, lvs, fname='dftb_in.hsd', sk_set=None,
     Convergence {{ GradElem = {params["GradElem"]} }}
 }}\n\n"""))
         
-        # Force calculation (always, needed to monitor constraints)
-        hsd.write('\nAnalysis {\n  CalculateForces = Yes\n}\n\n')
+        # Force calculation - removed CalculateForces for DFTB+ compatibility
+        # In newer DFTB+ versions, forces are calculated automatically during optimization
+        # For single-point calculations, forces can be obtained from detailed.out if needed
+
+        # Parser options for DFTB+ version compatibility
+        hsd.write('ParserOptions {\n')
+        hsd.write('  ParserVersion = 15\n')
+        hsd.write('}\n\n')
 
         # Hamiltonian
         hsd.write('Hamiltonian = DFTB {\n')
