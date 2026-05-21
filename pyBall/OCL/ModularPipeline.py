@@ -465,7 +465,7 @@ Hamiltonian = DFTB {{
             print(f"  Raw CO tip shape: {co_rho_total_raw.shape}")
         else:
             # Check global cache
-            cached = afm_utils._get_cached_co_tip(self.step, self.margin, fdata_dir, fdata_basis)
+            cached = afm_utils._get_cached_co_tip(self.step, self.margin, fdata_dir, fdata_basis, backend=self.backend)
             if cached is not None:
                 print(f"  Loading cached CO tip (step={self.step}, margin={self.margin})...")
                 co_rho_total_raw, co_rho_delta_raw = cached
@@ -477,11 +477,11 @@ Hamiltonian = DFTB {{
                 os.makedirs(co_tip_work, exist_ok=True)
                 co_grid_spec, co_ngrid, co_origin = afm_utils._compute_co_tip_grid(step=self.step, margin=self.margin)
                 print(f"  CO grid: ngrid={co_ngrid}, origin={co_origin}")
-                afm_utils._call_compute_co_tip_script(co_tip_work, co_grid_spec, self.step, 100, fdata_dir, fdata_basis)
+                afm_utils._call_compute_co_tip_script(co_tip_work, co_grid_spec, self.step, 100, fdata_dir, fdata_basis, backend=self.backend)
                 co_rho_total_raw = np.load(os.path.join(co_tip_work, 'co_rho_total.npy'))
                 co_rho_delta_raw = np.load(os.path.join(co_tip_work, 'co_rho_delta.npy'))
                 # Save to global cache for reuse
-                afm_utils._save_cached_co_tip(co_rho_total_raw, co_rho_delta_raw, self.step, self.margin, fdata_dir, fdata_basis)
+                afm_utils._save_cached_co_tip(co_rho_total_raw, co_rho_delta_raw, self.step, self.margin, fdata_dir, fdata_basis, backend=self.backend)
                 print(f"  CO tip saved to global cache")
             
         co_rho_total = afm_utils._pad_and_roll_co_tip(co_rho_total_raw, target_shape)

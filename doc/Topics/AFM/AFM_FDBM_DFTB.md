@@ -1339,3 +1339,85 @@ z=3.20 A: max|disp|=0.12 A
 - **Stage 5-6 (STM/BR-STM)**: Very fast (<0.02s total) - these are the stages that benefit most from modularization
 
 **Caching benefit:** Re-running STM/BR-STM with different parameters takes <0.1s instead of >4s when stages 1-4 are cached.
+
+---
+
+# Basis Set Parameter Fitting Issue (21.May 2026)
+
+## Problem Analysis
+
+When switching between different basis sets (e.g., mio-1-1 vs 3ob-3-1), the spatial extent of the electron density (tail of wavefunction decay) changes significantly. This means that the fitted Pauli parameters (A_pauli) for the FDBM model are not valid across different basis sets.
+
+**Observation:**
+- The Pauli repulsion becomes weaker when using a different basis set than what the parameters were fitted for
+- This requires going closer to the surface to see significant tip distortion
+- This is a parameter fitting problem, not a code bug
+
+**Root Cause:**
+The A_pauli coefficients in the FDBM model are fitted for a specific basis set's density profile. When the basis changes:
+1. The wavefunction spatial extent changes (different orbital decay rates)
+2. The density tail behavior changes
+3. The previously fitted A_pauli no longer matches the new density profile
+4. Result: Incorrect Pauli repulsion strength
+
+## Missing Basis File Issue
+
+**Error encountered:**
+```
+FileNotFoundError: [Errno 2] No such file or directory: '/home/prokophapala/git/FireCore/pyBall/DFTB/data/wfc.3ob-3-1.hsd'
+```
+
+The wavefunction parameter file for the 3ob-3-1 basis set was missing. This file stores the Slater-Type Orbital (STO) parameters needed for:
+- Neutral atom density projection
+- Orbital basis set information
+- Density normalization factors
+
+**Resolution (21.May 2026):**
+- Downloaded basis files from DFTB+ repository and added to repo: `pyBall/DFTB/data/wfc.mio-1-1.hsd` and `wfc.3ob-3-1.hsd`
+- Implemented `@REPO_ROOT` placeholder system in `firecore_config.json` for portable path configuration
+- Updated `config_utils.py` to resolve `@REPO_ROOT` to actual repo root at runtime
+- Removed hardcoded fallback paths in `dftb_utils.py` to enforce using config system
+
+**Configuration:**
+```json
+{
+  "paths": {
+    "dftb_basis_path": "@REPO_ROOT/pyBall/DFTB/data",
+    "firecore_root": "@REPO_ROOT"
+  },
+  "dftb": {
+    "basis_sets": {
+      "mio-1-1": {
+        "wfc_path": "@REPO_ROOT/pyBall/DFTB/data/wfc.mio-1-1.hsd"
+      },
+      "3ob-3-1": {
+        "wfc_path": "@REPO_ROOT/pyBall/DFTB/data/wfc.3ob-3-1.hsd"
+      }
+    }
+  }
+}
+```
+
+## Probe-Particle Relaxation Verification
+
+**Test Results (21.May 2026):**
+Successfully ran AFM simulation with DFTB backend and probe-particle relaxation enabled. Tip displacement diagnostics confirm proper relaxation behavior:
+
+```
+  [compose_and_relax_total] Tip displacement diagnostics:
+    z=2.00A: max|dx|=2.2208A, max|dy|=2.2169A
+    z=2.50A: max|dx|=1.0721A, max|dy|=1.1068A
+    z=3.00A: max|dx|=0.1229A, max|dy|=0.1172A
+    z=3.50A: max|dx|=0.0218A, max|dy|=0.0252A
+```
+
+Displacements decrease with increasing tip-sample distance as expected, confirming that the spherical PPM relaxation is working correctly.
+
+## Remaining Issues
+
+**Basis Set Parameter Fitting:**
+- A_pauli parameters are fitted for specific basis sets and are not valid across different basis sets
+- When switching basis sets, the spatial extent of electron density changes, affecting Pauli repulsion strength
+- This is a parameter fitting problem, not a code bug
+- Current workaround: Use mio-1-1 basis set for which parameters are already fitted
+- Future work: Fit A_pauli parameters separately for each basis set

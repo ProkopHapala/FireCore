@@ -17,6 +17,34 @@ from pathlib import Path
 # Default config file location (relative to this file)
 DEFAULT_CONFIG_PATH = Path(__file__).parent.parent / 'firecore_config.json'
 
+def _resolve_placeholders(config, config_path):
+    """
+    Resolve @REPO_ROOT placeholder in config paths.
+    
+    Args:
+        config: Configuration dict
+        config_path: Path to config.json file (used to determine repo root)
+    
+    Returns:
+        Config dict with resolved paths
+    """
+    # Determine repo root from config file location
+    if config_path is None:
+        config_path = DEFAULT_CONFIG_PATH
+    repo_root = str(Path(config_path).parent)
+    
+    def resolve_value(value):
+        """Recursively resolve @REPO_ROOT placeholder in values."""
+        if isinstance(value, str):
+            return value.replace('@REPO_ROOT', repo_root)
+        elif isinstance(value, dict):
+            return {k: resolve_value(v) for k, v in value.items()}
+        elif isinstance(value, list):
+            return [resolve_value(item) for item in value]
+        return value
+    
+    return resolve_value(config)
+
 def get_config(config_path=None):
     """
     Load FireCore configuration from config.json.
@@ -40,6 +68,9 @@ def get_config(config_path=None):
     if Path(config_path).exists():
         with open(config_path, 'r') as f:
             config = json.load(f)
+    
+    # Resolve @REPO_ROOT placeholders
+    config = _resolve_placeholders(config, config_path)
     
     # Override with environment variables
     env_overrides = {
