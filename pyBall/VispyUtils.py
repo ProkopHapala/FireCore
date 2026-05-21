@@ -176,11 +176,12 @@ class AtomScene(QtCore.QObject):
         self.hover_ring_lines = visuals.Line(parent=self.view.scene, color='cyan', width=2.0, antialias=True, method='gl')
         self.hover_ring_markers = visuals.Markers(parent=self.view.scene)
         self.hover_ring_text = visuals.Text(parent=self.view.scene, color='cyan', font_size=12, anchor_x='center', anchor_y='center')
+        self.hover_atom_marker = visuals.Markers(parent=self.view.scene)
         # Selection rectangle (Line visual) - create lazily to avoid initialization issues
         self.selection_rect = None
 
         # Enforce z-order when supported
-        for o, v in enumerate((self.radius_markers, self.bbox_lines, self.inbox_lines, self.halo_lines, self.neigh_lines, self.port_lines, self.port_target_lines, self.dpos_lines, self.dpos_neigh_lines, self.bond_lines, self.bond_colored_lines, self.ch_bond_lines, self.hbond_lines, self.force_lines, self.atom_markers, self.axes, self.text_labels, self.hover_bond_line, self.hover_ring_lines, self.hover_ring_markers, self.hover_ring_text)):
+        for o, v in enumerate((self.radius_markers, self.bbox_lines, self.inbox_lines, self.halo_lines, self.neigh_lines, self.port_lines, self.port_target_lines, self.dpos_lines, self.dpos_neigh_lines, self.bond_lines, self.bond_colored_lines, self.ch_bond_lines, self.hbond_lines, self.force_lines, self.atom_markers, self.axes, self.text_labels, self.hover_bond_line, self.hover_ring_lines, self.hover_ring_markers, self.hover_ring_text, self.hover_atom_marker)):
             if hasattr(v, 'order'):
                 v.order = int(o)
 
@@ -191,6 +192,7 @@ class AtomScene(QtCore.QObject):
                 v.set_gl_state('translucent', depth_test=False)
             self.atom_markers.set_gl_state('translucent', depth_test=False)
             self.hover_ring_markers.set_gl_state('translucent', depth_test=False)
+            self.hover_atom_marker.set_gl_state('translucent', depth_test=False)
             self.text_labels.set_gl_state('translucent', depth_test=False)
             self.hover_ring_text.set_gl_state('translucent', depth_test=False)
         except Exception:

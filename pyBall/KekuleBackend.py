@@ -382,7 +382,7 @@ class KekuleBackend:
         q_exact = x / (s3 * self.a_CC) - r_exact * 0.5
         return int(round(q_exact)), int(round(r_exact))
 
-    def snap_to_node(self, x, y, tol=0.5):
+    def snap_to_node(self, x, y, tol=0.2):
         """Find the rounded Cartesian coordinates (rx, ry) of the honeycomb node closest to (x, y)."""
         # Find the nearest hexagon first
         q, r = self.snap_to_ring(x, y)
@@ -432,6 +432,18 @@ class KekuleBackend:
         
         if self.auto_h_cap:
             self.adjust_h()
+
+    def set_atom_type_by_index(self, atom_idx, element):
+        """Set or change the element at a specific atom index (independent of grid)."""
+        atom_list, *_ = self.graph.to_arrays()
+        if 0 <= atom_idx < len(atom_list):
+            a = atom_list[atom_idx]
+            a.ename = element
+            a.atype = elements.ELEMENT_DICT[element][0]
+            a.subtype = self._get_element_default_subtype(element)
+            if self.auto_h_cap:
+                self.adjust_h()
+            self._sync_sys()
 
     def _create_bond_to_nearest_heavy(self, atom):
         """Create bond to nearest heavy atom within bond length cutoff.
@@ -528,6 +540,19 @@ class KekuleBackend:
             return
         ia = self._atom_to_index(a)
         self._rebuild_after_delete([ia])
+        # Clean up dead bonds and sync neighbor lists (no recalc_bonds!)
+        self.graph.cleanup_invalid()
+        self.graph.sync_neighbor_lists()
+        if self.auto_h_cap:
+            self.adjust_h()
+
+    def remove_atom_by_index(self, atom_idx):
+        """Remove atom at specific index (independent of grid).
+        
+        Also removes any H atoms attached to the removed heavy atom.
+        Does NOT call recalc_bonds() - just removes from graph and syncs.
+        """
+        self._rebuild_after_delete([atom_idx])
         # Clean up dead bonds and sync neighbor lists (no recalc_bonds!)
         self.graph.cleanup_invalid()
         self.graph.sync_neighbor_lists()
