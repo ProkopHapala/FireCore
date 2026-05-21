@@ -2858,5 +2858,68 @@ The atom editing system is now much more flexible and user-friendly:
 - Maintains backward compatibility with grid-based workflows
 - Provides precise control through configurable pick radius
 
+---
+
+# USER
+
+now one more thing, we should implement rectangle selection mode, it should be new mode beside atoms, hex, bond, pi modes, called rect
+
+this should allow to add things to selection by dragging RMB and remove by dragging RMB with shift (additive and substrative)
+the rect should be highlighted while dragging, and selected atom (the actual state of selection after the add/remov operation should be visible), then should be able to move seleted atoms by dragging LMB which will view updated positions of atoms, and also line conecting srtating point of dragging to actual mouse position, after LMB is realeased we synch the atom position to the new place. 
+
+the selected atoms should  be also possible to delete by delte buttom,
+and also operation ctrl+C and ctrl+V should work
+
+Before we start to implement it look if we already have implemented somethig like this before, I have feeling we did but I do not see how to do it now.
+
+
+---
+
+# SWE-1.6
+
+Based on my search, **rectangle selection mode already exists** in KekuleExplorerGUI. Your feeling is correct - it was implemented before.
+
+## Current Implementation
+
+### KekuleExplorerGUI.py - "Select" Mode
+The GUI already has a **"Select" mode** with the following features:
+
+- **Mode switch**: Line 61 shows `'Select'` is one of the edit modes
+- **Activation**: Lines 582-584 enable selection mode when switching to Select mode
+- **Selection handling**: Lines 651-657 handle selection changes via [on_selection_changed()](cci:1://file:///home/prokophapala/git/FireCore-prokop-bak/pyBall/KekuleExplorerGUI.py:650:4-656:147)
+- **Keyboard shortcuts**: Lines 669-690 implement:
+  - Delete key to remove selected atoms
+  - Ctrl-C to copy selected atoms
+  - Ctrl-V to paste atoms
+- **Status message**: Shows "Selection Mode: RMB drag to select | Delete: Remove | Ctrl-C: Copy | Ctrl-V: Paste | LMB: Drag selected"
+
+### VispyUtils.py (AtomScene) - Selection Infrastructure
+The Vispy scene already has full selection support:
+
+- **Selection mode toggle**: [set_selection_mode(enabled)](cci:1://file:///home/prokophapala/git/FireCore-prokop-bak/pyBall/VispyUtils.py:1310:4-1315:34) method (line 1312)
+- **Selection tracking**: `_selected_indices` set, [get_selected_indices()](cci:1://file:///home/prokophapala/git/FireCore-prokop-bak/pyBall/VispyUtils.py:1318:4-1320:44), [set_selected_indices()](cci:1://file:///home/prokophapala/git/FireCore-prokop-bak/pyBall/VispyUtils.py:1322:4-1326:63), [clear_selection()](cci:1://file:///home/prokophapala/git/FireCore-prokop-bak/pyBall/VispyUtils.py:1327:4-1339:46)
+- **Rectangle selection**: 
+  - `selection_rect` visual element (line 975)
+  - `_selection_start` and `_selection_end` for rectangle drag
+  - Lines 981-984: Start rectangle selection on RMB drag
+  - Lines 1253-1293: Update selection rectangle and select atoms within
+- **Selected atom highlighting**: [_highlight_selected()](cci:1://file:///home/prokophapala/git/FireCore-prokop-bak/pyBall/VispyUtils.py:1294:4-1309:28) method (line 1295) - highlights selected atoms in orange
+- **Drag selected atoms**: Lines 1009-1022 - LMB drag moves all selected atoms together
+
+### MoleculeEditor2D.py - Advanced Selection
+This file has even more advanced rectangle selection with:
+- Add/subtract modes (Shift+RMB)
+- Selection center calculation
+- Grow/shrink/expand selection operations
+
+## How to Use Current Selection Mode
+
+1. Switch to **"Select"** mode from the edit mode dropdown
+2. **RMB drag** to select atoms within rectangle
+3. **LMB drag** to move selected atoms
+4. **Delete** key to remove selected atoms
+5. **Ctrl-C** to copy, **Ctrl-V** to paste
+
+The functionality you requested (rectangle selection, additive/subtractive selection, drag to move, delete, copy/paste) **already exists** in the current "Select" mode. You just need to switch to that mode to use it.
 
 
