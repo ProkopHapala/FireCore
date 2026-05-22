@@ -415,6 +415,10 @@ class OCLsystem{ public:
         //commands = clCreateCommandQueueWithProperties( context, device, &prop, &err );
         commands = clCreateCommandQueueWithProperties( context, device, NULL, &err );   // if properties are NULL defaults are used 
         OCL_checkError(err, "Creating command queue");
+#if OCL_DEEP_DEBUG
+        OCL_printIntelDiagnostics(device);
+        OCL_printCommandQueueState("init() AFTER queue creation", commands, context);
+#endif
         return err;
     }
     
@@ -576,7 +580,18 @@ class OCLsystem{ public:
     }
 
     int finishRaw(){
-        int err = clFinish(commands); return err;
+#if OCL_DEEP_DEBUG
+        OCL_printCommandQueueState("finishRaw() BEFORE clFinish", commands, context);
+#endif
+        int err = clFinish(commands);
+#if OCL_DEEP_DEBUG
+        if(err != CL_SUCCESS){
+            printf("ERROR in finishRaw(): clFinish() returned %s\n", OCL_err_code(err));
+            OCL_printCommandQueueState("finishRaw() AFTER ERROR", commands, context);
+            OCL_printContextState("finishRaw() AFTER ERROR", context);
+        }
+#endif
+        return err;
     }
 
     int finish(){
@@ -616,12 +631,184 @@ class OCLsystem{ public:
 }; // class OCLsystem
 
 //=======================================================================
+// Deep Debug Diagnostics for Intel GPU CL_INVALID_COMMAND_QUEUE issue
+//=======================================================================
+
+#if OCL_DEEP_DEBUG
+
+inline void OCL_printCommandQueueState(const char* location, cl_command_queue queue, cl_context ctx){
+    printf("\n=== OCL_DEEP_DEBUG: Command Queue State @ %s ===\n", location);
+    fflush(stdout);
+    
+    if(queue == 0){
+        printf("  ERROR: Command queue is NULL\n");
+        fflush(stdout);
+    } else {
+        cl_command_queue_properties props;
+        cl_uint ref_count;
+        cl_int err;
+        
+        printf("  [1] Getting queue properties...\n"); fflush(stdout);
+        // Try to get queue properties
+        err = clGetCommandQueueInfo(queue, CL_QUEUE_PROPERTIES, sizeof(props), &props, NULL);
+        if(err == CL_SUCCESS){
+            printf("  Queue Properties: 0x%lx (", (unsigned long)props);
+            if(props & CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE) printf("OUT_OF_ORDER ");
+            if(props & CL_QUEUE_PROFILING_ENABLE) printf("PROFILING ");
+            printf(")\n");
+        } else {
+            printf("  ERROR getting queue properties: %s\n", OCL_err_code(err));
+        }
+        fflush(stdout);
+        
+        printf("  [2] Getting reference count...\n"); fflush(stdout);
+        // Try to get reference count
+        err = clGetCommandQueueInfo(queue, CL_QUEUE_REFERENCE_COUNT, sizeof(ref_count), &ref_count, NULL);
+        if(err == CL_SUCCESS){
+            printf("  Queue Reference Count: %u\n", ref_count);
+        } else {
+            printf("  ERROR getting refcount: %s (queue may be invalid)\n", OCL_err_code(err));
+        }
+        fflush(stdout);
+        
+        printf("  [3] Getting queue context...\n"); fflush(stdout);
+        // Try to verify queue is associated with valid context
+        cl_context queue_ctx;
+        err = clGetCommandQueueInfo(queue, CL_QUEUE_CONTEXT, sizeof(queue_ctx), &queue_ctx, NULL);
+        if(err == CL_SUCCESS){
+            printf("  Queue Context: %p (expected: %p) %s\n", 
+                   (void*)queue_ctx, (void*)ctx, 
+                   (queue_ctx == ctx) ? "[MATCH]" : "[MISMATCH!]");
+        } else {
+            printf("  ERROR getting queue context: %s\n", OCL_err_code(err));
+        }
+        fflush(stdout);
+        
+        printf("  [4] Getting queue device...\n"); fflush(stdout);
+        // Try to get queue device
+        cl_device_id queue_dev;
+        err = clGetCommandQueueInfo(queue, CL_QUEUE_DEVICE, sizeof(queue_dev), &queue_dev, NULL);
+        if(err == CL_SUCCESS){
+            char dev_name[256];
+            clGetDeviceInfo(queue_dev, CL_DEVICE_NAME, 256, dev_name, NULL);
+            printf("  Queue Device: %s\n", dev_name);
+        } else {
+            printf("  ERROR getting queue device: %s\n", OCL_err_code(err));
+        }
+        fflush(stdout);
+    }
+    
+    if(ctx == 0){
+        printf("  ERROR: Context is NULL\n");
+        fflush(stdout);
+    } else {
+        printf("  [5] Getting context device count...\n"); fflush(stdout);
+        cl_uint num_devices;
+        cl_int err = clGetContextInfo(ctx, CL_CONTEXT_NUM_DEVICES, sizeof(num_devices), &num_devices, NULL);
+        if(err == CL_SUCCESS){
+            printf("  Context Device Count: %u\n", num_devices);
+        } else {
+            printf("  ERROR getting context info: %s\n", OCL_err_code(err));
+        }
+        fflush(stdout);
+    }
+    printf("===========================================================\n\n");
+    fflush(stdout);
+}
+
+inline void OCL_printContextState(const char* location, cl_context ctx){
+    printf("\n=== OCL_DEEP_DEBUG: Context State @ %s ===\n", location);
+    
+    if(ctx == 0){
+        printf("  ERROR: Context is NULL\n");
+    } else {
+        cl_uint num_devices;
+        cl_device_id devices[16];
+        cl_int err;
+        
+        err = clGetContextInfo(ctx, CL_CONTEXT_NUM_DEVICES, sizeof(num_devices), &num_devices, NULL);
+        if(err == CL_SUCCESS){
+            printf("  Context Device Count: %u\n", num_devices);
+            
+            err = clGetContextInfo(ctx, CL_CONTEXT_DEVICES, sizeof(devices), devices, NULL);
+            if(err == CL_SUCCESS){
+                for(cl_uint i=0; i<num_devices && i<16; i++){
+                    char name[256], vendor[256];
+                    clGetDeviceInfo(devices[i], CL_DEVICE_NAME, 256, name, NULL);
+                    clGetDeviceInfo(devices[i], CL_DEVICE_VENDOR, 256, vendor, NULL);
+                    printf("    Device[%u]: %s (%s)\n", i, name, vendor);
+                }
+            }
+        } else {
+            printf("  ERROR: %s\n", OCL_err_code(err));
+        }
+    }
+    printf("===========================================================\n\n");
+}
+
+inline void OCL_printIntelDiagnostics(cl_device_id device){
+    char vendor[256], name[256];
+    clGetDeviceInfo(device, CL_DEVICE_VENDOR, 256, vendor, NULL);
+    clGetDeviceInfo(device, CL_DEVICE_NAME, 256, name, NULL);
+    
+    if(strstr(vendor, "Intel") || strstr(name, "Intel")){
+        printf("\n=== INTEL GPU DIAGNOSTICS ===\n");
+        printf("  Device: %s\n", name);
+        printf("  Vendor: %s\n", vendor);
+        
+        // Check extensions
+        char extensions[4096];
+        clGetDeviceInfo(device, CL_DEVICE_EXTENSIONS, 4096, extensions, NULL);
+        printf("  Extensions: %s\n", extensions);
+        
+        // Memory info
+        cl_ulong global_mem, local_mem;
+        clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(global_mem), &global_mem, NULL);
+        clGetDeviceInfo(device, CL_DEVICE_LOCAL_MEM_SIZE, sizeof(local_mem), &local_mem, NULL);
+        printf("  Global Memory: %lu MB\n", global_mem/(1024*1024));
+        printf("  Local Memory: %lu KB\n", local_mem/1024);
+        
+        // Queue properties
+        cl_command_queue_properties qprops;
+        clGetDeviceInfo(device, CL_DEVICE_QUEUE_ON_HOST_PROPERTIES, sizeof(qprops), &qprops, NULL);
+        printf("  Host Queue Properties: 0x%lx\n", (unsigned long)qprops);
+        
+        cl_uint max_queue_size;
+        clGetDeviceInfo(device, CL_DEVICE_QUEUE_ON_DEVICE_MAX_SIZE, sizeof(max_queue_size), &max_queue_size, NULL);
+        printf("  Max On-Device Queue Size: %u\n", max_queue_size);
+        
+        printf("===============================\n\n");
+    }
+}
+
+#endif // OCL_DEEP_DEBUG
+
+//=======================================================================
 //=======================================================================
 
 int OCLtask::enque_raw(  ){
     //printf("enque_raw ikernel %li(%i) idim %li global(%li,%li,%li) local(%li,%li,%li)\n", ikernel, cl->kernels[ikernel], dim, global.x,global.y,global.z, local.x,local.y,local.z );    
-    if(local.x==0){ return clEnqueueNDRangeKernel( cl->commands, cl->kernels[ikernel], dim, NULL, (size_t*)&global, NULL,            0, NULL, NULL );   }
-    else{           return clEnqueueNDRangeKernel( cl->commands, cl->kernels[ikernel], dim, NULL, (size_t*)&global, (size_t*)&local, 0, NULL, NULL );   }
+#if OCL_DEEP_DEBUG
+    static int enque_count = 0;
+    enque_count++;
+    if(enque_count % 100 == 0){  // Print every 100 enqueues to track progress
+        printf("OCL_DEEP_DEBUG: enque_raw() call #%d, kernel=%d, commands=%p\n", enque_count, ikernel, (void*)cl->commands);
+    }
+#endif
+    int err;
+    if(local.x==0){ err = clEnqueueNDRangeKernel( cl->commands, cl->kernels[ikernel], dim, NULL, (size_t*)&global, NULL,            0, NULL, NULL );   }
+    else{           err = clEnqueueNDRangeKernel( cl->commands, cl->kernels[ikernel], dim, NULL, (size_t*)&global, (size_t*)&local, 0, NULL, NULL );   }
+    OCL_checkError(err, "enque_raw");
+#if OCL_DEEP_DEBUG
+    if(err != CL_SUCCESS){
+        printf("OCL_DEEP_DEBUG: ERROR in enque_raw() call #%d: %s\n", enque_count, OCL_err_code(err));
+        OCL_printCommandQueueState("enque_raw() ERROR", cl->commands, cl->context);
+    }else{
+        printf("OCL_DEEP_DEBUG: enque_raw() #%d enqueued successfully\n", enque_count);
+    }
+    fflush(stdout);
+#endif
+    return err;
 }
 
 int OCLtask::useArgs( ){

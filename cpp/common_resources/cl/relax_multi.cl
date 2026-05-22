@@ -2352,9 +2352,14 @@ __kernel void getNonBond_GridFF_Bspline(
     const int iaa = iG + i0a;      // index of the atom in the system
     const int iav = iG + i0v;      // index of the vector (atom or pi-orbital) in the system
     
-    const float4 REQKi = REQKs    [iaa];           // parameters of Lenard-Jones potential, Coulomb and Hydrogen Bond (RvdW,EvdW,Q,H) of the atom
-    const float3 posi  = atoms    [iav].xyz;       // position of the atom
-    float4 fe          = float4Zero;              // forces on the atom
+    float4 REQKi = float4Zero;                    // parameters of Lenard-Jones potential, Coulomb and Hydrogen Bond (RvdW,EvdW,Q,H) of the atom
+    float3 posi  = (float3)(0.0f, 0.0f, 0.0f);    // position of the atom
+    float4 fe    = float4Zero;                    // forces on the atom
+    const int bAtomValid = (iG < natoms);
+    if(bAtomValid){
+        REQKi = REQKs[iaa];
+        posi  = atoms[iav].xyz;
+    }
 
     const int iS_DBG = 0;
     const int iG_DBG = 0;
@@ -2395,12 +2400,17 @@ __kernel void getNonBond_GridFF_Bspline(
     // ========= Atom-to-Atom interaction ( N-body problem )     - we do it by chunks of nL atoms in order to reuse data and reduce number of global memory reads
     for (int j0=0; j0<natoms; j0+= nL ){ // loop over atoms in the system by chunks of nL atoms which fit into local memory
         const int i = j0 + iL;           // global index of atom in the system
-        LATOMS[iL] = atoms [i+i0v];      // load positions  of atoms into local memory
-        LCLJS [iL] = REQKs [i+i0a];      // load parameters of atoms into local memory
+        if(i<natoms){
+            LATOMS[iL] = atoms [i+i0v];      // load positions  of atoms into local memory
+            LCLJS [iL] = REQKs [i+i0a];      // load parameters of atoms into local memory
+        }else{
+            LATOMS[iL] = (float4)(0.0f,0.0f,0.0f,0.0f);
+            LCLJS [iL] = (float4)(0.0f,0.0f,0.0f,0.0f);
+        }
         barrier(CLK_LOCAL_MEM_FENCE);    // wait until all atoms are loaded into local memory 
         for (int jl=0; jl<nL; jl++){     // loop over atoms in the local memory chunk
             const int ja=jl+j0;          // global index of atom in the system
-            if( (ja!=iG) && (ja<natoms) ){ // atom should not interact with himself, and should be in the system ( j0*nL+iL may be out of range of natoms )   
+            if( bAtomValid && (ja!=iG) && (ja<natoms) ){ // atom should not interact with himself, and should be in the system ( j0*nL+iL may be out of range of natoms )   
                 const float4 aj   = LATOMS[jl]; // position of the atom
                 float4       REQK = LCLJS [jl]; // parameters of the atom
 // if((iG==iG_DBG)&&(iS==iS_DBG))printf("REQK[%i].z=%g\n", jl, REQK.z );
@@ -2446,38 +2456,37 @@ __kernel void getNonBond_GridFF_Bspline(
 
     } // insulate nbff
 
-    if(iG>=natoms) return; // natoms <= nG, because nG must be multiple of nL (loccal kernel size). We cannot put this check at the beginning of the kernel, because it will break reading of atoms to local memory 
+    // NOTE: Do NOT return early here. global.x is rounded up to a multiple of local size,
+    // so each work-group contains some work-items with iG>=natoms. If any work-item returns
+    // before a barrier while others reach the barrier, the work-group deadlocks (Intel iGPU hangs).
 
     // ========== Molecule-Grid interaction with GridFF using tricubic Bspline ================== (see. kernel sample3D_comb() in GridFF.cl
-
     __local int4 xqs[4];
     __local int4 yqs[4];
     { // insulate gridff
         if      (iL<4){             xqs[iL]=make_inds_pbc(grid_ns.x,iL); }
         else if (iL<8){ int i=iL-4; yqs[i ]=make_inds_pbc(grid_ns.y,i ); };
-        //const float3 inv_dg = 1.0f / grid_d.xyz;
         barrier(CLK_LOCAL_MEM_FENCE);
 
-        const float ej = exp( GFFParams.y * REQKi.x ); // exp(-alphaMorse*RvdW) pre-factor for factorized Morse potential
-        const float4 PLQH = (float4){ 
-            ej*ej*REQKi.y,                   // prefactor London dispersion (attractive part of Morse potential)
-            ej*   REQKi.y,                   // prefactor Pauli repulsion   (repulsive part of Morse potential)
-            REQKi.z,
-            0.0f
-        };
-        //const float3 p = ps[iG].xyz;
-        const float3 u = (posi - grid_p0.xyz) * grid_invStep.xyz;
-
-        float4 fg = fe3d_pbc_comb(u, grid_ns.xyz, BsplinePLQ, PLQH, xqs, yqs);
-
-        //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU::getNonBond_GridFF_Bspline() fg(%g,%g,%g|%g) u(%g,%g,%g) posi(%g,%g,%g) grid_invStep(%g,%g,%g)\n", fg.x,fg.y,fg.z,fg.w,  u.x,u.y,u.z, posi.x,posi.y,posi.z, grid_invStep.x, grid_invStep.y, grid_invStep.z  ); }
-
-        fg.xyz *= -grid_invStep.xyz;
+        float4 fg = (float4)(0.0f,0.0f,0.0f,0.0f);
+        if(bAtomValid){
+            const float ej = exp( GFFParams.y * REQKi.x ); // exp(-alphaMorse*RvdW) pre-factor for factorized Morse potential
+            const float4 PLQH = (float4){ 
+                ej*ej*REQKi.y,                   // prefactor London dispersion (attractive part of Morse potential)
+                ej*   REQKi.y,                   // prefactor Pauli repulsion   (repulsive part of Morse potential)
+                REQKi.z,
+                0.0f
+            };
+            const float3 u = (posi - grid_p0.xyz) * grid_invStep.xyz;
+            fg = fe3d_pbc_comb(u, grid_ns.xyz, BsplinePLQ, PLQH, xqs, yqs);
+            fg.xyz *= -grid_invStep.xyz;
+        }
         fe += fg;
-        //fes[iG] = fe;
     }  // insulate gridff
 
-    forces[iav] = fe;        // If we do    run it as first forcefield, in this case we do not need to clear forces before running this forcefield
+    if(bAtomValid){
+        forces[iav] = fe;        // If we do    run it as first forcefield, in this case we do not need to clear forces before running this forcefield
+    }
     //forces[iav] += fe;     // If we don't run it as first forcefield, we need to add forces to the forces calculated by previous forcefields
     //forces[iav] = fe*(-1.f);
     

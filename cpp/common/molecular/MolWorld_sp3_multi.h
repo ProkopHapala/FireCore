@@ -842,8 +842,17 @@ double evalVFs( double Fconv=1e-6 ){
     int err=0;
     //ocl.download( ocl.ibuff_aforces , aforces );
     //ocl.download( ocl.ibuff_avel    , avel    );
-    ocl.download( ocl.ibuff_cvf    , cvfs  );
-    err |= ocl.finishRaw();  OCL_checkError(err, "evalVFs().1");
+#if OCL_DEEP_DEBUG
+    printf("\n>>> OCL_DEEP_DEBUG: evalVFs() called\n");
+    OCL_printCommandQueueState("evalVFs() BEFORE download", ocl.commands, ocl.context);
+    printf(">>> OCL_DEEP_DEBUG: evalVFs() calling ocl.download(ibuff_cvf=%i)\n", ocl.ibuff_cvf);
+    fflush(stdout);
+#endif
+    err |= ocl.download( ocl.ibuff_cvf, cvfs );  OCL_checkError(err, "evalVFs().download_cvf");
+#if OCL_DEEP_DEBUG
+    printf(">>> OCL_DEEP_DEBUG: evalVFs() after download, before finishRaw\n");
+#endif
+    err |= ocl.finishRaw();  OCL_checkError(err, "evalVFs().finishRaw_after_download");
     //printf("MolWorld_sp3_multi::evalVFs(%i) \n", isys);
     double F2max = 0;
     iSysFMax=-1;
@@ -905,9 +914,9 @@ double evalVFs( double Fconv=1e-6 ){
         //F2max = fmax( F2max, fire[isys].ff );
     }
     //printf( "MDpars{%g,%g,%g,%g}\n", MDpars[0].x,MDpars[0].y,MDpars[0].z,MDpars[0].w );
-    err |= ocl.upload( ocl.ibuff_MDpars, MDpars );
-    err |= ocl.upload( ocl.ibuff_TDrive, TDrive );
-    err |= ocl.upload( ocl.ibuff_cvf   , cvfs   );
+    err |= ocl.upload( ocl.ibuff_MDpars, MDpars ); OCL_checkError(err, "evalVFs().10");
+    err |= ocl.upload( ocl.ibuff_TDrive, TDrive ); OCL_checkError(err, "evalVFs().11");
+    err |= ocl.upload( ocl.ibuff_cvf   , cvfs   ); OCL_checkError(err, "evalVFs().12");
     // //printf("MolWorld_sp3_multi::evalVFs() bGroupUpdate=%i \n", bGroupUpdate );
     // if(bGroupUpdate){
     //     //printf("MolWorld_sp3_multi::evalVFs() bGroupUpdate=%i \n", bGroupUpdate );
@@ -1725,11 +1734,19 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     bool bExplore = false;
     //for(int isys=0; isys<nSystems; isys++){ if(gopts[isys].bExploring) bExplore = true; }
     bool bBspline = (gridFF.mode==GridFFmod::BsplineFloat) || (gridFF.mode==GridFFmod::BsplineDouble);
+#if OCL_DEEP_DEBUG
+    printf("\n=== OCL_DEEP_DEBUG: run_ocl_opt() starting main loop ===\n");
+    printf("  nVFs=%d, nPerVFs=%d, total_iterations=%d\n", nVFs, nPerVFs, nVFs*nPerVFs);
+#endif
     for(int i=0; i<nVFs; i++){
-
+#if OCL_DEEP_DEBUG
+        if(i % 10 == 0){
+            printf("  run_ocl_opt() outer loop i=%d/%d, niterdone=%d\n", i, nVFs, niterdone);
+        }
+#endif
         if(bGroups){
-            ocl.upload( ocl.ibuff_gtorqs,  gtorqs  );
-            ocl.upload( ocl.ibuff_gforces, gforces );
+            err |= ocl.upload( ocl.ibuff_gtorqs,  gtorqs  );  OCL_checkError(err, "run_ocl_opt().upload_gtorqs");
+            err |= ocl.upload( ocl.ibuff_gforces, gforces );  OCL_checkError(err, "run_ocl_opt().upload_gforces");
         }
 
         if (bGopt){
@@ -1759,6 +1776,12 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         for(int j=0; j<nPerVFs; j++){
             //printf("run_ocl_opt[i=%i,j=%i]\n",  i, j );
             //if(bGroupDrive)printf( "bGroupDrive==true\n" );
+#if OCL_DEEP_DEBUG
+            if((niterdone % 50 == 0) && (niterdone > 0)){
+                printf("  run_ocl_opt() inner loop j=%d, niterdone=%d, checking queue state\n", j, niterdone);
+                OCL_printCommandQueueState("run_ocl_opt() inner loop", ocl.commands, ocl.context);
+            }
+#endif
             {    
                 if( bGroupDrive )err |= task_GroupUpdate->enque_raw();
                 if(dovdW)[[likely]]{
@@ -1766,23 +1789,23 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
                         if  (bGridFF)[[likely]]{ 
                             if(bBspline)[[likely]]{
                                 //printf( " task_NBFF_Grid_Bspline ->enque_raw(); \n" );
-                                err |= task_NBFF_Grid_Bspline ->enque_raw(); //OCL_checkError(err, "task_NBFF_Grid->enque_raw(); ");
+                                err |= task_NBFF_Grid_Bspline ->enque_raw(); OCL_checkError(err, "task_NBFF_Grid->enque_raw(); ");
                             }else{
-                                err |= task_NBFF_Grid ->enque_raw();   //OCL_checkError(err, "task_NBFF_Grid->enque_raw(); ");
+                                err |= task_NBFF_Grid ->enque_raw();   OCL_checkError(err, "task_NBFF_Grid->enque_raw(); ");
                             }
                         }else { 
                             //printf( "task_NBFF(), task_SurfAtoms() \n" );
-                            err |= task_NBFF     ->enque_raw();  //OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_NBFF()" ); 
-                            err |= task_SurfAtoms->enque_raw();  //OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_SurfAtoms()" );
+                            err |= task_NBFF     ->enque_raw();  OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_NBFF()" ); 
+                            err |= task_SurfAtoms->enque_raw();  OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_SurfAtoms()" );
                         }
                     }else{ 
-                        err |= task_NBFF      ->enque_raw();     //OCL_checkError(err, "task_NBFF->enque_raw();");
+                        err |= task_NBFF      ->enque_raw();     OCL_checkError(err, "task_NBFF->enque_raw();");
                     }
                 }
-                err |= task_MMFF->enque_raw();    //OCL_checkError(err, "task_MMFF->enque_raw()");
+                err |= task_MMFF->enque_raw();    OCL_checkError(err, "task_MMFF->enque_raw()");
 
-                if( bGroupDrive ) err |= task_GroupForce->enque_raw();
-                err |= task_move->enque_raw();    //OCL_checkError(err, "task_move->enque_raw()");
+                if( bGroupDrive ) err |= task_GroupForce->enque_raw(); OCL_checkError(err, "task_move->enque_raw()");
+                err |= task_move->enque_raw();    OCL_checkError(err, "task_move->enque_raw()");
             }
             niterdone++;
             nloop++;

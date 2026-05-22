@@ -254,3 +254,172 @@ sprintf(build_opts, "-I. -cl-std=%s", cl_c_version);
 
 **Location:** `cpp/common_resources/cl/relax_multi.cl` lines 2193-2209, lines 3576-3579, lines 3982-3985
 
+
+---
+
+# Intel GPU Driver Hang Debugging Session
+
+## Problem Description
+
+**Symptoms:**
+- Persistent `CL_INVALID_COMMAND_QUEUE` error on Intel GPUs
+- Program freezes during kernel execution, leading to `SIGKILL` signal
+- Issue occurs specifically when executing the `task_NBFF_Grid_Bspline` kernel
+- The hang happens during kernel execution, not during kernel enqueue
+
+**Environment:**
+- Intel integrated GPU (iGPU) OpenCL driver
+- Kernel: `getNonBond_GridFF_Bspline` in `relax_multi.cl`
+- Uses B-spline interpolation on 3D grids for GridFF force calculations
+
+## Root Cause Analysis
+
+### Initial Investigation
+
+1. **Verified queue validity**: Command queue was valid and kernels enqueued successfully
+2. **Isolated the problematic kernel**: Commented out GridFF Bspline kernel calls in `run_ocl_opt()` - program ran without freezes
+3. **Incremental testing**: Added debug sections (TEST A/B/C) to isolate which part of the Bspline kernel caused the hang
+4. **Key finding**: Even minimal local memory usage with a barrier (TEST A) caused a freeze
+
+### Barrier Deadlock Identified
+
+The root cause was a **barrier deadlock** in the `getNonBond_GridFF_Bspline` kernel:
+
+**Problematic code pattern (line 2104 in `getNonBond_GridFF` and similar in Bspline version):**
+```cpp
+if(iG>=natoms) return;  // Early return before barrier
+// ... local memory operations ...
+barrier(CLK_LOCAL_MEM_FENCE);  // Some work-items never reach here
+```
+
+**Why this causes a hang:**
+- OpenCL work-group size is rounded up to a multiple of local size
+- This means each work-group contains work-items with `iG >= natoms` (out-of-bounds)
+- When some work-items return early before a barrier while others reach the barrier, the work-group deadlocks
+- Intel iGPU driver is particularly sensitive to this pattern, causing a hang
+
+## Solution Implemented
+
+### Intel-Safe Barrier Semantics
+
+Modified `getNonBond_GridFF_Bspline` kernel to ensure all work-items reach all barriers:
+
+1. **Removed early returns before barriers**:
+   - Deleted `if(iG>=natoms) return;` statements that appeared before any `barrier()` calls
+   - Added comment explaining why this is necessary
+
+2. **Introduced `bAtomValid` flag**:
+   ```cpp
+   const bool bAtomValid = (iG < natoms);
+   ```
+   - This flag indicates whether the current work-item corresponds to a valid atom
+   - Used to guard per-atom computations and final force writes
+
+3. **Guarded computations and writes**:
+   ```cpp
+   if(bAtomValid){
+       // Per-atom force calculations
+       forces[iav] = fe;
+   }
+   ```
+   - Only valid atoms contribute to force calculations
+   - Only valid atoms write to the forces array
+
+4. **Zero-filled local memory loads**:
+   ```cpp
+   LATOMS[iL] = (i < natoms) ? atoms[i] : (float4)0.0f;
+   LCLJS [iL] = (i < natoms) ? CLJS [i] : (float4)0.0f;
+   ```
+   - Prevents out-of-bounds reads when loading local memory
+   - Work-items with `i >= natoms` load zeros instead of accessing invalid memory
+
+### Compilation Error and Fix
+
+**Error encountered during patch application:**
+```
+error: use of undeclared identifier 'bAtomValid'
+```
+
+**Cause:** The patch accidentally added `if(bAtomValid)` to the wrong kernel:
+- `getNonBond_GridFF` (texture-based kernel, line 2164) doesn't have `bAtomValid` declared
+- The fix was intended only for `getNonBond_GridFF_Bspline` (buffer-based kernel)
+
+**Fix:** Reverted the accidental change in `getNonBond_GridFF`:
+```cpp
+// Before (incorrect):
+if(bAtomValid){
+    forces[iav] = fe;
+}
+
+// After (correct - original):
+forces[iav] = fe;
+```
+
+## Files Modified
+
+1. **`cpp/common_resources/cl/relax_multi.cl`**:
+   - Lines 2455-2494: Applied Intel-safe barrier semantics to `getNonBond_GridFF_Bspline`
+   - Line 2164: Reverted accidental `bAtomValid` usage in `getNonBond_GridFF`
+
+2. **`cpp/common/OpenCL/OCL.h`** (user reverted):
+   - Disabled deep debug diagnostics (`OCL_DEEP_DEBUG=0`)
+   - Reverted Intel driver workaround for non-blocking reads
+   - Simplified error checking to original style
+
+3. **`cpp/common/molecular/MolWorld_sp3_multi.h`** (user reverted):
+   - Re-enabled GridFF Bspline kernel calls in `run_ocl_opt()`
+   - Restored full kernel execution path
+
+## Testing
+
+**Test procedure:**
+1. Rebuild the project after applying fixes
+2. Run with Intel GPU: `./run_AFM.sh` (uses `--cl_device 1`)
+3. Verify no freezes or hangs during execution
+4. Check for compilation errors and warnings
+
+**Expected result:**
+- Program runs without freezing
+- `getNonBond_GridFF_Bspline` kernel executes successfully
+- Barrier deadlock is resolved by ensuring all work-items participate in barriers
+
+## Key Lessons
+
+1. **Barrier synchronization is critical**: All work-items in a work-group must reach every barrier
+2. **Work-group size rounding**: Global work size is rounded up to local size multiples, creating "dummy" work-items
+3. **Guard computations, not barriers**: Use flags like `bAtomValid` to skip work for out-of-bounds items, but never return early before a barrier
+4. **Intel driver sensitivity**: Intel iGPU drivers may be more strict about barrier synchronization than other vendors
+
+## Related Code Patterns
+
+**Correct pattern for kernels with barriers:**
+```cpp
+const int iG = get_global_id(0);
+const bool bValid = (iG < natoms);
+
+// Load to local memory (all work-items participate)
+__local float4 local_data[LOCAL_SIZE];
+local_data[get_local_id(0)] = bValid ? global_data[iG] : (float4)0.0f;
+barrier(CLK_LOCAL_MEM_FENCE);  // All work-items reach here
+
+// Compute (only valid work-items contribute)
+if(bValid){
+    // Per-atom calculations
+}
+
+// Write output (only valid work-items write)
+if(bValid){
+    output[iG] = result;
+}
+```
+
+**Incorrect pattern (causes deadlock):**
+```cpp
+const int iG = get_global_id(0);
+if(iG >= natoms) return;  // DEADLOCK: Some work-items never reach barrier
+
+__local float4 local_data[LOCAL_SIZE];
+local_data[get_local_id(0)] = global_data[iG];
+barrier(CLK_LOCAL_MEM_FENCE);  // Work-items that returned never reach here
+```
+

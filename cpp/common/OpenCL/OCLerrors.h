@@ -6,6 +6,11 @@
 //#define     OCL_DEBUG        0
 static bool bOCLCheckError = true;
 
+// Deep debug mode for tracking Intel GPU CL_INVALID_COMMAND_QUEUE issue
+// Enable this to get detailed diagnostics about OpenCL state
+//#define     OCL_DEEP_DEBUG   1
+#define     OCL_DEEP_DEBUG   0
+
 //----------------------------------------------------------------------------
 // Purpose:  Function to output descriptions of errors for an input error code
 //           and quit a program on an error with a user message
@@ -118,6 +123,13 @@ void OCL_error_warn(cl_int err, const char *operation, int i=-999999 ){
         else          { fprintf(stderr, "WARRNING: Error in '%s'[%i] \"%s\" (%d)\n", operation, i, OCL_err_code(err), err ); }
     }
 }
+
+#if OCL_DEEP_DEBUG
+// Forward declarations for deep debug functions (implemented in OCL.h)
+void OCL_printCommandQueueState(const char* location, cl_command_queue queue, cl_context ctx);
+void OCL_printContextState(const char* location, cl_context ctx);
+void OCL_printIntelDiagnostics(cl_device_id device);
+#endif
 
 void printBinary( int err ){
     for(int i=0;i<32;i++){
