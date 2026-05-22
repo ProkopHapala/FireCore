@@ -105,6 +105,7 @@ struct FIRE{
 class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { public:
     OCL_MM     ocl;
     FIRE_setup fire_setup{0.1,0.1};
+    int        ocl_device_idx = -1;  // -1 = auto-select NVIDIA, >=0 = use specific device index
 
     int iParalel_default=3;
     //int nSystems    = 1;
@@ -304,8 +305,9 @@ virtual void init() override {
     int err = 0;
     printf("# ========== MolWorld_sp3_multi::init() START\n");
     gopt.msolver = this;
-    int i_nvidia = ocl.print_devices(true);
-    ocl.init(i_nvidia);
+    int i_device = ocl_device_idx;
+    if(i_device < 0){ i_device = ocl.print_devices(true); }  // auto-select NVIDIA if not specified
+    ocl.init(i_device);
     ocl.makeKrenels_MM("common_resources/cl" );
     MolWorld_sp3::init();
 
@@ -1344,7 +1346,7 @@ void findAFMGrid(){
 
 }
 
-virtual void evalAFMscan( GridShape& scan, Quat4f*& OutFE, Quat4f*& OutPos, Quat4f** ps=0, bool bSaveDebug=false )override{ 
+virtual void evalAFMscan( GridShape& scan, Quat4f*& OutFE, Quat4f*& OutPos, Quat4f** ps=0, bool bSaveDebug=false, double z0_extra=0.0 )override{ 
     
     printf( "MolWrold_sp3_multi::evalAFMscan() scan.ns(%i,%i,%i) \n", scan.n.x,scan.n.y,scan.n.z );
     int err=0;
@@ -1366,25 +1368,26 @@ virtual void evalAFMscan( GridShape& scan, Quat4f*& OutFE, Quat4f*& OutPos, Quat
     float margin=3.0;
     pmin.x-=margin,pmin.y-=margin, pmax.x+=margin, pmax.y+=margin;
     printf( "MolWrold_sp3_multi::evalAFMscan() ztop=%g pmin(%g,%g) pmax(%g,%g)\n", ztop, pmin.x,pmin.y, pmax.x, pmax.y );
-    scan.pos0=Vec3d{pmin.x,pmin.y,ztop+4.0+5.0+1.0};
+    scan.pos0=Vec3d{pmin.x,pmin.y,ztop+4.0+5.0+1.0+z0_extra};
     scan.cell.a=Vec3d{pmax.x-pmin.x,0.0,0.0};
-    scan.cell.b=Vec3d{pmax.x-pmin.x,0.0,0.0};
+    scan.cell.b=Vec3d{0.0,pmax.y-pmin.y,0.0};  // BUG_FIX: was {pmax.x-pmin.x,...} (copy of a), must be y-extent
     scan.autoN( scan.dCell.xx );
     scan.printCell();
 
-    int nxy = scan.n.x*scan.n.y;
-    if( OutFE ==0 ){ OutFE =new Quat4f[scan.n.totprod()]; }
-    if( OutPos==0 ){ OutPos=new Quat4f[scan.n.totprod()]; }
+    int nxy  = scan.n.x*scan.n.y;
+    int ntot = scan.n.totprod();
+    // always reallocate CPU output buffers to match current grid size
+    delete [] OutFE;  OutFE  = new Quat4f[ntot];
+    delete [] OutPos; OutPos = new Quat4f[ntot];
     _realloc( afm_ps, nxy );
 
     for(int iy=0; iy<scan.n.y; iy++) for(int ix=0; ix<scan.n.x; ix++){ afm_ps[iy*scan.n.x+ix].f = (Vec3f)(  scan.pos0 + scan.dCell.a*ix + scan.dCell.b*iy ); afm_ps[iy*scan.n.x+ix].w=0; }
-    printf( "MolWrold_sp3_multi::evalAFMscan() scan.ns(%i,%i,%i) nxy=%i \n", scan.n.x,scan.n.y,scan.n.z,nxy );
+    printf( "MolWrold_sp3_multi::evalAFMscan() scan.ns(%i,%i,%i) nxy=%i ntot=%i \n", scan.n.x,scan.n.y,scan.n.z, nxy, ntot );
     long T0=getCPUticks();
     ocl.PPAFM_scan( nxy, scan.n.z, afm_ps, OutFE, OutPos, scan.dCell.c.z );  
     printf( ">>time(surf2ocl.download() %g \n", (getCPUticks()-T0)*tick2second );
 
     // ToDo: we should probably return vmin,vmax to MolGUI for visualization? 
-    int ntot = scan.n.x*scan.n.y*scan.n.z;
     Quat4f vmin=Quat4fmax,vmax=Quat4fmin;
     for(int i=0; i<ntot; i++){ OutFE[i].update_bounds( vmin, vmax ); }
     printf( "MolWrold_sp3_multi::evalAFMscan() vmin{%g,%g,%g|%g} vmax{%g,%g,%g|%g} \n", vmin.x,vmin.y,vmin.z,vmin.w,  vmax.x,vmax.y,vmax.z,vmax.w  );
@@ -1404,6 +1407,8 @@ virtual void evalAFMscan( GridShape& scan, Quat4f*& OutFE, Quat4f*& OutPos, Quat
     //if(OutFE==0 ){ delete [] OutFE; }
     //if(OutPos==0){ delete [] OutPos; }
 }
+
+virtual void setAFMQs( float q0, float q1, float q2, float q3 )override{ ocl.tip_Qs={q0,q1,q2,q3}; printf("MolWorld_sp3_multi::setAFMQs(%g,%g,%g,%g)\n",q0,q1,q2,q3); }
 
 virtual void evalAFM_FF( GridShape& grid, Quat4f* data_=0, bool bSaveDebug=false )override{ 
     int err=0;

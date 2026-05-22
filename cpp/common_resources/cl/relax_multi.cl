@@ -2190,7 +2190,7 @@ inline int4 make_inds_pbc(const int n, const int iG) {
     // iqs[3] = (int4)(0, 1-n, 2-n, 3-n);
 }
 
-inline int4 choose_inds_pbc(const int i, const int n, const int4* iqs) {
+inline int4 choose_inds_pbc(const int i, const int n, __local int4* iqs) {
     if (i >= (n-3)) {
         const int ii = i + 4 - n;
         return iqs[ii];
@@ -2198,12 +2198,12 @@ inline int4 choose_inds_pbc(const int i, const int n, const int4* iqs) {
     return (int4)(0, +1, +2, +3);
 }
 
-inline int4 choose_inds_pbc_3( const int i, const int n, const int4* iqs ){
-    if(i>=(n-3)){ 
+inline int4 choose_inds_pbc_3( const int i, const int n, __local int4* iqs ){
+    if(i>=(n-3)){
         const int ii = i+4-n;
         //printf( "choose_inds_pbc() ii=%i i=%i n=%i \n", ii, i, n );
         const int4 d = iqs[ii];
-        return (int4){ i+d.x, i+d.y, i+d.z, i+d.w }; 
+        return (int4){ i+d.x, i+d.y, i+d.z, i+d.w };
     }
     return (int4){ i, i+1, i+2, i+3 };
 }
@@ -3553,6 +3553,8 @@ __kernel void evalMMFFf4_local2(
     //#define NATOM_LOC 128
     //#define NNODE_LOC 64
 
+    #undef NATOM_LOC
+    #undef NNODE_LOC
     #define NATOM_LOC 64
     #define NNODE_LOC 32
     // ========= Local Memory
@@ -3957,6 +3959,8 @@ __kernel void evalMMFFf4_local1(
     //#define NATOM_LOC 128
     //#define NNODE_LOC 64
 
+    #undef NATOM_LOC
+    #undef NNODE_LOC
     #define NATOM_LOC 64
     #define NNODE_LOC 32
     // ========= Local Memory

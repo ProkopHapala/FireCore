@@ -4,12 +4,13 @@
 #include "MolGUI.h"
 #include "MolWorld_sp3_QMMM_multi.h"
 #include "argparse.h"
+#include "OCL_device_picker.h"
 
 //MMFFsp3 W;
 MolGUI* app=0;
 LambdaDict funcs;
 
-int iParalel=-100; 
+int iParalel=-100;
 
 
 int main(int argc, char *argv[]){
@@ -28,6 +29,23 @@ int main(int argc, char *argv[]){
 	funcs["-x"]={1,[&](const char** ss){ W->xyz_name  =ss[0]; }}; // molecule as .xyz
 	funcs["-g"]={1,[&](const char** ss){ W->surf_name =ss[0]; }}; // substrate as .xyz
 	funcs["-r"]={0,[&](const char** ss){ W->bMMFF=false;      }}; // rigid
+    funcs["--cl_list"]={0,[&](const char** ss){
+        cl_device_id devices[MAX_DEVICES];
+        unsigned numDevices = getDeviceList(devices);
+        printf("\nDevices:\n");
+        for(size_t i=0; i<numDevices; i++){
+            char name[MAX_INFO_STRING];
+            getDeviceName(devices[i], name);
+            printf("%2li: %s\n", i, name);
+        }
+        printf("\n");
+        exit(0);
+    }};
+    funcs["--cl_device"]={1,[&](const char** ss){
+        int idx;
+        if(!parseUInt(ss[0], (cl_uint*)&idx)){ printf("Invalid device index\n"); exit(1); }
+        W->ocl_device_idx = idx;
+    }};
 	funcs["-n"]={1,[&](const char** ss){ W->nMulPBC.x=(ss[0][0]-'0'); W->nMulPBC.y=(ss[0][1]-'0'); W->nMulPBC.z=(ss[0][2]-'0');      }}; // multiply lattice cell
 	funcs["-q"]={1,[&](const char** ss){ sscanf( ss[0], "%lf", &(W->fAutoCharges) ); }}; // AutoCharge
 	funcs["-t"]={1,[&](const char** ss){ sscanf( ss[0], "%i", &(W->itest) ); }}; // test

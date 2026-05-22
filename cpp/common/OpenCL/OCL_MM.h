@@ -158,6 +158,7 @@ class OCL_MM: public OCLsystem { public:
         float4  tip_QZs{-0.1f, 0.0f,+0.1f,0.0f};        // tip charge z-position
         float4  afm_surfFF{0.f,0.f,0.f,0.f};            // surface forcefield parameters
         int     afm_nz,afm_nzout, afm_nMaxItr=128;      // number of z-slices, number of z-slices in output, max number of iterations
+        int     afm_np_alloc=0, afm_npz_alloc=0;        // allocated sizes for AFM scan buffers (detect when realloc needed)
 
     // ====================== Functions
 
@@ -1047,6 +1048,10 @@ grid_p0 = Quat4fZero;   // Position of surface was shifted in GUI MK
 
 
 
+        nDOFs.x = nAtoms;  // natoms per system (kernel uses ns.x for loop and i0a)
+        nDOFs.y = nnode;   // nnode per system  (kernel uses ns.y for i0v offset)
+        nDOFs.z = isys;    // system replica index -> i0a=isys*natoms, i0v=isys*(natoms+nnode)
+        printf( "OCL_MM::PPAFM_makeFF() isys=%i nDOFs(%i,%i,%i,%i)\n", isys, nDOFs.x, nDOFs.y, nDOFs.z, nDOFs.w );
         useKernel( task->ikernel );
         err |= _useArg   ( nDOFs        );   // 1
         err |= useArgBuff( ibuff_atoms  );   // 2
@@ -1082,10 +1087,16 @@ grid_p0 = Quat4fZero;   // Position of surface was shifted in GUI MK
     OCLtask* PPAFM_scan( int np, int nz, Quat4f* ps, Quat4f* FEout, Quat4f* PPpos, float dTip=0.1, Mat3d tipRot_=Mat3dIdentity, int nMaxItr=128, bool bRun=true, OCLtask* task=0 ){
         //if(ibuff_atoms_surf<=0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
         //if(ibuff_REQs_surf <=0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
-        printf( "OCL_MM::PPAFM_scan() np=%i nz=%i nw=%i \n", np, nz );
-        if(ibuff_afm_ps   <=0) ibuff_afm_ps    = newBuffer( "afm_ps",    np, sizeof(float4),    0, CL_MEM_READ_ONLY  );
-        if(ibuff_afm_FEout<=0) ibuff_afm_FEout = newBuffer( "afm_FEout", np*nz, sizeof(float4), 0, CL_MEM_WRITE_ONLY );
-        if(ibuff_afm_PPpos<=0) ibuff_afm_PPpos = newBuffer( "afm_PPpos", np*nz, sizeof(float4), 0, CL_MEM_WRITE_ONLY );
+        printf( "OCL_MM::PPAFM_scan() np=%i nz=%i nw=%i  (alloc: np=%i npz=%i) \n", np, nz, 0, afm_np_alloc, afm_npz_alloc );
+        // reallocate if size increased (or never allocated)
+        bool bReallocXY  = (np    > afm_np_alloc );
+        bool bReallocXYZ = (np*nz > afm_npz_alloc);
+        if( bReallocXY  && ibuff_afm_ps   >0 ){ buffers[ibuff_afm_ps   ].release(); ibuff_afm_ps   =-1; printf("OCL_MM::PPAFM_scan() realloc afm_ps    np %i->%i\n",   afm_np_alloc, np    ); }
+        if( bReallocXYZ && ibuff_afm_FEout>0 ){ buffers[ibuff_afm_FEout].release(); ibuff_afm_FEout=-1; printf("OCL_MM::PPAFM_scan() realloc afm_FEout np*nz %i->%i\n", afm_npz_alloc, np*nz); }
+        if( bReallocXYZ && ibuff_afm_PPpos>0 ){ buffers[ibuff_afm_PPpos].release(); ibuff_afm_PPpos=-1; printf("OCL_MM::PPAFM_scan() realloc afm_PPpos np*nz %i->%i\n", afm_npz_alloc, np*nz); }
+        if(ibuff_afm_ps   <=0){ ibuff_afm_ps    = newBuffer( "afm_ps",    np,    sizeof(float4), 0, CL_MEM_READ_ONLY  ); afm_np_alloc  = np;    }
+        if(ibuff_afm_FEout<=0){ ibuff_afm_FEout = newBuffer( "afm_FEout", np*nz, sizeof(float4), 0, CL_MEM_WRITE_ONLY ); afm_npz_alloc = np*nz; }
+        if(ibuff_afm_PPpos<=0){ ibuff_afm_PPpos = newBuffer( "afm_PPpos", np*nz, sizeof(float4), 0, CL_MEM_WRITE_ONLY ); }
         int err=0;
         err |= finishRaw();       OCL_checkError(err, "PPAFM_makeFF().imgAlloc" );;
         if(task==0) task = getTask("PPAFM_scan");

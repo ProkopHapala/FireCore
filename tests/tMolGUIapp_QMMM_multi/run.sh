@@ -25,6 +25,8 @@ rm DEBUG*
 
 #nsys=10
 nsys=50
+#nsys=1
+
 #nsys=200
 
 

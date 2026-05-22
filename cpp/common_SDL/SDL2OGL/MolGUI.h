@@ -321,6 +321,9 @@ class MolGUI : public AppSDL2OGL_3D { public:
     Vec3d * bondsToShow_shifts = 0; 
 
     // ----- AFM scan
+    enum class AFMViewMode { df_relaxed=0, potential=1 };  // df_relaxed: PPAFM_scan result; potential: raw FF Fz without relaxation
+    AFMViewMode afm_view_mode = AFMViewMode::df_relaxed;
+    double afm_z0  = 0.0;  // additional z-offset (Ang) applied to scan plane origin, controlled by GUI slider
     GridShape afm_scan_grid{ Vec3d{-10.,-10.,0.0}, Vec3d{10.,10.,8.0}, 0.1 };
     GridShape afm_ff_grid;  //  { Mat3d{}, 0.1 };
     Quat4f    *afm_ff=0,*afm_Fout=0,*afm_PPpos=0; 
@@ -725,6 +728,28 @@ void MolGUI::initWiggets(){
             afm_iz = ((GUIPanel *)p)->value;
             makeAFM( afm_iz );
         return 0; });
+
+        // --- AFM view mode: df_relaxed vs raw potential (no relaxation, Q=0)
+        ylay.step( 3 );
+        ((DropDownList*)gui.addPanel( new DropDownList("AFM View:",5,ylay.x0,5+100, 3) ))
+            ->addItem("df relaxed")
+            ->addItem("potential Fz")
+            ->setCommand( [&](GUIAbstractPanel* p){
+                afm_view_mode = (AFMViewMode)((DropDownList*)p)->iSelected;
+                printf( "AFM view mode -> %i \n", (int)afm_view_mode );
+                makeAFM( afm_iz );
+                return 0; });
+
+        // --- Slider for z-height offset of scan plane (Ang)
+        ylay.step( 3 );
+        ((GUIPanel*)gui.addPanel( new GUIPanel( "AFM z0", 5,ylay.x0,5+100,ylay.x1, true, true, false ) ))
+            ->setRange(-5.0, 5.0)
+            ->setValue(0.0)
+            ->setCommand( [&](GUIAbstractPanel* p){
+                afm_z0 = ((GUIPanel*)p)->value;
+                printf( "AFM z0 -> %g Ang \n", afm_z0 );
+                makeAFM( afm_iz );
+                return 0; });
     }
 
     MolGUI::nonBondGUI();
@@ -2020,9 +2045,11 @@ void MolGUI::renderAFM( int iz, int offset ){
     float* data_iz =  (float*)(afm_Fout + iz*nxy);
     float* dfdata=0;
     if(afm_bDf){
-        dfdata= new float[nxy];
-        float* data_iz = &dfdata[0];
-        Fz2df( nxy, iz, iz+afm_nconv, afm_Fout, data_iz );
+        dfdata = new float[nxy];
+        Fz2df( nxy, iz, iz+afm_nconv, afm_Fout, dfdata );  // BUG_FIX: was re-declaring data_iz (shadow), df result was never used
+        data_iz = dfdata;
+        pitch  = 1;
+        offset = 0;
     }
     printf( "MolGUI::renderAFM() ogl_afm=%i \n", ogl_afm ); //exit(0);
     if(ogl_afm>0)glDeleteLists(ogl_afm,1);
@@ -2079,16 +2106,19 @@ void MolGUI::renderAFM_trjs( int di ){
 
 
 void MolGUI::makeAFM( int iz ){
-    printf( "\n ==== MolGUI::makeAFM() %li \n", ogl_afm ); //exit(0);
+    printf( "\n ==== MolGUI::makeAFM() view=%i z0=%g \n", (int)afm_view_mode, afm_z0 );
     afm_ff_grid.cell = W->builder.lvec;
     afm_ff_grid.updateCell(0.1);
-    W->evalAFM_FF ( afm_ff_grid,   afm_ff,                        false );
-    W->evalAFMscan( afm_scan_grid, afm_Fout, afm_PPpos, &afm_ps0, false );
-    MolGUI::renderAFM_trjs( 5 );
-    //MolGUI::renderAFM(  afm_scan_grid.n.z-10, 2 );
+    // zero Qs when showing raw potential to avoid electrostatic confusion
+    bool bPotentialMode = (afm_view_mode == AFMViewMode::potential);
+    if(bPotentialMode){ W->setAFMQs(0.f,0.f,0.f,0.f); }  // zero electrostatics for clean potential view
+    W->evalAFM_FF ( afm_ff_grid,   afm_ff, false );
+    W->evalAFMscan( afm_scan_grid, afm_Fout, afm_PPpos, &afm_ps0, false, afm_z0 );
+    if( !bPotentialMode ){ MolGUI::renderAFM_trjs( 5 ); }
     if(iz>0){ afm_iz=iz; }
-    MolGUI::renderAFM(  afm_iz, 2 );
-    printf( "\n ==== MolGUI::makeAFM() DONE \n\n", ogl_afm ); //exit(0);
+    afm_bDf = !bPotentialMode;  // df_relaxed mode: convolve Fz->df; potential mode: show raw Fz
+    MolGUI::renderAFM( afm_iz, 2 );  // channel 2 = Fz component of Quat4f{Fx,Fy,Fz,E}
+    printf( "\n ==== MolGUI::makeAFM() DONE \n\n" );
 };
 
 void MolGUI::drawPi0s( float sc=1.0 ){

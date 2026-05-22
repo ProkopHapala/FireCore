@@ -211,6 +211,7 @@ class OCLsystem{ public:
     cl_context       context  = 0;      // compute context
     cl_command_queue commands = 0;      // compute command queue
     cl_program       program  = 0;      // compute program - TODO FIXME: There could be more than one !!!!
+    char             cl_c_version[256] = "CL1.2";  // device OpenCL C version (CL1.2 or CL2.0)
 
     std::vector<cl_kernel> kernels;
     std::vector<OCLBuffer> buffers;
@@ -396,6 +397,14 @@ class OCLsystem{ public:
         char name[MAX_INFO_STRING];
         getDeviceName(device, name);
         printf("\nUsing OpenCL device: %s\n", name);
+        char version_raw[256];
+        clGetDeviceInfo(device, CL_DEVICE_OPENCL_C_VERSION, sizeof(version_raw), version_raw, NULL);
+        printf("Device OpenCL C version: %s\n", version_raw);
+        // Parse version: "OpenCL C 1.2 PoCL" -> "CL1.2", "OpenCL C 2.0 CUDA" -> "CL2.0"
+        int major=1, minor=2;
+        sscanf(version_raw, "OpenCL C %i.%i", &major, &minor);
+        sprintf(cl_c_version, "CL%i.%i", major, minor);
+        printf("Using build option: -cl-std=%s\n", cl_c_version);
         context  = clCreateContext(0, 1, &device, NULL, NULL, &err);  OCL_checkError(err, "Creating context");
         //commands = clCreateCommandQueue(context, device, 0, &err);    OCL_checkError(err, "Creating command queue");   // DEPRECATED
         //cl_uint maxQueueSize = 450000;
@@ -500,7 +509,10 @@ class OCLsystem{ public:
         sprintf(tmpstr,"Creating program with %s", fname);
         OCL_checkError(err, tmpstr);
         free(kernelsource);
-        err =      clBuildProgram(program_, 0,         NULL,      "-I. -cl-std=CL2.0", NULL, NULL);
+        // Use device's OpenCL C version (CL1.2 for CPU/PoCL, CL2.0 for NVIDIA GPUs)
+        char build_opts[512];
+        sprintf(build_opts, "-I. -cl-std=%s", cl_c_version);
+        err = clBuildProgram(program_, 0, NULL, build_opts, NULL, NULL);
         //free(kernelsource);     // Why it crashes ?
         if (err != CL_SUCCESS){
             printf( " ERROR in clBuildProgram %s \n", fname);
