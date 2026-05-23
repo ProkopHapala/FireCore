@@ -15,6 +15,7 @@ from ..OCL.GridFF import GridFF_cl, GridShape
 #from .Ewald import compute_potential, plot1Dcut
 from .utils import compute_potential, plot1Dcut
 #from ..plotUtils import plot1Dcut
+#from ..OCL.Surface_utils import save_gridff_metadata
 
 # =============  Functions
 
@@ -22,6 +23,41 @@ mmff = None
 
 os.environ['PYOPENCL_CTX'] = '0'
 clgff = GridFF_cl()
+
+
+def save_gridff_metadata(grid_path, g0, dg, ns, lvec, z0, grid_type="PLQ", generation_script="unknown"):
+    """
+    Save GridFF metadata to JSON file.
+    
+    Args:
+        grid_path: Path to Bspline_PLQd.npy or similar (used to derive metadata path)
+        g0: Grid origin (x0, y0, z0)
+        dg: Grid spacing (dx, dy, dz)
+        ns: Grid shape (nx, ny, nz)
+        lvec: Lattice vectors (3x3 array)
+        z0: Top atom z-coordinate
+        grid_type: Type of grid (e.g., "PLQ", "PL")
+        generation_script: Name of script that generated the grid
+    """
+    # Derive metadata path from grid path
+    base_dir = os.path.dirname(grid_path)
+    base_name = os.path.splitext(os.path.basename(grid_path))[0]
+    meta_path = os.path.join(base_dir, f"{base_name}_meta.json")
+    
+    metadata = {
+        "g0": [float(x) for x in g0],
+        "dg": [float(x) for x in dg],
+        "ns": [int(x) for x in ns],
+        "lvec": [[float(x) for x in row] for row in np.asarray(lvec).tolist()],
+        "z0": float(z0),
+        "grid_type": grid_type,
+        "generation_script": generation_script
+    }
+    
+    print(f"Saving GridFF metadata to: {meta_path}")
+    with open(meta_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+        
 
 def try_load_mmff():
     global mmff
@@ -418,6 +454,10 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Atom_Types_name="./data
         full_name_ocl = path+"/Bspline_PLQd_ocl.npy";
         print("test_gridFF_ocl() - save PLQ to: ", full_name_ocl)
         np.save( full_name_ocl, PLQ )
+        
+        # Save metadata JSON with grid origin and spacing
+        save_gridff_metadata(full_name, g0, dg, PLQ.shape[:3], atoms.lvec, z0, 
+                           grid_type="PLQ", generation_script="ocl_GridFF_new.py")
 
         #cmap='plasma'
         #cmap='inferno'
@@ -494,6 +534,10 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Atom_Types_name="./data
             full_name = path+"/Bspline_PL_only.npy"; 
             print("test_gridFF_ocl() - save Morse-only to: ", full_name)
             np.save( full_name, PL )
+            
+            # Save metadata JSON for Morse-only grid
+            save_gridff_metadata(full_name, g0, dg, PL.shape[:3], atoms.lvec, z0,
+                               grid_type="PL", generation_script="ocl_GridFF_new.py")
 
         #cmap='plasma'
         #cmap='inferno'

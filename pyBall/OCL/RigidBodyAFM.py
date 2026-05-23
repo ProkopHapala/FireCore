@@ -2,11 +2,13 @@ import os
 import numpy as np
 from .RigidBodyDynamics import RigidBodyDynamics, _reqs_to_plq, _load_npy_legacy
 
-def sample_gridff_single_atom(scan_positions, gridff_path, sub_xyz, atom_req=(1.487, 0.0006808, 0.0, 0.0), atom_mass=1.008, alpha_morse=1.5, debug=False):
+def sample_gridff_single_atom(scan_positions, gridff_path, sub_xyz, atom_req=(1.487, 0.0006808, 0.0, 0.0), atom_mass=1.008, alpha_morse=1.5, debug=False, grid_p0=None, grid_step=None):
     """
     Samples the GridFF at the given scan_positions using a single test atom.
     scan_positions: (N, 3) array of coordinates.
     atom_req: tuple of (R, E, Q, H) for the test atom. Default is H atom.
+    grid_p0: Grid origin (x0, y0, z0). If None, defaults to (0,0,0).
+    grid_step: Grid spacing (dx, dy, dz). If None, calculated from lattice vectors.
     """
     scan_positions = np.asarray(scan_positions, dtype=np.float32)
     n_bodies = len(scan_positions)
@@ -34,11 +36,14 @@ def sample_gridff_single_atom(scan_positions, gridff_path, sub_xyz, atom_req=(1.
         if lvec is None:
             raise ValueError(f"Substrate lattice vectors missing in {sub_xyz}")
             
-    ax = float(np.linalg.norm(lvec[0]))
-    ay = float(np.linalg.norm(lvec[1]))
-    az = float(np.linalg.norm(lvec[2]))
-    grid_step = (ax / grid.shape[0], ay / grid.shape[1], az / grid.shape[2])
-    grid_p0 = (0.0, 0.0, 0.0)
+    # Use provided grid_p0 and grid_step, or calculate from lattice
+    if grid_p0 is None:
+        grid_p0 = (0.0, 0.0, 0.0)
+    if grid_step is None:
+        ax = float(np.linalg.norm(lvec[0]))
+        ay = float(np.linalg.norm(lvec[1]))
+        az = float(np.linalg.norm(lvec[2]))
+        grid_step = (ax / grid.shape[0], ay / grid.shape[1], az / grid.shape[2])
 
     rbd = RigidBodyDynamics(debug=debug)
     rbd.realloc(n_bodies=n_bodies, num_atoms=1)
