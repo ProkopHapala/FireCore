@@ -1,222 +1,61 @@
-# FireCore Coding Guide
-  
-# FireCore Project Structure and Development Guide
 
-## Project Overview
+## Core Philosophy: Scientific & Performance Focus
 
-FireCore is a comprehensive computational chemistry and physics repository containing multiple subprojects, programs, and test scripts. It implements various numerical methods for:
+We develop rigorous scientific software where debuggability, numerical correctness, and physical consistency are paramount. Follow these principles:
 
-- **Density Functional Theory (DFT)** - implemented in Fortran, can be called from C++ and Python via library
-- **Classical Molecular Dynamics** - implemented in C++, and OpenCL
-- **Force Field Development and Fitting** - including reactive and non-reactive force fields
-- **Quantum-Classical Hybrid Methods (QM/MM)** - combining DFT with classical force fields (C++ call fortran library)
-- **Numerical Method Demonstrations** - standalone Python scripts for various computational techniques
+1. **Debuggability:** Code must be transparent, inspectable, and prioritize trace-ability over user experience (never hide issues).
+2. **Simplicity:** Clear, clean, direct logic. Elegant design that avoids branching, excessive special conditions, and defensive abstractions.
+3. **Performance:** Streamlined execution with minimal overhead (avoid Python loops), data-oriented memory layouts, and cache awareness.
 
-**Important**: FireCore is NOT a single build target but a repository of interconnected subprojects with different compilation and execution workflows.
+## Rule 1 — Fail Loudly
 
-## Directory Structure and Components
+- **No silent fallbacks**, catch-all passes, or try-except blocks that mask bugs. Unexpected states must terminate with explicit errors and full stack traces. See `general-debug-guidelines.md`.
+- **Root Cause Identification:** Find and fix the fundamental issue. Never apply "quick-fixes" that hide the root cause.
 
-### 1. Core C++ Implementation (`/cpp/`)
+## Rule 2 — Surgical Edits & Simplicity
 
-The computational core of FireCore, containing high-performance libraries and applications:
+- **Minimum Intervention:** Write only the code necessary to solve the task. Touch only what is required; never perform unrelated formatting, cleanup, or aesthetic edits on adjacent code.
+- **No Guessing:** If requirements, behavior, or architecture are ambiguous, stop and ask for clarification.
+- **Strict Checkpointing:** After every significant step, summarize what changed, what was verified, and what remains unresolved.
+- **Preservation & Backups:** Create a backup copy before major module changes. Comment out old, experimental, or deprecated code using `#` or `//` instead of deleting it to allow instant reversion. Mark unfinished code clearly with `# TODO` or `# DEBUG`.
 
-#### standalone visual applications (`/cpp/apps/`)
-- **Visual programs using SDL**: Interactive molecular editors and simulators
-- **GPU-accelerated variants**: 
-  - `/cpp/apps_OCL/` - OpenCL accelerated applications
-  - `/cpp/apps_CUDA/` - CUDA accelerated applications
+## Rule 3 — Reusable Architecture
 
-#### Libraries (`/cpp/libs/`)
-- **`/cpp/libs/Molecular/`** - Core molecular mechanics libraries
-- **`/cpp/libs_SDL/`** - SDL-based visualization libraries  
-- **`/cpp/libs_OCL/`** - OpenCL accelerated libraries
+- **Inventory First:** Thoroughly review reference source-code files to identify existing functions, modules, and data structures before writing anything from scratch. Use `CODEMAP.md` and `/doc/topical_audit/topical_audit.md` for guidance.
+- **Composability Over Bloat:** Build integrated systems, not isolated scripts. Refactor into reusable functions in shared modules.
+- **Separation of Concerns:**
+   - Separate compute algorithms from plotting/diagnostics (no plotting in core libraries).
+   - Separate GUI, CLI test scripts, and backend modules. Test scripts are thin wrappers that call functions from shared backend modules.
+   - Consolidate related test scripts into one with CLI routing parameters for different execution paths.
+- **Generalization Over Duplication:** Try to generalize an existing function if it almost fits your needs. If generalization requires risky major changes that threaten backward compatibility, **stop and report it immediately for approval.**
 
-#### Core Implementation
-- **`/cpp/common/`** - Computational core (algorithms, data structures, math)
-- **`/cpp/common_SDL/`** - SDL-based GUI and visualization components
-- **`/cpp/common_resources/`** - Shared resources (force field parameters, molecular data)
+## Rule 4 — Test-Driven Development & Validation
 
-### 2. Fortran DFT Implementation (`/fortran/` and `/fortran2/`)
+- **Numerical Range Sanity:** Strategically place checks throughout calculations to ensure values are within reasonable limits and are not `NaN`, infinity, or unexpected zeros.
+- **Test on Completion:** Run validation tests immediately after any code modification. Never claim code works unless tests run successfully.
+- **Physical & Analytical Parity:** Define how correctness will be verified *before* coding via parity checks against reference code, known analytical solutions, physical conservation laws, symmetry checks, or known physical limits. See `numerical-parity/SKILL.md`.
+- **Foreground Execution:** Run tests synchronously in the foreground with full output. Never hide output or use background commands (`&`, `| tail`, `| head`, or silent redirects). Full `stdout` must be visible.
+- **Visual Review & Diagnostics:** Use shared utilities for plotting, debugging, and diagnostics instead of ad-hoc code. See `visual-debugging/SKILL.md` for `plotUtils.py`, `VispyUtils.py`, `TestUtils.py`, and `testUtils.h`.
 
-**Note**: The Fortran module implements Density Functional Tight Binding (DFTB), but it is NOT the core part of this project.
+## Rule 5 — Performance Optimization
 
-- **`/fortran/`** - Current Fireball DFTB implementation
-- **`/fortran2/`** - Reorganized/refactored version (work in progress)
+- **Minimal Orchestration:** Keep Python orchestration minimal. Push heavy computations into optimized C/C++/OpenCL/CUDA/Compute Shader kernels.
+- **Memory Optimization:** Prefer flat, contiguous arrays and data-oriented layouts. Be explicit about dtypes and shapes. Preallocate and reuse buffers; avoid repeated allocations in hot paths.
+- **Low-Level & GPU Kernel Guidelines:** Design around memory latency, prefer gather over scatter, minimize branching/atomics/synchronization, maximize shared/local memory usage, avoid unnecessary host-device transfers. See `port-to-opencl/SKILL.md`.
 
-Key subdirectories in `/fortran/`:
-- `MAIN/` - Main program and SCF drivers
-- `MODULES/` - Fortran modules and data structures
-- `ASSEMBLERS/` - Hamiltonian and matrix assembly routines
-- `INTERACTIONS/` - Two-center and three-center interaction calculations
-- `GRID/` - Real-space grid operations and FFT
-- `NEIGHBORS/` - Neighbor list construction
+## Rule 6 — Concise Style
 
-### 3. Python Interface (`/pyBall/`)
+- **No Micro-Abstractions:** Do not create 1 line function stubs or wrappers. If it is simple, inline it.
+- **Clean Interfaces:** Avoid passing excessive numbers of arguments. Group related state into structs/dicts, or utilize globals and class properties. Use default named arguments to avoid long call strings.
+- **Compact Layout:** Prefer compact code with long lines and minimal empty lines or whitespace. Avoid line wrapping that disrupts the readability of expressions; assume infinite line length.
+- **Naming & Comments:** Use short, clear variable names for math/physics symbols (e.g., `E_tot`, `T_ij`, `m_i`). Avoid comments that state the obvious; use them for intent, rationale, or math/physics derivations. Place inline comments behind the code line.
+- **Language-Specific Rules:**
+- **C++:** Use `printf` for debugging instead of `std::cout`. Prefer plain C arrays (`double*`) in hot paths.
+- **Doxygen:** Document using `///`; avoid `/* ... */` formatting.
+- **Parity Work:** When mirroring features across languages (e.g., Python $\leftrightarrow$ JS), explicitly cite the reference file and function in the comments.
 
-Python bindings and utilities providing access to both C++ and Fortran components:
+## Practical Navigation, Compilation, testing Protocols
 
-#### Core Python Modules
-- **`FireCore.py`** - Main interface to Fireball DFT
-- **`MMFF.py`, `MMFFsp3.py`** - Molecular mechanics force fields
-- **`AtomicSystem.py`** - Molecular structure manipulation
-- **`Forces.py`, `Forces_cpp.py`** - Force calculation interfaces
-
-#### Specialized Modules
-- **`/pyBall/OCL/`** - Pure pyOpenCL implementations (independent of C++ libraries)
-- **`/pyBall/DFT/`** - DFT-related utilities and high-level interfaces
-- **`/pyBall/GUI/`** - Python-based GUI components
-
-#### Utilities
-- **`atomicUtils.py`** - Atomic data and utilities
-- **`plotUtils.py`** - Visualization and plotting helpers
-- **`buildUtils.py`** - Build system utilities (to recompile C++ libraries when imported from python modules)
-
-### 4. OpenCL Implementation (`/pyBall/OCL/`)
-
-Standalone pyOpenCL implementations for GPU acceleration:
-- Independent of C++ libraries
-- Direct OpenCL kernel implementations
-- Alternative to C++ OpenCL bindings
-
-### 5. Tests and Examples (`/tests/`)
-
-**This is the best place to understand what functionality is implemented and how to use it.**
-
-#### Test Categories
-- **`/tests/Fireball/`** - Fireball DFT tests (H2, CH4, pentacene, etc.)
-- **`/tests/tMMFF*/`** - Molecular mechanics tests (using python bindings and scripts, no GUI)
-- **`/tests/tMolGUIapp*/`** - GUI application tests
-- **`/tests/tFitREQ*/`** - Non-covalent Force field fitting (both using python+C++ and pyOpenCL bindings)
-- **`/tests/tDFT*/`** - DFT calculation tests
-- **`/tests/tEFF*/`** - Electron Force Field tests
-- **`/tests/pyFireball/`** - Python DFT interface tests
-- **`/tests/pySCF/`** - PySCF integration tests
-- **`/tests/dftb/`** - DFTB+ integration tests
-
-### 6. Documentation (`/doc/`)
-
-- **`/doc/Markdown/`** - Technical documentation (GUI, force fields, etc.)
-- **`/doc/DevNotes/`** - Development notes and TODO items
-- **`/doc/py/`** - Python sketches and demonstrations
-- **`/doc/Julia/`** - Julia implementations of algorithms
-- **`/doc/Maxima/`** - Mathematical derivations and symbolic computations
-
-### 7. Build System
-
-- **`/cpp/Build/`** - CMake build directory for C++ components
-- **`/build/`** - Fortran build directory
-- **`make.sh`** - Main build script for Fortran components
-- **`/cpp/CMakeLists.txt`** - CMake configuration for C++ components
-
-## Critical Development Rules
-
-### Compilation and Execution Workflow
-
-**⚠️ NEVER compile manually using `make` - always use project bash scripts!**
-
-#### For C++ Applications and Libraries:
-1. **Use provided `run.sh` scripts** in test directories
-2. Scripts automatically:
-   - Recompile the program/library
-   - Set up paths to inputs and libraries  
-   - Run the program with proper arguments
-   - Output stdout to logfiles
-3. **Edit `run.sh` scripts if needed** for different configurations
-4. **DO NOT** try to compile using `make` directly - paths may be incorrect
-
-#### For Fortran (Fireball):
-1. Use `make.sh` in project root for initial compilation
-2. Use `run.sh` scripts in `/tests/Fireball/` subdirectories
-3. Ensure `Fdata_HC_minimal` is available (download from fireball-qmd.github.io)
-
-#### For Python:
-1. Set `PYTHONPATH` environment variable: `export PYTHONPATH=/path/to/FireCore:$PYTHONPATH`
-2. Use `run.sh` scripts in test directories
-3. Python scripts typically call compiled C++ libraries through bindings
-
-### Example Workflow:
-```bash
-# Test molecular mechanics
-cd tests/tMMFF
-./run.sh
-
-# Test GUI application  
-cd tests/tMolGUIapp
-./run.sh
-
-# Test Fireball DFT
-cd tests/Fireball/t02_CH4
-./run.sh
-```
-
-## Global Coding Rules
-
-### Core Principles
-- **Minimal dependencies**: stdlib + NumPy/Matplotlib unless explicitly requested
-- **Concise, modular code**: small, testable, step-by-step changes; divide-and-conquer
-- **Reuse existing functions**: avoid duplication (check first, report if adaptation needed)
-- **Pure, data-oriented functions**: explicit inputs/outputs; default named args to avoid long call strings
-- **Fail loudly**: no silent handling; assertions for invariants; crashes with stack trace preferred to masking
-- **Comment out deprecated/experimental code** instead of deleting; mark with TODO/DEBUG
-
-### NEVER DO THIS
-- Never delete, override, or rearrange existing code without explicit permission
-- Never perform random aesthetic/style edits unrelated to the task
-- Never apply "quick-fixes" that hide root causes (e.g., hard-coded outputs)
-
-### Debugging First
-- **Debuggability > UX**: do not hide issues
-- Initially add debug prints for key variables and flow; remove later after debugging
-- Avoid broad try/except as they mask bugs; prefer loud crashes with stack trace
-- Make small, testable changes and run after every change
-- Log function entries and key conditions when helpful to track flow
-- Mark unfinished/experimental code clearly (e.g., # TODO, # DEBUG)
-
-### Performance Guidelines
-- Prefer data-oriented code that is cache-friendly and avoids overheads
-- Preallocate and reuse buffers; avoid repeated allocation in hot paths
-- Be explicit about dtypes/shapes; prefer contiguous memory where possible
-
-### Style Guidelines (Cross-Language)
-- Prefer concise/compact code; avoid bloated structures and unnecessary empty lines
-- Short variable names OK (math/physics symbols like E, T, m) when locally clear
-- Prefer one-liner expressions, assume unlimited line-width
-- Avoid line wrapping that hurts readability of expressions
-- Inline comments behind the code line for rationale
-- **Doxygen**: use `///`; avoid `/* ... */`
-- **C++**: use `printf` for debugging over `std::cout`; prefer plain C arrays (double*) in hot paths
-- **Vector math in C/C++**: use `Vec3.h`, `Vec2.h` with `Vec3d`, `Vec2d`, and helpers like `dot()`, `norm()`, `cross()`
-
-### Visualization
-- Separate compute vs plotting; no plotting in core algorithms
-- Plotting optional via flags (e.g., --noPlot, --saveFig)
-- `plt.show()` only in CLI/main, never in library code
-- Prefer shared plotting helpers (e.g., plot_utils.py) to avoid duplication
-
-## Getting Started
-
-1. **Explore functionality**: Browse `/tests/` directory to see what's implemented
-2. **Run examples**: Use `run.sh` scripts in test directories
-3. **Check documentation**: Look in `/doc/` for technical details
-4. **Follow the rules**: Always use provided build scripts, never compile manually
-5. **Test changes**: Write tests and run them to verify correctness
-
-## Key Integration Points
-
-- **QM/MM**: Fireball DFT + C++ classical force fields
-- **GPU Acceleration**: OpenCL/CUDA implementations of force fields
-- **Python Bindings**: Access to both C++ and Fortran components
-- **Visualization**: SDL-based interactive applications
-- **Force Field Fitting**: Tools for parameterizing classical potentials against QM data
-
-## Agent Operating Guidelines
-
-These rules apply to any autonomous assistant working inside this repo:
-
-- **No fallbacks or silent fixes**: if required data/geometry is missing, throw a descriptive error immediately. Never synthesize “best-effort” defaults—the failure must be visible.
-- **Debug-first mindset**: prioritize traceable crashes, add targeted logging only while investigating.
-- **Preserve context**: never remove comments during active debugging; if you must replace logic, comment out the old block instead of deleting so we can revert instantly if needed.
-- **Respect existing structure**: extend modules in-place rather than rewriting or rearranging unless explicitly authorized.
-- **Use official scripts**: when commands are required, rely on the provided `run.sh`/`make.sh` helpers; never invoke `make` directly.
-- **Document parity work**: when mirroring Python ↔ JS features, cite the reference file/function in comments so future maintainers can diff implementations quickly.
-- **Never use background commands**: always run commands synchronously to show full output; never use `Background=True`, tail, or similar output-hiding methods.
+- **Repository Navigation:** Review `CODEMAP.md` for structure and build instructions.
+- **Test Location:** Place all test scripts within `/test`.
+- **Automation Scripts:** Use provided `run.sh`/`make.sh` scripts in the test directory; never invoke `make` directly if helpers exist. Run tests from inside the test directory to ensure paths are set.
