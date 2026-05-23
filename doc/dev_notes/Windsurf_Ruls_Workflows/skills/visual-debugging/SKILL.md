@@ -1,6 +1,6 @@
 ---
 name: visual-debugging
-description: Use reusable testing, debugging, diagnostics, and visualization utilities instead of ad-hoc code
+description: Use when creating diagnostic plots or visualizations for debugging
 trigger:
   glob:
     - "**/tests/**/*"

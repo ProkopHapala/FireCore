@@ -34,8 +34,9 @@ We develop rigorous scientific software where debuggability, numerical correctne
 - **Numerical Range Sanity:** Strategically place checks throughout calculations to ensure values are within reasonable limits and are not `NaN`, infinity, or unexpected zeros.
 - **Test on Completion:** Run validation tests immediately after any code modification. Never claim code works unless tests run successfully.
 - **Physical & Analytical Parity:** Define how correctness will be verified *before* coding via parity checks against reference code, known analytical solutions, physical conservation laws, symmetry checks, or known physical limits. See `numerical-parity/SKILL.md`.
-- **Foreground Execution:** Run tests synchronously in the foreground with full output. Never hide output or use background commands (`&`, `| tail`, `| head`, or silent redirects). Full `stdout` must be visible.
+- **Foreground Execution:** Run tests synchronously with full output. Never use background commands, pipes (`| tail`, `| head`). Full stdout must be visible.
 - **Visual Review & Diagnostics:** Use shared utilities for plotting, debugging, and diagnostics instead of ad-hoc code. See `visual-debugging/SKILL.md` for `plotUtils.py`, `VispyUtils.py`, `TestUtils.py`, and `testUtils.h`.
+- **Invoke Relevant Skills:** When task matches skill description (numerical-parity, visual-debugging, gpu-debugging, forcefield-validation, port-to-opencl), invoke the skill tool to get detailed guidance.
 
 ## Rule 5 — Performance Optimization
 

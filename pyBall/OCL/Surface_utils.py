@@ -179,6 +179,7 @@ def infer_grid_metadata(grid_path, substrate_info):
     z_min_atom = np.min(substrate_info['apos'][:, 2])
     
     conventions = {
+        'from_json': (-Lx/2, -Ly/2, z_top),  # GridFF generation convention: centered XY, z at top atom
         'centered_xy_bottom_z': (-Lx/2, -Ly/2, z_min_atom - 2.0),  # Centered XY, z below atoms
         'centered_xy_zero_z': (-Lx/2, -Ly/2, 0.0),  # Centered XY, z at 0
         'corner_xy_bottom_z': (0.0, 0.0, z_min_atom - 2.0),  # Corner XY, z below atoms
