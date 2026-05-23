@@ -61,6 +61,8 @@ class KekuleExplorerWindow(BaseGUI):
         self.edit_mode = 'Hex1'  # 'Hex1' (paint), 'Hex2' (toggle), 'Atom', 'pi', 'Select'
         self.last_clicked_node = None
         self.label_mode = 'Element+Index'
+        self.grid_mode = True  # True: snap to grid, False: free placement
+        self.pick_radius = 0.2  # Distance in Angstroms for atom picking
 
         # Load settings
         self.settings = QtCore.QSettings("FireCore", "KekuleExplorer")
@@ -241,6 +243,17 @@ class KekuleExplorerWindow(BaseGUI):
         self.auto_bonds_btn.setCheckable(True)
         self.auto_bonds_btn.setChecked(self.backend.auto_recalc_bonds)
         layout.addLayout(row)
+
+        # Grid mode and pick radius
+        row_grid = QtWidgets.QHBoxLayout()
+        self.grid_mode_btn = self.button("Grid", self.toggle_grid_mode, layout=row_grid)
+        self.grid_mode_btn.setCheckable(True)
+        self.grid_mode_btn.setChecked(self.grid_mode)
+        self.label("Pick Radius:", layout=row_grid)
+        self.pick_radius_spinbox = self.spinBox(0.5, 0.1, max_width=60, vmin=0.1, vmax=5.0)
+        self.pick_radius_spinbox.valueChanged.connect(self.set_pick_radius)
+        row_grid.addWidget(self.pick_radius_spinbox)
+        layout.addLayout(row_grid)
         
         # Editor buttons (from Editor)
         row1 = QtWidgets.QHBoxLayout()
@@ -595,6 +608,25 @@ class KekuleExplorerWindow(BaseGUI):
         self.backend.auto_recalc_bonds = self.auto_bonds_btn.isChecked()
         debug_print(2, f"Auto Recalc Bonds: {self.backend.auto_recalc_bonds}")
 
+    def toggle_grid_mode(self):
+        self.grid_mode = self.grid_mode_btn.isChecked()
+        debug_print(2, f"Grid Mode: {self.grid_mode}")
+
+    def set_pick_radius(self, value):
+        self.pick_radius = value
+        debug_print(2, f"Pick Radius: {self.pick_radius}")
+
+    def find_nearest_atom_index(self, pos, radius):
+        """Find index of nearest atom within radius of pos."""
+        if len(self.backend.sys.apos) == 0:
+            return None
+        apos = self.backend.sys.apos[:, :2]  # Only x,y for distance
+        distances = np.linalg.norm(apos - pos[:2], axis=1)
+        min_idx = np.argmin(distances)
+        if distances[min_idx] <= radius:
+            return min_idx
+        return None
+
     def set_label_mode(self, mode):
         """Set label display mode."""
         self.label_mode = mode
@@ -735,7 +767,7 @@ class KekuleExplorerWindow(BaseGUI):
             self.backend.detect_geometry_rings()
 
             # Picking: atom, bond, ring (in priority order)
-            hovered_atom = self.backend.pick_atom(p_world, radius=0.5)
+            hovered_atom = self.backend.pick_atom(p_world, radius=self.pick_radius)
             hovered_bond = self.backend.pick_bond(p_world, radius=0.5)
             hovered_ring = self.backend.pick_ring(p_world, radius=1.0)
 
@@ -744,16 +776,34 @@ class KekuleExplorerWindow(BaseGUI):
             self.scene.hover_ring_lines.set_data(pos=np.zeros((0,3)))
             self.scene.hover_ring_markers.set_data(pos=np.zeros((0,3)))
             self.scene.hover_ring_text.text = ''
+            self.scene.hover_atom_marker.set_data(pos=np.zeros((0,3)))
 
-            # Highlight hovered bond
-            if hovered_bond:
-                pos_a = hovered_bond.a.pos
-                pos_b = hovered_bond.b.pos
-                self.scene.hover_bond_line.set_data(pos=np.array([pos_a, pos_b], dtype=np.float32))
-                debug_print(3, f"Hovered bond: {hovered_bond}")
+            # Mode-specific hover highlighting
+            if self.edit_mode in ('Atom', 'pi', 'Select'):
+                # Atom modes: highlight atoms only
+                if hovered_atom:
+                    self.scene.hover_atom_marker.set_data(
+                        pos=np.array([hovered_atom.pos], dtype=np.float32),
+                        symbol='disc', edge_width=3, edge_color='yellow', 
+                        face_color='transparent', size=20
+                    )
+                    debug_print(3, f"Hovered atom: {hovered_atom}")
+            elif self.edit_mode == 'Bond':
+                # Bond mode: highlight bonds only
+                if hovered_bond:
+                    pos_a = hovered_bond.a.pos
+                    pos_b = hovered_bond.b.pos
+                    self.scene.hover_bond_line.set_data(pos=np.array([pos_a, pos_b], dtype=np.float32))
+                    debug_print(3, f"Hovered bond: {hovered_bond}")
+            elif self.edit_mode in ('Hex1', 'Hex2'):
+                # Hex modes: highlight rings only (existing hex highlighting below)
+                pass
+            else:
+                # Other modes: no hover highlighting
+                pass
 
-            # Highlight hovered ring (polygon + CoG lines + atom count)
-            if hovered_ring:
+            # Highlight hovered ring (polygon + CoG lines + atom count) - only in hex modes
+            if self.edit_mode in ('Hex1', 'Hex2') and hovered_ring:
                 # Draw polygon around ring
                 ring_pos = np.array([a.pos for a in hovered_ring.atoms] + [hovered_ring.atoms[0].pos], dtype=np.float32)
                 self.scene.hover_ring_lines.set_data(pos=ring_pos)
@@ -792,21 +842,8 @@ class KekuleExplorerWindow(BaseGUI):
         """Remove atom at index and refresh view. Only in Atom/pi/Select modes."""
         if self.edit_mode in ('Hex1', 'Hex2', 'Bond'):
             return   # In Hex/Bond modes, RMB is handled by handle_click (hex removal / bond collapse)
-        # Find which node_key corresponds to this atom index
-        node_to_remove = None
-        if idx < len(self.backend.atom_pin):
-            node_to_remove = self.backend.atom_pin[idx]
-        if node_to_remove:
-            self.backend.remove_atom(node_to_remove)
-        else:
-            # Atom not pinned to grid (e.g. H) - remove by object reference
-            atom_list, *_ = self.backend.graph.to_arrays()
-            if 0 <= idx < len(atom_list):
-                atom = atom_list[idx]
-                self.backend.graph.remove_atom(atom)
-                # Clean up dead bonds and sync (no recalc_bonds!)
-                self.backend.graph.cleanup_invalid()
-                self.backend.graph.sync_neighbor_lists()
+        # Remove atom directly by index (grid-independent)
+        self.backend.remove_atom_by_index(idx)
         self.refresh_view()
         self.sig_geometry_changed.emit()
 
@@ -829,12 +866,8 @@ class KekuleExplorerWindow(BaseGUI):
         picked = self.scene._pick_idx
         if picked >= 0 and event.button == 1:
             if self.edit_mode == 'Atom':
-                # Change atom type at picked position using graph-based method
-                # Find the node_key for this atom
-                pos = self.backend.sys.apos[picked]
-                node_key = self.backend.snap_to_node(pos[0], pos[1])
-                if node_key:
-                    self.backend.set_atom_type(node_key, self.cur_atom_type)
+                # Change atom type directly by index (grid-independent)
+                self.backend.set_atom_type_by_index(picked, self.cur_atom_type)
                 self.refresh_view()
                 return
             elif self.edit_mode == 'pi':
@@ -916,21 +949,40 @@ class KekuleExplorerWindow(BaseGUI):
         
         if p_world is None: return
         x, y = p_world[0], p_world[1]
-        
-        # 2. Snap to grid
+        pos_2d = np.array([x, y])
+
+        # 2. For Hex modes, always use grid snapping
         if self.edit_mode in ('Hex1', 'Hex2'):
             q, r = self.backend.snap_to_ring(x, y)
             node_key = None
+            nearest_atom_idx = None
         elif self.edit_mode == 'Bond':
             # Bond mode: pick bond
             bond = self.backend.pick_bond(p_world)
             node_key = None
             q, r = (None, None)
+            nearest_atom_idx = None
         else:
-            node_key = self.backend.snap_to_node(x, y)
-            q, r = (None, None)
+            # For Atom/pi modes, check if we're near an existing atom first
+            nearest_atom_idx = self.find_nearest_atom_index(p_world, self.pick_radius)
+            
+            if nearest_atom_idx is not None:
+                # Found atom within pick radius - use it directly
+                node_key = None
+                q, r = (None, None)
+                debug_print(2, f"Click at ({x:.2f}, {y:.2f}) -> Found atom {nearest_atom_idx} within radius {self.pick_radius}")
+            elif self.grid_mode:
+                # Grid mode: snap to grid
+                node_key = self.backend.snap_to_node(x, y)
+                q, r = (None, None)
+                debug_print(2, f"Click at ({x:.2f}, {y:.2f}) -> Grid mode, snapped to node {node_key}")
+            else:
+                # Free mode: use exact position, never snap to grid
+                node_key = None
+                q, r = (None, None)
+                debug_print(2, f"Click at ({x:.2f}, {y:.2f}) -> Free mode, exact position")
         
-        debug_print(2, f"Click at ({x:.2f}, {y:.2f}) -> Mode={self.edit_mode} Ring={(q,r)} Node={node_key} | Action: {action}")
+        debug_print(2, f"Click at ({x:.2f}, {y:.2f}) -> Mode={self.edit_mode} Grid={self.grid_mode} Ring={(q,r)} Node={node_key} AtomIdx={nearest_atom_idx} | Action: {action}")
 
         # Track last clicked node for pi mode
         if node_key:
@@ -948,7 +1000,18 @@ class KekuleExplorerWindow(BaseGUI):
                     debug_print(2, f"Inserted atom into bond {bond._id}, new atom {new_atom._id}")
             elif self.edit_mode == 'pi':
                 # Cycle pi orbitals: 0 -> 1 -> 2 -> 0
-                if node_key:
+                if nearest_atom_idx is not None:
+                    subtype = self.backend.atom_subtype[nearest_atom_idx]
+                    current_npi = self.backend._get_npi_from_subtype(subtype)
+                    new_npi = (current_npi + 1) % 3
+                    e = self.backend.sys.enames[nearest_atom_idx]
+                    sp_map = {0: 'sp3', 1: 'sp2', 2: 'sp'}
+                    self.backend.atom_subtype[nearest_atom_idx] = f"{e}_{sp_map.get(new_npi, 'sp2')}"
+                    if self.backend.auto_h_cap:
+                        self.backend.adjust_h()
+                    self.refresh_view()
+                    return
+                elif node_key:
                     ia = self.backend._build_node_to_atom().get(node_key)
                     if ia is not None:
                         subtype = self.backend.atom_subtype[ia]
@@ -956,9 +1019,38 @@ class KekuleExplorerWindow(BaseGUI):
                         new_npi = (current_npi + 1) % 3
                         self.backend.set_atom_valency(node_key, new_npi)
                         debug_print(2, f"Set atom {node_key} to npi={new_npi}")
+            elif nearest_atom_idx is not None:
+                # Change atom type directly by index (free mode or near atom)
+                self.backend.set_atom_type_by_index(nearest_atom_idx, self.cur_atom_type)
             elif node_key:
+                # Grid mode: use grid node
                 debug_print(2, f"DEBUG: Setting node {node_key} to {self.cur_atom_type}")
                 self.backend.set_atom_type(node_key, self.cur_atom_type)
+            elif self.grid_mode:
+                # Grid mode but too far from any grid node - add at exact position
+                debug_print(2, f"Grid mode: No grid node found, adding atom at exact position")
+                self.backend._append_atom(pos=[x, y, 0.0], ename=self.cur_atom_type, pin=None, parent=None, subtype=self.backend._get_element_default_subtype(self.cur_atom_type))
+                # Create bond to nearest heavy atom
+                atom_list, *_ = self.backend.graph.to_arrays()
+                if atom_list:
+                    new_atom = atom_list[-1]
+                    self.backend._create_bond_to_nearest_heavy(new_atom)
+                    self.backend.graph.sync_neighbor_lists()
+                if self.backend.auto_h_cap:
+                    self.backend.adjust_h()
+                self.backend._sync_sys()
+            elif not self.grid_mode:
+                # Free mode: add atom at exact position
+                self.backend._append_atom(pos=[x, y, 0.0], ename=self.cur_atom_type, pin=None, parent=None, subtype=self.backend._get_element_default_subtype(self.cur_atom_type))
+                # Create bond to nearest heavy atom
+                atom_list, *_ = self.backend.graph.to_arrays()
+                if atom_list:
+                    new_atom = atom_list[-1]
+                    self.backend._create_bond_to_nearest_heavy(new_atom)
+                    self.backend.graph.sync_neighbor_lists()
+                if self.backend.auto_h_cap:
+                    self.backend.adjust_h()
+                self.backend._sync_sys()
         elif action == 'remove':
             if self.edit_mode in ('Hex1', 'Hex2'):
                 if q is not None and r is not None:
@@ -968,12 +1060,22 @@ class KekuleExplorerWindow(BaseGUI):
                     # Pass Bond object directly (not index!)
                     survivor = self.backend.collapse_bond(bond, np.array([x, y]))
                     debug_print(2, f"Collapsed bond {bond._id}, survivor atom {survivor._id}")
+            elif nearest_atom_idx is not None:
+                # Remove atom directly by index (free mode or near atom)
+                self.backend.remove_atom_by_index(nearest_atom_idx)
             elif node_key:
+                # Grid mode: use grid node
                 self.backend.remove_atom(node_key)
         elif action == 'toggle_h':
-            nk = self.backend.snap_to_node(x, y)
-            if nk:
-                self.backend.toggle_h_state(nk)
+            if nearest_atom_idx is not None:
+                # Toggle H on nearest atom
+                nk = self.backend.atom_pin[nearest_atom_idx] if nearest_atom_idx < len(self.backend.atom_pin) else None
+                if nk:
+                    self.backend.toggle_h_state(nk)
+            else:
+                nk = self.backend.snap_to_node(x, y)
+                if nk:
+                    self.backend.toggle_h_state(nk)
         
         self.refresh_view()
         self.sig_geometry_changed.emit()

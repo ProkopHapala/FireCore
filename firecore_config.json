@@ -2,9 +2,9 @@
   "paths": {
     "dftb_sk_path": "/home/prokophapala/SIMULATIONS/dftbplus/slakos",
     "dftb_exe": null,
-    "dftb_basis_path": "/home/prokophapala/git/FireCore/pyBall/DFTB/data",
-    "fdata_dir": "/home/prokophapala/git/FireCore/tests/pyFireball/Fdata",
-    "firecore_root": "/home/prokophapala/git/FireCore"
+    "dftb_basis_path": "@REPO_ROOT/pyBall/DFTB/data",
+    "fdata_dir": "@REPO_ROOT/tests/pyFireball/Fdata",
+    "firecore_root": "@REPO_ROOT"
   },
   "dftb": {
     "default_sk_set": "mio-1-1",
@@ -12,11 +12,11 @@
     "basis_sets": {
       "mio-1-1": {
         "sk_path": "/home/prokophapala/SIMULATIONS/dftbplus/slakos/mio/mio-1-1",
-        "wfc_path": "/home/prokophapala/git/FireCore/pyBall/DFTB/data/wfc.mio-1-1.hsd"
+        "wfc_path": "@REPO_ROOT/pyBall/DFTB/data/wfc.mio-1-1.hsd"
       },
       "3ob-3-1": {
         "sk_path": "/home/prokophapala/SIMULATIONS/dftbplus/slakos/3ob-3-1",
-        "wfc_path": "/home/prokophapala/git/FireCore/pyBall/DFTB/data/wfc.3ob-3-1.hsd"
+        "wfc_path": "@REPO_ROOT/pyBall/DFTB/data/wfc.3ob-3-1.hsd"
       }
     }
   },

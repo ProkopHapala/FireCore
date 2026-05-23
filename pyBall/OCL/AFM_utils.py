@@ -719,12 +719,24 @@ def compose_and_relax_total(F_total, scan_xs, scan_ys, heights, origin, step, at
             # Smaller dt=0.1, damp=0.3 for stability with weak forces (probe far from surface)
             relax_pars_ppm = [0.1, 0.1, 0.03, 0.1]  # dt, damp, alpha, dt_fire
             FEs_relax, tip_disp = afmulator.scan_fdbm( scan_xs, scan_ys, heights, mol_z=mol_z,  K_LAT=K_LAT, K_RAD=K_RAD, bond_length=bond_length,  relax_pars=relax_pars_ppm )
+            # Diagnostic: report maximum displacement for each z-height
+            print("  [compose_and_relax_total] Tip displacement diagnostics:")
+            for iz, h in enumerate(heights):
+                dx_max = np.abs(tip_disp['dx'][:,:,iz]).max()
+                dy_max = np.abs(tip_disp['dy'][:,:,iz]).max()
+                print(f"    z={h:.2f}A: max|dx|={dx_max:.4f}A, max|dy|={dy_max:.4f}A")
         else:
             print("  [compose_and_relax_total] GPU relaxStrokes2D 2D lateral-only")
             if afmulator is None:
                 afmulator = afm.AFMulator(use_morse=False, nloc=32, use_fire=False)
             afmulator.setup_fdbm_grid(F_total, origin, step)
             FEs_relax, tip_disp = afmulator.scan_fdbm_2d(scan_xs, scan_ys, heights, mol_z=mol_z, K_LAT=K_LAT)
+            # Diagnostic: report maximum displacement for each z-height
+            print("  [compose_and_relax_total] Tip displacement diagnostics:")
+            for iz, h in enumerate(heights):
+                dx_max = np.abs(tip_disp['dx'][:,:,iz]).max()
+                dy_max = np.abs(tip_disp['dy'][:,:,iz]).max()
+                print(f"    z={h:.2f}A: max|dx|={dx_max:.4f}A, max|dy|={dy_max:.4f}A")
     else:
         print("  [compose_and_relax_total] CPU scipy relaxation (legacy)")
         from scipy.ndimage import map_coordinates
@@ -1909,21 +1921,21 @@ def _co_tip_cache_dir():
     return os.path.join(os.path.expanduser('~'), '.cache', 'firecore', 'co_tips')
 
 
-def _co_tip_cache_key(step, margin, fdata_dir, fdata_basis):
+def _co_tip_cache_key(step, margin, fdata_dir, fdata_basis, backend='dftb'):
     """Compute a deterministic cache key for CO tip parameters."""
     import hashlib
     # Normalize paths for portability
     fdata_dir_abs = os.path.normpath(os.path.abspath(fdata_dir))
     fdata_basis_abs = os.path.normpath(os.path.abspath(fdata_basis))
-    # Hash includes step, margin, and fdata paths (basis files rarely change)
-    key_str = f"step={step:.6f}:margin={margin:.6f}:fdata={fdata_dir_abs}:basis={fdata_basis_abs}"
+    # Hash includes step, margin, backend, and fdata paths (basis files rarely change)
+    key_str = f"step={step:.6f}:margin={margin:.6f}:backend={backend}:fdata={fdata_dir_abs}:basis={fdata_basis_abs}"
     return hashlib.sha256(key_str.encode('utf-8')).hexdigest()[:16]
 
 
-def _get_cached_co_tip(step, margin, fdata_dir, fdata_basis):
+def _get_cached_co_tip(step, margin, fdata_dir, fdata_basis, backend='dftb'):
     """Load cached CO tip if available; return (co_rho_total, co_rho_delta) or None."""
     cache_dir = _co_tip_cache_dir()
-    key = _co_tip_cache_key(step, margin, fdata_dir, fdata_basis)
+    key = _co_tip_cache_key(step, margin, fdata_dir, fdata_basis, backend)
     cache_subdir = os.path.join(cache_dir, key)
     total_path = os.path.join(cache_subdir, 'co_rho_total.npy')
     delta_path = os.path.join(cache_subdir, 'co_rho_delta.npy')
@@ -1932,18 +1944,22 @@ def _get_cached_co_tip(step, margin, fdata_dir, fdata_basis):
     return None
 
 
-def _save_cached_co_tip(co_rho_total, co_rho_delta, step, margin, fdata_dir, fdata_basis):
+def _save_cached_co_tip(co_rho_total, co_rho_delta, step, margin, fdata_dir, fdata_basis, backend='dftb'):
     """Save CO tip densities to global cache."""
     cache_dir = _co_tip_cache_dir()
-    key = _co_tip_cache_key(step, margin, fdata_dir, fdata_basis)
+    key = _co_tip_cache_key(step, margin, fdata_dir, fdata_basis, backend)
     cache_subdir = os.path.join(cache_dir, key)
     os.makedirs(cache_subdir, exist_ok=True)
     np.save(os.path.join(cache_subdir, 'co_rho_total.npy'), co_rho_total)
     np.save(os.path.join(cache_subdir, 'co_rho_delta.npy'), co_rho_delta)
 
 
-def _call_compute_co_tip_script(out_dir, grid_spec, step, nscf, fdata_dir, fdata_basis):
-    """Call compute_co_tip.py as subprocess."""
+def _call_compute_co_tip_script(out_dir, grid_spec, step, nscf, fdata_dir, fdata_basis, backend='dftb'):
+    """Call compute_co_tip.py as subprocess.
+    
+    Args:
+        backend: 'dftb' or 'firecore' (default: 'dftb')
+    """
     import json, subprocess, sys
     _THIS_FILE = os.path.abspath(__file__)
     # __file__ is pyBall/OCL/AFM_utils.py; repo root is 2 levels up
@@ -1954,8 +1970,8 @@ def _call_compute_co_tip_script(out_dir, grid_spec, step, nscf, fdata_dir, fdata
     grid_spec_json = {k: (v.tolist() if hasattr(v, 'tolist') else v) for k, v in grid_spec.items()}
     grid_spec_str = json.dumps(grid_spec_json)
 
-    cmd = [sys.executable, script, out_dir, grid_spec_str, str(step), str(nscf), fdata_dir, fdata_basis]
-    print(f"  Running CO tip computation: {' '.join(cmd[:5])} ...")
+    cmd = [sys.executable, script, out_dir, grid_spec_str, str(step), str(nscf), fdata_dir, fdata_basis, backend]
+    print(f"  Running CO tip computation (backend={backend}): {' '.join(cmd[:5])} ...")
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"compute_co_tip.py failed:\n{result.stderr}\n{result.stdout}")
@@ -2053,7 +2069,8 @@ def run_afm_from_xyz(
     use_dense_projection=False,
     max_shells=None,
     stm_params=None,
-    ppm_mode=False
+    ppm_mode=False,
+    backend='dftb'
 ):
     """
     Full AFM simulation pipeline from .xyz to AFM images via DFTB+ density.
@@ -2166,7 +2183,7 @@ def run_afm_from_xyz(
             fdata_dir = fdata_dir or os.path.join(_ROOT, 'tests', 'pyFireball', 'Fdata')
             fdata_basis = fdata_basis or os.path.join(fdata_dir, 'basis')
 
-        cached = _get_cached_co_tip(step, margin, fdata_dir, fdata_basis)
+        cached = _get_cached_co_tip(step, margin, fdata_dir, fdata_basis, backend)
         if cached is not None:
             print(f"\nLoading cached CO tip (step={step}, margin={margin})...")
             co_rho_total_raw, co_rho_delta_raw = cached
@@ -2177,12 +2194,12 @@ def run_afm_from_xyz(
             os.makedirs(co_tip_work, exist_ok=True)
             co_grid_spec, co_ngrid, co_origin = _compute_co_tip_grid(step=step, margin=margin)
             print(f"  CO grid: ngrid={co_ngrid}, origin={co_origin}")
-            _call_compute_co_tip_script(co_tip_work, co_grid_spec, step, 100, fdata_dir, fdata_basis)
+            _call_compute_co_tip_script(co_tip_work, co_grid_spec, step, 100, fdata_dir, fdata_basis, backend=backend)
             co_rho_total_raw = np.load(os.path.join(co_tip_work, 'co_rho_total.npy'))
             co_rho_delta_raw = np.load(os.path.join(co_tip_work, 'co_rho_delta.npy'))
             print(f"  Raw CO tip shape: {co_rho_total_raw.shape}")
             # Save to global cache for future runs
-            _save_cached_co_tip(co_rho_total_raw, co_rho_delta_raw, step, margin, fdata_dir, fdata_basis)
+            _save_cached_co_tip(co_rho_total_raw, co_rho_delta_raw, step, margin, fdata_dir, fdata_basis, backend)
             print(f"  Cached CO tip for future runs.")
 
     # Pad with zeros and roll so O atom is at index 0

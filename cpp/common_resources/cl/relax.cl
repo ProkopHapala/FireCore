@@ -47,8 +47,8 @@ float3 tipForce( float3 dpos, float4 stiffness, float4 dpos0 ){
 inline float3 rotMat( float3 v, float3 a, float3 b, float3 c ){ return (float3)(dot(v,a),dot(v,b),dot(v,c)); }
 inline float3 rotMatT( float3 v,  float3 a, float3 b, float3 c  ){ return a*v.x + b*v.y + c*v.z; }
 
-void print  (__constant char* s,float4 v){ printf("%s(%g,%g,%g|%g) " ,s,v.x,v.y,v.z,v.w); };
-void println(__constant char* s,float4 v){ printf("%s(%g,%g,%g|%g)\n",s,v.x,v.y,v.z,v.w); };
+// void print  (__constant char* s,float4 v){ printf("%s(%g,%g,%g|%g) " ,s,v.x,v.y,v.z,v.w); };
+// void println(__constant char* s,float4 v){ printf("%s(%g,%g,%g|%g)\n",s,v.x,v.y,v.z,v.w); };
 
 
 float3 tipForce( float3 dpos, float4 stiffness, float4 dpos0 ){
@@ -58,42 +58,42 @@ float3 tipForce( float3 dpos, float4 stiffness, float4 dpos0 ){
 }
 
 float4 read_imagef_trilin( __read_only image3d_t imgIn, float4 coord ){
-    float4 d = (float4)(0.00666666666,0.00666666666,0.00666666666,1.0); 
+    float4 d = (float4)(0.00666666666f,0.00666666666f,0.00666666666f,1.0f); 
     float4 icoord;
     float4 fc     =  fract( coord/d, &icoord );
     icoord*=d;
-    float4 mc     = (float4)(1.0,1.0,1.0,1.0) - fc;
+    float4 mc     = (float4)(1.0f,1.0f,1.0f,1.0f) - fc;
     // NOTE AMD-GPU seems to not accept CLK_NORMALIZED_COORDS_FALSE
     //return read_imagef( imgIn, sampler_2, icoord );
     //return read_imagef( imgIn, sampler_1, coord );
     return  
-     (( read_imagef( imgIn, sampler_2, icoord+(float4)(0.0,0.0,0.0,0.0) ) * mc.x
-      + read_imagef( imgIn, sampler_2, icoord+(float4)(d.x,0.0,0.0,0.0) ) * fc.x )*mc.y
-     +( read_imagef( imgIn, sampler_2, icoord+(float4)(0.0,d.y,0.0,0.0) ) * mc.x
-      + read_imagef( imgIn, sampler_2, icoord+(float4)(d.x,d.y,0.0,0.0) ) * fc.x )*fc.y )*mc.z
-    +(( read_imagef( imgIn, sampler_2, icoord+(float4)(0.0,0.0,d.z,0.0) ) * mc.x
-      + read_imagef( imgIn, sampler_2, icoord+(float4)(d.x,0.0,d.z,0.0) ) * fc.x )*mc.y
-     +( read_imagef( imgIn, sampler_2, icoord+(float4)(0.0,d.y,d.z,0.0) ) * mc.x
-      + read_imagef( imgIn, sampler_2, icoord+(float4)(d.x,d.y,d.z,0.0) ) * fc.x )*fc.y )*fc.z;
+     (( read_imagef( imgIn, sampler_2, icoord+(float4)(0.0f,0.0f,0.0f,0.0f) ) * mc.x
+      + read_imagef( imgIn, sampler_2, icoord+(float4)(d.x,0.0f,0.0f,0.0f) ) * fc.x )*mc.y
+     +( read_imagef( imgIn, sampler_2, icoord+(float4)(0.0f,d.y,0.0f,0.0f) ) * mc.x
+      + read_imagef( imgIn, sampler_2, icoord+(float4)(d.x,d.y,0.0f,0.0f) ) * fc.x )*fc.y )*mc.z
+    +(( read_imagef( imgIn, sampler_2, icoord+(float4)(0.0f,0.0f,d.z,0.0f) ) * mc.x
+      + read_imagef( imgIn, sampler_2, icoord+(float4)(d.x,0.0f,d.z,0.0f) ) * fc.x )*mc.y
+     +( read_imagef( imgIn, sampler_2, icoord+(float4)(0.0f,d.y,d.z,0.0f) ) * mc.x
+      + read_imagef( imgIn, sampler_2, icoord+(float4)(d.x,d.y,d.z,0.0f) ) * fc.x )*fc.y )*fc.z;
 }; 
 
 
 float4 read_imagef_trilin_( __read_only image3d_t imgIn, float4 coord ){
     float4 icoord;
     float4 fc     =  fract( coord, &icoord );
-    float4 mc     = (float4)(1.0,1.0,1.0,1.0) - fc;
+    float4 mc     = (float4)(1.0f,1.0f,1.0f,1.0f) - fc;
     // NOTE AMD-GPU seems to not accept CLK_NORMALIZED_COORDS_FALSE
     //return read_imagef( imgIn, sampler_2, icoord );
     //return read_imagef( imgIn, sampler_1, coord );
     return  
-     (( read_imagef( imgIn, sampler_nearest, icoord+(float4)(0.0,0.0,0.0,0.0) ) * mc.x
-      + read_imagef( imgIn, sampler_nearest, icoord+(float4)(1.0f,0.0,0.0,0.0) ) * fc.x )*mc.y
-     +( read_imagef( imgIn, sampler_nearest, icoord+(float4)(0.0,1.0f,0.0,0.0) ) * mc.x
-      + read_imagef( imgIn, sampler_nearest, icoord+(float4)(1.0f,1.0f,0.0,0.0) ) * fc.x )*fc.y )*mc.z
-    +(( read_imagef( imgIn, sampler_nearest, icoord+(float4)(0.0,0.0,1.f,0.0) ) * mc.x
-      + read_imagef( imgIn, sampler_nearest, icoord+(float4)(1.f,0.0,1.f,0.0) ) * fc.x )*mc.y
-     +( read_imagef( imgIn, sampler_nearest, icoord+(float4)(0.0,1.f,1.f,0.0) ) * mc.x
-      + read_imagef( imgIn, sampler_nearest, icoord+(float4)(1.f,1.f,1.f,0.0) ) * fc.x )*fc.y )*fc.z;
+     (( read_imagef( imgIn, sampler_nearest, icoord+(float4)(0.0f,0.0f,0.0f,0.0f) ) * mc.x
+      + read_imagef( imgIn, sampler_nearest, icoord+(float4)(1.0f,0.0f,0.0f,0.0f) ) * fc.x )*mc.y
+     +( read_imagef( imgIn, sampler_nearest, icoord+(float4)(0.0f,1.0f,0.0f,0.0f) ) * mc.x
+      + read_imagef( imgIn, sampler_nearest, icoord+(float4)(1.0f,1.0f,0.0f,0.0f) ) * fc.x )*fc.y )*mc.z
+    +(( read_imagef( imgIn, sampler_nearest, icoord+(float4)(0.0f,0.0f,1.0f,0.0f) ) * mc.x
+      + read_imagef( imgIn, sampler_nearest, icoord+(float4)(1.0f,0.0f,1.0f,0.0f) ) * fc.x )*mc.y
+     +( read_imagef( imgIn, sampler_nearest, icoord+(float4)(0.0f,1.0f,1.0f,0.0f) ) * mc.x
+      + read_imagef( imgIn, sampler_nearest, icoord+(float4)(1.0f,1.0f,1.0f,0.0f) ) * fc.x )*fc.y )*fc.z;
 }; 
 
 
@@ -198,7 +198,7 @@ __kernel void getFEinStrokes(
     for(int iz=0; iz<nz; iz++){
         float4 fe  =  read_imagef( imgIn, sampler_1, (float4){pos.x,pos.y,pos.z,0} );
         //float4 fe  = interpFE( pos, dinvA, dinvB, dinvC, imgIn );
-        if(get_global_id(0)==100)printf( "GPU %li %i (%f,%f,%f) -> fe(%g,%g,%g,%g) \n", get_global_id(0), iz, pos.x, pos.y, pos.z, fe.x,fe.y,fe.z,fe.w );
+        // if(get_global_id(0)==100)printf( "GPU %li %i (%f,%f,%f) -> fe(%g,%g,%g,%g) \n", get_global_id(0), iz, pos.x, pos.y, pos.z, fe.x,fe.y,fe.z,fe.w );
         //if(get_global_id(0)==0)printf( "GPU iz %i (%f,%f,%f) -> fe(%g,%g,%g,%g) \n", iz, pos.x, pos.y, pos.z, fe.x,fe.y,fe.z,fe.w );
         FEs[get_global_id(0)*nz + iz] = fe;
         pos    += dTip.xyz;
@@ -253,7 +253,7 @@ __kernel void getZisoTilted(
         fe     = interpFE( pos, dinvA, dinvB, dinvC, imgIn );
         fe.xyz = rotMat( fe.xyz, tipA.xyz, tipB.xyz, tipC.xyz );
         //if( get_global_id(0) == 6050 ) printf( "iz %i fe %g iso %g \n", iz, fe.z, iso );
-        if( fe.z/iso > 1.0 ){
+        if( fe.z/iso > 1.0f ){
             float t = (iso - ofe.z)/(fe.z - ofe.z);
             zMap[get_global_id(0)] = iz + t;
             return;
@@ -288,7 +288,7 @@ __kernel void getZisoFETilted(
         fe     = interpFE( pos, dinvA, dinvB, dinvC, imgIn );
         fe.xyz = rotMat( fe.xyz, tipA.xyz, tipB.xyz, tipC.xyz );
         //if( get_global_id(0) == 6050 ) printf( "iz %i fe %g iso %g \n", iz, fe.z, iso );
-        if( fe.z/iso > 1.0 ){
+        if( fe.z/iso > 1.0f ){
             float t = (iso - ofe.z)/(fe.z - ofe.z);
             zMap [get_global_id(0)] = iz + t;
             fe     = interpFE( pos+dTip.xyz*t, dinvA, dinvB, dinvC, imgFE );
@@ -831,7 +831,7 @@ inline double addAtomicForceMorseQ( const Vec3d& dp, Vec3d& f, double r0, double
 
 float8 getLJC( float4 atom, float2 cLJ, float3 pos ){
      float3  dp  =  pos - atom.xyz;
-     float   ir2 = 1.0/( dot(dp,dp) +  R2SAFE );
+     float   ir2 = 1.0f/( dot(dp,dp) +  R2SAFE );
      float   ir6 = ir2*ir2*ir2;
      float   ELJ =  (    cLJ.y*ir6 -   cLJ.x )*ir6;
      float3  FLJ = (( 12.0f*cLJ.y*ir6 - 6.0f*cLJ.x )*ir6*ir2)*dp;
@@ -898,7 +898,7 @@ __kernel void evalLJC_QZs(
     const int nMax = nab*nGrid.z;
 
     //if (  get_global_id(0)==0 ) { printf("GPU evalLJC_QZs \n" ); }
-    if(iG==0) printf( " Qs (%g,%g,%g,%g) QZs (%g,%g,%g,%g) \n", Qs.x,Qs.y,Qs.z,Qs.w,   QZs.x,QZs.y,QZs.z,QZs.w   );
+    // if(iG==0) printf( " Qs (%g,%g,%g,%g) QZs (%g,%g,%g,%g) \n", Qs.x,Qs.y,Qs.z,Qs.w,   QZs.x,QZs.y,QZs.z,QZs.w   );
     //if(iG==0) printf( " dA(%g,%g,%g) dB(%g,%g,%g) dC(%g,%g,%g) p0(%g,%g,%g)\n", grid_dA.x,grid_dA.y,grid_dA.z,   grid_dB.x,grid_dB.y,grid_dB.z,  grid_dC.x,grid_dC.y,grid_dC.z, grid_p0.x,grid_p0.y,grid_p0.z );
     if(iG>nMax) return;
 
@@ -1246,7 +1246,7 @@ __kernel void make_GridFF(
     const int nMax = nab*nGrid.z;
     if(iG>nMax) return;
 
-    if(iG==0){printf("GPU::make_GridFF(nL=%i,nG=%i,nAtoms=%i)\n", nL, (int)get_global_size(0), nAtoms );}
+    // if(iG==0){printf("GPU::make_GridFF(nL=%i,nG=%i,nAtoms=%i)\n", nL, (int)get_global_size(0), nAtoms );}
     //if(iG==0){printf("GPU::make_GridFF(nAtoms=%i) \n", nAtoms );}
     //if(iG==0){
     //    printf("GPU::make_GridFF(natoms=%i)\n", nAtoms);
@@ -1519,7 +1519,7 @@ float4 eval_bond( float3 d, float l0, float k, float4* fe_ ){
     return (float4)( d, inv_l );
 }
 
-float4 evalAngle( __private float4* fout, float4 dl1, float4 dl2, int ing, int jng, double K, double c0 ){
+float4 evalAngle( __private float4* fout, float4 dl1, float4 dl2, int ing, int jng, float K, float c0 ){
     float3 h1 = dl1.xyz; float ir1 = dl1.w;
     float3 h2 = dl2.xyz; float ir2 = dl2.w;
     float  c = dot(h1,h2);
@@ -1569,7 +1569,7 @@ inline float evalPiAling( const float3 h1, const float3 h2,  float K, __private 
 inline float evalBond( float3 h, float dl, float k, __private float3* f ){
     float fr = dl*k;
     *f = h * fr;
-    return fr*dl*0.5;
+    return fr*dl*0.5f;
 }
 
 
@@ -1610,11 +1610,11 @@ __kernel void getMMFFsp3(
     const int nAtoms=nDOFs.x;
     const int nnode =nDOFs.y;
     if(iG==0){
-        printf("GPU:: bPBC %i lvec   (%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", nDOFs.w, lvec.a.x,lvec.a.y,lvec.a.z,            lvec.b.x,lvec.b.y,lvec.b.z,            lvec.c.x,lvec.c.y,lvec.c.z );
-        printf("GPU:: bPBC %i invLvec(%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", nDOFs.w, invLvec.a.x,invLvec.a.y,invLvec.a.z,   invLvec.b.x,invLvec.b.y,invLvec.b.z,   invLvec.c.x,invLvec.c.y,invLvec.c.z );
+        // printf("GPU:: bPBC %i lvec   (%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", nDOFs.w, lvec.a.x,lvec.a.y,lvec.a.z,            lvec.b.x,lvec.b.y,lvec.b.z,            lvec.c.x,lvec.c.y,lvec.c.z );
+        // printf("GPU:: bPBC %i invLvec(%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", nDOFs.w, invLvec.a.x,invLvec.a.y,invLvec.a.z,   invLvec.b.x,invLvec.b.y,invLvec.b.z,   invLvec.c.x,invLvec.c.y,invLvec.c.z );
     }
 
-    if(iG==0){printf("GPU::getMMFFsp3(nAtoms=%i,nnode=%i,nG=%i,nL=%i)\n", nAtoms, nnode, (int)get_global_size(0), (int)get_local_size(0) );}
+    // if(iG==0){printf("GPU::getMMFFsp3(nAtoms=%i,nnode=%i,nG=%i,nL=%i)\n", nAtoms, nnode, (int)get_global_size(0), (int)get_local_size(0) );}
 
     if(iG>=nAtoms) return;
 
@@ -1684,7 +1684,7 @@ __kernel void getMMFFsp3(
                     u.y = dot(invLvec.b.xyz,dp);
                     u.z = dot(invLvec.c.xyz,dp);
                     u.x = u.x+1-(int)(u.x+1.5);
-                    u.y = u.y+1-(int)(u.y+1.5);
+                    u.y = u.y+1-(int)(u.y+1.5f);
                     u.z = u.z+1-(int)(u.z+1.5);
                     //dp.x = dot(lvec.a.xyz,u); // Must Be transposed !!!!
                     //dp.y = dot(lvec.a.xyz,u);
@@ -1895,16 +1895,16 @@ __kernel void getMMFFf4(
     #define NNEIGH 4
 
     /*
-    if(ia==0){ printf( "GPU::getMMFFf4() nnode=%i nAtoms=%i size=%i \n", nnode, nAtoms, nG ); }
+    // if(ia==0){ printf( "GPU::getMMFFf4() nnode=%i nAtoms=%i size=%i \n", nnode, nAtoms, nG ); }
     if(ia==0)for(int i=0; i<nnode; i++){
-        printf( "GPU[%i] ", i );
-        printf( "ngs{%2i,%2i,%2i,%2i} ", neighs[i].x, neighs[i].y, neighs[i].z, neighs[i].w );
-        printf( "apar{%6.3f,%6.3f,%6.3f,%6.3f} ", apars[i].x, apars[i].y, apars[i].z, apars[i].w );
-        printf(  "BL{%6.3f,%6.3f,%6.3f,%6.3f} ", bLs[i].x, bLs[i].y, bLs[i].z, bLs[i].w );
-        printf(  "BK{%6.3f,%6.3f,%6.3f,%6.3f} ", bKs[i].x, bKs[i].y, bKs[i].z, bKs[i].w );
-        printf( "Ksp{%6.3f,%6.3f,%6.3f,%6.3f} ", Ksp[i].x, Ksp[i].y, Ksp[i].z, Ksp[i].w );
-        printf( "Kpp{%6.3f,%6.3f,%6.3f,%6.3f} ", Kpp[i].x, Kpp[i].y, Kpp[i].z, Kpp[i].w );
-        printf( "\n" );
+        // printf( "GPU[%i] ", i );
+        // printf( "ngs{%2i,%2i,%2i,%2i} ", neighs[i].x, neighs[i].y, neighs[i].z, neighs[i].w );
+        // printf( "apar{%6.3f,%6.3f,%6.3f,%6.3f} ", apars[i].x, apars[i].y, apars[i].z, apars[i].w );
+        // printf(  "BL{%6.3f,%6.3f,%6.3f,%6.3f} ", bLs[i].x, bLs[i].y, bLs[i].z, bLs[i].w );
+        // printf(  "BK{%6.3f,%6.3f,%6.3f,%6.3f} ", bKs[i].x, bKs[i].y, bKs[i].z, bKs[i].w );
+        // printf( "Ksp{%6.3f,%6.3f,%6.3f,%6.3f} ", Ksp[i].x, Ksp[i].y, Ksp[i].z, Ksp[i].w );
+        // printf( "Kpp{%6.3f,%6.3f,%6.3f,%6.3f} ", Kpp[i].x, Kpp[i].y, Kpp[i].z, Kpp[i].w );
+        // printf( "\n" );
     }
     */
     
@@ -1952,7 +1952,7 @@ __kernel void getMMFFf4(
         if(ing<0) break;
         h.xyz    = apos[ing].xyz - pa;    //printf( "[%i|%i] ing=%i h(%g,%g,%g) pj(%g,%g,%g) pa(%g,%g,%g) \n", ia,i,ing, h.x,h.y,h.z, apos[ing].x,apos[ing].y,apos[ing].z,  pa.x,pa.y,pa.z ); 
         float  l = length(h.xyz); 
-        h.w      = 1./l;
+        h.w      = 1.0f/l;
         h.xyz   *= h.w;
         hs[i]    = h;
 
@@ -1980,8 +1980,8 @@ __kernel void getMMFFf4(
         // DEBUG: ERROR: uncomenting this couse drift
         // pi-sigma 
         float ksp = Kspi[i];
-        if(ksp>1.e-6){  
-            esp += evalAngCos( (float4){hpi,1.}, h, ksp, par.z, &f1, &f2 );   fpi+=f1; fa-=f2;  fbs[i]+=f2;    //   pi-planarization (orthogonality)
+        if(ksp>1.e-6f){  
+            esp += evalAngCos( (float4){hpi,1.0f}, h, ksp, par.z, &f1, &f2 );   fpi+=f1; fa-=f2;  fbs[i]+=f2;    //   pi-planarization (orthogonality)
             E+=epp;
         }
         

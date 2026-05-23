@@ -66,7 +66,7 @@ float evaluate_radial(
     if (ish >= max_shells) return 0.0f;
     if (r >= (n_nodes - 1) * dr) return 0.0f;
     // NOTE: basis_data is packed as float2 per node: (wf, wf_spline_second_derivative)
-    const __global float2* basis2 = (const __global float2*)basis_data;
+    const __global float2* basis2_ptr = (const __global float2*)basis_data;
 
     const float x = r / dr;
     int i = (int)floor(x);
@@ -76,8 +76,8 @@ float evaluate_radial(
 
     // interval [i, i+1]
     const int base = (ityp * max_shells + ish) * n_nodes;
-    const float2 lo = basis2[base + i];
-    const float2 hi = basis2[base + i + 1];
+    const float2 lo = basis2_ptr[base + i];
+    const float2 hi = basis2_ptr[base + i + 1];
 
     const float a = 1.0f - t;
     const float b = t;
@@ -169,11 +169,11 @@ __kernel void project_density_sparse(
     const int gid = get_global_id(0);
     const int threads_per_task = get_local_size(0);
     // DEBUG: emit one-line params to verify kernel entry
-    if (0 && get_global_id(0) == 0) {
-        printf("GPU: kernel entry: n_tasks=%d vox_per_task=%d n_nodes=%d max_shells=%d neigh_max=%d numorb_max=%d ngrid=(%d,%d,%d)\n",
-               n_tasks, 512, n_nodes, max_shells, neigh_max, numorb_max,
-               grid->ngrid.x, grid->ngrid.y, grid->ngrid.z);
-    }
+    // if (0 && get_global_id(0) == 0) {
+    //     printf("GPU: kernel entry: n_tasks=%d vox_per_task=%d n_nodes=%d max_shells=%d neigh_max=%d numorb_max=%d ngrid=(%d,%d,%d)\n",
+    //            n_tasks, 512, n_nodes, max_shells, neigh_max, numorb_max,
+    //            grid->ngrid.x, grid->ngrid.y, grid->ngrid.z);
+    // }
     const int i_task = get_group_id(0);
     const int t_idx  = get_local_id(0);
 
@@ -278,7 +278,11 @@ __kernel void project_density_sparse(
                     //int4 sp_j = species_info[ad_j.type];
 
                     int rho_base = i_atom * neigh_max * numorb_max * numorb_max + ineigh_ij * numorb_max * numorb_max;
-                    const __global float4* rho_ij = (const __global  float4*)(rho + rho_base); // <-- GLOBAL READ
+                    const __global float4* rho_ij_ptr = (const __global float4*)(rho + rho_base); // <-- GLOBAL READ
+                    float4 rho_ij_0 = rho_ij_ptr[0];
+                    float4 rho_ij_1 = rho_ij_ptr[1];
+                    float4 rho_ij_2 = rho_ij_ptr[2];
+                    float4 rho_ij_3 = rho_ij_ptr[3];
                     const float rj = sqrt(rj2);
                     drj.xyz /= (rj + 1e-12f);
                     drj.w =  evaluate_radial(rj, ad_j.type, 0, basis_data, n_nodes, dr_basis, max_shells) * PREF_S;
@@ -293,10 +297,10 @@ __kernel void project_density_sparse(
 
                     // Correct formula: Σ_αβ ρ_ij[α,β] φ_i[α] φ_j[β]
                     // Compute full 4x4 matrix multiplication
-                    float4 rho_i0 = rho_ij[0];  // [ρ_sx, ρ_sy, ρ_sz, ρ_ss] or similar
-                    float4 rho_i1 = rho_ij[1];
-                    float4 rho_i2 = rho_ij[2];
-                    float4 rho_i3 = rho_ij[3];
+                    float4 rho_i0 = rho_ij_0;  // [ρ_sx, ρ_sy, ρ_sz, ρ_ss] or similar
+                    float4 rho_i1 = rho_ij_1;
+                    float4 rho_i2 = rho_ij_2;
+                    float4 rho_i3 = rho_ij_3;
                     
                     // den = dri · (ρ_ij · drj)
                     // where ρ_ij is 4x4 block, dri and drj are 4-vectors
@@ -566,7 +570,8 @@ __kernel void project_density_sparse_tiled(
                     
                     if (ineigh_ij >= 0) {
                         int rho_base = i_atom * neigh_max * numorb_max * numorb_max + ineigh_ij * numorb_max * numorb_max;
-                        l_rho[k] = ((__global float4*)(rho + rho_base))[orb_idx];
+                        float4 rho_val = ((__global float4*)(rho + rho_base))[orb_idx];
+                        l_rho[k] = rho_val;
                     } else {
                         l_rho[k] = (float4)(0.0f);
                     }
@@ -748,7 +753,9 @@ __kernel void project_orbital(
             );
 
             // Dot product with coefficients [px, py, pz, s]
-            psi += dot(((const float4*)(coeffs))[coeff_base / 4], basis_val);
+            const __global float4* coeffs_ptr = (const __global float4*)(coeffs);
+            float4 coeff_val = coeffs_ptr[coeff_base / 4];
+            psi += dot(coeff_val, basis_val);
     }
 
         out_grid[g_idx] = psi;
@@ -801,7 +808,9 @@ __kernel void project_orbital_points_exp(
         );
 
         const int coeff_base = ad.i0orb;
-        psi += dot(((const __global float4*)(coeffs))[coeff_base / 4], basis_val);
+        const __global float4* coeffs_ptr = (const __global float4*)(coeffs);
+        float4 coeff_val = coeffs_ptr[coeff_base / 4];
+        psi += dot(coeff_val, basis_val);
     }
 
     out_psi[ip] = psi;
@@ -1004,7 +1013,8 @@ __kernel void project_orbital_points(
         );
 
         const int coeff_base = ia * 4;
-        const float4 c = ((const __global float4*)(coeffs))[coeff_base / 4];
+        const __global float4* coeffs_ptr = (const __global float4*)(coeffs);
+        const float4 c = coeffs_ptr[coeff_base / 4];
         psi += dot(c, basis_val);
     }
 

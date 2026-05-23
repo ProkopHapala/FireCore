@@ -449,12 +449,9 @@ def _get_sk_paths():
         for basis_name, basis_info in config['dftb']['basis_sets'].items():
             if 'sk_path' in basis_info:
                 sk_paths[basis_name] = basis_info['sk_path']
-    # Fallback to hardcoded paths if config doesn't have them
+    # Fallback: if config doesn't have them, raise error (no hardcoded paths for portability)
     if not sk_paths:
-        sk_paths = {
-            'mio-1-1': '/home/prokop/SIMULATIONS/dftbplus/slakos/mio-1-1/',
-            '3ob-3-1': '/home/prokop/SIMULATIONS/dftbplus/slakos/3ob-3-1/',
-        }
+        raise RuntimeError("SK paths not configured. Set them in firecore_config.json under dftb.basis_sets or use DFTB_SK_PATH environment variable.")
     return sk_paths
 
 def _get_wfc_hsd_paths():
@@ -465,12 +462,9 @@ def _get_wfc_hsd_paths():
         for basis_name, basis_info in config['dftb']['basis_sets'].items():
             if 'wfc_path' in basis_info:
                 wfc_paths[basis_name] = basis_info['wfc_path']
-    # Fallback to hardcoded paths if config doesn't have them
+    # Fallback: if config doesn't have them, raise error (no hardcoded paths for portability)
     if not wfc_paths:
-        wfc_paths = {
-            'mio-1-1': '/home/prokop/git/dftbplus/tests/grid/dftb_h2o/waveplot_in.hsd',
-            '3ob-3-1': '/home/prokop/git/dftbplus/tests/grid/dftb_h2o_3ob/waveplot_in.hsd',
-        }
+        raise RuntimeError("WFC paths not configured. Set them in firecore_config.json under dftb.basis_sets or use DFTB_BASIS_PATH environment variable.")
     return wfc_paths
 
 SK_PATHS = _get_sk_paths()
