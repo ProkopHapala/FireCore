@@ -20,7 +20,7 @@ if ROOT not in sys.path: sys.path.insert(0, ROOT)
 from pyBall.OCL.Surface_utils import run_alignment_verification
 
 
-def test_system(system_name, test_conventions=None, atom_req=(1.487, 0.0006808, 0.0, 0.0), alpha_morse=1.5, verbose=True):
+def test_system(system_name, test_conventions=None, atom_req=(1.487, 0.0006808, 0.0, 0.0), alpha_morse=1.5, z_atom_range=2.0, verbose=True):
     """
     Test alignment for a given system.
     
@@ -29,6 +29,7 @@ def test_system(system_name, test_conventions=None, atom_req=(1.487, 0.0006808, 
         test_conventions: List of conventions to test (None = test all)
         atom_req: Tuple (R, E, Q, H) for test atom
         alpha_morse: Alpha parameter for REQ to PLQ conversion
+        z_atom_range: Z-range below top atom to show in XY plots (default 2.0 A)
         verbose: Print progress
         
     Returns:
@@ -56,7 +57,7 @@ def test_system(system_name, test_conventions=None, atom_req=(1.487, 0.0006808, 
     
     # Run verification
     report = run_alignment_verification(grid_path, sub_path, out_dir,  test_conventions=test_conventions, 
-                                       atom_req=atom_req, alpha_morse=alpha_morse, verbose=verbose)
+                                       atom_req=atom_req, alpha_morse=alpha_morse, z_atom_range=z_atom_range, verbose=verbose)
     return report
 
 
@@ -65,8 +66,29 @@ def main():
     parser = argparse.ArgumentParser(description='Test GridFF alignment on systems')
     parser.add_argument('system', nargs='?', default='NaCl_1x1_L3',  help='System name (e.g., NaCl_1x1_L3, NaCl_8x8_L3_ClHole)')
     parser.add_argument('--conventions', nargs='+', help='Specific conventions to test (default: all)')
+    parser.add_argument('--z-atom-range', type=float, default=2.0, help='Z-range below top atom to show in XY plots (default 2.0 A)')
+    parser.add_argument('--profile', action='store_true', help='Run with cProfile profiler')
     args = parser.parse_args()
-    report = test_system(args.system, test_conventions=args.conventions, verbose=True)
+    
+    if args.profile:
+        import cProfile
+        import pstats
+        from io import StringIO
+        pr = cProfile.Profile()
+        pr.enable()
+        report = test_system(args.system, test_conventions=args.conventions, z_atom_range=args.z_atom_range, verbose=True)
+        pr.disable()
+        
+        s = StringIO()
+        ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
+        ps.print_stats(30)
+        print("\n" + "="*70)
+        print("PROFILE (top 30 by cumulative time)")
+        print("="*70)
+        print(s.getvalue())
+    else:
+        report = test_system(args.system, test_conventions=args.conventions, z_atom_range=args.z_atom_range, verbose=True)
+    
     if report:
         print("\n" + "="*70)
         print("SUMMARY")

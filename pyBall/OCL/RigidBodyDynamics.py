@@ -142,16 +142,29 @@ def compute_mass_properties(rel_positions, masses):
 
 def _quat_to_matrix_np(q):
     q = np.asarray(q, dtype=np.float32)
-    if q.shape != (4,):  raise ValueError(f"Quaternion must have shape (4,), got {q.shape}")
-    x, y, z, w = q
-    xx, yy, zz = x * x, y * y, z * z
-    xy, xz, yz = x * y, x * z, y * z
-    wx, wy, wz = w * x, w * y, w * z
-    return np.array([
-        [1.0 - 2.0 * (yy + zz), 2.0 * (xy - wz),       2.0 * (xz + wy)],
-        [2.0 * (xy + wz),       1.0 - 2.0 * (xx + zz), 2.0 * (yz - wx)],
-        [2.0 * (xz - wy),       2.0 * (yz + wx),       1.0 - 2.0 * (xx + yy)],
-    ], dtype=np.float32)
+    if q.shape == (4,):  # Single quaternion
+        x, y, z, w = q
+        xx, yy, zz = x * x, y * y, z * z
+        xy, xz, yz = x * y, x * z, y * z
+        wx, wy, wz = w * x, w * y, w * z
+        return np.array([
+            [1.0 - 2.0 * (yy + zz), 2.0 * (xy - wz),       2.0 * (xz + wy)],
+            [2.0 * (xy + wz),       1.0 - 2.0 * (xx + zz), 2.0 * (yz - wx)],
+            [2.0 * (xz - wy),       2.0 * (yz + wx),       1.0 - 2.0 * (xx + yy)],
+        ], dtype=np.float32)
+    elif q.ndim == 2 and q.shape[1] == 4:  # Multiple quaternions (N, 4)
+        x, y, z, w = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+        xx, yy, zz = x * x, y * y, z * z
+        xy, xz, yz = x * y, x * z, y * z
+        wx, wy, wz = w * x, w * y, w * z
+        # Return (N, 3, 3) array of rotation matrices
+        return np.stack([
+            np.stack([1.0 - 2.0 * (yy + zz), 2.0 * (xy - wz), 2.0 * (xz + wy)], axis=1),
+            np.stack([2.0 * (xy + wz), 1.0 - 2.0 * (xx + zz), 2.0 * (yz - wx)], axis=1),
+            np.stack([2.0 * (xz - wy), 2.0 * (yz + wx), 1.0 - 2.0 * (xx + yy)], axis=1),
+        ], axis=2).astype(np.float32)
+    else:
+        raise ValueError(f"Quaternion must have shape (4,) or (N,4), got {q.shape}")
 
 
 class RigidBodyDynamics(OpenCLBase):
@@ -319,13 +332,15 @@ void rigid_body_gridff_kernel(
             self.atom_PLQ = plq.copy()
             self.toGPU('atom_PLQ', self.atom_PLQ)
 
-        atoms  = atoms_body.reshape(self.n_bodies, self.num_atoms, 4)
-        world_atoms = np.zeros_like(atoms)
-        for ib in range(self.n_bodies):
-            rot = _quat_to_matrix_np(quats_in[ib])
-            world_atoms[ib, :, :3] = atoms[ib, :, :3] @ rot.T + pos_in[ib, :3]
-            world_atoms[ib, :, 3]  = atoms[ib, :, 3]
-        world_atoms_flat = world_atoms.reshape(self.total_atoms, 4)
+        # GPU already recomputes apos_world from apos_body+qrots in every kernel step.
+        # No need to precompute on CPU - just upload zeros; kernel overwrites on first step.
+        world_atoms_flat = np.zeros((self.total_atoms, 4), dtype=np.float32)
+        world_atoms_flat[:, 3] = atoms_body[:, 3]  # preserve w (charge/mass)
+        # NOTE: CPU backup below (kept for reference/debugging)
+        # atoms  = atoms_body.reshape(self.n_bodies, self.num_atoms, 4)
+        # rot_mats = _quat_to_matrix_np(quats_in)              # (n_bodies, 3, 3)
+        # rotated = np.einsum('bij,bkj->bik', atoms[:, :, :3], rot_mats)
+        # world_atoms_flat[:, :3] = (rotated + pos_in[:, :3][:, None, :]).reshape(self.total_atoms, 3)
 
         if anchors is None:
             anchors = np.zeros_like(world_atoms_flat)

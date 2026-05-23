@@ -16,6 +16,7 @@ import os
 import sys
 import numpy as np
 import json
+import time
 
 # matplotlib with non-interactive backend for headless use
 import matplotlib
@@ -25,6 +26,7 @@ import matplotlib.pyplot as plt
 # Import from existing modules
 from .InteractionEnergy import load_xyz_with_REQs
 from .RigidBodyAFM import sample_gridff_single_atom
+from .RigidBodyDynamics import RigidBodyDynamics, _reqs_to_plq
 
 
 # =============================================================================
@@ -201,6 +203,50 @@ def infer_grid_metadata(grid_path, substrate_info):
 # Section 2: Visualization Utilities (adapted from RigidBodyAFM.py)
 # =============================================================================
 
+def plot_atoms_overlay(ax, atoms_xyz, atoms_enames, z_atom_range=None, g0=None, dg=None, 
+                      marker='.', s=10, alpha=0.7, coords='xy', extra_mask=None):
+    """
+    Plot atoms as overlay with consistent styling and optional z-filtering.
+    
+    Args:
+        ax: Matplotlib axis
+        atoms_xyz: (n, 3) atom positions
+        atoms_enames: Element names for color coding
+        z_atom_range: Z-range below top atom to show (None = show all)
+        g0: Grid origin (x0, y0, z0) for z-filtering
+        dg: Grid spacing (dx, dy, dz) for z-filtering
+        marker: Marker style (default '.')
+        s: Marker size (default 10)
+        alpha: Transparency (default 0.7)
+        coords: Which coordinates to plot ('xy' or 'xz')
+        extra_mask: Additional boolean mask to apply (e.g., y-filtering for XZ)
+    """
+    # Color mapping
+    colors = ['purple' if e in ['Ca', 'Na'] else 'green' if e in ['F', 'Cl'] else 'gray' 
+              for e in atoms_enames]
+    
+    # Apply z-filtering if requested
+    mask = np.ones(len(atoms_xyz), dtype=bool)
+    if z_atom_range is not None and g0 is not None and dg is not None:
+        z_top_atom = np.max(atoms_xyz[:, 2])
+        mask &= atoms_xyz[:, 2] >= (z_top_atom - z_atom_range)
+    
+    # Apply extra mask if provided
+    if extra_mask is not None:
+        mask &= extra_mask
+    
+    atoms_xyz = atoms_xyz[mask]
+    colors = np.array(colors)[mask]
+    
+    if len(atoms_xyz) > 0:
+        if coords == 'xy':
+            ax.scatter(atoms_xyz[:, 0], atoms_xyz[:, 1], c=colors, s=s, alpha=alpha, marker=marker)
+        elif coords == 'xz':
+            ax.scatter(atoms_xyz[:, 0], atoms_xyz[:, 2], c=colors, s=s, alpha=alpha, marker=marker)
+
+
+
+
 def plot_gridff_diagnostics(grid_data, sub_apos, sub_enames, lvec, iz_slices=None, iy_slice=None, save_path='grid_diagnostics.png', g0=None, dg=None, z_marks=None, channel_name=None, z_atom_range=5.0):
     """
     Diagnostic tool to plot GridFF channels and overlay substrate atoms.
@@ -219,6 +265,7 @@ def plot_gridff_diagnostics(grid_data, sub_apos, sub_enames, lvec, iz_slices=Non
         z_marks: List of z-values to mark with dashed lines on XZ subplot
         channel_name: Override channel name for single-channel plots (e.g., 'total', 'pauli_vdw', 'electrostatic')
     """
+    t0 = time.perf_counter()
     nx, ny, nz, nch = grid_data.shape
     
     # Compute grid parameters
@@ -257,10 +304,6 @@ def plot_gridff_diagnostics(grid_data, sub_apos, sub_enames, lvec, iz_slices=Non
     else:
         names = ['Pauli (P)', 'London (L)', 'Electrostatic (Q)', 'Hydrogen (H)'][:nch]
 
-    # Show atoms within z_atom_range below the top atom on XY plots
-    z_top_atom = np.max(sub_apos[:, 2])
-    xy_atom_mask = sub_apos[:, 2] >= (z_top_atom - z_atom_range)
-    
     for i in range(nch):
         # XY Slices
         for j, iz in enumerate(iz_slices):
@@ -268,9 +311,8 @@ def plot_gridff_diagnostics(grid_data, sub_apos, sub_enames, lvec, iz_slices=Non
             extent = [g0[0], g0[0] + ax, g0[1], g0[1] + ay]
             im = axs[i, j].imshow(grid_data[:, :, iz, i].T, extent=extent, 
                                    origin='lower', cmap='bwr', aspect='equal')
-            # Overlay all surface atoms (within z_atom_range below top)
-            if np.any(xy_atom_mask):
-                axs[i, j].scatter(sub_apos[xy_atom_mask, 0], sub_apos[xy_atom_mask, 1], c=np.array(colors)[xy_atom_mask], s=40, alpha=0.7, edgecolors='black')
+            # Overlay atoms with z-filtering
+            plot_atoms_overlay(axs[i, j], sub_apos, sub_enames, z_atom_range=z_atom_range, g0=g0, dg=dg, coords='xy')
             axs[i, j].set_title(f"{names[i]} XY at z={z_val:.2f} A (iz={iz})")
             axs[i, j].set_xlabel('x [A]')
             axs[i, j].set_ylabel('y [A]')
@@ -297,9 +339,9 @@ def plot_gridff_diagnostics(grid_data, sub_apos, sub_enames, lvec, iz_slices=Non
             else:
                 vmin, vmax = None, None
         im_xz = axs[i, -1].imshow(xz_data, extent=extent_xz, origin='lower', cmap='bwr', aspect='equal', vmin=vmin, vmax=vmax)
+        # Overlay atoms with y-filtering and z-filtering
         mask_y = np.abs(sub_apos[:, 1] - y_val) < 2.0
-        if np.any(mask_y):
-            axs[i, -1].scatter(sub_apos[mask_y, 0], sub_apos[mask_y, 2],  c=np.array(colors)[mask_y], s=20, alpha=0.5, edgecolors='black')
+        plot_atoms_overlay(axs[i, -1], sub_apos, sub_enames, z_atom_range=z_atom_range, g0=g0, dg=dg, coords='xz', extra_mask=mask_y)
         if z_marks is not None:
             for zm in z_marks:
                 axs[i, -1].axhline(zm, color='k', linestyle='--', linewidth=1.0, alpha=0.7, label=f'z={zm:.2f}')
@@ -310,13 +352,15 @@ def plot_gridff_diagnostics(grid_data, sub_apos, sub_enames, lvec, iz_slices=Non
         plt.colorbar(im_xz, ax=axs[i, -1])
 
     plt.tight_layout()
+    t1 = time.perf_counter()
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    t2 = time.perf_counter()
     plt.close(fig)
-    print(f"Saved GridFF diagnostics to {save_path}")
+    print(f"Saved GridFF diagnostics to {save_path} (render: {t1-t0:.3f}s, save: {t2-t1:.3f}s, total: {t2-t0:.3f}s)")
     return save_path
 
 
-def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path, iz_top=None, iy_center=None):
+def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path, iz_top=None, iy_center=None, z_atom_range=2.0):
     """
     Generate comprehensive alignment diagnostic figure.
     
@@ -329,6 +373,7 @@ def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path
         save_path: Output PNG path
         iz_top: Z-index for top layer (default: auto-detect from atoms)
         iy_center: Y-index for center slice (default: ny//2)
+        z_atom_range: Z-range below top atom to show (default 2.0)
     """
     nx, ny, nz, nch = grid_data.shape
     dx, dy, dz = dg
@@ -342,10 +387,6 @@ def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path
     if iy_center is None:
         iy_center = ny // 2
     
-    # Color mapping
-    colors = ['purple' if e in ['Ca', 'Na'] else 'green' if e in ['F', 'Cl'] else 'gray' 
-              for e in atoms_enames]
-    
     fig, axes = plt.subplots(2, 2, figsize=(14, 12))
     
     # 1. XY slice at top layer - Pauli
@@ -354,8 +395,7 @@ def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path
     extent = [g0[0], g0[0] + nx*dx, g0[1], g0[1] + ny*dy]
     im = ax.imshow(grid_data[:, :, iz_top, 0].T, extent=extent, 
                    origin='lower', cmap='bwr', aspect='equal')
-    ax.scatter(atoms_xyz[:, 0], atoms_xyz[:, 1], c=colors, s=30, alpha=0.6, 
-               edgecolors='black', linewidths=1)
+    plot_atoms_overlay(ax, atoms_xyz, atoms_enames, z_atom_range=z_atom_range, g0=g0, dg=dg)
     ax.set_title(f'Pauli Potential XY at z={z_val:.2f}A (iz={iz_top})')
     ax.set_xlabel('x [A]')
     ax.set_ylabel('y [A]')
@@ -367,10 +407,16 @@ def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path
     extent_xz = [g0[0], g0[0] + nx*dx, g0[2], g0[2] + nz*dz]
     im = ax.imshow(grid_data[:, iy_center, :, 0].T, extent=extent_xz,
                    origin='lower', cmap='bwr', aspect='auto')
+    # Apply z-filtering for XZ slice too
+    z_top_atom = np.max(atoms_xyz[:, 2])
     mask_y = np.abs(atoms_xyz[:, 1] - y_val) < 2.0
-    if np.any(mask_y):
-        ax.scatter(atoms_xyz[mask_y, 0], atoms_xyz[mask_y, 2], 
-                   c=np.array(colors)[mask_y], s=30, alpha=0.6, edgecolors='black')
+    mask_z = atoms_xyz[:, 2] >= (z_top_atom - z_atom_range)
+    mask_xz = mask_y & mask_z
+    if np.any(mask_xz):
+        colors = ['purple' if e in ['Ca', 'Na'] else 'green' if e in ['F', 'Cl'] else 'gray' 
+                  for e in atoms_enames]
+        ax.scatter(atoms_xyz[mask_xz, 0], atoms_xyz[mask_xz, 2], 
+                   c=np.array(colors)[mask_xz], s=10, alpha=0.7, marker='.')
     ax.set_title(f'Pauli Potential XZ at y={y_val:.2f}A (iy={iy_center})')
     ax.set_xlabel('x [A]')
     ax.set_ylabel('z [A]')
@@ -454,7 +500,7 @@ def sample_gridff_opencl(gridff_path, sub_xyz, positions, grid_p0=(0.0, 0.0, 0.0
     return {'forces': forces, 'energies': energies}
 
 
-def compare_sampling_methods(grid_data, g0, dg, gridff_path, sub_xyz, positions, 
+def compare_sampling_methods(grid_data, g0, dg, rbd, grid, positions, 
                              atom_req, alpha_morse, verbose=True):
     """
     Compare simple coefficient summation vs OpenCL B-spline sampling for 3 components:
@@ -470,8 +516,8 @@ def compare_sampling_methods(grid_data, g0, dg, gridff_path, sub_xyz, positions,
         grid_data: (nx, ny, nz, nch) array
         g0: Grid origin
         dg: Grid spacing
-        gridff_path: Path to GridFF .npy file
-        sub_xyz: Path to substrate .xyz file
+        rbd: Pre-initialized RigidBodyDynamics instance
+        grid: Grid data array
         positions: (n, 3) positions to sample
         atom_req: Tuple (R, E, Q, H) for test atom
         alpha_morse: Alpha parameter
@@ -523,7 +569,6 @@ def compare_sampling_methods(grid_data, g0, dg, gridff_path, sub_xyz, positions,
         iz = np.clip(iz, 0, nz-1)
         
         # Compute PLQ coefficients for this component's atom_req
-        from .RigidBodyDynamics import _reqs_to_plq
         comp_req = np.array([comp['atom_req']], dtype=np.float32)
         comp_plq = _reqs_to_plq(comp_req, alpha=alpha_morse)[0]
         
@@ -537,10 +582,46 @@ def compare_sampling_methods(grid_data, g0, dg, gridff_path, sub_xyz, positions,
             for i, ch in enumerate(comp['channels']):
                 simple_vals += grid_data[ix, iy, iz, ch] * comp_plq[i]
         
-        # OpenCL: sample with B-spline interpolation
-        opencl_result = sample_gridff_opencl(gridff_path, sub_xyz, positions, grid_p0=g0, grid_step=dg,
-                                              atom_req=comp['atom_req'], alpha_morse=alpha_morse, debug=False)
-        opencl_vals = opencl_result['energies']
+        # OpenCL: sample with B-spline interpolation using reusable RigidBodyDynamics
+        positions_np = np.asarray(positions, dtype=np.float32)
+        n_bodies = len(positions_np)
+        
+        rbd.realloc(n_bodies=n_bodies, num_atoms=1)
+        rbd.enames = ['TestAtom']
+        rbd.atom_types_assigned = ['TestAtom']
+        
+        reqs = np.array([comp['atom_req']], dtype=np.float32)
+        rbd.atom_REQ = reqs
+        rbd.atom_masses = np.array([1.008], dtype=np.float32)
+        rbd.mass_physical = 1.008
+        rbd.mass_trans = 1.008
+        rbd.mass_rot = 1.008
+        
+        atom_plq_single = _reqs_to_plq(reqs, alpha=alpha_morse)
+        atom_plq = np.repeat(atom_plq_single[None, :, :], n_bodies, axis=0).reshape(n_bodies, 4)
+        rbd.atom_PLQ = atom_plq.copy()
+        
+        pos4 = np.zeros((n_bodies, 4), dtype=np.float32)
+        pos4[:, :3] = positions_np
+        pos4[:, 3] = 1.008
+        
+        quat4 = np.zeros((n_bodies, 4), dtype=np.float32)
+        quat4[:, 3] = 1.0
+        zero4 = np.zeros((n_bodies, 4), dtype=np.float32)
+        
+        Iinv_relax = np.eye(3, dtype=np.float32)
+        atom_body = np.zeros((n_bodies, 1, 3), dtype=np.float32)
+        
+        rbd.upload_state(pos4, quat4, zero4, zero4, rbd.mass_trans, 1.0 / rbd.mass_trans, np.repeat(Iinv_relax[None, :, :], n_bodies, axis=0), atom_body, atom_PLQ=atom_plq)
+        
+        # Re-init grid after realloc
+        rbd.init_gridff(grid, grid_p0=g0, grid_step=dg)
+        
+        # Run 1 step with dt=0.0 to evaluate forces without moving
+        rbd.run_gridff(num_steps=1, dt=0.0)
+        
+        outputs = rbd.download_selected(('atom_force',))
+        opencl_vals = outputs['atom_force'][:, 0, 3]
         
         # Compute statistics
         corr = np.corrcoef(simple_vals, opencl_vals)[0, 1] if len(simple_vals) > 1 else np.nan
@@ -563,27 +644,66 @@ def compare_sampling_methods(grid_data, g0, dg, gridff_path, sub_xyz, positions,
     return results
 
 
-def sample_grid_at_atoms_opencl(gridff_path, sub_xyz, atoms_xyz, atom_req, alpha_morse, 
-                                  grid_p0=(0.0, 0.0, 0.0), verbose=True):
+def sample_grid_at_atoms_opencl(rbd, grid, atoms_xyz, atom_req, alpha_morse, 
+                                  grid_p0=(0.0, 0.0, 0.0), grid_step=None, verbose=True):
     """
     Sample GridFF at atom positions using OpenCL B-spline interpolation.
     
     Args:
-        gridff_path: Path to GridFF .npy file
-        sub_xyz: Path to substrate .xyz file
+        rbd: Pre-initialized RigidBodyDynamics instance
+        grid: Grid data array
         atoms_xyz: (n, 3) atom positions
-        grid_p0: Grid origin (x0, y0, z0)
         atom_req: Tuple (R, E, Q, H) for test atom
         alpha_morse: Alpha parameter
+        grid_p0: Grid origin (x0, y0, z0)
+        grid_step: Grid spacing (dx, dy, dz)
         verbose: Print statistics
         
     Returns:
         dict with 'forces', 'energies', 'stats'
     """
-    result = sample_gridff_opencl(gridff_path, sub_xyz, atoms_xyz, grid_p0=grid_p0, grid_step=None,
-                                   atom_req=atom_req, alpha_morse=alpha_morse, debug=False)
+    positions_np = np.asarray(atoms_xyz, dtype=np.float32)
+    n_bodies = len(positions_np)
     
-    energies = result['energies']
+    rbd.realloc(n_bodies=n_bodies, num_atoms=1)
+    rbd.enames = ['TestAtom']
+    rbd.atom_types_assigned = ['TestAtom']
+    
+    reqs = np.array([atom_req], dtype=np.float32)
+    rbd.atom_REQ = reqs
+    rbd.atom_masses = np.array([1.008], dtype=np.float32)
+    rbd.mass_physical = 1.008
+    rbd.mass_trans = 1.008
+    rbd.mass_rot = 1.008
+    
+    atom_plq_single = _reqs_to_plq(reqs, alpha=alpha_morse)
+    atom_plq = np.repeat(atom_plq_single[None, :, :], n_bodies, axis=0).reshape(n_bodies, 4)
+    rbd.atom_PLQ = atom_plq.copy()
+    
+    pos4 = np.zeros((n_bodies, 4), dtype=np.float32)
+    pos4[:, :3] = positions_np
+    pos4[:, 3] = 1.008
+    
+    quat4 = np.zeros((n_bodies, 4), dtype=np.float32)
+    quat4[:, 3] = 1.0
+    zero4 = np.zeros((n_bodies, 4), dtype=np.float32)
+    
+    Iinv_relax = np.eye(3, dtype=np.float32)
+    atom_body = np.zeros((n_bodies, 1, 3), dtype=np.float32)
+    
+    rbd.upload_state(pos4, quat4, zero4, zero4, rbd.mass_trans, 1.0 / rbd.mass_trans, 
+                    np.repeat(Iinv_relax[None, :, :], n_bodies, axis=0), atom_body, atom_PLQ=atom_plq)
+    
+    # Re-init grid after realloc
+    rbd.init_gridff(grid, grid_p0=grid_p0, grid_step=grid_step)
+    
+    # Run 1 step with dt=0.0 to evaluate forces without moving
+    rbd.run_gridff(num_steps=1, dt=0.0)
+    
+    outputs = rbd.download_selected(('atom_force',))
+    forces = outputs['atom_force'][:, 0, :3]
+    energies = outputs['atom_force'][:, 0, 3]
+    
     stats = {
         'mean': float(np.mean(energies)),
         'min': float(np.min(energies)),
@@ -598,7 +718,7 @@ def sample_grid_at_atoms_opencl(gridff_path, sub_xyz, atoms_xyz, atom_req, alpha
         print(f"  Max:  {stats['max']:.4f} eV")
         print(f"  Std:  {stats['std']:.4f} eV")
     
-    return {'forces': result['forces'], 'energies': energies, 'stats': stats}
+    return {'forces': forces, 'energies': energies, 'stats': stats}
 
 
 # =============================================================================
@@ -801,7 +921,7 @@ def auto_detect_shift(grid_data, atoms_xyz, substrate_lvec, verbose=True):
 
 def run_alignment_verification(grid_path, substrate_path, save_dir, 
                                test_conventions=None, atom_req=(1.487, 0.0006808, 0.0, 0.0), 
-                               alpha_morse=1.5, verbose=True):
+                               alpha_morse=1.5, z_atom_range=2.0, verbose=True):
     """
     Run complete alignment verification workflow.
     
@@ -812,6 +932,7 @@ def run_alignment_verification(grid_path, substrate_path, save_dir,
         test_conventions: List of convention names to test (None = test all)
         atom_req: Tuple (R, E, Q, H) for test atom
         alpha_morse: Alpha parameter for REQ to PLQ conversion
+        z_atom_range: Z-range below top atom to show in XY plots (default 2.0 A)
         verbose: Print progress
         
     Returns:
@@ -909,8 +1030,31 @@ def run_alignment_verification(grid_path, substrate_path, save_dir,
     if verbose:
         print(f"\n[4/5] Testing shift conventions...")
     
+    # If specific conventions are requested, use the first one directly
+    if test_conventions is not None and len(test_conventions) > 0:
+        conv_name = test_conventions[0]
+        if conv_name in metadata['conventions']:
+            best_g0 = metadata['conventions'][conv_name]
+            best_dg = metadata['dg']
+            shift_detection = {
+                'best_convention': conv_name,
+                'best_g0': best_g0,
+                'dg': best_dg,
+                'all_results': {}
+            }
+            if verbose:
+                print(f"Using specified convention: {conv_name}")
+                print(f"  g0 = {best_g0}")
+        else:
+            if verbose:
+                print(f"Warning: Convention '{conv_name}' not found, running auto-detection...")
+            shift_detection = auto_detect_shift(
+                grid_data, sub_info['apos'], sub_info['lvec'], verbose=verbose
+            )
+            best_g0 = shift_detection['best_g0']
+            best_dg = shift_detection['dg']
     # If metadata from JSON is available, use it directly
-    if metadata_json is not None:
+    elif metadata_json is not None:
         best_g0 = metadata['g0']
         best_dg = metadata['dg']
         shift_detection = {
@@ -933,7 +1077,8 @@ def run_alignment_verification(grid_path, substrate_path, save_dir,
     plot_alignment_summary(
         grid_data, best_g0, best_dg,
         sub_info['apos'], sub_info['enames'],
-        summary_path
+        summary_path,
+        z_atom_range=z_atom_range
     )
     
     # Sample at positions above substrate (z0+2.0, z0+6.0) with best convention
@@ -950,25 +1095,31 @@ def run_alignment_verification(grid_path, substrate_path, save_dir,
             test_positions.append([pos[0], pos[1], z_height])
     test_positions = np.array(test_positions, dtype=np.float32)
     
-    # Use OpenCL sampling (same as molecular simulations)
-    # Pass the correct grid origin from metadata or auto-detection
-    sampling_results = sample_grid_at_atoms_opencl(
-        grid_path, substrate_path, test_positions,
-        grid_p0=best_g0,  # Use grid origin from metadata or auto-detection
-        atom_req=atom_req,
-        alpha_morse=alpha_morse,
-        verbose=verbose
-    )
-    
     # Compare with simple coefficient summation for verification
     if verbose:
         print(f"\n[5/6] Comparing sampling methods (OpenCL vs simple)...")
+        
+        # Initialize RigidBodyDynamics once for all sampling
+        rbd = RigidBodyDynamics(debug=False)
+        rbd.realloc(n_bodies=1, num_atoms=1)
+        rbd.init_gridff(grid_data, grid_p0=best_g0, grid_step=best_dg)
+        
         comparison = compare_sampling_methods(
-            grid_data, best_g0, best_dg, grid_path, substrate_path,
+            grid_data, best_g0, best_dg, rbd, grid_data,
             test_positions,  # Use positions above substrate
             atom_req=atom_req,
             alpha_morse=alpha_morse,
             verbose=True
+        )
+        
+        # Use the same rbd for the earlier sampling call
+        sampling_results = sample_grid_at_atoms_opencl(
+            rbd, grid_data, test_positions,
+            atom_req=atom_req,
+            alpha_morse=alpha_morse,
+            grid_p0=best_g0,
+            grid_step=best_dg,
+            verbose=verbose
         )
         
         # Generate comparison plots for 3 components
@@ -1019,9 +1170,8 @@ def run_alignment_verification(grid_path, substrate_path, save_dir,
             comp_req = np.array([comp['atom_req']], dtype=np.float32)
             comp_plq = _reqs_to_plq(comp_req, alpha=alpha_morse)[0]  # [cP, cL, Q, cH]
             plq_weights = [comp_plq[ch] for ch in comp['channels']]  # weight for each channel
-            simple_grid = np.zeros((nx, ny, nz, 1), dtype=np.float32)
-            for ch, w in zip(comp['channels'], plq_weights):
-                simple_grid[:, :, :, 0] += grid_data[:, :, :, ch] * w
+            # Vectorized: sum weighted channels in single operation
+            simple_grid = np.sum(grid_data[:, :, :, comp['channels']] * np.array(plq_weights), axis=3, keepdims=True)
             
             simple_plot_path = os.path.join(save_dir, f"{base_name}_diagnostic_{comp['name']}_simple.png")
             plot_gridff_diagnostics(
@@ -1029,39 +1179,116 @@ def run_alignment_verification(grid_path, substrate_path, save_dir,
                 iz_slices=iz_slices,
                 iy_slice=iy_slice,
                 save_path=simple_plot_path,
-                g0=best_g0, dg=best_dg, z_marks=z_marks, channel_name=comp['name']
+                g0=best_g0, dg=best_dg, z_marks=z_marks, channel_name=comp['name'],
+                z_atom_range=z_atom_range
             )
             
-            # OpenCL plot: sample with B-spline
+            # OpenCL plot: sample with B-spline using reusable rbd
+            # Fully vectorized - NO Python loops over grid
+            # Create 3D grid directly with meshgrid, single allocation
+            z_vals = np.array([best_g0[2] + iz * best_dg[2] for iz in iz_slices], dtype=np.float32)
+            xx, yy, zz = np.meshgrid(x_sample, y_sample, z_vals, indexing='ij')
+            # Stack to (nx, ny, nz, 3), transpose to (nz, nx, ny, 3), reshape to (n_points, 3)
+            all_positions = np.stack([xx, yy, zz], axis=-1).transpose(2, 0, 1, 3).reshape(-1, 3).astype(np.float32)
+            n_bodies = len(all_positions)
+            
+            # Single realloc/init for all XY slices
+            rbd.realloc(n_bodies=n_bodies, num_atoms=1)
+            rbd.enames = ['TestAtom']
+            rbd.atom_types_assigned = ['TestAtom']
+            
+            reqs = np.array([comp['atom_req']], dtype=np.float32)
+            rbd.atom_REQ = reqs
+            rbd.atom_masses = np.array([1.008], dtype=np.float32)
+            rbd.mass_physical = 1.008
+            rbd.mass_trans = 1.008
+            rbd.mass_rot = 1.008
+            
+            atom_plq_single = _reqs_to_plq(reqs, alpha=alpha_morse)
+            atom_plq = np.repeat(atom_plq_single[None, :, :], n_bodies, axis=0).reshape(n_bodies, 4)
+            rbd.atom_PLQ = atom_plq.copy()
+            
+            pos4 = np.zeros((n_bodies, 4), dtype=np.float32)
+            pos4[:, :3] = all_positions
+            pos4[:, 3] = 1.008
+            
+            quat4 = np.zeros((n_bodies, 4), dtype=np.float32)
+            quat4[:, 3] = 1.0
+            zero4 = np.zeros((n_bodies, 4), dtype=np.float32)
+            
+            Iinv_relax = np.eye(3, dtype=np.float32)
+            atom_body = np.zeros((n_bodies, 1, 3), dtype=np.float32)
+            
+            rbd.upload_state(pos4, quat4, zero4, zero4, rbd.mass_trans, 1.0 / rbd.mass_trans, 
+                            np.repeat(Iinv_relax[None, :, :], n_bodies, axis=0), atom_body, atom_PLQ=atom_plq)
+            
+            # Re-init grid after realloc
+            rbd.init_gridff(grid_data, grid_p0=best_g0, grid_step=best_dg)
+            
+            # Run 1 step with dt=0.0 to evaluate forces without moving
+            rbd.run_gridff(num_steps=1, dt=0.0)
+            
+            outputs = rbd.download_selected(('atom_force',))
+            all_energies = outputs['atom_force'][:, 0, 3]
+            
+            # Split results back into slices (vectorized)
+            all_energies = all_energies.reshape(len(iz_slices), nx, ny)
             opencl_xy_slices = {}
-            for iz in iz_slices:
-                z_val = best_g0[2] + iz * best_dg[2]
-                positions = []
-                for ix in range(nx):
-                    for iy in range(ny):
-                        positions.append([x_sample[ix], y_sample[iy], z_val])
-                positions = np.array(positions, dtype=np.float32)
-                
-                result = sample_gridff_opencl(grid_path, substrate_path, positions, grid_p0=best_g0, grid_step=best_dg,
-                                              atom_req=comp['atom_req'], alpha_morse=alpha_morse, debug=False)
-                energies = result['energies'].reshape(nx, ny)
-                opencl_xy_slices[iz] = energies
+            for i, iz in enumerate(iz_slices):
+                opencl_xy_slices[iz] = all_energies[i]
             
             y_val = best_g0[1] + iy_slice * best_dg[1]
-            positions_xz = []
             # Sample only valid B-spline region (iz from 2 to nz-2) to avoid zeros at boundaries
             iz_min = 2
             iz_max = nz - 2
-            for ix in range(nx):
-                for iz in range(iz_min, iz_max):
-                    positions_xz.append([x_sample[ix], y_val, z_sample[iz]])
-            positions_xz = np.array(positions_xz, dtype=np.float32)
-            
-            result_xz = sample_gridff_opencl(grid_path, substrate_path, positions_xz, grid_p0=best_g0, grid_step=best_dg,
-                                               atom_req=comp['atom_req'], alpha_morse=alpha_morse, debug=False)
-            # Reshape to (nx, nz_valid)
             nz_valid = iz_max - iz_min
-            opencl_xz = result_xz['energies'].reshape(nx, nz_valid)
+            
+            # Create 2D grid directly with meshgrid, single allocation
+            xx, zz = np.meshgrid(x_sample, z_sample[iz_min:iz_max], indexing='ij')
+            yy = np.full_like(xx, y_val)
+            # Stack to (nx, nz, 3) then reshape to (n_points, 3)
+            positions_xz = np.stack([xx, yy, zz], axis=-1).reshape(-1, 3).astype(np.float32)
+            
+            n_bodies = len(positions_xz)
+            rbd.realloc(n_bodies=n_bodies, num_atoms=1)
+            rbd.enames = ['TestAtom']
+            rbd.atom_types_assigned = ['TestAtom']
+            
+            reqs = np.array([comp['atom_req']], dtype=np.float32)
+            rbd.atom_REQ = reqs
+            rbd.atom_masses = np.array([1.008], dtype=np.float32)
+            rbd.mass_physical = 1.008
+            rbd.mass_trans = 1.008
+            rbd.mass_rot = 1.008
+            
+            atom_plq_single = _reqs_to_plq(reqs, alpha=alpha_morse)
+            atom_plq = np.repeat(atom_plq_single[None, :, :], n_bodies, axis=0).reshape(n_bodies, 4)
+            rbd.atom_PLQ = atom_plq.copy()
+            
+            pos4 = np.zeros((n_bodies, 4), dtype=np.float32)
+            pos4[:, :3] = positions_xz
+            pos4[:, 3] = 1.008
+            
+            quat4 = np.zeros((n_bodies, 4), dtype=np.float32)
+            quat4[:, 3] = 1.0
+            zero4 = np.zeros((n_bodies, 4), dtype=np.float32)
+            
+            Iinv_relax = np.eye(3, dtype=np.float32)
+            atom_body = np.zeros((n_bodies, 1, 3), dtype=np.float32)
+            
+            rbd.upload_state(pos4, quat4, zero4, zero4, rbd.mass_trans, 1.0 / rbd.mass_trans, 
+                            np.repeat(Iinv_relax[None, :, :], n_bodies, axis=0), atom_body, atom_PLQ=atom_plq)
+            
+            # Re-init grid after realloc
+            rbd.init_gridff(grid_data, grid_p0=best_g0, grid_step=best_dg)
+            
+            # Run 1 step with dt=0.0 to evaluate forces without moving
+            rbd.run_gridff(num_steps=1, dt=0.0)
+            
+            outputs = rbd.download_selected(('atom_force',))
+            opencl_xz = outputs['atom_force'][:, 0, 3]
+            # Reshape to (nx, nz_valid)
+            opencl_xz = opencl_xz.reshape(nx, nz_valid)
             
             # Pad with zeros to match full grid size for plotting
             opencl_xz_full = np.zeros((nx, nz), dtype=np.float32)
@@ -1079,7 +1306,8 @@ def run_alignment_verification(grid_path, substrate_path, save_dir,
                 iz_slices=iz_slices,
                 iy_slice=iy_slice,
                 save_path=opencl_plot_path,
-                g0=best_g0, dg=best_dg, z_marks=z_marks, channel_name=comp['name']
+                g0=best_g0, dg=best_dg, z_marks=z_marks, channel_name=comp['name'],
+                z_atom_range=z_atom_range
             )
             
             component_plots[comp_key] = {

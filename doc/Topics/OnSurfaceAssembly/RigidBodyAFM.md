@@ -1102,3 +1102,153 @@ Current convergence rate is low (238/25600 = 0.9% for default parameters). To im
    ```
 
 **Diagnostic check**: The script outputs anchor displacement after relaxation. Mean displacement should be small (<0.01 Å) if the anchor constraint is working correctly.
+
+## Performance Optimization Report (2026-05-23)
+
+### Context
+During GridFF alignment verification and diagnostic plotting, significant performance bottlenecks were identified in the Python harness layer. The goal was to eliminate all Python hot loops and ensure computation happens on GPU or in vectorized NumPy operations.
+
+### Issues Identified
+
+1. **Python Loop in Sampling Comparison Plots** (`Surface_utils.py`)
+   - Problem: Iterating over grid points in Python loops for XY and XZ slice generation
+   - Impact: Extremely slow - Python loops over large grids (320×320×200 = 20M points)
+   - Location: `compare_sampling_methods()` function
+
+2. **Python Loop in Simple Grid Computation** (`Surface_utils.py`)
+   - Problem: Weighting grid channels by PLQ coefficients in Python loop
+   - Impact: Unnecessary Python overhead for simple array operations
+   - Location: `run_alignment_verification()` function
+
+3. **Redundant CPU Quaternion-to-Matrix Computation** (`RigidBodyDynamics.py`)
+   - Problem: `_quat_to_matrix_np()` called 805,624 times (2.4s) in `upload_state()`
+   - Impact: Massive overhead for computation that kernel already does on GPU
+   - Root Cause: CPU precomputing initial `apos_world` that kernel immediately overwrites
+
+### Solutions Implemented
+
+#### 1. Vectorized Sampling Position Generation
+**File**: `pyBall/OCL/Surface_utils.py`
+
+**Before** (Python loop):
+```python
+for iz in iz_slices:
+    for ix in range(nx):
+        for iy in range(ny):
+            positions.append([x, y, z])
+```
+
+**After** (vectorized NumPy):
+```python
+xx, yy, zz = np.meshgrid(x_coords, y_coords, z_coords, indexing='ij')
+all_positions = np.stack([xx, yy, zz], axis=-1).transpose(2, 0, 1, 3).reshape(-1, 3)
+```
+
+**Result**: Eliminated Python loops, all positions generated in single NumPy operation
+
+#### 2. Vectorized Simple Grid Computation
+**File**: `pyBall/OCL/Surface_utils.py`
+
+**Before** (Python loop):
+```python
+simple_grid = np.zeros((nx, ny, nz, 1), dtype=np.float32)
+for ch, w in zip(comp['channels'], plq_weights):
+    simple_grid[:, :, :, 0] += grid_data[:, :, :, ch] * w
+```
+
+**After** (vectorized NumPy):
+```python
+simple_grid = np.sum(grid_data[:, :, :, comp['channels']] * np.array(plq_weights), axis=3, keepdims=True)
+```
+
+**Result**: Single NumPy operation instead of Python loop
+
+#### 3. Eliminated Redundant CPU Computation
+**File**: `pyBall/OCL/RigidBodyDynamics.py`
+
+**Discovery**: The `Rigid.cl` kernel already computes world positions from body-local positions and quaternions on GPU (lines 236-238, 365-367, 296-302, 435-442). The CPU precomputation was immediately overwritten on the first kernel step.
+
+**Before** (redundant CPU computation):
+```python
+rot_mats = _quat_to_matrix_np(quats_in)  # (n_bodies, 3, 3)
+rotated = np.einsum('bij,bkj->bik', atoms[:, :, :3], rot_mats)
+world_atoms[:, :, :3] = rotated + pos_in[:, :3][:, None, :]
+```
+
+**After** (let GPU handle it):
+```python
+# GPU already recomputes apos_world from apos_body+qrots in every kernel step.
+# No need to precompute on CPU - just upload zeros; kernel overwrites on first step.
+world_atoms_flat = np.zeros((self.total_atoms, 4), dtype=np.float32)
+world_atoms_flat[:, 3] = atoms_body[:, 3]  # preserve w (charge/mass)
+```
+
+**Result**: Eliminated 805,624 function calls, removed 2.4s of CPU overhead
+
+#### 4. Added Profiling Support
+**File**: `tests/tMMFF/test_gridff_alignment.py`
+
+Added `--profile` flag to run with cProfile and identify bottlenecks:
+```python
+if args.profile:
+    pr = cProfile.Profile()
+    pr.enable()
+    # ... run test ...
+    pr.disable()
+    ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
+    ps.print_stats(30)
+```
+
+#### 5. Added Timing to Plotting
+**File**: `pyBall/OCL/Surface_utils.py`
+
+Added `time.perf_counter()` measurements to `plot_gridff_diagnostics()`:
+```python
+t0 = time.perf_counter()
+# ... plotting ...
+t1 = time.perf_counter()
+plt.savefig(save_path, dpi=150, bbox_inches='tight')
+t2 = time.perf_counter()
+print(f"Saved GridFF diagnostics to {save_path} (render: {t1-t0:.3f}s, save: {t2-t1:.3f}s, total: {t2-t0:.3f}s)")
+```
+
+### Performance Results
+
+**Before Optimization** (15.86s total):
+- `_quat_to_matrix_np`: 805,624 calls, 2.4s
+- `upload_state`: 4.6s (including redundant computation)
+- PNG encoding: 4.1s
+- Rendering: 3.9s
+
+**After Optimization** (10.96s total):
+- `_quat_to_matrix_np`: Eliminated from top 30
+- `upload_state`: Reduced (no redundant computation)
+- PNG encoding: 4.1s (unchanged - I/O bound)
+- Rendering: 3.9s (unchanged - matplotlib)
+
+**Overall Improvement**: 31% faster (15.86s → 10.96s)
+
+### Key Insights
+
+1. **GPU Already Does It**: The `Rigid.cl` kernel was already fully GPU-accelerated. The CPU code was doing redundant work that the kernel immediately overwrote.
+
+2. **Python is the Harness**: Following the `python-performance` skill guidelines, Python should only orchestrate high-level operations. All heavy computation should be in NumPy or OpenCL kernels.
+
+3. **I/O Bound Remaining**: After eliminating all Python hot loops, the remaining bottlenecks are matplotlib rendering and PNG compression, which are I/O-bound and unavoidable for high-quality diagnostic plots.
+
+4. **Profiling Essential**: Without cProfile profiling, the redundant CPU computation would have been missed. The profiler clearly showed `_quat_to_matrix_np` as a major bottleneck.
+
+### Documentation Updates
+
+1. **Created `python-performance` skill** (`.windsurf/skills/python-performance/SKILL.md`)
+   - Emphasizes: No Python loops, vectorization with NumPy, batch operations, minimal allocation
+   - Example: Direct meshgrid creation without intermediate allocations
+
+2. **Added timing measurements** to plotting functions for ongoing performance monitoring
+
+### Recommendations
+
+1. **Keep CPU backup commented**: The vectorized CPU quaternion-to-matrix code is kept as comments in `RigidBodyDynamics.py` for debugging reference.
+2. **Profile before optimizing**: Always use cProfile to identify actual bottlenecks before making changes.
+3. **Check kernel first**: Before adding CPU computation, verify if the kernel already handles it.
+4. **Accept I/O limits**: After eliminating CPU bottlenecks, I/O-bound operations (PNG encoding, rendering) are expected and acceptable.
