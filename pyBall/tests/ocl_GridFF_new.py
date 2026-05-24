@@ -2,6 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import time
+import json
 
 #exit()
 #from . import utils as ut
@@ -255,7 +256,20 @@ def getAtomTypeREQs( atoms, Atom_Types_name="./data/AtomTypes.dat", Element_Type
     return REvdW
 
 
-def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Atom_Types_name="./data/AtomTypes.dat", Element_Types_name="./data/ElementTypes.dat", bSqrtEvdw=True ): 
+def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Atom_Types_name="./data/AtomTypes.dat", Element_Types_name="./data/ElementTypes.dat", bSqrtEvdw=True ):
+    """Build atom arrays for GridFF generation/sampling.
+    
+    CRITICAL: ElementTypes.dat stores EvdW (energy), but GridFF generation uses sqrt(EvdW) in REQ.y.
+    The bSqrtEvdw parameter controls this conversion:
+        - bSqrtEvdw=True (default): REQ.y = sqrt(EvdW) - REQUIRED for GridFF
+        - bSqrtEvdw=False: REQ.y = EvdW - used for other force fields
+    
+    This sqrt(E) convention ensures proper mixed interaction:
+        Eij = sqrt(Ei * Ej) when GridFF channels contain substrate sqrt(Ej)
+    
+    Args:
+        bSqrtEvdw: If True, convert EvdW to sqrt(EvdW) for GridFF compatibility
+    """ 
     #print( os.getcwd() )
     if atoms is None:
         atoms = AtomicSystem( fname=fname )

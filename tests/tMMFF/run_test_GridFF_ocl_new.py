@@ -43,6 +43,7 @@ def main():
     parser.add_argument("--damp",       type=float,   default=0.15, help="Override damp for MD solver")
     parser.add_argument("--save-fig",   type=int,     default=1, help="Save convergence figure")
     parser.add_argument("--fig-path",   default=None, help="Path to save convergence figure (default: auto under data/<name>/)")
+    parser.add_argument("--alpha-morse", type=float, default=1.7, help="Alpha parameter for Morse potential (default: 1.5)")
     args = parser.parse_args()
 
     name = args.name
@@ -67,6 +68,7 @@ def main():
     kwargs["use_tiled"] = bool(args.use_tiled)
     if args.save_fig:        kwargs["save_fig"] = True
     if args.fig_path is not None: kwargs["fig_path"] = args.fig_path
+    kwargs["alpha_morse"] = args.alpha_morse
 
     gff.test_gridFF_ocl( fname=f"data/xyz/{name}.xyz", save_name=save_name, job=job, **kwargs )
 

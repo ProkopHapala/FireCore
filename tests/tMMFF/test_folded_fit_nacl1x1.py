@@ -10,6 +10,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from pyBall.OCL.MolecularDynamics import MolecularDynamics
 from pyBall.OCL.InteractionEnergy import load_xyz_with_REQs
 
+# CRITICAL: load_xyz_with_REQs returns REQ with E = sqrt(EvdW) for GridFF compatibility.
+# This matches the GridFF generation convention in ocl_GridFF_new.py::make_atoms_arrays(bSqrtEvdw=True).
+# When manually specifying probe REQs, ensure E is sqrt(EvdW), NOT raw EvdW.
+
 
 def rmse(a, b):
     d = np.asarray(a, dtype=np.float64) - np.asarray(b, dtype=np.float64)

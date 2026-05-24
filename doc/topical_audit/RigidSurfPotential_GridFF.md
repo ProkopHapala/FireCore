@@ -773,3 +773,42 @@ FoldedAtomicFunctions provides an alternative to GridFF by fitting periodic surf
 
 ### Path Optimization
 - `pyBall/OCL/ManipulationPathOpt.py` - Batch replica optimization with causal tethers
+
+## FDBM/GridFF Fitting
+
+### Purpose
+Fit GridFF potential parameters from Full Density Based Model (FDBM) using DFT interaction energy data
+
+### Implementation
+- `doc/Topics/OnSurfaceAssembly/GridFF_FDBM_Fitting.md` - Documentation for FDBM fitting methodology and REQ/PLQ convention
+- `tests/tMMFF/test_fdbm_fit_gridff_mock.py` - Mock test for FDBM fitting with CLI options for config generation (xy-range, z-range)
+- `tests/tMMFF/test_gridff_alignment.py` - GridFF alignment verification test
+- `doc/Topics/OnSurfaceAssembly/GridFF_atoms_alignment.md` - Documentation for GridFF atom alignment issues and solutions
+
+## Electrostatics and Surface Potential
+
+### Purpose
+Rigorous electrostatic evaluation for periodic slab geometries using Ewald summation
+
+### Implementation
+- `pyBall/OCL/SurfaceEwald.py` - Ewald summation for surface electrostatics
+- `tests/tMMFF/test_electrostatics_comparison.py` - Test comparing electrostatics implementations
+- `cpp/common_resources/cl/Surface.cl` - OpenCL kernels for surface potential evaluation
+- `doc/Topics/OnSurfaceAssembly/FoldedSubstratePotential_OpenCL.md` - Documentation for folded substrate potential with OpenCL implementation
+
+## Surface Utilities
+
+### Purpose
+Diagnostic plotting and utility functions for surface potential analysis
+
+### Implementation
+- `pyBall/OCL/Surface_utils.py` - Surface utility functions including diagnostic plotting with reusable functions (plot_xz_slice, plot_1d_profile)
+- `tests/tMMFF/test_folded_fit_nacl1x1.py` - Test for folded potential fitting on NaCl substrate with 4x4x4 basis and Ewald2D Coulomb reference
+
+## Folded Substrate Potential Documentation
+
+### Purpose
+Implementation plan and design documentation for folded atomic functions with OpenCL kernels
+
+### Implementation
+- `doc/Topics/OnSurfaceAssembly/FoldedSubstratePotential_OpenCL.md` - Detailed implementation plan for folded basis projection (Pauli/vdW/Electrostatics) with separable basis functions, Ewald2D integration, and GPU kernel optimization patterns

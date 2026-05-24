@@ -47,6 +47,27 @@ def _ensure_cl_mat3(mat, n_bodies):
 
 
 def _reqs_to_plq(reqs, alpha=DEFAULT_ALPHA_MORSE):
+    """Convert REQ parameters to PLQ coefficients for GridFF sampling.
+    
+    CRITICAL: This function expects REQ.y to be sqrt(EvdW), NOT raw EvdW.
+    If reading from ElementTypes.dat, you MUST sqrt the E value before calling this.
+    
+    Formula (matching C++ REQ2PLQ in Forces.h):
+        e  = exp(alpha * R)
+        cL = e * E              # London coefficient
+        cP = e * cL = e^2 * E   # Pauli coefficient
+        cH = e^2 * H           # H-bond coefficient (usually 0)
+    
+    The sqrt(E) convention ensures proper mixed interaction:
+        Eij = sqrt(Ei * Ej) when GridFF channels contain substrate sqrt(Ej)
+    
+    Args:
+        reqs: (n, 4) array of (R, sqrt(EvdW), Q, H) - E MUST be sqrt(EvdW)
+        alpha: alphaMorse parameter (default DEFAULT_ALPHA_MORSE, must match GridFF generation)
+    
+    Returns:
+        (n, 4) array of PLQ coefficients (cP, cL, Q, cH)
+    """
     reqs = np.asarray(reqs, dtype=np.float32)
     if reqs.ndim != 2 or reqs.shape[1] != 4:
         raise ValueError(f"Expected REQs shape (n,4), got {reqs.shape}")

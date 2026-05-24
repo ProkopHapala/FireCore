@@ -24,11 +24,15 @@ def test_system(system_name, test_conventions=None, atom_req=(1.487, 0.0006808, 
     """
     Test alignment for a given system.
     
+    CRITICAL: atom_req E parameter MUST be sqrt(EvdW), NOT raw EvdW.
+    If reading from ElementTypes.dat, you MUST sqrt the E value.
+    This matches the GridFF generation convention in ocl_GridFF_new.py::make_atoms_arrays(bSqrtEvdw=True).
+    
     Args:
         system_name: Name of system (e.g., 'NaCl_1x1_L3', 'NaCl_8x8_L3_ClHole')
         test_conventions: List of conventions to test (None = test all)
-        atom_req: Tuple (R, E, Q, H) for test atom
-        alpha_morse: Alpha parameter for REQ to PLQ conversion
+        atom_req: Tuple (R, sqrt(EvdW), Q, H) for test atom - E MUST be sqrt(EvdW)
+        alpha_morse: Alpha parameter for REQ to PLQ conversion (must match GridFF generation)
         z_atom_range: Z-range below top atom to show in XY plots (default 2.0 A)
         verbose: Print progress
         

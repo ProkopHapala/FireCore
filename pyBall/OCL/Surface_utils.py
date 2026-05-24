@@ -28,6 +28,12 @@ from .InteractionEnergy import load_xyz_with_REQs
 from .RigidBodyAFM import sample_gridff_single_atom
 from .RigidBodyDynamics import RigidBodyDynamics, _reqs_to_plq
 
+# CRITICAL: _reqs_to_plq expects REQ.y to be sqrt(EvdW), NOT raw EvdW.
+# When reading from ElementTypes.dat, you MUST sqrt the E value before calling _reqs_to_plq.
+# This matches the GridFF generation convention in ocl_GridFF_new.py::make_atoms_arrays(bSqrtEvdw=True).
+
+from .MolecularDynamics import MolecularDynamics
+
 # Import Ewald2D for electrostatics comparison
 from pyBall.Ewald2D import Ewald2D
 
@@ -85,6 +91,187 @@ def load_gridff_array(path):
     if arr.shape[3] == 4:
         return np.ascontiguousarray(arr.astype(np.float32))
     raise ValueError(f"GridFF channels must be 3 or 4, got {arr.shape} from {path}")
+
+
+def load_bspline_gridff(grid_path):
+    """Load Bspline GridFF and its JSON metadata."""
+    meta = load_gridff_metadata(grid_path)
+    if meta is None:
+        raise FileNotFoundError(f"load_bspline_gridff(): missing metadata JSON for grid '{grid_path}'")
+    grid = load_gridff_array(grid_path)
+    ns = tuple(int(x) for x in meta['ns'])
+    if tuple(grid.shape[:3]) != ns:
+        raise ValueError(f"load_bspline_gridff(): grid.shape[:3]={grid.shape[:3]} != meta.ns={ns} for '{grid_path}'")
+    return grid, meta
+
+
+def init_gridff_sampler_md(grid_path, apos0, nSystems, use_texture=False):
+    """Initialize MolecularDynamics for fast GridFF sampling on many rigid transforms.
+
+    - Reuses OpenCL kernel `sampleGridFF_Bspline_points`.
+    - Does NOT recompute GridFF; it only uploads existing Bspline grid once.
+    """
+    grid, meta = load_bspline_gridff(grid_path)
+    g0 = np.array(meta['g0'], dtype=np.float32)
+    dg = np.array(meta['dg'], dtype=np.float32)
+    ns = tuple(int(x) for x in meta['ns'])
+    print(f"init_gridff_sampler_md(): grid_path='{grid_path}' ns={ns} g0={g0.tolist()} dg={dg.tolist()} use_texture={use_texture}")
+    apos0 = np.asarray(apos0, dtype=np.float32)
+    if apos0.ndim != 2 or apos0.shape[1] < 3:
+        raise ValueError(f"init_gridff_sampler_md(): apos0 must have shape (natoms,3+) got {apos0.shape}")
+    natoms = int(apos0.shape[0])
+    REQs0 = np.zeros((natoms, 4), dtype=np.float32)
+    md = MolecularDynamics(nloc=32, debug_build_options='-DDBG_UFF=0')
+    md.init_rigid_molecule_batch(apos0[:, :3].copy(), REQs0, nSystems=int(nSystems))
+    md.initGridFF(grid_shape=ns, bspline_data=grid, grid_p0=g0, grid_step=dg, use_texture=bool(use_texture), r_damp=0.0, alpha_morse=0.0, bKernels=True)
+    return md, meta
+
+
+def sample_gridff_channels_rigid(md, transforms, PLQH_channels=((1.0, 0.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0), (0.0, 0.0, 1.0, 0.0))):
+    """Sample GridFF channels (Pauli/London/Coulomb) at atom positions for many rigid transforms.
+
+    Returns:
+        Es: (nconf,natoms,nch) float32 energies per atom per channel
+    """
+    T = np.asarray(transforms, dtype=np.float32).reshape(-1, 3, 4)
+    nconf = int(T.shape[0])
+    natoms = int(md.natoms)
+    nch = int(len(PLQH_channels))
+    Es = np.empty((nconf, natoms, nch), dtype=np.float32)
+    print(f"sample_gridff_channels_rigid(): nconf={nconf} natoms={natoms} nch={nch}")
+    chunk = int(md.nSystems)
+    if chunk <= 0:
+        raise ValueError(f"sample_gridff_channels_rigid(): invalid md.nSystems={md.nSystems}")
+    for i0 in range(0, nconf, chunk):
+        nchunk = min(chunk, nconf - i0)
+        md.upload_rigid_transforms(T[i0:i0+nchunk], iSys0=0)
+        for ich, plqh in enumerate(PLQH_channels):
+            md.run_sampleGridFF_Bspline_points(nSystems=nchunk, PLQH=plqh)
+            aforce = np.empty((nchunk, md.nvecs, 4), dtype=np.float32)
+            md.fromGPU('aforce', aforce)
+            Es[i0:i0+nchunk, :, ich] = -aforce[:, :natoms, 3]
+    return Es
+
+
+def fdbm_build_feature_matrix(Es_PLQ, type_ids, ntypes, use_london=True):
+    """Build feature matrix for linear fitting: columns are per-type sums of sampled channels."""
+    Es_PLQ = np.asarray(Es_PLQ)
+    if Es_PLQ.ndim != 3 or Es_PLQ.shape[2] < 3:
+        raise ValueError(f"fdbm_build_feature_matrix(): Es_PLQ must have shape (nconf,natoms,>=3) got {Es_PLQ.shape}")
+    type_ids = np.asarray(type_ids, dtype=np.int32).reshape(-1)
+    natoms = int(Es_PLQ.shape[1])
+    if len(type_ids) != natoms:
+        raise ValueError(f"fdbm_build_feature_matrix(): len(type_ids)={len(type_ids)} != natoms={natoms}")
+    ntypes = int(ntypes)
+    G = np.zeros((natoms, ntypes), dtype=np.float64)
+    G[np.arange(natoms), type_ids] = 1.0
+    Psum = Es_PLQ[:, :, 0].astype(np.float64) @ G
+    if use_london:
+        Lsum = Es_PLQ[:, :, 1].astype(np.float64) @ G
+        return np.concatenate([Psum, Lsum], axis=1)
+    return Psum
+
+
+def fdbm_make_mock_reference(Es_PLQ, charges, type_ids, P_true, L_true=None, use_london=True, pauli_alpha=1.0, pauli_rescale=1.0, london_rescale=1.0, coulomb_rescale=1.0, noise_sigma=0.0, rng=None):
+    """Generate mock reference energies from GridFF samples, with controlled perturbations."""
+    Es = np.asarray(Es_PLQ, dtype=np.float64)
+    if Es.ndim != 3 or Es.shape[2] < 3:
+        raise ValueError(f"fdbm_make_mock_reference(): Es_PLQ must have shape (nconf,natoms,>=3) got {Es.shape}")
+    nconf, natoms = int(Es.shape[0]), int(Es.shape[1])
+    charges = np.asarray(charges, dtype=np.float64).reshape(-1)
+    type_ids = np.asarray(type_ids, dtype=np.int32).reshape(-1)
+    if len(charges) != natoms:
+        raise ValueError(f"fdbm_make_mock_reference(): len(charges)={len(charges)} != natoms={natoms}")
+    if len(type_ids) != natoms:
+        raise ValueError(f"fdbm_make_mock_reference(): len(type_ids)={len(type_ids)} != natoms={natoms}")
+    P_true = np.asarray(P_true, dtype=np.float64).reshape(-1)
+    ntypes = int(P_true.shape[0])
+    if use_london:
+        if L_true is None:
+            raise ValueError("fdbm_make_mock_reference(): use_london=True requires L_true")
+        L_true = np.asarray(L_true, dtype=np.float64).reshape(-1)
+        if len(L_true) != ntypes:
+            raise ValueError(f"fdbm_make_mock_reference(): len(L_true)={len(L_true)} != ntypes={ntypes}")
+    P_i = P_true[type_ids]
+    L_i = np.zeros(natoms, dtype=np.float64) if (not use_london) else L_true[type_ids]
+    Vp = pauli_rescale * Es[:, :, 0]
+    Vl = london_rescale * Es[:, :, 1]
+    Vq = coulomb_rescale * Es[:, :, 2]
+    if pauli_alpha != 1.0:
+        Vp_eff = np.power(np.clip(Vp, 0.0, None), float(pauli_alpha))
+    else:
+        Vp_eff = Vp
+    E_pauli = (Vp_eff * P_i[None, :]).sum(axis=1)
+    E_london = (Vl * L_i[None, :]).sum(axis=1) if use_london else np.zeros(nconf, dtype=np.float64)
+    E_coul = (Vq * charges[None, :]).sum(axis=1)
+    if rng is None:
+        rng = np.random.default_rng(0)
+    noise = rng.normal(0.0, float(noise_sigma), size=nconf) if (noise_sigma != 0.0) else np.zeros(nconf, dtype=np.float64)
+    E_ref = E_pauli + E_london + E_coul + noise
+    parts = {'pauli': E_pauli, 'london': E_london, 'coulomb': E_coul, 'noise': noise}
+    print(f"fdbm_make_mock_reference(): E_ref range=[{E_ref.min():.6f},{E_ref.max():.6f}] eV noise_sigma={noise_sigma} pauli_alpha={pauli_alpha} use_london={use_london}")
+    return E_ref, parts
+
+
+def save_xyz_movie_with_energies(fname, enames, apos_list, energies, qs=None):
+    """Save multi-frame XYZ with total energy in comment line.
+
+    Args:
+        fname: output .xyz path
+        enames: list of element symbols (natoms,)
+        apos_list: list of (natoms,3) arrays or (nframes,natoms,3) array
+        energies: (nframes,) array of total energies [eV]
+        qs: optional (natoms,) charges to include as 5th column
+    """
+    from ..atomicUtils import writeToXYZ
+    apos_list = np.asarray(apos_list)
+    if apos_list.ndim == 2:
+        apos_list = apos_list[None, :]
+    nframes = int(apos_list.shape[0])
+    energies = np.asarray(energies).reshape(-1)
+    if len(energies) != nframes:
+        raise ValueError(f"save_xyz_movie_with_energies(): len(energies)={len(energies)} != nframes={nframes}")
+    with open(fname, 'w') as f:
+        for i in range(nframes):
+            comment = f"E={energies[i]:.10f} eV"
+            writeToXYZ(f, enames, apos_list[i], qs=qs, comment=comment, bHeader=True)
+
+
+def load_xyz_movie_with_energies(fname):
+    """Load multi-frame XYZ and parse energies from comment lines.
+
+    Returns:
+        enames: list of element symbols (natoms,)
+        apos: (nframes,natoms,3) positions
+        energies: (nframes,) energies parsed from comments
+        qs: (nframes,natoms) charges if present, else None
+    """
+    from ..atomicUtils import load_xyz_movie
+    trj = load_xyz_movie(fname)
+    nframes = len(trj)
+    enames = trj[0][0]
+    natoms = len(enames)
+    apos = np.zeros((nframes, natoms, 3), dtype=np.float64)
+    qs = np.zeros((nframes, natoms), dtype=np.float64)
+    energies = np.zeros(nframes, dtype=np.float64)
+    has_charges = False
+    for i, (es_i, apos_i, qs_i, rs_i, comment_i) in enumerate(trj):
+        if es_i != enames:
+            raise ValueError(f"load_xyz_movie_with_energies(): element symbols differ in frame {i}")
+        apos[i] = apos_i
+        qs[i] = qs_i
+        if np.any(qs_i != 0.0):
+            has_charges = True
+        if comment_i:
+            comment_i = comment_i.strip()
+            for token in comment_i.split():
+                if token.startswith('E='):
+                    try:
+                        energies[i] = float(token[2:].split()[0])
+                    except (ValueError, IndexError):
+                        pass
+                    break
+    return enames, apos, energies, qs if has_charges else None
 
 
 def find_generated_gridff(workdir, src_xyz):
@@ -250,11 +437,11 @@ def plot_atoms_overlay(ax, atoms_xyz, atoms_enames, z_atom_range=None, g0=None, 
 
 
 
-def plot_gridff_diagnostics(grid_data, sub_apos, sub_enames, lvec, iz_slices=None, iy_slice=None, save_path='grid_diagnostics.png', g0=None, dg=None, z_marks=None, channel_name=None, z_atom_range=5.0):
+def plot_gridff_diagnostics(grid_data, sub_apos, sub_enames, lvec, iz_slices=None, iy_slice=None, save_path='grid_diagnostics.png', g0=None, dg=None, z_marks=None, channel_name=None, z_atom_range=5.0, mol_apos=None, mol_enames=None):
     """
     Diagnostic tool to plot GridFF channels and overlay substrate atoms.
     Adapted from RigidBodyAFM.py with added g0/dg support.
-    
+
     Args:
         grid_data: (nx, ny, nz, nch) GridFF array
         sub_apos: (n, 3) substrate atom positions
@@ -267,6 +454,9 @@ def plot_gridff_diagnostics(grid_data, sub_apos, sub_enames, lvec, iz_slices=Non
         dg: Grid spacing (dx, dy, dz) - if None, infers from substrate lattice
         z_marks: List of z-values to mark with dashed lines on XZ subplot
         channel_name: Override channel name for single-channel plots (e.g., 'total', 'pauli_vdw', 'electrostatic')
+        z_atom_range: Z-range below top atom to show in XY plots (default 5.0 A)
+        mol_apos: (nmol, 3) or (nframes, nmol, 3) molecule sample positions to overlay (optional)
+        mol_enames: List of element names for molecule atoms (optional)
     """
     t0 = time.perf_counter()
     nx, ny, nz, nch = grid_data.shape
@@ -286,18 +476,35 @@ def plot_gridff_diagnostics(grid_data, sub_apos, sub_enames, lvec, iz_slices=Non
     dx, dy, dz = dg
     
     # Color mapping for atoms
-    colors = ['purple' if e in ['Ca', 'Na'] else 'green' if e in ['F', 'Cl'] else 'gray' 
+    colors = ['purple' if e in ['Ca', 'Na'] else 'green' if e in ['F', 'Cl'] else 'gray'
               for e in sub_enames]
-    
+
+    # Handle molecule samples
+    mol_apos_flat = None
+    mol_colors = None
+    if mol_apos is not None:
+        mol_apos = np.asarray(mol_apos)
+        if mol_apos.ndim == 3:
+            mol_apos_flat = mol_apos.reshape(-1, mol_apos.shape[1])
+        else:
+            mol_apos_flat = mol_apos
+        if mol_enames is not None:
+            # Repeat colors for each atom in each sample
+            natoms_per_sample = len(mol_enames)
+            mol_colors = ['red' if e == 'O' else 'orange' if e == 'H' else 'blue' for e in mol_enames]
+            mol_colors = mol_colors * (len(mol_apos_flat) // natoms_per_sample)
+        else:
+            mol_colors = ['red'] * len(mol_apos_flat)
+
     # Default slice indices
     if iz_slices is None:
         iz_slices = [nz//4, nz//2, 3*nz//4]
     if iy_slice is None:
         iy_slice = ny // 2
-    
+
     n_slices = len(iz_slices)
     fig, axs = plt.subplots(nch, n_slices + 1, figsize=(5*(n_slices+1), 4*nch))
-    if nch == 1: 
+    if nch == 1:
         axs = axs[None, :]
     if n_slices == 0:
         axs = axs[:, None]
@@ -312,10 +519,13 @@ def plot_gridff_diagnostics(grid_data, sub_apos, sub_enames, lvec, iz_slices=Non
         for j, iz in enumerate(iz_slices):
             z_val = g0[2] + iz * dz
             extent = [g0[0], g0[0] + ax, g0[1], g0[1] + ay]
-            im = axs[i, j].imshow(grid_data[:, :, iz, i].T, extent=extent, 
+            im = axs[i, j].imshow(grid_data[:, :, iz, i].T, extent=extent,
                                    origin='lower', cmap='bwr', aspect='equal')
-            # Overlay atoms with z-filtering
+            # Overlay substrate atoms with z-filtering
             plot_atoms_overlay(axs[i, j], sub_apos, sub_enames, z_atom_range=z_atom_range, g0=g0, dg=dg, coords='xy')
+            # Overlay molecule samples (no z-filter, show all samples)
+            if mol_apos_flat is not None:
+                axs[i, j].scatter(mol_apos_flat[:, 0], mol_apos_flat[:, 1], c=mol_colors, s=15, alpha=0.6, marker='o', edgecolors='black', linewidth=0.5, label='mol samples')
             axs[i, j].set_title(f"{names[i]} XY at z={z_val:.2f} A (iz={iz})")
             axs[i, j].set_xlabel('x [A]')
             axs[i, j].set_ylabel('y [A]')
@@ -342,9 +552,15 @@ def plot_gridff_diagnostics(grid_data, sub_apos, sub_enames, lvec, iz_slices=Non
             else:
                 vmin, vmax = None, None
         im_xz = axs[i, -1].imshow(xz_data, extent=extent_xz, origin='lower', cmap='bwr', aspect='equal', vmin=vmin, vmax=vmax)
-        # Overlay atoms with y-filtering and z-filtering
+        # Overlay substrate atoms with y-filtering and z-filtering
         mask_y = np.abs(sub_apos[:, 1] - y_val) < 2.0
         plot_atoms_overlay(axs[i, -1], sub_apos, sub_enames, z_atom_range=z_atom_range, g0=g0, dg=dg, coords='xz', extra_mask=mask_y)
+        # Overlay molecule samples (y-filtered to slice)
+        if mol_apos_flat is not None:
+            mask_mol_y = np.abs(mol_apos_flat[:, 1] - y_val) < 2.0
+            if np.any(mask_mol_y):
+                axs[i, -1].scatter(mol_apos_flat[mask_mol_y, 0], mol_apos_flat[mask_mol_y, 2],
+                                   c=np.array(mol_colors)[mask_mol_y], s=15, alpha=0.6, marker='o', edgecolors='black', linewidth=0.5, label='mol samples')
         if z_marks is not None:
             for zm in z_marks:
                 axs[i, -1].axhline(zm, color='k', linestyle='--', linewidth=1.0, alpha=0.7, label=f'z={zm:.2f}')
@@ -363,10 +579,10 @@ def plot_gridff_diagnostics(grid_data, sub_apos, sub_enames, lvec, iz_slices=Non
     return save_path
 
 
-def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path, iz_top=None, iy_center=None, z_atom_range=2.0):
+def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path, iz_top=None, iy_center=None, z_atom_range=2.0, mol_apos=None, mol_enames=None, plq_coeffs=None, zmin_offset=2.0, z_ylim=None, plot_diagnostics=True):
     """
     Generate comprehensive alignment diagnostic figure.
-    
+
     Args:
         grid_data: (nx, ny, nz, nch) GridFF array
         g0: Grid origin (x0, y0, z0)
@@ -377,84 +593,177 @@ def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path
         iz_top: Z-index for top layer (default: auto-detect from atoms)
         iy_center: Y-index for center slice (default: ny//2)
         z_atom_range: Z-range below top atom to show (default 2.0)
+        mol_apos: (nmol, 3) or (nframes, nmol, 3) molecule sample positions to overlay (optional)
+        mol_enames: List of element names for molecule atoms (optional)
+        plq_coeffs: Tuple (P, L, Q) coefficients for total potential (default: (1.0, 1.0, 1.0))
+        zmin_offset: Offset above g0[2] for XZ color scale normalization (default 2.0 A)
+        z_ylim: Y-axis limits for Z-profile (default: +/-0.5 eV)
+        plot_diagnostics: If False, skip plotting and return None (default: True)
     """
+    if not plot_diagnostics:
+        return None
+
     nx, ny, nz, nch = grid_data.shape
     dx, dy, dz = dg
-    
+
+    # Default PLQ coefficients (P, L, Q)
+    if plq_coeffs is None:
+        plq_coeffs = (1.0, 1.0, 1.0)
+    P, L, Q = plq_coeffs
+
+    # Compute total potential: E = P*Pauli + L*London + Q*Coulomb
+    total_potential = P * grid_data[..., 0:1] + L * grid_data[..., 1:2] + Q * grid_data[..., 2:3]
+
     # Auto-detect top layer if not specified
     if iz_top is None:
         z_top = np.max(atoms_xyz[:, 2])
         iz_top = int((z_top - g0[2]) / dz)
         iz_top = max(0, min(nz-1, iz_top))
-    
+
     if iy_center is None:
         iy_center = ny // 2
-    
-    fig, axes = plt.subplots(2, 2, figsize=(14, 12))
-    
-    # 1. XY slice at top layer - Pauli
+
+    # Handle molecule samples
+    mol_apos_flat = None
+    mol_colors = None
+    if mol_apos is not None:
+        mol_apos = np.asarray(mol_apos)
+        if mol_apos.ndim == 3:
+            mol_apos_flat = mol_apos.reshape(-1, mol_apos.shape[1])
+        else:
+            mol_apos_flat = mol_apos
+        if mol_enames is not None:
+            natoms_per_sample = len(mol_enames)
+            mol_colors = ['red' if e == 'O' else 'orange' if e == 'H' else 'blue' for e in mol_enames]
+            mol_colors = mol_colors * (len(mol_apos_flat) // natoms_per_sample)
+        else:
+            mol_colors = ['red'] * len(mol_apos_flat)
+
+    # Color scale: XY uses symmetric range from that slice only, XZ uses data above zmin
+    # XY slice - symmetric range from this slice only
+    xy_slice_data = total_potential[:, :, iz_top, 0]
+    vmax_xy = max(abs(xy_slice_data.min()), abs(xy_slice_data.max()))
+    vmin_xy, vmax_xy = -vmax_xy, vmax_xy if vmax_xy > 0 else (None, None)
+
+    # XZ slice - data above zmin (compute from the XZ slice only, not whole grid)
+    zmin = g0[2] + zmin_offset
+    iz_min = int((zmin - g0[2]) / dz)
+    iz_min = max(0, min(nz-1, iz_min))
+    xz_slice_data = total_potential[:, iy_center, :, 0].T  # Get XZ slice first
+    xz_data_above = xz_slice_data[iz_min:, :]  # Only data above zmin in this slice
+    vmax_xz = max(abs(xz_data_above.min()), abs(xz_data_above.max()))
+    vmin_xz, vmax_xz = -vmax_xz, vmax_xz if vmax_xz > 0 else (None, None)
+
+    # Default Z-profile y-limits
+    if z_ylim is None:
+        z_ylim = (-0.5, 0.5)
+
+    # Precompute atom colors once (no on-the-fly filtering)
+    atoms_colors = ['purple' if e in ['Ca', 'Na'] else 'green' if e in ['F', 'Cl'] else 'gray'
+                    for e in atoms_enames]
+
+    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+
+    # Helper function for XZ slice plotting
+    def plot_xz_slice(ax, iy, title_suffix):
+        """Plot XZ slice at given iy index with consistent styling."""
+        y_val = g0[1] + iy * dy
+        extent_xz = [g0[0], g0[0] + nx*dx, g0[2], g0[2] + nz*dz]
+        xz_slice_data = total_potential[:, iy, :, 0].T
+        xz_data_above = xz_slice_data[iz_min:, :]
+        vmax = max(abs(xz_data_above.min()), abs(xz_data_above.max()))
+        vmin, vmax = -vmax, vmax if vmax > 0 else (None, None)
+        im = ax.imshow(xz_slice_data, extent=extent_xz,
+                       origin='lower', cmap='bwr', aspect='auto', vmin=vmin, vmax=vmax)
+        # Plot substrate atoms (same array for all panels)
+        ax.scatter(atoms_xyz[:, 0], atoms_xyz[:, 2],
+                   c=atoms_colors, s=10, alpha=0.7, marker='.')
+        # Plot molecule samples (same array for all panels)
+        if mol_apos_flat is not None:
+            ax.scatter(mol_apos_flat[:, 0], mol_apos_flat[:, 2],
+                       c=mol_colors, s=15, alpha=0.6, marker='.', edgecolors='black', linewidth=0.5, label='mol samples')
+        ax.set_title(f'Total Potential (P={P:.3f},L={L:.3f},Q={Q:.3f}) XZ at y={y_val:.3f}A (iy={iy}) {title_suffix}')
+        ax.set_xlabel('x [A]')
+        ax.set_ylabel('z [A]')
+        ax.set_ylim(g0[2], g0[2] + min(nz*dz, 20))  # Consistent z-range limit
+        plt.colorbar(im, ax=ax)
+
+    # 1. XY slice at top layer - Total potential
     ax = axes[0, 0]
     z_val = g0[2] + iz_top * dz
     extent = [g0[0], g0[0] + nx*dx, g0[1], g0[1] + ny*dy]
-    im = ax.imshow(grid_data[:, :, iz_top, 0].T, extent=extent, 
-                   origin='lower', cmap='bwr', aspect='equal')
+    im = ax.imshow(total_potential[:, :, iz_top, 0].T, extent=extent,
+                   origin='lower', cmap='bwr', aspect='equal', vmin=vmin_xy, vmax=vmax_xy)
     plot_atoms_overlay(ax, atoms_xyz, atoms_enames, z_atom_range=z_atom_range, g0=g0, dg=dg)
-    ax.set_title(f'Pauli Potential XY at z={z_val:.2f}A (iz={iz_top})')
+    # Overlay molecule samples
+    if mol_apos_flat is not None:
+        ax.scatter(mol_apos_flat[:, 0], mol_apos_flat[:, 1], c=mol_colors, s=15, alpha=0.6, marker='.', edgecolors='black', linewidth=0.5, label='mol samples')
+    ax.set_title(f'Total Potential (P={P:.3f},L={L:.3f},Q={Q:.3f}) XY at z={z_val:.3f}A (iz={iz_top})')
     ax.set_xlabel('x [A]')
     ax.set_ylabel('y [A]')
     plt.colorbar(im, ax=ax)
+
+    # 2. XZ slice at center Y
+    plot_xz_slice(axes[0, 1], iy_center, '')
+
+    # 3. XZ slice at origin
+    plot_xz_slice(axes[0, 2], 0, '(origin)')
     
-    # 2. XZ slice at center Y - Pauli
-    ax = axes[0, 1]
-    y_val = g0[1] + iy_center * dy
-    extent_xz = [g0[0], g0[0] + nx*dx, g0[2], g0[2] + nz*dz]
-    im = ax.imshow(grid_data[:, iy_center, :, 0].T, extent=extent_xz,
-                   origin='lower', cmap='bwr', aspect='auto')
-    # Apply z-filtering for XZ slice too
-    z_top_atom = np.max(atoms_xyz[:, 2])
-    mask_y = np.abs(atoms_xyz[:, 1] - y_val) < 2.0
-    mask_z = atoms_xyz[:, 2] >= (z_top_atom - z_atom_range)
-    mask_xz = mask_y & mask_z
-    if np.any(mask_xz):
-        colors = ['purple' if e in ['Ca', 'Na'] else 'green' if e in ['F', 'Cl'] else 'gray' 
-                  for e in atoms_enames]
-        ax.scatter(atoms_xyz[mask_xz, 0], atoms_xyz[mask_xz, 2], 
-                   c=np.array(colors)[mask_xz], s=10, alpha=0.7, marker='.')
-    ax.set_title(f'Pauli Potential XZ at y={y_val:.2f}A (iy={iy_center})')
-    ax.set_xlabel('x [A]')
-    ax.set_ylabel('z [A]')
-    plt.colorbar(im, ax=ax)
-    
-    # 3. 1D profiles through atom centers
-    ax = axes[1, 0]
-    # Find center atom
+    # 4. 1D profiles through atom centers
+    # Helper function for 1D profile plotting (X or Z)
+    def plot_1d_profile(ax, axis, fixed_idx, title_suffix):
+        """Plot 1D profile along specified axis with consistent styling and atom markers.
+        
+        Args:
+            axis: 'x' for X-profile (vary x, fixed y,z), 'z' for Z-profile (vary z, fixed x,y)
+            fixed_idx: tuple of (fixed1, fixed2) indices for the other dimensions
+            title_suffix: suffix for title
+        """
+        if axis == 'x':
+            cy, cz = fixed_idx
+            x_coords = g0[0] + np.arange(nx) * dx
+            ax.plot(x_coords, total_potential[:, cy, cz, 0], 'k-', linewidth=2, label=f'Total (P={P:.3f},L={L:.3f},Q={Q:.3f})')
+            ax.plot(x_coords, grid_data[:, cy, cz, 0], 'b--', alpha=0.5, label='Pauli')
+            ax.plot(x_coords, grid_data[:, cy, cz, 1], 'r--', alpha=0.5, label='London')
+            ax.plot(x_coords, grid_data[:, cy, cz, 2], 'g--', alpha=0.5, label='Coulomb')
+            ax.axhline(0, color='k', linestyle=':', alpha=0.3)
+            # Mark all atom positions along x (use precomputed colors)
+            for x_atom, color in zip(atoms_xyz[:, 0], atoms_colors):
+                ax.axvline(x_atom, color=color, linestyle=':', alpha=0.5, linewidth=1.5)
+            ax.set_xlabel('x [A]')
+            ax.set_ylabel('Energy [eV]')
+            ax.set_title(f'X-Profile at y={g0[1]+cy*dy:.3f}A, z={g0[2]+cz*dz:.3f}A {title_suffix}')
+        elif axis == 'z':
+            cx, cy = fixed_idx
+            z_coords = g0[2] + np.arange(nz) * dz
+            ax.plot(z_coords, total_potential[cx, cy, :, 0], 'k-', linewidth=2, label=f'Total (P={P:.3f},L={L:.3f},Q={Q:.3f})')
+            ax.plot(z_coords, grid_data[cx, cy, :, 0], 'b--', alpha=0.5, label='Pauli')
+            ax.plot(z_coords, grid_data[cx, cy, :, 1], 'r--', alpha=0.5, label='London')
+            ax.plot(z_coords, grid_data[cx, cy, :, 2], 'g--', alpha=0.5, label='Coulomb')
+            ax.axhline(0, color='k', linestyle=':', alpha=0.3)
+            ax.axvline(z_val, color='purple', linestyle='--', alpha=0.5, label=f'z_top={z_val:.3f}A')
+            # Mark all atom positions along z (use precomputed colors)
+            for z_atom, color in zip(atoms_xyz[:, 2], atoms_colors):
+                ax.axvline(z_atom, color=color, linestyle=':', alpha=0.5, linewidth=1.5)
+            ax.set_xlabel('z [A]')
+            ax.set_ylabel('Energy [eV]')
+            ax.set_title(f'Z-Profile at x={g0[0]+cx*dx:.3f}A, y={g0[1]+cy*dy:.3f}A {title_suffix}')
+            ax.set_xlim(g0[2], g0[2] + min(nz*dz, 20))  # Consistent z-range limit
+            ax.set_ylim(z_ylim)
+        
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+    # 4. X-profile at center Y, top Z
     cx = nx // 2
     cy = ny // 2
-    
-    # X-profile at center Y, top Z
-    x_coords = g0[0] + np.arange(nx) * dx
-    ax.plot(x_coords, grid_data[:, cy, iz_top, 0], 'b-', label='Pauli X-profile')
-    ax.plot(x_coords, grid_data[:, cy, iz_top, 1], 'r-', label='London X-profile')
-    ax.axhline(0, color='k', linestyle='--', alpha=0.3)
-    ax.set_xlabel('x [A]')
-    ax.set_ylabel('Energy [eV]')
-    ax.set_title(f'X-Profile at y={g0[1]+cy*dy:.2f}A, z={z_val:.2f}A')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    
-    # 4. Z-profile at center
-    ax = axes[1, 1]
-    z_coords = g0[2] + np.arange(nz) * dz
-    ax.plot(z_coords, grid_data[cx, cy, :, 0], 'b-', label='Pauli')
-    ax.plot(z_coords, grid_data[cx, cy, :, 1], 'r-', label='London')
-    ax.axhline(0, color='k', linestyle='--', alpha=0.3)
-    ax.axvline(z_val, color='g', linestyle='--', alpha=0.5, label=f'z_top={z_val:.2f}A')
-    ax.set_xlabel('z [A]')
-    ax.set_ylabel('Energy [eV]')
-    ax.set_title(f'Z-Profile at x={g0[0]+cx*dx:.2f}A, y={g0[1]+cy*dy:.2f}A')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    ax.set_ylim(-5, 10)  # Focus on relevant range
+    plot_1d_profile(axes[1, 0], 'x', (cy, iz_top), '')
+
+    # 5. Z-profile at center
+    plot_1d_profile(axes[1, 1], 'z', (cx, cy), '')
+
+    # 6. Z-profile at origin
+    plot_1d_profile(axes[1, 2], 'z', (0, 0), '(origin)')
     
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
