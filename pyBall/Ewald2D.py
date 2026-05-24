@@ -9,11 +9,16 @@ cos(G·ρ) and out-of-plane real exponentials exp(−|G|z):
 
 See:  doc/Topics/OnSurfaceAssembly/Ewald_2D.md  for the full derivation.
 
-Units:  Å for lengths, elementary charge for q  →  potential in e/Å.
-        Multiply by 14.4 to get eV / e.
+Units:  Å for lengths, elementary charge for q  →  potential in eV/e.
+        (includes Coulomb constant k_e = 14.3996448915 eV·Å/e²)
 """
 
 import numpy as np
+
+# Coulomb constant: electrostatic potential energy per unit charge
+# k_e = 1/(4πε₀) = 14.3996448915 eV·Å/e²
+# To get potential in eV/e, multiply raw q/r [e/Å] by k_e
+COULOMB_CONST = 14.3996448915  # [eV·Å/e²]
 
 # ============================================================
 #  Reciprocal lattice
@@ -68,15 +73,18 @@ def generate_G_vectors(b1, b2, n_harm):
 # ============================================================
 
 def compute_C_G(Gx, Gy, Gn, rx, ry, rz, q, area):
-    """Vacuum-side coefficients (centrosymmetric / cosine basis).
+    """Vacuum-side coefficients.
 
-    C_G = (4π/(A|G|)) Σ_i q_i cos(G·ρ_i) exp(|G| z_i)
+    NOTE: generate_G_vectors() includes both +G and -G. Therefore we must use a complex exponential representation
+    (not a cosine-only basis), otherwise we double-count.
 
-    Returns ndarray (N_G,).
+    C_G = (2π/(A|G|)) Σ_i q_i exp(|G| z_i) exp(−iG·ρ_i)
+
+    Returns complex ndarray (N_G,).
     """
     Gdotr = Gx[:,None]*rx[None,:] + Gy[:,None]*ry[None,:]   # (N_G, N_ions)
-    prefactor = 4*np.pi / (area * Gn)                        # (N_G,)
-    C = prefactor * np.sum(q[None,:] * np.cos(Gdotr) * np.exp(Gn[:,None]*rz[None,:]), axis=1)
+    prefactor = 2*np.pi / (area * Gn)                        # (N_G,)
+    C = prefactor * np.sum(q[None,:] * np.exp(Gn[:,None]*rz[None,:]) * np.exp(-1j * Gdotr), axis=1)
     return C
 
 
@@ -109,8 +117,8 @@ def eval_potential_vacuum(C, Gx, Gy, Gn, X, Y, z):
     """
     phase = Gx[:,None,None]*X[None,:,:] + Gy[:,None,None]*Y[None,:,:]
     decay = np.exp(-Gn * z)  # (N_G,)
-    phi = np.sum(C[:,None,None] * np.cos(phase) * decay[:,None,None], axis=0)
-    return phi
+    phi = np.real(np.sum(C[:,None,None] * np.exp(1j * phase) * decay[:,None,None], axis=0))
+    return phi * COULOMB_CONST
 
 
 def eval_potential_full_2d(w, Gx, Gy, Gn, rz, q, area, X, Y, Z):
@@ -132,7 +140,7 @@ def eval_potential_full_2d(w, Gx, Gy, Gn, rz, q, area, X, Y, Z):
         for i in range(N_ions):
             decay = np.exp(-Gn[g] * np.abs(Z - rz[i]))
             phi += np.real(w[g,i] * phase * decay)
-    return phi
+    return phi * COULOMB_CONST
 
 
 def eval_potential_full_1d(w, Gx, Gy, Gn, rz, q, area, x0, y0, z_arr):
@@ -147,7 +155,7 @@ def eval_potential_full_1d(w, Gx, Gy, Gn, rz, q, area, x0, y0, z_arr):
         for i in range(N_ions):
             decay = np.exp(-Gn[g] * np.abs(z_arr - rz[i]))
             phi += np.real(w[g,i] * phase * decay)
-    return phi
+    return phi * COULOMB_CONST
 
 # ============================================================
 #  Brute-force reference (direct Coulomb sum)
@@ -178,7 +186,7 @@ def eval_potential_brute(rx, ry, rz, q, a_vec, b_vec, x0, y0, z_arr, N_rep=20):
             dy = y0 - (Ry + ry[i])
             dz = z_arr - rz[i]
             phi += q[i] / np.sqrt(dx*dx + dy*dy + dz*dz)
-    return phi
+    return phi * COULOMB_CONST
 
 # ============================================================
 #  Charge-density Fourier reconstruction

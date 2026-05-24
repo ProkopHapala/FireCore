@@ -28,6 +28,9 @@ from .InteractionEnergy import load_xyz_with_REQs
 from .RigidBodyAFM import sample_gridff_single_atom
 from .RigidBodyDynamics import RigidBodyDynamics, _reqs_to_plq
 
+# Import Ewald2D for electrostatics comparison
+from pyBall.Ewald2D import Ewald2D
+
 
 # =============================================================================
 # Section 1: GridFF I/O Utilities (copied/adapted from existing modules)
@@ -1356,5 +1359,746 @@ def run_alignment_verification(grid_path, substrate_path, save_dir,
         for pr in plot_results:
             if pr['status'] == 'ok':
                 print(f"  - {pr['path']}")
-    
+
     return report
+
+
+# =============================================================================
+# Section 6: Electrostatics Comparison (GridFF vs Ewald2D vs Brute Force)
+# =============================================================================
+
+def compare_electrostatics_methods(sys_at, gridff_path, sub_xyz_path, ew, save_dir='.', prefix='electrostatics',
+                                  N_rep=20, coarse_spacing=1.0, grid_res=200,
+                                  z_scan_heights=None, z_min_for_error=2.0, verbose=True):
+    """
+    Compare electrostatic potential from three methods:
+    1. GridFF (OpenCL B-spline sampling, channel 2 - electrostatic)
+    2. Ewald2D (2D Fourier representation)
+    3. Brute force (direct Coulomb sum over periodic replicas)
+
+    Evaluates all three methods at the same 1D coordinate arrays for fair comparison.
+    Generates 2D slices for GridFF vs Ewald2D comparison.
+
+    Parameters
+    ----------
+    sys_at : AtomicSystem
+        Substrate with lattice vectors and charges
+    gridff_path : str
+        Path to GridFF Bspline_PLQd.npy file
+    sub_xyz_path : str
+        Path to substrate .xyz file (for grid loading)
+    ew : Ewald2D
+        Initialized Ewald2D instance
+    save_dir : str
+        Output directory for plots
+    prefix : str
+        Prefix for output filenames
+    N_rep : int
+        Number of periodic replicas for brute force (default: 20)
+    coarse_spacing : float
+        Point spacing (Å) for 1D brute force scans (default: 1.0)
+    grid_res : int
+        Resolution for 2D slices (default: 200)
+    z_scan_heights : list
+        Heights for XY slices, default [z_max+0.5, z_max+1.0, z_max+2.0]
+    verbose : bool
+        Print progress
+
+    Returns
+    -------
+    dict with error statistics and paths to output figures
+    """
+    os.makedirs(save_dir, exist_ok=True)
+
+    grid_data = np.load(gridff_path)
+    nx, ny, nz = grid_data.shape[:3]
+    meta = load_gridff_metadata(gridff_path)
+    if meta is not None and ('g0' in meta) and ('dg' in meta):
+        g0 = tuple(meta['g0'])
+        dg = tuple(meta['dg'])
+        if verbose:
+            print(f"Loaded GridFF metadata g0={g0} dg={dg}")
+    else:
+        lvec = sys_at.lvec
+        assert lvec is not None, "compare_electrostatics_methods(): sys_at.lvec is None"
+        Lx_ = float(np.linalg.norm(lvec[0]))
+        Ly_ = float(np.linalg.norm(lvec[1]))
+        Lz_ = float(np.linalg.norm(lvec[2]))
+        dg = (Lx_/nx, Ly_/ny, Lz_/nz)
+        g0 = (-Lx_/2, -Ly_/2, np.max(sys_at.apos[:, 2]))
+        if verbose:
+            print(f"WARNING: GridFF metadata missing; inferred g0={g0} dg={dg}")
+
+    apos = sys_at.apos
+    assert apos is not None, "compare_electrostatics_methods(): sys_at.apos is None"
+    lvec = sys_at.lvec
+    assert lvec is not None, "compare_electrostatics_methods(): sys_at.lvec is None"
+    Lx_cell = float(np.linalg.norm(lvec[0]))
+    Ly_cell = float(np.linalg.norm(lvec[1]))
+    z_top = float(np.max(apos[:, 2]))
+    x_min = float(np.min(apos[:, 0]))
+    y_min = float(np.min(apos[:, 1]))
+    x_max = float(np.max(apos[:, 0]))
+    y_max = float(np.max(apos[:, 1]))
+    if verbose:
+        print(f"AtomicSystem apos x=[{x_min:.3f},{x_max:.3f}] y=[{y_min:.3f},{y_max:.3f}] z_top={z_top:.3f}")
+        print(f"Cell lengths from lvec |a|={Lx_cell:.3f} |b|={Ly_cell:.3f}")
+
+    Lx = ew.Lx
+    Ly = ew.Ly
+    z_min = ew.z_min
+    z_max = ew.z_max
+
+    # We only compare electrostatics in vacuum above surface
+    z_lo = z_top + 0.2
+    z_hi = z_top + 5.0
+    if z_scan_heights is None:
+        z_scan_heights = [z_top + 3.0, z_top + 4.0, z_top + 5.0]
+
+    # Define 1D coordinate arrays
+    # Brute force: coarse spacing (expensive)
+    z_scan_brute = np.arange(z_lo, z_hi + 1e-9, coarse_spacing)
+    x_scan_brute = np.arange(x_min, x_min + Lx_cell + 1e-9, coarse_spacing)
+    
+    # GridFF/Ewald2D: fine spacing (fast) - use 0.1A or finer
+    fine_spacing = min(0.1, coarse_spacing)
+    z_scan_fine = np.arange(z_lo, z_hi + 1e-9, fine_spacing)
+    x_scan_fine = np.arange(x_min, x_min + Lx_cell + 1e-9, fine_spacing)
+    
+    if verbose:
+        print(f"  Brute force sampling: {coarse_spacing}Å ({len(z_scan_brute)} z-points, {len(x_scan_brute)} x-points)")
+        print(f"  GridFF/Ewald2D sampling: {fine_spacing}Å ({len(z_scan_fine)} z-points, {len(x_scan_fine)} x-points)")
+
+    # Avoid singularities in brute-force Coulomb sum: do not evaluate exactly on ions
+    # (division-by-zero). We choose scan points away from known ionic sites.
+    eps_xy = 1e-3
+    x_hollow = x_min + 0.25 * Lx_cell
+    y_hollow = y_min + 0.25 * Ly_cell
+    
+    # Debug: Print grid alignment info
+    if verbose:
+        print(f"\n  Grid alignment check:")
+        print(f"    Atomic z_top: {z_top:.3f} Å")
+        print(f"    GridFF g0[2] (z-origin): {g0[2]:.3f} Å")
+        print(f"    GridFF z-extent: {g0[2]} to {g0[2] + nz*dg[2]:.3f} Å")
+        print(f"    Sampling z-range (vacuum only): {z_lo:.3f} to {z_hi:.3f} Å")
+        print(f"    Sampling x-range: {x_scan_fine[0]:.3f} to {x_scan_fine[-1]:.3f} Å")
+        if (z_lo < g0[2]) or (z_hi > (g0[2] + nz*dg[2])):
+            print(f"WARNING: z sampling range not fully inside GridFF z-extent")
+
+    # Scan locations - each entry: (name, x0, y0, z_brute_arr, z_fine_arr, z0_for_xscan)
+    # For z-scans: use arrays; for x-scan: z0 is scalar height
+    # Based on NaCl_1x1_L3.xyz geometry:
+    #   Na at (0,0,-3.25), (0,0,-8.91), (2,2,-6.08)
+    #   Cl at (0,0,-6.08), (2,2,-3.25)
+    # Use small offset to avoid exact singularity in brute force
+    eps = 0.05
+    scan_configs = [
+        ('z_on_Na', 0.0 + eps, 0.0 + eps, z_scan_brute, z_scan_fine, None),       # Z-scan above Na at (0,0)
+        ('z_on_Cl', 0.0 + eps, 0.0 + eps, z_scan_brute, z_scan_fine, None),     # Same XY but Cl is below
+        ('z_midpoint', 1.0, 0.0, z_scan_brute, z_scan_fine, None),                # Z-scan at (1.0, 0.0) as suggested
+    ]
+    # Note: (0,0) has both Na and Cl at different z, so we scan same XY for both
+    # The difference is just which atom is directly below at that XY
+
+    # ==========================================================================
+    # PART 1: Brute Force 1D Lines (Expensive - coarse sampling)
+    # ==========================================================================
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"Part 1: Brute Force 1D Lines (N_rep={N_rep})")
+        print(f"{'='*60}")
+
+    brute_results = {}
+    ewald_1d_results = {}
+    gridff_1d_results = {}
+
+    for config in scan_configs:
+        name = config[0]
+        
+        if name.startswith('z_'):
+            # Z-scan: (name, x0, y0, z_brute_arr, z_fine_arr, None)
+            _, x0, y0, z_brute_arr, z_fine_arr, _ = config
+            
+            # Brute force on coarse grid
+            phi_brute = ew.phi_brute_1d(x0, y0, z_brute_arr, N_rep=N_rep)
+            brute_results[name] = {'z': z_brute_arr, 'phi': phi_brute}
+            
+            # Ewald2D on fine grid
+            phi_ewald = ew.phi_full_1d(x0, y0, z_fine_arr)
+            ewald_1d_results[name] = {'z': z_fine_arr, 'phi': phi_ewald}
+            
+            # GridFF on fine grid
+            x_arr = np.full_like(z_fine_arr, x0)
+            y_arr = np.full_like(z_fine_arr, y0)
+            positions = np.column_stack([x_arr, y_arr, z_fine_arr])
+            result = sample_gridff_opencl(gridff_path, sub_xyz_path, positions, 
+                                          grid_p0=g0, grid_step=dg,
+                                          atom_req=(0.0, 0.0, 1.0, 0.0))
+            phi_gridff = result['energies']
+            gridff_1d_results[name] = {'z': z_fine_arr, 'phi': phi_gridff}
+            
+            if verbose:
+                print(f"  {name}: ({x0:.2f}, {y0:.2f}) z=[{z_brute_arr[0]:.2f}, {z_brute_arr[-1]:.2f}], "
+                      f"brute_n={len(z_brute_arr)}, fine_n={len(z_fine_arr)}")
+        
+        elif name == 'x_scan':
+            # X-scan: (name, x_brute_arr, x_fine_arr, None, None, z0)
+            _, x_brute_arr, x_fine_arr, _, _, z0 = config
+            
+            # Brute force on coarse grid
+            phi_brute = np.zeros(len(x_brute_arr))
+            for i, x in enumerate(x_brute_arr):
+                phi_brute[i] = ew.phi_brute_1d(x, y_hollow, np.array([z0]), N_rep=N_rep)[0]
+            brute_results[name] = {'x': x_brute_arr, 'phi': phi_brute}
+            
+            # Ewald2D on fine grid
+            phi_ewald = np.zeros(len(x_fine_arr))
+            for i, x in enumerate(x_fine_arr):
+                phi_ewald[i] = ew.phi_full_1d(x, y_hollow, np.array([z0]))[0]
+            ewald_1d_results[name] = {'x': x_fine_arr, 'phi': phi_ewald}
+            
+            # GridFF on fine grid
+            y_arr = np.full_like(x_fine_arr, y_hollow)
+            z_arr = np.full_like(x_fine_arr, z0)
+            positions = np.column_stack([x_fine_arr, y_arr, z_arr])
+            result = sample_gridff_opencl(gridff_path, sub_xyz_path, positions,
+                                          grid_p0=g0, grid_step=dg,
+                                          atom_req=(0.0, 0.0, 1.0, 0.0))
+            phi_gridff = result['energies']
+            gridff_1d_results[name] = {'x': x_fine_arr, 'phi': phi_gridff}
+            
+            if verbose:
+                print(f"  {name}: y={y_hollow:.2f}, z={z0:.2f}, x=[{x_brute_arr[0]:.2f}, {x_brute_arr[-1]:.2f}], "
+                      f"brute_n={len(x_brute_arr)}, fine_n={len(x_fine_arr)}")
+
+    # ==========================================================================
+    # PART 2: GridFF vs Ewald2D 2D Slices (Full Resolution)
+    # ==========================================================================
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"Part 2: GridFF vs Ewald2D 2D Slices")
+        print(f"{'='*60}")
+        print(f"  Resolution: {grid_res}x{grid_res}")
+        print(f"  XY heights: {[f'{z:.2f}' for z in z_scan_heights]}")
+
+    # XY slices: use GridFF g0 as origin so both methods sample the same spatial region
+    xv = np.linspace(g0[0], g0[0] + Lx_cell, grid_res)
+    yv = np.linspace(g0[1], g0[1] + Ly_cell, grid_res)
+    X_xy, Y_xy = np.meshgrid(xv, yv)
+    gridff_xy_slices = []
+    ewald_xy_slices = []
+
+    for zh in z_scan_heights:
+        # Ewald2D vacuum XY (correct formula for z > all ions)
+        phi_ewald_xy = ew.phi_vacuum_xy(X_xy, Y_xy, zh)
+        ewald_xy_slices.append(phi_ewald_xy)
+
+        # GridFF: sample at all grid points (electrostatic: Q=1, others=0)
+        positions_xy = np.column_stack([X_xy.ravel(), Y_xy.ravel(), np.full(X_xy.size, zh)])
+        result_xy = sample_gridff_opencl(gridff_path, sub_xyz_path, positions_xy,
+                                         grid_p0=g0, grid_step=dg,
+                                         atom_req=(0.0, 0.0, 1.0, 0.0))
+        phi_gridff_xy = result_xy['energies'].reshape(X_xy.shape)
+        gridff_xy_slices.append(phi_gridff_xy)
+
+    # XZ slice at y = g0[1] + 0.5*Ly_cell (consistent with GridFF origin)
+    y_fixed = g0[1] + 0.5 * Ly_cell
+    xv = np.linspace(g0[0], g0[0] + Lx_cell, grid_res)
+    zv = np.linspace(z_lo, z_hi, grid_res)
+    X_xz, Z_xz = np.meshgrid(xv, zv)
+    Y_xz = np.full_like(X_xz, y_fixed)
+
+    # Ewald2D: compute row by row (each row = same z, use phi_vacuum_xy for consistency)
+    phi_ewald_xz = np.zeros_like(X_xz)
+    for iz, z_row in enumerate(zv):
+        phi_ewald_xz[iz, :] = ew.phi_full_1d(xv, np.full_like(xv, y_fixed), np.array([z_row]))[0] if False else ew.phi_vacuum_xy(X_xz[iz:iz+1,:], Y_xz[iz:iz+1,:], z_row)[0, :]
+
+    # GridFF: sample at all grid points (electrostatic: Q=1, others=0)
+    positions_xz = np.column_stack([X_xz.ravel(), Y_xz.ravel(), Z_xz.ravel()])
+    result_xz = sample_gridff_opencl(gridff_path, sub_xyz_path, positions_xz,
+                                     grid_p0=g0, grid_step=dg,
+                                     atom_req=(0.0, 0.0, 1.0, 0.0))
+    phi_gridff_xz = result_xz['energies'].reshape(X_xz.shape)
+
+    if verbose:
+        print(f"  XY slices computed: {len(z_scan_heights)}")
+        print(f"  XZ slice computed at y={Ly/2:.2f}")
+
+    # ==========================================================================
+    # PART 3: Error Statistics
+    # ==========================================================================
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"Part 3: Error Statistics")
+        print(f"{'='*60}")
+
+    stats = {}
+
+    # 1D line comparisons
+    for name in brute_results.keys():
+        phi_brute = brute_results[name]['phi']
+        coord_brute = brute_results[name].get('z', brute_results[name].get('x'))
+        
+        phi_ewald_fine = ewald_1d_results[name]['phi']
+        coord_ewald_fine = ewald_1d_results[name].get('z', ewald_1d_results[name].get('x'))
+        
+        phi_gridff_fine = gridff_1d_results[name]['phi']
+        
+        # Interpolate fine-grid results to coarse grid for comparison with brute force
+        phi_ewald_interp = np.interp(coord_brute, coord_ewald_fine, phi_ewald_fine)
+        phi_gridff_interp = np.interp(coord_brute, coord_ewald_fine, phi_gridff_fine)
+        
+        # Filter: only compute errors for points sufficiently far from surface
+        # (methods don't converge very close to ions)
+        if 'z' in brute_results[name]:
+            mask = coord_brute >= (z_top + z_min_for_error)
+            coord_brute_filtered = coord_brute[mask]
+            phi_brute_filtered = phi_brute[mask]
+            phi_ewald_interp_filtered = phi_ewald_interp[mask]
+            phi_gridff_interp_filtered = phi_gridff_interp[mask]
+            coord_ewald_fine_filtered = coord_ewald_fine[coord_ewald_fine >= (z_top + z_min_for_error)]
+            phi_ewald_fine_filtered = phi_ewald_fine[coord_ewald_fine >= (z_top + z_min_for_error)]
+            phi_gridff_fine_filtered = phi_gridff_fine[coord_ewald_fine >= (z_top + z_min_for_error)]
+        else:
+            # For x_scan, use all points
+            coord_brute_filtered = coord_brute
+            phi_brute_filtered = phi_brute
+            phi_ewald_interp_filtered = phi_ewald_interp
+            phi_gridff_interp_filtered = phi_gridff_interp
+            coord_ewald_fine_filtered = coord_ewald_fine
+            phi_ewald_fine_filtered = phi_ewald_fine
+            phi_gridff_fine_filtered = phi_gridff_fine
+        
+        err_ewald = phi_ewald_interp_filtered - phi_brute_filtered
+        err_gridff = phi_gridff_interp_filtered - phi_brute_filtered
+
+        stats[name] = {
+            'ewald_vs_brute': {'rmse': float(np.sqrt(np.mean(err_ewald**2))),
+                              'max_err': float(np.max(np.abs(err_ewald)))},
+            'gridff_vs_brute': {'rmse': float(np.sqrt(np.mean(err_gridff**2))),
+                               'max_err': float(np.max(np.abs(err_gridff)))},
+            'gridff_vs_ewald': {'rmse': float(np.sqrt(np.mean((phi_gridff_fine_filtered - phi_ewald_fine_filtered)**2))),
+                               'max_err': float(np.max(np.abs(phi_gridff_fine_filtered - phi_ewald_fine_filtered)))}
+        }
+
+        if verbose:
+            print(f"\n  {name}:")
+            print(f"    Ewald2D vs brute:    RMSE={stats[name]['ewald_vs_brute']['rmse']:.4e}, max_err={stats[name]['ewald_vs_brute']['max_err']:.4e}")
+            print(f"    GridFF vs brute:     RMSE={stats[name]['gridff_vs_brute']['rmse']:.4e}, max_err={stats[name]['gridff_vs_brute']['max_err']:.4e}")
+            print(f"    GridFF vs Ewald2D:   RMSE={stats[name]['gridff_vs_ewald']['rmse']:.4e}, max_err={stats[name]['gridff_vs_ewald']['max_err']:.4e}")
+
+    # 2D slice comparisons
+    for i, zh in enumerate(z_scan_heights):
+        phi_g = gridff_xy_slices[i]
+        phi_e = ewald_xy_slices[i]
+        err = phi_g - phi_e
+        stats[f'xy_z{zh:.1f}'] = {
+            'gridff_vs_ewald': {'rmse': float(np.sqrt(np.mean(err**2))),
+                               'max_err': float(np.max(np.abs(err)))}
+        }
+
+    err_xz = phi_gridff_xz - phi_ewald_xz
+    stats['xz'] = {
+        'gridff_vs_ewald': {'rmse': float(np.sqrt(np.mean(err_xz**2))),
+                           'max_err': float(np.max(np.abs(err_xz)))}
+    }
+
+    # ==========================================================================
+    # PART 4: Plotting
+    # ==========================================================================
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"Part 4: Generating Plots")
+        print(f"{'='*60}")
+
+    # Figure 1: Brute Force 1D Lines with all three methods
+    fig1, axes1 = plt.subplots(1, 3, figsize=(15, 4))
+    fig1.suptitle(f'Electrostatics 1D Line Scans (N_rep={N_rep})', fontsize=12)
+
+    for ax, config in zip(axes1, scan_configs):
+        name = config[0]
+        _, x0, y0, _, _, _ = config
+        z_brute = brute_results[name]['z']
+        z_fine = ewald_1d_results[name]['z']
+        ax.plot(z_brute, brute_results[name]['phi'], 'ko', ms=4, label='Brute force')
+        ax.plot(z_fine, ewald_1d_results[name]['phi'], 'r-', lw=1, label='Ewald2D')
+        ax.plot(z_fine, gridff_1d_results[name]['phi'], 'b--', lw=1, label='GridFF')
+        ax.set_xlabel('z (Å)')
+        ax.set_ylabel('φ (eV)')
+        ax.set_title(f'{name}\n({x0:.2f}, {y0:.2f})')
+        ax.legend(fontsize=8)
+        ax.grid(True, alpha=0.3)
+
+    fig1.tight_layout()
+    fig1_path = os.path.join(save_dir, f'{prefix}_fig1_1d_lines.png')
+    fig1.savefig(fig1_path, dpi=150)
+    plt.close(fig1)
+    if verbose:
+        print(f"  Saved {fig1_path}")
+
+    # Figure 2: GridFF vs Ewald2D XY Slices
+    n_heights = len(z_scan_heights)
+    fig2, axes2 = plt.subplots(2, n_heights, figsize=(5*n_heights, 8))
+    if n_heights == 1:
+        axes2 = axes2[:, None]
+
+    for i, zh in enumerate(z_scan_heights):
+        # GridFF
+        vmax = np.max(np.abs([gridff_xy_slices[i], ewald_xy_slices[i]]))
+        im0 = axes2[0, i].imshow(gridff_xy_slices[i], extent=[0, Lx, 0, Ly],
+                                  origin='lower', cmap='RdBu_r', vmin=-vmax, vmax=vmax)
+        axes2[0, i].set_title(f'GridFF z={zh:.1f}Å')
+        axes2[0, i].set_xlabel('x (Å)')
+        axes2[0, i].set_ylabel('y (Å)')
+        plt.colorbar(im0, ax=axes2[0, i], label='φ (eV)')
+
+        # Ewald2D
+        im1 = axes2[1, i].imshow(ewald_xy_slices[i], extent=[0, Lx, 0, Ly],
+                                  origin='lower', cmap='RdBu_r', vmin=-vmax, vmax=vmax)
+        axes2[1, i].set_title(f'Ewald2D z={zh:.1f}Å')
+        axes2[1, i].set_xlabel('x (Å)')
+        axes2[1, i].set_ylabel('y (Å)')
+        plt.colorbar(im1, ax=axes2[1, i], label='φ (eV)')
+
+    fig2.tight_layout()
+    fig2_path = os.path.join(save_dir, f'{prefix}_fig2_xy_slices.png')
+    fig2.savefig(fig2_path, dpi=150)
+    plt.close(fig2)
+    if verbose:
+        print(f"  Saved {fig2_path}")
+
+    # Figure 3: GridFF vs Ewald2D XZ Slice with difference
+    fig3, axes3 = plt.subplots(1, 3, figsize=(15, 5))
+
+    vmax = 1.0  # Fixed symmetric color limit
+    im0 = axes3[0].pcolormesh(X_xz, Z_xz, phi_gridff_xz, shading='auto',
+                               cmap='RdBu_r', vmin=-vmax, vmax=vmax)
+    axes3[0].set_title('GridFF XZ')
+    axes3[0].set_xlabel('x (Å)')
+    axes3[0].set_ylabel('z (Å)')
+    plt.colorbar(im0, ax=axes3[0], label='φ (eV)')
+
+    im1 = axes3[1].pcolormesh(X_xz, Z_xz, phi_ewald_xz, shading='auto',
+                               cmap='RdBu_r', vmin=-vmax, vmax=vmax)
+    axes3[1].set_title('Ewald2D XZ')
+    axes3[1].set_xlabel('x (Å)')
+    axes3[1].set_ylabel('z (Å)')
+    plt.colorbar(im1, ax=axes3[1], label='φ (eV)')
+
+    vmax_err = 1.0  # Fixed symmetric error color limit
+    im2 = axes3[2].pcolormesh(X_xz, Z_xz, err_xz, shading='auto',
+                               cmap='RdBu_r', vmin=-vmax_err, vmax=vmax_err)
+    axes3[2].set_title(f'Difference (GridFF - Ewald2D)')
+    axes3[2].set_xlabel('x (Å)')
+    axes3[2].set_ylabel('z (Å)')
+    plt.colorbar(im2, ax=axes3[2], label='Δφ (eV)')
+
+    fig3.tight_layout()
+    fig3_path = os.path.join(save_dir, f'{prefix}_fig3_xz_slice.png')
+    fig3.savefig(fig3_path, dpi=150)
+    plt.close(fig3)
+    if verbose:
+        print(f"  Saved {fig3_path}")
+
+    # Figure 4: Error plots for 1D lines
+    fig4, axes4 = plt.subplots(2, 3, figsize=(15, 8))
+    fig4.suptitle('1D Line Errors vs Brute Force Reference (interpolated)', fontsize=12)
+
+    for col, config in enumerate(scan_configs):
+        name = config[0]
+        _, x0, y0, _, _, _ = config
+        z_brute = brute_results[name]['z']
+        z_fine = ewald_1d_results[name]['z']
+        # Interpolate to brute grid for comparison
+        phi_ewald_interp = np.interp(z_brute, z_fine, ewald_1d_results[name]['phi'])
+        phi_gridff_interp = np.interp(z_brute, z_fine, gridff_1d_results[name]['phi'])
+        # Top row: Ewald2D - brute
+        axes4[0, col].plot(z_brute, phi_ewald_interp - brute_results[name]['phi'], 'r-', lw=1)
+        axes4[0, col].set_title(f'{name}: Ewald2D error')
+        axes4[0, col].set_xlabel('z (Å)')
+        axes4[0, col].set_ylabel('Δφ (e/Å)')
+        axes4[0, col].axhline(0, color='k', lw=0.5)
+        axes4[0, col].grid(True, alpha=0.3)
+
+        # Bottom row: GridFF - brute
+        axes4[1, col].plot(z_brute, phi_gridff_interp - brute_results[name]['phi'], 'b-', lw=1)
+        axes4[1, col].set_title(f'{name}: GridFF error')
+        axes4[1, col].set_xlabel('z (Å)')
+        axes4[1, col].set_ylabel('Δφ (e/Å)')
+        axes4[1, col].axhline(0, color='k', lw=0.5)
+        axes4[1, col].grid(True, alpha=0.3)
+
+    fig4.tight_layout()
+    fig4_path = os.path.join(save_dir, f'{prefix}_fig4_1d_errors.png')
+    fig4.savefig(fig4_path, dpi=150)
+    plt.close(fig4)
+    if verbose:
+        print(f"  Saved {fig4_path}")
+
+    # Save JSON report
+    report = {
+        'prefix': prefix,
+        'N_rep': N_rep,
+        'coarse_spacing': coarse_spacing,
+        'grid_res': grid_res,
+        'z_scan_heights': [float(z) for z in z_scan_heights],
+        'stats': stats,
+        'figures': {
+            'fig1_1d_lines': fig1_path,
+            'fig2_xy_slices': fig2_path,
+            'fig3_xz_slice': fig3_path,
+            'fig4_1d_errors': fig4_path
+        }
+    }
+    report_path = os.path.join(save_dir, f'{prefix}_report.json')
+    with open(report_path, 'w') as f:
+        json.dump(report, f, indent=2)
+    if verbose:
+        print(f"  Saved {report_path}")
+
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"Comparison Complete")
+        print(f"{'='*60}")
+
+    return report
+
+
+# ======================================================================
+# OpenCL Ewald Comparison Functions
+# ======================================================================
+
+def compare_ewald_opencl_python(sys_at, n_harm=4, verbose=True):
+    """
+    Compare OpenCL Ewald implementation against Python reference.
+    
+    Parameters:
+        sys_at: AtomicSystem with positions, charges, and lattice vectors
+        n_harm: Ewald harmonic truncation
+        verbose: print progress
+        
+    Returns:
+        dict with comparison results
+    """
+    import time
+    import numpy as np
+    
+    # Import OpenCL Ewald
+    try:
+        from pyBall.OCL.SurfaceEwald import SurfaceEwaldCL
+        from pyBall.Ewald2D import Ewald2D
+    except ImportError as e:
+        if verbose:
+            print(f"Cannot run OpenCL comparison: {e}")
+        return {'error': str(e)}
+    
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"OpenCL vs Python Ewald Comparison")
+        print(f"{'='*60}")
+    
+    # Initialize Python Ewald
+    t0 = time.time()
+    ew_py = Ewald2D.from_AtomicSystem(sys_at, n_harm=n_harm)
+    t1 = time.time()
+    if verbose:
+        print(f"Python Ewald init: {t1-t0:.3f} s")
+    
+    # Initialize OpenCL Ewald
+    t0 = time.time()
+    ew_cl = SurfaceEwaldCL()
+    ion_data = np.column_stack([
+        sys_at.apos[:, 0],
+        sys_at.apos[:, 1],
+        sys_at.apos[:, 2],
+        sys_at.qs
+    ])
+    a_vec = sys_at.lvec[0, :2]
+    b_vec = sys_at.lvec[1, :2]
+    ew_cl.prepare_system(ion_data, a_vec, b_vec, n_harm=n_harm)
+    t1 = time.time()
+    if verbose:
+        print(f"OpenCL Ewald init: {t1-t0:.3f} s")
+    
+    results = {}
+    
+    # Test 1: Vacuum evaluation
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"Test 1: Vacuum Evaluation")
+        print(f"{'='*60}")
+    
+    xv = np.linspace(0, a_vec[0], 50)
+    yv = np.linspace(0, b_vec[1], 50)
+    X, Y = np.meshgrid(xv, yv)
+    z_test = 2.0
+    
+    # OpenCL
+    t0 = time.time()
+    phi_cl = ew_cl.eval_vacuum(X, Y, z_test)
+    t1 = time.time()
+    time_cl = t1 - t0
+    
+    # Python
+    t0 = time.time()
+    phi_py = ew_py.phi_vacuum_xy(X, Y, z_test)
+    t1 = time.time()
+    time_py = t1 - t0
+    
+    # Compare
+    diff = phi_cl - phi_py
+    rmse = float(np.sqrt(np.mean(diff**2)))
+    max_err = float(np.max(np.abs(diff)))
+    
+    results['vacuum'] = {
+        'rmse': rmse,
+        'max_err': max_err,
+        'time_cl': time_cl,
+        'time_py': time_py,
+        'speedup': time_py / time_cl if time_cl > 0 else float('inf'),
+        'N_points': X.size
+    }
+    
+    if verbose:
+        print(f"  Grid: {X.shape[0]}x{X.shape[1]} = {X.size} points")
+        print(f"  OpenCL time: {time_cl:.3f} s")
+        print(f"  Python time: {time_py:.3f} s")
+        print(f"  Speedup: {results['vacuum']['speedup']:.1f}x")
+        print(f"  RMSE: {rmse:.6e} eV")
+        print(f"  Max error: {max_err:.6e} eV")
+        if rmse < 1e-5:
+            print(f"  ✓ PASS")
+        else:
+            print(f"  ✗ FAIL")
+    
+    # Test 2: Full evaluation
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"Test 2: Full Evaluation (1D line)")
+        print(f"{'='*60}")
+    
+    x0, y0 = 0.5, 0.5
+    z_arr = np.linspace(-0.5, 5.0, 100)
+    
+    X_line = np.full((1, len(z_arr)), x0, dtype=np.float32)
+    Y_line = np.full((1, len(z_arr)), y0, dtype=np.float32)
+    Z_line = z_arr.reshape(1, -1).astype(np.float32)
+    
+    # OpenCL
+    t0 = time.time()
+    phi_cl_line = ew_cl.eval_full(X_line, Y_line, Z_line)[0, :]
+    t1 = time.time()
+    time_cl = t1 - t0
+    
+    # Python
+    t0 = time.time()
+    phi_py_line = ew_py.phi_full_1d(x0, y0, z_arr)
+    t1 = time.time()
+    time_py = t1 - t0
+    
+    # Compare
+    diff_line = phi_cl_line - phi_py_line
+    rmse_line = float(np.sqrt(np.mean(diff_line**2)))
+    max_err_line = float(np.max(np.abs(diff_line)))
+    
+    results['full'] = {
+        'rmse': rmse_line,
+        'max_err': max_err_line,
+        'time_cl': time_cl,
+        'time_py': time_py,
+        'speedup': time_py / time_cl if time_cl > 0 else float('inf'),
+        'N_points': len(z_arr)
+    }
+    
+    if verbose:
+        print(f"  Points: {len(z_arr)}")
+        print(f"  OpenCL time: {time_cl:.3f} s")
+        print(f"  Python time: {time_py:.3f} s")
+        print(f"  Speedup: {results['full']['speedup']:.1f}x")
+        print(f"  RMSE: {rmse_line:.6e} eV")
+        print(f"  Max error: {max_err_line:.6e} eV")
+        if rmse_line < 1e-5:
+            print(f"  ✓ PASS")
+        else:
+            print(f"  ✗ FAIL")
+    
+    # Overall result
+    results['pass'] = (results['vacuum']['rmse'] < 1e-5 and 
+                       results['full']['rmse'] < 1e-5)
+    
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"Overall: {'PASS' if results['pass'] else 'FAIL'}")
+        print(f"{'='*60}")
+    
+    return results
+
+
+def compare_all_methods(sys_at, gridff_path, sub_xyz_path, n_harm=4, N_rep=20, verbose=True):
+    """
+    Comprehensive comparison of all electrostatics methods:
+    - GridFF (OpenCL B-spline)
+    - Ewald2D Python
+    - Ewald2D OpenCL
+    - Brute Force (reference)
+    
+    Parameters:
+        sys_at: AtomicSystem
+        gridff_path: path to GridFF .npy file
+        sub_xyz_path: path to substrate .xyz file
+        n_harm: Ewald harmonic truncation
+        N_rep: Brute force PBC shells
+        verbose: print progress
+        
+    Returns:
+        dict with all comparison results
+    """
+    all_results = {}
+    
+    # Run GridFF vs Ewald2D comparison
+    from pyBall.Ewald2D import Ewald2D
+    ew = Ewald2D.from_AtomicSystem(sys_at, n_harm=n_harm)
+    
+    report = compare_electrostatics_methods(
+        sys_at=sys_at,
+        gridff_path=gridff_path,
+        sub_xyz_path=sub_xyz_path,
+        ew=ew,
+        save_dir='results_electrostatics',
+        prefix='all_methods',
+        N_rep=N_rep,
+        verbose=verbose
+    )
+    all_results['gridff_vs_ewald'] = report
+    
+    # Run OpenCL vs Python comparison
+    opencl_results = compare_ewald_opencl_python(sys_at, n_harm=n_harm, verbose=verbose)
+    all_results['opencl_vs_python'] = opencl_results
+    
+    # Summary
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"Comprehensive Comparison Summary")
+        print(f"{'='*60}")
+        print(f"\n1. GridFF vs Python Ewald:")
+        if 'gridff_vs_ewald' in report['stats']:
+            stats = report['stats']['gridff_vs_ewald']
+            print(f"   GridFF vs Ewald: RMSE={stats['rmse']:.4e}, max={stats['max_err']:.4e}")
+        
+        print(f"\n2. OpenCL Ewald vs Python Ewald:")
+        if 'vacuum' in opencl_results:
+            print(f"   Vacuum: RMSE={opencl_results['vacuum']['rmse']:.4e}")
+            print(f"   Full:   RMSE={opencl_results['full']['rmse']:.4e}")
+            print(f"   Speedup: {opencl_results['vacuum']['speedup']:.1f}x (vacuum)")
+        
+        all_pass = (
+            opencl_results.get('pass', False) and
+            all(s['gridff_vs_ewald']['rmse'] < 1e-5 
+                for key, s in report['stats'].items() 
+                if isinstance(s, dict) and 'gridff_vs_ewald' in s)
+        )
+        print(f"\nOverall: {'PASS' if all_pass else 'FAIL'}")
+        print(f"{'='*60}")
+    
+    return all_results

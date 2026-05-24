@@ -1154,7 +1154,7 @@ class MolecularDynamics(OpenCLBase):
         out[2, :3] = np.array(self.surface_lvec[2, :3], dtype=np.float32)
         return out
 
-    def fit_folded_surface_basis(self, surf_xyz=None, type_map=None, nPBC=(4,4,0), z_range=(0.5, 8.0), nu=4, nv=4, nz=4, nxy=32, nz_samp=40, r_damp=0.0, alpha_morse=1.8, bMacro=True, components=('total',), fit_mask=None, weight_power=0.0):
+    def fit_folded_surface_basis(self, surf_xyz=None, type_map=None, nPBC=(4,4,0), z_range=(0.5, 8.0), nu=4, nv=4, nz=4, nxy=32, nz_samp=40, r_damp=0.0, alpha_morse=1.8, bMacro=True, components=('total',), fit_mask=None, weight_power=0.0, coulomb_solver='morse', ewald_n_harm=6):
         if self.rigid_REQs0 is None:
             raise ValueError('fit_folded_surface_basis(): call init_rigid_molecule_batch() first')
         if surf_xyz is None:
@@ -1196,6 +1196,30 @@ class MolecularDynamics(OpenCLBase):
         coeff_sets = {ck: np.zeros((ntypes, nbasis), dtype=np.float32) for ck in comp_keys}
         refs = {ck: [] for ck in comp_keys}
         weights = []
+        coulomb_solver = str(coulomb_solver).lower()
+        if (coulomb_solver not in ('morse', 'ewald2d', 'none')):
+            raise ValueError(f"fit_folded_surface_basis(): unknown coulomb_solver='{coulomb_solver}', expected 'morse','ewald2d','none'")
+        want_coulomb = ('coulomb' in comp_keys)
+        ew = None
+        z_top = None
+        if want_coulomb and coulomb_solver == 'ewald2d':
+            from .SurfaceEwald import SurfaceEwaldCL
+            if surf_xyz is None:
+                raise ValueError('fit_folded_surface_basis(): coulomb_solver=ewald2d requires surf_xyz')
+            if getattr(self, 'surface_atoms', None) is None:
+                raise ValueError('fit_folded_surface_basis(): call set_surface() before coulomb_solver=ewald2d')
+            if getattr(self, 'surface_REQs', None) is None:
+                raise ValueError('fit_folded_surface_basis(): surface_REQs not available (call set_surface())')
+            z_top = float(np.max(self.surface_atoms[:, 2]))
+            ion_data = np.zeros((len(self.surface_atoms), 4), dtype=np.float32)
+            ion_data[:, :3] = self.surface_atoms[:, :3]
+            ion_data[:, 2] -= z_top
+            ion_data[:, 3] = np.asarray(self.surface_REQs[:, 2], dtype=np.float32)
+            a_vec = np.array(self.surface_lvec[0, :2], dtype=np.float32)
+            b_vec = np.array(self.surface_lvec[1, :2], dtype=np.float32)
+            ew = SurfaceEwaldCL(platform='nvidia')
+            ew.prepare_system(ion_data, a_vec, b_vec, n_harm=int(ewald_n_harm))
+            print(f"[folded] coulomb_solver=ewald2d z_top={z_top:.6f} ewald_n_harm={int(ewald_n_harm)}")
         z_mask = np.ones(len(uvz), dtype=bool) if fit_mask is None else np.asarray(fit_mask, dtype=bool).reshape(-1)
         if len(z_mask) != len(uvz):
             raise ValueError(f'fit_folded_surface_basis(): fit_mask length {len(z_mask)} != nsamples {len(uvz)}')
@@ -1203,9 +1227,24 @@ class MolecularDynamics(OpenCLBase):
             md1 = MolecularDynamics(nloc=self.nloc, debug_build_options='-DDBG_UFF=0')
             md1.init_rigid_molecule_batch(np.zeros((1,3), dtype=np.float32), uniq_REQs[it:it+1], nSystems=min(max(len(transforms), 1), 8192))
             md1.set_surface(surf_xyz, nPBC=nPBC, pos0=(0.0,0.0,0.0), alpha_morse=alpha_morse, r_damp=r_damp, bMacro=bMacro, type_map=type_map)
-            out = md1.eval_rigid_getSurfMorse_components(transforms.reshape(-1,12), chunk_size=md1.nSystems, components=comp_keys)
+            morse_comps = [ck for ck in comp_keys if ck != 'coulomb'] if (want_coulomb and coulomb_solver == 'ewald2d') else comp_keys
+            out = md1.eval_rigid_getSurfMorse_components(transforms.reshape(-1,12), chunk_size=md1.nSystems, components=morse_comps)
             for ck in comp_keys:
-                y = np.asarray(out[ck], dtype=np.float64)
+                if ck == 'coulomb' and want_coulomb and coulomb_solver == 'ewald2d':
+                    if ew is None:
+                        raise ValueError('fit_folded_surface_basis(): internal error ew is None for coulomb_solver=ewald2d')
+                    if z_top is None:
+                        raise ValueError('fit_folded_surface_basis(): internal error z_top is None for coulomb_solver=ewald2d')
+                    q_probe = float(uniq_REQs[it, 2])
+                    X = xyz[:, 0].reshape(-1, 1)
+                    Y = xyz[:, 1].reshape(-1, 1)
+                    Z = (xyz[:, 2] - z_top).reshape(-1, 1)
+                    phi = ew.eval_full(X, Y, Z)
+                    y = np.asarray(phi.reshape(-1) * q_probe, dtype=np.float64)
+                elif ck == 'coulomb' and want_coulomb and coulomb_solver == 'none':
+                    y = np.zeros(len(transforms), dtype=np.float64)
+                else:
+                    y = np.asarray(out[ck], dtype=np.float64)
                 refs[ck].append(y)
                 ww = np.ones(len(y), dtype=np.float64)
                 ww[~z_mask] = 0.0

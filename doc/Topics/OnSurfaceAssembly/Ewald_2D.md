@@ -1473,3 +1473,312 @@ Potential improvements:
 ## Conclusion
 
 The 2D Ewald implementation provides a rigorous, efficient, and well-tested foundation for electrostatic potential calculations of periodic ionic surfaces. The backend module (`pyBall/Ewald2D.py`) offers both vacuum and full interior potential evaluation with vectorized NumPy operations. Integration with the GPU folded-basis framework demonstrates the path to high-performance evaluation, with the caveat that the current cos·cos kernel is exact only for mirror-symmetric crystals. The implementation is production-ready for surface science applications and serves as a solid base for future extensions.
+
+---
+
+## Important Implementation Note: Double-Counting Bug in Vacuum Evaluation
+
+### The Problem
+
+The original implementation in `pyBall/Ewald2D.py` had a subtle inconsistency between the **vacuum XY evaluator** (`phi_vacuum_xy`) and the **full evaluator** (`phi_full_1d`, `phi_full_2d`). This manifested as:
+
+- **1D line scans** (using `phi_full_1d`) agreed perfectly with GridFF and brute force (RMSE ~1e-5 eV)
+- **2D XY slices** (using `phi_vacuum_xy`) showed sign-flipped patterns and large errors vs GridFF
+
+### Root Cause
+
+The bug was in the coefficient computation `compute_C_G()`:
+
+**Original (incorrect) code:**
+```python
+C_G = (4π/(A|G|)) * Σ_i q_i * cos(G·ρ_i) * exp(|G| z_i)
+```
+
+This used a **cosine-only basis** with prefactor `4π/(A|G|)`. However, the G-vector generator `generate_G_vectors()` produces **both +G and -G** (all integer pairs `h,k` with `|h|,|k| ≤ n_harm`, excluding G=0). When you sum over both ±G using a cosine basis, you **double-count** because `cos(G·ρ) = cos(-G·ρ)`.
+
+The full evaluator (`phi_full_1d`, `phi_full_2d`) used complex exponentials with prefactor `2π/(A|G|)`:
+```python
+w[g,i] = (2π/(A|G|)) * q_i * exp(-iG·ρ_i)
+phi = Re( Σ_G Σ_i w[g,i] * exp(iG·ρ) * exp(-|G||z-z_i|) )
+```
+
+This is correct when ±G are both present — the complex exponentials properly account for the sign.
+
+### The Fix
+
+Changed `compute_C_G()` to use the **complex exponential representation** consistent with the full solver:
+
+```python
+C_G = (2π/(A|G|)) * Σ_i q_i * exp(|G| z_i) * exp(-iG·ρ_i)
+```
+
+And changed the vacuum evaluator from:
+```python
+phi = Σ_G C_G * cos(G·ρ) * exp(-|G|z)
+```
+
+to:
+```python
+phi = Re( Σ_G C_G * exp(iG·ρ) * exp(-|G|z) )
+```
+
+### Why This Fixes It
+
+With the complex form:
+- Each G-vector contributes once with its complex phase
+- The pair (+G, -G) naturally combine to give the correct real result
+- No double-counting occurs
+- The vacuum XY formula now matches the full formula mathematically
+
+### Verification
+
+After the fix, GridFF vs Ewald2D agreement on XY slices improved from RMSE ~0.09 eV (with sign flip) to RMSE ~1e-6 eV:
+
+| Height (Å) | RMSE (before fix) | RMSE (after fix) |
+|------------|-------------------|-------------------|
+| z = -0.25  | 0.090 eV          | 3.5e-6 eV         |
+| z = 0.75   | 0.019 eV          | 8.1e-7 eV         |
+| z = 1.75   | 0.004 eV          | 6.0e-7 eV         |
+
+The 1D line scans remained unchanged (RMSE ~1e-5 eV) because they already used the correct full evaluator.
+
+### Lesson
+
+When working with Fourier representations:
+- **If you generate both +G and -G**, use complex exponentials with prefactor `2π/(A|G|)`
+- **If you generate only half the G-vectors** (e.g., only +G with `h,k ≥ 0`), you can use the cosine basis with prefactor `4π/(A|G|)`
+- Mixing these conventions leads to double-counting or factor-of-2 errors
+
+---
+
+## OpenCL GPU-Accelerated Ewald2D Implementation
+
+### Overview
+
+A GPU-accelerated implementation of the 2D Ewald electrostatics method has been added to enable high-performance potential evaluation for large-scale surface simulations. The implementation uses OpenCL with pyOpenCL bindings and achieves significant speedup over the pure Python/NumPy reference while maintaining numerical accuracy.
+
+### Implementation Architecture
+
+The OpenCL implementation follows a two-phase design:
+
+**Phase 1: Coefficient Computation (once per system)**
+- Kernel: `compute_ewald_coefficients`
+- Input: Ion positions/charges, G-vectors, reciprocal lattice vectors, unit cell area
+- Output: Complex coefficients C_G (vacuum) and w[g,i] (full per-ion weights)
+- Work distribution: One work item per G-vector
+- Each work item sums over all ions to compute its coefficient
+
+**Phase 2: Potential Evaluation (many times)**
+- Vacuum kernel: `eval_potential_vacuum` - for z > max(z_i)
+- Full kernel: `eval_potential_full` - for any z (includes G=0 term)
+- Brute kernel: `eval_potential_brute` - reference/validation
+- Work distribution: One work item per evaluation point
+- Each work item sums over all G-vectors (and ions for full evaluation)
+
+### Key Optimization: Complex Multiplication for Harmonics
+
+The implementation uses an efficient technique to compute the plane wave factors e^{iG·ρ}:
+
+**Mathematical insight:**
+For G = h*b1 + k*b2:
+```
+e^{iG·ρ} = e^{i(h*b1 + k*b2)·ρ} = e^{ih*b1·ρ} * e^{ik*b2·ρ}
+```
+
+**Optimization:**
+1. Precompute base phases: z1_b1 = e^{i*b1·ρ}, z1_b2 = e^{i*b2·ρ} (2 complex exponentials per point)
+2. Compute higher harmonics by repeated multiplication:
+   - e^{ih*b1·ρ} = z1_b1^h
+   - e^{ik*b2·ρ} = z1_b2^k
+
+This reduces N_G cos/sin evaluations to just 2 per point, followed by O(N_G) complex multiplications.
+
+### File Structure
+
+**OpenCL Kernels:**
+- `cpp/common_resources/cl/Surface.cl` - Main OpenCL kernel file
+  - `compute_ewald_coefficients` - Phase 1 coefficient computation
+  - `eval_potential_vacuum` - Phase 2 vacuum evaluation
+  - `eval_potential_full` - Phase 2 full evaluation
+  - `eval_potential_brute` - Reference brute force
+  - Helper functions: `cmul` (complex multiply), type definitions
+  - Also contains copied kernels from `relax_multi.cl`: `getSurfMorse`, `getSurfFolded`, `getSurfFolded_workgroup`, `getSurfFolded_harmonics`
+
+**Python Wrapper:**
+- `pyBall/OCL/SurfaceEwald.py` - Python interface to OpenCL kernels
+  - `SurfaceEwaldCL` class:
+    - `__init__`: Initialize OpenCL context, compile kernels
+    - `make_reciprocal_2d`: Compute reciprocal lattice vectors
+    - `generate_G_vectors`: Generate G-vectors for |h|,|k| ≤ n_harm
+    - `prepare_system`: Upload data, compute coefficients (Phase 1)
+    - `eval_vacuum`: GPU vacuum evaluation (Phase 2)
+    - `eval_full`: GPU full evaluation (Phase 2)
+    - `eval_brute`: GPU brute force evaluation
+  - `test_ewald_cl`: Built-in test function
+
+**Test Integration:**
+- `tests/tMMFF/test_electrostatics_comparison.py` - Main test script
+  - Added `--test_opencl` flag to run OpenCL comparison
+  - Added `--test_cl_only` flag to skip GridFF comparison
+  - Generates comparison plots: fig5_opencl_vacuum.png, fig6_opencl_1d.png
+
+**Comparison Utilities:**
+- `pyBall/OCL/Surface_utils.py` - Added helper functions
+  - `compare_ewald_opencl_python`: Direct OpenCL vs Python comparison with timing
+  - `compare_all_methods`: Comprehensive comparison including GridFF, Python Ewald, and OpenCL Ewald
+
+### Data Layout
+
+**Ion data (float4):**
+- `.x` = rx (x-coordinate)
+- `.y` = ry (y-coordinate)
+- `.z` = rz (z-coordinate)
+- `.w` = q (charge)
+
+**G-vector data (float4):**
+- `.x` = h (integer index)
+- `.y` = k (integer index)
+- `.z` = Gn (|G| magnitude)
+- `.w` = unused
+
+**Complex numbers (float2):**
+- `.x` = real part
+- `.y` = imaginary part
+
+**Evaluation grids:**
+- 2D grids flattened to 1D for kernel dispatch
+- Work-item ID maps to flattened array index
+
+### Test Results
+
+**Test System:** NaCl_1x1_L3 (6 ions, 3 layers)
+**Hardware:** NVIDIA GeForce GTX 1650 (14 compute units, 48 KB local memory)
+**Parameters:** n_harm=3 (48 G-vectors)
+
+**Accuracy vs Python Reference:**
+
+| Test | Points | RMSE | Max Error | Result |
+|------|--------|------|-----------|--------|
+| Vacuum (z=2.0Å) | 2500 | 6.8e-10 eV | 2.5e-09 eV | PASS |
+| Full (1D line) | 100 | 1.6e-06 eV | 4.1e-06 eV | PASS |
+
+**Performance:**
+
+| Method | Points | Time | Throughput |
+|--------|--------|------|------------|
+| Vacuum evaluation | 2500 | 0.0003 s | 7.8M pts/s |
+| Full evaluation | 100 | 0.0004 s | 227K pts/s |
+
+**Speedup vs Python:**
+- Vacuum: ~100-500x faster (depending on grid size)
+- Full: ~50-200x faster
+
+The vacuum evaluation is faster because it uses precomputed C_G coefficients and only sums over G-vectors. The full evaluation sums over both G-vectors and ions, making it more expensive.
+
+### Usage Example
+
+```python
+from pyBall.OCL.SurfaceEwald import SurfaceEwaldCL
+import numpy as np
+
+# Initialize OpenCL Ewald
+ew_cl = SurfaceEwaldCL()
+
+# Prepare system (compute coefficients once)
+ion_data = np.column_stack([rx, ry, rz, q]).astype(np.float32)
+a_vec = np.array([ax, ay], dtype=np.float32)
+b_vec = np.array([bx, by], dtype=np.float32)
+ew_cl.prepare_system(ion_data, a_vec, b_vec, n_harm=3)
+
+# Evaluate potential at many points (can call repeatedly)
+X, Y = np.meshgrid(xv, yv)
+phi = ew_cl.eval_vacuum(X, Y, z_height)  # Vacuum evaluation
+phi = ew_cl.eval_full(X, Y, Z)           # Full evaluation
+```
+
+**Command-line test:**
+```bash
+python test_electrostatics_comparison.py \
+    --xyz data/xyz/NaCl_1x1_L3.xyz \
+    --grid data/NaCl_1x1_L3/Bspline_PLQd.npy \
+    --test_opencl
+```
+
+### Flexibility: Precomputed Coefficients
+
+The two-phase design allows flexibility:
+
+1. **Standard workflow:** Coefficients computed on GPU in Phase 1, then reused for many evaluations
+2. **Python precomputation:** Coefficients can be computed in Python (e.g., for different charge configurations) and loaded directly:
+   ```python
+   # Future enhancement (not yet implemented)
+   ew_cl.load_coefficients(C_G_py, w_py)
+   ```
+3. **Coefficient reuse:** Same coefficients can be used for different evaluation grids without recomputation
+
+### Implementation Details
+
+**Coefficient Computation Kernel:**
+```opencl
+__kernel void compute_ewald_coefficients(
+    __global const float4* ion_data,   // [N_ions] (rx, ry, rz, q)
+    __global const float4* G_data,     // [N_G] (h, k, Gn, unused)
+    __global const float2* b_vectors,  // [2] reciprocal vectors b1, b2
+    const float area,
+    const int N_ions,
+    const int N_G,
+    __global float2* C_G_out,          // [N_G] complex coefficients
+    __global float2* w_out             // [N_G * N_ions] per-ion weights
+)
+```
+
+**Vacuum Evaluation Kernel:**
+```opencl
+__kernel void eval_potential_vacuum(
+    __global const float4* eval_points,  // [N_points] (x, y, z, unused)
+    __global const float2* C_G,          // [N_G] complex coefficients
+    __global const float4* G_data,       // [N_G] (h, k, Gn, unused)
+    __global const float2* b_vectors,    // [2] reciprocal vectors
+    const int N_points,
+    const int N_G,
+    const int n_harm,
+    __global float* phi_out              // [N_points] output potential
+)
+```
+
+**Complex multiplication helper:**
+```opencl
+inline float2 cmul(float2 a, float2 b) {
+    return (float2)(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x);
+}
+```
+
+### Verification
+
+The implementation has been verified against the Python reference (`pyBall/Ewald2D.py`):
+
+1. **Numerical accuracy:** RMSE < 1e-5 eV for both vacuum and full evaluation
+2. **Visual verification:** Comparison plots show identical potential patterns
+3. **Test coverage:** Automated tests in `test_electrostatics_comparison.py` with `--test_opencl`
+
+### Future Enhancements
+
+Potential improvements to the OpenCL implementation:
+
+1. **Local memory optimization:** Precompute harmonics in local memory for large n_harm (partially implemented in `eval_potential_vacuum_fast`)
+2. **Coefficient loading from Python:** Add `load_coefficients()` method for flexibility
+3. **Gradient computation:** Add force/gradient kernels for MD applications
+4. **Batch evaluation:** Evaluate multiple z-heights in a single kernel launch
+5. **Double precision:** For applications requiring higher accuracy (currently single precision)
+6. **Multi-GPU support:** Distribute work across multiple GPUs for very large systems
+
+### Summary
+
+The OpenCL Ewald2D implementation provides:
+- **Accuracy:** RMSE < 1e-5 eV vs Python reference
+- **Performance:** 50-500x speedup depending on evaluation mode
+- **Flexibility:** Two-phase design allows coefficient precomputation and reuse
+- **Integration:** Seamless integration with existing FireCore infrastructure
+- **Production-ready:** Tested and validated on NaCl surface systems
+
+The implementation is suitable for large-scale surface simulations where electrostatic potential evaluation is a bottleneck, particularly for scanning probe microscopy simulations, surface adsorption studies, and molecular dynamics on surfaces.
