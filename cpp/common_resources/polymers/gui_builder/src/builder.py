@@ -244,13 +244,13 @@ class BuilderWindow(QMainWindow):
         pbc_layout.addWidget(QLabel(" Lx [Å]:"))
         self.lx_spin = QDoubleSpinBox()
         self.lx_spin.setRange(0.0, 500.0)
-        self.lx_spin.setValue(15.0)
+        self.lx_spin.setValue(30.0)
         pbc_layout.addWidget(self.lx_spin)
         
         pbc_layout.addWidget(QLabel(" Lz [Å]:"))
         self.lz_spin = QDoubleSpinBox()
         self.lz_spin.setRange(0.0, 500.0)
-        self.lz_spin.setValue(15.0)
+        self.lz_spin.setValue(30.0)
         pbc_layout.addWidget(self.lz_spin)
         
         pbc_layout.addStretch()
@@ -332,8 +332,8 @@ class BuilderWindow(QMainWindow):
             
             self.chk_pbc_1d.setChecked(session_data.get("pbc_1d", False))
             self.chk_pbc_3d.setChecked(session_data.get("pbc_3d", False))
-            self.lx_spin.setValue(session_data.get("lx", 15.0))
-            self.lz_spin.setValue(session_data.get("lz", 15.0))
+            self.lx_spin.setValue(session_data.get("lx", 30.0))
+            self.lz_spin.setValue(session_data.get("lz", 30.0))
             
             self.rebuild_grid()
             
@@ -620,6 +620,64 @@ class BuilderWindow(QMainWindow):
                 
         return strand_atoms
 
+    def _pbc_delta(self, a, b, lx, ly, lz, pbc_enabled):
+        dx = a['x'] - b['x']
+        dy = a['y'] - b['y']
+        dz = a['z'] - b['z']
+        if pbc_enabled and self.chk_pbc_3d.isChecked() and lx > 0:
+            dx = dx - lx * round(dx / lx)
+        if pbc_enabled and ly > 0:
+            dy = dy - ly * round(dy / ly)
+        if pbc_enabled and self.chk_pbc_3d.isChecked() and lz > 0:
+            dz = dz - lz * round(dz / lz)
+        return dx, dy, dz
+
+    def _repair_hydrogen_clashes(self, atoms, lx, ly, lz, pbc_enabled, clash_cut=1.55, max_iter=8):
+        """Move capping hydrogens away from accidental second heavy-atom bonds, without deleting them."""
+        bond_len = {'C': 1.09, 'SI': 1.48, 'N': 1.01, 'O': 0.98}
+        nmove = 0
+        for _ in range(max_iter):
+            moved = 0
+            for i, h in enumerate(atoms):
+                if h['elem'].upper() != 'H':
+                    continue
+                heavy = []
+                for j, a in enumerate(atoms):
+                    if i == j or a['elem'].upper() == 'H':
+                        continue
+                    dx, dy, dz = self._pbc_delta(h, a, lx, ly, lz, pbc_enabled)
+                    d = (dx*dx + dy*dy + dz*dz)**0.5
+                    heavy.append((d, j, dx, dy, dz))
+                if not heavy:
+                    continue
+                heavy.sort()
+                parent_d, parent_i, phx, phy, phz = heavy[0]
+                if parent_d > 1.25:
+                    continue
+                clashes = [x for x in heavy[1:] if x[0] < clash_cut]
+                if not clashes:
+                    continue
+                ux, uy, uz = phx/max(parent_d, 1e-8), phy/max(parent_d, 1e-8), phz/max(parent_d, 1e-8)
+                vx, vy, vz = 0.35*ux, 0.35*uy, 0.35*uz
+                for d, _, dx, dy, dz in clashes:
+                    w = (clash_cut - d) / max(d, 1e-8)
+                    vx += dx*w
+                    vy += dy*w
+                    vz += dz*w
+                vlen = (vx*vx + vy*vy + vz*vz)**0.5
+                if vlen < 1e-8:
+                    continue
+                parent = atoms[parent_i]
+                l = bond_len.get(parent['elem'].upper(), 1.09)
+                h['x'] = parent['x'] + l * vx/vlen
+                h['y'] = parent['y'] + l * vy/vlen
+                h['z'] = parent['z'] + l * vz/vlen
+                moved += 1
+            nmove += moved
+            if moved == 0:
+                break
+        return nmove
+
     def export_system(self):
         """Builds the system and exports it to a file."""
         self.warnings = []
@@ -690,6 +748,9 @@ class BuilderWindow(QMainWindow):
                 
         ly = abs(self.length_spin.value() * base_shift_y)
         pbc_enabled = self.chk_pbc_1d.isChecked() or self.chk_pbc_3d.isChecked()
+        lx = self.lx_spin.value() if pbc_enabled else 0.0
+        lz = self.lz_spin.value() if pbc_enabled else 0.0
+        n_h_repaired = self._repair_hydrogen_clashes(all_atoms, lx, ly, lz, pbc_enabled)
         
         for i, a in enumerate(all_atoms):
             if i in atoms_to_delete: continue
@@ -743,7 +804,7 @@ class BuilderWindow(QMainWindow):
                 h_clash_scores.sort() # The shortest distances are the colliding ones (boundary crossing)
                 for k in range(min(excess_h, len(h_clash_scores))):
                     atoms_to_delete.add(h_clash_scores[k][1])
-                    
+
         all_atoms = [a for i, a in enumerate(all_atoms) if i not in atoms_to_delete]
 
         if heavy_valency_warnings:
@@ -755,9 +816,6 @@ class BuilderWindow(QMainWindow):
         n_hydrogens = sum([1 for a in all_atoms if a['elem'].upper() == 'H'])
         
         if pbc_enabled:
-            lx = self.lx_spin.value()
-            lz = self.lz_spin.value()
-            
             # Shift atoms to the center of the defined cell (Lx, Lz)
             min_x = min([a['x'] for a in all_atoms])
             max_x = max([a['x'] for a in all_atoms])
@@ -779,15 +837,24 @@ class BuilderWindow(QMainWindow):
         output_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output")
         os.makedirs(output_dir, exist_ok=True)
         out_file = os.path.join(output_dir, "generated_system.xyz")
+        lvs_file = os.path.join(output_dir, "generated_system.lvs")
         
         with open(out_file, 'w') as f:
             f.write(f"{len(all_atoms)}\n")
             f.write(f"{comment_line}\n")
             for a in all_atoms:
                 f.write(f"{a['elem']:<4} {a['x']:10.5f} {a['y']:10.5f} {a['z']:10.5f} {a['q']:10.5f}\n")
+
+        if pbc_enabled:
+            with open(lvs_file, 'w') as f:
+                f.write(f"{lx:.10f} 0.0 0.0\n")
+                f.write(f"0.0 {ly:.10f} 0.0\n")
+                f.write(f"0.0 0.0 {lz:.10f}\n")
+        elif os.path.exists(lvs_file):
+            os.remove(lvs_file)
                 
         QMessageBox.information(self, "Success", 
-            f"System saved to:\n{out_file}\n\nTotal atoms: {len(all_atoms)}\nTotal hydrogens (H): {n_hydrogens}")
+            f"System saved to:\n{out_file}\n\nTotal atoms: {len(all_atoms)}\nTotal hydrogens (H): {n_hydrogens}\nHydrogens moved away from clashes: {n_h_repaired}")
             
         if self.chk_jmol.isChecked():
             try:
