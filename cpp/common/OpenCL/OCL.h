@@ -493,7 +493,7 @@ class OCLsystem{ public:
         return source;
     }
 
-    int buildProgram( const char * fname, cl_program& program_, const char* build_options = "-I. -cl-std=CL2.0" ){       // TODO : newProgram instead ?
+    int buildProgram( const char * fname, cl_program& program_, const char* build_options = "-I." ){       // TODO : newProgram instead ?
         int err=0;
         char * kernelsource = getKernelSource( fname );
         program_ = clCreateProgramWithSource(context, 1, (const char **) & kernelsource, NULL, &err);

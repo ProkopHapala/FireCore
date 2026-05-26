@@ -88,9 +88,10 @@ const char *OCL_err_code (cl_int err_in){
 void OCL_buildProgramFailure( cl_program program, cl_device_id device ){
     size_t log_size;
     clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
-    char *log = new char[log_size];
+    char *log = new char[log_size+1];
     clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
-    printf("%s\n", log);
+    log[log_size] = 0;
+    printf("OpenCL build log (%zu bytes):\n%s\n", log_size, log);
     delete [] log;
 }
 
