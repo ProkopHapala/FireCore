@@ -13,6 +13,7 @@ Outputs:
 """
 
 import os
+import sys
 import numpy as np
 
 import matplotlib
@@ -23,6 +24,10 @@ import matplotlib.pyplot as plt
 def _repo_root():
     here = os.path.dirname(os.path.abspath(__file__))
     return os.path.realpath(os.path.join(here, '..', '..'))
+
+
+# Add repository root to path for pyBall imports
+sys.path.insert(0, _repo_root())
 
 
 def _load_xyz_with_charges(xyz_path):
@@ -155,7 +160,7 @@ def main():
 
     from pyBall.OCL import Surface_utils as su
 
-    grid_path = os.path.join(ROOT, 'cpp', 'common_resources', 'NaCl_1x1_L3', 'Bspline_PLQd.npy')
+    grid_path = os.path.join(ROOT, 'cpp', 'common_resources', 'NaCl_1x1_L3', 'Bspline_PLQd-bak.npy')
     mol_path = os.path.join(ROOT, 'cpp', 'common_resources', 'xyz', 'H2O.xyz')
 
     print('=== FDBM mock-fit test (GridFF Bspline_PLQd) ===')
@@ -191,11 +196,49 @@ def main():
     print('nconf total=', len(transforms), ' (rand=', len(T_rand), ' zscan=', len(T_z), ')')
 
     # Initialize sampler ONCE (uploads grid once)
-    md, meta = su.init_gridff_sampler_md(grid_path, apos0=apos0, nSystems=1024, use_texture=False)
+    # Handle missing metadata by inferring from substrate XYZ
+    try:
+        md, meta = su.init_gridff_sampler_md(grid_path, apos0=apos0, nSystems=1024, use_texture=False)
+    except FileNotFoundError:
+        print('Metadata JSON not found, inferring from substrate XYZ...')
+        # Load substrate for metadata inference
+        sub_path = os.path.join(ROOT, 'cpp', 'common_resources', 'xyz', 'NaCl_1x1_L3.xyz')
+        sub_data = su.load_substrate_xyz_with_lvec(sub_path)
+        inferred = su.infer_grid_metadata(grid_path, sub_data)
+        # Build metadata dict in expected format using 'from_json' convention
+        grid = su.load_gridff_array(grid_path)
+        ns = inferred['ns']
+        dg = inferred['dg']
+        lvec = inferred['lvec']
+        Lx, Ly, Lz = inferred['Ls']
+        z_top = inferred['z_top']
+        # Use GridFF generation convention: centered XY, z at top atom
+        g0 = (-Lx/2, -Ly/2, z_top)
+        meta = {
+            'ns': ns,
+            'g0': g0,
+            'dg': dg,
+            'lvec': lvec.tolist() if hasattr(lvec, 'tolist') else lvec,
+            'grid_type': 'Bspline_PLQd',
+            'generation_script': 'inferred'
+        }
+        # Initialize MD with inferred metadata
+        g0_arr = np.array(g0, dtype=np.float32)
+        dg_arr = np.array(dg, dtype=np.float32)
+        ns_tuple = tuple(int(x) for x in ns)
+        print(f"Inferred metadata: ns={ns_tuple} g0={g0_arr.tolist()} dg={dg_arr.tolist()}")
+        apos0 = np.asarray(apos0, dtype=np.float32)
+        natoms = int(apos0.shape[0])
+        REQs0 = np.zeros((natoms, 4), dtype=np.float32)
+        from pyBall.OCL.MolecularDynamics import MolecularDynamics
+        md = MolecularDynamics(nloc=32, debug_build_options='-DDBG_UFF=0')
+        md.init_rigid_molecule_batch(apos0[:, :3].copy(), REQs0, nSystems=1024)
+        md.initGridFF(grid_shape=ns_tuple, bspline_data=grid, grid_p0=g0_arr, grid_step=dg_arr, use_texture=False, r_damp=0.0, alpha_morse=0.0, bKernels=True)
 
-    # Load substrate for alignment visualization
-    sub_path = os.path.join(ROOT, 'cpp', 'common_resources', 'xyz', 'NaCl_1x1_L3.xyz')
-    sub_data = su.load_substrate_xyz_with_lvec(sub_path)
+    # Load substrate for alignment visualization (if not already loaded)
+    if 'sub_data' not in locals():
+        sub_path = os.path.join(ROOT, 'cpp', 'common_resources', 'xyz', 'NaCl_1x1_L3.xyz')
+        sub_data = su.load_substrate_xyz_with_lvec(sub_path)
     sub_apos = sub_data['apos']
     sub_enames = sub_data['enames']
     lvec = sub_data['lvec']
@@ -250,10 +293,10 @@ def main():
         t = T[:, 3]
         apos_all[i] = (apos0 @ R.T) + t
 
-    # Load GridFF for diagnostic visualization
-    grid, meta_grid = su.load_bspline_gridff(grid_path)
-    g0 = np.array(meta_grid['g0'], dtype=np.float32)
-    dg = np.array(meta_grid['dg'], dtype=np.float32)
+    # Load GridFF for diagnostic visualization (reuse already-inferred metadata)
+    grid = su.load_gridff_array(grid_path)
+    g0 = np.array(meta['g0'], dtype=np.float32)
+    dg = np.array(meta['dg'], dtype=np.float32)
 
     # Get proper REQ parameters from ElementTypes.dat and convert to PLQ
     # ElementTypes.dat stores EvdW, but GridFF generation uses sqrt(EvdW) in REQ.y

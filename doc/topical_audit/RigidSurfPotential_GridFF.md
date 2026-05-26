@@ -812,3 +812,172 @@ Implementation plan and design documentation for folded atomic functions with Op
 
 ### Implementation
 - `doc/Topics/OnSurfaceAssembly/FoldedSubstratePotential_OpenCL.md` - Detailed implementation plan for folded basis projection (Pauli/vdW/Electrostatics) with separable basis functions, Ewald2D integration, and GPU kernel optimization patterns
+
+---
+
+# Windsurf-adaptive
+
+
+
+
+
+
+
+Based on my review, here's how to use the existing PPAFM and FireCore utilities with minimal code duplication:
+
+## Available Tools
+
+### 1. Cube File I/O (PPAFM)
+
+**`EXTERNAL/ppafm/ppafm/io.py:loadCUBE()`** (lines 654-693):
+```python
+FF, lvec, nDim, head = loadCUBE(fname, xyz_order=False, verbose=True)
+```
+- Returns `FF`: grid data as (nz, ny, nx) array **already converted to eV**
+- Returns `lvec`: (4,3) lattice vectors with origin in row 0, **already converted to Å** (Bohr→Å conversion built-in)
+- Returns `nDim`: [nx, ny, nz] dimensions
+- Note: The data is transposed to XSF order (z, y, x)
+
+### 2. Visualization (Surface_utils.py)
+
+**[plot_gridff_diagnostics()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/Surface_utils.py:439:0-578:20)** (lines 440-579):
+- Plots XY slices at multiple z-levels and XZ slice
+- Overlays substrate atoms with z-filtering
+- Supports molecule position overlay (`mol_apos`, `mol_enames`)
+- Uses [plot_atoms_overlay()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/Surface_utils.py:395:0-434:99) internally
+
+**[plot_alignment_summary()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/Surface_utils.py:581:0-771:20)** (lines 582-664):
+- Comprehensive alignment diagnostic with 1D profiles
+- Grid-atom correspondence verification
+
+## Recommended Approach
+
+### Step 1: Cube to GridFF Conversion
+Create a wrapper that uses [loadCUBE()](cci:1://file:///home/prokop/git/FireCore/EXTERNAL/ppafm/ppafm/io.py:653:0-692:31) and reshapes to FireCore's Bspline_PLQd format:
+
+```python
+from EXTERNAL.ppafm.ppafm import io as ppafm_io
+import numpy as np
+
+def load_cube_to_gridff(density_cube, potential_cube):
+    """Load DFT cube files and convert to FireCore GridFF format."""
+    # Load density (for Pauli proxy)
+    rho, lvec_rho, nDim_rho, _ = ppafm_io.loadCUBE(density_cube)
+    # Load electrostatic potential
+    phi, lvec_phi, nDim_phi, _ = ppafm_io.loadCUBE(potential_cube)
+    
+    # Both should have same shape after loadCUBE: (nz, ny, nx)
+    nx, ny, nz = nDim_rho  # nDim is [nx, ny, nz]
+    
+    # Create 4-channel array [nx, ny, nz, 4]
+    gridff = np.zeros((nx, ny, nz, 4), dtype=np.float32)
+    
+    # Channel 0: Pauli proxy = electron density (rho)
+    # Note: rho from loadCUBE is (nz, ny, nx), need to transpose to (nx, ny, nz)
+    gridff[:,:,:,0] = rho.transpose(2, 1, 0)
+    
+    # Channel 1: London (zero for now)
+    gridff[:,:,:,1] = 0.0
+    
+    # Channel 2: Coulomb = electrostatic potential (already in eV from loadCUBE)
+    gridff[:,:,:,2] = phi.transpose(2, 1, 0)
+    
+    # Channel 3: Hbond (zero for NaCl)
+    gridff[:,:,:,3] = 0.0
+    
+    # Grid parameters
+    g0 = lvec_rho[0]  # Origin (already in Å)
+    dg = (
+        np.linalg.norm(lvec_rho[1]) / nx,  # dx
+        np.linalg.norm(lvec_rho[2]) / ny,  # dy  
+        np.linalg.norm(lvec_rho[3]) / nz   # dz
+    )
+    
+    return gridff, g0, dg, lvec_rho
+```
+
+### Step 2: Visualization (Reuse Existing Functions)
+
+```python
+from pyBall.OCL.Surface_utils import plot_gridff_diagnostics, plot_alignment_summary
+from pyBall.OCL.Surface_utils import load_substrate_xyz_with_lvec  # or ppafm_io.loadXYZ
+
+# Load substrate atoms
+sub_apos, sub_Zs, sub_qs, _ = ppafm_io.loadXYZ('NaCl.xyz')
+sub_enames = [elements.ELEMENT_DICT[Z][1] for Z in sub_Zs]  # Convert Z to element names
+
+# Load H2O sample positions (from 1-inputs/confs/)
+mol_apos, mol_Zs, mol_qs, _ = ppafm_io.loadXYZ('H2O-O/ix0_iy0/orientxy_Na/orientz_0/z02.00/input.xyz')
+mol_enames = ['O', 'H', 'H']  # or from Zs
+
+# Plot with existing function
+plot_gridff_diagnostics(
+    grid_data=gridff,           # [nx, ny, nz, 4] from step 1
+    sub_apos=sub_apos,          # NaCl substrate positions
+    sub_enames=sub_enames,      # ['Na', 'Cl', ...]
+    lvec=lvec_rho[1:],          # (3,3) lattice vectors
+    iz_slices=[nz//4, nz//2, 3*nz//4],  # z-slices to plot
+    iy_slice=ny//2,             # y-index for XZ slice
+    save_path='dft_grid_diagnostics.png',
+    g0=g0,                      # Grid origin (from step 1)
+    dg=dg,                      # Grid spacing (from step 1)
+    z_atom_range=2.0,           # Show atoms within 2Å of top in XY plots
+    mol_apos=mol_apos,          # H2O positions to overlay
+    mol_enames=mol_enames,      # ['O', 'H', 'H']
+    channel_name='DFT_Density_Potential'
+)
+```
+
+### Step 3: Integration with test_folded_fit_nacl1x1.py
+
+The existing fitting workflow in [test_folded_fit_nacl1x1.py](cci:7://file:///home/prokop/git/FireCore/tests/tMMFF/test_folded_fit_nacl1x1.py:0:0-0:0) uses:
+1. [pack_transforms()](cci:1://file:///home/prokop/git/FireCore/tests/tMMFF/test_folded_fit_nacl1x1.py:37:0-42:28) - convert XYZ to 3×4 rigid transforms
+2. `eval_rigid_getSurfMorse_components()` - evaluate at sample points
+3. [plot_1d_lines()](cci:1://file:///home/prokop/git/FireCore/tests/tMMFF/test_folded_fit_nacl1x1.py:57:0-119:19) - plot z-scans
+
+You can adapt this by:
+- Replacing `eval_rigid_getSurfMorse_components()` with cube sampling
+- Keeping the same plotting infrastructure
+
+```python
+from tests.tMMFF.test_folded_fit_nacl1x1 import pack_transforms, plot_1d_lines
+
+# Pack H2O configurations into transforms
+transforms = pack_transforms(mol_xyz_paths)  # Reuse existing
+
+# Sample cube at atom positions (instead of getSurfMorse)
+def sample_cube_at_atoms(cube_data, transforms, atom_types):
+    """Sample cube data at atom positions given rigid transforms."""
+    # Use scipy.ndimage.map_coordinates or similar for trilinear interpolation
+    pass
+
+# Plot using existing function
+plot_1d_lines(z_vals, E_pauli, E_london, E_coulomb, E_total, 
+              z_min, z_max, z_step, y_range, out_path)
+```
+
+## Key Reuse Points
+
+| Function | File | Purpose | Reuse |
+|----------|------|---------|-------|
+| [loadCUBE()](cci:1://file:///home/prokop/git/FireCore/EXTERNAL/ppafm/ppafm/io.py:653:0-692:31) | [ppafm/io.py](cci:7://file:///home/prokop/git/FireCore/EXTERNAL/ppafm/ppafm/io.py:0:0-0:0) | Read cube files | **Direct use** - handles Bohr→Å, Hartree→eV conversion |
+| [loadXYZ()](cci:1://file:///home/prokop/git/FireCore/EXTERNAL/ppafm/ppafm/io.py:17:0-73:32) | [ppafm/io.py](cci:7://file:///home/prokop/git/FireCore/EXTERNAL/ppafm/ppafm/io.py:0:0-0:0) | Read molecule XYZ | **Direct use** - supports charges in 5th column |
+| [plot_gridff_diagnostics()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/Surface_utils.py:439:0-578:20) | [Surface_utils.py](cci:7://file:///home/prokop/git/FireCore/pyBall/OCL/Surface_utils.py:0:0-0:0) | Grid slice visualization | **Direct use** - pass DFT grid instead of Bspline |
+| [plot_alignment_summary()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/Surface_utils.py:581:0-771:20) | [Surface_utils.py](cci:7://file:///home/prokop/git/FireCore/pyBall/OCL/Surface_utils.py:0:0-0:0) | Alignment verification | **Direct use** - verify cube aligns with substrate |
+| [pack_transforms()](cci:1://file:///home/prokop/git/FireCore/tests/tMMFF/test_folded_fit_nacl1x1.py:37:0-42:28) | [test_folded_fit_nacl1x1.py](cci:7://file:///home/prokop/git/FireCore/tests/tMMFF/test_folded_fit_nacl1x1.py:0:0-0:0) | XYZ → transforms | **Direct reuse** |
+| [plot_1d_lines()](cci:1://file:///home/prokop/git/FireCore/tests/tMMFF/test_folded_fit_nacl1x1.py:57:0-119:19) | [test_folded_fit_nacl1x1.py](cci:7://file:///home/prokop/git/FireCore/tests/tMMFF/test_folded_fit_nacl1x1.py:0:0-0:0) | 1D scan plots | **Direct reuse** |
+
+## Minimal New Code Required
+
+1. **cube_to_gridff.py** (~50 lines): Wrapper to convert cube → Bspline_PLQd format
+2. **sample_cube_rigid.py** (~100 lines): Trilinear interpolation for sampling cube at atom positions (can use `scipy.ndimage.map_coordinates`)
+3. **plot_dft_cube.py** (~30 lines): Driver script calling existing [plot_gridff_diagnostics()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/Surface_utils.py:439:0-578:20)
+
+The existing [plot_gridff_diagnostics()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/Surface_utils.py:439:0-578:20) already supports:
+- XY slices at multiple z-levels
+- XZ slice at specified y-index
+- Atom overlay with z-range filtering
+- Molecule position overlay (for showing H2O sampling positions)
+- Consistent styling with substrate atoms
+
+This approach maximizes reuse of the visualization and fitting infrastructure you've already built.

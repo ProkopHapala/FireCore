@@ -1193,3 +1193,1419 @@ Added CLI options to `test_fdbm_fit_gridff_mock.py`:
 - `tests/tMMFF/test_folded_fit_nacl1x1.py` - REQ/PLQ documentation
 - `doc/Topics/OnSurfaceAssembly/GridFF_FDBM_Fitting.md` - REQ/PLQ documentation, session report
 - `doc/Topics/OnSurfaceAssembly/GridFF_atoms_alignment.md` - REQ/PLQ documentation
+
+---
+
+# USER
+
+I'm interested in fitting GridFF/FDBM using DFT references.
+read these documents to know what we already have
+@GridFF_FDBM_Fitting.md @RigidSurfPotential_GridFF.md @test_folded_fit_nacl1x1.py @Surface_utils.py 
+
+I make link to folfer with DFT data here
+/home/prokop/git/FireCore/tests/tSurf/small_mols_NaCl_New
+plese investigrate it and tell me where is what, how it is structuree, be warry there is huge number of files
+
+Now one importaint thing is we have 1x1 substrate prepared, we want to use it, but the DFT was actually computed with a large cell 
+in particular 
+/home/prokop/git/FireCore/tests/tSurf/small_mols_NaCl_New/4-elec_pot_chr_den/
+there is 
+charge_density.cube
+electrostatic_potential.cube
+NaCl.xyz
+
+We need to see how the molecules are sampled on this substrate before we start fitting. Can you do this?
+you may also review @test_gridff_alignment.py 
+
+Do not program anything yet. Revie all the relevant files and make detailed notes where it what and how to use it, 
+
+---
+
+# SWE-1.6
+
+# DFT Data Structure Analysis: small_mols_NaCl_New
+
+## Overview
+
+The dataset contains DFT interaction energies for 11 small molecules on NaCl(001) surface, with systematic sampling of positions and orientations. Total dataset: ~52k configurations per molecule-site.
+
+## Folder Structure
+
+### 0-geoms/ - Molecular Geometries
+- **Molecule XYZ files**: H2O, NH3, H2CO, HCONH2, HCOOH (neutral geometries)
+- **Oriented molecule-site files**: H2O-H, H2O-O, NH3-H, NH3-N, etc. (H-bond direction aligned to +x axis, active atom at origin)
+- **NaCl.xyz**: 32-atom 2-layer NaCl slab (11.2826 × 11.2826 × 40.0 Å)
+- **molecules.dat**: Metadata for each molecule-site (flag, atom indices for orientation)
+- **rotate.f90/sh**: Fortran script to generate oriented molecule-site geometries
+
+### 1-inputs/ - Configuration Generation
+- **assembly.f90**: Fortran program to place molecules on substrate
+- **run.sh**: Bash driver that loops over:
+  - 11 molecule-site combinations
+  - 28 xy-positions (triangular grid: ix=0..6, iy=0..ix for first half, symmetric for second)
+  - 33 z-distances (1.40-10.00 Å)
+  - 3 xy-orientations (Na, Cl, hollow)
+  - 3 z-orientations (-45°, 0°, 45°)
+- **confs/**: Generated XYZ configurations (52,272 per molecule-site = 575k total)
+
+### 2-sp/ - Single-Point Calculations
+- **confs/**: DFT input/output for each configuration (313,687 items)
+- **Scripts**: Setup and run DFT jobs (likely ASE/CP2K based on cube file format)
+
+### 3-results/ - Energy Results
+- **Organized by molecule-site**: e.g., H2O-H/, H2O-O/, NH3-N/
+- **Data files**: ixX_iyY-orientxy_XY-orientz_Z.dat (z-distance vs energy curves)
+- **Format**: 2-column text (z [Å], E [eV])
+- **Example**: ix0_iy0-orientxy_Na-orientz_0.dat for H2O-H shows dissociation curve from 1.40-10.00 Å
+- **plot.py**: Generates HBond.png comparing H2O-H, H2O-O, NH3-N on Na/Cl sites
+- **res.sh**: Extracts energies from 2-sp/ results
+
+### 4-elec_pot_chr_den/ - Substrate DFT Grids
+- **NaCl.xyz**: Large-cell substrate (same as 0-geoms but with different comment format)
+- **charge_density.cube**: 101 MB, 128×128×480 grid, electron density from DFT
+- **electrostatic_potential.cube**: 99 MB, 128×128×480 grid, electrostatic potential from DFT
+- **Grid parameters**: 
+  - Origin: (0, 0, 0) Å
+  - Spacing: (0.166570, 0.166570, 0.157477) Å
+  - Extent: 21.32 × 21.32 × 75.59 Å
+  - 32 atoms listed in cube header
+- **Other files**: ASE/CP2K outputs (gs.gpw, gs.out, POSCAR, etc.)
+
+### opt_slab/ - Substrate Optimization
+- **input.xyz**: Initial NaCl geometry
+- **opt.py**: Substrate optimization script
+
+## Key Observations
+
+### Substrate Cell Mismatch
+- **1x1 substrate available**: cpp/common_resources/xyz/NaCl_1x1_L3.xyz (used in existing GridFF tests)
+- **DFT computed with large cell**: 11.2826 × 11.2826 × 40.0 Å (same as 1x1 but with more vacuum)
+- **Cube files cover larger area**: 21.32 × 21.32 Å (2×2 unit cells in XY)
+- **Implication**: Need to either:
+  1. Fold/periodize cube data to 1x1 cell, or
+  2. Use larger substrate for fitting, or
+  3. Extract 1x1 region from cube with proper PBC handling
+
+### Configuration Sampling Strategy
+The sampling is highly systematic:
+- **XY positions**: Triangular grid covering irreducible wedge of 2D unit cell (ix=0..6, iy=0..ix)
+- **Z distances**: Dense sampling near surface (1.40-3.00 Å in 0.05-0.10 Å steps), sparse at long range
+- **XY orientations**: 3 high-symmetry sites (Na, Cl, hollow)
+- **Z orientations**: 3 tilt angles (-45°, 0°, 45°)
+
+This is ideal for fitting - provides dense coverage of binding wells and long-range asymptotes.
+
+### Energy Data Format
+Each .dat file contains:
+- 33 z-points × 3 repeats = 99 lines (duplicates for averaging?)
+- Energy values are absolute DFT energies (~ -124 eV for H2O-H)
+- Need to subtract reference (isolated molecule + slab) to get interaction energies
+
+## Reusable Components from Existing Code
+
+### Surface_utils.py Functions
+- **load_gridff_array()**: Load .npy GridFF with validation
+- **load_gridff_metadata()**: Load JSON metadata for grid parameters
+- **load_substrate_xyz_with_lvec()**: Parse XYZ with lattice vectors
+- **sample_gridff_channels_rigid()**: Sample GridFF at atom positions for many configs
+- **fdbm_build_feature_matrix()**: Build linear fitting matrix from sampled potentials
+- **fdbm_make_mock_reference()**: Generate mock reference energies (for testing)
+- **plot_gridff_diagnostics()**: Visualize grids with atom overlay
+
+### test_folded_fit_nacl1x1.py Patterns
+- **Rigid transform packing**: pack_transforms() converts XYZ to 3×4 matrices
+- **Component evaluation**: eval_rigid_getSurfMorse_components() for Pauli/London/Coulomb
+- **Linear fitting**: Uses scipy.optimize.lsq_linear with bounds
+- **1D scan visualization**: plot_1d_lines() for diagnostic curves
+- **RMSE calculation**: rmse() and rmse_masked() for validation
+
+### test_gridff_alignment.py
+- **Convention testing**: Tests multiple grid origin conventions
+- **Alignment verification**: Checks grid-atom correspondence
+- **Diagnostic plots**: XY/XZ slices with atom overlays
+
+## Critical Issue: Cube File vs 1x1 Substrate
+
+The cube files cover a 2×2 unit cell area (21.32 × 21.32 Å), but the 1x1 substrate is 11.2826 × 11.2826 Å. Options:
+
+1. **Extract 1x1 region**: Take ix=0..63, iy=0..63 from cube (assuming proper alignment)
+2. **Use 2×2 substrate**: Create NaCl_2x2_L3.xyz and use larger GridFF
+3. **Fold with PBC**: Average over 2×2 periodic images to get 1x1 effective potential
+
+Need to verify cube grid alignment with substrate lattice vectors before proceeding.
+
+## Next Steps for Fitting
+
+1. **Parse cube files**: Write cube loader (or use ASE) to get grid data and metadata
+2. **Verify alignment**: Check cube origin/spacing against NaCl lattice
+3. **Map configurations**: Load XYZ configs from 1-inputs/confs/ or regenerate using existing code
+4. **Sample potentials**: Use Surface_utils.py functions to sample cube at atom positions
+5. **Load energies**: Parse 3-results/*.dat files to get DFT interaction energies
+6. **Build feature matrix**: Use fdbm_build_feature_matrix() pattern
+7. **Fit coefficients**: Linear least squares for P_i, L_i per atom type
+
+## Data Volume Considerations
+
+- **Cube files**: 100 MB each (manageable)
+- **Configurations**: 575k XYZ files (huge - don't load all at once)
+- **Results**: 144 .dat files per molecule-site (manageable)
+- **Strategy**: Stream configurations, pre-sample potentials in batches, cache intermediate results
+
+## Summary: DFT Data Structure Analysis
+
+I've reviewed the documentation and investigated the DFT data folder structure. Here are the key findings:
+
+### Folder Organization
+
+**0-geoms/**: Molecular geometries and substrate
+- Neutral molecules (H2O, NH3, H2CO, HCONH2, HCOOH)
+- Oriented molecule-site files (H2O-H, H2O-O, etc.) with H-bond aligned to +x
+- NaCl.xyz: 32-atom 2-layer slab (11.2826 × 11.2826 × 40.0 Å)
+- molecules.dat: Orientation metadata
+
+**1-inputs/**: Configuration generation
+- assembly.f90 + run.sh generate 575k configurations
+- Systematic sampling: triangular XY grid (ix=0..6), 33 z-distances (1.40-10.00 Å), 3 XY orientations (Na/Cl/hollow), 3 Z tilts (-45°, 0°, 45°)
+
+**2-sp/**: Single-point DFT calculations (313k items)
+
+**3-results/**: Energy results
+- Organized by molecule-site (e.g., H2O-H/, H2O-O/)
+- .dat files: z-distance vs energy curves (33 points × 3 repeats)
+- Example: ix0_iy0-orientxy_Na-orientz_0.dat shows dissociation from -122 to -124 eV
+
+**4-elec_pot_chr_den/**: Substrate grids
+- charge_density.cube: 101 MB, 128×128×480 grid
+- electrostatic_potential.cube: 99 MB, 128×128×480 grid
+- Grid spacing: (0.166570, 0.166570, 0.157477) Å
+- Extent: 21.32 × 21.32 × 75.59 Å (2×2 unit cells in XY)
+
+### Critical Issue: Cell Size Mismatch
+
+The cube files cover a **2×2 unit cell area** (21.32 × 21.32 Å), but the available 1x1 substrate is 11.2826 × 11.2826 Å. Options:
+1. Extract 1x1 region from cube (ix=0..63, iy=0..63)
+2. Create 2×2 substrate (NaCl_2x2_L3.xyz)
+3. Fold with PBC to get 1x1 effective potential
+
+### Reusable Components
+
+From Surface_utils.py:
+- [load_gridff_array()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/Surface_utils.py:72:0-92:84), [load_gridff_metadata()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/Surface_utils.py:44:0-67:19) for grid I/O
+- [sample_gridff_channels_rigid()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/Surface_utils.py:129:0-152:13) for batch sampling
+- [fdbm_build_feature_matrix()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/Surface_utils.py:155:0-171:15) for linear fitting matrix
+- [fdbm_make_mock_reference()](cci:1://file:///home/prokop/git/FireCore/pyBall/OCL/Surface_utils.py:174:0-212:23) for mock data generation
+
+From test_folded_fit_nacl1x1.py:
+- [pack_transforms()](cci:1://file:///home/prokop/git/FireCore/tests/tMMFF/test_folded_fit_nacl1x1.py:37:0-42:28) for rigid transform packing
+- `eval_rigid_getSurfMorse_components()` for component evaluation
+- Linear fitting with scipy.optimize.lsq_linear
+- 1D scan visualization patterns
+
+### Next Steps
+
+1. Parse cube files (or use ASE) to get grid data
+2. Verify cube alignment with NaCl lattice
+3. Map configurations from 1-inputs/confs/ or regenerate
+4. Sample cube potentials at atom positions
+5. Load energies from 3-results/*.dat
+6. Build feature matrix and fit P_i, L_i coefficients
+
+The dataset is well-structured for fitting - dense sampling near binding wells, systematic coverage of orientations, and manageable energy file format. The main challenge is handling the 2×2 vs 1×1 cell mismatch.
+
+---
+
+# USER
+
+I think you are wrong. The CUB files cover the provided unit cell 11.2826 × 11.2826 A, maybe wha you read (  21.32 × 21.32 × 75.59 ) is in bohr radius rather than Angstroem? cube files are in bohr I think ?
+
+this is what I get from VESTA when loading electrostatic_potential.cube
+
+```
+OpenGL version: 4.6.0 NVIDIA 550.120
+Video configuration: NVIDIA GeForce RTX 3090/PCIe/SSE2
+Maximum supported width and height of the viewport: 32768 x 32768
+OpenGL depth buffer bit: 24
+
+
+/home/prokop/git/FireCore/tests/tSurf/small_mols_NaCl_New/4-elec_pot_chr_den/electrostatic_potential.cube
+====================================================================================
+Title               Cube file from ASE, written on Mon May 18 15:03:44 2026
+Dimensions           128 128 480
+
+Lattice parameters
+
+   a        b        c       alpha    beta     gamma
+11.28257 11.28257 39.99995  90.0000  90.0000  90.0000
+
+Unit-cell volume = 5091.846058 Å^3
+
+Total number of polygons and unique vertices on slices;
+      (1 0 0):      4136 (     2926),      4136 (     2926)
+      (0 1 0):      4136 (     2926),      4136 (     2926)
+      (0 0 1):         0 (        0),         0 (        0)
+====================================================================================
+
+====================================================================================
+Title               Cube file from ASE, written on Mon May 18 15:03:44 2026
+
+Lattice type        P
+Space group name    P 1
+Space group number  1
+Setting number      1
+
+Lattice parameters
+
+   a        b        c       alpha    beta     gamma
+ 1.00000  1.00000  1.00000  90.0000  90.0000  90.0000
+
+Unit-cell volume = 1.000000 Å^3
+
+Structure parameters
+
+                       x          y          z          Occ.     U    Site      Sym.
+   1 Na  Na1         0.00000    0.00000   10.00000    1.000    0.000    1          -
+   2 Cl  Cl1         2.82065    0.00000   10.00000    1.000    0.000    1          -
+   3 Na  Na2         5.64130    0.00000   10.00000    1.000    0.000    1          -
+   4 Cl  Cl2         8.46195    0.00000   10.00000    1.000    0.000    1          -
+   5 Cl  Cl3         0.00000    2.82065   10.00000    1.000    0.000    1          -
+   6 Na  Na3         2.82065    2.82065   10.00000    1.000    0.000    1          -
+   7 Cl  Cl4         5.64130    2.82065   10.00000    1.000    0.000    1          -
+   8 Na  Na4         8.46195    2.82065   10.00000    1.000    0.000    1          -
+   9 Na  Na5         0.00000    5.64130   10.00000    1.000    0.000    1          -
+  10 Cl  Cl5         2.82065    5.64130   10.00000    1.000    0.000    1          -
+  11 Na  Na6         5.64130    5.64130   10.00000    1.000    0.000    1          -
+  12 Cl  Cl6         8.46195    5.64130   10.00000    1.000    0.000    1          -
+  13 Cl  Cl7         0.00000    8.46195   10.00000    1.000    0.000    1          -
+  14 Na  Na7         2.82065    8.46195   10.00000    1.000    0.000    1          -
+  15 Cl  Cl8         5.64130    8.46195   10.00000    1.000    0.000    1          -
+  16 Na  Na8         8.46195    8.46195   10.00000    1.000    0.000    1          -
+  17 Cl  Cl9         0.00000    0.00000   12.82065    1.000    0.000    1          -
+  18 Na  Na9         2.82065    0.00000   12.82065    1.000    0.000    1          -
+  19 Cl  Cl10        5.64130    0.00000   12.82065    1.000    0.000    1          -
+  20 Na  Na10        8.46195    0.00000   12.82065    1.000    0.000    1          -
+  21 Na  Na11        0.00000    2.82065   12.82065    1.000    0.000    1          -
+  22 Cl  Cl11        2.82065    2.82065   12.82065    1.000    0.000    1          -
+  23 Na  Na12        5.64130    2.82065   12.82065    1.000    0.000    1          -
+  24 Cl  Cl12        8.46195    2.82065   12.82065    1.000    0.000    1          -
+  25 Cl  Cl13        0.00000    5.64130   12.82065    1.000    0.000    1          -
+  26 Na  Na13        2.82065    5.64130   12.82065    1.000    0.000    1          -
+  27 Cl  Cl14        5.64130    5.64130   12.82065    1.000    0.000    1          -
+  28 Na  Na14        8.46195    5.64130   12.82065    1.000    0.000    1          -
+  29 Na  Na15        0.00000    8.46195   12.82065    1.000    0.000    1          -
+  30 Cl  Cl15        2.82065    8.46195   12.82065    1.000    0.000    1          -
+  31 Na  Na16        5.64130    8.46195   12.82065    1.000    0.000    1          -
+  32 Cl  Cl16        8.46195    8.46195   12.82065    1.000    0.000    1          -
+====================================================================================
+
+Number of polygons and unique vertices on isosurface = 84864 (43588)
+32 atoms, 64 bonds, 16 polyhedra; CPU time = 80 ms
+
+```
+
+---
+
+# SWE-1.6
+
+You're absolutely right. The cube file spacing values are in Bohr, not Angstrom. Let me recalculate:
+
+- Grid spacing in cube header: (0.166570, 0.166570, 0.157477) Bohr
+- Convert to Angstrom: 0.166570 × 0.529177 = 0.0881 Å, 0.157477 × 0.529177 = 0.0833 Å
+- Grid extent: 128 × 0.0881 = 11.28 Å, 480 × 0.0833 = 40.0 Å
+
+This matches the 1x1 substrate cell exactly (11.2826 × 11.2826 × 40.0 Å). **No cell mismatch issue** - the cube files are already in the correct 1x1 unit cell.
+
+## Corrected Analysis
+
+### 4-elec_pot_chr_den/ - Substrate Grids (Corrected)
+- **charge_density.cube**: 101 MB, 128×128×480 grid
+- **electrostatic_potential.cube**: 99 MB, 128×128×480 grid
+- **Grid spacing**: (0.166570, 0.166570, 0.157477) Bohr = (0.0881, 0.0881, 0.0833) Å
+- **Extent**: 11.28 × 11.28 × 40.0 Å (matches 1x1 substrate exactly)
+- **Format**: Cube files use Bohr for grid spacing (standard convention)
+
+### Implications for Fitting
+
+This simplifies the workflow significantly:
+1. **No cell conversion needed** - cube grids align with 1x1 substrate
+2. **Direct sampling** - can sample cube potentials at atom positions using trilinear interpolation
+3. **Existing GridFF infrastructure** - can reuse 1x1 substrate from cpp/common_resources/xyz/NaCl_1x1_L3.xyz
+
+### Updated Next Steps
+
+1. Parse cube files (convert Bohr spacing to Angstrom for internal use)
+2. Verify cube origin alignment with substrate (should be at (0,0,0) based on header)
+3. Load configurations from 1-inputs/confs/ or regenerate using assembly.f90
+4. Sample cube potentials at atom positions (need trilinear interpolation for cube data)
+5. Load energies from 3-results/*.dat
+6. Build feature matrix and fit P_i, L_i coefficients
+
+The cube file format uses Bohr, but VESTA and other tools handle the conversion automatically. For the fitting code, we'll need to convert the grid spacing to Angstrom when setting up the interpolation.
+
+---
+
+# USER
+
+OK, so can we use @test_folded_fit_nacl1x1.py or @test_gridff_alignment.py with minimal changes to visualize these potential, and later eventually to plot our sampling data for example for H2O in that potential?
+
+/home/prokop/git/FireCore/tests/tSurf/small_mols_NaCl_New/3-results/H2O-H/
+/home/prokop/git/FireCore/tests/tSurf/small_mols_NaCl_New/3-results/H2O-O/
+
+before we do that, we should perhaps convert the data into .npy or .npz so we can work with that easily.
+
+look we have this file
+/home/prokop/git/FireCore/cpp/common_resources/NaCl_1x1_L3/Bspline_PLQd.npy
+which contains 4 components [nx,ny,nz,4] or maybe [nz,ny,nx,4] not sure which ordering chek it) 
+
+the 4 compoennts are. {Pauli,London,Electrostatics,HydrogenBond}, HydrogenBond is zero for now. London we can compute by C6/r^6 resp by the atractive part of getSurfMorse in @Surface.cl 
+what is key i Pauli and Electrostatics. Electrostatics is directly  electrostatic_potential.cube which should be direcly mulitplied by atomic charge Q_i to get interaction energy with proper atom (just in proper units, we work in eV cube file may be in Hartree? But not sure perhaps not)
+The pauli is more nuanced. We can take the density from charge_density.cube as some estimate of Pauli repulsion. Just maybe it should be rised to some powere betaPauli, and multiplied by the coefficient for atom P_i, whre i is index of atom of molecule (absorbate), but lets keep betaPauli=1 for the moment.
+
+E_pauli = sum_i[ P_i rho(r_i)^beta ] 
+
+this can be rigorously derived from original formula of FDBM 
+
+E_pauli(R) =  integral [  (rho_substrater) * rho_molecule(r+R)) ^beta ]
+by cosidering  that molecule is compsed of atom i 
+rho_molecule(r) = sum_i rho_i(r)
+and that these atomic densityes are basically exponential  rho_i(r) = A_i * exp( b|r-r_i|)
+now the procuct of exponential function can be extracted R_i which is effective radius of an atom i , so P_i = A_i * exp(b*R_i)
+this derivation is just for mathermaticall baground, the point is to justify we do not need to do convolution of the exponential density of each atom, as this convolution is basically encoded in the scaling coeficient P_i, so we only need to fit P_i. Is that clear? Plese write this more mathematically reigorously.
+
+The final point is 
+1) we build  4 components [nx,ny,nz,4] Bspline_PLQd.npy but putting electron dnesity in slot 0 (Pauli) and electrostatic potential in slot 3, slot 2 (Hbond) is zero, and slot 2 (Lndon) is less importaint but can be computed from  C6/r^6 or using getSurfMorse kernel. 
+
+2) then we will fit coeffecits P_i asuming constant Q_i given by resp charges. Where can we find those reps charges? I will progide you better reps charge once I have them but provisionally lets just use these -0.4e for O and +0.2e for H @H2O.xyz 
+
+so this would be like gradial fitting process. 
+1) step one we fully focus on P_i for the types, currently we have sjut H2O and types are simply H and O, the two hydrogens in H2O molecule must have same P
+2) then we can fitt also charges Q_i 
+3) then we can compute the London part by getSurfMorse and fit L_i coefs
+
+It would be also good to see if Pauli computed by getSurfMorse is roughly similar to Pauli computed from electron density. MAybe good would be to plot it in log-scale to see the decay fastro  as linear slope. This is something we did in AFM fitting of FDBM, here we generalize it form molecule composed of more atom in AFM we assume single proble particle (single atom)
+@AFM_FDBM_fitting.md 
+
+These are scattered ideas, please review the referenced files and write this more systematically, rigrously, and in more organized manner
+
+---
+
+# SWE-1.6
+
+# GridFF/FDBM Fitting with DFT References: Systematic Plan
+
+## Overview
+
+Fit GridFF/FDBM parameters using DFT reference data for small molecules on NaCl(001). The approach uses DFT-computed electron density and electrostatic potential as substrate grids, then fits atom-type coefficients (P_i for Pauli, Q_i for electrostatics, L_i for London) to match DFT interaction energies.
+
+## Mathematical Foundation
+
+### FDBM Pauli Repulsion from Density Convolution
+
+The Full Density Based Model (FDBM) expresses Pauli repulsion as a convolution of substrate and adsorbate electron densities:
+
+```
+E_pauli(R) = A_pauli * ∫ [ρ_substrate(r) * ρ_adsorbate(r + R)]^β dr
+```
+
+where:
+- ρ_substrate(r) is the substrate electron density
+- ρ_adsorbate(r) is the adsorbate electron density
+- R is the adsorbate position relative to substrate
+- β is a power law exponent (typically β ≈ 1)
+- A_pauli is a global scaling coefficient
+
+### Simplification to Atom-Type Coefficients
+
+Assume the adsorbate is composed of atoms i with atomic densities:
+
+```
+ρ_adsorbate(r) = Σ_i ρ_i(r - r_i)
+```
+
+where ρ_i(r) is the electron density of atom i centered at r_i. For exponential atomic densities:
+
+```
+ρ_i(r) = A_i * exp(-b_i * |r - r_i|)
+```
+
+The product of two exponential functions is also exponential:
+
+```
+ρ_substrate(r) * ρ_i(r - r_i) = ρ_substrate(r) * A_i * exp(-b_i * |r - r_i|)
+```
+
+The convolution integral can be separated into a substrate-dependent part and an atom-dependent part. Define the substrate sampling function:
+
+```
+S_i(R) = ∫ ρ_substrate(r) * exp(-b_i * |r - (R + r_i)|) dr
+```
+
+Then the Pauli energy becomes:
+
+```
+E_pauli(R) = A_pauli * Σ_i [A_i * S_i(R)]^β
+```
+
+For β = 1 (linear case), this simplifies to:
+
+```
+E_pauli(R) = Σ_i P_i * ρ_substrate(R + r_i)
+```
+
+where P_i = A_pauli * A_i is an atom-type coefficient. The key insight is that the convolution of the exponential atomic density with the substrate density is encoded in the coefficient P_i, so we only need to sample the substrate density at atom positions and fit P_i.
+
+For general β, we have:
+
+```
+E_pauli(R) = Σ_i P_i * [ρ_substrate(R + r_i)]^β
+```
+
+where P_i = A_pauli * A_i^β.
+
+### Electrostatic Interaction
+
+The electrostatic interaction is linear in charge:
+
+```
+E_es(R) = Σ_i Q_i * φ_substrate(R + r_i)
+```
+
+where:
+- Q_i is the partial charge of atom i
+- φ_substrate(r) is the substrate electrostatic potential
+
+### London Dispersion
+
+The London (van der Waals) interaction is typically modeled as:
+
+```
+E_london(R) = Σ_i L_i * V_london(R + r_i)
+```
+
+where V_london can be computed from C6/r^6 or extracted from the attractive part of a Morse potential.
+
+## Data Structure
+
+### DFT Reference Data
+
+**Location:** `/home/prokop/git/FireCore/tests/tSurf/small_mols_NaCl_New/`
+
+**Structure:**
+- `0-geoms/`: Molecular geometries (H2O, NH3, H2CO, HCONH2, HCOOH) and substrate (NaCl.xyz)
+- `1-inputs/confs/`: Generated configurations (575k total, 52k per molecule-site)
+- `3-results/`: DFT energies organized as `ixX_iyY-orientxy_XY-orientz_Z.dat` files
+  - Format: 2-column text (z [Å], E [eV])
+  - Each file contains z-scan for specific (ix, iy, orientxy, orientz)
+- `4-elec_pot_chr_den/`: Substrate grids
+  - `charge_density.cube`: 128×128×480 grid, electron density
+  - `electrostatic_potential.cube`: 128×128×480 grid, electrostatic potential
+  - Grid spacing: (0.166570, 0.166570, 0.157477) Bohr = (0.0881, 0.0881, 0.0833) Å
+  - Extent: 11.28 × 11.28 × 40.0 Å (matches 1x1 NaCl substrate)
+
+### Existing GridFF Format
+
+**Location:** `/home/prokop/git/FireCore/cpp/common_resources/NaCl_1x1_L3/Bspline_PLQd.npy`
+
+**Format:** [nx, ny, nz, 4] array with 4 channels:
+- Channel 0: Pauli repulsion
+- Channel 1: London dispersion
+- Channel 2: Coulomb electrostatics
+- Channel 3: Hydrogen bond (zero for NaCl)
+
+## Implementation Plan
+
+### Phase 1: Data Conversion and Visualization
+
+**Goal:** Convert cube files to GridFF-compatible format and verify alignment.
+
+**Steps:**
+
+1. **Cube file parser**
+   - Write function to read cube files (header + volumetric data)
+   - Convert Bohr spacing to Angstrom
+   - Extract grid metadata (origin, spacing, dimensions)
+   - Output: numpy array [nz, ny, nx] + metadata dict
+
+2. **GridFF format conversion**
+   - Create 4-channel array [nx, ny, nz, 4]
+   - Channel 0 (Pauli): electron density from charge_density.cube
+   - Channel 1 (London): initialize to zero (compute later)
+   - Channel 2 (Coulomb): electrostatic potential from electrostatic_potential.cube
+   - Channel 3 (Hbond): zero
+   - Save as .npy with metadata JSON
+
+3. **Alignment verification**
+   - Use `test_gridff_alignment.py` pattern
+   - Load NaCl substrate from `0-geoms/NaCl.xyz`
+   - Visualize grid slices with atom overlay
+   - Verify cube origin aligns with substrate atoms
+   - Check grid spacing matches lattice vectors
+
+4. **Visualization tools**
+   - Adapt `test_folded_fit_nacl1x1.py` plotting functions
+   - Plot XY, XZ, YZ slices of density and potential
+   - Overlay substrate atoms for visual verification
+   - Compare with existing Bspline_PLQd.npy for reference
+
+### Phase 2: Pauli Coefficient Fitting (β = 1)
+
+**Goal:** Fit P_i coefficients for H and O atom types using density-based Pauli.
+
+**Assumptions:**
+- β_pauli = 1 (linear in density)
+- Fixed charges: Q_O = -0.4e, Q_H = +0.2e (from H2O.xyz)
+- London term ignored initially
+- Hydrogen bond term zero
+
+**Steps:**
+
+1. **Load DFT reference data**
+   - Parse `3-results/H2O-H/*.dat` and `3-results/H2O-O/*.dat`
+   - Extract z vs E curves for each configuration
+   - Convert to interaction energy: E_int = E_total - E_slab - E_molecule
+   - Need reference energies for isolated slab and molecule
+
+2. **Load configurations**
+   - Load XYZ files from `1-inputs/confs/` or regenerate using assembly.f90
+   - Extract atom positions and types
+   - Apply rigid transforms (rotation, translation) as needed
+
+3. **Sample substrate potentials**
+   - Use `Surface_utils.py` functions:
+     - `load_gridff_array()` to load converted cube data
+     - `sample_gridff_channels_rigid()` to sample at atom positions
+   - For each configuration:
+     - Sample electron density at each atom position
+     - Sample electrostatic potential at each atom position
+   - Output: per-atom density and potential values
+
+4. **Build feature matrix**
+   - Use `fdbm_build_feature_matrix()` pattern
+   - For each configuration c and atom i:
+     - Feature_i = ρ(r_i) (density)
+     - Target = E_int(c)
+   - Linear model: E_int = Σ_i P_i * ρ(r_i) + Σ_i Q_i * φ(r_i)
+   - Since Q_i fixed, electrostatic term is known baseline
+   - Subtract electrostatic contribution: E_pauli_ref = E_int - Σ_i Q_i * φ(r_i)
+
+5. **Linear least squares fit**
+   - Solve for P_H and P_O (2 parameters for H2O)
+   - Use scipy.optimize.lsq_linear with bounds (P_i > 0)
+   - Validate with RMSE and visual comparison
+
+6. **Validation**
+   - Plot fitted vs DFT curves for representative configurations
+   - Check consistency across different sites (Na, Cl, hollow)
+   - Verify P_H and P_O are physically reasonable
+
+### Phase 3: Charge Fitting
+
+**Goal:** Fit Q_i coefficients (RESP charges) with P_i fixed from Phase 2.
+
+**Steps:**
+
+1. **Linear model with variable charges**
+   - E_int = Σ_i P_i * ρ(r_i) + Σ_i Q_i * φ(r_i)
+   - P_i fixed from Phase 2
+   - Fit Q_H and Q_O (2 parameters)
+
+2. **Constraints**
+   - Charge neutrality: Σ_i Q_i = 0 (for H2O: 2*Q_H + Q_O = 0)
+   - Use constrained least squares
+
+3. **Validation**
+   - Compare fitted charges with RESP reference
+   - Check physical reasonableness
+
+### Phase 4: London Term and L_i Fitting
+
+**Goal:** Compute London potential and fit L_i coefficients.
+
+**Options for London potential:**
+
+1. **C6/r^6 model**
+   - Compute pairwise C6/r^6 between adsorbate and substrate atoms
+   - Sum over substrate atoms with PBC
+   - Fast but approximate
+
+2. **getSurfMorse attractive part**
+   - Use `getMorsePLQH()` from Surface.cl
+   - Extract London component: EL = -2.0*Ee*PLQH.y
+   - More accurate but requires GridFF-style preprocessing
+
+**Steps:**
+
+1. **Compute London potential grid**
+   - Choose method (C6/r^6 or getSurfMorse)
+   - Generate grid [nx, ny, nz] for London
+   - Add to channel 1 of GridFF array
+
+2. **Sample London at atom positions**
+   - Use same sampling pipeline as Phase 2
+   - Extract V_london(r_i) for each atom
+
+3. **Fit L_i coefficients**
+   - Linear model: E_int = Σ_i P_i * ρ(r_i) + Σ_i Q_i * φ(r_i) + Σ_i L_i * V_london(r_i)
+   - P_i, Q_i fixed from Phases 2-3
+   - Fit L_H and L_O
+
+4. **Validation**
+   - Check improvement in RMSE
+   - Verify L_i physically reasonable
+
+### Phase 5: Pauli Power Law (β ≠ 1)
+
+**Goal:** Test β_pauli ≠ 1 for better fit, following AFM FDBM methodology.
+
+**Mathematical background:**
+- From AFM fitting, optimal β ≈ 0.8-0.9 for DFTB+ basis sets
+- β < 1 softens the density decay to match physical force gradient
+- Fit via nonlinear least squares: E_pauli = A_pauli * overlap^β
+
+**Steps:**
+
+1. **Nonlinear fit**
+   - Model: E_pauli_ref = Σ_i P_i * [ρ(r_i)]^β
+   - Fit P_H, P_O, and β simultaneously
+   - Use scipy.optimize.curve_fit with log-linear initialization
+
+2. **Compare β=1 vs β≠1**
+   - RMSE comparison
+   - Visual comparison of decay curves (log-scale plot)
+   - Check if β improves fit significantly
+
+3. **Log-scale decay analysis**
+   - Plot ln(E_pauli) vs ln(ρ) to check linearity
+   - Slope should equal β if power law holds
+   - Compare with AFM results (β ≈ 0.85 for mio-1-1)
+
+### Phase 6: Comparison with getSurfMorse Pauli
+
+**Goal:** Compare density-based Pauli with getSurfMorse Pauli for validation.
+
+**Steps:**
+
+1. **Compute getSurfMorse Pauli grid**
+   - Use `getMorsePLQH()` from Surface.cl
+   - Extract Pauli component: EP = Ee*e*PLQH.x
+   - Generate grid for NaCl substrate
+
+2. **Compare decay profiles**
+   - Extract z-column at representative atom positions
+   - Plot both Pauli profiles on log scale
+   - Compare decay rates (slope in log-log plot)
+   - Check if density-based Pauli captures similar physics
+
+3. **Fit both to DFT**
+   - Fit P_i using getSurfMorse Pauli
+   - Compare fitted coefficients and RMSE
+   - Determine which method gives better fit
+
+## Reusable Components
+
+### From Surface_utils.py
+
+- `load_gridff_array()`: Load .npy GridFF with validation
+- `load_gridff_metadata()`: Load JSON metadata
+- `load_substrate_xyz_with_lvec()`: Parse XYZ with lattice vectors
+- `sample_gridff_channels_rigid()`: Sample GridFF at atom positions
+- `fdbm_build_feature_matrix()`: Build linear fitting matrix
+- `plot_gridff_diagnostics()`: Visualize grids with atom overlay
+
+### From test_folded_fit_nacl1x1.py
+
+- `pack_transforms()`: Convert XYZ to 3×4 rigid transforms
+- `eval_rigid_getSurfMorse_components()`: Evaluate Pauli/London/Coulomb
+- `plot_1d_lines()`: 1D scan visualization
+- `rmse()`, `rmse_masked()`: Validation metrics
+
+### From test_gridff_alignment.py
+
+- `run_alignment_verification()`: Grid-atom alignment testing
+- Visualization patterns for grid slices
+
+## Key Technical Considerations
+
+### Unit Conversions
+
+- Cube files: spacing in Bohr, convert to Angstrom (1 Bohr = 0.529177 Å)
+- Electrostatic potential: may be in Hartree, convert to eV (1 Hartree = 27.2114 eV)
+- Charges: in elementary charge units
+- Energies: DFT in eV, ensure consistency
+
+### Grid Alignment
+
+- Cube origin at (0, 0, 0) in Bohr
+- Substrate atoms in Angstrom
+- Need to verify alignment before sampling
+- Use visual verification with atom overlay
+
+### PBC Handling
+
+- Cube files cover 1x1 unit cell (11.28 × 11.28 Å)
+- Configurations may span multiple unit cells
+- Apply PBC when sampling: use fractional coordinates modulo 1
+
+### Data Volume
+
+- 575k configurations total
+- Don't load all at once
+- Stream in batches, cache intermediate results
+- Use efficient numpy operations
+
+## Output Structure
+
+```
+fit_dft_gridff/
+├── cube_to_gridff.py          # Cube to .npy conversion
+├── verify_alignment.py        # Grid-atom alignment verification
+├── load_dft_results.py        # Parse 3-results/*.dat files
+├── sample_configs.py          # Sample potentials at atom positions
+├── fit_pauli_beta1.py         # Phase 2: P_i fitting (β=1)
+├── fit_charges.py             # Phase 3: Q_i fitting
+├── compute_london.py          # Phase 4: London potential computation
+├── fit_london.py              # Phase 4: L_i fitting
+├── fit_pauli_beta.py          # Phase 5: β fitting
+├── compare_pauli_methods.py   # Phase 6: Density vs getSurfMorse
+├── data/
+│   ├── NaCl_density.npy       # Converted density grid
+│   ├── NaCl_potential.npy     # Converted potential grid
+│   ├── NaCl_gridff_4ch.npy    # 4-channel GridFF array
+│   └── metadata.json          # Grid metadata
+├── results/
+│   ├── phase2_pauli_beta1/    # P_i fit results
+│   ├── phase3_charges/        # Q_i fit results
+│   ├── phase4_london/         # L_i fit results
+│   ├── phase5_beta/           # β fit results
+│   └── phase6_comparison/     # Pauli method comparison
+└── plots/
+    ├── alignment/             # Alignment verification plots
+    ├── phase2/                # P_i fit plots
+    ├── phase3/                # Q_i fit plots
+    ├── phase4/                # L_i fit plots
+    ├── phase5/                # β fit plots
+    └── phase6/                # Comparison plots
+```
+
+## References
+
+- GridFF_FDBM_Fitting.md: Theoretical framework
+- RigidSurfPotential_GridFF.md: GridFF infrastructure overview
+- AFM_FDBM_fitting.md: AFM single-atom fitting methodology (β fitting)
+- Surface.cl: getSurfMorse implementation
+- Surface_utils.py: GridFF I/O and sampling utilities
+- test_folded_fit_nacl1x1.py: Fitting example
+- test_gridff_alignment.py: Alignment verification
+
+---
+
+# Session Report: DFT Cube File GridFF Generation and Plotting Refinement
+
+## Summary
+
+This session focused on refining the GridFF generation process to use DFT cube files (charge_density.cube and electrostatic_potential.cube) instead of GPU-generated Morse/Ewald potentials. The goal was to ensure correct unit conversions, axis ordering, and physically meaningful potentials for FDBM fitting.
+
+## Key Changes
+
+### 1. Cube File Loading (`tests/tMMFF/gen_gridff_nacl_gpu.py`)
+
+**Switched from GPU to DFT cube files:**
+- Pauli channel: loaded from `charge_density.cube` (converted e/Bohr³ → e/Å³)
+- Coulomb channel: loaded from `electrostatic_potential.cube` (no Hartree→eV conversion - already in eV/V)
+- London channel: set to zeros (not used in DFT-based approach)
+
+**Unit conversions:**
+- Grid spacing: Bohr → Angstrom (multiply by 0.529177)
+- Density: e/Bohr³ → e/Å³ (divide by bohr²ang³)
+- Potential: No conversion (cube values already in Volts/eV, NOT Hartree)
+
+**V0 correction:**
+- Subtract top-slice average: `V0 = phi[:,:,-1].mean()`
+- Removes arbitrary constant from FFT Poisson solver
+- Ensures potential decays to zero in vacuum
+
+**Sign inversion:**
+- DFT Hartree potential is for electrons (opposite sign to physical electrostatic)
+- Invert sign: `phi = -phi`
+- After correction: Na⁺ has positive potential, Cl⁻ has negative potential (physically correct)
+
+**Grid origin shift:**
+- Shift `g0[2]` by subtracting max substrate atom z
+- Aligns z=0 with top substrate atom
+- Enables intuitive plotting: z=0 is surface, z>0 is vacuum
+
+### 2. Plotting Improvements (`pyBall/OCL/Surface_utils.py`)
+
+**New parameters in `plot_alignment_summary`:**
+- `plq_coeffs2`: Optional second set of (P, L, Q) coefficients for plotting both H and O total potentials in Z-profiles
+- `vmin_vmax_xz`: Optional tuple (vmin, vmax) for manual XZ slice color scale limits
+
+**XZ slice positions:**
+- First slice: at center Y (iy_center)
+- Second slice: at iy=32 (1/4 of cell size, ~2.82 Å) instead of iy=0
+
+**Z-profile improvements:**
+- Above Cl⁻: ix=0, iy=0 (Cl at origin)
+- Above Na⁺: ix=32, iy=0 (Na at 2.82 Å along x)
+- Both Z-profiles show H-Total (black) and O-Total (magenta) curves
+- Enables visualization of differential interaction for different atom types
+
+**Aspect ratio:**
+- Changed from 'auto' to 'equal' for XZ plots
+- Ensures 1 Å in z equals 1 Å in x
+
+**Plot range:**
+- XZ plots now display from z=0 (surface) up to 20 Å
+- vmin/vmax still computed from z>2.0 Å only (vacuum region)
+- Avoids huge substrate bulk values in color scale
+
+**Color scale:**
+- XY slice: symmetric range from single slice
+- XZ slice: symmetric range from data above z=2.0 Å, or manual via vmin_vmax_xz
+
+## Physics Validation
+
+**Electrostatic potential after corrections:**
+- Range: [-0.8, 330.5] eV (after V0 correction and sign inversion)
+- At z=2 Å above surface: [-1.3, 0.8] eV (reasonable vacuum values)
+- Na⁺: positive potential (repels H⁺)
+- Cl⁻: negative potential (attracts H⁺)
+
+**Total potential for H2O:**
+- H (Q=+0.4238 e): repelled by Na⁺ (+0.32 eV), attracted to Cl⁻ (-0.54 eV)
+- O (Q=-0.8476 e): attracted to Na⁺, repelled by Cl⁻
+- Physics is now correct
+
+## Files Modified
+
+1. **`tests/tMMFF/gen_gridff_nacl_gpu.py`**
+   - Added `_load_cube()` function for manual cube file parsing
+   - Removed GPU Morse/Ewald generation path
+   - Added V0 correction and sign inversion
+   - Added grid origin shift for z=0 at surface
+   - Updated to pass `plq_coeffs2` and `vmin_vmax_xz` to plotting
+
+2. **`pyBall/OCL/Surface_utils.py`**
+   - Added `plq_coeffs2` parameter to `plot_alignment_summary()`
+   - Added `vmin_vmax_xz` parameter for manual XZ color scale
+   - Changed second XZ slice from iy=0 to iy=32 (1/4 cell)
+   - Changed Z-profiles to show above Cl⁻ and above Na⁺
+   - Added both H-Total and O-Total curves in Z-profiles
+   - Changed XZ aspect ratio to 'equal'
+   - Changed XZ plot range to start from z=0
+
+## Output Files
+
+**GridFF:**
+- `/home/prokop/git/FireCore/tests/tSurf/small_mols_NaCl_New/Bspline_PLQd.npy`
+- `/home/prokop/git/FireCore/tests/tSurf/small_mols_NaCl_New/Bspline_PLQd_meta.json`
+
+**Diagnostic plots:**
+- `/home/prokop/git/FireCore/tests/tMMFF/out_fdbm_dft_gridff/total_potential_H_atom.png`
+- `/home/prokop/git/FireCore/tests/tMMFF/out_fdbm_dft_gridff/total_potential_O_atom.png`
+
+## Workflow
+
+To generate GridFF from DFT cube files and plot diagnostics:
+
+```bash
+python tests/tMMFF/gen_gridff_nacl_gpu.py
+```
+
+This script:
+1. Loads charge_density.cube and electrostatic_potential.cube
+2. Applies unit conversions, V0 correction, and sign inversion
+3. Shifts grid origin so z=0 at top substrate atom
+4. Generates GridFF array (nx, ny, nz, 4) with Pauli, London, Coulomb channels
+5. Saves GridFF and metadata
+6. Generates diagnostic plots with H and O PLQ coefficients
+
+## Coefficient Estimation vs Fitting
+
+**Current diagnostic coefficients:**
+The P, L coefficients used in the diagnostic plots are **estimated from fixed atom parameters**, not fitted from DFT data:
+
+```python
+# Source data
+- ElementTypes.dat: RvdW, EvdW per element
+- H2O.xyz: RESP charges (O=-0.8476 e, H=+0.4238 e)
+
+# PLQ conversion (alpha=1.8)
+R = element_types['H'].RvdW
+E = sqrt(element_types['H'].EvdW)  # Critical: sqrt convention
+Q = RESP charge
+
+e = exp(alpha * R)
+cL = e * E
+cP = e * cL = e^2 * E
+```
+
+**Resulting diagnostic coefficients:**
+- H: P=7.877, L=0.587, Q=+0.4238
+- O: P=27.778, L=1.190, Q=-0.8476
+
+**Important:**
+These coefficients are for **visualization and verification only**. They demonstrate that the GridFF data is physically reasonable (correct signs, reasonable magnitudes, expected H⁺/O⁻ behavior).
+
+**For actual FDBM fitting:**
+The P and L coefficients must be **refitted from DFT reference energies** using the linear least squares framework:
+- Sample GridFF channels at atom positions for all DFT configurations
+- Build feature matrix A with Pauli and London contributions per atom type
+- Solve A * c = b where b = E_DFT - E_Coulomb (residual after subtracting fixed Coulomb)
+- Fit P_t, L_t for each atom type t (H, O, etc.)
+
+The diagnostic coefficients provide a reasonable starting point, but the fitted values will differ based on the actual DFT interaction energies.
+
+## Next Steps
+
+The GridFF generated from DFT cube files is now ready for FDBM fitting. The diagnostic plots show physically meaningful potentials with correct signs and reasonable magnitudes in the vacuum region. The next step is to:
+1. Assemble DFT reference data (configurations + energies)
+2. Sample GridFF channels at atom positions for all configurations
+3. Build feature matrix and fit P, L coefficients using linear least squares
+
+---
+
+# DFT Reference Data Structure Analysis
+
+## Directory Organization
+
+### Geometries (`1-inputs/confs/`)
+```
+confs/{molecule}/ix{ix}_iy{iy}/orientxy_{site}/orientz_{angle}/z{distance}/input.xyz
+```
+
+**Molecules:** H2O-H, H2O-O, H2CO-O, HCONH2-H1, HCONH2-H2, HCONH2-O, HCOOH-H, HCOOH-O1, HCOOH-O2, NH3-H, NH3-N
+
+**Sampling parameters:**
+- `ix, iy`: Indices for irreducible wedge of NaCl substrate (triangular sampling)
+- `orientxy`: Surface site orientation (Na, Cl, hollow)
+- `orientz`: Tilt angle (-45, 0, 45 degrees)
+- `z{distance}`: Height above surface (1.40 to 10.00 Å, 33 values)
+
+**XYZ file format:**
+- First 32 atoms: NaCl substrate (fixed, always the same)
+- Last 3 atoms: H2O molecule (O, H, H)
+- Example: `ix0_iy0/orientxy_Na/orientz_0/z02.00/input.xyz`
+
+### DFT Energies (`3-results/`)
+```
+3-results/{molecule}/ix{ix}_iy{iy}-orientxy_{site}-orientz_{angle}.dat
+```
+
+**Format:** Two-column text file
+- Column 1: z-distance (e.g., "01.40", "02.00")
+- Column 2: DFT energy in eV (e.g., "-124.0881275172401")
+
+**File sizes:**
+- Full files: ~2550 bytes (33 lines × 3 repeats = 99 lines)
+- Truncated files: ~850 bytes (e.g., ix6_iy0 files have fewer lines)
+
+**Repetition pattern:**
+- Most files: 33 z-distances repeated 3 times (99 lines total)
+- Some files: Fewer lines (possibly incomplete calculations)
+
+## Sampling Grid (from run.sh)
+
+### Z-distances (33 values)
+```
+01.40, 01.50, 01.60, 01.70, 01.80, 01.85, 01.90, 01.95, 02.00,
+02.05, 02.10, 02.15, 02.20, 02.25, 02.30, 02.35, 02.40, 02.45, 02.50,
+02.60, 02.70, 02.80, 02.90, 03.00, 03.50, 04.00, 04.50, 05.00,
+06.00, 07.00, 08.00, 09.00, 10.00
+```
+
+### Surface sites (3)
+- `orientxy_Na`: Aligned over Na⁺ ion
+- `orientxy_Cl`: Aligned over Cl⁻ ion
+- `orientxy_hollow`: Aligned over hollow site
+
+### Tilt angles (3)
+- `orientz_-45`: -45 degrees
+- `orientz_0`: 0 degrees (vertical)
+- `orientz_45`: +45 degrees
+
+### Irreducible wedge sampling (ix, iy)
+**First half triangle:** ix=0..3, iy=0..ix
+- Positions: (0,0), (1,0), (1,1), (2,0), (2,1), (2,2), (3,0), (3,1), (3,2), (3,3)
+
+**Second half triangle:** ix=4..6, iy=0..(6-ix)
+- Positions: (4,0), (4,1), (4,2), (5,0), (5,1), (6,0)
+
+**Total:** 16 unique (ix, iy) positions
+
+### Total configurations per molecule
+- 16 positions × 3 sites × 3 angles × 33 z-distances = 4752 configurations
+- Some positions have fewer z-distances (e.g., ix6_iy0)
+
+## Molecule Orientation (from molecules.dat)
+
+**H2O-H:**
+- Flag: `none`
+- Atoms: `2 1 3` (i1=H, i2=O, i3=H)
+- Meaning: H atom at origin, O aligned along x-direction, other H in -x/+y plane
+
+**H2O-O:**
+- Flag: `bisect`
+- Atoms: `1 2 3 3` (i1=O, i21=H, i22=H, i3=H)
+- Meaning: O at origin, H-bond direction is bisector of H-O-H angle
+
+## Assembly Process (from assembly.f90)
+
+1. **Read substrate (NaCl.xyz)** and molecule
+2. **Translate molecule** so atom at origin is at (0,0,0)
+3. **Calculate shift:**
+   - `shift.x = ix * side.x / (2*ninter)` where ninter=6
+   - `shift.y = iy * side.y / (2*ninter)`
+   - `shift.z = zmax + dz` (zmax = top substrate atom z)
+4. **Rotate molecule** to align with Na/Cl/hollow direction (xy-plane rotation)
+5. **Apply tilt rotation** (orientz angle around y-axis)
+6. **Write combined geometry** to input.xyz (substrate + molecule)
+
+## Data Consolidation Strategy
+
+### Proposed approach
+
+1. **Parse all XYZ files:**
+   - Extract only molecule coordinates (last 3 atoms for H2O)
+   - Store as `(n_configs, n_atoms, 3)` numpy array
+   - Store metadata: ix, iy, orientxy, orientz, zdist
+
+2. **Parse all .dat files:**
+   - Match filename pattern to geometry metadata
+   - Extract z-distance and energy pairs
+   - Handle repeated entries (take average or first occurrence)
+
+3. **Consolidate into single structure:**
+   ```python
+   data = {
+       'coords': (n_configs, 3, 3),  # H2O coordinates
+       'energies': (n_configs,),      # DFT energies
+       'metadata': {
+           'ix': (n_configs,),
+           'iy': (n_configs,),
+           'orientxy': (n_configs,),  # 'Na', 'Cl', 'hollow'
+           'orientz': (n_configs,),  # -45, 0, 45
+           'zdist': (n_configs,)      # 1.40 to 10.00
+       }
+   }
+   ```
+
+4. **Generate XYZ movies:**
+   - Fix z, scan orientation: slice by zdist
+   - Fix orientation, scan z: slice by (ix, iy, orientxy, orientz)
+   - Optional: include/exclude substrate atoms for debugging
+
+### Key challenges
+
+1. **File naming mismatch:**
+   - Geometries: `ix0_iy0/orientxy_Na/orientz_0/z02.00/input.xyz`
+   - Energies: `ix0_iy0-orientxy_Na-orientz_0.dat`
+   - Need to map between directory structure and filename pattern
+
+2. **Incomplete data:**
+   - Some .dat files have fewer lines (e.g., ix6_iy0)
+   - Need to handle missing configurations gracefully
+
+3. **Repeated entries:**
+   - Most .dat files have 3 repeats of the same z-scan
+   - Need to decide whether to average or take first occurrence
+
+4. **Substrate atoms:**
+   - XYZ files always include 32 substrate atoms
+   - For fitting, only need molecule coordinates
+   - For debugging, may want substrate atoms in visualization
+
+---
+
+# DFT Data Consolidation Utilities
+
+## Overview
+
+Python utilities for organizing DFT reference data into consolidated formats suitable for FDBM fitting.
+
+## Location
+
+- **Utility functions:** `pyBall/atomicUtils.py` (end of file)
+- **CLI script:** `tests/tSurf/small_mols_NaCl_New/consolidate_dft_data.py`
+
+## Functions in atomicUtils.py
+
+### `load_xyz_molecule_only(fname, n_substrate=32)`
+Load XYZ file and extract only molecule atoms (last n atoms).
+
+```python
+enames, apos = load_xyz_molecule_only('ix0_iy0/orientxy_Na/orientz_0/z02.00/input.xyz', n_substrate=32)
+```
+
+### `load_dft_energies(dat_file, average_repeats=True)`
+Load DFT energies from .dat file, averaging repeated entries.
+
+```python
+z_dists, energies = load_dft_energies('ix0_iy0-orientxy_Na-orientz_0.dat')
+```
+
+### `consolidate_xyz_to_npz(base_dir, molecule='H2O-H')`
+Consolidate all XYZ files into single NPZ file with coordinates and metadata.
+
+**Sorting:** Data is sorted by `(ix, iy, orientxy, orientz, zdist)` for consistent ordering.
+
+```python
+output = consolidate_xyz_to_npz('1-inputs', molecule='H2O-H')
+# Output: 1-inputs/H2O-H_consolidated.npz
+# Contents: coords, enames, ix, iy, orientxy, orientz, zdist
+# Order: ix → iy → site (Cl/Na/hollow) → tilt (-45/0/45) → z (1.40→10.00)
+```
+
+### `match_xyz_with_energies(base_dir, results_dir, molecule='H2O-H')`
+Match XYZ geometries with DFT energies from .dat files.
+
+```python
+matched = match_xyz_with_energies('1-inputs', '3-results', 'H2O-H')
+# Returns list of dicts with: path, ix, iy, orientxy, orientz, zdist,
+#                              enames, apos, energy, z_dists_all, energies_all
+```
+
+### `generate_xyz_movie(matched_data, output_file, ...)`
+Generate XYZ movie from matched data with energies in comment line.
+
+**Sorting:** Data is sorted by `zdist` (ascending) for sequential frame ordering.
+
+```python
+generate_xyz_movie(matched, 'movie_scan_z.xyz', include_substrate=False)
+# Comment line: "E=-124.088128 eV ix=0 iy=0 site=Na tilt=0 z=2.00"
+```
+
+## CLI Script Usage
+
+### Consolidate XYZ files
+```bash
+cd tests/tSurf/small_mols_NaCl_New
+python consolidate_dft_data.py consolidate --molecule H2O-H
+# Output: 1-inputs/H2O-H_consolidated.npz
+```
+
+### Match with DFT energies
+```bash
+python consolidate_dft_data.py match --molecule H2O-H
+# Output: H2O-H_matched.npz
+# Contains: coords, energies, enames, ix, iy, orientxy, orientz, zdist
+```
+
+### Generate XYZ movies
+
+**Scan z distances (fixed site, tilt, ix, iy):**
+```bash
+python consolidate_dft_data.py movie --movie-type scan_z --site Na --tilt 0 --ix 0 --iy 0
+# Output: H2O-H_scan_z_ix0_iy0_Na_tilt0.xyz
+```
+
+**With substrate atoms (for debugging):**
+```bash
+python consolidate_dft_data.py movie --movie-type scan_z --site Na --tilt 0 --ix 0 --iy 0 --include-substrate
+```
+
+**Scan orientations (fixed z, site, ix, iy):**
+```bash
+python consolidate_dft_data.py movie --movie-type scan_orientation --site Na --zdist 2.0 --ix 0 --iy 0
+```
+
+**Scan sites (fixed z, tilt, ix, iy):**
+```bash
+python consolidate_dft_data.py movie --movie-type scan_site --zdist 2.0 --tilt 0 --ix 0 --iy 0
+```
+
+**Scan XY positions (fixed z, site, tilt):**
+```bash
+python consolidate_dft_data.py movie --movie-type scan_xy --site Na --zdist 2.0 --tilt 0
+```
+
+### Print summary statistics
+```bash
+python consolidate_dft_data.py summary --molecule H2O-H
+# Shows: total configs, breakdown by site/tilt/position, energy statistics
+```
+
+## Data Flow for FDBM Fitting
+
+1. **Consolidate:** `1-inputs/confs/H2O-H/**/input.xyz` → `1-inputs/H2O-H_consolidated.npz`
+2. **Match:** Combine with `3-results/H2O-H/*.dat` → `H2O-H_matched.npz`
+3. **Fit:** Load NPZ, sample GridFF channels, build feature matrix, solve for P, L coefficients
+
+## Output Format
+
+### Consolidated NPZ (`{molecule}_consolidated.npz`)
+- `coords`: (n_configs, n_atoms, 3) - molecule positions
+- `enames`: (n_atoms,) - element symbols
+- `ix`, `iy`: (n_configs,) - position indices
+- `orientxy`: (n_configs,) - surface sites (Na/Cl/hollow)
+- `orientz`: (n_configs,) - tilt angles (-45, 0, 45)
+- `zdist`: (n_configs,) - z distances in Å
+
+**Sorting order:** `(ix, iy, orientxy, orientz, zdist)` - ensures consistent indexing
+
+### Matched NPZ (`{molecule}_matched.npz`)
+Same as consolidated plus:
+- `energies`: (n_configs,) - DFT energies in eV
+
+**Sorting order:** Same as consolidated (inherited from matched data)
+
+### XYZ Movies
+Multi-frame XYZ file with energy in comment line:
+
+**Sorting order:** Frames sorted by `zdist` (ascending) for sequential playback
+
+```
+3
+E=-124.088128 eV ix=0 iy=0 site=Na tilt=0 z=2.00
+O 0.6850813252 -0.0000000000 15.0057313252
+H 0.0000000000 0.0000000000 14.3206500000
+H 0.1677141234 -0.0000000000 15.8248796774
+3
+E=-124.110191 eV ix=0 iy=0 site=Na tilt=0 z=2.05
+...
+```
+
+---
+
+# DFT Fitting Report: Pauli Coefficients for H2O on NaCl
+
+## What We Are Doing
+
+We are fitting Pauli repulsion coefficients (P_H, P_O) and charges (q_H, q_O) for H2O molecules on a NaCl substrate using DFT reference data. The model is:
+
+```
+E_int = P_H * sum(rho@H) + P_O * sum(rho@O) + q_H * (sum(phi@H) - 2*phi@O)
+```
+
+where:
+- `rho` = electron density from DFT `charge_density.cube` (Pauli channel)
+- `phi` = electrostatic potential from DFT `electrostatic_potential.cube` (Coulomb channel)
+- London/vdW channel is currently zero (not included in fit)
+- Charges are constrained by neutrality: q_O = -2 * q_H
+
+We use the consolidated DFT data from `H2O-H_matched.npz` and `H2O-O_matched.npz`, which contain:
+- Molecular configurations (positions, orientations)
+- DFT total energies
+- Metadata: ix, iy, orientxy (Na/Cl/hollow), orientz (tilt angles), zdist
+
+## Problems Encountered
+
+### 1. Unphysical Negative Pauli Coefficients
+Initial unconstrained least-squares fitting produced:
+- P_H = -1.86 (negative - Pauli cannot be attractive)
+- P_O = 43.05 (very large)
+- q_H = 0.345, q_O = -0.69 (inflated vs RESP: 0.2, -0.4)
+
+This violates the fundamental physical constraint that Pauli repulsion must be repulsive (P >= 0).
+
+### 2. Jagged/Noisy Fit Curves
+The initial 1D scan diagnostic plots showed extremely jagged, noisy fitted curves. Investigation revealed:
+- We were using **nearest-neighbor grid sampling** (integer voxel indices)
+- As the molecule moves continuously in z, the index snaps to the next voxel every ~0.083 Å
+- When multiplied by large coefficients and summed over 3 atoms, these jumps look like "noise"
+
+### 3. Model Cannot Reproduce Key Minima with Physical Constraints
+Even after fixing the sampling method and applying physical constraints, the model fails to reproduce the two most important bonding configurations:
+- **H2O-H over Cl** (hydrogen bond): DFT shows ~-0.25 eV attraction
+- **H2O-O over Na** (electrostatic minimum): DFT shows ~-0.4 eV attraction
+
+With constraints P_H >= 0, P_O >= 0 and fixed RESP charges, the optimizer chooses P_H = 0, P_O = 0 (pure Coulomb), which cannot match these minima.
+
+### 4. Possible Z-Frame Misalignment
+Visual inspection of the 1D scans suggests the DFT attraction may start at a different z than the model, indicating a possible coordinate frame offset between the DFT data and the GridFF sampling.
+
+## What We Tried
+
+### 1. Fixed Sampling Method
+Replaced nearest-neighbor sampling with **trilinear interpolation**:
+- Periodic wrap in x/y (slab geometry)
+- Clamp in z (non-periodic)
+- Smooth interpolation from 8 surrounding grid corners
+- Result: fitted curves are now smooth, no more staircase artifacts
+
+### 2. Restricted Fit to Key Profiles
+Instead of fitting all 9504 configurations, we restricted to:
+- Only tilt=0 configurations
+- Only the two key bonding profiles:
+  - H2O-H over Cl (ix=0, iy=0)
+  - H2O-O over Na (ix=6, iy=0)
+- Energy filter: E_int <= 0.5 eV
+- Result: 177 configurations used for fit (down from 9504)
+
+### 3. Exponential Weighting
+Applied weighting to prioritize near-minimum energies:
+- w = exp(-E_int / kT) with kT = 0.2 eV
+- Normalized so max weight = 1
+- Result: effective weight range [0.02, 1.0]
+
+### 4. Physical Constraints
+Enforced hard constraints:
+- P_H >= 0 (Pauli cannot be attractive)
+- P_O >= 0 (Pauli cannot be attractive)
+- q_H fixed to RESP value (0.2)
+- q_O = -2 * q_H (charge neutrality)
+
+Implemented via grid scan over P_H (0 to 60, 601 points) and solving scalar LSQ for P_O, clamping P_O >= 0.
+
+### 5. Z-Shift Scan
+To test the alignment hypothesis, we scanned dz in [-1.0, +1.0] Å (81 steps):
+- For each dz, we shift all atom positions by dz during GridFF sampling
+- Choose dz that minimizes weighted SSE on the fit set
+- Result: best dz = -0.100 Å (small shift, not the 0.5-1.0 Å suspected)
+
+### 6. Model Baseline Subtraction
+We corrected the fitting metric to baseline-subtract the model energy in the same way as DFT:
+- For each group (mol, ix, iy, orientxy, orientz), compute E0 at max z
+- Compare E_int = E - E0 for both DFT and model
+- This ensures we are comparing interaction energies, not absolute energies
+
+### 7. Diagnostic Plots
+Generated two separate 1D scan diagnostic figures:
+- `scan_DFT_vs_default.png`: Uses default atomic coefficients (P_H=7.877, P_O=27.778)
+- `scan_DFT_vs_fitted.png`: Uses fitted coefficients (P_H=0, P_O=0 with current constraints)
+- Each figure shows:
+  - 4 panels: H2O-H/Na, H2O-H/Cl, H2O-O/Na, H2O-O/Cl
+  - DFT curves (dotted)
+  - Model curves (solid)
+  - Residuals (model - DFT) on secondary y-axis
+  - Caption with fitted parameters and fit settings
+
+## What We Are Struggling With
+
+### Core Issue: Linear Density Model is Inadequate
+The fundamental problem is that the linear model `E = P * rho + q * phi` cannot simultaneously:
+1. Reproduce the repulsive wall position (zmin)
+2. Reproduce the well depth (Emin)
+3. Maintain physical constraints (P >= 0, q fixed to RESP)
+
+The optimizer's choice of P_H = 0, P_O = 0 is not a numerical artifact—it is the best solution under the constraints, meaning:
+- Adding positive Pauli makes the fit worse
+- The Coulomb term alone (with RESP charges) is insufficient to match the DFT minima
+- The model is missing key physics (likely polarization/induction or charge transfer)
+
+### Why Default Coefficients Look Better
+Visually, the default atomic coefficients (P_H=7.877, P_O=27.778) produce curves that more closely follow the DFT reference than the fitted zeros. This suggests:
+- The default coefficients were derived from atomic parameters (RvdW, EvdW) that capture some of the missing physics
+- The linear density proxy is not a good representation of true Pauli repulsion
+- We may need a nonlinear Pauli feature (e.g., rho^α with α > 1) or additional terms
+
+### Possible Next Directions
+1. **Nonlinear Pauli feature**: Replace linear density with rho^α (α ≈ 1.5-2.0) to make repulsion steeper at short range
+2. **Polarization term**: Add a term proportional to electric field or gradient to capture induction
+3. **Fit (zmin, Emin) directly**: Instead of SSE, match the minimum position and depth for the two key profiles
+4. **Include London/vdW**: The London channel is currently zero; adding it may improve the fit significantly
+5. **Relax charge constraints**: Allow q to deviate from RESP if it improves the fit, then check physical reasonableness
+
+## Current Status
+- GridFF generation from DFT cubes: working
+- DFT data consolidation and matching: working
+- Trilinear interpolation: implemented and verified
+- Constrained fitting with P >= 0, q fixed: implemented
+- Result: P_H = 0, P_O = 0 (model reduces to pure Coulomb)
+- Conclusion: Linear density model is insufficient for this system with physical constraints
+
+## Key Files
+- `tests/tMMFF/gen_gridff_nacl_gpu.py`: Main fitting script
+- `tests/tMMFF/consolidate_dft_data.py`: DFT data consolidation and matching
+- `tests/tMMFF/out_fdbm_dft_gridff/scan_DFT_vs_default.png`: Default coefficients diagnostic
+- `tests/tMMFF/out_fdbm_dft_gridff/scan_DFT_vs_fitted.png`: Fitted coefficients diagnostic
+- `tests/tMMFF/out_fdbm_dft_gridff/fitted_PLQ_coeffs.json`: Fitted coefficients JSON

@@ -579,7 +579,7 @@ def plot_gridff_diagnostics(grid_data, sub_apos, sub_enames, lvec, iz_slices=Non
     return save_path
 
 
-def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path, iz_top=None, iy_center=None, z_atom_range=2.0, mol_apos=None, mol_enames=None, plq_coeffs=None, zmin_offset=2.0, z_ylim=None, plot_diagnostics=True):
+def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path, iz_top=None, iy_center=None, z_atom_range=2.0, mol_apos=None, mol_enames=None, plq_coeffs=None, plq_coeffs2=None, zmin_offset=2.0, z_ylim=None, vmin_vmax_xz=None, plot_diagnostics=True):
     """
     Generate comprehensive alignment diagnostic figure.
 
@@ -596,8 +596,10 @@ def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path
         mol_apos: (nmol, 3) or (nframes, nmol, 3) molecule sample positions to overlay (optional)
         mol_enames: List of element names for molecule atoms (optional)
         plq_coeffs: Tuple (P, L, Q) coefficients for total potential (default: (1.0, 1.0, 1.0))
+        plq_coeffs2: Optional second set of (P, L, Q) coefficients (e.g. for second atom type) plotted alongside first in Z-profiles
         zmin_offset: Offset above g0[2] for XZ color scale normalization (default 2.0 A)
         z_ylim: Y-axis limits for Z-profile (default: +/-0.5 eV)
+        vmin_vmax_xz: Optional tuple (vmin, vmax) for XZ slice color scale (default: auto from data above zmin_offset)
         plot_diagnostics: If False, skip plotting and return None (default: True)
     """
     if not plot_diagnostics:
@@ -646,11 +648,15 @@ def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path
     vmin_xy, vmax_xy = -vmax_xy, vmax_xy if vmax_xy > 0 else (None, None)
 
     # XZ slice - data above zmin (compute from the XZ slice only, not whole grid)
-    zmin = g0[2] + zmin_offset
+    # zmin_offset is absolute z (e.g., 2.0 means 2A above surface at z=0)
+    zmin = zmin_offset
     iz_min = int((zmin - g0[2]) / dz)
     iz_min = max(0, min(nz-1, iz_min))
+    # For display: start from z=0 (surface)
+    iz_surface = int((0.0 - g0[2]) / dz)
+    iz_surface = max(0, min(nz-1, iz_surface))
     xz_slice_data = total_potential[:, iy_center, :, 0].T  # Get XZ slice first
-    xz_data_above = xz_slice_data[iz_min:, :]  # Only data above zmin in this slice
+    xz_data_above = xz_slice_data[iz_min:, :]  # Only data above zmin for vmin/vmax
     vmax_xz = max(abs(xz_data_above.min()), abs(xz_data_above.max()))
     vmin_xz, vmax_xz = -vmax_xz, vmax_xz if vmax_xz > 0 else (None, None)
 
@@ -668,13 +674,18 @@ def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path
     def plot_xz_slice(ax, iy, title_suffix):
         """Plot XZ slice at given iy index with consistent styling."""
         y_val = g0[1] + iy * dy
-        extent_xz = [g0[0], g0[0] + nx*dx, g0[2], g0[2] + nz*dz]
-        xz_slice_data = total_potential[:, iy, :, 0].T
-        xz_data_above = xz_slice_data[iz_min:, :]
-        vmax = max(abs(xz_data_above.min()), abs(xz_data_above.max()))
-        vmin, vmax = -vmax, vmax if vmax > 0 else (None, None)
+        # Display from z=0 (surface) up, but vmin/vmax from z > zmin_offset
+        xz_slice_full = total_potential[:, iy, :, 0].T
+        xz_slice_data = xz_slice_full[iz_surface:, :]  # Data from z=0 (surface)
+        zmin_display = g0[2] + iz_surface * dz  # z=0 (surface)
+        extent_xz = [g0[0], g0[0] + nx*dx, zmin_display, g0[2] + nz*dz]
+        # Use manual vmin/vmax if provided, otherwise auto from z > zmin_offset
+        if vmin_vmax_xz is not None:
+            vmin_xz_use, vmax_xz_use = vmin_vmax_xz
+        else:
+            vmin_xz_use, vmax_xz_use = vmin_xz, vmax_xz
         im = ax.imshow(xz_slice_data, extent=extent_xz,
-                       origin='lower', cmap='bwr', aspect='auto', vmin=vmin, vmax=vmax)
+                       origin='lower', cmap='bwr', aspect='equal', vmin=vmin_xz_use, vmax=vmax_xz_use)
         # Plot substrate atoms (same array for all panels)
         ax.scatter(atoms_xyz[:, 0], atoms_xyz[:, 2],
                    c=atoms_colors, s=10, alpha=0.7, marker='.')
@@ -685,7 +696,7 @@ def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path
         ax.set_title(f'Total Potential (P={P:.3f},L={L:.3f},Q={Q:.3f}) XZ at y={y_val:.3f}A (iy={iy}) {title_suffix}')
         ax.set_xlabel('x [A]')
         ax.set_ylabel('z [A]')
-        ax.set_ylim(g0[2], g0[2] + min(nz*dz, 20))  # Consistent z-range limit
+        ax.set_ylim(zmin_display, g0[2] + min(nz*dz, 20))  # Show from z=0 (surface)
         plt.colorbar(im, ax=ax)
 
     # 1. XY slice at top layer - Total potential
@@ -706,8 +717,8 @@ def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path
     # 2. XZ slice at center Y
     plot_xz_slice(axes[0, 1], iy_center, '')
 
-    # 3. XZ slice at origin
-    plot_xz_slice(axes[0, 2], 0, '(origin)')
+    # 3. XZ slice at 1/4 of cell size (iy=32, ~2.82 Å)
+    plot_xz_slice(axes[0, 2], ny//4, '(1/4 cell)')
     
     # 4. 1D profiles through atom centers
     # Helper function for 1D profile plotting (X or Z)
@@ -736,7 +747,11 @@ def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path
         elif axis == 'z':
             cx, cy = fixed_idx
             z_coords = g0[2] + np.arange(nz) * dz
-            ax.plot(z_coords, total_potential[cx, cy, :, 0], 'k-', linewidth=2, label=f'Total (P={P:.3f},L={L:.3f},Q={Q:.3f})')
+            ax.plot(z_coords, total_potential[cx, cy, :, 0], 'k-', linewidth=2, label=f'H-Total (P={P:.3f},L={L:.3f},Q={Q:.3f})')
+            if plq_coeffs2 is not None:
+                P2, L2, Q2 = plq_coeffs2[0], plq_coeffs2[1], plq_coeffs2[2]
+                total2 = P2*grid_data[...,0] + L2*grid_data[...,1] + Q2*grid_data[...,2]
+                ax.plot(z_coords, total2[cx, cy, :], 'm-', linewidth=2, label=f'O-Total (P={P2:.3f},L={L2:.3f},Q={Q2:.3f})')
             ax.plot(z_coords, grid_data[cx, cy, :, 0], 'b--', alpha=0.5, label='Pauli')
             ax.plot(z_coords, grid_data[cx, cy, :, 1], 'r--', alpha=0.5, label='London')
             ax.plot(z_coords, grid_data[cx, cy, :, 2], 'g--', alpha=0.5, label='Coulomb')
@@ -759,11 +774,12 @@ def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path
     cy = ny // 2
     plot_1d_profile(axes[1, 0], 'x', (cy, iz_top), '')
 
-    # 5. Z-profile at center
-    plot_1d_profile(axes[1, 1], 'z', (cx, cy), '')
+    # 5. Z-profile above Cl (at ix=0, iy=0)
+    plot_1d_profile(axes[1, 1], 'z', (0, 0), 'above Cl-')
 
-    # 6. Z-profile at origin
-    plot_1d_profile(axes[1, 2], 'z', (0, 0), '(origin)')
+    # 6. Z-profile above Na (at ix=32, iy=0 = 2.82 A along x)
+    ix_Na = int(round(2.821 / dx))
+    plot_1d_profile(axes[1, 2], 'z', (ix_Na, 0), 'above Na+')
     
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches='tight')

@@ -1910,3 +1910,277 @@ def save_xyz(fname, enames, apos, comment="Generated"):
         f.write(f"{len(enames)}\n{comment}\n")
         for e, p in zip(enames, apos):
             f.write(f"{e} {p[0]:.10f} {p[1]:.10f} {p[2]:.10f}\n")
+
+
+def load_xyz_molecule_only(fname, n_substrate=32, return_comment=False):
+    """Load XYZ file and extract only molecule atoms (last n atoms).
+
+    Assumes substrate is always the same (fixed) and molecule is last n atoms.
+
+    Args:
+        fname: path to XYZ file
+        n_substrate: number of substrate atoms (default 32 for NaCl)
+        return_comment: if True, also return comment line
+
+    Returns:
+        enames: list of element symbols for molecule
+        apos: (n_mol_atoms, 3) positions in Angstrom
+        comment: (optional) comment line from XYZ
+    """
+    with open(fname, 'r') as f:
+        lines = f.readlines()
+    n_total = int(lines[0].strip())
+    comment = lines[1].strip()
+    n_mol = n_total - n_substrate
+    enames = []
+    apos = []
+    for line in lines[2+n_substrate:]:
+        parts = line.split()
+        if len(parts) >= 4:
+            enames.append(parts[0])
+            apos.append([float(parts[1]), float(parts[2]), float(parts[3])])
+    apos = np.array(apos)
+    if return_comment:
+        return enames, apos, comment
+    return enames, apos
+
+
+def load_xyz_with_substrate(fname, return_comment=False):
+    """Load XYZ file with both substrate and molecule atoms.
+
+    Args:
+        fname: path to XYZ file
+        return_comment: if True, also return comment line
+
+    Returns:
+        enames: list of all element symbols
+        apos: (n_atoms, 3) positions in Angstrom
+        comment: (optional) comment line from XYZ
+    """
+    with open(fname, 'r') as f:
+        lines = f.readlines()
+    n_total = int(lines[0].strip())
+    comment = lines[1].strip()
+    enames = []
+    apos = []
+    for line in lines[2:]:
+        parts = line.split()
+        if len(parts) >= 4:
+            enames.append(parts[0])
+            apos.append([float(parts[1]), float(parts[2]), float(parts[3])])
+    apos = np.array(apos)
+    if return_comment:
+        return enames, apos, comment
+    return enames, apos
+
+
+def load_dft_energies(dat_file, average_repeats=True):
+    """Load DFT energies from .dat file.
+
+    Format: z_distance energy (eV), repeated 3× in most files.
+
+    Args:
+        dat_file: path to .dat file
+        average_repeats: if True, average the repeated entries
+
+    Returns:
+        z_dists: array of z-distances (floats)
+        energies: array of energies in eV
+    """
+    z_dists = []
+    energies = []
+    with open(dat_file, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            if len(parts) >= 2:
+                z_dists.append(float(parts[0]))
+                energies.append(float(parts[1]))
+    z_dists = np.array(z_dists)
+    energies = np.array(energies)
+    # Handle repeated entries (most files have 3 repeats)
+    n_unique = len(set(z_dists))
+    if average_repeats and len(z_dists) > n_unique:
+        n_repeats = len(z_dists) // n_unique
+        z_dists = z_dists[:n_unique]
+        energies = energies[:n_unique*n_repeats].reshape(n_repeats, n_unique).mean(axis=0)
+    return z_dists, energies
+
+
+def scan_xyz_directory(base_dir, molecule='H2O-H', n_substrate=32):
+    """Scan directory tree and collect all XYZ files with metadata.
+
+    Directory structure:
+        base_dir/confs/{mol}/ix{ix}_iy{iy}/orientxy_{site}/orientz_{angle}/z{dist}/input.xyz
+
+    Args:
+        base_dir: base directory (e.g., 1-inputs)
+        molecule: molecule name (e.g., 'H2O-H')
+        n_substrate: number of substrate atoms
+
+    Returns:
+        List of dicts with keys: path, ix, iy, orientxy, orientz, zdist, enames, apos
+    """
+    import os
+    import re
+    confs_dir = os.path.join(base_dir, 'confs', molecule)
+    results = []
+    pattern = r'ix(\d+)_iy(\d+)/orientxy_(\w+)/orientz_([-\d]+)/z([\d.]+)/input\.xyz$'
+    for root, dirs, files in os.walk(confs_dir):
+        for fname in files:
+            if fname != 'input.xyz':
+                continue
+            full_path = os.path.join(root, fname)
+            rel_path = os.path.relpath(full_path, confs_dir)
+            match = re.search(pattern, rel_path)
+            if match:
+                ix, iy = int(match.group(1)), int(match.group(2))
+                orientxy = match.group(3)
+                orientz = int(match.group(4))
+                zdist = float(match.group(5))
+                enames, apos = load_xyz_molecule_only(full_path, n_substrate)
+                results.append({
+                    'path': full_path,
+                    'ix': ix, 'iy': iy,
+                    'orientxy': orientxy,
+                    'orientz': orientz,
+                    'zdist': zdist,
+                    'enames': enames,
+                    'apos': apos
+                })
+    return results
+
+
+def consolidate_xyz_to_npz(base_dir, molecule='H2O-H', n_substrate=32, output_file=None):
+    """Consolidate all XYZ files into a single NPZ file.
+
+    Args:
+        base_dir: base directory (e.g., 1-inputs)
+        molecule: molecule name
+        n_substrate: number of substrate atoms
+        output_file: output NPZ file path (default: {base_dir}/{molecule}_consolidated.npz)
+
+    Returns:
+        Path to output NPZ file
+    """
+    import os
+    data = scan_xyz_directory(base_dir, molecule, n_substrate)
+    if not data:
+        raise ValueError(f"No XYZ files found for {molecule} in {base_dir}")
+    # Sort by ix, iy, orientxy, orientz, zdist for consistent ordering
+    data = sorted(data, key=lambda d: (d['ix'], d['iy'], d['orientxy'], d['orientz'], d['zdist']))
+    n_configs = len(data)
+    n_atoms = len(data[0]['enames'])
+    coords = np.zeros((n_configs, n_atoms, 3))
+    metadata = {
+        'ix': np.zeros(n_configs, dtype=int),
+        'iy': np.zeros(n_configs, dtype=int),
+        'orientxy': [],
+        'orientz': np.zeros(n_configs, dtype=int),
+        'zdist': np.zeros(n_configs)
+    }
+    for i, item in enumerate(data):
+        coords[i] = item['apos']
+        metadata['ix'][i] = item['ix']
+        metadata['iy'][i] = item['iy']
+        metadata['orientxy'].append(item['orientxy'])
+        metadata['orientz'][i] = item['orientz']
+        metadata['zdist'][i] = item['zdist']
+    if output_file is None:
+        output_file = os.path.join(base_dir, f'{molecule}_consolidated.npz')
+    np.savez(output_file,
+             coords=coords,
+             enames=data[0]['enames'],
+             ix=metadata['ix'], iy=metadata['iy'],
+             orientxy=np.array(metadata['orientxy']),
+             orientz=metadata['orientz'],
+             zdist=metadata['zdist'])
+    return output_file
+
+
+def match_xyz_with_energies(base_dir, results_dir, molecule='H2O-H', n_substrate=32):
+    """Match XYZ geometries with DFT energies from .dat files.
+
+    Args:
+        base_dir: base directory with XYZ files (e.g., 1-inputs)
+        results_dir: directory with .dat files (e.g., 3-results)
+        molecule: molecule name
+        n_substrate: number of substrate atoms
+
+    Returns:
+        List of dicts with keys: path, ix, iy, orientxy, orientz, zdist,
+                                  enames, apos, energy, z_dists_all, energies_all
+    """
+    import os
+    import re
+    import glob
+    xyz_data = scan_xyz_directory(base_dir, molecule, n_substrate)
+    # Build dict keyed by (ix, iy, orientxy, orientz)
+    dat_files = glob.glob(os.path.join(results_dir, molecule, f'ix*_iy*-orientxy_*-orientz_*.dat'))
+    dat_dict = {}
+    for dat_file in dat_files:
+        basename = os.path.basename(dat_file)
+        match = re.match(r'ix(\d+)_iy(\d+)-orientxy_(\w+)-orientz_([-\d]+)\.dat', basename)
+        if match:
+            key = (int(match.group(1)), int(match.group(2)), match.group(3), int(match.group(4)))
+            z_dists, energies = load_dft_energies(dat_file)
+            dat_dict[key] = (z_dists, energies)
+    # Match each XYZ with its energy
+    matched = []
+    for item in xyz_data:
+        key = (item['ix'], item['iy'], item['orientxy'], item['orientz'])
+        if key in dat_dict:
+            z_dists_all, energies_all = dat_dict[key]
+            # Find energy for this specific zdist
+            z_target = item['zdist']
+            idx = np.argmin(np.abs(z_dists_all - z_target))
+            energy = energies_all[idx] if len(energies_all) > idx else None
+            item['energy'] = energy
+            item['z_dists_all'] = z_dists_all
+            item['energies_all'] = energies_all
+            matched.append(item)
+    return matched
+
+
+def generate_xyz_movie(matched_data, output_file, include_substrate=False,
+                       substrate_xyz=None, n_substrate=32, filter_func=None):
+    """Generate XYZ movie from matched data with energies in comment line.
+
+    Args:
+        matched_data: output from match_xyz_with_energies()
+        output_file: output XYZ file path
+        include_substrate: if True, include substrate atoms
+        substrate_xyz: path to substrate XYZ file (needed if include_substrate=True)
+        n_substrate: number of substrate atoms
+        filter_func: optional function to filter data (returns True to include)
+    """
+    if filter_func is not None:
+        matched_data = [d for d in matched_data if filter_func(d)]
+    if not matched_data:
+        raise ValueError("No data to write")
+    # Sort by zdist for sequential ordering
+    matched_data = sorted(matched_data, key=lambda d: d['zdist'])
+    substrate_enames, substrate_apos = None, None
+    if include_substrate:
+        if substrate_xyz is None:
+            raise ValueError("substrate_xyz required when include_substrate=True")
+        substrate_enames, substrate_apos = load_xyz_molecule_only(substrate_xyz, n_substrate=0)
+        substrate_apos = substrate_apos[:n_substrate]
+        substrate_enames = substrate_enames[:n_substrate]
+    with open(output_file, 'w') as f:
+        for item in matched_data:
+            mol_apos = item['apos']
+            mol_enames = item['enames']
+            energy = item.get('energy', 0.0)
+            if include_substrate and substrate_enames is not None:
+                all_enames = substrate_enames + mol_enames
+                all_apos = np.vstack([substrate_apos, mol_apos])
+            else:
+                all_enames = mol_enames
+                all_apos = mol_apos
+            comment = f"E={energy:.6f} eV ix={item['ix']} iy={item['iy']} site={item['orientxy']} tilt={item['orientz']} z={item['zdist']:.2f}"
+            f.write(f"{len(all_enames)}\n{comment}\n")
+            for e, p in zip(all_enames, all_apos):
+                f.write(f"{e} {p[0]:.10f} {p[1]:.10f} {p[2]:.10f}\n")

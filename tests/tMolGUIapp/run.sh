@@ -251,7 +251,7 @@ fi
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3          -nPBC 0,0,0
 
 
-#./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0 
+./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0 
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaHole   -nPBC 0,0,0 -e -nPBC 2,2,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_ClHole   -nPBC 0,0,0
@@ -261,7 +261,7 @@ fi
 
 #./$name -x common_resources/xyz/PTCDA -g common_resources/CaF2_6L_Ni3_rect_nx2_nz1_L2_top -lua test_add_mols.lua
 #./$name -x common_resources/xyz/PTCDA -g common_resources/CaF2_6L_Ni3_rect_nx2_nz1_L2_top -nPBC 0,0,0
-./$name -x common_resources/xyz/PTCDA -g common_resources/Substrates/generated_rect/CaF2_6L_Ni3_rect_nx2_nz1_L2_top -nPBC 0,0,0 -shift 0.0,0.0,5.0 -plq_factors 1.0,1.0,-2.0,1.0 -tipSpline tipSpline.dat -tipAnchor 28,20.0
+#./$name -x common_resources/xyz/PTCDA -g common_resources/Substrates/generated_rect/CaF2_6L_Ni3_rect_nx2_nz1_L2_top -nPBC 0,0,0 -shift 0.0,0.0,5.0 -plq_factors 1.0,1.0,-2.0,1.0 -tipSpline tipSpline.dat -tipAnchor 28,20.0
 
 # Pass through all command line arguments
 #./$name -x common_resources/xyz/PTCDA -g common_resources/Substrates/generated_rect/CaF2_6L_Ni3_rect_nx2_nz1_L2_top -nPBC 0,0,0 -shift 0.0,0.0,5.0 "$@"
