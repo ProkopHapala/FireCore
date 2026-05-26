@@ -171,8 +171,8 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     //int iSystemCur  = 8;    // currently selected system replica
     bool bGPU_MMFF = true;
 
-    bool initial = false;
-    bool bHardConstrainedAtoms    = false;
+    bool initial = true;
+    bool bHardConstrainedAtoms    = true;
     bool bSoftConstrainedAtoms    = false;
     bool bHardConstrainedDistance = false;
     bool bSoftConstrainedDistance = false;
@@ -1843,15 +1843,9 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=false,
     for(int i=0; i<ocl.nAtoms; i++){
         Quat4f a=atoms[i+i0v];
         //a.w=-1.0;
-// <<<<<<< HEAD
         a.w = ff.constr[i].w; 
         constr [i+i0a] = a; 
         constrK[i+i0a] = (Quat4f)ff.constrK[i]; 
-// =======
-//         a.w = ffl.constr[i].w;
-//         constr [i+i0a] = a;
-//         constrK[i+i0a] = (Quat4f)ffl.constrK[i];
-// >>>>>>> prokop_and_master
         //printf(  "atom[%3i|sys=%i](%8.5f,%8.5f,%8.5f) constr(%8.5f,%8.5f,%8.5f|%8.5f)\n", i, isys, ff.apos[i].x,ff.apos[i].y,ff.apos[i].z,     a.x,a.y,a.z,a.w );
     }  // contrains
     /*
@@ -3828,7 +3822,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
 //         }
 // }
     double F2conv = Fconv*Fconv;
-    picked2GPU( ipicked,  1.0f );
+    // picked2GPU( ipicked,  1.0f );
 	        if(initial && !bFreeEnergyCalc){  // In TI mode, constraints are set by computeFreeEnergy; skip this GUI-only init
 	        for(int isys=0; isys<nSystems; isys++){
 	            float lambda = (nSystems > 1) ? (float)isys / (float)(nSystems - 1) : 0.0f;
@@ -3837,18 +3831,18 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
 	            
 	            // For 'initial' setup via GUI/manual, we derive anchor points from current positions
 	            std::vector<Vec3f> p_init, p_final;
-	            int constr_TI[2] = {14, 30};
+	            int constr_TI[2] = {11, 91};
 	            int iSi1 = -1;
 	            for(int ia=0; ia<ffls[isys].natoms; ia++){
 	                if(ffls[isys].atypes[ia]==params.getAtomType("Si")){
 	                    if(iSi1 == -1){ iSi1 = ia; }
 	                    else{
-                        Vec3f p1 = (Vec3f){-9.84574,    4.44503,    2.5};
-                        Vec3f p2 = (Vec3f){2.0,    4.44503,    2.5};
+                        Vec3f p1 = (Vec3f){-0.5,    0.0,    0.0};
+                        Vec3f p2 = (Vec3f){0.5,    0.0,    0.0};
                         p_init.push_back(p1); p_init.push_back(p2);
                         // Default final positions: stretched by 15A along X
                         p_final.push_back(p1 + (Vec3f){0, 0, 0});
-                        p_final.push_back(p2 + (Vec3f){ 28.0, 0, 0});
+                        p_final.push_back(p2 + (Vec3f){ 0.0, 0, 0});
                         iSi1 = -1;
 	                    }
 	                }
@@ -3856,12 +3850,19 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
 	            if((p_init.size()==0) && (constr_TI[0]>=0) && (constr_TI[1]>=0)){
 	                int ia1 = constr_TI[0];
 	                int ia2 = constr_TI[1];
-	                if((ia1>=0) && (ia1<ffls[isys].natoms) && (ia2>=0) && (ia2<ffls[isys].natoms)){
-	                    Vec3f p1 = (Vec3f)ffls[isys].apos[ia1];
-	                    Vec3f p2 = (Vec3f)ffls[isys].apos[ia2];
+	                int ia1_curr = ia1;
+	                int ia2_curr = ia2;
+	                bool bUseAtomPermut = !bUFF && ((int)builder.atom_permut.size() >= ffls[isys].natoms);
+	                if(bUseAtomPermut){
+	                    if(ia1 < builder.atom_permut.size()) ia1_curr = builder.atom_permut[ia1];
+	                    if(ia2 < builder.atom_permut.size()) ia2_curr = builder.atom_permut[ia2];
+	                }
+	                if((ia1_curr>=0) && (ia1_curr<ffls[isys].natoms) && (ia2_curr>=0) && (ia2_curr<ffls[isys].natoms)){
+	                    Vec3f p1 = (Vec3f){ 5.5f, 0.0f, 0.0f};
+	                    Vec3f p2 = (Vec3f){ -5.5f, 0.0f, 0.0f};
 	                    p_init.push_back(p1); p_init.push_back(p2);
-	                    p_final.push_back(p1 + (Vec3f){0.0f, 0.0f, 0.0f});
-	                    p_final.push_back(p2 + (Vec3f){28.0f, 0.0f, 0.0f});
+	                    p_final.push_back(p1 + (Vec3f){40.0f, 0.0f, 0.0f});
+	                    p_final.push_back(p2 + (Vec3f){0.0f, 0.0f, 0.0f});
 	                    printf("run_ocl_opt(): TI anchors from atom indices %d,%d because no Si anchor pair was found\n", ia1, ia2);
 	                }else{
 	                    printf("ERROR: run_ocl_opt() invalid TI atom indices %d,%d for natoms=%d and no Si anchor pair was found\n", ia1, ia2, ffls[isys].natoms);
