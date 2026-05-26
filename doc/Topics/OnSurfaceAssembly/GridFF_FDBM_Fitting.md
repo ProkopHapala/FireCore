@@ -2609,3 +2609,229 @@ Visually, the default atomic coefficients (P_H=7.877, P_O=27.778) produce curves
 - `tests/tMMFF/out_fdbm_dft_gridff/scan_DFT_vs_default.png`: Default coefficients diagnostic
 - `tests/tMMFF/out_fdbm_dft_gridff/scan_DFT_vs_fitted.png`: Fitted coefficients diagnostic
 - `tests/tMMFF/out_fdbm_dft_gridff/fitted_PLQ_coeffs.json`: Fitted coefficients JSON
+
+---
+
+# Part 2: H-Bond Correction and Regularized Fitting (2026)
+
+## Motivation
+
+The initial linear density model (Pauli repulsion + Coulomb electrostatics) was insufficient to capture the hydrogen bonding physics of H2O on NaCl. The constrained fit with P ≥ 0 and fixed charges reduced to P_H = P_O = 0, meaning the model effectively became pure Coulomb. This indicated a missing physical component: a directional hydrogen bond correction.
+
+## Channel 4 Evolution: From Kinetic Energy Density to Cl Repulsive Morse
+
+### Attempt 1: Kinetic Energy Density (τ) via Laplacian of Gaussian
+
+The first approach used the kinetic energy density as the 4th GridFF channel, approximated via the Laplacian of Gaussian (LoG) filtering of the electron density:
+
+```
+τ(r) ≈ LoG[ρ](r) = ∇²G_σ * ρ(r)
+```
+
+where G_σ is a Gaussian kernel with σ controlling the length scale.
+
+**Implementation:**
+- Computed τ via FFT-based convolution in `pyBall/OCL/Surface_utils.py:compute_kinetic_energy_density_log()`
+- Added `--hbond_model tau` CLI option to `gen_gridff_nacl_gpu.py`
+- Saved τ as a cube file for visualization
+
+**Result:**
+The τ channel did not provide a physically meaningful hydrogen bond correction. The kinetic energy density is a bulk property of the electron cloud and does not capture the directional, short-range repulsion characteristic of hydrogen bonds.
+
+### Attempt 2: Cl Repulsive Morse Potential
+
+The second approach replaced τ with a repulsive Morse potential computed only from substrate Cl atoms. This is physically motivated: hydrogen bonds involve H atoms approaching Cl (electronegative) sites, and the repulsive wall of the Morse potential provides the short-range correction needed.
+
+**Morse Potential Form:**
+```
+V_Morse(r) = D_e * [exp(-α(r - R_eq)) - 1]^2
+```
+
+For the repulsive part (short-range), we use only the first term:
+```
+V_repulsive(r) ≈ D_e * exp(-2α(r - R_eq))
+```
+
+**Implementation:**
+- Reused existing `GridFF_cl.make_MorseFF()` GPU kernel from `pyBall/OCL/GridFF.py`
+- Added `compute_cl_repulsive_on_grid()` wrapper in `Surface_utils.py` to filter substrate atoms to Cl only
+- Default parameters: R_eq = 1.80 Å, D_e = 0.0116 eV, α = 1.5 Å⁻¹
+- Added `--hbond_model cl_morse` CLI option with parameter overrides
+
+**Result:**
+The Cl repulsive channel provided a physically meaningful correction that could be tuned via H_H and H_O coefficients in the model.
+
+## Extended Model with H-Bond Correction
+
+The final model includes 5 linear parameters:
+
+```
+E = P_H * |ρ_H|^β + P_O * |ρ_O|^β + H_H * τ_H + H_O * τ_O + q_H * φ_H + q_O * φ_O
+```
+
+where:
+- `P_H, P_O`: Pauli repulsion coefficients (density to power β)
+- `H_H, H_O`: H-bond correction coefficients (4th channel: Cl repulsive Morse)
+- `q_H, q_O`: Coulomb charges (q_O = -2*q_H for charge neutrality)
+- `β`: Density exponent (fixed at 1.15 based on manual fitting)
+- `τ_H, τ_O`: 4th channel values sampled at H and O positions
+
+## GUI for Manual Intuition Building
+
+To build physical intuition and obtain reasonable starting parameters, we developed an interactive GUI in `tests/tMMFF/gui_fdbm_fit.py`.
+
+**Features:**
+- **Live 2×2 plotting**: DFT vs model for H2O-H/Cl and H2O-O/Na scan profiles
+- **Spinbox controls**: Mouse-wheel support, expanded ranges (H_H, H_O: -10000..10000)
+- **Per-atom decomposition**: Toggle to see H1, H2, O contributions separately
+- **Geometry subplot**: Visualizes H2O orientation in xz plane
+- **Save/Load parameters**: JSON export/import for reproducibility
+- **Weighted RMS display**: Real-time fit quality feedback
+
+**Manual Fit Result:**
+Through interactive tuning, the user obtained physically reasonable parameters:
+```json
+{
+  "P_H": 7.88,
+  "P_O": 120.78,
+  "H_H": -115.0,
+  "H_O": 0.0,
+  "q_H": 0.35,
+  "beta": 1.15,
+  "dz": -0.1
+}
+```
+
+This manual fit provided a target for the automatic fitting procedure to match.
+
+## Regularized Fitting: Solving the Ill-Conditioned Linear System
+
+### The Problem: Ill-Conditioned Design Matrix
+
+When we attempted an unconstrained linear least-squares fit for all 5 parameters (P_H, P_O, H_H, H_O, q_H), the results were unphysical:
+
+```
+P_H = -9.98   (negative repulsion - unphysical)
+P_O = 553     (unrealistically large)
+H_H = -66
+H_O = 1290    (unrealistically large)
+q_H = 1.07    (far from RESP reference 0.2)
+```
+
+The **condition number** of the design matrix was 1.17×10⁵, indicating severe ill-conditioning. This means the columns of the matrix are nearly linearly dependent: the Pauli density, Coulomb potential, and Cl repulsive channels are correlated through the underlying physics of the system.
+
+When a matrix is ill-conditioned, small numerical errors or noise in the data can cause large, unphysical swings in the fitted parameters. The solver finds a mathematical solution that minimizes the residual, but that solution may violate physical constraints.
+
+### Solution 1: Column Scaling
+
+**Concept:**
+When columns of a matrix have very different magnitudes (e.g., density values ~10⁴, Coulomb ~10⁰, tau ~10⁻³), the numerical linear algebra becomes unstable. Column scaling normalizes each column to have similar magnitude.
+
+**Mathematical Form:**
+```
+A_scaled = A / col_scale
+where col_scale[j] = sqrt(mean(A[:,j]²))
+```
+
+**Effect:**
+- Condition number improved from 1.17×10⁵ to 7.7×10¹
+- Solver becomes numerically stable
+- Solution is equivalent in scaled coordinates, then transformed back
+
+**Why it works:**
+Scaling ensures that numerical precision (machine epsilon ~10⁻¹⁶) is not wasted on columns with large magnitudes. All columns contribute equally to the numerical stability.
+
+### Solution 2: Ridge Regression with Priors (Tikhonov Regularization)
+
+**Concept:**
+Pure least-squares minimizes the residual error: `min ||A·c - b||²`. This allows parameters to take any value as long as it fits the data. Ridge regression adds a penalty term that keeps parameters close to reasonable "prior" values unless the data strongly demands otherwise.
+
+**Mathematical Form:**
+```
+min ||A·c - b||² + λ||c - c_prior||²
+```
+
+where:
+- `c_prior`: Prior values for parameters (physics-based guesses)
+- `λ`: Regularization strength (how strongly to enforce the prior)
+- The penalty term `λ||c - c_prior||²` discourages large deviations from the prior
+
+**In our implementation:**
+We use **parameter-specific regularization scales** to allow different parameters to deviate by different amounts:
+
+```
+λ_j = ridge_strength / prior_scale[j]²
+min ||A·c - b||² + Σ_j λ_j (c_j - c_prior[j])²
+```
+
+**Prior values used:**
+- `P_H, P_O`: Diagnostic values from vdW mapping (plq_H[0], plq_O[0])
+- `H_H, H_O`: 0 (no prior knowledge, let data drive)
+- `q_H`: RESP reference value (plq_H[2])
+
+**Prior scales (characteristic deviations allowed):**
+- `P_H`: 30 (can deviate by ~30 from diagnostic)
+- `P_O`: 300 (larger uncertainty for O)
+- `H_H, H_O`: 300 (allow large corrections if data demands)
+- `q_H`: 0.5 (keep close to RESP)
+
+**Didactic Explanation:**
+Think of ridge regression as a "tension spring" connecting each parameter to its prior value. The spring constant is λ. If the data provides strong evidence for a different value, the spring stretches. If the data is weak or noisy, the spring pulls the parameter back toward the prior. This prevents overfitting to noise and ensures physically reasonable solutions.
+
+**Combined with column scaling:**
+The regularization is applied in scaled coordinates to ensure numerical stability:
+
+```
+c_scaled = c * col_scale
+c_prior_scaled = c_prior * col_scale
+λ_scaled = λ / col_scale²
+min ||A_scaled·c_scaled - b||² + Σ_j λ_scaled[j] (c_scaled[j] - c_prior_scaled[j])²
+```
+
+### Results with Regularization
+
+The regularized fit produced physically reasonable parameters close to the manual fit:
+
+| Parameter | Manual Fit | Regularized Fit | Prior |
+|-----------|------------|-----------------|-------|
+| P_H       | 7.88       | 5.96            | 7.88  |
+| P_O       | 120.78     | 104.18          | 27.78 |
+| H_H       | -115.0     | -89.21          | 0     |
+| H_O       | 0.0        | -5.22           | 0     |
+| q_H       | 0.35       | 0.327           | 0.20  |
+
+**Fit quality:**
+- wRMS residual: 0.063 eV (higher than unconstrained fit, but physically meaningful)
+- Condition number: 7.7×10¹ (well-conditioned)
+- Parameters are in the same physical regime as manual fit
+
+**Key insight:**
+The regularization successfully prevented the solver from taking unphysical shortcuts (e.g., making P_H negative and compensating with huge H_O). Instead, it found a solution that balances data fit with physical plausibility.
+
+## Summary of the Complete Workflow
+
+1. **GridFF Generation**: Compute 4 channels (Pauli density, London=0, Coulomb potential, Cl repulsive Morse) on GPU
+2. **DFT Data Loading**: Load H2O-H and H2O-O scan data with interaction energies
+3. **Sampling**: Pre-sample all channels at atom positions for all configurations
+4. **Regularized Fitting**:
+   - Scale design matrix columns for numerical stability
+   - Apply ridge regression with physics-based priors
+   - Solve linear system with `np.linalg.solve()`
+5. **Validation**: Generate diagnostic plots comparing DFT vs fitted model
+6. **GUI Refinement**: Use interactive GUI for final manual tuning if needed
+
+## Key Implementation Files
+
+- `tests/tMMFF/gen_gridff_nacl_gpu.py`: Main fitting script with regularized solver
+- `pyBall/OCL/Surface_utils.py`: 
+  - `compute_kinetic_energy_density_log()`: τ computation via LoG
+  - `compute_cl_repulsive_on_grid()`: Cl repulsive Morse wrapper
+  - `sample_gridff_trilinear()`: Grid sampling with PBC
+- `tests/tMMFF/gui_fdbm_fit.py`: Interactive GUI for manual fitting
+- `pyBall/OCL/GridFF.py`: `GridFF_cl.makeMorseFF()`: GPU Morse kernel
+- `cpp/common_resources/cl/GridFF.cl`: `makeMorseFF` OpenCL kernel
+
+## References
+
+- Tikhonov, A. N. (1963). "Solution of incorrectly posed problems and the regularization method". Soviet Mathematics Doklady.
+- Ridge regression: Hoerl, A. E., & Kennard, R. W. (1970). "Ridge regression: Biased estimation for nonorthogonal problems". Technometrics.

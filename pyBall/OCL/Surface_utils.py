@@ -579,7 +579,7 @@ def plot_gridff_diagnostics(grid_data, sub_apos, sub_enames, lvec, iz_slices=Non
     return save_path
 
 
-def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path, iz_top=None, iy_center=None, z_atom_range=2.0, mol_apos=None, mol_enames=None, plq_coeffs=None, plq_coeffs2=None, zmin_offset=2.0, z_ylim=None, vmin_vmax_xz=None, plot_diagnostics=True):
+def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path, iz_top=None, iy_center=None, z_atom_range=2.0, mol_apos=None, mol_enames=None, plq_coeffs=None, plq_coeffs2=None, zmin_offset=2.0, z_ylim=None, vmin_vmax_xz=None, plot_diagnostics=True, plot_mol_samples=True, xy_same_scale_as_xz=False, z_profile_range=None, elem_name='H', elem_name2='O', H_H=0.0, H_O=0.0):
     """
     Generate comprehensive alignment diagnostic figure.
 
@@ -601,6 +601,13 @@ def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path
         z_ylim: Y-axis limits for Z-profile (default: +/-0.5 eV)
         vmin_vmax_xz: Optional tuple (vmin, vmax) for XZ slice color scale (default: auto from data above zmin_offset)
         plot_diagnostics: If False, skip plotting and return None (default: True)
+        plot_mol_samples: If False, skip plotting molecule sample atoms in 2D imshow plots (default: True)
+        xy_same_scale_as_xz: If True, use same color scale for XY plot as XZ plot (default: False)
+        z_profile_range: Optional tuple (zmin, zmax) for Z-profile x-axis range in Angstrom (default: 0 to 6 A)
+        elem_name: Element name for first plq_coeffs (default: 'H')
+        elem_name2: Element name for second plq_coeffs2 (default: 'O')
+        H_H: H-bond correction coefficient for H (default: 0.0)
+        H_O: H-bond correction coefficient for O (default: 0.0)
     """
     if not plot_diagnostics:
         return None
@@ -642,10 +649,14 @@ def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path
             mol_colors = ['red'] * len(mol_apos_flat)
 
     # Color scale: XY uses symmetric range from that slice only, XZ uses data above zmin
-    # XY slice - symmetric range from this slice only
+    # XY slice - symmetric range from this slice only (or use XZ scale if requested)
     xy_slice_data = total_potential[:, :, iz_top, 0]
-    vmax_xy = max(abs(xy_slice_data.min()), abs(xy_slice_data.max()))
-    vmin_xy, vmax_xy = -vmax_xy, vmax_xy if vmax_xy > 0 else (None, None)
+    if xy_same_scale_as_xz:
+        # Use XZ scale for XY (will be computed below)
+        vmin_xy, vmax_xy = None, None
+    else:
+        vmax_xy = max(abs(xy_slice_data.min()), abs(xy_slice_data.max()))
+        vmin_xy, vmax_xy = -vmax_xy, vmax_xy if vmax_xy > 0 else (None, None)
 
     # XZ slice - data above zmin (compute from the XZ slice only, not whole grid)
     # zmin_offset is absolute z (e.g., 2.0 means 2A above surface at z=0)
@@ -690,29 +701,31 @@ def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path
         ax.scatter(atoms_xyz[:, 0], atoms_xyz[:, 2],
                    c=atoms_colors, s=10, alpha=0.7, marker='.')
         # Plot molecule samples (same array for all panels)
-        if mol_apos_flat is not None:
+        if plot_mol_samples and mol_apos_flat is not None:
             ax.scatter(mol_apos_flat[:, 0], mol_apos_flat[:, 2],
                        c=mol_colors, s=15, alpha=0.6, marker='.', edgecolors='black', linewidth=0.5, label='mol samples')
-        ax.set_title(f'Total Potential (P={P:.3f},L={L:.3f},Q={Q:.3f}) XZ at y={y_val:.3f}A (iy={iy}) {title_suffix}')
+        ax.set_title(f'Total Potential\n(P={P:.3f},L={L:.3f},Q={Q:.3f})\nXZ at y={y_val:.3f}A (iy={iy}) {title_suffix}')
         ax.set_xlabel('x [A]')
         ax.set_ylabel('z [A]')
         ax.set_ylim(zmin_display, g0[2] + min(nz*dz, 20))  # Show from z=0 (surface)
-        plt.colorbar(im, ax=ax)
+        plt.colorbar(im, ax=ax, shrink=0.8)
 
     # 1. XY slice at top layer - Total potential
     ax = axes[0, 0]
     z_val = g0[2] + iz_top * dz
     extent = [g0[0], g0[0] + nx*dx, g0[1], g0[1] + ny*dy]
+    # Use XZ scale for XY if requested
+    vmin_xy_use, vmax_xy_use = (vmin_xz, vmax_xz) if xy_same_scale_as_xz else (vmin_xy, vmax_xy)
     im = ax.imshow(total_potential[:, :, iz_top, 0].T, extent=extent,
-                   origin='lower', cmap='bwr', aspect='equal', vmin=vmin_xy, vmax=vmax_xy)
+                   origin='lower', cmap='bwr', aspect='equal', vmin=vmin_xy_use, vmax=vmax_xy_use)
     plot_atoms_overlay(ax, atoms_xyz, atoms_enames, z_atom_range=z_atom_range, g0=g0, dg=dg)
     # Overlay molecule samples
-    if mol_apos_flat is not None:
+    if plot_mol_samples and mol_apos_flat is not None:
         ax.scatter(mol_apos_flat[:, 0], mol_apos_flat[:, 1], c=mol_colors, s=15, alpha=0.6, marker='.', edgecolors='black', linewidth=0.5, label='mol samples')
-    ax.set_title(f'Total Potential (P={P:.3f},L={L:.3f},Q={Q:.3f}) XY at z={z_val:.3f}A (iz={iz_top})')
+    ax.set_title(f'Total Potential\n(P={P:.3f},L={L:.3f},Q={Q:.3f})\nXY at z={z_val:.3f}A (iz={iz_top})')
     ax.set_xlabel('x [A]')
     ax.set_ylabel('y [A]')
-    plt.colorbar(im, ax=ax)
+    plt.colorbar(im, ax=ax, shrink=0.8)
 
     # 2. XZ slice at center Y
     plot_xz_slice(axes[0, 1], iy_center, '')
@@ -747,11 +760,14 @@ def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path
         elif axis == 'z':
             cx, cy = fixed_idx
             z_coords = g0[2] + np.arange(nz) * dz
-            ax.plot(z_coords, total_potential[cx, cy, :, 0], 'k-', linewidth=2, label=f'H-Total (P={P:.3f},L={L:.3f},Q={Q:.3f})')
+            # Get H-bond coefficient for this element
+            H_val = H_H if elem_name == 'H' else H_O
+            ax.plot(z_coords, total_potential[cx, cy, :, 0], 'k-', linewidth=2, label=f'{elem_name}-Total (P={P:.3f},L={L:.3f},Q={Q:.3f},H={H_val:.1f})')
             if plq_coeffs2 is not None:
                 P2, L2, Q2 = plq_coeffs2[0], plq_coeffs2[1], plq_coeffs2[2]
                 total2 = P2*grid_data[...,0] + L2*grid_data[...,1] + Q2*grid_data[...,2]
-                ax.plot(z_coords, total2[cx, cy, :], 'm-', linewidth=2, label=f'O-Total (P={P2:.3f},L={L2:.3f},Q={Q2:.3f})')
+                H_val2 = H_H if elem_name2 == 'H' else H_O
+                ax.plot(z_coords, total2[cx, cy, :], 'm-', linewidth=2, label=f'{elem_name2}-Total (P={P2:.3f},L={L2:.3f},Q={Q2:.3f},H={H_val2:.1f})')
             ax.plot(z_coords, grid_data[cx, cy, :, 0], 'b--', alpha=0.5, label='Pauli')
             ax.plot(z_coords, grid_data[cx, cy, :, 1], 'r--', alpha=0.5, label='London')
             ax.plot(z_coords, grid_data[cx, cy, :, 2], 'g--', alpha=0.5, label='Coulomb')
@@ -763,7 +779,10 @@ def plot_alignment_summary(grid_data, g0, dg, atoms_xyz, atoms_enames, save_path
             ax.set_xlabel('z [A]')
             ax.set_ylabel('Energy [eV]')
             ax.set_title(f'Z-Profile at x={g0[0]+cx*dx:.3f}A, y={g0[1]+cy*dy:.3f}A {title_suffix}')
-            ax.set_xlim(g0[2], g0[2] + min(nz*dz, 20))  # Consistent z-range limit
+            if z_profile_range is not None:
+                ax.set_xlim(z_profile_range[0], z_profile_range[1])
+            else:
+                ax.set_xlim(g0[2], g0[2] + min(nz*dz, 20))  # Consistent z-range limit
             ax.set_ylim(z_ylim)
         
         ax.legend()
@@ -2427,3 +2446,247 @@ def compare_all_methods(sys_at, gridff_path, sub_xyz_path, n_harm=4, N_rep=20, v
         print(f"{'='*60}")
     
     return all_results
+
+
+# ============================================================
+# FDBM Fitting Utilities — shared between batch and interactive tools
+# ============================================================
+
+def sample_gridff_trilinear(pos, gridff, g0, dg):
+    """Sample GridFF numpy array at position (x, y, z) using trilinear interpolation.
+    - x/y: periodic wrap
+    - z: clamp
+    Returns: vals (nch,) float32, clamped_z bool
+    """
+    nx, ny, nz, nch = gridff.shape
+    fx = (pos[0] - g0[0]) / dg[0]
+    fy = (pos[1] - g0[1]) / dg[1]
+    fz = (pos[2] - g0[2]) / dg[2]
+    ix0 = int(np.floor(fx)); iy0 = int(np.floor(fy)); iz0 = int(np.floor(fz))
+    tx = fx - ix0; ty = fy - iy0; tz = fz - iz0
+    ixx = ix0 % nx;  iyy = iy0 % ny
+    clamped_z = (iz0 < 0) or (iz0 >= nz - 1)
+    iz = max(0, min(iz0, nz - 2));  iz1 = iz + 1
+    ix1 = (ixx + 1) % nx;  iy1 = (iyy + 1) % ny
+    c000 = gridff[ixx, iyy, iz , :]; c100 = gridff[ix1, iyy, iz , :]
+    c010 = gridff[ixx, iy1, iz , :]; c110 = gridff[ix1, iy1, iz , :]
+    c001 = gridff[ixx, iyy, iz1, :]; c101 = gridff[ix1, iyy, iz1, :]
+    c011 = gridff[ixx, iy1, iz1, :]; c111 = gridff[ix1, iy1, iz1, :]
+    c00 = c000*(1.0-tx) + c100*tx; c10 = c010*(1.0-tx) + c110*tx
+    c01 = c001*(1.0-tx) + c101*tx; c11 = c011*(1.0-tx) + c111*tx
+    c0  = c00 *(1.0-ty) + c10 *ty; c1  = c01 *(1.0-ty) + c11 *ty
+    vals = c0  *(1.0-tz) + c1  *tz
+    return vals, clamped_z
+
+
+def load_dft_scan_data(dft_paths, z_top_sub):
+    """Load and concatenate DFT matched NPZ datasets, compute interaction energies.
+    Args:
+        dft_paths: list of paths to *_matched.npz files
+        z_top_sub: z coordinate of top substrate atom (for coordinate frame shift)
+    Returns: dict with keys: coords, energies, enames, ix, iy, orientxy, orientz, zdist, mol_tag, E_int, E0, weights (all zero initially)
+    """
+    dsets = []
+    for p in dft_paths:
+        if os.path.exists(p):
+            dsets.append((os.path.basename(p).replace('_matched.npz', ''), np.load(p)))
+    if len(dsets) == 0:
+        raise RuntimeError(f'No DFT matched datasets found at {dft_paths}')
+    coords   = np.concatenate([ds['coords']   for _, ds in dsets], axis=0).copy()
+    energies = np.concatenate([ds['energies'] for _, ds in dsets], axis=0)
+    enames   = dsets[0][1]['enames']
+    ix_arr       = np.concatenate([ds['ix']       for _, ds in dsets], axis=0)
+    iy_arr       = np.concatenate([ds['iy']       for _, ds in dsets], axis=0)
+    orientxy = np.concatenate([ds['orientxy'] for _, ds in dsets], axis=0)
+    orientz  = np.concatenate([ds['orientz']  for _, ds in dsets], axis=0)
+    zdist    = np.concatenate([ds['zdist']    for _, ds in dsets], axis=0)
+    mol_tag  = np.concatenate([np.full(len(ds['energies']), name, dtype=object) for name, ds in dsets], axis=0)
+    coords[:, :, 2] -= z_top_sub
+    # Baseline subtraction per group
+    E0 = np.zeros_like(energies, dtype=np.float64)
+    uniq_keys = {}
+    for i in range(len(energies)):
+        k = (str(mol_tag[i]), int(ix_arr[i]), int(iy_arr[i]), str(orientxy[i]), int(orientz[i]))
+        uniq_keys.setdefault(k, []).append(i)
+    for k, idxs in uniq_keys.items():
+        zz = zdist[idxs]
+        zmax = float(np.max(zz))
+        mask = np.isclose(zz, zmax, rtol=0.0, atol=1e-6)
+        imax = np.array(idxs, dtype=int)[mask]
+        E0[idxs] = float(np.mean(energies[imax]))
+    E_int = energies - E0
+    return dict(coords=coords, energies=energies, enames=enames, ix=ix_arr, iy=iy_arr,
+                orientxy=orientxy, orientz=orientz, zdist=zdist, mol_tag=mol_tag,
+                E_int=E_int, E0=E0, dset_names=[n for n, _ in dsets])
+
+
+def compute_fit_weights(E_int, mol_tag, ix, iy, orientz, fit_scan_configs, scan_tilt=0, Eint_max=0.5, kT_weight=0.2):
+    """Compute exponential fit weights. Returns weights array (same length as E_int), zero for excluded points."""
+    mask_scan = np.zeros(len(E_int), dtype=bool)
+    for mol_f, ix_f, iy_f in fit_scan_configs:
+        mask_scan |= (mol_tag == mol_f) & (ix == ix_f) & (iy == iy_f) & (orientz == scan_tilt)
+    mask_fit = mask_scan & (E_int <= Eint_max)
+    weights = np.exp(-E_int / kT_weight)
+    weights[~mask_fit] = 0.0
+    if np.any(mask_fit):
+        weights[mask_fit] /= weights[mask_fit].max()
+    return weights
+
+
+def prepare_scan_panel_data(data, gridff, g0, dg, panel_mols, panel_ix, panel_iy, panel_sites,
+                             orient_name, scan_tilt, dz_shift, idx_pauli=0, idx_coulomb=2, idx_polar=3, per_atom=False):
+    """Pre-sample GridFF channels for each of the 4 scan panels.
+    Args:
+        per_atom: if True, return per-atom rho/phi/tau (rhoH1, rhoH2, rhoO, phiH1, phiH2, phiO, tauH1, tauH2, tauO)
+                  if False, return summed (rhoH, rhoO, phiH, phiO, tauH, tauO)
+    Returns list of dicts, one per panel.
+    """
+    panels = []
+    for pidx in range(len(panel_mols)):
+        mol_p = panel_mols[pidx]; ix_p = panel_ix[pidx]; iy_p = panel_iy[pidx]; site_label = panel_sites[pidx]
+        mask = ((data['mol_tag'] == mol_p) & (data['ix'] == ix_p) & (data['iy'] == iy_p) &
+                (data['orientxy'] == orient_name) & (data['orientz'] == scan_tilt))
+        if np.count_nonzero(mask) == 0:
+            panels.append(None); continue
+        z_sel = data['zdist'][mask]
+        E_sel = data['energies'][mask]
+        c_sel = data['coords'][mask]
+        w_sel = data['weights'][mask]
+        zmax = float(np.max(z_sel))
+        mask_zmax = np.isclose(z_sel, zmax, rtol=0.0, atol=1e-6)
+        E0 = float(np.mean(E_sel[mask_zmax]))
+        E_int_dft = E_sel - E0
+        enames = data['enames']
+        n_frames = len(z_sel)
+        if per_atom:
+            rhoH1 = np.zeros(n_frames); rhoH2 = np.zeros(n_frames); rhoO = np.zeros(n_frames)
+            phiH1 = np.zeros(n_frames); phiH2 = np.zeros(n_frames); phiO = np.zeros(n_frames)
+            tauH1 = np.zeros(n_frames); tauH2 = np.zeros(n_frames); tauO = np.zeros(n_frames)
+            for i in range(n_frames):
+                for j, ename in enumerate(enames):
+                    pos = c_sel[i, j].copy(); pos[2] += dz_shift
+                    vals, _ = sample_gridff_trilinear(pos, gridff, g0, dg)
+                    if ename == 'H':
+                        if j == 0:
+                            rhoH1[i] += vals[idx_pauli]; phiH1[i] += vals[idx_coulomb]; tauH1[i] += vals[idx_polar]
+                        else:
+                            rhoH2[i] += vals[idx_pauli]; phiH2[i] += vals[idx_coulomb]; tauH2[i] += vals[idx_polar]
+                    elif ename == 'O':
+                        rhoO[i] += vals[idx_pauli]; phiO[i] += vals[idx_coulomb]; tauO[i] += vals[idx_polar]
+            sort_idx = np.argsort(z_sel)
+            panels.append(dict(
+                z_s=z_sel[sort_idx], E_int_dft=E_int_dft[sort_idx], w_s=w_sel[sort_idx],
+                rhoH1=rhoH1[sort_idx], rhoH2=rhoH2[sort_idx], rhoO=rhoO[sort_idx],
+                phiH1=phiH1[sort_idx], phiH2=phiH2[sort_idx], phiO=phiO[sort_idx],
+                tauH1=tauH1[sort_idx], tauH2=tauH2[sort_idx], tauO=tauO[sort_idx],
+                mask_zmax=mask_zmax[sort_idx],
+                apos=c_sel[sort_idx], names=list(enames),
+                title=f'{mol_p} over {site_label} (ix={ix_p} iy={iy_p}, tilt={scan_tilt})'
+            ))
+        else:
+            rhoH = np.zeros(n_frames); rhoO = np.zeros(n_frames)
+            phiH = np.zeros(n_frames); phiO = np.zeros(n_frames)
+            tauH = np.zeros(n_frames); tauO = np.zeros(n_frames)
+            for i in range(n_frames):
+                for j, ename in enumerate(enames):
+                    pos = c_sel[i, j].copy(); pos[2] += dz_shift
+                    vals, _ = sample_gridff_trilinear(pos, gridff, g0, dg)
+                    if ename == 'H':
+                        rhoH[i] += vals[idx_pauli]; phiH[i] += vals[idx_coulomb]; tauH[i] += vals[idx_polar]
+                    elif ename == 'O':
+                        rhoO[i] += vals[idx_pauli]; phiO[i] += vals[idx_coulomb]; tauO[i] += vals[idx_polar]
+            sort_idx = np.argsort(z_sel)
+            panels.append(dict(
+                z_s=z_sel[sort_idx], E_int_dft=E_int_dft[sort_idx], w_s=w_sel[sort_idx],
+                rhoH=rhoH[sort_idx], rhoO=rhoO[sort_idx], phiH=phiH[sort_idx], phiO=phiO[sort_idx],
+                tauH=tauH[sort_idx], tauO=tauO[sort_idx],
+                mask_zmax=mask_zmax[sort_idx],
+                apos=c_sel[sort_idx], names=list(enames),
+                title=f'{mol_p} over {site_label} (ix={ix_p} iy={iy_p}, tilt={scan_tilt})'
+            ))
+    return panels
+
+
+def compute_model_Eint(panel, P_H, P_O, q_H, beta=1.0, H_H=0.0, H_O=0.0):
+    """Compute model interaction energy for a pre-sampled panel (summed mode).
+    E = P_H * rho_H^beta + P_O * rho_O^beta + H_H * tau_H + H_O * tau_O + E_coulomb
+    Returns: E_int_model array (same length as panel['z_s'])
+    """
+    q_O = -2.0 * q_H
+    Ec = q_H * panel['phiH'] + q_O * panel['phiO']
+    rhoH_b = np.abs(panel['rhoH'])**beta
+    rhoO_b = np.abs(panel['rhoO'])**beta
+    tauH = panel.get('tauH', np.zeros_like(panel['rhoH']))
+    tauO = panel.get('tauO', np.zeros_like(panel['rhoO']))
+    Em = P_H * rhoH_b + P_O * rhoO_b + H_H * tauH + H_O * tauO + Ec
+    Em0 = float(np.mean(Em[panel['mask_zmax']]))
+    return Em - Em0
+
+
+def compute_model_Eint_per_atom(panel, P_H, P_O, q_H, beta=1.0, H_H=0.0, H_O=0.0):
+    """Compute per-atom model interaction energies (for decomposition view).
+    Returns dict with keys: H1, H2, O (each an array)
+    """
+    q_O = -2.0 * q_H
+    rhoH1_b = np.abs(panel['rhoH1'])**beta
+    rhoH2_b = np.abs(panel['rhoH2'])**beta
+    rhoO_b  = np.abs(panel['rhoO'])**beta
+    tauH1 = panel.get('tauH1', np.zeros_like(panel['rhoH1']))
+    tauH2 = panel.get('tauH2', np.zeros_like(panel['rhoH2']))
+    tauO  = panel.get('tauO',  np.zeros_like(panel['rhoO']))
+    EcH1 = q_H * panel['phiH1']
+    EcH2 = q_H * panel['phiH2']
+    EcO  = q_O * panel['phiO']
+    EmH1 = P_H * rhoH1_b + H_H * tauH1 + EcH1
+    EmH2 = P_H * rhoH2_b + H_H * tauH2 + EcH2
+    EmO  = P_O * rhoO_b  + H_O * tauO  + EcO
+    EmH1_0 = float(np.mean(EmH1[panel['mask_zmax']]))
+    EmH2_0 = float(np.mean(EmH2[panel['mask_zmax']]))
+    EmO_0  = float(np.mean(EmO[panel['mask_zmax']]))
+    return dict(H1=EmH1-EmH1_0, H2=EmH2-EmH2_0, O=EmO-EmO_0)
+
+
+def compute_cl_repulsive_on_grid(cl_apos, g0, dg, ns, lvec, nPBC=(4,4,0),
+                                  R_eq=1.80, D_e=0.0116, alphaMorse=1.5, R_damp=0.1):
+    """Compute Morse repulsive (Pauli) potential on 3D grid from Cl atoms only, using GPU via GridFF_cl.make_MorseFF.
+
+    Reuses GridFF_cl.make_MorseFF (cpp/common_resources/cl/GridFF.cl) which evaluates:
+        E_Paul(r) = sum_i D_e_i * exp(-2*alpha*(|r-r_i| - R_eq_i))
+    over all atoms (Cl only here) with PBC. Only V_Paul is returned (London discarded).
+
+    Args:
+        cl_apos: (n_cl, 3) array of Cl atom positions in Angstrom
+        g0: (3,) grid origin in Angstrom
+        dg: (dx, dy, dz) grid spacing in Angstrom
+        ns: (nx, ny, nz) grid shape
+        lvec: (3, 3) lattice vectors [[ax,ay,az],[bx,by,bz],[cx,cy,cz]] in Angstrom
+        nPBC: (npx, npy, npz) PBC replication counts (default (4,4,0) for 2D surface)
+        R_eq: Morse equilibrium distance for Cl in Angstrom
+        D_e: Morse well depth for Cl in eV
+        alphaMorse: Morse exponent in 1/Angstrom (GFFParams.y)
+        R_damp: damping radius for numerical stability (GFFParams.x)
+
+    Returns:
+        V_Paul: (nx, ny, nz) float32 array of Cl repulsive potential in eV
+    """
+    from pyBall.OCL.GridFF import GridFF_cl
+    nx, ny, nz = ns
+    n_cl = len(cl_apos)
+    # atoms: (n, 4) float32 positions with w=0
+    atoms = np.zeros((n_cl, 4), dtype=np.float32)
+    atoms[:, :3] = cl_apos
+    # REQs: (n, 4) float32 (R_eq, D_e, q=0, w=0) -- no Coulomb, pure Pauli
+    REQs = np.zeros((n_cl, 4), dtype=np.float32)
+    REQs[:, 0] = R_eq
+    REQs[:, 1] = D_e
+    # lvec as numpy array for GridShape (GridFF_cl will handle conversion internally)
+    lvec_arr = np.asarray(lvec, dtype=np.float64) if not isinstance(lvec, np.ndarray) else lvec
+    GFFParams = (R_damp, alphaMorse, 0.0, 0.0)
+    gff = GridFF_cl()
+    # make_MorseFF returns V_Paul, V_Lond both in shape ns[::-1] = (nz, ny, nx)
+    V_Paul_zyx, _ = gff.make_MorseFF(
+        atoms, REQs, nPBC=nPBC, dg=dg, ng=ns, lvec=lvec_arr, g0=tuple(g0), GFFParams=GFFParams
+    )
+    # Transpose from (nz, ny, nx) -> (nx, ny, nz) to match GridFF C-order convention
+    V_Paul = np.ascontiguousarray(V_Paul_zyx.transpose(2, 1, 0))
+    return V_Paul
