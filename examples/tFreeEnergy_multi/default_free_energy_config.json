@@ -1,24 +1,24 @@
 {
   "output_root": "results_sweep",
   "common": {
-    "xyz_name": "../../cpp/common_resources/xyz/DA.xyz",
-    "constraints": "constraints_DA.txt",
+    "xyz_name": "../../cpp/common_resources/polymers/gui_builder/output/generated_system.xyz",
+    "constraints": "constraints_combined_systems.txt",
     "surf_name": "../../cpp/common_resources/xyz/NaCl_3x3_L3",
     "Fconv": 1e-06,
-    "hard_atoms": false,
+    "hard_atoms": true,
     "soft_atoms": false,
     "hard_dist": false,
-    "soft_dist": true,
+    "soft_dist": false,
     "temperature": 300.0,
     "t_damp": 200.0,
     "dt": 0.05,
     "nSys": 200,
     "nEQsteps": 50000,
     "nLambda": 200,
-    "nMDsteps": 20000000,
+    "nMDsteps": 2000000,
     "mode": "TI",
     "K": 10.0,
-    "scan_mode": "both",
+    "scan_mode": "none",
     "scan_nsteps": 50000
   },
   "parameter_sets": [
@@ -81,6 +81,26 @@
     {
       "name": "temp_1000K",
       "temperature": 1000.0
+    },
+    {
+      "name": "temp_1200K",
+      "temperature": 1200.0
+    },
+    {
+      "name": "temp_1400K",
+      "temperature": 1400.0
+    },
+    {
+      "name": "temp_1600K",
+      "temperature": 1600.0
+    },
+    {
+      "name": "temp_1800K",
+      "temperature": 1800.0
+    },
+    {
+      "name": "temp_2000K",
+      "temperature": 2000.0
     }
   ]
 }

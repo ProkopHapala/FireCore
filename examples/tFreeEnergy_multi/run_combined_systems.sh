@@ -20,7 +20,7 @@ TDAMP=150
 TEMP=300
 XYZ_NAME="../../cpp/common_resources/polymers/gui_builder/output/generated_system.xyz"
 CONSTRAINTS="constraints_combined_systems.txt"
-OUT_BASE="combined_systems"
+OUT_BASE="generated_system"
 
 # Parse command line arguments
 while [[ "$#" -gt 0 ]]; do
