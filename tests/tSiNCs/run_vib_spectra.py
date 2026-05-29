@@ -14,7 +14,7 @@ import argparse
 import numpy as np
 from vib_utils import (
     get_structure, make_sila,
-    run_dftb, run_pyscf, run_psi4, run_gpaw,
+    run_dftb, run_pyscf, run_psi4, run_gpaw, run_cp2k,
     freq_npy_path, export_modes_to_xyz,
     compute_or_load_hessian_pyscf,
     relaxed_xyz_path, make_pyscf_calc,
@@ -31,6 +31,7 @@ METHODS = {
     'dftb_3ob':    lambda atoms, mol, wd: run_dftb(mol, atoms, sk_set='3ob-3-1',    workdir=wd, with_ir=True),
     'dftb_matsci': lambda atoms, mol, wd: run_dftb(mol, atoms, sk_set='matsci-0-3', workdir=wd, with_ir=True),
     'dftb_pbc':    lambda atoms, mol, wd: run_dftb(mol, atoms, sk_set='pbc-0-3',    workdir=wd, with_ir=True),
+    'cp2k_pbe':    lambda atoms, mol, wd: run_cp2k(mol, atoms, xc='PBE', basis_set='SZV-MOLOPT-SR-GTH', workdir=wd),
     'gpaw_pbe':    lambda atoms, mol, wd: run_gpaw(mol, atoms, mode='lcao', basis='dzp', xc='PBE', workdir=wd),
     'psi4_b3lyp':  lambda atoms, mol, wd: run_psi4(mol, atoms, method='b3lyp', basis='cc-pvdz', workdir=wd),
     'pyscf_hf':    lambda atoms, mol, wd: run_pyscf(mol, atoms, method='hf',    basis='sto-3g', workdir=wd),
@@ -38,8 +39,8 @@ METHODS = {
 }
 
 DEFAULT_METHODS = {
-    'adamantane':      ['dftb_mio', 'gpaw_pbe'],
-    'sila_adamantane': ['dftb_matsci', 'gpaw_pbe'],
+    'adamantane':      ['dftb_mio', 'cp2k_pbe'],
+    'sila_adamantane': ['dftb_matsci', 'cp2k_pbe'],
 }
 
 

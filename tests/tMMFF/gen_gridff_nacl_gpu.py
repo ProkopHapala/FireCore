@@ -1,9 +1,12 @@
-"""Generate Bspline_PLQd.npy for NaCl using GPU Morse + DFT Coulomb.
+"""Generate Bspline_PLQd.npy for NaCl using DFT cubes + optional H-bond correction.
 
-Uses existing GridFF_cl GPU infrastructure:
-- Pauli/London: computed via make_MorseFF kernel (GPU)
-- Coulomb: loaded from DFT electrostatic_potential.cube
-- Hbond: 0
+Channel 0 (Pauli):  DFT charge_density.cube
+Channel 1 (London): 0 (placeholder)
+Channel 2 (Coulomb): DFT electrostatic_potential.cube (sign-corrected)
+Channel 3 (H-bond):  Configurable via --hbond_model:
+    - tau:       kinetic energy density via LoG-filtered Laplacian of rho
+    - cl_morse:  Cl repulsive Morse potential (GPU)
+    - fukui:     Fukui f- function = rho(N) - rho(N-1) (from cube file)
 """
 
 import os
@@ -159,7 +162,7 @@ def main():
     parser.add_argument('--orient', type=str, default='Na', choices=['Na', 'Cl', 'hollow'],help='Which orientation to plot in 1D scan diagnostic (default: Na)')
     parser.add_argument('--log_sigma', type=float, default=6.0, help='LoG Gaussian sigma as multiple of grid spacing (default: 2.0, units: voxels)')
     parser.add_argument('--plot_rho_tau', action='store_true', help='Plot rho (ch0) and tau (ch3) profiles over Na/Cl atoms')
-    parser.add_argument('--hbond_model', type=str, default='cl_morse', choices=['tau', 'cl_morse'], help='Hbond correction model: tau (kinetic energy density) or cl_morse (Cl repulsive Morse) (default: cl_morse)')
+    parser.add_argument('--hbond_model', type=str, default='cl_morse', choices=['tau', 'cl_morse', 'fukui'], help='Hbond correction model: tau (kinetic energy density), cl_morse (Cl repulsive Morse), or fukui (Fukui f- function) (default: cl_morse)')
     parser.add_argument('--cl_R_eq',  type=float, default=1.80,   help='Cl Morse R_eq in Angstrom (default: 1.80)')
     parser.add_argument('--cl_D_e',   type=float, default=0.0116,  help='Cl Morse D_e in eV (default: 0.0116)')
     parser.add_argument('--cl_alpha', type=float, default=1.5,    help='Cl Morse exponent alpha in 1/Angstrom (default: 1.5)')
@@ -257,6 +260,22 @@ def main():
         tau_cube_path = os.path.join(dft_data_dir, 'cl_repulsive.cube')
         _save_cube(tau_cube_path, cl_rep, g0, dg, 'Cl Morse Repulsive Field')
         print(f'Saved Cl repulsive cube: {tau_cube_path}')
+    elif args.hbond_model == 'fukui':
+        print('\nLoading Fukui f- function from cube file...')
+        fukui_path = os.path.join(dft_data_dir, '4-elec_pot_chr_den', '4-elec_pot_chr_den', 'fukui_results', 'fukui_minus.cube')
+        if not os.path.exists(fukui_path):
+            raise RuntimeError(f'Fukui cube not found at {fukui_path}')
+        fukui_data, fukui_g0, fukui_n, fukui_dg = _load_cube(fukui_path, is_potential=False)
+        # Verify grid compatibility with DFT cubes
+        if fukui_n != (nx, ny, nz):
+            raise RuntimeError(f'Fukui grid shape {fukui_n} does not match DFT grid {(nx, ny, nz)}')
+        if not (np.allclose(fukui_g0, g0_rho) and np.allclose(fukui_dg, dg_rho)):
+            raise RuntimeError(f'Fukui grid mismatch: g0={fukui_g0} dg={fukui_dg} vs DFT g0={g0_rho} dg={dg_rho}')
+        tau = np.ascontiguousarray(fukui_data.astype(np.float32))
+        tau_range = (float(tau.min()), float(tau.max()))
+        print(f'Fukui f- range: [{tau_range[0]:.4e}, {tau_range[1]:.4e}] e/Ang^3')
+        # Save Fukui cube for review (already in correct location)
+        print(f'Loaded Fukui cube: {fukui_path}')
 
     # Shift g0[2] so that z=0 is at the top substrate atom
     z_top_sub = sub_apos[:, 2].max()
@@ -282,7 +301,7 @@ def main():
         'channels': ['Pauli (charge_density.cube)', 'London (0)', 'Coulomb (electrostatic_potential.cube)', f'Hbond ({args.hbond_model})'],
         'hbond_model': args.hbond_model,
         'hbond_range': tau_range,
-        'note': f'Pauli channel loaded from DFT charge_density.cube. Coulomb from electrostatic_potential.cube. Hbond (4th channel) = {args.hbond_model}.'
+        'note': f'Pauli channel loaded from DFT charge_density.cube. Coulomb from electrostatic_potential.cube. Hbond (4th channel) = {args.hbond_model} (tau=LoG Laplacian of rho, cl_morse=GPU Morse on Cl, fukui=Fukui f- from cube).'
     }
     meta_path = os.path.join(dft_data_dir, 'Bspline_PLQd_meta.json')
     with open(meta_path, 'w') as f:
@@ -292,8 +311,8 @@ def main():
     # Plot rho and hbond profiles over Na/Cl atoms if requested
     if args.plot_rho_tau:
         import matplotlib.pyplot as plt
-        hbond_label = 'tau (kinetic)' if args.hbond_model == 'tau' else 'Cl repulsive'
-        hbond_ylabel = 'tau [au]' if args.hbond_model == 'tau' else 'Cl repulsive [eV]'
+        hbond_labels = {'tau': ('tau (kinetic)', 'tau [au]'), 'cl_morse': ('Cl repulsive', 'Cl repulsive [eV]'), 'fukui': ('Fukui f-', 'Fukui f- [e/Ang^3]')}
+        hbond_label, hbond_ylabel = hbond_labels[args.hbond_model]
         print(f'\n=== Plotting rho (clamped) and {hbond_label} vs z over Na/Cl ===')
         # Find top Na and Cl atoms
         z_top = sub_apos[:, 2].max()
@@ -374,8 +393,10 @@ def main():
         ax.set_xlim(0.0, 4.0)
         if args.hbond_model == 'tau':
             suptitle = f'rho (clamped={rho_clamp}) and tau vs z, LoG sigma={args.log_sigma}'
-        else:
+        elif args.hbond_model == 'cl_morse':
             suptitle = f'rho (clamped={rho_clamp}) and Cl repulsive vs z, R_eq={args.cl_R_eq} D_e={args.cl_D_e} alpha={args.cl_alpha}'
+        else:
+            suptitle = f'rho (clamped={rho_clamp}) and Fukui f- vs z'
         fig.suptitle(suptitle, fontsize=12)
         plt.tight_layout()
         rho_hbond_path = os.path.join(out_dir, f'rho_{args.hbond_model}_profiles.png')
@@ -825,6 +846,49 @@ def main():
         scan_path_fit = os.path.join(out_dir, 'scan_DFT_vs_fitted.png')
         _plot_scan(scan_path_fit, float(PH_fit), float(PO_fit), 'fitted', HH_use=float(HH_fit), HO_use=float(HO_fit))
         print('Saved 1D scan diagnostic (fitted):', scan_path_fit)
+
+        # Ablation test: compare fitted (with Fukui) vs without 4th channel (H_H=H_O=0)
+        def _plot_ablation(fig_path, P_H_use, P_O_use, HH_fit, HO_fit):
+            panels = su.prepare_scan_panel_data(scan_data, gridff, g0, dg, panel_mols, panel_ix, panel_iy, panel_sites,
+                                                 plot_orient, scan_tilt, dz_shift_fit)
+            fig, axs = plt.subplots(2, 2, figsize=(12, 10))
+            axs = axs.flatten()
+            for pidx, panel in enumerate(panels):
+                ax = axs[pidx]; axr = ax.twinx()
+                if panel is None: continue
+                # With Fukui (fitted H_H, H_O)
+                Em_fukui = su.compute_model_Eint(panel, P_H_use, P_O_use, qH_fit, beta=beta_fit, H_H=HH_fit, H_O=HO_fit)
+                # Ablation (no 4th channel, H_H=H_O=0)
+                Em_ablate = su.compute_model_Eint(panel, P_H_use, P_O_use, qH_fit, beta=beta_fit, H_H=0.0, H_O=0.0)
+                Edft_s = panel['E_int_dft']
+                z_s = panel['z_s']; w_s = panel['w_s']
+                # Compute residuals for both
+                resid_fukui = (Em_fukui - Edft_s) * w_s
+                resid_ablate = (Em_ablate - Edft_s) * w_s
+                rms_fukui = np.sqrt(np.mean(resid_fukui**2))
+                rms_ablate = np.sqrt(np.mean(resid_ablate**2))
+                # Plot DFT
+                ax.plot(z_s, Edft_s, ls=':', lw=1.5, color='k', label='DFT')
+                # Plot with Fukui
+                ax.plot(z_s, Em_fukui, ls='-', lw=0.8, color='b', label=f'with Fukui (H_H={HH_fit:.2f}, H_O={HO_fit:.2f})')
+                # Plot ablation (no 4th channel)
+                ax.plot(z_s, Em_ablate, ls='--', lw=0.8, color='r', label='ablation (H_H=0, H_O=0)')
+                # Plot residuals
+                axr.plot(z_s, resid_fukui, ls='-', lw=0.5, color='b', alpha=0.3, label=f'RMS_fukui={rms_fukui:.3f}')
+                axr.plot(z_s, resid_ablate, ls='--', lw=0.5, color='r', alpha=0.3, label=f'RMS_ablate={rms_ablate:.3f}')
+                ax.axhline(0, color='k', lw=0.5, alpha=0.5)
+                axr.axhline(0, color='k', lw=0.5, alpha=0.15)
+                ax.set_title(panel['title']); ax.set_xlabel('zdist [A]'); ax.set_ylabel('E_int [eV]')
+                axr.set_ylabel('residual [eV]'); axr.set_ylim(-0.5, 0.5); ax.set_ylim(-0.5, 0.5)
+                ax.legend(loc='upper left', fontsize=8); axr.legend(loc='upper right', fontsize=8)
+                ax.grid(True, alpha=0.3)
+            cap = f"Ablation test: P_H={P_H_use:.3f} P_O={P_O_use:.3f} q_H={qH_fit:.3f} beta={beta_fit} | Compare with/without 4th channel (Fukui)"
+            fig.suptitle(cap, fontsize=10)
+            plt.tight_layout(rect=(0, 0, 1, 0.96)); plt.savefig(fig_path, dpi=150); plt.close(fig)
+
+        scan_path_ablate = os.path.join(out_dir, 'scan_ablation_fukui.png')
+        _plot_ablation(scan_path_ablate, float(PH_fit), float(PO_fit), float(HH_fit), float(HO_fit))
+        print('Saved ablation test (with/without Fukui):', scan_path_ablate)
 
     print('\nDone. GridFF saved to:')
     print(f'  {gridff_path}')

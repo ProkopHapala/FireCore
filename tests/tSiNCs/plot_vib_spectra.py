@@ -19,19 +19,20 @@ COLORS = ['tab:blue', 'tab:red', 'tab:green', 'tab:orange', 'tab:purple', 'tab:b
 
 # Method tags that may exist per molecule (in preferred display order)
 METHOD_TAGS = {
-    'adamantane':      ['dftb_mio-1-1', 'dftb_3ob-3-1', 'gpaw_lcao_dzp_pbe', 'psi4_b3lyp_cc-pvdz', 'pyscf_hf_sto-3g', 'pyscf_b3lyp_sto-3g'],
-    'sila_adamantane': ['dftb_matsci-0-3', 'dftb_pbc-0-3', 'gpaw_lcao_dzp_pbe', 'psi4_b3lyp_cc-pvdz', 'pyscf_hf_sto-3g', 'pyscf_b3lyp_sto-3g'],
+    'adamantane':      ['dftb_mio-1-1', 'dftb_3ob-3-1', 'cp2k_pbe_szv_molopt_sr_gth', 'gpaw_lcao_dzp_pbe', 'psi4_b3lyp_cc-pvdz', 'pyscf_hf_sto-3g', 'pyscf_b3lyp_sto-3g'],
+    'sila_adamantane': ['dftb_matsci-0-3', 'dftb_pbc-0-3', 'cp2k_pbe_szv_molopt_sr_gth', 'gpaw_lcao_dzp_pbe', 'psi4_b3lyp_cc-pvdz', 'pyscf_hf_sto-3g', 'pyscf_b3lyp_sto-3g'],
 }
 
 METHOD_LABELS = {
-    'dftb_mio-1-1':       'DFTB+ mio-1-1',
-    'dftb_3ob-3-1':       'DFTB+ 3ob-3-1',
-    'dftb_matsci-0-3':    'DFTB+ matsci-0-3',
-    'dftb_pbc-0-3':       'DFTB+ pbc-0-3',
-    'gpaw_lcao_dzp_pbe':  'GPAW PBE/dzp',
-    'psi4_b3lyp_cc-pvdz': 'Psi4 B3LYP/cc-pVDZ',
-    'pyscf_hf_sto-3g':    'HF / STO-3G',
-    'pyscf_b3lyp_sto-3g': 'B3LYP / STO-3G',
+    'dftb_mio-1-1':              'DFTB+ mio-1-1',
+    'dftb_3ob-3-1':              'DFTB+ 3ob-3-1',
+    'dftb_matsci-0-3':           'DFTB+ matsci-0-3',
+    'dftb_pbc-0-3':              'DFTB+ pbc-0-3',
+    'cp2k_pbe_szv_molopt_sr_gth': 'CP2K PBE/SZV-MOLOPT',
+    'gpaw_lcao_dzp_pbe':         'GPAW PBE/dzp',
+    'psi4_b3lyp_cc-pvdz':        'Psi4 B3LYP/cc-pVDZ',
+    'pyscf_hf_sto-3g':           'HF / STO-3G',
+    'pyscf_b3lyp_sto-3g':        'B3LYP / STO-3G',
 }
 
 

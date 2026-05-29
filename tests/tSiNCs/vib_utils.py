@@ -117,6 +117,42 @@ def make_gpaw_calc(atoms, mode='lcao', basis='dzp', xc='PBE'):
     return GPAW(mode=mode, basis=basis, xc=xc, txt='gpaw.txt')
 
 
+def make_cp2k_calc(atoms, xc='PBE', basis_set='SZV-MOLOPT-SR-GTH'):
+    """Build ASE CP2K calculator for given atoms."""
+    from ase.calculators.cp2k import CP2K
+    # CP2K requires periodic boundary conditions - add vacuum box for molecules
+    if atoms.pbc.sum() == 0:
+        # Add 10 Å vacuum in all directions
+        atoms.center(vacuum=10.0)
+        atoms.pbc = True
+    return CP2K(
+        xc=xc,
+        basis_set=basis_set,
+        basis_set_file='BASIS_MOLOPT',
+        potential_file='POTENTIAL',
+        command='cp2k_shell',
+        label='cp2k',
+        cutoff=300,
+        max_scf=200,
+        inp='''
+&FORCE_EVAL
+  &DFT
+    &SCF
+      EPS_SCF 1.0E-4
+      &OT
+        MINIMIZER DIIS
+      &END OT
+      &OUTER_SCF
+        MAX_SCF 10
+        EPS_SCF 1.0E-4
+      &END OUTER_SCF
+    &END SCF
+  &END DFT
+&END FORCE_EVAL
+'''
+    )
+
+
 # ============================================================
 # Geometry optimization with caching
 # ============================================================
@@ -330,6 +366,27 @@ def run_gpaw(mol_name, atoms_in, mode='lcao', basis='dzp', xc='PBE', fmax=0.001,
 
     atoms = optimize_and_cache(atoms, mol_name, method_tag, fmax=fmax, workdir=workdir)
     atoms.calc = make_gpaw_calc(atoms, mode=mode, basis=basis, xc=xc)  # reattach after read from xyz
+
+    freqs = compute_or_load_vibrations(atoms, mol_name, method_tag, workdir=workdir, with_ir=False)
+    return freqs, method_tag
+
+
+# ============================================================
+# CP2K full pipeline
+# ============================================================
+
+def run_cp2k(mol_name, atoms_in, xc='PBE', basis_set='DZVP-MOLOPT-SR-GTH', fmax=0.01, workdir='.'):
+    """
+    Full CP2K pipeline: optimize (cached) -> vibrations (cached).
+    Returns frequencies in cm^-1.
+    Uses looser fmax for CP2K due to computational cost.
+    """
+    method_tag = f'cp2k_{xc}_{basis_set}'.replace('-', '_').lower()
+    atoms = atoms_in.copy()
+    atoms.calc = make_cp2k_calc(atoms, xc=xc, basis_set=basis_set)
+
+    atoms = optimize_and_cache(atoms, mol_name, method_tag, fmax=fmax, workdir=workdir)
+    atoms.calc = make_cp2k_calc(atoms, xc=xc, basis_set=basis_set)  # reattach after read from xyz
 
     freqs = compute_or_load_vibrations(atoms, mol_name, method_tag, workdir=workdir, with_ir=False)
     return freqs, method_tag

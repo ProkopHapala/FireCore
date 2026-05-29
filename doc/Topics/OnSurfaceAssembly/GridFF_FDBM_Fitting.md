@@ -2808,9 +2808,94 @@ The regularized fit produced physically reasonable parameters close to the manua
 **Key insight:**
 The regularization successfully prevented the solver from taking unphysical shortcuts (e.g., making P_H negative and compensating with huge H_O). Instead, it found a solution that balances data fit with physical plausibility.
 
-## Summary of the Complete Workflow
+## Fukui Function Integration and Ablation Test
 
-1. **GridFF Generation**: Compute 4 channels (Pauli density, London=0, Coulomb potential, Cl repulsive Morse) on GPU
+### Background
+
+The 4th channel (H-bond correction) was originally implemented using two approaches:
+1. **tau (kinetic energy density)**: Computed via LoG-filtered Laplacian of electron density
+2. **cl_morse (Cl repulsive Morse)**: GPU-computed Morse repulsion from Cl atoms
+
+A third approach was identified: using the **Fukui f- function** as the 4th channel. The Fukui function represents the difference in electron density between the neutral and anionic states (f- = ρ(N) - ρ(N-1)), which provides a direct measure of electron affinity and reactivity at each point in space.
+
+### Implementation
+
+The Fukui function was integrated as a third option for the `--hbond_model` CLI argument in `gen_gridff_nacl_gpu.py`:
+
+```python
+parser.add_argument('--hbond_model', type=str, default='cl_morse', 
+                    choices=['tau', 'cl_morse', 'fukui'], 
+                    help='Hbond correction model: tau (kinetic energy density), 
+                         cl_morse (Cl repulsive Morse), or fukui (Fukui f- function)')
+```
+
+**Loading logic:**
+- Load `fukui_minus.cube` from DFT results directory
+- Verify grid compatibility (shape, origin, spacing) with DFT density/potential cubes
+- No resampling needed (grids are identical)
+- Assign to `tau` variable for downstream compatibility
+
+**Metadata updates:**
+- Channel labels dynamically updated based on selected model
+- Plot titles and y-axis labels reflect the chosen H-bond model
+- Saved metadata includes `hbond_model` and `hbond_range`
+
+### Fitted Parameters with Fukui
+
+Using the Fukui f- function as the 4th channel, the regularized fit produced:
+
+| Parameter | Value | Physical meaning |
+|-----------|-------|-----------------|
+| P_H       | 4.90  | Pauli coefficient for H atoms |
+| P_O       | 101.56| Pauli coefficient for O atoms |
+| H_H       | -34.15| H-bond coefficient for H atoms (Fukui channel) |
+| H_O       | -26.42| H-bond coefficient for O atoms (Fukui channel) |
+| q_H       | 0.289 | Charge for H atoms |
+| beta      | 1.8   | Pauli exponent |
+
+**Fit quality:**
+- wRMS residual: 0.0613 eV
+- Fukui f- range: [-0.27, 0.43] e/Ang³
+
+### Ablation Test
+
+To quantify the contribution of the Fukui 4th channel, an ablation test was implemented comparing:
+
+1. **With Fukui**: Using fitted H_H and H_O coefficients
+2. **Ablation (no 4th channel)**: Setting H_H = H_O = 0
+3. **DFT reference**: Original DFT interaction energies
+
+**Implementation:**
+- New function `_plot_ablation()` generates 4-panel comparison plot
+- Each panel shows DFT vs model with Fukui vs model without 4th channel
+- Residuals plotted on twin y-axis for both cases
+- RMS residuals computed for both cases
+
+**Results:**
+The ablation test (`scan_ablation_fukui.png`) clearly demonstrates:
+- The Fukui 4th channel significantly improves fit quality
+- RMS residuals are lower with Fukui vs ablation across all 4 panels
+- H2O-H over Cl (hydrogen bonding) shows the largest improvement
+- The ablation (no 4th channel) deviates significantly from DFT, especially in the bonding region
+
+**Key insight:**
+The Fukui function provides a physically meaningful descriptor for H-bond corrections by directly capturing electron affinity variations in space. This is superior to the Morse repulsion approach which only captures geometric repulsion from Cl atoms.
+
+### Diagnostic Plots
+
+**2D slices (XZ, YZ):**
+- `total_potential_H_atom_fitted-1xz.png` / `total_potential_O_atom_fitted-1xz.png`
+- Cross-sectional views showing spatial distribution of total potential
+- Uses fitted coefficients with Fukui channel
+
+**1D profiles:**
+- `rho_fukui_profiles.png`: Z-profiles over Na/Cl atoms showing charge density and Fukui f- function
+- `scan_DFT_vs_fitted.png`: 1D scan diagnostic (DFT vs fitted with Fukui)
+- `scan_ablation_fukui.png`: Ablation test comparing with/without Fukui
+
+### Summary of the Complete Workflow
+
+1. **GridFF Generation**: Compute 4 channels (Pauli density, London=0, Coulomb potential, H-bond correction) with configurable model (tau/cl_morse/fukui)
 2. **DFT Data Loading**: Load H2O-H and H2O-O scan data with interaction energies
 3. **Sampling**: Pre-sample all channels at atom positions for all configurations
 4. **Regularized Fitting**:
@@ -2818,7 +2903,8 @@ The regularization successfully prevented the solver from taking unphysical shor
    - Apply ridge regression with physics-based priors
    - Solve linear system with `np.linalg.solve()`
 5. **Validation**: Generate diagnostic plots comparing DFT vs fitted model
-6. **GUI Refinement**: Use interactive GUI for final manual tuning if needed
+6. **Ablation Testing**: Quantify contribution of 4th channel by comparing with/without
+7. **GUI Refinement**: Use interactive GUI for final manual tuning if needed
 
 ## Key Implementation Files
 
