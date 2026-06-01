@@ -1,8 +1,8 @@
 {
-  "output_root": "results_sweep",
+  "output_root": "results/results_sweep_DA",
   "common": {
-    "xyz_name": "../../cpp/common_resources/polymers/gui_builder/output/generated_system.xyz",
-    "constraints": "constraints_combined_systems.txt",
+    "xyz_name": "../../cpp/common_resources/xyz/DA.xyz",
+    "constraints": "configs/constraints_DA.txt",
     "surf_name": "../../cpp/common_resources/xyz/NaCl_3x3_L3",
     "Fconv": 1e-06,
     "hard_atoms": true,

@@ -14,11 +14,16 @@ import time
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+WORK_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+ANALYSIS_DIR = os.path.join(SCRIPT_DIR, "..", "analysis")
+if ANALYSIS_DIR not in sys.path:
+    sys.path.insert(0, ANALYSIS_DIR)
+
 from analyze_free_energy_accuracy import compute_metrics_from_file
 
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+PROJECT_ROOT = os.path.abspath(os.path.join(WORK_DIR, "..", ".."))
 BUILD_DIR = os.path.join(PROJECT_ROOT, "cpp", "Build", "libs_OCL")
 
 
@@ -162,17 +167,17 @@ def _all_combos(
     neq_list: Iterable[int],
     nmd_list: Iterable[int],
     K_list: Iterable[float],
-    dt: float,
-    t_damp: float,
+    dt_list: Iterable[float],
+    t_damp_list: Iterable[float],
 ) -> List[Combo]:
     out: List[Combo] = []
     for mode in modes:
-        for nsys, nl, neq, nmd in itertools.product(nsys_list, nlambda_list, neq_list, nmd_list):
+        for nsys, nl, neq, nmd, dt, td in itertools.product(nsys_list, nlambda_list, neq_list, nmd_list, dt_list, t_damp_list):
             if mode in ("JE", "BOTH"):
                 for jk in K_list:
-                    out.append(Combo(mode, nsys, nl, neq, nmd, jk, dt, t_damp))
+                    out.append(Combo(mode, nsys, nl, neq, nmd, jk, dt, td))
             else:
-                out.append(Combo(mode, nsys, nl, neq, nmd, None, dt, t_damp))
+                out.append(Combo(mode, nsys, nl, neq, nmd, None, dt, td))
     return out
 
 
@@ -385,7 +390,7 @@ def main() -> None:
     ap.add_argument("--nMDsteps-list", default="1000000", help="Comma-separated nMDsteps values")
     ap.add_argument("--je-k-list", default="2.0", help="Comma-separated K values (JE mode only)")
     ap.add_argument("--output-root", default="bench_ES", help="Output directory under examples/tFreeEnergy_multi")
-    ap.add_argument("--constraints", default="constraints_ES.txt")
+    ap.add_argument("--constraints", default="configs/constraints_ES.txt")
     ap.add_argument("--Fconv", type=float, default=1e-6)
     ap.add_argument("--dt", type=float, default=0.05)
     ap.add_argument("--temperature", type=float, default=300.0)
@@ -449,10 +454,29 @@ def main() -> None:
                 x = dict(s)
                 x["mode"] = "BOTH"
                 param_sets.append(x)
-        if not isinstance(param_sets, list) or len(param_sets) == 0:
-            raise ValueError("Config must provide non-empty 'parameter_sets' (or ti_sets/je_sets/both_sets).")
-        combos = _combos_from_param_sets(param_sets, common_cfg)
-        modes = sorted(list({c.mode for c in combos}))
+        if param_sets:
+            combos = _combos_from_param_sets(param_sets, common_cfg)
+            modes = sorted(list({c.mode for c in combos}))
+        else:
+            modes = cfg.get("modes", _parse_mode_list(args.modes))
+            if isinstance(modes, str): modes = _parse_mode_list(modes)
+            nsys_list = cfg.get("nSys_list", _parse_int_list(args.nSys_list))
+            if isinstance(nsys_list, str): nsys_list = _parse_int_list(nsys_list)
+            nlambda_list = cfg.get("nLambda_list", _parse_int_list(args.nLambda_list))
+            if isinstance(nlambda_list, str): nlambda_list = _parse_int_list(nlambda_list)
+            neq_list = cfg.get("nEQsteps_list", _parse_int_list(args.nEQsteps_list))
+            if isinstance(neq_list, str): neq_list = _parse_int_list(neq_list)
+            nmd_list = cfg.get("nMDsteps_list", _parse_int_list(args.nMDsteps_list))
+            if isinstance(nmd_list, str): nmd_list = _parse_int_list(nmd_list)
+            K_list = cfg.get("je_k_list", _parse_float_list(args.je_k_list))
+            if isinstance(K_list, str): K_list = _parse_float_list(K_list)
+            dt_list = cfg.get("dt_list", [args.dt])
+            if isinstance(dt_list, str): dt_list = _parse_float_list(dt_list)
+            tdamp_list = cfg.get("t_damp_list", [args.t_damp])
+            if isinstance(tdamp_list, str): tdamp_list = _parse_float_list(tdamp_list)
+            if "temperature" in cfg:
+                args.temperature = float(cfg["temperature"])
+            combos = _all_combos(modes, nsys_list, nlambda_list, neq_list, nmd_list, K_list, dt_list, tdamp_list)
     else:
         n_list = _parse_int_list(args.N_list)
         modes = _parse_mode_list(args.modes)
@@ -461,9 +485,9 @@ def main() -> None:
         neq_list = _parse_int_list(args.nEQsteps_list)
         nmd_list = _parse_int_list(args.nMDsteps_list)
         K_list = _parse_float_list(args.K_list)
-        combos = _all_combos(modes, nsys_list, nlambda_list, neq_list, nmd_list, K_list, args.dt, args.t_damp)
+        combos = _all_combos(modes, nsys_list, nlambda_list, neq_list, nmd_list, K_list, [args.dt], [args.t_damp])
 
-    out_root = os.path.join(SCRIPT_DIR, args.output_root)
+    out_root = os.path.join(WORK_DIR, args.output_root)
     runs_root = os.path.join(out_root, "runs")
     summary_root = os.path.join(out_root, "summary")
     refs_root = os.path.join(out_root, "references")
@@ -496,8 +520,8 @@ def main() -> None:
             print(f"\n=== [{job_i}/{total_jobs}] N={n_atoms} mode={combo.mode} {run_tag} ===")
 
             base_name = f"entropic_spring_{n_atoms}"
-            cwd_data = os.path.join(SCRIPT_DIR, f"{base_name}_free_energy.dat")
-            cwd_work = os.path.join(SCRIPT_DIR, "jarzynski_work.dat")
+            cwd_data = os.path.join(WORK_DIR, f"{base_name}_free_energy.dat")
+            cwd_work = os.path.join(WORK_DIR, "jarzynski_work.dat")
 
             if args.skip_existing and _is_completed_run(run_dir, base_name):
                 print("  Skipping already completed run.")
@@ -506,7 +530,7 @@ def main() -> None:
             run_log_path = os.path.join(run_dir, "run.log")
             cmd = [
                 "python3",
-                "run_ES.py",
+                "scripts/run/run_ES.py",
                 "--mode",
                 combo.mode,
                 "--nSys",
@@ -534,7 +558,7 @@ def main() -> None:
             ]
 
             t0 = time.time()
-            rc = _run_cmd(cmd, cwd=SCRIPT_DIR, log_path=run_log_path, dry_run=args.dry_run)
+            rc = _run_cmd(cmd, cwd=WORK_DIR, log_path=run_log_path, dry_run=args.dry_run)
             wall_s = time.time() - t0
 
             row: Dict[str, object] = {
@@ -596,7 +620,7 @@ def main() -> None:
                 plot_prefix = os.path.join(run_dir, f"{base_name}_free_energy")
                 plot_cmd = [
                     "python3",
-                    "plot_F_interactive.py",
+                    "scripts/analysis/plot_F_interactive.py",
                     "--input",
                     run_data_path,
                     "--output",
@@ -609,7 +633,7 @@ def main() -> None:
                     str(args.segment_b),
                 ]
                 plot_log_path = os.path.join(run_dir, "plot.log")
-                prc = _run_cmd(plot_cmd, cwd=SCRIPT_DIR, log_path=plot_log_path, dry_run=False)
+                prc = _run_cmd(plot_cmd, cwd=WORK_DIR, log_path=plot_log_path, dry_run=False)
                 if prc == 0:
                     row["plot_file"] = f"{plot_prefix}_F_interactive.html"
                 else:

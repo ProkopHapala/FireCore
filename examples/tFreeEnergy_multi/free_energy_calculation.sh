@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Configuration
-CONFIG=${1:-default_free_energy_config.json}
+CONFIG=${1:-configs/default_free_energy_config.json}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Ensure required symlinks exist
@@ -23,11 +23,17 @@ echo ""
 # Step 2: Run the sweep
 echo "Step 2: Running Free Energy Calculation Sweep with config: $CONFIG"
 echo "----------------------------------------"
-python3 free_energy_runner.py --config "$CONFIG"
+python3 scripts/run/free_energy_runner.py --config "$CONFIG"
 if [ $? -ne 0 ]; then
     echo "ERROR: Sweep failed!"
     exit 1
 fi
+echo ""
+
+# Step 3: Run temperature sweep plotting
+OUTPUT_ROOT=$(python3 -c "import json; print(json.load(open('$CONFIG')).get('output_root', 'results_sweep'))" 2>/dev/null || echo "results_sweep")
+echo "Step 3: Plotting temperature dependence from $OUTPUT_ROOT..."
+python3 scripts/analysis/plot_temperature_sweep.py --results_dir "$OUTPUT_ROOT"
 echo ""
 
 echo "=========================================="

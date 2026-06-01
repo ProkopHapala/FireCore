@@ -45,6 +45,6 @@ if [[ "$RESET" -eq 1 ]]; then
     rm -rf "$TARGET"
 fi
 
-python3 "$SCRIPT_DIR/run_ES_optimization.py" --config "$CONFIG_FILE" "${EXTRA_ARGS[@]}"
-python3 "$SCRIPT_DIR/collect_ES_summary.py" --output-root "$OUTPUT_ROOT"
+python3 "$SCRIPT_DIR/scripts/run/run_ES_optimization.py" --config "$CONFIG_FILE" "${EXTRA_ARGS[@]}"
+python3 "$SCRIPT_DIR/scripts/analysis/collect_ES_summary.py" --output-root "$OUTPUT_ROOT"
 echo "Done. Output root: $SCRIPT_DIR/$OUTPUT_ROOT"

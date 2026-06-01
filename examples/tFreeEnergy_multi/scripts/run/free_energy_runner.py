@@ -214,7 +214,8 @@ def perform_scan(mode_name, b_relaxed, nCVs, initial_positions, final_positions,
 def run_scan_bundle(output_root, common):
     global HAS_MM, mm
     if HAS_MM is None:
-        sys.path.append("../../")
+        _root_dir = os.path.abspath(os.path.join(SCRIPT_DIR, "../../.."))
+        sys.path.append(_root_dir)
         try:
             from pyBall import MMFF_multi as mm_mod
             mm = mm_mod
@@ -496,7 +497,7 @@ def run_sweep(config_path, include_scans=True):
         os.makedirs(run_dir, exist_ok=True)
 
         print(f"\n>>> Starting run: {run_name}")
-        cmd = ["python3", "run_ES.py"]
+        cmd = ["python3", "scripts/run/run_ES.py"]
         for key, val in params.items():
             if key in ["name", "scan_mode", "surfaces", "scan_nsteps"]:
                 continue
@@ -512,13 +513,19 @@ def run_sweep(config_path, include_scans=True):
         t0 = time.time()
         rc = run_cmd(cmd, cwd=os.getcwd(), log_path=log_path)
         dt = time.time() - t0
+        
+        # Plot interactive HTML for this individual run if data was created
+        xyz_base = os.path.splitext(os.path.basename(params.get("xyz_name", "")))[0]
+        out_dat = f"{xyz_base}_free_energy.dat"
+        if rc == 0 and os.path.exists(out_dat):
+            plot_cmd = ["python3", "scripts/analysis/plot_F_interactive.py", "--input", out_dat]
+            run_cmd(plot_cmd, cwd=os.getcwd(), log_path=log_path + ".plot")
 
         status = "OK" if rc == 0 else "FAILED"
         print(f"<<< Finished {run_name} with status {status} in {dt:.2f}s")
         with open(summary_file, "a") as sf:
             sf.write(f"{run_name} | {status} | {dt:.2f}\n")
 
-        xyz_base = os.path.splitext(os.path.basename(params.get("xyz_name", "")))[0]
         for f in os.listdir("."):
             if f.endswith(".dat") or f.endswith(".html"):
                 if xyz_base in f or "free_energy" in f or run_name in f:

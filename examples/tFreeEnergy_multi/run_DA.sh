@@ -46,6 +46,9 @@ if [[ -z "$HARD_ATOMS" && -z "$SOFT_ATOMS" && -z "$HARD_DIST" && -z "$SOFT_DIST"
     SOFT_ATOMS="--soft_atoms"
 fi
 
+OUT_DIR="results/DA"
+mkdir -p "$OUT_DIR"
+
 # Ensure we are in the script directory
 cd "$(dirname "$0")"
 ln -sfn ../../cpp/common_resources data
@@ -70,7 +73,7 @@ echo ""
 echo "Step 2: Running Free Energy Calculation for DA (Force field: $FF, Mode: $MODE)..."
 echo "----------------------------------------"
 echo "Surface: $SURF_NAME"
-python3 run_ES.py \
+python3 scripts/run/run_ES.py \
     --mode $MODE \
     --ff $FF \
     --nSys $NSYS \
@@ -80,7 +83,7 @@ python3 run_ES.py \
     --nMDsteps $NMDSTEPS \
     --nEQsteps $NEQSTEPS \
     --Fconv 1e-6 \
-    --constraints "constraints_DA.txt" \
+    --constraints "configs/constraints_DA.txt" \
     --K $K \
     --dt $DT \
     -T $TEMP \
@@ -94,12 +97,14 @@ if [ $? -ne 0 ]; then
     echo "ERROR: Calculation failed!"
     exit 1
 fi
+mv DA_free_energy.dat "$OUT_DIR/"
+[ -f jarzynski_work.dat ] && mv jarzynski_work.dat "$OUT_DIR/"
 echo ""
 
 # Plot the results
 echo "Step 3: Plotting results..."
 echo "----------------------------------------"
-python3 plot_F_interactive.py --input DA_free_energy.dat
+python3 scripts/analysis/plot_F_interactive.py --input "$OUT_DIR/DA_free_energy.dat"
 if [ $? -ne 0 ]; then
     echo "ERROR: Plotting failed!"
     exit 1
@@ -111,8 +116,8 @@ echo "  DA Completed successfully!"
 echo "=========================================="
 echo ""
 echo "Output files:"
-echo "  - DA_free_energy.dat (raw data)"
-echo "  - DA_free_energy_interactive.html (interactive plot)"
+echo "  - $OUT_DIR/DA_free_energy.dat (raw data)"
+echo "  - $OUT_DIR/DA_free_energy_F_interactive.html (interactive plot)"
 echo ""
-echo "To view the interactive plot, open DA_free_energy_interactive.html in a web browser"
+echo "To view the interactive plot, open $OUT_DIR/DA_free_energy_F_interactive.html in a web browser"
 echo ""

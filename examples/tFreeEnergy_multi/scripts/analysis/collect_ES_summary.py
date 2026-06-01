@@ -322,7 +322,8 @@ def main() -> None:
     args = ap.parse_args()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    root = os.path.join(script_dir, args.output_root)
+    base_dir = os.path.abspath(os.path.join(script_dir, "..", ".."))
+    root = os.path.join(base_dir, args.output_root)
     runs_root = os.path.join(root, "runs")
     summary_root = os.path.join(root, "summary")
     os.makedirs(summary_root, exist_ok=True)

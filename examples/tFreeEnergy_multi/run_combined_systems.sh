@@ -19,7 +19,7 @@ DT=0.05
 TDAMP=150
 TEMP=300
 XYZ_NAME="../../cpp/common_resources/polymers/gui_builder/output/generated_system.xyz"
-CONSTRAINTS="constraints_combined_systems.txt"
+CONSTRAINTS="configs/constraints_combined_systems.txt"
 OUT_BASE="generated_system"
 
 # Parse command line arguments
@@ -50,6 +50,9 @@ done
 if [[ -z "$HARD_ATOMS" && -z "$SOFT_ATOMS" && -z "$HARD_DIST" && -z "$SOFT_DIST" ]]; then
     SOFT_ATOMS="--soft_atoms"
 fi
+
+OUT_DIR="results/${OUT_BASE}"
+mkdir -p "$OUT_DIR"
 
 # Ensure we are in the script directory
 cd "$(dirname "$0")"
@@ -86,7 +89,7 @@ echo "XYZ: $XYZ_NAME"
 echo "Constraints: $CONSTRAINTS"
 echo "Surface: $SURF_NAME"
 echo "Constraint mode: ${HARD_ATOMS}${SOFT_ATOMS}${HARD_DIST}${SOFT_DIST}"
-python3 run_ES.py \
+python3 scripts/run/run_ES.py \
     --mode $MODE \
     --ff $FF \
     --nSys $NSYS \
@@ -114,12 +117,14 @@ if [ ! -s "${OUT_BASE}_free_energy.dat" ] || ! grep -q '^[[:space:]]*[-+0-9.]' "
     echo "ERROR: Calculation did not write data rows to ${OUT_BASE}_free_energy.dat"
     exit 1
 fi
+mv "${OUT_BASE}_free_energy.dat" "$OUT_DIR/"
+[ -f jarzynski_work.dat ] && mv jarzynski_work.dat "$OUT_DIR/"
 echo ""
 
 # Plot the results
 echo "Step 3: Plotting results..."
 echo "----------------------------------------"
-python3 plot_F_interactive.py --input ${OUT_BASE}_free_energy.dat
+python3 scripts/analysis/plot_F_interactive.py --input "$OUT_DIR/${OUT_BASE}_free_energy.dat"
 if [ $? -ne 0 ]; then
     echo "ERROR: Plotting failed!"
     exit 1
@@ -131,8 +136,8 @@ echo "  combined_systems completed successfully!"
 echo "=========================================="
 echo ""
 echo "Output files:"
-echo "  - ${OUT_BASE}_free_energy.dat (raw data)"
-echo "  - ${OUT_BASE}_free_energy_F_interactive.html (interactive plot)"
+echo "  - $OUT_DIR/${OUT_BASE}_free_energy.dat (raw data)"
+echo "  - $OUT_DIR/${OUT_BASE}_free_energy_F_interactive.html (interactive plot)"
 echo ""
-echo "To view the interactive plot, open ${OUT_BASE}_free_energy_F_interactive.html in a web browser"
+echo "To view the interactive plot, open $OUT_DIR/${OUT_BASE}_free_energy_F_interactive.html in a web browser"
 echo ""
