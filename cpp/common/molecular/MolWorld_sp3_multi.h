@@ -171,8 +171,8 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     //int iSystemCur  = 8;    // currently selected system replica
     bool bGPU_MMFF = true;
 
-    bool initial = true;
-    bool bHardConstrainedAtoms    = true;
+    bool initial = false;
+    bool bHardConstrainedAtoms    = false;
     bool bSoftConstrainedAtoms    = false;
     bool bHardConstrainedDistance = false;
     bool bSoftConstrainedDistance = false;
@@ -189,6 +189,14 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     Quat4f* MDpars     =0;  // Molecular dynamics params
     Quat4f* TDrive     =0;  // temperature and drived dynamics
     Quat4f* averageForces =0;  // accumulated force differences for thermodynamic integration
+    bool     bAnalyzer = false;
+    int      nAnalyzerPairs = 0;
+    float    analyzerHbondCut = 0.0f;
+    std::vector<int2>   analyzerPairs;
+    std::vector<float>  analyzerPairDists;
+    std::vector<Quat4f> analyzerPairStats; // {sumR,lastR,countBelow,count}
+    std::vector<Quat4f> analyzerTempStats; // {sumT,lastT,count,0}
+    OCLtask* task_analyze = 0;
     Quat4i*   jeParams   = 0;  // parameters for Jarzynski Equality [ nSystems ]
     MMFFsp3_loc ffl0;         // pristine initial replica state used for TI batch resets
     bool bDeterministicTDrive = false;
@@ -322,6 +330,11 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
 
 virtual int getMolWorldVersion() const override { return (int)MolWorldVersion::GPU; };
 
+virtual double getMeasuredTemp(int isys, bool average=true) const override { return analyzerTemperature(isys, average); }
+virtual double getAnalyzerPairDist(int isys, int ipair, int mode=0) const override { return analyzerPairValue(isys, ipair, mode); }
+virtual int getNumAnalyzerPairs() const override { return nAnalyzerPairs; }
+virtual bool isAnalyzerEnabled() const override { return bAnalyzer; }
+
 // ==================================
 //         Free Energy Calculation
 // ==================================
@@ -414,6 +427,127 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
             err |= ocl.finishRaw();
         }
         OCL_checkError(err, "resetTIBatchState().upload");
+    }
+
+    template<typename OCLT>
+    void ensureOCLBufferSize(OCLT& cl, int ibuff, size_t n){
+        if(ibuff<0) return;
+        if(n<1) n=1;
+        OCLBuffer& b = cl.buffers[ibuff];
+        if(b.n>=n) return;
+        if(b.p_gpu){ clReleaseMemObject(b.p_gpu); b.p_gpu=0; }
+        b.n = n;
+        int err = b.initOnGPU(cl.context);
+        OCL_checkError(err, "ensureOCLBufferSize().initOnGPU");
+    }
+
+    void clearAnalyzerStats(bool bUpload=true){
+        const int np = _max(1,nAnalyzerPairs);
+        analyzerPairDists.assign(nSystems*np, NAN);
+        analyzerPairStats.assign(nSystems*np, Quat4fZero);
+        analyzerTempStats.assign(nSystems, Quat4fZero);
+        if(!bUpload || !bAnalyzer) return;
+        int err=0;
+        if(bUFF){
+            if(!uff_ocl) return;
+            err |= uff_ocl->upload( uff_ocl->ibuff_analyzerPairDists, analyzerPairDists.data(), nSystems*np );
+            err |= uff_ocl->upload( uff_ocl->ibuff_analyzerPairStats, analyzerPairStats.data(), nSystems*np );
+            err |= uff_ocl->upload( uff_ocl->ibuff_analyzerTempStats, analyzerTempStats.data(), nSystems );
+            err |= uff_ocl->finishRaw();
+        }else{
+            err |= ocl.upload( ocl.ibuff_analyzerPairDists, analyzerPairDists.data(), nSystems*np );
+            err |= ocl.upload( ocl.ibuff_analyzerPairStats, analyzerPairStats.data(), nSystems*np );
+            err |= ocl.upload( ocl.ibuff_analyzerTempStats, analyzerTempStats.data(), nSystems );
+            err |= ocl.finishRaw();
+        }
+        OCL_checkError(err, "clearAnalyzerStats().upload");
+    }
+
+    void setupAnalyzers(int nPairs, const int2* pairs, float hbondCut, bool enable=true){
+        nAnalyzerPairs = nPairs;
+        analyzerHbondCut = hbondCut;
+        bAnalyzer = enable;
+        const int np = _max(1,nAnalyzerPairs);
+        analyzerPairs.assign(np, int2{-1,-1});
+        for(int i=0; i<nAnalyzerPairs; i++) analyzerPairs[i] = pairs[i];
+        analyzerPairDists.assign(nSystems*np, NAN);
+        analyzerPairStats.assign(nSystems*np, Quat4fZero);
+        analyzerTempStats.assign(nSystems, Quat4fZero);
+        if(!bAnalyzer) return;
+        int err=0;
+        if(bUFF){
+            if(!uff_ocl){ printf("WARNING: setupAnalyzers() UFF requested before uff_ocl exists\n"); return; }
+            ensureOCLBufferSize(*uff_ocl, uff_ocl->ibuff_analyzerPairs,     np);
+            ensureOCLBufferSize(*uff_ocl, uff_ocl->ibuff_analyzerPairDists, nSystems*np);
+            ensureOCLBufferSize(*uff_ocl, uff_ocl->ibuff_analyzerPairStats, nSystems*np);
+            ensureOCLBufferSize(*uff_ocl, uff_ocl->ibuff_analyzerTempStats, nSystems);
+            err |= uff_ocl->upload( uff_ocl->ibuff_analyzerPairs, analyzerPairs.data(), np );
+            err |= uff_ocl->upload( uff_ocl->ibuff_analyzerPairDists, analyzerPairDists.data(), nSystems*np );
+            err |= uff_ocl->upload( uff_ocl->ibuff_analyzerPairStats, analyzerPairStats.data(), nSystems*np );
+            err |= uff_ocl->upload( uff_ocl->ibuff_analyzerTempStats, analyzerTempStats.data(), nSystems );
+            task_analyze = uff_ocl->setup_analyzeReplicaMMFF( ffu.natoms, 0, nAnalyzerPairs, analyzerHbondCut );
+            err |= uff_ocl->finishRaw();
+        }else{
+            ensureOCLBufferSize(ocl, ocl.ibuff_analyzerPairs,     np);
+            ensureOCLBufferSize(ocl, ocl.ibuff_analyzerPairDists, nSystems*np);
+            ensureOCLBufferSize(ocl, ocl.ibuff_analyzerPairStats, nSystems*np);
+            ensureOCLBufferSize(ocl, ocl.ibuff_analyzerTempStats, nSystems);
+            err |= ocl.upload( ocl.ibuff_analyzerPairs, analyzerPairs.data(), np );
+            err |= ocl.upload( ocl.ibuff_analyzerPairDists, analyzerPairDists.data(), nSystems*np );
+            err |= ocl.upload( ocl.ibuff_analyzerPairStats, analyzerPairStats.data(), nSystems*np );
+            err |= ocl.upload( ocl.ibuff_analyzerTempStats, analyzerTempStats.data(), nSystems );
+            task_analyze = ocl.setup_analyzeReplicaMMFF( ocl.nAtoms, ocl.nnode, nAnalyzerPairs, analyzerHbondCut );
+            err |= ocl.finishRaw();
+        }
+        OCL_checkError(err, "setupAnalyzers().upload");
+    }
+
+    void enqueueAnalyzer(){
+        if(!bAnalyzer) return;
+        if(bUFF){
+            if(uff_ocl && uff_ocl->task_analyzeReplica) uff_ocl->task_analyzeReplica->enque_raw();
+        }else{
+            if(!task_analyze) task_analyze = ocl.setup_analyzeReplicaMMFF( ocl.nAtoms, ocl.nnode, nAnalyzerPairs, analyzerHbondCut );
+            if(task_analyze) task_analyze->enque_raw();
+        }
+    }
+
+    void downloadAnalyzers(){
+        if(!bAnalyzer) return;
+        const int np = _max(1,nAnalyzerPairs);
+        analyzerPairDists.resize(nSystems*np);
+        analyzerPairStats.resize(nSystems*np);
+        analyzerTempStats.resize(nSystems);
+        int err=0;
+        if(bUFF){
+            if(!uff_ocl) return;
+            err |= uff_ocl->download( uff_ocl->ibuff_analyzerPairDists, analyzerPairDists.data(), nSystems*np );
+            err |= uff_ocl->download( uff_ocl->ibuff_analyzerPairStats, analyzerPairStats.data(), nSystems*np );
+            err |= uff_ocl->download( uff_ocl->ibuff_analyzerTempStats, analyzerTempStats.data(), nSystems );
+            err |= uff_ocl->finishRaw();
+        }else{
+            err |= ocl.download( ocl.ibuff_analyzerPairDists, analyzerPairDists.data(), nSystems*np );
+            err |= ocl.download( ocl.ibuff_analyzerPairStats, analyzerPairStats.data(), nSystems*np );
+            err |= ocl.download( ocl.ibuff_analyzerTempStats, analyzerTempStats.data(), nSystems );
+            err |= ocl.finishRaw();
+        }
+        OCL_checkError(err, "downloadAnalyzers()");
+    }
+
+    double analyzerTemperature(int isys, bool average=true)const{
+        if((isys<0)||(isys>=nSystems)||(analyzerTempStats.size()<=isys)) return NAN;
+        const Quat4f& t = analyzerTempStats[isys];
+        return (average && (t.z>0.0f)) ? (t.x/t.z) : t.y;
+    }
+
+    double analyzerPairValue(int isys, int ipair, int mode=0)const{
+        if((isys<0)||(isys>=nSystems)||(ipair<0)||(ipair>=nAnalyzerPairs)) return NAN;
+        const int io = isys*_max(1,nAnalyzerPairs) + ipair;
+        if(io>=analyzerPairStats.size()) return NAN;
+        const Quat4f& s = analyzerPairStats[io];
+        if(mode==1) return (s.w>0.0f) ? (s.x/s.w) : NAN;      // average distance
+        if(mode==2) return (s.w>0.0f) ? (s.z/s.w) : NAN;      // below-cut fraction
+        return s.y;                                           // latest distance
     }
 
     inline void clearSystemGPUConstraints( int isys ){
@@ -852,12 +986,13 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         const bool prev_bFreeEnergyCalc = bFreeEnergyCalc;
         bFreeEnergyCalc = true;
 
-        #define _setbool(b,i) { if(i>=0){b=(i>0);} }
-        _setbool( bHardConstrainedAtoms,    hardAtoms );
-        _setbool( bSoftConstrainedAtoms,    softAtoms );
-        _setbool( bHardConstrainedDistance, hardDist  );
-        _setbool( bSoftConstrainedDistance, softDist  );
-        #undef _setbool
+        bool hasExplicit = (hardAtoms >= 0 || softAtoms >= 0 || hardDist >= 0 || softDist >= 0);
+        if(hasExplicit){
+            bHardConstrainedAtoms    = (hardAtoms > 0);
+            bSoftConstrainedAtoms    = (softAtoms > 0);
+            bHardConstrainedDistance = (hardDist > 0);
+            bSoftConstrainedDistance = (softDist > 0);
+        }
 
         int nConstraintModes =
             (int)bHardConstrainedAtoms +
@@ -906,7 +1041,12 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         // Write header
         fprintf(fti, "# Free Energy Calculation Results\n");
         fprintf(fti, "# Mode: %d (0=TI, 1=JE, 2=Both)\n", mode);
-        fprintf(fti, "# lambda  TI_dE/dlambda  TI_sigma  TI_F  TI_err  JE_F  JE_F_sigma  JE_W_avg  JE_W_sigma  JE_W_skew  distance\n");
+        fprintf(fti, "# lambda  TI_dE/dlambda  TI_sigma  TI_F  TI_err  JE_F  JE_F_sigma  JE_W_avg  JE_W_sigma  JE_W_skew  distance");
+        if(bAnalyzer){
+            fprintf(fti, "  T_meas_avg");
+            for(int ip=0; ip<nAnalyzerPairs; ip++) fprintf(fti, "  hb_%d_dist_avg  hb_%d_fraction", ip, ip);
+        }
+        fprintf(fti, "\n");
 
         std::vector<double> res_lambda(nLambda);
         std::vector<double> res_TI_dE(nLambda, NAN);
@@ -919,6 +1059,9 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         std::vector<double> res_JE_W_sigma(nLambda, NAN);
         std::vector<double> res_JE_W_skew(nLambda, NAN);
         std::vector<double> res_dist(nLambda, NAN);
+        std::vector<double> res_T_meas(nLambda, NAN);
+        std::vector<double> res_pair_dist(nLambda*_max(1,nAnalyzerPairs), NAN);
+        std::vector<double> res_pair_frac(nLambda*_max(1,nAnalyzerPairs), NAN);
 
         // Initialize lambda array
         for(int i=0; i<nLambda; i++) res_lambda[i] = (double)i/(nLambda-1);
@@ -991,6 +1134,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                     ocl.upload( ocl.ibuff_averageForces, averageForces );
                     ocl.finishRaw();
                 }
+                if(bAnalyzer) clearAnalyzerStats(true);
 
                 printf("  Production %d steps...\n", nProdStepsPerLambda);
                 nPerVFs = nProdStepsPerLambda;
@@ -1004,6 +1148,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                     ocl.download( ocl.ibuff_averageForces, averageForces );
                     ocl.finishRaw();
                 }
+                if(bAnalyzer) downloadAnalyzers();
 
                 for(int isys=0; isys<nSystems; isys++){
                     int il = isys + batch*nSystems;
@@ -1044,6 +1189,14 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                     Vec3f dr_f = final_positions[0] - final_positions[1];
                     Vec3f dr; dr.set_lincomb(1.0 - lambda, dr_i, lambda, dr_f);
                     res_dist[il] = dr.norm();
+                    if(bAnalyzer){
+                        res_T_meas[il] = analyzerTemperature(isys, true);
+                        for(int ip=0; ip<nAnalyzerPairs; ip++){
+                            const int io = il*_max(1,nAnalyzerPairs) + ip;
+                            res_pair_dist[io] = analyzerPairValue(isys, ip, 1);
+                            res_pair_frac[io] = analyzerPairValue(isys, ip, 2);
+                        }
+                    }
                 }
             }
             nPerVFs = nPerVFs_bak;
@@ -1210,7 +1363,7 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         }*/
 
         for(int i=0; i<nLambda; i++){
-            fprintf(fti, "%10.6f %12.8f %12.8f %12.8f %12.8f %12.8f %12.8f %12.8f %12.8f %12.8f %10.6f\n", 
+            fprintf(fti, "%10.6f %12.8f %12.8f %12.8f %12.8f %12.8f %12.8f %12.8f %12.8f %12.8f %10.6f", 
                 res_lambda[i], 
                 res_TI_dE[i], res_TI_sigma[i], res_TI_F[i], res_TI_Ferr[i],
                 res_JE_F[i],
@@ -1218,6 +1371,14 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 res_JE_W_avg[i], res_JE_W_sigma[i], res_JE_W_skew[i],
                 res_dist[i]
             );
+            if(bAnalyzer){
+                fprintf(fti, " %12.8f", res_T_meas[i]);
+                for(int ip=0; ip<nAnalyzerPairs; ip++){
+                    const int io = i*_max(1,nAnalyzerPairs) + ip;
+                    fprintf(fti, " %12.8f %12.8f", res_pair_dist[io], res_pair_frac[io]);
+                }
+            }
+            fprintf(fti, "\n");
         }
 		fclose(fti);
         bFreeEnergyCalc = prev_bFreeEnergyCalc;
@@ -3592,9 +3753,9 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
     if(initial && !bFreeEnergyCalc){
         for(int isys=0; isys<nSystems; isys++){
             float lambda = (nSystems > 1) ? (float)isys / (float)(nSystems - 1) : 0.0f;
-            gopts[isys].nExplore = 0;
-            gopts[isys].nRelax = 100000;
-            niter = 100000;
+            // gopts[isys].nExplore = 0;
+            // gopts[isys].nRelax = 1000;
+            // niter = 1000;
             
             std::vector<Vec3f> p_init, p_final;
             int constr_TI[2] = {14, 30};
@@ -3694,6 +3855,7 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
             }
             T_2 = getCPUticks();
             if(bMoving) uff_ocl->task_updateAtoms->enque();
+            if(bAnalyzer) enqueueAnalyzer();
             Nticks_loop_updateAtoms += (getCPUticks()-T_2);
             T_2 = getCPUticks();
 
@@ -3742,6 +3904,7 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
     }else{
         printf("ERROR: Could not open times_run_uff_ocl.dat for appending\n");
     }    
+    if(bAnalyzer){ downloadAnalyzers(); }
     download_uff(true, false);
     return nloop;
 }
@@ -3831,7 +3994,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
 	            
 	            // For 'initial' setup via GUI/manual, we derive anchor points from current positions
 	            std::vector<Vec3f> p_init, p_final;
-	            int constr_TI[2] = {11, 91};
+	            int constr_TI[2] = {14, 39};
 	            int iSi1 = -1;
 	            for(int ia=0; ia<ffls[isys].natoms; ia++){
 	                if(ffls[isys].atypes[ia]==params.getAtomType("Si")){
@@ -3858,8 +4021,8 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
 	                    if(ia2 < builder.atom_permut.size()) ia2_curr = builder.atom_permut[ia2];
 	                }
 	                if((ia1_curr>=0) && (ia1_curr<ffls[isys].natoms) && (ia2_curr>=0) && (ia2_curr<ffls[isys].natoms)){
-	                    Vec3f p1 = (Vec3f){ 5.5f, 0.0f, 0.0f};
-	                    Vec3f p2 = (Vec3f){ -5.5f, 0.0f, 0.0f};
+	                    Vec3f p1 = (Vec3f){ 5.5f, 0.0f, 2.5f};
+	                    Vec3f p2 = (Vec3f){ -5.5f, 0.0f, 2.5f};
 	                    p_init.push_back(p1); p_init.push_back(p2);
 	                    p_final.push_back(p1 + (Vec3f){40.0f, 0.0f, 0.0f});
 	                    p_final.push_back(p2 + (Vec3f){0.0f, 0.0f, 0.0f});
@@ -3995,6 +4158,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
 
                 T_2 = getCPUticks();
                 if(bMoving) err |= task_move->enque_raw();    //OCL_checkError(err, "task_move->enque_raw()");
+                if(bAnalyzer) enqueueAnalyzer();
                 Nticks_loop_updateAtoms += (getCPUticks()-T_2);
                 if (0*bSaveTrajectory)
                 {
@@ -4067,6 +4231,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     err|= ocl.download( ocl.ibuff_aforces,  aforces );
     err|= ocl.finishRaw();
     OCL_checkError(err, "run_ocl_opt().finishRaw()");
+    if(bAnalyzer){ downloadAnalyzers(); }
 
     if(bMILAN){ checkBordersOfBbox(); }
     double t=(getCPUticks()-T0)*tick2second;

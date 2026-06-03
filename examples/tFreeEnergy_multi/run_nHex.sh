@@ -5,6 +5,22 @@ set -e  # Exit on error
 # Get working directory
 wd=`pwd`
 
+# Default variables
+ANALYZE_PAIRS=""
+HBOND_CUT=2.5
+LOG_TEMPERATURE=""
+
+# Parse command line arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --analyze_pairs|--hbond_pairs) ANALYZE_PAIRS="$2"; shift ;;
+        --hbond_cut) HBOND_CUT="$2"; shift ;;
+        --log_temperature|--log_temp) LOG_TEMPERATURE="--log_temperature";;
+        *) ;; # Ignore unknown args
+    esac
+    shift
+done
+
 OUT_DIR="results/nHexadecan"
 mkdir -p "$OUT_DIR"
 
@@ -31,7 +47,10 @@ python3 scripts/run/run_ES.py \
     --nMDsteps 2000000 \
     --nEQsteps 5000 \
     --Fconv 1e-6 \
-    --constraints "configs/constraints_nHex.txt"
+    --constraints "configs/constraints_nHex.txt" \
+    --analyze_pairs "$ANALYZE_PAIRS" \
+    --hbond_cut $HBOND_CUT \
+    $LOG_TEMPERATURE
 
 if [ $? -ne 0 ]; then
     echo "ERROR: TI calculation failed!"

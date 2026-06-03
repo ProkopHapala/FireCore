@@ -1,7 +1,30 @@
 #!/bin/bash
 
 # Configuration
-CONFIG=${1:-configs/default_free_energy_config.json}
+CONFIG="configs/default_free_energy_config.json"
+ANALYZE_PAIRS=""
+HBOND_CUT=""
+LOG_TEMPERATURE=""
+
+# Parse command line arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --config) CONFIG="$2"; shift ;;
+        --analyze_pairs|--hbond_pairs) ANALYZE_PAIRS="$2"; shift ;;
+        --hbond_cut) HBOND_CUT="$2"; shift ;;
+        --log_temperature|--log_temp) LOG_TEMPERATURE="--log_temperature";;
+        *)
+            # Backward compatibility: first non-option is treated as CONFIG
+            if [[ -z "$1" || "$1" == --* ]]; then
+                echo "Warning: Unknown argument $1"
+            else
+                CONFIG="$1"
+            fi
+            ;;
+    esac
+    shift
+done
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Ensure required symlinks exist
@@ -23,7 +46,18 @@ echo ""
 # Step 2: Run the sweep
 echo "Step 2: Running Free Energy Calculation Sweep with config: $CONFIG"
 echo "----------------------------------------"
-python3 scripts/run/free_energy_runner.py --config "$CONFIG"
+RUNNER_ARGS=""
+if [ -n "$ANALYZE_PAIRS" ]; then
+    RUNNER_ARGS="$RUNNER_ARGS --analyze_pairs $ANALYZE_PAIRS"
+fi
+if [ -n "$HBOND_CUT" ]; then
+    RUNNER_ARGS="$RUNNER_ARGS --hbond_cut $HBOND_CUT"
+fi
+if [ -n "$LOG_TEMPERATURE" ]; then
+    RUNNER_ARGS="$RUNNER_ARGS --log_temperature"
+fi
+
+python3 scripts/run/free_energy_runner.py --config "$CONFIG" $RUNNER_ARGS
 if [ $? -ne 0 ]; then
     echo "ERROR: Sweep failed!"
     exit 1

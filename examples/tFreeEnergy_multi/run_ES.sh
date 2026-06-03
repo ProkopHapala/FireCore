@@ -22,6 +22,9 @@ NEQSTEPS=5000
 DT=0.05
 TDAMP=100
 TEMP=300
+ANALYZE_PAIRS=""
+HBOND_CUT=2.5
+LOG_TEMPERATURE=""
 
 # Parse command line arguments
 while [[ "$#" -gt 0 ]]; do
@@ -37,6 +40,9 @@ while [[ "$#" -gt 0 ]]; do
         --dt) DT="$2"; shift ;;
         --t_damp) TDAMP="$2"; shift ;;
         --temperature|-T) TEMP="$2"; shift ;;
+        --analyze_pairs|--hbond_pairs) ANALYZE_PAIRS="$2"; shift ;;
+        --hbond_cut) HBOND_CUT="$2"; shift ;;
+        --log_temperature|--log_temp) LOG_TEMPERATURE="--log_temperature";;
         --hard_atoms) HARD_ATOMS="--hard_atoms";;
         --soft_atoms) SOFT_ATOMS="--soft_atoms";;
         --hard_dist) HARD_DIST="--hard_dist";;
@@ -92,6 +98,9 @@ python3 scripts/run/run_ES.py \
     --dt $DT \
     -T $TEMP \
     --t_damp $TDAMP \
+    --analyze_pairs "$ANALYZE_PAIRS" \
+    --hbond_cut $HBOND_CUT \
+    $LOG_TEMPERATURE \
     $HARD_ATOMS \
     $SOFT_ATOMS \
     $HARD_DIST \

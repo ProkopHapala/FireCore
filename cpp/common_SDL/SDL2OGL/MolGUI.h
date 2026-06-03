@@ -2,6 +2,7 @@
 #define MolGUI_h
 
 #include "globals.h"
+#include "Draw2D.h"
 
 #include "macroUtils.h"
 #include <stdlib.h>
@@ -1877,6 +1878,41 @@ void MolGUI::drawHUD(){
         bondsToShow_shifts[i] =  MolGUI::showNonBond( str, bondsToShow[i] );
     }
     */
+
+    if( W->isAnalyzerEnabled() ){
+        glPushMatrix();
+        float box_w = 320.0f;
+        int nPairs = W->getNumAnalyzerPairs();
+        float box_h = 45.0f + nPairs * 20.0f;
+        float box_x = WIDTH - box_w - 15.0f;
+        float box_y = 15.0f;
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        // Glassmorphic translucent panel background
+        glColor4f( 0.05f, 0.05f, 0.07f, 0.75f );
+        Draw2D::drawRectangle( box_x, box_y, box_x + box_w, box_y + box_h, true );
+
+        // Sleek cyan border
+        glColor4f( 0.0f, 0.8f, 0.9f, 0.90f );
+        Draw2D::drawRectangle( box_x, box_y, box_x + box_w, box_y + box_h, false );
+
+        // Draw text inside the panel
+        glTranslatef( box_x + 15.0f, box_y + box_h - 20.0f, 0.0f );
+        char* s_an = tmpstr;
+        double T_inst = W->getMeasuredTemp( W->iSystemCur, false );
+        double T_avg  = W->getMeasuredTemp( W->iSystemCur, true  );
+        s_an += sprintf( s_an, "Thermometer (System %d):\n  T_inst / T_avg = %7.2f / %7.2f [K]\n", W->iSystemCur, T_inst, T_avg );
+        for( int ip=0; ip<nPairs; ip++ ){
+            double d_inst = W->getAnalyzerPairDist( W->iSystemCur, ip, 0 );
+            double d_avg  = W->getAnalyzerPairDist( W->iSystemCur, ip, 1 );
+            double frac   = W->getAnalyzerPairDist( W->iSystemCur, ip, 2 );
+            s_an += sprintf( s_an, "  H-Bond %d: %6.3f A (avg: %6.3f, frac: %4.1f%%)\n", ip, d_inst, d_avg, frac * 100.0 );
+        }
+        Draw::drawText( tmpstr, fontTex, fontSizeDef, { (int)box_w - 30, (int)fontSizeDef } );
+        glPopMatrix();
+    }
 
     mouse_pix = ((Vec2f){ 2*mouseX/float(HEIGHT) - ASPECT_RATIO,
                           2*mouseY/float(HEIGHT) - 1      });// *(1/zoom);

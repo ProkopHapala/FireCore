@@ -472,8 +472,15 @@ def plot_combined(output_root, scan_results, target_dist, lambdas, output_html=N
     print(f"Combined plot saved to: {output_html}")
 
 
-def run_sweep(config_path, include_scans=True):
+def run_sweep(config_path, include_scans=True, analyze_pairs=None, hbond_cut=None, log_temperature=None):
     _, output_root, common, param_sets = _load_cfg(config_path)
+    if analyze_pairs is not None:
+        common["analyze_pairs"] = analyze_pairs
+    if hbond_cut is not None:
+        common["hbond_cut"] = hbond_cut
+    if log_temperature is not None:
+        common["log_temperature"] = log_temperature
+
     os.makedirs(output_root, exist_ok=True)
     shutil.copy2(config_path, os.path.join(output_root, "config.json"))
 
@@ -543,8 +550,17 @@ def main():
     parser = argparse.ArgumentParser(description="Unified free-energy sweep runner")
     parser.add_argument("--config", default="default_free_energy_config.json", help="JSON config file")
     parser.add_argument("--no-scans", action="store_true", help="Disable rigid/relaxed scans even if scan_mode is enabled")
+    parser.add_argument("--analyze_pairs", type=str, default=None, help="Atom index pairs to measure, overriding config")
+    parser.add_argument("--hbond_cut", type=float, default=None, help="Hydrogen-bond cutoff, overriding config")
+    parser.add_argument("--log_temperature", action="store_true", default=None, help="Enable measured temperature logging, overriding config")
     args = parser.parse_args()
-    run_sweep(args.config, include_scans=(not args.no_scans))
+    run_sweep(
+        args.config,
+        include_scans=(not args.no_scans),
+        analyze_pairs=args.analyze_pairs,
+        hbond_cut=args.hbond_cut,
+        log_temperature=args.log_temperature
+    )
 
 
 if __name__ == "__main__":

@@ -21,6 +21,9 @@ TEMP=300
 XYZ_NAME="../../cpp/common_resources/polymers/gui_builder/output/generated_system.xyz"
 CONSTRAINTS="configs/constraints_combined_systems.txt"
 OUT_BASE="generated_system"
+ANALYZE_PAIRS=""
+HBOND_CUT=2.5
+LOG_TEMPERATURE=""
 
 # Parse command line arguments
 while [[ "$#" -gt 0 ]]; do
@@ -38,6 +41,9 @@ while [[ "$#" -gt 0 ]]; do
         --temperature|-T) TEMP="$2"; shift ;;
         --constraints) CONSTRAINTS="$2"; shift ;;
         --xyz_name|--xyz) XYZ_NAME="$2"; shift ;;
+        --analyze_pairs|--hbond_pairs) ANALYZE_PAIRS="$2"; shift ;;
+        --hbond_cut) HBOND_CUT="$2"; shift ;;
+        --log_temperature|--log_temp) LOG_TEMPERATURE="--log_temperature";;
         --hard_atoms) HARD_ATOMS="--hard_atoms";;
         --soft_atoms) SOFT_ATOMS="--soft_atoms";;
         --hard_dist) HARD_DIST="--hard_dist";;
@@ -104,6 +110,9 @@ python3 scripts/run/run_ES.py \
     --dt $DT \
     -T $TEMP \
     --t_damp $TDAMP \
+    --analyze_pairs "$ANALYZE_PAIRS" \
+    --hbond_cut $HBOND_CUT \
+    $LOG_TEMPERATURE \
     $HARD_ATOMS \
     $SOFT_ATOMS \
     $HARD_DIST \

@@ -19,7 +19,10 @@
     "mode": "TI",
     "K": 10.0,
     "scan_mode": "none",
-    "scan_nsteps": 50000
+    "scan_nsteps": 50000,
+    "analyze_pairs": "4,31",
+    "hbond_cut": 3.5,
+    "log_temperature": false
   },
   "parameter_sets": [
     {

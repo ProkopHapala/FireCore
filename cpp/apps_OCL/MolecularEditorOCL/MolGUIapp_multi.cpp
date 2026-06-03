@@ -30,8 +30,10 @@ int main(int argc, char *argv[]){
     app  = new MolGUI( junk, DM.w-100, DM.h-100, W );
 
     #include "MolGUIapp_argv.h"
+    bool bAnalyze = false;
     funcs["-m"]={1,[&](const char** ss){ sscanf( ss[0], "%i", &W->nSystems ); }}; // number of systems
     funcs["-tex"]={1,[&](const char** ss){ int i; sscanf( ss[0], "%i", &i ); printf("ARG -tex=%i \n", i); W->ocl.bUseTexture=i; printf("W->ocl.bUseTexture=%i \n", W->ocl.bUseTexture); }}; // use texture for gridFF, boolean
+    funcs["-analyze"]={0,[&](const char** ss){ bAnalyze = true; printf("ARG -analyze flag set\n"); }};
 
 #ifdef WITH_LUA
     theLua = initMyLua();
@@ -67,7 +69,7 @@ int main(int argc, char *argv[]){
 
     // --- Apply after-initialization settings and hacks 
     //if(iParalel>-100){ W->iParalel=iParalel; printf( "#### W->iParalel set to %i \n", W->iParalel ); };
-
+    if( bAnalyze ){ W->setupAnalyzers(0, nullptr, 2.5, true); printf("Analyzers initialized via -analyze flag\n"); }
 
     W->pre_loop();
 	app->loop( 1000000 );

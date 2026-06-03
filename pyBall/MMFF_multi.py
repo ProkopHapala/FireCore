@@ -878,6 +878,35 @@ lib.setConstraints.restype  = None
 def setConstraints(hardAtoms=-1, softAtoms=-1, hardDist=-1, softDist=-1, initial=-1):
     return lib.setConstraints(hardAtoms, softAtoms, hardDist, softDist, initial)
 
+#  void setAnalyzers( int nPairs, int* pairs, double hbondCut, int enable )
+lib.setAnalyzers.argtypes = [c_int, c_int_p, c_double, c_int]
+lib.setAnalyzers.restype  = None
+def setAnalyzers(pairs=None, hbondCut=0.0, enable=True):
+    if pairs is None:
+        pairs = np.zeros((0,2), dtype=np.int32)
+    pairs = np.array(pairs, dtype=np.int32).reshape((-1,2))
+    return lib.setAnalyzers(len(pairs), _np_as(pairs, c_int_p), hbondCut, 1 if enable else 0)
+
+lib.clearAnalyzers.argtypes = []
+lib.clearAnalyzers.restype  = None
+def clearAnalyzers():
+    return lib.clearAnalyzers()
+
+lib.downloadAnalyzers.argtypes = []
+lib.downloadAnalyzers.restype  = None
+def downloadAnalyzers():
+    return lib.downloadAnalyzers()
+
+lib.getMeasuredTemperature.argtypes = [c_int, c_int]
+lib.getMeasuredTemperature.restype  = c_double
+def getMeasuredTemperature(isys=0, average=True):
+    return lib.getMeasuredTemperature(isys, 1 if average else 0)
+
+lib.getAnalyzerDistance.argtypes = [c_int, c_int, c_int]
+lib.getAnalyzerDistance.restype  = c_double
+def getAnalyzerDistance(isys=0, ipair=0, mode=0):
+    return lib.getAnalyzerDistance(isys, ipair, mode)
+
 #  double computeFreeEnergy(int nCVs, float* initial_positions, float* final_positions, int nLambda, int nMDsteps, int nEQsteps, double Fconv, int mode, double K, int hardAtoms, int softAtoms, int hardDist, int softDist)
 lib.computeFreeEnergy.argtypes  = [c_int, c_float_p, c_float_p, c_int, c_int, c_int, c_double, c_int, c_double, c_int, c_int, c_int, c_int, c_int_p]
 lib.computeFreeEnergy.restype   =  c_double

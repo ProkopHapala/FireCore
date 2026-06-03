@@ -89,6 +89,10 @@ class OCL_MM: public OCLsystem { public:
     int ibuff_sysbonds=-1;
     int ibuff_averageForces=-1;
     int ibuff_work=-1;
+    int ibuff_analyzerPairs=-1;
+    int ibuff_analyzerPairDists=-1;
+    int ibuff_analyzerPairStats=-1;
+    int ibuff_analyzerTempStats=-1;
 
     int ibuff_samp_ps=-1;
     int ibuff_samp_fs=-1;
@@ -184,6 +188,7 @@ class OCL_MM: public OCLsystem { public:
         newTask( "updateGroups"           ,program_relax, 1);
         newTask( "groupForce"             ,program_relax, 2);
         newTask( "updateAtomsMMFFf4"      ,program_relax, 2);
+        newTask( "analyzeReplicaMMFF"     ,program_relax, 1);
         newTask( "printOnGPU"             ,program_relax, 2);
 
         newTask( "getSurfMorse"           ,program_relax, 2);
@@ -244,6 +249,10 @@ class OCL_MM: public OCLsystem { public:
         ibuff_averageForces   = newBuffer( "averageForces",   nSystems*nAtoms, sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_work            = newBuffer( "work",            nSystems, sizeof(float),  0, CL_MEM_READ_WRITE );
         ibuff_jeParams        = newBuffer( "jeParams",        nSystems, sizeof(int4),   0, CL_MEM_READ_WRITE  );
+        ibuff_analyzerPairs     = newBuffer( "analyzerPairs",     1,        sizeof(int2),   0, CL_MEM_READ_WRITE );
+        ibuff_analyzerPairDists = newBuffer( "analyzerPairDists", nSystems, sizeof(float),  0, CL_MEM_READ_WRITE );
+        ibuff_analyzerPairStats = newBuffer( "analyzerPairStats", nSystems, sizeof(float4), 0, CL_MEM_READ_WRITE );
+        ibuff_analyzerTempStats = newBuffer( "analyzerTempStats", nSystems, sizeof(float4), 0, CL_MEM_READ_WRITE );
         ibuff_BKs        = newBuffer( "BKs",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
         ibuff_Ksp        = newBuffer( "Ksp",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
         ibuff_Kpp        = newBuffer( "Kpp",        nSystems*nnode,  sizeof(float4), 0, CL_MEM_READ_ONLY  );
@@ -747,6 +756,28 @@ class OCL_MM: public OCLsystem { public:
         // __global float4*  MDparams,     // 10 // MD parameters (dt,damp,Flimit)
         // __global float4*  TDrives,       // 11 // Thermal driving (T,gamma_damp,seed,?)
         // __global cl_Mat3* bboxes        // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
+    }
+
+    OCLtask* setup_analyzeReplicaMMFF( int na, int nNode, int nPairs, float hbondCut, OCLtask* task=0 ){
+        if(task==0) task = getTask("analyzeReplicaMMFF");
+        if(task==0) return 0;
+        task->local.x  = 1;
+        task->global.x = nSystems;
+        nDOFs.x=na;
+        nDOFs.y=nNode;
+        nDOFs.z=nPairs;
+        int err=0;
+        useKernel( task->ikernel );
+        err |= _useArg( nDOFs );                         // 1
+        err |= useArgBuff( ibuff_atoms );                 // 2
+        err |= useArgBuff( ibuff_avel );                  // 3
+        err |= useArgBuff( ibuff_analyzerPairs );         // 4
+        err |= useArgBuff( ibuff_analyzerPairDists );     // 5
+        err |= useArgBuff( ibuff_analyzerPairStats );     // 6
+        err |= useArgBuff( ibuff_analyzerTempStats );     // 7
+        err |= useArg( hbondCut );                        // 8
+        OCL_checkError(err, "setup_analyzeReplicaMMFF");
+        return task;
     }
 
     void printOnGPU( int isys, int4 mask=int4{1,1,1,1}, OCLtask* task=0 ){

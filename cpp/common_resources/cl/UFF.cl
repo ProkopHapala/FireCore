@@ -1113,6 +1113,59 @@ __kernel void updateAtomsMMFFf4(
 }
 
 
+// Measure per-replica kinetic temperature and selected atom-pair distances.
+// One work-item handles one replica, so no atomics or cross-work-item reductions are needed.
+__kernel void analyzeReplicaMMFF(
+    const int4        n,             // (natoms,nnode,nPairs,unused)
+    __global float4*  apos,          // [nSys*natoms]
+    __global float4*  avel,          // [nSys*natoms]
+    __global int2*    anaPairs,      // [nPairs]
+    __global float*   anaPairDists,  // [nSys*nPairs]
+    __global float4*  anaPairStats,  // [nSys*nPairs] {sumR,lastR,countBelow,count}
+    __global float4*  anaTempStats,  // [nSys] {sumT,lastT,count,0}
+    const float       hbondCut
+){
+    const int isys   = get_global_id(0);
+    const int natoms = n.x;
+    const int nPairs = n.z;
+    const int i0a    = isys*natoms;
+
+    float v2sum = 0.0f;
+    int nMobile = 0;
+    for(int ia=0; ia<natoms; ia++){
+        const float3 v = avel[i0a + ia].xyz;
+        v2sum += dot(v,v);
+        nMobile++;
+    }
+    const float T = (nMobile>0) ? (v2sum/(3.0f*((float)nMobile)*const_kB)) : 0.0f;
+    float4 ts = anaTempStats[isys];
+    ts.x += T;
+    ts.y  = T;
+    ts.z += 1.0f;
+    anaTempStats[isys] = ts;
+
+    const int i0p = isys*nPairs;
+    for(int ip=0; ip<nPairs; ip++){
+        const int2 p = anaPairs[ip];
+        float r = NAN;
+        if((p.x>=0) && (p.x<natoms) && (p.y>=0) && (p.y<natoms)){
+            const float3 d = apos[i0a + p.y].xyz - apos[i0a + p.x].xyz;
+            r = length(d);
+        }
+        const int io = i0p + ip;
+        anaPairDists[io] = r;
+        float4 ps = anaPairStats[io];
+        if(!isnan(r)){
+            ps.x += r;
+            ps.y  = r;
+            if((hbondCut>0.0f) && (r<hbondCut)) ps.z += 1.0f;
+            ps.w += 1.0f;
+        }
+        anaPairStats[io] = ps;
+    }
+}
+
+
 
 // ======================================================================
 //                           getNonBond()

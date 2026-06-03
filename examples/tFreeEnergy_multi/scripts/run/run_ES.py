@@ -33,6 +33,17 @@ def load_constraints(filename="constraints.txt"):
         return None, None
     return constraints, cv_atoms
 
+def parse_pairs(spec):
+    if spec is None or spec.strip() == "":
+        return []
+    pairs = []
+    for item in spec.replace(";", " ").split():
+        ab = item.split(",")
+        if len(ab) != 2:
+            raise ValueError(f"Invalid pair '{item}', expected i,j")
+        pairs.append((int(ab[0]), int(ab[1])))
+    return pairs
+
 # Thermodynamic Integration for Entropic Spring
 def main():
     parser = argparse.ArgumentParser(description="Thermodynamic Integration for Entropic Spring")
@@ -54,6 +65,9 @@ def main():
     parser.add_argument("--soft_atoms", action="store_true", help="Use soft atom constraints")
     parser.add_argument("--hard_dist",  action="store_true", help="Use hard distance constraints")
     parser.add_argument("--soft_dist",  action="store_true", help="Use soft distance constraints")
+    parser.add_argument("--analyze_pairs", type=str, default="", help="Atom index pairs to measure, e.g. '12,34;15,40'")
+    parser.add_argument("--hbond_cut", type=float, default=2.5, help="Distance cutoff for hydrogen-bond fraction columns")
+    parser.add_argument("--log_temperature", action="store_true", help="Enable measured temperature output columns even without distance pairs")
 
     args = parser.parse_args()
     surf_name = None if args.surf_name.lower() in ("none", "null", "off") else args.surf_name
@@ -107,6 +121,13 @@ def main():
         print(f"  CV {i+1}: ({init_pos[0]:.1f}, {init_pos[1]:.1f}, {init_pos[2]:.1f}) → ({final_pos[0]:.1f}, {final_pos[1]:.1f}, {final_pos[2]:.1f})")
 
     print(f"\nParameters: ff={ff_name}, nLambda={args.nLambda}, nMDsteps={args.nMDsteps}, nEQsteps={args.nEQsteps}, Mode={args.mode}\n")
+
+    analyzer_pairs = parse_pairs(args.analyze_pairs)
+    if analyzer_pairs or args.log_temperature:
+        mmff.setAnalyzers(analyzer_pairs, hbondCut=args.hbond_cut, enable=True)
+        print(f"Analyzers enabled: temperature=on, nPairs={len(analyzer_pairs)}, hbond_cut={args.hbond_cut}")
+        for ip,(ia,ja) in enumerate(analyzer_pairs):
+            print(f"  pair {ip}: {ia},{ja}")
 
     # Map mode to integer
     mode_map = {"TI": 0, "JE": 1, "BOTH": 2}

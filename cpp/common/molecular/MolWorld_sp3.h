@@ -303,6 +303,11 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     virtual int getMolWorldVersion() const { return (int)MolWorldVersion::BASIC; };
 
+    virtual double getMeasuredTemp(int isys, bool average=true) const { return NAN; }
+    virtual double getAnalyzerPairDist(int isys, int ipair, int mode=0) const { return NAN; }
+    virtual int getNumAnalyzerPairs() const { return 0; }
+    virtual bool isAnalyzerEnabled() const { return false; }
+
     virtual int getGroupPose( Quat4f*& gpos, Quat4f*& gfw, Quat4f*& gup ){ gpos=0; gfw=0; gup=0; return 0; };
     virtual int getGroupBoxes( Vec6d*& BBs, Buckets*& pointBBs ){ BBs = ffl.BBs;  pointBBs = &ffl.pointBBs; return ffl.nBBs; }
 

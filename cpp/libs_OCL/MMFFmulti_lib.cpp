@@ -819,6 +819,33 @@ void setConstraints( int hardAtoms, int softAtoms, int hardDist, int softDist, i
     #undef _setbool
 }
 
+void setAnalyzers( int nPairs, int* pairs, double hbondCut, int enable ){
+    std::vector<int2> ps;
+    const int np = (nPairs>0) ? nPairs : 0;
+    ps.resize(_max(1,np), int2{-1,-1});
+    for(int i=0; i<np; i++){
+        ps[i].x = pairs[i*2  ];
+        ps[i].y = pairs[i*2+1];
+    }
+    W.setupAnalyzers( np, ps.data(), (float)hbondCut, enable>0 );
+}
+
+void clearAnalyzers(){
+    W.clearAnalyzerStats(true);
+}
+
+void downloadAnalyzers(){
+    W.downloadAnalyzers();
+}
+
+double getMeasuredTemperature( int isys, int average ){
+    return W.analyzerTemperature(isys, average>0);
+}
+
+double getAnalyzerDistance( int isys, int ipair, int mode ){
+    return W.analyzerPairValue(isys, ipair, mode);
+}
+
 double computeFreeEnergy(int nCVs, float* initial_positions, float* final_positions, int nLambda, int nMDsteps, int nEQsteps, double Fconv, int mode, double K, int hardAtoms, int softAtoms, int hardDist, int softDist, int* cv_atoms){
     return W.computeFreeEnergy(nCVs, (Vec3f*)initial_positions, (Vec3f*)final_positions, nLambda, nMDsteps, nEQsteps, Fconv, mode, K, hardAtoms, softAtoms, hardDist, softDist, cv_atoms);
 }

@@ -123,6 +123,10 @@ public:
     int ibuff_MDpars    = -1; // per-system MD parameters (dt, damp, Flimit, reserved)
     int ibuff_TDrive    = -1; // per-system thermal driving (T, gamma, seed, reserved)
     int ibuff_averageForces = -1; // per-system TI force accumulators
+    int ibuff_analyzerPairs = -1;
+    int ibuff_analyzerPairDists = -1;
+    int ibuff_analyzerPairStats = -1;
+    int ibuff_analyzerTempStats = -1;
     int ibuff_bboxes    = -1; // per-system bounding boxes (cl_Mat3)
     int ibuff_sysneighs = -1; // optional inter-system neighbor list
     int ibuff_sysbonds  = -1; // optional inter-system bond parameters
@@ -134,6 +138,7 @@ public:
     OCLtask* task_evalInversions= nullptr;
     OCLtask* task_assemble      = nullptr;
     OCLtask* task_updateAtoms   = nullptr;
+    OCLtask* task_analyzeReplica = nullptr;
     OCLtask* task_clear_fapos   = nullptr;
     OCLtask* task_clear_fint    = nullptr;
     OCLtask* task_NBFF = nullptr;
@@ -229,6 +234,7 @@ public:
         newTask("evalInversions_UFF",     program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         newTask("assembleForces_UFF",     program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         newTask("updateAtomsMMFFf4",      program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
+        newTask("analyzeReplicaMMFF",     program, 1, (size_t4){0,0,0,0}, (size_t4){1,1,1,1} );
         newTask("getNonBond",             program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1});
         newTask("getNonBond_ex2",         program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1});
         newTask("getNonBond_GridFF_Bspline", program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1});
@@ -315,6 +321,10 @@ public:
         ibuff_MDpars   = newBuffer("MDpars",    nSystems,  sizeof(cl_float4), 0, CL_MEM_READ_ONLY );
         ibuff_TDrive   = newBuffer("TDrive",    nSystems,  sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
         ibuff_averageForces = newBuffer("averageForces", nAtomsTot, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
+        ibuff_analyzerPairs     = newBuffer("analyzerPairs",     1,        sizeof(cl_int2),   0, CL_MEM_READ_WRITE);
+        ibuff_analyzerPairDists = newBuffer("analyzerPairDists", nSystems, sizeof(cl_float),  0, CL_MEM_READ_WRITE);
+        ibuff_analyzerPairStats = newBuffer("analyzerPairStats", nSystems, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
+        ibuff_analyzerTempStats = newBuffer("analyzerTempStats", nSystems, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
         ibuff_bboxes   = newBuffer("bboxes",    nSystems,  sizeof(cl_Mat3),   0, CL_MEM_READ_ONLY );
         // Inter-system coupling (optional); allocate minimal placeholders
         ibuff_sysneighs= newBuffer("sysneighs", nSystems,  sizeof(cl_int),    0, CL_MEM_READ_ONLY );
@@ -353,6 +363,7 @@ public:
         task_clear_fapos    = getTask("clear_fapos_UFF");
         task_clear_fint     = getTask("clear_fint_UFF");
         task_updateAtoms     = getTask("updateAtomsMMFFf4");
+        task_analyzeReplica  = getTask("analyzeReplicaMMFF");
         task_NBFF           = getTask("getNonBond");
         task_NBFF_ex2       = getTask("getNonBond_ex2");
         task_NBFF_Grid_Bspline = getTask("getNonBond_GridFF_Bspline");
@@ -705,6 +716,26 @@ public:
         err |= useArgBuff( ibuff_fprev ); OCL_checkError(err, "setup_updateAtomsMMFFf4.arg 10"); // 10 previous forces
         OCL_checkError(err, "OCL_UFF::setup_updateAtomsMMFFf4");
         return task_updateAtoms;
+    }
+
+    OCLtask* setup_analyzeReplicaMMFF(int natoms, int nNode, int nPairs, float hbondCut){
+        if(!task_analyzeReplica){ task_analyzeReplica = getTask("analyzeReplicaMMFF"); }
+        if(!task_analyzeReplica) return nullptr;
+        task_analyzeReplica->local.x  = 1;
+        task_analyzeReplica->global.x = nSystems;
+        nDOFs.x = natoms; nDOFs.y = nNode; nDOFs.z = nPairs; nDOFs.w = 0;
+        useKernel( task_analyzeReplica->ikernel );
+        int err=0;
+        err |= _useArg   ( nDOFs );                  OCL_checkError(err, "setup_analyzeReplicaMMFF.arg 0");
+        err |= useArgBuff( ibuff_apos );             OCL_checkError(err, "setup_analyzeReplicaMMFF.arg 1");
+        err |= useArgBuff( ibuff_avel );             OCL_checkError(err, "setup_analyzeReplicaMMFF.arg 2");
+        err |= useArgBuff( ibuff_analyzerPairs );    OCL_checkError(err, "setup_analyzeReplicaMMFF.arg 3");
+        err |= useArgBuff( ibuff_analyzerPairDists );OCL_checkError(err, "setup_analyzeReplicaMMFF.arg 4");
+        err |= useArgBuff( ibuff_analyzerPairStats );OCL_checkError(err, "setup_analyzeReplicaMMFF.arg 5");
+        err |= useArgBuff( ibuff_analyzerTempStats );OCL_checkError(err, "setup_analyzeReplicaMMFF.arg 6");
+        err |= useArg    ( hbondCut );               OCL_checkError(err, "setup_analyzeReplicaMMFF.arg 7");
+        OCL_checkError(err, "OCL_UFF::setup_analyzeReplicaMMFF");
+        return task_analyzeReplica;
     }
 
     void eval(bool bClearForce = true) {
