@@ -61,6 +61,18 @@ def detect_columns(filename):
                         elif p == 'JE_W_avg': temp_map['JE_W_avg'] = i
                         elif p == 'JE_W_sigma': temp_map['JE_W_sigma'] = i
                         elif p == 'JE_W_skew': temp_map['JE_W_skew'] = i
+                        elif p.startswith('hb_') and p.endswith('_dist_avg'):
+                            try:
+                                ip = int(p.split('_')[1])
+                                temp_map[f'hb_{ip}_dist_avg'] = i
+                            except ValueError:
+                                pass
+                        elif p.startswith('hb_') and p.endswith('_fraction'):
+                            try:
+                                ip = int(p.split('_')[1])
+                                temp_map[f'hb_{ip}_fraction'] = i
+                            except ValueError:
+                                pass
 
                     if 'lambda' in temp_map:
                         col_map.update(temp_map)
@@ -172,31 +184,51 @@ def plot_f_interactive(filename, output_prefix=None, N_segments=None, T=300.0, b
         except Exception as e:
             print(f"Warning: Could not read {je_filename}: {e}")
 
+    # Check if hydrogen bonds are present in col_map
+    hbond_pairs = []
+    ip = 0
+    while f'hb_{ip}_dist_avg' in col_map or f'hb_{ip}_fraction' in col_map:
+        hbond_pairs.append(ip)
+        ip += 1
+    has_hbonds = len(hbond_pairs) > 0
+
+    num_rows = 7
+    titles = [
+        'dE/dλ vs λ',
+        'Force vs λ',
+        'Cumulative Free Energy ΔF(λ)',
+        'Jarzynski Work W(λ)',
+        'Jarzynski Dispersion and Skewness',
+        'FE Difference (data vs ref)',
+        'End-to-end distance vs λ'
+    ]
+    row_heights = [0.14, 0.14, 0.14, 0.14, 0.14, 0.15, 0.15]
+    specs = [
+        [{"secondary_y": False}],
+        [{"secondary_y": False}],
+        [{"secondary_y": False}],
+        [{"secondary_y": False}],
+        [{"secondary_y": True}],
+        [{"secondary_y": True}],
+        [{"secondary_y": False}]
+    ]
+    plot_rows = {'dE/dλ': 1, 'Force': 2, 'FE': 3, 'Work': 4, 'JE_stats': 5, 'FE_diff': 6, 'Distance': 7}
+
+    if has_hbonds:
+        num_rows = 8
+        titles.append('Hydrogen Bonds vs λ')
+        row_heights = [0.12, 0.12, 0.12, 0.12, 0.12, 0.13, 0.13, 0.14]
+        specs.append([{"secondary_y": True}])
+        plot_rows['HBonds'] = 8
+
     # Create subplots
     fig = make_subplots(
-        rows=7, cols=1,
-        subplot_titles=(
-            'dE/dλ vs λ',
-            'Force vs λ',
-            'Cumulative Free Energy ΔF(λ)',
-            'Jarzynski Work W(λ)',
-            'Jarzynski Dispersion and Skewness',
-            'FE Difference (data vs ref)',
-            'End-to-end distance vs λ'
-        ),
-        vertical_spacing=0.08,
-        row_heights=[0.14, 0.14, 0.14, 0.14, 0.14, 0.15, 0.15],
-        specs=[
-            [{"secondary_y": False}],
-            [{"secondary_y": False}],
-            [{"secondary_y": False}],
-            [{"secondary_y": False}],
-            [{"secondary_y": True}],
-            [{"secondary_y": True}],
-            [{"secondary_y": False}]
-        ]
+        rows=num_rows, cols=1,
+        subplot_titles=tuple(titles),
+        vertical_spacing=0.06,
+        row_heights=row_heights,
+        specs=specs
     )
-    plot_rows = {'dE/dλ': 1, 'Force': 2, 'FE': 3, 'Work': 4, 'JE_stats': 5, 'FE_diff': 6, 'Distance': 7}
 
     # --- Plot 1: dE/dlambda vs lambda ---
     # TI Data
@@ -509,12 +541,55 @@ def plot_f_interactive(filename, output_prefix=None, N_segments=None, T=300.0, b
         )
         fig.update_yaxes(title_text="End-to-end Distance [Å]", row=plot_rows['Distance'], col=1)
 
+    # --- Plot 8: Hydrogen Bonds (if present) ---
+    if has_hbonds:
+        colors_dist = ['indigo', 'blue', 'teal', 'darkolivegreen']
+        colors_frac = ['crimson', 'red', 'orange', 'gold']
+        for idx, ip in enumerate(hbond_pairs):
+            dist_col = get_col(f'hb_{ip}_dist_avg')
+            frac_col = get_col(f'hb_{ip}_fraction')
+            
+            c_d = colors_dist[idx % len(colors_dist)]
+            c_f = colors_frac[idx % len(colors_frac)]
+            
+            if dist_col is not None and not np.isnan(dist_col).all():
+                hover_text_hb_dist = [
+                    f"λ = {lam:.4f}<br>HB {ip} Length = {d:.3f} Å"
+                    for lam, d in zip(lambda_vals, dist_col)
+                ]
+                fig.add_trace(
+                    go.Scatter(
+                        x=lambda_vals, y=dist_col,
+                        mode='lines+markers', name=f'HB {ip} Length [Å]',
+                        line=dict(color=c_d, width=2), marker=dict(size=6, symbol='circle'),
+                        hovertext=hover_text_hb_dist, hoverinfo='text'
+                    ),
+                    row=plot_rows['HBonds'], col=1, secondary_y=False
+                )
+            
+            if frac_col is not None and not np.isnan(frac_col).all():
+                hover_text_hb_frac = [
+                    f"λ = {lam:.4f}<br>HB {ip} Fraction = {f:.3f}"
+                    for lam, f in zip(lambda_vals, frac_col)
+                ]
+                fig.add_trace(
+                    go.Scatter(
+                        x=lambda_vals, y=frac_col,
+                        mode='lines+markers', name=f'HB {ip} Fraction',
+                        line=dict(color=c_f, width=2, dash='dash'), marker=dict(size=6, symbol='x'),
+                        hovertext=hover_text_hb_frac, hoverinfo='text'
+                    ),
+                    row=plot_rows['HBonds'], col=1, secondary_y=True
+                )
+        fig.update_yaxes(title_text="HB Length [Å]", row=plot_rows['HBonds'], col=1, secondary_y=False)
+        fig.update_yaxes(title_text="HB Fraction", row=plot_rows['HBonds'], col=1, secondary_y=True)
+
     # Update all x-axes
-    for i in range(1, 8):
+    for i in range(1, num_rows + 1):
         fig.update_xaxes(title_text="λ", row=i, col=1)
 
     # Layout
-    total_height = 2200
+    total_height = 2500 if has_hbonds else 2200
     fig.update_layout(
         height=total_height,
         title=f"Free Energy Analysis: {os.path.basename(filename)}",
