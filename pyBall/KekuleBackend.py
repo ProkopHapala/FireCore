@@ -168,6 +168,12 @@ class KekuleBackend:
             if i < len(value):
                 a.subtype = value[i]
 
+    def set_atom_subtype_by_index(self, atom_idx, subtype):
+        """Set subtype of atom at specific index directly."""
+        atom_list, *_ = self.graph.to_arrays()
+        if 0 <= atom_idx < len(atom_list):
+            atom_list[atom_idx].subtype = subtype
+
     @property
     def ring_atoms(self):
         """Dict {ring_id: [int indices]} for geometry rings."""
@@ -845,34 +851,33 @@ class KekuleBackend:
         if nb > 1: v2 = au.normalize(heavy_neighbors[1].pos - pos)
         if nb > 2: v3 = au.normalize(heavy_neighbors[2].pos - pos)
         
-        if npi == 0:  # sp3 (2D: tetrahedral geometry shifted along bond direction)
+        z_hat = np.array([0.0, 0.0, 1.0])
+        if npi == 0:  # sp3 (tetrahedral, 109.5° bond angles)
             if nb == 3:  # NH3-like - place H opposite to centroid of neighbors
                 centroid = au.normalize(v1 + v2 + v3)
                 return [-centroid]
-            elif nb == 2:  # H2O-like / -NH2 - 2 H symmetrically on side in-plane
-                bisect = au.normalize(v1 + v2)
-                perp = np.cross(v1, v2)
-                perp = au.normalize(perp)
-                # 2 H at +/-109.5° from bisector in-plane (symmetric on side)
-                angle = np.arccos(-1/3)  # 109.5°
-                ca = np.cos(angle)
-                sa = np.sin(angle)
-                return [au.normalize(-bisect * ca + perp * sa), au.normalize(-bisect * ca - perp * sa)]
-            elif nb == 1:  # CH3-like / -NH2-like - depends on element
-                perp = np.array([-v1[1], v1[0], 0.0])
-                if np.linalg.norm(perp) < 1e-8: perp = np.array([0.0, 1.0, 0.0])
-                perp = au.normalize(perp)
-                perp2 = np.cross(v1, perp)
-                perp2 = au.normalize(perp2)
-                # Tetrahedral directions symmetric around bond (2 H on sides, 1 in center)
-                # Use C++ makeConfGeom constants rotated 90°
-                ca = 0.81649658092
-                cb = 0.47140452079
-                cc = -0.33333333333
+            elif nb == 2:  # sp3 with 2 heavy neighbors: 2 Hs symmetric above/below plane
+                bisect = au.normalize(v1 + v2)  # points toward neighbors avg
+                # The 2 Hs lie in the plane containing z_hat and -bisect
+                # component along bisect: -1/sqrt(3) (from tetrahedral constraint)
+                # component along z_hat:  +/- sqrt(2/3) (above/below plane)
+                c_along = -1.0/np.sqrt(3.0)  # ≈ -0.577
+                c_z     =  np.sqrt(2.0/3.0)  # ≈ 0.816
+                return [au.normalize(bisect*c_along + z_hat*c_z),
+                        au.normalize(bisect*c_along - z_hat*c_z)]
+            elif nb == 1:  # CH3-like: 3 Hs in tetrahedral cone around -v1
+                # In-plane perp to v1
+                perp_ip = np.array([-v1[1], v1[0], 0.0])
+                if np.linalg.norm(perp_ip) < 1e-8: perp_ip = np.array([0.0, 1.0, 0.0])
+                perp_ip = au.normalize(perp_ip)
+                # Tetrahedral cone: dot(h, v1) = -1/3, transverse magnitude = 2√2/3
+                cc = -1.0/3.0           # component along v1
+                ct = 2.0*np.sqrt(2.0)/3.0  # transverse magnitude = sqrt(8/9) ≈ 0.9428
+                # 3 Hs at azimuthal 0°,120°,240° around v1: (perp_ip, z_hat) basis
                 return [
-                    au.normalize(v1 * cc - perp2 * cb + perp * ca),  # in-plane
-                    au.normalize(v1 * cc - perp2 * cb - perp * ca),  # in-plane
-                    au.normalize(v1 * cc + perp2 * (cb * 2)),  # out-of-plane (last)
+                    au.normalize(v1*cc + perp_ip*ct),                                        # in-plane
+                    au.normalize(v1*cc + perp_ip*(ct*(-0.5)) + z_hat*(ct*(np.sqrt(3)/2))),  # above
+                    au.normalize(v1*cc + perp_ip*(ct*(-0.5)) - z_hat*(ct*(np.sqrt(3)/2))),  # below
                 ]
         elif npi == 1:  # sp2 (2D: H in-plane)
             if nb == 2:  # =N- like - H opposite to bisector in-plane
