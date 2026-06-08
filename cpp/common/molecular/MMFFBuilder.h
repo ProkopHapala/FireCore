@@ -3472,7 +3472,7 @@ void makeNeighs( int*& neighs, int perAtom ){
 }
 
 #ifdef MMFFsp3_loc_h
-void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool bUFF=false ){
+void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool bUFF=false, Vec3i nPBC=Vec3i{-1,-1,-1} ){
 
         //double c0s[3]{-0.33333,-0.5,-1.0}; // cos(angle)   sp1 sp2 sp3
         double ang0s[3]{ 109.5 *M_PI/180.0, 120.0*M_PI/180.0, 180.0*M_PI/180.0 }; // cos(angle)   sp1 sp2 sp3
@@ -3558,6 +3558,12 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
                     hs[k]  = atoms[ja].pos - A.pos;
                     hs[k].normalize();
                     ngs[k] = ja;
+                    if(nPBC.x>0){
+                        int ix = B.ipbc.x, iy = B.ipbc.y, iz = B.ipbc.z;
+                        int nx = 2*nPBC.x+1, ny = 2*nPBC.y+1;
+                        int idx = (iz + nPBC.z)*nx*ny + (iy + nPBC.y)*nx + (ix + nPBC.x);
+                        ff.neighCell[ia].array[k] = idx;
+                    }
                     bL [k]=B.l0;
                     bK [k]=B.k;
                     if(bUFF){

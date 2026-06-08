@@ -1404,7 +1404,7 @@ void printPBCshifts(){
             builder.printAtomConfs();
             builder.printBonds();
 
-            builder.toMMFFsp3_loc( ffl, true, bEpairs, bUFF );   
+            builder.toMMFFsp3_loc( ffl, true, bEpairs, bUFF, nPBC );   
             //ffl.printAtomParams();
             if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
             if(ffl.bEachAngle){ builder.assignAnglesMMFFsp3  ( ffl, false      ); ffl.printAngles();   }  //exit(0);
@@ -1435,8 +1435,9 @@ void printPBCshifts(){
                 npbc = makePBCshifts( nPBC, builder.lvec );
                 ffl.bindShifts(npbc,pbc_shifts);
                 //ff4.makeNeighCells  ( nPBC );       
+                // neighCell already populated in toMMFFsp3_loc from Bond.ipbc; makeNeighCells would overwrite with wrong indices for primitive cells
                 //ffl.makeNeighCells( nPBC );      
-                ffl.makeNeighCells( npbc, pbc_shifts ); 
+                //ffl.makeNeighCells( npbc, pbc_shifts ); 
             }
         }
 

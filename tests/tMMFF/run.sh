@@ -61,8 +61,8 @@ export LSAN_OPTIONS=detect_leaks=0
 #echo "=== Running Vibration Spectra Test ==="
 #python3 test_vibration_spectra.py
 
-echo "=== Running Hessian Fitting Test ==="
-python3 test_hessian_fitting.py
+echo "=== Running Diamond Phonon Bands Test ==="
+python3 test_diamond_phonon_bands.py --unit THz
 
 # Test without substrate
 #echo "=== Testing without substrate ==="
