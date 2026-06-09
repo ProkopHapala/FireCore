@@ -76,9 +76,10 @@ header_strings = [
 #LIB_PATH_CPP  = os.path.normpath(LIB_PATH+'../../../'+'/cpp/Build/libs/'+cpp_name )
 #lib = ctypes.CDLL( LIB_PATH_CPP+("/lib%s.so" %cpp_name) )
 
-_buildPath1 = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build-opt/libs/Molecular' )
-_buildPath0 = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build/libs/Molecular' )
-cpp_utils.BUILD_PATH = _buildPath1 if os.path.isdir(_buildPath1) else _buildPath0
+# cpp/Build is symlink to Build-asan or Build-opt — sole build abstraction (see FireCore/cpp/Build)
+cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build/libs/Molecular' )
+if not os.path.isdir(cpp_utils.BUILD_PATH):
+    raise FileNotFoundError(f"MMFF build dir not found: {cpp_utils.BUILD_PATH}  (cmake+make in cpp/Build)")
 lib = cpp_utils.loadLib('MMFF_lib', recompile=False)
 
 

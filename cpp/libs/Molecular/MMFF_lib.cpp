@@ -358,36 +358,46 @@ void getHessian3x3( int n, int* inds, double* Hess_, double dx, bool bDiag ){
 }
 
 void getHessian3Nx3N(int n,int* inds,double* out_hessian,double dx){
+    // Phi(ia,ja,R) = -dF_ja(0)/du_ia via central FD.  Bloch D(k) applied downstream in Python.
+    // Periodic crystal: init with lvs xyz + nPBC>0 so bonded/H-bond neighbors include cell images.
+    printf("getHessian3Nx3N(n=%i) dx=%g bPBC=%i nPBC=(%i,%i,%i) bMMFF=%i\n",
+        n, dx, (int)W.bPBC, W.nPBC.x, W.nPBC.y, W.nPBC.z, (int)W.bMMFF);
+    if(!W.bPBC){
+        printf("WARNING: getHessian3Nx3N bPBC=0 — cluster Hessian; for bulk phonons use lvs xyz + nPBC>0\n");
+    }
     std::vector<Vec3d> orig(n);
     int dim = n * 3;
-    // save original positions
+    for(int i=0;i<dim*dim;i++){ out_hessian[i]=0.0; }
     for(int i=0;i<n;i++){ int ia=inds[i]; orig[i]=W.nbmol.apos[ia]; }
     for(int p=0;p<n;p++){
         int ip=inds[p];
         for(int k=0;k<3;k++){
-            double v=orig[p].array[k]; // p is index in inds, so orig[p] is apos[ip]
-            
-            W.nbmol.apos[ip].array[k]=v+dx; W.eval_no_omp(); 
+            double v=orig[p].array[k];
+            W.nbmol.apos[ip].array[k]=v+dx; W.eval_no_omp();
             for(int o=0; o<n; o++){
                 int io = inds[o];
                 for(int l=0; l<3; l++){
-                    out_hessian[(o*3+l)*dim + (p*3+k)] = -W.nbmol.fapos[io].array[l]; // f_plus
+                    out_hessian[(o*3+l)*dim + (p*3+k)] = -W.nbmol.fapos[io].array[l];
                 }
             }
-
             W.nbmol.apos[ip].array[k]=v-dx; W.eval_no_omp();
             for(int o=0; o<n; o++){
                 int io = inds[o];
                 for(int l=0; l<3; l++){
-                    // H = -(f_plus - f_minus) / (2*dx)
                     out_hessian[(o*3+l)*dim + (p*3+k)] = (out_hessian[(o*3+l)*dim + (p*3+k)] + W.nbmol.fapos[io].array[l]) / (2*dx);
                 }
             }
             W.nbmol.apos[ip].array[k]=v;
         }
     }
-    // restore original positions
     for(int i=0;i<n;i++){ int ia=inds[i]; W.nbmol.apos[ia]=orig[i]; }
+    for(int i=0;i<dim;i++){
+        for(int j=i+1;j<dim;j++){
+            double s = 0.5*(out_hessian[i*dim+j]+out_hessian[j*dim+i]);
+            out_hessian[i*dim+j]=s;
+            out_hessian[j*dim+i]=s;
+        }
+    }
 }
 
 void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeighs,  int SurfAtoms, int GridFF, int MMFF, int Angles, int PiSigma, int PiPiI ){
