@@ -310,12 +310,13 @@ __kernel void getMMFFf4(
     float3 f1 = float3Zero;
     float3 f2 = float3Zero;         // working forces 
 
-    if((DBG_MMFF>1)&&(iG==IDBG_ATOM)&&(iS==95)){
-        printf( "getMMFFf4() iG %i, iS %i, iaa %i bSubtractVdW %i\n", iG, iS, iaa, bSubtractVdW );
-        for(int ia=0; ia<nAtoms; ia++){
-            printf( "atom %i pos(%g,%g,%g) \n", ia, apos[ia+i0a].x,apos[ia+i0a].y,apos[ia+i0a].z );
-        }
-    }
+    // if(iS==IDBG_SYS && iG==IDBG_ATOM){
+    //     printf( "getMMFFf4() iG %i, iS %i, iaa %i bSubtractVdW %i\n", iG, iS, iaa, bSubtractVdW );
+    //     for(int ia=0; ia<nAtoms; ia++){
+    //         printf( "atom %i pos(%g,%g,%g) \n", ia, apos[ia+i0a].x,apos[ia+i0a].y,apos[ia+i0a].z );
+    //         printf( "fapos %i force(%g,%g,%g) \n", ia, fapos[ia+i0a].x,fapos[ia+i0a].y,fapos[ia+i0a].z );
+    //     }
+    // }
 
     { // ========= BONDS - here we evaluate pairwise interactions of node atoms with its 4 neighbors
 
@@ -372,7 +373,7 @@ __kernel void getMMFFf4(
             float ksp = Kspi[i];
             if(ksp>1.e-6){
                 esp += evalAngCos( (float4){hpi,1.}, h, ksp, par.w, &f1, &f2 );   fpi+=f1; fa-=f2;  fbs[i]+=f2;    //   pi-planarization (orthogonality), fpi is force on pi-orbital, fbs[i] is recoil force on i-th neighbor
-                E+=epp;
+                E+=esp;
             }
         }
 
@@ -610,7 +611,7 @@ __kernel void getMMFFf4_bak(
             esp += evalAngCos( (float4){hpi,1.}, h, ksp, par.w, &f1, &f2 );   fpi+=f1; fa-=f2;  fbs[i]+=f2;    //   pi-planarization (orthogonality)
             //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:sp:h[%i|%i] ksp=%g piC0=%g c=%g hp(%g,%g,%g) h(%g,%g,%g)\n", iaa,ing, ksp,par.z, dot(hpi,h.xyz), hpi.x,hpi.y,hpi.z,  h.x,h.y,h.z  );
             //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "GPU:sp[%i|%i] ksp=%g piC0=%g c=%g f1(%g,%g,%g) f2(%g,%g,%g)\n", iaa,ing, ksp,par.z, dot(hpi,h.xyz), f1.x,f1.y,f1.z,  f2.x,f2.y,f2.z  );
-            E+=epp;
+            E+=esp;
         }
 
         //printf( "GPU[%i|%i] esp=%g epp=%g \n", esp, epp );
@@ -1010,7 +1011,7 @@ __kernel void updateAtomsMMFFf4(
     if(iG>=(natoms+nnode)) return; // make sure we are not out of bounds of current system
 
     float4 fe      = aforce[iav]; // force on atom or pi-orbital
-    aforce[iav] = float4Zero;     // clear force for next iteration
+    // aforce[iav] = float4Zero;     // clear force for next iteration
     const bool bPi = iG>=natoms;  // is it pi-orbital ?
 
     // ------ Gather Forces from back-neighbors
@@ -1034,8 +1035,8 @@ __kernel void updateAtomsMMFFf4(
 
     // =============== FORCE DONE
     aforce[iav] = fe;             // store force before limit
-
-    aforce[iav] = float4Zero;   // clean force   : This can be done in the first forcefield run (best is NBFF)
+        // printf( "GPU[%d/%d]atom[%d]aforces(%g,%g,%g) \n", iS, 3, iG, aforce[iav].x, aforce[iav].y, aforce[iav].z );
+    // aforce[iav] = float4Zero;   // clean force   : This can be done in the first forcefield run (best is NBFF)
 
     // =============== DYNAMICS
 
@@ -1049,7 +1050,7 @@ __kernel void updateAtomsMMFFf4(
         const cl_Mat3 B = bboxes[iS];
         // if(B.c.x>0.0f){ if(pe.x<B.a.x){ fe.x+=(B.a.x-pe.x)*B.c.x; }else if(pe.x>B.b.x){ fe.x+=(B.b.x-pe.x)*B.c.x; }; }
         // if(B.c.y>0.0f){ if(pe.y<B.a.y){ fe.y+=(B.a.y-pe.y)*B.c.y; }else if(pe.y>B.b.y){ fe.y+=(B.b.y-pe.y)*B.c.y; }; }
-        if(B.c.z>0.0f){ if(0 && pe.z<B.a.z){ fe.z+=(B.a.z-pe.z)*B.c.z; }else if(pe.z>B.b.z){ fe.z+=(B.b.z-pe.z)*B.c.z; }; }
+        if(B.c.z>0.0f){ if(pe.z<B.a.z){ fe.z+=(B.a.z-pe.z)*B.c.z; }else if(pe.z>B.b.z){ fe.z+=(B.b.z-pe.z)*B.c.z; }; }
         // ------- constrains
         float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
         float4 cK   = constrK[ iaa ];
@@ -1137,6 +1138,7 @@ __kernel void updateAtomsMMFFf4(
         for(int i=0; i<nMaxSysNeighs; i++){
             const int j     = iS*nMaxSysNeighs + i;
             const int    jS = sysneighs[j];
+            if(jS < 0) continue;
             const float4 bj = sysbonds [j];
             const float4 pj = apos[jS*nvec + iG];
             float3 d        = pj.xyz - pe.xyz;
@@ -1519,11 +1521,16 @@ __kernel void cleanForceMMFFf4(
     //if(iav==0){ printf("GPU::cleanForceMMFFf4() iS %i nG %i nS %i \n", iS, nG, nS );}
     //if(iG==0){ for(int i=0;i<(natoms+nnode);i++ ){printf("cleanForceMMFFf4[%i](%g,%g,%g)\n",i,aforce[i].x,aforce[i].y,aforce[i].z);} }
     if(iG<nnode){
-        const int i4 = ian*4;
+        const int i4  = (iG + iS*nnode*2)*4;
+        const int i4p = i4 + nnode*4;
         fneigh[i4+0]=float4Zero;
         fneigh[i4+1]=float4Zero;
         fneigh[i4+2]=float4Zero;
         fneigh[i4+3]=float4Zero;
+        fneigh[i4p+0]=float4Zero;
+        fneigh[i4p+1]=float4Zero;
+        fneigh[i4p+2]=float4Zero;
+        fneigh[i4p+3]=float4Zero;
     }
     //if(iG==0){ printf( "GPU::updateAtomsMMFFf4() END\n" ); }
 }

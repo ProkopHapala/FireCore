@@ -259,12 +259,12 @@ def getBuffs( NEIGH_MAX=4 ):
     gpu_constrK   = getfBuff ( "gpu_constrK",   (nSys,natoms,4) )
     gpu_averageForces = getfBuff ( "gpu_averageForces", (nSys,4) )
 
-    gpu_REQs      = getfBuff ( "gpu_REQs",      (nSys,natoms,3) )
-    gpu_MMpars    = getfBuff ( "gpu_MMpars",    (nSys,nnode,3)  ) 
-    gpu_BLs       = getfBuff ( "gpu_BLs",       (nSys,nnode,3)  ) 
-    gpu_BKs       = getfBuff ( "gpu_BKs",       (nSys,nnode,3)  )
-    gpu_Ksp       = getfBuff ( "gpu_Ksp",       (nSys,nnode,3)  )
-    gpu_Kpp       = getfBuff ( "gpu_Kpp",       (nSys,nnode,3)  )
+    gpu_REQs      = getfBuff ( "gpu_REQs",      (nSys,natoms,4) )
+    gpu_MMpars    = getfBuff ( "gpu_MMpars",    (nSys,nnode,4)  ) 
+    gpu_BLs       = getfBuff ( "gpu_BLs",       (nSys,nnode,4)  ) 
+    gpu_BKs       = getfBuff ( "gpu_BKs",       (nSys,nnode,4)  )
+    gpu_Ksp       = getfBuff ( "gpu_Ksp",       (nSys,nnode,4)  )
+    gpu_Kpp       = getfBuff ( "gpu_Kpp",       (nSys,nnode,4)  )
 
     gpu_lvecs     = getfBuff ( "gpu_lvecs",     (nSys,3,4)    )
     gpu_ilvecs    = getfBuff ( "gpu_ilvecs",    (nSys,3,4)    )
@@ -493,11 +493,11 @@ def insertSMILES(s ):
     s = s.encode('utf8')
     return lib.insertSMILES(s)
 
-#  void setSwitches_multi( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants )
+#  void setSwitches_multi( int CheckInvariants, int PBC, int NonBonded, int MMFF, int Angles, int PiSigma, int PiPiI, int bSaveToDatabase )
 lib.setSwitches_multi.argtypes  = [c_int, c_int, c_int , c_int, c_int, c_int, c_int, c_int] 
 lib.setSwitches_multi.restype   =  None
-def setSwitches(doAngles=0, doPiPiT=0, doPiSigma=0, doPiPiI=0, doBonded=0, PBC=0, CheckInvariants=0, bSaveToDatabase=0):
-    return lib.setSwitches_multi(doAngles, doPiPiT, doPiSigma, doPiPiI, doBonded, PBC, CheckInvariants,bSaveToDatabase)
+def setSwitches(doAngles=0, doPiPiT=0, doPiSigma=0, doPiPiI=0, doBonded=0, PBC=0, CheckInvariants=0, bSaveToDatabase=0, NonBonded=1):
+    return lib.setSwitches_multi(CheckInvariants, PBC, NonBonded, doBonded, doAngles, doPiSigma, doPiPiI, bSaveToDatabase)
 
 # void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeighs,  int SurfAtoms, int GridFF, int MMFF, int Angles, int PiSigma, int PiPiI ){
 lib.setSwitches2.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]
@@ -583,9 +583,9 @@ lib.eval_getMMFFf4_ocl.restype   =  None
 def eval_getMMFFf4_ocl():
     return lib.eval_getMMFFf4_ocl()
 
-#void eval_getMMFFf4_cpu()
+#double eval_getMMFFf4_cpu()
 lib.eval_getMMFFf4_cpu.argtypes  = []
-lib.eval_getMMFFf4_cpu.restype   =  None
+lib.eval_getMMFFf4_cpu.restype   =  c_double
 def eval_getMMFFf4_cpu():
     return lib.eval_getMMFFf4_cpu()
 

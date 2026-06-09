@@ -977,7 +977,7 @@ class NBFF: public ForceField{ public:
     double evalLJQs_ng4_PBC_omp(){
         double E=0;
         for (int ia=0; ia<natoms; ia++ ){
-            evalLJQs_ng4_PBC_atom( ia );
+            E += evalLJQs_ng4_PBC_atom( ia );
         }
         return E;
     }

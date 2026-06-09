@@ -21,29 +21,6 @@ MolWorld_sp3_multi W;
 
 extern "C"{
 
-static void assembleMMFFforcesFromRecoil(){
-    const int nvecTot = W.ocl.nvecs * W.nSystems;
-    const int nbkTot  = W.ocl.nbkng * W.nSystems;
-    static std::vector<Quat4f> neighForce;
-    neighForce.resize(nbkTot);
-
-    int err=0;
-    err |= W.ocl.download( W.ocl.ibuff_aforces,    W.aforces        );
-    err |= W.ocl.download( W.ocl.ibuff_neighForce, neighForce.data() );
-    err |= W.ocl.finishRaw();
-    OCL_checkError(err, "assembleMMFFforcesFromRecoil().download");
-
-    for(int i=0; i<nvecTot; i++){
-        Quat4f fe = W.aforces[i];
-        const Quat4i ngs = W.bkNeighs[i];
-        if(ngs.x>=0){ const Quat4f& q = neighForce[ngs.x]; fe.x+=q.x; fe.y+=q.y; fe.z+=q.z; fe.w+=q.w; }
-        if(ngs.y>=0){ const Quat4f& q = neighForce[ngs.y]; fe.x+=q.x; fe.y+=q.y; fe.z+=q.z; fe.w+=q.w; }
-        if(ngs.z>=0){ const Quat4f& q = neighForce[ngs.z]; fe.x+=q.x; fe.y+=q.y; fe.z+=q.z; fe.w+=q.w; }
-        if(ngs.w>=0){ const Quat4f& q = neighForce[ngs.w]; fe.x+=q.x; fe.y+=q.y; fe.z+=q.z; fe.w+=q.w; }
-        W.aforces[i] = fe;
-    }
-}
-
 static void copySystemGeometryToFF4( int isys ){
     const int i0v = isys * W.ocl.nvecs;
     for(int i=0; i<W.ff4.nvecs; i++){
@@ -340,16 +317,18 @@ void eval_getMMFFf4_ocl(){
     err |= W.task_MMFF  ->enque_raw();
     err |= W.ocl.finishRaw();
     OCL_checkError(err, "eval_getMMFFf4_ocl");
-    assembleMMFFforcesFromRecoil();
+    W.assembleMMFFforcesFromRecoil();
 }
 
-void eval_getMMFFf4_cpu(){
+double eval_getMMFFf4_cpu(){
     W.download( false, false );
+    double E = 0;
     for(int isys=0; isys<W.nSystems; isys++){
         copySystemGeometryToFF4( isys );
-        W.ff4.eval();
+        E = W.ff4.eval();
         packMMFFforcesToGPUBuffer( isys, W.ff4 );
     }
+    return E;
 }
 
 void MDloop( int perframe, double Ftol = -1, int iParalel = 3, int perVF = 100, double elapse_time = 0.0){

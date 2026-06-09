@@ -63,6 +63,7 @@ def write_xyz(path: Path, comment: str, atoms):
 
 
 def load_constraints(path: Path):
+    """Parse constraint file. Returns list of (xyz0, xyz1, atom_idx) where atom_idx==-1 if not in file."""
     rows = []
     for line in path.read_text().splitlines():
         s = line.strip()
@@ -70,14 +71,13 @@ def load_constraints(path: Path):
             continue
         vals = [float(x) for x in s.split()]
         if len(vals) == 6:
-            xyz0 = vals[:3]
-            xyz1 = vals[3:6]
+            xyz0, xyz1, atom_idx = vals[:3], vals[3:6], -1
         elif len(vals) == 7:
-            xyz0 = vals[1:4]
-            xyz1 = vals[4:7]
+            atom_idx = int(vals[0])
+            xyz0, xyz1 = vals[1:4], vals[4:7]
         else:
             raise ValueError(f"Expected 6 or 7 floats per constraint row, got: {line}")
-        rows.append((xyz0, xyz1))
+        rows.append((xyz0, xyz1, atom_idx))
     return rows
 
 
@@ -186,6 +186,7 @@ def perform_scan(mode_name, b_relaxed, nCVs, initial_positions, final_positions,
         bRelaxed=b_relaxed,
         Es=np.zeros(nLambda, dtype=np.float64),
         ppos=ppos,
+        cv_atoms=si_indices,
     )
 
     if len(si_indices) > 0 and other_si_idx is not None:
@@ -214,17 +215,21 @@ def perform_scan(mode_name, b_relaxed, nCVs, initial_positions, final_positions,
 def run_scan_bundle(output_root, common):
     global HAS_MM, mm
     if HAS_MM is None:
-        _root_dir = os.path.abspath(os.path.join(SCRIPT_DIR, "../../.."))
+        _root_dir = os.path.abspath(os.path.join(SCRIPT_DIR, "../../../.."))  # scripts/run/ -> scripts/ -> tFreeEnergy_multi/ -> examples/ -> FireCore/
         sys.path.append(_root_dir)
         try:
             from pyBall import MMFF_multi as mm_mod
             mm = mm_mod
             HAS_MM = True
-        except ImportError:
+        except ImportError as e:
+            print(f"DEBUG: ImportError loading MMFF_multi: {e}")
+            import traceback
+            traceback.print_exc()
             HAS_MM = False
 
     scan_mode = str(common.get("scan_mode", "none")).lower()
     if scan_mode not in ["rigid", "relaxed", "both"] or (not HAS_MM):
+        print(f"Info: Skipping scan (scan_mode={scan_mode}, HAS_MM={HAS_MM})")
         return [], None, []
 
     xyz_in = Path(common.get("xyz_name", ""))
@@ -290,14 +295,22 @@ def run_scan_bundle(output_root, common):
         cvf_max=0.1,
     )
 
-    si_indices = [ia for ia in range(mm.natoms) if mm.getTypeName(ia).strip() == "Si"]
+    # Extract CV atom indices from constraints file (column 0 of 7-column format).
+    # Fall back to scanning for Si atoms only if no explicit indices given.
+    cv_atom_indices = [c[2] for c in constraints]  # may be -1 if not in file
+    if all(idx >= 0 for idx in cv_atom_indices):
+        si_indices = cv_atom_indices
+        print(f"  CV atoms from constraints file: {si_indices}")
+    else:
+        si_indices = [ia for ia in range(mm.natoms) if mm.getTypeName(ia).strip() == "Si"]
+        print(f"  CV atoms from Si-type search: {si_indices}")
     other_si_idx = si_indices[1] if len(si_indices) >= 2 else None
 
     initial_positions = []
     final_positions = []
-    for init_pos, final_pos in constraints:
-        initial_positions.extend(init_pos)
-        final_positions.extend(final_pos)
+    for c in constraints:
+        initial_positions.extend(c[0])
+        final_positions.extend(c[1])
 
     nCVs = len(constraints)
     niter = int(common.get("scan_nsteps", common.get("scan_niter", common.get("nMDsteps", 20000))))
@@ -311,6 +324,24 @@ def run_scan_bundle(output_root, common):
     if scan_mode in ["rigid", "both"]:
         print("  -> Running rigid scan...")
         scan_results.append(perform_scan("rigid", False, nCVs, initial_positions, final_positions, nLambda, niter, Fconv, K, mm.natoms, si_indices, other_si_idx, lambdas, target_pos, target_dist))
+
+    # Move C++-generated XYZ files (written to cwd) into output_root, and save .dat summary.
+    for sr in scan_results:
+        name = sr["name"]
+        src_xyz = f"scan_Milan_{name}.xyz"
+        dst_xyz = os.path.join(output_root, src_xyz)
+        if os.path.exists(src_xyz):
+            if os.path.exists(dst_xyz):
+                os.remove(dst_xyz)
+            shutil.move(src_xyz, dst_xyz)
+            print(f"  Moved {src_xyz} -> {dst_xyz}")
+        # Save lambda/distance/E table for re-plotting.
+        dat_path = os.path.join(output_root, f"scan_Milan_{name}.dat")
+        header = "lambda  target_dist  E_eV"
+        tbl = np.column_stack([sr["lambdas"], sr.get("distances", target_dist), sr["Es"]])
+        np.savetxt(dat_path, tbl, header=header)
+        print(f"  Saved {dat_path}")
+
     return scan_results, target_dist, lambdas
 
 
@@ -483,6 +514,22 @@ def run_sweep(config_path, include_scans=True, analyze_pairs=None, hbond_cut=Non
 
     os.makedirs(output_root, exist_ok=True)
     shutil.copy2(config_path, os.path.join(output_root, "config.json"))
+
+    def copy_if_exists(filepath, dest_dir):
+        if not filepath:
+            return
+        filepath = str(filepath)
+        if filepath.lower() in ("none", "null", "off", ""):
+            return
+        if os.path.exists(filepath) and os.path.isfile(filepath):
+            shutil.copy2(filepath, os.path.join(dest_dir, os.path.basename(filepath)))
+        elif os.path.exists(filepath + ".xyz") and os.path.isfile(filepath + ".xyz"):
+            shutil.copy2(filepath + ".xyz", os.path.join(dest_dir, os.path.basename(filepath) + ".xyz"))
+
+    for cfg_dict in [common] + param_sets:
+        copy_if_exists(cfg_dict.get("xyz_name"), output_root)
+        copy_if_exists(cfg_dict.get("surf_name"), output_root)
+        copy_if_exists(cfg_dict.get("constraints"), output_root)
 
     scan_results = []
     target_dist = None

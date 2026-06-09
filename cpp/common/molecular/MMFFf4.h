@@ -364,11 +364,9 @@ float eval( bool bClean=true, bool bCheck=true ){
     //printf( "print_apos() BEFORE\n" );print_apos();
     cleanForce();
     normalizePis();
-    //printf( "print_apos() AFTER \n" ); print_apos();
-    eval_atoms();
+    Etot = eval_atoms();
     //if(idebug){printf("CPU BEFORE assemble() \n"); printDEBUG();} 
     asseble_forces();
-    //Etot = Eb + Ea + Eps + EppT + EppI;
     return Etot;
 }
 

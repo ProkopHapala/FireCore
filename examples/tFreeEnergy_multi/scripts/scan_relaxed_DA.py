@@ -15,8 +15,8 @@ DA scan comparing relaxed and rigid branches of scan_Milan().
 
 
 ROOT = Path(__file__).resolve().parent
-XYZ_IN = (ROOT / "../../cpp/common_resources/xyz/DA.xyz").resolve()
-CONSTRAINTS_IN = (ROOT / "constraints_DA.txt").resolve()
+XYZ_IN = (ROOT / "../../../cpp/common_resources/xyz/DA.xyz").resolve()
+CONSTRAINTS_IN = (ROOT / "../configs/constraints_DA.txt").resolve()
 TMP_XYZ = ROOT / "DA_scan_relaxed_atom0_Si.xyz"
 OUT_RELAXED_XYZ = ROOT / "DA_scan_relaxed_via_scan.xyz"
 OUT_RELAXED_DAT = ROOT / "DA_scan_relaxed_via_scan.dat"
@@ -56,6 +56,7 @@ def write_xyz(path: Path, comment: str, atoms):
 
 def load_constraints(path: Path):
     rows = []
+    indices = []
     for line in path.read_text().splitlines():
         s = line.strip()
         if (not s) or s.startswith("#"):
@@ -64,13 +65,16 @@ def load_constraints(path: Path):
         if len(vals) == 6:
             xyz0 = vals[:3]
             xyz1 = vals[3:6]
+            idx = -1
         elif len(vals) == 7:
             xyz0 = vals[1:4]
             xyz1 = vals[4:7]
+            idx = int(vals[0])
         else:
             raise ValueError(f"Expected 6 or 7 floats per constraint row, got: {line}")
         rows.append((xyz0, xyz1))
-    return rows
+        indices.append(idx)
+    return indices, rows
 
 
 def save_scan_xyz(path: Path, elems, positions, energies, lambdas, target_pos, free_si_idx):
@@ -102,6 +106,7 @@ def run_scan(mode_name, b_relaxed, nCVs, initial_positions, final_positions, nLa
         bRelaxed=b_relaxed,
         Es=np.zeros(nLambda, dtype=np.float64),
         ppos=ppos,
+        cv_atoms=si_indices,
     )
     pulled_pos = ppos[:, si_indices[0], :]
     other_pos = ppos[:, other_si_idx, :]
@@ -136,7 +141,7 @@ def main():
         raise FileNotFoundError(f"Missing constraints file: {CONSTRAINTS_IN}")
 
     natoms, comment, atoms = read_xyz(XYZ_IN)
-    constraints = load_constraints(CONSTRAINTS_IN)
+    cv_indices, constraints = load_constraints(CONSTRAINTS_IN)
     if len(constraints) == 0:
         raise RuntimeError(f"No constraints loaded from {CONSTRAINTS_IN}")
     target_start = np.array(constraints[0][0], dtype=np.float64)
@@ -177,9 +182,9 @@ def main():
         cvf_max=0.1,
     )
 
-    si_indices = [ia for ia in range(mm.natoms) if mm.getTypeName(ia).strip() == "Si"]
+    si_indices = cv_indices
     if len(si_indices) < 2:
-        raise RuntimeError(f"Need at least 2 Si atoms after reorder, found {len(si_indices)}")
+        raise RuntimeError(f"Need at least 2 CV indices, found {len(si_indices)}")
     other_si_idx = si_indices[1]
     ref_positions = mm.apos.copy()
     ref_pulled = ref_positions[si_indices[0]].copy()
@@ -207,7 +212,7 @@ def main():
     for init_pos, final_pos in constraints:
         initial_positions.extend(init_pos)
         final_positions.extend(final_pos)
-    nCVs = len(constraints) // 2
+    nCVs = len(constraints)
 
     relaxed = run_scan(
         "relaxed",

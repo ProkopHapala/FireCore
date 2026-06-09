@@ -837,6 +837,12 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         constr [i0a + ia2] = acon2;
         constrK[i0a + ia1] = aconK1;
         constrK[i0a + ia2] = aconK2;
+        if( !bUFF ){
+            ffls[isys].constr [ia1] = Quat4d{ acon1.x, acon1.y, acon1.z, acon1.w };
+            ffls[isys].constr [ia2] = Quat4d{ acon2.x, acon2.y, acon2.z, acon2.w };
+            ffls[isys].constrK[ia1] = Quat4d{ aconK1.x, aconK1.y, aconK1.z, aconK1.w };
+            ffls[isys].constrK[ia2] = Quat4d{ aconK2.x, aconK2.y, aconK2.z, aconK2.w };
+        }
         
         if( bAlign ){
             if(is_first_pair){
@@ -877,6 +883,10 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
         for(int ia=0; ia<natoms_active; ia++){
             constr [i0a + ia] = Quat4f{0.0f, 0.0f, 0.0f, -1.0f};
             constrK[i0a + ia] = Quat4fZero;
+            if( !bUFF ){
+                ffls[isys].constr [ia] = Quat4d{0.0, 0.0, 0.0, -1.0};
+                ffls[isys].constrK[ia] = Quat4dZero;
+            }
         }
 
         bool bUseAtomPermut = false;
@@ -975,6 +985,10 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                 
                 constr [i0a + ia] = acon;
                 constrK[i0a + ia] = aconK;
+                if( !bUFF ){
+                    ffls[isys].constr [ia] = Quat4d{ acon.x, acon.y, acon.z, acon.w };
+                    ffls[isys].constrK[ia] = Quat4d{ aconK.x, aconK.y, aconK.z, aconK.w };
+                }
                 if( bAlign ) atoms[isys * nvec_active + ia] = (Quat4f){T.x, T.y, T.z, 0.0f};
             }
         }
@@ -1505,11 +1519,40 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
             printf("  rigid reference relaxation finished in %d steps\n", nconv);
             download(true, false);
             unpack_system( 0, ffls[0], true, false );
+
             MMFFsp3_loc ffl_store;
             ffl_store.copyOf( ffls[0] );
 
             std::vector<Vec3d> ref_apos(ffls[0].natoms);
             for(int ia=0; ia<ffls[0].natoms; ia++){ ref_apos[ia] = ffls[0].apos[ia]; }
+
+            std::vector<int> atom_group(ffls[0].natoms, 1);
+            if(cv_atoms){
+                std::fill(atom_group.begin(), atom_group.end(), -1);
+                std::vector<int> queue;
+                int start_atom = cv_atoms[0];
+                atom_group[start_atom] = 0;
+                queue.push_back(start_atom);
+                int head = 0;
+                while(head < queue.size()){
+                    int u = queue[head++];
+                    Quat4i ng = ffls[0].neighs[u];
+                    int neighbors[4] = {ng.x, ng.y, ng.z, ng.w};
+                    for(int i=0; i<4; i++){
+                        int v = neighbors[i];
+                        if(v >= 0 && v < ffls[0].natoms && atom_group[v] == -1){
+                            atom_group[v] = 0;
+                            queue.push_back(v);
+                        }
+                    }
+                }
+                for(int ia=0; ia<ffls[0].natoms; ia++){
+                    if(atom_group[ia] == -1){
+                        atom_group[ia] = 1;
+                    }
+                }
+            }
+
 
             int nBatches = (nLambda + nSystems - 1) / nSystems;
             for (int batch = 0; batch < nBatches; batch++){
@@ -1526,36 +1569,30 @@ void TI_step(double lambda, double dE, double sigma, double dLambda, int nMDstep
                     //     delta0.x, delta0.y, delta0.z,
                     //     delta1.x, delta1.y, delta1.z
                     // );
+
                     for (int ia = 0; ia < ffls[isys].natoms; ia++)
                     {
-                        double d2_0 = ffls[isys].apos[ia].dist2(Vec3d(initial_positions[0]));
-                        double d2_1 = ffls[isys].apos[ia].dist2(Vec3d(initial_positions[1]));
-
-                        if (d2_0 < d2_1)
+                        Vec3d old_pos = ffls[isys].apos[ia];
+                        if (atom_group[ia] == 0)
                         {
-                            if(ia==0) printf("  System %d, lambda %f, atom %d closer to initial_position[0], applying delta0\n", isys, (float)il/(float)(nLambda-1), ia);
                             ffls[isys].apos[ia].add_mul(delta0, double(il) / double(nLambda - 1));
                         }
                         else
                         {
-                            if(ia==0) printf("  System %d, lambda %f, atom %d closer to initial_position[1], applying delta1\n", isys, (float)il/(float)(nLambda-1), ia);
                             ffls[isys].apos[ia].add_mul(delta1, double(il) / double(nLambda - 1));
                         }
-                        if(ia==0){
-                            Vec3d apos = ffls[isys].apos[ia];
-                            printf("    After shift, atom %d position (%f, %f, %f)\n", ia, apos.x, apos.y, apos.z);
-                        }
-                        // int iSi = isNeighSi( isys, ia );
                     }
                 }
                 pack_systems();
-                ocl.upload(ocl.ibuff_TDrive, TDrive);
+                // TODO/DEBUG: In rigid scan, we should not run relaxation. We just evaluate the rigid-shifted configuration.
+                bool prevMoving = bMoving;
+                bMoving = false;
+                ocl.upload(ocl.ibuff_atoms, atoms);
                 ocl.upload(ocl.ibuff_constr, constr);
                 ocl.upload(ocl.ibuff_constrK, constrK);
-                ocl.upload(ocl.ibuff_atoms, atoms);
-                int nconv = run_ocl_opt(100, Fconv);
-                printf("  rigid reference relaxation finished in %d steps\n", nconv);
+                run_ocl_opt(1, Fconv);
                 download(true, false);
+                bMoving = prevMoving;
 
                 for(int isys=0; isys<nSystems; isys++){
                     int il = isys + batch * nSystems;
@@ -2000,7 +2037,8 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=false,
         Mat3_to_cl( ff.invLvec, ilvecs[isys] );
     }
 
-    pack( ff.nvecs, ff.apos, atoms+i0v );
+    pack( ff.natoms, ff.apos, atoms+i0v );
+    if(ff.nnode > 0) pack( ff.nnode, ff.pipos, atoms+i0v+ff.natoms );
     for(int i=0; i<ocl.nAtoms; i++){
         Quat4f a=atoms[i+i0v];
         //a.w=-1.0;
@@ -2021,7 +2059,10 @@ void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=false,
     */
 
     //Mat3d lvec0=ff.lvec;
-    if(bForces){ pack( ff.nvecs, ff.fapos, aforces+i0v ); }
+    if(bForces){ 
+        pack( ff.natoms, ff.fapos, aforces+i0v ); 
+        if(ff.nnode > 0) pack( ff.nnode, ff.fpipos, aforces+i0v+ff.natoms ); 
+    }
     //if(bVel   ){ pack( ff.nvecs, opt.vel,  avel   +i0v ); }
     if(bParams){
 
@@ -2083,9 +2124,15 @@ void unpack_system(  int isys, MMFFsp3_loc& ff, bool bForces=false, bool bVel=fa
     int i0n = isys * ocl.nnode;
     int i0a = isys * ocl.nAtoms;
     int i0v = isys * ocl.nvecs;
-    unpack( ff.nvecs, ff.apos, atoms+i0v );
-    if(bForces){ unpack( ff.nvecs, ff.fapos, aforces+i0v ); }
-    if(bVel   ){ unpack( ff.nvecs, ff.vapos, avel   +i0v ); }
+    unpack( ff.natoms, ff.apos, atoms+i0v );
+    if(ff.nnode > 0) unpack( ff.nnode, ff.pipos, atoms+i0v+ff.natoms );
+    if(bForces){ 
+        unpack( ff.natoms, ff.fapos, aforces+i0v ); 
+        if(ff.nnode > 0) unpack( ff.nnode, ff.fpipos, aforces+i0v+ff.natoms ); 
+    }
+    if(bVel){ 
+        unpack( ff.natoms, ff.vapos, avel+i0v ); 
+    }
 }
 
 
@@ -2167,29 +2214,73 @@ void upload_mmff(  bool bParams, bool bForces, bool bVel, bool blvec ){
     OCL_checkError(err, "MolWorld_sp2_multi::upload().finish");
 }
 
-void download_mmff_sys( int isys, bool bForces, bool bVel ){
-    //int i0n   = isys * ocl.nnode;
-    int i0v   = isys * ocl.nvecs;
-    //int i0a   = isys * ocl.nAtoms;
-    //int i0bk  = isys * ocl.nbkng;
-    //int i0pbc = isys * ocl.npbc;
+void assembleMMFFforcesFromRecoil_sys(int isys){
+    const int i0v = isys * ocl.nvecs;
+    const int i0bk = isys * ocl.nbkng;
+    std::vector<Quat4f> neighForce(ocl.nbkng);
+
     int err=0;
-    //printf("MolWorld_sp3_multi::download() \n");
+    err |= ocl.download( ocl.ibuff_aforces,    aforces + i0v, ocl.nvecs, i0v );
+    err |= ocl.download( ocl.ibuff_neighForce, (float*)neighForce.data(), ocl.nbkng, i0bk );
+    err |= ocl.finishRaw();
+    OCL_checkError(err, "assembleMMFFforcesFromRecoil_sys().download");
+
+    for(int i=0; i<ocl.nvecs; i++){
+        int iv = i0v + i;
+        Quat4f fe = aforces[iv];
+        const Quat4i ngs = bkNeighs[iv];
+        int offset = isys * ocl.nbkng;
+        if(ngs.x>=0){ const Quat4f& q = neighForce[ngs.x - offset]; fe.x+=q.x; fe.y+=q.y; fe.z+=q.z; fe.w+=q.w; }
+        if(ngs.y>=0){ const Quat4f& q = neighForce[ngs.y - offset]; fe.x+=q.x; fe.y+=q.y; fe.z+=q.z; fe.w+=q.w; }
+        if(ngs.z>=0){ const Quat4f& q = neighForce[ngs.z - offset]; fe.x+=q.x; fe.y+=q.y; fe.z+=q.z; fe.w+=q.w; }
+        if(ngs.w>=0){ const Quat4f& q = neighForce[ngs.w - offset]; fe.x+=q.x; fe.y+=q.y; fe.z+=q.z; fe.w+=q.w; }
+        aforces[iv] = fe;
+    }
+}
+
+void assembleMMFFforcesFromRecoil(){
+    const int nvecTot = ocl.nvecs * nSystems;
+    const int nbkTot  = ocl.nbkng * nSystems;
+    std::vector<Quat4f> neighForce(nbkTot);
+
+    int err=0;
+    err |= ocl.download( ocl.ibuff_aforces,    aforces        );
+    err |= ocl.download( ocl.ibuff_neighForce, (float*)neighForce.data() );
+    err |= ocl.finishRaw();
+    OCL_checkError(err, "assembleMMFFforcesFromRecoil().download");
+
+    for(int i=0; i<nvecTot; i++){
+        Quat4f fe = aforces[i];
+        const Quat4i ngs = bkNeighs[i];
+        if(ngs.x>=0){ const Quat4f& q = neighForce[ngs.x]; fe.x+=q.x; fe.y+=q.y; fe.z+=q.z; fe.w+=q.w; }
+        if(ngs.y>=0){ const Quat4f& q = neighForce[ngs.y]; fe.x+=q.x; fe.y+=q.y; fe.z+=q.z; fe.w+=q.w; }
+        if(ngs.z>=0){ const Quat4f& q = neighForce[ngs.z]; fe.x+=q.x; fe.y+=q.y; fe.z+=q.z; fe.w+=q.w; }
+        if(ngs.w>=0){ const Quat4f& q = neighForce[ngs.w]; fe.x+=q.x; fe.y+=q.y; fe.z+=q.z; fe.w+=q.w; }
+        aforces[i] = fe;
+    }
+}
+
+void download_mmff_sys( int isys, bool bForces, bool bVel ){
+    int i0v   = isys * ocl.nvecs;
+    int err=0;
     ocl.download             ( ocl.ibuff_atoms,   atoms,    ocl.nvecs, i0v );
-    if(bForces){ ocl.download( ocl.ibuff_aforces, aforces , ocl.nvecs, i0v ); }
     if(bVel   ){ ocl.download( ocl.ibuff_avel,    avel ,    ocl.nvecs, i0v ); }
     err |= ocl.finishRaw();
     OCL_checkError(err, "MolWorld_sp2_multi::upload().finish");
+    if(bForces){
+        assembleMMFFforcesFromRecoil_sys( isys );
+    }
 }
 
 void download_mmff( bool bForces, bool bVel ){
     int err=0;
-    //printf("MolWorld_sp3_multi::download() \n");
     ocl.download( ocl.ibuff_atoms, atoms );
-    if(bForces){ ocl.download( ocl.ibuff_aforces, aforces ); }
     if(bVel   ){ ocl.download( ocl.ibuff_avel,    avel    ); }
     err |= ocl.finishRaw();
     OCL_checkError(err, "MolWorld_sp2_multi::download().finish");
+    if(bForces){
+        assembleMMFFforcesFromRecoil();
+    }
 }
 
 // ==================================
@@ -3967,6 +4058,108 @@ int debug_eval(){
     exit(0);
 }
 
+void printForcesAndCompare(){   // This function is for debugging: it downloads forces from GPU, evaluates forces on CPU, and prints both for comparison
+    int err = 0;
+    err|= ocl.download( ocl.ibuff_atoms,    atoms   );
+    err|= ocl.finishRaw();
+    assembleMMFFforcesFromRecoil();
+    for(int isys=0; isys<nSystems; isys++){
+        int i0v = isys * ocl.nvecs;
+        unpack_system( isys, ffls[isys], true );
+        printf( "System %i:\n", isys );
+        printf( "Apos:\n" );
+        for (int ia=0; ia<ffls[isys].natoms; ia++){
+            printf( "apos[%i] (%g,%g,%g)\n", ia, ffls[isys].apos[ia].x, ffls[isys].apos[ia].y, ffls[isys].apos[ia].z );
+        }
+        printf( "Aforces from GPU:\n" );
+        for (int ia=0; ia<ffls[isys].natoms; ia++){
+            Vec3d f = ffls[isys].fapos[ia];
+            printf( "aforces[%i] f(%g,%g,%g)\n", ia, f.x, f.y, f.z );
+        }
+        ffl.copyOf(ffls[isys]);
+        if (ffl.nnode > 0) {
+            for(int i=0; i<ffl.nnode; i++) {
+                ffl.pipos[i] = ffls[isys].pipos[i];
+            }
+        }
+        double E = MolWorld_sp3::eval();
+        // Add constraint forces to CPU eval forces
+        for (int ia=0; ia<ffls[isys].natoms; ia++){
+            Quat4f cons = constr[isys * ocl.nAtoms + ia];
+            Quat4f cK   = constrK[isys * ocl.nAtoms + ia];
+            if (ia == 30 || ia == 31 || ia == 4) {
+                printf("DEBUG: isys=%d ia=%d cons.w=%g cons.x=%g cons.y=%g cK.w=%g\n", isys, ia, cons.w, cons.x, cons.y, cK.w);
+            }
+            // if( cons.w > 0.0f ){
+            //     if( cons.w < 1e3f ){
+            //         Vec3d dp = (Vec3d){ (double)cons.x, (double)cons.y, (double)cons.z } - ffl.apos[ia];
+            //         ffl.fapos[ia].add( dp * cons.w );
+            //         E += 0.5 * cons.w * dp.norm2();
+            //     } else if ( cons.w >= 3e6f && cons.w < 5e6f ){
+            //         Vec3d dp = (Vec3d){ (double)cons.x, (double)cons.y, (double)cons.z } - ffl.apos[ia];
+            //         ffl.fapos[ia].add( dp * cK.w );
+            //         E += 0.5 * cK.w * dp.norm2();
+            //     } else if ( cons.w >= 7e6f && cons.w < 9e6f ){
+            //         int ja = (int)cons.x;
+            //         double L_target = cons.y;
+            //         Vec3d pe = ffl.apos[ia];
+            //         Vec3d pj = ffl.apos[ja];
+            //         Vec3d d = pe - pj;
+            //         double r = d.norm();
+            //         Vec3d h = d * (1.0 / (r + 1e-10));
+            //         Vec3d fc = h * (-cK.w * (r - L_target));
+            //         ffl.fapos[ia].add(fc);
+            //         E += 0.25 * cK.w * (r - L_target) * (r - L_target);
+            //     } else if ( cons.w >= 1e6f && cons.w < 3e6f ){
+            //         ffl.fapos[ia] = Vec3dZero;
+            //     }
+            // }
+        }
+        printf( "Aforces from CPU eval:\n" );
+        for (int ia=0; ia<ffls[isys].natoms; ia++){
+            Vec3d f = ffl.fapos[ia];
+            printf( "aforces[%i] f(%g,%g,%g)\n", ia, f.x, f.y, f.z );
+        }
+        printf( "Energy: %g\n\n", E );
+        
+        E = eval_no_omp();
+        // Add constraint forces to CPU eval_no_omp forces
+        for (int ia=0; ia<ffls[isys].natoms; ia++){
+            Quat4f cons = constr[isys * ocl.nAtoms + ia];
+            Quat4f cK   = constrK[isys * ocl.nAtoms + ia];
+            if( cons.w > 0.0f ){
+                if( cons.w < 1e3f ){
+                    Vec3d dp = (Vec3d){ (double)cons.x, (double)cons.y, (double)cons.z } - ffl.apos[ia];
+                    ffl.fapos[ia].add( dp * cons.w );
+                    E += 0.5 * cons.w * dp.norm2();
+                } else if ( cons.w >= 3e6f && cons.w < 5e6f ){
+                    Vec3d dp = (Vec3d){ (double)cons.x, (double)cons.y, (double)cons.z } - ffl.apos[ia];
+                    ffl.fapos[ia].add( dp * cK.w );
+                    E += 0.5 * cK.w * dp.norm2();
+                } else if ( cons.w >= 7e6f && cons.w < 9e6f ){
+                    int ja = (int)cons.x;
+                    double L_target = cons.y;
+                    Vec3d pe = ffl.apos[ia];
+                    Vec3d pj = ffl.apos[ja];
+                    Vec3d d = pe - pj;
+                    double r = d.norm();
+                    Vec3d h = d * (1.0 / (r + 1e-10));
+                    Vec3d fc = h * (-cK.w * (r - L_target));
+                    ffl.fapos[ia].add(fc);
+                    E += 0.25 * cK.w * (r - L_target) * (r - L_target);
+                } else if ( cons.w >= 1e6f && cons.w < 3e6f ){
+                    ffl.fapos[ia] = Vec3dZero;
+                }
+            }
+        }
+        printf( "Aforces from CPU eval_no_omp:\n" );
+        for (int ia=0; ia<ffls[isys].natoms; ia++){
+            Vec3d f = ffl.fapos[ia];
+            printf( "aforces[%i] f(%g,%g,%g)\n", ia, f.x, f.y, f.z );
+        }
+        printf( "Energy no omp: %g\n\n", E );
+    }
+}
 
 int run_ocl_opt( int niter, double Fconv=1e-6 ){
     //printf("MolWorld_sp3_multi::run_ocl_opt() niter=%i bGroups=%i ocl.nGroupTot=%i \n", niter, bGroups, ocl.nGroupTot );
@@ -4115,8 +4308,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             //printf("run_ocl_opt[i=%i,j=%i]\n",  i, j );
             //if(bGroupDrive)printf( "bGroupDrive==true\n" );
             {
-// <<<<<<< HEAD
-//                 err |= task_cleanF->enque_raw();  // Clear forces before force evaluation
+                err |= task_cleanF->enque_raw();  // Clear forces before force evaluation
 
                 if( bGroupDrive )err |= task_GroupUpdate->enque_raw();
                 if(bNonBonded)[[likely]]{
@@ -4157,7 +4349,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
                 if( bGroupDrive ) err |= task_GroupForce->enque_raw();
 
                 T_2 = getCPUticks();
-                if(bMoving) err |= task_move->enque_raw();    //OCL_checkError(err, "task_move->enque_raw()");
+                if(bMoving && j < nPerVFs-1) err |= task_move->enque_raw();    //OCL_checkError(err, "task_move->enque_raw()");
                 if(bAnalyzer) enqueueAnalyzer();
                 Nticks_loop_updateAtoms += (getCPUticks()-T_2);
                 if (0*bSaveTrajectory)
@@ -4229,6 +4421,8 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
 
     err|= ocl.download( ocl.ibuff_atoms,    atoms   );
     err|= ocl.download( ocl.ibuff_aforces,  aforces );
+    if(verbosity>0) printForcesAndCompare();
+    
     err|= ocl.finishRaw();
     OCL_checkError(err, "run_ocl_opt().finishRaw()");
     if(bAnalyzer){ downloadAnalyzers(); }

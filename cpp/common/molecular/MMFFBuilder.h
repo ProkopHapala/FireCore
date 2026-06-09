@@ -3658,21 +3658,18 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
 
                 // Prepare params and orientation
                 AtomConf& conf = confs[A.iconf];
+                AtomType& atyp = params->atypes[A.type];
                 int npi_neigh = countAtomPiNeighs(ia);
                 //assignSp3Params( A.type, conf.nbond, conf.npi, conf.ne, npi_neigh, ff.NeighParams[ia] );
 
                 // setup atom (onsite)
-                // ff.apars[ia].x = c0s[conf.npi];    // ssC0  // cos(angle) for angles (sigma-siamg)
-                // ff.apars[ia].y = 1.0;              // ssK   // stiffness  for angles
-                // ff.apars[ia].z = 0.0;              // piC0  // stiffness  for orthogonalization sigma-pi 
-                // ff.apars[ia].w = 0.0; 
-                if( conf.npi>2 ){ printf("ERROR in MM::Builder::toMMFFsp3_loc(): atom[%i].conf.npi(%i)>2 => exit() \n", ia, conf.npi); printAtomConf(ia); exit(0); }
-                double ang0 = ang0s[conf.npi];
+                if( conf.npi>2 ){ printf("ERROR in MM::Builder::toMMFFf4(): atom[%i].conf.npi(%i)>2 => exit() \n", ia, conf.npi); printAtomConf(ia); exit(0); }
+                double ang0 = atyp.Ass*deg2rad;
                 ang0 *= 0.5;
                 ff.apars[ia].x = cos(ang0);    // ssCos0  // cos(angle) for angles (sigma-siamg)
                 ff.apars[ia].y = sin(ang0);    // ssSin0
-                ff.apars[ia].z = 1.0;          // ssK     // stiffness  for angles
-                ff.apars[ia].w = 0.0;          // piCos0  // stiffness  for orthogonalization sigma-pi 
+                ff.apars[ia].z = atyp.Kss*4.0;          // ssK     // stiffness  for angles
+                ff.apars[ia].w = sin(atyp.Asp*deg2rad);          // piCos0  // stiffness  for orthogonalization sigma-pi 
                 //printf( "atom[%i] npi(%i)=> angle %g cs(%g,%g) \n", ia, conf.npi, ang0*180./M_PI, ff.apars[ia].x, ff.apars[ia].y  ); 
 
                 // setup ff neighbors
