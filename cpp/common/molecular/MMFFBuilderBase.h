@@ -54,16 +54,17 @@ struct Atom{
     int type;    ///< atomic type
     int frag;    ///< to which fragment it belongs ?
     int iconf;   ///< index of the configuration object keeping the list of bonded neighbors
+    bool bTypeFixed = false; ///< if true, type was explicitly set (e.g. C_3 from file) and must not be overridden by topology-based auto-assignment
     Vec3d  pos;  ///< atomic coordinates
     Quat4d REQ;  /// non-covaloent interaction parameters {RvdW,EvdW,Q}              constexpr Vec3d{1.7,sqrt(0.0037292524),0}
     //Atom() = default;
 
-    void print()const{ printf( "Atom{id %i t %i c %i f %i REQ(%g,%g,%g,%g) pos(%g,%g,%g)}", id, type, iconf, frag, REQ.x, REQ.y, REQ.z,REQ.w, pos.x,pos.y,pos.z ); }
+    void print()const{ printf( "Atom{id %i t %i c %i f %i fix %i REQ(%g,%g,%g,%g) pos(%g,%g,%g)}", id, type, iconf, frag, (int)bTypeFixed, REQ.x, REQ.y, REQ.z,REQ.w, pos.x,pos.y,pos.z ); }
 
     Atom() = default;
-    Atom(const Vec3d& pos_):type{0},frag{-1},iconf{-1},REQ{defaultREQ},pos{pos_}{};
-    Atom(const Vec3d& pos_,const Quat4d& REQ_):type{0},frag{-1},iconf{-1},REQ{REQ_},pos{pos_}{};
-    Atom(int type_,int frag_,int iconf_,const Vec3d& pos_,const Quat4d& REQ_):id(-1),type{type_},frag{frag_},iconf{iconf_},REQ{REQ_},pos{pos_}{};
+    Atom(const Vec3d& pos_):type{0},frag{-1},iconf{-1},bTypeFixed{false},REQ{defaultREQ},pos{pos_}{};
+    Atom(const Vec3d& pos_,const Quat4d& REQ_):type{0},frag{-1},iconf{-1},bTypeFixed{false},REQ{REQ_},pos{pos_}{};
+    Atom(int type_,int frag_,int iconf_,const Vec3d& pos_,const Quat4d& REQ_):id(-1),type{type_},frag{frag_},iconf{iconf_},bTypeFixed{false},REQ{REQ_},pos{pos_}{};
 };
 
 #define N_NEIGH_MAX 4
