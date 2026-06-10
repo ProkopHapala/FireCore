@@ -137,6 +137,8 @@ class ForceField: public Atoms{ public:
 
     Vec3d  *fapos __attribute__((aligned(64))) = 0; // forces on atomic positions
     Vec3d * vapos __attribute__((aligned(64))) = 0; // [natoms] velocities of atoms
+    bool bOwnFapos = true;  // false when fapos aliases another object's force buffer (e.g. fDOFs)
+    bool bOwnVapos = false; // usually borrowed from DynamicOpt::vel
 
     Vec3d cvf=Vec3dZero;   // <f|f>, <v|v>, <v|f> 
 

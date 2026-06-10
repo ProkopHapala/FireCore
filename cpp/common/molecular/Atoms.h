@@ -29,6 +29,7 @@ class Atoms{ public:
     int     natoms =0;  // number of atoms in the system
     int   * atypes =0;  // [natoms] array of atom type indices
     Vec3d * apos  __attribute__((aligned(64))) =0;   // [natoms] atomic positions
+    bool    bOwnArrays = true; // false: apos/atypes/charge borrowed — dealloc() must not free them (see Memory_Ownership_and_Deallocation.md)
     // --- for global optimization
     Mat3d * lvec   =0;  // ToDo: should this be pointer or full array ?
     double Energy  =0;
@@ -39,10 +40,15 @@ class Atoms{ public:
     //Vec3d * rootdir  __attribute__((aligned(64))) =0;   // [natoms] vector connecting the electron pair to the atom to which the electron pair is attached (X->E_X)
 
     void* userData = 0;
-    void realloc ( int n, bool bAtypes=true, bool bCharge=true  ){ natoms=n;  _realloc(apos,natoms); if(bCharge)_realloc(charge,natoms); if(bAtypes)_realloc(atypes,natoms); }
-    void allocNew( int n, bool bAtypes=true, bool bCharge=true  ){ natoms=n;  _alloc(apos,natoms);   if(bCharge)_alloc(charge,natoms);   if(bAtypes)_alloc(atypes,natoms);  }
-    void dealloc (        bool bAtypes=true, bool bCharge=true  ){            _dealloc(apos);        if(bCharge)_dealloc(charge);        if(bAtypes)_dealloc(atypes);    }
-    void bind    ( int n, int* atypes_, Vec3d* apos_ ){ natoms=n; atypes=atypes_; apos=apos_; }
+    void realloc ( int n, bool bAtypes=true, bool bCharge=true  ){ bOwnArrays=true; natoms=n;  _realloc(apos,natoms); if(bCharge)_realloc(charge,natoms); if(bAtypes)_realloc(atypes,natoms); }
+    void allocNew( int n, bool bAtypes=true, bool bCharge=true  ){ bOwnArrays=true; natoms=n;  _alloc(apos,natoms);   if(bCharge)_alloc(charge,natoms);   if(bAtypes)_alloc(atypes,natoms);  }
+    void dealloc (        bool bAtypes=true, bool bCharge=true  ){ // explicit teardown; ~Atoms() calls this — not the only MMFF path (see MolWorld::clearFFs)
+        if(bOwnArrays){ _dealloc(apos); if(bCharge)_dealloc(charge); if(bAtypes)_dealloc(atypes); }
+        else          { apos=0;         if(bCharge)charge=0;         if(bAtypes)atypes=0;         }
+    }
+    void bind    ( int n, int* atypes_, Vec3d* apos_ ){ natoms=n; atypes=atypes_; apos=apos_; bOwnArrays=false; }
+    void setBorrowedArrays(){ bOwnArrays=false; }
+    void setOwnedArrays   (){ bOwnArrays=true;  }
 
     //void bindOrRealloc(){}
     void copyOf(const Atoms& p){

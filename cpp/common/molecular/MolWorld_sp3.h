@@ -137,7 +137,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 	GridFF       gridFF;
     bool bGridDouble = true;
 
-    ~MolWorld_sp3(){ gridFF.apos=0; gridFF.atypes=0; }
+    ~MolWorld_sp3(){ gridFF.apos=0; gridFF.atypes=0; clearFFs(); surf.dealloc(); } // gridFF borrows surf; null before surf teardown
 
     EwaldGrid gewald;
 
@@ -1041,12 +1041,10 @@ void printPBCshifts(){
     void initNBmol( NBFF* ff, bool bCleanCharge=true ){
         if(verbosity>0)printf( "MolWorld_sp3::initNBmol() na %i \n", ff->natoms  );
         //void bindOrRealloc(int n_, Vec3d* apos_, Vec3d* fapos_, Quat4d* REQs_, int* atypes_ ){
-        nbmol.bindOrRealloc( ff->natoms, ff->apos, ff->fapos, 0, ff->atypes );    
-        //nbmol.bindOrRealloc( na, apos, fapos, 0, 0 );   
-        //builder.export_atypes( nbmol.atypes );     
-        builder.export_REQs( nbmol.REQs   );       ff->REQs=nbmol.REQs;
-        nbmol  .makePLQs   ( gridFF.alphaMorse );  ff->PLQs=nbmol.PLQs; 
-        nbmol  .makePLQd   ( gridFF.alphaMorse );  ff->PLQd=nbmol.PLQd; 
+        nbmol.bindOrRealloc( ff->natoms, ff->apos, ff->fapos, 0, ff->atypes ); // nbmol borrows coords; owns REQs (ff aliases below)
+        builder.export_REQs( nbmol.REQs   );       ff->REQs=nbmol.REQs; ff->bOwnREQs=false;
+        nbmol  .makePLQs   ( gridFF.alphaMorse );  ff->PLQs=nbmol.PLQs; ff->bOwnPLQs=false; 
+        nbmol  .makePLQd   ( gridFF.alphaMorse );  ff->PLQd=nbmol.PLQd; ff->bOwnPLQd=false; 
         //nbmol.print_nonbonded();
         if(bCleanCharge)for(int i=builder.atoms.size(); i<ff->natoms; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge        
         params.assignREs( ff->natoms, nbmol.atypes, nbmol.REQs, true, false  );
@@ -1063,9 +1061,11 @@ void printPBCshifts(){
         if(verbosity>0)printf( "MolWorld_sp3::loadNBmol() \n" );
         sprintf(tmpstr, "%s.xyz", name );
         params.loadXYZ( tmpstr, nbmol.natoms, &nbmol.apos, &nbmol.REQs, &nbmol.atypes );
+        nbmol.setOwnedArrays(); nbmol.bOwnREQs=true;
         _realloc(nbmol.fapos,nbmol.natoms);
+        nbmol.bOwnFapos=true;
         nbmol  .makePLQs     ( gridFF.alphaMorse );  
-        ffl.PLQs=nbmol.PLQs; 
+        ffl.PLQs=nbmol.PLQs; ffl.bOwnPLQs=false; 
         if(verbosity>1)nbmol.print();                              
     }
 
@@ -1083,6 +1083,7 @@ void printPBCshifts(){
         char fname[256];
         sprintf(fname, "%s.xyz", name );
         int ret = params.loadXYZ( fname, surf.natoms, &surf.apos, &surf.REQs, &surf.atypes, 0, &gridFF.grid.cell );
+        surf.setOwnedArrays(); surf.bOwnREQs=true;
         if     ( ret<0 ){ getcwd(tmpstr,1024); printf("ERROR in MolWorld_sp3::loadSurf() file(%s) not found in path(%s)=> Exit() \n", fname, tmpstr ); exit(0); }
         if     ( ret==0){ printf("ERROR in MolWorld_sp3::loadSurf() no lattice vectors in (%s) => Exit() \n", fname ); exit(0); }
         else if( ret>0 ){ gridFF.grid.updateCell(gridStep); gridFF.bCellSet=true;  }
@@ -1504,7 +1505,9 @@ void printPBCshifts(){
             if(bOptimizer){ 
                 //setOptimizer( ffu.nDOFs, ffu.DOFs, ffu.fDOFs );
                 setOptimizer( ffu.natoms*3, (double*)ffu.apos, (double*)ffu.fapos );
+                if(ffu.bOwnVapos){ _dealloc(ffu.vapos); }
                 ffu.vapos = (Vec3d*)opt.vel;
+                ffu.bOwnVapos=false;
             }                         
         }else{
             initNBmol( &ffl );
@@ -1540,6 +1543,7 @@ void printPBCshifts(){
                 setOptimizer( ffl.nDOFs, ffl.DOFs, ffl.fDOFs );
                 if(bRelaxPi) ffl.relax_pi( 1000, 0.1, 1e-4 );
                 ffl.vapos = (Vec3d*)opt.vel;
+                ffl.bOwnVapos=false;
             }                         
             _realloc( manipulation_sel, ff.natoms );
         }
@@ -1552,22 +1556,19 @@ virtual void updateFromBuilder(){
     makeFFs();
 };
 
-void clearFFs(){
+void clearFFs(){ // explicit teardown (not RAII): owner ffl before borrowers nbmol/opt; see Memory_Ownership_and_Deallocation.md
     printf("MolWorld_sp3::clearFFs()\n");
     ffl.dealloc();
+    ffu.dealloc();
     ff.dealloc();
     //ff4.dealloc();
     _dealloc( apos_bak );
-    // --- nbmol
-    nbmol.neighs=0;   // NOTE : if we set pointer to zero it does not try to deallocate it !!!
-    nbmol.apos=0;  
-    nbmol.fapos=0;  
-    nbmol.atypes=0;
     nbmol.dealloc();
-    // --- opt
-    opt.pos = 0;
-    opt.force = 0;
     opt.dealloc();
+    optRB.dealloc();
+    _dealloc( pbc_shifts );
+    _dealloc( manipulation_sel );
+    npbc=0;
 }
 
 
@@ -1581,6 +1582,9 @@ void clearFFs(){
 virtual void clear( bool bParams=true, bool bSurf=false ){
     //printf("MolWorld_sp3::clear() \n");
     builder.clear();
+    bBondInitialized=false;
+    isInitialized=false;
+    bPBC=false;
     selection.clear();
     selection_set.clear();
     clearFFs();
@@ -1589,6 +1593,8 @@ virtual void clear( bool bParams=true, bool bSurf=false ){
         //gridFF.dealloc();
         //gridFF.bCellSet=false;
         //gridFF.bGridFF=false;
+        gridFF.apos=0; gridFF.atypes=0;
+        surf.dealloc();
     }
     if(bParams){
         params.clear();

@@ -37,6 +37,7 @@ int  buildMolecule_xyz( const char* xyz_name, bool bEpairs, double fAutoCharges,
 int  buildMolecule_SMILES( const char* xyz_name, bool bEpairs, double fAutoCharges ){  W.builder.bDummyEpair=bEpairs; W.bEpairs=bEpairs; W.fAutoCharges=fAutoCharges;  return W.buildMolecule_xyz( xyz_name );  }
 void makeFFs          ( ){ W.makeFFs(); }
 void clear            ( ){ W.clear();   }
+void shutdown         ( ){ W.clear();   }
 
 void addDistConstrain( int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double* shift, bool bOldIndex  ){
     //W.constrs.bonds.push_back( DistConstr{ {i0,i1}, {lmax,lmin}, {kmax,kmin}, flim, *(Vec3d*)shift } );

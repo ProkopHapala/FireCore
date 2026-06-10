@@ -24,38 +24,38 @@ extern "C"{
 void init_buffers_UFF(){
     printf( "init_buffers_UFF() \n" );
     // Common buffers
-    buffers.insert( { "apos",   (double*)W.nbmol.apos  } );
-    buffers.insert( { "fapos",  (double*)W.nbmol.fapos } );
-    buffers.insert( { "REQs",   (double*)W.nbmol.REQs  } );
+    buffers["apos"]  = (double*)W.nbmol.apos;
+    buffers["fapos"] = (double*)W.nbmol.fapos;
+    buffers["REQs"]  = (double*)W.nbmol.REQs;
     //buffers.insert( { "PLQs",   (double*)W.nbmol.PLQs  } );
     // UFF-specific buffers
     if(W.bUFF){ // UFF-specific buffers
-        buffers.insert(  { "hneigh",    (double*)W.ffu.hneigh } );
-        buffers.insert(  { "fint",      (double*)W.ffu.fint   } );
-        buffers.insert(  { "bonParams", (double*)W.ffu.bonParams } );
-        buffers.insert(  { "angParams", (double*)W.ffu.angParams } );
-        buffers.insert(  { "dihParams", (double*)W.ffu.dihParams } );
-        buffers.insert(  { "invParams", (double*)W.ffu.invParams } );
+        buffers["hneigh"]    = (double*)W.ffu.hneigh;
+        buffers["fint"]      = (double*)W.ffu.fint;
+        buffers["bonParams"] = (double*)W.ffu.bonParams;
+        buffers["angParams"] = (double*)W.ffu.angParams;
+        buffers["dihParams"] = (double*)W.ffu.dihParams;
+        buffers["invParams"] = (double*)W.ffu.invParams;
 
-        ibuffers.insert( { "neighs",    (int*)W.ffu.neighs    } );
-        ibuffers.insert( { "neighBs",   (int*)W.ffu.neighBs   } );
-        ibuffers.insert( { "bonAtoms",  (int*)W.ffu.bonAtoms  } );
-        ibuffers.insert( { "angAtoms",  (int*)W.ffu.angAtoms  } );
-        ibuffers.insert( { "dihAtoms",  (int*)W.ffu.dihAtoms  } );
-        ibuffers.insert( { "invAtoms",  (int*)W.ffu.invAtoms  } );
+        ibuffers["neighs"]   = (int*)W.ffu.neighs;
+        ibuffers["neighBs"]  = (int*)W.ffu.neighBs;
+        ibuffers["bonAtoms"] = (int*)W.ffu.bonAtoms;
+        ibuffers["angAtoms"] = (int*)W.ffu.angAtoms;
+        ibuffers["dihAtoms"] = (int*)W.ffu.dihAtoms;
+        ibuffers["invAtoms"] = (int*)W.ffu.invAtoms;
 
         // neighbor indices for angles, dihedrals, inversions
-        ibuffers.insert( { "angNgs",    (int*)W.ffu.angNgs    } );
-        ibuffers.insert( { "dihNgs",    (int*)W.ffu.dihNgs    } );
-        ibuffers.insert( { "invNgs",    (int*)W.ffu.invNgs    } );
+        ibuffers["angNgs"] = (int*)W.ffu.angNgs;
+        ibuffers["dihNgs"] = (int*)W.ffu.dihNgs;
+        ibuffers["invNgs"] = (int*)W.ffu.invNgs;
     }
     // UFF-specific dimensions
     if(W.bUFF){
-        ibuffers.insert( { "ndims", &W.ffu._natoms } ); // 
-        buffers.insert ( { "Es",    &W.ffu.Etot    } );
+        ibuffers["ndims"] = &W.ffu._natoms;
+        buffers ["Es"]    = &W.ffu.Etot;
     }
-    ibuffers.insert( { "selection", W.manipulation_sel  } );
-    bbuffers.insert( { "ffflags",  &W.doBonded  } );
+    ibuffers["selection"] = W.manipulation_sel;
+    bbuffers["ffflags"]   = &W.doBonded;
     // int _natoms, nbonds, nangles, ndihedrals, ninversions, nf; // 5
     // int i0dih,i0inv,i0ang,i0bon;                               // 4
     // double Etot, Eb, Ea, Ed, Ei;                               // 5
@@ -65,28 +65,28 @@ void init_buffers_UFF(){
 
 void init_buffers(){
     printf( "init_buffers() \n" );
-    buffers .insert( { "apos",   (double*)W.nbmol.apos  } );
-    buffers .insert( { "fapos",  (double*)W.nbmol.fapos } );
-    buffers .insert( { "REQs",   (double*)W.nbmol.REQs  } );
+    buffers["apos"]  = (double*)W.nbmol.apos;
+    buffers["fapos"] = (double*)W.nbmol.fapos;
+    buffers["REQs"]  = (double*)W.nbmol.REQs;
     if(W.bMMFF){
-        buffers .insert( { "DOFs",      W.ffl.DOFs  } );
-        buffers .insert( { "fDOFs",     W.ffl.fDOFs } );
-        buffers .insert( { "vDOFs",     W.opt.vel  } );
+        buffers["DOFs"]  = W.ffl.DOFs;
+        buffers["fDOFs"] = W.ffl.fDOFs;
+        buffers["vDOFs"] = W.opt.vel;
         //buffers .insert( { "REQs",   (double*)W.ffl.REQs  } );
-        buffers .insert( { "PLQs",   (double*)W.ffl.PLQd  } );
+        buffers["PLQs"] = (double*)W.ffl.PLQd;
         if(!W.bUFF){
-            buffers .insert( { "pipos",  (double*)W.ffl.pipos   } );
-            buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
-            ibuffers.insert( { "neighs",    (int*)W.ffl.neighs  } );
+            buffers["pipos"]  = (double*)W.ffl.pipos;
+            buffers["fpipos"] = (double*)W.ffl.fpipos;
+            ibuffers["neighs"] = (int*)W.ffl.neighs;
         } // else{ // UFF-specific}
     }else{
         W.ff.natoms=W.nbmol.natoms;
     }
     printf( "MMFF_lib.cpp::init_buffers() ndims{nDOFs=%i,natoms=%i,nnode=%i,ncap=%i,npi=%i,nbonds=%i,nvecs=%i,ne=%i,ie0=%i}\n", W.ff.nDOFs, W.ff.natoms, W.ff.nnode, W.ff.ncap, W.ff.npi, W.ff.nbonds, W.ff.nvecs, W.ff.ne, W.ff.ie0 );
-        ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
-    buffers .insert( { "Es",       &W.ff.Etot  } );
-    ibuffers.insert( { "selection", W.manipulation_sel  } );
-    bbuffers.insert( { "ffflags", &W.doBonded  } );
+    ibuffers["ndims"]    = &W.ff.nDOFs;
+    buffers ["Es"]       = &W.ff.Etot;
+    ibuffers["selection"] = W.manipulation_sel;
+    bbuffers["ffflags"]   = &W.doBonded;
     //printBuffNames();
 }
 

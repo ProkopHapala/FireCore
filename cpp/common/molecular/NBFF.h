@@ -105,6 +105,7 @@ class NBFF: public ForceField{ public:
     Quat4d   *REQs  __attribute__((aligned(64))) =0; // non-bonding interaction paramenters (R: van dew Waals radius, E: van dew Waals energy of minimum, Q: Charge, H: Hydrogen Bond pseudo-charge )
     Quat4i   *neighs   =0; // list of neighbors (4 per atom)
     Quat4i   *neighCell=0; // list of neighbors (4 per atom)
+    bool bOwnREQs=true, bOwnPLQs=false, bOwnPLQd=false, bOwnNeighs=true, bOwnNeighCell=true, bOwnShifts=false; // set from _bindOrRealloc/bindShifts; dealloc() respects these
 
     //constexpr static int EXCL_MAX=16; // moved to globals.h
     int       *excl=0; // [natoms*EXCL_MAX] list of second neighbors for each atom  (exclusions of bond[1-2] and angles[1-3])
@@ -152,13 +153,14 @@ class NBFF: public ForceField{ public:
     void torq     ( const Vec3d& p0,  Vec3d& tq                   ){ for(int i=0; i<natoms; i++){ Vec3d d; d.set_sub(apos[i],p0); tq.add_cross(fapos[i],d); } }
 
     // bind PBC-shift vectors
-    void bindShifts(int npbc_, Vec3d* shifts_ ){ npbc=npbc_; shifts=shifts_; }
+    void bindShifts(int npbc_, Vec3d* shifts_ ){ npbc=npbc_; shifts=shifts_; bOwnShifts=false; } // shifts owned by MolWorld::pbc_shifts
 
     // make PBC-shift vectors
     int makePBCshifts( Vec3i nPBC_, bool bRealloc=true ){
         bPBC=true;
         nPBC=nPBC_;
-        if(bRealloc){ _dealloc(shifts); }
+        if(bRealloc){ if(bOwnShifts){ _dealloc(shifts); }else{ shifts=0; } }
+        bOwnShifts=true;
         return makePBCshifts_(nPBC,lvec,shifts);
         /*
         npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
@@ -176,7 +178,7 @@ class NBFF: public ForceField{ public:
     // pre-calculates PLQs from REQs (for faster evaluation in factorized form, especially when using grid)
     void evalPLQs(double K){
         //printf( "NBFF::evalPLQs() \n" );
-        if(PLQs==0){ _realloc(PLQs,natoms);  }
+        if(PLQs==0){ _realloc(PLQs,natoms); bOwnPLQs=true; }
         for(int i=0; i<natoms; i++){
             //printf( "makePLQs[%i] \n", i );
             //printf( "makePLQs[%i] REQ(%g,%g,%g) \n", i, REQs[i].x,REQs[i].y,REQs[i].z);
@@ -187,19 +189,21 @@ class NBFF: public ForceField{ public:
     }
     void makePLQs(double K){
         _realloc(PLQs,natoms);
+        bOwnPLQs=true;
         evalPLQs(K);
     }
 
 
     // pre-calculates PLQs from REQs (for faster evaluation in factorized form, especially when using grid)
     void evalPLQd(double K){
-        if(PLQd==0){ _realloc(PLQd,natoms);  }
+        if(PLQd==0){ _realloc(PLQd,natoms); bOwnPLQd=true; }
         for(int i=0; i<natoms; i++){
             PLQd[i]=REQ2PLQ_d( REQs[i], K );
         }
     }
     void makePLQd(double K){
         _realloc(PLQd,natoms);
+        bOwnPLQd=true;
         evalPLQd(K);
     }
 
@@ -1290,24 +1294,36 @@ class NBFF: public ForceField{ public:
         }
     }
 
-    void bindOrRealloc(int n_, Vec3d* apos_, Vec3d* fapos_, Quat4d* REQs_, int* atypes_ ){
+    void bindOrRealloc(int n_, Vec3d* apos_, Vec3d* fapos_, Quat4d* REQs_, int* atypes_ ){ // non-null args borrowed; null args allocated here (bOwn* updated)
         natoms=n_;
         //printf( "NBFF::bindOrRealloc(natoms=%i) @apos_=%li @fapos_=%li @REQs_=%li @atypes_=%li \n", natoms, (long)apos_, (long)fapos_, (long)REQs_, (long)atypes_ );
-        _bindOrRealloc(natoms, apos_  , apos   );
-        _bindOrRealloc(natoms, fapos_ , fapos  );
-        _bindOrRealloc(natoms, REQs_  , REQs   );
-        _bindOrRealloc(natoms, atypes_, atypes );
+        bool ownApos   = _bindOrRealloc(natoms, apos_  , apos   );
+        bOwnFapos      = _bindOrRealloc(natoms, fapos_ , fapos  );
+        bOwnREQs       = _bindOrRealloc(natoms, REQs_  , REQs   );
+        bool ownAtypes = _bindOrRealloc(natoms, atypes_, atypes );
+        bOwnArrays     = ownApos && ownAtypes;
         Quat4i qminus{-1,-1,-1,-1};
         _realloc0(neighs, natoms, qminus );
+        bOwnNeighs=true;
     }
 
-    void dealloc(){
+    void dealloc(){ // ownership-aware; safe when apos/fapos alias ffl.DOFs (initNBmol path)
         natoms=0;
-        _dealloc(apos   );
-        _dealloc(fapos  );
-        _dealloc(REQs   );
-        _dealloc(atypes );
-        _dealloc(neighs );
+        if(bOwnArrays){ _dealloc(apos); _dealloc(atypes); }else{ apos=0; atypes=0; }
+        if(bOwnFapos ){ _dealloc(fapos); }else{ fapos=0; }
+        if(bOwnVapos ){ _dealloc(vapos); }else{ vapos=0; }
+        if(bOwnREQs  ){ _dealloc(REQs ); }else{ REQs =0; }
+        if(bOwnPLQs  ){ _dealloc(PLQs ); }else{ PLQs =0; }
+        if(bOwnPLQd  ){ _dealloc(PLQd ); }else{ PLQd =0; }
+        if(bOwnNeighs){ _dealloc(neighs); }else{ neighs=0; }
+        if(bOwnNeighCell){ _dealloc(neighCell); }else{ neighCell=0; }
+        _dealloc(excl);
+        _dealloc(BBs);
+        pointBBs.dealloc();
+        nBBs=0;
+        if(bOwnShifts){ _dealloc(shifts); }else{ shifts=0; }
+        npbc=0; bPBC=false; shift0=Vec3dZero;
+        bOwnArrays=true; bOwnFapos=true; bOwnVapos=false; bOwnREQs=true; bOwnPLQs=false; bOwnPLQd=false; bOwnNeighs=true; bOwnNeighCell=true; bOwnShifts=false;
     }
 
 };

@@ -141,10 +141,11 @@ void realloc( int nnode_, int ncap_, int ntors_=0 ){
     
     _realloc0(  DOFs    , nDOFs , (double)NAN );
     _realloc0( fDOFs    , nDOFs , (double)NAN );
-    apos   = (Vec3d*) DOFs ;
+    apos   = (Vec3d*) DOFs ;  // interior views — never _dealloc apos/fapos/pipos; only DOFs/fDOFs
     fapos  = (Vec3d*)fDOFs;
     pipos  = apos  + ipi0;
     fpipos = fapos + ipi0;
+    bOwnArrays=false; bOwnFapos=false; bOwnVapos=false; bOwnREQs=false; bOwnPLQs=false; bOwnPLQd=false; bOwnNeighs=true; bOwnNeighCell=true;
     // ---- Aux
     _realloc0( fneigh  , nnode*4, Vec3dNAN );
     _realloc0( fneighpi, nnode*4, Vec3dNAN );
@@ -194,13 +195,13 @@ void clone( MMFFsp3_loc& from, bool bRealloc, bool bREQsDeep=true ){
         Kpp  [i]=from.Kpp  [i];    
     }
     if(from.REQs){
-        if(bREQsDeep){ _realloc(REQs, natoms ); for(int i=0; i<natoms; i++){  REQs[i]=from.REQs[i]; } }
-        else         {          REQs=from.REQs;                                                       }
+        if(bREQsDeep){ _realloc(REQs, natoms ); bOwnREQs=true;  for(int i=0; i<natoms; i++){  REQs[i]=from.REQs[i]; } }
+        else         {          REQs=from.REQs;     bOwnREQs=false;                                                       }
     }
 }
 
 // deallcoate MMFFsp3_loc
-void dealloc(){
+void dealloc(){ // owner of DOFs/fDOFs; REQs/PLQs/shifts freed only if bOwn* (often borrowed from nbmol / MolWorld)
     _dealloc(DOFs );
     _dealloc(fDOFs);
     apos   = 0;
@@ -209,21 +210,34 @@ void dealloc(){
     fpipos = 0;
 
     //vDOFs  = 0;   // to-do (not sure if we should deallocate it here ?)
-    vapos  = 0;   // to-do (not sure if we should deallocate it here ?)
+    if(bOwnVapos){ _dealloc(vapos); }else{ vapos=0; }
     //vpipos = 0;   // to-do (not sure if we should deallocate it here ?)
     _dealloc(atypes);
     _dealloc(neighs);
     _dealloc(neighCell);
     _dealloc(bkneighs);
+    _dealloc(fneigh);
+    _dealloc(fneighpi);
     _dealloc(apars);
     _dealloc(bLs);
     _dealloc(bKs);
     _dealloc(Ksp);
     _dealloc(Kpp);
     _dealloc(angles);
+    _dealloc(constr);
+    _dealloc(constrK);
 
     _dealloc(tors2atom  );
     _dealloc(torsParams );
+    if(bOwnREQs){ _dealloc(REQs); }else{ REQs=0; }
+    if(bOwnPLQs){ _dealloc(PLQs); }else{ PLQs=0; }
+    if(bOwnPLQd){ _dealloc(PLQd); }else{ PLQd=0; }
+    _dealloc(excl);
+    _dealloc(BBs);
+    pointBBs.dealloc();
+    nBBs=0;
+    shifts=0; npbc=0; bPBC=false;
+    bOwnArrays=false; bOwnFapos=false; bOwnVapos=false; bOwnREQs=false; bOwnPLQs=false; bOwnPLQd=false; bOwnNeighs=true; bOwnNeighCell=true; bOwnShifts=false;
     nnode=0; ncap=0; ntors=0; natoms=0; nvecs =0; nDOFs =0; int ipi0=natoms;
 }
 

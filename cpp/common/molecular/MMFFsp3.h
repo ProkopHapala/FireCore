@@ -112,7 +112,7 @@ void dealloc(  ){
     nnode=0; ncap=0; nbonds=0; npi=0; natoms=0; nvecs=0; nDOFs=0;
     _dealloc( DOFs      );
     _dealloc( fDOFs     );
-    _realloc( atype, natoms );
+    _dealloc( atype     );
     apos   = 0 ;
     fapos  = 0;
     pipos  = 0;
@@ -126,6 +126,7 @@ void dealloc(  ){
     _dealloc( abonds );
     //_dealloc( Kneighs, nn );
     _dealloc( NeighParams );
+    _dealloc( pbcShifts );
     //_dealloc( Kpis      );
     
     //printf( "MMFFsp3::realloc() DONE \n" );

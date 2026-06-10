@@ -195,6 +195,14 @@ class Buckets{ public:
         nobj=-1;  resizeObjs(nobj_,bO2C); 
     }
 
+    inline void dealloc(){
+        _dealloc(cellNs);
+        _dealloc(cellI0s);
+        _dealloc(cell2obj);
+        _dealloc(obj2cell);
+        ncell=0; nobj=0; nobjSize=-1; maxInBucket=0;
+    }
+
     inline int getInCell( int icell, int* out ){    
         if(icell < 0) return 0;  // Return 0 objects for negative cells
         // why we copy? we can just return pointer to cell2obj[ cellI0s[icell] ]

@@ -983,7 +983,15 @@ def print_debugs(bParams=True, bNeighs=True, bShifts=False):
 lib.clear.argtypes  = []
 lib.clear.restype   =  None
 def clear():
-    return lib.clear()
+    global isInitialized, bBuffersInitialized
+    lib.clear()
+    isInitialized = False
+    bBuffersInitialized = False
+
+lib.shutdown.argtypes  = []
+lib.shutdown.restype   =  None
+def shutdown():
+    clear()
 
 #  void init_nonbond()
 #lib.init.argtypes  = []
