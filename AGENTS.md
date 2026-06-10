@@ -16,6 +16,7 @@ We develop rigorous scientific software where debuggability, numerical correctne
 
 - **Minimum Intervention:** Write only the code necessary to solve the task. Touch only what is required; never perform unrelated formatting, cleanup, or aesthetic edits on adjacent code.
 - **No Guessing:** If requirements, behavior, or architecture are ambiguous, stop and ask for clarification.
+- **Report Problems Immediately:** Encountered ambiguities, unexpected errors, or risky decisions must be written in the chat at once. Never apply silent workarounds or unilateral fixes.
 - **Strict Checkpointing:** After every significant step, summarize what changed, what was verified, and what remains unresolved.
 - **Preservation & Backups:** Create a backup copy before major module changes. Comment out old, experimental, or deprecated code using `#` or `//` instead of deleting it to allow instant reversion. Mark unfinished code clearly with `# TODO` or `# DEBUG`.
 

@@ -358,6 +358,14 @@ class MolWorld_sp3 : public SolverInterface { public:
         //params.verbosity=verbosity;
         //printf(  "MolWorld_sp3:init() params.verbosity = %i \n", params.verbosity );
         printf("params.atypes.size() %i\n", params.atypes.size() );
+        if(verbosity>0){
+            if( (builder.atoms.size()>0) || (ff.natoms>0) || (ffl.natoms>0) || (ffu.natoms>0) ){
+                printf("MolWorld_sp3::init() clearing previous state: builder.atoms=%zu ff=%i ffl=%i ffu=%i\n", builder.atoms.size(), ff.natoms, ffl.natoms, ffu.natoms );
+            }
+        }
+        builder.clear();
+        bBondInitialized=false;
+        clearFFs();
         if( params.atypes.size() == 0 ){
             initParams( "common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat", "common_resources/DihedralTypes.dat" );
         }
@@ -1312,6 +1320,7 @@ void printPBCshifts(){
  */
     void initParams( const char* sElemTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes, const char* sDihedralTypes=0 ){
         printf( "MolWorld_sp3::initParams():\n\tsElemTypes(%s)\n\tsAtomTypes(%s)\n\tsBondTypes(%s)\n\tsAngleTypes(%s)\n", sElemTypes, sAtomTypes, sBondTypes, sAngleTypes );
+        params.clear(); // is this OK ? Is this necessary? If we want to reinitialize we should do it prehaps on python side 
         params.init( sElemTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
         builder.bindParams(&params);
         params_glob = &params;
@@ -1800,8 +1809,8 @@ virtual void clear( bool bParams=true, bool bSurf=false ){
         }else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }      
         //bPBC=false;
         if(bNonBonded){
-            //E += nbmol.evalLJQs_ng4_PBC_omp( );
-            E += ffl  .evalLJQs_ng4_PBC_omp( );
+            if(bUFF){ E += ffu.evalLJQs_ng4_PBC_omp(); }
+            else    { E += ffl.evalLJQs_ng4_PBC_omp(); }
             /*
             if(bMMFF){    
                 if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, npbc, pbc_shifts, gridFF.Rdamp ); }   // atoms outside cell

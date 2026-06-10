@@ -1248,6 +1248,18 @@ def getHessian3Nx3N(inds, dx=1e-4):
     lib.getHessian3Nx3N( n, _np_as(inds_c, c_int_p), _np_as(out,    c_double_p), dx )
     return out
 
+# void getPhononPhiBlocks(int n_total,int* inds_total,int n_disp,int* inds_disp,double* out_phi,double dx)
+lib.getPhononPhiBlocks.argtypes = [c_int, c_int_p, c_int, c_int_p, c_double_p, c_double]
+lib.getPhononPhiBlocks.restype  = None
+def getPhononPhiBlocks(inds_total, inds_disp, dx=1e-4):
+    """Force constants Phi[o,p]=-dF_o/du_p: rows=all atoms, cols=displaced central atoms."""
+    n_total = len(inds_total); n_disp = len(inds_disp)
+    inds_total_c = np.ascontiguousarray(inds_total, dtype=np.int32)
+    inds_disp_c  = np.ascontiguousarray(inds_disp,  dtype=np.int32)
+    out = np.zeros((3*n_total, 3*n_disp), dtype=np.float64)
+    lib.getPhononPhiBlocks(n_total, _np_as(inds_total_c, c_int_p), n_disp, _np_as(inds_disp_c, c_int_p), _np_as(out, c_double_p), dx)
+    return out
+
 # =========================== Hessian Basis Matrix Functions (for parameter fitting)
 # Consolidated API: getHessianContext() gets all data, setParams() updates parameters
 
