@@ -28,6 +28,17 @@ parser.add_argument('--asr', action='store_true', help='Phonopy FC symmetrizatio
 parser.add_argument('--plot', action='store_true', help='Generate PNG plot (may crash under ASan due to matplotlib/ft2font)')
 parser.add_argument('--plot-only', type=str, default=None, help='Plot from cached .npz (skip MMFF FD); path to diamond_phonon_bands_*.npz')
 parser.add_argument('--dx', type=float, default=1e-4, help='Finite-difference displacement (Bohr)')
+parser.add_argument('--bondsOnly', action='store_true', help='Disable angles, PiSigma, and PiPiI terms (bond-only)')
+parser.add_argument('--uff', action='store_true', help='Use UFF forcefield instead of MMFF')
+parser.add_argument('--no-bonds', action='store_true', help='Disable bond terms')
+parser.add_argument('--no-angles', action='store_true', help='Disable angle terms (MMFF) or angle terms (UFF)')
+parser.add_argument('--no-pisigma', action='store_true', help='Disable PiSigma terms (MMFF only)')
+parser.add_argument('--no-pipii', action='store_true', help='Disable PiPiI terms (MMFF only)')
+parser.add_argument('--no-dihedrals', action='store_true', help='Disable dihedral terms (UFF only)')
+parser.add_argument('--no-inversions', action='store_true', help='Disable inversion terms (UFF only)')
+parser.add_argument('--fix-r0', action='store_true', help='Override UFF C_3-C_3 r0 to match actual diamond lattice constant')
+parser.add_argument('--scale-bond', type=float, default=None, help='Scale MMFF bond stiffness by factor (e.g., 1.25 for +25%)')
+parser.add_argument('--scale-angle', type=float, default=None, help='Scale MMFF angle stiffness by factor (e.g., 1.25 for +25%)')
 args = parser.parse_args()
 
 SUPER_N = args.super_n
@@ -215,13 +226,47 @@ with tempfile.NamedTemporaryFile(mode='w', suffix='.xyz', delete=False) as f:
 
 nPBC = (1, 1, 1) if args.pbc else (0, 0, 0)
 print(f"\nInitializing MMFF (nPBC={nPBC})...")
-MMFF.init(xyz_name=tmp_xyz, nPBC=nPBC, bEpairs=False, bMMFF=True)
-if args.pbc:
-    MMFF.setSwitches(NonBonded=-1)
-    print("Explicit supercell phonon mode: PBC kept ON, nonbonded OFF")
+MMFF.init(xyz_name=tmp_xyz, nPBC=nPBC, bEpairs=False, bMMFF=not args.uff, bUFF=args.uff)
+
+if args.uff:
+    # UFF mode
+    do_bond = -1 if args.no_bonds else 1
+    do_angle = -1 if args.no_angles else 1
+    do_dihedral = -1 if args.no_dihedrals else 1
+    do_inversion = -1 if args.no_inversions else 1
+    MMFF.setSwitchesUFF(DoBond=do_bond, DoAngle=do_angle, DoDihedral=do_dihedral, DoInversion=do_inversion, DoAssemble=1, SubtractBondNonBond=-1, ClampNonBonded=-1)
+    print(f"UFF mode: bonds={do_bond}, angles={do_angle}, dihedrals={do_dihedral}, inversions={do_inversion}")
+    if args.fix_r0:
+        r0_actual = np.linalg.norm(prim_pos[1] - prim_pos[0])
+        print(f"Overriding C_3-C_3 r0: UFF default ~1.514 => actual diamond bond {r0_actual:.6f} Ang")
+        MMFF.setBondParamsByType('C_3', 'C_3', r0=r0_actual)
 else:
-    MMFF.setSwitches(PBC=-1, NonBonded=-1)
-    print("Cluster mode: PBC OFF, nonbonded OFF")
+    # MMFF mode
+    if args.bondsOnly:
+        MMFF.setSwitches(PBC=-1, NonBonded=-1, Angles=-1, PiSigma=-1, PiPiI=-1)
+        print("Bond-only mode: Angles, PiSigma, PiPiI OFF")
+    else:
+        do_angles = -1 if args.no_angles else 1
+        do_pisigma = -1 if args.no_pisigma else 1
+        do_pipii = -1 if args.no_pipii else 1
+        if args.pbc:
+            MMFF.setSwitches(NonBonded=-1, Angles=do_angles, PiSigma=do_pisigma, PiPiI=do_pipii)
+            print(f"Explicit supercell phonon mode: PBC kept ON, nonbonded OFF, angles={do_angles}, PiSigma={do_pisigma}, PiPiI={do_pipii}")
+        else:
+            MMFF.setSwitches(PBC=-1, NonBonded=-1, Angles=do_angles, PiSigma=do_pisigma, PiPiI=do_pipii)
+            print(f"Cluster mode: PBC OFF, nonbonded OFF, angles={do_angles}, PiSigma={do_pisigma}, PiPiI={do_pipii}")
+    
+    # Apply MMFF parameter scaling if requested (using generalized API)
+    if args.scale_bond is not None:
+        # Scale all bonds by reading current values and multiplying
+        MMFF.getBuffs()
+        current_k = MMFF.bKs[MMFF.bKs != 0].mean()  # average non-zero bond stiffness
+        MMFF.setBondParamsByType('C_3', 'C_3', k=current_k * args.scale_bond, forcefield='MMFF')
+    if args.scale_angle is not None:
+        # Scale all angles by reading current values and multiplying
+        MMFF.getBuffs()
+        current_k = MMFF.apars[:, 1].mean()  # average Kss
+        MMFF.setAngleParamsByType('C_3', 'C_3', 'C_3', k=current_k * args.scale_angle, forcefield='MMFF')
 
 inds_total = np.arange(n_sc, dtype=np.int32)
 central_atoms = [i for i, c in enumerate(sc_cell) if c == (0, 0, 0)]
@@ -298,6 +343,22 @@ for i in range(1, len(kpts)):
     kdist[i] = kdist[i-1] + np.linalg.norm(kpts[i] - kpts[i-1])
 
 mode_tag = 'PBC' if args.pbc else ('asr' if args.asr else 'cluster')
+if args.uff:
+    mode_tag += '_uff'
+if args.bondsOnly:
+    mode_tag += '_bondsonly'
+if args.no_bonds:
+    mode_tag += '_nobonds'
+if args.no_angles:
+    mode_tag += '_noangles'
+if args.no_pisigma:
+    mode_tag += '_nopisigma'
+if args.no_pipii:
+    mode_tag += '_nopipii'
+if args.no_dihedrals:
+    mode_tag += '_nodihedrals'
+if args.no_inversions:
+    mode_tag += '_noinversions'
 if args.plot:
     import matplotlib
     matplotlib.use('Agg')

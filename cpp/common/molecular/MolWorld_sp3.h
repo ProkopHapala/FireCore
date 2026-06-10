@@ -358,11 +358,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         //params.verbosity=verbosity;
         //printf(  "MolWorld_sp3:init() params.verbosity = %i \n", params.verbosity );
         printf("params.atypes.size() %i\n", params.atypes.size() );
-        if(verbosity>0){
-            if( (builder.atoms.size()>0) || (ff.natoms>0) || (ffl.natoms>0) || (ffu.natoms>0) ){
-                printf("MolWorld_sp3::init() clearing previous state: builder.atoms=%zu ff=%i ffl=%i ffu=%i\n", builder.atoms.size(), ff.natoms, ffl.natoms, ffu.natoms );
-            }
-        }
+        if(verbosity>0){printf("MolWorld_sp3::init() clearing previous state: builder.atoms=%zu ff=%i ffl=%i ffu=%i\n", builder.atoms.size(), ff.natoms, ffl.natoms, ffu.natoms ); }
         builder.clear();
         bBondInitialized=false;
         clearFFs();
@@ -1187,6 +1183,11 @@ void printPBCshifts(){
         //     readMatrix( tmpstr, 3, 3, (double*)&builder.lvec );
         // }
         bPBC=builder.bPBC;  //printf( "builder.bPBC %i \n", builder.bPBC );
+        // If nPBC is explicitly non-zero, force PBC on even if XYZ had no lattice vectors
+        if( (nPBC.x>0)||(nPBC.y>0)||(nPBC.z>0) ){ 
+            if(!bPBC){ printf("MolWorld_sp3::loadGeom() nPBC(%i,%i,%i) is non-zero => forcing bPBC=true (XYZ had no lattice vectors)\n", nPBC.x,nPBC.y,nPBC.z); }
+            bPBC=true; builder.bPBC=true; 
+        }
         if( !bBondInitialized){
             if( bPBC ){ builder.autoBondsPBC(); }
             else      { builder.autoBonds();    }
@@ -1432,11 +1433,23 @@ void printPBCshifts(){
         // setting up PBC
         if(bPBC){
             if ( bUFF ){
+                printf("makeMMFFs(): UFF PBC setup: builder.lvec=(%g,%g,%g)(%g,%g,%g)(%g,%g,%g) nPBC=(%i,%i,%i)\n",
+                    builder.lvec.a.x,builder.lvec.a.y,builder.lvec.a.z,
+                    builder.lvec.b.x,builder.lvec.b.y,builder.lvec.b.z,
+                    builder.lvec.c.x,builder.lvec.c.y,builder.lvec.c.z,
+                    nPBC.x,nPBC.y,nPBC.z);
                 ffu.setLvec( builder.lvec);   
                 npbc = makePBCshifts( nPBC, builder.lvec );
                 ffu.bindShifts(npbc,pbc_shifts);
                 //ffu.makeNeighCells( nPBC );      
                 ffu.makeNeighCells( npbc, pbc_shifts ); 
+                // --- rigorous sanity check: pbc_shifts must be non-trivially non-zero and neighCell must all be >=0
+                { 
+                    double shiftNorm2=0; for(int i=0;i<npbc;i++) shiftNorm2+=pbc_shifts[i].norm2();
+                    if(shiftNorm2<1e-10 && npbc>1){ printf("ERROR makeMMFFs(): UFF bPBC=1 but all pbc_shifts are zero (norm2=%g, npbc=%i). builder.lvec is likely zero => Exit()\n", shiftNorm2, npbc); exit(0); }
+                    if(!ffu.checkPBCNeighCells("makeMMFFs")) exit(0);
+                    printf("makeMMFFs(): UFF PBC sanity check PASSED (npbc=%i shiftNorm2=%g)\n", npbc, shiftNorm2);
+                }
             }else{
                 ff.bPBCbyLvec = true;
                 ff .setLvec( builder.lvec);
@@ -1802,11 +1815,9 @@ virtual void clear( bool bParams=true, bool bSurf=false ){
         //ffl.printAtomParams();
         //ffl.print_pbc_shifts();
         //printf("lvec: ");printMat(builder.lvec);
-        if(bMMFF){ 
-            if(bUFF){ E += ffu.eval(); }
-            else    { E += ffl.eval(); }
-            
-        }else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }      
+        if(bUFF ){ E += ffu.eval(); }
+        else if(bMMFF){ E += ffl.eval(); }
+        else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }      
         //bPBC=false;
         if(bNonBonded){
             if(bUFF){ E += ffu.evalLJQs_ng4_PBC_omp(); }

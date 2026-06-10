@@ -37,6 +37,7 @@ void init_buffers_UFF(){
         buffers["dihParams"] = (double*)W.ffu.dihParams;
         buffers["invParams"] = (double*)W.ffu.invParams;
 
+        ibuffers["atypes"]   = (int*)W.ffu.atypes;
         ibuffers["neighs"]   = (int*)W.ffu.neighs;
         ibuffers["neighBs"]  = (int*)W.ffu.neighBs;
         ibuffers["bonAtoms"] = (int*)W.ffu.bonAtoms;
@@ -78,6 +79,13 @@ void init_buffers(){
             buffers["pipos"]  = (double*)W.ffl.pipos;
             buffers["fpipos"] = (double*)W.ffl.fpipos;
             ibuffers["neighs"] = (int*)W.ffl.neighs;
+            ibuffers["atypes"] = (int*)W.ff.atype;
+            // MMFF parameter arrays
+            buffers["bKs"]    = (double*)W.ffl.bKs;     // [nnode] bond stiffness
+            buffers["bLs"]    = (double*)W.ffl.bLs;     // [nnode] bond lengths
+            buffers["apars"]  = (double*)W.ffl.apars;   // [nnode] angle parameters (c0, Kss, Ksp, c0_e)
+            buffers["Ksp"]    = (double*)W.ffl.Ksp;     // [nnode] pi-sigma stiffness
+            buffers["Kpp"]    = (double*)W.ffl.Kpp;     // [nnode] pi-planarization stiffness
         } // else{ // UFF-specific}
     }else{
         W.ff.natoms=W.nbmol.natoms;
@@ -90,6 +98,8 @@ void init_buffers(){
     //printBuffNames();
 }
 
+
+int getUFFTypeCode( const char* type_name ){ return W.params.getAtomType( type_name, false ); }
 
 void print_debugs( bool bParams, bool bNeighs, bool bShifts, bool bAtoms ){
     printf("print_debugs() W.bUFF=%i, bParams=%i, bNeighs=%i, bShifts=%i, bAtoms=%i \n", W.bUFF, bParams, bNeighs, bShifts, bAtoms);
@@ -426,35 +436,11 @@ void getPhononPhiBlocks(int n_total,int* inds_total,int n_disp,int* inds_disp,do
         W.ffl.printNeighs();
     }
     if(W.bPBC){
-        bool ok=true;
         if(W.bUFF){
-            for(int ia=0; ia<W.ffu.natoms; ia++){
-                const Quat4i& ng  = W.ffu.neighs[ia];
-                const Quat4i& ngc = W.ffu.neighCell[ia];
-                for(int k=0;k<4;k++){
-                    if(ng.array[k]<0) continue;
-                    if(ngc.array[k]<0){
-                        printf("ERROR getPhononPhiBlocks(): bPBC=1 but UFF.neighCell[%i][%i]=%i for bonded neigh=%i. neighCell must be >=0 under PBC => Exit()\n", ia,k,ngc.array[k],ng.array[k]);
-                        ok=false; break;
-                    }
-                }
-                if(!ok)break;
-            }
+            if(!W.ffu.checkPBCNeighCells("getPhononPhiBlocks")) exit(0);
         }else{
-            for(int ia=0; ia<W.ffl.natoms; ia++){
-                const Quat4i& ng  = W.ffl.neighs[ia];
-                const Quat4i& ngc = W.ffl.neighCell[ia];
-                for(int k=0;k<4;k++){
-                    if(ng.array[k]<0) continue;
-                    if(ngc.array[k]<0){
-                        printf("ERROR getPhononPhiBlocks(): bPBC=1 but MMFF.neighCell[%i][%i]=%i for bonded neigh=%i. neighCell must be >=0 under PBC => Exit()\n", ia,k,ngc.array[k],ng.array[k]);
-                        ok=false; break;
-                    }
-                }
-                if(!ok)break;
-            }
+            if(!W.ffl.checkPBCNeighCells("getPhononPhiBlocks")) exit(0);
         }
-        if(!ok) exit(0);
     }
     const bool bNonBonded0 = W.bNonBonded;
     W.bNonBonded=false;

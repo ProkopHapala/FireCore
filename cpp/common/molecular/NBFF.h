@@ -252,6 +252,24 @@ class NBFF: public ForceField{ public:
             printf("\n");
         }
     }
+    // Validate PBC neighbor cell indices: when bPBC=true, neighCell must be >=0 for all valid neighbors
+    bool checkPBCNeighCells(const char* func_name="NBFF::checkPBCNeighCells"){
+        if(!bPBC) return true;
+        bool ok=true;
+        for(int ia=0; ia<natoms; ia++){
+            const Quat4i& ng  = neighs[ia];
+            const Quat4i& ngc = neighCell[ia];
+            for(int k=0;k<4;k++){
+                if(ng.array[k]<0) continue;
+                if(ngc.array[k]<0){
+                    printf("ERROR %s(): bPBC=1 but neighCell[%i][%i]=%i for bonded neigh=%i. neighCell must be >=0 under PBC => Exit()\n", func_name, ia,k,ngc.array[k],ng.array[k]);
+                    ok=false; break;
+                }
+            }
+            if(!ok)break;
+        }
+        return ok;
+    }
 
     void initBBsFromGroups(int natom_, const int* atom2group, bool bUpdateBB=true){
         //printf( "NBFF::initBBsFromGroups() natom_=%i \n", natom_ );
