@@ -80,6 +80,25 @@ inline double getSR3_PN( double r, double H, double R0, double& dEdH, double& dE
     return H * dEdH;
 }
 
+inline double getSR4_PN( double r, double eps1, double eps2, double& f1, double& f2, double SR4cut, int SR4m, int SR4n ){
+    // no need to compute anything if we are beyond the cutoff 
+    if ( r > SR4cut ){ 
+        f1 = 0.0;
+        f2 = 0.0;
+        return 0.0;
+    }
+    const double iRcut = 1.0 / SR4cut;
+    const double u  = r * iRcut;
+    const double v = 1.0 - u * u;
+    f1 = pow(v, SR4m);
+    f2 = pow(u, SR4n) * f1;
+    //if (std::isnan(eps1*f1+eps2*f2) || std::isinf(eps1*f1+eps2*f2) || abs(eps1*f1+eps2*f2) > 1e3) {printf("CRITICAL SR4 BLOWUP: r=%f, u=%f, v=%f, f1=%f, f2=%f, Eij=%f\n", r, u, v, f1, f2, eps1*f1+eps2*f2);}
+    if (verbosity > 3) {
+        printf( "DEBUG getSR4_PN r=%g cu=%g v=%g f1=%g f2=%g eps1=%g eps2=%g E=%g\n", r, u, v, f1, f2, eps1, eps2, eps1*f1+eps2*f2 );
+    }
+    return eps1 * f1 + eps2 * f2;
+}
+
 inline double coulomb_potential_bare(double r){ return 1.0/r; }
 
 // Soft-clamp on the bare Coulomb potential value y=1/r (no charges, no COULOMB_CONST)
@@ -265,7 +284,7 @@ class FitREQ_PN{ public:
     bool bClamp                = false; // Should we hardly restrain the parameter values?
     bool bListOverRepulsive    = true;  // Should we list overrepulsive samples? 
     bool bSaveOverRepulsive    = false; // Should we save overrepulsive samples to .xyz file?
-    bool bPrintOverRepulsive   = true;  // Should we print overrepulsive samples? 
+    bool bPrintOverRepulsive   = false;  // Should we print overrepulsive samples? 
     bool bDiscardOverRepulsive = true;  // Should we discard overrepulsive samples? ( i.e. ignore them as training examples )
     bool bWeightByEmodel       = true;  // Should we weight samples by their model energy ?
     std::vector<int> overRepulsiveList; // List of overrepulsive samples indexes (for recent epoch)
@@ -327,7 +346,9 @@ class FitREQ_PN{ public:
     double sCoul     = 1.0;   // strength of Coulomb interactions
     double sHcorr    = 1.0;   // strength of H-bond correction
     double sEpairs   = 1.0;   // strength of Epair interactions
-
+    double SR4cut    = 1.0;   // maximum distance for SR4 Epair interactions
+    int    SR4n      = 2;     // order of polynomial for SR4 Epair interactions
+    int    SR4m      = 2;     // order of polynomial for SR4 Epair interactions
 // =================================
 // =========== Functions ===========
 // =================================
@@ -1158,7 +1179,7 @@ double evalEnergyDerivs ( int i0, int ni, int j0, int nj, int* types, Vec3d* ps,
             const double  R0   = REQi.x + REQj.x;
             const double  eps  = REQi.y * REQj.y; 
             const double  Q    = Qi     * Qj    ;
-            double        H    = REQi.w * REQj.w;
+            const double  H    = REQi.w * REQj.w;
             const double  sH   = (H<0.0) ? 1.0 : 0.0; 
             const double  r    = dij.norm();
 
@@ -1166,6 +1187,7 @@ double evalEnergyDerivs ( int i0, int ni, int j0, int nj, int* types, Vec3d* ps,
             double dE_dR0 = 0.0, dE_deps = 0.0, dE_dQ = 0.0, dE_dH = 0.0;
             double fR = 0.0, fA = 0.0, fH1 = 0.0, fH2 = 0.0, fR0 = 0.0, fB = 1.0;
             double alpha = kMorse;
+            double dE_dR = 0.0, f1 = 0.0, f2 = 0.0;
             //double dE_dRi = 0.0, dE_dRj = 0.0; // JAMME
 
             if( bEpi ){  
@@ -1185,27 +1207,45 @@ double evalEnergyDerivs ( int i0, int ni, int j0, int nj, int* types, Vec3d* ps,
                 }
                 */
                 // --- Electron pair interaction
-                double dE_dR = 0.0;
                 if(iEpairs==1){ 
                     Eij_Epairs = sEpairs * getSR_PN( r, H, REQi.x, dE_dH, dE_dR );
+                    dEdREQs[i].x -= sEpairs * dE_dR;
                 }else if(iEpairs==2){ 
                     Eij_Epairs = sEpairs * getSR2_PN( r, H, REQi.x, dE_dH, dE_dR );
+                    dEdREQs[i].x -= sEpairs * dE_dR;
                 }else if(iEpairs==3){ 
                     Eij_Epairs = sEpairs * getSR3_PN( r, H, REQi.x, dE_dH, dE_dR );
+                    dEdREQs[i].x -= sEpairs * dE_dR;
+                }else if(iEpairs==4){
+                    Eij_Epairs = sEpairs * getSR4_PN( r, REQi.x*REQj.w, REQi.w*REQj.w, f1, f2, SR4cut, SR4m, SR4n );
+                    if(r<2.0) printf( "SR4_B_Epi isamp=%i i=%i j=%i r=%g type_i=%s REQi=(%g %g %g %g) type_j=%s REQj=(%g %g %g %g) f1=%g f2=%g dE_i.x=%g dE_i.w=%g dE_j.w=%g\n", isamp_debug, i, j, r, params->atypes[ti].name, REQi.x, REQi.y, REQi.z, REQi.w, params->atypes[tj].name, REQj.x, REQj.y, REQj.z, REQj.w, f1, f2, -sEpairs*REQj.w*f1, -sEpairs*REQj.w*f2, -sEpairs*(REQi.x*f1+REQi.w*f2));
+                    dEdREQs[i].x -= sEpairs * REQj.w * f1;
+                    dEdREQs[i].w -= sEpairs * REQj.w * f2;
+                    dEdREQs[j].w -= sEpairs * ( REQi.x * f1 + REQi.w * f2 );
+                    //if(verbosity>2 && r<SR4cut) printf("DEBUG SR4(bEpi) i=%d j=%d r=%f f1=%f f2=%f REQj.w=%f sEpairs=%f dE_i.x=%f dE_i.w=%f\n", i, j, r, f1, f2, REQj.w, sEpairs, -sEpairs*REQj.w*f1, -sEpairs*REQj.w*f2);
                 }
-                dEdREQs[i].x -= sEpairs * dE_dR;
                 //dE_dRi = sEpairs * dE_dR; // JAMME
             }else if( bEpj ){
                 // --- Electron pair interaction
                 double dE_dR = 0.0;
                 if(iEpairs==1){ 
                     Eij_Epairs = sEpairs * getSR_PN( r, H, REQj.x, dE_dH, dE_dR );
+                    dEdREQs[j].x -= sEpairs * dE_dR;
                 }else if(iEpairs==2){ 
                     Eij_Epairs = sEpairs * getSR2_PN( r, H, REQj.x, dE_dH, dE_dR );
+                    dEdREQs[j].x -= sEpairs * dE_dR;
                 }else if(iEpairs==3){ 
                     Eij_Epairs = sEpairs * getSR3_PN( r, H, REQj.x, dE_dH, dE_dR );
+                    dEdREQs[j].x -= sEpairs * dE_dR;
+                }else if(iEpairs==4){ 
+                    Eij_Epairs = sEpairs * getSR4_PN( r, REQi.w*REQj.x, REQi.w*REQj.w, f1, f2, SR4cut, SR4m, SR4n );
+                    if(verbosity>3) printf( "DEBUG SR4(bEpj) isamp=%i i=%d j=%d r=%g %s(%g %g %g) %s(%g %g %g) f1=%g f2=%g dE_i.w=%g dE_j.x=%g dE_j.w=%g\n", isamp_debug, i, j, r, params->atypes[ti].name, REQi.x, REQi.y, REQi.w, params->atypes[tj].name, REQj.x, REQj.y, REQj.w, f1, f2, -sEpairs*(REQj.x*f1+REQj.w*f2), -sEpairs*REQi.w*f1, -sEpairs*REQi.w*f2);
+                    dEdREQs[i].w -= sEpairs * ( REQj.x * f1 + REQj.w * f2 );
+                    dEdREQs[j].x -= sEpairs * REQi.w * f1;
+                    dEdREQs[j].w -= sEpairs * REQi.w * f2;
+                    //if(verbosity>2 && r<SR4cut) printf("DEBUG SR4(bEpj) i=%d j=%d r=%f f1=%f f2=%f REQi.w=%f sEpairs=%f dE_j.x=%f dE_j.w=%f\n", i, j, r, f1, f2, REQi.w, sEpairs, -sEpairs*REQi.w*f1, -sEpairs*REQi.w*f2);
+                    //if (std::isnan(Eij_Epairs) || std::isinf(Eij_Epairs) || abs(Eij_Epairs) > 1e3) {printf("CRITICAL SR4 BLOWUP: r=%f, u=%f, v=%f, f1=%f, f2=%f, Eij=%f, REQi.x=%f, REQj.w=%f\n", r, u, v, f1, f2, Eij_Epairs, REQi.x, REQj.w);}
                 }
-                dEdREQs[j].x -= sEpairs * dE_dR;
                 //dE_dRj = sEpairs * dE_dR; // JAMME
             }else{
                 // --- Electrostatic interaction
@@ -1306,7 +1346,7 @@ double evalEnergyDerivs ( int i0, int ni, int j0, int nj, int* types, Vec3d* ps,
             } );
 
             // --- Energy and forces
-            E_tot    +=  Eij;
+            E_tot   +=  Eij;
             fREQi.x -= dE_dR0;              // dEtot/dR0_i
             fREQi.y -= dE_deps * REQj.y;    // dEtot/dE0_i
             fREQi.z -= dE_dQ   * Qj;        // dEtot/dQ_i
@@ -1315,6 +1355,17 @@ double evalEnergyDerivs ( int i0, int ni, int j0, int nj, int* types, Vec3d* ps,
 
         dEdREQs[i].add(fREQi);
     }  // end loop over all atoms[i] in system2
+    
+    /*
+    // DEBUG: print derivatives for epair atoms if verbosity > 2
+    if(verbosity>2 && iEpairs==4){
+        for(int ii=0; ii<ni && ii<2; ii++){
+            const int i = i0+ii;
+            const int ih = host[i];
+            if(ih>=0) printf("DEBUG EOL(epair) i=%d host=%d dEdREQs[%d]={%f,%f,%f,%f}\n", i, ih, i, dEdREQs[i].x, dEdREQs[i].y, dEdREQs[i].z, dEdREQs[i].w);
+        }
+    }
+    */
     /*
     printf("JAMMETOT     Etot\n");
     printf("JAMMETOT %15.9f\n", E_tot );

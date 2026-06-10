@@ -63,10 +63,10 @@ def setVerbosity(verbosity=0, idebug=0, PrintDOFs=0, PrintfDOFs=0, PrintBeforReg
     return lib.setVerbosity(verbosity, idebug, PrintDOFs, PrintfDOFs, PrintBeforReg, PrintAfterReg, PrintOverRepulsive)
 
 #void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double kMorse, double Lepairs, bool bPN, double svdW, double sCoul, double sHcorr, double sEpairs ){
-lib.setModel.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_double, c_double, c_bool, c_double, c_double, c_double, c_double]
+lib.setModel.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_double, c_double, c_bool, c_double, c_double, c_double, c_double, c_double, c_int, c_int]
 lib.setModel.restype   =  None
-def setModel(ivdW=4, iCoul=1, iHbond=0, Epairs=0, iEpairs=0, kMorse=1.6, Lepairs=0.5, bPN=True, svdW=1.0, sCoul=1.0, sHcorr=1.0, sEpairs=1.0):
-    return lib.setModel(ivdW, iCoul, iHbond, Epairs, iEpairs, kMorse, Lepairs, bPN, svdW, sCoul, sHcorr, sEpairs)
+def setModel(ivdW=4, iCoul=1, iHbond=0, Epairs=0, iEpairs=0, kMorse=1.6, Lepairs=0.5, bPN=True, svdW=1.0, sCoul=1.0, sHcorr=1.0, sEpairs=1.0, SR4cut=1.0, SR4m=2, SR4n=2):
+    return lib.setModel(ivdW, iCoul, iHbond, Epairs, iEpairs, kMorse, Lepairs, bPN, svdW, sCoul, sHcorr, sEpairs, SR4cut, SR4m, SR4n)
 
 #void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){
 lib.loadTypes.argtypes  = [c_char_p, c_char_p]

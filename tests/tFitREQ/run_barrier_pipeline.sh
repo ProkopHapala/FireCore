@@ -4,8 +4,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKDIR="$ROOT"
 OUT_DIR="$WORKDIR/grid_search_out"
-XYZ="../tFitREQ_PN/wb97m-split/H2O-A1_H2O-D1-y.xyz"
-DOF="dofSelection_MorseSR_H2O_epairOnly.dat"
+#XYZ="../tFitREQ_PN/wb97m-split/H2O-A1_H2O-D1-y.xyz"
+#DOF="dofSelection_MorseSR_H2O_epairOnly.dat"
+XYZ="/home/niko/work/HBOND/REFERENCE/2-pairs_small_small/4-to_firecore/confs_wb97m/H2O-A1_H2O-D1-y.xyz"
+DOF="dofSelection.dat"
 NPZ="$OUT_DIR/ensemble_data.npz"
 OUT_PREFIX="$OUT_DIR/ensemble"
 
@@ -23,7 +25,7 @@ PATH_PREFIX="$OUT_DIR/path"
 
 echo "[1/3] Running grid search -> ensemble and combined plots ..."
 cd "$WORKDIR"
-#python grid_search.py --xyz "$XYZ" --dof_file "$DOF" --out_dir "$OUT_DIR" $PN_FLAG || { echo "grid_search failed"; exit 1; }
+python grid_search.py --xyz "$XYZ" --dof_file "$DOF" --out_dir "$OUT_DIR" $PN_FLAG || { echo "grid_search failed"; exit 1; }
 
 echo "[2/3] Running DR (PCA/UMAP/PacMAP if available) on ensemble ..."
 if [[ ! -f "$NPZ" ]]; then

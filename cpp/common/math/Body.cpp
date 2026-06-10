@@ -7,7 +7,7 @@
 // https://www.cs.cmu.edu/~baraff/sigcourse/notesd1.pdf
 
 //#include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+//#include <SDL2/SDL_opengl.h>
 
 //#include "Draw3D.h"
 

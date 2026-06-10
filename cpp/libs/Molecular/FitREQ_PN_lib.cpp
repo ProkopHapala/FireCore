@@ -28,6 +28,12 @@ void setVerbosity( int verbosity_, int idebug_, int PrintDOFs, int PrintfDOFs, i
     // no buffering
     setbuf(stdout, NULL);
     setbuf(stderr, NULL);
+    W.bPrintDOFs = PrintDOFs>0;
+    W.bPrintfDOFs = PrintfDOFs>0;
+    W.bPrintBeforReg = PrintBeforReg>0;
+    W.bPrintAfterReg = PrintAfterReg>0;
+    W.bPrintOverRepulsive = PrintOverRepulsive>0;
+    /*
     #define _setbool(name) { if(name>0){W.b##name=true;}else if(name<0){W.b##name=false;} }
     _setbool( PrintDOFs     );
     _setbool( PrintfDOFs    );
@@ -35,10 +41,11 @@ void setVerbosity( int verbosity_, int idebug_, int PrintDOFs, int PrintfDOFs, i
     _setbool( PrintAfterReg );
     _setbool( PrintOverRepulsive );
     #undef _setbool
+    */
     printf( "setVerbosity() verbosity %i idebug %i PrintDOFs %i PrintfDOFs %i PrintBeforReg %i PrintAfterReg %i PrintOverRepulsive %i\n", verbosity, idebug, W.bPrintDOFs, W.bPrintfDOFs, W.bPrintBeforReg, W.bPrintAfterReg, W.bPrintOverRepulsive );
 }
 
-void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double kMorse, double Lepairs, bool bPN, double svdW, double sCoul, double sHcorr, double sEpairs ){
+void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double kMorse, double Lepairs, bool bPN, double svdW, double sCoul, double sHcorr, double sEpairs, double SR4cut, int SR4m, int SR4n ){
     W.ivdW    = ivdW;
     W.iCoul   = iCoul;
     W.iHbond  = iHbond;
@@ -51,7 +58,11 @@ void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double 
     W.sCoul   = sCoul;
     W.sHcorr  = sHcorr;
     W.sEpairs  = sEpairs;
-    printf( "setModel() ivdW %i iCoul %i iHbond %i iEpairs %i kMorse %f Lepairs %f bPN %i svdW %f sCoul %f sHcorr %f sEpairs %f\n", W.ivdW, W.iCoul, W.iHbond, W.iEpairs, W.kMorse, W.Lepairs, W.bPN, W.svdW, W.sCoul, W.sHcorr, W.sEpairs );
+    W.SR4cut   = SR4cut;
+    W.SR4m     = SR4m;
+    W.SR4n     = SR4n;
+    printf( "setModel() ivdW %i iCoul %i iHbond %i iEpairs %i kMorse %f Lepairs %f bPN %i svdW %f sCoul %f sHcorr %f sEpairs %f SR4cut %f SR4m %i SR4n %i\n", 
+        W.ivdW, W.iCoul, W.iHbond, W.iEpairs, W.kMorse, W.Lepairs, W.bPN, W.svdW, W.sCoul, W.sHcorr, W.sEpairs, W.SR4cut, W.SR4m, W.SR4n );
 }
 
 void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){
