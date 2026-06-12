@@ -104,6 +104,10 @@ This **is** a supplement to:
 - FitREQ Interactive GUI: Monte Carlo Optimization & Energy Decomposition Integration
 - FitREQ Hydrogen Bond Fitting System - GPU-Accelerated Parameter Optimization
 
+## Nanocrystal Vibrations
+- Silicon/Diamond nanocrystal generation, force field setup, and vibration spectroscopy
+- See [Nanocrystal_Vibrations.md](Nanocrystal_Vibrations.md) for detailed file inventory and workflow
+
 ## Rigid Body Dynamics
 - Rigid Body Dynamics on Surfaces (pyOpenCL)
 - Rigid Body Dynamics System for AFM Simulation

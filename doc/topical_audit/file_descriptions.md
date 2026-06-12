@@ -38,6 +38,24 @@ One sentence per file, added as files are read.
 ## FTIR_Nanocrystals
 - `doc/Topics/FTIR_Nanocrystals/Hessian_fitting.md` — Explains fitting procedures and practical heuristics for constructing disordered nanocrystal Hessians using 3D B-spline grids.
 - `doc/Topics/FTIR_Nanocrystals/gen_nanocrystals.md` — Generates random nanocrystal geometries by stacking atoms onto substrate layers with element typing.
+- `doc/Topics/FTIR_Nanocrystals/Phonon_testing_guide.md` — Practical guide for phonon testing with MMFF; covers common pitfalls like imaginary modes, ASR, and PBC configuration.
+- `doc/Topics/FTIR_Nanocrystals/Hessian_Kspace.md` — Theory of Hessian in k-space for periodic crystals, Bloch extraction, and dynamical matrix construction.
+- `doc/Topics/FTIR_Nanocrystals/Debug_negative_phonon_freqs.md` — Debugging checklist for imaginary phonon modes with causes and fixes.
+- `scripts/gen_nanocrystals.mjs` — High-throughput silicon nanocrystal generation with Miller-index plane cuts, hydrogen capping, and surface bridge operations.
+- `pyBall/FTIR.py` — Linear response vibration spectroscopy: Green's function probing, dynamic stiffness, rigid mode projection, and Hessian parameter fitting.
+- `pyBall/MMFF.py` — Python bindings for MMFF/UFF force fields with `getHessian3Nx3N`, `getPhononPhiBlocks`, and generalized `setBondParamsByType`/`setAngleParamsByType`.
+- `cpp/libs/Molecular/MMFF_lib.cpp` — C++ implementation of Hessian and phonon block computation via central finite differences, plus Python buffer exposure.
+- `cpp/common/molecular/NBFF.h` — Base non-bonded force field class with reusable `checkPBCNeighCells()` validation.
+- `tests/tMMFF/test_diamond_phonon_bands.py` — Diamond phonon band structure using supercell + Bloch extraction; supports PBC, ASR, UFF/MMFF toggle, and parameter scaling.
+- `tests/tMMFF/test_vibration_spectra.py` — End-to-end linear response FTIR spectrum: MMFF → Hessian → mass matrix → rigid mode projection → frequency probe.
+- `tests/tMMFF/test_hessian_fitting.py` — Fit UFF bond/angle stiffness parameters to reference Hessian using linear least squares.
+- `tests/tMMFF/test_diamond_gamma.py` — Γ-point phonon frequencies for diamond (simplified, no k-path).
+- `tests/tMMFF/test_ethane_gamma.py` — Γ-point frequencies for ethane (molecular, no PBC).
+- `tests/tMMFF/test_diatomic_hessian.py` — Hessian calculation validation for diatomic molecules.
+- `tests/tMMFF/plot_phonon_bands.py` — Plot phonon dispersion curves from `.npz` output.
+- `tests/tMMFF/plot_mmff_comparison.py` — Compare MMFF vs reference phonon bands.
+- `tests/tMMFF/plot_mmff_scaling.py` — Overlay default vs scaled parameter phonon bands.
+- `tests/tMMFF/run_hessian.py` — Batch Hessian runner for multiple systems.
 
 ## Kekule_Topology
 - `doc/Topics/Kekule_Topology/Kekule_Optimizer.md` — Describes an optimizer for Kekulé bond patterns and related resonance topology tasks.
