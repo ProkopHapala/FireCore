@@ -90,6 +90,13 @@ This **is** a supplement to:
 - Molecule-Substrate Interaction Energy Scanning: Assembly, GUI Placement, Force Fields & Surface Evaluation
 - FoldedAtomicFunctions: Surface Potential Basis Fitting System
 
+## Kekule Topology & H-transfer NEB
+- Kekule Structure Explorer: PyQt5/Vispy GUI for building/editing Kekule patterns
+- Graphene Ribbon Builder: Zigzag ribbons with N/NH passivation for H-bond studies
+- H-transfer NEB: Molecular (gamma-point) and ribbon (k-point) hydrogen transfer calculations
+- DFTB+ Integration: Subprocess and C-API interfaces with PBC support
+- See [Htransfer_Kekule_DFTB.md](Htransfer_Kekule_DFTB.md) for detailed file inventory and consolidation plan
+
 ## Classical Force Fields (MMFF/UFF)
 - FireCore Classical Forcefields: MMFFsp3 & UFF (CPU/GPU/Python)
 - MMFF/UFF CPU vs GPU Testing: C++ OpenCL and PyOpenCL Parity Infrastructure

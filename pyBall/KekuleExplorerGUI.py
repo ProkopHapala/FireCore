@@ -877,7 +877,7 @@ class KekuleExplorerWindow(BaseGUI):
                 new_npi = (current_npi + 1) % 3
                 e = self.backend.sys.enames[picked]
                 sp_map = {0: 'sp3', 1: 'sp2', 2: 'sp'}
-                self.backend.atom_subtype[picked] = f"{e}_{sp_map.get(new_npi, 'sp2')}"
+                self.backend.set_atom_subtype_by_index(picked, f"{e}_{sp_map.get(new_npi, 'sp2')}")
                 if self.backend.auto_h_cap:
                     self.backend.adjust_h()
                 self.refresh_view()
@@ -889,7 +889,10 @@ class KekuleExplorerWindow(BaseGUI):
         if event.button == 1: # LMB
             self.handle_click(event.pos, action='add')
         elif event.button == 2: # RMB
-            self.handle_click(event.pos, action='remove')
+            # Atom/pi/Select modes rely on sig_rmb_remove from VispyUtils;
+            # calling handle_click here too would double-fire removal
+            if self.edit_mode not in ('Atom', 'pi', 'Select'):
+                self.handle_click(event.pos, action='remove')
         elif event.button == 3: # Middle / Scroll click
             self.handle_click(event.pos, action='toggle_h')
 
@@ -1006,7 +1009,7 @@ class KekuleExplorerWindow(BaseGUI):
                     new_npi = (current_npi + 1) % 3
                     e = self.backend.sys.enames[nearest_atom_idx]
                     sp_map = {0: 'sp3', 1: 'sp2', 2: 'sp'}
-                    self.backend.atom_subtype[nearest_atom_idx] = f"{e}_{sp_map.get(new_npi, 'sp2')}"
+                    self.backend.set_atom_subtype_by_index(nearest_atom_idx, f"{e}_{sp_map.get(new_npi, 'sp2')}")
                     if self.backend.auto_h_cap:
                         self.backend.adjust_h()
                     self.refresh_view()
