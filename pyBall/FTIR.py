@@ -1,5 +1,14 @@
 import numpy as np
 
+# Sparse matrix support (optional - only imported when needed)
+_HAS_SCIPY = False
+try:
+    import scipy.sparse as sp
+    from scipy.sparse.linalg import spsolve
+    _HAS_SCIPY = True
+except ImportError:
+    pass
+
 def dynamic_stiffness(K, M, omega, eta=1e-3, stabilize=1e-6):
     """
     Dynamic stiffness: A = K - (omega + i*eta)^2 M.
@@ -72,6 +81,198 @@ def mechanical_greens_probing(K, M, omegas, eta=1e-3, direction_vec=None, charge
         "dipole": spectrum_dipole,
         "n_probes": len(omegas),
     }
+
+
+def build_sparse_hessian_from_blocks(neigh_idx, neigh_count, blocks, symmetrize=True):
+    """
+    Build scipy.sparse BSR matrix from sparse Hessian blocks.
+
+    Parameters:
+        neigh_idx: (natoms, max_neigh) neighbor indices (-1 for invalid)
+        neigh_count: (natoms,) actual neighbor count per atom
+        blocks: (natoms, max_neigh, 3, 3) force constant blocks
+        symmetrize: ensure H is symmetric (default True)
+
+    Returns:
+        scipy.sparse.bsr_matrix of shape (3*natoms, 3*natoms)
+    """
+    if not _HAS_SCIPY:
+        raise ImportError("scipy is required for sparse matrix operations")
+    natoms, max_neigh = neigh_idx.shape
+    dim = 3
+    ndof = natoms * dim
+
+    # Collect data for BSR format
+    row_blocks = []
+    col_blocks = []
+    data_blocks = []
+
+    for p in range(natoms):
+        n = int(neigh_count[p])
+        for j in range(n):
+            o = int(neigh_idx[p, j])
+            if o < 0:
+                continue
+            # Block H[o,p] = -dF_o/du_p
+            blk = blocks[p, j]
+            row_blocks.append(o)
+            col_blocks.append(p)
+            data_blocks.append(blk)
+            # Symmetrize: also add H[p,o] = H[o,p].T
+            if symmetrize and o != p:
+                row_blocks.append(p)
+                col_blocks.append(o)
+                data_blocks.append(blk.T)
+
+    # Build BSR matrix
+    data = np.array(data_blocks)  # (nnz, 3, 3)
+    indices = np.array(col_blocks, dtype=np.int32)  # BSR uses per-block column indices
+    indptr = np.zeros(natoms + 1, dtype=np.int32)
+
+    # Build indptr from row block counts
+    row_counts = np.zeros(natoms, dtype=np.int32)
+    for r in row_blocks:
+        row_counts[r] += 1
+    indptr[1:] = np.cumsum(row_counts)
+
+    # Sort blocks by row for BSR format
+    order = np.argsort(row_blocks, kind='stable')
+    data = data[order]
+    indices = indices[order]
+
+    H_sparse = sp.bsr_matrix((data, indices, indptr), shape=(ndof, ndof), blocksize=(3, 3))
+    return H_sparse
+
+
+def mechanical_greens_probing_sparse(H_sparse, M, omegas, eta=1e-3, direction_vec=None, charges=None, dim=3, stabilize=1e-6):
+    """
+    Sparse version of mechanical Green's function probing.
+    Uses scipy.sparse.linalg.spsolve at each frequency.
+    Suitable for medium systems (up to ~10000 DOF) where dense solve would be too slow.
+    """
+    if not _HAS_SCIPY:
+        raise ImportError("scipy is required for sparse matrix operations")
+
+    ndof = H_sparse.shape[0]
+    n_nodes = ndof // dim
+
+    if direction_vec is None:
+        direction_vec = np.array([1.0, 0.0, 0.0], dtype=np.float64)
+    direction_vec = np.asarray(direction_vec, dtype=np.float64)
+
+    if charges is None:
+        charges = np.ones(n_nodes)
+    charges = np.asarray(charges)
+
+    # Build RHS force vector once
+    f = np.zeros(ndof, dtype=np.float64)
+    for n in range(n_nodes):
+        dir_v = direction_vec[n] if direction_vec.ndim == 2 else direction_vec[:dim]
+        f[n*dim:(n+1)*dim] = charges[n] * dir_v
+
+    # Convert mass to vector
+    m = np.diag(M).reshape(n_nodes, dim)[:, 0]
+    m_repeated = np.repeat(m, dim)
+    M_sparse = sp.diags(m_repeated, format='csr')
+
+    spectrum_energy = np.zeros(len(omegas))
+    spectrum_dipole = np.zeros((len(omegas), dim), dtype=np.complex128)
+
+    for io, omega in enumerate(omegas):
+        # Dynamic stiffness: A = H - (omega + i*eta)^2 M
+        z = omega + 1j * eta
+        coeff = -(z * z)
+        A = H_sparse + coeff * M_sparse
+        if stabilize > 0:
+            A = A + stabilize * sp.eye(ndof, format='csr')
+
+        try:
+            # Convert to CSR for spsolve (more efficient)
+            A_csr = A.tocsr()
+            # Solve A u = f for u
+            u = spsolve(A_csr, f.astype(np.complex128))
+            spectrum_energy[io] = np.sum(np.abs(u)**2) / n_nodes
+            disp_nodes = u.reshape(n_nodes, dim)
+            dip = (charges[:, None] * disp_nodes).sum(axis=0)
+            spectrum_dipole[io] = dip
+        except Exception as e:
+            print(f"Warning: sparse solve failed at omega={omega}: {e}")
+            spectrum_energy[io] = 0.0
+            spectrum_dipole[io] = np.zeros(dim)
+
+    return {
+        "omega": np.asarray(omegas),
+        "energy": spectrum_energy,
+        "dipole": spectrum_dipole,
+        "n_probes": len(omegas),
+    }
+
+
+def vibration_spectrum_from_modes(K, M, omegas, eta=1e-3, direction_vec=None, charges=None, dim=3):
+    """
+    Fast vibration spectrum via dense diagonalization + eigenmode summation.
+    Avoids per-frequency linear solves; suitable for systems up to ~3000 DOF.
+
+    Steps:
+        1. Mass-weight: K_mw = M^{-1/2} K M^{-1/2}
+        2. Diagonalize: K_mw v_i = w_i v_i
+        3. Frequencies: omega_i = sqrt(w_i)
+        4. Response at omega: sum_i (v_i^T f)^2 / (omega_i^2 - omega^2 - i*eta*omega)
+    """
+    ndof = K.shape[0]
+    n_nodes = ndof // dim
+    if direction_vec is None:
+        direction_vec = np.array([1.0, 0.0, 0.0], dtype=np.float64)
+    direction_vec = np.asarray(direction_vec, dtype=np.float64)
+    if charges is None:
+        charges = np.ones(n_nodes)
+    charges = np.asarray(charges)
+
+    # Build RHS force vector f[n*dim:(n+1)*dim] = charges[n] * direction_vec
+    f = np.zeros(ndof, dtype=np.float64)
+    for n in range(n_nodes):
+        dir_v = direction_vec[n] if direction_vec.ndim == 2 else direction_vec[:dim]
+        f[n*dim:(n+1)*dim] = charges[n] * dir_v
+
+    # Mass-weighted Hessian
+    m = np.diag(M).reshape(n_nodes, dim)[:, 0]
+    m_sqrt = np.repeat(np.sqrt(m), dim)
+    m_inv_sqrt = 1.0 / m_sqrt
+    K_mw = (m_inv_sqrt[:, None] * K) * m_inv_sqrt[None, :]
+
+    # Diagonalize
+    w, v = np.linalg.eigh(K_mw)
+    # Project force onto modes
+    f_tilde = v.T @ (f * m_inv_sqrt)
+
+    # Frequencies
+    omegas_modes = np.sqrt(np.maximum(w, 0.0))
+
+    spectrum_energy = np.zeros(len(omegas), dtype=np.float64)
+    spectrum_dipole = np.zeros((len(omegas), dim), dtype=np.complex128)
+
+    for io, omega in enumerate(omegas):
+        denom = omegas_modes**2 - omega**2 - 1j * eta * omega
+        # Avoid division by zero at exact resonance
+        denom = np.where(np.abs(denom) < 1e-12, 1e-12, denom)
+        coeffs = f_tilde / denom
+        # Displacement in mass-weighted coords
+        u_mw = v @ coeffs
+        # Un-mass-weight
+        u = u_mw * m_inv_sqrt
+        spectrum_energy[io] = np.sum(np.abs(u)**2) / n_nodes
+        disp_nodes = u.reshape(n_nodes, dim)
+        dip = (charges[:, None] * disp_nodes).sum(axis=0)
+        spectrum_dipole[io] = dip
+
+    return {
+        "omega": np.asarray(omegas),
+        "energy": spectrum_energy,
+        "dipole": spectrum_dipole,
+        "omegas_modes": omegas_modes,
+        "n_modes": len(omegas_modes),
+    }
+
 
 def project_rigid_modes(H, M, pos, shift=1e6):
     """

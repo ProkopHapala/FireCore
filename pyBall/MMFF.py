@@ -876,7 +876,7 @@ def getBuffs( NEIGH_MAX=4 ):
         #bond_k    = getBuff ( "bond_k",   (nbonds)   )
         #Kneighs   = getBuff ( "Kneighs",  (nnode,NEIGH_MAX) )
         #bond2atom = getIBuff( "bond2atom",(nbonds,2) )
-    neighs    = getIBuff( "neighs",  (nnode,NEIGH_MAX) )
+    neighs    = getIBuff( "neighs",  (natoms,NEIGH_MAX) )
     selection = getIBuff( "selection",  (natoms) )
     print( "getBuffs DONE" )
 
@@ -1357,6 +1357,78 @@ def getHessian3Nx3N(inds, dx=1e-4):
     out    = np.zeros((dim,dim), dtype=np.float64)
     lib.getHessian3Nx3N( n, _np_as(inds_c, c_int_p), _np_as(out,    c_double_p), dx )
     return out
+
+# void getHessianSparseBlocks(int natoms,int max_neigh,int* neigh_idx,int* neigh_counts,double* out_blocks,double dx)
+lib.getHessianSparseBlocks.argtypes = [c_int, c_int, c_int_p, c_int_p, c_double_p, c_double]
+lib.getHessianSparseBlocks.restype  = None
+
+def buildNeighShells(neighs, n_shells=2, max_neigh=64, include_self=True):
+    neighs = np.asarray(neighs)
+    if neighs.ndim != 2 or neighs.shape[1] != 4:
+        raise ValueError(f"buildNeighShells(): expected neighs shape (natoms,4), got {neighs.shape}")
+    natoms = neighs.shape[0]
+    neighs_i = neighs.astype(np.int32, copy=False)
+    mx = int(neighs_i.max())
+    if mx >= natoms:  # handle potential 1-based indexing
+        neighs_i = neighs_i.copy()
+        mask = neighs_i >= 0
+        neighs_i[mask] -= 1
+        mx2 = int(neighs_i.max())
+        if mx2 >= natoms:
+            raise ValueError(f"buildNeighShells(): neighbor indices out of range after 1-based fix, max={mx2} natoms={natoms}")
+
+    neigh_idx   = np.full((natoms, max_neigh), -1, dtype=np.int32)
+    neigh_count = np.zeros(natoms, dtype=np.int32)
+    marks = np.zeros(natoms, dtype=np.int32)
+    mark  = 1
+
+    for ia in range(natoms):
+        mark += 1
+        if mark == 0:
+            marks.fill(0)
+            mark = 1
+        n = 0
+        if include_self:
+            neigh_idx[ia, n] = ia; n += 1
+            marks[ia] = mark
+        frontier = []
+        ng = neighs_i[ia]
+        for t in range(4):
+            ja = int(ng[t])
+            if ja < 0: continue
+            if marks[ja] == mark: continue
+            if n >= max_neigh: raise ValueError(f"buildNeighShells(): max_neigh overflow at atom {ia} (need>{max_neigh})")
+            marks[ja] = mark
+            neigh_idx[ia, n] = ja; n += 1
+            frontier.append(ja)
+        for _ in range(2, int(n_shells) + 1):
+            if not frontier: break
+            new_frontier = []
+            for ja in frontier:
+                ng2 = neighs_i[ja]
+                for t in range(4):
+                    ka = int(ng2[t])
+                    if ka < 0: continue
+                    if marks[ka] == mark: continue
+                    if n >= max_neigh: raise ValueError(f"buildNeighShells(): max_neigh overflow at atom {ia} (need>{max_neigh})")
+                    marks[ka] = mark
+                    neigh_idx[ia, n] = ka; n += 1
+                    new_frontier.append(ka)
+            frontier = new_frontier
+        neigh_count[ia] = n
+    return neigh_idx, neigh_count
+
+def getHessianSparseBlocks(neigh_idx, neigh_count, dx=1e-4):
+    neigh_idx   = np.ascontiguousarray(neigh_idx,   dtype=np.int32)
+    neigh_count = np.ascontiguousarray(neigh_count, dtype=np.int32)
+    if neigh_idx.ndim != 2:
+        raise ValueError(f"getHessianSparseBlocks(): neigh_idx must be 2D (natoms,max_neigh), got {neigh_idx.shape}")
+    natoms, max_neigh = neigh_idx.shape
+    if neigh_count.shape[0] != natoms:
+        raise ValueError(f"getHessianSparseBlocks(): neigh_count size mismatch ({neigh_count.shape[0]} vs natoms={natoms})")
+    blocks = np.zeros((natoms, max_neigh, 3, 3), dtype=np.float64)
+    lib.getHessianSparseBlocks(natoms, max_neigh, _np_as(neigh_idx, c_int_p), _np_as(neigh_count, c_int_p), _np_as(blocks, c_double_p), dx)
+    return blocks
 
 # void getPhononPhiBlocks(int n_total,int* inds_total,int n_disp,int* inds_disp,double* out_phi,double dx)
 lib.getPhononPhiBlocks.argtypes = [c_int, c_int_p, c_int, c_int_p, c_double_p, c_double]

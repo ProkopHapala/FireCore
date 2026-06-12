@@ -414,6 +414,44 @@ void getHessian3Nx3N(int n,int* inds,double* out_hessian,double dx){
     }
 }
 
+void getHessianSparseBlocks(int natoms,int max_neigh,int* neigh_idx,int* neigh_counts,double* out_blocks,double dx){
+    const bool bNonBonded0 = W.bNonBonded;
+    W.bNonBonded=false;
+    const int nblk = natoms*max_neigh;
+    for(int i=0;i<nblk*9;i++){ out_blocks[i]=0.0; }
+    for(int p=0;p<natoms;p++){
+        Vec3d p0 = W.nbmol.apos[p];
+        const int nng = neigh_counts[p];
+        const int i0  = p*max_neigh;
+        for(int k=0;k<3;k++){
+            double v=p0.array[k];
+            W.nbmol.apos[p].array[k]=v+dx; W.eval();
+            for(int j=0;j<nng;j++){
+                const int o = neigh_idx[i0+j];
+                if(o<0) continue;
+                const Vec3d f = W.nbmol.fapos[o];
+                double* blk = out_blocks + (i0+j)*9;
+                blk[0*3+k] = -f.x;
+                blk[1*3+k] = -f.y;
+                blk[2*3+k] = -f.z;
+            }
+            W.nbmol.apos[p].array[k]=v-dx; W.eval();
+            const double inv2dx = 1.0/(2*dx);
+            for(int j=0;j<nng;j++){
+                const int o = neigh_idx[i0+j];
+                if(o<0) continue;
+                const Vec3d f = W.nbmol.fapos[o];
+                double* blk = out_blocks + (i0+j)*9;
+                blk[0*3+k] = (blk[0*3+k] + f.x)*inv2dx;
+                blk[1*3+k] = (blk[1*3+k] + f.y)*inv2dx;
+                blk[2*3+k] = (blk[2*3+k] + f.z)*inv2dx;
+            }
+            W.nbmol.apos[p].array[k]=v;
+        }
+    }
+    W.bNonBonded=bNonBonded0;
+}
+
 void getPhononPhiBlocks(int n_total,int* inds_total,int n_disp,int* inds_disp,double* out_phi,double dx){
     // Phi[o,p] = -dF_o/du_p (central FD).  o=all supercell atoms, p=central-cell displacements only.
     // out_phi layout: (n_total*3) rows x (n_disp*3) cols — Bloch extraction in Python.
