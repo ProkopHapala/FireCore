@@ -40,6 +40,7 @@ class DynamicOpt{ public:
     double * vel       = 0;
     double * force     = 0;
     double * invMasses = 0;
+    bool bOwnPos=true, bOwnVel=true, bOwnForce=true, bOwnInvMasses=true; // false when bound to ffl.DOFs/fDOFs in setOptimizer
 
     bool  bfixmask=false;
     bool* fixmask = 0;
@@ -159,14 +160,15 @@ class DynamicOpt{ public:
 
     inline void bindArrays( int n_, double * pos_, double * vel_, double * force_, double * invMasses_ ){
         n = n_; pos=pos_;  vel=vel_; force=force_; invMasses=invMasses_;
+        bOwnPos=false; bOwnVel=false; bOwnForce=false; bOwnInvMasses=false;
     }
 
     inline void bindOrAlloc( int n_, double * pos_, double * vel_, double * force_, double * invMasses_ ){
         n = n_;
-        if(pos_  ==0){ _realloc(pos  ,n); }else{ pos   = pos_;   };
-        if(vel_  ==0){ _realloc(vel  ,n); }else{ vel   = vel_;   };
-        if(force_==0){ _realloc(force,n); }else{ force = force_; };
-        if(invMasses_==0) { _realloc(invMasses,n); setInvMass(1.0); }else{ invMasses=invMasses_; }
+        if(pos_  ==0){ _realloc(pos  ,n); bOwnPos=true;   }else{ pos   = pos_;        bOwnPos=false;   };
+        if(vel_  ==0){ _realloc(vel  ,n); bOwnVel=true;   }else{ vel   = vel_;        bOwnVel=false;   };
+        if(force_==0){ _realloc(force,n); bOwnForce=true; }else{ force = force_;      bOwnForce=false; };
+        if(invMasses_==0) { _realloc(invMasses,n); bOwnInvMasses=true; setInvMass(1.0); }else{ invMasses=invMasses_; bOwnInvMasses=false; }
         //if(invMasses_==0) setInvMass(1.0);
 
         _realloc(avs  ,n);
@@ -180,16 +182,20 @@ class DynamicOpt{ public:
         _realloc(vel    ,n);
         _realloc(force  ,n);
         _realloc(invMasses,n);
+        bOwnPos=true; bOwnVel=true; bOwnForce=true; bOwnInvMasses=true;
 
         _realloc(avs  ,n);
         _realloc(avs2 ,n);
     }
 
-    inline void dealloc( ){
-        _dealloc(pos);
-        _dealloc(vel);
-        _dealloc(force);
-        _dealloc(invMasses);
+    inline void dealloc( ){ // never free borrowed pos/force (alias ffl.DOFs); avs/avs2 always owned here
+        if(bOwnPos      ){ _dealloc(pos);       }else{ pos=0;       }
+        if(bOwnVel      ){ _dealloc(vel);       }else{ vel=0;       }
+        if(bOwnForce    ){ _dealloc(force);     }else{ force=0;     }
+        if(bOwnInvMasses){ _dealloc(invMasses); }else{ invMasses=0; }
+        _dealloc(avs);
+        _dealloc(avs2);
+        n=0; bOwnPos=true; bOwnVel=true; bOwnForce=true; bOwnInvMasses=true;
     }
 
     inline void cleanForce( ){  for(int i=0; i<n; i++){ force[i]=0; } }

@@ -61,8 +61,14 @@ export LSAN_OPTIONS=detect_leaks=0
 #echo "=== Running Vibration Spectra Test ==="
 #python3 test_vibration_spectra.py
 
-echo "=== Running Hessian Fitting Test ==="
-python3 test_hessian_fitting.py
+echo "=== Running Diamond Phonon Bands Test ==="
+PY=python3
+if [ -x /home/prokop/venvs/ML/bin/python3 ]; then PY=/home/prokop/venvs/ML/bin/python3; fi
+if [ -n "$1" ]; then
+  $PY "$@"
+else
+  $PY test_diamond_phonon_bands.py --unit THz --asr
+fi
 
 # Test without substrate
 #echo "=== Testing without substrate ==="

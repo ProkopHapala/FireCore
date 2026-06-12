@@ -24,38 +24,39 @@ extern "C"{
 void init_buffers_UFF(){
     printf( "init_buffers_UFF() \n" );
     // Common buffers
-    buffers.insert( { "apos",   (double*)W.nbmol.apos  } );
-    buffers.insert( { "fapos",  (double*)W.nbmol.fapos } );
-    buffers.insert( { "REQs",   (double*)W.nbmol.REQs  } );
+    buffers["apos"]  = (double*)W.nbmol.apos;
+    buffers["fapos"] = (double*)W.nbmol.fapos;
+    buffers["REQs"]  = (double*)W.nbmol.REQs;
     //buffers.insert( { "PLQs",   (double*)W.nbmol.PLQs  } );
     // UFF-specific buffers
     if(W.bUFF){ // UFF-specific buffers
-        buffers.insert(  { "hneigh",    (double*)W.ffu.hneigh } );
-        buffers.insert(  { "fint",      (double*)W.ffu.fint   } );
-        buffers.insert(  { "bonParams", (double*)W.ffu.bonParams } );
-        buffers.insert(  { "angParams", (double*)W.ffu.angParams } );
-        buffers.insert(  { "dihParams", (double*)W.ffu.dihParams } );
-        buffers.insert(  { "invParams", (double*)W.ffu.invParams } );
+        buffers["hneigh"]    = (double*)W.ffu.hneigh;
+        buffers["fint"]      = (double*)W.ffu.fint;
+        buffers["bonParams"] = (double*)W.ffu.bonParams;
+        buffers["angParams"] = (double*)W.ffu.angParams;
+        buffers["dihParams"] = (double*)W.ffu.dihParams;
+        buffers["invParams"] = (double*)W.ffu.invParams;
 
-        ibuffers.insert( { "neighs",    (int*)W.ffu.neighs    } );
-        ibuffers.insert( { "neighBs",   (int*)W.ffu.neighBs   } );
-        ibuffers.insert( { "bonAtoms",  (int*)W.ffu.bonAtoms  } );
-        ibuffers.insert( { "angAtoms",  (int*)W.ffu.angAtoms  } );
-        ibuffers.insert( { "dihAtoms",  (int*)W.ffu.dihAtoms  } );
-        ibuffers.insert( { "invAtoms",  (int*)W.ffu.invAtoms  } );
+        ibuffers["atypes"]   = (int*)W.ffu.atypes;
+        ibuffers["neighs"]   = (int*)W.ffu.neighs;
+        ibuffers["neighBs"]  = (int*)W.ffu.neighBs;
+        ibuffers["bonAtoms"] = (int*)W.ffu.bonAtoms;
+        ibuffers["angAtoms"] = (int*)W.ffu.angAtoms;
+        ibuffers["dihAtoms"] = (int*)W.ffu.dihAtoms;
+        ibuffers["invAtoms"] = (int*)W.ffu.invAtoms;
 
         // neighbor indices for angles, dihedrals, inversions
-        ibuffers.insert( { "angNgs",    (int*)W.ffu.angNgs    } );
-        ibuffers.insert( { "dihNgs",    (int*)W.ffu.dihNgs    } );
-        ibuffers.insert( { "invNgs",    (int*)W.ffu.invNgs    } );
+        ibuffers["angNgs"] = (int*)W.ffu.angNgs;
+        ibuffers["dihNgs"] = (int*)W.ffu.dihNgs;
+        ibuffers["invNgs"] = (int*)W.ffu.invNgs;
     }
     // UFF-specific dimensions
     if(W.bUFF){
-        ibuffers.insert( { "ndims", &W.ffu._natoms } ); // 
-        buffers.insert ( { "Es",    &W.ffu.Etot    } );
+        ibuffers["ndims"] = &W.ffu._natoms;
+        buffers ["Es"]    = &W.ffu.Etot;
     }
-    ibuffers.insert( { "selection", W.manipulation_sel  } );
-    bbuffers.insert( { "ffflags",  &W.doBonded  } );
+    ibuffers["selection"] = W.manipulation_sel;
+    bbuffers["ffflags"]   = &W.doBonded;
     // int _natoms, nbonds, nangles, ndihedrals, ninversions, nf; // 5
     // int i0dih,i0inv,i0ang,i0bon;                               // 4
     // double Etot, Eb, Ea, Ed, Ei;                               // 5
@@ -65,31 +66,40 @@ void init_buffers_UFF(){
 
 void init_buffers(){
     printf( "init_buffers() \n" );
-    buffers .insert( { "apos",   (double*)W.nbmol.apos  } );
-    buffers .insert( { "fapos",  (double*)W.nbmol.fapos } );
-    buffers .insert( { "REQs",   (double*)W.nbmol.REQs  } );
+    buffers["apos"]  = (double*)W.nbmol.apos;
+    buffers["fapos"] = (double*)W.nbmol.fapos;
+    buffers["REQs"]  = (double*)W.nbmol.REQs;
     if(W.bMMFF){
-        buffers .insert( { "DOFs",      W.ffl.DOFs  } );
-        buffers .insert( { "fDOFs",     W.ffl.fDOFs } );
-        buffers .insert( { "vDOFs",     W.opt.vel  } );
+        buffers["DOFs"]  = W.ffl.DOFs;
+        buffers["fDOFs"] = W.ffl.fDOFs;
+        buffers["vDOFs"] = W.opt.vel;
         //buffers .insert( { "REQs",   (double*)W.ffl.REQs  } );
-        buffers .insert( { "PLQs",   (double*)W.ffl.PLQd  } );
+        buffers["PLQs"] = (double*)W.ffl.PLQd;
         if(!W.bUFF){
-            buffers .insert( { "pipos",  (double*)W.ffl.pipos   } );
-            buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
-            ibuffers.insert( { "neighs",    (int*)W.ffl.neighs  } );
+            buffers["pipos"]  = (double*)W.ffl.pipos;
+            buffers["fpipos"] = (double*)W.ffl.fpipos;
+            ibuffers["neighs"] = (int*)W.ffl.neighs;
+            ibuffers["atypes"] = (int*)W.ff.atype;
+            // MMFF parameter arrays
+            buffers["bKs"]    = (double*)W.ffl.bKs;     // [nnode] bond stiffness
+            buffers["bLs"]    = (double*)W.ffl.bLs;     // [nnode] bond lengths
+            buffers["apars"]  = (double*)W.ffl.apars;   // [nnode] angle parameters (c0, Kss, Ksp, c0_e)
+            buffers["Ksp"]    = (double*)W.ffl.Ksp;     // [nnode] pi-sigma stiffness
+            buffers["Kpp"]    = (double*)W.ffl.Kpp;     // [nnode] pi-planarization stiffness
         } // else{ // UFF-specific}
     }else{
         W.ff.natoms=W.nbmol.natoms;
     }
     printf( "MMFF_lib.cpp::init_buffers() ndims{nDOFs=%i,natoms=%i,nnode=%i,ncap=%i,npi=%i,nbonds=%i,nvecs=%i,ne=%i,ie0=%i}\n", W.ff.nDOFs, W.ff.natoms, W.ff.nnode, W.ff.ncap, W.ff.npi, W.ff.nbonds, W.ff.nvecs, W.ff.ne, W.ff.ie0 );
-        ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
-    buffers .insert( { "Es",       &W.ff.Etot  } );
-    ibuffers.insert( { "selection", W.manipulation_sel  } );
-    bbuffers.insert( { "ffflags", &W.doBonded  } );
+    ibuffers["ndims"]    = &W.ff.nDOFs;
+    buffers ["Es"]       = &W.ff.Etot;
+    ibuffers["selection"] = W.manipulation_sel;
+    bbuffers["ffflags"]   = &W.doBonded;
     //printBuffNames();
 }
 
+
+int getUFFTypeCode( const char* type_name ){ return W.params.getAtomType( type_name, false ); }
 
 void print_debugs( bool bParams, bool bNeighs, bool bShifts, bool bAtoms ){
     printf("print_debugs() W.bUFF=%i, bParams=%i, bNeighs=%i, bShifts=%i, bAtoms=%i \n", W.bUFF, bParams, bNeighs, bShifts, bAtoms);
@@ -125,12 +135,13 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
 	W.bMMFF      = bMMFF;
     W.bEpairs    = bEpairs;
     W.gridStep   = gridStep;
-    W.nPBC       = *(Vec3i*)nPBC;
+    W.nPBC       = Vec3i{ nPBC[0], nPBC[1], nPBC[2] };
     W.bUFF       = bUFF; 
     W.b141       = b141;
     W.bSimple    = bSimple;
     W.bConj      = bConj;
     W.bCumulene  = bCumulene;
+    printf("MMFF_lib::init() args: bUFF=%i bMMFF=%i nPBC=(%i,%i,%i)\n", (int)bUFF, (int)bMMFF, W.nPBC.x, W.nPBC.y, W.nPBC.z );
     // read and store parameters from tables
     // TBD pass bUFF to MMFFparams::init so that if true, no need to read bonds, angles nor dihedrals...
     //W.params.verbosity = verbosity;
@@ -331,8 +342,8 @@ void getHessian3x3( int n, int* inds, double* Hess_, double dx, bool bDiag ){
         //Vec3d* Hess = ((Vec3d*)out_hessians)+(i*3); 
         printf( "getHessian3x3() ia=%i p=(%g,%g,%g)\n", ia, p.x,p.y,p.z );
         for(int k=0;k<3;k++){
-            p.array[k]=p0.array[k]+dx; W.eval_no_omp(); Vec3d df=W.nbmol.fapos[ia];
-            p.array[k]=p0.array[k]-dx; W.eval_no_omp(); df.sub(  W.nbmol.fapos[ia] );
+            p.array[k]=p0.array[k]+dx; W.eval(); Vec3d df=W.nbmol.fapos[ia];
+            p.array[k]=p0.array[k]-dx; W.eval(); df.sub(  W.nbmol.fapos[ia] );
             p.array[k]=p0.array[k];                     df.mul(denom);
             printf( "getHessian3x3() ia=%i k=%i p=(%g,%g,%g) df=(%g,%g,%g)\n", ia, k, p.x,p.y,p.z, df.x,df.y,df.z );
             //Hess[k]=df;
@@ -358,36 +369,109 @@ void getHessian3x3( int n, int* inds, double* Hess_, double dx, bool bDiag ){
 }
 
 void getHessian3Nx3N(int n,int* inds,double* out_hessian,double dx){
+    // Phi(ia,ja,R) = -dF_ja(0)/du_ia via central FD.  Bloch D(k) applied downstream in Python.
+    // Periodic crystal: init with lvs xyz + nPBC>0 so bonded/H-bond neighbors include cell images.
+    printf("getHessian3Nx3N(n=%i) dx=%g bPBC=%i nPBC=(%i,%i,%i) bMMFF=%i\n",
+        n, dx, (int)W.bPBC, W.nPBC.x, W.nPBC.y, W.nPBC.z, (int)W.bMMFF);
+    if(!W.bPBC){
+        printf("WARNING: getHessian3Nx3N bPBC=0 — cluster Hessian; for bulk phonons use lvs xyz + nPBC>0\n");
+    }
+    const bool bNonBonded0 = W.bNonBonded;
+    W.bNonBonded=false;
     std::vector<Vec3d> orig(n);
     int dim = n * 3;
-    // save original positions
+    for(int i=0;i<dim*dim;i++){ out_hessian[i]=0.0; }
     for(int i=0;i<n;i++){ int ia=inds[i]; orig[i]=W.nbmol.apos[ia]; }
     for(int p=0;p<n;p++){
         int ip=inds[p];
         for(int k=0;k<3;k++){
-            double v=orig[p].array[k]; // p is index in inds, so orig[p] is apos[ip]
-            
-            W.nbmol.apos[ip].array[k]=v+dx; W.eval_no_omp(); 
+            double v=orig[p].array[k];
+            W.nbmol.apos[ip].array[k]=v+dx; W.eval();
             for(int o=0; o<n; o++){
                 int io = inds[o];
                 for(int l=0; l<3; l++){
-                    out_hessian[(o*3+l)*dim + (p*3+k)] = -W.nbmol.fapos[io].array[l]; // f_plus
+                    out_hessian[(o*3+l)*dim + (p*3+k)] = -W.nbmol.fapos[io].array[l];
                 }
             }
-
-            W.nbmol.apos[ip].array[k]=v-dx; W.eval_no_omp();
+            W.nbmol.apos[ip].array[k]=v-dx; W.eval();
             for(int o=0; o<n; o++){
                 int io = inds[o];
                 for(int l=0; l<3; l++){
-                    // H = -(f_plus - f_minus) / (2*dx)
                     out_hessian[(o*3+l)*dim + (p*3+k)] = (out_hessian[(o*3+l)*dim + (p*3+k)] + W.nbmol.fapos[io].array[l]) / (2*dx);
                 }
             }
             W.nbmol.apos[ip].array[k]=v;
         }
     }
-    // restore original positions
     for(int i=0;i<n;i++){ int ia=inds[i]; W.nbmol.apos[ia]=orig[i]; }
+    W.bNonBonded=bNonBonded0;
+    for(int i=0;i<dim;i++){
+        for(int j=i+1;j<dim;j++){
+            double s = 0.5*(out_hessian[i*dim+j]+out_hessian[j*dim+i]);
+            out_hessian[i*dim+j]=s;
+            out_hessian[j*dim+i]=s;
+        }
+    }
+}
+
+void getPhononPhiBlocks(int n_total,int* inds_total,int n_disp,int* inds_disp,double* out_phi,double dx){
+    // Phi[o,p] = -dF_o/du_p (central FD).  o=all supercell atoms, p=central-cell displacements only.
+    // out_phi layout: (n_total*3) rows x (n_disp*3) cols — Bloch extraction in Python.
+    printf("getPhononPhiBlocks(n_total=%i,n_disp=%i) dx=%g bPBC=%i nPBC=(%i,%i,%i)\n",
+        n_total, n_disp, dx, (int)W.bPBC, W.nPBC.x, W.nPBC.y, W.nPBC.z);
+    if(W.bPBC){
+        if( (W.nPBC.x==0) && (W.nPBC.y==0) && (W.nPBC.z==0) ){
+            printf("ERROR getPhononPhiBlocks(): bPBC=1 but nPBC=(0,0,0). This guarantees neighCell stays -1 and phonons will be wrong => Exit()\n");
+            exit(0);
+        }
+    }
+    if(W.bUFF){
+        printf("UFF neighs+neighCell (natoms=%i)\n", W.ffu.natoms);
+        for(int i=0; i<W.ffu.natoms; i++){
+            const Quat4i& ng  = W.ffu.neighs[i];
+            const Quat4i& ngc = W.ffu.neighCell[i];
+            printf("atom[%i] neigh{%3i,%3i,%3i,%3i} neighCell{%3i,%3i,%3i,%3i}\n", i, ng.x,ng.y,ng.z,ng.w,   ngc.x,ngc.y,ngc.z,ngc.w);
+        }
+    }else{
+        W.ffl.printNeighs();
+    }
+    if(W.bPBC){
+        if(W.bUFF){
+            if(!W.ffu.checkPBCNeighCells("getPhononPhiBlocks")) exit(0);
+        }else{
+            if(!W.ffl.checkPBCNeighCells("getPhononPhiBlocks")) exit(0);
+        }
+    }
+    const bool bNonBonded0 = W.bNonBonded;
+    W.bNonBonded=false;
+    int dim_out = n_disp * 3;
+    int dim_in  = n_total * 3;
+    for(int i=0;i<dim_in*dim_out;i++){ out_phi[i]=0.0; }
+    std::vector<Vec3d> orig(n_disp);
+    for(int i=0;i<n_disp;i++){ orig[i]=W.nbmol.apos[inds_disp[i]]; }
+    for(int p=0;p<n_disp;p++){
+        int ip=inds_disp[p];
+        for(int k=0;k<3;k++){
+            double v=orig[p].array[k];
+            W.nbmol.apos[ip].array[k]=v+dx; W.eval();
+            for(int o=0;o<n_total;o++){
+                int io=inds_total[o];
+                for(int l=0;l<3;l++){
+                    out_phi[(o*3+l)*dim_out + (p*3+k)] = -W.nbmol.fapos[io].array[l];
+                }
+            }
+            W.nbmol.apos[ip].array[k]=v-dx; W.eval();
+            for(int o=0;o<n_total;o++){
+                int io=inds_total[o];
+                for(int l=0;l<3;l++){
+                    out_phi[(o*3+l)*dim_out + (p*3+k)] = (out_phi[(o*3+l)*dim_out + (p*3+k)] + W.nbmol.fapos[io].array[l]) / (2*dx);
+                }
+            }
+            W.nbmol.apos[ip].array[k]=v;
+        }
+    }
+    for(int i=0;i<n_disp;i++){ W.nbmol.apos[inds_disp[i]]=orig[i]; }
+    W.bNonBonded=bNonBonded0;
 }
 
 void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeighs,  int SurfAtoms, int GridFF, int MMFF, int Angles, int PiSigma, int PiPiI ){

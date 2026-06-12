@@ -137,7 +137,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 	GridFF       gridFF;
     bool bGridDouble = true;
 
-    ~MolWorld_sp3(){ gridFF.apos=0; gridFF.atypes=0; }
+    ~MolWorld_sp3(){ gridFF.apos=0; gridFF.atypes=0; clearFFs(); surf.dealloc(); } // gridFF borrows surf; null before surf teardown
 
     EwaldGrid gewald;
 
@@ -358,6 +358,10 @@ class MolWorld_sp3 : public SolverInterface { public:
         //params.verbosity=verbosity;
         //printf(  "MolWorld_sp3:init() params.verbosity = %i \n", params.verbosity );
         printf("params.atypes.size() %i\n", params.atypes.size() );
+        if(verbosity>0){printf("MolWorld_sp3::init() clearing previous state: builder.atoms=%zu ff=%i ffl=%i ffu=%i\n", builder.atoms.size(), ff.natoms, ffl.natoms, ffu.natoms ); }
+        builder.clear();
+        bBondInitialized=false;
+        clearFFs();
         if( params.atypes.size() == 0 ){
             initParams( "common_resources/ElementTypes.dat", "common_resources/AtomTypes.dat", "common_resources/BondTypes.dat", "common_resources/AngleTypes.dat", "common_resources/DihedralTypes.dat" );
         }
@@ -1041,12 +1045,10 @@ void printPBCshifts(){
     void initNBmol( NBFF* ff, bool bCleanCharge=true ){
         if(verbosity>0)printf( "MolWorld_sp3::initNBmol() na %i \n", ff->natoms  );
         //void bindOrRealloc(int n_, Vec3d* apos_, Vec3d* fapos_, Quat4d* REQs_, int* atypes_ ){
-        nbmol.bindOrRealloc( ff->natoms, ff->apos, ff->fapos, 0, ff->atypes );    
-        //nbmol.bindOrRealloc( na, apos, fapos, 0, 0 );   
-        //builder.export_atypes( nbmol.atypes );     
-        builder.export_REQs( nbmol.REQs   );       ff->REQs=nbmol.REQs;
-        nbmol  .makePLQs   ( gridFF.alphaMorse );  ff->PLQs=nbmol.PLQs; 
-        nbmol  .makePLQd   ( gridFF.alphaMorse );  ff->PLQd=nbmol.PLQd; 
+        nbmol.bindOrRealloc( ff->natoms, ff->apos, ff->fapos, 0, ff->atypes ); // nbmol borrows coords; owns REQs (ff aliases below)
+        builder.export_REQs( nbmol.REQs   );       ff->REQs=nbmol.REQs; ff->bOwnREQs=false;
+        nbmol  .makePLQs   ( gridFF.alphaMorse );  ff->PLQs=nbmol.PLQs; ff->bOwnPLQs=false; 
+        nbmol  .makePLQd   ( gridFF.alphaMorse );  ff->PLQd=nbmol.PLQd; ff->bOwnPLQd=false; 
         //nbmol.print_nonbonded();
         if(bCleanCharge)for(int i=builder.atoms.size(); i<ff->natoms; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge        
         params.assignREs( ff->natoms, nbmol.atypes, nbmol.REQs, true, false  );
@@ -1063,9 +1065,11 @@ void printPBCshifts(){
         if(verbosity>0)printf( "MolWorld_sp3::loadNBmol() \n" );
         sprintf(tmpstr, "%s.xyz", name );
         params.loadXYZ( tmpstr, nbmol.natoms, &nbmol.apos, &nbmol.REQs, &nbmol.atypes );
+        nbmol.setOwnedArrays(); nbmol.bOwnREQs=true;
         _realloc(nbmol.fapos,nbmol.natoms);
+        nbmol.bOwnFapos=true;
         nbmol  .makePLQs     ( gridFF.alphaMorse );  
-        ffl.PLQs=nbmol.PLQs; 
+        ffl.PLQs=nbmol.PLQs; ffl.bOwnPLQs=false; 
         if(verbosity>1)nbmol.print();                              
     }
 
@@ -1083,6 +1087,7 @@ void printPBCshifts(){
         char fname[256];
         sprintf(fname, "%s.xyz", name );
         int ret = params.loadXYZ( fname, surf.natoms, &surf.apos, &surf.REQs, &surf.atypes, 0, &gridFF.grid.cell );
+        surf.setOwnedArrays(); surf.bOwnREQs=true;
         if     ( ret<0 ){ getcwd(tmpstr,1024); printf("ERROR in MolWorld_sp3::loadSurf() file(%s) not found in path(%s)=> Exit() \n", fname, tmpstr ); exit(0); }
         if     ( ret==0){ printf("ERROR in MolWorld_sp3::loadSurf() no lattice vectors in (%s) => Exit() \n", fname ); exit(0); }
         else if( ret>0 ){ gridFF.grid.updateCell(gridStep); gridFF.bCellSet=true;  }
@@ -1178,6 +1183,11 @@ void printPBCshifts(){
         //     readMatrix( tmpstr, 3, 3, (double*)&builder.lvec );
         // }
         bPBC=builder.bPBC;  //printf( "builder.bPBC %i \n", builder.bPBC );
+        // If nPBC is explicitly non-zero, force PBC on even if XYZ had no lattice vectors
+        if( (nPBC.x>0)||(nPBC.y>0)||(nPBC.z>0) ){ 
+            if(!bPBC){ printf("MolWorld_sp3::loadGeom() nPBC(%i,%i,%i) is non-zero => forcing bPBC=true (XYZ had no lattice vectors)\n", nPBC.x,nPBC.y,nPBC.z); }
+            bPBC=true; builder.bPBC=true; 
+        }
         if( !bBondInitialized){
             if( bPBC ){ builder.autoBondsPBC(); }
             else      { builder.autoBonds();    }
@@ -1311,6 +1321,7 @@ void printPBCshifts(){
  */
     void initParams( const char* sElemTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes, const char* sDihedralTypes=0 ){
         printf( "MolWorld_sp3::initParams():\n\tsElemTypes(%s)\n\tsAtomTypes(%s)\n\tsBondTypes(%s)\n\tsAngleTypes(%s)\n", sElemTypes, sAtomTypes, sBondTypes, sAngleTypes );
+        params.clear(); // is this OK ? Is this necessary? If we want to reinitialize we should do it prehaps on python side 
         params.init( sElemTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
         builder.bindParams(&params);
         params_glob = &params;
@@ -1404,7 +1415,7 @@ void printPBCshifts(){
             builder.printAtomConfs();
             builder.printBonds();
 
-            builder.toMMFFsp3_loc( ffl, true, bEpairs, bUFF );   
+            builder.toMMFFsp3_loc( ffl, true, bEpairs, bUFF, nPBC );   
             //ffl.printAtomParams();
             if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
             if(ffl.bEachAngle){ builder.assignAnglesMMFFsp3  ( ffl, false      ); ffl.printAngles();   }  //exit(0);
@@ -1422,11 +1433,23 @@ void printPBCshifts(){
         // setting up PBC
         if(bPBC){
             if ( bUFF ){
+                printf("makeMMFFs(): UFF PBC setup: builder.lvec=(%g,%g,%g)(%g,%g,%g)(%g,%g,%g) nPBC=(%i,%i,%i)\n",
+                    builder.lvec.a.x,builder.lvec.a.y,builder.lvec.a.z,
+                    builder.lvec.b.x,builder.lvec.b.y,builder.lvec.b.z,
+                    builder.lvec.c.x,builder.lvec.c.y,builder.lvec.c.z,
+                    nPBC.x,nPBC.y,nPBC.z);
                 ffu.setLvec( builder.lvec);   
                 npbc = makePBCshifts( nPBC, builder.lvec );
                 ffu.bindShifts(npbc,pbc_shifts);
                 //ffu.makeNeighCells( nPBC );      
                 ffu.makeNeighCells( npbc, pbc_shifts ); 
+                // --- rigorous sanity check: pbc_shifts must be non-trivially non-zero and neighCell must all be >=0
+                { 
+                    double shiftNorm2=0; for(int i=0;i<npbc;i++) shiftNorm2+=pbc_shifts[i].norm2();
+                    if(shiftNorm2<1e-10 && npbc>1){ printf("ERROR makeMMFFs(): UFF bPBC=1 but all pbc_shifts are zero (norm2=%g, npbc=%i). builder.lvec is likely zero => Exit()\n", shiftNorm2, npbc); exit(0); }
+                    if(!ffu.checkPBCNeighCells("makeMMFFs")) exit(0);
+                    printf("makeMMFFs(): UFF PBC sanity check PASSED (npbc=%i shiftNorm2=%g)\n", npbc, shiftNorm2);
+                }
             }else{
                 ff.bPBCbyLvec = true;
                 ff .setLvec( builder.lvec);
@@ -1435,8 +1458,9 @@ void printPBCshifts(){
                 npbc = makePBCshifts( nPBC, builder.lvec );
                 ffl.bindShifts(npbc,pbc_shifts);
                 //ff4.makeNeighCells  ( nPBC );       
+                // neighCell already populated in toMMFFsp3_loc from Bond.ipbc; makeNeighCells would overwrite with wrong indices for primitive cells
                 //ffl.makeNeighCells( nPBC );      
-                ffl.makeNeighCells( npbc, pbc_shifts ); 
+                //ffl.makeNeighCells( npbc, pbc_shifts ); 
             }
         }
 
@@ -1503,7 +1527,9 @@ void printPBCshifts(){
             if(bOptimizer){ 
                 //setOptimizer( ffu.nDOFs, ffu.DOFs, ffu.fDOFs );
                 setOptimizer( ffu.natoms*3, (double*)ffu.apos, (double*)ffu.fapos );
+                if(ffu.bOwnVapos){ _dealloc(ffu.vapos); }
                 ffu.vapos = (Vec3d*)opt.vel;
+                ffu.bOwnVapos=false;
             }                         
         }else{
             initNBmol( &ffl );
@@ -1539,6 +1565,7 @@ void printPBCshifts(){
                 setOptimizer( ffl.nDOFs, ffl.DOFs, ffl.fDOFs );
                 if(bRelaxPi) ffl.relax_pi( 1000, 0.1, 1e-4 );
                 ffl.vapos = (Vec3d*)opt.vel;
+                ffl.bOwnVapos=false;
             }                         
             _realloc( manipulation_sel, ff.natoms );
         }
@@ -1551,22 +1578,19 @@ virtual void updateFromBuilder(){
     makeFFs();
 };
 
-void clearFFs(){
+void clearFFs(){ // explicit teardown (not RAII): owner ffl before borrowers nbmol/opt; see Memory_Ownership_and_Deallocation.md
     printf("MolWorld_sp3::clearFFs()\n");
     ffl.dealloc();
+    ffu.dealloc();
     ff.dealloc();
     //ff4.dealloc();
     _dealloc( apos_bak );
-    // --- nbmol
-    nbmol.neighs=0;   // NOTE : if we set pointer to zero it does not try to deallocate it !!!
-    nbmol.apos=0;  
-    nbmol.fapos=0;  
-    nbmol.atypes=0;
     nbmol.dealloc();
-    // --- opt
-    opt.pos = 0;
-    opt.force = 0;
     opt.dealloc();
+    optRB.dealloc();
+    _dealloc( pbc_shifts );
+    _dealloc( manipulation_sel );
+    npbc=0;
 }
 
 
@@ -1580,6 +1604,9 @@ void clearFFs(){
 virtual void clear( bool bParams=true, bool bSurf=false ){
     //printf("MolWorld_sp3::clear() \n");
     builder.clear();
+    bBondInitialized=false;
+    isInitialized=false;
+    bPBC=false;
     selection.clear();
     selection_set.clear();
     clearFFs();
@@ -1588,6 +1615,8 @@ virtual void clear( bool bParams=true, bool bSurf=false ){
         //gridFF.dealloc();
         //gridFF.bCellSet=false;
         //gridFF.bGridFF=false;
+        gridFF.apos=0; gridFF.atypes=0;
+        surf.dealloc();
     }
     if(bParams){
         params.clear();
@@ -1786,15 +1815,13 @@ virtual void clear( bool bParams=true, bool bSurf=false ){
         //ffl.printAtomParams();
         //ffl.print_pbc_shifts();
         //printf("lvec: ");printMat(builder.lvec);
-        if(bMMFF){ 
-            if(bUFF){ E += ffu.eval(); }
-            else    { E += ffl.eval(); }
-            
-        }else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }      
+        if(bUFF ){ E += ffu.eval(); }
+        else if(bMMFF){ E += ffl.eval(); }
+        else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }      
         //bPBC=false;
         if(bNonBonded){
-            //E += nbmol.evalLJQs_ng4_PBC_omp( );
-            E += ffl  .evalLJQs_ng4_PBC_omp( );
+            if(bUFF){ E += ffu.evalLJQs_ng4_PBC_omp(); }
+            else    { E += ffl.evalLJQs_ng4_PBC_omp(); }
             /*
             if(bMMFF){    
                 if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, npbc, pbc_shifts, gridFF.Rdamp ); }   // atoms outside cell

@@ -529,12 +529,17 @@ class Builder : public BuilderBase {  public:
         //printf( "MMFFBuilder::assignBondParams(ib=%i|ia=%i,ja=%i) order=%g \n", ib, b.atoms.i, b.atoms.j, b.order );
         const Atom& ai = atoms[b.atoms.i];
         const Atom& aj = atoms[b.atoms.j];
-        printf( "MMFFBuilder::assignBondParams(ib=%i|ia=%i,ja=%i) types: %i=%s %i=%s \n", ib, b.atoms.i, b.atoms.j,  ai.type, params->atypes[ai.type].name, aj.type, params->atypes[aj.type].name );
+        printf( "MMFFBuilder::assignBondParams(ib=%i|ia=%i,ja=%i) types: %i=%s %i=%s fixed(%i,%i)\n", ib, b.atoms.i, b.atoms.j, ai.type, params->atypes[ai.type].name, aj.type, params->atypes[aj.type].name, (int)ai.bTypeFixed, (int)aj.bTypeFixed );
         int order=1;
-        if( (ai.iconf>=0)&&(aj.iconf>=0) ){ 
+        if( ai.bTypeFixed && aj.bTypeFixed && b.type>0 ){
+            // both atoms have explicitly assigned types and .mol file gave an explicit bond order
+            order = b.type;
+            printf( "  using explicit bond.type=%i from file\n", order );
+        } else if( (ai.iconf>=0)&&(aj.iconf>=0) ){ 
             const AtomConf& ci = confs[ai.iconf];
             const AtomConf& cj = confs[aj.iconf];
             order+=_min( ci.npi, cj.npi ); 
+            printf( "  inferred order=%i from npi(%i,%i)\n", order, ci.npi, cj.npi );
             //printf("assignBondParams[%i] (%i,%i|%i) pi(%i,%i) \n", ib,  ai.type, aj.type, order, ci.npi, cj.npi );
 
             // Assign pi-pi allignment 
@@ -1072,12 +1077,16 @@ class Builder : public BuilderBase {  public:
         if(conf.npi>2){ printf( "ERROR int autoConfEPi(ia=%i).1 np(%i)>2 => Exit() \n", ia, conf.npi, N_NEIGH_MAX ); exit(0); }
         if  ( (conf.nbond+conf.nH+ne)>N_NEIGH_MAX  ){ printf( "ERROR int autoConfEPi(ia=%i) ne(%i)+nb(%i)+nH(%i)>N_NEIGH_MAX(%i) => Exit() \n", ia, ne, conf.nbond, conf.nH, N_NEIGH_MAX ); exit(0);}
         else{ conf.ne=ne; }
-        conf.fillIn_npi_sp3();
-
-        if(params){ // limit the number of pi-bonds
-            const ElementType* el = params->elementOfAtomType( atoms[ia].type );
-            //printf( "atom[%i] typ=%i %s %s piMax=%i \n", ia, atoms[ia].type, params->atypes[atoms[ia].type].name, el->name,  el->piMax );
-            conf.npi = _min( conf.npi, el->piMax );
+        if( atoms[ia].bTypeFixed ){
+            // type was explicitly set (e.g. C_3 from file): use npi from AtomTypes.dat, not topology
+            conf.npi = params->atypes[ityp].npi;
+            conf.n   = conf.nbond + conf.npi + conf.ne + conf.nH;
+        } else {
+            conf.fillIn_npi_sp3();
+            if(params){ // limit the number of pi-bonds by element piMax
+                const ElementType* el = params->elementOfAtomType( atoms[ia].type );
+                conf.npi = _min( conf.npi, el->piMax );
+            }
         }
 
         if(conf.npi>2){ printf( "ERROR int autoConfEPi(ia=%i).2 np(%i)>2 => Exit() \n", ia, conf.npi, N_NEIGH_MAX ); exit(0); }
@@ -2207,14 +2216,22 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 Quat4d REQ = defaultREQ;
                 int npi = -1;
                 int ne = 0;
+                bool bFixed = false;
                 
                 auto it = atomTypeDict->find(elem);
                 if(it != atomTypeDict->end()){
                     int ityp = it->second;
-                    if(verbosity>2)printf( " %s -> %i \n", elem, ityp );
                     if(params){
                         params->assignRE(ityp, REQ);
                         ne = params->atypes[ityp].nepair;
+                        // if the name has a subtype suffix (e.g. 'C_3','C_2','C_1'), npi is explicitly known
+                        if( strchr(elem,'_') ){
+                            npi    = params->atypes[ityp].npi;
+                            bFixed = true;
+                            if(verbosity>0)printf( "load_mol atom %s -> type %i npi=%i (typeFixed)\n", elem, ityp, npi );
+                        } else {
+                            if(verbosity>0)printf( "load_mol atom %s -> type %i (generic, npi inferred later)\n", elem, ityp );
+                        }
                     }
                     //if(noH && (elem[0]=='H') && (elem[1]=='\0')) continue;
 
@@ -2222,6 +2239,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
 
                     int ia = insertAtom(ityp, p, &REQ, npi, ne);
                     tryAddConfToAtom( ia );
+                    atoms[ia].bTypeFixed = bFixed;
                 }
             }
             // Process bond lines
@@ -2235,7 +2253,8 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 Bond bond;
                 bond.atoms.i = a1 - 1; // V2000 atom indices are 1-based
                 bond.atoms.j = a2 - 1;
-                // bond order 'order' currently ignored
+                bond.type    = order;  // store explicit bond order from .mol file
+                if(verbosity>0)printf( "load_mol bond(%i,%i) order=%i\n", bond.atoms.i, bond.atoms.j, order );
                 bonds.push_back(bond);
             }
             lineIndex++;
@@ -3472,7 +3491,7 @@ void makeNeighs( int*& neighs, int perAtom ){
 }
 
 #ifdef MMFFsp3_loc_h
-void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool bUFF=false ){
+void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool bUFF=false, Vec3i nPBC=Vec3i{-1,-1,-1} ){
 
         //double c0s[3]{-0.33333,-0.5,-1.0}; // cos(angle)   sp1 sp2 sp3
         double ang0s[3]{ 109.5 *M_PI/180.0, 120.0*M_PI/180.0, 180.0*M_PI/180.0 }; // cos(angle)   sp1 sp2 sp3
@@ -3558,6 +3577,12 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
                     hs[k]  = atoms[ja].pos - A.pos;
                     hs[k].normalize();
                     ngs[k] = ja;
+                    if(nPBC.x>0){
+                        int ix = B.ipbc.x, iy = B.ipbc.y, iz = B.ipbc.z;
+                        int nx = 2*nPBC.x+1, ny = 2*nPBC.y+1;
+                        int idx = (iz + nPBC.z)*nx*ny + (iy + nPBC.y)*nx + (ix + nPBC.x);
+                        ff.neighCell[ia].array[k] = idx;
+                    }
                     bL [k]=B.l0;
                     bK [k]=B.k;
                     if(bUFF){

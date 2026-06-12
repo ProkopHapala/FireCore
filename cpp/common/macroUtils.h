@@ -128,8 +128,9 @@ _inline_T T        _abs  (const T& a ){ return !(a<0)?a:-a; }
 _inline_T int      signum(T val)      { return (T(0) < val) - (val < T(0)); }
 
 // ======= allocation
-
-
+// Explicit heap ownership (not RAII): each array has one owner; _bindOrRealloc records borrow vs own.
+// _dealloc nulls only the passed reference — other aliases to the same block stay non-null until cleared separately.
+// Optional DEBUG_ALLOCATOR (see debugAllocator.h) logs alloc/dealloc sites; use ASAN for UAF/overflow.
 
 // _inline_T bool _allocIfNull   (T*& arr, int n){ if(arr==0){ arr=_new(T,n); return true; } return false; }
 // _inline_T void _alloc         (T*& arr, int n){ arr=_new(T,n); }
@@ -171,7 +172,7 @@ _inline_T T*   __realloc     (T*& arr, int n){ if(arr){ _delete(arr); } arr=new 
 _inline_T T*   __realloc0    (T*& arr, int n, const T& v0){  __realloc(arr,n); for(int i=0;i<n;i++){ arr[i]=v0; } return arr; }
 _inline_T T*   __allocIfNull (T*& arr, int n){ if(arr==0){ arr=new T[n]; return arr; } return 0; }
 _inline_T bool __dealloc     (T*& arr      ){ if(arr){ _delete(arr); arr=0; return true; } return false;  }
-_inline_T bool _bindOrRealloc(int n, T* from, T*& arr ){ if(from){ arr=from; return false; }else{ __realloc(arr,n); return true; } }
+_inline_T bool _bindOrRealloc(int n, T* from, T*& arr ){ if(from){ arr=from; return false; }else{ __realloc(arr,n); return true; } } // false=borrow → bOwn*=false; true=own
 _inline_T T* __allocPointer   (T**& pp, int n ){  if(pp){ if((*pp)==0)(*pp)=new T[n]; return *pp; }; return 0; };
 _inline_T T* __reallocPointer (T**& pp, int n){
     if (pp) {

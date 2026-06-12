@@ -144,6 +144,7 @@ class UFF : public NBFF { public:
         _realloc0( apos    , natoms, Vec3dNAN );
         _realloc0( fapos   , natoms, Vec3dNAN );
         _realloc0( vapos   , natoms, Vec3dNAN );
+        bOwnArrays=true; bOwnFapos=true; bOwnVapos=true; bOwnNeighs=true; bOwnNeighCell=true;
 
         _realloc0( neighs    , natoms,   Quat4iMinusOnes );  // neighbor indices for each atom
         _realloc0( neighBs   , natoms,   Quat4iMinusOnes );  // bond indices for each neighbor
@@ -190,15 +191,14 @@ class UFF : public NBFF { public:
         // nDOFs= 0;
         // _dealloc(DOFs );
         // _dealloc(fDOFs);
-        apos   = 0;
-        fapos  = 0;
+        if(bOwnArrays){ _dealloc(apos); _dealloc(atypes); }else{ apos=0; atypes=0; }
+        if(bOwnFapos ){ _dealloc(fapos); }else{ fapos=0; }
+        if(bOwnVapos ){ _dealloc(vapos); }else{ vapos=0; }
         _dealloc(neighs);
         _dealloc(neighCell);
         _dealloc(hneigh);
-        //_dealloc(fbon);
-        _dealloc(fang);
-        _dealloc(fdih);
-        _dealloc(finv);
+        _dealloc(fint); // fbon/fang/fdih/finv are interior pointers into fint — do not _dealloc them
+        fbon=0; fang=0; fdih=0; finv=0;
         _dealloc(bonAtoms);
         _dealloc(bonParams);
         _dealloc(angAtoms);
@@ -211,6 +211,16 @@ class UFF : public NBFF { public:
         _dealloc(angNgs);
         _dealloc(dihNgs);
         _dealloc(invNgs);
+        if(bOwnREQs){ _dealloc(REQs); }else{ REQs=0; }
+        if(bOwnPLQs){ _dealloc(PLQs); }else{ PLQs=0; }
+        if(bOwnPLQd){ _dealloc(PLQd); }else{ PLQd=0; }
+        _dealloc(excl);
+        _dealloc(BBs);
+        pointBBs.dealloc();
+        a2f.dealloc();
+        nBBs=0; nf=0; i0dih=0; i0inv=0; i0ang=0; i0bon=0;
+        shifts=0; npbc=0; bPBC=false;
+        bOwnArrays=true; bOwnFapos=true; bOwnVapos=false; bOwnREQs=false; bOwnPLQs=false; bOwnPLQd=false; bOwnNeighs=true; bOwnNeighCell=true; bOwnShifts=false;
 
     }
 
@@ -1843,7 +1853,9 @@ class UFF : public NBFF { public:
         if(bInversions && ninversions>0){ printf("\n=== Inversions ===\n"); for(int i=0; i<ninversions; i++) printInversionParams(i); }
     }
 
-
+    void printNeighs(int ia) const { printf("atom[%i] neigh{%3i,%3i,%3i,%3i} neighCell{%3i,%3i,%3i,%3i} \n", ia, neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,   neighCell[ia].x,neighCell[ia].y,neighCell[ia].z,neighCell[ia].w ); }
+    void printNeighs(      ) const { printf("UFF::printNeighs()\n"); for(int i=0; i<natoms; i++){ printNeighs(i); } }
+    
     /*
     void printAtomParams(int ia){ printf("atom[%i] t%i ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, atypes[ia], neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,apars[ia].w,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
     void printNeighs    (int ia){ printf("atom[%i] neigh{%3i,%3i,%3i,%3i} neighCell{%3i,%3i,%3i,%3i} \n", ia, neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,   neighCell[ia].x,neighCell[ia].y,neighCell[ia].z,neighCell[ia].w ); }

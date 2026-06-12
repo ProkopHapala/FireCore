@@ -76,9 +76,10 @@ header_strings = [
 #LIB_PATH_CPP  = os.path.normpath(LIB_PATH+'../../../'+'/cpp/Build/libs/'+cpp_name )
 #lib = ctypes.CDLL( LIB_PATH_CPP+("/lib%s.so" %cpp_name) )
 
-_buildPath1 = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build-opt/libs/Molecular' )
-_buildPath0 = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build/libs/Molecular' )
-cpp_utils.BUILD_PATH = _buildPath1 if os.path.isdir(_buildPath1) else _buildPath0
+# cpp/Build is symlink to Build-asan or Build-opt — sole build abstraction (see FireCore/cpp/Build)
+cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build/libs/Molecular' )
+if not os.path.isdir(cpp_utils.BUILD_PATH):
+    raise FileNotFoundError(f"MMFF build dir not found: {cpp_utils.BUILD_PATH}  (cmake+make in cpp/Build)")
 lib = cpp_utils.loadLib('MMFF_lib', recompile=False)
 
 
@@ -852,7 +853,7 @@ def getBuffs( NEIGH_MAX=4 ):
     nDOFs=ndims[0]; natoms=ndims[1];  nnode=ndims[2]; ncap=ndims[3]; npi=ndims[4]; nbonds=ndims[5]; nvecs=ndims[6]; ne=ndims[7]; ie0=ndims[8]
     print( "getBuffs(): nDOFs=%i nvecs=%i  natoms=%i nnode=%i ncap=%i npi=%i nbonds=%i nvecs=%i ne=%i ie0=%i " %(nDOFs,nvecs,natoms,nnode,ncap,npi,nbonds,nvecs,ne,ie0) )
     Es    = getBuff ( "Es",    (6,) )  # [ Etot,Eb,Ea, Eps,EppT,EppI; ]
-    global DOFs,fDOFs,vDOFs,apos,fapos,REQs,PLQs,pipos,fpipos,bond_l0,bond_k, bond2atom,neighs,selection
+    global DOFs,fDOFs,vDOFs,apos,fapos,REQs,PLQs,pipos,fpipos,bond_l0,bond_k, bond2atom,neighs,selection,atypes,bKs,bLs,apars,Ksp,Kpp
     #Ebuf     = getEnergyTerms( )
     apos      = getBuff ( "apos",     (natoms,3) )
     fapos     = getBuff ( "fapos",    (natoms,3) )
@@ -864,6 +865,13 @@ def getBuffs( NEIGH_MAX=4 ):
         vDOFs     = getBuff ( "vDOFs",    (nvecs,3)  )
         pipos     = getBuff ( "pipos",    (npi,3)    )
         fpipos    = getBuff ( "fpipos",   (npi,3)    )
+        # MMFF parameter arrays
+        atypes    = getIBuff( "atypes",   (natoms,)   )
+        bKs       = getBuff ( "bKs",      (nnode,4)  )  # [nnode] bond stiffness (per neighbor)
+        bLs       = getBuff ( "bLs",      (nnode,4)  )  # [nnode] bond lengths (per neighbor)
+        apars     = getBuff ( "apars",    (nnode,4)  )  # [nnode] angle parameters (c0, Kss, Ksp, c0_e)
+        Ksp       = getBuff ( "Ksp",      (nnode,4)  )  # [nnode] pi-sigma stiffness
+        Kpp       = getBuff ( "Kpp",      (nnode,4)  )  # [nnode] pi-planarization stiffness
         #bond_l0   = getBuff ( "bond_l0",  (nbonds)   )
         #bond_k    = getBuff ( "bond_k",   (nbonds)   )
         #Kneighs   = getBuff ( "Kneighs",  (nnode,NEIGH_MAX) )
@@ -886,7 +894,7 @@ def getBuffs_UFF( NEIGH_MAX=4 ):
     natoms=ndims[0]; nbonds=ndims[1]; nangles=ndims[2]; ndihedrals=ndims[3]; ninversions=ndims[4]; nf=ndims[5]; i0dih=ndims[6]; i0inv=ndims[7]; i0ang=ndims[8]; i0bon=ndims[9]
     print( "getBuffs(): natoms=%i nbonds=%i nangles=%i ndihedrals=%i ninversions=%i nf=%i i0dih=%i i0inv=%i i0ang=%i i0bon=%i " %(natoms,nbonds,nangles,ndihedrals,ninversions,nf,i0dih,i0inv,i0ang,i0bon) )
     Es    = getBuff ( "Es",    (5,) )  # [ Etot,Eb,Ea,Ed,Ei ]
-    global apos,fapos,REQs,hneigh,fint,bonAtoms,angAtoms,dihAtoms,invAtoms,neighs,neighBs,bonParams,angParams,dihParams,invParams,angNgs,dihNgs,invNgs
+    global apos,fapos,REQs,hneigh,fint,atypes,bonAtoms,angAtoms,dihAtoms,invAtoms,neighs,neighBs,bonParams,angParams,dihParams,invParams,angNgs,dihNgs,invNgs
     #Ebuf     = getEnergyTerms( )
     apos      = getBuff ( "apos",     (natoms,3) )
     fapos     = getBuff ( "fapos",    (natoms,3) )
@@ -900,6 +908,7 @@ def getBuffs_UFF( NEIGH_MAX=4 ):
     dihParams = getBuff ( "dihParams", (ndihedrals,3)  )
     invParams = getBuff ( "invParams", (ninversions,4) )
 
+    atypes    = getIBuff( "atypes",    (natoms,)       )
     bonAtoms  = getIBuff( "bonAtoms",  (nbonds,2)      )
     angAtoms  = getIBuff( "angAtoms",  (nangles,3)     )
     dihAtoms  = getIBuff( "dihAtoms",  (ndihedrals,4)  )
@@ -982,7 +991,15 @@ def print_debugs(bParams=True, bNeighs=True, bShifts=False):
 lib.clear.argtypes  = []
 lib.clear.restype   =  None
 def clear():
-    return lib.clear()
+    global isInitialized, bBuffersInitialized
+    lib.clear()
+    isInitialized = False
+    bBuffersInitialized = False
+
+lib.shutdown.argtypes  = []
+lib.shutdown.restype   =  None
+def shutdown():
+    clear()
 
 #  void init_nonbond()
 #lib.init.argtypes  = []
@@ -1113,6 +1130,108 @@ lib.setSwitchesUFF_NB.restype  = None
 def setSwitchesUFF_NB( NonBonded=0, NonBondNeighs=0, SubtractAngleNonBond=0 ):
     return lib.setSwitchesUFF_NB( NonBonded, NonBondNeighs, SubtractAngleNonBond )
 
+# int getUFFTypeCode( const char* type_name )
+lib.getUFFTypeCode.argtypes = [c_char_p]
+lib.getUFFTypeCode.restype  = c_int
+def getUFFTypeCode(type_name):
+    code = lib.getUFFTypeCode( cstr(type_name) )
+    if code < 0: print(f"WARNING getUFFTypeCode('{type_name}'): type not found => -1")
+    return code
+
+def setBondParamsByType( type_i, type_j, k=None, r0=None, forcefield='auto' ):
+    """Set bond params for all bonds between atom types type_i & type_j (names or int codes).
+    
+    Args:
+        type_i, type_j: atom type names (strings) or integer codes
+        k: bond stiffness (optional)
+        r0: equilibrium bond length (optional)
+        forcefield: 'auto', 'UFF', or 'MMFF' (auto detects from glob_bUFF)
+    """
+    if forcefield == 'auto':
+        forcefield = 'UFF' if glob_bUFF else 'MMFF'
+    
+    if forcefield == 'UFF':
+        getBuffs_UFF()
+        ci = getUFFTypeCode(type_i) if isinstance(type_i,str) else type_i
+        cj = getUFFTypeCode(type_j) if isinstance(type_j,str) else type_j
+        ai, aj = atypes[bonAtoms[:,0]], atypes[bonAtoms[:,1]]
+        mask = ((ai==ci)&(aj==cj)) | ((ai==cj)&(aj==ci))
+        n = mask.sum()
+        print(f"setBondParamsByType UFF('{type_i}'[{ci}],'{type_j}'[{cj}]): {n}/{len(mask)} bonds matched")
+        if k  is not None: bonParams[mask, 0] = k
+        if r0 is not None: bonParams[mask, 1] = r0
+    elif forcefield == 'MMFF':
+        getBuffs()
+        ci = getUFFTypeCode(type_i) if isinstance(type_i,str) else type_i
+        cj = getUFFTypeCode(type_j) if isinstance(type_j,str) else type_j
+        n_matched = 0
+        for i in range(nnode):
+            for j in range(4):
+                if neighs[i, j] >= 0:  # valid neighbor
+                    j_atom = neighs[i, j] - 1  # convert to 0-based
+                    if j_atom < natoms:
+                        ti, tj = atypes[i], atypes[j_atom]
+                        if ((ti==ci and tj==cj) or (ti==cj and tj==ci)):
+                            if k is not None: bKs[i, j] = k
+                            if r0 is not None: bLs[i, j] = r0
+                            n_matched += 1
+        print(f"setBondParamsByType MMFF('{type_i}'[{ci}],'{type_j}'[{cj}]): {n_matched} bonds matched")
+    else:
+        raise ValueError(f"Unknown forcefield: {forcefield}")
+
+def setAngleParamsByType( type_i, type_j, type_k, k=None, c0=None, c1=None, c2=None, c3=None, forcefield='auto' ):
+    """Set angle params for angles with central atom type_j flanked by type_i & type_k.
+    
+    Args:
+        type_i, type_j, type_k: atom type names (strings) or integer codes
+        k: angle stiffness (optional)
+        c0, c1, c2, c3: Fourier coefficients (UFF) or angle params (MMFF, c0=cosθ0, k=Kss)
+        forcefield: 'auto', 'UFF', or 'MMFF' (auto detects from glob_bBUFF)
+    """
+    if forcefield == 'auto':
+        forcefield = 'UFF' if glob_bBUFF else 'MMFF'
+    
+    if forcefield == 'UFF':
+        getBuffs_UFF()
+        ci = getUFFTypeCode(type_i) if isinstance(type_i,str) else type_i
+        cj = getUFFTypeCode(type_j) if isinstance(type_j,str) else type_j
+        ck = getUFFTypeCode(type_k) if isinstance(type_k,str) else type_k
+        ai, aj, ak = atypes[angAtoms[:,0]], atypes[angAtoms[:,1]], atypes[angAtoms[:,2]]
+        mask = (aj==cj) & ( ((ai==ci)&(ak==ck)) | ((ai==ck)&(ak==ci)) )
+        n = mask.sum()
+        print(f"setAngleParamsByType UFF('{type_i}'[{ci}],'{type_j}'[{cj}],'{type_k}'[{ck}]): {n}/{len(mask)} angles matched")
+        if k  is not None: angParams[mask, 0] = k
+        if c0 is not None: angParams[mask, 1] = c0
+        if c1 is not None: angParams[mask, 2] = c1
+        if c2 is not None: angParams[mask, 3] = c2
+        if c3 is not None: angParams[mask, 4] = c3
+    elif forcefield == 'MMFF':
+        getBuffs()
+        ci = getUFFTypeCode(type_i) if isinstance(type_i,str) else type_i
+        cj = getUFFTypeCode(type_j) if isinstance(type_j,str) else type_j
+        ck = getUFFTypeCode(type_k) if isinstance(type_k,str) else type_k
+        n_matched = 0
+        # MMFF stores angle params per node (apars[nnode,4] = [c0, Kss, Ksp, c0_e])
+        # We set Kss (column 1) if k is provided, c0 (column 0) if c0 is provided
+        for i in range(nnode):
+            ti = atypes[i]
+            if ti == cj:  # central atom matches
+                # Check all neighbor pairs for this node
+                for j1 in range(4):
+                    for j2 in range(j1+1, 4):
+                        if neighs[i, j1] >= 0 and neighs[i, j2] >= 0:
+                            a1 = neighs[i, j1] - 1
+                            a2 = neighs[i, j2] - 1
+                            if a1 < natoms and a2 < natoms:
+                                t1, t2 = atypes[a1], atypes[a2]
+                                if ((t1==ci and t2==ck) or (t1==ck and t2==ci)):
+                                    if k is not None: apars[i, 1] = k  # Kss
+                                    if c0 is not None: apars[i, 0] = c0  # cosθ0
+                                    n_matched += 1
+        print(f"setAngleParamsByType MMFF('{type_i}'[{ci}],'{type_j}'[{cj}],'{type_k}'[{ck}]): {n_matched} angles matched")
+    else:
+        raise ValueError(f"Unknown forcefield: {forcefield}")
+
 #  bool checkInvariants( double maxVcog, double maxFcog, double maxTg )
 lib.checkInvariants.argtypes  = [c_double, c_double, c_double]
 lib.checkInvariants.restype   =  c_bool
@@ -1237,6 +1356,18 @@ def getHessian3Nx3N(inds, dx=1e-4):
     dim    = 3 * n
     out    = np.zeros((dim,dim), dtype=np.float64)
     lib.getHessian3Nx3N( n, _np_as(inds_c, c_int_p), _np_as(out,    c_double_p), dx )
+    return out
+
+# void getPhononPhiBlocks(int n_total,int* inds_total,int n_disp,int* inds_disp,double* out_phi,double dx)
+lib.getPhononPhiBlocks.argtypes = [c_int, c_int_p, c_int, c_int_p, c_double_p, c_double]
+lib.getPhononPhiBlocks.restype  = None
+def getPhononPhiBlocks(inds_total, inds_disp, dx=1e-4):
+    """Force constants Phi[o,p]=-dF_o/du_p: rows=all atoms, cols=displaced central atoms."""
+    n_total = len(inds_total); n_disp = len(inds_disp)
+    inds_total_c = np.ascontiguousarray(inds_total, dtype=np.int32)
+    inds_disp_c  = np.ascontiguousarray(inds_disp,  dtype=np.int32)
+    out = np.zeros((3*n_total, 3*n_disp), dtype=np.float64)
+    lib.getPhononPhiBlocks(n_total, _np_as(inds_total_c, c_int_p), n_disp, _np_as(inds_disp_c, c_int_p), _np_as(out, c_double_p), dx)
     return out
 
 # =========================== Hessian Basis Matrix Functions (for parameter fitting)
