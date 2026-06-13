@@ -404,6 +404,7 @@ void rigid_body_gridff_kernel(
         self.kernel_params['grid_p0'] = self.grid_p0
         self.kernel_params['md_params'] = np.array([0.92, 0.88, 1.0, 1.0], dtype=np.float32)
         self.gridff_args = self.generate_kernel_args("rigid_body_gridff_kernel")
+        self.krnl_gridff = cl.Kernel(self.prg, "rigid_body_gridff_kernel")
 
     def run(self, num_steps, dt, efield=None):
         if self.kernel_args is None:
@@ -430,7 +431,7 @@ void rigid_body_gridff_kernel(
         self.gridff_args = self.generate_kernel_args("rigid_body_gridff_kernel")
         global_size = (self.roundUpGlobalSize(self.n_bodies * self.nloc),)
         local_size = (self.nloc,)
-        self.prg.rigid_body_gridff_kernel(self.queue, global_size, local_size, *self.gridff_args)
+        self.krnl_gridff(self.queue, global_size, local_size, *self.gridff_args)
         self.queue.finish()
 
     def download_outputs(self):

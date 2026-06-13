@@ -149,7 +149,7 @@ class RigidBodyAFM:
     The molecule is attached via a harmonic spring to a moving "tip" (anchor point).
     """
     def __init__(self, mol_path, gridff_path, sub_xyz, type_map=None, debug=False,
-                 anchor_idx=None, anchor_k=0.0):
+                 anchor_idx=None, anchor_k=0.0, mass_trans=1.0, mass_rot=None):
         self.mol_path = mol_path
         self.gridff_path = gridff_path
         self.sub_xyz = sub_xyz
@@ -158,6 +158,8 @@ class RigidBodyAFM:
         self.rbd = None
         self.anchor_idx = anchor_idx
         self.anchor_k = anchor_k
+        self.mass_trans = mass_trans
+        self.mass_rot = mass_rot
 
     def prepare(self, n_bodies=1, initial_positions=None, initial_quats=None):
         self.rbd = RigidBodyDynamics.from_xyz_and_grid(
@@ -166,7 +168,9 @@ class RigidBodyAFM:
             body_positions=initial_positions,
             quats=initial_quats,
             type_map=self.type_map,
-            debug=self.debug
+            debug=self.debug,
+            mass_trans=self.mass_trans,
+            mass_rot=self.mass_rot,
         )
         self.n_bodies = n_bodies
         # Initial anchors setup
@@ -196,7 +200,8 @@ class RigidBodyAFM:
         anchors[:, self.anchor_idx, 3] = self.anchor_k
         self.rbd.update_anchors(anchors.reshape(self.rbd.total_atoms, 4))
 
-    def relax_to_constraint(self, nsteps=1000, dt=0.05, fconv=1e-3, tconv=1e-3, chunk=100):
+    def relax_to_constraint(self, nsteps=1000, dt=0.05, fconv=1e-3, tconv=1e-3, chunk=100,
+                              lin_damp=0.92, ang_damp=0.88, force_scale=1.0, torque_scale=1.0):
         """
         Relax the system for the current tip positions.
         """
@@ -204,7 +209,8 @@ class RigidBodyAFM:
         
         for i in range(0, nsteps, chunk):
             nrun = min(chunk, nsteps - i)
-            self.rbd.run_gridff(nrun, dt)
+            self.rbd.run_gridff(nrun, dt, lin_damp=lin_damp, ang_damp=ang_damp,
+                                force_scale=force_scale, torque_scale=torque_scale)
             outputs = self.rbd.download_selected(('body_force', 'body_torque'))
             bf = outputs['body_force'][:, :3]
             bt = outputs['body_torque'][:, :3]
