@@ -148,3 +148,93 @@ One sentence per file, added as files are read.
 - `doc/Topics/molgui_web/Molecular_topology_js_plan.md` — JavaScript-centric implementation plan for molecular topology editing in the browser.
 - `doc/Topics/molgui_web/Step_Edge_Editor_ideas.md` — Brainstorming notes for a step-edge molecular editor UI.
 - `doc/Topics/molgui_web/molgui_web_dev.md` — General web GUI development notes and pointers for the molecular editor frontend.
+
+## ForceFields_Audit
+- `doc/topical_audit/forcefields_audit_plan.md` — Phased plan for auditing classical forcefield implementations across CPU C++, OpenCL, PyOpenCL, and WebGPU/WebGL.
+- `doc/topical_audit/Forcefields_Audit.md` — Consolidated single-file audit of intramolecular, non-bonding, and molecule-surface force fields (legacy scratchpad).
+- `doc/topical_audit/forcefields_overview.md` — High-level taxonomy mapping force field classes to implementation files and status.
+- `doc/topical_audit/intramolecular_forcefields.md` — Detailed audit of UFF, MMFFsp3, ProjectiveDynamics, XPBD, and RigidBody force fields.
+- `doc/topical_audit/nonbonding_forcefields.md` — Detailed audit of NBFF, exclusion schemes, and Fast Multipole Method.
+- `doc/topical_audit/surface_interactions.md` — Detailed audit of GridFF, FoldedAtomicFunctions, Surface.cl, and Ewald2D electrostatics.
+- `doc/topical_audit/forcefields_web_implementation.md` — Audit of WebGL/WebGPU shader-based force field ports.
+
+## ForceFields_CPP
+- `cpp/common/molecular/UFF.h` — Main UFF class with bond, angle, dihedral, inversion data structures, force assembly, and neighbor lists.
+- `cpp/common/molecular/MMFFsp3_loc.h` — MMFFsp3 localized data layout with π–π and π–σ stiffness, pipos orientation, and compact neighbor lists.
+- `cpp/common/molecular/MolWorld_sp3.h` — Central orchestrator that instantiates and routes to UFF, MMFFsp3, RigidBodyFF, and GridFF.
+- `cpp/common/molecular/RigidBodyFF.h` — Rigid-body dynamics with pose (pos+quat) updates, angular velocity integration, and GridFF coupling.
+- `cpp/common/molecular/EwaldGrid.h` — Ewald grid construction and Laplace solving for long-range electrostatics on periodic substrates.
+- `cpp/common/molecular/NBFF_SR.h` — Short-range non-bonded variant with repulsive R⁻⁴ potential and AABB collision acceleration.
+- `cpp/common/molecular/NBFF_old.h` — Legacy NBFF implementation superseded by `NBFF.h`.
+- `cpp/common/math/ProjectiveDynamics_d.h` — ProjectiveDynamics solver with Jacobi, Gauss-Seidel, Cholesky, CG, and momentum-accelerated iterations.
+- `cpp/common/math/Multipoles.h` — C++ multipole math: charge projection, energy/force evaluation, and center-of-charge computation.
+- `cpp/libs_OCL/OCL_GridFF.cpp` — OpenCL wrapper for grid construction and sampling.
+
+## ForceFields_OpenCL
+- `cpp/common_resources/cl/relax_multi.cl` — Unified OpenCL kernel with evalBond, evalAngCos, evalPiAling, getLJQH, getMorsePLQH, and multi-system force assembly.
+- `cpp/common_resources/cl/GridFF.cl` — B-spline interpolation kernels: basis(), dbasis(), fe3d_pbc(), sample3D(), sample3D_grid().
+- `cpp/common_resources/cl/Surface.cl` — Unified surface kernel: getSurfMorse, getSurfFolded, getSurfFolded_workgroup, Ewald2D, and macroscopic layer corrections.
+- `cpp/common_resources/cl/FMM.cl` — Fast Multipole Method tile-based kernel with monopole-dipole-quadrupole force functions.
+- `cpp/common_resources/cl/Rigid.cl` — Quaternion integration, B-spline field sampling, and PBC index helpers for rigid-body dynamics.
+- `pyBall/pyTruss/truss.cl` — Sparse Jacobi and Gauss-Seidel iterative solvers for truss/projective-dynamics systems.
+
+## ForceFields_Python
+- `pyBall/OCL/UFF.py` — PyOpenCL wrapper for UFF GPU force evaluation.
+- `pyBall/OCL/UFFbuilder.py` — Topology builder for UFF PyOpenCL simulations.
+- `pyBall/OCL/MMFF.py` — Pure PyOpenCL MMFF implementation for rapid prototyping.
+- `pyBall/OCL/GridFF.py` — PyOpenCL grid sampler: GridFF_cl with sample3D, sample3D_comb, and buffer management.
+- `pyBall/OCL/GridFF_new.py` — Refactored GridFF wrapper with improved buffer management.
+- `pyBall/OCL/GridFFRelaxedScan.py` — Relaxed potential energy surface (PES) scanning routines for GridFF.
+- `pyBall/OCL/SurfaceEwald.py` — SurfaceEwaldCL PyOpenCL wrapper for 2D Ewald electrostatics.
+- `pyBall/OCL/Surface_utils.py` — GridFF I/O, alignment verification, FDBM fitting, and electrostatics comparison utilities.
+- `pyBall/OCL/RigidBodyDynamics.py` — PyOpenCL rigid-body wrapper with REQ→PLQ conversion and GridFF initialization.
+- `pyBall/OCL/Assembly.py` / `pyBall/OCL/cl/Assembly.cl` — Rigid-body packing evaluation and clash detection kernels.
+- `pyBall/XPBD_2D/XPBD_2D.py` / `pyBall/XPBD_2D/XPBD_2D.cl` — 2D position-based dynamics using complex numbers for rotation.
+- `pyBall/XPDB_AVBD/XPDB.py` / `pyBall/XPDB_AVBD/XPDB.cl` — 3D XPBD with angular-velocity-based quaternion integration.
+- `pyBall/XPDB_AVBD/RRsp3.py` / `pyBall/XPDB_AVBD/RRsp3.cl` — Rigid-atom sp³ solver with port-based topology.
+- `pyBall/MMFF_multi.py` — Multi-system UFF Python interface.
+- `pyBall/Ewald2D.py` — Python reference implementation of 2D Ewald summation for charged slabs.
+- `pyBall/pyTruss/truss_solver_ocl.py` — OpenCL truss/projective-dynamics solver tests.
+
+## ProjectiveDynamics
+- `doc/py/ProjectiveDynamics/projective_dynamics.py` — Reference Python implementation of ProjectiveDynamics using dense NumPy solvers.
+- `doc/py/ProjectiveDynamics/projective_dynamics_iterative.py` — Iterative solver variant of ProjectiveDynamics.
+- `doc/py/ProjectiveDynamics/example_pd.py` — Basic truss dynamics demo.
+- `doc/py/ProjectiveDynamics/truss.py` — Truss structure builder and solver.
+- `doc/py/ProjectiveDynamics/test_Jacobi_Chebyshev_convergence.py` — Convergence tests for Jacobi and Chebyshev-accelerated solvers.
+
+## ForceFields_Tests
+- `tests/tUFF/test_UFF_multi.py` — CPU vs GPU parity for multi-system UFF evaluation.
+- `tests/tUFF/test_UFF_ocl.py` — OpenCL-specific UFF tests.
+- `tests/tUFF/run_parity_uff.sh` — Automated UFF CPU/GPU parity suite.
+- `tests/tMMFF/test_MMFF_ocl_parity.py` — CPU vs GPU parity for MMFF.
+- `tests/tMMFF/run_test_GridFF.py` — Basic GridFF construction, sampling, and direct-sum comparison.
+- `tests/tMMFF/run_test_GridFF_CaF2.py` — CaF₂(111) surface GridFF validation against known adsorption sites.
+- `tests/tMMFF/run_test_GridFF_gauss_smear.py` — Gaussian charge smearing for Coulomb grid convergence.
+- `tests/tMMFF/run_test_GridFF_ocl.py` / `tests/tMMFF/run_test_GridFF_ocl_new.py` — OpenCL vs CPU GridFF parity.
+- `tests/tMMFF/test_electrostatics_comparison.py` — Compares GridFF, Ewald2D, and brute-force electrostatics on NaCl surfaces.
+- `tests/tMMFF/test_gridff_alignment.py` — GridFF origin-convention detection and alignment verification.
+- `tests/tMMFF/test_folded_fit_nacl1x1.py` — FoldedAtomicFunctions fit on NaCl(001) with Coulomb reference.
+- `tests/tMMFF/gen_gridff_nacl_gpu.py` — GPU-accelerated GridFF generation for NaCl with DFT electrostatics.
+- `tests/tMMFF/test_fdbm_fit_dft.py` — FDBM linear fitting against DFT reference adsorption energies.
+- `tests/tMMFF/test_fdbm_fit_gridff_mock.py` — Mock FDBM fitting with synthetic data.
+- `tests/tMMFF/gui_fdbm_fit.py` — Interactive PyQt5 GUI for live FDBM parameter tuning.
+- `tests/tMMFF/GridFF_CaF2_doc_tutorial.md` — Step-by-step GridFF tutorial for CaF₂ surfaces.
+
+## FoldedAtomicFunctions
+- `doc/py/FoldedAtomicFunctions/FoldedAtomicFunction.md` — Design document for the plane-wave × exponential basis surface potential.
+- `doc/py/FoldedAtomicFunctions/potentials.py` — Morse potential generation and 2D FAF potential profile extraction.
+- `doc/py/FoldedAtomicFunctions/faf_func.py` — Minimal functional re-implementation: makePotentialXZ, scan_Qs, scan_basis_a0.
+- `doc/py/FoldedAtomicFunctions/tutorial_folded_basis_pareto.md` — Pareto analysis tutorial for basis size vs. accuracy.
+- `doc/py/FoldedAtomicFunctions/optimize_z_basis.md` — Optimization of z-basis exponential decay parameters.
+
+## FMM
+- `doc/FMM/FMM.md` — Detailed mathematical derivation of energy blending, force distribution, and switching functions for tile-based FMM.
+
+## ForceFields_Web
+- `web/molgui_web/js/ProjectiveDynamics.js` — JavaScript port of ProjectiveDynamics solver for browser-based demos.
+- `web/molgui_webgpu/Draw3D_webgpu.js` — WebGPU rendering pipeline for atoms and bonds.
+- `web/molgui_webgpu/CrystalUtils.js` — Lattice and PBC handling for periodic substrates in WebGPU.
+- `web/common_js/Buckets.js` — JavaScript spatial hash for CPU-side collision detection.
+- `web/common_js/Buckets_SoA.js` — Structure-of-Arrays spatial hash variant.
+- `web/common_js/BucketAABBs.js` — AABB construction and overlap tests for rigid-body packing.

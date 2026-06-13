@@ -103,6 +103,13 @@ This **is** a supplement to:
 - FitREQ_PN: Hydrogen-Bond Parameter Fitting System
 - FitREQ Interactive GUI: Monte Carlo Optimization & Energy Decomposition Integration
 - FitREQ Hydrogen Bond Fitting System - GPU-Accelerated Parameter Optimization
+- **Hierarchical Audit Documents:**
+  - [forcefields_overview.md](forcefields_overview.md) — High-level taxonomy of all force field classes
+  - [intramolecular_forcefields.md](intramolecular_forcefields.md) — UFF, MMFFsp3, ProjectiveDynamics, XPBD, RigidBody
+  - [nonbonding_forcefields.md](nonbonding_forcefields.md) — NBFF, exclusion schemes, FMM
+  - [surface_interactions.md](surface_interactions.md) — GridFF, FoldedAtomicFunctions
+  - [forcefields_web_implementation.md](forcefields_web_implementation.md) — WebGL/WebGPU shader implementations
+  - [Forcefields_Audit.md](Forcefields_Audit.md) — Consolidated comprehensive audit (legacy single-file version)
 
 ## Nanocrystal Vibrations
 - Silicon/Diamond nanocrystal generation, force field setup, and vibration spectroscopy
