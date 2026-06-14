@@ -23,7 +23,7 @@ We develop rigorous scientific software where debuggability, numerical correctne
 
 ## Rule 3 — Reusable Architecture
 
-- **Inventory First:** Thoroughly review reference source-code files to identify existing functions, modules, and data structures before writing anything from scratch. use **hierarchical DOX** system with `AGENTS.md` in each folder.
+- **Inventory First:** Thoroughly review reference source-code files to identify existing functions, modules, and data structures before writing anything from scratch. use hierarchical DOX system with `AGENTS.md` in each folder.
 - **Composability Over Bloat:** Build integrated systems, not isolated scripts. Refactor into reusable functions in shared modules.
 - **Separation of Concerns:**
    - Separate compute algorithms from plotting/diagnostics (no plotting in core libraries).
@@ -63,10 +63,16 @@ We develop rigorous scientific software where debuggability, numerical correctne
 - **Test Location:** Place all test scripts within `/test`.
 - **Automation Scripts:** Use provided `run.sh`/`make.sh` scripts in the test directory; never invoke `make` directly if helpers exist. Run tests from inside the test directory to ensure paths are set.
 
-# DOX Navigation
+## DOX Navigation
 
 This repo uses a **hierarchical DOX** system: `AGENTS.md` files act as local contracts. Read the nearest `AGENTS.md` plus every parent `AGENTS.md` from root to target before editing. Child docs override parents on local details; no child may weaken DOX core rules.
 
 - **Building / maintaining the DOX tree** → see `DOX_AGENTS.md`.
 - **Global topic map** (scattered implementations across languages/frameworks) → see `doc/topical_audit/topical_audit.md`.
 - **Repo structure & build instructions** → see `CODEMAP.md`.
+- **Shared resources** (molecules, forcefield params, OpenCL kernels, precalculated grids) → see `cpp/common_resources/AGENTS.md`.
+
+## Topical Audit Quick Reference
+
+- **Force Fields** — `forcefields_overview.md` | `intramolecular_forcefields.md` | `nonbonding_forcefields.md` | `surface_interactions.md` | `RigidSurfPotential_GridFF.md` | `forcefields_web_implementation.md`
+- **Molecular Topology** — `molecular_topology.md` | `molecular_topology_types.md` | `molecular_topology_editors.md`

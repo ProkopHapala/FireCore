@@ -90,6 +90,16 @@ This **is** a supplement to:
 - Molecule-Substrate Interaction Energy Scanning: Assembly, GUI Placement, Force Fields & Surface Evaluation
 - FoldedAtomicFunctions: Surface Potential Basis Fitting System
 
+## Molecular Topology & Type Assignment
+- Graph representations, bond finding, neighbor lists, ring/bridge detection across C++/Python/JavaScript
+- Atom type assignment (sp1/sp2/sp3) and parameter loading in all 3 languages
+- Interactive editors: KekuleExplorerGUI, molgui_webgpu, and deprecated alternatives
+- **Hierarchical Audit Documents:**
+  - [molecular_topology.md](molecular_topology.md) — Base topology: graphs, bonds, neighbors, rings, hybridization
+  - [molecular_topology_types.md](molecular_topology_types.md) — Type assignment, MMFF/UFF parameters, cross-language parity
+  - [molecular_topology_editors.md](molecular_topology_editors.md) — GUIs, advanced editing, consolidation roadmap
+  - See [interactive codemap](https://windsurf.com/codemaps/692593e6-1efe-495f-bbf6-2ad291a285c9-fe86ab10a43f3d18) for visual navigation
+
 ## Kekule Topology & H-transfer NEB
 - Kekule Structure Explorer: PyQt5/Vispy GUI for building/editing Kekule patterns
 - Graphene Ribbon Builder: Zigzag ribbons with N/NH passivation for H-bond studies

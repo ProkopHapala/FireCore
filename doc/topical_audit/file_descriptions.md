@@ -57,6 +57,16 @@ One sentence per file, added as files are read.
 - `tests/tMMFF/plot_mmff_scaling.py` — Overlay default vs scaled parameter phonon bands.
 - `tests/tMMFF/run_hessian.py` — Batch Hessian runner for multiple systems.
 
+## Molecular_Topology
+- `doc/topical_audit/molecular_topology.md` — Cross-language audit of molecular graph representations, bond finding, neighbor lists, ring/bridge detection, and hybridization geometry (C++/Python/JS).
+- `doc/topical_audit/molecular_topology_types.md` — Cross-language audit of atom type assignment: parameter files, type resolution, hybridization detection, pi-fragments, and bond parameters.
+- `doc/topical_audit/molecular_topology_editors.md` — Cross-language audit of interactive molecular editors, GUI architectures, advanced editing operations, and consolidation roadmap.
+- `tests/tUFF/data_UFF/ElementTypes.dat` — Canonical element database: symbols, atomic numbers, covalent/vdW radii, colors, UFF/QEq params. Loaded by C++/Python/JS parameter parsers.
+- `tests/tUFF/data_UFF/AtomTypes.dat` — Canonical atom type database: hybridized types (C_sp2, O_hydroxyl, etc.), valence, pi orbitals, electron pairs, MMFF/UFF parameters. Loaded by all three language implementations.
+- `tests/tUFF/data_UFF/BondTypes.dat` — Canonical bond parameter table: bond length `l0` and stiffness `k` indexed by atom type pair and bond order.
+- `tests/tUFF/data_UFF/AngleTypes.dat` — Canonical angle parameter table: equilibrium angle `ang0` and stiffness `k` indexed by atom type triple.
+- `tests/tUFF/data_UFF/DihedralTypes.dat` — Canonical dihedral/torsion parameter table: barrier height `k`, phase `ang0`, and periodicity indexed by atom type quadruple and bond order.
+
 ## Kekule_Topology
 - `doc/Topics/Kekule_Topology/Kekule_Optimizer.md` — Describes an optimizer for Kekulé bond patterns and related resonance topology tasks.
 - `doc/Topics/Kekule_Topology/Kekule_Topology.md` — Defines graph-topology operations for aromatic bond patterns.
@@ -69,7 +79,7 @@ One sentence per file, added as files are read.
 - `doc/Topics/Kekule_Topology/Kekule_Gemini.py` — GPT/Gemini-assisted session on topological constraints for Kekulé resonance structures.
 - `doc/Topics/Kekule_Topology/Kekule_Opt_Deepseek.py` — LLM-driven session on optimization formulations for Kekulé bond assignments.
 - `doc/Topics/Kekule_Topology/Kekule_Opt_Gemini.py` — LLM-driven session comparing optimization strategies for Kekulé pattern selection.
-- `pyBall/KekuleBackend.py` — Backend for the Kekule Structure Explorer managing AtomicSystem state, hexagonal grid metadata, and hydrogen passivation logic.
+- `pyBall/KekuleBackend.py` — Backend for Kekule Structure Explorer using `AtomicGraph` as authoritative state; hex grid editing, ring detection, passivation groups, H-capping.
 - `pyBall/KekuleExplorerGUI.py` — PyQt5/Vispy GUI frontend for the Kekule Structure Explorer with interactive 3D rendering and extension system.
 - `pyBall/Kekule.py` — Python ctypes wrapper for C++ Kekule_lib (bond-order optimizer with init, relax, setDefaultBondOrders, pinBondOrders).
 
@@ -169,6 +179,10 @@ One sentence per file, added as files are read.
 - `cpp/common/math/ProjectiveDynamics_d.h` — ProjectiveDynamics solver with Jacobi, Gauss-Seidel, Cholesky, CG, and momentum-accelerated iterations.
 - `cpp/common/math/Multipoles.h` — C++ multipole math: charge projection, energy/force evaluation, and center-of-charge computation.
 - `cpp/libs_OCL/OCL_GridFF.cpp` — OpenCL wrapper for grid construction and sampling.
+- `cpp/common/molecular/MMFFBuilderBase.h` — Base topology builder with `Atom`, `Bond`, `Angle`, `AtomConf` structures; `autoBonds()`, `insertAtom()`, `insertBond()`.
+- `cpp/common/molecular/MMFFBuilder.h` — Advanced topology editing: `assignSp3Type()`, `assignPiFragments()`, `assignBondParams()`, `splitGraphs()`, `splitByBond()`.
+- `cpp/common/dataStructures/LimitedGraph.h` — Generic fixed-degree graph template with Tarjan DFS bridge-finding (`bridge()`, `bridgeUtil()`).
+- `cpp/common/molecular/MMFFparams.h` — Force field parameter database: `ElementType`, `AtomType`, `BondType`, `AngleType`; loads `.dat` files; `assignSubTypes()` hierarchical typing.
 
 ## ForceFields_OpenCL
 - `cpp/common_resources/cl/relax_multi.cl` — Unified OpenCL kernel with evalBond, evalAngCos, evalPiAling, getLJQH, getMorsePLQH, and multi-system force assembly.
@@ -181,7 +195,7 @@ One sentence per file, added as files are read.
 ## ForceFields_Python
 - `pyBall/OCL/UFF.py` — PyOpenCL wrapper for UFF GPU force evaluation.
 - `pyBall/OCL/UFFbuilder.py` — Topology builder for UFF PyOpenCL simulations.
-- `pyBall/OCL/MMFF.py` — Pure PyOpenCL MMFF implementation for rapid prototyping.
+- `pyBall/OCL/MMFF.py` — PyOpenCL MMFF implementation with `toMMFFsp3_loc()` topology→force-field conversion, `initAtomProperties()` type assignment, and back-neighbor building.
 - `pyBall/OCL/GridFF.py` — PyOpenCL grid sampler: GridFF_cl with sample3D, sample3D_comb, and buffer management.
 - `pyBall/OCL/GridFF_new.py` — Refactored GridFF wrapper with improved buffer management.
 - `pyBall/OCL/GridFFRelaxedScan.py` — Relaxed potential energy surface (PES) scanning routines for GridFF.
@@ -195,6 +209,10 @@ One sentence per file, added as files are read.
 - `pyBall/MMFF_multi.py` — Multi-system UFF Python interface.
 - `pyBall/Ewald2D.py` — Python reference implementation of 2D Ewald summation for charged slabs.
 - `pyBall/pyTruss/truss_solver_ocl.py` — OpenCL truss/projective-dynamics solver tests.
+- `pyBall/atomicUtils.py` — Topology utilities: bond/angle/dihedral detection, neighbor finding, graph preprocessing, rotation matrices, clustering.
+- `pyBall/AtomicSystem.py` — Array-based atomic system with `.mol`/`.mol2`/`.xyz` I/O, `findBonds()`, `neighs()`, `grow_selection()`, `select_all_connected()`, PBC cloning.
+- `pyBall/AtomicGraph.py` — Object-graph representation with stable-ID `Atom`, `Bond`, `Ring` objects; `detect_rings()` DFS cycle detection; `add_atom()`, `add_bond()`, `to_arrays()`.
+- `pyBall/GUI/MoleculeEditor2D.py` — Matplotlib-based 2D molecule editor (deprecated; superseded by KekuleExplorerGUI).
 
 ## ProjectiveDynamics
 - `doc/py/ProjectiveDynamics/projective_dynamics.py` — Reference Python implementation of ProjectiveDynamics using dense NumPy solvers.
@@ -238,3 +256,12 @@ One sentence per file, added as files are read.
 - `web/common_js/Buckets.js` — JavaScript spatial hash for CPU-side collision detection.
 - `web/common_js/Buckets_SoA.js` — Structure-of-Arrays spatial hash variant.
 - `web/common_js/BucketAABBs.js` — AABB construction and overlap tests for rigid-body packing.
+- `web/common_js/Selection.js` — Generic index selection with `add/remove/toggle`, tombstones, `SelectionBanks`, and predicate-based selection.
+- `web/common_js/MeshBuilder.js` — Mesh construction with vertex/edge de-duplication, `SelectionBanks` integration, SDF-based vertex/edge selection.
+- `web/molgui_webgpu/EditableMolecule.js` — Molecular topology editor with `Atom`, `Bond`, `Fragment`, `Bounds`; `id2atom` Map, `topoVersion` caching, VSEPR geometry helpers.
+- `web/molgui_webgpu/MMFFLTopology.js` — Topology → XPDB packing: `buildMMFFLTopology()`, `computePiOrientations()`, `buildAngleBonds()`, `buildXPDBInputsFromMol()`.
+- `web/molgui_webgpu/MMParams.js` — Parameter loader for `tests/tUFF/data_UFF/{ElementTypes,AtomTypes,BondTypes,AngleTypes,DihedralTypes}.dat`; `resolveTypeNameTable()`, `bondCutoff2()`, `bondLengthEstimate()`.
+- `web/molgui_webgpu/MoleculeRenderer.js` — WebGPU atom/bond rendering pipeline.
+- `web/molgui_webgpu/GUI.js` — WebGPU molecular editor UI components.
+- `web/molgui_web/js/EditableMolecule.js` — **Legacy duplicate** of `molgui_webgpu/EditableMolecule.js` (WebGL era).
+- `web/molgui_web/js/MMParams.js` — **Legacy** parameter parser (WebGL era; superseded by `molgui_webgpu/MMParams.js`).
