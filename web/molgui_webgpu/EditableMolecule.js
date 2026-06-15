@@ -122,6 +122,110 @@ function missingDirsVSEPR(vs, nMissing, totalDomains, outDirs) {
     throw new Error(`missingDirsVSEPR: unsupported totalDomains=${totalDomains}`);
 }
 
+/// Bias cap directions toward outward (pos - Si centroid); nb=2 keeps pure VSEPR (outward blend worsens H-H clashes).
+function applyOutwardCapBias(vs, dirs, nDang, outward, w) {
+    if (!(w > 0)) return;
+    if (nDang === 2 && vs.length === 2) return;
+    if (nDang === 1) {
+        const d = dirs[0].clone().mulScalar(1 - w).addMul(outward, w);
+        if (!(d.normalize() > 0)) throw new Error('applyOutwardCapBias: failed normalize nDang=1');
+        dirs[0] = d;
+        return;
+    }
+    if (nDang === 3) {
+        for (let j = 0; j < dirs.length; j++) {
+            const d = dirs[j].clone().mulScalar(1 - w).addMul(outward, w);
+            if (!(d.normalize() > 0)) throw new Error(`applyOutwardCapBias: nDang=3 j=${j} normalize failed`);
+            dirs[j] = d;
+        }
+    }
+}
+
+function parentHeavyIndex(mol, ih) {
+    const a = mol.atoms[ih];
+    for (let k = 0; k < a.bonds.length; k++) {
+        const ib = a.bonds[k] | 0;
+        const b = mol.bonds[ib];
+        if (!b) continue;
+        b.ensureIndices(mol);
+        const ja = b.other(ih);
+        if (ja >= 0 && (mol.atoms[ja].Z | 0) !== 1) return ja;
+    }
+    return -1;
+}
+
+/// Separate clashing H caps by rotating each H around its parent Si (fixed Si-H length).
+function resolveCapHClashes(mol, minDist = 1.8, maxIter = 16) {
+    const minD2 = minDist * minDist;
+    const sep = new Vec3(), dir = new Vec3(), rep = new Vec3(), tan = new Vec3();
+    for (let iter = 0; iter < maxIter; iter++) {
+        let nFix = 0;
+        for (let ih = 0; ih < mol.atoms.length; ih++) {
+            if ((mol.atoms[ih].Z | 0) !== 1) continue;
+            for (let jh = ih + 1; jh < mol.atoms.length; jh++) {
+                if ((mol.atoms[jh].Z | 0) !== 1) continue;
+                if (mol.atoms[ih].pos.dist2(mol.atoms[jh].pos) >= minD2) continue;
+                for (const hi of [ih, jh]) {
+                    const oj = (hi === ih) ? jh : ih;
+                    const si = parentHeavyIndex(mol, hi);
+                    if (si < 0) throw new Error(`resolveCapHClashes: H id=${mol.atoms[hi].id} has no heavy parent`);
+                    const s = mol.atoms[si].pos, h = mol.atoms[hi].pos;
+                    dir.setV(h).sub(s);
+                    const r = dir.norm();
+                    if (!(r > 0)) throw new Error(`resolveCapHClashes: zero Si-H id=${mol.atoms[hi].id}`);
+                    dir.mulScalar(1 / r);
+                    rep.setV(h).sub(mol.atoms[oj].pos);
+                    if (!(rep.normalize() > 0)) continue;
+                    tan.setV(dir).addMul(rep, -dir.dot(rep));
+                    if (!(tan.normalize() > 0)) continue;
+                    const step = 0.12;
+                    dir.addMul(tan, step);
+                    if (!(dir.normalize() > 0)) throw new Error(`resolveCapHClashes: rotate failed id=${mol.atoms[hi].id}`);
+                    h.x = s.x + dir.x * r;
+                    h.y = s.y + dir.y * r;
+                    h.z = s.z + dir.z * r;
+                }
+                nFix++;
+            }
+        }
+        if (nFix === 0) break;
+    }
+}
+
+function atomHasBond(mol, ia, ja) {
+    const a = mol.atoms[ia];
+    for (let k = 0; k < a.bonds.length; k++) {
+        const b = mol.bonds[a.bonds[k] | 0];
+        if (!b) continue;
+        b.ensureIndices(mol);
+        if (b.other(ia) === ja) return true;
+    }
+    return false;
+}
+
+/// Add explicit H-H bonds for cap pairs closer than maxDist (repulsion as bonded term; optional stiffness via BondTypes later).
+function addCapHHBonds(mol, maxDist = 1.8) {
+    const maxD2 = maxDist * maxDist;
+    let nAdded = 0;
+    for (let ih = 0; ih < mol.atoms.length; ih++) {
+        if ((mol.atoms[ih].Z | 0) !== 1) continue;
+        for (let jh = ih + 1; jh < mol.atoms.length; jh++) {
+            if ((mol.atoms[jh].Z | 0) !== 1) continue;
+            if (mol.atoms[ih].pos.dist2(mol.atoms[jh].pos) >= maxD2) continue;
+            if (atomHasBond(mol, ih, jh)) continue;
+            mol.addBond(mol.atoms[ih].id, mol.atoms[jh].id, 1, 1);
+            nAdded++;
+        }
+    }
+    return { nAdded };
+}
+
+function capBondLength(mmParams, zA, zCap, bondFactor) {
+    const bt = mmParams.getBondL0(zA | 0, zCap | 0);
+    if (bt && bt.l0 > 0) return bt.l0;
+    return mmParams.bondLengthEstimate(zA | 0, zCap | 0, bondFactor, 1.0);
+}
+
 export class Atom {
     constructor(id, i, Z = 6, x = 0, y = 0, z = 0) {
         this.id = id;
@@ -341,6 +445,7 @@ export class EditableMolecule {
         const bBond = (opts.bBond !== undefined) ? !!opts.bBond : true;
         const onlySelection = (opts.onlySelection !== undefined) ? !!opts.onlySelection : true;
         const bondFactor = (opts.bondFactor !== undefined) ? +opts.bondFactor : 1.1;
+        const outwardBias = (opts.outwardBias !== undefined) ? +opts.outwardBias : 0.0;
         const bPrint = !!opts.bPrint;
         const sel = Array.from(this.selection);
         if (onlySelection && sel.length === 0) throw new Error('addCappingAtoms: selection is empty');
@@ -351,6 +456,19 @@ export class EditableMolecule {
         const vs = [];
         const dirs = [];
         const tmp = new Vec3();
+        let siCog = null;
+        if (outwardBias > 0) {
+            siCog = new Vec3(0, 0, 0);
+            let nHeavy = 0;
+            for (let ia = 0; ia < this.atoms.length; ia++) {
+                const z = this.atoms[ia].Z | 0;
+                if (z === 1) continue;
+                siCog.add(this.atoms[ia].pos);
+                nHeavy++;
+            }
+            if (nHeavy <= 0) throw new Error('addCappingAtoms: outwardBias requires heavy (non-H) atoms');
+            siCog.mulScalar(1.0 / nHeavy);
+        }
         for (let ii = 0; ii < ids.length; ii++) {
             const id = ids[ii];
             const ia = this.getAtomIndex(id);
@@ -399,7 +517,12 @@ export class EditableMolecule {
             }
 
             missingDirsVSEPR(vs, nDang, totalDomains, dirs);
-            const r = mmParams.bondLengthEstimate(a.Z | 0, capT.iZ | 0, bondFactor, 1.0);
+            if (outwardBias > 0) {
+                const outward = new Vec3().setV(a.pos).sub(siCog);
+                if (!(outward.normalize() > 0)) throw new Error(`addCappingAtoms: outward zero id=${a.id} pos=(${a.pos.x},${a.pos.y},${a.pos.z})`);
+                applyOutwardCapBias(vs, dirs, nDang, outward, outwardBias);
+            }
+            const r = capBondLength(mmParams, a.Z | 0, capT.iZ | 0, bondFactor);
             for (let j = 0; j < dirs.length; j++) {
                 const d = dirs[j];
                 const p = a.pos;
@@ -412,6 +535,8 @@ export class EditableMolecule {
                 if (bBond) this.addBond(a.id, capId, 1, 1);
             }
         }
+        const resolveClashes = (opts.resolveClashes !== undefined) ? !!opts.resolveClashes : true;
+        if (resolveClashes && out.nAdded > 0) resolveCapHClashes(this, 1.8, 12);
         return out;
     }
 
@@ -511,6 +636,12 @@ export class EditableMolecule {
         this._touchTopo();
         bond.topoVersionCached = this.topoVersion;
         return id;
+    }
+
+    /// Optional explicit H-H bonds for close cap pairs (repulsion as bonded term; stiffness from BondTypes later).
+    addCapHHBonds(maxDist = 1.8) {
+        this._assertUnlocked('addCapHHBonds');
+        return addCapHHBonds(this, maxDist);
     }
 
     selectAtom(id, mode = 'replace') {

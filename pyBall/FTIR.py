@@ -144,58 +144,487 @@ def build_sparse_hessian_from_blocks(neigh_idx, neigh_count, blocks, symmetrize=
     return H_sparse
 
 
-def mechanical_greens_probing_sparse(H_sparse, M, omegas, eta=1e-3, direction_vec=None, charges=None, dim=3, stabilize=1e-6):
-    """
-    Sparse version of mechanical Green's function probing.
-    Uses scipy.sparse.linalg.spsolve at each frequency.
-    Suitable for medium systems (up to ~10000 DOF) where dense solve would be too slow.
-    """
-    if not _HAS_SCIPY:
-        raise ImportError("scipy is required for sparse matrix operations")
+def rigid_mode_shift_vectors(M, pos):
+    """Return 6 rigid-body shift vectors v_j = M^{1/2} q_j (length 3N) for Hessian projection."""
+    n_atoms = pos.shape[0]
+    dim = 3 * n_atoms
+    m = np.diag(M).reshape(n_atoms, 3)[:, 0]
+    total_mass = np.sum(m)
+    com = np.sum(pos * m[:, None], axis=0) / total_mass
+    pos_c = pos - com
+    V = np.zeros((6, dim))
+    for i in range(n_atoms):
+        V[0, i*3 + 0] = 1.0; V[1, i*3 + 1] = 1.0; V[2, i*3 + 2] = 1.0
+    for i in range(n_atoms):
+        x, y, z = pos_c[i]
+        V[3, i*3 : i*3+3] = [0.0, -z, y]
+        V[4, i*3 : i*3+3] = [z, 0.0, -x]
+        V[5, i*3 : i*3+3] = [-y, x, 0.0]
+    Vm = V.copy()
+    for j in range(6):
+        for i in range(n_atoms):
+            Vm[j, i*3 : i*3+3] *= np.sqrt(m[i])
+    Q, _ = np.linalg.qr(Vm.T)
+    Q = Q.T
+    sqrt_M = np.sqrt(M)
+    return [sqrt_M @ Q[j] for j in range(6)]
 
-    ndof = H_sparse.shape[0]
-    n_nodes = ndof // dim
 
+def apply_rigid_mode_shift(H, M, pos, shift=1e6):
+    """Add rank-6 rigid-body penalty to H (dense or sparse).
+
+    Free clusters have 6 zero modes of K: 3 translations + 3 rotations. In a frequency scan
+    A(omega)=K-(omega+i*eta)^2 M, those modes cause a huge spurious response at omega->0.
+
+    Algorithm:
+      1. Build 6 rigid-body vectors in Cartesian coords (translations + rotations about COM).
+      2. Mass-orthonormalize: q_j = M^{1/2} v_j, Gram-Schmidt -> Q.
+      3. Add shift * (M^{1/2} q_j)(M^{1/2} q_j)^T to H for each j.
+
+    Effect: eigenvalues of the 6 rigid directions are pushed to ~shift (very stiff), so they
+    do not appear as low-frequency spectral peaks. Does NOT change internal vibrational modes.
+    """
+    vecs = rigid_mode_shift_vectors(M, pos)
+    H_out = H.copy() if not sp.issparse(H) else H.tocsr(copy=True)
+    for v in vecs:
+        upd = shift * np.outer(v, v)
+        H_out = H_out + (sp.csr_matrix(upd) if sp.issparse(H_out) else upd)
+    return H_out
+
+
+def prepare_sparse_hessian(neigh_idx, neigh_count, blocks, M, pos, shift=1e6, symmetrize=True):
+    """Build scipy BSR Hessian from MMFF blocks and apply rigid-mode projection."""
+    H_sparse = build_sparse_hessian_from_blocks(neigh_idx, neigh_count, blocks, symmetrize=symmetrize)
+    if shift > 0:
+        H_sparse = apply_rigid_mode_shift(H_sparse, M, pos, shift=shift)
+    return H_sparse
+
+
+def _build_probe_rhs(n_nodes, direction_vec, charges, dim=3):
     if direction_vec is None:
         direction_vec = np.array([1.0, 0.0, 0.0], dtype=np.float64)
     direction_vec = np.asarray(direction_vec, dtype=np.float64)
-
     if charges is None:
         charges = np.ones(n_nodes)
     charges = np.asarray(charges)
-
-    # Build RHS force vector once
-    f = np.zeros(ndof, dtype=np.float64)
+    f = np.zeros(n_nodes * dim, dtype=np.float64)
     for n in range(n_nodes):
         dir_v = direction_vec[n] if direction_vec.ndim == 2 else direction_vec[:dim]
         f[n*dim:(n+1)*dim] = charges[n] * dir_v
+    return f, charges
 
-    # Convert mass to vector
+
+def _mass_diag_csr(M, n_nodes, dim=3):
     m = np.diag(M).reshape(n_nodes, dim)[:, 0]
-    m_repeated = np.repeat(m, dim)
-    M_sparse = sp.diags(m_repeated, format='csr')
+    return sp.diags(np.repeat(m, dim), format='csr')
+
+
+def _dynamic_stiffness_sparse(H_sparse, M, omega, eta=1e-3, stabilize=1e-6, dim=3):
+    n_nodes = H_sparse.shape[0] // dim
+    z = omega + 1j * eta
+    A = H_sparse + (-(z * z)) * _mass_diag_csr(M, n_nodes, dim=dim)
+    if stabilize > 0:
+        A = A + stabilize * sp.eye(H_sparse.shape[0], format='csr')
+    return A.tocsr()
+
+
+def _momentum_bmix(k, max_iters, b_start=0.2, b_end=0.2, b_istart=3, b_iend=None, b_last=0.0):
+    if b_iend is None:
+        b_iend = max(b_istart, max_iters - 1)
+    if k == 0 or k >= max_iters - 1:
+        return b_last
+    if k < b_istart:
+        return 0.0
+    if k >= b_iend:
+        return b_end
+    span = b_iend - b_istart
+    if span <= 0:
+        return b_end
+    return b_start + (k - b_istart) / span * (b_end - b_start)
+
+
+def pack_block_rows_from_sparse(A_csr, n_atoms, max_neigh=64):
+    """Pack per-atom row blocks from CSR dynamic stiffness for block Jacobi."""
+    A_dense = A_csr.toarray()
+    row_neigh = np.full((n_atoms, max_neigh), -1, dtype=np.int32)
+    row_blk = np.zeros((n_atoms, max_neigh, 3, 3), dtype=np.complex128)
+    row_count = np.zeros(n_atoms, dtype=np.int32)
+    diag_inv = np.zeros((n_atoms, 3, 3), dtype=np.complex128)
+    for i in range(n_atoms):
+        si = slice(i * 3, (i + 1) * 3)
+        Aii = A_dense[si, si]
+        diag_inv[i] = np.linalg.inv(Aii)
+        cnt = 0
+        for j in range(n_atoms):
+            if i == j:
+                continue
+            sj = slice(j * 3, (j + 1) * 3)
+            blk = A_dense[si, sj]
+            if np.max(np.abs(blk)) < 1e-14:
+                continue
+            if cnt >= max_neigh:
+                raise ValueError(f"atom {i} exceeds max_neigh={max_neigh}")
+            row_neigh[i, cnt] = j
+            row_blk[i, cnt] = blk
+            cnt += 1
+        row_count[i] = cnt
+    return row_neigh, row_blk, row_count, diag_inv
+
+
+def solve_block_jacobi_momentum(A, b, max_iter=500, tol=1e-8, b_start=0.2, b_end=0.2, b_istart=3, verbose=False):
+    """Block Jacobi (3x3 atom blocks) + heavy-ball for complex sparse/dense A."""
+    if not _HAS_SCIPY:
+        raise ImportError("scipy is required for block Jacobi solver")
+    b = np.asarray(b, dtype=np.complex128).ravel()
+    n_atoms = b.size // 3
+    A_csr = A.tocsr() if sp.issparse(A) else sp.csr_matrix(A)
+    row_neigh, row_blk, row_count, diag_inv = pack_block_rows_from_sparse(A_csr, n_atoms)
+    u = np.zeros_like(b)
+    u_old = np.zeros_like(b)
+    for k in range(max_iter):
+        u_new = np.zeros_like(b)
+        for i in range(n_atoms):
+            si = slice(i * 3, (i + 1) * 3)
+            acc = b[si].copy()
+            for t in range(int(row_count[i])):
+                j = int(row_neigh[i, t])
+                sj = slice(j * 3, (j + 1) * 3)
+                acc -= row_blk[i, t] @ u[sj]
+            u_new[si] = diag_inv[i] @ acc
+        bmix = _momentum_bmix(k, max_iter, b_start=b_start, b_end=b_end, b_istart=b_istart)
+        u_out = u_new + bmix * (u - u_old)
+        res = np.linalg.norm(b - A_csr @ u_out) / max(np.linalg.norm(b), 1e-12)
+        if verbose and (k < 5 or k % 50 == 0 or res < tol):
+            print(f"  block-jacobi iter {k}: rel_res={res:.3e} bmix={bmix:.3f}")
+        if res < tol:
+            return u_out, k + 1, res
+        u_old, u = u, u_out
+    raise np.linalg.LinAlgError(f"Block Jacobi did not converge in {max_iter} iterations (rel_res={res:.3e})")
+
+
+def block_diag_dominance_ratio(A_csr, n_atoms):
+    """Mean ratio |A_ii| / sum_{j!=i}|A_ij| per atom block (scalar diagnostic)."""
+    A_dense = A_csr.toarray() if sp.issparse(A_csr) else np.asarray(A_csr)
+    ratios = []
+    for i in range(n_atoms):
+        si = slice(i * 3, (i + 1) * 3)
+        d_norm = np.linalg.norm(A_dense[si, si])
+        off = sum(np.linalg.norm(A_dense[si, j * 3:(j + 1) * 3]) for j in range(n_atoms) if j != i)
+        if off > 1e-30:
+            ratios.append(d_norm / off)
+    return float(np.mean(ratios)) if ratios else np.inf
+
+
+def inertial_shift_matrix(M, n_atoms, mu, dim=3):
+    """PD-style inertial shift mu*M. A' = A + mu*M improves Jacobi conditioning when mu >> 0."""
+    m = np.diag(M).reshape(n_atoms, dim)[:, 0]
+    return sp.diags(np.repeat(m * mu, dim), format='csr', dtype=np.complex128)
+
+
+def solve_block_jacobi_inertial(A, M, b, mu=0.0, max_iter=500, tol=1e-8, b_start=0.0, b_end=0.0, b_istart=0, verbose=False):
+    """Block Jacobi on (A + mu*M)u = b. mu>0 adds PD-like inertia; approximates A u=b when mu is small."""
+    if not _HAS_SCIPY:
+        raise ImportError("scipy is required")
+    n_atoms = len(b) // 3
+    A_csr = A.tocsr() if sp.issparse(A) else sp.csr_matrix(A)
+    if mu > 0:
+        A_csr = A_csr + inertial_shift_matrix(M, n_atoms, mu)
+    return solve_block_jacobi_momentum(A_csr, b, max_iter=max_iter, tol=tol, b_start=b_start, b_end=b_end, b_istart=b_istart, verbose=verbose)
+
+
+def solve_preconditioned_richardson(A, b, max_iter=2000, tol=1e-8, tau=0.1, use_block_prec=True, verbose=False):
+    """Preconditioned Richardson: u <- u + tau*P^{-1}(b - A u). Needs tau < 2/lambda_max(P^{-1}A); often too slow for bonded K."""
+    if not _HAS_SCIPY:
+        raise ImportError("scipy is required")
+    b = np.asarray(b, dtype=np.complex128).ravel()
+    n_atoms = b.size // 3
+    A_csr = A.tocsr() if sp.issparse(A) else sp.csr_matrix(A)
+    if tau == 'auto':
+        tau = estimate_richardson_tau(A_csr, n_atoms, use_block_prec=use_block_prec)
+    if use_block_prec:
+        _, _, _, diag_inv = pack_block_rows_from_sparse(A_csr, n_atoms)
+        def apply_prec(r):
+            out = np.zeros_like(r)
+            for i in range(n_atoms):
+                si = slice(i * 3, (i + 1) * 3)
+                out[si] = diag_inv[i] @ r[si]
+            return out
+    else:
+        dinv = 1.0 / A_csr.diagonal()
+        def apply_prec(r):
+            return dinv * r
+    u = np.zeros_like(b)
+    bnorm = max(np.linalg.norm(b), 1e-30)
+    for k in range(max_iter):
+        r = b - A_csr @ u
+        u = u + tau * apply_prec(r)
+        res = np.linalg.norm(r) / bnorm
+        if verbose and (k < 5 or k % 200 == 0 or res < tol):
+            print(f"  richardson iter {k}: rel_res={res:.3e} tau={tau}")
+        if res < tol:
+            return u, k + 1, res
+    raise np.linalg.LinAlgError(f"Richardson did not converge in {max_iter} iterations (rel_res={res:.3e})")
+
+
+def estimate_richardson_tau(A_csr, n_atoms, use_block_prec=True, n_power=25):
+    """Estimate tau ~ 1.9/lambda_max(P^{-1}A) via power iteration."""
+    n = A_csr.shape[0]
+    if use_block_prec:
+        _, _, _, diag_inv = pack_block_rows_from_sparse(A_csr, n_atoms)
+        def apply_PinvA(x):
+            out = np.zeros_like(x)
+            Ax = A_csr @ x
+            for i in range(n_atoms):
+                si = slice(i * 3, (i + 1) * 3)
+                out[si] = diag_inv[i] @ Ax[si]
+            return out
+    else:
+        dinv = 1.0 / A_csr.diagonal()
+        def apply_PinvA(x):
+            return dinv * (A_csr @ x)
+    v = np.random.randn(n) + 1j * np.random.randn(n)
+    v = v / np.linalg.norm(v)
+    for _ in range(n_power):
+        v = apply_PinvA(v)
+        nrm = np.linalg.norm(v)
+        if nrm < 1e-30:
+            break
+        v = v / nrm
+    lam = np.linalg.norm(A_csr @ v) / max(np.linalg.norm(apply_PinvA(A_csr @ v)), 1e-30)
+    return 1.9 / max(lam, 1e-12)
+
+
+def solve_cg_spd(A, b, max_iter=None, tol=1e-9, verbose=False):
+    """Conjugate gradient for real symmetric positive-definite A. No diagonal-dominance requirement."""
+    if not _HAS_SCIPY:
+        raise ImportError("scipy is required")
+    A_csr = A.tocsr() if sp.issparse(A) else sp.csr_matrix(A)
+    if np.iscomplexobj(A_csr.data):
+        A_csr = sp.csr_matrix(np.real(A_csr.toarray()), dtype=np.float64)
+    b = np.asarray(b, dtype=np.float64).ravel()
+    n = b.size
+    if max_iter is None:
+        max_iter = 10 * n
+    x = np.zeros(n)
+    r = b - A_csr @ x
+    p = r.copy()
+    rs = float(r @ r)
+    bnorm = max(np.linalg.norm(b), 1e-30)
+    for k in range(max_iter):
+        Ap = A_csr @ p
+        denom = float(p @ Ap)
+        if abs(denom) < 1e-30:
+            raise np.linalg.LinAlgError("CG breakdown: p^T A p ~ 0 (A may not be SPD)")
+        alpha = rs / denom
+        x += alpha * p
+        r -= alpha * Ap
+        rsnew = float(r @ r)
+        res = np.sqrt(rsnew) / bnorm
+        if verbose and (k < 5 or k % 50 == 0 or res < tol):
+            print(f"  CG iter {k}: rel_res={res:.3e}")
+        if res < tol:
+            return x, k + 1, res
+        p = r + (rsnew / rs) * p
+        rs = rsnew
+    raise np.linalg.LinAlgError(f"CG did not converge in {max_iter} iterations (rel_res={res:.3e})")
+
+
+def solve_cgne(A, b, max_iter=None, tol=1e-10, verbose=False):
+    """CG on normal equations A^H A u = A^H b for general complex A. Converges but squares condition number."""
+    if not _HAS_SCIPY:
+        raise ImportError("scipy is required")
+    A_csr = A.tocsr() if sp.issparse(A) else sp.csr_matrix(A)
+    b = np.asarray(b, dtype=np.complex128).ravel()
+    n = b.size
+    if max_iter is None:
+        max_iter = 10 * n
+    AH = A_csr.conj().T
+    AHA = AH @ A_csr
+    b2 = AH @ b
+    x = np.zeros(n, dtype=np.complex128)
+    r = b2 - AHA @ x
+    p = r.copy()
+    rs = np.vdot(r, r).real
+    bnorm = max(np.linalg.norm(b2), 1e-30)
+    for k in range(max_iter):
+        Ap = AHA @ p
+        denom = np.vdot(p, Ap).real
+        if abs(denom) < 1e-30:
+            raise np.linalg.LinAlgError("CGNE breakdown")
+        alpha = rs / denom
+        x += alpha * p
+        r -= alpha * Ap
+        rsnew = np.vdot(r, r).real
+        res = np.sqrt(rsnew) / bnorm
+        if verbose and (k < 5 or k % 100 == 0 or res < tol):
+            print(f"  CGNE iter {k}: rel_res={res:.3e}")
+        if res < tol:
+            return x, k + 1, res
+        p = r + (rsnew / rs) * p
+        rs = rsnew
+    raise np.linalg.LinAlgError(f"CGNE did not converge in {max_iter} iterations (rel_res={res:.3e})")
+
+
+def solve_gmres(A, b, restart=30, max_cycles=50, tol=1e-10, verbose=False):
+    """Restarted GMRES for general complex nonsymmetric A. Robust; Arnoldi orthogonalization is GPU-heavy."""
+    if not _HAS_SCIPY:
+        raise ImportError("scipy is required")
+    A_csr = A.tocsr() if sp.issparse(A) else sp.csr_matrix(A)
+    b = np.asarray(b, dtype=np.complex128).ravel()
+    n = b.size
+    x = np.zeros(n, dtype=np.complex128)
+    bnorm = max(np.linalg.norm(b), 1e-30)
+    total_iters = 0
+    for cycle in range(max_cycles):
+        r = b - A_csr @ x
+        beta = np.linalg.norm(r)
+        res = beta / bnorm
+        if res < tol:
+            return x, total_iters, res
+        if verbose and cycle < 3:
+            print(f"  GMRES cycle {cycle}: rel_res={res:.3e}")
+        V = np.zeros((n, restart + 1), dtype=np.complex128)
+        H = np.zeros((restart + 1, restart), dtype=np.complex128)
+        V[:, 0] = r / beta
+        m_eff = restart
+        for j in range(restart):
+            total_iters += 1
+            w = A_csr @ V[:, j]
+            for i in range(j + 1):
+                H[i, j] = np.vdot(V[:, i], w)
+                w = w - H[i, j] * V[:, i]
+            H[j + 1, j] = np.linalg.norm(w)
+            if abs(H[j + 1, j]) < 1e-14:
+                m_eff = j + 1
+                break
+            V[:, j + 1] = w / H[j + 1, j]
+        Hm = H[:m_eff + 1, :m_eff]
+        e1 = np.zeros(m_eff + 1, dtype=np.complex128)
+        e1[0] = beta
+        y, _, _, _ = np.linalg.lstsq(Hm, e1, rcond=None)
+        x = x + V[:, :m_eff] @ y
+        r = b - A_csr @ x
+        res = np.linalg.norm(r) / bnorm
+        if res < tol:
+            return x, total_iters, res
+    raise np.linalg.LinAlgError(f"GMRES did not converge in {max_cycles} cycles (rel_res={res:.3e})")
+
+
+def solve_linear_system(A, b, method='auto', M=None, omega=None, eta=0.0, **kwargs):
+    """Unified entry: 'spsolve', 'cg' (real SPD), 'cgne', 'gmres', 'richardson', 'jacobi'. method='auto' picks by matrix structure."""
+    if not _HAS_SCIPY:
+        raise ImportError("scipy is required")
+    b = np.asarray(b)
+    if method == 'auto':
+        A_csr = A.tocsr() if sp.issparse(A) else sp.csr_matrix(A)
+        if not np.iscomplexobj(A_csr.data) and not np.iscomplexobj(b):
+            w = np.linalg.eigvalsh(A_csr.toarray()) if A_csr.shape[0] <= 512 else None
+            if w is not None and w[0] > 0:
+                method = 'cg'
+            else:
+                method = 'gmres'
+        else:
+            method = 'gmres'
+    if method == 'spsolve':
+        u = spsolve(A.tocsr() if sp.issparse(A) else sp.csr_matrix(A), b.astype(np.complex128))
+        return u, 1, 0.0
+    if method == 'cg':
+        u, nit, res = solve_cg_spd(A, b, **kwargs)
+        return u, nit, res
+    if method == 'cgne':
+        u, nit, res = solve_cgne(A, b, **kwargs)
+        return u, nit, res
+    if method == 'gmres':
+        u, nit, res = solve_gmres(A, b, **kwargs)
+        return u, nit, res
+    if method == 'richardson':
+        u, nit, res = solve_preconditioned_richardson(A, b, **kwargs)
+        return u, nit, res
+    if method == 'jacobi':
+        u, nit, res = solve_linear_jacobi_momentum(A, b, **kwargs)
+        return u, nit, res
+    raise ValueError(f"Unknown solver method '{method}'")
+
+
+def solve_linear_jacobi_momentum(A, b, max_iter=500, tol=1e-8, b_start=0.2, b_end=0.2, b_istart=3, stabilize_diag=0.0, verbose=False, method='block'):
+    """Iterative solve for complex A. method='block' (3x3 atom blocks, default) or 'point' (diagonal Jacobi)."""
+    if method == 'block':
+        return solve_block_jacobi_momentum(A, b, max_iter=max_iter, tol=tol, b_start=b_start, b_end=b_end, b_istart=b_istart, verbose=verbose)
+    if not _HAS_SCIPY:
+        raise ImportError("scipy is required for iterative sparse solvers")
+    b = np.asarray(b, dtype=np.complex128).ravel()
+    if sp.issparse(A):
+        A_csr = A.tocsr()
+        diag = A_csr.diagonal().copy()
+    else:
+        A_csr = sp.csr_matrix(A)
+        diag = np.diag(A)
+    if stabilize_diag > 0:
+        diag = diag + stabilize_diag
+    if np.any(np.abs(diag) < 1e-14):
+        raise np.linalg.LinAlgError("Jacobi failed: near-zero diagonal entry in dynamic stiffness")
+    D_inv = 1.0 / diag
+    x = np.zeros_like(b)
+    x_old = np.zeros_like(b)
+    for k in range(max_iter):
+        Ax = A_csr @ x
+        x_jac = D_inv * (b - Ax + diag * x)
+        bmix = _momentum_bmix(k, max_iter, b_start=b_start, b_end=b_end, b_istart=b_istart)
+        x_new = x_jac + bmix * (x - x_old)
+        res = np.linalg.norm(b - A_csr @ x_new) / max(np.linalg.norm(b), 1e-12)
+        if verbose and (k < 5 or k % 50 == 0 or res < tol):
+            print(f"  jacobi iter {k}: rel_res={res:.3e} bmix={bmix:.3f}")
+        if res < tol:
+            return x_new, k + 1, res
+        x_old, x = x, x_new
+    raise np.linalg.LinAlgError(f"Jacobi did not converge in {max_iter} iterations (rel_res={res:.3e})")
+
+
+def mechanical_greens_probing_sparse(H_sparse, M, omegas, eta=1e-3, direction_vec=None, charges=None, dim=3, stabilize=1e-6,
+                                     pos=None, shift_rigid=0.0, fail_loud=False, solver='spsolve', jacobi_max_iter=500, jacobi_tol=1e-8,
+                                     gmres_restart=30, gmres_cycles=50):
+    """
+    Sparse mechanical Green's function probing at each frequency.
+    solver: 'spsolve' | 'gmres' | 'cgne' | 'cg' (real SPD only) | 'richardson' | 'jacobi'
+    If pos is given and shift_rigid>0, apply rigid-mode projection before solving.
+    """
+    if not _HAS_SCIPY:
+        raise ImportError("scipy is required for sparse matrix operations")
+    _valid = ('spsolve', 'jacobi', 'gmres', 'cgne', 'cg', 'richardson')
+    if solver not in _valid:
+        raise ValueError(f"Unknown solver '{solver}', expected one of {_valid}")
+
+    ndof = H_sparse.shape[0]
+    n_nodes = ndof // dim
+    f, charges = _build_probe_rhs(n_nodes, direction_vec, charges, dim=dim)
+    if pos is not None and shift_rigid > 0:
+        H_sparse = apply_rigid_mode_shift(H_sparse, M, pos, shift=shift_rigid)
 
     spectrum_energy = np.zeros(len(omegas))
     spectrum_dipole = np.zeros((len(omegas), dim), dtype=np.complex128)
 
     for io, omega in enumerate(omegas):
-        # Dynamic stiffness: A = H - (omega + i*eta)^2 M
-        z = omega + 1j * eta
-        coeff = -(z * z)
-        A = H_sparse + coeff * M_sparse
-        if stabilize > 0:
-            A = A + stabilize * sp.eye(ndof, format='csr')
-
+        A_csr = _dynamic_stiffness_sparse(H_sparse, M, omega, eta=eta, stabilize=stabilize, dim=dim)
         try:
-            # Convert to CSR for spsolve (more efficient)
-            A_csr = A.tocsr()
-            # Solve A u = f for u
-            u = spsolve(A_csr, f.astype(np.complex128))
+            if solver == 'spsolve':
+                u = spsolve(A_csr, f.astype(np.complex128))
+            elif solver == 'gmres':
+                u, _, _ = solve_gmres(A_csr, f.astype(np.complex128), restart=gmres_restart, max_cycles=gmres_cycles, tol=jacobi_tol)
+            elif solver == 'cgne':
+                u, _, _ = solve_cgne(A_csr, f.astype(np.complex128), max_iter=jacobi_max_iter, tol=jacobi_tol)
+            elif solver == 'cg':
+                u, _, _ = solve_cg_spd(A_csr, f, max_iter=jacobi_max_iter, tol=jacobi_tol)
+            elif solver == 'richardson':
+                u, _, _ = solve_preconditioned_richardson(A_csr, f.astype(np.complex128), max_iter=jacobi_max_iter, tol=jacobi_tol, tau='auto')
+            else:
+                u, _, _ = solve_linear_jacobi_momentum(A_csr, f.astype(np.complex128), max_iter=jacobi_max_iter, tol=jacobi_tol)
             spectrum_energy[io] = np.sum(np.abs(u)**2) / n_nodes
             disp_nodes = u.reshape(n_nodes, dim)
             dip = (charges[:, None] * disp_nodes).sum(axis=0)
             spectrum_dipole[io] = dip
         except Exception as e:
+            if fail_loud:
+                raise RuntimeError(f"sparse solve failed at omega={omega}") from e
             print(f"Warning: sparse solve failed at omega={omega}: {e}")
             spectrum_energy[io] = 0.0
             spectrum_dipole[io] = np.zeros(dim)
@@ -205,6 +634,7 @@ def mechanical_greens_probing_sparse(H_sparse, M, omegas, eta=1e-3, direction_ve
         "energy": spectrum_energy,
         "dipole": spectrum_dipole,
         "n_probes": len(omegas),
+        "solver": solver,
     }
 
 
@@ -276,60 +706,10 @@ def vibration_spectrum_from_modes(K, M, omegas, eta=1e-3, direction_vec=None, ch
 
 def project_rigid_modes(H, M, pos, shift=1e6):
     """
-    Project out the 6 rigid body modes (translation + rotation) from the Hessian 
+    Project out the 6 rigid body modes (translation + rotation) from the Hessian
     by shifting their eigenvalues to a high frequency, preventing response at low energy.
-    
-    H: (3N, 3N) unweighted Hessian
-    M: (3N, 3N) diagonal mass matrix
-    pos: (N, 3) positions of atoms
-    shift: eigenvalue shift (force constant penalty) applied to rigid body modes
     """
-    n_atoms = pos.shape[0]
-    dim = 3 * n_atoms
-    
-    # Get mass array
-    m = np.diag(M).reshape(n_atoms, 3)[:, 0] # mass of each atom
-    
-    # Center of mass
-    total_mass = np.sum(m)
-    com = np.sum(pos * m[:, None], axis=0) / total_mass
-    
-    pos_c = pos - com
-    
-    # Construct the 6 rigid body vectors in unweighted coordinates
-    V = np.zeros((6, dim))
-    
-    # Translations
-    for i in range(n_atoms):
-        V[0, i*3 + 0] = 1.0
-        V[1, i*3 + 1] = 1.0
-        V[2, i*3 + 2] = 1.0
-        
-    # Rotations: cross product (pos_c x v)
-    for i in range(n_atoms):
-        x, y, z = pos_c[i]
-        V[3, i*3 : i*3+3] = [0.0, -z, y]
-        V[4, i*3 : i*3+3] = [z, 0.0, -x]
-        V[5, i*3 : i*3+3] = [-y, x, 0.0]
-        
-    # Mass-weight the basis vectors
-    Vm = V.copy()
-    for j in range(6):
-        for i in range(n_atoms):
-            Vm[j, i*3 : i*3+3] *= np.sqrt(m[i])
-            
-    # Orthonormalize the mass-weighted vectors
-    Q, _ = np.linalg.qr(Vm.T)
-    Q = Q.T # shape (6, 3N)
-    
-    sqrt_M = np.sqrt(M)
-    H_shifted = H.copy()
-    for j in range(6):
-        # Delta H = shift * (M^{1/2} q) (M^{1/2} q)^T
-        vec = sqrt_M @ Q[j]
-        H_shifted += shift * np.outer(vec, vec)
-        
-    return H_shifted
+    return apply_rigid_mode_shift(H, M, pos, shift=shift)
 
 def get_mass_matrix(mmff, n_atoms):
     """

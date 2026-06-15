@@ -67,6 +67,7 @@ export class MMParams {
         this.byAtomicNumber = {}; // iZ -> ElementType
         this.bondTypes = {};    // key -> { l0, k, order, a, b }
         this.angleTypes = [];   // array of { a1, a2, a3, ang0, k } with wildcard support
+        this.dihedralTypes = []; // array of { a1,a2,a3,a4, bo, k, ang0, n } — parity: MMFFparams.h loadDihedralTypes
     }
 
     _g() { return (typeof window !== 'undefined') ? window : globalThis; }
@@ -464,9 +465,16 @@ export class MMParams {
     }
 
     getAngleParams(nameA, nameB, nameC) {
-        const na = nameA || '*';
-        const nb = nameB || '*';
-        const nc = nameC || '*';
+        const r = this.getAngleParamsOptional(nameA, nameB, nameC);
+        if (!r) {
+            console.error(`[MMParams.getAngleParams][MISS] (${nameA},${nameB},${nameC}) no entry`);
+            throw new Error(`Missing angle params for (${nameA},${nameB},${nameC})`);
+        }
+        return r;
+    }
+
+    getAngleParamsOptional(nameA, nameB, nameC) {
+        const na = nameA || '*', nb = nameB || '*', nc = nameC || '*';
         for (const at of this.angleTypes) {
             const matchA = (at.a1 === '*') || (at.a1 === na);
             const matchB = (at.a2 === '*') || (at.a2 === nb);
@@ -476,8 +484,7 @@ export class MMParams {
                 return { ang0: at.ang0, k: at.k };
             }
         }
-        console.error(`[MMParams.getAngleParams][MISS] (${na},${nb},${nc}) no entry`);
-        throw new Error(`Missing angle params for (${na},${nb},${nc})`);
+        return null;
     }
 
     convertAngleToDistance(lab, lbc, angleDeg, kAng) {
@@ -494,6 +501,89 @@ export class MMParams {
             kLin = 0;
         }
         return { restLength: lac, stiffness: kLin };
+    }
+
+    /// Parse DihedralTypes.dat (parity: cpp/common/molecular/MMFFparams.h::loadDihedralTypes).
+    parseDihedralTypes(content) {
+        const lines = String(content).replace(/\r/g, '').split('\n');
+        this.dihedralTypes = [];
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) continue;
+            const parts = trimmed.split(/\s+/);
+            if (parts.length < 8) continue;
+            const bo = parseInt(parts[4], 10) | 0;
+            const k = parseFloat(parts[5]);
+            const ang0 = parseFloat(parts[6]);
+            const n = parseInt(parts[7], 10) | 0;
+            if (!(k > 0) || !(n > 0)) continue;
+            this.dihedralTypes.push({ a1: parts[0], a2: parts[1], a3: parts[2], a4: parts[3], bo, k, ang0, n });
+        }
+        this._logger().info(`Parsed ${this.dihedralTypes.length} dihedral types.`);
+        return this.dihedralTypes;
+    }
+
+    _matchDihedralPattern(pat, name) { return (pat === '*') || (pat === name); }
+
+    /// Lookup dihedral params by atom-type quadruple + bond order; throws if missing and no UFF fallback allowed.
+    getDihedralParams(nameA, nameB, nameC, nameD, bondOrder = 2, allowUffFallback = true) {
+        const na = nameA || '*', nb = nameB || '*', nc = nameC || '*', nd = nameD || '*';
+        const bo = bondOrder | 0;
+        for (const dt of this.dihedralTypes) {
+            if ((dt.bo | 0) !== bo) continue;
+            if (this._matchDihedralPattern(dt.a1, na) && this._matchDihedralPattern(dt.a2, nb) && this._matchDihedralPattern(dt.a3, nc) && this._matchDihedralPattern(dt.a4, nd)) {
+                if (this._verbosity() >= 3) console.log(`[MMParams.getDihedralParams] (${na},${nb},${nc},${nd}) bo=${bo} -> k=${dt.k} ang0=${dt.ang0} n=${dt.n}`);
+                return { k: dt.k, ang0: dt.ang0, n: dt.n, source: 'DihedralTypes.dat' };
+            }
+        }
+        if (!allowUffFallback) throw new Error(`Missing dihedral params for (${na},${nb},${nc},${nd}) bo=${bo}`);
+        return this._uffDihedralFallback(nb, nc, bo);
+    }
+
+    /// UFF sp3–sp3 torsion fallback (parity: pyBall/OCL/UFFbuilder.py assign_uff_params_dihedrals).
+    _uffDihedralFallback(nameB, nameC, bondOrder = 2) {
+        const tb = this.atomTypes ? this.atomTypes[nameB] : null;
+        const tc = this.atomTypes ? this.atomTypes[nameC] : null;
+        if (!tb || !tc) throw new Error(`_uffDihedralFallback: unknown types ('${nameB}','${nameC}')`);
+        const eb = tb.element || (this.elementTypes ? this.elementTypes[tb.element_name] : null);
+        const ec = tc.element || (this.elementTypes ? this.elementTypes[tc.element_name] : null);
+        if (!eb || !ec) throw new Error(`_uffDihedralFallback: missing element for ('${nameB}','${nameC}')`);
+        const vB = +eb.Vuff, vC = +ec.Vuff;
+        if (!(vB > 0) || !(vC > 0)) throw new Error(`_uffDihedralFallback: invalid Vuff for ('${nameB}','${nameC}')`);
+        const nbB = (tb.valence | 0) > 0 ? (tb.valence | 0) : 4;
+        const nbC = (tc.valence | 0) > 0 ? (tc.valence | 0) : 4;
+        if (nbB < 2 || nbC < 2) throw new Error(`_uffDihedralFallback: valence too small for ('${nameB}','${nameC}')`);
+        const k = 0.5 * Math.sqrt(vB * vC) / ((nbB - 1) * (nbC - 1));
+        if (!(k > 0) || !Number.isFinite(k)) throw new Error(`_uffDihedralFallback: invalid k=${k}`);
+        // staggered minimum of 0.5*k*(1+cos(3*phi)) at phi=60 deg
+        return { k, ang0: 60.0, n: 3, source: 'UFF_sp3_sp3' };
+    }
+
+    /// Equilibrium 1–4 distance from bond lengths, equilibrium angles, and dihedral (parity: law-of-geometry in Linearized_topology.progress.md).
+    dihedralEndDistanceL0(rab, rbc, rcd, thetaAbcDeg, thetaBcdDeg, phi0Deg) {
+        const thA = thetaAbcDeg * (Math.PI / 180.0);
+        const thC = thetaBcdDeg * (Math.PI / 180.0);
+        const phi0 = phi0Deg * (Math.PI / 180.0);
+        const ax = rab * Math.sin(thA), az = rab * Math.cos(thA);
+        const sx = rcd * Math.sin(thC), sz = -rcd * Math.cos(thC);
+        const cp = Math.cos(phi0), sp = Math.sin(phi0);
+        const dx = sx * cp, dy = sx * sp, dz = rbc + sz;
+        const ex = ax - dx, ey = -dy, ez = az - dz;
+        const l0sq = ex * ex + ey * ey + ez * ez;
+        if (!(l0sq > 0) || !Number.isFinite(l0sq)) throw new Error(`dihedralEndDistanceL0: invalid l0^2=${l0sq}`);
+        return Math.sqrt(l0sq);
+    }
+
+    /// Map torsion stiffness k_phi to distance spring k_r via d|a-d|/d(phi) at equilibrium (small-displacement equivalence).
+    convertDihedralToDistance(rab, rbc, rcd, thetaAbcDeg, thetaBcdDeg, phi0Deg, kPhi) {
+        const l0 = this.dihedralEndDistanceL0(rab, rbc, rcd, thetaAbcDeg, thetaBcdDeg, phi0Deg);
+        const delta = 1e-4; // rad
+        const l1 = this.dihedralEndDistanceL0(rab, rbc, rcd, thetaAbcDeg, thetaBcdDeg, phi0Deg + delta);
+        const dlDphi = (l1 - l0) / delta;
+        if (!(Math.abs(dlDphi) > 1e-12)) throw new Error(`convertDihedralToDistance: |dl/dphi|~0 at phi0=${phi0Deg} deg; cannot map k_phi=${kPhi}`);
+        const kLin = kPhi / (dlDphi * dlDphi);
+        if (!(kLin > 0) || !Number.isFinite(kLin)) throw new Error(`convertDihedralToDistance: invalid kLin=${kLin} from kPhi=${kPhi}`);
+        return { restLength: l0, stiffness: kLin };
     }
 
     // --- Helpers for Renderer ---

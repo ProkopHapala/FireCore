@@ -6,6 +6,8 @@ function lawOfCosines(rab, rbc, cosTheta) {
     return Math.sqrt(Math.max(0.0, t));
 }
 
+export { lawOfCosines };
+
 export function packBondArrays(bondsAdj, nAtoms, nMaxBonded) {
     const bondIndices = new Int32Array(nAtoms * nMaxBonded);
     bondIndices.fill(-1);
@@ -181,7 +183,7 @@ function extendMolWithDummy(mol, Z, pos, atypeIndex = -1) {
 
 function buildAngleBonds(mol, mmParams, bondsAdj1, opts, outLinear) {
     const n = mol.atoms.length;
-    const kAng = (opts && (opts.k_angle !== undefined)) ? +opts.k_angle : 0.0;
+    const kAng = (opts && (opts.k_angle !== undefined)) ? +opts.k_angle : ((opts && opts.K13 !== undefined) ? +opts.K13 : 0.0);
     for (let ib = 0; ib < n; ib++) {
         const neighs = bondsAdj1[ib] || [];
         if (neighs.length < 2) continue;
@@ -211,6 +213,220 @@ function buildAngleBonds(mol, mmParams, bondsAdj1, opts, outLinear) {
             }
         }
     }
+}
+
+/// Enumerate dihedral quadruples a–b–c–d (central bond b–c). Parity: UFFbuilder assign_uff_params_dihedrals.
+function enumerateDihedralQuadruples(bondsAdj1) {
+    const n = bondsAdj1.length;
+    const out = [];
+    const seenQuad = new Set();
+    for (let ib = 0; ib < n; ib++) {
+        const neighB = bondsAdj1[ib] || [];
+        for (let ic = 0; ic < neighB.length; ic++) {
+            const jc = neighB[ic][0] | 0;
+            if (jc <= ib) continue; // each central bond once
+            const neighC = bondsAdj1[jc] || [];
+            for (let ia = 0; ia < neighB.length; ia++) {
+                const ja = neighB[ia][0] | 0;
+                if (ja === jc) continue;
+                for (let id = 0; id < neighC.length; id++) {
+                    const jd = neighC[id][0] | 0;
+                    if (jd === ib) continue;
+                    const qk = `${ja},${ib},${jc},${jd}`;
+                    if (seenQuad.has(qk)) continue;
+                    seenQuad.add(qk);
+                    out.push([ja | 0, ib | 0, jc | 0, jd | 0]);
+                }
+            }
+        }
+    }
+    return out;
+}
+
+function equilibriumAngleDeg(mmParams, typeNames, ia, ib, ic, bondsAdj1) {
+    const ap = mmParams.getAngleParamsOptional(typeNames[ia], typeNames[ib], typeNames[ic]);
+    if (ap) return +ap.ang0;
+    const tB = mmParams.atomTypes[typeNames[ib]];
+    if (!tB) throw new Error(`equilibriumAngleDeg: missing type '${typeNames[ib]}' at ib=${ib}`);
+    const ass = +tB.Ass;
+    if (!(ass > 0) || !Number.isFinite(ass)) throw new Error(`equilibriumAngleDeg: invalid Ass=${ass} for ib=${ib} type=${typeNames[ib]}`);
+    return ass;
+}
+
+function bondL0FromAdj(bondsAdj1, i, j) {
+    const neigh = bondsAdj1[i] || [];
+    for (let k = 0; k < neigh.length; k++) {
+        if ((neigh[k][0] | 0) === (j | 0)) return +neigh[k][1];
+    }
+    throw new Error(`bondL0FromAdj: no bond (${i},${j})`);
+}
+
+function buildDihedralBonds(mol, mmParams, bondsAdj1, typeNamesReal, opts, outLinear) {
+    const kDih = (opts && (opts.k_dihedral !== undefined)) ? +opts.k_dihedral : ((opts && opts.K14 !== undefined) ? +opts.K14 : 0.0);
+    const quads = enumerateDihedralQuadruples(bondsAdj1);
+    const seenPair = new Map(); // undirected ja-jd -> [l0,K,quad]
+    for (let qi = 0; qi < quads.length; qi++) {
+        const ja = quads[qi][0] | 0, ib = quads[qi][1] | 0, jc = quads[qi][2] | 0, jd = quads[qi][3] | 0;
+        const i = ja < jd ? ja : jd;
+        const j = ja < jd ? jd : ja;
+        const pk = `${i},${j}`;
+        const rab = bondL0FromAdj(bondsAdj1, ib, ja);
+        const rbc = bondL0FromAdj(bondsAdj1, ib, jc);
+        const rcd = bondL0FromAdj(bondsAdj1, jc, jd);
+        if (!(rab > 0) || !(rbc > 0) || !(rcd > 0)) throw new Error(`buildDihedralBonds: invalid lengths at quad (${ja},${ib},${jc},${jd})`);
+        const thetaAbc = equilibriumAngleDeg(mmParams, typeNamesReal, ja, ib, jc, bondsAdj1);
+        const thetaBcd = equilibriumAngleDeg(mmParams, typeNamesReal, ib, jc, jd, bondsAdj1);
+        const ta = typeNamesReal[ja], tb = typeNamesReal[ib], tc = typeNamesReal[jc], td = typeNamesReal[jd];
+        const dhp = mmParams.getDihedralParams(ta, tb, tc, td, 2, true);
+        const kPhi = (kDih !== 0.0) ? kDih : (+dhp.k);
+        if (!(kPhi > 0) || !Number.isFinite(kPhi)) throw new Error(`buildDihedralBonds: invalid kPhi=${kPhi} for (${ta},${tb},${tc},${td})`);
+        const conv = mmParams.convertDihedralToDistance(rab, rbc, rcd, thetaAbc, thetaBcd, +dhp.ang0, kPhi);
+        const l0 = +conv.restLength, K = +conv.stiffness;
+        if (seenPair.has(pk)) {
+            const prev = seenPair.get(pk);
+            const dl = Math.abs(prev[0] - l0), dK = Math.abs(prev[1] - K);
+            if (dl > 1e-4 || dK > 1e-2) throw new Error(`buildDihedralBonds: conflicting 1-4 pair (${pk}) l0=${l0} vs ${prev[0]} from quads ${JSON.stringify(prev[2])} vs ${JSON.stringify(quads[qi])}`);
+            continue;
+        }
+        seenPair.set(pk, [l0, K, quads[qi]]);
+        outLinear.push([i, j, l0, K, ['dihedral', [ja, ib, jc, jd]]]);
+    }
+}
+
+/// BFS graph-distance histogram from bond adjacency (1-indexed distances).
+export function enumerateGraphDistances(bondsAdj1, maxDist = 4) {
+    const n = bondsAdj1.length;
+    const maxD = maxDist | 0;
+    const hist = new Array(maxD + 1).fill(0);
+    const perAtomMax = new Int32Array(n);
+    const bfsFrom = (src) => {
+        const dist = new Int32Array(n);
+        dist.fill(-1);
+        const q = [src | 0];
+        dist[src] = 0;
+        let qi = 0;
+        while (qi < q.length) {
+            const u = q[qi++];
+            const du = dist[u] | 0;
+            if (du >= maxD) continue;
+            const neigh = bondsAdj1[u] || [];
+            for (let k = 0; k < neigh.length; k++) {
+                const v = neigh[k][0] | 0;
+                if (dist[v] >= 0) continue;
+                dist[v] = du + 1;
+                q.push(v);
+            }
+        }
+        return dist;
+    };
+    for (let s = 0; s < n; s++) {
+        const dist = bfsFrom(s);
+        let localMax = 0;
+        for (let t = s + 1; t < n; t++) {
+            const d = dist[t] | 0;
+            if (d < 1 || d > maxD) continue;
+            hist[d]++;
+            if (d > localMax) localMax = d;
+        }
+        perAtomMax[s] = localMax;
+    }
+    return { hist, perAtomMax, natoms: n };
+}
+
+const STICK_CLASS = { empty: 0, bond: 1, angle: 2, dihedral: 3 };
+
+function stickClassFromTag(tag) {
+    const kind = Array.isArray(tag) ? String(tag[0]) : String(tag);
+    if (kind === 'angle') return STICK_CLASS.angle;
+    if (kind === 'dihedral') return STICK_CLASS.dihedral;
+    return STICK_CLASS.bond;
+}
+
+/// Pack incident springs per atom for GPU Jacobi (metadata only; does not modify LFF.cl).
+export function packLinearTopologyForGPU(topo, opts = {}) {
+    const nMax = (opts.maxNeighbors !== undefined) ? (opts.maxNeighbors | 0) : 48;
+    if (!(nMax > 0)) throw new Error(`packLinearTopologyForGPU: invalid maxNeighbors=${nMax}`);
+    const nAtoms = topo.n_real | 0;
+    const bondsAdj1 = new Array(nAtoms);
+    for (let i = 0; i < nAtoms; i++) bondsAdj1[i] = [];
+    const addEdge = (i, j, l0, K, cls) => {
+        bondsAdj1[i].push([j | 0, +l0, +K, cls | 0]);
+    };
+    const seen = new Set();
+    const keyOf = (a, b) => { const i = a < b ? a : b; const j = a < b ? b : a; return `${i},${j}`; };
+    for (let k = 0; k < topo.bonds_primary.length; k++) {
+        const e = topo.bonds_primary[k];
+        const a = e[0] | 0, b = e[1] | 0;
+        const l0 = topo.primary_params_l0[k], K = topo.primary_params_k[k];
+        const pk = keyOf(a, b);
+        if (seen.has(pk)) continue;
+        seen.add(pk);
+        addEdge(a, b, l0, K, STICK_CLASS.bond);
+        addEdge(b, a, l0, K, STICK_CLASS.bond);
+    }
+    for (let i = 0; i < topo.bonds_linear.length; i++) {
+        const b = topo.bonds_linear[i];
+        const a = b[0] | 0, c = b[1] | 0;
+        const tag = b[4];
+        const kind = Array.isArray(tag) ? String(tag[0]) : String(tag);
+        if (kind !== 'angle' && kind !== 'dihedral') continue;
+        const pk = keyOf(a, c);
+        if (seen.has(pk)) continue;
+        seen.add(pk);
+        const cls = stickClassFromTag(tag);
+        addEdge(a, c, b[2], b[3], cls);
+        addEdge(c, a, b[2], b[3], cls);
+    }
+    const neighs = new Int32Array(nAtoms * nMax);
+    const KLs = new Float32Array(nAtoms * nMax * 2);
+    const stickClass = new Int32Array(nAtoms * nMax);
+    neighs.fill(-1);
+    KLs.fill(0);
+    stickClass.fill(0);
+    let maxDegree = 0;
+    const overflow = [];
+    for (let i = 0; i < nAtoms; i++) {
+        const neigh = bondsAdj1[i] || [];
+        if (neigh.length > maxDegree) maxDegree = neigh.length;
+        if (neigh.length > nMax) overflow.push({ atom: i, count: neigh.length });
+        const m = Math.min(neigh.length, nMax);
+        const base = i * nMax;
+        for (let k = 0; k < m; k++) {
+            neighs[base + k] = neigh[k][0] | 0;
+            KLs[(base + k) * 2 + 0] = +neigh[k][1];
+            KLs[(base + k) * 2 + 1] = +neigh[k][2];
+            stickClass[base + k] = neigh[k][3] | 0;
+        }
+    }
+    if (overflow.length > 0) {
+        const msg = overflow.map(o => `atom ${o.atom}: ${o.count} sticks`).join('; ');
+        throw new Error(`packLinearTopologyForGPU: MAX_NEIGHBORS=${nMax} exceeded: ${msg}`);
+    }
+    return { neighs, KLs, stick_class: stickClass, nAtoms, maxNeighbors: nMax, maxDegree };
+}
+
+/// Flat spring list for JSON export: [{i,j,l0,K,tag}, ...]
+export function exportTopologySpringList(topo) {
+    const out = [];
+    const seen = new Set();
+    const add = (i, j, l0, K, tag) => {
+        const a = i | 0, b = j | 0;
+        const pk = a < b ? `${a},${b}` : `${b},${a}`;
+        if (seen.has(pk)) return;
+        seen.add(pk);
+        out.push({ i: Math.min(a, b), j: Math.max(a, b), l0: +l0, K: +K, tag });
+    };
+    for (let k = 0; k < topo.bonds_primary.length; k++) {
+        const e = topo.bonds_primary[k];
+        add(e[0], e[1], topo.primary_params_l0[k], topo.primary_params_k[k], 'bond');
+    }
+    for (let i = 0; i < topo.bonds_linear.length; i++) {
+        const b = topo.bonds_linear[i];
+        const tag = Array.isArray(b[4]) ? b[4][0] : b[4];
+        if (tag !== 'angle' && tag !== 'dihedral') continue;
+        add(b[0], b[1], b[2], b[3], tag);
+    }
+    return out;
 }
 
 function countNeighborsFromAdj(adj) {
@@ -684,7 +900,7 @@ export function buildMMFFLTopology(mol, mmParams, opts = {}) {
         }
     }
 
-    if (v >= 2) console.log('[buildMMFFLTopology] start', { nReal, nBonds: mol.bonds.length, add_angle: !!opts.add_angle, add_pi: !!opts.add_pi, add_epair: !!opts.add_epair });
+    if (v >= 2) console.log('[buildMMFFLTopology] start', { nReal, nBonds: mol.bonds.length, add_angle: addAngle, add_dihedral: addDihedral, add_pi: addPi, add_epair: addEpair });
 
     // Primary bonds list (pairs)
     const primaryPairs = [];
@@ -699,6 +915,7 @@ export function buildMMFFLTopology(mol, mmParams, opts = {}) {
     // Primary adjacency for real atoms
     const bondsAdj1 = new Array(nReal);
     for (let i = 0; i < nReal; i++) bondsAdj1[i] = [];
+    const k12 = (opts && opts.K12 !== undefined) ? +opts.K12 : 0.0;
     for (let k = 0; k < primaryPairs.length; k++) {
         const a = primaryPairs[k][0] | 0;
         const b = primaryPairs[k][1] | 0;
@@ -707,7 +924,7 @@ export function buildMMFFLTopology(mol, mmParams, opts = {}) {
         const bp = mmParams.getBondParams(ta, tb);
         if (!bp) throw new Error(`buildMMFFLTopology: missing BondType for types ('${ta}','${tb}') at bond (${a},${b})`);
         const l0 = +bp.l0;
-        const K = +bp.k;
+        const K = (k12 !== 0.0) ? k12 : (+bp.k);
         if (!(l0 > 0) || !Number.isFinite(l0)) throw new Error(`buildMMFFLTopology: invalid bond l0=${l0} for types ('${ta}','${tb}') at (${a},${b})`);
         if (!(K > 0) || !Number.isFinite(K)) throw new Error(`buildMMFFLTopology: invalid bond k=${K} for types ('${ta}','${tb}') at (${a},${b})`);
         bondsAdj1[a].push([b, l0, K]);
@@ -718,6 +935,7 @@ export function buildMMFFLTopology(mol, mmParams, opts = {}) {
     }
 
     const addAngle = (opts.add_angle !== undefined) ? !!opts.add_angle : true;
+    const addDihedral = (opts.add_dihedral !== undefined) ? !!opts.add_dihedral : false;
     const addPi = (opts.add_pi !== undefined) ? !!opts.add_pi : false;
     const addPiAlign = (opts.add_pi_align !== undefined) ? !!opts.add_pi_align : false;
     const addEpair = (opts.add_epair !== undefined) ? !!opts.add_epair : false;
@@ -768,6 +986,7 @@ export function buildMMFFLTopology(mol, mmParams, opts = {}) {
     const epDummies = [];
 
     if (addAngle) buildAngleBonds(mol, mmParams, bondsAdj1, opts, linearBonds);
+    if (addDihedral) buildDihedralBonds(mol, mmParams, bondsAdj1, typeNamesReal, opts, linearBonds);
     if (addPi) buildPiDummies(mol, mmParams, bondsAdj1, npiList, pipos, opts, linearBonds, piDummies, debugTopo);
     if (addEpair) buildEpairDummies(mol, mmParams, bondsAdj1, npiList, nepList, pipos, opts, linearBonds, epDummies, debugTopo);
     if (addEpair && addEpairPairs) buildEpairPairBonds(mol, epDummies, opts, linearBonds);
@@ -787,6 +1006,7 @@ export function buildMMFFLTopology(mol, mmParams, opts = {}) {
 
     const bondsPrimary = uniqPairs(primaryPairs);
     const bondsAngle = [];
+    const bondsDihedral = [];
     const bondsPi = [];
     const bondsPiAlign = [];
     const bondsEp = [];
@@ -798,6 +1018,7 @@ export function buildMMFFLTopology(mol, mmParams, opts = {}) {
         const a = linearBonds[i][0] | 0;
         const b = linearBonds[i][1] | 0;
         if (kind === 'angle') addUndirectedPair(bondsAngle, a, b);
+        else if (kind === 'dihedral') addUndirectedPair(bondsDihedral, a, b);
         else if (kind.startsWith('pi-align')) addUndirectedPair(bondsPiAlign, a, b);
         else if (kind.startsWith('pi')) addUndirectedPair(bondsPi, a, b);
         else if (kind.startsWith('ep-pair')) addUndirectedPair(bondsEpPair, a, b);
@@ -812,6 +1033,7 @@ export function buildMMFFLTopology(mol, mmParams, opts = {}) {
         primary_params_l0: primaryParamsL0,
         primary_params_k: primaryParamsK,
         bonds_angle: uniqPairs(bondsAngle),
+        bonds_dihedral: uniqPairs(bondsDihedral),
         bonds_pi: uniqPairs(bondsPi),
         bonds_pi_align: uniqPairs(bondsPiAlign),
         bonds_epair: uniqPairs(bondsEp),

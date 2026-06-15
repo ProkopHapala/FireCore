@@ -97,8 +97,18 @@ function parseArgs(argv) {
         collapseAll: false,
         requireH2: true,
 
-        collapseProb: 0.10,
+        collapseProb: 0.0,
         insertProb: 0.0,
+        outwardBias: 0.35,
+        resolveClashes: 1,
+        capHHBonds: 0,
+        capHHBondDist: 1.8,
+
+        cutMode: 'planes',
+        sphereR: 6.0,
+        sphereNrep: 5,
+        rcutHeavy: 0.0, // 0 => auto from heavy element
+        minHeavyDegree: 2,
 
         E_SiH2: 1.0,
         E_SiH3: 4.0,
@@ -150,7 +160,7 @@ function parseArgs(argv) {
         else if (a === '--defaultRcut') out.defaultRcut = +nxt();
 
         else if (a === '--caps') out.caps = nxt();
-        else if (a === '--minSiDegree') out.minSiDegree = parseInt(nxt(), 10) | 0;
+        else if (a === '--minSiDegree') out.minHeavyDegree = parseInt(nxt(), 10) | 0;
         else if (a === '--pruneMaxIter') out.pruneMaxIter = parseInt(nxt(), 10) | 0;
 
         else if (a === '--collapse') out.collapse = parseInt(nxt(), 10) | 0;
@@ -159,6 +169,16 @@ function parseArgs(argv) {
 
         else if (a === '--collapseProb') out.collapseProb = parseProb(nxt(), '--collapseProb');
         else if (a === '--insertProb') out.insertProb = parseProb(nxt(), '--insertProb');
+        else if (a === '--outwardBias') out.outwardBias = +nxt();
+        else if (a === '--resolveClashes') out.resolveClashes = (nxt() !== '0');
+        else if (a === '--capHHBonds') out.capHHBonds = (nxt() !== '0');
+        else if (a === '--capHHBondDist') out.capHHBondDist = +nxt();
+
+        else if (a === '--cutMode') out.cutMode = nxt();
+        else if (a === '--sphereR' || a === '--sphere-r') out.sphereR = +nxt();
+        else if (a === '--sphereNrep' || a === '--sphere-nrep') out.sphereNrep = parseInt(nxt(), 10) | 0;
+        else if (a === '--rcutHeavy' || a === '--rcut-heavy') out.rcutHeavy = +nxt();
+        else if (a === '--minHeavyDegree') out.minHeavyDegree = parseInt(nxt(), 10) | 0;
 
         else if (a === '--E_SiH2') out.E_SiH2 = +nxt();
         else if (a === '--E_SiH3') out.E_SiH3 = +nxt();
@@ -178,7 +198,7 @@ function parseArgs(argv) {
     }
 
     if (out.planeMode !== 'ang' && out.planeMode !== 'frac') throw new Error("--planeMode must be 'ang' or 'frac'");
-    if (!Array.isArray(out.planeTemplates) || out.planeTemplates.length === 0) throw new Error('--planeTemplates must be non-empty (e.g. a111 or a100,a110,a111)');
+    if (out.cutMode === 'planes' && (!Array.isArray(out.planeTemplates) || out.planeTemplates.length === 0)) throw new Error('--planeTemplates must be non-empty for cutMode=planes');
     if (!(out.dedupTol > 0)) throw new Error('--dedupTol must be >0');
     if (out.collapse < 0) throw new Error('--collapse must be >=0');
     if (out.samples < 0) throw new Error('--samples must be >=0');
@@ -186,6 +206,13 @@ function parseArgs(argv) {
     if (out.pruneMaxIter < 0) throw new Error('--pruneMaxIter must be >=0');
     if (!(isFinite(out.planeCScale) && out.planeCScale >= 0)) throw new Error('--planeCScale must be >=0');
     if (!(isFinite(out.planeCJitter) && out.planeCJitter >= 0)) throw new Error('--planeCJitter must be >=0');
+    if (!(isFinite(out.capHHBondDist) && out.capHHBondDist > 0)) throw new Error('--capHHBondDist must be >0');
+    if (out.cutMode !== 'planes' && out.cutMode !== 'sphere') throw new Error("--cutMode must be 'planes' or 'sphere'");
+    out.minSiDegree = out.minHeavyDegree;
+    if (!isFinite(out.outwardBias) || out.outwardBias < 0 || out.outwardBias > 1) throw new Error('--outwardBias must be in [0,1]');
+    if (out.rcutHeavy < 0) throw new Error('--rcutHeavy must be >=0 (0=auto)');
+    if (!(out.sphereR > 0)) throw new Error('--sphereR must be >0');
+    if (out.sphereNrep < 0) throw new Error('--sphereNrep must be >=0');
     if (!isFinite(out.E_SiH2) || !isFinite(out.E_SiH3) || !isFinite(out.E_bare) || !isFinite(out.E_bridge) || !isFinite(out.muH)) throw new Error('Energy coefficients must be finite');
 
     return out;
@@ -254,10 +281,11 @@ function randInt(a, b) {
     return (x > i1) ? i1 : x;
 }
 
-function _atomNeighborsCounts(mol, ia) {
+function _atomNeighborsCounts(mol, ia, heavyZ = 14) {
     const a = mol.atoms[ia];
-    if (!a) return { nH: 0, nSi: 0, nHeavy: 0 };
-    let nH = 0, nSi = 0, nHeavy = 0;
+    if (!a) return { nH: 0, nHeavy: 0, nHeavySame: 0 };
+    let nH = 0, nHeavy = 0, nHeavySame = 0;
+    const hz = heavyZ | 0;
     for (let k = 0; k < a.bonds.length; k++) {
         const ib = a.bonds[k] | 0;
         const b = mol.bonds[ib];
@@ -267,16 +295,19 @@ function _atomNeighborsCounts(mol, ia) {
         if (ja < 0 || ja >= mol.atoms.length) continue;
         const nb = mol.atoms[ja];
         if (!nb) continue;
-        if ((nb.Z | 0) === 1) nH++;
+        const z = nb.Z | 0;
+        if (z === 1) nH++;
         else {
             nHeavy++;
-            if ((nb.Z | 0) === 14) nSi++;
+            if (z === hz) nHeavySame++;
         }
     }
-    return { nH, nSi, nHeavy };
+    return { nH, nHeavy, nHeavySame, nSi: nHeavySame };
 }
 
-function pruneUndercoordinatedSiIter(mol, minSiDegree, maxIter) {
+function pruneUndercoordinatedHeavyIter(mol, heavyZ, minHeavyDegree, maxIter) {
+    const hz = heavyZ | 0;
+    const minD = minHeavyDegree | 0;
     const toRemove = [];
     const toRemoveH = [];
     let totalRemoved = 0;
@@ -287,9 +318,9 @@ function pruneUndercoordinatedSiIter(mol, minSiDegree, maxIter) {
         toRemoveH.length = 0;
         for (let ia = 0; ia < mol.atoms.length; ia++) {
             const a = mol.atoms[ia];
-            if (!a || (a.Z | 0) !== 14) continue;
-            const c = _atomNeighborsCounts(mol, ia);
-            if (c.nSi < (minSiDegree | 0)) {
+            if (!a || (a.Z | 0) !== hz) continue;
+            const c = _atomNeighborsCounts(mol, ia, hz);
+            if (c.nHeavySame < minD) {
                 toRemove.push(a.id);
                 for (let k = 0; k < a.bonds.length; k++) {
                     const ib = a.bonds[k] | 0;
@@ -311,7 +342,8 @@ function pruneUndercoordinatedSiIter(mol, minSiDegree, maxIter) {
     return { totalRemoved, iter };
 }
 
-function classifySurfaceCounts(mol) {
+function classifySurfaceCounts(mol, heavyZ = 14) {
+    const hz = heavyZ | 0;
     let nSi = 0;
     let nH = 0;
     let nSiH = 0;
@@ -324,13 +356,13 @@ function classifySurfaceCounts(mol) {
         if (!a) continue;
         const z = a.Z | 0;
         if (z === 1) { nH++; continue; }
-        if (z !== 14) continue;
+        if (z !== hz) continue;
         nSi++;
-        const c = _atomNeighborsCounts(mol, ia);
-        const isSurface = (c.nSi < 4); // diamond bulk has 4 Si neighbors
+        const c = _atomNeighborsCounts(mol, ia, hz);
+        const isSurface = (c.nHeavySame < 4);
         if (!isSurface) continue; // bulk atoms ignored in surface classification
         if (c.nH === 0) {
-            if (c.nSi === 2) nBridge++;
+            if (c.nHeavySame === 2) nBridge++;
             else nBare++;
         } else if (c.nH === 1) nSiH++;
         else if (c.nH === 2) nSiH2++;
@@ -344,6 +376,56 @@ function computeEnergy(cnt, args, extra = {}) {
     const nInserted = extra.nInserted || 0;
     const E = args.E_SiH2 * cnt.nSiH2 + args.E_SiH3 * cnt.nSiH3 + args.E_bare * cnt.nBare + args.E_bridge * cnt.nBridge + args.muH * cnt.nH;
     return { E, nCollapsed, nInserted };
+}
+
+function defaultRcutHeavy(heavyZ) {
+    return ((heavyZ | 0) === 14) ? 2.55 : 1.75;
+}
+
+function getHeavyZ(cell) {
+    if (!cell.basisTypes || cell.basisTypes.length === 0) throw new Error('getHeavyZ: empty basisTypes');
+    return cell.basisTypes[0] | 0;
+}
+
+function buildSphereCutMol(cell, nrep, R, centered, dedupTol) {
+    const nr = centered ? (2 * (nrep | 0) + 1) : (nrep | 0);
+    const origin = centered
+        ? new Vec3().setLincomb3(-(nrep | 0), cell.lvec[0], -(nrep | 0), cell.lvec[1], -(nrep | 0), cell.lvec[2])
+        : new Vec3(0, 0, 0);
+    const mol = CrystalUtils.genReplicatedCell({
+        lvec: cell.lvec,
+        basisPos: cell.basisPos,
+        basisTypes: cell.basisTypes,
+        basisCharges: cell.basisCharges,
+        nRep: [nr, nr, nr],
+        origin,
+        dedup: true,
+        dedupTol,
+    });
+    const cog = new Vec3(0, 0, 0);
+    for (let ia = 0; ia < mol.atoms.length; ia++) cog.add(mol.atoms[ia].pos);
+    if (mol.atoms.length === 0) throw new Error('buildSphereCutMol: no atoms after replication');
+    cog.mulScalar(1.0 / mol.atoms.length);
+    for (let ia = 0; ia < mol.atoms.length; ia++) mol.atoms[ia].pos.sub(cog);
+    const R2 = R * R;
+    const removeIds = [];
+    for (let ia = 0; ia < mol.atoms.length; ia++) {
+        const p = mol.atoms[ia].pos;
+        if (p.norm2() > R2) removeIds.push(mol.atoms[ia].id);
+    }
+    for (let i = 0; i < removeIds.length; i++) mol.removeAtomById(removeIds[i]);
+    if (mol.atoms.length < 10) throw new Error(`buildSphereCutMol: too few atoms (${mol.atoms.length}) for R=${R} nrep=${nrep}`);
+    return mol;
+}
+
+function assignCrystalAtomTypes(mol, mm) {
+    for (let ia = 0; ia < mol.atoms.length; ia++) {
+        const a = mol.atoms[ia];
+        const z = a.Z | 0;
+        if (z === 14) mol.setAtomTypeByName(a.id, 'Si', mm);
+        else if (z === 6) mol.setAtomTypeByName(a.id, 'C', mm);
+        else if (z === 1) mol.setAtomTypeByName(a.id, 'H', mm);
+    }
 }
 
 function mulberry32(seed) {
@@ -369,6 +451,8 @@ async function main() {
 
     const cifText = fs.readFileSync(args.cif, 'utf8');
     const cell = buildCrystalFromCIFText(cifText, args);
+    const heavyZ = getHeavyZ(cell);
+    const rcutHeavy = (args.rcutHeavy > 0) ? args.rcutHeavy : defaultRcutHeavy(heavyZ);
 
     const mm = (args.bonds || (args.caps && args.caps !== '0' && args.caps !== 'none')) ? loadMMParams(args) : null;
 
@@ -383,62 +467,68 @@ async function main() {
 
     if (args.statsCsv) {
         if (!fs.existsSync(args.statsCsv)) {
-            fs.writeFileSync(args.statsCsv, 'i,nx,ny,nz,nAtoms,nBonds,nPruned,nCaps,nCollapsed,nInserted,nSi,nH,nSiH,nSiH2,nSiH3,nBare,nBridge,E\n');
+            fs.writeFileSync(args.statsCsv, 'i,nx,ny,nz,nAtoms,nBonds,nPruned,nCaps,nHHBonds,nCollapsed,nInserted,nSi,nH,nSiH,nSiH2,nSiH3,nBare,nBridge,E\n');
         }
     }
 
     const stackedXYZ = args.stackedXyzOut ? [] : null;
 
     for (let iout = 1; iout <= nGen; iout++) {
-        const nx = randInt(args.nx[0], args.nx[1]);
-        const ny = randInt(args.ny[0], args.ny[1]);
-        const nz = randInt(args.nz[0], args.nz[1]);
+        const nx = (args.cutMode === 'sphere') ? 0 : randInt(args.nx[0], args.nx[1]);
+        const ny = (args.cutMode === 'sphere') ? 0 : randInt(args.ny[0], args.ny[1]);
+        const nz = (args.cutMode === 'sphere') ? 0 : randInt(args.nz[0], args.nz[1]);
 
         const naEff = args.centered ? (2 * nx + 1) : nx;
         const nbEff = args.centered ? (2 * ny + 1) : ny;
         const ncEff = args.centered ? (2 * nz + 1) : nz;
-        const La = cell.lvec[0].norm() * naEff;
-        const Lb = cell.lvec[1].norm() * nbEff;
-        const Lc = cell.lvec[2].norm() * ncEff;
+        const La = cell.lvec[0].norm() * (naEff || 1);
+        const Lb = cell.lvec[1].norm() * (nbEff || 1);
+        const Lc = cell.lvec[2].norm() * (ncEff || 1);
         const Lavg = (La + Lb + Lc) / 3.0;
 
         const cBase = args.planeC0 + args.planeCScale * Lavg;
         const dj = args.planeCJitter * cBase;
-        const jitter = dj * (2.0 * Math.random() - 1.0);
+        const jitter = (args.cutMode === 'sphere') ? 0 : dj * (2.0 * Math.random() - 1.0);
         const cmin = -cBase + jitter;
         const cmax = +cBase + jitter;
 
-        const { plsFinal, planeMode } = buildPlanesFromTemplates(cell.lvec, args.planeTemplates, args.planeSymC, args.planeMode, cmin, cmax);
+        const { plsFinal, planeMode } = (args.cutMode === 'planes')
+            ? buildPlanesFromTemplates(cell.lvec, args.planeTemplates, args.planeSymC, args.planeMode, cmin, cmax)
+            : { plsFinal: null, planeMode: args.planeMode };
 
-        const mol = CrystalUtils.genReplicatedCellCutPlanes({
-            lvec: cell.lvec,
-            basisPos: cell.basisPos,
-            basisTypes: cell.basisTypes,
-            basisCharges: cell.basisCharges,
-            nRep: [nx, ny, nz],
-            origin: new Vec3(0, 0, 0),
-            planes: plsFinal,
-            planeMode,
-            centered: args.centered,
-            dedup: true,
-            dedupTol: args.dedupTol,
-        });
+        const mol = (args.cutMode === 'sphere')
+            ? buildSphereCutMol(cell, args.sphereNrep, args.sphereR, true, args.dedupTol)
+            : CrystalUtils.genReplicatedCellCutPlanes({
+                lvec: cell.lvec,
+                basisPos: cell.basisPos,
+                basisTypes: cell.basisTypes,
+                basisCharges: cell.basisCharges,
+                nRep: [nx, ny, nz],
+                origin: new Vec3(0, 0, 0),
+                planes: plsFinal,
+                planeMode,
+                centered: args.centered,
+                dedup: true,
+                dedupTol: args.dedupTol,
+            });
 
         if (!mm) throw new Error('Internal: mmParams missing');
 
         mol.recalculateBonds(mm, { defaultRcut: args.defaultRcut, bondFactor: args.bondFactor });
 
-        const pr = pruneUndercoordinatedSiIter(mol, args.minSiDegree, args.pruneMaxIter);
+        const pr = pruneUndercoordinatedHeavyIter(mol, heavyZ, args.minHeavyDegree, args.pruneMaxIter);
         if (pr.totalRemoved > 0) mol.recalculateBonds(mm, { defaultRcut: args.defaultRcut, bondFactor: args.bondFactor });
+
+        assignCrystalAtomTypes(mol, mm);
 
         let nCaps = 0;
         if (args.caps && args.caps !== '0' && args.caps !== 'none') {
-            const r = mol.addCappingAtoms(mm, args.caps, { onlySelection: false, bBond: true });
+            const r = mol.addCappingAtoms(mm, args.caps, { onlySelection: false, bBond: true, bondFactor: args.bondFactor, outwardBias: args.outwardBias, resolveClashes: !!args.resolveClashes });
             nCaps = r.nAdded | 0;
             if (nCaps > 0) mol.recalculateBonds(mm, { defaultRcut: args.defaultRcut, bondFactor: args.bondFactor });
         }
 
-        const pr2 = pruneUndercoordinatedSiIter(mol, args.minSiDegree, args.pruneMaxIter);
+        const pr2 = pruneUndercoordinatedHeavyIter(mol, heavyZ, args.minHeavyDegree, args.pruneMaxIter);
         if (pr2.totalRemoved > 0) mol.recalculateBonds(mm, { defaultRcut: args.defaultRcut, bondFactor: args.bondFactor });
 
         // Surface SiH2 insert then collapse using generalized helpers
@@ -448,11 +538,10 @@ async function main() {
             nCollapsed = collapseAllBridges(mol); // legacy carbon path
         } else {
             const surfaceFilter = (m, ia) => {
-                const c = _atomNeighborsCounts(m, ia);
-                return c.nSi < 4;
+                const c = _atomNeighborsCounts(m, ia, heavyZ);
+                return c.nHeavySame < 4;
             };
 
-            // Insert first to create bridgeable sites (surface-only)
             if (args.insertProb > 0) {
                 const candidates = [];
                 for (const b of mol.bonds) {
@@ -460,25 +549,24 @@ async function main() {
                     const ia = b.a, ja = b.b;
                     const a = mol.atoms[ia], c = mol.atoms[ja];
                     if (!a || !c) continue;
-                    if ((a.Z | 0) !== 14 || (c.Z | 0) !== 14) continue;
-                    if (!surfaceFilter(mol, ia, a) || !surfaceFilter(mol, ja, c)) continue;
+                    if ((a.Z | 0) !== heavyZ || (c.Z | 0) !== heavyZ) continue;
+                    if (!surfaceFilter(mol, ia) || !surfaceFilter(mol, ja)) continue;
                     candidates.push([a.id, c.id]);
                 }
-                console.log(`[insert debug] surface Si-Si candidate bonds: ${candidates.length}`);
+                console.log(`[insert debug] surface heavy-heavy candidate bonds: ${candidates.length}`);
 
                 for (const [aId, bId] of candidates) {
                     if (Math.random() >= args.insertProb) continue;
                     const cid = insertBridge(mol, aId, bId, { addHydrogens: true, hDist: 1.3, upOffsetFactor: 0.5 });
                     const ic = mol.getAtomIndex(cid);
-                    if (ic >= 0) mol.atoms[ic].Z = 14; // ensure Si bridge
+                    if (ic >= 0) mol.atoms[ic].Z = heavyZ;
                     nInserted++;
                 }
             }
 
             if (args.collapseProb > 0) {
-                // select SiH2 bridge-like: need two heavy neighbors and >=2 H on surface
                 mol.selection.clear();
-                selectBridgeCandidates(mol, { z: 14, minHeavy: 2, minHyd: 2, requireH2: true, surfaceFilter });
+                selectBridgeCandidates(mol, { z: heavyZ, minHeavy: 2, minHyd: 2, requireH2: true, surfaceFilter });
                 for (const id of Array.from(mol.selection)) {
                     if (Math.random() < args.collapseProb) {
                         collapseBridgeAt(mol, id);
@@ -488,13 +576,23 @@ async function main() {
             }
         }
 
-        const cnt = classifySurfaceCounts(mol);
+        let nHHBonds = 0;
+        if (args.capHHBonds) {
+            const hr = mol.addCapHHBonds(args.capHHBondDist);
+            nHHBonds = hr.nAdded | 0;
+        }
+
+        const cnt = classifySurfaceCounts(mol, heavyZ);
         const enr = computeEnergy(cnt, args, { nCollapsed, nInserted });
 
-        const name = `${args.prefix}_i${String(iout).padStart(4, '0')}_nx${nx}_ny${ny}_nz${nz}_c${cBase.toFixed(3)}_tpl${args.planeTemplates.join('-')}_pr${(pr.totalRemoved + pr2.totalRemoved)}_cap${nCaps}_col${nCollapsed}_ins${nInserted}`;
+        const cutTag = (args.cutMode === 'sphere')
+            ? `sphereR${args.sphereR.toFixed(1)}_nrep${args.sphereNrep}`
+            : `nx${nx}_ny${ny}_nz${nz}_c${cBase.toFixed(3)}_tpl${args.planeTemplates.join('-')}`;
+        const name = `${args.prefix}_i${String(iout).padStart(4, '0')}_${cutTag}_pr${(pr.totalRemoved + pr2.totalRemoved)}_cap${nCaps}_col${nCollapsed}_ins${nInserted}`;
         const mol2 = toMol2String(mol, { name });
         const outPath = path.join(args.outDir, name + '.mol2');
         fs.writeFileSync(outPath, mol2);
+        fs.writeFileSync(path.join(args.outDir, name + '.xyz'), toXYZString(mol, { lvec: mol.lvec }));
 
         if (stackedXYZ) {
             const xyz = toXYZString(mol, { lvec: mol.lvec });
@@ -502,13 +600,13 @@ async function main() {
         }
 
         const nPruned = (pr.totalRemoved + pr2.totalRemoved) | 0;
-        console.log(`[gen_nanocrystals] wrote ${outPath} atoms=${mol.atoms.length} bonds=${mol.bonds.length} pruned=${nPruned} caps=${nCaps} collapsed=${nCollapsed} inserted=${nInserted} E=${enr.E.toFixed(6)} SiH=${cnt.nSiH} SiH2=${cnt.nSiH2} SiH3=${cnt.nSiH3} bare=${cnt.nBare}`);
+        console.log(`[gen_nanocrystals] wrote ${outPath} atoms=${mol.atoms.length} bonds=${mol.bonds.length} pruned=${nPruned} caps=${nCaps} hhBonds=${nHHBonds} collapsed=${nCollapsed} inserted=${nInserted} E=${enr.E.toFixed(6)} SiH=${cnt.nSiH} SiH2=${cnt.nSiH2} SiH3=${cnt.nSiH3} bare=${cnt.nBare}`);
 
         if (args.statsCsv) {
             const line = [
                 iout, nx, ny, nz,
                 mol.atoms.length, mol.bonds.length,
-                nPruned, nCaps, nCollapsed, nInserted,
+                nPruned, nCaps, nHHBonds, nCollapsed, nInserted,
                 cnt.nSi, cnt.nH, cnt.nSiH, cnt.nSiH2, cnt.nSiH3, cnt.nBare, cnt.nBridge,
                 enr.E
             ].join(',') + '\n';
