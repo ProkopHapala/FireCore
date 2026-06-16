@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "element": "C",
+  "cif": "cpp/common_resources/crystals/diamond_primitive.cif",
+  "applySymmetry": 0,
+  "passivation": {
+    "caps": "H",
+    "capHHBonds": 1,
+    "capHHBondDist": 1.8,
+    "resolveClashes": 0,
+    "outwardBias": 0.0
+  },
+  "defects": { "insertProb": 0, "collapseProb": 0 },
+  "entries": [
+    {
+      "id": "sphere_R4p5",
+      "label": "Sphere R=4.5 Å",
+      "seed": 101,
+      "cut": { "cutMode": "sphere", "sphereR": 4.5, "sphereNrep": 4 }
+    },
+    {
+      "id": "sphere_R5p5",
+      "label": "Sphere R=5.5 Å",
+      "seed": 102,
+      "cut": { "cutMode": "sphere", "sphereR": 5.5, "sphereNrep": 4 }
+    },
+    {
+      "id": "sphere_R6",
+      "label": "Sphere R=6.0 Å",
+      "seed": 103,
+      "cut": { "cutMode": "sphere", "sphereR": 6.0, "sphereNrep": 5 }
+    },
+    {
+      "id": "planes_111_gentle",
+      "label": "Miller {111} facet (gentle cut)",
+      "seed": 201,
+      "replication": { "nx": 2, "ny": 2, "nz": 2 },
+      "cut": {
+        "cutMode": "planes",
+        "planeTemplates": ["a111"],
+        "planeSymC": 6,
+        "planeMode": "ang",
+        "planeC0": 0,
+        "planeCScale": 0.40,
+        "planeCJitter": 0
+      }
+    },
+    {
+      "id": "planes_100",
+      "label": "Miller {100} facets",
+      "seed": 202,
+      "replication": { "nx": 2, "ny": 2, "nz": 2 },
+      "cut": {
+        "cutMode": "planes",
+        "planeTemplates": ["a100"],
+        "planeSymC": 6,
+        "planeMode": "ang",
+        "planeC0": 0,
+        "planeCScale": 0.45,
+        "planeCJitter": 0
+      }
+    },
+    {
+      "id": "planes_110",
+      "label": "Miller {110} facets",
+      "seed": 203,
+      "replication": { "nx": 2, "ny": 2, "nz": 2 },
+      "cut": {
+        "cutMode": "planes",
+        "planeTemplates": ["a110"],
+        "planeSymC": 6,
+        "planeMode": "ang",
+        "planeC0": 0,
+        "planeCScale": 0.45,
+        "planeCJitter": 0
+      }
+    },
+    {
+      "id": "planes_111_jitter",
+      "label": "{111} + plane jitter",
+      "seed": 204,
+      "replication": { "nx": 2, "ny": 2, "nz": 2 },
+      "cut": {
+        "cutMode": "planes",
+        "planeTemplates": ["a111"],
+        "planeSymC": 6,
+        "planeMode": "ang",
+        "planeC0": 0,
+        "planeCScale": 0.45,
+        "planeCJitter": 0.10
+      }
+    },
+    {
+      "id": "planes_111_100_mix",
+      "label": "{111}+{100} mixed facets",
+      "seed": 205,
+      "replication": { "nx": 2, "ny": 2, "nz": 2 },
+      "cut": {
+        "cutMode": "planes",
+        "planeTemplates": ["a111", "a100"],
+        "planeSymC": 6,
+        "planeMode": "ang",
+        "planeC0": 0,
+        "planeCScale": 0.45,
+        "planeCJitter": 0
+      }
+    }
+  ]
+}

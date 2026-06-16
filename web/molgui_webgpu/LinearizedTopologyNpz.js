@@ -1,5 +1,5 @@
 /// Pack linearized MMFFL topology into numpy .npz (Node, binary — no Python).
-import { writeNpzCompressed } from '../common_js/npzWrite.js';
+import { writeNpzCompressed } from '../common_js/npzIO.js';
 
 /// Typed arrays ready for encodeNpzCompressed. Keeps packing buffers by reference where possible.
 export function buildTopologyNpzArrays(topo, packing, mol, meta = {}) {

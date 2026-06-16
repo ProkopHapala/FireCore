@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "element": "C",
+  "n_crystals": 8,
+  "seed_base": 42,
+  "cif": "cpp/common_resources/crystals/diamond_primitive.cif",
+  "applySymmetry": 0,
+  "replication": {
+    "nx": { "uniform_int": [2, 2] },
+    "ny": { "uniform_int": [2, 2] },
+    "nz": { "uniform_int": [2, 2] }
+  },
+  "cut_mixture": [
+    {
+      "weight": 1.0,
+      "cutMode": "sphere",
+      "sphereR": { "uniform": [4.5, 5.5] },
+      "sphereNrep": { "uniform_int": [4, 4] }
+    }
+  ],
+  "passivation": {
+    "caps": "H",
+    "capHHBonds": 1,
+    "capHHBondDist": 1.8,
+    "resolveClashes": 0,
+    "outwardBias": 0.0
+  },
+  "defects": {
+    "insertProb": { "uniform": [0.0, 0.0] },
+    "collapseProb": { "uniform": [0.0, 0.0] }
+  },
+  "spectrum": {
+    "margin_frac": 0.02,
+    "min_bins": 64,
+    "sigma_bins": 1.5
+  },
+  "debug": {
+    "enabled": true,
+    "max_crystals": 10,
+    "views": ["111", "100", "001"]
+  }
+}

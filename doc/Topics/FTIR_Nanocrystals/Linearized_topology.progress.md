@@ -424,3 +424,22 @@ Optional later: commit a **single** generic `scripts/linearized_topology_npz_vie
 2. Wire `*_topology.npz` into vibration Hessian assembly (integration with sparse solver job).
 3. Resolve mol2 atom-order parity or standardize on `.xyz` + `recalculateBonds` for golden tests.
 4. `LFF.cl` `MAX_NEIGHBORS` still 8 — vibration kernel fork (`vib_jacobi.cl`) should use ≥48 per this packing.
+
+---
+
+# USER
+
+OK, now the ensable sepctrum you plot is pretty bad, use matplolib for that, and make normal spectrum with line we obtain it by histogram but that does not mean we should plot it as histrogram. The spectrum is very strange, I do not see there cleare energy
+
+also the debug plots of individual nanocrystals shoul be put forward in ouput directroy 
+/home/prokop/git/FireCore/OUT_nc_ensemble_v2/out/
+not buried deep in working directroy
+/home/prokop/git/FireCore/OUT_nc_ensemble_v2/data/crystals/00000042_000000/debug/
+
+ad the nc plots:
+1) why the relaxed crystal is missing the bonds? we shoud plot the bonds there
+2) why the initilalized Nc before relaxation have this stupid angle 53deg with close hydrogen, we already solved how to make it 109 (tetrahedral)
+3) the default camera is strangly rotated, we should start with some normal camera like (1,0,0) or (1,1,1) crystalographic direction
+4) why the crystal is somewhere in the corner, it should be n the center of image, the viewpot shuld be fited to the size of the crystal
+
+---

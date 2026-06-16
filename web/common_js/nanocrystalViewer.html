@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Nanocrystal viewer</title>
+<script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+<style>
+body{margin:0;font:14px/1.35 sans-serif;overflow:hidden;background:#f8f8f8}
+#ui{position:absolute;left:8px;top:8px;background:rgba(255,255,255,.93);padding:8px 10px;border-radius:6px;box-shadow:0 1px 4px #0002;z-index:2;max-width:90vw}
+#ui label{margin-right:10px}
+#info{display:block;margin-top:4px;font-size:12px;color:#444}
+.hint{font-size:11px;color:#666;margin:6px 0 0}
+</style>
+</head><body>
+<div id="ui">
+  <label>Crystal <select id="selCrystal"></select></label>
+  <label>Stage <select id="selStage"><option value="relaxed">relaxed</option><option value="init">init</option><option value="both">init + relaxed</option></select></label>
+  <span id="info">loading…</span>
+  <p class="hint">Drag = rotate · wheel = zoom · RGB = X Y Z</p>
+</div>
+<script>
+const NC_VIEWER_DATA = /*__NC_VIEWER_DATA__*/null;
+const MANIFEST = new URLSearchParams(location.search).get('manifest') || 'viewer_manifest.json';
+const ZCOL = { 1: [245, 245, 245], 6: [70, 70, 70], 8: [220, 50, 50], 14: [210, 170, 50] };
+const ZRAD = { 1: 0.14, 6: 0.40, 14: 0.58 };
+let manifest, crystals = {}, curId = null, stage = 'relaxed', yaw = 0.55, pitch = 0.35, zoom = 1;
+
+function maxRadius(g) {
+  if (!g?.pos?.length) return 4;
+  let r = 0;
+  for (let i = 0; i < g.pos.length; i += 3) r = Math.max(r, Math.hypot(g.pos[i], g.pos[i + 1], g.pos[i + 2]));
+  return r || 4;
+}
+
+function sceneExtent() {
+  const pack = crystals[curId];
+  if (!pack) return 5;
+  let ext = 0;
+  if (stage !== 'relaxed') ext = Math.max(ext, maxRadius(pack.init));
+  if (stage !== 'init') ext = Math.max(ext, maxRadius(pack.relaxed || pack.init));
+  return Math.max(ext, 0.5);
+}
+
+function selectCrystal(id) {
+  curId = id;
+  const c = manifest.crystals.find(x => x.id === id);
+  document.getElementById('info').textContent = `${c?.label || id} · ${crystals[id]?.init?.natoms ?? '?'} atoms`;
+  zoom = 1;
+}
+
+function bootViewer(data) {
+  manifest = data;
+  document.title = data.title || 'Nanocrystal viewer';
+  const sel = document.getElementById('selCrystal');
+  data.crystals.forEach(c => {
+    crystals[c.id] = { init: c.init, relaxed: c.relaxed };
+    const o = document.createElement('option');
+    o.value = c.id; o.textContent = c.label || c.id;
+    sel.appendChild(o);
+  });
+  sel.onchange = () => selectCrystal(sel.value);
+  document.getElementById('selStage').onchange = e => { stage = e.target.value; zoom = 1; };
+  document.getElementById('selStage').value = 'relaxed';
+  selectCrystal(data.crystals[0].id);
+  sel.value = data.crystals[0].id;
+}
+
+async function loadCrystalRemote(id) {
+  const e = manifest.crystals.find(c => c.id === id);
+  if (!e) return;
+  crystals[id] = { init: await fetch(e.init).then(r => r.json()), relaxed: e.relaxed ? await fetch(e.relaxed).then(r => r.json()) : null };
+  selectCrystal(id);
+}
+
+if (NC_VIEWER_DATA?.crystals?.length) bootViewer(NC_VIEWER_DATA);
+else fetch(MANIFEST).then(r => r.json()).then(m => { bootViewer(m); document.getElementById('selCrystal').onchange = () => loadCrystalRemote(document.getElementById('selCrystal').value); return loadCrystalRemote(m.crystals[0].id); }).catch(e => { document.getElementById('info').textContent = 'Failed: ' + e; });
+
+new p5(p => {
+  let gl;
+  p.setup = () => { p.createCanvas(p.windowWidth, p.windowHeight, p.WEBGL); gl = p.drawingContext; };
+  p.windowResized = () => p.resizeCanvas(p.windowWidth, p.windowHeight);
+
+  function setOrtho(ext) {
+    const half = ext * zoom * 1.08, asp = p.width / p.height;
+    if (asp >= 1) p.ortho(-half * asp, half * asp, -half, half, 0.1, 2000);
+    else p.ortho(-half, half, -half / asp, half / asp, 0.1, 2000);
+  }
+
+  function drawBonds(g, rgb) {
+    const bonds = g.bonds_ij || [], pos = g.pos;
+    if (!bonds.length) return;
+    gl.disable(gl.DEPTH_TEST);
+    p.stroke(rgb[0], rgb[1], rgb[2]);
+    p.strokeWeight(2);
+    for (let k = 0; k + 1 < bonds.length; k += 2) {
+      const a = bonds[k] | 0, b = bonds[k + 1] | 0;
+      p.line(pos[a * 3], pos[a * 3 + 1], pos[a * 3 + 2], pos[b * 3], pos[b * 3 + 1], pos[b * 3 + 2]);
+    }
+    gl.enable(gl.DEPTH_TEST);
+  }
+
+  function drawAtoms(g, alpha = 255) {
+    p.noStroke();
+    for (let i = 0; i < g.Z.length; i++) {
+      const z = g.Z[i] | 0, col = ZCOL[z] || [140, 140, 140], rad = ZRAD[z] || 0.35;
+      p.push();
+      p.translate(g.pos[i * 3], g.pos[i * 3 + 1], g.pos[i * 3 + 2]);
+      p.fill(col[0], col[1], col[2], alpha);
+      p.sphere(rad, 16, 12);
+      p.pop();
+    }
+  }
+
+  function drawGeom(g, bondRgb, atomAlpha = 255) {
+    if (!g?.pos) return;
+    drawBonds(g, bondRgb);
+    drawAtoms(g, atomAlpha);
+  }
+
+  function drawAxes(len) {
+    gl.disable(gl.DEPTH_TEST);
+    p.strokeWeight(2.5);
+    p.stroke(230, 50, 50); p.line(0, 0, 0, len, 0, 0);
+    p.stroke(50, 190, 55); p.line(0, 0, 0, 0, len, 0);
+    p.stroke(55, 90, 240); p.line(0, 0, 0, 0, 0, len);
+    gl.enable(gl.DEPTH_TEST);
+  }
+
+  p.draw = () => {
+    p.background(248);
+    const pack = crystals[curId];
+    if (!pack) return;
+    setOrtho(sceneExtent());
+    p.ambientLight(100);
+    p.directionalLight(255, 255, 255, 0.25, 0.6, -0.8);
+    p.rotateX(pitch);
+    p.rotateY(yaw);
+    if (stage === 'init' || stage === 'both') {
+      if (stage === 'both') { gl.depthMask(false); drawGeom(pack.init, [160, 120, 80], 90); gl.depthMask(true); }
+      else drawGeom(pack.init, [160, 120, 80]);
+    }
+    if (stage === 'relaxed' || stage === 'both') drawGeom(pack.relaxed || pack.init, [50, 80, 160]);
+    drawAxes(maxRadius(pack.init) * 0.65 + 0.8);
+  };
+
+  p.mouseDragged = () => { yaw += (p.mouseX - p.pmouseX) * 0.008; pitch += (p.mouseY - p.pmouseY) * 0.008; };
+  p.mouseWheel = e => { zoom *= Math.pow(1.15, e.deltaY * 0.01); zoom = Math.max(0.04, Math.min(40, zoom)); return false; };
+});
+</script></body></html>
