@@ -7,6 +7,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 from matplotlib.animation import FuncAnimation
+
+_THIS_DIR = os.path.abspath(os.path.dirname(__file__))
+for _p in (_THIS_DIR,):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 from XPDB import XPDB
 
 # PYOPENCL_COMPILER_OUTPUT=1

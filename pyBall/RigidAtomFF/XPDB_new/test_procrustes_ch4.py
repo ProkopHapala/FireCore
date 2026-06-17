@@ -5,13 +5,12 @@ import sys
 
 from numpy.random import default_rng
 
-_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
-
-_PYBALL = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if _PYBALL not in sys.path:
-    sys.path.insert(0, _PYBALL)
+_THIS_DIR = os.path.abspath(os.path.dirname(__file__))
+_SHARED_DIR = os.path.abspath(os.path.join(_THIS_DIR, '..', 'shared'))
+_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, os.pardir))
+for _p in (_THIS_DIR, _SHARED_DIR, _REPO_ROOT):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from XPDB_new import XPDB_new, build_neighs_bk_from_bonds, make_bLs_bKs_from_neighs
 from XPTB_utils import load_xyz, masses_from_elems, perturb_state

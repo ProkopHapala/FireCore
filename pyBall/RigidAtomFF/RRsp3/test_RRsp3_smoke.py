@@ -1,4 +1,11 @@
+import sys, os
 import numpy as np
+
+_THIS_DIR = os.path.abspath(os.path.dirname(__file__))
+_SHARED_DIR = os.path.abspath(os.path.join(_THIS_DIR, '..', 'shared'))
+for _p in (_THIS_DIR, _SHARED_DIR):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from RRsp3 import RRsp3, build_neighs_bk_from_bonds, make_bk_slots_clustered, make_exclusions_1st_2nd
 from XPTB_utils import pack_molecules_contiguous, make_h2o_geometry, masses_from_elems

@@ -11,8 +11,11 @@ import pyopencl as cl
 import warnings
 warnings.filterwarnings("ignore", category=cl.CompilerWarning)
 
-# Ensure we can import XPDB from the current directory
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+_THIS_DIR = os.path.abspath(os.path.dirname(__file__))
+for _p in (_THIS_DIR,):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 from XPDB import XPDB
 
 def _scatter_sizes_from_radius(ax, fig, radius):

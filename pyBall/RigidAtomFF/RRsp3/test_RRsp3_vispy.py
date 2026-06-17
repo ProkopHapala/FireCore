@@ -4,9 +4,9 @@ import numpy as np
 from PyQt5 import QtWidgets, QtCore
 
 _THIS_DIR = os.path.abspath(os.path.dirname(__file__))
-_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, os.pardir, os.pardir))
-_PYBALL_DIR = os.path.abspath(os.path.join(_REPO_ROOT, 'pyBall'))
-for _p in (_REPO_ROOT, _PYBALL_DIR, _THIS_DIR):
+_SHARED_DIR = os.path.abspath(os.path.join(_THIS_DIR, '..', 'shared'))
+_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, os.pardir))
+for _p in (_REPO_ROOT, _THIS_DIR, _SHARED_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 

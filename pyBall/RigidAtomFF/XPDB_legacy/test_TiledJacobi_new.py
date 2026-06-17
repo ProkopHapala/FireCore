@@ -8,7 +8,12 @@ import os
 import itertools
 import pyopencl as cl
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+_THIS_DIR = os.path.abspath(os.path.dirname(__file__))
+_XPDB_NEW_DIR = os.path.abspath(os.path.join(_THIS_DIR, '..', 'XPDB_new'))
+_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, os.pardir))
+for _p in (_THIS_DIR, _XPDB_NEW_DIR, _REPO_ROOT):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from XPDB_new import XPDB_new
 

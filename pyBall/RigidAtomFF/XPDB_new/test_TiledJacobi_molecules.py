@@ -11,9 +11,12 @@ import pyopencl as cl
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 import json
 
-_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
+_THIS_DIR = os.path.abspath(os.path.dirname(__file__))
+_SHARED_DIR = os.path.abspath(os.path.join(_THIS_DIR, '..', 'shared'))
+_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, os.pardir))
+for _p in (_THIS_DIR, _SHARED_DIR, _REPO_ROOT):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from XPDB_new import XPDB_new
 

@@ -14,6 +14,12 @@ import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 import matplotlib.patheffects as patheffects
 
+_THIS_DIR = os.path.abspath(os.path.dirname(__file__))
+_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, '..'))
+for _p in (_THIS_DIR, _REPO_ROOT):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 # Add repo root to import pyBall.AtomicSystem (AtomicSystem uses relative imports)
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 

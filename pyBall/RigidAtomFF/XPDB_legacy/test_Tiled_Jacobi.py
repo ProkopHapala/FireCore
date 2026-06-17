@@ -6,8 +6,10 @@ import argparse
 import sys
 import os
 
-# Ensure we can import modules from the current directory
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+_THIS_DIR = os.path.abspath(os.path.dirname(__file__))
+for _p in (_THIS_DIR,):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from XPDB import XPDB
 # Reuse utilities from the original test script

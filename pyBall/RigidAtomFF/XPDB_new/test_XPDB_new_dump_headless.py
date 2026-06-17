@@ -2,13 +2,21 @@
 import argparse
 import math
 import os
+import sys
 import numpy as np
 import pyopencl as cl
 
+_THIS_DIR = os.path.abspath(os.path.dirname(__file__))
+_SHARED_DIR = os.path.abspath(os.path.join(_THIS_DIR, '..', 'shared'))
+_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, os.pardir))
+for _p in (_THIS_DIR, _SHARED_DIR, _REPO_ROOT):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 from pyBall import AtomicSystem
 from pyBall.OCL.MMFFL import MMFFL
-from pyBall.XPDB_AVBD.XPDB_new import XPDB_new
-from pyBall.XPDB_AVBD.test_TiledJacobi_molecules import _bonds_to_adj, _pack_fixed_bonds
+from XPDB_new import XPDB_new
+from test_TiledJacobi_molecules import _bonds_to_adj, _pack_fixed_bonds
 
 
 def _pad_int(i, w=4):

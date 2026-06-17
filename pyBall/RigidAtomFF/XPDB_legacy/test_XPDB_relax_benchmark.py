@@ -8,12 +8,12 @@ import matplotlib.pyplot as plt
 # Silence PyOpenCL compiler output unless explicitly enabled
 os.environ.setdefault("PYOPENCL_COMPILER_OUTPUT", "0")
 
-_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
+_THIS_DIR = os.path.abspath(os.path.dirname(__file__))
+_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, os.pardir))
+for _p in (_THIS_DIR, _REPO_ROOT):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
-# Ensure we can import XPDB from this directory
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from XPDB import XPDB
 from pyBall import AtomicSystem
 

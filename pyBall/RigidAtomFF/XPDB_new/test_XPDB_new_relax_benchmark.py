@@ -8,8 +8,11 @@ import pyopencl as cl
 # Silence PyOpenCL compiler output unless explicitly enabled
 os.environ.setdefault("PYOPENCL_COMPILER_OUTPUT", "0")
 
-# Ensure local imports
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+_THIS_DIR = os.path.abspath(os.path.dirname(__file__))
+_SHARED_DIR = os.path.abspath(os.path.join(_THIS_DIR, '..', 'shared'))
+for _p in (_THIS_DIR, _SHARED_DIR):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from XPDB_new import XPDB_new
 import XPTB_utils as xu

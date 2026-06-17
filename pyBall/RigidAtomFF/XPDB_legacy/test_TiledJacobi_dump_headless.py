@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
 import argparse
-import numpy as np
+import sys
 import os
+import numpy as np
+
+_THIS_DIR = os.path.abspath(os.path.dirname(__file__))
+_XPDB_NEW_DIR = os.path.abspath(os.path.join(_THIS_DIR, '..', 'XPDB_new'))
+_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, os.pardir))
+for _p in (_THIS_DIR, _XPDB_NEW_DIR, _REPO_ROOT):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 from pyBall import AtomicSystem
 from pyBall.OCL.MMFFL import MMFFL
-from pyBall.XPDB_AVBD.test_TiledJacobi_molecules import _bonds_to_adj, _pack_fixed_bonds, dump_xpdb_inputs_text
+from XPDB_new.test_TiledJacobi_molecules import _bonds_to_adj, _pack_fixed_bonds, dump_xpdb_inputs_text
 
 
 def build_topology_only(fname, args):

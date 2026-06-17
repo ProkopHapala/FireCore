@@ -7,13 +7,13 @@ from numpy.random import default_rng
 
 import matplotlib.pyplot as plt
 
-_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
-
-_XPBD2D_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "XPBD_2D"))
-if _XPBD2D_DIR not in sys.path:
-    sys.path.insert(0, _XPBD2D_DIR)
+_THIS_DIR = os.path.abspath(os.path.dirname(__file__))
+_SHARED_DIR = os.path.abspath(os.path.join(_THIS_DIR, '..', 'shared'))
+_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, os.pardir))
+_XPBD2D_DIR = os.path.abspath(os.path.join(_THIS_DIR, '..', 'XPBD_2D'))
+for _p in (_THIS_DIR, _SHARED_DIR, _REPO_ROOT, _XPBD2D_DIR):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from XPDB_new import XPDB_new, build_neighs_bk_from_bonds, make_bLs_bKs_from_neighs, make_bk_slots, linear_momentum, angular_momentum, run_RRsp3_PD, run_RRsp3_force
 from XPTB_utils import load_xyz, masses_from_elems, perturb_state, write_xyz_with_ports, write_pdb_trajectory, plot_state_with_ports, pack_molecules_contiguous
