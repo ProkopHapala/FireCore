@@ -1,22 +1,92 @@
 // RRsp3.cl - Cluster-sorted rigid ports + collisions (PBD/Jacobi) with recoils
+//
+// Kernel dependency graph (state buffers only; topology / index params omitted)
+//
+// Common frame (all methods):
+//   update_bboxes_rigid(pos,radius) -> bboxes
+//   build_local_topology_rigid(pos,neighs,excl,bboxes) -> neighs_local, excl_local
+//   compute_collision_cluster_rigid(pos,radius,excl_local) -> dpos_coll
+//   apply_corrections_rigid_ports(pos,quat,dpos_node,drot_node,dpos_neigh,dpos_coll) -> pos,quat[,tips]
+//
+// Massfull rotation (physical rotational inertia):
+//   current:
+//     compute_ports_cluster_rigid(pos,quat,port_local) -> dpos_node, drot_node, dpos_neigh
+//   orig:
+//     compute_ports_cluster_rigid_orig(pos,quat,port_local) -> dpos_node, drot_node, dpos_neigh
+//
+// Massless rotation (geometric alignment, zero inertia):
+//   substep_optimized:
+//     compute_ports_cluster_rigid_substep_optimized(pos,quat,port_local) -> dpos_node, drot_node, dpos_neigh
+//   shapematch:
+//     compute_ports_cluster_rigid_shapematch(pos,quat,port_local) -> dpos_node, drot_node, dpos_neigh
+//   eigen (two-pass):
+//     compute_tips(pos,quat,port_local) -> tips
+//     compute_optimal_rotation_eigen(pos,quat,port_local) -> drot_node, quat_opt(dquat_mom)
+//     compute_ports_cluster_rigid_eigen_tips(pos,tips) -> dpos_node, dpos_neigh
 
 
 // Only enable prints if this flag is set during compilation
 #ifdef ENABLE_DEBUG_PRINTS
 
-// Filter: Only print for specific atoms to save buffer space
-#define DEBUG_GID_START 0
-#define DEBUG_GID_END   8 
+// Verbosity: 0=none, 1=errors, 2=summary per WG, 3=per-atom
+#ifndef DEBUG_VERBOSITY
+#define DEBUG_VERBOSITY 1
+#endif
 
-#define LOG_TOPOLOGY(gid, lid, n_ghosts)  if (gid >= DEBUG_GID_START && gid < DEBUG_GID_END) printf("TOPOLOGY: GID=%d LID=%d n_ghosts=%d\n", gid, lid, n_ghosts);
-#define LOG_MAPPING(gid, local_idx, mapped_global_idx, type)  if (gid >= DEBUG_GID_START && gid < DEBUG_GID_END) printf("MAP: GID=%d L_IDX=%d G_IDX=%d TYPE=%s\n", gid, local_idx, mapped_global_idx, type);
-#define LOG_COLLISION_CHECK(gid, my_global, other_local, other_global, dist, action) if (gid >= DEBUG_GID_START && gid < DEBUG_GID_END) printf("COLL: MeG=%d OtherL=%d OtherG=%d Dist=%.4f Action=%s\n", my_global, other_local, other_global, dist, action);
+// Component bitmask: 1=collision, 2=port, 4=topology, 8=correction
+#ifndef DEBUG_COMPONENTS
+#define DEBUG_COMPONENTS 0xFFFF
+#endif
+
+// Workgroup targeting: -1 = all workgroups
+#ifndef DEBUG_TARGET_WG
+#define DEBUG_TARGET_WG -1
+#endif
+
+// Atom range targeting
+#ifndef DEBUG_GID_START
+#define DEBUG_GID_START 0
+#endif
+#ifndef DEBUG_GID_END
+#define DEBUG_GID_END   8
+#endif
+
+#define DBG_COLL  1
+#define DBG_PORT  2
+#define DBG_TOPO  4
+#define DBG_CORR  8
+
+#define DBG_WG_OK   (DEBUG_TARGET_WG < 0 || get_group_id(0) == DEBUG_TARGET_WG)
+#define DBG_ATOM_OK(gid) (DEBUG_GID_START <= gid && gid < DEBUG_GID_END)
+#define DBG_COMP_OK(comp) (DEBUG_COMPONENTS & comp)
+
+#define LOG_TOPOLOGY(gid, lid, n_ghosts)  \
+    if (DEBUG_VERBOSITY >= 3 && DBG_WG_OK && DBG_ATOM_OK(gid) && DBG_COMP_OK(DBG_TOPO)) \
+        printf("TOPOLOGY: GID=%d LID=%d n_ghosts=%d WG=%d\n", gid, lid, n_ghosts, get_group_id(0));
+
+#define LOG_MAPPING(gid, local_idx, mapped_global_idx, type)  \
+    if (DEBUG_VERBOSITY >= 3 && DBG_WG_OK && DBG_ATOM_OK(gid) && DBG_COMP_OK(DBG_TOPO)) \
+        printf("MAP: GID=%d L_IDX=%d G_IDX=%d TYPE=%s WG=%d\n", gid, local_idx, mapped_global_idx, type, get_group_id(0));
+
+#define LOG_COLLISION_CHECK(gid, my_global, other_local, other_global, dist, action) \
+    if (DEBUG_VERBOSITY >= 3 && DBG_WG_OK && DBG_ATOM_OK(gid) && DBG_COMP_OK(DBG_COLL)) \
+        printf("COLL: MeG=%d OtherL=%d OtherG=%d Dist=%.4f Action=%s WG=%d\n", my_global, other_local, other_global, dist, action, get_group_id(0));
+
+#define LOG_PORT(gid, inode, k, dist, impulse) \
+    if (DEBUG_VERBOSITY >= 3 && DBG_WG_OK && DBG_ATOM_OK(gid) && DBG_COMP_OK(DBG_PORT)) \
+        printf("PORT: GID=%d Inode=%d k=%d Dist=%.6f Impulse=%.6f WG=%d\n", gid, inode, k, dist, impulse, get_group_id(0));
+
+#define LOG_CORRECTION(gid, dx, dtheta) \
+    if (DEBUG_VERBOSITY >= 3 && DBG_WG_OK && DBG_ATOM_OK(gid) && DBG_COMP_OK(DBG_CORR)) \
+        printf("CORR: GID=%d dx=(%.6f,%.6f,%.6f) dtheta=(%.6f,%.6f,%.6f) WG=%d\n", gid, dx.x, dx.y, dx.z, dtheta.x, dtheta.y, dtheta.z, get_group_id(0));
 
 #else
 // Empty macros for production
 #define LOG_TOPOLOGY(gid, lid, n_ghosts)
 #define LOG_MAPPING(gid, local_idx, mapped_global_idx, type)
 #define LOG_COLLISION_CHECK(gid, my_global, other_local, other_global, dist, action)
+#define LOG_PORT(gid, inode, k, dist, impulse)
+#define LOG_CORRECTION(gid, dx, dtheta)
 #endif
 
 // ------------------------------------------------------------------
@@ -219,6 +289,8 @@ inline float4 apply_K_matrix(
 // =========================================================
 // =========================================================
 
+/// Common frame. Axis-aligned bounding boxes from atom positions + radii.
+/// Consumes: pos, radius  |  Produces: bboxes_min, bboxes_max
 __kernel void update_bboxes_rigid(
     __global const float4* curr_pos,
     __global const float*  radius,
@@ -269,6 +341,8 @@ inline int map_global_to_local(int t, int grp, int total_ghosts, __local const i
     return found;
 }
 
+/// Common frame. Cluster-sorted local neighbor/exclusion lists from global topology + AABBs.
+/// Consumes: pos, neighs, excl, bboxes  |  Produces: neighs_local, excl_local
 __kernel void build_local_topology_rigid(
     __global const float4* curr_pos,
     __global const float4* bboxes_min,
@@ -375,6 +449,8 @@ __kernel void build_local_topology_rigid(
     }
 }
 
+/// Common frame. Jacobi positional corrections for pairwise sphere collisions.
+/// Consumes: pos, radius, excl_local  |  Produces: dpos_coll
 __kernel void compute_collision_cluster_rigid(
     __global const float4* pos,
     __global const float*  radius,
@@ -469,6 +545,9 @@ __kernel void compute_collision_cluster_rigid(
     }
 }
 
+/// Massfull (current). Full rigid-body XPBD: tip->atom distance with physical inertia.
+/// Distributes impulse into linear (dpos_node) and angular (drot_node) recoil.
+/// Consumes: pos, quat, port_local  |  Produces: dpos_node, drot_node, dpos_neigh
 __kernel void compute_ports_cluster_rigid(
     __global const float4* pos,
     __global const float4* quat,
@@ -580,24 +659,16 @@ __kernel void compute_ports_cluster_rigid(
         if (j_isnode) { w_total += w_ang; }
 
         float impulse_mag = dist / w_total;
-        
-        // Decoupled scaling:
-        // Linear: Halve if double-counted (both threads run)
-        // Angular: Keep full (torque is applied locally, not gathered from neighbor recoil)
-        float impulse_lin = impulse_mag;
-        float impulse_ang = impulse_mag;
 
-        if (j_isnode) { 
-            impulse_lin *= 0.5f; 
-            // impulse_ang stays full magnitude 
-        }
+        // If neighbor is also a node, the constraint is evaluated by both node threads.
+        // Therefore BOTH linear impulse and torque contribution must be halved to avoid double-counting.
+        if (j_isnode) { impulse_mag *= 0.5f; }
 
-        float3 P_lin = n * impulse_lin;
-        float3 P_ang = n * impulse_ang;
+        float3 P = n * impulse_mag;
 
-        sum_dpos   += P_lin * w_i;
-        sum_dtheta += cross(r_arm, P_ang) * invI;
-        dpos_neigh[idx] = (float4)(-P_lin * w_j, 0.0f);
+        sum_dpos   += P * w_i;
+        sum_dtheta += cross(r_arm, P) * invI;
+        dpos_neigh[idx] = (float4)(-P * w_j, 0.0f);
     }
 
     dpos_node[inode] = (float4)(sum_dpos, 0.0f);
@@ -606,6 +677,8 @@ __kernel void compute_ports_cluster_rigid(
 
 
 // compute_ports_cluster_rigid before changes implemented by Gemini 
+/// Massfull (orig). Same physics as 'current' but without rot_mass_scale tuning.
+/// Consumes: pos, quat, port_local  |  Produces: dpos_node, drot_node, dpos_neigh
 __kernel void compute_ports_cluster_rigid_orig(
     __global const float4* pos,
     __global const float4* quat,
@@ -621,7 +694,9 @@ __kernel void compute_ports_cluster_rigid_orig(
     const int num_atoms,
     const int nnode_per_group,
     const float dt,
-    const int accumulate_dpos
+    const int accumulate_dpos,
+    __global const float4* quat_opt,
+    const int skip_rotation
 ) {
     if(ENABLE_PORT==0){
         return;
@@ -655,7 +730,7 @@ __kernel void compute_ports_cluster_rigid_orig(
     int inode = grp * nnode_per_group + lid;
 
     float3 xi = pi4.xyz;
-    float4 qi = quat[my_global_id];
+    float4 qi = (quat_opt != (__global const float4*)0) ? quat_opt[my_global_id] : quat[my_global_id];
 
     float mi = 1.0f / invMi;
     float invI = 1.0f / (0.4f * mi + 1e-12f);
@@ -715,14 +790,21 @@ __kernel void compute_ports_cluster_rigid_orig(
 
         float3 P = n * impulse_mag;
         sum_dpos += P * w_i;
-        sum_dtheta += cross(r_arm, P) * invI;
+        if (!skip_rotation) {
+            sum_dtheta += cross(r_arm, P) * invI;
+        }
         dpos_neigh[idx] = (float4)(-P * w_j, 0.0f);
     }
 
     dpos_node[inode] = (float4)(sum_dpos, 0.0f);
-    drot_node[inode] = (float4)(sum_dtheta, 0.0f);
+    if (!skip_rotation) {
+        drot_node[inode] = (float4)(sum_dtheta, 0.0f);
+    }
 }
 
+/// Massless. Iterative Newton-Raphson in omega-space for port alignment, then
+/// central linear recoil along the center-center line.
+/// Consumes: pos, quat, port_local  |  Produces: dpos_node, drot_node, dpos_neigh
 __kernel void compute_ports_cluster_rigid_substep_optimized(
     __global const float4* pos,
     __global const float4* quat,
@@ -862,19 +944,21 @@ __kernel void compute_ports_cluster_rigid_substep_optimized(
         // Recalculate with optimized qi
         float3 r_arm = q_rot(qi, r_local_cache[k]);
         float3 diff  = xj - (xi + r_arm);
-        
-        float dist2 = dot(diff, diff);
-        if (dist2 < 1e-16f) continue;
-        float dist = sqrt(dist2);
-        float3 n = diff / dist;
+
+        float3 rij = xj - xi;
+        float r2 = dot(rij, rij);
+        if (r2 < 1e-16f) continue;
+        float3 n = rij * rsqrt(r2);
+        float d = dot(diff, n);
+        if (fabs(d) < 1e-12f) continue;
 
         float3 rxn = cross(r_arm, n);
         float w_ang = dot(rxn, rxn) * invI;
         float alpha = 1.0f / (K_cache[k] * dt2);
-        
+
         // Full XPBD denominator
         float w_total = invMi + invMj + w_ang + alpha + 1e-12f;
-        float impulse = dist / w_total;
+        float impulse = d / w_total;
         
         // Double counting prevention (same as original logic)
         int j_global = (jloc < GROUP_SIZE) ? (grp * GROUP_SIZE + jloc) : ghost_indices_flat[g_offset + (jloc - GROUP_SIZE)];
@@ -891,6 +975,9 @@ __kernel void compute_ports_cluster_rigid_substep_optimized(
     drot_node[inode] = (float4)(quat_delta_rotvec(qi, qi_orig), 0.0f);
 }
 
+/// Massless. Kabsch/Polar-decomposition orientation solve from covariance matrix,
+/// then central linear recoil along the center-center line.
+/// Consumes: pos, quat, port_local  |  Produces: dpos_node, drot_node, dpos_neigh
 __kernel void compute_ports_cluster_rigid_shapematch(
     __global const float4* pos,
     __global const float4* quat,
@@ -1028,20 +1115,22 @@ __kernel void compute_ports_cluster_rigid_shapematch(
 
         // Use qi_opt
         float3 r_arm = q_rot(qi_opt, r_local_cache[k]);
-        
+
+        float3 rij = xj - xi;
+        float r2 = dot(rij, rij);
+        if (r2 < 1e-16f) continue;
+        float3 n = rij * rsqrt(r2);
         float3 diff = xj - (xi + r_arm);
-        float dist2 = dot(diff, diff);
-        if (dist2 < 1e-16f) continue;
-        float dist = sqrt(dist2);
-        float3 n = diff / dist;
+        float d = dot(diff, n);
+        if (fabs(d) < 1e-12f) continue;
 
         // Same XPBD weighting as substep kernel for fair comparison
         float3 rxn = cross(r_arm, n);
         float w_ang = dot(rxn, rxn) * invI;
         float alpha = 1.0f / (K_cache[k] * dt2);
-        
+
         float w_total = invMi + invMj + w_ang + alpha + 1e-12f;
-        float impulse = dist / w_total;
+        float impulse = d / w_total;
         
         int j_global = (jloc < GROUP_SIZE) ? (grp * GROUP_SIZE + jloc) : ghost_indices_flat[g_offset + (jloc - GROUP_SIZE)];
         int j_lid = j_global & (GROUP_SIZE - 1);
@@ -1057,6 +1146,106 @@ __kernel void compute_ports_cluster_rigid_shapematch(
     drot_node[inode] = (float4)(quat_delta_rotvec(qi_opt, qi_orig), 0.0f);
 }
 
+/// Massless Pass-1. Davenport q-method: 4x4 eigenproblem from weighted tip-neighbor vectors.
+/// Writes optimal quaternion delta to drot_node and quat_opt into temp buffer (dquat_mom).
+/// Consumes: pos, quat, port_local  |  Produces: drot_node, quat_opt(dquat_mom)
+__kernel void compute_optimal_rotation_eigen(
+    __global const float4* pos,
+    __global const float4* quat,
+    __global const float*  radius,
+    __global const int4*   neighs_local,
+    __global const int*    ghost_indices_flat,
+    __global const int*    ghost_counts,
+    __global const float4* port_local,
+    __global const float*  stiffness_flat,
+    __global float4*       drot_node,
+    __global float4*       quat_opt,
+    const int num_atoms,
+    const int nnode_per_group,
+    const float dt
+) {
+    if(ENABLE_PORT==0) return;
+
+    int lid = get_local_id(0);
+    int grp = get_group_id(0);
+    int my_global_id = grp * GROUP_SIZE + lid;
+
+    __local float4 l_pos[GROUP_SIZE + MAX_GHOSTS];
+    float4 pi4 = (my_global_id < num_atoms) ? pos[my_global_id] : (float4)(0.0f);
+    l_pos[lid] = pi4;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    int g_count = ghost_counts[grp];
+    int g_offset = grp * MAX_GHOSTS;
+    for (int k = lid; k < g_count; k += GROUP_SIZE) {
+        int gid = ghost_indices_flat[g_offset + k];
+        l_pos[GROUP_SIZE + k] = pos[gid];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (my_global_id >= num_atoms) return;
+    if (lid >= nnode_per_group) return;
+    float invMi = pi4.w;
+    if (invMi <= 1e-12f) return;
+
+    int inode = grp * nnode_per_group + lid;
+    int4 ng = neighs_local[my_global_id];
+    int neighbors[4] = {ng.x, ng.y, ng.z, ng.w};
+    int i4 = inode * 4;
+
+    float3 r_local_cache[4];
+    float  K_cache[4];
+    int    valid_bond[4];
+
+    for(int k=0; k<4; k++) {
+        int idx = i4 + k;
+        int jloc = neighbors[k];
+        if (jloc >= 0 && stiffness_flat[idx] > 0.0f) {
+             float K = stiffness_flat[idx];
+             r_local_cache[k] = port_local[idx].xyz;
+             K_cache[k]       = K;
+             valid_bond[k]    = 1;
+        } else {
+             valid_bond[k] = 0;
+        }
+    }
+
+    float3 centroid_neigh = (float3)(0.0f);
+    float sum_w = 0.0f;
+    for(int k=0; k<4; k++) {
+        if(!valid_bond[k]) continue;
+        int jloc = neighbors[k];
+        float3 xj = l_pos[jloc].xyz;
+        float w = K_cache[k];
+        centroid_neigh += xj * w;
+        sum_w += w;
+    }
+    if (sum_w > 1e-9f) centroid_neigh *= (1.0f / sum_w);
+    else centroid_neigh = pi4.xyz;
+
+    float S[9] = {0.0f};
+    for(int k=0; k<4; k++) {
+        if(!valid_bond[k]) continue;
+        float w = K_cache[k];
+        float3 p = r_local_cache[k];
+        float3 n = l_pos[neighbors[k]].xyz - centroid_neigh;
+        mat3_outer_add(S, w, n, p);
+    }
+
+    float4 q = quat[my_global_id];
+    for(int iter=0; iter<4; iter++) {
+        q = apply_K_matrix(S[0], S[1], S[2], S[3], S[4], S[5], S[6], S[7], S[8], q);
+        q = normalize(q);
+    }
+
+    float4 qi_opt = q;
+    float4 qi_orig = quat[my_global_id];
+
+    drot_node[inode] = (float4)(quat_delta_rotvec(qi_opt, qi_orig), 0.0f);
+    quat_opt[my_global_id] = qi_opt;
+}
+
+/// Legacy single-pass eigen (deprecated). Superseded by compute_ports_cluster_rigid_eigen_tips.
 __kernel void compute_ports_cluster_rigid_eigen(
     __global const float4* pos,
     __global const float4* quat,
@@ -1213,6 +1402,133 @@ __kernel void compute_ports_cluster_rigid_eigen(
     drot_node[inode] = (float4)(quat_delta_rotvec(qi_opt, qi_orig), 0.0f);
 }
 
+/// Massless Pass-2. Reads precomputed tip positions, computes symmetric linear recoil
+/// with impulses constrained to the center-center line.
+/// Consumes: pos, tips  |  Produces: dpos_node, dpos_neigh
+__kernel void compute_ports_cluster_rigid_eigen_tips(
+    __global const float4* pos,
+    __global const int4*   neighs_local,
+    __global const int*    ghost_indices_flat,
+    __global const int*    ghost_counts,
+    __global const float*  stiffness_flat,
+    __global const float4* tips,
+    __global float4*       dpos_node,
+    __global float4*       dpos_neigh,
+    const int num_atoms,
+    const int nnode_per_group,
+    const float dt
+) {
+    if(ENABLE_PORT==0) return;
+
+    int lid = get_local_id(0);
+    int grp = get_group_id(0);
+    int my_global_id = grp * GROUP_SIZE + lid;
+
+    __local float4 l_pos[GROUP_SIZE + MAX_GHOSTS];
+    float4 pi4 = (my_global_id < num_atoms) ? pos[my_global_id] : (float4)(0.0f);
+    l_pos[lid] = pi4;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    int g_count = ghost_counts[grp];
+    int g_offset = grp * MAX_GHOSTS;
+    for (int k = lid; k < g_count; k += GROUP_SIZE) {
+        int gid = ghost_indices_flat[g_offset + k];
+        l_pos[GROUP_SIZE + k] = pos[gid];
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (my_global_id >= num_atoms) return;
+    if (lid >= nnode_per_group) return;
+    float invMi = pi4.w;
+    if (invMi <= 1e-12f) return;
+
+    int inode = grp * nnode_per_group + lid;
+    int4 ng = neighs_local[my_global_id];
+    int* neighbors = (int*)&ng;
+    int i4 = inode * 4;
+
+    float3 sum_dpos = (float3)(0.0f);
+    float dt2 = dt * dt + 1e-16f;
+
+    for (int k = 0; k < 4; k++) {
+        int idx = i4 + k;
+        dpos_neigh[idx] = (float4)(0.0f);
+        int jloc = neighbors[k];
+        if (jloc < 0) continue;
+        float K = stiffness_flat[idx];
+        if (K <= 0.0f) continue;
+
+        float invMj;
+        float3 xj;
+        if (jloc < (GROUP_SIZE + g_count)) {
+            xj = l_pos[jloc].xyz;
+            invMj = l_pos[jloc].w;
+        } else {
+            continue;
+        }
+        if (invMj <= 1e-12f) continue;
+
+        float3 my_tip = tips[idx].xyz;
+        int j_global = (jloc < GROUP_SIZE) ? (grp * GROUP_SIZE + jloc) : ghost_indices_flat[g_offset + (jloc - GROUP_SIZE)];
+        int j_lid = j_global & (GROUP_SIZE - 1);
+        int j_isnode = (j_lid < nnode_per_group);
+
+        float3 rij = xj - pi4.xyz;
+        float r2 = dot(rij, rij);
+        if (r2 < 1e-16f) continue;
+        float3 n = rij * rsqrt(r2);
+        float d = dot(xj - my_tip, n);
+        if (fabs(d) < 1e-12f) continue;
+
+        float w_i = invMi;
+        float w_j = invMj;
+        float alpha = 1.0f / (K * dt2);
+        float w_total = w_i + w_j + alpha + 1e-12f;
+        float impulse_mag = d / w_total;
+        if (j_isnode) { impulse_mag *= 0.5f; }
+
+        float3 P = n * impulse_mag;
+        sum_dpos += P * w_i;
+        dpos_neigh[idx] = (float4)(-P * w_j, 0.0f);
+    }
+
+    dpos_node[inode] = (float4)(sum_dpos, 0.0f);
+}
+
+/// Helper. Rotates each node's local ports into world-space tip positions.
+/// Consumes: pos, quat, port_local  |  Produces: tips
+__kernel void compute_tips(
+    const int natoms,
+    const int nnode_per_group,
+    __global const float4* pos,
+    __global const float4* quat,
+    __global const float4* port_local,
+    __global float4* tips
+) {
+    int i = get_global_id(0);
+    if (i >= natoms) return;
+    float invMi = pos[i].w;
+    if (invMi <= 1e-12f) return;
+    int lid = i & (GROUP_SIZE - 1);
+    int grp = i / GROUP_SIZE;
+    int isnode = (lid < nnode_per_group);
+    if (!isnode) return;
+    int inode = grp * nnode_per_group + lid;
+    int i4 = inode * 4;
+    float3 xi = pos[i].xyz;
+    float4 qi = quat[i];
+    for (int k = 0; k < 4; k++) {
+        int idx = i4 + k;
+        float3 r_local = port_local[idx].xyz;
+        float3 r_arm = quat_rotate(qi, r_local);
+        tips[idx] = (float4)(xi + r_arm, 0.0f);
+    }
+}
+
+/// Integrator. Applies Jacobi/XPBD corrections to pos/quat, optionally with
+/// Heavy-Ball momentum. For massless modes, also writes updated tips.
+/// Consumes: pos, quat, dpos_node, drot_node, dpos_neigh, dpos_coll
+/// Produces: pos, quat, dpos_mom, dquat_mom[, tips]
 __kernel void apply_corrections_rigid_ports(
     const int natoms,
     const int nnode_per_group,
@@ -1228,7 +1544,9 @@ __kernel void apply_corrections_rigid_ports(
     __global float4* dquat_mom,
     const float relaxation,
     const float beta,
-    const int massless_rot
+    const int massless_rot,
+    __global const float4* port_local,
+    __global float4* tips
 ) {
     int i = get_global_id(0);
     if (i >= natoms) return;
@@ -1307,5 +1625,16 @@ __kernel void apply_corrections_rigid_ports(
         
         quat[i] = q_new;
         if (!massless_rot) dquat_mom[i] = q_new - q_old;
+
+        if (massless_rot && tips != (__global float4*)0 && port_local != (__global const float4*)0) {
+            int i4 = inode * 4;
+            float3 xi = pos[i].xyz;
+            for (int k = 0; k < 4; k++) {
+                int idx = i4 + k;
+                float3 r_local = port_local[idx].xyz;
+                float3 r_arm = quat_rotate(q_new, r_local);
+                tips[idx] = (float4)(xi + r_arm, 0.0f);
+            }
+        }
     }
 }

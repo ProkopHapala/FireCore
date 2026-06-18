@@ -84,3 +84,84 @@ The implementation aligns with `cpp/common/math/ProjectiveDynamics_d.cpp` in ter
 
 ## 5. Conclusion
 The `RRsp3` module now possesses a fully functional, momentum-accelerated rigid body solver. The XPBD formulation ensures stability and physical plausibility (via compliance), while the Heavy-Ball momentum drastically reduces the computational cost (iterations) required to reach a given error tolerance.
+
+---
+
+## 6. Port Kernel Approaches: Pipeline, Tradeoffs, and Conservation
+
+### 6.1 Common Solver Loop (all methods)
+Every solver step executes the same broad-phase and collision stack; only the **port kernel** changes:
+
+1. `update_bboxes_rigid` — reads `pos`, writes `bboxes_min/max`
+2. `build_local_topology_rigid` — reads `pos`, `neighs`, `excl`, writes `neighs_local`, `excl_local`
+3. `compute_collision_cluster_rigid` — reads `pos`, `radius`, `excl_local`, writes `dpos_coll`
+4. **PORT KERNEL** (method-dependent) — writes `dpos_node`, `drot_node`, `dpos_neigh`
+5. `apply_corrections_rigid_ports` — reads `pos`, `quat`, `dpos_node`, `drot_node`, `dpos_neigh`, `dpos_coll`, writes updated `pos`, `quat`, `dpos_mom`, `dquat_mom` (and `tips` for massless modes)
+
+The remainder of this section describes each port kernel in detail, split by the fundamental distinction: **massfull** (physical rotational inertia) vs **massless** (pure geometric alignment).
+
+---
+
+### 6.2 Massfull Rotation (Physical Inertial DOF)
+In this class, the quaternion is a true mechanical degree of freedom with inertia and angular momentum. Off-center port forces generate torque, which is absorbed by the rotational DOF, so total angular momentum `L_total = L_trans + L_spin` is conserved.
+
+#### 6.2.1 `orig` / `current` — Full Rigid-Body XPBD
+- **Rotation model**: Physical rotational inertia. Both linear and angular impulses are solved simultaneously.
+- **Strategy**: Each node rotates its own ports into world space using its quaternion, then measures the distance from its tip to the **neighbor atom center**. The XPBD impulse is distributed into linear (`dpos_node`) and angular (`drot_node`) recoil using full rigid-body compliance (`w_ang` term).
+- **Pipeline**: single kernel `compute_ports_cluster_rigid_orig`
+  - **Consumes**: `pos`, `quat`, `port_local`, `stiffness`
+  - **Produces**: `dpos_node`, `drot_node`, `dpos_neigh`
+- **Conservation**: Exact `P` and `L_total = L_trans + L_spin`. The impulse is off-center (direction `n = (xj - tip_i)/|...|`), but the resulting torque is absorbed by the physical rotational DOF, so total angular momentum is conserved.
+- **Tradeoff**: Most physically complete model; requires tuning the mass–inertia ratio and may need smaller time steps for stiff rotations.
+
+---
+
+### 6.3 Massless Rotation (Geometric Alignment, Zero Inertia)
+In this class, the quaternion is **not** a mechanical DOF. It is purely a geometric orientation variable used to enforce correct bond/angle directionality. Because there is no rotational inertia to absorb torque, the linear impulse must be applied as a **central force** (along the atom–atom line) to keep translational angular momentum `L_trans = Σ r × p` conserved.
+
+#### 6.3.1 Key Design Principle
+When rotational inertia is zero, the system is effectively a **point-mass forcefield** (like UFF or similar valence forcefields). Off-center port forces would create unbalanced torques with no rotational channel to absorb them, violating translational angular momentum conservation. The fix is to **project the tip-atom constraint error onto the center–center line** and apply the impulse only along that line. The quaternion alignment still enforces correct bond directionality, but the linear dynamics behave like a standard central-force model.
+
+#### 6.3.2 `substep_optimized` — Iterative Newton in Rotation Space
+- **Strategy**: Inside each thread, perform several Newton–Raphson substeps in rotation-vector (`ω`) space. The local Hessian `H` is built from port lever arms, and `ω = H⁻¹ τ` is solved. After convergence, the optimized quaternion is used to compute linear recoil.
+- **Pipeline**: single kernel `compute_ports_cluster_rigid_substep_optimized`
+  - **Consumes**: `pos`, `quat`, `port_local`, `stiffness`
+  - **Produces**: `dpos_node`, `drot_node`, `dpos_neigh`
+- **Conservation**: Point-mass model. After the centerline projection fix, the linear impulse is applied **only along the center–center line** `n = (xj - xi)/|...|`. This guarantees exact conservation of `P` and translational `L = Σ r × p`.
+- **Tradeoff**: Higher per-iteration cost because of repeated local 3×3 solves and quaternion updates, but often reaches geometric alignment faster than a single Jacobi sweep.
+
+#### 6.3.3 `shapematch` — Kabsch / Polar Decomposition
+- **Strategy**: Build the covariance matrix `A = Σ w · (xj - xi) ⊗ r_local` from neighbor centers and local port vectors, then extract the optimal rotation matrix `R` via polar decomposition (Newton iterations on `R ← ½ R (3I - RᵀR)`). Convert `R` to a quaternion and use it for the linear recoil pass.
+- **Pipeline**: single kernel `compute_ports_cluster_rigid_shapematch`
+  - **Consumes**: `pos`, `quat`, `port_local`, `stiffness`
+  - **Produces**: `dpos_node`, `drot_node`, `dpos_neigh`
+- **Conservation**: Same point-mass central-force guarantee as `substep_optimized`: exact `P` and `L_trans` via centerline projection.
+- **Tradeoff**: Direct algebraic orientation solve (no iterative torque integration). Very fast for well-conditioned geometries, but can be sensitive to degenerate or near-planar configurations where the polar decomposition becomes ill-conditioned.
+
+#### 6.3.4 `eigen` — Two-Pass Davenport q-Method with Tips Buffer
+- **Strategy**: Explicitly decouple the orientation solve from the linear recoil by using a precomputed **tip-position buffer** (`tips`).
+  - *Pass 1* computes the optimal quaternion via the **Davenport q-method** (eigenproblem on a 4×4 symmetric matrix built from weighted tip–neighbor-center vectors).
+  - *Pass 2* reads the pre-rotated tip positions from the `tips` buffer and computes **only linear recoil**, with the impulse constrained to the center–center line.
+- **Pipeline**:
+  1. `compute_optimal_rotation_eigen`
+     - **Consumes**: `pos`, `quat`, `port_local`, `stiffness`
+     - **Produces**: `drot_node`, `quat_opt` (stored temporarily in `dquat_mom`)
+  2. `compute_ports_cluster_rigid_eigen_tips`
+     - **Consumes**: `pos`, `tips`, `stiffness`
+     - **Produces**: `dpos_node`, `dpos_neigh`
+  3. `apply_corrections_rigid_ports`
+     - Updates `pos`, `quat`, and writes the new `tips` for the next iteration
+- **Conservation**: Exact `P` and `L_trans`. The recoil uses a **bidirectional tip→atom** constraint (tip of A toward center of B, and vice-versa), but the impulse direction is the central line between the two atom centers, eliminating net torque on the point-mass system.
+- **Tradeoff**: Requires an extra `tips` buffer (`nnode_tot × 4 × 16` bytes), but this is tiny compared to the atom buffers. The two-pass design is the cleanest for exact momentum conservation because it avoids any “double rotation” of neighbor tips in the same kernel and makes the symmetry explicit.
+
+---
+
+### 6.4 Comparison Summary
+
+| Class | Kernel | Rot. inertia | Orientation solver | Recoil direction | Conserved quantities | Relative cost |
+|-------|--------|--------------|-------------------|------------------|----------------------|---------------|
+| **Massfull** | `orig` / `current` | Yes (physical) | XPBD joint solve | Off-center (tip→atom) | `P`, `L_total = L_trans + L_spin` | Baseline |
+| **Massless** | `substep_optimized` | No (geometric) | Newton–Raphson in `ω` | Central (projected) | `P`, `L_trans` | Moderate |
+| **Massless** | `shapematch` | No (geometric) | Kabsch / Polar Decomp. | Central (projected) | `P`, `L_trans` | Moderate |
+| **Massless** | `eigen` | No (geometric) | Davenport q-method | Central (projected) | `P`, `L_trans` | 2 kernels |
+

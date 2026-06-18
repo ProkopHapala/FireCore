@@ -215,3 +215,132 @@ Here’s a focused, detailed recap of the three “new” rotation-solvers vs. `
 4) Only then performance/convergence on C16: measure iterations to 1e-2/1e-3, and consider separate residual metrics for translational vs rotational DOFs (dpos vs drot).
 
 If you want next steps: I can script a small harness to A/B these kernels on a tiny molecule (e.g., ethylene or a 4-node toy) to confirm correctness and report per-kernel iteration counts and residuals split into translational vs rotational parts.
+
+---
+
+## 2026-06-17: Momentum Conservation Regression Fixed + Rigorous Testing Framework
+
+### Problem Found
+The `current` kernel (default) failed angular momentum conservation on **asymmetric molecules** (CH3OH = L2), while `orig` passed. On symmetric H2O (L0), both passed — the bug was hidden by symmetry.
+
+### Root Cause
+In `compute_ports_cluster_rigid` (current kernel), the **node-node double-counting guard was asymmetric**:
+- **Linear impulse** was correctly halved (`impulse_lin *= 0.5`) since both node threads evaluate the same bond.
+- **Angular impulse / torque** was **NOT halved** (kept full magnitude).
+
+This meant torque on node-node constraints was applied **twice**, breaking angular momentum conservation for any molecule where torque matters (i.e., asymmetric inertia tensors).
+
+### Fix Applied
+In `RRsp3.cl` `compute_ports_cluster_rigid`:
+- Removed the decoupled `impulse_lin` vs `impulse_ang` split.
+- Both linear and angular contributions now use the **same halved impulse** for node-node bonds:
+
+```c
+if (j_isnode) { impulse_mag *= 0.5f; }
+float3 P = n * impulse_mag;
+sum_dpos   += P * w_i;
+sum_dtheta += cross(r_arm, P) * invI;
+dpos_neigh[idx] = (float4)(-P * w_j, 0.0f);
+```
+
+### Testing Infrastructure Added
+
+#### 1. Shared utility module: `RRsp3_utils.py`
+- Molecule builders: `make_ch3oh_geometry()`, `make_ch2nh_geometry()`, `make_tri3_geometry()`
+- Momentum analysis: `compute_momentum_deltas()` with `massless_rot` flag
+- Topology truth generation: `build_interaction_truth()`
+- Debug log parsing: `parse_kernel_debug_logs()`, `validate_interactions()`
+- 2D planar constraint helpers: `perturb_state_planar()`, `make_planar_fixmask()`
+
+#### 2. Consolidated headless test: `test_RRsp3_headless.py`
+Subcommands:
+- `momentum` — linear + angular momentum conservation per step
+- `topology` — collision/exclusion mapping via kernel debug prints
+- `smoke` — basic NaN + range check
+- `suite` — full matrix across systems and kernels
+
+#### 3. Kernel debug print enhancement
+Verbosity levels + component bitmask + workgroup targeting in `RRsp3.cl`:
+```c
+-DENABLE_DEBUG_PRINTS -DDEBUG_VERBOSITY=3 -DDEBUG_COMPONENTS=7 -DDEBUG_TARGET_WG=0
+```
+
+#### 4. Two-tier momentum check
+- **Massless alignment kernels** (`substep_optimized`, `shapematch`, `eigen`): rotation is geometric optimization, not physical dynamics → check only `dL_trans` (linear displacement contributes to angular momentum), exclude `dL_rot`.
+- **Full rotational dynamics** (`current`, `orig`): include both `dL_trans + dL_rot`.
+
+#### 5. Nodes-only test system: `tri3` (L5)
+3-node triangle ring, no capping atoms, no `bkSlots` recoil complexity. Used to isolate core kernel momentum behavior from cap-atom assembly issues.
+
+#### 6. Kernel caching
+Fixed `RepeatedKernelRetrieval` warnings by caching `cl.Kernel` instances in `RRsp3._kernels` dict.
+
+### Current Test Results (5 steps, epsP=1e-4, epsL=1e-3)
+
+| Kernel | L0 H2O (sym) | L2 CH3OH (asym) | L5 tri3 (nodes-only) | Interpretation |
+|--------|-------------|------------------|----------------------|----------------|
+| `current` | **PASS** | **PASS** | **PASS** | Fixed; now conserved |
+| `orig` | **PASS** | **PASS** | **PASS** | Baseline correct |
+| `substep_optimized` | **PASS** | **FAIL** dL=0.005 | **PASS** | Linear part non-conserving on asymmetry |
+| `shapematch` | **FAIL** dL=0.067 | **FAIL** dL=0.102 | **FAIL** dL=0.240 | Even linear part violates conservation |
+| `eigen` | **FAIL** dL=0.032 | **FAIL** dL=0.080 | **FAIL** dL=0.126 | Even linear part violates conservation |
+
+### What This Means
+- **`current` and `orig` are now the only momentum-conserving kernels** across symmetric, asymmetric, and nodes-only systems.
+- **`substep_optimized`**: fails on asymmetric molecules because its linear displacement does not conserve angular momentum (massless rotation + XPBD linear pass mismatch).
+- **`shapematch` and `eigen`**: fail on **all** systems, including symmetric H2O and nodes-only tri3. This indicates a deeper issue: their linear recoil/writeback does not satisfy momentum conservation even for pure linear constraints. The massless rotation is not the only problem.
+
+### Outstanding Issues
+1. **`shapematch` / `eigen` linear momentum violation**: Even on symmetric/node-only systems, `|dL| ~ 0.03–0.24` with `epsL=1e-3`. This is a **real bug**, not just "massless rotation by design". Their recoil writeback or linear impulse scaling is wrong.
+2. **`substep_optimized` asymmetric failure**: On L2 CH3OH, `|dL|=0.005`. This may be acceptable for some use cases but should be understood.
+3. **Topology test subcommand**: Needs debug print capture fix (kernel printf via subprocess not reliable).
+4. **Interactive GUI consolidation**: `test_RRsp3_gui.py` (Vispy) not yet built.
+
+### Files Modified
+- `RRsp3.cl` — torque double-counting fix, enhanced debug macros
+- `RRsp3.py` — kernel caching, `download_drot_node()`
+- `RRsp3_utils.py` — new shared module (molecule builders, momentum, topology truth)
+- `test_RRsp3_headless.py` — new consolidated test script
+
+---
+
+## 2026-06-18: Convergence Speed Test Added
+
+### New Subcommand: `convergence`
+Added `convergence` subcommand to `test_RRsp3_headless.py` that loads an XYZ file (e.g. pentacene), computes port targets from the **original unstretched** geometry, then stretches the initial positions in-plane and measures how many iterations each kernel needs to relax back.
+
+### Metrics
+- **mean_step**: mean(|dpos_node|) + mean(|dpos_neigh|) — solver step size, universal across kernels
+- **geo_err**: mean ||pos[j] - tip_i|| — geometric constraint violation (tip-to-atom distance)
+
+### Key Findings
+
+**Massfull kernels (`current`, `orig`)**: Converge well even with 2x stretch. After 500 iterations with stretch=2.0, dt=0.1, beta=0.5:
+- `current`: step=4.0e-04, geo_err=1.48e-02
+- `orig`: step=2.7e-04, geo_err=9.19e-03
+
+**Massless kernels (`substep_optimized`, `shapematch`, `eigen`)**: Fail to converge for large stretches. After 500 iterations with same params, geo_err stays at ~0.3–0.5 Å. Root cause: central-force projection (impulses only along atom centerlines) cannot provide the **lateral** displacement component needed for large geometric corrections.
+
+**Momentum acceleration (beta) effect** on `current`, stretch=2.0, dt=0.1:
+- beta=0.0: step=7.4e-03 (slowest)
+- beta=0.5: step=3.5e-03
+- beta=0.9: step=1.3e-05 (near-converged in 200 iters)
+
+**dt effect** on `current`, beta=0.5, stretch=2.0:
+- dt=0.05: step=3.0e-03, geo_err=3.3e-01
+- dt=0.1: step=3.5e-03, geo_err=1.3e-01
+- dt=0.5: step=1.7e-03, geo_err=2.3e-02 (best)
+
+Larger dt + higher beta gives faster convergence for massfull kernels because the physical inertia term stabilizes the momentum acceleration.
+
+### Plotting
+The `--plot` flag generates a dual-panel figure (solver step size + geometric error) with all parameter sweeps overlaid. Labels include beta and dt values; title shows sweep ranges.
+
+Example usage:
+```bash
+python test_RRsp3_headless.py convergence --kernel current --beta_list "0.0,0.5,0.9" --dt_list "0.05,0.1,0.5" --plot out.png
+```
+
+### Files Modified
+- `test_RRsp3_headless.py` — `cmd_convergence`, `--beta_list`, `--dt_list`, `--plot`
+- `RRsp3_utils.py` — `build_packed_system_from_xyz`, `quat_rotate_vec`, `compute_mean_constraint_error`
