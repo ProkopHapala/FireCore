@@ -197,6 +197,13 @@ class RRsp3:
         self.cl_dquat_mom = cl.Buffer(self.ctx, mf.READ_WRITE, n * 16)
         self.reset_momentum()
 
+        # Dynamics buffers (linear + angular velocities, and previous state)
+        self.cl_vel = cl.Buffer(self.ctx, mf.READ_WRITE, n * 16)       # float4 (vx,vy,vz,0)
+        self.cl_omega = cl.Buffer(self.ctx, mf.READ_WRITE, n * 16)     # float4 (wx,wy,wz,0)  (only nodes are used)
+        self.cl_pos_prev = cl.Buffer(self.ctx, mf.READ_WRITE, n * 16)  # float4
+        self.cl_quat_prev = cl.Buffer(self.ctx, mf.READ_WRITE, n * 16) # float4
+        self.reset_dynamics()
+
         self.cl_fixmask = cl.Buffer(self.ctx, mf.READ_ONLY, n * 4)   # int
         cl.enqueue_fill_buffer(self.queue, self.cl_fixmask, np.int32(0), 0, n * 4).wait()
 
@@ -212,6 +219,11 @@ class RRsp3:
         self.cl_bkSlots = None
         self._tips_valid = False
         self._revSlot_valid = False
+
+    def reset_dynamics(self):
+        zero = np.float32(0.0)
+        cl.enqueue_fill_buffer(self.queue, self.cl_vel, zero, 0, self.num_atoms * 16)
+        cl.enqueue_fill_buffer(self.queue, self.cl_omega, zero, 0, self.num_atoms * 16).wait()
 
     def reset_momentum(self):
         """Clear solver momentum buffers (dpos_mom, dquat_mom). Call this before starting a new time step or relaxation."""
@@ -623,6 +635,203 @@ class RRsp3:
             apply_args.append(None)
         self._get_kernel('apply_corrections_rigid_ports')(*apply_args).wait()
 
+    def step_dynamics(self, *, nnode_per_group, dt=0.1, k_coll=50.0, relaxation=1.0, bbox_margin=0.5, port_kernel='current', rot_mass_scale=1.0, n_rot_substeps=5, rot_eps=0.0, theta_max=0.0, damp=1.0):
+        """Leapfrog/PBD-style dynamics with rotational DOFs.
+
+        Scheme:
+        1) Predict pos/quat using stored vel/omega (semi-implicit / leapfrog style)
+        2) Project constraints using existing RRsp3 kernels (collision + ports + apply_corrections)
+        3) Update vel/omega from (new - old)/dt
+
+        This keeps NaN-padding diagnostics intact: padding atoms (invM==0) remain NaN.
+        Pinning is via fixmask, not invm.
+        """
+        nnode_per_group = int(nnode_per_group)
+        self._ensure_node_buffers(nnode_per_group)
+
+        natoms = np.int32(self.num_atoms)
+        ng = np.int32(self.num_groups)
+        dt_f = np.float32(float(dt))
+        relax_f = np.float32(float(relaxation))
+        kcoll_f = np.float32(float(k_coll))
+        bbox_margin_f = np.float32(float(bbox_margin))
+        rms_f = np.float32(float(rot_mass_scale))
+        rot_eps_f = np.float32(float(rot_eps))
+        theta_max_f = np.float32(float(theta_max))
+        damp_f = np.float32(float(damp))
+
+        # Clear solver momentum buffers to ensure dynamics does not depend on previous relaxation state
+        self.reset_momentum()
+
+        # Predict (store previous state inside kernel)
+        self._tips_valid = False
+        self._get_kernel('predict_dynamics')(
+            self.queue, (self.num_atoms,), None,
+            natoms, np.int32(nnode_per_group),
+            self.cl_pos, self.cl_quat,
+            self.cl_fixmask,
+            self.cl_vel, self.cl_omega,
+            self.cl_pos_prev, self.cl_quat_prev,
+            dt_f
+        ).wait()
+
+        # heuristic ghost margin
+        rad = self.download(self.cl_radius, (self.num_atoms,), np.float32)
+        rmax = float(np.max(rad)) if rad.size else 0.0
+        margin_sq = np.float32((2.0 * rmax + float(bbox_margin)) ** 2)
+
+        global_size = (self.num_groups * self.group_size,)
+        local_size = (self.group_size,)
+
+        self._get_kernel('update_bboxes_rigid')(
+            self.queue, global_size, local_size,
+            self.cl_pos, self.cl_radius,
+            self.cl_bboxes_min, self.cl_bboxes_max,
+            cl.LocalMemory(self.group_size * 16),
+            cl.LocalMemory(self.group_size * 16),
+            natoms
+        )
+
+        self._get_kernel('build_local_topology_rigid')(
+            self.queue, global_size, local_size,
+            self.cl_pos,
+            self.cl_bboxes_min, self.cl_bboxes_max,
+            self.cl_neighs,
+            self.cl_excl1, self.cl_excl2,
+            self.cl_ghost_indices, self.cl_ghost_counts,
+            self.cl_neighs_local,
+            self.cl_excl1_local, self.cl_excl2_local,
+            natoms, ng,
+            margin_sq, bbox_margin_f
+        )
+
+        cl.enqueue_fill_buffer(self.queue, self.cl_dpos_coll, np.float32(0.0), 0, self.num_atoms * 16)
+        cl.enqueue_fill_buffer(self.queue, self.cl_dpos_node, np.float32(0.0), 0, self._nnode_tot * 16)
+        cl.enqueue_fill_buffer(self.queue, self.cl_drot_node, np.float32(0.0), 0, self._nnode_tot * 16)
+        cl.enqueue_fill_buffer(self.queue, self.cl_dpos_neigh, np.float32(0.0), 0, self._nnode_tot * 4 * 16)
+
+        self._get_kernel('compute_collision_cluster_rigid')(
+            self.queue, global_size, local_size,
+            self.cl_pos, self.cl_radius,
+            self.cl_excl1_local, self.cl_excl2_local,
+            self.cl_ghost_indices, self.cl_ghost_counts,
+            self.cl_dpos_coll,
+            natoms,
+            kcoll_f
+        )
+
+        # ports (same selection logic as step_cluster)
+        if port_kernel in (None, 'current', 'rigid'):
+            kfun = self._get_kernel('compute_ports_cluster_rigid', default=None)
+            massless_rot = 0
+        elif port_kernel in ('orid', 'orig', 'original'):
+            kfun = self._get_kernel('compute_ports_cluster_rigid_orig', default=None)
+            if kfun is None:
+                kfun = self._get_kernel('compute_ports_cluster_rigid_orid', default=None)
+            massless_rot = 0
+        elif port_kernel in ('substep', 'substep_optimized'):
+            kfun = self._get_kernel('compute_ports_cluster_rigid_substep_optimized', default=None)
+            massless_rot = 1
+        elif port_kernel in ('shapematch', 'shape_match'):
+            kfun = self._get_kernel('compute_ports_cluster_rigid_shapematch', default=None)
+            massless_rot = 1
+        elif port_kernel in ('eigen', 'q_eigen'):
+            kfun = self._get_kernel('compute_ports_cluster_rigid_eigen', default=None)
+            massless_rot = 1
+        else:
+            raise ValueError(f"RRsp3.step_dynamics: unknown port_kernel={port_kernel!r}; use 'current','orig','substep_optimized','shapematch','eigen'")
+        if kfun is None:
+            raise RuntimeError(f"RRsp3.step_dynamics: requested port_kernel={port_kernel!r} not present in built program")
+
+        if port_kernel in ('eigen', 'q_eigen'):
+            if not self._tips_valid:
+                self._get_kernel('compute_tips')(
+                    self.queue, (self.num_atoms,), None,
+                    natoms, np.int32(nnode_per_group),
+                    self.cl_pos, self.cl_quat,
+                    self.cl_port_local,
+                    self.cl_tips
+                ).wait()
+                self._tips_valid = True
+            self._get_kernel('compute_optimal_rotation_eigen')(
+                self.queue, global_size, local_size,
+                self.cl_pos, self.cl_quat, self.cl_radius,
+                self.cl_neighs_local,
+                self.cl_ghost_indices, self.cl_ghost_counts,
+                self.cl_port_local,
+                self.cl_Kflat,
+                self.cl_drot_node,
+                self.cl_dquat_mom,
+                natoms, np.int32(nnode_per_group),
+                dt_f
+            )
+            self._get_kernel('compute_ports_cluster_rigid_eigen_tips')(
+                self.queue, global_size, local_size,
+                self.cl_pos,
+                self.cl_neighs_local,
+                self.cl_ghost_indices, self.cl_ghost_counts,
+                self.cl_Kflat,
+                self.cl_tips,
+                self.cl_dpos_node,
+                self.cl_dpos_neigh,
+                natoms, np.int32(nnode_per_group),
+                dt_f
+            )
+        else:
+            args = [
+                self.queue, global_size, local_size,
+                self.cl_pos, self.cl_quat, self.cl_radius,
+                self.cl_neighs_local,
+                self.cl_ghost_indices, self.cl_ghost_counts,
+                self.cl_port_local,
+                self.cl_Kflat,
+                self.cl_dpos_node,
+                self.cl_drot_node,
+                self.cl_dpos_neigh,
+                natoms, np.int32(nnode_per_group),
+                dt_f, np.int32(0)
+            ]
+            if port_kernel in (None, 'current', 'rigid'):
+                args.append(rms_f)
+            elif port_kernel in ('substep', 'substep_optimized'):
+                args.append(np.int32(int(n_rot_substeps)))
+                args.append(rot_eps_f)
+                args.append(theta_max_f)
+            if port_kernel in ('orid', 'orig', 'original'):
+                args.append(None)
+                args.append(np.int32(0))
+            kfun(*args)
+
+        apply_args = [
+            self.queue, (self.num_atoms,), None,
+            natoms, np.int32(nnode_per_group),
+            self.cl_pos, self.cl_quat,
+            self.cl_fixmask,
+            self.cl_bkSlots,
+            self.cl_dpos_node, self.cl_drot_node, self.cl_dpos_neigh,
+            self.cl_dpos_coll,
+            self.cl_dpos_mom, self.cl_dquat_mom,
+            relax_f, np.float32(0.0), np.int32(massless_rot)
+        ]
+        if massless_rot:
+            apply_args.append(self.cl_port_local)
+            apply_args.append(self.cl_tips)
+        else:
+            apply_args.append(None)
+            apply_args.append(None)
+        self._get_kernel('apply_corrections_rigid_ports')(*apply_args).wait()
+
+        # Update velocities from pos/quat deltas
+        self._get_kernel('update_velocities_dynamics')(
+            self.queue, (self.num_atoms,), None,
+            natoms, np.int32(nnode_per_group),
+            self.cl_pos, self.cl_quat,
+            self.cl_fixmask,
+            self.cl_vel, self.cl_omega,
+            self.cl_pos_prev, self.cl_quat_prev,
+            dt_f, damp_f
+        ).wait()
+
     def compute_cluster_deltas(self, *, nnode_per_group, dt=0.1, k_coll=50.0, bbox_margin=0.5, skip_ports=False):
         nnode_per_group = int(nnode_per_group)
         if not skip_ports:
@@ -691,7 +900,7 @@ class RRsp3:
                 self.cl_drot_node,
                 self.cl_dpos_neigh,
                 natoms, np.int32(nnode_per_group),
-                dt_f, np.int32(0)
+                dt_f, np.int32(0), np.float32(1.0)
             ).wait()
 
         dpos_coll = self.download(self.cl_dpos_coll, (self.num_atoms, 4), np.float32)

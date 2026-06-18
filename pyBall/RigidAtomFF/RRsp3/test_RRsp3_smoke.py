@@ -9,28 +9,7 @@ for _p in (_THIS_DIR, _SHARED_DIR):
 
 from RRsp3 import RRsp3, build_neighs_bk_from_bonds, make_bk_slots_clustered, make_exclusions_1st_2nd
 from XPTB_utils import pack_molecules_contiguous, make_h2o_geometry, masses_from_elems
-
-
-def make_ports_from_neighs(pos, neighs, K=200.0):
-    pos = np.asarray(pos, dtype=np.float32)
-    neighs = np.asarray(neighs, dtype=np.int32)
-    n = int(pos.shape[0])
-    if pos.shape != (n, 3):
-        raise ValueError(f"make_ports_from_neighs: pos.shape={pos.shape} expected ({n},3)")
-    if neighs.shape != (n, 4):
-        raise ValueError(f"make_ports_from_neighs: neighs.shape={neighs.shape} expected ({n},4)")
-
-    port_local = np.zeros((n, 4, 4), dtype=np.float32)
-    Kflat = np.zeros((n, 4), dtype=np.float32)
-    for i in range(n):
-        for k in range(4):
-            j = int(neighs[i, k])
-            if j < 0:
-                continue
-            port_local[i, k, :3] = pos[j] - pos[i]
-            Kflat[i, k] = float(K)
-    return port_local, Kflat
-
+from RRsp3_utils import make_ports_from_neighs
 
 def check_local_ranges(neighs_local, excl1_local, excl2_local, ghost_counts, *, group_size=64):
     neighs_local = np.asarray(neighs_local, dtype=np.int32)

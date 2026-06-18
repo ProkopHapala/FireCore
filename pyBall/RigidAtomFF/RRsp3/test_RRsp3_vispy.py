@@ -16,50 +16,7 @@ from VispyUtils import AtomScene
 
 from RRsp3 import RRsp3, build_neighs_bk_from_bonds, make_bk_slots_clustered, make_exclusions_1st_2nd
 from XPTB_utils import pack_molecules_contiguous, make_h2o_geometry, masses_from_elems, load_xyz, perturb_state
-
-
-def quat_rotate_vec(q, v):
-    q = np.asarray(q, dtype=np.float32)
-    v = np.asarray(v, dtype=np.float32)
-    if q.shape[-1] != 4:
-        raise ValueError(f"quat_rotate_vec: q.shape={q.shape} expected (...,4)")
-    if v.shape[-1] != 3:
-        raise ValueError(f"quat_rotate_vec: v.shape={v.shape} expected (...,3)")
-    x = q[..., 0]; y = q[..., 1]; z = q[..., 2]; w = q[..., 3]
-    vx = v[..., 0]; vy = v[..., 1]; vz = v[..., 2]
-    tx = 2.0 * (y * vz - z * vy)
-    ty = 2.0 * (z * vx - x * vz)
-    tz = 2.0 * (x * vy - y * vx)
-    rx = vx + w * tx + (y * tz - z * ty)
-    ry = vy + w * ty + (z * tx - x * tz)
-    rz = vz + w * tz + (x * ty - y * tx)
-    return np.stack((rx, ry, rz), axis=-1).astype(np.float32, copy=False)
-
-
-def reorder_nodes_first(elems, xyz, bonds, *, is_node=None):
-    elems = list(elems)
-    xyz = np.asarray(xyz, dtype=np.float32)
-    n = int(len(elems))
-    if xyz.shape != (n, 3):
-        raise ValueError(f"reorder_nodes_first: xyz.shape={xyz.shape} expected ({n},3)")
-    if is_node is None:
-        is_node = np.array([e != 'H' for e in elems], dtype=bool)
-    is_node = np.asarray(is_node, dtype=bool)
-    if is_node.shape != (n,):
-        raise ValueError(f"reorder_nodes_first: is_node.shape={is_node.shape} expected ({n},)")
-    if not np.any(is_node):
-        is_node[:] = True
-    order = np.concatenate([np.nonzero(is_node)[0], np.nonzero(~is_node)[0]]).astype(np.int32)
-    perm_inv = np.empty((n,), dtype=np.int32)
-    perm_inv[order] = np.arange(n, dtype=np.int32)
-    elems2 = [elems[i] for i in order]
-    xyz2 = xyz[order, :].copy()
-    bonds2 = [(int(perm_inv[int(i)]), int(perm_inv[int(j)])) for (i, j) in bonds]
-    nnode = int(np.sum(is_node))
-    return elems2, xyz2, bonds2, nnode
-
-
-from RRsp3_utils import load_molecule_any_xyz, make_ports_from_neighs
+from RRsp3_utils import load_molecule_any_xyz, make_ports_from_neighs, quat_rotate_vec, reorder_nodes_first
 
 
 class RRsp3VisDebug(QtWidgets.QMainWindow):
@@ -94,6 +51,13 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         self.sp_debug = QtWidgets.QSpinBox(); self.sp_debug.setRange(0, 3); self.sp_debug.setValue(1)
         vbox.addWidget(QtWidgets.QLabel('debug verbosity'))
         vbox.addWidget(self.sp_debug)
+
+        self.cb_kprints = QtWidgets.QCheckBox('Kernel debug prints (OpenCL printf)'); self.cb_kprints.setChecked(False)
+        vbox.addWidget(self.cb_kprints)
+
+        self.cb_mode = QtWidgets.QComboBox(); self.cb_mode.addItems(['Relaxation', 'Dynamics'])
+        vbox.addWidget(QtWidgets.QLabel('mode'))
+        vbox.addWidget(self.cb_mode)
 
         self.cb_coll = QtWidgets.QCheckBox('Enable collisions'); self.cb_coll.setChecked(True)
         self.cb_ports = QtWidgets.QCheckBox('Enable ports'); self.cb_ports.setChecked(True)
@@ -138,11 +102,15 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         vbox.addWidget(self.btn_reload)
 
         self.cb_lock = QtWidgets.QCheckBox('Lock top view (2D pick)'); self.cb_lock.setChecked(False)
-        self.cb_clamp = QtWidgets.QCheckBox('Clamp dragged atom to XY'); self.cb_clamp.setChecked(False)
+        self.cb_clamp = QtWidgets.QCheckBox('Constrain all atoms to Z=0 (2D mode)'); self.cb_clamp.setChecked(False)
         self.cb_pick3d = QtWidgets.QCheckBox('3D picking/drag (ortho)'); self.cb_pick3d.setChecked(True)
         vbox.addWidget(self.cb_lock)
         vbox.addWidget(self.cb_clamp)
         vbox.addWidget(self.cb_pick3d)
+
+        self.sp_drag_max = QtWidgets.QDoubleSpinBox(); self.sp_drag_max.setRange(0.0, 1e+6); self.sp_drag_max.setSingleStep(0.5); self.sp_drag_max.setDecimals(4); self.sp_drag_max.setValue(5.0)
+        vbox.addWidget(QtWidgets.QLabel('drag max step (3D)'))
+        vbox.addWidget(self.sp_drag_max)
 
         self.cb_color_group = QtWidgets.QCheckBox('Color by groups'); self.cb_color_group.setChecked(False)
         vbox.addWidget(self.cb_color_group)
@@ -205,8 +173,12 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         vbox.addWidget(self.sp_kcoll)
 
         self.sp_dt = QtWidgets.QDoubleSpinBox(); self.sp_dt.setRange(1e-6, 10.0); self.sp_dt.setSingleStep(0.01); self.sp_dt.setDecimals(4); self.sp_dt.setValue(0.1)
-        vbox.addWidget(QtWidgets.QLabel('dt'))
+        vbox.addWidget(QtWidgets.QLabel('spring scale (dt)'))
         vbox.addWidget(self.sp_dt)
+
+        self.sp_damp = QtWidgets.QDoubleSpinBox(); self.sp_damp.setRange(0.0, 1.0); self.sp_damp.setSingleStep(0.01); self.sp_damp.setDecimals(4); self.sp_damp.setValue(1.0)
+        vbox.addWidget(QtWidgets.QLabel('damping (dynamics)'))
+        vbox.addWidget(self.sp_damp)
 
         self.status = QtWidgets.QLabel('')
         vbox.addWidget(self.status)
@@ -503,6 +475,14 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
             return
         # Update position during drag
         new_pos = np.asarray(pos3, dtype=np.float32)
+        if bool(self.cb_pick3d.isChecked()):
+            max_step = float(self.sp_drag_max.value())
+            if max_step > 0.0 and self._drag_pos is not None:
+                dp = new_pos - self._drag_pos
+                d = float(np.linalg.norm(dp))
+                if d > max_step:
+                    print(f"[DRAG-CLAMP] idx={i} step={d:.3f} > {max_step:.3f}; clamping")
+                    new_pos = self._drag_pos + dp * (max_step / (d + 1e-16))
         self.pos[i, :] = new_pos
         self._drag_pos = new_pos.copy()
         # Upload to GPU so solver uses this as the fixed position.
@@ -822,6 +802,21 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
             build_opts.append('-DENABLE_COLL=0')
         if not self.cb_ports.isChecked():
             build_opts.append('-DENABLE_PORT=0')
+
+        if bool(self.cb_kprints.isChecked()):
+            lvl = int(self.sp_debug.value())
+            if lvl < 1: lvl = 1
+            gid0 = 0
+            wg = -1
+            if int(self._picked) >= 0:
+                gid0 = (int(self._picked) // int(self.group_size)) * int(self.group_size)
+                wg = int(self._picked) // int(self.group_size)
+            build_opts.append('-DENABLE_DEBUG_PRINTS')
+            build_opts.append(f'-DDEBUG_VERBOSITY={lvl}')
+            build_opts.append(f'-DDEBUG_COMPONENTS={1|2|4|8}')
+            build_opts.append(f'-DDEBUG_TARGET_WG={wg}')
+            build_opts.append(f'-DDEBUG_GID_START={gid0}')
+            build_opts.append(f'-DDEBUG_GID_END={gid0 + int(self.group_size)}')
         build_opts_tuple = tuple(build_opts)
 
         if build_opts_tuple != self._last_build_opts:
@@ -836,7 +831,10 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
             self.sim.run_bboxes_and_topology(bbox_margin=0.5)
             self._last_build_opts = build_opts_tuple
 
-        self.sim.step_cluster(nnode_per_group=self.nnode_per_group, dt=float(self.sp_dt.value()), k_coll=float(self.sp_kcoll.value()), relaxation=float(self.sp_relax.value()), bbox_margin=0.5)
+        if str(self.cb_mode.currentText()).strip().lower().startswith('dyn'):
+            self.sim.step_dynamics(nnode_per_group=self.nnode_per_group, dt=float(self.sp_dt.value()), k_coll=float(self.sp_kcoll.value()), relaxation=float(self.sp_relax.value()), bbox_margin=0.5, damp=float(self.sp_damp.value()))
+        else:
+            self.sim.step_cluster(nnode_per_group=self.nnode_per_group, dt=float(self.sp_dt.value()), k_coll=float(self.sp_kcoll.value()), relaxation=float(self.sp_relax.value()), bbox_margin=0.5)
         pos4, quat4 = self.sim.download_pos_quat()
         # strict: padding atoms remain NaN (invalid) always
         self.pos = pos4[:, :3].copy()

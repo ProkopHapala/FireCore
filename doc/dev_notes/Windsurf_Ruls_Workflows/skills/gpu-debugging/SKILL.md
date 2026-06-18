@@ -28,6 +28,35 @@ if(get_global_id(0)==IDBG_ATOM && get_global_id(1)==IDBG_SYS){
 #endif
 ```
 
+## Verbosity & Targeting
+
+Gate OpenCL `printf` with compile-time flags and runtime verbosity levels:
+
+| Level | Purpose | Cost |
+|-------|---------|------|
+| 0 | Silent (CI) | None |
+| 1 | Events (start/stop/toggle) | Minimal |
+| 2 | Per-workgroup summary (topology, bbox, COG) | Low |
+| 3 | Per-atom dumps | High — always target |
+
+**Component bitmasks** to enable only specific logs:
+```c
+#define DEBUG_COMPONENTS 0x01  // collision
+#define DEBUG_COMPONENTS 0x02  // port constraints
+#define DEBUG_COMPONENTS 0x04  // rotation
+#define DEBUG_COMPONENTS 0x08  // momentum
+```
+
+**Workgroup targeting** — only print atoms you care about:
+```c
+-DENABLE_DEBUG_PRINTS
+-DDEBUG_VERBOSITY=3
+-DDEBUG_TARGET_WG=5
+-DDEBUG_GID_START=320 -DDEBUG_GID_END=384
+```
+
+**Build option caching** — if the GUI toggles debug prints on/off, cache the last build-flags tuple and only recompile when flags actually change. Multi-second recompilation freezes mask real bugs.
+
 ## Synchronized Tracing
 
 When comparing CPU vs GPU, inject **identical** printf format in both implementations for automated diff checks.

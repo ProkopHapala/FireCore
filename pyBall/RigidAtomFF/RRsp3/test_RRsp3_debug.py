@@ -9,6 +9,7 @@ for _p in (_THIS_DIR, _SHARED_DIR):
 
 from XPTB_utils import pack_molecules_contiguous, make_h2o_geometry, masses_from_elems
 from RRsp3 import build_neighs_bk_from_bonds, make_bk_slots_clustered, make_exclusions_1st_2nd
+from RRsp3_utils import make_ports_from_neighs
 
 # Defines expected interaction outcomes for synthetic verification.
 
@@ -29,22 +30,6 @@ INTERACTION_TRUTH_H2O2 = [
     # Inter-molecular (to be configured by test geometry)
     # (0, 64, "COLLIDE"),
 ]
-
-def make_ports_from_neighs(pos, neighs, K=200.0):
-    pos = np.asarray(pos, dtype=np.float32)
-    neighs = np.asarray(neighs, dtype=np.int32)
-    n = int(pos.shape[0])
-    port_local = np.zeros((n, 4, 4), dtype=np.float32)
-    Kflat = np.zeros((n, 4), dtype=np.float32)
-    for i in range(n):
-        for k in range(4):
-            j = int(neighs[i, k])
-            if j < 0:
-                continue
-            port_local[i, k, :3] = pos[j] - pos[i]
-            Kflat[i, k] = float(K)
-    return port_local, Kflat
-
 
 def expected_actions_for_two_h2o(group_size=64):
     # Using packed layout: group0 O,H,H -> 0,1,2 ; group1 -> 64,65,66
@@ -123,6 +108,7 @@ def main():
     # Build with debug prints and collision-only
     build_opts = [
         "-DENABLE_DEBUG_PRINTS",
+        "-DDEBUG_VERBOSITY=3",
         "-DDEBUG_GID_START=0",
         "-DDEBUG_GID_END=8",
         "-DENABLE_COLL=1",

@@ -10,31 +10,7 @@ for _p in (_THIS_DIR, _SHARED_DIR):
 
 from RRsp3 import RRsp3, build_neighs_bk_from_bonds, make_bk_slots_clustered, make_exclusions_1st_2nd
 from XPTB_utils import pack_molecules_contiguous, make_h2o_geometry, masses_from_elems, perturb_state
-
-
-def make_ports_from_neighs(pos, neighs, K=200.0):
-    pos = np.asarray(pos, dtype=np.float32)
-    neighs = np.asarray(neighs, dtype=np.int32)
-    n = int(pos.shape[0])
-    port_local = np.zeros((n, 4, 4), dtype=np.float32)
-    Kflat = np.zeros((n, 4), dtype=np.float32)
-    for i in range(n):
-        for k in range(4):
-            j = int(neighs[i, k])
-            if j < 0:
-                continue
-            port_local[i, k, :3] = pos[j] - pos[i]
-            Kflat[i, k] = float(K)
-    return port_local, Kflat
-
-
-def write_xyz_frame(f, elems, pos, comment=""):
-    pos = np.asarray(pos, dtype=np.float32)
-    f.write(f"{pos.shape[0]}\n")
-    f.write(f"{comment}\n")
-    for e, p in zip(elems, pos):
-        f.write(f"{e} {p[0]:.6f} {p[1]:.6f} {p[2]:.6f}\n")
-
+from RRsp3_utils import make_ports_from_neighs, write_xyz_frame
 
 def main():
     ap = argparse.ArgumentParser()

@@ -4113,3 +4113,290 @@ When an agent modifies code:
 2. If corruption appears, inspect the structured summary to identify the smallest failing unit.
 3. Trace back to the last change touching that unit.
 4. **Never suppress validation errors** — they are the fastest path to root cause.
+
+---
+
+## Forcefield Debugging & Testing — Lessons from the Trenches
+
+These rules are distilled from debugging rigid-body molecular dynamics (RRsp3 / PBD / XPBD), but apply to any forcefield code: MMFF, ReaxFF, UFF, or custom GPU kernels.
+
+### 1. NaN padding — your invalid-access alarm bell
+- Fill all padding/ghost slots with `NaN` (or `inf`, or a sentinel coordinate like `1e20`).
+- Any accidental read of an invalid index poisons downstream math and makes the bug **visible immediately**.
+- Do not use `NaN` for semantics other than "invalid" — if `invm=0` also means "pinned", you have a semantic collision that will silently corrupt real atoms.
+- **Check**: after every GPU→CPU download, `assert np.isfinite(pos[real]).all()` and crash with a structured dump if it fails.
+
+### 2. Index mapping verification — topology must be bidirectionally consistent
+Forcefields have many index arrays that must point back at each other:
+- `neighs[i,k] = j`  (forward: atom i's k-th neighbor is j)
+- `bkSlots[j,slot] = i`  (backward: j knows i references it)
+- `revSlot[i,k] = slot_in_j`  (reverse: i knows which slot it occupies in j)
+
+**Rule**: for every forward mapping, verify the backward mapping exists and is consistent.
+- Build a Python truth table from the original topology (bond list, angles, exclusions).
+- After kernel execution, parse debug logs or download buffers and assert every expected pair appears with the correct action (`EXCLUDE_BOND`, `EXCLUDE_ANGLE`, `COLLIDE`, `IGNORE_FAR`).
+- **Test**: start with **collision-only** (`ENABLE_PORT=0`) and **ports-only** (`ENABLE_COLL=0`) before enabling both. If a combined test fails, you already know each subsystem is correct in isolation.
+
+### 3. Conservation law checks — the physics floor
+If your solver violates conservation laws on a simple system, it will fail on complex ones.
+
+**Minimal tests (run after every code change):**
+- **Linear momentum**: `sum(m_i * v_i)` must be conserved (to tolerance) for an isolated cluster after one PBD correction step.
+- **Angular momentum**: `sum(r_i × p_i) + sum(I_i * ω_i)` must be conserved for rotation-capable nodes.
+- **Energy drift** (for true MD, not relaxation): track total energy; if it drifts monotonically, your integrator is unstable.
+
+**Technique**: use a *nodes-only* test system (e.g. 3-atom triangle ring with no capping atoms) first. This removes cap-atom recoil complexity and tests the core rigid-body logic. Only then add capping atoms and verify cap recoils balance node rotation.
+
+### 4. Structured per-cluster diagnostics
+When corruption appears, you need to know **which group failed first**.
+- After every step, print per-cluster stats: `n_real`, `COG`, `bbox_min`, `bbox_max`.
+- If NaNs appear, the cluster with the smallest `n_real` or the most extreme bbox is usually the culprit.
+- This lets you trace back to the last change that touched that group's indices, constraints, or mass assignment.
+
+### 5. Momentum reset on constraint discontinuities
+- Iterative solvers (Jacobi, heavy-ball, XPBD) store momentum buffers (`dpos_mom`, `dquat_mom`, or `vel`/`omega`).
+- When constraints change discontinuously (pin, unpin, drag start/end, teleport), **reset these buffers**.
+- Without this, stale momentum causes sudden jumps or divergence after the constraint change.
+- **This is especially critical for interactive GUIs** where dragging is a sequence of discontinuous constraint target changes.
+
+### 6. Kernel debug printf with targeting
+- OpenCL `printf` is expensive; gate it with compile-time flags and runtime verbosity levels.
+- **Verbosity 2**: per-workgroup summaries (cheap, useful for topology verification).
+- **Verbosity 3**: per-atom logs (expensive, only for a targeted atom range).
+- **Targeting**: compile with `DEBUG_TARGET_WG=<workgroup>` and `DEBUG_GID_START/END=<range>` so you only print the atoms you care about.
+- **Components**: bitmask so you can enable only collision logs, only port logs, etc.
+
+### 7. Visualization as a first-line debugger
+- **Bounding boxes on by default** with high-contrast color. If clusters drift apart or collapse, you see it immediately.
+- **Renderer errors are data corruption canaries**: if Vispy throws `non-finite vertex` or `invalid segment`, your simulation data corrupted. Do not patch the renderer — trace the NaN back to the computation.
+- **Color by group** to visually verify packing/layout correctness.
+
+### 8. Build option caching
+- Recompiling the OpenCL program on every toggle (collisions on/off, debug prints on/off) causes massive lag and masks real bugs.
+- Cache the last-used build flags tuple; only recreate the program object when flags actually change.
+- This is especially important in GUI mode where every checkbox click could trigger a recompile.
+
+### 9. Step-by-step test construction for forcefields
+
+Do not write one giant integration test. Build layers:
+
+#### Layer 0: Topology assembly (CPU only, no GPU)
+- Pack molecules into groups.
+- Verify `neighs`, `excl1`, `excl2`, `bkSlots`, `revSlot` are bidirectionally consistent.
+- Test: `test_RRsp3_smoke.py` — run one step, download buffers, assert no local index out of range.
+
+#### Layer 1: Collision isolation
+- Compile with `ENABLE_COLL=1, ENABLE_PORT=0`.
+- Place two molecules close enough to collide.
+- Verify expected collision pairs appear in `dpos_coll`; expected bonded pairs are excluded.
+- Test: `test_RRsp3_debug.py` — parse kernel printf logs and match against truth table.
+
+#### Layer 2: Port isolation
+- Compile with `ENABLE_COLL=0, ENABLE_PORT=1`.
+- Verify port tips align with neighbor positions.
+- Measure `mean_port_error` and `max_port_error`; assert below tolerance.
+- Test: `test_RRsp3_convergence.py` — run until port errors converge to ~1e-6.
+
+#### Layer 3: Momentum conservation
+- Disable external forces.
+- Perturb positions/rotations slightly.
+- Run one solver step and measure `|ΔP|` and `|ΔL|`.
+- Assert below tolerance (e.g. 1e-7).
+- Test: `test_RRsp3_momentum.py`.
+
+#### Layer 4: Combined dynamics
+- Enable both collisions and ports.
+- Run dynamics mode (`predict_dynamics` → project constraints → `update_velocities_dynamics`).
+- Verify no NaN collapse, no NaN poisoning during drag.
+- Test: `test_RRsp3_vispy.py` — interactive GUI with fail-loud invariant checks.
+
+#### Layer 5: Platform parity
+- When porting C++ → OpenCL → WebGPU, run the same Layer 0–3 tests on each platform.
+- Accept small numerical differences (e.g. 1e-4 relative) but conservation laws must hold identically.
+
+### 10. Shared utilities prevent duplicate bugs
+- If `make_ports_from_neighs()` exists in 4 test scripts with slightly different implementations, a bug fix in one will not reach the others.
+- Consolidate into one `RRsp3_utils.py` and import everywhere.
+- Same for `write_xyz_frame`, `reorder_nodes_first`, `quat_rotate_vec`.
+- This also makes regression tests faster to write — you can compose test systems in 3 lines instead of 30.
+
+### 11. The fail-loud philosophy
+- **Do not silently handle errors**. If a buffer read returns NaN, `raise` immediately with a message that includes the atom index, group ID, and the last operation.
+- **Do not use try/except to mask bugs**. A full stack trace is more useful than a graceful degradation that hides the root cause.
+- **Do not suppress renderer validation errors**. They are the fastest path to finding which computation step produced non-finite data.
+
+### 12. Agentic loop implication for forcefields
+When an agent modifies a forcefield kernel or solver:
+1. Run **Layer 0** (topology) — if indices are wrong, everything downstream is garbage.
+2. Run **Layer 1 or 2** (isolation) — verify the changed subsystem in isolation.
+3. Run **Layer 3** (conservation) — physics must still hold.
+4. Run **Layer 4** (combined / GUI) — only after isolated tests pass.
+5. If any layer fails, inspect the structured per-cluster dump to identify the smallest failing unit, then trace back to the last change touching that unit.
+
+---
+
+## GUI Application Debugging & Backend Separation
+
+Interactive GUIs (Vispy, PyQt, matplotlib canvas) are the hardest programs to debug because:
+- Bugs may only appear during specific user interaction sequences.
+- Mouse coordinates, camera angles, and widget state create non-reproducible initial conditions.
+- Qt event loops swallow exceptions or print them to stderr where they are invisible.
+
+The antidote: **separate backend from frontend**, and **log every user action**.
+
+### 1. Strict backend/frontend split
+
+**Rule**: Every UI action triggers **exactly one** mutation of the backend state. The backend knows nothing about mouse coordinates, camera matrices, or widget hierarchies.
+
+**Good example** (`KekuleExplorerGUI.py` / `KekuleBackend.py`):
+- GUI: `on_mouse_press()` → determines which atom/bond was clicked → calls `backend.insert_atom_into_bond(bond)`
+- Backend: `insert_atom_into_bond()` performs topology mutation, logs its own operations with `debug_print()`, and returns the new atom
+- GUI: receives the new atom, refreshes the view
+
+**Bad pattern**: topology logic scattered between `mousePressEvent`, `paintEvent`, and a callback lambda that also modifies the renderer state.
+
+### 2. Backend must be headlessly testable
+
+**Rule**: Every backend method must be callable from a headless test script — no GUI, no event loop, no OpenGL context.
+
+**KekuleBackend** is well-structured for this:
+```python
+# Headless test: does bond insertion preserve graph consistency?
+backend = KekuleBackend()
+backend.add_ring(0, 0)
+bond = backend.graph.bonds[0]
+new_atom = backend.insert_atom_into_bond(bond)
+assert len(backend.graph.bonds) == 6  # 2 new + 4 preserved - 1 dead
+assert new_atom is not None
+```
+
+**What is missing**: KekuleBackend currently has **no automated headless tests**. A good first test would verify:
+- `add_ring` → `n_atoms == 6`, `n_bonds == 6`
+- `insert_atom_into_bond` → topology consistent, no dangling bonds, new atom at midpoint
+- `collapse_bond` → surviving atom at center, no orphaned H atoms
+- `build_ribbon` → expected number of rings, edge atoms correctly identified
+
+**RRsp3** is better tested (`test_RRsp3_smoke.py`, `test_RRsp3_debug.py`, `test_RRsp3_momentum.py`), but its GUI (`test_RRsp3_vispy.py`) still contains **duplicated topology logic** that should live in `RRsp3_utils.py`.
+
+### 3. Verbosity-levelled logging inside the backend
+
+Both `KekuleBackend.py` and `KekuleExplorerGUI.py` share the same pattern:
+```python
+VERBOSITY_LEVEL = 2
+
+def debug_print(level, message):
+    if VERBOSITY_LEVEL >= level:
+        print(message)
+```
+
+This is simple but effective. Recommended levels for molecular editors:
+- **0**: Exceptions and explicit prints only
+- **1**: Warnings and complex operation reports (bond insertion, ring collapse, relaxation start)
+- **2**: Click and action prints (default for interactive debugging)
+- **3**: Hover prints (most verbose; every mouse move prints picked atom/bond/ring)
+
+**Key rule**: backend methods log their *internal* decisions; GUI callbacks log *user actions* and *widget state transitions*. Do not mix the two.
+
+### 4. Structured GUI event logging
+
+For scientific GUIs, print a **tagged, machine-parseable prefix** on every significant event:
+
+From `test_RRsp3_vispy.py`:
+```python
+print(f"[DRAG-START] idx={i} fixed atom (fixmask), invm kept={self.invm[i]:.4f}")
+print(f"[DRAG-CLAMP] idx={i} step={d:.3f} > {max_step:.3f}; clamping")
+print(f"[FATAL] {tag}: non-finite REAL atom positions at idx={bad_real[:32].tolist()}")
+```
+
+This lets you:
+- grep a log file for `[FATAL]` or `[DRAG-CLAMP]` to find the exact interaction sequence that triggered a bug
+- replay the sequence in a headless script by calling the same backend methods in the same order
+- write regression tests that assert "no `[FATAL]` line appears during normal operation"
+
+### 5. Fail-loud invariants after every backend mutation
+
+After every topology operation (insert atom, collapse bond, add ring, delete atom), assert invariants:
+- Every bond's `a` and `b` atoms are alive
+- Every atom's neighbor list length matches its bond count
+- No two atoms occupy the same position (within tolerance)
+- All positions are finite
+
+From `test_RRsp3_vispy.py`:
+```python
+def _assert_real_finite(self, tag):
+    p = self.pos
+    bad = ~np.isfinite(p).all(axis=1)
+    bad_real = np.where(bad & self.real)[0]
+    if bad_real.size:
+        self._dump_cluster_stats(f"{tag}/cluster_stats")
+        raise RuntimeError(f"{tag}: non-finite REAL atom positions")
+```
+
+**This is especially critical for GUIs** because a single bad drag coordinate can corrupt the entire simulation state.
+
+### 6. Momentum reset on every discontinuous constraint change
+
+In interactive MD/relaxation GUIs, the user constantly creates and destroys constraints:
+- Mouse down → pin dragged atom
+- Mouse up → unpin dragged atom
+- Toggle pin checkbox → pin/unpin selected atoms
+- Switch from 2D to 3D mode → fixmask bits change
+
+**Rule**: after any fixmask or constraint change, **reset the solver's momentum buffers** before the next step.
+```python
+self.sim.reset_momentum()        # zero dpos_mom, dquat_mom
+self.sim.upload_state(...)       # upload new pos/quat/invm
+self._upload_fixmask()            # upload new constraint mask
+```
+
+Without this, stale momentum from the previous constraint set causes sudden jumps or divergence.
+
+### 7. Drag clamping and input sanitization
+
+GUI input (mouse positions, scroll deltas, spinbox values) is inherently noisy. **Never trust it.**
+
+From `test_RRsp3_vispy.py`:
+```python
+max_step = self.sp_drag_max.value()
+dp = new_pos - self._drag_pos
+d = float(np.linalg.norm(dp))
+if d > max_step:
+    print(f"[DRAG-CLAMP] idx={i} step={d:.3f} > {max_step:.3f}; clamping")
+    new_pos = self._drag_pos + dp * (max_step / (d + 1e-16))
+```
+
+The clamp is **fail-loud**: it prints a warning so the user knows their drag was truncated, rather than silently accepting an impossibly large step that would destabilize the solver.
+
+### 8. Build option caching for toggle-heavy GUIs
+
+If your backend uses OpenCL/CUDA/WebGPU with compile-time flags (collision on/off, debug prints on/off), **cache the last-used build flags tuple**. Do not recompile on every checkbox click.
+
+From `test_RRsp3_vispy.py`:
+- `cb_kprints` toggles `ENABLE_DEBUG_PRINTS`
+- `cb_mode` toggles between relaxation and dynamics
+- `cb_coll` and `cb_ports` toggle collision and port kernels
+
+All of these should only trigger a program rebuild when the flag tuple actually changes. This prevents:
+- Multi-second GUI freezes on every toggle
+- False "my code is broken" panics when the only problem is recompilation lag
+
+### 9. Test matrix for GUI backends
+
+| Layer | What | Tool | KekuleBackend example | RRsp3 example |
+|-------|------|------|------------------------|---------------|
+| 0 | Topology assembly | CPU only | `add_ring(0,0)` → assert 6 atoms, 6 bonds | `make_neighs_bk_from_bonds` → assert `bkSlots` consistent |
+| 1 | Single operation | Headless script | `insert_atom_into_bond(bond)` → assert no dangling bonds | `step_cluster(collision_only=True)` → assert expected collisions |
+| 2 | Sequence replay | Log parser | Replay `[DRAG-START] … [DRAG-END]` sequence | Replay drag + step from event log |
+| 3 | Conservation | Assert | N/A (no dynamics yet) | `test_RRsp3_momentum.py` |
+| 4 | Full GUI | Manual + screenshot | `KekuleExplorerGUI.py` | `test_RRsp3_vispy.py` |
+
+### 10. The agentic loop for GUIs
+
+When an agent modifies GUI code:
+1. **Identify if the change touches backend or frontend.** If backend, write a headless test first.
+2. **Run the headless test.** If it passes, the bug is in GUI event handling or rendering.
+3. **Run the GUI with verbosity=2.** Reproduce the interaction sequence that triggers the bug.
+4. **Capture the log.** grep for `[FATAL]`, `[DRAG-CLAMP]`, or the relevant backend `debug_print` tags.
+5. **If backend state is corrupt**, the headless test from step 1 should also fail — fix backend first.
+6. **If backend state is valid but display is wrong**, the bug is in renderer data upload or camera transform.
+7. **Never patch the renderer to hide data corruption.** Trace NaN/inf back to the computation that produced it.

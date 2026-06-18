@@ -60,6 +60,10 @@
 #define DBG_ATOM_OK(gid) (DEBUG_GID_START <= gid && gid < DEBUG_GID_END)
 #define DBG_COMP_OK(comp) (DEBUG_COMPONENTS & comp)
 
+#define LOG_TOPOLOGY_SUMMARY(grp, n_ghosts)  \
+    if (DEBUG_VERBOSITY >= 2 && DBG_WG_OK && DBG_COMP_OK(DBG_TOPO)) \
+        printf("TOPO_SUM: WG=%d grp=%d n_ghosts=%d\n", get_group_id(0), grp, n_ghosts);
+
 #define LOG_TOPOLOGY(gid, lid, n_ghosts)  \
     if (DEBUG_VERBOSITY >= 3 && DBG_WG_OK && DBG_ATOM_OK(gid) && DBG_COMP_OK(DBG_TOPO)) \
         printf("TOPOLOGY: GID=%d LID=%d n_ghosts=%d WG=%d\n", gid, lid, n_ghosts, get_group_id(0));
@@ -87,6 +91,7 @@
 #define LOG_COLLISION_CHECK(gid, my_global, other_local, other_global, dist, action)
 #define LOG_PORT(gid, inode, k, dist, impulse)
 #define LOG_CORRECTION(gid, dx, dtheta)
+#define LOG_TOPOLOGY_SUMMARY(grp, n_ghosts)
 #endif
 
 // ------------------------------------------------------------------
@@ -213,6 +218,105 @@ inline void mat3_mul(float* A, float* B, float* Out) {
                            A[r*3 + 1] * B[1*3 + c] + 
                            A[r*3 + 2] * B[2*3 + c];
         }
+    }
+}
+
+// ------------------------------------------------------------------
+// DYNAMICS (leapfrog/PBD-style)
+// ------------------------------------------------------------------
+
+__kernel void predict_dynamics(
+    const int natoms,
+    const int nnode_per_group,
+    __global float4* pos,
+    __global float4* quat,
+    __global const int* fixmask,
+    __global float4* vel,
+    __global float4* omega,
+    __global float4* pos_prev,
+    __global float4* quat_prev,
+    const float dt
+) {
+    int i = get_global_id(0);
+    if (i >= natoms) return;
+
+    float4 p4 = pos[i];
+    float invMi = p4.w;
+    pos_prev[i] = p4;
+    quat_prev[i] = quat[i];
+
+    if (invMi <= 1e-12f) return; // padding only
+
+    int msk = (fixmask != 0) ? fixmask[i] : 0;
+
+    float3 v = vel[i].xyz;
+    float3 p = p4.xyz + v * dt;
+
+    if (msk & 1) { p.x = p4.x; v.x = 0.0f; }
+    if (msk & 2) { p.y = p4.y; v.y = 0.0f; }
+    if (msk & 4) { p.z = p4.z; v.z = 0.0f; }
+    if (msk & 8) { p.z = 0.0f; v.z = 0.0f; }
+
+    pos[i] = (float4)(p, invMi);
+    vel[i] = (float4)(v, 0.0f);
+
+    int lid = i & (GROUP_SIZE - 1);
+    if (lid < nnode_per_group) {
+        if (msk & (1|2|4)) {
+            omega[i] = (float4)(0.0f);
+            return;
+        }
+        float3 w = omega[i].xyz;
+        float3 dtheta = w * dt;
+        quat[i] = apply_delta_rot(quat[i], dtheta);
+    } else {
+        omega[i] = (float4)(0.0f);
+    }
+}
+
+__kernel void update_velocities_dynamics(
+    const int natoms,
+    const int nnode_per_group,
+    __global const float4* pos,
+    __global const float4* quat,
+    __global const int* fixmask,
+    __global float4* vel,
+    __global float4* omega,
+    __global const float4* pos_prev,
+    __global const float4* quat_prev,
+    const float dt,
+    const float damp
+) {
+    int i = get_global_id(0);
+    if (i >= natoms) return;
+
+    float invMi = pos[i].w;
+    if (invMi <= 1e-12f) return; // padding only
+
+    int msk = (fixmask != 0) ? fixmask[i] : 0;
+
+    float inv_dt = 1.0f / (dt + 1e-16f);
+    float3 v = (pos[i].xyz - pos_prev[i].xyz) * inv_dt;
+
+    if (msk & 1) v.x = 0.0f;
+    if (msk & 2) v.y = 0.0f;
+    if (msk & 4) v.z = 0.0f;
+    if (msk & 8) v.z = 0.0f;
+    v *= damp;
+    vel[i] = (float4)(v, 0.0f);
+
+    int lid = i & (GROUP_SIZE - 1);
+    if (lid < nnode_per_group) {
+        if (msk & (1|2|4)) {
+            omega[i] = (float4)(0.0f);
+            return;
+        }
+        float3 dtheta = quat_delta_rotvec(quat[i], quat_prev[i]);
+        float3 w = dtheta * inv_dt;
+        w *= damp;
+        omega[i] = (float4)(w, 0.0f);
+    } else {
+        omega[i] = (float4)(0.0f);
     }
 }
 
@@ -417,7 +521,7 @@ __kernel void build_local_topology_rigid(
     barrier(CLK_LOCAL_MEM_FENCE);
 
     int total_ghosts = min(l_ghost_counter, MAX_GHOSTS);
-    if(lid==0){ LOG_TOPOLOGY(grp * GROUP_SIZE + 0, lid, total_ghosts); }
+    if(lid==0){ LOG_TOPOLOGY_SUMMARY(grp, total_ghosts); LOG_TOPOLOGY(grp * GROUP_SIZE + 0, lid, total_ghosts); }
     int base_offset = grp * MAX_GHOSTS;
     for (int i = lid; i < total_ghosts; i += GROUP_SIZE) {
         ghost_indices_flat[base_offset + i] = l_ghost_list[i];

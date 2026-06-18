@@ -17,6 +17,14 @@ trigger:
 
 **Define correctness before coding:** Verify via parity checks against reference code, known analytical solutions, physical conservation laws, symmetry checks, or known physical limits.
 
+**Two modes of parity:**
+1. **Reference parity** — you have a trusted implementation (C++, Fortran). Match inputs, compare outputs component by component.
+2. **Conservation-law parity** — no reference exists. Verify physical invariants instead:
+   - `|ΔP| < tol` after one step with no external forces
+   - `|ΔL| < tol` for rotation-capable systems
+   - Energy bounded (MD) or monotonically decreasing (relaxation)
+   - Symmetry preserved (e.g. mirror symmetry of a symmetric molecule)
+
 1. **Input-first**
    - Compare buffers before physics: topology, parameters, indexing.
    - Check neighbor lists, bond connectivity, stiffness (k), equilibrium values (l0).

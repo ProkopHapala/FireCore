@@ -31,6 +31,8 @@ if not self.load_program(rel_path="../../cpp/common_resources/cl/FitREQ.cl", bas
     exit(1)
 ```
 
+**Build option caching:** If your GUI toggles compile-time flags (collision on/off, debug prints on/off, dynamics vs relaxation), cache the last-used build flags tuple and only recompile when flags actually change. Do not recreate the program object on every checkbox click — multi-second freezes mask real bugs and make interactive debugging impossible.
+
 **Persistent buffer management:** Allocate once, reuse across calls. Use `try_make_buffers()` which checks size and only reallocates if needed.
 ```python
 buffs = {"input": sz, "output": sz}
