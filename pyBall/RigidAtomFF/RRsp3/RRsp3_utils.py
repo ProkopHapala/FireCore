@@ -730,3 +730,193 @@ def perturb_state_planar(pos, quat, pos_scale=0.05, rot_scale=0.0, rng=None, pla
                 w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
             ], dtype=np.float32)
     return pos, quat
+
+
+# ------------------------------------------------------------------
+# Collision Reference & Reindexing Validation
+# ------------------------------------------------------------------
+
+def brute_force_collision_dpos(pos, radius, excl1, excl2, invm=None):
+    """Fully vectorized O(n^2) brute-force collision displacements.
+
+    Matches GPU kernel logic: dl = (rsum - dist) / (w_i + w_j) * 0.5.
+    Uses numpy advanced indexing for exclusions — no Python atom loops.
+    """
+    pos = np.asarray(pos, dtype=np.float32)
+    radius = np.asarray(radius, dtype=np.float32)
+    excl1 = np.asarray(excl1, dtype=np.int32)
+    excl2 = np.asarray(excl2, dtype=np.int32)
+    n = pos.shape[0]
+
+    # Pairwise displacement (n, n, 3) and distances
+    d = pos[:, None, :] - pos[None, :, :]           # (n, n, 3)
+    dists = np.linalg.norm(d, axis=2)               # (n, n)
+
+    # Exclusion mask via advanced indexing (vectorized, no atom loops)
+    excl = np.concatenate([excl1, excl2], axis=1)   # (n, 8)
+    ii = np.broadcast_to(np.arange(n)[:, None], excl.shape)
+    valid = excl >= 0
+    excl_mask = np.zeros((n, n), dtype=bool)
+    excl_mask[ii[valid], excl[valid]] = True
+
+    # Mass weights
+    if invm is None:
+        invm = np.where(radius > 0, 1.0, 0.0).astype(np.float32)
+    else:
+        invm = np.asarray(invm, dtype=np.float32)
+
+    # Collision mask
+    rsum = radius[:, None] + radius[None, :]
+    coll_mask = (dists < rsum) & (dists > 1e-6) & (invm[:, None] > 0) & (invm[None, :] > 0)
+    np.fill_diagonal(coll_mask, False)
+    coll_mask &= ~excl_mask
+
+    # Impulses (same formula as GPU: halved symmetric repulsion)
+    w_tot = invm[:, None] + invm[None, :] + 1e-12
+    dl = np.where(coll_mask, (rsum - dists) / w_tot * 0.5, 0.0)
+
+    # Normals + displacement for each atom
+    n_vec = d / (dists[:, :, None] + 1e-12)
+    dpos = np.sum(n_vec * dl[:, :, None] * invm[:, None, None], axis=1)
+    return dpos.astype(np.float32)
+
+
+def compute_wg_aabbs(pos, radius, group_size):
+    """Compute per-workgroup AABBs from positions and radii."""
+    pos = np.asarray(pos, dtype=np.float32)
+    radius = np.asarray(radius, dtype=np.float32)
+    n = pos.shape[0]
+    ng = n // group_size
+    pos_r = pos.reshape(ng, group_size, 3)
+    rad_r = radius.reshape(ng, group_size, 1)
+    real = rad_r[..., 0] > 0
+    pos_masked = np.where(real[:, :, None], pos_r, np.nan)
+    aabb_min = np.nanmin(pos_masked - rad_r, axis=1)
+    aabb_max = np.nanmax(pos_masked + rad_r, axis=1)
+    return aabb_min, aabb_max
+
+
+def validate_ghost_list(pos, radius, ghost_indices_flat, ghost_counts, group_size, margin_sq):
+    """Check that every ghost atom is within margin_sq of its workgroup's AABB.
+
+    ghost_indices_flat: 1D array of size ng * max_ghosts.
+    Returns (ok, report_list).
+    """
+    pos = np.asarray(pos, dtype=np.float32)
+    radius = np.asarray(radius, dtype=np.float32)
+    ghost_counts = np.asarray(ghost_counts, dtype=np.int32)
+    ghost_indices_flat = np.asarray(ghost_indices_flat, dtype=np.int32)
+    ng = len(ghost_counts)
+    n = pos.shape[0]
+    max_ghosts = ghost_indices_flat.shape[0] // ng
+    ghost_2d = ghost_indices_flat.reshape(ng, max_ghosts)
+
+    aabb_min, aabb_max = compute_wg_aabbs(pos, radius, group_size)
+    margin = np.sqrt(float(margin_sq)) + 1e-6
+
+    ok = True
+    report = []
+    for grp in range(ng):
+        g_count = int(ghost_counts[grp])
+        if g_count <= 0:
+            continue
+        ghosts = ghost_2d[grp, :g_count]
+        # No duplicates
+        if len(set(ghosts.tolist())) != g_count:
+            report.append(f"FAIL group {grp}: duplicate ghost indices")
+            ok = False
+        # Each ghost within margin of workgroup AABB
+        gmin = aabb_min[grp]
+        gmax = aabb_max[grp]
+        gpos = pos[ghosts]
+        dx = np.maximum(0.0, np.maximum(gmin[0] - gpos[:, 0], gpos[:, 0] - gmax[0]))
+        dy = np.maximum(0.0, np.maximum(gmin[1] - gpos[:, 1], gpos[:, 1] - gmax[1]))
+        dz = np.maximum(0.0, np.maximum(gmin[2] - gpos[:, 2], gpos[:, 2] - gmax[2]))
+        dists_sq = dx*dx + dy*dy + dz*dz
+        bad = np.where(dists_sq > float(margin_sq) + 1e-6)[0]
+        if len(bad) > 0:
+            report.append(f"FAIL group {grp}: {len(bad)} ghosts beyond margin_sq (max dist={np.sqrt(dists_sq[bad].max()):.3f})")
+            ok = False
+        else:
+            report.append(f"PASS group {grp}: {g_count} ghosts within margin")
+    return ok, report
+
+
+def validate_neighs_local(neighs_global, neighs_local, ghost_indices_flat, ghost_counts, group_size):
+    """Round-trip check: global -> local -> global for neighbor and exclusion lists.
+
+    Returns (ok, report_list).
+    """
+    neighs_global = np.asarray(neighs_global, dtype=np.int32)
+    neighs_local = np.asarray(neighs_local, dtype=np.int32)
+    ghost_counts = np.asarray(ghost_counts, dtype=np.int32)
+    ghost_indices_flat = np.asarray(ghost_indices_flat, dtype=np.int32)
+    n = neighs_global.shape[0]
+    ng = n // group_size
+    max_ghosts = ghost_indices_flat.shape[0] // ng
+    ghost_2d = ghost_indices_flat.reshape(ng, max_ghosts)
+
+    ok = True
+    report = []
+    for grp in range(ng):
+        wg_start = grp * group_size
+        wg_end = min(wg_start + group_size, n)
+        g_count = int(ghost_counts[grp])
+        errors = 0
+        for i in range(wg_start, wg_end):
+            for k in range(4):
+                jglob = int(neighs_global[i, k])
+                jloc = int(neighs_local[i, k])
+                if jglob < 0:
+                    if jloc >= 0:
+                        report.append(f"FAIL atom {i} slot {k}: global=-1 but local={jloc}")
+                        ok = False; errors += 1
+                    continue
+                if jloc < 0:
+                    report.append(f"FAIL atom {i} slot {k}: global={jglob} mapped to local=-1")
+                    ok = False; errors += 1
+                    continue
+                if jloc < group_size:
+                    j_back = grp * group_size + jloc
+                else:
+                    gi = jloc - group_size
+                    if gi >= g_count:
+                        report.append(f"FAIL atom {i} slot {k}: ghost idx {gi} out of range (count={g_count})")
+                        ok = False; errors += 1
+                        continue
+                    j_back = int(ghost_2d[grp, gi])
+                if j_back != jglob:
+                    report.append(f"FAIL atom {i} slot {k}: round-trip {jglob} -> {jloc} -> {j_back}")
+                    ok = False; errors += 1
+        if errors == 0:
+            report.append(f"PASS group {grp}: neighbor/exclusion mapping ok")
+    return ok, report
+
+
+def plot_workgroups(pos, group_id, is_padding, outpath='workgroups.png'):
+    """3D scatter plot of atoms colored by workgroup ID."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    pos = np.asarray(pos, dtype=np.float32)
+    group_id = np.asarray(group_id, dtype=np.int32)
+    is_padding = np.asarray(is_padding, dtype=bool)
+    real = ~is_padding
+    pos_r = pos[real]
+    gid_r = group_id[real]
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    n_groups = int(gid_r.max()) + 1
+    cmap = plt.cm.get_cmap('tab20', max(n_groups, 20))
+    sc = ax.scatter(pos_r[:, 0], pos_r[:, 1], pos_r[:, 2], c=gid_r, cmap=cmap, s=50, alpha=0.8)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.set_title('Atoms colored by workgroup')
+    plt.colorbar(sc, ax=ax, label='Workgroup ID')
+    plt.tight_layout()
+    plt.savefig(outpath, dpi=150)
+    plt.close()
+    print(f"Saved workgroup plot to {outpath}")

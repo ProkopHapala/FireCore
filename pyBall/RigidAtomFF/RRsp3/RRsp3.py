@@ -148,15 +148,11 @@ class RRsp3:
     def __init__(self, num_atoms, group_size=64, prefer_gpu=True, device_idx=0, max_ghosts=128, build_options=None):
         self.num_atoms = int(num_atoms)
         self.group_size = int(group_size)
-        if self.group_size != 64:
-            raise ValueError(f"RRsp3: group_size must be 64 to match RRsp3.cl GROUP_SIZE, got {self.group_size}")
         if (self.num_atoms % self.group_size) != 0:
             raise ValueError(f"RRsp3: num_atoms must be multiple of group_size; got num_atoms={self.num_atoms} group_size={self.group_size}")
 
         self.num_groups = self.num_atoms // self.group_size
         self.max_ghosts = int(max_ghosts)
-        if self.max_ghosts != 128:
-            raise ValueError(f"RRsp3: max_ghosts must be 128 to match RRsp3.cl MAX_GHOSTS, got {self.max_ghosts}")
 
         self.ctx = self._make_context(prefer_gpu=prefer_gpu, device_idx=device_idx)
         self.queue = cl.CommandQueue(self.ctx)
@@ -167,6 +163,8 @@ class RRsp3:
         if build_options is None:
             build_options = []
         self.build_options = list(build_options)
+        self.build_options.append(f"-DGROUP_SIZE={self.group_size}")
+        self.build_options.append(f"-DMAX_GHOSTS={self.max_ghosts}")
         self.prg = cl.Program(self.ctx, src).build(options=self.build_options)
         self._kernels = {}
 
@@ -309,6 +307,14 @@ class RRsp3:
 
     def download_neighs(self):
         return self.download(self.cl_neighs, (self.num_atoms, 4), np.int32)
+
+    def download_neighs_local(self):
+        return self.download(self.cl_neighs_local, (self.num_atoms, 4), np.int32)
+
+    def download_excl_local(self):
+        e1 = self.download(self.cl_excl1_local, (self.num_atoms, 4), np.int32)
+        e2 = self.download(self.cl_excl2_local, (self.num_atoms, 4), np.int32)
+        return e1, e2
 
     def download_bkSlots(self):
         if self.cl_bkSlots is None:
@@ -617,9 +623,10 @@ class RRsp3:
             apply_args.append(None)
         self._get_kernel('apply_corrections_rigid_ports')(*apply_args).wait()
 
-    def compute_cluster_deltas(self, *, nnode_per_group, dt=0.1, k_coll=50.0, bbox_margin=0.5):
+    def compute_cluster_deltas(self, *, nnode_per_group, dt=0.1, k_coll=50.0, bbox_margin=0.5, skip_ports=False):
         nnode_per_group = int(nnode_per_group)
-        self._ensure_node_buffers(nnode_per_group)
+        if not skip_ports:
+            self._ensure_node_buffers(nnode_per_group)
 
         natoms = np.int32(self.num_atoms)
         ng = np.int32(self.num_groups)
@@ -657,9 +664,10 @@ class RRsp3:
         )
 
         cl.enqueue_fill_buffer(self.queue, self.cl_dpos_coll, np.float32(0.0), 0, self.num_atoms * 16)
-        cl.enqueue_fill_buffer(self.queue, self.cl_dpos_node, np.float32(0.0), 0, self._nnode_tot * 16)
-        cl.enqueue_fill_buffer(self.queue, self.cl_drot_node, np.float32(0.0), 0, self._nnode_tot * 16)
-        cl.enqueue_fill_buffer(self.queue, self.cl_dpos_neigh, np.float32(0.0), 0, self._nnode_tot * 4 * 16)
+        if not skip_ports:
+            cl.enqueue_fill_buffer(self.queue, self.cl_dpos_node, np.float32(0.0), 0, self._nnode_tot * 16)
+            cl.enqueue_fill_buffer(self.queue, self.cl_drot_node, np.float32(0.0), 0, self._nnode_tot * 16)
+            cl.enqueue_fill_buffer(self.queue, self.cl_dpos_neigh, np.float32(0.0), 0, self._nnode_tot * 4 * 16)
 
         self._get_kernel('compute_collision_cluster_rigid')(
             self.queue, global_size, local_size,
@@ -671,21 +679,24 @@ class RRsp3:
             kcoll_f
         )
 
-        self._get_kernel('compute_ports_cluster_rigid')(
-            self.queue, global_size, local_size,
-            self.cl_pos, self.cl_quat, self.cl_radius,
-            self.cl_neighs_local,
-            self.cl_ghost_indices, self.cl_ghost_counts,
-            self.cl_port_local,
-            self.cl_Kflat,
-            self.cl_dpos_node,
-            self.cl_drot_node,
-            self.cl_dpos_neigh,
-            natoms, np.int32(nnode_per_group),
-            dt_f, np.int32(0)
-        ).wait()
+        if not skip_ports:
+            self._get_kernel('compute_ports_cluster_rigid')(
+                self.queue, global_size, local_size,
+                self.cl_pos, self.cl_quat, self.cl_radius,
+                self.cl_neighs_local,
+                self.cl_ghost_indices, self.cl_ghost_counts,
+                self.cl_port_local,
+                self.cl_Kflat,
+                self.cl_dpos_node,
+                self.cl_drot_node,
+                self.cl_dpos_neigh,
+                natoms, np.int32(nnode_per_group),
+                dt_f, np.int32(0)
+            ).wait()
 
         dpos_coll = self.download(self.cl_dpos_coll, (self.num_atoms, 4), np.float32)
+        if skip_ports:
+            return dpos_coll, None, None, None
         dpos_node = self.download(self.cl_dpos_node, (self._nnode_tot, 4), np.float32)
         drot_node = self.download(self.cl_drot_node, (self._nnode_tot, 4), np.float32)
         dpos_neigh = self.download(self.cl_dpos_neigh, (self._nnode_tot * 4, 4), np.float32)

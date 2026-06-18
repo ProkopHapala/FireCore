@@ -4062,3 +4062,54 @@ class ScientificTestHarness:
 Then a thin script in `tests/tMMFF/test_agentic_parity.py` that calls it. Run it manually once to generate golden I/O, then hand the loop to the agent.
 
 This gives you a working, reusable system within one day that aligns with all seven models' recommendations while respecting FireCore's existing conventions and your personal rules about minimal dependencies and loud failures.
+
+---
+
+## Agentic Verification Guidelines (Fail Loudly)
+
+Short, general principles distilled from debugging scientific code with AI agents. Apply to any agentic coding loop.
+
+### 1. Use sentinels, not suppressors
+- **Pad arrays with NaN** (or other unmistakable invalid values) beyond the valid region. Any accidental out-of-bounds read immediately poisons downstream computation and makes the bug visible.
+- Make invalid data **loud** (`NaN`, `inf`, negative sizes) so any downstream use propagates and crashes visibly.
+- Never repurpose a sentinel value for a different meaning (e.g. `invm=0` meaning both "padding" and "pinned").
+
+### 2. Reset state on discontinuities
+- Iterative solvers, caches, and momentum buffers become inconsistent when constraints change.
+- After any discontinuous change (pin/unpin, drag, parameter toggle), reset the relevant internal state before the next step.
+
+### 3. Invariant checks after every step
+- Assert cheap invariants immediately after compute:
+  - `np.isfinite(output).all()` for numerical code
+  - `min < max`, `count > 0`, `shape == expected` for shapes
+- If violated: print a **structured summary** (which group/index failed, what the values were) then `raise`.
+- Keep checks in **both** GUI and headless — interactive debugging must crash at first corruption, not limp on.
+
+### 4. Cache expensive setup
+- Recompilation, buffer reallocation, or heavy I/O on every step hides real bugs under lag.
+- Cache the last configuration; only rebuild when it actually changes.
+
+### 5. Visual diagnostics on by default
+- Any spatial/grouping visualization (bounding boxes, grids, partitions) should be visible with high contrast.
+- If hidden, structural drift is invisible until far too late.
+
+### 6. Continuous event streams for interaction
+- Interactive state changes (drag, resize, scroll) need **continuous** signals, not just start/end.
+- Without mid-stream updates, the model state and the UI state diverge.
+
+### 7. Treat renderer errors as canaries
+- If a visualization library throws "non-finite vertex" or "invalid segment", it almost certainly means **your data** corrupted, not the renderer.
+- Do not patch the renderer — trace the NaN/inf back to the computation that produced it.
+
+### 8. Verbosity levels
+- 0: silent (CI)
+- 1: events (start/stop/toggle)
+- 2: structured summaries on state changes
+- 3: per-step dumps (noisy, for deep debugging)
+
+### Agentic loop contract
+When an agent modifies code:
+1. Run the invariant check after the first step.
+2. If corruption appears, inspect the structured summary to identify the smallest failing unit.
+3. Trace back to the last change touching that unit.
+4. **Never suppress validation errors** — they are the fastest path to root cause.

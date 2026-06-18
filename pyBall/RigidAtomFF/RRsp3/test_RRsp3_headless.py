@@ -332,6 +332,128 @@ def cmd_smoke(args):
 
 
 # ------------------------------------------------------------------
+# Collision / Reindexing Validation
+# ------------------------------------------------------------------
+
+def cmd_collision(args):
+    """Run GPU collision pipeline and compare against vectorized brute-force reference.
+
+    Builds a multi-molecule system with forced overlaps, runs broad+narrow phase,
+    downloads dpos_coll, ghosts, and local indices, then:
+      1. Compares GPU dpos_coll to brute_force_collision_dpos()
+      2. Validates ghost list (no duplicates, within AABB margin)
+      3. Validates neighs/excl round-trip (global -> local -> global)
+      4. Optionally plots atoms colored by workgroup
+    """
+    from RRsp3_utils import (
+        brute_force_collision_dpos,
+        validate_ghost_list,
+        validate_neighs_local,
+        plot_workgroups,
+    )
+
+    # Build overlapping system: 4 H2O molecules close together
+    # With group_size=8 -> 2 workgroups (8+8), forcing ghost-atom exchange.
+    group_size = int(args.group_size)
+    sysdata = build_packed_system(
+        ['h2o'] * 4,
+        shift=[[i * 1.2, 0.0, 0.0] for i in range(4)],
+        group_size=group_size,
+    )
+    natoms = sysdata['natoms']
+    sim = RRsp3(natoms, group_size=group_size, prefer_gpu=True)
+
+    # Perturb positions to create overlaps (radius=1.0 for all real atoms)
+    pos0 = sysdata['pos'].copy()
+    rng = np.random.default_rng(int(args.seed))
+    pos0 += rng.normal(scale=0.3, size=pos0.shape).astype(np.float32)
+
+    sim.upload_state(pos0, sysdata['invm'], quat=sysdata['quat'])
+    sim.upload_fixmask(sysdata['fixmask'])
+    sim.upload_radius(sysdata['rad'])
+    sim.upload_neighs_and_exclusions(sysdata['neighs'], sysdata['excl1'], sysdata['excl2'])
+    sim.reset_momentum()
+
+    # Run broad phase + topology to populate ghosts and local indices
+    sim.run_bboxes_and_topology(bbox_margin=args.bbox_margin)
+
+    # Download topology data for validation
+    ghost_indices, ghost_counts = sim.download_ghosts()
+    neighs_local = sim.download_neighs_local()
+    excl1_local, excl2_local = sim.download_excl_local()
+    bmin, bmax = sim.download_bboxes()
+
+    # Validate ghosts
+    rmax = float(np.max(sysdata['rad'][sysdata['real']])) if np.any(sysdata['real']) else 0.0
+    margin_sq = float((2.0 * rmax + float(args.bbox_margin)) ** 2)
+    ok_ghost, report_ghost = validate_ghost_list(
+        pos0, sysdata['rad'], ghost_indices.ravel(), ghost_counts, group_size, margin_sq
+    )
+    for line in report_ghost:
+        print(line)
+
+    # Validate reindexing
+    ok_reidx, report_reidx = validate_neighs_local(
+        sysdata['neighs'], neighs_local, ghost_indices.ravel(), ghost_counts, group_size
+    )
+    for line in report_reidx:
+        print(line)
+
+    # Also validate exclusions (using same round-trip checker)
+    ok_excl, report_excl = validate_neighs_local(
+        sysdata['excl1'], excl1_local, ghost_indices.ravel(), ghost_counts, group_size
+    )
+    for line in report_excl:
+        print(line)
+    ok_excl2, report_excl2 = validate_neighs_local(
+        sysdata['excl2'], excl2_local, ghost_indices.ravel(), ghost_counts, group_size
+    )
+    for line in report_excl2:
+        print(line)
+
+    # Run collision kernel (skip_ports avoids needing port buffers)
+    dpos_coll_gpu4, _, _, _ = sim.compute_cluster_deltas(
+        nnode_per_group=sysdata['nnode_per_group'],
+        dt=args.dt,
+        k_coll=args.k_coll,
+        bbox_margin=args.bbox_margin,
+        skip_ports=True,
+    )
+    dpos_coll_gpu = dpos_coll_gpu4[:, :3]
+
+    # Brute-force reference from ORIGINAL positions (GPU collision reads same pos)
+    dpos_coll_ref = brute_force_collision_dpos(
+        pos0, sysdata['rad'], sysdata['excl1'], sysdata['excl2'], invm=sysdata['invm']
+    )
+
+    # Compare only real atoms
+    real = sysdata['real']
+    diff = np.abs(dpos_coll_gpu[real] - dpos_coll_ref[real])
+    max_err = float(np.max(diff))
+    mean_err = float(np.mean(diff))
+    tol = float(args.tol)
+
+    print(f"Collision comparison: max_err={max_err:.6e}  mean_err={mean_err:.6e}  tol={tol}")
+    if max_err > tol:
+        print(f"[FAIL] GPU collision deviates from brute-force reference")
+        any_fail = True
+    else:
+        print(f"[PASS] GPU collision matches brute-force reference")
+        any_fail = False
+
+    if not (ok_ghost and ok_reidx and ok_excl and ok_excl2):
+        any_fail = True
+        print("[FAIL] Reindexing validation failed")
+    else:
+        print("[PASS] Reindexing validation passed")
+
+    if args.plot:
+        plot_workgroups(pos0, sysdata['packed']['group_id'], sysdata['is_pad'], outpath=args.plot)
+
+    return 1 if any_fail else 0
+
+
+# ------------------------------------------------------------------
 # Convergence Test
 # ------------------------------------------------------------------
 
@@ -630,6 +752,17 @@ def main():
     # smoke
     p_smoke = sub.add_parser('smoke', parents=[common])
     p_smoke.set_defaults(func=cmd_smoke)
+
+    # collision / reindexing validation
+    p_coll = sub.add_parser('collision', parents=[common])
+    p_coll.add_argument('--group_size', type=int, default=8, help='Workgroup size (must divide natoms)')
+    p_coll.add_argument('--seed', type=int, default=0)
+    p_coll.add_argument('--dt', type=float, default=0.1)
+    p_coll.add_argument('--k_coll', type=float, default=50.0)
+    p_coll.add_argument('--bbox_margin', type=float, default=0.5)
+    p_coll.add_argument('--tol', type=float, default=1e-4, help='Max error tolerance vs brute-force')
+    p_coll.add_argument('--plot', type=str, default='', help='Path to save workgroup plot PNG')
+    p_coll.set_defaults(func=cmd_collision)
 
     # convergence
     p_conv = sub.add_parser('convergence', parents=[common])

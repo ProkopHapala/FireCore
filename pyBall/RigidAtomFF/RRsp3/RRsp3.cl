@@ -92,8 +92,12 @@
 // ------------------------------------------------------------------
 // CONFIGURATION
 // ------------------------------------------------------------------
+#ifndef GROUP_SIZE
 #define GROUP_SIZE     64
+#endif
+#ifndef MAX_GHOSTS
 #define MAX_GHOSTS     128
+#endif
 
 #ifndef ENABLE_COLL
 #define ENABLE_COLL 1

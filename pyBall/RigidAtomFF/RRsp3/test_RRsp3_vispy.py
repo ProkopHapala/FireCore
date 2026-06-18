@@ -6,7 +6,8 @@ from PyQt5 import QtWidgets, QtCore
 _THIS_DIR = os.path.abspath(os.path.dirname(__file__))
 _SHARED_DIR = os.path.abspath(os.path.join(_THIS_DIR, '..', 'shared'))
 _REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, os.pardir))
-for _p in (_REPO_ROOT, _THIS_DIR, _SHARED_DIR):
+_PYBALL_DIR = os.path.abspath(os.path.join(_THIS_DIR, '..', '..'))
+for _p in (_PYBALL_DIR, _REPO_ROOT, _THIS_DIR, _SHARED_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
@@ -58,33 +59,7 @@ def reorder_nodes_first(elems, xyz, bonds, *, is_node=None):
     return elems2, xyz2, bonds2, nnode
 
 
-def load_molecule_any_xyz(xyz_path):
-    # Use AtomicSystem bond finding for general molecules
-    from pyBall.AtomicSystem import AtomicSystem
-    mol = AtomicSystem(fname=xyz_path)
-    if mol.bonds is None or len(mol.bonds) == 0:
-        mol.findBonds()
-    bonds = [(int(b[0]), int(b[1])) for b in mol.bonds]
-    elems = list(mol.enames)
-    xyz = np.asarray(mol.apos[:, :3], dtype=np.float32)
-    elems, xyz, bonds, nnode = reorder_nodes_first(elems, xyz, bonds)
-    return elems, xyz, bonds, nnode
-
-
-def make_ports_from_neighs(pos, neighs, K=200.0):
-    pos = np.asarray(pos, dtype=np.float32)
-    neighs = np.asarray(neighs, dtype=np.int32)
-    n = int(pos.shape[0])
-    port_local = np.zeros((n, 4, 4), dtype=np.float32)
-    Kflat = np.zeros((n, 4), dtype=np.float32)
-    for i in range(n):
-        for k in range(4):
-            j = int(neighs[i, k])
-            if j < 0:
-                continue
-            port_local[i, k, :3] = pos[j] - pos[i]
-            Kflat[i, k] = float(K)
-    return port_local, Kflat
+from RRsp3_utils import load_molecule_any_xyz, make_ports_from_neighs
 
 
 class RRsp3VisDebug(QtWidgets.QMainWindow):
@@ -116,17 +91,28 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         vbox.addWidget(QtWidgets.QLabel('run dt [ms]'))
         vbox.addWidget(self.sp_dtick)
 
+        self.sp_debug = QtWidgets.QSpinBox(); self.sp_debug.setRange(0, 3); self.sp_debug.setValue(1)
+        vbox.addWidget(QtWidgets.QLabel('debug verbosity'))
+        vbox.addWidget(self.sp_debug)
+
         self.cb_coll = QtWidgets.QCheckBox('Enable collisions'); self.cb_coll.setChecked(True)
         self.cb_ports = QtWidgets.QCheckBox('Enable ports'); self.cb_ports.setChecked(True)
         vbox.addWidget(self.cb_coll)
         vbox.addWidget(self.cb_ports)
 
         # ---- Molecule loading ----
-        self.xyz_dir = '/home/prokop/git/FireCore/web/common_resources/xyz'
-        self.cb_preset = QtWidgets.QComboBox(); self.cb_preset.addItems(['h2o', 'ch2nh', 'hcooh', 'pyrrole', 'guanine', 'pentacene'])
-        self.cb_preset.setCurrentText('guanine')
+        self.xyz_dir = '/home/prokophapala/git/FireCore/cpp/common_resources/xyz'
+        self.xyz_dir_alt = '/home/prokophapala/git/FireCore/tests/tKekuleExplorer/out_topology'
+        presets = ['h2o', 'ch2nh', 'hcooh', 'pyrrole', 'guanine', 'pentacene', 'benzene', 'naphthalene', 'anthracene', 'pyridine']
+        self.cb_preset = QtWidgets.QComboBox(); self.cb_preset.addItems(presets)
+        self.cb_preset.setCurrentText('anthracene')
         vbox.addWidget(QtWidgets.QLabel('molecule preset'))
         vbox.addWidget(self.cb_preset)
+
+        self.le_custom_xyz = QtWidgets.QLineEdit()
+        self.le_custom_xyz.setPlaceholderText('Or type full path to .xyz file')
+        vbox.addWidget(QtWidgets.QLabel('custom xyz path'))
+        vbox.addWidget(self.le_custom_xyz)
 
         self.sp_nmol = QtWidgets.QSpinBox(); self.sp_nmol.setRange(1, 200); self.sp_nmol.setValue(2)
         vbox.addWidget(QtWidgets.QLabel('num molecules (=num clusters)'))
@@ -168,7 +154,7 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         vbox.addWidget(QtWidgets.QLabel('collision radius R_coll'))
         vbox.addWidget(self.sp_rcoll)
 
-        self.cb_show_bbox = QtWidgets.QCheckBox('Show group bboxes'); self.cb_show_bbox.setChecked(False)
+        self.cb_show_bbox = QtWidgets.QCheckBox('Show group bboxes'); self.cb_show_bbox.setChecked(True)
         vbox.addWidget(self.cb_show_bbox)
 
         self.cb_bbox_mode = QtWidgets.QComboBox(); self.cb_bbox_mode.addItems(['tight', 'overlap', 'halo'])
@@ -229,8 +215,8 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         hbox.addWidget(ctrl)
 
         self.scene.sig_atom_picked.connect(self.on_pick)
-        self.scene.sig_atom_dragged.connect(self.on_drag)
         self.scene.sig_drag_state.connect(self.on_drag_state)
+        self.scene.sig_atom_moved.connect(self.on_atom_moved)
 
         self.scene.set_camera_debug(2)
 
@@ -242,6 +228,9 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         self._drag_active = False
         self._drag_idx = -1
         self._drag_pos = None
+        self._drag_invm_backup = 0.0
+        self._drag_fixed_backup = False
+        self._last_build_opts = ()  # cache to avoid recompiling on every step
 
         self._init_system()
 
@@ -266,6 +255,59 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         self.on_view_mode_changed()
         self.on_viz_changed()
 
+    def _debug_level(self):
+        try:
+            return int(self.sp_debug.value())
+        except Exception:
+            return 0
+
+    def _cluster_stats(self):
+        """Return per-cluster stats for real atoms only.
+
+        Returns:
+            cog (ng,3), mn (ng,3), mx (ng,3), nreal (ng,)
+        """
+        gs = int(self.group_size)
+        ng = int(self.natoms // gs)
+        cog = np.zeros((ng, 3), dtype=np.float32)
+        mn = np.zeros((ng, 3), dtype=np.float32)
+        mx = np.zeros((ng, 3), dtype=np.float32)
+        nreal = np.zeros((ng,), dtype=np.int32)
+        for ig in range(ng):
+            a0 = ig * gs
+            sl = slice(a0, a0 + gs)
+            m = np.asarray(self.real[sl], dtype=bool)
+            if not np.any(m):
+                cog[ig, :] = np.nan; mn[ig, :] = np.nan; mx[ig, :] = np.nan
+                continue
+            p = np.asarray(self.pos[sl, :], dtype=np.float32)[m, :]
+            cog[ig, :] = np.mean(p, axis=0)
+            mn[ig, :] = np.min(p, axis=0)
+            mx[ig, :] = np.max(p, axis=0)
+            nreal[ig] = int(p.shape[0])
+        return cog, mn, mx, nreal
+
+    def _dump_cluster_stats(self, tag, *, max_groups=16):
+        lvl = self._debug_level()
+        if lvl <= 0:
+            return
+        cog, mn, mx, nreal = self._cluster_stats()
+        ng = int(cog.shape[0])
+        print(f"[{tag}] clusters ng={ng} (showing first {min(ng, max_groups)})")
+        for ig in range(min(ng, int(max_groups))):
+            c = cog[ig]; a = mn[ig]; b = mx[ig]
+            print(f"  ig={ig:3d} nreal={int(nreal[ig]):3d} cog=({c[0]: .3f},{c[1]: .3f},{c[2]: .3f}) min=({a[0]: .3f},{a[1]: .3f},{a[2]: .3f}) max=({b[0]: .3f},{b[1]: .3f},{b[2]: .3f})")
+
+    def _assert_real_finite(self, tag):
+        """Fail loudly if any REAL atom has non-finite position."""
+        p = np.asarray(self.pos, dtype=np.float32)
+        bad = ~np.isfinite(p).all(axis=1)
+        bad_real = np.where(bad & self.real)[0]
+        if bad_real.size:
+            print(f"[FATAL] {tag}: non-finite REAL atom positions at idx={bad_real[:32].tolist()} (showing up to 32)")
+            self._dump_cluster_stats(f"{tag}/cluster_stats")
+            raise RuntimeError(f"{tag}: non-finite REAL atom positions")
+
     def on_run_toggled(self, checked):
         if bool(checked):
             self.btn_run.setText('Stop')
@@ -276,28 +318,21 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
 
     def on_timer(self):
         # Keep GUI responsive; one step per tick.
-        # If dragging is active, re-apply dragged atom position before and after stepping
-        if self._drag_active and (self._drag_idx >= 0) and (self._drag_pos is not None):
-            i = int(self._drag_idx)
-            if (i >= 0) and (i < self.natoms) and (not bool(self.is_pad[i])) and (not bool(self._fixed[i])):
-                print(f"[DRAG-HOLD] pre-step idx={i} pos=({self._drag_pos[0]:.3f},{self._drag_pos[1]:.3f},{self._drag_pos[2]:.3f})")
-                self.pos[i, :] = self._drag_pos
-                self.sim.upload_state(self.pos, self.invm, quat=self.quat)
-
+        # Atom dragging: on_drag_state pins the atom by fixmask during drag,
+        # on_atom_moved updates its position. No need for drag-hold logic here.
         self.on_step()
-
-        if self._drag_active and (self._drag_idx >= 0) and (self._drag_pos is not None):
-            i = int(self._drag_idx)
-            if (i >= 0) and (i < self.natoms) and (not bool(self.is_pad[i])) and (not bool(self._fixed[i])):
-                print(f"[DRAG-HOLD] post-step idx={i} pos=({self._drag_pos[0]:.3f},{self._drag_pos[1]:.3f},{self._drag_pos[2]:.3f})")
-                self.pos[i, :] = self._drag_pos
-                self.sim.upload_state(self.pos, self.invm, quat=self.quat)
-                self.scene.update_positions(self.pos)
 
     def _init_system(self):
         group_size = 64
-        name = str(self.cb_preset.currentText()).strip().lower()
-        xyz_path = os.path.join(self.xyz_dir, f"{name}.xyz")
+        custom = self.le_custom_xyz.text().strip()
+        if custom and os.path.isfile(custom):
+            xyz_path = custom
+            name = os.path.splitext(os.path.basename(custom))[0].lower()
+        else:
+            name = str(self.cb_preset.currentText()).strip().lower()
+            xyz_path = os.path.join(self.xyz_dir, f"{name}.xyz")
+            if not os.path.isfile(xyz_path):
+                xyz_path = os.path.join(self.xyz_dir_alt, f"{name}.xyz")
         if os.path.isfile(xyz_path):
             try:
                 elems0, xyz0, bonds0, _nnode_loaded = load_molecule_any_xyz(xyz_path)
@@ -422,20 +457,58 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         self._picked = int(idx)
         self.status.setText(f'picked idx={idx} elem={self.elems[idx]} pad={bool(self.is_pad[idx])} fixed={bool(self._fixed[idx])}')
 
-    def on_drag(self, idx, new_pos3):
-        idx = int(idx)
-        if bool(self.is_pad[idx]):
-            return
-        if bool(self._fixed[idx]):
-            return
-        self.pos[idx, :] = np.asarray(new_pos3, dtype=np.float32)
-        self._drag_pos = self.pos[idx, :].copy()
-        self.sim.upload_state(self.pos, self.invm, quat=self.quat)
-
     def on_drag_state(self, active, idx, pos3):
+        """Handle drag start/stop.
+
+        IMPORTANT: do NOT set invm=0 for real atoms.
+        RRsp3.upload_state() uses invm==0 as a diagnostic marker and overwrites pos->NaN.
+        Pinned/dragged atoms must be constrained by fixmask only.
+        """
+        was_active = self._drag_active
         self._drag_active = bool(active)
         self._drag_idx = int(idx)
         self._drag_pos = None if pos3 is None else np.asarray(pos3, dtype=np.float32).copy()
+        
+        i = int(idx)
+        if i < 0 or i >= self.natoms or bool(self.is_pad[i]):
+            return
+            
+        if active and not was_active:
+            # Drag start: constrain atom by fixmask (NOT invm=0) and reset solver momentum
+            self._drag_invm_backup = float(self.invm[i])
+            self._drag_fixed_backup = bool(self._fixed[i])
+            self._fixed[i] = True
+            self.sim.reset_momentum()
+            self.sim.upload_state(self.pos, self.invm, quat=self.quat)
+            self._upload_fixmask()
+            print(f"[DRAG-START] idx={i} fixed atom (fixmask), invm kept={self.invm[i]:.4f}")
+            if self._debug_level() >= 2:
+                self._dump_cluster_stats('DRAG-START')
+        elif not active and was_active:
+            # Drag end: restore original mobility
+            self._fixed[i] = self._drag_fixed_backup
+            self.sim.reset_momentum()
+            self.sim.upload_state(self.pos, self.invm, quat=self.quat)
+            self._upload_fixmask()
+            print(f"[DRAG-END] idx={i} restored fixed={self._fixed[i]}")
+            if self._debug_level() >= 2:
+                self._dump_cluster_stats('DRAG-END')
+            
+    def on_atom_moved(self, idx, pos3):
+        """Handle atom position updates during drag (from mouse movement)."""
+        if not self._drag_active or idx != self._drag_idx:
+            return
+        i = int(idx)
+        if i < 0 or i >= self.natoms or bool(self.is_pad[i]):
+            return
+        # Update position during drag
+        new_pos = np.asarray(pos3, dtype=np.float32)
+        self.pos[i, :] = new_pos
+        self._drag_pos = new_pos.copy()
+        # Upload to GPU so solver uses this as the fixed position.
+        # Reset momentum because this is a discontinuous constraint target change.
+        self.sim.reset_momentum()
+        self.sim.upload_state(self.pos, self.invm, quat=self.quat)
 
     def on_view_mode_changed(self):
         lock = bool(self.cb_lock.isChecked())
@@ -735,26 +808,24 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
         if bool(self.is_pad[i]):
             return
         self._fixed[i] = ~self._fixed[i]
-        if self._fixed[i]:
-            self.invm[i] = 0.0
-        else:
-            self.invm[i] = self.invm0[i]
         self._fixed[self.is_pad] = True
         self.scene.set_fixed_mask(self._fixed)
+        self.sim.reset_momentum()
         self.sim.upload_state(self.pos, self.invm, quat=self.quat)
         self._upload_fixmask()
         self.status.setText(f'picked idx={i} elem={self.elems[i]} pad={bool(self.is_pad[i])} fixed={bool(self._fixed[i])}')
 
     def on_step(self):
-        # rebuild program with toggles (simple, safe)
+        # rebuild program with toggles only when changed
         build_opts = []
         if not self.cb_coll.isChecked():
             build_opts.append('-DENABLE_COLL=0')
         if not self.cb_ports.isChecked():
             build_opts.append('-DENABLE_PORT=0')
+        build_opts_tuple = tuple(build_opts)
 
-        if build_opts:
-            # recreate sim to force rebuild options
+        if build_opts_tuple != self._last_build_opts:
+            # recreate sim only when build options change
             self.sim = RRsp3(self.natoms, group_size=self.group_size, prefer_gpu=True, build_options=build_opts)
             self.sim.upload_state(self.pos, self.invm, quat=self.quat)
             self.sim.upload_radius(self.rad)
@@ -763,12 +834,16 @@ class RRsp3VisDebug(QtWidgets.QMainWindow):
             self.sim.upload_bkSlots(self.bkSlots)
             self._upload_fixmask()
             self.sim.run_bboxes_and_topology(bbox_margin=0.5)
+            self._last_build_opts = build_opts_tuple
 
         self.sim.step_cluster(nnode_per_group=self.nnode_per_group, dt=float(self.sp_dt.value()), k_coll=float(self.sp_kcoll.value()), relaxation=float(self.sp_relax.value()), bbox_margin=0.5)
         pos4, quat4 = self.sim.download_pos_quat()
         # strict: padding atoms remain NaN (invalid) always
         self.pos = pos4[:, :3].copy()
         self.quat = quat4.copy()
+        self._assert_real_finite('on_step/post_download')
+        if self._debug_level() >= 3:
+            self._dump_cluster_stats('STEP')
         self.scene.update_positions(self.pos)
         bmin, bmax = self.sim.download_bboxes()
         self._set_scene_bboxes_from_device(bmin, bmax)

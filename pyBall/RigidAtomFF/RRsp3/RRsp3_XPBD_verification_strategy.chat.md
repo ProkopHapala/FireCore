@@ -271,6 +271,51 @@ we should also define series of test systems of incresing size and complexity, b
 
 Another thing is gated prints from inside kernels, we need to have robust system to do that, how to switch it on/of and differne verosaity level or picked atoms(workgroups) and componets to moniotr 
 
+## Diagnostics / Debugging Tricks (Fail Loudly)
+
+### NaN padding as an out-of-bounds / invalid-access sentinel
+- Keep **padding atoms** positions as `NaN` on purpose in device buffers.
+- This makes any accidental use of padding indices immediately visible (propagates NaNs into debug overlays / asserts).
+- Important semantic rule: **`invm==0` currently implies "invalid/padding" in `RRsp3.upload_state()`**, because it is used to decide which atoms to overwrite as NaN.
+
+### Do NOT use `invm=0` to implement pinning of real atoms
+- Pinning/dragging must be done via `fixmask` (position DOF constraints), not by changing `invm`.
+- Otherwise the pinned atom becomes NaN in `cl_pos` (by design), poisoning simulation state.
+
+### Reset momentum when constraints change
+- The solver uses heavy-ball momentum buffers (`cl_dpos_mom`, `cl_dquat_mom`).
+- Whenever we introduce a discontinuous constraint/state change (pin/unpin, drag start/end, or a jump in a dragged target), call `RRsp3.reset_momentum()`.
+- Without this, stale momentum can cause sudden jumps/divergence after constraint changes.
+
+### Invariant checks (crash early, print structured stats)
+- After each step/download, assert:
+  - **Real atoms must be finite**: `np.isfinite(pos[real]).all()`
+  - If violated: print indices of first bad atoms + per-cluster min/max/COG summary, then `raise`.
+- Keep these checks in the GUI too (not only headless) so interactive debugging immediately stops at the first corruption.
+
+### Build option caching (prevent silent recompilation spam)
+- Cache the last-used `build_options` tuple and only recreate `RRsp3` object when options actually change.
+- Without this, toggling a checkbox off → every step recompiles the entire OpenCL program, causing massive lag and masking real bugs.
+
+### Bounding box visibility by default
+- Bboxes are the primary diagnostic for group/cluster integrity. Keep them **on by default** with high-contrast color (e.g. dark red, 90% opacity, width=2.0).
+- If bboxes are hidden, you won't notice when clusters drift apart or collapse.
+
+### Real-time drag signal architecture
+- `AtomScene` must emit a **continuous** `sig_atom_moved(idx, pos3)` during drag, not just press/release events.
+- Without this, the parent GUI has no way to propagate mouse position into the simulation state.
+
+### VISPY-SEG-ERR as a NaN propagation canary
+- `VispyUtils._validated_segs()` prints `[VISPY-SEG-ERR]` when bond/line segments contain non-finite endpoints.
+- If this fires after a code change, it is almost certainly because a real atom became NaN (not a Vispy bug).
+- Do not suppress it — trace back to the root cause (usually `invm=0` on a real atom, or solver divergence).
+
+### Debug verbosity levels (0..3) with per-cluster stats
+- Level 0: silent
+- Level 1: basic events (drag start/end, pin toggle)
+- Level 2: per-cluster COG/min/max dump on drag events
+- Level 3: per-cluster dump on every solver step (noisy, for deep debugging)
+
 now read relevant fioles and make a definite plan 
 
 ---

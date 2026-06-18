@@ -130,6 +130,7 @@ class AtomScene(QtCore.QObject):
 
     sig_atom_picked = QtCore.pyqtSignal(int)
     sig_drag_state = QtCore.pyqtSignal(int, int, object)  # active(0/1), idx, pos3
+    sig_atom_moved = QtCore.pyqtSignal(int, object)  # idx, pos3 - emitted during drag
     sig_rmb_remove = QtCore.pyqtSignal(int)  # idx to remove
     sig_selection_changed = QtCore.pyqtSignal(object)  # set of selected indices
     sig_camera_changed = QtCore.pyqtSignal()  # camera changed (zoom/pan/rotate)
@@ -155,7 +156,7 @@ class AtomScene(QtCore.QObject):
 
         # Draw ordering: radius behind everything, then bboxes/links/lines, then atom centers, then labels.
         self.radius_markers = visuals.Markers(parent=self.view.scene)
-        self.bbox_lines = visuals.Line(parent=self.view.scene, color=(0.2, 0.6, 1.0, 0.6), width=1.2, antialias=True, method='gl')
+        self.bbox_lines = visuals.Line(parent=self.view.scene, color=(0.8, 0.0, 0.0, 0.9), width=2.0, antialias=True, method='gl')
         self.inbox_lines = visuals.Line(parent=self.view.scene, color=(0.0, 0.0, 0.0, 0.35), width=1.0, antialias=True, method='gl')
         self.halo_lines  = visuals.Line(parent=self.view.scene, color=(0.8, 0.1, 0.8, 0.35), width=1.0, antialias=True, method='gl')
         self.neigh_lines = visuals.Line(parent=self.view.scene, color=(0.2, 0.2, 0.2, 0.65), width=1.0, antialias=True, method='gl')
@@ -1169,6 +1170,8 @@ class AtomScene(QtCore.QObject):
             self._pos = self.backend.sys.apos.astype(np.float32)
         else:
             self._pos = p
+        # Emit signal for parent to track drag position
+        self.sig_atom_moved.emit(int(i), self._pos[i].copy())
         self._redraw()
         ev.handled = True
 
