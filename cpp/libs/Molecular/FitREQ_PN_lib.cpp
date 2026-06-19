@@ -45,7 +45,7 @@ void setVerbosity( int verbosity_, int idebug_, int PrintDOFs, int PrintfDOFs, i
     printf( "setVerbosity() verbosity %i idebug %i PrintDOFs %i PrintfDOFs %i PrintBeforReg %i PrintAfterReg %i PrintOverRepulsive %i\n", verbosity, idebug, W.bPrintDOFs, W.bPrintfDOFs, W.bPrintBeforReg, W.bPrintAfterReg, W.bPrintOverRepulsive );
 }
 
-void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double kMorse, double Lepairs, bool bPN, double svdW, double sCoul, double sHcorr, double sEpairs, double SR4cut, int SR4m, int SR4n ){
+void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double kMorse, double Lepairs, bool bPN, double svdW, double sCoul, double sHcorr, double sEpairs, double SRcut, int SR4m, int SR4n ){
     W.ivdW    = ivdW;
     W.iCoul   = iCoul;
     W.iHbond  = iHbond;
@@ -57,12 +57,12 @@ void setModel( int ivdW, int iCoul, int iHbond, int Epairs, int iEpairs, double 
     W.svdW    = svdW;
     W.sCoul   = sCoul;
     W.sHcorr  = sHcorr;
-    W.sEpairs  = sEpairs;
-    W.SR4cut   = SR4cut;
-    W.SR4m     = SR4m;
-    W.SR4n     = SR4n;
-    printf( "setModel() ivdW %i iCoul %i iHbond %i iEpairs %i kMorse %f Lepairs %f bPN %i svdW %f sCoul %f sHcorr %f sEpairs %f SR4cut %f SR4m %i SR4n %i\n", 
-        W.ivdW, W.iCoul, W.iHbond, W.iEpairs, W.kMorse, W.Lepairs, W.bPN, W.svdW, W.sCoul, W.sHcorr, W.sEpairs, W.SR4cut, W.SR4m, W.SR4n );
+    W.sEpairs = sEpairs;
+    W.SRcut   = SRcut;
+    W.SR4m    = SR4m;
+    W.SR4n    = SR4n;
+    printf( "setModel() ivdW %i iCoul %i iHbond %i iEpairs %i kMorse %f Lepairs %f bPN %i svdW %f sCoul %f sHcorr %f sEpairs %f SRcut %f SR4m %i SR4n %i\n", 
+        W.ivdW, W.iCoul, W.iHbond, W.iEpairs, W.kMorse, W.Lepairs, W.bPN, W.svdW, W.sCoul, W.sHcorr, W.sEpairs, W.SRcut, W.SR4m, W.SR4n );
 }
 
 void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){
@@ -169,44 +169,78 @@ void evalSamplePairs(int isamp, double* pair_out){
             const double r = dij.norm();
 
             double Eij_Coul = 0.0, Eij_vdW = 0.0, Eij_Hcorr = 0.0, Eij_Epairs = 0.0;
-            double dE_dH=0.0, dE_dR=0.0;
+            double dE_dH=0.0, dE_dR=0.0, f1=0.0, f2=0.0, alpha=0.0;
             double fA=0.0, fR=0.0, fH1=0.0, fH2=0.0;
 
             if( bEpi ){
                 if(bEpj) continue;
-                if(W.iEpairs==1)      Eij_Epairs = getSR_PN( r, H, REQi.x, dE_dH, dE_dR );
-                else if(W.iEpairs==2) Eij_Epairs = getSR2_PN( r, H, REQi.x, dE_dH, dE_dR );
-                else if(W.iEpairs==3) Eij_Epairs = getSR3_PN( r, H, REQi.x, dE_dH, dE_dR );
+                // --- Electron pair interaction
+                if     (W.iEpairs==1) Eij_Epairs = W.sEpairs * getSR1_PN( r, H, REQi.x, dE_dH, dE_dR );
+                else if(W.iEpairs==2) Eij_Epairs = W.sEpairs * getSR2_PN( r, H, REQi.x, dE_dH, dE_dR );
+                else if(W.iEpairs==3) Eij_Epairs = W.sEpairs * getSR3_PN( r, H, REQi.x, dE_dH, dE_dR );
+                else if(W.iEpairs==4) Eij_Epairs = W.sEpairs * getSR4_PN( r, REQi.x*REQj.w, REQi.w*REQj.w, f1, f2, W.SRcut, W.SR4m, W.SR4n );
+                else if(W.iEpairs==5) Eij_Epairs = W.sEpairs * getSR5_PN( r, H, REQi.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==6) Eij_Epairs = W.sEpairs * getSR6_PN( r, H, REQi.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==7) Eij_Epairs = W.sEpairs * getSR7_PN( r, H, REQi.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==8) Eij_Epairs = W.sEpairs * getSR8_PN( r, H, REQi.x, W.SRcut, dE_dH, dE_dR );
             }else if( bEpj ){
-                if(W.iEpairs==1)      Eij_Epairs = getSR_PN( r, H, REQj.x, dE_dH, dE_dR );
-                else if(W.iEpairs==2) Eij_Epairs = getSR2_PN( r, H, REQj.x, dE_dH, dE_dR );
-                else if(W.iEpairs==3) Eij_Epairs = getSR3_PN( r, H, REQj.x, dE_dH, dE_dR );
+                // --- Electron pair interaction
+                if     (W.iEpairs==1) Eij_Epairs = W.sEpairs * getSR1_PN( r, H, REQj.x, dE_dH, dE_dR );
+                else if(W.iEpairs==2) Eij_Epairs = W.sEpairs * getSR2_PN( r, H, REQj.x, dE_dH, dE_dR );
+                else if(W.iEpairs==3) Eij_Epairs = W.sEpairs * getSR3_PN( r, H, REQj.x, dE_dH, dE_dR );
+                else if(W.iEpairs==4) Eij_Epairs = W.sEpairs * getSR4_PN( r, REQi.w*REQj.x, REQi.w*REQj.w, f1, f2, W.SRcut, W.SR4m, W.SR4n );
+                else if(W.iEpairs==5) Eij_Epairs = W.sEpairs * getSR5_PN( r, H, REQj.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==6) Eij_Epairs = W.sEpairs * getSR6_PN( r, H, REQj.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==7) Eij_Epairs = W.sEpairs * getSR7_PN( r, H, REQj.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==8) Eij_Epairs = W.sEpairs * getSR8_PN( r, H, REQj.x, W.SRcut, dE_dH, dE_dR );
             }else{
-                if(W.iCoul==1) Eij_Coul = Q * COULOMB_CONST / r;
-                else if(W.iCoul==2) Eij_Coul = Q * dampCoulomb_SoftClamp(r, W.clamp_y1, W.clamp_y2) * COULOMB_CONST;
-                else if(W.iCoul>9) Eij_Coul = Q * dampCoulomb_Boys(r, W.boys_rmin, W.iCoul-10) * COULOMB_CONST;
-
-                if(W.ivdW==1){
-                    double u = R0/r; double u3 = u*u*u; fA = u3*u3; fR = fA*fA; fH1=1.0; fH2=2.0;
-                }else if(W.ivdW==2){
-                    double u = R0/r; double u2 = u*u; fA = u2*u2*u2; fR = fA*u2; fH1=3.0; fH2=4.0;
-                }else if(W.ivdW==3){
-                    double u = R0/r; double u3 = u*u*u; fA = u3*u3; fR = fA*u3; fH1=2.0; fH2=3.0;
-                }else if(W.ivdW==4){
-                    double alpha = W.kMorse;
-                    if(alpha < 0.0) alpha = 6.0/R0;
-                    fA = exp(-alpha*(r-R0)); fR = fA*fA; fH1=1.0; fH2=2.0;
-                }else if(W.ivdW==5){
-                    double alpha = W.kMorse;
-                    if(alpha < 0.0) alpha = 6.0/R0;
-                    double u = R0/r; double u3 = u*u*u; double e = exp(-alpha*(r-R0));
-                    fA = u3*u3; fR = e*e; fH1=1.0; fH2=2.0;
+                // --- Electrostatic interaction
+                if     (W.iCoul==1) Eij_Coul = W.sCoul * Q * COULOMB_CONST / r;
+                else if(W.iCoul==2) Eij_Coul = W.sCoul * Q * dampCoulomb_SoftClamp(r, W.clamp_y1, W.clamp_y2) * COULOMB_CONST;
+                else if(W.iCoul>9)  Eij_Coul = W.sCoul * Q * dampCoulomb_Boys(r, W.boys_rmin, W.iCoul-10) * COULOMB_CONST;
+                // --- Van der Waals interaction
+                if(W.ivdW==1){ // Lennard-Jones 12-6
+                    const double u  = R0 / r;
+                    const double u3 = u * u * u;
+                    fA              = u3 * u3;
+                    fR              = fA * fA;
+                    fH1             = 1.0;
+                    fH2             = 2.0;
+                }else if(W.ivdW==2){ // Lennard-Jones 8-6
+                    const double u  = R0 / r;
+                    const double u2 = u * u;
+                    fA              = u2 * u2 * u2;
+                    fR              = fA * u2;
+                    fH1             = 3.0;
+                    fH2             = 4.0;
+                }else if(W.ivdW==3){ // Lennard-Jones 9-6
+                    const double u  = R0 / r;
+                    const double u3 = u * u * u;
+                    fA              = u3 * u3;
+                    fR              = fA * u3;
+                    fH1             = 2.0;
+                    fH2             = 3.0;
+                }else if(W.ivdW==4){ // Morse
+                    if( W.kMorse < 0.0 ) alpha = 6.0 / R0; 
+                    fA                 = exp( -alpha * ( r - R0 ) );
+                    fR                 = fA * fA;
+                    fH1                = 1.0;
+                    fH2                = 2.0;
+                }else if(W.ivdW==5){ // Buckingham
+                    if( W.kMorse < 0.0 ) alpha = 6.0 / R0; 
+                    const double u     = R0 / r;
+                    const double u3    = u * u * u;
+                    const double e     = exp( -alpha * ( r - R0 ) );
+                    fA                 = u3 * u3;
+                    fR                 = e * e;
+                    fH1                = 1.0;
+                    fH2                = 2.0;
                 }
-                Eij_vdW = eps * (fH1*fR - fH2*fA);
-
-                if(sH>0.0){
-                    if(W.iHbond==1 || W.iHbond==3) Eij_Hcorr += eps * H * fH1 * fR;
-                    if(W.iHbond==2 || W.iHbond==3) Eij_Hcorr += eps * H * fH2 * fA;
+                Eij_vdW =  W.svdW * eps * ( fH1 * fR - fH2 * fA );
+                // --- Hydrogen-bond corrections
+                if(W.sHcorr>0.0){
+                    if(W.iHbond==1||W.iHbond==3) Eij_Hcorr += W.sHcorr * eps * H * fH1 * fR;
+                    if(W.iHbond==2||W.iHbond==3) Eij_Hcorr += W.sHcorr * eps * H * fH2 * fA;
                 }
             }
 

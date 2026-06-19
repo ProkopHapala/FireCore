@@ -51,52 +51,147 @@ inline double safe_exp3(double x) {
     return exp(x);
 }
 
-inline double getSR_PN( double r, double H, double R0, double& dEdH, double& dEdR0 ){
+inline double getSR1_PN( double r, double H, double R0, double& dEdH, double& dEdR ){
     const double iR0 = 1.0 / R0;
     const double u  = r * iR0; 
     dEdH = safe_exp( -u );
-    dEdR0 = H * u * iR0 * dEdH;
+    dEdR = H * u * iR0 * dEdH;
     return H * dEdH;
 }
 
-inline double getSR2_PN( double r, double H, double R0, double& dEdH, double& dEdR0 ){
+inline double getSR2_PN( double r, double H, double R0, double& dEdH, double& dEdR ){
     const double iR0 = 1.0 / R0;
     const double u  = r * iR0; 
     const double u2  = u * u; 
     dEdH = safe_exp( -u2 );
-    dEdR0 = 2.0 * H * u2 * iR0 * dEdH;
+    dEdR = 2.0 * H * u2 * iR0 * dEdH;
     return H * dEdH;
 }
 
-inline double getSR3_PN( double r, double H, double R0, double& dEdH, double& dEdR0 ){
+inline double getSR3_PN( double r, double H, double R0, double& dEdH, double& dEdR ){
     const double iR0 = 1.0 / R0;
     const double u  = r * iR0;
     const double ep  = safe_exp3( u );
     const double em  = 1.0 / ep;
     const double s = 1.0 / ( ep + em );
     dEdH = 2.0 * s;
-    dEdR0 = H * u * iR0 * ( ep - em ) * dEdH * s;
-    //if (!std::isfinite(dEdR0)||!std::isfinite(dEdH)) { printf("getSR3_PN: r=%f H=%f R0=%f u=%f dEdH=%f dEdR0=%f\n", r, H, R0, u, dEdH, dEdR0); exit(0); }
+    dEdR = H * u * iR0 * ( ep - em ) * dEdH * s;
     return H * dEdH;
 }
 
-inline double getSR4_PN( double r, double eps1, double eps2, double& f1, double& f2, double SR4cut, int SR4m, int SR4n ){
+inline double getSR4_PN( double r, double eps1, double eps2, double& f1, double& f2, double SRcut, int SR4m, int SR4n ){
     // no need to compute anything if we are beyond the cutoff 
-    if ( r > SR4cut ){ 
-        f1 = 0.0;
-        f2 = 0.0;
-        return 0.0;
-    }
-    const double iRcut = 1.0 / SR4cut;
+    if ( r > SRcut ){ f1 = 0.0; f2 = 0.0; return 0.0;}
+    const double iRcut = 1.0 / SRcut;
     const double u  = r * iRcut;
     const double v = 1.0 - u * u;
     f1 = pow(v, SR4m);
     f2 = pow(u, SR4n) * f1;
-    //if (std::isnan(eps1*f1+eps2*f2) || std::isinf(eps1*f1+eps2*f2) || abs(eps1*f1+eps2*f2) > 1e3) {printf("CRITICAL SR4 BLOWUP: r=%f, u=%f, v=%f, f1=%f, f2=%f, Eij=%f\n", r, u, v, f1, f2, eps1*f1+eps2*f2);}
-    if (verbosity > 3) {
-        printf( "DEBUG getSR4_PN r=%g cu=%g v=%g f1=%g f2=%g eps1=%g eps2=%g E=%g\n", r, u, v, f1, f2, eps1, eps2, eps1*f1+eps2*f2 );
-    }
     return eps1 * f1 + eps2 * f2;
+}
+
+constexpr double SR5crossover = 1.0 / (40.0 * sqrt(5.0) - 87.0);
+inline double getSR5_PN(double r, double H, double R0, double SRcut, double& dEdH, double& dEdR) {
+    // no need to compute anything if we are beyond the cutoff 
+    if ( r > SRcut ){ dEdH = 0.0; dEdR = 0.0; return 0.0;}
+    const double iRcut = 1.0 / SRcut;
+    const double u = r * iRcut;
+    const double a = R0 * iRcut;
+    const double f1 = (1.0 - u) * (1.0 - u);
+    const double f2 = 16.0 * u * u * f1;
+    double Ma = 1.0;
+    double dMa_da = 0.0;
+    if (a < SR5crossover) {
+        Ma = 1.0 - a;
+        dMa_da = -1.0;
+    } else {
+        const double umax = 0.25 + sqrt(6.0 * a * a - 2.0 * a) / (8.0 * a);
+        const double vmax = 1.0 - umax;
+        Ma = vmax * vmax * (1.0 - a + 16.0 * a * umax * umax);
+        dMa_da = vmax * vmax * (-1.0 + 16.0 * umax * umax);
+    }
+    dEdH = ((1.0 - a) * f1 + a * f2) / Ma;
+    const double dphi_da = (f2 - f1) / Ma - dEdH * dMa_da / Ma;
+    dEdR = H * dphi_da * iRcut;
+    return H * dEdH;
+}
+
+inline double getSR6_PN(double r, double H, double R0, double SRcut, double& dEdH, double& dEdR) {
+    if (r >= SRcut) { dEdH = 0.0; dEdR = 0.0; return 0.0; }
+    double t = 0.0;
+    double dt_dR0 = 0.0;
+    if (r < R0) {
+        t = 1.0 - r / R0;
+        dt_dR0 = r / (R0 * R0);
+    } else {
+        t = (r - R0) / (SRcut - R0);
+        dt_dR0 = (r - SRcut) / ((SRcut - R0) * (SRcut - R0));
+    }
+    const double t2 = t * t;
+    dEdH = 1.0 - 10.0 * t * t2 + 15.0 * t2 * t2 - 6.0 * t2 * t2 * t;
+    const double v = 1.0 - t;
+    const double dphi_dt = -30.0 * t2 * v * v;
+    dEdR = H * dphi_dt * dt_dR0;
+    return H * dEdH;
+}
+
+inline double getSR7_PN(double r, double H, double R0, double SRcut, double& dEdH, double& dEdR) {
+    if (r >= SRcut) { dEdH = 0.0; dEdR = 0.0; return 0.0; }
+    const double iRcut = 1.0 / SRcut;
+    const double u = r * iRcut;
+    const double r2 = r * r;
+    const double R0_sq = R0 * R0;
+    const double L_den = 1.0 + r2 / R0_sq;
+    const double u2 = u * u;
+    const double S = 1.0 - 3.0 * u2 + 2.0 * u2 * u;
+    dEdH = S / L_den;
+    dEdR = (2.0 * H * r2) / (R0_sq * R0 * L_den * L_den) * S;
+    return H * dEdH;
+}
+
+constexpr double SR8crossover = sqrt(2.0) - 1.0;
+inline double getSR8_PN(double r, double H, double R0, double SRcut, double& dEdH, double& dEdR) {
+    if (r >= SRcut) { dEdH = 0.0; dEdR = 0.0; return 0.0; }
+    const double iRcut = 1.0 / SRcut;
+    const double u = r * iRcut;
+    const double a = R0 * iRcut;
+    const double du = u - a;
+    const double P_r = 1.0 - du * du;
+    const double D_r = 1.0 - u;
+    const double g_unnorm = P_r * P_r * D_r * D_r;
+    double Ma = 1.0;
+    double dMa_da = 0.0;
+    if (a < SR8crossover) {
+        const double a2 = a * a;
+        Ma = (1.0 - a2) * (1.0 - a2);
+        dMa_da = -4.0 * a * (1.0 - a2);
+    } else {
+        const double umax = (1.0 + 2.0 * a - sqrt(a * a - 2.0 * a + 4.0)) / 3.0;
+        const double dumax = umax - a;
+        const double P_umax = 1.0 - dumax * dumax;
+        const double D_umax = 1.0 - umax;
+        Ma = P_umax * P_umax * D_umax * D_umax;
+        dMa_da = 4.0 * dumax * P_umax * D_umax * D_umax;
+    }
+    dEdH = g_unnorm / Ma;
+    const double dg_da = 4.0 * du * P_r * D_r * D_r;
+    dEdR = H * (dg_da / Ma - dEdH * dMa_da / Ma) * iRcut;
+    return H * dEdH;
+}
+
+inline double getSR9_PN(double r, double H, double R0, double SRcut, double& dEdH, double& dEdR) {
+    if (r >= SRcut) { dEdH = 0.0; dEdR = 0.0; return 0.0; }
+    const double iR0 = 1.0 / R0;
+    const double u   = r * iR0;
+    const double ep  = safe_exp3( u );
+    const double em  = 1.0 / ep;
+    const double s   = 1.0 / ( ep + em );
+    const double iRcut = 1.0 / SRcut;
+    const double v     = r * iRcut;
+    const double S     = 1.0 - 3.0 * v * v + 2.0 * v * v * v;
+    dEdH = 2.0 * s * S;
+    dEdR = H * u * iR0 * ( ep - em ) * dEdH * s;
+    return H * dEdH;
 }
 
 inline double coulomb_potential_bare(double r){ return 1.0/r; }
@@ -339,16 +434,17 @@ class FitREQ_PN{ public:
     int    ivdW      = 4;     // 0=no vdW, 1=LJ, 2=LJr8, 3=LJr9, 4=Morse, 5=Buck
     int    iCoul     = 1;     // 0=no Coul, 1=point charges, 2=soft clamping, 10-14=Boys clamping, 10=exact erf/r, 11=cubic C1, 12=quintic C2, 13=quartic even C1, 14=sextic even C2
     int    iHbond    = 0;     // 0=no HBond correction, 1=H1 correction, 2=H2 correction
-    int    iEpairs   = 0;     // 0=no interaction, 1=SR interaction, 2=SR2 interaction, 3=SR3 interaction
+    int    iEpairs   = 0;     // 0=no interaction, 1=SR1 interaction, 2=SR2 interaction, 3=SR3 interaction, etc. up to 8=SR8 interaction
     double Lepairs   = 1.0;   // Ang, distance host atom-Epair
     bool   bPN       = true;  // use PN model for vdW and Coulomb interactions
     double svdW      = 1.0;   // strength of vdW interactions
     double sCoul     = 1.0;   // strength of Coulomb interactions
     double sHcorr    = 1.0;   // strength of H-bond correction
     double sEpairs   = 1.0;   // strength of Epair interactions
-    double SR4cut    = 1.0;   // maximum distance for SR4 Epair interactions
+    double SRcut     = 1.0;   // maximum distance for SR Epair interactions
     int    SR4n      = 2;     // order of polynomial for SR4 Epair interactions
     int    SR4m      = 2;     // order of polynomial for SR4 Epair interactions
+
 // =================================
 // =========== Functions ===========
 // =================================
@@ -1192,61 +1288,47 @@ double evalEnergyDerivs ( int i0, int ni, int j0, int nj, int* types, Vec3d* ps,
 
             if( bEpi ){  
                 if(bEpj) continue; // dummy atoms should not interact with each other
-                // Epair-Epair interactions
-                /*
-                if(bEpj){
-                    double dE_dR = 0.0;
-                    if(iEpairs==1){ 
-                        Eij_Epairs = sEpairs * getSR_PN( r, H, REQj.x, dE_dH, dE_dR );
-                    }else if(iEpairs==2){ 
-                        Eij_Epairs = sEpairs * getSR2_PN( r, H, REQj.x, dE_dH, dE_dR );
-                    }else if(iEpairs==3){ 
-                        Eij_Epairs = sEpairs * getSR3_PN( r, H, REQj.x, dE_dH, dE_dR );
-                    }
-                    dEdREQs[j].x -= sEpairs * dE_dR;
-                }
-                */
                 // --- Electron pair interaction
-                if(iEpairs==1){ 
-                    Eij_Epairs = sEpairs * getSR_PN( r, H, REQi.x, dE_dH, dE_dR );
-                    dEdREQs[i].x -= sEpairs * dE_dR;
-                }else if(iEpairs==2){ 
-                    Eij_Epairs = sEpairs * getSR2_PN( r, H, REQi.x, dE_dH, dE_dR );
-                    dEdREQs[i].x -= sEpairs * dE_dR;
-                }else if(iEpairs==3){ 
-                    Eij_Epairs = sEpairs * getSR3_PN( r, H, REQi.x, dE_dH, dE_dR );
-                    dEdREQs[i].x -= sEpairs * dE_dR;
-                }else if(iEpairs==4){
-                    Eij_Epairs = sEpairs * getSR4_PN( r, REQi.x*REQj.w, REQi.w*REQj.w, f1, f2, SR4cut, SR4m, SR4n );
-                    if(r<2.0) printf( "SR4_B_Epi isamp=%i i=%i j=%i r=%g type_i=%s REQi=(%g %g %g %g) type_j=%s REQj=(%g %g %g %g) f1=%g f2=%g dE_i.x=%g dE_i.w=%g dE_j.w=%g\n", isamp_debug, i, j, r, params->atypes[ti].name, REQi.x, REQi.y, REQi.z, REQi.w, params->atypes[tj].name, REQj.x, REQj.y, REQj.z, REQj.w, f1, f2, -sEpairs*REQj.w*f1, -sEpairs*REQj.w*f2, -sEpairs*(REQi.x*f1+REQi.w*f2));
+                if(iEpairs==4){
+                    Eij_Epairs = sEpairs * getSR4_PN( r, REQi.x*REQj.w, REQi.w*REQj.w, f1, f2, SRcut, SR4m, SR4n );
                     dEdREQs[i].x -= sEpairs * REQj.w * f1;
                     dEdREQs[i].w -= sEpairs * REQj.w * f2;
                     dEdREQs[j].w -= sEpairs * ( REQi.x * f1 + REQi.w * f2 );
-                    //if(verbosity>2 && r<SR4cut) printf("DEBUG SR4(bEpi) i=%d j=%d r=%f f1=%f f2=%f REQj.w=%f sEpairs=%f dE_i.x=%f dE_i.w=%f\n", i, j, r, f1, f2, REQj.w, sEpairs, -sEpairs*REQj.w*f1, -sEpairs*REQj.w*f2);
+                }else{
+                    double dE_dR = 0.0;
+                    if     (iEpairs==1) Eij_Epairs = sEpairs * getSR1_PN( r, H, REQi.x, dE_dH, dE_dR );
+                    else if(iEpairs==2) Eij_Epairs = sEpairs * getSR2_PN( r, H, REQi.x, dE_dH, dE_dR );
+                    else if(iEpairs==3) Eij_Epairs = sEpairs * getSR3_PN( r, H, REQi.x, dE_dH, dE_dR );
+                    else if(iEpairs==5) Eij_Epairs = sEpairs * getSR5_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==6) Eij_Epairs = sEpairs * getSR6_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==7) Eij_Epairs = sEpairs * getSR7_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==8) Eij_Epairs = sEpairs * getSR8_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==9) Eij_Epairs = sEpairs * getSR9_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else exit(printf("FitREQ_PN.h::ERROR: iEpairs=%i not implemented\n", iEpairs));
+                    dE_dH *= sEpairs;
+                    dEdREQs[i].x -= sEpairs * dE_dR;
                 }
-                //dE_dRi = sEpairs * dE_dR; // JAMME
             }else if( bEpj ){
                 // --- Electron pair interaction
-                double dE_dR = 0.0;
-                if(iEpairs==1){ 
-                    Eij_Epairs = sEpairs * getSR_PN( r, H, REQj.x, dE_dH, dE_dR );
-                    dEdREQs[j].x -= sEpairs * dE_dR;
-                }else if(iEpairs==2){ 
-                    Eij_Epairs = sEpairs * getSR2_PN( r, H, REQj.x, dE_dH, dE_dR );
-                    dEdREQs[j].x -= sEpairs * dE_dR;
-                }else if(iEpairs==3){ 
-                    Eij_Epairs = sEpairs * getSR3_PN( r, H, REQj.x, dE_dH, dE_dR );
-                    dEdREQs[j].x -= sEpairs * dE_dR;
-                }else if(iEpairs==4){ 
-                    Eij_Epairs = sEpairs * getSR4_PN( r, REQi.w*REQj.x, REQi.w*REQj.w, f1, f2, SR4cut, SR4m, SR4n );
-                    if(verbosity>3) printf( "DEBUG SR4(bEpj) isamp=%i i=%d j=%d r=%g %s(%g %g %g) %s(%g %g %g) f1=%g f2=%g dE_i.w=%g dE_j.x=%g dE_j.w=%g\n", isamp_debug, i, j, r, params->atypes[ti].name, REQi.x, REQi.y, REQi.w, params->atypes[tj].name, REQj.x, REQj.y, REQj.w, f1, f2, -sEpairs*(REQj.x*f1+REQj.w*f2), -sEpairs*REQi.w*f1, -sEpairs*REQi.w*f2);
+                if(iEpairs==4){ 
+                    Eij_Epairs = sEpairs * getSR4_PN( r, REQi.w*REQj.x, REQi.w*REQj.w, f1, f2, SRcut, SR4m, SR4n );
                     dEdREQs[i].w -= sEpairs * ( REQj.x * f1 + REQj.w * f2 );
                     dEdREQs[j].x -= sEpairs * REQi.w * f1;
                     dEdREQs[j].w -= sEpairs * REQi.w * f2;
-                    //if(verbosity>2 && r<SR4cut) printf("DEBUG SR4(bEpj) i=%d j=%d r=%f f1=%f f2=%f REQi.w=%f sEpairs=%f dE_j.x=%f dE_j.w=%f\n", i, j, r, f1, f2, REQi.w, sEpairs, -sEpairs*REQi.w*f1, -sEpairs*REQi.w*f2);
-                    //if (std::isnan(Eij_Epairs) || std::isinf(Eij_Epairs) || abs(Eij_Epairs) > 1e3) {printf("CRITICAL SR4 BLOWUP: r=%f, u=%f, v=%f, f1=%f, f2=%f, Eij=%f, REQi.x=%f, REQj.w=%f\n", r, u, v, f1, f2, Eij_Epairs, REQi.x, REQj.w);}
+                }else{
+                    double dE_dR = 0.0;
+                    if     (iEpairs==1) Eij_Epairs = sEpairs * getSR1_PN( r, H, REQj.x, dE_dH, dE_dR );
+                    else if(iEpairs==2) Eij_Epairs = sEpairs * getSR2_PN( r, H, REQj.x, dE_dH, dE_dR );
+                    else if(iEpairs==3) Eij_Epairs = sEpairs * getSR3_PN( r, H, REQj.x, dE_dH, dE_dR );
+                    else if(iEpairs==5) Eij_Epairs = sEpairs * getSR5_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==6) Eij_Epairs = sEpairs * getSR6_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==7) Eij_Epairs = sEpairs * getSR7_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==8) Eij_Epairs = sEpairs * getSR8_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==9) Eij_Epairs = sEpairs * getSR9_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else exit(printf("FitREQ_PN.h::ERROR: iEpairs=%i not implemented\n", iEpairs));
+                    dE_dH *= sEpairs;
+                    dEdREQs[j].x -= sEpairs * dE_dR;
                 }
-                //dE_dRj = sEpairs * dE_dR; // JAMME
             }else{
                 // --- Electrostatic interaction
                 if(iCoul==1){ // point charges
@@ -1309,7 +1391,7 @@ double evalEnergyDerivs ( int i0, int ni, int j0, int nj, int* types, Vec3d* ps,
                 }
                 dE_deps = svdW * ( fH1 * fR - fH2 * fA );
                 dE_dR0  = svdW * eps * fR0 * ( fB * fR - fA );
-                Eij_vdW   = eps * dE_deps;
+                Eij_vdW = eps * dE_deps;
                 // --- Hydrogen-bond corrections
                 if(sH>0.0){
                     if(iHbond==1||iHbond==3){
@@ -1355,7 +1437,7 @@ double evalEnergyDerivs ( int i0, int ni, int j0, int nj, int* types, Vec3d* ps,
 
         dEdREQs[i].add(fREQi);
     }  // end loop over all atoms[i] in system2
-    
+
     /*
     // DEBUG: print derivatives for epair atoms if verbosity > 2
     if(verbosity>2 && iEpairs==4){
@@ -1385,7 +1467,7 @@ double evalEnergyDerivs ( int i0, int ni, int j0, int nj, int* types, Vec3d* ps,
             i+1, ps[i].x,ps[i].y,ps[i].z, REQi.x,REQi.y,Qs[i],REQi.w, dEdREQs[i].x,dEdREQs[i].y,dEdREQs[i].z,dEdREQs[i].w );
     }
     */
-    //exit(0);
+//exit(0);
     return E_tot;
 }
 
@@ -1729,19 +1811,37 @@ void evalEnergyComponents ( int i0, int ni, int j0, int nj, int* types, Vec3d* p
             if( bEpi ){  
                 if(bEpj) continue; // dummy atoms should not interact with each other
                 // --- Electron pair interaction
-                double dE_dR = 0.0;
-                if(iEpairs==1){ 
-                    Eij_Epairs = getSR_PN( r, H, REQi.x, dE_dH, dE_dR );
-                }else if(iEpairs==2){ 
-                    Eij_Epairs = getSR2_PN( r, H, REQi.x, dE_dH, dE_dR );
+                if(iEpairs==4){
+                    double f1 = 0.0, f2 = 0.0;
+                    Eij_Epairs = sEpairs * getSR4_PN( r, REQi.x*REQj.w, REQi.w*REQj.w, f1, f2, SRcut, SR4m, SR4n );
+                }else{
+                    double dE_dR = 0.0;
+                    if     (iEpairs==1) Eij_Epairs = sEpairs * getSR1_PN( r, H, REQi.x, dE_dH, dE_dR );
+                    else if(iEpairs==2) Eij_Epairs = sEpairs * getSR2_PN( r, H, REQi.x, dE_dH, dE_dR );
+                    else if(iEpairs==3) Eij_Epairs = sEpairs * getSR3_PN( r, H, REQi.x, dE_dH, dE_dR );
+                    else if(iEpairs==5) Eij_Epairs = sEpairs * getSR5_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==6) Eij_Epairs = sEpairs * getSR6_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==7) Eij_Epairs = sEpairs * getSR7_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==8) Eij_Epairs = sEpairs * getSR8_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==9) Eij_Epairs = sEpairs * getSR9_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else exit(printf("FitREQ_PN.h::ERROR: iEpairs=%i not implemented\n", iEpairs));
                 }
-            }else if( bEpj ){
+            }else if( bEpj ){  
                 // --- Electron pair interaction
-                double dE_dR = 0.0;
-                if(iEpairs==1){ 
-                    Eij_Epairs = getSR_PN( r, H, REQj.x, dE_dH, dE_dR );
-                }else if(iEpairs==2){ 
-                    Eij_Epairs = getSR2_PN( r, H, REQj.x, dE_dH, dE_dR );
+                if(iEpairs==4){ 
+                    double f1 = 0.0, f2 = 0.0;        
+                    Eij_Epairs = sEpairs * getSR4_PN( r, REQi.w*REQj.x, REQi.w*REQj.w, f1, f2, SRcut, SR4m, SR4n );
+                }else{
+                    double dE_dR = 0.0;
+                    if     (iEpairs==1) Eij_Epairs = sEpairs * getSR1_PN( r, H, REQj.x, dE_dH, dE_dR );
+                    else if(iEpairs==2) Eij_Epairs = sEpairs * getSR2_PN( r, H, REQj.x, dE_dH, dE_dR );
+                    else if(iEpairs==3) Eij_Epairs = sEpairs * getSR3_PN( r, H, REQj.x, dE_dH, dE_dR );
+                    else if(iEpairs==5) Eij_Epairs = sEpairs * getSR5_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==6) Eij_Epairs = sEpairs * getSR6_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==7) Eij_Epairs = sEpairs * getSR7_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==8) Eij_Epairs = sEpairs * getSR8_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==9) Eij_Epairs = sEpairs * getSR9_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else exit(printf("FitREQ_PN.h::ERROR: iEpairs=%i not implemented\n", iEpairs));
                 }
             }else{
                 // --- Electrostatic interaction
@@ -1804,24 +1904,17 @@ void evalEnergyComponents ( int i0, int ni, int j0, int nj, int* types, Vec3d* p
                     fR0                = 2.0 * alpha;
                 }
                 dE_deps = fH1 * fR - fH2 * fA;
-                dE_dR0  = eps * fR0 * ( fB * fR - fA );
                 Eij_vdW   = eps * dE_deps;
                 // --- Hydrogen-bond corrections
                 if(sH>0.0){
                     if(iHbond==1||iHbond==3){
                         const double f         = fH1 * fR;
                         const double dE_deps_H = H * f;
-                        dE_deps       += dE_deps_H;
-                        dE_dR0        += H * eps * fB * fR0 * fR;
-                        dE_dH          = eps * f;
                         Eij_Hcorr        = eps * dE_deps_H;
                     }
                     if(iHbond==2||iHbond==3){
                         const double f         = fH2 * fA;
                         const double dE_deps_H = H * f;
-                        dE_deps       += dE_deps_H;
-                        dE_dR0        += H * eps * fR0 * fA;
-                        dE_dH         += eps * f;
                         Eij_Hcorr       += eps * dE_deps_H;
                     }
                 }
@@ -1831,6 +1924,89 @@ void evalEnergyComponents ( int i0, int ni, int j0, int nj, int* types, Vec3d* p
             E_vdW += Eij_vdW; 
             E_Hcorr += Eij_Hcorr; 
             E_Epairs += Eij_Epairs;            
+
+            }else{
+                              
+                // --- Van der Waals interaction
+                if(ivdW==1){ // Lennard-Jones 12-6
+                    const double u  = R0 / r;
+                    const double u3 = u * u * u;
+                    fA              = u3 * u3;
+                    fR              = fA * fA;
+                    fH1             = 1.0;
+                    fH2             = 2.0;
+                    fR0             = 12.0 / R0;
+                }else if(ivdW==2){ // Lennard-Jones 8-6
+                    const double u  = R0 / r;
+                    const double u2 = u * u;
+                    fA              = u2 * u2 * u2;
+                    fR              = fA * u2;
+                    fH1             = 3.0;
+                    fH2             = 4.0;
+                    fR0             = 24.0 / R0;
+                }else if(ivdW==3){ // Lennard-Jones 9-6
+                    const double u  = R0 / r;
+                    const double u3 = u * u * u;
+                    fA              = u3 * u3;
+                    fR              = fA * u3;
+                    fH1             = 2.0;
+                    fH2             = 3.0;
+                    fR0             = 18.0 / R0;
+                }else if(ivdW==4){ // Morse
+                    if( kMorse < 0.0 ){ 
+                        alpha = 6.0 / R0; 
+                        fR0   = 2.0 * alpha * ( 1.0 + (r - R0) / R0);
+                    }else{
+                        fR0   = 2.0 * alpha;
+                    }
+                    fA                 = safe_exp2( -alpha * ( r - R0 ) );
+                    fR                 = fA * fA;
+                    fH1                = 1.0;
+                    fH2                = 2.0;
+                }else if(ivdW==5){ // Buckingham
+                    if( kMorse < 0.0 ){ 
+                        alpha = 6.0 / R0; 
+                        fB    = 1.0 + (r - R0) / R0;
+                    }
+                    const double u     = R0 / r;
+                    const double u3    = u * u * u;
+                    const double e     = safe_exp2( -alpha * ( r - R0 ) );
+                    fA                 = u3 * u3;
+                    fR                 = e * e;
+                    fH1                = 1.0;
+                    fH2                = 2.0;
+                    fR0                = 2.0 * alpha;
+                }
+                dE_deps = svdW * ( fH1 * fR - fH2 * fA );
+                dE_dR0  = svdW * eps * fR0 * ( fB * fR - fA );
+                Eij_vdW = eps * dE_deps;
+                // --- Hydrogen-bond corrections
+                if(sH>0.0){
+                    if(iHbond==1||iHbond==3){
+                        const double f         = fH1 * fR;
+                        const double dE_deps_H = sHcorr * H * f;
+                        dE_deps       += dE_deps_H;
+                        dE_dR0        += sHcorr * H * eps * fB * fR0 * fR;
+                        dE_dH         += sHcorr * eps * f;
+                        Eij_Hcorr     += eps * dE_deps_H;
+                    }
+                    if(iHbond==2||iHbond==3){
+                        const double f         = fH2 * fA;
+                        const double dE_deps_H = sHcorr * H * f;
+                        dE_deps       += dE_deps_H;
+                        dE_dR0        += sHcorr * H * eps * fR0 * fA;
+                        dE_dH         += sHcorr * eps * f;
+                        Eij_Hcorr     += eps * dE_deps_H;
+                    }
+//printf("JO sHcorr=%f\n", sHcorr);
+//fflush(stdout);
+//exit(1);
+                }
+            }
+
+            double Eij = Eij_Coul + Eij_vdW + Eij_Hcorr + Eij_Epairs;
+
+
 
         }  // end loop over all atoms[j] in system1
 
