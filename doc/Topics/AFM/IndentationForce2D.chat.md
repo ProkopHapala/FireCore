@@ -1,3 +1,11 @@
+
+https://gemini.google.com/share/2b00714ad1b2
+https://gemini.google.com/share/cec90e4c6b98
+https://chat.deepseek.com/share/k7hikbvzw4gz899khr
+https://chat.mistral.ai/work/04604402-ba1d-4184-a3ea-09853077ff8d
+
+---
+
 # USER
 
 I'm developer of PPAFM simulation program for sub molecular resolution with CO-decorated tip which is based on grid-projected forcefield with 3D grid.
