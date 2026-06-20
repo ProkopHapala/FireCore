@@ -61,6 +61,51 @@ The single-atom format also recognizes three special characters:
 
 These marks are **not** atoms; they only add extra bonds. The ASCII examples `purin`, `karbazol`, `biphenylene`, `guanin` show how to use them.
 
+### Hydrogen bonds (`:`)
+
+Both formats recognize `:` as a hydrogen-bond marker between the nearest atom in the row above and the nearest atom in the row below:
+
+```
+  O n O
+   : :          <-- two H-bonds connecting the two "n" / "O" pairs
+  O n O
+```
+
+The vertical spacing of the rows is adjusted so that the donor–acceptor distance matches the CLI parameter `--hbond_length` (default 3.0 Å). After the heavy-atom geometry and hydrogen passivation are complete, the `:` pairs are resolved into `(H_index, acceptor_index)` segments and drawn as dashed magenta lines in the SVG.
+
+H-bond donors are identified automatically:
+- `N … O` → N is the donor (must carry H)
+- `n … N` → the sp3 side (`n`, lowercase) is the donor
+- If only one side already has an attached H after passivation, that side is chosen regardless of element.
+
+### Automatic hydrogen passivation (default on)
+
+By default `--hydrogens 1` adds capping H atoms based on pure electron counting, *independent* of H-bonds. The algorithm is:
+
+```
+nsigma = nval - n_pi - n_epair
+```
+
+For 2nd-period atoms `nval = 4`, `n_epair = 1` for N, `2` for O, `0` for C, and `n_pi` is determined from case:
+
+| Symbol | Hybridization | `n_pi` | `n_epair` | `nsigma` | Result |
+|--------|---------------|--------|-----------|----------|--------|
+| `N` (uppercase) | sp2 | 1 | 1 | **2** | two sigma neighbors, no H |
+| `n` (lowercase) | sp3 | 0 | 1 | **3** | three sigma neighbors, one H if only two heavy neighbors |
+| `O` (uppercase) | sp2 (=O) | 1 | 2 | **1** | one double bond (=O), no H |
+| `o` (lowercase) | sp3 (-OH) | 0 | 2 | **2** | two sigma neighbors, one H (like -OH) |
+| `C` / `c` | sp2 / sp3 | 1 / 0 | 0 | **3 / 4** | standard valence |
+
+This means:
+- Uppercase `N` in a ring (two heavy neighbors) stays as NH
+- Lowercase `n` with two heavy neighbors automatically gets one H → NH
+- Lowercase `o` automatically gets one H → OH
+- Uppercase `O` with one heavy neighbor stays as =O, no H added
+
+If the heavy-atom valence already equals the target, **no H is added**.
+
+Turn passivation off with `--hydrogens 0` if you want a bare heavy-atom skeleton.
+
 ### Coordinate system
 
 ASCII rows are read from top to bottom, and the plot places the top row at the **largest** Y coordinate. This keeps the visual orientation the same as the text. Rows of the same parity are spaced by `aCC`, while rows of opposite parity are spaced by `aCC/2`, giving the correct zig-zag geometry.
@@ -212,6 +257,9 @@ python3 heterocycle_generator.py -i my_system.py --out mol.svg
 | `--sym_break` | `0.0` | Symmetry-breaking noise before phase 2 |
 | `--seed` | `0` | Random seed for symmetry breaking |
 | `--dump_bonds` | `0` | Print atom list and bond list to stdout |
+| `--hydrogens` | `1` | Add passivation H based on electron counting (0 = off) |
+| `--hbond_length` | `3.0` | Donor–acceptor distance for `:` H-bonds (Å) |
+| `--mol` | `auto` | Save MOL file (`auto` / `off` / explicit path) |
 
 ---
 
@@ -256,11 +304,40 @@ python3 ascii_art_heterocycle.py -e cytosin --kekule 1 --kekule_single 1 \
 python3 ascii_art_heterocycle.py -e cytosin --kekule 0 --out /tmp/kekule/cytosin_plain.svg
 ```
 
+### Hydrogen bonds with passivation (2NCI dimer format)
+
+```bash
+python3 ascii_art_heterocycle.py -e 2NCI --out /tmp/kekule/2nci.svg
+```
+
+Lowercase `n` → sp3 NH, uppercase `O` → =O, `:` markers are resolved into dashed magenta H-bond lines.
+
+### Adjust H-bond distance
+
+```bash
+python3 ascii_art_heterocycle.py -e 2Quinolone --hbond_length 3.5 \
+    --out /tmp/kekule/2quinolone.svg
+```
+
+### No hydrogens (bare heavy-atom skeleton)
+
+```bash
+python3 ascii_art_heterocycle.py -e NTCDI --hydrogens 0 --out /tmp/kekule/ntcdi.svg
+```
+
+### MOL export with correct bond orders
+
+```bash
+python3 ascii_art_heterocycle.py -e 2Quinolone --mol /tmp/kekule/2quinolone.mol
+```
+
+The MOL file contains all atoms (including H) and bond types: `1` = single, `2` = double, `4` = aromatic. Use `--mol auto` (default) to derive the name from `--out`.
+
 ---
 
 ## 6. Built-in ASCII examples
 
-`naphthalene`, `naphthalene2`, `fulvalene`, `pentacross`, `biphenyl`, `biphenyl2`, `phenanthrene`, `phenanthrene2`, `perylene`, `perylene2`, `purin`, `purin_x`, `purin_y`, `7azaindol`, `karbazol`, `biphenylene`, `uracil`, `cytosin`, `guanin`, `NTCDA`, `TAP`.
+`naphthalene`, `naphthalene2`, `fulvalene`, `pentacross`, `biphenyl`, `biphenyl2`, `phenanthrene`, `phenanthrene2`, `perylene`, `perylene2`, `purin`, `purin_x`, `purin_y`, `7azaindol`, `karbazol`, `biphenylene`, `uracil`, `cytosin`, `guanin`, `NTCDA`, `NTCDI`, `TAP`, `2NCI`, `2Quinolone`, `2Quinolinone`, `2purin`.
 
 ---
 
@@ -268,8 +345,11 @@ python3 ascii_art_heterocycle.py -e cytosin --kekule 0 --out /tmp/kekule/cytosin
 
 - `*.svg` – 2-D rendering using `pyBall.plotUtils.plotSystem` (atom colors from `pyBall.elements`)
 - `*.xyz` (optional) – Cartesian coordinates via `AtomicSystem.saveXYZ`
+- `*.mol` (optional) – MOL V2000 with bond types (`1` = single, `2` = double, `4` = aromatic) and all atoms including H
 
 Internally the geometry is stored as a `pyBall.AtomicSystem` with positions, element names, bonds, and a neighbor list, so it can be passed directly to other pyBall / plotUtils workflows.
+
+The `atoms.hbonds_ascii` attribute holds the resolved H-bond segments as `(H_idx, acceptor_idx)` pairs for downstream analysis or custom plotting.
 
 ---
 
@@ -279,3 +359,13 @@ Internally the geometry is stored as a `pyBall.AtomicSystem` with positions, ele
 - Use `make_n_pi(system)` to obtain the `n_pi` vector from element case.
 - Use `KekulePure(system, n_pi=npi, ...)` directly if you need custom control over the solver.
 - The solver is intentionally pure NumPy and self-contained: only `pyBall.AtomicSystem` and `pyBall.elements` are required for the geometry part.
+
+### Reusable helpers in `ascii_art_heterocycle.py`
+
+These are the functions the CLI script uses internally; you can call them directly:
+
+- `_build_target_valence(atoms, n_pi)` – returns a `{atom_idx: target_sigma}` dict using `KekuleBackend._target_sigma` for every C/N/O. Works with uppercase and lowercase symbols.
+- `resolve_hbond_pairs(atoms)` – resolves `atoms._hbonds_pairs` into `atoms.hbonds_ascii = [(H_idx, acceptor_idx), ...]`. Donor selection is data-driven (prefers the side that actually has an attached H).
+- `run_kekule_solver(atoms, ...)` – runs the two-phase solver and returns `{'bo_raw', 'bo_snap', 'n_pi', 'k', 'err', 'report'}`.
+- `mol_bond_types(atoms, bo_snap, ...)` – maps Kekulé pi bond orders to MOL bond types (`1`, `2`, `4`).
+- `export_mol(atoms, mol_opt, out_path, title, bond_types)` – handles the `auto`/`off`/path logic and calls `save_mol`.

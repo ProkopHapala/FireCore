@@ -102,8 +102,8 @@ class AtomicSystem( ):
             es = [ e.split('_')[0] for e in es ]
         au.saveXYZ( es, self.apos, fname, qs=qs, Rs=self.Rs, mode=mode, comment=comment, ignore_es=ignore_es, other_lines=other_lines )
 
-    def save_mol(self, fname, title="Avogadro"):
-        au.save_mol(fname, self.enames, self.apos, self.bonds, title="Avogadro")
+    def save_mol(self, fname, title="Avogadro", bond_types=None):
+        au.save_mol(fname, self.enames, self.apos, self.bonds, title=title, bond_types=bond_types)
 
     def save_mol2(self, fname, comment="", simple_names=False):
         es = self.enames

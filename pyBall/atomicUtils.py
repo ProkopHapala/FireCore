@@ -1741,7 +1741,7 @@ def loadCoefs( characters=['s'] ):
             dens += d
     return dens, coefs, Es
 
-def save_mol(fname, enames, apos, bonds, title="Avogadro"):
+def save_mol(fname, enames, apos, bonds, title="Avogadro", bond_types=None):
     """
     Save the current AtomicSystem in MDL MOL V2000 format (i.e. a ".mol" file).
 
@@ -1813,13 +1813,21 @@ def save_mol(fname, enames, apos, bonds, title="Avogadro"):
         
         # --- Bond block ---
         fout.write("\n")
+        if bond_types is not None:
+            bond_types_ = np.asarray(bond_types, dtype=int)
+            if len(bond_types_) != n_bonds:
+                raise ValueError(f"save_mol(): bond_types length {len(bond_types_)} != number of bonds {n_bonds}")
+        else:
+            bond_types_ = None
+
         for i, bond in enumerate(bonds):
             bond_id = i + 1
             # Assume bond is a tuple (i, j) with 0-based indices; convert to 1-based.
             a1 = bond[0] + 1
             a2 = bond[1] + 1
-            # Bond type is set to 1; then 4 fields of 0.
-            bond_line = f"{bond_id:>3d}{a1:>4d}{a2:>4d}{1:>4d}" + "  0"*4
+            btyp = int(bond_types_[i]) if (bond_types_ is not None) else 1
+            # Bond type then 4 fields of 0.
+            bond_line = f"{bond_id:>3d}{a1:>4d}{a2:>4d}{btyp:>4d}" + "  0"*4
             fout.write(bond_line + "\n")
         
         # --- Termination line ---

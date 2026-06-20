@@ -465,11 +465,19 @@ def plot_system(atoms, title=None, fname='heterocycle.svg',
 
     if n_pi is not None:
         n_pi = np.asarray(n_pi)
-        for i, (x, y) in enumerate(atoms.apos[:, [0, 1]]):
+        nlab = min(len(n_pi), len(atoms.apos))
+        for i, (x, y) in enumerate(atoms.apos[:nlab, [0, 1]]):
             ax.text(x, y, f" {int(n_pi[i])}", fontsize=8, ha='left', va='top',
                     color='red', zorder=6,
                     bbox=dict(boxstyle='round,pad=0.1', facecolor='yellow',
                               edgecolor='none', alpha=0.6))
+
+    hb = getattr(atoms, 'hbonds_ascii', None)
+    if hb:
+        for ih, ia in hb:
+            p0 = atoms.apos[ih]
+            p1 = atoms.apos[ia]
+            ax.plot([p0[0], p1[0]], [p0[1], p1[1]], linestyle='--', color=(0.8, 0.2, 0.8), linewidth=1.2, alpha=0.7, zorder=3)
 
     if title:
         ax.set_title(title)
@@ -513,11 +521,19 @@ def _plot_bond_phase(ax, atoms, pi_bos, sz, title, n_pi=None, bLabels=True):
 
     if n_pi is not None:
         n_pi = np.asarray(n_pi)
-        for i, (x, y) in enumerate(atoms.apos[:, [0, 1]]):
+        nlab = min(len(n_pi), len(atoms.apos))
+        for i, (x, y) in enumerate(atoms.apos[:nlab, [0, 1]]):
             ax.text(x, y, f" {int(n_pi[i])}", fontsize=8, ha='left', va='top',
                     color='red', zorder=6,
                     bbox=dict(boxstyle='round,pad=0.1', facecolor='yellow',
                               edgecolor='none', alpha=0.6))
+
+    hb = getattr(atoms, 'hbonds_ascii', None)
+    if hb:
+        for ih, ia in hb:
+            p0 = atoms.apos[ih]
+            p1 = atoms.apos[ia]
+            ax.plot([p0[0], p1[0]], [p0[1], p1[1]], linestyle='--', color=(0.8, 0.2, 0.8), linewidth=1.2, alpha=0.7, zorder=3)
 
     if bLabels:
         mids = _bond_midpoints(atoms)[:, [0, 1]]
