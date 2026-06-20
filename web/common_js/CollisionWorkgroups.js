@@ -1,3 +1,7 @@
+/// Collision workgroups: farthest-pivot clustering of surface atoms into bounded-size groups.
+/// Uses BucketGraph from Buckets.js for generic partitioning infrastructure, exports flat typed arrays for GPU.
+import { BucketGraph } from './Buckets.js';
+
 export function surfaceAtomIndices(mol) {
     if (!mol || !mol.atoms) throw new Error('surfaceAtomIndices: mol required');
     const out = [];
@@ -60,7 +64,10 @@ function assignToPivots(pos, surf, pivots) {
     return { gidOf, counts };
 }
 
-export function buildCollisionWorkgroups({ pos, mol, groupCap = 32, fillFactor = 0.8, maxSplitIter = 64 }) {
+/// Build collision workgroups from surface atoms using farthest-pivot clustering.
+/// Uses BucketGraph internally for AABB bounds, exports flat typed arrays via exportFlat().
+/// pos: Float64Array(nAtoms*3), mol: molecule, radius: Float64Array(nAtoms) for VdW-aware AABBs.
+export function buildCollisionWorkgroups({ pos, mol, radius = null, groupCap = 32, fillFactor = 0.8, maxSplitIter = 64 }) {
     if (!pos || !(pos.length > 0)) throw new Error('buildCollisionWorkgroups: pos required');
     if (!mol || !mol.atoms) throw new Error('buildCollisionWorkgroups: mol required');
     const nAtoms = mol.atoms.length | 0;
@@ -100,60 +107,21 @@ export function buildCollisionWorkgroups({ pos, mol, groupCap = 32, fillFactor =
     }
 
     nGroups = pivots.length | 0;
-    const group_nAtoms = new Int32Array(nGroups);
-    for (let g = 0; g < nGroups; g++) group_nAtoms[g] = assign.counts[g] | 0;
 
-    const group_atoms = new Int32Array(nGroups * groupCap);
-    group_atoms.fill(-1);
-    const writePtr = new Int32Array(nGroups);
+    // Build BucketGraph with AABB bounds (radius-aware if provided)
+    const g = new BucketGraph();
+    for (let gi = 0; gi < nGroups; gi++) g.addBucket();
     for (let ii = 0; ii < surf.length; ii++) {
         const ia = surf[ii] | 0;
-        const g = assign.gidOf[ii] | 0;
-        const k = writePtr[g] | 0;
-        if (k >= groupCap) throw new Error(`buildCollisionWorkgroups: group overflow g=${g} k=${k} groupCap=${groupCap}`);
-        group_atoms[g * groupCap + k] = ia;
-        writePtr[g] = (k + 1) | 0;
+        const grp = assign.gidOf[ii] | 0;
+        const px = pos[ia * 3 + 0], py = pos[ia * 3 + 1], pz = pos[ia * 3 + 2];
+        const r = radius ? +radius[ia] : 0.0;
+        g.buckets[grp].addAtomIndex(ia, { x: px, y: py, z: pz }, r);
     }
 
-    const icol = new Int32Array(nAtoms);
-    const icolGroup = new Int32Array(nAtoms);
-    icol.fill(-1);
-    icolGroup.fill(-1);
-    for (let g = 0; g < nGroups; g++) {
-        for (let il = 0; il < groupCap; il++) {
-            const ia = group_atoms[g * groupCap + il] | 0;
-            if (ia < 0) continue;
-            icol[ia] = (g * groupCap + il) | 0;
-            icolGroup[ia] = g | 0;
-        }
-    }
-
-    return { nAtoms, surface: surf, pivots, groupCap: groupCap | 0, nGroups, group_atoms, group_nAtoms, icol, icolGroup };
-}
-
-export function computeGroupAABBs({ pos, radius, group_atoms, group_nAtoms, groupCap }) {
-    if (!pos || !radius) throw new Error('computeGroupAABBs: pos and radius required');
-    const nGroups = (group_nAtoms.length | 0);
-    const bbox_min = new Float64Array(nGroups * 3);
-    const bbox_max = new Float64Array(nGroups * 3);
-    for (let g = 0; g < nGroups; g++) {
-        let xmin = Infinity, ymin = Infinity, zmin = Infinity;
-        let xmax = -Infinity, ymax = -Infinity, zmax = -Infinity;
-        const base = g * (groupCap | 0);
-        const n = group_nAtoms[g] | 0;
-        for (let il = 0; il < n; il++) {
-            const ia = group_atoms[base + il] | 0;
-            if (ia < 0) continue;
-            const r = +radius[ia];
-            const x = +pos[ia * 3 + 0], y = +pos[ia * 3 + 1], z = +pos[ia * 3 + 2];
-            xmin = Math.min(xmin, x - r); ymin = Math.min(ymin, y - r); zmin = Math.min(zmin, z - r);
-            xmax = Math.max(xmax, x + r); ymax = Math.max(ymax, y + r); zmax = Math.max(zmax, z + r);
-        }
-        if (!(xmin < Infinity)) throw new Error(`computeGroupAABBs: empty group g=${g}`);
-        bbox_min[g * 3 + 0] = xmin; bbox_min[g * 3 + 1] = ymin; bbox_min[g * 3 + 2] = zmin;
-        bbox_max[g * 3 + 0] = xmax; bbox_max[g * 3 + 1] = ymax; bbox_max[g * 3 + 2] = zmax;
-    }
-    return { bbox_min, bbox_max };
+    // Export to flat typed arrays
+    const flat = g.exportFlat(nAtoms, groupCap);
+    return { nAtoms, surface: surf, pivots, groupCap: flat.groupCap, nGroups: flat.nGroups, group_atoms: flat.group_atoms, group_nAtoms: flat.group_nAtoms, icol: flat.icol, icolGroup: flat.icolGroup, bbox_min: flat.bbox_min, bbox_max: flat.bbox_max };
 }
 
 export function buildExclIcol_1_2_3({ mol, icol, EXCL_MAX = 16, ipbc = 0 }) {

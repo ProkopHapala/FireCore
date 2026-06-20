@@ -1300,7 +1300,7 @@ flowchart LR
   ORCH --> GEN[gen_nanocrystals.mjs]
   GEN --> INIT[01_init.npz + init.xyz + init.mol2]
   INIT --> RELAX[pyBall.nanocrystal_pipeline relax]
-  RELAX --> TOPO[nanocrystalTopology.js]
+  RELAX --> TOPO[exportFF.js]
   TOPO --> HESS[pyBall.nanocrystal_pipeline hessian]
   HESS --> SPEC[pyBall.nanocrystal_pipeline spectrum]
   SPEC --> ACC[pyBall.nanocrystal_pipeline accumulate]
@@ -1315,7 +1315,8 @@ flowchart LR
 | `scripts/run_nanocrystal_ensemble.mjs` | Node | Single orchestrator: sampling, cache paths, spawn gen/topology/Python, timing, debug artifacts, atlas mode |
 | `scripts/gen_nanocrystals.mjs` | Node | Crystal generation (existing; called by orchestrator) |
 | `web/common_js/npzIO.js` | Node | NPZ read/write, `molToCrystalArrays`, `writeCrystalNpz`, XYZ/JSON crystal I/O |
-| `web/common_js/nanocrystalTopology.js` | Node | mol2 load, visualization bonds, `buildTopologyNpz` (linearized topology NPZ) |
+| `web/common_js/MolIO.js` | Node | mol2 load, visualization bonds, `loadMMParamsFromDir`, `loadMolFromMol2`, `applyPositions`, `bondsForVisualization` |
+| `web/common_js/exportFF.js` | Node | `buildTopologyNpz` (linearized topology NPZ) |
 | `web/common_js/nanocrystalSvg.js` | Node | Cartesian-view SVG (single + init\|relaxed compare), atlas HTML table |
 | `web/common_js/nanocrystalViewer.html` | Browser | Self-contained p5.js orthographic viewer (embedded JSON, `file://` safe) |
 | `pyBall/nanocrystal_pipeline.py` | Python | `relax`, `hessian`, `spectrum`, `accumulate` subcommands |
@@ -1385,13 +1386,13 @@ flowchart LR
 
 - `web/molgui_webgpu/NanocrystalNpz.js`, `NanocrystalSvg.js` → `web/common_js/npzIO.js`, `nanocrystalSvg.js`
 - `npzRead.js`, `npzWrite.js` → `npzIO.js`
-- `scripts/build_topology_npz.mjs` → `nanocrystalTopology.js`
+- `scripts/build_topology_npz.mjs` → `exportFF.js` + `MolIO.js`
 - `scripts/nc_relax.py`, `nc_build_hessian_mmff.py`, `nc_solve_spectrum.py` → `pyBall/nanocrystal_pipeline.py`
 
 **Still reused unchanged**
 
 - `scripts/gen_nanocrystals.mjs`, `pyBall/nanocrystal_gen.py`
-- `scripts/build_linearized_topology.mjs` (logic mirrored in `nanocrystalTopology.js` for headless NPZ write)
+- `scripts/build_linearized_topology.mjs` (logic mirrored in `exportFF.js` for headless NPZ write)
 - `tests/tMMFF/test_nanocrystal_sparse_hessian.py` (MMFF reference)
 
 ### 19.5 Files to commit (recommended)
@@ -1405,7 +1406,8 @@ All currently **untracked** (`git status ??`):
 | `scripts/atlas_shapes.json` | 8 C diamond shape presets for `--atlas` |
 | `pyBall/nanocrystal_pipeline.py` | Python stages: relax, hessian, spectrum, accumulate |
 | `web/common_js/npzIO.js` | Shared NPZ + crystal I/O |
-| `web/common_js/nanocrystalTopology.js` | Topology build + bond extraction for viz |
+| `web/common_js/exportFF.js` | Topology build + NPZ export |
+| `web/common_js/MolIO.js` | Molecule I/O + bond extraction for viz |
 | `web/common_js/nanocrystalSvg.js` | SVG debug + atlas HTML helpers |
 | `web/common_js/nanocrystalViewer.html` | p5 viewer template (copied/embedded into outputs) |
 
@@ -1534,7 +1536,7 @@ No linearized springs, no replacement of angles by 1–3 sticks on this path.
 
 **Linearized MMFFL topology** (springs only) — built in JS via `buildMMFFLTopology`, but currently with **angles and dihedrals turned off**:
 
-```79:86:web/common_js/nanocrystalTopology.js
+```79:86:web/common_js/exportFF.js
     const topo = buildMMFFLTopology(mol, mmParams, {
         type_source: 'table',
         add_angle: addAngle,

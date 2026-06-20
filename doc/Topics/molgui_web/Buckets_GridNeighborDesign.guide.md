@@ -346,7 +346,11 @@ for each overlapping pair (A,B):
 
 - `web/common_js/Buckets.js`
   - provides `Bucket` and `BucketGraph` used by bond rebuild and visualization
+  - provides `aabbOverlap3D()`, `dist2ToAabb()` standalone AABB utilities
+  - provides `BucketGraph.findOverlapNeighbors()` and `BucketGraph.exportFlat()` for GPU-ready typed arrays
+- `web/common_js/BucketGrid3D.js`
   - provides `buildCrystalCellBucketsFromMol()` used by crystal builders to create cell-buckets + neighbor lists
+  - provides `buildWireframeCellVerts()`, `buildWireframeAABBVerts()` for visualization
 - `web/molgui_web/js/BuildersGUI.js`
   - stores last generated buckets in `window.app.lastBucketGraph`
   - triggers `window.app.updateBucketOverlay()` (and now `refreshBucketDebug()` can be used)
@@ -374,11 +378,20 @@ This makes code paths simpler and avoids per-atom `Map` hashing inside replicati
 
 - `class Bucket`: per-bucket storage of member atoms + neighbor buckets + bounds (`pmin/pmax`).
 - `class BucketGraph`: container of buckets + optional metadata; supports topology-robust conversion and helpers.
+- `aabbOverlap3D(aMin, aMax, bMin, bMax, margin)`: standalone AABB overlap test for flat/typed arrays.
+- `dist2ToAabb(p, bMin, bMax)`: squared distance from point to AABB.
+- `Bucket.addAtomIndex(i, pos, radius)`: add atom with optional VdW-aware AABB expansion.
 - `BucketGraph.toIds(mol)`: convert bucket membership from atom indices to stable atom IDs (before topology change).
 - `BucketGraph.toInds(mol)`: convert bucket membership from atom IDs back to indices (after topology change); drops deleted atoms.
-- `BucketGraph.recalcBounds(mol)`: recompute each bucket AABB (`pmin/pmax`) from current member atom positions.
+- `BucketGraph.recalcBounds(mol, radius)`: recompute each bucket AABB (`pmin/pmax`) from current member atom positions, optional VdW radius.
 - `BucketGraph.pruneEmptyBuckets()`: remove buckets with no atoms; remap `bucket.neigh[]`.
+- `BucketGraph.findOverlapNeighbors(margin)`: populate `neigh[]` via AABB intersection.
+- `BucketGraph.exportFlat(nAtoms, groupCap)`: export to flat `Int32Array`/`Float64Array` for GPU/NPZ.
 - `BucketGraph.getBucketCenterFromBounds(ib,out)`: compute bucket center as `(pmin+pmax)/2` (used for debug lines).
+
+## `web/common_js/BucketGrid3D.js`
+
+- `crystalCellKey(ix, iy, iz, na, nb)`: hash key for crystal cell indices.
 - `buildCrystalCellBucketsFromMol(mol, na,nb,nc, lvec, origin)`: build buckets by crystal unit cell index and precompute neighbor bucket lists.
 - `buildWireframeCellVerts(A,B,C,O, out, i0)`: build wireframe line vertices for a parallelepiped cell (visualization).
 - `buildWireframeAABBVerts(pmin,pmax, out, i0)`: build wireframe line vertices for an AABB (visualization).

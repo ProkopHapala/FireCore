@@ -1,4 +1,20 @@
+/// Generic spatial partitioning data structure — buckets with AABB bounds and neighbor lists.
+/// Not tied to any specific geometry or partitioning strategy.
 import { Vec3 } from './Vec3.js';
+
+/// Standalone AABB overlap test for flat array / typed array usage.
+/// aMin/aMax/bMin/bMax can be [x,y,z] arrays or Vec3-like objects with numeric indices.
+export function aabbOverlap3D(aMin, aMax, bMin, bMax, margin = 0.0) {
+    return (aMax[0] + margin >= bMin[0] && aMin[0] <= bMax[0] + margin && aMax[1] + margin >= bMin[1] && aMin[1] <= bMax[1] + margin && aMax[2] + margin >= bMin[2] && aMin[2] <= bMax[2] + margin);
+}
+
+/// Squared distance from point p to AABB [bMin, bMax] (0 if inside).
+export function dist2ToAabb(p, bMin, bMax) {
+    const dx = Math.max(0.0, Math.max(bMin[0] - p[0], p[0] - bMax[0]));
+    const dy = Math.max(0.0, Math.max(bMin[1] - p[1], p[1] - bMax[1]));
+    const dz = Math.max(0.0, Math.max(bMin[2] - p[2], p[2] - bMax[2]));
+    return dx * dx + dy * dy + dz * dz;
+}
 
 export class Bucket {
     constructor() {
@@ -14,25 +30,23 @@ export class Bucket {
         this.pmax.x = -Infinity; this.pmax.y = -Infinity; this.pmax.z = -Infinity;
     }
 
-    addAtomIndex(i, pos = null) {
+    /// Add atom index i to bucket. If pos provided, updates AABB bounds.
+    /// Optional radius expands bounds by r (for VdW-aware collision AABBs).
+    addAtomIndex(i, pos = null, radius = 0.0) {
         this.atoms.push(i | 0);
         if (pos) {
-            if (pos.x < this.pmin.x) this.pmin.x = pos.x;
-            if (pos.y < this.pmin.y) this.pmin.y = pos.y;
-            if (pos.z < this.pmin.z) this.pmin.z = pos.z;
-            if (pos.x > this.pmax.x) this.pmax.x = pos.x;
-            if (pos.y > this.pmax.y) this.pmax.y = pos.y;
-            if (pos.z > this.pmax.z) this.pmax.z = pos.z;
+            const r = +radius;
+            if (pos.x - r < this.pmin.x) this.pmin.x = pos.x - r;
+            if (pos.y - r < this.pmin.y) this.pmin.y = pos.y - r;
+            if (pos.z - r < this.pmin.z) this.pmin.z = pos.z - r;
+            if (pos.x + r > this.pmax.x) this.pmax.x = pos.x + r;
+            if (pos.y + r > this.pmax.y) this.pmax.y = pos.y + r;
+            if (pos.z + r > this.pmax.z) this.pmax.z = pos.z + r;
         }
     }
 
     overlapAABB(other, margin = 0.0) {
-        const m = (margin !== undefined) ? +margin : 0.0;
-        const ax0 = this.pmin.x - m, ay0 = this.pmin.y - m, az0 = this.pmin.z - m;
-        const ax1 = this.pmax.x + m, ay1 = this.pmax.y + m, az1 = this.pmax.z + m;
-        const bx0 = other.pmin.x - m, by0 = other.pmin.y - m, bz0 = other.pmin.z - m;
-        const bx1 = other.pmax.x + m, by1 = other.pmax.y + m, bz1 = other.pmax.z + m;
-        return (ax0 <= bx1) && (ax1 >= bx0) && (ay0 <= by1) && (ay1 >= by0) && (az0 <= bz1) && (az1 >= bz0);
+        return aabbOverlap3D(this.pmin, this.pmax, other.pmin, other.pmax, margin);
     }
 }
 
@@ -88,7 +102,7 @@ export class BucketGraph {
         this.bStoreId = false;
     }
 
-    recalcBounds(mol) {
+    recalcBounds(mol, radius = null) {
         if (this.bStoreId) throw new Error('BucketGraph.recalcBounds: buckets are in ID mode; call toInds(mol) first');
         if (!mol || !mol.atoms) throw new Error('BucketGraph.recalcBounds: mol required');
         for (let ib = 0; ib < this.buckets.length; ib++) {
@@ -99,13 +113,14 @@ export class BucketGraph {
                 const ia = bs[k] | 0;
                 const a = mol.atoms[ia];
                 if (!a) throw new Error(`BucketGraph.recalcBounds: atom missing for index ia=${ia} in bucket ib=${ib}`);
+                const r = radius ? +radius[ia] : 0.0;
                 const p = a.pos;
-                if (p.x < b.pmin.x) b.pmin.x = p.x;
-                if (p.y < b.pmin.y) b.pmin.y = p.y;
-                if (p.z < b.pmin.z) b.pmin.z = p.z;
-                if (p.x > b.pmax.x) b.pmax.x = p.x;
-                if (p.y > b.pmax.y) b.pmax.y = p.y;
-                if (p.z > b.pmax.z) b.pmax.z = p.z;
+                if (p.x - r < b.pmin.x) b.pmin.x = p.x - r;
+                if (p.y - r < b.pmin.y) b.pmin.y = p.y - r;
+                if (p.z - r < b.pmin.z) b.pmin.z = p.z - r;
+                if (p.x + r > b.pmax.x) b.pmax.x = p.x + r;
+                if (p.y + r > b.pmax.y) b.pmax.y = p.y + r;
+                if (p.z + r > b.pmax.z) b.pmax.z = p.z + r;
             }
         }
     }
@@ -151,118 +166,61 @@ export class BucketGraph {
         out.z = 0.5 * (b.pmin.z + b.pmax.z);
         return out;
     }
-}
 
-export function crystalCellKey(ix, iy, iz, na, nb) { return ((iz * (nb | 0) + (iy | 0)) * (na | 0) + (ix | 0)) | 0; }
-
-export function buildCrystalCellBucketsFromMol(mol, na, nb, nc, lvec, origin = new Vec3(0, 0, 0)) {
-    if (!mol || !mol.atoms) throw new Error('buildCrystalCellBucketsFromMol: mol required');
-    const A = lvec[0], B = lvec[1], C = lvec[2];
-    const g = new BucketGraph();
-    const ncell = (na | 0) * (nb | 0) * (nc | 0);
-    const dense = new Int32Array(ncell);
-    dense.fill(-1);
-
-    for (let ia = 0; ia < mol.atoms.length; ia++) {
-        const a = mol.atoms[ia];
-        const m = a.cellIndex;
-        if (m === undefined || m === null) continue;
-        const ic = m | 0;
-        if (ic < 0 || ic >= ncell) continue;
-        let ib = dense[ic];
-        if (ib < 0) {
-            ib = g.buckets.length;
-            dense[ic] = ib;
-            const b = g.addBucket();
-            const ix = ic % (na | 0);
-            const iy = ((ic / (na | 0)) | 0) % (nb | 0);
-            const iz = (ic / ((na | 0) * (nb | 0))) | 0;
-            b.meta = { ix, iy, iz, icellDense: ic };
-        }
-        g.buckets[ib].addAtomIndex(ia, a.pos);
-    }
-
-    const bucketOfDense = dense;
-    for (let ib = 0; ib < g.buckets.length; ib++) {
-        const meta = g.buckets[ib].meta;
-        const ix = meta.ix | 0, iy = meta.iy | 0, iz = meta.iz | 0;
-        for (let dz = -1; dz <= 1; dz++) {
-            for (let dy = -1; dy <= 1; dy++) {
-                for (let dx = -1; dx <= 1; dx++) {
-                    const jx = ix + dx, jy = iy + dy, jz = iz + dz;
-                    if (jx < 0 || jy < 0 || jz < 0 || jx >= (na | 0) || jy >= (nb | 0) || jz >= (nc | 0)) continue;
-                    const jc = crystalCellKey(jx, jy, jz, na, nb);
-                    const jb = bucketOfDense[jc] | 0;
-                    if (jb < 0) continue;
-                    if (jb < ib) continue;
-                    g.buckets[ib].neigh.push(jb);
+    /// Find overlapping buckets via AABB intersection and populate each bucket's neigh[] list.
+    /// Optional margin expands overlap test. Symmetric: if A overlaps B, both get each other.
+    findOverlapNeighbors(margin = 0.0) {
+        const n = this.buckets.length;
+        for (let i = 0; i < n; i++) this.buckets[i].neigh.length = 0;
+        for (let i = 0; i < n; i++) {
+            const bi = this.buckets[i];
+            for (let j = i + 1; j < n; j++) {
+                const bj = this.buckets[j];
+                if (bi.overlapAABB(bj, margin)) {
+                    bi.neigh.push(j);
+                    bj.neigh.push(i);
                 }
             }
         }
     }
 
-    g.meta = { kind: 'crystal_cells', na: na | 0, nb: nb | 0, nc: nc | 0, origin: origin.clone(), lvec: [A.clone(), B.clone(), C.clone()], dense2bucket: bucketOfDense };
-    return g;
-}
+    /// Export to flat typed arrays for GPU / NPZ packing.
+    /// Returns { group_atoms, group_nAtoms, bbox_min, bbox_max, icol, icolGroup, nGroups, groupCap }
+    /// where groupCap is max atoms per bucket. icol/icolGroup are per-atom (nAtoms total, -1 if not in any bucket).
+    exportFlat(nAtoms, groupCap = 0) {
+        const nGroups = this.buckets.length;
+        if (groupCap <= 0) {
+            for (let g = 0; g < nGroups; g++) {
+                const c = this.buckets[g].atoms.length;
+                if (c > groupCap) groupCap = c;
+            }
+        }
+        const group_atoms = new Int32Array(nGroups * groupCap);
+        group_atoms.fill(-1);
+        const group_nAtoms = new Int32Array(nGroups);
+        const bbox_min = new Float64Array(nGroups * 3);
+        const bbox_max = new Float64Array(nGroups * 3);
+        const icol = new Int32Array(nAtoms);
+        const icolGroup = new Int32Array(nAtoms);
+        icol.fill(-1);
+        icolGroup.fill(-1);
 
-export function buildWireframeCellVerts(A, B, C, O, out = null, i0 = 0) {
-    const o = O ? O : new Vec3(0, 0, 0);
-    const p100 = new Vec3().setV(o).add(A);
-    const p010 = new Vec3().setV(o).add(B);
-    const p001 = new Vec3().setV(o).add(C);
-    const p110 = new Vec3().setV(o).add(A).add(B);
-    const p101 = new Vec3().setV(o).add(A).add(C);
-    const p011 = new Vec3().setV(o).add(B).add(C);
-    const p111 = new Vec3().setV(o).add(A).add(B).add(C);
-    const edges = [
-        o, p100, o, p010, o, p001,
-        p100, p110, p100, p101,
-        p010, p110, p010, p011,
-        p001, p101, p001, p011,
-        p110, p111, p101, p111, p011, p111,
-    ];
-    const n = edges.length * 3;
-    if (!out) out = new Float32Array(n + (i0 | 0));
-    let k = i0 | 0;
-    for (let i = 0; i < edges.length; i++) {
-        const v = edges[i];
-        out[k++] = v.x; out[k++] = v.y; out[k++] = v.z;
+        for (let g = 0; g < nGroups; g++) {
+            const b = this.buckets[g];
+            const atoms = b.atoms;
+            const n = atoms.length;
+            if (n > groupCap) throw new Error(`BucketGraph.exportFlat: group ${g} has ${n} atoms > groupCap ${groupCap}`);
+            group_nAtoms[g] = n;
+            for (let k = 0; k < n; k++) {
+                const ia = atoms[k] | 0;
+                group_atoms[g * groupCap + k] = ia;
+                icol[ia] = (g * groupCap + k) | 0;
+                icolGroup[ia] = g;
+            }
+            bbox_min[g * 3 + 0] = b.pmin.x; bbox_min[g * 3 + 1] = b.pmin.y; bbox_min[g * 3 + 2] = b.pmin.z;
+            bbox_max[g * 3 + 0] = b.pmax.x; bbox_max[g * 3 + 1] = b.pmax.y; bbox_max[g * 3 + 2] = b.pmax.z;
+        }
+
+        return { group_atoms, group_nAtoms, bbox_min, bbox_max, icol, icolGroup, nGroups, groupCap: groupCap | 0 };
     }
-    return out;
-}
-
-export function buildWireframeAABBVerts(pmin, pmax, out = null, i0 = 0) {
-    const x0 = pmin.x, y0 = pmin.y, z0 = pmin.z;
-    const x1 = pmax.x, y1 = pmax.y, z1 = pmax.z;
-    const ps = [
-        [x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
-        [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1],
-    ];
-    const e = [
-        [0, 1], [1, 2], [2, 3], [3, 0],
-        [4, 5], [5, 6], [6, 7], [7, 4],
-        [0, 4], [1, 5], [2, 6], [3, 7],
-    ];
-    const n = e.length * 2 * 3;
-    if (!out) out = new Float32Array(n + (i0 | 0));
-    let k = i0 | 0;
-    for (let i = 0; i < e.length; i++) {
-        const a = ps[e[i][0]];
-        const b = ps[e[i][1]];
-        out[k++] = a[0]; out[k++] = a[1]; out[k++] = a[2];
-        out[k++] = b[0]; out[k++] = b[1]; out[k++] = b[2];
-    }
-    return out;
-}
-
-export function _testBucketGraphBasic() {
-    const g = new BucketGraph();
-    const b0 = g.addBucket();
-    b0.addAtomIndex(0, new Vec3(0, 0, 0));
-    b0.addAtomIndex(1, new Vec3(1, 1, 1));
-    const b1 = g.addBucket();
-    b1.addAtomIndex(2, new Vec3(2, 2, 2));
-    b0.neigh.push(1);
-    if (!(b0.atoms.length === 2 && b1.atoms.length === 1)) throw new Error('_testBucketGraphBasic failed');
-    return true;
 }

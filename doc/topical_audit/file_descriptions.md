@@ -253,7 +253,8 @@ One sentence per file, added as files are read.
 - `web/molgui_web/js/ProjectiveDynamics.js` — JavaScript port of ProjectiveDynamics solver for browser-based demos.
 - `web/molgui_webgpu/Draw3D_webgpu.js` — WebGPU rendering pipeline for atoms and bonds.
 - `web/molgui_webgpu/CrystalUtils.js` — Lattice and PBC handling for periodic substrates in WebGPU.
-- `web/common_js/Buckets.js` — JavaScript spatial hash for CPU-side collision detection.
+- `web/common_js/Buckets.js` — Generic `Bucket`/`BucketGraph` spatial partitioning with AABB bounds, `aabbOverlap3D()`, `dist2ToAabb()`, `findOverlapNeighbors()`, `exportFlat()`.
+- `web/common_js/BucketGrid3D.js` — Uniform 3D grid partitioning for crystal cells: `buildCrystalCellBucketsFromMol()`, `buildWireframeCellVerts()`, `buildWireframeAABBVerts()`.
 - `web/common_js/Buckets_SoA.js` — Structure-of-Arrays spatial hash variant.
 - `web/common_js/BucketAABBs.js` — AABB construction and overlap tests for rigid-body packing.
 - `web/common_js/Selection.js` — Generic index selection with `add/remove/toggle`, tombstones, `SelectionBanks`, and predicate-based selection.

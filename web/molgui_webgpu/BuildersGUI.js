@@ -3,7 +3,7 @@ import * as PolymerUtils from './MoleculeUtils.js';
 import { Vec3 } from '../common_js/Vec3.js';
 import { EditableMolecule } from './EditableMolecule.js';
 import { MoleculeRenderer, PackedMolecule } from './MoleculeRenderer.js';
-import { buildCrystalCellBucketsFromMol } from '../common_js/Buckets.js';
+import { buildCrystalCellBucketsFromMol } from '../common_js/BucketGrid3D.js';
 import { GUIutils } from '../common_js/GUIutils.js';
 
 export class BuildersGUI {

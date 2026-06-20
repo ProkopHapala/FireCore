@@ -124,21 +124,19 @@ This matches the OpenCL `basis()` function in `GridFF.cl:66` exactly.
 
 ### Spatial Data Structures
 
-- **`web/common_js/Buckets.js`** — JavaScript spatial hash for CPU-side collision detection.
+- **`web/common_js/Buckets.js`** — Generic `Bucket` + `BucketGraph` classes for spatial partitioning. Provides `addAtomIndex(i, pos, radius)` with VdW-aware AABB bounds, `overlapAABB()`, `findOverlapNeighbors()`, `exportFlat()` for GPU-ready typed arrays, `recalcBounds(mol, radius)`, `pruneEmptyBuckets()`, ID/index conversion for topology robustness. Also exports standalone `aabbOverlap3D()` and `dist2ToAabb()`.
+- **`web/common_js/BucketGrid3D.js`** — Uniform 3D grid partitioning for crystal unit cells. `buildCrystalCellBucketsFromMol()`, `crystalCellKey()`, `buildWireframeCellVerts()`, `buildWireframeAABBVerts()`. Uses `BucketGraph` from `Buckets.js`.
 - **`web/common_js/Buckets_SoA.js`** — Structure-of-Arrays variant for SIMD-friendly layout.
 - **`web/common_js/BucketAABBs.js`** — AABB construction and overlap tests for rigid-body packing.
 
-These mirror the C++ `Buckets` class used in `NBFF.h` but are limited to CPU execution.
-
 ### Collision Workgroups & Nonbonded Solver
 
-- **`web/common_js/nanocrystalWorkgroups.js`** — Surface atom selection and spatial workgroup partitioning:
+- **`web/common_js/CollisionWorkgroups.js`** — Surface atom selection and spatial workgroup partitioning (uses `BucketGraph` from `Buckets.js` internally):
   - `surfaceAtomIndices(mol)` — selects H atoms + undercoordinated heavy atoms (<4 heavy-atom neighbors)
-  - `buildCollisionWorkgroups(...)` — farthest-pivot clustering into bounded-size groups (configurable `groupCap`, default 32)
-  - `computeGroupAABBs(...)` — per-group AABB from atom positions ± VdW radii
+  - `buildCollisionWorkgroups({ pos, mol, radius, groupCap })` — farthest-pivot clustering into bounded-size groups; AABB bounds computed via radius-aware `Bucket.addAtomIndex`; exports flat typed arrays via `BucketGraph.exportFlat()`
   - `buildExclIcol_1_2_3(...)` — sorted 1-2/1-3 exclusion lists in icol space (matches `getNonBond_ex2` kernel pattern)
 
-- **`web/common_js/nanocrystalNonbondDebug.js`** — CPU nonbonded force evaluation with workgroup acceleration:
+- **`web/common_js/Nonbonded.js`** — CPU nonbonded force evaluation with workgroup acceleration (imports `aabbOverlap3D`, `dist2ToAabb` from `Buckets.js`):
   - `collisionPair(dp, R_min, E_min, R_cut, R_cut2)` — JS port of `getSR_x2_smooth` parabolic collision potential (harmonic repulsive + quadratic smoothing), designed for Projective Dynamics integration
   - `ljqh_pair(dp, REQ)` — full Lennard-Jones + Coulomb + H-bond pair force
   - `computeNonbondByGroups(...)` — workgroup-accelerated solver: AABB overlap for group discovery, sorted exclusion pointer advance, supports both full-LJ and collision modes
@@ -151,7 +149,8 @@ These mirror the C++ `Buckets` class used in `NBFF.h` but are limited to CPU exe
 
 ### Topology Export Pipeline
 
-- **`web/common_js/nanocrystalTopology.js`** — Orchestrates topology building: loads mol2 + xyz, builds MMFFL topology, constructs collision workgroups + exclusions, writes enriched NPZ with group arrays
+- **`web/common_js/MolIO.js`** — Generic molecule I/O: `loadMMParamsFromDir()`, `loadMolFromMol2()`, `applyPositions()`, `bondsForVisualization()`, `getCrystalBondsFromFiles()`
+- **`web/common_js/exportFF.js`** — Topology NPZ builder: orchestrates MMFFL topology + collision workgroups + exclusions, writes enriched NPZ with group arrays via `LinearizedTopologyNpz.js`
 - **`web/molgui_webgpu/LinearizedTopologyNpz.js`** — Packs typed arrays into numpy `.npz` format
 
 ### Visualization
@@ -180,4 +179,4 @@ Key parity checkpoints:
 
 ---
 
-*Last updated: 2026-06-20*
+*Last updated: 2026-06-21*

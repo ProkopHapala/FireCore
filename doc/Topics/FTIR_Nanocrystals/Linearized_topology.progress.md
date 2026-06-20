@@ -458,7 +458,7 @@ For Projective Dynamics / Position Based Dynamics integration (see `ToDo_FastCol
 
 ### Surface atom selection
 
-`surfaceAtomIndices(mol)` in `nanocrystalWorkgroups.js`:
+`surfaceAtomIndices(mol)` in `CollisionWorkgroups.js`:
 - **All H atoms** (Z=1) — passivation caps
 - **Undercoordinated heavy atoms** (Z>1) with <4 heavy-atom (non-H) neighbors — surface atoms that lost bonds when crystal was cut
 - Bulk atoms (4 heavy-heavy bonds) are excluded (icolGroup = -1)
@@ -467,20 +467,19 @@ Generalized from Si-only (Z=14) to any element. For diamond nanocrystal (C): 78 
 
 ### Workgroup construction
 
-`buildCollisionWorkgroups({ pos, mol, groupCap=32, fillFactor=0.8 })`:
+`buildCollisionWorkgroups({ pos, mol, radius, groupCap=32, fillFactor=0.8 })`:
 1. Select surface atoms
 2. Choose `nGroups = ceil(nSurf / (groupCap * fillFactor))` pivots using farthest-point heuristic
 3. Assign each surface atom to nearest pivot
 4. Iteratively split overcapacity groups by adding new pivots until all groups ≤ groupCap
-5. Build flat `group_atoms[nGroups * groupCap]` (−1 padded), `icol[atom] → g*groupCap+il`, `icolGroup[atom] → g`
+5. Build `BucketGraph` with radius-aware `addAtomIndex(ia, pos, r)` for AABB bounds
+6. Export flat typed arrays via `BucketGraph.exportFlat()`: `group_atoms[nGroups * groupCap]` (−1 padded), `icol[atom] → g*groupCap+il`, `icolGroup[atom] → g`, `bbox_min`/`bbox_max`
 
 `groupCap` is configurable via ensemble JSON config (`"group_cap": 16`). Verified: cap=16 produces 12 groups of ≤16 atoms; cap=32 produces 4 groups of ≤32.
 
 ### AABB computation
 
-`computeGroupAABBs({ pos, radius, group_atoms, group_nAtoms, groupCap })`:
-- Per-group axis-aligned bounding box from atom positions ± VdW radii
-- Stored as flat `bbox_min[nGroups*3]`, `bbox_max[nGroups*3]`
+AABBs are computed inline during `buildCollisionWorkgroups` via `Bucket.addAtomIndex(ia, pos, radius)` — each atom expands its group's AABB by `pos ± VdW radius`. The bounds are exported as flat `bbox_min[nGroups*3]`, `bbox_max[nGroups*3]` via `BucketGraph.exportFlat()`.
 
 ### Sorted exclusion lists
 
@@ -493,7 +492,7 @@ Generalized from Si-only (Z=14) to any element. For diamond nanocrystal (C): 78 
 
 ### Nonbonded solver (workgroup-accelerated)
 
-`computeNonbondByGroups(...)` in `nanocrystalNonbondDebug.js`:
+`computeNonbondByGroups(...)` in `Nonbonded.js` (imports `aabbOverlap3D`, `dist2ToAabb` from `Buckets.js`):
 
 For each group `g`:
 1. Find overlapping groups via AABB intersection (with optional margin)
@@ -566,7 +565,7 @@ With `margin=0`, 1313 pairs missed by grouped solver (non-overlapping AABBs). Wi
 
 ### NPZ export
 
-`buildTopologyNpz()` in `nanocrystalTopology.js` exports additional arrays in `03_topology.npz`:
+`buildTopologyNpz()` in `exportFF.js` exports additional arrays in `03_topology.npz`:
 
 | Key | Shape | dtype | Description |
 |-----|-------|-------|-------------|
@@ -600,26 +599,29 @@ With `margin=0`, 1313 pairs missed by grouped solver (non-overlapping AABBs). Wi
 
 ### Files
 
-**New files:**
-- `web/common_js/nanocrystalWorkgroups.js` — surface selection, workgroup construction, AABBs, sorted exclusions
-- `web/common_js/nanocrystalNonbondDebug.js` — collision potential, LJ potential, brute-force + grouped solvers, pair collection
-- `scripts/debug_nanocrystal_nonbond_groups.mjs` — parity testing and collision pair export CLI
+**Refactored files (module reorganization):**
+- `web/common_js/CollisionWorkgroups.js` — surface selection, workgroup construction (uses `BucketGraph` from `Buckets.js`), sorted exclusions. Formerly `nanocrystalWorkgroups.js`; `computeGroupAABBs` merged into `buildCollisionWorkgroups` via radius-aware `Bucket.addAtomIndex`.
+- `web/common_js/Nonbonded.js` — collision potential, LJ potential, brute-force + grouped solvers, pair collection. Formerly `nanocrystalNonbondDebug.js`; imports `aabbOverlap3D`/`dist2ToAabb` from `Buckets.js`.
+- `web/common_js/MolIO.js` — generic molecule I/O extracted from `nanocrystalTopology.js`: `loadMMParamsFromDir`, `loadMolFromMol2`, `applyPositions`, `bondsForVisualization`, `getCrystalBondsFromFiles`.
+- `web/common_js/exportFF.js` — topology NPZ builder extracted from `nanocrystalTopology.js`: `buildTopologyNpz`.
+- `web/common_js/Buckets.js` — generic `Bucket`/`BucketGraph` with `aabbOverlap3D`, `dist2ToAabb`, `findOverlapNeighbors`, `exportFlat`, radius-aware `addAtomIndex`. Grid functions moved to `BucketGrid3D.js`.
+- `web/common_js/BucketGrid3D.js` — uniform 3D grid partitioning (`buildCrystalCellBucketsFromMol`, `crystalCellKey`, `buildWireframe*`) extracted from `Buckets.js`.
+- `scripts/debug_nanocrystal_nonbond_groups.mjs` — parity testing and collision pair export CLI (imports updated)
 
 **Modified files:**
-- `web/common_js/nanocrystalTopology.js` — added `groupCap` parameter, workgroup/AABB/exclusion building, radius export, NPZ extra arrays
 - `web/common_js/nanocrystalViewer.html` — workgroup coloring, tight AABB rendering, collision pair visualization
 - `web/common_js/npzIO.js` — `readZipEntries` fix for central directory header, `crystalToJson` extended with icolGroup/group_bbox injection
 - `web/molgui_webgpu/LinearizedTopologyNpz.js` — `buildTopologyNpzArrays` extra arrays support
-- `scripts/run_nanocrystal_ensemble.mjs` — `group_cap` config, topology enrichment of viewer JSON
+- `scripts/run_nanocrystal_ensemble.mjs` — imports updated to `exportFF.js` + `MolIO.js`; `group_cap` config, topology enrichment of viewer JSON
 - `scripts/ensemble.example.json` — added `group_cap` field
+- `web/molgui_webgpu/BuildersGUI.js`, `ScriptRunner.js` — imports updated to `BucketGrid3D.js`
+- `web/molgui_web/js/BuildersGUI.js`, `ScriptRunner.js`, `main.js` — imports updated to `BucketGrid3D.js`
 
-### Planned reorganization (not yet done)
-
-Current file naming is nanocrystal-specific but code is generic. Proposed:
-- `nanocrystalWorkgroups.js` → `CollisionWorkgroups.js`
-- `nanocrystalNonbondDebug.js` → `Nonbonded.js`
-- `nanocrystalTopology.js` → split into `MolIO.js` + `exportFF.js`
+**Deleted files:**
+- `web/common_js/nanocrystalWorkgroups.js` → `CollisionWorkgroups.js`
+- `web/common_js/nanocrystalNonbondDebug.js` → `Nonbonded.js`
+- `web/common_js/nanocrystalTopology.js` → split into `MolIO.js` + `exportFF.js`
 
 ---
 
-*Last updated: 2026-06-20 — collision workgroups + nonbonded solver + visualization.*
+*Last updated: 2026-06-21 — module reorganization: Buckets.js/BucketGrid3D.js split, CollisionWorkgroups uses BucketGraph, nanocrystal* files renamed.*

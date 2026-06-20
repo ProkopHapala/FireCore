@@ -2,10 +2,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { loadMMParamsFromDir, loadMolFromMol2, applyPositions } from '../web/common_js/nanocrystalTopology.js';
+import { loadMMParamsFromDir, loadMolFromMol2, applyPositions } from '../web/common_js/MolIO.js';
 import { readXyzPositions, readNpzFile } from '../web/common_js/npzIO.js';
-import { buildCollisionWorkgroups, computeGroupAABBs, buildExclIcol_1_2_3 } from '../web/common_js/nanocrystalWorkgroups.js';
-import { computeNonbondBruteForceKernelStyle, computeNonbondByGroups, maxAbsDiff } from '../web/common_js/nanocrystalNonbondDebug.js';
+import { buildCollisionWorkgroups, buildExclIcol_1_2_3 } from '../web/common_js/CollisionWorkgroups.js';
+import { computeNonbondBruteForceKernelStyle, computeNonbondByGroups, maxAbsDiff } from '../web/common_js/Nonbonded.js';
 
 function usage() {
     console.log(`Usage: debug_nanocrystal_nonbond_groups.mjs --mol2 MOL2 --xyz relaxed.xyz [--topo topology.npz] [--margin 0.0] [--collision] [--rcut R] [--rcut2 R] [--out-pairs FILE]`);
@@ -69,14 +69,13 @@ function main() {
         excl_icol = arrays.excl_icol;
         groupCap = arrays.group_cap ? (arrays.group_cap[0] | 0) : 32;
     } else {
-        const wg = buildCollisionWorkgroups({ pos: posFlat, mol, groupCap: 32, fillFactor: 0.8 });
+        const wg = buildCollisionWorkgroups({ pos: posFlat, mol, radius, groupCap: 32, fillFactor: 0.8 });
         icol = wg.icol;
         group_atoms = wg.group_atoms;
         group_nAtoms = wg.group_nAtoms;
         groupCap = wg.groupCap;
-        const aabb = computeGroupAABBs({ pos: posFlat, radius, group_atoms, group_nAtoms, groupCap: wg.groupCap });
-        bbox_min = aabb.bbox_min;
-        bbox_max = aabb.bbox_max;
+        bbox_min = wg.bbox_min;
+        bbox_max = wg.bbox_max;
         const ex2 = buildExclIcol_1_2_3({ mol, icol, EXCL_MAX: 16, ipbc: 0 });
         excl_icol = ex2.excl;
     }

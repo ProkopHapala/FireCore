@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 import { molToCrystalArrays, writeCrystalNpz, crystalToXYZ, readXyzPositions, crystalToJson, writeCrystalJson, readNpzFile } from '../web/common_js/npzIO.js';
 import { exportCrystalCompareSvgViews, atlasIndexHtml } from '../web/common_js/nanocrystalSvg.js';
-import { buildTopologyNpz, loadMMParamsFromDir, loadMolFromMol2, bondsForVisualization, getCrystalBondsFromFiles } from '../web/common_js/nanocrystalTopology.js';
+import { buildTopologyNpz } from '../web/common_js/exportFF.js';
+import { loadMMParamsFromDir, loadMolFromMol2, bondsForVisualization, getCrystalBondsFromFiles } from '../web/common_js/MolIO.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '..');
 

@@ -6,7 +6,7 @@ import { GUI } from './GUI.js';
 import { Editor } from './Editor.js';
 import { ShortcutManager } from './ShortcutManager.js';
 import { Vec3 } from '../../common_js/Vec3.js';
-import { buildWireframeCellVerts, buildWireframeAABBVerts } from '../../common_js/Buckets.js';
+import { buildWireframeCellVerts, buildWireframeAABBVerts } from '../../common_js/BucketGrid3D.js';
 import { ScriptRunner } from './ScriptRunner.js';
 import { PDSimulation } from './ProjectiveDynamics.js';
 

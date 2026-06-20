@@ -6,7 +6,7 @@ import { EditableMolecule } from './EditableMolecule.js';
 import { BuildersGUI } from './BuildersGUI.js';
 import { selectBridgeCandidates } from './MoleculeSelection.js';
 import { collapseBridgeAt, collapseBridgeRandom, collapseAllBridges, insertBridge, insertBridgeRandom } from './MoleculeUtils.js';
-import { buildCrystalCellBucketsFromMol } from '../common_js/Buckets.js';
+import { buildCrystalCellBucketsFromMol } from '../common_js/BucketGrid3D.js';
 
 /**
  * ScriptRunner: High-level command dispatcher for MolGUI.

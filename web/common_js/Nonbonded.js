@@ -1,4 +1,5 @@
-import { surfaceAtomIndices } from './nanocrystalWorkgroups.js';
+import { surfaceAtomIndices } from './CollisionWorkgroups.js';
+import { aabbOverlap3D, dist2ToAabb } from './Buckets.js';
 
 export function combineREQ(mmParams, atomI, atomJ) {
     const ti = mmParams.getAtomTypeForAtom(atomI);
@@ -117,17 +118,6 @@ export function computeNonbondBruteForceKernelStyle({ pos, mol, mmParams, surfac
     return { f, Etot, pairs };
 }
 
-function aabbOverlap3D(aMin, aMax, bMin, bMax, margin) {
-    return (aMax[0] + margin >= bMin[0] && aMin[0] <= bMax[0] + margin && aMax[1] + margin >= bMin[1] && aMin[1] <= bMax[1] + margin && aMax[2] + margin >= bMin[2] && aMin[2] <= bMax[2] + margin);
-}
-
-function dist2ToAabb(p, bMin, bMax) {
-    const dx = Math.max(0.0, Math.max(bMin[0] - p[0], p[0] - bMax[0]));
-    const dy = Math.max(0.0, Math.max(bMin[1] - p[1], p[1] - bMax[1]));
-    const dz = Math.max(0.0, Math.max(bMin[2] - p[2], p[2] - bMax[2]));
-    return dx * dx + dy * dy + dz * dz;
-}
-
 export function computeNonbondByGroups({ pos, mol, mmParams, group_atoms, group_nAtoms, group_bbox_min, group_bbox_max, radius, excl_icol, EXCL_MAX = 16, groupCap = 32, icol = null, surfaceOnly = true, margin = 0.0, R2damp = 1e-8, collectPairs = false, collisionMode = false, R_cut = 0.0, R_cut2 = 0.0 }) {
     if (!pos || !mol || !mmParams) throw new Error('computeNonbondByGroups: pos/mol/mmParams required');
     const nAtoms = mol.atoms.length | 0;
@@ -187,7 +177,7 @@ export function computeNonbondByGroups({ pos, mol, mmParams, group_atoms, group_
             for (let jj = 0; jj < ghostIcols.length; jj++) {
                 const ic_j = ghostIcols[jj] | 0;
                 if (ic_j === ic_i) continue;
-                const ja = group_atoms[ic_j] | 0; // group_atoms is flat (nGroups*groupCap)
+                const ja = group_atoms[ic_j] | 0;
                 if (ja < 0) continue;
 
                 if (jex !== -1) {
