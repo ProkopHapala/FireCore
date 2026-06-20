@@ -1,3 +1,12 @@
+https://chat.deepseek.com/share/12ddwqglfe8lhwd9xs
+https://www.kimi.com/share/19ee026a-f3c2-8d69-8000-00005b2e94c0
+https://chatgpt.com/share/6a3548f4-82dc-83ed-b985-042dd06da9e1
+https://gemini.google.com/share/0b60b0732eaf
+https://grok.com/share/c2hhcmQtMg_6da29d17-2cf9-4d5d-a8de-b32455201d36
+https://chat.mistral.ai/work/0fde872e-a89c-453a-bc8b-b8c94a1119bc
+
+---
+
 # USER
 
 I'm thinking how to compute fast estimate of force between two rigid fragments (molecules) using DFTB Hamiltonian, mainly Pauli repulsion but also electrostatics (electron polarizability is already difficult I guess)
