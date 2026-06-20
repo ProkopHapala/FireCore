@@ -136,7 +136,7 @@ function readZipEntries(buf) {
     let off = 0;
     while (off + 30 <= buf.length) {
         const sig = buf.readUInt32LE(off);
-        if (sig === 0x06054b50) break;
+        if (sig === 0x06054b50 || sig === 0x02014b50) break;
         if (sig !== 0x04034b50) throw new Error(`npzIO: bad zip sig at ${off}`);
         const compM = buf.readUInt16LE(off + 8);
         const compSz = buf.readUInt32LE(off + 18);
@@ -244,7 +244,7 @@ export function crystalToXYZ(pos, Z) {
 }
 
 /// Compact JSON for nanocrystalViewer.html (pos centered at centroid).
-export function crystalToJson({ id = '', label = '', stage = '', pos, Z, bonds_ij = null }) {
+export function crystalToJson({ id = '', label = '', stage = '', pos, Z, bonds_ij = null, extra = null }) {
     const n = Z.length;
     let cx = 0, cy = 0, cz = 0;
     for (let i = 0; i < n; i++) { cx += pos[i * 3]; cy += pos[i * 3 + 1]; cz += pos[i * 3 + 2]; }
@@ -255,12 +255,30 @@ export function crystalToJson({ id = '', label = '', stage = '', pos, Z, bonds_i
         posC[i * 3 + 1] = pos[i * 3 + 1] - cy;
         posC[i * 3 + 2] = pos[i * 3 + 2] - cz;
     }
-    return {
+    const out = {
         id, label, stage, natoms: n,
         Z: Array.from(Z),
         pos: posC,
         bonds_ij: bonds_ij ? Array.from(bonds_ij) : [],
     };
+
+    if (extra) {
+        for (const [k, v] of Object.entries(extra)) {
+            if (out[k] !== undefined) throw new Error(`crystalToJson: extra key collides with base key '${k}'`);
+            out[k] = v;
+        }
+        if (out.group_bbox_min && out.group_bbox_max) {
+            const mn = out.group_bbox_min;
+            const mx = out.group_bbox_max;
+            if (!Array.isArray(mn) || !Array.isArray(mx) || (mn.length !== mx.length) || (mn.length % 3 !== 0)) throw new Error('crystalToJson: group_bbox_min/max must be flat arrays of length 3*n');
+            for (let i = 0; i < mn.length; i += 3) {
+                mn[i + 0] -= cx; mn[i + 1] -= cy; mn[i + 2] -= cz;
+                mx[i + 0] -= cx; mx[i + 1] -= cy; mx[i + 2] -= cz;
+            }
+        }
+    }
+
+    return out;
 }
 
 export function writeCrystalJson(fs, filePath, data) {

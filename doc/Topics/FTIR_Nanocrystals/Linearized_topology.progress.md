@@ -443,3 +443,183 @@ ad the nc plots:
 4) why the crystal is somewhere in the corner, it should be n the center of image, the viewpot shuld be fited to the size of the crystal
 
 ---
+
+---
+
+## Daily report — 2026-06-20 (Collision workgroups + nonbonded solver)
+
+### Summary
+
+Implemented **collision workgroups** for surface atoms of nanocrystals: spatial partitioning using farthest-pivot clustering into bounded-size groups, AABB-based neighbor discovery, sorted exclusion lists (1-2, 1-3) in icol space, and a workgroup-accelerated nonbonded solver with both full-LJ and parabolic collision (`getSR_x2_smooth`) potentials. Added visualization of workgroup coloring, tight AABBs, and collision pairs in the p5.js nanocrystal viewer. Made `group_cap` configurable for smaller crystals.
+
+### Motivation
+
+For Projective Dynamics / Position Based Dynamics integration (see `ToDo_FastCollision_3.md`), we need to efficiently find collision pairs among surface atoms (H + undercoordinated heavy atoms) using spatial acceleration. The workgroup approach mirrors the OpenCL `RRsp3.cl` kernels: atoms are partitioned into small groups, each group has an AABB, and inter-group interactions are found via AABB overlap. Sorted exclusion lists skip 1-2 and 1-3 bonded pairs, matching the `getNonBond_ex2` kernel pattern.
+
+### Surface atom selection
+
+`surfaceAtomIndices(mol)` in `nanocrystalWorkgroups.js`:
+- **All H atoms** (Z=1) — passivation caps
+- **Undercoordinated heavy atoms** (Z>1) with <4 heavy-atom (non-H) neighbors — surface atoms that lost bonds when crystal was cut
+- Bulk atoms (4 heavy-heavy bonds) are excluded (icolGroup = -1)
+
+Generalized from Si-only (Z=14) to any element. For diamond nanocrystal (C): 78 H + 54 C surface atoms, 32 bulk C atoms excluded.
+
+### Workgroup construction
+
+`buildCollisionWorkgroups({ pos, mol, groupCap=32, fillFactor=0.8 })`:
+1. Select surface atoms
+2. Choose `nGroups = ceil(nSurf / (groupCap * fillFactor))` pivots using farthest-point heuristic
+3. Assign each surface atom to nearest pivot
+4. Iteratively split overcapacity groups by adding new pivots until all groups ≤ groupCap
+5. Build flat `group_atoms[nGroups * groupCap]` (−1 padded), `icol[atom] → g*groupCap+il`, `icolGroup[atom] → g`
+
+`groupCap` is configurable via ensemble JSON config (`"group_cap": 16`). Verified: cap=16 produces 12 groups of ≤16 atoms; cap=32 produces 4 groups of ≤32.
+
+### AABB computation
+
+`computeGroupAABBs({ pos, radius, group_atoms, group_nAtoms, groupCap })`:
+- Per-group axis-aligned bounding box from atom positions ± VdW radii
+- Stored as flat `bbox_min[nGroups*3]`, `bbox_max[nGroups*3]`
+
+### Sorted exclusion lists
+
+`buildExclIcol_1_2_3({ mol, icol, EXCL_MAX=16, ipbc=0 })`:
+- For each atom with icol ≥ 0: collect 1-2 (bonded) and 1-3 (bonded-bonded) neighbors
+- Map neighbor atom indices → icol indices
+- Sort by icol value (ascending) for efficient pointer-advance exclusion in solver
+- Pack as `excl_icol[atom * EXCL_MAX + k]` with `excl_count[atom]`
+- Matches `getNonBond_ex2` kernel pattern: single pointer `iex` advancing through sorted list, comparing `(jex & 0xFFFFFF) < ic_j`
+
+### Nonbonded solver (workgroup-accelerated)
+
+`computeNonbondByGroups(...)` in `nanocrystalNonbondDebug.js`:
+
+For each group `g`:
+1. Find overlapping groups via AABB intersection (with optional margin)
+2. Collect ghost atoms from overlapping groups (within margin distance to group AABB)
+3. For each local atom `ia` in group `g`:
+   - Iterate ghost icols in sorted order
+   - Skip excluded pairs using sorted exclusion pointer advance
+   - Evaluate pair potential (full LJ+Q or collision `getSR_x2_smooth`)
+   - Accumulate forces (Newton's third law NOT applied — matches kernel style)
+
+Two modes:
+- **Full LJ+Q** (`collisionMode=false`): `ljqh_pair()` — complete Lennard-Jones + Coulomb + H-bond
+- **Collision** (`collisionMode=true`): `collisionPair()` — parabolic `getSR_x2_smooth` from `ToDo_FastCollision_3.md`
+
+### Collision potential: `getSR_x2_smooth` in JS
+
+`collisionPair(dp, R_min, E_min, R_cut, R_cut2)` — direct port of C++ `getSR_x2_smooth`:
+
+- `R_min = Ri + Rj` (VdW minimum distance, e.g. C-C=3.85Å, C-H=3.37Å, H-H=2.89Å)
+- `R_cut = R_min * 1.2` (harmonic region boundary, configurable)
+- `R_cut2 = R_min * 1.5` (smoothing region boundary, configurable)
+- `k1 = -2*E_min / (d1*(d1+d2))` where `d1 = R_cut - R_min`, `d2 = R_cut2 - R_cut`
+- `k2 = -k1 * (d1/d2)`
+- For `r < R_cut`: `E = 0.5*k1*(r-R_min)^2 + E_min`, `F = -k1*(r-R_min)` — harmonic (linear constraint for PD)
+- For `R_cut ≤ r < R_cut2`: `E = 0.5*k2*(r-R_cut2)^2`, `F = -k2*(r-R_cut2)` — smoothing (external force for PD)
+- For `r ≥ R_cut2`: no interaction
+
+VdW parameters from `ElementTypes.dat`:
+
+| Element | RvdW [Å] | EvdW [eV] |
+|---------|----------|-----------|
+| H       | 1.443    | 0.00191   |
+| C       | 1.926    | 0.00455   |
+| Si      | 2.148    | 0.01743   |
+
+### Brute-force reference solver
+
+`computeNonbondBruteForceKernelStyle(...)` — O(N²) reference for parity checking:
+- Same exclusion logic (1-2, 1-3) but using Set-based lookup
+- `bonded12and13Sets()` explores ALL 1-2 neighbors for 1-3 path traversal (including bulk atoms), matching `buildExclIcol_1_2_3` behavior
+- Collects interacting pairs for set comparison
+
+### Parity results
+
+Diamond nanocrystal (164 atoms, 132 surface, group_cap=16, margin=10):
+
+```
+Full LJ+Q mode:
+  brute pairs: 16464, grouped pairs: 16464
+  only in brute: 0, only in grouped: 0
+  maxAbsDiff(force): 2.22e-15
+  absDiff(E): 1.42e-14
+
+Collision mode (getSR_x2_smooth):
+  grouped pairs (within R_cut2): 3828
+  maxAbsDiff(force vs full-LJ brute): 2.91 (expected — different potential)
+```
+
+With `margin=0`, 1313 pairs missed by grouped solver (non-overlapping AABBs). With `margin=10`, exact parity. The margin should be ≥ max VdW diameter (~4.3Å for Si-Si).
+
+### Visualization
+
+`nanocrystalViewer.html` (p5.js WEBGL):
+- **Workgroups checkbox**: color atoms by icolGroup using golden-ratio hue; bulk atoms gray
+- **AABB checkbox**: draw tight bounding boxes per group, colored same hue as workgroup
+- **Collisions checkbox**: draw lines between collision pairs found by grouped solver
+  - Green: intra-group pairs (same workgroup)
+  - Orange: inter-group pairs (found via AABB overlap)
+  - Gray: pairs involving bulk atoms
+
+### NPZ export
+
+`buildTopologyNpz()` in `nanocrystalTopology.js` exports additional arrays in `03_topology.npz`:
+
+| Key | Shape | dtype | Description |
+|-----|-------|-------|-------------|
+| `radius` | (N,) | float64 | VdW radii per atom |
+| `icol` | (N,) | int32 | Local index within group (−1 = not in any group) |
+| `icolGroup` | (N,) | int32 | Group ID per atom (−1 = bulk) |
+| `group_atoms` | (nGroups, groupCap) | int32 | Atom indices per group (−1 padded) |
+| `group_nAtoms` | (nGroups,) | int32 | Actual atom count per group |
+| `group_bbox_min` | (nGroups, 3) | float64 | AABB minimum per group |
+| `group_bbox_max` | (nGroups, 3) | float64 | AABB maximum per group |
+| `excl_icol` | (N, EXCL_MAX) | int32 | Sorted exclusion icol list per atom |
+| `excl_count` | (N,) | int32 | Exclusion count per atom |
+| `excl_max` | (1,) | int32 | EXCL_MAX (16) |
+| `group_cap` | (1,) | int32 | Group capacity |
+| `n_groups` | (1,) | int32 | Number of groups |
+
+### Debug script
+
+`scripts/debug_nanocrystal_nonbond_groups.mjs`:
+- CLI: `--mol2`, `--xyz`, `--topo`, `--margin`, `--collision`, `--rcut`, `--rcut2`, `--out-pairs`
+- Reads group_cap from NPZ (not hardcoded)
+- Compares brute-force vs grouped pair sets
+- Exports collision pairs as JSON for viewer visualization
+
+### Ensemble pipeline integration
+
+`scripts/run_nanocrystal_ensemble.mjs`:
+- `group_cap` read from ensemble config JSON (default 32)
+- Passed through to `buildTopologyNpz(groupCap)`
+- After topology stage, enriches viewer JSON with `icolGroup` and group bbox arrays
+
+### Files
+
+**New files:**
+- `web/common_js/nanocrystalWorkgroups.js` — surface selection, workgroup construction, AABBs, sorted exclusions
+- `web/common_js/nanocrystalNonbondDebug.js` — collision potential, LJ potential, brute-force + grouped solvers, pair collection
+- `scripts/debug_nanocrystal_nonbond_groups.mjs` — parity testing and collision pair export CLI
+
+**Modified files:**
+- `web/common_js/nanocrystalTopology.js` — added `groupCap` parameter, workgroup/AABB/exclusion building, radius export, NPZ extra arrays
+- `web/common_js/nanocrystalViewer.html` — workgroup coloring, tight AABB rendering, collision pair visualization
+- `web/common_js/npzIO.js` — `readZipEntries` fix for central directory header, `crystalToJson` extended with icolGroup/group_bbox injection
+- `web/molgui_webgpu/LinearizedTopologyNpz.js` — `buildTopologyNpzArrays` extra arrays support
+- `scripts/run_nanocrystal_ensemble.mjs` — `group_cap` config, topology enrichment of viewer JSON
+- `scripts/ensemble.example.json` — added `group_cap` field
+
+### Planned reorganization (not yet done)
+
+Current file naming is nanocrystal-specific but code is generic. Proposed:
+- `nanocrystalWorkgroups.js` → `CollisionWorkgroups.js`
+- `nanocrystalNonbondDebug.js` → `Nonbonded.js`
+- `nanocrystalTopology.js` → split into `MolIO.js` + `exportFF.js`
+
+---
+
+*Last updated: 2026-06-20 — collision workgroups + nonbonded solver + visualization.*

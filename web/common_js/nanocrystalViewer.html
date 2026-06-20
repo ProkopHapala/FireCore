@@ -14,6 +14,9 @@ body{margin:0;font:14px/1.35 sans-serif;overflow:hidden;background:#f8f8f8}
 <div id="ui">
   <label>Crystal <select id="selCrystal"></select></label>
   <label>Stage <select id="selStage"><option value="relaxed">relaxed</option><option value="init">init</option><option value="both">init + relaxed</option></select></label>
+  <label><input type="checkbox" id="chkWg"/> workgroups</label>
+  <label><input type="checkbox" id="chkAabb"/> AABB</label>
+  <label><input type="checkbox" id="chkColl"/> collisions</label>
   <span id="info">loading…</span>
   <p class="hint">Drag = rotate · wheel = zoom · RGB = X Y Z</p>
 </div>
@@ -23,6 +26,7 @@ const MANIFEST = new URLSearchParams(location.search).get('manifest') || 'viewer
 const ZCOL = { 1: [245, 245, 245], 6: [70, 70, 70], 8: [220, 50, 50], 14: [210, 170, 50] };
 const ZRAD = { 1: 0.14, 6: 0.40, 14: 0.58 };
 let manifest, crystals = {}, curId = null, stage = 'relaxed', yaw = 0.55, pitch = 0.35, zoom = 1;
+let showWg = false, showAabb = false, showColl = false;
 
 function maxRadius(g) {
   if (!g?.pos?.length) return 4;
@@ -59,6 +63,9 @@ function bootViewer(data) {
   });
   sel.onchange = () => selectCrystal(sel.value);
   document.getElementById('selStage').onchange = e => { stage = e.target.value; zoom = 1; };
+  document.getElementById('chkWg').onchange = e => { showWg = !!e.target.checked; };
+  document.getElementById('chkAabb').onchange = e => { showAabb = !!e.target.checked; };
+  document.getElementById('chkColl').onchange = e => { showColl = !!e.target.checked; };
   document.getElementById('selStage').value = 'relaxed';
   selectCrystal(data.crystals[0].id);
   sel.value = data.crystals[0].id;
@@ -101,7 +108,13 @@ new p5(p => {
   function drawAtoms(g, alpha = 255) {
     p.noStroke();
     for (let i = 0; i < g.Z.length; i++) {
-      const z = g.Z[i] | 0, col = ZCOL[z] || [140, 140, 140], rad = ZRAD[z] || 0.35;
+      const z = g.Z[i] | 0;
+      const rad = ZRAD[z] || 0.35;
+      let col = ZCOL[z] || [140, 140, 140];
+      if (showWg && g.icolGroup && g.icolGroup.length === g.Z.length) {
+        const gid = g.icolGroup[i] | 0;
+        col = gid >= 0 ? wgColor(gid) : [120, 120, 120];
+      }
       p.push();
       p.translate(g.pos[i * 3], g.pos[i * 3 + 1], g.pos[i * 3 + 2]);
       p.fill(col[0], col[1], col[2], alpha);
@@ -110,10 +123,72 @@ new p5(p => {
     }
   }
 
+  function wgColor(gid) {
+    const h = (gid * 0.61803398875) % 1.0;
+    const r = Math.floor(100 + 155 * Math.abs(Math.sin(h * 6.28318530718)));
+    const gg = Math.floor(100 + 155 * Math.abs(Math.sin((h + 0.3333) * 6.28318530718)));
+    const b = Math.floor(100 + 155 * Math.abs(Math.sin((h + 0.6666) * 6.28318530718)));
+    return [r, gg, b];
+  }
+
+  function drawAabbs(g) {
+    if (!showAabb) return;
+    if (!g.icolGroup || g.icolGroup.length !== g.Z.length) return;
+    const n = g.Z.length;
+    const boxes = new Map();
+    for (let i = 0; i < n; i++) {
+      const gid = g.icolGroup[i] | 0;
+      if (gid < 0) continue;
+      const x = g.pos[i * 3], y = g.pos[i * 3 + 1], z = g.pos[i * 3 + 2];
+      let b = boxes.get(gid);
+      if (!b) { b = { xmin: x, ymin: y, zmin: z, xmax: x, ymax: y, zmax: z }; boxes.set(gid, b); continue; }
+      if (x < b.xmin) b.xmin = x; if (y < b.ymin) b.ymin = y; if (z < b.zmin) b.zmin = z;
+      if (x > b.xmax) b.xmax = x; if (y > b.ymax) b.ymax = y; if (z > b.zmax) b.zmax = z;
+    }
+    gl.disable(gl.DEPTH_TEST);
+    p.strokeWeight(1.5);
+    for (const [gid, b] of boxes) {
+      const col = wgColor(gid);
+      p.stroke(col[0], col[1], col[2], 200);
+      p.line(b.xmin, b.ymin, b.zmin, b.xmax, b.ymin, b.zmin);
+      p.line(b.xmin, b.ymin, b.zmin, b.xmin, b.ymax, b.zmin);
+      p.line(b.xmin, b.ymin, b.zmin, b.xmin, b.ymin, b.zmax);
+      p.line(b.xmax, b.ymax, b.zmax, b.xmin, b.ymax, b.zmax);
+      p.line(b.xmax, b.ymax, b.zmax, b.xmax, b.ymin, b.zmax);
+      p.line(b.xmax, b.ymax, b.zmax, b.xmax, b.ymax, b.zmin);
+      p.line(b.xmin, b.ymax, b.zmin, b.xmax, b.ymax, b.zmin);
+      p.line(b.xmin, b.ymax, b.zmin, b.xmin, b.ymax, b.zmax);
+      p.line(b.xmax, b.ymin, b.zmin, b.xmax, b.ymax, b.zmin);
+      p.line(b.xmax, b.ymin, b.zmin, b.xmax, b.ymin, b.zmax);
+      p.line(b.xmin, b.ymin, b.zmax, b.xmax, b.ymin, b.zmax);
+      p.line(b.xmin, b.ymin, b.zmax, b.xmin, b.ymax, b.zmax);
+    }
+    gl.enable(gl.DEPTH_TEST);
+  }
+
   function drawGeom(g, bondRgb, atomAlpha = 255) {
     if (!g?.pos) return;
     drawBonds(g, bondRgb);
     drawAtoms(g, atomAlpha);
+  }
+
+  function drawCollisions(g) {
+    if (!showColl) return;
+    if (!g.collision_pairs || !g.icolGroup) return;
+    const cp = g.collision_pairs;
+    const ig = g.icolGroup;
+    gl.disable(gl.DEPTH_TEST);
+    p.strokeWeight(0.8);
+    for (let k = 0; k < cp.length; k += 2) {
+      const ia = cp[k] | 0, ja = cp[k + 1] | 0;
+      const ga = ig[ia] | 0, gb = ig[ja] | 0;
+      if (ga >= 0 && ga === gb) p.stroke(80, 200, 80, 100);
+      else if (ga >= 0 && gb >= 0) p.stroke(240, 160, 40, 100);
+      else p.stroke(150, 150, 150, 60);
+      const i0 = ia * 3, j0 = ja * 3;
+      p.line(g.pos[i0], g.pos[i0 + 1], g.pos[i0 + 2], g.pos[j0], g.pos[j0 + 1], g.pos[j0 + 2]);
+    }
+    gl.enable(gl.DEPTH_TEST);
   }
 
   function drawAxes(len) {
@@ -139,6 +214,8 @@ new p5(p => {
       else drawGeom(pack.init, [160, 120, 80]);
     }
     if (stage === 'relaxed' || stage === 'both') drawGeom(pack.relaxed || pack.init, [50, 80, 160]);
+    drawAabbs((stage === 'init') ? pack.init : (pack.relaxed || pack.init));
+    drawCollisions((stage === 'init') ? pack.init : (pack.relaxed || pack.init));
     drawAxes(maxRadius(pack.init) * 0.65 + 0.8);
   };
 

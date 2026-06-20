@@ -5,6 +5,7 @@
   "seed_base": 42,
   "cif": "cpp/common_resources/crystals/diamond_primitive.cif",
   "applySymmetry": 0,
+  "group_cap": 32,
   "replication": {
     "nx": { "uniform_int": [2, 2] },
     "ny": { "uniform_int": [2, 2] },

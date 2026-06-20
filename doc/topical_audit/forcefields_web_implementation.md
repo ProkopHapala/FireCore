@@ -130,6 +130,34 @@ This matches the OpenCL `basis()` function in `GridFF.cl:66` exactly.
 
 These mirror the C++ `Buckets` class used in `NBFF.h` but are limited to CPU execution.
 
+### Collision Workgroups & Nonbonded Solver
+
+- **`web/common_js/nanocrystalWorkgroups.js`** — Surface atom selection and spatial workgroup partitioning:
+  - `surfaceAtomIndices(mol)` — selects H atoms + undercoordinated heavy atoms (<4 heavy-atom neighbors)
+  - `buildCollisionWorkgroups(...)` — farthest-pivot clustering into bounded-size groups (configurable `groupCap`, default 32)
+  - `computeGroupAABBs(...)` — per-group AABB from atom positions ± VdW radii
+  - `buildExclIcol_1_2_3(...)` — sorted 1-2/1-3 exclusion lists in icol space (matches `getNonBond_ex2` kernel pattern)
+
+- **`web/common_js/nanocrystalNonbondDebug.js`** — CPU nonbonded force evaluation with workgroup acceleration:
+  - `collisionPair(dp, R_min, E_min, R_cut, R_cut2)` — JS port of `getSR_x2_smooth` parabolic collision potential (harmonic repulsive + quadratic smoothing), designed for Projective Dynamics integration
+  - `ljqh_pair(dp, REQ)` — full Lennard-Jones + Coulomb + H-bond pair force
+  - `computeNonbondByGroups(...)` — workgroup-accelerated solver: AABB overlap for group discovery, sorted exclusion pointer advance, supports both full-LJ and collision modes
+  - `computeNonbondBruteForceKernelStyle(...)` — O(N²) reference for parity checking
+  - Verified parity: exact match (machine precision) with margin ≥ max VdW diameter
+
+- **`scripts/debug_nanocrystal_nonbond_groups.mjs`** — CLI for parity testing and collision pair export
+
+**Physics:** The collision potential splits the interaction into a harmonic region (`r < R_cut`, linear constraint for PD solver) and a smoothing region (`R_cut < r < R_cut2`, external force), matching the design in `ToDo_FastCollision_3.md`. Parameters derived from VdW: `R_min = Ri + Rj`, `E_min` from `EvdW` mixing.
+
+### Topology Export Pipeline
+
+- **`web/common_js/nanocrystalTopology.js`** — Orchestrates topology building: loads mol2 + xyz, builds MMFFL topology, constructs collision workgroups + exclusions, writes enriched NPZ with group arrays
+- **`web/molgui_webgpu/LinearizedTopologyNpz.js`** — Packs typed arrays into numpy `.npz` format
+
+### Visualization
+
+- **`web/common_js/nanocrystalViewer.html`** — p5.js WEBGL viewer with workgroup coloring, AABB rendering, and collision pair visualization (intra-group green, inter-group orange)
+
 ---
 
 ## 4. Status and Recommendations
@@ -152,4 +180,4 @@ Key parity checkpoints:
 
 ---
 
-*Last updated: 2026-06-13*
+*Last updated: 2026-06-20*

@@ -5,10 +5,9 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { molToCrystalArrays, writeCrystalNpz, crystalToXYZ, readXyzPositions, crystalToJson, writeCrystalJson } from '../web/common_js/npzIO.js';
+import { molToCrystalArrays, writeCrystalNpz, crystalToXYZ, readXyzPositions, crystalToJson, writeCrystalJson, readNpzFile } from '../web/common_js/npzIO.js';
 import { exportCrystalCompareSvgViews, atlasIndexHtml } from '../web/common_js/nanocrystalSvg.js';
 import { buildTopologyNpz, loadMMParamsFromDir, loadMolFromMol2, bondsForVisualization, getCrystalBondsFromFiles } from '../web/common_js/nanocrystalTopology.js';
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '..');
 
@@ -200,6 +199,31 @@ function writeCrystalViewerJson(plotDir, { id, label, posInit, Zinit, bondsInit,
     writeCrystalJson(fs, path.join(plotDir, 'crystal_relaxed.json'), crystalToJson({ id, label, stage: 'relaxed', pos: posRel, Z: Zinit, bonds_ij: bondsRel }));
 }
 
+function enrichViewerJsonWithTopology(plotDir, topoNpzPath) {
+    if (!fs.existsSync(topoNpzPath)) return;
+    const { arrays } = readNpzFile(fs, topoNpzPath);
+    const icolGroup = arrays.icolGroup;
+    const bboxMin = arrays.group_bbox_min;
+    const bboxMax = arrays.group_bbox_max;
+    if (!icolGroup) throw new Error(`enrichViewerJsonWithTopology: missing icolGroup in ${topoNpzPath}`);
+    if (!bboxMin || !bboxMax) throw new Error(`enrichViewerJsonWithTopology: missing group_bbox_min/max in ${topoNpzPath}`);
+    for (const name of ['crystal_init.json', 'crystal_relaxed.json']) {
+        const p = path.join(plotDir, name);
+        if (!fs.existsSync(p)) continue;
+        const obj = JSON.parse(fs.readFileSync(p, 'utf8'));
+        const pos = Float64Array.from(obj.pos);
+        const Z = Int32Array.from(obj.Z);
+        const bonds = obj.bonds_ij ? Int32Array.from(obj.bonds_ij) : null;
+        const extra = {
+            icolGroup: Array.from(icolGroup),
+            group_bbox_min: Array.from(bboxMin),
+            group_bbox_max: Array.from(bboxMax),
+        };
+        const upd = crystalToJson({ id: obj.id, label: obj.label, stage: obj.stage, pos, Z, bonds_ij: bonds, extra });
+        writeCrystalJson(fs, p, upd);
+    }
+}
+
 function installViewer(outDir, crystals, title = 'Nanocrystal viewer') {
     const manifest = { title, crystals };
     fs.writeFileSync(path.join(outDir, 'viewer_manifest.json'), JSON.stringify(manifest, null, 2));
@@ -369,10 +393,14 @@ async function processCrystal(index, cfg, paths, stageTimings, manifestPath, doD
 
     if (!stageExists(p03) || paths.force) {
         const t0 = performance.now();
-        buildTopologyNpz({ mol2Path: pInitMol2, relaxedXyzPath: pRelaxedXyz, outNpzPath: p03 });
+        buildTopologyNpz({ mol2Path: pInitMol2, relaxedXyzPath: pRelaxedXyz, outNpzPath: p03, groupCap: cfg.group_cap ?? 32 });
         const timing_ms = performance.now() - t0;
         stageTimings.topology.push(timing_ms);
         appendManifest(manifestPath, { crystal_id: id, stage: 'topology', timing_ms, status: 'ok' });
+    }
+
+    if (doDebug && stageExists(p03)) {
+        enrichViewerJsonWithTopology(plotDir, p03);
     }
 
     if (!stageExists(p04) || paths.force) {

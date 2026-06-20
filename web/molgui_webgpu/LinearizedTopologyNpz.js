@@ -2,7 +2,7 @@
 import { writeNpzCompressed } from '../common_js/npzIO.js';
 
 /// Typed arrays ready for encodeNpzCompressed. Keeps packing buffers by reference where possible.
-export function buildTopologyNpzArrays(topo, packing, mol, meta = {}) {
+export function buildTopologyNpzArrays(topo, packing, mol, meta = {}, extra = null) {
     const n = packing.nAtoms | 0;
     const m = packing.maxNeighbors | 0;
     if (!(n > 0) || !(m > 0)) throw new Error(`buildTopologyNpzArrays: invalid n=${n} m=${m}`);
@@ -46,13 +46,23 @@ export function buildTopologyNpzArrays(topo, packing, mol, meta = {}) {
     const n_bond = new Int32Array([meta.n_bond | 0]);
     const n_angle = new Int32Array([meta.n_angle | 0]);
     const n_dihedral = new Int32Array([meta.n_dihedral | 0]);
-    return {
+    const out = {
         pos, Z, neigh_idx, neigh_count, bond_l0, bond_k, KLs, stick_class,
         natoms, max_neighbors, n_bond, n_angle, n_dihedral,
     };
+
+    if (extra) {
+        for (const [k, v] of Object.entries(extra)) {
+            if (out[k] !== undefined) throw new Error(`buildTopologyNpzArrays: extra key collides with base array '${k}'`);
+            if (!(v && v.buffer instanceof ArrayBuffer)) throw new Error(`buildTopologyNpzArrays: extra['${k}'] is not a typed array`);
+            out[k] = v;
+        }
+    }
+
+    return out;
 }
 
-export function writeTopologyNpzFile(fs, outPath, topo, packing, mol, meta = {}) {
-    const arrays = buildTopologyNpzArrays(topo, packing, mol, meta);
+export function writeTopologyNpzFile(fs, outPath, topo, packing, mol, meta = {}, extra = null) {
+    const arrays = buildTopologyNpzArrays(topo, packing, mol, meta, extra);
     writeNpzCompressed(outPath, arrays, fs);
 }
