@@ -1,3 +1,38 @@
+
+## Core Principles
+
+- **KISS** (Keep It Simple), Simplest solution that works. One-liner > ten-liner.
+- **AHA** (Avoid Hasty Abstractions), avoid boilerplate
+- **YAGNI** - **Surgical Edits** — Touch only what's needed. No unrelated cleanup. Comment out, don't delete. Ask if ambiguous.
+- **DRY** - Inventory existing code first. Generalize rather than duplicate. SSOT: Fortran is the reference.
+- **SoC** (Separation of Concerns), separate module for Compute, plotting, Backend, CLI, GUI. Thin test scripts call general workhorse function from shared modules.
+- **TDD** — Define verification before coding. Parity checks vs reference/analytical/physical invariants. Run tests after every change. See `numerical-parity/SKILL.md`.
+- **Fail Fast** — No silent fallbacks (try-catch). Crashes with stack traces > masked bugs. Look for root cause, not symptoms.
+- **Performance** — preallocate, minimize python orchestration;  to C/C++/OpenCL kernels. Data-oriented-desing: Flat arrays, cache-aware. See `port-to-opencl/SKILL.md`.
+
+## Style
+
+- Compact code, unlimited line lengh (function call must be one line).  Short names for math symbols (`E_tot`, `T_ij`).
+- `printf` for C++ debug. `///` for Doxygen. Inline comments for intent, and context which is not the obvious.
+
+## Navigation
+
+- **Repo structure & build** → `CODEMAP.md`
+- **DOX tree** → `DOX_AGENTS.md` (hierarchical [AGENTS.md](cci:7://file:///home/prokop/git/FireCore/AGENTS.md:0:0-0:0) per folder; read nearest + all parents before editing)
+- **Topic map** → `doc/topical_audit/topical_audit.md`
+- **Shared resources** → `cpp/common_resources/AGENTS.md`
+- **Debug guidelines** → `general-debug-guidelines.md`
+- **Skills** → `numerical-parity`, `visual-debugging`, `gpu-debugging`, `forcefield-validation`, `port-to-opencl`
+
+## Topical Audit
+
+- **Force Fields** — `forcefields_overview.md` | `intramolecular_forcefields.md` | `nonbonding_forcefields.md` | `surface_interactions.md` | `RigidSurfPotential_GridFF.md` | `forcefields_web_implementation.md`
+- **Molecular Topology** — `molecular_topology.md` | `molecular_topology_types.md` | `molecular_topology_editors.md`
+
+
+
+---
+
 ---
 trigger: always_on
 ---

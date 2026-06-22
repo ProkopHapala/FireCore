@@ -502,6 +502,48 @@ function _removeAtomsFromParsed(parsed, toRemoveSet) {
     return { pos, types, bonds, lvec: parsed.lvec, oldToNew };
 }
 
+/// Distance between two atoms (using pos.dist2).
+export function atomDist(a, b) { return Math.sqrt(a.pos.dist2(b.pos)); }
+
+/// Angle in degrees at atom oa between ob and oc.
+export function atomAngleDeg(oa, ob, oc) {
+    const u = new Vec3().setV(ob.pos).sub(oa.pos);
+    const v = new Vec3().setV(oc.pos).sub(oa.pos);
+    const nu = u.norm(), nv = v.norm();
+    if (!(nu > 1e-12 && nv > 1e-12)) return NaN;
+    const c = u.dot(v) / (nu * nv);
+    return Math.acos(Math.max(-1, Math.min(1, c))) * (180 / Math.PI);
+}
+
+/// Get neighbor atom indices for atom ia (via bond list).
+export function neighborIndices(mol, ia) {
+    const out = [];
+    const a = mol.atoms[ia];
+    if (!a) return out;
+    for (const ib of a.bonds) {
+        const b = mol.bonds[ib | 0];
+        if (!b) continue;
+        b.ensureIndices(mol);
+        const jb = b.other(ia);
+        if (jb >= 0) out.push(jb);
+    }
+    return out;
+}
+
+/// Set of bonded pairs as "lo-hi" strings.
+export function bondedPairSet(mol) {
+    const s = new Set();
+    for (const b of mol.bonds) {
+        if (!b) continue;
+        b.ensureIndices(mol);
+        const ia = b.a | 0, ib = b.b | 0;
+        if (ia < 0 || ib < 0) continue;
+        const lo = Math.min(ia, ib), hi = Math.max(ia, ib);
+        s.add(`${lo}-${hi}`);
+    }
+    return s;
+}
+
 /// Install utility helpers onto EditableMolecule (polymer/attach/replicate).
 export function installMoleculeUtilsMethods(cls = EditableMolecule) {
     console.log('[installMoleculeUtilsMethods] installing on', cls && cls.name);

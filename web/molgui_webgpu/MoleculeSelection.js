@@ -169,6 +169,57 @@ export function selectBridgeCandidates(mol, opts = {}) {
     return mol.selection.size;
 }
 
+/// Find first bridge atom (heavy atom with exactly 2 heavy + 2 H neighbors). Returns atom id or null.
+export function findBridgeAtom(mol) {
+    for (let i = 0; i < mol.atoms.length; i++) {
+        const a = mol.atoms[i];
+        if (a.Z === 1) continue;
+        let nHeavy = 0, nH = 0;
+        for (const ib of a.bonds) {
+            const b = mol.bonds[ib];
+            if (!b) continue;
+            b.ensureIndices(mol);
+            const j = b.other(i);
+            if (j < 0) continue;
+            if (mol.atoms[j].Z === 1) nH++; else nHeavy++;
+        }
+        if (nHeavy === 2 && nH === 2) return a.id;
+    }
+    return null;
+}
+
+/// Find a heavy-heavy bond where both atoms have ≥2 heavy neighbors (suitable for bridge insertion).
+/// Returns { aId, bId } or null.
+export function findBondPairForInsert(mol) {
+    for (let i = 0; i < mol.atoms.length; i++) {
+        const a = mol.atoms[i];
+        if (a.Z === 1) continue;
+        let aHeavy = 0;
+        for (const ib of a.bonds) {
+            const b = mol.bonds[ib]; if (!b) continue;
+            b.ensureIndices(mol);
+            const k = b.other(i);
+            if (k >= 0 && mol.atoms[k].Z > 1) aHeavy++;
+        }
+        if (aHeavy < 2) continue;
+        for (const ib of a.bonds) {
+            const b = mol.bonds[ib]; if (!b) continue;
+            b.ensureIndices(mol);
+            const j = b.other(i);
+            if (j < 0 || mol.atoms[j].Z === 1) continue;
+            let jHeavy = 0;
+            for (const jb2 of mol.atoms[j].bonds) {
+                const b2 = mol.bonds[jb2]; if (!b2) continue;
+                b2.ensureIndices(mol);
+                const k = b2.other(j);
+                if (k >= 0 && mol.atoms[k].Z > 1) jHeavy++;
+            }
+            if (jHeavy >= 2) return { aId: mol.atoms[i].id, bId: mol.atoms[j].id };
+        }
+    }
+    return null;
+}
+
 /// Install helper onto EditableMolecule prototype.
 export function installSelectBridgeCandidates(cls = EditableMolecule) {
     cls.prototype.selectBridgeCandidates = function (opts = {}) {

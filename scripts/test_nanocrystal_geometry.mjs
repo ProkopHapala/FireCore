@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/// @deprecated Use `node scripts/nanocrystals.mjs audit` instead. This script is kept for backward compatibility.
 /** Geometry audit for Si/C nanocrystal passivation (headless Node). Writes geometry_report.json. */
 import fs from 'node:fs';
 import path from 'node:path';

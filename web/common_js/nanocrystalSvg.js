@@ -1,3 +1,7 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { molToCrystalArrays, crystalToJson, writeCrystalJson, readNpzFile } from './npzIO.js';
+
 /// Orthographic SVG export for nanocrystal debug views (Cartesian-aligned projections).
 const Z_COLOR = { 1: '#ffffff', 6: '#404040', 7: '#3050f8', 8: '#ff0d0d', 14: '#daa520' };
 const Z_R = { 1: 0.35, 6: 0.77, 7: 0.74, 8: 0.73, 14: 1.11 };
@@ -46,14 +50,34 @@ function bboxSpan(b) {
     return { spanX: Math.max(b.xmax - b.xmin, 1e-6), spanY: Math.max(b.ymax - b.ymin, 1e-6), cx: 0.5 * (b.xmin + b.xmax), cy: 0.5 * (b.ymin + b.ymax) };
 }
 
-function buildLayerSvg(pts, Z, bonds_ij, n, toX, toY, s, bondStroke = '#666') {
+/// Ring size → color for visualization. 6=normal (gray), 5=red, 7=blue, others=purple.
+const RING_COLOR = { 3: '#ff00ff', 4: '#ff6600', 5: '#ff0000', 6: '#888888', 7: '#0000ff', 8: '#9900cc' };
+
+function buildLayerSvg(pts, Z, bonds_ij, n, toX, toY, s, bondStroke = '#666', ringOfBond = null, rings = null) {
     const bondLines = [];
     if (bonds_ij) {
         const nb = bonds_ij.length / 2;
         for (let k = 0; k < nb; k++) {
             const a = bonds_ij[k * 2] | 0, b = bonds_ij[k * 2 + 1] | 0;
             if (a < 0 || b < 0 || a >= n || b >= n) continue;
-            bondLines.push(`<line x1="${toX(pts[a].vx).toFixed(2)}" y1="${toY(pts[a].vy).toFixed(2)}" x2="${toX(pts[b].vx).toFixed(2)}" y2="${toY(pts[b].vy).toFixed(2)}" stroke="${bondStroke}" stroke-width="1.2"/>`);
+            let stroke = bondStroke;
+            let sw = 1.2;
+            if (ringOfBond && rings) {
+                const bk = a < b ? `${a},${b}` : `${b},${a}`;
+                const ringIds = ringOfBond.get(bk);
+                if (ringIds && ringIds.length > 0) {
+                    // Pick smallest non-6 ring, or 6 if only 6-rings
+                    let bestSize = 99, bestColor = bondStroke;
+                    for (let ri = 0; ri < ringIds.length; ri++) {
+                        const sz = rings[ringIds[ri]].length;
+                        if (sz !== 6 && sz < bestSize) { bestSize = sz; bestColor = RING_COLOR[sz] || '#ff00ff'; }
+                    }
+                    if (bestSize === 99) { bestSize = 6; bestColor = RING_COLOR[6]; }
+                    stroke = bestColor;
+                    sw = bestSize === 6 ? 1.0 : 2.5;
+                }
+            }
+            bondLines.push(`<line x1="${toX(pts[a].vx).toFixed(2)}" y1="${toY(pts[a].vy).toFixed(2)}" x2="${toX(pts[b].vx).toFixed(2)}" y2="${toY(pts[b].vy).toFixed(2)}" stroke="${stroke}" stroke-width="${sw}"/>`);
         }
     }
     const sorted = [...pts].sort((a, b) => (Z[a.i] !== Z[b.i] ? Z[a.i] - Z[b.i] : a.vy - b.vy));
@@ -66,7 +90,7 @@ function buildLayerSvg(pts, Z, bonds_ij, n, toX, toY, s, bondStroke = '#666') {
     return { bondLines, circles };
 }
 
-export function exportCrystalSvg({ pos, Z, bonds_ij = null, width = 520, height = 520, view = '111', R_view = null, title = '', marginFrac = 0.14 }) {
+export function exportCrystalSvg({ pos, Z, bonds_ij = null, width = 520, height = 520, view = '111', R_view = null, title = '', marginFrac = 0.14, ringOfBond = null, rings = null }) {
     const R = R_view || viewMatrixNamed(view);
     const viewLabel = (CRYSTAL_VIEWS[view] || CRYSTAL_VIEWS['111']).label;
     const { pts, xmin, xmax, ymin, ymax, n } = projectCrystal(pos, Z, bonds_ij, R);
@@ -78,14 +102,15 @@ export function exportCrystalSvg({ pos, Z, bonds_ij = null, width = 520, height 
     const s = Math.min(plotW / (spanX + 2 * padX), plotH / (spanY + 2 * padY));
     const toX = (x) => width / 2 + (x - cx) * s;
     const toY = (y) => titleH + plotH / 2 - (y - cy) * s;
-    const { bondLines, circles } = buildLayerSvg(pts, Z, bonds_ij, n, toX, toY, s);
+    const { bondLines, circles } = buildLayerSvg(pts, Z, bonds_ij, n, toX, toY, s, '#666', ringOfBond, rings);
     const ttl = title ? `<text x="${marginPx}" y="16" font-family="sans-serif" font-size="14" fill="#222">${escapeXml(title)} [${viewLabel}]</text>` : '';
+    const legend = ringOfBond ? `\n  <text x="${marginPx}" y="${height - 6}" font-family="sans-serif" font-size="10" fill="#666">5-ring <tspan fill="#ff0000">━</tspan>  6-ring <tspan fill="#888888">━</tspan>  7-ring <tspan fill="#0000ff">━</tspan></text>` : '';
     return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <rect width="100%" height="100%" fill="#f8f8f8"/>
   ${ttl}
   ${bondLines.join('\n  ')}
-  ${circles.join('\n  ')}
+  ${circles.join('\n  ')}${legend}
 </svg>`;
 }
 
@@ -147,6 +172,19 @@ export function exportCrystalSvgViews({ pos, Z, bonds_ij, views = ['111', '100',
     return out;
 }
 
+/// Build { pos, Z, bonds_ij } from mol for SVG export, skipping H-H bonds.
+export function bondsForSvgMol(mol) {
+    const { pos, Z, bonds_ij } = molToCrystalArrays(mol);
+    const out = [];
+    const nb = bonds_ij.length / 2;
+    for (let k = 0; k < nb; k++) {
+        const a = bonds_ij[k * 2] | 0, b = bonds_ij[k * 2 + 1] | 0;
+        if (Z[a] === 1 && Z[b] === 1) continue;
+        out.push(a, b);
+    }
+    return { pos, Z, bonds_ij: Int32Array.from(out) };
+}
+
 /// HTML table row for shape atlas (embeds compare SVG via relative path).
 export function atlasTableRow({ id, label, genParams, svgRel, natoms }) {
     const params = escapeXml(JSON.stringify(genParams, null, 0));
@@ -161,4 +199,65 @@ export function atlasIndexHtml(rows, title = 'Nanocrystal shape atlas') {
 <p><a href="viewer.html"><b>Interactive 3D viewer</b></a> (init vs relaxed, drag to rotate)</p>
 <table><tr><th>Shape</th><th>Preview [111]</th><th>Atoms</th><th>gen_params</th></tr>
 ${body}</table></body></html>`;
+}
+
+// ============================================================================
+// Viewer / debug output helpers (moved from run_nanocrystal_ensemble.mjs)
+// ============================================================================
+
+export function writeCrystalCompareSvgs(plotDir, { posInit, Zinit, bondsInit, posRel, bondsRel, title, views }) {
+    fs.mkdirSync(plotDir, { recursive: true });
+    const svgs = exportCrystalCompareSvgViews({ posA: posInit, ZA: Zinit, bondsA: bondsInit, posB: posRel, ZB: Zinit, bondsB: bondsRel, views, title });
+    for (const [view, svg] of Object.entries(svgs)) {
+        const suffix = views.length === 1 ? '' : `_${view}`;
+        fs.writeFileSync(path.join(plotDir, `compare${suffix}.svg`), svg);
+    }
+}
+
+export function writeCrystalViewerJson(plotDir, { id, label, posInit, Zinit, bondsInit, posRel, bondsRel }) {
+    fs.mkdirSync(plotDir, { recursive: true });
+    writeCrystalJson(fs, path.join(plotDir, 'crystal_init.json'), crystalToJson({ id, label, stage: 'init', pos: posInit, Z: Zinit, bonds_ij: bondsInit }));
+    writeCrystalJson(fs, path.join(plotDir, 'crystal_relaxed.json'), crystalToJson({ id, label, stage: 'relaxed', pos: posRel, Z: Zinit, bonds_ij: bondsRel }));
+}
+
+export function enrichViewerJsonWithTopology(plotDir, topoNpzPath) {
+    if (!fs.existsSync(topoNpzPath)) return;
+    const { arrays } = readNpzFile(fs, topoNpzPath);
+    const icolGroup = arrays.icolGroup;
+    const bboxMin = arrays.group_bbox_min;
+    const bboxMax = arrays.group_bbox_max;
+    if (!icolGroup) throw new Error(`enrichViewerJsonWithTopology: missing icolGroup in ${topoNpzPath}`);
+    if (!bboxMin || !bboxMax) throw new Error(`enrichViewerJsonWithTopology: missing group_bbox_min/max in ${topoNpzPath}`);
+    for (const name of ['crystal_init.json', 'crystal_relaxed.json']) {
+        const p = path.join(plotDir, name);
+        if (!fs.existsSync(p)) continue;
+        const obj = JSON.parse(fs.readFileSync(p, 'utf8'));
+        const pos = Float64Array.from(obj.pos);
+        const Z = Int32Array.from(obj.Z);
+        const bonds = obj.bonds_ij ? Int32Array.from(obj.bonds_ij) : null;
+        const extra = {
+            icolGroup: Array.from(icolGroup),
+            group_bbox_min: Array.from(bboxMin),
+            group_bbox_max: Array.from(bboxMax),
+        };
+        const upd = crystalToJson({ id: obj.id, label: obj.label, stage: obj.stage, pos, Z, bonds_ij: bonds, extra });
+        writeCrystalJson(fs, p, upd);
+    }
+}
+
+export function installViewer(outDir, crystals, viewerTemplatePath, title = 'Nanocrystal viewer') {
+    const manifest = { title, crystals };
+    fs.writeFileSync(path.join(outDir, 'viewer_manifest.json'), JSON.stringify(manifest, null, 2));
+    const embedded = {
+        title,
+        crystals: crystals.map(c => ({
+            id: c.id,
+            label: c.label,
+            init: JSON.parse(fs.readFileSync(path.join(outDir, c.init), 'utf8')),
+            relaxed: c.relaxed ? JSON.parse(fs.readFileSync(path.join(outDir, c.relaxed), 'utf8')) : null,
+        })),
+    };
+    const tpl = fs.readFileSync(viewerTemplatePath, 'utf8');
+    const html = tpl.replace('/*__NC_VIEWER_DATA__*/null', JSON.stringify(embedded));
+    fs.writeFileSync(path.join(outDir, 'viewer.html'), html);
 }

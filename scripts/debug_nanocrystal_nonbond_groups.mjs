@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/// @deprecated Use `node scripts/nanocrystals.mjs nonbond` instead. This script is kept for backward compatibility.
 import fs from 'node:fs';
 import path from 'node:path';
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/// @deprecated Use `node scripts/nanocrystals.mjs ensemble` instead. This script is kept for backward compatibility.
 /// Nanocrystal ensemble pipeline — single entrypoint (JS generate/topology + Python MMFF/eigh).
 import fs from 'node:fs';
 import path from 'node:path';

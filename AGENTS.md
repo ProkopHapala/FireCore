@@ -23,13 +23,10 @@ We develop rigorous scientific software where debuggability, numerical correctne
 
 ## Rule 3 — Reusable Architecture
 
-- **Inventory First:** Thoroughly review reference source-code files to identify existing functions, modules, and data structures before writing anything from scratch. use hierarchical DOX system with `AGENTS.md` in each folder.
-- **Composability Over Bloat:** Build integrated systems, not isolated scripts. Refactor into reusable functions in shared modules.
-- **Separation of Concerns:**
-   - Separate compute algorithms from plotting/diagnostics (no plotting in core libraries).
-   - Separate GUI, CLI test scripts, and backend modules. Test scripts are thin wrappers that call functions from shared backend modules.
-   - Consolidate related test scripts into one with CLI routing parameters for different execution paths.
-- **Generalization Over Duplication:** Try to generalize an existing function if it almost fits your needs. If generalization requires risky major changes that threaten backward compatibility, **stop and report it immediately for approval.**
+- **Inventory First:** Before writing new functionality, search the codebase for existing implementations. Use existing or generalize — do not duplicate. See `reusable-architecture/SKILL.md`.
+- **Modules vs Scripts:** Reusable logic lives ONLY in shared modules (`export function`). Scripts are thin wrappers (imports + glue + orchestration). No complex functions in scripts. See `reusable-architecture/SKILL.md`.
+- **Separation of Concerns:** Separate compute from plotting (no plotting in core libraries). Separate GUI, CLI, and backend. Test scripts call shared modules, never reimplement them.
+- **Generalization Over Duplication:** Generalize existing functions when similar. If risky, **stop and report for approval.**
 
 ## Rule 4 — Test-Driven Development & Validation
 

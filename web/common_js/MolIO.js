@@ -34,6 +34,24 @@ export function loadMolFromMol2(mol2Path, mm) {
     return mol;
 }
 
+/// Load molecule from .mol2 or .xyz file (recalculates bonds for xyz).
+export function loadMol(inputPath, mm) {
+    const ext = path.extname(inputPath).toLowerCase();
+    const text = fs.readFileSync(inputPath, 'utf8');
+    const mol = new EditableMolecule();
+    mol.clear();
+    if (ext === '.mol2') {
+        mol.appendParsedSystem(EditableMolecule.parseMol2(text));
+    } else if (ext === '.xyz') {
+        mol.appendParsedSystem(EditableMolecule.parseXYZ(text));
+        mol.recalculateBonds(mm);
+    } else {
+        throw new Error(`loadMol: unsupported extension '${ext}' (use .mol2 or .xyz)`);
+    }
+    if (!mol.bonds || mol.bonds.length === 0) mol.recalculateBonds(mm);
+    return mol;
+}
+
 export function applyPositions(mol, pos) {
     const n = mol.atoms.length;
     if (pos.length < n * 3) throw new Error(`applyPositions: pos length ${pos.length} < ${n * 3}`);

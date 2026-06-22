@@ -1,10 +1,13 @@
 /// Build topology NPZ from mol2 + relaxed xyz: MMFFL topology + collision workgroups + exclusions.
 import fs from 'node:fs';
-import { buildMMFFLTopology, packLinearTopologyForGPU } from '../molgui_webgpu/MMFFLTopology.js';
+import path from 'node:path';
+import { buildMMFFLTopology, packLinearTopologyForGPU, enumerateGraphDistances, exportTopologySpringList } from '../molgui_webgpu/MMFFLTopology.js';
 import { writeTopologyNpzFile } from '../molgui_webgpu/LinearizedTopologyNpz.js';
+import { exportStickViewerHTML, exportStickViewerNpzLoaderHTML } from '../molgui_webgpu/LinearizedTopologyViewer.js';
 import { buildCollisionWorkgroups, buildExclIcol_1_2_3 } from './CollisionWorkgroups.js';
 import { readXyzPositions } from './npzIO.js';
-import { loadMMParamsFromDir, loadMolFromMol2, applyPositions } from './MolIO.js';
+import { loadMMParamsFromDir, loadMolFromMol2, loadMol, applyPositions } from './MolIO.js';
+import { Z_TO_SYMBOL } from '../molgui_webgpu/MoleculeIO.js';
 
 export function buildTopologyNpz({ mol2Path, relaxedXyzPath, outNpzPath, mm = null, maxNeighbors = 48, addAngle = false, addDihedral = false, groupCap = 32 }) {
     const mmParams = mm || loadMMParamsFromDir();
@@ -73,4 +76,109 @@ export function buildTopologyNpz({ mol2Path, relaxedXyzPath, outNpzPath, mm = nu
     };
     writeTopologyNpzFile(fs, outNpzPath, topo, packing, mol, meta, extra);
     return { natoms: topo.n_real | 0, meta, packing };
+}
+
+/// Build primary adjacency list from mol bonds with bond params (l0, K).
+export function buildPrimaryAdj(mol, mm, typeNames) {
+    const n = mol.atoms.length;
+    const adj = new Array(n);
+    for (let i = 0; i < n; i++) adj[i] = [];
+    for (let i = 0; i < mol.bonds.length; i++) {
+        const b = mol.bonds[i];
+        b.ensureIndices(mol);
+        const a = b.a | 0, c = b.b | 0;
+        const bp = mm.getBondParams(typeNames[a], typeNames[c]);
+        const l0 = +bp.l0, K = +bp.k;
+        adj[a].push([c, l0, K]);
+        adj[c].push([a, l0, K]);
+    }
+    return adj;
+}
+
+/// Validate that spring graph distances match expected (1-2=1, 1-3=2, 1-4=3).
+export function validateSpringGraphDistances(topo, bondsAdj1) {
+    const gdist = enumerateGraphDistances(bondsAdj1, 6);
+    const pairDist = (a, b) => {
+        const n = bondsAdj1.length;
+        const dist = new Int32Array(n);
+        dist.fill(-1);
+        const q = [a | 0];
+        dist[a] = 0;
+        let qi = 0;
+        while (qi < q.length) {
+            const u = q[qi++];
+            const du = dist[u] | 0;
+            for (const nb of bondsAdj1[u] || []) {
+                const v = nb[0] | 0;
+                if (dist[v] >= 0) continue;
+                dist[v] = du + 1;
+                q.push(v);
+            }
+        }
+        return dist[b | 0] | 0;
+    };
+    const errors = [];
+    for (let k = 0; k < topo.bonds_primary.length; k++) {
+        const e = topo.bonds_primary[k];
+        const d = pairDist(e[0], e[1]);
+        if (d !== 1) errors.push(`bond (${e[0]},${e[1]}) graph_dist=${d} expected 1`);
+    }
+    for (const e of topo.bonds_angle) {
+        const d = pairDist(e[0], e[1]);
+        if (d !== 2) errors.push(`angle spring (${e[0]},${e[1]}) graph_dist=${d} expected 2`);
+    }
+    for (const e of topo.bonds_dihedral) {
+        const d = pairDist(e[0], e[1]);
+        if (d !== 3) errors.push(`dihedral spring (${e[0]},${e[1]}) graph_dist=${d} expected 3 (MMFF 1-4)`);
+    }
+    return { gdist, errors };
+}
+
+/// Build full topology with validation, viewer export, and NPZ output (unified from build_linearized_topology.mjs).
+export async function buildTopologyFull({ inputPath, outDir, mm = null, addAngle = true, addDihedral = true, K12 = 0, K13 = 0, K14 = 0, maxNeighbors = 48, graphDist = true, exportNpz = true, exportJson = false, htmlViewer = true, npzViewer = true }) {
+    const mmParams = mm || loadMMParamsFromDir();
+    const mol = loadMol(inputPath, mmParams);
+    const topoOpts = { type_source: 'table', add_angle: addAngle, add_dihedral: addDihedral, add_pi: false, add_epair: false, K12, K13, K14 };
+    const topo = buildMMFFLTopology(mol, mmParams, topoOpts);
+    const nBond = topo.bonds_primary.length | 0;
+    const nAng = topo.bonds_angle.length | 0;
+    const nDih = (topo.bonds_dihedral ? topo.bonds_dihedral.length : 0) | 0;
+    const typeNames = [];
+    for (let i = 0; i < topo.n_real; i++) typeNames[i] = mmParams.resolveTypeNameTable(Z_TO_SYMBOL[mol.atoms[i].Z] || 'X');
+    const bondsAdj1 = buildPrimaryAdj(mol, mmParams, typeNames);
+    let graphReport = null;
+    if (graphDist) {
+        const { gdist, errors } = validateSpringGraphDistances(topo, bondsAdj1);
+        graphReport = { hist_undirected_pairs: gdist.hist, per_atom_max_dist: Array.from(gdist.perAtomMax), validation_errors: errors };
+        if (errors.length > 0) throw new Error(`graph distance validation failed (${errors.length} errors)`);
+    }
+    const packing = packLinearTopologyForGPU(topo, { maxNeighbors });
+    const base = path.basename(inputPath, path.extname(inputPath));
+    const meta = { source: inputPath, n_bond: nBond, n_angle: nAng, n_dihedral: nDih };
+    const results = { topo, packing, mol, meta, graphReport, base, nBond, nAng, nDih };
+    if (exportNpz) {
+        const npzPath = path.join(outDir, `${base}_topology.npz`);
+        writeTopologyNpzFile(fs, npzPath, topo, packing, mol, meta);
+        results.npzPath = npzPath;
+    }
+    if (exportJson) {
+        const springs = exportTopologySpringList(topo);
+        const topoJson = { meta: { ...meta, natoms: topo.n_real | 0, K12_override: K12, K13_override: K13, K14_override: K14, max_neighbors_required: packing.maxDegree, max_neighbors_budget: maxNeighbors, graph_dist: graphReport }, springs };
+        const jsonPath = path.join(outDir, `${base}_topology.json`);
+        fs.writeFileSync(jsonPath, JSON.stringify(topoJson, null, 2));
+        results.jsonPath = jsonPath;
+    }
+    if (htmlViewer) {
+        const html = exportStickViewerHTML(topo, `${base} MMFFL`);
+        const htmlPath = path.join(outDir, `${base}_debug_viewer.html`);
+        fs.writeFileSync(htmlPath, html);
+        results.htmlPath = htmlPath;
+    }
+    if (npzViewer) {
+        const npzHtml = exportStickViewerNpzLoaderHTML(`${base} MMFFL`, base);
+        const npzHtmlPath = path.join(outDir, `${base}_npz_viewer.html`);
+        fs.writeFileSync(npzHtmlPath, npzHtml);
+        results.npzHtmlPath = npzHtmlPath;
+    }
+    return results;
 }

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/// @deprecated Use `node scripts/nanocrystals.mjs topology` instead. This script is kept for backward compatibility.
 /// Headless MMFFL linearized topology builder (K12/K13/K14). Job 2: Linearized_topology.progress.md
 import fs from 'node:fs';
 import path from 'node:path';

@@ -34,8 +34,8 @@ do not program yet
 
 | Layer | Status | Key artifacts |
 |-------|--------|---------------|
-| **Generation** | Done (M-G0–G2) | `scripts/gen_nanocrystals.mjs`, `pyBall/nanocrystal_gen.py`, G0–G5 harness, bridge/cap knobs |
-| **Linearized topology** | Done (M-L0–L5) | `scripts/build_linearized_topology.mjs` → `*_topology.npz` (K₁₂/K₁₃/K₁₄ packed) |
+| **Generation** | Done (M-G0–G2) | `scripts/nanocrystals.mjs generate` (consolidated), `pyBall/nanocrystal_gen.py`, G0–G5 harness, bridge/cap knobs |
+| **Linearized topology** | Done (M-L0–L5) | `scripts/nanocrystals.mjs topology` (consolidated) → `*_topology.npz` (K₁₂/K₁₃/K₁₄ packed) |
 | **MMFF relax + Hessian** | Working | `MMFF.run()`, `getHessian3Nx3N`, `getHessianSparseBlocks` |
 | **Dense vibration** | Working | `FTIR.project_rigid_modes`, `FTIR.vibration_spectrum_from_modes`, `test_vibration_spectra.py` |
 | **Fixtures/bootstrap** | Working | `tests/tSiNCs/bootstrap_vibration_parallel_fixtures.py`, benchmark NPZ guide |
@@ -52,7 +52,7 @@ flowchart TB
     end
 
     subgraph gen [Generation]
-        G[gen_nanocrystals.mjs / py] --> INIT[init crystal]
+        G[nanocrystals.mjs generate / py] --> INIT[init crystal]
     end
 
     subgraph relax [Relaxation]
@@ -293,29 +293,42 @@ Reuse conventions from `plotUtils.export_pov` (camera as `look_at`, `camera_up`,
 
 ## 7. Orchestration: new components vs reuse
 
-### Reuse (no changes needed for v1)
+### Reuse (consolidated into unified CLI — 2026-06-22)
 
-| Component | Role |
-|-----------|------|
-| `gen_nanocrystals.mjs` | Structure generation |
-| `build_linearized_topology.mjs` | Topology NPZ (Path B) |
-| `MMFF.init/run/getHessian3Nx3N` | Relax + Hessian (Path A) |
-| `FTIR.project_rigid_modes`, `get_mass_matrix` | Standard vibration prep |
-| `np.linalg.eigh` | Mode frequencies |
-| `bootstrap_vibration_parallel_fixtures.py` | Pattern for artifact generation |
+| Component | Role | Consolidated into |
+|-----------|------|-------------------|
+| `gen_nanocrystals.mjs` | Structure generation | `scripts/nanocrystals.mjs generate` (deprecated) |
+| `run_nanocrystal_ensemble.mjs` | Ensemble orchestration | `scripts/nanocrystals.mjs ensemble` (deprecated) |
+| `build_linearized_topology.mjs` | Topology NPZ | `scripts/nanocrystals.mjs topology` (deprecated) |
+| `test_nanocrystal_geometry.mjs` | Geometry audit | `scripts/nanocrystals.mjs audit` (deprecated) |
+| `debug_nanocrystal_nonbond_groups.mjs` | Nonbond debug | `scripts/nanocrystals.mjs nonbond` (deprecated) |
+| `MMFF.init/run/getHessian3Nx3N` | Relax + Hessian (Path A) | Python subprocess (unchanged) |
+| `FTIR.project_rigid_modes`, `get_mass_matrix` | Standard vibration prep | Python subprocess (unchanged) |
+| `np.linalg.eigh` | Mode frequencies | Python subprocess (unchanged) |
+| `bootstrap_vibration_parallel_fixtures.py` | Pattern for artifact generation | Unchanged |
+
+### Module updates (shared functions moved from scripts → existing modules)
+
+| Module | Functions added | Source script (deprecated) |
+|--------|----------------|---------------------------|
+| `web/molgui_webgpu/MoleculeUtils.js` | `atomDist`, `atomAngleDeg`, `neighborIndices`, `bondedPairSet` | `test_nanocrystal_geometry.mjs` |
+| `web/molgui_webgpu/Nanocrystals.js` | `isBulkSi`, `auditGeometry`, `oneLineSummary`, `buildSiH4`, `sampleValue`, `sampleCutSpec`, `crystalId`, `appendManifest`, `pyEnv`, `runCmd`, `runPy`, `writeTimingReport`, `genArgsFromConfig`, `genParamsFromAtlasEntry` | `test_nanocrystal_geometry.mjs`, `run_nanocrystal_ensemble.mjs` |
+| `web/common_js/nanocrystalSvg.js` | `writeCrystalCompareSvgs`, `writeCrystalViewerJson`, `enrichViewerJsonWithTopology`, `installViewer` | `run_nanocrystal_ensemble.mjs` |
+| `web/common_js/MolIO.js` | `loadMol` (generalized loader for .mol2 and .xyz) | `build_linearized_topology.mjs` |
+| `web/common_js/exportFF.js` | `buildPrimaryAdj`, `validateSpringGraphDistances`, `buildTopologyFull` | `build_linearized_topology.mjs` |
 
 ### Build new (integration work packages)
 
-| WP | Deliverable | Priority |
-|----|-------------|----------|
-| **WP-I1** | `ensemble.yaml` schema + param sampler | P0 |
-| **WP-I2** | `pyBall/nanocrystal_pipeline.py` — stage runner with cache | P0 |
-| **WP-I3** | `modes_to_histogram()` + running accumulator | P0 |
-| **WP-I4** | NPZ cache I/O + `manifest.jsonl` | P0 |
-| **WP-I5** | `pyBall/nanocrystal_viz.py` — orthographic SVG | P1 (debug) |
-| **WP-I6** | CLI: `scripts/run_nanocrystal_ensemble.py` | P0 |
-| **WP-I7** | LFF analytical Hessian assembler (Python, from topology NPZ) | P1 (throughput) |
-| **WP-I8** | Ellipsoidal cut in `gen_nanocrystals.mjs` | P2 |
+| WP | Deliverable | Priority | Status |
+|----|-------------|----------|--------|
+| **WP-I1** | `ensemble.yaml` schema + param sampler | P0 | Done (JSON config) |
+| **WP-I2** | `pyBall/nanocrystal_pipeline.py` — stage runner with cache | P0 | Done (JS orchestrator) |
+| **WP-I3** | `modes_to_histogram()` + running accumulator | P0 | Done (Python) |
+| **WP-I4** | NPZ cache I/O + `manifest.jsonl` | P0 | Done |
+| **WP-I5** | `pyBall/nanocrystal_viz.py` — orthographic SVG | P1 | Done (JS `nanocrystalSvg.js`) |
+| **WP-I6** | CLI: `scripts/run_nanocrystal_ensemble.py` | P0 | **Done** — replaced by unified `scripts/nanocrystals.mjs` CLI |
+| **WP-I7** | LFF analytical Hessian assembler (Python, from topology NPZ) | P1 (throughput) | Pending |
+| **WP-I8** | Ellipsoidal cut in `gen_nanocrystals.mjs` | P2 | Pending |
 
 ### Explicitly not building (v1)
 
@@ -328,9 +341,9 @@ Reuse conventions from `plotUtils.export_pov` (camera as `look_at`, `camera_up`,
 
 ```
 1. SAMPLE    ensemble.yaml → gen_params
-2. GENERATE  node gen_nanocrystals.mjs … → parse to 01_init.npz (skip if cached)
+2. GENERATE  node nanocrystals.mjs generate … → parse to 01_init.npz (skip if cached)
 3. RELAX     MMFF bonds+angles, no NB → 02_relaxed.npz
-4. TOPOLOGY  node build_linearized_topology.mjs → 03_topology.npz (optional for Path A)
+4. TOPOLOGY  node nanocrystals.mjs topology → 03_topology.npz (optional for Path A)
 5. HESSIAN   Path A: getHessian3Nx3N → 04_hessian.npz
              Path B: assemble K from 03_topology.npz → 04_hessian.npz
 6. DIAG      eigh → omegas_modes
@@ -537,6 +550,7 @@ then we will implemen this, fist using python MMFF backedn, only then we can thi
 **Related:** `Nanocrystal_generation.progress.md`, `Linearized_topology.progress.md`, `Sparse_vibration_solver.progress.md`, `Vibration_benchmark_npz.guide.md`.
 
 **Status:** **Pass 1 implemented** (2026-06-16) — 3-crystal C sphere test green in `OUT_nc_ensemble_v2/`.
+**Consolidation:** **Complete** (2026-06-22) — 5 scripts merged into unified `scripts/nanocrystals.mjs` CLI; shared functions moved to existing modules. Old scripts deprecated, not deleted.
 
 **Canonical doc:** `Nanocrystal_pipeline.progress.md` (not `Nanocrystal_pipeline.prograss.md`).
 
@@ -560,12 +574,12 @@ JavaScript (Node headless) is already faster for molecular graph operations and 
 | Stage | Runtime | Rationale |
 |-------|---------|-----------|
 | Ensemble param sampling | **JS** | Same process as generator; no IPC |
-| Crystal generation | **JS** `gen_nanocrystals.mjs` | Native; Miller/sphere cuts, caps, bridges |
+| Crystal generation | **JS** `nanocrystals.mjs generate` | Native; Miller/sphere cuts, caps, bridges |
 | Write `01_init.npz` | **JS** `npzWrite.js` | Already used by `LinearizedTopologyNpz.js` |
-| Debug SVG (init geometry) | **JS** (new `NanocrystalSvg.js`) | Orthographic projection without Python load |
+| Debug SVG (init geometry) | **JS** (`nanocrystalSvg.js`) | Orthographic projection without Python load |
 | MMFF relaxation | **Python subprocess** (`nc_relax.py`) | **v1 only** — C++ MMFF via `pyBall.MMFF`; GPU/JS relax deferred (§15) |
 | Write `02_relaxed.npz` | **Python** | Output of relax stage only |
-| Linearized topology (K₁₂/K₁₃/K₁₄) | **JS** `build_linearized_topology.mjs` | On **relaxed** geometry; writes `03_topology.npz` |
+| Linearized topology (K₁₂/K₁₃/K₁₄) | **JS** `nanocrystals.mjs topology` | On **relaxed** geometry; writes `03_topology.npz` |
 | Analytical LFF Hessian **K** assembly | **JS** (new) or Python v1 | Target: JS exports dense **K** in `04_hessian.npz`; v1 may use MMFF FD in Python |
 | Debug SVG (relaxed) | **JS** | Reads `02_relaxed.npz` directly |
 | Rigid-mode projection + `eigh` | **Python** | `numpy.linalg.eigh`; loads NPZ only |
@@ -578,10 +592,10 @@ JavaScript (Node headless) is already faster for molecular graph operations and 
 ```mermaid
 flowchart LR
     subgraph js [Node.js orchestrator]
-        CFG[ensemble.json] --> GEN[gen_nanocrystals]
+        CFG[ensemble.json] --> GEN[nanocrystals.mjs generate]
         GEN --> NPZ1[01_init.npz]
         GEN --> SVG1[init.svg]
-        NPZ1 --> TOPO[build_linearized_topology]
+        NPZ1 --> TOPO[nanocrystals.mjs topology]
         TOPO --> NPZ3[03_topology.npz]
         NPZ2 --> TOPO
         NPZ3 --> KJS[assemble K from springs]
@@ -599,7 +613,7 @@ flowchart LR
     NPZ5 --> ACC[ensemble accumulator]
 ```
 
-**Orchestrator:** `scripts/run_nanocrystal_ensemble.mjs` (new) — loops crystals, calls Python via `spawn` for relax and solve steps, owns cache invalidation and timing.
+**Orchestrator:** `scripts/nanocrystals.mjs ensemble` (unified CLI, 2026-06-22) — loops crystals, calls Python via `spawn` for relax and solve steps, owns cache invalidation and timing. Replaces deprecated `scripts/run_nanocrystal_ensemble.mjs`.
 
 **Python entry points (thin):**
 
@@ -614,9 +628,9 @@ Optional v1 fallback: `nc_build_hessian_mmff.py` if analytical K in JS is not re
 
 ```
 STAGE 0  SAMPLE     ensemble.json → gen_params (JSON blob, stored in meta)
-STAGE 1  GENERATE   JS gen_nanocrystals → 01_init.npz + optional init.svg
+STAGE 1  GENERATE   JS nanocrystals.mjs generate → 01_init.npz + optional init.svg
 STAGE 2  RELAX      Python MMFF (bonds+angles, NB off) → 02_relaxed.npz
-STAGE 3  TOPOLOGY   JS build_linearized_topology on relaxed coords → 03_topology.npz
+STAGE 3  TOPOLOGY   JS nanocrystals.mjs topology on relaxed coords → 03_topology.npz
 STAGE 4  HESSIAN    JS analytical K from 03 + pos → 04_hessian.npz
                      (v1 fallback: Python MMFF FD → 04_hessian.npz)
 STAGE 5  DIAG+SPEC  Python: project_rigid_modes, eigh, histogram → 05_spectrum.npz
@@ -918,18 +932,18 @@ Multiple probes (x, y, z symmetric): three matmuls or store `F_tilde = V.T @ (F 
 | `web/molgui_webgpu/NanocrystalNpz.js` | `writeCrystalNpz` / `readCrystalNpz` (init + relaxed coords) |
 | `web/molgui_webgpu/NanocrystalSvg.js` | Orthographic SVG: `pos, Z, bonds, R_view[3×3]` |
 | `web/molgui_webgpu/LFFHessian.js` | Assemble dense K from `neigh_idx`, `KLs`, `pos` (3×3 blocks per spring) |
-| `scripts/gen_nanocrystals.mjs` | Add `cutMode: cylinder` |
+| `scripts/nanocrystals.mjs generate` | Add `cutMode: cylinder` |
 | `scripts/nc_relax.py` | MMFF relax NPZ → NPZ |
 | `scripts/nc_solve_spectrum.py` | `eigh` + histogram NPZ → NPZ |
 
-**Reuse unchanged:** `npzWrite.js`, `LinearizedTopologyNpz.js`, `build_linearized_topology.mjs`, `gen_nanocrystals.mjs` (extended).
+**Reuse unchanged:** `npzWrite.js`, `LinearizedTopologyNpz.js`, `exportFF.js` (topology), `Nanocrystals.js` (generation, extended).
 
 ## 8. What we reuse vs build
 
 | Existing | Use in pipeline |
 |----------|-----------------|
-| `gen_nanocrystals.mjs` | Generation + caps + defects |
-| `build_linearized_topology.mjs` | Stage 3 topology NPZ |
+| `nanocrystals.mjs generate` | Generation + caps + defects |
+| `nanocrystals.mjs topology` | Stage 3 topology NPZ |
 | `LinearizedTopologyNpz.js` / `npzWrite.js` | All JS NPZ writes |
 | `MMFF.run`, `getHessian3Nx3N` | Relax; optional v1 FD Hessian |
 | `FTIR.project_rigid_modes` | Python solve stage |
@@ -1297,7 +1311,7 @@ Session goal: **end-to-end C diamond nanocrystal ensemble → MMFF relax → Hes
 ```mermaid
 flowchart LR
   CFG[ensemble.example.json] --> ORCH[run_nanocrystal_ensemble.mjs]
-  ORCH --> GEN[gen_nanocrystals.mjs]
+  ORCH --> GEN[nanocrystals.mjs generate]
   GEN --> INIT[01_init.npz + init.xyz + init.mol2]
   INIT --> RELAX[pyBall.nanocrystal_pipeline relax]
   RELAX --> TOPO[exportFF.js]
@@ -1313,7 +1327,7 @@ flowchart LR
 | Layer | Runtime | Responsibility |
 |-------|---------|----------------|
 | `scripts/run_nanocrystal_ensemble.mjs` | Node | Single orchestrator: sampling, cache paths, spawn gen/topology/Python, timing, debug artifacts, atlas mode |
-| `scripts/gen_nanocrystals.mjs` | Node | Crystal generation (existing; called by orchestrator) |
+| `scripts/nanocrystals.mjs generate` | Node | Crystal generation (consolidated; called by orchestrator) |
 | `web/common_js/npzIO.js` | Node | NPZ read/write, `molToCrystalArrays`, `writeCrystalNpz`, XYZ/JSON crystal I/O |
 | `web/common_js/MolIO.js` | Node | mol2 load, visualization bonds, `loadMMParamsFromDir`, `loadMolFromMol2`, `applyPositions`, `bondsForVisualization` |
 | `web/common_js/exportFF.js` | Node | `buildTopologyNpz` (linearized topology NPZ) |
@@ -1391,8 +1405,8 @@ flowchart LR
 
 **Still reused unchanged**
 
-- `scripts/gen_nanocrystals.mjs`, `pyBall/nanocrystal_gen.py`
-- `scripts/build_linearized_topology.mjs` (logic mirrored in `exportFF.js` for headless NPZ write)
+- `scripts/nanocrystals.mjs generate`, `pyBall/nanocrystal_gen.py` (deprecated standalone scripts kept for reference)
+- `scripts/nanocrystals.mjs topology` (logic in `exportFF.js` for headless NPZ write)
 - `tests/tMMFF/test_nanocrystal_sparse_hessian.py` (MMFF reference)
 
 ### 19.5 Files to commit (recommended)
@@ -1562,3 +1576,164 @@ That file is **written to the cache but not read** by relax, hessian, or spectru
 So we’re **not** accidentally using linearized topology for spectra — we’re **running both in parallel**, but only MMFF FD feeds `eigh`. Stage 3 is misleading until Path B is wired or skipped.
 
 I added **§19.9** to `Nanocrystal_pipeline.progress.md` with this clarification. Sensible next cleanup: add `--no-topology` for production runs, or enable `add_angle: true` so `03_topology.npz` matches the linearized design while Path B is still deferred.
+
+---
+
+## 20. Script consolidation plan — unified `scripts/nanocrystal.mjs`
+
+**Goal:** Merge 6 scattered nanocrystal scripts into a single unified CLI with subcommands, moving reusable logic to shared modules. Old scripts are **deprecated but not deleted** until the unified script passes equivalent tests.
+
+### 20.1 Current scripts — inventory & overlap analysis
+
+| Script | Lines | Role | Reusable logic trapped inside? |
+|--------|-------|------|-------------------------------|
+| `scripts/gen_nanocrystals.mjs` | 278 | CLI generation (mol2+xyz output) | **DEPRECATED** — logic in `Nanocrystals.js`, CLI in `nanocrystals.mjs generate` |
+| `scripts/run_nanocrystal_ensemble.mjs` | 479 | Ensemble orchestrator: gen→relax→topo→hessian→spectrum→accumulate | **Yes** — `mulberry32` (dup), `sampleValue`, `sampleCutSpec`, `crystalId`, `buildGenCli`, `writeTimingReport`, `writeCrystalCompareSvgs`, `writeCrystalViewerJson`, `installViewer`, `enrichViewerJsonWithTopology`, `appendManifest`, `runCmd`, `runPy` |
+| `scripts/build_linearized_topology.mjs` | 262 | Standalone topology builder (mol2/xyz→topology.npz + HTML viewer) | **Yes** — `loadMolecule`, `buildPrimaryAdj`, `validateSpringGraphDistances` |
+| `scripts/test_nanocrystal_geometry.mjs` | 264 | Geometry audit (bond lengths, angles, clashes, valence) | **Yes** — `auditGeometry`, `neighborIndices`, `bondedPairSet`, `angleDeg`, `dist`, `buildSiH4`, `oneLineSummary` |
+| `scripts/debug_nanocrystal_nonbond_groups.mjs` | 123 | Nonbond parity check (brute vs grouped) + collision pair export | Minimal — mostly orchestration of `Nonbonded.js` / `CollisionWorkgroups.js` |
+| `web/web_tests/test_ring_detection.mjs` | 160 | Ring detection test (adamantane + diamond NC defects) | No — already thin, imports from modules |
+
+### 20.2 Key overlaps identified
+
+1. **Generation called 3 ways:** `gen_nanocrystals.mjs` (standalone CLI), `run_nanocrystal_ensemble.mjs` (spawns `gen_nanocrystals.mjs` as subprocess then re-parses mol2), `test_ring_detection.mjs` (calls `generateNanocrystal()` directly in-process). The subprocess round-trip in the orchestrator is wasteful — should call `generateNanocrystal()` directly.
+
+2. **Topology built 2 ways:** `build_linearized_topology.mjs` (full standalone with graph validation, HTML viewer, JSON export) vs `exportFF.js` `buildTopologyNpz()` (simpler, adds collision workgroups). The standalone has richer output; `exportFF.js` is stripped down.
+
+3. **`mulberry32` duplicated:** `Nanocrystals.js` exports it; `run_nanocrystal_ensemble.mjs` has its own copy.
+
+4. **SVG/viewer helpers trapped in orchestrator:** `writeCrystalCompareSvgs`, `writeCrystalViewerJson`, `installViewer`, `enrichViewerJsonWithTopology` — all reusable, should be in `nanocrystalSvg.js`.
+
+5. **Geometry audit not reusable:** `auditGeometry()` is valuable for post-generation QC but trapped in a script. The ensemble pipeline could use it as a post-generation validation step.
+
+6. **Ring detection not in pipeline:** `test_ring_detection.mjs` tests ring detection but it's not part of the ensemble. Ring analysis could be a debug stage.
+
+### 20.3 Proposed unified CLI: `scripts/nanocrystal.mjs`
+
+```
+node scripts/nanocrystal.mjs <subcommand> [options]
+
+Subcommands:
+  generate   — single crystal generation (mol2+xyz output)
+  ensemble   — batch ensemble pipeline (gen→relax→topo→hessian→spectrum→accumulate)
+  topology   — linearized topology build (mol2/xyz/npz → topology.npz + viewer)
+  rings      — ring detection on a crystal (SVG output)
+  audit      — geometry audit (bond lengths, angles, clashes, valence)
+  nonbond    — nonbond group debug + collision pair export
+```
+
+### 20.4 Dual CLI + JSON config (all subcommands)
+
+**Every subcommand accepts both CLI flags and JSON config:**
+
+- CLI flags: convenient for quick single-crystal operations, scripting, debugging
+- `--config path.json`: JSON file with full parameter set, enables fine-grained control and reproducibility
+- CLI flags **override** JSON values when both are present (CLI > JSON > defaults)
+- JSON schema is subcommand-specific but shares common sections (cut, passivation, defects, debug)
+
+**Example:**
+
+```bash
+# CLI only
+node scripts/nanocrystal.mjs generate --cif C_diamond_sym.cif --cutMode sphere --sphereR 5 --caps H
+
+# JSON config
+node scripts/nanocrystal.mjs generate --config my_crystal.json
+
+# JSON + CLI override (override sphereR from JSON)
+node scripts/nanocrystal.mjs generate --config my_crystal.json --sphereR 8
+
+# Ensemble with JSON
+node scripts/nanocrystal.mjs ensemble --config ensemble.json --n-crystals 100 --data-dir OUT/data --output-dir OUT/out
+```
+
+**JSON config structure (shared sections):**
+
+```json
+{
+  "cif": "cpp/common_resources/crystals/C_diamond_sym.cif",
+  "cut": { "cutMode": "sphere", "sphereR": 5.0, "sphereNrep": 5 },
+  "replication": { "nx": 2, "ny": 2, "nz": 2 },
+  "passivation": { "caps": "H", "resolveClashes": false, "outwardBias": 0.35 },
+  "defects": { "insertProb": 0.0, "collapseProb": 0.0 },
+  "debug": { "enabled": true, "views": ["111", "100", "001"] }
+}
+```
+
+### 20.5 Module consolidation — what moves where
+
+| Module | What moves here | Status |
+|--------|----------------|--------|
+| `web/molgui_webgpu/Nanocrystals.js` | Already has generation logic + `mulberry32` + `defaultArgs`. Remove duplicate `mulberry32` from orchestrator. | ✅ Done |
+| `web/common_js/nanocrystalSvg.js` | Move `writeCrystalCompareSvgs`, `writeCrystalViewerJson`, `installViewer`, `enrichViewerJsonWithTopology` from orchestrator. Already has `bondsForSvgMol`, `exportCrystalSvg`, `exportCrystalCompareSvgViews`, `atlasIndexHtml`. | **TODO** |
+| `web/common_js/exportFF.js` | Already has `buildTopologyNpz`. Add `validateSpringGraphDistances` from `build_linearized_topology.mjs` as optional validation step. | **TODO** |
+| **NEW: `web/common_js/NanocrystalAudit.js`** | Move `auditGeometry`, `neighborIndices`, `bondedPairSet`, `angleDeg`, `dist`, `buildSiH4`, `oneLineSummary` from `test_nanocrystal_geometry.mjs`. | **TODO** |
+| **NEW: `web/common_js/NanocrystalEnsemble.js`** | Move `sampleValue`, `sampleCutSpec`, `crystalId`, `buildGenParams`, `writeTimingReport`, `appendManifest`, `runCmd`, `runPy` from orchestrator. These are reusable ensemble utilities. | **TODO** |
+
+### 20.6 What stays in scripts
+
+| Script | What remains |
+|--------|-------------|
+| `scripts/nanocrystal.mjs` (new unified) | Subcommand dispatch + CLI/JSON parsing per subcommand. ~50-80 lines per subcommand (thin glue). |
+| `scripts/gen_nanocrystals.mjs` | **DEPRECATED** — header note: "Absorbed into `nanocrystal.mjs generate`. Do not delete until `nanocrystal.mjs generate` passes equivalent tests." |
+| `scripts/run_nanocrystal_ensemble.mjs` | **DEPRECATED** — header note: "Absorbed into `nanocrystal.mjs ensemble`. Do not delete until tested." |
+| `scripts/build_linearized_topology.mjs` | **DEPRECATED** — header note: "Absorbed into `nanocrystal.mjs topology`. Do not delete until tested." |
+| `scripts/test_nanocrystal_geometry.mjs` | **DEPRECATED** — header note: "Absorbed into `nanocrystal.mjs audit`. Do not delete until tested." |
+| `scripts/debug_nanocrystal_nonbond_groups.mjs` | **DEPRECATED** — header note: "Absorbed into `nanocrystal.mjs nonbond`. Do not delete until tested. Collision group export is important for downstream simulation." |
+| `web/web_tests/test_ring_detection.mjs` | **Keep for now** — already thin test script. Ring detection also available via `nanocrystal.mjs rings`. |
+
+### 20.7 Key design decisions
+
+1. **No subprocess for generation** — call `generateNanocrystal()` directly in-process. The ensemble orchestrator currently spawns `gen_nanocrystals.mjs` then re-reads the mol2 — wasteful. The unified `ensemble` subcommand calls `generateNanocrystal()` directly like `test_ring_detection.mjs` does.
+
+2. **Python stages stay as subprocess** — `nc_relax`, `nc_build_hessian`, `nc_solve_spectrum` via `pyBall.nanocrystal_pipeline` are C++ backed, can't run in Node.
+
+3. **Dual CLI + JSON for all subcommands** — JSON provides fine-grained control (especially for ensemble configs with `cut_mixture` arrays, probability distributions, etc.); CLI flags are convenient for quick operations. CLI overrides JSON when both present.
+
+4. **Pipeline stages as composable functions** — each stage (generate, relax, topology, hessian, spectrum, accumulate) is a function in a shared module. The `ensemble` subcommand chains them. Individual subcommands call just one.
+
+5. **Debug output unified** — SVG, viewer HTML, and timing report all go through `nanocrystalSvg.js` functions. No SVG/viewer code in the CLI script.
+
+6. **Collision groups and nonbond pair export preserved** — `nanocrystal.mjs nonbond` subcommand keeps the collision group debug + pair export functionality. This is important for downstream simulation (PD collision constraints, GPU kernel pair lists).
+
+7. **Deprecated scripts get header notes** — each old script gets a clear deprecation header:
+   ```javascript
+   /// @deprecated — Absorbed into scripts/nanocrystal.mjs <subcommand>.
+   /// Do not delete until nanocrystal.mjs passes equivalent tests.
+   /// Kept for backward compatibility during transition.
+   ```
+
+### 20.8 Subcommand → shared module mapping
+
+| Subcommand | Primary module calls | Python stages |
+|------------|---------------------|---------------|
+| `generate` | `Nanocrystals.js: generateNanocrystal()`, `MolIO.js: loadMMParamsFromDir()`, `MoleculeIO.js: toMol2String/toXYZString` | None |
+| `ensemble` | `NanocrystalEnsemble.js: sampleValue/sampleCutSpec/crystalId/runCmd/runPy/writeTimingReport`, `Nanocrystals.js: generateNanocrystal()`, `exportFF.js: buildTopologyNpz()`, `nanocrystalSvg.js: writeCrystalCompareSvgs/installViewer` | `pyBall.nanocrystal_pipeline: relax/hessian/spectrum/accumulate` |
+| `topology` | `exportFF.js: buildTopologyNpz()`, `MMFFLTopology.js: buildMMFFLTopology/packLinearTopologyForGPU`, `LinearizedTopologyNpz.js: writeTopologyNpzFile`, `LinearizedTopologyViewer.js: exportStickViewerHTML` | None |
+| `rings` | `Graph.js: runRingsOnMol()`, `nanocrystalSvg.js: bondsForSvgMol/exportCrystalSvg`, `Nanocrystals.js: generateNanocrystal` (if generating) | None |
+| `audit` | `NanocrystalAudit.js: auditGeometry/oneLineSummary`, `MolIO.js: loadMolFromMol2` | None |
+| `nonbond` | `CollisionWorkgroups.js: buildCollisionWorkgroups/buildExclIcol_1_2_3`, `Nonbonded.js: computeNonbondBruteForceKernelStyle/computeNonbondByGroups/maxAbsDiff`, `MolIO.js`, `npzIO.js` | None |
+
+### 20.9 Implementation order
+
+1. **Create `NanocrystalAudit.js`** — extract `auditGeometry` + helpers from `test_nanocrystal_geometry.mjs`
+2. **Create `NanocrystalEnsemble.js`** — extract ensemble utilities from `run_nanocrystal_ensemble.mjs`
+3. **Extend `nanocrystalSvg.js`** — move SVG/viewer helpers from orchestrator
+4. **Extend `exportFF.js`** — add `validateSpringGraphDistances` as optional validation
+5. **Create `scripts/nanocrystal.mjs`** — unified CLI with all 6 subcommands
+6. **Add deprecation headers** to 5 old scripts
+7. **Test each subcommand** against old script output for parity
+8. **Delete old scripts** only after all subcommands pass equivalent tests
+
+### 20.10 Testing strategy for consolidation
+
+| Test | How |
+|------|-----|
+| `generate` parity | Run `gen_nanocrystals.mjs` and `nanocrystal.mjs generate` with same args → compare mol2/xyz output |
+| `ensemble` parity | Run `run_nanocrystal_ensemble.mjs` and `nanocrystal.mjs ensemble` with same config → compare NPZ outputs + timing report |
+| `topology` parity | Run `build_linearized_topology.mjs` and `nanocrystal.mjs topology` with same input → compare topology.npz |
+| `audit` parity | Run `test_nanocrystal_geometry.mjs` and `nanocrystal.mjs audit` with same preset → compare geometry_report.json |
+| `nonbond` parity | Run `debug_nanocrystal_nonbond_groups.mjs` and `nanocrystal.mjs nonbond` with same args → compare force diff + pair output |
+| `rings` parity | Run `test_ring_detection.mjs` standalone and `nanocrystal.mjs rings` with same input → compare SVG output |
+
+*Last updated: 2026-06-22 — §20 consolidation plan (review only, no code yet).*
