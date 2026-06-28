@@ -211,9 +211,11 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
         opt.cleanVel( ); 
     }
     if(ff.nfix>0){ ff.apply_hard_fix(); }
+    
     for(itr=0; itr<nstepMax; itr++ ){
         ff.clearForce();
         Etot = ff.eval();
+
         if( ff.bNegativeSizes & (verbosity>0) ){ printf( "negative electron sizes in step #%i => perhaps decrease relaxation time step dt=%g[fs]? \n", itr, opt.dt ); }
         if(ff.nfix>0){ if(ialg>0){ ff.clear_fixed_dynamics(); }else{ ff.clear_fixed_force(); } }
         switch(ialg){
@@ -225,7 +227,7 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
         if(ff.nfix>0){ ff.apply_hard_fix(); }
         if(outE){ outE[itr]=Etot;     }
         if(outF){ outF[itr]=sqrt(F2); }
-        if(verbosity>2){ printf("itr: %6i Etot[eV] %16.8f |F|[eV/A] %16.8f \n", itr, Etot, sqrt(F2) ); };
+        if( (verbosity>2 )&&( itr%100 == 0)){ printf("itr: %6i Etot[eV] %16.8f |F|[eV/A] %16.8f \n", itr, Etot, sqrt(F2) ); };
         if(F2<F2conv){
             if(verbosity>0){ printf("eFF_lib.cpp::run() Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
             //if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
@@ -236,7 +238,7 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
         if( (trj_fname) && (itr%savePerNsteps==0) )  ff.save_xyz( trj_fname, "a" );
 
     }
-    if(verbosity>1){ printf("run() %s in %6i iterations Etot[eV] %16.8f |F|[eV/A] %16.8f (Fconv=%g) \n", *bConv ? "    CONVERGED" : "NOT-CONVERGED", itr, Etot, sqrt(F2), Fconv ); };
+    if(verbosity>0){ printf("run() %s in %6i iterations Etot[eV] %16.8f |F|[eV/A] %16.8f (Fconv=%g) \n", *bConv ? "    CONVERGED" : "NOT-CONVERGED", itr, Etot, sqrt(F2), Fconv ); };
     //printShortestBondLengths();
     return itr;
 }
@@ -511,7 +513,7 @@ void builder2EFF(EFF& ff, const MM::Builder& builder, bool bRealloc=true ){
     }
 }
 
-int builder2EFFstatic( EFF* ff, MM::Builder& builder, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, double esize0=0.5, double le=-0.5 ){
+int builder2EFFstatic( EFF* ff, MM::Builder& builder, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, double esize0=0.1, double le=-0.5 ){
     //printf( "builder2EFFstatic() builder.atoms.size() %i builder.bonds.size() %i ff=%p \n", builder.atoms.size(), builder.bonds.size(), ff );
     //if(ff){ printf( "builder2EFFstatic() ff.na %i ff.ne %i \n", ff->na, ff->ne ); }
     int ie=0;
@@ -655,6 +657,9 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
     bool bOnlyFirst = true;
     int iconf = 0; 
 
+    char coreMode = bCoreElectrons ? 'a' : 'f';
+    ff.setCoreMode(coreMode);
+
     while( fgets(line, nline, fin) ){
         if ( il==0 ){               // --- Read number of atoms
             int na=-1;
@@ -668,6 +673,8 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
             //printf("comment_line=%s\n",line);
             sscanf( line, "%*s %i %*s %lf ", &(atoms->n0), &(atoms->Energy) );
             sprintf(comment,"%s",line);
+
+
         }else if( il<atoms->natoms+2 ){  // --- Road atom line (type, position, charge)
             double x,y,z,q;
             int nret = sscanf( line, "%s %lf %lf %lf %lf", at_name, &x, &y, &z, &q );
@@ -704,6 +711,9 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
                     }
                     //set_constrains( ff.na, fix, fixed_inds, true  );
                 }
+                if(iconf == 0){
+                    initOpt(dt, 0.1, 100.0, false);
+                }
                 //printf("processXYZ() iconf=%i natoms=%i na=%i ne=%i \n", iconf, atoms->natoms, ff.na, ff.ne );
                 //builder2EFF( ff, builder );
                 //run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF );
@@ -715,7 +725,7 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
                 //printf("processXYZ() iconf=%i natoms=%i | %s \n", iconf, atoms->natoms, comment);
                 printf("processXYZ() iconf=%i na: %i ne: %i Etot(%.3f)=T(%.2f)+ee(%.3f)+ea(%.3f)+aa(%.3f)\n", iconf, ff.na, ff.ne, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa );
             }
-            if(xyz_out)ff.save_xyz(xyz_out, "a", comment);
+            if(xyz_out)ff.save_xyz(xyz_out, "a" , comment);
             if(fgo_out)ff.writeTo_fgo(fgo_out, false, "a", iconf);
             ff.copyEnergies         (outEs, iconf);
             ff.copyAtomPositions    ((Vec3d*)apos_, iconf);
@@ -732,9 +742,10 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
 
 
 // This functions takes .xyz file with full electron description
-int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* fapos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int optAlg=2, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo", int* convSum=0){
+int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* fapos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int optAlg=-1, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo", int* convSum=0){
     printf("processXYZ_e(%s)\n", fname);
     //double8* apars = ff.atom_params2;
+    //setTrjName(xyz_out);
     FILE* fin = fopen(fname, "r");
     if(!fin){ printf("Cannot open '%s'\n", fname); exit(0); }
     char line[1024];
@@ -748,13 +759,16 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* f
         }else if(il == 1){
             char coreMode;
             sscanf(line, "na,ne,core %i %i %c ", &na, &ne, &coreMode );
+            printf("znovu %c", coreMode);
             ff.setCoreMode(coreMode);
             //na=nae-ne;
             if(nae!=na+ne){ printf("ERROR in processXYZ_e() nae(%i) != na(%i) + ne(%i) while reading `%s`  => Exit() \n", nae, na, ne, fname ); exit(0); }
             if(iconf == 0){
                 ff.realloc(na, ne, true);
                 //opt.bindOrAlloc(ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses);
-                initOpt( dt, 0.1, 100.0, false );
+                //if (optAlg == -1)initOpt( dt, 0.0, 100.0, true );
+                //else initOpt(dt, 0.1, 100, false);
+                initOpt(dt, 0.1, 100.0, false);
             }
         }else{
             // printf( "particle_line[%i]: %s ", il, line );
@@ -781,17 +795,17 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* f
                 bool bConv = false;
                 run( nstepMax, dt, Fconv, optAlg, 0, 0, &bConv );
                 if(bConv) {
-                    (*convSum)++; 
+                    //(*convSum)++; 
                     // printf(" convsum: %d \n", *convSum);
                 }
             }  
             ff.eval();
-            ff.copyEnergies         (         outEs,  iconf );
-            ff.copyAtomPositions    ((Vec3d* )apos_,  iconf );
-            ff.copyAtomForces       ((Vec3d* )fapos_, iconf );
-            ff.copyElectronPositions((Quat4d*)epos_,  iconf );
+            //ff.copyEnergies         (         outEs,  iconf );
+            //ff.copyAtomPositions    ((Vec3d* )apos_,  iconf );
+            //ff.copyAtomForces       ((Vec3d* )fapos_, iconf );
+            //ff.copyElectronPositions((Quat4d*)epos_,  iconf );
             if(verbosity>0) printf(" processXYZ_e() iconf: %3i na: %3i ne: %3i Etot: %16.8f\n", iconf, na, ne, ff.Etot);
-            if(xyz_out) save_xyz(xyz_out, 1);
+            if(xyz_out) save_xyz(xyz_out, "a");
             il = 0;
             ia = 0;
             ie = 0;
@@ -799,6 +813,7 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* f
         }        
     }
     fclose(fin);
+    printf("processXYZ_e() done, iconf: %i \n", iconf);
     return iconf;
 }
 
@@ -831,8 +846,71 @@ void setParsECandPS( int N, double* params) {
     //     printf( "setParsECandPS() params[%i]=%g \n", i, params[i] );
     // }
     ff.paramsSi.assign(params+1, params+N);
+    printf("%d/n", N);
+     for(int i=0; i<N; i++){
+         printf( "setParsECandPS() params[%i]=%g \n", i, ff.paramsSi[i] );
+     }
+}
+void TemporarySetOneParameter(double value){
+    
 }
 
+double* EvalTwoElectrons(int points, double distance, bool samespin, bool bEvalCoulomb = false, bool bEvalPauli = true){ // evaluate the distribution of energy between two electrons
+    double* Eout;
+    Eout = new double[points];
+    printf("EvalTwoElectrons() points %i, distance %g, samespin %s \n", points, distance, samespin ? "true" : "false");
+    ff.bEvalCoulomb = bEvalCoulomb;
+    ff.bEvalPauli   = bEvalPauli;
+
+    
+    ff.ne = 2;
+    ff.realloc(0, 2, true);
+    ff.epos [0].set(0,0,0);
+    
+    ff.espin  [0] = 1;
+    
+    ff.esize  [0] = 1;
+    ff.echarge[0] = fabs(-1.0);
+    if (samespin){
+    ff.espin  [1] = 1;
+    }else{
+    ff.espin  [1] = -1;
+    }
+    ff.esize  [1] = 1;
+    ff.echarge[1] = fabs(-1.0);
+    ff.epos   [0].set(0,0,0);
+    
+    for (int i=0; i<points; i++){ 
+        
+        ff.epos   [1].set(distance*i/points,0,0);       
+        Eout[i] = ff.evalEE();     
+        
+    }
+    printf("EvalTwoElectrons() done \n");
+    printf("EvalTwoElectrons() Eout[0] %g Eout[points-1] %g \n", Eout[0], Eout[points-1] );
+    return Eout;
+}
+
+double* FindMinrho2(int points, const char* fname, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int optAlg=-1){
+    
+    double* Eout;
+    Eout = new double[points*3];
+    double rho2Start = 0;
+    double rho2End = 0.3;
+    
+    for (int i=0; i<points; i++){ 
+        ff.Setrho2( -rho2Start -((double)i)*(rho2End - rho2Start)/points );
+        printf("\n\nFindMinrho2() point %i rho2 %g \n\n\n", i, (-rho2Start - ((double)i)*(rho2End - rho2Start)/points));
+        int a = processXYZ_e(fname, 0, 0, 0 ,0,  nstepMax, dt, Fconv, optAlg, 0, 0, 0); 
+        
+        Eout[i] = (ff.apos[1] - ff.apos[0]).norm();             // distances of hydrogen atoms from the oxygen
+        Eout[points+i] = (ff.apos[2] - ff.apos[0]).norm(); 
+        Eout[2*points + i] = acos((ff.apos[1] - ff.apos[0]).dot(ff.apos[2] - ff.apos[0])/(Eout[i]*Eout[points+i])); // angle between hydrogen atoms
+    }
+    printf("FindMinrho2() done \n");
+    printf("FindMinrho2() Eout[0] %g Eout[99] %g \n", Eout[0], Eout[99] );
+    return Eout;
+}
 
 // void eval_xyz_movie(){
 //     Atoms::atomsFromXYZ();

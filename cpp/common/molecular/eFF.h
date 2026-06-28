@@ -235,7 +235,6 @@ class EFF{ public:
     { 7.,  0.0, 0.1, 1.0 }, // 9 F
     };
 
-
     constexpr static const double8 default_AtomParams2[] = {
     // Z_nuc, R_eff, Zcore_eff,   PA,        PB,        PC,        PD,        PE
 { 0.0,   1.0,      0.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 0: Dummy
@@ -725,7 +724,7 @@ double evalAE_MultiGauss(){
             if(bEvalAECoulomb){
                 double qCore = bCoreCoul ? aPar.x : (aPar.x-aPar.z);
                 // dEae  = addCoulombGauss( dR, sj, f, fsj, qCore*-qj ); 
-                dEae  = addCoulombGauss( dR, aPar.y, sj, f, fs_junk, fsj, qCore*-qj ); // 0, because this is the size of atoms core
+                dEae  = addCoulombGauss( dR, 0, sj, f, fs_junk, fsj, qCore*-qj ); // 0, because this is the size of atoms core
                 //                           ^^^^^^
                 // there should be theoretically 0, because that is the size of an atom core. However, it works better with aPar.y
                 // FIX IT
@@ -1139,9 +1138,9 @@ void to_xyz( FILE* pFile, const char* comment=0 ){
     }
     fprintf( pFile, " %i \n", na+ne_ );
     if(comment!=0){ 
-        fprintf( pFile, "na,ne,core %i %i m | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) | %s ", na,ne_, Etot, Ek, Eee, Eae, Eaa, comment ); 
+        fprintf( pFile, "na,ne,core %i %i %c | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) | %s ", na,ne_, coreMode, Etot, Ek, Eee, Eae, Eaa, comment ); 
     }else{ 
-        fprintf( pFile, "na,ne,core %i %i m | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", na,ne_, Etot, Ek, Eee, Eae, Eaa );
+        fprintf( pFile, "na,ne,core %i %i %c | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", na,ne_, coreMode, Etot, Ek, Eee, Eae, Eaa );
     }
     for (int i=0; i<na; i++){
         int iZ = (int)(aPars[i].x+0.5);
@@ -1461,7 +1460,12 @@ inline void analyse_angles(const Vec3i* triples,int nTriples,double* out){
             outEi[4] = Eaa;
         }
     }
+       void Setrho2(double a)
+    {
+        rho2 = a;
+    }
 };
+ 
 
 /// @}
 #endif

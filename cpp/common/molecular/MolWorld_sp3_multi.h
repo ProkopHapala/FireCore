@@ -244,7 +244,7 @@ void realloc( int nSystems_ ){
     _realloc( lvecs,     nSystems  );
     _realloc( ilvecs,    nSystems  );
     _realloc( MDpars,    nSystems  );
-    _realloc0( TDrive,   nSystems, Quat4f{0.0,-1.0,0.0,0.0} );
+    //_realloc0( TDrive,   nSystems, Quat4f{0.0,-1.0,0.0,0.0} );
 
 
     _realloc( pbcshifts, ocl.npbc*nSystems );
@@ -2284,8 +2284,9 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
 
     if( bMILAN && bSaveToDatabase  ){ // Milan
         FILE* file = fopen("minima.dat", "a"); 
-        if((icurIter%1000==0 || icurIter%1000 < 200) && !written_in_this_frame){
-            written_in_this_frame=true;
+        
+        if((icurIter%1000==0 || icurIter%1000 < 200)){ //&& !written_in_this_frame){
+            bool written_in_this_frame=true;
             if(icurIter<1000) {
                 // Print headers to both console and file
                 const char* header_fmt = "%15s %20s %20s %20s %20s %20s %20s %20s %20s %20s\n";
@@ -2321,7 +2322,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
                 (nStepConvSum+nStepNonConvSum+nStepExplorSum));
         }
         else{
-            written_in_this_frame=false;
+            bool written_in_this_frame=false;
         }
         fclose(file);
     }

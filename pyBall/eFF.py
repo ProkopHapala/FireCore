@@ -92,9 +92,12 @@ def load_xyz(fname):
     #return lib.load_xyz(_np_as(fname,c_char_p)) 
 
 def getBuffs( ):
+    
     init_buffers()
+  
     global ne,na,nDOFs, ndims, Es
     ndims = getIBuff( "ndims", (3,) ); 
+    print("ndims: ", ndims)
     Es    = getBuff ( "Es",    (8,) ) # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
     ne=ndims[0]; na=ndims[1]; nDOFs=ndims[2]     #;print("ne,na,nDOFs ", ne,na,nDOFs)
     global pDOFs, fDOFs, apos, aforce, epos, eforce, esize, fsize, aPars, espin
@@ -102,12 +105,14 @@ def getBuffs( ):
     fDOFs  = getBuff ( "fDOFs",  nDOFs )
     apos   = getBuff ( "apos",   (na,3) )
     aforce = getBuff ( "aforce", (na,3) )
+    
     epos   = getBuff ( "epos",   (ne,3) )
     eforce = getBuff ( "eforce", (ne,3) )
     esize  = getBuff ( "esize",   ne )
     fsize  = getBuff ( "fsize",   ne )
     aPars  = getBuff ( "aPars",   (na,4) )
     espin  = getIBuff( "espin",   ne )
+    
     if(bVel):
         global vDOFs, avel, evel, vsize, invMasses, invAmass,invEmass,invSmass
         vDOFs     = getBuff ( "vDOFs",    nDOFs  )
@@ -118,6 +123,7 @@ def getBuffs( ):
         invAmass = getBuff ( "invAmass",  (na,3) )
         invEmass = getBuff ( "invEmass",  (ne,3) )
         invSmass = getBuff ( "invSmass",   ne    )
+    
 
 #  void load_xyz( const char* fname ){
 lib.load_fgo.argtypes  = [c_char_p, c_bool, c_double] 
@@ -366,7 +372,7 @@ def preAllocateXYZ(fname, Rfac=-0.5, bCoreElectrons=True):
 
 lib.processXYZ_e.argtypes  = [c_char_p, c_double_p, c_double_p, c_double_p, c_double_p,  c_int, c_double, c_double, c_int, c_char_p, c_char_p, c_int_p ]
 lib.processXYZ_e.restype   =  c_int
-def processXYZ_e( fname, outEs=None, apos=None, fapos=None, epos=None, nstepMax=0, dt=0.001, Fconv=1e-3, optAlg=2, xyz_out="processXYZ.xyz", fgo_out="processXYZ.fgo", bOutputs=(0,0,0,0), convSum=[0] ):
+def processXYZ_e( fname, outEs=None, apos=None, fapos=None, epos=None, nstepMax=0, dt=0.001, Fconv=1e-3, optAlg=1, xyz_out="processXYZ.xyz", fgo_out="processXYZ.fgo", bOutputs=(0,0,0,0), convSum=[0] ):
     """
     Process XYZ file with electrons
     Returns: outEs, apos, epos
@@ -712,6 +718,24 @@ def test_Hatom( bDerivs=False ):
     plt.legend()
     plt.grid()
     plt.show()
+
+lib.EvalTwoElectrons.argtypes  = [c_int, c_double, c_bool, c_bool, c_bool ]
+lib.EvalTwoElectrons.restype   = c_double_p
+def EvalTwoElectrons( points, distance, samespin, bEvalCoulomb = False, bEvalPauli = True):
+    # Ek=0, Eee EeePaul EeeExch Eae EaePaul Eaa
+    ptr = lib.EvalTwoElectrons( points, distance, samespin, bEvalCoulomb, bEvalPauli )
+    values = np.ctypeslib.as_array( ptr ,(points,) ) 
+    return  values
+
+
+lib.FindMinrho2.argtypes  = [c_int, c_char_p, c_int, c_double, c_double, c_int]
+lib.FindMinrho2.restype   = c_double_p
+def FindMinrho2( points, fname, nstepMax=1000, dt=0.001, Fconv=1e-3, optAlg=-1, ):
+    # Ek=0, Eee EeePaul EeeExch Eae EaePaul Eaa
+    ptr = lib.FindMinrho2( points, cstr(fname), nstepMax, dt, Fconv, optAlg)
+    values = np.ctypeslib.as_array( ptr ,(points*3,) ) 
+    return  values
+
 
 # ========= Python Functions
 

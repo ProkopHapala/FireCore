@@ -238,7 +238,7 @@ if __name__ == '__main__':
     from pyBall import atomicUtils as au
     #app = QApplication(sys.argv)
     parser = argparse.ArgumentParser(description="Modern OpenGL Molecular Viewer")
-    parser.add_argument("-f", "--file", type=str, help="Path to the XYZ trajectory file", default=None) # Default to None
+    parser.add_argument("-f", "--file", type=str, help="Path to the XYZ trajectory file", default= "processXYZ.xyz") # Default to processXYZ.xyz can be None
     args = parser.parse_args()
     print(args)
 
