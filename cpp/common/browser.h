@@ -1,3 +1,11 @@
+/// @file browser.h
+/// @brief Core directory browsing — file listing and extension filtering.
+///
+/// Browser reads a directory and separates entries into fileNames and subDirNames,
+/// filtering files by registered extensions (e.g. .xyz, .mol, .mol2). Provides
+/// checkExtension() and readDir() methods. Used as base class by BrowserView
+/// (thumbnail browser) and other file-browsing components. No SDL or OpenGL deps.
+
 #ifndef  browser_sdl_h
 #define  browser_sdl_h
 

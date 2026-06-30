@@ -1,3 +1,8 @@
+/// @file GLView.h
+/// @brief C API header for GLView — lightweight standalone OpenGL 3D viewer window.
+///
+/// @see GLView.hpp for the C++ class definition and full description.
+
 #ifndef  GLView_h
 #define  GLView_h
 

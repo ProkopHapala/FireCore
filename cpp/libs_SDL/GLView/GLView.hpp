@@ -1,3 +1,18 @@
+/// @file GLView.hpp
+/// @brief Lightweight standalone OpenGL 3D viewer window with camera controls.
+///
+/// GLView is a minimal SDL2+OpenGL window class providing:
+/// - Ortho/perspective camera with mouse rotation (quaternion-based qCamera)
+/// - Zoom (wheel), pan (arrow keys), first-person mode
+/// - Virtual draw()/drawHUD()/eventHandling() for subclass customization
+/// - No molecule-specific or simulation logic — pure 3D viewport
+///
+/// Role in repo: Base class for lightweight 3D viewers that need their own
+/// SDL window. Lighter than AppSDL2OGL_3D (no framework dependencies).
+/// Suitable for opening a separate molecule view window from MolecularBrowser
+/// or for embedding in non-FireCore projects. Subclass and override draw()
+/// to render specific content.
+
 #include "Vec3.h"
 #include "Vec2.h"
 #include "Mat3.h"

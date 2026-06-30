@@ -1,3 +1,5 @@
+/// @file AppSDL2OGL_3D.cpp
+/// @brief Implementation of AppSDL2OGL_3D — 3D camera controls, mouse rotation, keyboard movement.
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>

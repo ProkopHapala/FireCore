@@ -1,3 +1,10 @@
+/// @file AppSDL2OGL.h
+/// @brief Base class for SDL2/OpenGL applications with event loop and input handling.
+///
+/// AppSDL2OGL extends ScreenSDL2OGL with SDL event processing, key state polling,
+/// child window management, and a main loop (wait/loop/quit). Provides virtual
+/// methods for draw, drawHUD, eventHandling, keyStateHandling that subclasses override.
+/// Used as base class by AppSDL2OGL_3D and directly by simple 2D OpenGL apps.
 
 #ifndef  AppSDL2OGL_h
 #define  AppSDL2OGL_h

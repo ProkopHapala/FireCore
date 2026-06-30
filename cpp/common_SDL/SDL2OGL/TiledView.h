@@ -1,3 +1,7 @@
+/// @file TiledView.h
+/// @brief Header for TiledView — tiled display-list renderer for large 2D maps.
+///
+/// @see TiledView.cpp for full description.
 
 #ifndef  TiledView_h
 #define  TiledView_h

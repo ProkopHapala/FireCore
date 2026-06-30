@@ -1,3 +1,12 @@
+/// @file MolecularDraw.h
+/// @brief Higher-level visualization for force-field grids, substrate surfaces, and relaxation trajectories.
+///
+/// Provides functions to render GridFF slices, iso-surfaces, substrate meshes, force-field
+/// relaxation trajectories, and neighbor search visualization. Depends on GridFF,
+/// AtomicConfiguration, and FastAtomicMetric. Used primarily by MolGUI for surface/substrate
+/// visualization in molecular simulations. Distinct from Draw3D_Molecular.h which provides
+/// low-level molecular geometry primitives (atoms, bonds, labels) without FF dependencies.
+
 #ifndef MolecularDraw_h
 #define MolecularDraw_h
 

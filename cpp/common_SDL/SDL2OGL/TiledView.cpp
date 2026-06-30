@@ -1,3 +1,18 @@
+/// @file TiledView.cpp
+/// @brief Tiled display-list renderer for large 2D maps with pan/zoom and lazy tile generation.
+///
+/// TiledView manages a grid (nx × ny) of OpenGL display lists, each rendering a
+/// rectangular tile of a larger 2D map. Features:
+/// - Lazy tile rendering: only visible tiles are compiled to display lists
+/// - Pan: shiftRender() reuses existing tiles, only renders newly visible ones
+/// - Zoom: renderAll() re-generates all tiles when zoom level changes significantly
+/// - Each tile compiled via virtual tileToList(x0, y0, x1, y1) — subclass defines content
+/// - Extends Map2D (2D coordinate mapping with step/invStep)
+///
+/// Role in repo: Used for rendering large 2D scalar/vector fields (e.g. AFM images,
+/// potential maps) that are too big to render in a single pass. Not directly related
+/// to molecular browsing — could be used for rendering grid-based visualizations
+/// within MolGUI or other map-viewing applications.
 
 #include <stdlib.h>
 #include <stdio.h>

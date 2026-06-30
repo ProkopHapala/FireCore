@@ -33,3 +33,8 @@ tests/tSiNCs/sila_adamantane_dftb_vib/cache*.json
 .aider*
 .env
 node_modules
+.cache/
+.skeletons/
+.vscode/
+.devin/
+.dirac-symbol-index/

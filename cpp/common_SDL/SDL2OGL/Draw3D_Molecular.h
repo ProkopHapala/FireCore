@@ -1,3 +1,11 @@
+/// @file Draw3D_Molecular.h
+/// @brief Low-level 3D OpenGL rendering primitives for molecular data.
+///
+/// Provides functions to draw atoms (spheres), bonds (lines), labels (atom indices,
+/// atom type names, bond indices, bond lengths), neighbors, torsions, and PBC bonds.
+/// Functions take raw arrays (Vec3d*, Vec2i*, int*) — no dependency on Builder or force-field.
+/// Used by both MolGUI (full editor) and MolView (lightweight viewer) and MolecularBrowser thumbnails.
+/// Distinct from MolecularDraw.h which handles higher-level GridFF/substrate visualization.
 
 #ifndef  Draw3D_Molecular_h
 #define  Draw3D_Molecular_h

@@ -1,3 +1,20 @@
+/// @file MolGUI.h
+/// @brief Full-featured molecular GUI application (editor, viewer, relaxer, scanner).
+///
+/// MolGUI is the primary interactive molecular application in FireCore, extending
+/// AppSDL2OGL_3D. It provides:
+/// - 3D visualization of molecules (atoms, bonds, electron pairs) via Draw3D_Molecular
+/// - Interactive atom/bond/angle/torsion selection and editing with gizmo
+/// - Real-time force-field relaxation (MMFF) via MolWorld_sp3
+/// - GUI panels for fragments, bond lengths, non-bonded plots, AFM, dipole maps
+/// - Console for scripting, simplex ruler for organic molecule construction
+/// - Mode switching: base (view), edit (build/modify), scan (parameter sweeps)
+///
+/// Role in repo: The main "heavy" GUI for molecular work. Used by MolGUIapp.cpp
+/// and MolGUIlib.cpp (Python/external binding). Requires a MolWorld_sp3 instance
+/// as its simulation backend. Not suitable for lightweight viewing — use
+/// MolecularBrowser or Vis3D for simpler display needs.
+
 #ifndef MolGUI_h
 #define MolGUI_h
 

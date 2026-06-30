@@ -1,3 +1,11 @@
+/// @file GUI.h
+/// @brief Immediate-mode GUI widgets for SDL2/OpenGL applications.
+///
+/// Provides GUIAbstractPanel base class and derived widgets: GUIPanel (slider/button/text input),
+/// MultiPanel (collapsible group of panels), CheckBoxList (toggle list bound to bool* pointers),
+/// ScisorBox, DropDownList, TreeView, and the GUI container that manages panels, event routing,
+/// and rendering. Uses pixel-accurate font rendering via fontSizeDef. Used by MolGUI, Console,
+/// and lightweight viewers like MolView for interactive controls.
 
 #ifndef  GUI_h
 #define  GUI_h

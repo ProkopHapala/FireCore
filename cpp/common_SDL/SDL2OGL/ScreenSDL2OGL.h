@@ -1,3 +1,10 @@
+/// @file ScreenSDL2OGL.h
+/// @brief Base class for SDL2/OpenGL window management and rendering context.
+///
+/// ScreenSDL2OGL creates the SDL window and OpenGL context, manages viewport
+/// dimensions (WIDTH, HEIGHT, ASPECT_RATIO), zoom, mouse coordinates, and provides
+/// virtual methods for draw, drawHUD, camera, eventHandling, keyStateHandling,
+/// mouseHandling. Foundation of the SDL2OGL app hierarchy — extended by AppSDL2OGL.
 
 #ifndef  ScreenSDL2OGL_h
 #define  ScreenSDL2OGL_h

@@ -1,4 +1,21 @@
-﻿
+﻿/// @file Vis3D.cpp
+/// @brief Generic 3D visualization window with C API for adding geometry objects.
+///
+/// Vis3DApp extends AppSDL2OGL_3D and renders a list of OpenGL display lists.
+/// It exposes a C API (extern "C") for external callers (Python, notebooks, etc.):
+/// - initWindow() / loop() / asyncLoop() — window lifecycle
+/// - spheres(n, positions, colors, radii) — draw atoms as colored spheres
+/// - lines(nedges, edges, points) — draw bond/connectivity lines
+/// - polyline(n, points, closed) — draw open/closed polylines
+/// - vectors(n, vecs, positions) — draw arrow vectors
+/// - triangles(ntris, tris, points) — draw triangle meshes
+/// - erase(i) — remove an object by index
+/// - Thread-safe via GL_LOCK mechanism for async rendering
+///
+/// Role in repo: Lightweight 3D viewer for quick visualization of geometric
+/// data (atoms, bonds, meshes) from external code. No molecule parsing or
+/// force-field logic. Suitable for Python bindings or standalone tools.
+
 // see
 // https://www.opengl.org/discussion_boards/showthread.php/171319-glFlush-or-glFinish-with-mulithreading
 

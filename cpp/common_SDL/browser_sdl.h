@@ -1,3 +1,18 @@
+/// @file browser_sdl.h
+/// @brief ACDsee-style image file browser using SDL surfaces (2D, not OpenGL).
+///
+/// BrowserSDL provides thumbnail-based navigation of image files (.jpg, .png, .bmp, .tif):
+/// - MODE_THUMBS: grid of directory thumbnails with keyboard navigation (arrows, enter)
+/// - MODE_VIEW: full-size single image view with aspect-ratio-preserving scaling
+/// - Directory navigation: enter subdirs, go back to parent (..)
+/// - Lazy thumbnail generation via job queue (JOB_THUMBS) — one thumb per update tick
+/// - Tile types: TILE_DIR (subdirectory), TILE_IMG (image file)
+/// - Uses SDL_Surface blitting and TTF font rendering (not OpenGL)
+///
+/// Role in repo: Reference implementation of the ACDsee browser pattern (thumbs ↔ view
+/// mode switching). Designed for 2D images, not 3D molecules. MolecularBrowser.cpp
+/// adapts the same navigation pattern but uses OpenGL for 3D molecule thumbnails.
+
 #ifndef  browser_sdl_h
 #define  browser_sdl_h
 

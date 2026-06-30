@@ -1,3 +1,11 @@
+/// @file AppSDL2OGL_3D.h
+/// @brief Base class for SDL2/OpenGL applications with 3D camera controls.
+///
+/// AppSDL2OGL_3D extends AppSDL2OGL with quaternion-based camera rotation (qCamera),
+/// zoom, perspective/ortho projection, mouse rotation, and keyboard movement
+/// (WASD/QE translate, arrows rotate). Provides camera setup, crosshair, and
+/// mouse selection box rendering. Used as base class by MolGUI, MolecularBrowser,
+/// Vis3D, and other 3D SDL apps.
 
 #ifndef  AppSDL2OGL_3D_h
 #define  AppSDL2OGL_3D_h

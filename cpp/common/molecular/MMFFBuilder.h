@@ -1,7 +1,14 @@
+/// @file MMFFBuilder.h
+/// @brief MM::Builder — full molecular topology + force-field builder (extends BuilderBase).
+/// @ingroup Classical_Molecular_Mechanics
+///
+/// MM::Builder extends BuilderBase with force-field instance construction: atom type
+/// assignment, bond/angle/torsion parameterization, capping atoms, explicit electron pairs,
+/// and segment/group management. Also provides print/debug utilities. Used by MolWorld_sp3
+/// and MolGUI. Heavy dependency — MolView/BrowserView use only MMFFparams (not this).
+
 #ifndef MMFFBuilder_h
 #define MMFFBuilder_h
-/// @file MMFFBuilder.h   @brief Classes for building and editing molecular topology and building instances of force-fields for paticular molecule or system 
-/// @ingroup Classical_Molecular_Mechanics
 
 #include <string>
 #include <vector>

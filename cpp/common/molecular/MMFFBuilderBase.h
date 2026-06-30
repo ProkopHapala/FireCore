@@ -1,7 +1,14 @@
+/// @file MMFFBuilderBase.h
+/// @brief Base class for molecular topology building — atoms, bonds, angles, torsions.
+/// @ingroup Classical_Molecular_Mechanics
+///
+/// BuilderBase holds molecular topology data (atoms, bonds, atom conformations) and
+/// provides algorithms for bond finding, atom type assignment, neighbor counting, and
+/// fragment segmentation. No force-field evaluation — that's in the derived MM::Builder
+/// (MMFFBuilder.h). Used by MolWorld_sp3 and MolGUI for molecular editing.
+
 #ifndef MMFFBuilderBase_h
 #define MMFFBuilderBase_h
-/// @file MMFFBuilder.h   @brief Classes for building and editing molecular topology and building instances of force-fields for paticular molecule or system 
-/// @ingroup Classical_Molecular_Mechanics
 
 #include <string>
 #include <vector>
