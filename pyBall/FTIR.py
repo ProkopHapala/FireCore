@@ -144,6 +144,79 @@ def build_sparse_hessian_from_blocks(neigh_idx, neigh_count, blocks, symmetrize=
     return H_sparse
 
 
+def harmonic_stick_hessian_blocks(ri, rj, k, l0):
+    """3×3 Hessian blocks for E=½k(|rj−ri|−l0)² (MMFFL linear stick / K₁₂/K₁₃/K₁₄)."""
+    d = np.asarray(rj, dtype=np.float64) - np.asarray(ri, dtype=np.float64)
+    r = float(np.linalg.norm(d))
+    if r < 1e-12:
+        raise ValueError(f"harmonic_stick_hessian_blocks: zero-length stick ri={ri} rj={rj}")
+    n = d / r
+    I = np.eye(3)
+    nn = np.outer(n, n)
+    fac = k * (nn + (r - l0) / r * (I - nn))
+    return fac, -fac
+
+
+def build_hessian_from_linear_topology(pos, neigh_idx, bond_k, bond_l0, stick_class=None, neigh_count=None, symmetrize=True):
+    """Dense 3N×3N Hessian from exported 03_topology.npz springs (bond/angle/dihedral sticks)."""
+    pos = np.asarray(pos, dtype=np.float64)
+    natoms = int(pos.shape[0])
+    neigh_idx = np.asarray(neigh_idx, dtype=np.int32)
+    bond_k = np.asarray(bond_k, dtype=np.float64)
+    bond_l0 = np.asarray(bond_l0, dtype=np.float64)
+    if neigh_idx.shape != bond_k.shape or neigh_idx.shape != bond_l0.shape:
+        raise ValueError(f"build_hessian_from_linear_topology: shape mismatch neigh={neigh_idx.shape} k={bond_k.shape} l0={bond_l0.shape}")
+    N, M = neigh_idx.shape
+    if natoms != N:
+        raise ValueError(f"build_hessian_from_linear_topology: pos natoms={natoms} neigh_idx rows={N}")
+    sc = None if stick_class is None else np.asarray(stick_class, dtype=np.int32)
+    nc = None if neigh_count is None else np.asarray(neigh_count, dtype=np.int32).reshape(-1)
+    ndof = 3 * natoms
+    H = np.zeros((ndof, ndof), dtype=np.float64)
+    seen = set()
+    for i in range(N):
+        m = int(nc[i]) if nc is not None else M
+        for s in range(m):
+            j = int(neigh_idx[i, s])
+            if j < 0 or j <= i:
+                continue
+            if sc is not None and int(sc[i, s]) == 0:
+                continue
+            key = (i, j)
+            if key in seen:
+                continue
+            seen.add(key)
+            kij, l0ij = float(bond_k[i, s]), float(bond_l0[i, s])
+            Hii, Hij = harmonic_stick_hessian_blocks(pos[i], pos[j], kij, l0ij)
+            ia, ib = i * 3, j * 3
+            H[ia:ia + 3, ia:ia + 3] += Hii
+            H[ib:ib + 3, ib:ib + 3] += Hii
+            H[ia:ia + 3, ib:ib + 3] += Hij
+            H[ib:ib + 3, ia:ia + 3] += Hij
+    if symmetrize:
+        H = 0.5 * (H + H.T)
+    if np.isnan(H).any() or np.isinf(H).any():
+        raise ValueError("build_hessian_from_linear_topology: NaN/Inf in Hessian")
+    return H
+
+
+def mass_matrix_from_Z(Z):
+    """Diagonal 3N×3N mass matrix from atomic numbers (amu)."""
+    from pyBall import elements
+    from pyBall.io.crystal_npz import enames_from_Z
+    Z = np.asarray(Z, dtype=np.int32).reshape(-1)
+    natoms = Z.shape[0]
+    masses = []
+    for sym in enames_from_Z(Z):
+        if sym not in elements.ELEMENT_DICT:
+            raise ValueError(f"mass_matrix_from_Z: unknown element {sym}")
+        masses.append(float(elements.ELEMENT_DICT[sym][10]))
+    M = np.zeros(natoms * 3, dtype=np.float64)
+    for i, m in enumerate(masses):
+        M[i * 3:i * 3 + 3] = m
+    return np.diag(M)
+
+
 def rigid_mode_shift_vectors(M, pos):
     """Return 6 rigid-body shift vectors v_j = M^{1/2} q_j (length 3N) for Hessian projection."""
     n_atoms = pos.shape[0]

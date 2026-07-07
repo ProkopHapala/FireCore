@@ -247,6 +247,7 @@ class AtomScene(QtCore.QObject):
 
         self._pick_mode = '2d'   # '2d' or '3d'
         self._lock_top_view = True
+        self._view_navigation = False  # viewer: RMB rotate always, LMB pick only (no atom drag)
         self._clamp_xy = False
         self._fixed = None
 
@@ -528,6 +529,10 @@ class AtomScene(QtCore.QObject):
         self._lock_top_view = bool(lock)
         self._apply_camera_mode()
 
+    def set_view_navigation(self, enable):
+        """Viewer/browser mode: RMB always rotates camera; LMB picks atoms without drag."""
+        self._view_navigation = bool(enable)
+
     def set_camera_debug(self, level=1):
         self._cam_debug = int(level)
 
@@ -586,6 +591,8 @@ class AtomScene(QtCore.QObject):
         cam = self.view.camera
         if cam is None:
             return
+        if self._view_navigation:
+            dx_px = -float(dx_px)
         cam.azimuth = float(cam.azimuth) + float(dx_px) * float(self._cam_rot_speed)
         cam.elevation = float(cam.elevation) + float(dy_px) * float(self._cam_rot_speed)
         if cam.elevation > 89.0:
@@ -593,6 +600,7 @@ class AtomScene(QtCore.QObject):
         if cam.elevation < -89.0:
             cam.elevation = -89.0
         self._redraw()
+        self.canvas.update()
         self.sig_camera_changed.emit()
         self._cam_print('rotate')
 
@@ -610,6 +618,7 @@ class AtomScene(QtCore.QObject):
             z1 = self._cam_zoom_max
         cam.scale_factor = z1
         self._redraw()
+        self.canvas.update()
         if int(self._cam_debug) > 0:
             print(f"[CAM] zoom delta={float(delta):.6g} scale:{z0:.6g}->{z1:.6g}")
 
@@ -970,6 +979,11 @@ class AtomScene(QtCore.QObject):
 
     def _on_mouse_press(self, ev):
         if ev.button in (2, 3):
+            if self._view_navigation:
+                self._rmb_down = True
+                self._rmb_last = np.array(ev.pos, dtype=np.float32)
+                ev.handled = True
+                return
             if self._selection_mode:
                 # Create selection rectangle (Line visual) on first use
                 if self.selection_rect is None:
@@ -998,6 +1012,12 @@ class AtomScene(QtCore.QObject):
             ev.handled = True
             return
         if ev.button != 1:
+            return
+        if self._view_navigation:
+            i = self._pick_idx_from_mouse(ev.pos)
+            if i >= 0:
+                self.sig_atom_picked.emit(i)
+            ev.handled = True
             return
 
         # External lock: suppress all drag (e.g. Ring mode)

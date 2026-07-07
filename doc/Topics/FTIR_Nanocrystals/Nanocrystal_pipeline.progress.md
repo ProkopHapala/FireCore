@@ -28,6 +28,8 @@ do not program yet
 
 # End-to-End Nanocrystal Spectrum Pipeline — Plan & Notes
 
+**Docs:** [`README.md`](README.md) · [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../topical_audit/Nanocrystal_Vibrations.md) · [`tests/tSiNCs/README.md`](../../../tests/tSiNCs/README.md)
+
 **Strategic pivot:** Dense diagonalization (`np.linalg.eigh` + mode/histogram spectrum) is fast enough for the target crystal sizes (~500–1500 atoms). **Do not invest further in sparse/GPU frequency-domain solvers** until ensemble throughput is blocked by `eigh` itself. The bottleneck to watch is **Hessian assembly** (MMFF FD), not diagonalization.
 
 ## 1. What we already have (reuse as-is)

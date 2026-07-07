@@ -4,6 +4,8 @@ description: Silicon nanocrystal generator (scripts/gen_nanocrystals.mjs)
 
 # Silicon Nanocrystal Generator
 
+**Docs:** [`README.md`](README.md) · [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../topical_audit/Nanocrystal_Vibrations.md) · [`tests/tSiNCs/README.md`](../../../tests/tSiNCs/README.md)
+
 Reference for developers and students on how to generate silicon nanocrystals with configurable cutting planes, pruning, capping, and surface bridge operations (collapse/insert) using `scripts/gen_nanocrystals.mjs`.
 
 ## What it does
@@ -59,8 +61,9 @@ node scripts/gen_nanocrystals.mjs [options]
 - Surface filter: `nSi < 4` (targets surface atoms).
 - Insertion (surface-only):
   - Enumerate surface Si–Si bonds; with probability `insertProb`, call `insertBridge` (adds SiH2) and promote the new atom to Si (Z=14).
-- Collapse:
-  - Select surface Si with 2 heavy neighbors and ≥2 H (SiH2-like) and collapse with probability `collapseProb` (remove bridge + H, bond neighbors).
+- **Collapse** (`collapseProb`): removes a central `-SiH₂-` **bridge** atom and bonds its two heavy neighbors (fused ring).
+- **Insert** (`insertProb`): splits an existing Si–Si bond and inserts a new `-SiH₂-` bridge.
+- **Fuse** (`fuseProb`): finds two **separate** surface SiH₂ groups with clashing H; removes that H pair and creates a **new Si–Si bond** (`fuseSiH2ClashPair` in `MoleculeUtils.js`).
 - No bond rebuild after bridge ops (to preserve newly added R1–R2 bonds).
 
 ## Usage examples
@@ -69,6 +72,22 @@ node scripts/gen_nanocrystals.mjs [options]
 # Generate a set of nanocrystals
 node scripts/gen_nanocrystals.mjs --planeTemplates a111,a100 --planeSymC 2.0 --samples 5
 ```
+
+## NPZ export bundle (crystal + topology + surface AABBs)
+
+For viewer fixtures and pipeline QA, use the unified bundle exporter (Agent C):
+
+```bash
+node scripts/export_nanocrystal_bundle.mjs \
+  --cif cpp/common_resources/crystals/diamond_primitive.cif \
+  --sphere 6 --insertProb 0.15 --collapseProb 0.10 \
+  --out tests/tSiNCs/fixtures/npz_viewer/diamond_sphere_R6_defects
+```
+
+Writes `01_crystal.npz`, `03_topology.npz` (full MMFFL + `group_bbox_*`), and `meta.json` with defect counts.  
+See [`Nanocrystal_NPZ_Pipeline.guide.md`](Nanocrystal_NPZ_Pipeline.guide.md) and [`tests/tSiNCs/fixtures/npz_viewer/README.md`](../../../tests/tSiNCs/fixtures/npz_viewer/README.md).
+
+Validation: `node tests/tSiNCs/test_nanocrystal_defect_export.mjs`
 
 ## Linear Response Vibration Spectroscopy (FTIR)
 

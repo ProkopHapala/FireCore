@@ -1,8 +1,10 @@
 # Phonon Frequency Testing Guide
 
-**Purpose**: This document provides a reproducible workflow for testing phonon frequencies in FireCore MMFF forcefield, enabling comparison with other computational methods (DFTB, LAMMPS, DFT/pySCF-B3LYP).
+**Purpose**: Reproducible workflow for phonon frequencies in FireCore MMFF, with comparison to DFTB, LAMMPS, DFT/PySCF.
 
-**Date**: June 2026
+**Docs**: [`README.md`](README.md) (topic index) · [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../topical_audit/Nanocrystal_Vibrations.md) (audit) · [`tests/tSiNCs/README.md`](../../../tests/tSiNCs/README.md) (working hub)
+
+**Date**: June 2026  
 **Status**: Diamond phonons verified; diatomic bond stiffness tested; bond order assignment bug documented
 
 ---
@@ -12,7 +14,7 @@
 ### Diamond Phonon Bands (PBC Mode)
 
 ```bash
-cd /home/prokop/git/FireCore/tests/tMMFF
+cd tests/tMMFF
 bash run.sh test_diamond_phonon_bands.py --pbc --unit THz --super-n 3
 ```
 
@@ -28,12 +30,16 @@ bash run.sh test_diamond_phonon_bands.py --pbc --unit THz --super-n 3
 
 ### Plot from Cached Data (No Re-computation)
 
+Re-run the test script to regenerate plots from cached `.npz`, or load the NPZ in Python (see [Data Storage](#data-storage) below).
+
 ```bash
-cd /home/prokop/git/FireCore/tests/tMMFF
-python3 plot_phonon_bands.py diamond_phonon_bands_THz_PBC.npz --unit THz
+cd tests/tMMFF
+bash run.sh test_diamond_phonon_bands.py --unit THz --super-n 3 --pbc
+# plotting is inline in test_diamond_phonon_bands.py
+# backlog: extract standalone plot_phonon_bands.py (see Nanocrystal_Vibrations.md)
 ```
 
-**Note**: Use standalone `plot_phonon_bands.py` instead of `--plot-only` flag to avoid ASan/matplotlib crashes.
+**Note**: Avoid `--plot-only` under AddressSanitizer — matplotlib/ft2font can crash with ASan (see [Known Issues](#known-issues)).
 
 ---
 
@@ -178,19 +184,14 @@ bash run.sh test_ethane_gamma.py --bondsOnly
 
 ### Directory Structure
 ```
-/home/prokop/git/FireCore/tests/tMMFF/
-├── test_diamond_phonon_bands.py
+tests/tMMFF/
+├── test_diamond_phonon_bands.py   # phonon bands + inline plotting
 ├── test_diatomic_hessian.py
-├── test_diatomic_scan.py
 ├── test_ethane_gamma.py
-├── plot_phonon_bands.py
 ├── run.sh
-├── diamond_phonon_bands_THz_PBC.npz     # Cached diamond data
-├── diamond_phonon_bands_THz_PBC.png     # Diamond band plot
-└── data_UFF/                            # Forcefield parameters
-    ├── BondTypes.dat
-    ├── AngleTypes.dat
-    └── AtomTypes.dat
+├── diamond_phonon_bands_THz_PBC.npz
+├── diamond_phonon_bands_THz_PBC.png
+└── data/                          # symlink → cpp/common_resources
 ```
 
 ### Cached Data Files
@@ -252,9 +253,9 @@ k_frac = data['k_frac']
    - **Error**: `ERROR makeBackNeighs() capping atom[0] has not back-neighbor => exit()`
    - **Status**: Topology limitation, not a bug in Hessian code
 
-3. **Matplotlib ASan Crash**
+3. **Matplotlib ASan crash**
    - **Issue**: `--plot` flag crashes under AddressSanitizer due to matplotlib/ft2font incompatibility
-   - **Workaround**: Use standalone `plot_phonon_bands.py` script instead of `--plot-only`
+   - **Workaround**: Run plotting outside ASan build, or load `.npz` and plot manually
 
 ### Comparison with Other Methods
 
@@ -348,14 +349,14 @@ For questions about:
 - Forcefield parameters: See `cpp/common_resources/*.dat` files
 - Code implementation: See `cpp/common/molecular/MolWorld_sp3.h`
 - Python API: See `pyBall/MMFF.py`
-- Bug reports: Check `doc/Topics/FTIR_Nanocrystals/Debug_negative_phonon_freqs.md`
+- Bug reports: See [Known Issues](#known-issues) in this guide and [`Debug_ASan_double_free_and_eval_atom.progress.md`](Debug_ASan_double_free_and_eval_atom.progress.md)
 
 ---
 
 ## References
 
 1. **Forcefield Parameters**: MMFF parameter files in `cpp/common_resources/`
-2. **Debug Log**: `doc/Topics/FTIR_Nanocrystals/Debug_negative_phonon_freqs.md`
+2. **Imaginary modes / PBC**: [Known Issues](#known-issues) in this guide
 3. **Phonopy**: Togo et al., "First-principles phonon calculations in materials science", Scr. Mater. 108 (2015)
 
 ---

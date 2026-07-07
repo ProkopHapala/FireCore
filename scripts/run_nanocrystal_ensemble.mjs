@@ -6,10 +6,10 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { molToCrystalArrays, writeCrystalNpz, crystalToXYZ, readXyzPositions, crystalToJson, writeCrystalJson, readNpzFile } from '../web/common_js/npzIO.js';
+import { molToCrystalArrays, crystalToXYZ, readXyzPositions, crystalToJson, writeCrystalJson, readNpzFile } from '../web/common_js/npzIO.js';
 import { exportCrystalCompareSvgViews, atlasIndexHtml } from '../web/common_js/nanocrystalSvg.js';
-import { buildTopologyNpz } from '../web/common_js/exportFF.js';
 import { loadMMParamsFromDir, loadMolFromMol2, bondsForVisualization, getCrystalBondsFromFiles } from '../web/common_js/MolIO.js';
+import { exportNanocrystalBundle } from '../web/molgui_webgpu/NanocrystalExport.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '..');
 
@@ -337,7 +337,7 @@ async function processCrystal(index, cfg, paths, stageTimings, manifestPath, doD
     const genJson = JSON.stringify(genParams);
     const metaObj = { crystal_id: id, seed, index, gen_params: genParams, bonds_ij: null };
 
-    const p01 = path.join(cdir, '01_init.npz');
+    const p01 = path.join(cdir, '01_crystal.npz');
     const pInitMol2 = path.join(cdir, 'init.mol2');
     const pInitXyz = path.join(cdir, 'init.xyz');
     const p02 = path.join(cdir, '02_relaxed.npz');
@@ -364,7 +364,11 @@ async function processCrystal(index, cfg, paths, stageTimings, manifestPath, doD
         const bondsVis = bondsForVisualization(mol);
         metaObj.bonds_ij = bondsVis ? Array.from(bondsVis) : null;
         fs.writeFileSync(path.join(cdir, 'meta.json'), JSON.stringify(metaObj, null, 2));
-        writeCrystalNpz(fs, p01, { ...arrays, gen_params: genJson, timing_ms: performance.now() - t0 });
+        exportNanocrystalBundle(mol, mm, {
+            outDir: cdir, id, genParams, exportTopology: true, writeMeta: true,
+            crystalName: '01_crystal.npz',
+            defectsMeta: { insertProb: genParams.defects?.insertProb ?? 0, collapseProb: genParams.defects?.collapseProb ?? 0 },
+        });
         fs.writeFileSync(pInitXyz, crystalToXYZ(arrays.pos, arrays.Z));
         appendManifest(manifestPath, { crystal_id: id, stage: 'generate', natoms: arrays.natoms, status: 'ok' });
     }
@@ -379,7 +383,7 @@ async function processCrystal(index, cfg, paths, stageTimings, manifestPath, doD
     const { Z: Zinit, pos: posInit } = readXyzPositions(fs, pInitXyz);
 
     if (!stageExists(p02) || paths.force) {
-        const r = runPy('relax', ['--init-xyz', pInitXyz, '--out-npz', p02, '--out-xyz', pRelaxedXyz, '--allow-unconverged'], { label: 'relax', statusPath: p02.replace(/\.npz$/, '.status.json'), python: paths.python });
+        const r = runPy('relax', ['--init-npz', p01, '--out-npz', p02, '--out-xyz', pRelaxedXyz, '--allow-unconverged'], { label: 'relax', statusPath: p02.replace(/\.npz$/, '.status.json'), python: paths.python });
         stageTimings.relax.push(r.timing_ms);
         appendManifest(manifestPath, { crystal_id: id, stage: 'relax', ...r.info });
     }
@@ -393,20 +397,13 @@ async function processCrystal(index, cfg, paths, stageTimings, manifestPath, doD
         viewerCrystals.push({ id, label: id, init: `crystals/${id}/crystal_init.json`, relaxed: `crystals/${id}/crystal_relaxed.json` });
     }
 
-    if (!stageExists(p03) || paths.force) {
-        const t0 = performance.now();
-        buildTopologyNpz({ mol2Path: pInitMol2, relaxedXyzPath: pRelaxedXyz, outNpzPath: p03, groupCap: cfg.group_cap ?? 32 });
-        const timing_ms = performance.now() - t0;
-        stageTimings.topology.push(timing_ms);
-        appendManifest(manifestPath, { crystal_id: id, stage: 'topology', timing_ms, status: 'ok' });
-    }
-
     if (doDebug && stageExists(p03)) {
         enrichViewerJsonWithTopology(plotDir, p03);
     }
 
     if (!stageExists(p04) || paths.force) {
-        const r = runPy('hessian', ['--relaxed-xyz', pRelaxedXyz, '--out-npz', p04], { label: 'hessian', statusPath: p04.replace(/\.npz$/, '.status.json'), python: paths.python });
+        if (!stageExists(p03)) throw new Error(`missing ${p03}: export 03_topology.npz at generation (topology is fixed at export)`);
+        const r = runPy('hessian', ['--relaxed-npz', p02, '--topology-npz', p03, '--out-npz', p04], { label: 'hessian', statusPath: p04.replace(/\.npz$/, '.status.json'), python: paths.python });
         stageTimings.hessian.push(r.timing_ms);
         appendManifest(manifestPath, { crystal_id: id, stage: 'hessian', ...r.info });
     }

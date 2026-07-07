@@ -1,122 +1,164 @@
-
 # FireCore Tests and Examples
 
-This directory contains examples and test scripts that demonstrate FireCore functionality. **This is the best place to understand what is implemented and how to use it.**
+This directory contains examples and test scripts that demonstrate FireCore functionality. **Each subfolder has its own `README.md`** with entry points, useful scripts, and obsolete files to ignore.
 
-## 🚀 Quick Start
+> **Reorganization in progress (planning only):** see [`REORGANIZATION.plan.md`](REORGANIZATION.plan.md). Major split: `tVibrations`, `tSurfaces`, `tRigidBody` (new siblings); FDBM → `tAFM`; shrink `tMMFF`. Not implemented yet.
 
-All test directories contain `run.sh` scripts that automatically compile and run the programs:
+## Policies (agreed direction)
+
+### Naming: `test_*` is often a misnomer
+
+Most `test_*.py` files are **runnable demos** (plots, scans, exploratory workflows), not pytest/automated tests. Going forward:
+
+- **`demo_*`** — exploration / workflow scripts
+- **`check_*`** / **`verify_*`** — validation with explicit pass/fail
+- Do not add new `test_*` unless it is a real automated check
+
+### Output hygiene (bonding rule)
+
+**Scripts must not write results next to source code.** All runtime output goes under `out/<script_stem>/` (or `fixtures/` for committed reference data).
+
+- We **avoid `.gitignore` on output trees** that agents need to read for debugging.
+- Large ephemeral runs live under `out/` with per-script subdirs; README documents what is safe to delete.
+- See [`REORGANIZATION.plan.md`](REORGANIZATION.plan.md) for full layout and current violations (`tMMFF/result_Trajectroy_Opt/`, etc.).
+
+## Quick start
+
+Most directories with C++/GPU libs use `run.sh` (compile + run):
 
 ```bash
-cd tests/tMMFF        # Molecular mechanics
-./run.sh
-
-cd tests/tMolGUIapp   # GUI applications
-./run.sh
-
-cd tests/Fireball/t02_CH4  # DFT calculations
-./run.sh
+cd tests/tMMFF && ./run.sh
+cd tests/tUFF && python3 test_parity_suite.py
+cd tests/Fireball/t01_H2 && ../../../build/fireball.x
 ```
 
-## Test Categories
+Python-only dirs: run scripts directly (`tests/dftb/`, `tests/pyFireball/`, etc.).
 
-### Molecular Mechanics and Force Fields
-- **`tMMFF/`** - Basic molecular mechanics force field tests using python-bining to C++ library
-- **`tMMFFmulti/`** - Multi-molecule force field tests using python-bining to C++ library with OpenCL
-- **`tMMFFsp3/`** - sp3 hybridization specific tests
-- **`tUFF/`** - Universal Force Field tests
-- **`tFitFF/`** - Force field parameter fitting
-- **`tFitREQ/`** - non-covalent interaction parameter fitting (REQH = {Rvdw,Evdw,Q,Hbond})
+## Directory index
 
-### GUI Applications
-- **`tMolGUIapp/`** - Basic molecular GUI application
-- **`tMolGUIapp_multi/`** - Multi-molecule GUI tests
-- **`tMolGUIapp_QMMM/`** - QM/MM hybrid method GUI
-- **`tMolGUIapp_QMMM_multi/`** - Multi-molecule QM/MM
+Each row links to the folder README. **Status** reflects current maintenance level.
 
-### DFT and Quantum Methods
-- **`Fireball/`** - Fireball DFT tests (H2, CH4, pentacene, etc.)
-- **`tDFT/`** - General DFT calculation tests
-- **`tDFT_CO/`** - Carbon monoxide DFT tests
-- **`tDFT_pentacene/`** - Pentacene molecule DFT tests
-- **`pyFireball/`** - Python interface to Fireball DFT
-- **`pySCF/`** - PySCF integration tests
-- **`dftb/`** - DFTB+ integration tests
+### Molecular mechanics and force fields
 
-### Specialized Methods
-- **`tEFF/`** - Electron Force Field tests
-- **`tEFFapp/`** - EFF application tests
-- **`tSchroedinger1D/`** - 1D Schrödinger equation solver
-- **`tSchroedinger2D/`** - 2D Schrödinger equation solver
-- **`tQuadrature/`** - Numerical integration tests
+| Directory | Purpose | Entry | Status |
+|-----------|---------|-------|--------|
+| [tMMFF/](tMMFF/README.md) | MMFF core demos, assembly (shrinking) | `./run.sh` | **Messy** — split planned; see REORGANIZATION.plan.md |
+| *`tVibrations/`* | *planned:* general phonons, Hessians, solvers | — | **Not created** — from tMMFF; not tSiNCs |
+| *`tSurfaces/`* | *planned:* GridFF, Ewald2D, folded electrostatics | — | **Not created** — absorbs tEwald2D |
+| *`tRigidBody/`* | *planned:* rigid scans & dynamics on surfaces | — | **Not created** — from tMMFF |
+| [tMMFFmulti/](tMMFFmulti/README.md) | Multi-replica MMFF on GPU | `./run.sh` | Active |
+| [tMMFFsp3/](tMMFFsp3/README.md) | MMFFsp3 profiles, H-bond scans | `./run.sh` | Active |
+| [tUFF/](tUFF/README.md) | UFF/MMFF CPU vs OCL vs PyOCL parity | `test_parity_suite.py` | **Active** — primary parity suite |
+| [tCUDA/](tCUDA/README.md) | CUDA vs OpenCL MMFF | `./run.sh` | Active (needs CUDA) |
+| [tFitFF/](tFitFF/README.md) | Fireball-based FF parameter fitting | `./run.sh` | Active |
+| [tFitREQ/](tFitREQ/README.md) | REQH non-bonded fitting (Rvdw, Evdw, Q, H-bond) | `./run.sh` | Active |
+| [tEwald2D/](tEwald2D/README.md) | 2D Ewald electrostatics | `./run.sh` | Active — **→ merge into `tSurfaces/`** |
+| [tLattice2D/](tLattice2D/README.md) | 2D lattice vector matching | `./run.sh` | Active |
+| [tFF2D/](tFF2D/README.md) | 2D force-field topology builder | `./run.sh` | Active |
+| [NonBondSampling/](NonBondSampling/README.md) | vdW surface sampling | `sample.py` | Exploratory |
 
-### GPU and Parallel Computing
-- **`tCUDA/`** - CUDA acceleration tests
-- **`NonBondSampling/`** - Non-bonded interaction sampling
+### GUI applications
 
-### Molecular Tools and Utilities
-- **`tAttach/`** - Molecular attachment and building tools
-- **`tKekule/`** - Kekulé structure generation
-- **`tLattice2D/`** - 2D lattice generation
-- **`tFF2D/`** - 2D force field tests
-- **`tLammpsTrj/`** - LAMMPS trajectory analysis
-- **`tPsi4resp/`** - Psi4 RESP charge fitting
+| Directory | Purpose | Entry | Status |
+|-----------|---------|-------|--------|
+| [tMolGUIapp/](tMolGUIapp/README.md) | Single-molecule editor | `./run.sh` | Active — `run.sh` is mostly commented recipes |
+| [tMolGUIapp_multi/](tMolGUIapp_multi/README.md) | Multi-replica OCL editor | `./run.sh` | Active |
+| [tMolGUIapp_QMMM/](tMolGUIapp_QMMM/README.md) | QM/MM GUI | `./run.sh` | Active |
+| [tMolGUIapp_QMMM_multi/](tMolGUIapp_QMMM_multi/README.md) | Multi-replica QM/MM | `./run.sh` | Active |
 
-### Specialized Applications
-- **`tQMMM_diacetylene/`** - QM/MM study of diacetylene
-- **`blender/`** - Blender integration scripts
-- **`pyutils/`** - Python utility scripts
+### DFT and quantum methods
 
-## File Structure in Test Directories
+| Directory | Purpose | Entry | Status |
+|-----------|---------|-------|--------|
+| [Fireball/](Fireball/README.md) | Fortran `fireball.x` molecule tests (24 cases) | per-subdir `run.sh` | **Mixed** — path bugs; `t02_CH4` broken |
+| [pyFireball/](pyFireball/README.md) | Python FireCore, STM, ribbon scans, OCL parity | `./run.sh` | **Active** — ignore 19 `copy`/`bak` files |
+| [dftb/](dftb/README.md) | DFTB+ API and OpenCL waveplot parity | `test_python_api.py` | **Active** — legacy HBsmall batch scripts obsolete |
+| [tDFT/](tDFT/README.md) | GPU density projection | `./run.sh` | Active |
+| [tDFT_CO/](tDFT_CO/README.md) | CO density projection | `./run.sh` | Active |
+| [tDFT_pentacene/](tDFT_pentacene/README.md) | Pentacene density / CO convolution | `./run.sh` | Active |
+| [pySCF/](pySCF/README.md) | PySCF experiments | `try_pyscf.py` | Exploratory |
+| [pyocl_dft/](pyocl_dft/README.md) | OpenCL DFT density milestones | `test_firecore_data.py` | Active |
+| [tPsi4resp/](tPsi4resp/README.md) | Psi4 RESP fitting | `psi4resp.py` | Active (needs conda `p4env`) |
 
-Most test directories contain:
-- **`run.sh`** - Main execution script (compiles and runs)
-- **`run.py`** - Python execution script (if applicable)
-- **Input files** - Molecular structures (.xyz, .mol2), parameters, etc.
-- **`data/` or `common_resources/`** - Symbolic links to shared resources
-- **Output files** - Results, logs, trajectories (generated after running)
+### eFF, Kekulé, QM/MM
 
-## Usage Patterns
+| Directory | Purpose | Entry | Status |
+|-----------|---------|-------|--------|
+| [tEFF/](tEFF/README.md) | eFF/RARFF CPU vs GPU parity | `./run.sh` | Active |
+| [tEFFapp/](tEFFapp/README.md) | Standalone `EFFapp.x` | `./run.sh` | Active |
+| [tKekule/](tKekule/README.md) | C++ Kekulé optimizer | `./run.sh` | Legacy — use tKekuleExplorer |
+| [tKekuleExplorer/](tKekuleExplorer/README.md) | KekuleBackend tests | per-script CLI | **Active** |
+| [tQMMM_diacetylene/](tQMMM_diacetylene/README.md) | QM/MM diacetylene | `./run.sh` | Legacy paths |
 
-### C++ Applications:
+### AFM, nanocrystals, specialized
+
+| Directory | Purpose | Entry | Status |
+|-----------|---------|-------|--------|
+| [tAFM/](tAFM/README.md) | AFM + FDBM (consolidating from tMMFF) | `./run.sh` | **Active** — see `pyocl_fdbm/` |
+| [tSiNCs/](tSiNCs/README.md) | Si/diamond nanocrystal FTIR hub (specialized) | `run_vib_spectra.py` | **Active** — links to `tVibrations` for general APIs |
+| [tXRD/](tXRD/README.md) | XRD Debye scattering | `test_debye_histogram.py` | Active |
+| [tAttach/](tAttach/README.md) | Molecular attachment / polymers | `attach_new3.py` | Active |
+| [tIsing/](tIsing/README.md) | Hubbard/Ising OpenCL MC | `run_hubbard_cli.py` | Active |
+| [tMQCA/](tMQCA/README.md) | Molecular quantum cellular automata | `test_mqca.py` | Active |
+| [tLammpsTrj/](tLammpsTrj/README.md) | LAMMPS trajectory analysis | `run.py` | Legacy — needs local traj data |
+
+### Solvers and utilities
+
+| Directory | Purpose | Entry | Status |
+|-----------|---------|-------|--------|
+| [tQuadrature/](tQuadrature/README.md) | 3D quadrature rules | `./run.sh` | Active |
+| [tSchroedinger1D/](tSchroedinger1D/README.md) | 1D Green's function solver | `./run.sh` | Active |
+| [tSchroedinger2D/](tSchroedinger2D/README.md) | 2D Green's function solver | `./run.sh` | Active |
+| [pyutils/](pyutils/README.md) | Ad-hoc utilities | per-script | Exploratory |
+| [blender/](blender/README.md) | Blender molecular rendering | `p3_atoms_pbr.py` | Active |
+| [tmp/](tmp/README.md) | Scratch experiments | — | **Ignore** |
+
+## Common patterns
+
+### `run.sh` recipe menus
+
+Many GUI and MMFF `run.sh` files are **mostly commented** example invocations. The active command is usually the last uncommented `python3` or `./Binary` line. Use `./run.sh no` in GUI tests to skip recompile.
+
+### Obsolete file naming
+
+Across `tests/`, files with **`copy`**, **`bak`**, **`legacy`**, or **`old`** in the name are almost always stale duplicates. Prefer the canonical name without suffix. Examples:
+
+- `tests/pyFireball/` — 19 obsolete copies
+- `tests/tMMFF/` — `run_tipSpline_scan_bak.py`, `TipSplineOptimizer copy.py`, etc.
+- `tests/dftb/` — `example_orbitals copy.py`
+
+### Resource symlinks
+
+Many dirs symlink `data/` or `common_resources/` → `../../cpp/common_resources`. Regenerate if missing:
+
 ```bash
-cd tests/tMolGUIapp
-./run.sh                    # Compiles and runs GUI application
-./run.sh no                 # Runs without recompiling
+ln -s ../../cpp/common_resources data
 ```
 
-### Python Scripts:
-```bash
-cd tests/tMMFF
-python3 run.py              # Direct Python execution
-./run.sh                    # May also compile C++ libraries first
-```
+### Prerequisites
 
-### Fortran DFT:
-```bash
-cd tests/Fireball/t02_CH4
-./run.sh                    # Requires Fortran compilation
-```
+- **Fdata:** Fortran tests need external `Fdata_HCNO` (see [fireball-qmd.github.io](https://fireball-qmd.github.io))
+- **GPU:** CUDA/OpenCL tests need drivers and hardware
+- **Build:** compile from `cpp/` or `fortran/` before running; `run.sh` handles this where present
 
-## Important Notes
+## Recommended smoke tests
 
-1. **Always use `run.sh` scripts** - they handle compilation, paths, and arguments correctly
-2. **Check for symbolic links** - many tests create `data/` and `common_resources/` links
-3. **Resource requirements** - Some tests require `Fdata_HC_minimal` (download from fireball-qmd.github.io)
-4. **GPU tests** - CUDA/OpenCL tests require appropriate hardware and drivers
+| Goal | Command |
+|------|---------|
+| MMFF phonons | `cd tests/tMMFF && ./run.sh` |
+| UFF/MMFF parity | `cd tests/tUFF && python3 test_parity_suite.py` |
+| eFF parity | `cd tests/tEFF && ./run.sh` |
+| Fireball Fortran | `cd tests/Fireball/t01_H2 && ../../../build/fireball.x` |
+| Fireball Python | `cd tests/pyFireball && ./run.sh` |
+| DFTB+ API | `cd tests/dftb && python3 test_python_api.py` |
+| Nanocrystal FTIR | `cd tests/tSiNCs && python3 run_vib_spectra.py adamantane` |
 
-## Troubleshooting
+## Adding new tests
 
-- **Missing resources**: Check if symbolic links to `common_resources` exist
-- **Compilation errors**: Ensure dependencies are installed (see main README.md)
-- **Fortran tests failing**: Verify `Fdata_HC_minimal` is available
-- **GPU tests failing**: Check OpenCL/CUDA installation and hardware support
-
-## Adding New Tests
-
-When adding new tests:
-1. Create a new directory following naming convention (`t<TestName>/`)
-2. Include a `run.sh` script that handles compilation and execution
-3. Add symbolic links to required resources
-4. Document the test purpose and expected outputs
-5. Update this README.md with the new test category
+1. Create `tests/t<Name>/` following naming convention (sibling folder, not nested under tMMFF)
+2. Add `run.sh` if compilation is needed
+3. Symlink `data` → `../../cpp/common_resources` when appropriate
+4. **All outputs → `out/<script_stem>/`** — never beside `.py` files; golden refs → `fixtures/`
+5. Use `demo_*` / `check_*` naming — not `test_*` unless automated
+6. Write `README.md` with entry point, useful scripts, and what to ignore
+7. Update this index and `REORGANIZATION.plan.md` if layout changes

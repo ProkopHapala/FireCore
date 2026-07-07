@@ -140,6 +140,35 @@ void bonds( int n, const Vec2i* b2a, const Vec3d* apos){
     glEnd();
 }
 
+/// Bond-length deviation color: s=-1 blue (short), s=0 black (l0), s=+1 red (long).
+inline void bondLengthDeviationColor( double s ){
+    if(s < -1.0) s = -1.0; else if(s > 1.0) s = 1.0;
+    double abss = fabs(s);
+    float amp = (float)fmin(1.0, abss / 0.12); // black near equilibrium
+    float red = (s > 0.0) ? (float)s * amp : 0.f;
+    float blu = (s < 0.0) ? (float)(-s) * amp : 0.f;
+    glColor3f(red, 0.f, blu);
+}
+
+/// Per-bond l0 from MMFF; symmetric ±frac range (default 5%) per bond type.
+void bondLengthColorMapMMFF( int n, const Vec2i* b2a, const Vec3d* apos, const double* bL0s, double frac=0.05 ){
+    glBegin(GL_LINES);
+    for(int i=0; i<n; i++){
+        Vec2i b = b2a[i];
+        Vec3d pi = apos[b.b];
+        Vec3d pj = apos[b.a];
+        double l = (pi-pj).norm();
+        double l0 = bL0s[i];
+        double dLmax = l0 * frac;
+        if(dLmax < 1e-8){ glColor3f(0.f,0.f,0.f); Draw3D::vertex(pi); Draw3D::vertex(pj); continue; }
+        double s = (l - l0) / dLmax;
+        bondLengthDeviationColor(s);
+        Draw3D::vertex(pi);
+        Draw3D::vertex(pj);
+    }
+    glEnd();
+}
+
 void bondLengthColorMap( int n, const Vec2i* b2a, const Vec3d* apos, double* bL0s, double dLmax ){
     glBegin(GL_LINES);
     for(int i=0; i<n; i++){

@@ -1,6 +1,16 @@
-# tFitREQ run.sh — quick guide
+# tFitREQ — Non-Bonded REQH Parameter Fitting
 
-This directory contains small tests/demos for REQ fitting. The `run.sh` helper script rebuilds the C++ shared library and runs the selected Python test.
+Fitting Rvdw, Evdw, Q, and H-bond parameters via C++ `FitREQ_lib` with PyOpenCL parity checks.
+
+**Useful scripts:** `check_fitREQ_ocl_cpp_derivs_.py` (derivative parity), `check_fitREQ_energy_ocl.py`, `opt_2D.py`, `test_export.py`, `verify_interaction_matrix.py`.
+
+**Ignore:** files with `copy` or `bak` in the name (`opt_2D_bak.py`, etc.).
+
+---
+
+## run.sh — quick guide
+
+`run.sh` rebuilds the C++ shared library and runs the selected Python test.
 
 ## What it does
 - Rebuilds `libFitREQ_lib.so` in `cpp/Build/libs/Molecular/`:

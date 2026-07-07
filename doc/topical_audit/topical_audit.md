@@ -122,8 +122,16 @@ This **is** a supplement to:
   - [Forcefields_Audit.md](Forcefields_Audit.md) — Consolidated comprehensive audit (legacy single-file version)
 
 ## Nanocrystal Vibrations
-- Silicon/Diamond nanocrystal generation, force field setup, and vibration spectroscopy
-- See [Nanocrystal_Vibrations.md](Nanocrystal_Vibrations.md) for detailed file inventory and workflow
+
+Silicon / diamond nanocrystal generation, force fields, vibration spectroscopy (FTIR, phonons), ensemble pipeline.
+
+| Doc | Role |
+|-----|------|
+| [`Nanocrystal_Vibrations.md`](Nanocrystal_Vibrations.md) | Topical audit — code inventory, APIs, tests |
+| [`../Topics/FTIR_Nanocrystals/README.md`](../Topics/FTIR_Nanocrystals/README.md) | Topic guides, chats, progress logs |
+| [`../../tests/tSiNCs/README.md`](../../tests/tSiNCs/README.md) | Working hub — quick start, fixtures, viewers |
+| [`../../tests/tSiNCs/ToDo_Nanocrystal.md`](../../tests/tSiNCs/ToDo_Nanocrystal.md) | Open items |
+| [`../Topics/FTIR_Nanocrystals/Nanocrystal_NPZ_Pipeline.guide.md`](../Topics/FTIR_Nanocrystals/Nanocrystal_NPZ_Pipeline.guide.md) | NPZ stages 01→05 |
 
 ## Rigid Body Dynamics
 - Rigid Body Dynamics on Surfaces (pyOpenCL)

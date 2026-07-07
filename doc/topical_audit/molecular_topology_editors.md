@@ -17,6 +17,8 @@
 
 | GUI | Technology | Backend | Status | Maintained? |
 |-----|-----------|---------|--------|-------------|
+| **MolecularBrowser (C++)** | C++ / SDL / OpenGL | `BrowserView` + `MolView` + NPZ I/O | **Active** | Yes — nanocrystal NPZ viewer |
+| **VispyMolBrowser** | Python / Vispy / PyQt5 | `pyBall/io/crystal_npz.py` | **Active** | Yes — nanocrystal NPZ viewer |
 | **KekuleExplorerGUI** | Python / Vispy / PyQt5 | `KekuleBackend` + `AtomicGraph` | **Active** | Yes |
 | **MoleculeEditor2D** | Python / Matplotlib / PyQt5 | `AtomicSystem` directly | Experimental | **No** |
 | **molgui_web** | JS / WebGL | `EditableMolecule` + `MMParams` | **Legacy** | No |
@@ -28,6 +30,7 @@
 
 ```
 Need to edit molecules in Python?
+├── Browse / inspect NPZ pipeline crystals? → VispyMolBrowser or C++ MolecularBrowser
 ├── Need 3D visualization + hex grid? → KekuleExplorerGUI
 └── Need simple 2D sketching? → MoleculeEditor2D (experimental)
 
@@ -36,7 +39,26 @@ Need to edit molecules in browser?
 └── Legacy WebGL code → migrate to molgui_webgpu
 ```
 
-**Recommendation**: Use `KekuleExplorerGUI` (Python) or `molgui_webgpu` (JS). `MoleculeEditor2D` and `molgui_web` are effectively deprecated.
+**Recommendation**: Use `KekuleExplorerGUI` (Python) or `molgui_webgpu` (JS) for editing. Use **VispyMolBrowser** or **C++ MolecularBrowser** for read-only inspection of nanocrystal NPZ stages. `MoleculeEditor2D` and `molgui_web` are effectively deprecated.
+
+---
+
+## File browsers (read-only NPZ inspection)
+
+### C++ MolecularBrowser (Active)
+
+**Docs:** [`doc/Topics/FTIR_Nanocrystals/CPP_MolecularBrowser_NPZ.md`](../Topics/FTIR_Nanocrystals/CPP_MolecularBrowser_NPZ.md)
+
+| File | Role |
+|------|------|
+| `cpp/apps/MolecularEditor/MolecularBrowser.cpp` | App entry, MMFF init, `makeIdDicts()` |
+| `cpp/apps/MolecularEditor/BrowserView.h` | Grid browser, NPZ filters, scroll state |
+| `cpp/apps/MolecularEditor/MolView.h` | 3D VIEW, AABB, bond-length color legend |
+| `cpp/common/io/*.h` | NPZ/NPY parsers |
+
+### VispyMolBrowser (Active)
+
+**File:** `pyBall/GUI/VispyMolBrowser.py` — PyQt grid + topology bond extraction via `bonds_from_neigh_idx`.
 
 ---
 

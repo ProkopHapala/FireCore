@@ -192,7 +192,7 @@ function buildAngleBonds(mol, mmParams, bondsAdj1, opts, outLinear) {
         const tB = mmParams.atomTypes[tBname];
         if (!tB) throw new Error(`buildAngleBonds: missing AtomType '${tBname}' for central atom ib=${ib} sym=${symB}`);
         const thetaDeg = +tB.Ass;
-        if (!(thetaDeg > 0) || !Number.isFinite(thetaDeg)) throw new Error(`buildAngleBonds: invalid Ass=${thetaDeg} for central atom ib=${ib} type=${tBname}`);
+        if (!(thetaDeg > 0) || !Number.isFinite(thetaDeg)) continue; // H caps etc.: no angle equilibrium in MMFF table
         const theta = thetaDeg * Math.PI / 180.0;
         const cosT = Math.cos(theta);
         const K = (kAng !== 0.0) ? kAng : (+tB.Kss);
@@ -249,7 +249,7 @@ function equilibriumAngleDeg(mmParams, typeNames, ia, ib, ic, bondsAdj1) {
     const tB = mmParams.atomTypes[typeNames[ib]];
     if (!tB) throw new Error(`equilibriumAngleDeg: missing type '${typeNames[ib]}' at ib=${ib}`);
     const ass = +tB.Ass;
-    if (!(ass > 0) || !Number.isFinite(ass)) throw new Error(`equilibriumAngleDeg: invalid Ass=${ass} for ib=${ib} type=${typeNames[ib]}`);
+    if (!(ass > 0) || !Number.isFinite(ass)) return null; // H caps etc.: no angle equilibrium in MMFF table
     return ass;
 }
 
@@ -276,6 +276,7 @@ function buildDihedralBonds(mol, mmParams, bondsAdj1, typeNamesReal, opts, outLi
         if (!(rab > 0) || !(rbc > 0) || !(rcd > 0)) throw new Error(`buildDihedralBonds: invalid lengths at quad (${ja},${ib},${jc},${jd})`);
         const thetaAbc = equilibriumAngleDeg(mmParams, typeNamesReal, ja, ib, jc, bondsAdj1);
         const thetaBcd = equilibriumAngleDeg(mmParams, typeNamesReal, ib, jc, jd, bondsAdj1);
+        if (thetaAbc === null || thetaBcd === null) continue;
         const ta = typeNamesReal[ja], tb = typeNamesReal[ib], tc = typeNamesReal[jc], td = typeNamesReal[jd];
         const dhp = mmParams.getDihedralParams(ta, tb, tc, td, 2, true);
         const kPhi = (kDih !== 0.0) ? kDih : (+dhp.k);

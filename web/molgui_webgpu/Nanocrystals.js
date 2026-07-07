@@ -11,7 +11,7 @@ import { EditableMolecule } from './EditableMolecule.js';
 import * as CrystalUtils from './CrystalUtils.js';
 import { installMoleculeIOMethods } from './MoleculeIO.js';
 import { selectBridgeCandidates } from './MoleculeSelection.js';
-import { collapseBridgeAt, collapseAllBridges, insertBridge, atomDist, atomAngleDeg, neighborIndices, bondedPairSet } from './MoleculeUtils.js';
+import { collapseBridgeAt, collapseAllBridges, insertBridge, fuseSiH2ClashPairs, atomDist, atomAngleDeg, neighborIndices, bondedPairSet } from './MoleculeUtils.js';
 
 installMoleculeIOMethods(EditableMolecule);
 
@@ -48,6 +48,9 @@ export function defaultArgs(resourceDir, overrides = {}) {
         requireH2: true,
         collapseProb: 0.0,
         insertProb: 0.0,
+        fuseProb: 0.0,
+        fuseHClashMax: 2.0,
+        fuseSiMax: 4.5,
         outwardBias: 0.35,
         resolveClashes: 1,
         capHHBonds: 0,
@@ -343,14 +346,14 @@ export function generateNanocrystal(args, cell, mm, heavyZ, iout) {
 
     let nCollapsed = 0;
     let nInserted = 0;
+    let nFused = 0;
+    const surfaceFilter = (m, ia) => {
+        const c = atomNeighborsCounts(m, ia, heavyZ);
+        return c.nHeavySame < 4;
+    };
     if (args.collapseAll) {
         nCollapsed = collapseAllBridges(mol);
     } else {
-        const surfaceFilter = (m, ia) => {
-            const c = atomNeighborsCounts(m, ia, heavyZ);
-            return c.nHeavySame < 4;
-        };
-
         if (args.insertProb > 0) {
             const candidates = [];
             for (const b of mol.bonds) {
@@ -384,6 +387,13 @@ export function generateNanocrystal(args, cell, mm, heavyZ, iout) {
         }
     }
 
+    if (args.fuseProb > 0) {
+        nFused = fuseSiH2ClashPairs(mol, {
+            heavyZ, surfaceFilter, prob: args.fuseProb,
+            hClashMax: args.fuseHClashMax, siMax: args.fuseSiMax,
+        });
+    }
+
     let nHHBonds = 0;
     if (args.capHHBonds) {
         const hr = mol.addCapHHBonds(args.capHHBondDist);
@@ -397,9 +407,9 @@ export function generateNanocrystal(args, cell, mm, heavyZ, iout) {
     const cutTag = (args.cutMode === 'sphere')
         ? `sphereR${args.sphereR.toFixed(1)}_nrep${args.sphereNrep}`
         : `nx${nx}_ny${ny}_nz${nz}_c${cBase.toFixed(3)}_tpl${args.planeTemplates.join('-')}`;
-    const name = `${args.prefix}_i${String(iout).padStart(4, '0')}_${cutTag}_pr${nPruned}_cap${nCaps}_col${nCollapsed}_ins${nInserted}`;
+    const name = `${args.prefix}_i${String(iout).padStart(4, '0')}_${cutTag}_pr${nPruned}_cap${nCaps}_col${nCollapsed}_ins${nInserted}_fus${nFused}`;
 
-    return { mol, nCollapsed, nInserted, nCaps, nPruned, nHHBonds, cnt, enr, name, nx, ny, nz };
+    return { mol, nCollapsed, nInserted, nFused, nCaps, nPruned, nHHBonds, cnt, enr, name, nx, ny, nz };
 }
 
 // ============================================================================
