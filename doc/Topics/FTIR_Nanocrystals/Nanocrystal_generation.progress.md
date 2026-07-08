@@ -1,6 +1,8 @@
 # Nanocrystal Generation — Design & Progress
 
-**Scope:** Structure generation for Si/C nanocrystals (`scripts/gen_nanocrystals.mjs`) with **correct tetrahedral passivation** and a **minimal reproducible test matrix** before large-scale sampling.
+**Scope:** Structure generation for Si/C nanocrystals (`tests/tSiNCs/nanocrystals.mjs generate`) with **correct tetrahedral passivation** and a **minimal reproducible test matrix** before large-scale sampling.
+
+> **Canonical scripts (2026-07):** `tests/tSiNCs/` — see [`tests/tSiNCs/AGENTS.md`](../../../tests/tSiNCs/AGENTS.md). Legacy `scripts/` copies deprecated.
 
 **Related:** [`gen_nanocrystals.chat.md`](gen_nanocrystals.chat.md), [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../topical_audit/Nanocrystal_Vibrations.md), `web/molgui_webgpu/EditableMolecule.js` (`addCappingAtoms`, `missingDirsVSEPR`).
 
@@ -60,7 +62,7 @@ Use these before any random `--samples` batch.
 
 ## Defect & shape modification catalog
 
-All knobs in `scripts/gen_nanocrystals.mjs` (current CLI):
+All knobs in `tests/tSiNCs/nanocrystals.mjs generate` (or deprecated `tests/tSiNCs/gen_nanocrystals.mjs`):
 
 ### A. Shape / size (Miller cutting)
 
@@ -127,7 +129,7 @@ All knobs in `scripts/gen_nanocrystals.mjs` (current CLI):
 
 ### WP-G1 — Diagnostic harness (headless Node)
 
-**Deliverable:** `scripts/test_nanocrystal_geometry.mjs` (or flags on existing script)
+**Deliverable:** `tests/tSiNCs/test_nanocrystal_geometry.mjs` (or flags on existing script)
 
 - Input: fixed CLI presets (G0–G5 table above).
 - Output: `.xyz` + `geometry_report.json` (angles, distances, clash count).
@@ -193,7 +195,7 @@ Full rules: **`Parallel_agent_fixtures.guide.md`**.
 |--|--|
 | **Fixture root** | `tests/tSiNCs/fixtures/vibration_parallel/` (gitignored; run `python3 tests/tSiNCs/bootstrap_vibration_parallel_fixtures.py`) |
 | **Read** | `structures/diamond_primitive.xyz`, `structures/si_G1_caps_only.*`, `structures/si_G2_facet111_caps_only.*` |
-| **May edit** | `scripts/gen_nanocrystals.mjs`, `scripts/test_nanocrystal_geometry.mjs`, `scripts/mol2_to_xyz.mjs`, `EditableMolecule.js` / `MoleculeUtils.js` (capping/bridges only) |
+| **May edit** | `tests/tSiNCs/gen_nanocrystals.mjs`, `tests/tSiNCs/test_nanocrystal_geometry.mjs`, `scripts/mol2_to_xyz.mjs`, `EditableMolecule.js` / `MoleculeUtils.js` (capping/bridges only) |
 | **May write** | `tests/tSiNCs/geometry/` (new outputs; do not overwrite fixture basenames) |
 | **Must NOT edit** | `FTIR.py`, `OCL/*`, `MMFFLTopology.js`, `LFF.cl`, `vib_jacobi.cl`, `test_vibration*` |
 
@@ -225,7 +227,7 @@ Nanocrystal generation is **working end-to-end** for both **Si** and **C** diamo
 
 #### 2. Dual generator architecture
 
-**JS** — `scripts/gen_nanocrystals.mjs` (full feature set, native)
+**JS** — `tests/tSiNCs/gen_nanocrystals.mjs` (full feature set, native)
 
 - **Miller plane cut** (`--cutMode planes`, default): CIF → replicate → `CrystalUtils` plane filter → prune → cap → optional bridges.
 - **Spherical cut** (`--cutMode sphere`): replicate cell, center, filter `r² ≤ R²`.
@@ -233,7 +235,7 @@ Nanocrystal generation is **working end-to-end** for both **Si** and **C** diamo
 - **New flags**: `--sphereR`, `--sphereNrep`, `--rcutHeavy`, `--minHeavyDegree`, `--resolveClashes`, `--outwardBias`.
 - Outputs **`.mol2` + `.xyz`** per sample.
 
-**Python** — `scripts/gen_nanocrystals.py` + `pyBall/nanocrystal_gen.py`
+**Python** — `tests/tSiNCs/gen_nanocrystals.py` + `pyBall/nanocrystal_gen.py`
 
 - **Sphere cut**: native (`build_spherical_nanoparticle`) — parity with JS sphere mode.
 - **Miller planes + bridges**: delegates to Node (`gen_nanocrystals.mjs` subprocess).
@@ -261,7 +263,7 @@ replicate lattice → cut (planes | sphere) → recalculateBonds
 
 | Script | Role |
 |--------|------|
-| `scripts/test_nanocrystal_geometry.mjs` | Presets **G0–G5**; writes `geometry_report.json` + `.xyz`; no MMFF |
+| `tests/tSiNCs/test_nanocrystal_geometry.mjs` | Presets **G0–G5**; writes `geometry_report.json` + `.xyz`; no MMFF |
 | `tests/tSiNCs/crosscheck_nanocrystal_generators.py` | Py vs JS parity: C/Si sphere R=6, Si planes G2, C planes G1, Si bridges demo |
 | `scripts/mol2_to_xyz.mjs` | Thin mol2→xyz converter for cross-check |
 
@@ -279,33 +281,33 @@ replicate lattice → cut (planes | sphere) → recalculateBonds
 
 - **M-G0** PASS — manual SiH₄ reference
 - **M-G1** PASS — primitive cell caps
-- **M-G2** PASS — `node scripts/test_nanocrystal_geometry.mjs --preset G2` → Si–H 1.460 Å, 0 clashes
+- **M-G2** PASS — `node tests/tSiNCs/test_nanocrystal_geometry.mjs --preset G2` → Si–H 1.460 Å, 0 clashes
 
 #### 5. How to run
 
 ```bash
 # Geometry audit (G0–G5)
-node scripts/test_nanocrystal_geometry.mjs --preset G2
+node tests/tSiNCs/test_nanocrystal_geometry.mjs --preset G2
 
 # Full py/js cross-check
 python3 tests/tSiNCs/crosscheck_nanocrystal_generators.py
 
 # JS — Si facet, caps only
-node scripts/gen_nanocrystals.mjs --cutMode planes --nx-range 2,2 --ny-range 2,2 --nz-range 2,2 \
+node tests/tSiNCs/gen_nanocrystals.mjs --cutMode planes --nx-range 2,2 --ny-range 2,2 --nz-range 2,2 \
   --planeTemplates a111 --planeCScale 0.40 --caps H --insertProb 0 --collapseProb 0 \
   --outDir OUT_nanocrystals --prefix si_nc
 
 # JS — C sphere
-node scripts/gen_nanocrystals.mjs --cutMode sphere --sphereR 6 --sphereNrep 5 \
+node tests/tSiNCs/gen_nanocrystals.mjs --cutMode sphere --sphereR 6 --sphereNrep 5 \
   --cif cpp/common_resources/crystals/diamond_primitive.cif --applySymmetry 0 \
   --caps H --resolveClashes 0 --outDir OUT_nanocrystals --prefix C_sphere
 
 # Python — Si sphere (native)
-python3 scripts/gen_nanocrystals.py --cutMode sphere --element Si \
+python3 tests/tSiNCs/gen_nanocrystals.py --cutMode sphere --element Si \
   --sphere-r 6 --sphere-nrep 5 --outDir OUT_nanocrystals_py --prefix Si_sphere
 
 # Vibration-oriented: explicit cap H-H bonds (skip NB H-H repulsion in LFF later)
-node scripts/gen_nanocrystals.mjs --cutMode planes --nx-range 2,2 --ny-range 2,2 --nz-range 2,2 \
+node tests/tSiNCs/gen_nanocrystals.mjs --cutMode planes --nx-range 2,2 --ny-range 2,2 --nz-range 2,2 \
   --planeTemplates a111 --planeCScale 0.40 --caps H --capHHBonds 1 --capHHBondDist 1.8 \
   --outDir OUT_nanocrystals --prefix si_nc_hhbond
 ```
@@ -357,7 +359,7 @@ Canonical comparison files: `tests/tSiNCs/crosscheck/C_sphere_R6_{py,js}.xyz`, `
 
 **Verified (C sphere R=6, `--resolveClashes 0`):** 381 → 417 bonds; 42 H–H bonds total (36 newly added; 6 already present from sub-0.96 Å detection). Si G2 facet with clash resolve: 0 new H–H bonds (geometry clean).
 
-**Code:** `web/molgui_webgpu/EditableMolecule.js`, `pyBall/nanocrystal_gen.py`, flags on `scripts/gen_nanocrystals.{mjs,py}`.
+**Code:** `web/molgui_webgpu/EditableMolecule.js`, `pyBall/nanocrystal_gen.py`, flags on `tests/tSiNCs/gen_nanocrystals.{mjs,py}`.
 
 ### Files to add to git (reusable code only)
 
@@ -365,8 +367,8 @@ Canonical comparison files: `tests/tSiNCs/crosscheck/C_sphere_R6_{py,js}.xyz`, `
 
 | Path | Role |
 |------|------|
-| `scripts/gen_nanocrystals.mjs` | JS generator (modified: sphere mode, C/Si, resolveClashes, outwardBias) |
-| `scripts/gen_nanocrystals.py` | Python CLI (sphere native; planes → Node) |
+| `tests/tSiNCs/gen_nanocrystals.mjs` | JS generator (modified: sphere mode, C/Si, resolveClashes, outwardBias) |
+| `tests/tSiNCs/gen_nanocrystals.py` | Python CLI (sphere native; planes → Node) |
 | `pyBall/nanocrystal_gen.py` | Shared Python builder: VSEPR, sphere cut, xyz I/O |
 | `web/molgui_webgpu/EditableMolecule.js` | Cap pipeline + `addCapHHBonds` (modified) |
 
@@ -374,7 +376,7 @@ Canonical comparison files: `tests/tSiNCs/crosscheck/C_sphere_R6_{py,js}.xyz`, `
 
 | Path | Role |
 |------|------|
-| `scripts/test_nanocrystal_geometry.mjs` | G0–G5 geometry harness |
+| `tests/tSiNCs/test_nanocrystal_geometry.mjs` | G0–G5 geometry harness |
 | `scripts/mol2_to_xyz.mjs` | mol2 → xyz converter |
 | `tests/tSiNCs/crosscheck_nanocrystal_generators.py` | Py/JS parity cross-check |
 | `tests/tMMFF/test_nanocrystal_sparse_hessian.py` | Refactored to use `nanocrystal_gen` |
@@ -383,9 +385,9 @@ Canonical comparison files: `tests/tSiNCs/crosscheck/C_sphere_R6_{py,js}.xyz`, `
 
 ```bash
 git add \
-  scripts/gen_nanocrystals.mjs \
-  scripts/gen_nanocrystals.py \
-  scripts/test_nanocrystal_geometry.mjs \
+  tests/tSiNCs/gen_nanocrystals.mjs \
+  tests/tSiNCs/gen_nanocrystals.py \
+  tests/tSiNCs/test_nanocrystal_geometry.mjs \
   scripts/mol2_to_xyz.mjs \
   pyBall/nanocrystal_gen.py \
   web/molgui_webgpu/EditableMolecule.js \

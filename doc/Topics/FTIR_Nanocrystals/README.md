@@ -7,6 +7,7 @@ Design notes, guides, and progress logs for Si / diamond nanocrystal generation,
 | Doc | Role |
 |-----|------|
 | [`tests/tSiNCs/README.md`](../../../tests/tSiNCs/README.md) | **Working hub** — commands, fixtures, viewers |
+| [`tests/tSiNCs/AGENTS.md`](../../../tests/tSiNCs/AGENTS.md) | **DOX contract** — ownership, paths, verification |
 | [`Nanocrystal_NPZ_Pipeline.guide.md`](Nanocrystal_NPZ_Pipeline.guide.md) | **NPZ workflow** — stages 01→05, consumers |
 | [`NPZ_Crystal_Schema.md`](NPZ_Crystal_Schema.md) | **Schema contract** — per-key dtype/shape tables |
 | [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../topical_audit/Nanocrystal_Vibrations.md) | **Audit** — code inventory, APIs, test matrix |
@@ -35,7 +36,7 @@ flowchart LR
 
 | Layer | Key modules |
 |-------|-------------|
-| **Generate + export** | `Nanocrystals.js`, `NanocrystalExport.js`, `export_nanocrystal_bundle.mjs` |
+| **Generate + export** | `Nanocrystals.js`, `NanocrystalExport.js`, `tests/tSiNCs/nanocrystals.mjs`, `tests/tSiNCs/export_nanocrystal_bundle.mjs` |
 | **View** | `MolecularBrowser.cpp` + `cpp/common/io/`; `VispyMolBrowser.py` + plugins |
 | **Relax / spectrum** | `nanocrystal_pipeline.py`, `pyBall/io/crystal_npz.py`, `FTIR.py` |
 | **Fixtures** | `tests/tSiNCs/fixtures/si_1nm_passivation/` (full pipeline), `fixtures/npz_viewer/` (smoke) |

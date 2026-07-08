@@ -463,6 +463,120 @@ def run_pyscf(mol_name, atoms_in, method='b3lyp', basis='sto-3g', fmax=0.001, wo
 
 
 # ============================================================
+# PySCF full pipeline with Hessian + eigenmodes export
+# ============================================================
+
+def vib_npz_path(mol_name, method_tag, workdir='.'):
+    """Path for saved vibration NPZ (hessian, frequencies, eigenmodes, geometry)."""
+    return Path(workdir) / f'{mol_name}_{method_tag}_vib.npz'
+
+
+def run_pyscf_vib_full(mol_name, atoms_in, method='b3lyp', basis='sto-3g', fmax=0.001, workdir='.'):
+    """
+    Full PySCF pipeline: optimize (cached) -> Hessian -> harmonic analysis.
+    Saves hessian, frequencies, eigenmodes, geometry to a single .npz file.
+
+    Returns dict with keys: freqs, hessian, modes, symbols, positions, method_tag.
+    """
+    from pyscf.geomopt import optimize as pyscf_optimize
+    from pyscf.hessian import thermo
+    from pyscf import gto, dft, scf
+
+    method_tag = f'pyscf_{method}_{basis}'.replace('(', '').replace(')', '').replace('*', 's').replace(',', '')
+    xyz_path = relaxed_xyz_path(mol_name, method_tag, workdir)
+    npz_path = vib_npz_path(mol_name, method_tag, workdir)
+
+    if npz_path.exists():
+        print(f"  [cache] Loading PySCF vibration data from {npz_path}")
+        data = np.load(str(npz_path), allow_pickle=True)
+        return {k: data[k] for k in data.files}, method_tag
+
+    # Build PySCF molecule
+    atoms = atoms_in.copy()
+    mol, mf = make_pyscf_calc(atoms, method=method, basis=basis)
+
+    # Optimize (or load from cache)
+    if xyz_path.exists():
+        print(f"  [cache] Loading PySCF relaxed geometry from {xyz_path}")
+        atoms_opt = read(str(xyz_path))
+    else:
+        print(f"  [opt] Optimizing {mol_name} via PySCF {method}/{basis}...")
+        mf.kernel()
+        mol_eq = pyscf_optimize(mf)
+        from ase import Atoms as ASEAtoms
+        from ase.units import Bohr
+        syms = [mol_eq.atom_symbol(i) for i in range(mol_eq.natm)]
+        pos = mol_eq.atom_coords() * Bohr
+        atoms_opt = ASEAtoms(symbols=syms, positions=pos)
+        write(str(xyz_path), atoms_opt)
+
+    # Rebuild mol/mf at optimized geometry
+    syms = atoms_opt.get_chemical_symbols()
+    pos = atoms_opt.get_positions()
+    atom_str = '; '.join(f'{s} {x:.6f} {y:.6f} {z:.6f}' for s, (x, y, z) in zip(syms, pos))
+    mol = gto.M(atom=atom_str, basis=basis, charge=0, spin=0, verbose=0)
+    if method.lower() == 'hf':
+        mf = mol.RHF()
+    else:
+        mf = dft.RKS(mol); mf.xc = method
+
+    # SCF + Hessian
+    print(f"  [scf] Running SCF for {mol_name} / {method_tag}...")
+    mf.kernel()
+    print(f"  [hess] Computing PySCF Hessian {mol_name} / {method_tag}...")
+    hess_obj = mf.Hessian()
+    hess = hess_obj.kernel()  # shape (natm, 3, natm, 3) in Hartree/Bohr^2
+
+    # Harmonic analysis -> frequencies + normal modes
+    print(f"  [vib] Harmonic analysis...")
+    freq_result = thermo.harmonic_analysis(mol, hess)
+    freqs = freq_result['freq_wavenumber']  # (3N,) cm^-1
+    # Normal mode matrix: (3N, 3N) — columns are mode vectors
+    modes = freq_result.get('C_ij', None)
+    if modes is None:
+        # Fallback: some PySCF versions use different key
+        modes = freq_result.get('mode', None)
+    if modes is None:
+        # Compute from hessian directly: mass-weighted eigenvectors
+        from pyscf.data import elements
+        mass = np.array([elements.masses[mol.atom_symbol(i)] for i in range(mol.natm)])
+        mass_3n = np.repeat(mass, 3)
+        hess_2d = hess.reshape(mol.natm * 3, mol.natm * 3)
+        # Mass-weighted Hessian
+        mw_hess = hess_2d / np.sqrt(mass_3n[:, None] * mass_3n[None, :])
+        evals, evecs = np.linalg.eigh(mw_hess)
+        modes = evecs  # (3N, 3N)
+
+    # IR intensities if available
+    ir_int = freq_result.get('ir_int', None)
+
+    # Save everything to .npz
+    save_dict = {
+        'freqs': freqs,
+        'hessian': hess,
+        'modes': modes,
+        'symbols': np.array(syms),
+        'positions': pos,  # Angstrom
+        'method': method,
+        'basis': basis,
+        'energy': float(mf.e_tot),
+    }
+    if ir_int is not None:
+        save_dict['ir_int'] = ir_int
+
+    np.savez(str(npz_path), **save_dict)
+    print(f"  [vib] Saved to {npz_path}")
+    print(f"    natoms={len(syms)}, nmodes={len(freqs)}, energy={mf.e_tot:.8f} Ha")
+
+    # Also save freqs as .npy for compatibility with existing plot code
+    npy_path = freq_npy_path(mol_name, method_tag, workdir)
+    if not npy_path.exists():
+        np.save(str(npy_path), freqs)
+
+    return save_dict, method_tag
+
+
+# ============================================================
 # Frequency filtering
 # ============================================================
 
@@ -529,10 +643,29 @@ def export_modes_to_xyz(atoms, mol_name, method_tag, workdir='.', threshold=10.0
         print(f"  [export] Done: {fname} ({n_modes} modes)")
         return
 
-    # Otherwise, assume PySCF - need to recompute Hessian for eigenvectors
-    print(f"  [export] PySCF mode export not yet implemented (requires recomputing Hessian)")
-    # TODO: For PySCF, would need to:
-    # 1. Rebuild PySCF mol/mf at cached geometry
-    # 2. Compute Hessian
-    # 3. Get eigenvectors from harmonic_analysis
-    # 4. Write XYZ with displacement vectors manually
+    # PySCF: load from .npz saved by run_pyscf_vib_full
+    npz_path = vib_npz_path(mol_name, method_tag, workdir)
+    if not npz_path.exists():
+        print(f"  [export] No NPZ file found: {npz_path}")
+        print(f"  [export] Run run_pyscf_vib_full() first to generate vibration data")
+        return
+
+    data = np.load(str(npz_path), allow_pickle=True)
+    symbols = data['symbols']
+    positions = data['positions']
+    modes = data['modes']  # (3N, 3N) — columns are mode vectors
+    freqs_npz = data['freqs']
+    natoms = len(symbols)
+
+    with open(fname, 'w') as fp:
+        for i, f in enumerate(freqs_npz):
+            f_real = f.real if np.iscomplexobj(freqs_npz) else f
+            if f_real > threshold:
+                mode_vec = modes[:, i].reshape(natoms, 3)
+                fp.write(f'{natoms}\n')
+                fp.write(f'Freq: {f_real:.2f} cm-1\n')
+                for j in range(natoms):
+                    x, y, z = positions[j]
+                    dx, dy, dz = mode_vec[j]
+                    fp.write(f'{symbols[j]:2s} {x:12.6f} {y:12.6f} {z:12.6f} {dx:12.6f} {dy:12.6f} {dz:12.6f}\n')
+    print(f"  [export] Done: {fname}")

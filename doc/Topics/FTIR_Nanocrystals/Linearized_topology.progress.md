@@ -592,7 +592,7 @@ With `margin=0`, 1313 pairs missed by grouped solver (non-overlapping AABBs). Wi
 
 ### Ensemble pipeline integration
 
-`scripts/run_nanocrystal_ensemble.mjs`:
+`tests/tSiNCs/nanocrystals.mjs ensemble` (or deprecated `tests/tSiNCs/run_nanocrystal_ensemble.mjs`):
 - `group_cap` read from ensemble config JSON (default 32)
 - Passed through to `buildTopologyNpz(groupCap)`
 - After topology stage, enriches viewer JSON with `icolGroup` and group bbox arrays
@@ -612,8 +612,8 @@ With `margin=0`, 1313 pairs missed by grouped solver (non-overlapping AABBs). Wi
 - `web/common_js/nanocrystalViewer.html` — workgroup coloring, tight AABB rendering, collision pair visualization
 - `web/common_js/npzIO.js` — `readZipEntries` fix for central directory header, `crystalToJson` extended with icolGroup/group_bbox injection
 - `web/molgui_webgpu/LinearizedTopologyNpz.js` — `buildTopologyNpzArrays` extra arrays support
-- `scripts/run_nanocrystal_ensemble.mjs` — imports updated to `exportFF.js` + `MolIO.js`; `group_cap` config, topology enrichment of viewer JSON
-- `scripts/ensemble.example.json` — added `group_cap` field
+- `tests/tSiNCs/run_nanocrystal_ensemble.mjs` — imports updated to `exportFF.js` + `MolIO.js`; `group_cap` config, topology enrichment of viewer JSON
+- `tests/tSiNCs/ensemble.example.json` — added `group_cap` field
 - `web/molgui_webgpu/BuildersGUI.js`, `ScriptRunner.js` — imports updated to `BucketGrid3D.js`
 - `web/molgui_web/js/BuildersGUI.js`, `ScriptRunner.js`, `main.js` — imports updated to `BucketGrid3D.js`
 

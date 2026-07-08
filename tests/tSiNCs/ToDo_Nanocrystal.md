@@ -27,7 +27,7 @@ Tracked follow-ups for `tests/tSiNCs/` and the Si/diamond vibration workflow.
 |------|----------|-------|
 | Hessian MMFF FD vs topology-linear parity | Medium | `04_hessian.status.json` has `parity_max_rel_diff: NaN`; wire `--compare-mmff` reporting |
 | LFF relax on `03_topology.npz` | Medium | Relax is C++ MMFF; Hessian uses exported MMFFL sticks — document or implement XPDB/LFF relax |
-| `scripts/nanocrystals.mjs` | Medium | Deprecated scripts point here; implement unified CLI or retarget deprecations |
+| `tests/tSiNCs/nanocrystals.mjs` | Medium | **Done** — unified CLI in `tests/tSiNCs/`; legacy `scripts/` copies deprecated |
 | Store eigenvectors in `05_spectrum.npz` | Low | v1.2 omits modes; plugin re-eighs from `04` |
 | Ensemble at scale (N=100+) | Low | Timing report; confirm Hessian vs relax bottleneck |
 | `relax` without temp mol2 | Low | `--init-npz` works; could skip mol2 round-trip entirely in MMFF init |

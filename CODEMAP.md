@@ -134,7 +134,7 @@ Each test directory is a self-contained workspace with its own `run.sh` and `AGE
 - **`tests/tFF2D/`** — 2D force field tests.
 - **`tests/tLattice2D/`** — 2D lattice dynamics.
 - **`tests/tSchroedinger1D/`**, **`tests/tSchroedinger2D/`** — Quantum scattering tests.
-- **`tests/tSiNCs/`** — Si/diamond nanocrystal vibration hub: QM references, generator parity, **NPZ pipeline gallery** (`fixtures/si_1nm_passivation/` with `01`–`05` per crystal), viewers (`test_cpp_npz_load.sh`, `run_cpp_mol_browser.sh`, `run_vispy_mol_browser.sh`, `test_mol_browser_plugins.py`). Start at `tests/tSiNCs/README.md`; NPZ contract: `doc/Topics/FTIR_Nanocrystals/Nanocrystal_NPZ_Pipeline.guide.md`; Python plugin guide: `doc/Topics/FTIR_Nanocrystals/Python_Vispy_MolBrowser_Plugins.md`.
+- **`tests/tSiNCs/`** — Si/diamond nanocrystal vibration hub: **canonical Node orchestration** (`nanocrystals.mjs`, ensemble configs), QM references, generator parity, **NPZ pipeline gallery** (`fixtures/si_1nm_passivation/` with `01`–`05` per crystal), viewers (`test_cpp_npz_load.sh`, `run_cpp_mol_browser.sh`, `run_vispy_mol_browser.sh`, `test_mol_browser_plugins.py`). Start at `tests/tSiNCs/README.md` + `tests/tSiNCs/AGENTS.md`; NPZ contract: `doc/Topics/FTIR_Nanocrystals/Nanocrystal_NPZ_Pipeline.guide.md`; Python plugin guide: `doc/Topics/FTIR_Nanocrystals/Python_Vispy_MolBrowser_Plugins.md`.
 - **`tests/tQuadrature/`** — Numerical quadrature tests.
 - **`tests/tMQCA/`** — MQCA (molecular quantum cellular automata) tests.
 - **`tests/tCUDA/`** — CUDA-specific tests.

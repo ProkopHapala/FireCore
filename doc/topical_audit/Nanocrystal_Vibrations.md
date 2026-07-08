@@ -1,3 +1,10 @@
+---
+type: TopicalAudit
+title: Nanocrystal Vibrations
+tags: [nanocrystal, ftir, phonon, mmff]
+timestamp: 2026-07-08
+---
+
 # Nanocrystal Vibrations: Generation, Force Fields, and Spectroscopy
 
 ## Documentation map
@@ -7,6 +14,7 @@ This file is the **topical audit** (code inventory and status). It is maintained
 | Location | Role |
 |----------|------|
 | **This file** | APIs, implementations, test matrix, limitations |
+| [`tests/tSiNCs/AGENTS.md`](../../tests/tSiNCs/AGENTS.md) | DOX contract — script ownership, `REPO`/`TEST_DIR` paths |
 | [`doc/Topics/FTIR_Nanocrystals/README.md`](../Topics/FTIR_Nanocrystals/README.md) | Topic docs index (guides, chats, progress logs) |
 | [`tests/tSiNCs/README.md`](../../tests/tSiNCs/README.md) | Working hub — quick start, fixtures, viewers |
 | [`tests/tSiNCs/ToDo_Nanocrystal.md`](../../tests/tSiNCs/ToDo_Nanocrystal.md) | Open items |
@@ -32,8 +40,9 @@ Pipeline for generating silicon / diamond nanocrystal structures and computing v
 | File | Status | Description |
 |------|--------|-------------|
 | `web/molgui_webgpu/Nanocrystals.js` | **Active** | Core library: CIF → supercell → Miller/sphere cuts → prune → H-cap → bridges |
-| `scripts/gen_nanocrystals.mjs` | **Deprecated** | CLI wrapper; header points to planned `scripts/nanocrystals.mjs` (**not in repo yet**) |
-| `scripts/gen_nanocrystals.py` | **Active** | Python CLI: spherical cuts native; Miller planes via Node |
+| `tests/tSiNCs/nanocrystals.mjs` | **Active** | Unified CLI: `generate`, `ensemble`, `topology`, `audit`, `nonbond`, `rings` |
+| `tests/tSiNCs/gen_nanocrystals.mjs` | **Deprecated** | Thin wrapper; use `nanocrystals.mjs generate` |
+| `tests/tSiNCs/gen_nanocrystals.py` | **Active** | Python CLI: spherical cuts native; Miller planes via Node |
 | `pyBall/nanocrystal_gen.py` | **Active** | Python sphere-cut builder; parity target for JS |
 | `doc/Topics/FTIR_Nanocrystals/gen_nanocrystals.chat.md` | **Active** | Generation CLI and `Nanocrystals.js` reference |
 
@@ -97,9 +106,11 @@ JS is feature-complete (plane cuts, defects, bridges). Python covers spherical c
 |------|--------|-------------|
 | `pyBall/nanocrystal_pipeline.py` | **Active** | NPZ stages: relax → topology-linear Hessian → `eigh` → spectrum; see [`Nanocrystal_NPZ_Pipeline.guide.md`](../Topics/FTIR_Nanocrystals/Nanocrystal_NPZ_Pipeline.guide.md) |
 | `pyBall/io/crystal_npz.py` | **Active** | `load_crystal_npz`, `load_topology_npz`, `validate_topology_crystal_parity` |
-| `scripts/export_nanocrystal_bundle.mjs` | **Active** | JS export `01_crystal.npz` + `03_topology.npz` |
-| `scripts/run_nanocrystal_ensemble.mjs` | **Deprecated** | JS ensemble orchestrator (exports topology at generate) |
-| `scripts/ensemble.example.json` | **Active** | Example ensemble config |
+| `tests/tSiNCs/export_nanocrystal_bundle.mjs` | **Active** | JS export `01_crystal.npz` + `03_topology.npz` |
+| `tests/tSiNCs/run_nanocrystal_ensemble.mjs` | **Deprecated** | Legacy ensemble wrapper; use `nanocrystals.mjs ensemble` |
+| `tests/tSiNCs/ensemble.example.json` | **Active** | Example ensemble config |
+| `tests/tSiNCs/atlas_shapes.json` | **Active** | Shape atlas presets for `--atlas` |
+| `tests/tSiNCs/make_small_symmetric_nc.mjs` | **Active** | Symmetric Si/C sphere batch (&lt;100 atoms) |
 
 #### 3c. GPU / sparse solvers (experimental, deferred)
 
@@ -196,7 +207,7 @@ Full index: [`README.md`](../Topics/FTIR_Nanocrystals/README.md).
 Generation                    Force field                    Vibration / spectra
 ──────────                    ───────────                    ───────────────────
 Nanocrystals.js          ──►  MMFF.py::init()           ──►  nanocrystal_pipeline.py  (production: eigh + histogram)
-gen_nanocrystals.mjs          getHessian3Nx3N()              FTIR.vibration_spectrum_from_modes
+tests/tSiNCs/nanocrystals.mjs   getHessian3Nx3N()              FTIR.vibration_spectrum_from_modes
 nanocrystal_gen.py                 │                         test_vibration_spectra.py  (Green's probing)
        │                           ▼
        │                    MMFF_lib.cpp (C++ FD)
@@ -208,7 +219,7 @@ tests/tSiNCs/run_vib_spectra.py ◄─┘  (QM reference, adamantane / sila-adam
 
 **Cross-language flow:**
 
-1. **JavaScript** (`Nanocrystals.js`, `gen_nanocrystals.mjs`) → `.mol2` / `.xyz`
+1. **JavaScript** (`Nanocrystals.js`, `tests/tSiNCs/nanocrystals.mjs`) → `.mol2` / `.xyz` / NPZ cache
 2. **Python** (`MMFF.py`) loads structures, calls C++ via ctypes
 3. **C++** (`MMFF_lib.cpp`) computes Hessian / phonon blocks (central FD)
 4. **Python** (`FTIR.py`, `nanocrystal_pipeline.py`, `tests/tMMFF/`) → spectra, phonons, fitting

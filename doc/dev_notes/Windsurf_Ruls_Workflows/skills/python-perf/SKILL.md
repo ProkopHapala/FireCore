@@ -1,6 +1,6 @@
 ---
-name: python-performance
-description: Use when writing Python code for scientific computing
+name: python-perf
+description: Performant Python for scientific computing — vectorization, NumPy anti-patterns, preallocation
 trigger:
   glob:
     - "**/*.py"

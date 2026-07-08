@@ -165,7 +165,8 @@ Silicon / diamond nanocrystal generation, force fields, vibration spectroscopy (
 |-----|------|
 | [`Nanocrystal_Vibrations.md`](Nanocrystal_Vibrations.md) | Topical audit — code inventory, APIs, tests |
 | [`../Topics/FTIR_Nanocrystals/README.md`](../Topics/FTIR_Nanocrystals/README.md) | Topic guides, chats, progress logs |
-| [`../../tests/tSiNCs/README.md`](../../tests/tSiNCs/README.md) | Working hub — quick start, fixtures, viewers |
+| [`../../tests/tSiNCs/README.md`](../../tests/tSiNCs/README.md) | Folder index + run commands |
+| [`../../tests/tSiNCs/AGENTS.md`](../../tests/tSiNCs/AGENTS.md) | DOX contract — ownership, paths, verification |
 | [`../../tests/tSiNCs/ToDo_Nanocrystal.md`](../../tests/tSiNCs/ToDo_Nanocrystal.md) | Open items |
 | [`../Topics/FTIR_Nanocrystals/Nanocrystal_NPZ_Pipeline.guide.md`](../Topics/FTIR_Nanocrystals/Nanocrystal_NPZ_Pipeline.guide.md) | NPZ stages 01→05 |
 

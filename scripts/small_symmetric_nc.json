@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "outDir": "OUT_small_nc",
+  "seed": 1,
+  "replication": { "nx": 2, "ny": 2, "nz": 2 },
+  "passivation": {
+    "caps": "H",
+    "capHHBonds": 0,
+    "resolveClashes": 0,
+    "outwardBias": 0.0
+  },
+  "defects": { "insertProb": 0, "collapseProb": 0 },
+  "materials": [
+    {
+      "id": "Si",
+      "label": "Si (Fd-3m, Si-sym.cif)",
+      "cif": "cpp/common_resources/crystals/Si-sym.cif",
+      "applySymmetry": 1,
+      "cuts": [
+        { "id": "R3p8", "sphereR": 3.8, "sphereNrep": 4 },
+        { "id": "R4p5", "sphereR": 4.5, "sphereNrep": 4 },
+        { "id": "R5p0", "sphereR": 5.0, "sphereNrep": 4 },
+        { "id": "R5p5", "sphereR": 5.5, "sphereNrep": 4 },
+        { "id": "R6p0", "sphereR": 6.0, "sphereNrep": 4 }
+      ]
+    },
+    {
+      "id": "C_diamond",
+      "label": "C diamond (primitive)",
+      "cif": "cpp/common_resources/crystals/diamond_primitive.cif",
+      "applySymmetry": 0,
+      "cuts": [
+        { "id": "R2p8", "sphereR": 2.8, "sphereNrep": 4 },
+        { "id": "R3p2", "sphereR": 3.2, "sphereNrep": 4 },
+        { "id": "R3p8", "sphereR": 3.8, "sphereNrep": 4 },
+        { "id": "R4p2", "sphereR": 4.2, "sphereNrep": 4 }
+      ]
+    }
+  ]
+}

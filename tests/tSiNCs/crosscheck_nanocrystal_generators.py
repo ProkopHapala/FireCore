@@ -7,7 +7,8 @@ import sys
 import numpy as np
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-OUT = os.path.join(REPO, 'tests/tSiNCs/crosscheck')
+TEST_DIR = os.path.dirname(os.path.abspath(__file__))
+OUT = os.path.join(TEST_DIR, 'crosscheck')
 sys.path.insert(0, REPO)
 
 from pyBall.nanocrystal_gen import build_spherical_nanoparticle, save_xyz
@@ -106,7 +107,7 @@ def main():
     elems, apos = build_spherical_nanoparticle(R=6.0, nrep=5, heavy_z=6, resolve_clashes=False)
     save_xyz(py_c, elems, apos, 'py native C sphere')
     js_c = os.path.join(OUT, 'C_sphere_R6_js.xyz')
-    run_node(['node', 'scripts/gen_nanocrystals.mjs', '--samples', '1', '--maxFiles', '1', '--seed', '42',
+    run_node(['node', 'tests/tSiNCs/gen_nanocrystals.mjs', '--samples', '1', '--maxFiles', '1', '--seed', '42',
               '--cutMode', 'sphere', '--sphereR', '6', '--sphereNrep', '5',
               '--cif', 'cpp/common_resources/crystals/diamond_primitive.cif', '--applySymmetry', '0',
               '--caps', 'H', '--insertProb', '0', '--collapseProb', '0', '--resolveClashes', '0',
@@ -120,7 +121,7 @@ def main():
     elems, apos = build_spherical_nanoparticle(R=6.0, nrep=5, heavy_z=14, resolve_clashes=False)
     save_xyz(py_si, elems, apos, 'py native Si sphere')
     js_si = os.path.join(OUT, 'Si_sphere_R6_js.xyz')
-    run_node(['node', 'scripts/gen_nanocrystals.mjs', '--samples', '1', '--maxFiles', '1', '--seed', '42',
+    run_node(['node', 'tests/tSiNCs/gen_nanocrystals.mjs', '--samples', '1', '--maxFiles', '1', '--seed', '42',
               '--cutMode', 'sphere', '--sphereR', '6', '--sphereNrep', '5',
               '--cif', 'cpp/common_resources/crystals/Si_primitive.cif', '--applySymmetry', '0',
               '--caps', 'H', '--insertProb', '0', '--collapseProb', '0', '--resolveClashes', '0',
@@ -131,7 +132,7 @@ def main():
 
     # --- Si planes G2 caps-only (py via node delegate) ---
     si_g2_js = os.path.join(OUT, 'Si_planes_G2_js.xyz')
-    run_node(['node', 'scripts/gen_nanocrystals.mjs', '--samples', '1', '--maxFiles', '1', '--seed', '42',
+    run_node(['node', 'tests/tSiNCs/gen_nanocrystals.mjs', '--samples', '1', '--maxFiles', '1', '--seed', '42',
               '--cutMode', 'planes', '--nx-range', '2,2', '--ny-range', '2,2', '--nz-range', '2,2', '--centered', '1',
               '--planeTemplates', 'a111', '--planeSymC', '6', '--planeCScale', '0.40', '--planeCJitter', '0',
               '--caps', 'H', '--insertProb', '0', '--collapseProb', '0',
@@ -139,7 +140,7 @@ def main():
     js_mol2 = sorted(f for f in os.listdir(OUT) if f.startswith('Si_planes_G2_js') and f.endswith('.mol2'))[-1]
     run_node(['node', 'scripts/mol2_to_xyz.mjs', os.path.join(OUT, js_mol2), si_g2_js])
     si_g2_py = os.path.join(OUT, 'Si_planes_G2_py.xyz')
-    run_py([sys.executable, 'scripts/gen_nanocrystals.py', '--cutMode', 'planes', '--element', 'Si',
+    run_py([sys.executable, 'tests/tSiNCs/gen_nanocrystals.py', '--cutMode', 'planes', '--element', 'Si',
             '--seed', '42', '--nx-range', '2,2', '--ny-range', '2,2', '--nz-range', '2,2',
             '--planeTemplates', 'a111', '--planeCScale', '0.40', '--planeCJitter', '0',
             '--caps', 'H', '--outDir', OUT, '--prefix', 'Si_planes_G2_py'])
@@ -149,7 +150,7 @@ def main():
 
     # --- C planes from diamond CIF ---
     c_g1_js = os.path.join(OUT, 'C_planes_G1_js.xyz')
-    run_node(['node', 'scripts/gen_nanocrystals.mjs', '--samples', '1', '--maxFiles', '1', '--seed', '42',
+    run_node(['node', 'tests/tSiNCs/gen_nanocrystals.mjs', '--samples', '1', '--maxFiles', '1', '--seed', '42',
               '--cutMode', 'planes', '--cif', 'cpp/common_resources/crystals/diamond_primitive.cif', '--applySymmetry', '0',
               '--nx-range', '1,1', '--ny-range', '1,1', '--nz-range', '1,1', '--centered', '1',
               '--planeTemplates', 'a111', '--planeSymC', '6', '--planeCScale', '0.50', '--planeCJitter', '0',
@@ -163,7 +164,7 @@ def main():
 
     # --- Bridge feature demo (JS only; seed fixed) ---
     br_mol2_dir = OUT
-    run_node(['node', 'scripts/gen_nanocrystals.mjs', '--samples', '1', '--maxFiles', '1', '--seed', '42',
+    run_node(['node', 'tests/tSiNCs/gen_nanocrystals.mjs', '--samples', '1', '--maxFiles', '1', '--seed', '42',
               '--cutMode', 'planes', '--nx-range', '2,2', '--ny-range', '2,2', '--nz-range', '2,2', '--centered', '1',
               '--planeTemplates', 'a111', '--planeCScale', '0.40', '--planeCJitter', '0',
               '--caps', 'H', '--insertProb', '0.2', '--collapseProb', '0.3',

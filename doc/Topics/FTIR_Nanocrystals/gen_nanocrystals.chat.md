@@ -1,12 +1,17 @@
 ---
-description: Silicon nanocrystal generator (scripts/gen_nanocrystals.mjs)
+type: chat
+title: Silicon Nanocrystal Generator
+description: Generation CLI — canonical location tests/tSiNCs/nanocrystals.mjs generate
+tags: [nanocrystal, generation]
 ---
 
 # Silicon Nanocrystal Generator
 
-**Docs:** [`README.md`](README.md) · [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../topical_audit/Nanocrystal_Vibrations.md) · [`tests/tSiNCs/README.md`](../../../tests/tSiNCs/README.md)
+**Docs:** [`README.md`](README.md) · [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../topical_audit/Nanocrystal_Vibrations.md) · [`tests/tSiNCs/README.md`](../../../tests/tSiNCs/README.md) · [`tests/tSiNCs/AGENTS.md`](../../../tests/tSiNCs/AGENTS.md)
 
-Reference for developers and students on how to generate silicon nanocrystals with configurable cutting planes, pruning, capping, and surface bridge operations (collapse/insert) using `scripts/gen_nanocrystals.mjs`.
+> **Canonical CLI (2026-07):** `node tests/tSiNCs/nanocrystals.mjs generate [options]`. Deprecated: `tests/tSiNCs/gen_nanocrystals.mjs` (same flags). Library: `web/molgui_webgpu/Nanocrystals.js`.
+
+Reference for configurable cutting planes, pruning, capping, and surface bridge operations (collapse/insert).
 
 ## What it does
 
@@ -21,7 +26,7 @@ Reference for developers and students on how to generate silicon nanocrystals wi
 ## CLI (key options)
 
 ```
-node scripts/gen_nanocrystals.mjs [options]
+node tests/tSiNCs/nanocrystals.mjs generate [options]
 ```
 
 - Geometry & planes:
@@ -70,7 +75,7 @@ node scripts/gen_nanocrystals.mjs [options]
 
 ```bash
 # Generate a set of nanocrystals
-node scripts/gen_nanocrystals.mjs --planeTemplates a111,a100 --planeSymC 2.0 --samples 5
+node tests/tSiNCs/nanocrystals.mjs generate --planeTemplates a111,a100 --planeSymC 2.0 --samples 5
 ```
 
 ## NPZ export bundle (crystal + topology + surface AABBs)
@@ -129,7 +134,7 @@ Test run on Adamantane ($C_{10}H_{16}$) with a bonding-only forcefield:
 
 Fixed shape, random passivation:
 ```
-node scripts/gen_nanocrystals.mjs \
+node tests/tSiNCs/nanocrystals.mjs generate \
   --samples 10 \
   --nx-range 2,2 --ny-range 2,2 --nz-range 2,2 \
   --planeTemplates a111,a100 --planeCScale 0.45 --planeCJitter 0 \
@@ -144,7 +149,7 @@ node scripts/gen_nanocrystals.mjs \
 
 Smaller crystals for inspection:
 ```
-node scripts/gen_nanocrystals.mjs \
+node tests/tSiNCs/nanocrystals.mjs generate \
   --samples 10 \
   --nx-range 1,2 --ny-range 1,2 --nz-range 1,2 \
   --planeTemplates a111,a100 --planeCScale 0.45 --planeCJitter 0.20 \
@@ -337,7 +342,7 @@ https://windsurf.com/codemaps/772fabe6-9c9e-4376-bc6e-b974c2ebb806-fe86ab10a43f3
 
 ### 1.1 Nanocrystal Generation
 
-**[scripts/gen_nanocrystals.mjs](cci:7://file:///home/prokophapala/git/FireCore/scripts/gen_nanocrystals.mjs:0:0-0:0)** (JavaScript/Node.js)
+**[tests/tSiNCs/gen_nanocrystals.mjs](../../../tests/tSiNCs/gen_nanocrystals.mjs)** (deprecated; use `nanocrystals.mjs generate`)
 - **Purpose**: Generate silicon nanocrystals with configurable geometry and surface chemistry
 - **Key Functions**:
   - Builds Si supercell from CIF (Si-sym.cif)

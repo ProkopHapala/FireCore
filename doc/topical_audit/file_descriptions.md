@@ -49,7 +49,9 @@ Topic index: `doc/Topics/FTIR_Nanocrystals/README.md`. Audit: `doc/topical_audit
 - `cpp/common/io/` — NPY/NPZ decode for C++ MolecularBrowser.
 - `pyBall/nanocrystal_pipeline.py` — NPZ relax, topology-linear Hessian, spectrum stages.
 - `doc/Topics/FTIR_Nanocrystals/gen_nanocrystals.chat.md` — Generation CLI, Miller cuts, capping, bridge defects.
-- `scripts/gen_nanocrystals.mjs` — High-throughput nanocrystal generation (deprecated wrapper; prefer `export_nanocrystal_bundle.mjs`).
+- `tests/tSiNCs/nanocrystals.mjs` — Unified nanocrystal CLI (`generate`, `ensemble`, topology, audit). Canonical location; `scripts/` copies deprecated.
+- `tests/tSiNCs/gen_nanocrystals.mjs` — Deprecated single-crystal wrapper; use `nanocrystals.mjs generate`.
+- `tests/tSiNCs/export_nanocrystal_bundle.mjs` — Crystal + topology NPZ bundle for viewer fixtures.
 - `doc/Topics/FTIR_Nanocrystals/Phonon_testing.guide.md` — Phonon testing with MMFF; PBC/ASR pitfalls.
 - `pyBall/FTIR.py` — Linear response vibration spectroscopy: Green's function probing, topology-linear Hessian, rigid mode projection.
 - `pyBall/MMFF.py` — Python bindings for MMFF/UFF force fields with `getHessian3Nx3N`, `getPhononPhiBlocks`, and generalized `setBondParamsByType`/`setAngleParamsByType`.

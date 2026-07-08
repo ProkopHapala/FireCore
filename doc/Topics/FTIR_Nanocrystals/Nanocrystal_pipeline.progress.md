@@ -30,14 +30,16 @@ do not program yet
 
 **Docs:** [`README.md`](README.md) · [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../topical_audit/Nanocrystal_Vibrations.md) · [`tests/tSiNCs/README.md`](../../../tests/tSiNCs/README.md)
 
+> **Canonical scripts (2026-07):** `tests/tSiNCs/nanocrystals.mjs` (`generate`, `ensemble`, …). Legacy `scripts/` copies are deprecated. Run examples below with `tests/tSiNCs/` paths.
+
 **Strategic pivot:** Dense diagonalization (`np.linalg.eigh` + mode/histogram spectrum) is fast enough for the target crystal sizes (~500–1500 atoms). **Do not invest further in sparse/GPU frequency-domain solvers** until ensemble throughput is blocked by `eigh` itself. The bottleneck to watch is **Hessian assembly** (MMFF FD), not diagonalization.
 
 ## 1. What we already have (reuse as-is)
 
 | Layer | Status | Key artifacts |
 |-------|--------|---------------|
-| **Generation** | Done (M-G0–G2) | `scripts/nanocrystals.mjs generate` (consolidated), `pyBall/nanocrystal_gen.py`, G0–G5 harness, bridge/cap knobs |
-| **Linearized topology** | Done (M-L0–L5) | `scripts/nanocrystals.mjs topology` (consolidated) → `*_topology.npz` (K₁₂/K₁₃/K₁₄ packed) |
+| **Generation** | Done (M-G0–G2) | `tests/tSiNCs/nanocrystals.mjs generate`, `pyBall/nanocrystal_gen.py`, G0–G5 harness, bridge/cap knobs |
+| **Linearized topology** | Done (M-L0–L5) | `tests/tSiNCs/nanocrystals.mjs topology` → `*_topology.npz` (K₁₂/K₁₃/K₁₄ packed) |
 | **MMFF relax + Hessian** | Working | `MMFF.run()`, `getHessian3Nx3N`, `getHessianSparseBlocks` |
 | **Dense vibration** | Working | `FTIR.project_rigid_modes`, `FTIR.vibration_spectrum_from_modes`, `test_vibration_spectra.py` |
 | **Fixtures/bootstrap** | Working | `tests/tSiNCs/bootstrap_vibration_parallel_fixtures.py`, benchmark NPZ guide |
@@ -299,11 +301,11 @@ Reuse conventions from `plotUtils.export_pov` (camera as `look_at`, `camera_up`,
 
 | Component | Role | Consolidated into |
 |-----------|------|-------------------|
-| `gen_nanocrystals.mjs` | Structure generation | `scripts/nanocrystals.mjs generate` (deprecated) |
-| `run_nanocrystal_ensemble.mjs` | Ensemble orchestration | `scripts/nanocrystals.mjs ensemble` (deprecated) |
-| `build_linearized_topology.mjs` | Topology NPZ | `scripts/nanocrystals.mjs topology` (deprecated) |
-| `test_nanocrystal_geometry.mjs` | Geometry audit | `scripts/nanocrystals.mjs audit` (deprecated) |
-| `debug_nanocrystal_nonbond_groups.mjs` | Nonbond debug | `scripts/nanocrystals.mjs nonbond` (deprecated) |
+| `gen_nanocrystals.mjs` | Structure generation | `tests/tSiNCs/nanocrystals.mjs generate` (deprecated standalone in same folder) |
+| `run_nanocrystal_ensemble.mjs` | Ensemble orchestration | `tests/tSiNCs/nanocrystals.mjs ensemble` (deprecated) |
+| `build_linearized_topology.mjs` | Topology NPZ | `tests/tSiNCs/nanocrystals.mjs topology` (deprecated) |
+| `test_nanocrystal_geometry.mjs` | Geometry audit | `tests/tSiNCs/nanocrystals.mjs audit` (deprecated) |
+| `debug_nanocrystal_nonbond_groups.mjs` | Nonbond debug | `tests/tSiNCs/nanocrystals.mjs nonbond` (deprecated) |
 | `MMFF.init/run/getHessian3Nx3N` | Relax + Hessian (Path A) | Python subprocess (unchanged) |
 | `FTIR.project_rigid_modes`, `get_mass_matrix` | Standard vibration prep | Python subprocess (unchanged) |
 | `np.linalg.eigh` | Mode frequencies | Python subprocess (unchanged) |
@@ -615,7 +617,7 @@ flowchart LR
     NPZ5 --> ACC[ensemble accumulator]
 ```
 
-**Orchestrator:** `scripts/nanocrystals.mjs ensemble` (unified CLI, 2026-06-22) — loops crystals, calls Python via `spawn` for relax and solve steps, owns cache invalidation and timing. Replaces deprecated `scripts/run_nanocrystal_ensemble.mjs`.
+**Orchestrator:** `tests/tSiNCs/nanocrystals.mjs ensemble` — loops crystals, calls Python via `spawn` for relax and solve steps, owns cache invalidation and timing. Replaces deprecated `tests/tSiNCs/run_nanocrystal_ensemble.mjs`.
 
 **Python entry points (thin):**
 
@@ -1407,8 +1409,8 @@ flowchart LR
 
 **Still reused unchanged**
 
-- `scripts/nanocrystals.mjs generate`, `pyBall/nanocrystal_gen.py` (deprecated standalone scripts kept for reference)
-- `scripts/nanocrystals.mjs topology` (logic in `exportFF.js` for headless NPZ write)
+- `tests/tSiNCs/nanocrystals.mjs generate`, `pyBall/nanocrystal_gen.py` (deprecated standalone scripts in `tests/tSiNCs/`)
+- `tests/tSiNCs/nanocrystals.mjs topology` (logic in `exportFF.js` for headless NPZ write)
 - `tests/tMMFF/test_nanocrystal_sparse_hessian.py` (MMFF reference)
 
 ### 19.5 Files to commit (recommended)
@@ -1417,9 +1419,11 @@ All currently **untracked** (`git status ??`):
 
 | Path | Role |
 |------|------|
-| `scripts/run_nanocrystal_ensemble.mjs` | **Main entrypoint** |
-| `scripts/ensemble.example.json` | Default ensemble config (8 spheres, debug views, `resolveClashes: 0`) |
-| `scripts/atlas_shapes.json` | 8 C diamond shape presets for `--atlas` |
+| `tests/tSiNCs/nanocrystals.mjs` | **Main entrypoint** (unified CLI) |
+| `tests/tSiNCs/run_nanocrystal_ensemble.mjs` | Deprecated wrapper |
+| `tests/tSiNCs/ensemble.example.json` | Default ensemble config (8 spheres, debug views, `resolveClashes: 0`) |
+| `tests/tSiNCs/atlas_shapes.json` | 8 C diamond shape presets for `--atlas` |
+| `tests/tSiNCs/make_small_symmetric_nc.mjs` | Symmetric Si/C sphere batch (&lt;100 atoms) |
 | `pyBall/nanocrystal_pipeline.py` | Python stages: relax, hessian, spectrum, accumulate |
 | `web/common_js/npzIO.js` | Shared NPZ + crystal I/O |
 | `web/common_js/exportFF.js` | Topology build + NPZ export |
@@ -1453,22 +1457,22 @@ nc_*.py and NanocrystalNpz/Svg JS into common_js + nanocrystal_pipeline.py.
 **Ensemble (8 crystals, full pipeline)**
 
 ```bash
-node scripts/run_nanocrystal_ensemble.mjs \
-  --config scripts/ensemble.example.json \
-  --data-dir OUT_nc_ensemble/data \
-  --output-dir OUT_nc_ensemble/out \
-  --work-dir OUT_nc_ensemble/work
+node tests/tSiNCs/nanocrystals.mjs ensemble \
+  --config tests/tSiNCs/ensemble.example.json \
+  --data-dir tests/tSiNCs/OUT_nc_ensemble_v2/data \
+  --output-dir tests/tSiNCs/OUT_nc_ensemble_v2/out \
+  --work-dir tests/tSiNCs/OUT_nc_ensemble_v2/work
 ```
 
 **Atlas only**
 
 ```bash
-node scripts/run_nanocrystal_ensemble.mjs \
-  --atlas scripts/atlas_shapes.json \
-  --output-dir OUT_nc_atlas
+node tests/tSiNCs/nanocrystals.mjs ensemble \
+  --atlas tests/tSiNCs/atlas_shapes.json \
+  --output-dir tests/tSiNCs/OUT_nc_atlas
 ```
 
-Open `OUT_nc_atlas/atlas/viewer.html` or `…/out/viewer.html` directly in browser (embedded data).
+Open `tests/tSiNCs/OUT_nc_atlas/atlas/viewer.html` or `…/out/viewer.html` directly in browser (embedded data).
 
 **Python stages standalone** (for debugging)
 
@@ -1581,7 +1585,9 @@ I added **§19.9** to `Nanocrystal_pipeline.progress.md` with this clarification
 
 ---
 
-## 20. Script consolidation plan — unified `scripts/nanocrystal.mjs`
+## 20. Script consolidation plan — unified `nanocrystals.mjs`
+
+> **Relocated (2026-07-08):** all nanocrystal orchestration scripts now live under `tests/tSiNCs/`. Legacy `scripts/` copies remain as deprecated stubs. Historical paths below refer to the consolidation event; use `tests/tSiNCs/` for current runs.
 
 **Goal:** Merge 6 scattered nanocrystal scripts into a single unified CLI with subcommands, moving reusable logic to shared modules. Old scripts are **deprecated but not deleted** until the unified script passes equivalent tests.
 
