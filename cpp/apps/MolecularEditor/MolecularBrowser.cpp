@@ -1,12 +1,16 @@
 /// @file MolecularBrowser.cpp
 /// @brief Entry point and orchestrator for the molecular file browser application.
 ///
-/// MolecularBrowser is an ACDsee-like browser for molecular files (.xyz, .mol, .mol2).
+/// MolecularBrowser is an ACDsee-like browser for molecular files (.xyz, .mol, .mol2, .npz, .npy).
 /// It switches between two modes:
 /// - BROWSE: thumbnail grid view (delegates to BrowserView)
 /// - VIEW:   interactive 3D molecule view (delegates to MolView)
 /// Press Enter to toggle between modes. Click thumbnails to view molecules.
 /// Click subdirectory buttons or press Backspace to navigate directories.
+///
+/// NPZ: loads crystal/relaxed/topology stages; `--verify-npz` for headless parse.
+/// Must call params.makeIdDicts() after loadBondTypes() so bond-length color uses real l0.
+/// Guide: doc/Topics/FTIR_Nanocrystals/CPP_MolecularBrowser_NPZ.md
 ///
 /// Role in repo: Thin app/entry point that owns the SDL window, GL context,
 /// shared resources (MMFFparams, fonts, sphere display list), and delegates
@@ -52,6 +56,8 @@
 
 #include "BrowserView.h"
 #include "MolView.h"
+#include "CrystalNpz.h"
+#include "TopologyNpz.h"
 
 // ---- Path configuration (can be overridden via CLI args -res, -dir, -ini)
 std::string g_res_dir  = "common_resources";
@@ -120,6 +126,7 @@ TestAppMolecularBrowser::TestAppMolecularBrowser( int& id, int WIDTH_, int HEIGH
     params.loadElementTypes( (g_res_dir+"/ElementTypes.dat").c_str() );
     params.loadAtomTypes   ( (g_res_dir+"/AtomTypes.dat").c_str() );
     params.loadBondTypes   ( (g_res_dir+"/BondTypes.dat").c_str() );
+    params.makeIdDicts(); // required for getBondParams() — bonds_ map built here, not in loadBondTypes()
 
     // ---- Graphics setup
     Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
@@ -131,8 +138,7 @@ TestAppMolecularBrowser::TestAppMolecularBrowser( int& id, int WIDTH_, int HEIGH
     molView .init( &params, fontTex, fontTex3D, ogl_sph );
 
     // ---- Initial directory read
-    browser.readDir( browser.work_dir );
-    browser.readMoleculess();
+    browser.refreshDir();
 }
 
 //=================================================
@@ -177,12 +183,14 @@ void TestAppMolecularBrowser::eventHandling( const SDL_Event& event ){
                 case SDLK_RETURN:
                 case SDLK_KP_ENTER:
                     if(mode == BROWSE){
-                        if(browser.selectedThumb >= 0 && browser.selectedThumb < (int)browser.molecules.size()){
-                            molView.setMolecule( browser.molecules[browser.selectedThumb], browser.fileNames[browser.selectedThumb], browser.selectedThumb );
+                        int imol = browser.activateSelectedTile();
+                        if(imol >= 0){
+                            const TopologyBboxOverlay* ov = (imol < (int)browser.topologyOverlays.size()) ? &browser.topologyOverlays[imol] : nullptr;
+                            molView.setMolecule( browser.molecules[imol], browser.fileNames[imol], imol, ov );
+                            mode = VIEW;
+                            molView.bNeedFit = true;
+                            printf("Opened mol[%i] '%s' in VIEW mode\n", imol, browser.fileNames[imol].c_str());
                         }
-                        mode = VIEW;
-                        molView.bNeedFit = true;
-                        printf("Switched to VIEW mode\n");
                     }else{
                         mode = BROWSE;
                         printf("Switched to BROWSE mode\n");
@@ -204,6 +212,8 @@ void TestAppMolecularBrowser::eventHandling( const SDL_Event& event ){
                 case SDLK_t: if(mode == VIEW){ molView.bViewAtomTypes   ^= 1; } break;
                 case SDLK_b: if(mode == VIEW){ molView.bViewBondLabels  ^= 1; } break;
                 case SDLK_i: if(mode == VIEW){ molView.bViewBondLenghts ^= 1; } break;
+                case SDLK_c: if(mode == VIEW){ molView.bViewBondLengthColor ^= 1; } break;
+                case SDLK_g: if(mode == VIEW){ molView.bViewAabbOverlay ^= 1; } break;
                 case SDLK_LEFT:
                     if(mode == BROWSE) browser.moveCursor(-1, 0);
                     break;
@@ -222,8 +232,9 @@ void TestAppMolecularBrowser::eventHandling( const SDL_Event& event ){
                 case SDL_BUTTON_LEFT:
                     if(mode == BROWSE){
                         int clicked = browser.handleClick( event.button.x, event.button.y, HEIGHT );
-                        if(clicked >= 0 && clicked < (int)browser.molecules.size()){
-                            molView.setMolecule( browser.molecules[clicked], browser.fileNames[clicked], clicked );
+                        if(clicked >= 0){
+                            const TopologyBboxOverlay* ov = (clicked < (int)browser.topologyOverlays.size()) ? &browser.topologyOverlays[clicked] : nullptr;
+                            molView.setMolecule( browser.molecules[clicked], browser.fileNames[clicked], clicked, ov );
                             mode = VIEW;
                             printf("Opened mol[%i] '%s' in VIEW mode\n", clicked, browser.fileNames[clicked].c_str());
                         }
@@ -239,7 +250,21 @@ void TestAppMolecularBrowser::eventHandling( const SDL_Event& event ){
             } break;
         } break;
     };
-    AppSDL2OGL::eventHandling( event );
+    // ScreenSDL2OGL::eventHandling does delete-this on SDL_WINDOWEVENT_CLOSE — root app must not call it.
+    if(event.type == SDL_MOUSEBUTTONDOWN || event.type == SDL_MOUSEBUTTONUP){
+        switch(event.type){
+            case SDL_MOUSEBUTTONDOWN:
+                switch(event.button.button){
+                    case SDL_BUTTON_LEFT:  LMB = true;  break;
+                    case SDL_BUTTON_RIGHT: RMB = true;  break;
+                }; break;
+            case SDL_MOUSEBUTTONUP:
+                switch(event.button.button){
+                    case SDL_BUTTON_LEFT:  LMB = false; break;
+                    case SDL_BUTTON_RIGHT: RMB = false; break;
+                }; break;
+        }
+    }
 }
 
 void TestAppMolecularBrowser::keyStateHandling( const Uint8 *keys ){
@@ -250,7 +275,35 @@ void TestAppMolecularBrowser::keyStateHandling( const Uint8 *keys ){
 
 TestAppMolecularBrowser * thisApp;
 
+int verifyNpzPath( const char* path ){
+    printf("verify-npz: loading '%s'\n", path);
+    NpzFile npz = npz_read_file(path);
+    int natoms = 0, n_groups = 0;
+    if(topology_has_geometry_keys(npz)){
+        CrystalData c = crystal_from_npz(npz);
+        natoms = c.natoms;
+        printf("verify-npz: natoms=%i nbonds=%i\n", c.natoms, c.nbonds);
+    }
+    if(topology_has_bbox_keys(npz)){
+        TopologyBboxOverlay o = topology_bboxes_from_npz(npz);
+        n_groups = o.n_groups;
+        printf("verify-npz: n_groups=%i\n", o.n_groups);
+    }
+    if(natoms==0 && n_groups==0){
+        printf("ERROR verify-npz: no crystal or topology keys in '%s'\n", path);
+        return 1;
+    }
+    return 0;
+}
+
 int main(int argc, char *argv[]){
+    // ---- Headless NPZ verify (no GUI)
+    for(int i=1; i<argc; i++){
+        if(strcmp(argv[i], "--verify-npz")==0 && i+1 < argc){
+            return verifyNpzPath(argv[i+1]);
+        }
+    }
+
     SDL_Init(SDL_INIT_VIDEO);
     SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
     int junk;
@@ -269,6 +322,8 @@ int main(int argc, char *argv[]){
 
     thisApp = new TestAppMolecularBrowser( junk, DM.w-100, DM.h-100 );
     thisApp->loop( 1000000 );
+    delete thisApp;
+    thisApp = nullptr;
     return 0;
 }
 

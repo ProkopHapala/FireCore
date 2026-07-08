@@ -36,13 +36,22 @@ One sentence per file, added as files are read.
 - `doc/Topics/ForceFields/UFF_multiSystem_summary.md` — Consolidated reference rules from a multi-session UFF GPU debug: offset indexing, context isolation, and CPU/GPU parity protocol across bonds, angles, dihedrals, inversions, and GridFF interaction modes.
 
 ## FTIR_Nanocrystals
-- `doc/Topics/FTIR_Nanocrystals/Hessian_fitting.md` — Explains fitting procedures and practical heuristics for constructing disordered nanocrystal Hessians using 3D B-spline grids.
-- `doc/Topics/FTIR_Nanocrystals/gen_nanocrystals.md` — Generates random nanocrystal geometries by stacking atoms onto substrate layers with element typing.
-- `doc/Topics/FTIR_Nanocrystals/Phonon_testing_guide.md` — Practical guide for phonon testing with MMFF; covers common pitfalls like imaginary modes, ASR, and PBC configuration.
-- `doc/Topics/FTIR_Nanocrystals/Hessian_Kspace.md` — Theory of Hessian in k-space for periodic crystals, Bloch extraction, and dynamical matrix construction.
-- `doc/Topics/FTIR_Nanocrystals/Debug_negative_phonon_freqs.md` — Debugging checklist for imaginary phonon modes with causes and fixes.
-- `scripts/gen_nanocrystals.mjs` — High-throughput silicon nanocrystal generation with Miller-index plane cuts, hydrogen capping, and surface bridge operations.
-- `pyBall/FTIR.py` — Linear response vibration spectroscopy: Green's function probing, dynamic stiffness, rigid mode projection, and Hessian parameter fitting.
+
+Topic index: `doc/Topics/FTIR_Nanocrystals/README.md`. Audit: `doc/topical_audit/Nanocrystal_Vibrations.md`. Hub: `tests/tSiNCs/README.md`. Open items: `tests/tSiNCs/ToDo_Nanocrystal.md`.
+
+- `doc/Topics/FTIR_Nanocrystals/Nanocrystal_NPZ_Pipeline.guide.md` — NPZ stages 01→05, relax/Hessian/spectrum consumers.
+- `doc/Topics/FTIR_Nanocrystals/NPZ_Crystal_Schema.md` — Per-key NPZ contract (v1.2).
+- `doc/Topics/FTIR_Nanocrystals/CPP_MolecularBrowser_NPZ.md` — C++ SDL NPZ molecular browser.
+- `doc/Topics/FTIR_Nanocrystals/Python_Vispy_MolBrowser_Plugins.md` — Python Vispy browser + vibration plugin.
+- `scripts/export_nanocrystal_bundle.mjs` — Export `01_crystal.npz` + `03_topology.npz` with defects and surface AABBs.
+- `web/molgui_webgpu/NanocrystalExport.js` — Unified JS export bundle API.
+- `pyBall/io/crystal_npz.py` — Shared NPZ loaders (Python viewers + pipeline).
+- `cpp/common/io/` — NPY/NPZ decode for C++ MolecularBrowser.
+- `pyBall/nanocrystal_pipeline.py` — NPZ relax, topology-linear Hessian, spectrum stages.
+- `doc/Topics/FTIR_Nanocrystals/gen_nanocrystals.chat.md` — Generation CLI, Miller cuts, capping, bridge defects.
+- `scripts/gen_nanocrystals.mjs` — High-throughput nanocrystal generation (deprecated wrapper; prefer `export_nanocrystal_bundle.mjs`).
+- `doc/Topics/FTIR_Nanocrystals/Phonon_testing.guide.md` — Phonon testing with MMFF; PBC/ASR pitfalls.
+- `pyBall/FTIR.py` — Linear response vibration spectroscopy: Green's function probing, topology-linear Hessian, rigid mode projection.
 - `pyBall/MMFF.py` — Python bindings for MMFF/UFF force fields with `getHessian3Nx3N`, `getPhononPhiBlocks`, and generalized `setBondParamsByType`/`setAngleParamsByType`.
 - `cpp/libs/Molecular/MMFF_lib.cpp` — C++ implementation of Hessian and phonon block computation via central finite differences, plus Python buffer exposure.
 - `cpp/common/molecular/NBFF.h` — Base non-bonded force field class with reusable `checkPBCNeighCells()` validation.
@@ -52,7 +61,7 @@ One sentence per file, added as files are read.
 - `tests/tMMFF/test_diamond_gamma.py` — Γ-point phonon frequencies for diamond (simplified, no k-path).
 - `tests/tMMFF/test_ethane_gamma.py` — Γ-point frequencies for ethane (molecular, no PBC).
 - `tests/tMMFF/test_diatomic_hessian.py` — Hessian calculation validation for diatomic molecules.
-- `tests/tMMFF/plot_phonon_bands.py` — Plot phonon dispersion curves from `.npz` output.
+- `tests/tMMFF/test_diamond_phonon_bands.py` — Diamond phonon bands; plotting inline (standalone `plot_phonon_bands.py` not yet extracted).
 - `tests/tMMFF/plot_mmff_comparison.py` — Compare MMFF vs reference phonon bands.
 - `tests/tMMFF/plot_mmff_scaling.py` — Overlay default vs scaled parameter phonon bands.
 - `tests/tMMFF/run_hessian.py` — Batch Hessian runner for multiple systems.

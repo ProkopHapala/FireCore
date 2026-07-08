@@ -7,6 +7,8 @@
 /// - Molecule loading from .xyz/.mol/.mol2 files with auto-centering and bond finding
 /// - Thumbnail rendering: each molecule rendered to an OpenGL texture via offscreen viewport
 /// - Auto-fit zoom per molecule based on bounding box
+/// - Scroll-preserving grid selection (VIEW ↔ BROWSE)
+/// - Filters: hide hessian/spectrum NPZ, npy companions, dot-directories
 /// - 2D HUD: path bar, clickable subdirectory buttons, thumbnail grid
 /// - Click hit-testing for directory navigation and molecule selection
 ///
@@ -36,6 +38,8 @@
 #include "Draw3D_Molecular.h"
 #include "browser.h"
 #include "AppSDL2OGL_3D.h"
+#include "CrystalNpz.h"
+#include "TopologyNpz.h"
 
 inline void makeTextureEmpty( GLuint& tx, int sz ){
     glGenTextures(1, &tx);
@@ -56,6 +60,7 @@ class BrowserView : public Browser { public:
     // ---- State
     std::vector<Molecule*>  molecules;
     std::vector<GLuint>     thumbnails;
+    std::vector<TopologyBboxOverlay> topologyOverlays;
 
     bool bNeedRerender = true;
     int  pathBarHeight = fontSizeDef*2 + 4;
@@ -63,9 +68,62 @@ class BrowserView : public Browser { public:
     int  labelHeight   = fontSizeDef*2 + 2;  // space for filename under each thumbnail
     std::vector<Quat4d> dirRects;
     std::vector<Quat4d> thumbRects;
+    std::vector<int>    thumbTileIndex; // global tile index per visible thumbRects entry
 
     int nrow = 0, ncol = 0;
-    int selectedThumb = 0;  // keyboard cursor position
+    int selectedThumb = 0;
+    int scrollRow = 0; // first visible grid row (preserved across VIEW ↔ BROWSE)
+
+    int totalTiles() const { return (int)subDirNames.size() + (int)thumbnails.size(); }
+    int totalRows() const { int n=totalTiles(); return ncol>0 ? (n+ncol-1)/ncol : 0; }
+    int rowsVisible( int HEIGHT ) const {
+        int avail = HEIGHT - pathBarHeight;
+        float cellH = thumb_size + labelHeight;
+        int rv = (int)(avail / cellH);
+        return rv < 1 ? 1 : rv;
+    }
+    void ensureSelectionVisible( int HEIGHT ){
+        if(ncol<=0) return;
+        int selRow = selectedThumb / ncol;
+        int rv = rowsVisible(HEIGHT), tr = totalRows();
+        if(tr <= rv){ scrollRow = 0; return; }
+        if(selRow < scrollRow) scrollRow = selRow;
+        else if(selRow >= scrollRow + rv) scrollRow = selRow - rv + 1;
+        if(scrollRow < 0) scrollRow = 0;
+        int maxScroll = tr - rv;
+        if(scrollRow > maxScroll) scrollRow = maxScroll;
+    }
+
+    bool isDirTile( int i ) const { return i >= 0 && i < (int)subDirNames.size(); }
+    int molIndexFromTile( int i ) const { return i - (int)subDirNames.size(); }
+
+    /// Enter on selection: -2 = navigated dir, -1 = invalid, >=0 = molecule index
+    int activateSelectedTile(){
+        if(selectedThumb < 0 || selectedThumb >= totalTiles()) return -1;
+        if(isDirTile(selectedThumb)){
+            navigateToDir(subDirNames[selectedThumb]);
+            return -2;
+        }
+        int imol = molIndexFromTile(selectedThumb);
+        if(imol < 0 || imol >= (int)molecules.size()) return -1;
+        return imol;
+    }
+
+    void drawFolderTile( const std::string& name, Vec2d p0, Vec2d p1, bool selected ){
+        Draw::setRGB( selected ? 0xC8D8FF : 0xE8E8F0 );
+        Draw2D::drawRectangle( p0.x, p0.y, p1.x, p1.y, true );
+        Draw::setRGB( 0x404060 );
+        Draw2D::drawRectangle( p0.x+8, p1.y-28, p0.x+48, p1.y-8, true );
+        Draw::setRGB( 0x000000 );
+        std::string label = std::string("[") + name + "]";
+        Draw2D::drawText( label.c_str(), 0, {p0.x+4, p0.y+4}, 0.0, fontTex, fontSizeDef );
+        if(selected){
+            glLineWidth(3.0f);
+            Draw::setRGB( 0x0000FF );
+            Draw2D::drawRectangle( p0.x-1, p0.y-1, p1.x+1, p1.y+1, false );
+            glLineWidth(1.0f);
+        }
+    }
 
     // ---- Methods
 
@@ -78,6 +136,8 @@ class BrowserView : public Browser { public:
         extensions.insert( {"xyz",1} );
         extensions.insert( {"mol",1} );
         extensions.insert( {"mol2",1} );
+        extensions.insert( {"npz",1} );
+        extensions.insert( {"npy",1} );
     }
 
     void clearThumbnails(){
@@ -85,6 +145,69 @@ class BrowserView : public Browser { public:
         thumbnails.clear();
         for(size_t i=0; i<molecules.size(); i++){ delete molecules[i]; }
         molecules.clear();
+        topologyOverlays.clear();
+    }
+
+    static std::string fileExt( const std::string& fname ){
+        size_t idot = fname.find_last_of('.');
+        if(idot==std::string::npos) return "";
+        std::string ext = fname.substr(idot+1);
+        for(char& c : ext) if(c>='A'&&c<='Z') c += 'a'-'A';
+        return ext;
+    }
+
+    int loadMoleculeFile( Molecule* mol, const std::string& path, TopologyBboxOverlay& overlay ){
+        std::string ext = fileExt(path);
+        overlay.clear();
+        if(ext=="npz"){
+            NpzFile npz = npz_read_file(path.c_str());
+            if(topology_has_bbox_keys(npz)){
+                loadTopologyNpzOnce(npz, *mol, params, overlay);
+            }else{
+                CrystalData c = crystal_from_npz(npz);
+                crystal_fill_molecule(*mol, c, params);
+            }
+            return mol->natoms;
+        }
+        if(ext=="npy") return molecule_loadNpy(*mol, path.c_str(), params, 0);
+        return mol->loadByExt(path, 0);
+    }
+
+    void filterNpyCompanionFiles(){
+        bool hasPos = false;
+        for(int i=0; i<(int)fileNames.size(); i++) if(fileNames[i]=="pos.npy") hasPos = true;
+        if(!hasPos) return;
+        std::vector<std::string> keep;
+        for(int i=0; i<(int)fileNames.size(); i++){
+            const std::string& f = fileNames[i];
+            if(f=="Z.npy" || f=="bonds_ij.npy") continue;
+            keep.push_back(f);
+        }
+        fileNames = keep;
+    }
+
+    void filterNonViewerNpzFiles(){
+        std::vector<std::string> keep;
+        for(int i=0; i<(int)fileNames.size(); i++){
+            const std::string& f = fileNames[i];
+            if(fileExt(f) != "npz"){ keep.push_back(f); continue; }
+            std::string stem = f;
+            size_t dot = stem.rfind('.');
+            if(dot != std::string::npos) stem = stem.substr(0, dot);
+            for(char& c : stem) if(c>='A'&&c<='Z') c += 'a'-'A';
+            if(stem.find("hessian") != std::string::npos) continue;
+            if(stem.find("spectrum") != std::string::npos) continue;
+            keep.push_back(f);
+        }
+        fileNames = keep;
+    }
+
+    void refreshDir(){
+        readDir(work_dir);
+        filterNpyCompanionFiles();
+        filterNonViewerNpzFiles();
+        readMoleculess();
+        bNeedRerender = true;
     }
 
     std::string parentDir( const std::string& dir ){
@@ -112,36 +235,39 @@ class BrowserView : public Browser { public:
         clearThumbnails();
         thumbRects.clear();
         dirRects.clear();
-        readDir( work_dir );
-        readMoleculess();
-        bNeedRerender = true;
+        selectedThumb = 0;
+        scrollRow = 0;
+        refreshDir();
     }
 
     void readMoleculess( bool bOrientFlat=true ){
         Mat3d rot;
         for(int i=0; i<(int)molecules.size(); i++){ delete molecules[i]; }
         molecules.clear();
+        topologyOverlays.clear();
         for(int i=0; i<(int)fileNames.size(); i++){
             printf("==================\n");
             printf("readMoleculess[%i]\n", i);
             Molecule* mol = new Molecule();
             std::string path = work_dir+"/"+fileNames[i];
             mol->bindParams( params );
-            int ret = mol->loadByExt( path, 0 );
+            TopologyBboxOverlay overlay;
+            int ret = loadMoleculeFile(mol, path, overlay);
             if(ret>=0){
                 mol->addToPos( mol->getCOG_minmax()*-1.0 );
                 Vec3d pmin=Vec3dmax, pmax=Vec3dmin;
                 for(int j=0; j<mol->natoms; j++){ pmin.setIfLower(mol->pos[j]); pmax.setIfGreater(mol->pos[j]); }
                 Vec3d span = pmax - pmin;
                 printf("  bbox: span(%.3f,%.3f,%.3f)\n", span.x, span.y, span.z);
-                if(bOrientFlat){
+                if(bOrientFlat && mol->natoms >= 3){
                     mol->FindRotation( rot );
                     mol->orient( {0,0,0}, rot.a, rot.b );
                 }
                 mol->assignREQs( *params );
                 if(mol->nbonds==0) mol->findBonds_brute( 0.5, true );
                 molecules.push_back(mol);
-                printf("  loaded mol[%i] '%s' natom %i nbond %i\n", i, fileNames[i].c_str(), mol->natoms, mol->nbonds);
+                topologyOverlays.push_back(overlay);
+                printf("  loaded mol[%i] '%s' natom %i nbond %i n_groups %i\n", i, fileNames[i].c_str(), mol->natoms, mol->nbonds, overlay.n_groups);
             }else{
                 delete mol;
             }
@@ -203,98 +329,87 @@ class BrowserView : public Browser { public:
         Draw2D::drawRectangle( 0, HEIGHT-pathBarHeight, WIDTH, HEIGHT, true );
         Draw::setRGB( 0xFFFFFF );
         char str[512];
-        sprintf( str, "Dir: %s", work_dir.c_str() );
+        sprintf( str, "Dir: %s  |  dirs+files: %i", work_dir.c_str(), totalTiles() );
         Draw2D::drawText( str, 0, {4, HEIGHT-pathBarHeight+2}, 0.0, fontTex, fontSizeDef );
 
-        // ---- Subdirectory buttons
-        dirRects.clear();
-        float dirY0 = HEIGHT - pathBarHeight - dirBarHeight;
-        float dirY1 = HEIGHT - pathBarHeight;
-        float dirX  = 4;
-        for(int i=0; i<(int)subDirNames.size(); i++){
-            const std::string& name = subDirNames[i];
-            float w = name.length()*fontSizeDef + 8;
-            if(i==0){ Draw::setRGB( 0xCCCCDD ); }else{ Draw::setRGB( 0xDDDDDD ); }
-            Draw2D::drawRectangle( dirX, dirY0, dirX+w, dirY1, true );
-            Draw::setRGB( 0x000000 );
-            Draw2D::drawText( name.c_str(), name.length(), {dirX+4, dirY0+2}, 0.0, fontTex, fontSizeDef );
-            dirRects.push_back( {dirX, dirY0, dirX+w, dirY1} );
-            dirX += w + 4;
-            if(dirX > WIDTH - 50){ dirY0 -= dirBarHeight; dirY1 -= dirBarHeight; dirX = 4; }
-        }
-
-        // ---- Thumbnails (cell = thumb image + label below)
+        // ---- ACDsee-style grid: folder tiles first, then molecule thumbnails
         thumbRects.clear();
+        dirRects.clear();
+        thumbTileIndex.clear();
         ncol = (int)( WIDTH / thumb_size );
+        if(ncol < 1) ncol = 1;
+        ensureSelectionVisible( HEIGHT );
         float cellW = thumb_size;
         float cellH = thumb_size + labelHeight;
-        float y = dirY0;  // top of current row (Y increases upward)
-        int imol = 0;
-        while(y > 0 && imol < (int)thumbnails.size()){
+        float y = HEIGHT - pathBarHeight;
+        int itile = scrollRow * ncol;
+        int ntiles = totalTiles();
+        int maxRow = rowsVisible( HEIGHT );
+        for(int irow=0; irow<maxRow && y>0 && itile<ntiles; irow++){
             for(int ix=0; ix<ncol; ix++){
-                if(imol >= (int)thumbnails.size()) break;
+                if(itile >= ntiles) break;
                 float x0 = ix*cellW;
-                float y1 = y;              // top
-                float y0 = y - thumb_size; // bottom of image
-                // draw thumbnail image
-                drawThumbnail( thumbnails[imol], {x0,y0}, {x0+cellW-1,y1}, texture_size );
-                // draw filename below thumbnail
-                Draw::setRGB( 0x000000 );
-                Draw2D::drawText( fileNames[imol].c_str(), fileNames[imol].length(), {x0, y0-labelHeight}, 0.0, fontTex, fontSizeDef );
-                // selection cursor (green border)
-                if(imol == selectedThumb){
-                    glLineWidth(3.0f);
-                    Draw::setRGB( 0x0000FF );
-                    Draw2D::drawRectangle( x0-1, y0-1, x0+cellW, y1+1, false );
-                    glLineWidth(1.0f);
+                float y1 = y;
+                float y0 = y - thumb_size;
+                bool selected = (itile == selectedThumb);
+                if(isDirTile(itile)){
+                    drawFolderTile( subDirNames[itile], {x0,y0}, {x0+cellW-1,y1}, selected );
+                }else{
+                    int imol = molIndexFromTile(itile);
+                    drawThumbnail( thumbnails[imol], {x0,y0}, {x0+cellW-1,y1}, texture_size );
+                    Draw::setRGB( 0x000000 );
+                    Draw2D::drawText( fileNames[imol].c_str(), fileNames[imol].length(), {x0, y0-labelHeight}, 0.0, fontTex, fontSizeDef );
+                    if(selected){
+                        glLineWidth(3.0f);
+                        Draw::setRGB( 0x0000FF );
+                        Draw2D::drawRectangle( x0-1, y0-1, x0+cellW, y1+1, false );
+                        glLineWidth(1.0f);
+                    }
                 }
                 thumbRects.push_back( {x0, y0-labelHeight, x0+cellW-1, y1} );
-                imol++;
+                thumbTileIndex.push_back( itile );
+                itile++;
             }
             y -= cellH;
         }
 
-        if(thumbnails.empty()){
+        if(ntiles==0){
             Draw::setRGB( 0x888888 );
-            Draw2D::drawText( "No molecule files (.xyz, .mol, .mol2) in this directory", 0, {10, 10}, 0.0, fontTex, fontSizeDef );
+            Draw2D::drawText( "No subdirs or molecule files (.xyz, .mol, .mol2, .npz, .npy)", 0, {10, 10}, 0.0, fontTex, fontSizeDef );
         }
     }
 
-    // Returns: -1 = nothing clicked, -2 = parent dir clicked, >=0 = molecule index clicked
+    // Returns: -1 = nothing clicked, -2 = dir navigated, >=0 = molecule index
     int handleClick( int mx, int my, int HEIGHT ){
         int my_flipped = HEIGHT - my;
-        for(int i=0; i<(int)dirRects.size(); i++){
-            const Quat4d& r = dirRects[i];
-            if( mx>=r.x && mx<=r.z && my_flipped>=r.y && my_flipped<=r.w ){
-                printf("click on dir[%i] '%s'\n", i, subDirNames[i].c_str());
-                navigateToDir( subDirNames[i] );
-                return -2;
-            }
-        }
         for(int i=0; i<(int)thumbRects.size(); i++){
             const Quat4d& r = thumbRects[i];
             if( mx>=r.x && mx<=r.z && my_flipped>=r.y && my_flipped<=r.w ){
-                printf("click on mol[%i]\n", i);
-                selectedThumb = i;
-                return i;
+                selectedThumb = thumbTileIndex[i];
+                if(isDirTile(selectedThumb)){
+                    printf("click on dir[%i] '%s'\n", selectedThumb, subDirNames[selectedThumb].c_str());
+                    navigateToDir(subDirNames[selectedThumb]);
+                    return -2;
+                }
+                int imol = molIndexFromTile(selectedThumb);
+                printf("click on mol[%i]\n", imol);
+                return imol;
             }
         }
         return -1;
     }
 
-    // Keyboard navigation for thumbnail selection
     void moveCursor( int dx, int dy ){
-        int n = (int)thumbnails.size();
-        if(n==0) return;
+        int n = totalTiles();
+        if(n==0 || ncol<=0) return;
         int col = selectedThumb % ncol;
         int row = selectedThumb / ncol;
         col += dx; row += dy;
         if(col < 0) col = 0; if(col >= ncol) col = ncol-1;
-        int newRow = row;
-        if(newRow < 0) newRow = 0;
+        if(row < 0) row = 0;
         int maxRow = (n - 1) / ncol;
-        if(newRow > maxRow) newRow = maxRow;
-        int newIdx = newRow * ncol + col;
+        if(row > maxRow) row = maxRow;
+        int newIdx = row * ncol + col;
         if(newIdx >= n) newIdx = n - 1;
         if(newIdx < 0) newIdx = 0;
         selectedThumb = newIdx;

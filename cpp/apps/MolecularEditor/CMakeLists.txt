@@ -3,6 +3,7 @@ set( NAME "MolecularEditor" )
 
 #include_directories( ${COMMON_SRCS}/dynamics/Molecular )
 include_directories( ${COMMON_SRCS}/molecular )
+include_directories( ${COMMON_SRCS}/io )
 
 add_executable( MolecularBrowser
     MolecularBrowser.cpp 
@@ -10,7 +11,7 @@ add_executable( MolecularBrowser
 	$<TARGET_OBJECTS:SDL2OGL>  
 )
 setup_precompiled_headers( MolecularBrowser )
-target_link_libraries( MolecularBrowser ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} ${LUA_LIBRARIES} )
+target_link_libraries( MolecularBrowser ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} ${LUA_LIBRARIES} z )
 
 add_executable( MolGUIapp
 	MolGUIapp.cpp

@@ -4,6 +4,8 @@ description: Sparse Hessian computation and vibration spectrum analysis for nano
 
 # Sparse Hessian and Vibration Spectrum Analysis
 
+**Docs:** [`README.md`](README.md) · [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../topical_audit/Nanocrystal_Vibrations.md) · [`tests/tSiNCs/README.md`](../../../tests/tSiNCs/README.md)
+
 Reference for computing sparse Hessian matrices from neighbor shells and analyzing vibration spectra of nanocrystals using multiple methods (dense eigenmode, sparse frequency scanning, and comparison).
 
 ## Overview

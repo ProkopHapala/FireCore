@@ -386,6 +386,136 @@ export function insertBridgeRandom(mol, params = {}) {
     return insertBridge(mol, chosen.aId, chosen.bId, { ...params, dbg });
 }
 
+/// H neighbor atom ids for atom index ia.
+function hydrogenNeighborIds(mol, ia) {
+    const out = [];
+    const a = mol.atoms[ia | 0];
+    if (!a) return out;
+    for (const ib of a.bonds) {
+        const b = mol.bonds[ib | 0];
+        if (!b) continue;
+        b.ensureIndices(mol);
+        const jb = b.other(ia) | 0;
+        if (jb < 0 || jb >= mol.atoms.length) continue;
+        if ((mol.atoms[jb].Z | 0) === 1) out.push(mol.atoms[jb].id);
+    }
+    return out;
+}
+
+function heavyHeavyBonded(mol, ia, ib, heavyZ = 14) {
+    const hz = heavyZ | 0;
+    for (const bid of mol.atoms[ia | 0].bonds || []) {
+        const b = mol.bonds[bid | 0];
+        if (!b) continue;
+        b.ensureIndices(mol);
+        const jb = b.other(ia) | 0;
+        if (jb !== (ib | 0)) continue;
+        if ((mol.atoms[jb].Z | 0) === hz) return true;
+    }
+    return false;
+}
+
+/// Surface SiH2-like sites: heavy Z, exactly 2 H, not bulk-coordinated.
+export function isSiH2SurfaceSite(mol, ia, heavyZ = 14, surfaceFilter = null) {
+    const a = mol.atoms[ia | 0];
+    if (!a || (a.Z | 0) !== (heavyZ | 0)) return false;
+    if (surfaceFilter && !surfaceFilter(mol, ia, a)) return false;
+    let nH = 0, nHeavySame = 0;
+    const hz = heavyZ | 0;
+    for (const ib of a.bonds) {
+        const b = mol.bonds[ib | 0];
+        if (!b) continue;
+        b.ensureIndices(mol);
+        const jb = b.other(ia) | 0;
+        const nb = mol.atoms[jb];
+        if (!nb) continue;
+        const z = nb.Z | 0;
+        if (z === 1) nH++;
+        else if (z === hz) nHeavySame++;
+    }
+    return nH === 2 && nHeavySame < 4;
+}
+
+/// Pairs of separate surface SiH2 groups with a close inter-group H–H contact (not yet Si–Si bonded).
+export function enumerateSiH2ClashPairs(mol, opts = {}) {
+    if (!mol || !mol.atoms) throw new Error('enumerateSiH2ClashPairs: molecule missing');
+    const heavyZ = (opts.heavyZ !== undefined) ? (opts.heavyZ | 0) : 14;
+    const hClashMax = (opts.hClashMax !== undefined) ? +opts.hClashMax : 2.0;
+    const siMax = (opts.siMax !== undefined) ? +opts.siMax : 4.5;
+    if (!(hClashMax > 0)) throw new Error(`enumerateSiH2ClashPairs: hClashMax must be >0, got ${hClashMax}`);
+    if (!(siMax > 0)) throw new Error(`enumerateSiH2ClashPairs: siMax must be >0, got ${siMax}`);
+    const surfaceFilter = (typeof opts.surfaceFilter === 'function') ? opts.surfaceFilter : null;
+    const sites = [];
+    for (let ia = 0; ia < mol.atoms.length; ia++) {
+        if (!isSiH2SurfaceSite(mol, ia, heavyZ, surfaceFilter)) continue;
+        sites.push({ ia, id: mol.atoms[ia].id });
+    }
+    const pairs = [];
+    for (let u = 0; u < sites.length; u++) {
+        for (let v = u + 1; v < sites.length; v++) {
+            const ia = sites[u].ia | 0, ib = sites[v].ia | 0;
+            if (heavyHeavyBonded(mol, ia, ib, heavyZ)) continue;
+            const dSi = atomDist(mol.atoms[ia], mol.atoms[ib]);
+            if (!(dSi < siMax)) continue;
+            const hA = hydrogenNeighborIds(mol, ia);
+            const hB = hydrogenNeighborIds(mol, ib);
+            if (hA.length !== 2 || hB.length !== 2) continue;
+            let best = null;
+            for (const idA of hA) {
+                const iA = mol.getAtomIndex(idA);
+                if (iA < 0) continue;
+                for (const idB of hB) {
+                    const iB = mol.getAtomIndex(idB);
+                    if (iB < 0) continue;
+                    const dHH = atomDist(mol.atoms[iA], mol.atoms[iB]);
+                    if (dHH < hClashMax && (!best || dHH < best.dHH)) best = { siA: sites[u].id, siB: sites[v].id, hA: idA, hB: idB, dHH, dSi };
+                }
+            }
+            if (best) pairs.push(best);
+        }
+    }
+    pairs.sort((a, b) => a.dHH - b.dHH);
+    return pairs;
+}
+
+/// Remove clashing H pair and bond the two Si (dehydrogenative SiH2+SiH2 → Si–Si).
+export function fuseSiH2ClashPair(mol, pair) {
+    if (!mol || !mol.atoms) throw new Error('fuseSiH2ClashPair: molecule missing');
+    if (!pair || pair.siA === undefined || pair.siB === undefined) throw new Error('fuseSiH2ClashPair: pair {siA, siB, hA, hB} required');
+    const { siA, siB, hA, hB } = pair;
+    const iA = mol.getAtomIndex(siA | 0);
+    const iB = mol.getAtomIndex(siB | 0);
+    if (iA < 0 || iB < 0) throw new Error(`fuseSiH2ClashPair: Si atom missing siA=${siA} siB=${siB}`);
+    if (heavyHeavyBonded(mol, iA, iB, mol.atoms[iA].Z | 0)) throw new Error(`fuseSiH2ClashPair: Si–Si bond already exists (${siA}, ${siB})`);
+    const hidA = hA | 0, hidB = hB | 0;
+    if (mol.getAtomIndex(hidA) < 0 || mol.getAtomIndex(hidB) < 0) throw new Error(`fuseSiH2ClashPair: H atom missing hA=${hidA} hB=${hidB}`);
+    mol.removeAtomById(hidA);
+    mol.removeAtomById(hidB);
+    if (mol.getAtomIndex(siA | 0) < 0 || mol.getAtomIndex(siB | 0) < 0) throw new Error('fuseSiH2ClashPair: Si atom removed unexpectedly');
+    mol.addBond(siA | 0, siB | 0);
+    mol.dirtyExport = true;
+    return { siA: siA | 0, siB: siB | 0, removedH: [hidA, hidB] };
+}
+
+/// Apply fuseSiH2ClashPair to clash pairs with probability; each Si used at most once per call.
+export function fuseSiH2ClashPairs(mol, opts = {}) {
+    const prob = (opts.prob !== undefined) ? +opts.prob : 1.0;
+    if (!(prob >= 0 && prob <= 1)) throw new Error(`fuseSiH2ClashPairs: prob must be in [0,1], got ${prob}`);
+    const pairs = enumerateSiH2ClashPairs(mol, opts);
+    const usedSi = new Set();
+    let nFused = 0;
+    for (const p of pairs) {
+        if (Math.random() >= prob) continue;
+        if (usedSi.has(p.siA) || usedSi.has(p.siB)) continue;
+        if (mol.getAtomIndex(p.siA) < 0 || mol.getAtomIndex(p.siB) < 0) continue;
+        fuseSiH2ClashPair(mol, p);
+        usedSi.add(p.siA);
+        usedSi.add(p.siB);
+        nFused++;
+    }
+    return nFused;
+}
+
 function _getParsedPos(parsedPos, i) {
     const i3 = (i | 0) * 3;
     return new Vec3(parsedPos[i3], parsedPos[i3 + 1], parsedPos[i3 + 2]);

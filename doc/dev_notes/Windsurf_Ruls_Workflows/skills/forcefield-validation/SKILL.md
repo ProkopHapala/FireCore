@@ -1,18 +1,19 @@
 ---
 name: forcefield-validation
-description: Use when implementing or debugging interatomic force-fields (e.g., UFF, MMFF)
+description: Use when implementing or debugging interatomic force-fields (e.g., UFF, SPFF)
 trigger:
   glob:
-    - "**/MMFF*"
+    - "**/SPFF*"
     - "**/UFF*"
-    - "**/common_resources/**/*.dat"
-    - "**/common_resources/**/*.xyz"
-    - "**/common_resources/**/*.mol"
+    - "**/forcefields/**/*"
+    - "**/data/**/*.dat"
+    - "**/data/**/*.xyz"
+    - "**/data/**/*.mol2"
 ---
 
 ## General Forcefield Invariants
 
-Apply these before MMFF/UFF-specific checks:
+Apply these before SPFF/UFF-specific checks:
 
 ### NaN Padding — Invalid-Access Alarm Bell
 - Fill all padding/ghost slots with `NaN` (or `inf`, or a sentinel like `1e20`).
@@ -48,27 +49,28 @@ If combined fails but isolation passes, the bug is in interaction logic, not eit
 
 ## Architecture
 
-- Reference: `pyBall/MMFF_multi.py` (wrapper for C++ `MMFFmulti_lib.cpp`)
-- Backends: `iParalel=0` (C++ CPU), `iParalel=2` (C++ OpenCL), `pyBall/OCL/UFF.py` (Python OpenCL)
-- Data files: `AtomTypes.dat`, `BondTypes.dat`, `AngleTypes.dat` in `common_resources/`
+- Forcefield modules: `spammm/forcefields/` — `FFController.py`, `Assembly.py`, `RigidBodyAFM.py`
+- OpenCL kernels: `kernels/Forces.cl`, `kernels/AFM.cl`
+- OpenCL base: `spammm/utils/OpenCLBase.py`
+- Data files: `AtomTypes.dat`, `BondTypes.dat`, `AngleTypes.dat` in `data/`
 
 ## Switch Semantics
 
 0=keep, >0=force-on, <0=force-off. Passing 0 does nothing.
 - UFF: `setSwitchesUFF(DoBond, DoAngle, DoDihedral, DoInversion, DoAssemble, ...)`. `bSubtractBondNonBond` must align with `setSwitchesUFF_NB`.
-- MMFF: `setSwitches2(..., MMFF, Angles, PiSigma, PiPiI)`. `bMMFF` is base class flag (True even for UFF). Check `bUFF` to distinguish.
+- SPFF: `setSwitches2(..., SPFF, Angles, PiSigma, PiPiI)`. `bSPFF` is base class flag (True even for UFF). Check `bUFF` to distinguish.
 
 ## Buffer Parity
 
-- Call `init_buffers(bUFF=...)` to populate C++ `buffers`/`ibuffers` maps. Read `ndims` first for shapes.
+- Call `init_buffers(bUFF=...)` to populate buffer maps. Read `ndims` first for shapes.
 - UFF critical: Check `bonParams`, `angParams`, `a2f`. CPU `angParams` layout is `[K, c0, c1, c2, c3]`; kernels expect split `angParams1=[c0..c3]` and `angParams2_w=[K]`.
-- MMFF critical: Check `apos` (Pi-orbitals at `natoms:natoms+nnode`), `bkNeighs` (Back Neighbors), `Ksp`/`Kpp`.
+- SPFF critical: Check `apos` (Pi-orbitals at `natoms:natoms+nnode`), `bkNeighs` (Back Neighbors), `Ksp`/`Kpp`.
 
 ## Pitfalls
 
-- Pi-orbitals: In MMFF, `apos` contains atoms AND pi-nodes. Loop bounds: `natoms` vs `natoms+nnode`.
-- Node/cap layout: Current C++ builder sets `nnode=natoms`, allocates one pi slot per atom. Caps have `Ksp/Kpp=0` but occupy `nvecs`. `bkNeighs` sized `nSystems*nvecs`.
+- Pi-orbitals: In SPFF, `apos` contains atoms AND pi-nodes. Loop bounds: `natoms` vs `natoms+nnode`.
+- Node/cap layout: builder sets `nnode=natoms`, allocates one pi slot per atom. Caps have `Ksp/Kpp=0` but occupy `nvecs`. `bkNeighs` sized `nSystems*nvecs`.
 
 ## Bonded-Only Parity Flow
 
-`cleanF → getMMFFf4 → updateAtomsMMFFf4(dt=0)` to assemble recoil from `fneigh` via `bkNeighs` without moving atoms. Set `bSubtractVdW=0` when NonBonded off. Propagate switches to `ffls[isys]`. Copy `fapos` back to shared buffers.
+`cleanF → getSPFFf4 → updateAtomsSPFFf4(dt=0)` to assemble recoil from `fneigh` via `bkNeighs` without moving atoms. Set `bSubtractVdW=0` when NonBonded off. Propagate switches to `ffls[isys]`. Copy `fapos` back to shared buffers.

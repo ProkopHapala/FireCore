@@ -159,8 +159,16 @@ Topics are ranked by **consolidation priority** — how much duplicate/scattered
 
 **Why medium:** Niche functionality but important for surface science workflows.
 
-- Nanocrystal generation, force field setup, vibration spectroscopy
-- **Audit Document:** [Nanocrystal_Vibrations.md](Nanocrystal_Vibrations.md)
+Silicon / diamond nanocrystal generation, force fields, vibration spectroscopy (FTIR, phonons), ensemble pipeline.
+
+| Doc | Role |
+|-----|------|
+| [`Nanocrystal_Vibrations.md`](Nanocrystal_Vibrations.md) | Topical audit — code inventory, APIs, tests |
+| [`../Topics/FTIR_Nanocrystals/README.md`](../Topics/FTIR_Nanocrystals/README.md) | Topic guides, chats, progress logs |
+| [`../../tests/tSiNCs/README.md`](../../tests/tSiNCs/README.md) | Working hub — quick start, fixtures, viewers |
+| [`../../tests/tSiNCs/ToDo_Nanocrystal.md`](../../tests/tSiNCs/ToDo_Nanocrystal.md) | Open items |
+| [`../Topics/FTIR_Nanocrystals/Nanocrystal_NPZ_Pipeline.guide.md`](../Topics/FTIR_Nanocrystals/Nanocrystal_NPZ_Pipeline.guide.md) | NPZ stages 01→05 |
+
 - **Related:** `Nanocrystals.js` (631 lines) — JS nanocrystal builder using CrystalUtils
 
 ## Priority 7 (Low) — Kekule Topology & H-transfer NEB

@@ -1,50 +1,75 @@
 ---
 name: visual-debugging
-description: Use when creating diagnostic plots or visualizations for debugging
+description: Use when creating diagnostic plots, visualizations, or headless visual tests for debugging
 trigger:
   glob:
     - "**/tests/**/*"
     - "**/*test*.py"
     - "**/*debug*.py"
-    - "**/test_*.sh"
-    - "**/run_*.sh"
     - "**/*benchmark*.py"
 ---
 
-## Shared Utilities
+## Authority
 
-Before writing ad-hoc debugging/plotting code, check these existing modules:
+**SSOT:** `doc/TEST_DESIGN.md`. This skill covers **L2 visual** and headless rendering.
 
-**Python Visualization:**
-- `pyBall/plotUtils.py` - matplotlib utilities: 1D/2D function plots, geometry visualization, field slices, scan profiles, derivative plots
-- `pyBall/VispyUtils.py` - GPU-accelerated 3D visualization: AtomScene class for interactive molecular viewing, bond visualization, force vectors
+---
 
-**Python Testing/Diagnostics:**
-- `pyBall/DFTB/TestUtils.py` - RMS error computation, checkpoint management (save/load/compare), grid generation, eigenvec printing
-- `pyBall/atomicUtils.py` - Atomic utilities: normalize, findAllBonds, graph preprocessing, adjacency lists
+## Three levels (reminder)
 
-**C++ Testing/Diagnostics:**
-- `cpp/common/testUtils.h` - Print arrays/vectors/matrices, compareVecs, derivative checking (checkDeriv, checkDeriv3d), timing (StopWatch), error macros (TEST_ERROR_PROC_N, SPEED_TEST_FUNC)
+| Level | Output |
+|-------|--------|
+| L0 | `assert` / `TopologyDiff` |
+| L1 | `.out` / `.log` — skill:`running-tests` |
+| **L2** | `.png` — this skill |
 
-## Test Artifacts
+---
 
-- **Structured outputs:** Group all debugging, benchmarking, and testing outputs into organized, numbered directories (e.g., `tests/003_case_name/`). Do not clutter root directories. Explicitly report their location.
-- **Foreground execution:** Run tests synchronously in the foreground with full output. Never hide output or use background commands (`&`, `| tail`, `| head`, or silent redirects). Full `stdout` must be visible.
+## Rules
 
-## Visual Review
+1. **Reuse helpers:**
+   - `tests/helpers/topology_test.py` — `TopologySnapshot`, `TopologyDiff`, `render_before_after`
+   - `tests/helpers/parity.py` — `overlay_plot()`, `assert_parity()`
+   - `tests/helpers/geometry.py` — bond/angle checks
+   - `spammm/GUI/VispyUtils.py` — interactive 3D only (not headless tests)
 
-- **Python tests:** Generate diagnostic plots using `matplotlib` saved as `.png` files. Use shared helpers like `plotUtils.py` (e.g., `plot_scan_profile`, `plot_field_slice`, `plotGeometryWithForces`).
-- **Optional plotting:** Make plotting optional via flags (e.g., `--noPlot`, `--saveFig`). Isolate `plt.show()` strictly to the CLI/main entry point.
-- **Report paths:** Always report the exact paths/folders of generated plots.
+2. **Integrate L2 into pytest** when an assertable core exists:
+   - `--visual` or `--develop` → `visual_output_dir` fixture → `debug/<script>/<test_func>.png`
+   - L0 assertions always run; PNG only when fixture is not `None`
 
-## Diagnostics
+3. **Pure visual demos** (no assertable core): `testplot_*.py`, run via `python tests/...`. Not collected by pytest.
 
-- **Numerical range sanity:** Strategically place checks throughout calculations to ensure values are within reasonable limits and are not `NaN`, infinity, or unexpected zeros.
-- **Checkpointing:** Use `pyBall/DFTB/TestUtils.py` checkpoint functions (`save_checkpoint`, `load_checkpoint`, `compare_checkpoint`) for parity testing and reproducible debugging.
-- **RMS error:** Use `compute_rms_error` from `TestUtils.py` for array comparisons.
+4. **Test backend logic, not GUI widgets.** Simulate via API:
+   - `graph.pick_atom(pos)`, `backend.add_ring(q, r)`, etc.
 
-## Consolidation Principle
+5. **Output location:** `debug/<script_stem>/` only. Never `/tmp/` or repo root. Report exact paths.
 
-- **Reuse over reinvent:** Before writing new debug/plot/test functions, search existing utility modules. Generalize existing functions if they almost fit your needs.
-- **Separate concerns:** Keep compute algorithms separate from plotting/diagnostics. Move ad-hoc plotting code from test scripts into shared utilities.
-- **Zero-copy buffers:** For Python-C++ interop, use `np.ctypeslib.as_array` pattern (see `python_native_bindings` skill) instead of copying data.
+6. **Plot style:**
+   - Reference: `ls=':'`, `lw=1.5`
+   - Model: `ls='-'`, `lw=0.5`
+   - Residual twin axis: `(model - ref) * 100`
+   - RMSE/MaxErr box: upper-left, monospace
+
+7. **No `plt.show()`** in library code. Agg backend for headless.
+
+8. **Foreground execution.** Never hide output (`| tail`, `| head`, `&`). Full stdout visible.
+
+---
+
+## Topology editing pattern
+
+- **L0:** `TopologySnapshot` / `TopologyDiff.assert_counts` — stable `_id`, not array indices
+- **L1:** `make_review` + `graph.format_table()` — skill:`running-tests`
+- **L2:** `render_before_after` with diff coloring (green=added, red=removed, blue=new bonds)
+- Annotations: cursor crosshair, `id:element` labels, selection halos
+
+```bash
+pytest tests/topology/test_editing_ops.py -s                 # L0
+pytest tests/topology/test_editing_ops.py --develop -s       # L0+L1+L2
+```
+
+---
+
+## Develop mode
+
+When testing a **new** feature, use `--develop`: plots on by default so the user can review immediately without a second run.

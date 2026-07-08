@@ -85,6 +85,8 @@ function parseArgs(argv) {
 
         collapseProb: 0.0,
         insertProb: 0.0,
+        fuseProb: 0.0,
+        fuseHClashMax: 2.0,
         outwardBias: 0.35,
         resolveClashes: 1,
         capHHBonds: 0,
@@ -155,6 +157,8 @@ function parseArgs(argv) {
 
         else if (a === '--collapseProb') out.collapseProb = parseProb(nxt(), '--collapseProb');
         else if (a === '--insertProb') out.insertProb = parseProb(nxt(), '--insertProb');
+        else if (a === '--fuseProb') out.fuseProb = parseProb(nxt(), '--fuseProb');
+        else if (a === '--fuseHClashMax') out.fuseHClashMax = +nxt();
         else if (a === '--outwardBias') out.outwardBias = +nxt();
         else if (a === '--resolveClashes') out.resolveClashes = (nxt() !== '0');
         else if (a === '--capHHBonds') out.capHHBonds = (nxt() !== '0');
@@ -239,7 +243,7 @@ async function main() {
 
     for (let iout = 1; iout <= nGen; iout++) {
         const result = generateNanocrystal(args, cell, mm, heavyZ, iout);
-        const { mol, nCollapsed, nInserted, nCaps, nPruned, nHHBonds, cnt, enr, name, nx, ny, nz } = result;
+        const { mol, nCollapsed, nInserted, nFused, nCaps, nPruned, nHHBonds, cnt, enr, name, nx, ny, nz } = result;
 
         const mol2 = toMol2String(mol, { name });
         const outPath = path.join(args.outDir, name + '.mol2');
@@ -251,7 +255,7 @@ async function main() {
             stackedXYZ.push(xyz.trimEnd());
         }
 
-        console.log(`[gen_nanocrystals] wrote ${outPath} atoms=${mol.atoms.length} bonds=${mol.bonds.length} pruned=${nPruned} caps=${nCaps} hhBonds=${nHHBonds} collapsed=${nCollapsed} inserted=${nInserted} E=${enr.E.toFixed(6)} SiH=${cnt.nSiH} SiH2=${cnt.nSiH2} SiH3=${cnt.nSiH3} bare=${cnt.nBare}`);
+        console.log(`[gen_nanocrystals] wrote ${outPath} atoms=${mol.atoms.length} bonds=${mol.bonds.length} pruned=${nPruned} caps=${nCaps} hhBonds=${nHHBonds} collapsed=${nCollapsed} inserted=${nInserted} fused=${nFused} E=${enr.E.toFixed(6)} SiH=${cnt.nSiH} SiH2=${cnt.nSiH2} SiH3=${cnt.nSiH3} bare=${cnt.nBare}`);
 
         if (args.statsCsv) {
             const line = [

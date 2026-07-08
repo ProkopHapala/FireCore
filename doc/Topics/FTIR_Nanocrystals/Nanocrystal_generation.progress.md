@@ -2,7 +2,7 @@
 
 **Scope:** Structure generation for Si/C nanocrystals (`scripts/gen_nanocrystals.mjs`) with **correct tetrahedral passivation** and a **minimal reproducible test matrix** before large-scale sampling.
 
-**Related:** `gen_nanocrystals.md`, `Nanocrystal_Vibrations.md`, `web/molgui_webgpu/EditableMolecule.js` (`addCappingAtoms`, `missingDirsVSEPR`).
+**Related:** [`gen_nanocrystals.chat.md`](gen_nanocrystals.chat.md), [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../topical_audit/Nanocrystal_Vibrations.md), `web/molgui_webgpu/EditableMolecule.js` (`addCappingAtoms`, `missingDirsVSEPR`).
 
 **Status:** **Implemented** (2026-06-15) — M-G0–M-G2 PASS; JS/Python unified; cross-check harness green.
 

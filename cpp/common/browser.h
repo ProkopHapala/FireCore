@@ -11,9 +11,12 @@
 
 #include <vector>
 #include <string>
+#include <algorithm>
 #include <dirent.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <errno.h>
 
 using namespace std;
 
@@ -47,6 +50,7 @@ class Browser{ public:
 
 	bool checkExtension( const string& name ){
 		int idot = name.find_last_of("."); 
+		if(idot == (int)string::npos || idot == 0) return false;
 		string ext = name.substr( idot + 1);
 		//cout << name << " idot: " << idot << "  ext: " << ext << endl; 
         //printf( "ext: %s \n", ext.c_str() );
@@ -65,29 +69,36 @@ class Browser{ public:
 		struct dirent *entity;
 		dp  = opendir(dir.c_str());
 		if(  dp == NULL  ) {   
-			//cout << "Error(" << errno << ") opening " << dir << endl; 
 			printf( " Error %i opening %.100s\n", errno, dir.c_str() );  
 			return -1;
 		}else{
 			subDirNames.push_back( string("..") );
-			while ((entity = readdir(dp)) != NULL) {        
-			   if(entity->d_type == DT_DIR){
-					if(entity->d_name[0] != '.'){ // ignore '.' and '..'
-						subDirNames.push_back( string(entity->d_name) );
-					}
-				}
+			while ((entity = readdir(dp)) != NULL) {
 				string fname = string(entity->d_name);
-				if(entity->d_type == DT_REG){
-					if( checkExtension( fname ) ) {
-						//cout << fname << endl;
-						fileNames.push_back( fname );
+				if(fname[0]=='.' && (fname.size()==1 || (fname.size()==2 && fname[1]=='.'))) continue;
+				bool isDir = false;
+				bool isReg = false;
+				string fpath = dir + "/" + fname;
+				if(entity->d_type == DT_DIR) isDir = true;
+				else if(entity->d_type == DT_REG) isReg = true;
+				else {
+					struct stat st;
+					if(stat(fpath.c_str(), &st)==0){
+						if(S_ISDIR(st.st_mode)) isDir = true;
+						else if(S_ISREG(st.st_mode)) isReg = true;
 					}
 				}
-				//std::cout << "Not a file or directory: " << entity->d_name << std::endl;
+				if(isDir){
+                    if(fname[0]=='.') continue; // hide .vispy_mol_browser_cache etc.
+                    subDirNames.push_back(fname);
+                }
+				else if(isReg && checkExtension(fname)) fileNames.push_back(fname);
 			}
-			//nRowImg = ceil(    fileNames.size() / float( nColScreen ) );
-			//nRowDir = ceil( subDirNames.size() / float( nColScreen ) );
 			closedir(dp);
+
+			if(subDirNames.size() > 1)
+				std::sort(subDirNames.begin()+1, subDirNames.end());
+			std::sort(fileNames.begin(), fileNames.end());
 
 			printf( "===== %i images in dir: %.100s \n", (int)fileNames.size(), dir.c_str() );
 			for(int i=0; i<(int)fileNames.size(); i++){
