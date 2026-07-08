@@ -236,6 +236,17 @@ See codemap trace [7] for algorithm walkthrough.
 | Bridge finding | `LimitedGraph::bridge` | No | No |
 | Selection/grow | `std::unordered_set` | `grow_selection()` | `Selection.js` |
 | Hybridization calc | `AtomConf.npi/nEPair` | `initAtomProperties()` | `computePiOrientations()` |
+| **Crystal building** | ❌ Not in builder | ❌ **Missing** | ✅ `CrystalUtils.js` (1188 lines) |
+| **CIF parsing** | ❌ | ❌ **Missing** | ✅ `parseCIF()`, `cifToCrystalData()` |
+| **Lattice vectors** | ❌ | ❌ **Missing** | ✅ `latticeVectorsFromParams()` |
+| **Symmetry operations** | ❌ | ❌ **Missing** | ✅ `applySymmetryOpsFracSites()` |
+| **Cell replication** | ❌ | ❌ **Missing** | ✅ `genReplicatedCell()`, `genReplicatedCellSlab()` |
+| **Slab cutting (HKL)** | ❌ | ❌ **Missing** | ✅ `genReplicatedCellSlab()` with reciprocal lattice |
+| **Plane cutting** | ❌ | ❌ **Missing** | ✅ `genReplicatedCellCutPlanes()` |
+| **Site deduplication** | ❌ | ❌ **Missing** | ✅ `dedupFracSitesByTolA()` (grid-bucket) |
+| **Bonds across cells** | `autoBonds()` (single cell) | ❌ **Missing** | ✅ `_computeBasisBonds()` (27 neighbor offsets) |
+
+**Critical gap:** Crystal building exists only in JavaScript. Python has no CIF parsing, no lattice vectors, no symmetry operations, no cell replication. This blocks the unified Python VisPy GUI goal. See [molecular_topology_editors.md](molecular_topology_editors.md) § "Crystal Building — Cross-Language Gap Analysis" for detailed function inventory and port plan.
 
 ---
 
@@ -251,6 +262,7 @@ See codemap trace [7] for algorithm walkthrough.
 - `pyBall/AtomicSystem.py` (1314 lines) — array-based atomic system
 - `pyBall/AtomicGraph.py` (392 lines) — object-graph representation
 - `pyBall/OCL/MMFF.py` (1107 lines) — topology → FF conversion
+- **GAP:** No crystal building module exists in Python
 
 ### JavaScript
 - `web/common_js/Selection.js` (168 lines) — generic selection class
@@ -258,13 +270,17 @@ See codemap trace [7] for algorithm walkthrough.
 - `web/molgui_webgpu/EditableMolecule.js` (1057 lines) — molecular topology editor
 - `web/molgui_webgpu/MMFFLTopology.js` (826 lines) — topology → XPDB conversion
 - `web/molgui_webgpu/MMParams.js` (524 lines) — parameter loading
+- `web/molgui_webgpu/CrystalUtils.js` (1188 lines) — **crystal builder (no Python equivalent)**
+- `web/molgui_webgpu/Nanocrystals.js` (631 lines) — nanocrystal generation from CIF
 
 ---
 
 ## See Also
 
 - [Type Assignment](molecular_topology_types.md) — atom type assignment, parameter files, MMFF/UFF
-- [Editors & Editing](molecular_topology_editors.md) — GUIs, advanced editing, consolidation roadmap
+- [Editors & Editing](molecular_topology_editors.md) — GUIs, advanced editing, crystal building gap analysis, consolidation roadmap
+- [GUI Feature Audit](gui_audit.md) — detailed visualization & editor feature matrices
+- [Topical Audit Index](topical_audit.md) — priority ranking, dependency graph, missing topics
 - [Interactive Codemap](https://windsurf.com/codemaps/692593e6-1efe-495f-bbf6-2ad291a285c9-fe86ab10a43f3d18) — visual navigation of topology code across languages
 - `doc/topical_audit/intramolecular_forcefields.md` — force field evaluation phase
 - Canonical default parameters: `tests/tUFF/data_UFF/{ElementTypes,AtomTypes,BondTypes,AngleTypes,DihedralTypes}.dat`

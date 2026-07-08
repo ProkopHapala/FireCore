@@ -233,14 +233,127 @@ Three separate parsers for same `.dat` format (C++, Python, JS).
 
 ---
 
+## Crystal Building — Cross-Language Gap Analysis
+
+### Overview
+
+Crystal building is a **critical gap** in the Python ecosystem. The JavaScript `CrystalUtils.js` (1188 lines) provides a complete crystallography toolkit with no Python equivalent. This blocks the goal of a unified Python VisPy GUI.
+
+### JavaScript Implementation (Active, Complete)
+
+**`web/molgui_webgpu/CrystalUtils.js`** (1188 lines) — the canonical crystal builder:
+
+| Function | Lines | Purpose |
+|----------|-------|---------|
+| `latticeVectorsFromParams(params)` | 229-255 | Build 3 lattice vectors from (a, b, c, α, β, γ) |
+| `fracToCart(p, lvec, out)` | 257-264 | Fractional → Cartesian coordinate conversion |
+| `cartToFrac(p, lvec, out)` | 266-279 | Cartesian → Fractional coordinate conversion |
+| `parseLatticeText(txt)` | 281-293 | Parse 3-line text input as lattice vectors |
+| `parseSitesTextXYZ(txt, mode)` | 308-327 | Parse atomic sites (fractional or Cartesian) |
+| `parseSymOpsText(txt)` | 382-391 | Parse symmetry operation strings |
+| `parseSymOpXYZ(opStr)` | 485-498 | Parse single sym op "x,y,z" → matrix + translation |
+| `parseCIF(cifText)` | 418-466 | Full CIF parser (tags + loops) |
+| `cifToCrystalData(cifText)` | 540-580 | Extract lattice, sites, symmetry from CIF |
+| `applySymmetryOpsFracSites(sites, symOps)` | 500-528 | Apply symmetry operations to fractional sites |
+| `dedupFracSitesByTolA(sites, lvec, tol)` | 104-157 | Grid-bucket deduplication of fractional sites |
+| `dedupMolAtomsByTolA(mol, tol)` | 159-227 | Dedup atoms in EditableMolecule by distance |
+| `cellDataFromFracSites(lvec, sites)` | 582-602 | Convert fractional sites → flat arrays (pos, types, charges) |
+| `genReplicatedCell(params)` | 928-1026 | Replicate unit cell (bulk) with optional bond building |
+| `genReplicatedCellSlab(params)` | 667-750 | Replicate with slab cut (HKL normal, cmin/cmax range) |
+| `genReplicatedCellCutPlanes(params)` | 752-864 | Replicate with arbitrary plane cuts (multiple planes) |
+| `reciprocalLattice(lvec)` | 1063-1083 | Compute reciprocal lattice vectors |
+| `expandPlaneTemplates(templates, cSym)` | 11-29 | Expand {100}, {110}, {111} plane families |
+| `_computeBasisBonds(lvec, basisPos, types, mmParams)` | 877-926 | Compute bonds within unit cell + 27 neighbor offsets |
+
+**`web/molgui_webgpu/Nanocrystals.js`** (631 lines):
+- `buildCrystalFromCIFText(cifText, opts)` — high-level CIF → crystal pipeline
+- `buildPlanesFromTemplates(lvec, templates, ...)` — plane template expansion for slabs
+- `loadMMParams(args)` — load FF parameters for bond building
+
+**`web/molgui_webgpu/BuildersGUI.js`** (1130 lines):
+- Unit cell editor GUI (lattice vectors, atoms, symmetry, dedup controls)
+- CIF file loading → fill editor fields
+- Crystal generation (bulk, slab, cut planes) with replication counts
+- Preset crystal structures (NaCl, CaF2, diamond, etc.)
+- Preview rendering with cell box, atom spheres, bond lines
+
+### Python Implementation (Missing)
+
+| Capability | JS Status | Python Status |
+|-----------|-----------|---------------|
+| Lattice vectors from params | ✅ Complete | ❌ **Missing** |
+| Frac↔Cart conversion | ✅ Complete | ❌ **Missing** |
+| CIF parsing | ✅ Complete | ❌ **Missing** (no Python CIF parser in pyBall) |
+| Symmetry operations | ✅ Complete | ❌ **Missing** |
+| Site deduplication | ✅ Grid-bucket | ❌ **Missing** |
+| Bulk cell replication | ✅ Complete | ❌ **Missing** |
+| Slab cutting (HKL) | ✅ Complete | ❌ **Missing** |
+| Plane cutting | ✅ Complete | ❌ **Missing** |
+| Bond building across cells | ✅ Complete | ❌ **Missing** |
+| Reciprocal lattice | ✅ Complete | ❌ **Missing** (exists in `doc/Julia/EwaldGrid.jl` only) |
+| Nanocrystal generation | ✅ Complete | ❌ **Missing** |
+| Preset crystals | ✅ Complete | ❌ **Missing** |
+
+**Note:** `KekuleBackend.py` (1975 lines) builds hexagonal graphene grids only — not general crystallography.
+
+### C++ Implementation (Partial)
+
+`MMFFBuilder` (`cpp/common/molecular/MMFFBuilderBase.h`, 808 lines) has:
+- `insertAtoms(n, pos, types)` — add atoms to builder
+- `autoBonds(rCut)` — distance-based bond finding
+- No CIF parsing, no lattice vectors, no symmetry, no slab cutting
+
+### Recommended Python Port Plan
+
+Create `pyBall/crystal/CrystalBuilder.py` with these functions (mapping from JS):
+
+```python
+# Core crystallography
+def lattice_vectors_from_params(a, b=None, c=None, alpha=90, beta=90, gamma=90) -> np.ndarray(3,3)
+def frac_to_cart(frac, lvec) -> np.ndarray(N,3)
+def cart_to_frac(cart, lvec) -> np.ndarray(N,3)
+def reciprocal_lattice(lvec) -> np.ndarray(3,3)
+
+# CIF parsing
+def parse_cif(cif_text) -> dict  # tags + loops
+def cif_to_crystal_data(cif_text) -> dict  # lattice, sites, sym_ops
+
+# Symmetry
+def parse_sym_op_xyz(op_str) -> (matrix, translation)
+def apply_symmetry_ops_frac_sites(sites, sym_ops, tol=1e-6) -> list
+
+# Deduplication
+def dedup_frac_sites_by_tol(sites, lvec, tol=0.1) -> list
+
+# Cell generation
+def gen_replicated_cell(lvec, basis_pos, basis_types, n_rep=(1,1,1), ...) -> AtomicGraph
+ndef gen_replicated_cell_slab(lvec, basis_pos, basis_types, n_rep, n_hat, cmin, cmax, ...) -> AtomicGraph
+def gen_replicated_cell_cut_planes(lvec, basis_pos, basis_types, n_rep, planes, ...) -> AtomicGraph
+
+# Bond building
+def compute_basis_bonds(lvec, basis_pos, basis_types, mm_params, bond_tol=0.2) -> list
+```
+
+**Key design decisions:**
+- Use NumPy arrays (not Vec3 objects) for positions — vectorized, cache-friendly
+- Return `AtomicGraph` instances (not raw arrays) for GUI integration
+- Use `mm_params` from existing Python FF parameter loading (`pyBall/OCL/UFFbuilder.py`)
+- Fail loudly on invalid inputs (matching JS error behavior)
+
+---
+
 ## Consolidation Checklist
 
+- [ ] **Port `CrystalUtils.js` → Python `CrystalBuilder.py`** (CRITICAL — blocks unified GUI)
 - [ ] Move `EditableMolecule.js` to `web/common_js/`
 - [ ] Consolidate `MMParams.js` to single version
 - [ ] Archive or remove `MoleculeEditor2D.py`
 - [ ] Document `AtomicGraph` vs `AtomicSystem` usage in Python
 - [ ] Plan molgui_web → molgui_webgpu migration
 - [ ] Add cross-language parity tests for topology operations
+- [ ] Port VSEPR capping from `EditableMolecule.js` → Python
+- [ ] Create `crystal_building.md` audit document
+- [ ] Build unified VisPy GUI combining KekuleExplorer + crystal builder + VSEPR
 
 ---
 
@@ -248,19 +361,29 @@ Three separate parsers for same `.dat` format (C++, Python, JS).
 
 ### Python
 - `pyBall/KekuleExplorerGUI.py` (1413 lines) — active 3D editor
-- `pyBall/KekuleBackend.py` (1975 lines) — hex grid backend
+- `pyBall/KekuleBackend.py` (1975 lines) — hex grid backend (graphene only, NOT general crystallography)
 - `pyBall/GUI/MoleculeEditor2D.py` (1602 lines) — deprecated 2D editor
+- `pyBall/AtomicGraph.py` (392 lines) — object-based molecular graph
+- `pyBall/AtomicSystem.py` (1314 lines) — array-based molecular system
 
 ### JavaScript (Active)
+- `web/molgui_webgpu/CrystalUtils.js` (1188 lines) — **crystal builder (no Python equivalent)**
+- `web/molgui_webgpu/Nanocrystals.js` (631 lines) — nanocrystal generation from CIF
+- `web/molgui_webgpu/BuildersGUI.js` (1130 lines) — crystal builder GUI
 - `web/molgui_webgpu/EditableMolecule.js` (1057 lines) — topology editor
 - `web/molgui_webgpu/MMFFLTopology.js` (826 lines) — XPDB packing
 - `web/molgui_webgpu/MMParams.js` (524 lines) — parameters
 - `web/molgui_webgpu/MoleculeRenderer.js` — WebGPU rendering
 - `web/molgui_webgpu/GUI.js` — UI components
+- `web/molgui_webgpu/Selection.js` — selection system
 
 ### JavaScript (Legacy)
 - `web/molgui_web/js/EditableMolecule.js` (1057 lines) — **[DUPLICATE]**
 - `web/molgui_web/js/MMParams.js` (466 lines) — **[LEGACY]**
+
+### C++
+- `cpp/common/molecular/MMFFBuilderBase.h` (808 lines) — FF builder with autoBonds (no crystallography)
+- `cpp/apps/MolecularEditor/MolGUI.h` — C++ SDL-based GUI
 
 ---
 
@@ -268,5 +391,7 @@ Three separate parsers for same `.dat` format (C++, Python, JS).
 
 - [Base Topology](molecular_topology.md) — graph representations, bond finding, rings, bridges
 - [Type Assignment](molecular_topology_types.md) — atom type assignment, parameter files
+- [GUI Feature Audit](gui_audit.md) — detailed visualization & editor feature matrices, consolidation plan
+- [Topical Audit Index](topical_audit.md) — priority ranking, dependency graph, missing topics
 - [Interactive Codemap](https://windsurf.com/codemaps/692593e6-1efe-495f-bbf6-2ad291a285c9-fe86ab10a43f3d18) — visual navigation
 - Canonical default parameters: `tests/tUFF/data_UFF/{ElementTypes,AtomTypes,BondTypes,AngleTypes,DihedralTypes}.dat`

@@ -180,6 +180,8 @@ gen_nanocrystals.mjs        ──►     MMFF.py::init()          ──►    
 
 ## Related Topics
 
-- [Classical Force Fields (MMFF/UFF)](topical_audit.md#classical-force-fields-mmffuff) — Broader force field overview
+- [Topical Audit Index](topical_audit.md) — priority ranking, dependency graph, missing topics
+- [Molecular Topology Editors](molecular_topology_editors.md) — crystal building gap analysis (Nanocrystals.js uses CrystalUtils.js)
+- [Intramolecular Forcefields](intramolecular_forcefields.md) — UFF/MMFF used for nanocrystal vibrations
 - [Htransfer_Kekule_DFTB.md](Htransfer_Kekule_DFTB.md) — Related DFTB/force field work
 - Codemap: [Silicon/Diamond Nanocrystal Vibration Spectroscopy Workflow](https://windsurf.com/codemaps) — Visual trace of the complete pipeline

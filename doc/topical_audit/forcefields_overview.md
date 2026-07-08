@@ -103,11 +103,13 @@ This factorization allows the same grid to be reused with different atom types v
 
 ## References
 
-- `Forcefields_Audit.md` — Consolidated audit with exhaustive file listings.
+- [Topical Audit Index](topical_audit.md) — priority ranking, dependency graph, missing topics
+- `Forcefields_Audit.md` — Consolidated audit with exhaustive file listings (legacy).
 - `intramolecular_forcefields.md` — Detailed physics and implementation of bonded terms.
 - `nonbonding_forcefields.md` — Detailed physics and implementation of non-bonded terms.
 - `surface_interactions.md` — Detailed physics and implementation of substrate interactions.
 - `forcefields_web_implementation.md` — WebGL/WebGPU shader details.
+- [Molecular Topology](molecular_topology.md) — topology and graph representations underlying FF evaluation
 
 ---
 

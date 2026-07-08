@@ -239,6 +239,9 @@ function lawOfCosines(rab, rbc, cosTheta) {
 
 ## See Also
 
+- [Topical Audit Index](topical_audit.md) — priority ranking, dependency graph, missing topics
 - [Base Topology](molecular_topology.md) — graph representations, bond finding, rings, bridges
-- [Editors & Editing](molecular_topology_editors.md) — GUIs and interactive editing
+- [Editors & Editing](molecular_topology_editors.md) — GUIs, crystal building gap analysis, consolidation roadmap
+- [GUI Feature Audit](gui_audit.md) — visualization & editor feature matrices, VisPy consolidation plan
+- [Intramolecular Forcefields](intramolecular_forcefields.md) — FF evaluation using assigned types
 - [Interactive Codemap](https://windsurf.com/codemaps/692593e6-1efe-495f-bbf6-2ad291a285c9-fe86ab10a43f3d18) — visual navigation

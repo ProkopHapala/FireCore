@@ -234,3 +234,13 @@ kekule-neb-repo/
 - **PBC support:** k-point sampling for periodic ribbon systems
 - **DFTB+ integration:** Both subprocess and C-API interfaces
 - **Orbital visualization:** Waveplot integration for molecular orbitals
+
+---
+
+## See Also
+
+- [Topical Audit Index](topical_audit.md) — priority ranking, dependency graph, missing topics
+- [Molecular Topology Editors](molecular_topology_editors.md) — KekuleExplorerGUI architecture, crystal building gap analysis
+- [Molecular Topology Types](molecular_topology_types.md) — atom type assignment used in Kekule structures
+- [AFM/STM Simulation](afm_stm_simulation.md) — DFTB+ integration details, STM orbital projection
+- [GUI Feature Audit](gui_audit.md) — visualization & editor feature matrices, VisPy consolidation plan
