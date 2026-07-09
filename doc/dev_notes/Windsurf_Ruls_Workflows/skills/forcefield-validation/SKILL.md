@@ -1,14 +1,13 @@
 ---
 name: forcefield-validation
-description: Use when implementing or debugging interatomic force-fields (e.g., UFF, SPFF)
+description: Implementing/debugging forcefields (UFF, SPFF) — invariants, switch semantics, buffer parity
 trigger:
   glob:
     - "**/SPFF*"
     - "**/UFF*"
-    - "**/forcefields/**/*"
-    - "**/data/**/*.dat"
-    - "**/data/**/*.xyz"
-    - "**/data/**/*.mol2"
+    - "**/common_resources/**/*.dat"
+    - "**/common_resources/**/*.xyz"
+    - "**/common_resources/**/*.mol"
 ---
 
 ## General Forcefield Invariants
@@ -49,10 +48,9 @@ If combined fails but isolation passes, the bug is in interaction logic, not eit
 
 ## Architecture
 
-- Forcefield modules: `spammm/forcefields/` — `FFController.py`, `Assembly.py`, `RigidBodyAFM.py`
-- OpenCL kernels: `kernels/Forces.cl`, `kernels/AFM.cl`
-- OpenCL base: `spammm/utils/OpenCLBase.py`
-- Data files: `AtomTypes.dat`, `BondTypes.dat`, `AngleTypes.dat` in `data/`
+- Reference: `pyBall/SPFF_multi.py` (wrapper for C++ `SPFFmulti_lib.cpp`)
+- Backends: `iParalel=0` (C++ CPU), `iParalel=2` (C++ OpenCL), `pyBall/OCL/UFF.py` (Python OpenCL)
+- Data files: `AtomTypes.dat`, `BondTypes.dat`, `AngleTypes.dat` in `common_resources/`
 
 ## Switch Semantics
 
@@ -62,14 +60,14 @@ If combined fails but isolation passes, the bug is in interaction logic, not eit
 
 ## Buffer Parity
 
-- Call `init_buffers(bUFF=...)` to populate buffer maps. Read `ndims` first for shapes.
+- Call `init_buffers(bUFF=...)` to populate C++ `buffers`/`ibuffers` maps. Read `ndims` first for shapes.
 - UFF critical: Check `bonParams`, `angParams`, `a2f`. CPU `angParams` layout is `[K, c0, c1, c2, c3]`; kernels expect split `angParams1=[c0..c3]` and `angParams2_w=[K]`.
 - SPFF critical: Check `apos` (Pi-orbitals at `natoms:natoms+nnode`), `bkNeighs` (Back Neighbors), `Ksp`/`Kpp`.
 
 ## Pitfalls
 
 - Pi-orbitals: In SPFF, `apos` contains atoms AND pi-nodes. Loop bounds: `natoms` vs `natoms+nnode`.
-- Node/cap layout: builder sets `nnode=natoms`, allocates one pi slot per atom. Caps have `Ksp/Kpp=0` but occupy `nvecs`. `bkNeighs` sized `nSystems*nvecs`.
+- Node/cap layout: Current C++ builder sets `nnode=natoms`, allocates one pi slot per atom. Caps have `Ksp/Kpp=0` but occupy `nvecs`. `bkNeighs` sized `nSystems*nvecs`.
 
 ## Bonded-Only Parity Flow
 

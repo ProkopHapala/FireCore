@@ -1,11 +1,13 @@
 ---
 name: port-to-opencl
-description: Use when porting Python compute kernels to PyOpenCL
+description: Porting Fortran/C++→PyOpenCL — OpenCLBase, kernel caching, persistent buffers, GPU performance
 trigger:
   glob:
     - "**/*.cl"
-    - "**/kernels/**/*"
-    - "**/spammm/utils/**/*"
+    - "**/fortran/**/*"
+    - "**/cpp/**/*.cpp"
+    - "**/cpp/**/*.h"
+    - "**/pyBall/OCL/**/*"
 ---
 
 ## Why PyOpenCL First
@@ -21,11 +23,11 @@ Always start with PyOpenCL before CUDA. Benefits:
 
 ## Base Class: OpenCLBase
 
-Inherit from `spammm/utils/OpenCLBase.py` for efficient GPU resource management:
+Inherit from `pyBall/OCL/OpenCLBase.py` for efficient GPU resource management:
 
 **Kernel caching:** Compile once during `__init__`, cache in `self.prg`. Skip recompilation on subsequent calls.
 ```python
-if not self.load_program(rel_path="../../kernels/FitREQ.cl", base_path=base_path):
+if not self.load_program(rel_path="../../cpp/common_resources/cl/FitREQ.cl", base_path=base_path):
     exit(1)
 ```
 
@@ -50,7 +52,7 @@ def my_kernel(self, data, bTryAllocate=True):
 
 First call: allocates buffers. Subsequent calls with same sizes: skips allocation.
 
-## Porting Principles (Python→OpenCL)
+## Porting Principles (Fortran→OpenCL)
 
 - Reference is truth: If outputs differ, OpenCL is wrong.
 - Preserve identity: Use unique keys (e.g., (iatom, ineigh, mbeta)). Don't collapse by (iatom, jatom). Respect periodic shifts.

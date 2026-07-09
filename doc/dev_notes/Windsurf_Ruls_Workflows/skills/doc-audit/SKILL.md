@@ -13,20 +13,20 @@ Two layers, built bottom-up:
 - Bullet list of key files/subfolders with one-line descriptions
 - Build from folders you're working in, not top-down
 
-### Topical Audit (`doc/topical_audit.md`)
-Cross-implementation maps connecting implementations of the same scientific topic. One section per topic.
+### Topical Audit (`doc/TopicalAudit/`)
+Cross-language maps connecting implementations of the same scientific topic. One file per topic.
 
 ```yaml
 ---
 type: TopicalAudit
 title: <Topic Name>
-tags: [topic]
+tags: [topic, cross-language]
 ---
 ```
 
 Body:
 - **Summary**: 1 paragraph
-- **Implementations**: table `Location | Status | Notes`
+- **Implementations**: table `Language | Location | Status | Notes`
 - **Parity Status**: verified pairs, tolerance, test reference
 - **Open Issues**: TODOs, unported features
 
@@ -48,11 +48,11 @@ Generate concise human-readable overview from source files:
 
 ## Inline Documentation Workflow
 Insert concise standardized comments into code:
+- **C/C++/OpenCL**: `///` one-liners (Doxygen); avoid `/* */`
 - **Python**: single-line docstrings `"""One-line summary"""`
-- **OpenCL**: `//` one-liners above kernel functions
 - File header: 1-3 sentences background + AUTO-DOC markers
-- Functions: docstring inside (Python), `//` comment above (OpenCL)
-- **AUTO-DOC markers**: `# === AUTO-DOC BEGIN ===` / `# === AUTO-DOC END ===` (Python), `// === AUTO-DOC BEGIN ===` / `// === AUTO-DOC END ===` (OpenCL) — allows safe regeneration
+- Functions: one-line `@brief` above definition (C++) or docstring inside (Python)
+- **AUTO-DOC markers**: `/// === AUTO-DOC BEGIN ===` / `/// === AUTO-DOC END ===` (C++), `# === AUTO-DOC BEGIN ===` / `# === AUTO-DOC END ===` (Python) — allows safe regeneration
 - Never delete existing comments; keep both if conflicting, mark new as AUTO-DOC
 - No parameter/return enumeration unless critical; focus on purpose and essence
 - Minimal edits — don't refactor while documenting
@@ -100,11 +100,11 @@ motivation, design rationale, and highlights that capture the **essence** of the
 
 ### Format Rules
 
-- Use `"""` docstring style for Python module headers
-- Start with `"""filename.py — <one-sentence essence>"""`
-- Follow with docstring paragraphs for: motivation, design decisions, key functions/classes,
+- Use `///` Doxygen style for C/C++ headers (not `/* */`)
+- Start with `/// @file filename.h` then `/// @brief <one-sentence essence>`
+- Follow with `///` paragraphs for: motivation, design decisions, key functions/structs,
   use cases, background — only the ones relevant to this file
-- Use `**bold**` for key terms and function/class names within the doc
+- Use `**bold**` for key terms and struct/function names within the doc
 - Use `-` bullet lists for enumerating design choices or key functions
 - Keep total header doc to 10-25 lines — dense, not verbose
 - Every sentence must carry information that is NOT visible in the code
@@ -112,10 +112,10 @@ motivation, design rationale, and highlights that capture the **essence** of the
 ### README.md Style
 
 - One bullet per file in the folder
-- Each bullet: **filename.py** — one-sentence essence, then comma-separated key details
+- Each bullet: **filename.h** — one-sentence essence, then comma-separated key details
 - No frontmatter, no headings beyond the folder name
 - Order: most important/foundational files first, implementation files last
-- Include `.cl` files — they get a one-liner saying what they implement
+- Include .cpp files — they get a one-liner saying what they implement
 
 ### Examples
 
@@ -137,4 +137,3 @@ Bad body excerpt:
 ## Related Skills
 - `doc-read-navigate` — check existing implementations before writing
 - `doc-task-summary` — quick doc updates after implementation
-- `doc/Takeways.md` — cross-cutting pitfalls (blit, external calculators, GUI vs test paths)

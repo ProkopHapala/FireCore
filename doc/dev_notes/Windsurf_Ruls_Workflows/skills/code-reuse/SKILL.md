@@ -4,6 +4,10 @@ description: Writing new code — inventory-first, module-vs-script placement, n
 trigger:
   glob:
     - "**/*.py"
+    - "**/*.js"
+    - "**/*.mjs"
+    - "**/*.cpp"
+    - "**/*.h"
     - "**/*.cl"
     - "**/scripts/**"
     - "**/test*/**"
@@ -22,8 +26,8 @@ Before writing ANY new function, search the codebase for existing implementation
 4. If NO match exists: write the function in the appropriate **existing** shared module, not in a script
 
 ### Step 2: Module vs Script Placement
-- **Shared modules** (e.g. `spammm/`): Export reusable functions. This is the ONLY place reusable logic lives.
-- **Scripts** (e.g. `tests/*.py`, `scripts/*.py`): Thin wrappers that import from modules and orchestrate. May contain only test-specific glue (logging, file I/O, test case wiring).
+- **Shared modules** (e.g. `pyBall/`, `cpp/common/`, `web/common_js/`): Export reusable functions. This is the ONLY place reusable logic lives.
+- **Scripts** (e.g. `tests/*.py`, `scripts/*.mjs`, `*.sh`): Thin wrappers that import from modules and orchestrate. May contain only test-specific glue (logging, file I/O, test case wiring).
 - **Hard rule**: If a function in a script is not test-specific glue, it MUST be moved to a shared module and imported. No exceptions.
 
 ### Step 3: No New Files Unless Explicitly Requested

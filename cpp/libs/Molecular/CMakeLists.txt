@@ -21,4 +21,5 @@ add_library(SchroedingerGreen1D_lib  SHARED SchroedingerGreen1D_lib.cpp )
 add_library(FitREQ_lib               SHARED FitREQ_lib.cpp )
 
 add_library(Forces_lib               SHARED Forces_lib.cpp              )
+add_library(FFfit_lib                SHARED FFfit_lib.cpp               )
 

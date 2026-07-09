@@ -1,11 +1,13 @@
 ---
 name: gpu-debug
-description: Debugging GPU/OpenCL kernels — gated prints, CPU↔GPU tracing, barrier pitfalls
+description: Debugging GPU/OpenCL/CUDA kernels — gated prints, CPU↔GPU tracing, barrier pitfalls
 trigger:
   glob:
     - "**/*.cl"
-    - "**/kernels/**/*"
-    - "**/spammm/utils/**/*"
+    - "**/*.cu"
+    - "**/apps_OCL/**/*"
+    - "**/apps_CUDA/**/*"
+    - "**/pyBall/OCL/**/*"
 ---
 
 ## Gated Debug Macros
@@ -61,10 +63,11 @@ When comparing CPU vs GPU, inject **identical** printf format in both implementa
 
 **GPU is always single-precision (float32).** Use `%f` instead of `%g`, avoid double for numerical speed.
 
-**Python side:**
-```python
-if iatom == IDBG_ATOM and isys == IDBG_SYS:
-    print(f"CPU_BOND {i_bond}: L {L:g} K {K:g} F {F:g}")
+**CPU side:**
+```cpp
+if(iatom==IDBG_ATOM && isys==IDBG_SYS){
+    printf("CPU_BOND %d: L %g K %g F %g\n", i_bond, L, K, F);
+}
 ```
 
 **GPU side:** Match format exactly (same variable order, same precision specifiers).
@@ -88,5 +91,5 @@ barrier(CLK_LOCAL_MEM_FENCE);  // All work-items reach here
 
 ## GPU-Specific Pitfalls
 
-- **Struct alignment:** OpenCL `float4` (16 bytes) vs NumPy `float64` arrays. Verify strides when passing buffers.
-- **System replicas:** OpenCL is Multi-System (`nSystems`). Python reference often Single-System. Compare System 0.
+- **Struct alignment:** OpenCL `float4` (16 bytes) vs C++ `Vec3d` (24 bytes) or `Vec3f`. Verify strides.
+- **System replicas:** OpenCL is Multi-System (`nSystems`). C++ Reference often Single-System. Compare System 0.

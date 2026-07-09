@@ -58,6 +58,8 @@ flowchart LR
 | `run_cpp_mol_browser.sh` | C++ SDL molecular browser launcher |
 | `run_vispy_mol_browser.sh` | Python Vispy molecular browser launcher (plugin host + vibration panel) |
 | `test_mol_browser_plugins.py` | Plugin registry, NPZ grid filter, vibration panel tests |
+| `plot_pyscf_vib_results.py` | Plot PySCF vibration results (Hessian in atomic blocks + spectra + size series) |
+| `run_small_np_pyscf_vib.py` | PySCF workflow: relax → Hessian → harmonic analysis → loose .npy output |
 | [`ToDo_Nanocrystal.md`](ToDo_Nanocrystal.md) | Open items and open questions |
 
 ---
@@ -123,6 +125,28 @@ Batch all nine gallery crystals: see [`fixtures/si_1nm_passivation/README.md`](f
 ```
 
 Guides: C++ [`CPP_MolecularBrowser_NPZ.md`](../../doc/Topics/FTIR_Nanocrystals/CPP_MolecularBrowser_NPZ.md); Python plugins [`Python_Vispy_MolBrowser_Plugins.md`](../../doc/Topics/FTIR_Nanocrystals/Python_Vispy_MolBrowser_Plugins.md).
+
+### PySCF vibration results (loose .npy format)
+
+PySCF vibration data uses loose `.npy` files per case directory, not the NPZ pipeline stages. The `VibrationSpectrumPlugin` auto-detects this format (NPZ tried first, PySCF fallback).
+
+**Format contract** (full details: [`doc/topical_audit/Vibration_Data_Formats.md`](../../doc/topical_audit/Vibration_Data_Formats.md)):
+
+| File | Shape | Dtype | Units |
+|------|-------|-------|-------|
+| `frequencies_cm1.npy` | (3N,) | float64 or complex128 | cm⁻¹ |
+| `modes.npy` | (n_vib, N, 3) | float64 | Å displacement |
+| `hessian.npy` | (N, N, 3, 3) | float64 | Hartree/Bohr² |
+| `masses.npy` | (N,) | int64 | amu |
+| `relaxed.xyz` | — | XYZ | Å |
+
+```bash
+# Plot all cases (Hessian in atomic 3×3 blocks + spectra)
+python3 tests/tSiNCs/plot_pyscf_vib_results.py /path/to/results --noshow
+
+# Launch Vispy browser on PySCF results (auto-detects .npy format)
+python3 -m pyBall.GUI.VispyMolBrowser --dir /path/to/results
+```
 
 **DFTB+ prerequisite:** set Slater–Koster paths before running DFTB methods. `vib_utils.py` currently hardcodes `/home/prokop/SIMULATIONS/dftbplus/slakos/...` — override via env or edit `SK_PATHS` until parameterized (backlog item).
 
@@ -231,6 +255,7 @@ Code inventory: [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../doc/topica
 | Classical MMFF vibrations | **Working** | `tests/tMMFF/` ladder |
 | Ensemble / NPZ pipeline | **Working** | `nanocrystal_pipeline.py`; `fixtures/si_1nm_passivation/` (01→05) |
 | NPZ viewers (C++ / Vispy) | **Working** | `run_cpp_mol_browser.sh`, `run_vispy_mol_browser.sh` |
+| PySCF .npy viewer support | **Working** | `VibrationSpectrumPlugin` auto-detects `.npy` format; `plot_pyscf_vib_results.py` |
 | Nanocrystal → QM | **Not started** | QM refs are molecular cages only so far |
 | SiO₂ / silica | **Out of scope** | No implementation |
 
@@ -255,6 +280,7 @@ See [`ToDo_Nanocrystal.md`](ToDo_Nanocrystal.md) for viewers, pipeline parity, v
 
 - [`doc/Topics/FTIR_Nanocrystals/README.md`](../../doc/Topics/FTIR_Nanocrystals/README.md) — topic documentation index  
 - [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../doc/topical_audit/Nanocrystal_Vibrations.md) — topical audit  
+- [`doc/topical_audit/Vibration_Data_Formats.md`](../../doc/topical_audit/Vibration_Data_Formats.md) — vibration data format contracts (NPZ vs PySCF .npy)  
 - [`doc/topical_audit/topical_audit.md`](../../doc/topical_audit/topical_audit.md) — global topic index  
 - [`CODEMAP.md`](../../CODEMAP.md) — repo structure  
 - [`tests/tMMFF/AGENTS.md`](../tMMFF/AGENTS.md) — phonon validation ownership  

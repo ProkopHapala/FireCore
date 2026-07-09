@@ -5,7 +5,7 @@ description: Before writing new code — search existing implementations, topica
 
 ## Before You Write — Check What Exists
 
-1. **Search topical audits**: `doc/topical_audit.md` — cross-implementation maps per scientific topic, lists all implementations with status and parity
+1. **Search topical audits**: `doc/TopicalAudit/*.md` — one file per scientific topic, lists all implementations across languages with status and parity
 2. **Search CODEMAP.md** (if exists): file locations and module relationships
 3. **Grep codebase**: search for function/class names matching your planned implementation
 4. **Read README.md** in the target folder — may describe what's already there
@@ -25,12 +25,12 @@ Before writing, verify your plan doesn't mix:
 - Backend with GUI/CLI
 - Test scripts reimplementing shared module functions
 
-If you need plotting/debugging: check for shared utilities first (e.g., `spammm/plotUtils.py`, `spammm/utils/test_utils.py`).
+If you need plotting/debugging: check for shared utilities first (e.g., `pyBall/plot_utils.py`, `TestUtils.py`).
 
 ## Where to Find Things
 
-- `doc/topical_audit.md` — cross-implementation maps per scientific topic
-- `doc/AGENTS/skills/` — task-specific skills (debugging, OpenCL, parity, etc.)
-- `doc/AGENTS/protocols/` — domain-specific protocols (forcefields, topology, QM)
+- `doc/TopicalAudit/` — cross-language implementation maps per scientific topic
+- `doc/AGENTs/skills/` — task-specific skills (debugging, OpenCL, parity, etc.)
+- `doc/AGENTs/protocols/` — domain-specific protocols (forcefields, topology, QM)
 - `README.md` in any folder — local index of contents
 - **Source file headers** — essence, design notes, and caveats at top of modules you touch

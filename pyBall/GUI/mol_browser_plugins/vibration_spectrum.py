@@ -1,8 +1,30 @@
-"""Vibration spectrum side panel — zoomable FTIR histogram + eigenmode overlay on 3D structure.
+# === AUTO-DOC BEGIN ===
+"""Vibration spectrum side panel for VispyMolBrowser.
 
-Loads 05_spectrum.npz for plotting; re-diagonalizes 04_hessian.npz for Cartesian eigenvectors
-(v1.2 spectrum NPZ does not store modes). Click plot or step controls to drive VispyMolView arrows/animation.
+Displays a zoomable FTIR histogram or mode-stick plot and overlays selected
+vibrational eigenmodes on the 3D molecular structure (arrows + animation).
+
+Two data source formats are supported (auto-detected, NPZ tried first):
+
+  1. **Nanocrystal pipeline NPZ** (original path):
+     - ``05_spectrum.npz``: keys ``omega_centers``, ``hist``, ``omegas_modes`` (internal units: sqrt(eV/amu)/Å)
+     - ``04_hessian.npz``: keys ``K`` or ``K_projected``, ``M``, ``pos``, ``Z``, ``natoms``
+     - Frequencies in internal units; converted to cm⁻¹ via ``omega_internal_to_cm1()``
+     - Eigenvectors re-diagonalized from Hessian on load (not stored in 05 v1.2)
+
+  2. **PySCF loose .npy** (added 2026-07):
+     - ``frequencies_cm1.npy``: shape (3N,) float64 or complex128; already in cm⁻¹
+     - ``modes.npy``: shape (n_vib, N, 3) float64; n_vib = 3N-6 (vib only, no trans/rot)
+     - ``masses.npy``: shape (N,) — optional, not used by plugin
+     - ``hessian.npy``: shape (N, N, 3, 3) float64 — optional, not used by plugin
+     - ``relaxed.xyz``: standard XYZ geometry (loaded by browser, not plugin)
+     - Frequencies already in cm⁻¹; ``_is_cm1`` flag skips unit conversion
+     - Modes reshaped to (3N, n_vib) for compatibility with ``displacement_for_mode()``
+
+Selection logic: ``on_molecule_selected`` tries NPZ stages first; if none found,
+falls back to PySCF ``.npy`` files in the molecule directory.
 """
+# === AUTO-DOC END ===
 from __future__ import annotations
 
 import os
@@ -117,11 +139,71 @@ class VibrationSpectrumPanel(QtWidgets.QWidget):
         if n_vib > 0:
             self._select_vib_slot(0)
 
+    def set_pyscf_bundle(self, dir_path: str):
+        """Load PySCF loose .npy vibration files (frequencies_cm1.npy + modes.npy)."""
+        self._spectrum = None
+        self._normal_modes = None
+        self._mode_global_idx = None
+        d = os.path.abspath(dir_path)
+        freq_p = os.path.join(d, 'frequencies_cm1.npy')
+        modes_p = os.path.join(d, 'modes.npy')
+        if not os.path.isfile(freq_p):
+            self._clear_plot(f'No frequencies_cm1.npy in {os.path.basename(d)}')
+            self.mode_selected.emit(-1, 0.0)
+            return
+        freqs = np.load(freq_p)
+        # Handle complex frequencies (imaginary = unstable modes)
+        if np.iscomplexobj(freqs):
+            omegas_cm = np.where(freqs.imag > 1e-3, -freqs.imag, freqs.real)
+        else:
+            omegas_cm = freqs.real.astype(np.float64)
+        # Vibrational mode mask: real, positive, above threshold (skip translation/rotation)
+        vib_mask = omegas_cm > 10.0
+        vib_indices = np.flatnonzero(vib_mask)
+        omegas_cm_vib = omegas_cm[vib_mask]
+        # Load modes if available — PySCF modes shape: (n_vib, N, 3), n_vib = 3N-6
+        modes_cart = None
+        if os.path.isfile(modes_p):
+            modes = np.load(modes_p)  # (n_vib, N, 3)
+            n_vib_m, N_atoms, _ = modes.shape
+            modes_cart = modes.reshape(n_vib_m, N_atoms * 3).T  # (3N, n_vib): col i = mode i
+        if modes_cart is None:
+            self._normal_modes = None
+        else:
+            self._normal_modes = {
+                'path': d,
+                'omegas_cm': omegas_cm,
+                'omegas_cm_vib': omegas_cm_vib,
+                'vib_indices': vib_indices,
+                'modes_cart': modes_cart,
+            }
+        # Build a simple histogram spectrum from frequencies
+        xmax = max(omegas_cm_vib.max() * 1.1, 100.0) if len(omegas_cm_vib) else 100.0
+        bins = np.arange(0, xmax + 10, 10.0)
+        hist, edges = np.histogram(omegas_cm_vib, bins=bins)
+        centers = 0.5 * (edges[:-1] + edges[1:])
+        self._spectrum = {
+            'path': d,
+            'omega_centers': centers,
+            'hist': hist.astype(np.float64),
+            'omegas_modes': omegas_cm,
+            'omegas_modes_vib': omegas_cm_vib,
+            '_is_cm1': True,  # PySCF stores cm^-1 directly, no internal-unit conversion needed
+        }
+        n_vib = int(vib_indices.size)
+        self.lbl_status.setText(f"PySCF: {os.path.basename(d)}  modes: {n_vib} vib" + (f"  ({len(omegas_cm) - n_vib} trans/rot/imag)" if len(omegas_cm) != n_vib else ""))
+        self._redraw_plot()
+        if n_vib > 0:
+            self._select_vib_slot(0)
+
     def _vib_omegas_cm(self):
         if self._spectrum is None:
             return np.zeros(0, dtype=np.float64)
         if 'omegas_modes_vib' in self._spectrum:
-            return omega_internal_to_cm1(np.asarray(self._spectrum['omegas_modes_vib'], dtype=np.float64))
+            om = np.asarray(self._spectrum['omegas_modes_vib'], dtype=np.float64)
+            if self._spectrum.get('_is_cm1'):
+                return om  # PySCF path: already in cm^-1
+            return omega_internal_to_cm1(om)  # NPZ path: internal units
         om = np.asarray(self._spectrum['omegas_modes'], dtype=np.float64)
         return omega_internal_to_cm1(om[vibrational_mode_mask(om)])
 
@@ -231,6 +313,16 @@ class VibrationSpectrumPanel(QtWidgets.QWidget):
         return n3
 
 
+def _find_pyscf_vib_dir(path: str) -> str | None:
+    """Return ``path`` if it contains ``frequencies_cm1.npy``, else None."""
+    if not path or not os.path.isdir(path):
+        return None
+    freq_p = os.path.join(path, 'frequencies_cm1.npy')
+    if os.path.isfile(freq_p):
+        return path
+    return None
+
+
 class VibrationSpectrumPlugin(MolBrowserPlugin):
     plugin_id = 'vibration_spectrum'
     title = 'Vibration'
@@ -242,8 +334,17 @@ class VibrationSpectrumPlugin(MolBrowserPlugin):
         self._mode_idx = None
 
     def is_relevant(self, ctx: MolBrowserContext) -> bool:
+        # Original NPZ pipeline path
         stages = ctx.pipeline_stages()
-        return 'spectrum' in stages or 'hessian' in stages
+        if 'spectrum' in stages or 'hessian' in stages:
+            return True
+        # PySCF loose .npy path
+        mol_dir = pipeline_dir_for_molecule_path(ctx.selected_path or ctx.directory)
+        if _find_pyscf_vib_dir(mol_dir) is not None:
+            return True
+        if _find_pyscf_vib_dir(ctx.directory) is not None:
+            return True
+        return False
 
     def create_panel(self, parent: QtWidgets.QWidget) -> QtWidgets.QWidget:
         self._panel = VibrationSpectrumPanel(parent)
@@ -260,8 +361,18 @@ class VibrationSpectrumPlugin(MolBrowserPlugin):
         self._ctx = ctx
         if self._panel is None:
             return
-        stages = find_nanocrystal_pipeline_stages(pipeline_dir_for_molecule_path(ctx.selected_path or ctx.directory))
-        self._panel.set_bundle(stages)
+        mol_dir = pipeline_dir_for_molecule_path(ctx.selected_path or ctx.directory)
+        # Try NPZ pipeline stages first (original path)
+        stages = find_nanocrystal_pipeline_stages(mol_dir)
+        if 'spectrum' in stages or 'hessian' in stages:
+            self._panel.set_bundle(stages)
+        else:
+            # Try PySCF loose .npy format
+            pyscf_dir = _find_pyscf_vib_dir(mol_dir) or _find_pyscf_vib_dir(ctx.directory)
+            if pyscf_dir is not None:
+                self._panel.set_pyscf_bundle(pyscf_dir)
+            else:
+                self._panel.set_bundle(stages)  # will show 'missing' message
         self._mode_idx = None
         self._clear_viewer_mode()
 

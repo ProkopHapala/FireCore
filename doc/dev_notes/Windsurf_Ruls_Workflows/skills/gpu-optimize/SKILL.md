@@ -4,8 +4,10 @@ description: Optimizing GPU/OpenCL kernel performance — memory hierarchy, gath
 trigger:
   glob:
     - "**/*.cl"
-    - "**/kernels/**/*"
-    - "**/spammm/utils/**/*"
+    - "**/*.cu"
+    - "**/apps_OCL/**/*"
+    - "**/apps_CUDA/**/*"
+    - "**/pyBall/OCL/**/*"
 ---
 
 ## Memory Latency & Cache
@@ -58,7 +60,7 @@ __global float4* props; // {charge, mass, flags, _pad}
 
 - Avoid unnecessary `clEnqueueReadBuffer`/`clEnqueueWriteBuffer` in hot paths
 - Batch multiple operations on GPU before reading results back
-- Use persistent buffers (allocate once, reuse) — see `spammm/utils/OpenCLBase.py` `try_make_buffers()`
+- Use persistent buffers (allocate once, reuse) — see `OpenCLBase.try_make_buffers()`
 - Guard allocation with `bTryAllocate` to skip dict creation in hot paths
 - **PyOpenCL kernel launch overhead is large** — minimize number of kernel executions in iterative methods (MD timesteps, Jacobi iterations)
 - Parallelize as much work as possible in a single kernel (broad parallelism) rather than calling many small kernels in sequence
