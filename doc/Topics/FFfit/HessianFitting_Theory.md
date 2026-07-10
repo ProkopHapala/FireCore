@@ -59,7 +59,7 @@ The **GF method** expresses the dynamical problem in internal coordinates as:
 
 $$G F \mathbf{P} = \lambda \mathbf{P}$$
 
-where $G = B M^{-1} B^T$ is the kinematic (metric) matrix and $F$ is the valence-force constant matrix. Our fitting code implements a modern variant of this: rather than assuming $F$ is diagonal (the independent-coordinate approximation), we project the full QM Hessian into the Wilson internal-coordinate basis and fit $F$ (or its diagonal blocks) directly.
+where $G = B M^{-1} B^T$ is the kinematic (metric) matrix and $F$ is the valence-force constant matrix. Our fitting code uses the Wilson coordinates to define a physically relevant Cartesian subspace. The least-norm projected $F$ is retained for diagnosis, while the fit compares the gauge-invariant dynamical curvature in that subspace rather than fitting redundant entries of $F$ directly.
 
 The implementation in `pyBall/FFfit.py`:
 
@@ -67,7 +67,9 @@ The implementation in `pyBall/FFfit.py`:
 - `internal_hessian_projection(H, B, masses)` — computes $F = C^{+T} D C^+$ where $C = B M^{-1/2}$, giving the least-norm redundant valence force matrix
 - `internal_coordinate_basis(B, masses)` — returns the orthonormal basis for the mass-weighted Cartesian space sampled by $B$, handling redundancy via SVD
 
-This projection is one of three terms in the hybrid objective (Section 6).
+The least-norm projection is a useful *diagnostic*, but it is not itself a unique
+assignment of DFT curvature to individual bonds or angles. The gauge-invariant
+row-space curvature used by the hybrid fit is derived in Section 6.4.
 
 ### 2.3 At Equilibrium: Rank-One Simplification
 
@@ -279,28 +281,126 @@ This prevents absent long-range Hessian blocks from dominating the reduced local
 
 **Implementation**: `local_hessian_mask()` in `pyBall/FFfit.py`.
 
-### 6.3 Internal-Coordinate (Wilson) Objective
+### 6.3 Wilson Decomposition: Diagnostic, Not a Unique Bond-Stiffness Extraction
 
-The QM Hessian is projected into the Wilson internal-coordinate basis:
+For diagnostics, form scaled Wilson coordinates. For a bond $a$ of equilibrium
+length $r_{0,a}$, use $q_a = \Delta r_a/r_{0,a}$; angles are already expressed
+in radians. With the row-scaled Wilson matrix $B_s$ and
 
-1. Build the Wilson matrix $B$ (bond length and angle derivatives w.r.t. Cartesian positions)
-2. Scale bond displacements as $\Delta r / r_0$ and angles in radians → dimensionless coordinates
-3. Form $C = B_s M^{-1/2}$ (mass-weighted, scaled Wilson matrix)
-4. Compute pseudoinverse $C^+$ via SVD (handles redundant coordinates)
-5. Project: $F = C^{+T} D C^+$ (least-norm redundant valence force matrix)
+$$C = B_s M^{-1/2}, \qquad D=M^{-1/2}HM^{-1/2},$$
 
-The fit then targets $F^{\text{FF}} = F^{\text{QM}}$ in this internal-coordinate space. This is the modern implementation of the Wilson GF method: rather than assuming $F$ is diagonal, we inspect and fit the full projected force matrix.
+the SVD pseudoinverse gives the least-Frobenius-norm representative
 
-**Implementation**: `build_wilson_matrix()`, `internal_hessian_projection()` in `pyBall/FFfit.py`.
+$$F_{\rm min}=C^{+T}DC^+.$$
 
-### 6.4 Regularization and Bounded Solving
+For a single isolated dimensionless bond coordinate,
+
+$$F_{aa}=k_a r_{0,a}^2, \qquad k_a=F_{aa}/r_{0,a}^2.$$
+
+Thus $F$ has units of energy, not dimensionless units. A previous plotting bug
+used $r_0 B$ instead of $B/r_0$, then divided by $r_0^2$ again; this suppressed
+the displayed bond indicator by $r_0^4$. The corrected implementation uses the
+formula above.
+
+#### Redundancy and Gauge Non-Uniqueness
+
+Bond and angle coordinates in a connected tetrahedral network are redundant.
+If $N$ satisfies
+
+$$C^T N C = 0,$$
+
+then $F_{\rm min}+N$ reconstructs exactly the same Cartesian dynamical matrix.
+Therefore an individual diagonal element $F_{aa}$ depends on coordinate scaling,
+the chosen coordinate list, the SVD threshold, and the least-norm gauge. It also
+redistributes physical stretch-stretch and stretch-bend coupling into diagonal
+entries. It must be called a **projected diagonal indicator**, not a uniquely
+defined DFT stiffness of bond $a$.
+
+This explains why raw projected Si-Si indicators can differ strongly between
+bulk-like and surface-associated bonds even when a physically constrained fit
+finds similar transferable Si-Si springs. The indicator remains useful for
+locating missing couplings, but it must not be regularized merely to make its
+histogram look uniform.
+
+#### Rigid and Acoustic Modes
+
+Exact translations and rotations satisfy $B R_{\rm rigid}=0$. The Wilson
+row space is consequently orthogonal to the rigid-body subspace, so an explicit
+projection $D \leftarrow P_{\rm vib}DP_{\rm vib}$ is a useful numerical
+sum-rule diagnostic but cannot normally remove a large spread in $F_{aa}$.
+Long-wavelength acoustic modes are physical: they are soft because neighboring
+atoms move nearly together and $B\mathbf{u}$ is small, not because the local
+bond springs must be soft. Removing low-frequency modes or damping $C^+$ to
+force uniform diagonals would bias elastic and acoustic physics.
+
+### 6.4 Gauge-Invariant Wilson Row-Space Objective
+
+The fit avoids the gauge ambiguity of $F_{\rm min}$. Let the compact SVD be
+
+$$C=U\Sigma V^T, \qquad Q=V_{[:,1:r]},$$
+
+where $Q$ is an orthonormal basis of the mass-weighted Cartesian subspace
+represented by the Wilson coordinates. The internal residual is
+
+$$L_{\rm row}=\left\|Q^T(D_{\rm FF}-D_{\rm QM})Q\right\|_F^2.$$
+
+This is invariant under any nonsingular rescaling or recombination of the
+redundant Wilson rows. Only the upper triangle is stored, with off-diagonal
+entries multiplied by $\sqrt2$, preserving the exact Frobenius norm while
+halving residual storage. For the usual bond-plus-angle set of a nonlinear,
+connected molecule, this row space commonly spans all $3N-6$ vibrational
+degrees of freedom; it is then complementary to, but not statistically
+independent from, the mode objective. The separate weights should therefore be
+chosen by validation, not interpreted as independent experimental data.
+
+**Implementation**: `internal_hessian_projection()` remains the diagnostic
+projection; `internal_coordinate_basis()` and
+`assemble_hybrid_hessian_system()` implement the fitted row-space residual in
+`pyBall/FFfit.py`.
+
+### 6.5 Regularization, Hierarchy, and Bounded Solving
 
 All three terms are linear in $\mathbf{k}$, so the combined objective remains a single linear least-squares problem. Rather than forming normal equations (which squares the condition number), the code stacks the direct residual matrices and solves via:
 
 1. **Column scaling**: Each parameter column is normalized by its norm
 2. **Tikhonov regularization**: $\rho \sum_p (k_p - k_p^{(0)})^2 / \sigma_p^2$ pulls poorly constrained parameters toward physical priors
-3. **Non-negative bounds**: $k_p \geq 0$ by default (physical stiffnesses), enforced via `scipy.optimize.lsq_linear`
-4. **Unobservable parameter detection**: Columns with near-zero norm raise explicit errors
+3. **Linear coupling rows**: arbitrary physically motivated constraints $R\mathbf{k}\approx\mathbf{t}$ can be appended without forming normal equations
+4. **Bounds**: diagonal bond/angle stiffnesses obey $k_p \geq 0$; signed cross terms use symmetric finite bounds, enforced via `scipy.optimize.lsq_linear`
+5. **Unobservable parameter detection**: Columns with near-zero norm raise explicit errors
+
+#### Hierarchical Si Environment Regularization
+
+Environment subtypes (`Si`, `SiH`, `SiH2`, `SiH3`) are useful because they can
+improve spectra, but bulk `Si-Si` has far fewer observations than surface types.
+Fitting all subtype parameters independently therefore risks treating sparse
+data as a true chemical difference. For a family $g$ of subtype parameters,
+define the fitted family mean
+
+$$\bar{k}_g = \frac{1}{n_g}\sum_{i\in g}k_i.$$
+
+The production hierarchy uses
+
+$$L_{\rm hier}=
+\lambda_{\rm dev}\sum_g\sum_{i\in g}\left(\frac{k_i-\bar{k}_g}{s_g}\right)^2
++
+\lambda_{\rm mean}\sum_g\left(\frac{\bar{k}_g-k_g^{\rm elem}}{s_g}\right)^2.$$
+
+$k_g^{\rm elem}$ is obtained from the elemental multi-system fit and is used
+only as a weak prior on the **family mean**. The deviations remain data-driven.
+The variance term is implemented by all pairwise subtype-difference rows; it
+does not designate a privileged bulk subtype as the parent. Generic priors are
+disabled for subtype members so an unrelated default (for example, 5 eV/A²)
+cannot pull an entire family mean away from the DFT-supported value.
+
+For the six-system all-Si fit, this hierarchy gave a stable Si-Si subtype range
+of about 9.17--9.79 eV/A², despite least-norm Wilson diagonal indicators ranging
+from roughly 2.78 to 7.93 eV/A². The mean frequency RMSE improved from
+40.96 to 31.59 cm$^{-1}$ relative to elemental typing, while the mean Hessian
+relative Frobenius error remained essentially unchanged (6.86%).
+
+**Implementation**: `subtype_shrinkage_rows()` and
+`family_mean_prior_rows()` in `pyBall/FFfit_utils.py`; the driver option is
+`--subtype-shrinkage`.
 
 **Implementation**: `solve_regularized_lsq()`, `fit_hybrid_hessian()` in `pyBall/FFfit.py`.
 
@@ -333,6 +433,56 @@ Proper UFF torsion terms $E = V(1 + d\cos(n\phi))$ were implemented with analyti
 
 **Physical interpretation**: For stiff tetrahedral networks (Si, C diamond), the bond and angle terms already capture the dominant Hessian curvature. Torsional motion in these systems is constrained by the geometry — the 3-body angle terms enforce near-tetrahedral angles, and the 4-body torsion is a soft perturbation that the Hessian fit cannot distinguish from noise. This is consistent with the Keating valence-force-field picture, where stretch and bend terms suffice for zone-center phonons, and couplings (stretch–stretch, stretch–bend) are the natural next order — not torsions.
 
+### 7.3 Optional Stretch--Stretch and Stretch--Bend Couplings
+
+The next minimal valence-force-field extension is not a 1-4 spring or a torsion,
+but coupling between the two bonds and the angle meeting at a central atom. For
+an angle $i$--$j$--$k$, define dimensionless stretches
+
+$$q_1=\Delta r_{ij}/r_{0,ij}, \qquad q_2=\Delta r_{jk}/r_{0,jk},$$
+
+and the angular displacement $\Delta\theta$. The optional symmetry-respecting
+terms are
+
+$$E_{rr}=K_{rr}q_1q_2,$$
+
+$$E_{r\theta}=K_{r\theta}\frac{q_1+q_2}{\sqrt2}\Delta\theta.$$
+
+The $1/\sqrt2$ normalizes the symmetric stretch combination. Both coefficients
+have units of eV and are signed: a cross coefficient is not an independent
+positive stiffness, so constraining it non-negative would be unphysical.
+
+At a locally relaxed geometry ($q_1=q_2=\Delta\theta=0$), their Hessian
+sensitivities are exact analytic outer products:
+
+$$A_{rr}=\mathbf{g}_1\mathbf{g}_2^T+\mathbf{g}_2\mathbf{g}_1^T,$$
+
+$$A_{r\theta}=\mathbf{g}_s\mathbf{g}_\theta^T+
+\mathbf{g}_\theta\mathbf{g}_s^T, \qquad
+\mathbf{g}_s=(\mathbf{g}_1+\mathbf{g}_2)/\sqrt2,$$
+
+where $\mathbf{g}_{1,2}=\partial q_{1,2}/\partial\mathbf{r}$ and
+$\mathbf{g}_\theta=\partial\theta/\partial\mathbf{r}$. These matrices are
+symmetric and annihilate rigid Cartesian displacements. They are only enabled
+for `--equilibrium local`: using type-averaged $r_0,\theta_0$ would require
+the additional prestress derivatives of the cross energy, which are deliberately
+not approximated silently.
+
+Cross terms are typed by the same chemical key as their parent angle, receive
+zero-centered regularization, and use finite symmetric bounds. They are disabled
+unless `--stretch-stretch` and/or `--stretch-bend` are requested.
+
+For the all-Si hierarchical fit, stretch--stretch alone changed little. Adding
+both cross terms reduced the mean Hessian relative Frobenius error from 6.86%
+to 5.86%, with condition number 1.67. The network Si--Si--Si coefficients were
+small ($K_{rr}\approx0.012$ eV, $K_{r\theta}\approx4\times10^{-4}$ eV),
+whereas the largest couplings were H--Si--H stretch--bend terms
+(about 0.43--0.52 eV). Thus the principal extra curvature captured by this
+minimal basis is Si-H valence coupling, not a hidden soft Si-Si torsion.
+
+**Implementation**: `build_cross_param_maps()` and
+`compute_cross_sensitivity()` in `pyBall/FFfit_utils.py`.
+
 ---
 
 ## 8. Mass Weighting and Dynamical Matrix
@@ -364,6 +514,9 @@ The fitting code reports several complementary quality metrics:
 - **Negative modes count**: Number of model eigenvalues below $-(10/521.5)^2$ — indicates structural instability
 - **Condition number**: $\sigma_{\max} / \sigma_{\min}$ of the stacked residual matrix — warns of ill-conditioning
 - **Unobservable parameters**: Columns with near-zero norm in the residual matrix — parameters that the data cannot constrain
+- **Rigid invariance**: every bond, angle, and analytic cross sensitivity must annihilate the six rigid Cartesian displacements
+- **Wilson rank and scaling**: the SVD rank and bond-coordinate $1/r_0$ scaling are reported/checked; diagonal Wilson indicators are never treated as fitted parameters
+- **Cross-term bounds**: signed cross coefficients are inspected together with the model negative-mode count; a lower residual must not be accepted as a physical improvement if it creates an unstable Hessian
 
 ---
 
@@ -377,7 +530,9 @@ The fitting code reports several complementary quality metrics:
 | Hybrid mode + local + internal objective | Targets frequencies directly while preserving local Hessian structure |
 | Direct stacked solve (not normal equations) | Avoids squaring the condition number |
 | Non-negative bounds on stiffnesses | Physical constraint; prevents unphysical negative curvatures |
-| Si environment subtyping | Surface vs bulk Si have different stiffnesses |
+| Hierarchical Si environment subtyping | Allows surface shifts while shrinking sparse subtype data toward a data-supported family mean |
+| Wilson least-norm $F$ used only diagnostically | Individual diagonal entries are gauge-dependent in redundant coordinates |
+| Optional stretch--stretch/stretch--bend terms | Minimal signed valence couplings; local-equilibrium-only, zero-centered, bounded |
 | 1-4 and torsions excluded | Do not improve fit for tetrahedral Si/C nanocrystals; torsion sensitivity is indefinite |
 
 ---

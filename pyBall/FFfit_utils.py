@@ -87,6 +87,66 @@ def parent_parameter_name(name):
     fields = ['Si' if field.startswith('SiH') else field for field in body.split('-')]
     return prefix + ':' + '-'.join(fields)
 
+
+def subtype_shrinkage_rows(names, strength, parameter_scale):
+    """Build reference-free rows penalizing variance among subtypes of one elemental interaction.
+
+    For each elemental family, the rows implement strength*sum_i((k_i-mean(k)) / s)^2.
+    The pairwise form leaves the data-determined family mean unconstrained, unlike a
+    fixed prior centered on a separately fitted elemental parameter.
+    """
+    names = list(names)
+    parameter_scale = np.asarray(parameter_scale, dtype=np.float64)
+    if strength < 0.0:
+        raise ValueError("subtype shrinkage strength must be non-negative")
+    if parameter_scale.shape != (len(names),) or np.any(~np.isfinite(parameter_scale)) or np.any(parameter_scale <= 0.0):
+        raise ValueError("parameter_scale must contain one finite positive scale per parameter")
+    groups = {}
+    for i, name in enumerate(names):
+        groups.setdefault(parent_parameter_name(name), []).append(i)
+    if strength == 0.0:
+        return np.empty((0, len(names))), np.empty(0), groups
+    rows = []
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        scale = np.mean(parameter_scale[members])
+        fac = np.sqrt(strength / len(members)) / scale
+        for ia, i in enumerate(members[:-1]):
+            for j in members[ia+1:]:
+                row = np.zeros(len(names))
+                row[i] = fac
+                row[j] = -fac
+                rows.append(row)
+    R = np.asarray(rows) if rows else np.empty((0, len(names)))
+    return R, np.zeros(R.shape[0]), groups
+
+
+def family_mean_prior_rows(names, parent_values, strength):
+    """Constrain each subtype-family mean, not individual subtype values, to its elemental parent."""
+    names = list(names)
+    if strength < 0.0:
+        raise ValueError("family mean prior strength must be non-negative")
+    _, _, groups = subtype_shrinkage_rows(names, 0.0, np.ones(len(names)))
+    if strength == 0.0:
+        return np.empty((0, len(names))), np.empty(0)
+    rows = []
+    targets = []
+    for parent, members in groups.items():
+        if len(members) < 2:
+            continue
+        if parent not in parent_values:
+            raise KeyError(f"missing elemental parent value {parent}")
+        value = float(parent_values[parent])
+        scale = max(abs(value), 0.1)
+        fac = np.sqrt(strength) / scale
+        row = np.zeros(len(names))
+        row[members] = fac / len(members)
+        rows.append(row)
+        targets.append(fac * value)
+    R = np.asarray(rows) if rows else np.empty((0, len(names)))
+    return R, np.asarray(targets)
+
 # === Topology ===
 
 def shortest_path_distances(bond_pairs, natoms):
@@ -173,9 +233,8 @@ def build_dihedrals(symbols, positions, bonds, d=1, n=3, dihedral=False):
         neighs[i].append(j)
         neighs[j].append(i)
     dihedrals = []
-    for (j, k) in bond_pairs:
-        if j > k:
-            continue
+    for (j0, k0) in bond_pairs:
+        j, k = sorted((j0, k0))
         for i in neighs[j]:
             if i == k:
                 continue
@@ -275,10 +334,14 @@ def compute_dihedral_sensitivity(positions, symbols, dihedrals, global_dihedral_
         A[p][np.ix_(idx, idx)] += H
     return A
 
-def add_dihedral_hessian(H, k, dihedral_A):
-    """Add dihedral contribution to H in-place using precomputed A_p matrices."""
-    for p, A in dihedral_A.items():
+def add_linear_hessian(H, k, A_extra):
+    """Add precomputed linear-in-parameter Hessian contributions in-place."""
+    for p, A in A_extra.items():
         H += k[p] * A
+
+def add_dihedral_hessian(H, k, dihedral_A):
+    """Compatibility alias for precomputed torsion Hessian contributions."""
+    add_linear_hessian(H, k, dihedral_A)
 
 # === Parameter mapping ===
 
@@ -404,6 +467,61 @@ def build_global_param_map(all_bonds, all_angles, all_symbols, all_bonds3=None, 
     if indices != list(range(n_free)):
         raise RuntimeError(f"global parameter map is not contiguous: {indices}, expected 0..{n_free-1}")
     return global_bond_map, global_bond3_map, global_angle_map, global_dihedral_map, n_free
+
+
+def build_cross_param_maps(all_angles, all_symbols, offset, all_elements=None, angle_central_only=False, stretch_stretch=False, stretch_bend=False):
+    """Assign optional valence cross parameters by the same chemical type as their angle."""
+    all_elements = all_symbols if all_elements is None else all_elements
+    keys = []
+    for angles, symbols, elements in zip(all_angles, all_symbols, all_elements):
+        for i, j, k, _ in angles:
+            key = angle_type_key(symbols, i, j, k, elements=elements, central_only=angle_central_only)
+            if key not in keys:
+                keys.append(key)
+    ss_map = {key: offset + i for i, key in enumerate(keys)} if stretch_stretch else {}
+    sb_offset = offset + len(ss_map)
+    sb_map = {key: sb_offset + i for i, key in enumerate(keys)} if stretch_bend else {}
+    return ss_map, sb_map, offset + len(ss_map) + len(sb_map)
+
+
+def compute_cross_sensitivity(positions, bonds, angles, symbols, stretch_stretch_map=None, stretch_bend_map=None, elements=None, angle_central_only=False):
+    """Analytic Hessian sensitivities for optional symmetric valence cross terms.
+
+    At the relaxed geometry q_a=q_b=dtheta=0, the exact harmonic contributions are
+    d2(q_a*q_b) = g_a g_b^T + g_b g_a^T and
+    d2(((q_a+q_b)/sqrt(2))*dtheta) = g_s g_theta^T + g_theta g_s^T.
+    Bond coordinates q=dr/r0 are dimensionless, hence both fitted coefficients are
+    signed energies in eV.  This routine intentionally rejects no geometry: callers
+    must use local equilibrium coordinates when these sensitivities are fitted.
+    """
+    stretch_stretch_map = {} if stretch_stretch_map is None else stretch_stretch_map
+    stretch_bend_map = {} if stretch_bend_map is None else stretch_bend_map
+    if not stretch_stretch_map and not stretch_bend_map:
+        return {}
+    positions = np.asarray(positions, dtype=np.float64)
+    elements = symbols if elements is None else elements
+    from pyBall.FFfit import build_wilson_matrix, dimensionless_wilson_scale
+    B, labels = build_wilson_matrix(positions, bonds, angles)
+    scale = dimensionless_wilson_scale(positions, labels)
+    pair_to_bond = {tuple(sorted((i, j))): ib for ib, (i, j, _) in enumerate(bonds)}
+    n3 = positions.size
+    indices = set(stretch_stretch_map.values()) | set(stretch_bend_map.values())
+    A = {p: np.zeros((n3, n3)) for p in indices}
+    for ia, (i, j, k, _) in enumerate(angles):
+        ib1 = pair_to_bond.get(tuple(sorted((i, j))))
+        ib2 = pair_to_bond.get(tuple(sorted((j, k))))
+        if ib1 is None or ib2 is None:
+            raise RuntimeError(f"angle {(i, j, k)} is missing one of its two bond coordinates")
+        key = angle_type_key(symbols, i, j, k, elements=elements, central_only=angle_central_only)
+        g1 = scale[ib1] * B[ib1]
+        g2 = scale[ib2] * B[ib2]
+        gt = B[len(bonds) + ia]
+        if key in stretch_stretch_map:
+            A[stretch_stretch_map[key]] += np.outer(g1, g2) + np.outer(g2, g1)
+        if key in stretch_bend_map:
+            gs = (g1 + g2) / np.sqrt(2.0)
+            A[stretch_bend_map[key]] += np.outer(gs, gt) + np.outer(gt, gs)
+    return A
 
 def make_param_map_for_system(bonds, angles, symbols, global_bond_map, global_angle_map, bonds3=None, global_bond3_map=None):
     """Create a per-system ParamMap using global type indices."""

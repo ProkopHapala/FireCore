@@ -60,13 +60,38 @@ flowchart LR
 | `test_mol_browser_plugins.py` | Plugin registry, NPZ grid filter, vibration panel tests |
 | `plot_pyscf_vib_results.py` | Plot PySCF vibration results (Hessian in atomic blocks + spectra + size series) |
 | `run_small_np_pyscf_vib.py` | PySCF workflow: relax → Hessian → harmonic analysis → loose .npy output |
-| `test_FFfit.py` | **FF parameter fitting orchestration** — thin CLI wrapper importing from `pyBall/FFfit_utils.py` and `pyBall/FFfit_plots.py`; fits bond/angle/torsion stiffnesses to PySCF Hessians via C++ `libFFfit_lib.so` |
-| `test_fffit_hybrid.py` | Hybrid Hessian+mode fitting tests (5 test cases: rigid/internal coordinate spaces, parameter recovery, bounded fits, dihedral gradients, Si environment typing) |
+| `test_FFfit.py` | **QM-Hessian FF fitting CLI** — hybrid mode/local/Wilson-row-space fit, Si subtype hierarchy, and optional local stretch--stretch/stretch--bend terms; outputs tables and spectrum overlays. |
+| `test_fffit_hybrid.py` | Regression tests for Wilson scaling/gauge invariance, hierarchy rows, cross sensitivities, bounded fitting, and torsion gradients. |
 | `test_parity_py_cpp.py` | Python vs C++ FFfit sensitivity matrix parity tests |
 | `test_parity_graph_cpp.py` | Graph algorithm + dihedral batch parity tests (14 tests): BFS distances, local Hessian mask, 1-4 neighbor finding, dihedral enumeration, Wilson matrix, dihedral Hessian FD, batch vs single dihedral sensitivity |
 | `SiNCs_FFfit_summary.md` | Results report: typing strategies, fitted parameters, model comparisons for 6 Si nanocrystals |
 | `FFfit_python_to_cpp_port.plan.md` | Porting plan for migrating FFfit Python hotspots to C++ |
 | [`ToDo_Nanocrystal.md`](ToDo_Nanocrystal.md) | Open items and open questions |
+
+---
+
+### FFfit: PySCF Hessian to transferable valence model
+
+The authoritative theory is [`doc/Topics/FFfit/HessianFitting_Theory.md`](../../doc/Topics/FFfit/HessianFitting_Theory.md). The Wilson least-norm diagonal is a diagnostic indicator, not a per-bond DFT stiffness; transferable parameters come from the regularized hybrid fit.
+
+```bash
+# Elemental versus hierarchical Si/SiH/SiH2/SiH3 typing; tables + six spectrum overlays
+CPP_BUILD_PATH=$PWD/cpp/Build-opt/libs python3 tests/tSiNCs/test_FFfit.py \
+  --cases all_Si --compare-typing --subtype-shrinkage 0.001 \
+  --plot-dir tests/tSiNCs/OUT_FFfit_plots/typing_all_Si_hierarchical
+
+# Add the optional local valence couplings (requires --equilibrium local, the default)
+CPP_BUILD_PATH=$PWD/cpp/Build-opt/libs python3 tests/tSiNCs/test_FFfit.py \
+  --cases all_Si --compare-typing --subtype-shrinkage 0.001 \
+  --stretch-stretch --stretch-bend \
+  --plot-dir tests/tSiNCs/OUT_FFfit_plots/typing_all_Si_cross_both
+
+# Focused numerical/parity suite
+CPP_BUILD_PATH=$PWD/cpp/Build-opt/libs python3 -m pytest -q \
+  tests/tSiNCs/test_fffit_hybrid.py tests/tSiNCs/test_parity_graph_cpp.py
+```
+
+The cross terms are signed, zero-centered, and bounded; they are intentionally rejected for `--equilibrium type-average` because their prestress Hessian is not yet implemented.
 
 ---
 

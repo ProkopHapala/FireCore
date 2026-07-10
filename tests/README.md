@@ -95,7 +95,7 @@ Each row links to the folder README. **Status** reflects current maintenance lev
 | Directory | Purpose | Entry | Status |
 |-----------|---------|-------|--------|
 | [tAFM/](tAFM/README.md) | AFM + FDBM (consolidating from tMMFF) | `./run.sh` | **Active** — see `pyocl_fdbm/` |
-| [tSiNCs/](tSiNCs/README.md) | Si/diamond nanocrystal FTIR hub (specialized) | `run_vib_spectra.py` | **Active** — links to `tVibrations` for general APIs |
+| [tSiNCs/](tSiNCs/README.md) | Si/diamond nanocrystal FTIR and QM-Hessian FF fitting hub | `run_vib_spectra.py`, `test_FFfit.py` | **Active** — hybrid Hessian fitting, subtype hierarchy, and optional valence couplings |
 | [tXRD/](tXRD/README.md) | XRD Debye scattering | `test_debye_histogram.py` | Active |
 | [tAttach/](tAttach/README.md) | Molecular attachment / polymers | `attach_new3.py` | Active |
 | [tIsing/](tIsing/README.md) | Hubbard/Ising OpenCL MC | `run_hubbard_cli.py` | Active |

@@ -21,7 +21,8 @@ from pyBall.FFfit_utils import (
     BOHR_TO_ANG, HARTREE_TO_EV, BOHR_TO_ANG_INV, HARTREE_PER_BOHR2_TO_EV_PER_ANG2,
     hessian_ha_bohr_to_ev_ang2,
     angle_type_key, dihedral_type_key, assign_si_environment_types,
-    interaction_type_counts, print_interaction_type_counts, parent_parameter_name,
+    interaction_type_counts, print_interaction_type_counts, parent_parameter_name, subtype_shrinkage_rows, family_mean_prior_rows,
+    build_cross_param_maps, compute_cross_sensitivity, add_linear_hessian,
     shortest_path_distances, build_3rd_neighbor_bonds, build_topology, build_dihedrals,
     dihedral_energy_gradient, dihedral_angle, dihedral_hessian,
     compute_dihedral_sensitivity, add_dihedral_hessian,
@@ -92,19 +93,24 @@ def fit_comparison_variant(base_systems, use_third, use_dihedrals, args, parent_
     angle_central_only = any(s.get('angle_central_only', False) for s in systems)
     if angle_central_only and not all(s.get('angle_central_only', False) for s in systems):
         raise ValueError("all systems in one fit must use the same angle typing scope")
-    bmap, b3map, amap, dmap, npar = build_global_param_map(all_bonds, all_angles, all_symbols, all_bonds3, all_dihedrals, all_elements, angle_central_only)
-    print(f"  parameter types: bond={len(bmap)} 1-4={len(b3map)} angle={len(amap)} torsion={len(dmap)} total={npar}")
+    if (args.stretch_stretch or args.stretch_bend) and args.equilibrium != 'local':
+        raise ValueError("explicit valence cross terms require --equilibrium local")
+    bmap, b3map, amap, dmap, nbase = build_global_param_map(all_bonds, all_angles, all_symbols, all_bonds3, all_dihedrals, all_elements, angle_central_only)
+    ssmap, sbmap, npar = build_cross_param_maps(all_angles, all_symbols, nbase, all_elements, angle_central_only, args.stretch_stretch, args.stretch_bend)
+    print(f"  parameter types: bond={len(bmap)} 1-4={len(b3map)} angle={len(amap)} torsion={len(dmap)} stretch-stretch={len(ssmap)} stretch-bend={len(sbmap)} total={npar}")
     if args.equilibrium == 'type-average':
         avg_l0, avg_l0_3, avg_t0 = compute_averaged_equilibrium(all_bonds, all_angles, all_symbols, [s['positions'] for s in systems], bmap, amap, b3map, all_bonds3, all_elements, angle_central_only)
         for sys in systems:
             sys['bonds'], sys['angles'], sys['bonds3'] = rebuild_topology_with_averaged(sys['bonds'], sys['angles'], sys['bonds3'], sys.get('atom_types', sys['symbols']), sys['positions'], avg_l0, avg_t0, avg_l0_3, sys['symbols'], angle_central_only)
     for sys in systems:
         sys['dihedral_A'] = compute_dihedral_sensitivity(sys['positions'], sys.get('atom_types', sys['symbols']), sys['dihedrals'], dmap, h=args.dihedral_h) if use_dihedrals else {}
+        sys['cross_A'] = compute_cross_sensitivity(sys['positions'], sys['bonds'], sys['angles'], sys.get('atom_types', sys['symbols']), ssmap, sbmap, elements=sys['symbols'], angle_central_only=angle_central_only)
     print("  sensitivity stage: torsions complete")
     fitters = [make_cpp_fitter(sys, (bmap, b3map, amap), npar) for sys in systems]
     hybrid_systems = []
     for f, sys in zip(fitters, systems):
-        hybrid_systems.append({'A': FFfit_cpp.collect_sensitivity_matrices(f, extra=sys['dihedral_A']), 'H_ref': sys['H_ref'],
+        extra_A = dict(sys['dihedral_A']); extra_A.update(sys['cross_A'])
+        hybrid_systems.append({'A': FFfit_cpp.collect_sensitivity_matrices(f, extra=extra_A), 'H_ref': sys['H_ref'],
                                'positions': sys['positions'], 'masses': sys['data']['masses'], 'bonds': sys['bonds'], 'angles': sys['angles']})
     print("  sensitivity stage: stacked model complete")
     names = [''] * npar
@@ -112,28 +118,53 @@ def fit_comparison_variant(base_systems, use_third, use_dihedrals, args, parent_
     for key, t in b3map.items(): names[t] = '1-4:' + '-'.join(key)
     for key, t in amap.items(): names[t] = 'angle:' + '-'.join(key)
     for key, t in dmap.items(): names[t] = 'torsion:' + '/'.join(('-'.join(key[0]), '-'.join(key[1])))
+    for key, t in ssmap.items(): names[t] = 'stretch-stretch:' + '-'.join(key)
+    for key, t in sbmap.items(): names[t] = 'stretch-bend:' + '-'.join(key)
     prior = np.ones(npar)
     for t in bmap.values(): prior[t] = 5.0
     for t in b3map.values(): prior[t] = 0.1
     for t in amap.values(): prior[t] = 1.0
     for t in dmap.values(): prior[t] = 0.1
+    for t in list(ssmap.values()) + list(sbmap.values()): prior[t] = 0.0
+    scale = np.maximum(np.abs(prior), 0.1)
+    for t in list(ssmap.values()) + list(sbmap.values()): scale[t] = args.cross_scale
+    coupling_matrix = None
+    coupling_target = None
     if parent_prior is not None:
-        for i, name in enumerate(names):
+        family_scale = np.empty(nbase)
+        for i, name in enumerate(names[:nbase]):
             parent = parent_parameter_name(name)
             if parent not in parent_prior:
-                raise KeyError(f"missing elemental parent prior {parent} for subtype parameter {name}")
-            prior[i] = parent_prior[parent]
-    scale = np.maximum(np.abs(prior), 0.1)
+                raise KeyError(f"missing elemental parent scale {parent} for subtype parameter {name}")
+            family_scale[i] = max(abs(parent_prior[parent]), 0.1)
+        R_dev, y_dev, groups = subtype_shrinkage_rows(names[:nbase], args.subtype_shrinkage, family_scale)
+        R_mean, y_mean = family_mean_prior_rows(names[:nbase], parent_prior, args.reg)
+        R_dev = np.pad(R_dev, ((0, 0), (0, npar - nbase)))
+        R_mean = np.pad(R_mean, ((0, 0), (0, npar - nbase)))
+        coupling_matrix = np.vstack((R_dev, R_mean))
+        coupling_target = np.concatenate((y_dev, y_mean))
+        print(f"  subtype hierarchy: deviation_strength={args.subtype_shrinkage:g}, mean_prior_strength={args.reg:g}, rows={len(coupling_target)}, families={sum(len(v) > 1 for v in groups.values())}")
+    cross_indices = np.array(list(ssmap.values()) + list(sbmap.values()), dtype=int)
+    if cross_indices.size:
+        R_cross = np.zeros((cross_indices.size, npar))
+        R_cross[np.arange(cross_indices.size), cross_indices] = np.sqrt(args.cross_regularization) / args.cross_scale
+        coupling_matrix = R_cross if coupling_matrix is None else np.vstack((coupling_matrix, R_cross))
+        y_cross = np.zeros(cross_indices.size)
+        coupling_target = y_cross if coupling_target is None else np.concatenate((coupling_target, y_cross))
     k, diag = FFfit_cpp.fit_hybrid_hessian(
         hybrid_systems, mode_weight=args.hybrid_mode, local_weight=args.hybrid_local, internal_weight=args.hybrid_internal,
         mode_balance=args.mode_weight, mode_mixing=args.mode_mixing, frequency_floor_cm1=args.frequency_floor,
-        local_graph_distance=args.local_graph_distance, prior=prior, regularization=args.reg, parameter_scale=scale, bounds=(0.0, np.inf))
+        local_graph_distance=args.local_graph_distance, prior=prior, regularization=args.reg if parent_prior is None else 0.0, parameter_scale=scale,
+        coupling_matrix=coupling_matrix, coupling_target=coupling_target,
+        bounds=(np.where(np.isin(np.arange(npar), cross_indices), -args.cross_bound, 0.0), np.where(np.isin(np.arange(npar), cross_indices), args.cross_bound, np.inf)))
+    diag['subtype_shrinkage'] = args.subtype_shrinkage if parent_prior is not None else 0.0
     print(f"  solve complete: condition={diag['condition']:.3g} residual={diag['relative_residual']:.3g}")
     models = []
     for f, sys in zip(fitters, systems):
         f.set_params(k)
         H = f.compute_model_hessian()
-        add_dihedral_hessian(H, k, sys['dihedral_A'])
+        add_linear_hessian(H, k, sys['dihedral_A'])
+        add_linear_hessian(H, k, sys['cross_A'])
         models.append(H)
     return systems, models, k, names, diag
 
@@ -257,12 +288,18 @@ def main():
     parser.add_argument('--compare-models', action='store_true', help='Fit the four progressive interaction sets and write a comparison table/spectrum overlay')
     parser.add_argument('--si-subtypes', action='store_true', help='Type Si atoms as SiH3 (including SiH4), SiH2, SiH, or bulk Si by bonded-H count')
     parser.add_argument('--si-subtype-scope', choices=['central', 'full'], default='central', help='Subtype angle centers only (default) or all three angle atoms')
+    parser.add_argument('--subtype-shrinkage', type=float, default=0.001, help='Dimensionless within-element family variance penalty for --compare-typing (0 disables subtype offsets)')
+    parser.add_argument('--stretch-stretch', action='store_true', help='Optionally fit symmetric dimensionless bond-stretch cross terms per angle type')
+    parser.add_argument('--stretch-bend', action='store_true', help='Optionally fit symmetric stretch-bend cross terms per angle type')
+    parser.add_argument('--cross-regularization', type=float, default=0.02, help='Zero-centered regularization strength for signed valence cross terms')
+    parser.add_argument('--cross-scale', type=float, default=5.0, help='Physical scale in eV for dimensionless valence cross coefficients')
+    parser.add_argument('--cross-bound', type=float, default=20.0, help='Absolute bound in eV for each signed valence cross coefficient')
     parser.add_argument('--compare-typing', action='store_true', help='Compare elemental and Si H-coordination typing using bond+angle models')
     parser.add_argument('--min-type-count', type=int, default=3, help='Flag interaction types represented by fewer observations')
     parser.add_argument('--mode-weight', type=str, default='frequency', choices=['equal', 'frequency', 'relative'], help='All-mode balance: equal Hessian accuracy, frequency-error balance (default), or relative eigenvalue accuracy')
     parser.add_argument('--hybrid-mode', type=float, default=1.0, help='Weight of the complete vibrational-mode objective')
     parser.add_argument('--hybrid-local', type=float, default=1.0, help='Weight of graph-local mass-weighted Hessian blocks')
-    parser.add_argument('--hybrid-internal', type=float, default=1.0, help='Weight of the Wilson internal-coordinate projection')
+    parser.add_argument('--hybrid-internal', type=float, default=1.0, help='Weight of the orthonormal Wilson row-space curvature objective')
     parser.add_argument('--mode-mixing', type=float, default=0.1, help='Relative penalty for off-diagonal mixing of reference modes')
     parser.add_argument('--local-graph-distance', type=int, default=2, help='Maximum bond-graph distance included in local Hessian blocks')
     parser.add_argument('--frequency-floor', type=float, default=50.0, help='Frequency floor (cm^-1) for stable mode weighting')
@@ -275,6 +312,11 @@ def main():
     parser.add_argument('--spectrum-width', type=float, default=20.0, help='Gaussian broadening width (cm^-1)')
     parser.add_argument('--spectrum-xmax', type=float, default=2500.0, help='Maximum frequency in spectrum plots (cm^-1)')
     args = parser.parse_args()
+    if args.stretch_stretch or args.stretch_bend:
+        if not (args.compare_typing or args.compare_models):
+            parser.error("--stretch-stretch/--stretch-bend are currently supported by --compare-typing or --compare-models")
+        if args.cross_regularization < 0.0 or args.cross_scale <= 0.0 or args.cross_bound <= 0.0:
+            parser.error("cross regularization must be non-negative; cross scale and bound must be positive")
     
     # Determine case list
     if args.cases == 'all_Si':

@@ -1,7 +1,9 @@
 import numpy as np
+import pytest
 
 from pyBall import FFfit
-from pyBall.FFfit_utils import assign_si_environment_types, dihedral_angle, dihedral_energy_gradient
+from pyBall.FFfit_utils import assign_si_environment_types, dihedral_angle, dihedral_energy_gradient, subtype_shrinkage_rows, family_mean_prior_rows, build_cross_param_maps, compute_cross_sensitivity
+from pyBall.FFfit_plots import cluster_1d
 
 
 def make_triatomic_problem():
@@ -43,6 +45,84 @@ def test_hybrid_fit_exactly_recovers_representable_hessian():
     assert diag['rank'] == 2
     assert diag['systems'][0]['n_modes'] == 3
     assert diag['systems'][0]['internal_rank'] == 3
+
+
+def test_wilson_projection_uses_dimensionless_bond_scaling_and_recovers_spring_constant():
+    positions, masses, bonds, angles, B, _ = make_triatomic_problem()
+    labels = [('bond', 0, 1), ('bond', 1, 2), ('angle', 0, 1, 2)]
+    scale = FFfit.dimensionless_wilson_scale(positions, labels)
+    k_bond = 7.3
+    H = k_bond * np.outer(B[0], B[0])
+    F, _ = FFfit.internal_hessian_projection(H, B[:1], masses, coordinate_scale=scale[:1])
+    r0 = np.linalg.norm(positions[1] - positions[0])
+    assert F[0, 0] / r0**2 == pytest.approx(k_bond, rel=1e-12, abs=1e-12)
+
+
+def test_internal_hybrid_component_exactly_recovers_representable_curvature():
+    positions, masses, bonds, angles, _, A = make_triatomic_problem()
+    H_ref = 3.1*A[0] + 0.6*A[1]
+    X, y, info = FFfit.assemble_hybrid_hessian_system(A, H_ref, positions, masses, bonds, angles,
+                                                       mode_weight=0.0, local_weight=0.0, internal_weight=1.0)
+    assert info['component_rows']['internal'] == info['internal_rank'] * (info['internal_rank'] + 1) // 2
+    assert np.linalg.norm(X @ np.array([3.1, 0.6]) - y) < 1e-12
+
+
+def test_coupled_regularization_shrinks_subtype_to_parent():
+    X = np.array([[1.0, 0.0]])
+    y = np.array([8.0])
+    R = np.array([[20.0, -20.0]])
+    k, _ = FFfit.solve_regularized_lsq(X, y, coupling_matrix=R, coupling_target=np.zeros(1), bounds=(-np.inf, np.inf))
+    assert k[0] == pytest.approx(8.0, abs=1e-12)
+    assert k[1] == pytest.approx(8.0, abs=1e-12)
+
+
+def test_subtype_shrinkage_rows_leave_the_family_mean_free():
+    names = ['bond:Si-Si', 'bond:Si-SiH', 'bond:Si-SiH2']
+    R, target, groups = subtype_shrinkage_rows(names, strength=3.0, parameter_scale=np.full(3, 5.0))
+    assert R.shape == (3, 3)
+    assert np.allclose(R @ np.full(3, 8.0), target)
+    assert np.linalg.norm(R @ np.array([8.0, 9.0, 7.0])) > 0.0
+    assert groups['bond:Si-Si'] == [0, 1, 2]
+
+
+def test_family_mean_prior_targets_only_the_subtype_mean():
+    names = ['bond:Si-Si', 'bond:Si-SiH', 'bond:Si-SiH2']
+    R, target = family_mean_prior_rows(names, {'bond:Si-Si': 10.0}, strength=2.0)
+    assert np.allclose(R @ np.array([8.0, 10.0, 12.0]), target)
+    assert np.allclose(R @ np.array([10.0, 10.0, 10.0]), target)
+
+
+def test_cross_valence_sensitivities_are_symmetric_and_rigid_invariant():
+    positions, masses, bonds, angles, B, _ = make_triatomic_problem()
+    ss = {('H', 'Si', 'Si'): 0}
+    sb = {('H', 'Si', 'Si'): 1}
+    A = compute_cross_sensitivity(positions, bonds, angles, ['Si', 'Si', 'H'], ss, sb)
+    scale = FFfit.dimensionless_wilson_scale(positions, [('bond', 0, 1), ('bond', 1, 2), ('angle', 0, 1, 2)])
+    expected_ss = np.outer(scale[0]*B[0], scale[1]*B[1]) + np.outer(scale[1]*B[1], scale[0]*B[0])
+    expected_sb = np.outer((scale[0]*B[0] + scale[1]*B[1])/np.sqrt(2.0), B[2]) + np.outer(B[2], (scale[0]*B[0] + scale[1]*B[1])/np.sqrt(2.0))
+    rigid, _ = FFfit.rigid_and_vibrational_bases(positions, masses)
+    cartesian_rigid = rigid / np.sqrt(np.repeat(masses, 3))[:, None]
+    for p, expected in ((0, expected_ss), (1, expected_sb)):
+        assert np.allclose(A[p], expected)
+        assert np.allclose(A[p], A[p].T)
+        assert np.linalg.norm(A[p] @ cartesian_rigid) < 1e-12
+
+
+def test_cross_parameter_maps_are_contiguous_when_both_terms_are_enabled():
+    angles = [[(0, 1, 2, 1.9), (2, 1, 3, 1.9)]]
+    symbols = [['H', 'Si', 'Si', 'H']]
+    ss, sb, npar = build_cross_param_maps(angles, symbols, offset=5, stretch_stretch=True, stretch_bend=True)
+    assert sorted(list(ss.values()) + list(sb.values())) == list(range(5, npar))
+
+
+def test_cluster_indices_refer_to_the_original_unsorted_values():
+    clusters = cluster_1d(np.array([10.0, 1.0, 1.1, 10.1]), gap_threshold=2.0)
+    assert {tuple(sorted(indices.tolist())) for _, _, indices in clusters} == {(0, 3), (1, 2)}
+
+
+def test_cpp_normal_equation_solver_fails_loudly_when_singular():
+    with pytest.raises(np.linalg.LinAlgError, match="singular"):
+        FFfit.FFfit.solve_normal_equations(np.array([[1.0, 1.0], [1.0, 1.0]]), np.array([1.0, 1.0]))
 
 
 def test_regularized_bounded_fit_stays_nonnegative_for_incomplete_model():

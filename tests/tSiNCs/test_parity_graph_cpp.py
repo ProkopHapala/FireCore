@@ -186,6 +186,13 @@ class TestEnumerateDihedrals:
         tuples_cpp = set(diheds_cpp)
         assert tuples_py == tuples_cpp, f"Mismatch: py={tuples_py} cpp={tuples_cpp}"
 
+    def test_reversed_bond_endpoints_are_equivalent(self):
+        bp, pos, natoms = _make_random_topology()
+        reversed_bp = [(j, i) for i, j in bp]
+        py = build_dihedrals(['C'] * natoms, pos, [(i, j, 1.0) for i, j in reversed_bp], dihedral=True)
+        cpp = FFfit_cpp.FFfit.enumerate_dihedrals(np.array(reversed_bp, dtype=np.int32).ravel(), natoms)
+        assert set((i, j, k, l) for i, j, k, l, _, _ in py) == set(cpp)
+
 
 class TestBuildWilsonMatrix:
     def test_real_system(self):

@@ -12,9 +12,9 @@ pyBall/
 │   ├── MMFFsp3.py          # sp3 hybridization force fields
 │   ├── Forces.py           # Force calculation interfaces
 │   ├── Forces_cpp.py       # C++ force field bindings
-│   ├── FFfit.py            # C++ ctypes wrapper for libFFfit_lib.so (Wilson B, internal Hessian projection)
-│   ├── FFfit_utils.py      # FF parameter fitting utilities (type system, topology, sensitivity, fitting, frequency analysis)
-│   └── FFfit_plots.py      # FFfit visualization (spectra, equilibrium distributions, stiffness HTML maps)
+│   ├── FFfit.py            # C++ wrapper + gauge-invariant hybrid Hessian fitting and bounded regularized LSQ
+│   ├── FFfit_utils.py      # FF types/topology, hierarchy rows, torsions, analytic valence cross sensitivities
+│   └── FFfit_plots.py      # Spectra, equilibrium distributions, and diagnostic Wilson-indicator visualizations
 ├── Molecular Tools
 │   ├── AtomicSystem.py     # Molecular structure manipulation
 │   ├── atomicUtils.py      # Atomic data and utilities
@@ -86,7 +86,7 @@ mol.saveXYZ("output.xyz")
 ```
 
 ### FFfit.py - Force-Field Parameter Fitting
-C++ ctypes wrapper for Hessian-based bond/angle/dihedral stiffness fitting:
+The FFfit modules fit transferable bonded parameters to QM Hessians. The least-norm Wilson force matrix is diagnostic only; `fit_hybrid_hessian()` instead compares the dynamical matrix in an orthonormal Wilson row space, alongside mode and local-Hessian residuals. High-level topology, subtype hierarchy, and optional stretch--stretch/stretch--bend terms are in `FFfit_utils.py`.
 ```python
 from pyBall import FFfit
 
@@ -105,7 +105,7 @@ mask = FFfit.FFfit.local_hessian_mask_cpp(bonds, natoms, max_graph_distance=2)
 # Batch dihedral sensitivity (replaces Python loop)
 A = fitter.dihedral_dHdk_batch_typed_cpp(dihedrals, type_idx, n_types)
 ```
-See `pyBall/FFfit_utils.py` for Python reference implementations and `tests/tSiNCs/test_parity_graph_cpp.py` for parity tests.
+See [`doc/Topics/FFfit/HessianFitting_Theory.md`](../doc/Topics/FFfit/HessianFitting_Theory.md) for the physical model and [`tests/tSiNCs/test_fffit_hybrid.py`](../tests/tSiNCs/test_fffit_hybrid.py) for numerical regression tests.
 
 ## Specialized Modules
 

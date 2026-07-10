@@ -15,6 +15,7 @@
 /// tests/tSiNCs/test_parity_graph_cpp.py (14 tests).
 
 #include "FFfit.h"
+#include <cstdio>
 #include <cstring>
 
 // Handle-based multi-instance: each Python FFfit() gets its own C++ instance
@@ -179,7 +180,11 @@ void fffit_solve_normal_equations(double* G, double* y, double* k_out, int np) {
             double val = fabs(G[r * np + i]);
             if (val > maxval) { maxval = val; p = r; }
         }
-        if (maxval < 1e-15) continue;
+        if (maxval < 1e-15) {
+            for (int q = 0; q < np; q++) k_out[q] = NAN;
+            fprintf(stderr, "fffit_solve_normal_equations: singular normal matrix at row %d (pivot=%.2e)\n", i, maxval);
+            return;
+        }
         if (p != i) {
             for (int c = 0; c < np; c++) std::swap(G[i * np + c], G[p * np + c]);
             std::swap(y[i], y[p]);

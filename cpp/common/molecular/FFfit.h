@@ -807,7 +807,7 @@ inline void local_mask_and_14pairs(const int* bond_pairs, int nbonds, int natoms
 }
 
 /// Enumerate proper torsions (i-j-k-l) from bond topology.
-/// For each central bond j-k (taken once with j<k), enumerate all neighbors i of j
+/// For each input central bond j-k (canonicalized to j<k), enumerate all neighbors i of j
 /// and l of k (excluding k, j, and i respectively).
 /// dihedrals_out: flat (i,j,k,l) per dihedral, 4 ints each. n_out gets count.
 inline void enumerate_dihedrals(const int* bond_pairs, int nbonds, int natoms,
@@ -817,7 +817,7 @@ inline void enumerate_dihedrals(const int* bond_pairs, int nbonds, int natoms,
     int cnt = 0;
     for (int b = 0; b < nbonds; b++) {
         int j = bond_pairs[b*2], k = bond_pairs[b*2+1];
-        if (j > k) continue; // take each central bond once
+        if (j > k) std::swap(j, k);
         for (int pi = g.adj_ptr[j]; pi < g.adj_ptr[j+1]; pi++) {
             int i = g.adj_idx[pi];
             if (i == k) continue;

@@ -4,7 +4,7 @@ Each `*_lib.cpp` file here wraps a header-only C++ module from `cpp/common/molec
 into `extern "C"` functions callable via Python `ctypes`. The corresponding Python
 bindings live in `pyBall/`.
 
-- **FFfit_lib.cpp** — FFfit class handle + standalone graph/topology functions (CSR bond-graph BFS, 1-4 pairs, dihedral enumeration, batch dihedral sensitivity). Wraps `FFfit.h`.
+- **FFfit_lib.cpp** — ctypes bridge for the bonded-Hessian engine: handles, analytic bond/angle sensitivities, CSR graph topology, Wilson B construction, 1-4 pairs, and batch dihedral sensitivity. Python appends hierarchy and optional cross-term sensitivities.
 - **MMFF_lib.cpp** — MMFFsp3 force field evaluation, Hessian, neighbor lists. Wraps `MMFFsp3.h`.
 - **MMFFsp3_lib.cpp** — Local MMFF variant with OpenCL buffers. Wraps `MMFFsp3_loc.h`.
 - **Forces_lib.cpp** — Generic force calculation interface. Wraps `ForceField.h`.

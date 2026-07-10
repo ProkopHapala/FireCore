@@ -1,7 +1,7 @@
 ---
 type: TopicalAudit
 title: Dihedral/Torsion Terms in test_FFfit.py
-description: Implementation, status, and open issues for adding UFF/Prokop torsion terms to the Python FFfit pipeline.
+description: Implementation and current diagnostic status of UFF/Prokop torsion terms in the Python FFfit pipeline.
 tags: [fffit, forcefield, dihedral, torsion, vibration, uff]
 timestamp: 2026-07-09
 ---
@@ -12,18 +12,18 @@ This file documents the recent attempt to add UFF/Prokop-style torsion (dihedral
 
 ## Summary
 
-The implementation is functionally complete: Python mirrors `evalDihedral_Prokop()` from `cpp/common/molecular/UFF.h`, dihedral topology is built from the bond graph, a global dihedral type map is created, and the dihedral sensitivity is added to the mode-basis fit and to `H_model` for frequency comparison. However, the fit becomes numerically unstable and the resulting vibrational spectra are worse than without dihedrals. The root cause is that the dihedral sensitivity `A_p = dH/dV` is not positive semidefinite for the real reference geometries, because the reference `phi` values are not exactly at the minima of the `1 + d cos(n phi)` potential. The resulting `f' * C` term in the torsion Hessian adds negative curvature and is strongly correlated with the angle sensitivity, which causes the angle stiffnesses to collapse to near zero.
+The implementation is functionally complete and parity-tested: topology is built from the bond graph, the global type map is shared across systems, and the finite-difference torsion Hessian is appended to the hybrid Hessian fit. For the tetrahedral Si/C systems studied, torsions are not a recommended production term: their prestress curvature is indefinite and correlated with angle curvature, while local stretch--stretch/stretch--bend couplings provide a more stable next-order valence extension.
 
 ## Implementations
 
 | Language | Location | Status | Notes |
 |----------|----------|--------|-------|
-| Python | [`tests/tSiNCs/test_FFfit.py`](../../../tests/tSiNCs/test_FFfit.py) | functional but unstable | `dihedral_energy_gradient`, `dihedral_hessian`, `build_dihedrals`, `compute_dihedral_sensitivity`, `add_dihedral_hessian` and CLI flags `--dihedrals`, `--dihedral-n`, `--dihedral-d`, `--dihedral-h` |
+| Python driver | [`tests/tSiNCs/test_FFfit.py`](../../../tests/tSiNCs/test_FFfit.py) | diagnostic/optional | CLI orchestration and hybrid fit; torsion matrices are supplied by `FFfit_utils.py` |
+| Python utilities | [`pyBall/FFfit_utils.py`](../../../pyBall/FFfit_utils.py) | active | UFF/Prokop gradient, FD Hessian, topology, typed sensitivity, and model-Hessian accumulation |
 | C++ reference | [`cpp/common/molecular/UFF.h`](../../../cpp/common/molecular/UFF.h) | reference | `evalDihedral_Prokop()` (lines ~918-1000) computes energy and forces for a single torsion |
-| C++ engine | [`cpp/common/molecular/FFfit.h`](../../../cpp/common/molecular/FFfit.h) | new / untracked | theory and `FFfit` class; no dihedral code yet but documents the Hessian/fitting theory |
-| C++ wrapper | [`cpp/libs/Molecular/FFfit_lib.cpp`](../../../cpp/libs/Molecular/FFfit_lib.cpp) | new / untracked | ctypes C-wrapper exposing `FFfit` to Python; `add_dihedral` not yet added |
-| Build config | [`cpp/libs/Molecular/CMakeLists.txt`](../../../cpp/libs/Molecular/CMakeLists.txt) | modified | adds `FFfit_lib` shared library |
-| Python wrapper | [`pyBall/FFfit.py`](../../../pyBall/FFfit.py) | new / untracked | ctypes Python wrapper for `FFfit_lib` |
+| C++ engine | [`cpp/common/molecular/FFfit.h`](../../../cpp/common/molecular/FFfit.h) | active | graph topology, ordered-independent dihedral enumeration, and batch torsion Hessian sensitivity |
+| C++ wrapper | [`cpp/libs/Molecular/FFfit_lib.cpp`](../../../cpp/libs/Molecular/FFfit_lib.cpp) | active | ctypes bridge for graph and batch dihedral operations |
+| Python wrapper | [`pyBall/FFfit.py`](../../../pyBall/FFfit.py) | active | ctypes binding plus hybrid objective and bounded regularized solver |
 | Python plotting | [`tests/tSiNCs/plot_pyscf_vib_results.py`](../../../tests/tSiNCs/plot_pyscf_vib_results.py) | new | plots PySCF vibration results and spectra |
 | PySCF driver | [`tests/tSiNCs/run_small_np_pyscf_vib.py`](../../../tests/tSiNCs/run_small_np_pyscf_vib.py) | new | full PySCF relax + vibration pipeline for small nanoparticles |
 | Viewer plugin | [`pyBall/GUI/mol_browser_plugins/vibration_spectrum.py`](../../../pyBall/GUI/mol_browser_plugins/vibration_spectrum.py) | modified | supports PySCF `.npy` format in addition to nanocrystal pipeline NPZ |
@@ -57,9 +57,8 @@ Key functions in `test_FFfit.py`:
 1. **Topology** — `build_dihedrals()` is called after `build_topology()` if `--dihedrals` is set. The `d` and `n` values are taken from the CLI or default to `d=1`, `n=3`.
 2. **Global map** — `build_global_param_map()` now returns a `global_dihedral_map` in addition to the bond/angle maps. Dihedral parameter indices are offset after bond/angle/3rd-bond indices.
 3. **Precomputation** — `compute_dihedral_sensitivity()` is called once per system and stored in `sys['dihedral_A']`.
-4. **C++ fitters** — `FFfit` instances are still created with `n_total` parameters (including dihedral slots), but `set_n_free(n_cpp)` is used for the C++ LSQ/GD methods, which ignore dihedrals. `set_n_free(n_total)` is used for the Python mode-basis fit.
-5. **Mode-basis fit** — `fit_modes_multi()` accepts `dihedral_A_per_system` and passes it to `get_sensitivity_action()`, which adds `A_p` to the C++ `H` for each one-hot parameter vector.
-6. **Evaluation** — `add_dihedral_hessian()` is called before `compare_frequencies()` and in the mode-basis diagnostics so the model Hessian includes the dihedral contribution.
+4. **Hybrid fit** — C++ supplies the bond/angle sensitivities; the Python hybrid assembly appends typed `dihedral_A` matrices before the direct bounded least-squares solve.
+5. **Evaluation** — the same precomputed matrices are added to `H_model` before Hessian and spectrum diagnostics.
 
 ## CLI Flags
 
@@ -110,16 +109,14 @@ where `b = ∂phi/∂r` and `C = ∂²phi/∂r²`. The term `f' * C` is non-zero
 1. **Torsion sensitivity sign/stability** — Decide whether to use the exact `A_d` (with `f' * C`), the pure curvature term `f'' * b ⊗ b`, or a phase-selected `d` per dihedral to keep the nearest minimum close to the actual `phi`.
 2. **Dihedral/angle correlation** — The fit is ill-conditioned because dihedral and angle sensitivities overlap. A regularization or NNLS prior that keeps `k_angle` near the C++ LSQ value may be needed.
 3. **Per-dihedral phase selection** — For C diamond, `d=1` is wrong for `phi ≈ 120°`; `d` should be `-1` for those dihedrals. This may require splitting a single "type" into subtypes by `d` or by `phi` sector.
-4. **C++ `FFfit` integration** — `FFfit_lib.cpp` and `FFfit.h` currently have no `add_dihedral` / `set_dihedral_param`. Everything is done in Python. Moving the torsion evaluation to C++ would let us use the exact UFF machinery and the same parameter map for the C++ LSQ/GD methods.
-5. **Test harness** — No dedicated unit test for `dihedral_energy_gradient` against finite differences exists in the repository. A quick `pytest`/`test_` script should be added to guard regressions.
+4. **Production choice** — do not enable torsions by default for Si/C nanocrystals; compare them against the optional local cross terms before widening the transferable model.
+5. **C++ ownership** — batch torsion kernels are available in C++; the Python side still owns type mapping and hybrid-objective assembly.
 
 ## Next Steps
 
-1. Choose the treatment of `A_d` (exact vs. pure-curvature vs. phase-selected).
-2. If pure-curvature is chosen, implement `A_d = f'' * b ⊗ b` and update `add_dihedral_hessian()` accordingly.
-3. Add per-dihedral phase selection (`d = -sign(cos(n phi))`) or per-type phase selection to avoid maxima for C diamond.
-4. Re-run `--dihedrals` on `all_Si` and `all` and compare `relFrob` and frequency residuals.
-5. Once stable, consider adding `fffit_add_dihedral` to `FFfit_lib.cpp` and `FFfit.h` so the C++ methods can also fit dihedrals.
+1. If torsions are revisited, compare exact, pure-curvature, and phase-selected forms against the cross-term baseline using held-out nanocrystals.
+2. Require no new negative modes and improved held-out spectra before accepting a torsion parameter family.
+3. Keep the current torsion implementation as a diagnostic reference for non-tetrahedral systems where proper torsional barriers may be essential.
 
 ## 2026-07 correction: signed angle and inverse bond lengths
 

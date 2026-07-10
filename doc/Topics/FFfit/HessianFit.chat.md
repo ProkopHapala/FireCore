@@ -2633,3 +2633,169 @@ Several options, in order of sophistication:
 - Is equivalent to a regularized Wilson projection where the regularization enforces chemical uniformity
 
 The per-bond stiffnesses you're currently computing are still useful for *diagnostics* (they show you where the simple model breaks down), but the **force field parameters** should come from the family-constrained fit.
+
+---
+
+# GPT 5.6 Sol
+
+**Main Conclusion**
+
+The apparently very soft central Si-Si bonds are mostly caused by a coordinate-scaling error in the Wilson-projection visualization, not by acoustic modes or by the fitted force field. The actual fitted central Si-Si stiffness is approximately \(9.6-10.4\ \mathrm{eV/\AA^2}\), which is physically reasonable and comparable to surface Si-Si bonds.
+
+**Review Findings**
+
+1. **High: Bond stiffness visualization has an \(r_0^4\) scaling error**
+
+In [FFfit_plots.py:293](/home/prokop/git/FireCore/pyBall/FFfit_plots.py:293), the Wilson bond rows are multiplied by \(r_0\), and the resulting diagonal is subsequently divided by \(r_0^2\).
+
+The actual fitting code correctly uses \(B_s=B/r_0\) in [FFfit.py:870](/home/prokop/git/FireCore/pyBall/FFfit.py:870).
+
+For the dimensionless coordinate
+
+\[
+q = \frac{\Delta r}{r_0},
+\]
+
+we need
+
+\[
+B_s=\frac{B}{r_0}, \qquad F_{qq}=k_r r_0^2,
+\]
+
+and therefore
+
+\[
+k_r=\frac{F_{qq}}{r_0^2}.
+\]
+
+The plotting code instead effectively suppresses bond stiffness by \(r_0^4\).
+
+This exactly explains the observed numbers:
+
+- Projected Si-Si: approximately \(0.27-0.32\ \mathrm{eV/\AA^2}\)
+- \(r_{\mathrm{SiSi}}^4 \approx 2.35^4 \approx 30.5\)
+- Corrected values: approximately \(8.3-9.8\ \mathrm{eV/\AA^2}\)
+
+The same check works for H-Si:
+
+- Projected H-Si: approximately \(3.8-4.0\)
+- \(r_{\mathrm{HSi}}^4 \approx 1.47^4 \approx 4.7\)
+- Corrected values: approximately \(18\ \mathrm{eV/\AA^2}\)
+
+The anomalous values are visible in [dft_stiffness_distributions.csv](/home/prokop/git/FireCore/tests/tSiNCs/OUT_FFfit_plots/stiffness_test/dft_stiffness_distributions.csv), while the actual fitted values are reported in [SiNCs_FFfit_summary.md:61](/home/prokop/git/FireCore/tests/tSiNCs/SiNCs_FFfit_summary.md:61).
+
+2. **High: The diagonal of Wilson \(F\) is not a unique physical bond stiffness**
+
+The interpretation in [FFfit.py:687](/home/prokop/git/FireCore/pyBall/FFfit.py:687) and [FFfit_plots.py:279](/home/prokop/git/FireCore/pyBall/FFfit_plots.py:279) is too strong.
+
+Bond and angle coordinates are redundant. Therefore,
+
+\[
+F=C^{+T}DC^+
+\]
+
+is one least-norm representative among many internal-coordinate matrices that reconstruct the same Cartesian Hessian. Its diagonal depends on:
+
+- coordinate scaling,
+- redundancy and pseudoinverse cutoff,
+- stretch-stretch coupling,
+- stretch-bend coupling,
+- the chosen internal-coordinate set.
+
+Consequently, \(F_{ii}\) should be described as a **projected diagonal indicator**, not directly as “the DFT stiffness of bond \(i\).”
+
+Also, dimensionless internal coordinates do not make \(F\) dimensionless. They give \(F\) units of energy.
+
+3. **Medium: Acoustic modes should not imply soft individual bonds**
+
+Your physical intuition is correct. A material with stiff Si-Si bonds still has arbitrarily soft long-wavelength acoustic modes.
+
+For a mode displacement \(u\),
+
+\[
+E=\frac12(Bu)^T K(Bu).
+\]
+
+For a long-wavelength acoustic displacement, neighboring atoms move almost together, so \(Bu\) is small. The energy and frequency are therefore small even when every element of \(K\) is large.
+
+Thus:
+
+- soft acoustic mode does not mean soft bonds;
+- hard bonds can construct soft collective modes;
+- removing low-frequency modes would discard information about elastic constants and sound velocities.
+
+The earlier explanation that the pseudoinverse necessarily “maps acoustic softness into central bonds” is too simplistic. Exact translations and rotations are annihilated by \(B\), while finite-cluster acoustic-like modes contain small but physical internal distortions.
+
+4. **Medium: Low-frequency mode weighting can still bias fitted parameters**
+
+The mode weighting in [FFfit.py:841](/home/prokop/git/FireCore/pyBall/FFfit.py:841) uses approximately
+
+\[
+w_i=\frac{1}{\max(|\lambda_i|,\lambda_{\mathrm{floor}})}.
+\]
+
+This strongly emphasizes relative errors in low-frequency modes. If the limited bond-angle force field cannot describe nonlocal or surface physics, the optimizer may soften shared parameters to reduce those residuals.
+
+That is a genuine possible bias, but it is separate from the current \(r_0^4\) visualization bug. It should be studied through a weighting sweep rather than inferred from the Wilson diagonal.
+
+5. **Medium: The redundant internal-Hessian residual is expensive and gauge-dependent**
+
+The hybrid objective in [FFfit.py:875](/home/prokop/git/FireCore/pyBall/FFfit.py:875) compares all elements of dense redundant internal-coordinate matrices.
+
+This has two drawbacks:
+
+- the result depends on coordinate scaling and pseudoinverse gauge;
+- memory and runtime scale poorly because every parameter produces a dense \(n_\mathrm{int}\times n_\mathrm{int}\) matrix.
+
+Using only the symmetric triangle, blockwise accumulation, or a matrix-free least-squares operator would reduce cost. More fundamentally, direct Cartesian family sensitivities are physically cleaner than fitting all entries of redundant \(F\).
+
+6. **Additional correctness issues**
+
+The clustering routine in [FFfit_plots.py:334](/home/prokop/git/FireCore/pyBall/FFfit_plots.py:334) returns indices in sorted-value order, but callers apply them to the original unsorted items. This can assign stiffness clusters to incorrect bonds or angles in the visualization.
+
+The legacy C++ normal-equation solver in [FFfit_lib.cpp:171](/home/prokop/git/FireCore/cpp/libs/Molecular/FFfit_lib.cpp:171) silently continues on a nearly singular pivot and may subsequently divide by zero. The newer bounded Python solver is much more robust.
+
+Dihedral enumeration in [FFfit.h:818](/home/prokop/git/FireCore/cpp/common/molecular/FFfit.h:818) assumes ordered bond endpoints. Arbitrarily ordered input bonds could omit valid torsions.
+
+**Recommended Regularization**
+
+I would not regularize the Wilson pseudoinverse merely to make its diagonal uniform. That would impose a desired appearance on a gauge-dependent quantity.
+
+Instead, regularize the physical model parameters directly:
+
+\[
+H_\mathrm{model}=\sum_t k_t A_t,
+\]
+
+with a hierarchical penalty such as
+
+\[
+L =
+L_\mathrm{Hessian}
++L_\mathrm{modes}
++\lambda\sum_t
+\left(\frac{k_t-k_{\mathrm{SiSi}}}{\sigma_t}\right)^2.
+\]
+
+This gives three useful levels:
+
+- One shared \(k_{\mathrm{SiSi}}\): exact equality of all Si-Si bonds.
+- Subtype parameters \(k_t\): Si-Si, Si-SiH, SiH-SiH, etc., softly pulled toward the common parent.
+- Per-bond corrections: only if strongly justified, with much stronger shrinkage toward the subtype value.
+
+This directly encodes the physical hypothesis that Si-Si covalent stiffness should be similar, while permitting controlled surface/environment effects.
+
+If we want a genuinely local DFT diagnostic, better quantities are:
+
+- frozen-environment bond curvature;
+- relaxed bond compliance using the rigid-mode-projected \(H^+\);
+- family-constrained fit of \(H_\mathrm{DFT}\);
+- eigenvalues and block norms of stretch/stretch and stretch/bend sectors.
+
+These are more meaningful than individual elements of a redundant least-norm \(F\).
+
+**Assessment**
+
+The refactoring is generally a substantial improvement: reusable utilities, BLAS-based projections, bounded scaled least squares, and explicit condition diagnostics are all good choices. The focused test suite passes: `19 passed`.
+
+Before changing the physics model, I would first correct the Wilson scaling and reinterpret the projected diagonal. After correction, the remaining central-to-surface Si-Si difference appears modest, roughly 10-20%, rather than an order-of-magnitude anomaly.

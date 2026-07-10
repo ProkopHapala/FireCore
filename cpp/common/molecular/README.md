@@ -6,7 +6,7 @@ in `.h` files (inline/template); C wrappers for Python are in `cpp/libs/Molecula
 
 ## Force-Field Fitting
 
-- **FFfit.h** — Hessian-based FF parameter fitting: Wilson B-matrix, sensitivity matrices (bond/angle/dihedral), linear least-squares + gradient descent with ParamMap symmetry sharing. CSR bond-graph algorithms (bounded BFS, 1-4 pairs, dihedral enumeration) and batch dihedral sensitivity with FD symmetry exploitation.
+- **FFfit.h** — C++ bonded-Hessian engine: analytic bond/angle sensitivities, parameter sharing, CSR graph topology, Wilson B construction, and batch torsion sensitivity. Python supplies the hybrid objective, hierarchy regularization, and optional analytic cross-term matrices.
 - **FitREQ.h** — Charge equilibrium (QEq) parameter fitting.
 - **FitFF.h** — Generic force-field fitting utilities.
 

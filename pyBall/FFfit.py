@@ -368,6 +368,8 @@ class FFfit:
         y_arr = np.ascontiguousarray(y, dtype=np.float64).copy()
         k = np.zeros(np_, dtype=np.float64)
         lib.fffit_solve_normal_equations(G_flat, y_arr, k, np_)
+        if not np.all(np.isfinite(k)):
+            raise np.linalg.LinAlgError("C++ normal-equation solver reported a singular matrix")
         return k
 
     # === Graph algorithms (C++ accelerated) ===
@@ -684,6 +686,19 @@ def internal_coordinate_basis(B, masses, rtol=1e-10):
     return Vt[:rank].T, s[:rank]
 
 
+def dimensionless_wilson_scale(positions, labels):
+    """Row factors converting bond coordinates to dr/r0 while leaving angles in radians."""
+    positions = np.asarray(positions, dtype=np.float64)
+    scale = np.ones(len(labels), dtype=np.float64)
+    for iq, label in enumerate(labels):
+        if label[0] == "bond":
+            r0 = np.linalg.norm(positions[label[2]] - positions[label[1]])
+            if not np.isfinite(r0) or r0 <= 0.0:
+                raise ValueError(f"invalid equilibrium length {r0} for Wilson coordinate {label}")
+            scale[iq] = 1.0 / r0
+    return scale
+
+
 def internal_hessian_projection(H, B, masses, coordinate_scale=None, rtol=1e-10):
     """Project Cartesian Hessian(s) to the least-norm redundant valence force matrix.
 
@@ -698,13 +713,14 @@ def internal_hessian_projection(H, B, masses, coordinate_scale=None, rtol=1e-10)
 
     DIMENSIONLESS COORDINATES:
     Bond displacements are scaled as Δr/r₀ and angles in radians, giving
-    dimensionless internal coordinates.  This makes F dimensionless and
-    comparable across different coordinate types.
+    dimensionless internal coordinates.  F then has units of energy: a bond
+    diagonal satisfies F_ii = k_i r0_i^2 and an angle diagonal is in eV/rad^2.
 
-    The resulting F matrix reveals the valence force constants and their couplings.
-    For an independent-coordinate model (diagonal F), only the diagonal elements
-    are fitted.  Off-diagonal elements (stretch-stretch, stretch-bend) indicate
-    where the independent model is incomplete.
+    IMPORTANT: for redundant internal coordinates this least-norm F is not unique
+    physically; its individual entries depend on the coordinate gauge and SVD
+    cutoff.  Diagonal entries are projected indicators, not uniquely defined local
+    force constants.  Use the orthonormal Wilson row-space objective in
+    assemble_hybrid_hessian_system() for fitting.
     """
     H = np.asarray(H, dtype=np.float64)
     B = np.asarray(B, dtype=np.float64)
@@ -814,10 +830,11 @@ def assemble_hybrid_hessian_system(A, H_ref, positions, masses, bonds, angles,
        This prevents absent long-range Hessian blocks from dominating the
        reduced local model.
 
-    3. INTERNAL TERM (Wilson GF projection):
-       Projects both reference and model Hessians into the Wilson internal-
-       coordinate basis: F = C^{+T} D C^+, then fits ||F^FF - F^QM||².
-       This targets the valence force constants directly.
+    3. INTERNAL TERM (orthonormal Wilson row-space):
+       Let Q contain an orthonormal basis for row(B M^{-1/2}).  The objective fits
+       ||Q^T (D^FF-D^QM) Q||_F².  Unlike entries of the redundant least-norm
+       valence matrix F, this curvature is invariant to nonsingular rescaling or
+       recombination of Wilson coordinates spanning the same Cartesian subspace.
 
     Each term is normalized by its own reference norm before applying user weight,
     so the three components are dimensionless and comparable.  All three are
@@ -854,9 +871,9 @@ def assemble_hybrid_hessian_system(A, H_ref, positions, masses, bonds, angles,
         bdiag = lam * np.sqrt(w)
         Xmode, bmode = Xdiag, bdiag
         if mode_mixing > 0.0 and lam.size > 1:
-            off = ~np.eye(lam.size, dtype=bool)
-            wmix = (w[:, None] * w[None, :])**0.25
-            Xoff = Kp[:, off].T * wmix[off, None]
+            iu = np.triu_indices(lam.size, 1)
+            wmix = (w[iu[0]] * w[iu[1]])**0.25
+            Xoff = Kp[:, iu[0], iu[1]].T * (np.sqrt(2.0) * wmix)[:, None]
             Xmode = np.vstack((Xdiag, np.sqrt(mode_mixing) * Xoff))
             bmode = np.concatenate((bdiag, np.zeros(Xoff.shape[0])))
         component = _normalized_component(Xmode, bmode, mode_weight, "mode")
@@ -864,31 +881,36 @@ def assemble_hybrid_hessian_system(A, H_ref, positions, masses, bonds, angles,
 
     if local_weight > 0.0:
         mask = local_hessian_mask(len(masses), bonds, local_graph_distance)
-        component = _normalized_component(Dp[:, mask].T, Dref[mask], local_weight, "local Hessian")
+        iu = np.triu_indices(n)
+        selected = mask[iu]
+        ii, jj = iu[0][selected], iu[1][selected]
+        sym_weight = np.where(ii == jj, 1.0, np.sqrt(2.0))
+        component = _normalized_component(Dp[:, ii, jj].T * sym_weight[:, None], Dref[ii, jj] * sym_weight, local_weight, "local Hessian")
         parts.append(component[0]); targets.append(component[1]); slices["local"] = parts[-1].shape[0]
 
     B, labels = build_wilson_matrix(positions, bonds, angles)
-    coordinate_scale = np.ones(B.shape[0])
-    for iq, label in enumerate(labels):
-        if label[0] == "bond":
-            coordinate_scale[iq] = 1.0 / np.linalg.norm(np.asarray(positions)[label[2]] - np.asarray(positions)[label[1]])
-    Fref, internal_info = internal_hessian_projection(H_ref, B, masses, coordinate_scale=coordinate_scale)
+    coordinate_scale = dimensionless_wilson_scale(positions, labels)
+    Qint, sint = internal_coordinate_basis(B * coordinate_scale[:, None], masses)
     if internal_weight > 0.0:
-        Fp, _ = internal_hessian_projection(A, B, masses, coordinate_scale=coordinate_scale)
-        component = _normalized_component(Fp.reshape(npar, -1).T, Fref.ravel(), internal_weight, "internal Hessian")
+        Kref = (Qint.T @ Dref) @ Qint
+        Kp = (Qint.T @ Dp) @ Qint
+        iu = np.triu_indices(Qint.shape[1])
+        sym_weight = np.where(iu[0] == iu[1], 1.0, np.sqrt(2.0))
+        component = _normalized_component(Kp[:, iu[0], iu[1]].T * sym_weight[:, None], Kref[iu] * sym_weight, internal_weight, "internal Hessian")
         parts.append(component[0]); targets.append(component[1]); slices["internal"] = parts[-1].shape[0]
 
     if not parts:
         raise ValueError("at least one hybrid objective weight must be positive")
     return np.vstack(parts), np.concatenate(targets), {
-        "n_modes": V.shape[1], "mode_eigenvalues": lam, "internal_rank": internal_info["rank"],
-        "n_internal_coordinates": B.shape[0], "wilson_singular_values": internal_info["singular_values"],
+        "n_modes": V.shape[1], "mode_eigenvalues": lam, "internal_rank": Qint.shape[1],
+        "n_internal_coordinates": B.shape[0], "wilson_singular_values": sint,
         "wilson_matrix": B, "coordinate_scale": coordinate_scale, "coordinate_labels": labels,
         "component_rows": slices,
     }
 
 
 def solve_regularized_lsq(X, y, prior=None, regularization=0.0, parameter_scale=None,
+                          coupling_matrix=None, coupling_target=None,
                           bounds=(0.0, np.inf), rcond=None):
     """Solve a scaled direct least-squares problem, optionally with bounds and a prior.
 
@@ -911,6 +933,13 @@ def solve_regularized_lsq(X, y, prior=None, regularization=0.0, parameter_scale=
       This avoids forming normal equations (which square the condition number:
       κ(G) = κ(X)²) and handles bounds natively.
     - Without bounds: numpy.linalg.lstsq (SVD-based, optimal conditioning)
+
+    COUPLED REGULARIZATION: coupling_matrix R and coupling_target t append
+        R k ≈ t
+    to the system. This represents physical family shrinkage, e.g.
+        sqrt(lambda)/sigma * (k_SiSiH - k_SiSi) ≈ 0.
+    The caller supplies the fully weighted rows, allowing non-diagonal priors
+    without forming normal equations.
 
     UNOBSERVABLE PARAMETERS: Columns with near-zero norm (≤ 1e-30) indicate
     parameters that the data cannot constrain at all — these raise an explicit
@@ -937,6 +966,15 @@ def solve_regularized_lsq(X, y, prior=None, regularization=0.0, parameter_scale=
         R = np.diag(np.sqrt(regularization) / parameter_scale)
         X = np.vstack((X, R))
         y = np.concatenate((y, R @ prior))
+    if coupling_matrix is not None:
+        R = np.asarray(coupling_matrix, dtype=np.float64)
+        if R.ndim != 2 or R.shape[1] != npar or np.any(~np.isfinite(R)):
+            raise ValueError(f"coupling_matrix must have shape (n_rows, {npar}) and finite values")
+        target = np.zeros(R.shape[0]) if coupling_target is None else np.asarray(coupling_target, dtype=np.float64)
+        if target.shape != (R.shape[0],) or np.any(~np.isfinite(target)):
+            raise ValueError("coupling_target must contain one finite value per coupling row")
+        X = np.vstack((X, R))
+        y = np.concatenate((y, target))
 
     col_norm = np.linalg.norm(X, axis=0)
     if np.any(col_norm <= 1e-30):
@@ -973,7 +1011,8 @@ def solve_regularized_lsq(X, y, prior=None, regularization=0.0, parameter_scale=
 
 def fit_hybrid_hessian(systems, mode_weight=1.0, local_weight=1.0, internal_weight=1.0,
                        mode_balance="frequency", mode_mixing=0.1, frequency_floor_cm1=50.0, local_graph_distance=2,
-                       prior=None, regularization=1e-2, parameter_scale=None, bounds=(0.0, np.inf)):
+                       prior=None, regularization=1e-2, parameter_scale=None,
+                       coupling_matrix=None, coupling_target=None, bounds=(0.0, np.inf)):
     """Fit shared linear FF parameters to one or more hybrid Hessian objectives.
 
     MULTI-SYSTEM ACCUMULATION:
@@ -1003,6 +1042,7 @@ def fit_hybrid_hessian(systems, mode_weight=1.0, local_weight=1.0, internal_weig
         system_info.append(info)
     if not Xs:
         raise ValueError("no systems supplied")
-    k, diagnostics = solve_regularized_lsq(np.vstack(Xs), np.concatenate(ys), prior=prior, regularization=regularization, parameter_scale=parameter_scale, bounds=bounds)
+    k, diagnostics = solve_regularized_lsq(np.vstack(Xs), np.concatenate(ys), prior=prior, regularization=regularization, parameter_scale=parameter_scale,
+                                           coupling_matrix=coupling_matrix, coupling_target=coupling_target, bounds=bounds)
     diagnostics["systems"] = system_info
     return k, diagnostics

@@ -277,7 +277,7 @@ def plot_equilibrium_distributions(systems, outdir):
 # === DFT stiffness distributions ===
 
 def dft_stiffness_distributions(systems):
-    """Extract DFT stiffnesses via Wilson GF projection (F = C^{+T} D C^+)."""
+    """Collect diagonal indicators from the least-norm redundant Wilson projection."""
     from pyBall import FFfit as FFfit_cpp
     from pyBall.FFfit_utils import angle_type_key
     values = {'bond': {}, 'angle': {}}
@@ -291,14 +291,12 @@ def dft_stiffness_distributions(systems):
         angles = sys['angles']
         angle_central_only = sys.get('angle_central_only', False)
         B, labels = FFfit_cpp.build_wilson_matrix(positions, bonds, angles)
-        coord_scale = np.ones(B.shape[0])
-        for ib, (i, j, _) in enumerate(bonds):
-            coord_scale[ib] = np.linalg.norm(positions[j] - positions[i])
+        coord_scale = FFfit_cpp.dimensionless_wilson_scale(positions, labels)
         F, info = FFfit_cpp.internal_hessian_projection(H_ref, B, masses, coordinate_scale=coord_scale)
         Fdiag = np.diag(F)
         for ib, (i, j, _) in enumerate(bonds):
             key = '-'.join(sorted((symbols[i], symbols[j])))
-            r0 = coord_scale[ib]
+            r0 = 1.0 / coord_scale[ib]
             values['bond'].setdefault(key, []).append(Fdiag[ib] / (r0 * r0))
         for ia, (i, j, k, _) in enumerate(angles):
             key = '-'.join(FFfit_cpp.angle_type_key(symbols, i, j, k, elements=elements, central_only=angle_central_only)) if hasattr(FFfit_cpp, 'angle_type_key') else '-'.join(angle_type_key(symbols, i, j, k, elements=elements, central_only=angle_central_only))
@@ -309,13 +307,13 @@ def dft_stiffness_distributions(systems):
     return values
 
 def plot_dft_stiffness_distributions(systems, outdir):
-    """Plot DFT-extracted bond and angle stiffness histograms by element family."""
+    """Plot least-norm Wilson diagonal indicators by element family."""
     values = dft_stiffness_distributions(systems)
     os.makedirs(outdir, exist_ok=True)
     all_rows = []
     specs = [
-        ('bond',  'DFT bond stiffness (Wilson GF diagonal)',  'eV/Å²',  'dft_bond_stiffness_distributions.png'),
-        ('angle', 'DFT angle stiffness (Wilson GF diagonal)', 'eV/rad²', 'dft_angle_stiffness_distributions.png'),
+        ('bond',  'DFT projected bond indicator (least-norm Wilson diagonal)',  'eV/Å²',  'dft_bond_stiffness_distributions.png'),
+        ('angle', 'DFT projected angle indicator (least-norm Wilson diagonal)', 'eV/rad²', 'dft_angle_stiffness_distributions.png'),
     ]
     for kind, title, unit, filename in specs:
         result = _plot_stacked_by_family(values, kind, title, unit, outdir, filename)
@@ -333,27 +331,29 @@ def plot_dft_stiffness_distributions(systems, outdir):
 
 def cluster_1d(values, gap_threshold=2.0):
     """Identify disjunct clusters in 1D data via gap-based splitting."""
-    v = np.sort(np.asarray(values, dtype=float))
+    values = np.asarray(values, dtype=float)
+    order = np.argsort(values)
+    v = values[order]
     if len(v) < 2:
-        return [(float(v.mean()), float(v.std()) if len(v) > 1 else 0.0, np.arange(len(v)))]
+        return [(float(v.mean()), float(v.std()) if len(v) > 1 else 0.0, order)]
     gaps = np.diff(v)
     median_gap = np.median(gaps)
     if median_gap < 1e-12:
-        return [(float(v.mean()), float(v.std()), np.arange(len(v)))]
+        return [(float(v.mean()), float(v.std()), order)]
     is_gap = gaps > gap_threshold * median_gap
     split_idx = np.where(is_gap)[0] + 1
     clusters = []
     prev = 0
     for si in split_idx:
         idx = np.arange(prev, si)
-        clusters.append((float(v[idx].mean()), float(v[idx].std()), idx))
+        clusters.append((float(v[idx].mean()), float(v[idx].std()), order[idx]))
         prev = si
     idx = np.arange(prev, len(v))
-    clusters.append((float(v[idx].mean()), float(v[idx].std()), idx))
+    clusters.append((float(v[idx].mean()), float(v[idx].std()), order[idx]))
     return clusters
 
 def prepare_stiffness_viz_data(systems):
-    """Compute per-bond/angle stiffnesses via Wilson GF, assign clusters, and compute family vmin/vmax."""
+    """Compute least-norm Wilson diagonal indicators and prepare their visualization."""
     from pyBall import FFfit as FFfit_cpp
     all_bond_stiff = {}
     all_angle_stiff = {}
@@ -368,14 +368,12 @@ def prepare_stiffness_viz_data(systems):
         angles = sys['angles']
         angle_central_only = sys.get('angle_central_only', False)
         B, labels = FFfit_cpp.build_wilson_matrix(positions, bonds, angles)
-        coord_scale = np.ones(B.shape[0])
-        for ib, (i, j, _) in enumerate(bonds):
-            coord_scale[ib] = np.linalg.norm(positions[j] - positions[i])
+        coord_scale = FFfit_cpp.dimensionless_wilson_scale(positions, labels)
         F, info = FFfit_cpp.internal_hessian_projection(H_ref, B, masses, coordinate_scale=coord_scale)
         Fdiag = np.diag(F)
         bond_records = []
         for ib, (i, j, _) in enumerate(bonds):
-            r0 = coord_scale[ib]
+            r0 = 1.0 / coord_scale[ib]
             k_val = Fdiag[ib] / (r0 * r0)
             sk = '-'.join(sorted((symbols[i], symbols[j])))
             fk = _element_family_key(sk)
