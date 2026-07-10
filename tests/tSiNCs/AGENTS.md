@@ -8,6 +8,7 @@ Own the **end-to-end nanocrystal vibration workflow** in FireCore: structure gen
 
 - Node CLIs: `nanocrystals.mjs`, ensemble/atlas configs, small symmetric batch generator
 - Python test drivers: `run_vib_spectra.py`, `crosscheck_nanocrystal_generators.py`, NPZ bootstrap/export helpers
+- FFfit scripts: `test_FFfit.py` (thin CLI wrapper), `test_fffit_hybrid.py` (hybrid fitting tests), `test_parity_py_cpp.py`, `test_parity_graph_cpp.py` — reusable logic lives in `pyBall/FFfit_utils.py` and `pyBall/FFfit_plots.py`
 - Committed fixtures: `fixtures/si_1nm_passivation/`, `fixtures/npz_viewer/`, `fixtures/vibration_*`
 - Viewer launchers: `run_cpp_mol_browser.sh`, `run_vispy_mol_browser.sh`, `test_cpp_npz_load.sh`
 - Generated output trees under this folder (`OUT_small_nc/`, `OUT_nc_ensemble_v2/`, `OUT_nc_atlas/`) — not committed unless promoted to fixtures
@@ -15,7 +16,7 @@ Own the **end-to-end nanocrystal vibration workflow** in FireCore: structure gen
 ## Local Contracts
 
 - **Scripts resolve `REPO` as FireCore root** (`path.resolve(__dirname, '../..')`); **outputs default under `TEST_DIR`** (this folder).
-- **Libraries stay outside:** `web/molgui_webgpu/Nanocrystals.js`, `web/common_js/npzIO.js`, `pyBall/nanocrystal_pipeline.py`, `pyBall/FTIR.py`.
+- **Libraries stay outside:** `web/molgui_webgpu/Nanocrystals.js`, `web/common_js/npzIO.js`, `pyBall/nanocrystal_pipeline.py`, `pyBall/FTIR.py`, `pyBall/FFfit_utils.py`, `pyBall/FFfit_plots.py`.
 - **Production spectrum:** dense `eigh` + mode histogram via `pyBall/nanocrystal_pipeline.py` (full MMFF Hessian FD at relax geometry). Linearized `03_topology.npz` is built in ensemble runs but **not** used for production spectra yet (Path B deferred).
 - **Legacy `scripts/` copies** of nanocrystal CLIs are deprecated; edit and run **`tests/tSiNCs/`** versions only.
 - **CIF and MMFF `.dat` files** come from `cpp/common_resources/` (read-only from REPO).
@@ -58,7 +59,8 @@ Open work: [`ToDo_Nanocrystal.md`](ToDo_Nanocrystal.md).
 - Small NC batch: `node make_small_symmetric_nc.mjs` → `OUT_small_nc/index.md`
 - NPZ gallery: `fixtures/si_1nm_passivation/` stages 01→05 per crystal
 - Classical ladder: `tests/tMMFF/run.sh test_vibration_spectra.py`
-- C++ NPZ: `./test_cpp_npz_load.sh`
+- FFfit hybrid tests: `python3 -m pytest tests/tSiNCs/test_fffit_hybrid.py -v` (5 test cases)
+- Graph + batch dihedral parity: `PYTHONPATH=.. python3 test_parity_graph_cpp.py` (14 tests)
 
 ## Child DOX Index
 

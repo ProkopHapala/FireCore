@@ -284,3 +284,50 @@ See codemap trace [7] for algorithm walkthrough.
 - [Interactive Codemap](https://windsurf.com/codemaps/692593e6-1efe-495f-bbf6-2ad291a285c9-fe86ab10a43f3d18) — visual navigation of topology code across languages
 - `doc/topical_audit/intramolecular_forcefields.md` — force field evaluation phase
 - Canonical default parameters: `tests/tUFF/data_UFF/{ElementTypes,AtomTypes,BondTypes,AngleTypes,DihedralTypes}.dat`
+
+---
+
+## Bond-Graph Topology Queries (FFfit)
+
+Dedicated graph algorithms for molecular topology queries used in Hessian-based
+force-field fitting. Distinct from the general topology building above — these
+operate on a pre-built bond list and answer specific distance/connectivity
+questions needed for local Hessian masking, 1-4 pair detection, and dihedral
+enumeration.
+
+### Implementations
+
+| Language | Location | Status | Notes |
+|----------|----------|--------|-------|
+| **C++** | `cpp/common/molecular/FFfit.h` (BondGraph struct + inline functions) | active | CSR adjacency, bounded ring BFS, thread_local buffer reuse, batch dihedral sensitivity |
+| **Python** | `pyBall/FFfit_utils.py` (shortest_path_distances, build_3rd_neighbor_bonds, build_dihedrals, compute_dihedral_sensitivity) | active | Reference implementation using deque-based BFS + numpy |
+| **C wrappers** | `cpp/libs/Molecular/FFfit_lib.cpp` | active | extern "C" wrappers for ctypes; standalone (no FFfit instance needed) |
+| **Python bindings** | `pyBall/FFfit.py` | active | ctypes argtypes/restypes + FFfit class methods |
+
+### Functions
+
+| Function | C++ | Python | Purpose |
+|----------|-----|--------|---------|
+| All-pairs BFS distances | `bond_graph_distances` | `shortest_path_distances` | N×N shortest path matrix via BFS |
+| Local Hessian mask | `local_hessian_mask` | — (C++ only) | Boolean mask for atom pairs within max_graph_distance hops |
+| 1-4 neighbor pairs | `find_3rd_neighbor_bonds` | `build_3rd_neighbor_bonds` | Atom pairs at graph distance 3, filtered by geometric cutoff |
+| Combined mask + 1-4 | `local_mask_and_14pairs` | — (C++ only) | Single BFS pass for both mask and 1-4 pairs |
+| Dihedral enumeration | `enumerate_dihedrals` | `build_dihedrals` | Proper torsions (i-j-k-l) from bond adjacency |
+| Wilson B matrix | `build_wilson_matrix` | `build_sensitivity_matrices` | Sparse fill: 6 nonzeros/bond, 9/angle |
+| Dihedral Hessian FD | `dihedral_hessian_fd` | `dihedral_hessian` | 12×12 via in-place FD with symmetry exploitation |
+| Batch dihedral sensitivity | `dihedral_dHdk_batch_typed` | `compute_dihedral_sensitivity` | Per-type accumulation in one C++ call |
+
+### Parity Status
+
+- **Test**: `tests/tSiNCs/test_parity_graph_cpp.py` — 14 tests (12 per-function + 2 batch)
+- **Tolerance**: `atol=1e-8` for graph/Wilson, `atol=1e-6` for FD Hessian (math library differences)
+- **Batch vs single**: `max_diff=0.00e+00` (exact match — same code path)
+- **Batch typed vs Python**: `max_diff=1.90e-06` (FD numerical noise from different math libraries)
+
+### Design Decisions
+
+- **CSR adjacency** (`BondGraph` struct): Built once per function call from `bond_pairs` flat array. Contiguous `adj_ptr` + `adj_idx` arrays avoid vector-of-vectors pointer chasing. All BFS queries share the same graph.
+- **Bounded ring BFS** (`bfs_bounded`): Level-by-level expansion using `front`/`next_front` buffers. Only visits atoms within `max_dist` hops — for sp3 molecules with `max_dist=2`, visits ~12 atoms vs N for full BFS. Critical for `local_hessian_mask` where full N×N distance matrix is never needed.
+- **thread_local buffers**: `dist`, `front`, `next_front`, `queue` are `thread_local static` — allocated once, `clear()`ed per call. Eliminates N heap allocations per function invocation.
+- **In-place FD**: `dihedral_hessian_fd` perturbs one coordinate at a time in local `pos[4]`, evaluates gradient, restores — zero vector copies vs 96 in the original approach. Only computes upper triangle (r≤c), then mirrors.
+- **Batch typed accumulation**: `dihedral_dHdk_batch_typed` scatters each 12×12 block directly into the correct parameter's (3N×3N) slice via `A_out + p * n3 * n3` offset — replaces Python `compute_dihedral_sensitivity` loop with `np.ix_` fancy indexing.

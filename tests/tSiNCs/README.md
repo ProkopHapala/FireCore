@@ -60,6 +60,12 @@ flowchart LR
 | `test_mol_browser_plugins.py` | Plugin registry, NPZ grid filter, vibration panel tests |
 | `plot_pyscf_vib_results.py` | Plot PySCF vibration results (Hessian in atomic blocks + spectra + size series) |
 | `run_small_np_pyscf_vib.py` | PySCF workflow: relax → Hessian → harmonic analysis → loose .npy output |
+| `test_FFfit.py` | **FF parameter fitting orchestration** — thin CLI wrapper importing from `pyBall/FFfit_utils.py` and `pyBall/FFfit_plots.py`; fits bond/angle/torsion stiffnesses to PySCF Hessians via C++ `libFFfit_lib.so` |
+| `test_fffit_hybrid.py` | Hybrid Hessian+mode fitting tests (5 test cases: rigid/internal coordinate spaces, parameter recovery, bounded fits, dihedral gradients, Si environment typing) |
+| `test_parity_py_cpp.py` | Python vs C++ FFfit sensitivity matrix parity tests |
+| `test_parity_graph_cpp.py` | Graph algorithm + dihedral batch parity tests (14 tests): BFS distances, local Hessian mask, 1-4 neighbor finding, dihedral enumeration, Wilson matrix, dihedral Hessian FD, batch vs single dihedral sensitivity |
+| `SiNCs_FFfit_summary.md` | Results report: typing strategies, fitted parameters, model comparisons for 6 Si nanocrystals |
+| `FFfit_python_to_cpp_port.plan.md` | Porting plan for migrating FFfit Python hotspots to C++ |
 | [`ToDo_Nanocrystal.md`](ToDo_Nanocrystal.md) | Open items and open questions |
 
 ---
@@ -196,6 +202,9 @@ JS is the feature-complete path (plane cuts, defects, bridges). Python does sphe
 | File | Role |
 |------|------|
 | [`pyBall/FTIR.py`](../../pyBall/FTIR.py) | Green's probing, rigid-mode projection, mass matrix, Hessian fitting, sparse solvers, `vibration_spectrum_from_modes` |
+| [`pyBall/FFfit.py`](../../pyBall/FFfit.py) | C++ ctypes wrapper for `libFFfit_lib.so` — Wilson B matrix, internal Hessian projection, sensitivity matrices |
+| [`pyBall/FFfit_utils.py`](../../pyBall/FFfit_utils.py) | **FFfit utility functions** — type system, topology, dihedral physics, parameter mapping, sensitivity matrices, fitting routines, frequency analysis, C++ bridge, legacy mode-basis fitting (migrated from `test_FFfit.py`) |
+| [`pyBall/FFfit_plots.py`](../../pyBall/FFfit_plots.py) | **FFfit plotting/visualization** — spectrum plotting, equilibrium distributions, DFT stiffness distributions, interactive p5.js stiffness HTML maps (migrated from `test_FFfit.py`) |
 | [`pyBall/MMFF.py`](../../pyBall/MMFF.py) | ctypes: `getHessian3Nx3N`, `getHessianSparseBlocks`, `getPhononPhiBlocks` |
 | [`pyBall/nanocrystal_pipeline.py`](../../pyBall/nanocrystal_pipeline.py) | NPZ stages: relax → topology-linear Hessian → `eigh` spectrum → accumulate |
 | [`pyBall/OCL/VibSolver.py`](../../pyBall/OCL/VibSolver.py) | GPU Jacobi frequency-domain solver (experimental, deferred) |

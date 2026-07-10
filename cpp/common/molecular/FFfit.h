@@ -1,6 +1,17 @@
 #pragma once
 /// @file FFfit.h
-/// @brief Force-field parameter fitting from reference Hessian data.
+/// @brief Hessian-based force-field fitting with CSR bond-graph topology and batch dihedral sensitivity.
+///
+/// Provides: (1) Wilson B-matrix and sensitivity matrix construction for bonds,
+/// angles, and UFF/Prokop dihedrals; (2) linear least-squares and gradient
+/// descent fitting with symmetry-based parameter sharing (ParamMap); (3) CSR
+/// bond-graph algorithms — bounded BFS for local Hessian masks, 1-4 pair
+/// detection, dihedral enumeration — all with thread_local buffer reuse; (4)
+/// batch dihedral Hessian FD with symmetry exploitation and per-type
+/// accumulation for compute_dihedral_sensitivity replacement.
+///
+/// Python reference implementations in pyBall/FFfit_utils.py; C wrappers in
+/// FFfit_lib.cpp; parity tests in tests/tSiNCs/test_parity_graph_cpp.py.
 ///
 /// ============================================================================
 /// GENERAL THEORY OF HESSIAN-BASED FORCE-FIELD FITTING
@@ -117,6 +128,7 @@
 #include <cstdio>
 #include <cmath>
 #include <cstring>
+#include <cstdint>
 #include <stdexcept>
 
 // ============================================================
@@ -595,6 +607,444 @@ inline void angle_accumulate_H(Mat3d B[3][3], int atoms[3], double k_term, doubl
                 for (int q = 0; q < 3; q++)
                     H[(atoms[a] * 3 + p) * n3 + (atoms[b] * 3 + q)] += k_term * B[a][b].array[p * 3 + q];
         }
+}
+
+// ============================================================
+// Graph algorithms: BFS shortest paths, local masks, topology
+// ============================================================
+//
+// Molecular topology queries (bond distances, 1-4 pairs, dihedral enumeration)
+// are graph problems on the bond adjacency. Key design decisions:
+//
+// - **BondGraph struct**: CSR (Compressed Sparse Row) adjacency built once
+//   from bond_pairs, reused across all BFS queries. Cache-friendly contiguous
+//   memory vs vector-of-vectors pointer chasing. Built once per function call,
+//   not per-atom.
+// - **Bounded BFS (bfs_bounded)**: Level-by-level ring expansion using two
+//   front buffers (front/next_front) with thread_local reuse. Only visits
+//   atoms within max_dist hops — for sp3 molecules with max_dist=2, this is
+//   ~12 atoms vs N for full BFS. Critical for local_hessian_mask where the
+//   full N×N distance matrix is never needed.
+// - **Combined pass (local_mask_and_14pairs)**: When both Hessian mask and
+//   1-4 pairs are needed (common in hybrid fitting), a single BFS per source
+//   to max(max_graph_distance, 3) extracts both — halving BFS traversals.
+// - **thread_local buffers**: dist, front, next_front, queue are
+//   thread_local static — allocated once, clear()ed per call. Eliminates
+//   N heap allocations per function invocation.
+// - **Parity**: All functions verified against Python references in
+//   tests/tSiNCs/test_parity_graph_cpp.py (14 tests, 0 failures).
+
+/// CSR adjacency representation of a bond graph — built once, reused across queries.
+/// Avoids rebuilding vector-of-vectors for every BFS call.
+struct BondGraph {
+    int natoms = 0;
+    std::vector<int> adj_ptr;  // CSR row pointers, size natoms+1
+    std::vector<int> adj_idx;  // CSR column indices, size 2*nbonds
+
+    void build(const int* bond_pairs, int nbonds, int natoms_) {
+        natoms = natoms_;
+        // Count degree per atom
+        std::vector<int> deg(natoms, 0);
+        for (int b = 0; b < nbonds; b++) {
+            deg[bond_pairs[b*2]]++;
+            deg[bond_pairs[b*2+1]]++;
+        }
+        // Build CSR
+        adj_ptr.resize(natoms + 1);
+        adj_idx.resize(2 * nbonds);
+        adj_ptr[0] = 0;
+        for (int i = 0; i < natoms; i++) adj_ptr[i+1] = adj_ptr[i] + deg[i];
+        std::vector<int> offset(natoms, 0);
+        for (int b = 0; b < nbonds; b++) {
+            int i = bond_pairs[b*2], j = bond_pairs[b*2+1];
+            adj_idx[adj_ptr[i] + offset[i]++] = j;
+            adj_idx[adj_ptr[j] + offset[j]++] = i;
+        }
+    }
+
+    /// Bounded BFS from source: fills dist[0..natoms-1] with distances up to max_dist.
+    /// Unreachable atoms within max_dist get -1. Atoms beyond max_dist are NOT visited.
+    /// Uses a fixed-size stack buffer (no heap allocation per BFS).
+    void bfs_bounded(int src, int max_dist, int* dist) const {
+        for (int i = 0; i < natoms; i++) dist[i] = -1;
+        dist[src] = 0;
+        // Simple ring-based BFS: process level by level, no queue needed
+        // This avoids dynamic allocation and is cache-friendly for small max_dist
+        int level = 0;
+        // Use dist array itself as the visited marker
+        // Front: atoms at current level — stored in a small stack buffer
+        thread_local static std::vector<int> front, next_front;
+        front.clear(); next_front.clear();
+        front.push_back(src);
+        while (level < max_dist && !front.empty()) {
+            next_front.clear();
+            for (int u : front) {
+                for (int p = adj_ptr[u]; p < adj_ptr[u+1]; p++) {
+                    int v = adj_idx[p];
+                    if (dist[v] < 0) {
+                        dist[v] = level + 1;
+                        next_front.push_back(v);
+                    }
+                }
+            }
+            std::swap(front, next_front);
+            level++;
+        }
+    }
+
+    /// Full BFS from source (no distance cutoff). Fills dist[0..natoms-1].
+    void bfs_full(int src, int* dist) const {
+        for (int i = 0; i < natoms; i++) dist[i] = -1;
+        dist[src] = 0;
+        thread_local static std::vector<int> queue;
+        queue.clear();
+        queue.push_back(src);
+        size_t head = 0;
+        while (head < queue.size()) {
+            int u = queue[head++];
+            for (int p = adj_ptr[u]; p < adj_ptr[u+1]; p++) {
+                int v = adj_idx[p];
+                if (dist[v] < 0) {
+                    dist[v] = dist[u] + 1;
+                    queue.push_back(v);
+                }
+            }
+        }
+    }
+};
+
+/// BFS shortest-path distances between all pairs in the bond graph.
+/// dist_out: (natoms*natoms) int array, -1 = unreachable.
+inline void bond_graph_distances(const int* bond_pairs, int nbonds, int natoms, int* dist_out) {
+    BondGraph g;
+    g.build(bond_pairs, nbonds, natoms);
+    thread_local static std::vector<int> dist(natoms);
+    if ((int)dist.size() < natoms) dist.resize(natoms);
+    for (int s = 0; s < natoms; s++) {
+        g.bfs_full(s, dist.data());
+        for (int j = 0; j < natoms; j++)
+            dist_out[s * natoms + j] = dist[j];
+    }
+}
+
+/// Local Hessian mask: true for atom pairs within max_graph_distance in bond graph.
+/// mask_out: (natoms*natoms) uint8 array (0/1).
+/// Uses bounded BFS — only visits atoms within max_graph_distance, not the entire graph.
+inline void local_hessian_mask(const int* bond_pairs, int nbonds, int natoms,
+                                int max_graph_distance, uint8_t* mask_out) {
+    BondGraph g;
+    g.build(bond_pairs, nbonds, natoms);
+    // Zero the mask first
+    std::memset(mask_out, 0, natoms * natoms * sizeof(uint8_t));
+    thread_local static std::vector<int> dist(natoms);
+    if ((int)dist.size() < natoms) dist.resize(natoms);
+    for (int s = 0; s < natoms; s++) {
+        g.bfs_bounded(s, max_graph_distance, dist.data());
+        for (int j = 0; j < natoms; j++)
+            if (dist[j] >= 0) mask_out[s * natoms + j] = 1;
+    }
+}
+
+/// Find 3rd-neighbor (1-4) pairs from bond graph. Returns pairs (i,j) where graph dist==3.
+/// pairs3_out: flat (i,j) pairs, 2 ints each. n3_out gets count.
+/// Uses bounded BFS with cutoff=3 — does NOT compute full distance matrix.
+inline void find_3rd_neighbor_bonds(const int* bond_pairs, int nbonds, int natoms,
+                                     const Vec3d* apos, double max_dist,
+                                     int* pairs3_out, int* n3_out) {
+    BondGraph g;
+    g.build(bond_pairs, nbonds, natoms);
+    int cnt = 0;
+    thread_local static std::vector<int> dist(natoms);
+    if ((int)dist.size() < natoms) dist.resize(natoms);
+    for (int s = 0; s < natoms; s++) {
+        g.bfs_bounded(s, 3, dist.data());
+        for (int j = s + 1; j < natoms; j++) {
+            if (dist[j] != 3) continue;
+            Vec3d d; d.set_sub(apos[j], apos[s]);
+            double r = d.norm();
+            if (max_dist <= 0 || r < max_dist) {
+                pairs3_out[cnt*2]   = s;
+                pairs3_out[cnt*2+1] = j;
+                cnt++;
+            }
+        }
+    }
+    *n3_out = cnt;
+}
+
+/// Combined local mask + 1-4 pairs in a single pass — avoids redundant BFS.
+/// mask_out: (natoms*natoms) uint8, pairs3_out: (max_pairs*2) int, n3_out: count.
+inline void local_mask_and_14pairs(const int* bond_pairs, int nbonds, int natoms,
+                                    int max_graph_distance, uint8_t* mask_out,
+                                    const Vec3d* apos, double max_dist,
+                                    int* pairs3_out, int* n3_out) {
+    BondGraph g;
+    g.build(bond_pairs, nbonds, natoms);
+    std::memset(mask_out, 0, natoms * natoms * sizeof(uint8_t));
+    int cnt = 0;
+    thread_local static std::vector<int> dist(natoms);
+    if ((int)dist.size() < natoms) dist.resize(natoms);
+    int bfs_depth = std::max(max_graph_distance, 3);
+    for (int s = 0; s < natoms; s++) {
+        g.bfs_bounded(s, bfs_depth, dist.data());
+        // Fill mask
+        for (int j = 0; j < natoms; j++)
+            if (dist[j] >= 0 && dist[j] <= max_graph_distance)
+                mask_out[s * natoms + j] = 1;
+        // Collect 1-4 pairs (dist == 3, j > s)
+        for (int j = s + 1; j < natoms; j++) {
+            if (dist[j] != 3) continue;
+            Vec3d d; d.set_sub(apos[j], apos[s]);
+            double r = d.norm();
+            if (max_dist <= 0 || r < max_dist) {
+                pairs3_out[cnt*2]   = s;
+                pairs3_out[cnt*2+1] = j;
+                cnt++;
+            }
+        }
+    }
+    *n3_out = cnt;
+}
+
+/// Enumerate proper torsions (i-j-k-l) from bond topology.
+/// For each central bond j-k (taken once with j<k), enumerate all neighbors i of j
+/// and l of k (excluding k, j, and i respectively).
+/// dihedrals_out: flat (i,j,k,l) per dihedral, 4 ints each. n_out gets count.
+inline void enumerate_dihedrals(const int* bond_pairs, int nbonds, int natoms,
+                                 int* diheds_out, int* n_out) {
+    BondGraph g;
+    g.build(bond_pairs, nbonds, natoms);
+    int cnt = 0;
+    for (int b = 0; b < nbonds; b++) {
+        int j = bond_pairs[b*2], k = bond_pairs[b*2+1];
+        if (j > k) continue; // take each central bond once
+        for (int pi = g.adj_ptr[j]; pi < g.adj_ptr[j+1]; pi++) {
+            int i = g.adj_idx[pi];
+            if (i == k) continue;
+            for (int pl = g.adj_ptr[k]; pl < g.adj_ptr[k+1]; pl++) {
+                int l = g.adj_idx[pl];
+                if (l == j || l == i) continue;
+                diheds_out[cnt*4]   = i;
+                diheds_out[cnt*4+1] = j;
+                diheds_out[cnt*4+2] = k;
+                diheds_out[cnt*4+3] = l;
+                cnt++;
+            }
+        }
+    }
+    *n_out = cnt;
+}
+
+// ============================================================
+// Wilson B matrix: bond + angle internal coordinate gradients
+// ============================================================
+
+/// Build Wilson B matrix (n_internal x 3N) from bonds and angles.
+/// B_out: (n_internal * 3N) double array, row-major.
+/// n_internal = nbonds + nangles.
+/// Uses existing bond_wilson / angle_wilson_cos functions.
+/// Sparse fill: only writes 6 nonzeros per bond row, 9 per angle row — no full memset.
+inline void build_wilson_matrix(const Vec3d* apos, int natoms,
+                                 const BondDef* bonds, int nbonds,
+                                 const AngleDef* angles, int nangles,
+                                 double* B_out) {
+    int n3 = natoms * 3;
+    int n_int = nbonds + nangles;
+    // Caller must pre-zero B_out. We only write nonzeros (6 per bond, 9 per angle).
+    // This avoids O(n_int * n3) memset when n_int << n3.
+    int iq = 0;
+    for (int ib = 0; ib < nbonds; ib++) {
+        Vec3d bi, bj, e; double r;
+        bond_wilson(apos, bonds[ib], bi, bj, r, e);
+        int i3 = bonds[ib].i * 3, j3 = bonds[ib].j * 3;
+        for (int p = 0; p < 3; p++) {
+            B_out[iq * n3 + i3 + p] = bi.array[p];
+            B_out[iq * n3 + j3 + p] = bj.array[p];
+        }
+        iq++;
+    }
+    for (int ia = 0; ia < nangles; ia++) {
+        Vec3d bi, bj, bk; double ct, st;
+        angle_wilson_cos(apos, angles[ia], bi, bj, bk, ct, st);
+        int i3 = angles[ia].i * 3, j3 = angles[ia].j * 3, k3 = angles[ia].k * 3;
+        for (int p = 0; p < 3; p++) {
+            B_out[iq * n3 + i3 + p] = bi.array[p];
+            B_out[iq * n3 + j3 + p] = bj.array[p];
+            B_out[iq * n3 + k3 + p] = bk.array[p];
+        }
+        iq++;
+    }
+}
+
+// ============================================================
+// Dihedral: energy, gradient, and FD Hessian (UFF/Prokop form)
+// ============================================================
+//
+// UFF/Prokop torsion energy: E = V * (1 + d * cos(n * phi)).
+// The gradient follows the signed-angle convention from Vec2d complex powers
+// used in UFF.h (evalDihedral_Prokop with bSubNonBond=false).
+//
+// Optimization notes:
+// - **In-place FD**: dihedral_hessian_fd perturbs one coordinate at a time
+//   in the local pos[4] copy, evaluates gradient, restores — zero vector
+//   copies vs 96 copies in the original approach.
+// - **Symmetry exploitation**: Only computes upper-triangle columns (r<=c),
+//   then mirrors — halves the accumulation work.
+// - **Batch functions**: dihedral_dHdk_batch and dihedral_dHdk_batch_typed
+//   process all dihedrals in one C++ call, eliminating Python loop overhead
+//   and N×(3N²) allocations. The typed variant scatters each 12×12 block
+//   directly into the correct parameter's (3N×3N) slice via flat pointer
+//   arithmetic — equivalent to Python compute_dihedral_sensitivity but
+//   without np.ix_ fancy indexing overhead.
+// - **Precomputed inv_2h**: Multiply by 1/(2h) instead of dividing by 2h
+//   per entry — 144 multiplications vs 144 divisions.
+
+/// UFF/Prokop torsion energy and gradient for atoms i-j-k-l.
+/// E = d * cos(n * phi)  (with V=1, so this is dE/dV).
+/// Returns E, fills grad (4 Vec3d).
+inline double dihedral_energy_gradient(const Vec3d* pos4, Vec3d* grad4) {
+    Vec3d p1 = pos4[0], p2 = pos4[1], p3 = pos4[2], p4 = pos4[3];
+    Vec3d q12; q12.set_sub(p1, p2); // ji
+    Vec3d q32; q32.set_sub(p3, p2); // jk
+    Vec3d q43; q43.set_sub(p4, p3); // kl
+    double l12 = q12.norm();
+    double l32 = q32.norm();
+    double l43 = q43.norm();
+    if (l12 < 1e-12 || l32 < 1e-12 || l43 < 1e-12) {
+        for (int i = 0; i < 4; i++) grad4[i].set(0,0,0);
+        return 0.0;
+    }
+    Vec3d u12 = q12; u12.mul(1.0/l12);
+    Vec3d u32 = q32; u32.mul(1.0/l32);
+    Vec3d u43 = q43; u43.mul(1.0/l43);
+    Vec3d n123; n123.set_cross(u12, u32);
+    Vec3d n234; n234.set_cross(u43, u32);
+    double nn123 = n123.dot(n123);
+    double nn234 = n234.dot(n234);
+    if (nn123 < 1e-14 || nn234 < 1e-14) {
+        for (int i = 0; i < 4; i++) grad4[i].set(0,0,0);
+        return 0.0;
+    }
+    double il2_123 = 1.0 / nn123;
+    double il2_234 = 1.0 / nn234;
+    double inv_n12 = sqrt(il2_123 * il2_234);
+    double csx = n123.dot(n234) * inv_n12;
+    double csy = -n123.dot(u43) * inv_n12;
+    double phi = atan2(csy, csx);
+    // Default d=1, n=3 for sp3
+    int d = 1, n = 3;
+    double nphi = n * phi;
+    double csnx = cos(nphi);
+    double csny = sin(nphi);
+    double E = 1.0 + d * csnx;
+    double f = -d * n * csny; // f = -V*d*n*csn.y with V=1
+    double il12 = 1.0/l12, il32 = 1.0/l32, il43 = 1.0/l43;
+    Vec3d fp1; fp1.set_mul(n123, -f * il2_123 * il12);
+    Vec3d fp4; fp4.set_mul(n234, f * il2_234 * il43);
+    double c123 = u32.dot(u12) * (il32 / il12);
+    double c432 = u32.dot(u43) * (il32 / il43);
+    Vec3d fp3; fp3.set_lincomb(-c123, fp1, -(c432 + 1.0), fp4);
+    Vec3d fp2; fp2.set_lincomb((c123 - 1.0), fp1, c432, fp4);
+    // grad = -[fp1, fp2, fp3, fp4]
+    grad4[0].set_mul(fp1, -1.0);
+    grad4[1].set_mul(fp2, -1.0);
+    grad4[2].set_mul(fp3, -1.0);
+    grad4[3].set_mul(fp4, -1.0);
+    return E;
+}
+
+/// Dihedral Hessian (12x12) via central finite differences of the gradient.
+/// H_out: (12*12) double array, row-major.
+/// Optimized: in-place perturbation (no vector copies), exploits symmetry by
+/// only computing upper-triangle columns and mirroring.
+inline void dihedral_hessian_fd(const Vec3d* pos4, double* H_out, double h = 1e-5) {
+    constexpr int n12 = 12;
+    Vec3d pos[4] = {pos4[0], pos4[1], pos4[2], pos4[3]};
+    std::memset(H_out, 0, n12 * n12 * sizeof(double));
+    Vec3d gp[4], gm[4];
+    double inv_2h = 1.0 / (2.0 * h);
+    for (int c = 0; c < n12; c++) {
+        int ca = c / 3, cx = c % 3;
+        // In-place perturbation: save, perturb, evaluate, restore
+        double orig = pos[ca].array[cx];
+        pos[ca].array[cx] = orig + h;
+        dihedral_energy_gradient(pos, gp);
+        pos[ca].array[cx] = orig - h;
+        dihedral_energy_gradient(pos, gm);
+        pos[ca].array[cx] = orig; // restore
+        for (int r = 0; r <= c; r++) // only upper triangle
+            H_out[r * n12 + c] = (gp[r/3].array[r%3] - gm[r/3].array[r%3]) * inv_2h;
+    }
+    // Mirror upper triangle to lower
+    for (int r = 0; r < n12; r++)
+        for (int c = 0; c < r; c++)
+            H_out[r * n12 + c] = H_out[c * n12 + r];
+}
+
+/// Dihedral sensitivity: dH/dV for one dihedral, scattered into (3N x 3N).
+/// Uses dihedral_hessian_fd for the 12x12 block, then scatters to atoms i,j,k,l.
+inline void dihedral_dHdk(const Vec3d* apos, int i, int j, int k, int l,
+                           int natoms, double* dHdk_flat) {
+    Vec3d pos4[4] = {apos[i], apos[j], apos[k], apos[l]};
+    double H12[144];
+    dihedral_hessian_fd(pos4, H12);
+    int n3 = natoms * 3;
+    int atoms[4] = {i, j, k, l};
+    for (int a = 0; a < 4; a++)
+        for (int b = 0; b < 4; b++)
+            for (int p = 0; p < 3; p++)
+                for (int q = 0; q < 3; q++)
+                    dHdk_flat[(atoms[a]*3+p)*n3 + (atoms[b]*3+q)] += H12[(a*3+p)*12 + (b*3+q)];
+}
+
+/// Batch dihedral sensitivity: compute dH/dV for ALL dihedrals in one call.
+/// Accumulates into dHdk_flat (must be pre-zeroed, size n3*n3).
+/// dihedrals: flat (i,j,k,l) array, 4 ints per dihedral, ndihedrals entries.
+/// This eliminates Python loop overhead and redundant ctypes crossings.
+inline void dihedral_dHdk_batch(const Vec3d* apos, int natoms,
+                                 const int* dihedrals, int ndihedrals,
+                                 double* dHdk_flat) {
+    int n3 = natoms * 3;
+    double H12[144];
+    for (int d = 0; d < ndihedrals; d++) {
+        int i = dihedrals[d*4], j = dihedrals[d*4+1];
+        int k = dihedrals[d*4+2], l = dihedrals[d*4+3];
+        Vec3d pos4[4] = {apos[i], apos[j], apos[k], apos[l]};
+        dihedral_hessian_fd(pos4, H12);
+        int atoms[4] = {i, j, k, l};
+        for (int a = 0; a < 4; a++)
+            for (int b = 0; b < 4; b++)
+                for (int p = 0; p < 3; p++)
+                    for (int q = 0; q < 3; q++)
+                        dHdk_flat[(atoms[a]*3+p)*n3 + (atoms[b]*3+q)] += H12[(a*3+p)*12 + (b*3+q)];
+    }
+}
+
+/// Batch dihedral sensitivity with per-type accumulation.
+/// For each dihedral, accumulates its 12x12 Hessian into the correct parameter's
+/// (3N x 3N) matrix. This is the C++ equivalent of Python compute_dihedral_sensitivity.
+/// dihedrals: (i,j,k,l) per dihedral. type_idx: parameter index per dihedral.
+/// A_out: flat array of (n_types * n3 * n3) doubles, must be pre-zeroed.
+inline void dihedral_dHdk_batch_typed(const Vec3d* apos, int natoms,
+                                        const int* dihedrals, int ndihedrals,
+                                        const int* type_idx, int n_types,
+                                        double* A_out) {
+    int n3 = natoms * 3;
+    double H12[144];
+    for (int d = 0; d < ndihedrals; d++) {
+        int i = dihedrals[d*4], j = dihedrals[d*4+1];
+        int k = dihedrals[d*4+2], l = dihedrals[d*4+3];
+        int p = type_idx[d];
+        double* A_p = A_out + (size_t)p * n3 * n3;
+        Vec3d pos4[4] = {apos[i], apos[j], apos[k], apos[l]};
+        dihedral_hessian_fd(pos4, H12);
+        int atoms[4] = {i, j, k, l};
+        for (int a = 0; a < 4; a++)
+            for (int b = 0; b < 4; b++)
+                for (int pp = 0; pp < 3; pp++)
+                    for (int qq = 0; qq < 3; qq++)
+                        A_p[(atoms[a]*3+pp)*n3 + (atoms[b]*3+qq)] += H12[(a*3+pp)*12 + (b*3+qq)];
+    }
 }
 
 // ============================================================

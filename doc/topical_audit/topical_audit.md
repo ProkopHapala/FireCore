@@ -123,7 +123,16 @@ Topics are ranked by **consolidation priority** — how much duplicate/scattered
 
 ### 2d. Parameter Fitting
 - FitREQ: H-bond parameter fitting, Monte Carlo optimization, GPU-accelerated
-- **Related:** `FitREQ.md`, `FitREQ_CPU_Tutorial.guide.md` in `doc/DevNotes/`
+- FFfit: Force-field stiffness fitting to vibrational Hessians via Wilson GF projection — type system, topology, dihedral physics, sensitivity matrices, gradient descent, frequency analysis, C++ bridge (`libFFfit_lib.so`)
+- **C++ graph algorithms** (CSR bond-graph, bounded BFS, batch dihedral sensitivity): see [molecular_topology.md](molecular_topology.md) § Bond-Graph Topology Queries
+- **Module split (refactored from monolithic `test_FFfit.py`):**
+  - `pyBall/FFfit.py` — C++ ctypes wrapper (Wilson B matrix, internal Hessian projection, graph algorithms, batch dihedral sensitivity)
+  - `pyBall/FFfit_utils.py` — High-level Python fitting pipeline (type system, topology, sensitivity, fitting, frequency analysis)
+  - `pyBall/FFfit_plots.py` — Visualization (spectra, equilibrium distributions, stiffness HTML maps)
+  - `tests/tSiNCs/test_FFfit.py` — Thin CLI wrapper importing from both modules
+  - `tests/tSiNCs/test_fffit_hybrid.py` — Hybrid Hessian+mode fitting tests (5 cases)
+  - `tests/tSiNCs/test_parity_graph_cpp.py` — Graph algorithm + batch dihedral parity tests (14 tests)
+- **Related:** `FitREQ.md`, `FitREQ_CPU_Tutorial.guide.md` in `doc/DevNotes/`, `tests/tSiNCs/SiNCs_FFfit_summary.md`, `tests/tSiNCs/FFfit_python_to_cpp_port.plan.md`
 
 ## Priority 3 (High) — Surface Interactions & GridFF
 

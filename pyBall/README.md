@@ -11,7 +11,10 @@ pyBall/
 │   ├── MMFF.py             # Molecular mechanics force fields
 │   ├── MMFFsp3.py          # sp3 hybridization force fields
 │   ├── Forces.py           # Force calculation interfaces
-│   └── Forces_cpp.py       # C++ force field bindings
+│   ├── Forces_cpp.py       # C++ force field bindings
+│   ├── FFfit.py            # C++ ctypes wrapper for libFFfit_lib.so (Wilson B, internal Hessian projection)
+│   ├── FFfit_utils.py      # FF parameter fitting utilities (type system, topology, sensitivity, fitting, frequency analysis)
+│   └── FFfit_plots.py      # FFfit visualization (spectra, equilibrium distributions, stiffness HTML maps)
 ├── Molecular Tools
 │   ├── AtomicSystem.py     # Molecular structure manipulation
 │   ├── atomicUtils.py      # Atomic data and utilities
@@ -81,6 +84,28 @@ mol.center_molecule()
 mol.optimize_geometry()
 mol.saveXYZ("output.xyz")
 ```
+
+### FFfit.py - Force-Field Parameter Fitting
+C++ ctypes wrapper for Hessian-based bond/angle/dihedral stiffness fitting:
+```python
+from pyBall import FFfit
+
+# Fit stiffness parameters to a reference Hessian
+fitter = FFfit.FFfit()
+fitter.set_geometry(positions)
+fitter.set_symbols(['Si', 'H', 'H', 'H', 'H'])
+fitter.add_bond(0, 1, 1.48)
+fitter.auto_assign_types()
+k = fitter.fit_lsq(H_ref)
+
+# Graph algorithms (CSR bond-graph, bounded BFS)
+dist = FFfit.FFfit.bond_graph_distances_cpp(bond_pairs, natoms)
+mask = FFfit.FFfit.local_hessian_mask_cpp(bonds, natoms, max_graph_distance=2)
+
+# Batch dihedral sensitivity (replaces Python loop)
+A = fitter.dihedral_dHdk_batch_typed_cpp(dihedrals, type_idx, n_types)
+```
+See `pyBall/FFfit_utils.py` for Python reference implementations and `tests/tSiNCs/test_parity_graph_cpp.py` for parity tests.
 
 ## Specialized Modules
 

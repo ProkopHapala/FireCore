@@ -1,5 +1,21 @@
 # C++ Porting Plan: FFfit Pipeline Hotspots
 
+> **Status (updated 2025-07):** Phases 1–3 COMPLETE. All Tier 1 graph algorithms,
+> Tier 3.3–3.5 dihedral/Wilson functions, and batch dihedral sensitivity are ported
+> to C++ with parity tests (14 tests in `test_parity_graph_cpp.py`, 7 in
+> `test_parity_py_cpp.py`). Optimizations: CSR bond-graph, bounded ring BFS,
+> thread_local buffers, in-place FD with symmetry exploitation, batch typed
+> accumulation. Phase 4 (hybrid assembly orchestration) and Tier 2 (typing reform)
+> remain as future work.
+
+> **Note (refactoring):** The monolithic `test_FFfit.py` has been split into:
+> - `pyBall/FFfit_utils.py` — all reusable logic (type system, topology, dihedral physics, parameter mapping, sensitivity, fitting, frequency analysis, C++ bridge)
+> - `pyBall/FFfit_plots.py` — visualization (spectra, equilibrium distributions, stiffness HTML maps)
+> - `tests/tSiNCs/test_FFfit.py` — thin CLI wrapper importing from both modules
+>
+> Line numbers below refer to the **original** `test_FFfit.py` before refactoring.
+> Functions are now in `pyBall/FFfit_utils.py`; search by function name.
+
 ## Analysis Method
 Profiled Python loop patterns in `test_FFfit.py` and `pyBall/FFfit.py` against
 existing C++ infrastructure (`FFfit.h`, `FFfit_lib.cpp`, `MMFFBuilderBase.h`,
@@ -7,9 +23,9 @@ existing C++ infrastructure (`FFfit.h`, `FFfit_lib.cpp`, `MMFFBuilderBase.h`,
 
 ---
 
-## Tier 1: Graph/Topology Algorithms (Pure integer loops, 10-100x speedup)
+## Tier 1: Graph/Topology Algorithms (Pure integer loops, 10-100x speedup) — ✅ COMPLETE
 
-### 1.1 `shortest_path_distances(bond_pairs, natoms)` — BFS all-pairs
+### 1.1 `shortest_path_distances(bond_pairs, natoms)` — BFS all-pairs — ✅ DONE
 - **Location**: `test_FFfit.py:117-133`
 - **Pattern**: N BFS traversals over adjacency list → O(N * (N+E)) Python loop
 - **Called by**: `build_3rd_neighbor_bonds`, `local_hessian_mask`
@@ -21,14 +37,14 @@ existing C++ infrastructure (`FFfit.h`, `FFfit_lib.cpp`, `MMFFBuilderBase.h`,
 - **Atom type ID opportunity**: Replace string-based `symbols[i]` with integer atom type
   IDs from `MMFFparams::atomTypeDict`. Already available as `Atom.type` (int).
 
-### 1.2 `build_3rd_neighbor_bonds(symbols, positions, bond_pairs, max_dist)` — 1-4 pairs
+### 1.2 `build_3rd_neighbor_bonds(symbols, positions, bond_pairs, max_dist)` — 1-4 pairs — ✅ DONE
 - **Location**: `test_FFfit.py:136-151`
 - **Pattern**: O(N²) scan over distance matrix + distance computation
 - **Depends on**: `shortest_path_distances` (1.1)
 - **Port plan**: Fold into 1.1 — after BFS, scan dist==3 pairs, compute |r_j-r_i|,
   filter by max_dist. Single C++ function.
 
-### 1.3 `build_dihedrals(symbols, positions, bonds, d, n, dihedral)` — torsion enumeration
+### 1.3 `build_dihedrals(symbols, positions, bonds, d, n, dihedral)` — torsion enumeration — ✅ DONE
 - **Location**: `test_FFfit.py:249-276`
 - **Pattern**: Triple-nested loop over bonds × neighbors × neighbors
 - **C++ infrastructure**: `MMFFBuilderBase` has `AtomConf.neighs[]` (bond-based adjacency)
@@ -36,14 +52,14 @@ existing C++ infrastructure (`FFfit.h`, `FFfit_lib.cpp`, `MMFFBuilderBase.h`,
 - **Port plan**: Add `void enumerate_dihedrals(bonds, natoms, dihedrals_out)` to FFfit.h.
   Uses adjacency from bond list. Returns (i,j,k,l,d,n) tuples as flat int array.
 
-### 1.4 `local_hessian_mask(natoms, bonds, max_graph_distance)` — BFS with cutoff
+### 1.4 `local_hessian_mask(natoms, bonds, max_graph_distance)` — BFS with cutoff — ✅ DONE
 - **Location**: `pyBall/FFfit.py:555-594`
 - **Pattern**: N BFS traversals with early termination at max_graph_distance
 - **Called by**: `assemble_hybrid_hessian_system` (every hybrid fit)
 - **Port plan**: Same BFS core as 1.1, just with cutoff. Return boolean mask as
   `uint8_t*` array of size (3N * 3N). Expose via `fffit_local_hessian_mask()`.
 
-### 1.5 `build_topology(symbols, positions, bond_cutoff, ...)` — bond/angle discovery
+### 1.5 `build_topology(symbols, positions, bond_cutoff, ...)` — bond/angle discovery — ⬜ NOT DONE
 - **Location**: `test_FFfit.py:307-370`
 - **Pattern**: O(N²) distance scan for bonds, then O(bonds²) for angles
 - **C++ infrastructure**: `MMFFBuilderBase::autoBonds()` already does distance-based
@@ -103,7 +119,7 @@ existing C++ infrastructure (`FFfit.h`, `FFfit_lib.cpp`, `MMFFBuilderBase.h`,
 - **Status**: ✅ Already in C++ (`FFfit::compute_gradient()`).
 - **Keep Python**: As reference.
 
-### 3.3 `dihedral_hessian(pos, d, n, h)` — Finite-difference Hessian
+### 3.3 `dihedral_hessian(pos, d, n, h)` — Finite-difference Hessian — ✅ DONE
 - **Location**: `test_FFfit.py:226-240`
 - **Pattern**: 12×12 Hessian via 24 gradient evaluations (central FD), each gradient
   involves cross products, norms, trig — O(12 * 24 * ~50) flops in Python
@@ -114,14 +130,14 @@ existing C++ infrastructure (`FFfit.h`, `FFfit_lib.cpp`, `MMFFBuilderBase.h`,
   faster than Python FD). Option (b) is simpler and sufficient for fitting.
   Add `dihedral_dHdk()` to FFfit.h alongside bond_dHdk/angle_dHdk.
 
-### 3.4 `compute_dihedral_sensitivity(...)` — Full (3N,3N) dihedral A_p
+### 3.4 `compute_dihedral_sensitivity(...)` — Full (3N,3N) dihedral A_p — ✅ DONE
 - **Location**: `test_FFfit.py:279-298`
 - **Pattern**: Loop over dihedrals, compute 12×12 Hessian, scatter into (3N,3N)
 - **Depends on**: 3.3
 - **Port plan**: After 3.3, this is just scatter-add into flat array — same pattern
   as `bond_dHdk` / `angle_dHdk`. Add to `FFfit::build_sensitivity_matrices()`.
 
-### 3.5 `build_wilson_matrix(positions, bonds, angles)` — B matrix
+### 3.5 `build_wilson_matrix(positions, bonds, angles)` — B matrix — ✅ DONE
 - **Location**: `pyBall/FFfit.py:424-480`
 - **Pattern**: Loop over bonds (2 atoms each) + angles (3 atoms each), fill sparse rows
 - **C++ infrastructure**: `bond_wilson()` and `angle_wilson_cos()` already exist in FFfit.h
@@ -218,17 +234,18 @@ Assign as `atom_types[i] = base_type + SiEnv::SiH2` or use separate `env_type` a
 
 | Priority | Function | Effort | Impact | Notes |
 |----------|----------|--------|--------|-------|
-| **P0** | 1.1 shortest_path_distances | Small | High | Unblocks 1.2, 1.4, 3.7 |
-| **P0** | 1.4 local_hessian_mask | Small | High | Called every hybrid fit |
-| **P0** | 3.5 build_wilson_matrix | Small | High | Unblocks 3.6, 3.7, 4.2 |
+| **P0** ✅ | 1.1 shortest_path_distances | Small | High | DONE — `bond_graph_distances` in FFfit.h, CSR+BFS |
+| **P0** ✅ | 1.4 local_hessian_mask | Small | High | DONE — `local_hessian_mask` + combined `local_mask_and_14pairs` |
+| **P0** ✅ | 3.5 build_wilson_matrix | Small | High | DONE — `build_wilson_matrix` in FFfit.h, sparse fill |
 | **P1** | 1.5 build_topology | Medium | High | Replaces O(N²) Python |
 | **P1** | 2.3 build_global_param_map | Medium | Medium | Multi-system, use int keys |
-| **P1** | 3.3 dihedral_hessian | Medium | Medium | FD in C++ or analytical |
+| **P1** ✅ | 3.3 dihedral_hessian | Medium | Medium | DONE — `dihedral_hessian_fd` with in-place FD + symmetry |
 | **P2** | 2.1 assign_si_env_types | Small | Low | Simple but string→int reform |
 | **P2** | 2.2 interaction_type_counts | Small | Low | Trivial with int types |
 | **P2** | 2.4 compute_averaged_equilibrium | Medium | Low | Accumulate+average |
-| **P2** | 1.2 build_3rd_neighbor_bonds | Small | Low | Uses 1.1 |
-| **P2** | 1.3 build_dihedrals | Small | Low | Standard topology |
+| **P2** ✅ | 1.2 build_3rd_neighbor_bonds | Small | Low | DONE — `find_3rd_neighbor_bonds` in FFfit.h |
+| **P2** ✅ | 1.3 build_dihedrals | Small | Low | DONE — `enumerate_dihedrals` in FFfit.h |
+| **P2** ✅ | 3.4 compute_dihedral_sensitivity | Medium | Medium | DONE — `dihedral_dHdk_batch_typed` replaces Python loop |
 | **P3** | 3.7 assemble_hybrid_system | Large | Medium | Orchestration, needs 1.4+3.5 |
 | **P3** | 3.6 internal_hessian_proj | Large | Low | Already LAPACK-backed |
 | **P3** | 4.1-4.3 I/O & stats | — | Low | Python-appropriate |
@@ -237,33 +254,34 @@ Assign as `atom_types[i] = base_type + SiEnv::SiH2` or use separate `env_type` a
 
 ## Suggested Implementation Order
 
-### Phase 1: Graph algorithms + Wilson matrix (P0, ~1 day)
-1. Port `shortest_path_distances` → `FFfit::compute_graph_distances()`
-2. Port `local_hessian_mask` → `FFfit::compute_local_mask()`
-3. Port `build_wilson_matrix` → `FFfit::build_wilson_matrix()`
-4. Add C wrappers in `FFfit_lib.cpp`
-5. Add Python bindings in `FFfit.py`
-6. Add parity tests in `test_parity_py_cpp.py`
+### Phase 1: Graph algorithms + Wilson matrix (P0) — ✅ COMPLETE
+1. ✅ Port `shortest_path_distances` → `bond_graph_distances` (CSR bond-graph + BFS)
+2. ✅ Port `local_hessian_mask` → `local_hessian_mask` + combined `local_mask_and_14pairs`
+3. ✅ Port `build_wilson_matrix` → `build_wilson_matrix` (sparse fill, pre-zeroed buffer)
+4. ✅ Add C wrappers in `FFfit_lib.cpp`
+5. ✅ Add Python bindings in `FFfit.py`
+6. ✅ Add parity tests in `test_parity_graph_cpp.py` (12 tests)
 
-### Phase 2: Topology + typing reform (P1-P2, ~2 days)
-1. Add `atom_type_ids` / `Z_array` to FFfit class
-2. Port `build_topology` using `autoBonds`-style distance scan
-3. Port `build_global_param_map` with integer keys
-4. Port `assign_si_environment_types` with enum
-5. Port `build_dihedrals` and `build_3rd_neighbor_bonds`
-6. Port `compute_averaged_equilibrium`
-7. Parity tests for all
+### Phase 2: Topology + typing reform (P1-P2) — PARTIALLY COMPLETE
+1. ⬜ Add `atom_type_ids` / `Z_array` to FFfit class
+2. ⬜ Port `build_topology` using `autoBonds`-style distance scan
+3. ⬜ Port `build_global_param_map` with integer keys
+4. ⬜ Port `assign_si_environment_types` with enum
+5. ✅ Port `build_dihedrals` → `enumerate_dihedrals`
+6. ✅ Port `build_3rd_neighbor_bonds` → `find_3rd_neighbor_bonds`
+7. ⬜ Port `compute_averaged_equilibrium`
+8. ✅ Parity tests for completed items
 
-### Phase 3: Dihedral sensitivity (P1, ~0.5 day)
-1. Port `dihedral_energy_gradient` to C++ (mirror `evalDihedral_Prokop`)
-2. Add `dihedral_dHdk()` (FD-based, 12×12)
-3. Integrate into `FFfit::build_sensitivity_matrices()`
-4. Parity test
+### Phase 3: Dihedral sensitivity (P1) — ✅ COMPLETE
+1. ✅ Port `dihedral_energy_gradient` to C++ (mirrors `evalDihedral_Prokop`)
+2. ✅ Add `dihedral_hessian_fd` (in-place FD, symmetry exploitation, precomputed inv_2h)
+3. ✅ Add `dihedral_dHdk` (single) + `dihedral_dHdk_batch` + `dihedral_dHdk_batch_typed`
+4. ✅ Parity tests (2 batch tests: vs single=0.00e+00, vs Python=1.90e-06)
 
-### Phase 4: Hybrid assembly orchestration (P3, optional)
-1. Single `fffit_assemble_hybrid_system()` C++ function
-2. Calls all sub-steps without Python round-trips
-3. Only needed if Python orchestration overhead is significant for large systems
+### Phase 4: Hybrid assembly orchestration (P3, optional) — NOT STARTED
+1. ⬜ Single `fffit_assemble_hybrid_system()` C++ function
+2. ⬜ Calls all sub-steps without Python round-trips
+3. ⬜ Only needed if Python orchestration overhead is significant for large systems
 
 ---
 

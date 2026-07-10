@@ -1,7 +1,7 @@
 import numpy as np
 
 from pyBall import FFfit
-from test_FFfit import assign_si_environment_types, dihedral_angle, dihedral_energy_gradient
+from pyBall.FFfit_utils import assign_si_environment_types, dihedral_angle, dihedral_energy_gradient
 
 
 def make_triatomic_problem():

@@ -68,7 +68,7 @@ FireCore is a multi-component computational chemistry and physics repository con
 - **`GUI/mol_browser_plugins/`** — Extensible analysis panels (`VibrationSpectrumPlugin`: FTIR plot, mode pick, 3D arrows/animation). See [`pyBall/GUI/mol_browser_plugins/README.md`](pyBall/GUI/mol_browser_plugins/README.md).
 - **`buildUtils.py`**, **`gen_makefile.py`**, **`config_utils.py`** — Build system helpers.
 - **`eFF.py`**, **`eFF_terms.py`** — Electron force field Python implementation.
-- **`FitREQ.py`**, **`FFFit.py`** — Force field parameter fitting.
+- **`FitREQ.py`**, **`FFFit.py`** — Force field parameter fitting. `FFfit.py` is the C++ ctypes wrapper; `FFfit_utils.py` contains the high-level Python fitting pipeline (type system, topology, sensitivity matrices, fitting, frequency analysis); `FFfit_plots.py` contains visualization (spectra, stiffness maps). `tests/tSiNCs/test_FFfit.py` is a thin CLI wrapper importing from both.
 - **`Kekule.py`**, **`KekuleBackend.py`**, **`KekuleExplorerGUI.py`** — Kekule structure enumeration and GUI.
 - **`MolecularPlacer.py`**, **`SequencePlacer.py`** — On-surface molecular assembly.
 - **`AFMExtension.py`** — AFM simulation extensions.

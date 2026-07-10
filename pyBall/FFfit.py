@@ -1,7 +1,9 @@
 """Python ctypes wrapper for C++ FFfit force-field parameter fitting library.
 
-Wraps FFfit_lib.cpp → FFfit.h class for fitting bond/angle stiffness parameters
-to reference Hessians via linear least-squares or gradient descent.
+Wraps FFfit_lib.cpp → FFfit.h for fitting bond/angle/dihedral stiffness parameters
+to reference Hessians via linear least-squares or gradient descent. Also provides
+optimized C++ graph algorithms (CSR bond-graph BFS, 1-4 pair detection, dihedral
+enumeration) and batch dihedral sensitivity computation.
 
 THEORY OVERVIEW
 ===============
@@ -24,7 +26,8 @@ single linear least-squares problem (the "hybrid" fit):
 
 1. MODE objective: targets Rayleigh quotients v_s^T D(k) v_s = λ_s for each
    reference vibrational mode, where D = M^{-1/2} H M^{-1/2}.
-2. LOCAL objective: fits only graph-local mass-weighted Hessian blocks.
+2. LOCAL objective: fits only graph-local mass-weighted Hessian blocks,
+   masked by bounded BFS on the bond graph (local_hessian_mask).
 3. INTERNAL objective: projects H into Wilson internal coordinates via
    F = C^{+T} D C^+ (the GF method), fitting the valence force matrix.
 
@@ -32,7 +35,22 @@ All three are linear in k, so the combined problem is a single linear solve.
 The direct stacked residual matrix is solved via scipy.optimize.lsq_linear
 with column scaling, Tikhonov regularization, and non-negative bounds.
 
+GRAPH ALGORITHMS
+================
+
+Bond-graph topology queries use a CSR (Compressed Sparse Row) adjacency built
+once per call, with bounded ring-based BFS that only visits atoms within the
+requested distance cutoff. This avoids computing the full N×N distance matrix
+when only local distances (≤3 hops) are needed. A combined pass
+(local_mask_and_14pairs) extracts both the Hessian mask and 1-4 neighbor pairs
+in a single BFS traversal per atom.
+
+Batch dihedral sensitivity (dihedral_dHdk_batch_typed_cpp) replaces the Python
+compute_dihedral_sensitivity loop — all dihedrals are processed in one C++ call
+with in-place FD perturbation and Hessian symmetry exploitation.
+
 See doc/Topics/FFfit/HessianFitting_Theory.md for the full derivation.
+Parity tests: tests/tSiNCs/test_parity_graph_cpp.py (14 tests).
 
 Usage:
     from pyBall import FFfit
@@ -137,6 +155,39 @@ lib.fffit_compute_gradient_loss.argtypes = [c_void_p, array1d, array1d, array1d,
 
 lib.fffit_solve_normal_equations.restype  = None
 lib.fffit_solve_normal_equations.argtypes = [array1d, array1d, array1d, c_int]
+
+# === Graph algorithms ===
+lib.fffit_bond_graph_distances.restype  = None
+lib.fffit_bond_graph_distances.argtypes = [array1i, c_int, c_int, array1i]
+
+lib.fffit_local_hessian_mask.restype  = None
+lib.fffit_local_hessian_mask.argtypes = [array1i, c_int, c_int, c_int, np.ctypeslib.ndpointer(dtype=np.uint8, ndim=1, flags='CONTIGUOUS')]
+
+lib.fffit_find_3rd_neighbor_bonds.restype  = None
+lib.fffit_find_3rd_neighbor_bonds.argtypes = [array1i, c_int, c_int, array1d, c_double, array1i, POINTER(c_int)]
+
+lib.fffit_enumerate_dihedrals.restype  = None
+lib.fffit_enumerate_dihedrals.argtypes = [array1i, c_int, c_int, array1i, POINTER(c_int)]
+
+# === Wilson B matrix ===
+lib.fffit_build_wilson_matrix.restype  = None
+lib.fffit_build_wilson_matrix.argtypes = [c_void_p, array1d]
+
+# === Dihedral sensitivity ===
+lib.fffit_dihedral_hessian.restype  = None
+lib.fffit_dihedral_hessian.argtypes = [c_void_p, c_int, c_int, c_int, c_int, array1d]
+
+lib.fffit_dihedral_dHdk.restype  = None
+lib.fffit_dihedral_dHdk.argtypes = [c_void_p, c_int, c_int, c_int, c_int, array1d]
+
+lib.fffit_local_mask_and_14pairs.restype  = None
+lib.fffit_local_mask_and_14pairs.argtypes = [array1i, c_int, c_int, c_int, np.ctypeslib.ndpointer(dtype=np.uint8, ndim=1, flags='CONTIGUOUS'), array1d, c_double, array1i, POINTER(c_int)]
+
+lib.fffit_dihedral_dHdk_batch.restype  = None
+lib.fffit_dihedral_dHdk_batch.argtypes = [c_void_p, array1i, c_int, array1d]
+
+lib.fffit_dihedral_dHdk_batch_typed.restype  = None
+lib.fffit_dihedral_dHdk_batch_typed.argtypes = [c_void_p, array1i, c_int, array1i, c_int, array1d]
 
 
 class FFfit:
@@ -318,6 +369,131 @@ class FFfit:
         k = np.zeros(np_, dtype=np.float64)
         lib.fffit_solve_normal_equations(G_flat, y_arr, k, np_)
         return k
+
+    # === Graph algorithms (C++ accelerated) ===
+
+    @staticmethod
+    def bond_graph_distances(bond_pairs, natoms):
+        """BFS shortest-path distances between all pairs in the bond graph.
+        bond_pairs: (nbonds, 2) or (nbonds*2,) int array.
+        Returns: (natoms, natoms) int array, -1 = unreachable.
+        """
+        bp = np.ascontiguousarray(bond_pairs, dtype=np.int32).ravel()
+        dist = np.full(natoms * natoms, -1, dtype=np.int32)
+        lib.fffit_bond_graph_distances(bp, len(bp) // 2, natoms, dist)
+        return dist.reshape(natoms, natoms)
+
+    @staticmethod
+    def local_hessian_mask(bonds, natoms, max_graph_distance=2):
+        """Boolean mask for atom pairs within max_graph_distance in bond graph.
+        bonds: (nbonds, 2) or list of (i,j) pairs.
+        Returns: (3*natoms, 3*natoms) boolean array.
+        """
+        bp = np.ascontiguousarray([(b[0], b[1]) for b in bonds], dtype=np.int32).ravel()
+        mask = np.zeros(natoms * natoms, dtype=np.uint8)
+        lib.fffit_local_hessian_mask(bp, len(bp) // 2, natoms, max_graph_distance, mask)
+        block = mask.reshape(natoms, natoms).astype(bool)
+        return np.repeat(np.repeat(block, 3, axis=0), 3, axis=1)
+
+    @staticmethod
+    def find_3rd_neighbor_bonds(bond_pairs, natoms, positions, max_dist=0.0):
+        """Find 1-4 pairs (graph distance 3). Returns list of (i, j) pairs.
+        positions: (natoms, 3) array. max_dist<=0 means no distance filter.
+        """
+        bp = np.ascontiguousarray(bond_pairs, dtype=np.int32).ravel()
+        pos = np.ascontiguousarray(positions, dtype=np.float64).ravel()
+        pairs3 = np.zeros(natoms * natoms * 2, dtype=np.int32)  # over-allocate
+        n3 = c_int(0)
+        lib.fffit_find_3rd_neighbor_bonds(bp, len(bp) // 2, natoms, pos, max_dist, pairs3, byref(n3))
+        return [(pairs3[i*2], pairs3[i*2+1]) for i in range(n3.value)]
+
+    @staticmethod
+    def local_mask_and_14pairs(bonds, natoms, max_graph_distance, positions, max_dist=0.0):
+        """Combined local Hessian mask + 1-4 pairs in a single BFS pass.
+        Returns: (mask_3Nx3N_bool, list_of_14_pairs).
+        """
+        bp = np.ascontiguousarray([(b[0], b[1]) for b in bonds], dtype=np.int32).ravel()
+        pos = np.ascontiguousarray(positions, dtype=np.float64).ravel()
+        mask = np.zeros(natoms * natoms, dtype=np.uint8)
+        pairs3 = np.zeros(natoms * natoms * 2, dtype=np.int32)
+        n3 = c_int(0)
+        lib.fffit_local_mask_and_14pairs(bp, len(bp) // 2, natoms, max_graph_distance,
+                                          mask, pos, max_dist, pairs3, byref(n3))
+        block = mask.reshape(natoms, natoms).astype(bool)
+        mask_3N = np.repeat(np.repeat(block, 3, axis=0), 3, axis=1)
+        pairs = [(pairs3[i*2], pairs3[i*2+1]) for i in range(n3.value)]
+        return mask_3N, pairs
+
+    @staticmethod
+    def enumerate_dihedrals(bond_pairs, natoms):
+        """Enumerate proper torsions (i-j-k-l) from bond topology.
+        bond_pairs: (nbonds, 2) or (nbonds*2,) int array.
+        Returns: list of (i, j, k, l) tuples.
+        """
+        bp = np.ascontiguousarray(bond_pairs, dtype=np.int32).ravel()
+        # Max dihedrals: each bond can produce up to (deg-1)^2 dihedrals; over-allocate
+        max_dihed = nbonds = len(bp) // 2
+        for _ in range(4): max_dihed = max_dihed * max(natoms, 1)
+        diheds = np.zeros(max_dihed * 4, dtype=np.int32)
+        n_out = c_int(0)
+        lib.fffit_enumerate_dihedrals(bp, nbonds, natoms, diheds, byref(n_out))
+        return [(diheds[i*4], diheds[i*4+1], diheds[i*4+2], diheds[i*4+3]) for i in range(n_out.value)]
+
+    def build_wilson_matrix_cpp(self):
+        """Build Wilson B matrix using C++ implementation.
+        Must have geometry, bonds, and angles set on this FFfit instance.
+        Returns: (n_internal, 3N) array where n_internal = nbonds + nangles.
+        """
+        n3 = self.natoms * 3
+        n_int = self.nbonds + self.nangles
+        B = np.zeros(n_int * n3, dtype=np.float64)
+        lib.fffit_build_wilson_matrix(self._handle, B)
+        return B.reshape(n_int, n3)
+
+    def dihedral_hessian_cpp(self, i, j, k, l):
+        """Compute 12x12 dihedral Hessian via C++ finite differences.
+        Returns: (12, 12) array.
+        """
+        H = np.zeros(144, dtype=np.float64)
+        lib.fffit_dihedral_hessian(self._handle, i, j, k, l, H)
+        return H.reshape(12, 12)
+
+    def dihedral_dHdk_cpp(self, i, j, k, l):
+        """Compute dihedral sensitivity dH/dV scattered into (3N, 3N).
+        Returns: (3N, 3N) array.
+        """
+        n3 = self.natoms * 3
+        A = np.zeros(n3 * n3, dtype=np.float64)
+        lib.fffit_dihedral_dHdk(self._handle, i, j, k, l, A)
+        return A.reshape(n3, n3)
+
+    def dihedral_dHdk_batch_cpp(self, dihedrals):
+        """Batch: compute dH/dV for all dihedrals, accumulated into one (3N, 3N) matrix.
+        dihedrals: list of (i, j, k, l) tuples or (ndihedrals*4) int array.
+        Returns: (3N, 3N) array.
+        """
+        n3 = self.natoms * 3
+        if len(dihedrals) == 0:
+            return np.zeros((n3, n3), dtype=np.float64)
+        dh = np.ascontiguousarray(dihedrals, dtype=np.int32).ravel()
+        A = np.zeros(n3 * n3, dtype=np.float64)
+        lib.fffit_dihedral_dHdk_batch(self._handle, dh, len(dh) // 4, A)
+        return A.reshape(n3, n3)
+
+    def dihedral_dHdk_batch_typed_cpp(self, dihedrals, type_idx, n_types):
+        """Batch with per-type accumulation: each dihedral's Hessian goes into its
+        parameter's (3N, 3N) matrix. Equivalent to Python compute_dihedral_sensitivity.
+        dihedrals: list of (i,j,k,l) tuples. type_idx: list of param indices per dihedral.
+        Returns: (n_types, 3N, 3N) array.
+        """
+        n3 = self.natoms * 3
+        if len(dihedrals) == 0 or n_types == 0:
+            return np.zeros((n_types, n3, n3), dtype=np.float64)
+        dh = np.ascontiguousarray(dihedrals, dtype=np.int32).ravel()
+        ti = np.ascontiguousarray(type_idx, dtype=np.int32)
+        A = np.zeros(n_types * n3 * n3, dtype=np.float64)
+        lib.fffit_dihedral_dHdk_batch_typed(self._handle, dh, len(dh) // 4, ti, n_types, A)
+        return A.reshape(n_types, n3, n3)
 
 
 def collect_sensitivity_matrices(fitter, extra=None):
